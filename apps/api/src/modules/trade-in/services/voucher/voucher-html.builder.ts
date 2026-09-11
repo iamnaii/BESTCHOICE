@@ -1,4 +1,4 @@
-import { DOCUMENT_A4_CSS, DOCUMENT_WEB_FONT_FACES, documentTypographyCss } from '@installment/shared';
+import { TRANSACTION_PAGE_CSS, DOCUMENT_WEB_FONT_FACES, transactionDocumentCss } from '@installment/shared';
 import { thaiBahtText } from '../../../../utils/thai-baht-text.util';
 import { LEGACY_TRADE_IN_DECLARATION } from '@installment/shared';
 import * as fs from 'fs';
@@ -145,169 +145,28 @@ export class VoucherHtmlBuilder {
   <meta charset="UTF-8">
   <title>${title} ${esc(data.voucherNumber)}</title>
   <style>
-    @page {
-      size: A4;
-      margin: 15mm 17mm;
-      @bottom-center {
-        content: "${data.isReprint ? 'สำเนา / COPY' : ''}";
-        font-family: 'TH Sarabun PSK', sans-serif;
-        font-size: 12pt;
-        color: #53635c;
-      }
-    }
-    :root { --ink: #192d25; --muted: #53635c; --green: #16694f; --rule: #d4ddd8; }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: #fff;
-      color: var(--ink);
-      font-family: 'IBM Plex Sans Thai', sans-serif;
-      font-size: 11pt;
-      line-height: 1.5;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-    }
-    h1, h2, p { margin: 0; }
-    strong { font-weight: 600; }
-    .label, .muted { color: var(--muted); }
-    .label { font-size: 9pt; }
-    .number { font-variant-numeric: tabular-nums; }
-    .masthead { display: grid; grid-template-columns: minmax(0, 1fr) 60mm; gap: 8mm; padding-bottom: 4mm; border-bottom: 1.2pt solid var(--green); }
-    .brand { display: flex; align-items: center; gap: 4mm; }
-    .logo { flex: 0 0 20mm; width: 20mm; }
-    .logo svg { width: 100%; height: auto; display: block; }
-    .company { min-width: 0; font-size: 9pt; line-height: 1.6; overflow-wrap: anywhere; }
-    .company-name { font-size: 11pt; font-weight: 600; margin-bottom: 1.5mm; }
-    .company-contact { margin-top: 1mm; }
-    .document-meta { font-size: 9pt; }
-    .meta-row { display: grid; grid-template-columns: 14mm minmax(0, 1fr); gap: 2mm; margin-bottom: 1.5mm; }
-    .meta-row > :last-child { text-align: right; overflow-wrap: anywhere; }
-    .copy-status { margin-top: 2mm; text-align: right; font-size: 8pt; color: var(--muted); }
-    .hero { margin-top: 4mm; }
-    .document-title { min-width: 0; }
-    h1 { font-size: 24pt; font-weight: 600; line-height: 1.3; letter-spacing: -0.5pt; }
-    .subtitle { margin-top: 2mm; font-size: 8pt; letter-spacing: 1.5pt; color: var(--muted); }
-    .total-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7mm; align-items: center; margin-top: 3mm; }
-    .total-amount { text-align: right; }
-    .amount { font-size: 30pt; font-weight: 600; line-height: 1.3; letter-spacing: -0.8pt; color: var(--green); white-space: nowrap; }
-    .currency { margin-left: 2mm; font-size: 9pt; font-weight: 400; letter-spacing: normal; color: var(--muted); }
-    .amount-words { font-size: 10pt; overflow-wrap: anywhere; }
-    .amount-words .label { margin-bottom: 1mm; }
-    .section { margin-top: 4mm; }
-    h2 { font-size: 11pt; line-height: 1.5; font-weight: 600; margin-bottom: 2mm; }
-    .section-title { display: flex; align-items: center; gap: 3mm; }
-    .section-title::before { content: ''; width: 2mm; height: 2mm; background: var(--green); flex-shrink: 0; }
-    .seller-row { display: grid; grid-template-columns: 28mm minmax(0, 1fr); gap: 3mm; margin-top: 1mm; align-items: baseline; }
-    .seller-row > :last-child { overflow-wrap: anywhere; }
-    .seller-name { font-size: 12pt; }
-    .seller-contact { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 5mm; }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    th { padding: 2mm 3mm; border-top: 0.5pt solid var(--rule); border-bottom: 0.5pt solid var(--rule); text-align: left; font-size: 9pt; font-weight: 500; color: var(--muted); }
-    td { padding: 3mm; border-bottom: 0.5pt solid var(--rule); vertical-align: top; overflow-wrap: anywhere; }
-    th:first-child, td:first-child { padding-left: 0; }
-    th:last-child, td:last-child { padding-right: 0; }
-    .center { text-align: center; }
-    .right { text-align: right; }
-    .device-name { font-size: 11pt; font-weight: 600; }
-    .device-details { font-size: 9pt; color: var(--muted); line-height: 1.5; margin-top: 1mm; }
-    .item-amount { white-space: nowrap; font-size: 11pt; }
-    .payment { margin-top: 3mm; }
-    .payment-row { display: grid; grid-template-columns: 37mm minmax(0, 1fr); gap: 3mm; margin-top: 1mm; align-items: baseline; }
-    .payment-row > :last-child { overflow-wrap: anywhere; }
-    .credit-note { margin-top: 2mm; font-size: 9pt; color: var(--muted); }
-    .declaration { border-top: 0.5pt solid var(--rule); padding-top: 3mm; margin-top: 4mm; font-size: 9pt; line-height: 1.7; color: var(--muted); }
-    .acceptance { break-inside: avoid; padding-bottom: 1mm; }
-    .acceptance .declaration { line-height: 1.5; margin-top: 2mm; padding-top: 2mm; }
-    .acceptance .signatures { margin-top: 2mm; }
-    .acceptance footer { margin-top: 2mm; }
-    .signatures { display: flex; gap: 16mm; margin-top: 4mm; }
-    .signer { flex: 1; min-width: 0; text-align: center; font-size: 10pt; overflow-wrap: anywhere; }
-    .signature-space { display: flex; align-items: center; justify-content: center; height: 19mm; border-bottom: 0.5pt solid #a8b8af; margin-bottom: 2.5mm; }
-    .signature-space img { max-width: 100%; max-height: 16mm; object-fit: contain; }
-    .signature-space .muted { font-size: 9pt; }
-    .signer-role { font-size: 9pt; margin-top: 1.5mm; }
-    .signer-date { font-size: 8pt; color: var(--muted); margin-top: 1mm; }
-    footer { display: flex; justify-content: space-between; gap: 5mm; padding-top: 2.5mm; margin-top: 3mm; border-top: 0.5pt solid var(--rule); color: var(--muted); font-size: 8pt; }
-    footer span { overflow-wrap: anywhere; }
-    .masthead, .hero, .items, .seller, tr, .payment, .declaration, .signatures, footer { break-inside: avoid; }
-    h2 { break-after: avoid; }
-    p { orphans: 3; widows: 3; }
-    ${isCredit ? `
-    body { font-size: 10pt; }
-    .masthead { padding-bottom: 3mm; }
-    .company { line-height: 1.4; }
-    .hero, .section { margin-top: 2mm; }
-    h1 { font-size: 22pt; }
-    .subtitle { margin-top: 1mm; }
-    h2 { margin-bottom: 1mm; }
-    th { padding-top: 1.5mm; padding-bottom: 1.5mm; }
-    td { padding-top: 2mm; padding-bottom: 2mm; }
-    .credit-note { margin-top: 1mm; }
-    .acceptance .declaration { line-height: 1.4; }
-    .signature-space { height: 14mm; margin-bottom: 1.5mm; }
-    .signature-space img { max-height: 12mm; }
-    ` : ''}
-  ${DOCUMENT_WEB_FONT_FACES}
-${DOCUMENT_A4_CSS}
-${documentTypographyCss('body', undefined, 1.15)}
-
-    .header { padding-bottom: 8px; }
-    .parties { padding: 8px 0; margin-bottom: 8px; }
-    .summary, .pay-section, .notes { padding-bottom: 8px; margin-bottom: 8px; }
-    .pay-grid { margin-top: 8px; padding: 8px 0; }
-    .footer { margin-top: 10px; }
-    .approval { margin-top: 10px; }
-    .masthead { padding-bottom: 3mm; }
-    .hero, .section { margin-top: 2mm; }
-    .subtitle { margin-top: 1mm; }
-    .signature-space { height: 14mm; margin-bottom: 1.5mm; }
-    .declaration { margin-top: 2mm; padding-top: 2mm; }
-    h2 { margin-bottom: 1mm; }
-footer { margin-top: 1mm; padding-top: 1mm; }
-.signatures { margin-top: 2mm; }
-.signer-date, .signer-role { margin-top: 0; }
+${DOCUMENT_WEB_FONT_FACES}
+${TRANSACTION_PAGE_CSS}
+${transactionDocumentCss('body')}
+html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.payment { margin-top: 2mm; }
+.payment h2 { font-size: 16pt !important; color: #047857; }
+.payment-row { display: grid; grid-template-columns: 40mm minmax(0,1fr); gap: 2mm; }
+.credit-note { margin-top: 1mm; }
+.declaration { margin-top: 2mm; border-top: 1px solid #d4dfd9; padding-top: 2mm; }
+.bc-doc-approval { margin-top: 2mm; }
+.device-name { font-weight: 700; }
+.device-details { color: #52645d; }
+.center { text-align: center; }
 </style>
 </head>
 <body>
-  <header class="masthead">
-    <div class="brand">
-      <div class="logo">${this.logoSvg()}</div>
-      <div class="company">
-        <p class="company-name">${esc(company.nameTh)}</p>
-        <p>${esc(company.address)}</p>
-        <p class="company-contact">เลขประจำตัวผู้เสียภาษี ${esc(company.taxId)}</p>
-        ${company.phone ? `<p>โทร. ${esc(company.phone)}</p>` : ''}
-      </div>
-    </div>
-    <div class="document-meta">
-      <div class="meta-row"><span class="label">เลขที่</span><strong class="number">${esc(data.voucherNumber)}</strong></div>
-      <div class="meta-row"><span class="label">วันที่</span><span>${date}</span></div>
-      <p class="copy-status">${data.isReprint ? 'สำเนา / COPY' : 'ต้นฉบับ / ORIGINAL'}</p>
-    </div>
-  </header>
-
-  <section class="hero" aria-label="สรุปเอกสาร">
-    <div class="document-title">
-      <h1>${title}</h1>
-      <p class="subtitle">${isCredit ? 'TRADE-IN RECEIPT' : 'PAYMENT VOUCHER'}</p>
-    </div>
-  </section>
-
-  <section class="seller section">
-    <h2 class="section-title">${isCredit ? 'ผู้ส่งมอบเครื่อง' : 'ผู้รับเงิน / ผู้ขาย'}</h2>
-    <div class="seller-row"><span class="label">ชื่อ–นามสกุล</span><strong class="seller-name">${esc(data.sellerName)}</strong></div>
-    <div class="seller-contact">
-      <div class="seller-row"><span class="label">เลขบัตรประชาชน</span><span class="number">${esc(data.sellerIdCard)}</span></div>
-      <div class="seller-row"><span class="label">โทรศัพท์</span><span class="number">${esc(data.sellerPhone)}</span></div>
-    </div>
-    <div class="seller-row"><span class="label">ที่อยู่</span><span>${esc(data.sellerAddress)}</span></div>
-  </section>
-
-  <section class="items section">
-    <h2 class="section-title">${isCredit ? 'รายการรับเครื่องเทิร์น' : 'รายการรับซื้อ'}</h2>
+<div class="bc-doc-header"><div class="bc-doc-brand"><div>${this.logoSvg()}</div><p class="bc-doc-company">${esc(company.nameTh)}</p><p>${esc(company.address)}</p><p>เลขประจำตัวผู้เสียภาษี ${esc(company.taxId)}</p>${company.phone ? `<p>โทร ${esc(company.phone)}</p>` : ''}</div>
+<div class="bc-doc-identity"><h1>${title}</h1><p class="bc-doc-kicker">${isCredit ? 'TRADE-IN RECEIPT' : 'PAYMENT VOUCHER'} · ${data.isReprint ? 'สำเนา / COPY' : 'ต้นฉบับ / ORIGINAL'}</p><div class="bc-doc-meta"><span>เลขที่เอกสาร</span><span>${esc(data.voucherNumber)}</span><span>วันที่</span><span>${date}</span></div></div></div>
+<div class="bc-doc-parties"><div><p class="bc-doc-label">${isCredit ? 'ผู้ส่งมอบเครื่อง' : 'ผู้รับเงิน / ผู้ขาย'}</p><strong>${esc(data.sellerName)}</strong><p>${esc(data.sellerAddress)}</p></div><div class="bc-doc-kv"><span>เลขบัตรประชาชน</span><span>${esc(data.sellerIdCard)}</span><span>โทรศัพท์</span><span>${esc(data.sellerPhone)}</span></div></div>
     <table aria-label="${isCredit ? 'รายการเครื่องเทิร์น' : 'รายการจ่ายเงิน'}">
       <colgroup><col style="width:12mm"><col><col style="width:22mm"><col style="width:38mm"></colgroup>
-      <thead><tr><th class="center">ลำดับ</th><th>รายละเอียดเครื่อง</th><th class="center">จำนวน</th><th class="right">${isCredit ? 'มูลค่า (บาท)' : 'จำนวนเงิน (บาท)'}</th></tr></thead>
+      <thead><tr><th class="center">#</th><th>รายละเอียดเครื่อง</th><th class="center">จำนวน</th><th class="right">${isCredit ? 'มูลค่า (บาท)' : 'จำนวนเงิน (บาท)'}</th></tr></thead>
       <tbody><tr>
         <td class="center">1</td>
         <td><p class="device-name">${esc(deviceName)}</p>${deviceDetails.length ? `<p class="device-details">${esc(deviceDetails.join('\n'))}</p>` : ''}</td>
@@ -315,15 +174,8 @@ footer { margin-top: 1mm; padding-top: 1mm; }
         <td class="right item-amount number"><strong>${this.formatBaht(data.amount)}</strong></td>
       </tr></tbody>
     </table>
-    <div class="total-summary">
-      <div class="amount-words"><p class="label">จำนวนเงินเป็นตัวอักษร</p><p>${esc(data.amountText)}</p></div>
-      <div class="total-amount">
-        <p class="label">${isCredit ? 'ยอดเครดิตที่ตกลง' : 'ยอดจ่ายสุทธิ'}</p>
-        <p class="amount number">${this.formatBaht(data.amount)}<span class="currency">บาท</span></p>
-      </div>
-    </div>
-  </section>
 
+<div class="bc-doc-closing"><div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงินเป็นตัวอักษร</p><strong>${esc(data.amountText)}</strong></div><div class="bc-doc-grand"><span>${isCredit ? 'ยอดเครดิตที่ตกลง' : 'ยอดจ่ายสุทธิ'}</span><span>${this.formatBaht(data.amount)} บาท</span></div></div>
   <section class="payment">
     <h2 class="section-title">${isCredit ? 'การรับเครื่อง' : 'ข้อมูลการจ่ายเงิน'}</h2>
     <div class="payment-row"><span class="label">${isCredit ? 'รูปแบบการรับเครื่อง' : 'วิธีจ่ายเงิน'}</span><strong>${isCredit ? 'เครดิตเทิร์นเครื่อง' : data.paymentMethod === 'TRANSFER' ? 'โอนเงินเข้าบัญชีผู้ขาย' : 'เงินสด'}</strong></div>
@@ -337,26 +189,24 @@ footer { margin-top: 1mm; padding-top: 1mm; }
     }
   </section>
 
-  ${data.sellerDeclarationText ? '<div class="acceptance">' : ''}
-  <p class="declaration"><strong>คำรับรองผู้ขาย</strong>${data.sellerDeclarationText ? ` · ${esc(data.voucherNumber)}<br>` : ' '}${esc(data.sellerDeclarationText ?? LEGACY_TRADE_IN_DECLARATION)}</p>
 
-  <section class="signatures" aria-label="ลายเซ็น">
-    <div class="signer">
-      <div class="signature-space">${signature(data.issuerSignatureBase64, 'ลายเซ็นผู้ออกเอกสาร')}</div>
+<p class="declaration"><strong>คำรับรองผู้ขาย</strong>${data.sellerDeclarationText ? ` · ${esc(data.voucherNumber)}<br>` : ' '}${esc(data.sellerDeclarationText ?? LEGACY_TRADE_IN_DECLARATION)}</p>
+  <section class="bc-doc-approval" aria-label="ลายเซ็น">
+    <div class="bc-doc-signature">
+      <div class="sign-space">${signature(data.issuerSignatureBase64, 'ลายเซ็นผู้ออกเอกสาร')}</div>
       <strong>${esc(data.issuerName)}</strong>
       <p class="signer-role">ผู้รับซื้อ / ผู้ออกเอกสาร</p>
-      <p class="signer-date">วันที่ ${date}</p>
+      <p class="bc-doc-kicker">วันที่ ${date}</p>
     </div>
-    <div class="signer">
-      <div class="signature-space">${signature(data.sellerSignatureBase64, 'ลายเซ็นผู้ขาย')}</div>
+    <div class="bc-doc-signature">
+      <div class="sign-space">${signature(data.sellerSignatureBase64, 'ลายเซ็นผู้ขาย')}</div>
       <strong>${esc(data.sellerName)}</strong>
       <p class="signer-role">${isCredit ? 'ผู้ส่งมอบเครื่อง' : 'ผู้รับเงิน (ผู้ขาย)'}</p>
-      <p class="signer-date">วันที่ ${date}</p>
+      <p class="bc-doc-kicker">วันที่ ${date}</p>
     </div>
   </section>
 
-  <footer><span class="number">${esc(data.voucherNumber)}</span><span>ออกโดยระบบ BESTCHOICE</span></footer>
-  ${data.sellerDeclarationText ? '</div>' : ''}
+<footer class="bc-doc-footer"><span>${esc(data.voucherNumber)}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
 </body>
 </html>`;
   }

@@ -20,10 +20,10 @@ import { numToThaiText } from '@/utils/numToThaiText';
 // ── Page geometry (A4 portrait, mm) ───────────────────────────────────────────
 const PAGE_W = 210;
 const PAGE_H = 297;
-const MARGIN = DOCUMENT_STYLE.marginsMm.left;
-const TOP = DOCUMENT_STYLE.marginsMm.top;
-const BODY_BOTTOM = PAGE_H - 32;
-const LINE_H = DOCUMENT_STYLE.bodyPt * 25.4 / 72 * DOCUMENT_STYLE.lineHeight;
+const MARGIN = 16;
+const TOP = 14;
+const BODY_BOTTOM = PAGE_H - 20;
+const LINE_H = DOCUMENT_STYLE.bodyPt * 25.4 / 72 * 1.05;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 
 // ── Font constants (must match names registered by loadThaiFont) ───────────────
@@ -159,11 +159,11 @@ function headerBlock(doc: jsPDF, data: LetterTemplateData, logoDataUrl: string |
   doc.setFont(PDF_FONT_FAMILY, 'normal');
   y = writeLines(doc, data.company.address, textX, y);
   y = writeLines(doc, `เลขประจำตัวผู้เสียภาษี ${data.company.taxId}${data.company.phone ? ` โทร ${data.company.phone}` : ''}`, textX, y);
-  y = Math.max(y, TOP + 23);
-  doc.setDrawColor(120);
+  y = Math.max(y, TOP + 18);
+  doc.setDrawColor(6, 95, 70);
   doc.setLineWidth(0.5);
   doc.line(MARGIN, y, PAGE_W - MARGIN, y);
-  return y + 9;
+  return y + 5;
 }
 
 /**
@@ -207,7 +207,7 @@ function addressBlock(doc: jsPDF, data: LetterTemplateData, yStart: number): num
   const refLines = doc.splitTextToSize(refContent, CONTENT_W - refLabelW);
   y = writeLines(doc, refLines.join(' '), MARGIN + refLabelW, y, CONTENT_W - refLabelW);
 
-  return y + 4;
+  return y + 2;
 }
 
 /**
@@ -235,7 +235,7 @@ function bodyReturnDevice45D(
   let y = yStart;
   const lineH = LINE_H;
 
-  const write = (text: string, extraGap = 4): void => {
+  const write = (text: string, extraGap = 1.5): void => {
     y = writeLines(doc, text, MARGIN, y) + extraGap;
   };
   const writeIndent = (text: string, extraGap = 0): void => {
@@ -265,7 +265,7 @@ function bodyReturnDevice45D(
     `(ต่อไปนี้เรียกว่า "ทรัพย์สินที่เช่าซื้อ") กับ ${data.company.nameTh} ` +
     `("บริษัทฯ") โดยท่านตกลงที่จะชำระค่าเช่าซื้อเป็นรายเดือน ${scheduleDesc} ` +
     `ตามรายละเอียดที่ปรากฏในสัญญานั้น`;
-  write(p1, 4);
+  write(p1, 1.5);
 
   // ── Paragraph 2: default declaration ────────────────────────────────────
   const overdue = data.overdueDetail;
@@ -280,7 +280,7 @@ function bodyReturnDevice45D(
     `     ปรากฏว่า บัดนี้ท่านได้ผิดนัดชำระค่าเช่าซื้องวดประจำเดือน ` +
     `${overdueMonthsText} ${overdueCountText}อันเป็นการผิดสัญญาเช่าซื้อในข้อ 8 ` +
     `(การผิดนัดชำระหนี้/ผิดเงื่อนไขสัญญา) และ ข้อ 20 (การผิดสัญญาและการสิ้นสุดของสัญญา)`;
-  write(p2, 4);
+  write(p2, 1.5);
 
   // ── Paragraph 3: demand intro ───────────────────────────────────────────
   write(`     บริษัทฯ จึงขอให้ท่านดำเนินการอย่างหนึ่งอย่างใด ดังต่อไปนี้`, 3);
@@ -367,9 +367,6 @@ function bodyReturnDevice45D(
   }
 
   // ── Closing ─────────────────────────────────────────────────────────────
-  doc.setFont(PDF_FONT_FAMILY, 'bold');
-  write('     จึงเรียนมาเพื่อโปรดดำเนินการโดยเร่งด่วน', 4);
-  doc.setFont(PDF_FONT_FAMILY, 'normal');
 
   return y;
 }
@@ -399,7 +396,7 @@ function bodyContractTermination60D(
   let y = yStart;
   const lineH = LINE_H;
 
-  const write = (text: string, extraGap = 4): void => {
+  const write = (text: string, extraGap = 1.5): void => {
     y = writeLines(doc, text, MARGIN, y) + extraGap;
   };
 
@@ -422,7 +419,7 @@ function bodyContractTermination60D(
     `     ตามที่ท่านได้ทำสัญญาเช่าซื้อโทรศัพท์มือถือ ${productDesc} ` +
     `("ทรัพย์สินที่เช่าซื้อ") จากกับ ${data.company.nameTh} ("บริษัทฯ")` +
     scheduleDesc;
-  write(p1, 4);
+  write(p1, 1.5);
 
   // ── Paragraph 2: default declaration ────────────────────────────────────
   const overdue = data.overdueDetail;
@@ -439,14 +436,14 @@ function bodyContractTermination60D(
     `${formatMoney(data.contract.outstanding)} บาท ซึ่งบริษัทฯ ` +
     `ได้เคยมีจดหมายแจ้งเตือนให้ท่านชำระหนี้แล้ว แต่ท่านยังคงเพิกเฉย` +
     `อันเป็นการผิดนัดสัญญาข้อ 5 และ ข้อ 20 นั้น`;
-  write(p2, 4);
+  write(p2, 1.5);
 
   // ── Paragraph 3: termination declaration ────────────────────────────────
   const p3 =
     `     โดยจดหมายฉบับนี้ บริษัทฯ ในฐานะผู้ให้เช่าซื้อ จึงขอ` +
     `บอกเลิกสัญญาเช่าซื้อฉบับดังกล่าวกับท่านทันที และขอให้ท่าน` +
     `ดำเนินการดังต่อไปนี้ภายใน 7 วัน นับแต่วันที่ท่านได้รับจดหมายฉบับนี้:`;
-  write(p3, 3);
+  write(p3, 1.5);
 
   // ── Two bullet demands (bold lead label, body continues inline) ─────────
   const totalWords = numToThaiText(data.contract.outstanding);
@@ -484,7 +481,7 @@ function bodyContractTermination60D(
     `ในความผิดฐานยักยอกทรัพย์ ตามประมวลกฎหมายอาญา ซึ่งมีโทษ` +
     `จำคุกไม่เกิน 3 ปี หรือปรับไม่เกิน 60,000 บาท หรือทั้งจำทั้งปรับ ` +
     `ตามที่ระบุไว้ในสัญญาข้อ 13 และ ข้อ 21`;
-  write(p5, 4);
+  write(p5, 1.5);
 
   // ── Paragraph 6: coordinator contact ────────────────────────────────────
   const coord = data.coordinator;
@@ -529,9 +526,6 @@ function bodyContractTermination60D(
   }
 
   // ── Closing (bold, slightly emphasised) ─────────────────────────────────
-  doc.setFont(PDF_FONT_FAMILY, 'bold');
-  write('     จึงเรียนมาเพื่อโปรดดำเนินการ', 4);
-  doc.setFont(PDF_FONT_FAMILY, 'normal');
 
   return y;
 }
@@ -566,8 +560,19 @@ function signatureBlock(
     doc.setFont(PDF_FONT_FAMILY, row.bold ? 'bold' : 'normal');
     return { ...row, lines: doc.splitTextToSize(row.text, width) as string[] };
   });
-  const height = rows.reduce((sum, row) => sum + row.lines.length * LINE_H, 0) + (signatureDataUrl ? 24 : 12);
-  let y = nextLine(doc, yStart, height);
+  const height = rows.reduce((sum, row) => sum + row.lines.length * LINE_H, 0) + (signatureDataUrl ? 17 : 8);
+  const closing = data.letterType === 'RETURN_DEVICE_45D'
+    ? '     จึงเรียนมาเพื่อโปรดดำเนินการโดยเร่งด่วน'
+    : '     จึงเรียนมาเพื่อโปรดดำเนินการ';
+  doc.setFont(PDF_FONT_FAMILY, 'bold');
+  const closingLines = doc.splitTextToSize(closing, CONTENT_W) as string[];
+  // Reserve the closing and signature together before either is drawn.
+  let y = nextLine(doc, yStart, height + closingLines.length * LINE_H + 6);
+  for (const line of closingLines) {
+    doc.text(line, MARGIN, y);
+    y += LINE_H;
+  }
+  y += 6;
   for (const [index, row] of rows.entries()) {
     doc.setFont(PDF_FONT_FAMILY, row.bold ? 'bold' : 'normal');
     for (const line of row.lines) {
@@ -577,11 +582,11 @@ function signatureBlock(
     }
     if (index === 0) {
       if (signatureDataUrl) {
-        try { doc.addImage(signatureDataUrl, 'PNG', centerX - 25, y, 50, 20); } catch { /* optional signature image */ }
-        y += 24;
+        try { doc.addImage(signatureDataUrl, 'PNG', centerX - 25, y, 50, 14); } catch { /* optional signature image */ }
+        y += 17;
       } else {
         doc.text('(...........................................)', centerX, y + 4, { align: 'center' });
-        y += 12;
+        y += 8;
       }
     }
   }
@@ -640,7 +645,7 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
     y,
     { align: 'right' },
   );
-  y += 10;
+  y += LINE_H + 1;
 
   const subjectMap: Record<LetterTemplateData['letterType'], string> = {
     RETURN_DEVICE_45D:
@@ -651,7 +656,7 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
 
   doc.setFont(PDF_FONT_FAMILY, 'bold');
   const subjectLines = doc.splitTextToSize(subjectMap[data.letterType], CONTENT_W);
-  y = writeLines(doc, subjectLines.join(' '), MARGIN, y) + 4;
+  y = writeLines(doc, subjectLines.join(' '), MARGIN, y) + 2;
   doc.setFont(PDF_FONT_FAMILY, 'normal');
 
   y = addressBlock(doc, data, y);
@@ -661,7 +666,7 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
       ? bodyReturnDevice45D(doc, data, y)
       : bodyContractTermination60D(doc, data, y);
 
-  signatureBlock(doc, data, y + 8, signatureDataUrl);
+  signatureBlock(doc, data, y + 2, signatureDataUrl);
   for (let page = 1; page <= doc.getNumberOfPages(); page++) {
     doc.setPage(page);
     footerBlock(doc, data);

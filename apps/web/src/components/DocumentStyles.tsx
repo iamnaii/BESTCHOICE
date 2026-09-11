@@ -1,4 +1,4 @@
-import { DOCUMENT_WEB_FONT_FACES, documentTypographyCss } from '@installment/shared';
+import { DOCUMENT_WEB_FONT_FACES, documentTypographyCss, transactionDocumentCss } from '@installment/shared';
 
 /** Typography for paper only. Thermal labels keep their physical type scale. */
 export default function DocumentStyles() {
@@ -16,6 +16,27 @@ export default function DocumentStyles() {
     .standard-voucher :is(th,td) { padding-top: 4px; padding-bottom: 4px; }
     .standard-voucher section > table { margin-top: 0 !important; }
 
+    ${transactionDocumentCss()}
+    .bc-document :is(section,table) { margin-top: 3mm !important; }
+    .bc-document .bc-doc-closing > section:first-child { margin-top: 0 !important; }
+    .bc-document section > table { margin-top: 0 !important; }
+    .bc-document footer { margin-top: 3mm !important; padding-top: 1.5mm !important; }
+    .bc-document :is(h1,h2,h3) { margin-top: 0 !important; }
+    .bc-document .voucher-meta-row { display: grid; grid-template-columns: 29mm minmax(0,1fr); gap: 2mm; }
+    .bc-document .voucher-partial-cell { border: 0; border-top: 1px solid #d4dfd9; border-radius: 0; padding: 2mm; }
+    .bc-document .document-approval { align-items: end; }
+    .bc-document .document-approval .h-16 { height: 12mm !important; }
+    .bc-document .voucher-total-highlight td { background: #065f46 !important; color: white !important; }
+    .bc-document .bc-doc-earnings { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 5mm; align-items: start; }
+    .bc-document .bc-doc-earnings section { margin-top: 0 !important; }
+
+    .bc-daily-sheet .rounded-xl { border: 0; border-radius: 0; padding: 0; }
+    .bc-daily-sheet .bc-doc-breakdowns { gap: 3mm 6mm; }
+    .bc-daily-sheet .px-4 { padding: 2mm 0; }
+    .bc-daily-sheet h3 { color: #047857; }
+    .bc-certificate .bc-doc-parties > div { border: 0; border-left: 2px solid #d4dfd9; border-radius: 0; padding: 2mm 3mm; }
+    .bc-certificate > * + * { margin-top: 3mm; }
+    .bc-certificate .bc-doc-closing { padding-top: 3mm; }
     @media print {
       html, body, #root { min-height: 0 !important; height: auto !important; }
       body:not(:has(.print-stickers)) {
@@ -65,6 +86,15 @@ export default function DocumentStyles() {
       .asset-register-sheet th:nth-child(7) { width: 11%; }
       .asset-register-sheet th:nth-child(8) { width: 8%; }
       .asset-register-sheet th:nth-child(9) { width: 13%; }
+      body:has(.bc-document) { page: bc-transaction; }
+      ${transactionDocumentCss('body .bc-document')}
+      body .bc-daily-sheet :is(th,td) { padding: 0.6mm 1.5mm; }
+      body .bc-daily-sheet table { margin-top: 1.5mm !important; }
+      body .bc-daily-sheet .bc-doc-brand { display: flex; align-items: center; gap: 3mm; }
+      body .bc-daily-sheet .bc-doc-brand img { height: 8mm; margin: 0; }
+      body .bc-daily-sheet .bc-doc-approval { padding-top: 8mm; margin-top: 2mm; align-items: start; }
+      body .bc-daily-sheet .bc-doc-closing { margin-top: 2mm; }
+      @page bc-transaction { size: A4; margin: 14mm 15mm; }
       @page document-landscape { size: A4 landscape; margin: 20mm 19mm; }
     }
   `}</style>;

@@ -1,3 +1,5 @@
+import DocumentHeader from '@/components/DocumentHeader';
+import { useCompanyDisplayName } from '@/hooks/useCompanyInfo';
 import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -52,6 +54,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 export default function ExpenseDailySummaryPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const companyName = useCompanyDisplayName();
   const { user } = useAuth();
   // D1.3.5.1 — initial date driven by OWNER-configured `summary_default_range`.
   // The summary page renders ONE calendar day at a time (single-date API), so
@@ -172,17 +175,6 @@ export default function ExpenseDailySummaryPage() {
         </div>
       </div>
 
-      {/* Print-only header */}
-      <div className="hidden print:block mb-4">
-        <h1 className="text-lg font-bold text-center">ใบสรุปรายจ่ายประจำวัน</h1>
-        <div className="text-center text-sm">
-          วันที่ {formatThaiDateLong(date)} · สาขา {summary?.branchName ?? '-'}
-        </div>
-        <div className="text-center text-xs text-muted-foreground">
-          ผู้จัดทำ: {user?.name ?? '-'}
-        </div>
-      </div>
-
       {!branchId ? (
         <div className="text-center py-12 text-muted-foreground">กรุณาเลือกสาขา</div>
       ) : isLoading ? (
@@ -190,7 +182,10 @@ export default function ExpenseDailySummaryPage() {
       ) : !summary ? (
         <div className="text-center py-12 text-muted-foreground">ไม่พบข้อมูลในวันที่เลือก</div>
       ) : (
-        <div className="space-y-6">
+        <div className="bc-document bc-daily-sheet bg-white p-6 print:p-0">
+          <DocumentHeader company={companyName} title="ใบสรุปรายจ่ายประจำวัน" subtitle="DAILY EXPENSE SUMMARY"
+            date={formatThaiDateLong(date)} />
+          <div className="bc-doc-parties"><div>สาขา {summary.branchName ?? '-'}</div><div>ผู้จัดทำ {user?.name ?? '-'}</div></div>
           {/* Documents table */}
           <div className="border border-border rounded-xl overflow-hidden bg-card">
             <div className="px-4 py-3 border-b border-border text-sm font-medium">
@@ -239,23 +234,13 @@ export default function ExpenseDailySummaryPage() {
                     ))
                   )}
                 </tbody>
-                <tfoot className="bg-muted font-semibold">
-                  <tr>
-                    <td colSpan={4} className="p-2 text-right">
-                      รวมทั้งสิ้น
-                    </td>
-                    <td className="p-2 text-right font-mono">
-                      {formatNumberDecimal(summary.grandTotal)}
-                    </td>
-                    <td></td>
-                  </tr>
-                </tfoot>
+
               </table>
             </div>
           </div>
 
           {/* Totals grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:grid-cols-2">
+          <div className="bc-doc-breakdowns grid grid-cols-1 md:grid-cols-2 gap-4 print:grid-cols-2">
             <div className="border border-border rounded-xl p-4 bg-card">
               <h3 className="text-sm font-semibold mb-3">รวมตามประเภท</h3>
               {Object.keys(summary.byType).length === 0 ? (
@@ -301,7 +286,6 @@ export default function ExpenseDailySummaryPage() {
                 </table>
               )}
             </div>
-          </div>
 
           {/* Category breakdown — optional */}
           {Object.keys(summary.byCategory).length > 0 && (
@@ -347,8 +331,12 @@ export default function ExpenseDailySummaryPage() {
             </div>
           )}
 
+          </div>
+
+          <div className="bc-doc-closing">
+          <div className="bc-doc-grand"><span>รวมทั้งสิ้น</span><span>{formatNumberDecimal(summary.grandTotal)} บาท</span></div>
           {/* Signature footer (visible in print) */}
-          <div className="grid grid-cols-3 gap-8 mt-12 pt-8 print:mt-12 print:pt-8 text-sm">
+          <div className="bc-doc-approval grid grid-cols-3 gap-8 pt-8 text-sm">
             <div className="text-center">
               <div className="border-t border-foreground pt-2">ผู้จัดทำ</div>
               <div className="text-xs text-muted-foreground mt-1">{user?.name ?? ''}</div>
@@ -359,6 +347,7 @@ export default function ExpenseDailySummaryPage() {
             <div className="text-center">
               <div className="border-t border-foreground pt-2">ผู้อนุมัติ</div>
             </div>
+          </div>
           </div>
         </div>
       )}

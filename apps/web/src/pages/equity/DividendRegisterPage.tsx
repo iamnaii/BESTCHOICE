@@ -1,3 +1,4 @@
+import DocumentHeader from '@/components/DocumentHeader';
 import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { Link } from 'react-router';
@@ -194,10 +195,10 @@ export default function DividendRegisterPage() {
             <>
 
               {/* print/receipt context — เอกสารทางการพิมพ์ขาวดำ ใช้สีตรงได้ตามข้อยกเว้นใน rules */}
-              <div id="div-cert-print" className="document-sheet bg-white text-black p-6 text-sm space-y-4">
-                <h2 className="text-center font-bold text-base leading-snug">
-                  หนังสือรับรองการหักภาษี ณ ที่จ่าย (ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร)
-                </h2>
+              <div id="div-cert-print" className="document-sheet bc-document bc-certificate bg-white text-black p-6 text-sm space-y-4">
+                <DocumentHeader company={payer.nameTh} title="หนังสือรับรองการหักภาษี ณ ที่จ่าย"
+                  subtitle={<> ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร · ภ.ง.ด.2<br />ปีภาษี {year + 543}</>} />
+                <div className="bc-doc-parties">
                 <div className="border border-black p-3 space-y-1">
                   <div className="font-semibold leading-snug">ผู้จ่ายเงิน</div>
                   <div className="leading-snug">{payer.nameTh}</div>
@@ -209,6 +210,8 @@ export default function DividendRegisterPage() {
                   <div className="leading-snug">{certFor.name}</div>
                   <div className="leading-snug">เลขประจำตัวผู้เสียภาษี: {certFor.taxId ?? '—'}</div>
                 </div>
+                </div>
+                <div className="bc-doc-closing">
                 <table className="w-full border-collapse border border-black text-sm">
                   <thead>
                     <tr>
@@ -237,6 +240,7 @@ export default function DividendRegisterPage() {
                     <div>ลงชื่อ ______________________ ผู้จ่ายเงิน</div>
                     <div className="text-xs mt-1">({payer.directorName})</div>
                   </div>
+                </div>
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">

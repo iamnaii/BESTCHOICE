@@ -1,4 +1,4 @@
-import { DOCUMENT_A4_CSS, documentTypographyCss } from '@installment/shared';
+import { TRANSACTION_PAGE_CSS, transactionDocumentCss } from '@installment/shared';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import {
   BadRequestException,
@@ -257,148 +257,26 @@ export class AssetReceiptPdfService {
 <head>
   <meta charset="UTF-8">
   <style>
-    /* Self-hosted fonts — no fonts.googleapis.com requests */
-    ${embeddedFontCss}
-    @page { size: A4; margin: 0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-700:#047857; --emerald-800:#065f46;
-      --zinc-200:#e4e4e7; --zinc-300:#d4d4d8; --zinc-400:#a1a1aa; --zinc-500:#71717a; --zinc-600:#52525b; --zinc-700:#3f3f46; --zinc-900:#18181b;
-      --red-500:#ef4444; --red-600:#dc2626;
-    }
-    body { font-family: 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif; color: var(--zinc-900); font-size: 9.5pt; line-height: 1.45; padding: 11mm 12mm 10mm; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:10px; border-bottom:1.5px solid var(--zinc-300); }
-    .logo-block svg { height: 32px; width: auto; }
-    .doc-title { font-size:20pt; font-weight:700; color:var(--emerald-700); line-height:1; text-align:right; letter-spacing:-0.01em; }
-    .doc-title .en { display:block; font-size:9pt; font-weight:600; color:var(--zinc-500); margin-top:3px; letter-spacing:0.04em; }
-
-    .parties { display:grid; grid-template-columns: minmax(0, 1fr) 220px; gap:14px; padding:12px 0; border-bottom:1px solid var(--zinc-200); margin-bottom:12px; }
-    .party-row { display:grid; grid-template-columns: 86px 1fr; gap:6px; margin-bottom:4px; align-items:start; font-size:9.5pt; }
-    .party-label { color:var(--zinc-900); font-weight:700; white-space:nowrap; }
-    .party-name { font-weight:600; }
-    .party-divider { margin:10px 0; border:0; border-top:1px solid var(--zinc-200); }
-    .meta-card { background:var(--emerald-50); border:1px solid var(--emerald-100); border-radius:6px; padding:10px 14px; font-size:9pt; align-self:start; }
-    .meta-row { display:flex; justify-content:space-between; padding:3px 0; gap:8px; }
-    .meta-label { color:var(--emerald-800); font-weight:600; white-space:nowrap; }
-    .meta-value { color:var(--zinc-900); font-family:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size:8.5pt; font-weight:500; text-align:right; word-break:break-all; }
-
-    .details-section { padding:0 0 12px; margin-bottom:12px; border-bottom:1px solid var(--zinc-200); }
-    .details-grid { display:grid; grid-template-columns:max-content 1fr; column-gap:18px; row-gap:5px; font-size:9.5pt; margin-top:4px; }
-    .details-grid .dlabel { color:var(--zinc-700); font-weight:600; white-space:nowrap; }
-    .details-grid .dval { color:var(--zinc-900); }
-
-    table.items { width:100%; border-collapse:collapse; font-size:9pt; }
-    table.items thead th { text-align:left; padding:6px 8px; background:var(--emerald-50); color:var(--emerald-800); font-size:8.5pt; font-weight:600; border-bottom:1.5px solid var(--emerald-700); }
-    table.items thead th.right { text-align:right; }
-    table.items tbody td { padding:8px; border-bottom:1px solid var(--zinc-200); vertical-align:top; font-variant-numeric:tabular-nums; }
-    table.items tbody td.right { text-align:right; }
-    table.items td.no { color:var(--zinc-500); width:22px; }
-    .item-name { font-weight:600; }
-
-    .summary { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:12px 0; margin-bottom:12px; border-bottom:1px solid var(--zinc-200); }
-    .summary-section { display:grid; grid-template-columns:18px 1fr; gap:8px; align-items:start; }
-    .summary-section .icon { width:16px; height:16px; color:var(--zinc-700); margin-top:2px; }
-    .breakdown { display:grid; grid-template-columns:max-content 1fr auto; column-gap:18px; row-gap:4px; font-size:9.5pt; }
-    .breakdown .label { color:var(--zinc-700); }
-    .breakdown .label.bold { font-weight:600; color:var(--zinc-900); }
-    .breakdown .text { color:var(--zinc-600); font-style:italic; font-size:9pt; }
-    .breakdown .num { text-align:right; font-variant-numeric:tabular-nums; color:var(--zinc-900); }
-    .grand-card { background:var(--emerald-50); border-radius:8px; padding:10px 14px; text-align:center; }
-    .grand-card .label { color:var(--emerald-800); font-size:9pt; font-weight:600; margin-bottom:3px; }
-    .grand-card .amount { color:var(--emerald-700); font-size:18pt; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
-    .grand-card .amount-suffix { color:var(--emerald-700); font-size:11pt; font-weight:500; margin-left:4px; }
-    .summary-aux { margin-top:10px; display:grid; grid-template-columns:1fr auto; row-gap:4px; column-gap:18px; font-size:9.5pt; }
-    .summary-aux .label { color:var(--zinc-700); }
-    .summary-aux .num { text-align:right; font-variant-numeric:tabular-nums; }
-
-    .notes-section { padding-bottom:10px; margin-bottom:12px; font-size:9pt; border-bottom:1px solid var(--zinc-200); }
-    .sec-title { display:flex; align-items:center; gap:8px; font-size:10pt; font-weight:700; color:var(--zinc-900); margin-bottom:6px; }
-    .sec-title .icon-pill { width:22px; height:22px; background:var(--zinc-900); color:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; }
-    .sec-title .icon-pill svg { width:13px; height:13px; }
-    .notes-section .body { color:var(--zinc-600); min-height:10px; }
-
-    .approval { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; align-items:start; margin-top:8px; page-break-inside:avoid; break-inside:avoid; }
-    .qr-pane { text-align:center; }
-    .qr-caption-top { font-size:9pt; color:var(--zinc-700); margin-bottom:5px; }
-    .qr-pane img { width:104px; height:104px; }
-    .sig-block { text-align:left; }
-    .sig-role { font-size:9.5pt; color:var(--zinc-900); font-weight:600; margin-bottom:2px; }
-    .sig-handwriting { font-family:'Sriracha', 'Apple Chancery', 'Brush Script MT', cursive; font-size:20pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:4px; min-height:24px; }
-    .sig-rule { width:180px; border-top:1px dotted var(--zinc-300); margin:14px 0 5px; }
-    .sig-name { font-size:10pt; font-weight:700; color:var(--zinc-900); }
-    .sig-date { font-size:9pt; color:var(--zinc-500); margin-top:1px; font-variant-numeric:tabular-nums; }
-
-    .void-badge { display:inline-block; margin:10px 0 0; padding:4px 12px; border:1.5px solid var(--red-600); border-radius:6px; color:var(--red-600); font-weight:700; font-size:10pt; letter-spacing:0.02em; }
-    .void-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-15deg); font-size:70pt; font-weight:900; color:rgba(220,38,38,0.16); letter-spacing:0.08em; pointer-events:none; text-align:center; }
-    ${DOCUMENT_A4_CSS}
-    ${documentTypographyCss('body', undefined, 1.15)}
-    .party-label { white-space: normal; }
-    .parties { grid-template-columns: minmax(0, 1fr) minmax(0, 240px); }
-    .parties > *, .summary > *, .pay-row > * { min-width: 0; overflow-wrap: anywhere; }
-    .breakdown { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; column-gap: 10px; }
-    .pay-row { grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr) auto; }
-
-    .header { padding-bottom: 8px; }
-    .parties { padding: 8px 0; margin-bottom: 8px; }
-    .summary, .pay-section, .notes { padding-bottom: 8px; margin-bottom: 8px; }
-    .pay-grid { margin-top: 8px; padding: 8px 0; }
-    .footer { margin-top: 10px; }
-    .approval { margin-top: 10px; }
-    .approval { grid-template-columns: repeat(3, minmax(0, 1fr)) 26mm; gap: 10px; }
-    .qr-caption-top { font-size: 12pt !important; }
-    .qr-pane img { width: 88px; height: 88px; }
-.party-row { margin-bottom: 2px; grid-template-columns: 105px minmax(0, 1fr); }
+${embeddedFontCss}
+${TRANSACTION_PAGE_CSS}
+${transactionDocumentCss('body')}
+html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.item-name { font-weight: 700; } .item-meta { color: #52645d; }
+.items { table-layout: fixed; } .items th:first-child { width: 6mm; }
+.items td.right { white-space: nowrap; }
+.bc-doc-approval { grid-auto-flow: initial; grid-template-columns: repeat(3,minmax(0,1fr)) 24mm; }
+.void-overlay { position: fixed; inset: 45% 0 auto; text-align: center; transform: rotate(-20deg); color: rgba(185,28,28,.18); }
+.items th:last-child { width: 35mm; }
 </style>
 </head>
 <body>
-  ${isReversed ? `<div class="void-overlay">กลับรายการแล้ว</div>` : ''}
-
-  <!-- Header: Logo + Title -->
-  <div class="header">
-    <div class="logo-block">${BESTCHOICE_LOGO_SVG}</div>
-    <div class="doc-title">ใบรับสินทรัพย์<span class="en">ASSET GOODS RECEIPT</span></div>
+${isReversed ? `<div class="void-overlay">กลับรายการแล้ว</div>` : ''}<div class="bc-doc-header">
+  <div class="bc-doc-brand"><div>${BESTCHOICE_LOGO_SVG}</div><p class="bc-doc-company">${safe.companyName}</p>
+    <p>${safe.companyAddress}</p><p>เลขประจำตัวผู้เสียภาษี ${safe.taxId}</p>${safe.companyPhone ? `<p>โทร ${safe.companyPhone}</p>` : ''}
   </div>
-
-  ${isReversed ? `<div class="void-badge">กลับรายการแล้ว</div>` : ''}
-
-  <!-- Parties + meta -->
-  <div class="parties">
-    <div>
-      <div class="party-row"><span class="party-label">ผู้รับสินทรัพย์ :</span><span class="party-name">${safe.companyName}</span></div>
-      ${safe.companyAddress ? `<div class="party-row"><span class="party-label">ที่อยู่ :</span><span>${safe.companyAddress}</span></div>` : ''}
-      ${safe.taxId ? `<div class="party-row"><span class="party-label">เลขที่ภาษี :</span><span>${safe.taxId}</span></div>` : ''}
-
-      <hr class="party-divider"/>
-
-      <div class="party-row"><span class="party-label">ผู้ขาย/ผู้ส่งมอบ :</span><span class="party-name">${safe.supplierName}</span></div>
-      ${safe.supplierTaxId ? `<div class="party-row"><span class="party-label">เลขที่ภาษี :</span><span>${safe.supplierTaxId}</span></div>` : ''}
-      ${safe.branchName ? `<div class="party-row"><span class="party-label">สาขา/สถานที่ :</span><span>${safe.branchName}</span></div>` : ''}
-    </div>
-    <div>
-      <div class="meta-card">
-        <div class="meta-row"><span class="meta-label">รหัสสินทรัพย์ :</span><span class="meta-value">${safe.assetCode}</span></div>
-        <div class="meta-row"><span class="meta-label">เลขที่เอกสาร :</span><span class="meta-value">${safe.docNo}</span></div>
-        <div class="meta-row"><span class="meta-label">วันที่รับสินทรัพย์ :</span><span class="meta-value">${safe.purchaseDateStr}</span></div>
-        ${safe.taxInvoiceNo ? `<div class="meta-row"><span class="meta-label">เลขใบกำกับ :</span><span class="meta-value">${safe.taxInvoiceNo}</span></div>` : ''}
-      </div>
-    </div>
-  </div>
-
-  <!-- Asset details -->
-  <div class="details-section">
-    <div class="sec-title">
-      <span class="icon-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7h-9M14 17H5M17 17a3 3 0 1 0 6 0 3 3 0 0 0-6 0M7 7a3 3 0 1 0-6 0 3 3 0 0 0 6 0"/></svg></span>
-      <span>รายละเอียดสินทรัพย์</span>
-    </div>
-    <div class="details-grid">
-      <span class="dlabel">ชื่อสินทรัพย์</span><span class="dval">${safe.assetName}</span>
-      <span class="dlabel">หมวดสินทรัพย์</span><span class="dval">${safe.categoryLabel}</span>
-      <span class="dlabel">อายุการใช้งาน</span><span class="dval">${usefulLifeMonths} เดือน</span>
-    </div>
-  </div>
-
-  <!-- Cost breakdown table -->
-  <table class="items">
+  <div class="bc-doc-identity"><h1>ใบรับสินทรัพย์</h1><p class="bc-doc-kicker">ASSET GOODS RECEIPT</p>
+    <div class="bc-doc-meta"><span>เลขที่เอกสาร</span><span>${safe.docNo}</span><span>วันที่</span><span>${safe.purchaseDateStr}</span><span>รหัสสินทรัพย์</span><span>${safe.assetCode}</span>${safe.taxInvoiceNo ? `<span>เลขใบกำกับ</span><span>${safe.taxInvoiceNo}</span>` : ''}</div></div></div>
+<div class="bc-doc-parties"><div><p class="bc-doc-label">ผู้ขาย / ผู้ส่งมอบ</p><strong>${safe.supplierName}</strong>${safe.supplierTaxId ? `<p>เลขประจำตัวผู้เสียภาษี ${safe.supplierTaxId}</p>` : ''}<p>สาขา / สถานที่ ${safe.branchName || '-'}</p></div><div><p class="bc-doc-label">รายละเอียดสินทรัพย์</p><strong>${safe.assetName}</strong><p>${safe.categoryLabel}</p><p>อายุการใช้งาน ${usefulLifeMonths} เดือน</p></div></div>  <table class="items">
     <thead>
       <tr>
         <th></th>
@@ -418,76 +296,10 @@ export class AssetReceiptPdfService {
     </tbody>
   </table>
 
-  <!-- Summary -->
-  <div class="summary">
-    <div>
-      <div class="summary-section">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        <div>
-          <div style="font-weight:700; margin-bottom:4px;">สรุป</div>
-          <div class="breakdown">
-            <span class="label">ราคาทุน</span><span></span><span class="num">${fmtMoney(basePrice)} บาท</span>
-            ${shippingCost > 0 ? `<span class="label">ค่าขนส่ง</span><span></span><span class="num">${fmtMoney(shippingCost)} บาท</span>` : ''}
-            ${installationCost > 0 ? `<span class="label">ค่าติดตั้ง</span><span></span><span class="num">${fmtMoney(installationCost)} บาท</span>` : ''}
-            ${otherCapitalized > 0 ? `<span class="label">ค่าใช้จ่ายอื่นๆ</span><span></span><span class="num">${fmtMoney(otherCapitalized)} บาท</span>` : ''}
-            ${hasVat ? `<span class="label">ภาษีมูลค่าเพิ่ม 7%</span><span></span><span class="num">${fmtMoney(vatAmount)} บาท</span>` : ''}
-            <span class="label bold">มูลค่าต้นทุนรวม</span>
-            <span class="text">${thaiAmount}</span>
-            <span></span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div>
-      <div class="grand-card">
-        <div class="label">มูลค่าต้นทุนรวม</div>
-        <div class="amount">${fmtMoney(purchaseCost)}<span class="amount-suffix">บาท</span></div>
-      </div>
-      <div class="summary-aux">
-        <span class="label">มูลค่าต้นทุนที่บันทึกเป็นสินทรัพย์</span><span class="num">${fmtMoney(purchaseCost)} บาท</span>
-        ${hasVat ? `<span class="label">ภาษีมูลค่าเพิ่ม 7%</span><span class="num">${fmtMoney(vatAmount)} บาท</span>` : ''}
-      </div>
-    </div>
-  </div>
 
-  <!-- Notes -->
-  <div class="notes-section">
-    <div class="sec-title">
-      <span class="icon-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-      <span>หมายเหตุ</span>
-    </div>
-    <div class="body">${safe.note || '&nbsp;'}</div>
-  </div>
-
-  <!-- Signatures (3-col): ผู้จัดทำ | ผู้ตรวจรับ/ผู้อนุมัติ | ผู้ส่งมอบ -->
-  <div class="approval">
-    <div class="sig-block">
-      <div class="sig-role">ผู้จัดทำ</div>
-      <div class="sig-handwriting">${safe.preparerSignName}</div>
-      <div class="sig-rule"></div>
-      <div class="sig-name">${safe.preparerName}</div>
-      <div class="sig-date">${safe.purchaseDateStr}</div>
-    </div>
-    <div class="sig-block">
-      <div class="sig-role">ผู้ตรวจรับ/ผู้อนุมัติ</div>
-      <div class="sig-handwriting">${safe.approverName ? escapeHtml((asset.postedBy?.name || '').split(/\s+/)[0]) : '&nbsp;'}</div>
-      <div class="sig-rule"></div>
-      <div class="sig-name">${safe.approverName || '&nbsp;'}</div>
-      <div class="sig-date">${safe.approverName ? safe.purchaseDateStr : '&nbsp;'}</div>
-    </div>
-    <div class="sig-block">
-      <div class="sig-role">ผู้ส่งมอบ</div>
-      <div class="sig-handwriting">&nbsp;</div>
-      <div class="sig-rule"></div>
-      <div class="sig-name">${safe.supplierName}</div>
-      <div class="sig-date">${safe.purchaseDateStr}</div>
-    </div>
-  <!-- QR verify shares the signature row so short documents fit on A4. -->
-  <div class="qr-pane">
-    <div class="qr-caption-top">สแกนเพื่อตรวจสอบเอกสาร</div>
-    <img src="${qrDataUrl}" alt="QR"/>
-  </div>
-  </div>
+${safe.note ? `<p class="bc-doc-note"><strong>หมายเหตุ</strong> ${safe.note}</p>` : ''}
+<div class="bc-doc-closing"><div class="bc-doc-total-grid"><div><p class="bc-doc-label">มูลค่าต้นทุนรวม (ตัวอักษร)</p><strong>${thaiAmount}</strong></div><div><div class="bc-doc-totals"><span>มูลค่าต้นทุนที่บันทึกเป็นสินทรัพย์</span><span>${fmtMoney(purchaseCost)}</span>${hasVat ? `<span>ภาษีมูลค่าเพิ่ม 7% (อ้างอิง)</span><span>${fmtMoney(vatAmount)}</span>` : ''}</div><div class="bc-doc-grand"><span>มูลค่าต้นทุนรวม</span><span>${fmtMoney(purchaseCost)} บาท</span></div></div></div>
+<div class="bc-doc-approval"><div class="bc-doc-signature"><div class="sign-space">${safe.preparerSignName}</div><strong>${safe.preparerName}</strong><p>ผู้จัดทำ</p><p class="bc-doc-kicker">${safe.purchaseDateStr}</p></div><div class="bc-doc-signature"><div class="sign-space">${safe.approverName ? escapeHtml((asset.postedBy?.name || '').split(/\s+/)[0]) : '&nbsp;'}</div><strong>${safe.approverName || '&nbsp;'}</strong><p>ผู้ตรวจรับ / ผู้อนุมัติ</p><p class="bc-doc-kicker">${safe.approverName ? safe.purchaseDateStr : '&nbsp;'}</p></div><div class="bc-doc-signature"><div class="sign-space"></div><strong>${safe.supplierName}</strong><p>ผู้ส่งมอบ</p><p class="bc-doc-kicker">${safe.purchaseDateStr}</p></div><div class="bc-doc-qr"><img src="${qrDataUrl}" alt="ตรวจสอบเอกสาร"/><p class="bc-doc-kicker">สแกนเพื่อตรวจสอบ</p></div></div><footer class="bc-doc-footer"><span>${safe.docNo}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
 </body>
 </html>`;
   }

@@ -20,3 +20,5 @@ export type * from './contract-quote';
 export * from './signature-requirements';
 
 export * from './document-style';
+
+export * from './document-layout';

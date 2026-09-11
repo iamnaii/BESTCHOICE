@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
-import { DOCUMENT_A4_CSS, documentTypographyCss } from '@installment/shared';
+import { DOCUMENT_A4_CSS, documentTypographyCss, TRANSACTION_PAGE_CSS } from '@installment/shared';
 import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
 import { ReceiptQueryService } from './receipt-query.service';
@@ -454,7 +454,14 @@ export class ReceiptPdfService {
 
     .void-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-15deg); font-size:80pt; font-weight:900; color:rgba(220,38,38,0.18); letter-spacing:0.1em; pointer-events:none; }
     ${DOCUMENT_A4_CSS}
-    ${documentTypographyCss('body', undefined, 1.15)}
+    ${documentTypographyCss('body', undefined, 1.08)}
+    ${TRANSACTION_PAGE_CSS}
+    .receipt-closing { break-inside: avoid; }
+    .header { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 5mm; }
+    .header .company-line { max-width: none; }
+    .logo-block svg { height: 9mm; margin-bottom: 1mm; }
+    .doc-title { line-height: 1.15 !important; }
+    table.items :is(th,td) { padding: 1.5mm 2mm; }
     .header > *, .parties > *, .pay-grid > *, .footer > * { min-width: 0; overflow-wrap: anywhere; }
     .totals-wrap { grid-template-columns: minmax(0, 1fr) minmax(0, 88mm); }
     .footer { grid-template-columns: 28mm minmax(0, 1fr) minmax(0, 1fr); }
@@ -584,6 +591,7 @@ export class ReceiptPdfService {
   </table>
 
   <!-- Totals -->
+  <div class="receipt-closing">
   <div class="totals-wrap">
     <div>
       <div class="baht-text">
@@ -646,6 +654,7 @@ export class ReceiptPdfService {
       <div class="sig-date">${paidDateStr}</div>
     </div>
     <div class="doc-note">เอกสารนี้จัดทำโดยระบบคอมพิวเตอร์ของ ${safe.companyName} · เลขที่ ${safe.receiptNumber} · ตรวจสอบได้ที่ QR ด้านซ้าย</div>
+  </div>
   </div>
 </body>
 </html>`;

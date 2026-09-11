@@ -290,7 +290,27 @@ export class LetterPdfService {
   /* keep header inside top of every page so demand list never starts orphaned */
   .keep-together { page-break-inside: avoid; break-inside: avoid; }
 ${DOCUMENT_A4_CSS}
-${documentTypographyCss()}
+${documentTypographyCss('body', undefined, 1.05)}
+@page { size: A4; margin: 14mm 16mm 16mm; }
+.header { gap: 5mm; padding-bottom: 2mm; }
+.header img.logo { width: 17mm; height: 17mm; }
+.header .company { gap: 0; }
+.header .company-name { line-height: 1.15 !important; }
+.date-line { margin: 2mm 0; }
+.subject { margin: 2mm 0; }
+.field { margin: 1mm 0; }
+.body p { margin: 1.5mm 0; }
+ol.demand, ol.legal, ul.bullets { margin: 1.5mm 0; }
+ol.demand li, ol.legal li, ul.bullets li { margin: 1mm 0; }
+.section-heading { margin: 2mm 0 1mm; line-height: 1.1 !important; }
+.coord-line { margin: 2mm 0 1mm; }
+.closing { margin: 2mm 0; color: #172b25; break-after: avoid; }
+.letter-closing { break-inside: avoid; }
+.signature { width: 85mm; margin: 3mm 0 0 auto; }
+.signature .salutation { margin-bottom: 2mm; }
+.signature img.sig-img { height: 14mm; }
+.signature .director { margin-top: 1mm; }
+
 </style>
 </head>
 <body>
@@ -308,12 +328,15 @@ ${documentTypographyCss()}
   <div class="body">
     ${body}
   </div>
+  <div class="letter-closing">
+  <div class="closing">${d.letterType === 'RETURN_DEVICE_45D' ? 'จึงเรียนมาเพื่อโปรดดำเนินการโดยเร่งด่วน' : 'จึงเรียนมาเพื่อโปรดดำเนินการ'}</div>
   <div class="signature">
     <div class="salutation">ขอแสดงความนับถือ</div>
     ${sigImg}
     <div class="director">[ ${esc(d.company.directorName)} ]</div>
     ${d.company.directorPosition ? `<div class="position">${esc(d.company.directorPosition)}</div>` : ''}
     <div class="company-foot">${esc(d.company.nameTh)}</div>
+  </div>
   </div>
 </body>
 </html>`;
@@ -359,7 +382,7 @@ ${documentTypographyCss()}
 
 ${coord}
 
-<div class="closing">จึงเรียนมาเพื่อโปรดดำเนินการโดยเร่งด่วน</div>
+
 `;
   }
 
@@ -400,7 +423,7 @@ ${coord}
 
 ${coord}
 
-<div class="closing">จึงเรียนมาเพื่อโปรดดำเนินการ</div>
+
 `;
   }
 
@@ -425,7 +448,7 @@ ${coord}
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: { top: '20mm', right: '19mm', bottom: '20mm', left: '19mm' },
+        margin: { top: '14mm', right: '16mm', bottom: '16mm', left: '16mm' },
         displayHeaderFooter: true,
         headerTemplate: '<span></span>',
         footerTemplate: `${footerFontCss}<div style="width:100%;padding:0 22mm;font-family:'TH Sarabun PSK',sans-serif;font-size:12pt;color:#666;display:flex;justify-content:space-between;align-items:center"><span>${footerLeft}</span><span>หน้า <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,

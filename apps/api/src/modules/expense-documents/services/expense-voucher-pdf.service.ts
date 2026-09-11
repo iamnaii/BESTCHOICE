@@ -1,4 +1,4 @@
-import { DOCUMENT_A4_CSS, documentTypographyCss } from '@installment/shared';
+import { TRANSACTION_PAGE_CSS, transactionDocumentCss } from '@installment/shared';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -258,221 +258,31 @@ export class ExpenseVoucherPdfService {
 <head>
   <meta charset="UTF-8">
   <style>
-    /* Self-hosted fonts — no fonts.googleapis.com requests */
-    ${embeddedFontCss}
-    @page { size: A4; margin: 0; }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --emerald-50:#ecfdf5; --emerald-100:#d1fae5; --emerald-700:#047857; --emerald-800:#065f46;
-      --zinc-200:#e4e4e7; --zinc-300:#d4d4d8; --zinc-400:#a1a1aa; --zinc-500:#71717a; --zinc-600:#52525b; --zinc-700:#3f3f46; --zinc-900:#18181b;
-      --red-500:#ef4444; --red-600:#dc2626;
-    }
-    body { font-family: 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif; color: var(--zinc-900); font-size: 9.5pt; line-height: 1.45; padding: 11mm 12mm 10mm; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:10px; border-bottom:1.5px solid var(--zinc-300); }
-    .logo-block svg { height: 32px; width: auto; }
-    .doc-title { font-size:20pt; font-weight:700; color:var(--emerald-700); line-height:1; text-align:right; letter-spacing:-0.01em; }
-    .doc-title .en { display:block; font-size:9pt; font-weight:600; color:var(--zinc-500); margin-top:3px; letter-spacing:0.04em; }
-
-    .parties { display:grid; grid-template-columns: minmax(0, 1fr) 220px; gap:14px; padding:12px 0; border-bottom:1px solid var(--zinc-200); margin-bottom:12px; }
-    .party-row { display:grid; grid-template-columns: 78px 1fr; gap:6px; margin-bottom:4px; align-items:start; font-size:9.5pt; }
-    .party-label { color:var(--zinc-900); font-weight:700; white-space:nowrap; }
-    .party-name { font-weight:600; }
-    .party-divider { margin:10px 0; border:0; border-top:1px solid var(--zinc-200); }
-    .meta-card { background:var(--emerald-50); border:1px solid var(--emerald-100); border-radius:6px; padding:10px 14px; font-size:9pt; align-self:start; }
-    .meta-row { display:flex; justify-content:space-between; padding:3px 0; gap:8px; }
-    .meta-label { color:var(--emerald-800); font-weight:600; white-space:nowrap; }
-    .meta-value { color:var(--zinc-900); font-family:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size:8.5pt; font-weight:500; text-align:right; word-break:break-all; }
-    .contact-info { margin-top:14px; font-size:9pt; }
-    .contact-info .heading { color:var(--zinc-700); margin-bottom:4px; }
-    .icon-line { display:grid; grid-template-columns:16px 1fr; gap:6px; align-items:start; color:var(--zinc-700); font-size:9pt; margin-top:2px; }
-    .icon-line svg { width:11px; height:11px; color:var(--zinc-500); margin-top:3px; }
-
-    table.items { width:100%; border-collapse:collapse; font-size:9pt; }
-    table.items thead th { text-align:left; padding:6px 8px; background:var(--emerald-50); color:var(--emerald-800); font-size:8.5pt; font-weight:600; border-bottom:1.5px solid var(--emerald-700); }
-    table.items thead th.right { text-align:right; }
-    table.items tbody td { padding:8px; border-bottom:1px solid var(--zinc-200); vertical-align:top; font-variant-numeric:tabular-nums; }
-    table.items tbody td.right { text-align:right; }
-    table.items td.no { color:var(--zinc-500); width:22px; }
-    .item-name { font-weight:600; }
-    .item-meta { color:var(--zinc-500); font-size:8.5pt; margin-top:2px; }
-
-    .summary { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:12px 0; margin-bottom:12px; border-bottom:1px solid var(--zinc-200); }
-    .summary-section { display:grid; grid-template-columns:18px 1fr; gap:8px; align-items:start; }
-    .summary-section .icon { width:16px; height:16px; color:var(--zinc-700); margin-top:2px; }
-    .breakdown { display:grid; grid-template-columns:max-content 1fr auto; column-gap:18px; row-gap:4px; font-size:9.5pt; }
-    .breakdown .label { color:var(--zinc-700); }
-    .breakdown .label.bold { font-weight:600; color:var(--zinc-900); }
-    .breakdown .text { color:var(--zinc-600); font-style:italic; font-size:9pt; }
-    .breakdown .num { text-align:right; font-variant-numeric:tabular-nums; color:var(--zinc-900); }
-    .grand-card { background:var(--emerald-50); border-radius:8px; padding:10px 14px; text-align:center; }
-    .grand-card .label { color:var(--emerald-800); font-size:9pt; font-weight:600; margin-bottom:3px; }
-    .grand-card .amount { color:var(--emerald-700); font-size:18pt; font-weight:700; line-height:1; font-variant-numeric:tabular-nums; }
-    .grand-card .amount-suffix { color:var(--emerald-700); font-size:11pt; font-weight:500; margin-left:4px; }
-    .summary-aux { margin-top:10px; display:grid; grid-template-columns:1fr auto; row-gap:4px; column-gap:18px; font-size:9.5pt; }
-    .summary-aux .label { color:var(--zinc-700); }
-    .summary-aux .num { text-align:right; font-variant-numeric:tabular-nums; }
-
-    .notes-section { padding-bottom:10px; margin-bottom:12px; font-size:9pt; border-bottom:1px solid var(--zinc-200); }
-    .sec-title { display:flex; align-items:center; gap:8px; font-size:10pt; font-weight:700; color:var(--zinc-900); margin-bottom:6px; }
-    .sec-title .icon-pill { width:22px; height:22px; background:var(--zinc-900); color:#fff; border-radius:6px; display:flex; align-items:center; justify-content:center; }
-    .sec-title .icon-pill svg { width:13px; height:13px; }
-    .notes-section .body { color:var(--zinc-600); min-height:10px; }
-
-    .approval { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; align-items:start; margin-top:8px; page-break-inside:avoid; break-inside:avoid; }
-    .qr-pane { text-align:center; }
-    .qr-caption-top { font-size:9pt; color:var(--zinc-700); margin-bottom:5px; }
-    .qr-pane img { width:104px; height:104px; }
-    .sig-block { text-align:left; }
-    .sig-role { font-size:9.5pt; color:var(--zinc-900); font-weight:600; margin-bottom:2px; }
-    .sig-handwriting { font-family:'Sriracha', 'Apple Chancery', 'Brush Script MT', cursive; font-size:20pt; color:var(--zinc-600); line-height:1; transform:rotate(-3deg); transform-origin:left center; display:inline-block; opacity:0.85; margin-top:4px; min-height:24px; }
-    .sig-rule { width:180px; border-top:1px dotted var(--zinc-300); margin:14px 0 5px; }
-    .sig-name { font-size:10pt; font-weight:700; color:var(--zinc-900); }
-    .sig-date { font-size:9pt; color:var(--zinc-500); margin-top:1px; font-variant-numeric:tabular-nums; }
-
-    .void-badge { display:inline-block; margin:10px 0 0; padding:4px 12px; border:1.5px solid var(--red-600); border-radius:6px; color:var(--red-600); font-weight:700; font-size:10pt; letter-spacing:0.02em; }
-    .void-overlay { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-15deg); font-size:70pt; font-weight:900; color:rgba(220,38,38,0.16); letter-spacing:0.08em; pointer-events:none; text-align:center; }
-    ${DOCUMENT_A4_CSS}
-    ${documentTypographyCss('body', undefined, 1.15)}
-    .party-label { white-space: normal; }
-    .parties { grid-template-columns: minmax(0, 1fr) minmax(0, 240px); }
-    .parties > *, .summary > *, .pay-row > * { min-width: 0; overflow-wrap: anywhere; }
-    .breakdown { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; column-gap: 10px; }
-    .pay-row { grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr) auto; }
-
-    table.items { table-layout: fixed; }
-    table.items th, table.items td { padding: 5px 6px; }
-    table.items :is(th,td):first-child { width: 8mm; }
-    table.items :is(th,td):nth-last-child(1) { width: 25mm; }
-    table.items :is(th,td):nth-last-child(2) { width: 20mm; }
-    table.items :is(th,td):nth-last-child(3) { width: 23mm; }
-    table.items :is(th,td):nth-last-child(4) { width: 14mm; }
-    table.items td.right { white-space: nowrap; overflow-wrap: normal; }
-    .parties { padding: 8px 0; margin-bottom: 8px; }
-    .party-row { margin-bottom: 2px; grid-template-columns: 105px minmax(0, 1fr); }
-    .summary, .pay-section, .notes { padding-bottom: 8px; margin-bottom: 8px; }
-    .approval { margin-top: 10px; }
-    .approval { grid-template-columns: repeat(3, minmax(0, 1fr)) 26mm; gap: 10px; }
-    .qr-caption-top { font-size: 12pt !important; }
-    .qr-pane img { width: 88px; height: 88px; }
+${embeddedFontCss}
+${TRANSACTION_PAGE_CSS}
+${transactionDocumentCss('body')}
+html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.item-name { font-weight: 700; } .item-meta { color: #52645d; }
+.items { table-layout: fixed; } .items th:first-child { width: 6mm; }
+.items td.right { white-space: nowrap; }
+.bc-doc-approval { grid-auto-flow: initial; grid-template-columns: repeat(3,minmax(0,1fr)) 24mm; }
+.void-overlay { position: fixed; inset: 45% 0 auto; text-align: center; transform: rotate(-20deg); color: rgba(185,28,28,.18); }
+.items th:nth-child(3) { width: 16mm; } .items th:nth-child(4) { width: 28mm; } .items th:nth-child(5) { width: 20mm; } .items th:nth-child(6) { width: 28mm; }
 </style>
 </head>
 <body>
-  ${isVoided ? `<div class="void-overlay">ยกเลิก / กลับรายการแล้ว</div>` : ''}
-
-  <!-- Header: Logo + Title -->
-  <div class="header">
-    <div class="logo-block">${BESTCHOICE_LOGO_SVG}</div>
-    <div class="doc-title">ใบสำคัญจ่าย<span class="en">PAYMENT VOUCHER</span></div>
+${isVoided ? `<div class="void-overlay">ยกเลิก / กลับรายการแล้ว</div>` : ''}<div class="bc-doc-header">
+  <div class="bc-doc-brand"><div>${BESTCHOICE_LOGO_SVG}</div><p class="bc-doc-company">${safe.companyName}</p>
+    <p>${safe.companyAddress}</p><p>เลขประจำตัวผู้เสียภาษี ${safe.taxId}</p>${safe.companyPhone ? `<p>โทร ${safe.companyPhone}</p>` : ''}
   </div>
-
-  ${isVoided ? `<div class="void-badge">ยกเลิก/กลับรายการแล้ว</div>` : ''}
-
-  <!-- Parties + meta -->
-  <div class="parties">
-    <div>
-      <div class="party-row"><span class="party-label">ผู้จ่าย :</span><span class="party-name">${safe.companyName}</span></div>
-      ${safe.companyAddress ? `<div class="party-row"><span class="party-label">ที่อยู่ :</span><span>${safe.companyAddress}</span></div>` : ''}
-      ${safe.taxId ? `<div class="party-row"><span class="party-label">เลขที่ภาษี :</span><span>${safe.taxId}</span></div>` : ''}
-
-      <hr class="party-divider"/>
-
-      <div class="party-row"><span class="party-label">ผู้รับเงิน :</span><span class="party-name">${safe.payeeName}</span></div>
-      ${safe.payeeTaxId ? `<div class="party-row"><span class="party-label">เลขที่ภาษี :</span><span>${safe.payeeTaxId}</span></div>` : ''}
-      ${safe.branchName ? `<div class="party-row"><span class="party-label">สาขา :</span><span>${safe.branchName}</span></div>` : ''}
-    </div>
-    <div>
-      <div class="meta-card">
-        <div class="meta-row"><span class="meta-label">เลขที่เอกสาร :</span><span class="meta-value">${safe.docNumber}</span></div>
-        <div class="meta-row"><span class="meta-label">วันที่เอกสาร :</span><span class="meta-value">${safe.documentDateStr}</span></div>
-        <div class="meta-row"><span class="meta-label">วันที่จ่าย :</span><span class="meta-value">${safe.paidAtStr}</span></div>
-        ${safe.taxInvoiceNo ? `<div class="meta-row"><span class="meta-label">เลขใบกำกับ :</span><span class="meta-value">${safe.taxInvoiceNo}</span></div>` : ''}
-      </div>
-    </div>
-  </div>
-
-  <!-- Line items table -->
-  <table class="items">
-    <thead>
-      <tr>
-        <th></th>
-        <th>รายการ/บัญชี</th>
-        <th class="right">จำนวน</th>
-        <th class="right">ราคาต่อหน่วย</th>
-        <th class="right">ส่วนลด</th>
-        <th class="right">จำนวนเงิน</th>
-      </tr>
-    </thead>
-    <tbody>${linesHtml}</tbody>
-  </table>
-
-  <!-- Summary -->
-  <div class="summary">
-    <div>
-      <div class="summary-section">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        <div>
-          <div style="font-weight:700; margin-bottom:4px;">สรุป</div>
-          <div class="breakdown">
-            <span class="label">มูลค่าก่อนภาษี</span><span></span><span class="num">${fmtMoney(subtotal)} บาท</span>
-            ${vatAmount > 0 ? `<span class="label">ภาษีมูลค่าเพิ่ม 7%</span><span></span><span class="num">${fmtMoney(vatAmount)} บาท</span>` : ''}
-            ${whtAmount > 0 ? `<span class="label">หัก ณ ที่จ่าย</span><span></span><span class="num">- ${fmtMoney(whtAmount)} บาท</span>` : ''}
-            <span class="label bold">จำนวนเงินจ่ายสุทธิ</span>
-            <span class="text">${thaiAmount}</span>
-            <span></span>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div>
-      <div class="grand-card">
-        <div class="label">จำนวนเงินจ่ายสุทธิ</div>
-        <div class="amount">${fmtMoney(netPaid)}<span class="amount-suffix">บาท</span></div>
-      </div>
-      <div class="summary-aux">
-        <span class="label">มูลค่ารวมก่อนหัก ณ ที่จ่าย</span><span class="num">${fmtMoney(totalAmount)} บาท</span>
-        ${whtAmount > 0 ? `<span class="label">ภาษีหัก ณ ที่จ่าย</span><span class="num">${fmtMoney(whtAmount)} บาท</span>` : ''}
-      </div>
-    </div>
-  </div>
-
-  <!-- Notes -->
-  <div class="notes-section">
-    <div class="sec-title">
-      <span class="icon-pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
-      <span>หมายเหตุ</span>
-    </div>
-    <div class="body">${safe.note || safe.description || '&nbsp;'}</div>
-  </div>
-
-  <!-- Signatures (3-col): ผู้จัดทำ | ผู้อนุมัติ | ผู้รับเงิน -->
-  <div class="approval">
-    <div class="sig-block">
-      <div class="sig-role">ผู้จัดทำ</div>
-      <div class="sig-handwriting">${safe.preparerSignName}</div>
-      <div class="sig-rule"></div>
-      <div class="sig-name">${safe.preparerName}</div>
-      <div class="sig-date">${safe.documentDateStr}</div>
-    </div>
-    <div class="sig-block">
-      <div class="sig-role">ผู้อนุมัติ</div>
-      <div class="sig-handwriting">${safe.approverName ? escapeHtml((doc.approvedBy?.name || '').split(/\s+/)[0]) : '&nbsp;'}</div>
-      <div class="sig-rule"></div>
-      <div class="sig-name">${safe.approverName || '&nbsp;'}</div>
-      <div class="sig-date">${safe.approverName ? safe.paidAtStr : '&nbsp;'}</div>
-    </div>
-    <div class="sig-block">
-      <div class="sig-role">ผู้รับเงิน</div>
-      <div class="sig-handwriting">&nbsp;</div>
-      <div class="sig-rule"></div>
-      <div class="sig-name">${safe.payeeName}</div>
-      <div class="sig-date">${safe.paidAtStr}</div>
-    </div>
-  <!-- QR verify shares the signature row so short documents fit on A4. -->
-  <div class="qr-pane">
-    <div class="qr-caption-top">สแกนเพื่อตรวจสอบเอกสาร</div>
-    <img src="${qrDataUrl}" alt="QR"/>
-  </div>
-  </div>
+  <div class="bc-doc-identity"><h1>ใบสำคัญจ่าย</h1><p class="bc-doc-kicker">PAYMENT VOUCHER</p>
+    <div class="bc-doc-meta"><span>เลขที่เอกสาร</span><span>${safe.docNumber}</span><span>วันที่</span><span>${safe.documentDateStr}</span>${safe.taxInvoiceNo ? `<span>เลขใบกำกับ</span><span>${safe.taxInvoiceNo}</span>` : ''}</div></div></div>
+<div class="bc-doc-parties"><div><p class="bc-doc-label">ผู้รับเงิน</p><strong>${safe.payeeName}</strong>${safe.payeeTaxId ? `<p>เลขประจำตัวผู้เสียภาษี ${safe.payeeTaxId}</p>` : ''}</div><div class="bc-doc-kv"><span>วันที่จ่าย</span><span>${safe.paidAtStr}</span><span>สาขา</span><span>${safe.branchName || '-'}</span></div></div>
+<table class="items"><thead><tr><th>#</th><th>รายการ / บัญชี</th><th class="right">จำนวน</th><th class="right">ราคาต่อหน่วย</th><th class="right">ส่วนลด</th><th class="right">จำนวนเงิน</th></tr></thead><tbody>${linesHtml}</tbody></table>
+${safe.note || safe.description ? `<p class="bc-doc-note"><strong>หมายเหตุ</strong> ${safe.note || safe.description}</p>` : ''}
+<div class="bc-doc-closing"><div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงินจ่ายสุทธิ (ตัวอักษร)</p><strong>${thaiAmount}</strong></div>
+<div><div class="bc-doc-totals"><span>มูลค่าก่อนภาษี</span><span>${fmtMoney(subtotal)}</span><span>ภาษีมูลค่าเพิ่ม 7%</span><span>${fmtMoney(vatAmount)}</span><span>มูลค่ารวม</span><span>${fmtMoney(totalAmount)}</span><span>หัก ณ ที่จ่าย</span><span>${fmtMoney(whtAmount)}</span></div><div class="bc-doc-grand"><span>จำนวนเงินจ่ายสุทธิ</span><span>${fmtMoney(netPaid)} บาท</span></div></div></div>
+<div class="bc-doc-approval"><div class="bc-doc-signature"><div class="sign-space">${safe.preparerSignName}</div><strong>${safe.preparerName}</strong><p>ผู้จัดทำ</p><p class="bc-doc-kicker">${safe.documentDateStr}</p></div><div class="bc-doc-signature"><div class="sign-space">${safe.approverName ? escapeHtml((doc.approvedBy?.name || '').split(/\s+/)[0]) : '&nbsp;'}</div><strong>${safe.approverName || '&nbsp;'}</strong><p>ผู้อนุมัติ</p><p class="bc-doc-kicker">${safe.approverName ? safe.paidAtStr : '&nbsp;'}</p></div><div class="bc-doc-signature"><div class="sign-space"></div><strong>${safe.payeeName}</strong><p>ผู้รับเงิน</p><p class="bc-doc-kicker">${safe.paidAtStr}</p></div><div class="bc-doc-qr"><img src="${qrDataUrl}" alt="ตรวจสอบเอกสาร"/><p class="bc-doc-kicker">สแกนเพื่อตรวจสอบ</p></div></div><footer class="bc-doc-footer"><span>${safe.docNumber}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
 </body>
 </html>`;
   }

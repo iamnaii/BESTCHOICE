@@ -1,3 +1,4 @@
+import DocumentHeader from '@/components/DocumentHeader';
 import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -216,15 +217,10 @@ export default function WhtAnnualPage() {
             <>
 
               {/* print/receipt context — เอกสารทางการพิมพ์ขาวดำ จึงใช้สีตรงได้ตามข้อยกเว้นใน rules */}
-              <div id="wht-cert-print" className="document-sheet bg-white text-black p-6 text-sm space-y-4">
-                <div className="text-center space-y-1">
-                  <h1 className="text-base font-bold leading-snug">
-                    หนังสือรับรองการหักภาษี ณ ที่จ่าย
-                  </h1>
-                  <div className="text-xs">ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร — แบบ ภ.ง.ด.1ก</div>
-                  <div className="text-xs">ปีภาษี {year + 543}</div>
-                </div>
-
+              <div id="wht-cert-print" className="document-sheet bc-document bc-certificate bg-white text-black p-6 text-sm space-y-4">
+                <DocumentHeader company={payer.nameTh} title="หนังสือรับรองการหักภาษี ณ ที่จ่าย"
+                  subtitle={<> ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร · ภ.ง.ด.1ก<br />ปีภาษี {year + 543}</>} />
+                <div className="bc-doc-parties">
                 <div className="border border-black rounded p-3 space-y-1">
                   <div className="font-semibold text-xs">ผู้มีหน้าที่หักภาษี ณ ที่จ่าย (ผู้จ่ายเงินได้)</div>
                   <div className="leading-snug">{payer.nameTh}</div>
@@ -241,6 +237,8 @@ export default function WhtAnnualPage() {
                   </div>
                 </div>
 
+                </div>
+                <div className="bc-doc-closing">
                 <table className="w-full border-collapse text-sm">
                   <thead>
                     <tr>
@@ -297,6 +295,7 @@ export default function WhtAnnualPage() {
                     <div className="border-b border-dotted border-black h-10"></div>
                     <div className="mt-1">ประทับตรา (ถ้ามี)</div>
                   </div>
+                </div>
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">

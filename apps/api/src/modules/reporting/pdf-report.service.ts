@@ -62,22 +62,42 @@ export class PdfReportService {
 
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     const font = registerDocumentFont(doc);
-    const tableStyles = { font, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 6 };
-    const margin = { top: 57, bottom: 57, left: 54, right: 54 };
+    const green: [number, number, number] = [6, 95, 70];
+    const ink: [number, number, number] = [23, 43, 37];
+    const tableStyles = { font, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 4, textColor: ink };
+    const margin = { top: 106, bottom: 46, left: 43, right: 43 };
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const formatDate = (d: Date) => d.toISOString().slice(0, 10);
+    const generated = new Date().toISOString();
+    doc.setLineHeightFactor(1.08);
+    let y = margin.top;
 
-    // ---- Cover page ----
-    doc.setFontSize(DOCUMENT_STYLE.headingPt);
-    doc.text('BESTCHOICE Collections Report', 54, 80);
-    doc.setFontSize(DOCUMENT_STYLE.bodyPt);
-    doc.text(`Period: ${formatDate(range.from)} -> ${formatDate(range.to)}`, 54, 110);
-    doc.text(`Generated: ${new Date().toISOString()}`, 54, 130);
+    // Keep each section title with its table header and at least one data row.
+    const table = (title: string, head: string[][], body: string[][]) => {
+      if (y + 94 > pageHeight - margin.bottom) {
+        doc.addPage();
+        y = margin.top;
+      }
+      doc.setFont(font, 'bold');
+      doc.setFontSize(DOCUMENT_STYLE.headingPt);
+      doc.setTextColor(...green);
+      doc.text(title, margin.left, y + 15);
+      autoTable(doc, {
+        startY: y + 23,
+        head, body, styles: tableStyles, margin,
+        headStyles: { fillColor: green, textColor: [255, 255, 255], fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [246, 249, 247] },
+        rowPageBreak: 'avoid',
+        didParseCell: cell => {
+          if (['Contracts', 'Outstanding', 'Collected', 'Sent', 'Recovered', 'Rate', 'Days stuck', 'Count', 'Kept', 'Broken'].includes(head[0][cell.column.index])) {
+            cell.cell.styles.halign = 'right';
+          }
+        },
+      });
+      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 16;
+    };
 
-    // ---- KPI strip ----
-    let y = 170;
-    doc.setFontSize(DOCUMENT_STYLE.headingPt);
-    doc.text('Key Indicators', 54, y);
-    y += 10;
     const totalDue = analytics.weeklyCollectionRate.reduce((s, r) => s + r.dueCount, 0);
     const totalPaid = analytics.weeklyCollectionRate.reduce((s, r) => s + r.paidCount, 0);
     const collectionRate = totalDue > 0 ? Math.round((totalPaid / totalDue) * 100) : 0;
@@ -87,48 +107,35 @@ export class PdfReportService {
     const totalFailed = analytics.dunningActionVolume.reduce((s, r) => s + r.failed, 0);
     autoTable(doc, {
       startY: y,
-      head: [['KPI', 'Value']],
-      body: [
-        ['Collection rate', `${collectionRate}%`],
-        ['Promises kept / broken', `${totalKept} / ${totalBroken}`],
-        ['Dunning sent / failed', `${totalSent} / ${totalFailed}`],
-        ['Stuck contracts (>=14d)', String(stuckRows.length)],
-      ],
-      styles: tableStyles,
-        margin,
-        rowPageBreak: 'avoid',
+      head: [['Collection rate', 'Promises kept / broken', 'Dunning sent / failed', 'Stuck contracts ≥14d']],
+      body: [[`${collectionRate}%`, `${totalKept} / ${totalBroken}`, `${totalSent} / ${totalFailed}`, String(stuckRows.length)]],
+      theme: 'plain', styles: { ...tableStyles, halign: 'center', cellWidth: (pageWidth - 86) / 4 }, margin,
+      headStyles: { fillColor: [236, 245, 239], textColor: green, fontStyle: 'normal' },
+      bodyStyles: { fillColor: [236, 245, 239], textColor: green, fontStyle: 'bold', fontSize: DOCUMENT_STYLE.headingPt },
     });
+    y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 16;
 
     // ---- Aging buckets ----
     if (Array.isArray(agingBuckets) && agingBuckets.length > 0) {
-      autoTable(doc, {
-        head: [['Aging bucket', 'Contracts', 'Outstanding']],
-        body: agingBuckets.map((b) => [b.bucket, String(b.count), String(b.outstanding)]),
-        styles: tableStyles,
-        margin,
-        rowPageBreak: 'avoid',
-      });
+      table('Aging / อายุหนี้', [['Aging bucket', 'Contracts', 'Outstanding']],
+        agingBuckets.map((b) => [b.bucket, String(b.count), String(b.outstanding)])
+      );
     }
 
     // ---- Leaderboard ----
     if (Array.isArray(leaderboardRows) && leaderboardRows.length > 0) {
-      autoTable(doc, {
-        head: [['Collector', 'Contracts', 'Collected']],
-        body: leaderboardRows.slice(0, 10).map((r) => {
+      table('Collectors / ผลงานเจ้าหน้าที่', [['Collector', 'Contracts', 'Collected']],
+        leaderboardRows.slice(0, 10).map((r) => {
           const row = r as { name?: string; contractsHandled?: number; amountCollected?: string | number };
           return [row.name ?? '-', String(row.contractsHandled ?? 0), String(row.amountCollected ?? 0)];
-        }),
-        styles: tableStyles,
-        margin,
-        rowPageBreak: 'avoid',
-      });
+        })
+      );
     }
 
     // ---- Recovery rate by channel ----
     if (Array.isArray(recoveryRows) && recoveryRows.length > 0) {
-      autoTable(doc, {
-        head: [['Channel', 'Sent', 'Recovered', 'Rate']],
-        body: recoveryRows.map((r) => {
+      table('Recovery / การชำระตามช่องทาง', [['Channel', 'Sent', 'Recovered', 'Rate']],
+        recoveryRows.map((r) => {
           const row = r as { channel?: string; sent?: number; recovered?: number; rate?: number };
           return [
             row.channel ?? '-',
@@ -136,18 +143,14 @@ export class PdfReportService {
             String(row.recovered ?? 0),
             row.rate != null ? `${Math.round(row.rate * 100)}%` : '-',
           ];
-        }),
-        styles: tableStyles,
-        margin,
-        rowPageBreak: 'avoid',
-      });
+        })
+      );
     }
 
     // ---- Stuck contracts ----
     if (stuckRows.length > 0) {
-      autoTable(doc, {
-        head: [['Contract #', 'Days stuck', 'Customer', 'Status']],
-        body: stuckRows.slice(0, 20).map((r) => {
+      table('Follow-up / สัญญาที่ต้องติดตาม', [['Contract #', 'Days stuck', 'Customer', 'Status']],
+        stuckRows.slice(0, 20).map((r) => {
           const row = r as {
             contractNumber?: string;
             daysStuck?: number;
@@ -160,37 +163,49 @@ export class PdfReportService {
             row.customerName ?? '-',
             row.status ?? '-',
           ];
-        }),
-        styles: tableStyles,
-        margin,
-        rowPageBreak: 'avoid',
-      });
+        })
+      );
     }
 
     // ---- Letter dispatch by type ----
     if (analytics.letterDispatchByType.length > 0) {
-      autoTable(doc, {
-        head: [['Letter type', 'Month', 'Count']],
-        body: analytics.letterDispatchByType.map((r) => [r.type, r.month.slice(0, 7), String(r.count)]),
-        styles: tableStyles,
-        margin,
-        rowPageBreak: 'avoid',
-      });
+      table('Letters / การส่งจดหมาย', [['Letter type', 'Month', 'Count']],
+        analytics.letterDispatchByType.map((r) => [r.type, r.month.slice(0, 7), String(r.count)])
+      );
     }
 
     // ---- Promise trend ----
     if (analytics.promiseKeptTrend.length > 0) {
-      autoTable(doc, {
-        head: [['Week', 'Kept', 'Broken']],
-        body: analytics.promiseKeptTrend.map((r) => [
+      table('Promises / การรักษาสัญญาชำระ', [['Week', 'Kept', 'Broken']],
+        analytics.promiseKeptTrend.map((r) => [
           r.weekStart.slice(0, 10),
           String(r.kept),
           String(r.broken),
-        ]),
-        styles: tableStyles,
-        margin,
-        rowPageBreak: 'avoid',
-      });
+        ])
+      );
+    }
+
+    const pageCount = doc.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page += 1) {
+      doc.setPage(page);
+      doc.setFont(font, 'bold');
+      doc.setFontSize(DOCUMENT_STYLE.headingPt);
+      doc.setTextColor(...green);
+      doc.text('BESTCHOICE Collections Report', margin.left, 51);
+      doc.setFont(font, 'normal');
+      doc.setFontSize(DOCUMENT_STYLE.bodyPt);
+      doc.setTextColor(...ink);
+      doc.text(`Period: ${formatDate(range.from)} — ${formatDate(range.to)}`, margin.left, 73);
+      doc.setDrawColor(...green);
+      doc.setLineWidth(1.5);
+      doc.line(margin.left, 88, pageWidth - margin.right, 88);
+      doc.setDrawColor(212, 223, 217);
+      doc.setLineWidth(0.5);
+      doc.line(margin.left, pageHeight - 39, pageWidth - margin.right, pageHeight - 39);
+      doc.setFontSize(DOCUMENT_STYLE.footerPt);
+      doc.setTextColor(82, 100, 93);
+      doc.text(`Generated: ${generated}`, margin.left, pageHeight - 23);
+      doc.text(`${page} / ${pageCount}`, pageWidth - margin.right, pageHeight - 23, { align: 'right' });
     }
 
     return Buffer.from(doc.output('arraybuffer'));

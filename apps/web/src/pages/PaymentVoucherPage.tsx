@@ -1,3 +1,4 @@
+import DocumentHeader from '@/components/DocumentHeader';
 import { printDocument } from '@/lib/print-document';
 // Fix Report v1.0 P1-2 — Payment Voucher A4 print
 //
@@ -23,7 +24,7 @@ import { formatNumberDecimal } from '@/utils/formatters';
 import { formatThaiDateLong } from '@/lib/date';
 import { numToThaiText } from '@/utils/numToThaiText';
 import {
-  useCompanyDisplayName,
+  useCompanyInfo, useCompanyDisplayName,
   useCompanyAddress,
   useCompanyTaxId,
   useCompanyLogoUrl,
@@ -298,28 +299,13 @@ function PettyCashSheet({
   ).size;
   return (
     <article
-      className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
+      className="voucher-sheet bc-document bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
       style={{ minHeight: '270mm' }}
     >
-      <header className="text-center border-b-2 border-foreground pb-3">
-        {companyLogoUrl && (
-          <img
-            src={companyLogoUrl}
-            alt={companyName}
-            className="mx-auto mb-2 h-12 w-auto object-contain"
-          />
-        )}
-        <h1 className="text-xl font-bold">{companyName}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {companyAddress}{companyTaxId && ` · เลขผู้เสียภาษี ${companyTaxId}`}
-        </p>
-        <h2 className="text-2xl font-bold tracking-wider mt-4">ใบเบิกชดเชยเงินสดย่อย</h2>
-        <p className="text-xs text-muted-foreground">Petty Cash Reimbursement Voucher</p>
-      </header>
+      <DocumentHeader company={companyName} address={companyAddress} taxId={companyTaxId} logoUrl={companyLogoUrl}
+        title="ใบเบิกชดเชยเงินสดย่อย" subtitle="PETTY CASH REIMBURSEMENT" number={doc.number} date={formatThaiDateLong(doc.documentDate)} />
 
       <section className="grid grid-cols-2 gap-x-8 gap-y-2 mt-5 text-sm">
-        <MetaRow label="เลขที่เอกสาร" value={doc.number} mono />
-        <MetaRow label="วันที่" value={formatThaiDateLong(doc.documentDate)} />
         <MetaRow label="ผู้ดูแลเงินสดย่อย" value={doc.vendorName ?? '—'} />
         <MetaRow label="บัญชีเงินสดย่อย" value={doc.depositAccountCode ?? '—'} mono />
         <MetaRow label="จำนวนผู้ขาย" value={`${supplierCount} ราย · ${lines.length} รายการ`} />
@@ -497,29 +483,14 @@ function PayrollSlipSheet({
 
   return (
     <article
-      className="voucher-sheet standard-voucher bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
+      className="voucher-sheet bc-document standard-voucher bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
       style={{
         minHeight: '270mm',
         pageBreakBefore: slipNo > 1 ? 'always' : 'auto',
       }}
     >
-      <header className="text-center border-b-2 border-foreground pb-3">
-        {companyLogoUrl && (
-          <img
-            src={companyLogoUrl}
-            alt={companyName}
-            className="mx-auto mb-2 h-12 w-auto object-contain"
-          />
-        )}
-        <h1 className="text-xl font-bold">{companyName}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {companyAddress}{companyTaxId && ` · เลขผู้เสียภาษี ${companyTaxId}`}
-        </p>
-        <h2 className="text-2xl font-bold tracking-wider mt-4">ใบจ่ายเงินเดือน</h2>
-        <p className="text-xs text-muted-foreground">
-          Payroll Slip {slipNo}/{totalSlips}
-        </p>
-      </header>
+      <DocumentHeader company={companyName} address={companyAddress} taxId={companyTaxId} logoUrl={companyLogoUrl}
+        title="ใบจ่ายเงินเดือน" subtitle={`PAYROLL · ${slipNo}/${totalSlips}`} number={doc.number} date={formatThaiDateLong(doc.documentDate)} />
 
       <section className="grid grid-cols-2 gap-x-8 gap-y-2 mt-5 text-sm">
         <MetaRow label="ชื่อพนักงาน" value={line.employeeName} />
@@ -530,6 +501,7 @@ function PayrollSlipSheet({
         <MetaRow label="ช่องทางจ่าย" value={doc.depositAccountCode ?? '—'} mono />
       </section>
 
+      <div className="bc-doc-earnings">
       {/* Earnings */}
       <section className="mt-6">
         <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
@@ -624,6 +596,14 @@ function PayrollSlipSheet({
         </table>
       </section>
 
+      </div>
+      {doc.note && (
+        <section className="mt-6">
+          <p className="text-xs text-muted-foreground mb-1">หมายเหตุ</p>
+          <p className="text-sm">{doc.note}</p>
+        </section>
+      )}
+      <div className="bc-doc-closing">
       {/* Net */}
       <section className="grid grid-cols-2 gap-6 mt-5">
         <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
@@ -639,12 +619,7 @@ function PayrollSlipSheet({
         </table>
       </section>
 
-      {doc.note && (
-        <section className="mt-6">
-          <p className="text-xs text-muted-foreground mb-1">หมายเหตุ</p>
-          <p className="text-sm">{doc.note}</p>
-        </section>
-      )}
+
 
       {/* Signatures — 2 slots only (no full grid). Employees sign on receipt;
           preparer signs on issuance. ตราประทับ unnecessary on individual slips. */}
@@ -659,6 +634,7 @@ function PayrollSlipSheet({
           ใบจ่ายเงินเดือน v1.0 · {slipNo}/{totalSlips}
         </span>
       </footer>
+      </div>
     </article>
   );
 }
@@ -704,36 +680,18 @@ function Sheet({
     : `/verify/${doc.number}`;
   return (
     <article
-      className="voucher-sheet standard-voucher bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
+      className="voucher-sheet bc-document standard-voucher bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
       style={{
         minHeight: '270mm',
         pageBreakBefore: isCustomerCopy ? 'always' : 'auto',
       }}
     >
       {/* Company header */}
-      <header className="text-center border-b-2 border-foreground pb-3">
-        {companyLogoUrl && (
-          <img
-            src={companyLogoUrl}
-            alt={companyName}
-            className="mx-auto mb-2 h-12 w-auto object-contain"
-          />
-        )}
-        <h1 className="text-xl font-bold">{companyName}</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {companyAddress}{companyTaxId && ` · เลขผู้เสียภาษี ${companyTaxId}`}
-        </p>
-        <h2 className="text-2xl font-bold tracking-wider mt-4">ใบสำคัญจ่าย</h2>
-        <p className="text-xs text-muted-foreground">
-          Payment Voucher
-          {isCustomerCopy ? ' · (สำเนา)' : ' · (ต้นฉบับ)'}
-        </p>
-      </header>
+      <DocumentHeader company={companyName} address={companyAddress} taxId={companyTaxId} logoUrl={companyLogoUrl}
+        title="ใบสำคัญจ่าย" subtitle={isCustomerCopy ? "PAYMENT VOUCHER · สำเนา" : "PAYMENT VOUCHER · ต้นฉบับ"} number={doc.number} date={formatThaiDateLong(doc.documentDate)} />
 
       {/* Meta */}
       <section className="grid grid-cols-2 gap-x-8 gap-y-2 mt-5 text-sm">
-        <MetaRow label="เลขที่เอกสาร" value={doc.number} mono />
-        <MetaRow label="วันที่" value={formatThaiDateLong(doc.documentDate)} />
         <MetaRow label="ผู้ขาย / บริษัท" value={doc.vendorName ?? '—'} />
         <MetaRow label="เลขผู้เสียภาษี" value={doc.vendorTaxId ?? '—'} mono />
         <MetaRow label="เลขใบกำกับภาษี" value={doc.taxInvoiceNo ?? '—'} mono />
@@ -789,43 +747,6 @@ function Sheet({
         </tbody>
       </table>
 
-      {/* Totals */}
-      <section className="grid grid-cols-2 gap-6 mt-5">
-        <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
-          <p className="text-xs text-muted-foreground mb-1">จำนวนเงิน (ตัวอักษร)</p>
-          <p className="font-semibold leading-relaxed">{amountInText}</p>
-        </div>
-        <table className="text-sm">
-          <tbody>
-            <TotalRow label="ยอดรวมก่อน VAT" value={doc.subtotal} />
-            <TotalRow label="VAT 7%" value={doc.vatAmount} />
-            <TotalRow label="รวมก่อนหัก WHT" value={doc.totalAmount} bold />
-            <TotalRow label="หัก ณ ที่จ่าย" value={doc.withholdingTax} negative />
-            <TotalRow label="ยอดสุทธิที่จ่าย" value={net} bold highlight />
-          </tbody>
-        </table>
-      </section>
-
-      {/* D1.2.5.3 — partial-payment breakdown. Full 3-column view when
-          `voucherShowPartialColumns` is true (default); single-column
-          "ยอดที่ชำระ" view when OWNER disables the flag. */}
-      <section className="mt-5">
-        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
-          สรุปยอด
-        </p>
-        {voucherShowPartialColumns ? (
-          <div className="grid grid-cols-3 gap-3 text-sm">
-            <PartialCell label="ยอดเดิม" value={partialOriginal.toFixed(2)} />
-            <PartialCell label="ยอดที่ชำระ" value={partialPaid.toFixed(2)} highlight />
-            <PartialCell label="ยอดคงเหลือ" value={partialRemaining.toFixed(2)} />
-          </div>
-        ) : (
-          <div className="text-sm">
-            <PartialCell label="ยอดที่ชำระ" value={partialPaid.toFixed(2)} highlight />
-          </div>
-        )}
-      </section>
-
       {/* Auto Journal preview — optional, embedded so accounting team can verify */}
       {doc.journalLines && doc.journalLines.length > 0 && (
         <section className="mt-6">
@@ -873,6 +794,44 @@ function Sheet({
         </section>
       )}
 
+      <div className="bc-doc-closing">
+      {/* Totals */}
+      <section className="grid grid-cols-2 gap-6 mt-5">
+        <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
+          <p className="text-xs text-muted-foreground mb-1">จำนวนเงิน (ตัวอักษร)</p>
+          <p className="font-semibold leading-relaxed">{amountInText}</p>
+        </div>
+        <table className="text-sm">
+          <tbody>
+            <TotalRow label="ยอดรวมก่อน VAT" value={doc.subtotal} />
+            <TotalRow label="VAT 7%" value={doc.vatAmount} />
+            <TotalRow label="รวมก่อนหัก WHT" value={doc.totalAmount} bold />
+            <TotalRow label="หัก ณ ที่จ่าย" value={doc.withholdingTax} negative />
+            <TotalRow label="ยอดสุทธิที่จ่าย" value={net} bold highlight />
+          </tbody>
+        </table>
+      </section>
+
+      {/* D1.2.5.3 — partial-payment breakdown. Full 3-column view when
+          `voucherShowPartialColumns` is true (default); single-column
+          "ยอดที่ชำระ" view when OWNER disables the flag. */}
+      <section className="mt-5">
+        <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
+          สรุปยอด
+        </p>
+        {voucherShowPartialColumns ? (
+          <div className="grid grid-cols-3 gap-3 text-sm">
+            <PartialCell label="ยอดเดิม" value={partialOriginal.toFixed(2)} />
+            <PartialCell label="ยอดที่ชำระ" value={partialPaid.toFixed(2)} highlight />
+            <PartialCell label="ยอดคงเหลือ" value={partialRemaining.toFixed(2)} />
+          </div>
+        ) : (
+          <div className="text-sm">
+            <PartialCell label="ยอดที่ชำระ" value={partialPaid.toFixed(2)} highlight />
+          </div>
+        )}
+      </section>
+
       {/* Keep signatures and verification together on the same printed page. */}
       <section className="document-approval grid gap-2 mt-6" style={{ gridTemplateColumns: voucherShowQrCode ? 'repeat(4, minmax(0, 1fr)) 88px' : 'repeat(4, minmax(0, 1fr))' }}>
         <SignatureSlot label="ผู้จัดทำ" />
@@ -893,6 +852,7 @@ function Sheet({
           ใบสำคัญจ่ายแบบฟอร์ม v1.0{isCustomerCopy ? ' · สำเนา' : ' · ต้นฉบับ'}
         </span>
       </footer>
+      </div>
     </article>
   );
 }
@@ -935,10 +895,11 @@ export function bucketWhtByRate(
 }
 
 function WhtCertificate({ doc }: { doc: VoucherDoc }) {
-  const companyName = useCompanyDisplayName();
-  const companyAddress = useCompanyAddress();
-  const companyTaxId = useCompanyTaxId();
-  const companyLogoUrl = useCompanyLogoUrl();
+  const { finance } = useCompanyInfo();
+  const companyName = finance?.nameTh ?? 'BESTCHOICE FINANCE';
+  const companyAddress = finance?.address ?? '';
+  const companyTaxId = finance?.taxId ?? '';
+  const companyLogoUrl = finance?.logoUrl ?? null;
   // W7 (Round 2) — see bucketWhtByRate above for the Decimal-precision
   // rationale. Convert to display strings only at render time via toFixed.
   const wht = new Decimal(doc.withholdingTax || '0');
@@ -949,15 +910,11 @@ function WhtCertificate({ doc }: { doc: VoucherDoc }) {
   const hasMixedRates = buckets.length > 1;
   return (
     <article
-      className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
+      className="voucher-sheet bc-document bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
       style={{ minHeight: '270mm', pageBreakBefore: 'always' }}
     >
-      <header className="text-center border-b-2 border-foreground pb-3">
-        <h1 className="text-lg font-bold">ใบรับรองการหักภาษี ณ ที่จ่าย</h1>
-        <p className="text-xs text-muted-foreground mt-1">
-          ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร — แบบ {formLabel}
-        </p>
-      </header>
+      <DocumentHeader company={companyName} address={companyAddress} taxId={companyTaxId} logoUrl={companyLogoUrl}
+        title="ใบรับรองการหักภาษี ณ ที่จ่าย" subtitle={`ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร · ${formLabel}`} number={doc.number} date={formatThaiDateLong(doc.documentDate)} />
 
       <section className="grid grid-cols-2 gap-x-8 gap-y-3 mt-6 text-sm">
         <div>
@@ -1015,6 +972,7 @@ function WhtCertificate({ doc }: { doc: VoucherDoc }) {
         </tbody>
       </table>
 
+      <div className="bc-doc-closing">
       <section className="mt-6 rounded-md border border-border bg-muted/20 p-4 text-sm">
         <p className="text-xs text-muted-foreground mb-1">ภาษีที่หักเป็นเงิน (ตัวอักษร)</p>
         <p className="font-semibold leading-relaxed">{numToThaiText(wht.toFixed(2))}</p>
@@ -1029,6 +987,7 @@ function WhtCertificate({ doc }: { doc: VoucherDoc }) {
         <SignatureSlot label="ผู้จ่ายเงิน / ผู้มีหน้าที่หักภาษี" />
         <SignatureSlot label="ผู้รับเงิน" />
       </section>
+      </div>
     </article>
   );
 }
@@ -1056,7 +1015,7 @@ function TotalRow({
   negative?: boolean;
 }) {
   return (
-    <tr className={highlight ? 'bg-primary/5' : ''}>
+    <tr className={highlight ? 'voucher-total-highlight' : ''}>
       <td className="py-1 pr-3 text-muted-foreground text-right">{label}</td>
       <td
         className={

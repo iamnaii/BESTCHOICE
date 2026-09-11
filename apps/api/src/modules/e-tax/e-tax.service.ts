@@ -338,30 +338,32 @@ export class ETaxService {
 
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 19 * 72 / 25.4;
+    const margin = 15 * 72 / 25.4;
     const contentWidth = pageWidth - margin * 2;
 
-    // ─── HEADER ────────────────────────────────────────────────────
+    const green: [number, number, number] = [6, 95, 70];
+    doc.setLineHeightFactor(1.08);
     setBold();
     doc.setFontSize(DOCUMENT_STYLE.headingPt);
-    doc.text('ใบกำกับภาษี', pageWidth / 2, 56, { align: 'center' });
-    doc.setFontSize(DOCUMENT_STYLE.bodyPt);
-    doc.text('(ต้นฉบับ / ORIGINAL)', pageWidth / 2, 76, { align: 'center' });
+    doc.setTextColor(...green);
+    doc.text('BESTCHOICE', margin, 53);
+    doc.text('ใบกำกับภาษี', pageWidth - margin, 53, { align: 'right' });
     setNormal();
+    doc.setFontSize(DOCUMENT_STYLE.footerPt);
+    doc.setTextColor(82, 100, 93);
+    doc.text('TAX INVOICE', margin, 69);
+    doc.text('ต้นฉบับ / ORIGINAL', pageWidth - margin, 69, { align: 'right' });
 
-    // เลขที่ใบกำกับภาษี + วันที่ (Asia/Bangkok). Use Payment.id as the
-    // invoice number for now — Phase 2 (SP5) will introduce a dedicated
-    // running number per `TX-YYYYMMDD-NNNN` convention when we wire the
-    // RD submission queue.
+    // Preserve the payment-derived invoice number until the dedicated sequence is introduced.
     const invoiceNumber = `TX-${payment.id.slice(0, 8).toUpperCase()}`;
-    const paidDateThai = payment.paidDate
-      ? formatThaiDate(payment.paidDate)
-      : '-';
+    const paidDateThai = payment.paidDate ? formatThaiDate(payment.paidDate) : '-';
     doc.setFontSize(DOCUMENT_STYLE.bodyPt);
-    doc.text(`เลขที่ใบกำกับภาษี: ${invoiceNumber}`, margin, 110);
-    doc.text(`วันที่ออกใบกำกับ: ${paidDateThai}`, pageWidth - margin, 110, {
-      align: 'right',
-    });
+    doc.setTextColor(23, 43, 37);
+    doc.text(`เลขที่ ${invoiceNumber}`, margin, 93);
+    doc.text(`วันที่ ${paidDateThai}`, pageWidth - margin, 93, { align: 'right' });
+    doc.setDrawColor(...green);
+    doc.setLineWidth(1.5);
+    doc.line(margin, 104, pageWidth - margin, 104);
 
     // ─── ISSUER (left) + BUYER (right) BLOCKS ──────────────────────
     const issuerLines = buildPartyLines({
@@ -378,21 +380,22 @@ export class ETaxService {
     });
 
     autoTable(doc, {
-      startY: 134,
+      startY: 116,
       head: [['ผู้ออกใบกำกับภาษี (ผู้ขาย)', 'ผู้ซื้อ / ผู้รับบริการ']],
+      headStyles: { textColor: green, fontStyle: 'bold' },
       body: Array.from({ length: Math.max(issuerLines.length, buyerLines.length) }, (_, i) => [issuerLines[i] ?? '', buyerLines[i] ?? '']),
       theme: 'plain',
-      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 4 },
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 3, textColor: [23, 43, 37] },
       columnStyles: { 0: { cellWidth: contentWidth / 2 }, 1: { cellWidth: contentWidth / 2 } },
-      margin: { left: margin, right: margin, top: 57, bottom: 80 },
+      margin: { left: margin, right: margin, top: 40, bottom: 80 },
     });
     const partyEnd = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
     autoTable(doc, {
       startY: partyEnd + 8,
       body: [[`อ้างอิงสัญญา: ${payment.contract.contractNumber}    งวดที่: ${payment.installmentNo}`]],
       theme: 'plain',
-      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 4 },
-      margin: { left: margin, right: margin, top: 57, bottom: 80 },
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 3, textColor: [23, 43, 37] },
+      margin: { left: margin, right: margin, top: 40, bottom: 80 },
     });
     const refTop = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
 
@@ -400,18 +403,18 @@ export class ETaxService {
     // ม.86/4: must list ชนิด/ประเภท/จำนวน/ราคาต่อหน่วย/รวม
     const description = `ค่างวดผ่อนชำระตามสัญญา ${payment.contract.contractNumber} งวดที่ ${payment.installmentNo}`;
     autoTable(doc, {
-      startY: refTop + 14,
-      head: [['ลำดับ', 'รายการ', 'จำนวน', 'ราคา/หน่วย (บาท)', 'รวม (บาท)']],
+      startY: refTop + 9,
+      head: [['#', 'รายการ', 'จำนวน', 'ราคา/หน่วย (บาท)', 'รวม (บาท)']],
       body: [['1', description, '1', base.toFixed(2), base.toFixed(2)]],
-      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 6 },
-      headStyles: { font: fontFamily, fontStyle: 'bold', fillColor: [240, 240, 240], textColor: [0, 0, 0] },
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 5, textColor: [23, 43, 37] },
+      headStyles: { font: fontFamily, fontStyle: 'bold', fillColor: green, textColor: [255, 255, 255] },
       columnStyles: {
-        0: { halign: 'center', cellWidth: 40 },
-        2: { halign: 'right', cellWidth: 50 },
-        3: { halign: 'right', cellWidth: 100 },
-        4: { halign: 'right', cellWidth: 100 },
+        0: { halign: 'center', cellWidth: 30 },
+        2: { halign: 'right', cellWidth: 42 },
+        3: { halign: 'right', cellWidth: 90 },
+        4: { halign: 'right', cellWidth: 90 },
       },
-      margin: { left: margin, right: margin, top: 57, bottom: 80 },
+      margin: { left: margin, right: margin, top: 40, bottom: 80 },
     });
 
     // ─── SUMMARY ─────────────────────────────────────────────────
@@ -429,9 +432,16 @@ export class ETaxService {
       body: summaryRows,
       theme: 'plain',
       pageBreak: 'avoid',
-      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 4, halign: 'right' },
-      didParseCell: (data) => { if (data.row.index === 2) data.cell.styles.fontStyle = 'bold'; },
-      margin: { left: margin, right: margin, top: 57, bottom: 80 },
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 3, textColor: [23, 43, 37], halign: 'right' },
+      didParseCell: (data) => {
+        if (data.row.index === 2) {
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.fillColor = green;
+          data.cell.styles.textColor = [255, 255, 255];
+        }
+      },
+      tableWidth: contentWidth * 0.6,
+      margin: { left: margin + contentWidth * 0.4, right: margin, top: 40, bottom: 80 },
     });
 
     // ─── FOOTER DISCLAIMER ───────────────────────────────────────
@@ -441,10 +451,13 @@ export class ETaxService {
       'เอกสารฉบับนี้เป็นใบกำกับภาษีแบบกระดาษตาม ม.86/4 ป.รัษฎากร — ' +
       'การส่งแบบอิเล็กทรอนิกส์ (XML + PKCS#7) ให้กรมสรรพากร อยู่ระหว่างเตรียมการ.';
     const wrapped = doc.splitTextToSize(disclaimer, contentWidth) as string[];
-    let footY = pageHeight - 28 - wrapped.length * 16;
+    let footY = pageHeight - 40 - wrapped.length * 14;
+    doc.setDrawColor(212, 223, 217);
+    doc.setLineWidth(0.5);
+    doc.line(margin, footY - 10, pageWidth - margin, footY - 10);
     for (const w of wrapped) {
       doc.text(w, margin, footY);
-      footY += 16;
+      footY += 14;
     }
     doc.setTextColor(0, 0, 0);
 

@@ -1,4 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page, Locator } from '@playwright/test';
 import { loginViaAPI, loginAsRole, type TestRole } from './helpers/auth';
 import { gotoWithRetry } from './helpers/navigation';
 
@@ -23,16 +23,32 @@ import { gotoWithRetry } from './helpers/navigation';
  * path — otherwise the redirect itself reads as "denied". Current redirects:
  *   /receipts  → /payments?tab=receipts   (App.tsx)
  *   /overdue   → /collections             (App.tsx)
+ *
+ * `403` ต้องมีขอบคำ (`\b403\b`) เท่านั้น — เดิมเขียนลอย ๆ แล้วไปจับ "รหัสบัญชี"
+ * `53-1403` ที่ตาราง PEAK mapping เรนเดอร์ในหน้า /settings/accounting ทำให้
+ * เทส "ต้องถูกปฏิเสธ" ของ ACCOUNTANT/FINANCE_MANAGER เขียวมาตลอดทั้งที่หน้านั้น
+ * เปิดให้เข้าได้จริงตั้งแต่ #1286 (พังตอน #1542 ย้ายตารางออกไปหน้า ผังบัญชี)
  */
 async function isAccessDenied(page: Page, targetUrl: string): Promise<boolean> {
   await page.waitForTimeout(2000);
   const redirectedAway = !page.url().includes(targetUrl);
   const deniedMsg = await page
-    .getByText(/ไม่มีสิทธิ์|access denied|unauthorized|403|ไม่อนุญาต/i)
+    .getByText(/ไม่มีสิทธิ์|access denied|unauthorized|\b403\b|ไม่อนุญาต/i)
     .first()
     .isVisible({ timeout: 2000 })
     .catch(() => false);
   return redirectedAway || deniedMsg;
+}
+
+/**
+ * หมวดตั้งค่าที่ทุกรายการเป็นของ OWNER ล้วน (settings-registry.tsx) — visibleCategories()
+ * ต้องตัดทิ้งทั้งหมวดสำหรับ role อื่น นี่คือด่านจริงที่มาแทนเทส "ถูกปฏิเสธทั้งหน้า"
+ * ของเดิม: /settings เข้าได้ แต่ต้องไม่มีทางเห็นของที่ไม่ใช่ของตัวเอง
+ */
+async function expectOwnerOnlySettingsHidden(nav: Locator): Promise<void> {
+  for (const label of ['บริษัท & สาขา', 'ผู้ใช้ & สิทธิ์', 'สินค้า & การขาย', 'AI', 'ระบบ & ความปลอดภัย']) {
+    await expect(nav.getByRole('link', { name: label })).toHaveCount(0);
+  }
 }
 
 /* ================================================================
@@ -153,9 +169,22 @@ test.describe('ACCOUNTANT role — finance access', () => {
     });
   }
 
+  // กลับด้านจากเดิมโดยตั้งใจ — ดูหมายเหตุ `\b403\b` ที่หัวไฟล์: /settings เปิดให้
+  // ACCOUNTANT มาตั้งแต่ #1286 (App.tsx `<ProtectedRoute roles={['OWNER',
+  // 'FINANCE_MANAGER','ACCOUNTANT']}>`) แล้วกรอง "รายการย่อย" ตาม role แทน
+  // เทสเดิมเขียวเพราะ regex ไปจับรหัสบัญชี ไม่ใช่เพราะถูกปฏิเสธจริง
+  test('ACCOUNTANT เปิด /settings ได้ แต่เห็นเฉพาะหมวดของตัวเอง', async ({ page }) => {
+    await gotoWithRetry(page, '/settings');
+    expect(await isAccessDenied(page, '/settings')).toBeFalsy();
+
+    const nav = page.getByRole('navigation', { name: 'เมนูตั้งค่าระบบ' });
+    await expect(nav.getByRole('link', { name: 'บัญชี & ภาษี' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'เชื่อมต่อ' })).toBeVisible();
+    await expectOwnerOnlySettingsHidden(nav);
+  });
+
   // ACCOUNTANT CANNOT access:
   const deniedPages = [
-    { url: '/settings', name: 'ตั้งค่าระบบ' },
     { url: '/users', name: 'จัดการผู้ใช้' },
     { url: '/branches', name: 'จัดการสาขา' },
     { url: '/audit-logs', name: 'Audit Logs' },
@@ -221,9 +250,20 @@ test.describe('FINANCE_MANAGER role — finance access', () => {
     await expect(page.getByRole('tablist', { name: 'หมวดงาน' })).toHaveCount(1);
   });
 
+  // กลับด้านจากเดิมด้วยเหตุผลเดียวกับฝั่ง ACCOUNTANT (ดูหมายเหตุ `\b403\b` หัวไฟล์)
+  test('FINANCE_MANAGER เปิด /settings ได้ แต่เห็นเฉพาะหมวดของตัวเอง', async ({ page }) => {
+    await gotoWithRetry(page, '/settings');
+    expect(await isAccessDenied(page, '/settings')).toBeFalsy();
+
+    const nav = page.getByRole('navigation', { name: 'เมนูตั้งค่าระบบ' });
+    await expect(nav.getByRole('link', { name: 'บัญชี & ภาษี' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'การเงิน & สินเชื่อ' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'สื่อสารลูกค้า' })).toBeVisible();
+    await expectOwnerOnlySettingsHidden(nav);
+  });
+
   // FINANCE_MANAGER CANNOT access:
   const deniedPages = [
-    { url: '/settings', name: 'ตั้งค่าระบบ' },
     { url: '/users', name: 'จัดการผู้ใช้' },
     { url: '/branches', name: 'จัดการสาขา' },
     { url: '/audit-logs', name: 'Audit Logs' },

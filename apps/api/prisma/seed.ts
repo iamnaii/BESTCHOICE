@@ -257,6 +257,21 @@ async function main() {
 
   console.log('Users created: 10');
 
+  // #1542 ย้ายอำนาจ "อนุมัติ / POST / ยกเลิก" รายการบัญชี จากการเช็ค role ตรง ๆ
+  // (เดิม ExpenseDetailPage: role ∈ {OWNER, FINANCE_MANAGER}) มาเป็นรายชื่อใน
+  // SystemConfig `accounting_permissions` โดยตั้งใจไม่มี fallback ตาม role —
+  // ใครไม่ถูกระบุชื่อ = ไม่มีสิทธิ์ (apps/api/src/utils/accounting-permissions.ts)
+  // แต่ seed ไม่เคยเติมคีย์ใหม่นี้ ⇒ บนฐาน dev/CI เหลือ OWNER คนเดียวที่อนุมัติได้
+  // และปุ่ม "อนุมัติ & POST" หายไปจากหน้า /expenses/:id ของผู้จัดการการเงิน
+  // (prod เจ้าของกำหนดเองที่ ตั้งค่า → ผู้ใช้ & สิทธิ์ → สิทธิ์รายการบัญชีฯ)
+  await prisma.systemConfig.create({
+    data: {
+      key: 'accounting_permissions', // = ACCOUNTING_PERMISSIONS_KEY (src/utils/accounting-permissions.ts)
+      value: JSON.stringify({ [finMgr.id]: ['EXPENSE_APPROVE'] }),
+      label: 'สิทธิ์รายการบัญชีรายรับ–รายจ่าย (ผู้จัดการการเงินอนุมัติใบรายจ่ายได้ เท่าที่เคยเป็นก่อน #1542)',
+    },
+  });
+
   // ============================================================
   // STEP 5: Suppliers (10 - Apple + accessories only, NO Samsung)
   // ============================================================

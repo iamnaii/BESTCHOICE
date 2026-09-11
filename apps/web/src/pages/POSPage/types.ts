@@ -19,6 +19,8 @@ export interface Product {
   branchId: string;
   branch: { id: string; name: string };
   prices: { id: string; label: string; amount: string; isDefault: boolean }[];
+  cashPrice?: string | number | null;
+  installmentPrice?: string | number | null;
 }
 
 export interface Customer {

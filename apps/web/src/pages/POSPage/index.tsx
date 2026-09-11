@@ -16,7 +16,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { posSaleSchema, type PosSaleFormData } from '@/lib/schemas';
 import type { Product, Customer, PosConfig, TopProduct } from './types';
-import { getDisplayPrices } from '@/utils/getDisplayPrices';
+import { CASH_LABEL, INSTALLMENT_LABEL, getPositiveDisplayPrices, normalizePositive } from '@/utils/getDisplayPrices';
 
 import ProductSearch from './components/ProductSearch';
 import BundleSearch from './components/BundleSearch';
@@ -28,6 +28,20 @@ import SaleSummary from './components/SaleSummary';
 const posSaleTypes = Object.entries(saleTypeConfig).filter(
   ([type]) => type !== 'INSTALLMENT',
 ) as [SaleType, (typeof saleTypeConfig)[SaleType]][];
+
+function defaultPrice(product: Product, saleType: SaleType) {
+  const displayed = getPositiveDisplayPrices(product);
+  const cash = normalizePositive(displayed.cash);
+  const installment = normalizePositive(displayed.installment);
+  const useCash = saleType === 'CASH' || installment === null;
+  const amount = (useCash ? cash : installment) ?? 0;
+  const label = useCash ? CASH_LABEL : INSTALLMENT_LABEL;
+  const prefix = useCash ? CASH_LABEL : 'ราคาผ่อน';
+  const matchingRows = product.prices.filter(price => normalizePositive(price.amount) === amount);
+  const matching = matchingRows.find(price => price.label === label)
+    ?? matchingRows.find(price => price.label.startsWith(prefix));
+  return { amount, priceId: matching?.id ?? '' };
+}
 
 export default function POSPage() {
   useDocumentTitle('ขายสินค้า');
@@ -136,28 +150,18 @@ export default function POSPage() {
     return ids;
   }, [bundleProducts, selectedProduct]);
 
-  // Select product handler
+  const applyDefaultPrice = (product: Product, type: SaleType) => {
+    const price = defaultPrice(product, type);
+    setSelectedPriceId(price.priceId);
+    saleForm.setValue('sellingPrice', price.amount, { shouldValidate: true });
+  };
+
+  // Only intentional product/type selections reset the price, not re-renders
+  // or customer changes after the salesperson chose another system price.
   const handleSelectProduct = (product: Product) => {
     setSelectedProduct(product);
     setProductSearch('');
-    const { installment, cash } = getDisplayPrices(product);
-    const sellingPriceValue = installment ?? cash;
-    if (sellingPriceValue != null) {
-      // Try to find the matching price entry so we can track selectedPriceId
-      const matchingPrice = product.prices.find(
-        (p) => parseFloat(p.amount) === sellingPriceValue,
-      );
-      setSelectedPriceId(matchingPrice?.id ?? product.prices[0]?.id ?? '');
-      saleForm.setValue('sellingPrice', sellingPriceValue, { shouldValidate: true });
-    } else if (product.prices.length > 0) {
-      setSelectedPriceId(product.prices[0].id);
-      saleForm.setValue('sellingPrice', parseFloat(product.prices[0].amount), {
-        shouldValidate: true,
-      });
-    } else {
-      setSelectedPriceId('');
-      saleForm.setValue('sellingPrice', 0);
-    }
+    applyDefaultPrice(product, saleType);
   };
 
   // Handle price selection from product prices
@@ -293,8 +297,10 @@ export default function POSPage() {
                   <button
                     key={type}
                     onClick={() => {
+                      if (type === saleType) return;
                       setSaleType(type);
                       saleForm.setValue('saleType', type as 'CASH' | 'EXTERNAL_FINANCE');
+                      if (selectedProduct) applyDefaultPrice(selectedProduct, type);
                     }}
                     className={`p-4 rounded-xl border-2 text-center transition-all ${
                       saleType === type
@@ -402,7 +408,7 @@ export default function POSPage() {
             financeCompany={financeCompany}
             contractNumber={contractNumber}
             isSubmitting={createSaleMutation.isPending}
-            canSubmit={!!selectedProduct && !!selectedCustomer && !!sellingPrice && creditReady}
+            canSubmit={!!selectedProduct && !!selectedCustomer && Number(sellingPrice) > 0 && creditReady}
             onSubmit={() => createSaleMutation.mutate()}
             onReset={resetForm}
           />

@@ -1,4 +1,5 @@
 import { UseFormReturn } from 'react-hook-form';
+import { useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Form,
@@ -6,6 +7,7 @@ import {
   FormItem,
   FormControl,
   FormMessage,
+  FormLabel,
 } from '@/components/ui/form';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { paymentMethods } from '@/lib/constants';
@@ -13,6 +15,7 @@ import { type PosSaleFormData } from '@/lib/schemas';
 import { externalFinanceApi, externalFinanceKeys } from '@/lib/api/external-finance';
 import type { Product } from '../types';
 import type { SaleType } from '@/lib/constants';
+import { getPositiveDisplayPrices, normalizePositive } from '@/utils/getDisplayPrices';
 
 const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
@@ -43,6 +46,7 @@ export default function SaleDetailsForm({
   sellingPrice,
   discount,
 }: SaleDetailsFormProps) {
+  const sellingPriceId = useId();
   const { data: financeCompanies } = useQuery({
     queryKey: externalFinanceKeys.companies,
     queryFn: externalFinanceApi.listCompanies,
@@ -68,6 +72,7 @@ export default function SaleDetailsForm({
                   <button
                     key={p.id}
                     type="button"
+                    aria-pressed={selectedPriceId === p.id}
                     onClick={() => onPriceSelect(p.id)}
                     className={`px-3 py-2 rounded-lg border-2 text-sm transition-all ${
                       selectedPriceId === p.id
@@ -86,20 +91,28 @@ export default function SaleDetailsForm({
             </div>
           )}
 
+          {selectedProduct && saleType === 'CASH' &&
+            normalizePositive(getPositiveDisplayPrices(selectedProduct).cash) === null && (
+            <p role="status" className="mb-3 text-sm text-warning">
+              ยังไม่ได้ตั้งราคาเงินสด กรุณาตรวจราคาสินค้าก่อนบันทึก
+            </p>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <FormField
               control={saleForm.control as any}
               name="sellingPrice"
               render={({ field }) => (
                 <FormItem>
-                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  <FormLabel htmlFor={sellingPriceId} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                     ราคาขาย *
                     <span className="ml-1 text-primary">(จากระบบ)</span>
-                  </label>
+                  </FormLabel>
                   <FormControl>
                     <input
                       type="number"
                       {...field}
+                      id={sellingPriceId}
                       value={field.value || 0}
                       className={`${inputClass} bg-muted`}
                       placeholder="0"

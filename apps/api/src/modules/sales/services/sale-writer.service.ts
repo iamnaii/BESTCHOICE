@@ -547,8 +547,23 @@ export class SaleWriterService {
   async createExternalFinanceSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
     if (!dto.financeCompany) throw new BadRequestException('กรุณาใส่ชื่อบริษัทไฟแนนซ์');
 
-    const downPayment = dto.downPayment || 0;
-    const financeAmount = dto.financeAmount || (netAmount - downPayment);
+    const rawNet = new Decimal(netAmount);
+    const rawDown = new Decimal(dto.downPayment ?? 0);
+    const rawFinance = dto.financeAmount == null ? rawNet.minus(rawDown) : new Decimal(dto.financeAmount);
+    if ([rawNet, rawDown, rawFinance].some(amount => !amount.isFinite() || amount.lt(0))) {
+      throw new BadRequestException('ยอดขาย เงินดาวน์ และยอดจัดไฟแนนซ์ต้องเป็นจำนวนเงินที่ไม่ติดลบ');
+    }
+    // Currency columns and journal templates use satang precision. Normalize
+    // browser subtraction (e.g. 10000.1 - 2000.2) before checking the split.
+    const net = rawNet.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const down = rawDown.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const financed = rawFinance.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    if (!net.gt(0) || !down.plus(financed).equals(net)) {
+      throw new BadRequestException('เงินดาวน์รวมกับยอดจัดไฟแนนซ์ต้องเท่ากับยอดขายสุทธิ');
+    }
+    netAmount = net.toNumber();
+    const downPayment = down.toNumber();
+    const financeAmount = financed.toNumber();
 
     return this.runSaleTransaction(async (tx) => {
       const mainProduct = await this.verifyProductInStock(tx, dto.productId);
@@ -570,7 +585,7 @@ export class SaleWriterService {
           discount,
           netAmount,
           paymentMethod: dto.paymentMethod as PaymentMethod,
-          amountReceived: downPayment > 0 ? downPayment : financeAmount,
+          amountReceived: downPayment,
           downPaymentAmount: downPayment,
           financeCompany: dto.financeCompany,
           financeRefNumber: dto.contractNumber || dto.financeRefNumber,

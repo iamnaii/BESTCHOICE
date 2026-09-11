@@ -9,6 +9,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { SalesReadActor } from './sales-read.types';
 
 @ApiTags('Sales')
 @ApiBearerAuth('JWT')
@@ -23,6 +24,7 @@ export class SalesController {
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
+    @CurrentUser() user: SalesReadActor,
     @Query('saleType') saleType?: string,
     @Query('branchId') branchId?: string,
     @Query('search') search?: string,
@@ -34,7 +36,6 @@ export class SalesController {
     @Query('includeVoided') includeVoided?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
-    @CurrentUser() user?: { id: string; role: string },
   ) {
     return this.salesService.findAll({
       saleType,
@@ -48,13 +49,12 @@ export class SalesController {
       includeVoided: includeVoided === 'true',
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
-      userRole: user?.role,
-    });
+    }, user);
   }
 
   @Get('salespersons')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  getSalespersons(@CurrentUser() user: { id: string; role: string; branchId?: string }) {
+  getSalespersons(@CurrentUser() user: SalesReadActor) {
     return this.salesService.getSalespersons(user);
   }
 
@@ -67,26 +67,28 @@ export class SalesController {
   @Get('top-products')
   // SALES included — the POS page shows top-selling products to sales staff.
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getTopProducts() {
-    return this.salesService.getTopSellingProducts();
+  getTopProducts(@CurrentUser() user: SalesReadActor) {
+    return this.salesService.getTopSellingProducts(user);
   }
 
   @Get('daily-summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getDailySummary(
+    @CurrentUser() user: SalesReadActor,
     @Query('date') date?: string,
     @Query('branchId') branchId?: string,
   ) {
     return this.salesService.getDailySummary(
       date || new Date().toISOString().split('T')[0],
+      user,
       branchId,
     );
   }
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findOne(@Param('id') id: string) {
-    return this.salesService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: SalesReadActor) {
+    return this.salesService.findOne(id, user);
   }
 
   @Post()

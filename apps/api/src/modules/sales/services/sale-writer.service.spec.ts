@@ -428,6 +428,49 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     expect(call.data).toEqual({ status: 'PREEMPTED' });
   });
 
+  it.each([0, 2000])('external finance records only the received down payment (%s), not the pending finance amount', async downPayment => {
+    tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
+    tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+    await service.createExternalFinanceSale({
+      saleType: 'EXTERNAL_FINANCE', productId: 'p1', branchId: 'br-1', customerId: 'c1',
+      sellingPrice: 10000, financeCompany: 'TEST FINANCE', paymentMethod: 'CASH',
+      downPayment, financeAmount: 10000 - downPayment,
+    }, 'sp-1', 10000, 0);
+    expect(tx.sale.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ amountReceived: downPayment, downPaymentAmount: downPayment }),
+    }));
+    expect(tx.financeReceivable.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ expectedAmount: 10000 - downPayment }),
+    }));
+  });
+
+  it.each([
+    { downPayment: -1, financeAmount: 10001 },
+    { downPayment: 11000, financeAmount: -1000 },
+    { downPayment: 2000, financeAmount: 0 },
+    { downPayment: 2000, financeAmount: 7000 },
+    { downPayment: Number.NaN, financeAmount: 10000 },
+    { downPayment: 0, financeAmount: Number.POSITIVE_INFINITY },
+  ])('rejects invalid finance amounts before any write: %j', async amounts => {
+    await expect(service.createExternalFinanceSale({
+      saleType: 'EXTERNAL_FINANCE', productId: 'p1', branchId: 'br-1', customerId: 'c1',
+      sellingPrice: 10000, financeCompany: 'TEST FINANCE', paymentMethod: 'CASH', ...amounts,
+    }, 'sp-1', 10000, 0)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('normalizes satang arithmetic and preserves a fully paid explicit zero financed balance', async () => {
+    tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
+    tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+    const dto = { saleType: 'EXTERNAL_FINANCE' as const, productId: 'p1', branchId: 'br-1', customerId: 'c1',
+      sellingPrice: 10000.1, financeCompany: 'TEST FINANCE', paymentMethod: 'CASH' };
+    await service.createExternalFinanceSale({ ...dto, downPayment: 2000.2,
+      financeAmount: 10000.1 - 2000.2 }, 'sp-1', 10000.1, 0);
+    expect(tx.sale.create.mock.calls[0][0].data).toMatchObject({ amountReceived: 2000.2, financeAmount: 7999.9 });
+    await service.createExternalFinanceSale({ ...dto, downPayment: 10000.1, financeAmount: 0 }, 'sp-1', 10000.1, 0);
+    expect(tx.sale.create.mock.calls[1][0].data).toMatchObject({ amountReceived: 10000.1, financeAmount: 0 });
+  });
+
   // ───────────────────────────────────────────────────────────────────────────
   // (h)-(m) B5 forward-flag — P2002/P2034 retry wrapper around $transaction.
   // Serializable tx + new productReservation writes raise write-write

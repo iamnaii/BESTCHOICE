@@ -9,11 +9,12 @@ import { SaleWarrantyNotifierService } from './services/sale-warranty-notifier.s
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ShopExternalFinanceSaleTemplate } from '../journal/cpa-templates/shop-external-finance-sale.template';
+import type { SalesReadActor, SalesReadFilters } from './sales-read.types';
 
 /**
  * SalesService — facade over the decomposed sales sub-services.
  *
- * The 8-method public surface is preserved. Sub-services are constructed
+ * Read methods require the authenticated actor. Sub-services are constructed
  * INTERNALLY in the constructor body. SaleWriterService now requires
  * ShopCashSaleTemplate + ShopAccountResolver (injected via NestJS DI from
  * JournalModule which is imported in SalesModule).
@@ -55,29 +56,16 @@ export class SalesService {
     );
   }
 
-  async findAll(filters: {
-    saleType?: string;
-    branchId?: string;
-    search?: string;
-    startDate?: string;
-    endDate?: string;
-    paymentMethod?: string;
-    salespersonId?: string;
-    contractStatus?: string;
-    includeVoided?: boolean;
-    page?: number;
-    limit?: number;
-    userRole?: string;
-  }) {
-    return this.query.findAll(filters);
+  async findAll(filters: SalesReadFilters, actor: SalesReadActor) {
+    return this.query.findAll(filters, actor);
   }
 
-  async getSalespersons(user: { role: string; branchId?: string }) {
-    return this.query.getSalespersons(user);
+  async getSalespersons(actor: SalesReadActor) {
+    return this.query.getSalespersons(actor);
   }
 
-  async findOne(id: string) {
-    return this.query.findOne(id);
+  async findOne(id: string, actor: SalesReadActor) {
+    return this.query.findOne(id, actor);
   }
 
   async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES') {
@@ -88,11 +76,11 @@ export class SalesService {
     return this.query.getPosConfig();
   }
 
-  async getTopSellingProducts(limit = 6) {
-    return this.query.getTopSellingProducts(limit);
+  async getTopSellingProducts(actor: SalesReadActor, limit = 6) {
+    return this.query.getTopSellingProducts(actor, limit);
   }
 
-  async getDailySummary(date: string, branchId?: string) {
-    return this.query.getDailySummary(date, branchId);
+  async getDailySummary(date: string, actor: SalesReadActor, branchId?: string) {
+    return this.query.getDailySummary(date, actor, branchId);
   }
 }

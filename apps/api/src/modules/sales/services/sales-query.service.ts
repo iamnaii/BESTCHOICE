@@ -2,31 +2,23 @@ import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { loadInstallmentConfig } from '../../../utils/config.util';
+import type { SalesReadActor, SalesReadFilters } from '../sales-read.types';
+import { projectSaleForActor, salesBranchWhere } from './sales-read-policy';
+
+const CONTRACT_SALE_SELECT = {
+  id: true, contractNumber: true, status: true, monthlyPayment: true, totalMonths: true,
+} satisfies Prisma.ContractSelect;
 
 /**
  * Read-side of SalesService — pure queries with role-dependent response shaping
- * (costPrice stripping + OWNER-only totalProfit). Behavior-preserving extraction;
- * bodies are verbatim from the original SalesService.
+ * All reads are actor-scoped, including detail, summaries and POS suggestions.
  */
 export class SalesQueryService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(filters: {
-    saleType?: string;
-    branchId?: string;
-    search?: string;
-    startDate?: string;
-    endDate?: string;
-    paymentMethod?: string;
-    salespersonId?: string;
-    contractStatus?: string;
-    includeVoided?: boolean;
-    page?: number;
-    limit?: number;
-    userRole?: string;
-  }) {
-    const { saleType, branchId, search, startDate, endDate, paymentMethod, salespersonId, contractStatus, includeVoided, page = 1, limit = 50, userRole } = filters;
-    const where: Record<string, unknown> = {};
+  async findAll(filters: SalesReadFilters, actor: SalesReadActor) {
+    const { saleType, branchId, search, startDate, endDate, paymentMethod, salespersonId, contractStatus, includeVoided, page = 1, limit = 50 } = filters;
+    const where: Record<string, unknown> = { ...salesBranchWhere(actor, branchId) };
     // ใบที่ยกเลิก (void = soft delete) ถูกซ่อนจากรายการ+ยอดสรุปโดย default —
     // ส่ง includeVoided=true (opt-out เฉพาะหน้ารายการ) เพื่อเห็นทั้งหมด.
     // ทุก query ในเมธอดนี้ (findMany/count/aggregate/groupBy) ใช้ `where` ก้อนเดียวกัน
@@ -35,7 +27,6 @@ export class SalesQueryService {
     if (!includeVoided) where.deletedAt = null;
 
     if (saleType) where.saleType = saleType;
-    if (branchId) where.branchId = branchId;
     if (paymentMethod) where.paymentMethod = paymentMethod;
     if (salespersonId) where.salespersonId = salespersonId;
     if (contractStatus) where.contract = { status: contractStatus };
@@ -77,7 +68,7 @@ export class SalesQueryService {
           product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, serialNumber: true, costPrice: true } },
           branch: { select: { id: true, name: true } },
           salesperson: { select: { id: true, name: true } },
-          contract: { select: { id: true, contractNumber: true, status: true, monthlyPayment: true, totalMonths: true } },
+          contract: { select: CONTRACT_SALE_SELECT },
           // ชื่อผู้ยกเลิก — หน้ารายการแสดงบนแถวที่ถูกยกเลิกเมื่อเปิด includeVoided
           // (deletedAt / voidReason เป็น scalar มากับ include อยู่แล้ว)
           voidedBy: { select: { id: true, name: true } },
@@ -100,7 +91,7 @@ export class SalesQueryService {
     const getGroup = (type: string) => groupBySaleType.find(g => g.saleType === type);
     let totalProfit = 0;
 
-    if (userRole === 'OWNER') {
+    if (actor.role === 'OWNER') {
       // Calculate profit from already-fetched data to avoid duplicate query
       totalProfit = data.reduce(
         (sum, s) => sum
@@ -122,22 +113,13 @@ export class SalesQueryService {
       financeAmount: new Prisma.Decimal(getGroup('EXTERNAL_FINANCE')?._sum.netAmount ?? 0).toNumber(),
     };
 
-    // Strip costPrice from response for non-OWNER roles
-    const responseData = userRole === 'OWNER'
-      ? data
-      : data.map(s => {
-          const { costPrice: _, ...productWithoutCost } = s.product;
-          return { ...s, product: productWithoutCost };
-        });
+    const responseData = data.map(sale => projectSaleForActor(sale, actor));
 
     return { data: responseData, total, page, limit, totalPages: Math.ceil(total / limit), summary };
   }
 
-  async getSalespersons(user: { role: string; branchId?: string }) {
-    const where: Record<string, unknown> = { isActive: true, deletedAt: null };
-    if (user.role === 'BRANCH_MANAGER' && user.branchId) {
-      where.branchId = user.branchId;
-    }
+  async getSalespersons(actor: SalesReadActor) {
+    const where = { isActive: true, deletedAt: null, ...salesBranchWhere(actor) };
     return this.prisma.user.findMany({
       where,
       select: { id: true, name: true },
@@ -155,30 +137,32 @@ export class SalesQueryService {
    * ของใบที่ถูกลบ (ตรวจ 2026-08-23; `SaleVoidService` อ่าน Sale ตรงจาก tx เอง).
    * ผู้เรียกใหม่ที่ต้องการ "ใบที่ยังไม่ยกเลิกเท่านั้น" ต้องเช็ค `deletedAt` เอง.
    */
-  async findOne(id: string) {
-    const sale = await this.prisma.sale.findUnique({
-      where: { id },
+  async findOne(id: string, actor: SalesReadActor) {
+    const sale = await this.prisma.sale.findFirst({
+      where: { AND: [{ id }, salesBranchWhere(actor)] },
       include: {
         customer: { select: { id: true, name: true, phone: true, nationalId: true } },
         product: { select: { id: true, name: true, brand: true, model: true, imeiSerial: true, costPrice: true } },
         branch: { select: { id: true, name: true } },
         salesperson: { select: { id: true, name: true } },
         voidedBy: { select: { id: true, name: true } },
-        contract: true,
+        // Contract snapshots include private customer data; follow the contract
+        // link through its own authorized endpoint for anything beyond this summary.
+        contract: { select: CONTRACT_SALE_SELECT },
       },
     });
     if (!sale) throw new NotFoundException('ไม่พบใบขาย');
-    return sale;
+    return projectSaleForActor(sale, actor);
   }
 
   async getPosConfig() {
     return loadInstallmentConfig(this.prisma);
   }
 
-  async getTopSellingProducts(limit = 6) {
+  async getTopSellingProducts(actor: SalesReadActor, limit = 6) {
     const results = await this.prisma.sale.groupBy({
       by: ['productId'],
-      where: { deletedAt: null },
+      where: { deletedAt: null, ...salesBranchWhere(actor) },
       _count: { productId: true },
       orderBy: { _count: { productId: 'desc' } },
       take: limit,
@@ -200,7 +184,7 @@ export class SalesQueryService {
       .filter(Boolean);
   }
 
-  async getDailySummary(date: string, branchId?: string) {
+  async getDailySummary(date: string, actor: SalesReadActor, branchId?: string) {
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
@@ -209,8 +193,8 @@ export class SalesQueryService {
     const where: Record<string, unknown> = {
       createdAt: { gte: startOfDay, lte: endOfDay },
       deletedAt: null,
+      ...salesBranchWhere(actor, branchId),
     };
-    if (branchId) where.branchId = branchId;
 
     const sales = await this.prisma.sale.findMany({
       where,

@@ -10,6 +10,7 @@ import {
 import { productReadinessWhere } from '../../utils/product-readiness.util';
 import { readBoolFlag } from '../../utils/config.util';
 import { resolveBcConfigForCategory } from '../../utils/bc-installment-config.util';
+import { commissionPctForCategory, loadGfinSettings } from '../gfin-config/gfin-settings.util';
 import { InstallmentPreviewDto } from './dto/installment-preview.dto';
 
 export interface PreviewResult {
@@ -106,6 +107,16 @@ export class InstallmentPreviewService {
     installmentPrice: Decimal,
     dto: InstallmentPreviewDto,
   ): Promise<PreviewResult> {
+    // เรทของ GFIN ขึ้นกับ (จำนวนงวด, %คอมที่ร้านเลือก) — เว็บร้านใช้คอมตั้งต้นตามหมวด (มือถือ 15 · iPad 5)
+    const settings = await loadGfinSettings(this.prisma);
+    const commissionPct = commissionPctForCategory(settings, product.category);
+    const gfinCategory =
+      product.category === 'TABLET'
+        ? 'TABLET'
+        : product.category === 'PHONE_NEW'
+          ? 'PHONE_NEW'
+          : 'PHONE_USED';
+
     const [mappings, rules, factor] = await Promise.all([
       this.prisma.gfinModelMapping.findMany({
         where: { deletedAt: null, isActive: true },
@@ -114,7 +125,12 @@ export class InstallmentPreviewService {
         where: { deletedAt: null, isActive: true },
       }),
       this.prisma.gfinRateFactor.findFirst({
-        where: { months: dto.months, deletedAt: null, isActive: true },
+        where: {
+          months: dto.months,
+          shopCommissionPct: commissionPct,
+          deletedAt: null,
+          isActive: true,
+        },
       }),
     ]);
 
@@ -136,7 +152,7 @@ export class InstallmentPreviewService {
         brand: product.brand ?? '',
         model: product.model,
         storage: product.storage ?? '',
-        category: product.category === 'PHONE_NEW' ? 'PHONE_NEW' : 'PHONE_USED',
+        category: gfinCategory,
       },
       mappingObjects,
     );
@@ -148,10 +164,15 @@ export class InstallmentPreviewService {
       seriesPattern: r.seriesPattern,
       condition: r.condition as 'HAND_1' | 'HAND_2',
       allowance: new Decimal(r.allowance.toString()),
+      maxMonths: r.maxMonths ?? null,
       isActive: r.isActive,
     }));
 
     const rule = findGfinOverpriceRule(mapping, ruleObjects);
+    // ผ่อนได้สูงสุดต่อซีรีส์/สภาพตามตารางราคา GFIN (12 series = 10 · 13-15 = 12 · 16-17 = 15)
+    if (rule?.maxMonths != null && dto.months > rule.maxMonths) {
+      return { available: false, reason: 'months_over_max' };
+    }
 
     const result = calcGfinInstallment({
       installmentPrice,
@@ -159,14 +180,21 @@ export class InstallmentPreviewService {
         brand: product.brand ?? '',
         model: product.model,
         storage: product.storage ?? '',
-        category: product.category === 'PHONE_NEW' ? 'PHONE_NEW' : 'PHONE_USED',
+        category: gfinCategory,
       },
       months: dto.months,
-      downPct: dto.downPct !== undefined ? new Decimal(dto.downPct) : undefined,
+      // ดาวน์ขั้นต่ำเป็นค่าต่อร้านจากตั้งค่า GFIN (ไม่ใช่ 30% ตายตัวอีกต่อไป)
+      downPct:
+        dto.downPct !== undefined
+          ? new Decimal(dto.downPct)
+          : new Decimal(settings.minDownPct).div(100),
+      shopCommissionPct: new Decimal(commissionPct),
+      contractFee: new Decimal(settings.contractFee),
       mapping,
       overpriceRule: rule,
       rateFactor: {
         months: factor.months,
+        shopCommissionPct: factor.shopCommissionPct,
         factor: new Decimal(factor.factor.toString()),
         feePerInstallment: new Decimal(factor.feePerInstallment.toString()),
         isActive: factor.isActive,

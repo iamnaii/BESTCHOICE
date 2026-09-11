@@ -108,20 +108,20 @@
     { "gfinSeries": "iPhone 17", "gfinVariant": "Pro Max", "storage": "512GB", "condition": "HAND_2", "maxPrice": 51900, "modelMatchPattern": "iPhone 17 Pro Max" }
   ],
   "overpriceRules": [
-    { "label": "iPhone Series 15-17 มือ 1", "seriesPattern": "iPhone 15|iPhone 16|iPhone 17", "condition": "HAND_1", "allowance": 2000 },
-    { "label": "iPhone 14, 15 มือ 2", "seriesPattern": "iPhone 14|iPhone 15", "condition": "HAND_2", "allowance": 1000 },
-    { "label": "iPhone 16, 17 มือ 2", "seriesPattern": "iPhone 16|iPhone 17", "condition": "HAND_2", "allowance": 2000 }
+    { "label": "iPhone Series 15-17 มือ 1", "seriesPattern": "iPhone 15|iPhone 16|iPhone 17", "condition": "HAND_1", "allowance": 2000, "maxMonths": 15 },
+    { "label": "iPhone 14, 15 มือ 2", "seriesPattern": "iPhone 14|iPhone 15", "condition": "HAND_2", "allowance": 1000, "maxMonths": 12 },
+    { "label": "iPhone 16, 17 มือ 2", "seriesPattern": "iPhone 16|iPhone 17", "condition": "HAND_2", "allowance": 2000, "maxMonths": 15 }
   ],
   "rateFactors": [
-    { "months": 3, "factor": 0.508700, "feePerInstallment": 100 },
-    { "months": 4, "factor": 0.397428, "feePerInstallment": 100 },
-    { "months": 5, "factor": 0.331174, "feePerInstallment": 100 },
-    { "months": 6, "factor": 0.288476, "feePerInstallment": 100 },
-    { "months": 7, "factor": 0.257214, "feePerInstallment": 100 },
-    { "months": 8, "factor": 0.233809, "feePerInstallment": 100 },
-    { "months": 9, "factor": 0.215555, "feePerInstallment": 100 },
-    { "months": 10, "factor": 0.200952, "feePerInstallment": 100 },
-    { "months": 11, "factor": 0.189064, "feePerInstallment": 100 },
-    { "months": 12, "factor": 0.179238, "feePerInstallment": 100 }
+    { "months": 3, "factor": 0.508700, "feePerInstallment": 100, "shopCommissionPct": 15 },
+    { "months": 4, "factor": 0.397428, "feePerInstallment": 100, "shopCommissionPct": 15 },
+    { "months": 5, "factor": 0.331174, "feePerInstallment": 100, "shopCommissionPct": 15 },
+    { "months": 6, "factor": 0.288476, "feePerInstallment": 100, "shopCommissionPct": 15 },
+    { "months": 7, "factor": 0.257214, "feePerInstallment": 100, "shopCommissionPct": 15 },
+    { "months": 8, "factor": 0.233809, "feePerInstallment": 100, "shopCommissionPct": 15 },
+    { "months": 9, "factor": 0.215555, "feePerInstallment": 100, "shopCommissionPct": 15 },
+    { "months": 10, "factor": 0.200952, "feePerInstallment": 100, "shopCommissionPct": 15 },
+    { "months": 11, "factor": 0.189064, "feePerInstallment": 100, "shopCommissionPct": 15 },
+    { "months": 12, "factor": 0.179238, "feePerInstallment": 100, "shopCommissionPct": 15 }
   ]
 }

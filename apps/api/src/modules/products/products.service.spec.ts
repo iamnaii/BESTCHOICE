@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { ProductsService } from './products.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -951,5 +952,85 @@ describe('ProductsService — แถวราคาที่ถูกลบต�
     const product = await service.findOne('p-1');
 
     expect((product.prices as { id: string }[]).map((r) => r.id)).toEqual(['live']);
+  });
+});
+
+describe('ProductsService.findOne — activeContract (สรุปสัญญาที่ผูกกับเครื่อง)', () => {
+  let service: ProductsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  const productRow = (status: string) => ({ id: 'p-1', status, deletedAt: null, prices: [] });
+
+  beforeEach(async () => {
+    prisma = {
+      product: { findUnique: jest.fn() },
+      contract: { findFirst: jest.fn() },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<ProductsService>(ProductsService);
+  });
+
+  it('เครื่องขายผ่อนแล้ว → แนบสรุปสัญญาล่าสุด (ชื่อลูกค้า · งวดละ · ชำระแล้ว/งวดถัดไป)', async () => {
+    prisma.product.findUnique.mockResolvedValue(productRow('SOLD_INSTALLMENT'));
+    prisma.contract.findFirst.mockResolvedValue({
+      id: 'c-1',
+      contractNumber: 'CT-2026-09-0123',
+      status: 'ACTIVE',
+      createdAt: new Date('2026-09-05T03:00:00Z'),
+      sellingPrice: new Prisma.Decimal('19900'),
+      downPayment: new Prisma.Decimal('2985'),
+      totalMonths: 12,
+      monthlyPayment: new Prisma.Decimal('1838.26'),
+      customer: { name: 'วรรณา สุขใจ' },
+      salesperson: { name: 'เอ' },
+      payments: [
+        { status: 'PAID', dueDate: new Date('2026-10-05T00:00:00Z') },
+        { status: 'PENDING', dueDate: new Date('2026-12-05T00:00:00Z') },
+        { status: 'PENDING', dueDate: new Date('2026-11-05T00:00:00Z') },
+      ],
+    });
+
+    const product = await service.findOneDetail('p-1');
+
+    expect(prisma.contract.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { productId: 'p-1', deletedAt: null, status: { notIn: ['DRAFT', 'CANCELED'] } },
+        orderBy: { createdAt: 'desc' },
+      }),
+    );
+    expect(product.activeContract).toEqual({
+      id: 'c-1',
+      contractNumber: 'CT-2026-09-0123',
+      status: 'ACTIVE',
+      createdAt: new Date('2026-09-05T03:00:00Z'),
+      customerName: 'วรรณา สุขใจ',
+      salespersonName: 'เอ',
+      sellingPrice: '19900',
+      downPayment: '2985',
+      totalMonths: 12,
+      monthlyPayment: '1838.26',
+      paidInstallments: 1,
+      nextDueDate: new Date('2026-11-05T00:00:00Z'),
+    });
+  });
+
+  it('เครื่องยังไม่ขาย → activeContract = null และไม่ query สัญญา', async () => {
+    prisma.product.findUnique.mockResolvedValue(productRow('IN_STOCK'));
+
+    const product = await service.findOneDetail('p-1');
+
+    expect(product.activeContract).toBeNull();
+    expect(prisma.contract.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('ขายผ่อนแล้วแต่หาสัญญาไม่เจอ (ข้อมูลเก่า) → activeContract = null', async () => {
+    prisma.product.findUnique.mockResolvedValue(productRow('SOLD_INSTALLMENT'));
+    prisma.contract.findFirst.mockResolvedValue(null);
+
+    const product = await service.findOneDetail('p-1');
+
+    expect(product.activeContract).toBeNull();
   });
 });

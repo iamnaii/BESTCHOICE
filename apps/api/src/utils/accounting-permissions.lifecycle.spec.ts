@@ -96,18 +96,37 @@ describe('accounting lifecycle identity boundaries', () => {
     },
   );
 
-  it('expense approval uses its assigned actual actor and preserves existing own-document approval policy', async () => {
+  // กลับด้านจากเดิมโดยตั้งใจ (คำตัดสินเจ้าของ 2026-09-11) — เวอร์ชัน #1542 ชื่อ
+  // "…preserves existing own-document approval policy" ปักไว้ว่า ACCOUNTANT อนุมัติใบที่
+  // ตัวเองสร้างได้ เพราะ approve() ไม่เคยมีด่านนี้ (มีแค่ปุ่มบนจอที่ซ่อนไว้ ซึ่ง #1542 ก็ถอดออก)
+  // เจ้าของเคาะว่าอนุมัติใบตัวเองได้เฉพาะ "ระดับผู้จัดการขึ้นไป" และฝ่ายบัญชีไม่นับ
+  // (packages/shared/src/accounting-self-approval.ts) — ยังใช้ actor จริงจาก DB เหมือนเดิม
+  // (ส่ง role 'VIEWER' ปลอมมาก็ไม่มีผล)
+  it('expense approval uses the actual actor — an accountant cannot approve their own document', async () => {
     const f = fixture('ACCOUNTANT', ['EXPENSE_APPROVE']);
     f.doc.status = 'PENDING_APPROVAL';
     f.doc.createdById = f.actor.id;
-    await f.expense.service.approve('doc', f.actor.id, 'VIEWER');
-    expect(f.db.expenseDocument.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: 'APPROVED', approvedById: f.actor.id }),
-      }),
+    await expect(f.expense.service.approve('doc', f.actor.id, 'VIEWER')).rejects.toBeInstanceOf(
+      ForbiddenException,
     );
+    expect(f.db.expenseDocument.update).not.toHaveBeenCalled();
     expect(f.expense.sameDayTemplate.execute).not.toHaveBeenCalled();
   });
+
+  it.each(['FINANCE_MANAGER', 'BRANCH_MANAGER'])(
+    'expense approval lets an assigned %s approve their own document',
+    async (role) => {
+      const f = fixture(role, ['EXPENSE_APPROVE']);
+      f.doc.status = 'PENDING_APPROVAL';
+      f.doc.createdById = f.actor.id;
+      await f.expense.service.approve('doc', f.actor.id, 'VIEWER');
+      expect(f.db.expenseDocument.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'APPROVED', approvedById: f.actor.id }),
+        }),
+      );
+    },
+  );
 
   it.each(INCOME_ACTIONS)(
     'income %s denies an ordinary accountant without assignment',

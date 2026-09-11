@@ -2,7 +2,7 @@ import { useState } from 'react';
 import ProgressStepper from './ProgressStepper';
 import StepKycVerification from './StepKycVerification';
 import StepPdpaConsent from './StepPdpaConsent';
-import StepContractReview from './StepContractReview';
+import StepContractReview, { type ContractPreviewState } from './StepContractReview';
 import StepSignature from './StepSignature';
 import StepComplete from './StepComplete';
 
@@ -41,6 +41,8 @@ interface ContractData {
 interface SigningWizardProps {
   contract: ContractData;
   previewHtml: string | null;
+  previewState: ContractPreviewState;
+  onRetryPreview: () => void;
   lessorSignatureImage: string;
   lessorSignerName: string;
 }
@@ -53,8 +55,23 @@ const STEPS = [
   { label: 'สำเร็จ', key: 'complete' },
 ];
 
-export default function SigningWizard({ contract, previewHtml, lessorSignatureImage, lessorSignerName }: SigningWizardProps) {
-  const [currentStep, setCurrentStep] = useState(0);
+export default function SigningWizard(props: SigningWizardProps) {
+  return <ContractSigningFlow key={props.contract.id} {...props} />;
+}
+
+function ContractSigningFlow({ contract, previewHtml, previewState, onRetryPreview, lessorSignatureImage, lessorSignerName }: SigningWizardProps) {
+  const [flow, setFlow] = useState<{ step: number; reviewedHtml: string | null; revision: number }>({
+    step: 0, reviewedHtml: null, revision: 0,
+  });
+  const { step: currentStep, reviewedHtml } = flow;
+  const previewReady = previewState === 'ready' && Boolean(previewHtml?.trim());
+  const reviewValid = previewReady && reviewedHtml !== null && reviewedHtml === previewHtml;
+
+  // Revoke consent before rendering the signature controls. A failed refresh
+  // must also require new consent if the same HTML subsequently returns.
+  if (reviewedHtml !== null && !reviewValid) {
+    setFlow({ step: currentStep === 3 ? 2 : currentStep, reviewedHtml: null, revision: flow.revision + 1 });
+  }
 
   // Determine required signers
   const requiresGuardian = (() => {
@@ -81,8 +98,8 @@ export default function SigningWizard({ contract, previewHtml, lessorSignatureIm
   const witness1Name = refs[0] ? `${refs[0].prefix || ''}${refs[0].firstName || ''} ${refs[0].lastName || ''}`.trim() : '';
   const witness2Name = refs[1] ? `${refs[1].prefix || ''}${refs[1].firstName || ''} ${refs[1].lastName || ''}`.trim() : '';
 
-  const goNext = () => setCurrentStep(prev => Math.min(prev + 1, STEPS.length - 1));
-  const goBack = () => setCurrentStep(prev => Math.max(prev - 1, 0));
+  const goNext = () => setFlow(prev => ({ ...prev, step: Math.min(prev.step + 1, STEPS.length - 1) }));
+  const goBack = () => setFlow(prev => ({ ...prev, step: Math.max(prev.step - 1, 0), revision: prev.revision + 1 }));
 
   return (
     <div className="min-h-[80vh] flex flex-col" style={{ overscrollBehavior: 'contain' }}>
@@ -110,11 +127,17 @@ export default function SigningWizard({ contract, previewHtml, lessorSignatureIm
           <StepContractReview
             contractId={contract.id}
             previewHtml={previewHtml}
-            onComplete={goNext}
+            previewState={previewState}
+            onRetryPreview={onRetryPreview}
+            onComplete={() => {
+              if (previewReady) {
+                setFlow(prev => ({ step: 3, reviewedHtml: previewHtml, revision: prev.revision + 1 }));
+              }
+            }}
             onBack={goBack}
           />
         )}
-        {currentStep === 3 && (
+        {currentStep === 3 && reviewValid && (
           <StepSignature
             contractId={contract.id}
             requiredSigners={requiredSigners}
@@ -123,7 +146,8 @@ export default function SigningWizard({ contract, previewHtml, lessorSignatureIm
             lessorSignerName={lessorSignerName}
             witness1Name={witness1Name}
             witness2Name={witness2Name}
-            onAllSigned={goNext}
+            onAllSigned={() => setFlow(prev => prev.step === 3 && prev.revision === flow.revision
+              ? { ...prev, step: 4 } : prev)}
             onBack={goBack}
           />
         )}

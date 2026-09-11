@@ -56,6 +56,11 @@ export interface Column<T> {
    */
   sortKey?: string;
   /**
+   * Let a non-sortable header wrap onto a second line instead of truncating —
+   * for narrow columns whose label is longer than the cell (e.g. 'แบต / กล่อง').
+   */
+  headerWrap?: boolean;
+  /**
    * Pin this column to the right edge while the table scrolls horizontally.
    * Use for the action column so it never scrolls out of reach.
    */
@@ -498,7 +503,7 @@ function DataTable<T extends { id: string }>({
                         </button>
                       ) : (
                         <div className={cn('flex items-center gap-1.5 min-w-0', alignFlex[align])}>
-                          <span className="min-w-0 truncate">
+                          <span className={cn('min-w-0', src?.headerWrap ? 'leading-snug' : 'truncate')}>
                             {flexRender(header.column.columnDef.header, header.getContext())}
                           </span>
                         </div>

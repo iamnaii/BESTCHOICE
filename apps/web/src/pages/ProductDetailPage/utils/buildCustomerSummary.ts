@@ -1,5 +1,6 @@
 import { SHOP_BASE_URL } from '@/lib/env';
 import { IPHONE_COLORS } from '@/components/product/VariantSelector';
+import { formatRateLine } from '@installment/shared';
 
 export { computeDefaultBcInstallment } from '@installment/shared';
 export type { BcConfigJson, DefaultInstallment } from '@installment/shared';
@@ -31,7 +32,10 @@ export interface CustomerSummaryInput {
   cosmeticNotes?: string | null;
   cashPrice?: string | number | null;
   installmentPrice?: string | number | null;
+  /** เรทที่ 1 = BESTCHOICE (สัญญาของเรา) */
   installment?: DefaultInstallment | null;
+  /** เรทที่ 2 = ไฟแนนซ์ภายนอก (GFIN) — ห้ามเอ่ยชื่อไฟแนนซ์กับลูกค้า (สคริปต์ขาย) */
+  installment2?: DefaultInstallment | null;
   branchName?: string | null;
   imeiSerial?: string | null;
   link?: string | null;
@@ -97,19 +101,22 @@ export function buildCustomerSummary(input: CustomerSummaryInput): string {
     cash != null && cash > 0 ? `ราคาเงินสด ${formatBaht(cash)} บาท` : 'ราคาเงินสด สอบถามแอดมิน',
   );
 
+  // บรรทัดค่างวดใช้รูปแบบเดียวกับสติกเกอร์หน้าร้าน/บอท: "เรทที่ N ดาวน์ X บาท ผ่อนเดือนละ Y บาท Z งวด"
+  // บรรทัดที่ข้อมูลเสีย (NaN/Infinity) ตัดทั้งบรรทัด ไม่โชว์ตัวเลขพังให้ลูกค้าอ่าน
   const instPrice = toNumber(input.installmentPrice);
-  if (
-    input.installment &&
+  const rateLine = (rateNo: 1 | 2, r: DefaultInstallment | null | undefined): string | null =>
+    r &&
     instPrice != null &&
     instPrice > 0 &&
-    Number.isFinite(input.installment.downAmount) &&
-    Number.isFinite(input.installment.monthlyPayment)
-  ) {
-    const { months, downAmount, monthlyPayment } = input.installment;
-    lines.push(
-      `ผ่อน ${months} งวด ดาวน์ ${formatBaht(downAmount)} บาท งวดละ ${formatBaht(monthlyPayment)} บาท`,
-    );
-  }
+    Number.isFinite(r.months) &&
+    Number.isFinite(r.downAmount) &&
+    Number.isFinite(r.monthlyPayment)
+      ? formatRateLine(rateNo, r.downAmount, r.monthlyPayment, r.months)
+      : null;
+  const rate1 = rateLine(1, input.installment);
+  if (rate1) lines.push(rate1);
+  const rate2 = rateLine(2, input.installment2);
+  if (rate2) lines.push(rate2);
 
   const accessories = (input.accessoriesIncluded ?? [])
     .map((a) => a.trim())

@@ -8,6 +8,7 @@ import {
   type BcConfigJson,
 } from '../utils/buildCustomerSummary';
 import { useProductReadiness } from './useProductReadiness';
+import type { ResolvedQuotes } from '../utils/resolveQuotes';
 
 interface ProductForSummary {
   id: string;
@@ -36,7 +37,11 @@ interface ProductForSummary {
   prices: ProductPriceRow[];
 }
 
-export function useCustomerSummary(product: ProductForSummary | undefined) {
+/**
+ * @param quotes ค่าที่เครื่องคำนวณใช้อยู่ (resolveQuotes) — ถ้าส่งมา สรุปจะใช้งวด/ดาวน์ที่พนักงานเลือก
+ *   (เรทที่ 1 = BESTCHOICE, เรทที่ 2 = GFIN เมื่อรุ่นนี้ส่ง GFIN ได้) · ไม่ส่ง = ค่าตั้งต้นเหมือนเดิม
+ */
+export function useCustomerSummary(product: ProductForSummary | undefined, quotes?: ResolvedQuotes) {
   // fix-round 1 (C1): ราคาที่ใช้คำนวณสรุปต้องเป็นเส้นเดียวกับการ์ด — ห้ามอ่านคอลัมน์
   // cashPrice/installmentPrice ดิบตรงๆ (ดู comment บน ProductForSummary.prices ด้านบน)
   const displayPrices = product
@@ -67,7 +72,25 @@ export function useCustomerSummary(product: ProductForSummary | undefined) {
 
   if (!product) return { summaryText: '', shareUrl: '' };
 
-  const installment = computeDefaultBcInstallment(displayPrices.installment, bcConfig ?? null);
+  // ค่าที่เลือกอยู่ในเครื่องคำนวณมาก่อน (ถ้า valid) — ตกไปค่าตั้งต้นเมื่อการ์ดยังไม่โหลด/ดาวน์ไม่ผ่านเงื่อนไข
+  const bcSelected =
+    quotes?.bc && quotes.bc.quote.result.isValid
+      ? {
+          months: quotes.bc.months,
+          downAmount: quotes.bc.downAmount,
+          monthlyPayment: quotes.bc.quote.result.monthlyPayment.toNumber(),
+        }
+      : null;
+  const installment =
+    bcSelected ?? computeDefaultBcInstallment(displayPrices.installment, bcConfig ?? null);
+  const installment2 =
+    quotes?.gfin?.quote.available && quotes.gfin.months != null
+      ? {
+          months: quotes.gfin.months,
+          downAmount: quotes.gfin.quote.result.downAmountActual.toNumber(),
+          monthlyPayment: quotes.gfin.quote.result.monthlyPayment.toNumber(),
+        }
+      : null;
   const shareUrl = buildShopProductUrl(product.id);
   // ไม่ ready = เว็บลูกค้ายังไม่ขึ้น → ห้ามแนบลิงก์ตายในสรุป (ปุ่ม "คัดลอกลิงก์" เองก็ disable ด้วย
   // เหตุผลเดียวกัน — ข้อความสรุปต้อง consistent กับปุ่ม) แต่ปุ่ม "คัดลอกสรุปส่งลูกค้า" ยังใช้ได้ปกติ
@@ -90,6 +113,7 @@ export function useCustomerSummary(product: ProductForSummary | undefined) {
       cashPrice: displayPrices.cash,
       installmentPrice: displayPrices.installment,
       installment,
+      installment2,
       branchName: product.branch?.name ?? null,
       imeiSerial: product.imeiSerial,
       link: isReady ? shareUrl : undefined,

@@ -85,7 +85,7 @@ describe('buildCustomerSummary', () => {
       [
         'Apple iPhone 13 128GB สีดำ (เครื่องมือสอง เกรด A)',
         'ราคาเงินสด 15,900 บาท',
-        'ผ่อน 12 งวด ดาวน์ 2,985 บาท งวดละ 2,413.21 บาท',
+        'เรทที่ 1 ดาวน์ 2,985 บาท ผ่อนเดือนละ 2,413.21 บาท 12 งวด',
         'แบต 89% | ประกันร้าน 30 วัน | อุปกรณ์: สายชาร์จ, กล่อง',
         'ตำหนิ: รอยขีดข่วนมุมล่างซ้าย',
         'สาขา ลาดพร้าว | เลขเครื่อง 4 ตัวท้าย 1234',
@@ -230,5 +230,49 @@ describe('buildShopProductUrl', () => {
     expect(buildShopProductUrl('p-1', 'https://www.bestchoicephone.com/')).toBe(
       'https://www.bestchoicephone.com/api/shop/share/p-1',
     );
+  });
+});
+
+// 2026-09-11: บรรทัดค่างวดใช้รูปแบบสติกเกอร์/บอท "เรทที่ 1 / เรทที่ 2" — ห้ามเอ่ยชื่อไฟแนนซ์กับลูกค้า
+describe('buildCustomerSummary — เรทที่ 2 (ไฟแนนซ์ภายนอก)', () => {
+  const base = {
+    brand: 'Apple',
+    model: 'iPhone 15',
+    storage: '128GB',
+    color: null,
+    category: 'PHONE_NEW',
+    cashPrice: '19900',
+    installmentPrice: '19900',
+    branchName: 'ลพบุรี',
+  };
+
+  it('มีทั้ง 2 เรท → 2 บรรทัดต่อกัน และไม่มีคำว่า GFIN/ดอกเบี้ย/%', () => {
+    const text = buildCustomerSummary({
+      ...base,
+      installment: { months: 12, downAmount: 2985, monthlyPayment: 1838.26 },
+      installment2: { months: 12, downAmount: 1900, monthlyPayment: 3327 },
+    });
+    expect(text).toContain(
+      'เรทที่ 1 ดาวน์ 2,985 บาท ผ่อนเดือนละ 1,838.26 บาท 12 งวด\nเรทที่ 2 ดาวน์ 1,900 บาท ผ่อนเดือนละ 3,327 บาท 12 งวด',
+    );
+    expect(text).not.toMatch(/GFIN|ดอกเบี้ย|%/);
+  });
+
+  it('เรทที่ 2 เสีย (NaN) → ตัดเฉพาะบรรทัดเรทที่ 2 · ไม่มีเรทที่ 1 แต่มีเรทที่ 2 → ยังโชว์เรทที่ 2', () => {
+    const textNaN = buildCustomerSummary({
+      ...base,
+      installment: { months: 12, downAmount: 2985, monthlyPayment: 1838.26 },
+      installment2: { months: 12, downAmount: NaN, monthlyPayment: 3327 },
+    });
+    expect(textNaN).toContain('เรทที่ 1');
+    expect(textNaN).not.toContain('เรทที่ 2');
+
+    const textOnly2 = buildCustomerSummary({
+      ...base,
+      installment: null,
+      installment2: { months: 12, downAmount: 1900, monthlyPayment: 3327 },
+    });
+    expect(textOnly2).not.toContain('เรทที่ 1');
+    expect(textOnly2).toContain('เรทที่ 2 ดาวน์ 1,900 บาท ผ่อนเดือนละ 3,327 บาท 12 งวด');
   });
 });

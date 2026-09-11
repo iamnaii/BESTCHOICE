@@ -37,6 +37,10 @@ CREDIT_PG_STARTED=1
 "$CREDIT_PG_BIN/createdb" -h "$CREDIT_PG_ROOT/socket" -p 55476 -U credit_test bc_chat_credit_test
 export DATABASE_URL="postgresql://credit_test@localhost:55476/bc_chat_credit_test?host=$CREDIT_PG_ROOT/socket&schema=public"
 export NODE_ENV=test
+# The API pins process.env.TZ=Asia/Bangkok at bootstrap (apps/api/src/app.setup.ts); these specs build
+# services directly, so pin the same zone — on a UTC runner the local-time schedule dates would sit
+# 7 hours off the Bangkok quote schedule (CI run 34628863038).
+export TZ=Asia/Bangkok
 if ! ./node_modules/.bin/prisma migrate deploy --schema apps/api/prisma/schema.prisma >"$CREDIT_PG_ROOT/migrate.log" 2>&1; then
   tail -60 "$CREDIT_PG_ROOT/migrate.log"
   exit 1

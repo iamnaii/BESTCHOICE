@@ -73,8 +73,8 @@ describe('InterestConfigService', () => {
           productCategories: { has: 'PHONE' },
         },
         // B2 Task 4 C2-residual: ต้อง deterministic (oldest-active wins) ให้ตรงกับ
-        // resolveConfig + ProductQuoteService.getQuotes — หน้า ContractCreate ใช้เส้นนี้
-        orderBy: { createdAt: 'asc' },
+        // resolveConfig + ProductQuoteService.getQuotes — หน้า ContractCreate ใช้เส้นนี้ (id เป็นตัวตัดสินเมื่อ createdAt เท่ากัน)
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       });
     });
   });

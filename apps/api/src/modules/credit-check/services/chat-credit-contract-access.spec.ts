@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 
 jest.mock('../../../utils/validation.util', () => ({
   checkRequiredContractFields: jest.fn().mockReturnValue([]),
+  contractSignatureRequirements: jest.requireActual('../../../utils/validation.util').contractSignatureRequirements,
 }));
 
 it.each(['detail', 'submit-review'])(

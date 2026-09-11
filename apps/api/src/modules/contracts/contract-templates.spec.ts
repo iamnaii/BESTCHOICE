@@ -638,7 +638,10 @@ describe('Contract Templates — กระบวนการสร้างเ�
 
       expect(html).toContain('TH Sarabun PSK');
       expect(html).toContain('@font-face');
-      expect(html).toContain('THSarabunPSK');
+      // The TTFs are embedded as base64 (apps/api/src/assets/fonts/document-fonts.ts) — the HTML no
+      // longer links /fonts/THSarabunPSK-*.ttf, so the proof is the data: src of both weights.
+      expect(html).toMatch(/@font-face \{ font-family: 'TH Sarabun PSK'; font-style: normal; font-weight: 400; src: url\(data:font\/ttf;base64,/);
+      expect(html).toMatch(/@font-face \{ font-family: 'TH Sarabun PSK'; font-style: normal; font-weight: 700; src: url\(data:font\/ttf;base64,/);
     });
 
     // TC-3.3: Fallback font chain ต้องครบ

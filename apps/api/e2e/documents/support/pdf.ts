@@ -31,6 +31,8 @@ export interface PdfPage {
   /** Text grouped by baseline, top of page first. */
   lines: string[];
   text: string;
+  /** Text in content-stream order — rotated overlays (VOID stamps) only read correctly here. */
+  stream: string;
 }
 
 export interface ParsedPdf {
@@ -67,7 +69,7 @@ export async function parsePdf(bytes: Buffer): Promise<ParsedPdf> {
         items.push({ str: raw.str, x: raw.transform[4], y: raw.transform[5], size: Math.hypot(raw.transform[0], raw.transform[1]), font });
       }
       const lines = groupLines(items);
-      pages.push({ index, widthPt: x1 - x0, heightPt: y1 - y0, items, lines, text: lines.join('\n') });
+      pages.push({ index, widthPt: x1 - x0, heightPt: y1 - y0, items, lines, text: lines.join('\n'), stream: items.map((item) => item.str).join('') });
     }
   } finally {
     await doc.destroy();
@@ -147,7 +149,12 @@ export function foldThai(text: string): string {
 /** 1-based page index of the first page whose text contains `needle`, or 0. */
 export function pageContaining(pdf: ParsedPdf, needle: string): number {
   const target = foldThai(needle);
-  return pdf.pages.find((page) => foldThai(page.text).includes(target))?.index ?? 0;
+  return pdf.pages.find((page) => foldThai(page.text).includes(target) || foldThai(page.stream).includes(target))?.index ?? 0;
+}
+
+/** All text of a page for substring checks: baseline-grouped lines plus the content-stream order. */
+export function pageText(page: PdfPage): string {
+  return `${page.text}\n${page.stream}`;
 }
 
 /** Distinct text sizes (rounded to 0.1 pt) with glyph counts, largest count first. */

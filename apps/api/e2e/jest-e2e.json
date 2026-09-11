@@ -13,7 +13,8 @@
     "credit-approval\\.e2e-spec\\.ts$",
     "credit-payment-flow\\.e2e-spec\\.ts$",
     "staff-offer\\.e2e-spec\\.ts$",
-    "trade-in-buyback\\.e2e-spec\\.ts$"
+    "trade-in-buyback\\.e2e-spec\\.ts$",
+    "stock-groups\\.e2e-spec\\.ts$"
   ],
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"

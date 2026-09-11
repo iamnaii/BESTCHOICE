@@ -1,5 +1,6 @@
 import {
   Controller,
+  ForbiddenException,
   Get,
   Post,
   Patch,
@@ -26,6 +27,8 @@ import { TransferProductDto, DispatchTransferDto, BulkTransferDto } from './dto/
 import { ReserveProductDto } from './dto/reserve-product.dto';
 import { ReturnToStockDto } from './dto/return-to-stock.dto';
 import { RejectTransferDto } from './dto/reject-transfer.dto';
+import { StockListPaginationDto } from './dto/stock-list-pagination.dto';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -49,8 +52,8 @@ export class ProductsController {
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async findAll(
-    @Query() pagination: PaginationDto,
-    @CurrentUser() user: { role: string },
+    @Query() pagination: StockListPaginationDto,
+    @CurrentUser() user: { role: string; branchId?: string | null },
     @Query('search') search?: string,
     @Query('branchId') branchId?: string,
     @Query('status') status?: string | string[],
@@ -60,13 +63,31 @@ export class ProductsController {
     @Query('model') model?: string,
     @Query('storage') storage?: string,
   ) {
+    const stockView = pagination.groupAccessories === 'true' || !!pagination.accessoryGroupId || !!pagination.sortBy;
+    if (stockView && !hasCrossBranchAccess(user)) {
+      if (!user.branchId) throw new ForbiddenException('บัญชีนี้ยังไม่มีสาขาที่รับผิดชอบ');
+      branchId = user.branchId;
+    }
+    if (pagination.sortBy === 'costPrice' && !canSeeCost(user.role)) {
+      throw new ForbiddenException('ไม่มีสิทธิ์เรียงข้อมูลราคาทุน');
+    }
     const result = await this.productsService.findAll({
+      sortBy: pagination.sortBy,
+      sortDirection: pagination.sortDirection,
+      groupAccessories: pagination.groupAccessories === 'true',
+      accessoryGroupId: pagination.accessoryGroupId,
       search, branchId, status, category, brand, supplierId, model, storage,
       page: pagination.page,
       limit: pagination.limit,
     });
     if (canSeeCost(user.role)) return result;
-    return { ...result, data: result.data.map(omitCostPrice) };
+    return { ...result, data: result.data.map((product) => {
+      const row = omitCostPrice(product);
+      if ('stockGroup' in row && row.stockGroup) {
+        return { ...row, stockGroup: { ...row.stockGroup, costPriceMax: null } };
+      }
+      return row;
+    }) };
   }
 
   @Get('stock')

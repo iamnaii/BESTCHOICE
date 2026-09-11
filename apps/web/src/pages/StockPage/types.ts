@@ -14,6 +14,22 @@ export interface StockProduct {
   status: string;
   color: string | null;
   storage: string | null;
+  accessoryType?: string | null;
+  legacyProductCode?: string | null;
+  stockGroup?: {
+    key: string;
+    unitCount: number;
+    inStockQuantity: number;
+    statuses: string[];
+    costPriceMax: string | null;
+    cashPriceMax: string | null;
+    cashPriceMissingCount: number;
+  } | null;
+  batteryHealth?: number | null;
+  hasBox?: boolean | null;
+  warrantyExpired?: boolean | null;
+  warrantyExpireDate?: string | null;
+  stockInDate?: string | null;
   createdAt?: string;
   branch: { id: string; name: string };
   supplier: { id: string; name: string } | null;

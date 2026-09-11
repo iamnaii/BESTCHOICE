@@ -1,20 +1,19 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import PageHeader from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import QueryBoundary from '@/components/QueryBoundary';
-import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
-import { statusLabels, categoryLabels } from '@/lib/constants';
+import type { Column } from '@/components/ui/DataTable';
 import {
   ArrowRightLeft,
   BarChart3,
-  Check,
-  Copy,
+  ChevronDown,
+  ChevronRight,
+  MoreHorizontal,
   Download,
-  Eye,
+  ArrowUpRight,
   Globe,
+  Pencil,
   Plus,
   Printer,
   X,
@@ -22,31 +21,38 @@ import {
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
-import { getDisplayPrices } from '@/utils/getDisplayPrices';
-import { StockProduct } from './types';
+import { getPositiveDisplayPrices, normalizePositive } from '@/utils/getDisplayPrices';
+import type { StockProduct } from './types';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  StockProductIdentity,
+  StockPriceAmount,
+  StockDownPayment,
+  StockMonthlyPayment,
+  StockProductStatus,
+  StockProductBranch,
+  StockBatteryHealth,
+  StockManufacturerWarranty,
+  StockTabletConnectivity,
+  StockAccessoryType,
+  StockProductCategory,
+  StockProductSpecifications,
+  StockQuantity,
+  StockReceivedDate,
+  getStockProductCode,
+} from './components/StockProductCells';
 import { useStockProducts, useEditingProductSync } from './hooks/useStockProducts';
+import { useStockInstallments } from './hooks/useStockInstallments';
 import { StockListTab } from './components/StockListTab';
 import { BulkTransferModal } from './components/BulkTransferModal';
 import { PriceManagementModal } from './components/PriceManagementModal';
-
-function ImeiCopyBadge({ imei }: { imei: string }) {
-  const { copy, copied } = useCopyToClipboard();
-  return (
-    <span className="flex items-center gap-1">
-      <span className="text-xs text-muted-foreground font-mono">{imei}</span>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          copy(imei);
-        }}
-        className="text-muted-foreground/60 hover:text-primary transition-colors"
-        title="คัดลอก IMEI/Serial"
-      >
-        {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
-      </button>
-    </span>
-  );
-}
 
 export default function StockProductsPage() {
   useDocumentTitle('รายการสินค้า');
@@ -68,17 +74,23 @@ export default function StockProductsPage() {
   const products = useStockProducts();
   const {
     isManager,
+    sort,
+    setSort,
     search,
     setSearch,
+    clearFilters,
     filterStatus,
     setFilterStatus,
     filterCategory,
     setFilterCategory,
+    accessoryGroupId,
+    setAccessoryGroupId,
     filterBranch,
     setFilterBranch,
     page,
     setPage,
     selectedIds,
+    setSelectedIds,
     toggleSelect,
     toggleSelectAll,
     listResult,
@@ -109,6 +121,15 @@ export default function StockProductsPage() {
     setTransferNotes,
     bulkTransferMutation,
   } = products;
+  const installmentPlans = useStockInstallments(listProducts);
+  const selectableProducts = useMemo(
+    () => listProducts.filter((product) => !product.stockGroup),
+    [listProducts],
+  );
+  const isUsedPhoneView = filterCategory === 'PHONE_USED';
+  const isTabletView = filterCategory === 'TABLET';
+  const isAccessoryView = filterCategory === 'ACCESSORY';
+  const isDeviceView = filterCategory === 'PHONE_NEW' || isUsedPhoneView || isTabletView;
 
   useEditingProductSync(editingProduct, listProducts, setEditingProduct);
 
@@ -116,8 +137,12 @@ export default function StockProductsPage() {
 
   const publishMutation = useMutation({
     mutationFn: async (vars: { scope: 'SELECTED' | 'ALL_IN_STOCK'; productIds?: string[] }) =>
-      (await api.post('/products/online-listing/bulk-visibility', { isOnlineVisible: true, ...vars }))
-        .data,
+      (
+        await api.post('/products/online-listing/bulk-visibility', {
+          isOnlineVisible: true,
+          ...vars,
+        })
+      ).data,
     onSuccess: (res) => {
       setBulkResult(res);
       // ตัวเลขสองอันนี้ไม่เท่ากันเป็นเรื่องปกติ — สวิตช์เปิดได้ทุกเครื่อง แต่จะโผล่
@@ -156,245 +181,419 @@ export default function StockProductsPage() {
     });
   };
 
-  const columns = useMemo(
+  const columns = useMemo<Column<StockProduct>[]>(
     () => [
       ...(isManager
         ? [
             {
               key: 'select',
               label: (
-                <input
-                  type="checkbox"
-                  checked={listProducts.length > 0 && selectedIds.size === listProducts.length}
-                  onChange={() => toggleSelectAll(listProducts)}
-                  className="rounded text-primary"
+                <Checkbox
+                  aria-label="เลือกสินค้าหน้านี้"
+                  disabled={selectableProducts.length === 0}
+                  checked={
+                    selectableProducts.length > 0 &&
+                    selectableProducts.every((product) => selectedIds.has(product.id))
+                      ? true
+                      : selectedIds.size > 0
+                        ? 'indeterminate'
+                        : false
+                  }
+                  onCheckedChange={() => toggleSelectAll(listProducts)}
+                  className="cursor-pointer"
                 />
               ) as unknown as string,
-              render: (p: StockProduct) => (
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(p.id)}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    toggleSelect(p.id);
-                  }}
-                  className="rounded text-primary"
+              hideable: false,
+              sortable: false,
+              width: '48px',
+              render: (product: StockProduct) =>
+                product.stockGroup ? null : (
+                  <Checkbox
+                    aria-label={`เลือก ${product.model || product.name} ${product.imeiSerial || product.id}`}
+                    checked={selectedIds.has(product.id)}
+                    onCheckedChange={() => toggleSelect(product.id)}
+                    className="cursor-pointer"
+                  />
+                ),
+            },
+          ]
+        : []),
+      ...(!isDeviceView
+        ? [
+            {
+              key: isAccessoryView ? 'productCode' : 'category',
+              label: isAccessoryView ? 'รหัสสินค้า' : 'ประเภท',
+              sortable: true,
+              hideable: false,
+              width: '110px',
+              render: (product: StockProduct) =>
+                isAccessoryView ? (
+                  <span className="font-mono text-xs">{getStockProductCode(product) || '—'}</span>
+                ) : (
+                  <StockProductCategory product={product} />
+                ),
+            },
+          ]
+        : []),
+      {
+        key: 'name',
+        label: isDeviceView ? 'รุ่น' : 'ชื่อสินค้า/รุ่น',
+        sortable: true,
+        hideable: false,
+        render: (product) => (
+          <StockProductIdentity
+            product={product}
+            onOpen={() =>
+              product.stockGroup
+                ? setAccessoryGroupId(product.stockGroup!.key)
+                : navigateToProduct(product.id)
+            }
+            showProductCode={!isAccessoryView}
+          />
+        ),
+      },
+      ...(!isDeviceView && !isAccessoryView
+        ? [
+            {
+              key: 'specifications',
+              label: 'สเปกย่อ',
+              sortable: true,
+              hideable: false,
+              width: '155px',
+              render: (product: StockProduct) => <StockProductSpecifications product={product} />,
+            },
+          ]
+        : []),
+      ...(isAccessoryView
+        ? [
+            {
+              key: 'accessoryType',
+              label: 'ประเภท',
+              sortable: true,
+              hideable: false,
+              width: '110px',
+              render: (product: StockProduct) => <StockAccessoryType product={product} />,
+            },
+          ]
+        : []),
+      ...(isDeviceView || isAccessoryView
+        ? [
+            ...(!isAccessoryView
+              ? [
+                  {
+                    key: 'storage',
+                    label: 'ความจุ',
+                    sortable: true,
+                    hideable: false,
+                    width: '80px',
+                    render: (product: StockProduct) => product.storage || '—',
+                  },
+                ]
+              : []),
+            {
+              key: 'color',
+              label: 'สี',
+              sortable: true,
+              hideable: false,
+              width: '90px',
+              render: (product: StockProduct) => product.color || '—',
+            },
+          ]
+        : []),
+      ...(isTabletView
+        ? [
+            {
+              key: 'connectivity',
+              label: 'การเชื่อมต่อ',
+              sortable: true,
+              hideable: false,
+              width: '150px',
+              render: (product: StockProduct) => <StockTabletConnectivity product={product} />,
+            },
+          ]
+        : []),
+      ...(isUsedPhoneView
+        ? [
+            {
+              key: 'batteryHealth',
+              label: '%แบตเตอรี่',
+              sortable: true,
+              hideable: false,
+              width: '96px',
+              render: (product: StockProduct) => <StockBatteryHealth product={product} />,
+            },
+            {
+              key: 'hasBox',
+              label: 'มีกล่อง',
+              sortable: true,
+              hideable: false,
+              width: '80px',
+              render: (product: StockProduct) =>
+                product.hasBox == null ? 'ยังไม่ระบุ' : product.hasBox ? 'มี' : 'ไม่มี',
+            },
+            {
+              key: 'warrantyExpireDate',
+              label: 'ประกันศูนย์',
+              sortable: true,
+              hideable: false,
+              width: '140px',
+              render: (product: StockProduct) => <StockManufacturerWarranty product={product} />,
+            },
+          ]
+        : []),
+      ...(isManager && !isDeviceView
+        ? [
+            {
+              key: 'costPrice',
+              label: 'ราคาทุน',
+              sortable: true,
+              hideable: true,
+              align: 'right' as const,
+              width: '110px',
+              render: (product: StockProduct) => (
+                <StockPriceAmount
+                  value={
+                    product.costPrice != null && product.costPrice !== ''
+                      ? Number(product.costPrice)
+                      : null
+                  }
+                  maxValue={
+                    product.stockGroup?.costPriceMax != null
+                      ? Number(product.stockGroup.costPriceMax)
+                      : null
+                  }
+                  muted
                 />
               ),
             },
           ]
         : []),
       {
-        key: 'name',
-        label: 'สินค้า',
-        sortable: false,
+        key: 'cashPrice',
+        label: isAccessoryView ? 'ราคาขาย' : 'ราคาเต็มจำนวน',
+        sortable: true,
         hideable: false,
-        render: (p: StockProduct) => (
-          <div>
-            <button onClick={() => navigateToProduct(p.id)} className="text-left hover:underline">
-              <div className="text-primary font-medium">
-                {p.brand} {p.model}
+        align: 'right',
+        width: '130px',
+        render: (product) => (
+          <div className="space-y-1">
+            <StockPriceAmount
+              value={
+                product.stockGroup
+                  ? normalizePositive(product.cashPrice)
+                  : normalizePositive(getPositiveDisplayPrices(product).cash)
+              }
+              maxValue={normalizePositive(product.stockGroup?.cashPriceMax)}
+            />
+            {!!product.stockGroup?.cashPriceMissingCount && (
+              <div className="text-xs text-muted-foreground leading-snug">
+                ยังไม่ตั้ง {product.stockGroup.cashPriceMissingCount} ชิ้น
               </div>
-            </button>
-            {p.imeiSerial && <ImeiCopyBadge imei={p.imeiSerial} />}
+            )}
           </div>
         ),
       },
-      {
-        key: 'category',
-        label: 'ประเภท',
-        sortable: true,
-        hideable: true,
-        render: (p: StockProduct) => (
-          <span className="text-xs">{categoryLabels[p.category] || p.category}</span>
-        ),
-      },
-      {
-        key: 'color',
-        label: 'สี',
-        sortable: true,
-        hideable: true,
-        render: (p: StockProduct) => (
-          <span className="text-sm">
-            {p.color || <span className="text-muted-foreground">—</span>}
-          </span>
-        ),
-      },
-      {
-        key: 'storage',
-        label: 'ความจุ',
-        sortable: true,
-        hideable: true,
-        render: (p: StockProduct) => (
-          <span className="text-sm">
-            {p.storage || <span className="text-muted-foreground">—</span>}
-          </span>
-        ),
-      },
-      {
-        key: 'prices',
-        label: 'ราคา',
-        sortable: false,
-        hideable: false,
-        render: (p: StockProduct) => {
-          const { installment, cash } = getDisplayPrices({ prices: p.prices ?? [] });
-          const priceValue = installment ?? cash ?? 0;
-          const costValue = parseFloat(p.costPrice);
-          return (
-            <div className="flex items-center gap-1.5">
-              <div>
-                {priceValue > 0 ? (
-                  <div className="font-medium">{priceValue.toLocaleString()} ฿</div>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-                {isManager && costValue > 0 && (
-                  <div className="text-xs text-muted-foreground">
-                    ทุน: {costValue.toLocaleString()} ฿
-                  </div>
-                )}
-              </div>
-              {isManager && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openPriceEdit(p);
-                  }}
-                  className="text-muted-foreground hover:text-primary transition-colors"
-                  title="จัดการราคา"
-                >
-                  <svg
-                    className="w-3.5 h-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                    />
-                  </svg>
-                </button>
-              )}
-            </div>
-          );
-        },
-      },
+      ...(!isAccessoryView
+        ? [
+            {
+              key: 'downPayment',
+              label: 'ดาวน์',
+              sortable: true,
+              hideable: false,
+              align: 'right' as const,
+              width: '95px',
+              render: (product: StockProduct) => (
+                <StockDownPayment plan={installmentPlans.installments.get(product.id)} />
+              ),
+            },
+            {
+              key: 'monthlyPayment',
+              label: 'ยอดผ่อนต่อเดือน',
+              sortable: true,
+              hideable: false,
+              align: 'right' as const,
+              width: '140px',
+              render: (product: StockProduct) => (
+                <StockMonthlyPayment plan={installmentPlans.installments.get(product.id)} />
+              ),
+            },
+          ]
+        : []),
+      ...(isDeviceView
+        ? [
+            {
+              key: 'stockInDate',
+              label: 'วันที่รับเข้า',
+              sortable: true,
+              hideable: false,
+              width: '135px',
+              render: (product: StockProduct) => <StockReceivedDate product={product} />,
+            },
+          ]
+        : []),
+      ...(!isDeviceView
+        ? [
+            {
+              key: 'quantity',
+              label: 'คงเหลือ',
+              sortable: true,
+              hideable: false,
+              align: 'right' as const,
+              width: '85px',
+              render: (product: StockProduct) => <StockQuantity product={product} />,
+            },
+          ]
+        : []),
       {
         key: 'status',
         label: 'สถานะ',
         sortable: true,
         hideable: false,
-        render: (p: StockProduct) => {
-          const s = statusLabels[p.status] || {
-            label: p.status,
-            className: 'bg-muted text-foreground',
-          };
-          return (
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>
-              {s.label}
-            </span>
-          );
-        },
+        width: '100px',
+        render: (product) => <StockProductStatus product={product} />,
       },
       {
         key: 'branch',
         label: 'สาขา',
-        sortable: false,
-        hideable: true,
-        render: (p: StockProduct) => <span className="text-xs font-medium">{p.branch.name}</span>,
+        sortable: true,
+        hideable: false,
+        width: '130px',
+        render: (product) => <StockProductBranch product={product} />,
       },
       {
         key: 'actions',
         label: '',
-        render: (p: StockProduct) => (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              navigateToProduct(p.id);
-            }}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-primary hover:bg-accent transition-colors"
-            title="ดูรายละเอียดสินค้า"
-          >
-            <Eye className="size-3.5" />
-            ดูรายละเอียด
-          </button>
-        ),
+        stickyRight: true,
+        sortable: false,
+        hideable: false,
+        width: '120px',
+        render: (product) =>
+          product.stockGroup ? (
+            <Button
+              variant="ghost"
+              className="h-11 w-full justify-between gap-1 rounded-md px-1 text-xs font-medium text-primary hover:bg-primary/10"
+              onClick={() => setAccessoryGroupId(product.stockGroup!.key)}
+            >
+              ดู {product.stockGroup.unitCount} ชิ้น
+              <ChevronRight aria-hidden="true" className="size-4" />
+            </Button>
+          ) : (
+            <div className="flex items-center justify-end gap-1">
+              {isManager && (
+                <Button
+                  variant="ghost"
+                  mode="icon"
+                  className="size-11"
+                  aria-label="จัดการราคา"
+                  title="จัดการราคา"
+                  onClick={() => openPriceEdit(product)}
+                >
+                  <Pencil aria-hidden="true" className="size-4" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                className="h-11 px-3 lg:w-11 lg:px-0"
+                aria-label="ดูรายละเอียด"
+                title="ดูรายละเอียดสินค้า"
+                onClick={() => navigateToProduct(product.id)}
+              >
+                <span className="lg:hidden">รายละเอียด</span>
+                <ArrowUpRight aria-hidden="true" className="size-4" />
+              </Button>
+            </div>
+          ),
       },
     ],
-    [navigateToProduct, openPriceEdit, isManager, selectedIds, listProducts, toggleSelect, toggleSelectAll],
+    [
+      isManager,
+      selectableProducts,
+      setAccessoryGroupId,
+      isDeviceView,
+      isAccessoryView,
+      isUsedPhoneView,
+      isTabletView,
+      listProducts,
+      selectedIds,
+      toggleSelectAll,
+      toggleSelect,
+      navigateToProduct,
+      openPriceEdit,
+      installmentPlans.installments,
+    ],
   );
 
   return (
     <div>
-      <PageHeader
-        title="รายการสินค้า"
-        subtitle={
-          listResult ? `ทั้งหมด ${listResult.total.toLocaleString()} ชิ้น` : 'ค้นหา/แก้ไข/โอน/พิมพ์สติกเกอร์'
-        }
-        action={
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="md" onClick={() => navigate('/stock')}>
-              <BarChart3 className="size-4" />
-              ภาพรวม
-            </Button>
-            {isManager && selectedIds.size > 0 && (
-              <>
-                <Button variant="outline" size="md" onClick={() => setShowBulkTransfer(true)}>
-                  <ArrowRightLeft className="size-4" />
-                  โอน ({selectedIds.size})
-                </Button>
-                <Button
-                  variant="outline"
-                  size="md"
-                  onClick={() =>
-                    navigate(
-                      `/stickers?productIds=${encodeURIComponent(Array.from(selectedIds).join(','))}`,
-                    )
-                  }
-                >
-                  <Printer className="size-4" />
-                  พิมพ์ ({selectedIds.size})
-                </Button>
-                <Button
-                  variant="outline"
-                  size="md"
-                  disabled={publishMutation.isPending}
-                  onClick={() => askPublish('SELECTED')}
-                >
-                  <Globe className="size-4" />
-                  ส่งขึ้นเว็บ ({selectedIds.size})
-                </Button>
-              </>
-            )}
-            {isManager && selectedIds.size === 0 && (
+      <header className="mb-5 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground leading-snug sm:text-2xl">
+            รายการสินค้า
+          </h1>
+          <p className="mt-1 hidden text-sm text-muted-foreground leading-snug sm:block">
+            ดูราคาและสินค้าคงเหลือของแต่ละสาขา
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                size="md"
-                disabled={publishMutation.isPending}
-                onClick={() => askPublish('ALL_IN_STOCK')}
+                className="size-11 rounded-lg p-0 sm:w-auto sm:px-3"
+                aria-label="เครื่องมือ"
               >
-                <Globe className="size-4" />
-                {publishMutation.isPending ? 'กำลังส่ง...' : 'ส่งขึ้นเว็บทั้งสต็อก'}
+                <MoreHorizontal aria-hidden="true" className="size-4 sm:hidden" />
+                <span className="hidden sm:inline">เครื่องมือ</span>
+                <ChevronDown aria-hidden="true" className="hidden size-4 sm:block" />
               </Button>
-            )}
-            {isManager && (
-              <Button variant="outline" size="md" onClick={() => handleExport(listProducts)}>
-                <Download className="size-4" />
-                {selectedIds.size > 0 ? `ส่งออก (${selectedIds.size})` : 'ส่งออก CSV'}
-              </Button>
-            )}
-            {isManager && (
-              <Button variant="primary" size="md" onClick={() => navigate('/products/create')}>
-                <Plus className="size-4" />
-                เพิ่มสินค้า
-              </Button>
-            )}
-          </div>
-        }
-      />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuItem
+                className="min-h-11 cursor-pointer"
+                onSelect={() => navigate('/stock')}
+              >
+                <BarChart3 aria-hidden="true" />
+                ดูภาพรวมคลัง
+              </DropdownMenuItem>
+              {isManager && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="min-h-11 cursor-pointer"
+                    disabled={listLoading || !listProducts.length}
+                    onSelect={() => handleExport(listProducts)}
+                  >
+                    <Download aria-hidden="true" />
+                    {selectedIds.size > 0
+                      ? `ส่งออกที่เลือก (${selectedIds.size})`
+                      : 'ส่งออกหน้านี้เป็น CSV'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="min-h-11 cursor-pointer"
+                    disabled={publishMutation.isPending}
+                    onSelect={() => askPublish('ALL_IN_STOCK')}
+                  >
+                    <Globe aria-hidden="true" />
+                    ส่งขึ้นเว็บทั้งสต็อก
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {isManager && (
+            <Button
+              variant="primary"
+              className="h-11 shrink-0 rounded-lg px-3 shadow-xs"
+              aria-label="เพิ่มสินค้า"
+              onClick={() => navigate('/products/create')}
+            >
+              <Plus aria-hidden="true" className="size-4" />
+              <span className="sm:hidden">เพิ่ม</span>
+              <span className="hidden sm:inline">เพิ่มสินค้า</span>
+            </Button>
+          )}
+        </div>
+      </header>
 
       {/* สรุปหลังกดส่งขึ้นเว็บ — บอกตรง ๆ ว่าเหลือกี่เครื่องที่ยังไม่โผล่ และติดอะไร
           ถ้าไม่บอก เจ้าของจะนึกว่าเปิดแล้วต้องขึ้นครบ แล้วไปงงที่หน้าเว็บแทน */}
@@ -404,7 +603,8 @@ export default function StockProductsPage() {
             <div className="space-y-1">
               <p className="text-sm font-semibold text-foreground leading-snug">
                 เปิดแสดงบนเว็บ {bulkResult.matched.toLocaleString()} เครื่อง — ขึ้นหน้าร้านจริง{' '}
-                <span className="text-primary">{bulkResult.willAppear.toLocaleString()}</span> เครื่อง
+                <span className="text-primary">{bulkResult.willAppear.toLocaleString()}</span>{' '}
+                เครื่อง
               </p>
               {bulkResult.alreadySet > 0 && (
                 <p className="text-xs text-muted-foreground leading-snug">
@@ -441,31 +641,106 @@ export default function StockProductsPage() {
         </div>
       )}
 
-      <QueryBoundary
-        isLoading={listLoading && !listResult}
-        isError={listError}
-        error={listErrorObj}
-        onRetry={listRefetch}
-        errorTitle="ไม่สามารถโหลดคลังสินค้าได้"
-      >
-        <StockListTab
-          search={search}
-          setSearch={setSearch}
-          filterStatus={filterStatus}
-          setFilterStatus={setFilterStatus}
-          filterCategory={filterCategory}
-          setFilterCategory={setFilterCategory}
-          filterBranch={filterBranch}
-          setFilterBranch={setFilterBranch}
-          branches={branches}
-          columns={columns}
-          listProducts={listProducts}
-          listLoading={listLoading}
-          listResult={listResult}
-          page={page}
-          setPage={setPage}
-        />
-      </QueryBoundary>
+      {installmentPlans.isError && (
+        <div
+          role="alert"
+          className="mb-3 flex items-center gap-2 text-sm leading-snug text-destructive"
+        >
+          โหลดเงื่อนไขผ่อนไม่สำเร็จ จึงยังแสดงดาวน์และค่างวดบางรายการไม่ได้
+          <button
+            type="button"
+            className="underline"
+            onClick={installmentPlans.retry}
+            disabled={installmentPlans.isFetching}
+          >
+            ลองใหม่
+          </button>
+        </div>
+      )}
+      {accessoryGroupId && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <Button variant="outline" className="min-h-11" onClick={() => setAccessoryGroupId('')}>
+            กลับไปดูแบบรวม
+          </Button>
+          <p className="text-sm text-muted-foreground leading-snug">
+            รายการแต่ละชิ้นในกลุ่มอุปกรณ์ · เลือกชิ้นที่ต้องการจัดการ
+          </p>
+        </div>
+      )}
+      <StockListTab
+        accessoryGroupId={accessoryGroupId}
+        search={search}
+        setSearch={setSearch}
+        clearFilters={clearFilters}
+        filterStatus={filterStatus}
+        setFilterStatus={setFilterStatus}
+        filterCategory={filterCategory}
+        setFilterCategory={setFilterCategory}
+        filterBranch={filterBranch}
+        setFilterBranch={setFilterBranch}
+        branches={branches}
+        columns={columns}
+        sort={sort}
+        onSortChange={setSort}
+        listProducts={listProducts}
+        listLoading={listLoading}
+        listError={listError}
+        listErrorObj={listErrorObj}
+        listRefetch={listRefetch}
+        listResult={listResult}
+        page={page}
+        isManager={isManager}
+        selectedIds={selectedIds}
+        onSelectAll={() => toggleSelectAll(listProducts)}
+        bulkActions={
+          isManager && selectedIds.size > 0 ? (
+            <div
+              className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/25 bg-primary/5 px-3 py-2"
+              role="region"
+              aria-label="จัดการสินค้าที่เลือก"
+            >
+              <span className="mr-auto text-sm font-medium leading-snug">
+                เลือก {selectedIds.size} รายการ
+              </span>
+              <Button variant="outline" className="h-11" onClick={() => setShowBulkTransfer(true)}>
+                <ArrowRightLeft aria-hidden="true" className="size-4" />
+                โอนสาขา
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11"
+                onClick={() =>
+                  navigate(
+                    `/stickers?productIds=${encodeURIComponent(Array.from(selectedIds).join(','))}`,
+                  )
+                }
+              >
+                <Printer aria-hidden="true" className="size-4" />
+                พิมพ์สติกเกอร์
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11"
+                disabled={publishMutation.isPending}
+                onClick={() => askPublish('SELECTED')}
+              >
+                <Globe aria-hidden="true" className="size-4" />
+                ส่งขึ้นเว็บ
+              </Button>
+              <Button
+                variant="ghost"
+                mode="icon"
+                className="size-11"
+                aria-label="ยกเลิกการเลือกทั้งหมด"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                <X aria-hidden="true" className="size-4" />
+              </Button>
+            </div>
+          ) : undefined
+        }
+        setPage={setPage}
+      />
 
       <BulkTransferModal
         isOpen={showBulkTransfer}

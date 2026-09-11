@@ -132,15 +132,115 @@ describe('InstallmentPreviewService', () => {
     ]);
     prisma.gfinRateFactor.findFirst.mockResolvedValue({
       months: 12,
+      shopCommissionPct: 15,
       factor: new Prisma.Decimal('0.179238'),
       feePerInstallment: new Prisma.Decimal('100'),
       isActive: true,
     });
 
+    // ดาวน์ 30% ตรงตัวอย่างเดิม (ค่าตั้งค่า gfin.minDownPct ใน system_config = 30)
+    prisma.systemConfig.findFirst.mockImplementation(({ where }: { where: { key: string } }) =>
+      Promise.resolve(where.key === 'gfin.minDownPct' ? { value: '30' } : null),
+    );
+
     const result = await service.preview({ productId: 'p1', provider: 'GFIN', months: 12 });
     expect(result.available).toBe(true);
     expect(result.monthlyPayment).toBeCloseTo(2923.00, 2);
     expect(result.downAmount).toBeCloseTo(4150, 2); // downAmountActual = 6750 - 2600
+    // เรทถูกเลือกด้วยคู่ (งวด, %คอมตามหมวด) — มือถือ = 15
+    expect(prisma.gfinRateFactor.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ months: 12, shopCommissionPct: 15 }),
+      }),
+    );
+  });
+
+  it('GFIN: iPad (TABLET) ใช้เรทของคอม 5% และแมปเป็นมือ 1', async () => {
+    prisma.product.findFirst.mockResolvedValue({
+      id: 't1',
+      installmentPrice: new Prisma.Decimal('12000'),
+      prices: [],
+      category: 'TABLET',
+      brand: 'Apple',
+      model: 'iPad 10',
+      storage: '64GB',
+      deletedAt: null,
+    });
+    prisma.gfinModelMapping.findMany.mockResolvedValue([
+      {
+        id: 'mt',
+        gfinSeries: 'iPad 10',
+        gfinVariant: null,
+        storage: '64GB',
+        condition: 'HAND_1',
+        maxPrice: new Prisma.Decimal('12000'),
+        modelMatchPattern: 'iPad 10',
+        isActive: true,
+      },
+    ]);
+    prisma.gfinOverpriceRule.findMany.mockResolvedValue([]);
+    prisma.gfinRateFactor.findFirst.mockResolvedValue({
+      months: 12,
+      shopCommissionPct: 5,
+      factor: new Prisma.Decimal('0.179238'),
+      feePerInstallment: new Prisma.Decimal('100'),
+      isActive: true,
+    });
+
+    const result = await service.preview({ productId: 't1', provider: 'GFIN', months: 12 });
+    expect(result.available).toBe(true);
+    expect(prisma.gfinRateFactor.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ months: 12, shopCommissionPct: 5 }),
+      }),
+    );
+  });
+
+  it('GFIN: งวดเกินเพดานของซีรีส์ (maxMonths) → available:false reason months_over_max', async () => {
+    prisma.product.findFirst.mockResolvedValue({
+      id: 'p1',
+      installmentPrice: new Prisma.Decimal('19900'),
+      prices: [],
+      category: 'PHONE_USED',
+      brand: 'Apple',
+      model: 'iPhone 14 Pro',
+      storage: '128GB',
+      deletedAt: null,
+    });
+    prisma.gfinModelMapping.findMany.mockResolvedValue([
+      {
+        id: 'm1',
+        gfinSeries: 'iPhone 14',
+        gfinVariant: 'Pro',
+        storage: '128GB',
+        condition: 'HAND_2',
+        maxPrice: new Prisma.Decimal('21500'),
+        modelMatchPattern: 'iPhone 14 Pro',
+        isActive: true,
+      },
+    ]);
+    prisma.gfinOverpriceRule.findMany.mockResolvedValue([
+      {
+        id: 'r1',
+        label: 'iPhone 14 มือ 2',
+        seriesPattern: 'iPhone 14|iPhone 15',
+        condition: 'HAND_2',
+        allowance: new Prisma.Decimal('1000'),
+        maxMonths: 12,
+        isActive: true,
+      },
+    ]);
+    prisma.gfinRateFactor.findFirst.mockResolvedValue({
+      months: 15,
+      shopCommissionPct: 15,
+      factor: new Prisma.Decimal('0.1467'),
+      feePerInstallment: new Prisma.Decimal('100'),
+      isActive: true,
+    });
+
+    const result = await service.preview({ productId: 'p1', provider: 'GFIN', months: 15 });
+    expect(result.available).toBe(false);
+    expect(result.reason).toBe('months_over_max');
   });
 
   it('SECURITY: never leaks maxPrice, factor, seriesPattern in response', async () => {
@@ -178,6 +278,7 @@ describe('InstallmentPreviewService', () => {
     ]);
     prisma.gfinRateFactor.findFirst.mockResolvedValue({
       months: 12,
+      shopCommissionPct: 15,
       factor: new Prisma.Decimal('0.179238'),
       feePerInstallment: new Prisma.Decimal('100'),
       isActive: true,

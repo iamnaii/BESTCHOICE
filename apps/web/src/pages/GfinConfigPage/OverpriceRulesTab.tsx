@@ -35,6 +35,8 @@ interface OverpriceRule {
   seriesPattern: string;
   condition: 'HAND_1' | 'HAND_2';
   allowance: string;
+  /** ผ่อนได้สูงสุด (งวด) ตามตารางราคา GFIN — null = ไม่จำกัด */
+  maxMonths: number | null;
   isActive: boolean;
   updatedAt: string;
 }
@@ -112,6 +114,7 @@ export function OverpriceRulesTab() {
             <TableHead>Series Pattern</TableHead>
             <TableHead>สภาพ</TableHead>
             <TableHead className="text-right">Allowance (฿)</TableHead>
+            <TableHead className="text-right">ผ่อนสูงสุด</TableHead>
             <TableHead>ใช้งาน</TableHead>
             <TableHead>การกระทำ</TableHead>
           </TableRow>
@@ -124,6 +127,9 @@ export function OverpriceRulesTab() {
               <TableCell>{row.condition === 'HAND_1' ? 'มือ 1' : 'มือ 2'}</TableCell>
               <TableCell className="text-right">
                 {Number(row.allowance).toLocaleString('th-TH')}
+              </TableCell>
+              <TableCell className="text-right">
+                {row.maxMonths != null ? `${row.maxMonths} งวด` : 'ไม่จำกัด'}
               </TableCell>
               <TableCell>
                 <Switch
@@ -153,7 +159,7 @@ export function OverpriceRulesTab() {
           ))}
           {filtered.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="text-center text-muted-foreground">
+              <TableCell colSpan={7} className="text-center text-muted-foreground">
                 ไม่พบรายการ
               </TableCell>
             </TableRow>
@@ -191,6 +197,7 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
     seriesPattern: initial?.seriesPattern ?? '',
     condition: (initial?.condition ?? 'HAND_2') as 'HAND_1' | 'HAND_2',
     allowance: initial?.allowance ?? '',
+    maxMonths: initial?.maxMonths != null ? String(initial.maxMonths) : '',
   });
 
   const save = useMutation({
@@ -198,6 +205,7 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
       const payload = {
         ...form,
         allowance: Number(form.allowance),
+        maxMonths: form.maxMonths.trim() === '' ? null : Number(form.maxMonths),
       };
       return initial
         ? api.patch(`/gfin-config/overprice-rules/${initial.id}`, payload)
@@ -266,6 +274,20 @@ function OverpriceRuleFormDialog({ initial, onClose, onSaved }: DialogProps) {
             />
             <p className="text-xs text-muted-foreground mt-1 leading-snug">
               ราคาที่อนุญาตให้เกินได้จาก max price ของ GFIN
+            </p>
+          </div>
+          <div>
+            <label className="text-sm font-medium">ผ่อนได้สูงสุด (งวด)</label>
+            <Input
+              type="number"
+              min="1"
+              max="36"
+              value={form.maxMonths}
+              onChange={(e) => setForm((f) => ({ ...f, maxMonths: e.target.value }))}
+              placeholder="ว่าง = ไม่จำกัด"
+            />
+            <p className="text-xs text-muted-foreground mt-1 leading-snug">
+              ตามคอลัมน์ "ผ่อนสูงสุด" ในตารางราคา GFIN (12 series = 10 · 13-15 = 12 · 16-17 = 15)
             </p>
           </div>
         </div>

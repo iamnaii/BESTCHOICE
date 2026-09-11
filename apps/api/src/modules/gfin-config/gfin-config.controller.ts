@@ -23,6 +23,7 @@ import {
   UpdateOverpriceRuleDto,
   CreateRateFactorDto,
   UpdateRateFactorDto,
+  UpdateGfinSettingsDto,
 } from './dto';
 
 @Controller('gfin-config')
@@ -30,6 +31,20 @@ import {
 @UsePipes(new ValidationPipe({ whitelist: true }))
 export class GfinConfigController {
   constructor(private service: GfinConfigService) {}
+
+  // ===== ค่าตั้งค่า GFIN (ดาวน์ขั้นต่ำ · คอมตามหมวด · ค่าทำสัญญา) =====
+
+  @Get('settings')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  getSettings() {
+    return this.service.getSettings();
+  }
+
+  @Patch('settings')
+  @Roles('OWNER')
+  updateSettings(@Body() dto: UpdateGfinSettingsDto, @Req() req: { user: { id: string } }) {
+    return this.service.updateSettings(dto, req.user.id);
+  }
 
   // ===== Max Prices =====
 

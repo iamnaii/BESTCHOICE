@@ -12,7 +12,9 @@ export {
   calcGfinInstallment,
   findGfinMapping,
   findGfinOverpriceRule,
+  findGfinRateFactor,
 } from './installment-calc';
 export type * from './installment-calc.types';
+export * from './gfin-customer-summary';
 export * from './default-bc-installment';
 export * from './stock-sort';

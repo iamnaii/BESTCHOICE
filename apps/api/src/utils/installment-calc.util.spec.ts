@@ -127,6 +127,7 @@ describe('calcBcInstallment', () => {
 describe('calcGfinInstallment', () => {
   const rateFactor12: GfinRateFactorRow = {
     months: 12,
+    shopCommissionPct: 15,
     factor: d('0.05'),
     feePerInstallment: d('50'),
     isActive: true,
@@ -147,6 +148,7 @@ describe('calcGfinInstallment', () => {
     seriesPattern: 'iPhone 14|iPhone 15',
     condition: 'HAND_1',
     allowance: d('500'),
+    maxMonths: null,
     isActive: true,
   };
   const product: ProductForGfin = {
@@ -175,8 +177,9 @@ describe('calcGfinInstallment', () => {
     expect(r.downAmountByFormula.toFixed(2)).toBe('3450.00'); // 11500 * 0.30
     expect(r.downAmountActual.toFixed(2)).toBe('1950.00'); // max(3450 - 1500, 0)
     expect(r.financedAmount.toFixed(2)).toBe('8050.00'); // 11500 - 3450
-    expect(r.monthlyPayment.toFixed(2)).toBe('452.50'); // 0.05 * 8050 + 50
-    expect(r.totalPayback.toFixed(2)).toBe('5430.00'); // 452.50 * 12
+    // 2026-09-11: GFIN ปัดขึ้นเป็นบาท — ceil(0.05 * 8050 = 402.5) = 403 + 50
+    expect(r.monthlyPayment.toFixed(2)).toBe('453.00');
+    expect(r.totalPayback.toFixed(2)).toBe('5436.00'); // 453 * 12
     expect(r.feePerInstallment.toFixed(2)).toBe('50.00');
   });
 
@@ -187,7 +190,13 @@ describe('calcGfinInstallment', () => {
       months: 10,
       mapping: { ...mapping, maxPrice: d('12000') },
       overpriceRule: null,
-      rateFactor: { months: 10, factor: d('0.04'), feePerInstallment: d('0'), isActive: true },
+      rateFactor: {
+        months: 10,
+        shopCommissionPct: 15,
+        factor: d('0.04'),
+        feePerInstallment: d('0'),
+        isActive: true,
+      },
     });
 
     expect(r.isValid).toBe(true);
@@ -208,7 +217,13 @@ describe('calcGfinInstallment', () => {
       months: 12,
       mapping,
       overpriceRule,
-      rateFactor: { months: 10, factor: d('0.05'), feePerInstallment: d('50'), isActive: false },
+      rateFactor: {
+        months: 10,
+        shopCommissionPct: 15,
+        factor: d('0.05'),
+        feePerInstallment: d('50'),
+        isActive: false,
+      },
     });
 
     expect(r.isValid).toBe(false);
@@ -270,6 +285,7 @@ describe('findGfinOverpriceRule', () => {
     seriesPattern: 'iPhone 14 | iPhone 15',
     condition: 'HAND_1',
     allowance: new Decimal('500'),
+    maxMonths: null,
     isActive: true,
   };
   const mapping: GfinModelMappingRow = {

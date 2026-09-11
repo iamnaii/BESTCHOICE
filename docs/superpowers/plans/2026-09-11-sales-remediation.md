@@ -1,6 +1,6 @@
 # BESTCHOICE Sales Remediation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task in the current session. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task in the current session. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** แก้หมวดขายทั้ง 6 เมนูให้สิทธิ์ ตัวเลข สถานะ และงานที่ทำต่อสอดคล้องกัน พร้อม UX/UI ที่ใช้ได้จริงบน desktop และ mobile
 
@@ -111,12 +111,12 @@
 
 **Interfaces:** รับผล A1–D5 และ HTTP/browser/DB evidence; ส่งมอบ status ต่อ finding เป็น fixed / remaining / policy extension พร้อม commit และ test ที่รองรับ
 
-- [ ] ตรวจ flow ขายสด→void, จอง→รับมัดจำ→รับส่วนต่าง→ขาย, จอง→ยกเลิก/หมดอายุ, เครดิต→สร้าง→ลงนาม→activate, external→รอรับ→settle โดยใช้เงิน/สต็อก/ledger ในฐานชั่วคราว
-- [ ] ทวน SALES, BRANCH_MANAGER, OWNER, FINANCE_MANAGER, ACCOUNTANT ที่มี/ไม่มีสิทธิ์บริษัทและไม่มีสาขา; detail/deep link ต้องให้ผลตรง list
-- [ ] รันชุด PostgreSQL ที่เพิ่ม test discovery แล้ว และ `LOCAL_PREVIEW_PORT=5207 npm run local:check` หากพอร์ตยังเป็น managed preview ของ checkout นี้ มิฉะนั้นเลือกพอร์ตว่างใหม่
-- [ ] เก็บภาพจริงครบตาราง UX/UI พร้อม success/loading/empty/error; รายงานแยกสิ่งที่จำลอง เช่น AI, OTP, storage และการรับเงินจริง
-- [ ] อัปเดต coverage matrix จากผลทดสอบ ไม่ใช้ diagnostic เดิมที่ “ผ่านเมื่อทำซ้ำ bug ได้” เป็นหลักฐานว่าแก้แล้ว
-- [ ] ตรวจ diff เฉพาะไฟล์งานนี้ แล้ว commit เป็นชุดเล็กที่ผ่าน review/test; ไม่ stage ทั้ง repository และไม่ merge/deploy
+- [x] ตรวจ flow ขายสด→void, จอง→รับมัดจำ→รับส่วนต่าง→ขาย, จอง→ยกเลิก/หมดอายุ, เครดิต→สร้าง→ลงนาม→activate, external→รอรับ→settle โดยใช้เงิน/สต็อก/ledger ในฐานชั่วคราว
+- [x] ทวน SALES, BRANCH_MANAGER, OWNER, FINANCE_MANAGER, ACCOUNTANT ที่มี/ไม่มีสิทธิ์บริษัทและไม่มีสาขา; detail/deep link ต้องให้ผลตรง list
+- [x] รันชุด PostgreSQL ที่เพิ่ม test discovery แล้ว และ `LOCAL_PREVIEW_PORT=5207 npm run local:check` หากพอร์ตยังเป็น managed preview ของ checkout นี้ มิฉะนั้นเลือกพอร์ตว่างใหม่
+- [x] เก็บภาพจริงครบตาราง UX/UI พร้อม success/loading/empty/error; รายงานแยกสิ่งที่จำลอง เช่น AI, OTP, storage และการรับเงินจริง
+- [x] อัปเดต coverage matrix จากผลทดสอบ ไม่ใช้ diagnostic เดิมที่ “ผ่านเมื่อทำซ้ำ bug ได้” เป็นหลักฐานว่าแก้แล้ว
+- [x] ตรวจ diff เฉพาะไฟล์งานนี้ แล้ว commit เป็นชุดเล็กที่ผ่าน review/test; ไม่ stage ทั้ง repository และไม่ merge/deploy
 
 **เกณฑ์ปิดแผน:** A–D และ M1 ผ่านทั้งหมด ข้อผิดพลาด 18+8 มี evidence ปิดหรือระบุข้อจำกัดนโยบายอย่างตรงไปตรงมา; feature ระยะขยายไม่แอบเปิดใน UI; local server จาก checkout ที่แก้ยังทำงานและมี URL ส่งมอบ
 

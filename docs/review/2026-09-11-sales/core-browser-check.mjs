@@ -1,3 +1,4 @@
+import { resolveSignatureRequirements } from '@installment/shared';
 // Run from repository root: node docs/review/2026-09-11-sales/core-browser-check.mjs
 // Real UI from this checkout; synthetic API responses for POS/signing, no real writes.
 import assert from 'node:assert/strict';
@@ -19,7 +20,7 @@ const product = { id: 'core-product', name: 'เครื่องตัวอ�
     { id: 'loan', label: 'ราคาผ่อน BESTCHOICE', amount: '10000', isDefault: false },
   ] };
 const contract = { id: 'core-contract', contractNumber: 'DEMO-CORE-001', status: 'DRAFT', workflowStatus: 'CREATING',
-  pdpaConsentId: 'synthetic-consent', customer, product, salesperson: actor, signatures: [], totalMonths: 6, monthlyPayment: 1500 };
+  pdpaConsentId: 'synthetic-consent', customer, product, salesperson: actor, signatures: [], signatureRequirements: resolveSignatureRequirements([], false), totalMonths: 6, monthlyPayment: 1500 };
 const browser = await chromium.launch({ headless: true });
 const results = [];
 try {

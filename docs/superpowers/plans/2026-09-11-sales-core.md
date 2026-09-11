@@ -35,7 +35,7 @@
 - [x] บันทึก `git status --short`, revision และผล `npm ls gsap --workspace=@installment/web-shop --depth=0` ก่อนแก้
 - [x] ตรวจ lockfile ว่าล็อก `gsap` และ `@gsap/react` แล้ว; คืน dependency จาก lock เดิมด้วย `npm ci --ignore-scripts` ใน checkout นี้ ตรวจ diff ว่า manifest/lock ไม่ถูกอัปเกรด จากนั้นรัน Prisma generate/build ผ่าน `local:check` ตามเดิม
 - [x] รัน `LOCAL_PREVIEW_PORT=5207 npm run local:check` โดยตรวจเจ้าของ process ก่อนใช้พอร์ต; บันทึก failure ที่เหลือเป็น baseline ไม่ลบ tests เพื่อให้ผ่าน
-- [ ] เมื่อเพิ่ม DB spec ใน task ถัดไป เพิ่มชื่อ `sales-read-scope`, `sales-money-regression`, `bookings-lifecycle`, `contract-sales-consistency` ใน `testRegex` ของ `apps/api/e2e/jest-chat-credit.json` และตรวจ discovery:
+- [x] เพิ่ม `sales-read-scope`, `sales-money-regression`, `bookings-lifecycle` ใน `testRegex` ของ `apps/api/e2e/jest-chat-credit.json` และตรวจ discovery; contract consistency เพิ่มใน `credit-payment-flow` เดิมแทนการสร้าง spec ซ้ำ:
 
 ```sh
 cd apps/api
@@ -136,7 +136,7 @@ const sellingPriceValue = saleType === 'CASH'
 saleForm.setValue('sellingPrice', sellingPriceValue ?? 0, { shouldValidate: true });
 ```
 
-- [ ] ทดสอบ manual price/discount/bundle/trade-in ไม่ถูก reset หลังเปลี่ยน customer หรือ rerender; browser 1440/390 แสดง CASH 9000 และคำเตือนเมื่อไม่มีราคา
+- [x] ทดสอบราคาที่เลือกคงเดิมเมื่อเปลี่ยนลูกค้า และส่วนลดคงเดิมเมื่อเปลี่ยนเครื่อง; ทวนของแถมจากโค้ด; browser 1440/390 แสดง CASH 9000 และคำเตือนเมื่อไม่มีราคา. ไม่เพิ่ม manual price override; เครดิตเทิร์นยังล้างเมื่อเปลี่ยน customer/product/type ตามนโยบายเดิมเพื่อไม่ใช้เงินผิดบริบท
 - [x] ผ่าน targeted tests, `local:check`, review แล้ว commit `fix(pos): select the cash price for cash sales`
 
 ## Task A4: External finance ดาวน์ศูนย์ไม่สร้างยอดรับเทียม
@@ -197,6 +197,6 @@ const continueToSign = () => { if (canContinue) onComplete(); };
 - PostgreSQL รวม 8 suites / 91 tests ผ่าน; web targeted POS 7 + signing 12 = 19 tests; API targeted 81 tests
 - เพิ่ม `SigningWizard.test.tsx` เพื่อครอบ consent หลังไปขั้นเซ็นและ callback ค้างจากรอบก่อน นอกเหนือจาก review-component test เดิม
 - รายละเอียดผล `local:check`, browser 1440/390, ข้อจำกัด และ read-only legacy query อยู่ใน [verification report](../../review/2026-09-11-sales/remediation-verification.md)
-- Test discovery ตอนนี้เพิ่มเฉพาะ `sales-read-scope` และ `sales-money-regression` ที่สร้างจริง; booking/contract specs รอชุด B/C
+- Test discovery ณ ชุด A เพิ่ม `sales-read-scope` และ `sales-money-regression`; ชุด B เพิ่ม `bookings-lifecycle` และชุด C เพิ่ม contract consistency ใน `credit-payment-flow` เดิมแล้ว (รอบรวมสุดท้าย9 suites/123 tests)
 
 - Final checkpoint: `local:check` PASS 21 checks; Web 1928 / shared77 / storefront31; browser core 8 states (1440/390) ไม่ล้น ไม่มี uncaught error/การเขียนธุรกรรมจริง

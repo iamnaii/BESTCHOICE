@@ -59,11 +59,11 @@ try {
       await page.getByRole('option', { name: option, exact: true }).click();
     };
     await open();
-    await expect(page.getByRole('button', { name: 'แปลงเป็นการขาย', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: /รับส่วนต่างและขาย|ขายโดยใช้มัดจำที่รับแล้ว/, exact: true })).toBeDisabled();
     await choose('วิธีรับส่วนต่าง', 'โอนธนาคาร');
     await page.getByRole('checkbox', { name: 'ยืนยันว่าได้รับยอดส่วนต่างครบแล้ว' }).check();
     await snap('paid-balance');
-    await page.getByRole('button', { name: 'แปลงเป็นการขาย', exact: true }).click();
+    await page.getByRole('button', { name: /รับส่วนต่างและขาย|ขายโดยใช้มัดจำที่รับแล้ว/, exact: true }).click();
     await expect(page.getByText('SYNTHETIC-SALE', { exact: true })).toBeVisible();
     await snap('converted');
 
@@ -72,7 +72,7 @@ try {
     await expect(page.getByText(/รับเข้าบัญชี SHOP/)).toContainText('S11-1101');
     await choose('วิธีรับมัดจำ', 'โอนธนาคาร');
     await snap('pending-deposit');
-    await page.getByRole('button', { name: 'ชำระมัดจำ', exact: true }).click();
+    await page.getByRole('button', { name: 'บันทึกรับมัดจำ', exact: true }).click();
     await expect(page.getByRole('button', { name: 'แก้หมายเหตุ / วันหมดอายุ', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'แก้หมายเหตุ / วันหมดอายุ', exact: true }).click();
     await expect(page.getByLabel('มัดจำที่รับแล้ว (บาท)')).toHaveAttribute('readonly', '');
@@ -80,22 +80,22 @@ try {
 
     booking = { ...initial(), depositAmount: '10000' }; await open();
     await expect(page.getByRole('combobox', { name: 'วิธีรับส่วนต่าง' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'แปลงเป็นการขาย', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: /รับส่วนต่างและขาย|ขายโดยใช้มัดจำที่รับแล้ว/, exact: true })).toBeEnabled();
     await snap('fully-prepaid');
     booking = { ...initial(), items: [{ ...initial().items[0], quantity: 2 }] }; await open();
     await expect(page.getByRole('alert')).toContainText('1 รายการ จำนวน 1 ชิ้น');
-    await expect(page.getByRole('button', { name: 'แปลงเป็นการขาย', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: /รับส่วนต่างและขาย|ขายโดยใช้มัดจำที่รับแล้ว/, exact: true })).toBeDisabled();
     await snap('legacy-items-blocked');
     booking = { ...initial(), expireDate: '2000-01-01T17:00:00.000Z' }; await open();
     await expect(page.getByRole('status')).toContainText('ถึงกำหนดหมดอายุแล้ว');
-    await expect(page.getByRole('button', { name: 'แปลงเป็นการขาย', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /รับส่วนต่างและขาย|ขายโดยใช้มัดจำที่รับแล้ว/, exact: true })).toHaveCount(0);
     await snap('expired');
 
     booking = initial(); detailFails = true; await open();
     await expect(page.getByRole('alert')).toContainText('โหลดใบจองไม่สำเร็จ', { timeout: 15000 });
     await snap('detail-error');
     detailFails = false; await page.getByRole('button', { name: 'ลองใหม่', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'แปลงเป็นการขาย', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /รับส่วนต่างและขาย|ขายโดยใช้มัดจำที่รับแล้ว/, exact: true })).toBeVisible();
     await snap('detail-recovered');
 
     await page.goto(`${origin}/bookings`);

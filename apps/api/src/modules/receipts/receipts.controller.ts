@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Query, UseGuards, Res } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Post, Param, Body, Query, UseGuards, Res } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { ReceiptsService } from './receipts.service';
@@ -10,17 +10,22 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { VoidReceiptDto } from './dto/void-receipt.dto';
 import { IssueCreditNoteDto } from './dto/issue-credit-note.dto';
 import { ExportEnabledGuard } from '../settings/guards/export-enabled.guard';
+import { ReceiptAccessGuard } from './receipt-access.guard';
+import { hasCrossBranchAccess } from '../auth/branch-access.util';
 
 @ApiTags('Receipts')
 @ApiBearerAuth('JWT')
 @Controller('receipts')
-@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
+// ReceiptAccessGuard: BranchGuard only checks an explicit branchId param, so
+// receipt/contract-addressed routes must resolve the owning branch themselves.
+@UseGuards(JwtAuthGuard, RolesGuard, BranchGuard, ReceiptAccessGuard)
 export class ReceiptsController {
   constructor(private receiptsService: ReceiptsService) {}
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
+    @CurrentUser() user: { role: string; branchId: string | null },
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
@@ -29,6 +34,12 @@ export class ReceiptsController {
     @Query('dateTo') dateTo?: string,
     @Query('branchId') branchId?: string,
   ) {
+    // Branch-bound roles list their own branch only (BranchGuard already rejected a foreign branchId).
+    let scopedBranchId = branchId;
+    if (!hasCrossBranchAccess(user)) {
+      if (!user.branchId) throw new ForbiddenException('บัญชีนี้ยังไม่มีสาขาที่รับผิดชอบ');
+      scopedBranchId = user.branchId;
+    }
     return this.receiptsService.findAll({
       page: page ? parseInt(page, 10) : undefined,
       limit: limit ? Math.min(parseInt(limit, 10), 10000) : undefined,
@@ -36,7 +47,7 @@ export class ReceiptsController {
       receiptType,
       dateFrom,
       dateTo,
-      branchId,
+      branchId: scopedBranchId,
     });
   }
 

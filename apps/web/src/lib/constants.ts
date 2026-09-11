@@ -84,3 +84,10 @@ export const transferStatusLabels: Record<string, { label: string; className: st
   CONFIRMED: { label: 'รับแล้ว', className: 'bg-success/10 text-success' },
   REJECTED: { label: 'ปฏิเสธ', className: 'bg-destructive/10 text-destructive' },
 };
+
+/**
+ * บทบาทที่สร้างลูกค้าใหม่ได้ — ต้องตรงกับ `@Roles` ของ `POST /customers` (customers.controller.ts)
+ * ใช้ซ่อน/ปิดปุ่ม "เพิ่มลูกค้า" ทุกจุด (หน้าลูกค้า · แผงขวาห้องแชท) จะได้ไม่กรอกจนจบแล้ว 403
+ */
+export const CUSTOMER_CREATE_ROLES = ['OWNER', 'BRANCH_MANAGER', 'SALES'];
+export const canCreateCustomer = (role: string | null | undefined): boolean => CUSTOMER_CREATE_ROLES.includes(role ?? '');

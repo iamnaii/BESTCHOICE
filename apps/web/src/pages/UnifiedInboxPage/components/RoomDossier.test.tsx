@@ -5,10 +5,31 @@ import { MemoryRouter } from 'react-router';
 import type { ReactNode } from 'react';
 
 const apiGet = vi.fn();
+const apiPatch = vi.fn();
 vi.mock('@/lib/api', () => ({
   __esModule: true,
-  default: { get: (...args: unknown[]) => apiGet(...args), post: vi.fn(), patch: vi.fn() },
+  default: { get: (...args: unknown[]) => apiGet(...args), post: vi.fn(), patch: (...args: unknown[]) => apiPatch(...args) },
 }));
+// สิทธิ์สร้างลูกค้าอ่านจาก useAuth — ค่าเริ่มต้นเป็นฝ่ายขาย (สร้างได้) เทสสิทธิ์สลับเป็นบัญชี
+const authRole = { role: 'SALES' };
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u-1', role: authRole.role } }) }));
+// ฟอร์มสร้างลูกค้ามีเทสของตัวเอง — ที่นี่เช็คแค่ว่าเปิดเป็น popup (ไม่ navigate) ส่งค่าตั้งต้นถูก และสร้างเสร็จแล้วผูกห้อง
+vi.mock('@/components/customer/CustomerCreateDialog', async () => {
+  const actual = await vi.importActual<typeof import('@/components/customer/CustomerCreateDialog')>('@/components/customer/CustomerCreateDialog');
+  return {
+    __esModule: true,
+    splitDisplayName: actual.splitDisplayName,
+    default: (p: { open: boolean; submitLabel?: string; initialValues?: Record<string, string>; onCreated: (c: { id: string; name: string }) => void; onUseExisting?: (c: { id: string; name: string }) => void }) =>
+      p.open ? (
+        <div data-testid="create-dialog">
+          <span>{JSON.stringify(p.initialValues)}</span>
+          <span>{p.submitLabel}</span>
+          <button onClick={() => p.onCreated({ id: 'c-new', name: 'ลูกค้าใหม่' })}>จำลองสร้างเสร็จ</button>
+          <button onClick={() => p.onUseExisting?.({ id: 'c-old', name: 'คนเดิม' })}>จำลองใช้คนเดิม</button>
+        </div>
+      ) : null,
+  };
+});
 // บล็อกเดิมของแผงลูกค้าหนักและมีไดอะล็อกเยอะ — ที่นี่ทดสอบโครงแท็บ ไม่ใช่เนื้อในของแผงเดิม
 vi.mock('./Customer360Panel', () => ({ __esModule: true, default: (p: { sections?: string[] }) => <div data-testid="c360">{(p.sections ?? []).join(',')}</div> }));
 vi.mock('./ProductContextCard', () => ({ __esModule: true, default: () => <div data-testid="product-card" /> }));
@@ -50,6 +71,44 @@ describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)',
   beforeEach(() => {
     apiGet.mockReset();
     apiGet.mockResolvedValue({ data: [] });
+    apiPatch.mockReset();
+    apiPatch.mockResolvedValue({ data: {} });
+    authRole.role = 'SALES';
+  });
+
+  it('สร้างลูกค้าใหม่: เปิดเป็น popup ในห้อง (ไม่ navigate) · เติมชื่อ/นามสกุลจากชื่อห้อง + ชื่อ Facebook เมื่อเป็นห้อง Facebook · ป้ายปุ่ม "บันทึกและผูกกับแชท"', () => {
+    wrap(<RoomDossier room={ROOM} customerId={null} activeRoomId="r-1" />);
+    expect(screen.queryByTestId('create-dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /สร้างลูกค้าใหม่/ }));
+    const dlg = screen.getByTestId('create-dialog');
+    expect(dlg).toHaveTextContent('บันทึกและผูกกับแชท');
+    expect(JSON.parse(dlg.querySelector('span')!.textContent!)).toEqual({ firstName: 'สมชาย', lastName: 'ก.', facebookName: 'สมชาย ก.' });
+    // ยังอยู่หน้าเดิม — ไม่มีการ navigate ไป /customers
+    expect(screen.getByText('⚠ ห้องนี้ยังไม่ได้ผูกกับลูกค้า')).toBeInTheDocument();
+  });
+
+  it('ห้อง LINE ไม่เติมชื่อ Facebook', () => {
+    wrap(<RoomDossier room={{ ...ROOM, channel: 'LINE_SHOP', displayName: 'Nan' }} customerId={null} activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /สร้างลูกค้าใหม่/ }));
+    expect(JSON.parse(screen.getByTestId('create-dialog').querySelector('span')!.textContent!)).toEqual({ firstName: 'Nan', lastName: '' });
+  });
+
+  it('สร้างเสร็จ → PATCH /staff-chat/rooms/:id/customer ด้วย id ใหม่ · เจอคนเดิม (409) → ผูกคนเดิมด้วยเส้นทางเดียวกัน', async () => {
+    wrap(<RoomDossier room={ROOM} customerId={null} activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /สร้างลูกค้าใหม่/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'จำลองสร้างเสร็จ' }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/staff-chat/rooms/r-1/customer', { customerId: 'c-new' }));
+    fireEvent.click(screen.getByRole('button', { name: 'จำลองใช้คนเดิม' }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/staff-chat/rooms/r-1/customer', { customerId: 'c-old' }));
+  });
+
+  it('บทบาทที่ POST /customers ไม่รับ (เช่น ACCOUNTANT) → ปุ่มสร้างลูกค้าใหม่ปิดพร้อมเหตุผล · ปุ่มค้นหาลูกค้าเดิมยังกดได้', () => {
+    authRole.role = 'ACCOUNTANT';
+    wrap(<RoomDossier room={ROOM} customerId={null} activeRoomId="r-1" />);
+    const btn = screen.getByRole('button', { name: /สร้างลูกค้าใหม่/ });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute('title', expect.stringContaining('เจ้าของ'));
+    expect(screen.getByRole('button', { name: /ค้นหาลูกค้าเดิม/ })).toBeEnabled();
   });
 
   it('ห้องยังไม่ผูก: หัวบอกตรง ๆ · กล่องเตือน + 2 ปุ่ม · เริ่มคุยเมื่อ · มาจากโฆษณา · ช่องทางแชทไม่วาดแถวที่ไม่รู้', () => {

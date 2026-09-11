@@ -23,7 +23,7 @@ export default function PdfExportButton() {
     const now = new Date();
     return { from: startOfDay(subDays(now, 6)), to: endOfDay(now) };
   });
-  const generate = useGeneratePdf();
+  const generate = useGeneratePdf(() => setOpen(false));
 
   return (
     <>
@@ -37,27 +37,24 @@ export default function PdfExportButton() {
         <Download className="h-4 w-4" />
         ส่งออก PDF
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => { if (!next) generate.cancel(); setOpen(next); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>ส่งออกรายงาน PDF</DialogTitle>
             <DialogDescription>เลือกช่วงวันที่สำหรับรายงานติดตามหนี้</DialogDescription>
           </DialogHeader>
-          <div className="py-2">
+          <fieldset className="py-2" disabled={generate.isPending}>
             <DateRangePicker value={range} onChange={setRange} />
-          </div>
+          </fieldset>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>
+            <Button variant="ghost" onClick={() => { generate.cancel(); setOpen(false); }}>
               ยกเลิก
             </Button>
             <Button
               disabled={!range.from || !range.to || generate.isPending}
               onClick={() => {
                 if (!range.from || !range.to) return;
-                generate.mutate(
-                  { from: range.from, to: range.to },
-                  { onSuccess: () => setOpen(false) },
-                );
+                generate.generate({ from: range.from, to: range.to });
               }}
               className="gap-2"
             >

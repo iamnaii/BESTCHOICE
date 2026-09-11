@@ -1,3 +1,4 @@
+import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -21,22 +22,6 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Download, MoreHorizontal, Send, XCircle } from 'lucide-react';
 import type { VoidedReceiptInfo } from '../types';
 
-async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
-  try {
-    const res = await api.get(`/receipts/${receiptId}/pdf`, { responseType: 'blob' });
-    const blob = new Blob([res.data], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${receiptNumber}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    toast.error(getErrorMessage(err) || 'ไม่สามารถดาวน์โหลดใบเสร็จ');
-  }
-}
 
 interface Receipt {
   id: string;
@@ -241,14 +226,13 @@ export default function ReceiptsTab({ onVoided }: ReceiptsTabProps) {
       label: '',
       render: (r: Receipt) => (
         <div className="flex items-center gap-1 justify-end">
-          <button
-            onClick={() => downloadReceiptPdf(r.id, r.receiptNumber)}
+          <DocumentDownloadButton path={`/receipts/${r.id}/pdf`} filename={`${r.receiptNumber}.pdf`}
             className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded transition-colors"
             title="ดาวน์โหลดใบเสร็จ PDF"
           >
             <Download className="h-3 w-3" />
             ใบเสร็จ
-          </button>
+          </DocumentDownloadButton>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button

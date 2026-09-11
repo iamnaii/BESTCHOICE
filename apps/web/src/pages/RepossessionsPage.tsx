@@ -1,3 +1,4 @@
+import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -31,22 +32,6 @@ interface AwaitingRepossessionContract {
 /** Roles that may open the JP5 overlay (preview = OWNER/BM/FM; submit stays OWNER-only inside it). */
 const REPO_OPEN_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
 
-async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
-  try {
-    const res = await api.get(`/receipts/${receiptId}/pdf`, { responseType: 'blob' });
-    const blob = new Blob([res.data], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${receiptNumber}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    toast.error(getErrorMessage(err) || 'ไม่สามารถดาวน์โหลดใบลดหนี้');
-  }
-}
 
 interface Repossession {
   id: string;
@@ -480,14 +465,13 @@ export default function RepossessionsPage() {
           )}
           {r.creditNote && (
             <>
-              <button
-                onClick={() => downloadReceiptPdf(r.creditNote!.receiptId, r.creditNote!.receiptNumber)}
+              <DocumentDownloadButton path={`/receipts/${r.creditNote!.receiptId}/pdf`} filename={`${r.creditNote!.receiptNumber}.pdf`}
                 title="ดูใบลดหนี้ PDF"
                 className="inline-flex items-center gap-1 text-info hover:text-info/80 text-sm font-medium"
               >
                 <Download className="h-3.5 w-3.5" />
                 ใบลดหนี้
-              </button>
+              </DocumentDownloadButton>
               <button
                 onClick={() => resendCnMutation.mutate(r.creditNote!.receiptId)}
                 disabled={resendCnMutation.isPending}

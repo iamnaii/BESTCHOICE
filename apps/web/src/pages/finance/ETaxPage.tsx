@@ -1,3 +1,4 @@
+import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 /**
  * ETaxPage — e-Tax Invoice document center (SP2 frontend)
  *
@@ -224,16 +225,14 @@ export default function ETaxPage() {
                             <TableCell className="text-center">
                               <div className="flex items-center justify-center gap-1">
                                 {sub?.status === 'ACCEPTED' && (
-                                  <Button variant="outline" size="sm" asChild>
-                                    <a
-                                      href={`/api/e-tax/invoices/${inv.paymentId}/pdf`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      aria-label="ดาวน์โหลด PDF"
-                                    >
-                                      <Download className="size-4" />
-                                    </a>
-                                  </Button>
+                                  <DocumentDownloadButton
+                                    path={`/e-tax/invoices/${inv.paymentId}/pdf`}
+                                    filename={`tax-invoice-${inv.contractNumber}-${inv.installmentNo}.pdf`}
+                                    aria-label={`ดาวน์โหลด PDF ${inv.contractNumber} งวด ${inv.installmentNo}`}
+                                    className="border border-border px-3 text-xs hover:bg-accent"
+                                  >
+                                    <Download className="size-4" aria-hidden /> PDF
+                                  </DocumentDownloadButton>
                                 )}
                                 {(isFailed || !sub) && (
                                   <Button

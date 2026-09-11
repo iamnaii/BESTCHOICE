@@ -1,0 +1,160 @@
+[
+  {
+    "width": 1440,
+    "passed": true,
+    "requests": [
+      {
+        "path": "/receipts/receipt-test/pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/receipts/receipt-test/pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/expense-documents/doc-test/voucher.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/expense-documents/doc-test/voucher.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/expense-documents/doc-test/voucher.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/other-income/doc-test/receipt.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/other-income/doc-test/receipt.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/assets/doc-test/receipt.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/assets/doc-test/receipt.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/e-tax/invoices/pay-test/pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/reporting/pdf",
+        "method": "POST",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/reporting/pdf",
+        "method": "POST",
+        "company": "finance",
+        "hasBearer": true
+      }
+    ],
+    "errors": []
+  },
+  {
+    "width": 390,
+    "passed": true,
+    "requests": [
+      {
+        "path": "/receipts/receipt-test/pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/receipts/receipt-test/pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/expense-documents/doc-test/voucher.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/expense-documents/doc-test/voucher.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/expense-documents/doc-test/voucher.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/other-income/doc-test/receipt.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/other-income/doc-test/receipt.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/assets/doc-test/receipt.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/assets/doc-test/receipt.pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/e-tax/invoices/pay-test/pdf",
+        "method": "GET",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/reporting/pdf",
+        "method": "POST",
+        "company": "finance",
+        "hasBearer": true
+      },
+      {
+        "path": "/reporting/pdf",
+        "method": "POST",
+        "company": "finance",
+        "hasBearer": true
+      }
+    ],
+    "errors": []
+  }
+]

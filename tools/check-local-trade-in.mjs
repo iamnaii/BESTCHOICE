@@ -146,7 +146,7 @@ export async function checkTradeIn(page, origin, output, width) {
   assert.deepEqual(readFileSync(join(output, `trade-in-voucher-${width}.pdf`)), await pdfResponse.body(),
     'Downloaded file must be the same PDF that was opened for preview');
   await page.screenshot({ path: join(output, `trade-in-voucher-${width}.png`) });
-  await preview.getByRole('button', { name: 'Close', exact: true }).click();
+  await preview.getByRole('button', { name: 'ปิดตัวอย่าง', exact: true }).click();
   await expect(preview).toHaveCount(0);
   await page.getByRole('link', { name: 'เปิดเครื่อง ดูรูปและราคา' }).click();
   await expect(page).toHaveURL(new RegExp(`/products/${result.productId}`));
@@ -232,7 +232,7 @@ export async function checkTradeIn(page, origin, output, width) {
       await detail.getByRole('button', { name: 'พิมพ์เอกสารรับเครื่อง', exact: true }).click();
       const documentPreview = page.getByRole('dialog', { name: 'ตัวอย่างเอกสารรับเครื่อง' });
       await expect(documentPreview.getByRole('link', { name: 'ดาวน์โหลด PDF' })).toBeVisible();
-      await documentPreview.getByRole('button', { name: 'Close', exact: true }).click();
+      await documentPreview.getByRole('button', { name: 'ปิดตัวอย่าง', exact: true }).click();
     }
     await detail.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(detail).toHaveCount(0);

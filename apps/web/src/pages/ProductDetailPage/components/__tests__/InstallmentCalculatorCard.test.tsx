@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router';
@@ -10,8 +10,8 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 import { InstallmentCalculatorCard } from '../InstallmentCalculatorCard';
-import { resolveQuotes } from '../../utils/resolveQuotes';
-import { INITIAL_CALC_STATE, type CalcState } from '../../hooks/useInstallmentCalcState';
+import { resolveQuotes, type ProductForQuotes } from '../../utils/resolveQuotes';
+import { INITIAL_CALC_STATE, type CalcState, type CalcStatePatch } from '../../hooks/useInstallmentCalcState';
 import type { GfinTables } from '../../utils/gfinQuote';
 
 // golden config เดียวกับ bcQuote.test.ts (19,900 → 12 งวด/2,985/2,413.20)
@@ -62,7 +62,7 @@ const gfinTables: GfinTables = {
   },
 };
 
-const iphone15 = {
+const iphone15: ProductForQuotes & { id: string } = {
   id: 'p1',
   category: 'PHONE_NEW',
   brand: 'Apple',
@@ -76,17 +76,17 @@ const iphone15 = {
 function renderCard({
   product = iphone15,
   state = INITIAL_CALC_STATE,
-  onChange = vi.fn(),
+  onChange = vi.fn<(patch: CalcStatePatch) => void>(),
   canEditPrice = true,
-  onEditPrice = vi.fn(),
+  onEditPrice = vi.fn<() => void>(),
   tables = gfinTables as GfinTables | undefined,
   config = bcConfig as typeof bcConfig | undefined,
 }: {
   product?: typeof iphone15;
   state?: CalcState;
-  onChange?: ReturnType<typeof vi.fn>;
+  onChange?: Mock<(patch: CalcStatePatch) => void>;
   canEditPrice?: boolean;
-  onEditPrice?: ReturnType<typeof vi.fn>;
+  onEditPrice?: Mock<() => void>;
   tables?: GfinTables | undefined;
   config?: typeof bcConfig | undefined;
 } = {}) {

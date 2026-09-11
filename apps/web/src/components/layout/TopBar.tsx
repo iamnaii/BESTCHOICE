@@ -1,5 +1,5 @@
-import { NAV_LABELS } from '@/config/work-navigation';
 import { useMemo } from 'react';
+import { resolvePageTitle } from './resolvePageTitle';
 import { Link, useLocation } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/useIsMobile';
@@ -155,21 +155,8 @@ export default function TopBar() {
   const unreadNotifications = useUnreadNotifications();
   const canSeeNotifications = !!user && NOTIFICATION_ROLES.includes(user.role);
 
-  const pageTitle = useMemo(() => {
-    const map: Record<string, string> = {
-      '/': NAV_LABELS.home, '/pos': NAV_LABELS.sales, '/customers': 'ลูกค้า',
-      '/contracts': NAV_LABELS.contracts, '/payments': NAV_LABELS.payments, '/stock': NAV_LABELS.stock,
-      '/crm': NAV_LABELS.crm, '/inbox': NAV_LABELS.chat,
-      '/overdue': 'ค้างชำระ', '/settings': 'ตั้งค่า', '/users': 'ผู้ใช้',
-      '/branches': 'สาขา', '/suppliers': 'ผู้จำหน่าย', '/commissions': 'คอมมิชชัน',
-      '/receipts': 'ใบเสร็จ', '/audit-logs': 'Audit Logs', '/notifications': 'แจ้งเตือน',
-    };
-    const exactMatch = map[pathname];
-    if (exactMatch) return exactMatch;
-    // Try prefix match
-    const prefix = Object.keys(map).find(k => k !== '/' && pathname.startsWith(k));
-    return prefix ? map[prefix] : pathname.split('/').filter(Boolean).pop()?.replace(/-/g, ' ') || 'Dashboard';
-  }, [pathname]);
+  // map อยู่ใน resolvePageTitle.ts (ทดสอบได้) — เดิม /products/:id ไม่อยู่ใน map เลยโชว์ UUID แทน "สต็อก"
+  const pageTitle = useMemo(() => resolvePageTitle(pathname), [pathname]);
 
   return (
     <header data-print-hide="true" className="sticky top-0 z-10 h-[60px] bg-background border-b border-border flex items-center justify-between shrink-0 px-2 sm:px-5 lg:px-6">

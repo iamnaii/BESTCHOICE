@@ -67,11 +67,12 @@ export function InstallmentCalculatorCard({
     state.fin === 'gfin' && gfinAvailable ? 'gfin' : bc ? 'bc' : gfinAvailable ? 'gfin' : 'bc';
 
   const gfinCompareNotice = (() => {
-    if (gfin?.quote.available) return null;
     if (!gfin) {
       return loading ? 'กำลังโหลดตาราง GFIN...' : 'โหลดตาราง GFIN ไม่สำเร็จ — ลองรีเฟรช';
     }
-    switch (gfin.quote.reason) {
+    const gfinQuote = gfin.quote;
+    if (gfinQuote.available) return null;
+    switch (gfinQuote.reason) {
       case 'unsupported_category':
         return 'GFIN ไม่รับสินค้าหมวดนี้';
       case 'no_mapping':

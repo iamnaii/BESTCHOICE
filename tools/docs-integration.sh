@@ -70,8 +70,12 @@ if [ "${DOCS_QA_SKIP_PREPARE:-0}" != 1 ]; then
 fi
 
 "$DOCS_PG_BIN/initdb" -D "$PG_ROOT/data" -U docs_test --auth-local=trust --auth-host=reject --encoding=UTF8 --no-locale >"$PG_ROOT/init.log"
+# timezone=UTC: production Cloud SQL runs in UTC while this process runs in Asia/Bangkok
+# (initdb would otherwise copy TZ into postgresql.conf). SQL that compares a `timestamp`
+# column against NOW()/a bound Date is interpreted in the session zone, so a Bangkok
+# session would shift every such window by 7 hours relative to production (DOC-10, #1569).
 "$DOCS_PG_BIN/pg_ctl" -D "$PG_ROOT/data" -l "$PG_ROOT/postgres.log" \
-  -o "-k $PG_ROOT/socket -p 55477 -c listen_addresses='' -c fsync=off -c synchronous_commit=off -c full_page_writes=off" -w start >/dev/null
+  -o "-k $PG_ROOT/socket -p 55477 -c listen_addresses='' -c timezone=UTC -c log_timezone=UTC -c fsync=off -c synchronous_commit=off -c full_page_writes=off" -w start >/dev/null
 PG_STARTED=1
 "$DOCS_PG_BIN/createdb" -h "$PG_ROOT/socket" -p 55477 -U docs_test bc_docs_shop
 "$DOCS_PG_BIN/createdb" -h "$PG_ROOT/socket" -p 55477 -U docs_test bc_docs_finance

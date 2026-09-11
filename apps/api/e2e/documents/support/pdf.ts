@@ -19,6 +19,8 @@ export interface PdfTextItem {
   y: number;
   /** Font size in PDF points (1/72 in). */
   size: number;
+  /** Advance width of the item in PDF points (table cells can be re-assembled from x + width). */
+  width: number;
   /** Embedded font name without the subset prefix, e.g. THSarabunPSK-Regular. */
   font: string;
 }
@@ -66,7 +68,7 @@ export async function parsePdf(bytes: Buffer): Promise<ParsedPdf> {
           font = 'unknown';
         }
         if (raw.str.trim()) fonts.add(font);
-        items.push({ str: raw.str, x: raw.transform[4], y: raw.transform[5], size: Math.hypot(raw.transform[0], raw.transform[1]), font });
+        items.push({ str: raw.str, x: raw.transform[4], y: raw.transform[5], size: Math.hypot(raw.transform[0], raw.transform[1]), width: Number(raw.width) || 0, font });
       }
       const lines = groupLines(items);
       pages.push({ index, widthPt: x1 - x0, heightPt: y1 - y0, items, lines, text: lines.join('\n'), stream: items.map((item) => item.str).join('') });

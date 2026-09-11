@@ -8,5 +8,6 @@
     "^.+\\.ts$": "ts-jest"
   },
   "testTimeout": 180000,
-  "maxWorkers": 1
+  "maxWorkers": 1,
+  "workerIdleMemoryLimit": "1.5GB"
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { format } from 'date-fns';
 import { downloadProtectedDocument, getDocumentErrorMessage } from '@/lib/document-download';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -19,7 +20,8 @@ export function useGeneratePdf(onDownloaded?: () => void) {
       const search = new URLSearchParams();
       if (params.from) search.set('from', params.from.toISOString());
       if (params.to) search.set('to', params.to.toISOString());
-      await downloadProtectedDocument(`/reporting/pdf?${search}`, `collections-${new Date().toISOString().slice(0, 10)}.pdf`, {
+      // Local (Bangkok) calendar date — the UTC date is still "yesterday" until 07:00.
+      await downloadProtectedDocument(`/reporting/pdf?${search}`, `collections-${format(new Date(), 'yyyy-MM-dd')}.pdf`, {
         method: 'post', signal: controller.signal,
       });
     },

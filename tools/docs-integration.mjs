@@ -116,7 +116,7 @@ async function run(jestArgs) {
   save();
 
   const jest = join(repo, 'node_modules/jest/bin/jest.js');
-  const args = [jest, '--config', 'e2e/jest-documents.json', '--runInBand', '--forceExit', '--json', `--outputFile=${join(output, 'jest-results.json')}`, ...jestArgs];
+  const args = [jest, '--config', 'e2e/jest-documents.json', '--forceExit', '--json', `--outputFile=${join(output, 'jest-results.json')}`, ...jestArgs];
   console.log(`\nDocuments integration run ${meta.runId ?? ''}\n  revision ${meta.revision.slice(0, 9)} (${meta.branch})\n  output   ${output}\n  chromium ${meta.chromium}\n`);
   const code = await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, { cwd: join(repo, 'apps/api'), stdio: 'inherit', env: process.env });

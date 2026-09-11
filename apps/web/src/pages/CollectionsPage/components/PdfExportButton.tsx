@@ -11,19 +11,25 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { DateRangePicker, type DateRangeValue } from '@/components/ui/DateRangePicker';
+import { useUiFlags } from '@/hooks/useUiFlags';
 import { useGeneratePdf } from '../hooks/usePdfExport';
 
 /**
  * PDF export button (P3 D1).
  * Click → opens dialog → choose date range → POST /reporting/pdf streams blob.
+ * Hidden while `export_enabled` is off (D1.3.3.1) — the server's ExportEnabledGuard
+ * still answers 403 to any stale tab or script.
  */
 export default function PdfExportButton() {
+  const { exportEnabled } = useUiFlags();
   const [open, setOpen] = useState(false);
   const [range, setRange] = useState<DateRangeValue>(() => {
     const now = new Date();
     return { from: startOfDay(subDays(now, 6)), to: endOfDay(now) };
   });
   const generate = useGeneratePdf(() => setOpen(false));
+
+  if (!exportEnabled) return null;
 
   return (
     <>

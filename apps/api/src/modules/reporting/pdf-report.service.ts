@@ -4,11 +4,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { PrismaService } from '../../prisma/prisma.service';
+import { bangkokDateString } from '../../utils/date.util';
 import { OverdueAnalyticsService } from '../overdue/analytics.service';
 import { AnalyticsAgingService } from '../overdue/analytics-aging.service';
-import { AnalyticsLeaderboardService } from '../overdue/analytics-leaderboard.service';
-import { AnalyticsRecoveryService } from '../overdue/analytics-recovery.service';
-import { StuckContractsService } from '../overdue/stuck-contracts.service';
+import { AnalyticsLeaderboardService, LeaderboardRow } from '../overdue/analytics-leaderboard.service';
+import { AnalyticsRecoveryService, RecoveryByChannelRow } from '../overdue/analytics-recovery.service';
+import { StuckContractsService, StuckContractRow } from '../overdue/stuck-contracts.service';
 
 export interface PdfDateRange {
   from: Date;
@@ -48,16 +49,19 @@ export class PdfReportService {
     );
     const analyticsRange: '30d' | '90d' = days <= 45 ? '30d' : '90d';
 
-    // Fetch all data in parallel.
+    // Fetch all data in parallel. The rows keep the services' own types so a renamed
+    // field fails to compile instead of silently printing 0 / "-" (DOC-10, #1569).
     const [analytics, agingBuckets, leaderboardRows, recoveryRows, stuckRows] =
       await Promise.all([
         this.analytics.getAnalytics({ range: analyticsRange }),
         this.aging
           .getAgingBuckets({ userRole: 'OWNER', userBranchId: null })
           .catch(() => null),
-        this.leaderboard.getLeaderboard().catch(() => []),
-        this.recovery.getRecoveryByChannel({ from: range.from, to: range.to }).catch(() => []),
-        this.stuck.getStuckContracts({ days: 14 }).catch(() => []),
+        this.leaderboard.getLeaderboard().catch((): LeaderboardRow[] => []),
+        this.recovery
+          .getRecoveryByChannel({ from: range.from, to: range.to })
+          .catch((): RecoveryByChannelRow[] => []),
+        this.stuck.getStuckContracts({ days: 14 }).catch((): StuckContractRow[] => []),
       ]);
 
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -68,7 +72,9 @@ export class PdfReportService {
     const margin = { top: 117, bottom: 51, left: 43, right: 43 };
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const formatDate = (d: Date) => d.toISOString().slice(0, 10);
+    // The period the user picked is a Bangkok calendar range; the header must not slip a day
+    // when the range starts at 00:00 Bangkok (= 17:00 UTC the day before).
+    const formatDate = (d: Date) => bangkokDateString(d);
     const generated = new Date().toISOString();
     doc.setLineHeightFactor(1.2);
     let y = margin.top;
@@ -125,25 +131,24 @@ export class PdfReportService {
     // ---- Leaderboard ----
     if (Array.isArray(leaderboardRows) && leaderboardRows.length > 0) {
       table('Collectors / ผลงานเจ้าหน้าที่', [['Collector', 'Contracts', 'Collected']],
-        leaderboardRows.slice(0, 10).map((r) => {
-          const row = r as { name?: string; contractsHandled?: number; amountCollected?: string | number };
-          return [row.name ?? '-', String(row.contractsHandled ?? 0), String(row.amountCollected ?? 0)];
-        })
+        leaderboardRows.slice(0, 10).map((row) => [
+          row.name ?? '-',
+          String(row.assignedCount),
+          String(row.recoveryThisMonth),
+        ])
       );
     }
 
     // ---- Recovery rate by channel ----
     if (Array.isArray(recoveryRows) && recoveryRows.length > 0) {
       table('Recovery / การชำระตามช่องทาง', [['Channel', 'Sent', 'Recovered', 'Rate']],
-        recoveryRows.map((r) => {
-          const row = r as { channel?: string; sent?: number; recovered?: number; rate?: number };
-          return [
-            row.channel ?? '-',
-            String(row.sent ?? 0),
-            String(row.recovered ?? 0),
-            row.rate != null ? `${Math.round(row.rate * 100)}%` : '-',
-          ];
-        })
+        recoveryRows.map((row) => [
+          row.channel,
+          String(row.actionsSent),
+          String(row.recovered),
+          // recoveryRate is already a percentage (0-100, one decimal).
+          `${row.recoveryRate}%`,
+        ])
       );
     }
 
@@ -168,20 +173,12 @@ export class PdfReportService {
     // ---- Stuck contracts ----
     if (stuckRows.length > 0) {
       table('Follow-up / สัญญาที่ต้องติดตาม', [['Contract #', 'Days stuck', 'Customer', 'Status']],
-        stuckRows.slice(0, 20).map((r) => {
-          const row = r as {
-            contractNumber?: string;
-            daysStuck?: number;
-            customerName?: string;
-            status?: string;
-          };
-          return [
-            row.contractNumber ?? '-',
-            String(row.daysStuck ?? 0),
-            row.customerName ?? '-',
-            row.status ?? '-',
-          ];
-        })
+        stuckRows.slice(0, 20).map((row) => [
+          row.contractNumber,
+          String(row.daysIdle),
+          row.customerName,
+          row.status,
+        ])
       );
     }
 

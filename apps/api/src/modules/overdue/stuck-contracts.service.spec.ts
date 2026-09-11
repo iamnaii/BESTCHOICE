@@ -39,11 +39,13 @@ describe('StuckContractsService', () => {
         assigned_to_name: 'แนน',
         last_activity: tenDaysAgo,
         outstanding: '5500.00',
+        status: 'OVERDUE',
       },
     ]);
     const result = await service.getStuckContracts({ days: 7 });
     expect(result).toHaveLength(1);
     expect(result[0].contractId).toBe('c1');
+    expect(result[0].status).toBe('OVERDUE');
     expect(result[0].daysIdle).toBeGreaterThanOrEqual(9);
     expect(result[0].daysIdle).toBeLessThanOrEqual(11);
     expect(result[0].outstanding).toBe(5500);

@@ -156,6 +156,12 @@ html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-col
 .credit-note { margin-top: 1mm; }
 .declaration { margin-top: 2mm; border-top: 1px solid #d4dfd9; padding-top: 2mm; }
 .bc-doc-approval { margin-top: 2mm; }
+/* The seller declaration makes this closing block taller than half a page, so the shared
+   "keep the closing together" rule pushed every amount line to a near-empty second page
+   (DOC-02). Let the block paginate, but keep amount + payment and declaration + signatures
+   each in one piece. */
+body .bc-doc-closing { break-inside: auto; }
+.bc-doc-settlement, .bc-doc-attestation { break-inside: avoid; }
 .device-name { font-weight: 700; }
 .device-details { color: #52645d; }
 .center { text-align: center; }
@@ -177,7 +183,7 @@ ${PAPER_SPACING_CSS}
       </tr></tbody>
     </table>
 
-<div class="bc-doc-closing"><div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงินเป็นตัวอักษร</p><strong>${esc(data.amountText)}</strong></div><div class="bc-doc-grand"><span>${isCredit ? 'ยอดเครดิตที่ตกลง' : 'ยอดจ่ายสุทธิ'}</span><span>${this.formatBaht(data.amount)} บาท</span></div></div>
+<div class="bc-doc-closing"><div class="bc-doc-settlement"><div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงินเป็นตัวอักษร</p><strong>${esc(data.amountText)}</strong></div><div class="bc-doc-grand"><span>${isCredit ? 'ยอดเครดิตที่ตกลง' : 'ยอดจ่ายสุทธิ'}</span><span>${this.formatBaht(data.amount)} บาท</span></div></div>
   <section class="payment">
     <h2 class="section-title">${isCredit ? 'การรับเครื่อง' : 'ข้อมูลการจ่ายเงิน'}</h2>
     <div class="payment-row"><span class="label">${isCredit ? 'รูปแบบการรับเครื่อง' : 'วิธีจ่ายเงิน'}</span><strong>${isCredit ? 'เครดิตเทิร์นเครื่อง' : data.paymentMethod === 'TRANSFER' ? 'โอนเงินเข้าบัญชีผู้ขาย' : 'เงินสด'}</strong></div>
@@ -190,9 +196,9 @@ ${PAPER_SPACING_CSS}
           : `<div class="payment-row"><span class="label">ผู้รับเงินสด</span><span>${esc(data.sellerName)}</span></div>`
     }
   </section>
+</div>
 
-
-<p class="declaration"><strong>คำรับรองผู้ขาย</strong>${data.sellerDeclarationText ? ` · ${esc(data.voucherNumber)}<br>` : ' '}${esc(data.sellerDeclarationText ?? LEGACY_TRADE_IN_DECLARATION)}</p>
+<div class="bc-doc-attestation"><p class="declaration"><strong>คำรับรองผู้ขาย</strong>${data.sellerDeclarationText ? ` · ${esc(data.voucherNumber)}<br>` : ' '}${esc(data.sellerDeclarationText ?? LEGACY_TRADE_IN_DECLARATION)}</p>
   <section class="bc-doc-approval" aria-label="ลายเซ็น">
     <div class="bc-doc-signature">
       <div class="sign-space">${signature(data.issuerSignatureBase64, 'ลายเซ็นผู้ออกเอกสาร')}</div>
@@ -208,7 +214,7 @@ ${PAPER_SPACING_CSS}
     </div>
   </section>
 
-<footer class="bc-doc-footer"><span>${esc(data.voucherNumber)}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
+<footer class="bc-doc-footer"><span>${esc(data.voucherNumber)}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div></div>
 ${paperSpacingScript()}
 </body>
 </html>`;

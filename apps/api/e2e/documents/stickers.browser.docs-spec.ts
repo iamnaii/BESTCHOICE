@@ -117,15 +117,16 @@ describe('DOC-11 sticker 50×30 mm regression — /stickers print geometry throu
       expect(pdf.pages.every((p) => isPageSize(p, STICKER_WIDTH_PT, STICKER_HEIGHT_PT, 1.5))).toBe(true);
       expect(pdf.fonts.length).toBeGreaterThan(0);
       expect(pdf.fonts.every((font) => font.startsWith(DOCUMENT_STYLE.pdfFontFamily))).toBe(true);
-      // The model is the largest text on the label (11 pt, one nowrap line with ellipsis): read that
-      // line per page and require it to be a whole model — truncation would show up as a mismatch.
-      // The page order is recorded, not asserted (the page prints the selection in its own order).
-      const modelLines = pdf.pages.map((p) => {
-        const largest = Math.max(...p.items.filter((i) => i.str.trim()).map((i) => i.size));
-        return foldThai(p.items.filter((i) => i.str.trim() && Math.abs(i.size - largest) < 0.3).map((i) => i.str).join(''));
+      // The model line is nowrap + ellipsis on the label, so a page carries the WHOLE model only when
+      // its text contains the full model string (a cut model cannot match). Every page must carry
+      // exactly one of the three models; the page order is recorded, not asserted.
+      const modelsOnPage = pdf.pages.map((p) => {
+        const text = foldThai(pageText(p));
+        return products.filter((product) => text.includes(foldThai(product.model))).map((product) => product.model);
       });
-      const printedOrder = modelLines.map((line) => products.find((product) => foldThai(product.model) === line)?.model ?? `UNMATCHED:${line}`);
-      expect([...modelLines].sort()).toEqual(products.map((product) => foldThai(product.model)).sort());
+      const printedOrder = modelsOnPage.map((models) => models.join(' + ') || 'NO MODEL');
+      expect(modelsOnPage.map((models) => models.length)).toEqual(products.map(() => 1));
+      expect([...printedOrder].sort()).toEqual(products.map((product) => product.model).sort());
       const outside = pdf.pages.flatMap((p) => p.items.filter((i) => i.str.trim() && (i.x < -1 || i.x + i.width > p.widthPt + 1 || i.y < -1 || i.y > p.heightPt + 1)).map((i) => ({ page: p.index, str: i.str, x: i.x, y: i.y })));
       expect(outside).toEqual([]);
       const sizes = textSizes(pdf);

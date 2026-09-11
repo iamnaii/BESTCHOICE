@@ -72,11 +72,14 @@ describe('DOC-01 receipts', () => {
 ตัวช่วยเพิ่มเติมใน `support/`
 
 - `receipts-fixtures.ts`: `createFinancedContract()` (สัญญา FINANCE 17K/12M แบบเดียวกับ CPA golden case พร้อม `installment_schedule` + `Payment` 12 งวด) · `activateContract()` (โพสต์ JE 1A ผ่าน template จริง) · `grantApprovalPermissions()` (ให้สิทธิ์อนุมัติ EARLY_PAYOFF / VOID_RECEIPT ผ่าน SystemConfig เดียวกับหน้าแอดมิน)
+- `letters-fixtures.ts` (DOC-09): `createOverdueContract()` (สัญญา OVERDUE + งวดค้าง/งวดอนาคตตาม `oldestOverdueDays`, เบี้ยปรับต่องวด) · `expectedLetterFigures()` (ยอดค้าง/เบี้ยปรับ/รวม/รายชื่อเดือนที่ค้าง แบบอิสระ) · `letterMoney()` · `thaiLongDate()` · `setSystemConfig()` · `startStoredFileServer()` (HTTP file server + CORS แทน object storage สาธารณะที่ถือไฟล์ `ContractLetter.pdfUrl` ยุคเก่า สั่ง outage ได้) — จดหมายจริงสร้างด้วย `h.app.get(LetterAutoGenerateCron).run()` หลังตั้ง `letter_auto_generate_enabled=true`
 - `web.ts`: `startWeb(h)` เปิด Vite dev server ของ `apps/web` (config `vite.docs-qa.config.ts` proxy `/api` → API ของ run นี้) + Playwright Chromium; `web.login(page, email, password)` ล็อกอินผ่านฟอร์มจริง; `downloadBytes(download)` อ่านไฟล์ที่ปุ่มดาวน์โหลดบันทึก — ตัวอย่างเต็มใน `receipts.browser.docs-spec.ts`
 - `pdf.ts`: `contentSignature(pdf)` ใช้เทียบเอกสารที่ render ใหม่ทุกครั้ง (ใบเสร็จ) — bytes ของ Chromium ไม่นิ่งข้าม render แม้ตัด `/CreationDate`; ใช้ `sha256` ตรง ๆ เฉพาะไฟล์ที่เก็บครั้งเดียว (EDocument)
 - harness seed ผังบัญชี CPA และผู้ใช้ระบบ `admin@bestchoice.com` (JournalAutoService ใช้เป็นผู้บันทึก JE อัตโนมัติ; ล็อกอินไม่ได้) ก่อน boot ทุกครั้ง
 
 ข้อควรระวังจากงาน DOC-01: `POST /payments/record` ถูกจำกัด 5 ครั้ง/10 วิ แต่ในทางปฏิบัติ throttler ส่วนกลางกับ `UserThrottlerGuard` นับซ้ำกัน ⇒ บันทึกได้ ~2 ครั้งต่อ 10 วิ ต้องเว้นช่วง (ดู helper `pay()` ใน `receipts.docs-spec.ts`) และทุกการรับเงินต้องมี `transactionRef` หรือ slip
+
+ข้อควรระวังจากงาน DOC-09: role ระดับสาขา (SALES/BRANCH_MANAGER) มีสิทธิ์เฉพาะบริษัท SHOP — เรียก route ใดด้วย `?company=finance` จะได้ 403 "ไม่มีสิทธิ์เข้าถึง company FINANCE" ก่อนถึง guard ของ domain ให้เลือก company ตาม `session.user.accessibleCompanies` · route ที่มี segment คงที่ (`letters/bulk/dispatch`) ต้องประกาศ **ก่อน** route `letters/:id/...` ใน controller ไม่งั้น Nest จับเป็น id="bulk" (พบ 404 จริงใน DOC-09) · จดหมายทวงถาม 45 วันมาตรฐานยาว 2 หน้า A4 ที่ 16 pt (หน้า 2 = ประโยคปิดท้าย + ลายเซ็น) — อย่า assert "1 หน้า" กับเอกสารที่ข้อความกฎหมายคงที่ · ลำดับหน้าของ PDF รวมตรวจจาก footer "เลขที่ ST-…" ทีละหน้า (แต่ละฉบับกินหลายหน้าได้) · `npm run docs:check` ทั้งชุดใช้ฐานเดียวกันทุก domain — กรอง world ของตัวเองเสมอ (ดู DOC-07)
 
 กติกา
 
@@ -99,7 +102,7 @@ describe('DOC-01 receipts', () => {
 | DOC-06 ใบรับสินทรัพย์/ทะเบียน | `modules/asset/services/asset-receipt-pdf.service.ts`, `__tests__/asset-receipt-pdf.controller.spec.ts` (mock ทั้ง service) | ทะเบียนเป็น landscape — ใช้ `page.widthPt > page.heightPt` |
 | DOC-07 ใบกำกับภาษี e-Tax | `modules/e-tax`, `modules/e-tax-xml` (`ETAX_SUBMIT_MODE=disabled` ถูกปักไว้แล้ว), เว็บ `pages/finance/ETaxPage.tsx` | ห้ามติดต่อสรรพากร; คง ACCEPTED gate |
 | DOC-08 50 ทวิเงินปันผล/ทะเบียนผู้รับ | `modules/equity` | ผู้ออก FINANCE |
-| DOC-09 จดหมายติดตามหนี้ | `modules/overdue/letter-pdf.service.ts`, `contract-letter.service.ts`, `letter-document-access.guard.ts`; `e2e/letter-documents.e2e-spec.ts` (spy renderer — ห้ามที่นี่) | ไฟล์เดิมใน storage ต้องได้ bytes เดิม; download ต้องไม่ mark printed |
+| DOC-09 จดหมายติดตามหนี้ | `modules/overdue/letter-pdf.service.ts`, `contract-letter.service.ts`, `letter-document-access.guard.ts`; `e2e/letter-documents.e2e-spec.ts` (spy renderer — ห้ามที่นี่) | ไฟล์เดิมใน storage ต้องได้ bytes เดิม; download ต้องไม่ mark printed — ทำแล้วใน `letters.docs-spec.ts` + `letters.browser.docs-spec.ts` (พิมพ์รวม 52 ฉบับ, ไฟล์เดิม/outage ผ่าน `startStoredFileServer()`) |
 | DOC-10 Collections Report | `modules/reporting/pdf-report.service.ts` (jsPDF ไม่ใช่ Chromium), `pages/CollectionsPage/hooks/usePdfExport.ts` | บันทึก `renderer: 'jspdf'`; ห้ามเรียก weekly e-mail dispatch |
 
 ## สิ่งที่ชุดนี้ยังไม่รับรอง

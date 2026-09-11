@@ -556,6 +556,16 @@ export class OverdueController {
     });
   }
 
+  // Static segment routes must be registered before the `letters/:id/...` ones:
+  // Nest matches in declaration order, and `POST letters/:id/dispatch` swallowed
+  // `letters/bulk/dispatch` as id="bulk" → 404 "ไม่พบหนังสือ" for every bulk EMS
+  // confirmation from the web (DOC-09, #1568).
+  @Post('letters/bulk/dispatch')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  bulkDispatchLetters(@Body() dto: BulkDispatchLettersDto, @CurrentUser() user: { id: string }) {
+    return this.contractLetterService.bulkDispatch(dto.items, user.id);
+  }
+
   @Post('letters/:id/pdf-generated')
   @UseGuards(LetterDocumentAccessGuard)
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
@@ -595,12 +605,6 @@ export class OverdueController {
       q,
       user: user ?? { role: undefined, branchId: undefined },
     });
-  }
-
-  @Post('letters/bulk/dispatch')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
-  bulkDispatchLetters(@Body() dto: BulkDispatchLettersDto, @CurrentUser() user: { id: string }) {
-    return this.contractLetterService.bulkDispatch(dto.items, user.id);
   }
 
   /**

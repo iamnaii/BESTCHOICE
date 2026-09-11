@@ -1,19 +1,16 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import type { Column } from '@/components/ui/DataTable';
 import {
   ArrowRightLeft,
   BarChart3,
   ChevronDown,
-  ChevronRight,
   MoreHorizontal,
   Download,
-  ArrowUpRight,
   Globe,
-  Pencil,
   Plus,
   Printer,
   X,
@@ -21,9 +18,6 @@ import {
 import { toast } from 'sonner';
 import { useMutation } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
-import { getPositiveDisplayPrices, normalizePositive } from '@/utils/getDisplayPrices';
-import type { StockProduct } from './types';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,23 +25,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  StockProductIdentity,
-  StockPriceAmount,
-  StockDownPayment,
-  StockMonthlyPayment,
-  StockProductStatus,
-  StockProductBranch,
-  StockBatteryHealth,
-  StockManufacturerWarranty,
-  StockTabletConnectivity,
-  StockAccessoryType,
-  StockProductCategory,
-  StockProductSpecifications,
-  StockQuantity,
-  StockReceivedDate,
-  getStockProductCode,
-} from './components/StockProductCells';
+import { buildStockColumns, type StockColumn } from './components/stockColumns';
 import { useStockProducts, useEditingProductSync } from './hooks/useStockProducts';
 import { useStockInstallments } from './hooks/useStockInstallments';
 import { StockListTab } from './components/StockListTab';
@@ -125,16 +103,11 @@ export default function StockProductsPage() {
     bulkTransferMutation,
   } = products;
   const installmentPlans = useStockInstallments(listProducts);
+  const isMobile = useIsMobile();
   const selectableProducts = useMemo(
     () => listProducts.filter((product) => !product.stockGroup),
     [listProducts],
   );
-  const isUsedPhoneView = filterCategory === 'PHONE_USED';
-  const isTabletView = filterCategory === 'TABLET';
-  const isAccessoryView = filterCategory === 'ACCESSORY';
-  const isDeviceView = filterCategory === 'PHONE_NEW' || isUsedPhoneView || isTabletView;
-  const isAllCategories = filterCategory === '';
-
   useEditingProductSync(editingProduct, listProducts, setEditingProduct);
 
   const navigateToProduct = useCallback((id: string) => navigate(`/products/${id}`), [navigate]);
@@ -185,365 +158,45 @@ export default function StockProductsPage() {
     });
   };
 
-  const columns = useMemo<Column<StockProduct>[]>(
-    () => [
-      ...(isManager
-        ? [
-            {
-              key: 'select',
-              label: (
-                <Checkbox
-                  aria-label="เลือกสินค้าหน้านี้"
-                  disabled={selectableProducts.length === 0}
-                  checked={
-                    selectableProducts.length > 0 &&
-                    selectableProducts.every((product) => selectedIds.has(product.id))
-                      ? true
-                      : selectedIds.size > 0
-                        ? 'indeterminate'
-                        : false
-                  }
-                  onCheckedChange={() => toggleSelectAll(listProducts)}
-                  className="cursor-pointer"
-                />
-              ) as unknown as string,
-              hideable: false,
-              sortable: false,
-              width: '48px',
-              render: (product: StockProduct) =>
-                product.stockGroup ? null : (
-                  <Checkbox
-                    aria-label={`เลือก ${product.model || product.name} ${product.imeiSerial || product.id}`}
-                    checked={selectedIds.has(product.id)}
-                    onCheckedChange={() => toggleSelect(product.id)}
-                    className="cursor-pointer"
-                  />
-                ),
-            },
-          ]
-        : []),
-      ...(!isDeviceView
-        ? [
-            {
-              key: isAccessoryView ? 'productCode' : 'category',
-              label: isAccessoryView ? 'รหัสสินค้า' : 'ประเภท',
-              sortable: true,
-              hideable: false,
-              width: '110px',
-              render: (product: StockProduct) =>
-                isAccessoryView ? (
-                  <span className="font-mono text-xs">{getStockProductCode(product) || '—'}</span>
-                ) : (
-                  <StockProductCategory product={product} />
-                ),
-            },
-          ]
-        : []),
-      {
-        key: 'name',
-        label: isDeviceView ? 'รุ่น' : 'ชื่อสินค้า/รุ่น',
-        sortable: true,
-        hideable: false,
-        render: (product) => (
-          <StockProductIdentity
-            product={product}
-            onOpen={() =>
-              product.stockGroup
-                ? setAccessoryGroupId(product.stockGroup!.key)
-                : navigateToProduct(product.id)
-            }
-            showProductCode={!isAccessoryView}
-          />
-        ),
-      },
-      ...(!isDeviceView && !isAccessoryView
-        ? [
-            {
-              key: 'specifications',
-              label: 'สเปกย่อ',
-              sortable: true,
-              hideable: false,
-              width: '155px',
-              render: (product: StockProduct) => <StockProductSpecifications product={product} />,
-            },
-          ]
-        : []),
-      ...(isAccessoryView
-        ? [
-            {
-              key: 'accessoryType',
-              label: 'ประเภท',
-              sortable: true,
-              hideable: false,
-              width: '110px',
-              render: (product: StockProduct) => <StockAccessoryType product={product} />,
-            },
-          ]
-        : []),
-      ...(isDeviceView || isAccessoryView
-        ? [
-            ...(!isAccessoryView
-              ? [
-                  {
-                    key: 'storage',
-                    label: 'ความจุ',
-                    sortable: true,
-                    hideable: false,
-                    width: '80px',
-                    render: (product: StockProduct) => product.storage || '—',
-                  },
-                ]
-              : []),
-            {
-              key: 'color',
-              label: 'สี',
-              sortable: true,
-              hideable: false,
-              width: '90px',
-              render: (product: StockProduct) => product.color || '—',
-            },
-          ]
-        : []),
-      ...(isTabletView
-        ? [
-            {
-              key: 'connectivity',
-              label: 'การเชื่อมต่อ',
-              sortable: true,
-              hideable: false,
-              width: '150px',
-              render: (product: StockProduct) => <StockTabletConnectivity product={product} />,
-            },
-          ]
-        : []),
-      ...(isUsedPhoneView
-        ? [
-            {
-              key: 'batteryHealth',
-              label: '%แบตเตอรี่',
-              sortable: true,
-              hideable: false,
-              width: '96px',
-              render: (product: StockProduct) => <StockBatteryHealth product={product} />,
-            },
-            {
-              key: 'hasBox',
-              label: 'มีกล่อง',
-              sortable: true,
-              hideable: false,
-              width: '80px',
-              render: (product: StockProduct) =>
-                product.hasBox == null ? 'ยังไม่ระบุ' : product.hasBox ? 'มี' : 'ไม่มี',
-            },
-            {
-              key: 'warrantyExpireDate',
-              label: 'ประกันศูนย์',
-              sortable: true,
-              hideable: false,
-              width: '140px',
-              render: (product: StockProduct) => <StockManufacturerWarranty product={product} />,
-            },
-          ]
-        : []),
-      ...(isManager && !isDeviceView
-        ? [
-            {
-              key: 'costPrice',
-              label: 'ราคาทุน',
-              sortable: true,
-              hideable: true,
-              align: 'right' as const,
-              width: '110px',
-              render: (product: StockProduct) => (
-                <StockPriceAmount
-                  value={
-                    product.costPrice != null && product.costPrice !== ''
-                      ? Number(product.costPrice)
-                      : null
-                  }
-                  maxValue={
-                    product.stockGroup?.costPriceMax != null
-                      ? Number(product.stockGroup.costPriceMax)
-                      : null
-                  }
-                  muted
-                />
-              ),
-            },
-          ]
-        : []),
-      {
-        key: 'cashPrice',
-        label: isAccessoryView ? 'ราคาขาย' : 'ราคาเต็มจำนวน',
-        sortable: true,
-        hideable: false,
-        align: 'right',
-        width: '130px',
-        render: (product) => (
-          <div className="space-y-1">
-            <StockPriceAmount
-              value={
-                product.stockGroup
-                  ? normalizePositive(product.cashPrice)
-                  : normalizePositive(getPositiveDisplayPrices(product).cash)
-              }
-              maxValue={normalizePositive(product.stockGroup?.cashPriceMax)}
-            />
-            {!!product.stockGroup?.cashPriceMissingCount && (
-              <div className="text-xs text-muted-foreground leading-snug">
-                ยังไม่ตั้ง {product.stockGroup.cashPriceMissingCount} ชิ้น
-              </div>
-            )}
-          </div>
-        ),
-      },
-      ...(!isAccessoryView
-        ? [
-            {
-              key: 'downPayment',
-              label: 'ดาวน์',
-              sortable: true,
-              hideable: false,
-              align: 'right' as const,
-              width: '95px',
-              render: (product: StockProduct) => (
-                <StockDownPayment plan={installmentPlans.installments.get(product.id)} />
-              ),
-            },
-            {
-              key: 'monthlyPayment',
-              label: 'ยอดผ่อนต่อเดือน',
-              sortable: true,
-              hideable: false,
-              align: 'right' as const,
-              width: '140px',
-              render: (product: StockProduct) => (
-                <StockMonthlyPayment plan={installmentPlans.installments.get(product.id)} />
-              ),
-            },
-          ]
-        : []),
-      // เจ้าของขอ 2026-09-11 ให้แท็บ "ทั้งหมด" มีวันที่รับเข้าด้วย — แถวกลุ่มอุปกรณ์เว้นว่าง
-      // (วันที่ของกลุ่มไม่มีความหมายเดียว ส่วนแท็บอุปกรณ์ล้วนยังไม่แสดงคอลัมน์นี้เหมือนเดิม)
-      ...(isDeviceView || isAllCategories
-        ? [
-            {
-              key: 'stockInDate',
-              label: 'วันที่รับเข้า',
-              sortable: true,
-              hideable: false,
-              width: '135px',
-              render: (product: StockProduct) =>
-                product.stockGroup ? (
-                  <span className="text-muted-foreground">—</span>
-                ) : (
-                  <StockReceivedDate product={product} />
-                ),
-            },
-          ]
-        : []),
-      ...(!isDeviceView
-        ? [
-            {
-              key: 'quantity',
-              label: 'คงเหลือ',
-              sortable: true,
-              hideable: false,
-              align: 'right' as const,
-              width: '85px',
-              render: (product: StockProduct) => <StockQuantity product={product} />,
-            },
-          ]
-        : []),
-      // มุมมอง "พร้อมขาย" ทุกแถวเป็นสถานะเดียวกัน — ซ่อนคอลัมน์ให้ตารางแคบลง (mockup 54e6c624)
-      ...(view === 'all'
-        ? [
-            {
-              key: 'status',
-              label: 'สถานะ',
-              sortable: true,
-              hideable: false,
-              width: '100px',
-              render: (product: StockProduct) => <StockProductStatus product={product} />,
-            },
-          ]
-        : []),
-      {
-        key: 'branch',
-        label: 'สาขา',
-        sortable: true,
-        hideable: false,
-        width: '130px',
-        render: (product) => <StockProductBranch product={product} />,
-      },
-      {
-        key: 'actions',
-        label: '',
-        stickyRight: true,
-        sortable: false,
-        hideable: false,
-        width: '120px',
-        render: (product) =>
-          product.stockGroup ? (
-            <Button
-              variant="ghost"
-              className="h-11 w-full justify-between gap-1 rounded-md px-1 text-xs font-medium text-primary hover:bg-primary/10"
-              onClick={() => setAccessoryGroupId(product.stockGroup!.key)}
-            >
-              ดู {product.stockGroup.unitCount} ชิ้น
-              <ChevronRight aria-hidden="true" className="size-4" />
-            </Button>
-          ) : (
-            <div className="flex items-center justify-end gap-1">
-              {isManager && (
-                <Button
-                  variant="ghost"
-                  mode="icon"
-                  className="size-11"
-                  aria-label="จัดการราคา"
-                  title="จัดการราคา"
-                  onClick={() => openPriceEdit(product)}
-                >
-                  <Pencil aria-hidden="true" className="size-4" />
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                className="h-11 px-3 lg:w-11 lg:px-0"
-                aria-label="ดูรายละเอียด"
-                title="ดูรายละเอียดสินค้า"
-                onClick={() => navigateToProduct(product.id)}
-              >
-                <span className="lg:hidden">รายละเอียด</span>
-                <ArrowUpRight aria-hidden="true" className="size-4" />
-              </Button>
-            </div>
-          ),
-      },
-    ],
+  // คอลัมน์ทั้งหมดอยู่ใน components/stockColumns.tsx (ตารางคอมกับการ์ดมือถือใช้ชุดเดียวกัน)
+  const columns = useMemo<StockColumn[]>(
+    () =>
+      buildStockColumns({
+        isManager,
+        view,
+        filterCategory,
+        showNameCaption: !isMobile,
+        listProducts,
+        selectableProducts,
+        selectedIds,
+        toggleSelectAll,
+        toggleSelect,
+        navigateToProduct,
+        openPriceEdit,
+        setAccessoryGroupId,
+        installments: installmentPlans.installments,
+      }),
     [
       isManager,
       view,
-      selectableProducts,
-      setAccessoryGroupId,
-      isDeviceView,
-      isAllCategories,
-      isAccessoryView,
-      isUsedPhoneView,
-      isTabletView,
+      filterCategory,
+      isMobile,
       listProducts,
+      selectableProducts,
       selectedIds,
       toggleSelectAll,
       toggleSelect,
       navigateToProduct,
       openPriceEdit,
+      setAccessoryGroupId,
       installmentPlans.installments,
     ],
   );
 
   return (
     <div>
-      <header className="mb-5 flex items-center justify-between gap-3">
+      {/* pt-5 ให้ห่างจากแถบบนเท่ากับ PageHeader ของหน้าอื่น (เจ้าของ 2026-09-11: "ชิดขอบบนไป") */}
+      <header className="mb-5 flex items-center justify-between gap-3 pt-5">
         <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight text-foreground leading-snug sm:text-2xl">
             รายการสินค้า

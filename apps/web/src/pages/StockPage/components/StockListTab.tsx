@@ -1,5 +1,5 @@
 import { useId, useState, type ReactNode } from 'react';
-import DataTable, { type Column, type TableSort } from '@/components/ui/DataTable';
+import DataTable, { type TableSort } from '@/components/ui/DataTable';
 import EmptyState from '@/components/ui/EmptyState';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { statusLabels } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import type { StockProduct } from '../types';
 import type { StockView, StockViewCounts } from '../hooks/useStockProducts';
+import { stockTableMinWidth, type StockColumn } from './stockColumns';
 import { ChevronLeft, ChevronRight, Package, Search, SlidersHorizontal, X } from 'lucide-react';
 
 export interface StockListTabProps {
@@ -30,7 +31,7 @@ export interface StockListTabProps {
   filterBranch: string;
   setFilterBranch: (branch: string) => void;
   branches: { id: string; name: string }[];
-  columns: Column<StockProduct>[];
+  columns: StockColumn[];
   listProducts: StockProduct[];
   listLoading: boolean;
   listError: boolean;
@@ -52,7 +53,8 @@ const quickCategories = [
   { value: 'TABLET', label: 'แท็บเล็ต' },
   { value: 'ACCESSORY', label: 'อุปกรณ์' },
 ];
-const priceKeys = ['costPrice', 'cashPrice', 'downPayment', 'monthlyPayment'];
+// ดาวน์อยู่ในช่องยอดผ่อนต่อเดือนแล้ว (StockInstallmentSummary) จึงไม่มีคอลัมน์แยก
+const priceKeys = ['costPrice', 'cashPrice', 'monthlyPayment'];
 const selectClass =
   'h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -153,8 +155,11 @@ export function StockListTab({
   const hasAdditionalFilters = !!(search || (showStatusFilter && filterStatus) || filterBranch);
   const hasFilters = hasAdditionalFilters || !!filterCategory;
   const emptyMessage = hasFilters ? 'ไม่พบสินค้าที่ตรงกับตัวกรอง' : 'ยังไม่มีสินค้าในคลัง';
-  const priceColumns = columns.filter((column) => priceKeys.includes(column.key));
-  const specificationColumns = columns.filter((column) =>
+  // ตารางคอมตัดคอลัมน์ที่ยุบเข้าช่องอื่นแล้วออก · การ์ดมือถือตัดคอลัมน์รวมสำหรับคอมออก
+  const desktopColumns = columns.filter((column) => !column.desktopHidden);
+  const mobileColumns = columns.filter((column) => !column.mobileHidden);
+  const priceColumns = mobileColumns.filter((column) => priceKeys.includes(column.key));
+  const specificationColumns = mobileColumns.filter((column) =>
     [
       'productCode',
       'category',
@@ -552,7 +557,7 @@ export function StockListTab({
           <DataTable
             className="rounded-none border-0 shadow-none [&_th]:normal-case [&_th]:tracking-normal [&_th]:text-foreground/75"
             maxHeight="max(280px, calc(100dvh - 360px))"
-            columns={columns}
+            columns={desktopColumns}
             sort={sort}
             onSortChange={onSortChange}
             data={listProducts}
@@ -560,22 +565,10 @@ export function StockListTab({
             emptyMessage={emptyMessage}
             emptyIcon={hasFilters ? Search : Package}
             emptyDescription={hasFilters ? 'ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง' : undefined}
-            columnToggle={columns.some((column) => column.hideable !== false)}
+            columnToggle={desktopColumns.some((column) => column.hideable !== false)}
             density="compact"
-            minWidth={`${
-              (filterCategory === 'PHONE_USED'
-                ? 1575
-                : filterCategory === 'TABLET'
-                  ? 1415
-                  : filterCategory === 'PHONE_NEW'
-                    ? 1255
-                    : filterCategory === 'ACCESSORY'
-                      ? 1200
-                      : 1615) - // แท็บทั้งหมด: 1480 + คอลัมน์วันที่รับเข้า 135
-              // มุมมองพร้อมขายไม่มีคอลัมน์สถานะ (100px) — ลดความกว้างขั้นต่ำลงเท่ากัน
-              // ไม่งั้นคอลัมน์ที่เหลือขยายมาแทนแล้วดันยอดผ่อนต่อเดือนหลุดจอที่ 1280px
-              (showStatusFilter ? 0 : 100)
-            }px`}
+            // ผลรวมความกว้างคอลัมน์จริง (≤ ~1,130px ทุกแท็บ) — พอดีจอ 1280 ไม่ต้องเลื่อนแนวนอน
+            minWidth={`${stockTableMinWidth(desktopColumns)}px`}
             toolbar={summaryNode}
             pagination={
               listResult

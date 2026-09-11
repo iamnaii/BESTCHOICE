@@ -38,7 +38,8 @@ export interface BcCalcOutput {
 }
 
 export type GfinCondition = 'HAND_1' | 'HAND_2';
-export type ProductCategoryForGfin = 'PHONE_NEW' | 'PHONE_USED';
+/** TABLET (iPad) ส่ง GFIN ได้ตั้งแต่ 2026-09-11 — ถือเป็นมือ 1 (HAND_1) เสมอ */
+export type ProductCategoryForGfin = 'PHONE_NEW' | 'PHONE_USED' | 'TABLET';
 
 export interface GfinModelMappingRow {
   id: string;
@@ -57,11 +58,15 @@ export interface GfinOverpriceRuleRow {
   seriesPattern: string;
   condition: GfinCondition;
   allowance: Decimal;
+  /** ผ่อนได้สูงสุด (งวด) ของซีรีส์/สภาพนี้ตามตารางราคา GFIN — null = ไม่จำกัด */
+  maxMonths: number | null;
   isActive: boolean;
 }
 
 export interface GfinRateFactorRow {
   months: number;
+  /** % คอมมิชชั่นที่ร้านเลือกในหน้า GFIN — เรทต่างกันตามค่านี้ (มือถือ 15 · iPad 5) */
+  shopCommissionPct: number;
   factor: Decimal;
   feePerInstallment: Decimal;
   isActive: boolean;
@@ -78,7 +83,12 @@ export interface GfinCalcInput {
   installmentPrice: Decimal;
   product: ProductForGfin;
   months: number;
+  /** สัดส่วนดาวน์ที่แจ้ง GFIN (0.25 = 25%) — default 0.25 */
   downPct?: Decimal;
+  /** % คอมมิชชั่นที่ร้านเลือก (15 = 15%) — default = ค่าของ rateFactor; ต้องตรงกับ rateFactor */
+  shopCommissionPct?: Decimal;
+  /** ค่าทำสัญญาที่ GFIN หักจากยอดโอนให้ร้าน — default 100 */
+  contractFee?: Decimal;
   mapping: GfinModelMappingRow;
   overpriceRule: GfinOverpriceRuleRow | null;
   rateFactor: GfinRateFactorRow;
@@ -86,14 +96,29 @@ export interface GfinCalcInput {
 
 export interface GfinCalcOutput {
   gfinSubmitPrice: Decimal;
+  /** ส่วนต่างราคาส่งสูงสุด − ราคาผ่อนที่ต้องการ → เอามาลดดาวน์ให้ลูกค้า (กติกาของร้าน) */
   downDiscount: Decimal;
   downPct: Decimal;
+  /** ดาวน์ที่แจ้ง GFIN = ราคาส่ง × downPct */
   downAmountByFormula: Decimal;
+  /** ดาวน์ที่ลูกค้าจ่ายจริง = ดาวน์ตามสูตร − ส่วนลดดาวน์ (ไม่ต่ำกว่า 0) */
   downAmountActual: Decimal;
+  /** ยอดจัดสินเชื่อหลังหักเงินดาวน์ */
   financedAmount: Decimal;
+  /** รวมเงินผ่อนต่องวด = ceil(ยอดจัด × เรท) + ค่าล็อกเครื่อง (ปัดขึ้นเป็นบาทตาม GFIN) */
   monthlyPayment: Decimal;
   totalPayback: Decimal;
   feePerInstallment: Decimal;
+  shopCommissionPct: Decimal;
+  /** ค่าคอมมิชชั่นสุทธิ = ยอดจัด × %คอม */
+  shopCommissionAmount: Decimal;
+  contractFee: Decimal;
+  /** ยอดโอนให้ร้านค้าสุทธิ = ยอดจัด + คอม − ค่าทำสัญญา */
+  netTransferToShop: Decimal;
+  /** ร้านรับรวม = ดาวน์จริงจากลูกค้า + ยอดโอนจาก GFIN */
+  shopTotalReceived: Decimal;
+  /** ราคาผ่อนที่ต้องการสูงกว่าราคาส่งสูงสุด → ไม่มีส่วนลดดาวน์ และร้านได้น้อยกว่าราคาผ่อน */
+  priceAboveSubmit: boolean;
   isValid: boolean;
   errors: string[];
 }

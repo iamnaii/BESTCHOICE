@@ -157,6 +157,8 @@ describe('DOC-07 browser evidence — /finance/e-tax document center', () => {
 
   afterAll(async () => {
     await web?.close();
+    // Leave the global e-Tax config as documented (disabled) for whatever suite shares this database next.
+    if (h && owner) await h.client({ session: owner }).put('/integrations/e-tax/config', { submitMode: 'disabled' }).catch(() => undefined);
     rd?.restore();
     await h?.close();
   });

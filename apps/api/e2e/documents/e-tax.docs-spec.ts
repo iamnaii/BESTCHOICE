@@ -123,9 +123,13 @@ describe('DOC-07 e-Tax invoices — real payment source, XML lifecycle against a
     // Synthetic RD + certificate; the hourly auto-submit job is muted for the run.
     rd = installSyntheticRd();
     cert = synthesizeCertificate(join(domainDir(DOMAIN), 'synthetic-cert'));
+    // The e-Tax config is global (IntegrationConfig, not world-scoped): a full run shares one
+    // database across suites, so start from the documented default whatever ran before.
+    await ok(c(owner).put('/integrations/e-tax/config', { submitMode: 'disabled' }), 200, 'e-tax config reset');
   }, 300000);
 
   afterAll(async () => {
+    if (h && owner) await c(owner).put('/integrations/e-tax/config', { submitMode: 'disabled' }).catch(() => undefined);
     rd?.restore();
     await h?.close();
   });

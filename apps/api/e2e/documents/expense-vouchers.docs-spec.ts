@@ -151,6 +151,10 @@ describe('DOC-03 expense vouchers, petty cash and daily summary — real command
     await page.waitForFunction(() => document.querySelectorAll('[data-sonner-toast]').length === 0, undefined, { timeout: 15_000 }).catch(() => undefined);
     const fontLoaded = await page.evaluate(() => (document as any).fonts.check('16pt "TH Sarabun PSK"'));
     await page.emulateMedia({ media: 'print' });
+    // The print stylesheet swaps every element to TH Sarabun PSK; printing in the same frame as
+    // the media switch yields a PDF with layout but no text runs (seen in the first run of this
+    // file, root-caused by the DOC-01 session) — let the browser paint two frames first.
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const printMediaShot = saveArtifact(DOMAIN, `${name}.print-media.png`, await page.screenshot({ fullPage: true })).relativePath;
     const variants: Array<{ label: string; run: () => Promise<Uint8Array> }> = [
       { label: 'css-page-size', run: () => page.pdf({ format: 'A4', preferCSSPageSize: true, printBackground: true }) },

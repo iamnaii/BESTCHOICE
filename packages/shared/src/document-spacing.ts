@@ -1,10 +1,10 @@
-/** Distribute unused A4 space without shrinking type or changing long-document pagination.
+/** Choose readable print spacing when it fits; leave unused paper naturally blank.
  * Self-contained so server HTML can install the same browser-side print handler.
  */
-export function balancePaperPages(): () => void {
+export function fitPaperSpacing(): () => void {
   const restore: Array<() => void> = [];
   const mm = 96 / 25.4;
-  const target = 252 * mm; // A4 ends at 270 mm: a calm 27 mm lower margin.
+  const pageHeight = 259 * mm; // A4 minus 18 mm top/bottom and 2 mm rounding safety.
   const roots = document.querySelectorAll<HTMLElement>('.bc-document, body[data-bc-paper]');
   for (const root of Array.from(roots)) {
     if (!root.getBoundingClientRect().height) continue;
@@ -25,29 +25,8 @@ export function balancePaperPages(): () => void {
     if (!blocks.length) continue;
     const height = () => Math.max(...blocks.map(node => node.getBoundingClientRect().bottom + parseFloat(getComputedStyle(node).marginBottom))) - root.getBoundingClientRect().top;
     root.classList.add('bc-paper-relaxed');
-    if (height() > target) root.classList.remove('bc-paper-relaxed');
-    if (height() >= target) continue; // Long tables remain in normal paged flow.
-
-    const gaps = new Set<HTMLElement>(blocks.slice(1));
-    const closing = root.querySelector('.bc-doc-closing, .receipt-closing, .letter-closing');
-    const approval = closing?.querySelector<HTMLElement>('.bc-doc-signoff, .bc-doc-approval, .document-approval, .signature, .footer, section:has(.h-16), .grid:has(.border-t)');
-    if (approval) gaps.add(approval);
-    const entries = Array.from(gaps).map(node => {
-      const originalStyle = node.style.cssText;
-      restore.push(() => { node.style.cssText = originalStyle; });
-      return { node, margin: parseFloat(getComputedStyle(node).marginTop) || 0, weight: node === approval ? 1.5 : node === blocks[1] ? 0.35 : 1 };
-    });
-    if (!entries.length) continue;
-    const apply = (extra: number) => entries.forEach(({node, margin, weight}) => node.style.setProperty('margin-top', `${margin + extra * weight}px`, 'important'));
-    // Measure rather than assume additive margins (nested/collapsing margins differ).
-    let low = 0;
-    let high = target - height();
-    for (let i = 0; i < 14; i += 1) {
-      const mid = (low + high) / 2;
-      apply(mid);
-      if (height() <= target) low = mid; else high = mid;
-    }
-    apply(low);
+    if (height() > pageHeight) root.classList.remove('bc-paper-relaxed');
+    // Never add margins merely to fill the page. Closing groups remain in normal flow.
   }
   return () => restore.reverse().forEach(reset => reset());
 }
@@ -56,15 +35,15 @@ export function balancePaperPages(): () => void {
 export function paperSpacingScript(): string {
   return `<script>(() => {
     let restore;
-    window.addEventListener('beforeprint', () => { restore?.(); restore = (${balancePaperPages.toString()})(); });
+    window.addEventListener('beforeprint', () => { restore?.(); restore = (${fitPaperSpacing.toString()})(); });
     window.addEventListener('afterprint', () => { restore?.(); restore = undefined; });
   })();</script>`;
 }
 
 export const PAPER_SPACING_CSS = `
-:is(.bc-document,body[data-bc-paper]).bc-paper-relaxed :is(div,p,span,li,td,th,a,label,strong,b,em,u,small,section,article,header,footer) { line-height: 1.5 !important; }
-:is(.bc-document,body[data-bc-paper]).bc-paper-relaxed :is(th,td) { padding-top: 3mm !important; padding-bottom: 3mm !important; }
+:is(.bc-document,body[data-bc-paper]).bc-paper-relaxed :is(div,p,span,li,td,th,a,label,strong,b,em,u,small,section,article,header,footer) { line-height: 1.35 !important; }
+:is(.bc-document,body[data-bc-paper]).bc-paper-relaxed :is(th,td) { padding-top: 2mm !important; padding-bottom: 2mm !important; }
 :is(.bc-document,body[data-bc-paper]).bc-paper-relaxed :is(.bc-doc-header,.header) { padding-bottom: 5mm; }
-:is(.bc-document,body[data-bc-paper]).bc-paper-relaxed :is(.sign-space,.h-16) { height: 20mm !important; }
+:is(.bc-document,body[data-bc-paper]).bc-paper-relaxed :is(.sign-space,.h-16) { height: 16mm !important; }
 :is(.bc-document,body[data-bc-paper]).bc-paper-relaxed .body p { margin-top: 2.5mm; margin-bottom: 2.5mm; }
 `;

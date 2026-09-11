@@ -350,7 +350,7 @@ export class ETaxService {
     doc.text('ใบกำกับภาษี', pageWidth - margin, 65, { align: 'right' });
     setNormal();
     doc.setFontSize(DOCUMENT_STYLE.footerPt);
-    doc.setTextColor(82, 100, 113);
+    doc.setTextColor(82, 100, 93);
     doc.text('TAX INVOICE', margin, 85);
     doc.text('ต้นฉบับ / ORIGINAL', pageWidth - margin, 85, { align: 'right' });
 
@@ -406,7 +406,7 @@ export class ETaxService {
       startY: refTop + 20,
       head: [['#', 'รายการ', 'จำนวน', 'ราคา/หน่วย (บาท)', 'รวม (บาท)']],
       body: [['1', description, '1', base.toFixed(2), base.toFixed(2)]],
-      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 7, minCellHeight: 72, valign: 'middle', textColor: [23, 43, 37] },
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 6, valign: 'middle', textColor: [23, 43, 37] },
       headStyles: { font: fontFamily, fontStyle: 'bold', minCellHeight: 0, fillColor: green, textColor: [255, 255, 255] },
       columnStyles: {
         0: { halign: 'center', cellWidth: 30 },
@@ -428,7 +428,7 @@ export class ETaxService {
       ['รวมทั้งสิ้น', total.toFixed(2)],
     ];
     autoTable(doc, {
-      startY: doc.getNumberOfPages() === 1 ? Math.max(finalY + 20, 625) : finalY + 20,
+      startY: finalY + 12,
       body: summaryRows,
       theme: 'plain',
       pageBreak: 'avoid',

@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
-import { balancePaperPages, PAPER_SPACING_CSS, DOCUMENT_WEB_FONT_FACES, documentTypographyCss, transactionDocumentCss } from '@installment/shared';
+import { fitPaperSpacing, PAPER_SPACING_CSS, DOCUMENT_WEB_FONT_FACES, documentTypographyCss, transactionDocumentCss } from '@installment/shared';
 
 /** Typography for paper only. Thermal labels keep their physical type scale. */
 export default function DocumentStyles() {
   useEffect(() => {
     let restore: (() => void) | undefined;
-    const before = () => { restore?.(); restore = balancePaperPages(); };
+    const before = () => { restore?.(); restore = fitPaperSpacing(); };
     const after = () => { restore?.(); restore = undefined; };
     window.addEventListener('beforeprint', before);
     window.addEventListener('afterprint', after);

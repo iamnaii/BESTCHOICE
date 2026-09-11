@@ -569,8 +569,7 @@ function signatureBlock(
   const closingLines = doc.splitTextToSize(closing, CONTENT_W) as string[];
   // Reserve the closing and signature together before either is drawn.
   const closingHeight = height + closingLines.length * lineHeight(doc) + 6;
-  const balancedStart = Math.max(yStart, BODY_BOTTOM - closingHeight - 3);
-  let y = nextLine(doc, balancedStart, closingHeight);
+  let y = nextLine(doc, yStart, closingHeight);
   for (const line of closingLines) {
     doc.text(line, MARGIN, y);
     y += lineHeight(doc);

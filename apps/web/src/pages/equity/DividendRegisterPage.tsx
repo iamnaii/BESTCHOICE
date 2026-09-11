@@ -13,18 +13,9 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import api, { getErrorMessage } from '@/lib/api';
 import { equityApi } from '@/lib/equity';
 import type { DividendRegisterRow } from '@/lib/equity.types';
+import { useCertificatePayer } from '@/lib/certificate-payer';
+import CertificatePayerNotice from '@/components/CertificatePayerNotice';
 import { formatNumberDecimal } from '@/utils/formatters';
-
-// ผู้จ่ายเงินบนหนังสือรับรอง = นิติบุคคลจดทะเบียน (FINANCE CompanyInfo) —
-// รูปแบบเดียวกับ WhtAnnualPage.tsx (ผู้จ่ายเงินได้ ภ.ง.ด.1ก/50 ทวิ)
-interface CompanyRow {
-  id: string;
-  nameTh: string;
-  taxId: string;
-  address: string;
-  directorName: string;
-  companyCode: string | null;
-}
 
 export default function DividendRegisterPage() {
   const currentYear = new Date().getFullYear();
@@ -37,13 +28,10 @@ export default function DividendRegisterPage() {
     queryFn: () => equityApi.dividendRegister(year),
   });
 
-  // ผู้จ่ายเงินบนหนังสือรับรอง ม.50 ทวิ = นิติบุคคลจดทะเบียน (FINANCE CompanyInfo)
-  const companies = useQuery({
-    queryKey: ['company-info-list'],
-    queryFn: () => api.get<CompanyRow[]>('/company').then((r) => r.data),
-    staleTime: 5 * 60 * 1000,
-  });
-  const payer = companies.data?.find((c) => c.companyCode === 'FINANCE') ?? companies.data?.[0];
+  // ผู้จ่ายเงินบนหนังสือรับรอง ม.50 ทวิ = นิติบุคคลจดทะเบียน (FINANCE CompanyInfo) — shared with WhtAnnualPage
+  // (DOC-08 #1567: the page used to call `/company`, a route that does not exist, and fall back to the first company).
+  const payerQuery = useCertificatePayer();
+  const payer = payerQuery.payer;
 
   const downloadXlsx = async (month: number) => {
     try {
@@ -253,11 +241,7 @@ export default function DividendRegisterPage() {
               </div>
             </>
           )}
-          {certFor && !payer && (
-            <div className="text-sm text-muted-foreground py-6 text-center leading-snug">
-              กำลังโหลดข้อมูลบริษัท… (ต้องมี CompanyInfo ฝั่ง FINANCE)
-            </div>
-          )}
+          {certFor && !payer && <CertificatePayerNotice query={payerQuery} onClose={() => setCertFor(null)} />}
         </DialogContent>
       </Dialog>
     </div>

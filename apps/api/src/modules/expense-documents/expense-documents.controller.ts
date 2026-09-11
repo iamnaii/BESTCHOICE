@@ -222,8 +222,13 @@ export class ExpenseDocumentsController {
   // wire the export-gate pattern (unlike other-income).
   @Get(':id/voucher.pdf')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  async getVoucherPdf(@Param('id') id: string, @Res() res: Response) {
-    const pdf = await this.voucherPdf.generate(id);
+  async getVoucherPdf(
+    @Param('id') id: string,
+    @CurrentUser() user: { role?: string | null; branchId?: string | null },
+    @Res() res: Response,
+  ) {
+    // Branch scope lives in the service (route has no branchId for BranchGuard to check).
+    const pdf = await this.voucherPdf.generate(id, user);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="expense-voucher-${id}.pdf"`,

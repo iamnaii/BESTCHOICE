@@ -1,4 +1,6 @@
 import DocumentHeader from '@/components/DocumentHeader';
+import CertificatePayerNotice from '@/components/CertificatePayerNotice';
+import { useCertificatePayer } from '@/lib/certificate-payer';
 import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -51,15 +53,6 @@ interface AnnualPreview {
   annualWageTotal: string;
 }
 
-interface CompanyRow {
-  id: string;
-  nameTh: string;
-  taxId: string;
-  address: string;
-  directorName: string;
-  companyCode: string | null;
-}
-
 export default function WhtAnnualPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -71,13 +64,9 @@ export default function WhtAnnualPage() {
       api.get<AnnualPreview>(`/tax/pnd1-annual-preview?year=${year}`).then((r) => r.data),
   });
 
-  // ผู้จ่ายเงินได้บนใบ 50 ทวิ = นิติบุคคลจดทะเบียน (FINANCE CompanyInfo)
-  const companies = useQuery({
-    queryKey: ['company-info-list'],
-    queryFn: () => api.get<CompanyRow[]>('/company').then((r) => r.data),
-    staleTime: 5 * 60 * 1000,
-  });
-  const payer = companies.data?.find((c) => c.companyCode === 'FINANCE') ?? companies.data?.[0];
+  // ผู้จ่ายเงินได้บนใบ 50 ทวิ = นิติบุคคลจดทะเบียน (FINANCE CompanyInfo) — shared with the dividend register.
+  const payerQuery = useCertificatePayer();
+  const payer = payerQuery.payer;
 
   const downloadXlsx = async () => {
     try {
@@ -308,11 +297,7 @@ export default function WhtAnnualPage() {
               </div>
             </>
           )}
-          {certFor && !payer && (
-            <div className="text-sm text-muted-foreground py-6 text-center">
-              กำลังโหลดข้อมูลบริษัท… (ต้องมี CompanyInfo ฝั่ง FINANCE)
-            </div>
-          )}
+          {certFor && !payer && <CertificatePayerNotice query={payerQuery} onClose={() => setCertFor(null)} />}
         </DialogContent>
       </Dialog>
     </div>

@@ -220,15 +220,14 @@ describe('ExpenseDocumentsService.createPayroll — userId link & snapshot deriv
 
   describe('findOne — payroll taxId masking (read path)', () => {
     function mockFindOne() {
+      // findOne reads the docType row with findUnique (unknown id → 404), then the full include.
       prisma.expenseDocument = {
-        findUniqueOrThrow: jest
-          .fn()
-          .mockResolvedValueOnce({ documentType: 'PAYROLL', deletedAt: null })
-          .mockResolvedValueOnce({
-            documentType: 'PAYROLL',
-            deletedAt: null,
-            payroll: { lines: [{ employeeTaxId: '1234567890123', employeeName: 'สมชาย' }] },
-          }),
+        findUnique: jest.fn().mockResolvedValue({ documentType: 'PAYROLL', deletedAt: null, branchId: 'b1' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          documentType: 'PAYROLL',
+          deletedAt: null,
+          payroll: { lines: [{ employeeTaxId: '1234567890123', employeeName: 'สมชาย' }] },
+        }),
       };
     }
     it('masks employeeTaxId for BRANCH_MANAGER', async () => {

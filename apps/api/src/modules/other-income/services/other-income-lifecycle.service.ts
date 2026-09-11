@@ -403,8 +403,9 @@ export class OtherIncomeLifecycleService {
       actorUserId: userId,
       documentCreatedById: doc.createdById,
     })) {
+      // Thai message at the top level too — the view page shows `message` in its toast (DOC-05 #1564).
       throw new BadRequestException({
-        message: 'Validation failed',
+        message: SELF_APPROVAL_DENIED_MESSAGE,
         errors: [
           {
             rule: 'V9',

@@ -27,9 +27,11 @@ import { OtherIncomeReverseReason } from '@prisma/client';
  * the canonical category for backwards-compat reports.
  */
 export class ReverseOtherIncomeDto {
+  // The list is derived from the enum so the message can never name a value the
+  // validator rejects (it used to advertise CANCELED_BY_CUSTOMER, which does not
+  // exist — the canonical value is CUSTOMER_REQUEST; DOC-05 #1564).
   @IsEnum(OtherIncomeReverseReason, {
-    message:
-      'reason ไม่ถูกต้อง — ต้องเป็นหนึ่งใน INPUT_ERROR, DUPLICATE, CANCELED_BY_CUSTOMER, OTHER',
+    message: `reason ไม่ถูกต้อง — ต้องเป็นหนึ่งใน ${Object.values(OtherIncomeReverseReason).join(', ')}`,
   })
   reason!: OtherIncomeReverseReason;
 

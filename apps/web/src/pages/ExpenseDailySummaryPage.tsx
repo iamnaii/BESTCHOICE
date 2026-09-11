@@ -17,14 +17,26 @@ import { useUiFlags } from '@/hooks/useUiFlags';
 interface ExpenseDocumentRow {
   id: string;
   number: string;
-  documentType: 'EXPENSE' | 'CREDIT_NOTE' | 'PAYROLL' | 'VENDOR_SETTLEMENT';
+  documentType: 'EXPENSE' | 'CREDIT_NOTE' | 'PAYROLL' | 'VENDOR_SETTLEMENT' | 'PETTY_CASH_REIMBURSEMENT' | 'REPAIR_SERVICE';
   vendorName: string | null;
   totalAmount: string;
   netPayment: string | null;
   paymentMethod: string | null;
   depositAccountCode: string | null;
-  expenseDetail: { category: string } | null;
-  creditNote: { category: string } | null;
+  /** The API returns every expense line (I4) — the account column lists their distinct categories. */
+  expenseDetail: { lines?: Array<{ category: string }> } | null;
+  creditNote: { category?: string | null } | null;
+}
+
+/**
+ * Distinct account codes of a document, in line order — "53-1201, 53-1105".
+ * `expenseDetail.category` never existed on the API response, so the printed
+ * daily summary showed "-" for every row (DOC-03, #1562).
+ */
+export function documentCategories(row: Pick<ExpenseDocumentRow, 'expenseDetail' | 'creditNote'>): string {
+  const codes = (row.expenseDetail?.lines ?? []).map((line) => line.category);
+  if (row.creditNote?.category) codes.push(row.creditNote.category);
+  return [...new Set(codes.filter(Boolean))].join(', ') || '-';
 }
 
 interface Summary {
@@ -39,12 +51,17 @@ interface Summary {
   cashMovement: Record<string, { out: string; count: number }>;
 }
 
-const TYPE_LABELS: Record<string, string> = {
+/** One label per DocumentType the summary can contain — an unlabelled type printed its raw enum name (DOC-03, #1562). */
+export const TYPE_LABELS: Record<ExpenseDocumentRow['documentType'], string> = {
   EXPENSE: 'รายจ่าย (EX)',
   CREDIT_NOTE: 'ใบลดหนี้ (CN)',
   PAYROLL: 'เงินเดือน (PR)',
   VENDOR_SETTLEMENT: 'จ่ายเจ้าหนี้ (SE)',
+  PETTY_CASH_REIMBURSEMENT: 'ใบเบิกชดเชยเงินสดย่อย (PC)',
+  REPAIR_SERVICE: 'ค่าซ่อมอุปกรณ์ (RS)',
 };
+/** Aggregation keys arrive as plain strings; an unknown type still prints something readable. */
+const typeLabel = (type: string): string => (TYPE_LABELS as Record<string, string | undefined>)[type] ?? type;
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: 'เงินสด',
   BANK_TRANSFER: 'โอนธนาคาร',
@@ -98,9 +115,9 @@ export default function ExpenseDailySummaryPage() {
     summary.documents.forEach((d) => {
       sh1.addRow([
         d.number,
-        TYPE_LABELS[d.documentType] ?? d.documentType,
+        typeLabel(d.documentType),
         d.vendorName ?? '',
-        d.expenseDetail?.category ?? d.creditNote?.category ?? '',
+        documentCategories(d) === '-' ? '' : documentCategories(d),
         d.totalAmount,
         d.paymentMethod ? (PAYMENT_METHOD_LABELS[d.paymentMethod] ?? d.paymentMethod) : '',
       ]);
@@ -109,7 +126,7 @@ export default function ExpenseDailySummaryPage() {
     const sh2 = wb.addWorksheet('สรุปยอด');
     sh2.addRow(['ตามประเภท', 'จำนวน', 'รวม']);
     Object.entries(summary.byType).forEach(([k, v]) =>
-      sh2.addRow([TYPE_LABELS[k] ?? k, v.count, v.total]),
+      sh2.addRow([typeLabel(k), v.count, v.total]),
     );
     sh2.addRow([]);
     sh2.addRow(['ตามวิธีจ่าย', 'จำนวน', 'รวม']);
@@ -216,11 +233,17 @@ export default function ExpenseDailySummaryPage() {
                   ) : (
                     summary.documents.map((d) => (
                       <tr key={d.id} className="border-b border-border last:border-0">
-                        <td className="p-2 font-mono">{d.number}</td>
-                        <td className="p-2">{TYPE_LABELS[d.documentType] ?? d.documentType}</td>
+                        {/* Document numbers and account codes never break mid-code on paper (DOC-03, #1562). */}
+                        <td className="p-2 font-mono whitespace-nowrap">{d.number}</td>
+                        <td className="p-2">{typeLabel(d.documentType)}</td>
                         <td className="p-2">{d.vendorName ?? '–'}</td>
                         <td className="p-2 font-mono text-xs">
-                          {d.expenseDetail?.category ?? d.creditNote?.category ?? '-'}
+                          {documentCategories(d).split(', ').map((code, index) => (
+                            <span key={code}>
+                              {index > 0 && ', '}
+                              <span className="whitespace-nowrap">{code}</span>
+                            </span>
+                          ))}
                         </td>
                         <td className="p-2 text-right font-mono">
                           {formatNumberDecimal(d.totalAmount)}
@@ -250,7 +273,7 @@ export default function ExpenseDailySummaryPage() {
                   <tbody>
                     {Object.entries(summary.byType).map(([k, v]) => (
                       <tr key={k} className="border-b border-border last:border-0">
-                        <td className="py-1.5">{TYPE_LABELS[k] ?? k}</td>
+                        <td className="py-1.5">{typeLabel(k)}</td>
                         <td className="py-1.5 text-right text-muted-foreground">
                           {v.count} รายการ
                         </td>

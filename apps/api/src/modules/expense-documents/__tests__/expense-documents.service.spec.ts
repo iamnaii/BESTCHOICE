@@ -35,6 +35,8 @@ describe('ExpenseDocumentsService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         findFirst: jest.fn().mockResolvedValue(null),
+        // findOne reads the docType row with findUnique (null → 404) before the full include.
+        findUnique: jest.fn().mockResolvedValue(null),
         findUniqueOrThrow: jest.fn(),
         // D1.2.1.1 — submitForApproval reads `result.totalAmount.toString()`,
         // `result.number`, `result.documentType` from the update return value
@@ -1357,13 +1359,14 @@ describe('ExpenseDocumentsService', () => {
   });
 
   describe('findOne', () => {
-    it('throws NotFound for missing or soft-deleted', async () => {
-      prisma.expenseDocument.findUniqueOrThrow.mockRejectedValue(new Error('not found'));
-      await expect(service.findOne('missing-id')).rejects.toThrow();
+    it('throws NotFoundException for an unknown id (no Prisma P2025 → 500; DOC-03 #1562)', async () => {
+      prisma.expenseDocument.findUnique.mockResolvedValue(null);
+      await expect(service.findOne('missing-id')).rejects.toThrow(NotFoundException);
+      expect(prisma.expenseDocument.findUniqueOrThrow).not.toHaveBeenCalled();
     });
     it('throws NotFoundException when doc is soft-deleted (deletedAt set)', async () => {
-      prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
-        id: 'doc-1', status: 'DRAFT', deletedAt: new Date(),
+      prisma.expenseDocument.findUnique.mockResolvedValue({
+        id: 'doc-1', documentType: 'EXPENSE', deletedAt: new Date(), branchId: 'b1',
       });
       await expect(service.findOne('doc-1')).rejects.toThrow(NotFoundException);
     });

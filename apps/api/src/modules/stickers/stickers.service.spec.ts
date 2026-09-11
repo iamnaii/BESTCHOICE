@@ -3,276 +3,138 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { StickersService } from './stickers.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
-describe('StickersService.getStickerData', () => {
+/**
+ * สติกเกอร์ติดเครื่องอ่านข้อมูลจาก "ตัวเครื่อง" ล้วน ๆ (คำตัดสินเจ้าของ 2026-09-11) —
+ * ไม่แตะตารางราคากลาง PricingTemplate / SystemConfig sticker.* / โลโก้ร้านอีกต่อไป
+ * ราคาและค่างวดให้ฝั่ง web คำนวณด้วยสูตรเดียวกับหน้ารายละเอียดสินค้า จึงส่งเฉพาะข้อมูลดิบ
+ */
+describe('StickersService — ข้อมูลเครื่องสำหรับพิมพ์สติกเกอร์', () => {
   let service: StickersService;
-  let prisma: {
-    product: { findFirst: jest.Mock };
-    pricingTemplate: { findFirst: jest.Mock };
-    systemConfig: { findMany: jest.Mock };
-    companyInfo: { findFirst: jest.Mock };
-  };
+  let prisma: { product: { findMany: jest.Mock } };
 
   beforeEach(async () => {
-    prisma = {
-      product: { findFirst: jest.fn() },
-      pricingTemplate: { findFirst: jest.fn() },
-      systemConfig: { findMany: jest.fn() },
-      companyInfo: { findFirst: jest.fn() },
-    };
+    prisma = { product: { findMany: jest.fn() } };
     const moduleRef = await Test.createTestingModule({
       providers: [StickersService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     service = moduleRef.get(StickersService);
   });
 
+  const inTwoYears = new Date(Date.now() + 2 * 365 * 24 * 60 * 60 * 1000);
   const baseProduct = {
     id: 'product-1',
+    name: 'Apple iPhone 15 128GB Black',
     brand: 'Apple',
-    model: 'iPhone 15 Pro Max',
-    color: 'ดำ',
-    storage: '256GB',
-    batteryHealth: 95,
-    warrantyExpireDate: new Date('2027-05-22'),
-    warrantyExpired: false,
-    imeiSerial: '359123456789012',
+    model: 'iPhone 15',
     category: 'PHONE_NEW' as const,
-    branch: { name: 'สาขาลาดพร้าว' },
-    inspection: null,
+    status: 'IN_STOCK' as const,
+    color: 'ดำ',
+    storage: '128GB',
+    batteryHealth: null,
+    hasBox: true,
+    warrantyExpireDate: inTwoYears,
+    warrantyExpired: false,
+    imeiSerial: '351000000007919',
+    stockInDate: new Date('2026-08-11T03:00:00.000Z'),
+    cashPrice: new Decimal(19900),
+    installmentPrice: new Decimal(19900),
+    prices: [
+      { label: 'ราคาเงินสด', amount: new Decimal(19900), isDefault: true },
+      { label: 'ราคาผ่อน BESTCHOICE', amount: new Decimal(19900), isDefault: false },
+    ],
   };
 
-  const defaultConfigs = [
-    { key: 'sticker.rate1.defaultDown', value: '0' },
-    { key: 'sticker.rate1.defaultTerm', value: '24' },
-    { key: 'sticker.rate2.defaultDown', value: '0' },
-    { key: 'sticker.rate2.defaultTerm', value: '12' },
-  ];
+  it('ส่งข้อมูลจากตัวเครื่อง: ราคา (คอลัมน์ + แถวราคา) แบต กล่อง ประกันศูนย์ วันที่รับเข้า IMEI', async () => {
+    prisma.product.findMany.mockResolvedValue([baseProduct]);
 
-  const fullPricingTemplate = {
-    cashPrice: new Decimal(35900),
-    installmentBestchoicePrice: new Decimal(1500),
-    installmentFinancePrice: new Decimal(1800),
-    rate1DownPayment: null,
-    rate1TermMonths: null,
-    rate2DownPayment: null,
-    rate2TermMonths: null,
-    hasWarranty: false,
-  };
+    const [result] = await service.getStickerDataBatch(['product-1']);
 
-  it('returns full sticker data with PricingTemplate match using SystemConfig fallbacks', async () => {
-    prisma.product.findFirst.mockResolvedValue(baseProduct);
-    prisma.pricingTemplate.findFirst.mockResolvedValue(fullPricingTemplate);
-    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
-    prisma.companyInfo.findFirst.mockResolvedValue({ logoUrl: 'https://cdn/logo.png' });
-
-    const result = await service.getStickerData('product-1');
-
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       productId: 'product-1',
+      name: 'Apple iPhone 15 128GB Black',
       brand: 'Apple',
-      model: 'iPhone 15 Pro Max',
+      model: 'iPhone 15',
+      category: 'PHONE_NEW',
+      status: 'IN_STOCK',
       color: 'ดำ',
-      storage: '256GB',
-      batteryHealth: 95,
-      warrantyExpireDate: '2027-05-22',
-      imei: '359123456789012',
-      cashPrice: 35900,
-      rate1: { downPayment: 0, monthlyPrice: 1500, termMonths: 24 },
-      rate2: { downPayment: 0, monthlyPrice: 1800, termMonths: 12 },
-      shopLogoUrl: 'https://cdn/logo.png',
+      storage: '128GB',
+      batteryHealth: null,
+      hasBox: true,
+      warrantyExpireDate: inTwoYears.toISOString().slice(0, 10),
+      imei: '351000000007919',
+      stockInDate: '2026-08-11T03:00:00.000Z',
+      cashPrice: '19900',
+      installmentPrice: '19900',
+      prices: [
+        { label: 'ราคาเงินสด', amount: '19900', isDefault: true },
+        { label: 'ราคาผ่อน BESTCHOICE', amount: '19900', isDefault: false },
+      ],
     });
   });
 
-  it('uses PricingTemplate rate overrides when set (not fallback)', async () => {
-    prisma.product.findFirst.mockResolvedValue(baseProduct);
-    prisma.pricingTemplate.findFirst.mockResolvedValue({
-      ...fullPricingTemplate,
-      rate1DownPayment: new Decimal(2000),
-      rate1TermMonths: 36,
-    });
-    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
-    prisma.companyInfo.findFirst.mockResolvedValue(null);
+  it('ค้นได้ทั้ง Product ID และ IMEI (ยิงบาร์โค้ดจากช่องสแกน) — คืนตามลำดับที่ขอ ไม่ซ้ำ', async () => {
+    const second = { ...baseProduct, id: 'product-2', imeiSerial: '351000000055433', model: 'Galaxy S24' };
+    prisma.product.findMany.mockResolvedValue([baseProduct, second]);
 
-    const result = await service.getStickerData('product-1');
+    const result = await service.getStickerDataBatch([
+      '351000000055433',
+      'product-1',
+      '351000000007919', // IMEI ของเครื่องแรก — เครื่องเดียวกัน ไม่ต้องส่งซ้ำ
+    ]);
 
-    expect(result.rate1).toEqual({ downPayment: 2000, monthlyPrice: 1500, termMonths: 36 });
-    expect(result.rate2).toEqual({ downPayment: 0, monthlyPrice: 1800, termMonths: 12 });
+    expect(prisma.product.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          deletedAt: null,
+          OR: [
+            { id: { in: ['351000000055433', 'product-1', '351000000007919'] } },
+            { imeiSerial: { in: ['351000000055433', 'product-1', '351000000007919'] } },
+          ],
+        },
+      }),
+    );
+    expect(result.map((r) => r.productId)).toEqual(['product-2', 'product-1']);
   });
 
-  it('hides cashPrice + rates when no PricingTemplate matches', async () => {
-    prisma.product.findFirst.mockResolvedValue(baseProduct);
-    prisma.pricingTemplate.findFirst.mockResolvedValue(null);
-    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
-    prisma.companyInfo.findFirst.mockResolvedValue(null);
+  it('ประกันศูนย์: หมดแล้ว (flag) หรือวันที่ผ่านมาแล้ว = null · ไม่ระบุ = null', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      { ...baseProduct, id: 'a', warrantyExpired: true },
+      { ...baseProduct, id: 'b', warrantyExpireDate: new Date('2024-01-01'), warrantyExpired: false },
+      { ...baseProduct, id: 'c', warrantyExpireDate: null, warrantyExpired: null },
+    ]);
 
-    const result = await service.getStickerData('product-1');
+    const result = await service.getStickerDataBatch(['a', 'b', 'c']);
+
+    expect(result.map((r) => r.warrantyExpireDate)).toEqual([null, null, null]);
+  });
+
+  it('เครื่องที่ยังไม่ตั้งราคา: cashPrice/installmentPrice = null และไม่มีแถวราคา (ให้ web เตือน ไม่พิมพ์)', async () => {
+    prisma.product.findMany.mockResolvedValue([
+      { ...baseProduct, cashPrice: null, installmentPrice: null, prices: [], batteryHealth: 87, hasBox: false, category: 'PHONE_USED' },
+    ]);
+
+    const [result] = await service.getStickerDataBatch(['product-1']);
 
     expect(result.cashPrice).toBeNull();
-    expect(result.rate1).toBeNull();
-    expect(result.rate2).toBeNull();
-    expect(result.brand).toBe('Apple');
+    expect(result.installmentPrice).toBeNull();
+    expect(result.prices).toEqual([]);
+    expect(result.batteryHealth).toBe(87);
+    expect(result.hasBox).toBe(false);
+    expect(result.category).toBe('PHONE_USED');
   });
 
-  it('returns null for warrantyExpireDate when warrantyExpired = true', async () => {
-    prisma.product.findFirst.mockResolvedValue({ ...baseProduct, warrantyExpired: true });
-    prisma.pricingTemplate.findFirst.mockResolvedValue(fullPricingTemplate);
-    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
-    prisma.companyInfo.findFirst.mockResolvedValue(null);
+  it('ไม่มี key = ไม่ยิง DB · เกิน 100 key ตัดที่ 100', async () => {
+    expect(await service.getStickerDataBatch([])).toEqual([]);
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
 
-    const result = await service.getStickerData('product-1');
-
-    expect(result.warrantyExpireDate).toBeNull();
+    prisma.product.findMany.mockResolvedValue([]);
+    await service.getStickerDataBatch(Array.from({ length: 120 }, (_, i) => `id-${i}`));
+    const call = prisma.product.findMany.mock.calls[0][0];
+    expect(call.where.OR[0].id.in).toHaveLength(100);
   });
 
-  it('returns null for warrantyExpireDate when expire date is in the past', async () => {
-    prisma.product.findFirst.mockResolvedValue({
-      ...baseProduct,
-      warrantyExpireDate: new Date('2024-01-01'),
-      warrantyExpired: false,
-    });
-    prisma.pricingTemplate.findFirst.mockResolvedValue(fullPricingTemplate);
-    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
-    prisma.companyInfo.findFirst.mockResolvedValue(null);
-
-    const result = await service.getStickerData('product-1');
-
-    expect(result.warrantyExpireDate).toBeNull();
-  });
-
-  it('returns null fields for missing battery/IMEI/color/storage', async () => {
-    prisma.product.findFirst.mockResolvedValue({
-      ...baseProduct,
-      color: null,
-      storage: null,
-      batteryHealth: null,
-      imeiSerial: null,
-    });
-    prisma.pricingTemplate.findFirst.mockResolvedValue(fullPricingTemplate);
-    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
-    prisma.companyInfo.findFirst.mockResolvedValue(null);
-
-    const result = await service.getStickerData('product-1');
-
-    expect(result.color).toBeNull();
-    expect(result.storage).toBeNull();
-    expect(result.batteryHealth).toBeNull();
-    expect(result.imei).toBeNull();
-  });
-
-  it('throws NotFoundException when product not found', async () => {
-    prisma.product.findFirst.mockResolvedValue(null);
-    await expect(service.getStickerData('missing-id')).rejects.toThrow('ไม่พบสินค้า');
-  });
-
-  it('queries PricingTemplate with hasWarranty=true for PHONE_USED with active warranty', async () => {
-    const futureDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-    prisma.product.findFirst.mockResolvedValue({
-      ...baseProduct,
-      category: 'PHONE_USED',
-      warrantyExpireDate: futureDate,
-      warrantyExpired: false,
-    });
-    prisma.pricingTemplate.findFirst.mockResolvedValue(fullPricingTemplate);
-    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
-    prisma.companyInfo.findFirst.mockResolvedValue(null);
-
-    await service.getStickerData('product-1');
-
-    expect(prisma.pricingTemplate.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ hasWarranty: true, category: 'PHONE_USED' }),
-      }),
-    );
-  });
-
-  it('queries PricingTemplate with hasWarranty=false for PHONE_USED with expired warranty', async () => {
-    prisma.product.findFirst.mockResolvedValue({
-      ...baseProduct,
-      category: 'PHONE_USED',
-      warrantyExpireDate: new Date('2024-01-01'),
-      warrantyExpired: true,
-    });
-    prisma.pricingTemplate.findFirst.mockResolvedValue(fullPricingTemplate);
-    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
-    prisma.companyInfo.findFirst.mockResolvedValue(null);
-
-    await service.getStickerData('product-1');
-
-    expect(prisma.pricingTemplate.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ hasWarranty: false, category: 'PHONE_USED' }),
-      }),
-    );
-  });
-
-  it('queries Product with deletedAt: null filter (excludes soft-deleted)', async () => {
-    prisma.product.findFirst.mockResolvedValue(baseProduct);
-    prisma.pricingTemplate.findFirst.mockResolvedValue(null);
-    prisma.systemConfig.findMany.mockResolvedValue(defaultConfigs);
-    prisma.companyInfo.findFirst.mockResolvedValue(null);
-
-    await service.getStickerData('product-1');
-
-    expect(prisma.product.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ id: 'product-1', deletedAt: null }),
-      }),
-    );
-  });
-});
-
-describe('StickersService.getStickerDataBatch', () => {
-  let service: StickersService;
-  let prisma: {
-    product: { findFirst: jest.Mock };
-    pricingTemplate: { findFirst: jest.Mock };
-    systemConfig: { findMany: jest.Mock };
-    companyInfo: { findFirst: jest.Mock };
-  };
-
-  beforeEach(async () => {
-    prisma = {
-      product: { findFirst: jest.fn() },
-      pricingTemplate: { findFirst: jest.fn() },
-      systemConfig: { findMany: jest.fn() },
-      companyInfo: { findFirst: jest.fn() },
-    };
-    const moduleRef = await Test.createTestingModule({
-      providers: [StickersService, { provide: PrismaService, useValue: prisma }],
-    }).compile();
-    service = moduleRef.get(StickersService);
-  });
-
-  it('returns array of sticker data for given product ids, skipping missing', async () => {
-    prisma.systemConfig.findMany.mockResolvedValue([
-      { key: 'sticker.rate1.defaultDown', value: '0' },
-      { key: 'sticker.rate1.defaultTerm', value: '24' },
-      { key: 'sticker.rate2.defaultDown', value: '0' },
-      { key: 'sticker.rate2.defaultTerm', value: '12' },
-    ]);
-    prisma.companyInfo.findFirst.mockResolvedValue(null);
-    prisma.product.findFirst.mockImplementation(({ where: { id } }) => {
-      if (id === 'p1') {
-        return Promise.resolve({
-          id: 'p1',
-          brand: 'Apple',
-          model: 'iPhone 15',
-          color: null,
-          storage: null,
-          batteryHealth: null,
-          warrantyExpireDate: null,
-          warrantyExpired: null,
-          imeiSerial: null,
-          category: 'PHONE_NEW',
-          branch: { name: 'X' },
-          inspection: null,
-        });
-      }
-      return Promise.resolve(null); // p2 missing
-    });
-    prisma.pricingTemplate.findFirst.mockResolvedValue(null);
-
-    const result = await service.getStickerDataBatch(['p1', 'p2']);
-    expect(result).toHaveLength(1);
-    expect(result[0].productId).toBe('p1');
+  it('getStickerData (เดี่ยว) โยน NotFound เมื่อไม่พบทั้ง ID และ IMEI', async () => {
+    prisma.product.findMany.mockResolvedValue([]);
+    await expect(service.getStickerData('missing')).rejects.toThrow('ไม่พบสินค้า');
   });
 });

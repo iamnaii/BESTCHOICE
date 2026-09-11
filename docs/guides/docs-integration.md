@@ -26,6 +26,8 @@ bash tools/docs-integration.sh contract-pdpa   # เฉพาะไฟล์ท�
 
 ไม่มี Chromium ในเครื่อง (checkout สะอาด/CI): ตั้ง `DOCS_QA_INSTALL_CHROMIUM=1` ให้ script ติดตั้ง Chromium ของ Playwright เองครั้งเดียว (`apps/web` → `npx playwright install chromium`) — Puppeteer (renderer ฝั่ง server) กับ Playwright (browser scenario) ใช้ตัวเดียวกัน · ตรวจซ้ำ artifact ของ run เก่าโดยไม่รันเทสต์: `node tools/docs-integration.mjs verify .tmp/docs-integration/<run-id>`
 
+harness หยุด cron/interval ทุกตัวที่ AppModule ลงทะเบียนทันทีหลัง boot (`h.mutedJobs`) — งานที่ต้องทดสอบให้เรียกเอง (เช่น `h.app.get(LetterAutoGenerateCron).run()`); ก่อนหน้านี้ job รายชั่วโมงยิงตามนาฬิกาจริงกลาง scenario (CI ตอน 23:15 น. เวลากรุงเทพ เจอ outbound 2 รายการที่ไม่ได้มาจาก scenario — DOC-11)
+
 harness ปฏิเสธที่จะเริ่มถ้า `DATABASE_URL` ไม่ใช่ฐาน `bc_docs_*` บน socket `bc-docs.`, ถ้า `NODE_ENV=production`, ถ้ามี credential ภายนอกค้างอยู่, ถ้าไม่มี Chromium (`apps/api/e2e/documents/support/runtime.ts`) หรือถ้า session timezone ของฐานไม่ใช่ `UTC` อย่าง prod (`harness.ts` — DOC-11)
 
 อย่ารัน `npm run local:check` กับ `npm run docs:check` **ใน checkout เดียวกันพร้อมกัน** — ทั้งคู่ `prisma generate` ลง `node_modules/.prisma/client` ก้อนเดียวกัน jest ที่กำลังโหลดจะเจอ `Cannot find module '.prisma/client/default'` (ข้าม checkout/worktree ไม่มีปัญหาถ้า node_modules แยกกัน)

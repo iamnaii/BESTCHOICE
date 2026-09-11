@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { INestApplication, Logger } from '@nestjs/common';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import request from 'supertest';
 import { configureApp, installRuntimeGlobals } from '../../../src/app.setup';
@@ -54,6 +55,8 @@ export interface DocumentsHarness {
   finance: PrismaFinanceService;
   storage: { backend: string; location: string };
   external: ExternalRecorder;
+  /** Names of the scheduled jobs stopped at boot (cron / interval / timeout) — they never fire on their own in a run. */
+  mutedJobs: string[];
   login(email: string, password: string): Promise<Session>;
   client(options?: ClientOptions): Client;
   close(): Promise<void>;
@@ -152,6 +155,14 @@ export async function startDocumentsApp(options: StartOptions = {}): Promise<Doc
     await app.close();
     throw new Error(`Documents harness expects the database session timezone UTC (as production), got ${timezone} — run bash tools/docs-integration.sh, which starts PostgreSQL with -c timezone=UTC`);
   }
+  // The real AppModule registers ~30 cron/interval jobs; left running they fire by wall clock in
+  // the middle of a scenario (a 23:15 Bangkok run on CI recorded two outbound pushes from the
+  // hourly jobs). Scenarios that need a job call it explicitly (e.g. LetterAutoGenerateCron.run()).
+  const scheduler = app.get(SchedulerRegistry, { strict: false });
+  const mutedJobs: string[] = [];
+  for (const [name, job] of scheduler.getCronJobs()) { job.stop(); mutedJobs.push(name); }
+  for (const name of scheduler.getIntervals()) { scheduler.deleteInterval(name); mutedJobs.push(`interval:${name}`); }
+  for (const name of scheduler.getTimeouts()) { scheduler.deleteTimeout(name); mutedJobs.push(`timeout:${name}`); }
   const server = app.getHttpServer();
   return {
     app,
@@ -160,6 +171,7 @@ export async function startDocumentsApp(options: StartOptions = {}): Promise<Doc
     finance: app.get(PrismaFinanceService),
     storage,
     external,
+    mutedJobs,
     async login(email, password) {
       const response = await request(server).post('/api/auth/login').set('X-Requested-With', 'XMLHttpRequest').send({ email, password });
       if (response.status !== 200 && response.status !== 201) throw new Error(`login ${email} failed: ${response.status} ${JSON.stringify(response.body)}`);

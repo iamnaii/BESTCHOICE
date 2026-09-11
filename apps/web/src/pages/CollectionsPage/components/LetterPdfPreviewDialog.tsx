@@ -8,11 +8,14 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { useLetterPdf } from '@/hooks/useLetterPdf';
+import { Button } from '@/components/ui/button';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   pdfUrl: string | null;
+  letterId?: string;
   title?: string;
   subtitle?: string;
 }
@@ -33,11 +36,14 @@ const ZOOM_STEP = 0.25;
 export default function LetterPdfPreviewDialog({
   open,
   onClose,
-  pdfUrl,
+  pdfUrl: storedPdfUrl,
+  letterId,
   title = 'ตัวอย่าง PDF',
   subtitle,
 }: Props) {
   const [zoom, setZoom] = useState(1);
+  const generated = useLetterPdf(letterId ? [letterId] : [], open && !!letterId && !storedPdfUrl);
+  const pdfUrl = storedPdfUrl ?? generated.url;
 
   const handleZoomIn = () => setZoom((z) => Math.min(MAX_ZOOM, +(z + ZOOM_STEP).toFixed(2)));
   const handleZoomOut = () => setZoom((z) => Math.max(MIN_ZOOM, +(z - ZOOM_STEP).toFixed(2)));
@@ -65,16 +71,17 @@ export default function LetterPdfPreviewDialog({
           {subtitle && (
             <DialogDescription className="text-xs leading-snug">{subtitle}</DialogDescription>
           )}
+          {letterId && !storedPdfUrl && <p className="text-xs text-muted-foreground">ไม่มีไฟล์เดิมเก็บไว้ ตัวอย่างนี้สร้างจากวันที่และข้อมูลปัจจุบัน</p>}
         </DialogHeader>
 
         {/* Toolbar */}
-        <div className="flex items-center justify-between gap-2 px-5 py-2 border-b border-border bg-muted/40">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-2 border-b border-border bg-muted/40">
           <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={handleZoomOut}
               disabled={!pdfUrl || zoom <= MIN_ZOOM}
-              className="inline-flex items-center justify-center size-8 rounded-md hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center justify-center size-11 rounded-md hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               aria-label="ซูมออก"
             >
               <ZoomOut className="size-4" />
@@ -83,7 +90,7 @@ export default function LetterPdfPreviewDialog({
               type="button"
               onClick={handleZoomReset}
               disabled={!pdfUrl}
-              className="px-2 h-8 rounded-md text-xs font-medium tabular-nums hover:bg-accent disabled:opacity-40 transition-colors min-w-[3.5rem]"
+              className="px-2 h-11 rounded-md text-xs font-medium tabular-nums hover:bg-accent disabled:opacity-40 transition-colors min-w-[3.5rem]"
               aria-label="รีเซ็ตซูม"
             >
               {Math.round(zoom * 100)}%
@@ -92,7 +99,7 @@ export default function LetterPdfPreviewDialog({
               type="button"
               onClick={handleZoomIn}
               disabled={!pdfUrl || zoom >= MAX_ZOOM}
-              className="inline-flex items-center justify-center size-8 rounded-md hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center justify-center size-11 rounded-md hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               aria-label="ซูมเข้า"
             >
               <ZoomIn className="size-4" />
@@ -101,7 +108,7 @@ export default function LetterPdfPreviewDialog({
               type="button"
               onClick={handleZoomReset}
               disabled={!pdfUrl || zoom === 1}
-              className="inline-flex items-center justify-center size-8 rounded-md hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center justify-center size-11 rounded-md hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               aria-label="รีเซ็ต"
             >
               <RotateCcw className="size-4" />
@@ -115,7 +122,7 @@ export default function LetterPdfPreviewDialog({
                   href={pdfUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-medium border border-input hover:bg-accent transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 h-11 rounded-md text-xs font-medium border border-input hover:bg-accent transition-colors"
                 >
                   <ExternalLink className="size-3.5" />
                   เปิดในแท็บใหม่
@@ -123,7 +130,7 @@ export default function LetterPdfPreviewDialog({
                 <a
                   href={pdfUrl}
                   download
-                  className="inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 h-11 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                 >
                   <Download className="size-3.5" />
                   ดาวน์โหลด
@@ -135,7 +142,14 @@ export default function LetterPdfPreviewDialog({
 
         {/* PDF body */}
         <div className="flex-1 overflow-auto bg-muted/20 min-h-0">
-          {pdfUrl ? (
+          {generated.loading ? (
+            <div role="status" className="h-full flex items-center justify-center text-sm">กำลังสร้าง PDF...</div>
+          ) : generated.error ? (
+            <div role="alert" className="h-full flex flex-col items-center justify-center gap-3 p-4 text-center">
+              <p>เปิด PDF ไม่สำเร็จ: {generated.error}</p>
+              <Button variant="outline" onClick={generated.retry}>ลองใหม่</Button>
+            </div>
+          ) : pdfUrl ? (
             <div
               className={cn(
                 'mx-auto h-full transition-[width,height] origin-top',

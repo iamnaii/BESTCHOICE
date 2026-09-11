@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Mail } from 'lucide-react';
+import { PaginationBar } from '@/components/ui/PaginationBar';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -38,6 +40,7 @@ export default function LettersPage() {
   const [activeStatus, setActiveStatus] = useState<LetterStatus>('PENDING_DISPATCH');
   const [filters, setFilters] = useState<Omit<LettersListFilters, 'status' | 'page' | 'limit'>>({});
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const [previewRow, setPreviewRow] = useState<LetterRow | null>(null);
@@ -46,8 +49,13 @@ export default function LettersPage() {
   const [bulkDispatchOpen, setBulkDispatchOpen] = useState(false);
   const [bulkCancelOpen, setBulkCancelOpen] = useState(false);
 
-  const fullFilters: LettersListFilters = { ...filters, status: activeStatus, page, limit: 50 };
+  const fullFilters: LettersListFilters = { ...filters, status: activeStatus, page, limit };
   const listQuery = useLettersList(fullFilters);
+  useEffect(() => {
+    if (!listQuery.data || listQuery.isFetching) return;
+    const lastPage = Math.max(1, Math.ceil(listQuery.data.total / limit));
+    if (page > lastPage) { setSelectedIds(new Set()); setPage(lastPage); }
+  }, [listQuery.data, listQuery.isFetching, page, limit]);
 
   const stripUndefined = (obj: Record<string, unknown>) => {
     const out: Record<string, unknown> = {};
@@ -87,7 +95,7 @@ export default function LettersPage() {
       return data;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['letters'] });
+      for (const key of ['letters', 'letters-counts', 'letter-queue']) void qc.invalidateQueries({ queryKey: [key] });
     },
   });
 
@@ -146,7 +154,10 @@ export default function LettersPage() {
       {listQuery.isLoading ? (
         <div className="p-8 text-center text-muted-foreground">กำลังโหลด...</div>
       ) : listQuery.isError ? (
-        <div className="p-8 text-center text-destructive">เกิดข้อผิดพลาด</div>
+        <div role="alert" className="p-8 text-center space-y-3">
+          <p className="text-destructive">โหลดรายการจดหมายไม่สำเร็จ</p>
+          <Button variant="outline" onClick={() => listQuery.refetch()}>ลองใหม่</Button>
+        </div>
       ) : (
         <LetterTable
           rows={rows}
@@ -168,9 +179,16 @@ export default function LettersPage() {
         />
       )}
 
+      {listQuery.data && !listQuery.isError && (
+        <PaginationBar total={listQuery.data.total} page={page} size={limit} sizeOptions={[50, 100, 200]}
+          onPageChange={next => { setSelectedIds(new Set()); setPage(next); }}
+          onSizeChange={next => { setSelectedIds(new Set()); setLimit(next); setPage(1); }} />
+      )}
+
       <LetterBulkActionsBar
         status={activeStatus}
         count={selectedRows.length}
+        hasMissingOriginals={selectedRows.some(row => !row.pdfUrl)}
         canCancel={canCancel}
         onBulkPrint={() => setBulkPrintOpen(true)}
         onBulkDispatch={() => setBulkDispatchOpen(true)}
@@ -191,6 +209,7 @@ export default function LettersPage() {
         <LetterPdfPreviewDialog
           open={!!previewRow}
           pdfUrl={previewRow.pdfUrl ?? null}
+          letterId={previewRow.id}
           title={`ตัวอย่าง PDF — ${previewRow.letterNumber}`}
           onClose={() => setPreviewRow(null)}
         />

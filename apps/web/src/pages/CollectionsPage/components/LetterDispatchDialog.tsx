@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Download, Eye, FileText, Loader2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
+import { downloadProtectedDocument } from '@/lib/document-download';
 import Modal from '@/components/ui/Modal';
 import { Checkbox } from '@/components/ui/checkbox';
 import { renderLetterPdf } from '../utils/letterPdfRenderer';
@@ -303,7 +304,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
   return (
     <div className="space-y-4 p-1">
       {/* PDF preview + download */}
-      {letter.pdfUrl && (
+      {(
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
@@ -313,7 +314,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
             <Eye className="size-3.5" />
             ดู PDF
           </button>
-          <a
+          {letter.pdfUrl ? <a
             href={letter.pdfUrl}
             target="_blank"
             rel="noopener noreferrer"
@@ -322,10 +323,14 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
             <Download className="size-3.5" />
             ดาวน์โหลด ({letter.letterNumber})
           </a>
+          : <button type="button" className="min-h-11 text-primary text-sm" onClick={() => {
+            void downloadProtectedDocument(`/overdue/letters/${letter.id}/pdf`, `${letter.letterNumber}.pdf`).catch(error => toast.error(getErrorMessage(error)));
+          }}>ดาวน์โหลด ({letter.letterNumber})</button>}
         </div>
       )}
 
       {/* Letter info block */}
+      {!letter.pdfUrl && <p className="text-sm text-muted-foreground">ไม่มีไฟล์เดิมเก็บไว้ PDF ที่เปิดหรือดาวน์โหลดจะสร้างจากวันที่และข้อมูลปัจจุบัน โปรดตรวจสอบก่อนใช้</p>}
       <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs space-y-1">
         <div className="flex justify-between gap-4">
           <span className="text-muted-foreground leading-snug">ลูกค้า</span>
@@ -395,6 +400,7 @@ function DispatchSection({ letter, onClose }: DispatchSectionProps) {
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
         pdfUrl={letter.pdfUrl}
+        letterId={letter.id}
         title={`PDF — ${letter.letterNumber}`}
         subtitle={`${letter.contract.customer.name} · ${letter.contract.contractNumber}`}
       />

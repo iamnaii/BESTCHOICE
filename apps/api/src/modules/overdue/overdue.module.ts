@@ -3,6 +3,7 @@ import { OverdueService } from './overdue.service';
 import { OverdueChatService } from './overdue-chat.service';
 import { ContractLetterService } from './contract-letter.service';
 import { LetterPdfService } from './letter-pdf.service';
+import { LetterDocumentAccessGuard } from './letter-document-access.guard';
 import { DunningRuleService } from './dunning-rule.service';
 import { DunningEngineService } from './dunning-engine.service';
 import { DunningRuleResolverService } from './dunning-rule-resolver.service';
@@ -45,6 +46,7 @@ import { ConsecutiveMissedModule } from './consecutive-missed.module';
     OverdueChatService,
     ContractLetterService,
     LetterPdfService,
+    LetterDocumentAccessGuard,
     DunningRuleService,
     DunningEngineService,
     DunningRuleResolverService,

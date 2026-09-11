@@ -5,6 +5,7 @@ import type { LetterStatus } from '../types';
 interface Props {
   status: LetterStatus;
   count: number;
+  hasMissingOriginals?: boolean;
   canCancel: boolean;
   onBulkPrint: () => void;
   onBulkDispatch: () => void;
@@ -16,6 +17,7 @@ interface Props {
 export default function LetterBulkActionsBar({
   status,
   count,
+  hasMissingOriginals,
   canCancel,
   onBulkPrint,
   onBulkDispatch,
@@ -26,12 +28,12 @@ export default function LetterBulkActionsBar({
   if (count === 0) return null;
 
   return (
-    <div className="sticky bottom-0 z-10 -mx-4 px-4 py-3 bg-card border-t border-border shadow-lg flex items-center justify-between">
+    <div className="sticky bottom-0 z-10 -mx-4 px-4 py-3 bg-card border-t border-border shadow-lg flex flex-wrap gap-3 items-center justify-between">
       <div className="flex items-center gap-3">
         <span className="text-sm font-medium">เลือก {count} ฉบับ</span>
         <Button size="sm" variant="ghost" onClick={onClear}>ยกเลิกเลือก</Button>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {status === 'PENDING_DISPATCH' && (
           <>
             <Button size="sm" onClick={onBulkPrint}>
@@ -46,6 +48,9 @@ export default function LetterBulkActionsBar({
         )}
         {status === 'PDF_GENERATED' && (
           <>
+            <Button size="sm" variant="outline" onClick={onBulkPrint}>
+              <Printer className="size-4 mr-1" /> {hasMissingOriginals ? 'สร้าง PDF อีกครั้ง' : 'พิมพ์ซ้ำ'}
+            </Button>
             <Button size="sm" onClick={onBulkDispatch}>
               <Truck className="size-4 mr-1" /> บันทึกการส่ง
             </Button>

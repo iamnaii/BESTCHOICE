@@ -28,7 +28,7 @@ export class LetterPdfService {
   /** Generate a single letter PDF as a Buffer (no S3 upload). */
   async generatePdfBuffer(letterId: string): Promise<Buffer> {
     const letter = await this.prisma.contractLetter.findFirst({
-      where: { id: letterId, deletedAt: null },
+      where: { id: letterId, deletedAt: null, contract: { deletedAt: null } },
       include: {
         contract: {
           include: {

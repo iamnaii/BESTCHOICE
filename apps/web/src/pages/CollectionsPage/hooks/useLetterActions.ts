@@ -7,7 +7,7 @@ export function useLetterActions() {
   const qc = useQueryClient();
   const { showUndo } = useUndoMutation();
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['letter-queue'] });
+  const invalidate = () => Promise.all(['letter-queue', 'letters', 'letters-counts'].map(key => qc.invalidateQueries({ queryKey: [key] })));
 
   const markPdfGenerated = useMutation({
     mutationFn: async ({ letterId, pdfUrl }: { letterId: string; pdfUrl: string }) => {
@@ -70,7 +70,7 @@ export function useLetterActions() {
         reverse: async () => {
           await api.post(`/overdue/letters/${letterId}/revert-undeliverable`);
         },
-        invalidateKeys: [['letter-queue']],
+        invalidateKeys: [['letter-queue'], ['letters'], ['letters-counts']],
       });
       invalidate();
     },

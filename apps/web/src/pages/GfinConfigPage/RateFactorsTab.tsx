@@ -25,6 +25,8 @@ import { Pencil, Trash2 } from 'lucide-react';
 interface RateFactor {
   id: string;
   months: number;
+  /** % คอมมิชชั่นที่ร้านเลือกในหน้า GFIN — เรทต่างกันตามค่านี้ */
+  shopCommissionPct: number;
   factor: string;
   feePerInstallment: string;
   isActive: boolean;
@@ -67,7 +69,9 @@ export function RateFactorsTab() {
   if (isLoading) return <div className="p-4 text-muted-foreground">กำลังโหลด...</div>;
   if (error) return <div className="p-4 text-destructive">เกิดข้อผิดพลาด — โปรดลองรีเฟรช</div>;
 
-  const filtered = (data ?? []).filter((r) => String(r.months).includes(search));
+  const filtered = (data ?? []).filter(
+    (r) => String(r.months).includes(search) || String(r.shopCommissionPct).includes(search),
+  );
 
   const lastUpdated =
     data && data.length > 0
@@ -84,7 +88,7 @@ export function RateFactorsTab() {
       </div>
       <div className="flex gap-2">
         <Input
-          placeholder="ค้นหาจำนวนงวด..."
+          placeholder="ค้นหาจำนวนงวด หรือ % คอม..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md"
@@ -97,6 +101,7 @@ export function RateFactorsTab() {
         <TableHeader>
           <TableRow>
             <TableHead className="text-right">จำนวนงวด (เดือน)</TableHead>
+            <TableHead className="text-right">% คอมมิชชั่น</TableHead>
             <TableHead className="text-right">Factor</TableHead>
             <TableHead className="text-right">ค่าธรรมเนียมต่องวด (฿)</TableHead>
             <TableHead>ใช้งาน</TableHead>
@@ -107,6 +112,7 @@ export function RateFactorsTab() {
           {filtered.map((row) => (
             <TableRow key={row.id}>
               <TableCell className="text-right font-medium">{row.months}</TableCell>
+              <TableCell className="text-right">{row.shopCommissionPct}%</TableCell>
               <TableCell className="text-right font-mono">{row.factor}</TableCell>
               <TableCell className="text-right">
                 {Number(row.feePerInstallment).toLocaleString('th-TH')}
@@ -126,7 +132,7 @@ export function RateFactorsTab() {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      if (confirm(`ลบ ${row.months} งวด?`)) {
+                      if (confirm(`ลบเรท ${row.months} งวด คอม ${row.shopCommissionPct}%?`)) {
                         deleteRow.mutate(row.id);
                       }
                     }}
@@ -139,7 +145,7 @@ export function RateFactorsTab() {
           ))}
           {filtered.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="text-center text-muted-foreground">
+              <TableCell colSpan={6} className="text-center text-muted-foreground">
                 ไม่พบรายการ
               </TableCell>
             </TableRow>
@@ -174,6 +180,7 @@ interface DialogProps {
 function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
   const [form, setForm] = useState({
     months: initial ? String(initial.months) : '',
+    shopCommissionPct: initial ? String(initial.shopCommissionPct) : '15',
     factor: initial?.factor ?? '',
     feePerInstallment: initial?.feePerInstallment ?? '',
   });
@@ -182,6 +189,7 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
     mutationFn: () => {
       const payload = {
         months: Number(form.months),
+        shopCommissionPct: Number(form.shopCommissionPct),
         factor: form.factor,
         feePerInstallment: Number(form.feePerInstallment),
       };
@@ -214,6 +222,20 @@ function RateFactorFormDialog({ initial, onClose, onSaved }: DialogProps) {
               onChange={(e) => setForm((f) => ({ ...f, months: e.target.value }))}
               placeholder="เช่น 12"
             />
+          </div>
+          <div>
+            <label className="text-sm font-medium">% คอมมิชชั่น</label>
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              value={form.shopCommissionPct}
+              onChange={(e) => setForm((f) => ({ ...f, shopCommissionPct: e.target.value }))}
+              placeholder="เช่น 15"
+            />
+            <p className="text-xs text-muted-foreground mt-1 leading-snug">
+              เรทของ GFIN ต่างกันตาม % คอมที่ร้านเลือก — มือถือ 15 · iPad 5 (คู่ งวด+คอม ห้ามซ้ำ)
+            </p>
           </div>
           <div>
             <label className="text-sm font-medium">Factor (6 ทศนิยม)</label>

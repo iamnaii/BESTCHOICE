@@ -12,6 +12,17 @@ import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 import { formatBaht } from '@/pages/ProductDetailPage/utils/buildCustomerSummary';
 import type { StockProduct } from '../types';
 
+/**
+ * มุมมองของหน้ารายการสินค้า (คำขอเจ้าของ 2026-09-11 — แบ่ง "สินค้าทั้งหมด" กับ "สินค้าในสต๊อกพร้อมขาย"):
+ * `ready` = ค่าเริ่มต้น เห็นเฉพาะ IN_STOCK (ตัวกรองสถานะถูกซ่อน) · `all` = ทุกสถานะ + ตัวกรองสถานะเดิม
+ * เก็บใน URL `?view=all` ให้แชร์ลิงก์/กดกลับแล้วได้มุมมองเดิม
+ */
+export type StockView = 'ready' | 'all';
+export interface StockViewCounts {
+  ready: number;
+  all: number;
+}
+
 export function useStockProducts() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -19,7 +30,21 @@ export function useStockProducts() {
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
   const filterBranch = searchParams.get('branchId') ?? '';
-  const filterStatus = searchParams.get('status') ?? '';
+  const view: StockView = searchParams.get('view') === 'all' ? 'all' : 'ready';
+  // ตัวกรองสถานะมีผลเฉพาะมุมมอง "ทั้งหมด" — ในมุมมองพร้อมขาย สถานะถูกล็อกเป็น IN_STOCK
+  const filterStatus = view === 'all' ? (searchParams.get('status') ?? '') : '';
+  const setView = useCallback(
+    (v: StockView) => {
+      const next = new URLSearchParams(searchParams);
+      if (v === 'all') next.set('view', 'all');
+      else next.delete('view');
+      // สลับมุมมองแล้วล้างตัวกรองสถานะเสมอ — ไม่งั้นกลับมาโหมด "ทั้งหมด" จะกรองค้างโดยมองไม่เห็น
+      next.delete('status');
+      next.delete('page');
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
   const filterCategory = searchParams.get('category') ?? '';
   const accessoryGroupId = searchParams.get('accessoryGroupId') ?? '';
   const sortKey = searchParams.get('sortBy') ?? '';
@@ -139,6 +164,7 @@ export function useStockProducts() {
   useEffect(() => {
     setSelectedIds(new Set());
   }, [
+    view,
     filterBranch,
     filterStatus,
     filterCategory,
@@ -182,9 +208,12 @@ export function useStockProducts() {
     total: number;
     page: number;
     totalPages: number;
+    /** ตัวเลขบนสวิตช์ พร้อมขาย | ทั้งหมด — API นับจากตัวกรองเดียวกันโดยไม่รวมสถานะ */
+    viewCounts?: StockViewCounts;
   }>({
     queryKey: [
       'stock-list',
+      view,
       sort?.key,
       sort?.direction,
       debouncedSearch,
@@ -197,7 +226,8 @@ export function useStockProducts() {
     queryFn: async () => {
       const params: Record<string, string> = {};
       if (debouncedSearch) params.search = debouncedSearch;
-      if (filterStatus) params.status = filterStatus;
+      if (view === 'ready') params.status = 'IN_STOCK';
+      else if (filterStatus) params.status = filterStatus;
       if (filterCategory) params.category = filterCategory;
       if (filterBranch) params.branchId = filterBranch;
       if (sort) {
@@ -409,6 +439,9 @@ export function useStockProducts() {
     toggleSelectAll,
     // queries
     listResult: listQuery.data,
+    view,
+    setView,
+    viewCounts: listQuery.data?.viewCounts,
     listLoading: listQuery.isLoading,
     listError: listQuery.isError,
     listErrorObj: listQuery.error,

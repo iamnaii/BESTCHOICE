@@ -9,11 +9,16 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { statusLabels } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import type { StockProduct } from '../types';
+import type { StockView, StockViewCounts } from '../hooks/useStockProducts';
 import { ChevronLeft, ChevronRight, Package, Search, SlidersHorizontal, X } from 'lucide-react';
 
 export interface StockListTabProps {
   sort: TableSort | null;
   onSortChange: (sort: TableSort | null) => void;
+  /** มุมมอง พร้อมขาย (ค่าเริ่มต้น) | ทั้งหมด — คำขอเจ้าของ 2026-09-11 */
+  view: StockView;
+  setView: (view: StockView) => void;
+  viewCounts?: StockViewCounts;
   accessoryGroupId: string;
   search: string;
   setSearch: (search: string) => void;
@@ -51,10 +56,70 @@ const priceKeys = ['costPrice', 'cashPrice', 'downPayment', 'monthlyPayment'];
 const selectClass =
   'h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
+const VIEW_OPTIONS: Array<{ key: StockView; label: string }> = [
+  { key: 'ready', label: 'พร้อมขาย' },
+  { key: 'all', label: 'ทั้งหมด' },
+];
+
+/** สวิตช์ 2 ปุ่มพร้อมตัวเลขนับ — รางสี muted ปุ่มที่เลือกเป็นสี card ตัวหนังสือ primary (แบบเดียวกับ toggle-group) */
+function StockViewSwitch({
+  view,
+  setView,
+  counts,
+  className,
+}: {
+  view: StockView;
+  setView: (view: StockView) => void;
+  counts?: StockViewCounts;
+  className?: string;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="แสดงสินค้า"
+      className={cn('flex h-11 gap-1 rounded-lg border border-border/80 bg-muted/50 p-1', className)}
+    >
+      {VIEW_OPTIONS.map((option) => {
+        const on = view === option.key;
+        const count = counts ? (option.key === 'ready' ? counts.ready : counts.all) : null;
+        return (
+          <button
+            key={option.key}
+            type="button"
+            aria-pressed={on}
+            onClick={() => setView(option.key)}
+            className={cn(
+              'flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-md px-3.5 text-sm leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              on
+                ? 'bg-card font-semibold text-primary shadow-xs ring-1 ring-primary/35'
+                : 'font-medium text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {option.label}
+            {count != null && (
+              <span
+                className={cn(
+                  'inline-flex h-5 items-center rounded-full px-1.5 font-mono text-xs font-semibold tabular-nums',
+                  on ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground',
+                )}
+              >
+                {count.toLocaleString()}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function StockListTab({
   accessoryGroupId,
   sort,
   onSortChange,
+  view,
+  setView,
+  viewCounts,
   search,
   setSearch,
   clearFilters,
@@ -82,8 +147,10 @@ export function StockListTab({
   const id = useId();
   const isMobile = useIsMobile();
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const filterCount = [filterStatus, filterBranch].filter(Boolean).length;
-  const hasAdditionalFilters = !!(search || filterStatus || filterBranch);
+  // ตัวกรองสถานะมีเฉพาะมุมมอง "ทั้งหมด" (มุมมองพร้อมขายล็อก IN_STOCK อยู่แล้ว จึงซ่อน select ที่ซ้ำซ้อน)
+  const showStatusFilter = view === 'all';
+  const filterCount = [showStatusFilter ? filterStatus : '', filterBranch].filter(Boolean).length;
+  const hasAdditionalFilters = !!(search || (showStatusFilter && filterStatus) || filterBranch);
   const hasFilters = hasAdditionalFilters || !!filterCategory;
   const emptyMessage = hasFilters ? 'ไม่พบสินค้าที่ตรงกับตัวกรอง' : 'ยังไม่มีสินค้าในคลัง';
   const priceColumns = columns.filter((column) => priceKeys.includes(column.key));
@@ -108,9 +175,29 @@ export function StockListTab({
     return column?.render?.(product, column, index);
   };
   const selectableProducts = listProducts.filter((product) => !product.stockGroup);
-  const resultSummary = listResult
-    ? `${hasFilters ? 'พบ' : 'ทั้งหมด'} ${listResult.total.toLocaleString()} รายการ${listResult.totalPages > 1 ? ` · หน้านี้ ${listProducts.length} รายการ` : ''}`
-    : 'กำลังโหลดรายการสินค้า…';
+  const hiddenOthers = viewCounts ? Math.max(0, viewCounts.all - viewCounts.ready) : 0;
+  const pageSuffix =
+    listResult && listResult.totalPages > 1 ? ` · หน้านี้ ${listProducts.length} รายการ` : '';
+  const resultSummary = !listResult
+    ? 'กำลังโหลดรายการสินค้า…'
+    : view === 'ready'
+      ? `พร้อมขาย ${listResult.total.toLocaleString()} รายการ${hiddenOthers > 0 ? ` · อีก ${hiddenOthers.toLocaleString()} รายการอยู่ในสถานะอื่น` : ''}${pageSuffix}`
+      : `${hasFilters ? 'พบ' : 'ทั้งหมด'} ${listResult.total.toLocaleString()} รายการ${viewCounts ? ` · พร้อมขาย ${viewCounts.ready.toLocaleString()}` : ''}${pageSuffix}`;
+  // บรรทัดสรุปเดียวกันทั้งตารางคอมและการ์ดมือถือ — ในมุมมองพร้อมขายมีปุ่มพาไปดูสถานะอื่น
+  const summaryNode = (
+    <p role="status" className="text-xs text-muted-foreground leading-snug">
+      {resultSummary}
+      {view === 'ready' && hiddenOthers > 0 && (
+        <button
+          type="button"
+          onClick={() => setView('all')}
+          className="ml-1.5 cursor-pointer font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          ดูทั้งหมด
+        </button>
+      )}
+    </p>
+  );
 
   return (
     <section
@@ -146,6 +233,15 @@ export function StockListTab({
         className="border-b border-border bg-background/30 p-4 sm:px-5"
       >
         <div className="flex flex-wrap items-end gap-3">
+          {/* สวิตช์ พร้อมขาย | ทั้งหมด — คอมอยู่หน้าช่องค้นหา มือถือเต็มความกว้างเหนือช่องค้นหา (mockup 54e6c624) */}
+          <div className={isMobile ? 'basis-full' : 'shrink-0'}>
+            {!isMobile && (
+              <span className="mb-2 block text-xs font-medium leading-snug text-foreground/80">
+                แสดง
+              </span>
+            )}
+            <StockViewSwitch view={view} setView={setView} counts={viewCounts} />
+          </div>
           <div className="min-w-0 flex-[1_1_240px]">
             <label
               htmlFor={`${id}-search`}
@@ -196,11 +292,13 @@ export function StockListTab({
             id={`${id}-filters`}
             hidden={isMobile && !filtersOpen}
             className={cn(
-              'min-w-0 grid-cols-2 gap-3',
+              'min-w-0 gap-3',
               isMobile && !filtersOpen ? 'hidden' : 'grid',
-              isMobile ? 'basis-full' : 'w-[360px]',
+              showStatusFilter ? 'grid-cols-2' : 'grid-cols-1',
+              isMobile ? 'basis-full' : showStatusFilter ? 'w-90' : 'w-43.5',
             )}
           >
+            {showStatusFilter && (
             <div className="min-w-0">
               <label
                 htmlFor={`${id}-status`}
@@ -222,6 +320,7 @@ export function StockListTab({
                 ))}
               </select>
             </div>
+            )}
             <div className="min-w-0">
               <label
                 htmlFor={`${id}-branch`}
@@ -311,9 +410,7 @@ export function StockListTab({
               )}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-              <p className="text-xs text-muted-foreground leading-snug" role="status">
-                {resultSummary}
-              </p>
+              {summaryNode}
               {isManager && selectableProducts.length > 0 && (
                 <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs font-medium">
                   <Checkbox
@@ -465,22 +562,21 @@ export function StockListTab({
             emptyDescription={hasFilters ? 'ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง' : undefined}
             columnToggle={columns.some((column) => column.hideable !== false)}
             density="compact"
-            minWidth={
-              filterCategory === 'PHONE_USED'
-                ? '1575px'
+            minWidth={`${
+              (filterCategory === 'PHONE_USED'
+                ? 1575
                 : filterCategory === 'TABLET'
-                  ? '1415px'
+                  ? 1415
                   : filterCategory === 'PHONE_NEW'
-                    ? '1255px'
+                    ? 1255
                     : filterCategory === 'ACCESSORY'
-                      ? '1200px'
-                      : '1480px'
-            }
-            toolbar={
-              <p role="status" className="text-xs text-muted-foreground leading-snug">
-                {resultSummary}
-              </p>
-            }
+                      ? 1200
+                      : 1480) -
+              // มุมมองพร้อมขายไม่มีคอลัมน์สถานะ (100px) — ลดความกว้างขั้นต่ำลงเท่ากัน
+              // ไม่งั้นคอลัมน์ที่เหลือขยายมาแทนแล้วดันยอดผ่อนต่อเดือนหลุดจอที่ 1280px
+              (showStatusFilter ? 0 : 100)
+            }px`}
+            toolbar={summaryNode}
             pagination={
               listResult
                 ? {

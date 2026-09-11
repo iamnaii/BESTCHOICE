@@ -1,58 +1,47 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import api from '@/lib/api';
-import WhtAnnualPage from './WhtAnnualPage';
-import { CERTIFICATE_PAYER_ENDPOINT, resolveCertificatePayer } from '@/lib/certificate-payer';
+import { CERTIFICATE_PAYER_ENDPOINT } from '@/lib/certificate-payer';
+import DividendRegisterPage from './DividendRegisterPage';
 
 /**
- * DOC-04 (#1563) — the 50 ทวิ certificate never found its payer: the page
- * called `GET /company` (the route is `/companies`, so every call was a 404)
- * and, had the list loaded, silently fell back to the first company (SHOP)
- * when the FINANCE entity was missing.
+ * DOC-08 (#1567) — the dividend 50 ทวิ certificate never found its payer: the
+ * page called `GET /company` (the route is `/companies`, so every call was a
+ * 404) and, had the list loaded, silently fell back to the first company (SHOP)
+ * when the FINANCE entity was missing. Same defect as WhtAnnualPage (DOC-04).
  */
 vi.mock('@/lib/api', async (original) => ({ ...await original<typeof import('@/lib/api')>(), default: { get: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const finance = { id: 'f', nameTh: 'บริษัทไฟแนนซ์', taxId: '0000000000000', address: 'ที่อยู่ FINANCE', directorName: 'ผู้ลงนาม', companyCode: 'FINANCE' };
 const shop = { id: 's', nameTh: 'บริษัทหน้าร้าน', taxId: '1111111111111', address: 'ที่อยู่ SHOP', directorName: 'ผู้จัดการ', companyCode: 'SHOP' };
-const preview = { year: 2026, items: [{ employeeName: 'พนักงาน e1', employeeTaxId: '7000000000001', monthsPaid: 2, grossTotal: '37000.00', whtTotal: '350.00', ssoTotal: '1750.00' }], count: 1, grossTotal: '37000.00', whtTotal: '350.00', annualWageTotal: '37000.00' };
+const register = { year: new Date().getFullYear(), rows: [{ shareholderId: 'sh1', name: 'ผู้ถือหุ้น หนึ่ง', taxId: '7000000000001', type: 'INDIVIDUAL', payCount: 2, gross: '45000.00', wht: '4500.00', net: '40500.00', docNumbers: ['EQ-20260310-0001', 'EQ-20260905-0001'] }], totals: { gross: '45000.00', wht: '4500.00', net: '40500.00' } };
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}><WhtAnnualPage /></QueryClientProvider>);
+  return render(<MemoryRouter><QueryClientProvider client={client}><DividendRegisterPage /></QueryClientProvider></MemoryRouter>);
 }
 
 beforeEach(() => { vi.clearAllMocks(); });
 
-describe('resolveCertificatePayer', () => {
-  it('picks the FINANCE entity whatever its position', () => {
-    expect(resolveCertificatePayer([shop, finance])).toBe(finance);
-  });
-
-  it('never falls back to the first company when FINANCE is missing', () => {
-    expect(resolveCertificatePayer([shop])).toBeNull();
-    expect(resolveCertificatePayer([])).toBeNull();
-    expect(resolveCertificatePayer(undefined)).toBeNull();
-  });
-});
-
-describe('WhtAnnualPage — certificate payer', () => {
-  it('loads the payer from the companies list route that exists', async () => {
-    vi.mocked(api.get).mockImplementation(async (path: string) => ({ data: path.startsWith('/tax/') ? preview : [shop, finance] }));
+describe('DividendRegisterPage — certificate payer', () => {
+  it('loads the payer from the companies list route that exists and prints the FINANCE identity', async () => {
+    vi.mocked(api.get).mockImplementation(async (path: string) => ({ data: path.startsWith('/equity/') ? register : [shop, finance] }));
     renderPage();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith(CERTIFICATE_PAYER_ENDPOINT));
-    expect(CERTIFICATE_PAYER_ENDPOINT).toBe('/companies');
-    fireEvent.click(await screen.findByRole('button', { name: /50 ทวิ/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /หนังสือรับรอง/ }));
     await screen.findByText('หนังสือรับรองการหักภาษี ณ ที่จ่าย');
     expect(screen.getAllByText('บริษัทไฟแนนซ์').length).toBeGreaterThan(0);
+    expect(screen.getByText(/ผู้ลงนาม/)).toBeInTheDocument();
     expect(screen.queryByText('บริษัทหน้าร้าน')).toBeNull();
   });
 
   it('says plainly that the FINANCE entity is missing instead of printing the SHOP identity', async () => {
-    vi.mocked(api.get).mockImplementation(async (path: string) => ({ data: path.startsWith('/tax/') ? preview : [shop] }));
+    vi.mocked(api.get).mockImplementation(async (path: string) => ({ data: path.startsWith('/equity/') ? register : [shop] }));
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /50 ทวิ/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /หนังสือรับรอง/ }));
     await screen.findByText(/ไม่พบข้อมูลบริษัทฝั่ง FINANCE/);
     expect(screen.queryByText('บริษัทหน้าร้าน')).toBeNull();
     expect(screen.queryByText('หนังสือรับรองการหักภาษี ณ ที่จ่าย')).toBeNull();
@@ -61,14 +50,13 @@ describe('WhtAnnualPage — certificate payer', () => {
 
   it('reports a failed companies request with a retry instead of a permanent "loading"', async () => {
     vi.mocked(api.get).mockImplementation(async (path: string) => {
-      if (path.startsWith('/tax/')) return { data: preview };
+      if (path.startsWith('/equity/')) return { data: register };
       throw new Error('Request failed with status code 404');
     });
     renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: /50 ทวิ/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /หนังสือรับรอง/ }));
     await screen.findByText(/โหลดข้อมูลบริษัทไม่สำเร็จ/);
-    expect(screen.queryByText(/กำลังโหลดข้อมูลบริษัท/)).toBeNull();
-    vi.mocked(api.get).mockImplementation(async (path: string) => ({ data: path.startsWith('/tax/') ? preview : [finance] }));
+    vi.mocked(api.get).mockImplementation(async (path: string) => ({ data: path.startsWith('/equity/') ? register : [finance] }));
     fireEvent.click(screen.getByRole('button', { name: 'ลองใหม่' }));
     await screen.findByText('หนังสือรับรองการหักภาษี ณ ที่จ่าย');
   });

@@ -571,7 +571,7 @@ export function StockListTab({
                     ? 1255
                     : filterCategory === 'ACCESSORY'
                       ? 1200
-                      : 1480) -
+                      : 1615) - // แท็บทั้งหมด: 1480 + คอลัมน์วันที่รับเข้า 135
               // มุมมองพร้อมขายไม่มีคอลัมน์สถานะ (100px) — ลดความกว้างขั้นต่ำลงเท่ากัน
               // ไม่งั้นคอลัมน์ที่เหลือขยายมาแทนแล้วดันยอดผ่อนต่อเดือนหลุดจอที่ 1280px
               (showStatusFilter ? 0 : 100)
@@ -591,9 +591,10 @@ export function StockListTab({
         )}
       </QueryBoundary>
       <p className="space-y-1 border-t border-border/60 bg-background/30 px-4 py-3 text-xs text-muted-foreground leading-snug sm:px-5">
-        {['PHONE_NEW', 'PHONE_USED', 'TABLET'].includes(filterCategory) && (
+        {['', 'PHONE_NEW', 'PHONE_USED', 'TABLET'].includes(filterCategory) && (
           <span className="block">
             วันที่รับเข้าใช้วันที่เข้าสต็อกพร้อมขายล่าสุด · นับวันเฉพาะสินค้าพร้อมขายและจอง
+            {filterCategory === '' && ' · กลุ่มอุปกรณ์ไม่แสดงวันที่'}
           </span>
         )}
         {!['PHONE_NEW', 'PHONE_USED', 'TABLET'].includes(filterCategory) && (

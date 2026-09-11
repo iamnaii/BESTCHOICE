@@ -133,6 +133,7 @@ export default function StockProductsPage() {
   const isTabletView = filterCategory === 'TABLET';
   const isAccessoryView = filterCategory === 'ACCESSORY';
   const isDeviceView = filterCategory === 'PHONE_NEW' || isUsedPhoneView || isTabletView;
+  const isAllCategories = filterCategory === '';
 
   useEditingProductSync(editingProduct, listProducts, setEditingProduct);
 
@@ -422,7 +423,9 @@ export default function StockProductsPage() {
             },
           ]
         : []),
-      ...(isDeviceView
+      // เจ้าของขอ 2026-09-11 ให้แท็บ "ทั้งหมด" มีวันที่รับเข้าด้วย — แถวกลุ่มอุปกรณ์เว้นว่าง
+      // (วันที่ของกลุ่มไม่มีความหมายเดียว ส่วนแท็บอุปกรณ์ล้วนยังไม่แสดงคอลัมน์นี้เหมือนเดิม)
+      ...(isDeviceView || isAllCategories
         ? [
             {
               key: 'stockInDate',
@@ -430,7 +433,12 @@ export default function StockProductsPage() {
               sortable: true,
               hideable: false,
               width: '135px',
-              render: (product: StockProduct) => <StockReceivedDate product={product} />,
+              render: (product: StockProduct) =>
+                product.stockGroup ? (
+                  <span className="text-muted-foreground">—</span>
+                ) : (
+                  <StockReceivedDate product={product} />
+                ),
             },
           ]
         : []),
@@ -519,6 +527,7 @@ export default function StockProductsPage() {
       selectableProducts,
       setAccessoryGroupId,
       isDeviceView,
+      isAllCategories,
       isAccessoryView,
       isUsedPhoneView,
       isTabletView,

@@ -576,6 +576,7 @@ describe('All categories and accessory stock views', () => {
           'ราคาเต็มจำนวน',
           'ดาวน์',
           'ยอดผ่อนต่อเดือน',
+          'วันที่รับเข้า',
           'คงเหลือ',
           'สถานะ',
           'สาขา',
@@ -1115,6 +1116,78 @@ describe('Stock received dates', () => {
       );
     });
   }
+
+  // เจ้าของขอ 2026-09-11: "เพิ่ม วันที่รับเข้า ในหน้าทั้งหมดให้ด้วย" — แท็บ "ทั้งหมด" รวมทุกหมวด
+  // เครื่องแสดงวันที่ตามปกติ ส่วนแถวกลุ่มอุปกรณ์เว้นว่าง (วันที่ของกลุ่มไม่มีความหมายเดียว)
+  it.each([false, true])(
+    'shows received dates in the all-categories tab too — devices dated, accessory groups blank (mobile: %s)',
+    async (mobile) => {
+      mocks.mobile = mobile;
+      const device = product({ stockInDate: '2026-08-20T10:00:00+07:00' });
+      const accessoryGroup: StockProduct = {
+        ...product({
+          id: 'case-unit',
+          name: 'เคสใส iPhone 16',
+          model: 'iPhone 16',
+          category: 'ACCESSORY',
+          accessoryType: 'เคส',
+          imeiSerial: null,
+          storage: null,
+          costPrice: '100',
+          cashPrice: '250',
+          installmentPrice: null,
+          prices: [],
+          stockInDate: '2026-08-01T10:00:00+07:00',
+        }),
+        legacyProductCode: null,
+        stockGroup: {
+          key: 'case-group',
+          unitCount: 2,
+          inStockQuantity: 2,
+          statuses: ['IN_STOCK'],
+          costPriceMax: '100',
+          cashPriceMax: '250',
+          cashPriceMissingCount: 0,
+        },
+      };
+      showProducts([device], false, config, [device, accessoryGroup]);
+      await screen.findByText('20/08/2569');
+      expect(screen.queryByText('01/08/2569')).not.toBeInTheDocument();
+      if (mobile) {
+        const items = within(screen.getByRole('list', { name: 'รายการสินค้า' })).getAllByRole(
+          'listitem',
+        );
+        expect(within(items[0]).getByText('วันที่รับเข้า')).toBeInTheDocument();
+        expect(within(items[0]).getByText(/ในสต็อก [\d,]+ วัน/)).toBeInTheDocument();
+        fireEvent.change(screen.getByRole('combobox', { name: 'เรียงตาม' }), {
+          target: { value: 'stockInDate' },
+        });
+      } else {
+        // อยู่หลังยอดผ่อนต่อเดือน ก่อนคงเหลือ (index 8 นับจากคอลัมน์เลือกของผู้จัดการ)
+        const headers = screen.getAllByRole('columnheader').map((header) => header.textContent);
+        expect(headers[7]).toBe('ยอดผ่อนต่อเดือน');
+        expect(headers[8]).toBe('วันที่รับเข้า');
+        expect(headers[9]).toBe('คงเหลือ');
+        const deviceCells = within(screen.getByRole('row', { name: /iPhone 13/ })).getAllByRole('cell');
+        expect(deviceCells[8]).toHaveTextContent('20/08/2569');
+        const groupCells = within(screen.getByRole('row', { name: /เคสใส iPhone 16/ })).getAllByRole(
+          'cell',
+        );
+        expect(groupCells[8]).toHaveTextContent('—');
+        fireEvent.click(screen.getByRole('button', { name: 'วันที่รับเข้า' }));
+      }
+      await waitFor(() =>
+        expect(mocks.get).toHaveBeenCalledWith(
+          '/products',
+          expect.objectContaining({
+            params: expect.objectContaining({ sortBy: 'stockInDate', sortDirection: 'asc' }),
+          }),
+        ),
+      );
+      const listCalls = mocks.get.mock.calls.filter(([url]) => url === '/products');
+      expect(listCalls[listCalls.length - 1]?.[1]?.params.category).toBeUndefined();
+    },
+  );
 });
 
 // คำขอเจ้าของ 2026-09-11: แบ่ง "สินค้าทั้งหมด" กับ "สินค้าในสต๊อกพร้อมขาย" — mockup canvas 54e6c624 เคาะแล้ว

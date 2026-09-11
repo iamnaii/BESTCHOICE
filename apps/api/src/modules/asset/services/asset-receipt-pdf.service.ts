@@ -1,3 +1,4 @@
+import { paperSpacingScript, PAPER_SPACING_CSS } from '@installment/shared';
 import { TRANSACTION_PAGE_CSS, transactionDocumentCss } from '@installment/shared';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import {
@@ -267,9 +268,10 @@ html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-col
 .bc-doc-approval { grid-auto-flow: initial; grid-template-columns: repeat(3,minmax(0,1fr)) 24mm; }
 .void-overlay { position: fixed; inset: 45% 0 auto; text-align: center; transform: rotate(-20deg); color: rgba(185,28,28,.18); }
 .items th:last-child { width: 35mm; }
+${PAPER_SPACING_CSS}
 </style>
 </head>
-<body>
+<body data-bc-paper>
 ${isReversed ? `<div class="void-overlay">กลับรายการแล้ว</div>` : ''}<div class="bc-doc-header">
   <div class="bc-doc-brand"><div>${BESTCHOICE_LOGO_SVG}</div><p class="bc-doc-company">${safe.companyName}</p>
     <p>${safe.companyAddress}</p><p>เลขประจำตัวผู้เสียภาษี ${safe.taxId}</p>${safe.companyPhone ? `<p>โทร ${safe.companyPhone}</p>` : ''}
@@ -300,6 +302,7 @@ ${isReversed ? `<div class="void-overlay">กลับรายการแล�
 ${safe.note ? `<p class="bc-doc-note"><strong>หมายเหตุ</strong> ${safe.note}</p>` : ''}
 <div class="bc-doc-closing"><div class="bc-doc-total-grid"><div><p class="bc-doc-label">มูลค่าต้นทุนรวม (ตัวอักษร)</p><strong>${thaiAmount}</strong></div><div><div class="bc-doc-totals"><span>มูลค่าต้นทุนที่บันทึกเป็นสินทรัพย์</span><span>${fmtMoney(purchaseCost)}</span>${hasVat ? `<span>ภาษีมูลค่าเพิ่ม 7% (อ้างอิง)</span><span>${fmtMoney(vatAmount)}</span>` : ''}</div><div class="bc-doc-grand"><span>มูลค่าต้นทุนรวม</span><span>${fmtMoney(purchaseCost)} บาท</span></div></div></div>
 <div class="bc-doc-approval"><div class="bc-doc-signature"><div class="sign-space">${safe.preparerSignName}</div><strong>${safe.preparerName}</strong><p>ผู้จัดทำ</p><p class="bc-doc-kicker">${safe.purchaseDateStr}</p></div><div class="bc-doc-signature"><div class="sign-space">${safe.approverName ? escapeHtml((asset.postedBy?.name || '').split(/\s+/)[0]) : '&nbsp;'}</div><strong>${safe.approverName || '&nbsp;'}</strong><p>ผู้ตรวจรับ / ผู้อนุมัติ</p><p class="bc-doc-kicker">${safe.approverName ? safe.purchaseDateStr : '&nbsp;'}</p></div><div class="bc-doc-signature"><div class="sign-space"></div><strong>${safe.supplierName}</strong><p>ผู้ส่งมอบ</p><p class="bc-doc-kicker">${safe.purchaseDateStr}</p></div><div class="bc-doc-qr"><img src="${qrDataUrl}" alt="ตรวจสอบเอกสาร"/><p class="bc-doc-kicker">สแกนเพื่อตรวจสอบ</p></div></div><footer class="bc-doc-footer"><span>${safe.docNo}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
+${paperSpacingScript()}
 </body>
 </html>`;
   }

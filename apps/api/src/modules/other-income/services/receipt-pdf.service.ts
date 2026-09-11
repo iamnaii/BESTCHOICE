@@ -1,3 +1,4 @@
+import { paperSpacingScript, PAPER_SPACING_CSS } from '@installment/shared';
 import { TRANSACTION_PAGE_CSS, transactionDocumentCss } from '@installment/shared';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
@@ -222,9 +223,10 @@ html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-col
 .void-overlay { position: fixed; inset: 45% 0 auto; text-align: center; transform: rotate(-20deg); color: rgba(185,28,28,.18); }
 .items th:nth-child(3) { width: 16mm; } .items th:nth-child(4) { width: 24mm; } .items th:nth-child(5) { width: 20mm; } .items th:nth-child(6) { width: 12mm; } .items th:nth-child(7) { width: 26mm; }
 .bc-doc-approval { grid-template-columns: 24mm minmax(0,1fr) minmax(0,1fr); }
+${PAPER_SPACING_CSS}
 </style>
 </head>
-<body>
+<body data-bc-paper>
 ${isReversed ? `<div class="void-overlay">VOID / กลับรายการ</div>` : ''}<div class="bc-doc-header">
   <div class="bc-doc-brand"><div>${BESTCHOICE_LOGO_SVG}</div><p class="bc-doc-company">${safe.companyName}</p>
     <p>${safe.companyAddress}</p><p>เลขประจำตัวผู้เสียภาษี ${safe.taxId}</p>${safe.companyPhone ? `<p>โทร ${safe.companyPhone}</p>` : ''}
@@ -240,6 +242,7 @@ ${safe.customerNote ? `<p class="bc-doc-note"><strong>หมายเหตุ</
 <div><div class="bc-doc-totals"><span>มูลค่าก่อนภาษี</span><span>${fmtMoney(incomeGross)}</span><span>ภาษีมูลค่าเพิ่ม 7%</span><span>${fmtMoney(vatAmount)}</span><span>จำนวนเงินทั้งสิ้น</span><span>${fmtMoney(totalAmount)}</span>${whtAmount > 0 ? `<span>หัก ณ ที่จ่าย</span><span>${fmtMoney(whtAmount)}</span>` : ''}</div><div class="bc-doc-grand"><span>จำนวนเงินที่ชำระ</span><span>${fmtMoney(amountReceived)} บาท</span></div></div></div>
 <div class="bc-doc-approval"><div class="bc-doc-qr"><img src="${qrDataUrl}" alt="ตรวจสอบเอกสาร"/><p class="bc-doc-kicker">สแกนเพื่อตรวจสอบ</p></div><div><p class="bc-doc-label">ติดต่อผู้ออกเอกสาร</p><p>${safe.issuerName}</p><p>${safe.issuerEmail}</p></div><div class="bc-doc-signature"><div class="sign-space">${safe.issuerSignName}</div><strong>${safe.issuerName}</strong><p>ผู้ออกใบเสร็จรับเงิน</p><p class="bc-doc-kicker">${safe.paymentDateStr}</p></div></div>
 <footer class="bc-doc-footer"><span>${safe.receiptNumber}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
+${paperSpacingScript()}
 </body>
 </html>`;
   }

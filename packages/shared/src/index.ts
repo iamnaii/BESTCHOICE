@@ -22,3 +22,5 @@ export * from './signature-requirements';
 export * from './document-style';
 
 export * from './document-layout';
+
+export * from './document-spacing';

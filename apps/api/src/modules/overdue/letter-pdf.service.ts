@@ -1,3 +1,4 @@
+import { paperSpacingScript, PAPER_SPACING_CSS } from '@installment/shared';
 import { DOCUMENT_A4_CSS, documentTypographyCss } from '@installment/shared';
 import { embeddedDocumentFonts } from '../../assets/fonts/document-fonts';
 /* eslint-disable max-len */
@@ -291,7 +292,7 @@ export class LetterPdfService {
   .keep-together { page-break-inside: avoid; break-inside: avoid; }
 ${DOCUMENT_A4_CSS}
 ${documentTypographyCss('body', undefined, 1.05)}
-@page { size: A4; margin: 14mm 16mm 16mm; }
+@page { size: A4; margin: 18mm 15mm 18mm; }
 .header { gap: 5mm; padding-bottom: 2mm; }
 .header img.logo { width: 17mm; height: 17mm; }
 .header .company { gap: 0; }
@@ -311,9 +312,10 @@ ol.demand li, ol.legal li, ul.bullets li { margin: 1mm 0; }
 .signature img.sig-img { height: 14mm; }
 .signature .director { margin-top: 1mm; }
 
+${PAPER_SPACING_CSS}
 </style>
 </head>
-<body>
+<body data-bc-paper>
   <div class="header">
     ${logoImg}
     <div class="company">
@@ -338,6 +340,7 @@ ol.demand li, ol.legal li, ul.bullets li { margin: 1mm 0; }
     <div class="company-foot">${esc(d.company.nameTh)}</div>
   </div>
   </div>
+${paperSpacingScript()}
 </body>
 </html>`;
   }
@@ -448,7 +451,7 @@ ${coord}
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: { top: '14mm', right: '16mm', bottom: '16mm', left: '16mm' },
+        margin: { top: '18mm', right: '15mm', bottom: '18mm', left: '15mm' },
         displayHeaderFooter: true,
         headerTemplate: '<span></span>',
         footerTemplate: `${footerFontCss}<div style="width:100%;padding:0 22mm;font-family:'TH Sarabun PSK',sans-serif;font-size:12pt;color:#666;display:flex;justify-content:space-between;align-items:center"><span>${footerLeft}</span><span>หน้า <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,

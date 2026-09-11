@@ -283,7 +283,7 @@ export default function WhtAnnualPage() {
                   บาท (ใช้สิทธิลดหย่อนได้)
                 </div>
 
-                <div className="pt-6 grid grid-cols-2 gap-6 text-center text-xs">
+                <div className="bc-doc-signoff pt-6 grid grid-cols-2 gap-6 text-center text-xs">
                   <div>
                     <div className="border-b border-dotted border-black h-10"></div>
                     <div className="mt-1">

@@ -64,13 +64,13 @@ export class PdfReportService {
     const font = registerDocumentFont(doc);
     const green: [number, number, number] = [6, 95, 70];
     const ink: [number, number, number] = [23, 43, 37];
-    const tableStyles = { font, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 4, textColor: ink };
-    const margin = { top: 106, bottom: 46, left: 43, right: 43 };
+    const tableStyles = { font, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 5.25, textColor: ink };
+    const margin = { top: 117, bottom: 51, left: 43, right: 43 };
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const formatDate = (d: Date) => d.toISOString().slice(0, 10);
     const generated = new Date().toISOString();
-    doc.setLineHeightFactor(1.08);
+    doc.setLineHeightFactor(1.2);
     let y = margin.top;
 
     // Keep each section title with its table header and at least one data row.
@@ -147,6 +147,24 @@ export class PdfReportService {
       );
     }
 
+    // ---- Letter dispatch by type ----
+    if (analytics.letterDispatchByType.length > 0) {
+      table('Letters / การส่งจดหมาย', [['Letter type', 'Month', 'Count']],
+        analytics.letterDispatchByType.map((r) => [r.type, r.month.slice(0, 7), String(r.count)])
+      );
+    }
+
+    // ---- Promise trend ----
+    if (analytics.promiseKeptTrend.length > 0) {
+      table('Promises / การรักษาสัญญาชำระ', [['Week', 'Kept', 'Broken']],
+        analytics.promiseKeptTrend.map((r) => [
+          r.weekStart.slice(0, 10),
+          String(r.kept),
+          String(r.broken),
+        ])
+      );
+    }
+
     // ---- Stuck contracts ----
     if (stuckRows.length > 0) {
       table('Follow-up / สัญญาที่ต้องติดตาม', [['Contract #', 'Days stuck', 'Customer', 'Status']],
@@ -167,38 +185,20 @@ export class PdfReportService {
       );
     }
 
-    // ---- Letter dispatch by type ----
-    if (analytics.letterDispatchByType.length > 0) {
-      table('Letters / การส่งจดหมาย', [['Letter type', 'Month', 'Count']],
-        analytics.letterDispatchByType.map((r) => [r.type, r.month.slice(0, 7), String(r.count)])
-      );
-    }
-
-    // ---- Promise trend ----
-    if (analytics.promiseKeptTrend.length > 0) {
-      table('Promises / การรักษาสัญญาชำระ', [['Week', 'Kept', 'Broken']],
-        analytics.promiseKeptTrend.map((r) => [
-          r.weekStart.slice(0, 10),
-          String(r.kept),
-          String(r.broken),
-        ])
-      );
-    }
-
     const pageCount = doc.getNumberOfPages();
     for (let page = 1; page <= pageCount; page += 1) {
       doc.setPage(page);
       doc.setFont(font, 'bold');
       doc.setFontSize(DOCUMENT_STYLE.headingPt);
       doc.setTextColor(...green);
-      doc.text('BESTCHOICE Collections Report', margin.left, 51);
+      doc.text('BESTCHOICE Collections Report', margin.left, 65);
       doc.setFont(font, 'normal');
       doc.setFontSize(DOCUMENT_STYLE.bodyPt);
       doc.setTextColor(...ink);
-      doc.text(`Period: ${formatDate(range.from)} — ${formatDate(range.to)}`, margin.left, 73);
+      doc.text(`Period: ${formatDate(range.from)} — ${formatDate(range.to)}`, margin.left, 89);
       doc.setDrawColor(...green);
       doc.setLineWidth(1.5);
-      doc.line(margin.left, 88, pageWidth - margin.right, 88);
+      doc.line(margin.left, 104, pageWidth - margin.right, 104);
       doc.setDrawColor(212, 223, 217);
       doc.setLineWidth(0.5);
       doc.line(margin.left, pageHeight - 39, pageWidth - margin.right, pageHeight - 39);

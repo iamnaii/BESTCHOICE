@@ -1,3 +1,4 @@
+import { paperSpacingScript, PAPER_SPACING_CSS } from '@installment/shared';
 import { TRANSACTION_PAGE_CSS, DOCUMENT_WEB_FONT_FACES, transactionDocumentCss } from '@installment/shared';
 import { thaiBahtText } from '../../../../utils/thai-baht-text.util';
 import { LEGACY_TRADE_IN_DECLARATION } from '@installment/shared';
@@ -158,9 +159,10 @@ html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-col
 .device-name { font-weight: 700; }
 .device-details { color: #52645d; }
 .center { text-align: center; }
+${PAPER_SPACING_CSS}
 </style>
 </head>
-<body>
+<body data-bc-paper>
 <div class="bc-doc-header"><div class="bc-doc-brand"><div>${this.logoSvg()}</div><p class="bc-doc-company">${esc(company.nameTh)}</p><p>${esc(company.address)}</p><p>เลขประจำตัวผู้เสียภาษี ${esc(company.taxId)}</p>${company.phone ? `<p>โทร ${esc(company.phone)}</p>` : ''}</div>
 <div class="bc-doc-identity"><h1>${title}</h1><p class="bc-doc-kicker">${isCredit ? 'TRADE-IN RECEIPT' : 'PAYMENT VOUCHER'} · ${data.isReprint ? 'สำเนา / COPY' : 'ต้นฉบับ / ORIGINAL'}</p><div class="bc-doc-meta"><span>เลขที่เอกสาร</span><span>${esc(data.voucherNumber)}</span><span>วันที่</span><span>${date}</span></div></div></div>
 <div class="bc-doc-parties"><div><p class="bc-doc-label">${isCredit ? 'ผู้ส่งมอบเครื่อง' : 'ผู้รับเงิน / ผู้ขาย'}</p><strong>${esc(data.sellerName)}</strong><p>${esc(data.sellerAddress)}</p></div><div class="bc-doc-kv"><span>เลขบัตรประชาชน</span><span>${esc(data.sellerIdCard)}</span><span>โทรศัพท์</span><span>${esc(data.sellerPhone)}</span></div></div>
@@ -207,6 +209,7 @@ html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-col
   </section>
 
 <footer class="bc-doc-footer"><span>${esc(data.voucherNumber)}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
+${paperSpacingScript()}
 </body>
 </html>`;
   }

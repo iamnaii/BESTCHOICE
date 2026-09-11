@@ -1,0 +1,622 @@
+[
+  {
+    "name": "asset-long.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 316,
+      "THSarabunPSK-Regular 16.0": 740,
+      "THSarabunPSK-Bold 18.0": 14,
+      "THSarabunPSK-Regular 12.0": 102
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "asset-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 316,
+      "THSarabunPSK-Regular 16.0": 365,
+      "THSarabunPSK-Bold 18.0": 14,
+      "THSarabunPSK-Regular 12.0": 102
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "browser-CONTRACT_TERMINATION_60D-long.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK 18.0": 27,
+      "THSarabunPSK 16.0": 2122,
+      "THSarabunPSK 12.0": 33
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "browser-CONTRACT_TERMINATION_60D-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK 18.0": 27,
+      "THSarabunPSK 16.0": 1908,
+      "THSarabunPSK 12.0": 33
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "browser-RETURN_DEVICE_45D-long.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK 18.0": 27,
+      "THSarabunPSK 16.0": 3258,
+      "THSarabunPSK 12.0": 66
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "browser-RETURN_DEVICE_45D-normal.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK 18.0": 27,
+      "THSarabunPSK 16.0": 2831,
+      "THSarabunPSK 12.0": 66
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "browser-template-long.pdf",
+    "pages": 17,
+    "fonts": {
+      "THSarabunPSK 18.0": 446,
+      "THSarabunPSK 16.0": 22932,
+      "THSarabunPSK 12.0": 586
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "browser-template-normal.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK 18.0": 46,
+      "THSarabunPSK 16.0": 1065,
+      "THSarabunPSK 12.0": 66
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "browser-termination-boundary-12-long.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK 18.0": 27,
+      "THSarabunPSK 16.0": 2350,
+      "THSarabunPSK 12.0": 28
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "browser-termination-boundary-16-long.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK 18.0": 27,
+      "THSarabunPSK 16.0": 2564,
+      "THSarabunPSK 12.0": 56
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "browser-termination-boundary-20-long.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK 18.0": 27,
+      "THSarabunPSK 16.0": 2778,
+      "THSarabunPSK 12.0": 56
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "browser-termination-boundary-8-long.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK 18.0": 27,
+      "THSarabunPSK 16.0": 2137,
+      "THSarabunPSK 12.0": 27
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "e-tax-continuation.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK 18.0": 21,
+      "THSarabunPSK 12.0": 163,
+      "THSarabunPSK 16.0": 2349
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "e-tax-long.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK 18.0": 21,
+      "THSarabunPSK 12.0": 163,
+      "THSarabunPSK 16.0": 977
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "e-tax-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK 18.0": 21,
+      "THSarabunPSK 12.0": 163,
+      "THSarabunPSK 16.0": 555
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "expense-long.pdf",
+    "pages": 4,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 567,
+      "THSarabunPSK-Regular 16.0": 3953,
+      "THSarabunPSK-Bold 18.0": 11,
+      "THSarabunPSK-Regular 12.0": 98
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "expense-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 283,
+      "THSarabunPSK-Regular 16.0": 387,
+      "THSarabunPSK-Bold 18.0": 11,
+      "THSarabunPSK-Regular 12.0": 98
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "letter-CONTRACT_TERMINATION_60D-long.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 27,
+      "THSarabunPSK-Regular 16.0": 1831,
+      "THSarabunPSK-Bold 16.0": 236
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "letter-CONTRACT_TERMINATION_60D-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 27,
+      "THSarabunPSK-Regular 16.0": 1616,
+      "THSarabunPSK-Bold 16.0": 236
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "letter-RETURN_DEVICE_45D-long.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 62,
+      "THSarabunPSK-Regular 16.0": 2919,
+      "THSarabunPSK-Bold 16.0": 264
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "letter-RETURN_DEVICE_45D-normal.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 62,
+      "THSarabunPSK-Regular 16.0": 2457,
+      "THSarabunPSK-Bold 16.0": 264
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "other-income-long.pdf",
+    "pages": 4,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 572,
+      "THSarabunPSK-Regular 16.0": 4303,
+      "THSarabunPSK-Bold 18.0": 28,
+      "THSarabunPSK-Regular 12.0": 93
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "other-income-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 281,
+      "THSarabunPSK-Regular 16.0": 510,
+      "THSarabunPSK-Bold 18.0": 28,
+      "THSarabunPSK-Regular 12.0": 93
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "pdpa-long.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 191,
+      "THSarabunPSK-Regular 16.0": 1900,
+      "THSarabunPSK-Bold 16.0": 84
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "pdpa-normal.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 191,
+      "THSarabunPSK-Regular 16.0": 1686,
+      "THSarabunPSK-Bold 16.0": 84
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "preview-CONTRACT.pdf",
+    "pages": 7,
+    "fonts": {
+      "THSarabunPSK-Regular 16.0": 11175,
+      "THSarabunPSK-Bold 16.0": 1040,
+      "THSarabunPSK-Bold 18.0": 27,
+      "THSarabunPSK-Regular 12.0": 371
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "preview-PDPA_CONSENT.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 191,
+      "THSarabunPSK-Regular 16.0": 1610,
+      "THSarabunPSK-Bold 16.0": 101,
+      "THSarabunPSK-Regular 12.0": 106
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-asset-register.pdf",
+    "pages": 3,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 16,
+      "THSarabunPSK-Regular 16.0": 1634,
+      "THSarabunPSK-Bold 16.0": 391
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-dividend-register-certificate.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 108,
+      "THSarabunPSK-Bold 18.0": 33,
+      "THSarabunPSK-Regular 12.0": 54,
+      "THSarabunPSK-Regular 16.0": 336
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-dividend-register.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 22,
+      "THSarabunPSK-Regular 16.0": 174,
+      "THSarabunPSK-Bold 16.0": 98
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-expense-daily-many-buckets.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 123,
+      "THSarabunPSK-Bold 18.0": 92,
+      "THSarabunPSK-Regular 12.0": 21,
+      "THSarabunPSK-Regular 16.0": 3107
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-expense-daily.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 123,
+      "THSarabunPSK-Bold 18.0": 92,
+      "THSarabunPSK-Regular 12.0": 21,
+      "THSarabunPSK-Regular 16.0": 1190
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-goods-receipt.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 63,
+      "THSarabunPSK-Regular 16.0": 505,
+      "THSarabunPSK-Bold 16.0": 30,
+      "THSarabunPSK-Regular 12.0": 78
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-other-income-daily.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Regular 18.0": 14,
+      "THSarabunPSK-Regular 16.0": 1098,
+      "THSarabunPSK-Bold 16.0": 302,
+      "THSarabunPSK-Bold 18.0": 59
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-sticker.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 7.0": 8,
+      "THSarabunPSK-Bold 11.0": 17,
+      "THSarabunPSK-Bold 12.0": 6,
+      "THSarabunPSK-Regular 7.5": 39,
+      "THSarabunPSK-Bold 8.0": 42,
+      "THSarabunPSK-Regular 8.0": 6,
+      "THSarabunPSK-Regular 6.6": 15,
+      "THSarabunPSK-Bold 6.6": 1,
+      "THSarabunPSK-Bold 6.4": 9
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-voucher-EXPENSE.pdf",
+    "pages": 3,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 569,
+      "THSarabunPSK-Regular 16.0": 1798,
+      "THSarabunPSK-Bold 18.0": 50,
+      "THSarabunPSK-Regular 12.0": 301
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-voucher-PAYROLL-custom.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 399,
+      "THSarabunPSK-Regular 16.0": 1067,
+      "THSarabunPSK-Bold 18.0": 30,
+      "THSarabunPSK-Regular 12.0": 186
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-voucher-PAYROLL.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 200,
+      "THSarabunPSK-Regular 16.0": 478,
+      "THSarabunPSK-Bold 18.0": 15,
+      "THSarabunPSK-Regular 12.0": 93
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-voucher-PETTY_CASH_REIMBURSEMENT.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 167,
+      "THSarabunPSK-Regular 16.0": 435,
+      "THSarabunPSK-Bold 18.0": 21,
+      "THSarabunPSK-Regular 12.0": 104
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-voucher-long.pdf",
+    "pages": 5,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 657,
+      "THSarabunPSK-Regular 16.0": 3857,
+      "THSarabunPSK-Bold 18.0": 50,
+      "THSarabunPSK-Regular 12.0": 301
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-voucher-repeat.pdf",
+    "pages": 3,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 569,
+      "THSarabunPSK-Regular 16.0": 1798,
+      "THSarabunPSK-Bold 18.0": 50,
+      "THSarabunPSK-Regular 12.0": 301
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-wht-annual-certificate.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 188,
+      "THSarabunPSK-Bold 18.0": 33,
+      "THSarabunPSK-Regular 12.0": 55,
+      "THSarabunPSK-Regular 16.0": 402
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "print-wht-annual.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 32,
+      "THSarabunPSK-Regular 16.0": 274,
+      "THSarabunPSK-Bold 16.0": 26
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "receipt-CREDIT_NOTE-long.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 35,
+      "THSarabunPSK-Regular 16.0": 798,
+      "THSarabunPSK-Bold 16.0": 458,
+      "THSarabunPSK-Regular 12.0": 162
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "receipt-CREDIT_NOTE-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 35,
+      "THSarabunPSK-Regular 16.0": 376,
+      "THSarabunPSK-Bold 16.0": 458,
+      "THSarabunPSK-Regular 12.0": 162
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "receipt-DOWN_PAYMENT-long.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 41,
+      "THSarabunPSK-Regular 16.0": 724,
+      "THSarabunPSK-Bold 16.0": 402,
+      "THSarabunPSK-Regular 12.0": 162
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "receipt-DOWN_PAYMENT-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 41,
+      "THSarabunPSK-Regular 16.0": 302,
+      "THSarabunPSK-Bold 16.0": 402,
+      "THSarabunPSK-Regular 12.0": 162
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "receipt-EARLY_PAYOFF-long.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 55,
+      "THSarabunPSK-Regular 16.0": 768,
+      "THSarabunPSK-Bold 16.0": 426,
+      "THSarabunPSK-Regular 12.0": 162
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "receipt-EARLY_PAYOFF-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 55,
+      "THSarabunPSK-Regular 16.0": 346,
+      "THSarabunPSK-Bold 16.0": 426,
+      "THSarabunPSK-Regular 12.0": 162
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "receipt-PAYMENT-long.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 55,
+      "THSarabunPSK-Regular 16.0": 760,
+      "THSarabunPSK-Bold 16.0": 452,
+      "THSarabunPSK-Regular 12.0": 162
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "receipt-PAYMENT-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 55,
+      "THSarabunPSK-Regular 16.0": 338,
+      "THSarabunPSK-Bold 16.0": 452,
+      "THSarabunPSK-Regular 12.0": 162
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "receipt-RESCHEDULE_FEE-long.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 41,
+      "THSarabunPSK-Regular 16.0": 716,
+      "THSarabunPSK-Bold 16.0": 448,
+      "THSarabunPSK-Regular 12.0": 162
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "receipt-RESCHEDULE_FEE-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 18.0": 41,
+      "THSarabunPSK-Regular 16.0": 294,
+      "THSarabunPSK-Bold 16.0": 448,
+      "THSarabunPSK-Regular 12.0": 162
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "report.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK 16.0": 1565,
+      "THSarabunPSK 18.0": 227,
+      "THSarabunPSK 12.0": 80
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "trade-in-CASH-long.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 309,
+      "THSarabunPSK-Regular 16.0": 1059,
+      "THSarabunPSK-Bold 18.0": 15,
+      "THSarabunPSK-Regular 12.0": 110
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "trade-in-CASH-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 309,
+      "THSarabunPSK-Regular 16.0": 637,
+      "THSarabunPSK-Bold 18.0": 15,
+      "THSarabunPSK-Regular 12.0": 116
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "trade-in-TRADE_IN_CREDIT-long.pdf",
+    "pages": 2,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 316,
+      "THSarabunPSK-Regular 16.0": 1860,
+      "THSarabunPSK-Bold 18.0": 18,
+      "THSarabunPSK-Regular 12.0": 111
+    },
+    "boundsWarnings": []
+  },
+  {
+    "name": "trade-in-TRADE_IN_CREDIT-normal.pdf",
+    "pages": 1,
+    "fonts": {
+      "THSarabunPSK-Bold 16.0": 316,
+      "THSarabunPSK-Regular 16.0": 1438,
+      "THSarabunPSK-Bold 18.0": 18,
+      "THSarabunPSK-Regular 12.0": 117
+    },
+    "boundsWarnings": []
+  }
+]

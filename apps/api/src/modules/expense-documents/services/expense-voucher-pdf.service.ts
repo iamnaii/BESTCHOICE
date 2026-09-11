@@ -1,3 +1,4 @@
+import { paperSpacingScript, PAPER_SPACING_CSS } from '@installment/shared';
 import { TRANSACTION_PAGE_CSS, transactionDocumentCss } from '@installment/shared';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
@@ -268,9 +269,10 @@ html, body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-col
 .bc-doc-approval { grid-auto-flow: initial; grid-template-columns: repeat(3,minmax(0,1fr)) 24mm; }
 .void-overlay { position: fixed; inset: 45% 0 auto; text-align: center; transform: rotate(-20deg); color: rgba(185,28,28,.18); }
 .items th:nth-child(3) { width: 16mm; } .items th:nth-child(4) { width: 28mm; } .items th:nth-child(5) { width: 20mm; } .items th:nth-child(6) { width: 28mm; }
+${PAPER_SPACING_CSS}
 </style>
 </head>
-<body>
+<body data-bc-paper>
 ${isVoided ? `<div class="void-overlay">ยกเลิก / กลับรายการแล้ว</div>` : ''}<div class="bc-doc-header">
   <div class="bc-doc-brand"><div>${BESTCHOICE_LOGO_SVG}</div><p class="bc-doc-company">${safe.companyName}</p>
     <p>${safe.companyAddress}</p><p>เลขประจำตัวผู้เสียภาษี ${safe.taxId}</p>${safe.companyPhone ? `<p>โทร ${safe.companyPhone}</p>` : ''}
@@ -283,6 +285,7 @@ ${safe.note || safe.description ? `<p class="bc-doc-note"><strong>หมาย�
 <div class="bc-doc-closing"><div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงินจ่ายสุทธิ (ตัวอักษร)</p><strong>${thaiAmount}</strong></div>
 <div><div class="bc-doc-totals"><span>มูลค่าก่อนภาษี</span><span>${fmtMoney(subtotal)}</span><span>ภาษีมูลค่าเพิ่ม 7%</span><span>${fmtMoney(vatAmount)}</span><span>มูลค่ารวม</span><span>${fmtMoney(totalAmount)}</span><span>หัก ณ ที่จ่าย</span><span>${fmtMoney(whtAmount)}</span></div><div class="bc-doc-grand"><span>จำนวนเงินจ่ายสุทธิ</span><span>${fmtMoney(netPaid)} บาท</span></div></div></div>
 <div class="bc-doc-approval"><div class="bc-doc-signature"><div class="sign-space">${safe.preparerSignName}</div><strong>${safe.preparerName}</strong><p>ผู้จัดทำ</p><p class="bc-doc-kicker">${safe.documentDateStr}</p></div><div class="bc-doc-signature"><div class="sign-space">${safe.approverName ? escapeHtml((doc.approvedBy?.name || '').split(/\s+/)[0]) : '&nbsp;'}</div><strong>${safe.approverName || '&nbsp;'}</strong><p>ผู้อนุมัติ</p><p class="bc-doc-kicker">${safe.approverName ? safe.paidAtStr : '&nbsp;'}</p></div><div class="bc-doc-signature"><div class="sign-space"></div><strong>${safe.payeeName}</strong><p>ผู้รับเงิน</p><p class="bc-doc-kicker">${safe.paidAtStr}</p></div><div class="bc-doc-qr"><img src="${qrDataUrl}" alt="ตรวจสอบเอกสาร"/><p class="bc-doc-kicker">สแกนเพื่อตรวจสอบ</p></div></div><footer class="bc-doc-footer"><span>${safe.docNumber}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
+${paperSpacingScript()}
 </body>
 </html>`;
   }

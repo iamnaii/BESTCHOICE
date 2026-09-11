@@ -234,7 +234,7 @@ export default function DividendRegisterPage() {
                     </tr>
                   </tbody>
                 </table>
-                <div className="flex justify-between pt-8">
+                <div className="bc-doc-signoff flex justify-between pt-8">
                   <div>วันที่ออกหนังสือรับรอง: ____/____/______</div>
                   <div className="text-center">
                     <div>ลงชื่อ ______________________ ผู้จ่ายเงิน</div>

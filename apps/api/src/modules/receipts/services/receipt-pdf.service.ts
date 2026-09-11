@@ -1,3 +1,4 @@
+import { paperSpacingScript, PAPER_SPACING_CSS } from '@installment/shared';
 import { BadRequestException } from '@nestjs/common';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { Prisma } from '@prisma/client';
@@ -477,9 +478,10 @@ export class ReceiptPdfService {
     .party-heading, .pay-col .heading { letter-spacing: normal; }
     .totals .row { padding: 2px; }
     .pay-grid { margin-top: 4px; padding: 4px 0; }
+${PAPER_SPACING_CSS}
 </style>
 </head>
-<body>
+<body data-bc-paper>
   ${receipt.isVoided ? `<div class="void-overlay">VOID / ยกเลิก</div>` : ''}
 
   <!-- Header: company identity + document identity -->
@@ -656,6 +658,7 @@ export class ReceiptPdfService {
     <div class="doc-note">เอกสารนี้จัดทำโดยระบบคอมพิวเตอร์ของ ${safe.companyName} · เลขที่ ${safe.receiptNumber} · ตรวจสอบได้ที่ QR ด้านซ้าย</div>
   </div>
   </div>
+${paperSpacingScript()}
 </body>
 </html>`;
 

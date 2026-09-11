@@ -1,7 +1,7 @@
 import { documentTypographyCss } from './document-style';
 
 /** Paper layout for transaction documents; the contract retains its own geometry. */
-export const TRANSACTION_PAGE_CSS = '@page { size: A4; margin: 14mm 15mm; }';
+export const TRANSACTION_PAGE_CSS = '@page { size: A4; margin: 18mm 15mm; }';
 export function transactionDocumentCss(root = '.bc-document'): string {
   return `
 ${documentTypographyCss(root, undefined, 1.08)}

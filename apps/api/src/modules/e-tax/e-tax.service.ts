@@ -342,28 +342,28 @@ export class ETaxService {
     const contentWidth = pageWidth - margin * 2;
 
     const green: [number, number, number] = [6, 95, 70];
-    doc.setLineHeightFactor(1.08);
+    doc.setLineHeightFactor(1.28);
     setBold();
     doc.setFontSize(DOCUMENT_STYLE.headingPt);
     doc.setTextColor(...green);
-    doc.text('BESTCHOICE', margin, 53);
-    doc.text('ใบกำกับภาษี', pageWidth - margin, 53, { align: 'right' });
+    doc.text('BESTCHOICE', margin, 65);
+    doc.text('ใบกำกับภาษี', pageWidth - margin, 65, { align: 'right' });
     setNormal();
     doc.setFontSize(DOCUMENT_STYLE.footerPt);
-    doc.setTextColor(82, 100, 93);
-    doc.text('TAX INVOICE', margin, 69);
-    doc.text('ต้นฉบับ / ORIGINAL', pageWidth - margin, 69, { align: 'right' });
+    doc.setTextColor(82, 100, 113);
+    doc.text('TAX INVOICE', margin, 85);
+    doc.text('ต้นฉบับ / ORIGINAL', pageWidth - margin, 85, { align: 'right' });
 
     // Preserve the payment-derived invoice number until the dedicated sequence is introduced.
     const invoiceNumber = `TX-${payment.id.slice(0, 8).toUpperCase()}`;
     const paidDateThai = payment.paidDate ? formatThaiDate(payment.paidDate) : '-';
     doc.setFontSize(DOCUMENT_STYLE.bodyPt);
     doc.setTextColor(23, 43, 37);
-    doc.text(`เลขที่ ${invoiceNumber}`, margin, 93);
-    doc.text(`วันที่ ${paidDateThai}`, pageWidth - margin, 93, { align: 'right' });
+    doc.text(`เลขที่ ${invoiceNumber}`, margin, 113);
+    doc.text(`วันที่ ${paidDateThai}`, pageWidth - margin, 113, { align: 'right' });
     doc.setDrawColor(...green);
     doc.setLineWidth(1.5);
-    doc.line(margin, 104, pageWidth - margin, 104);
+    doc.line(margin, 128, pageWidth - margin, 128);
 
     // ─── ISSUER (left) + BUYER (right) BLOCKS ──────────────────────
     const issuerLines = buildPartyLines({
@@ -380,22 +380,22 @@ export class ETaxService {
     });
 
     autoTable(doc, {
-      startY: 116,
+      startY: 148,
       head: [['ผู้ออกใบกำกับภาษี (ผู้ขาย)', 'ผู้ซื้อ / ผู้รับบริการ']],
       headStyles: { textColor: green, fontStyle: 'bold' },
       body: Array.from({ length: Math.max(issuerLines.length, buyerLines.length) }, (_, i) => [issuerLines[i] ?? '', buyerLines[i] ?? '']),
       theme: 'plain',
-      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 3, textColor: [23, 43, 37] },
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 6, textColor: [23, 43, 37] },
       columnStyles: { 0: { cellWidth: contentWidth / 2 }, 1: { cellWidth: contentWidth / 2 } },
-      margin: { left: margin, right: margin, top: 40, bottom: 80 },
+      margin: { left: margin, right: margin, top: 51, bottom: 80 },
     });
     const partyEnd = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
     autoTable(doc, {
-      startY: partyEnd + 8,
+      startY: partyEnd + 16,
       body: [[`อ้างอิงสัญญา: ${payment.contract.contractNumber}    งวดที่: ${payment.installmentNo}`]],
       theme: 'plain',
-      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 3, textColor: [23, 43, 37] },
-      margin: { left: margin, right: margin, top: 40, bottom: 80 },
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 6, textColor: [23, 43, 37] },
+      margin: { left: margin, right: margin, top: 51, bottom: 80 },
     });
     const refTop = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
 
@@ -403,18 +403,18 @@ export class ETaxService {
     // ม.86/4: must list ชนิด/ประเภท/จำนวน/ราคาต่อหน่วย/รวม
     const description = `ค่างวดผ่อนชำระตามสัญญา ${payment.contract.contractNumber} งวดที่ ${payment.installmentNo}`;
     autoTable(doc, {
-      startY: refTop + 9,
+      startY: refTop + 20,
       head: [['#', 'รายการ', 'จำนวน', 'ราคา/หน่วย (บาท)', 'รวม (บาท)']],
       body: [['1', description, '1', base.toFixed(2), base.toFixed(2)]],
-      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 5, textColor: [23, 43, 37] },
-      headStyles: { font: fontFamily, fontStyle: 'bold', fillColor: green, textColor: [255, 255, 255] },
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 7, minCellHeight: 72, valign: 'middle', textColor: [23, 43, 37] },
+      headStyles: { font: fontFamily, fontStyle: 'bold', minCellHeight: 0, fillColor: green, textColor: [255, 255, 255] },
       columnStyles: {
         0: { halign: 'center', cellWidth: 30 },
-        2: { halign: 'right', cellWidth: 42 },
+        2: { halign: 'right', cellWidth: 50 },
         3: { halign: 'right', cellWidth: 90 },
         4: { halign: 'right', cellWidth: 90 },
       },
-      margin: { left: margin, right: margin, top: 40, bottom: 80 },
+      margin: { left: margin, right: margin, top: 51, bottom: 80 },
     });
 
     // ─── SUMMARY ─────────────────────────────────────────────────
@@ -428,11 +428,11 @@ export class ETaxService {
       ['รวมทั้งสิ้น', total.toFixed(2)],
     ];
     autoTable(doc, {
-      startY: finalY + 12,
+      startY: doc.getNumberOfPages() === 1 ? Math.max(finalY + 20, 625) : finalY + 20,
       body: summaryRows,
       theme: 'plain',
       pageBreak: 'avoid',
-      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 3, textColor: [23, 43, 37], halign: 'right' },
+      styles: { font: fontFamily, fontSize: DOCUMENT_STYLE.bodyPt, cellPadding: 6, textColor: [23, 43, 37], halign: 'right' },
       didParseCell: (data) => {
         if (data.row.index === 2) {
           data.cell.styles.fontStyle = 'bold';
@@ -441,7 +441,7 @@ export class ETaxService {
         }
       },
       tableWidth: contentWidth * 0.6,
-      margin: { left: margin + contentWidth * 0.4, right: margin, top: 40, bottom: 80 },
+      margin: { left: margin + contentWidth * 0.4, right: margin, top: 51, bottom: 80 },
     });
 
     // ─── FOOTER DISCLAIMER ───────────────────────────────────────

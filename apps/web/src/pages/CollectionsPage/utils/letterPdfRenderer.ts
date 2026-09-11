@@ -21,9 +21,10 @@ import { numToThaiText } from '@/utils/numToThaiText';
 const PAGE_W = 210;
 const PAGE_H = 297;
 const MARGIN = 16;
-const TOP = 14;
+const TOP = 18;
 const BODY_BOTTOM = PAGE_H - 20;
-const LINE_H = DOCUMENT_STYLE.bodyPt * 25.4 / 72 * 1.05;
+const lineSpacing = new WeakMap<jsPDF, number>();
+const lineHeight = (doc: jsPDF) => DOCUMENT_STYLE.bodyPt * 25.4 / 72 * (lineSpacing.get(doc) ?? 1.05);
 const CONTENT_W = PAGE_W - MARGIN * 2;
 
 // ── Font constants (must match names registered by loadThaiFont) ───────────────
@@ -132,7 +133,7 @@ const formatMoney = (n: number): string => formatNumberDecimal(n, 2);
  * Date now renders right-aligned BELOW the rule (handled by the caller in
  * renderLetterPdfDoc) — matches the reference PDF.
  */
-function nextLine(doc: jsPDF, y: number, height = LINE_H): number {
+function nextLine(doc: jsPDF, y: number, height = lineHeight(doc)): number {
   if (y + height > BODY_BOTTOM) { doc.addPage(); return TOP; }
   return y;
 }
@@ -142,7 +143,7 @@ function writeLines(doc: jsPDF, text: string, x: number, y: number, width = PAGE
   for (const line of lines) {
     y = nextLine(doc, y);
     doc.text(line, x, y);
-    y += LINE_H;
+    y += lineHeight(doc);
   }
   return y;
 }
@@ -189,11 +190,11 @@ function titleBlock(doc: jsPDF, title: string, yStart: number): number {
  */
 function addressBlock(doc: jsPDF, data: LetterTemplateData, yStart: number): number {
   doc.setFontSize(DOCUMENT_STYLE.bodyPt);
-  let y = nextLine(doc, yStart, LINE_H * 2);
+  let y = nextLine(doc, yStart, lineHeight(doc) * 2);
 
   y = writeLines(doc, `เรียน  ${data.customer.name}`, MARGIN, y) + 1;
 
-  y = nextLine(doc, y, LINE_H * 2);
+  y = nextLine(doc, y, lineHeight(doc) * 2);
   // "อ้างถึง" label bold + content normal, single-line wraps at right margin
   doc.setFont(PDF_FONT_FAMILY, 'bold');
   const refLabel = 'อ้างถึง  ';
@@ -233,7 +234,7 @@ function bodyReturnDevice45D(
 ): number {
   doc.setFontSize(DOCUMENT_STYLE.bodyPt);
   let y = yStart;
-  const lineH = LINE_H;
+  const lineH = lineHeight(doc);
 
   const write = (text: string, extraGap = 1.5): void => {
     y = writeLines(doc, text, MARGIN, y) + extraGap;
@@ -341,7 +342,7 @@ function bodyReturnDevice45D(
   ];
 
   legalItems.forEach((item, idx) => {
-    y = nextLine(doc, y, LINE_H * 2);
+    y = nextLine(doc, y, lineHeight(doc) * 2);
     doc.setFont(PDF_FONT_FAMILY, 'bold');
     y = writeLines(doc, `${idx + 1}. ${item.title}`, MARGIN + 6, y);
     doc.setFont(PDF_FONT_FAMILY, 'normal');
@@ -394,7 +395,7 @@ function bodyContractTermination60D(
 ): number {
   doc.setFontSize(DOCUMENT_STYLE.bodyPt);
   let y = yStart;
-  const lineH = LINE_H;
+  const lineH = lineHeight(doc);
 
   const write = (text: string, extraGap = 1.5): void => {
     y = writeLines(doc, text, MARGIN, y) + extraGap;
@@ -465,7 +466,7 @@ function bodyContractTermination60D(
   ];
 
   for (const bullet of bulletLeads) {
-    y = nextLine(doc, y, LINE_H * 2);
+    y = nextLine(doc, y, lineHeight(doc) * 2);
     doc.setFont(PDF_FONT_FAMILY, 'bold');
     y = writeLines(doc, bullet.label, MARGIN + 6, y);
     doc.setFont(PDF_FONT_FAMILY, 'normal');
@@ -560,17 +561,19 @@ function signatureBlock(
     doc.setFont(PDF_FONT_FAMILY, row.bold ? 'bold' : 'normal');
     return { ...row, lines: doc.splitTextToSize(row.text, width) as string[] };
   });
-  const height = rows.reduce((sum, row) => sum + row.lines.length * LINE_H, 0) + (signatureDataUrl ? 17 : 8);
+  const height = rows.reduce((sum, row) => sum + row.lines.length * lineHeight(doc), 0) + (signatureDataUrl ? 17 : 8);
   const closing = data.letterType === 'RETURN_DEVICE_45D'
     ? '     จึงเรียนมาเพื่อโปรดดำเนินการโดยเร่งด่วน'
     : '     จึงเรียนมาเพื่อโปรดดำเนินการ';
   doc.setFont(PDF_FONT_FAMILY, 'bold');
   const closingLines = doc.splitTextToSize(closing, CONTENT_W) as string[];
   // Reserve the closing and signature together before either is drawn.
-  let y = nextLine(doc, yStart, height + closingLines.length * LINE_H + 6);
+  const closingHeight = height + closingLines.length * lineHeight(doc) + 6;
+  const balancedStart = Math.max(yStart, BODY_BOTTOM - closingHeight - 3);
+  let y = nextLine(doc, balancedStart, closingHeight);
   for (const line of closingLines) {
     doc.text(line, MARGIN, y);
-    y += LINE_H;
+    y += lineHeight(doc);
   }
   y += 6;
   for (const [index, row] of rows.entries()) {
@@ -578,7 +581,7 @@ function signatureBlock(
     for (const line of row.lines) {
       y = nextLine(doc, y);
       doc.text(line, centerX, y, { align: 'center' });
-      y += LINE_H;
+      y += lineHeight(doc);
     }
     if (index === 0) {
       if (signatureDataUrl) {
@@ -611,7 +614,15 @@ function footerBlock(doc: jsPDF, data: LetterTemplateData): void {
  * useful for bulk merging (caller does doc.addPage() between letters).
  */
 export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPDF> {
+  const relaxed = await renderLetterWithSpacing(data, 1.28);
+  if (relaxed.getNumberOfPages() === 1) return relaxed;
+  const compact = await renderLetterWithSpacing(data, 1.05);
+  return compact.getNumberOfPages() < relaxed.getNumberOfPages() ? compact : relaxed;
+}
+
+async function renderLetterWithSpacing(data: LetterTemplateData, spacing: number): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  lineSpacing.set(doc, spacing);
 
   await loadDocumentFonts(doc);
 
@@ -645,7 +656,7 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
     y,
     { align: 'right' },
   );
-  y += LINE_H + 1;
+  y += lineHeight(doc) + 1;
 
   const subjectMap: Record<LetterTemplateData['letterType'], string> = {
     RETURN_DEVICE_45D:

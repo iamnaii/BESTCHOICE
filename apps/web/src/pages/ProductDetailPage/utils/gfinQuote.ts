@@ -76,6 +76,8 @@ export type GfinQuote =
       result: GfinCalcOutput;
       mapping: MaxPriceApi;
       rule: OverpriceApi | null;
+      /** เรทที่ใช้ (งวด + %คอม ที่เลือก) — โชว์ในรายละเอียดการคำนวณ */
+      factor: RateFactorApi;
       maxMonths: number | null;
       monthsOptions: MonthOption[];
     };
@@ -171,11 +173,15 @@ export function buildGfinQuote(tables: GfinTables, input: GfinQuoteInput): GfinQ
     return { available: false, reason: 'no_factor', maxMonths, monthsOptions };
   }
 
+  const factor = tables.factors.find(
+    (f) => f.isActive && f.months === input.months && f.shopCommissionPct === input.commissionPct,
+  )!;
   return {
     available: true,
     result: quoteFor(input.months, selected),
     mapping,
     rule,
+    factor,
     maxMonths,
     monthsOptions,
   };

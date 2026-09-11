@@ -1,27 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
-import React from 'react';
 
-// Mutable auth role (vi.mock factory is hoisted — reference via vi.hoisted holder,
-// same pattern as LateFeeSettingsCard.test.tsx / other RBAC component tests in this repo).
+// role ของผู้ใช้ (vi.mock hoisted — อ้างผ่าน holder เหมือน RBAC component tests อื่นใน repo)
 const authState = vi.hoisted(() => ({ role: 'OWNER' as string }));
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: { role: authState.role } }),
 }));
 
-const apiGet = vi.fn();
-vi.mock('@/lib/api', () => ({
-  __esModule: true,
-  default: { get: (...args: unknown[]) => apiGet(...args) },
-}));
-
 import { InstallmentCalculatorCard } from '../InstallmentCalculatorCard';
+import { resolveQuotes } from '../../utils/resolveQuotes';
+import { INITIAL_CALC_STATE, type CalcState } from '../../hooks/useInstallmentCalcState';
+import type { GfinTables } from '../../utils/gfinQuote';
 
-// golden config เดียวกับ BcCalculatorCard.test.tsx / useCustomerSummary.test.ts
+// golden config เดียวกับ bcQuote.test.ts (19,900 → 12 งวด/2,985/2,413.20)
 const bcConfig = {
   minDownPct: 0.15,
   commissionPct: 0.1,
@@ -30,121 +23,170 @@ const bcConfig = {
   allowedMonths: [5, 6, 7, 8, 10, 12],
 };
 
-function mockApiGet(url?: string) {
-  if (url === undefined) return Promise.reject(new Error('unexpected call: undefined'));
-  if (url.includes('/interest-configs/resolved')) return Promise.resolve({ data: bcConfig });
-  // GfinCalculatorCard renders alongside — feed it empty tables so it settles on the
-  // "รุ่นนี้ไม่อยู่ในตาราง GFIN" branch instead of hanging; this test doesn't assert on it.
-  if (url.includes('/gfin-config/')) return Promise.resolve({ data: [] });
-  return Promise.reject(new Error(`unexpected url: ${url}`));
-}
+// ตาราง GFIN: iPhone 15 128GB มือ 1 = 23,000 + OVER 1,000 · ผ่อนสูงสุด 12 → 12 งวด ดาวน์ 25% = 3,327/เดือน
+const gfinTables: GfinTables = {
+  mappings: [
+    {
+      id: 'm15',
+      gfinSeries: 'iPhone 15',
+      gfinVariant: null,
+      storage: '128GB',
+      condition: 'HAND_1',
+      maxPrice: '23000',
+      modelMatchPattern: 'iPhone 15',
+      isActive: true,
+    },
+  ],
+  rules: [
+    {
+      id: 'r15',
+      label: 'iPhone 15 มือ 1',
+      seriesPattern: 'iPhone 15',
+      condition: 'HAND_1',
+      allowance: '1000',
+      maxMonths: 12,
+      isActive: true,
+    },
+  ],
+  factors: [
+    { id: 'f10', months: 10, shopCommissionPct: 15, factor: '0.200952', feePerInstallment: '100', isActive: true },
+    { id: 'f12', months: 12, shopCommissionPct: 15, factor: '0.179238', feePerInstallment: '100', isActive: true },
+    { id: 'f12c5', months: 12, shopCommissionPct: 5, factor: '0.16', feePerInstallment: '100', isActive: true },
+  ],
+  settings: {
+    minDownPct: 25,
+    maxDownPct: 80,
+    downStepPct: 5,
+    contractFee: 100,
+    commissionPctByCategory: { PHONE: 15, TABLET: 5 },
+  },
+};
 
-const productWithInstallment = {
+const iphone15 = {
   id: 'p1',
-  category: 'PHONE_USED',
+  category: 'PHONE_NEW',
   brand: 'Apple',
-  model: 'iPhone 13',
+  model: 'iPhone 15',
   storage: '128GB',
-  cashPrice: '15900',
+  cashPrice: '19900',
   installmentPrice: '19900',
   prices: [],
 };
 
-const productWithoutInstallment = {
-  id: 'p2',
-  category: 'PHONE_USED',
-  brand: 'Apple',
-  model: 'iPhone 13',
-  storage: '128GB',
-  cashPrice: null,
-  installmentPrice: null,
-  prices: [],
-};
-
-function wrap(ui: ReactNode) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    React.createElement(
-      QueryClientProvider,
-      { client: qc },
-      React.createElement(BrowserRouter, null, ui),
-    ),
+function renderCard({
+  product = iphone15,
+  state = INITIAL_CALC_STATE,
+  onChange = vi.fn(),
+  canEditPrice = true,
+  onEditPrice = vi.fn(),
+  tables = gfinTables as GfinTables | undefined,
+  config = bcConfig as typeof bcConfig | undefined,
+}: {
+  product?: typeof iphone15;
+  state?: CalcState;
+  onChange?: ReturnType<typeof vi.fn>;
+  canEditPrice?: boolean;
+  onEditPrice?: ReturnType<typeof vi.fn>;
+  tables?: GfinTables | undefined;
+  config?: typeof bcConfig | undefined;
+} = {}) {
+  const quotes = resolveQuotes({ product, state, bcConfig: config, gfinTables: tables });
+  render(
+    <BrowserRouter>
+      <InstallmentCalculatorCard
+        product={product}
+        state={state}
+        quotes={quotes}
+        onChange={onChange}
+        canEditPrice={canEditPrice}
+        onEditPrice={onEditPrice}
+        gfinSettings={tables?.settings}
+        loading={false}
+      />
+    </BrowserRouter>,
   );
+  return { onChange, onEditPrice };
 }
 
-describe('InstallmentCalculatorCard', () => {
-  // braces จำเป็นเสมอ — arrow ไม่มี braces จะ return ค่าของ mockImplementation แล้ว vitest
-  // ถือเป็น cleanup fn (บั๊กเดียวกับที่แก้ไปแล้วใน useCustomerSummary.test.ts อีก 2 ไฟล์)
+describe('InstallmentCalculatorCard — การ์ดเดียว สลับ BESTCHOICE | GFIN', () => {
   beforeEach(() => {
     authState.role = 'OWNER';
-    apiGet.mockReset();
-    apiGet.mockImplementation(mockApiGet);
   });
 
-  describe('[I1a] canCreateContract gating — OWNER/BRANCH_MANAGER/SALES ทำสัญญาได้, FINANCE_MANAGER/ACCOUNTANT ไม่ได้', () => {
-    it.each(['OWNER', 'BRANCH_MANAGER', 'SALES'])(
-      'role=%s → เห็นปุ่ม "ใช้ราคานี้ทำสัญญา"',
-      async (role) => {
-        authState.role = role;
-        wrap(
-          <InstallmentCalculatorCard
-            product={productWithInstallment}
-            onEditPrice={() => {}}
-            canEditPrice={false}
-          />,
-        );
-        expect(
-          await screen.findByRole('button', { name: 'ใช้ราคานี้ทำสัญญา' }),
-        ).toBeInTheDocument();
-      },
-    );
-
-    // mutation "เพิ่ม FINANCE_MANAGER เข้า list ทำสัญญา" ต้องทำให้เคสนี้ตก — พิสูจน์ว่าสูตร
-    // canCreateContract ไม่ใช่แค่ "role ใดก็ได้ที่ไม่ใช่ undefined"
-    it.each(['FINANCE_MANAGER', 'ACCOUNTANT'])(
-      'role=%s → ไม่เห็นปุ่ม "ใช้ราคานี้ทำสัญญา"',
-      async (role) => {
-        authState.role = role;
-        wrap(
-          <InstallmentCalculatorCard
-            product={productWithInstallment}
-            onEditPrice={() => {}}
-            canEditPrice={false}
-          />,
-        );
-        // รอให้การ์ดโหลดเสร็จก่อน (เห็นหัวข้อ) — กัน false-negative จาก "query ยังค้างอยู่
-        // เลยยังไม่ render อะไรเลย" ไม่ใช่ปุ่มถูกซ่อนจริงตามสิทธิ์
-        expect(await screen.findByText('เครื่องคำนวณค่างวด')).toBeInTheDocument();
-        expect(screen.queryByRole('button', { name: 'ใช้ราคานี้ทำสัญญา' })).toBeNull();
-      },
-    );
+  it('เริ่มที่ BESTCHOICE: ค่างวด 2,413.20 · dropdown บอกค่างวดในตัวเลือก · แถวคอม (กางรายละเอียด) · ปุ่มทำสัญญา · บรรทัดเทียบ GFIN 3,327', async () => {
+    renderCard();
+    expect(screen.getByRole('tab', { name: /BESTCHOICE/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getAllByText(/2,413\.20/).length).toBeGreaterThan(0);
+    expect(screen.getByRole('combobox', { name: 'งวด' })).toHaveTextContent('12 งวด · ผ่อนเดือนละ 2,413.20');
+    // รายละเอียดพับเป็นค่าเริ่มต้น — กางแล้วต้องเห็นแถวคอม
+    expect(screen.queryByText(/^คอม/)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'รายละเอียดการคำนวณ' }));
+    expect(screen.getByText(/^คอม/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ใช้ราคานี้ทำสัญญา' })).toBeInTheDocument();
+    expect(screen.getByText(/3,327/)).toBeInTheDocument();
   });
 
-  describe('[I1b] canEditPrice / onEditPrice — เครื่องที่ยังไม่ได้กำหนดราคาเงินผ่อน', () => {
-    it('canEditPrice=true → เห็นปุ่ม "ไปแก้ราคา" และคลิกแล้ว onEditPrice ถูกเรียก', async () => {
-      const onEditPrice = vi.fn();
-      wrap(
-        <InstallmentCalculatorCard
-          product={productWithoutInstallment}
-          onEditPrice={onEditPrice}
-          canEditPrice
-        />,
-      );
-      const btn = await screen.findByRole('button', { name: 'ไปแก้ราคา' });
-      await userEvent.click(btn);
-      expect(onEditPrice).toHaveBeenCalledTimes(1);
-    });
+  it('คลิกแท็บ GFIN → onChange({ fin: "gfin" })', async () => {
+    const { onChange } = renderCard();
+    await userEvent.click(screen.getByRole('tab', { name: /GFIN/ }));
+    expect(onChange).toHaveBeenCalledWith({ fin: 'gfin' });
+  });
 
-    it('canEditPrice=false → ไม่เห็นปุ่ม "ไปแก้ราคา" แต่เห็นข้อความแจ้งผู้จัดการแทน', async () => {
-      wrap(
-        <InstallmentCalculatorCard
-          product={productWithoutInstallment}
-          onEditPrice={() => {}}
-          canEditPrice={false}
-        />,
-      );
-      expect(await screen.findByText(/แจ้งผู้จัดการให้กำหนดราคา/)).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'ไปแก้ราคา' })).toBeNull();
+  it('ฝั่ง GFIN: ดาวน์ที่แจ้ง GFIN 6,000 → ลูกค้าจ่ายจริง 1,900 · รวมเงินผ่อนต่องวด 3,327 · แผงเฉพาะร้าน (คอม 2,700 · โอนให้ร้าน 20,600) · ไม่มีปุ่มทำสัญญา', () => {
+    renderCard({ state: { ...INITIAL_CALC_STATE, fin: 'gfin' } });
+    expect(screen.getByRole('tab', { name: /GFIN/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('ดาวน์ที่แจ้ง GFIN (25%)')).toBeInTheDocument();
+    expect(screen.getByText('6,000 ฿')).toBeInTheDocument();
+    expect(screen.getByText('1,900 ฿')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'ผ่อนชำระ' })).toHaveTextContent('12 งวด · ผ่อนเดือนละ 3,327');
+    expect(screen.getByText('2,700.00')).toBeInTheDocument();
+    expect(screen.getByText('20,600.00')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'ใช้ราคานี้ทำสัญญา' })).toBeNull();
+  });
+
+  it('SALES: ไม่เห็นแถวคอม BESTCHOICE · ช่อง % คอมมิชชั่น · แผงเฉพาะร้านค้า', async () => {
+    authState.role = 'SALES';
+    const first = renderCard();
+    await userEvent.click(screen.getByRole('button', { name: 'รายละเอียดการคำนวณ' }));
+    expect(screen.getByText(/^ดอกเบี้ย/)).toBeInTheDocument();
+    expect(screen.queryByText(/^คอม/)).toBeNull();
+    expect(first.onChange).not.toHaveBeenCalled();
+    cleanup();
+
+    renderCard({ state: { ...INITIAL_CALC_STATE, fin: 'gfin' } });
+    expect(screen.queryByRole('combobox', { name: '% คอมมิชชั่น' })).toBeNull();
+    expect(screen.queryByText('เฉพาะร้านค้า')).toBeNull();
+    // แต่ยังเห็นค่างวดที่ถูกต้อง (เรทของคอม 15 ตามหมวด)
+    expect(screen.getByRole('combobox', { name: 'ผ่อนชำระ' })).toHaveTextContent('3,327');
+  });
+
+  it('รุ่นไม่อยู่ในตารางราคา GFIN → แท็บ GFIN กดไม่ได้ + บอกเหตุผล', () => {
+    const samsung = {
+      ...iphone15,
+      brand: 'Samsung',
+      model: 'Galaxy S24',
+      storage: '256GB',
+      category: 'PHONE_USED',
+    };
+    renderCard({ product: samsung });
+    expect(screen.getByRole('tab', { name: /GFIN/ })).toBeDisabled();
+    expect(screen.getByText(/รุ่นนี้ไม่อยู่ในตารางราคาของ GFIN/)).toBeInTheDocument();
+  });
+
+  it('ไม่มีราคาผ่อน → กล่องเตือนเดิม + ปุ่มไปแก้ราคาเมื่อ canEditPrice', async () => {
+    const { onEditPrice } = renderCard({
+      product: { ...iphone15, installmentPrice: null },
     });
+    expect(screen.getByText(/ยังไม่ได้กำหนดราคาเงินผ่อน/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'ไปแก้ราคา' }));
+    expect(onEditPrice).toHaveBeenCalled();
+  });
+
+  it('พิมพ์เงินดาวน์ใหม่ → onChange อัปเดต bc.downAmount', async () => {
+    const { onChange } = renderCard();
+    const down = screen.getByRole('spinbutton', { name: 'เงินดาวน์ (฿)' });
+    await userEvent.clear(down);
+    await userEvent.type(down, '5000');
+    expect(onChange).toHaveBeenLastCalledWith(expect.any(Function));
   });
 });

@@ -1,5 +1,6 @@
+import { AuditService } from '../audit/audit.service';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
 import { InterCompanyService } from '../inter-company/inter-company.service';
@@ -41,6 +42,7 @@ export class SalesService {
     private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
     private warrantyNotifier: SaleWarrantyNotifierService,
     private shopDownPaymentTemplate: ShopDownPaymentTemplate,
+    @Optional() private audit?: AuditService,
   ) {
     this.query = new SalesQueryService(this.prisma);
     this.writer = new SaleWriterService(
@@ -61,6 +63,13 @@ export class SalesService {
 
   async findAll(filters: SalesReadFilters, actor: SalesReadActor) {
     return this.query.findAll(filters, actor);
+  }
+
+  async exportRows(filters: SalesReadFilters, actor: SalesReadActor) {
+    const result = await this.query.exportRows(filters, actor);
+    await (this.audit ?? new AuditService(this.prisma)).log({ userId: actor.id, action: 'SALES_REPORT_EXPORTED', entity: 'sale',
+      newValue: { rowCount: result.total, asOf: result.asOf, role: actor.role } });
+    return result;
   }
 
   async getSalespersons(actor: SalesReadActor) {

@@ -199,6 +199,7 @@ export class SaleWriterService {
       const sale = await tx.sale.create({
         data: {
           ...warranty,
+          costSnapshot: { create: { mainProductCost: mainProduct.costPrice } },
           saleNumber,
           saleType: 'CASH',
           customerId: dto.customerId,
@@ -522,6 +523,7 @@ export class SaleWriterService {
       const sale = await tx.sale.create({
         data: {
           ...warranty,
+          costSnapshot: { create: { mainProductCost: mainProduct.costPrice } },
           saleNumber,
           saleType: 'EXTERNAL_FINANCE',
           customerId: dto.customerId,

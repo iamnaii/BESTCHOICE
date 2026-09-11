@@ -80,6 +80,13 @@ export class ContractsService {
     return this.query.findAll(filters, user);
   }
 
+  async exportRows(filters: Parameters<ContractQueryService['findAll']>[0], user: BranchAccessUser) {
+    const result = await this.query.exportRows(filters, user);
+    await (this.audit ?? new AuditService(this.prisma)).log({ userId: user.id, action: 'CONTRACTS_REPORT_EXPORTED', entity: 'contract',
+      newValue: { rowCount: result.total, asOf: result.asOf, role: user.role } });
+    return result;
+  }
+
   findOne(id: string, user?: BranchAccessUser) {
     return this.query.findOne(id, user);
   }

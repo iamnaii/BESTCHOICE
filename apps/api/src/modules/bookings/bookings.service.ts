@@ -744,6 +744,7 @@ export class BookingsService {
         data: {
           saleNumber,
           saleType: 'CASH',
+          costSnapshot: { create: { mainProductCost: product.costPrice } },
           customerId: booking.customerId,
           productId: firstItem.productId!,
           branchId: booking.branchId,

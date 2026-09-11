@@ -1,47 +1,32 @@
 import { setRequestCompany } from './company-scope';
 import { describe, expect, it, vi } from 'vitest';
-import { fetchExportPages } from './fetch-export-pages';
+import { fetchExportSnapshot } from './fetch-export-pages';
+const asOf = '2026-09-11T00:00:00.000Z';
 
-describe('fetchExportPages', () => {
-  it('starts at page 1 and exports all 201 rows in bounded requests', async () => {
-    const rows = Array.from({ length: 201 }, (_, index) => ({ id: String(index) }));
-    const fetchPage = vi.fn(async (page: number, limit: number) => ({
-      data: rows.slice((page - 1) * limit, page * limit), total: rows.length,
-    }));
-    expect(await fetchExportPages(fetchPage)).toEqual(rows);
-    expect(fetchPage.mock.calls).toEqual([[1, 200], [2, 200]]);
+describe('server export snapshots', () => {
+  it('requests all 10,000 rows once and preserves the server timestamp', async () => {
+    const result = { data: Array.from({ length: 10_000 }, (_, id) => ({ id: String(id) })), total: 10_000, asOf };
+    const request = vi.fn(async () => result);
+    expect(await fetchExportSnapshot(request)).toEqual(result);
+    expect(request).toHaveBeenCalledTimes(1);
   });
   it.each([
-    [{ data: [{ id: '1' }], total: 2 }, { data: [{ id: '2' }], total: 3 }],
-    [{ data: [{ id: '1' }], total: 2 }, { data: [{ id: '1' }], total: 2 }],
-    [{ data: [{ id: '1' }], total: 2 }, { data: [], total: 2 }],
-    [{ data: [{ id: '1' }, { id: '2' }], total: 1 }],
-    [{ data: [{ id: '1' }, { id: '1' }], total: 2 }],
-    [{ data: [], total: -1 }],
-  ])('refuses inconsistent data without returning a partial file', async (...pages) => {
-    let index = 0;
-    await expect(fetchExportPages(async () => pages[index++])).rejects.toThrow('ข้อมูลเปลี่ยนระหว่างส่งออก');
+    { data: [], total: 1, asOf }, { data: [{ id: '1' }, { id: '1' }], total: 2, asOf },
+    { data: [], total: 0, asOf: '' }, { data: [], total: -1, asOf },
+    { data: [], total: 10_001, asOf }, { data: [{ id: '' }], total: 1, asOf },
+  ])('rejects malformed or partial snapshots', async result => {
+    await expect(fetchExportSnapshot(async () => result)).rejects.toThrow('ข้อมูลส่งออกไม่ครบ');
   });
-  it('rejects a company switch during an awaited page even when totals are unchanged', async () => {
+  it.each([false, true])('rejects a company switch even after returning to SHOP: %s', async returnToShop => {
     setRequestCompany('SHOP');
-    const fetch = vi.fn(async () => {
-      setRequestCompany('FINANCE');
-      return { data: [{ id: 'other-company' }], total: 1 };
-    });
-    await expect(fetchExportPages(fetch)).rejects.toThrow('เปลี่ยนบริษัทระหว่างส่งออก');
-    expect(fetch).toHaveBeenCalledTimes(1);
-    setRequestCompany(undefined);
-  });
-  it('rejects a switch away and back, not merely a different current company', async () => {
-    setRequestCompany('SHOP');
-    await expect(fetchExportPages(async () => {
-      setRequestCompany('FINANCE'); setRequestCompany('SHOP');
-      return { data: [], total: 0 };
+    await expect(fetchExportSnapshot(async () => {
+      setRequestCompany('FINANCE'); if (returnToShop) setRequestCompany('SHOP');
+      return { data: [], total: 0, asOf };
     })).rejects.toThrow('เปลี่ยนบริษัทระหว่างส่งออก');
     setRequestCompany(undefined);
   });
-  it('propagates request failure and handles empty datasets', async () => {
-    await expect(fetchExportPages(async () => { throw new Error('network'); })).rejects.toThrow('network');
-    await expect(fetchExportPages(async () => ({ data: [], total: 0 }))).resolves.toEqual([]);
+  it('propagates failures and supports empty reports', async () => {
+    await expect(fetchExportSnapshot(async () => { throw new Error('network'); })).rejects.toThrow('network');
+    await expect(fetchExportSnapshot(async () => ({ data: [], total: 0, asOf }))).resolves.toEqual({ data: [], total: 0, asOf });
   });
 });

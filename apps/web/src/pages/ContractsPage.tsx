@@ -1,6 +1,6 @@
 import type { SignatureRequirements } from '@installment/shared';
 import { PaginationBar } from '@/components/ui/PaginationBar';
-import { createExportGuard, ExportError, fetchExportPages } from '@/lib/fetch-export-pages';
+import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapshot } from '@/lib/fetch-export-pages';
 import { formatThaiDateTime, toBangkokDateString } from '@/lib/date';
 import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router';
@@ -161,9 +161,10 @@ export default function ContractsPage() {
     const assertCurrent = createExportGuard();
     setIsExporting(true);
     try {
-    const rows = exportScope === 'page' ? contracts : await fetchExportPages<Contract>(async (page, limit) =>
-      (await api.get<PaginatedResponse<Contract>>(`/contracts?${buildParams(page, limit)}`)).data, assertCurrent);
-    const fetchedAt = formatThaiDateTime(new Date(), 'Asia/Bangkok');
+    const snapshot = exportScope === 'page' ? null : await fetchExportSnapshot<Contract>(async () =>
+      (await api.get<ExportSnapshot<Contract>>(`/contracts/export?${buildParams(1, 50)}`, { timeout: 65_000 })).data, assertCurrent);
+    const rows = snapshot?.data ?? contracts;
+    const fetchedAt = snapshot ? formatThaiDateTime(snapshot.asOf, 'Asia/Bangkok') : 'ข้อมูลจากหน้าที่กำลังแสดง';
     await exportToExcel({
         assertCurrent,
       columns: [
@@ -177,7 +178,7 @@ export default function ContractsPage() {
         { header: 'สาขา', key: 'branch', width: 15 },
         { header: 'พนักงาน', key: 'salesperson', width: 15 },
         { header: 'วันที่สร้าง', key: 'createdAt', width: 15 },
-        { header: 'ดึงข้อมูลเมื่อ (เวลาไทย)', key: 'fetchedAt', width: 24 },
+        { header: 'ข้อมูล ณ (เวลาไทย)', key: 'fetchedAt', width: 24 },
       ],
       data: rows.map((c) => ({
         contractNumber: c.contractNumber,

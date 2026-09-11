@@ -259,6 +259,9 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     const sale = await db.sale.findFirstOrThrow({ where: { contractId, deletedAt: null } });
     if (path === 'pos') expect(sale.id).toBe(created.id);
     expect(sale.paymentMethod).toBe('BANK_TRANSFER'); expect(sale.amountReceived!.toNumber()).toBe(2000);
+    expect((await db.saleCostSnapshot.findUniqueOrThrow({ where: { saleId: sale.id } })).mainProductCost.toNumber()).toBe(6000);
+    await db.product.update({ where: { id: c.product.id }, data: { costPrice: 6999 } });
+    expect(String((await query.findOne(sale.id, actor)).costPriceSnapshot)).toBe('6000');
     expect((await db.contract.findUniqueOrThrow({ where: { id: contractId } })).downPaymentReference).toBe('SYNTHETIC-BANK');
     expect(await db.sale.count({ where: { contractId, deletedAt: null } })).toBe(1);
     expect(sum(await readEntries(contractId), 'S11-1201', 'debit').toNumber()).toBe(2000);

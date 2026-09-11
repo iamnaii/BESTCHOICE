@@ -10,28 +10,20 @@ export function createExportGuard(): () => void {
   };
 }
 
-export interface ExportPage<T> { data: T[]; total: number }
+export interface ExportSnapshot<T> { data: T[]; total: number; asOf: string }
 
-/** Bounded, filtered export. Requests are not a database snapshot. */
-export async function fetchExportPages<T extends { id: string }>(
-  fetchPage: (page: number, limit: number) => Promise<ExportPage<T>>,
+export async function fetchExportSnapshot<T extends { id: string }>(
+  request: () => Promise<ExportSnapshot<T>>,
   assertCurrent: () => void = createExportGuard(),
-): Promise<T[]> {
-  const rows: T[] = [], seen = new Set<string>();
-  let expectedTotal: number | undefined;
-  for (let page = 1; ; page++) {
-    assertCurrent();
-    const response = await fetchPage(page, 200);
-    assertCurrent();
-    expectedTotal ??= response.total;
-    const changed = () => new ExportError('ข้อมูลเปลี่ยนระหว่างส่งออก กรุณาลองใหม่');
-    if (!Number.isSafeInteger(response.total) || response.total < 0 || response.total !== expectedTotal ||
-      response.data.length > 200 || rows.length + response.data.length > expectedTotal) throw changed();
-    for (const row of response.data) {
-      if (!row.id || seen.has(row.id)) throw changed();
-      seen.add(row.id); rows.push(row);
-    }
-    if (rows.length === expectedTotal) return rows;
-    if (response.data.length === 0) throw changed();
+): Promise<ExportSnapshot<T>> {
+  assertCurrent();
+  const result = await request();
+  assertCurrent();
+  if (!Number.isSafeInteger(result.total) || result.total < 0 || result.total > 10_000 ||
+    !Array.isArray(result.data) || result.data.length !== result.total ||
+    !result.asOf || !Number.isFinite(Date.parse(result.asOf)) ||
+    new Set(result.data.map(row => row.id)).size !== result.total || result.data.some(row => !row.id)) {
+    throw new ExportError('ข้อมูลส่งออกไม่ครบหรือไม่ถูกต้อง กรุณาลองใหม่');
   }
+  return result;
 }

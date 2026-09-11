@@ -26,7 +26,7 @@ async function fixture(page: Page, role = 'OWNER') {
     customer: customers[i], branch, createdBy: actor, totalAmount: '10000', depositAmount: '1000', depositMethod: 'CASH',
     depositPaidAt: '2026-09-01T00:00:00Z', expireDate: '2099-09-11T17:00:00Z', createdAt: '2026-09-01T00:00:00Z',
     items: [{ id: `item${i}`, productId: product.id, description: product.name, quantity: 1, unitPrice: '10000', amount: '10000' }] }));
-  const sales: Row[] = Array.from({ length: 201 }, (_, i) => ({ id: `sale${i}`, saleNumber: `SALE-UX-${String(i).padStart(3, '0')}`, saleType: 'CASH', sellingPrice: '10000', discount: '0', netAmount: '10000',
+  const sales: Row[] = Array.from({ length: 201 }, (_, i) => ({ id: `sale${i}`, saleNumber: `SALE-UX-${String(i).padStart(3, '0')}`, saleType: 'CASH', sellingPrice: '10000', discount: '0', netAmount: '10000', costPriceSnapshot: '6000',
     amountReceived: '10000', paymentMethod: 'CASH', customer: customers[i], product, branch, salesperson: actor, createdAt: '2026-09-01T00:00:00Z', deletedAt: null, contract: null }));
   const state = { customers, credits, bookings, contracts, sales, failPath: '', holdPath: '', holdPage: '', hold: null as Promise<void> | null, emptyPath: '', missingCash: false, requests: [] as Row[] };
   const paged = (rows: Row[], query: URLSearchParams) => {
@@ -35,10 +35,12 @@ async function fixture(page: Page, role = 'OWNER') {
   };
   await page.routeWebSocket('**/socket.io/**', socket => socket.close());
   await page.route('**/api/admin/**', async route => {
-    const request = route.request(), url = new URL(request.url()), routePath = url.pathname.replace('/api/admin', '');
+    const request = route.request(), url = new URL(request.url()), rawPath = url.pathname.replace('/api/admin', '');
+    const isExport = rawPath.endsWith('/export'), routePath = rawPath.replace(/\/export$/, '');
+    const exportOrPage = (rows: Row[], query: URLSearchParams) => isExport ? { data: rows, total: rows.length, asOf: '2026-09-11T03:00:00.000Z' } : paged(rows, query);
     const query = url.searchParams;
-    state.requests.push({ path: routePath, query: Object.fromEntries(query), method: request.method(), body: request.method() === 'GET' ? null : request.postDataJSON() });
-    if (state.holdPath === routePath && state.hold && (!state.holdPage || query.get('page') === state.holdPage)) await state.hold;
+    state.requests.push({ path: rawPath, query: Object.fromEntries(query), method: request.method(), body: request.method() === 'GET' ? null : request.postDataJSON() });
+    if (state.holdPath === rawPath && state.hold && (!state.holdPage || query.get('page') === state.holdPage)) await state.hold;
     if (state.failPath === routePath) return route.fulfill({ status: 503, json: { message: 'บริการตัวอย่างไม่พร้อม กรุณาลองใหม่' } });
     if (request.method() !== 'GET') {
       if (/^\/sales\/sale\d+\/void$/.test(routePath)) {
@@ -68,7 +70,7 @@ async function fixture(page: Page, role = 'OWNER') {
       if (query.get('search')) rows = rows.filter(row => row.name.includes(query.get('search')!));
       if (query.get('tier')) rows = rows.filter(row => row.tier === query.get('tier'));
       if (query.get('sortBy') === 'name') rows = [...rows].sort((a, b) => a.name.localeCompare(b.name) * (query.get('sortOrder') === 'desc' ? -1 : 1));
-      return route.fulfill({ json: { ...paged(rows, query), summary: { totalCustomers: rows.length, withActiveContract: 0, withOverdue: 0, newThisMonth: 0 } } });
+      return route.fulfill({ json: { ...exportOrPage(rows, query), summary: { totalCustomers: rows.length, withActiveContract: 0, withOverdue: 0, newThisMonth: 0 } } });
     }
     if (/^\/customers\/c\d+$/.test(routePath)) return route.fulfill({ json: state.customers.find(row => row.id === routePath.split('/')[2]) });
     if (/^\/customers\/c\d+\/risk-flag/.test(routePath)) return route.fulfill({ json: { hasRisk: false, overdueContracts: [] } });
@@ -79,7 +81,7 @@ async function fixture(page: Page, role = 'OWNER') {
     if (routePath.includes('/loyalty/') || routePath === '/audit/logs') return route.fulfill({ json: { data: [], total: 0 } });
     if (routePath === '/credit-checks') {
       const rows = state.emptyPath === routePath ? [] : state.credits;
-      return route.fulfill({ json: { ...paged(rows, query), summary: { totalCount: rows.length, pendingCount: rows.length, approvedCount: 0, rejectedCount: 0, avgScore: null } } });
+      return route.fulfill({ json: { ...exportOrPage(rows, query), summary: { totalCount: rows.length, pendingCount: rows.length, approvedCount: 0, rejectedCount: 0, avgScore: null } } });
     }
     if (routePath === '/bookings') return route.fulfill({ json: paged(state.emptyPath === routePath ? [] : state.bookings, query) });
     if (/^\/bookings\/bk\d+$/.test(routePath)) return route.fulfill({ json: state.bookings.find(row => row.id === routePath.split('/')[2]) });
@@ -91,7 +93,7 @@ async function fixture(page: Page, role = 'OWNER') {
       if (query.get('search')) rows = rows.filter(row => row.contractNumber.includes(query.get('search')));
       if (query.get('startDate')) rows = rows.filter(row => new Date(row.createdAt) >= new Date(`${query.get('startDate')}T00:00:00+07:00`));
       if (query.get('endDate')) rows = rows.filter(row => row.createdAt.slice(0, 10) <= query.get('endDate')!);
-      return route.fulfill({ json: { ...paged(rows, query), summary: { totalContracts: rows.length, activeContracts: 0, overdueContracts: 0, portfolioValue: rows.length * 10000 } } });
+      return route.fulfill({ json: { ...exportOrPage(rows, query), summary: { totalContracts: rows.length, activeContracts: 0, overdueContracts: 0, portfolioValue: rows.length * 10000 } } });
     }
     if (routePath === '/contracts/hp0/download-pdf') return route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4\n%Synthetic download transport fixture\n%%EOF' });
     if (/^\/contracts\/hp\d+$/.test(routePath)) return route.fulfill({ json: state.contracts.find(row => row.id === routePath.split('/')[2]) });
@@ -106,7 +108,7 @@ async function fixture(page: Page, role = 'OWNER') {
       if (query.get('startDate')) rows = rows.filter(row => new Date(row.createdAt) >= new Date(`${query.get('startDate')}T00:00:00+07:00`));
       if (query.get('endDate')) rows = rows.filter(row => row.createdAt.slice(0, 10) <= query.get('endDate')!);
       if (query.get('includeVoided') !== 'true') rows = rows.filter(row => !row.deletedAt);
-      return route.fulfill({ json: { ...paged(rows, query), summary: { totalAmount: rows.length * 10000, totalDiscount: 0, totalProfit: rows.length * 4000, cashCount: rows.length, cashAmount: rows.length * 10000, installmentCount: 0, installmentAmount: 0, financeCount: 0, financeAmount: 0 } } });
+      return route.fulfill({ json: { ...exportOrPage(rows, query), summary: { totalAmount: rows.length * 10000, totalDiscount: 0, totalProfit: rows.length * 4000, cashCount: rows.length, cashAmount: rows.length * 10000, installmentCount: 0, installmentAmount: 0, financeCount: 0, financeAmount: 0 } } });
     }
     if (/^\/sales\/sale\d+$/.test(routePath)) return route.fulfill({ json: state.sales.find(row => row.id === routePath.split('/')[2]) });
     return route.fulfill({ status: 501, json: { message: `Synthetic fixture: unsupported read ${routePath}` } });
@@ -170,8 +172,8 @@ for (const width of [1440, 390]) {
       const sheet = await readDownload(await download);
       expect(sheet.rowCount).toBe(202);
       expect(sheet.getRow(202).getCell(1).value).toBe('ลูกค้าตัวอย่าง 200');
-      const calls = state.requests.filter(row => row.path === '/customers' && row.query.limit === '200');
-      expect(calls.map(row => [row.query.page, row.query.tier, row.query.sortBy, row.query.sortOrder])).toEqual([['1', 'GOLD', 'name', 'asc'], ['2', 'GOLD', 'name', 'asc']]);
+      const calls = state.requests.filter(row => row.path === '/customers/export');
+      expect(calls.map(row => [row.query.page, row.query.tier, row.query.sortBy, row.query.sortOrder])).toEqual([['1', 'GOLD', 'name', 'asc']]);
       await snapshot(page, 'customers-filtered-page2', width);
     });
 
@@ -210,6 +212,8 @@ for (const width of [1440, 390]) {
       state.failPath = '/credit-checks';
       await page.getByRole('textbox', { name: 'ค้นหารายการตรวจเครดิต' }).fill('ตัวอย่าง');
       await expect(page.getByRole('button', { name: 'ลองใหม่', exact: true })).toBeVisible();
+      await expect(page.getByRole('alert').getByText(/ระบบขัดข้องชั่วคราว/)).toBeVisible();
+      await expect(page.getByText(/Request failed with status code/)).toHaveCount(0);
       await expect(page.getByRole('textbox', { name: 'ค้นหารายการตรวจเครดิต' })).toBeFocused();
       await snapshot(page, 'credit-error-filters-retained', width);
       state.failPath = ''; state.emptyPath = '/credit-checks';
@@ -262,8 +266,8 @@ for (const width of [1440, 390]) {
       const download = page.waitForEvent('download');
       await page.getByRole('button', { name: 'ส่งออก Excel', exact: true }).click();
       expect((await readDownload(await download)).rowCount).toBe(202);
-      expect(state.requests.filter(row => row.path === '/contracts' && row.query.limit === '200').map(row => row.query.page)).toEqual(['1', '2']);
-      for (const row of state.requests.filter(row => row.path === '/contracts' && row.query.limit === '200')) {
+      expect(state.requests.filter(row => row.path === '/contracts/export').map(row => row.query.page)).toEqual(['1']);
+      for (const row of state.requests.filter(row => row.path === '/contracts/export')) {
         expect(row.query).toMatchObject({ search: 'HP-UX', status: 'DRAFT', workflowStatus: 'APPROVED', branchId: 'ux-branch', startDate: '2026-09-01', endDate: '2026-09-30', company: 'shop' });
       }
       await page.getByRole('combobox', { name: 'ขอบเขตการส่งออก' }).selectOption('page');
@@ -296,7 +300,7 @@ for (const width of [1440, 390]) {
       await opener.click();
       await expect(page).toHaveURL(/saleId=sale20/);
       await expect(page.getByRole('dialog').getByText('UX-SERIAL', { exact: true })).toBeVisible();
-      await expect(page.getByText('ต้นทุนเครื่องปัจจุบัน', { exact: true })).toBeVisible();
+      await expect(page.getByText('ต้นทุนเครื่อง ณ วันขาย', { exact: true })).toBeVisible();
       await expect(page.locator('dl > div').filter({ hasText: 'รับก่อนทอน' }).getByText('ยังไม่ระบุ', { exact: true })).toBeVisible();
       await snapshot(page, 'sales-detail-deep-link', width);
       await expect(page.getByRole('dialog').getByText('ยังไม่ระบุ', { exact: true })).toBeInViewport();
@@ -304,8 +308,8 @@ for (const width of [1440, 390]) {
       const download = page.waitForEvent('download');
       await page.getByRole('button', { name: 'ส่งออก Excel', exact: true }).click();
       expect((await readDownload(await download)).rowCount).toBe(202);
-      expect(state.requests.filter(row => row.path === '/sales' && row.query.limit === '200').map(row => row.query.page)).toEqual(['1', '2']);
-      for (const row of state.requests.filter(row => row.path === '/sales' && row.query.limit === '200')) {
+      expect(state.requests.filter(row => row.path === '/sales/export').map(row => row.query.page)).toEqual(['1']);
+      for (const row of state.requests.filter(row => row.path === '/sales/export')) {
         expect(row.query).toMatchObject({ search: 'SALE-UX', saleType: 'CASH', paymentMethod: 'CASH', branchId: 'ux-branch', salespersonId: 'ux-actor', startDate: '2026-09-01', endDate: '2026-09-30', includeVoided: 'true', company: 'shop' });
       }
       state.sales = state.sales.slice(0, 21); state.sales[0].amountReceived = '0';
@@ -321,17 +325,38 @@ for (const width of [1440, 390]) {
       expect(state.sales).toHaveLength(20);
     });
 
-    test('export: switching work company while page2 waits prevents any download', async ({ page }) => {
+    for (const kind of ['mixed', 'prepaid', 'legacy'] as const) test(`booking sale receipt: ${kind}`, async ({ page }) => {
+      const state = await fixture(page);
+      state.bookings[0].status = 'CONVERTED';
+      state.sales[0].receiptBreakdown = { bookingId: 'bk0', bookingNumber: 'BK-UX-000',
+        depositAmount: kind === 'legacy' ? null : kind === 'prepaid' ? '10000.00' : '1000.00', depositMethod: kind === 'legacy' ? null : 'CASH',
+        depositPaidAt: '2026-09-01T00:00:00Z', convertedAt: '2026-09-02T00:00:00Z',
+        additionalAmount: kind === 'legacy' ? null : kind === 'prepaid' ? '0.00' : '9000.00',
+        additionalMethod: kind === 'mixed' ? 'BANK_TRANSFER' : null, totalReceived: kind === 'legacy' ? null : '10000.00', needsReview: kind === 'legacy' };
+      await page.goto('/sales?saleId=sale0');
+      const receipt = page.getByRole('region', { name: 'การรับเงินจากใบจอง' });
+      await expect(receipt.getByText('รับเพิ่มเมื่อขาย', { exact: true })).toBeVisible();
+      if (kind === 'mixed') { await expect(receipt.getByText('9,000.00 บาท', { exact: true })).toBeVisible(); await expect(receipt.getByText(/โอนเงิน/)).toBeVisible(); }
+      if (kind === 'prepaid') await expect(receipt.getByText('ชำระครบตั้งแต่ใบจอง')).toBeVisible();
+      if (kind === 'legacy') await expect(receipt.getByText(/หลักฐานรับเงินเดิมไม่ครบ/)).toBeVisible();
+      await expect(page.getByRole('dialog').getByText('รับก่อนทอน', { exact: true })).toHaveCount(0);
+      await snapshot(page, `sales-booking-${kind}`, width);
+      await receipt.getByRole('link', { name: 'เปิดใบจอง BK-UX-000' }).click();
+      await expect(page).toHaveURL(/bookings\?bookingId=bk0/);
+      await expect(page.getByRole('dialog').getByText('BK-UX-000', { exact: true }).first()).toBeVisible();
+    });
+
+    test('export: switching work company while the snapshot waits prevents any download', async ({ page }) => {
       const state = await fixture(page);
       const downloads: Download[] = [];
       page.on('download', download => downloads.push(download));
       await page.goto('/contracts');
       await expect(page.getByRole('link', { name: 'HP-UX-000', exact: true })).toBeVisible();
-      state.holdPath = '/contracts'; state.holdPage = '2';
+      state.holdPath = '/contracts/export'; state.holdPage = '1';
       let release!: () => void;
       state.hold = new Promise<void>(resolve => { release = resolve; });
       await page.getByRole('button', { name: 'ส่งออก Excel', exact: true }).click();
-      await expect.poll(() => state.requests.some(row => row.path === '/contracts' && row.query.limit === '200' && row.query.page === '2')).toBe(true);
+      await expect.poll(() => state.requests.some(row => row.path === '/contracts/export' && row.query.page === '1')).toBe(true);
       if (width === 390) await page.getByRole('button', { name: 'เปิดเมนู', exact: true }).click();
       await page.getByRole('button', { name: /งานการเงิน/ }).or(page.getByRole('tab', { name: /งานการเงิน/ })).click();
       await expect.poll(() => page.evaluate(() => localStorage.getItem('bc-entity-scope'))).toBe('FINANCE');

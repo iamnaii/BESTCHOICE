@@ -119,14 +119,14 @@ export class CustomerTierService {
   }
 
   /** Batched history reads for list filtering, using exactly the detail tier policy. */
-  async getCustomerTiers(customerIds: string[]): Promise<Map<string, CustomerTierResponse>> {
+  async getCustomerTiers(customerIds: string[], db: Prisma.TransactionClient = this.prisma, asOf = new Date()): Promise<Map<string, CustomerTierResponse>> {
     const result = new Map<string, CustomerTierResponse>();
     for (let offset = 0; offset < customerIds.length; offset += 200) {
       const ids = customerIds.slice(offset, offset + 200);
       const [contracts, repossessions] = await Promise.all([
-        this.prisma.contract.findMany({ where: { customerId: { in: ids }, deletedAt: null },
+        db.contract.findMany({ where: { customerId: { in: ids }, deletedAt: null },
           select: { ...tierContractSelect, customerId: true } }),
-        this.prisma.repossession.findMany({ where: { deletedAt: null, contract: { customerId: { in: ids } } },
+        db.repossession.findMany({ where: { deletedAt: null, contract: { customerId: { in: ids } } },
           select: { contract: { select: { customerId: true } } } }),
       ]);
       const byCustomer = new Map<string, TierContract[]>();
@@ -139,12 +139,12 @@ export class CustomerTierService {
         const id = row.contract.customerId;
         repoCounts.set(id, (repoCounts.get(id) ?? 0) + 1);
       }
-      for (const id of ids) result.set(id, this.summarize(id, byCustomer.get(id) ?? [], repoCounts.get(id) ?? 0));
+      for (const id of ids) result.set(id, this.summarize(id, byCustomer.get(id) ?? [], repoCounts.get(id) ?? 0, asOf));
     }
     return result;
   }
 
-  private summarize(customerId: string, contracts: TierContract[], repossessionCount: number): CustomerTierResponse {
+  private summarize(customerId: string, contracts: TierContract[], repossessionCount: number, asOf = new Date()): CustomerTierResponse {
     const totalContracts = contracts.length;
     const closedContracts = contracts.filter(
       (c) => c.status === 'COMPLETED' || c.status === 'EARLY_PAYOFF',
@@ -177,7 +177,7 @@ export class CustomerTierService {
           latePayments++;
           if (isActive) contractActiveLate++;
           const due = new Date(p.dueDate).getTime();
-          const end = p.paidAt ? new Date(p.paidAt).getTime() : Date.now();
+          const end = p.paidAt ? new Date(p.paidAt).getTime() : asOf.getTime();
           const days = Math.max(0, Math.floor((end - due) / 86_400_000));
           if (days > maxOverdueDays) maxOverdueDays = days;
         }

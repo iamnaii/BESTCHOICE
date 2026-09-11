@@ -11,13 +11,14 @@ describe('Sales filtered report totals', () => {
     const db = {
       sale: {
         findMany: jest.fn(async ({ skip }: { skip: number }) => [rows[skip]]),
-        count: jest.fn().mockResolvedValue(2),
+        count: jest.fn(async ({ where }) => where.AND?.some((clause: Record<string, unknown>) => 'costSnapshot' in clause) ? 0 : 2),
         aggregate: jest.fn().mockResolvedValue({ _sum: { netAmount: '300', discount: '0' } }),
         groupBy: jest.fn(async ({ by }: { by: string[] }) => by[0] === 'saleType'
           ? [{ saleType: 'CASH', _count: 2, _sum: { netAmount: '300' } }]
           : [{ productId: 'p1', _count: { _all: 1 }, _sum: { netAmount: '100' } },
             { productId: 'p2', _count: { _all: 1 }, _sum: { netAmount: '200' } }]),
       },
+      saleCostSnapshot: { aggregate: jest.fn().mockResolvedValue({ _sum: { mainProductCost: '110' } }) },
       product: { findMany: jest.fn().mockResolvedValue(rows.map(row => row.product)) },
     };
     return { db, service: new SalesQueryService(db as unknown as PrismaService) };
@@ -40,5 +41,6 @@ describe('Sales filtered report totals', () => {
     const result = await service.findAll({ page: 1 }, { id: 'staff', role: 'SALES', branchId: 'branch' });
     expect(result.summary.totalProfit).toBe(0);
     expect(db.product.findMany).not.toHaveBeenCalled();
+    expect(db.saleCostSnapshot.aggregate).not.toHaveBeenCalled();
   });
 });

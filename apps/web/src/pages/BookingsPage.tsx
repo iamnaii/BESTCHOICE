@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router';
 import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
 import { usePaginationParams } from '@/hooks/usePaginationParams';
 import { PaginationBar } from '@/components/ui/PaginationBar';
@@ -208,7 +209,13 @@ export default function BookingsPage() {
     if (previousFilters.current !== next) { previousFilters.current = next; setPage(1); }
   }, [statusFilter, debouncedSearch, setPage]);
   const [createOpen, setCreateOpen] = useState(false);
-  const [detailBookingId, setDetailBookingId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const detailBookingId = searchParams.get('bookingId');
+  const setDetailBookingId = (id: string | null) => setSearchParams(previous => {
+    const next = new URLSearchParams(previous);
+    if (id) next.set('bookingId', id); else next.delete('bookingId');
+    return next;
+  });
 
   const { data, isLoading, isError, error, refetch } = useQuery<BookingListResponse>({
     queryKey: ['bookings', statusFilter, debouncedSearch, page, size],

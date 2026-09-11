@@ -79,6 +79,7 @@ const saleRow = {
 
 function mockSales(rows: Array<Record<string, unknown>>) {
   apiGet.mockImplementation(async (url: string) => {
+    if (url.startsWith('/sales/export?')) return { data: { data: rows, total: rows.length, asOf: '2026-09-11T03:00:00.000Z' } };
     if (url.startsWith('/sales?')) {
       return {
         data: {
@@ -129,11 +130,12 @@ describe('SalesHistoryPage — Excel export กับใบที่ยกเล
     deletedAt: '2026-08-22T03:00:00Z', voidReason: 'คีย์ผิดรุ่นเครื่อง', voidedBy: { id: 'u9', name: 'สมชาย' },
   };
 
-  it('ปิดสวิตช์ → ไฟล์ไม่มีคอลัมน์สถานะใบ (คอลัมน์เดิมทุกประการ)', async () => {
+  it('ปิดสวิตช์ → ไฟล์ไม่มีคอลัมน์สถานะใบ', async () => {
     renderWithRole('OWNER');
     await screen.findByText(/SA-0001/);
     await userEvent.click(screen.getByRole('button', { name: /ส่งออก Excel/ }));
     await waitFor(() => expect(exportToExcel).toHaveBeenCalled());
+    expect(apiGet).toHaveBeenCalledWith(expect.stringContaining('/sales/export?'), expect.objectContaining({ timeout: 65_000 }));
     const headers = exportToExcel.mock.calls[0][0].columns.map((c: { header: string }) => c.header);
     expect(headers).not.toContain('สถานะใบ');
   });

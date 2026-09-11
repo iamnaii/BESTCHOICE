@@ -97,14 +97,18 @@ describe('Sales read authorization on isolated PostgreSQL', () => {
   it.each<Record<string, string | number>>([{ page: 0 }, { page: 'NaN' }, { page: '1oops' }, { limit: 201 }, { limit: 0 }])('rejects invalid list pagination %j', async query => {
     await read('', query).expect(400);
   });
-  it('exports at limit200 and keeps full-filter profit on either page', async () => {
+  it('keeps legacy missing-cost coverage on either page and exports a scoped snapshot', async () => {
     actor.role = 'OWNER'; actor.branchId = null;
     for (const page of [1, 2]) {
       const result = await read('', { search: prefix, page, limit: 1 }).expect(200);
-      expect(result.body.summary).toMatchObject({ totalAmount: 20000, totalProfit: 8000 });
+      expect(result.body.summary).toMatchObject({ totalAmount: 20000, totalProfit: 0, missingCostCount: 2 });
     }
     const result = await read('', { search: prefix, limit: 200 }).expect(200);
     expect(result.body.data).toHaveLength(2);
+    const snapshot = await read('/export', { search: prefix }).expect(200);
+    expect(snapshot.body.total).toBe(2);
+    expect(snapshot.body.data).toHaveLength(2);
+    expect(snapshot.body.asOf).toBeTruthy();
   });
   it('validates calendar dates and uses Thai daily boundaries', async () => {
     await read('', { startDate: '2026-02-30' }).expect(400);
@@ -119,6 +123,12 @@ describe('Sales read authorization on isolated PostgreSQL', () => {
     expect(response.body.total).toBe(1);
     expect(response.body.summary.totalAmount).toBe(10000);
     expect(response.body.summary.cashCount).toBe(0);
+    const snapshot = await read('/export', { search: prefix }).expect(200);
+    expect(snapshot.body.data.map((row: { id: string }) => row.id)).toEqual([saleA]);
+    expect(snapshot.body.data[0]).not.toHaveProperty('costPriceSnapshot');
+    const audit = await db.auditLog.findFirst({ where: { userId: actor.id, action: 'SALES_REPORT_EXPORTED' }, orderBy: { createdAt: 'desc' } });
+    expect(audit?.newValue).toMatchObject({ rowCount: 1, role });
+    expect(JSON.stringify(audit?.newValue)).not.toContain(nationalId);
   });
   it('keeps a foreign sale inaccessible even through its ID or includeVoided', async () => {
     await read(`/${saleB}`).expect(404);

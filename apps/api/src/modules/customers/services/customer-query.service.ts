@@ -1,3 +1,4 @@
+import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { CreditCheckStatus, CustomerCreditCheckStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -46,6 +47,8 @@ export class CustomerQueryService {
     sortOrder?: string,
     tier?: string,
     creditCheckStatus?: string,
+    db: Prisma.TransactionClient = this.prisma,
+    asOf = new Date(),
   ) {
     const where: Record<string, unknown> = { deletedAt: null };
 
@@ -83,6 +86,8 @@ export class CustomerQueryService {
       where.creditCheckStatus = creditCheckStatus;
     }
 
+    if (limit > 200) assertExportRowCount(await db.customer.count({ where }));
+
     // Determine sort order
     const order = sortOrder === 'asc' ? 'asc' : 'desc';
     let orderBy: Prisma.CustomerOrderByWithRelationInput = { createdAt: 'desc' };
@@ -102,12 +107,12 @@ export class CustomerQueryService {
       if (tier && !['GOLD', 'GOOD', 'NEW', 'RISKY', 'BLACKLIST'].includes(tier)) {
         throw new BadRequestException('ระดับลูกค้าไม่ถูกต้อง');
       }
-      const candidates = await this.prisma.customer.findMany({
+      const candidates = await db.customer.findMany({
         where, orderBy: [orderBy, { id: 'asc' }],
         select: { id: true, creditChecks: { where: { deletedAt: null },
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1, select: { aiScore: true } } },
       });
-      if (tier) tierById = await this.tierService.getCustomerTiers(candidates.map(customer => customer.id));
+      if (tier) tierById = await this.tierService.getCustomerTiers(candidates.map(customer => customer.id), db, asOf);
       const matching = tier ? candidates.filter(customer => tierById!.get(customer.id)?.tier === tier) : candidates;
       if (sortBy === 'creditScore') matching.sort((a, b) => {
         const aScore = a.creditChecks[0]?.aiScore, bScore = b.creditChecks[0]?.aiScore;
@@ -122,7 +127,7 @@ export class CustomerQueryService {
 
 
     const [data, total, withActiveContract, withOverdue, newThisMonth] = await Promise.all([
-      this.prisma.customer.findMany({
+      db.customer.findMany({
         where: selectedIds ? { AND: [where, { id: { in: selectedIds } }] } : where,
         orderBy: [orderBy, { id: 'asc' }],
         skip: selectedIds ? 0 : (page - 1) * limit,
@@ -153,21 +158,21 @@ export class CustomerQueryService {
           },
         },
       }),
-      matchedIds ? Promise.resolve(matchedIds.length) : this.prisma.customer.count({ where }),
-      this.prisma.customer.count({
+      matchedIds ? Promise.resolve(matchedIds.length) : db.customer.count({ where }),
+      db.customer.count({
         // "มีสัญญาผ่อน" = ยังไม่จบ (รวม ACTIVE + OVERDUE + DEFAULT) — พอร์ตสัญญาที่ business ใส่ใจ
         where: {
           deletedAt: null,
           contracts: { some: { status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] }, deletedAt: null } },
         },
       }),
-      this.prisma.customer.count({
+      db.customer.count({
         where: { deletedAt: null, contracts: { some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null } } },
       }),
       (() => {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        return this.prisma.customer.count({
+        return db.customer.count({
           where: { deletedAt: null, createdAt: { gte: startOfMonth } },
         });
       })(),
@@ -175,7 +180,7 @@ export class CustomerQueryService {
 
     // Phase 3 SP4 — strict mode resolved once per request; null piiService
     // (legacy spec injection) treats as non-strict.
-    const strict = this.piiService ? await this.piiService.isStrictMode() : false;
+    const strict = this.piiService ? await this.piiService.isStrictMode(db) : false;
 
     const enriched = data.map((c) => {
       const activeContracts = c.contracts.filter((ct) => ct.status === 'ACTIVE').length;
@@ -200,10 +205,10 @@ export class CustomerQueryService {
       const position = new Map(selectedIds.map((id, index) => [id, index]));
       enriched.sort((a, b) => position.get(a.id)! - position.get(b.id)!);
     }
-    const pageTiers = tierById ?? await this.tierService.getCustomerTiers(enriched.map(customer => customer.id));
+    const pageTiers = tierById ?? await this.tierService.getCustomerTiers(enriched.map(customer => customer.id), db, asOf);
     const withTier = enriched.map(customer => ({ ...customer, tier: pageTiers.get(customer.id)?.tier ?? 'NEW' }));
 
-    const totalCustomers = await this.prisma.customer.count({ where: { deletedAt: null } });
+    const totalCustomers = await db.customer.count({ where: { deletedAt: null } });
 
     const summary = {
       totalCustomers,
@@ -213,6 +218,13 @@ export class CustomerQueryService {
     };
 
     return { ...paginatedResponse(withTier, total, page, limit), summary };
+  }
+
+  exportRows(...args: Parameters<CustomerQueryService['findAll']>) {
+    return readExportSnapshot(this.prisma, (tx, asOf) => {
+      args[1] = 1; args[2] = EXPORT_ROW_LIMIT + 1; args[11] = tx; args[12] = asOf;
+      return this.findAll(...args);
+    });
   }
 
   async findOne(id: string) {

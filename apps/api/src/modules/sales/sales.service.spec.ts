@@ -159,6 +159,7 @@ describe('SalesService', () => {
   beforeEach(async () => {
     jest.spyOn(creditApproval, 'claimCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
     prisma = {
+      saleCostSnapshot: { aggregate: jest.fn().mockResolvedValue({ _sum: { mainProductCost: new Prisma.Decimal(18000) } }) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       sale: {

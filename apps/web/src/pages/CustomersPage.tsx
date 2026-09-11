@@ -1,5 +1,5 @@
 import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
-import { createExportGuard, ExportError, fetchExportPages } from '@/lib/fetch-export-pages';
+import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapshot } from '@/lib/fetch-export-pages';
 import { formatThaiDateTime } from '@/lib/date';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -528,8 +528,9 @@ export default function CustomersPage() {
     try {
       toast.loading('กำลังสร้างไฟล์ Excel...', { id: 'excel-export' });
       setIsExporting(true);
-      const allRows = await fetchExportPages<Customer>(async (page, limit) =>
-        (await api.get<CustomersResponse>('/customers', { params: buildParams(page, limit) })).data, assertCurrent);
+      const snapshot = await fetchExportSnapshot<Customer>(async () =>
+        (await api.get<ExportSnapshot<Customer>>('/customers/export', { params: buildParams(1, 50), timeout: 65_000 })).data, assertCurrent);
+      const allRows = snapshot.data;
 
       const baseCols: ExcelColumn[] = [
         { header: 'ชื่อ', key: 'name', width: 22 },
@@ -542,7 +543,7 @@ export default function CustomersPage() {
         { header: 'สถานะเครดิต', key: 'creditStatus', width: 14 },
         { header: 'คะแนนเครดิต', key: 'creditScore', width: 12 },
         { header: 'วันที่เพิ่ม', key: 'createdAt', width: 14 },
-        { header: 'ดึงข้อมูลเมื่อ (เวลาไทย)', key: 'fetchedAt', width: 24 },
+        { header: 'ข้อมูล ณ (เวลาไทย)', key: 'fetchedAt', width: 24 },
       ];
 
       if (isOwnerOrManager) {
@@ -559,7 +560,7 @@ export default function CustomersPage() {
         data: allRows.map((c: Customer) => {
           const row: Record<string, unknown> = {
             name: c.name,
-            fetchedAt: formatThaiDateTime(now, 'Asia/Bangkok'),
+            fetchedAt: formatThaiDateTime(snapshot.asOf, 'Asia/Bangkok'),
             nickname: c.nickname || '-',
             phone: c.phone,
             occupation: c.occupation || '-',

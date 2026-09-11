@@ -6,7 +6,7 @@
   ],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "e2e/(chat-credit-check|credit-approval|credit-payment-flow|staff-offer|trade-in-buyback|stock-groups|sales-read-scope|sales-money-regression|bookings-lifecycle)\\.e2e-spec\\.ts$",
+  "testRegex": "e2e/(chat-credit-check|credit-approval|credit-payment-flow|staff-offer|trade-in-buyback|stock-groups|sales-read-scope|sales-money-regression|sales-export-snapshot|bookings-lifecycle)\\.e2e-spec\\.ts$",
   "testPathIgnorePatterns": [],
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"

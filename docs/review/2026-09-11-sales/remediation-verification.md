@@ -193,3 +193,8 @@ Red evidence D1/D2 อยู่ `reports-red.log` (กำไร/วันไท�
 หลักฐาน checkpoint: [local-check.json](remediation-evidence/local-check.json); ภาพและรายละเอียด18กรณีของชุด D: [README](remediation-evidence/README.md). รอบสุดท้ายเริ่ม backend ใหม่จาก checkout นี้และยังเปิดไว้ที่ [พรีวิวรายการขาย](http://localhost:5207/sales), [ขายสินค้า](http://localhost:5207/pos), [ลูกค้า](http://localhost:5207/customers)
 
 ปิดงานแก้ A–D/M1 ตาม coverage ข้างต้นแล้ว; ข้อจำกัดรายงาน/ข้อมูลเก่าและ feature ระยะขยายยังคงตามที่ระบุ. พรีวิวเป็นข้อมูล/AI จำลองและเป็นขอบเขตจำกัดตาม AGENTS.md; ธุรกรรมจริงของบริการขาย/มัดจำ/สัญญา/ledger ตรวจด้วย PostgreSQL ชั่วคราวแยก. ไม่มีการ deploy/merge/แก้ฐาน production หรือส่งข้อความออกภายนอก
+
+
+## Subsequent follow-up
+
+The owner approved further work after A–D. See [followup-verification.md](./followup-verification.md) for receipt breakdown, recorded sale cost, server snapshots, Thai errors and the current verification results. Earlier current-cost/paged-export limitations above describe the pre-follow-up revision.

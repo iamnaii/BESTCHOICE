@@ -1,3 +1,5 @@
+import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
+import { bookingReceipt, bookingReceiptSelect } from './booking-receipt';
 import { bangkokDateRange } from '../../../utils/date.util';
 import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -21,7 +23,7 @@ const completedSaleWhere: Prisma.SaleWhereInput = {
 export class SalesQueryService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(filters: SalesReadFilters, actor: SalesReadActor) {
+  async findAll(filters: SalesReadFilters, actor: SalesReadActor, db: Prisma.TransactionClient = this.prisma) {
     const { saleType, branchId, search, startDate, endDate, paymentMethod, salespersonId, contractStatus, includeVoided, page = 1, limit = 50 } = filters;
     const where: Record<string, unknown> = { ...salesBranchWhere(actor, branchId) };
     // ใบที่ยกเลิก (void = soft delete) ถูกซ่อนจากรายการ+ยอดสรุปโดย default —
@@ -51,8 +53,10 @@ export class SalesQueryService {
       ];
     }
 
+    if (limit > 200) assertExportRowCount(await db.sale.count({ where }));
+
     const [data, total, agg, groupBySaleType] = await Promise.all([
-      this.prisma.sale.findMany({
+      db.sale.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
@@ -63,17 +67,19 @@ export class SalesQueryService {
           branch: { select: { id: true, name: true } },
           salesperson: { select: { id: true, name: true } },
           contract: { select: CONTRACT_SALE_SELECT },
+          booking: { select: bookingReceiptSelect },
+          costSnapshot: actor.role === 'OWNER' ? { select: { mainProductCost: true } } : false,
           // ชื่อผู้ยกเลิก — หน้ารายการแสดงบนแถวที่ถูกยกเลิกเมื่อเปิด includeVoided
           // (deletedAt / voidReason เป็น scalar มากับ include อยู่แล้ว)
           voidedBy: { select: { id: true, name: true } },
         },
       }),
-      this.prisma.sale.count({ where }),
-      this.prisma.sale.aggregate({
+      db.sale.count({ where }),
+      db.sale.aggregate({
         where,
         _sum: { netAmount: true, discount: true },
       }),
-      this.prisma.sale.groupBy({
+      db.sale.groupBy({
         by: ['saleType'],
         where,
         _count: true,
@@ -85,27 +91,22 @@ export class SalesQueryService {
     const getGroup = (type: string) => groupBySaleType.find(g => g.saleType === type);
     let totalProfit = 0;
 
+    let missingCostCount = 0;
     if (actor.role === 'OWNER') {
-      const groups = await this.prisma.sale.groupBy({
-        by: ['productId'], where, _sum: { netAmount: true }, _count: { _all: true },
-      });
-      const products = groups.length ? await this.prisma.product.findMany({
-        where: { id: { in: groups.map(group => group.productId) } },
-        select: { id: true, costPrice: true },
-      }) : [];
-      const costByProduct = new Map(products.map(product => [product.id, product.costPrice]));
-      // Same business definition as before: net sale less current product cost.
-      // This is a filtered operational margin, not a historical ledger profit.
-      totalProfit = groups.reduce((sum, group) => sum
-        .plus(group._sum.netAmount ?? 0)
-        .minus(new Prisma.Decimal(costByProduct.get(group.productId) ?? 0).mul(group._count._all)),
-      new Prisma.Decimal(0)).toNumber();
+      const [known, cost, missing] = await Promise.all([
+        db.sale.aggregate({ where: { AND: [where, { costSnapshot: { isNot: null } }] }, _sum: { netAmount: true } }),
+        db.saleCostSnapshot.aggregate({ where: { sale: where }, _sum: { mainProductCost: true } }),
+        db.sale.count({ where: { AND: [where, { costSnapshot: { is: null } }] } }),
+      ]);
+      totalProfit = new Prisma.Decimal(known._sum.netAmount ?? 0).minus(cost._sum.mainProductCost ?? 0).toNumber();
+      missingCostCount = missing;
     }
 
     const summary = {
       totalAmount: new Prisma.Decimal(agg._sum.netAmount ?? 0).toNumber(),
       totalDiscount: new Prisma.Decimal(agg._sum.discount ?? 0).toNumber(),
       totalProfit,
+      missingCostCount,
       cashCount: getGroup('CASH')?._count || 0,
       cashAmount: new Prisma.Decimal(getGroup('CASH')?._sum.netAmount ?? 0).toNumber(),
       installmentCount: getGroup('INSTALLMENT')?._count || 0,
@@ -114,9 +115,13 @@ export class SalesQueryService {
       financeAmount: new Prisma.Decimal(getGroup('EXTERNAL_FINANCE')?._sum.netAmount ?? 0).toNumber(),
     };
 
-    const responseData = data.map(sale => projectSaleForActor(sale, actor));
+    const responseData = data.map(sale => projectSaleForActor({ ...sale, receiptBreakdown: bookingReceipt(sale) }, actor));
 
     return { data: responseData, total, page, limit, totalPages: Math.ceil(total / limit), summary };
+  }
+
+  exportRows(filters: SalesReadFilters, actor: SalesReadActor) {
+    return readExportSnapshot(this.prisma, (tx) => this.findAll({ ...filters, page: 1, limit: EXPORT_ROW_LIMIT + 1 }, actor, tx));
   }
 
   async getSalespersons(actor: SalesReadActor) {
@@ -150,10 +155,12 @@ export class SalesQueryService {
         // Contract snapshots include private customer data; follow the contract
         // link through its own authorized endpoint for anything beyond this summary.
         contract: { select: CONTRACT_SALE_SELECT },
+          booking: { select: bookingReceiptSelect },
+          costSnapshot: actor.role === 'OWNER' ? { select: { mainProductCost: true } } : false,
       },
     });
     if (!sale) throw new NotFoundException('ไม่พบใบขาย');
-    return projectSaleForActor(sale, actor);
+    return projectSaleForActor({ ...sale, receiptBreakdown: bookingReceipt(sale) }, actor);
   }
 
   async getPosConfig() {

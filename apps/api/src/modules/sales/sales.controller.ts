@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import { SalesListQueryDto } from './dto/sales-list-query.dto';
 import { bangkokDateString } from '../../utils/date.util';
 import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
@@ -22,6 +23,13 @@ export class SalesController {
     private salesService: SalesService,
     private saleVoidService: SaleVoidService,
   ) {}
+
+  @Get('export')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  exportRows(@Query() filters: SalesListQueryDto, @CurrentUser() user: SalesReadActor) {
+    return this.salesService.exportRows(filters, user);
+  }
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')

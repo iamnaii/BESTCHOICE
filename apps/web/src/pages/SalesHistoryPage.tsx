@@ -1,7 +1,9 @@
+import { saleMargin } from '@/lib/sale-margin';
+import { BookingSaleReceipt, type BookingSaleReceiptData } from '@/components/sales/BookingSaleReceipt';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
 import { computeDefaultTimeRange, formatThaiDateTime } from '@/lib/date';
-import { createExportGuard, ExportError, fetchExportPages } from '@/lib/fetch-export-pages';
+import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapshot } from '@/lib/fetch-export-pages';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { TradeInCreditSnapshot } from '@installment/shared';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -32,6 +34,8 @@ const VOID_REASON_MIN = 10;
 const VOIDABLE_SALE_TYPES = new Set(['CASH', 'EXTERNAL_FINANCE']);
 
 interface Sale {
+  costPriceSnapshot?: string | null;
+  receiptBreakdown?: BookingSaleReceiptData | null;
   tradeInCreditSnapshot?: TradeInCreditSnapshot | null;
   id: string;
   saleNumber: string;
@@ -62,6 +66,7 @@ interface SalesSummary {
   totalAmount: number;
   totalDiscount: number;
   totalProfit: number;
+  missingCostCount?: number;
   cashCount: number;
   cashAmount: number;
   installmentCount: number;
@@ -240,13 +245,20 @@ export default function SalesHistoryPage() {
     try {
       setIsExporting(true);
       toast.loading('กำลังสร้างไฟล์ Excel...', { id: 'excel-export' });
-      const allRows = await fetchExportPages<Sale>(async (page, limit) =>
-        (await api.get<SalesResponse>(`/sales?${buildParams(page, limit)}`)).data, assertCurrent);
+      const snapshot = await fetchExportSnapshot<Sale>(async () =>
+        (await api.get<ExportSnapshot<Sale>>(`/sales/export?${buildParams(1, 50)}`, { timeout: 65_000 })).data, assertCurrent);
+      const allRows = snapshot.data;
 
       const baseCols: ExcelColumn[] = [
+        { header: 'ใบจองต้นทาง', key: 'bookingNumber', width: 20 },
+        { header: 'มัดจำที่รับไว้แล้ว', key: 'bookingDeposit', width: 18 },
+        { header: 'วิธีรับมัดจำ', key: 'bookingDepositMethod', width: 18 },
+        { header: 'รับเพิ่มเมื่อขาย', key: 'bookingBalance', width: 18 },
+        { header: 'วิธีรับยอดเพิ่ม', key: 'bookingBalanceMethod', width: 18 },
+        { header: 'สถานะหลักฐานใบจอง', key: 'bookingEvidence', width: 24 },
         { header: 'เลขที่ขาย', key: 'saleNumber', width: 18 },
         { header: 'วันที่', key: 'date', width: 14 },
-        { header: 'ดึงข้อมูลเมื่อ (เวลาไทย)', key: 'fetchedAt', width: 24 },
+        { header: 'ข้อมูล ณ (เวลาไทย)', key: 'fetchedAt', width: 24 },
         { header: 'ประเภท', key: 'saleType', width: 12 },
         { header: 'ยี่ห้อ/รุ่น', key: 'product', width: 25 },
         { header: 'IMEI/SN', key: 'imei', width: 20 },
@@ -274,8 +286,8 @@ export default function SalesHistoryPage() {
 
       if (isOwner) {
         baseCols.push(
-          { header: 'ทุนสินค้า', key: 'costPrice', width: 14 },
-          { header: 'กำไร', key: 'profit', width: 14 },
+          { header: 'ต้นทุนเครื่อง ณ วันขาย', key: 'costPrice', width: 14 },
+          { header: 'กำไรเครื่อง (เฉพาะต้นทุนที่ทราบ)', key: 'profit', width: 14 },
         );
       }
       // เปิดสวิตช์ = ไฟล์ปนใบยกเลิก ⇒ ต้องมีคอลัมน์แยกให้บัญชีเห็น; ปิดสวิตช์ = คอลัมน์เดิมทุกประการ
@@ -295,7 +307,14 @@ export default function SalesHistoryPage() {
         data: allRows.map((s: Sale) => {
           const row: Record<string, unknown> = {
             saleNumber: s.saleNumber,
-            fetchedAt: formatThaiDateTime(now, 'Asia/Bangkok'),
+            bookingNumber: s.receiptBreakdown?.bookingNumber ?? '-',
+            bookingDeposit: s.receiptBreakdown?.depositAmount != null ? Number(s.receiptBreakdown.depositAmount) : '-',
+            bookingDepositMethod: paymentMethodLabels[s.receiptBreakdown?.depositMethod ?? ''] ?? '-',
+            bookingBalance: s.receiptBreakdown?.additionalAmount != null ? Number(s.receiptBreakdown.additionalAmount) : '-',
+            bookingBalanceMethod: paymentMethodLabels[s.receiptBreakdown?.additionalMethod ?? ''] ?? '-',
+            bookingEvidence: s.receiptBreakdown ? s.receiptBreakdown.needsReview ? 'รอตรวจสอบหลักฐาน' : 'ครบถ้วน' : '-',
+
+            fetchedAt: formatThaiDateTime(snapshot.asOf, 'Asia/Bangkok'),
             date: formatDateShort(s.createdAt),
             saleType: saleTypeLabels[s.saleType] || s.saleType,
             product: `${s.product.brand} ${s.product.model}`,
@@ -305,8 +324,8 @@ export default function SalesHistoryPage() {
             sellingPrice: Number(s.sellingPrice),
             discount: Number(s.discount),
             netAmount: Number(s.netAmount),
-            paymentMethod: paymentMethodLabels[s.paymentMethod] || s.paymentMethod || '-',
-            downPayment: s.downPaymentAmount ? Number(s.downPaymentAmount) : '-',
+            paymentMethod: s.receiptBreakdown ? 'ดูรายละเอียดใบจอง' : paymentMethodLabels[s.paymentMethod] || s.paymentMethod || '-',
+            downPayment: !s.receiptBreakdown && s.downPaymentAmount != null ? Number(s.downPaymentAmount) : '-',
             tradeCash: s.tradeInCreditSnapshot ? Number(s.tradeInCreditSnapshot.cashDownAmount) : '-',
             tradeBase: s.tradeInCreditSnapshot ? Number(s.tradeInCreditSnapshot.baseAmount) : '-',
             tradeBonus: s.tradeInCreditSnapshot ? Number(s.tradeInCreditSnapshot.bonusAmount) : '-',
@@ -322,8 +341,8 @@ export default function SalesHistoryPage() {
             branch: s.branch.name,
           };
           if (isOwner) {
-            row.costPrice = s.product.costPrice ? Number(s.product.costPrice) : '-';
-            row.profit = s.product.costPrice ? Number(s.netAmount) - Number(s.product.costPrice) : '-';
+            row.costPrice = s.costPriceSnapshot != null ? Number(s.costPriceSnapshot) : '-';
+            row.profit = s.costPriceSnapshot != null ? saleMargin(s.netAmount, s.costPriceSnapshot)! : '-';
           }
           if (includeVoided) {
             row.voidStatus = s.deletedAt ? 'ยกเลิกแล้ว' : 'ใช้อยู่';
@@ -427,8 +446,8 @@ export default function SalesHistoryPage() {
       key: 'profit',
       label: 'กำไร',
       render: (s: Sale) => {
-        if (!s.product.costPrice) return <span className="text-xs text-muted-foreground">-</span>;
-        const profit = Number(s.netAmount) - Number(s.product.costPrice);
+        if (s.costPriceSnapshot == null) return <span className="text-xs text-muted-foreground">-</span>;
+        const profit = saleMargin(s.netAmount, s.costPriceSnapshot)!;
         return (
           <span className={`text-sm font-medium ${profit >= 0 ? 'text-success' : 'text-destructive'}`}>
             {profit >= 0 ? '+' : ''}{profit.toLocaleString()} ฿
@@ -580,7 +599,8 @@ export default function SalesHistoryPage() {
                   <div className={`text-xl font-bold tabular-nums ${summary.totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
                     {summary.totalProfit >= 0 ? '+' : ''}{summary.totalProfit.toLocaleString()} <span className="text-sm font-normal">฿</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">ยอดสุทธิ − ต้นทุนเครื่องปัจจุบัน</p>
+                  <p className="text-xs text-muted-foreground mt-2">ยอดสุทธิ − ต้นทุนเครื่อง ณ วันขาย (เฉพาะรายการที่มีต้นทุน ไม่รวมของแถมและค่าธรรมเนียม)</p>
+                  {!!summary.missingCostCount && <p className="text-xs text-muted-foreground mt-1">ไม่รวม {summary.missingCostCount.toLocaleString()} รายการที่ไม่มีต้นทุน ณ วันขาย</p>}
                 </CardContent>
               </div>
             </Card>
@@ -760,13 +780,15 @@ export default function SalesHistoryPage() {
               <dl className="space-y-2 tabular-nums">
                 {[
                   ['ราคาขาย', Number(saleDetail.data.sellingPrice)], ['ส่วนลด', Number(saleDetail.data.discount)], ['ยอดสุทธิ', Number(saleDetail.data.netAmount)],
-                  ...(isOwner && saleDetail.data.product.costPrice != null ? [['ต้นทุนเครื่องปัจจุบัน', Number(saleDetail.data.product.costPrice)], ['กำไรจากราคาเครื่อง', Number(saleDetail.data.netAmount) - Number(saleDetail.data.product.costPrice)]] : []),
-                  ...(saleDetail.data.downPaymentAmount != null ? [['ดาวน์ที่ตกลง', Number(saleDetail.data.downPaymentAmount)]] : []),
-                  [saleDetail.data.saleType === 'CASH' ? 'รับก่อนทอน' : 'รับดาวน์', saleDetail.data.amountReceived == null ? null : Number(saleDetail.data.amountReceived)],
+                  ...(isOwner && saleDetail.data.costPriceSnapshot != null ? [['ต้นทุนเครื่อง ณ วันขาย', Number(saleDetail.data.costPriceSnapshot)], ['กำไรจากต้นทุน ณ วันขาย', saleMargin(saleDetail.data.netAmount, saleDetail.data.costPriceSnapshot)!]] : []),
+                  ...(!saleDetail.data.receiptBreakdown && saleDetail.data.downPaymentAmount != null ? [['ดาวน์ที่ตกลง', Number(saleDetail.data.downPaymentAmount)]] : []),
+                  ...(!saleDetail.data.receiptBreakdown ? [[saleDetail.data.saleType === 'CASH' ? 'รับก่อนทอน' : 'รับดาวน์', saleDetail.data.amountReceived == null ? null : Number(saleDetail.data.amountReceived)]] : []),
                   ...(saleDetail.data.financeAmount ? [['ยอดจัดไฟแนนซ์', Number(saleDetail.data.financeAmount)]] : []),
                 ].map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt>{label}</dt><dd>{value == null ? 'ยังไม่ระบุ' : `${Number(value).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท`}</dd></div>)}
               </dl>
-              <div><p>วิธีรับ: {paymentMethodLabels[saleDetail.data.paymentMethod] ?? 'ยังไม่ระบุ'}</p><p>พนักงาน: {saleDetail.data.salesperson.name}</p><p>สาขา: {saleDetail.data.branch.name}</p></div>
+              {isOwner && saleDetail.data.costPriceSnapshot == null && <p className="text-muted-foreground">ไม่ทราบต้นทุน ณ วันขาย จึงยังคำนวณกำไรไม่ได้</p>}
+              {saleDetail.data.receiptBreakdown && <BookingSaleReceipt receipt={saleDetail.data.receiptBreakdown} />}
+              <div>{!saleDetail.data.receiptBreakdown && <p>วิธีรับ: {paymentMethodLabels[saleDetail.data.paymentMethod] ?? 'ยังไม่ระบุ'}</p>}<p>พนักงาน: {saleDetail.data.salesperson.name}</p><p>สาขา: {saleDetail.data.branch.name}</p></div>
               {saleDetail.data.tradeInCreditSnapshot && <div className="rounded-lg border border-border p-3">
                 <p>เงินสด/โอนสุทธิ {Number(saleDetail.data.tradeInCreditSnapshot.cashDownAmount).toLocaleString()} บาท</p>
                 <p>เครดิตเทิร์น {Number(saleDetail.data.tradeInCreditSnapshot.baseAmount).toLocaleString()} บาท</p>

@@ -213,6 +213,8 @@ export async function checkTradeIn(page, origin, output, width) {
     const detail = page.getByRole('dialog', { name: 'รายละเอียดรายการรับซื้อ' });
     await expect(detail.getByText(result.voucherNumber, { exact: true })).toBeVisible();
     await expect(detail.getByText(serialNumber, { exact: true })).toBeVisible();
+    // Radix enter-scale temporarily shrinks a 44px button to ~42px. Measure the settled layout.
+    await detail.evaluate((e) => Promise.all(e.getAnimations().map((animation) => animation.finished.catch(() => {}))));
     const inventory = detail.getByRole('region', { name: 'สถานะเครื่องปัจจุบัน' });
     await expect(inventory.getByText('พร้อมขาย', { exact: true })).toBeVisible();
     await expect(inventory.getByText('6/6 มุม')).toBeVisible();

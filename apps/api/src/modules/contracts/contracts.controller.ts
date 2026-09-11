@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import { ContractsListQueryDto } from './dto/contracts-list-query.dto';
 import { ContractQuoteDto } from './dto/contract-quote.dto';
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
@@ -31,6 +32,13 @@ export class ContractsController {
     private snapshotService: ContractSnapshotService,
     private contractJournalQuery: ContractJournalQueryService,
   ) {}
+
+  @Get('export')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  exportRows(@Query() filters: ContractsListQueryDto, @CurrentUser() user: { id: string; role: string; branchId: string | null }) {
+    return this.contractsService.exportRows(filters, user);
+  }
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')

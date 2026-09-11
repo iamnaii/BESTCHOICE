@@ -504,6 +504,7 @@ export class ContractWorkflowService {
           data: {
             saleNumber,
             saleType: 'INSTALLMENT',
+            costSnapshot: { create: { mainProductCost: prod.costPrice } },
             tradeInCreditSnapshot: contract.tradeInCreditSnapshot ?? undefined,
             customerId: contract.customerId,
             productId: contract.productId,
@@ -526,6 +527,7 @@ export class ContractWorkflowService {
           const net = new Decimal(contract.sellingPrice.toString());
           const gross = new Decimal(existingSale.sellingPrice.toString());
           await tx.sale.update({ where: { id: existingSale.id }, data: {
+            costSnapshot: { upsert: { create: { mainProductCost: prod.costPrice }, update: {} } },
             netAmount: net, sellingPrice: gross.gte(net) ? gross : net, discount: gross.gte(net) ? gross.minus(net) : new Decimal(0),
             downPaymentAmount: contract.downPayment, amountReceived: cashDownPayment(contract),
             ...(contract.downPaymentMethod ? { paymentMethod: contract.downPaymentMethod } : {}),

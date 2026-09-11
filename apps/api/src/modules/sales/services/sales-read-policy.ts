@@ -18,6 +18,7 @@ export function salesBranchWhere(
 }
 
 export function projectSaleForActor<T extends {
+  costSnapshot?: { mainProductCost: unknown } | null;
   product: { costPrice?: unknown };
   customer: { id: string; nationalId?: string | null };
 }>(sale: T, actor: SalesReadActor) {
@@ -25,5 +26,6 @@ export function projectSaleForActor<T extends {
   const customer = actor.role === 'SALES' && sale.customer.nationalId
     ? { ...sale.customer, nationalId: maskNationalId(sale.customer.nationalId) }
     : sale.customer;
-  return { ...sale, customer, product: actor.role === 'OWNER' ? sale.product : productWithoutCost };
+  const { costSnapshot, ...safeSale } = sale;
+  return { ...safeSale, ...(actor.role === 'OWNER' ? { costPriceSnapshot: costSnapshot?.mainProductCost ?? null } : {}), customer, product: actor.role === 'OWNER' ? sale.product : productWithoutCost };
 }

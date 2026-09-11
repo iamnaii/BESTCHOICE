@@ -1,3 +1,8 @@
+import { SettingsFlagsService } from '../../src/modules/settings/services/settings-flags.service';
+import { previewBookings, seedPreviewSales } from './preview-sales-fixture';
+import { SalesQueryService } from '../../src/modules/sales/services/sales-query.service';
+import { SalesListQueryDto } from '../../src/modules/sales/dto/sales-list-query.dto';
+import { ContractsListQueryDto } from '../../src/modules/contracts/dto/contracts-list-query.dto';
 import { ContractQuoteDto } from '../../src/modules/contracts/dto/contract-quote.dto';
 import { ContractQuoteService } from '../../src/modules/contracts/services/contract-quote.service';
 import { seedTradeInAppraisal, seedTradeInShop, tradeInProviders } from './trade-in-fixture';
@@ -97,6 +102,8 @@ const usage = new AiUsageService(db, config);
 const credits = new CreditCheckService(db, integrations, new AiProviderService(usage));
 const contractQuery = new ContractQueryService(db);
 const receivables = new ReceivablesReportService(db);
+const salesQuery = new SalesQueryService(db);
+const bookingQuery = previewBookings(db);
 const customerQuery = new CustomerQueryService(db, new CustomerTierService(db));
 // Real dashboard reads against the same synthetic database; only the cache facade is omitted.
 const dashboardOverview = new DashboardOverviewService(db);
@@ -257,6 +264,23 @@ class PreviewController {
   @Get('gfin-config/max-prices') maxPrices() { return gfin.listMaxPrices(); }
   @Get('gfin-config/overprice-rules') overprice() { return gfin.listOverpriceRules(); }
   @Get('gfin-config/rate-factors') rateFactors() { return gfin.listRateFactors(); }
+  @Get('settings/ui-flags') uiFlags() { return new SettingsFlagsService(db).getUiFlags(); }
+  @Get('customers/export') customersExport(@Query() query: Record<string, string>) {
+    return customerQuery.exportRows(query.search, 1, 50, query.contractStatus, query.hasOverdue === 'true', query.creditStatus,
+      query.branchId, query.sortBy, query.sortOrder, query.tier, query.creditCheckStatus);
+  }
+  @Get('sales/export') salesExport(@Query() query: SalesListQueryDto) { return salesQuery.exportRows(query, actor); }
+  @Get('sales/salespersons') salespersons() { return salesQuery.getSalespersons(actor); }
+  @Get('sales/top-products') topProducts() { return salesQuery.getTopSellingProducts(actor); }
+  @Get('sales') sales(@Query() query: SalesListQueryDto) { return salesQuery.findAll(query, actor); }
+  @Get('sales/config') config() { return loadInstallmentConfig(db); }
+  @Get('sales/:id') sale(@Param('id') id: string) { return salesQuery.findOne(id, actor); }
+  @Get('bookings') bookings(@Query() query: Record<string, string>) {
+    return bookingQuery.findAll({ ...query, page: Math.max(1, Number(query.page) || 1), limit: Math.min(200, Math.max(1, Number(query.limit) || 50)) }, actor);
+  }
+  @Get('bookings/:id') booking(@Param('id') id: string) { return bookingQuery.findOne(id, actor); }
+  @Get('contracts/export') contractsExport(@Query() query: ContractsListQueryDto) { return contractQuery.exportRows(query, { ...actor, branchId: null }); }
+  @Get('contracts') contracts(@Query() query: ContractsListQueryDto) { return contractQuery.findAll(query, { ...actor, branchId: null }); }
   @Get('customers') customers(@Query() query: Record<string, string>) {
     return customerQuery.findAll(
       query.search, Math.max(1, parseInt(query.page, 10) || 1),
@@ -268,7 +292,6 @@ class PreviewController {
   @Get('interest-configs/by-category/:category') interest(@Param('category') category: string) {
     return db.interestConfig.findFirst({ where: { productCategories: { has: category as never }, isActive: true } });
   }
-  @Get('sales/config') config() { return loadInstallmentConfig(db); }
   @Post('contracts/quote') quoteContract(@Body() dto: ContractQuoteDto) { return new ContractQuoteService(db).resolve(dto, actor); }
   @Post('contracts') createContract(@Body() dto: CreateContractDto) { return lifecycle.create(dto, actor.id, actor.role); }
   @Get('contracts/:id') contract(@Param('id') id: string) { return contractQuery.findOne(id); }
@@ -400,6 +423,7 @@ async function main() {
     });
   }
   await seedPreviewPortfolio(db, actor.id);
+  const salesFixture = await seedPreviewSales(db, actor);
   const module = await Test.createTestingModule({
     controllers: [
       TradeInController, ContactsController, ProductPhotosController,
@@ -446,7 +470,6 @@ async function main() {
       const shellData = {
         '/api/settings/test-mode': { enabled: false },
         '/api/overdue/collections-flag': { enabled: false },
-        '/api/settings/ui-flags': {},
         '/api/staff-chat/appointments/due': [],
         '/api/staff-chat/staff/online': [],
         '/api/staff-chat/unread-count': { unread: 0 },
@@ -497,13 +520,13 @@ async function main() {
     )
       return res.json({ data: [], total: 0 });
     if (
-      /^\/api\/(trade-ins|contacts|admin\/product-holds|promotions|gfin-config|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales\/config)/.test(path) || path === '/api/customers' ||
+      /^\/api\/(trade-ins|contacts|admin\/product-holds|promotions|gfin-config|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*)?)$/.test(path) ||
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
       path === '/api/staff-chat/ai/settings' || path === '/api/reports/finance-portfolio' ||
-      path === '/api/branches' || path === '/api/companies' || path === '/api/overdue/pipeline' || path === '/api/purchase-orders/qc-pending' ||
+      path === '/api/settings/ui-flags' || path === '/api/branches' || path === '/api/companies' || path === '/api/overdue/pipeline' || path === '/api/purchase-orders/qc-pending' ||
       /^\/api\/dashboard\/(kpis|monthly-trend|status-distribution|branch-comparison|monthly-revenue|top-overdue|aging-summary|watch-list|alerts|staff-performance)$/.test(path) ||
       /^\/api\/reports\/(entity-profit|comparative-pl)$/.test(path)
     )
@@ -562,6 +585,8 @@ async function main() {
     storage: realStorage ? 'gcs' : 'local-files',
     roomUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/inbox/${room.id}`,
     resultUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/inbox/${resultRoom.id}`,
+    saleUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/sales?saleId=${salesFixture.saleId}`,
+    bookingUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/bookings?bookingId=${salesFixture.bookingId}`,
     queueUrl: `http://localhost:${process.env.CREDIT_PREVIEW_PORT || 5187}/credit-checks`,
     apiOrigin,
     apiPid: process.pid,

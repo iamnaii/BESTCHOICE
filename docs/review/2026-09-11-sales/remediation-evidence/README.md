@@ -19,3 +19,9 @@ Result: **18 tests passed**, 58.1 seconds, finished `2026-09-11T05:53:17Z`. The 
 | Role/PDF | FINANCE_MANAGER cannot create/sign; ACTIVE+APPROVED downloads the intercepted PDF; `contracts-finance-read-actions-*` |
 
 All scenarios reject uncaught page errors. Screenshots also assert page horizontal overflow is absent; modals must fit the viewport. Additional price/signing, booking lifecycle and quote/signature states live in `../evidence/core`, `../evidence/bookings`, and `../evidence/contracts`; those scripts passed8/20/10 states respectively on this checkout. API/ledger assertions use the separate disposable PostgreSQL harness; see [verification report](../remediation-verification.md).
+
+## Follow-up verification
+
+The same command now passes **24 tests** at both widths: the original scenarios plus mixed-payment, fully prepaid and incomplete legacy booking receipts. Snapshot export tests now hold the single export response while switching company, preserving cancellation coverage. Six new captures are `sales-booking-{mixed,prepaid,legacy}-{1440,390}.png`; existing captures affected by Thai error copy and recorded-cost display were refreshed. All six receipt cases passed again after the final warning-text contrast change.
+
+The separate [real local preview check](../followup-preview/check.json) exercises actual disposable-database reads and XLSX generation without intercepting API responses. See the [follow-up report](../followup-verification.md) for boundaries, benchmark and final managed-check evidence.

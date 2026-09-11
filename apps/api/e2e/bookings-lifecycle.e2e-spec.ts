@@ -1,3 +1,4 @@
+import { SalesQueryService } from '../src/modules/sales/services/sales-query.service';
 import { randomUUID } from 'node:crypto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -181,6 +182,11 @@ describe('Booking mutations and real SHOP ledger on isolated PostgreSQL', () => 
     const result = await bookings.convertToSale(booking.id, { collectBalance: scenario.deposit < 10000,
       paymentMethod: scenario.paymentMethod }, actor.id, actor);
     expect(result.sale.amountReceived?.toNumber()).toBe(10000);
+    const detail = await new SalesQueryService(db).findOne(result.sale.id, actor);
+    expect(detail.receiptBreakdown).toMatchObject({ depositAmount: scenario.deposit.toFixed(2),
+      depositMethod: scenario.depositMethod, additionalAmount: (10000 - scenario.deposit).toFixed(2),
+      additionalMethod: scenario.paymentMethod ?? null, totalReceived: '10000.00', needsReview: false });
+    expect(await db.saleCostSnapshot.findUnique({ where: { saleId: result.sale.id } })).not.toBeNull();
     const journal = await db.journalEntry.findMany({ where: { deletedAt: null, OR: [
       { metadata: { path: ['bookingId'], equals: booking.id } },
       { metadata: { path: ['saleId'], equals: result.sale.id } },

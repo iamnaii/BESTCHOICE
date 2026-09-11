@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "sourceFingerprint": "e56534705050a29b738ca04f418b30cca940d3e95f090ff8aefc12675b79bbc7",
+  "saleUrl": "http://localhost:5207/sales?saleId=8152b5a6-2ace-46e0-b0c9-b974cfbf0264",
+  "bookingUrl": "http://localhost:5207/bookings?bookingId=b9c46956-fb7c-4204-af03-9403488f931c",
+  "widths": [
+    1440,
+    390
+  ],
+  "exports": [
+    "customers",
+    "contracts",
+    "sales"
+  ],
+  "checkedAt": "2026-09-11T06:30:10.143Z"
+}

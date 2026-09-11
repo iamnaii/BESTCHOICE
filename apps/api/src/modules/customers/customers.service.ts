@@ -32,6 +32,10 @@ export class CustomersService {
     private readonly analytics: CustomerAnalyticsService,
   ) {}
 
+  exportRows(...args: Parameters<CustomerQueryService['exportRows']>) {
+    return this.query.exportRows(...args);
+  }
+
   findAll(
     search?: string,
     page = 1,

@@ -2624,6 +2624,7 @@ model Sale {
 
   // P2-SP4 — การจอง (origin) — set when sale was created via Booking conversion
   booking Booking? @relation("SaleBooking")
+  costSnapshot SaleCostSnapshot?
 
   @@index([saleType])
   @@index([branchId])
@@ -2634,6 +2635,17 @@ model Sale {
   @@index([deletedAt])
   @@index([voidedById])
   @@map("sales")
+}
+
+/// Immutable main-device cost at completed sale/contract activation. No guessed legacy backfill.
+/// Stored separately so ordinary Sale responses never expose owner-only cost.
+model SaleCostSnapshot {
+  saleId          String   @id @map("sale_id")
+  mainProductCost Decimal  @map("main_product_cost") @db.Decimal(12, 2)
+  recordedAt      DateTime @default(now()) @map("recorded_at")
+  sale            Sale     @relation(fields: [saleId], references: [id], onDelete: Restrict)
+
+  @@map("sale_cost_snapshots")
 }
 
 model OnlineOrder {

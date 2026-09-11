@@ -1,3 +1,4 @@
+import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
 import { bangkokDateRange } from '../../../utils/date.util';
 import { contractSignatureRequirements } from '../../../utils/validation.util';
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
@@ -58,7 +59,7 @@ export class ContractQueryService {
     salespersonId?: string;
     startDate?: string;
     endDate?: string;
-  }, user?: BranchAccessUser) {
+  }, user?: BranchAccessUser, db: Prisma.TransactionClient = this.prisma, maxLimit = 200) {
     const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
     if (filters.workflowStatus) where.workflowStatus = filters.workflowStatus;
@@ -86,10 +87,12 @@ export class ContractQueryService {
     }
 
     const page = filters.page || 1;
-    const limit = Math.min(filters.limit || 50, 200);
+    const limit = Math.min(filters.limit || 50, maxLimit);
+
+    if (limit > 200) assertExportRowCount(await db.contract.count({ where }));
 
     const [data, total, totalActive, totalOverdue, portfolioValue] = await Promise.all([
-      this.prisma.contract.findMany({
+      db.contract.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
@@ -104,14 +107,14 @@ export class ContractQueryService {
           _count: { select: { payments: true, contractDocuments: true } },
         },
       }),
-      this.prisma.contract.count({ where }),
-      this.prisma.contract.count({
+      db.contract.count({ where }),
+      db.contract.count({
         where: { AND: [where, { status: 'ACTIVE' }] },
       }),
-      this.prisma.contract.count({
+      db.contract.count({
         where: { AND: [where, { status: { in: ['OVERDUE', 'DEFAULT'] } }] },
       }),
-      this.prisma.contract.aggregate({
+      db.contract.aggregate({
         where: { ...where, deletedAt: null },
         _sum: { sellingPrice: true },
       }),
@@ -129,6 +132,17 @@ export class ContractQueryService {
         portfolioValue: new Prisma.Decimal(portfolioValue._sum.sellingPrice ?? 0).toNumber(),
       },
     };
+  }
+
+  exportRows(filters: Parameters<ContractQueryService['findAll']>[0], user: BranchAccessUser) {
+    return readExportSnapshot(this.prisma, async (tx) => {
+      const result = await this.findAll({ ...filters, page: 1, limit: EXPORT_ROW_LIMIT + 1 }, user, tx, EXPORT_ROW_LIMIT + 1);
+      return { total: result.total, data: result.data.map(c => ({
+        id: c.id, contractNumber: c.contractNumber, customer: c.customer, product: c.product,
+        sellingPrice: c.sellingPrice, monthlyPayment: c.monthlyPayment, status: c.status,
+        branch: c.branch, salesperson: c.salesperson, createdAt: c.createdAt,
+      })) };
+    });
   }
 
   /**

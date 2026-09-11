@@ -1,3 +1,4 @@
+import { SalesQueryService } from '../src/modules/sales/services/sales-query.service';
 import { ShopDownPaymentTemplate } from '../src/modules/journal/cpa-templates/shop-down-payment.template';
 import { randomUUID } from 'node:crypto';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -84,6 +85,25 @@ describe('External finance received cash and real journal on isolated PostgreSQL
     expect(netDebit(rows, 'S11-3101')).toBe(10000 - down);
     expect(netDebit(rows, 'S11-2001')).toBe(-6000);
     expect(netDebit(rows, 'S41-1101')).toBe(-10000);
+  });
+
+  it('freezes cost, excludes missing history and never exposes it to staff', async () => {
+    const { sale, product } = await createSale(0);
+    await db.product.update({ where: { id: product.id }, data: { costPrice: 9999 } });
+    const read = new SalesQueryService(db);
+    const owner = { id: ownerId, role: 'OWNER' };
+    const stored = await db.sale.findUniqueOrThrow({ where: { id: sale.id } });
+    const filters = { search: stored.saleNumber };
+    const result = await read.findAll(filters, owner);
+    expect(result.data[0].costPriceSnapshot?.toString()).toBe('6000');
+    expect(result.summary).toMatchObject({ totalProfit: 4000, missingCostCount: 0 });
+    const staff = await read.findOne(sale.id, { id: ownerId, role: 'SALES', branchId });
+    expect(staff).not.toHaveProperty('costPriceSnapshot');
+    expect(staff).not.toHaveProperty('costSnapshot');
+    expect(staff.product).not.toHaveProperty('costPrice');
+    const snapshot = await read.exportRows(filters, owner);
+    expect(snapshot.data[0].costPriceSnapshot?.toString()).toBe('6000');
+    expect(snapshot.asOf).toBeTruthy();
   });
 
   it('receives the pending balance once without counting it as the original down payment', async () => {

@@ -107,6 +107,9 @@ describe('ExpenseDocumentsService', () => {
           if (where.id === 'user-owner') {
             return { id: where.id, name: 'Owner', role: 'OWNER', branchId: null };
           }
+          if (where.id === 'user-fm') {
+            return { id: where.id, name: 'Finance Manager', role: 'FINANCE_MANAGER', branchId: null };
+          }
           if (['user-1', 'user-not-listed', 'user-acc-1', 'user-active', 'user-x'].includes(where.id)) {
             return { id: where.id, name: 'Accountant', role: 'ACCOUNTANT', branchId: null };
           }
@@ -1245,6 +1248,46 @@ describe('ExpenseDocumentsService', () => {
 
     it('accepts an active accountant explicitly granted EXPENSE_APPROVE', async () => {
       setupPendingDoc();
+      accountingPolicy = JSON.stringify({ 'user-acc-1': ['EXPENSE_APPROVE'] });
+      await service.approve('doc-app', 'user-acc-1', 'ACCOUNTANT');
+      expect(prisma.expenseDocument.update).toHaveBeenCalledWith({
+        where: { id: 'doc-app' },
+        data: { status: 'APPROVED', approvedById: 'user-acc-1' },
+      });
+    });
+
+    // maker≠checker — คำตัดสินเจ้าของ 2026-09-11: เอกสารของตัวเองอนุมัติได้เฉพาะ
+    // ระดับผู้จัดการขึ้นไป (OWNER / FINANCE_MANAGER / BRANCH_MANAGER) ฝ่ายบัญชีไม่เข้าข่าย
+    it('rejects an accountant approving a document they created themselves', async () => {
+      setupPendingDoc({ createdById: 'user-acc-1' });
+      accountingPolicy = JSON.stringify({ 'user-acc-1': ['EXPENSE_APPROVE'] });
+      await expect(service.approve('doc-app', 'user-acc-1', 'ACCOUNTANT')).rejects.toThrow(
+        /ต้องเป็นระดับผู้จัดการขึ้นไป/,
+      );
+      expect(prisma.expenseDocument.update).not.toHaveBeenCalled();
+    });
+
+    it('lets a FINANCE_MANAGER approve a document they created themselves', async () => {
+      setupPendingDoc({ createdById: 'user-fm' });
+      accountingPolicy = JSON.stringify({ 'user-fm': ['EXPENSE_APPROVE'] });
+      await service.approve('doc-app', 'user-fm', 'FINANCE_MANAGER');
+      expect(prisma.expenseDocument.update).toHaveBeenCalledWith({
+        where: { id: 'doc-app' },
+        data: { status: 'APPROVED', approvedById: 'user-fm' },
+      });
+    });
+
+    it('lets the OWNER approve a document they created themselves', async () => {
+      setupPendingDoc({ createdById: 'user-owner' });
+      await service.approve('doc-app', 'user-owner', 'OWNER');
+      expect(prisma.expenseDocument.update).toHaveBeenCalledWith({
+        where: { id: 'doc-app' },
+        data: { status: 'APPROVED', approvedById: 'user-owner' },
+      });
+    });
+
+    it('still lets an accountant approve someone else\'s document', async () => {
+      setupPendingDoc({ createdById: 'user-1' });
       accountingPolicy = JSON.stringify({ 'user-acc-1': ['EXPENSE_APPROVE'] });
       await service.approve('doc-app', 'user-acc-1', 'ACCOUNTANT');
       expect(prisma.expenseDocument.update).toHaveBeenCalledWith({

@@ -1,4 +1,5 @@
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
+import { canApproveAccountingDoc } from '@installment/shared';
 import { useNavigate, useParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -230,7 +231,15 @@ export default function ExpenseDetailPage() {
     icabStatus === 'POSTED';
 
   const isOwnDoc = !!doc && doc.createdBy?.id === user?.id;
-  const isViewerApprover = permissions.can('EXPENSE_APPROVE');
+  // เอกสารของตัวเอง = อนุมัติได้เฉพาะระดับผู้จัดการขึ้นไป (คำตัดสินเจ้าของ 2026-09-11)
+  // กฎเดียวกับที่ approve() ฝั่งเซิร์ฟเวอร์บังคับ — ซ่อนปุ่มที่กดไปก็โดนปฏิเสธอยู่ดี
+  const isViewerApprover =
+    permissions.can('EXPENSE_APPROVE') &&
+    canApproveAccountingDoc({
+      role: user?.role,
+      actorUserId: user?.id,
+      documentCreatedById: doc?.createdBy?.id,
+    });
 
   const isActionLoading =
     postMutation.isPending ||

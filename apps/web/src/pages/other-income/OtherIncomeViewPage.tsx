@@ -27,6 +27,7 @@ import { otherIncomeApi } from '@/lib/otherIncome';
 import api from '@/lib/api';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
 import { useAuth } from '@/contexts/AuthContext';
+import { canApproveAccountingDoc } from '@installment/shared';
 import { formatThaiDateLong, formatThaiDateShort } from '@/lib/date';
 
 // ------------------------------------------------------------------
@@ -913,7 +914,12 @@ export default function OtherIncomeViewPage() {
             canReverseOverride: user.canReverseOverride,
           }}
           makerCheckerEnabled={makerCheckerEnabled}
-          isViewerApprover={permissions.can('INCOME_APPROVE') && doc.createdById !== user.id}
+          // เอกสารของตัวเอง = อนุมัติได้เฉพาะระดับผู้จัดการขึ้นไป (คำตัดสินเจ้าของ 2026-09-11)
+          isViewerApprover={permissions.can('INCOME_APPROVE') && canApproveAccountingDoc({
+            role: user.role,
+            actorUserId: user.id,
+            documentCreatedById: doc.createdById,
+          })}
           isOwnDoc={doc.createdById === user.id}
           isLoading={isActionLoading}
           canReverse={Boolean(canReverse)}

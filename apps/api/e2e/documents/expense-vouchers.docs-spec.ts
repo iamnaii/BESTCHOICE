@@ -280,10 +280,12 @@ describe('DOC-03 expense vouchers, petty cash and daily summary — real command
     expect(Number(headers['content-length'])).toBe(bytes.length);
     expectVoucherTypography(pdf);
     expect(pdf.pageCount).toBe(1);
-    expectText(pdf, doc.number, `วันที่ ${thaiShortDate(today)}`, `วันที่จ่าย ${thaiShortDate(today)}`, `เลขประจำตัวผู้เสียภาษี ${VENDOR_TAX_ID.juristic}`, `เลขใบกำกับ TEST-INV-${world.prefix}-A`,
+    expectText(pdf, doc.number, `วันที่ ${thaiShortDate(today)}`, `วันที่จ่าย ${thaiShortDate(today)}`, `เลขประจำตัวผู้เสียภาษี ${VENDOR_TAX_ID.juristic}`,
       'ผู้จัดทำ', 'ผู้อนุมัติ', 'ผู้รับเงิน', '53-1201', '53-1105', '53-1106', '10.00', '250.00', '500.00', '2,500.00', '11,500.00', '6,000.00',
       'มูลค่าก่อนภาษี 20,000.00', 'ภาษีมูลค่าเพิ่ม 7% 980.00', 'มูลค่ารวม 20,980.00', 'หัก ณ ที่จ่าย 405.00', 'จำนวนเงินจ่ายสุทธิ 20,575.00 บาท', 'สองหมื่นห้าร้อยเจ็ดสิบห้าบาทถ้วน');
-    expectStream(pdf, vendorName, world.branches.a.name, 'ทดสอบระบบ ACCOUNTANT accountant', 'ทดสอบระบบ บริษัทไฟแนนซ์', 'ทดสอบระบบ เครื่องเขียนสำนักงาน', 'ทดสอบระบบ ค่าอบรมพนักงาน', 'ทดสอบระบบ อาหารว่างประชุม', 'ทดสอบระบบ ค่าใช้จ่ายสำนักงานประจำเดือน');
+    // The invoice number sits in a narrow header cell and wraps for some run prefixes (its last character then shares a
+    // baseline with the company phone line), so it is read in paint order like the other wrapped values.
+    expectStream(pdf, `เลขใบกำกับ TEST-INV-${world.prefix}-A`, vendorName, world.branches.a.name, 'ทดสอบระบบ ACCOUNTANT accountant', 'ทดสอบระบบ บริษัทไฟแนนซ์', 'ทดสอบระบบ เครื่องเขียนสำนักงาน', 'ทดสอบระบบ ค่าอบรมพนักงาน', 'ทดสอบระบบ อาหารว่างประชุม', 'ทดสอบระบบ ค่าใช้จ่ายสำนักงานประจำเดือน');
     expect(allText(pdf)).not.toContain(foldThai(VOID_OVERLAY));
     const closing = pageContaining(pdf, 'จำนวนเงินจ่ายสุทธิ (ตัวอักษร)');
     expect(closing).toBe(pdf.pageCount);

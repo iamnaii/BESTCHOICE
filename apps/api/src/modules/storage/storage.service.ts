@@ -1,5 +1,8 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, NotImplementedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createReadStream, existsSync, mkdirSync, promises as fsp } from 'fs';
+import { dirname, resolve, sep } from 'path';
+import { pathToFileURL } from 'url';
 import {
   S3Client,
   PutObjectCommand,
@@ -15,7 +18,7 @@ import { Readable } from 'stream';
 /**
  * StorageService — file storage abstraction.
  *
- * Supports two backends:
+ * Supports three backends:
  * 1. **GCS** (default in production) — uses @google-cloud/storage with
  *    Application Default Credentials (Cloud Run service account). No secrets needed.
  *    Set GCS_BUCKET env var (defaults to 'bestchoice-documents').
@@ -23,13 +26,18 @@ import { Readable } from 'stream';
  * 2. **S3-compatible** (dev / MinIO / R2) — uses @aws-sdk/client-s3.
  *    Set S3_ENDPOINT + S3_ACCESS_KEY + S3_SECRET_KEY + S3_BUCKET.
  *
- * Priority: S3 env vars → GCS → not configured.
+ * 3. **Local directory** (integration tests / offline preview only) — plain
+ *    files under STORAGE_LOCAL_DIR. Never active when NODE_ENV=production, and
+ *    signed URLs answer 501 so no caller can mistake a private path for a link.
+ *
+ * Priority: STORAGE_LOCAL_DIR (non-production) → S3 env vars → GCS → not configured.
  */
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
-  private readonly backend: 'gcs' | 's3' | 'none';
+  private readonly backend: 'gcs' | 's3' | 'local' | 'none';
   private readonly bucket: string;
+  private readonly localRoot: string = '';
   private gcs: GcsStorage | null = null;
   private s3: S3Client | null = null;
   private signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
@@ -40,8 +48,19 @@ export class StorageService {
     const s3AccessKey = this.configService.get<string>('S3_ACCESS_KEY');
     const s3SecretKey = this.configService.get<string>('S3_SECRET_KEY');
     const gcsBucket = this.configService.get<string>('GCS_BUCKET');
+    const localDir = this.configService.get<string>('STORAGE_LOCAL_DIR');
+    const production = this.configService.get('NODE_ENV') === 'production';
 
-    if (s3Endpoint && s3AccessKey && s3SecretKey) {
+    if (localDir && production) {
+      this.logger.warn('STORAGE_LOCAL_DIR is ignored in production — configure GCS_BUCKET or S3_*');
+    }
+    if (localDir && !production) {
+      this.backend = 'local';
+      this.bucket = '';
+      this.localRoot = resolve(localDir);
+      mkdirSync(this.localRoot, { recursive: true });
+      this.logger.log(`Local storage configured: ${this.localRoot}`);
+    } else if (s3Endpoint && s3AccessKey && s3SecretKey) {
       this.backend = 's3';
       this.bucket = this.configService.get<string>('S3_BUCKET') || 'bestchoice-documents';
       this.s3 = new S3Client({
@@ -67,7 +86,41 @@ export class StorageService {
     return this.backend !== 'none';
   }
 
+  /** Diagnostics for run metadata — never includes credentials. */
+  describe(): { backend: 'gcs' | 's3' | 'local' | 'none'; location: string } {
+    return { backend: this.backend, location: this.backend === 'local' ? this.localRoot : this.bucket };
+  }
+
+  /**
+   * Object keys are bucket-style relative paths. Reject anything that could
+   * leave the private root before touching the filesystem.
+   */
+  private localPath(key: string): string {
+    const parts = key.split('/');
+    const unsafe =
+      !key ||
+      key.startsWith('/') ||
+      key.includes('\\') ||
+      parts.some((part) => part === '' || part === '.' || part === '..');
+    const absolute = unsafe ? '' : resolve(this.localRoot, key);
+    if (unsafe || !absolute.startsWith(this.localRoot + sep)) {
+      throw new BadRequestException(`รูปแบบ key ของไฟล์ไม่ถูกต้อง: ${key}`);
+    }
+    return absolute;
+  }
+
   async upload(key: string, body: Buffer, contentType: string): Promise<string> {
+    if (this.backend === 'local') {
+      const target = this.localPath(key);
+      await fsp.mkdir(dirname(target), { recursive: true });
+      // Write then rename so a reader never observes a partially written object.
+      const staging = `${target}.${process.pid}.${Date.now()}.part`;
+      await fsp.writeFile(staging, body);
+      await fsp.rename(staging, target);
+      this.logger.log(`Local stored: ${key} (${body.length} bytes)`);
+      return key;
+    }
+
     if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
       await file.save(body, { contentType, resumable: false });
@@ -88,6 +141,12 @@ export class StorageService {
   }
 
   async getStream(key: string): Promise<Readable> {
+    if (this.backend === 'local') {
+      const target = this.localPath(key);
+      if (!existsSync(target)) throw new BadRequestException(`ไม่พบไฟล์: ${key}`);
+      return createReadStream(target);
+    }
+
     if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
       const [exists] = await file.exists();
@@ -137,6 +196,13 @@ export class StorageService {
   }
 
   private async signDownloadUrl(key: string, expiresIn: number): Promise<string> {
+    if (this.backend === 'local') {
+      this.localPath(key);
+      throw new NotImplementedException(
+        'Local storage ไม่รองรับ signed URL — ใช้ endpoint ดาวน์โหลดผ่าน API แทน',
+      );
+    }
+
     if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
       const [url] = await file.getSignedUrl({
@@ -155,6 +221,12 @@ export class StorageService {
   }
 
   async delete(key: string): Promise<void> {
+    if (this.backend === 'local') {
+      await fsp.rm(this.localPath(key), { force: true });
+      this.logger.log(`Local deleted: ${key}`);
+      return;
+    }
+
     if (this.backend === 'gcs' && this.gcs) {
       await this.gcs.bucket(this.bucket).file(key).delete({ ignoreNotFound: true });
       this.logger.log(`GCS deleted: ${key}`);
@@ -191,6 +263,13 @@ export class StorageService {
     expiresSec = 600,
     maxContentLength?: number,
   ): Promise<{ url: string; method: 'PUT' }> {
+    if (this.backend === 'local') {
+      this.localPath(key);
+      throw new NotImplementedException(
+        'Local storage ไม่รองรับ presigned upload — อัปโหลดผ่าน API แทน',
+      );
+    }
+
     if (this.backend === 'gcs' && this.gcs) {
       const file = this.gcs.bucket(this.bucket).file(key);
       // GCS V4 signed URLs support a `x-goog-content-length-range: min,max`
@@ -306,6 +385,9 @@ export class StorageService {
   }
 
   getPublicUrl(key: string): string {
+    if (this.backend === 'local') {
+      return pathToFileURL(this.localPath(key)).href;
+    }
     if (this.backend === 'gcs') {
       return `https://storage.googleapis.com/${this.bucket}/${key}`;
     }

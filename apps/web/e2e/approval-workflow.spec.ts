@@ -21,8 +21,14 @@ import { gotoWithRetry } from './helpers/navigation';
      เอกสาร** ⇒ DRAFT ทุกใบเห็นปุ่ม "ส่งให้อนุมัติ" เหมือนกันหมด. ด่าน
      threshold/doctype ที่ต่างกันจริงอยู่ฝั่ง server (`post()` ปฏิเสธ DRAFT ที่เข้า
      เงื่อนไข) — เทสด้านล่างจึงพิสูจน์ด่านนั้นผ่าน API แล้วค่อยตรวจผลบนหน้าจอ
-   - `isViewerApprover` = role ∈ {OWNER, FINANCE_MANAGER} **และ**
-     `doc.createdBy.id !== user.id` (ExpenseDetailPage) ⇒ คนสร้างอนุมัติเองไม่ได้
+   - `isViewerApprover` = ผู้ใช้มีสิทธิ์ `EXPENSE_APPROVE` ใน SystemConfig
+     `accounting_permissions` (OWNER ได้ครบทุกสิทธิ์เสมอ) — #1542 เปลี่ยนจากการ
+     เช็ค role ตรง ๆ มาเป็นรายชื่อ
+   - ⚠️ #1542 ถอดเงื่อนไข `doc.createdBy.id !== user.id` ออกจาก `isViewerApprover`
+     ด้วย และ InternalControlActionBar ก็ไม่ได้เช็ค `isOwnDoc` ตรงปุ่ม "อนุมัติ &
+     POST" (เช็คแค่กิ่ง READY + !isViewerApprover) ส่วน `approve()` ฝั่งเซิร์ฟเวอร์
+     ไม่เคยมีด่านนี้เลยทั้งก่อนและหลัง ⇒ ตอนนี้คนที่ได้สิทธิ์อนุมัติเอกสารที่ตัวเอง
+     สร้างได้ รอเจ้าของตัดสินว่าจะคืนด่าน maker≠checker หรือไม่ (ยังไม่แตะในนี้)
 
    ฟอร์ม /expenses/new ไม่ถูกใช้สร้างเอกสารในไฟล์นี้อีกต่อไป: ปุ่ม "บันทึกร่าง" ของ
    ExpenseFormV4 ถูก disable จนกว่าจะมีบรรทัดรายการที่เลือกหมวดบัญชีแล้ว และ
@@ -263,10 +269,15 @@ test.describe('Approval Workflow (D1.2.1)', () => {
   });
 
   test('Approver-list user can approve', async ({ page }) => {
-    // Pre-condition (D1.2.1.3): finance@bestchoice.com ต้องอยู่ใน SystemConfig
-    // `approvers_list`. ⚠️ dev seed **ยังไม่ได้ใส่คีย์นี้** ⇒ getApproversList() คืน []
-    // และ assertUserCanApprove ปฏิเสธทุกคนที่ไม่ใช่ OWNER — เทสนี้จะเขียวก็ต่อเมื่อ
-    // เจ้าของ/seed เติมรายชื่อผู้อนุมัติแล้ว (จงใจไม่ให้เทสไปเติมเอง = ขยายสิทธิ์)
+    // Pre-condition: finance@bestchoice.com ต้องมีสิทธิ์ EXPENSE_APPROVE ใน
+    // SystemConfig `accounting_permissions` — #1542 ย้ายด่านมาจาก `approvers_list`
+    // + การเช็ค role ตรง ๆ มาที่รายชื่อนี้ โดยตั้งใจไม่มี fallback ตาม role
+    // (apps/api/src/utils/accounting-permissions.ts) ทั้งฝั่งปุ่มบนหน้าจอ
+    // (ExpenseDetailPage → useAccountingPermissions) และฝั่งเซิร์ฟเวอร์
+    // (expense-document-lifecycle.service.ts → assertAccountingPermission)
+    // seed เติมสิทธิ์นี้ให้ผู้จัดการการเงินแล้ว (apps/api/prisma/seed.ts) —
+    // เทสยังคงไม่เติมสิทธิ์ให้ตัวเอง เพราะการขยายสิทธิ์กลางเทสจะชนกับเทสอื่น
+    // ที่รันขนานอยู่บนฐานเดียวกัน
     await loginAsRole(page, 'OWNER');
     const doc = await createPayrollDraft(page, 'OWNER', `E2E finance-approver ${Date.now()}`);
     await submitForApproval(page, 'OWNER', doc.id);

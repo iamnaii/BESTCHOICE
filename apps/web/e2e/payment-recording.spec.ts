@@ -9,7 +9,10 @@ test.describe('บันทึกการชำระเงิน', () => {
 
   test('should load payments page', async ({ page }) => {
     await gotoWithRetry(page, '/payments');
-    await expect(page.locator('h1, h2, [data-testid="page-title"]')).toContainText(
+    // ต้องเจาะจงหัวเรื่องของหน้า (h1 จาก PageHeader) เท่านั้น — เดิมกวาด `h1, h2`
+    // รวด พอ #1542 เพิ่มแผง "คำขออนุมัติการรับชำระ" (h2) เข้ามา locator ก็เจอสอง
+    // ตัวแล้วล้มด้วย strict mode violation ทั้งที่หน้าโหลดถูกต้อง
+    await expect(page.locator('h1, [data-testid="page-title"]').first()).toContainText(
       /ชำระ|งวด|Payments/i,
     );
     expect(await hasErrorBoundary(page)).toBe(false);

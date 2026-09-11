@@ -1,4 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect, Page, Locator } from '@playwright/test';
 import { loginViaAPI, loginAsRole, type TestRole } from './helpers/auth';
 import { gotoWithRetry } from './helpers/navigation';
 
@@ -23,16 +23,32 @@ import { gotoWithRetry } from './helpers/navigation';
  * path — otherwise the redirect itself reads as "denied". Current redirects:
  *   /receipts  → /payments?tab=receipts   (App.tsx)
  *   /overdue   → /collections             (App.tsx)
+ *
+ * `403` ต้องมีขอบคำ (`\b403\b`) เท่านั้น — เดิมเขียนลอย ๆ แล้วไปจับ "รหัสบัญชี"
+ * `53-1403` ที่ตาราง PEAK mapping เรนเดอร์ในหน้า /settings/accounting ทำให้
+ * เทส "ต้องถูกปฏิเสธ" ของ ACCOUNTANT/FINANCE_MANAGER เขียวมาตลอดทั้งที่หน้านั้น
+ * เปิดให้เข้าได้จริงตั้งแต่ #1286 (พังตอน #1542 ย้ายตารางออกไปหน้า ผังบัญชี)
  */
 async function isAccessDenied(page: Page, targetUrl: string): Promise<boolean> {
   await page.waitForTimeout(2000);
   const redirectedAway = !page.url().includes(targetUrl);
   const deniedMsg = await page
-    .getByText(/ไม่มีสิทธิ์|access denied|unauthorized|403|ไม่อนุญาต/i)
+    .getByText(/ไม่มีสิทธิ์|access denied|unauthorized|\b403\b|ไม่อนุญาต/i)
     .first()
     .isVisible({ timeout: 2000 })
     .catch(() => false);
   return redirectedAway || deniedMsg;
+}
+
+/**
+ * หมวดตั้งค่าที่ทุกรายการเป็นของ OWNER ล้วน (settings-registry.tsx) — visibleCategories()
+ * ต้องตัดทิ้งทั้งหมวดสำหรับ role อื่น นี่คือด่านจริงที่มาแทนเทส "ถูกปฏิเสธทั้งหน้า"
+ * ของเดิม: /settings เข้าได้ แต่ต้องไม่มีทางเห็นของที่ไม่ใช่ของตัวเอง
+ */
+async function expectOwnerOnlySettingsHidden(nav: Locator): Promise<void> {
+  for (const label of ['บริษัท & สาขา', 'ผู้ใช้ & สิทธิ์', 'สินค้า & การขาย', 'AI', 'ระบบ & ความปลอดภัย']) {
+    await expect(nav.getByRole('link', { name: label })).toHaveCount(0);
+  }
 }
 
 /* ================================================================
@@ -153,9 +169,22 @@ test.describe('ACCOUNTANT role — finance access', () => {
     });
   }
 
+  // กลับด้านจากเดิมโดยตั้งใจ — ดูหมายเหตุ `\b403\b` ที่หัวไฟล์: /settings เปิดให้
+  // ACCOUNTANT มาตั้งแต่ #1286 (App.tsx `<ProtectedRoute roles={['OWNER',
+  // 'FINANCE_MANAGER','ACCOUNTANT']}>`) แล้วกรอง "รายการย่อย" ตาม role แทน
+  // เทสเดิมเขียวเพราะ regex ไปจับรหัสบัญชี ไม่ใช่เพราะถูกปฏิเสธจริง
+  test('ACCOUNTANT เปิด /settings ได้ แต่เห็นเฉพาะหมวดของตัวเอง', async ({ page }) => {
+    await gotoWithRetry(page, '/settings');
+    expect(await isAccessDenied(page, '/settings')).toBeFalsy();
+
+    const nav = page.getByRole('navigation', { name: 'เมนูตั้งค่าระบบ' });
+    await expect(nav.getByRole('link', { name: 'บัญชี & ภาษี' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'เชื่อมต่อ' })).toBeVisible();
+    await expectOwnerOnlySettingsHidden(nav);
+  });
+
   // ACCOUNTANT CANNOT access:
   const deniedPages = [
-    { url: '/settings', name: 'ตั้งค่าระบบ' },
     { url: '/users', name: 'จัดการผู้ใช้' },
     { url: '/branches', name: 'จัดการสาขา' },
     { url: '/audit-logs', name: 'Audit Logs' },
@@ -204,17 +233,37 @@ test.describe('FINANCE_MANAGER role — finance access', () => {
     });
   }
 
-  test('FINANCE_MANAGER with only FINANCE grant cannot open SHOP stock', async ({ page }) => {
+  // กลับด้านจากเดิมโดยตั้งใจ (hotfix user-company-access 2026-09-11, เจ้าของเคาะ)
+  // เวอร์ชันเดิมชื่อ 'FINANCE_MANAGER with only FINANCE grant cannot open SHOP stock' ตรึง
+  // ROLE_ACCESS_MAP เก่าที่ให้ FM = ['FINANCE'] อย่างเดียว ทั้งที่ FINANCE_MANAGER_CONFIG ใน
+  // apps/web/src/config/menu.ts มี section โซน shop จริงสองก้อน (fm-shop-ops: contracts /
+  // payments / mdm / stickers / stock / shop-accounting / bookings / insurance /
+  // exchange-requests / products และ fm-online-shop) พร้อม bottomNav ของ shop
+  // ⇒ map เก่าลบ pill 'ร้าน' ของ FM ทิ้งทั้งโซนทั้งที่เมนูมีอยู่ ค่าใหม่คือ ['SHOP','FINANCE']
+  // (packages/shared/src/company-access.ts) เทสต์นี้จึงกลายเป็นด่านกันการย้อนกลับไปค่าเก่า
+  test('FINANCE_MANAGER ได้ทั้งสองบริษัท จึงเปิด SHOP stock ได้และเห็น pill สองอัน', async ({ page }) => {
     await page.goto('/stock', { waitUntil: 'domcontentloaded' });
-    await expect(page).toHaveURL(url => url.pathname === '/finance-portfolio');
-    await expect(page.getByRole('heading', { name: 'พอร์ตสัญญา BESTCHOICE FINANCE', level: 1 }))
-      .toBeVisible();
-    await expect(page.getByRole('tablist', { name: 'หมวดงาน' })).toHaveCount(0);
+    await expect(page).toHaveURL(url => url.pathname === '/stock');
+    expect(await isAccessDenied(page, '/stock')).toBeFalsy();
+    // pill switcher โผล่เมื่อ role มี work zone ตั้งแต่สองโซนขึ้นไป — ถ้าใครย้อน FM กลับเป็น
+    // FINANCE อย่างเดียว โซน shop จะถูกกรองทิ้ง เหลือ pill อันเดียวแล้ว component ซ่อนตัวเอง
+    await expect(page.getByRole('tablist', { name: 'หมวดงาน' })).toHaveCount(1);
+  });
+
+  // กลับด้านจากเดิมด้วยเหตุผลเดียวกับฝั่ง ACCOUNTANT (ดูหมายเหตุ `\b403\b` หัวไฟล์)
+  test('FINANCE_MANAGER เปิด /settings ได้ แต่เห็นเฉพาะหมวดของตัวเอง', async ({ page }) => {
+    await gotoWithRetry(page, '/settings');
+    expect(await isAccessDenied(page, '/settings')).toBeFalsy();
+
+    const nav = page.getByRole('navigation', { name: 'เมนูตั้งค่าระบบ' });
+    await expect(nav.getByRole('link', { name: 'บัญชี & ภาษี' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'การเงิน & สินเชื่อ' })).toBeVisible();
+    await expect(nav.getByRole('link', { name: 'สื่อสารลูกค้า' })).toBeVisible();
+    await expectOwnerOnlySettingsHidden(nav);
   });
 
   // FINANCE_MANAGER CANNOT access:
   const deniedPages = [
-    { url: '/settings', name: 'ตั้งค่าระบบ' },
     { url: '/users', name: 'จัดการผู้ใช้' },
     { url: '/branches', name: 'จัดการสาขา' },
     { url: '/audit-logs', name: 'Audit Logs' },

@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   Logger,
 } from '@nestjs/common';
@@ -12,6 +13,7 @@ import {
   getReverseReasons,
 } from '../approval-config.util';
 import { assertAccountingPermission, assertAccountingBranch, getAccountingPermissions, parseAccountingPermissions, ACCOUNTING_PERMISSIONS_KEY } from '../../../utils/accounting-permissions';
+import { canApproveAccountingDoc, SELF_APPROVAL_DENIED_MESSAGE } from '@installment/shared';
 import { bkkBusinessDate } from '../bkk-business-date.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { readBoolFlag } from '../../../utils/config.util';
@@ -575,6 +577,15 @@ export class ExpenseDocumentLifecycleService {
       const doc = await tx.expenseDocument.findUniqueOrThrow({ where: { id } });
       if (doc.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
       assertAccountingBranch(actor, doc.branchId);
+      // maker≠checker — เฉพาะระดับผู้จัดการขึ้นไปที่อนุมัติใบที่ตัวเองสร้างได้
+      // (คำตัดสินเจ้าของ 2026-09-11) ด่านนี้ต้องอยู่ฝั่งเซิร์ฟเวอร์ด้วย ไม่ใช่แค่ซ่อนปุ่ม
+      if (!canApproveAccountingDoc({
+        role: actor.role,
+        actorUserId: actor.id,
+        documentCreatedById: doc.createdById,
+      })) {
+        throw new ForbiddenException(SELF_APPROVAL_DENIED_MESSAGE);
+      }
       this.transition.assertCanApprove({ from: doc.status });
 
       // Stamp APPROVED first so the auto-post branch starts from a clean

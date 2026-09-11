@@ -1,4 +1,5 @@
 import { assertAccountingPermission } from '../../../utils/accounting-permissions';
+import { canApproveAccountingDoc, SELF_APPROVAL_DENIED_MESSAGE } from '@installment/shared';
 import {
   BadRequestException,
   ConflictException,
@@ -385,7 +386,7 @@ export class OtherIncomeLifecycleService {
     dto: { note?: string },
     userId: string,
   ) {
-    await assertAccountingPermission(this.prisma, userId, 'INCOME_APPROVE');
+    const { user: approver } = await assertAccountingPermission(this.prisma, userId, 'INCOME_APPROVE');
     if (!(await this.config.isMakerCheckerEnabled())) {
       throw new BadRequestException('Maker-Checker ปิดอยู่');
     }
@@ -395,14 +396,19 @@ export class OtherIncomeLifecycleService {
         `เอกสาร ${doc.docNumber} สถานะ ${doc.status} — ไม่สามารถอนุมัติ`,
       );
     }
-    // V9: maker ≠ approver
-    if (doc.createdById === userId) {
+    // V9: maker ≠ approver — ผ่อนเป็น "ระดับผู้จัดการขึ้นไปอนุมัติเอกสารตัวเองได้"
+    // ตามคำตัดสินเจ้าของ 2026-09-11 (กฎเดียวกับฝั่งรายจ่าย — packages/shared)
+    if (!canApproveAccountingDoc({
+      role: approver.role,
+      actorUserId: userId,
+      documentCreatedById: doc.createdById,
+    })) {
       throw new BadRequestException({
         message: 'Validation failed',
         errors: [
           {
             rule: 'V9',
-            msg: 'ผู้สร้างเอกสารไม่สามารถอนุมัติเอกสารตัวเองได้',
+            msg: SELF_APPROVAL_DENIED_MESSAGE,
           },
         ],
       });

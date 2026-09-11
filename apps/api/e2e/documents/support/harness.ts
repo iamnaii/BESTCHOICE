@@ -145,6 +145,13 @@ export async function startDocumentsApp(options: StartOptions = {}): Promise<Doc
     await app.close();
     throw new Error(`Documents harness expected local storage, got ${storage.backend}`);
   }
+  // Production Cloud SQL runs in UTC; SQL that compares `timestamp` columns with NOW() or a bound
+  // Date is interpreted in the session zone, so any other zone here would not be evidence (DOC-10/11).
+  const [{ timezone }] = await app.get(PrismaService).$queryRawUnsafe<Array<{ timezone: string }>>("SELECT current_setting('timezone') AS timezone");
+  if (timezone !== 'UTC') {
+    await app.close();
+    throw new Error(`Documents harness expects the database session timezone UTC (as production), got ${timezone} — run bash tools/docs-integration.sh, which starts PostgreSQL with -c timezone=UTC`);
+  }
   const server = app.getHttpServer();
   return {
     app,

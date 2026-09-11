@@ -20,10 +20,13 @@ bash tools/docs-integration.sh contract-pdpa   # เฉพาะไฟล์ท�
 1. สร้าง PostgreSQL ชั่วคราวใน `/tmp/bc-docs.XXXXXX` (unix socket ส่วนตัว ไม่เปิดพอร์ต TCP) พร้อมฐาน `bc_docs_shop` และ `bc_docs_finance` แล้ว `prisma migrate deploy` ทั้งสองฐาน
 2. สุ่ม `JWT_SECRET` / `PII_ENCRYPTION_KEY` / `PII_HASH_SALT` ใหม่ และ **ปักค่าว่าง** ให้ตัวแปร provider ภายนอกทุกตัว (LINE, SMS, SMTP, Anthropic, Sentry, GCS/S3, …) จึงไม่มี `.env` ไฟล์ไหนเปิดช่องทางส่งจริงในโปรเซสได้
 3. ตั้ง `STORAGE_LOCAL_DIR` ไปที่ `<output>/storage` และ `DOCS_QA_OUTPUT` ไปที่ `.tmp/docs-integration/<run-id>/`
-4. รัน jest ด้วย `apps/api/e2e/jest-documents.json` (regex `e2e/documents/*.docs-spec.ts`) แล้วรวมผล
-5. ปิดและลบฐานชั่วคราว (เก็บไว้ดูได้ด้วย `DOCS_QA_KEEP_DB=1`)
+4. รัน jest ด้วย `apps/api/e2e/jest-documents.json` (regex `e2e/documents/*.docs-spec.ts`) ทีละ suite ใน worker เดียวที่ถูกรีสตาร์ตเมื่อ heap เกิน `workerIdleMemoryLimit` (DOC-11: ทุก suite boot AppModule + Chromium — รันรวมใน process เดียวเคยตายด้วย heap out of memory) พร้อม `NODE_OPTIONS=--experimental-vm-modules` (ให้ `FileTypeValidator` ของ Nest โหลด `file-type` ที่เป็น ESM ได้ใน jest)
+5. **ตรวจ PDF ทุกไฟล์ที่รอบนั้นสร้าง** (`tools/docs-integration.mjs verify` — DOC-11): parse ด้วย pdfjs ตัวเดียวกับ spec แล้ว fail ถ้า parse ไม่ได้, หน้าไม่ใช่ A4 / A4 แนวนอน / สติกเกอร์ 50×30 mm (±1.5 pt), มีฟอนต์อื่นนอกจาก THSarabunPSK, มีข้อความนอกขอบหน้า (±2 pt) หรือมีหน้าที่ไม่มีข้อความเลย (render เปล่า) → `artifact-checks.json`; map เอกสารทั้ง 12 กลุ่ม (DOC-01…10 + สัญญา/PDPA + สติกเกอร์) กับ scenario ที่ผ่าน → `manifest.json.coverage`; เขียน `summary.md` (ความล้มเหลว, coverage, ตาราง domain, ผลตรวจไฟล์, ชั้นหลักฐาน) — สถานะ PASS ต้องผ่านทั้ง jest, scenario, และการตรวจไฟล์
+6. ปิดและลบฐานชั่วคราวทั้งโฟลเดอร์ `/tmp/bc-docs.XXXXXX` (เก็บไว้ดูได้ด้วย `DOCS_QA_KEEP_DB=1`)
 
-harness ปฏิเสธที่จะเริ่มถ้า `DATABASE_URL` ไม่ใช่ฐาน `bc_docs_*` บน socket `bc-docs.`, ถ้า `NODE_ENV=production`, ถ้ามี credential ภายนอกค้างอยู่ หรือถ้าไม่มี Chromium (`apps/api/e2e/documents/support/runtime.ts`)
+ไม่มี Chromium ในเครื่อง (checkout สะอาด/CI): ตั้ง `DOCS_QA_INSTALL_CHROMIUM=1` ให้ script ติดตั้ง Chromium ของ Playwright เองครั้งเดียว (`apps/web` → `npx playwright install chromium`) — Puppeteer (renderer ฝั่ง server) กับ Playwright (browser scenario) ใช้ตัวเดียวกัน · ตรวจซ้ำ artifact ของ run เก่าโดยไม่รันเทสต์: `node tools/docs-integration.mjs verify .tmp/docs-integration/<run-id>`
+
+harness ปฏิเสธที่จะเริ่มถ้า `DATABASE_URL` ไม่ใช่ฐาน `bc_docs_*` บน socket `bc-docs.`, ถ้า `NODE_ENV=production`, ถ้ามี credential ภายนอกค้างอยู่, ถ้าไม่มี Chromium (`apps/api/e2e/documents/support/runtime.ts`) หรือถ้า session timezone ของฐานไม่ใช่ `UTC` อย่าง prod (`harness.ts` — DOC-11)
 
 อย่ารัน `npm run local:check` กับ `npm run docs:check` **ใน checkout เดียวกันพร้อมกัน** — ทั้งคู่ `prisma generate` ลง `node_modules/.prisma/client` ก้อนเดียวกัน jest ที่กำลังโหลดจะเจอ `Cannot find module '.prisma/client/default'` (ข้าม checkout/worktree ไม่มีปัญหาถ้า node_modules แยกกัน)
 
@@ -35,8 +38,10 @@ harness ปฏิเสธที่จะเริ่มถ้า `DATABASE_URL`
 
 | ไฟล์ | เนื้อหา |
 | --- | --- |
-| `run.json` | ref/branch/`sourceFingerprint`, baseline `fb0659f3c`, Chromium ที่ใช้, ชื่อฐาน (ไม่มีรหัส), ขอบเขต, รายการ simulation, route ที่ไม่รองรับ, สรุป jest และสถานะ PASS/FAIL |
-| `manifest.json` | รวม `manifest/<domain>.jsonl` ทุก domain: scenario, เอกสารที่ครอบคลุม, route/guard ที่ผ่านจริง, renderer, artifact, สิ่งที่จำลอง/ยังไม่ได้ตรวจ พร้อมสรุปชั้นหลักฐาน (API integration / browser / printer / staging) |
+| `summary.md` | **อ่านอันนี้ก่อน** (DOC-11): สถานะรอบ, ความล้มเหลว (เทสต์ที่ตก, scenario FAIL/BLOCKED, ไฟล์ PDF ที่ไม่ผ่านพร้อมหน้าที่ผิด), ตาราง coverage 12 กลุ่มเอกสาร, ตาราง domain, ผลตรวจไฟล์ทุกใบ, ชั้นหลักฐาน + รายการ unverified/simulated ที่แต่ละ domain ประกาศ — CI ต่อท้ายไฟล์นี้ใน job summary |
+| `run.json` | ref/branch/`sourceFingerprint`, baseline `fb0659f3c`, Chromium ที่ใช้, ชื่อฐาน (ไม่มีรหัส), ขอบเขต, รายการ simulation, route ที่ไม่รองรับ, สรุป jest, สรุปการตรวจไฟล์ (`artifactChecks`) และสถานะ PASS/FAIL |
+| `manifest.json` | รวม `manifest/<domain>.jsonl` ทุก domain: scenario, เอกสารที่ครอบคลุม, route/guard ที่ผ่านจริง, renderer, artifact, สิ่งที่จำลอง/ยังไม่ได้ตรวจ พร้อมสรุปชั้นหลักฐาน (`evidenceLayers`: automated layout / browser-native PDF / printer UAT / staging) และ `coverage` (กลุ่มเอกสาร → covered / partial / missing + key ที่ไม่มีใคร map) |
+| `artifact-checks.json` | ผลตรวจ PDF ทุกไฟล์ใน `<domain>/` และ `storage/`: ขนาดหน้าแต่ละหน้า, ฟอนต์, จำนวน text item, item นอกขอบ, ปัญหาที่พบ (กติกาอยู่ในไฟล์เดียวกัน) |
 | `jest-results.json` | ผล jest ดิบ (ชื่อเทสต์ที่ล้มและข้อความ) |
 | `<domain>/…` | PDF/HTML/JSON ที่ scenario บันทึกด้วย `saveArtifact` |
 | `storage/` | ไฟล์ที่ API เก็บผ่าน `StorageService` (key เดียวกับ `EDocument.fileUrl`) |
@@ -93,6 +98,10 @@ describe('DOC-01 receipts', () => {
 - `recordScenario` ทุก `it` ที่ผ่าน; ถ้า scenario ต้องรอเงื่อนไขภายนอก ให้บันทึก `status: 'BLOCKED'` พร้อม `unverified`
 - ถ้าพบ defect ให้เพิ่ม regression ที่พิสูจน์อาการก่อน แล้วแก้เฉพาะต้นเหตุใน module ของ domain; ไฟล์ใน `e2e/documents/support/`, `tools/docs-integration.*`, `StorageService`, `app.setup.ts` และ shared PDF/font components ให้ผู้ประสาน DOC-00/DOC-11 รวม patch ทีละชุด
 
+## CI — `.github/workflows/documents-integration.yml` (DOC-11)
+
+job `documents` รัน `npm run docs:check` ทั้งชุดบน `ubuntu-latest` จาก checkout สะอาด: ติดตั้ง `postgresql-16` + `postgresql-16-pgvector` (ใช้แค่ initdb/pg_ctl — cluster ระบบถูกหยุด), `npm ci` (ข้ามการดาวน์โหลด Chromium ของ Puppeteer), `npx playwright install --with-deps chromium`, แล้วรัน script ด้วย `DOCS_QA_INSTALL_CHROMIUM=1` — ฐานข้อมูล/พอร์ต/storage ทั้งหมดเป็นของ run นั้น **ไม่อ่าน secret ใด ๆ** ไม่ deploy ไม่ส่งข้อความ; `timeout-minutes: 45`; `summary.md` ถูกต่อท้าย job summary และทั้งโฟลเดอร์ `.tmp/docs-integration/` ถูก upload เป็น artifact (14 วัน; ข้อมูลสังเคราะห์เท่านั้น) ทริกเกอร์: `pull_request` เข้า `main` เมื่อแตะ `apps/**`, `packages/shared/**`, `tools/docs-integration.*`; `workflow_dispatch`; และ `push` บน `docs-qa/doc-11-**` เพื่อพิสูจน์ job นี้เอง (ถอดได้เมื่อ branch รวม merge) — job นี้ **เพิ่ม** check ใหม่ ไม่แก้ job เดิม ไม่ทำ job ใดเป็น non-blocking
+
 ## จุดเริ่มต้นต่อ domain
 
 | งาน | เริ่มดูที่ | หมายเหตุ |
@@ -107,10 +116,11 @@ describe('DOC-01 receipts', () => {
 | DOC-08 50 ทวิเงินปันผล/ทะเบียนผู้รับ | `modules/equity` | ผู้ออก FINANCE |
 | DOC-09 จดหมายติดตามหนี้ | `modules/overdue/letter-pdf.service.ts`, `contract-letter.service.ts`, `letter-document-access.guard.ts`; `e2e/letter-documents.e2e-spec.ts` (spy renderer — ห้ามที่นี่) | ไฟล์เดิมใน storage ต้องได้ bytes เดิม; download ต้องไม่ mark printed — ทำแล้วใน `letters.docs-spec.ts` + `letters.browser.docs-spec.ts` (พิมพ์รวม 52 ฉบับ, ไฟล์เดิม/outage ผ่าน `startStoredFileServer()`) |
 | DOC-10 Collections Report | `modules/reporting/pdf-report.service.ts` (jsPDF ไม่ใช่ Chromium), `pages/CollectionsPage/hooks/usePdfExport.ts` | บันทึก `renderer: 'jspdf'`; ห้ามเรียก weekly e-mail dispatch — ทำแล้วใน `collections-report.docs-spec.ts` + `collections-report.browser.docs-spec.ts` (ช่วงวันที่เฉพาะส่วน Recovery; ส่วนอื่นเป็นหน้าต่าง 30/90 วันถึงวันนี้) |
+| สติกเกอร์ 50×30 mm (regression, DOC-11) | `pages/StickerPrintPage.tsx` (พิมพ์ผ่านเบราว์เซอร์ `@page { size: 50mm 30mm }`), `modules/stickers` | `stickers.browser.docs-spec.ts`: หน้า `/stickers?productIds=` → print media → `page.pdf({ preferCSSPageSize })` → หนึ่งหน้า 141.73 × 85.04 pt ต่อสติกเกอร์, ฟอนต์ THSarabunPSK, รุ่นบนทุกใบ, ไม่มีข้อความนอกหน้า — ไม่ assert ราคา/ถ้อยคำ (branch นี้เก่ากว่า PR #1575 sticker-from-product) |
 
 ## สิ่งที่ชุดนี้ยังไม่รับรอง
 
-- หน้าจอเว็บ/ปุ่มดาวน์โหลดจริงในเบราว์เซอร์ (Playwright web e2e และงาน DOC-11)
-- native PDF viewer, เครื่องพิมพ์จริง, ระยะขอบบนกระดาษ (DOC-12)
+- หน้าจอเว็บ/ปุ่มดาวน์โหลดจริง **ครอบแล้วบางส่วน** ด้วย `*.browser.docs-spec.ts` (Chromium headless ผ่าน Playwright บนแอปเว็บจริง) — สิ่งที่ยังไม่ครอบคือ native PDF viewer ใน iframe และ print dialog ของ OS (แต่ละ domain ประกาศใน `unverified`)
+- เครื่องพิมพ์จริง, กระดาษ/สติกเกอร์จริง, ระยะขอบบนกระดาษ (DOC-12)
 - GCS/S3, signed URL, CORS, retention บน staging (DOC-13)
 - ข้อสังเกตจาก DOC-00: footer ของหน้า PDF ฝั่ง Chromium ถูกตรึงที่ 16px (= 12pt) ใน `DocumentRenderingService.htmlToPdf` ไม่ตาม `settings.fontSize.footer` ของ template (ต่างจาก jsPDF ฝั่งเว็บที่ใช้ค่านี้) — ยังไม่แก้ในชุดนี้ รอผู้ประสาน DOC-11 ตัดสินร่วมกับเจ้าของ

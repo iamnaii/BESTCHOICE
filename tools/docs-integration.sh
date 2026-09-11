@@ -40,9 +40,12 @@ PG_STARTED=0
 PG_ROOT=$(mktemp -d /tmp/bc-docs.XXXXXX)
 mkdir "$PG_ROOT/socket"
 cleanup() {
-  if [ "$PG_STARTED" = 1 ] && "$DOCS_PG_BIN/pg_ctl" -D "$PG_ROOT/data" -m fast -w stop >/dev/null 2>&1; then
-    if [ "${DOCS_QA_KEEP_DB:-0}" != 1 ]; then rm -rf "$PG_ROOT/data"; fi
+  if [ "$PG_STARTED" = 1 ]; then
+    "$DOCS_PG_BIN/pg_ctl" -D "$PG_ROOT/data" -m fast -w stop >/dev/null 2>&1 || true
   fi
+  # The whole scratch root goes (socket dir, init/postgres logs) unless the caller wants
+  # the database kept — earlier revisions removed only `data` and left one directory per run.
+  if [ "${DOCS_QA_KEEP_DB:-0}" != 1 ]; then rm -rf "$PG_ROOT"; fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -61,7 +64,19 @@ for variable in LINE_CHANNEL_ACCESS_TOKEN LINE_CHANNEL_SECRET LINE_FINANCE_CHANN
   PAYSOLUTIONS_MERCHANT_ID PAYSOLUTIONS_SECRET_KEY PAYSOLUTIONS_API_KEY GCS_BUCKET S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY CLOUDFLARE_TURNSTILE_SECRET; do
   export "$variable="
 done
-export PUPPETEER_EXECUTABLE_PATH=${PUPPETEER_EXECUTABLE_PATH:-$(node tools/docs-integration.mjs chromium)}
+if ! CHROMIUM=$(node tools/docs-integration.mjs chromium 2>/dev/null); then
+  # A clean checkout (CI) has no browser yet: install Playwright's Chromium once when asked to.
+  if [ "${DOCS_QA_INSTALL_CHROMIUM:-0}" = 1 ]; then
+    (cd apps/web && npx --yes playwright install chromium) >"$OUT/chromium-install.log" 2>&1 || { tail -30 "$OUT/chromium-install.log"; exit 1; }
+    CHROMIUM=$(node tools/docs-integration.mjs chromium)
+  else
+    node tools/docs-integration.mjs chromium; exit 1
+  fi
+fi
+export PUPPETEER_EXECUTABLE_PATH=$CHROMIUM
+# `import()` inside CommonJS test code (Nest's FileTypeValidator loads the ESM `file-type`) needs
+# the vm-modules flag under Jest; without it every multipart upload answers 400 in the suite.
+export NODE_OPTIONS="${NODE_OPTIONS:-} --experimental-vm-modules"
 
 if [ "${DOCS_QA_SKIP_PREPARE:-0}" != 1 ]; then
   npm run build --workspace=@installment/shared >"$OUT/prepare.log" 2>&1

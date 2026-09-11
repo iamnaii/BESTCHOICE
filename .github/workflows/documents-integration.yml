@@ -1,0 +1,94 @@
+name: Documents integration
+
+# DOC-11 (#1570): the documents acceptance suite (DOC-01 … DOC-10 + contract/PDPA + sticker
+# regression) from a clean checkout — real AppModule, real guards, real renderers, browser
+# scenarios in headless Chromium — on a disposable PostgreSQL 16 cluster created by the run
+# itself (private unix socket, session timezone UTC like production) with local storage.
+#
+# Nothing here reads a repository secret: tools/docs-integration.sh pins every outbound
+# provider credential to '' and the harness refuses any DATABASE_URL that is not its own
+# bc_docs_* database. No deploy, no message is sent. The job is blocking like the other
+# test workflows; it adds a check and changes none of the existing ones.
+#
+# Output (.tmp/docs-integration/<run-id>/): run.json, manifest.json (coverage map, evidence
+# layers), artifact-checks.json (every PDF parsed: page box, fonts, bounds, blank pages),
+# summary.md (also appended to the job summary) plus the PDF/PNG/JSON artifacts per domain.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'packages/shared/**'
+      - 'tools/docs-integration.*'
+      - 'tools/local-preview.mjs'
+      - '.github/workflows/documents-integration.yml'
+  push:
+    # Lets the DOC-11 branch prove the job itself runs; drop once the epic branch merges.
+    branches: ['docs-qa/doc-11-**']
+  workflow_dispatch:
+
+concurrency:
+  group: documents-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  documents:
+    name: PDF documents (API + browser, disposable PostgreSQL)
+    runs-on: ubuntu-latest
+    # Local full run: ~6 min for 7 suites; CI machines are slower and install Chromium/Postgres first.
+    timeout-minutes: 45
+    env:
+      # Same job-level heap ceiling as e2e-tests.yml — the API build alone needs it.
+      NODE_OPTIONS: --max-old-space-size=6144
+      # Playwright's Chromium (installed below) serves both Puppeteer (server renderers) and
+      # Playwright (browser scenarios); skip Puppeteer's own download during npm ci.
+      PUPPETEER_SKIP_DOWNLOAD: '1'
+      DOCS_PG_BIN: /usr/lib/postgresql/16/bin
+      DOCS_QA_INSTALL_CHROMIUM: '1'
+      DOCS_QA_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: PostgreSQL 16 + pgvector (initdb binaries for the disposable cluster)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-16 postgresql-16-pgvector
+          # The package starts a system cluster on 5432; the harness never uses it.
+          sudo systemctl stop postgresql || true
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Chromium (Playwright) with system libraries
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+
+      - name: Documents integration (every domain)
+        run: npm run docs:check
+
+      - name: Job summary
+        if: always()
+        run: |
+          for f in .tmp/docs-integration/*/summary.md; do
+            [ -f "$f" ] && cat "$f" >> "$GITHUB_STEP_SUMMARY"
+          done
+          true
+
+      - name: Upload run output (PDF / PNG / JSON evidence, synthetic data only)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: documents-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .tmp/docs-integration/
+          retention-days: 14
+          if-no-files-found: warn

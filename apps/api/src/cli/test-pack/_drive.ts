@@ -346,10 +346,15 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         select: { id: true },
       });
       if (!customer) return 'ข้าม — ไม่พบลูกค้าทดสอบ (รันโดเมน contracts ก่อน)';
+      const salesperson = await ctx.prisma.user.findUniqueOrThrow({
+        where: { id: ctx.refs.salespersonId }, select: { branchId: true },
+      });
+      if (!salesperson.branchId) return 'ข้าม — พนักงานขายทดสอบยังไม่ได้ผูกสาขา';
       const product = await ctx.prisma.product.findFirst({
         where: {
           imeiSerial: { startsWith: TEST_IMEI_PREFIX },
           status: 'IN_STOCK',
+          branchId: salesperson.branchId,
           deletedAt: null,
         },
         orderBy: { imeiSerial: 'asc' },
@@ -374,7 +379,7 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
       // role จริงของ actor — resolveRefs หา salespersonId ด้วย where { role: 'SALES' }.
       // ห้ามส่ง OWNER: DiscountPolicy ใช้ role คู่นี้ตัดสินเพดานส่วนลด/ผู้อนุมัติคนที่สอง/
       // cost floor — ส่ง role เกินจริง = มอบอำนาจ OWNER ให้พนักงานขายทันทีที่ใครเติม discount
-      const sale = await sales.create(dto, ctx.refs.salespersonId, 'SALES');
+      const sale = await sales.create(dto, ctx.refs.salespersonId, 'SALES', salesperson.branchId);
       const row = await ctx.prisma.sale.findUnique({
         where: { id: sale.id },
         select: { saleNumber: true },
@@ -391,10 +396,15 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         select: { id: true },
       });
       if (!customer) return 'ข้าม — ไม่พบลูกค้าทดสอบ (รันโดเมน contracts ก่อน)';
+      const salesperson = await ctx.prisma.user.findUniqueOrThrow({
+        where: { id: ctx.refs.salespersonId }, select: { branchId: true },
+      });
+      if (!salesperson.branchId) return 'ข้าม — พนักงานขายทดสอบยังไม่ได้ผูกสาขา';
       const product = await ctx.prisma.product.findFirst({
         where: {
           imeiSerial: { startsWith: TEST_IMEI_PREFIX },
           status: 'IN_STOCK',
+          branchId: salesperson.branchId,
           deletedAt: null,
         },
         orderBy: { imeiSerial: 'asc' },
@@ -430,7 +440,7 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         notes: testNote('ขายผ่านไฟแนนซ์ภายนอกจากโหมดเดินเรื่อง'),
       };
       // role จริงของ actor (เหตุผลเดียวกับก้าวขายสด — DiscountPolicy อ่าน role นี้)
-      const sale = await sales.create(dto, ctx.refs.salespersonId, 'SALES');
+      const sale = await sales.create(dto, ctx.refs.salespersonId, 'SALES', salesperson.branchId);
       const row = await ctx.prisma.sale.findUnique({
         where: { id: sale.id },
         select: { saleNumber: true },
@@ -464,9 +474,7 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         booking.id,
         {
           depositMethod: 'BANK_TRANSFER',
-          // ฟิลด์นี้บังคับรหัสฝั่ง FINANCE (11-1101..1203) — JE ฝั่ง SHOP ใช้ resolver
-          // ตามวิธีรับเงินแทน (BANK_TRANSFER → S11-1201) ดูคอมเมนต์ใน payDeposit
-          depositAccountCode: '11-1201',
+          // Backend resolves the SHOP receiving bank and persists the actual account.
           notes: testNote('รับมัดจำจากโหมดเดินเรื่อง'),
         },
         actor,

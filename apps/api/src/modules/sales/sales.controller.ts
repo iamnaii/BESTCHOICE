@@ -95,9 +95,9 @@ export class SalesController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   create(
     @Body() dto: CreateSaleDto,
-    @CurrentUser() user: { id: string; role: string },
+    @CurrentUser() user: SalesReadActor,
   ) {
-    return this.salesService.create(dto, user.id, user.role);
+    return this.salesService.create(dto, user.id, user.role, user.branchId);
   }
 
   @Post(':id/void')

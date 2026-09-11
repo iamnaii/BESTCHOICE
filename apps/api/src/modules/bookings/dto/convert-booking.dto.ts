@@ -1,10 +1,11 @@
-import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
+
+import { BOOKING_PAYMENT_METHODS, DepositMethod } from './pay-deposit.dto';
 
 /**
  * Convert a PAID booking into a Sale row. The booking's depositAmount transfers
  * to Sale.downPaymentAmount automatically.
- * Phase 1: supports CASH only (takes the first item's productId as the Sale's
- * product anchor — matches the SP5 Quote→Sale convention).
+ * Supports CASH with exactly one linked physical product, quantity one.
  *
  * `collectBalance` is mandatory when `depositAmount < totalAmount`:
  *   - true  → cashier confirms collecting (totalAmount - depositAmount) at the
@@ -17,14 +18,18 @@ import { IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
  */
 export class ConvertBookingDto {
   @IsOptional()
+  @IsBoolean()
+  previouslyDamagedAcknowledged?: boolean;
+
+  @IsOptional()
   @IsEnum(['CASH'], {
     message: 'รองรับเฉพาะ CASH ในเฟสนี้ — ผ่อน/ไฟแนนซ์ภายนอกค่อยทำเฟสถัดไป',
   })
   saleType?: 'CASH';
 
   @IsOptional()
-  @IsString({ message: 'paymentMethod ต้องเป็น string' })
-  paymentMethod?: string;
+  @IsIn(BOOKING_PAYMENT_METHODS, { message: 'กรุณาเลือกวิธีรับส่วนต่างเป็นเงินสด โอนธนาคาร หรือ QR / e-Wallet' })
+  paymentMethod?: DepositMethod;
 
   @IsOptional()
   @IsBoolean({ message: 'collectBalance ต้องเป็น true/false' })

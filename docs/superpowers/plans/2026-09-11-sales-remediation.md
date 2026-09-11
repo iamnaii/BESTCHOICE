@@ -25,7 +25,7 @@
 
 ## สถานะและลำดับทำงาน
 
-แผนนี้เขียนจาก revision `dce7ae7054624a7b791fa39cb48995c901232bab` บน branch `fix/lifecycle-spec-self-approval` วันที่ 11 กันยายน 2569 เจ้าของยืนยันให้เริ่มดำเนินการแล้วด้วย `ok` ชุด A ผ่าน review/tests/local check แล้ว; ชุด B–D ยังเปิดอยู่ ดูหลักฐานและสถานะล่าสุดใน [remediation-verification.md](../../review/2026-09-11-sales/remediation-verification.md) ก่อนเริ่มแต่ละชุดตรวจ diff ใหม่เพื่อไม่ทับการแก้ของผู้อื่น
+แผนนี้เขียนจาก revision `dce7ae7054624a7b791fa39cb48995c901232bab` บน branch `fix/lifecycle-spec-self-approval` วันที่ 11 กันยายน 2569 เจ้าของยืนยันให้เริ่มดำเนินการแล้วด้วย `ok` ชุด A และ B ผ่าน review/tests/local check แล้ว; ชุด C–D ยังเปิดอยู่ ดูหลักฐานและสถานะล่าสุดใน [remediation-verification.md](../../review/2026-09-11-sales/remediation-verification.md) ก่อนเริ่มแต่ละชุดตรวจ diff ใหม่เพื่อไม่ทับการแก้ของผู้อื่น
 
 | ลำดับ | แผนย่อย | งาน | ผลส่งมอบที่ตรวจรับแยกได้ |
 |---|---|---|---|

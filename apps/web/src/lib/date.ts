@@ -128,10 +128,12 @@ export function formatThaiDateShort(input: DateInput): string {
 /**
  * DD/MM/YYYY HH:mm (พ.ศ.) — e.g. "08/04/2569 14:30"
  */
-export function formatThaiDateTime(input: DateInput): string {
+export function formatThaiDateTime(input: DateInput, timeZone?: string): string {
   const d = toDate(input);
   if (!d) return '-';
-  return `${formatThaiDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const time = timeZone ? new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d)
+    : `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${formatThaiDate(d, timeZone)} ${time}`;
 }
 
 /**
@@ -228,4 +230,20 @@ export function computeDefaultTimeRange(
   const lastDay = new Date(Date.UTC(bkkYear, bkkMonth - 1, 0)).getUTCDate();
   const lastMonthLast = `${lastYear}-${String(lastMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
   return { startDate: lastMonthFirst, endDate: lastMonthLast };
+}
+
+/** Calendar date in the business timezone, regardless of browser location. */
+export function toBangkokDateString(d: Date = new Date()): string {
+  const [year, month, day] = calendarParts(d, 'Asia/Bangkok');
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+/** Booking remains valid throughout the selected Thai calendar day. */
+export function toBangkokExpiryInstant(dateOnly: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) throw new Error('วันที่หมดอายุไม่ถูกต้อง');
+  const start = new Date(`${dateOnly}T00:00:00+07:00`);
+  if (Number.isNaN(start.getTime()) || toBangkokDateString(start) !== dateOnly) {
+    throw new Error('วันที่หมดอายุไม่ถูกต้อง');
+  }
+  return new Date(start.getTime() + 86_400_000).toISOString();
 }

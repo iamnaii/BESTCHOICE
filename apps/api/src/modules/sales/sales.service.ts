@@ -68,8 +68,8 @@ export class SalesService {
     return this.query.findOne(id, actor);
   }
 
-  async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES') {
-    return this.creation.create(dto, salespersonId, userRole);
+  async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES', userBranchId?: string | null) {
+    return this.creation.create(dto, salespersonId, userRole, userBranchId);
   }
 
   async getPosConfig() {

@@ -71,6 +71,47 @@ ORDER BY s.created_at, s.id;
 
 ## งานที่ยังไม่ปิดในแผน
 
-ชุด B (ใบจอง/มัดจำ/stock race/expiry), C (quote-create/tender/legacy/signers) และ D (รายงาน/export/pagination/role CTA/handoff/cache/UX ครบ 6 เมนู) ยังไม่ได้แก้ใน checkpoint นี้ ข้อค้นพบเหล่านั้นยังเปิดอยู่ รวมกำไรที่ขึ้นกับหน้าปัจจุบันและช่วงวันไทย จึงยังไม่ถือว่าปิดการตรวจหมวดขายทั้งหมด
+ชุด C (quote-create/tender/legacy/signers) และ D (รายงาน/export/pagination/role CTA/handoff/cache/UX ครบ 6 เมนู) ยังอยู่ระหว่างดำเนินการหลัง checkpoint ชุด B ข้อค้นพบเหล่านั้นยังเปิดอยู่ รวมกำไรที่ขึ้นกับหน้าปัจจุบันและช่วงวันไทย จึงยังไม่ถือว่าปิดการตรวจหมวดขายทั้งหมด
 
 การนำมัดจำไปใช้กับสัญญาผ่อนหรือไฟแนนซ์ยังเป็นระยะขยายตามแผน ไม่เปิดความสามารถดังกล่าวผ่านการเปลี่ยน UI ในชุด A
+
+## ชุด B: Booking integrity
+
+| งาน | ผลที่เปลี่ยน | หลักฐาน |
+|---|---|---|
+| B1 / F02 | ทุก mutation อ่านแถวหลัง PostgreSQL row lock; PAID แก้ได้เฉพาะ notes/expiry ที่ยังไม่หมดอายุ; items/deposit ตรวจยอดร่วมกัน | ก่อนแก้ 5 fail; unit + DB update↔pay, cancel↔pay, remove↔pay, JE failure rollback, item replacement rollback |
+| B2 / F03/F04, S06 | เลือกเครื่องจริงในสาขา; convert บังคับหนึ่งเครื่อง quantity1 และยอดรายการตรงเอกสาร; policy branch/stock/deleted/damaged ใช้ร่วมกับ writer; stock CAS และ Serializable ในทุก sale writer | policy12 tests; DB booking↔booking หนึ่งเครื่องสำเร็จเพียงหนึ่งใบ, retry ไม่ซ้ำ, invalid branch/damaged/legacy items ไม่สร้าง Sale/JE |
+| B3 / F08 | method รับมัดจำ/ส่วนต่างรองรับ CASH/BANK_TRANSFER/QR; backend resolve และ persist SHOP account จริง; reject compatibility account ที่ไม่ตรง; full prepay ไม่สร้าง tender ใหม่ | DB ตรวจ net cash1000 + bank9000 และสลับวิธี, full prepay QR10000, liability0, revenue10000, receipt mismatch rollback; DTO7 tests |
+| B4 / F15, S07 | ปฏิเสธเมื่อ cutoff <= now หลัง lock; pending expiry ไม่มี forfeit JE; cron เดินทุก batch และ retry เฉพาะแถวล้มเหลว; UI ยึดเวลาไทยและแสดง cutoff พร้อมเวลา | 8 tender/expiry cases ล้มเหลวก่อนแก้; DB exact cutoff/races, 501 pending + 1 posting failure, retry แล้วไม่ลงซ้ำ; date27 tests รวม impossible dates |
+
+Browser [bookings-browser-check.mjs](bookings-browser-check.mjs) ผ่าน **20 states (1440/390)**: partial/full prepay, receipt method, converted, restricted PAID editor, linked product create, legacy blocked, expired, detail503/retry. ไม่มี page-level overflow/uncaught error; dialog อยู่ใน viewport และเลื่อนเนื้อหาได้ ภาพ/ผลอยู่ `evidence/bookings/` โดยตัวเลข/POST ใน browser ถูก intercept ทั้งหมด ไม่ได้เขียนธุรกรรมจริง ส่วนบัญชี/stock/rollback ทดสอบด้วย PostgreSQL จริงแยกต่างหาก
+
+ฟอร์ม PAID ส่งเฉพาะ notes/expireDate; ล้าง notes ได้จริง; แก้ field อื่นไม่เปลี่ยน instant หมดอายุของใบเก่า การแสดง list/detail ระบุทั้งวันที่ เวลา และเวลาไทย เพื่อไม่ให้ cutoff00:00 ถูกอ่านเป็นสิ้นวันถัดไป ไม่มีการล็อกสต็อกตั้งแต่สร้างใบจอง และไม่มีการ backfill เงินเก่า
+
+ผลชุด B ล่าสุดก่อน final checkpoint:
+
+- `bookings-api-final.log`: **7 suites / 145 tests ผ่าน** (รวม DTO7 และ imported-sales จากชื่อ filter); เพิ่ม regression ยืนยัน installment Serializable และอ่าน stock ใหม่เมื่อ retry รวม policy ของแถมผิดสาขา/เสียหาย
+- `bookings-web.log`: 3 suites / 42 tests ผ่าน (forms10, original helpers5, dates27)
+- `bookings-full-db.log`: **9 suites / 112 tests ผ่าน**; booking21 tests ใช้ journal templates จริงและ disposable PostgreSQL
+- `bookings-browser.log`: 20 states ผ่าน; สังเกต mobile table มี scroll ภายใน ซึ่งอยู่ในงานจัด layout D4 ต่อ
+- `bookings-local-check.log`: **PASS — 21 checks** types/lint/builds, Web/shared/storefront tests และ managed preview เริ่มใหม่; เพิ่มเฉพาะ API regression3เคสหลังรอบนี้และ targeted tests145ผ่านแล้ว ต้องรัน local check ใหม่ตาม M1 เมื่อจบชุด C/D
+
+ปัญหา test transport ที่พิสูจน์และแก้ในชุดนี้: บน Darwin/Node24 server ที่ bind IPv6 `::` อาจใช้เลขพอร์ตเดียวกับอีก server ที่ bind IPv4 ได้ ขณะที่ Supertest สร้าง URL `127.0.0.1` เสมอ ทำให้ request ไปผิดแอปและได้501/404แบบไม่แน่นอน reviewer สร้าง synthetic proof: exact same-port ได้501จากผิด server, auto-port ทำซ้ำได้รอบ290, explicit IPv4 ผ่าน500/500 แก้ HTTP fixtures5ไฟล์ให้ `app.listen(0, '127.0.0.1')` และคง `app.close()`; full harness ผ่านแล้ว ไม่แก้ permission/domain logic เพื่อกลบ test failure
+
+### รายการใบจองเดิมสำหรับตรวจด้วยเอกสารจริง (ยังไม่ได้รัน)
+
+```sql
+SELECT b.id, b.booking_number, b.status, b.deposit_method, b.deposit_account_code,
+       b.deposit_amount, b.total_amount, b.expire_date,
+       count(i.id) AS item_count, bool_or(i.product_id IS NULL OR i.quantity <> 1) AS incompatible_item
+FROM bookings b
+LEFT JOIN booking_items i ON i.booking_id = b.id
+WHERE b.deleted_at IS NULL
+GROUP BY b.id
+HAVING b.deposit_account_code LIKE '11-%'
+    OR count(i.id) <> 1
+    OR bool_or(i.product_id IS NULL OR i.quantity <> 1)
+ORDER BY b.created_at, b.id;
+```
+
+ผล query เป็นเพียงผู้สมัครตรวจสอบ ไม่ใช่คำสั่งเปลี่ยนบัญชี/จัดสรรเงินใหม่ให้ใบเก่า

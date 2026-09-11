@@ -39,7 +39,7 @@ export class SaleCreationService {
     private warrantyNotifier: SaleWarrantyNotifierService,
   ) {}
 
-  async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES') {
+  async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES', userBranchId?: string | null) {
     const baseDiscount = dto.discount || 0;
 
     // T6-C1: loyalty redeem at POS — validate customer balance and fold the
@@ -126,13 +126,13 @@ export class SaleCreationService {
     let sale: { id: string; contractId?: string | null };
     switch (dto.saleType) {
       case 'CASH':
-        sale = await this.writer.createCashSale(dto, salespersonId, netAmount, discount);
+        sale = await this.writer.createCashSale(dto, salespersonId, netAmount, discount, { role: userRole, branchId: userBranchId });
         break;
       case 'INSTALLMENT':
-        sale = await this.writer.createInstallmentSale(dto, salespersonId, netAmount, discount, userRole);
+        sale = await this.writer.createInstallmentSale(dto, salespersonId, netAmount, discount, userRole, userBranchId);
         break;
       case 'EXTERNAL_FINANCE':
-        sale = await this.writer.createExternalFinanceSale(dto, salespersonId, netAmount, discount);
+        sale = await this.writer.createExternalFinanceSale(dto, salespersonId, netAmount, discount, { role: userRole, branchId: userBranchId });
         break;
       default:
         throw new BadRequestException('ประเภทการขายไม่ถูกต้อง');

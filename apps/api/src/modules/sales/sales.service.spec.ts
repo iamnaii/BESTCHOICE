@@ -97,7 +97,7 @@ describe('SalesService', () => {
   // ─── fixtures ──────────────────────────────────────────────────────────────
 
   const mockProduct = {
-    id: 'product-1',
+    branchId: 'branch-1', wasPreviouslyDamaged: false, id: 'product-1',
     name: 'Samsung Galaxy S25',
     brand: 'Samsung',
     model: 'Galaxy S25',
@@ -422,7 +422,7 @@ describe('SalesService', () => {
 
     it('throws BadRequestException when paymentMethod is missing', async () => {
       await expect(
-        service.create({ ...cashDto, paymentMethod: undefined }, 'user-1'),
+        service.create({ ...cashDto, paymentMethod: undefined }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -440,7 +440,7 @@ describe('SalesService', () => {
           return fn(txPrisma);
         },
       );
-      await expect(service.create(cashDto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.create(cashDto, 'user-1', 'SALES', 'branch-1')).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('marks the product SOLD_CASH after a successful cash sale', async () => {
@@ -466,7 +466,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(cashDto, 'user-1');
+      await service.create(cashDto, 'user-1', 'SALES', 'branch-1');
       expect(updateCalled).toBe(true);
     });
 
@@ -496,7 +496,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(cashDto, 'user-1');
+      await service.create(cashDto, 'user-1', 'SALES', 'branch-1');
       // Should use 0.025 from rule, not the fallback 0.03
       expect(capturedCommissionRate).toBe(0.025);
     });
@@ -525,7 +525,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(cashDto, 'user-1');
+      await service.create(cashDto, 'user-1', 'SALES', 'branch-1');
       expect(capturedCommissionRate).toBe(0.03); // hardcoded fallback
     });
 
@@ -548,7 +548,7 @@ describe('SalesService', () => {
       );
 
       await expect(
-        service.create({ ...cashDto, bundleProductIds: ['bundle-1'] }, 'user-1'),
+        service.create({ ...cashDto, bundleProductIds: ['bundle-1'] }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
@@ -571,26 +571,26 @@ describe('SalesService', () => {
 
     it('throws BadRequestException when downPayment is not provided', async () => {
       await expect(
-        service.create({ ...installmentDto, downPayment: undefined }, 'user-1'),
+        service.create({ ...installmentDto, downPayment: undefined }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException when totalMonths is not provided', async () => {
       await expect(
-        service.create({ ...installmentDto, totalMonths: undefined }, 'user-1'),
+        service.create({ ...installmentDto, totalMonths: undefined }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException when downPayment is below the minimum percentage', async () => {
       // Min is 15% of netAmount (20000) = 3000; 2500 is below that
       await expect(
-        service.create({ ...installmentDto, downPayment: 2500 }, 'user-1'),
+        service.create({ ...installmentDto, downPayment: 2500 }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException when totalMonths is out of range', async () => {
       await expect(
-        service.create({ ...installmentDto, totalMonths: 3 }, 'user-1'),
+        service.create({ ...installmentDto, totalMonths: 3 }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -632,7 +632,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(installmentDto, 'user-1');
+      await service.create(installmentDto, 'user-1', 'SALES', 'branch-1');
 
       expect(contractCreated).toBe(true);
       expect(paymentsCreated).toBe(true);
@@ -662,7 +662,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(installmentDto, 'user-1');
+      await service.create(installmentDto, 'user-1', 'SALES', 'branch-1');
       expect(interCompanyService.createFromSaleInTx).toHaveBeenCalled();
     });
 
@@ -696,7 +696,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(installmentDto, 'user-1');
+      await service.create(installmentDto, 'user-1', 'SALES', 'branch-1');
       expect(financeReceivableCreated).toBe(true);
     });
   });
@@ -720,7 +720,7 @@ describe('SalesService', () => {
 
     it('throws BadRequestException when financeCompany is not provided', async () => {
       await expect(
-        service.create({ ...extFinanceDto, financeCompany: undefined }, 'user-1'),
+        service.create({ ...extFinanceDto, financeCompany: undefined }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -749,7 +749,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(extFinanceDto, 'user-1');
+      await service.create(extFinanceDto, 'user-1', 'SALES', 'branch-1');
       expect(productStatus).toBe('SOLD_INSTALLMENT');
     });
 
@@ -780,7 +780,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(extFinanceDto, 'user-1');
+      await service.create(extFinanceDto, 'user-1', 'SALES', 'branch-1');
 
       expect(financeReceivableArgs).toBeDefined();
       expect(financeReceivableArgs?.financeCompany).toBe('GFIN');
@@ -801,7 +801,7 @@ describe('SalesService', () => {
         },
       );
 
-      await expect(service.create(extFinanceDto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.create(extFinanceDto, 'user-1', 'SALES', 'branch-1')).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
@@ -849,21 +849,21 @@ describe('SalesService', () => {
     it('rejects a SALES discount above 5%', async () => {
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        service.create(cashDto({ discount: 1200 }) as any, 'sp-1', 'SALES'),
+        service.create(cashDto({ discount: 1200 }) as any, 'sp-1', 'SALES', 'branch-1'),
       ).rejects.toThrow(/เกินขีดจำกัด 5%/);
     });
 
     it('rejects a BRANCH_MANAGER discount above 15%', async () => {
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        service.create(cashDto({ discount: 3100 }) as any, 'bm-1', 'BRANCH_MANAGER'),
+        service.create(cashDto({ discount: 3100 }) as any, 'bm-1', 'BRANCH_MANAGER', 'branch-1'),
       ).rejects.toThrow(/เกินขีดจำกัด 15%/);
     });
 
     it('rejects a 12% BRANCH_MANAGER discount without a second approver', async () => {
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        service.create(cashDto({ discount: 2400 }) as any, 'bm-1', 'BRANCH_MANAGER'),
+        service.create(cashDto({ discount: 2400 }) as any, 'bm-1', 'BRANCH_MANAGER', 'branch-1'),
       ).rejects.toThrow(/ต้องมีผู้อนุมัติเพิ่มเติม/);
     });
 
@@ -875,7 +875,7 @@ describe('SalesService', () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           cashDto({ discount: 5000, secondApproverId: 'fm-1' }) as any,
           'bm-1',
-          'BRANCH_MANAGER',
+          'BRANCH_MANAGER', 'branch-1',
         ),
       ).rejects.toThrow(/เกินขีดจำกัด 15%/);
     });
@@ -883,7 +883,7 @@ describe('SalesService', () => {
     it('allows OWNER unlimited discount (strategic / dead stock clearance)', async () => {
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        service.create(cashDto({ discount: 10000 }) as any, 'owner-1', 'OWNER'),
+        service.create(cashDto({ discount: 10000 }) as any, 'owner-1', 'OWNER', 'branch-1'),
       ).rejects.not.toThrow(/เกินขีดจำกัด|ต่ำกว่าขั้นต่ำ|ต้องมีผู้อนุมัติ/);
     });
   });
@@ -910,7 +910,7 @@ describe('SalesService', () => {
     it('rejects sale when acknowledgement flag missing', async () => {
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        service.create(cashDto() as any, 'owner-1', 'OWNER'),
+        service.create(cashDto() as any, 'owner-1', 'OWNER', 'branch-1'),
       ).rejects.toThrow(/previouslyDamagedAcknowledged/);
     });
 
@@ -920,7 +920,7 @@ describe('SalesService', () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           cashDto({ previouslyDamagedAcknowledged: true }) as any,
           'sp-1',
-          'SALES',
+          'SALES', 'branch-1',
         ),
       ).rejects.toThrow(/OWNER \/ FINANCE_MANAGER/);
     });
@@ -931,7 +931,7 @@ describe('SalesService', () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           cashDto({ previouslyDamagedAcknowledged: true }) as any,
           'bm-1',
-          'BRANCH_MANAGER',
+          'BRANCH_MANAGER', 'branch-1',
         ),
       ).rejects.toThrow(/OWNER \/ FINANCE_MANAGER/);
     });
@@ -942,7 +942,7 @@ describe('SalesService', () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           cashDto({ previouslyDamagedAcknowledged: true }) as any,
           'owner-1',
-          'OWNER',
+          'OWNER', 'branch-1',
         ),
       ).rejects.not.toThrow(/previouslyDamagedAcknowledged|OWNER \/ FINANCE_MANAGER/);
     });

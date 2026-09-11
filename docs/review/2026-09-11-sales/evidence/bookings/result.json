@@ -1,0 +1,202 @@
+{
+  "origin": "http://localhost:5207",
+  "scope": "Real UI; synthetic booking/product responses; intercepted writes; actual money/stock covered by disposable PostgreSQL tests",
+  "results": [
+    {
+      "name": "paid-balance",
+      "width": 1440,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "converted",
+      "width": 1440,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "pending-deposit",
+      "width": 1440,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "paid-restricted-edit",
+      "width": 1440,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "fully-prepaid",
+      "width": 1440,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "legacy-items-blocked",
+      "width": 1440,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "expired",
+      "width": 1440,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "detail-error",
+      "width": 1440,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "detail-recovered",
+      "width": 1440,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "create-linked-device",
+      "width": 1440,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "paid-balance",
+      "width": 390,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "converted",
+      "width": 390,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "pending-deposit",
+      "width": 390,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "paid-restricted-edit",
+      "width": 390,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "fully-prepaid",
+      "width": 390,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "legacy-items-blocked",
+      "width": 390,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "expired",
+      "width": 390,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "detail-error",
+      "width": 390,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "detail-recovered",
+      "width": 390,
+      "overflow": false,
+      "dialogFitsViewport": true
+    },
+    {
+      "name": "create-linked-device",
+      "width": 390,
+      "overflow": false,
+      "dialogFitsViewport": true
+    }
+  ],
+  "submitted": [
+    {
+      "width": 1440,
+      "path": "/bookings/synthetic-booking/convert",
+      "method": "POST",
+      "body": {
+        "saleType": "CASH",
+        "collectBalance": true,
+        "paymentMethod": "BANK_TRANSFER"
+      }
+    },
+    {
+      "width": 1440,
+      "path": "/bookings/synthetic-booking/pay-deposit",
+      "method": "POST",
+      "body": {
+        "depositMethod": "BANK_TRANSFER"
+      }
+    },
+    {
+      "width": 1440,
+      "path": "/bookings",
+      "method": "POST",
+      "body": {
+        "customerId": "synthetic-customer",
+        "branchId": "synthetic-branch",
+        "expireDate": "2099-09-11T17:00:00.000Z",
+        "depositAmount": 1000,
+        "items": [
+          {
+            "description": "เครื่องตัวอย่าง · SYNTHETIC-IMEI",
+            "quantity": 1,
+            "unitPrice": 10000,
+            "productId": "synthetic-product"
+          }
+        ]
+      }
+    },
+    {
+      "width": 390,
+      "path": "/bookings/synthetic-booking/convert",
+      "method": "POST",
+      "body": {
+        "saleType": "CASH",
+        "collectBalance": true,
+        "paymentMethod": "BANK_TRANSFER"
+      }
+    },
+    {
+      "width": 390,
+      "path": "/bookings/synthetic-booking/pay-deposit",
+      "method": "POST",
+      "body": {
+        "depositMethod": "BANK_TRANSFER"
+      }
+    },
+    {
+      "width": 390,
+      "path": "/bookings",
+      "method": "POST",
+      "body": {
+        "customerId": "synthetic-customer",
+        "branchId": "synthetic-branch",
+        "expireDate": "2099-09-11T17:00:00.000Z",
+        "depositAmount": 1000,
+        "items": [
+          {
+            "description": "เครื่องตัวอย่าง · SYNTHETIC-IMEI",
+            "quantity": 1,
+            "unitPrice": 10000,
+            "productId": "synthetic-product"
+          }
+        ]
+      }
+    }
+  ]
+}

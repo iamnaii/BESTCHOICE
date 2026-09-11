@@ -1,7 +1,8 @@
+import { assertSaleProductEligible, type SaleProductActor } from './sale-product-policy';
 import { claimCreditApproval } from '../../credit-check/services/credit-approval';
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { lockCreditCustomer } from '../../credit-check/services/room-credit-history';
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { closeRepossessionOnSale } from '../../repossessions/repossession-resale.util';
 import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -31,14 +32,8 @@ import {
 /**
  * Per-sale-type transactional writers extracted from SalesService.
  *
- * Each `create*Sale` runs its own `$transaction` with EXACTLY the original
- * isolation level (cash/external = Serializable, installment = default).
- * The tx-scoped helpers (`verifyProductInStock`, `markBundleProductsSold`,
- * `resolveExternalFinanceCompanyId`) are co-located because they take the tx
- * client and must run inside the owning transaction for race-safety.
- *
- * Bodies are verbatim from the original SalesService — only `this.<dep>`
- * resolution and import paths changed.
+ * Each writer uses Serializable isolation and retries a complete transaction on
+ * conflicts. Product eligibility and stock transitions stay in that transaction.
  */
 @Injectable()
 export class SaleWriterService {
@@ -57,24 +52,10 @@ export class SaleWriterService {
    * Prisma unique-constraint violation (P2002) OR serialization failure
    * (P2034).
    *
-   * B5 (fix round 1 — widened from P2034-only): `preemptReservationsInTx`
-   * adds a `productReservation.updateMany` write-write surface inside these
-   * `$transaction` calls, raising P2034 odds under Serializable isolation
-   * (cash/external) — see `reservation-preempt.util.ts`'s doc-comment.
-   * Separately, and unrelated to preempt: `generateSaleNumber`/
-   * `generateContractNumber` (`sequence.util.ts`) have NO advisory lock —
-   * plain unlocked `findFirst(desc)` + `parseInt+1`. `createInstallmentSale`
-   * runs at default isolation (no `isolationLevel: 'Serializable'`), so two
-   * concurrent installment sales can race past that unlocked read and both
-   * try to `INSERT` the same `Contract.contractNumber`/`Sale.saleNumber`,
-   * producing a genuine P2002 — not a P2034. This is exactly the race
-   * `contract-lifecycle.service.ts`'s own P2002 branch exists for (same
-   * `contractNumber` field), and retrying is safe here for the same reason:
-   * `Sale` has no unique `idempotencyKey`, `productReservation` writes are
-   * `updateMany`-only, and the whole callback reruns on retry so a fresh
-   * number is generated each attempt — no duplicate-effect risk. Any other
-   * error (e.g. P2003, P2025, or a non-Prisma error) is NOT retried — it
-   * propagates immediately, unchanged.
+   * Stock/reservation conflicts may raise P2034. Unique document-number conflicts
+   * may raise P2002. Retrying the entire transaction revalidates stock and rolls
+   * back its money, document and reservation changes together. Other errors pass
+   * through immediately.
    */
   private async runSaleTransaction<T>(
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -127,29 +108,13 @@ export class SaleWriterService {
   private async verifyProductInStock(
     tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
     productId: string,
-    opts?: {
-      userRole?: string;
-      acknowledged?: boolean;
-    },
+    branchId: string,
+    actor: SaleProductActor,
+    acknowledged = false,
   ) {
     const product = await tx.product.findUnique({ where: { id: productId } });
-    if (!product || product.deletedAt || product.status !== 'IN_STOCK') {
-      throw new BadRequestException('สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว');
-    }
-    if (product.wasPreviouslyDamaged) {
-      const allowedRoles = ['OWNER', 'FINANCE_MANAGER'];
-      if (!opts?.acknowledged) {
-        throw new BadRequestException(
-          'สินค้านี้เคยมีสถานะ DAMAGED/LOST/WRITTEN_OFF — ต้องยืนยันว่าได้แจ้งลูกค้าแล้ว ' +
-            '(previouslyDamagedAcknowledged=true) และได้รับอนุมัติจาก OWNER/FINANCE_MANAGER',
-        );
-      }
-      if (opts.userRole && !allowedRoles.includes(opts.userRole)) {
-        throw new ForbiddenException(
-          `ขายสินค้าที่เคย DAMAGED ต้องทำโดย ${allowedRoles.join(' / ')} เท่านั้น`,
-        );
-      }
-    }
+    if (!product) throw new BadRequestException('สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว');
+    assertSaleProductEligible(product, branchId, actor, acknowledged);
     return product;
   }
 
@@ -181,17 +146,18 @@ export class SaleWriterService {
   private async markBundleProductsSold(
     tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
     bundleProductIds: string[],
+    branchId: string,
+    actor: SaleProductActor,
+    acknowledged = false,
   ) {
     if (!bundleProductIds.length) return;
     // Verify all bundle products are IN_STOCK
     const products = await tx.product.findMany({
       where: { id: { in: bundleProductIds }, deletedAt: null },
-      select: { id: true, status: true, name: true },
+      select: { id: true, status: true, name: true, branchId: true, deletedAt: true, wasPreviouslyDamaged: true },
     });
     for (const p of products) {
-      if (p.status !== 'IN_STOCK') {
-        throw new BadRequestException(`ของแถม "${p.name}" ไม่พร้อมขาย`);
-      }
+      assertSaleProductEligible(p, branchId, actor, acknowledged);
     }
     if (products.length !== bundleProductIds.length) {
       throw new BadRequestException('ไม่พบสินค้าของแถมบางรายการ');
@@ -212,7 +178,7 @@ export class SaleWriterService {
    * เป็น READY_FOR_SALE (SaleVoidService).
    */
 
-  async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
+  async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, actor: SaleProductActor = { role: 'SALES' }) {
     if (!dto.paymentMethod) throw new BadRequestException('กรุณาเลือกวิธีชำระเงิน');
 
     return this.runSaleTransaction(async (tx) => {
@@ -222,8 +188,8 @@ export class SaleWriterService {
       if (credit && !credit.net.eq(netAmount)) throw new BadRequestException('ราคาหลังโบนัสเทิร์นเปลี่ยนแล้ว กรุณาตรวจยอดอีกครั้ง');
       const cashDue = new Decimal(netAmount).minus(credit?.base ?? 0);
       if (credit && new Decimal(dto.amountReceived ?? cashDue).lt(cashDue)) throw new BadRequestException('ยอดเงินที่รับยังไม่ครบ');
-      const mainProduct = await this.verifyProductInStock(tx, dto.productId);
-      await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
+      const mainProduct = await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], dto.branchId, actor, dto.previouslyDamagedAcknowledged);
       const saleNumber = await generateSaleNumber(tx);
       const warranty = await this.resolveSaleShopWarranty(tx, mainProduct, new Date());
 
@@ -328,7 +294,8 @@ export class SaleWriterService {
     }, { isolationLevel: 'Serializable' });
   }
 
-  async createInstallmentSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, userRole = 'SALES') {
+  async createInstallmentSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, userRole = 'SALES', userBranchId?: string | null) {
+    const actor = { role: userRole, branchId: userBranchId };
     // Default planType to STORE_DIRECT (single plan type)
     if (!dto.planType) dto.planType = 'STORE_DIRECT';
     if (!dto.downPayment && dto.downPayment !== 0) throw new BadRequestException('กรุณาใส่เงินดาวน์');
@@ -382,8 +349,8 @@ export class SaleWriterService {
 
     return this.runSaleTransaction(async (tx) => {
       await lockCreditCustomer(tx, dto.customerId);
-      await this.verifyProductInStock(tx, dto.productId);
-      await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
+      await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], dto.branchId, actor, dto.previouslyDamagedAcknowledged);
       const saleNumber = await generateSaleNumber(tx);
 
       // Use provided contract number or auto-generate
@@ -541,10 +508,10 @@ export class SaleWriterService {
       });
 
       return sale;
-    });
+    }, { isolationLevel: 'Serializable' });
   }
 
-  async createExternalFinanceSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
+  async createExternalFinanceSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, actor: SaleProductActor = { role: 'SALES' }) {
     if (!dto.financeCompany) throw new BadRequestException('กรุณาใส่ชื่อบริษัทไฟแนนซ์');
 
     const rawNet = new Decimal(netAmount);
@@ -566,8 +533,8 @@ export class SaleWriterService {
     const financeAmount = financed.toNumber();
 
     return this.runSaleTransaction(async (tx) => {
-      const mainProduct = await this.verifyProductInStock(tx, dto.productId);
-      await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
+      const mainProduct = await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], dto.branchId, actor, dto.previouslyDamagedAcknowledged);
       const saleNumber = await generateSaleNumber(tx);
       const warranty = await this.resolveSaleShopWarranty(tx, mainProduct, new Date());
 

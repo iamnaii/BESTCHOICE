@@ -60,7 +60,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       product: {
         findUnique: jest.fn().mockResolvedValue({
-          id: 'p1',
+          branchId: 'br-1', id: 'p1',
           status: 'IN_STOCK',
           deletedAt: null,
           wasPreviouslyDamaged: false,
@@ -154,7 +154,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       } as any,
       'sp-1',
       10000,
-      0,
+      0, { role: 'SALES', branchId: 'br-1' },
     );
 
     expect(shopCashSaleTemplate.execute).toHaveBeenCalledTimes(1);
@@ -183,11 +183,11 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     // JE allocation block calls findMany({where:{id:{in:['p1','p2']}},...}) — return both with full data
     tx.product.findMany
       .mockResolvedValueOnce([
-        { id: 'p2', status: 'IN_STOCK', name: 'Case' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case' },
       ])
       .mockResolvedValueOnce([
-        { id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(6000), status: 'IN_STOCK', name: 'Phone' },
-        { id: 'p2', category: 'ACCESSORY', costPrice: new Decimal(400), status: 'IN_STOCK', name: 'Case' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(6000), status: 'IN_STOCK', name: 'Phone' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', category: 'ACCESSORY', costPrice: new Decimal(400), status: 'IN_STOCK', name: 'Case' },
       ]);
 
     // resolveProductAccounts returns different codes based on category
@@ -212,7 +212,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       } as any,
       'sp-1',
       1000,
-      0,
+      0, { role: 'SALES', branchId: 'br-1' },
     );
 
     expect(shopCashSaleTemplate.execute).toHaveBeenCalledTimes(2);
@@ -270,7 +270,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       } as any,
       'sp-1',
       8000,
-      0,
+      0, { role: 'SALES', branchId: 'br-1' },
     );
 
     expect(shopCashSaleTemplate.execute).toHaveBeenCalledTimes(1);
@@ -294,11 +294,11 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     // JE allocation block calls findMany({where:{id:{in:['p1','p2']}},...}) — return both with full data
     tx.product.findMany
       .mockResolvedValueOnce([
-        { id: 'p2', status: 'IN_STOCK', name: 'Case' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case' },
       ])
       .mockResolvedValueOnce([
-        { id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000), status: 'IN_STOCK', name: 'Phone' },
-        { id: 'p2', category: 'ACCESSORY', costPrice: new Decimal(0), status: 'IN_STOCK', name: 'Case' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000), status: 'IN_STOCK', name: 'Phone' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', category: 'ACCESSORY', costPrice: new Decimal(0), status: 'IN_STOCK', name: 'Case' },
       ]);
 
     shopAccountResolver.resolveProductAccounts.mockImplementation(
@@ -322,7 +322,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       } as any,
       'sp-1',
       10000,
-      0,
+      0, { role: 'SALES', branchId: 'br-1' },
     );
 
     // Main product only (p2 skipped because allocation.revenue = 0)
@@ -337,9 +337,19 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
   // (e) B5 — preempt hold ของเว็บใน tx เดียวกับที่เครื่องออกจาก IN_STOCK
   // ───────────────────────────────────────────────────────────────────────────
 
+  it.each(['foreign branch', 'previous damage'])('applies the shared eligibility policy to cash-sale bundle: %s', async scenario => {
+    tx.product.findMany.mockResolvedValue([{ id: 'bundle-1', name: 'Synthetic bundle', status: 'IN_STOCK', deletedAt: null,
+      branchId: scenario === 'foreign branch' ? 'br-2' : 'br-1', wasPreviouslyDamaged: scenario === 'previous damage' }]);
+    await expect(service.createCashSale({ saleType: 'CASH', productId: 'p1', customerId: 'c1', branchId: 'br-1', sellingPrice: 10000,
+      paymentMethod: 'CASH', bundleProductIds: ['bundle-1'], previouslyDamagedAcknowledged: true }, 'sp-1', 10000, 0,
+      { role: 'SALES', branchId: 'br-1' })).rejects.toThrow();
+    expect(tx.sale.create).not.toHaveBeenCalled();
+    expect(tx.product.updateMany).not.toHaveBeenCalled();
+  });
+
   it('(e) createCashSale: ตัด hold ของเครื่องหลัก + ของแถม ภายใน tx เดียวกัน', async () => {
     tx.product.findMany
-      .mockResolvedValueOnce([{ id: 'p2', status: 'IN_STOCK', name: 'Case' }])
+      .mockResolvedValueOnce([{ branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case' }])
       .mockResolvedValueOnce([
         { id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000) },
         { id: 'p2', category: 'ACCESSORY', costPrice: new Decimal(500) },
@@ -351,7 +361,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
         productId: 'p1', branchId: 'br-1', customerId: 'c1',
         sellingPrice: 10000, bundleProductIds: ['p2'], paymentMethod: 'CASH',
       } as any,
-      'sp-1', 10000, 0,
+      'sp-1', 10000, 0, { role: 'SALES', branchId: 'br-1' },
     );
 
     // ของแถมถูกตัดก่อน (ใน markBundleProductsSold) แล้วเครื่องหลักตามหลัง product.update
@@ -377,7 +387,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     try {
       await expect(service.createInstallmentSale({ productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
         bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH', paymentDueDay: 25 } as never,
-        'sp-1', 20000, 0)).rejects.toThrow('ต้องอนุมัติยอดผ่อน');
+        'sp-1', 20000, 0, 'SALES', 'br-1')).rejects.toThrow('ต้องอนุมัติยอดผ่อน');
       expect(tx.payment.createMany).not.toHaveBeenCalled();
     } finally { claim.mockRestore(); }
   });
@@ -397,10 +407,11 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
         productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
         bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH',
       } as any,
-      'sp-1', 20000, 0,
+      'sp-1', 20000, 0, 'SALES', 'br-1',
     );
 
     expect(tx.contract.create.mock.calls[0][0].data.financedAmount).toBe(17000);
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable' });
 
     const call = tx.productReservation.updateMany.mock.calls.at(-1)[0];
     expect(call.where.productId).toEqual({ in: ['p1'] });
@@ -419,7 +430,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
         productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 15000,
         bundleProductIds: [], financeCompany: 'GFIN', downPayment: 2000, paymentMethod: 'CASH',
       } as any,
-      'sp-1', 15000, 0,
+      'sp-1', 15000, 0, { role: 'SALES', branchId: 'br-1' },
     );
 
     const call = tx.productReservation.updateMany.mock.calls.at(-1)[0];
@@ -435,7 +446,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       saleType: 'EXTERNAL_FINANCE', productId: 'p1', branchId: 'br-1', customerId: 'c1',
       sellingPrice: 10000, financeCompany: 'TEST FINANCE', paymentMethod: 'CASH',
       downPayment, financeAmount: 10000 - downPayment,
-    }, 'sp-1', 10000, 0);
+    }, 'sp-1', 10000, 0, { role: 'SALES', branchId: 'br-1' });
     expect(tx.sale.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ amountReceived: downPayment, downPaymentAmount: downPayment }),
     }));
@@ -455,7 +466,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     await expect(service.createExternalFinanceSale({
       saleType: 'EXTERNAL_FINANCE', productId: 'p1', branchId: 'br-1', customerId: 'c1',
       sellingPrice: 10000, financeCompany: 'TEST FINANCE', paymentMethod: 'CASH', ...amounts,
-    }, 'sp-1', 10000, 0)).rejects.toBeInstanceOf(BadRequestException);
+    }, 'sp-1', 10000, 0, { role: 'SALES', branchId: 'br-1' })).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -465,9 +476,9 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     const dto = { saleType: 'EXTERNAL_FINANCE' as const, productId: 'p1', branchId: 'br-1', customerId: 'c1',
       sellingPrice: 10000.1, financeCompany: 'TEST FINANCE', paymentMethod: 'CASH' };
     await service.createExternalFinanceSale({ ...dto, downPayment: 2000.2,
-      financeAmount: 10000.1 - 2000.2 }, 'sp-1', 10000.1, 0);
+      financeAmount: 10000.1 - 2000.2 }, 'sp-1', 10000.1, 0, { role: 'SALES', branchId: 'br-1' });
     expect(tx.sale.create.mock.calls[0][0].data).toMatchObject({ amountReceived: 2000.2, financeAmount: 7999.9 });
-    await service.createExternalFinanceSale({ ...dto, downPayment: 10000.1, financeAmount: 0 }, 'sp-1', 10000.1, 0);
+    await service.createExternalFinanceSale({ ...dto, downPayment: 10000.1, financeAmount: 0 }, 'sp-1', 10000.1, 0, { role: 'SALES', branchId: 'br-1' });
     expect(tx.sale.create.mock.calls[1][0].data).toMatchObject({ amountReceived: 10000.1, financeAmount: 0 });
   });
 
@@ -504,7 +515,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
           productId: 'p1', branchId: 'br-1', customerId: 'c1',
           sellingPrice: 10000, bundleProductIds: [], paymentMethod: 'CASH',
         } as any,
-        'sp-1', 10000, 0,
+        'sp-1', 10000, 0, { role: 'SALES', branchId: 'br-1' },
       );
 
       expect(result).toEqual(mockSale);
@@ -526,11 +537,29 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
           productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
           bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH',
         } as any,
-        'sp-1', 20000, 0,
+        'sp-1', 20000, 0, 'SALES', 'br-1',
       );
 
       expect(result).toEqual(mockSale);
       expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    });
+
+    it('revalidates product stock after an installment serialization conflict', async () => {
+      tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+      tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
+      tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
+      tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+      prisma.$transaction.mockImplementationOnce(async (callback: (client: unknown) => Promise<unknown>) => {
+        await callback(tx);
+        tx.product.findUnique.mockResolvedValue({ id: 'p1', status: 'SOLD_CASH', deletedAt: null, branchId: 'br-1', wasPreviouslyDamaged: false });
+        throw p2034; // The real transaction rolls back; a competing sale won the product.
+      });
+      await expect(service.createInstallmentSale({ saleType: 'INSTALLMENT', productId: 'p1', branchId: 'br-1', customerId: 'c1',
+        sellingPrice: 20000, downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH' }, 'sp-1', 20000, 0, 'SALES', 'br-1')).rejects.toThrow(/สินค้าไม่พร้อมขาย/);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+      expect(prisma.$transaction.mock.calls.every((call: unknown[]) => (call[1] as { isolationLevel: string }).isolationLevel === 'Serializable')).toBe(true);
+      expect(tx.product.findUnique).toHaveBeenCalledTimes(2);
+      expect(tx.sale.create).toHaveBeenCalledTimes(1); // No additional sale is attempted on retry.
     });
 
     it('(j) createExternalFinanceSale: first $transaction attempt rejects P2034 → retried → succeeds', async () => {
@@ -546,7 +575,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
           productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 15000,
           bundleProductIds: [], financeCompany: 'GFIN', downPayment: 2000, paymentMethod: 'CASH',
         } as any,
-        'sp-1', 15000, 0,
+        'sp-1', 15000, 0, { role: 'SALES', branchId: 'br-1' },
       );
 
       expect(result).toEqual(mockSale);
@@ -569,7 +598,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
             productId: 'p1', branchId: 'br-1', customerId: 'c1',
             sellingPrice: 10000, bundleProductIds: [], paymentMethod: 'CASH',
           } as any,
-          'sp-1', 10000, 0,
+          'sp-1', 10000, 0, { role: 'SALES', branchId: 'br-1' },
         ),
       ).rejects.toBe(p2025);
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
@@ -584,7 +613,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
             productId: 'p1', branchId: 'br-1', customerId: 'c1',
             sellingPrice: 10000, bundleProductIds: [], paymentMethod: 'CASH',
           } as any,
-          'sp-1', 10000, 0,
+          'sp-1', 10000, 0, { role: 'SALES', branchId: 'br-1' },
         ),
       ).rejects.toBe(p2034);
       expect(prisma.$transaction).toHaveBeenCalledTimes(3);
@@ -614,7 +643,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
           productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
           bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH',
         } as any,
-        'sp-1', 20000, 0,
+        'sp-1', 20000, 0, 'SALES', 'br-1',
       );
 
       expect(result).toEqual(mockSale);

@@ -4,8 +4,8 @@ import * as Sentry from '@sentry/node';
 import { BookingsService } from './bookings.service';
 
 /**
- * P2-SP4 — Daily cron at 00:30 BKK that flips PAID bookings whose `expireDate`
- * has passed into EXPIRED status (customer forfeits the deposit, per owner's
+ * P2-SP4 — Daily cron at 00:30 BKK that flips unpaid and PAID bookings whose `expireDate`
+ * has passed into EXPIRED status (paid customers forfeit the deposit, per owner's
  * configured policy: cancel-after-expire = 0% refund).
  *
  * Time window chosen to avoid contention with the 00:01 InstallmentAccrual

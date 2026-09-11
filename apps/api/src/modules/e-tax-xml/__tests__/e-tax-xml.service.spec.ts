@@ -55,6 +55,7 @@ function makeSub(overrides: Partial<AnySub> = {}): AnySub {
 
 interface PaymentFixture {
   id: string;
+  status: 'PENDING' | 'PAID' | 'PARTIAL' | 'OVERDUE';
   paidDate: Date | null;
   installmentNo: number;
   amountPaid: Prisma.Decimal;
@@ -76,6 +77,7 @@ interface PaymentFixture {
 function makePayment(overrides: Partial<PaymentFixture> = {}): PaymentFixture {
   return {
     id: 'payment-1',
+    status: 'PAID',
     paidDate: new Date('2026-05-15T07:00:00Z'),
     installmentNo: 3,
     amountPaid: D('10700'),
@@ -284,6 +286,38 @@ describe('ETaxXmlService', () => {
       await expect(svc.generateForPayment('payment-1', 'u')).rejects.toBeInstanceOf(
         BadRequestException,
       );
+    });
+
+    // DOC-07 (#1566) regression: an unpaid schedule row (amountPaid 0, vatAmount from the
+    // schedule split) used to produce a PENDING submission with a negative taxable amount
+    // and consumed a sequential ET number.
+    it('rejects an installment that is not PAID and allocates no invoice number', async () => {
+      const { prisma, subCreate, txExecuteRaw } = buildPrismaMock({
+        existingSub: null,
+        payment: makePayment({ status: 'PENDING', paidDate: null, amountPaid: D('0') }),
+        finance: FINANCE,
+      });
+      const cfg = buildIntegrationConfigMock({});
+      const svc = new ETaxXmlService(prisma as never, cfg as never);
+
+      await expect(svc.generateForPayment('payment-1', 'u')).rejects.toThrow(
+        'รายการนี้ยังไม่ได้ชำระ — ออก e-Tax ได้เฉพาะงวดที่รับชำระแล้ว',
+      );
+      expect(subCreate).not.toHaveBeenCalled();
+      expect(txExecuteRaw).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects a PAID row without paidDate (no issue date for the XML)', async () => {
+      const { prisma, subCreate } = buildPrismaMock({
+        existingSub: null,
+        payment: makePayment({ paidDate: null }),
+        finance: FINANCE,
+      });
+      const svc = new ETaxXmlService(prisma as never, buildIntegrationConfigMock({}) as never);
+
+      await expect(svc.generateForPayment('payment-1', 'u')).rejects.toBeInstanceOf(BadRequestException);
+      expect(subCreate).not.toHaveBeenCalled();
     });
 
     it('rejects when FINANCE company is not configured', async () => {

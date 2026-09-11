@@ -78,6 +78,7 @@ export class ETaxXmlService {
       where: { id: paymentId, deletedAt: null },
       select: {
         id: true,
+        status: true,
         paidDate: true,
         installmentNo: true,
         amountPaid: true,
@@ -101,6 +102,12 @@ export class ETaxXmlService {
       },
     });
     if (!payment) throw new NotFoundException('ไม่พบรายการชำระเงิน');
+    // DOC-07 (#1566): the invoice source is a settled receipt. An unpaid schedule
+    // row has amountPaid 0, so building from it consumed a sequential ม.86/4
+    // number for an XML with a negative taxable amount.
+    if (payment.status !== 'PAID' || !payment.paidDate) {
+      throw new BadRequestException('รายการนี้ยังไม่ได้ชำระ — ออก e-Tax ได้เฉพาะงวดที่รับชำระแล้ว');
+    }
     if (!payment.vatAmount || payment.vatAmount.lte(0)) {
       throw new BadRequestException('รายการนี้ไม่มี VAT — ไม่ต้องออก e-Tax');
     }

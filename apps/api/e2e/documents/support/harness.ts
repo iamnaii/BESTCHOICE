@@ -76,6 +76,7 @@ export class Client {
   delete(path: string): request.Test { return this.prepare(request(this.server).delete(`/api${path}`)); }
   post(path: string, body: unknown = {}): request.Test { return this.prepare(request(this.server).post(`/api${path}`)).send(body as object); }
   patch(path: string, body: unknown = {}): request.Test { return this.prepare(request(this.server).patch(`/api${path}`)).send(body as object); }
+  put(path: string, body: unknown = {}): request.Test { return this.prepare(request(this.server).put(`/api${path}`)).send(body as object); }
 }
 
 function recordExternalTransports(): ExternalRecorder {

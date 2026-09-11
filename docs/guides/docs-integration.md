@@ -72,11 +72,16 @@ describe('DOC-01 receipts', () => {
 ตัวช่วยเพิ่มเติมใน `support/`
 
 - `receipts-fixtures.ts`: `createFinancedContract()` (สัญญา FINANCE 17K/12M แบบเดียวกับ CPA golden case พร้อม `installment_schedule` + `Payment` 12 งวด) · `activateContract()` (โพสต์ JE 1A ผ่าน template จริง) · `grantApprovalPermissions()` (ให้สิทธิ์อนุมัติ EARLY_PAYOFF / VOID_RECEIPT ผ่าน SystemConfig เดียวกับหน้าแอดมิน)
+- `e-tax-fixtures.ts` (DOC-07): `attachBranchToCompany()` (สาขาของ world ยังไม่มี `companyId` — e-Tax กรองสัญญาตามสาขาของนิติบุคคล) · `createVatContract()` (สัญญา 17K/12M ที่ `Payment` 12 งวดมาจาก `generatePaymentSchedule` พร้อม breakdown เหมือน `ContractQuoteService` จึงมี `vatAmount` รายงวด — ต้นทางของใบกำกับภาษี) · `createLongAddressCustomer()` · `installSyntheticRd()` (spy `RdApiClient.prototype` submit/checkStatus/ping + ปิด cron auto-submit; กำหนดผล ACCEPT/REJECT ได้) · `synthesizeCertificate()` (self-signed .p12 จาก openssl สำหรับเซ็น PKCS#7 จริง) · `SYNTHETIC_RD_CONFIG` · `bangkokYearMonth()` · `thaiInvoiceDate()`
 - `web.ts`: `startWeb(h)` เปิด Vite dev server ของ `apps/web` (config `vite.docs-qa.config.ts` proxy `/api` → API ของ run นี้) + Playwright Chromium; `web.login(page, email, password)` ล็อกอินผ่านฟอร์มจริง; `downloadBytes(download)` อ่านไฟล์ที่ปุ่มดาวน์โหลดบันทึก — ตัวอย่างเต็มใน `receipts.browser.docs-spec.ts`
 - `pdf.ts`: `contentSignature(pdf)` ใช้เทียบเอกสารที่ render ใหม่ทุกครั้ง (ใบเสร็จ) — bytes ของ Chromium ไม่นิ่งข้าม render แม้ตัด `/CreationDate`; ใช้ `sha256` ตรง ๆ เฉพาะไฟล์ที่เก็บครั้งเดียว (EDocument)
 - harness seed ผังบัญชี CPA และผู้ใช้ระบบ `admin@bestchoice.com` (JournalAutoService ใช้เป็นผู้บันทึก JE อัตโนมัติ; ล็อกอินไม่ได้) ก่อน boot ทุกครั้ง
 
 ข้อควรระวังจากงาน DOC-01: `POST /payments/record` ถูกจำกัด 5 ครั้ง/10 วิ แต่ในทางปฏิบัติ throttler ส่วนกลางกับ `UserThrottlerGuard` นับซ้ำกัน ⇒ บันทึกได้ ~2 ครั้งต่อ 10 วิ ต้องเว้นช่วง (ดู helper `pay()` ใน `receipts.docs-spec.ts`) และทุกการรับเงินต้องมี `transactionRef` หรือ slip
+
+ข้อควรระวังจากงาน DOC-07: `Payment.vatAmount` ถูกเขียนตอนสร้างตารางผ่อน (ตอนสร้างสัญญา) ไม่ใช่ตอนรับเงิน — fixture ที่สร้าง `Payment` เองโดยไม่ใส่ breakdown จะไม่ปรากฏในหน้า e-Tax เลย · ตอบกลับของ `GET /e-tax/invoices` ซ้อน envelope สองชั้น (`body.data.data`) · การรับเงินแต่ละครั้งยิง LINE ใบเสร็จ (harness บันทึกไว้ ไม่ส่ง) ให้เทียบจำนวน outbound ก่อน/หลังขั้นตอนที่พิสูจน์แทนการคาดว่าเป็นศูนย์ · **`npm run docs:check` ทั้งชุดใช้ฐานข้อมูลเดียวกันทุก domain** — world ของ spec อื่น (เช่น browser spec ของ domain เดียวกัน) อยู่ในตารางเดียวกัน จึงห้าม assert ยอด/จำนวน/เลขลำดับระดับทั้งฐาน (เช่น "ต้องเป็น ET-…-0001", `count()` ทั้งตาราง) ให้กรองด้วย `world.prefix`/สัญญาของตัวเองเสมอ (spec ที่รันเดี่ยวผ่านแต่รันรวมตกคือสัญญาณของเรื่องนี้)
+
+ข้อควรระวัง browser-print (ทุก domain): `page.pdf()` ที่ขอในเฟรมเดียวกับ `emulateMedia({ media: 'print' })` คืน PDF ที่มี layout ครบแต่ **ไม่มีข้อความเลย** (print stylesheet สลับทุก element เป็น TH Sarabun PSK) — รอ 2 `requestAnimationFrame` หลังสลับ media ก่อน `page.pdf()` แล้ว assert `pdf.fonts.length > 0`; รอ `[data-sonner-toast]` หายก่อนจับภาพ/พิมพ์ เพราะ toast ตำแหน่ง fixed ถูกพิมพ์ทุกหน้า
 
 กติกา
 
@@ -97,7 +102,7 @@ describe('DOC-01 receipts', () => {
 | DOC-04 สลิปเงินเดือน/50 ทวิรายปี | `modules/expense-documents` (payroll templates, `payroll-shop-flow.integration.spec.ts`) | ผู้ออกใช้ `CompanyInfo` FINANCE — fixture ใน `seedDocumentsWorld` สร้างไว้แล้ว |
 | DOC-05 ใบสำคัญรับเงินรายได้อื่น/สรุปรายวัน | `modules/other-income/services/receipt-pdf.service.ts`, `other-income.controller.ts` | ใช้ `company: 'FINANCE'` |
 | DOC-06 ใบรับสินทรัพย์/ทะเบียน | `modules/asset/services/asset-receipt-pdf.service.ts`, `__tests__/asset-receipt-pdf.controller.spec.ts` (mock ทั้ง service) | ทะเบียนเป็น landscape — ใช้ `page.widthPt > page.heightPt` |
-| DOC-07 ใบกำกับภาษี e-Tax | `modules/e-tax`, `modules/e-tax-xml` (`ETAX_SUBMIT_MODE=disabled` ถูกปักไว้แล้ว), เว็บ `pages/finance/ETaxPage.tsx` | ห้ามติดต่อสรรพากร; คง ACCEPTED gate |
+| DOC-07 ใบกำกับภาษี e-Tax | `modules/e-tax`, `modules/e-tax-xml` (`ETAX_SUBMIT_MODE=disabled` ถูกปักไว้แล้ว), เว็บ `pages/finance/ETaxPage.tsx` | ห้ามติดต่อสรรพากร; คง ACCEPTED gate — ทำแล้วใน `e-tax.docs-spec.ts` + `e-tax.browser.docs-spec.ts` (สรรพากรจำลองด้วย `installSyntheticRd()`, ใบรับรอง self-signed) |
 | DOC-08 50 ทวิเงินปันผล/ทะเบียนผู้รับ | `modules/equity` | ผู้ออก FINANCE |
 | DOC-09 จดหมายติดตามหนี้ | `modules/overdue/letter-pdf.service.ts`, `contract-letter.service.ts`, `letter-document-access.guard.ts`; `e2e/letter-documents.e2e-spec.ts` (spy renderer — ห้ามที่นี่) | ไฟล์เดิมใน storage ต้องได้ bytes เดิม; download ต้องไม่ mark printed |
 | DOC-10 Collections Report | `modules/reporting/pdf-report.service.ts` (jsPDF ไม่ใช่ Chromium), `pages/CollectionsPage/hooks/usePdfExport.ts` | บันทึก `renderer: 'jspdf'`; ห้ามเรียก weekly e-mail dispatch |

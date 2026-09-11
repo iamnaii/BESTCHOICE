@@ -221,9 +221,10 @@ describe('ExpenseDocumentsService.createPayroll — userId link & snapshot deriv
   describe('findOne — payroll taxId masking (read path)', () => {
     function mockFindOne() {
       prisma.expenseDocument = {
+        // findOne: docType via findUnique (unknown id → 404), then the full doc via findUniqueOrThrow.
+        findUnique: jest.fn().mockResolvedValueOnce({ documentType: 'PAYROLL', deletedAt: null, branchId: null }),
         findUniqueOrThrow: jest
           .fn()
-          .mockResolvedValueOnce({ documentType: 'PAYROLL', deletedAt: null })
           .mockResolvedValueOnce({
             documentType: 'PAYROLL',
             deletedAt: null,

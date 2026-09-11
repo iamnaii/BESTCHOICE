@@ -563,11 +563,13 @@ export class ExpenseDocumentQueryService {
   // base includes (expenseDetail / branch / approver) work for every type;
   // creditNote / payroll / settlement detail are added based on documentType.
   async findOne(id: string, viewerRole?: string | null, viewerBranchId?: string | null) {
-    // First pass to read documentType, then a typed include.
-    const docType = await this.prisma.expenseDocument.findUniqueOrThrow({
+    // First pass to read documentType, then a typed include. An unknown id is a
+    // 404, not a Prisma P2025 → 500 (GET /:id and /:id/voucher.pdf share this).
+    const docType = await this.prisma.expenseDocument.findUnique({
       where: { id },
       select: { documentType: true, deletedAt: true, branchId: true },
     });
+    if (!docType) throw new NotFoundException('ไม่พบเอกสาร');
     if (docType.deletedAt) throw new NotFoundException('เอกสารถูกลบแล้ว');
 
     // Branch scoping (คำสั่งเจ้าของ 2026-08-06 — สิทธิเห็นเงินเดือนระหว่างสาขา;

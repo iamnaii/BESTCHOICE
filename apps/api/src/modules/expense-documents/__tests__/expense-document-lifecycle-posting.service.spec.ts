@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   makeExpenseDocumentsService,
@@ -14,11 +13,8 @@ import {
  *
  * Gaps pinned here (not covered by the existing post/approve specs):
  *   1. post() routes a CREDIT_NOTE doc to creditNoteTemplate.execute(id, tx).
- *   2. post() of a PETTY_CASH_REIMBURSEMENT doc THROWS
- *      `type PETTY_CASH_REIMBURSEMENT not supported` and NEVER reaches
- *      pettyCashTemplate.execute — pins the allow-list quirk: PETTY_CASH is
- *      NOT in executePostBody's allow-list, so the later (unreachable)
- *      `if (doc.documentType === 'PETTY_CASH_REIMBURSEMENT')` branch is dead.
+ *   2. post() of a PETTY_CASH_REIMBURSEMENT doc routes to pettyCashTemplate
+ *      (allow-list fixed in DOC-03 / #1562 — it used to throw "not supported").
  *   3. approve() with auto_post_on_approve=true of a CREDIT_NOTE doc routes the
  *      auto-post chain to creditNoteTemplate.execute + writes AUTO_POSTED audit.
  *
@@ -126,16 +122,16 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
     expect(made.accrualTemplate.execute).not.toHaveBeenCalled();
   });
 
-  // GAP #2 + #5 — PETTY_CASH allow-list quirk: NOT in the allow-list, so
-  // executePostBody throws `type ... not supported` BEFORE the (dead) petty-cash
-  // branch is ever reached. Pin the THROW; pettyCashTemplate must NOT run.
-  it('post() of a PETTY_CASH_REIMBURSEMENT doc THROWS not-supported and never calls pettyCashTemplate', async () => {
+  // GAP #2 + #5 — PETTY_CASH is in the allow-list and routes to PettyCashTemplate.
+  // (Until DOC-03 / #1562 the allow-list omitted it, so POST /:id/post answered
+  // "type PETTY_CASH_REIMBURSEMENT not supported" and the petty-cash branch was dead.)
+  it('post() of a PETTY_CASH_REIMBURSEMENT doc routes to pettyCashTemplate.execute(id, tx)', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: 'pc-1',
       status: 'DRAFT',
       documentType: 'PETTY_CASH_REIMBURSEMENT',
-      paymentMethod: null,
-      depositAccountCode: null,
+      paymentMethod: 'CASH',
+      depositAccountCode: '11-1103',
       totalAmount: new Decimal('500.00'),
       withholdingTax: new Decimal('0'),
       whtFormType: null,
@@ -144,11 +140,11 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
       deletedAt: null,
     });
 
-    await expect(made.service.post('pc-1', 'user-1')).rejects.toThrow(BadRequestException);
-    await expect(made.service.post('pc-1', 'user-1')).rejects.toThrow(
-      'type PETTY_CASH_REIMBURSEMENT not supported',
-    );
-    expect(made.pettyCashTemplate.execute).not.toHaveBeenCalled();
+    await made.service.post('pc-1', 'user-1');
+
+    expect(made.pettyCashTemplate.execute).toHaveBeenCalledWith('pc-1', expect.anything());
+    expect(made.sameDayTemplate.execute).not.toHaveBeenCalled();
+    expect(made.accrualTemplate.execute).not.toHaveBeenCalled();
   });
 
   // REPAIR_SERVICE → ShopExpense (ACCRUAL mode, Cr S21-1103)

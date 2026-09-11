@@ -240,24 +240,24 @@ describe('ExpenseDocumentQueryService (read methods, via facade)', () => {
 
   describe('getAuditTrail', () => {
     function baseFindOneMock(doc: any) {
-      // findOne does two findUniqueOrThrow calls (docType then full doc).
-      const findUniqueOrThrow = jest
-        .fn()
-        .mockResolvedValueOnce({ documentType: doc.documentType ?? 'EXPENSE', deletedAt: null })
-        .mockResolvedValueOnce(doc);
-      return findUniqueOrThrow;
+      // findOne reads the docType via findUnique (unknown id → 404), then the full doc via findUniqueOrThrow.
+      return {
+        findUnique: jest.fn().mockResolvedValueOnce({ documentType: doc.documentType ?? 'EXPENSE', deletedAt: null, branchId: doc.branchId ?? null }),
+        findUniqueOrThrow: jest.fn().mockResolvedValueOnce(doc),
+      };
     }
 
     it('calls findOne (doc existence) then queries the audit log (both casings, take 50, desc)', async () => {
       const doc = { id: 'doc-1', documentType: 'EXPENSE', deletedAt: null, branchId: 'b1', payroll: null };
       const prisma = {
-        expenseDocument: { findUniqueOrThrow: baseFindOneMock(doc) },
+        expenseDocument: baseFindOneMock(doc),
         auditLog: { findMany: jest.fn().mockResolvedValue([{ id: 'log-1' }]) },
       };
       const service = makeExpenseDocumentsService({ prisma }).service;
 
       const res = await service.getAuditTrail('doc-1');
 
+      expect(prisma.expenseDocument.findUnique).toHaveBeenCalled();
       expect(prisma.expenseDocument.findUniqueOrThrow).toHaveBeenCalled();
       expect(prisma.auditLog.findMany).toHaveBeenCalledWith({
         where: {
@@ -276,7 +276,7 @@ describe('ExpenseDocumentQueryService (read methods, via facade)', () => {
     it('throws ForbiddenException for a non-cross-branch role reading another branch', async () => {
       const doc = { id: 'doc-1', documentType: 'EXPENSE', deletedAt: null, branchId: 'b1', payroll: null };
       const prisma = {
-        expenseDocument: { findUniqueOrThrow: baseFindOneMock(doc) },
+        expenseDocument: baseFindOneMock(doc),
         auditLog: { findMany: jest.fn() },
       };
       const service = makeExpenseDocumentsService({ prisma }).service;

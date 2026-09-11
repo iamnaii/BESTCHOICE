@@ -228,6 +228,10 @@ export class ExpenseVoucherPdfService {
     const netPaid = Number(netPaidDecimal);
     const thaiAmount = numberToThaiText(netPaid);
     const isVoided = doc.status === 'VOIDED';
+    // Petty cash (ใบเบิกชดเชยเงินสดย่อย) policy — same as the web print sheet
+    // (PaymentVoucherPage → PettyCashSheet): custodian instead of payee, one
+    // supplier per line, no WHT row and no formal signature grid.
+    const isPettyCash = doc.documentType === 'PETTY_CASH_REIMBURSEMENT';
 
     const lines = doc.expenseDetail?.lines ?? [];
     const linesHtml = lines
@@ -236,7 +240,9 @@ export class ExpenseVoucherPdfService {
         const unit = Number(ln.unitPrice);
         const disc = Number(ln.discount);
         const beforeVat = Number(ln.amountBeforeVat);
-        const desc = ln.description || ln.supplierName || '';
+        const desc = isPettyCash
+          ? [ln.supplierName, ln.description].filter(Boolean).join(' · ')
+          : ln.description || ln.supplierName || '';
         return `
           <tr>
             <td class="no">${idx + 1}.</td>
@@ -277,14 +283,16 @@ ${isVoided ? `<div class="void-overlay">ยกเลิก / กลับรา�
   <div class="bc-doc-brand"><div>${BESTCHOICE_LOGO_SVG}</div><p class="bc-doc-company">${safe.companyName}</p>
     <p>${safe.companyAddress}</p><p>เลขประจำตัวผู้เสียภาษี ${safe.taxId}</p>${safe.companyPhone ? `<p>โทร ${safe.companyPhone}</p>` : ''}
   </div>
-  <div class="bc-doc-identity"><h1>ใบสำคัญจ่าย</h1><p class="bc-doc-kicker">PAYMENT VOUCHER</p>
+  <div class="bc-doc-identity"><h1>${isPettyCash ? 'ใบเบิกชดเชยเงินสดย่อย' : 'ใบสำคัญจ่าย'}</h1><p class="bc-doc-kicker">${isPettyCash ? 'PETTY CASH REIMBURSEMENT' : 'PAYMENT VOUCHER'}</p>
     <div class="bc-doc-meta"><span>เลขที่เอกสาร</span><span>${safe.docNumber}</span><span>วันที่</span><span>${safe.documentDateStr}</span>${safe.taxInvoiceNo ? `<span>เลขใบกำกับ</span><span>${safe.taxInvoiceNo}</span>` : ''}</div></div></div>
-<div class="bc-doc-parties"><div><p class="bc-doc-label">ผู้รับเงิน</p><strong>${safe.payeeName}</strong>${safe.payeeTaxId ? `<p>เลขประจำตัวผู้เสียภาษี ${safe.payeeTaxId}</p>` : ''}</div><div class="bc-doc-kv"><span>วันที่จ่าย</span><span>${safe.paidAtStr}</span><span>สาขา</span><span>${safe.branchName || '-'}</span></div></div>
+<div class="bc-doc-parties"><div><p class="bc-doc-label">${isPettyCash ? 'ผู้ดูแลเงินสดย่อย' : 'ผู้รับเงิน'}</p><strong>${safe.payeeName}</strong>${safe.payeeTaxId ? `<p>เลขประจำตัวผู้เสียภาษี ${safe.payeeTaxId}</p>` : ''}</div><div class="bc-doc-kv"><span>วันที่จ่าย</span><span>${safe.paidAtStr}</span><span>สาขา</span><span>${safe.branchName || '-'}</span>${isPettyCash ? `<span>บัญชีเงินสดย่อย</span><span>${escapeHtml(doc.depositAccountCode) || '-'}</span>` : ''}</div></div>
 <table class="items"><thead><tr><th>#</th><th>รายการ / บัญชี</th><th class="right">จำนวน</th><th class="right">ราคาต่อหน่วย</th><th class="right">ส่วนลด</th><th class="right">จำนวนเงิน</th></tr></thead><tbody>${linesHtml}</tbody></table>
 ${safe.note || safe.description ? `<p class="bc-doc-note"><strong>หมายเหตุ</strong> ${safe.note || safe.description}</p>` : ''}
 <div class="bc-doc-closing"><div class="bc-doc-total-grid"><div><p class="bc-doc-label">จำนวนเงินจ่ายสุทธิ (ตัวอักษร)</p><strong>${thaiAmount}</strong></div>
-<div><div class="bc-doc-totals"><span>มูลค่าก่อนภาษี</span><span>${fmtMoney(subtotal)}</span><span>ภาษีมูลค่าเพิ่ม 7%</span><span>${fmtMoney(vatAmount)}</span><span>มูลค่ารวม</span><span>${fmtMoney(totalAmount)}</span><span>หัก ณ ที่จ่าย</span><span>${fmtMoney(whtAmount)}</span></div><div class="bc-doc-grand"><span>จำนวนเงินจ่ายสุทธิ</span><span>${fmtMoney(netPaid)} บาท</span></div></div></div>
-<div class="bc-doc-approval"><div class="bc-doc-signature"><div class="sign-space">${safe.preparerSignName}</div><strong>${safe.preparerName}</strong><p>ผู้จัดทำ</p><p class="bc-doc-kicker">${safe.documentDateStr}</p></div><div class="bc-doc-signature"><div class="sign-space">${safe.approverName ? escapeHtml((doc.approvedBy?.name || '').split(/\s+/)[0]) : '&nbsp;'}</div><strong>${safe.approverName || '&nbsp;'}</strong><p>ผู้อนุมัติ</p><p class="bc-doc-kicker">${safe.approverName ? safe.paidAtStr : '&nbsp;'}</p></div><div class="bc-doc-signature"><div class="sign-space"></div><strong>${safe.payeeName}</strong><p>ผู้รับเงิน</p><p class="bc-doc-kicker">${safe.paidAtStr}</p></div><div class="bc-doc-qr"><img src="${qrDataUrl}" alt="ตรวจสอบเอกสาร"/><p class="bc-doc-kicker">สแกนเพื่อตรวจสอบ</p></div></div><footer class="bc-doc-footer"><span>${safe.docNumber}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
+<div><div class="bc-doc-totals"><span>มูลค่าก่อนภาษี</span><span>${fmtMoney(subtotal)}</span><span>ภาษีมูลค่าเพิ่ม 7%</span><span>${fmtMoney(vatAmount)}</span><span>มูลค่ารวม</span><span>${fmtMoney(totalAmount)}</span>${isPettyCash ? '' : `<span>หัก ณ ที่จ่าย</span><span>${fmtMoney(whtAmount)}</span>`}</div><div class="bc-doc-grand"><span>จำนวนเงินจ่ายสุทธิ</span><span>${fmtMoney(netPaid)} บาท</span></div></div></div>
+${isPettyCash
+  ? `<div class="bc-doc-approval" style="grid-template-columns:minmax(0,1fr) 24mm"><div><p class="bc-doc-kicker">จัดทำโดย ${safe.preparerName} · ${safe.documentDateStr}</p></div><div class="bc-doc-qr"><img src="${qrDataUrl}" alt="ตรวจสอบเอกสาร"/><p class="bc-doc-kicker">สแกนเพื่อตรวจสอบ</p></div></div>`
+  : `<div class="bc-doc-approval"><div class="bc-doc-signature"><div class="sign-space">${safe.preparerSignName}</div><strong>${safe.preparerName}</strong><p>ผู้จัดทำ</p><p class="bc-doc-kicker">${safe.documentDateStr}</p></div><div class="bc-doc-signature"><div class="sign-space">${safe.approverName ? escapeHtml((doc.approvedBy?.name || '').split(/\s+/)[0]) : '&nbsp;'}</div><strong>${safe.approverName || '&nbsp;'}</strong><p>ผู้อนุมัติ</p><p class="bc-doc-kicker">${safe.approverName ? safe.paidAtStr : '&nbsp;'}</p></div><div class="bc-doc-signature"><div class="sign-space"></div><strong>${safe.payeeName}</strong><p>ผู้รับเงิน</p><p class="bc-doc-kicker">${safe.paidAtStr}</p></div><div class="bc-doc-qr"><img src="${qrDataUrl}" alt="ตรวจสอบเอกสาร"/><p class="bc-doc-kicker">สแกนเพื่อตรวจสอบ</p></div></div>`}<footer class="bc-doc-footer"><span>${safe.docNumber}</span><span>ออกโดยระบบ BESTCHOICE</span></footer></div>
 ${paperSpacingScript()}
 </body>
 </html>`;

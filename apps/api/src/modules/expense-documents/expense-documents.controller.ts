@@ -222,7 +222,14 @@ export class ExpenseDocumentsController {
   // wire the export-gate pattern (unlike other-income).
   @Get(':id/voucher.pdf')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  async getVoucherPdf(@Param('id') id: string, @Res() res: Response) {
+  async getVoucherPdf(
+    @Param('id') id: string,
+    @CurrentUser() user: { role?: string | null; branchId?: string | null },
+    @Res() res: Response,
+  ) {
+    // Same branch scope as GET /:id — a BRANCH_MANAGER must not fetch another
+    // branch's voucher by id (found by the DOC-03 integration scenario, #1562).
+    await this.service.findOne(id, user.role, user.branchId);
     const pdf = await this.voucherPdf.generate(id);
     res.set({
       'Content-Type': 'application/pdf',

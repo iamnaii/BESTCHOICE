@@ -32,7 +32,7 @@ export type Company = 'SHOP' | 'FINANCE';
 
 export interface Session {
   token: string;
-  user: { id: string; email: string; role: string; branchId: string | null; accessibleCompanies: string[]; primaryCompany: string | null };
+  user: { id: string; email: string; name: string; role: string; branchId: string | null; accessibleCompanies: string[]; primaryCompany: string | null };
 }
 
 export interface ClientOptions {

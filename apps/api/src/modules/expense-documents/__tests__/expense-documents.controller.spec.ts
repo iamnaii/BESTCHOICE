@@ -110,7 +110,9 @@ describe('ExpenseDocumentsController', () => {
       }),
       send: jest.fn(),
     };
-    await controller.getVoucherPdf('doc-1', res as never);
+    await controller.getVoucherPdf('doc-1', { role: 'BRANCH_MANAGER', branchId: 'br-1' }, res as never);
+    // Branch scope runs through the same findOne rule as GET /:id before rendering.
+    expect(service.findOne).toHaveBeenCalledWith('doc-1', 'BRANCH_MANAGER', 'br-1');
     expect(voucherPdf.generate).toHaveBeenCalledWith('doc-1');
     expect(headers['Content-Type']).toBe('application/pdf');
     expect(headers['Content-Disposition']).toBe(

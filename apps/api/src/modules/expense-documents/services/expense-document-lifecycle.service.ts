@@ -386,9 +386,13 @@ export class ExpenseDocumentLifecycleService {
       );
     }
 
-    // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT + REPAIR_SERVICE supported
+    // EXPENSE + CREDIT_NOTE + PAYROLL + VENDOR_SETTLEMENT + REPAIR_SERVICE +
+    // PETTY_CASH_REIMBURSEMENT supported. Petty cash was dispatched to
+    // PettyCashTemplate below but missing from this list, so POST /:id/post
+    // answered "type PETTY_CASH_REIMBURSEMENT not supported" for every petty-cash
+    // document (found by the DOC-03 integration scenario, #1562).
     if (
-      !['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT', 'REPAIR_SERVICE'].includes(
+      !['EXPENSE', 'CREDIT_NOTE', 'PAYROLL', 'VENDOR_SETTLEMENT', 'REPAIR_SERVICE', 'PETTY_CASH_REIMBURSEMENT'].includes(
         doc.documentType,
       )
     ) {

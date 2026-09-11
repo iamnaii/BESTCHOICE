@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useLinkRoomCustomer } from '../hooks/useLinkRoomCustomer';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 /**
@@ -20,7 +21,6 @@ export default function LinkCustomerDialog({
   onOpenChange: (open: boolean) => void;
   roomId: string;
 }) {
-  const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search, 400);
   const searchQuery = useQuery({
@@ -28,17 +28,11 @@ export default function LinkCustomerDialog({
     queryFn: () => api.get(`/customers/search?q=${encodeURIComponent(debounced)}`).then((r) => r.data?.data ?? r.data),
     enabled: open && debounced.trim().length >= 2,
   });
-  const link = useMutation({
-    mutationFn: (customerId: string) => api.patch(`/staff-chat/rooms/${roomId}/customer`, { customerId }),
+  const link = useLinkRoomCustomer(roomId, {
     onSuccess: () => {
       toast.success('ผูกลูกค้ากับแชทนี้แล้ว');
       onOpenChange(false);
       setSearch('');
-      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      for (const key of ['customers', 'credit-checks', 'customer-credit-checks', 'customer-latest-credit', 'customer-credit-check-latest-statement']) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
     },
     onError: () => toast.error('ผูกลูกค้าไม่สำเร็จ'),
   });

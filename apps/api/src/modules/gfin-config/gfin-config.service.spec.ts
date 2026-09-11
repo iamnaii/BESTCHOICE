@@ -33,6 +33,11 @@ describe('GfinConfigService', () => {
       product: {
         findUnique: jest.fn(),
       },
+      systemConfig: {
+        // config.util.readRawValue อ่านด้วย findFirst({ where: { key, deletedAt: null } })
+        findFirst: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
     };
     audit = { log: jest.fn() };
 
@@ -258,6 +263,125 @@ describe('GfinConfigService', () => {
 
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'GFIN_RATE_FACTOR_DELETED' }),
+      );
+    });
+  });
+
+  // ===== 2026-09-11: เรทต่อ (งวด, %คอม) + ผ่อนสูงสุดต่อกฎ OVER =====
+
+  describe('createRateFactor — shopCommissionPct', () => {
+    it('ส่ง shopCommissionPct ไป Prisma และ default 15 เมื่อไม่ระบุ', async () => {
+      prisma.gfinRateFactor.create.mockResolvedValue({ id: 'f2' });
+
+      await service.createRateFactor(
+        { months: 12, factor: 0.179238, shopCommissionPct: 5 },
+        'user-1',
+      );
+      expect(prisma.gfinRateFactor.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ months: 12, shopCommissionPct: 5 }),
+        }),
+      );
+
+      await service.createRateFactor({ months: 12, factor: 0.179238 }, 'user-1');
+      expect(prisma.gfinRateFactor.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ shopCommissionPct: 15 }) }),
+      );
+    });
+
+    it('updateRateFactor แก้ shopCommissionPct ได้', async () => {
+      prisma.gfinRateFactor.findUnique.mockResolvedValue({ id: 'f1', deletedAt: null });
+      prisma.gfinRateFactor.update.mockResolvedValue({ id: 'f1' });
+
+      await service.updateRateFactor('f1', { shopCommissionPct: 5 }, 'user-1');
+
+      expect(prisma.gfinRateFactor.update).toHaveBeenCalledWith({
+        where: { id: 'f1' },
+        data: { shopCommissionPct: 5 },
+      });
+    });
+  });
+
+  describe('overprice rule — maxMonths', () => {
+    it('createOverpriceRule ส่ง maxMonths', async () => {
+      prisma.gfinOverpriceRule.create.mockResolvedValue({ id: 'r9' });
+
+      await service.createOverpriceRule(
+        {
+          label: 'iPhone 16 มือ 1',
+          seriesPattern: 'iPhone 16',
+          condition: 'HAND_1',
+          allowance: 2000,
+          maxMonths: 15,
+        },
+        'user-1',
+      );
+
+      expect(prisma.gfinOverpriceRule.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ maxMonths: 15 }) }),
+      );
+    });
+
+    it('updateOverpriceRule ล้าง maxMonths เป็น null ได้', async () => {
+      prisma.gfinOverpriceRule.findUnique.mockResolvedValue({ id: 'r1', deletedAt: null });
+      prisma.gfinOverpriceRule.update.mockResolvedValue({ id: 'r1' });
+
+      await service.updateOverpriceRule('r1', { maxMonths: null }, 'user-1');
+
+      expect(prisma.gfinOverpriceRule.update).toHaveBeenCalledWith({
+        where: { id: 'r1' },
+        data: { maxMonths: null },
+      });
+    });
+  });
+
+  // ===== ค่าตั้งค่า GFIN (system_config gfin.*) =====
+
+  describe('gfin settings', () => {
+    it('คืนค่า default เมื่อไม่มี key ใน system_config', async () => {
+      const s = await service.getSettings();
+      expect(s).toEqual({
+        minDownPct: 25,
+        maxDownPct: 80,
+        downStepPct: 5,
+        contractFee: 100,
+        commissionPctByCategory: { PHONE: 15, TABLET: 5 },
+      });
+    });
+
+    it('อ่านค่าจาก system_config รายคีย์', async () => {
+      const values: Record<string, string> = {
+        'gfin.minDownPct': '30',
+        'gfin.commissionPct.TABLET': '7',
+        'gfin.contractFee': '150',
+      };
+      prisma.systemConfig.findFirst.mockImplementation(({ where }: { where: { key: string } }) =>
+        Promise.resolve(values[where.key] ? { value: values[where.key] } : null),
+      );
+
+      const s = await service.getSettings();
+
+      expect(s.minDownPct).toBe(30);
+      expect(s.contractFee).toBe(150);
+      expect(s.commissionPctByCategory).toEqual({ PHONE: 15, TABLET: 7 });
+    });
+
+    it('updateSettings upsert เฉพาะคีย์ที่ส่งมา + audit', async () => {
+      await service.updateSettings({ minDownPct: 35, commissionPhone: 10 }, 'user-1');
+
+      expect(prisma.systemConfig.upsert).toHaveBeenCalledTimes(2);
+      expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { key: 'gfin.minDownPct' },
+          create: expect.objectContaining({ key: 'gfin.minDownPct', value: '35' }),
+          update: expect.objectContaining({ value: '35' }),
+        }),
+      );
+      expect(prisma.systemConfig.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { key: 'gfin.commissionPct.PHONE' } }),
+      );
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'GFIN_SETTINGS_UPDATED', userId: 'user-1' }),
       );
     });
   });

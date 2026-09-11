@@ -8,6 +8,8 @@ vi.mock('@/lib/api', () => ({ default: { get: (...a: unknown[]) => get(...a) } }
 
 import { useCustomerSummary } from '../useCustomerSummary';
 import { PRODUCT_READINESS_QUERY_KEY } from '../useProductReadiness';
+import { resolveQuotes } from '../../utils/resolveQuotes';
+import { formatBaht } from '../../utils/buildCustomerSummary';
 
 // golden config เดียวกับ buildCustomerSummary.test.ts (installmentPrice 19900 → 12 งวด/2,985/2,413.20)
 const bcConfig = {
@@ -78,11 +80,63 @@ describe('useCustomerSummary', () => {
       wrapper: makeWrapper(client),
     });
 
-    await waitFor(() => expect(result.current.summaryText).toContain('ผ่อน 12 งวด'));
+    await waitFor(() => expect(result.current.summaryText).toContain('เรทที่ 1'));
     expect(result.current.summaryText).toContain('ราคาเงินสด 15,900 บาท');
     expect(result.current.summaryText).toContain(
-      'ผ่อน 12 งวด ดาวน์ 2,985 บาท งวดละ 2,413.20 บาท',
+      'เรทที่ 1 ดาวน์ 2,985 บาท ผ่อนเดือนละ 2,413.20 บาท 12 งวด',
     );
+  });
+
+  it('ส่ง quotes จากเครื่องคำนวณ → ใช้ค่าที่เลือกอยู่ (เรทที่ 1 = BESTCHOICE · เรทที่ 2 = GFIN) และห้ามมีคำว่า GFIN', async () => {
+    mockApi({ isReady: true });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const product = {
+      id: 'p-4',
+      brand: 'Apple',
+      model: 'iPhone 15',
+      storage: '128GB',
+      color: null,
+      category: 'PHONE_NEW',
+      conditionGrade: null,
+      batteryHealth: null,
+      shopWarrantyDays: null,
+      accessoriesIncluded: null,
+      cosmeticNotes: null,
+      cashPrice: '19900',
+      installmentPrice: '19900',
+      imeiSerial: null,
+      branch: { name: 'ลพบุรี' },
+      prices: [],
+    };
+    const quotes = resolveQuotes({
+      product,
+      state: { fin: 'bc', bc: { months: 10, downAmount: 5000 }, gfin: { months: null, downPct: null, commissionPct: null } },
+      bcConfig,
+      gfinTables: {
+        mappings: [
+          { id: 'm15', gfinSeries: 'iPhone 15', gfinVariant: null, storage: '128GB', condition: 'HAND_1', maxPrice: '23000', modelMatchPattern: 'iPhone 15', isActive: true },
+        ],
+        rules: [
+          { id: 'r15', label: 'iPhone 15 มือ 1', seriesPattern: 'iPhone 15', condition: 'HAND_1', allowance: '1000', maxMonths: 12, isActive: true },
+        ],
+        factors: [
+          { id: 'f12', months: 12, shopCommissionPct: 15, factor: '0.179238', feePerInstallment: '100', isActive: true },
+        ],
+        settings: { minDownPct: 25, maxDownPct: 80, downStepPct: 5, contractFee: 100, commissionPctByCategory: { PHONE: 15, TABLET: 5 } },
+      },
+    });
+
+    const { result } = renderHook(() => useCustomerSummary(product, quotes), {
+      wrapper: makeWrapper(client),
+    });
+
+    await waitFor(() => expect(result.current.summaryText).toContain('เรทที่ 2'));
+    const bcMonthly = quotes.bc!.quote.result.monthlyPayment.toNumber();
+    expect(result.current.summaryText).toContain(
+      `เรทที่ 1 ดาวน์ 5,000 บาท ผ่อนเดือนละ ${formatBaht(bcMonthly)} บาท 10 งวด`,
+    );
+    expect(result.current.summaryText).toContain('เรทที่ 2 ดาวน์ 1,900 บาท ผ่อนเดือนละ 3,327 บาท 12 งวด');
+    expect(result.current.summaryText).not.toContain('GFIN');
   });
 
   it('isReady=false → ไม่มีบรรทัด "ดูรายละเอียด" ในสรุป แม้ปุ่มคัดลอกสรุปยังใช้ได้ (fix C2)', async () => {

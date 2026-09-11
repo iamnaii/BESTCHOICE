@@ -1,16 +1,24 @@
 import { useState, useMemo } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useParams, useNavigate, Link } from 'react-router';
+import { useParams, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
-import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { Badge } from '@/components/ui/badge';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb';
 import Modal from '@/components/ui/Modal';
 import { useAuth } from '@/contexts/AuthContext';
-import { transferableStatuses } from '@/lib/constants';
-import ProductInfo from './components/ProductInfo';
+import { categoryLabels, transferableStatuses } from '@/lib/constants';
+import { getStatusBadgeProps, productStatusMap } from '@/lib/status-badges';
 import { getPositiveDisplayPrices, normalizePositive } from '@/utils/getDisplayPrices';
 import ProductPhotos from './components/ProductPhotos';
 import EditProductModal from './components/EditProductModal';
@@ -18,13 +26,21 @@ import { InstallmentCalculatorCard } from './components/InstallmentCalculatorCar
 import OnlineListingPanel from './components/OnlineListingPanel';
 import SellingPriceCard from './components/SellingPriceCard';
 import EditSellingPriceModal from './components/EditSellingPriceModal';
-import QcResultsCard from './components/QcResultsCard';
 import SameModelCard from './components/SameModelCard';
 import ActivePromotionsCard from './components/ActivePromotionsCard';
-import CustomerSummaryActions from './components/CustomerSummaryActions';
+import ProductIdentityCard from './components/ProductIdentityCard';
+import CostProfitStrip from './components/CostProfitStrip';
+import QcSummaryCard from './components/QcSummaryCard';
+import ContractSummaryCard, { type ActiveContractSummary } from './components/ContractSummaryCard';
+import ProductHeaderActions from './components/ProductHeaderActions';
 import ReturnToStockAction, { type ReturnToStockPayload } from './components/ReturnToStockAction';
+import { NoticeBox } from './components/calc/CalcRows';
 import { PRODUCT_READINESS_QUERY_KEY, useProductReadiness } from './hooks/useProductReadiness';
 import { useCustomerSummary } from './hooks/useCustomerSummary';
+import { useBcConfig } from './hooks/useBcConfig';
+import { useGfinTables } from './hooks/useGfinTables';
+import { useInstallmentCalcState } from './hooks/useInstallmentCalcState';
+import { resolveQuotes } from './utils/resolveQuotes';
 import {
   buildSellingPricePayload,
   isSellingPricePayloadEmpty,
@@ -74,17 +90,25 @@ interface Product {
   shopWarrantyDays: number | null;
   accessoriesIncluded: string[] | null;
   cosmeticNotes: string | null;
+  /** สรุปสัญญาที่ผูกกับเครื่อง — เฉพาะเครื่องขายผ่อนแล้ว (GET /products/:id → findOneDetail) */
+  activeContract: ActiveContractSummary | null;
 }
 
 type Tab = 'info' | 'photos' | 'online';
+
+const CALC_CATEGORIES = new Set(['PHONE_NEW', 'PHONE_USED', 'TABLET']);
+const SOLD_STATUSES = new Set(['SOLD_INSTALLMENT', 'SOLD_CASH', 'SOLD_RESELL']);
 
 // EditForm now lives in ./utils/buildEditProductPayload — shared with the extracted
 // pure payload-builder so its costPrice fix (final-review N2) is unit-testable without
 // rendering this page (no index.tsx-level render test exists on this branch).
 
+/**
+ * หน้ารายละเอียดสินค้า — รีดีไซน์แนว A (2026-09-11): ซ้าย ข้อมูลเครื่อง · ขวา (sticky) ราคา + ค่างวด
+ * spec: docs/superpowers/specs/2026-09-11-product-detail-redesign-design.md
+ */
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
@@ -111,6 +135,9 @@ export default function ProductDetailPage() {
   // Transfer modal state
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [transferForm, setTransferForm] = useState({ toBranchId: '', notes: '' });
+
+  // state ของเครื่องคำนวณ ยกขึ้นที่หน้า → "คัดลอกสรุปส่งลูกค้า" ใช้ค่าที่เลือกอยู่
+  const [calcState, setCalcState] = useInstallmentCalcState();
 
   const { data: product, isLoading, isError, error, refetch } = useQuery<Product>({
     queryKey: ['product', id],
@@ -143,25 +170,45 @@ export default function ProductDetailPage() {
   });
 
   // Compute profit (must be before early returns to satisfy Rules of Hooks)
-  const profit = useMemo(() => {
-    if (!product) return null;
+  const profitInfo = useMemo(() => {
+    if (!product) return { profit: null, basis: 'cash' as const, basisPrice: null };
     // Use getPositiveDisplayPrices to derive the canonical selling price (prefers
     // cashPrice/installmentPrice on Product when set; falls back to prices[] label lookup).
-    // final-review F1 (2026-08-07): was the raw getDisplayPrices — the one other display-price
-    // read on this page (besides InstallmentCalculatorCard.tsx) that hadn't been switched to
-    // the positive-normalizing variant every other site on this page already uses.
     const { installment, cash } = getPositiveDisplayPrices(product);
+    const basis = installment != null ? ('installment' as const) : ('cash' as const);
     const displayPrice = installment ?? cash;
     // costPrice ถูก strip ฝั่ง server เมื่อ role = SALES → ไม่มีทางคำนวณกำไร
     const cost = product.costPrice != null ? parseFloat(product.costPrice) : null;
-    return displayPrice != null && cost != null ? displayPrice - cost : null;
+    return {
+      profit: displayPrice != null && cost != null ? displayPrice - cost : null,
+      basis,
+      basisPrice: displayPrice ?? null,
+    };
   }, [product]);
 
   // Task 12: readiness (action-bar link gate) + customer summary (copy-to-clipboard) —
   // must be called before early returns to satisfy Rules of Hooks. Same query key as
   // useCustomerSummary's own internal useProductReadiness call, so react-query dedupes.
   const readiness = useProductReadiness(id);
-  const { summaryText, shareUrl } = useCustomerSummary(product);
+
+  const isSoldAny = !!product && SOLD_STATUSES.has(product.status);
+  const isCalcCategory = !!product && CALC_CATEGORIES.has(product.category);
+  const calcEnabled = !!product && isCalcCategory && !isSoldAny;
+  const bcConfigQuery = useBcConfig(product?.category, calcEnabled);
+  const gfinTablesQuery = useGfinTables(calcEnabled);
+  const quotes = useMemo(
+    () =>
+      product && calcEnabled
+        ? resolveQuotes({
+            product,
+            state: calcState,
+            bcConfig: bcConfigQuery.data,
+            gfinTables: gfinTablesQuery.tables,
+          })
+        : undefined,
+    [product, calcEnabled, calcState, bcConfigQuery.data, gfinTablesQuery.tables],
+  );
+  const { summaryText, shareUrl } = useCustomerSummary(product, quotes);
 
   // Selling price mutation (cashPrice/installmentPrice columns — B0/Task 7)
   // payload มาจาก buildSellingPricePayload — เฉพาะฟิลด์ที่เปลี่ยนจริงเท่านั้น (Task 11 deferred fix)
@@ -341,11 +388,26 @@ export default function ProductDetailPage() {
     setIsSellingPriceModalOpen(true);
   };
 
+  const statusCfg = getStatusBadgeProps(product.status, productStatusMap);
+  const isSoldInstallment = product.status === 'SOLD_INSTALLMENT' && !!product.activeContract;
+  const subtitleParts = [
+    product.name,
+    isSoldInstallment && product.activeContract
+      ? `ขายเมื่อ ${new Date(product.activeContract.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+      : categoryLabels[product.category] || product.category,
+    `สาขา${product.branch.name}`,
+  ];
+
   return (
     <div>
       <PageHeader
         title={`${product.brand} ${product.model}`}
-        subtitle={product.name}
+        subtitle={subtitleParts.join(' · ')}
+        badge={
+          <Badge variant={statusCfg.variant} appearance={statusCfg.appearance} size="sm">
+            {statusCfg.label}
+          </Badge>
+        }
         breadcrumb={
           <Breadcrumb>
             <BreadcrumbList>
@@ -360,50 +422,33 @@ export default function ProductDetailPage() {
           </Breadcrumb>
         }
         action={
-          <div className="flex gap-2 flex-wrap">
-            <CustomerSummaryActions
-              summaryText={summaryText}
-              shareUrl={shareUrl}
-              isReady={readiness.data?.isReady ?? false}
-            />
-            <ReturnToStockAction
-              status={product.status}
-              canManage={isManager}
-              isPending={returnToStockMutation.isPending}
-              // ราคาที่ค้างบนเครื่อง = ราคาจากตอนขายครั้งก่อน — ใช้ display price ชุดเดียว
-              // กับการ์ดราคาบนหน้านี้ (คอลัมน์ก่อน ไม่มีค่อย fallback prices[])
-              currentCashPrice={displayCashPrice ?? null}
-              currentInstallmentPrice={displayInstallmentPrice ?? null}
-              // แถวราคาที่ค้างอยู่ — ราคาที่ยืนยันไม่ได้ทับทุกแถว (fix round 3, Minor 3)
-              prices={product.prices}
-              onConfirm={(payload) => returnToStockMutation.mutate(payload)}
-            />
-            {isManager && (
-              <button
-                onClick={openEditProduct}
-                className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-              >
-                แก้ไขข้อมูล
-              </button>
-            )}
-            {isManager && transferableStatuses.includes(product.status) && (
-              <button
-                onClick={() => {
-                  setTransferForm({ toBranchId: '', notes: '' });
-                  setIsTransferModalOpen(true);
-                }}
-                className="px-4 py-2 text-sm text-primary border border-input rounded-lg hover:bg-muted/50"
-              >
-                โอนสาขา
-              </button>
-            )}
-            <button
-              onClick={() => navigate('/products')}
-              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground border border-input rounded-lg"
-            >
-              กลับ
-            </button>
-          </div>
+          <ProductHeaderActions
+            product={product}
+            isManager={isManager}
+            isReady={readiness.data?.isReady ?? false}
+            summaryText={summaryText}
+            shareUrl={shareUrl}
+            canTransfer={isManager && transferableStatuses.includes(product.status)}
+            onEdit={openEditProduct}
+            onTransfer={() => {
+              setTransferForm({ toBranchId: '', notes: '' });
+              setIsTransferModalOpen(true);
+            }}
+            returnToStock={
+              <ReturnToStockAction
+                status={product.status}
+                canManage={isManager}
+                isPending={returnToStockMutation.isPending}
+                // ราคาที่ค้างบนเครื่อง = ราคาจากตอนขายครั้งก่อน — ใช้ display price ชุดเดียว
+                // กับการ์ดราคาบนหน้านี้ (คอลัมน์ก่อน ไม่มีค่อย fallback prices[])
+                currentCashPrice={displayCashPrice ?? null}
+                currentInstallmentPrice={displayInstallmentPrice ?? null}
+                // แถวราคาที่ค้างอยู่ — ราคาที่ยืนยันไม่ได้ทับทุกแถว (fix round 3, Minor 3)
+                prices={product.prices}
+                onConfirm={(payload) => returnToStockMutation.mutate(payload)}
+              />
+            }
+          />
         }
       />
 
@@ -456,39 +501,66 @@ export default function ProductDetailPage() {
         <OnlineListingPanel product={product} canEdit={isManager} />
       )}
 
-      {/* Tab: Info */}
+      {/* Tab: Info — แนว A: ซ้าย ข้อมูลเครื่อง · ขวา (sticky) ราคา + ค่างวด · จอแคบ ขวาขึ้นก่อน */}
       {activeTab === 'info' && (
-        <>
-          <SellingPriceCard
-            cashPrice={displayCashPrice}
-            installmentPrice={displayInstallmentPrice}
-            priceAutofilledAt={product.priceAutofilledAt}
-            cashIsFallback={cashIsFallback}
-            installmentIsFallback={installmentIsFallback}
-            canEdit={isManager}
-            onEdit={openSellingPriceModal}
-          />
-          <ProductInfo
-            product={product}
-            isManager={isManager}
-            canSeeCost={canSeeCost}
-            profit={profit}
-          />
-          {product.inspection && <QcResultsCard inspectionId={product.inspection.id} />}
-          {(product.category === 'PHONE_NEW' || product.category === 'PHONE_USED') && (
-            <div className="mt-6">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start">
+          <div className="order-2 space-y-5 lg:order-1">
+            <ProductIdentityCard
+              product={product}
+              onGoPhotos={() => setActiveTab(product.category === 'PHONE_USED' ? 'photos' : 'online')}
+            />
+            {product.inspection && <QcSummaryCard inspection={product.inspection} />}
+            <CostProfitStrip
+              canSeeCost={canSeeCost}
+              costPrice={product.costPrice}
+              profit={profitInfo.profit}
+              profitBasis={profitInfo.basis}
+              basisPrice={profitInfo.basisPrice}
+            />
+            <div className="grid gap-5 md:grid-cols-2">
+              <SameModelCard productId={product.id} model={product.model} storage={product.storage} />
+              {!isSoldAny && <ActivePromotionsCard />}
+            </div>
+          </div>
+
+          <div className="order-1 space-y-5 lg:order-2 lg:sticky lg:top-[76px]">
+            <SellingPriceCard
+              cashPrice={displayCashPrice}
+              installmentPrice={displayInstallmentPrice}
+              priceAutofilledAt={product.priceAutofilledAt}
+              cashIsFallback={cashIsFallback}
+              installmentIsFallback={installmentIsFallback}
+              canEdit={isManager}
+              onEdit={openSellingPriceModal}
+              readiness={
+                readiness.data
+                  ? { isReady: readiness.data.isReady, checks: readiness.data.checks }
+                  : null
+              }
+              onGoOnline={() => setActiveTab('online')}
+              legacyPrices={product.prices}
+            />
+            {isSoldInstallment && product.activeContract ? (
+              <ContractSummaryCard contract={product.activeContract} />
+            ) : isSoldAny ? (
+              <NoticeBox>
+                เครื่องนี้{statusCfg.label}แล้ว — ไม่มีเครื่องคำนวณค่างวด
+                {product.status === 'SOLD_INSTALLMENT' ? ' (ไม่พบสัญญาที่ผูกกับเครื่อง)' : ''}
+              </NoticeBox>
+            ) : isCalcCategory && quotes ? (
               <InstallmentCalculatorCard
                 product={product}
+                state={calcState}
+                quotes={quotes}
+                onChange={setCalcState}
                 onEditPrice={openSellingPriceModal}
                 canEditPrice={isManager}
+                gfinSettings={gfinTablesQuery.tables?.settings}
+                loading={bcConfigQuery.isLoading || gfinTablesQuery.isLoading}
               />
-            </div>
-          )}
-          <div className="grid gap-5 lg:grid-cols-2 mt-6">
-            <SameModelCard productId={product.id} model={product.model} storage={product.storage} />
-            <ActivePromotionsCard />
+            ) : null}
           </div>
-        </>
+        </div>
       )}
 
       {/* Edit Selling Price Modal */}

@@ -228,8 +228,8 @@ export function StockReceivedDate({ product }: { product: StockProduct }) {
     ['IN_STOCK', 'RESERVED'].includes(product.status) &&
     receivedAt.getTime() <= now;
   return (
-    <div className="space-y-1 whitespace-nowrap tabular-nums leading-snug">
-      <time dateTime={product.stockInDate!} className="text-sm">
+    <div className="space-y-1 tabular-nums leading-snug">
+      <time dateTime={product.stockInDate!} className="whitespace-nowrap text-sm">
         {receivedDate}
       </time>
       {showAge && (

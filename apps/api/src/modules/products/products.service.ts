@@ -46,6 +46,10 @@ interface AccessorySkuRow {
   last_cost: unknown;
 }
 import { evaluateReadiness } from '../../utils/product-readiness.util';
+import {
+  toActiveContractSummary,
+  type ActiveContractSummary,
+} from './products-active-contract.util';
 
 const productInclude = {
   /**
@@ -145,6 +149,39 @@ export class ProductsService {
     });
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
     return product;
+  }
+
+  /**
+   * GET /products/:id — เหมือน findOne + สรุปสัญญาที่ผูกกับเครื่อง (`activeContract`) เฉพาะเครื่องที่
+   * ขายผ่อนแล้ว: หน้ารายละเอียดใช้แสดงการ์ดสัญญาแทนเครื่องคำนวณค่างวด (spec 2026-09-11 §4)
+   * แยกจาก findOne เพราะ update/returnToStock/ด่านต่าง ๆ เรียก findOne ภายในและไม่ต้องการ query เพิ่ม
+   */
+  async findOneDetail(id: string) {
+    const product = await this.findOne(id);
+    const activeContract =
+      product.status === 'SOLD_INSTALLMENT' ? await this.loadActiveContract(product.id) : null;
+    return { ...product, activeContract };
+  }
+
+  private async loadActiveContract(productId: string): Promise<ActiveContractSummary | null> {
+    const row = await this.prisma.contract.findFirst({
+      where: { productId, deletedAt: null, status: { notIn: ['DRAFT', 'CANCELED'] } },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        contractNumber: true,
+        status: true,
+        createdAt: true,
+        sellingPrice: true,
+        downPayment: true,
+        totalMonths: true,
+        monthlyPayment: true,
+        customer: { select: { name: true } },
+        salesperson: { select: { name: true } },
+        payments: { where: { deletedAt: null }, select: { status: true, dueDate: true } },
+      },
+    });
+    return row ? toActiveContractSummary(row) : null;
   }
 
   async create(dto: CreateProductDto) {

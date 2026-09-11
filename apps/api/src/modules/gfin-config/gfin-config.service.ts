@@ -11,7 +11,9 @@ import {
   UpdateOverpriceRuleDto,
   CreateRateFactorDto,
   UpdateRateFactorDto,
+  UpdateGfinSettingsDto,
 } from './dto';
+import { GFIN_SETTINGS_KEYS, loadGfinSettings, type GfinSettings } from './gfin-settings.util';
 
 @Injectable()
 export class GfinConfigService {
@@ -114,6 +116,7 @@ export class GfinConfigService {
         seriesPattern: dto.seriesPattern,
         condition: dto.condition,
         allowance: new Prisma.Decimal(dto.allowance),
+        maxMonths: dto.maxMonths ?? null,
         isActive: dto.isActive ?? true,
       },
     });
@@ -136,6 +139,7 @@ export class GfinConfigService {
     if (dto.seriesPattern !== undefined) data.seriesPattern = dto.seriesPattern;
     if (dto.condition !== undefined) data.condition = dto.condition;
     if (dto.allowance !== undefined) data.allowance = new Prisma.Decimal(dto.allowance);
+    if (dto.maxMonths !== undefined) data.maxMonths = dto.maxMonths;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
     const updated = await this.prisma.gfinOverpriceRule.update({ where: { id }, data });
@@ -172,7 +176,7 @@ export class GfinConfigService {
   listRateFactors() {
     return this.prisma.gfinRateFactor.findMany({
       where: { deletedAt: null },
-      orderBy: { months: 'asc' },
+      orderBy: [{ months: 'asc' }, { shopCommissionPct: 'asc' }],
     });
   }
 
@@ -180,6 +184,7 @@ export class GfinConfigService {
     const row = await this.prisma.gfinRateFactor.create({
       data: {
         months: dto.months,
+        shopCommissionPct: dto.shopCommissionPct ?? 15,
         factor: new Prisma.Decimal(dto.factor),
         feePerInstallment:
           dto.feePerInstallment !== undefined
@@ -203,6 +208,7 @@ export class GfinConfigService {
     if (!existing || existing.deletedAt) throw new NotFoundException('ไม่พบ row นี้');
 
     const data: Prisma.GfinRateFactorUpdateInput = {};
+    if (dto.shopCommissionPct !== undefined) data.shopCommissionPct = dto.shopCommissionPct;
     if (dto.factor !== undefined) data.factor = new Prisma.Decimal(dto.factor);
     if (dto.feePerInstallment !== undefined)
       data.feePerInstallment = new Prisma.Decimal(dto.feePerInstallment);
@@ -235,6 +241,40 @@ export class GfinConfigService {
       oldValue: existing as unknown as Record<string, unknown>,
     });
     return updated;
+  }
+
+  // ===== ค่าตั้งค่า GFIN (system_config gfin.*) =====
+
+  getSettings(): Promise<GfinSettings> {
+    return loadGfinSettings(this.prisma);
+  }
+
+  async updateSettings(dto: UpdateGfinSettingsDto, userId: string): Promise<GfinSettings> {
+    const before = await this.getSettings();
+    const writes: Array<[string, number | undefined, string]> = [
+      [GFIN_SETTINGS_KEYS.minDownPct, dto.minDownPct, 'GFIN: % ดาวน์ขั้นต่ำที่ GFIN ตั้งให้ร้าน'],
+      [GFIN_SETTINGS_KEYS.commissionPhone, dto.commissionPhone, 'GFIN: % คอมมิชชั่นตั้งต้น มือถือ'],
+      [GFIN_SETTINGS_KEYS.commissionTablet, dto.commissionTablet, 'GFIN: % คอมมิชชั่นตั้งต้น iPad'],
+      [GFIN_SETTINGS_KEYS.contractFee, dto.contractFee, 'GFIN: ค่าทำสัญญาที่หักจากยอดโอนให้ร้าน'],
+    ];
+    for (const [key, value, label] of writes) {
+      if (value === undefined) continue;
+      await this.prisma.systemConfig.upsert({
+        where: { key },
+        create: { key, value: String(value), label },
+        update: { value: String(value), deletedAt: null },
+      });
+    }
+    const after = await this.getSettings();
+    await this.auditService.log({
+      action: 'GFIN_SETTINGS_UPDATED',
+      entity: 'system_config',
+      entityId: 'gfin',
+      userId,
+      oldValue: before as unknown as Record<string, unknown>,
+      newValue: after as unknown as Record<string, unknown>,
+    });
+    return after;
   }
 
   // ===== Match Preview (debug helper) =====

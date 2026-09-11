@@ -4,6 +4,7 @@ import { MaxPricesTab } from './MaxPricesTab';
 import { OverpriceRulesTab } from './OverpriceRulesTab';
 import { RateFactorsTab } from './RateFactorsTab';
 import { MatchPreviewPanel } from './MatchPreviewPanel';
+import { GfinSettingsPanel } from './GfinSettingsPanel';
 
 export default function GfinConfigPage() {
   const [tab, setTab] = useState('max-prices');
@@ -13,7 +14,7 @@ export default function GfinConfigPage() {
       <div>
         <h1 className="text-2xl font-semibold">ตั้งค่า GFIN</h1>
         <p className="text-sm text-muted-foreground leading-snug">
-          ตารางราคาสูงสุด, Over Price rules และค่างวดต่อจำนวนเดือนของ GFIN
+          ตารางราคาสูงสุด, Over Price rules (+ ผ่อนสูงสุด), เรทต่อ (งวด, % คอมมิชชั่น) และค่าตั้งต้นของ GFIN
         </p>
       </div>
       <Tabs value={tab} onValueChange={setTab}>
@@ -21,8 +22,12 @@ export default function GfinConfigPage() {
           <TabsTrigger value="max-prices">ราคาสูงสุด</TabsTrigger>
           <TabsTrigger value="overprice">Over Price</TabsTrigger>
           <TabsTrigger value="rate-factors">ตารางค่างวด</TabsTrigger>
+          <TabsTrigger value="settings">ค่าตั้งต้น</TabsTrigger>
           <TabsTrigger value="match-preview">ทดสอบ Match</TabsTrigger>
         </TabsList>
+        <TabsContent value="settings" className="mt-4">
+          <GfinSettingsPanel />
+        </TabsContent>
         <TabsContent value="max-prices" className="mt-4">
           <MaxPricesTab />
         </TabsContent>

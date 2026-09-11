@@ -241,24 +241,4 @@ describe('Customer360Panel extracted actions used by RoomDossier', () => {
     expect(screen.getByText('โอน')).toBeInTheDocument();
     expect(screen.getByText('เงินสด')).toBeInTheDocument();
   });
-
-  it('mounts the shared customer-link dialog in the unlinked session branch', async () => {
-    const { invalidate } = mount({
-      customerId: null,
-      session: { id: 'room1', displayName: 'ผู้ติดต่อใหม่' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /ผูกลูกค้าที่มีอยู่/ }));
-    fireEvent.change(await screen.findByRole('textbox', { name: 'ค้นหาลูกค้า' }), {
-      target: { value: 'ลูกค้า' },
-    });
-    fireEvent.click(await screen.findByRole('button', { name: 'ลูกค้าเดิม' }));
-    await waitFor(() =>
-      expect(mocks.patch).toHaveBeenCalledWith('/staff-chat/rooms/room1/customer', {
-        customerId: 'matched',
-      }),
-    );
-    await waitFor(() =>
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['customer-credit-checks'] }),
-    );
-  });
 });

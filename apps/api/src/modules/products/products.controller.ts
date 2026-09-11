@@ -214,7 +214,7 @@ export class ProductsController {
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async findOne(@Param('id') id: string, @CurrentUser() user: { role: string }) {
-    const product = await this.productsService.findOne(id);
+    const product = await this.productsService.findOneDetail(id);
     return canSeeCost(user.role) ? product : omitCostPrice(product);
   }
 

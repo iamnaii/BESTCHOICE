@@ -21,7 +21,7 @@ describe('ProductsController — cost visibility by role', () => {
     product: { id: 'p-1', name: 'iPhone 13', model: 'A2482', costPrice: '12000' },
   };
   let controller: ProductsController;
-  let products: { findAll: jest.Mock; findOne: jest.Mock };
+  let products: { findAll: jest.Mock; findOneDetail: jest.Mock };
   let stock: { getStock: jest.Mock; reserve: jest.Mock; unreserve: jest.Mock; getTransferById: jest.Mock };
 
   beforeEach(async () => {
@@ -33,7 +33,7 @@ describe('ProductsController — cost visibility by role', () => {
         limit: 50,
         totalPages: 1,
       }),
-      findOne: jest.fn().mockResolvedValue({ ...productRow }),
+      findOneDetail: jest.fn().mockResolvedValue({ ...productRow }),
     };
     stock = {
       getStock: jest.fn().mockResolvedValue({

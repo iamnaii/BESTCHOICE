@@ -53,24 +53,33 @@ function product(overrides: Partial<StockProduct> = {}): StockProduct {
   };
 }
 
+// เทสชุดเดิมเปิดที่มุมมอง "ทั้งหมด" (ตัวกรองสถานะ + คอลัมน์สถานะอยู่ครบเหมือนก่อนมีสวิตช์) —
+// ค่าเริ่มต้นจริงของหน้าคือ "พร้อมขาย" ซึ่งมี describe ของตัวเองด้านล่าง
+const ALL_VIEW_PATH = '/stock/products?zone=shop&view=all';
+const DEFAULT_VIEW_PATH = '/stock/products?zone=shop';
+
 function showProducts(
   products: StockProduct[],
   failConfig = false,
   resolvedConfig = config,
   groups?: StockProduct[],
+  initialPath = ALL_VIEW_PATH,
 ) {
   mocks.get.mockImplementation(
     async (url: string, options?: { params: Record<string, string> }) => {
       if (url === '/products') {
         const params = options?.params ?? {};
         const source = params.groupAccessories === 'true' && groups ? groups : products;
-        const matches = source.filter(
+        // base = ตัวกรองทุกอย่างยกเว้นสถานะ — เหมือน viewCounts ของ API ที่นับทั้งสองฝั่งของสวิตช์
+        const base = source.filter(
           (item) =>
             (!params.search ||
               `${item.brand} ${item.model} ${item.imeiSerial}`.includes(params.search)) &&
-            (!params.status || item.status === params.status) &&
             (!params.category || item.category === params.category) &&
             (!params.branchId || item.branch.id === params.branchId),
+        );
+        const matches = base.filter(
+          (item) => !params.status || params.status.split(',').includes(item.status),
         );
         const page = Number(params.page ?? 1);
         return {
@@ -79,6 +88,10 @@ function showProducts(
             total: matches.length,
             page,
             totalPages: Math.max(1, Math.ceil(matches.length / 50)),
+            viewCounts: {
+              ready: base.filter((item) => item.status === 'IN_STOCK').length,
+              all: base.length,
+            },
           },
         };
       }
@@ -98,7 +111,7 @@ function showProducts(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <MemoryRouter initialEntries={['/stock/products?zone=shop']}>
+      <MemoryRouter initialEntries={[initialPath]}>
         <StockProductsPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -563,6 +576,7 @@ describe('All categories and accessory stock views', () => {
           'ราคาเต็มจำนวน',
           'ดาวน์',
           'ยอดผ่อนต่อเดือน',
+          'วันที่รับเข้า',
           'คงเหลือ',
           'สถานะ',
           'สาขา',
@@ -1102,4 +1116,140 @@ describe('Stock received dates', () => {
       );
     });
   }
+
+  // เจ้าของขอ 2026-09-11: "เพิ่ม วันที่รับเข้า ในหน้าทั้งหมดให้ด้วย" — แท็บ "ทั้งหมด" รวมทุกหมวด
+  // เครื่องแสดงวันที่ตามปกติ ส่วนแถวกลุ่มอุปกรณ์เว้นว่าง (วันที่ของกลุ่มไม่มีความหมายเดียว)
+  it.each([false, true])(
+    'shows received dates in the all-categories tab too — devices dated, accessory groups blank (mobile: %s)',
+    async (mobile) => {
+      mocks.mobile = mobile;
+      const device = product({ stockInDate: '2026-08-20T10:00:00+07:00' });
+      const accessoryGroup: StockProduct = {
+        ...product({
+          id: 'case-unit',
+          name: 'เคสใส iPhone 16',
+          model: 'iPhone 16',
+          category: 'ACCESSORY',
+          accessoryType: 'เคส',
+          imeiSerial: null,
+          storage: null,
+          costPrice: '100',
+          cashPrice: '250',
+          installmentPrice: null,
+          prices: [],
+          stockInDate: '2026-08-01T10:00:00+07:00',
+        }),
+        legacyProductCode: null,
+        stockGroup: {
+          key: 'case-group',
+          unitCount: 2,
+          inStockQuantity: 2,
+          statuses: ['IN_STOCK'],
+          costPriceMax: '100',
+          cashPriceMax: '250',
+          cashPriceMissingCount: 0,
+        },
+      };
+      showProducts([device], false, config, [device, accessoryGroup]);
+      await screen.findByText('20/08/2569');
+      expect(screen.queryByText('01/08/2569')).not.toBeInTheDocument();
+      if (mobile) {
+        const items = within(screen.getByRole('list', { name: 'รายการสินค้า' })).getAllByRole(
+          'listitem',
+        );
+        expect(within(items[0]).getByText('วันที่รับเข้า')).toBeInTheDocument();
+        expect(within(items[0]).getByText(/ในสต็อก [\d,]+ วัน/)).toBeInTheDocument();
+        fireEvent.change(screen.getByRole('combobox', { name: 'เรียงตาม' }), {
+          target: { value: 'stockInDate' },
+        });
+      } else {
+        // อยู่หลังยอดผ่อนต่อเดือน ก่อนคงเหลือ (index 8 นับจากคอลัมน์เลือกของผู้จัดการ)
+        const headers = screen.getAllByRole('columnheader').map((header) => header.textContent);
+        expect(headers[7]).toBe('ยอดผ่อนต่อเดือน');
+        expect(headers[8]).toBe('วันที่รับเข้า');
+        expect(headers[9]).toBe('คงเหลือ');
+        const deviceCells = within(screen.getByRole('row', { name: /iPhone 13/ })).getAllByRole('cell');
+        expect(deviceCells[8]).toHaveTextContent('20/08/2569');
+        const groupCells = within(screen.getByRole('row', { name: /เคสใส iPhone 16/ })).getAllByRole(
+          'cell',
+        );
+        expect(groupCells[8]).toHaveTextContent('—');
+        fireEvent.click(screen.getByRole('button', { name: 'วันที่รับเข้า' }));
+      }
+      await waitFor(() =>
+        expect(mocks.get).toHaveBeenCalledWith(
+          '/products',
+          expect.objectContaining({
+            params: expect.objectContaining({ sortBy: 'stockInDate', sortDirection: 'asc' }),
+          }),
+        ),
+      );
+      const listCalls = mocks.get.mock.calls.filter(([url]) => url === '/products');
+      expect(listCalls[listCalls.length - 1]?.[1]?.params.category).toBeUndefined();
+    },
+  );
+});
+
+// คำขอเจ้าของ 2026-09-11: แบ่ง "สินค้าทั้งหมด" กับ "สินค้าในสต๊อกพร้อมขาย" — mockup canvas 54e6c624 เคาะแล้ว
+describe('Stock view switch — พร้อมขาย | ทั้งหมด', () => {
+  const ready = () => product();
+  const reserved = () =>
+    product({ id: 'reserved-1', model: 'iPhone 14', imeiSerial: '999999999999999', status: 'RESERVED' });
+  const openDefault = () =>
+    showProducts([ready(), reserved()], false, config, undefined, DEFAULT_VIEW_PATH);
+  // แท็บหมวด "ทั้งหมด" ก็เป็นปุ่ม — เจาะจงที่กลุ่มสวิตช์เท่านั้น
+  const viewSwitch = () => within(screen.getByRole('group', { name: 'แสดงสินค้า' }));
+
+  it('opens on the ready view: only IN_STOCK is requested, both counts show, status filter and column are hidden', async () => {
+    openDefault();
+    await screen.findByRole('row', { name: /iPhone 13/ });
+    expect(screen.queryByRole('row', { name: /iPhone 14/ })).not.toBeInTheDocument();
+    const listCalls = mocks.get.mock.calls.filter(([url]) => url === '/products');
+    const lastList = listCalls[listCalls.length - 1];
+    expect(lastList?.[1]?.params.status).toBe('IN_STOCK');
+
+    const readyButton = viewSwitch().getByRole('button', { name: /พร้อมขาย/ });
+    const allButton = viewSwitch().getByRole('button', { name: /^ทั้งหมด/ });
+    expect(readyButton).toHaveAttribute('aria-pressed', 'true');
+    expect(allButton).toHaveAttribute('aria-pressed', 'false');
+    expect(readyButton).toHaveTextContent('1');
+    expect(allButton).toHaveTextContent('2');
+
+    expect(screen.queryByLabelText('สถานะ')).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'สถานะ' })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/พร้อมขาย 1 รายการ · อีก 1 รายการอยู่ในสถานะอื่น/),
+    ).toBeInTheDocument();
+  });
+
+  it('switching to ทั้งหมด drops the status param and brings back the status filter and column', async () => {
+    openDefault();
+    await screen.findByRole('row', { name: /iPhone 13/ });
+    fireEvent.click(viewSwitch().getByRole('button', { name: /^ทั้งหมด/ }));
+    await screen.findByRole('row', { name: /iPhone 14/ });
+    const listCalls = mocks.get.mock.calls.filter(([url]) => url === '/products');
+    const lastList = listCalls[listCalls.length - 1];
+    expect(lastList?.[1]?.params.status).toBeUndefined();
+    expect(viewSwitch().getByRole('button', { name: /^ทั้งหมด/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('สถานะ')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'สถานะ' })).toBeInTheDocument();
+    expect(screen.getByText(/ทั้งหมด 2 รายการ · พร้อมขาย 1/)).toBeInTheDocument();
+  });
+
+  it('the summary line offers ดูทั้งหมด which switches views, and the status filter narrows only the all view', async () => {
+    openDefault();
+    await screen.findByRole('row', { name: /iPhone 13/ });
+    fireEvent.click(screen.getByRole('button', { name: 'ดูทั้งหมด' }));
+    await screen.findByRole('row', { name: /iPhone 14/ });
+    fireEvent.change(screen.getByLabelText('สถานะ'), { target: { value: 'RESERVED' } });
+    await waitFor(() =>
+      expect(screen.queryByRole('row', { name: /iPhone 13/ })).not.toBeInTheDocument(),
+    );
+    // กลับไป "พร้อมขาย" แล้วตัวกรองสถานะที่เลือกไว้ต้องถูกล้าง (ไม่งั้นกลับมาโหมด ทั้งหมด จะกรองค้าง)
+    fireEvent.click(viewSwitch().getByRole('button', { name: /พร้อมขาย/ }));
+    await screen.findByRole('row', { name: /iPhone 13/ });
+    fireEvent.click(viewSwitch().getByRole('button', { name: /^ทั้งหมด/ }));
+    await screen.findByRole('row', { name: /iPhone 14/ });
+    expect((screen.getByLabelText('สถานะ') as HTMLSelectElement).value).toBe('');
+  });
 });

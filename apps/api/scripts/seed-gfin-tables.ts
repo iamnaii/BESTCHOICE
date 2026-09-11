@@ -17,8 +17,16 @@ interface Fixture {
     seriesPattern: string;
     condition: 'HAND_1' | 'HAND_2';
     allowance: number;
+    /** ผ่อนได้สูงสุด (งวด) ตามตารางราคา GFIN — ไม่ระบุ = ไม่จำกัด */
+    maxMonths?: number | null;
   }>;
-  rateFactors: Array<{ months: number; factor: number; feePerInstallment: number }>;
+  rateFactors: Array<{
+    months: number;
+    /** % คอมมิชชั่นที่ร้านเลือก — ไม่ระบุ = 15 (มือถือ) */
+    shopCommissionPct?: number;
+    factor: number;
+    feePerInstallment: number;
+  }>;
 }
 
 async function main() {
@@ -48,20 +56,27 @@ async function main() {
     if (existing) {
       await prisma.gfinOverpriceRule.update({
         where: { id: existing.id },
-        data: { allowance: new Prisma.Decimal(rule.allowance), seriesPattern: rule.seriesPattern, condition: rule.condition },
+        data: {
+          allowance: new Prisma.Decimal(rule.allowance),
+          seriesPattern: rule.seriesPattern,
+          condition: rule.condition,
+          maxMonths: rule.maxMonths ?? null,
+        },
       });
     } else {
       await prisma.gfinOverpriceRule.create({
-        data: { ...rule, allowance: new Prisma.Decimal(rule.allowance) },
+        data: { ...rule, allowance: new Prisma.Decimal(rule.allowance), maxMonths: rule.maxMonths ?? null },
       });
     }
   }
 
   for (const rf of data.rateFactors) {
+    const shopCommissionPct = rf.shopCommissionPct ?? 15;
     await prisma.gfinRateFactor.upsert({
-      where: { months: rf.months },
+      where: { months_shopCommissionPct: { months: rf.months, shopCommissionPct } },
       create: {
         months: rf.months,
+        shopCommissionPct,
         factor: new Prisma.Decimal(rf.factor),
         feePerInstallment: new Prisma.Decimal(rf.feePerInstallment),
       },

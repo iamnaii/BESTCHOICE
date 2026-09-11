@@ -1,6 +1,12 @@
 import Decimal from 'decimal.js';
 import { describe, it, expect } from 'vitest';
-import { calcGfinInstallment, findGfinMapping, findGfinOverpriceRule } from './installment-calc';
+import {
+  calcGfinInstallment,
+  findGfinMapping,
+  findGfinOverpriceRule,
+  findGfinRateFactor,
+} from './installment-calc';
+import { formatRateLine, gfinDownPctOptions } from './gfin-customer-summary';
 import type {
   GfinModelMappingRow,
   GfinOverpriceRuleRow,
@@ -25,11 +31,13 @@ const overpriceIphone14Hand2: GfinOverpriceRuleRow = {
   seriesPattern: 'iPhone 14|iPhone 15',
   condition: 'HAND_2',
   allowance: new Decimal('1000'),
+  maxMonths: 12,
   isActive: true,
 };
 
 const factor12: GfinRateFactorRow = {
   months: 12,
+  shopCommissionPct: 15,
   factor: new Decimal('0.179238'),
   feePerInstallment: new Decimal('100'),
   isActive: true,
@@ -150,5 +158,207 @@ describe('calcGfinInstallment — no overprice rule', () => {
 
   it('downDiscount = 21500 - 20500 = 1,000', () => {
     expect(out.downDiscount.toFixed(2)).toBe('1000.00');
+  });
+});
+
+// ─── 2026-09-11: ให้ตรงหน้าคำนวณสินเชื่อ/ขอสินเชื่อของ GFIN + กติกาของร้าน ────────────
+const mapping15_128: GfinModelMappingRow = {
+  id: 'm15',
+  gfinSeries: 'iPhone 15',
+  gfinVariant: null,
+  storage: '128GB',
+  condition: 'HAND_1',
+  maxPrice: new Decimal('23000'),
+  modelMatchPattern: 'iPhone 15',
+  isActive: true,
+};
+const over15h1: GfinOverpriceRuleRow = {
+  id: 'r15',
+  label: 'iPhone 15 มือ 1',
+  seriesPattern: 'iPhone 15',
+  condition: 'HAND_1',
+  allowance: new Decimal('1000'),
+  maxMonths: 12,
+  isActive: true,
+};
+const factor12c15: GfinRateFactorRow = {
+  months: 12,
+  shopCommissionPct: 15,
+  factor: new Decimal('0.179238'),
+  feePerInstallment: new Decimal('100'),
+  isActive: true,
+};
+const productIphone15New: ProductForGfin = {
+  brand: 'Apple',
+  model: 'iPhone 15',
+  storage: '128GB',
+  category: 'PHONE_NEW',
+};
+
+describe('calcGfinInstallment — GFIN portal parity (2026-09-11)', () => {
+  const out = calcGfinInstallment({
+    installmentPrice: new Decimal('19900'),
+    product: productIphone15New,
+    months: 12,
+    downPct: new Decimal('0.25'),
+    mapping: mapping15_128,
+    overpriceRule: over15h1,
+    rateFactor: factor12c15,
+  });
+
+  it('ราคาส่ง 24,000 · ส่วนลดดาวน์ 4,100 · ดาวน์ตามสูตร 6,000 · ดาวน์จริง 1,900 · ยอดจัด 18,000', () => {
+    expect(out.gfinSubmitPrice.toFixed(2)).toBe('24000.00');
+    expect(out.downDiscount.toFixed(2)).toBe('4100.00');
+    expect(out.downAmountByFormula.toFixed(2)).toBe('6000.00');
+    expect(out.downAmountActual.toFixed(2)).toBe('1900.00');
+    expect(out.financedAmount.toFixed(2)).toBe('18000.00');
+  });
+
+  it('ค่างวดปัดขึ้นเป็นบาท: ceil(18000 × 0.179238 = 3226.28) = 3227 + ค่าล็อกเครื่อง 100 = 3,327', () => {
+    expect(out.monthlyPayment.toFixed(2)).toBe('3327.00');
+    expect(out.totalPayback.toFixed(2)).toBe('39924.00');
+  });
+
+  it('ฝั่งร้าน: คอม 15% ของยอดจัด = 2,700 · ค่าทำสัญญา 100 · โอนให้ร้าน 20,600 · ร้านรับรวม 22,500', () => {
+    expect(out.shopCommissionPct.toNumber()).toBe(15);
+    expect(out.shopCommissionAmount.toFixed(2)).toBe('2700.00');
+    expect(out.contractFee.toFixed(2)).toBe('100.00');
+    expect(out.netTransferToShop.toFixed(2)).toBe('20600.00');
+    expect(out.shopTotalReceived.toFixed(2)).toBe('22500.00');
+    expect(out.priceAboveSubmit).toBe(false);
+    expect(out.isValid).toBe(true);
+  });
+
+  it('ภาพจริง iPhone 17e: ราคาส่ง 22,000 ดาวน์ 25% = 5,500 ยอดจัด 16,500 → คอม 2,475 · โอนให้ร้าน 18,875 · งวดละ 2,521', () => {
+    const mapping17e: GfinModelMappingRow = {
+      ...mapping15_128,
+      id: 'm17e',
+      gfinSeries: 'iPhone 17e',
+      storage: '256GB',
+      maxPrice: new Decimal('22000'),
+      modelMatchPattern: 'iPhone 17e',
+    };
+    const o = calcGfinInstallment({
+      installmentPrice: new Decimal('22000'),
+      product: { brand: 'Apple', model: 'iPhone 17e', storage: '256GB', category: 'PHONE_NEW' },
+      months: 15,
+      downPct: new Decimal('0.25'),
+      mapping: mapping17e,
+      overpriceRule: null,
+      rateFactor: {
+        months: 15,
+        shopCommissionPct: 15,
+        factor: new Decimal('0.1467'),
+        feePerInstallment: new Decimal('100'),
+        isActive: true,
+      },
+    });
+    expect(o.downAmountByFormula.toFixed(2)).toBe('5500.00');
+    expect(o.financedAmount.toFixed(2)).toBe('16500.00');
+    expect(o.shopCommissionAmount.toFixed(2)).toBe('2475.00');
+    expect(o.netTransferToShop.toFixed(2)).toBe('18875.00');
+    // ceil(16500 × 0.1467 = 2420.55) = 2421 + 100
+    expect(o.monthlyPayment.toFixed(2)).toBe('2521.00');
+  });
+
+  it('ราคาผ่อนที่ต้องการสูงกว่าราคาส่งสูงสุด → ส่วนลดดาวน์ 0 และ priceAboveSubmit = true', () => {
+    const o = calcGfinInstallment({
+      installmentPrice: new Decimal('26000'),
+      product: productIphone15New,
+      months: 12,
+      downPct: new Decimal('0.25'),
+      mapping: mapping15_128,
+      overpriceRule: over15h1,
+      rateFactor: factor12c15,
+    });
+    expect(o.downDiscount.toFixed(2)).toBe('0.00');
+    expect(o.downAmountActual.toFixed(2)).toBe('6000.00');
+    expect(o.priceAboveSubmit).toBe(true);
+  });
+
+  it('ค่าทำสัญญากำหนดเองได้ และ default ดาวน์ยังเป็น 30% เมื่อไม่ส่ง downPct (ผู้เรียกเก่าไม่เปลี่ยน)', () => {
+    const o = calcGfinInstallment({
+      installmentPrice: new Decimal('19900'),
+      product: productIphone15New,
+      months: 12,
+      mapping: mapping15_128,
+      overpriceRule: over15h1,
+      rateFactor: factor12c15,
+      contractFee: new Decimal('150'),
+    });
+    expect(o.downPct.toString()).toBe('0.3');
+    expect(o.contractFee.toFixed(2)).toBe('150.00');
+    // ดาวน์ 30% ของ 24,000 = 7,200 → ยอดจัด 16,800 · คอม 2,520 · โอน = 16,800 + 2,520 − 150
+    expect(o.netTransferToShop.toFixed(2)).toBe('19170.00');
+  });
+
+  it('shopCommissionPct ใน input ไม่ตรงกับเรทที่ส่งมา → isValid=false พร้อมข้อความ', () => {
+    const o = calcGfinInstallment({
+      installmentPrice: new Decimal('19900'),
+      product: productIphone15New,
+      months: 12,
+      shopCommissionPct: new Decimal('5'),
+      mapping: mapping15_128,
+      overpriceRule: over15h1,
+      rateFactor: factor12c15,
+    });
+    expect(o.isValid).toBe(false);
+    expect(o.errors.join(' ')).toContain('คอมมิชชั่น');
+  });
+});
+
+describe('findGfinRateFactor / findGfinMapping TABLET / formatRateLine / gfinDownPctOptions', () => {
+  it('เลือกเรทตาม (งวด, %คอม) และข้ามแถวที่ปิดใช้งาน', () => {
+    const rows: GfinRateFactorRow[] = [
+      {
+        months: 12,
+        shopCommissionPct: 15,
+        factor: new Decimal('0.18'),
+        feePerInstallment: new Decimal('100'),
+        isActive: true,
+      },
+      {
+        months: 12,
+        shopCommissionPct: 5,
+        factor: new Decimal('0.16'),
+        feePerInstallment: new Decimal('100'),
+        isActive: false,
+      },
+    ];
+    expect(findGfinRateFactor(rows, 12, 15)?.factor.toString()).toBe('0.18');
+    expect(findGfinRateFactor(rows, 12, 5)).toBeNull();
+    expect(findGfinRateFactor(rows, 10, 15)).toBeNull();
+  });
+
+  it('TABLET แมปเป็นสภาพ HAND_1', () => {
+    const ipad: GfinModelMappingRow = {
+      id: 't1',
+      gfinSeries: 'iPad 10',
+      gfinVariant: null,
+      storage: '64GB',
+      condition: 'HAND_1',
+      maxPrice: new Decimal('12000'),
+      modelMatchPattern: 'iPad 10',
+      isActive: true,
+    };
+    const matched = findGfinMapping(
+      { brand: 'Apple', model: 'iPad 10', storage: '64GB', category: 'TABLET' },
+      [ipad],
+    );
+    expect(matched?.id).toBe('t1');
+  });
+
+  it('formatRateLine ใช้รูปแบบเดียวกับสติกเกอร์หน้าร้าน (ไม่มีชื่อไฟแนนซ์/ดอกเบี้ย)', () => {
+    expect(formatRateLine(1, 2985, 1838.26, 12)).toBe(
+      'เรทที่ 1 ดาวน์ 2,985 บาท ผ่อนเดือนละ 1,838.26 บาท 12 งวด',
+    );
+    expect(formatRateLine(2, 1900, 3327, 12)).toBe(
+      'เรทที่ 2 ดาวน์ 1,900 บาท ผ่อนเดือนละ 3,327 บาท 12 งวด',
+    );
+  });
+
+  it('gfinDownPctOptions 25 → 80 ขั้นละ 5', () => {
+    expect(gfinDownPctOptions(25)).toEqual([25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80]);
+    expect(gfinDownPctOptions(30, 40, 5)).toEqual([30, 35, 40]);
   });
 });

@@ -746,9 +746,12 @@ jobs:
         #   - custom domain ยังผูกไม่เสร็จ  → www ยังไม่ขึ้นแต่ web.app ปกติ → ไม่ควรแดง
         run: |
           set -uo pipefail
+          # ห้ามใช้ `printf "$body" | grep -q` ตรงนี้: ใต้ pipefail `grep -q` ปิดท่อทันทีที่เจอคำ
+          # พอ body ใหญ่กว่า pipe buffer printf โดน SIGPIPE → pipeline ล้มทั้งที่เจอ (www=0 legacy=0 หลอก
+          # ทุก deploy ตั้งแต่หน้าร้าน prerender โตขึ้น — run 34558743170 / 34560494794) จึงเทียบในเชลล์ตรง ๆ
           check() {
             body=$(curl -fsS --max-time 20 "$1" 2>/dev/null || true)
-            printf '%s' "$body" | grep -q 'BESTCHOICE'
+            case "$body" in *BESTCHOICE*) return 0 ;; *) return 1 ;; esac
           }
           www_ok=0; legacy_ok=0
           for i in 1 2 3; do

@@ -1,0 +1,27 @@
+[
+  {
+    "case": "PAID deposit changed after receipt",
+    "before": 1000,
+    "after": 2000,
+    "journalCalls": 0,
+    "updateWhere": {
+      "id": "b1"
+    }
+  },
+  {
+    "case": "change items without changing deposit",
+    "total": 500,
+    "deposit": 1000
+  },
+  {
+    "case": "customers Excel limit=10000",
+    "validation": [
+      {
+        "property": "limit",
+        "constraints": {
+          "max": "limit must not be greater than 200"
+        }
+      }
+    ]
+  }
+]

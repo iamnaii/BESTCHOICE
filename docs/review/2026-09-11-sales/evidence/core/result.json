@@ -1,0 +1,46 @@
+{
+  "origin": "http://localhost:5207",
+  "scope": "Real rendered UI; synthetic read responses and preview 503; no signatures or monetary writes",
+  "results": [
+    {
+      "name": "pos-cash",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "pos-missing-cash",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "sign-preview-error",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "sign-preview-recovered",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "pos-cash",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "pos-missing-cash",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "sign-preview-error",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "sign-preview-recovered",
+      "width": 390,
+      "overflow": false
+    }
+  ]
+}

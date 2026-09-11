@@ -1,0 +1,42 @@
+[
+  {
+    "case": "profit changes with pagination",
+    "page1": {
+      "totalAmount": 300,
+      "totalDiscount": 0,
+      "totalProfit": 40,
+      "cashCount": 0,
+      "cashAmount": 0,
+      "installmentCount": 0,
+      "installmentAmount": 0,
+      "financeCount": 0,
+      "financeAmount": 0
+    },
+    "page2": {
+      "totalAmount": 300,
+      "totalDiscount": 0,
+      "totalProfit": 150,
+      "cashCount": 0,
+      "cashAmount": 0,
+      "installmentCount": 0,
+      "installmentAmount": 0,
+      "financeCount": 0,
+      "financeAmount": 0
+    },
+    "expectedWholeProfit": 190
+  },
+  {
+    "case": "SALES without branch query",
+    "guardAllowed": true,
+    "forwardedBranchId": null,
+    "queryWhere": {
+      "deletedAt": null
+    }
+  },
+  {
+    "case": "export from page 2",
+    "rows": 0,
+    "skip": 10000,
+    "total": 2
+  }
+]

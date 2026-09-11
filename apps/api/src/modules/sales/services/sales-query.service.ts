@@ -9,6 +9,10 @@ const CONTRACT_SALE_SELECT = {
   id: true, contractNumber: true, status: true, monthlyPayment: true, totalMonths: true,
 } satisfies Prisma.ContractSelect;
 
+const completedSaleWhere: Prisma.SaleWhereInput = {
+  OR: [{ contractId: null }, { contract: { is: { status: { not: 'DRAFT' }, deletedAt: null } } }],
+};
+
 /**
  * Read-side of SalesService — pure queries with role-dependent response shaping
  * All reads are actor-scoped, including detail, summaries and POS suggestions.
@@ -30,6 +34,7 @@ export class SalesQueryService {
     if (paymentMethod) where.paymentMethod = paymentMethod;
     if (salespersonId) where.salespersonId = salespersonId;
     if (contractStatus) where.contract = { status: contractStatus };
+    else where.AND = [completedSaleWhere];
 
     // Date range filter
     if (startDate || endDate) {
@@ -162,7 +167,7 @@ export class SalesQueryService {
   async getTopSellingProducts(actor: SalesReadActor, limit = 6) {
     const results = await this.prisma.sale.groupBy({
       by: ['productId'],
-      where: { deletedAt: null, ...salesBranchWhere(actor) },
+      where: { deletedAt: null, ...salesBranchWhere(actor), AND: [completedSaleWhere] },
       _count: { productId: true },
       orderBy: { _count: { productId: 'desc' } },
       take: limit,
@@ -192,6 +197,7 @@ export class SalesQueryService {
 
     const where: Record<string, unknown> = {
       createdAt: { gte: startOfDay, lte: endOfDay },
+      AND: [completedSaleWhere],
       deletedAt: null,
       ...salesBranchWhere(actor, branchId),
     };

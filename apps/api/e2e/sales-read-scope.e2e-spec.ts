@@ -1,3 +1,4 @@
+import { ShopDownPaymentTemplate } from '../src/modules/journal/cpa-templates/shop-down-payment.template';
 import { randomUUID } from 'node:crypto';
 import { ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -71,7 +72,7 @@ describe('Sales read authorization on isolated PostgreSQL', () => {
       controllers: [SalesController],
       providers: [SalesService, RolesGuard, BranchGuard, { provide: PrismaService, useValue: db },
         ...[SaleVoidService, InterCompanyService, ShopCashSaleTemplate, ShopAccountResolver,
-          ShopExternalFinanceSaleTemplate, SaleWarrantyNotifierService].map(provide => ({ provide, useValue: {} })),
+          ShopExternalFinanceSaleTemplate, ShopDownPaymentTemplate, SaleWarrantyNotifierService].map(provide => ({ provide, useValue: {} })),
       ],
     }).overrideGuard(JwtAuthGuard).useValue({ canActivate: (context: ExecutionContext) => {
       context.switchToHttp().getRequest().user = actor;

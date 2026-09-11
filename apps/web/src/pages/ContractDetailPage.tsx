@@ -1,3 +1,4 @@
+import type { SignatureRequirements } from '@installment/shared';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -72,6 +73,7 @@ interface ContractDetail {
   creditBalance: string | null;
   dunningStage: string | null;
   payments: Payment[];
+  signatureRequirements?: SignatureRequirements;
   signatures: { id: string; signerType: string; signedAt: string }[];
   contractDocuments: { id: string; documentType: string; fileName: string; fileUrl: string; createdAt: string }[];
   creditCheck: { id: string; status: string; aiScore: number | null; aiSummary: string | null } | null;
@@ -278,12 +280,7 @@ const deleteMutation = useMutation({
   const canEdit = (isCreator || isOwner) && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
   const canEditMaster = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
   const canDelete = isOwner && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
-  const signedTypes = new Set(contract.signatures?.map((s) => s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) || []);
-  const customerSigned = signedTypes.has('CUSTOMER');
-  const companySigned = signedTypes.has('COMPANY');
-  const witness1Signed = signedTypes.has('WITNESS_1');
-  const witness2Signed = signedTypes.has('WITNESS_2');
-  const allSigned = customerSigned && companySigned && witness1Signed && witness2Signed;
+  const allSigned = contract.signatureRequirements?.complete === true;
 
   return (
     <div>
@@ -327,7 +324,7 @@ const deleteMutation = useMutation({
 
             {/* Workflow buttons */}
             {contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
-              <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทั้งลูกค้าและพนักงานก่อน' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
+              <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทุกฝ่ายที่ระบุในสัญญา' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}
               </button>
             )}
@@ -889,6 +886,7 @@ const deleteMutation = useMutation({
 
       {/* Signing Status + E-Document Downloads */}
       <ContractDocuments
+        signatureRequirements={contract.signatureRequirements}
         signatures={contract.signatures}
         eDocuments={eDocuments}
         pdpaConsentId={contract.pdpaConsentId}

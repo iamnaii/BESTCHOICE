@@ -134,8 +134,12 @@ export function generatePaymentSchedule(
   monthlyPayment: number,
   paymentDueDay?: number | null,
   breakdownTotals?: BreakdownTotals,
+  anchor?: Date,
 ): PaymentScheduleItem[] {
-  const now = new Date();
+  const now = anchor ?? new Date();
+  const calendar = anchor ? new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', year: 'numeric', month: 'numeric' }).formatToParts(now) : null;
+  const year = calendar ? Number(calendar.find(part => part.type === 'year')!.value) : now.getFullYear();
+  const month = calendar ? Number(calendar.find(part => part.type === 'month')!.value) - 1 : now.getMonth();
   const dueDay = paymentDueDay || 1;
   const payments: PaymentScheduleItem[] = [];
 
@@ -153,9 +157,11 @@ export function generatePaymentSchedule(
   let usedCommission = 0;
 
   for (let i = 1; i <= totalMonths; i++) {
-    const targetMonth = now.getMonth() + i;
-    const lastDay = new Date(now.getFullYear(), targetMonth + 1, 0).getDate();
-    const dueDate = new Date(now.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
+    const targetMonth = month + i;
+    const lastDay = new Date(Date.UTC(year, targetMonth + 1, 0)).getUTCDate();
+    // An explicit anchor uses the Thai business calendar; omitted preserves legacy callers.
+    const dueDate = anchor ? new Date(Date.UTC(year, targetMonth, Math.min(dueDay, lastDay)) - 7 * 60 * 60 * 1000)
+      : new Date(year, targetMonth, Math.min(dueDay, lastDay));
     const isLast = i === totalMonths;
     const amount = isLast ? financedAmount - monthlyPayment * (totalMonths - 1) : monthlyPayment;
 

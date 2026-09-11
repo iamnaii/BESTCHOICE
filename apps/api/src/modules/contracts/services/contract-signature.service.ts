@@ -1,3 +1,4 @@
+import { contractSignatureRequirements } from '../../../utils/validation.util';
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { SignerType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -42,7 +43,7 @@ export class ContractSignatureService {
   ) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
-      include: { signatures: { where: { deletedAt: null } }, product: true },
+      include: { signatures: { where: { deletedAt: null } }, product: true, customer: { select: { birthDate: true } } },
     });
     if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
@@ -98,17 +99,9 @@ export class ContractSignatureService {
     // This satisfies the reviewer checklist without the user having to
     // manually upload a signed PDF — the system already has everything it
     // needs to produce one deterministically.
-    const REQUIRED: Array<'CUSTOMER' | 'COMPANY' | 'WITNESS_1' | 'WITNESS_2'> = [
-      'CUSTOMER',
-      'COMPANY',
-      'WITNESS_1',
-      'WITNESS_2',
-    ];
-    const allSignerTypes = new Set<string>([
-      ...contract.signatures.map((s) => (s.signerType === 'STAFF' ? 'COMPANY' : s.signerType)),
-      normalizedType,
-    ]);
-    const allSigned = REQUIRED.every((t) => allSignerTypes.has(t));
+    const allSigned = contractSignatureRequirements({ ...contract,
+      signatures: [...contract.signatures, signature],
+    }).complete;
     if (allSigned) {
       // Fire-and-forget — don't block the signing response on PDF generation
       // (puppeteer can take a few seconds). A salesperson fallback handles

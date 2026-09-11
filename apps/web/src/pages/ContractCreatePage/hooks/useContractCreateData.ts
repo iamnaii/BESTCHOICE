@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { AvailableTradeInCredit } from '@installment/shared';
+import type { AvailableTradeInCredit, ContractQuote } from '@installment/shared';
 import Decimal from 'decimal.js';
 import { contractCreditIssue, type ApprovedContractLimit } from '../credit-approval';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -35,7 +35,7 @@ export function useContractCreateData() {
       downAmount: params.has('downAmount') ? Number(params.get('downAmount')) : restored?.downPayment,
       months: params.has('months') ? Number(params.get('months')) : restored?.totalMonths };
   });
-  const [step, setStep] = useState(Math.min(entry.restored?.step ?? 0, !entry.productId ? 0 : !entry.customerId ? 1 : 3));
+  const [step, setStep] = useState(Math.min(entry.restored?.step ?? 0, !entry.productId ? 0 : !entry.customerId ? 1 : 2));
 
   // Form state
   const productRestored = useRef(false);
@@ -61,9 +61,14 @@ export function useContractCreateData() {
   const planType = 'STORE_DIRECT';
   const [downPayment, setDownPayment] = useState(entry.downAmount ?? 0);
   const [totalMonths, setTotalMonths] = useState(entry.months ?? 6);
+  const [downPaymentMethod, setDownPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET'>(entry.restored?.downPaymentMethod ?? 'CASH');
+  const [downPaymentReference, setDownPaymentReference] = useState(entry.restored?.downPaymentReference ?? '');
+  const [previouslyDamagedAcknowledged, setPreviouslyDamagedAcknowledged] = useState(false);
   const [notes, setNotes] = useState(entry.restored?.notes ?? '');
   const [paymentDueDay, setPaymentDueDay] = useState<number>(entry.restored?.paymentDueDay ?? 1);
   const [overrideActiveContractCheck, setOverrideActiveContractCheck] = useState(false);
+
+  useEffect(() => { setPreviouslyDamagedAcknowledged(false); }, [selectedProduct?.id, selectedCustomer?.id]);
 
   // Manual customer creation modal state (Step 2)
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -93,8 +98,8 @@ export function useContractCreateData() {
   const saveDraft = useCallback(() => draft.save({
     step, productId: selectedProduct?.id ?? (!productRestored.current ? entry.productId : undefined),
     customerId: selectedCustomer?.id ?? (!customerRestored.current ? entry.customerId : undefined), fromRoom: entry.fromRoom,
-    downPayment, totalMonths, paymentDueDay, notes, tradeInCreditId: tradeInCreditId || undefined,
-  }), [draft, step, selectedProduct?.id, selectedCustomer?.id, entry, downPayment, totalMonths, paymentDueDay, notes, tradeInCreditId]);
+    downPayment, downPaymentMethod, downPaymentReference, totalMonths, paymentDueDay, notes, tradeInCreditId: tradeInCreditId || undefined,
+  }), [draft, step, selectedProduct?.id, selectedCustomer?.id, entry, downPayment, downPaymentMethod, downPaymentReference, totalMonths, paymentDueDay, notes, tradeInCreditId]);
   const latestSave = useRef(saveDraft);
   useEffect(() => { latestSave.current = saveDraft; }, [saveDraft]);
   useEffect(() => {
@@ -369,8 +374,9 @@ export function useContractCreateData() {
 
   const customerCreditApproved = !!creditApproval && !creditApproval.supersededAt && !creditApproval.usedByContractId;
 
-  const handleSubmit = (sellingPrice: number, amounts: { monthlyPayment: number; financedAmount: number }) => {
-    if (!selectedProduct || !selectedCustomer) return;
+  const handleSubmit = (sellingPrice: number, amounts: { monthlyPayment: number; financedAmount: number }, quote?: ContractQuote) => {
+    if (!selectedProduct || !selectedCustomer || createMutation.isPending) return;
+    if (!quote) { toast.error('กรุณารอผลคำนวณล่าสุดก่อนยืนยัน'); return; }
     const net = new Decimal(sellingPrice).minus(tradeInCredit?.bonusAmount ?? 0);
     const totalDown = new Decimal(downPayment).plus(tradeInCredit?.baseAmount ?? 0);
     if (!tradeInCreditReady || totalDown.gte(net)) { toast.error('กรุณาตรวจเครดิตเทิร์นและเงินดาวน์รวมก่อน'); return; }
@@ -381,6 +387,10 @@ export function useContractCreateData() {
       productId: selectedProduct.id,
       branchId: selectedProduct.branchId,
       planType,
+      quoteFingerprint: quote.fingerprint,
+      downPaymentMethod: downPayment > 0 ? downPaymentMethod : undefined,
+      downPaymentReference: downPayment > 0 ? downPaymentReference || undefined : undefined,
+      previouslyDamagedAcknowledged,
       sellingPrice,
       tradeInCreditId: tradeInCreditId || undefined,
       downPayment,
@@ -415,6 +425,8 @@ export function useContractCreateData() {
 
   return {
     tradeInCreditId, setTradeInCreditId, tradeInCredit, setTradeInCredit, tradeInCreditReady,
+    downPaymentMethod, setDownPaymentMethod, downPaymentReference, setDownPaymentReference,
+    previouslyDamagedAcknowledged, setPreviouslyDamagedAcknowledged, canSellPreviouslyDamaged: user?.role === 'OWNER',
     navigate,
     openCustomerCredit,
     preserveDownPayment: entry.downAmount !== undefined,

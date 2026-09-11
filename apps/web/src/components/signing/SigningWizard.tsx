@@ -1,3 +1,4 @@
+import type { SignatureRequirements } from '@installment/shared';
 import { useState } from 'react';
 import ProgressStepper from './ProgressStepper';
 import StepKycVerification from './StepKycVerification';
@@ -17,6 +18,7 @@ interface CustomerReference {
 }
 
 interface ContractData {
+  signatureRequirements?: SignatureRequirements;
   id: string;
   contractNumber: string;
   status: string;
@@ -60,8 +62,12 @@ export default function SigningWizard(props: SigningWizardProps) {
 }
 
 function ContractSigningFlow({ contract, previewHtml, previewState, onRetryPreview, lessorSignatureImage, lessorSignerName }: SigningWizardProps) {
-  const [flow, setFlow] = useState<{ step: number; reviewedHtml: string | null; revision: number }>({
-    step: 0, reviewedHtml: null, revision: 0,
+  const requiredSigners = contract.signatureRequirements?.checklist.map(row => row.type) ?? [];
+  const requirementsReady = requiredSigners.length >= 4;
+
+  const requirementsKey = requiredSigners.join('|');
+  const [flow, setFlow] = useState<{ step: number; reviewedHtml: string | null; revision: number; requirementsKey: string }>({
+    step: 0, reviewedHtml: null, revision: 0, requirementsKey,
   });
   const { step: currentStep, reviewedHtml } = flow;
   const previewReady = previewState === 'ready' && Boolean(previewHtml?.trim());
@@ -69,25 +75,9 @@ function ContractSigningFlow({ contract, previewHtml, previewState, onRetryPrevi
 
   // Revoke consent before rendering the signature controls. A failed refresh
   // must also require new consent if the same HTML subsequently returns.
-  if (reviewedHtml !== null && !reviewValid) {
-    setFlow({ step: currentStep === 3 ? 2 : currentStep, reviewedHtml: null, revision: flow.revision + 1 });
+  if (flow.requirementsKey !== requirementsKey || (reviewedHtml !== null && !reviewValid)) {
+    setFlow({ step: currentStep >= 3 ? 2 : currentStep, reviewedHtml: null, revision: flow.revision + 1, requirementsKey });
   }
-
-  // Determine required signers
-  const requiresGuardian = (() => {
-    if (!contract.customer?.birthDate) return false;
-    const birth = new Date(contract.customer.birthDate);
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-    return age >= 17 && age < 20;
-  })();
-
-  const REQUIRED_SIGNERS: SignerType[] = ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2'];
-  const requiredSigners = requiresGuardian
-    ? [...REQUIRED_SIGNERS, 'GUARDIAN' as SignerType]
-    : REQUIRED_SIGNERS;
 
   const customerName = contract.customer?.name || [contract.customer?.firstName, contract.customer?.lastName].filter(Boolean).join(' ') || '';
   const customerPhone = contract.customer?.phone || '';
@@ -131,13 +121,14 @@ function ContractSigningFlow({ contract, previewHtml, previewState, onRetryPrevi
             onRetryPreview={onRetryPreview}
             onComplete={() => {
               if (previewReady) {
-                setFlow(prev => ({ step: 3, reviewedHtml: previewHtml, revision: prev.revision + 1 }));
+                setFlow(prev => ({ step: 3, reviewedHtml: previewHtml, revision: prev.revision + 1, requirementsKey }));
               }
             }}
             onBack={goBack}
           />
         )}
-        {currentStep === 3 && reviewValid && (
+        {currentStep === 3 && reviewValid && !requirementsReady && <p role="alert">โหลดรายการผู้ลงนามไม่ครบ กรุณาโหลดรายละเอียดสัญญาอีกครั้ง</p>}
+        {currentStep === 3 && reviewValid && requirementsReady && (
           <StepSignature
             contractId={contract.id}
             requiredSigners={requiredSigners}
@@ -146,7 +137,7 @@ function ContractSigningFlow({ contract, previewHtml, previewState, onRetryPrevi
             lessorSignerName={lessorSignerName}
             witness1Name={witness1Name}
             witness2Name={witness2Name}
-            onAllSigned={() => setFlow(prev => prev.step === 3 && prev.revision === flow.revision
+            onAllSigned={() => setFlow(prev => requirementsReady && prev.requirementsKey === requirementsKey && prev.step === 3 && prev.revision === flow.revision
               ? { ...prev, step: 4 } : prev)}
             onBack={goBack}
           />

@@ -1,3 +1,4 @@
+import { resolveSignatureRequirements } from '@installment/shared';
 /**
  * Validation utilities for Thai legal compliance
  * ป.พ.พ. มาตรา 572-576, พ.ร.บ.คุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562
@@ -46,13 +47,12 @@ export function validateThaiPhone(phone: string): boolean {
 /**
  * Calculate age from birthdate
  */
-export function calculateAge(birthDate: Date): number {
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const monthDiff = today.getMonth() - birthDate.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-    age--;
-  }
+export function calculateAge(birthDate: Date, now = new Date()): number {
+  const local = (date: Date) => new Date(date.getTime() + 7 * 60 * 60 * 1000);
+  const birth = local(birthDate), today = local(now);
+  let age = today.getUTCFullYear() - birth.getUTCFullYear();
+  if (today.getUTCMonth() < birth.getUTCMonth() ||
+    (today.getUTCMonth() === birth.getUTCMonth() && today.getUTCDate() < birth.getUTCDate())) age--;
   return age;
 }
 
@@ -235,32 +235,12 @@ export function checkRequiredDocuments(
 /**
  * Check required signatures (4 signers) for contract
  */
-export function checkRequiredSignatures(
-  signatures: { signerType: string }[],
-  requiresGuardian: boolean,
-): { complete: boolean; checklist: { type: string; label: string; signed: boolean }[] } {
-  const required = [
-    { type: 'CUSTOMER', label: 'ผู้ซื้อ (ผู้เช่าซื้อ)' },
-    { type: 'COMPANY', label: 'ผู้ขาย (ผู้ให้เช่าซื้อ)' },
-    { type: 'WITNESS_1', label: 'พยาน 1' },
-    { type: 'WITNESS_2', label: 'พยาน 2' },
-  ];
+export const checkRequiredSignatures = resolveSignatureRequirements;
 
-  if (requiresGuardian) {
-    required.push({ type: 'GUARDIAN', label: 'ผู้ปกครอง' });
-  }
-
-  const sigTypes = new Set(signatures.map((s) => s.signerType));
-  // Also accept legacy 'STAFF' as 'COMPANY'
-  if (sigTypes.has('STAFF')) sigTypes.add('COMPANY');
-
-  const checklist = required.map((r) => ({
-    ...r,
-    signed: sigTypes.has(r.type),
-  }));
-
-  return {
-    complete: checklist.every((c) => c.signed),
-    checklist,
-  };
+export function contractSignatureRequirements(contract: {
+  signatures?: { signerType: string; deletedAt?: Date | null }[];
+  customer?: { birthDate?: Date | string | null } | null;
+}) {
+  const guardian = contract.customer?.birthDate ? checkAgeEligibility(new Date(contract.customer.birthDate)).requiresGuardian : false;
+  return resolveSignatureRequirements(contract.signatures ?? [], guardian);
 }

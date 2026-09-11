@@ -1,7 +1,9 @@
-import { IsUUID, IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max } from 'class-validator';
+import { IsBoolean, MaxLength, IsUUID, IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateSaleDto {
+  @IsOptional() @IsBoolean() overrideActiveContractCheck?: boolean;
+  @IsOptional() @IsString() @MaxLength(128) downPaymentReference?: string;
   @IsUUID() @IsOptional() tradeInCreditId?: string;
   @IsString()
   @IsOptional()
@@ -47,6 +49,7 @@ export class CreateSaleDto {
   // customer was told the phone has a damage history. Sale is also restricted
   // to OWNER / FINANCE_MANAGER in that case.
   @IsOptional()
+  @IsBoolean()
   previouslyDamagedAcknowledged?: boolean;
 
   // Payment method (all sale types)
@@ -85,10 +88,10 @@ export class CreateSaleDto {
   @Type(() => Number)
   interestRate?: number;
 
-  // Payment due day (1-28) for custom salary-based due dates
+  // Payment due day (1-31) for custom salary-based due dates
   @IsInt({ message: 'กรุณาระบุวันครบกำหนดชำระ' })
   @Min(1, { message: 'วันครบกำหนดต้องไม่น้อยกว่า 1' })
-  @Max(28, { message: 'วันครบกำหนดต้องไม่เกิน 28' })
+  @Max(31, { message: 'วันครบกำหนดต้องไม่เกิน 31' })
   @IsOptional()
   @Type(() => Number)
   paymentDueDay?: number;

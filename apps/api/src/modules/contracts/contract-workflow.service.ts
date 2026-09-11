@@ -1,3 +1,4 @@
+import { contractSignatureRequirements } from '../../utils/validation.util';
 import { cashDownPayment } from '../trade-in/services/trade-in-credit.service';
 import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -367,31 +368,15 @@ export class ContractWorkflowService {
     // check is cheap insurance.
     this.verifyContractHash(contract, 'ACTIVE');
 
-    // Require all required signatures (customer + company + 2 witnesses)
-    const customerSigned = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'CUSTOMER');
-    const companySigned = contract.signatures?.some((s: { signerType: string }) =>
-      s.signerType === 'COMPANY' || s.signerType === 'STAFF'
-    );
-    const witness1Signed = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'WITNESS_1');
-    const witness2Signed = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'WITNESS_2');
-
-    if (!customerSigned || !companySigned) {
+    const signatureRequirements = contractSignatureRequirements(contract);
+    const missingSigners = signatureRequirements.checklist.filter(row => !row.signed);
+    if (missingSigners.some(row => ['CUSTOMER', 'COMPANY'].includes(row.type))) {
       throw new BadRequestException('ต้องลงนามครบทั้งผู้ซื้อและผู้ขายก่อนเปิดใช้งานสัญญา');
     }
-    if (!witness1Signed || !witness2Signed) {
+    if (missingSigners.some(row => ['WITNESS_1', 'WITNESS_2'].includes(row.type))) {
       throw new BadRequestException('ต้องมีพยานลงนามครบ 2 คนก่อนเปิดใช้งานสัญญา');
     }
-
-    // Check guardian signature if required
-    if (contract.customer?.birthDate) {
-      const ageCheck = checkAgeEligibility(new Date(contract.customer.birthDate));
-      if (ageCheck.requiresGuardian) {
-        const guardianSigned = contract.signatures?.some((s: { signerType: string }) => s.signerType === 'GUARDIAN');
-        if (!guardianSigned) {
-          throw new BadRequestException('ลูกค้าอายุต่ำกว่า 20 ปี ต้องมีผู้ปกครองลงนาม');
-        }
-      }
-    }
+    if (missingSigners.length) throw new BadRequestException('ลูกค้าอายุต่ำกว่า 20 ปี ต้องมีผู้ปกครองลงนาม');
 
     // Verify product is still reserved for this contract.
     // Phase 5 Task 2: `deletedAt: null` เป็นส่วนหนึ่งของด่าน — สถานะสินค้ากับการถูกลบเป็นคนละ
@@ -527,7 +512,7 @@ export class ContractWorkflowService {
             sellingPrice: contract.sellingPrice,
             discount: 0,
             netAmount: contract.sellingPrice,
-            paymentMethod: 'CASH',
+            paymentMethod: contract.downPaymentMethod ?? null,
             amountReceived: cashDownPayment(contract),
             downPaymentAmount: contract.downPayment,
             contractId: contract.id,
@@ -535,6 +520,17 @@ export class ContractWorkflowService {
             notes: `สร้างอัตโนมัติจากสัญญา ${contract.contractNumber}`,
           },
         });
+        }
+
+        if (existingSale) {
+          const net = new Decimal(contract.sellingPrice.toString());
+          const gross = new Decimal(existingSale.sellingPrice.toString());
+          await tx.sale.update({ where: { id: existingSale.id }, data: {
+            netAmount: net, sellingPrice: gross.gte(net) ? gross : net, discount: gross.gte(net) ? gross.minus(net) : new Decimal(0),
+            downPaymentAmount: contract.downPayment, amountReceived: cashDownPayment(contract),
+            ...(contract.downPaymentMethod ? { paymentMethod: contract.downPaymentMethod } : {}),
+            tradeInCreditSnapshot: contract.tradeInCreditSnapshot ?? undefined,
+          } });
         }
 
         // Auto journal entry — record contract activation (HP receivable).
@@ -593,7 +589,10 @@ export class ContractWorkflowService {
             select: { id: true },
           });
           if (!downJe) {
-            const cashAccountCode = await this.shopAccountResolver.resolveBranchCashAccount(contract.branchId, tx);
+            if (!contract.downPaymentMethod || !contract.downPaymentReceivedAt) {
+              throw new BadRequestException('ไม่พบหลักฐานรับเงินดาวน์ของสัญญาเดิม กรุณาตรวจสอบการรับเงินก่อนเปิดใช้งาน');
+            }
+            const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(contract.branchId, contract.downPaymentMethod, tx);
             await this.shopDownPaymentTemplate.execute(
               {
                 idempotencyKey: `shop-down-payment:${contract.id}`,

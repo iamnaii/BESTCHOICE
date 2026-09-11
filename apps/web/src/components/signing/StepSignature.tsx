@@ -152,6 +152,7 @@ export default function StepSignature({
     },
     onSuccess: (_data, signerType) => {
       toast.success(`ลบลายเซ็น ${SIGNER_LABELS[signerType as SignerType] || signerType} แล้ว`);
+      queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
       queryClient.invalidateQueries({ queryKey: ['contract-signatures', contractId] });
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

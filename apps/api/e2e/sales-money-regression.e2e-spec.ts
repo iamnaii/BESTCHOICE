@@ -1,3 +1,4 @@
+import { ShopDownPaymentTemplate } from '../src/modules/journal/cpa-templates/shop-down-payment.template';
 import { randomUUID } from 'node:crypto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -50,7 +51,7 @@ describe('External finance received cash and real journal on isolated PostgreSQL
     const journal = new JournalAutoService(db), companies = new CompanyResolverService(db);
     const accounts = new ShopAccountResolver(db), interco = new InterCompanyService(db);
     const writer = new SaleWriterService(db, interco, new ShopCashSaleTemplate(journal, db, companies), accounts,
-      new ShopExternalFinanceSaleTemplate(journal, db, companies));
+      new ShopExternalFinanceSaleTemplate(journal, db, companies), new ShopDownPaymentTemplate(journal, db, companies));
     // Only the external warranty notification is substituted; all monetary writes are real.
     sales = new SaleCreationService(db, writer, interco, { notify: async () => undefined } as never);
     voids = new SaleVoidService(db, new ExchangeCancelReversalTemplate(journal, db));

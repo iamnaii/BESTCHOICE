@@ -1,3 +1,4 @@
+import { contractSignatureRequirements } from '../../../utils/validation.util';
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -134,7 +135,7 @@ export class ContractQueryService {
         reviewedBy: { select: { id: true, name: true } },
         interestConfig: true,
         payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
-        signatures: true,
+        signatures: { where: { deletedAt: null } },
         eDocuments: true,
         contractDocuments: {
           orderBy: { createdAt: 'desc' },
@@ -151,12 +152,12 @@ export class ContractQueryService {
 
     // Enforce branch-level access when user context is provided
     if (user && !hasCrossBranchAccess(user)) {
-      if (user.branchId && contract.branchId !== user.branchId) {
+      if (!user.branchId || contract.branchId !== user.branchId) {
         throw new ForbiddenException('ไม่สามารถเข้าถึงสัญญาข้ามสาขาได้');
       }
     }
 
-    return visibleContractCredit(this.prisma, contract, user);
+    return visibleContractCredit(this.prisma, { ...contract, signatureRequirements: contractSignatureRequirements(contract) }, user);
   }
 
   /**

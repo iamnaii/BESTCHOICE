@@ -71,7 +71,7 @@ ORDER BY s.created_at, s.id;
 
 ## งานที่ยังไม่ปิดในแผน
 
-ชุด C (quote-create/tender/legacy/signers) และ D (รายงาน/export/pagination/role CTA/handoff/cache/UX ครบ 6 เมนู) ยังอยู่ระหว่างดำเนินการหลัง checkpoint ชุด B ข้อค้นพบเหล่านั้นยังเปิดอยู่ รวมกำไรที่ขึ้นกับหน้าปัจจุบันและช่วงวันไทย จึงยังไม่ถือว่าปิดการตรวจหมวดขายทั้งหมด
+ชุด D (รายงาน/export/pagination/role CTA/handoff/cache/UX ครบ 6 เมนู) ยังอยู่ระหว่างดำเนินการหลังชุด C ข้อค้นพบเหล่านั้นยังเปิดอยู่ รวมกำไรที่ขึ้นกับหน้าปัจจุบันและช่วงวันไทย จึงยังไม่ถือว่าปิดการตรวจหมวดขายทั้งหมด
 
 การนำมัดจำไปใช้กับสัญญาผ่อนหรือไฟแนนซ์ยังเป็นระยะขยายตามแผน ไม่เปิดความสามารถดังกล่าวผ่านการเปลี่ยน UI ในชุด A
 
@@ -115,3 +115,23 @@ ORDER BY b.created_at, b.id;
 ```
 
 ผล query เป็นเพียงผู้สมัครตรวจสอบ ไม่ใช่คำสั่งเปลี่ยนบัญชี/จัดสรรเงินใหม่ให้ใบเก่า
+
+## ชุด C: Contract quote, receipt and signature consistency
+
+- Server quote resolves actual branch VAT, deterministic category config and term-rate flag; normalized monetary values and full schedule form the fingerprint. Creation recomputes inside the transaction and returns409 before claims when conditions changed. The wizard displays only the server result, including last-installment rounding; pending/error/stale data cannot submit and409 requires an explicit review.
+- New contracts persist actual down-payment tender/time/reference. Zero cash does not fabricate a receipt; legacy callers default to CASH with an audit event. Activation preserves tender and any existing Sale identity, requires receipt proof for catch-up posting, and draft deletion reverses the original JE account even after branch account settings change. No historical tender backfill.
+- Formal and legacy installment paths share active-contract policy, monetary quote, customer snapshot and tender rules inside Serializable transactions. Retry classification also handles PostgreSQL40001/40P01 surfaced as Prisma P2010; exhausted conflicts return409. Notes-only draft edits do not rewrite money, receipt or payment identities.
+- Shared signer requirements cover CUSTOMER, COMPANY/STAFF, both witnesses and guardian according to backend Bangkok-age policy. Deleted/duplicate signatures do not satisfy missing parties; incomplete/missing/revised requirements revoke wizard readiness and stale callbacks.
+- Caller inventory: repository UI uses `/contracts` via the contract wizard; dormant POS INSTALLMENT payload code and API compatibility tests still reference `/sales` INSTALLMENT. Legacy callers retain Sale id/number/response; physical draft Sale timing remains compatible but default sales reports exclude draft-linked rows. A repository search cannot rule out external consumers.
+
+Read-only reviewer: **PASS, no Critical/Warning** after correcting effective quote rates, stale signer callbacks, explicit payday fingerprint and transaction retries.
+
+| Command/evidence (2026-09-11) | Result |
+|---|---|
+| API targeted quote/policy/signers/retry/lifecycle/workflow/facade/writer/validation (`contracts-api-final.log`) | **14 suites / 299 tests PASS** |
+| Web targeted contract defaults, restore, quote flow, signing/draft (`contracts-web-final.log`) | **10 suites / 71 tests PASS** |
+| `bash tools/test-chat-credit.sh` (`contracts-db-final.log`) | **9 suites / 116 tests PASS**, disposable PostgreSQL and additive migration |
+| `LOCAL_PREVIEW_PORT=5207 npm run local:check` (`contracts-local-final.log`) | **21 checks PASS**, finished2026-09-11T05:20:57Z, baseHEAD a7974a1d6 + C working changes; source fingerprint71e779e2cfb1ebfae093d85c6cb61a6d617938153df86e41dfb576d0d54cabfd |
+| `node docs/review/2026-09-11-sales/contracts-browser-check.mjs` | **10 states PASS** at1440/390: quote, transfer/schedule,409review,503quote failure, guardian required; no page overflow/uncaught errors, actual request fingerprint/tender checked |
+
+C browser captures are in `evidence/contracts/`; visual inspection confirmed responsive form/summary and distinct receipt section. Browser API responses/writes are synthetic; actual money, stock, approval claim, rollback and reversal assertions are in PostgreSQL tests. AI, OTP, storage and outbound notifications remain stubs; no production data, messages or financial writes. A test-only `.at()` incompatible with the web TS target was replaced by slice; one overlapping Prisma regeneration temporarily removed generated client files, so API tests were rerun after generation and passed.

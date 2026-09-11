@@ -1,3 +1,4 @@
+import { ContractQuoteDto } from './dto/contract-quote.dto';
 import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import { Request } from 'express';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
@@ -123,10 +124,16 @@ export class ContractsController {
     );
   }
 
+  @Post('quote')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  quote(@Body() dto: ContractQuoteDto, @CurrentUser() user: { id: string; role: string; branchId?: string | null }) {
+    return this.contractsService.quote(dto, user);
+  }
+
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  create(@Body() dto: CreateContractDto, @CurrentUser() user: { id: string; role: string }) {
-    return this.contractsService.create(dto, user.id, user.role);
+  create(@Body() dto: CreateContractDto, @CurrentUser() user: { id: string; role: string; branchId?: string | null }) {
+    return this.contractsService.create(dto, user.id, user.role, user.branchId);
   }
 
   @Patch(':id')

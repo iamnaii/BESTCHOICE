@@ -1,3 +1,4 @@
+import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
 import * as creditApproval from '../../credit-check/services/credit-approval';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
@@ -55,12 +56,16 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       },
       // resolveSaleShopWarranty อ่านคีย์ warranty.shopWarrantyDays ใน tx เดียวกัน
       // ไม่มีแถว = ไม่ override ⇒ ใช้ค่าตามชนิดสินค้า
-      systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
+      systemConfig: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      interestConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+      branch: { findUnique: jest.fn().mockResolvedValue(null) },
+      customer: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', name: 'Customer', phone: '0800000000', addressCurrent: null }) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
       // closeRepossessionOnSale (2026-09-05) — เครื่องยึดที่ขายผ่าน POS ปิดรายการยึดให้เอง
       repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       product: {
         findUnique: jest.fn().mockResolvedValue({
-          branchId: 'br-1', id: 'p1',
+          branchId: 'br-1', id: 'p1', name: 'Phone', imeiSerial: '123456789012345', po: null,
           status: 'IN_STOCK',
           deletedAt: null,
           wasPreviouslyDamaged: false,
@@ -112,6 +117,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({}) } },
         SaleWriterService,
         { provide: PrismaService, useValue: prisma },
         { provide: InterCompanyService, useValue: { createFromSaleInTx: jest.fn() } },
@@ -377,10 +383,17 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     expect(tx.productReservation.findMany).toBeUndefined();
   });
 
+  it.each(['P2034', 'P2010'])('returns 409 after exhausted %s sale contention', async code => {
+    prisma.$transaction.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('contention', { code, clientVersion: 'test', meta: { code: '40P01' } }));
+    await expect(service.createCashSale({ saleType: 'CASH', productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 8000,
+      paymentMethod: 'CASH', amountReceived: 8000 }, 'sp-1', 8000, 0, { role: 'SALES', branchId: 'br-1' })).rejects.toMatchObject({ status: 409 });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+  });
+
   it('claims an approved monthly limit before completing an installment sale', async () => {
     const approval = await import('../../credit-check/services/credit-approval');
     const claim = jest.spyOn(approval, 'claimCreditApproval').mockRejectedValue(new Error('ต้องอนุมัติยอดผ่อน'));
-    tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+    tx.contract = { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
     tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
     tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
     tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
@@ -396,7 +409,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     // downPayment 3000 = 15% ของ 20000 พอดี = ค่า DEFAULTS.minDownPaymentPct
     // (config.util.ts:183) → ผ่านเงื่อนไข `downPayment < netAmount * pct` แบบเฉียดฉิว
     // ห้ามลดเลขนี้ ไม่งั้นจะโดน BadRequestException 'เงินดาวน์ขั้นต่ำ 15%' แทน
-    tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+    tx.contract = { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
     tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
     tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
     tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
@@ -523,7 +536,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     });
 
     it('(i) createInstallmentSale: first $transaction attempt rejects P2034 → retried → succeeds', async () => {
-      tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+      tx.contract = { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
       tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
       tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
       tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
@@ -545,7 +558,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     });
 
     it('revalidates product stock after an installment serialization conflict', async () => {
-      tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+      tx.contract = { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
       tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
       tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
       tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
@@ -558,7 +571,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
         sellingPrice: 20000, downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH' }, 'sp-1', 20000, 0, 'SALES', 'br-1')).rejects.toThrow(/สินค้าไม่พร้อมขาย/);
       expect(prisma.$transaction).toHaveBeenCalledTimes(2);
       expect(prisma.$transaction.mock.calls.every((call: unknown[]) => (call[1] as { isolationLevel: string }).isolationLevel === 'Serializable')).toBe(true);
-      expect(tx.product.findUnique).toHaveBeenCalledTimes(2);
+      expect(tx.product.findUnique).toHaveBeenCalledTimes(3); // eligibility + quote, then retry eligibility
       expect(tx.sale.create).toHaveBeenCalledTimes(1); // No additional sale is attempted on retry.
     });
 
@@ -604,7 +617,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
 
-    it('(l) createCashSale: P2034 exhausts all 3 attempts → propagates the P2034', async () => {
+    it('(l) createCashSale: P2034 exhausts all 3 attempts → returns a retryable conflict', async () => {
       prisma.$transaction.mockImplementation(async () => { throw p2034; });
 
       await expect(
@@ -615,7 +628,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
           } as any,
           'sp-1', 10000, 0, { role: 'SALES', branchId: 'br-1' },
         ),
-      ).rejects.toBe(p2034);
+      ).rejects.toMatchObject({ status: 409 });
       expect(prisma.$transaction).toHaveBeenCalledTimes(3);
     });
 
@@ -629,7 +642,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
         'Unique constraint failed on Contract.contractNumber',
         { code: 'P2002', clientVersion: 'x' },
       );
-      tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+      tx.contract = { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
       tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
       tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
       tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };

@@ -1,3 +1,4 @@
+import { resolveSignatureRequirements } from '@installment/shared';
 import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -16,7 +17,7 @@ vi.mock('./StepComplete', () => ({ default: () => <div>Signing complete</div> })
 
 describe('Signing wizard document consent', () => {
   const props = {
-    contract: { id: 'c1', contractNumber: 'TEST-1', status: 'DRAFT', workflowStatus: 'PENDING_SIGNATURE', pdpaConsentId: null },
+    contract: { id: 'c1', contractNumber: 'TEST-1', status: 'DRAFT', workflowStatus: 'PENDING_SIGNATURE', pdpaConsentId: null, signatureRequirements: resolveSignatureRequirements([], false) },
     previewHtml: '<p>Original document</p>', previewState: 'ready' as const,
     onRetryPreview: vi.fn(), lessorSignatureImage: '', lessorSignerName: '',
   };
@@ -56,6 +57,17 @@ describe('Signing wizard document consent', () => {
     view.rerender(<SigningWizard {...props} contract={{ ...props.contract, id: 'c2' }} />);
     expect(screen.queryByTestId('signature')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Complete KYC' })).toBeVisible();
+  });
+  it.each([true, undefined])('revokes pending completion when required signers change (%s)', async guardian => {
+    const view = render(<SigningWizard {...props} />);
+    await advanceToSignature();
+    const staleCompletion = signing.onAllSigned;
+    view.rerender(<SigningWizard {...props} contract={{ ...props.contract,
+      signatureRequirements: guardian ? resolveSignatureRequirements([], true) : undefined,
+    }} />);
+    act(() => staleCompletion());
+    expect(screen.queryByText('Signing complete')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('signature')).not.toBeInTheDocument();
   });
   it('ignores a pending signature completion from an invalidated review session', async () => {
     const view = render(<SigningWizard {...props} />);

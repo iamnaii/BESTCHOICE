@@ -1,3 +1,5 @@
+import { ContractQuoteDto } from './dto/contract-quote.dto';
+import { ContractQuoteService, ContractQuoteActor } from './services/contract-quote.service';
 import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ContractCancellationTemplate } from '../journal/cpa-templates/contract-cancellation.template';
@@ -91,8 +93,12 @@ export class ContractsService {
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
-  create(dto: CreateContractDto, salespersonId: string, salespersonRole?: string) {
-    return this.lifecycle.create(dto, salespersonId, salespersonRole);
+  quote(dto: ContractQuoteDto, actor: ContractQuoteActor) {
+    return new ContractQuoteService(this.prisma).resolve(dto, actor);
+  }
+
+  create(dto: CreateContractDto, salespersonId: string, salespersonRole?: string, salespersonBranchId?: string | null) {
+    return this.lifecycle.create(dto, salespersonId, salespersonRole, salespersonBranchId);
   }
 
   update(id: string, dto: UpdateContractDto, userId: string) {

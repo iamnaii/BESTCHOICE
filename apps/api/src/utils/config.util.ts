@@ -2,7 +2,7 @@
  * Shared system config loading utilities
  * Eliminates duplication of config loading pattern across services
  */
-import { PrismaService } from '../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 import { DEFAULT_VAT_DECIMAL, parseVatValue } from './vat-rate.util';
 import { STORE_COMMISSION_FALLBACK_RATE } from './store-commission.util';
 
@@ -216,7 +216,7 @@ export const BUSINESS_RULES = {
  * Load installment-related system configs with defaults
  */
 export async function loadInstallmentConfig(
-  prisma: PrismaService | { systemConfig: { findMany: (...args: unknown[]) => Promise<{ key: string; value: string }[]> } },
+  prisma: Pick<Prisma.TransactionClient, 'systemConfig'>,
 ): Promise<InstallmentConfig> {
   const configs = await prisma.systemConfig.findMany({
     where: { key: { in: [...INSTALLMENT_CONFIG_KEYS] }, deletedAt: null },
@@ -283,20 +283,27 @@ export function resolveInstallmentParams(
  * Falls back to `defaultVatPct` when no branchId is supplied or the branch
  * record cannot be found (e.g. during seeding or unit tests).
  */
-export async function resolveVatPctForBranch(
-  prisma: PrismaService | { branch: { findUnique: (...args: unknown[]) => Promise<unknown> } },
+export async function resolveBranchVat(
+  prisma: Pick<Prisma.TransactionClient, 'branch'>,
   branchId: string | null | undefined,
   defaultVatPct: number,
-): Promise<number> {
-  if (!branchId) return defaultVatPct;
-
-  const branch = await (prisma as PrismaService).branch.findUnique({
+): Promise<{ vatPct: number; source: 'BRANCH_COMPANY' | 'CONFIG_FALLBACK' }> {
+  const fallback = { vatPct: defaultVatPct, source: 'CONFIG_FALLBACK' as const };
+  if (!branchId) return fallback;
+  const branch = await prisma.branch.findUnique({
     where: { id: branchId },
     include: { company: { select: { vatRegistered: true, vatRate: true } } },
   });
+  if (!branch?.company) return fallback;
+  if (!branch.company.vatRegistered) return { vatPct: 0, source: 'BRANCH_COMPANY' };
+  if (branch.company.vatRate != null) return { vatPct: Number(branch.company.vatRate), source: 'BRANCH_COMPANY' };
+  return fallback;
+}
 
-  if (!branch?.company) return defaultVatPct;
-  if (!branch.company.vatRegistered) return 0;
-  if (branch.company.vatRate != null) return Number(branch.company.vatRate);
-  return defaultVatPct;
+export async function resolveVatPctForBranch(
+  prisma: Pick<Prisma.TransactionClient, 'branch'>,
+  branchId: string | null | undefined,
+  defaultVatPct: number,
+): Promise<number> {
+  return (await resolveBranchVat(prisma, branchId, defaultVatPct)).vatPct;
 }

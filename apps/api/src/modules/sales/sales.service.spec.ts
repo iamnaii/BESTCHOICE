@@ -1,3 +1,4 @@
+import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import * as creditApproval from '../credit-check/services/credit-approval';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
@@ -78,6 +79,7 @@ jest.mock('../../utils/config.util', () => ({
     vatPct: 0.07,
   }),
   resolveVatPctForBranch: jest.fn().mockResolvedValue(0.07),
+  resolveBranchVat: jest.fn().mockResolvedValue({ vatPct: 0.07, source: 'BRANCH_COMPANY' }),
 }));
 
 jest.mock('../../utils/sequence.util', () => ({
@@ -157,6 +159,7 @@ describe('SalesService', () => {
   beforeEach(async () => {
     jest.spyOn(creditApproval, 'claimCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
     prisma = {
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       sale: {
         findMany: jest.fn().mockResolvedValue([mockSale]),
@@ -170,6 +173,7 @@ describe('SalesService', () => {
         create: jest.fn().mockResolvedValue(mockSale),
       },
       customer: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Test customer', phone: '0891234567', addressCurrent: null }),
         // รั้วกันข้ามฝั่ง (spec 2026-09-05 §5.1 — SaleCreationService.assertSameTestSideForSale)
         // อ่านลูกค้าก่อน dispatch ไป writer — ค่าเริ่มต้นเป็นลูกค้าจริง (ที่อยู่ null / เบอร์ปกติ)
         // ให้รั้วเงียบ: เทสในไฟล์นี้เป็นเรื่องขายจริง ไม่ได้ทดสอบตัวรั้ว
@@ -190,6 +194,7 @@ describe('SalesService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
       },
       contract: {
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({
           id: 'contract-1',
           contractNumber: 'BC-2026-TEST-001',
@@ -245,6 +250,7 @@ describe('SalesService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({}) } },
         SalesService,
         { provide: PrismaService, useValue: prisma },
         { provide: InterCompanyService, useValue: interCompanyService },
@@ -611,7 +617,7 @@ describe('SalesService', () => {
                 return Promise.resolve({ ...mockProduct, status: args.data.status });
               }),
             },
-            contract: {
+            contract: { ...prisma.contract,
               create: jest.fn().mockImplementation(() => {
                 contractCreated = true;
                 return Promise.resolve({ id: 'contract-1', contractNumber: 'BC-2026-TEST-001', totalMonths: 12 });
@@ -649,7 +655,7 @@ describe('SalesService', () => {
               findMany: jest.fn().mockResolvedValue([]),
               update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
             },
-            contract: {
+            contract: { ...prisma.contract,
               create: jest.fn().mockResolvedValue({ id: 'contract-1', contractNumber: 'BC-2026-TEST-001', totalMonths: 12 }),
             },
             payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },
@@ -678,7 +684,7 @@ describe('SalesService', () => {
               findMany: jest.fn().mockResolvedValue([]),
               update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
             },
-            contract: {
+            contract: { ...prisma.contract,
               create: jest.fn().mockResolvedValue({ id: 'contract-1', contractNumber: 'BC-2026-TEST-001', totalMonths: 12 }),
             },
             payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },

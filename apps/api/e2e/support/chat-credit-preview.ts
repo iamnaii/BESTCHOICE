@@ -1,3 +1,5 @@
+import { ContractQuoteDto } from '../../src/modules/contracts/dto/contract-quote.dto';
+import { ContractQuoteService } from '../../src/modules/contracts/services/contract-quote.service';
 import { seedTradeInAppraisal, seedTradeInShop, tradeInProviders } from './trade-in-fixture';
 import { TradeInController } from '../../src/modules/trade-in/trade-in.controller';
 import { ContactsController } from '../../src/modules/contacts/contacts.controller';
@@ -113,7 +115,7 @@ const gfin = new GfinConfigService(db, new AuditService(db));
 const holds = new ShopReservationService(db, {} as never, new AuditService(db));
 const lifecycle = new ContractLifecycleService(db, contractQuery,
   { execute: async () => ({}) } as never, { execute: async () => ({}) } as never,
-  { resolveBranchCashAccount: async () => '110101' } as never);
+  { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never);
 const manager = Object.assign(Object.create(RoomManagerService.prototype), {
   prisma: db,
 }) as RoomManagerService;
@@ -267,6 +269,7 @@ class PreviewController {
     return db.interestConfig.findFirst({ where: { productCategories: { has: category as never }, isActive: true } });
   }
   @Get('sales/config') config() { return loadInstallmentConfig(db); }
+  @Post('contracts/quote') quoteContract(@Body() dto: ContractQuoteDto) { return new ContractQuoteService(db).resolve(dto, actor); }
   @Post('contracts') createContract(@Body() dto: CreateContractDto) { return lifecycle.create(dto, actor.id, actor.role); }
   @Get('contracts/:id') contract(@Param('id') id: string) { return contractQuery.findOne(id); }
   @Get('preview/info') info() {

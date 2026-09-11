@@ -46,7 +46,7 @@ describe('verified credit approval with PostgreSQL and real HTTP controllers', (
       findOne: (id: string) => db.contract.findUniqueOrThrow({ where: { id }, include: { payments: { orderBy: { installmentNo: 'asc' } } } }),
     } as never, { execute: jest.fn().mockResolvedValue({}) } as never,
     { execute: jest.fn().mockResolvedValue({}) } as never,
-    { resolveBranchCashAccount: async () => '110101' } as never);
+    { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never);
     const module = await Test.createTestingModule({
       controllers: [GlobalCreditCheckController, CustomerCreditCheckController, ApprovalContractTestController],
       providers: [{ provide: CreditCheckService, useValue: credits }, { provide: PrismaService, useValue: db }],

@@ -1,3 +1,4 @@
+import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
 /**
  * Void-sale Task 5 — ยกเลิกใบขายพิสูจน์บน DB จริง
  *
@@ -85,6 +86,7 @@ const salesService = new SalesService(
   // ประกันทาง LINE เป็น fire-and-forget หลัง commit — ไฟล์นี้ไม่ตรวจการส่ง
   // ใส่ตัวปลอมที่ไม่ทำอะไร กันไม่ให้ยิงออกเน็ตจริงตอนรันเทสต์
   { notify: async () => {} } as never,
+  new ShopDownPaymentTemplate(journal, prisma as never, companyResolver),
 );
 
 const saleVoidService = new SaleVoidService(

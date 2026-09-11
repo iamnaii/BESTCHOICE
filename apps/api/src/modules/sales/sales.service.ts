@@ -1,3 +1,4 @@
+import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
@@ -39,6 +40,7 @@ export class SalesService {
     private shopAccountResolver: ShopAccountResolver,
     private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
     private warrantyNotifier: SaleWarrantyNotifierService,
+    private shopDownPaymentTemplate: ShopDownPaymentTemplate,
   ) {
     this.query = new SalesQueryService(this.prisma);
     this.writer = new SaleWriterService(
@@ -47,6 +49,7 @@ export class SalesService {
       this.shopCashSaleTemplate,
       this.shopAccountResolver,
       this.shopExternalFinanceSaleTemplate,
+      this.shopDownPaymentTemplate,
     );
     this.creation = new SaleCreationService(
       this.prisma,

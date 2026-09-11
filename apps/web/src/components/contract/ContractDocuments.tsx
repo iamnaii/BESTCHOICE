@@ -1,3 +1,4 @@
+import type { SignatureRequirements } from '@installment/shared';
 import api from '@/lib/api';
 import { formatDateMedium } from '@/utils/formatters';
 
@@ -16,25 +17,22 @@ interface EDocument {
 }
 
 interface ContractDocumentsProps {
+  signatureRequirements?: SignatureRequirements;
   signatures: Signature[];
   eDocuments: EDocument[];
   pdpaConsentId: string | null;
 }
 
 /** Signing status and e-document downloads section */
-export default function ContractDocuments({ signatures, eDocuments, pdpaConsentId }: ContractDocumentsProps) {
-  if ((signatures?.length ?? 0) === 0 && eDocuments.length === 0) return null;
+export default function ContractDocuments({ signatureRequirements, signatures, eDocuments, pdpaConsentId }: ContractDocumentsProps) {
+  if (!signatureRequirements && (signatures?.length ?? 0) === 0 && eDocuments.length === 0) return null;
 
   return (
     <div className="rounded-lg border p-4 mb-6">
       <h3 className="text-sm font-semibold text-foreground mb-3">สถานะเอกสารและลายเซ็น</h3>
+      {!signatureRequirements && <p className="mb-3 text-sm text-muted-foreground">ยังโหลดรายการผู้ลงนามที่ต้องใช้ไม่สำเร็จ</p>}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-        {[
-          { type: 'CUSTOMER', label: 'ผู้ซื้อ' },
-          { type: 'COMPANY', label: 'ผู้ขาย' },
-          { type: 'WITNESS_1', label: 'พยาน 1' },
-          { type: 'WITNESS_2', label: 'พยาน 2' },
-        ].map(({ type, label }) => {
+        {(signatureRequirements?.checklist ?? []).map(({ type, label }) => {
           const sig = (signatures || []).find(s => (s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) === type);
           return (
             <div key={type} className={`p-2 rounded-lg text-center text-xs ${sig ? 'bg-success/5 dark:bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>

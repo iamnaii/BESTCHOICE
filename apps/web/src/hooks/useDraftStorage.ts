@@ -9,6 +9,8 @@ export interface ContractDraft {
   customerId?: string;
   fromRoom?: string;
   downPayment: number;
+  downPaymentMethod?: 'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET';
+  downPaymentReference?: string;
   totalMonths: number;
   paymentDueDay: number;
   notes: string;
@@ -44,6 +46,8 @@ export function useDraftStorage(userId: string | undefined) {
         !Number.isFinite(draft.downPayment) || draft.downPayment < 0 ||
         !Number.isInteger(draft.totalMonths) || draft.totalMonths < 1 ||
         !Number.isInteger(draft.paymentDueDay) || draft.paymentDueDay < 1 || draft.paymentDueDay > 31 ||
+        (draft.downPaymentMethod !== undefined && !['CASH', 'BANK_TRANSFER', 'QR_EWALLET'].includes(draft.downPaymentMethod)) ||
+        (draft.downPaymentReference !== undefined && (typeof draft.downPaymentReference !== 'string' || draft.downPaymentReference.length > 128)) ||
         typeof draft.notes !== 'string' || !validId(draft.customerId) ||
         !validId(draft.productId) || !validId(draft.fromRoom) || !validId(draft.tradeInCreditId)) {
         clear();

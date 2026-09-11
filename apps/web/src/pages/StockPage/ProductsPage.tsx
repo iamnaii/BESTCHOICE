@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
-import { useIsMobile } from '@/hooks/useIsMobile';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
@@ -103,7 +102,6 @@ export default function StockProductsPage() {
     bulkTransferMutation,
   } = products;
   const installmentPlans = useStockInstallments(listProducts);
-  const isMobile = useIsMobile();
   const selectableProducts = useMemo(
     () => listProducts.filter((product) => !product.stockGroup),
     [listProducts],
@@ -165,7 +163,6 @@ export default function StockProductsPage() {
         isManager,
         view,
         filterCategory,
-        showNameCaption: !isMobile,
         listProducts,
         selectableProducts,
         selectedIds,
@@ -180,7 +177,6 @@ export default function StockProductsPage() {
       isManager,
       view,
       filterCategory,
-      isMobile,
       listProducts,
       selectableProducts,
       selectedIds,

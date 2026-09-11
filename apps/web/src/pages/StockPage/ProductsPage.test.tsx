@@ -128,14 +128,11 @@ describe('Stock product pricing', () => {
   it('shows cost, cash, starting down and monthly quote without the installment selling price', async () => {
     showProducts([product(), product({ id: 'used-2', model: 'iPhone 14' })]);
     await screen.findAllByText('2,985 ฿');
-    for (const label of ['ราคาทุน', 'ราคาเต็มจำนวน', 'ยอดผ่อนต่อเดือน']) {
+    for (const label of ['ราคาทุน', 'ราคาเต็มจำนวน', 'ดาวน์', 'ยอดผ่อนต่อเดือน']) {
       expect(screen.getByRole('columnheader', { name: label })).toBeInTheDocument();
     }
-    // ดาวน์ไม่มีคอลัมน์แยกแล้ว — อยู่ในช่องยอดผ่อนต่อเดือน (ตารางพอดีจอคอม)
-    expect(screen.queryByRole('columnheader', { name: 'ดาวน์' })).not.toBeInTheDocument();
     const row = screen.getByRole('row', { name: /iPhone 13/ });
     expect(within(row).getByRole('button', { name: 'iPhone 13' })).toBeInTheDocument();
-    expect(within(row).getByText('ดาวน์')).toBeInTheDocument();
     for (const value of ['10,000 ฿', '15,900 ฿', '2,985 ฿', '2,413.20 ฿', 'ต่อเดือน · 12 งวด']) {
       expect(within(row).getByText(value)).toBeInTheDocument();
     }
@@ -183,8 +180,7 @@ describe('Stock product pricing', () => {
     ]);
     await screen.findByText('0 ฿');
     const blank = within(screen.getByRole('row', { name: /iPhone 13/ }));
-    // ราคาเต็มจำนวน + ช่องค่างวด (ดาวน์และยอดผ่อนรวมช่องเดียว)
-    expect(blank.getAllByText('—')).toHaveLength(2);
+    expect(blank.getAllByText('—')).toHaveLength(3);
     expect(screen.queryByText(/ต่อเดือน ·/)).not.toBeInTheDocument();
     expect(mocks.get.mock.calls.some(([url]) => url.startsWith('/interest-configs/'))).toBe(false);
   });
@@ -220,7 +216,7 @@ describe('Stock product pricing', () => {
     const cashOnly = within(screen.getByRole('row', { name: /iPhone SE/ }));
     expect(cashOnly.queryByText('โหลดไม่สำเร็จ')).not.toBeInTheDocument();
     expect(cashOnly.getByText('15,900 ฿')).toBeInTheDocument();
-    expect(cashOnly.getAllByText('—')).toHaveLength(1);
+    expect(cashOnly.getAllByText('—')).toHaveLength(2);
   });
 });
 
@@ -246,30 +242,33 @@ describe('New phone stock view', () => {
         .filter(Boolean),
     ).toEqual([
       'รุ่น',
-      'สเปกย่อ',
+      'ความจุ',
+      'สี',
       'ราคาเต็มจำนวน',
+      'ดาวน์',
       'ยอดผ่อนต่อเดือน',
       'วันที่รับเข้า',
       'สถานะ',
+      'สาขา',
     ]);
-    // ตารางคอมพอดีจอ: ความจุ·สี รวมเป็นสเปกย่อ · ดาวน์อยู่ในช่องค่างวด · สาขาอยู่ใต้ชื่อ
     const row = within(screen.getByRole('row', { name: /iPhone 16 123456789012345/ }));
     const cells = row.getAllByRole('cell');
-    expect(cells[1]).toHaveTextContent('สาขาทดสอบ');
+    expect(cells[2]).toHaveTextContent('128GB');
+    expect(cells[3]).toHaveTextContent('Black');
+    expect(cells[4]).toHaveTextContent('15,900 ฿');
+    expect(cells[5]).toHaveTextContent('3,980 ฿');
+    expect(cells[6]).toHaveTextContent('ต่อเดือน · 6 งวด');
+    expect(cells[7]).toHaveTextContent('ยังไม่ระบุ');
+    expect(cells[8]).toHaveTextContent('พร้อมขาย');
+    expect(cells[8]).not.toHaveTextContent('สาขาทดสอบ');
+    expect(cells[9]).toHaveTextContent('สาขาทดสอบ');
     expect(cells[1]).not.toHaveTextContent('128GB');
     expect(cells[1]).not.toHaveTextContent('Black');
-    expect(cells[2]).toHaveTextContent('128GB · Black');
-    expect(cells[3]).toHaveTextContent('15,900 ฿');
-    expect(cells[4]).toHaveTextContent('3,980 ฿');
-    expect(cells[4]).toHaveTextContent('ต่อเดือน · 6 งวด');
-    expect(cells[4]).toHaveTextContent('ดาวน์');
-    expect(cells[5]).toHaveTextContent('ยังไม่ระบุ');
-    expect(cells[6]).toHaveTextContent('พร้อมขาย');
-    expect(cells[6]).not.toHaveTextContent('สาขาทดสอบ');
     expect(row.queryByText('19,900 ฿')).not.toBeInTheDocument();
     expect(row.queryByText('29,900 ฿')).not.toBeInTheDocument();
     const missing = within(screen.getByRole('row', { name: /iPhone 16 Pro/ })).getAllByRole('cell');
     expect(missing[2]).toHaveTextContent('—');
+    expect(missing[3]).toHaveTextContent('—');
     fireEvent.click(
       within(screen.getByRole('group', { name: 'แบ่งประเภทสินค้า' })).getByRole('button', {
         name: 'ทั้งหมด',
@@ -278,7 +277,7 @@ describe('New phone stock view', () => {
     await screen.findByRole('columnheader', { name: 'ราคาทุน' });
     expect(screen.getByRole('columnheader', { name: 'ราคาเต็มจำนวน' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: 'สถานะ' })).toBeInTheDocument();
-    expect(screen.queryByRole('columnheader', { name: 'สาขา' })).not.toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'สาขา' })).toBeInTheDocument();
   });
 
   it('keeps new phone specifications and branch visible in mobile cards', async () => {
@@ -334,8 +333,7 @@ describe('Used phone stock view', () => {
       ]);
       await screen.findByText('iPhone 13');
       fireEvent.click(screen.getByRole('button', { name: 'มือ 2' }));
-      // ตารางคอมรวมสภาพเครื่องไว้ในสเปกย่อบรรทัดสอง · การ์ดมือถือยังแยกช่อง
-      await screen.findByText(mobile ? '87%' : 'แบต 87% · มีกล่อง · ประกันถึง 12/03/2570');
+      await screen.findByText('87%');
       if (!mobile) {
         expect(
           screen
@@ -344,11 +342,17 @@ describe('Used phone stock view', () => {
             .filter(Boolean),
         ).toEqual([
           'รุ่น',
-          'สเปกย่อ',
+          'ความจุ',
+          'สี',
+          '%แบตเตอรี่',
+          'มีกล่อง',
+          'ประกันศูนย์',
           'ราคาเต็มจำนวน',
+          'ดาวน์',
           'ยอดผ่อนต่อเดือน',
           'วันที่รับเข้า',
           'สถานะ',
+          'สาขา',
         ]);
       }
       const rows = mobile
@@ -357,9 +361,11 @@ describe('Used phone stock view', () => {
       const full = within(rows[0]);
       expect(full.getByRole('button', { name: 'iPhone 13' })).toBeInTheDocument();
       for (const value of [
-        ...(mobile
-          ? ['128GB', 'Black', '87%', 'มี', 'ถึง 12/03/2570']
-          : ['128GB · Black', 'แบต 87% · มีกล่อง · ประกันถึง 12/03/2570']),
+        '128GB',
+        'Black',
+        '87%',
+        'มี',
+        'ถึง 12/03/2570',
         '15,900 ฿',
         '2,985 ฿',
         '2,413.20 ฿',
@@ -372,24 +378,13 @@ describe('Used phone stock view', () => {
       expect(full.queryByText('19,900 ฿')).not.toBeInTheDocument();
       expect(full.queryByText('29,900 ฿')).not.toBeInTheDocument();
       const expired = within(rows[1]);
-      if (mobile) {
-        expect(expired.getByText('0%')).toBeInTheDocument();
-        expect(expired.getByText('ไม่มี')).toBeInTheDocument();
-        expect(expired.getByText('หมดประกันแล้ว')).toBeInTheDocument();
-      } else {
-        expect(expired.getByText('แบต 0% · ไม่มีกล่อง · หมดประกันแล้ว')).toBeInTheDocument();
-      }
-      expect(expired.queryByText(/ถึง 01\/01\/2573/)).not.toBeInTheDocument();
+      expect(expired.getByText('0%')).toBeInTheDocument();
+      expect(expired.getByText('ไม่มี')).toBeInTheDocument();
+      expect(expired.getByText('หมดประกันแล้ว')).toBeInTheDocument();
+      expect(expired.queryByText('ถึง 01/01/2573')).not.toBeInTheDocument();
       const unknown = within(rows[2]);
-      if (mobile) {
-        expect(unknown.getByText('—')).toBeInTheDocument();
-        expect(unknown.getAllByText('ยังไม่ระบุ')).toHaveLength(3);
-      } else {
-        // ไม่มีข้อมูลสภาพเครื่อง = ไม่มีบรรทัดสอง (ไม่แต่งเติม) · ยังไม่ระบุ มีเฉพาะวันที่รับเข้า
-        expect(unknown.getByText('128GB · Black')).toBeInTheDocument();
-        expect(unknown.queryByText(/แบต/)).not.toBeInTheDocument();
-        expect(unknown.getAllByText('ยังไม่ระบุ')).toHaveLength(1);
-      }
+      expect(unknown.getByText('—')).toBeInTheDocument();
+      expect(unknown.getAllByText('ยังไม่ระบุ')).toHaveLength(3);
       expect(unknown.queryByText('ไม่มี')).not.toBeInTheDocument();
       expect(unknown.queryByText('หมดประกันแล้ว')).not.toBeInTheDocument();
       if (mobile) {
@@ -408,18 +403,21 @@ describe('Used phone stock view', () => {
       } else {
         const cells = full.getAllByRole('cell');
         for (const [index, value] of [
-          [1, 'สาขาทดสอบ'],
-          [2, '128GB · Black'],
-          [2, 'แบต 87%'],
-          [3, '15,900 ฿'],
-          [4, '2,985 ฿'],
-          [4, '2,413.20 ฿'],
-          [5, 'ยังไม่ระบุ'],
-          [6, 'พร้อมขาย'],
+          [2, '128GB'],
+          [3, 'Black'],
+          [4, '87%'],
+          [5, 'มี'],
+          [6, 'ถึง 12/03/2570'],
+          [7, '15,900 ฿'],
+          [8, '2,985 ฿'],
+          [9, '2,413.20 ฿'],
+          [10, 'ยังไม่ระบุ'],
+          [11, 'พร้อมขาย'],
+          [12, 'สาขาทดสอบ'],
         ] as const) {
           expect(cells[index]).toHaveTextContent(value);
         }
-        expect(cells[6]).not.toHaveTextContent('สาขาทดสอบ');
+        expect(cells[11]).not.toHaveTextContent('สาขาทดสอบ');
       }
     },
   );
@@ -468,11 +466,15 @@ describe('New tablet stock view', () => {
             .filter(Boolean),
         ).toEqual([
           'รุ่น',
-          'สเปกย่อ',
+          'ความจุ',
+          'สี',
+          'การเชื่อมต่อ',
           'ราคาเต็มจำนวน',
+          'ดาวน์',
           'ยอดผ่อนต่อเดือน',
           'วันที่รับเข้า',
           'สถานะ',
+          'สาขา',
         ]);
       }
       const rows = mobile
@@ -480,7 +482,8 @@ describe('New tablet stock view', () => {
         : screen.getAllByRole('row').slice(1);
       const wifi = within(rows[0]);
       for (const value of [
-        ...(mobile ? ['128GB', 'Black'] : ['128GB · Black']),
+        '128GB',
+        'Black',
         'Wi-Fi',
         '15,900 ฿',
         '2,985 ฿',
@@ -566,14 +569,17 @@ describe('All categories and accessory stock views', () => {
             .map((header) => header.textContent)
             .filter(Boolean),
         ).toEqual([
+          'ประเภท',
           'ชื่อสินค้า/รุ่น',
           'สเปกย่อ',
           'ราคาทุน',
           'ราคาเต็มจำนวน',
+          'ดาวน์',
           'ยอดผ่อนต่อเดือน',
           'วันที่รับเข้า',
           'คงเหลือ',
           'สถานะ',
+          'สาขา',
         ]);
       }
       const rows = mobile
@@ -587,7 +593,7 @@ describe('All categories and accessory stock views', () => {
       for (const value of ['อุปกรณ์เสริม', 'เคสใส iPhone 16', 'UNIT-001', '0 ชิ้น', 'จอง'])
         expect(accessory.getByText(value)).toBeInTheDocument();
       expect(accessory.queryByText(/ต่อเดือน ·/)).not.toBeInTheDocument();
-      expect(accessory.getAllByText('—')).toHaveLength(1);
+      expect(accessory.getAllByText('—')).toHaveLength(2);
     },
   );
 
@@ -677,6 +683,7 @@ describe('All categories and accessory stock views', () => {
           'ราคาขาย',
           'คงเหลือ',
           'สถานะ',
+          'สาขา',
         ]);
       }
       const rows = mobile
@@ -1048,11 +1055,11 @@ describe('Stock table server sorting', () => {
     );
     const region = screen.getByRole('region', { name: 'เลื่อนตารางรายการสินค้า' });
     region.scrollLeft = 220;
-    const button = screen.getByRole('button', { name: 'วันที่รับเข้า' });
+    const button = screen.getByRole('button', { name: 'สาขา' });
     button.focus();
     fireEvent.click(button);
     await waitFor(() => expect(finish).toBeDefined());
-    expect(screen.getByRole('button', { name: 'วันที่รับเข้า' })).toBe(button);
+    expect(screen.getByRole('button', { name: 'สาขา' })).toBe(button);
     expect(button).toHaveFocus();
     expect(region.scrollLeft).toBe(220);
     expect(screen.queryByRole('button', { name: 'จัดการราคา' })).not.toBeInTheDocument();
@@ -1156,17 +1163,17 @@ describe('Stock received dates', () => {
           target: { value: 'stockInDate' },
         });
       } else {
-        // อยู่หลังยอดผ่อนต่อเดือน ก่อนคงเหลือ (index 6 นับจากคอลัมน์เลือกของผู้จัดการ)
+        // อยู่หลังยอดผ่อนต่อเดือน ก่อนคงเหลือ (index 8 นับจากคอลัมน์เลือกของผู้จัดการ)
         const headers = screen.getAllByRole('columnheader').map((header) => header.textContent);
-        expect(headers[5]).toBe('ยอดผ่อนต่อเดือน');
-        expect(headers[6]).toBe('วันที่รับเข้า');
-        expect(headers[7]).toBe('คงเหลือ');
+        expect(headers[7]).toBe('ยอดผ่อนต่อเดือน');
+        expect(headers[8]).toBe('วันที่รับเข้า');
+        expect(headers[9]).toBe('คงเหลือ');
         const deviceCells = within(screen.getByRole('row', { name: /iPhone 13/ })).getAllByRole('cell');
-        expect(deviceCells[6]).toHaveTextContent('20/08/2569');
+        expect(deviceCells[8]).toHaveTextContent('20/08/2569');
         const groupCells = within(screen.getByRole('row', { name: /เคสใส iPhone 16/ })).getAllByRole(
           'cell',
         );
-        expect(groupCells[6]).toHaveTextContent('—');
+        expect(groupCells[8]).toHaveTextContent('—');
         fireEvent.click(screen.getByRole('button', { name: 'วันที่รับเข้า' }));
       }
       await waitFor(() =>

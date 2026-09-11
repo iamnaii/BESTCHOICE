@@ -80,7 +80,8 @@ describe('Sales read authorization on isolated PostgreSQL', () => {
     app = module.createNestApplication({ logger: false });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     app.useGlobalInterceptors(new EntityScopeInterceptor());
-    await app.init();
+    // Bind the same IPv4 destination Supertest uses; Darwin permits a different IPv6 server on the same port.
+    await app.listen(0, '127.0.0.1');
   });
   beforeEach(() => { actor = { id: userA, role: 'SALES', branchId: branchA,
     accessibleCompanies: ['SHOP'], primaryCompany: 'SHOP' }; });

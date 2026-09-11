@@ -105,7 +105,7 @@ interface DataTableProps<T> {
   /** Toolbar content (rendered between search and column toggle) */
   toolbar?: ReactNode;
   /** Cell padding. `compact` also tightens horizontal padding to buy column width. */
-  density?: 'compact' | 'default' | 'spacious';
+  density?: 'dense' | 'compact' | 'default' | 'spacious';
   /**
    * Minimum table width before the horizontal scroller kicks in.
    * Raise it for wide tables so fixed columns aren't crushed on small screens.
@@ -118,6 +118,9 @@ interface DataTableProps<T> {
 }
 
 const densityPadding = {
+  // dense: for tables that must fit a laptop screen without a horizontal scroller — 16px of
+  // horizontal padding per column instead of 24px buys ~100px across a dozen columns.
+  dense: 'px-2 py-2',
   compact: 'px-3 py-2.5',
   default: 'px-5 py-3',
   spacious: 'px-6 py-4',
@@ -126,6 +129,7 @@ const densityPadding = {
 // Compact tables carry many columns, so the body drops to 13px — still above the
 // 12px readability floor, and it buys real width back for long values.
 const densityText = {
+  dense: 'text-[13px]',
   compact: 'text-[13px]',
   default: 'text-sm',
   spacious: 'text-sm',

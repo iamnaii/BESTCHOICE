@@ -53,8 +53,7 @@ const quickCategories = [
   { value: 'TABLET', label: 'แท็บเล็ต' },
   { value: 'ACCESSORY', label: 'อุปกรณ์' },
 ];
-// ดาวน์อยู่ในช่องยอดผ่อนต่อเดือนแล้ว (StockInstallmentSummary) จึงไม่มีคอลัมน์แยก
-const priceKeys = ['costPrice', 'cashPrice', 'monthlyPayment'];
+const priceKeys = ['costPrice', 'cashPrice', 'downPayment', 'monthlyPayment'];
 const selectClass =
   'h-11 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-card px-3 text-sm text-foreground shadow-xs transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -566,7 +565,7 @@ export function StockListTab({
             emptyIcon={hasFilters ? Search : Package}
             emptyDescription={hasFilters ? 'ลองเปลี่ยนคำค้นหาหรือล้างตัวกรอง' : undefined}
             columnToggle={desktopColumns.some((column) => column.hideable !== false)}
-            density="compact"
+            density="dense"
             // ผลรวมความกว้างคอลัมน์จริง (≤ ~1,130px ทุกแท็บ) — พอดีจอ 1280 ไม่ต้องเลื่อนแนวนอน
             minWidth={`${stockTableMinWidth(desktopColumns)}px`}
             toolbar={summaryNode}

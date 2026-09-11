@@ -31,7 +31,7 @@ interface Fixture {
 
 async function main() {
   const prisma = new PrismaClient();
-  const fixturePath = path.join(__dirname, '..', 'prisma', 'fixtures', 'gfin-2026-05-22.json');
+  const fixturePath = path.join(__dirname, '..', 'prisma', 'fixtures', 'gfin-2026-08-15.json');
   const data = JSON.parse(fs.readFileSync(fixturePath, 'utf-8')) as Fixture;
 
   for (const mp of data.maxPrices) {

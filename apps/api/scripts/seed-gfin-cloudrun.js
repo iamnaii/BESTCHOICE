@@ -55,6 +55,24 @@ const summary = { mappings: { created: 0, updated: 0 }, rules: { created: 0, upd
     }
   }
 
+  // The fixture is the full intended set: soft-delete mappings/rules that are no longer in it
+  // (e.g. a series that was split/renamed) so stale rows cannot shadow the new ones.
+  // Rate factors are NOT pruned (a rate added by hand must survive a re-seed).
+  const mappingKey = (m) => [m.gfinSeries, m.gfinVariant ?? '', m.storage, m.condition].join('|');
+  const wantedMappings = new Set(data.maxPrices.map(mappingKey));
+  const liveMappings = await prisma.gfinModelMapping.findMany({ where: { deletedAt: null } });
+  const staleMappingIds = liveMappings.filter((m) => !wantedMappings.has(mappingKey(m))).map((m) => m.id);
+  if (staleMappingIds.length) {
+    await prisma.gfinModelMapping.updateMany({ where: { id: { in: staleMappingIds } }, data: { deletedAt: new Date(), isActive: false } });
+  }
+  const wantedRules = new Set(data.overpriceRules.map((r) => r.label));
+  const liveRules = await prisma.gfinOverpriceRule.findMany({ where: { deletedAt: null } });
+  const staleRuleIds = liveRules.filter((r) => !wantedRules.has(r.label)).map((r) => r.id);
+  if (staleRuleIds.length) {
+    await prisma.gfinOverpriceRule.updateMany({ where: { id: { in: staleRuleIds } }, data: { deletedAt: new Date(), isActive: false } });
+  }
+  summary.pruned = { mappings: staleMappingIds.length, rules: staleRuleIds.length };
+
   const counts = {
     mappings: await prisma.gfinModelMapping.count({ where: { deletedAt: null } }),
     rules: await prisma.gfinOverpriceRule.count({ where: { deletedAt: null } }),

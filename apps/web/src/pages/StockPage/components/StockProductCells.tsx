@@ -179,6 +179,72 @@ export function StockMonthlyPayment({ plan }: { plan: InstallmentPlan | undefine
   );
 }
 
+/**
+ * ค่างวดในช่องเดียว: ยอดต่อเดือน · งวด · ดาวน์ — ตารางคอมพอดีจอ (เจ้าของขอ 2026-09-11) โดยไม่ต้องมีคอลัมน์ดาวน์แยก
+ * การ์ดมือถือใช้ช่องเดียวกัน จึงไม่มีช่องดาวน์ซ้ำ
+ */
+export function StockInstallmentSummary({ plan }: { plan: InstallmentPlan | undefined }) {
+  if (plan?.isLoading)
+    return <span className="text-xs text-muted-foreground leading-snug">กำลังคำนวณ…</span>;
+  if (plan?.isError)
+    return <span className="text-xs text-destructive leading-snug">โหลดไม่สำเร็จ</span>;
+  if (plan?.unavailableReason)
+    return (
+      <span className="inline-block max-w-32 text-xs text-muted-foreground leading-snug">
+        {plan.unavailableReason}
+      </span>
+    );
+  if (!plan?.quote) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="space-y-0.5 leading-snug">
+      <StockPriceAmount value={plan.quote.monthlyPayment} accent />
+      <div className="whitespace-nowrap text-xs text-muted-foreground leading-snug">
+        ต่อเดือน · {plan.quote.months} งวด
+      </div>
+      <div className="whitespace-nowrap text-xs leading-snug">
+        <span className="text-muted-foreground">ดาวน์ </span>
+        <span className="font-medium tabular-nums">{formatBaht(plan.quote.downAmount)} ฿</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * สเปกย่อของเครื่องในช่องเดียว (ตารางคอม): บรรทัดแรก ความจุ · สี · บรรทัดสอง มือ 2 = แบต/กล่อง/ประกันศูนย์,
+ * แท็บเล็ต = การเชื่อมต่อ · `part` ใช้เมื่อการ์ดมือถือต้องการค่าย่อยทีละช่อง
+ */
+export function StockDeviceSpecifications({
+  product,
+  part,
+}: {
+  product: StockProduct;
+  part?: 'battery' | 'warranty' | 'connectivity';
+}) {
+  if (part === 'battery') return <StockBatteryHealth product={product} />;
+  if (part === 'warranty') return <StockManufacturerWarranty product={product} />;
+  if (part === 'connectivity') return <StockTabletConnectivity product={product} />;
+  const primary = [product.storage, product.color].filter(Boolean).join(' · ') || '—';
+  const details: string[] = [];
+  if (product.category === 'PHONE_USED') {
+    const health = product.batteryHealth;
+    if (health != null && Number.isFinite(health) && health >= 0 && health <= 100)
+      details.push(`แบต ${health}%`);
+    if (product.hasBox != null) details.push(product.hasBox ? 'มีกล่อง' : 'ไม่มีกล่อง');
+    const expiryDate = formatThaiDate(product.warrantyExpireDate);
+    if (product.warrantyExpired) details.push('หมดประกันแล้ว');
+    else if (expiryDate !== '-') details.push(`ประกันถึง ${expiryDate}`);
+  }
+  if (product.category === 'TABLET') details.push(StockTabletConnectivity({ product }));
+  return (
+    <div className="text-sm leading-snug">
+      {primary}
+      {details.length > 0 && (
+        <div className="mt-0.5 text-xs text-muted-foreground leading-snug">{details.join(' · ')}</div>
+      )}
+    </div>
+  );
+}
+
 export function StockBatteryHealth({ product }: { product: StockProduct }) {
   const health = product.batteryHealth;
   return (

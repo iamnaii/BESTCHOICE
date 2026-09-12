@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { ContractWorkflowService } from './contract-workflow.service';
+import { bangkokCalendarParts } from '../../utils/date.util';
 
 /**
  * Characterization tests for ContractWorkflowService.generateInstallmentSchedules
@@ -49,7 +50,7 @@ describe('ContractWorkflowService.generateInstallmentSchedules', () => {
       financedAmount: new Prisma.Decimal('17000'),
       interestTotal: new Prisma.Decimal('1190'),
       monthlyPayment: new Prisma.Decimal('1515.83'),
-      createdAt: new Date(2026, 0, 15), // 15 Jan 2026
+      createdAt: new Date('2026-01-15T03:00:00.000Z'), // 15 Jan 2026 10:00 Bangkok
       paymentDueDay: 5,
     };
     const { tx, createMany } = makeTx(0, contract);
@@ -67,11 +68,12 @@ describe('ContractWorkflowService.generateInstallmentSchedules', () => {
     expect((first.interest as Prisma.Decimal).toFixed(2)).toBe('99.17'); // 1190/12 ROUND_HALF_UP
     expect((first.amountDue as Prisma.Decimal).toFixed(2)).toBe('1515.83'); // = monthlyPayment
 
-    // due dates: startDate (createdAt) month + i, on paymentDueDay
-    const d1 = first.dueDate as Date;
-    expect([d1.getFullYear(), d1.getMonth(), d1.getDate()]).toEqual([2026, 1, 5]); // 5 Feb 2026
-    const d12 = rows[11].dueDate as Date;
-    expect([d12.getFullYear(), d12.getMonth(), d12.getDate()]).toEqual([2027, 0, 5]); // 5 Jan 2027
+    // due dates: createdAt's Bangkok month + i, on paymentDueDay, as Bangkok midnight instants —
+    // read them back on the Bangkok calendar so the assertion holds on a UTC runner too.
+    const bkk = (date: unknown) => { const { year, month, day } = bangkokCalendarParts(date as Date); return [year, month, day]; };
+    expect(bkk(first.dueDate)).toEqual([2026, 1, 5]); // 5 Feb 2026
+    expect((first.dueDate as Date).toISOString()).toBe('2026-02-04T17:00:00.000Z');
+    expect(bkk(rows[11].dueDate)).toEqual([2027, 0, 5]); // 5 Jan 2027
   });
 
   it('is idempotent: skips when schedule rows already exist', async () => {
@@ -89,7 +91,7 @@ describe('ContractWorkflowService.generateInstallmentSchedules', () => {
       financedAmount: new Prisma.Decimal('0'),
       interestTotal: new Prisma.Decimal('0'),
       monthlyPayment: new Prisma.Decimal('0'),
-      createdAt: new Date(2026, 0, 15),
+      createdAt: new Date('2026-01-15T03:00:00.000Z'),
       paymentDueDay: 5,
     };
     const { tx, createMany } = makeTx(0, contract);

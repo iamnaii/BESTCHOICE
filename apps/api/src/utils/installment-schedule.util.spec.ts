@@ -72,15 +72,14 @@ describe('installment-schedule.util', () => {
     });
 
     it.each([25, 29, 30, 31])('matches the real Payment dates for payday %i', (paymentDueDay) => {
-      const createdAt = new Date(2026, 0, 31, 12);
-      jest.useFakeTimers().setSystemTime(createdAt);
-      try {
-        const payments = generatePaymentSchedule('c1', 3, 3000, 1000, paymentDueDay);
-        const schedules = buildInstallmentScheduleRows({ ...base, createdAt, paymentDueDay, totalMonths: 3, financedAmount: 3000, monthlyPayment: 1000 });
-        expect(schedules.map(row => row.dueDate)).toEqual(payments.map(row => row.dueDate));
-      } finally {
-        jest.useRealTimers();
-      }
+      // Real payments come from the anchored (Thai-calendar) path of generatePaymentSchedule —
+      // ContractQuoteService passes the contract date as the anchor — so the schedule rows must
+      // equal that on any runner timezone. 2026-01-31 12:00 Bangkok = 05:00Z.
+      const createdAt = new Date('2026-01-31T05:00:00.000Z');
+      const payments = generatePaymentSchedule('c1', 3, 3000, 1000, paymentDueDay, undefined, createdAt);
+      const schedules = buildInstallmentScheduleRows({ ...base, createdAt, paymentDueDay, totalMonths: 3, financedAmount: 3000, monthlyPayment: 1000 });
+      expect(schedules.map(row => row.dueDate)).toEqual(payments.map(row => row.dueDate));
+      expect(schedules[0].dueDate).toEqual(bkk(2026, 1, Math.min(paymentDueDay, 28)));
     });
 
     it('treats null interestTotal / monthlyPayment as zero', () => {

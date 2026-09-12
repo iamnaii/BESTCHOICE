@@ -19,6 +19,23 @@ import {
 const GRAPH_BASE = 'https://graph.facebook.com/v25.0';
 const TIMEOUT_MS = 15_000;
 
+/**
+ * ชุด webhook field ที่เพจต้อง subscribe — **แหล่งความจริงเดียว** ห้ามมีสำเนาที่สอง
+ *
+ * 🔴 `POST /{page}/subscribed_apps` ของ Meta เป็นการ **เขียนทับทั้งชุด ไม่ใช่เพิ่มเข้าไป**
+ * ⇒ ใครก็ตามที่ยิง endpoint นี้ด้วยรายการที่ขาดฟิลด์ใดไป = ถอดฟิลด์นั้นออกเงียบ ๆ
+ * (2026-09-12 เจอ `tools/fb-app-review-smoke.sh` ยิงโดยไม่มี `messaging_referrals`
+ * ซึ่งจะทำให้ระบบเลิกรู้ที่มาโฆษณาของลูกค้าเก่าทันทีที่มีคนรันสคริปต์)
+ *
+ * - `messaging_referrals` = ลูกค้าเก่ากลับมาจากโฆษณา/ลิงก์ m.me — ขาดแล้วไม่รู้ที่มาเลย
+ *   (ลูกค้าใหม่ referral มากับ `messages` / `messaging_postbacks` อยู่แล้ว)
+ * - **ไม่มี `feed` โดยตั้งใจ** — ตัวรับ webhook อ่านเฉพาะ `entry.messaging`
+ *   (`facebook-webhook.controller.ts:173-175`) ไม่เคยอ่าน `entry.changes`
+ *   ⇒ subscribe `feed` ไปก็ไม่มีอะไรรับ ได้แค่ทราฟฟิกเปล่า
+ */
+export const DEFAULT_SUBSCRIBED_FIELDS =
+  'messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads';
+
 export interface FbError {
   error?: {
     message?: string;
@@ -273,10 +290,7 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    // messaging_referrals = ลูกค้าเก่าที่กลับมาจากโฆษณา/m.me — ไม่ subscribe จะไม่รู้เลยว่ามาจากโฆษณาไหน
-    // (ลูกค้าใหม่จากโฆษณา referral มากับ messages/messaging_postbacks อยู่แล้ว)
-    const fields =
-      dto.fields ?? 'messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads';
+    const fields = dto.fields ?? DEFAULT_SUBSCRIBED_FIELDS;
     const url = `${GRAPH_BASE}/${c.pageId}/subscribed_apps`;
     const body = { subscribed_fields: fields };
     return this.call('POST', url, body, 'subscribe_page_webhooks', c.pageToken);

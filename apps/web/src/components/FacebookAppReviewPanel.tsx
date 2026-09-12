@@ -190,8 +190,11 @@ const TESTS: TestCase[] = [
       {
         key: 'fields',
         label: 'Subscribed fields (comma-separated)',
-        // messaging_referrals = ลูกค้าเก่ากลับมาจากโฆษณา — ไม่ subscribe จะไม่รู้เลยว่ามาจากโฆษณาไหน (ต้องตรงกับ default ฝั่ง API)
-        defaultValue: 'messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads,feed',
+        // ต้องตรงกับ DEFAULT_SUBSCRIBED_FIELDS ใน facebook-app-review.service.ts เป๊ะ ๆ
+        // (subscribed_apps เขียนทับทั้งชุด — รายการที่ขาดฟิลด์ = ถอดฟิลด์นั้นออกจริง)
+        // messaging_referrals = ลูกค้าเก่ากลับมาจากโฆษณา · ถอด feed ออกแล้วเพราะตัวรับ
+        // webhook อ่านแค่ entry.messaging ไม่เคยอ่าน entry.changes ⇒ subscribe ไปก็ไม่มีใครรับ
+        defaultValue: 'messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads',
       },
     ],
   },

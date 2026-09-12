@@ -118,6 +118,26 @@ export const creditCheckStatusMap: Record<string, StatusConfig> = {
   MANUAL_REVIEW: { variant: 'warning', appearance: 'light', label: 'ต้องตรวจเพิ่ม' },
 };
 
+// ─── Customer-level credit status (Customer.creditCheckStatus) ────────────────
+
+/**
+ * คนละ enum กับ `creditCheckStatusMap` ด้านบน — ตัวนั้นเป็นสถานะของ "ใบตรวจ" ล่าสุด
+ * (`CreditCheck.status`: PENDING / APPROVED / REJECTED / MANUAL_REVIEW)
+ * ตัวนี้เป็นสถานะบน "ตัวลูกค้า" (`CustomerCreditCheckStatus`)
+ * `REJECTED` มีอยู่ทั้งสอง enum โดยคนละความหมาย ⇒ ห้ามยุบสองแผนที่เข้าด้วยกัน
+ *
+ * ข้อความไทยยกมาจาก `CUSTOMER_CREDIT_OPTIONS` ของ `lib/customer-credit-filter.ts` ที่ถูกลบไป
+ * (ไม่ต้องมี prefix `customer:` / `check:` อีกแล้ว เพราะตัวกรองของสองแท็บแยกกันแล้ว)
+ * ⇒ ป้ายบนตารางกับตัวเลือกในดรอปดาวน์อ่านจากออบเจ็กต์เดียวกัน
+ */
+export const customerCreditStatusMap: Record<string, StatusConfig> = {
+  NONE: { variant: 'secondary', label: 'ยังไม่เคยตรวจ' },
+  UNDER_REVIEW: { variant: 'warning', appearance: 'light', label: 'รอผู้จัดการตรวจ' },
+  PRE_CHECK_PASSED: { variant: 'info', appearance: 'light', label: 'ผ่าน pre-check' },
+  FULL_CHECK_PASSED: { variant: 'success', appearance: 'light', label: 'ผ่านเต็ม' },
+  REJECTED: { variant: 'destructive', appearance: 'light', label: 'ไม่ผ่าน' },
+};
+
 // ─── Repossession statuses ────────────────────────────────────────────────────
 
 export const repossessionStatusMap: Record<string, StatusConfig> = {

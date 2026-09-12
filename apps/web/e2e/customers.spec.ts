@@ -28,6 +28,11 @@ function makeUniqueThaiPhone(): string {
   return `08${Math.floor(10000000 + Math.random() * 89999999)}`;
 }
 
+/**
+ * placeholder ของช่องค้นหาแท็บ **ลูกค้า** มาจาก `CUSTOMER_SEARCH_PLACEHOLDER`
+ * (`src/pages/CustomersPage/components/CustomerFilterBar.tsx`) — แท็บ **ผู้สนใจ**
+ * ใช้ข้อความคนละชุด (`PROSPECT_SEARCH_PLACEHOLDER`) แก้ที่ไฟล์นั้นแล้วต้องแก้ที่นี่ด้วย
+ */
 test.describe('Customers Page', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaAPI(page);
@@ -37,7 +42,7 @@ test.describe('Customers Page', () => {
     await page.goto('/customers', { waitUntil: 'domcontentloaded' });
 
     // Verify page loaded — search input and add button should be visible
-    await expect(page.getByPlaceholder('ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช...')).toBeVisible({
+    await expect(page.getByPlaceholder('ค้นหาชื่อ, เบอร์โทร, เลขบัตร, IMEI, เลขที่สัญญา/ใบขาย')).toBeVisible({
       timeout: 15000,
     });
     await expect(page.getByText('เพิ่มลูกค้า').first()).toBeVisible();
@@ -130,7 +135,7 @@ test.describe('Customers Page', () => {
   test('should search and filter customers', async ({ page }) => {
     await page.goto('/customers', { waitUntil: 'domcontentloaded' });
 
-    const searchInput = page.getByPlaceholder('ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช...');
+    const searchInput = page.getByPlaceholder('ค้นหาชื่อ, เบอร์โทร, เลขบัตร, IMEI, เลขที่สัญญา/ใบขาย');
     await expect(searchInput).toBeVisible({ timeout: 15000 });
 
     // Type a search query
@@ -151,7 +156,7 @@ test.describe('Customers Page', () => {
     await page.goto('/customers', { waitUntil: 'domcontentloaded' });
 
     // Wait for page to fully load
-    await expect(page.getByPlaceholder('ค้นหาชื่อ, เบอร์โทร, เลขบัตร ปชช...')).toBeVisible({
+    await expect(page.getByPlaceholder('ค้นหาชื่อ, เบอร์โทร, เลขบัตร, IMEI, เลขที่สัญญา/ใบขาย')).toBeVisible({
       timeout: 15000,
     });
     await page.waitForTimeout(1000);

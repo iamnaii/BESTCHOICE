@@ -4,6 +4,8 @@ import { CustomersService } from './customers.service';
 import { CustomerQueryService } from './services/customer-query.service';
 import { CustomerWriteService } from './services/customer-write.service';
 import { CustomerAnalyticsService } from './services/customer-analytics.service';
+import { CustomerPurchaseSummaryService } from './services/customer-purchase-summary.service';
+import { CustomerChatRoomsService } from './services/customer-chat-rooms.service';
 import { CustomerTierService } from './customer-tier.service';
 import { ContactResolverService } from '../contacts/contact-resolver.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -39,6 +41,8 @@ describe('CustomersService.create — NID normalization', () => {
         CustomerQueryService,
         CustomerWriteService,
         CustomerAnalyticsService,
+        CustomerPurchaseSummaryService,
+        CustomerChatRoomsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {
@@ -149,6 +153,8 @@ describe('CustomersService.create — T3-C9 phone + email dedup', () => {
         CustomerQueryService,
         CustomerWriteService,
         CustomerAnalyticsService,
+        CustomerPurchaseSummaryService,
+        CustomerChatRoomsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {
@@ -243,6 +249,8 @@ describe('PII dual-write (Phase 3)', () => {
         CustomerQueryService,
         CustomerWriteService,
         CustomerAnalyticsService,
+        CustomerPurchaseSummaryService,
+        CustomerChatRoomsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {
@@ -331,6 +339,8 @@ describe('PII read decryption (Phase 5)', () => {
         CustomerQueryService,
         CustomerWriteService,
         CustomerAnalyticsService,
+        CustomerPurchaseSummaryService,
+        CustomerChatRoomsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {
@@ -422,6 +432,8 @@ describe('CustomersService.remove — block if open contracts', () => {
         CustomerQueryService,
         CustomerWriteService,
         CustomerAnalyticsService,
+        CustomerPurchaseSummaryService,
+        CustomerChatRoomsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {
@@ -503,6 +515,8 @@ describe('CustomersService.create — links Contact (party master)', () => {
         CustomerQueryService,
         CustomerWriteService,
         CustomerAnalyticsService,
+        CustomerPurchaseSummaryService,
+        CustomerChatRoomsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         { provide: ContactResolverService, useValue: contactResolver },
@@ -594,6 +608,8 @@ describe('CustomersService.create — stub-upgrade guard (P4)', () => {
         CustomerQueryService,
         CustomerWriteService,
         CustomerAnalyticsService,
+        CustomerPurchaseSummaryService,
+        CustomerChatRoomsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         {

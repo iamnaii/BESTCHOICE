@@ -11,6 +11,7 @@ import RecentPaymentGroup from './customer360/RecentPaymentGroup';
 import { useCustomerContractActions } from './customer360/useCustomerContractActions';
 import type { ContractSummaryItem, PaymentSummaryItem } from './customer360/types';
 import { Badge } from '@/components/ui/badge';
+import ChannelBadge, { channelMeta } from '@/components/chat/ChannelBadge';
 import { getStatusBadgeProps, contractStatusMap, riskLevelMap } from '@/lib/status-badges';
 import {
   User,
@@ -86,22 +87,6 @@ interface Customer360PanelProps {
   /** ไม่วาดกรอบ w-80 / หัวโปรไฟล์ / กล่องเลื่อน — ให้ RoomDossier เป็นคนจัดเอง · ไดอะล็อกยังทำงานครบ */
   bare?: boolean;
 }
-
-const channelLabel: Record<string, string> = {
-  LINE_FINANCE: 'LINE Finance',
-  LINE_SHOP: 'LINE Shop',
-  FACEBOOK: 'Facebook',
-  TIKTOK: 'TikTok',
-  WEB: 'เว็บ',
-};
-
-const channelColor: Record<string, string> = {
-  LINE_FINANCE: 'bg-success/10 text-success',
-  LINE_SHOP: 'bg-success/10 text-success',
-  FACEBOOK: 'bg-info/10 text-info',
-  TIKTOK: 'bg-primary/10 text-primary',
-  WEB: 'bg-muted text-muted-foreground',
-};
 
 const localContractStatusMap: Record<string, string> = {
   ACTIVE: 'ใช้งาน',
@@ -568,8 +553,10 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
                     s.id === activeRoomId ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/50'
                   }`}
                 >
-                  <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${channelColor[s.channel] ?? 'bg-muted'}`}>
-                    {channelLabel[s.channel] ?? s.channel}
+                  <span
+                    className={`px-1 py-0.5 rounded text-[9px] font-medium ${channelMeta(s.channel).tint}`}
+                  >
+                    {channelMeta(s.channel).label}
                   </span>
                   <div className="flex-1 min-w-0">
                     <span className="text-muted-foreground">{sessionStatusLabel[s.status] ?? s.status}</span>
@@ -1193,29 +1180,3 @@ function CustomerInfoSection({ title, children }: { title: string; children: Rea
   );
 }
 
-function ChannelBadge({ channel }: { channel: string }) {
-  const colors: Record<string, string> = {
-    LINE_FINANCE: 'bg-success',
-    LINE_SHOP: 'bg-success/80',
-    FACEBOOK: 'bg-info',
-    TIKTOK: 'bg-primary',
-    WEB: 'bg-muted-foreground',
-  };
-  const labels: Record<string, string> = {
-    LINE_FINANCE: 'LINE',
-    LINE_SHOP: 'LINE Shop',
-    FACEBOOK: 'FB',
-    TIKTOK: 'TikTok',
-    WEB: 'Web',
-  };
-  return (
-    <span
-      className={cn(
-        'text-white text-[9px] font-bold px-1.5 py-0.5 rounded',
-        colors[channel] ?? 'bg-muted-foreground/30',
-      )}
-    >
-      {labels[channel] ?? channel}
-    </span>
-  );
-}

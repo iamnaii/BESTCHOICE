@@ -44,7 +44,7 @@ const RENDERED_CTAS: Array<{ where: string; label: string; path: string; roles: 
     roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'],
   },
   {
-    where: 'CustomersPage.tsx — gate ด้วย `canCreateCustomer` (เปิดโมดัลในหน้าเดียวกัน)',
+    where: 'CustomersPage/index.tsx — gate ด้วย `canCreateCustomer` (เปิดโมดัลในหน้าเดียวกัน)',
     label: '+ เพิ่มลูกค้าใหม่',
     path: '/customers',
     // = @Roles ของ POST /customers

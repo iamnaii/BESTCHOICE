@@ -80,7 +80,7 @@ cd apps/api && npm run dev
 4. **ตาม Pattern เดิม**
    - ดู module/page ที่คล้ายกันเป็น reference ก่อนสร้างใหม่
    - Backend reference: `apps/api/src/modules/customers/`
-   - Frontend reference: `apps/web/src/pages/CustomersPage.tsx`
+   - Frontend reference: `apps/web/src/pages/CustomersPage/` (โฟลเดอร์ — ไฟล์เดี่ยว `CustomersPage.tsx` ถูกลบแล้ว) หรือ `apps/web/src/pages/StockPage/`
 
 5. **อัปเดต Workflow เมื่อเจอ pattern ใหม่**
    - เมื่อค้นพบ constraint, rate limit, หรือ pattern ใหม่ → อัปเดต workflow

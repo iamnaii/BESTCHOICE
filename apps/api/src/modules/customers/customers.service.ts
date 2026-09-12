@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
-import { CustomerQueryService } from './services/customer-query.service';
+import { CustomerQueryService, type CustomersReadFilters } from './services/customer-query.service';
 import { CustomerWriteService } from './services/customer-write.service';
 import { CustomerAnalyticsService } from './services/customer-analytics.service';
 
@@ -32,36 +32,18 @@ export class CustomersService {
     private readonly analytics: CustomerAnalyticsService,
   ) {}
 
-  exportRows(...args: Parameters<CustomerQueryService['exportRows']>) {
-    return this.query.exportRows(...args);
+  exportRows(filters: CustomersReadFilters) {
+    return this.query.exportRows(filters);
   }
 
-  findAll(
-    search?: string,
-    page = 1,
-    limit = 50,
-    contractStatus?: string,
-    hasOverdue?: boolean,
-    creditStatus?: string,
-    branchId?: string,
-    sortBy?: string,
-    sortOrder?: string,
-    tier?: string,
-    creditCheckStatus?: string,
-  ) {
-    return this.query.findAll(
-      search,
-      page,
-      limit,
-      contractStatus,
-      hasOverdue,
-      creditStatus,
-      branchId,
-      sortBy,
-      sortOrder,
-      tier,
-      creditCheckStatus,
-    );
+  /**
+   * 🔴 ส่ง filters ทั้งก้อนต่อแบบไม่แตะต้อง — ไฟล์นี้เคยรับ 11 พารามิเตอร์เรียงตำแหน่ง
+   * แล้วส่งต่อ 11 ตัวในขณะที่ findAll รับ 13 ⇒ ตัวกรองที่เพิ่มใหม่ถูกทิ้งเงียบ ๆ
+   * เฉพาะขา "หน้าจอ" ส่วนขา "export" ยังเห็น ⇒ ตารางกับ Excel ให้ผลไม่ตรงกัน
+   * ห้ามแตกเป็นพารามิเตอร์รายตัวอีก
+   */
+  findAll(filters: CustomersReadFilters) {
+    return this.query.findAll(filters);
   }
 
   findOne(id: string) {

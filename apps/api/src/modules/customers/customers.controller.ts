@@ -21,7 +21,7 @@ import type { CustomerTierResponse } from './dto/tier.dto';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { UpdateCustomerContactDto } from './dto/skip-tracing.dto';
 import { UploadDocumentDto, DeleteDocumentDto } from './dto/document.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { CustomersListQueryDto } from './dto/customers-list-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -78,52 +78,23 @@ export class CustomersController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async exportRows(
-    @Query() pagination: PaginationDto,
-    @Query('search') search?: string,
-    @Query('contractStatus') contractStatus?: string,
-    @Query('hasOverdue') hasOverdue?: string,
-    @Query('creditStatus') creditStatus?: string,
-    @Query('branchId') branchId?: string,
-    @Query('sortBy') sortBy?: string,
-    @Query('sortOrder') sortOrder?: string,
-    @Query('tier') tier?: string,
-    @Query('creditCheckStatus') creditCheckStatus?: string,
+    @Query() filters: CustomersListQueryDto,
     @Req() req?: AuthRequest,
   ) {
-    return this.findAll(pagination, search, contractStatus, hasOverdue, creditStatus, branchId,
-      sortBy, sortOrder, tier, creditCheckStatus, req, true);
+    return this.findAll(filters, req, true);
   }
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async findAll(
-    @Query() pagination: PaginationDto,
-    @Query('search') search?: string,
-    @Query('contractStatus') contractStatus?: string,
-    @Query('hasOverdue') hasOverdue?: string,
-    @Query('creditStatus') creditStatus?: string,
-    @Query('branchId') branchId?: string,
-    @Query('sortBy') sortBy?: string,
-    @Query('sortOrder') sortOrder?: string,
-    @Query('tier') tier?: string,
-    @Query('creditCheckStatus') creditCheckStatus?: string,
+    // 🔴 ตัวกรองทั้งชุดเป็น DTO ก้อนเดียว — เวอร์ชันเดิมเป็น @Query() รายตัว 10 ตัว
+    // แล้วส่งต่อแบบเรียงตำแหน่ง ตัวใดที่เพิ่มใหม่แต่ลืมส่งจะถูกทิ้งเงียบ ๆ
+    @Query() filters: CustomersListQueryDto,
     @Req() req?: AuthRequest,
     snapshot = false,
   ) {
     const read = snapshot ? this.customersService.exportRows.bind(this.customersService) : this.customersService.findAll.bind(this.customersService);
-    const result = await read(
-      search,
-      pagination.page,
-      pagination.limit,
-      contractStatus,
-      hasOverdue === 'true',
-      creditStatus,
-      branchId,
-      sortBy,
-      sortOrder,
-      tier,
-      creditCheckStatus,
-    );
+    const result = await read(filters);
 
     const role = req?.user?.role || 'UNKNOWN';
 

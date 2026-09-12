@@ -36,6 +36,18 @@ export interface Column<T> {
   label: string;
   sortable?: boolean;
   hideable?: boolean;
+  /**
+   * เริ่มต้นซ่อนไว้ — ผู้ใช้เปิดเองจากปุ่ม "คอลัมน์" (ต้องเปิด `columnToggle`)
+   *
+   * `hideable` บอกแค่ว่า "ซ่อนได้" ไม่ใช่ "ซ่อนอยู่" — ค่าเริ่มต้นของ `columnVisibility`
+   * เป็น `{}` ⇒ ทุกคอลัมน์โชว์หมด. ส่วนการตัดคอลัมน์ออกจาก array ไปเลยก็ใช้ไม่ได้
+   * เพราะปุ่มสลับไล่จาก `getAllLeafColumns()` ⇒ คอลัมน์นั้นจะหายจากเมนูด้วย
+   *
+   * ค่าเริ่มต้นถูกอ่านครั้งเดียวตอน mount (`useState` initializer) ⇒ ชุดคอลัมน์ที่เปลี่ยน
+   * ระหว่างอายุของคอมโพเนนต์ไม่รีเซ็ตการมองเห็นที่ผู้ใช้สลับไว้. ถ้าต้องการเริ่มใหม่
+   * (เช่น สลับแท็บที่มีคอลัมน์คนละชุด) ให้ใส่ `key` ให้ `<DataTable>` remount
+   */
+  defaultHidden?: boolean;
   render?: (item: T, col: Column<T>, index: number) => ReactNode;
   /**
    * Fixed column width (any CSS length, e.g. `'120px'`).
@@ -107,6 +119,13 @@ interface DataTableProps<T> {
   bulkActions?: BulkAction<T>[];
   /** Show column visibility toggle */
   columnToggle?: boolean;
+  /**
+   * Action rendered inside the empty state (e.g. "ล้างตัวกรอง"). Both props are
+   * required for the button to appear — an empty state that names a control the
+   * page does not render is a dead end for the user.
+   */
+  emptyActionLabel?: string;
+  onEmptyAction?: () => void;
   /** Toolbar content (rendered between search and column toggle) */
   toolbar?: ReactNode;
   /** Cell padding. `compact` also tightens horizontal padding to buy column width. */
@@ -167,6 +186,8 @@ function DataTable<T extends { id: string }>({
   selectable = false,
   bulkActions,
   columnToggle = false,
+  emptyActionLabel,
+  onEmptyAction,
   toolbar,
   density = 'default',
   minWidth = '640px',
@@ -183,7 +204,12 @@ function DataTable<T extends { id: string }>({
     : localSorting;
   const [globalFilter, setGlobalFilter] = useState('');
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  // Seeded once from `defaultHidden`; afterwards the user's toggles own this state.
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(() =>
+    Object.fromEntries(
+      columns.filter((c) => c.defaultHidden && c.hideable !== false).map((c) => [c.key, false]),
+    ),
+  );
 
   const tanstackColumns = useMemo<ColumnDef<T, unknown>[]>(() => {
     const helper = createColumnHelper<T>();
@@ -299,6 +325,13 @@ function DataTable<T extends { id: string }>({
 
   const rows = table.getRowModel().rows;
   const visibleColumnCount = table.getVisibleLeafColumns().length;
+  // Suffix is additive: with nothing hidden the label stays exactly 'คอลัมน์',
+  // so the ~20 other callers (and their tests) are untouched.
+  const hiddenColumnCount = table
+    .getAllLeafColumns()
+    .filter((col) => col.id !== '_select' && col.getCanHide() && !col.getIsVisible()).length;
+  const columnToggleLabel =
+    hiddenColumnCount > 0 ? `คอลัมน์ · ซ่อนอยู่ ${hiddenColumnCount}` : 'คอลัมน์';
   const hasToolbar =
     searchable || columnToggle || toolbar || (selectable && selectedRows.length > 0);
 
@@ -368,7 +401,7 @@ function DataTable<T extends { id: string }>({
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Columns3 className="size-3.5" />
-                  คอลัมน์
+                  {columnToggleLabel}
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-52 p-2">
@@ -534,6 +567,8 @@ function DataTable<T extends { id: string }>({
                     icon={emptyIcon}
                     title={emptyMessage}
                     description={emptyDescription}
+                    actionLabel={emptyActionLabel}
+                    onAction={onEmptyAction}
                     className="py-16"
                   />
                 </td>

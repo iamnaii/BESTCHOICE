@@ -75,11 +75,16 @@ async function fixture(page: Page, role = 'OWNER') {
     }
     if (routePath === '/customers/search') return route.fulfill({ json: state.customers.filter(row => row.name.includes(query.get('q') || '')) });
     if (routePath === '/customers') {
+      // หน้า /customers แยกสองแท็บแล้ว (`?view=customers|prospects`) — fixture ต้องเคารพ
+      // พารามิเตอร์นั้น ไม่ใช่คืนแถวชุดเดียวให้ทุกแท็บ: แถวตัวอย่างทั้งหมดเป็น "ลูกค้า"
+      // (ซื้อกับเราแล้ว) ⇒ แท็บผู้สนใจต้องว่าง
       let rows = state.emptyPath === routePath ? [] : state.customers;
+      if (query.get('view') === 'prospects') rows = [];
       if (query.get('search')) rows = rows.filter(row => row.name.includes(query.get('search')!));
       if (query.get('tier')) rows = rows.filter(row => row.tier === query.get('tier'));
       if (query.get('sortBy') === 'name') rows = [...rows].sort((a, b) => a.name.localeCompare(b.name) * (query.get('sortOrder') === 'desc' ? -1 : 1));
-      return route.fulfill({ json: { ...exportOrPage(rows, query), summary: { totalCustomers: rows.length, withActiveContract: 0, withOverdue: 0, newThisMonth: 0 } } });
+      // คีย์สรุปชุดใหม่ของแท็บลูกค้า + จำนวนต่อแท็บที่สวิตช์กับหัวข้อหน้าอ่าน
+      return route.fulfill({ json: { ...exportOrPage(rows, query), summary: { total: rows.length, installment: 0, cash: rows.length, externalFinance: 0, overdue: 0 }, viewCounts: { customers: state.customers.length, prospects: 0 } } });
     }
     if (/^\/customers\/c\d+$/.test(routePath)) return route.fulfill({ json: state.customers.find(row => row.id === routePath.split('/')[2]) });
     if (/^\/customers\/c\d+\/risk-flag/.test(routePath)) return route.fulfill({ json: { hasRisk: false, overdueContracts: [] } });
@@ -179,9 +184,11 @@ for (const width of [1440, 390]) {
       await openFilters(page, width);
       await page.getByRole('combobox', { name: 'ระดับลูกค้า' }).click();
       await page.getByRole('option', { name: 'VIP (Gold)', exact: true }).click();
-      await page.getByRole('combobox', { name: 'เรียงลูกค้าโดย' }).click();
-      await page.getByRole('option', { name: 'ชื่อ', exact: true }).click();
       await closeFilters(page, width);
+      // ดรอปดาวน์ "เรียงลูกค้าโดย" ถูกถอดแล้ว — การเรียงอยู่ที่หัวคอลัมน์ (คอลัมน์ชื่อของ
+      // แท็บลูกค้าใช้ป้าย "ลูกค้า") กดครั้งเดียว = name/asc เหมือนที่ export assert ไว้
+      await page.getByRole('columnheader', { name: /ลูกค้า/ }).getByRole('button').click();
+      await expect(page.getByRole('columnheader', { name: /ลูกค้า/ })).toHaveAttribute('aria-sort', 'ascending');
       await page.getByRole('button', { name: 'ถัดไป', exact: true }).click();
       await expect(page.getByText('ลูกค้าตัวอย่าง 050', { exact: true }).first()).toBeVisible();
       const download = page.waitForEvent('download');

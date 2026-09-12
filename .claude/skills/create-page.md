@@ -33,7 +33,7 @@ user_invocable: true
 - ค้นหา page ที่คล้ายกันใน `apps/web/src/pages/`
 - ตรวจว่า API endpoints พร้อมใช้งาน
 - เลือก reference page:
-  - List page → `apps/web/src/pages/CustomersPage.tsx`
+  - List page → `apps/web/src/pages/CustomersPage/` (โฟลเดอร์: `index.tsx` + `components/` + `hooks/`) หรือ `apps/web/src/pages/StockPage/`
   - Detail page → `apps/web/src/pages/ContractDetailPage.tsx`
   - LIFF page → `apps/web/src/pages/liff/LiffPayment.tsx`
 

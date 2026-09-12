@@ -4,6 +4,8 @@ import { CustomersService } from './customers.service';
 import { CustomerQueryService } from './services/customer-query.service';
 import { CustomerWriteService } from './services/customer-write.service';
 import { CustomerAnalyticsService } from './services/customer-analytics.service';
+import { CustomerPurchaseSummaryService } from './services/customer-purchase-summary.service';
+import { CustomerChatRoomsService } from './services/customer-chat-rooms.service';
 import { CustomerTierService } from './customer-tier.service';
 import { SkipTracingService } from './skip-tracing.service';
 import { CustomerPiiModule } from './customer-pii.module';
@@ -22,6 +24,8 @@ import { CreditCheckModule } from '../credit-check/credit-check.module';
     CustomerQueryService,
     CustomerWriteService,
     CustomerAnalyticsService,
+    CustomerPurchaseSummaryService,
+    CustomerChatRoomsService,
     CustomerTierService,
     SkipTracingService,
   ],

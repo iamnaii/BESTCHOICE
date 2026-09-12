@@ -14,11 +14,9 @@ import {
  *
  * Gaps pinned here (not covered by the existing post/approve specs):
  *   1. post() routes a CREDIT_NOTE doc to creditNoteTemplate.execute(id, tx).
- *   2. post() of a PETTY_CASH_REIMBURSEMENT doc THROWS
- *      `type PETTY_CASH_REIMBURSEMENT not supported` and NEVER reaches
- *      pettyCashTemplate.execute — pins the allow-list quirk: PETTY_CASH is
- *      NOT in executePostBody's allow-list, so the later (unreachable)
- *      `if (doc.documentType === 'PETTY_CASH_REIMBURSEMENT')` branch is dead.
+ *   2. post() of a PETTY_CASH_REIMBURSEMENT doc runs PettyCashTemplate (V20), which
+ *      flips the sheet to POSTED itself — the type is in executePostBody's allow-list since
+ *      2026-09-12 (owner decision on #1562; it used to answer "not supported").
  *   3. approve() with auto_post_on_approve=true of a CREDIT_NOTE doc routes the
  *      auto-post chain to creditNoteTemplate.execute + writes AUTO_POSTED audit.
  *
@@ -126,29 +124,38 @@ describe('ExpenseDocuments posting core (Phase 2b characterization)', () => {
     expect(made.accrualTemplate.execute).not.toHaveBeenCalled();
   });
 
-  // GAP #2 + #5 — PETTY_CASH allow-list quirk: NOT in the allow-list, so
-  // executePostBody throws `type ... not supported` BEFORE the (dead) petty-cash
-  // branch is ever reached. Pin the THROW; pettyCashTemplate must NOT run.
-  it('post() of a PETTY_CASH_REIMBURSEMENT doc THROWS not-supported and never calls pettyCashTemplate', async () => {
+  // PETTY_CASH_REIMBURSEMENT → PettyCashTemplate (V20: Dr line categories + 11-4101 VAT /
+  // Cr the float account). Until 2026-09-12 the type was missing from executePostBody's
+  // allow-list, so every petty-cash sheet answered "not supported" and the template branch
+  // was dead (found by DOC-03 #1562; owner ordered the posting on).
+  it('post() of a PETTY_CASH_REIMBURSEMENT doc runs PettyCashTemplate (which owns the POSTED flip)', async () => {
     prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
       id: 'pc-1',
       status: 'DRAFT',
       documentType: 'PETTY_CASH_REIMBURSEMENT',
-      paymentMethod: null,
-      depositAccountCode: null,
+      paymentMethod: 'CASH',
+      depositAccountCode: '11-1103',
       totalAmount: new Decimal('500.00'),
       withholdingTax: new Decimal('0'),
       whtFormType: null,
       receiptImageUrl: null,
       documentDate: new Date('2026-05-10'),
+      journalEntryId: null,
       deletedAt: null,
     });
 
-    await expect(made.service.post('pc-1', 'user-1')).rejects.toThrow(BadRequestException);
-    await expect(made.service.post('pc-1', 'user-1')).rejects.toThrow(
-      'type PETTY_CASH_REIMBURSEMENT not supported',
+    await made.service.post('pc-1', 'user-1');
+
+    expect(made.pettyCashTemplate.execute).toHaveBeenCalledTimes(1);
+    expect(made.pettyCashTemplate.execute.mock.calls[0][0]).toBe('pc-1');
+    expect(made.sameDayTemplate.execute).not.toHaveBeenCalled();
+    expect(made.accrualTemplate.execute).not.toHaveBeenCalled();
+    // Like the credit-note / payroll / settlement templates, PettyCashTemplate flips the
+    // document to POSTED + journalEntryId itself (petty-cash.template.ts) — mocked here, so
+    // post() must not write a second status update of its own.
+    expect(prisma.expenseDocument.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: expect.anything() }) }),
     );
-    expect(made.pettyCashTemplate.execute).not.toHaveBeenCalled();
   });
 
   // REPAIR_SERVICE → ShopExpense (ACCRUAL mode, Cr S21-1103)

@@ -88,13 +88,13 @@ describe('DOC-03 expense vouchers, petty cash and daily summary — real command
   };
   const balanced = (lines: JeLine[]) => ({ debit: lines.reduce((sum, line) => sum + Number(line.debit), 0).toFixed(2), credit: lines.reduce((sum, line) => sum + Number(line.credit), 0).toFixed(2) });
   const pdfSummary = (pdf: ParsedPdf) => ({ pageCount: pdf.pageCount, pages: pdf.pages.map((page) => ({ index: page.index, widthPt: +page.widthPt.toFixed(2), heightPt: +page.heightPt.toFixed(2), lines: page.lines.length, textItems: page.items.filter((item) => item.str.trim()).length })), fonts: pdf.fonts, sizes: textSizes(pdf) });
-  const expectVoucherTypography = (pdf: ParsedPdf) => {
+  const expectVoucherTypography = (pdf: ParsedPdf, heading: { title: string; kicker: string } = { title: VOUCHER_TITLE, kicker: 'PAYMENT VOUCHER' }) => {
     expect(pdf.pages.every(isA4)).toBe(true);
     expect(pdf.fonts.length).toBeGreaterThan(0);
     expect(pdf.fonts.filter((font) => !font.startsWith(DOCUMENT_STYLE.pdfFontFamily))).toEqual([]);
     expect(textSizes(pdf)[0].size).toBe(DOCUMENT_STYLE.bodyPt);
-    expect(sizesOfText(pdf, VOUCHER_TITLE)).toContain(DOCUMENT_STYLE.headingPt);
-    expect(sizesOfText(pdf, 'PAYMENT VOUCHER')).toContain(DOCUMENT_STYLE.footerPt);
+    expect(sizesOfText(pdf, heading.title)).toContain(DOCUMENT_STYLE.headingPt);
+    expect(sizesOfText(pdf, heading.kicker)).toContain(DOCUMENT_STYLE.footerPt);
     expect(sizesOfText(pdf, 'ออกโดยระบบ BESTCHOICE')).toContain(DOCUMENT_STYLE.footerPt);
   };
   /** Baseline-grouped text (label + value on one row) — for numbers, dates and single-line labels. */
@@ -570,7 +570,7 @@ describe('DOC-03 expense vouchers, petty cash and daily summary — real command
     recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/voided-voucher`, title: 'VOIDED voucher renders with the 64 pt "ยกเลิก / กลับรายการแล้ว" overlay; EXPENSE_CANCEL required and a reason code enforced', routes: ['POST /api/expense-documents/:id/void', 'GET /api/expense-documents/:id/voucher.pdf'], artifacts: [artifact] }));
   });
 
-  it('creates a petty cash reimbursement with per-line suppliers and satang, and pins that posting it is not supported by the API today', async () => {
+  it('creates a petty cash reimbursement with per-line suppliers and satang, posts it (V20 journal, Cr float account) and prints the petty-cash voucher without WHT row or signature grid', async () => {
     const input = {
       branchId: world.branches.a.id, documentDate: today, custodianName: `ทดสอบระบบ ผู้ดูแลเงินสดย่อย ${world.prefix}`, depositAccountCode: PETTY_CASH_FLOAT, description: 'ทดสอบระบบ เบิกชดเชยเงินสดย่อยประจำสัปดาห์',
       lines: [
@@ -598,12 +598,41 @@ describe('DOC-03 expense vouchers, petty cash and daily summary — real command
     expect(created.expenseDetail!.lines.map((line) => [line.supplierName, line.category, fixed2(line.amountBeforeVat), fixed2(line.vatAmount)])).toEqual([
       ['ทดสอบระบบ ร้านกาแฟหน้าปากซอย', '53-1106', '250.50', '0.00'], ['ทดสอบระบบ ร้านเครื่องเขียน', '53-1201', '1200.00', '84.00'], ['ทดสอบระบบ ไปรษณีย์', '53-1203', '45.25', '0.00'],
     ]);
-    const notPosted = await postDoc(owner, created.id).expect(400);
-    expect(notPosted.body.message).toContain('PETTY_CASH_REIMBURSEMENT not supported');
-    expect((await getDoc(owner, created.id)).status).toBe('DRAFT');
+    // A DRAFT sheet has no voucher yet (same rule as every other expense document).
     const noVoucher = await api(owner).get(`/expense-documents/${created.id}/voucher.pdf`).expect(400);
     expect(noVoucher.headers['content-type']).toMatch(/json/);
-    recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/petty-cash-create`, title: 'PETTY_CASH_REIMBURSEMENT: V20 float account enforced, per-line suppliers/VAT/satang persisted as the fixture computes; POST :id/post answers 400 "type PETTY_CASH_REIMBURSEMENT not supported" so the sheet exists only as a DRAFT browser print', documents: ['PETTY_CASH_REIMBURSEMENT'], routes: ['POST /api/expense-documents/petty-cash', 'POST /api/expense-documents/:id/post', 'GET /api/expense-documents/:id/voucher.pdf'], renderer: 'none', artifacts: [], status: 'BLOCKED', unverified: ['posting / journal of petty cash (PettyCashTemplate is unreachable from executePostBody — pinned by expense-document-lifecycle-posting.service.spec.ts; product decision for the owner, not changed in DOC-03)'] }));
+
+    // Owner decision 2026-09-12 (#1562): petty cash posts through PettyCashTemplate (V20) —
+    // Dr each line's category, Dr 11-4101 for the VAT lines, Cr the float account; no WHT.
+    await postDoc(owner, created.id).expect(201);
+    const posted = await getDoc(owner, created.id);
+    docs.petty = posted;
+    expect(posted.status).toBe('POSTED');
+    expect(posted.journalEntryId).toBeTruthy();
+    const je = await journalLines(posted.journalEntryId!);
+    expect(je).toEqual(expect.arrayContaining([
+      { accountCode: '53-1106', debit: '250.50', credit: '0.00' },
+      { accountCode: '53-1201', debit: '1200.00', credit: '0.00' },
+      { accountCode: '53-1203', debit: '45.25', credit: '0.00' },
+      { accountCode: '11-4101', debit: '84.00', credit: '0.00' },
+      { accountCode: PETTY_CASH_FLOAT, debit: '0.00', credit: '1579.75' },
+    ]));
+    expect(je).toHaveLength(5);
+    expect(balanced(je)).toEqual({ debit: '1579.75', credit: '1579.75' });
+    // Posting twice cannot create a second journal entry.
+    await postDoc(owner, created.id).expect(400);
+    expect((await getDoc(owner, created.id)).journalEntryId).toBe(posted.journalEntryId);
+
+    // The server voucher follows the print-page policy for petty cash: custodian instead of payee,
+    // supplier on every line, no WHT row, no ผู้จัดทำ/ผู้อนุมัติ/ผู้รับเงิน signature grid.
+    const { bytes, pdf } = await voucherPdf(owner, created.id);
+    expectVoucherTypography(pdf, { title: 'ใบเบิกชดเชยเงินสดย่อย', kicker: 'PETTY CASH REIMBURSEMENT' });
+    expectText(pdf, 'ใบเบิกชดเชยเงินสดย่อย', 'PETTY CASH REIMBURSEMENT', created.number, 'ผู้ดูแลเงินสดย่อย', input.custodianName, 'บัญชีเงินสดย่อย', PETTY_CASH_FLOAT,
+      'ทดสอบระบบ ร้านกาแฟหน้าปากซอย', 'ทดสอบระบบ ร้านเครื่องเขียน', 'ทดสอบระบบ ไปรษณีย์', 'มูลค่าก่อนภาษี', '1,495.75', '84.00', 'จำนวนเงินจ่ายสุทธิ', '1,579.75 บาท', 'สแกนเพื่อตรวจสอบ');
+    for (const absent of ['หัก ณ ที่จ่าย', 'ผู้อนุมัติ', 'ผู้รับเงิน', 'ผู้จัดทำ']) expect(allText(pdf)).not.toContain(foldThai(absent));
+    expect(pdf.pageCount).toBe(1);
+    const artifacts = [saveArtifact(DOMAIN, 'voucher-petty-cash.pdf', bytes).relativePath, saveArtifact(DOMAIN, 'voucher-petty-cash.json', JSON.stringify({ document: posted, journal: je, expected: { subtotal: fixed2(expected.subtotal), vat: fixed2(expected.vatAmount), total: fixed2(expected.totalAmount) } }, null, 2)).relativePath];
+    recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/petty-cash-create`, title: 'PETTY_CASH_REIMBURSEMENT: V20 float account enforced, per-line suppliers/VAT/satang persisted as the fixture computes; POST :id/post runs PettyCashTemplate (Dr 53-xxxx + 11-4101 / Cr 11-1103, balanced 1,579.75, idempotent) and the voucher prints as ใบเบิกชดเชยเงินสดย่อย with custodian, float account and no WHT/signature grid', documents: ['PETTY_CASH_REIMBURSEMENT'], routes: ['POST /api/expense-documents/petty-cash', 'POST /api/expense-documents/:id/post', 'GET /api/expense-documents/:id', 'GET /api/expense-documents/:id/voucher.pdf'], artifacts, notes: `Owner decision 2026-09-12 (#1562): posting enabled by adding the type to executePostBody's allow-list; renderer aligned with the web PettyCashSheet policy. sha256=${sha256(bytes)}` }));
   });
 
   describe('browser — the real admin web app through the Vite proxy', () => {

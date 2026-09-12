@@ -241,6 +241,10 @@ async function seedSignedDraftContract(tag: string, customerId: string, productI
       planType: 'STORE_WITH_INTEREST',
       sellingPrice: dec('12000.00'),
       downPayment: dec('2000.00'),
+      // ตั้งแต่ 17f19230f activate() ต้องเห็นหลักฐานรับเงินดาวน์ (วิธี + เวลา) ถึงจะโพสต์ ShopDownPayment
+      // ย้อนให้ได้ — เหมือนที่ ContractLifecycleService.create() บันทึกตอนรับเงินจริง
+      downPaymentMethod: 'CASH',
+      downPaymentReceivedAt: new Date(),
       financedAmount: dec('10000.00'),
       interestRate: dec('0.0500'),
       totalMonths: 12,
@@ -390,6 +394,9 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     await prisma.journalEntry.deleteMany({ where: { id: { in: jeIdList } } });
 
     await prisma.salesCommission.deleteMany({ where: { saleId: { in: saleIds } } });
+    // sale_cost_snapshots FK-references sales (ON DELETE RESTRICT) — clear it first, or this afterAll
+    // aborts here and the credit approvals / contracts below survive into every later spec's cleanup.
+    await prisma.saleCostSnapshot.deleteMany({ where: { saleId: { in: saleIds } } });
     await prisma.sale.deleteMany({ where: { id: { in: saleIds } } });
     await prisma.repossession.deleteMany({ where: { productId: { in: createdProductIds } } });
     await prisma.contractExchangeRequest.deleteMany({ where: { id: { in: createdRequestIds } } });

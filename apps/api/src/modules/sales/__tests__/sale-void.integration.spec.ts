@@ -417,6 +417,8 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
     // งวดสังเคราะห์เป็นของสเปคนี้คนเดียว — กวาดทั้งงวด เก็บซากของรันที่ crash ค้างด้วย
     await prisma.commissionPayout.deleteMany({ where: { period: { in: SYNTH_PERIODS } } });
     await prisma.financeReceivable.deleteMany({ where: { saleId: { in: createdSaleIds } } });
+    // sale_cost_snapshots FK-references sales (ON DELETE RESTRICT) — clear it before the sales.
+    await prisma.saleCostSnapshot.deleteMany({ where: { saleId: { in: createdSaleIds } } });
     await prisma.sale.deleteMany({ where: { id: { in: createdSaleIds } } });
     await prisma.productPrice.deleteMany({ where: { productId: { in: createdProductIds } } });
     await prisma.productReservation.deleteMany({

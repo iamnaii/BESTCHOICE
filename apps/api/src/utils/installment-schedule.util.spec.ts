@@ -15,8 +15,10 @@ describe('installment-schedule.util', () => {
       interestTotal: 1190,
       monthlyPayment: '1515.83',
       paymentDueDay: 5,
-      createdAt: new Date(2026, 0, 10), // 2026-01-10 (local)
+      createdAt: new Date('2026-01-10T03:00:00.000Z'), // 2026-01-10 10:00 Bangkok
     };
+    // Bangkok midnight as an instant (UTC+7, no DST) — what the Thai business calendar stores.
+    const bkk = (year: number, month: number, day: number) => new Date(Date.UTC(year, month, day) - 7 * 3_600_000);
 
     it('matches the CPA rounding golden values (17000/12 ROUND_DOWN, 1190/12 ROUND_HALF_UP)', () => {
       const rows = buildInstallmentScheduleRows(base);
@@ -36,26 +38,37 @@ describe('installment-schedule.util', () => {
       expect(rows[0].installmentNo).toBe(1);
       expect(rows[11].installmentNo).toBe(12);
       // i=1 → 2026-02-05, i=12 → 2027-01-05 (JS Date month overflow normalises)
-      expect(rows[0].dueDate).toEqual(new Date(2026, 1, 5));
-      expect(rows[11].dueDate).toEqual(new Date(2027, 0, 5));
+      expect(rows[0].dueDate).toEqual(bkk(2026, 1, 5));
+      expect(rows[11].dueDate).toEqual(bkk(2027, 0, 5));
     });
 
     it('falls back to createdAt day-of-month when paymentDueDay is null', () => {
       const rows = buildInstallmentScheduleRows({ ...base, paymentDueDay: null });
-      expect(rows[0].dueDate).toEqual(new Date(2026, 1, 10));
+      expect(rows[0].dueDate).toEqual(bkk(2026, 1, 10));
     });
 
     it.each([29, 30, 31])('keeps payday %i within each target month, then restores the original day', (paymentDueDay) => {
       const rows = buildInstallmentScheduleRows({ ...base, paymentDueDay, totalMonths: 3 });
       expect(rows.map(row => row.dueDate)).toEqual([
-        new Date(2026, 1, 28), new Date(2026, 2, paymentDueDay), new Date(2026, 3, Math.min(paymentDueDay, 30)),
+        bkk(2026, 1, 28), bkk(2026, 2, paymentDueDay), bkk(2026, 3, Math.min(paymentDueDay, 30)),
       ]);
     });
 
+    it('reads the contract date on the Bangkok calendar, not the process timezone', () => {
+      // 2026-01-31 17:30 UTC is already 2026-02-01 00:30 in Bangkok: the schedule must start
+      // from March, and every due date is Bangkok midnight — identical whether the process
+      // runs in Asia/Bangkok (production API) or UTC (CI runner, an ad-hoc CLI).
+      const rows = buildInstallmentScheduleRows({ ...base, createdAt: new Date('2026-01-31T17:30:00.000Z'), totalMonths: 2 });
+      expect(rows.map(row => row.dueDate)).toEqual([bkk(2026, 2, 5), bkk(2026, 3, 5)]);
+      expect((rows[0].dueDate as Date).toISOString()).toBe('2026-03-04T17:00:00.000Z');
+      const fallback = buildInstallmentScheduleRows({ ...base, createdAt: new Date('2026-01-31T17:30:00.000Z'), paymentDueDay: null, totalMonths: 1 });
+      expect(fallback[0].dueDate).toEqual(bkk(2026, 2, 1)); // createdAt's Bangkok day = 1
+    });
+
     it('uses February 29 for an end-of-month payday in a leap year', () => {
-      const rows = buildInstallmentScheduleRows({ ...base, createdAt: new Date(2028, 0, 10), paymentDueDay: 31 });
-      expect(rows[0].dueDate).toEqual(new Date(2028, 1, 29));
-      expect(rows[1].dueDate).toEqual(new Date(2028, 2, 31));
+      const rows = buildInstallmentScheduleRows({ ...base, createdAt: new Date('2028-01-10T03:00:00.000Z'), paymentDueDay: 31 });
+      expect(rows[0].dueDate).toEqual(bkk(2028, 1, 29));
+      expect(rows[1].dueDate).toEqual(bkk(2028, 2, 31));
     });
 
     it.each([25, 29, 30, 31])('matches the real Payment dates for payday %i', (paymentDueDay) => {

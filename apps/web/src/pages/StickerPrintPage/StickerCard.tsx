@@ -5,6 +5,9 @@ import type { StickerView } from './stickerView';
  * ดวงสติกเกอร์ 50×30 มม. (thermal ขาวดำ) — เลย์เอาต์ที่เจ้าของเคาะ 2026-09-11:
  * รุ่นอย่างเดียว · ราคาเงินสดของเครื่อง · สเปก + ประกันศูนย์ (ถ้ามี) · มือสองมีชิป %แบต + กล่อง ·
  * เรท 1/เรท 2 · ท้ายดวง IMEI อย่างเดียว (ไม่มีบาร์โค้ด/ชื่อร้าน)
+ * 2026-09-12 (เจ้าของเลือกแบบ B): บรรทัดรุ่นพับได้ 2 บรรทัดข้างป้ายราคา — ด้วย IBM Plex Sans Thai
+ * บรรทัดเดียวเหลือที่ ~78 pt ทำให้ "iPhone 15 Pro Max" ถูกตัดเป็น "iPhone 15 Pr…" บนกระดาษจริง;
+ * ขนาดตัวอักษรทุกจุดคงเดิม ช่องไฟแนวตั้งบีบลงเล็กน้อยให้ดวงมือสองที่มีชิป + 2 เรทยังอยู่ใน 30 มม.
  * สี #000/#fff ของกระดาษพิมพ์อยู่ใน STICKER_STYLES (print context — ไม่ใช้โทเคนธีมโดยตั้งใจ)
  */
 export function StickerCard({ view }: { view: StickerView }) {
@@ -87,16 +90,21 @@ export const STICKER_STYLES = `
     line-height: 1.12;
     overflow: hidden;
   }
-  .st-top { display: flex; justify-content: space-between; align-items: center; gap: 1.2mm; }
+  .st-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.2mm; }
   .st-model {
     font-size: 11pt;
     font-weight: 800;
-    line-height: 1;
+    line-height: 1.05;
     letter-spacing: -0.01em;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    /* แบบ B: พับได้ 2 บรรทัด (รุ่นที่ยาวกว่านั้นยังถูกตัดด้วย … เป็นตาข่ายสุดท้าย) */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .st-price {
     display: inline-flex;
@@ -116,10 +124,10 @@ export const STICKER_STYLES = `
     align-items: flex-start;
     gap: 1.2mm;
     font-size: 7.5pt;
-    margin-top: 1mm;
+    margin-top: 0.6mm;
     font-weight: 500;
   }
-  .sticker--tight .st-spec { margin-top: 0.7mm; }
+  .sticker--tight .st-spec { margin-top: 0.5mm; }
   .st-spec-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .st-warranty { font-size: 7pt; font-weight: 600; white-space: nowrap; }
   .st-chips { display: flex; gap: 0.8mm; margin-top: 0.6mm; }
@@ -136,9 +144,9 @@ export const STICKER_STYLES = `
     line-height: 1;
     white-space: nowrap;
   }
-  .st-rule { margin: 1mm 0 0.8mm; height: 0; border-top: 0.22mm solid #000; }
-  .sticker--tight .st-rule { margin: 0.7mm 0 0.6mm; }
-  .st-rates { display: flex; flex-direction: column; gap: 0.6mm; }
+  .st-rule { margin: 0.6mm 0 0.5mm; height: 0; border-top: 0.22mm solid #000; }
+  .sticker--tight .st-rule { margin: 0.5mm 0 0.4mm; }
+  .st-rates { display: flex; flex-direction: column; gap: 0.4mm; }
   .st-rate {
     display: grid;
     grid-template-columns: 3.8mm 1fr auto;

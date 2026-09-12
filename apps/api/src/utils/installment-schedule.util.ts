@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { bangkokCalendarParts, bangkokMidnight, daysInMonth } from './date.util';
 
 /**
  * Single source of truth for `installment_schedules` row generation.
@@ -10,7 +11,10 @@ import { Prisma } from '@prisma/client';
  *   principal = financedAmount / totalMonths  (ROUND_DOWN truncate)
  *   interest  = interestTotal  / totalMonths  (ROUND_HALF_UP)
  *   amountDue = monthlyPayment (incl. VAT)
- *   dueDate   = createdAt month + i, on paymentDueDay (default = createdAt day)
+ *   dueDate   = createdAt month + i, on paymentDueDay (default = createdAt day) —
+ *               on the Thai business calendar (Asia/Bangkok) regardless of the
+ *               process timezone, the same instants generatePaymentSchedule's
+ *               anchored path writes to `payments` (a UTC host used to land 7 h off)
  *
  * Historically this algorithm was copy-pasted in three places
  * (contract-workflow activation, the backfill CLI, and the lazy-gen recovery
@@ -42,14 +46,14 @@ export function buildInstallmentScheduleRows(
     .div(c.totalMonths)
     .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 
-  const baseDate = c.createdAt;
-  const dueDay = c.paymentDueDay ?? baseDate.getDate();
+  const base = bangkokCalendarParts(c.createdAt);
+  const dueDay = c.paymentDueDay ?? base.day;
 
   const rows: Prisma.InstallmentScheduleCreateManyInput[] = [];
   for (let i = 1; i <= c.totalMonths; i++) {
-    const targetMonth = baseDate.getMonth() + i;
-    const lastDay = new Date(baseDate.getFullYear(), targetMonth + 1, 0).getDate();
-    const dueDate = new Date(baseDate.getFullYear(), targetMonth, Math.min(dueDay, lastDay));
+    const targetMonth = base.month + i;
+    const lastDay = daysInMonth(base.year, targetMonth);
+    const dueDate = bangkokMidnight(base.year, targetMonth, Math.min(dueDay, lastDay));
     rows.push({
       contractId: c.id,
       installmentNo: i,

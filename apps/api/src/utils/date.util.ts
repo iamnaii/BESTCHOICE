@@ -102,3 +102,23 @@ export function bangkokDateRange(startDate?: string, endDate?: string): { gte?: 
 export function bangkokDateString(now: Date = new Date()): string {
   return new Date(now.getTime() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10);
 }
+
+/** Calendar parts of an instant on the Thai business calendar (Asia/Bangkok, UTC+7, no DST). */
+export function bangkokCalendarParts(date: Date): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Bangkok', year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(date);
+  const read = (type: 'year' | 'month' | 'day') => Number(parts.find(part => part.type === type)!.value);
+  return { year: read('year'), month: read('month') - 1, day: read('day') };
+}
+
+/**
+ * Midnight of a Bangkok calendar day as an instant, independent of process.env.TZ. `month`
+ * may overflow (13 → January next year) exactly like the Date constructor.
+ */
+export function bangkokMidnight(year: number, month: number, day: number): Date {
+  return new Date(Date.UTC(year, month, day) - 7 * 60 * 60 * 1000);
+}
+
+/** Number of days in a (possibly overflowing) month index of the given year. */
+export function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}

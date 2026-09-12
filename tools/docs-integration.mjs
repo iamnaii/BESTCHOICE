@@ -42,6 +42,9 @@ const PAGE_SIZES = [
 ];
 const PAGE_TOLERANCE_PT = 1.5;
 const ALLOWED_FONT_PREFIX = 'THSarabunPSK';
+// The 50×30 mm sticker keeps the label's own typography (owner decision 2026-09-12, PR #1575 —
+// IBM Plex Sans Thai from Google Fonts); its fonts are recorded, not held to the document prefix.
+const FONT_RULE_EXEMPT_SIZES = new Set(['sticker 50×30 mm']);
 const BOUNDS_TOLERANCE_PT = 2;
 
 function resolveChromium() {
@@ -201,9 +204,10 @@ async function checkPdf(pdfjs, path) {
   } finally {
     await doc.destroy();
   }
-  const badFonts = [...fonts].filter(font => !font.startsWith(ALLOWED_FONT_PREFIX));
+  const fontRuleApplies = pages.some(page => !FONT_RULE_EXEMPT_SIZES.has(page.size));
+  const badFonts = fontRuleApplies ? [...fonts].filter(font => !font.startsWith(ALLOWED_FONT_PREFIX)) : [];
   if (badFonts.length) problems.push(`fonts other than ${ALLOWED_FONT_PREFIX}: ${badFonts.join(', ')}`);
-  return { problems, pages, fonts: [...fonts].sort() };
+  return { problems, pages, fonts: [...fonts].sort(), fontRule: fontRuleApplies ? `${ALLOWED_FONT_PREFIX} only` : 'recorded only (sticker keeps its own font)' };
 }
 
 async function verifyArtifacts(output) {
@@ -215,7 +219,7 @@ async function verifyArtifacts(output) {
     files.push({ path: rel, source: rel.startsWith('storage/') ? 'storage' : 'artifact', bytes: statSync(path).size, status: result.problems.length ? 'FAIL' : 'PASS', ...result });
   }
   const totals = { files: files.length, pass: files.filter(f => f.status === 'PASS').length, fail: files.filter(f => f.status === 'FAIL').length, pages: files.reduce((n, f) => n + f.pages.length, 0) };
-  const checks = { generatedAt: new Date().toISOString(), rules: { pageSizes: PAGE_SIZES, pageTolerancePt: PAGE_TOLERANCE_PT, fontPrefix: ALLOWED_FONT_PREFIX, boundsTolerancePt: BOUNDS_TOLERANCE_PT, blankPage: 'a page without any text item fails' }, totals, files };
+  const checks = { generatedAt: new Date().toISOString(), rules: { pageSizes: PAGE_SIZES, pageTolerancePt: PAGE_TOLERANCE_PT, fontPrefix: ALLOWED_FONT_PREFIX, fontRuleExemptSizes: [...FONT_RULE_EXEMPT_SIZES], boundsTolerancePt: BOUNDS_TOLERANCE_PT, blankPage: 'a page without any text item fails' }, totals, files };
   writeFileSync(join(output, 'artifact-checks.json'), JSON.stringify(checks, null, 2) + '\n');
   return checks;
 }
@@ -232,7 +236,7 @@ function writeSummary(output, meta, manifest, checks) {
   if (meta.jest?.available) lines.push(`- jest: ${meta.jest.passed}/${meta.jest.total} tests passed (${meta.jest.failed} failed, ${meta.jest.suites} suites)`);
   else lines.push('- jest: no results file (the run did not reach the end of the suite)');
   lines.push(`- scenarios: ${manifest.totals.pass} PASS · ${manifest.totals.fail} FAIL · ${manifest.totals.blocked} BLOCKED across ${Object.keys(manifest.domains).length} domain(s)`);
-  lines.push(`- PDF artifacts checked: ${checks.totals.pass}/${checks.totals.files} files (${checks.totals.pages} pages) — page box, THSarabunPSK only, text inside the page, no blank page`, '');
+  lines.push(`- PDF artifacts checked: ${checks.totals.pass}/${checks.totals.files} files (${checks.totals.pages} pages) — page box, THSarabunPSK only on A4 pages (the 50×30 mm sticker keeps its own font, recorded), text inside the page, no blank page`, '');
 
   const failedFiles = checks.files.filter(f => f.status === 'FAIL');
   const jestFailures = meta.jest?.failures ?? [];

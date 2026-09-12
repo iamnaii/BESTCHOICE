@@ -78,8 +78,7 @@ export const STICKER_STYLES = `
     width: 50mm;
     height: 30mm;
     padding: 1.6mm 1.8mm 1.2mm;
-    /* Document typography (DOC-FINAL-20260911): every printed document, the sticker included, uses TH Sarabun PSK. */
-    font-family: 'TH Sarabun PSK', sans-serif;
+    font-family: 'IBM Plex Sans Thai', system-ui, sans-serif;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -88,7 +87,6 @@ export const STICKER_STYLES = `
     line-height: 1.12;
     overflow: hidden;
   }
-  .sticker * { font-family: 'TH Sarabun PSK', sans-serif !important; }
   .st-top { display: flex; justify-content: space-between; align-items: center; gap: 1.2mm; }
   .st-model {
     font-size: 11pt;

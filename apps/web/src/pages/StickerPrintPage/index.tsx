@@ -21,7 +21,6 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { cn } from '@/lib/utils';
-import { printDocument } from '@/lib/print-document';
 import type { StockProduct } from '@/pages/StockPage/types';
 import { StickerCard, STICKER_STYLES } from './StickerCard';
 import { DEFAULT_PICKER_SORT, StickerPickerTable } from './StickerPickerTable';
@@ -544,7 +543,7 @@ export default function StickerPrintPage() {
             <Button
               type="button"
               size="lg"
-              onClick={() => void printDocument()}
+              onClick={() => window.print()}
               disabled={printable.length === 0}
               className="h-auto items-center justify-start gap-3 px-4 py-3.5 text-left"
             >

@@ -134,14 +134,16 @@ describe('DOC-11 sticker 50×30 mm regression — /stickers print geometry throu
         const first = [...p.items].filter((i) => i.str.trim()).sort((a, b) => b.y - a.y || a.x - b.x)[0];
         const printed = (first?.str ?? '').replace(/…$/, '').trim();
         const cut = /…$/.test(first?.str ?? '');
-        const modelAgrees = byImei.length === 1 && printed.length > 0 && foldThai(byImei[0].model).startsWith(foldThai(printed));
+        // Since the owner's layout B (2026-09-12) the model may wrap to a second line, so the page
+        // text — items joined, whitespace folded — must contain the WHOLE model, not only its prefix.
+        const modelAgrees = byImei.length === 1 && text.includes(foldThai(byImei[0].model));
         return { byImei: byImei.map((product) => product.model), printed, cut, modelAgrees };
       });
       const printedOrder = pageIdentity.map((page) => page.byImei.join(' + ') || `NO IMEI (model line "${page.printed || 'empty'}")`);
       const truncated = pageIdentity.filter((page) => page.cut).map((page) => `${page.byImei[0] ?? '?'} → "${page.printed}…"`);
       expect(pageIdentity.map((page) => page.byImei.length)).toEqual(products.map(() => 1));
       expect([...printedOrder].sort()).toEqual(products.map((product) => product.model).sort());
-      // The model line must belong to the same product the IMEI names (prefix of that model, cut or not).
+      // The whole model must be on the page the IMEI names (layout B lets it wrap to a second line).
       expect(pageIdentity.map((page) => page.modelAgrees)).toEqual(products.map(() => true));
       const outside = pdf.pages.flatMap((p) => p.items.filter((i) => i.str.trim() && (i.x < -1 || i.x + i.width > p.widthPt + 1 || i.y < -1 || i.y > p.heightPt + 1)).map((i) => ({ page: p.index, str: i.str, x: i.x, y: i.y })));
       expect(outside).toEqual([]);
@@ -149,7 +151,7 @@ describe('DOC-11 sticker 50×30 mm regression — /stickers print geometry throu
       expect(dataRequests.length).toBeGreaterThanOrEqual(1);
       const artifacts = [shotPreview, pdfArtifact, linesArtifact, saveArtifact(DOMAIN, 'stickers-3-1440.json', JSON.stringify({ pageCount: pdf.pageCount, fonts: pdf.fonts, sizes, printedOrder, pages: pdf.pages.map((p) => ({ w: p.widthPt.toFixed(2), h: p.heightPt.toFixed(2), lines: p.lines })), dataRequests }, null, 2)).relativePath];
       expect(errors.filter((e) => e.startsWith('pageerror'))).toEqual([]);
-      recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/print-geometry`, title: `/stickers?productIds=(3) → print media → ${pdf.pageCount} pages of ${STICKER_WIDTH_PT} × ${STICKER_HEIGHT_PT} pt (50 × 30 mm), fonts ${pdf.fonts.join('/')}, text sizes ${sizes.map((s) => `${s.size}pt×${s.count}`).join(' ')}, every page identifies its product by its IMEI and the model line agrees (printed order ${printedOrder.join(' | ')}; ${truncated.length ? `cut with … on ${truncated.length}/${pdf.pageCount} labels: ${truncated.join(', ')}` : 'no model cut'}), no text outside the page`, routes: ['GET /api/sticker-templates/products/data', 'GET /api/products', 'GET /api/products/brands'], artifacts, unverified: ['thermal printer output / label stock alignment (DOC-12)', 'the OS print dialog (headless page.pdf() stands in)'], notes: `${consoleNote(errors)}; runs against the redesigned page (PR #1575, apps/web/src/pages/StickerPrintPage/) — nothing about prices, wording or typography is asserted (owner keeps the label's own font, 2026-09-12) — only geometry and product identity on each sticker; the model line is nowrap + ellipsis and with the label's font realistic models are cut on paper (see title) — an observation for the owner / DOC-12, not a failure of this check` }));
+      recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/print-geometry`, title: `/stickers?productIds=(3) → print media → ${pdf.pageCount} pages of ${STICKER_WIDTH_PT} × ${STICKER_HEIGHT_PT} pt (50 × 30 mm), fonts ${pdf.fonts.join('/')}, text sizes ${sizes.map((s) => `${s.size}pt×${s.count}`).join(' ')}, every page identifies its product by its IMEI and prints the whole model (printed order ${printedOrder.join(' | ')}; ${truncated.length ? `cut with … on ${truncated.length}/${pdf.pageCount} labels: ${truncated.join(', ')}` : 'no model cut'}), no text outside the page`, routes: ['GET /api/sticker-templates/products/data', 'GET /api/products', 'GET /api/products/brands'], artifacts, unverified: ['thermal printer output / label stock alignment (DOC-12)', 'the OS print dialog (headless page.pdf() stands in)'], notes: `${consoleNote(errors)}; runs against the redesigned page (PR #1575, apps/web/src/pages/StickerPrintPage/) — nothing about prices, wording or typography is asserted (owner keeps the label's own font, 2026-09-12) — only geometry and product identity on each sticker; the model line is nowrap + ellipsis and with the label's font realistic models are cut on paper (see title) — an observation for the owner / DOC-12, not a failure of this check` }));
     }, 300000);
   });
 });

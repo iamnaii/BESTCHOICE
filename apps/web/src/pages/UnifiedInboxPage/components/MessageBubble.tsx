@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
 import FlexBubblePreview from './FlexBubblePreview';
-import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy, ShieldCheck } from 'lucide-react';
+import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy, ShieldCheck, AlertCircle } from 'lucide-react';
 import { CREDIT_MESSAGE_MIME } from './credit-statement';
 import { linkifyText } from '@/lib/linkify';
 import { toast } from 'sonner';
@@ -64,10 +64,54 @@ interface MessageBubbleProps {
     intent?: string | null;
     createdAt: string;
     readAt?: string | null;
+    /**
+     * เวลาที่ส่งออกถึงช่องทางสำเร็จ (`markOutboundSent` — message-router.service.ts:972)
+     * null + มี `staff` = เรากดส่งแล้วไม่ถึงลูกค้า · null + ไม่มี `staff` = echo จากแอป Facebook
+     * ซึ่งเราไม่ได้เป็นคนส่ง จึงไม่ใช่ความล้มเหลว (prod มี echo แบบนี้ 72,900+ ใบ)
+     */
+    outboundSentAt?: string | null;
     staff?: { id: string; name: string; avatarUrl?: string | null } | null;
   };
   customerAvatar?: string;
   customerInitial?: string;
+}
+
+type DeliveryMessage = {
+  role: string;
+  readAt?: string | null;
+  outboundSentAt?: string | null;
+  staff?: { id: string } | null;
+};
+
+/**
+ * สถานะการส่งของข้อความฝั่งพนักงาน
+ *
+ * เดิมโชว์เครื่องหมายถูกเสมอ แม้ส่งไม่ถึงลูกค้า (ฟองแดงเป็นแค่ state ชั่วคราวใน
+ * หน้าจอของคนส่ง หายทันทีที่รีเฟรช) ⇒ เพื่อนร่วมทีมเปิดห้องมาเห็นว่า "ตอบแล้ว"
+ * ทั้งที่ลูกค้าไม่ได้รับอะไรเลย · อ่านจาก `outboundSentAt` จึงอยู่ข้ามการรีเฟรช
+ *
+ * ข้อความที่พนักงานตอบจากแอป Facebook (echo) ไม่มี `staff` และไม่มี `outboundSentAt`
+ * ต้องไม่ถูกตีเป็นล้มเหลว ไม่งั้นทั้งกล่องจะแดงทั้งหมด
+ */
+function DeliveryMark({ message, readColor }: { message: DeliveryMessage; readColor: string }) {
+  if (message.role !== 'STAFF') return null;
+  const sentFromInbox = !!message.staff?.id;
+  if (sentFromInbox && !message.outboundSentAt) {
+    return (
+      <span
+        className="text-[10px] ml-1 text-destructive inline-flex items-center gap-0.5"
+        title="ยังไม่ถึงลูกค้า — กดส่งใหม่อีกครั้ง"
+      >
+        <AlertCircle className="size-3" />
+        ยังไม่ถึงลูกค้า
+      </span>
+    );
+  }
+  return (
+    <span className={cn('text-[10px] ml-1', message.readAt ? readColor : 'text-muted-foreground')}>
+      {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
+    </span>
+  );
 }
 
 /**
@@ -133,11 +177,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             <AiAutoIndicator intent={message.intent} role={message.role} />
-            {isStaff && (
-              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
-                {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
-              </span>
-            )}
+            <DeliveryMark message={message} readColor="text-primary" />
           </span>
         </div>
       </div>
@@ -171,11 +211,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             <AiAutoIndicator intent={message.intent} role={message.role} />
-            {isStaff && (
-              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-info' : 'text-muted-foreground')}>
-                {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
-              </span>
-            )}
+            <DeliveryMark message={message} readColor="text-info" />
           </span>
         </div>
       </div>
@@ -199,11 +235,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             <AiAutoIndicator intent={message.intent} role={message.role} />
-            {isStaff && (
-              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
-                {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
-              </span>
-            )}
+            <DeliveryMark message={message} readColor="text-primary" />
           </span>
         </div>
       </div>
@@ -277,11 +309,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
               {format(new Date(message.createdAt), 'HH:mm')}
             </span>
             <AiAutoIndicator intent={message.intent} role={message.role} />
-            {isStaff && (
-              <span className={cn('text-[10px] ml-1', message.readAt ? 'text-info' : 'text-muted-foreground')}>
-                {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
-              </span>
-            )}
+            <DeliveryMark message={message} readColor="text-info" />
           </span>
         </div>
       </div>
@@ -396,11 +424,7 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
             {format(new Date(message.createdAt), 'HH:mm')}
           </span>
           <AiAutoIndicator intent={message.intent} role={message.role} />
-          {message.role === 'STAFF' && (
-            <span className={cn('text-[10px] ml-1', message.readAt ? 'text-primary' : 'text-muted-foreground')}>
-              {message.readAt ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
-            </span>
-          )}
+          <DeliveryMark message={message} readColor="text-primary" />
         </span>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { NOTIFICATION_SOUND_URL } from './components/notification-sound';
 import AppointmentAlertBar from './components/AppointmentAlertBar';
 import { apptState, nextAppointment } from './components/appointment';
 import { toast } from 'sonner';
+import { Lock } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
 import ConversationList, { type InboxFilters } from './components/ConversationList';
 import { describeSendError, SEND_ERROR_WINDOW, SEND_ERROR_TOKEN } from './components/send-error';
@@ -277,7 +278,13 @@ export default function UnifiedInboxPage() {
     queryFn: () =>
       api.get(`/staff-chat/rooms/${activeRoomId}`).then((r) => r.data),
     enabled: !!activeRoomId,
+    // 403 = ห้องถูกเพื่อนรับไปแล้ว ไม่ใช่ความผิดพลาดชั่วคราว — retry ไปก็ได้ 403 เหมือนเดิม
+    retry: (count, err: any) => (err?.response?.status === 403 ? false : count < 2),
   });
+  const roomDenied = (sessionQuery.error as any)?.response?.status === 403;
+  const roomDeniedMessage =
+    (sessionQuery.error as any)?.response?.data?.message ??
+    'ห้องนี้มีพนักงานคนอื่นดูแลอยู่ ขอให้เขาโอนให้ก่อนจึงจะเปิดได้';
 
   // Fetch messages for active room
   // โน้ตภายในของห้อง — รวมเข้าไทม์ไลน์กับข้อความ (สเปกแผงกลาง 2026-09-06)
@@ -609,6 +616,18 @@ export default function UnifiedInboxPage() {
 
       {/* Center panel: Chat */}
       <div className={`flex-1 flex flex-col min-h-0 min-w-0 ${!activeRoomId ? 'hidden lg:flex' : 'flex'}`}>
+        {roomDenied ? (
+          /* เดิม sessionQuery ไม่มี error handling ⇒ 403 ทำให้ ChatPanel ได้ session = undefined
+             แล้วเรนเดอร์หน้าว่าง "เลือกการสนทนา" เหมือนยังไม่ได้คลิกอะไร พนักงานจึงงงว่ากดไม่ติด
+             ทั้งที่ห้องยังอยู่ในรายการของทุกคน (SALES เปิดห้องที่เพื่อนรับไปแล้วไม่ได้) */
+          <div className="flex-1 flex items-center justify-center p-6">
+            <div className="max-w-sm text-center space-y-2">
+              <Lock className="size-8 mx-auto text-muted-foreground" />
+              <p className="text-sm font-medium text-foreground">เปิดห้องนี้ไม่ได้</p>
+              <p className="text-sm text-muted-foreground leading-snug">{roomDeniedMessage}</p>
+            </div>
+          </div>
+        ) : (
         <ChatPanel
           session={sessionQuery.data}
           messages={messagesQuery.data ?? []}
@@ -658,6 +677,7 @@ export default function UnifiedInboxPage() {
           failedSends={failedSends.filter((f) => f.roomId === activeRoomId)}
           onRetrySend={retrySend}
         />
+        )}
       </div>
 
       {/* Right panel: RoomDossier (โครง OBI · 3 แท็บ) — always visible on xl+ */}

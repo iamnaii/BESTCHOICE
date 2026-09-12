@@ -1,5 +1,10 @@
 import { isRoomCreditDocument, openCreditDocument } from '@/lib/credit-document';
-import { useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import QueryBoundary from '@/components/QueryBoundary';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { getProtectedDocument } from '@/lib/document-download';
+import { useAuth } from '@/contexts/AuthContext';
+import { queryErrorMessage } from '@/lib/query-error-message';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Circle, Plus, Eye, Trash2, Loader2, FileText, Link2 } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
@@ -18,6 +23,7 @@ interface ContractDocument {
   notes: string | null;
   createdAt: string;
   uploadedBy: { id: string; name: string };
+  isImmutable?: boolean;
 }
 
 // SIGNED_CONTRACT + PDPA_CONSENT ไม่รวมในรายการนี้ — backend สร้าง
@@ -31,6 +37,7 @@ const DOCUMENT_TYPES = [
   { value: 'FACEBOOK_POST', label: 'Post Facebook ล่าสุด (ไม่เกิน 1 เดือน)', required: true },
   { value: 'LINE_PROFILE', label: 'Profile LINE', required: true },
   { value: 'DEVICE_RECEIPT_PHOTO', label: 'รูปรับเครื่อง', required: true },
+  { value: 'GUARDIAN_DOC', label: 'เอกสารผู้ปกครอง', required: false },
   { value: 'BANK_STATEMENT', label: 'Statement ธนาคาร / หลักฐานการทำงาน', required: true },
 ];
 
@@ -38,7 +45,16 @@ const OCR_TYPES: Record<string, { endpoint: string; label: string }> = {
   ID_CARD_COPY: { endpoint: '/ocr/id-card', label: 'บัตรประชาชน' },
 };
 
-export default function DocumentUpload({ contractId, customerId }: { contractId: string; customerId?: string }) {
+export default function DocumentUpload({ contractId, customerId, contractStatus }: { contractId: string; customerId?: string; contractStatus?: string }) {
+  const { user } = useAuth();
+  const canUpload = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
+  const canEditCustomer = ['OWNER', 'BRANCH_MANAGER'].includes(user?.role ?? '');
+  const canDelete = canEditCustomer && !['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contractStatus ?? '');
+  const uploadBusy = useRef(false);
+  const closePreviewRef = useRef<HTMLButtonElement>(null);
+  const fileButtons = useRef<Record<string, HTMLButtonElement | null>>({});
+  const lastOpenedId = useRef('');
+  const [documentPage, setDocumentPage] = useState(1);
   const queryClient = useQueryClient();
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
@@ -47,15 +63,22 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   const [viewingFile, setViewingFile] = useState<{ url: string; name: string; label?: string } | null>(null);
   const [dragOverType, setDragOverType] = useState<string | null>(null);
   const [uploadingType, setUploadingType] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<{ type: string; message: string } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
-  const { data: documents = [] } = useQuery<ContractDocument[]>({
-    queryKey: ['contract-documents', contractId],
+  const documentsQuery = useQuery<{ data: ContractDocument[]; total: number }>({
+    queryKey: ['contract-documents', contractId, documentPage],
     queryFn: async () => {
-      const { data } = await api.get(`/contracts/${contractId}/documents`, { params: { limit: 200 } });
-      return Array.isArray(data) ? data : (data?.data ?? []);
+      const { data } = await api.get(`/contracts/${contractId}/documents`, { params: { page: documentPage, limit: 50 } });
+      return data;
     },
   });
+  const documents = documentsQuery.data?.data ?? [];
+  const checklistQuery = useQuery<{ checklist: { type: string; present: boolean; autoGenerate: boolean }[] }>({
+    queryKey: ['contract-doc-checklist', contractId],
+    queryFn: async () => (await api.get(`/contracts/${contractId}/documents/checklist`)).data,
+  });
+  const types = DOCUMENT_TYPES.map(type => ({ ...type, required: !!checklistQuery.data?.checklist.some(row => row.type === type.value && !row.autoGenerate) }));
 
   // Pull statement files the customer/staff already uploaded at the credit-check
   // step — same document, no need to upload again. Prefer the credit check
@@ -90,11 +113,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
   const customerFiles = customerCreditCheck?.statementFiles ?? [];
   const statementFiles = contractFiles.length > 0 ? contractFiles : customerFiles;
 
-  // ContractDetailPage's stepper reads `contract.contractDocuments.length`
-  // from the ['contract', id] query — invalidating only ['contract-documents']
-  // updates this list but leaves the parent stepper stale until a manual
-  // page refresh. Refresh both keys so the step-2 → step-3 transition lights
-  // up immediately on upload/delete.
+  // Refresh attachments, the parent count and the shared required-type checklist.
   const refetchDocLists = () => {
     queryClient.invalidateQueries({ queryKey: ['contract-documents', contractId] });
     queryClient.invalidateQueries({ queryKey: ['contract', contractId] });
@@ -122,11 +141,10 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       toast.success('อัปโหลดเอกสารสำเร็จ');
       refetchDocLists();
     },
-    onError: (err: unknown) => {
-      toast.error(getErrorMessage(err));
-    },
-    onSettled: () => {
-      setUploadingType(null);
+    onError: (err: unknown, variables) => {
+      const message = `อัปโหลด ${variables.file.name} ไม่สำเร็จ · ${queryErrorMessage(err)}`;
+      setUploadError({ type: variables.documentType, message });
+      toast.error(message);
     },
   });
 
@@ -139,7 +157,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       refetchDocLists();
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err));
+      toast.error(queryErrorMessage(err));
     },
   });
 
@@ -228,9 +246,9 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
       toast.error('ไฟล์ต้องมีขนาดไม่เกิน 10MB');
       return false;
     }
-    const validTypes = ['image/', 'application/pdf'];
-    if (!validTypes.some((t) => file.type.startsWith(t))) {
-      toast.error('รองรับเฉพาะไฟล์รูปภาพหรือ PDF เท่านั้น');
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (!validTypes.includes(file.type)) {
+      toast.error('รองรับไฟล์ JPG, PNG, GIF, WEBP หรือ PDF เท่านั้น');
       return false;
     }
     if (docType === 'ID_CARD_COPY' && !file.type.startsWith('image/')) {
@@ -240,35 +258,44 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     return true;
   };
 
-  const uploadFiles = useCallback((files: FileList | File[], docType: string) => {
-    const fileArr = Array.from(files);
-    const valid = fileArr.filter((f) => validateFile(f, docType));
-    if (valid.length === 0) return;
+  const uploadFiles = async (files: FileList | File[], docType: string) => {
+    if (!canUpload || uploadBusy.current) return;
+    const valid = Array.from(files).filter(file => validateFile(file, docType));
+    if (!valid.length) return;
+    uploadBusy.current = true;
+    setUploadError(null);
     setUploadingType(docType);
-    valid.forEach((file, idx) => {
-      uploadMutation.mutate({ file, documentType: docType }, {
-        onSuccess: () => {
-          if (idx === 0 && OCR_TYPES[docType] && file.type.startsWith('image/') && !ocrLoading) {
-            performOcr(file, docType);
-          }
-        },
-      });
-    });
-  }, [uploadMutation, ocrLoading]);
-
-  const openDocument = (doc: ContractDocument) => {
-    if (!doc.fileUrl) return;
-    const label = DOCUMENT_TYPES.find((t) => t.value === doc.documentType)?.label || doc.documentType;
-    setViewingFile({ url: doc.fileUrl, name: doc.fileName, label });
+    try {
+      // Keep the pending state until the entire batch settles; preserve version order.
+      for (const file of valid) await uploadMutation.mutateAsync({ file, documentType: docType });
+      if (OCR_TYPES[docType] && !ocrLoading) void performOcr(valid[0], docType);
+    } catch {
+      // The mutation shows the failure; successful earlier files are already refreshed.
+    } finally {
+      uploadBusy.current = false;
+      setUploadingType(null);
+    }
   };
+
+  const openFileMutation = useMutation({
+    mutationFn: async (doc: ContractDocument) => ({ doc, blob: await getProtectedDocument(`/contracts/${contractId}/documents/${doc.id}/content`) }),
+    onSuccess: ({ doc, blob }) => {
+      const label = DOCUMENT_TYPES.find(t => t.value === doc.documentType)?.label || doc.documentType;
+      setViewingFile({ url: URL.createObjectURL(blob), name: doc.fileName, label });
+    },
+    onError: (error: unknown) => toast.error(queryErrorMessage(error)),
+  });
+  const openDocument = (doc: ContractDocument) => { lastOpenedId.current = doc.id; openFileMutation.mutate(doc); };
+  useEffect(() => () => {
+    if (viewingFile?.url.startsWith('blob:')) URL.revokeObjectURL(viewingFile.url);
+  }, [viewingFile]);
 
   const hasTypeFiles = (dt: typeof DOCUMENT_TYPES[number]) => {
-    if (dt.value === 'BANK_STATEMENT') return statementFiles.length > 0;
-    return documents.some((d) => d.documentType === dt.value);
+    return checklistQuery.data?.checklist.find(row => row.type === dt.value)?.present ?? (dt.value === 'BANK_STATEMENT' ? statementFiles.length > 0 : documents.some(d => d.documentType === dt.value));
   };
-  const uploadedCount = DOCUMENT_TYPES.filter(hasTypeFiles).length;
-  const requiredTypes = DOCUMENT_TYPES.filter((dt) => dt.required);
-  const optionalTypes = DOCUMENT_TYPES.filter((dt) => !dt.required);
+  const uploadedCount = types.filter(hasTypeFiles).length;
+  const requiredTypes = types.filter((dt) => dt.required);
+  const optionalTypes = types.filter((dt) => !dt.required);
   const requiredDone = requiredTypes.filter(hasTypeFiles).length;
 
   const renderBankStatementCard = (dt: typeof DOCUMENT_TYPES[number]) => {
@@ -303,11 +330,11 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                         <div className="text-[9px] text-muted-foreground text-center truncate w-full px-1">Statement {idx + 1}</div>
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/60 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition flex items-center justify-center">
                       <button
                         type="button"
                         onClick={() => { if (isRoomCreditDocument(url)) void openCreditDocument(url); else setViewingFile({ url, name: `Statement ${idx + 1}`, label: 'Statement ธนาคาร' }); }}
-                        className="p-1.5 bg-background/90 rounded text-foreground hover:bg-background"
+                        className="min-h-11 min-w-11 inline-flex items-center justify-center bg-background/90 rounded text-foreground hover:bg-background"
                         aria-label="ดูเอกสาร"
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -338,7 +365,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
     const docs = documents.filter((d) => d.documentType === dt.value);
     const hasFiles = docs.length > 0;
     const isOver = dragOverType === dt.value;
-    const isUploading = uploadingType === dt.value && uploadMutation.isPending;
+    const isUploading = uploadingType === dt.value;
 
     return (
       <div
@@ -346,7 +373,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         className={`rounded-lg border overflow-hidden transition-colors ${
           isOver ? 'border-primary bg-primary/5' : hasFiles ? 'border-primary/30 bg-card' : 'border-border bg-card'
         }`}
-        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOverType(dt.value); }}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (canUpload && !uploadBusy.current) setDragOverType(dt.value); }}
         onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverType(null); }}
         onDrop={(e) => {
           e.preventDefault();
@@ -371,17 +398,20 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         </div>
 
         <div className="p-3">
+          {uploadError?.type === dt.value && <p role="alert" className="mb-3 text-sm text-foreground border-l-2 border-destructive pl-3">{uploadError.message} ไฟล์ที่สำเร็จบันทึกแล้ว กรุณาเลือกเฉพาะไฟล์ที่ยังไม่สำเร็จใหม่</p>}
           <input
             ref={(el) => { fileInputRefs.current[dt.value] = el; }}
             type="file"
             multiple
-            accept="image/*,.pdf"
+            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
             onChange={(e) => {
               const files = e.target.files;
               if (files && files.length > 0) uploadFiles(files, dt.value);
               if (fileInputRefs.current[dt.value]) fileInputRefs.current[dt.value]!.value = '';
             }}
             className="hidden"
+            disabled={!canUpload || uploadingType !== null}
+            aria-label={`แนบ ${dt.label}`}
           />
 
           {hasFiles ? (
@@ -398,23 +428,26 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                         <div className="text-[9px] text-muted-foreground text-center truncate w-full px-1">{doc.fileName}</div>
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-1">
+                    <div className="absolute inset-0 bg-black/60 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition flex items-center justify-center gap-1">
                       <button
                         type="button"
+                        ref={element => { fileButtons.current[doc.id] = element; }}
                         onClick={() => openDocument(doc)}
-                        className="p-1.5 bg-background/90 rounded text-foreground hover:bg-background"
+                        disabled={openFileMutation.isPending}
+                        className="min-h-11 min-w-11 inline-flex items-center justify-center bg-background/90 rounded text-foreground hover:bg-background"
                         aria-label="ดูเอกสาร"
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </button>
-                      <button
+                      {canDelete && !doc.isImmutable && <button
                         type="button"
+                        disabled={deleteMutation.isPending}
                         onClick={() => setConfirmDialog({ open: true, message: `ต้องการลบเอกสาร "${doc.fileName}" หรือไม่?`, action: () => deleteMutation.mutate(doc.id) })}
-                        className="p-1.5 bg-destructive/90 rounded text-destructive-foreground hover:bg-destructive"
+                        className="min-h-11 min-w-11 inline-flex items-center justify-center bg-destructive/90 rounded text-destructive-foreground hover:bg-destructive"
                         aria-label="ลบเอกสาร"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      </button>}
                     </div>
                   </div>
                 );
@@ -423,7 +456,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
               <button
                 type="button"
                 onClick={() => fileInputRefs.current[dt.value]?.click()}
-                disabled={isUploading}
+                disabled={!canUpload || uploadingType !== null}
                 className="aspect-square border-2 border-dashed border-border hover:border-primary/50 rounded flex flex-col items-center justify-center gap-1 transition disabled:opacity-50"
               >
                 {isUploading ? (
@@ -440,7 +473,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
             <button
               type="button"
               onClick={() => fileInputRefs.current[dt.value]?.click()}
-              disabled={isUploading}
+              disabled={!canUpload || uploadingType !== null}
               className={`w-full border-2 border-dashed rounded-lg p-6 flex flex-col items-center gap-1 transition disabled:opacity-50 ${
                 isOver ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/50'
               }`}
@@ -451,9 +484,9 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
                 <>
                   <Plus className={`w-6 h-6 ${isOver ? 'text-primary' : 'text-muted-foreground'}`} />
                   <span className={`text-xs ${isOver ? 'text-primary font-medium' : 'text-muted-foreground'}`}>
-                    {isOver ? 'ปล่อยไฟล์ที่นี่' : 'ลากไฟล์หรือคลิกเพิ่ม'}
+                    {!canUpload ? 'ยังไม่มีไฟล์แนบ' : isOver ? 'ปล่อยไฟล์ที่นี่' : 'ลากไฟล์หรือคลิกเพิ่ม'}
                   </span>
-                  <span className="text-[10px] text-muted-foreground/70">หลายไฟล์ได้</span>
+                  <span className="text-[10px] text-muted-foreground/70">{canUpload ? 'หลายไฟล์ได้' : 'ดูเอกสารได้เมื่อพนักงานแนบไฟล์'}</span>
                 </>
               )}
             </button>
@@ -465,11 +498,13 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <QueryBoundary isLoading={documentsQuery.isPending || checklistQuery.isPending} isError={documentsQuery.isError || checklistQuery.isError}
+        error={documentsQuery.error ?? checklistQuery.error} onRetry={() => { void documentsQuery.refetch(); void checklistQuery.refetch(); }} errorTitle="โหลดไฟล์แนบไม่สำเร็จ">
+      <div className="flex flex-wrap gap-3 items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-foreground">อัปโหลดเอกสาร</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {uploadedCount} จาก {DOCUMENT_TYPES.length} ประเภทครบ · {documents.length} ไฟล์ · บังคับ {requiredDone}/{requiredTypes.length}
+            เอกสารที่ต้องแนบครบ {requiredDone}/{requiredTypes.length} ประเภท · ทั้งหมด {documentsQuery.data?.total ?? 0} ไฟล์
           </p>
         </div>
         <div className="w-40 h-1.5 bg-muted rounded-full overflow-hidden">
@@ -488,6 +523,14 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         </div>
       </div>
 
+      {(documentsQuery.data?.total ?? 0) > 50 && <div className="flex items-center justify-between gap-2 text-sm">
+        <button className="min-h-11 px-3 border rounded-lg disabled:opacity-50" disabled={documentPage <= 1} onClick={() => setDocumentPage(documentPage - 1)}>ไฟล์หน้าก่อน</button>
+        <span>หน้า {documentPage} / {Math.ceil((documentsQuery.data?.total ?? 0) / 50)}</span>
+        <button className="min-h-11 px-3 border rounded-lg disabled:opacity-50" disabled={documentPage * 50 >= (documentsQuery.data?.total ?? 0)} onClick={() => setDocumentPage(documentPage + 1)}>ไฟล์หน้าถัดไป</button>
+      </div>}
+      </QueryBoundary>
+
+      {openFileMutation.isPending && <p role="status" className="text-sm text-muted-foreground">กำลังเปิดเอกสาร…</p>}
       {ocrLoading && (
         <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 flex items-center gap-3">
           <Loader2 className="w-5 h-5 text-primary animate-spin" />
@@ -553,7 +596,7 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
               </div>
             )}
           </div>
-          {customerId && (
+          {customerId && canEditCustomer && (
             <div className="flex gap-2 pt-2 border-t border-success/30">
               <button
                 onClick={updateCustomerFromOcr}
@@ -572,66 +615,23 @@ export default function DocumentUpload({ contractId, customerId }: { contractId:
         </div>
       )}
 
-      {viewingFile && (
-        <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
-          onClick={() => setViewingFile(null)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setViewingFile(null);
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-label={`ดูเอกสาร ${viewingFile.name}`}
-          tabIndex={-1}
-          ref={(el) => el?.focus()}
-        >
-          <div
-            className="relative max-w-5xl max-h-[92vh] w-full flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between bg-card rounded-t-lg px-4 py-2 gap-3">
-              <div className="text-sm font-medium text-foreground truncate">
-                {viewingFile.label ? `${viewingFile.label} — ` : ''}
-                {viewingFile.name}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <a
-                  href={viewingFile.url}
-                  download={viewingFile.name}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs px-2 py-1 rounded border border-border hover:bg-accent transition-colors"
-                >
-                  ดาวน์โหลด
-                </a>
-                <button
-                  onClick={() => setViewingFile(null)}
-                  className="text-muted-foreground hover:text-foreground text-xl font-bold px-2"
-                  aria-label="ปิด"
-                >
-                  &times;
-                </button>
-              </div>
+      <Dialog open={!!viewingFile} onOpenChange={open => { if (!open) setViewingFile(null); }}>
+        <DialogContent aria-describedby={undefined} showCloseButton={false} className="max-w-5xl w-[calc(100%-2rem)] max-h-[92dvh] p-4"
+          onOpenAutoFocus={event => { event.preventDefault(); closePreviewRef.current?.focus(); }}
+          onCloseAutoFocus={event => { event.preventDefault(); fileButtons.current[lastOpenedId.current]?.focus(); }}>
+          <DialogHeader className="flex-row items-center justify-between gap-3"><DialogTitle className="min-w-0 break-words">ดูเอกสาร {viewingFile?.name}</DialogTitle>
+            <button ref={closePreviewRef} onClick={() => setViewingFile(null)} className="min-h-11 min-w-11 px-3 shrink-0 border rounded-lg text-sm" aria-label="ปิดเอกสาร">ปิด</button>
+          </DialogHeader>
+          {viewingFile && <>
+            <a href={viewingFile.url} download={viewingFile.name} className="min-h-11 inline-flex items-center justify-center self-start text-sm px-3 rounded border border-border hover:bg-accent">ดาวน์โหลดไฟล์นี้</a>
+            <div className="bg-muted rounded-lg overflow-auto min-h-0">
+              {(viewingFile.url.startsWith('data:image/') || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(viewingFile.name) || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(viewingFile.url))
+                ? <img src={viewingFile.url} alt={viewingFile.name} className="mx-auto max-w-full max-h-[65dvh] object-contain" />
+                : <iframe src={viewingFile.url} title={viewingFile.name} onLoad={() => closePreviewRef.current?.focus()} className="w-full h-[65dvh] border-0" />}
             </div>
-            <div className="bg-muted rounded-b-lg overflow-auto flex-1 flex items-center justify-center min-h-[60vh]">
-              {viewingFile.url.startsWith('data:image/') ||
-              /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(viewingFile.url) ? (
-                <img
-                  src={viewingFile.url}
-                  alt={viewingFile.name}
-                  className="max-w-full max-h-[calc(92vh-48px)] object-contain"
-                />
-              ) : (
-                <iframe
-                  src={viewingFile.url}
-                  title={viewingFile.name}
-                  className="w-full h-[85vh] border-0"
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+          </>}
+        </DialogContent>
+      </Dialog>
 
       <ConfirmDialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))} description={confirmDialog.message} variant="destructive" onConfirm={confirmDialog.action} />
     </div>

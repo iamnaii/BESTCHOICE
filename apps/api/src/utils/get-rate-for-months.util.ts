@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 /**
  * Resolve the interest rate for a given (config, months) pair.
@@ -13,7 +13,7 @@ import { PrismaClient, Prisma } from '@prisma/client';
  * Removed in PR 9 once feature flag stable in prod for 2+ weeks.
  */
 export async function getRateForMonths(
-  prisma: PrismaClient,
+  prisma: Pick<Prisma.TransactionClient, 'interestConfig' | 'interestConfigRate'>,
   configId: string,
   months: number,
 ): Promise<Prisma.Decimal> {

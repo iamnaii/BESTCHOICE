@@ -110,8 +110,10 @@ describe('ExpenseDocumentsController', () => {
       }),
       send: jest.fn(),
     };
-    await controller.getVoucherPdf('doc-1', res as never);
-    expect(voucherPdf.generate).toHaveBeenCalledWith('doc-1');
+    const viewer = { role: 'BRANCH_MANAGER', branchId: 'b1' };
+    await controller.getVoucherPdf('doc-1', viewer, res as never);
+    // The viewer is passed through so the service can enforce branch scope (DOC-03, #1562).
+    expect(voucherPdf.generate).toHaveBeenCalledWith('doc-1', viewer);
     expect(headers['Content-Type']).toBe('application/pdf');
     expect(headers['Content-Disposition']).toBe(
       'inline; filename="expense-voucher-doc-1.pdf"',

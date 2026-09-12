@@ -3,6 +3,9 @@ import { Request, Response } from 'express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { DocumentsService } from './documents.service';
+import { ContractFileAccess } from './contract-file-access.guard';
+import { pipeDocumentStream } from './services/document-stream';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 import { CreateTemplateDto, UpdateTemplateDto, SignContractDto, GenerateDocumentDto } from './dto/document.dto';
 import { OcrGenerateTemplateDto } from '../ocr/dto/ocr.dto';
 import { OcrService } from '../ocr/ocr.service';
@@ -71,6 +74,7 @@ export class DocumentsController {
 
   // ─── E-Signature (พ.ร.บ.ธุรกรรมทางอิเล็กทรอนิกส์ พ.ศ. 2544) ──
   @Post('contracts/:id/sign')
+  @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   @Throttle({ short: { limit: 10, ttl: 60000 } })
   signContract(
@@ -93,12 +97,14 @@ export class DocumentsController {
   }
 
   @Delete('contracts/:id/signatures/:signerType')
+  @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   deleteSignature(@Param('id') id: string, @Param('signerType') signerType: string) {
     return this.documentsService.deleteSignature(id, signerType);
   }
 
   @Get('contracts/:id/signatures')
+  @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getSignatures(
     @Param('id') id: string,
@@ -116,6 +122,7 @@ export class DocumentsController {
 
   // ─── E-Document ───────────────────────────────────────
   @Post('contracts/:id/generate-document')
+  @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   generateDocument(
     @Param('id') id: string,
@@ -126,6 +133,7 @@ export class DocumentsController {
   }
 
   @Get('contracts/:id/download-pdf')
+  @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async downloadPdf(
     @Param('id') id: string,
@@ -143,6 +151,7 @@ export class DocumentsController {
   }
 
   @Post('contracts/:id/generate-signed-documents')
+  @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   generateSignedDocuments(
     @Param('id') id: string,
@@ -159,6 +168,7 @@ export class DocumentsController {
   }
 
   @Post('contracts/:id/generate-pdpa-document')
+  @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   generatePdpaDocument(
     @Param('id') id: string,
@@ -167,29 +177,22 @@ export class DocumentsController {
     return this.documentsService.generatePdpaDocument(id, user.id);
   }
 
-  @Get('contracts/:id/documents')
+  @Get('contracts/:id/e-documents')
+  @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getDocuments(
-    @Param('id') id: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const parsedPage = page ? parseInt(page, 10) : undefined;
-    const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
-    return this.documentsService.getDocuments(
-      id,
-      parsedPage && !isNaN(parsedPage) ? parsedPage : undefined,
-      parsedLimit && !isNaN(parsedLimit) ? parsedLimit : undefined,
-    );
+  getDocuments(@Param('id') id: string, @Query() pagination: PaginationDto) {
+    return this.documentsService.getDocuments(id, pagination.page, pagination.limit);
   }
 
   @Get('contracts/:id/preview')
+  @ContractFileAccess()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   previewContract(@Param('id') id: string, @Query('templateId') templateId?: string) {
     return this.documentsService.previewContract(id, templateId);
   }
 
   @Get('documents/:id')
+  @ContractFileAccess('generated')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getDocument(@Param('id') id: string) {
     return this.documentsService.getDocument(id);
@@ -197,17 +200,15 @@ export class DocumentsController {
 
   // ─── Document Download ───────────────────────────────
   @Get('documents/:id/download')
+  @ContractFileAccess('generated')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async downloadDocument(@Param('id') id: string, @Res() res: Response) {
-    const { stream, filename, contentType } = await this.documentsService.getDocumentStream(id);
-    res.set({
-      'Content-Type': contentType,
-      'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
-    });
-    stream.pipe(res);
+    const file = await this.documentsService.getDocumentStream(id);
+    pipeDocumentStream(res, file);
   }
 
   @Get('documents/:id/signed-url')
+  @ContractFileAccess('generated')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   getSignedUrl(@Param('id') id: string) {
     return this.documentsService.getDocumentSignedUrl(id);

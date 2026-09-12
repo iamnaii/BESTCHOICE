@@ -72,6 +72,7 @@ jest.mock('../../utils/config.util', () => ({
     vatPct: 0.07,
   }),
   resolveVatPctForBranch: jest.fn().mockResolvedValue(0.07),
+  resolveBranchVat: jest.fn().mockResolvedValue({ vatPct: 0.07, source: 'BRANCH_COMPANY' }),
 }));
 
 jest.mock('../../utils/sequence.util', () => ({
@@ -80,6 +81,7 @@ jest.mock('../../utils/sequence.util', () => ({
 }));
 
 jest.mock('../../utils/validation.util', () => ({
+  ...jest.requireActual('../../utils/validation.util'),
   validateIMEI: jest.fn().mockReturnValue(true),
   validateThaiPhone: jest.fn().mockReturnValue(true),
   checkAgeEligibility: jest.fn().mockReturnValue({ eligible: true, requiresGuardian: false }),
@@ -101,7 +103,7 @@ describe('ContractsService', () => {
   // ─── fixtures ──────────────────────────────────────────────────────────────
 
   const mockProduct = {
-    id: 'product-1',
+    id: 'product-1', branchId: 'branch-1', wasPreviouslyDamaged: false, po: null,
     name: 'iPhone 15',
     brand: 'Apple',
     model: 'iPhone 15',
@@ -210,7 +212,7 @@ describe('ContractsService', () => {
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
         // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
-        findFirst: jest.fn().mockResolvedValue(mockProduct),
+        findFirst: jest.fn(async () => prisma.product.findUnique()),
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
@@ -226,6 +228,7 @@ describe('ContractsService', () => {
       contract: {
         findMany: jest.fn().mockResolvedValue([mockContract]),
         findUnique: jest.fn().mockResolvedValue(mockContract),
+        findUniqueOrThrow: jest.fn(async () => prisma.contract.findUnique()),
         count: jest.fn().mockResolvedValue(1),
         aggregate: jest.fn().mockResolvedValue({ _sum: { sellingPrice: new Prisma.Decimal(20000) } }),
         create: jest.fn().mockResolvedValue(mockContract),
@@ -248,7 +251,7 @@ describe('ContractsService', () => {
         findUnique: jest.fn().mockResolvedValue(mockCustomer),
       },
       user: {
-        findUnique: jest.fn().mockResolvedValue({ role: 'SALES' }),
+        findUnique: jest.fn().mockResolvedValue({ role: 'SALES', branchId: 'branch-1' }),
       },
       systemConfig: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -277,7 +280,7 @@ describe('ContractsService', () => {
         { provide: AuditService, useValue: auditMock },
         { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
         { provide: ShopDownPaymentReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }) } },
-        { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn() } },
+        { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn() } },
       ],
     }).compile();
 
@@ -319,7 +322,7 @@ describe('ContractsService', () => {
       const where = prisma.contract.findMany.mock.calls[0][0].where;
       const createdAt = where.createdAt as Record<string, Date>;
       expect(createdAt.gte).toBeInstanceOf(Date);
-      expect(createdAt.lte).toBeInstanceOf(Date);
+      expect(createdAt.lt).toBeInstanceOf(Date);
     });
 
     it('defaults to page 1 and limit 50', async () => {
@@ -329,10 +332,10 @@ describe('ContractsService', () => {
       expect(call.take).toBe(50);
     });
 
-    it('caps limit at 100 regardless of what is passed', async () => {
+    it('caps limit at 200 regardless of what is passed', async () => {
       await service.findAll({ limit: 999 });
       const call = prisma.contract.findMany.mock.calls[0][0];
-      expect(call.take).toBe(100);
+      expect(call.take).toBe(200);
     });
 
     it('returns a summary block alongside paginated data', async () => {
@@ -566,7 +569,7 @@ describe('ContractsService', () => {
               update: jest.fn().mockResolvedValue({}),
             },
             customer: { findUnique: jest.fn().mockResolvedValue(mockCustomer) },
-            contract: {
+            contract: { ...prisma.contract, ...prisma.contract,
               create: jest.fn().mockResolvedValue(mockContract),
             },
             payment: {
@@ -609,7 +612,7 @@ describe('ContractsService', () => {
               update: jest.fn().mockResolvedValue({}),
             },
             customer: { findUnique: jest.fn().mockResolvedValue(mockCustomer) },
-            contract: { create: jest.fn().mockResolvedValue(mockContract) },
+            contract: { ...prisma.contract, ...prisma.contract, create: jest.fn().mockResolvedValue(mockContract) },
             payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },
           };
           return fn(txPrisma);
@@ -633,7 +636,7 @@ describe('ContractsService', () => {
           product: { ...prisma.product, findUnique: jest.fn().mockResolvedValue(mockProduct), findFirst: jest.fn().mockResolvedValue(mockProduct), update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }) },
           creditCheck: { findFirst: jest.fn().mockResolvedValue({ id: 'cc-1', status: 'APPROVED', contractId: null }), update: jest.fn().mockResolvedValue({}) },
           customer: { findUnique: jest.fn().mockResolvedValue(mockCustomer) },
-          contract: { create: jest.fn().mockResolvedValue(mockContract) },
+          contract: { ...prisma.contract, create: jest.fn().mockResolvedValue(mockContract) },
           payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },
         };
         return fn(txPrisma);
@@ -721,7 +724,7 @@ describe('ContractsService', () => {
         salespersonId: 'other-user',
         workflowStatus: 'CREATING',
       });
-      prisma.user.findUnique.mockResolvedValue({ role: 'SALES' });
+      prisma.user.findUnique.mockResolvedValue({ role: 'SALES', branchId: 'branch-1' });
 
       await expect(
         service.update('contract-1', { notes: 'test' }, 'user-1'),
@@ -734,7 +737,7 @@ describe('ContractsService', () => {
         salespersonId: 'other-user',
         workflowStatus: 'CREATING',
       });
-      prisma.user.findUnique.mockResolvedValue({ role: 'OWNER' });
+      prisma.user.findUnique.mockResolvedValue({ role: 'OWNER', branchId: 'branch-1' });
 
       prisma.$transaction.mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -745,7 +748,7 @@ describe('ContractsService', () => {
               updateMany: jest.fn().mockResolvedValue({ count: 0 }),
               createMany: jest.fn().mockResolvedValue({ count: 12 }),
             },
-            contract: { update: jest.fn().mockResolvedValue({}) },
+            contract: { ...prisma.contract, ...prisma.contract, update: jest.fn().mockResolvedValue({}) },
           };
           return fn(txPrisma);
         },
@@ -766,7 +769,7 @@ describe('ContractsService', () => {
         salespersonId: 'user-1',
         workflowStatus: 'CREATING',
       });
-      prisma.user.findUnique.mockResolvedValue({ role: 'SALES' });
+      prisma.user.findUnique.mockResolvedValue({ role: 'SALES', branchId: 'branch-1' });
 
       prisma.$transaction.mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -777,7 +780,7 @@ describe('ContractsService', () => {
               updateMany: jest.fn(),
               createMany: jest.fn(),
             },
-            contract: { update: jest.fn().mockResolvedValue({}) },
+            contract: { ...prisma.contract, ...prisma.contract, update: jest.fn().mockResolvedValue({}) },
           };
           return fn(txPrisma);
         },
@@ -794,7 +797,7 @@ describe('ContractsService', () => {
         salespersonId: 'user-1',
         workflowStatus: 'CREATING',
       });
-      prisma.user.findUnique.mockResolvedValue({ role: 'SALES' });
+      prisma.user.findUnique.mockResolvedValue({ role: 'SALES', branchId: 'branch-1' });
 
       prisma.$transaction.mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -805,7 +808,7 @@ describe('ContractsService', () => {
               updateMany: jest.fn(),
               createMany: jest.fn(),
             },
-            contract: { update: jest.fn().mockResolvedValue({}) },
+            contract: { ...prisma.contract, ...prisma.contract, update: jest.fn().mockResolvedValue({}) },
           };
           return fn(txPrisma);
         },
@@ -1067,7 +1070,7 @@ describe('ContractsService', () => {
         salespersonId: 'user-1',
         workflowStatus: 'CREATING',
       });
-      prisma.user.findUnique.mockResolvedValue({ role: 'SALES' });
+      prisma.user.findUnique.mockResolvedValue({ role: 'SALES', branchId: 'branch-1' });
 
       prisma.$transaction.mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -1079,7 +1082,7 @@ describe('ContractsService', () => {
               updateMany: jest.fn().mockResolvedValue({ count: 0 }),
               createMany: jest.fn().mockResolvedValue({ count: 12 }),
             },
-            contract: { update: jest.fn().mockResolvedValue({}) },
+            contract: { ...prisma.contract, ...prisma.contract, update: jest.fn().mockResolvedValue({}) },
           };
           return fn(txPrisma);
         },
@@ -1099,7 +1102,7 @@ describe('ContractsService', () => {
         salespersonId: 'user-1',
         workflowStatus: 'CREATING',
       });
-      prisma.user.findUnique.mockResolvedValue({ role: 'SALES' });
+      prisma.user.findUnique.mockResolvedValue({ role: 'SALES', branchId: 'branch-1' });
 
       prisma.$transaction.mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -1113,7 +1116,7 @@ describe('ContractsService', () => {
               updateMany: jest.fn(),
               createMany: jest.fn(),
             },
-            contract: { update: jest.fn().mockResolvedValue({}) },
+            contract: { ...prisma.contract, ...prisma.contract, update: jest.fn().mockResolvedValue({}) },
           };
           return fn(txPrisma);
         },
@@ -1133,7 +1136,7 @@ describe('ContractsService', () => {
         salespersonId: 'user-1',
         workflowStatus: 'CREATING',
       });
-      prisma.user.findUnique.mockResolvedValue({ role: 'SALES' });
+      prisma.user.findUnique.mockResolvedValue({ role: 'SALES', branchId: 'branch-1' });
 
       prisma.$transaction.mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -1147,7 +1150,7 @@ describe('ContractsService', () => {
               updateMany: jest.fn(),
               createMany: jest.fn(),
             },
-            contract: { update: jest.fn().mockResolvedValue({}) },
+            contract: { ...prisma.contract, ...prisma.contract, update: jest.fn().mockResolvedValue({}) },
           };
           return fn(txPrisma);
         },
@@ -1292,7 +1295,7 @@ describe('ContractsService', () => {
           reason: 'ลูกค้าขอยกเลิก',
           refundAmount: 500,
           requestedBy: { id: 'user-1', name: 'พนักงาน 1' },
-          contract: { id: 'contract-1', contractNumber: 'BC-2026-001', status: 'ACTIVE' },
+          contract: { ...prisma.contract, id: 'contract-1', contractNumber: 'BC-2026-001', status: 'ACTIVE' },
         }),
       };
 
@@ -1373,7 +1376,7 @@ describe('ContractsService', () => {
           { provide: 'ContractCancellationTemplate', useValue: mockCancellationTemplate },
           { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
           { provide: ShopDownPaymentReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }) } },
-          { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn() } },
+          { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn() } },
         ],
       }).compile();
       const svcWithTemplate = moduleWithTemplate.get<ContractsService>(ContractsService);
@@ -1625,7 +1628,7 @@ describe('ContractsService', () => {
           id: 'cancel-1',
           contractId: 'contract-1',
           status: 'REJECTED',
-          contract: { id: 'contract-1', contractNumber: 'BC-2026-001' },
+          contract: { ...prisma.contract, id: 'contract-1', contractNumber: 'BC-2026-001' },
           requestedBy: { id: 'user-1', name: 'พนักงาน 1' },
           approvedBy: { id: 'approver-1', name: 'ผู้อนุมัติ' },
         }),

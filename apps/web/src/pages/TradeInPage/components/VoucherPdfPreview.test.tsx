@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import VoucherPdfPreview from './VoucherPdfPreview';
@@ -11,7 +12,7 @@ describe('VoucherPdfPreview', () => {
     const blob = new Blob(['%PDF-example'], { type: 'application/pdf' });
     const filename = 'ใบสำคัญจ่ายเงิน_EXP-20260900008.pdf';
     const { unmount } = render(
-      <VoucherPdfPreview blob={blob} filename={filename} onClose={vi.fn()} />,
+      <QueryClientProvider client={new QueryClient()}><VoucherPdfPreview blob={blob} filename={filename} onClose={vi.fn()} /></QueryClientProvider>,
     );
     const download = await screen.findByRole('link', { name: 'ดาวน์โหลด PDF' });
     expect(download).toHaveAttribute('download', filename);

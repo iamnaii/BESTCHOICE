@@ -1,0 +1,74 @@
+{
+  "scope": "In-memory Prisma/templates; simulated authenticated user; no real DB transactions or posting",
+  "result": [
+    {
+      "case": "Sales HTTP with simulated SALES principal, real Roles/Branch/Entity guards and service",
+      "listStatus": 200,
+      "detailStatus": 200,
+      "detailWhere": {
+        "id": "sale-b"
+      },
+      "listCostHidden": true,
+      "detailCostVisible": true,
+      "detailFullNationalIdVisible": true
+    },
+    {
+      "case": "Same end-of-month payment day through two real DTOs/global pipe settings",
+      "contractsAccepted": 31,
+      "salesRejected": {
+        "message": [
+          "วันครบกำหนดต้องไม่เกิน 28"
+        ],
+        "error": "Bad Request",
+        "statusCode": 400
+      }
+    },
+    {
+      "case": "expired PAID booking still converts before cron",
+      "converted": true,
+      "productBranch": "branch-a",
+      "saleBranch": "branch-a",
+      "journalsCalled": 2
+    },
+    {
+      "case": "branch A booking converts product from branch B",
+      "converted": true,
+      "productBranch": "branch-b",
+      "saleBranch": "branch-a",
+      "journalsCalled": 2
+    },
+    {
+      "case": "SALES converts previously damaged product without acknowledgement",
+      "converted": true,
+      "productBranch": "branch-a",
+      "saleBranch": "branch-a",
+      "journalsCalled": 2
+    },
+    {
+      "case": "same damaged-product input through normal sale orchestrator",
+      "rejected": true
+    },
+    {
+      "case": "External finance with zero down payment",
+      "downPayment": 0,
+      "amountReceived": 10000,
+      "stillExpectedFromFinance": 10000,
+      "receiptEventSupplied": false
+    },
+    {
+      "case": "Actual browser contract preview vs real backend calculation with non-VAT branch",
+      "input": {
+        "price": 10000,
+        "down": 2000,
+        "months": 6,
+        "monthlyInterestRate": 0.01,
+        "commissionRate": 0.1,
+        "configVat": 0.07
+      },
+      "browserMonthlyPayment": 1654.93,
+      "backendMonthlyPayment": 1546.66,
+      "backendEffectiveVat": 0,
+      "scope": "Browser config response and backend branch record are fixtures; not a persisted contract"
+    }
+  ]
+}

@@ -67,7 +67,7 @@ export function useCustomerContractActions(
 
   const openContractPdf = useMutation({
     mutationFn: async (contract: ContractSummaryItem) => {
-      const { data: docs } = await api.get(`/contracts/${contract.id}/documents`);
+      const { data: docs } = await api.get(`/contracts/${contract.id}/e-documents`);
       const list: { id: string; documentType: string; createdAt: string }[] =
         docs?.data ?? docs ?? [];
       // Pick the most recent signed contract PDF

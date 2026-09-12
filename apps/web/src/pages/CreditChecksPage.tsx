@@ -1,7 +1,10 @@
+import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
+import { usePaginationParams } from '@/hooks/usePaginationParams';
+import { PaginationBar } from '@/components/ui/PaginationBar';
 import ContractReturnNotice from '@/components/credit-check/ContractReturnNotice';
 import { customerCreditUrl } from '@/lib/contract-return';
 import { creditHeadline, type StatementResult } from '@/pages/UnifiedInboxPage/components/credit-statement';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -61,7 +64,7 @@ interface CreditCheckResponse {
     pendingCount: number;
     approvedCount: number;
     rejectedCount: number;
-    avgScore: number;
+    avgScore: number | null;
   };
 }
 
@@ -95,6 +98,12 @@ export default function CreditChecksPage() {
   const [status, setStatus] = useState('MANUAL_REVIEW');
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search);
+  const { page, size, setPage, setSize } = usePaginationParams();
+  const previousFilters = useRef([status, debouncedSearch].join('|'));
+  useEffect(() => {
+    const next = [status, debouncedSearch].join('|');
+    if (previousFilters.current !== next) { previousFilters.current = next; setPage(1); }
+  }, [status, debouncedSearch, setPage]);
   const [target, setTarget] = useState<{ row: CreditCheckRow; next: 'APPROVED' | 'REJECTED' } | null>(
     null,
   );
@@ -102,9 +111,9 @@ export default function CreditChecksPage() {
   const [affordability, setAffordability] = useState<CreditApprovalPayload | null>(null);
 
   const query = useQuery<CreditCheckResponse>({
-    queryKey: ['credit-checks', status, debouncedSearch],
+    queryKey: ['credit-checks', status, debouncedSearch, page, size],
     queryFn: async () => {
-      const params: Record<string, string> = { limit: '50' };
+      const params: Record<string, string> = { page: String(page), limit: String(size) };
       if (status !== 'ALL') params.status = status;
       if (debouncedSearch) params.search = debouncedSearch;
       const { data } = await api.get('/credit-checks', { params });
@@ -112,6 +121,9 @@ export default function CreditChecksPage() {
     },
   });
 
+  useEffect(() => {
+    if (query.data && page > Math.max(1, query.data.totalPages)) setPage(Math.max(1, query.data.totalPages));
+  }, [query.data, page, setPage]);
   const decideMutation = useMutation({
     mutationFn: async ({ decision, overrideReason, approval }: {
       decision: NonNullable<typeof target>; overrideReason: string; approval: CreditApprovalPayload | null;
@@ -268,7 +280,7 @@ export default function CreditChecksPage() {
             { label: 'รอตรวจ', value: summary.pendingCount, tone: 'text-warning' },
             { label: 'ผ่าน', value: summary.approvedCount, tone: 'text-success' },
             { label: 'ไม่ผ่าน', value: summary.rejectedCount, tone: 'text-destructive' },
-            { label: 'คะแนนเฉลี่ย', value: summary.avgScore, tone: 'text-foreground' },
+            { label: 'คะแนนเฉลี่ย', value: summary.avgScore ?? 'ยังไม่มีคะแนน', tone: 'text-foreground' },
           ].map((s) => (
             <Card key={s.label}>
               <CardContent className="p-4">
@@ -279,6 +291,30 @@ export default function CreditChecksPage() {
           ))}
         </div>
       )}
+
+
+            <ResponsiveFilterPanel search={
+              <input
+                type="text"
+                placeholder="ค้นหาชื่อลูกค้า..."
+                aria-label="ค้นหารายการตรวจเครดิต" value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30 w-full min-w-0"
+              />
+            }>
+              <Select value={status} onValueChange={setStatus}>
+                <SelectTrigger className="h-10 w-auto min-w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="MANUAL_REVIEW">รอผู้จัดการตรวจ</SelectItem>
+                  <SelectItem value="PENDING">รอผลวิเคราะห์</SelectItem>
+                  <SelectItem value="APPROVED">ผ่าน</SelectItem>
+                  <SelectItem value="REJECTED">ไม่ผ่าน</SelectItem>
+                  <SelectItem value="ALL">ทั้งหมด</SelectItem>
+                </SelectContent>
+              </Select>
+            </ResponsiveFilterPanel>
 
       <QueryBoundary
         isLoading={query.isLoading}
@@ -298,30 +334,9 @@ export default function CreditChecksPage() {
           onRowClick={(c: CreditCheckRow) =>
             c.customer && navigate(creditUrl(c.customer.id))
           }
-          toolbar={
-            <div className="flex flex-wrap items-center gap-3">
-              <input
-                type="text"
-                placeholder="ค้นหาชื่อลูกค้า..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30 min-w-56"
-              />
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger className="h-10 w-auto min-w-44">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="MANUAL_REVIEW">รอผู้จัดการตรวจ</SelectItem>
-                  <SelectItem value="PENDING">รอผลวิเคราะห์</SelectItem>
-                  <SelectItem value="APPROVED">ผ่าน</SelectItem>
-                  <SelectItem value="REJECTED">ไม่ผ่าน</SelectItem>
-                  <SelectItem value="ALL">ทั้งหมด</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          }
+
         />
+        {query.data && <PaginationBar total={query.data.total} page={page} size={size} onPageChange={setPage} onSizeChange={setSize} />}
       </QueryBoundary>
 
       <Dialog open={!!target} onOpenChange={(open) => !open && !decideMutation.isPending && setTarget(null)}>

@@ -1,3 +1,6 @@
+import { Throttle } from '@nestjs/throttler';
+import { SalesListQueryDto } from './dto/sales-list-query.dto';
+import { bangkokDateString } from '../../utils/date.util';
 import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SalesService } from './sales.service';
@@ -9,6 +12,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { SalesReadActor } from './sales-read.types';
 
 @ApiTags('Sales')
 @ApiBearerAuth('JWT')
@@ -20,41 +24,25 @@ export class SalesController {
     private saleVoidService: SaleVoidService,
   ) {}
 
+  @Get('export')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  exportRows(@Query() filters: SalesListQueryDto, @CurrentUser() user: SalesReadActor) {
+    return this.salesService.exportRows(filters, user);
+  }
+
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findAll(
-    @Query('saleType') saleType?: string,
-    @Query('branchId') branchId?: string,
-    @Query('search') search?: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('paymentMethod') paymentMethod?: string,
-    @Query('salespersonId') salespersonId?: string,
-    @Query('contractStatus') contractStatus?: string,
-    @Query('includeVoided') includeVoided?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @CurrentUser() user?: { id: string; role: string },
+    @CurrentUser() user: SalesReadActor,
+    @Query() filters: SalesListQueryDto,
   ) {
-    return this.salesService.findAll({
-      saleType,
-      branchId,
-      search,
-      startDate,
-      endDate,
-      paymentMethod,
-      salespersonId,
-      contractStatus,
-      includeVoided: includeVoided === 'true',
-      page: page ? parseInt(page) : undefined,
-      limit: limit ? parseInt(limit) : undefined,
-      userRole: user?.role,
-    });
+    return this.salesService.findAll(filters, user);
   }
 
   @Get('salespersons')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  getSalespersons(@CurrentUser() user: { id: string; role: string; branchId?: string }) {
+  getSalespersons(@CurrentUser() user: SalesReadActor) {
     return this.salesService.getSalespersons(user);
   }
 
@@ -67,35 +55,37 @@ export class SalesController {
   @Get('top-products')
   // SALES included — the POS page shows top-selling products to sales staff.
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  getTopProducts() {
-    return this.salesService.getTopSellingProducts();
+  getTopProducts(@CurrentUser() user: SalesReadActor) {
+    return this.salesService.getTopSellingProducts(user);
   }
 
   @Get('daily-summary')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   getDailySummary(
+    @CurrentUser() user: SalesReadActor,
     @Query('date') date?: string,
     @Query('branchId') branchId?: string,
   ) {
     return this.salesService.getDailySummary(
-      date || new Date().toISOString().split('T')[0],
+      date || bangkokDateString(),
+      user,
       branchId,
     );
   }
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findOne(@Param('id') id: string) {
-    return this.salesService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: SalesReadActor) {
+    return this.salesService.findOne(id, user);
   }
 
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
   create(
     @Body() dto: CreateSaleDto,
-    @CurrentUser() user: { id: string; role: string },
+    @CurrentUser() user: SalesReadActor,
   ) {
-    return this.salesService.create(dto, user.id, user.role);
+    return this.salesService.create(dto, user.id, user.role, user.branchId);
   }
 
   @Post(':id/void')

@@ -1,3 +1,4 @@
+import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import * as creditApproval from '../credit-check/services/credit-approval';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
@@ -78,6 +79,7 @@ jest.mock('../../utils/config.util', () => ({
     vatPct: 0.07,
   }),
   resolveVatPctForBranch: jest.fn().mockResolvedValue(0.07),
+  resolveBranchVat: jest.fn().mockResolvedValue({ vatPct: 0.07, source: 'BRANCH_COMPANY' }),
 }));
 
 jest.mock('../../utils/sequence.util', () => ({
@@ -97,7 +99,7 @@ describe('SalesService', () => {
   // ─── fixtures ──────────────────────────────────────────────────────────────
 
   const mockProduct = {
-    id: 'product-1',
+    branchId: 'branch-1', wasPreviouslyDamaged: false, id: 'product-1',
     name: 'Samsung Galaxy S25',
     brand: 'Samsung',
     model: 'Galaxy S25',
@@ -157,18 +159,22 @@ describe('SalesService', () => {
   beforeEach(async () => {
     jest.spyOn(creditApproval, 'claimCreditApproval').mockResolvedValue({ id: 'approved-cap' } as never);
     prisma = {
+      saleCostSnapshot: { aggregate: jest.fn().mockResolvedValue({ _sum: { mainProductCost: new Prisma.Decimal(18000) } }) },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       sale: {
         findMany: jest.fn().mockResolvedValue([mockSale]),
         findUnique: jest.fn().mockResolvedValue(mockSale),
+        findFirst: jest.fn().mockResolvedValue(mockSale),
         count: jest.fn().mockResolvedValue(1),
         aggregate: jest.fn().mockResolvedValue({ _sum: { netAmount: new Prisma.Decimal(25000), discount: new Prisma.Decimal(0) } }),
-        groupBy: jest.fn().mockResolvedValue([
+        groupBy: jest.fn().mockImplementation(async ({ by }) => by[0] === 'productId' ? [] : [
           { saleType: 'CASH', _count: 1, _sum: { netAmount: new Prisma.Decimal(25000) } },
         ]),
         create: jest.fn().mockResolvedValue(mockSale),
       },
       customer: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'customer-1', name: 'Test customer', phone: '0891234567', addressCurrent: null }),
         // รั้วกันข้ามฝั่ง (spec 2026-09-05 §5.1 — SaleCreationService.assertSameTestSideForSale)
         // อ่านลูกค้าก่อน dispatch ไป writer — ค่าเริ่มต้นเป็นลูกค้าจริง (ที่อยู่ null / เบอร์ปกติ)
         // ให้รั้วเงียบ: เทสในไฟล์นี้เป็นเรื่องขายจริง ไม่ได้ทดสอบตัวรั้ว
@@ -189,6 +195,7 @@ describe('SalesService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
       },
       contract: {
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({
           id: 'contract-1',
           contractNumber: 'BC-2026-TEST-001',
@@ -244,6 +251,7 @@ describe('SalesService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
+        { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({}) } },
         SalesService,
         { provide: PrismaService, useValue: prisma },
         { provide: InterCompanyService, useValue: interCompanyService },
@@ -277,74 +285,74 @@ describe('SalesService', () => {
 
   describe('findAll', () => {
     it('always includes deletedAt: null to exclude soft-deleted sales', async () => {
-      await service.findAll({});
+      await service.findAll({}, { id: 'owner-1', role: 'OWNER' });
       const where = prisma.sale.findMany.mock.calls[0][0].where;
       expect(where.deletedAt).toBeNull();
     });
 
     it('includeVoided=true → ไม่ใส่ตัวกรอง deletedAt (เห็นใบที่ยกเลิกด้วย)', async () => {
-      await service.findAll({ includeVoided: true });
+      await service.findAll({ includeVoided: true }, { id: 'owner-1', role: 'OWNER' });
       const where = prisma.sale.findMany.mock.calls[0][0].where;
       expect(where.deletedAt).toBeUndefined();
     });
 
     it('รายการดึง voidedBy มาด้วย ให้หน้าจอแสดงชื่อผู้ยกเลิกบนแถวที่เปิด includeVoided', async () => {
-      await service.findAll({ includeVoided: true });
+      await service.findAll({ includeVoided: true }, { id: 'owner-1', role: 'OWNER' });
       const include = prisma.sale.findMany.mock.calls[0][0].include;
       expect(include.voidedBy).toEqual({ select: { id: true, name: true } });
     });
 
     it('filters by saleType when provided', async () => {
-      await service.findAll({ saleType: 'CASH' });
+      await service.findAll({ saleType: 'CASH' }, { id: 'owner-1', role: 'OWNER' });
       const where = prisma.sale.findMany.mock.calls[0][0].where;
       expect(where.saleType).toBe('CASH');
     });
 
     it('filters by branchId when provided', async () => {
-      await service.findAll({ branchId: 'branch-99' });
+      await service.findAll({ branchId: 'branch-99' }, { id: 'owner-1', role: 'OWNER' });
       const where = prisma.sale.findMany.mock.calls[0][0].where;
       expect(where.branchId).toBe('branch-99');
     });
 
     it('builds OR search across saleNumber, customer name, product name, and finance fields', async () => {
-      await service.findAll({ search: 'SL000' });
+      await service.findAll({ search: 'SL000' }, { id: 'owner-1', role: 'OWNER' });
       const where = prisma.sale.findMany.mock.calls[0][0].where;
       expect(where.OR).toBeDefined();
       expect(where.OR.length).toBeGreaterThanOrEqual(2);
     });
 
     it('applies date range filter when startDate and endDate are provided', async () => {
-      await service.findAll({ startDate: '2026-01-01', endDate: '2026-01-31' });
+      await service.findAll({ startDate: '2026-01-01', endDate: '2026-01-31' }, { id: 'owner-1', role: 'OWNER' });
       const where = prisma.sale.findMany.mock.calls[0][0].where;
       const createdAt = where.createdAt as Record<string, Date>;
       expect(createdAt.gte).toBeInstanceOf(Date);
-      expect(createdAt.lte).toBeInstanceOf(Date);
+      expect(createdAt.lt).toBeInstanceOf(Date);
     });
 
     it('defaults to page 1 and limit 50', async () => {
-      await service.findAll({});
+      await service.findAll({}, { id: 'owner-1', role: 'OWNER' });
       const call = prisma.sale.findMany.mock.calls[0][0];
       expect(call.skip).toBe(0);
       expect(call.take).toBe(50);
     });
 
     it('strips costPrice from product data for non-OWNER roles', async () => {
-      const result = await service.findAll({ userRole: 'SALES' });
+      const result = await service.findAll({}, { id: 'sales-1', role: 'SALES', branchId: 'branch-1' });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const firstProduct = (result.data[0] as any).product;
       expect(firstProduct).not.toHaveProperty('costPrice');
     });
 
     it('keeps costPrice in product data for OWNER role', async () => {
-      const result = await service.findAll({ userRole: 'OWNER' });
+      const result = await service.findAll({}, { id: 'owner-1', role: 'OWNER' });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const firstProduct = (result.data[0] as any).product;
       expect(firstProduct).toHaveProperty('costPrice');
     });
 
     it('calculates totalProfit only for OWNER role (non-OWNER gets 0)', async () => {
-      const ownerResult = await service.findAll({ userRole: 'OWNER' });
-      const salesResult = await service.findAll({ userRole: 'SALES' });
+      const ownerResult = await service.findAll({}, { id: 'owner-1', role: 'OWNER' });
+      const salesResult = await service.findAll({}, { id: 'sales-1', role: 'SALES', branchId: 'branch-1' });
 
       // OWNER: profit = netAmount - costPrice per sale
       expect(typeof ownerResult.summary.totalProfit).toBe('number');
@@ -353,13 +361,13 @@ describe('SalesService', () => {
     });
 
     it('includes a summary with cash/installment/finance counts', async () => {
-      prisma.sale.groupBy.mockResolvedValue([
+      prisma.sale.groupBy.mockImplementation(async ({ by }: { by: string[] }) => by[0] === 'productId' ? [] : [
         { saleType: 'CASH', _count: 3, _sum: { netAmount: new Prisma.Decimal(75000) } },
         { saleType: 'INSTALLMENT', _count: 2, _sum: { netAmount: new Prisma.Decimal(40000) } },
         { saleType: 'EXTERNAL_FINANCE', _count: 1, _sum: { netAmount: new Prisma.Decimal(20000) } },
       ]);
 
-      const result = await service.findAll({});
+      const result = await service.findAll({}, { id: 'owner-1', role: 'OWNER' });
 
       expect(result.summary.cashCount).toBe(3);
       expect(result.summary.installmentCount).toBe(2);
@@ -373,24 +381,24 @@ describe('SalesService', () => {
 
   describe('findOne', () => {
     it('returns the sale when it exists', async () => {
-      const result = await service.findOne('sale-1');
+      const result = await service.findOne('sale-1', { id: 'owner-1', role: 'OWNER' });
       expect(result.id).toBe('sale-1');
     });
 
     it('throws NotFoundException when sale does not exist', async () => {
-      prisma.sale.findUnique.mockResolvedValue(null);
-      await expect(service.findOne('missing')).rejects.toBeInstanceOf(NotFoundException);
+      prisma.sale.findFirst.mockResolvedValue(null);
+      await expect(service.findOne('missing', { id: 'owner-1', role: 'OWNER' })).rejects.toBeInstanceOf(NotFoundException);
     });
 
     it('เปิดดูใบที่ยกเลิกแล้วได้ (ไม่ throw) พร้อมข้อมูลการยกเลิก', async () => {
       const voidedAt = new Date();
-      prisma.sale.findUnique.mockResolvedValue({
+      prisma.sale.findFirst.mockResolvedValue({
         ...mockSale,
         deletedAt: voidedAt,
         voidReason: 'คีย์ผิดรุ่นเครื่อง ลูกค้าไม่ได้ซื้อ',
         voidedBy: { id: 'u-owner', name: 'เจ้าของร้าน' },
       });
-      const result = await service.findOne('sale-1');
+      const result = await service.findOne('sale-1', { id: 'owner-1', role: 'OWNER' });
       expect(result.deletedAt).toEqual(voidedAt);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       expect((result as any).voidReason).toBe('คีย์ผิดรุ่นเครื่อง ลูกค้าไม่ได้ซื้อ');
@@ -399,8 +407,8 @@ describe('SalesService', () => {
     });
 
     it('ดึง voidedBy (ชื่อผู้ยกเลิก) มากับใบขายเสมอ ให้หน้าจอแสดงได้', async () => {
-      await service.findOne('sale-1');
-      const include = prisma.sale.findUnique.mock.calls[0][0].include;
+      await service.findOne('sale-1', { id: 'owner-1', role: 'OWNER' });
+      const include = prisma.sale.findFirst.mock.calls[0][0].include;
       expect(include.voidedBy).toEqual({ select: { id: true, name: true } });
     });
   });
@@ -421,7 +429,7 @@ describe('SalesService', () => {
 
     it('throws BadRequestException when paymentMethod is missing', async () => {
       await expect(
-        service.create({ ...cashDto, paymentMethod: undefined }, 'user-1'),
+        service.create({ ...cashDto, paymentMethod: undefined }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -439,7 +447,7 @@ describe('SalesService', () => {
           return fn(txPrisma);
         },
       );
-      await expect(service.create(cashDto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.create(cashDto, 'user-1', 'SALES', 'branch-1')).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('marks the product SOLD_CASH after a successful cash sale', async () => {
@@ -465,7 +473,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(cashDto, 'user-1');
+      await service.create(cashDto, 'user-1', 'SALES', 'branch-1');
       expect(updateCalled).toBe(true);
     });
 
@@ -495,7 +503,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(cashDto, 'user-1');
+      await service.create(cashDto, 'user-1', 'SALES', 'branch-1');
       // Should use 0.025 from rule, not the fallback 0.03
       expect(capturedCommissionRate).toBe(0.025);
     });
@@ -524,7 +532,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(cashDto, 'user-1');
+      await service.create(cashDto, 'user-1', 'SALES', 'branch-1');
       expect(capturedCommissionRate).toBe(0.03); // hardcoded fallback
     });
 
@@ -547,7 +555,7 @@ describe('SalesService', () => {
       );
 
       await expect(
-        service.create({ ...cashDto, bundleProductIds: ['bundle-1'] }, 'user-1'),
+        service.create({ ...cashDto, bundleProductIds: ['bundle-1'] }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
   });
@@ -570,26 +578,26 @@ describe('SalesService', () => {
 
     it('throws BadRequestException when downPayment is not provided', async () => {
       await expect(
-        service.create({ ...installmentDto, downPayment: undefined }, 'user-1'),
+        service.create({ ...installmentDto, downPayment: undefined }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException when totalMonths is not provided', async () => {
       await expect(
-        service.create({ ...installmentDto, totalMonths: undefined }, 'user-1'),
+        service.create({ ...installmentDto, totalMonths: undefined }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException when downPayment is below the minimum percentage', async () => {
       // Min is 15% of netAmount (20000) = 3000; 2500 is below that
       await expect(
-        service.create({ ...installmentDto, downPayment: 2500 }, 'user-1'),
+        service.create({ ...installmentDto, downPayment: 2500 }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('throws BadRequestException when totalMonths is out of range', async () => {
       await expect(
-        service.create({ ...installmentDto, totalMonths: 3 }, 'user-1'),
+        service.create({ ...installmentDto, totalMonths: 3 }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -610,7 +618,7 @@ describe('SalesService', () => {
                 return Promise.resolve({ ...mockProduct, status: args.data.status });
               }),
             },
-            contract: {
+            contract: { ...prisma.contract,
               create: jest.fn().mockImplementation(() => {
                 contractCreated = true;
                 return Promise.resolve({ id: 'contract-1', contractNumber: 'BC-2026-TEST-001', totalMonths: 12 });
@@ -631,7 +639,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(installmentDto, 'user-1');
+      await service.create(installmentDto, 'user-1', 'SALES', 'branch-1');
 
       expect(contractCreated).toBe(true);
       expect(paymentsCreated).toBe(true);
@@ -648,7 +656,7 @@ describe('SalesService', () => {
               findMany: jest.fn().mockResolvedValue([]),
               update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
             },
-            contract: {
+            contract: { ...prisma.contract,
               create: jest.fn().mockResolvedValue({ id: 'contract-1', contractNumber: 'BC-2026-TEST-001', totalMonths: 12 }),
             },
             payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },
@@ -661,7 +669,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(installmentDto, 'user-1');
+      await service.create(installmentDto, 'user-1', 'SALES', 'branch-1');
       expect(interCompanyService.createFromSaleInTx).toHaveBeenCalled();
     });
 
@@ -677,7 +685,7 @@ describe('SalesService', () => {
               findMany: jest.fn().mockResolvedValue([]),
               update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
             },
-            contract: {
+            contract: { ...prisma.contract,
               create: jest.fn().mockResolvedValue({ id: 'contract-1', contractNumber: 'BC-2026-TEST-001', totalMonths: 12 }),
             },
             payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },
@@ -695,7 +703,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(installmentDto, 'user-1');
+      await service.create(installmentDto, 'user-1', 'SALES', 'branch-1');
       expect(financeReceivableCreated).toBe(true);
     });
   });
@@ -719,7 +727,7 @@ describe('SalesService', () => {
 
     it('throws BadRequestException when financeCompany is not provided', async () => {
       await expect(
-        service.create({ ...extFinanceDto, financeCompany: undefined }, 'user-1'),
+        service.create({ ...extFinanceDto, financeCompany: undefined }, 'user-1', 'SALES', 'branch-1'),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
@@ -748,7 +756,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(extFinanceDto, 'user-1');
+      await service.create(extFinanceDto, 'user-1', 'SALES', 'branch-1');
       expect(productStatus).toBe('SOLD_INSTALLMENT');
     });
 
@@ -779,7 +787,7 @@ describe('SalesService', () => {
         },
       );
 
-      await service.create(extFinanceDto, 'user-1');
+      await service.create(extFinanceDto, 'user-1', 'SALES', 'branch-1');
 
       expect(financeReceivableArgs).toBeDefined();
       expect(financeReceivableArgs?.financeCompany).toBe('GFIN');
@@ -800,7 +808,7 @@ describe('SalesService', () => {
         },
       );
 
-      await expect(service.create(extFinanceDto, 'user-1')).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.create(extFinanceDto, 'user-1', 'SALES', 'branch-1')).rejects.toBeInstanceOf(BadRequestException);
     });
   });
 
@@ -810,19 +818,19 @@ describe('SalesService', () => {
 
   describe('getSalespersons', () => {
     it('returns all active salespersons for OWNER role (no branch filter)', async () => {
-      await service.getSalespersons({ role: 'OWNER' });
+      await service.getSalespersons({ id: 'user-1', role: 'OWNER' });
       const where = prisma.user.findMany.mock.calls[0][0].where;
       expect(where.branchId).toBeUndefined();
     });
 
     it('filters salespersons by branchId for BRANCH_MANAGER role', async () => {
-      await service.getSalespersons({ role: 'BRANCH_MANAGER', branchId: 'branch-1' });
+      await service.getSalespersons({ id: 'user-1', role: 'BRANCH_MANAGER', branchId: 'branch-1' });
       const where = prisma.user.findMany.mock.calls[0][0].where;
       expect(where.branchId).toBe('branch-1');
     });
 
     it('always filters for active (non-deleted) users', async () => {
-      await service.getSalespersons({ role: 'SALES' });
+      await service.getSalespersons({ id: 'user-1', role: 'SALES' });
       const where = prisma.user.findMany.mock.calls[0][0].where;
       expect(where.isActive).toBe(true);
       expect(where.deletedAt).toBeNull();
@@ -848,21 +856,21 @@ describe('SalesService', () => {
     it('rejects a SALES discount above 5%', async () => {
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        service.create(cashDto({ discount: 1200 }) as any, 'sp-1', 'SALES'),
+        service.create(cashDto({ discount: 1200 }) as any, 'sp-1', 'SALES', 'branch-1'),
       ).rejects.toThrow(/เกินขีดจำกัด 5%/);
     });
 
     it('rejects a BRANCH_MANAGER discount above 15%', async () => {
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        service.create(cashDto({ discount: 3100 }) as any, 'bm-1', 'BRANCH_MANAGER'),
+        service.create(cashDto({ discount: 3100 }) as any, 'bm-1', 'BRANCH_MANAGER', 'branch-1'),
       ).rejects.toThrow(/เกินขีดจำกัด 15%/);
     });
 
     it('rejects a 12% BRANCH_MANAGER discount without a second approver', async () => {
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        service.create(cashDto({ discount: 2400 }) as any, 'bm-1', 'BRANCH_MANAGER'),
+        service.create(cashDto({ discount: 2400 }) as any, 'bm-1', 'BRANCH_MANAGER', 'branch-1'),
       ).rejects.toThrow(/ต้องมีผู้อนุมัติเพิ่มเติม/);
     });
 
@@ -874,7 +882,7 @@ describe('SalesService', () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           cashDto({ discount: 5000, secondApproverId: 'fm-1' }) as any,
           'bm-1',
-          'BRANCH_MANAGER',
+          'BRANCH_MANAGER', 'branch-1',
         ),
       ).rejects.toThrow(/เกินขีดจำกัด 15%/);
     });
@@ -882,7 +890,7 @@ describe('SalesService', () => {
     it('allows OWNER unlimited discount (strategic / dead stock clearance)', async () => {
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        service.create(cashDto({ discount: 10000 }) as any, 'owner-1', 'OWNER'),
+        service.create(cashDto({ discount: 10000 }) as any, 'owner-1', 'OWNER', 'branch-1'),
       ).rejects.not.toThrow(/เกินขีดจำกัด|ต่ำกว่าขั้นต่ำ|ต้องมีผู้อนุมัติ/);
     });
   });
@@ -909,7 +917,7 @@ describe('SalesService', () => {
     it('rejects sale when acknowledgement flag missing', async () => {
       await expect(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        service.create(cashDto() as any, 'owner-1', 'OWNER'),
+        service.create(cashDto() as any, 'owner-1', 'OWNER', 'branch-1'),
       ).rejects.toThrow(/previouslyDamagedAcknowledged/);
     });
 
@@ -919,7 +927,7 @@ describe('SalesService', () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           cashDto({ previouslyDamagedAcknowledged: true }) as any,
           'sp-1',
-          'SALES',
+          'SALES', 'branch-1',
         ),
       ).rejects.toThrow(/OWNER \/ FINANCE_MANAGER/);
     });
@@ -930,7 +938,7 @@ describe('SalesService', () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           cashDto({ previouslyDamagedAcknowledged: true }) as any,
           'bm-1',
-          'BRANCH_MANAGER',
+          'BRANCH_MANAGER', 'branch-1',
         ),
       ).rejects.toThrow(/OWNER \/ FINANCE_MANAGER/);
     });
@@ -941,7 +949,7 @@ describe('SalesService', () => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           cashDto({ previouslyDamagedAcknowledged: true }) as any,
           'owner-1',
-          'OWNER',
+          'OWNER', 'branch-1',
         ),
       ).rejects.not.toThrow(/previouslyDamagedAcknowledged|OWNER \/ FINANCE_MANAGER/);
     });

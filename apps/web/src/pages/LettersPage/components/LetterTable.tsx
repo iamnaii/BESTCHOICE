@@ -44,13 +44,13 @@ export default function LetterTable({
   const hasCheckbox = status !== 'CANCELLED' && status !== 'DELIVERED';
 
   return (
-    <div className="rounded-md border border-border overflow-hidden">
+    <div className="rounded-md border border-border overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-muted text-muted-foreground">
           <tr>
             {hasCheckbox && (
               <th className="w-10 p-3">
-                <Checkbox checked={allChecked} onCheckedChange={(c) => onToggleAll(!!c)} />
+                <Checkbox aria-label="เลือกทั้งหมดในหน้านี้" checked={allChecked} onCheckedChange={(c) => onToggleAll(!!c)} />
               </th>
             )}
             <th className="p-3 text-left">เลขจดหมาย</th>
@@ -75,6 +75,7 @@ export default function LetterTable({
                 {hasCheckbox && (
                   <td className="p-3">
                     <Checkbox
+                      aria-label={`เลือก ${r.letterNumber}`}
                       checked={selectedIds.has(r.id)}
                       onCheckedChange={() => onToggle(r.id)}
                     />
@@ -90,7 +91,7 @@ export default function LetterTable({
                 )}
                 <td className="p-3 text-right">
                   <div className="inline-flex gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => onPreview(r)}>
+                    <Button size="sm" variant="ghost" aria-label={`ดู PDF ${r.letterNumber}`} onClick={() => onPreview(r)}>
                       <Eye className="size-4" />
                     </Button>
                     {status === 'PDF_GENERATED' && (

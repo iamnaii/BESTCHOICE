@@ -1,3 +1,4 @@
+import { getProtectedDocumentResponse, getDocumentErrorMessage } from '@/lib/document-download';
 import { useState, useEffect, useRef } from 'react';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -221,7 +222,7 @@ export default function TradeInPage() {
   async function openVoucherPdf(id: string, requestId = ++voucherRequest.current) {
     setVoucherLoadingId(id);
     try {
-      const res = await api.get(`/trade-ins/${id}/voucher.pdf`, { responseType: 'blob' });
+      const res = await getProtectedDocumentResponse(`/trade-ins/${id}/voucher.pdf`);
       if (requestId !== voucherRequest.current) return;
       const blob = new Blob([res.data], { type: 'application/pdf' });
       const disposition = String(res.headers['content-disposition'] || '');
@@ -230,7 +231,7 @@ export default function TradeInPage() {
         : disposition.match(/filename="([^"]+)"/i)?.[1] || 'ใบสำคัญรับเครื่อง.pdf';
       setVoucherPreview({ blob, filename, requestId });
     } catch (err) {
-      if (requestId === voucherRequest.current) toast.error(getErrorMessage(err));
+      if (requestId === voucherRequest.current) toast.error(getDocumentErrorMessage(err));
     } finally {
       if (requestId === voucherRequest.current) setVoucherLoadingId(null);
     }

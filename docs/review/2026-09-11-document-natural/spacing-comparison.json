@@ -1,0 +1,22 @@
+[
+  {
+    "document": "Tax invoice",
+    "beforeBodyBottomMm": 252.9,
+    "afterBodyBottomMm": 207.7
+  },
+  {
+    "document": "Client termination letter",
+    "beforeBodyBottomMm": 270.7,
+    "afterBodyBottomMm": 240.5
+  },
+  {
+    "document": "Annual 50 bis",
+    "beforeBodyBottomMm": 269.0,
+    "afterBodyBottomMm": 188.6
+  },
+  {
+    "document": "Dividend 50 bis",
+    "beforeBodyBottomMm": 269.0,
+    "afterBodyBottomMm": 154.2
+  }
+]

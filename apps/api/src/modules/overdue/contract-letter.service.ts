@@ -159,16 +159,18 @@ export class ContractLetterService {
   /** After client generates PDF and uploads to S3, backend records the URL. */
   async markPdfGenerated(letterId: string, pdfUrl: string | null, userId: string) {
     const letter = await this.prisma.contractLetter.findFirst({
-      where: { id: letterId, deletedAt: null },
+      where: { id: letterId, deletedAt: null, contract: { deletedAt: null } },
     });
     if (!letter) throw new NotFoundException('ไม่พบหนังสือ');
+    // A confirmation retry may arrive after the previous response was lost.
+    if (letter.status === 'PDF_GENERATED' && pdfUrl === null) return letter;
     if (letter.status !== 'PENDING_DISPATCH') {
       throw new BadRequestException('สถานะไม่ถูกต้อง — ต้องอยู่ในสถานะ PENDING_DISPATCH');
     }
     return this.prisma
       .$transaction([
         this.prisma.contractLetter.update({
-          where: { id: letterId },
+          where: { id: letterId, status: 'PENDING_DISPATCH', deletedAt: null, contract: { deletedAt: null } },
           data: { status: 'PDF_GENERATED', pdfUrl: pdfUrl ?? null, pdfGeneratedAt: new Date() },
         }),
         this.prisma.auditLog.create({
@@ -181,7 +183,17 @@ export class ContractLetterService {
           },
         }),
       ])
-      .then(([l]) => l);
+      .then(([l]) => l)
+      .catch(async (error: unknown) => {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+          const current = await this.prisma.contractLetter.findFirst({
+            where: { id: letterId, deletedAt: null, contract: { deletedAt: null } },
+          });
+          if (current?.status === 'PDF_GENERATED' && pdfUrl === null) return current;
+          throw new BadRequestException('สถานะหนังสือเปลี่ยนแล้ว กรุณาโหลดรายการใหม่');
+        }
+        throw error;
+      });
   }
 
   async markDispatched(

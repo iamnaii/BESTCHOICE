@@ -1,3 +1,5 @@
+import DocumentHeader from '@/components/DocumentHeader';
+import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -11,18 +13,9 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import api, { getErrorMessage } from '@/lib/api';
 import { equityApi } from '@/lib/equity';
 import type { DividendRegisterRow } from '@/lib/equity.types';
+import { useCertificatePayer } from '@/lib/certificate-payer';
+import CertificatePayerNotice from '@/components/CertificatePayerNotice';
 import { formatNumberDecimal } from '@/utils/formatters';
-
-// ผู้จ่ายเงินบนหนังสือรับรอง = นิติบุคคลจดทะเบียน (FINANCE CompanyInfo) —
-// รูปแบบเดียวกับ WhtAnnualPage.tsx (ผู้จ่ายเงินได้ ภ.ง.ด.1ก/50 ทวิ)
-interface CompanyRow {
-  id: string;
-  nameTh: string;
-  taxId: string;
-  address: string;
-  directorName: string;
-  companyCode: string | null;
-}
 
 export default function DividendRegisterPage() {
   const currentYear = new Date().getFullYear();
@@ -35,13 +28,10 @@ export default function DividendRegisterPage() {
     queryFn: () => equityApi.dividendRegister(year),
   });
 
-  // ผู้จ่ายเงินบนหนังสือรับรอง ม.50 ทวิ = นิติบุคคลจดทะเบียน (FINANCE CompanyInfo)
-  const companies = useQuery({
-    queryKey: ['company-info-list'],
-    queryFn: () => api.get<CompanyRow[]>('/company').then((r) => r.data),
-    staleTime: 5 * 60 * 1000,
-  });
-  const payer = companies.data?.find((c) => c.companyCode === 'FINANCE') ?? companies.data?.[0];
+  // ผู้จ่ายเงินบนหนังสือรับรอง ม.50 ทวิ = นิติบุคคลจดทะเบียน (FINANCE CompanyInfo) — shared with WhtAnnualPage
+  // (DOC-08 #1567: the page used to call `/company`, a route that does not exist, and fall back to the first company).
+  const payerQuery = useCertificatePayer();
+  const payer = payerQuery.payer;
 
   const downloadXlsx = async (month: number) => {
     try {
@@ -60,7 +50,7 @@ export default function DividendRegisterPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 document-landscape">
       <PageHeader
         title="ทะเบียนปันผล + ภ.ง.ด.2"
         subtitle="สรุปเงินปันผลจ่ายจริงต่อผู้ถือหุ้น — ภ.ง.ด.2 ยื่นภายในวันที่ 7 ของเดือนถัดจากเดือนที่จ่าย (ม.52)"
@@ -188,19 +178,15 @@ export default function DividendRegisterPage() {
 
       {/* หนังสือรับรองการหักภาษี ณ ที่จ่าย (ม.50 ทวิ) — pattern จาก WhtAnnualPage.tsx บรรทัด 212-321 */}
       <Dialog open={certFor !== null} onOpenChange={(o) => !o && setCertFor(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="document-print-dialog max-w-3xl max-h-[90vh] overflow-y-auto">
           {certFor && payer && (
             <>
-              <style>{`@media print {
-                body * { visibility: hidden !important; }
-                #div-cert-print, #div-cert-print * { visibility: visible !important; }
-                #div-cert-print { position: fixed; inset: 0; padding: 24px; background: white; }
-              }`}</style>
+
               {/* print/receipt context — เอกสารทางการพิมพ์ขาวดำ ใช้สีตรงได้ตามข้อยกเว้นใน rules */}
-              <div id="div-cert-print" className="bg-white text-black p-6 text-sm space-y-4">
-                <h2 className="text-center font-bold text-base leading-snug">
-                  หนังสือรับรองการหักภาษี ณ ที่จ่าย (ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร)
-                </h2>
+              <div id="div-cert-print" className="document-sheet bc-document bc-certificate bg-white text-black p-6 text-sm space-y-4">
+                <DocumentHeader company={payer.nameTh} title="หนังสือรับรองการหักภาษี ณ ที่จ่าย"
+                  subtitle={<> ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร · ภ.ง.ด.2<br />ปีภาษี {year + 543}</>} />
+                <div className="bc-doc-parties">
                 <div className="border border-black p-3 space-y-1">
                   <div className="font-semibold leading-snug">ผู้จ่ายเงิน</div>
                   <div className="leading-snug">{payer.nameTh}</div>
@@ -212,6 +198,8 @@ export default function DividendRegisterPage() {
                   <div className="leading-snug">{certFor.name}</div>
                   <div className="leading-snug">เลขประจำตัวผู้เสียภาษี: {certFor.taxId ?? '—'}</div>
                 </div>
+                </div>
+                <div className="bc-doc-closing">
                 <table className="w-full border-collapse border border-black text-sm">
                   <thead>
                     <tr>
@@ -234,29 +222,26 @@ export default function DividendRegisterPage() {
                     </tr>
                   </tbody>
                 </table>
-                <div className="flex justify-between pt-8">
+                <div className="bc-doc-signoff flex justify-between pt-8">
                   <div>วันที่ออกหนังสือรับรอง: ____/____/______</div>
                   <div className="text-center">
                     <div>ลงชื่อ ______________________ ผู้จ่ายเงิน</div>
                     <div className="text-xs mt-1">({payer.directorName})</div>
                   </div>
                 </div>
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="ghost" onClick={() => setCertFor(null)}>
                   ปิด
                 </Button>
-                <Button onClick={() => window.print()}>
+                <Button onClick={printDocument}>
                   <Printer className="h-4 w-4 mr-1" /> พิมพ์
                 </Button>
               </div>
             </>
           )}
-          {certFor && !payer && (
-            <div className="text-sm text-muted-foreground py-6 text-center leading-snug">
-              กำลังโหลดข้อมูลบริษัท… (ต้องมี CompanyInfo ฝั่ง FINANCE)
-            </div>
-          )}
+          {certFor && !payer && <CertificatePayerNotice query={payerQuery} onClose={() => setCertFor(null)} />}
         </DialogContent>
       </Dialog>
     </div>

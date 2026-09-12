@@ -9,6 +9,7 @@ import { ContractDocumentsController } from './contract-documents.controller';
 import { ContractDocumentsService } from './contract-documents.service';
 import { DocumentsController } from './documents.controller';
 import { DocumentsService } from './documents.service';
+import { ContractFileAccessGuard } from './contract-file-access.guard';
 import { GhostSaleCron } from './crons/ghost-sale.cron';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { OcrModule } from '../ocr/ocr.module';
@@ -42,7 +43,7 @@ import { ReceiptsModule } from '../receipts/receipts.module';
     forwardRef(() => ReceiptsModule),
   ],
   controllers: [ContractsController, ContractDocumentsController, DocumentsController],
-  providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService, GhostSaleCron],
+  providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService, ContractFileAccessGuard, GhostSaleCron],
   exports: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService],
 })
 export class ContractsModule {}

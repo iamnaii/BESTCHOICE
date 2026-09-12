@@ -30,6 +30,8 @@ function InfoTip({ text }: { text: string }) {
 }
 
 export interface PlanDetailsStepProps {
+  quoteReady?: boolean;
+  lastPayment?: number;
   tradeInBaseAmount?: number;
   selectedProduct: Product | null;
   interestConfig: InterestConfig | null | undefined;
@@ -60,6 +62,8 @@ export interface PlanDetailsStepProps {
 }
 
 export function PlanDetailsStep({
+  quoteReady = true,
+  lastPayment,
   tradeInBaseAmount = 0,
   selectedProduct,
   interestConfig,
@@ -138,7 +142,7 @@ export function PlanDetailsStep({
     <div className="max-w-xl">
       <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm space-y-4">
         {/* Interest Config Badge */}
-        {interestConfig && (
+        {quoteReady && interestConfig && (
           <div className="bg-primary/5 border border-primary/30 rounded-lg p-3 flex items-center gap-2">
             <span className="text-xs text-primary">ใช้ดอกเบี้ยตาม:</span>
             <span className="text-sm font-medium text-primary">{interestConfig.name}</span>
@@ -266,9 +270,9 @@ export function PlanDetailsStep({
         />
 
         {/* Calculation Summary — Customer-facing */}
-        {(() => {
+        {quoteReady && (() => {
           const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-          const totalPaid = downPayment + tradeInBaseAmount + monthlyPayment * totalMonths;
+          const totalPaid = downPayment + tradeInBaseAmount + financedAmount;
           const extraOverCash = totalPaid - sellingPrice;
           const extraPct = sellingPrice > 0 ? (extraOverCash / sellingPrice) * 100 : 0;
           const subtotalBeforeVat = principal + storeCommission + interestTotal;
@@ -287,7 +291,7 @@ export function PlanDetailsStep({
                   <span className="tabular-nums font-mono">-{fmt(downPayment + tradeInBaseAmount)} ฿</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">ผ่อน {totalMonths} งวด × งวดละ</span>
+                  <span className="text-muted-foreground">ค่างวดปกติ ({totalMonths} งวด)</span>
                   <span className="tabular-nums font-mono font-semibold text-primary">{fmt(monthlyPayment)} ฿</span>
                 </div>
                 <div className="border-t border-primary/20 pt-2 flex justify-between text-base font-bold text-primary">
@@ -296,7 +300,7 @@ export function PlanDetailsStep({
                 </div>
                 {extraOverCash > 0 && (
                   <div className="text-xs text-muted-foreground text-right">
-                    แพงกว่าเงินสด {fmt(extraOverCash)} ฿ ({extraPct.toFixed(1)}%)
+                    ดอกเบี้ยและค่าธรรมเนียมรวม {fmt(extraOverCash)} ฿ ({extraPct.toFixed(1)}%)
                   </div>
                 )}
                 <div className="text-xs text-muted-foreground text-right">
@@ -304,6 +308,7 @@ export function PlanDetailsStep({
                 </div>
               </div>
 
+              {lastPayment !== undefined && <p className="text-xs text-muted-foreground">งวดสุดท้าย {fmt(lastPayment)} ฿ · รวมยอดผ่อน {fmt(financedAmount)} ฿</p>}
               {/* Internal details — collapsible */}
               <details className="group border-t border-primary/20 pt-2">
                 <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-primary transition-colors select-none flex items-center gap-1">
@@ -332,7 +337,7 @@ export function PlanDetailsStep({
                     <span className="tabular-nums font-mono">{fmt(vatAmount)} ฿</span>
                   </div>
                   <div className="border-t border-primary/10 pt-1.5 flex justify-between font-semibold text-primary">
-                    <span>= ยอดจัดไฟแนนซ์</span>
+                    <span>= ยอดผ่อนรวม VAT</span>
                     <span className="tabular-nums font-mono">{fmt(financedAmount)} ฿</span>
                   </div>
                 </div>

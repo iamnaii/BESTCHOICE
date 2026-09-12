@@ -11,6 +11,8 @@ export interface StuckContractRow {
   assignedToName: string | null;
   daysIdle: number;
   outstanding: number;
+  /** Contract status (OVERDUE / DEFAULT / TERMINATED) — printed by the collections PDF report. */
+  status: string;
 }
 
 interface RawRow {
@@ -23,6 +25,7 @@ interface RawRow {
   assigned_to_name: string | null;
   last_activity: Date | null;
   outstanding: number | string | null;
+  status: string;
 }
 
 @Injectable()
@@ -80,7 +83,8 @@ export class StuckContractsService {
           c.assigned_to_id,
           u.name AS assigned_to_name,
           la.last_activity,
-          COALESCE(o.amt, 0) AS outstanding
+          COALESCE(o.amt, 0) AS outstanding,
+          c.status::text AS status
         FROM contracts c
         INNER JOIN customers cu ON cu.id = c.customer_id
         INNER JOIN branches b ON b.id = c.branch_id
@@ -110,6 +114,7 @@ export class StuckContractsService {
           assignedToName: r.assigned_to_name,
           daysIdle: Math.floor(idleMs / 86400000),
           outstanding: r.outstanding == null ? 0 : Number(r.outstanding),
+          status: r.status,
         };
       });
     } catch (err) {

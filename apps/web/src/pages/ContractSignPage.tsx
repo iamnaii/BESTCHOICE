@@ -37,7 +37,7 @@ export default function ContractSignPage() {
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}`); return data; },
   });
 
-  const { data: preview } = useQuery<{ html: string }>({
+  const previewQuery = useQuery<{ html: string }>({
     queryKey: ['contract-preview', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}/preview`); return data; },
   });
@@ -116,7 +116,10 @@ export default function ContractSignPage() {
       />
       <SigningWizard
         contract={contract}
-        previewHtml={preview?.html || null}
+        previewHtml={previewQuery.data?.html || null}
+        previewState={previewQuery.isPending || previewQuery.isFetching ? 'loading'
+          : previewQuery.isError || !previewQuery.data?.html?.trim() ? 'error' : 'ready'}
+        onRetryPreview={() => { void previewQuery.refetch(); }}
         lessorSignatureImage={lessorSignatureImage}
         lessorSignerName={lessorSignerName}
       />

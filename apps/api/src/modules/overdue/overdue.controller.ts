@@ -24,6 +24,7 @@ import { OverdueTimelineService } from './timeline.service';
 import { OverdueBulkService } from './bulk.service';
 import { ContractLetterService } from './contract-letter.service';
 import { LetterPdfService } from './letter-pdf.service';
+import { LetterDocumentAccessGuard } from './letter-document-access.guard';
 import { DunningRetryService } from './dunning-retry.service';
 import { OverdueAnalyticsService } from './analytics.service';
 import { AnalyticsAgingService } from './analytics-aging.service';
@@ -555,7 +556,18 @@ export class OverdueController {
     });
   }
 
+  // Static segment routes must be registered before the `letters/:id/...` ones:
+  // Nest matches in declaration order, and `POST letters/:id/dispatch` swallowed
+  // `letters/bulk/dispatch` as id="bulk" → 404 "ไม่พบหนังสือ" for every bulk EMS
+  // confirmation from the web (DOC-09, #1568).
+  @Post('letters/bulk/dispatch')
+  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
+  bulkDispatchLetters(@Body() dto: BulkDispatchLettersDto, @CurrentUser() user: { id: string }) {
+    return this.contractLetterService.bulkDispatch(dto.items, user.id);
+  }
+
   @Post('letters/:id/pdf-generated')
+  @UseGuards(LetterDocumentAccessGuard)
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   markPdfGenerated(
     @Param('id') id: string,
@@ -595,18 +607,13 @@ export class OverdueController {
     });
   }
 
-  @Post('letters/bulk/dispatch')
-  @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
-  bulkDispatchLetters(@Body() dto: BulkDispatchLettersDto, @CurrentUser() user: { id: string }) {
-    return this.contractLetterService.bulkDispatch(dto.items, user.id);
-  }
-
   /**
    * Stream the rendered letter as a single-page A4 PDF via Puppeteer.
    * Frontend uses this for preview, dispatch dialog, AND bulk-print (loops
    * and merges with pdf-lib client-side).
    */
   @Get('letters/:id/pdf')
+  @UseGuards(LetterDocumentAccessGuard)
   @Roles('OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES')
   async getLetterPdf(@Param('id') id: string, @Res() res: Response) {
     const buffer = await this.letterPdfService.generatePdfBuffer(id);

@@ -1,7 +1,8 @@
+import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen, FileText, X } from 'lucide-react';
-import api, { getErrorMessage } from '@/lib/api';
+import api from '@/lib/api';
 import {
   Dialog,
   DialogContent,
@@ -23,7 +24,6 @@ import {
   type CaseTone,
   type ReceiptInstallmentAllocation,
 } from './paymentHistoryDerivations';
-import { toast } from 'sonner';
 import type { VoidedReceiptInfo } from '@/pages/PaymentsPage/types';
 
 /* ─── Types ───────────────────────────────────────── */
@@ -98,21 +98,6 @@ function caseFor(r: ReceiptItem, p: PaymentItem | undefined): { label: string; c
   return { label, cls: CASE_TONE_CLASS[tone] };
 }
 
-async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
-  try {
-    const res = await api.get(`/receipts/${receiptId}/pdf`, { responseType: 'blob' });
-    const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${receiptNumber}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    toast.error(getErrorMessage(err) || 'ไม่สามารถดาวน์โหลดใบเสร็จ');
-  }
-}
 
 interface Props {
   contractId: string | null;
@@ -405,14 +390,13 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                   </button>
                                   {!r.isVoided && (
                                     <>
-                                      <button
-                                        onClick={() => downloadReceiptPdf(r.id, r.receiptNumber)}
+                                      <DocumentDownloadButton path={`/receipts/${r.id}/pdf`} filename={`${r.receiptNumber}.pdf`}
                                         title="ใบเสร็จ (PDF)"
                                         aria-label={`ดาวน์โหลดใบเสร็จ ${r.receiptNumber}`}
                                         className="p-1.5 rounded border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                                       >
                                         <FileText className="size-3.5" />
-                                      </button>
+                                      </DocumentDownloadButton>
                                       {canRequestVoid &&
                                         !UNVOIDABLE_RECEIPT_TYPES.includes(r.receiptType) && (
                                           <button

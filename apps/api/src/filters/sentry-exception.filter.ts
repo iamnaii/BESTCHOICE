@@ -21,6 +21,10 @@ export class SentryExceptionFilter extends BaseExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'เกิดข้อผิดพลาดภายในระบบ';
     let errorCode = 'INTERNAL_ERROR';
+    // Structured validation detail a 4xx carries (e.g. other-income `errors: [{ rule, msg }]`)
+    // — the web reads it to name the failing rule, so it must survive the rewrite below
+    // (DOC-05 #1564: every rule failure used to reach the client as the bare message).
+    let details: { errors?: unknown[] } = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -31,6 +35,7 @@ export class SentryExceptionFilter extends BaseExceptionFilter {
         const resp = exceptionResponse as Record<string, unknown>;
         message = (resp.message as string) || message;
         errorCode = (resp.error as string) || errorCode;
+        if (status < 500 && Array.isArray(resp.errors)) details = { errors: resp.errors };
       }
     }
 
@@ -59,6 +64,7 @@ export class SentryExceptionFilter extends BaseExceptionFilter {
       statusCode: status,
       message,
       error: errorCode,
+      ...details,
       timestamp: new Date().toISOString(),
     });
   }

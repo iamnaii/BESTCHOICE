@@ -260,7 +260,7 @@ export class ContractTemplateService {
   </div>
 
   <div style="margin-bottom:16px;font-size:13px;line-height:1.8">
-    <p style="font-weight:bold;margin:0 0 8px">วัตถุประสงค์ในการเก็บรวบรวมและใช้ข้อมูล:</p>
+    <p class="section-heading" style="font-weight:bold;margin:0 0 8px">วัตถุประสงค์ในการเก็บรวบรวมและใช้ข้อมูล:</p>
     <ol style="margin:0 0 12px;padding-left:2em">
       <li>เพื่อการทำสัญญาผ่อนชำระสินค้า และการบริหารจัดการสัญญา</li>
       <li>เพื่อการติดตามหนี้ การเรียกเก็บเงินค่าผ่อนชำระ และการบังคับตามสัญญา</li>
@@ -269,7 +269,7 @@ export class ContractTemplateService {
       <li>เพื่อการตรวจสอบตัวตนและการยืนยันข้อมูล (KYC)</li>
     </ol>
 
-    <p style="font-weight:bold;margin:0 0 8px">ข้อมูลส่วนบุคคลที่เก็บรวบรวม:</p>
+    <p class="section-heading" style="font-weight:bold;margin:0 0 8px">ข้อมูลส่วนบุคคลที่เก็บรวบรวม:</p>
     <ul style="margin:0 0 12px;padding-left:2em">
       <li>ชื่อ-นามสกุล, คำนำหน้าชื่อ, วันเดือนปีเกิด</li>
       <li>เลขบัตรประชาชน, สำเนาบัตรประชาชน</li>
@@ -282,7 +282,7 @@ export class ContractTemplateService {
       <li>ลายมือชื่ออิเล็กทรอนิกส์</li>
     </ul>
 
-    <p style="font-weight:bold;margin:0 0 8px">การเปิดเผยข้อมูล:</p>
+    <p class="section-heading" style="font-weight:bold;margin:0 0 8px">การเปิดเผยข้อมูล:</p>
     <p style="text-indent:2em;margin:0 0 12px">บริษัทอาจเปิดเผยข้อมูลส่วนบุคคลของท่านให้แก่บุคคลหรือหน่วยงานดังต่อไปนี้ เท่าที่จำเป็น:</p>
     <ul style="margin:0 0 12px;padding-left:2em">
       <li>พนักงานของบริษัทที่เกี่ยวข้องกับการบริหารสัญญา</li>
@@ -290,13 +290,14 @@ export class ContractTemplateService {
       <li>สำนักงานทนายความ ในกรณีดำเนินคดีตามกฎหมาย</li>
     </ul>
 
-    <p style="font-weight:bold;margin:0 0 8px">ระยะเวลาการเก็บรักษาข้อมูล:</p>
+    <p class="section-heading" style="font-weight:bold;margin:0 0 8px">ระยะเวลาการเก็บรักษาข้อมูล:</p>
     <p style="text-indent:2em;margin:0 0 12px">ตลอดอายุสัญญา และ 5 ปีภายหลังสิ้นสุดสัญญา (ตามอายุความทางกฎหมาย)</p>
 
-    <p style="font-weight:bold;margin:0 0 8px">สิทธิของเจ้าของข้อมูล:</p>
+    <p class="section-heading" style="font-weight:bold;margin:0 0 8px">สิทธิของเจ้าของข้อมูล:</p>
     <p style="text-indent:2em;margin:0 0 12px">ท่านมีสิทธิเข้าถึง แก้ไข ลบ ระงับการใช้ ขอรับสำเนาข้อมูล หรือถอนความยินยอมได้ทุกเมื่อ โดยติดต่อบริษัทที่สาขา {branch_name} หรือโทร {branch_phone}</p>
   </div>
 
+  <div class="no-break">
   <div style="margin-top:8px;padding:12px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#f9fafb">
     <p style="margin:0 0 4px"><strong>ข้าพเจ้ายินยอม</strong> ให้บริษัท เบสท์ช้อยส์โฟน จำกัด เก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคลของข้าพเจ้าตามวัตถุประสงค์ที่ระบุข้างต้น</p>
   </div>
@@ -313,6 +314,7 @@ export class ContractTemplateService {
         <p style="margin:4px 0 0;font-size:13px">({salesperson_name})</p>
       </div>
     </div>
+  </div>
   </div>
 </div>`;
     }

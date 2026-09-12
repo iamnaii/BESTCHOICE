@@ -240,24 +240,25 @@ describe('ExpenseDocumentQueryService (read methods, via facade)', () => {
 
   describe('getAuditTrail', () => {
     function baseFindOneMock(doc: any) {
-      // findOne does two findUniqueOrThrow calls (docType then full doc).
-      const findUniqueOrThrow = jest
-        .fn()
-        .mockResolvedValueOnce({ documentType: doc.documentType ?? 'EXPENSE', deletedAt: null })
-        .mockResolvedValueOnce(doc);
-      return findUniqueOrThrow;
+      // findOne reads the docType with findUnique (unknown id → 404, DOC-03 #1562),
+      // then the full document with findUniqueOrThrow.
+      return {
+        findUnique: jest.fn().mockResolvedValue({ documentType: doc.documentType ?? 'EXPENSE', deletedAt: null, branchId: doc.branchId }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(doc),
+      };
     }
 
     it('calls findOne (doc existence) then queries the audit log (both casings, take 50, desc)', async () => {
       const doc = { id: 'doc-1', documentType: 'EXPENSE', deletedAt: null, branchId: 'b1', payroll: null };
       const prisma = {
-        expenseDocument: { findUniqueOrThrow: baseFindOneMock(doc) },
+        expenseDocument: baseFindOneMock(doc),
         auditLog: { findMany: jest.fn().mockResolvedValue([{ id: 'log-1' }]) },
       };
       const service = makeExpenseDocumentsService({ prisma }).service;
 
       const res = await service.getAuditTrail('doc-1');
 
+      expect(prisma.expenseDocument.findUnique).toHaveBeenCalled();
       expect(prisma.expenseDocument.findUniqueOrThrow).toHaveBeenCalled();
       expect(prisma.auditLog.findMany).toHaveBeenCalledWith({
         where: {
@@ -276,7 +277,7 @@ describe('ExpenseDocumentQueryService (read methods, via facade)', () => {
     it('throws ForbiddenException for a non-cross-branch role reading another branch', async () => {
       const doc = { id: 'doc-1', documentType: 'EXPENSE', deletedAt: null, branchId: 'b1', payroll: null };
       const prisma = {
-        expenseDocument: { findUniqueOrThrow: baseFindOneMock(doc) },
+        expenseDocument: baseFindOneMock(doc),
         auditLog: { findMany: jest.fn() },
       };
       const service = makeExpenseDocumentsService({ prisma }).service;
@@ -285,6 +286,18 @@ describe('ExpenseDocumentQueryService (read methods, via facade)', () => {
         service.getAuditTrail('doc-1', { role: 'BRANCH_MANAGER', branchId: 'b2' }),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.auditLog.findMany).not.toHaveBeenCalled();
+    });
+
+    it('answers NotFoundException (404) for an unknown document id instead of a Prisma P2025 error', async () => {
+      const prisma = {
+        expenseDocument: { findUnique: jest.fn().mockResolvedValue(null), findUniqueOrThrow: jest.fn() },
+        auditLog: { findMany: jest.fn() },
+      };
+      const service = makeExpenseDocumentsService({ prisma }).service;
+
+      await expect(service.getAuditTrail('missing')).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.findOne('missing', 'OWNER', null)).rejects.toThrow('ไม่พบเอกสาร');
+      expect(prisma.expenseDocument.findUniqueOrThrow).not.toHaveBeenCalled();
     });
   });
 

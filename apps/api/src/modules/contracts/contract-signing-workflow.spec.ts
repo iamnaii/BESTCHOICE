@@ -66,6 +66,8 @@ jest.mock('../../utils/validation.util', () => ({
   checkRequiredContractFields: (...args: unknown[]) => mockCheckRequiredContractFields(...args),
   checkRequiredDocuments: (...args: unknown[]) => mockCheckRequiredDocuments(...args),
   checkRequiredSignatures: (...args: unknown[]) => mockCheckRequiredSignatures(...args),
+  // Real implementation: activate() and ContractQueryService.findOne() derive the signature checklist from it.
+  contractSignatureRequirements: jest.requireActual('../../utils/validation.util').contractSignatureRequirements,
 }));
 
 jest.mock('../../utils/sequence.util', () => ({
@@ -247,7 +249,7 @@ describe('Contract Signing & Workflow', () => {
         { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
         { provide: ShopDownPaymentReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }) } },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-002', journalEntryId: 'je-2' }) } },
-        { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
+        { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1101'), resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
         { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },
       ],
     }).compile();
@@ -525,6 +527,10 @@ describe('Contract Signing & Workflow', () => {
         workflowStatus: 'APPROVED',
         status: 'DRAFT',
         pdpaConsentId: 'pdpa-1',
+        // activate() refuses to clear a cash down without receipt evidence (no ShopDownPayment JE yet →
+        // catch-up posting needs the method + received-at that create() records).
+        downPaymentMethod: 'CASH',
+        downPaymentReceivedAt: new Date('2026-01-15T03:00:00.000Z'),
         signatures: [
           { signerType: 'CUSTOMER' },
           { signerType: 'COMPANY' },
@@ -676,6 +682,8 @@ describe('Contract Signing & Workflow', () => {
       prisma.contract.findUnique.mockResolvedValue(
         makeContract({ workflowStatus: 'APPROVED' }),
       );
+      // The guard runs on the row re-read inside the transaction, after the customer lock.
+      txMock.contract.findUniqueOrThrow.mockResolvedValue(makeContract({ workflowStatus: 'APPROVED' }));
 
       await expect(service.update('contract-1', { notes: 'แก้ไข' }, 'user-1'))
         .rejects.toThrow(BadRequestException);

@@ -1,3 +1,6 @@
+import { Prisma } from '@prisma/client';
+import { NotFoundException } from '@nestjs/common';
+import { getRateForMonths } from '../../../utils/get-rate-for-months.util';
 import * as creditApproval from '../../credit-check/services/credit-approval';
 /**
  * ContractLifecycleService — ShopDownPayment wiring tests (Task 6 + Task 7).
@@ -51,6 +54,7 @@ jest.mock('../../../utils/config.util', () => ({
     vatPct: 0.07,
   }),
   resolveVatPctForBranch: jest.fn().mockResolvedValue(0.07),
+  resolveBranchVat: jest.fn().mockResolvedValue({ vatPct: 0.07, source: 'BRANCH_COMPANY' }),
 }));
 
 jest.mock('../../../utils/sequence.util', () => ({
@@ -61,6 +65,7 @@ jest.mock('../../../utils/sequence.util', () => ({
 
 const mockProduct = {
   id: 'prod-1',
+  branchId: 'br-1', wasPreviouslyDamaged: false,
   status: 'IN_STOCK',
   category: 'PHONE_NEW',
   imeiSerial: '123456789012345',
@@ -133,7 +138,7 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
   let tx: any;
   let shopDownPaymentTemplate: jest.Mocked<Pick<ShopDownPaymentTemplate, 'execute'>>;
   let shopDownPaymentReversalTemplate: jest.Mocked<Pick<ShopDownPaymentReversalTemplate, 'execute'>>;
-  let shopAccountResolver: jest.Mocked<Pick<ShopAccountResolver, 'resolveBranchCashAccount'>>;
+  let shopAccountResolver: jest.Mocked<Pick<ShopAccountResolver, 'resolveBranchCashAccount' | 'resolveInflowCashAccount'>>;
   let queryMock: any;
 
   beforeEach(() => {
@@ -141,6 +146,7 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
 
     // Inner tx object — the callback arg when prisma.$transaction(cb) is called
     tx = {
+      interestConfig: { findFirst: jest.fn().mockResolvedValue(null) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       creditCheck: {
         findFirst: jest.fn().mockResolvedValue({ id: 'cc-1', status: 'APPROVED', contractId: null }),
@@ -161,6 +167,7 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
         findUnique: jest.fn().mockResolvedValue(mockCustomer),
       },
       contract: {
+        findMany: jest.fn().mockResolvedValue([]),
         findUnique: jest.fn(async () => ({ ...await queryMock.findOne(), signatures: [] })),
         create: jest.fn().mockResolvedValue(mockCreatedContract),
         update: jest.fn().mockResolvedValue(mockCreatedContract),
@@ -187,6 +194,7 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
 
     // Outer prisma — $transaction passes the callback + tx
     prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ role: 'SALES', branchId: 'br-1' }) },
       contract: {
         findMany: jest.fn().mockResolvedValue([]), // no active contracts
       },
@@ -220,6 +228,7 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
 
     shopAccountResolver = {
       resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'),
+      resolveInflowCashAccount: jest.fn(async (_branch, method) => method === 'CASH' ? 'S11-1102' : 'S11-1201'),
     };
 
     service = new ContractLifecycleService(
@@ -235,10 +244,35 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
 
   // ─── Task-6 core assertions ─────────────────────────────────────────────────
 
+  it.each(['P2034', 'P2010'])('returns 409 after three exhausted %s contention attempts', async code => {
+    const error = new Prisma.PrismaClientKnownRequestError('contention', { code, clientVersion: 'test', meta: { code: '40P01' } });
+    prisma.$transaction.mockRejectedValue(error);
+    await expect(service.create({ ...baseDto, notes: undefined }, 'sp-1')).rejects.toMatchObject({ status: 409 });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+    expect(tx.contract.create).not.toHaveBeenCalled();
+  });
+
+  it('returns the missing-rate error before any contract or credit write', async () => {
+    tx.interestConfig.findFirst.mockResolvedValue({ id: 'config' });
+    (getRateForMonths as jest.Mock).mockRejectedValueOnce(new NotFoundException('ไม่พบอัตราดอกเบี้ย'));
+    await expect(service.create({ ...baseDto, notes: undefined }, 'sp-1')).rejects.toBeInstanceOf(NotFoundException);
+    expect(tx.contract.create).not.toHaveBeenCalled();
+    expect(creditApproval.claimCreditApproval).not.toHaveBeenCalled();
+    expect(shopDownPaymentTemplate.execute).not.toHaveBeenCalled();
+  });
+
+  it('persists the actual bank-transfer down tender at creation', async () => {
+    await service.create({ ...baseDto, downPaymentMethod: 'BANK_TRANSFER', downPaymentReference: 'SYNTHETIC-TRANSFER' } as any, 'sp-1');
+    expect(tx.contract.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      downPaymentMethod: 'BANK_TRANSFER', downPaymentReference: 'SYNTHETIC-TRANSFER', downPaymentReceivedAt: expect.any(Date),
+    }) }));
+    expect(shopDownPaymentTemplate.execute).toHaveBeenCalledWith(expect.objectContaining({ cashAccountCode: 'S11-1201' }), tx);
+  });
+
   it('posts ShopDownPayment when downPayment > 0', async () => {
     await service.create({ ...baseDto, downPayment: 2000, branchId: 'br-1' } as any, 'sp-1');
 
-    expect(shopAccountResolver.resolveBranchCashAccount).toHaveBeenCalledWith('br-1', tx);
+    expect(shopAccountResolver.resolveInflowCashAccount).toHaveBeenCalledWith('br-1', 'CASH', tx);
 
     const input = (shopDownPaymentTemplate.execute as jest.Mock).mock.calls[0][0];
     expect(input).toMatchObject({
@@ -325,7 +359,7 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       payments: [],
     });
     // a shop-down-payment JE exists for this contract:
-    tx.journalEntry.findFirst.mockResolvedValue({ id: 'down-je-1' });
+    tx.journalEntry.findFirst.mockResolvedValue({ id: 'down-je-1', lines: [{ accountCode: 'S11-1102', debit: new Decimal(2000) }] });
     shopAccountResolver.resolveBranchCashAccount.mockResolvedValue('S11-1102');
 
     await service.softDelete('c-1', 'user-1');

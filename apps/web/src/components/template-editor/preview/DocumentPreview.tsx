@@ -1,3 +1,4 @@
+import { DOCUMENT_STYLE, documentTypographyCss } from '@installment/shared';
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { useTemplateStore } from '@/store/templateStore';
 import { renderVariables, buildSampleContext } from '@/utils/templateRenderer';
@@ -68,19 +69,20 @@ export default function DocumentPreview({ compact }: Props) {
         {/* A4 Paper simulation */}
         <div
           ref={paperRef}
-          className="mx-auto bg-white rounded-sm font-sarabun"
+          className="mx-auto bg-white rounded-sm font-sarabun template-paper"
           style={{
             width: '210mm',
             minHeight: '297mm',
             padding: `${settings.margins.top}mm ${settings.margins.right}mm ${settings.margins.bottom}mm ${settings.margins.left}mm`,
-            fontSize: `${settings.fontSize.body}px`,
-            lineHeight: 1.7,
+            fontSize: `${settings.fontSize.body}pt`,
+            lineHeight: DOCUMENT_STYLE.lineHeight,
             boxShadow: '0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
             color: '#1a1a1a',
             transform: scale < 1 ? `scale(${scale})` : undefined,
             transformOrigin: 'top center',
           }}
         >
+          <style>{documentTypographyCss('.template-paper', settings.fontSize)}</style>
           {/* Letterhead */}
           {settings.letterhead === 'bestchoice' && (
             <div className="text-center mb-5 pb-3" style={{ borderBottom: '2px solid var(--color-primary)' }}>
@@ -107,9 +109,9 @@ export default function DocumentPreview({ compact }: Props) {
 
           {/* Footer */}
           <div
-            className="mt-10 pt-3 flex justify-between items-end"
+            className="document-footer mt-10 pt-3 flex justify-between items-end"
             style={{
-              fontSize: `${settings.fontSize.footer}px`,
+              fontSize: `${settings.fontSize.footer}pt`,
               borderTop: '1px solid #d1d5db',
             }}
           >

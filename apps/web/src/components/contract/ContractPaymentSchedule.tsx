@@ -1,3 +1,4 @@
+import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { Fragment, useState, type ComponentType } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
@@ -11,8 +12,7 @@ import {
   Wallet,
   CreditCard,
 } from 'lucide-react';
-import { toast } from 'sonner';
-import api, { getErrorMessage } from '@/lib/api';
+import api from '@/lib/api';
 import PaymentProgressOverview from '@/components/contract/PaymentTimeline';
 import { formatNumber, formatDateMedium, formatDateTime } from '@/utils/formatters';
 
@@ -84,22 +84,6 @@ interface ContractPaymentScheduleProps {
   payments: Payment[];
 }
 
-async function downloadReceiptPdf(receiptId: string, receiptNumber: string) {
-  try {
-    const res = await api.get(`/receipts/${receiptId}/pdf`, { responseType: 'blob' });
-    const blob = new Blob([res.data], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${receiptNumber}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (err) {
-    toast.error(getErrorMessage(err) || 'ไม่สามารถดาวน์โหลดใบเสร็จ');
-  }
-}
 
 export default function ContractPaymentSchedule({ contractId, payments }: ContractPaymentScheduleProps) {
   const navigate = useNavigate();
@@ -238,28 +222,26 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                                 key={r.id}
                                 className={`grid grid-cols-[1fr_1fr_100px_110px_80px] gap-x-4 px-3 py-2 items-center text-xs ${idx < installmentReceipts.length - 1 ? 'border-b border-border' : ''} hover:bg-muted/20 transition-colors`}
                               >
-                                <button
-                                  type="button"
-                                  onClick={() => downloadReceiptPdf(r.id, r.receiptNumber)}
+                                <DocumentDownloadButton type="button"
+                                  path={`/receipts/${r.id}/pdf`} filename={`${r.receiptNumber}.pdf`}
                                   className="font-mono text-[11px] text-primary text-left hover:underline underline-offset-2 cursor-pointer"
                                 >
                                   {r.receiptNumber}
-                                </button>
+                                </DocumentDownloadButton>
                                 <span className="text-muted-foreground">{formatDateTime(r.paidDate)}</span>
                                 <span>
                                   <PaymentMethodBadge method={r.paymentMethod} />
                                 </span>
                                 <span className="text-right font-semibold">{formatNumber(r.amount)} บาท</span>
                                 <span className="text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => downloadReceiptPdf(r.id, r.receiptNumber)}
+                                  <DocumentDownloadButton type="button"
+                                    path={`/receipts/${r.id}/pdf`} filename={`${r.receiptNumber}.pdf`}
                                     title="ดาวน์โหลดใบเสร็จ PDF"
                                     className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-primary hover:bg-primary/5 px-2 py-1 rounded transition-colors"
                                   >
                                     <Download className="h-3 w-3" />
                                     ใบเสร็จ
-                                  </button>
+                                  </DocumentDownloadButton>
                                 </span>
                               </div>
                             ))

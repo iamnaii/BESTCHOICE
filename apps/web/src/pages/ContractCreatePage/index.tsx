@@ -1,3 +1,7 @@
+import { useEffect, useState } from 'react';
+import { isAxiosError } from 'axios';
+import { getErrorMessage } from '@/lib/api';
+import { useContractQuote } from './hooks/useContractQuote';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import TradeInCreditPicker from '@/components/trade-in/TradeInCreditPicker';
 import PageHeader from '@/components/ui/PageHeader';
@@ -15,13 +19,13 @@ import { ContractSummaryPanel } from './components/ContractSummaryPanel';
 import { CustomerCreateModal } from './components/CustomerCreateModal';
 import { EditProductModal } from './components/EditProductModal';
 import { EditCustomerModal } from './components/EditCustomerModal';
-import { contractCreditIssue, contractCreditSchedule } from './credit-approval';
+import { contractCreditIssue } from './credit-approval';
 
 export default function ContractCreatePage() {
   useDocumentTitle('สร้างสัญญา');
   const data = useContractCreateData();
 
-  const calculation = useContractCalculation({
+  const defaults = useContractCalculation({
     tradeInBaseAmount: Number(data.tradeInCredit?.baseAmount ?? 0),
     tradeInBonusAmount: Number(data.tradeInCredit?.bonusAmount ?? 0),
     selectedProduct: data.selectedProduct,
@@ -34,6 +38,28 @@ export default function ContractCreatePage() {
     totalMonths: data.totalMonths,
     setTotalMonths: data.setTotalMonths,
   });
+
+  const quoteQuery = useContractQuote({ customerId: data.selectedCustomer?.id, productId: data.selectedProduct?.id,
+    branchId: data.selectedProduct?.branchId, sellingPrice: defaults.grossSellingPrice, downPayment: data.downPayment,
+    totalMonths: data.totalMonths, paymentDueDay: data.paymentDueDay, tradeInCreditId: data.tradeInCreditId || undefined,
+  }, data.tradeInCreditReady && !data.configPending);
+  const quoteReady = quoteQuery.isSuccess && !quoteQuery.isFetching;
+  const quote = quoteReady ? quoteQuery.data : undefined;
+  const [quoteChanged, setQuoteChanged] = useState(false);
+  useEffect(() => {
+    const error = data.createMutation.error;
+    if (isAxiosError(error) && error.response?.data?.code === 'CONTRACT_QUOTE_CHANGED') {
+      setQuoteChanged(true);
+      void quoteQuery.refetch();
+    }
+  }, [data.createMutation.error]);
+  const calculation = { ...defaults,
+    principal: Number(quote?.principal ?? 0), interestTotal: Number(quote?.interestTotal ?? 0),
+    storeCommission: Number(quote?.storeCommission ?? 0), vatAmount: Number(quote?.vatAmount ?? 0),
+    financedAmount: Number(quote?.totalPayable ?? 0), monthlyPayment: Number(quote?.monthlyPayment ?? 0),
+    interestRate: Number(quote?.interestRate ?? defaults.interestRate), vatPct: Number(quote?.effectiveVatPct ?? 0),
+    storeCommPct: Number(quote?.storeCommissionPct ?? defaults.storeCommPct),
+  };
 
   const ocrFlow = useOcrFlow({
     setSelectedCustomer: data.setSelectedCustomer,
@@ -62,10 +88,11 @@ export default function ContractCreatePage() {
   const creditPlan = { monthlyPayment: calculation.monthlyPayment, financedAmount: calculation.financedAmount,
     totalMonths: data.totalMonths, paymentDueDay: data.paymentDueDay };
   const creditIssue = contractCreditIssue(data.creditApproval, creditPlan);
-  const creditSchedule = contractCreditSchedule(creditPlan);
+  const creditSchedule = quote?.schedule.map(row => ({ installmentNo: row.installmentNo, dueDate: new Date(row.dueDate), amount: Number(row.amountDue) })) ?? [];
 
   const handleSubmit = () => {
-    data.handleSubmit(calculation.grossSellingPrice, creditPlan);
+    if (!quote || quoteChanged) return;
+    data.handleSubmit(calculation.grossSellingPrice, creditPlan, quote);
   };
 
   return (
@@ -120,6 +147,8 @@ export default function ContractCreatePage() {
       {data.step === 2 && (
         <>
           <PlanDetailsStep
+            quoteReady={quoteReady}
+            lastPayment={Number(quote?.lastPayment ?? 0)}
             tradeInBaseAmount={Number(data.tradeInCredit?.baseAmount ?? 0)}
             selectedProduct={data.selectedProduct}
             interestConfig={data.interestConfig}
@@ -149,14 +178,41 @@ export default function ContractCreatePage() {
             monthOptions={calculation.monthOptions}
           />
 
+          <div className="my-4 max-w-xl space-y-3" aria-live="polite">
+            {quoteQuery.isFetching && <p role="status">กำลังคำนวณยอดและตารางผ่อนล่าสุด...</p>}
+            {quoteQuery.isError && <div role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm">
+              <p>{getErrorMessage(quoteQuery.error)}</p><button type="button" className="mt-2 min-h-10 text-primary underline" onClick={() => void quoteQuery.refetch()}>คำนวณอีกครั้ง</button>
+            </div>}
+            {quoteChanged && <div role="alert" className="rounded-lg border border-warning p-3 text-sm">
+              <p>เงื่อนไขเปลี่ยนระหว่างสร้างสัญญา กรุณาทบทวนยอดและตารางผ่อนใหม่</p>
+              <button type="button" disabled={!quoteReady} className="mt-2 min-h-10 text-primary underline" onClick={() => setQuoteChanged(false)}>ตรวจยอดใหม่แล้ว</button>
+            </div>}
+            {data.downPayment > 0 && <fieldset disabled={data.createMutation.isPending} className="space-y-3 rounded-lg border border-border p-4">
+              <legend className="px-1 font-medium">รับเงินดาวน์เข้าหน้าร้าน (SHOP)</legend>
+              <label className="block text-sm">วิธีรับเงินดาวน์
+                <select className="mt-1 min-h-11 w-full rounded-lg border border-input bg-background px-3" value={data.downPaymentMethod}
+                  onChange={event => data.setDownPaymentMethod(event.target.value as typeof data.downPaymentMethod)}>
+                  <option value="CASH">เงินสด</option><option value="BANK_TRANSFER">โอนธนาคาร</option><option value="QR_EWALLET">QR / e-Wallet</option>
+                </select>
+              </label>
+              <label className="block text-sm">เลขอ้างอิงการรับเงิน (ถ้ามี)
+                <input maxLength={128} className="mt-1 min-h-11 w-full rounded-lg border border-input bg-background px-3" value={data.downPaymentReference} onChange={event => data.setDownPaymentReference(event.target.value)} />
+              </label>
+              <p className="text-sm text-muted-foreground">ยืนยันเมื่อได้รับเงิน {data.downPayment.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาทแล้ว การสร้างสัญญาจะบันทึกรับเงินดาวน์ทันที</p>
+            </fieldset>}
+            {data.selectedProduct?.wasPreviouslyDamaged && (data.canSellPreviouslyDamaged ? <label className="flex gap-3 text-sm">
+              <input type="checkbox" checked={data.previouslyDamagedAcknowledged} onChange={event => data.setPreviouslyDamagedAcknowledged(event.target.checked)} />แจ้งประวัติความเสียหายของเครื่องให้ลูกค้าทราบแล้ว
+            </label> : <p role="alert" className="text-destructive">เครื่องนี้มีประวัติความเสียหาย ต้องให้เจ้าของร้านดำเนินการ</p>)}
+          </div>
+
           {data.selectedCustomer && <div className="my-4 max-w-xl space-y-2 rounded-xl border border-border p-4 text-sm">
             {data.creditApproval && <>
               <p className="font-semibold">ยอดที่ผู้จัดการอนุมัติ: ไม่เกิน {Number(data.creditApproval.approvedMonthlyPayment).toLocaleString('th-TH')} บาท/เดือน</p>
               <p>ชำระ{data.creditApproval.salaryPayDay === 31 ? 'ทุกสิ้นเดือน' : `วันที่ ${data.creditApproval.salaryPayDay} ของเดือน`}</p>
-              {creditSchedule[0] && <p>งวดแรก: {creditSchedule[0].dueDate.toLocaleDateString('th-TH')} · {creditSchedule[0].amount.toLocaleString('th-TH')} บาท</p>}
+              {creditSchedule[0] && <p>งวดแรก: {creditSchedule[0].dueDate.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' })} · {creditSchedule[0].amount.toLocaleString('th-TH')} บาท</p>}
               <details><summary className="cursor-pointer text-primary">ดูตารางงวดก่อนสร้างสัญญา</summary>
                 <table className="mt-2 w-full text-left"><thead><tr><th>งวด</th><th>ครบกำหนด</th><th className="text-right">บาท</th></tr></thead>
-                  <tbody>{creditSchedule.map(row => <tr key={row.installmentNo}><td>{row.installmentNo}</td><td>{row.dueDate.toLocaleDateString('th-TH')}</td><td className="text-right">{row.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td></tr>)}</tbody>
+                  <tbody>{creditSchedule.map(row => <tr key={row.installmentNo}><td>{row.installmentNo}</td><td>{row.dueDate.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' })}</td><td className="text-right">{row.amount.toLocaleString('th-TH', { minimumFractionDigits: 2 })}</td></tr>)}</tbody>
                 </table>
               </details>
             </>}
@@ -164,7 +220,7 @@ export default function ContractCreatePage() {
             <button type="button" className="text-primary underline" onClick={data.openCustomerCredit}>เปิดประวัติและพิจารณายอดผ่อน</button>
           </div>}
 
-          {data.selectedProduct && data.selectedCustomer && (
+          {quoteReady && data.selectedProduct && data.selectedCustomer && (
             <ContractSummaryPanel
               tradeInBaseAmount={Number(data.tradeInCredit?.baseAmount ?? 0)}
               selectedProduct={data.selectedProduct}
@@ -180,7 +236,7 @@ export default function ContractCreatePage() {
         </>
       )}
 
-      <div className="flex justify-between mt-8 pt-6 border-t border-border/60">
+      <div className="flex flex-wrap gap-3 justify-between mt-8 pt-6 border-t border-border/60">
         <Button
           variant="outline"
           size="lg"
@@ -205,10 +261,10 @@ export default function ContractCreatePage() {
             variant="primary"
             size="lg"
             onClick={handleSubmit}
-            disabled={data.createMutation.isPending || !!creditIssue || !data.tradeInCreditReady || calculation.totalDownPayment >= calculation.sellingPrice}
+            disabled={!quoteReady || quoteChanged || (!!data.selectedProduct?.wasPreviouslyDamaged && (!data.canSellPreviouslyDamaged || !data.previouslyDamagedAcknowledged)) || data.createMutation.isPending || !!creditIssue || !data.tradeInCreditReady || calculation.totalDownPayment >= calculation.sellingPrice}
           >
             <Send className="size-4" />
-            {data.createMutation.isPending ? 'กำลังสร้าง...' : 'สร้างสัญญา'}
+            {data.createMutation.isPending ? 'กำลังสร้าง...' : data.downPayment > 0 ? 'สร้างสัญญาและบันทึกรับดาวน์' : 'สร้างสัญญา'}
           </Button>
         )}
       </div>

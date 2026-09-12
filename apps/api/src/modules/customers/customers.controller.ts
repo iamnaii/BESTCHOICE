@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import {
   Controller,
   Get,
@@ -73,6 +74,26 @@ export class CustomersController {
   // Endpoints
   // ---------------------------------------------------------------------------
 
+  @Get('export')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async exportRows(
+    @Query() pagination: PaginationDto,
+    @Query('search') search?: string,
+    @Query('contractStatus') contractStatus?: string,
+    @Query('hasOverdue') hasOverdue?: string,
+    @Query('creditStatus') creditStatus?: string,
+    @Query('branchId') branchId?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
+    @Query('tier') tier?: string,
+    @Query('creditCheckStatus') creditCheckStatus?: string,
+    @Req() req?: AuthRequest,
+  ) {
+    return this.findAll(pagination, search, contractStatus, hasOverdue, creditStatus, branchId,
+      sortBy, sortOrder, tier, creditCheckStatus, req, true);
+  }
+
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async findAll(
@@ -87,8 +108,10 @@ export class CustomersController {
     @Query('tier') tier?: string,
     @Query('creditCheckStatus') creditCheckStatus?: string,
     @Req() req?: AuthRequest,
+    snapshot = false,
   ) {
-    const result = await this.customersService.findAll(
+    const read = snapshot ? this.customersService.exportRows.bind(this.customersService) : this.customersService.findAll.bind(this.customersService);
+    const result = await read(
       search,
       pagination.page,
       pagination.limit,

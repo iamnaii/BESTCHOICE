@@ -81,6 +81,25 @@ describe('VoucherHtmlBuilder', () => {
     expect(historical).not.toContain('ภาระจำนำ');
   });
 
+  it('lets the closing block paginate while keeping amount + payment and declaration + signatures each together (DOC-02)', () => {
+    const html = builder.buildHtml({ ...voucher, paymentMethod: 'TRADE_IN_CREDIT', creditBaseAmount: 6000, creditBonusAmount: 0, sellerDeclarationText: TRADE_IN_DECLARATION_TEXT });
+    // Shared transaction CSS keeps .bc-doc-closing unbreakable; the voucher's declaration makes that block
+    // taller than half a page, which used to push every amount line onto a near-empty second page.
+    expect(html).toContain('body .bc-doc-closing { break-inside: auto; }');
+    expect(html).toContain('.bc-doc-settlement, .bc-doc-attestation { break-inside: avoid; }');
+    const settlement = html.indexOf('<div class="bc-doc-settlement">');
+    const attestation = html.indexOf('<div class="bc-doc-attestation">');
+    expect(settlement).toBeGreaterThan(-1);
+    expect(attestation).toBeGreaterThan(settlement);
+    // amount + payment live in the settlement group; declaration, both signatures and the footer in the attestation group
+    expect(html.slice(settlement, attestation)).toContain('ยอดเครดิตที่ตกลง');
+    expect(html.slice(settlement, attestation)).toContain('รูปแบบการรับเครื่อง');
+    expect(html.slice(settlement, attestation)).not.toContain('คำรับรองผู้ขาย');
+    const tail = html.slice(attestation);
+    for (const text of ['คำรับรองผู้ขาย', 'ผู้รับซื้อ / ผู้ออกเอกสาร', 'ผู้ส่งมอบเครื่อง', 'ออกโดยระบบ BESTCHOICE']) expect(tail).toContain(text);
+    expect(tail.indexOf('bc-doc-footer')).toBeGreaterThan(tail.indexOf('bc-doc-approval'));
+  });
+
   it('escapes supplied company, seller, device and recipient details as text', () => {
     const input = '<script>alert("x")</script> & ตัวอย่าง';
     const html = builder.buildHtml({

@@ -1,7 +1,11 @@
-import { useMemo, useCallback, useState } from 'react';
+import type { SignatureRequirements } from '@installment/shared';
+import { PaginationBar } from '@/components/ui/PaginationBar';
+import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapshot } from '@/lib/fetch-export-pages';
+import { formatThaiDateTime, toBangkokDateString } from '@/lib/date';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAuth } from '@/contexts/AuthContext';
 import PageHeader from '@/components/ui/PageHeader';
@@ -38,6 +42,7 @@ interface Contract {
   salesperson: { id: string; name: string };
   reviewedBy: { id: string; name: string } | null;
   signatures: { signerType: string }[];
+  signatureRequirements?: SignatureRequirements;
   _count: { payments: number; contractDocuments: number };
 }
 
@@ -72,7 +77,9 @@ export default function ContractsPage() {
   const startDateFilter = searchParams.get('startDate') || '';
   const endDateFilter = searchParams.get('endDate') || '';
   const viewTab = (searchParams.get('tab') || 'all') as ViewTab;
-  const page = parseInt(searchParams.get('page') || '1', 10);
+  const rawPage = Number(searchParams.get('page') || '1');
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const [size, setSize] = useState(50);
 
   const updateParams = useCallback((updates: Record<string, string>) => {
     setSearchParams(prev => {
@@ -96,35 +103,45 @@ export default function ContractsPage() {
 
   const debouncedSearch = useDebounce(search);
 
+  const buildParams = (targetPage = page, targetLimit = size) => {
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set('search', debouncedSearch);
+    if (statusFilter) params.set('status', statusFilter);
+    if (branchFilter) params.set('branchId', branchFilter);
+    if (startDateFilter) params.set('startDate', startDateFilter);
+    if (endDateFilter) params.set('endDate', endDateFilter);
+
+    // View tab logic
+    if (viewTab === 'my' && user) {
+      params.set('salespersonId', user.id);
+    } else if (viewTab === 'pending_review') {
+      params.set('workflowStatus', 'PENDING_REVIEW');
+    } else if (workflowFilter) {
+      params.set('workflowStatus', workflowFilter);
+    }
+
+    params.set('page', String(targetPage));
+    params.set('limit', String(targetLimit));
+    return params;
+  };
+
   const { data: result, isLoading, isError, error, refetch } = useQuery<PaginatedResponse<Contract>>({
-    queryKey: ['contracts', debouncedSearch, statusFilter, workflowFilter, viewTab, page, branchFilter, startDateFilter, endDateFilter],
+    queryKey: ['contracts', debouncedSearch, statusFilter, workflowFilter, viewTab, page, size, branchFilter, startDateFilter, endDateFilter],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      if (debouncedSearch) params.set('search', debouncedSearch);
-      if (statusFilter) params.set('status', statusFilter);
-      if (branchFilter) params.set('branchId', branchFilter);
-      if (startDateFilter) params.set('startDate', startDateFilter);
-      if (endDateFilter) params.set('endDate', endDateFilter);
-
-      // View tab logic
-      if (viewTab === 'my' && user) {
-        params.set('salespersonId', user.id);
-      } else if (viewTab === 'pending_review') {
-        params.set('workflowStatus', 'PENDING_REVIEW');
-      } else if (workflowFilter) {
-        params.set('workflowStatus', workflowFilter);
-      }
-
-      params.set('page', String(page));
+      const params = buildParams();
       const { data } = await api.get(`/contracts?${params}`);
       return data;
     },
   });
 
+  useEffect(() => {
+    if (result && page > Math.max(1, result.totalPages)) setPage(Math.max(1, result.totalPages));
+  }, [result, page, setPage]);
   const contracts = result?.data ?? [];
   const summary = result?.summary;
 
-  const isManager = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
+  const isManager = user && ['OWNER', 'FINANCE_MANAGER'].includes(user.role);
+  const canCreate = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
   const isOwner = user?.role === 'OWNER';
 
   // Branches list for filter (OWNER only)
@@ -138,8 +155,18 @@ export default function ContractsPage() {
   });
 
   // Excel export handler
+  const [exportScope, setExportScope] = useState('all');
+  const [isExporting, setIsExporting] = useState(false);
   const handleExport = async () => {
+    const assertCurrent = createExportGuard();
+    setIsExporting(true);
+    try {
+    const snapshot = exportScope === 'page' ? null : await fetchExportSnapshot<Contract>(async () =>
+      (await api.get<ExportSnapshot<Contract>>(`/contracts/export?${buildParams(1, 50)}`, { timeout: 65_000 })).data, assertCurrent);
+    const rows = snapshot?.data ?? contracts;
+    const fetchedAt = snapshot ? formatThaiDateTime(snapshot.asOf, 'Asia/Bangkok') : 'ข้อมูลจากหน้าที่กำลังแสดง';
     await exportToExcel({
+        assertCurrent,
       columns: [
         { header: 'เลขสัญญา', key: 'contractNumber', width: 15 },
         { header: 'ลูกค้า', key: 'customer', width: 15 },
@@ -151,9 +178,11 @@ export default function ContractsPage() {
         { header: 'สาขา', key: 'branch', width: 15 },
         { header: 'พนักงาน', key: 'salesperson', width: 15 },
         { header: 'วันที่สร้าง', key: 'createdAt', width: 15 },
+        { header: 'ข้อมูล ณ (เวลาไทย)', key: 'fetchedAt', width: 24 },
       ],
-      data: contracts.map((c) => ({
+      data: rows.map((c) => ({
         contractNumber: c.contractNumber,
+        fetchedAt,
         customer: c.customer.name,
         phone: c.customer.phone,
         product: `${c.product.brand} ${c.product.model}`,
@@ -165,9 +194,11 @@ export default function ContractsPage() {
         createdAt: formatDateShort(c.createdAt),
       })),
       sheetName: 'สัญญา',
-      filename: `contracts-${new Date().toISOString().split('T')[0]}.xlsx`,
+      filename: `contracts-${toBangkokDateString()}.xlsx`,
     });
-    toast.success('ส่งออก Excel สำเร็จ');
+    toast.success(`ส่งออก Excel สำเร็จ ${rows.length} รายการ`);
+    } catch (error) { toast.error(error instanceof ExportError ? error.message : getErrorMessage(error)); }
+    finally { setIsExporting(false); }
   };
 
   const columns = useMemo(() => [
@@ -211,15 +242,12 @@ export default function ContractsPage() {
       key: 'signatures',
       label: 'ลงนาม',
       render: (c: Contract) => {
-        const hasCust = c.signatures?.some(s => s.signerType === 'CUSTOMER');
-        const hasCompany = c.signatures?.some(s => s.signerType === 'COMPANY' || s.signerType === 'STAFF');
-        const hasW1 = c.signatures?.some(s => s.signerType === 'WITNESS_1');
-        const hasW2 = c.signatures?.some(s => s.signerType === 'WITNESS_2');
-        const allFour = hasCust && hasCompany && hasW1 && hasW2;
-        const count = [hasCust, hasCompany, hasW1, hasW2].filter(Boolean).length;
-        if (allFour) return <span className="text-xs text-success font-medium">ครบ ({count}/4)</span>;
-        if (count > 0) return <span className="text-xs text-warning">{count}/4</span>;
-        return <span className="text-xs text-muted-foreground">-</span>;
+        const requirements = c.signatureRequirements;
+        if (!requirements) return <span className="text-xs text-muted-foreground">รอตรวจผู้ลงนาม</span>;
+        const count = requirements.checklist.filter(signer => signer.signed).length;
+        return <span className={`text-xs ${requirements.complete ? 'text-success' : 'text-warning'}`}>
+          {requirements.complete ? 'ครบ' : 'ลงนามแล้ว'} {count}/{requirements.checklist.length}
+        </span>;
       },
     },
     {
@@ -276,22 +304,27 @@ export default function ContractsPage() {
   }, [contracts]);
 
   return (
-    <div>
+    <div className="min-w-0">
       <PageHeader
         title="สัญญาผ่อนชำระ"
         subtitle="จัดการสัญญาผ่อนชำระทั้งหมด"
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {contracts.length > 0 && (
-              <Button variant="outline" size="md" onClick={handleExport}>
+              <>
+              <select aria-label="ขอบเขตการส่งออก" value={exportScope} onChange={e => setExportScope(e.target.value)} className="rounded-md border border-input bg-background px-2 text-sm">
+                <option value="all">ตามตัวกรองทั้งหมด</option><option value="page">หน้าปัจจุบัน</option>
+              </select>
+              <Button variant="outline" size="md" onClick={handleExport} disabled={isExporting || isError || isLoading}>
                 <Download className="size-4" />
                 ส่งออก Excel
               </Button>
+              </>
             )}
-            <Button variant="primary" size="md" onClick={() => navigate('/contracts/create')}>
+            {canCreate && <Button variant="primary" size="md" onClick={() => navigate('/contracts/create')}>
               <Plus className="size-4" />
               สร้างสัญญา
-            </Button>
+            </Button>}
           </div>
         }
       />
@@ -330,7 +363,7 @@ export default function ContractsPage() {
             <CardContent className="p-5 relative">
               <div className="absolute inset-y-0 left-0 w-1 bg-primary rounded-l-xl" />
               <div className="pl-2">
-                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">มูลค่าพอร์ตโฟลิโอ</div>
+                <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ราคาขายรวมตามสัญญา</div>
                 <AnimatedCounter value={summary.portfolioValue} suffix=" ฿" className="text-2xl font-bold text-primary" />
               </div>
             </CardContent>
@@ -339,7 +372,7 @@ export default function ContractsPage() {
       )}
 
       {/* View Tabs — Metronic line tabs style */}
-      <div className="flex gap-0 mb-5 border-b border-border/60">
+      <div className="flex max-w-full overflow-x-auto gap-0 mb-5 border-b border-border/60">
         <button
           onClick={() => updateParams({ tab: '', status: '', workflow: '', q: '', page: '' })}
           className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'all' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
@@ -377,7 +410,7 @@ export default function ContractsPage() {
               className="w-full pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30"
             />
           </div>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
+          <select aria-label="สถานะสัญญา" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
             <option value="">ทุกสถานะ</option>
             <option value="DRAFT">ร่าง</option>
             <option value="ACTIVE">ผ่อนอยู่</option>
@@ -389,7 +422,7 @@ export default function ContractsPage() {
             <option value="CLOSED_BAD_DEBT">หนี้สูญ</option>
           </select>
           {isOwner && (
-            <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
+            <select aria-label="สาขา" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
               <option value="">ทุกสาขา</option>
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>{b.name}</option>
@@ -408,7 +441,7 @@ export default function ContractsPage() {
             {startDateFilter || endDateFilter ? 'กำหนดเวลาไว้' : 'ช่วงเวลา'}
           </button>
           {viewTab === 'all' && (
-            <select value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
+            <select aria-label="ขั้นตอนสัญญา" value={workflowFilter} onChange={(e) => setWorkflowFilter(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm bg-background outline-hidden focus:ring-2 focus:ring-ring/30">
               <option value="">ทุก Workflow</option>
               <option value="CREATING">กำลังสร้าง</option>
               <option value="PENDING_REVIEW">รอตรวจสอบ</option>
@@ -425,10 +458,7 @@ export default function ContractsPage() {
           <DateRangeChips
             startDate={startDateFilter}
             endDate={endDateFilter}
-            onChange={({ startDate: sd, endDate: ed }) => {
-              setStartDate(sd);
-              setEndDate(ed);
-            }}
+            onChange={({ startDate: sd, endDate: ed }) => updateParams({ startDate: sd, endDate: ed, page: '' })}
           />
           <div className="flex gap-3">
             <div className="flex-1">
@@ -502,18 +532,14 @@ export default function ContractsPage() {
               data={contracts}
               isLoading={isLoading}
               emptyMessage="ยังไม่มีสัญญา"
-              pagination={result ? {
-                page: result.page,
-                totalPages: result.totalPages,
-                total: result.total,
-                onPageChange: setPage,
-              } : undefined}
+
             />
           )}
 
           {/* Kanban View */}
           {viewMode === 'kanban' && !isLoading && (
-            <div className="p-5">
+            <div className="p-5 min-w-0">
+              <p className="text-sm text-muted-foreground mb-3">จำนวนในแต่ละคอลัมน์เป็นรายการในหน้านี้</p>
               <KanbanBoard<Contract>
                 columns={kanbanColumns}
                 onCardClick={(c) => navigate(`/contracts/${c.id}`)}
@@ -547,6 +573,8 @@ export default function ContractsPage() {
               />
             </div>
           )}
+          {result && <div className="px-4"><PaginationBar total={result.total} page={page} size={size} onPageChange={setPage}
+            onSizeChange={value => { setSize(value); setPage(1); }} /></div>}
           </QueryBoundary>
         </CardContent>
       </Card>

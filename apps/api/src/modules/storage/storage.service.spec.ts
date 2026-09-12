@@ -1,4 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { mkdtempSync, readFileSync, existsSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from './storage.service';
 
@@ -160,6 +163,71 @@ describe('StorageService', () => {
 
     it('should not throw on delete (noop)', async () => {
       await expect(service.delete('test/file.pdf')).resolves.not.toThrow();
+    });
+  });
+
+  describe('when STORAGE_LOCAL_DIR points at a private directory (local backend)', () => {
+    let service: StorageService;
+    let root: string;
+    const make = async (env: Record<string, string | undefined>) => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [StorageService, { provide: ConfigService, useValue: { get: jest.fn((key: string) => env[key]) } }],
+      }).compile();
+      return module.get<StorageService>(StorageService);
+    };
+    const read = (stream: NodeJS.ReadableStream) => new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      stream.on('data', chunk => chunks.push(Buffer.from(chunk))).on('end', () => resolve(Buffer.concat(chunks))).on('error', reject);
+    });
+
+    beforeEach(async () => {
+      root = mkdtempSync(join(tmpdir(), 'bc-storage-local-'));
+      service = await make({ STORAGE_LOCAL_DIR: root, NODE_ENV: 'test' });
+    });
+    afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+    it('is configured and describes itself as local', () => {
+      expect(service.configured).toBe(true);
+      expect(service.describe()).toEqual({ backend: 'local', location: root });
+    });
+
+    it('stores exact bytes under the key path and streams them back', async () => {
+      const body = Buffer.from('%PDF-1.4\n%synthetic\n%%EOF');
+      expect(await service.upload('contracts/2026/TEST-1/CONTRACT_a.pdf', body, 'application/pdf')).toBe('contracts/2026/TEST-1/CONTRACT_a.pdf');
+      expect(readFileSync(join(root, 'contracts/2026/TEST-1/CONTRACT_a.pdf'))).toEqual(body);
+      expect(await read(await service.getStream('contracts/2026/TEST-1/CONTRACT_a.pdf'))).toEqual(body);
+      expect(existsSync(join(root, 'contracts/2026/TEST-1'))).toBe(true);
+    });
+
+    it('reports a missing object like the remote backends do', async () => {
+      await expect(service.getStream('contracts/missing.pdf')).rejects.toThrow('ไม่พบไฟล์');
+    });
+
+    it.each(['../escape.pdf', '/etc/passwd', 'a/../../b.pdf', 'a//b.pdf', '', 'a/./b.pdf', 'a\\b.pdf'])('rejects unsafe key %p before touching the filesystem', async key => {
+      await expect(service.upload(key, Buffer.from('x'), 'text/plain')).rejects.toThrow('key');
+      await expect(service.getStream(key)).rejects.toThrow('key');
+      expect(existsSync(join(root, 'etc'))).toBe(false);
+    });
+
+    it('deletes objects and tolerates deleting a missing one', async () => {
+      await service.upload('tmp/one.txt', Buffer.from('1'), 'text/plain');
+      await service.delete('tmp/one.txt');
+      expect(existsSync(join(root, 'tmp/one.txt'))).toBe(false);
+      await expect(service.delete('tmp/one.txt')).resolves.toBeUndefined();
+    });
+
+    it('answers signed URL requests with an explicit 501 instead of a fake link', async () => {
+      await expect(service.getSignedDownloadUrl('tmp/one.pdf')).rejects.toMatchObject({ status: 501 });
+      await expect(service.getSignedUploadUrl('tmp/one.pdf', 'application/pdf')).rejects.toMatchObject({ status: 501 });
+    });
+
+    it('exposes a file URL for public-url callers', () => {
+      expect(service.getPublicUrl('tmp/one.pdf')).toBe(`file://${root}/tmp/one.pdf`);
+    });
+
+    it('never activates in production even when the variable is set', async () => {
+      const prod = await make({ STORAGE_LOCAL_DIR: root, NODE_ENV: 'production' });
+      expect(prod.describe().backend).toBe('gcs');
     });
   });
 });

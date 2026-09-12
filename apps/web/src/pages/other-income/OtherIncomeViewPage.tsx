@@ -1,3 +1,4 @@
+import PdfPreview from '@/components/PdfPreview';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
@@ -24,7 +25,6 @@ import { AutoJournalPreview } from './components/AutoJournalPreview';
 import { InternalControlActionBar } from '@/components/accounting';
 import type { IcabAuditEvent } from '@/components/accounting';
 import { otherIncomeApi } from '@/lib/otherIncome';
-import api from '@/lib/api';
 import type { OtherIncome, OtherIncomeStatus } from '@/lib/otherIncome.types';
 import { useAuth } from '@/contexts/AuthContext';
 import { canApproveAccountingDoc } from '@installment/shared';
@@ -198,29 +198,6 @@ function mapAuditEvents(
   });
 }
 
-/**
- * Fetch server-rendered PDF receipt and open in a new tab.
- * Uses axios (JWT in-memory) since the in-memory token isn't on cookies.
- */
-async function fetchAndOpenReceiptPdf(docId: string, docNumber: string): Promise<void> {
-  const res = await api.get(`/other-income/${docId}/receipt.pdf`, {
-    responseType: 'blob',
-  });
-  const blob = new Blob([res.data], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  if (!win) {
-    // Popup blocked — fall back to download
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${docNumber}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-  // Revoke after a delay to avoid breaking the new tab before it loads
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
 
 // ------------------------------------------------------------------
 // Main component
@@ -229,6 +206,7 @@ async function fetchAndOpenReceiptPdf(docId: string, docNumber: string): Promise
 export default function OtherIncomeViewPage() {
   const permissions = useAccountingPermissions();
   const { id } = useParams<{ id: string }>();
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -330,11 +308,7 @@ export default function OtherIncomeViewPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'บันทึก template ไม่สำเร็จ'),
   });
 
-  const printReceiptMutation = useMutation({
-    mutationFn: ({ docId, docNumber }: { docId: string; docNumber: string }) =>
-      fetchAndOpenReceiptPdf(docId, docNumber),
-    onError: () => toast.error('ไม่สามารถสร้างใบเสร็จ PDF ได้'),
-  });
+
 
   // Mode-aware (Audit Finding A): mirrors the backend ReversePermissionGuard so
   // the "↺ ยกเลิก/กลับรายการ" button only shows when the server will allow it —
@@ -385,13 +359,13 @@ export default function OtherIncomeViewPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    printReceiptMutation.mutate({ docId: doc.id, docNumber: doc.docNumber })
+                    setPreviewId(doc.id)
                   }
-                  disabled={printReceiptMutation.isPending}
+                  disabled={previewId === doc.id}
                   className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border rounded-lg hover:bg-accent disabled:opacity-50"
                 >
                   <Printer size={14} />
-                  {printReceiptMutation.isPending ? 'กำลังสร้าง...' : 'พิมพ์ใบเสร็จ'}
+                  พิมพ์ใบเสร็จ
                 </button>
               )}
               {doc.status === 'DRAFT' && (
@@ -459,13 +433,13 @@ export default function OtherIncomeViewPage() {
                 {doc.customerId && (
                   <button
                     onClick={() =>
-                      printReceiptMutation.mutate({ docId: doc.id, docNumber: doc.docNumber })
+                      setPreviewId(doc.id)
                     }
-                    disabled={printReceiptMutation.isPending}
+                    disabled={previewId === doc.id}
                     className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-bold bg-primary text-primary-foreground rounded-md animate-pulse disabled:opacity-50 disabled:animate-none"
                   >
                     <Printer size={16} />{' '}
-                    {printReceiptMutation.isPending ? 'กำลังสร้าง...' : 'พิมพ์ใบเสร็จ'}
+                    พิมพ์ใบเสร็จ
                   </button>
                 )}
               </div>
@@ -929,7 +903,7 @@ export default function OtherIncomeViewPage() {
           onReject={() => setShowRejectModal(true)}
           onReverse={(payload) => reverseMutation.mutate(payload)}
           onPrint={() =>
-            printReceiptMutation.mutate({ docId: doc.id, docNumber: doc.docNumber })
+            setPreviewId(doc.id)
           }
         />
       )}
@@ -955,6 +929,10 @@ export default function OtherIncomeViewPage() {
           onCancel={() => setShowTemplateModal(false)}
           onConfirm={(name) => saveTemplateMutation.mutate(name)}
         />
+      )}
+      {doc && previewId === doc.id && (
+        <PdfPreview key={doc.id} path={`/other-income/${doc.id}/receipt.pdf`} filename={`${doc.docNumber}.pdf`}
+          title="ตัวอย่างใบเสร็จรับเงิน" onClose={() => setPreviewId(null)} />
       )}
     </div>
   );

@@ -31,8 +31,10 @@ export async function exportToExcel(options: {
   columns: ExcelColumn[];
   sheetName: string;
   filename: string;
+  assertCurrent?: () => void;
 }): Promise<void> {
-  const { data, columns, sheetName, filename } = options;
+  const { data, columns, sheetName, filename, assertCurrent } = options;
+  assertCurrent?.();
 
   const ExcelJS = (await import('exceljs')).default;
   const wb = new ExcelJS.Workbook();
@@ -46,6 +48,7 @@ export async function exportToExcel(options: {
   ws.addRows(data);
 
   const buffer = await wb.xlsx.writeBuffer();
+  assertCurrent?.();
   downloadExcelBuffer(buffer as ArrayBuffer, filename);
 }
 

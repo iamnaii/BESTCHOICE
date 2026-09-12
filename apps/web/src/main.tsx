@@ -14,6 +14,7 @@ import { Toaster } from 'sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import App from './App';
+import DocumentStyles from '@/components/DocumentStyles';
 import './index.css';
 
 // Initialize Sentry (only if DSN is configured)
@@ -109,6 +110,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <BrowserRouter>
             <AuthProvider>
               <App />
+              <DocumentStyles />
               <Toaster position="top-right" richColors closeButton />
             </AuthProvider>
           </BrowserRouter>

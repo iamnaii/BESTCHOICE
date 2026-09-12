@@ -1,0 +1,28 @@
+[
+  {
+    "width": 1440,
+    "passed": true,
+    "letters": 51,
+    "lastPageShrink": true,
+    "downloadPages": 2,
+    "markRequests": [
+      "letter-1",
+      "letter-2",
+      "letter-2"
+    ],
+    "errors": []
+  },
+  {
+    "width": 390,
+    "passed": true,
+    "letters": 51,
+    "lastPageShrink": true,
+    "downloadPages": 2,
+    "markRequests": [
+      "letter-1",
+      "letter-2",
+      "letter-2"
+    ],
+    "errors": []
+  }
+]

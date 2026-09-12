@@ -206,7 +206,7 @@ describe('Customer360Panel extracted actions used by RoomDossier', () => {
   it('opens the newest contract PDF and ignores other document types', async () => {
     const base = mocks.get.getMockImplementation()!;
     mocks.get.mockImplementation(async (url: string) => {
-      if (url === '/contracts/c1/documents')
+      if (url === '/contracts/c1/e-documents')
         return {
           data: {
             data: [

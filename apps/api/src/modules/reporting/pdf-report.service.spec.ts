@@ -5,9 +5,9 @@ import { PdfReportWeeklyCron } from './pdf-report-weekly.cron';
 import { EmailService } from '../email/email.service';
 import { OverdueAnalyticsService } from '../overdue/analytics.service';
 import { AnalyticsAgingService } from '../overdue/analytics-aging.service';
-import { AnalyticsLeaderboardService } from '../overdue/analytics-leaderboard.service';
-import { AnalyticsRecoveryService } from '../overdue/analytics-recovery.service';
-import { StuckContractsService } from '../overdue/stuck-contracts.service';
+import { AnalyticsLeaderboardService, LeaderboardRow } from '../overdue/analytics-leaderboard.service';
+import { AnalyticsRecoveryService, RecoveryByChannelRow } from '../overdue/analytics-recovery.service';
+import { StuckContractsService, StuckContractRow } from '../overdue/stuck-contracts.service';
 
 const sampleAnalytics = {
   range: '30d' as const,
@@ -26,23 +26,20 @@ const mockAging = {
     .fn()
     .mockResolvedValue([{ bucket: '8-30', count: 5, outstanding: 12000 }]),
 };
-const mockLeaderboard = {
-  getLeaderboard: jest
-    .fn()
-    .mockResolvedValue([{ name: 'Alice', contractsHandled: 12, amountCollected: '34000' }]),
-};
-const mockRecovery = {
-  getRecoveryByChannel: jest
-    .fn()
-    .mockResolvedValue([{ channel: 'LINE', sent: 10, recovered: 7, rate: 0.7 }]),
-};
-const mockStuck = {
-  getStuckContracts: jest
-    .fn()
-    .mockResolvedValue([
-      { contractNumber: 'CT-001', daysStuck: 21, customerName: 'Bob', status: 'OVERDUE' },
-    ]),
-};
+// Rows use the services' real field names (DOC-10, #1569): the report used to read
+// `contractsHandled` / `sent` / `daysStuck`, which no service returns, and printed 0 / "-".
+const sampleLeaderboard: LeaderboardRow[] = [
+  { collectorId: 'u1', name: 'Alice', assignedCount: 12, promiseKeptPercent: 50, avgDaysToFirstContact: 1.5, recoveryThisMonth: 34000 },
+];
+const sampleRecovery: RecoveryByChannelRow[] = [
+  { channel: 'LINE', actionsSent: 10, recovered: 7, recoveryRate: 70, avgRecoveryAmount: 1500 },
+];
+const sampleStuck: StuckContractRow[] = [
+  { contractId: 'c1', contractNumber: 'CT-001', customerName: 'Bob', customerPhone: null, branchName: 'A', assignedToId: null, assignedToName: null, daysIdle: 21, outstanding: 5500, status: 'OVERDUE' },
+];
+const mockLeaderboard = { getLeaderboard: jest.fn().mockResolvedValue(sampleLeaderboard) };
+const mockRecovery = { getRecoveryByChannel: jest.fn().mockResolvedValue(sampleRecovery) };
+const mockStuck = { getStuckContracts: jest.fn().mockResolvedValue(sampleStuck) };
 
 const mockPrisma = {
   systemConfig: {

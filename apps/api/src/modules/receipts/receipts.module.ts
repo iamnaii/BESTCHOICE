@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { ReceiptsController } from './receipts.controller';
+import { ReceiptAccessGuard } from './receipt-access.guard';
 import { ReceiptsPublicController } from './receipts-public.controller';
 import { ReceiptsService } from './receipts.service';
 import { CreditNoteDocumentService } from './services/credit-note-document.service';
@@ -24,7 +25,7 @@ import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module'
     forwardRef(() => ChatbotFinanceModule),
   ],
   controllers: [ReceiptsController, ReceiptsPublicController],
-  providers: [ReceiptsService, CreditNoteDocumentService, CreditNoteDeliveryService],
+  providers: [ReceiptsService, CreditNoteDocumentService, CreditNoteDeliveryService, ReceiptAccessGuard],
   exports: [ReceiptsService, CreditNoteDocumentService, CreditNoteDeliveryService],
 })
 export class ReceiptsModule {}

@@ -1,0 +1,96 @@
+{
+  "status": "PASS",
+  "scope": "Basic checks + synthetic Inbox, customers, dashboard, FINANCE portfolio, work-company navigation and trade-in-to-stock flow; not a full backend/financial regression",
+  "repo": "/Users/iamnaii/Desktop/App/BESTCHOICE",
+  "revision": "d68aa7076",
+  "sourceFingerprint": "bd9f00fbc4a31581a1bd2329dcc8b0d7c447df06a5656d7cd078738272876ba2",
+  "startedAt": "2026-09-11T07:08:13.414Z",
+  "checks": [
+    {
+      "label": "Local tooling",
+      "status": "PASS"
+    },
+    {
+      "label": "Prisma SHOP",
+      "status": "PASS"
+    },
+    {
+      "label": "Prisma FINANCE",
+      "status": "PASS"
+    },
+    {
+      "label": "API + Web types",
+      "status": "PASS"
+    },
+    {
+      "label": "API lint (no autofix)",
+      "status": "PASS"
+    },
+    {
+      "label": "Web lint",
+      "status": "PASS"
+    },
+    {
+      "label": "Web tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Shared tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Storefront tests",
+      "status": "PASS"
+    },
+    {
+      "label": "Storefront build + types",
+      "status": "PASS"
+    },
+    {
+      "label": "Web build",
+      "status": "PASS"
+    },
+    {
+      "label": "Inbox 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Customers + FINANCE portfolio (filters, pagination, empty report) 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "SHOP/FINANCE navigation (requests, reload, back/forward) 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Trade-in purchase, voucher, price and six-angle stock handoff 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "iPhone inspection, computed price and saved snapshot 1440px",
+      "status": "PASS"
+    },
+    {
+      "label": "Inbox 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "Customers + FINANCE portfolio (filters, pagination, empty report) 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "SHOP/FINANCE navigation (requests, reload, back/forward) 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "Trade-in purchase, voucher, price and six-angle stock handoff 390px",
+      "status": "PASS"
+    },
+    {
+      "label": "iPhone inspection, computed price and saved snapshot 390px",
+      "status": "PASS"
+    }
+  ],
+  "url": "http://localhost:5207/inbox",
+  "finishedAt": "2026-09-11T07:10:27.745Z"
+}

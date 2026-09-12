@@ -7,6 +7,18 @@ import type {
   TierReason,
 } from './dto/tier.dto';
 
+const tierContractSelect = {
+  id: true,
+  status: true,
+  totalMonths: true,
+  monthlyPayment: true,
+  payments: {
+    where: { deletedAt: null },
+    select: { status: true, dueDate: true, paidAt: true },
+  },
+} satisfies Prisma.ContractSelect;
+type TierContract = Prisma.ContractGetPayload<{ select: typeof tierContractSelect }>;
+
 interface TierInputHistory {
   totalContracts: number;
   closedContracts: number;
@@ -96,22 +108,43 @@ export class CustomerTierService {
 
     const contracts = await this.prisma.contract.findMany({
       where: { customerId, deletedAt: null },
-      select: {
-        id: true,
-        status: true,
-        totalMonths: true,
-        monthlyPayment: true,
-        payments: {
-          where: { deletedAt: null },
-          select: { status: true, dueDate: true, paidAt: true },
-        },
-      },
+      select: tierContractSelect,
     });
 
     const repossessionCount = await this.prisma.repossession.count({
       where: { contract: { customerId }, deletedAt: null },
     });
 
+    return this.summarize(customerId, contracts, repossessionCount);
+  }
+
+  /** Batched history reads for list filtering, using exactly the detail tier policy. */
+  async getCustomerTiers(customerIds: string[], db: Prisma.TransactionClient = this.prisma, asOf = new Date()): Promise<Map<string, CustomerTierResponse>> {
+    const result = new Map<string, CustomerTierResponse>();
+    for (let offset = 0; offset < customerIds.length; offset += 200) {
+      const ids = customerIds.slice(offset, offset + 200);
+      const [contracts, repossessions] = await Promise.all([
+        db.contract.findMany({ where: { customerId: { in: ids }, deletedAt: null },
+          select: { ...tierContractSelect, customerId: true } }),
+        db.repossession.findMany({ where: { deletedAt: null, contract: { customerId: { in: ids } } },
+          select: { contract: { select: { customerId: true } } } }),
+      ]);
+      const byCustomer = new Map<string, TierContract[]>();
+      const repoCounts = new Map<string, number>();
+      for (const contract of contracts) {
+        const group = byCustomer.get(contract.customerId) ?? [];
+        group.push(contract); byCustomer.set(contract.customerId, group);
+      }
+      for (const row of repossessions) {
+        const id = row.contract.customerId;
+        repoCounts.set(id, (repoCounts.get(id) ?? 0) + 1);
+      }
+      for (const id of ids) result.set(id, this.summarize(id, byCustomer.get(id) ?? [], repoCounts.get(id) ?? 0, asOf));
+    }
+    return result;
+  }
+
+  private summarize(customerId: string, contracts: TierContract[], repossessionCount: number, asOf = new Date()): CustomerTierResponse {
     const totalContracts = contracts.length;
     const closedContracts = contracts.filter(
       (c) => c.status === 'COMPLETED' || c.status === 'EARLY_PAYOFF',
@@ -144,7 +177,7 @@ export class CustomerTierService {
           latePayments++;
           if (isActive) contractActiveLate++;
           const due = new Date(p.dueDate).getTime();
-          const end = p.paidAt ? new Date(p.paidAt).getTime() : Date.now();
+          const end = p.paidAt ? new Date(p.paidAt).getTime() : asOf.getTime();
           const days = Math.max(0, Math.floor((end - due) / 86_400_000));
           if (days > maxOverdueDays) maxOverdueDays = days;
         }

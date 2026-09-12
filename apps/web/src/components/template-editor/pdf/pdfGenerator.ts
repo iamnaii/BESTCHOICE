@@ -1,3 +1,5 @@
+import { loadDocumentFonts } from '@/lib/document-fonts';
+import { DOCUMENT_STYLE } from '@installment/shared';
 // PDF Generator using jspdf + jspdf-autotable
 // Uses TH Sarabun PSK font embedded for Thai text support
 import { jsPDF } from 'jspdf';
@@ -7,48 +9,7 @@ import { renderVariables, buildSampleContext } from '@/utils/templateRenderer';
 import { AVAILABLE_VARIABLES } from '@/constants/variables';
 import { formatDateMedium, formatNumberDecimal } from '@/utils/formatters';
 
-const PDF_FONT_FAMILY = 'THSarabunPSK';
-
-// Cache font base64 data at module level so it persists across doc instances
-const fontCache: Record<string, string> = {};
-const REQUIRED_FONTS = ['THSarabunPSK-Regular', 'THSarabunPSK-Bold'];
-
-async function loadThaiFont(doc: jsPDF) {
-  // Fetch and cache any missing fonts (retries on partial failure)
-  const missing = REQUIRED_FONTS.filter(f => !fontCache[f]);
-  if (missing.length > 0) {
-    const loadFont = async (url: string, fontName: string) => {
-      try {
-        const response = await fetch(url);
-        const buffer = await response.arrayBuffer();
-        // Convert in chunks to avoid "Maximum call stack size exceeded" on large fonts
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i += 8192) {
-          binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-        }
-        fontCache[fontName] = btoa(binary);
-      } catch (err) {
-        console.warn(`Failed to load font ${fontName}:`, err);
-      }
-    };
-
-    await Promise.all(missing.map(fontName => {
-      const fileName = fontName.replace('THSarabunPSK-', 'THSarabunPSK-');
-      return loadFont(`/fonts/${fileName}.ttf`, fontName);
-    }));
-  }
-
-  // Register cached fonts on this doc instance
-  const styles: Record<string, string> = {
-    'THSarabunPSK-Regular': 'normal',
-    'THSarabunPSK-Bold': 'bold',
-  };
-  for (const [fontName, base64] of Object.entries(fontCache)) {
-    doc.addFileToVFS(`${fontName}.ttf`, base64);
-    doc.addFont(`${fontName}.ttf`, PDF_FONT_FAMILY, styles[fontName] ?? 'normal');
-  }
-}
+const PDF_FONT_FAMILY = DOCUMENT_STYLE.pdfFontFamily;
 
 // ---- Rich text segment types ----
 interface TextSegment {
@@ -141,7 +102,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
     format: 'a4',
   });
 
-  await loadThaiFont(doc);
+  await loadDocumentFonts(doc);
   doc.setFont(PDF_FONT_FAMILY, 'normal');
 
   const margin = settings.margins;
@@ -149,23 +110,23 @@ export async function generatePDF(template: Template): Promise<Blob> {
   const pageHeight = 297;
   const contentWidth = pageWidth - margin.left - margin.right;
   let y = margin.top;
-  let pageNum = 1;
-  const totalPages = 6; // estimate
 
   function checkPageBreak(neededHeight: number) {
     if (y + neededHeight > pageHeight - margin.bottom - 10) {
-      addFooter();
+      const activeFont = doc.getFont();
+      const activeSize = doc.getFontSize();
       doc.addPage();
-      pageNum++;
       y = margin.top;
       // Add letterhead on new page if needed
       if (settings.letterhead === 'bestchoice') {
-        doc.setFontSize(10);
+        doc.setFontSize(settings.fontSize.heading);
         doc.setFont(PDF_FONT_FAMILY, 'bold');
         doc.text('BESTCHOICEPHONE Co., Ltd.', pageWidth / 2, y, { align: 'center' });
         y += 6;
         doc.setFont(PDF_FONT_FAMILY, 'normal');
       }
+      doc.setFont(activeFont.fontName, activeFont.fontStyle);
+      doc.setFontSize(activeSize);
     }
   }
 
@@ -178,8 +139,8 @@ export async function generatePDF(template: Template): Promise<Blob> {
     doc.text(resolvedFooter, margin.left, footerY);
     if (settings.showPageNumber) {
       const pageText = settings.pageNumberFormat
-        .replace('{page}', String(pageNum))
-        .replace('{total}', String(totalPages));
+        .replace('{page}', String(doc.getCurrentPageInfo().pageNumber))
+        .replace('{total}', String(doc.getNumberOfPages()));
       doc.text(pageText, pageWidth - margin.right, footerY, { align: 'right' });
     }
     doc.setTextColor(0);
@@ -198,7 +159,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
 
     for (let li = 0; li < lines.length; li++) {
       const line = lines[li];
-      checkPageBreak(fontSize * 0.45);
+      checkPageBreak(fontSize * (25.4 / 72) * DOCUMENT_STYLE.lineHeight);
       // First-line indent (like CSS textIndent) — only on the very first line
       const extraIndent = (li === 0 && firstLineIndent) ? firstLineIndent : 0;
       if (align === 'center') {
@@ -208,7 +169,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
       } else {
         doc.text(line, x + extraIndent, y);
       }
-      y += fontSize * 0.45;
+      y += fontSize * (25.4 / 72) * DOCUMENT_STYLE.lineHeight;
     }
     y += 1;
   }
@@ -219,7 +180,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
    */
   function addRichText(segments: TextSegment[], fontSize: number, options?: { indent?: number; firstLineIndent?: number; align?: 'left' | 'center' | 'right' | 'justify' }) {
     const { indent = 0, firstLineIndent, align = 'left' } = options || {};
-    const lineHeight = fontSize * 0.45;
+    const lineHeight = fontSize * (25.4 / 72) * DOCUMENT_STYLE.lineHeight;
     const effectiveWidth = contentWidth - indent;
     const baseX = margin.left + indent;
 
@@ -370,17 +331,17 @@ export async function generatePDF(template: Template): Promise<Blob> {
 
   // Letterhead
   if (settings.letterhead === 'bestchoice') {
-    doc.setFontSize(14);
+    doc.setFontSize(settings.fontSize.heading);
     doc.setFont(PDF_FONT_FAMILY, 'bold');
     doc.text('BESTCHOICEPHONE Co., Ltd.', pageWidth / 2, y, { align: 'center' });
-    y += 5;
-    doc.setFontSize(9);
+    y += 9;
+    doc.setFontSize(settings.fontSize.body);
     doc.setFont(PDF_FONT_FAMILY, 'normal');
     doc.setTextColor(100);
     doc.text('บริษัท เบสท์ช้อยส์โฟน จำกัด | เลขประจำตัวผู้เสียภาษี 0165568000050', pageWidth / 2, y, { align: 'center' });
-    y += 4;
+    y += 9;
     doc.text('456/21 ชั้น 2 ถนนนารายณ์มหาราช ตำบลทะเลชุบศร อำเภอเมือง จังหวัดลพบุรี 15000', pageWidth / 2, y, { align: 'center' });
-    y += 3;
+    y += 5;
     doc.setTextColor(0);
     doc.setDrawColor(200);
     doc.line(margin.left, y, pageWidth - margin.right, y);
@@ -395,7 +356,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
 
     switch (block.type) {
       case 'contract-header': {
-        doc.setFontSize(13);
+        doc.setFontSize(settings.fontSize.body);
 
         if (isHtmlContent(block.content)) {
           // Rich text contract header — preserve bold formatting
@@ -454,7 +415,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
             doc.text(stripBold(rightText), pageWidth - margin.right, y, { align: 'right' });
           }
         }
-        y += 13 * 0.45 + 1;
+        y += settings.fontSize.body * (25.4 / 72) * DOCUMENT_STYLE.lineHeight + 1;
         break;
       }
 
@@ -524,10 +485,10 @@ export async function generatePDF(template: Template): Promise<Blob> {
             formatNumberDecimal(inst.AMOUNT),
           ]),
           tableWidth: tableWidth,
-          margin: { left: tableMarginLeft, right: margin.right },
+          margin: { left: tableMarginLeft, right: margin.right, top: margin.top, bottom: margin.bottom + 10 },
           styles: {
             font: PDF_FONT_FAMILY,
-            fontSize: 12,
+            fontSize: settings.fontSize.body,
             cellPadding: 2,
           },
           headStyles: {
@@ -561,7 +522,7 @@ export async function generatePDF(template: Template): Promise<Blob> {
         const leftX = margin.left + colWidth / 2;
         doc.text('ลงชื่อ _________________ ผู้ให้เช่าซื้อ', leftX, y, { align: 'center' });
         doc.text(`( ${managerName} )`, leftX, y + 6, { align: 'center' });
-        doc.setFontSize(sigFontSize - 2);
+        doc.setFontSize(sigFontSize);
         doc.setTextColor(100);
         doc.text('ผู้จัดการ บริษัท เบสท์ช้อยส์โฟน จำกัด', leftX, y + 11, { align: 'center' });
         doc.setTextColor(0);
@@ -645,10 +606,10 @@ export async function generatePDF(template: Template): Promise<Blob> {
             let colY = y;
             for (const line of lines) {
               doc.text(line, x, colY);
-              colY += settings.fontSize.body * 0.45;
+              colY += settings.fontSize.body * (25.4 / 72) * DOCUMENT_STYLE.lineHeight;
             }
           }
-          y += settings.fontSize.body * 0.45 * 3;
+          y += settings.fontSize.body * (25.4 / 72) * DOCUMENT_STYLE.lineHeight * 3;
         }
         break;
       }
@@ -662,8 +623,11 @@ export async function generatePDF(template: Template): Promise<Blob> {
     }
   }
 
-  // Final footer
-  addFooter();
+  // Add footers after all explicit and table-generated pages exist.
+  for (let page = 1; page <= doc.getNumberOfPages(); page++) {
+    doc.setPage(page);
+    addFooter();
+  }
 
   return doc.output('blob');
 }

@@ -5,6 +5,7 @@ export interface Product {
   model: string;
   category: string;
   status: string;
+  wasPreviouslyDamaged?: boolean;
   branchId: string;
   branch: { id: string; name: string };
   /** B0: แหล่งราคาจริง (คอลัมน์) — API ส่งเป็น string เพราะ Prisma.Decimal serialize เป็น string */

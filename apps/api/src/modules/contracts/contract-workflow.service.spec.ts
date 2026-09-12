@@ -29,6 +29,7 @@ jest.mock('../../utils/sequence.util', () => ({
 }));
 
 jest.mock('../../utils/validation.util', () => ({
+  ...jest.requireActual('../../utils/validation.util'),
   checkAgeEligibility: jest.fn().mockReturnValue({ eligible: true, requiresGuardian: false }),
   checkRequiredContractFields: jest.fn().mockReturnValue([]),
   checkRequiredDocuments: jest.fn().mockReturnValue({ complete: true, checklist: [] }),
@@ -52,7 +53,7 @@ describe('ContractWorkflowService', () => {
   // Task 5: SHOP JE wiring mocks
   let shopInventoryTransferTemplate: { execute: jest.Mock };
   let shopDownPaymentTemplate: { execute: jest.Mock };
-  let shopAccountResolver: { resolveProductAccounts: jest.Mock; resolveBranchCashAccount: jest.Mock };
+  let shopAccountResolver: { resolveProductAccounts: jest.Mock; resolveBranchCashAccount: jest.Mock; resolveInflowCashAccount: jest.Mock };
 
   const mockProduct = {
     id: 'product-1',
@@ -162,6 +163,7 @@ describe('ContractWorkflowService', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
       sale: {
+        update: jest.fn().mockResolvedValue({}),
         create: jest.fn().mockResolvedValue({ id: 'sale-1' }),
         // ตอน activate ต้องหาของแถมจากใบขาย (Sale.bundleProductIds) เพื่อตัดสต็อก
         // ค่าเริ่มต้น = ไม่มีใบขาย ⇒ ไม่มีของแถม ⇒ JE A เหมือนเดิมทุกไบต์
@@ -217,6 +219,7 @@ describe('ContractWorkflowService', () => {
         revenueAccountCode: 'S41-1101',
       }),
       resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'),
+      resolveInflowCashAccount: jest.fn(async (_branch, method) => method === 'CASH' ? 'S11-1102' : 'S11-1201'),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -246,6 +249,13 @@ describe('ContractWorkflowService', () => {
         await expect(service.activate('contract-1')).rejects.toThrow('ยอดอนุมัติไม่พอ');
         expect(prisma.contract.update).not.toHaveBeenCalled();
       } finally { guard.mockRestore(); }
+    });
+    it('carries the persisted down tender into the activated sale', async () => {
+      const transferContract = { ...mockContract, downPaymentMethod: 'BANK_TRANSFER', downPaymentReceivedAt: new Date(), downPaymentReference: 'SYNTHETIC-TRANSFER' };
+      prisma.contract.findUnique.mockResolvedValue(transferContract);
+      prisma.contract.findUniqueOrThrow.mockResolvedValue(transferContract);
+      await service.activate('contract-1');
+      expect(prisma.sale.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ paymentMethod: 'BANK_TRANSFER' }) }));
     });
     it('activates a fully-approved DRAFT contract and writes the activation JE', async () => {
       await service.activate('contract-1');
@@ -477,7 +487,7 @@ describe('ContractWorkflowService', () => {
     // เดิม markBundleProductsSold พลิกของแถมเป็น SOLD_CASH ตอนสร้างใบขาย
     // แต่ไม่มีใครตัดต้นทุนออกจากสต็อก ⇒ สินค้าคงเหลือสูงเกินจริงถาวร
     it('ของแถมในใบขายถูกส่งเข้า template เพื่อตัดสต็อก — แยกบัญชีตามหมวด', async () => {
-      prisma.sale.findFirst.mockResolvedValue({ bundleProductIds: ['gift-1', 'gift-2'] });
+      prisma.sale.findFirst.mockResolvedValue({ id: 'sale-existing', sellingPrice: new Prisma.Decimal(20000), bundleProductIds: ['gift-1', 'gift-2'] });
       prisma.product.findMany.mockResolvedValue([
         { id: 'gift-1', category: 'ACCESSORY', costPrice: new Prisma.Decimal(450) },
         { id: 'gift-2', category: 'MOBILE_NEW', costPrice: new Prisma.Decimal(0) },
@@ -570,8 +580,9 @@ describe('ContractWorkflowService', () => {
       expect(input.commission.toString()).toBe('0');
     });
 
-    it('posts a catch-up ShopDownPayment for in-flight contract with down but no down JE', async () => {
-      // No prior down JE → pre-Task-6 in-flight contract → catch-up fires
+    it('posts a catch-up only with recorded down receipt evidence', async () => {
+      prisma.contract.findUnique.mockResolvedValue({ ...shopContract, downPaymentMethod: 'CASH', downPaymentReceivedAt: new Date() });
+      // Receipt metadata exists, but the ledger entry is missing.
       prisma.journalEntry.findFirst.mockResolvedValue(null);
       shopAccountResolver.resolveBranchCashAccount.mockResolvedValue('S11-1102');
       await service.activate('c-1');
@@ -580,6 +591,12 @@ describe('ContractWorkflowService', () => {
         idempotencyKey: 'shop-down-payment:c-1',
         cashAccountCode: 'S11-1102',
       });
+    });
+
+    it('does not invent a historical receipt without evidence', async () => {
+      prisma.journalEntry.findFirst.mockResolvedValue(null);
+      await expect(service.activate('c-1')).rejects.toThrow('ไม่พบหลักฐานรับเงินดาวน์');
+      expect(shopDownPaymentTemplate.execute).not.toHaveBeenCalled();
     });
 
     it('skips the catch-up when a down JE already exists (post-Task-6 contract)', async () => {

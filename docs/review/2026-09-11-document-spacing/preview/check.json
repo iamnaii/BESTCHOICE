@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "sourceFingerprint": "064b4cf55d9419c3680aaefdd915a62238d4695e6918770466eadf98f63e7520",
+  "documentUrl": "http://localhost:5207/contracts/9e8babd3-c27e-4ece-b451-10fcb242706a",
+  "widths": [
+    1440,
+    390
+  ],
+  "pdfs": [
+    {
+      "type": "CONTRACT",
+      "bytes": 230024,
+      "pages": 7,
+      "hashMatches": true
+    },
+    {
+      "type": "PDPA_CONSENT",
+      "bytes": 150365,
+      "pages": 2,
+      "hashMatches": true
+    }
+  ],
+  "storage": "local-files",
+  "notifications": "not sent; synthetic customer has no recipient",
+  "checkedAt": "2026-09-11T08:33:26.332Z"
+}

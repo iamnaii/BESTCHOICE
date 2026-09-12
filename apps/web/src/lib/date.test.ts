@@ -139,3 +139,15 @@ describe('lib/date — computeDefaultTimeRange', () => {
     expect(r).toEqual({ startDate: '2026-04-13', endDate: '2026-04-19' });
   });
 });
+
+describe('Bangkok booking expiry', () => {
+  it('expires after the entire selected Thai day, including year rollover', async () => {
+    const { toBangkokExpiryInstant } = await import('./date');
+    expect(toBangkokExpiryInstant('2026-09-11')).toBe('2026-09-11T17:00:00.000Z');
+    expect(toBangkokExpiryInstant('2026-12-31')).toBe('2026-12-31T17:00:00.000Z');
+  });
+  it.each(['2026-02-30', '2026-13-01', '2026-1-1', '', 'not-a-date'])('rejects impossible or malformed input: %s', async value => {
+    const { toBangkokExpiryInstant } = await import('./date');
+    expect(() => toBangkokExpiryInstant(value)).toThrow();
+  });
+});

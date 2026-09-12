@@ -1,3 +1,7 @@
+import { downloadProtectedDocument } from '@/lib/document-download';
+import { queryErrorMessage } from '@/lib/query-error-message';
+import { contractBalances } from '@/lib/contract-balances';
+import type { SignatureRequirements } from '@installment/shared';
 import { useParams, useNavigate, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
@@ -72,6 +76,7 @@ interface ContractDetail {
   creditBalance: string | null;
   dunningStage: string | null;
   payments: Payment[];
+  signatureRequirements?: SignatureRequirements;
   signatures: { id: string; signerType: string; signedAt: string }[];
   contractDocuments: { id: string; documentType: string; fileName: string; fileUrl: string; createdAt: string }[];
   creditCheck: { id: string; status: string; aiScore: number | null; aiSummary: string | null } | null;
@@ -126,22 +131,29 @@ export default function ContractDetailPage() {
     enabled: !!contract && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status),
   });
 
-  // E-Documents (generated PDFs)
-  const { data: eDocuments = [] } = useQuery<{ id: string; documentType: string; fileUrl: string; fileHash: string; createdAt: string }[]>({
-    queryKey: ['contract-edocuments', id],
-    queryFn: async () => { const { data } = await api.get(`/contracts/${id}/documents`); return data; },
+  const downloadPdfMutation = useMutation({
+    mutationFn: (number: string) => downloadProtectedDocument(`/contracts/${id}/download-pdf`, `${number}.pdf`),
+    onSuccess: () => toast.success('ดาวน์โหลด PDF สำเร็จ'),
+    onError: (error: unknown) => toast.error(queryErrorMessage(error)),
   });
 
-  const { data: preview, isLoading: previewLoading } = useQuery<{ html: string }>({
+  // E-Documents (generated PDFs)
+  const [documentPage, setDocumentPage] = useState(1);
+  const eDocumentsQuery = useQuery<{ data: { id: string; documentType: string; fileUrl: string; fileHash: string; createdAt: string }[]; total: number }>({
+    queryKey: ['contract-edocuments', id, documentPage],
+    queryFn: async () => { const { data } = await api.get(`/contracts/${id}/e-documents`, { params: { page: documentPage, limit: 20 } }); return data; },
+  });
+
+  const previewQuery = useQuery<{ html: string }>({
     queryKey: ['contract-preview', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}/preview`); return data; },
     enabled: activeTab === 'preview',
   });
 
-  const { data: docChecklist } = useQuery<{ complete: boolean; checklist: { type: string; label: string; present: boolean }[] }>({
+  const { data: docChecklist } = useQuery<{ complete: boolean; checklist: { type: string; label: string; present: boolean; autoGenerate?: boolean }[] }>({
     queryKey: ['contract-doc-checklist', id],
     queryFn: async () => { const { data } = await api.get(`/contracts/${id}/documents/checklist`); return data; },
-    enabled: !!contract && contract.workflowStatus === 'PENDING_REVIEW',
+    enabled: !!contract,
   });
 
   const invalidateContract = () => {
@@ -269,21 +281,17 @@ const deleteMutation = useMutation({
   }
 
   const paidCount = contract.payments.filter((p) => p.status === 'PAID').length;
-  const totalOutstanding = contract.payments
-    .filter((p) => p.status !== 'PAID')
-    .reduce((sum, p) => sum + parseFloat(p.amountDue) + parseFloat(p.lateFee) - parseFloat(p.amountPaid || '0'), 0);
-  const isReviewer = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role) && (user.role === 'OWNER' || contract.salespersonId !== user.id);
+  const { outstanding: totalOutstanding, overdue: totalOverdue } = contractBalances(contract.status, contract.payments);
+  const isReviewer = user && ['OWNER', 'FINANCE_MANAGER'].includes(user.role) && (user.role === 'OWNER' || contract.salespersonId !== user.id);
   const isCreator = user && contract.salespersonId === user.id;
   const isOwner = user?.role === 'OWNER';
   const canEdit = (isCreator || isOwner) && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
   const canEditMaster = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
   const canDelete = isOwner && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
-  const signedTypes = new Set(contract.signatures?.map((s) => s.signerType === 'STAFF' ? 'COMPANY' : s.signerType) || []);
-  const customerSigned = signedTypes.has('CUSTOMER');
-  const companySigned = signedTypes.has('COMPANY');
-  const witness1Signed = signedTypes.has('WITNESS_1');
-  const witness2Signed = signedTypes.has('WITNESS_2');
-  const allSigned = customerSigned && companySigned && witness1Signed && witness2Signed;
+  const allSigned = contract.signatureRequirements?.complete === true;
+  const canSign = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '') && contract.status === 'DRAFT' && ['CREATING', 'REJECTED', 'PENDING_REVIEW', 'APPROVED'].includes(contract.workflowStatus);
+  const canActivate = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(user?.role ?? '');
+  const canCreateCustomerLink = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
 
   return (
     <div>
@@ -301,33 +309,20 @@ const deleteMutation = useMutation({
         }
         action={
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 shadow-sm">
-              ลงนาม/เอกสาร
-            </button>
+            {canSign && <button onClick={() => navigate(`/contracts/${id}/sign`)} className="px-4 py-2 text-sm bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 shadow-sm">
+              ลงนามสัญญา
+            </button>}
             <button
-              onClick={async () => {
-                try {
-                  toast.loading('กำลังสร้าง PDF...', { id: 'pdf-gen' });
-                  const res = await api.get(`/contracts/${id}/download-pdf`, { responseType: 'blob' });
-                  const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `${contract.contractNumber}.pdf`;
-                  a.click();
-                  window.URL.revokeObjectURL(url);
-                  toast.success('ดาวน์โหลด PDF สำเร็จ', { id: 'pdf-gen' });
-                } catch (err) {
-                  toast.error(getErrorMessage(err) || 'ไม่สามารถสร้าง PDF ได้', { id: 'pdf-gen' });
-                }
-              }}
+              onClick={() => downloadPdfMutation.mutate(contract.contractNumber)}
+              disabled={downloadPdfMutation.isPending}
               className="px-4 py-2 text-sm border border-input bg-background text-foreground rounded-lg hover:bg-accent hover:text-accent-foreground shadow-sm"
             >
-              ดาวน์โหลด PDF
+              {downloadPdfMutation.isPending ? 'กำลังสร้าง PDF…' : 'ดาวน์โหลด PDF'}
             </button>
 
             {/* Workflow buttons */}
-            {contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
-              <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทั้งลูกค้าและพนักงานก่อน' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
+            {canActivate && contract.workflowStatus === 'APPROVED' && contract.status === 'DRAFT' && (
+              <button onClick={() => activateMutation.mutate()} disabled={activateMutation.isPending || !allSigned} title={!allSigned ? 'ต้องลงนามครบทุกฝ่ายที่ระบุในสัญญา' : ''} className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50">
                 {activateMutation.isPending ? 'กำลังเปิด...' : 'เปิดใช้งานสัญญา'}
               </button>
             )}
@@ -354,18 +349,18 @@ const deleteMutation = useMutation({
               </button>
             )}
 
-            {['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
+            {canActivate && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
               <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-warning text-warning-foreground rounded-lg hover:bg-warning/90 shadow-sm">
                 ปิดก่อนกำหนด
               </button>
             )}
-            {['ACTIVE', 'OVERDUE', 'COMPLETED'].includes(contract.status) && (
+            {canCreateCustomerLink && ['ACTIVE', 'OVERDUE', 'COMPLETED'].includes(contract.status) && (
               <button
                 onClick={() => customerLinkMutation.mutate()}
                 disabled={customerLinkMutation.isPending}
                 className="px-4 py-2 text-sm bg-success text-success-foreground rounded-lg hover:bg-success/90 disabled:opacity-50 shadow-sm"
               >
-                {customerLinkMutation.isPending ? 'กำลังสร้าง...' : 'ส่งลิงก์ลูกค้า'}
+                {customerLinkMutation.isPending ? 'กำลังสร้าง...' : 'สร้างลิงก์ลูกค้า'}
               </button>
             )}
             {canDelete && (
@@ -401,7 +396,7 @@ const deleteMutation = useMutation({
       {contract.status === 'DRAFT' && (() => {
         const steps = [
           { label: 'สร้างสัญญา', done: true },
-          { label: 'แนบเอกสาร', done: contract.contractDocuments.length >= 3 },
+          { label: 'แนบเอกสาร', done: !!docChecklist?.checklist.length && docChecklist.checklist.filter(row => !row.autoGenerate).every(row => row.present) },
           { label: 'ลงนาม & PDPA', done: !!contract.pdpaConsentId && allSigned },
           { label: 'ตรวจสอบ & อนุมัติ', done: contract.workflowStatus === 'APPROVED' },
           { label: 'เปิดใช้งาน', done: false },
@@ -410,7 +405,7 @@ const deleteMutation = useMutation({
         const stepHints: { text: string; action?: () => void; actionLabel?: string }[] = [
           { text: '' },
           { text: 'อัปโหลดเอกสารที่จำเป็น', action: () => setActiveTab('documents'), actionLabel: 'ไปแนบเอกสาร' },
-          { text: 'ให้ลูกค้ายินยอม PDPA และลงนามสัญญา', action: () => navigate(`/contracts/${id}/sign`), actionLabel: 'ไปลงนาม' },
+          { text: 'ให้ลูกค้ายินยอม PDPA และลงนามสัญญา', action: canSign ? () => navigate(`/contracts/${id}/sign`) : undefined, actionLabel: canSign ? 'ไปลงนาม' : undefined },
           (() => {
             const canSubmit = isCreator && allSigned && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
             return {
@@ -421,8 +416,8 @@ const deleteMutation = useMutation({
           })(),
           {
             text: allSigned ? 'สัญญาอนุมัติแล้ว พร้อมเปิดใช้งาน' : 'ต้องลงนามครบก่อนเปิดใช้งาน',
-            action: allSigned ? () => activateMutation.mutate() : undefined,
-            actionLabel: allSigned ? 'เปิดใช้งานสัญญา' : undefined,
+            action: allSigned && canActivate ? () => activateMutation.mutate() : undefined,
+            actionLabel: allSigned && canActivate ? 'เปิดใช้งานสัญญา' : undefined,
           },
         ];
         const hint = currentStep >= 0 ? stepHints[currentStep] : null;
@@ -483,10 +478,11 @@ const deleteMutation = useMutation({
           </CardContent>
         </Card>
         <Card className={`rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden ${totalOutstanding > 0 ? '' : 'opacity-60'}`}>
-          <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${totalOutstanding > 0 ? 'bg-destructive' : 'bg-muted-foreground/30'}`} />
+          <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-r-full ${totalOverdue > 0 ? 'bg-destructive' : 'bg-muted-foreground/30'}`} />
           <CardContent className="p-5">
-            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดค้างชำระ</div>
-            <div className={`text-xl font-bold tabular-nums font-mono ${totalOutstanding > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{formatNumber(totalOutstanding)} บาท</div>
+            <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">ยอดคงเหลือทั้งหมด</div>
+            <div className={`text-xl font-bold tabular-nums font-mono ${totalOverdue > 0 ? 'text-destructive' : 'text-muted-foreground'}`}>{formatNumber(totalOutstanding)} บาท</div>
+            <p className="mt-2 text-xs text-muted-foreground">เกินกำหนด {formatNumber(totalOverdue)} บาท</p>
           </CardContent>
         </Card>
       </div>
@@ -889,8 +885,16 @@ const deleteMutation = useMutation({
 
       {/* Signing Status + E-Document Downloads */}
       <ContractDocuments
+        signatureRequirements={contract.signatureRequirements}
         signatures={contract.signatures}
-        eDocuments={eDocuments}
+        eDocuments={eDocumentsQuery.data?.data ?? []}
+        isLoading={eDocumentsQuery.isPending}
+        isError={eDocumentsQuery.isError}
+        error={eDocumentsQuery.error}
+        onRetry={() => { void eDocumentsQuery.refetch(); }}
+        page={documentPage}
+        total={eDocumentsQuery.data?.total ?? 0}
+        onPageChange={setDocumentPage}
         pdpaConsentId={contract.pdpaConsentId}
       />
 
@@ -929,15 +933,10 @@ const deleteMutation = useMutation({
       {/* Tab Content */}
       {activeTab === 'preview' && (
         <div className="bg-muted rounded-lg border overflow-hidden h-[80vh]">
-          {previewLoading ? (
-            <div className="flex items-center justify-center py-12 bg-background">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          ) : preview ? (
-            <ContractPreviewFrame html={preview.html} />
-          ) : (
-            <div className="flex items-center justify-center py-12 bg-background text-muted-foreground">ไม่สามารถโหลดตัวอย่างสัญญาได้</div>
-          )}
+          <QueryBoundary isLoading={previewQuery.isPending} isError={previewQuery.isError || !previewQuery.data?.html?.trim()}
+            error={previewQuery.error} onRetry={() => { void previewQuery.refetch(); }} errorTitle="โหลดตัวอย่างสัญญาไม่สำเร็จ">
+            {previewQuery.data?.html && <ContractPreviewFrame html={previewQuery.data.html} />}
+          </QueryBoundary>
         </div>
       )}
 
@@ -946,7 +945,7 @@ const deleteMutation = useMutation({
       )}
 
       {activeTab === 'documents' && (
-        <DocumentUpload contractId={contract.id} customerId={contract.customer.id} />
+        <DocumentUpload key={contract.id} contractId={contract.id} customerId={contract.customer.id} contractStatus={contract.status} />
       )}
 
       {activeTab === 'credit' && (

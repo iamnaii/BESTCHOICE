@@ -106,7 +106,8 @@ describe('Stock accessory groups on isolated PostgreSQL', () => {
       .compile();
     app = module.createNestApplication({ logger: false });
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-    await app.init();
+    // Bind the same IPv4 destination Supertest uses; Darwin permits a different IPv6 server on the same port.
+    await app.listen(0, '127.0.0.1');
   });
   afterAll(async () => {
     await app?.close();

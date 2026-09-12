@@ -13,6 +13,7 @@
     "local:preview": "node tools/local-preview.mjs start",
     "local:status": "node tools/local-preview.mjs status",
     "local:stop": "node tools/local-preview.mjs stop",
+    "docs:check": "bash tools/docs-integration.sh",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",

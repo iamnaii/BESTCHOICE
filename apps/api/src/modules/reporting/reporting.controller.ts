@@ -18,6 +18,7 @@ import { PdfReportService } from './pdf-report.service';
 import { PdfReportQueryDto } from './dto/pdf-report-query.dto';
 import { UpdateRecipientsDto } from './dto/recipients.dto';
 import { ExportEnabledGuard } from '../settings/guards/export-enabled.guard';
+import { bangkokDateString } from '../../utils/date.util';
 
 /**
  * Reporting endpoints (P3 D1 — PDF export + recipient management).
@@ -49,7 +50,8 @@ export class ReportingController {
       throw new BadRequestException('from ต้องมาก่อน to');
     }
     const pdf = await this.pdfReport.generate({ from, to });
-    const filename = `collections-${to.toISOString().slice(0, 10)}.pdf`;
+    // Bangkok calendar date of the period end — the same date the report header prints.
+    const filename = `collections-${bangkokDateString(to)}.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', pdf.length.toString());

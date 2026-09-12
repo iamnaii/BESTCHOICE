@@ -1,3 +1,7 @@
+import DocumentHeader from '@/components/DocumentHeader';
+import CertificatePayerNotice from '@/components/CertificatePayerNotice';
+import { useCertificatePayer } from '@/lib/certificate-payer';
+import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -49,15 +53,6 @@ interface AnnualPreview {
   annualWageTotal: string;
 }
 
-interface CompanyRow {
-  id: string;
-  nameTh: string;
-  taxId: string;
-  address: string;
-  directorName: string;
-  companyCode: string | null;
-}
-
 export default function WhtAnnualPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -69,13 +64,9 @@ export default function WhtAnnualPage() {
       api.get<AnnualPreview>(`/tax/pnd1-annual-preview?year=${year}`).then((r) => r.data),
   });
 
-  // ผู้จ่ายเงินได้บนใบ 50 ทวิ = นิติบุคคลจดทะเบียน (FINANCE CompanyInfo)
-  const companies = useQuery({
-    queryKey: ['company-info-list'],
-    queryFn: () => api.get<CompanyRow[]>('/company').then((r) => r.data),
-    staleTime: 5 * 60 * 1000,
-  });
-  const payer = companies.data?.find((c) => c.companyCode === 'FINANCE') ?? companies.data?.[0];
+  // ผู้จ่ายเงินได้บนใบ 50 ทวิ = นิติบุคคลจดทะเบียน (FINANCE CompanyInfo) — shared with the dividend register.
+  const payerQuery = useCertificatePayer();
+  const payer = payerQuery.payer;
 
   const downloadXlsx = async () => {
     try {
@@ -96,7 +87,7 @@ export default function WhtAnnualPage() {
   const data = query.data;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 document-landscape">
       <PageHeader
         title="ภ.ง.ด.1ก + ใบ 50 ทวิ — สรุปรายปี"
         icon={<FileBadge className="size-5" />}
@@ -210,24 +201,15 @@ export default function WhtAnnualPage() {
 
       {/* ใบรับรองหักภาษี ณ ที่จ่าย ม.50 ทวิ — print sheet */}
       <Dialog open={certFor !== null} onOpenChange={(o) => !o && setCertFor(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="document-print-dialog max-w-3xl max-h-[90vh] overflow-y-auto">
           {certFor && payer && (
             <>
-              <style>{`@media print {
-                body * { visibility: hidden !important; }
-                #wht-cert-print, #wht-cert-print * { visibility: visible !important; }
-                #wht-cert-print { position: fixed; inset: 0; padding: 24px; background: white; }
-              }`}</style>
-              {/* print/receipt context — เอกสารทางการพิมพ์ขาวดำ จึงใช้สีตรงได้ตามข้อยกเว้นใน rules */}
-              <div id="wht-cert-print" className="bg-white text-black p-6 text-sm space-y-4">
-                <div className="text-center space-y-1">
-                  <h1 className="text-base font-bold leading-snug">
-                    หนังสือรับรองการหักภาษี ณ ที่จ่าย
-                  </h1>
-                  <div className="text-xs">ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร — แบบ ภ.ง.ด.1ก</div>
-                  <div className="text-xs">ปีภาษี {year + 543}</div>
-                </div>
 
+              {/* print/receipt context — เอกสารทางการพิมพ์ขาวดำ จึงใช้สีตรงได้ตามข้อยกเว้นใน rules */}
+              <div id="wht-cert-print" className="document-sheet bc-document bc-certificate bg-white text-black p-6 text-sm space-y-4">
+                <DocumentHeader company={payer.nameTh} title="หนังสือรับรองการหักภาษี ณ ที่จ่าย"
+                  subtitle={<> ตามมาตรา 50 ทวิ แห่งประมวลรัษฎากร · ภ.ง.ด.1ก<br />ปีภาษี {year + 543}</>} />
+                <div className="bc-doc-parties">
                 <div className="border border-black rounded p-3 space-y-1">
                   <div className="font-semibold text-xs">ผู้มีหน้าที่หักภาษี ณ ที่จ่าย (ผู้จ่ายเงินได้)</div>
                   <div className="leading-snug">{payer.nameTh}</div>
@@ -244,6 +226,8 @@ export default function WhtAnnualPage() {
                   </div>
                 </div>
 
+                </div>
+                <div className="bc-doc-closing">
                 <table className="w-full border-collapse text-sm">
                   <thead>
                     <tr>
@@ -288,7 +272,7 @@ export default function WhtAnnualPage() {
                   บาท (ใช้สิทธิลดหย่อนได้)
                 </div>
 
-                <div className="pt-6 grid grid-cols-2 gap-6 text-center text-xs">
+                <div className="bc-doc-signoff pt-6 grid grid-cols-2 gap-6 text-center text-xs">
                   <div>
                     <div className="border-b border-dotted border-black h-10"></div>
                     <div className="mt-1">
@@ -301,22 +285,19 @@ export default function WhtAnnualPage() {
                     <div className="mt-1">ประทับตรา (ถ้ามี)</div>
                   </div>
                 </div>
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="ghost" onClick={() => setCertFor(null)}>
                   ปิด
                 </Button>
-                <Button className="gap-1.5" onClick={() => window.print()}>
+                <Button className="gap-1.5" onClick={printDocument}>
                   <Printer className="size-4" /> พิมพ์
                 </Button>
               </div>
             </>
           )}
-          {certFor && !payer && (
-            <div className="text-sm text-muted-foreground py-6 text-center">
-              กำลังโหลดข้อมูลบริษัท… (ต้องมี CompanyInfo ฝั่ง FINANCE)
-            </div>
-          )}
+          {certFor && !payer && <CertificatePayerNotice query={payerQuery} onClose={() => setCertFor(null)} />}
         </DialogContent>
       </Dialog>
     </div>

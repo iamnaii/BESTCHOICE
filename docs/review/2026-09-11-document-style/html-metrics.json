@@ -1,0 +1,174 @@
+[
+  {
+    "name": "other-income-normal",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "expense-normal",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "asset-normal",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "trade-in-CASH-normal",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "trade-in-TRADE_IN_CREDIT-normal",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "pdpa-normal",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "letter-RETURN_DEVICE_45D-normal",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "letter-CONTRACT_TERMINATION_60D-normal",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "other-income-long",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "expense-long",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "asset-long",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "trade-in-CASH-long",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "trade-in-TRADE_IN_CREDIT-long",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "pdpa-long",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "24px",
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "letter-RETURN_DEVICE_45D-long",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "21.3333px"
+    ],
+    "overflow": []
+  },
+  {
+    "name": "letter-CONTRACT_TERMINATION_60D-long",
+    "fonts": [
+      "\"TH Sarabun PSK\", sans-serif"
+    ],
+    "sizes": [
+      "21.3333px"
+    ],
+    "overflow": []
+  }
+]

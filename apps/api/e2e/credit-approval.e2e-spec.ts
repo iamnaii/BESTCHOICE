@@ -46,7 +46,7 @@ describe('verified credit approval with PostgreSQL and real HTTP controllers', (
       findOne: (id: string) => db.contract.findUniqueOrThrow({ where: { id }, include: { payments: { orderBy: { installmentNo: 'asc' } } } }),
     } as never, { execute: jest.fn().mockResolvedValue({}) } as never,
     { execute: jest.fn().mockResolvedValue({}) } as never,
-    { resolveBranchCashAccount: async () => '110101' } as never);
+    { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never);
     const module = await Test.createTestingModule({
       controllers: [GlobalCreditCheckController, CustomerCreditCheckController, ApprovalContractTestController],
       providers: [{ provide: CreditCheckService, useValue: credits }, { provide: PrismaService, useValue: db }],
@@ -56,7 +56,8 @@ describe('verified credit approval with PostgreSQL and real HTTP controllers', (
     app = module.createNestApplication({ logger: false });
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
-    await app.init();
+    // Bind the same IPv4 destination Supertest uses; Darwin permits a different IPv6 server on the same port.
+    await app.listen(0, '127.0.0.1');
   });
   afterAll(async () => { await app?.close(); await db.$disconnect(); });
   beforeEach(() => { role = 'OWNER'; });

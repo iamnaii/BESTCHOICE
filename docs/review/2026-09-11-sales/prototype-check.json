@@ -1,0 +1,83 @@
+{
+  "checks": [
+    {
+      "section": "sale",
+      "width": 1440,
+      "overflow": false,
+      "h1": "ขายสินค้า"
+    },
+    {
+      "section": "bookings",
+      "width": 1440,
+      "overflow": false,
+      "h1": "การจอง / มัดจำ"
+    },
+    {
+      "section": "customers",
+      "width": 1440,
+      "overflow": false,
+      "h1": "ลูกค้า"
+    },
+    {
+      "section": "credit",
+      "width": 1440,
+      "overflow": false,
+      "h1": "ตรวจเครดิต"
+    },
+    {
+      "section": "contracts",
+      "width": 1440,
+      "overflow": false,
+      "h1": "สัญญาผ่อนชำระ"
+    },
+    {
+      "section": "sales",
+      "width": 1440,
+      "overflow": false,
+      "h1": "รายการขาย"
+    },
+    {
+      "section": "sale",
+      "width": 390,
+      "overflow": false,
+      "h1": "ขายสินค้า"
+    },
+    {
+      "section": "bookings",
+      "width": 390,
+      "overflow": false,
+      "h1": "การจอง / มัดจำ"
+    },
+    {
+      "section": "customers",
+      "width": 390,
+      "overflow": false,
+      "h1": "ลูกค้า"
+    },
+    {
+      "section": "credit",
+      "width": 390,
+      "overflow": false,
+      "h1": "ตรวจเครดิต"
+    },
+    {
+      "section": "contracts",
+      "width": 390,
+      "overflow": false,
+      "h1": "สัญญาผ่อนชำระ"
+    },
+    {
+      "section": "sales",
+      "width": 390,
+      "overflow": false,
+      "h1": "รายการขาย"
+    },
+    {
+      "reviewDialog": true
+    },
+    {
+      "handoff": "สัญญาผ่อนชำระ"
+    }
+  ],
+  "errors": []
+}

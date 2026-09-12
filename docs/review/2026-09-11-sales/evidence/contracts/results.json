@@ -1,0 +1,95 @@
+{
+  "checkedAt": "2026-09-11T05:45:51.918Z",
+  "origin": "http://localhost:5207",
+  "mode": "synthetic UI reads and intercepted writes; separate disposable PostgreSQL financial tests",
+  "results": [
+    {
+      "name": "quoted-plan",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "transfer-schedule",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "changed-quote-review",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "quote-error",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "guardian-required",
+      "width": 1440,
+      "overflow": false
+    },
+    {
+      "name": "quoted-plan",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "transfer-schedule",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "changed-quote-review",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "quote-error",
+      "width": 390,
+      "overflow": false
+    },
+    {
+      "name": "guardian-required",
+      "width": 390,
+      "overflow": false
+    }
+  ],
+  "submitted": [
+    {
+      "width": 1440,
+      "body": {
+        "customerId": "synthetic-quote-customer",
+        "productId": "synthetic-quote-product",
+        "branchId": "synthetic-branch",
+        "planType": "STORE_DIRECT",
+        "quoteFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "downPaymentMethod": "BANK_TRANSFER",
+        "downPaymentReference": "SYNTHETIC-TRANSFER",
+        "previouslyDamagedAcknowledged": false,
+        "sellingPrice": 10000,
+        "downPayment": 2000,
+        "totalMonths": 6,
+        "paymentDueDay": 31,
+        "creditApprovalId": "synthetic-approval"
+      }
+    },
+    {
+      "width": 390,
+      "body": {
+        "customerId": "synthetic-quote-customer",
+        "productId": "synthetic-quote-product",
+        "branchId": "synthetic-branch",
+        "planType": "STORE_DIRECT",
+        "quoteFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "downPaymentMethod": "BANK_TRANSFER",
+        "downPaymentReference": "SYNTHETIC-TRANSFER",
+        "previouslyDamagedAcknowledged": false,
+        "sellingPrice": 10000,
+        "downPayment": 2000,
+        "totalMonths": 6,
+        "paymentDueDay": 31,
+        "creditApprovalId": "synthetic-approval"
+      }
+    }
+  ]
+}

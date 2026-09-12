@@ -146,7 +146,7 @@ export async function checkTradeIn(page, origin, output, width) {
   assert.deepEqual(readFileSync(join(output, `trade-in-voucher-${width}.pdf`)), await pdfResponse.body(),
     'Downloaded file must be the same PDF that was opened for preview');
   await page.screenshot({ path: join(output, `trade-in-voucher-${width}.png`) });
-  await preview.getByRole('button', { name: 'Close', exact: true }).click();
+  await preview.getByRole('button', { name: 'ปิดตัวอย่าง', exact: true }).click();
   await expect(preview).toHaveCount(0);
   await page.getByRole('link', { name: 'เปิดเครื่อง ดูรูปและราคา' }).click();
   await expect(page).toHaveURL(new RegExp(`/products/${result.productId}`));
@@ -213,6 +213,8 @@ export async function checkTradeIn(page, origin, output, width) {
     const detail = page.getByRole('dialog', { name: 'รายละเอียดรายการรับซื้อ' });
     await expect(detail.getByText(result.voucherNumber, { exact: true })).toBeVisible();
     await expect(detail.getByText(serialNumber, { exact: true })).toBeVisible();
+    // Radix enter-scale temporarily shrinks a 44px button to ~42px. Measure the settled layout.
+    await detail.evaluate((e) => Promise.all(e.getAnimations().map((animation) => animation.finished.catch(() => {}))));
     const inventory = detail.getByRole('region', { name: 'สถานะเครื่องปัจจุบัน' });
     await expect(inventory.getByText('พร้อมขาย', { exact: true })).toBeVisible();
     await expect(inventory.getByText('6/6 มุม')).toBeVisible();
@@ -230,7 +232,7 @@ export async function checkTradeIn(page, origin, output, width) {
       await detail.getByRole('button', { name: 'พิมพ์เอกสารรับเครื่อง', exact: true }).click();
       const documentPreview = page.getByRole('dialog', { name: 'ตัวอย่างเอกสารรับเครื่อง' });
       await expect(documentPreview.getByRole('link', { name: 'ดาวน์โหลด PDF' })).toBeVisible();
-      await documentPreview.getByRole('button', { name: 'Close', exact: true }).click();
+      await documentPreview.getByRole('button', { name: 'ปิดตัวอย่าง', exact: true }).click();
     }
     await detail.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(detail).toHaveCount(0);

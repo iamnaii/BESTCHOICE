@@ -1,0 +1,79 @@
+[
+  {
+    "document": "petty cash",
+    "before": {
+      "firstBodyMm": 13.4,
+      "lastBodyMm": 144.4
+    },
+    "after": {
+      "firstBodyMm": 17.4,
+      "lastBodyMm": 238.1
+    }
+  },
+  {
+    "document": "payroll with custom items",
+    "before": {
+      "firstBodyMm": 13.4,
+      "lastBodyMm": 212.4
+    },
+    "after": {
+      "firstBodyMm": 17.4,
+      "lastBodyMm": 261.1
+    }
+  },
+  {
+    "document": "annual WHT",
+    "before": {
+      "firstBodyMm": 13.4,
+      "lastBodyMm": 160.3
+    },
+    "after": {
+      "firstBodyMm": 17.4,
+      "lastBodyMm": 269.0
+    }
+  },
+  {
+    "document": "dividend WHT",
+    "before": {
+      "firstBodyMm": 13.4,
+      "lastBodyMm": 131.7
+    },
+    "after": {
+      "firstBodyMm": 17.4,
+      "lastBodyMm": 269.0
+    }
+  },
+  {
+    "document": "payment receipt",
+    "before": {
+      "firstBodyMm": 14.5,
+      "lastBodyMm": 216.1
+    },
+    "after": {
+      "firstBodyMm": 18.5,
+      "lastBodyMm": 254.2
+    }
+  },
+  {
+    "document": "expense voucher",
+    "before": {
+      "firstBodyMm": 13.4,
+      "lastBodyMm": 200.2
+    },
+    "after": {
+      "firstBodyMm": 17.4,
+      "lastBodyMm": 256.6
+    }
+  },
+  {
+    "document": "asset receipt",
+    "before": {
+      "firstBodyMm": 13.4,
+      "lastBodyMm": 181.7
+    },
+    "after": {
+      "firstBodyMm": 17.4,
+      "lastBodyMm": 251.6
+    }
+  }
+]

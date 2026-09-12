@@ -1,3 +1,5 @@
+import { ContractQuoteService } from '../src/modules/contracts/services/contract-quote.service';
+import { SalesQueryService } from '../src/modules/sales/services/sales-query.service';
 import { CustomerPiiService } from '../src/modules/customers/customer-pii.service';
 import { TransactionalReportService } from '../src/modules/accounting/transactional-report.service';
 import { ConfigService } from '@nestjs/config';
@@ -95,7 +97,7 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     const shopAccounts = new ShopAccountResolver(db), audit = new AuditService(db), products = new ProductsService(db);
     const interco = new InterCompanyService(db);
     sales = new SaleCreationService(db, new SaleWriterService(db, interco, new ShopCashSaleTemplate(journal, db, resolver),
-      shopAccounts, new ShopExternalFinanceSaleTemplate(journal, db, resolver)), interco, { notify: async () => undefined } as never);
+      shopAccounts, new ShopExternalFinanceSaleTemplate(journal, db, resolver), new ShopDownPaymentTemplate(journal, db, resolver)), interco, { notify: async () => undefined } as never);
     const sweep = new ExchangeCancelReversalTemplate(journal, db);
     saleVoid = new SaleVoidService(db, sweep);
     cancellations = new ContractCancellationService(db,
@@ -198,6 +200,74 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     expect(await db.tradeInCreditRedemption.count({ where: { tradeInId: c.intake.id } })).toBe(2);
   });
 
+  it('persists exactly the quoted amounts and Bangkok schedule without claiming on quote', async () => {
+    const c = await exchangeCase(); await approve(c.customer.id);
+    const actor = { id: ownerId, role: 'OWNER' };
+    const resolver = new ContractQuoteService(db);
+    const before = await db.tradeInCreditRedemption.count({ where: { tradeInId: c.intake.id } });
+    const quote = await resolver.resolve(c.dto, actor);
+    expect(await db.tradeInCreditRedemption.count({ where: { tradeInId: c.intake.id } })).toBe(before);
+    expect((await db.product.findUniqueOrThrow({ where: { id: c.product.id } })).status).toBe('IN_STOCK');
+    const created = await lifecycle.create({ ...c.dto, quoteFingerprint: quote.fingerprint, downPaymentMethod: 'BANK_TRANSFER',
+      downPaymentReference: 'SYNTHETIC-QUOTE-RECEIPT' }, ownerId, 'OWNER');
+    const stored = await db.contract.findUniqueOrThrow({ where: { id: created.id }, include: { payments: { orderBy: { installmentNo: 'asc' } } } });
+    expect(stored.financedAmount.toFixed(2)).toBe(quote.principal);
+    expect(stored.vatAmount!.toFixed(2)).toBe(quote.vatAmount);
+    expect(stored.interestTotal.toFixed(2)).toBe(quote.interestTotal);
+    expect(stored.payments.map(row => ({ amount: row.amountDue.toFixed(2), date: row.dueDate.toISOString() })))
+      .toEqual(quote.schedule.map(row => ({ amount: row.amountDue, date: row.dueDate })));
+    expect(stored.downPaymentMethod).toBe('BANK_TRANSFER');
+    expect(stored.downPaymentReference).toBe('SYNTHETIC-QUOTE-RECEIPT');
+    const paymentIds = stored.payments.map(row => row.id);
+    await lifecycle.update(created.id, { notes: 'SYNTHETIC note without receiving again' }, ownerId);
+    const after = await db.contract.findUniqueOrThrow({ where: { id: created.id }, include: { payments: { orderBy: { installmentNo: 'asc' } } } });
+    expect(after.payments.map(row => row.id)).toEqual(paymentIds);
+    expect(after.downPaymentReceivedAt).toEqual(stored.downPaymentReceivedAt);
+    expect(sum(await readEntries(created.id), 'S11-1201', 'debit').toNumber()).toBe(2000);
+    await lifecycle.softDelete(created.id, ownerId);
+    expect(sum(await readEntries(created.id), 'S11-1201', 'credit').toNumber()).toBe(2000);
+    expect(sum(await readEntries(created.id), 'S11-1101', 'credit').toNumber()).toBe(0);
+  });
+
+  it('rejects a stale fingerprint before stock, credit, contract or money writes', async () => {
+    const c = await exchangeCase(); await approve(c.customer.id);
+    const resolver = new ContractQuoteService(db), actor = { id: ownerId, role: 'OWNER' };
+    const quote = await resolver.resolve(c.dto, actor);
+    const company = await db.companyInfo.findUniqueOrThrow({ where: { id: shopId } });
+    try {
+      await db.companyInfo.update({ where: { id: shopId }, data: { vatRegistered: !company.vatRegistered } });
+      await expect(lifecycle.create({ ...c.dto, quoteFingerprint: quote.fingerprint }, ownerId, 'OWNER'))
+        .rejects.toMatchObject({ response: { code: 'CONTRACT_QUOTE_CHANGED', quote: { fingerprint: expect.any(String) } } });
+      expect(await db.contract.count({ where: { customerId: c.customer.id } })).toBe(0);
+      expect(await db.tradeInCreditRedemption.count({ where: { tradeInId: c.intake.id } })).toBe(0);
+      expect((await db.product.findUniqueOrThrow({ where: { id: c.product.id } })).status).toBe('IN_STOCK');
+      expect(await db.creditApproval.count({ where: { creditCheck: { customerId: c.customer.id }, usedByContractId: { not: null } } })).toBe(0);
+    } finally { await db.companyInfo.update({ where: { id: shopId }, data: { vatRegistered: company.vatRegistered } }); }
+  });
+
+  it.each(['direct', 'pos'])('carries bank-transfer receipts through %s activation exactly once', async path => {
+    const c = await exchangeCase(); await approve(c.customer.id);
+    const created = path === 'direct' ? await lifecycle.create({ ...c.dto, downPaymentMethod: 'BANK_TRANSFER', downPaymentReference: 'SYNTHETIC-BANK' }, ownerId, 'OWNER')
+      : await sales.create({ ...c.dto, saleType: 'INSTALLMENT', paymentMethod: 'BANK_TRANSFER', downPaymentReference: 'SYNTHETIC-BANK' }, ownerId, 'OWNER');
+    const contractId = path === 'direct' ? created.id : (await db.sale.findUniqueOrThrow({ where: { id: created.id } })).contractId!;
+    const query = new SalesQueryService(db), actor = { id: ownerId, role: 'OWNER' };
+    const draftRows = await query.findAll({ contractStatus: 'DRAFT', branchId }, actor);
+    if (path === 'pos') expect(draftRows.data.map(row => row.id)).toContain(created.id);
+    expect((await query.findAll({ branchId }, actor)).data.map(row => row.contractId)).not.toContain(contractId);
+    expect(sum(await readEntries(contractId), 'S11-1201', 'debit').toNumber()).toBe(2000);
+    await activate(contractId, c.customer.id);
+    const sale = await db.sale.findFirstOrThrow({ where: { contractId, deletedAt: null } });
+    if (path === 'pos') expect(sale.id).toBe(created.id);
+    expect(sale.paymentMethod).toBe('BANK_TRANSFER'); expect(sale.amountReceived!.toNumber()).toBe(2000);
+    expect((await db.saleCostSnapshot.findUniqueOrThrow({ where: { saleId: sale.id } })).mainProductCost.toNumber()).toBe(6000);
+    await db.product.update({ where: { id: c.product.id }, data: { costPrice: 6999 } });
+    expect(String((await query.findOne(sale.id, actor)).costPriceSnapshot)).toBe('6000');
+    expect((await db.contract.findUniqueOrThrow({ where: { id: contractId } })).downPaymentReference).toBe('SYNTHETIC-BANK');
+    expect(await db.sale.count({ where: { contractId, deletedAt: null } })).toBe(1);
+    expect(sum(await readEntries(contractId), 'S11-1201', 'debit').toNumber()).toBe(2000);
+    expect(sum(await readEntries(contractId), 'S11-1101', 'debit').toNumber()).toBe(0);
+  });
+
   it.each(['direct', 'pos'])('keeps cash down separate through %s installment creation, activation and cancellation', async (path) => {
     const c = await exchangeCase(); await approve(c.customer.id);
     const created = path === 'direct' ? await lifecycle.create(c.dto, ownerId, 'OWNER')
@@ -227,8 +297,8 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     await lifecycle.softDelete(contract.id, ownerId);
     expect((await tradeCredits.available(c.customer.id, branchId)).map((x) => x.id)).toContain(c.intake.id);
     const entries = await readEntries(contract.id);
-    expect(sum(entries, 'S11-1101', 'debit').toNumber()).toBe(path === 'direct' ? 2000 : 0);
-    expect(sum(entries, 'S11-1101', 'credit').toNumber()).toBe(path === 'direct' ? 2000 : 0);
+    expect(sum(entries, 'S11-1101', 'debit').toNumber()).toBe(2000);
+    expect(sum(entries, 'S11-1101', 'credit').toNumber()).toBe(2000);
     expect(await db.sale.count({ where: { contractId: contract.id, deletedAt: null } })).toBe(0);
     expect(await db.financeReceivable.count({ where: { sale: { contractId: contract.id }, deletedAt: null } })).toBe(0);
     expect(await db.salesCommission.count({ where: { contractId: contract.id, status: { not: 'CLAWED_BACK' }, deletedAt: null } })).toBe(0);
@@ -312,6 +382,8 @@ describe('approved credit → real create/sign/activate → partial/complete pay
       lifecycle.create(c.dto, ownerId, 'OWNER'),
       sales.create({ ...c.dto, productId: other.id, saleType: 'CASH' }, ownerId, 'OWNER'),
     ]);
+    const rejected = results.find(result => result.status === 'rejected') as PromiseRejectedResult;
+    expect([400, 409]).toContain(rejected.reason.getStatus());
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
     expect(await db.tradeInCreditRedemption.count({ where: { tradeInId: c.intake.id, releasedAt: null } })).toBe(1);
     expect(await db.product.count({ where: { id: { in: [c.product.id, other.id] }, status: { not: 'IN_STOCK' } } })).toBe(1);

@@ -15,6 +15,7 @@ jest.mock('puppeteer', () => ({
       setContent: jest.fn(async (html: string) => {
         capturedHtml = html;
       }),
+      evaluate: jest.fn().mockResolvedValue(undefined),
       pdf: jest.fn().mockResolvedValue(Buffer.from('%PDF-fake')),
     }),
     close: jest.fn().mockResolvedValue(undefined),

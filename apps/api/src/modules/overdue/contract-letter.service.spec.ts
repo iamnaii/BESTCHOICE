@@ -199,7 +199,7 @@ describe('ContractLetterService', () => {
       // Check that the service was called with null correctly
       expect(mockPrisma.contractLetter.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'l1' },
+          where: expect.objectContaining({ id: 'l1', status: 'PENDING_DISPATCH' }),
           data: expect.objectContaining({
             status: 'PDF_GENERATED',
             pdfUrl: null,

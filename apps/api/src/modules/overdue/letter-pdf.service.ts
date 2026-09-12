@@ -1,3 +1,6 @@
+import { paperSpacingScript, PAPER_SPACING_CSS } from '@installment/shared';
+import { DOCUMENT_A4_CSS, documentTypographyCss } from '@installment/shared';
+import { embeddedDocumentFonts } from '../../assets/fonts/document-fonts';
 /* eslint-disable max-len */
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import * as fs from 'fs';
@@ -25,7 +28,7 @@ export class LetterPdfService {
   /** Generate a single letter PDF as a Buffer (no S3 upload). */
   async generatePdfBuffer(letterId: string): Promise<Buffer> {
     const letter = await this.prisma.contractLetter.findFirst({
-      where: { id: letterId, deletedAt: null },
+      where: { id: letterId, deletedAt: null, contract: { deletedAt: null } },
       include: {
         contract: {
           include: {
@@ -287,9 +290,32 @@ export class LetterPdfService {
   .signature .company-foot { font-size: 14pt; }
   /* keep header inside top of every page so demand list never starts orphaned */
   .keep-together { page-break-inside: avoid; break-inside: avoid; }
+${DOCUMENT_A4_CSS}
+${documentTypographyCss('body', undefined, 1.05)}
+@page { size: A4; margin: 18mm 15mm 18mm; }
+.header { gap: 5mm; padding-bottom: 2mm; }
+.header img.logo { width: 17mm; height: 17mm; }
+.header .company { gap: 0; }
+.header .company-name { line-height: 1.15 !important; }
+.date-line { margin: 2mm 0; }
+.subject { margin: 2mm 0; }
+.field { margin: 1mm 0; }
+.body p { margin: 1.5mm 0; }
+ol.demand, ol.legal, ul.bullets { margin: 1.5mm 0; }
+ol.demand li, ol.legal li, ul.bullets li { margin: 1mm 0; }
+.section-heading { margin: 2mm 0 1mm; line-height: 1.1 !important; }
+.coord-line { margin: 2mm 0 1mm; }
+.closing { margin: 2mm 0; color: #172b25; break-after: avoid; }
+.letter-closing { break-inside: avoid; }
+.signature { width: 85mm; margin: 3mm 0 0 auto; }
+.signature .salutation { margin-bottom: 2mm; }
+.signature img.sig-img { height: 14mm; }
+.signature .director { margin-top: 1mm; }
+
+${PAPER_SPACING_CSS}
 </style>
 </head>
-<body>
+<body data-bc-paper>
   <div class="header">
     ${logoImg}
     <div class="company">
@@ -304,6 +330,8 @@ export class LetterPdfService {
   <div class="body">
     ${body}
   </div>
+  <div class="letter-closing">
+  <div class="closing">${d.letterType === 'RETURN_DEVICE_45D' ? 'จึงเรียนมาเพื่อโปรดดำเนินการโดยเร่งด่วน' : 'จึงเรียนมาเพื่อโปรดดำเนินการ'}</div>
   <div class="signature">
     <div class="salutation">ขอแสดงความนับถือ</div>
     ${sigImg}
@@ -311,6 +339,8 @@ export class LetterPdfService {
     ${d.company.directorPosition ? `<div class="position">${esc(d.company.directorPosition)}</div>` : ''}
     <div class="company-foot">${esc(d.company.nameTh)}</div>
   </div>
+  </div>
+${paperSpacingScript()}
 </body>
 </html>`;
   }
@@ -355,7 +385,7 @@ export class LetterPdfService {
 
 ${coord}
 
-<div class="closing">จึงเรียนมาเพื่อโปรดดำเนินการโดยเร่งด่วน</div>
+
 `;
   }
 
@@ -396,7 +426,7 @@ ${coord}
 
 ${coord}
 
-<div class="closing">จึงเรียนมาเพื่อโปรดดำเนินการ</div>
+
 `;
   }
 
@@ -412,22 +442,19 @@ ${coord}
     });
     try {
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
-
-      const fontCss = this.buildEmbeddedFontCss();
-      if (fontCss) {
-        await page.addStyleTag({ content: fontCss });
-      }
+      const fontCss = embeddedDocumentFonts();
+      await page.setContent(html.replace('</head>', `<style>${fontCss}</style></head>`), { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.evaluate('document.fonts.ready');
 
       const footerLeft = escapeHtmlAttr(`เลขที่ ${letterNumber}`);
       const footerFontCss = fontCss ? `<style>${fontCss}</style>` : '';
       const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
-        margin: { top: '18mm', right: '22mm', bottom: '22mm', left: '22mm' },
+        margin: { top: '18mm', right: '15mm', bottom: '18mm', left: '15mm' },
         displayHeaderFooter: true,
         headerTemplate: '<span></span>',
-        footerTemplate: `${footerFontCss}<div style="width:100%;padding:0 22mm;font-family:'TH Sarabun PSK',sans-serif;font-size:10pt;color:#666;display:flex;justify-content:space-between;align-items:center"><span>${footerLeft}</span><span>หน้า <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
+        footerTemplate: `${footerFontCss}<div style="width:100%;padding:0 22mm;font-family:'TH Sarabun PSK',sans-serif;font-size:12pt;color:#666;display:flex;justify-content:space-between;align-items:center"><span>${footerLeft}</span><span>หน้า <span class="pageNumber"></span> / <span class="totalPages"></span></span></div>`,
       });
       return Buffer.from(pdf);
     } finally {
@@ -447,31 +474,7 @@ ${coord}
     return candidates.find((p) => fs.existsSync(p)) ?? candidates[0];
   }
 
-  private buildEmbeddedFontCss(): string {
-    const fontDirCandidates = [
-      path.join(process.cwd(), 'public', 'fonts'),
-      path.join(process.cwd(), '..', 'web', 'public', 'fonts'),
-      path.join(__dirname, '..', '..', '..', '..', 'public', 'fonts'),
-    ];
-    const fontsDir = fontDirCandidates.find((p) =>
-      fs.existsSync(path.join(p, 'THSarabunPSK-Regular.ttf')),
-    );
-    if (!fontsDir) {
-      this.logger.warn(`TH Sarabun PSK fonts not found — checked: ${fontDirCandidates.join(', ')}`);
-      return '';
-    }
-    const regular = fs.readFileSync(path.join(fontsDir, 'THSarabunPSK-Regular.ttf')).toString('base64');
-    const bold = fs.existsSync(path.join(fontsDir, 'THSarabunPSK-Bold.ttf'))
-      ? fs.readFileSync(path.join(fontsDir, 'THSarabunPSK-Bold.ttf')).toString('base64')
-      : '';
-    return (
-      `@font-face { font-family: 'TH Sarabun PSK'; src: url(data:font/truetype;base64,${regular}) format('truetype'); font-weight: 400; }` +
-      (bold
-        ? `@font-face { font-family: 'TH Sarabun PSK'; src: url(data:font/truetype;base64,${bold}) format('truetype'); font-weight: 700; }`
-        : '') +
-      `html, body, div, p, span, ol, ul, li, strong { font-family: 'TH Sarabun PSK', sans-serif !important; }`
-    );
-  }
+
 }
 
 // ─── Helper types + functions ─────────────────────────────────────────────

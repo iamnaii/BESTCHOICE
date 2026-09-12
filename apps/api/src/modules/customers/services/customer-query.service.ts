@@ -1,3 +1,4 @@
+import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
 import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { CreditCheckStatus, CustomerCreditCheckStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -46,6 +47,8 @@ export class CustomerQueryService {
     sortOrder?: string,
     tier?: string,
     creditCheckStatus?: string,
+    db: Prisma.TransactionClient = this.prisma,
+    asOf = new Date(),
   ) {
     const where: Record<string, unknown> = { deletedAt: null };
 
@@ -57,13 +60,12 @@ export class CustomerQueryService {
       ];
     }
 
-    // Contract status filters
-    if (hasOverdue) {
-      where.contracts = { some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null } };
-    } else if (contractStatus) {
-      where.contracts = { some: { status: contractStatus, deletedAt: null } };
-    } else if (branchId) {
-      where.contracts = { some: { branchId, deletedAt: null } };
+    // Contract status and branch must constrain the same matching contract.
+    if (hasOverdue || contractStatus || branchId) {
+      where.contracts = { some: { deletedAt: null,
+        ...(hasOverdue ? { status: { in: ['OVERDUE', 'DEFAULT'] } } : contractStatus ? { status: contractStatus } : {}),
+        ...(branchId ? { branchId } : {}),
+      } };
     }
 
     // สองตัวกรองนี้อ่านคนละฟิลด์และคนละ enum — ห้ามสลับกัน:
@@ -76,13 +78,15 @@ export class CustomerQueryService {
     // เพื่อให้ได้ 400 พร้อมข้อความไทยแทน
     if (creditStatus) {
       assertEnumValue(creditStatus, CREDIT_CHECK_STATUSES, 'สถานะใบตรวจเครดิต');
-      where.creditChecks = { some: { status: creditStatus } };
+      where.creditChecks = { some: { status: creditStatus, deletedAt: null } };
     }
 
     if (creditCheckStatus) {
       assertEnumValue(creditCheckStatus, CUSTOMER_CREDIT_CHECK_STATUSES, 'สถานะเครดิตของลูกค้า');
       where.creditCheckStatus = creditCheckStatus;
     }
+
+    if (limit > 200) assertExportRowCount(await db.customer.count({ where }));
 
     // Determine sort order
     const order = sortOrder === 'asc' ? 'asc' : 'desc';
@@ -95,13 +99,38 @@ export class CustomerQueryService {
     } else if (sortBy === 'contractCount') {
       orderBy = { contracts: { _count: order } };
     }
-    // For creditScore, we'll sort in-memory after fetching
+    // Derived filters must be resolved before pagination. Fetch only IDs/scores
+    // here; PII and full customer rows remain bounded to the requested page.
+    let matchedIds: string[] | undefined;
+    let tierById: Awaited<ReturnType<CustomerTierService['getCustomerTiers']>> | undefined;
+    if (tier || sortBy === 'creditScore') {
+      if (tier && !['GOLD', 'GOOD', 'NEW', 'RISKY', 'BLACKLIST'].includes(tier)) {
+        throw new BadRequestException('ระดับลูกค้าไม่ถูกต้อง');
+      }
+      const candidates = await db.customer.findMany({
+        where, orderBy: [orderBy, { id: 'asc' }],
+        select: { id: true, creditChecks: { where: { deletedAt: null },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1, select: { aiScore: true } } },
+      });
+      if (tier) tierById = await this.tierService.getCustomerTiers(candidates.map(customer => customer.id), db, asOf);
+      const matching = tier ? candidates.filter(customer => tierById!.get(customer.id)?.tier === tier) : candidates;
+      if (sortBy === 'creditScore') matching.sort((a, b) => {
+        const aScore = a.creditChecks[0]?.aiScore, bScore = b.creditChecks[0]?.aiScore;
+        if (aScore == null && bScore != null) return 1;
+        if (bScore == null && aScore != null) return -1;
+        const delta = aScore == null || bScore == null ? 0 : aScore - bScore;
+        return (order === 'asc' ? delta : -delta) || a.id.localeCompare(b.id);
+      });
+      matchedIds = matching.map(customer => customer.id);
+    }
+    const selectedIds = matchedIds?.slice((page - 1) * limit, page * limit);
+
 
     const [data, total, withActiveContract, withOverdue, newThisMonth] = await Promise.all([
-      this.prisma.customer.findMany({
-        where,
-        orderBy,
-        skip: (page - 1) * limit,
+      db.customer.findMany({
+        where: selectedIds ? { AND: [where, { id: { in: selectedIds } }] } : where,
+        orderBy: [orderBy, { id: 'asc' }],
+        skip: selectedIds ? 0 : (page - 1) * limit,
         take: limit,
         select: {
           id: true,
@@ -122,27 +151,28 @@ export class CustomerQueryService {
             select: { status: true },
           },
           creditChecks: {
-            orderBy: { createdAt: 'desc' },
+            where: { deletedAt: null },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take: 1,
             select: { status: true, aiScore: true },
           },
         },
       }),
-      this.prisma.customer.count({ where }),
-      this.prisma.customer.count({
+      matchedIds ? Promise.resolve(matchedIds.length) : db.customer.count({ where }),
+      db.customer.count({
         // "มีสัญญาผ่อน" = ยังไม่จบ (รวม ACTIVE + OVERDUE + DEFAULT) — พอร์ตสัญญาที่ business ใส่ใจ
         where: {
           deletedAt: null,
           contracts: { some: { status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] }, deletedAt: null } },
         },
       }),
-      this.prisma.customer.count({
+      db.customer.count({
         where: { deletedAt: null, contracts: { some: { status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null } } },
       }),
       (() => {
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        return this.prisma.customer.count({
+        return db.customer.count({
           where: { deletedAt: null, createdAt: { gte: startOfMonth } },
         });
       })(),
@@ -150,7 +180,7 @@ export class CustomerQueryService {
 
     // Phase 3 SP4 — strict mode resolved once per request; null piiService
     // (legacy spec injection) treats as non-strict.
-    const strict = this.piiService ? await this.piiService.isStrictMode() : false;
+    const strict = this.piiService ? await this.piiService.isStrictMode(db) : false;
 
     const enriched = data.map((c) => {
       const activeContracts = c.contracts.filter((ct) => ct.status === 'ACTIVE').length;
@@ -167,35 +197,18 @@ export class CustomerQueryService {
         activeContracts,
         overdueContracts,
         latestCreditStatus: latestCredit?.status || null,
-        latestCreditScore: latestCredit?.aiScore || null,
+        latestCreditScore: latestCredit?.aiScore ?? null,
       };
     });
 
-    // In-memory sort for creditScore
-    if (sortBy === 'creditScore') {
-      enriched.sort((a, b) => {
-        const scoreA = a.latestCreditScore || -1;
-        const scoreB = b.latestCreditScore || -1;
-        return order === 'asc' ? scoreA - scoreB : scoreB - scoreA;
-      });
+    if (selectedIds) {
+      const position = new Map(selectedIds.map((id, index) => [id, index]));
+      enriched.sort((a, b) => position.get(a.id)! - position.get(b.id)!);
     }
+    const pageTiers = tierById ?? await this.tierService.getCustomerTiers(enriched.map(customer => customer.id), db, asOf);
+    const withTier = enriched.map(customer => ({ ...customer, tier: pageTiers.get(customer.id)?.tier ?? 'NEW' }));
 
-    // Compute tier for each customer in parallel (bounded by page limit)
-    const withTier = await Promise.all(
-      enriched.map(async (c) => {
-        try {
-          const t = await this.tierService.getCustomerTier(c.id);
-          return { ...c, tier: t.tier };
-        } catch {
-          return { ...c, tier: 'NEW' as const };
-        }
-      }),
-    );
-
-    // Apply tier filter after compute (in-memory — valid for small shops)
-    const filtered = tier ? withTier.filter((c) => c.tier === tier) : withTier;
-
-    const totalCustomers = await this.prisma.customer.count({ where: { deletedAt: null } });
+    const totalCustomers = await db.customer.count({ where: { deletedAt: null } });
 
     const summary = {
       totalCustomers,
@@ -204,7 +217,14 @@ export class CustomerQueryService {
       newThisMonth,
     };
 
-    return { ...paginatedResponse(filtered, total, page, limit), summary };
+    return { ...paginatedResponse(withTier, total, page, limit), summary };
+  }
+
+  exportRows(...args: Parameters<CustomerQueryService['findAll']>) {
+    return readExportSnapshot(this.prisma, (tx, asOf) => {
+      args[1] = 1; args[2] = EXPORT_ROW_LIMIT + 1; args[11] = tx; args[12] = asOf;
+      return this.findAll(...args);
+    });
   }
 
   async findOne(id: string) {

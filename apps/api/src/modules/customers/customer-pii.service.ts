@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { encryptPII, decryptPII, isEncrypted } from '../../utils/crypto.util';
 import {
@@ -91,9 +92,9 @@ export class CustomerPiiService {
    * reads strict=true, peer pod still serves strict=false from its
    * 30s-old cache, callers see flapping 400s). Hit the DB every time.
    */
-  async isStrictMode(): Promise<boolean> {
+  async isStrictMode(db: Prisma.TransactionClient = this.prisma): Promise<boolean> {
     try {
-      const row = await this.prisma.systemConfig.findFirst({
+      const row = await db.systemConfig.findFirst({
         where: { key: CustomerPiiService.STRICT_MODE_CONFIG_KEY, deletedAt: null },
         select: { value: true },
       });
@@ -101,7 +102,9 @@ export class CustomerPiiService {
         const v = row.value.trim().toLowerCase();
         return v === 'true' || v === '1';
       }
-    } catch {
+    } catch (error) {
+      // Export snapshots must not escape their transaction or silently weaken strict mode.
+      if (db !== this.prisma) throw error;
       // Database unreachable (CLI bootstrap, ts-node first connect, etc.)
       // — fall back to env var rather than throwing. Strict-mode rejection
       // is enforced in user-facing paths only, so a fallback of `false`

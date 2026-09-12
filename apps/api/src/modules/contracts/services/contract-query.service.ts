@@ -1,7 +1,10 @@
+import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
+import { bangkokDateRange } from '../../../utils/date.util';
+import { contractSignatureRequirements } from '../../../utils/validation.util';
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { hasCrossBranchAccess } from '../../auth/branch-access.util';
+import { getBranchScope, hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { TestModeService } from '../../test-mode/test-mode.service';
 import { visibleContractCredit } from '../../credit-check/services/room-credit-access';
@@ -56,17 +59,25 @@ export class ContractQueryService {
     salespersonId?: string;
     startDate?: string;
     endDate?: string;
-  }) {
+  }, user?: BranchAccessUser, db: Prisma.TransactionClient = this.prisma, maxLimit = 200) {
     const where: Record<string, unknown> = { deletedAt: null };
     if (filters.status) where.status = filters.status;
     if (filters.workflowStatus) where.workflowStatus = filters.workflowStatus;
     if (filters.branchId) where.branchId = filters.branchId;
+    if (user) {
+      const scope = getBranchScope(user);
+      if (!scope.all) {
+        if (!scope.branchId) where.id = { in: [] };
+        else {
+          if (filters.branchId && filters.branchId !== scope.branchId) throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงสาขานี้');
+          where.branchId = scope.branchId;
+        }
+      }
+    }
     if (filters.customerId) where.customerId = filters.customerId;
     if (filters.salespersonId) where.salespersonId = filters.salespersonId;
-    if (filters.startDate || filters.endDate) {
-      where.createdAt = {};
-      if (filters.startDate) (where.createdAt as Record<string, Date>).gte = new Date(filters.startDate);
-      if (filters.endDate) (where.createdAt as Record<string, Date>).lte = new Date(new Date(filters.endDate).getTime() + 86400000 - 1);
+    if (filters.startDate !== undefined || filters.endDate !== undefined) {
+      where.createdAt = bangkokDateRange(filters.startDate, filters.endDate);
     }
     if (filters.search) {
       where.OR = [
@@ -76,39 +87,44 @@ export class ContractQueryService {
     }
 
     const page = filters.page || 1;
-    const limit = Math.min(filters.limit || 50, 100);
+    const limit = Math.min(filters.limit || 50, maxLimit);
+
+    if (limit > 200) assertExportRowCount(await db.contract.count({ where }));
 
     const [data, total, totalActive, totalOverdue, portfolioValue] = await Promise.all([
-      this.prisma.contract.findMany({
+      db.contract.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * limit,
         take: limit,
         include: {
-          customer: { select: { id: true, name: true, phone: true } },
+          customer: { select: { id: true, name: true, phone: true, birthDate: true } },
           product: { select: { id: true, name: true, brand: true, model: true, category: true } },
           branch: { select: { id: true, name: true } },
           salesperson: { select: { id: true, name: true } },
           reviewedBy: { select: { id: true, name: true } },
-          signatures: { select: { signerType: true } },
+          signatures: { where: { deletedAt: null }, select: { signerType: true } },
           _count: { select: { payments: true, contractDocuments: true } },
         },
       }),
-      this.prisma.contract.count({ where }),
-      this.prisma.contract.count({
-        where: { ...where, status: 'ACTIVE', deletedAt: null },
+      db.contract.count({ where }),
+      db.contract.count({
+        where: { AND: [where, { status: 'ACTIVE' }] },
       }),
-      this.prisma.contract.count({
-        where: { ...where, status: { in: ['OVERDUE', 'DEFAULT'] }, deletedAt: null },
+      db.contract.count({
+        where: { AND: [where, { status: { in: ['OVERDUE', 'DEFAULT'] } }] },
       }),
-      this.prisma.contract.aggregate({
+      db.contract.aggregate({
         where: { ...where, deletedAt: null },
         _sum: { sellingPrice: true },
       }),
     ]);
 
     return {
-      ...paginatedResponse(data, total, page, limit),
+      ...paginatedResponse(data.map(contract => {
+        const { birthDate: _birthDate, ...customer } = contract.customer;
+        return { ...contract, customer, signatureRequirements: contractSignatureRequirements(contract) };
+      }), total, page, limit),
       summary: {
         totalContracts: total,
         activeContracts: totalActive,
@@ -116,6 +132,17 @@ export class ContractQueryService {
         portfolioValue: new Prisma.Decimal(portfolioValue._sum.sellingPrice ?? 0).toNumber(),
       },
     };
+  }
+
+  exportRows(filters: Parameters<ContractQueryService['findAll']>[0], user: BranchAccessUser) {
+    return readExportSnapshot(this.prisma, async (tx) => {
+      const result = await this.findAll({ ...filters, page: 1, limit: EXPORT_ROW_LIMIT + 1 }, user, tx, EXPORT_ROW_LIMIT + 1);
+      return { total: result.total, data: result.data.map(c => ({
+        id: c.id, contractNumber: c.contractNumber, customer: c.customer, product: c.product,
+        sellingPrice: c.sellingPrice, monthlyPayment: c.monthlyPayment, status: c.status,
+        branch: c.branch, salesperson: c.salesperson, createdAt: c.createdAt,
+      })) };
+    });
   }
 
   /**
@@ -134,10 +161,11 @@ export class ContractQueryService {
         reviewedBy: { select: { id: true, name: true } },
         interestConfig: true,
         payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
-        signatures: true,
-        eDocuments: true,
+        signatures: { where: { deletedAt: null } },
+        eDocuments: { where: { deletedAt: null } },
         contractDocuments: {
-          orderBy: { createdAt: 'desc' },
+          where: { deletedAt: null },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           include: { uploadedBy: { select: { id: true, name: true } } },
         },
         creditCheck: {
@@ -151,12 +179,12 @@ export class ContractQueryService {
 
     // Enforce branch-level access when user context is provided
     if (user && !hasCrossBranchAccess(user)) {
-      if (user.branchId && contract.branchId !== user.branchId) {
+      if (!user.branchId || contract.branchId !== user.branchId) {
         throw new ForbiddenException('ไม่สามารถเข้าถึงสัญญาข้ามสาขาได้');
       }
     }
 
-    return visibleContractCredit(this.prisma, contract, user);
+    return visibleContractCredit(this.prisma, { ...contract, signatureRequirements: contractSignatureRequirements(contract) }, user);
   }
 
   /**
@@ -285,7 +313,7 @@ export class ContractQueryService {
         createdAt: true,
         customer: { select: { id: true, name: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     });
 
     const newThisMonthCount = newContracts.length;

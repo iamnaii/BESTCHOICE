@@ -1,3 +1,4 @@
+import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 /**
  * ETaxPage — e-Tax Invoice document center (SP2 frontend)
  *
@@ -6,7 +7,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -28,6 +29,7 @@ import {
 } from '@/components/ui/table';
 import CompanyFilter from '@/components/CompanyFilter';
 import { formatNumberDecimal, formatDateMedium } from '@/utils/formatters';
+import { fetchAllETaxSubmissions, type ETaxSubmissionsPage } from './etax-submissions';
 import { FileText, Download, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -103,8 +105,11 @@ export default function ETaxPage() {
   const submissionsQuery = useQuery<{ data: ETaxSubmission[] }>({
     queryKey: ['e-tax-finance', 'submissions'],
     enabled,
+    // The list endpoint caps limit at 200 — walk the pages so every row keeps its status.
     queryFn: () =>
-      api.get<{ data: ETaxSubmission[] }>('/e-tax-xml?limit=500').then((r) => r.data),
+      fetchAllETaxSubmissions<ETaxSubmission>((url) =>
+        api.get<ETaxSubmissionsPage<ETaxSubmission>>(url).then((r) => r.data),
+      ),
   });
 
   const submissionsByPayment = new Map<string, ETaxSubmission>();
@@ -119,7 +124,7 @@ export default function ETaxPage() {
       toast.success('สร้าง XML สำเร็จ');
       qc.invalidateQueries({ queryKey: ['e-tax-finance', 'submissions'] });
     },
-    onError: (e: Error) => toast.error(e.message ?? 'สร้าง XML ล้มเหลว'),
+    onError: (e: unknown) => toast.error(getErrorMessage(e)),
   });
 
   return (
@@ -224,16 +229,14 @@ export default function ETaxPage() {
                             <TableCell className="text-center">
                               <div className="flex items-center justify-center gap-1">
                                 {sub?.status === 'ACCEPTED' && (
-                                  <Button variant="outline" size="sm" asChild>
-                                    <a
-                                      href={`/api/e-tax/invoices/${inv.paymentId}/pdf`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      aria-label="ดาวน์โหลด PDF"
-                                    >
-                                      <Download className="size-4" />
-                                    </a>
-                                  </Button>
+                                  <DocumentDownloadButton
+                                    path={`/e-tax/invoices/${inv.paymentId}/pdf`}
+                                    filename={`tax-invoice-${inv.contractNumber}-${inv.installmentNo}.pdf`}
+                                    aria-label={`ดาวน์โหลด PDF ${inv.contractNumber} งวด ${inv.installmentNo}`}
+                                    className="border border-border px-3 text-xs hover:bg-accent"
+                                  >
+                                    <Download className="size-4" aria-hidden /> PDF
+                                  </DocumentDownloadButton>
                                 )}
                                 {(isFailed || !sub) && (
                                   <Button

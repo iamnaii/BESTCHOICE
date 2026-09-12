@@ -1,3 +1,4 @@
+import { printDocument } from '@/lib/print-document';
 // Purchasing v2 B1 — Printable ใบรับของ (Goods Receipt) per GoodsReceiving record.
 //
 // Route: /purchase-orders/:id/goods-receivings/:receivingId/print
@@ -90,7 +91,7 @@ export default function GoodsReceiptPrintPage() {
   }, [grQuery.data]);
 
   return (
-    <div className="bg-muted/30 min-h-screen">
+    <div className="bg-muted/30 min-h-screen print:bg-white print:min-h-0">
       <div className="no-print bg-card border-b border-border sticky top-0 z-10">
         <div className="max-w-[210mm] mx-auto px-6 py-3 flex items-center justify-between">
           <button
@@ -103,8 +104,9 @@ export default function GoodsReceiptPrintPage() {
           </button>
           <button
             type="button"
-            onClick={() => window.print()}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={printDocument}
+            disabled={!grQuery.data || grQuery.isFetching || grQuery.isError}
+            className="inline-flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             <Printer size={14} />
             พิมพ์ / Save PDF
@@ -122,7 +124,7 @@ export default function GoodsReceiptPrintPage() {
       </QueryBoundary>
 
       <style>{`
-        @page { size: A4; margin: 14mm 12mm; }
+        @page { size: A4; margin: 20mm 19mm; }
         @media print {
           .no-print { display: none !important; }
           .voucher-sheet { box-shadow: none !important; }
@@ -144,31 +146,40 @@ function GoodsReceiptSheet({ doc }: { doc: GRDoc }) {
   return (
     <div className="max-w-[210mm] mx-auto py-6 px-6 print:px-0 print:py-0">
       <article
-        className="voucher-sheet bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
-        style={{ minHeight: '270mm' }}
+        className="voucher-sheet bc-document bg-white border border-border rounded-md p-8 shadow-sm print:border-0 print:p-0 print:shadow-none"
       >
-        <header className="text-center border-b-2 border-foreground pb-3">
-          {companyLogoUrl && (
-            <img src={companyLogoUrl} alt={companyName} className="mx-auto mb-2 h-12 w-auto object-contain" />
-          )}
-          <h1 className="text-xl font-bold leading-snug">{companyName}</h1>
-          <p className="text-sm text-muted-foreground mt-1 leading-snug">
-            {companyAddress}{companyTaxId && ` · เลขผู้เสียภาษี ${companyTaxId}`}
-          </p>
-          <h2 className="text-2xl font-bold tracking-wider mt-4 leading-snug">ใบรับของ</h2>
-          <p className="text-xs text-muted-foreground">Goods Receipt</p>
+        <header className="bc-doc-header">
+          <div className="bc-doc-brand">
+            {companyLogoUrl && (
+              <img src={companyLogoUrl} alt={companyName} className="mb-2 h-12 w-auto object-contain" />
+            )}
+            <p className="bc-doc-company">{companyName}</p>
+            <p className="text-sm text-muted-foreground mt-1 leading-snug">
+              {companyAddress}
+            </p>
+            {companyTaxId && <p>เลขผู้เสียภาษี {companyTaxId}</p>}
+          </div>
+          <div className="bc-doc-identity">
+            <h1>ใบรับของ</h1>
+            <p className="bc-doc-kicker">GOODS RECEIPT</p>
+            <div className="bc-doc-meta">
+              <span>เลขที่เอกสาร</span><span>{doc.grNumber}</span>
+              <span>วันที่รับ</span><span>{formatDateTime(doc.createdAt)}</span>
+            </div>
+          </div>
         </header>
 
         <section className="grid grid-cols-2 gap-x-8 gap-y-2 mt-5 text-sm">
-          <Meta label="เลขที่ใบรับของ" value={doc.grNumber} mono />
-          <Meta label="วันที่รับ" value={formatDateTime(doc.createdAt)} />
           <Meta label="อ้างอิงใบสั่งซื้อ" value={doc.po.poNumber} mono />
           <Meta label="ผู้จัดจำหน่าย" value={doc.po.supplier.name} />
           <Meta label="ผู้รับของ" value={doc.receivedBy.name} />
-          <Meta label="สรุป" value={`รับเข้า ${doc.items.length} · ผ่าน ${passCount} · ไม่ผ่าน ${rejectCount}`} />
         </section>
 
-        <table className="w-full mt-6 text-xs border border-border">
+        <table className="w-full table-fixed mt-6 text-xs border border-border">
+          <colgroup>
+            <col style={{ width: '6%' }} /><col style={{ width: '25%' }} />
+            <col style={{ width: '25%' }} /><col style={{ width: '12%' }} /><col style={{ width: '32%' }} />
+          </colgroup>
           <thead className="bg-muted/40">
             <tr>
               <th className="border border-border p-2 text-left w-10">#</th>
@@ -216,15 +227,21 @@ function GoodsReceiptSheet({ doc }: { doc: GRDoc }) {
           </section>
         )}
 
-        <section className="grid grid-cols-2 gap-6 mt-12">
-          <Sig label="ผู้รับของ" />
-          <Sig label="ผู้ตรวจสอบ" />
-        </section>
+        <div className="bc-doc-closing">
+          <div className="bc-doc-grand">
+            <span>ตรวจรับทั้งหมด {doc.items.length} รายการ</span>
+            <span>ผ่าน {passCount} · ไม่ผ่าน {rejectCount}</span>
+          </div>
+          <section className="bc-doc-approval">
+            <Sig label="ผู้รับของ" />
+            <Sig label="ผู้ตรวจสอบ" />
+          </section>
 
-        <footer className="mt-8 pt-3 border-t border-border text-[10px] text-muted-foreground flex justify-between">
-          <span>ออกเอกสารจากระบบ BESTCHOICE — เอกสารรับของภายใน ไม่ใช่ใบกำกับภาษี</span>
-          <span>ใบรับของ v1.0</span>
-        </footer>
+          <footer className="bc-doc-footer">
+            <span>ออกเอกสารจากระบบ BESTCHOICE — เอกสารรับของภายใน ไม่ใช่ใบกำกับภาษี</span>
+            <span>ใบรับของ v1.0</span>
+          </footer>
+        </div>
       </article>
     </div>
   );
@@ -241,8 +258,8 @@ function Meta({ label, value, mono = false }: { label: string; value: string; mo
 
 function Sig({ label }: { label: string }) {
   return (
-    <div className="text-center">
-      <div className="h-16 mb-2 border-b border-foreground" />
+    <div className="bc-doc-signature">
+      <div className="sign-space" />
       <p className="text-xs text-muted-foreground leading-snug">({label})</p>
       <p className="text-[10px] text-muted-foreground mt-1">วันที่ ___ / ___ / ______</p>
     </div>

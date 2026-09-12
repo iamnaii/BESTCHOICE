@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import PdfPreview from '@/components/PdfPreview';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { canApproveAccountingDoc } from '@installment/shared';
 import { useNavigate, useParams } from 'react-router';
@@ -123,25 +125,10 @@ function StatusBadge({ status }: { status: ExpenseStatus }) {
   );
 }
 
-/** Fetch the server-rendered voucher PDF (JWT in-memory → axios) and open it. */
-async function openVoucherPdf(docId: string, docNumber: string): Promise<void> {
-  const res = await api.get(`/expense-documents/${docId}/voucher.pdf`, { responseType: 'blob' });
-  const blob = new Blob([res.data], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  if (!win) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${docNumber}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
 
 export default function ExpenseDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -214,11 +201,7 @@ export default function ExpenseDetailPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'กลับรายการไม่สำเร็จ'),
   });
 
-  const printMutation = useMutation({
-    mutationFn: ({ docId, docNumber }: { docId: string; docNumber: string }) =>
-      openVoucherPdf(docId, docNumber),
-    onError: () => toast.error('ไม่สามารถสร้างใบสำคัญจ่าย PDF ได้'),
-  });
+
 
   const doc = docQuery.data;
   const makerCheckerEnabled = flags.approvalEnabled && doc?.status !== 'APPROVED';
@@ -425,8 +408,12 @@ export default function ExpenseDetailPage() {
           onSubmitForApproval={() => submitMutation.mutate()}
           onApprove={() => approveMutation.mutate()}
           onReverse={(payload) => voidMutation.mutate(payload)}
-          onPrint={() => printMutation.mutate({ docId: doc.id, docNumber: doc.number })}
+          onPrint={() => setPreviewId(doc.id)}
         />
+      )}
+      {doc && previewId === doc.id && (
+        <PdfPreview key={doc.id} path={`/expense-documents/${doc.id}/voucher.pdf`} filename={`${doc.number}.pdf`}
+          title="ตัวอย่างใบสำคัญจ่าย" onClose={() => setPreviewId(null)} />
       )}
     </div>
   );

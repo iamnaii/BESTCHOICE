@@ -159,13 +159,13 @@ function MainContent() {
       : SIDEBAR_EXPANDED_W;
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="app-shell flex min-h-screen flex-col bg-background">
       <SkipLink />
 
       {/* App-wide test-mode banner — shows on every page when test-mode is ON */}
       <TestModeBanner />
 
-      <div className="flex flex-1 min-h-0">
+      <div className="app-workspace flex flex-1 min-h-0">
 
       {/* Desktop Sidebar */}
       {!isMobile && <Sidebar />}

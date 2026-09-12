@@ -94,7 +94,7 @@ describe('<QueryBoundary />', () => {
       </QueryBoundary>,
     );
     expect(
-      screen.getByText('เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์'),
+      screen.getByText(/เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์/),
     ).toBeInTheDocument();
   });
 });

@@ -1,7 +1,11 @@
-import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString, IsUUID } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString, IsUUID, MaxLength } from 'class-validator';
 import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
+  @IsOptional() @IsString() @Matches(/^[a-f0-9]{64}$/) quoteFingerprint?: string;
+  @IsOptional() @IsIn(['CASH', 'BANK_TRANSFER', 'QR_EWALLET']) downPaymentMethod?: 'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET';
+  @IsOptional() @IsString() @MaxLength(128) downPaymentReference?: string;
+  @IsOptional() @IsBoolean() previouslyDamagedAcknowledged?: boolean;
   @IsUUID() @IsOptional() tradeInCreditId?: string;
   @IsUUID()
   @IsOptional()

@@ -10,7 +10,7 @@ layer(base);
 
 @theme {
   --font-sans: 'Inter', 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
-  --font-sarabun: 'IBM Plex Sans Thai', sans-serif;
+  --font-sarabun: 'TH Sarabun PSK', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --text-2xs: 0.6875rem;
@@ -241,8 +241,8 @@ layer(base);
 }
 
 @utility font-sarabun {
-  /* Font shortcut for document/receipt/contract areas */
-  font-family: 'IBM Plex Sans Thai', sans-serif;
+  /* Contract and document typography */
+  font-family: 'TH Sarabun PSK', sans-serif;
 }
 
 @utility safe-area-bottom {
@@ -374,7 +374,7 @@ layer(base);
 }
 
 @layer utilities {
-  /* ── TH Sarabun PSK (legacy fallback — kept for old templates) ──── */
+  /* ── TH Sarabun PSK — system document font ──── */
   /* Primary Thai font is now IBM Plex Sans Thai (loaded via Google Fonts above) */
   @font-face {
     font-family: 'TH Sarabun PSK';
@@ -544,7 +544,7 @@ layer(base);
 @media print {
   @page {
     size: A4;
-    margin: 1cm;
+    margin: 20mm 19mm;
   }
 
   body {

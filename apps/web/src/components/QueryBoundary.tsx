@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { queryErrorMessage } from '@/lib/query-error-message';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
 interface QueryBoundaryProps {
@@ -58,7 +59,7 @@ export default function QueryBoundary({
   if (isError) {
     const detail =
       errorMessage ??
-      (error instanceof Error ? error.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์');
+      queryErrorMessage(error);
     return (
       <div
         className="flex flex-col items-center justify-center py-16 px-6 text-center"
@@ -71,7 +72,7 @@ export default function QueryBoundary({
           <button
             type="button"
             onClick={() => onRetry()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
+            className="inline-flex min-h-11 items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             ลองใหม่

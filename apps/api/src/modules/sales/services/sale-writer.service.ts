@@ -1,20 +1,19 @@
+import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
+import { ContractQuoteService, contractQuotePayments } from '../../contracts/services/contract-quote.service';
+import { assertCustomerContractPolicy, customerContractSnapshot, contractDownTender } from '../../contracts/services/contract-create-policy';
+import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
+import { assertSameTestSide } from '../../../utils/test-data-markers';
+import { assertSaleProductEligible, type SaleProductActor } from './sale-product-policy';
 import { claimCreditApproval } from '../../credit-check/services/credit-approval';
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { lockCreditCustomer } from '../../credit-check/services/room-credit-history';
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { closeRepossessionOnSale } from '../../repossessions/repossession-resale.util';
 import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateSaleDto } from '../dto/sale.dto';
-import {
-  calculateInstallmentWithInterest,
-  generatePaymentSchedule,
-  roundBaht,
-} from '../../../utils/installment.util';
 import { computeCommissionAmount } from '../../../utils/commission.util';
-import { getRateForMonths } from '../../../utils/get-rate-for-months.util';
-import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch } from '../../../utils/config.util';
 import { generateContractNumber, generateSaleNumber } from '../../../utils/sequence.util';
 import { InterCompanyService } from '../../inter-company/inter-company.service';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
@@ -31,14 +30,8 @@ import {
 /**
  * Per-sale-type transactional writers extracted from SalesService.
  *
- * Each `create*Sale` runs its own `$transaction` with EXACTLY the original
- * isolation level (cash/external = Serializable, installment = default).
- * The tx-scoped helpers (`verifyProductInStock`, `markBundleProductsSold`,
- * `resolveExternalFinanceCompanyId`) are co-located because they take the tx
- * client and must run inside the owning transaction for race-safety.
- *
- * Bodies are verbatim from the original SalesService — only `this.<dep>`
- * resolution and import paths changed.
+ * Each writer uses Serializable isolation and retries a complete transaction on
+ * conflicts. Product eligibility and stock transitions stay in that transaction.
  */
 @Injectable()
 export class SaleWriterService {
@@ -48,6 +41,7 @@ export class SaleWriterService {
     private shopCashSaleTemplate: ShopCashSaleTemplate,
     private shopAccountResolver: ShopAccountResolver,
     private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
+    private shopDownPaymentTemplate: ShopDownPaymentTemplate,
   ) {}
 
   /**
@@ -57,24 +51,10 @@ export class SaleWriterService {
    * Prisma unique-constraint violation (P2002) OR serialization failure
    * (P2034).
    *
-   * B5 (fix round 1 — widened from P2034-only): `preemptReservationsInTx`
-   * adds a `productReservation.updateMany` write-write surface inside these
-   * `$transaction` calls, raising P2034 odds under Serializable isolation
-   * (cash/external) — see `reservation-preempt.util.ts`'s doc-comment.
-   * Separately, and unrelated to preempt: `generateSaleNumber`/
-   * `generateContractNumber` (`sequence.util.ts`) have NO advisory lock —
-   * plain unlocked `findFirst(desc)` + `parseInt+1`. `createInstallmentSale`
-   * runs at default isolation (no `isolationLevel: 'Serializable'`), so two
-   * concurrent installment sales can race past that unlocked read and both
-   * try to `INSERT` the same `Contract.contractNumber`/`Sale.saleNumber`,
-   * producing a genuine P2002 — not a P2034. This is exactly the race
-   * `contract-lifecycle.service.ts`'s own P2002 branch exists for (same
-   * `contractNumber` field), and retrying is safe here for the same reason:
-   * `Sale` has no unique `idempotencyKey`, `productReservation` writes are
-   * `updateMany`-only, and the whole callback reruns on retry so a fresh
-   * number is generated each attempt — no duplicate-effect risk. Any other
-   * error (e.g. P2003, P2025, or a non-Prisma error) is NOT retried — it
-   * propagates immediately, unchanged.
+   * Stock/reservation conflicts may raise P2034. Unique document-number conflicts
+   * may raise P2002. Retrying the entire transaction revalidates stock and rolls
+   * back its money, document and reservation changes together. Other errors pass
+   * through immediately.
    */
   private async runSaleTransaction<T>(
     fn: (tx: Prisma.TransactionClient) => Promise<T>,
@@ -88,9 +68,12 @@ export class SaleWriterService {
         // Retry on unique constraint (P2002) or serialization failure (P2034)
         // — same predicate as ContractLifecycleService.create.
         const prismaErr = err instanceof Prisma.PrismaClientKnownRequestError ? err : null;
-        const isRetryable = prismaErr?.code === 'P2002' || prismaErr?.code === 'P2034';
+        const isRetryable = isRetryablePrismaWriteError(err);
         if (isRetryable && attempt < MAX_RETRIES - 1) {
           continue;
+        }
+        if (isRetryable && prismaErr?.code !== 'P2002') {
+          throw new ConflictException('มีรายการอื่นเปลี่ยนข้อมูลพร้อมกัน กรุณาโหลดข้อมูลใหม่แล้วลองอีกครั้ง');
         }
         throw err;
       }
@@ -127,29 +110,13 @@ export class SaleWriterService {
   private async verifyProductInStock(
     tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
     productId: string,
-    opts?: {
-      userRole?: string;
-      acknowledged?: boolean;
-    },
+    branchId: string,
+    actor: SaleProductActor,
+    acknowledged = false,
   ) {
-    const product = await tx.product.findUnique({ where: { id: productId } });
-    if (!product || product.deletedAt || product.status !== 'IN_STOCK') {
-      throw new BadRequestException('สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว');
-    }
-    if (product.wasPreviouslyDamaged) {
-      const allowedRoles = ['OWNER', 'FINANCE_MANAGER'];
-      if (!opts?.acknowledged) {
-        throw new BadRequestException(
-          'สินค้านี้เคยมีสถานะ DAMAGED/LOST/WRITTEN_OFF — ต้องยืนยันว่าได้แจ้งลูกค้าแล้ว ' +
-            '(previouslyDamagedAcknowledged=true) และได้รับอนุมัติจาก OWNER/FINANCE_MANAGER',
-        );
-      }
-      if (opts.userRole && !allowedRoles.includes(opts.userRole)) {
-        throw new ForbiddenException(
-          `ขายสินค้าที่เคย DAMAGED ต้องทำโดย ${allowedRoles.join(' / ')} เท่านั้น`,
-        );
-      }
-    }
+    const product = await tx.product.findUnique({ where: { id: productId }, include: { po: { select: { poNumber: true } } } });
+    if (!product) throw new BadRequestException('สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว');
+    assertSaleProductEligible(product, branchId, actor, acknowledged);
     return product;
   }
 
@@ -181,17 +148,18 @@ export class SaleWriterService {
   private async markBundleProductsSold(
     tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
     bundleProductIds: string[],
+    branchId: string,
+    actor: SaleProductActor,
+    acknowledged = false,
   ) {
     if (!bundleProductIds.length) return;
     // Verify all bundle products are IN_STOCK
     const products = await tx.product.findMany({
       where: { id: { in: bundleProductIds }, deletedAt: null },
-      select: { id: true, status: true, name: true },
+      select: { id: true, status: true, name: true, branchId: true, deletedAt: true, wasPreviouslyDamaged: true },
     });
     for (const p of products) {
-      if (p.status !== 'IN_STOCK') {
-        throw new BadRequestException(`ของแถม "${p.name}" ไม่พร้อมขาย`);
-      }
+      assertSaleProductEligible(p, branchId, actor, acknowledged);
     }
     if (products.length !== bundleProductIds.length) {
       throw new BadRequestException('ไม่พบสินค้าของแถมบางรายการ');
@@ -212,7 +180,7 @@ export class SaleWriterService {
    * เป็น READY_FOR_SALE (SaleVoidService).
    */
 
-  async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
+  async createCashSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, actor: SaleProductActor = { role: 'SALES' }) {
     if (!dto.paymentMethod) throw new BadRequestException('กรุณาเลือกวิธีชำระเงิน');
 
     return this.runSaleTransaction(async (tx) => {
@@ -222,8 +190,8 @@ export class SaleWriterService {
       if (credit && !credit.net.eq(netAmount)) throw new BadRequestException('ราคาหลังโบนัสเทิร์นเปลี่ยนแล้ว กรุณาตรวจยอดอีกครั้ง');
       const cashDue = new Decimal(netAmount).minus(credit?.base ?? 0);
       if (credit && new Decimal(dto.amountReceived ?? cashDue).lt(cashDue)) throw new BadRequestException('ยอดเงินที่รับยังไม่ครบ');
-      const mainProduct = await this.verifyProductInStock(tx, dto.productId);
-      await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
+      const mainProduct = await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], dto.branchId, actor, dto.previouslyDamagedAcknowledged);
       const saleNumber = await generateSaleNumber(tx);
       const warranty = await this.resolveSaleShopWarranty(tx, mainProduct, new Date());
 
@@ -231,6 +199,7 @@ export class SaleWriterService {
       const sale = await tx.sale.create({
         data: {
           ...warranty,
+          costSnapshot: { create: { mainProductCost: mainProduct.costPrice } },
           saleNumber,
           saleType: 'CASH',
           customerId: dto.customerId,
@@ -328,62 +297,32 @@ export class SaleWriterService {
     }, { isolationLevel: 'Serializable' });
   }
 
-  async createInstallmentSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, userRole = 'SALES') {
-    // Default planType to STORE_DIRECT (single plan type)
-    if (!dto.planType) dto.planType = 'STORE_DIRECT';
-    if (!dto.downPayment && dto.downPayment !== 0) throw new BadRequestException('กรุณาใส่เงินดาวน์');
+  async createInstallmentSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, userRole = 'SALES', userBranchId?: string | null) {
+    const actor = { id: salespersonId, role: userRole, branchId: userBranchId };
+    if (dto.downPayment == null) throw new BadRequestException('กรุณาใส่เงินดาวน์');
     if (!dto.totalMonths) throw new BadRequestException('กรุณาเลือกจำนวนงวด');
-    const cashDown = dto.downPayment!;
+    const cashDown = new Decimal(dto.downPayment).toDecimalPlaces(2).toNumber();
     const credits = new TradeInCreditService(this.prisma);
-    const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount: new Decimal(dto.sellingPrice).minus(dto.discount ?? 0).minus(dto.loyaltyPointsRedeemed ?? 0).toNumber() };
-    const credit = dto.tradeInCreditId ? await credits.quote(this.prisma, creditInput) : null;
-    if (credit) {
-      if (!credit.net.eq(netAmount)) throw new BadRequestException('ยอดหลังโบนัสเทิร์นไม่ตรงกัน');
-      dto = { ...dto, downPayment: new Decimal(cashDown).plus(credit.base).toNumber() };
-    }
-    if (dto.downPayment! >= netAmount || dto.downPayment! < 0) throw new BadRequestException('ยอดดาวน์รวมต้องน้อยกว่าราคาขาย');
-
-    // Look up product to find matching InterestConfig
-    const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-    const interestConfig = (product && !product.deletedAt)
-      ? await this.prisma.interestConfig.findFirst({
-          where: { isActive: true, deletedAt: null, productCategories: { has: product.category } },
-        })
-      : null;
-
-    const systemConfig = await loadInstallmentConfig(this.prisma);
-    const baseParams = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate);
-    // Override vatPct based on the selling branch's VAT registration status
-    // BESTCHOICE SHOP (vatRegistered=false) → 0%, BESTCHOICE FINANCE → 7%
-    const effectiveVatPct = await resolveVatPctForBranch(this.prisma, dto.branchId, baseParams.vatPct);
-    const params = { ...baseParams, vatPct: effectiveVatPct };
-
-    if (dto.downPayment! < netAmount * params.minDownPaymentPct) {
-      throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(params.minDownPaymentPct * 100).toFixed(0)}%`);
-    }
-    if (dto.totalMonths! < params.minInstallmentMonths || dto.totalMonths! > params.maxInstallmentMonths) {
-      throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${params.minInstallmentMonths}-${params.maxInstallmentMonths} เดือน`);
-    }
-
-    // Resolve total-contract rate via new lookup (feature-flagged; fallback = legacy rate × months)
-    const ratePct = interestConfig
-      ? Number(await getRateForMonths(this.prisma, interestConfig.id, dto.totalMonths!))
-      : params.interestRate * dto.totalMonths!;
-    const principalForInterest = roundBaht(netAmount - dto.downPayment!);
-    const interestTotal = roundBaht(principalForInterest * ratePct);
-    const calc = calculateInstallmentWithInterest(
-      netAmount,
-      dto.downPayment!,
-      interestTotal,
-      dto.totalMonths!,
-      params.storeCommissionPct,
-      params.vatPct,
-    );
-
+    const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount:
+      new Decimal(dto.sellingPrice).minus(dto.discount ?? 0).minus(dto.loyaltyPointsRedeemed ?? 0).toDecimalPlaces(2).toNumber() };
     return this.runSaleTransaction(async (tx) => {
       await lockCreditCustomer(tx, dto.customerId);
-      await this.verifyProductInStock(tx, dto.productId);
-      await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
+      await assertCustomerContractPolicy(tx, dto.customerId, userRole, dto.overrideActiveContractCheck);
+      const product = await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
+      if (!product.imeiSerial) throw new BadRequestException('สินค้าต้องมี IMEI/Serial Number');
+      const customer = await tx.customer.findUnique({ where: { id: dto.customerId, deletedAt: null } });
+      if (!customer) throw new BadRequestException('ไม่พบลูกค้า');
+      assertSameTestSide(customer, product);
+      const quote = await new ContractQuoteService(this.prisma).resolve({ ...dto, sellingPrice: creditInput.priceAfterDiscount,
+        downPayment: cashDown, totalMonths: dto.totalMonths! }, actor, tx);
+      if (!new Decimal(quote.sellingPrice).eq(new Decimal(netAmount).toDecimalPlaces(2))) {
+        throw new BadRequestException('ยอดหลังส่วนลดและโบนัสเทิร์นเปลี่ยนแล้ว กรุณาทบทวนยอดใหม่');
+      }
+      const tender = contractDownTender(cashDown, dto.paymentMethod, dto.downPaymentReference);
+      const calc = { principal: Number(quote.principal), interestTotal: Number(quote.interestTotal),
+        storeCommission: Number(quote.storeCommission), vatAmount: Number(quote.vatAmount), monthlyPayment: Number(quote.monthlyPayment) };
+      const params = { interestRate: Number(quote.interestRate), storeCommissionPct: Number(quote.storeCommissionPct), vatPct: Number(quote.effectiveVatPct) };
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], dto.branchId, actor, dto.previouslyDamagedAcknowledged);
       const saleNumber = await generateSaleNumber(tx);
 
       // Use provided contract number or auto-generate
@@ -400,9 +339,11 @@ export class SaleWriterService {
           productId: dto.productId,
           branchId: dto.branchId,
           salespersonId,
-          planType: dto.planType as PlanType,
+          planType: (dto.planType ?? 'STORE_DIRECT') as PlanType,
           sellingPrice: netAmount,
-          downPayment: dto.downPayment!,
+          downPayment: quote.downPayment,
+          ...tender,
+          customerSnapshot: customerContractSnapshot(customer),
           interestRate: params.interestRate,
           totalMonths: dto.totalMonths!,
           interestTotal: calc.interestTotal,
@@ -414,16 +355,12 @@ export class SaleWriterService {
           status: 'DRAFT',
           workflowStatus: 'CREATING',
           paymentDueDay: dto.paymentDueDay,
-          interestConfigId: interestConfig?.id,
+          interestConfigId: quote.configId,
           notes: dto.notes,
         },
       });
 
-      // Create payment schedule
-      const payments = generatePaymentSchedule(
-        contract.id, dto.totalMonths!, calc.financedAmount, calc.monthlyPayment, dto.paymentDueDay,
-        { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount },
-      );
+      const payments = contractQuotePayments(quote, contract.id);
       await claimCreditApproval(tx, { customerId: dto.customerId, contractId: contract.id,
         creditApprovalId: dto.creditApprovalId, paymentDueDay: dto.paymentDueDay,
         monthlyAmounts: payments.map(payment => Number(payment.amountDue)), firstPaymentDue: payments[0]?.dueDate,
@@ -432,7 +369,7 @@ export class SaleWriterService {
 
       // Tax point (จุดความรับผิดทางภาษี): วันส่งมอบสินค้า = วันที่สร้างรายการขาย
       // Create sale record linked to contract
-      if (credit) {
+      if (dto.tradeInCreditId) {
         const snapshot = await credits.claim(tx, { ...creditInput, target: { contractId: contract.id }, cashAmount: cashDown, actorId: salespersonId });
         await tx.contract.update({ where: { id: contract.id }, data: { tradeInCreditSnapshot: snapshot } });
         contract.tradeInCreditSnapshot = snapshot;
@@ -449,14 +386,25 @@ export class SaleWriterService {
           sellingPrice: dto.sellingPrice,
           discount,
           netAmount,
-          paymentMethod: dto.paymentMethod as PaymentMethod,
+          paymentMethod: tender.downPaymentMethod,
           amountReceived: cashDown,
-          downPaymentAmount: dto.downPayment,
+          downPaymentAmount: quote.downPayment,
           contractId: contract.id,
           bundleProductIds: dto.bundleProductIds || [],
           notes: dto.notes,
         },
       });
+
+      if (cashDown > 0) {
+        const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(dto.branchId, tender.downPaymentMethod, tx);
+        await this.shopDownPaymentTemplate.execute({ idempotencyKey: `shop-down-payment:${contract.id}`,
+          contractId: contract.id, contractNumber: contract.contractNumber, cashAccountCode, downAmount: new Decimal(cashDown) }, tx);
+      }
+
+      if (cashDown > 0 && dto.paymentMethod == null) {
+        await tx.auditLog.create({ data: { userId: salespersonId, action: 'CONTRACT_DOWN_METHOD_DEFAULTED', entity: 'contract',
+          entityId: contract.id, newValue: { method: 'CASH', source: 'LEGACY_SALE_CALLER' } } });
+      }
 
       // Reserve product
       await tx.product.update({
@@ -472,7 +420,7 @@ export class SaleWriterService {
 
       // ── Inter-Company Transaction: BESTCHOICE SHOP ↔ BESTCHOICE FINANCE ──
       const costPrice = product ? Number(product.costPrice) : 0;
-      const downPaymentNum = dto.downPayment!;
+      const downPaymentNum = Number(quote.downPayment);
       // Shop profit = downPayment + principal + commission - costPrice
       const shopProfit = downPaymentNum + calc.principal + calc.storeCommission - costPrice;
       // Finance profit = interestTotal - commission (late fees added later)
@@ -541,18 +489,33 @@ export class SaleWriterService {
       });
 
       return sale;
-    });
+    }, { isolationLevel: 'Serializable' });
   }
 
-  async createExternalFinanceSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number) {
+  async createExternalFinanceSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, actor: SaleProductActor = { role: 'SALES' }) {
     if (!dto.financeCompany) throw new BadRequestException('กรุณาใส่ชื่อบริษัทไฟแนนซ์');
 
-    const downPayment = dto.downPayment || 0;
-    const financeAmount = dto.financeAmount || (netAmount - downPayment);
+    const rawNet = new Decimal(netAmount);
+    const rawDown = new Decimal(dto.downPayment ?? 0);
+    const rawFinance = dto.financeAmount == null ? rawNet.minus(rawDown) : new Decimal(dto.financeAmount);
+    if ([rawNet, rawDown, rawFinance].some(amount => !amount.isFinite() || amount.lt(0))) {
+      throw new BadRequestException('ยอดขาย เงินดาวน์ และยอดจัดไฟแนนซ์ต้องเป็นจำนวนเงินที่ไม่ติดลบ');
+    }
+    // Currency columns and journal templates use satang precision. Normalize
+    // browser subtraction (e.g. 10000.1 - 2000.2) before checking the split.
+    const net = rawNet.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const down = rawDown.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const financed = rawFinance.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    if (!net.gt(0) || !down.plus(financed).equals(net)) {
+      throw new BadRequestException('เงินดาวน์รวมกับยอดจัดไฟแนนซ์ต้องเท่ากับยอดขายสุทธิ');
+    }
+    netAmount = net.toNumber();
+    const downPayment = down.toNumber();
+    const financeAmount = financed.toNumber();
 
     return this.runSaleTransaction(async (tx) => {
-      const mainProduct = await this.verifyProductInStock(tx, dto.productId);
-      await this.markBundleProductsSold(tx, dto.bundleProductIds || []);
+      const mainProduct = await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], dto.branchId, actor, dto.previouslyDamagedAcknowledged);
       const saleNumber = await generateSaleNumber(tx);
       const warranty = await this.resolveSaleShopWarranty(tx, mainProduct, new Date());
 
@@ -560,6 +523,7 @@ export class SaleWriterService {
       const sale = await tx.sale.create({
         data: {
           ...warranty,
+          costSnapshot: { create: { mainProductCost: mainProduct.costPrice } },
           saleNumber,
           saleType: 'EXTERNAL_FINANCE',
           customerId: dto.customerId,
@@ -570,7 +534,7 @@ export class SaleWriterService {
           discount,
           netAmount,
           paymentMethod: dto.paymentMethod as PaymentMethod,
-          amountReceived: downPayment > 0 ? downPayment : financeAmount,
+          amountReceived: downPayment,
           downPaymentAmount: downPayment,
           financeCompany: dto.financeCompany,
           financeRefNumber: dto.contractNumber || dto.financeRefNumber,

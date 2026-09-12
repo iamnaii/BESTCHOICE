@@ -1,15 +1,15 @@
+import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 import { cleanupCreditContractSale } from '../../trade-in/services/credit-contract-cleanup.util';
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, HttpException, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { StructuredLoggerService } from '../../../common/logger';
 import { TradeInCreditService, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
-import { DiscountPolicy } from '../../sales/services/discount-policy.util';
+import { ContractQuoteService, contractQuotePayments } from './contract-quote.service';
+import { assertCustomerContractPolicy, customerContractSnapshot, contractDownTender } from './contract-create-policy';
+import { assertSaleProductEligible } from '../../sales/services/sale-product-policy';
 import { PlanType, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateContractDto, UpdateContractDto } from '../dto/contract.dto';
-import { calculateInstallmentWithInterest, generatePaymentSchedule, roundBaht } from '../../../utils/installment.util';
-import { getRateForMonths } from '../../../utils/get-rate-for-months.util';
-import { loadInstallmentConfig, resolveInstallmentParams, resolveVatPctForBranch } from '../../../utils/config.util';
 import { generateContractNumber } from '../../../utils/sequence.util';
 import { d } from '../../../utils/decimal.util';
 import { WarrantyService } from '../../warranty/warranty.service';
@@ -44,98 +44,16 @@ export class ContractLifecycleService {
     private audit?: AuditService,
   ) {}
 
-  async create(dto: CreateContractDto, salespersonId: string, salespersonRole?: string) {
+  async create(dto: CreateContractDto, salespersonId: string, salespersonRole?: string, salespersonBranchId?: string | null) {
+    const user = salespersonBranchId === undefined || !salespersonRole
+      ? await this.prisma.user.findUnique({ where: { id: salespersonId }, select: { role: true, branchId: true } }) : null;
+    const actor = { id: salespersonId, role: salespersonRole ?? user?.role ?? 'SALES',
+      branchId: salespersonBranchId === undefined ? user?.branchId : salespersonBranchId };
+    dto = { ...dto, sellingPrice: new Decimal(dto.sellingPrice).toDecimalPlaces(2).toNumber(),
+      downPayment: new Decimal(dto.downPayment).toDecimalPlaces(2).toNumber() };
     const cashDown = dto.downPayment;
     const credits = new TradeInCreditService(this.prisma);
     const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount: dto.sellingPrice };
-    const credit = dto.tradeInCreditId ? await credits.quote(this.prisma, creditInput) : null;
-    if (credit) dto = { ...dto, sellingPrice: credit.net.toNumber(), downPayment: new Decimal(cashDown).plus(credit.base).toNumber() };
-    // Block if customer already has active contract(s), unless OWNER/BRANCH_MANAGER overrides
-    const activeContracts = await this.prisma.contract.findMany({
-      where: {
-        customerId: dto.customerId,
-        deletedAt: null,
-        status: { in: ['ACTIVE', 'OVERDUE', 'DEFAULT'] },
-      },
-      select: { id: true, contractNumber: true, status: true },
-    });
-    if (activeContracts.length > 0) {
-      const canOverride = salespersonRole === 'OWNER' || salespersonRole === 'BRANCH_MANAGER';
-      if (!(canOverride && dto.overrideActiveContractCheck)) {
-        throw new ConflictException({
-          message: 'ลูกค้ายังมีสัญญาที่กำลังผ่อนอยู่ ไม่สามารถเปิดสัญญาใหม่ได้',
-          code: 'CUSTOMER_HAS_ACTIVE_CONTRACT',
-          activeContracts,
-          canOverride,
-        });
-      }
-    }
-
-    // Try to find interest config by product category
-    const product = await this.prisma.product.findUnique({ where: { id: dto.productId } });
-    if (!product || product.deletedAt || product.status !== 'IN_STOCK') {
-      throw new BadRequestException('สินค้าไม่พร้อมขาย');
-    }
-    if (credit) DiscountPolicy.assertDiscountAllowed(creditInput.sellingPrice, credit.bonus.toNumber(), salespersonRole ?? 'SALES', Number(product.costPrice), undefined);
-
-    // Validate IMEI is present (legal requirement)
-    if (!product.imeiSerial) {
-      throw new BadRequestException('สินค้าต้องมี IMEI/Serial Number (บังคับตามกฎหมาย)');
-    }
-
-    // Find interest config matching the product category
-    const interestConfig = await this.prisma.interestConfig.findFirst({
-      where: {
-        isActive: true,
-        deletedAt: null,
-        productCategories: { has: product.category },
-      },
-    });
-
-    // Load configs with shared utility
-    const systemConfig = await loadInstallmentConfig(this.prisma);
-    const baseParams = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate);
-    // Override vatPct based on the selling branch's VAT registration status
-    // BESTCHOICE SHOP (vatRegistered=false) → 0%, BESTCHOICE FINANCE → 7%
-    const effectiveVatPct = await resolveVatPctForBranch(this.prisma, dto.branchId, baseParams.vatPct);
-    const params = { ...baseParams, vatPct: effectiveVatPct };
-
-    // Validations
-    if (dto.downPayment < 0) {
-      throw new BadRequestException('เงินดาวน์ต้องมากกว่าหรือเท่ากับ 0');
-    }
-    if (dto.downPayment >= dto.sellingPrice) {
-      throw new BadRequestException('เงินดาวน์ต้องน้อยกว่าราคาขาย');
-    }
-    if (dto.downPayment < dto.sellingPrice * params.minDownPaymentPct) {
-      throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(params.minDownPaymentPct * 100).toFixed(0)}% (${(dto.sellingPrice * params.minDownPaymentPct).toLocaleString()} บาท)`);
-    }
-    if (dto.totalMonths < params.minInstallmentMonths || dto.totalMonths > params.maxInstallmentMonths) {
-      throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${params.minInstallmentMonths}-${params.maxInstallmentMonths} เดือน`);
-    }
-
-    // Validate paymentDueDay
-    if (dto.paymentDueDay !== undefined && (!Number.isInteger(dto.paymentDueDay) || dto.paymentDueDay < 1 || dto.paymentDueDay > 31)) {
-      throw new BadRequestException('วันที่ครบกำหนดชำระต้องเป็นจำนวนเต็มระหว่าง 1-31 (31 คือสิ้นเดือน)');
-    }
-
-    // Calculate installment using shared utility
-    // Resolve total-contract rate via new lookup (feature-flagged; fallback = legacy rate × months)
-    const ratePct = interestConfig
-      ? Number(await getRateForMonths(this.prisma, interestConfig.id, dto.totalMonths))
-      : params.interestRate * dto.totalMonths;
-    const principal = roundBaht(dto.sellingPrice - dto.downPayment);
-    const resolvedInterestTotal = roundBaht(principal * ratePct);
-    const calc = calculateInstallmentWithInterest(
-      dto.sellingPrice,
-      dto.downPayment,
-      resolvedInterestTotal,
-      dto.totalMonths,
-      params.storeCommissionPct,
-      params.vatPct,
-    );
-    const { interestTotal, financedAmount, monthlyPayment } = calc;
-
     // Test-mode bypass: when the OWNER toggle is on, the contract-side credit
     // gate is skipped. Read once here (outside the retry loop) so retries don't
     // re-query and so audit is written at most once.
@@ -150,6 +68,13 @@ export class ContractLifecycleService {
       try {
         contract = await this.prisma.$transaction(async (tx) => {
           await lockCreditCustomer(tx, dto.customerId);
+          await assertCustomerContractPolicy(tx, dto.customerId, actor.role, dto.overrideActiveContractCheck);
+          const quote = await new ContractQuoteService(this.prisma).resolve(dto, actor, tx);
+          if (dto.quoteFingerprint && dto.quoteFingerprint !== quote.fingerprint) {
+            throw new ConflictException({ code: 'CONTRACT_QUOTE_CHANGED',
+              message: 'เงื่อนไขผ่อนเปลี่ยนแล้ว กรุณาทบทวนยอดใหม่ก่อนยืนยัน', quote });
+          }
+          const tender = contractDownTender(quote.cashDownPayment, dto.downPaymentMethod, dto.downPaymentReference);
           // Verify credit check inside transaction for atomicity
           const approvedCreditCheck = await tx.creditCheck.findFirst({
             where: { customerId: dto.customerId, status: 'APPROVED', checkType: 'FULL', contractId: null, deletedAt: null },
@@ -173,37 +98,13 @@ export class ContractLifecycleService {
             // test-data fence ต้องเห็น PO ต้นทาง (อุปกรณ์เสริมไร้ IMEI จาก PO ทดสอบ)
             include: { po: { select: { poNumber: true } } },
           });
-          if (!currentProduct || currentProduct.status !== 'IN_STOCK') {
-            throw new BadRequestException('สินค้าไม่พร้อมขาย (อาจถูกจองแล้ว)');
-          }
-
-          // Fetch customer data for snapshot (isolation from future edits)
+          if (!currentProduct) throw new BadRequestException('ไม่พบสินค้า');
+          assertSaleProductEligible(currentProduct, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
+          if (!currentProduct.imeiSerial) throw new BadRequestException('สินค้าต้องมี IMEI/Serial Number');
           const customerData = await tx.customer.findUnique({ where: { id: dto.customerId, deletedAt: null } });
-          // test-data fence (spec 2026-09-05 §5.1): เครื่องกับลูกค้าต้องอยู่ฝั่งเดียวกัน —
-          // ที่เดียวกับด่าน IN_STOCK ใน tx (ไม่พบลูกค้า = ปล่อยให้ FK ล้มตามพฤติกรรมเดิม)
-          if (customerData) assertSameTestSide(customerData, currentProduct);
-          const customerSnapshot: Prisma.InputJsonValue | undefined = customerData ? {
-            name: customerData.name,
-            prefix: customerData.prefix,
-            nickname: customerData.nickname,
-            nationalId: customerData.nationalId,
-            phone: customerData.phone,
-            phoneSecondary: customerData.phoneSecondary,
-            email: customerData.email,
-            lineIdFinance: customerData.lineIdFinance,
-            lineIdShop: customerData.lineIdShop,
-            occupation: customerData.occupation,
-            salary: customerData.salary ? customerData.salary.toString() : null,
-            workplace: customerData.workplace,
-            addressIdCard: customerData.addressIdCard,
-            addressCurrent: customerData.addressCurrent,
-            addressWork: customerData.addressWork,
-            references: customerData.references,
-            birthDate: customerData.birthDate,
-            facebookLink: customerData.facebookLink,
-            facebookName: customerData.facebookName,
-            googleMapLink: customerData.googleMapLink,
-          } : undefined;
+          if (!customerData) throw new BadRequestException('ไม่พบลูกค้า');
+          assertSameTestSide(customerData, currentProduct);
+          const customerSnapshot = customerContractSnapshot(customerData);
 
           // Generate contract number
           const contractNumber = await generateContractNumber(tx);
@@ -216,46 +117,43 @@ export class ContractLifecycleService {
               branchId: dto.branchId,
               salespersonId,
               planType: (dto.planType || 'STORE_DIRECT') as PlanType,
-              sellingPrice: dto.sellingPrice,
-              downPayment: dto.downPayment,
-              interestRate: params.interestRate,
+              sellingPrice: quote.sellingPrice,
+              downPayment: quote.downPayment,
+              ...tender,
+              interestRate: quote.interestRate,
               totalMonths: dto.totalMonths,
-              interestTotal,
-              financedAmount: calc.principal,
-              storeCommission: calc.storeCommission,
-              vatAmount: calc.vatAmount,
-              vatPct: params.vatPct,
-              monthlyPayment,
+              interestTotal: quote.interestTotal,
+              financedAmount: quote.principal,
+              storeCommission: quote.storeCommission,
+              vatAmount: quote.vatAmount,
+              vatPct: quote.effectiveVatPct,
+              monthlyPayment: quote.monthlyPayment,
               status: 'DRAFT',
               workflowStatus: 'CREATING',
               notes: dto.notes,
               paymentDueDay: dto.paymentDueDay,
-              interestConfigId: interestConfig?.id,
+              interestConfigId: quote.configId,
               customerSnapshot,
             },
           });
 
-          if (credit) {
+          if (dto.tradeInCreditId) {
             const snapshot = await credits.claim(tx, { ...creditInput, target: { contractId: newContract.id }, cashAmount: cashDown, actorId: salespersonId });
             await tx.contract.update({ where: { id: newContract.id }, data: { tradeInCreditSnapshot: snapshot } });
             newContract.tradeInCreditSnapshot = snapshot;
           }
-          // Create payment schedule using shared utility
-          const payments = generatePaymentSchedule(
-            newContract.id, dto.totalMonths, financedAmount, monthlyPayment, dto.paymentDueDay,
-            { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount },
-          );
+          const payments = contractQuotePayments(quote, newContract.id);
           // The amount gate always applies, including when the old status-only test gate is enabled.
           await claimCreditApproval(tx, { customerId: dto.customerId, contractId: newContract.id,
             creditApprovalId: dto.creditApprovalId, monthlyAmounts: payments.map(payment => Number(payment.amountDue)),
             paymentDueDay: dto.paymentDueDay, firstPaymentDue: payments[0]?.dueDate,
-            actor: { id: salespersonId, role: salespersonRole ?? 'SALES' } });
+            actor });
           await tx.payment.createMany({ data: payments });
 
           // SHOP-side: record the down payment received at contract creation.
           const downPayment = cashDownPayment(newContract);
           if (downPayment.gt(0)) {
-            const cashAccountCode = await this.shopAccountResolver.resolveBranchCashAccount(dto.branchId, tx);
+            const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(dto.branchId, tender.downPaymentMethod, tx);
             await this.shopDownPaymentTemplate.execute(
               {
                 idempotencyKey: `shop-down-payment:${newContract.id}`,
@@ -279,17 +177,19 @@ export class ContractLifecycleService {
           // claimCreditApproval linked the check atomically with its single-use approval.
 
           return newContract;
-        }, { timeout: 15000 });
+        }, { timeout: 15000, isolationLevel: 'Serializable' });
         break; // success — exit retry loop
       } catch (err: unknown) {
         // Retry on unique constraint (P2002) or serialization failure (P2034)
         const prismaErr = err instanceof Prisma.PrismaClientKnownRequestError ? err : null;
-        const isRetryable = prismaErr?.code === 'P2002' || prismaErr?.code === 'P2034';
+        const isRetryable = isRetryablePrismaWriteError(err);
         if (isRetryable && attempt < MAX_RETRIES - 1) {
           continue;
         }
-        // Re-throw BadRequestException / ForbiddenException as-is
-        if (err instanceof BadRequestException || err instanceof ForbiddenException || err instanceof ConflictException) {
+        if (isRetryable && prismaErr?.code !== 'P2002') {
+          throw new ConflictException('มีรายการอื่นเปลี่ยนข้อมูลพร้อมกัน กรุณาโหลดข้อมูลใหม่แล้วลองอีกครั้ง');
+        }
+        if (err instanceof HttpException) {
           throw err;
         }
 
@@ -338,6 +238,11 @@ export class ContractLifecycleService {
       });
     }
 
+    if (cashDown > 0 && dto.downPaymentMethod == null && this.audit) {
+      await this.audit.log({ userId: salespersonId, action: 'CONTRACT_DOWN_METHOD_DEFAULTED', entity: 'contract',
+        entityId: created.id, newValue: { method: 'CASH', source: 'LEGACY_CREATE_CALLER' } });
+    }
+
     // Auto-set shop warranty for used phones (fire-and-forget)
     if (this.warrantyService) {
       this.warrantyService.setShopWarranty(created.id).catch((err) =>
@@ -363,164 +268,55 @@ export class ContractLifecycleService {
 
   // === UPDATE: แก้ไขรายละเอียดสัญญา (เฉพาะ CREATING/REJECTED) ===
   async update(id: string, dto: UpdateContractDto, userId: string) {
-    const contract = await this.query.findOne(id);
-    if (contract.tradeInCreditSnapshot && Object.keys(dto).some((key) => key !== 'notes')) {
-      throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นแก้ยอดไม่ได้ กรุณายกเลิกฉบับร่างแล้วสร้างใหม่เพื่อคำนวณและตรวจเครดิตอีกครั้ง');
-    }
-
-    // Only allow editing when CREATING or REJECTED
-    if (contract.workflowStatus !== 'CREATING' && contract.workflowStatus !== 'REJECTED') {
-      throw new BadRequestException('แก้ไขได้เฉพาะสัญญาที่อยู่ในสถานะ กำลังสร้าง หรือ ถูกปฏิเสธ เท่านั้น');
-    }
-
-    // Only the creator can edit (OWNER can edit any contract)
-    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-    if (contract.salespersonId !== userId && user?.role !== 'OWNER') {
+    const initial = await this.query.findOne(id);
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true, branchId: true } });
+    if (initial.salespersonId !== userId && user?.role !== 'OWNER') {
       throw new ForbiddenException('เฉพาะพนักงานที่สร้างสัญญาเท่านั้นที่สามารถแก้ไขได้');
     }
-
-    // Determine final values
-    const sellingPrice = dto.sellingPrice ?? d(contract.sellingPrice).toNumber();
-    const downPayment = dto.downPayment ?? d(contract.downPayment).toNumber();
-    const totalMonths = dto.totalMonths ?? contract.totalMonths;
-    const paymentDueDay = dto.paymentDueDay ?? contract.paymentDueDay;
-
-    // Get interest config
-    const interestConfig = contract.interestConfigId
-      ? await this.prisma.interestConfig.findUnique({ where: { id: contract.interestConfigId } })
-      : null;
-
-    const systemConfig = await loadInstallmentConfig(this.prisma);
-    const baseParams = resolveInstallmentParams(interestConfig, systemConfig, dto.interestRate ?? d(contract.interestRate).toNumber());
-    // Override vatPct based on the contract's branch VAT registration status
-    const effectiveVatPct = await resolveVatPctForBranch(this.prisma, contract.branchId, baseParams.vatPct);
-    const params = { ...baseParams, vatPct: effectiveVatPct };
-    const { minDownPaymentPct, minInstallmentMonths, maxInstallmentMonths } = params;
-
-    // Validations
-    if (downPayment < 0) {
-      throw new BadRequestException('เงินดาวน์ต้องมากกว่าหรือเท่ากับ 0');
-    }
-    if (downPayment >= sellingPrice) {
-      throw new BadRequestException('เงินดาวน์ต้องน้อยกว่าราคาขาย');
-    }
-    if (downPayment < sellingPrice * minDownPaymentPct) {
-      throw new BadRequestException(`เงินดาวน์ขั้นต่ำ ${(minDownPaymentPct * 100).toFixed(0)}% (${(sellingPrice * minDownPaymentPct).toLocaleString()} บาท)`);
-    }
-    if (totalMonths < minInstallmentMonths || totalMonths > maxInstallmentMonths) {
-      throw new BadRequestException(`จำนวนงวดต้องอยู่ระหว่าง ${minInstallmentMonths}-${maxInstallmentMonths} เดือน`);
-    }
-    if (paymentDueDay !== undefined && paymentDueDay !== null && (!Number.isInteger(paymentDueDay) || paymentDueDay < 1 || paymentDueDay > 31)) {
-      throw new BadRequestException('วันที่ครบกำหนดชำระต้องเป็นจำนวนเต็มระหว่าง 1-31 (31 คือสิ้นเดือน)');
-    }
-
-    // Recalculate financials using shared utility
-    const interestRate = params.interestRate; // stored on Contract.interestRate (legacy per-month field — kept as-is)
-    // Resolve total-contract rate via new lookup (feature-flagged; fallback = legacy rate × months)
-    const ratePct = interestConfig
-      ? Number(await getRateForMonths(this.prisma, interestConfig.id, totalMonths))
-      : params.interestRate * totalMonths;
-    const principalAmt = roundBaht(sellingPrice - downPayment);
-    const interestAmt = roundBaht(principalAmt * ratePct);
-    const calc = calculateInstallmentWithInterest(
-      sellingPrice,
-      downPayment,
-      interestAmt,
-      totalMonths,
-      params.storeCommissionPct,
-      params.vatPct,
-    );
-    const { interestTotal, financedAmount, monthlyPayment } = calc;
-
-    // Update contract + recreate payment schedule
     await this.prisma.$transaction(async (tx) => {
-      await lockCreditCustomer(tx, contract.customerId);
-      // T5-C4 — Any existing payment row (PAID/PARTIALLY_PAID/PENDING/OVERDUE)
-      // means the installment schedule is contractually locked in. Editing
-      // financial fields after that point would silently rewrite already-
-      // committed amounts/due-dates. Only non-financial fields (notes, etc.)
-      // remain mutable.
-      const existingPaymentCount = await tx.payment.count({
-        where: { contractId: id, deletedAt: null },
-      });
-      const paidOrPartialCount = await tx.payment.count({
-        where: { contractId: id, status: { in: ['PAID', 'PARTIALLY_PAID'] } },
-      });
-
-      if (existingPaymentCount > 0) {
-        const interestRateChanged =
-          dto.interestRate !== undefined &&
-          Number(dto.interestRate) !== Number(contract.interestRate);
-        const financialsChanged =
-          sellingPrice !== Number(contract.sellingPrice) ||
-          downPayment !== Number(contract.downPayment) ||
-          totalMonths !== contract.totalMonths ||
-          paymentDueDay !== contract.paymentDueDay ||
-          interestRateChanged;
-
-        if (financialsChanged) {
-          throw new BadRequestException(
-            'ไม่สามารถแก้ไขเงื่อนไขทางการเงินได้ เนื่องจากมีตารางผ่อนชำระแล้ว ' +
-            `(งวดทั้งหมด ${existingPaymentCount} งวด) ` +
-            'แก้ไขได้เฉพาะข้อมูลที่ไม่ใช่ตัวเงิน เช่น หมายเหตุ เท่านั้น กรุณาสร้างสัญญาใหม่แทน',
-          );
-        }
+      await lockCreditCustomer(tx, initial.customerId);
+      const contract = await tx.contract.findUniqueOrThrow({ where: { id, deletedAt: null } });
+      if (contract.status !== 'DRAFT' || !['CREATING', 'REJECTED'].includes(contract.workflowStatus)) {
+        throw new BadRequestException('แก้ไขได้เฉพาะสัญญาฉบับร่างที่กำลังสร้างหรือถูกปฏิเสธ');
       }
-
-      if (existingPaymentCount === 0) {
-        const schedule = generatePaymentSchedule(id, totalMonths, financedAmount, monthlyPayment, paymentDueDay,
-          { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount });
-        await assertContractCreditApproval(tx, { customerId: contract.customerId, contractId: id,
-          monthlyAmounts: schedule.map(payment => Number(payment.amountDue)), paymentDueDay });
+      if (contract.tradeInCreditSnapshot && Object.keys(dto).some(key => key !== 'notes')) {
+        throw new BadRequestException('สัญญาที่ใช้เครดิตเทิร์นแก้ยอดไม่ได้ กรุณายกเลิกฉบับร่างแล้วสร้างใหม่');
       }
-
-      await tx.contract.update({
-        where: { id },
-        data: {
-          ...(existingPaymentCount === 0 ? {
-          sellingPrice,
-          downPayment,
-          totalMonths,
-          interestRate,
-          interestTotal,
-          financedAmount: calc.principal,
-          storeCommission: calc.storeCommission,
-          vatAmount: calc.vatAmount,
-          vatPct: params.vatPct,
-          monthlyPayment,
-          paymentDueDay,
-          } : {}),
-          notes: dto.notes !== undefined ? dto.notes : contract.notes,
-        },
-      });
-
-      // Only recreate schedule if no payments have been made and none are overdue.
-      // T5-C4 — also skip recreation when no financial fields changed; there is
-      // no reason to wipe PENDING rows (and their IDs) if the math is identical.
-      if (paidOrPartialCount === 0 && existingPaymentCount === 0) {
-        // Check for overdue payments — don't delete them as it would lose delinquency history
-        const overdueCount = await tx.payment.count({
-          where: { contractId: id, status: 'OVERDUE' },
-        });
-        if (overdueCount > 0) {
-          throw new BadRequestException(
-            `มีงวดค้างชำระ ${overdueCount} งวด ไม่สามารถคำนวณตารางผ่อนชำระใหม่ได้ กรุณาจัดการงวดค้างชำระก่อน`,
-          );
-        }
-
-        await tx.payment.updateMany({
-          where: { contractId: id, status: 'PENDING', deletedAt: null },
-          data: { deletedAt: new Date() },
-        });
-
-        const payments = generatePaymentSchedule(
-          id, totalMonths, financedAmount, monthlyPayment, paymentDueDay,
-          { principal: calc.principal, interestTotal: calc.interestTotal, storeCommission: calc.storeCommission, vatAmount: calc.vatAmount },
-        );
-        await tx.payment.createMany({ data: payments });
+      const changed = (['sellingPrice', 'downPayment', 'totalMonths', 'interestRate', 'paymentDueDay'] as const)
+        .some(key => dto[key] !== undefined && Number(dto[key]) !== Number(contract[key]));
+      if (!changed) {
+        await tx.contract.update({ where: { id }, data: { ...(dto.notes !== undefined ? { notes: dto.notes } : {}) } });
+        return;
       }
-    });
-
+      const paymentCount = await tx.payment.count({ where: { contractId: id, deletedAt: null } });
+      if (paymentCount > 0) throw new BadRequestException('ไม่สามารถแก้ไขเงื่อนไขทางการเงินได้ เนื่องจากมีตารางผ่อนชำระแล้ว กรุณาสร้างสัญญาใหม่แทน');
+      // Receiving down is a ledger event; changing a draft cannot silently change that receipt.
+      if (dto.downPayment !== undefined && Number(dto.downPayment) !== Number(contract.downPayment) &&
+        (contract.downPaymentReceivedAt || await tx.journalEntry.findFirst({ where: {
+          deletedAt: null, metadata: { path: ['idempotencyKey'], equals: `shop-down-payment:${id}` },
+        }, select: { id: true } }))) {
+        throw new BadRequestException('สัญญานี้บันทึกรับเงินดาวน์แล้ว กรุณายกเลิกฉบับร่างแล้วสร้างใหม่');
+      }
+      const quote = await new ContractQuoteService(this.prisma).resolve({
+        customerId: contract.customerId, productId: contract.productId, branchId: contract.branchId,
+        sellingPrice: dto.sellingPrice ?? Number(contract.sellingPrice), downPayment: dto.downPayment ?? Number(contract.downPayment),
+        totalMonths: dto.totalMonths ?? contract.totalMonths, paymentDueDay: dto.paymentDueDay ?? contract.paymentDueDay ?? undefined,
+        interestRate: dto.interestRate ?? Number(contract.interestRate),
+      }, { id: userId, role: user?.role ?? 'SALES', branchId: user?.branchId }, tx);
+      const payments = contractQuotePayments(quote, id);
+      await assertContractCreditApproval(tx, { customerId: contract.customerId, contractId: id,
+        monthlyAmounts: payments.map(row => Number(row.amountDue)), paymentDueDay: dto.paymentDueDay ?? contract.paymentDueDay,
+        firstPaymentDue: payments[0]?.dueDate });
+      await tx.contract.update({ where: { id }, data: {
+        sellingPrice: quote.sellingPrice, downPayment: quote.downPayment, totalMonths: quote.totalMonths,
+        interestRate: quote.interestRate, interestTotal: quote.interestTotal, financedAmount: quote.principal,
+        storeCommission: quote.storeCommission, vatAmount: quote.vatAmount, vatPct: quote.effectiveVatPct,
+        monthlyPayment: quote.monthlyPayment, interestConfigId: quote.configId,
+        paymentDueDay: dto.paymentDueDay ?? contract.paymentDueDay,
+        ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
+      } });
+      await tx.payment.createMany({ data: payments });
+    }, { isolationLevel: 'Serializable' });
     return this.query.findOne(id);
   }
 
@@ -596,10 +392,12 @@ export class ContractLifecycleService {
             ],
             deletedAt: null,
           },
-          select: { id: true },
+          select: { id: true, lines: { where: { deletedAt: null, debit: { gt: 0 } }, select: { accountCode: true, debit: true } } },
         });
         if (downJe) {
-          const refundAccountCode = await this.shopAccountResolver.resolveBranchCashAccount(contract.branchId, tx);
+          const receipt = downJe.lines.filter(line => line.accountCode.startsWith('S11-') && line.debit.eq(downPayment));
+          if (receipt.length !== 1) throw new BadRequestException('ไม่พบบัญชีรับดาวน์เดิมที่ตรงยอด กรุณาตรวจหลักฐานการรับเงิน');
+          const refundAccountCode = receipt[0].accountCode;
           await this.shopDownPaymentReversalTemplate.execute(
             {
               idempotencyKey: `shop-down-payment-reversal:${id}`,

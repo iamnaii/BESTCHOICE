@@ -15,7 +15,7 @@ import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
 import { getBranchScope, hasCrossBranchAccess } from '../auth/branch-access.util';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { PayDepositDto } from './dto/pay-deposit.dto';
+import { BOOKING_PAYMENT_METHODS, PayDepositDto } from './dto/pay-deposit.dto';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { ConvertBookingDto } from './dto/convert-booking.dto';
 import { ShopBookingDepositTemplate } from '../journal/cpa-templates/shop-booking-deposit.template';
@@ -24,6 +24,7 @@ import { ShopBookingDepositAppliedTemplate } from '../journal/cpa-templates/shop
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
 import { ShopBookingRefundTemplate } from '../journal/cpa-templates/shop-booking-refund.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { assertSaleProductEligible } from '../sales/services/sale-product-policy';
 import {
   assertSameTestSide,
   TEST_SIDE_CUSTOMER_SELECT,
@@ -43,7 +44,7 @@ const BOOKING_DEFAULT_INCLUDE = {
       addressIdCard: true,
     },
   },
-  branch: { select: { id: true, name: true, companyId: true } },
+  branch: { select: { id: true, name: true, companyId: true, shopCashAccountCode: true } },
   createdBy: { select: { id: true, name: true, email: true } },
   canceledBy: { select: { id: true, name: true } },
   convertedToSale: { select: { id: true, saleNumber: true, saleType: true } },
@@ -119,7 +120,7 @@ export class BookingsService {
     user: RequestUser,
   ) {
     const page = Math.max(1, opts.page ?? 1);
-    const limit = Math.min(100, Math.max(1, opts.limit ?? 50));
+    const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
     const skip = (page - 1) * limit;
 
     const baseWhere: Prisma.BookingWhereInput = { deletedAt: null };
@@ -153,7 +154,7 @@ export class BookingsService {
         include: BOOKING_DEFAULT_INCLUDE,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
       this.prisma.booking.count({ where }),
     ]);
@@ -177,11 +178,12 @@ export class BookingsService {
     id: string,
     user: RequestUser,
     select?: Prisma.BookingSelect,
+    client: Prisma.TransactionClient = this.prisma,
   ) {
     const baseWhere: Prisma.BookingWhereInput = { id, deletedAt: null };
     const { where, empty } = this.applyBranchScope(baseWhere, user);
     if (empty) throw new NotFoundException('ไม่พบใบจอง');
-    return this.prisma.booking.findFirst({
+    return client.booking.findFirst({
       where,
       select: select ?? {
         id: true,
@@ -191,6 +193,10 @@ export class BookingsService {
         depositAmount: true,
       },
     });
+  }
+
+  private async lockBooking(tx: Prisma.TransactionClient, id: string): Promise<void> {
+    await tx.$queryRaw`SELECT id FROM bookings WHERE id = ${id} FOR UPDATE`;
   }
 
   // ───────────────────────────────────────────────────────────────────────
@@ -332,22 +338,34 @@ export class BookingsService {
   }
 
   async update(id: string, dto: UpdateBookingDto, user: RequestUser) {
-    const existing = await this.loadBookingScoped(id, user, {
-      id: true,
-      status: true,
-      branchId: true,
-      totalAmount: true,
-    });
-    if (!existing) throw new NotFoundException('ไม่พบใบจอง');
-    if (existing.status !== 'PENDING_DEPOSIT' && existing.status !== 'PAID') {
-      throw new BadRequestException(
-        `แก้ไขใบจองได้เฉพาะสถานะ PENDING_DEPOSIT หรือ PAID (สถานะปัจจุบัน: ${existing.status})`,
-      );
-    }
-    if (dto.branchId) this.assertCanWriteBranch(user, dto.branchId);
-
     return this.prisma.$transaction(async (tx) => {
+      await this.lockBooking(tx, id);
+      const existing = await this.loadBookingScoped(id, user, {
+        id: true,
+        status: true,
+        branchId: true,
+        totalAmount: true,
+        depositAmount: true,
+        expireDate: true,
+      }, tx);
+      if (!existing) throw new NotFoundException('ไม่พบใบจอง');
+      if (existing.status !== 'PENDING_DEPOSIT' && existing.status !== 'PAID') {
+        throw new BadRequestException(
+          `แก้ไขใบจองได้เฉพาะสถานะ PENDING_DEPOSIT หรือ PAID (สถานะปัจจุบัน: ${existing.status})`,
+        );
+      }
+      this.assertNotExpired(existing.expireDate);
+      const financialEdit = dto.customerId !== undefined || dto.branchId !== undefined ||
+        dto.items !== undefined || dto.depositAmount !== undefined;
+      if (existing.status === 'PAID' && financialEdit) {
+        throw new BadRequestException('รับมัดจำแล้ว ไม่สามารถแก้ลูกค้า สาขา สินค้า หรือยอดเงินในใบจองนี้');
+      }
+      if (dto.branchId) this.assertCanWriteBranch(user, dto.branchId);
+
       const updates: Prisma.BookingUpdateInput = {};
+      const nextDeposit = new Prisma.Decimal(dto.depositAmount ?? existing.depositAmount);
+      const nextTotal = dto.items ? this.computeTotal(dto.items) : new Prisma.Decimal(existing.totalAmount);
+      if (financialEdit) this.assertDepositInRange(nextDeposit, nextTotal);
 
       if (dto.customerId) updates.customer = { connect: { id: dto.customerId } };
       if (dto.branchId) updates.branch = { connect: { id: dto.branchId } };
@@ -355,13 +373,12 @@ export class BookingsService {
       if (dto.expireDate) {
         const d = new Date(dto.expireDate);
         if (Number.isNaN(d.getTime())) throw new BadRequestException('expireDate ไม่ใช่วันที่');
+        this.assertNotExpired(d);
         updates.expireDate = d;
       }
 
-      let total: Prisma.Decimal | null = null;
       if (dto.items) {
-        total = this.computeTotal(dto.items);
-        updates.totalAmount = total;
+        updates.totalAmount = nextTotal;
 
         await tx.bookingItem.deleteMany({ where: { bookingId: id } });
         updates.items = {
@@ -376,10 +393,7 @@ export class BookingsService {
       }
 
       if (dto.depositAmount !== undefined) {
-        const deposit = new Prisma.Decimal(dto.depositAmount);
-        const compareTotal = total ?? (existing.totalAmount as Prisma.Decimal);
-        this.assertDepositInRange(deposit, compareTotal);
-        updates.depositAmount = deposit;
+        updates.depositAmount = nextDeposit;
       }
 
       return tx.booking.update({
@@ -401,32 +415,45 @@ export class BookingsService {
    * calls cannot both succeed. Status is filtered on PENDING_DEPOSIT inside
    * the same $transaction that writes deposit metadata.
    */
-  async payDeposit(id: string, dto: PayDepositDto, user: RequestUser) {
-    const booking = await this.loadBookingScoped(id, user, {
-      id: true,
-      status: true,
-      branchId: true,
-      expireDate: true,
-      // A5 — ต้องใช้ลงบัญชีเงินมัดจำตอนรับเงิน
-      depositAmount: true,
-      bookingNumber: true,
-    });
-    if (!booking) throw new NotFoundException('ไม่พบใบจอง');
-    if (booking.status !== 'PENDING_DEPOSIT') {
-      throw new BadRequestException(
-        `บันทึกชำระมัดจำได้เฉพาะสถานะ PENDING_DEPOSIT (สถานะปัจจุบัน: ${booking.status})`,
-      );
+  private assertNotExpired(expireDate: Date | null | undefined, now = new Date()): void {
+    if (expireDate && expireDate.getTime() <= now.getTime()) {
+      throw new BadRequestException('ใบจองหมดอายุแล้ว กรุณาโหลดสถานะล่าสุดหรือออกใบจองใหม่');
     }
-    if (booking.expireDate && booking.expireDate.getTime() < Date.now()) {
-      throw new BadRequestException(
-        'ใบจองหมดอายุแล้ว — ไม่สามารถบันทึกมัดจำได้ กรุณาออกใบจองใหม่',
-      );
-    }
+  }
 
+  private assertReceiptMethod(method: string): void {
+    if (!(BOOKING_PAYMENT_METHODS as readonly string[]).includes(method)) {
+      throw new BadRequestException('กรุณาเลือกวิธีรับเงินสด โอนธนาคาร หรือ QR / e-Wallet');
+    }
+  }
+
+  async payDeposit(id: string, dto: PayDepositDto, user: RequestUser) {
     return this.prisma.$transaction(async (tx) => {
-      // C6 — expireDate enforced atomically in the updateMany filter so the
-      // expire-cron can't flip status between the read above and this write.
+      await this.lockBooking(tx, id);
+      const booking = await this.loadBookingScoped(id, user, {
+        id: true,
+        status: true,
+        branchId: true,
+        expireDate: true,
+        // A5 — ต้องใช้ลงบัญชีเงินมัดจำตอนรับเงิน
+        depositAmount: true,
+        bookingNumber: true,
+      }, tx);
+      if (!booking) throw new NotFoundException('ไม่พบใบจอง');
+      if (booking.status !== 'PENDING_DEPOSIT') {
+        throw new BadRequestException(
+          `บันทึกชำระมัดจำได้เฉพาะสถานะ PENDING_DEPOSIT (สถานะปัจจุบัน: ${booking.status})`,
+        );
+      }
       const now = new Date();
+      this.assertNotExpired(booking.expireDate, now);
+      this.assertReceiptMethod(dto.depositMethod);
+      const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(
+        booking.branchId, dto.depositMethod, tx,
+      );
+      if (dto.depositAccountCode && dto.depositAccountCode !== cashAccountCode) {
+        throw new BadRequestException(`บัญชีรับเงินไม่ตรงกับสาขาและวิธีรับเงิน บัญชีที่ใช้คือ ${cashAccountCode}`);
+      }
       const claim = await tx.booking.updateMany({
         where: {
           id,
@@ -438,7 +465,7 @@ export class BookingsService {
           status: 'PAID',
           depositPaidAt: now,
           depositMethod: dto.depositMethod,
-          depositAccountCode: dto.depositAccountCode,
+          depositAccountCode: cashAccountCode,
           depositReceivedById: user.id,
         },
       });
@@ -446,19 +473,9 @@ export class BookingsService {
         throw new ConflictException('ใบจองนี้หมดอายุ ถูกบันทึกมัดจำ หรือเปลี่ยนสถานะไปแล้ว');
       }
 
-      // ── ลงบัญชีเงินมัดจำ "ตอนรับเงิน" (คำวินิจฉัยผู้สอบ A5, 2026-08-25) ──────
-      // เดิมโมดูลนี้ไม่โพสต์ JE เลย ⇒ เงินสดที่รับจริงไม่เคยขึ้นสมุด SHOP
-      //
-      // บัญชีเงินสด **ไม่ได้ใช้ `dto.depositAccountCode`** เพราะฟิลด์นั้นบังคับรหัส
-      // ฝั่ง FINANCE (regex /^11-1[12]0[123]$/) ทั้งที่เงินเข้าลิ้นชักหน้าร้าน —
-      // ใช้ resolver ที่ map ตามสาขา+วิธีรับเงินแทน (fail-closed ถ้าสาขายังไม่ตั้งบัญชี)
+      // Receipt metadata and journal use the same resolved SHOP account.
       const deposit = new Prisma.Decimal((booking.depositAmount ?? 0).toString());
       if (deposit.gt(0)) {
-        const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(
-          booking.branchId,
-          dto.depositMethod,
-          tx,
-        );
         await this.shopBookingDepositTemplate.execute(
           {
             idempotencyKey: `booking-deposit:${id}`,
@@ -487,7 +504,7 @@ export class BookingsService {
           newValue: {
             status: 'PAID',
             depositMethod: dto.depositMethod,
-            depositAccountCode: dto.depositAccountCode,
+            depositAccountCode: cashAccountCode,
             notes: dto.notes ?? null,
           },
         },
@@ -508,32 +525,29 @@ export class BookingsService {
    *   - cancel AFTER expire  → blocked here (use autoExpire instead)
    */
   async cancel(id: string, dto: CancelBookingDto, user: RequestUser) {
-    const booking = await this.loadBookingScoped(id, user, {
-      id: true,
-      status: true,
-      branchId: true,
-      expireDate: true,
-      depositAmount: true,
-      depositPaidAt: true,
-      // A5 — ต้องใช้ลงบัญชีคืนเงินมัดจำ
-      depositMethod: true,
-      bookingNumber: true,
-    });
-    if (!booking) throw new NotFoundException('ไม่พบใบจอง');
-    if (booking.status !== 'PENDING_DEPOSIT' && booking.status !== 'PAID') {
-      throw new BadRequestException(
-        `ยกเลิกใบจองได้เฉพาะสถานะ PENDING_DEPOSIT หรือ PAID (สถานะปัจจุบัน: ${booking.status})`,
-      );
-    }
-    if (booking.expireDate && booking.expireDate.getTime() < Date.now()) {
-      throw new BadRequestException(
-        'ใบจองหมดอายุแล้ว — กรุณารอ cron บันทึกสถานะ EXPIRED (ลูกค้าเสียมัดจำ)',
-      );
-    }
-
-    const fromStatus = booking.status;
-
     return this.prisma.$transaction(async (tx) => {
+      await this.lockBooking(tx, id);
+      const booking = await this.loadBookingScoped(id, user, {
+        id: true,
+        status: true,
+        branchId: true,
+        expireDate: true,
+        depositAmount: true,
+        depositPaidAt: true,
+        // A5 — ต้องใช้ลงบัญชีคืนเงินมัดจำ
+        depositMethod: true,
+        bookingNumber: true,
+      }, tx);
+      if (!booking) throw new NotFoundException('ไม่พบใบจอง');
+      if (booking.status !== 'PENDING_DEPOSIT' && booking.status !== 'PAID') {
+        throw new BadRequestException(
+          `ยกเลิกใบจองได้เฉพาะสถานะ PENDING_DEPOSIT หรือ PAID (สถานะปัจจุบัน: ${booking.status})`,
+        );
+      }
+      this.assertNotExpired(booking.expireDate);
+
+      const fromStatus = booking.status;
+
       const claim = await tx.booking.updateMany({
         where: {
           id,
@@ -618,53 +632,70 @@ export class BookingsService {
     salespersonId: string,
     user: RequestUser,
   ) {
-    const booking = await this.prisma.booking.findFirst({
-      where: { id, deletedAt: null },
-      include: { items: true, customer: { select: TEST_SIDE_CUSTOMER_SELECT } },
-    });
-    if (!booking) throw new NotFoundException('ไม่พบใบจอง');
-
-    this.assertCanWriteBranch(user, booking.branchId);
-
-    if (booking.status !== 'PAID') {
-      throw new BadRequestException(
-        `แปลงเป็นการขายได้เฉพาะสถานะ PAID (สถานะปัจจุบัน: ${booking.status})`,
-      );
-    }
-    if (booking.convertedToSaleId) {
-      throw new ConflictException('ใบจองนี้ถูกแปลงเป็นการขายแล้ว');
-    }
-
-    const firstItem = booking.items[0];
-    if (!firstItem) throw new BadRequestException('ใบจองไม่มีรายการสินค้า');
-    if (!firstItem.productId) {
-      throw new BadRequestException(
-        'รายการแรกในใบจองไม่ได้ผูกกับสินค้าในสต็อก — กรุณาผูกสินค้าก่อนแปลง',
-      );
-    }
-
-    // C2 — guard amountReceived honesty. The cashier MUST tell us whether the
-    // outstanding balance is being collected at convert time, so we don't lie
-    // about cash-in on the Sale row (which feeds revenue + cash reports).
-    const totalAmount = booking.totalAmount as Prisma.Decimal;
-    const depositAmount = booking.depositAmount as Prisma.Decimal;
-    const isFullPrepay = depositAmount.equals(totalAmount);
-
-    if (!isFullPrepay && !dto.collectBalance) {
-      throw new BadRequestException(
-        `ต้องเรียกเก็บยอดส่วนต่าง ${totalAmount
-          .sub(depositAmount)
-          .toFixed(2)} บาท ก่อนแปลงเป็นการขาย (ส่ง collectBalance: true เมื่อรับเงินครบ)`,
-      );
-    }
-
-    // C1 — inline the SalesService.createCashSale invariants the original
-    // tx.sale.create skipped: verifyProductInStock, Product.status flip to
-    // SOLD_CASH, SalesCommission row. Doing it inline (not by calling
-    // SalesService) keeps the booking module self-contained and avoids
-    // accidentally inheriting CASH-sale discount / loyalty branches that
-    // don't apply here.
     return this.prisma.$transaction(async (tx) => {
+      await this.lockBooking(tx, id);
+      const booking = await tx.booking.findFirst({
+        where: { id, deletedAt: null },
+        include: { items: true, customer: { select: TEST_SIDE_CUSTOMER_SELECT } },
+      });
+      if (!booking) throw new NotFoundException('ไม่พบใบจอง');
+
+      this.assertCanWriteBranch(user, booking.branchId);
+
+      if (booking.status !== 'PAID') {
+        throw new BadRequestException(
+          `แปลงเป็นการขายได้เฉพาะสถานะ PAID (สถานะปัจจุบัน: ${booking.status})`,
+        );
+      }
+      this.assertNotExpired(booking.expireDate);
+      if (booking.convertedToSaleId) {
+        throw new ConflictException('ใบจองนี้ถูกแปลงเป็นการขายแล้ว');
+      }
+
+      const firstItem = booking.items[0];
+      if (!firstItem) throw new BadRequestException('ใบจองไม่มีรายการสินค้า');
+      if (!firstItem.productId) {
+        throw new BadRequestException(
+          'รายการแรกในใบจองไม่ได้ผูกกับสินค้าในสต็อก — กรุณาผูกสินค้าก่อนแปลง',
+        );
+      }
+      if (booking.items.length !== 1 || firstItem.quantity !== 1) {
+        throw new BadRequestException('แปลงขายได้เมื่อใบจองมีสินค้า 1 เครื่อง จำนวน 1 ชิ้น');
+      }
+
+      // C2 — guard amountReceived honesty. The cashier MUST tell us whether the
+      // outstanding balance is being collected at convert time, so we don't lie
+      // about cash-in on the Sale row (which feeds revenue + cash reports).
+      const totalAmount = booking.totalAmount as Prisma.Decimal;
+      const depositAmount = booking.depositAmount as Prisma.Decimal;
+      this.assertDepositInRange(depositAmount, totalAmount);
+      if (!new Prisma.Decimal(firstItem.amount).equals(totalAmount) ||
+          !new Prisma.Decimal(firstItem.unitPrice).equals(totalAmount)) {
+        throw new BadRequestException('ยอดรายการสินค้าไม่ตรงกับยอดใบจอง กรุณาตรวจสอบก่อนแปลงขาย');
+      }
+      const isFullPrepay = depositAmount.equals(totalAmount);
+
+      if (!isFullPrepay && !dto.collectBalance) {
+        throw new BadRequestException(
+          `ต้องเรียกเก็บยอดส่วนต่าง ${totalAmount
+            .sub(depositAmount)
+            .toFixed(2)} บาท ก่อนแปลงเป็นการขาย (ส่ง collectBalance: true เมื่อรับเงินครบ)`,
+        );
+      }
+
+      if (!isFullPrepay && !dto.paymentMethod) {
+        throw new BadRequestException('กรุณาเลือกวิธีรับยอดส่วนต่าง');
+      }
+      if (dto.paymentMethod) this.assertReceiptMethod(dto.paymentMethod);
+      const salePaymentMethod = isFullPrepay ? (booking.depositMethod ?? 'CASH') : dto.paymentMethod!;
+      this.assertReceiptMethod(salePaymentMethod);
+
+      // C1 — inline the SalesService.createCashSale invariants the original
+      // tx.sale.create skipped: verifyProductInStock, Product.status flip to
+      // SOLD_CASH, SalesCommission row. Doing it inline (not by calling
+      // SalesService) keeps the booking module self-contained and avoids
+      // accidentally inheriting CASH-sale discount / loyalty branches that
+      // don't apply here.
       // 1. Claim the booking PAID → CONVERTED atomically.
       const claim = await tx.booking.updateMany({
         where: {
@@ -692,8 +723,15 @@ export class BookingsService {
           'สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว — กรุณาตรวจสอบสต็อก',
         );
       }
+      assertSaleProductEligible(product, booking.branchId, user, dto.previouslyDamagedAcknowledged);
       // test-data fence (spec 2026-09-05 §5.1) — ตอนแปลงเป็นใบขายคือจุดที่เครื่องพบลูกค้าจริง
       assertSameTestSide(booking.customer, product);
+
+      const stockClaim = await tx.product.updateMany({
+        where: { id: product.id, status: 'IN_STOCK', branchId: booking.branchId, deletedAt: null },
+        data: { status: 'SOLD_CASH' },
+      });
+      if (stockClaim.count !== 1) throw new ConflictException('สินค้าเพิ่งถูกขายหรือย้ายสาขา กรุณาตรวจสอบสต็อกอีกครั้ง');
 
       const saleNumber = await generateSaleNumber(
         tx as unknown as Parameters<typeof generateSaleNumber>[0],
@@ -706,6 +744,7 @@ export class BookingsService {
         data: {
           saleNumber,
           saleType: 'CASH',
+          costSnapshot: { create: { mainProductCost: product.costPrice } },
           customerId: booking.customerId,
           productId: firstItem.productId!,
           branchId: booking.branchId,
@@ -713,10 +752,7 @@ export class BookingsService {
           sellingPrice: totalAmount,
           discount: ZERO,
           netAmount: totalAmount,
-          paymentMethod:
-            (dto.paymentMethod as Prisma.SaleCreateInput['paymentMethod']) ||
-            booking.depositMethod ||
-            null,
+          paymentMethod: salePaymentMethod,
           amountReceived,
           downPaymentAmount: depositAmount,
           notes: dto.notes || `แปลงจากใบจอง ${booking.bookingNumber}`,
@@ -724,10 +760,6 @@ export class BookingsService {
       });
 
       // 4. Flip product → SOLD_CASH (mirrors SalesService.createCashSale).
-      await tx.product.update({
-        where: { id: firstItem.productId! },
-        data: { status: 'SOLD_CASH' },
-      });
       // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (แปลงใบจองเป็นการขาย)
       await preemptReservationsInTx(tx, [firstItem.productId]);
 
@@ -740,11 +772,7 @@ export class BookingsService {
       //                 ไปแล้วตั้งแต่วันจอง ถ้าไม่ปรับจะนับเงินสดซ้ำ
       const saleCashAccount = await this.shopAccountResolver.resolveInflowCashAccount(
         booking.branchId,
-        ((dto.paymentMethod as Prisma.SaleCreateInput['paymentMethod']) ??
-          booking.depositMethod ??
-          'CASH') as Parameters<
-          typeof this.shopAccountResolver.resolveInflowCashAccount
-        >[1],
+        salePaymentMethod,
         tx,
       );
       const shopAcc = this.shopAccountResolver.resolveProductAccounts(product.category);
@@ -785,7 +813,7 @@ export class BookingsService {
       ).padStart(2, '0')}`;
       const rule = await tx.commissionRule.findFirst({
         where: { isActive: true, deletedAt: null },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
       const commissionRate = rule?.rate ? Number(rule.rate) : 0.03;
       const commissionAmount = totalAmount.mul(commissionRate).toDecimalPlaces(2);
@@ -832,19 +860,20 @@ export class BookingsService {
   }
 
   async remove(id: string, user: RequestUser) {
-    const booking = await this.loadBookingScoped(id, user, {
-      id: true,
-      status: true,
-      branchId: true,
-    });
-    if (!booking) throw new NotFoundException('ไม่พบใบจอง');
-    if (booking.status !== 'PENDING_DEPOSIT') {
-      throw new BadRequestException(
-        `ลบใบจองได้เฉพาะสถานะ PENDING_DEPOSIT (สถานะปัจจุบัน: ${booking.status})`,
-      );
-    }
-    const deletedAt = new Date();
-    await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
+      await this.lockBooking(tx, id);
+      const booking = await this.loadBookingScoped(id, user, {
+        id: true,
+        status: true,
+        branchId: true,
+      }, tx);
+      if (!booking) throw new NotFoundException('ไม่พบใบจอง');
+      if (booking.status !== 'PENDING_DEPOSIT') {
+        throw new BadRequestException(
+          `ลบใบจองได้เฉพาะสถานะ PENDING_DEPOSIT (สถานะปัจจุบัน: ${booking.status})`,
+        );
+      }
+      const deletedAt = new Date();
       await tx.booking.update({
         where: { id },
         data: { deletedAt },
@@ -859,12 +888,12 @@ export class BookingsService {
           newValue: { deletedAt: deletedAt.toISOString() },
         },
       });
+      return { id, deletedAt };
     });
-    return { id, deletedAt };
   }
 
   // ───────────────────────────────────────────────────────────────────────
-  // Cron: auto-expire PAID bookings whose expireDate has passed
+  // Cron: auto-expire unpaid and PAID bookings whose expireDate has passed
   // ───────────────────────────────────────────────────────────────────────
 
   /**
@@ -897,86 +926,95 @@ export class BookingsService {
   }
 
   /**
-   * Mark PAID bookings as EXPIRED (forfeit) once `expireDate` has passed.
+   * Mark unpaid and PAID bookings as EXPIRED (forfeit only received deposits) once `expireDate` has passed.
    * Returns the number of rows flipped. Each transition writes an audit log
    * `BOOKING_AUTO_EXPIRED`. Called by `BookingExpireCron` daily at 00:30 BKK.
    */
   async autoExpire(now: Date = new Date()): Promise<number> {
-    const candidates = await this.prisma.booking.findMany({
-      where: {
-        status: 'PAID',
-        expireDate: { lt: now },
-        deletedAt: null,
-      },
-      select: { id: true, depositAmount: true, bookingNumber: true },
-      take: 500,
-    });
-    if (candidates.length === 0) return 0;
-
-    const systemUserId = await this.resolveSystemUserId();
-
     let flipped = 0;
-    for (const candidate of candidates) {
-      // Per-row composite-where update so one stale candidate doesn't roll
-      // back the whole batch. Each succeeds-or-skips atomically.
-      try {
-        await this.prisma.$transaction(async (tx) => {
-          const claim = await tx.booking.updateMany({
-            where: {
-              id: candidate.id,
-              status: 'PAID',
-              deletedAt: null,
-            },
-            data: { status: 'EXPIRED' },
-          });
-          if (claim.count !== 1) return;
-
-          // ── ริบมัดจำเข้ารายได้ (ผู้สอบอนุมัติ S41-1203 ไม่มี VAT, 2026-08-25) ──
-          // Dr S21-2002 / Cr S41-1203 — ไม่แตะเงินสด เพราะเงินเข้าลิ้นชักไปแล้ว
-          // ตอนวางมัดจำ · template ข้ามเองถ้าใบจองนั้นไม่มี JE ตั้งหนี้ (ยุคก่อนฟีเจอร์)
-          const forfeitAmount = new Prisma.Decimal((candidate.depositAmount ?? 0).toString());
-          if (forfeitAmount.gt(0)) {
-            await this.shopBookingForfeitTemplate.execute(
-              {
-                idempotencyKey: `booking-forfeit:${candidate.id}`,
-                bookingId: candidate.id,
-                bookingNumber: candidate.bookingNumber ?? undefined,
-                depositAmount: forfeitAmount,
-                postedAt: now,
+    let afterId: string | undefined;
+    for (;;) {
+      const candidates = await this.prisma.booking.findMany({
+        where: {
+          status: { in: ['PENDING_DEPOSIT', 'PAID'] },
+          expireDate: { lte: now }, deletedAt: null,
+          ...(afterId ? { id: { gt: afterId } } : {}),
+        },
+        select: { id: true }, orderBy: { id: 'asc' }, take: 500,
+      });
+      if (candidates.length === 0) break;
+      const systemUserId = await this.resolveSystemUserId();
+      for (const candidate of candidates) {
+        // Per-row composite-where update so one stale candidate doesn't roll
+        // back the whole batch. Each succeeds-or-skips atomically.
+        try {
+          const didExpire = await this.prisma.$transaction(async (tx) => {
+            await this.lockBooking(tx, candidate.id);
+            const booking = await tx.booking.findFirst({
+              where: { id: candidate.id, deletedAt: null },
+            });
+            if (!booking || !['PENDING_DEPOSIT', 'PAID'].includes(booking.status) || booking.expireDate > now) return false;
+            const claim = await tx.booking.updateMany({
+              where: {
+                id: candidate.id,
+                status: booking.status,
+                deletedAt: null,
+                expireDate: { lte: now },
               },
-              tx,
-            );
-          }
+              data: { status: 'EXPIRED' },
+            });
+            if (claim.count !== 1) return false;
 
-          await tx.auditLog.create({
-            data: {
-              action: 'BOOKING_AUTO_EXPIRED',
-              entity: 'booking',
-              entityId: candidate.id,
-              userId: systemUserId,
-              oldValue: { status: 'PAID' },
-              newValue: {
-                status: 'EXPIRED',
-                forfeitAmount: candidate.depositAmount.toFixed(2),
-                bookingNumber: candidate.bookingNumber,
+            // ── ริบมัดจำเข้ารายได้ (ผู้สอบอนุมัติ S41-1203 ไม่มี VAT, 2026-08-25) ──
+            // Dr S21-2002 / Cr S41-1203 — ไม่แตะเงินสด เพราะเงินเข้าลิ้นชักไปแล้ว
+            // ตอนวางมัดจำ · template ข้ามเองถ้าใบจองนั้นไม่มี JE ตั้งหนี้ (ยุคก่อนฟีเจอร์)
+            const forfeitAmount = new Prisma.Decimal((booking.depositAmount ?? 0).toString());
+            if (booking.status === 'PAID' && forfeitAmount.gt(0)) {
+              await this.shopBookingForfeitTemplate.execute(
+                {
+                  idempotencyKey: `booking-forfeit:${candidate.id}`,
+                  bookingId: candidate.id,
+                  bookingNumber: booking.bookingNumber ?? undefined,
+                  depositAmount: forfeitAmount,
+                  postedAt: now,
+                },
+                tx,
+              );
+            }
+
+            await tx.auditLog.create({
+              data: {
+                action: 'BOOKING_AUTO_EXPIRED',
+                entity: 'booking',
+                entityId: candidate.id,
+                userId: systemUserId,
+                oldValue: { status: booking.status },
+                newValue: {
+                  status: 'EXPIRED',
+                  forfeitAmount: booking.status === 'PAID' ? forfeitAmount.toFixed(2) : '0.00',
+                  bookingNumber: booking.bookingNumber,
+                },
               },
-            },
+            });
+            return true;
           });
-          flipped += 1;
-        });
-      } catch (err) {
-        this.logger.error(
-          `autoExpire failed for booking ${candidate.id}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-        // C5 — per-row Sentry capture so one bad candidate doesn't disappear
-        // into the log noise. Cron-level Sentry only fires on an overall throw,
-        // and the per-row try/catch above swallows individual failures.
-        Sentry.captureException(err, {
-          tags: { module: 'booking-expire', bookingId: candidate.id },
-        });
+          if (didExpire) flipped += 1;
+        } catch (err) {
+          this.logger.error(
+            `autoExpire failed for booking ${candidate.id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+          // C5 — per-row Sentry capture so one bad candidate doesn't disappear
+          // into the log noise. Cron-level Sentry only fires on an overall throw,
+          // and the per-row try/catch above swallows individual failures.
+          Sentry.captureException(err, {
+            tags: { module: 'booking-expire', bookingId: candidate.id },
+          });
+        }
       }
+      afterId = candidates[candidates.length - 1].id;
+      if (candidates.length < 500) break;
     }
     return flipped;
   }

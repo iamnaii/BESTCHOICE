@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
+import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
+import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSaleDto } from './dto/sale.dto';
 import { InterCompanyService } from '../inter-company/inter-company.service';
@@ -9,11 +11,12 @@ import { SaleWarrantyNotifierService } from './services/sale-warranty-notifier.s
 import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { ShopExternalFinanceSaleTemplate } from '../journal/cpa-templates/shop-external-finance-sale.template';
+import type { SalesReadActor, SalesReadFilters } from './sales-read.types';
 
 /**
  * SalesService — facade over the decomposed sales sub-services.
  *
- * The 8-method public surface is preserved. Sub-services are constructed
+ * Read methods require the authenticated actor. Sub-services are constructed
  * INTERNALLY in the constructor body. SaleWriterService now requires
  * ShopCashSaleTemplate + ShopAccountResolver (injected via NestJS DI from
  * JournalModule which is imported in SalesModule).
@@ -38,6 +41,8 @@ export class SalesService {
     private shopAccountResolver: ShopAccountResolver,
     private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
     private warrantyNotifier: SaleWarrantyNotifierService,
+    private shopDownPaymentTemplate: ShopDownPaymentTemplate,
+    @Optional() private audit?: AuditService,
   ) {
     this.query = new SalesQueryService(this.prisma);
     this.writer = new SaleWriterService(
@@ -46,6 +51,7 @@ export class SalesService {
       this.shopCashSaleTemplate,
       this.shopAccountResolver,
       this.shopExternalFinanceSaleTemplate,
+      this.shopDownPaymentTemplate,
     );
     this.creation = new SaleCreationService(
       this.prisma,
@@ -55,44 +61,38 @@ export class SalesService {
     );
   }
 
-  async findAll(filters: {
-    saleType?: string;
-    branchId?: string;
-    search?: string;
-    startDate?: string;
-    endDate?: string;
-    paymentMethod?: string;
-    salespersonId?: string;
-    contractStatus?: string;
-    includeVoided?: boolean;
-    page?: number;
-    limit?: number;
-    userRole?: string;
-  }) {
-    return this.query.findAll(filters);
+  async findAll(filters: SalesReadFilters, actor: SalesReadActor) {
+    return this.query.findAll(filters, actor);
   }
 
-  async getSalespersons(user: { role: string; branchId?: string }) {
-    return this.query.getSalespersons(user);
+  async exportRows(filters: SalesReadFilters, actor: SalesReadActor) {
+    const result = await this.query.exportRows(filters, actor);
+    await (this.audit ?? new AuditService(this.prisma)).log({ userId: actor.id, action: 'SALES_REPORT_EXPORTED', entity: 'sale',
+      newValue: { rowCount: result.total, asOf: result.asOf, role: actor.role } });
+    return result;
   }
 
-  async findOne(id: string) {
-    return this.query.findOne(id);
+  async getSalespersons(actor: SalesReadActor) {
+    return this.query.getSalespersons(actor);
   }
 
-  async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES') {
-    return this.creation.create(dto, salespersonId, userRole);
+  async findOne(id: string, actor: SalesReadActor) {
+    return this.query.findOne(id, actor);
+  }
+
+  async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES', userBranchId?: string | null) {
+    return this.creation.create(dto, salespersonId, userRole, userBranchId);
   }
 
   async getPosConfig() {
     return this.query.getPosConfig();
   }
 
-  async getTopSellingProducts(limit = 6) {
-    return this.query.getTopSellingProducts(limit);
+  async getTopSellingProducts(actor: SalesReadActor, limit = 6) {
+    return this.query.getTopSellingProducts(actor, limit);
   }
 
-  async getDailySummary(date: string, branchId?: string) {
-    return this.query.getDailySummary(date, branchId);
+  async getDailySummary(date: string, actor: SalesReadActor, branchId?: string) {
+    return this.query.getDailySummary(date, actor, branchId);
   }
 }

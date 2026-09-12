@@ -1,3 +1,5 @@
+import { DOCUMENT_STYLE, documentTypographyCss } from '@installment/shared';
+import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { creditSnapshot, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -13,8 +15,6 @@ import {
   numberToThaiCountText,
   isSafeImageDataUrl,
 } from './contract-document-format.util';
-import * as fs from 'fs';
-import * as path from 'path';
 
 /**
  * DocumentRenderingService — pure-ish rendering pipeline extracted VERBATIM from
@@ -96,8 +96,13 @@ export class DocumentRenderingService {
   wrapWithA4Styles(bodyHtml: string, templateSettings?: Prisma.JsonValue, contractNumber?: string): string {
     // Use template settings if available, otherwise fallback to defaults
     const settings = templateSettings as Record<string, unknown> | null | undefined;
-    const margins = (settings?.margins as Record<string, number>) || { top: 25.4, bottom: 25.4, left: 19.1, right: 19.1 };
-    const fontSize = (settings?.fontSize as Record<string, string>) || { body: '16pt', heading: '18pt', footer: '10pt' };
+    const margins = (settings?.margins as Record<string, number>) || DOCUMENT_STYLE.marginsMm;
+    const configuredSize = settings?.fontSize as Record<string, string | number> | undefined;
+    const sizePt = (key: string, fallback: number) => {
+      const value = Number.parseFloat(String(configuredSize?.[key] ?? fallback));
+      return Number.isFinite(value) && value > 0 ? value : fallback;
+    };
+    const fontSize = { body: sizePt('body', DOCUMENT_STYLE.bodyPt), heading: sizePt('heading', DOCUMENT_STYLE.headingPt), footer: sizePt('footer', DOCUMENT_STYLE.footerPt) };
     const letterhead = (settings?.letterhead as string) || 'none';
     // Build letterhead HTML
     let letterheadHtml = '';
@@ -114,27 +119,8 @@ export class DocumentRenderingService {
 <html lang="th">
 <head>
 <meta charset="UTF-8"/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet"/>
 <style>
-  /* TH Sarabun PSK — local font files (matches template editor) */
-  @font-face {
-    font-family: 'TH Sarabun PSK';
-    src: url('/fonts/THSarabunPSK-Regular.ttf') format('truetype');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-  }
-  @font-face {
-    font-family: 'TH Sarabun PSK';
-    src: url('/fonts/THSarabunPSK-Bold.ttf') format('truetype');
-    font-weight: 700;
-    font-style: normal;
-    font-display: swap;
-  }
-</style>
-<style>
+  ${embeddedDocumentFonts()}
   @page {
     size: A4;
     margin: ${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm;
@@ -143,7 +129,7 @@ export class DocumentRenderingService {
   html, body {
     margin: 0; padding: 0;
     font-family: 'TH Sarabun PSK', 'Sarabun', 'Noto Sans Thai', sans-serif;
-    font-size: ${fontSize.body};
+    font-size: ${fontSize.body}pt;
     line-height: 1.5;
     color: #1a1a1a;
   }
@@ -175,6 +161,7 @@ export class DocumentRenderingService {
       box-shadow: 0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08);
     }
   }
+${documentTypographyCss('body', fontSize)}
 </style>
 </head>
 <body>
@@ -674,33 +661,9 @@ ${(() => {
     });
     try {
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
-
-      // Embed TH Sarabun PSK fonts as base64 so Puppeteer can render them
-      // (relative /fonts/ URLs don't resolve in setContent context)
-      let fontCss = '';
-      try {
-        // Try multiple font paths (dev: src/../public, prod: dist/../public)
-        const fontPaths = [
-          path.join(process.cwd(), 'public', 'fonts'),
-          path.join(__dirname, '..', '..', '..', '..', 'public', 'fonts'),
-          path.join(process.cwd(), '..', 'web', 'public', 'fonts'),
-        ];
-        const fontsDir = fontPaths.find(p => fs.existsSync(path.join(p, 'THSarabunPSK-Regular.ttf'))) || fontPaths[0];
-        this.logger.log(`Font directory: ${fontsDir} (exists: ${fs.existsSync(fontsDir)})`);
-        const regularPath = path.join(fontsDir, 'THSarabunPSK-Regular.ttf');
-        const boldPath = path.join(fontsDir, 'THSarabunPSK-Bold.ttf');
-        if (fs.existsSync(regularPath)) {
-          const regularB64 = fs.readFileSync(regularPath).toString('base64');
-          fontCss += `@font-face { font-family: 'TH Sarabun PSK'; src: url(data:font/truetype;base64,${regularB64}) format('truetype'); font-weight: 400; font-style: normal; }`;
-        }
-        if (fs.existsSync(boldPath)) {
-          const boldB64 = fs.readFileSync(boldPath).toString('base64');
-          fontCss += `@font-face { font-family: 'TH Sarabun PSK'; src: url(data:font/truetype;base64,${boldB64}) format('truetype'); font-weight: 700; font-style: normal; }`;
-        }
-      } catch (err) {
-        this.logger.warn('Could not embed TH Sarabun PSK fonts', err instanceof Error ? err.message : err);
-      }
+      const fontCss = embeddedDocumentFonts();
+      await page.setContent(html.replace('</head>', `<style>${fontCss}</style></head>`), { waitUntil: 'domcontentloaded', timeout: 15000 });
+      await page.evaluate('document.fonts.ready');
 
       // Embed fonts + reset screen-mode CSS for clean PDF output
       await page.addStyleTag({

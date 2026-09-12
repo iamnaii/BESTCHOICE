@@ -1,3 +1,4 @@
+import { printDocument } from '@/lib/print-document';
 // Asset module — Phase 3 register page
 // As-of-date register with 4 stat cards, filters (category/status/search),
 // 9-column DataTable, CSV/Excel export. URL-synced filters.
@@ -108,12 +109,12 @@ export default function AssetRegisterPage() {
         key: 'assetCode',
         label: 'รหัส',
         render: (row: AssetRegisterRow) => (
-          <button
+          <><button
             onClick={() => navigate(`/assets/${row.id}`)}
             className="font-mono text-primary hover:underline"
           >
             {row.assetCode}
-          </button>
+          </button><span className="hidden print:inline">{row.assetCode}</span></>
         ),
       },
       { key: 'name', label: 'ชื่อ', render: (row: AssetRegisterRow) => row.name },
@@ -169,7 +170,7 @@ export default function AssetRegisterPage() {
   const summary = query.data?.summary;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 document-landscape asset-register-sheet">
       <AssetHubTabs />
       <PageHeader
         title="ทะเบียนสินทรัพย์"
@@ -185,7 +186,7 @@ export default function AssetRegisterPage() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => window.print()}
+              onClick={printDocument}
               disabled={!query.data}
             >
               <Printer className="mr-2 h-4 w-4" /> พิมพ์ PDF
@@ -237,7 +238,7 @@ export default function AssetRegisterPage() {
       </div>
 
       {/* Filters */}
-      <Card>
+      <Card data-print-hide="true">
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
           <div>
             <label className="text-sm font-medium mb-1 block">ณ วันที่</label>

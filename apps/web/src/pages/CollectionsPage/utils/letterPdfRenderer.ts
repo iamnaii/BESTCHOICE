@@ -1,3 +1,5 @@
+import { loadDocumentFonts } from '@/lib/document-fonts';
+import { DOCUMENT_STYLE } from '@installment/shared';
 /**
  * letterPdfRenderer.ts
  *
@@ -18,12 +20,16 @@ import { numToThaiText } from '@/utils/numToThaiText';
 // ── Page geometry (A4 portrait, mm) ───────────────────────────────────────────
 const PAGE_W = 210;
 const PAGE_H = 297;
-const MARGIN = 25;
+const MARGIN = 16;
+const TOP = 18;
+const BODY_BOTTOM = PAGE_H - 20;
+const lineSpacing = new WeakMap<jsPDF, number>();
+const lineHeight = (doc: jsPDF) => DOCUMENT_STYLE.bodyPt * 25.4 / 72 * (lineSpacing.get(doc) ?? 1.05);
 const CONTENT_W = PAGE_W - MARGIN * 2;
 
 // ── Font constants (must match names registered by loadThaiFont) ───────────────
-const PDF_FONT_FAMILY = 'THSarabunPSK';
-const REQUIRED_FONTS = ['THSarabunPSK-Regular', 'THSarabunPSK-Bold'] as const;
+const PDF_FONT_FAMILY = DOCUMENT_STYLE.pdfFontFamily;
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -83,44 +89,6 @@ export type LetterTemplateData = {
   };
 };
 
-// ── Font loader ───────────────────────────────────────────────────────────────
-// Module-level cache so font data is loaded only once per page session.
-const _fontCache: Record<string, string> = {};
-
-async function _ensureFont(fontName: string): Promise<void> {
-  if (_fontCache[fontName]) return;
-  try {
-    const response = await fetch(`/fonts/${fontName}.ttf`);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const buffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    // Convert in 8 KB chunks to avoid call-stack overflow on large font files
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += 8192) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-    }
-    _fontCache[fontName] = btoa(binary);
-  } catch (err) {
-    console.warn(`[letterPdfRenderer] Failed to load font ${fontName}:`, err);
-  }
-}
-
-async function loadThaiFont(doc: jsPDF): Promise<void> {
-  await Promise.all(REQUIRED_FONTS.map((f) => _ensureFont(f)));
-
-  const styles: Record<string, string> = {
-    'THSarabunPSK-Regular': 'normal',
-    'THSarabunPSK-Bold': 'bold',
-  };
-
-  for (const fontName of REQUIRED_FONTS) {
-    const base64 = _fontCache[fontName];
-    if (!base64) continue; // graceful fallback if fetch failed
-    doc.addFileToVFS(`${fontName}.ttf`, base64);
-    doc.addFont(`${fontName}.ttf`, PDF_FONT_FAMILY, styles[fontName] ?? 'normal');
-  }
-}
-
 // ── Image helper ──────────────────────────────────────────────────────────────
 
 async function loadImageAsDataUrl(url: string): Promise<string | null> {
@@ -165,42 +133,38 @@ const formatMoney = (n: number): string => formatNumberDecimal(n, 2);
  * Date now renders right-aligned BELOW the rule (handled by the caller in
  * renderLetterPdfDoc) — matches the reference PDF.
  */
-function headerBlock(
-  doc: jsPDF,
-  data: LetterTemplateData,
-  logoDataUrl: string | null,
-): void {
-  const topY = MARGIN;
+function nextLine(doc: jsPDF, y: number, height = lineHeight(doc)): number {
+  if (y + height > BODY_BOTTOM) { doc.addPage(); return TOP; }
+  return y;
+}
 
-  // Logo (20mm × 20mm — square to match reference)
-  if (logoDataUrl) {
-    try {
-      doc.addImage(logoDataUrl, 'PNG', MARGIN, topY, 20, 20);
-    } catch {
-      // Ignore — logo rendering is best-effort
-    }
+function writeLines(doc: jsPDF, text: string, x: number, y: number, width = PAGE_W - MARGIN - x): number {
+  const lines = doc.splitTextToSize(text, width) as string[];
+  for (const line of lines) {
+    y = nextLine(doc, y);
+    doc.text(line, x, y);
+    y += lineHeight(doc);
   }
+  return y;
+}
 
+function headerBlock(doc: jsPDF, data: LetterTemplateData, logoDataUrl: string | null): number {
+  if (logoDataUrl) {
+    try { doc.addImage(logoDataUrl, 'PNG', MARGIN, TOP, 20, 20); } catch { /* optional logo */ }
+  }
   const textX = logoDataUrl ? MARGIN + 24 : MARGIN;
-
-  // Company name (bold, larger)
-  doc.setFontSize(15);
+  doc.setFontSize(DOCUMENT_STYLE.headingPt);
   doc.setFont(PDF_FONT_FAMILY, 'bold');
-  doc.text(data.company.nameTh, textX, topY + 7);
-
-  // Company address (small, normal weight)
-  doc.setFontSize(11);
+  let y = writeLines(doc, data.company.nameTh, textX, TOP + 5);
+  doc.setFontSize(DOCUMENT_STYLE.bodyPt);
   doc.setFont(PDF_FONT_FAMILY, 'normal');
-  const addressLines = doc.splitTextToSize(
-    data.company.address,
-    PAGE_W - textX - MARGIN,
-  );
-  doc.text(addressLines, textX, topY + 13);
-
-  // Rule
-  doc.setDrawColor(120);
+  y = writeLines(doc, data.company.address, textX, y);
+  y = writeLines(doc, `เลขประจำตัวผู้เสียภาษี ${data.company.taxId}${data.company.phone ? ` โทร ${data.company.phone}` : ''}`, textX, y);
+  y = Math.max(y, TOP + 18);
+  doc.setDrawColor(6, 95, 70);
   doc.setLineWidth(0.5);
-  doc.line(MARGIN, topY + 25, PAGE_W - MARGIN, topY + 25);
+  doc.line(MARGIN, y, PAGE_W - MARGIN, y);
+  return y + 5;
 }
 
 /**
@@ -208,7 +172,7 @@ function headerBlock(
  * Returns the Y position after the title.
  */
 function titleBlock(doc: jsPDF, title: string, yStart: number): number {
-  doc.setFontSize(16);
+  doc.setFontSize(DOCUMENT_STYLE.headingPt);
   doc.setFont(PDF_FONT_FAMILY, 'bold');
   doc.text(title, PAGE_W / 2, yStart, { align: 'center' });
   doc.setFont(PDF_FONT_FAMILY, 'normal');
@@ -225,17 +189,12 @@ function titleBlock(doc: jsPDF, title: string, yStart: number): number {
  *   - No separator line below — body follows directly
  */
 function addressBlock(doc: jsPDF, data: LetterTemplateData, yStart: number): number {
-  doc.setFontSize(14);
-  let y = yStart;
+  doc.setFontSize(DOCUMENT_STYLE.bodyPt);
+  let y = nextLine(doc, yStart, lineHeight(doc) * 2);
 
-  // "เรียน" label is bold, name is normal — matches reference letterhead
-  doc.setFont(PDF_FONT_FAMILY, 'bold');
-  const greetLabel = 'เรียน  ';
-  doc.text(greetLabel, MARGIN, y);
-  doc.setFont(PDF_FONT_FAMILY, 'normal');
-  doc.text(data.customer.name, MARGIN + doc.getTextWidth(greetLabel), y);
-  y += 9;
+  y = writeLines(doc, `เรียน  ${data.customer.name}`, MARGIN, y) + 1;
 
+  y = nextLine(doc, y, lineHeight(doc) * 2);
   // "อ้างถึง" label bold + content normal, single-line wraps at right margin
   doc.setFont(PDF_FONT_FAMILY, 'bold');
   const refLabel = 'อ้างถึง  ';
@@ -247,15 +206,9 @@ function addressBlock(doc: jsPDF, data: LetterTemplateData, yStart: number): num
       `ลงวันที่ ${formatThaiDate(data.contract.contractDate)}`
     : `สัญญาเช่าซื้อโทรศัพท์มือถือ เลขที่ ${data.contract.contractNumber}`;
   const refLines = doc.splitTextToSize(refContent, CONTENT_W - refLabelW);
-  doc.text(refLines[0] ?? '', MARGIN + refLabelW, y);
-  y += 7;
-  if (refLines.length > 1) {
-    const rest = doc.splitTextToSize(refLines.slice(1).join(' '), CONTENT_W - refLabelW);
-    doc.text(rest, MARGIN + refLabelW, y);
-    y += rest.length * 7;
-  }
+  y = writeLines(doc, refLines.join(' '), MARGIN + refLabelW, y, CONTENT_W - refLabelW);
 
-  return y + 4;
+  return y + 2;
 }
 
 /**
@@ -279,19 +232,15 @@ function bodyReturnDevice45D(
   data: LetterTemplateData,
   yStart: number,
 ): number {
-  doc.setFontSize(14);
+  doc.setFontSize(DOCUMENT_STYLE.bodyPt);
   let y = yStart;
-  const lineH = 7;
+  const lineH = lineHeight(doc);
 
-  const write = (text: string, extraGap = 4): void => {
-    const lines = doc.splitTextToSize(text, CONTENT_W);
-    doc.text(lines, MARGIN, y);
-    y += lines.length * lineH + extraGap;
+  const write = (text: string, extraGap = 1.5): void => {
+    y = writeLines(doc, text, MARGIN, y) + extraGap;
   };
   const writeIndent = (text: string, extraGap = 0): void => {
-    const lines = doc.splitTextToSize(text, CONTENT_W - 6);
-    doc.text(lines, MARGIN + 6, y);
-    y += lines.length * lineH + extraGap;
+    y = writeLines(doc, text, MARGIN + 6, y) + extraGap;
   };
 
   // ── Paragraph 1: facts (product + schedule) ─────────────────────────────
@@ -317,7 +266,7 @@ function bodyReturnDevice45D(
     `(ต่อไปนี้เรียกว่า "ทรัพย์สินที่เช่าซื้อ") กับ ${data.company.nameTh} ` +
     `("บริษัทฯ") โดยท่านตกลงที่จะชำระค่าเช่าซื้อเป็นรายเดือน ${scheduleDesc} ` +
     `ตามรายละเอียดที่ปรากฏในสัญญานั้น`;
-  write(p1, 4);
+  write(p1, 1.5);
 
   // ── Paragraph 2: default declaration ────────────────────────────────────
   const overdue = data.overdueDetail;
@@ -332,7 +281,7 @@ function bodyReturnDevice45D(
     `     ปรากฏว่า บัดนี้ท่านได้ผิดนัดชำระค่าเช่าซื้องวดประจำเดือน ` +
     `${overdueMonthsText} ${overdueCountText}อันเป็นการผิดสัญญาเช่าซื้อในข้อ 8 ` +
     `(การผิดนัดชำระหนี้/ผิดเงื่อนไขสัญญา) และ ข้อ 20 (การผิดสัญญาและการสิ้นสุดของสัญญา)`;
-  write(p2, 4);
+  write(p2, 1.5);
 
   // ── Paragraph 3: demand intro ───────────────────────────────────────────
   write(`     บริษัทฯ จึงขอให้ท่านดำเนินการอย่างหนึ่งอย่างใด ดังต่อไปนี้`, 3);
@@ -393,21 +342,11 @@ function bodyReturnDevice45D(
   ];
 
   legalItems.forEach((item, idx) => {
+    y = nextLine(doc, y, lineHeight(doc) * 2);
     doc.setFont(PDF_FONT_FAMILY, 'bold');
-    const titleText = `${idx + 1}. ${item.title}`;
-    doc.text(titleText, MARGIN + 6, y);
+    y = writeLines(doc, `${idx + 1}. ${item.title}`, MARGIN + 6, y);
     doc.setFont(PDF_FONT_FAMILY, 'normal');
-    // Title + body share the same line then wrap
-    const titleW = doc.getTextWidth(titleText + ' ');
-    const bodyLines = doc.splitTextToSize(item.body, CONTENT_W - 6 - titleW);
-    doc.text(bodyLines[0] ?? '', MARGIN + 6 + titleW, y);
-    y += lineH;
-    if (bodyLines.length > 1) {
-      const rest = doc.splitTextToSize(bodyLines.slice(1).join(' '), CONTENT_W - 12);
-      doc.text(rest, MARGIN + 12, y);
-      y += rest.length * lineH;
-    }
-    y += 1;
+    y = writeLines(doc, item.body, MARGIN + 12, y) + 1;
   });
   y += 3;
 
@@ -429,9 +368,6 @@ function bodyReturnDevice45D(
   }
 
   // ── Closing ─────────────────────────────────────────────────────────────
-  doc.setFont(PDF_FONT_FAMILY, 'bold');
-  write('     จึงเรียนมาเพื่อโปรดดำเนินการโดยเร่งด่วน', 4);
-  doc.setFont(PDF_FONT_FAMILY, 'normal');
 
   return y;
 }
@@ -457,14 +393,12 @@ function bodyContractTermination60D(
   data: LetterTemplateData,
   yStart: number,
 ): number {
-  doc.setFontSize(14);
+  doc.setFontSize(DOCUMENT_STYLE.bodyPt);
   let y = yStart;
-  const lineH = 7;
+  const lineH = lineHeight(doc);
 
-  const write = (text: string, extraGap = 4): void => {
-    const lines = doc.splitTextToSize(text, CONTENT_W);
-    doc.text(lines, MARGIN, y);
-    y += lines.length * lineH + extraGap;
+  const write = (text: string, extraGap = 1.5): void => {
+    y = writeLines(doc, text, MARGIN, y) + extraGap;
   };
 
   // ── Paragraph 1: facts ──────────────────────────────────────────────────
@@ -486,7 +420,7 @@ function bodyContractTermination60D(
     `     ตามที่ท่านได้ทำสัญญาเช่าซื้อโทรศัพท์มือถือ ${productDesc} ` +
     `("ทรัพย์สินที่เช่าซื้อ") จากกับ ${data.company.nameTh} ("บริษัทฯ")` +
     scheduleDesc;
-  write(p1, 4);
+  write(p1, 1.5);
 
   // ── Paragraph 2: default declaration ────────────────────────────────────
   const overdue = data.overdueDetail;
@@ -503,14 +437,14 @@ function bodyContractTermination60D(
     `${formatMoney(data.contract.outstanding)} บาท ซึ่งบริษัทฯ ` +
     `ได้เคยมีจดหมายแจ้งเตือนให้ท่านชำระหนี้แล้ว แต่ท่านยังคงเพิกเฉย` +
     `อันเป็นการผิดนัดสัญญาข้อ 5 และ ข้อ 20 นั้น`;
-  write(p2, 4);
+  write(p2, 1.5);
 
   // ── Paragraph 3: termination declaration ────────────────────────────────
   const p3 =
     `     โดยจดหมายฉบับนี้ บริษัทฯ ในฐานะผู้ให้เช่าซื้อ จึงขอ` +
     `บอกเลิกสัญญาเช่าซื้อฉบับดังกล่าวกับท่านทันที และขอให้ท่าน` +
     `ดำเนินการดังต่อไปนี้ภายใน 7 วัน นับแต่วันที่ท่านได้รับจดหมายฉบับนี้:`;
-  write(p3, 3);
+  write(p3, 1.5);
 
   // ── Two bullet demands (bold lead label, body continues inline) ─────────
   const totalWords = numToThaiText(data.contract.outstanding);
@@ -532,23 +466,11 @@ function bodyContractTermination60D(
   ];
 
   for (const bullet of bulletLeads) {
+    y = nextLine(doc, y, lineHeight(doc) * 2);
     doc.setFont(PDF_FONT_FAMILY, 'bold');
-    const labelText = `     ${bullet.label}`;
-    doc.text(labelText, MARGIN, y);
+    y = writeLines(doc, bullet.label, MARGIN + 6, y);
     doc.setFont(PDF_FONT_FAMILY, 'normal');
-    const labelW = doc.getTextWidth(labelText);
-    // Wrap the body; first line continues after the bold label
-    const bodyLines = doc.splitTextToSize(bullet.body, CONTENT_W - labelW);
-    if (bodyLines.length > 0) {
-      doc.text(bodyLines[0], MARGIN + labelW, y);
-    }
-    y += lineH;
-    if (bodyLines.length > 1) {
-      const restLines = doc.splitTextToSize(bodyLines.slice(1).join(' '), CONTENT_W);
-      doc.text(restLines, MARGIN, y);
-      y += restLines.length * lineH;
-    }
-    y += 2;
+    y = writeLines(doc, bullet.body, MARGIN + 6, y) + 2;
   }
   y += 2;
 
@@ -560,7 +482,7 @@ function bodyContractTermination60D(
     `ในความผิดฐานยักยอกทรัพย์ ตามประมวลกฎหมายอาญา ซึ่งมีโทษ` +
     `จำคุกไม่เกิน 3 ปี หรือปรับไม่เกิน 60,000 บาท หรือทั้งจำทั้งปรับ ` +
     `ตามที่ระบุไว้ในสัญญาข้อ 13 และ ข้อ 21`;
-  write(p5, 4);
+  write(p5, 1.5);
 
   // ── Paragraph 6: coordinator contact ────────────────────────────────────
   const coord = data.coordinator;
@@ -576,6 +498,7 @@ function bodyContractTermination60D(
     const fullText = `${prefix}${nameBold}${middle}${phoneBold}${suffix}`;
     const wraps = doc.splitTextToSize(fullText, CONTENT_W);
     if (wraps.length === 1) {
+      y = nextLine(doc, y);
       let xCursor = MARGIN;
       doc.setFont(PDF_FONT_FAMILY, 'normal');
       doc.text(prefix, xCursor, y);
@@ -604,9 +527,6 @@ function bodyContractTermination60D(
   }
 
   // ── Closing (bold, slightly emphasised) ─────────────────────────────────
-  doc.setFont(PDF_FONT_FAMILY, 'bold');
-  write('     จึงเรียนมาเพื่อโปรดดำเนินการ', 4);
-  doc.setFont(PDF_FONT_FAMILY, 'normal');
 
   return y;
 }
@@ -628,61 +548,61 @@ function signatureBlock(
   yStart: number,
   signatureDataUrl: string | null,
 ): void {
-  // Slightly right of page center — matches printed letterhead convention
   const centerX = PAGE_W * 0.62;
-  let y = yStart;
-
-  doc.setFontSize(14);
+  const width = (PAGE_W - MARGIN - centerX) * 2;
+  doc.setFontSize(DOCUMENT_STYLE.bodyPt);
   doc.setFont(PDF_FONT_FAMILY, 'normal');
-  doc.text('ขอแสดงความนับถือ', centerX, y, { align: 'center' });
-  y += 7;
-
-  if (signatureDataUrl) {
-    try {
-      // Centered image (50mm wide × 20mm tall)
-      doc.addImage(signatureDataUrl, 'PNG', centerX - 25, y, 50, 20);
-    } catch {
-      // Signature image is best-effort
-    }
-    y += 22;
-  } else {
-    // Dotted placeholder line — matches the printed convention
-    doc.text('(...........................................)', centerX, y + 4, {
-      align: 'center',
-    });
-    y += 9;
-  }
-
+  const rows = [
+    { text: 'ขอแสดงความนับถือ', bold: false },
+    { text: `[ ${data.company.directorName} ]`, bold: true },
+    ...(data.company.directorPosition ? [{ text: data.company.directorPosition, bold: false }] : []),
+    { text: data.company.nameTh, bold: false },
+  ].map(row => {
+    doc.setFont(PDF_FONT_FAMILY, row.bold ? 'bold' : 'normal');
+    return { ...row, lines: doc.splitTextToSize(row.text, width) as string[] };
+  });
+  const height = rows.reduce((sum, row) => sum + row.lines.length * lineHeight(doc), 0) + (signatureDataUrl ? 17 : 8);
+  const closing = data.letterType === 'RETURN_DEVICE_45D'
+    ? '     จึงเรียนมาเพื่อโปรดดำเนินการโดยเร่งด่วน'
+    : '     จึงเรียนมาเพื่อโปรดดำเนินการ';
   doc.setFont(PDF_FONT_FAMILY, 'bold');
-  doc.text(`[ ${data.company.directorName} ]`, centerX, y, { align: 'center' });
-  y += 7;
-  doc.setFont(PDF_FONT_FAMILY, 'normal');
-  if (data.company.directorPosition) {
-    doc.setFontSize(13);
-    doc.text(data.company.directorPosition, centerX, y, { align: 'center' });
-    y += 6;
+  const closingLines = doc.splitTextToSize(closing, CONTENT_W) as string[];
+  // Reserve the closing and signature together before either is drawn.
+  const closingHeight = height + closingLines.length * lineHeight(doc) + 6;
+  let y = nextLine(doc, yStart, closingHeight);
+  for (const line of closingLines) {
+    doc.text(line, MARGIN, y);
+    y += lineHeight(doc);
   }
-  doc.setFontSize(13);
-  doc.text(data.company.nameTh, centerX, y, { align: 'center' });
+  y += 6;
+  for (const [index, row] of rows.entries()) {
+    doc.setFont(PDF_FONT_FAMILY, row.bold ? 'bold' : 'normal');
+    for (const line of row.lines) {
+      y = nextLine(doc, y);
+      doc.text(line, centerX, y, { align: 'center' });
+      y += lineHeight(doc);
+    }
+    if (index === 0) {
+      if (signatureDataUrl) {
+        try { doc.addImage(signatureDataUrl, 'PNG', centerX - 25, y, 50, 14); } catch { /* optional signature image */ }
+        y += 17;
+      } else {
+        doc.text('(...........................................)', centerX, y + 4, { align: 'center' });
+        y += 8;
+      }
+    }
+  }
 }
 
 /**
  * Renders the small footer at the very bottom of the page:
- * company taxId + address + phone in muted text.
+ * document identity and actual page count; company identity is in the header.
  */
 function footerBlock(doc: jsPDF, data: LetterTemplateData): void {
-  doc.setFontSize(9);
-  doc.setTextColor(130);
-  const parts = [
-    data.company.nameTh,
-    `เลขประจำตัวผู้เสียภาษี ${data.company.taxId}`,
-    data.company.address,
-    data.company.phone ? `โทร ${data.company.phone}` : null,
-  ]
-    .filter(Boolean)
-    .join('  ·  ');
-  const lines = doc.splitTextToSize(parts, CONTENT_W);
-  doc.text(lines, MARGIN, PAGE_H - MARGIN + 3);
+  doc.setFontSize(DOCUMENT_STYLE.footerPt);
+  doc.setTextColor(100);
+  doc.text(`เลขที่ ${data.letterNumber}`, MARGIN, PAGE_H - 14);
+  doc.text(`หน้า ${doc.getCurrentPageInfo().pageNumber} / ${doc.getNumberOfPages()}`, PAGE_W - MARGIN, PAGE_H - 14, { align: 'right' });
   doc.setTextColor(0);
 }
 
@@ -693,17 +613,17 @@ function footerBlock(doc: jsPDF, data: LetterTemplateData): void {
  * useful for bulk merging (caller does doc.addPage() between letters).
  */
 export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPDF> {
+  const relaxed = await renderLetterWithSpacing(data, 1.28);
+  if (relaxed.getNumberOfPages() === 1) return relaxed;
+  const compact = await renderLetterWithSpacing(data, 1.05);
+  return compact.getNumberOfPages() < relaxed.getNumberOfPages() ? compact : relaxed;
+}
+
+async function renderLetterWithSpacing(data: LetterTemplateData, spacing: number): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  lineSpacing.set(doc, spacing);
 
-  // Load Thai font — uses module-level cache so subsequent calls are instant
-  await loadThaiFont(doc);
-
-  // Activate font; fall back to helvetica if font loading failed entirely
-  if (_fontCache['THSarabunPSK-Regular']) {
-    doc.setFont(PDF_FONT_FAMILY, 'normal');
-  } else {
-    doc.setFont('helvetica', 'normal');
-  }
+  await loadDocumentFonts(doc);
 
   // Fetch optional images in parallel
   const [logoDataUrl, signatureDataUrl] = await Promise.all([
@@ -714,7 +634,7 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
   ]);
 
   // ── Render sections ──────────────────────────────────────────────────────
-  headerBlock(doc, data, logoDataUrl);
+  let y = headerBlock(doc, data, logoDataUrl);
 
   // Both templates mirror the company's printed format — no centered title
   // above the body; flow is:
@@ -724,10 +644,10 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
   //   → "เรียน" + "อ้างถึง" (addressBlock)
   //   → body
   //   → signature
-  let y = MARGIN + 32; // first content y, below the rule
+
 
   // Date right-aligned (matches reference: date sits alone above the subject)
-  doc.setFontSize(14);
+  doc.setFontSize(DOCUMENT_STYLE.bodyPt);
   doc.setFont(PDF_FONT_FAMILY, 'normal');
   doc.text(
     `วันที่ ${formatThaiDate(data.letterDate)}`,
@@ -735,7 +655,7 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
     y,
     { align: 'right' },
   );
-  y += 10;
+  y += lineHeight(doc) + 1;
 
   const subjectMap: Record<LetterTemplateData['letterType'], string> = {
     RETURN_DEVICE_45D:
@@ -746,8 +666,7 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
 
   doc.setFont(PDF_FONT_FAMILY, 'bold');
   const subjectLines = doc.splitTextToSize(subjectMap[data.letterType], CONTENT_W);
-  doc.text(subjectLines, MARGIN, y);
-  y += subjectLines.length * 7 + 4;
+  y = writeLines(doc, subjectLines.join(' '), MARGIN, y) + 2;
   doc.setFont(PDF_FONT_FAMILY, 'normal');
 
   y = addressBlock(doc, data, y);
@@ -757,8 +676,11 @@ export async function renderLetterPdfDoc(data: LetterTemplateData): Promise<jsPD
       ? bodyReturnDevice45D(doc, data, y)
       : bodyContractTermination60D(doc, data, y);
 
-  signatureBlock(doc, data, y + 8, signatureDataUrl);
-  footerBlock(doc, data);
+  signatureBlock(doc, data, y + 2, signatureDataUrl);
+  for (let page = 1; page <= doc.getNumberOfPages(); page++) {
+    doc.setPage(page);
+    footerBlock(doc, data);
+  }
 
   return doc;
 }

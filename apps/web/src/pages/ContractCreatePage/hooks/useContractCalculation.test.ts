@@ -4,21 +4,7 @@ import { useState } from 'react';
 import { useContractCalculation } from './useContractCalculation';
 import type { Product, InterestConfig } from '../types';
 
-/**
- * useContractCalculation is the single source of truth for contract pricing.
- * It computes principal, store commission, interest, VAT, financed amount,
- * and monthly payment for every installment sale created in the system.
- *
- * Formula (per CLAUDE.md "Flow เงินเมื่อขายผ่อน"):
- *   principal       = max(sellingPrice - downPayment, 0)
- *   storeCommission = principal * storeCommPct
- *   interestTotal   = principal * interestRate * totalMonths   (flat rate)
- *   vatAmount       = (principal + storeCommission + interestTotal) * vatPct
- *   financedAmount  = principal + storeCommission + interestTotal + vatAmount
- *   monthlyPayment  = round(financedAmount / totalMonths, 2)   (satang precision)
- *
- * If this hook drifts, every contract gets the wrong numbers.
- */
+// Editable defaults only; financial quote cases live in ContractQuoteService and ContractQuoteFlow.
 
 const makeProduct = (price: number): Product =>
   ({
@@ -81,7 +67,6 @@ describe('useContractCalculation', () => {
     expect(result.current.grossSellingPrice).toBe(15000);
     expect(result.current.sellingPrice).toBe(14500);
     expect(result.current.totalDownPayment).toBe(7000);
-    expect(result.current.principal).toBe(7500);
   });
 
   it('collects only the cash missing from the minimum total down payment', () => {
@@ -94,9 +79,6 @@ describe('useContractCalculation', () => {
     it('returns 0 when no product is selected', () => {
       const { result } = setupHook({ product: null });
       expect(result.current.sellingPrice).toBe(0);
-      expect(result.current.principal).toBe(0);
-      expect(result.current.financedAmount).toBe(0);
-      expect(result.current.monthlyPayment).toBe(0);
     });
 
     it('uses "ราคาผ่อน BESTCHOICE" price when present', () => {
@@ -126,124 +108,6 @@ describe('useContractCalculation', () => {
       } as unknown as Product;
       const { result } = setupHook({ product });
       expect(result.current.sellingPrice).toBe(18000);
-    });
-  });
-
-  describe('canonical 12-month installment', () => {
-    // Reference case used by the rest of the suite to anchor the formula.
-    // sellingPrice 25000, down 5000, 12 months, 1.5%, comm 10%, VAT 7%
-    //   principal       = 20000
-    //   storeCommission = 2000
-    //   interestTotal   = 20000 * 0.015 * 12 = 3600
-    //   subtotalForVat  = 20000 + 2000 + 3600 = 25600
-    //   vatAmount       = 25600 * 0.07 = 1792
-    //   financedAmount  = 25600 + 1792 = 27392
-    //   monthlyPayment  = floor(25600 / 12, 2) + round(1792 / 12, 2) = 2282.66
-    it('matches the canonical numbers for the 25000/5000/12 case', () => {
-      const { result } = setupHook({
-        product: makeProduct(25000),
-        config: makeConfig(),
-        initialDownPayment: 5000,
-        initialMonths: 12,
-      });
-      expect(result.current.sellingPrice).toBe(25000);
-      expect(result.current.principal).toBe(20000);
-      expect(result.current.storeCommission).toBe(2000);
-      expect(result.current.interestTotal).toBe(3600);
-      expect(result.current.vatAmount).toBeCloseTo(1792, 6);
-      expect(result.current.financedAmount).toBeCloseTo(27392, 6);
-      expect(result.current.monthlyPayment).toBeCloseTo(2282.66, 2);
-    });
-  });
-
-  describe('zero-interest plan', () => {
-    it('still applies storeCommission and VAT', () => {
-      const { result } = setupHook({
-        product: makeProduct(10000),
-        config: makeConfig({ interestRate: '0' }),
-        initialDownPayment: 0,
-        initialMonths: 10,
-      });
-      // Mark touched so auto-set effect doesn't override our 0 down payment
-      act(() => {
-        result.current.setDownPaymentTouched(true);
-        result.current.setDownPayment(0);
-      });
-      // principal=10000, comm=1000, interest=0
-      // vatable=11000, vat=770, financed=11770, monthly=11770/10=1177
-      expect(result.current.principal).toBe(10000);
-      expect(result.current.storeCommission).toBe(1000);
-      expect(result.current.interestTotal).toBe(0);
-      expect(result.current.vatAmount).toBeCloseTo(770, 6);
-      expect(result.current.financedAmount).toBeCloseTo(11770, 6);
-      expect(result.current.monthlyPayment).toBeCloseTo(1177, 2);
-    });
-  });
-
-  describe('24-month plan', () => {
-    it('scales interest linearly with months (flat rate)', () => {
-      const { result } = setupHook({
-        product: makeProduct(30000),
-        config: makeConfig(),
-        initialDownPayment: 6000,
-        initialMonths: 24,
-      });
-      // principal=24000, comm=2400, interest=24000*0.015*24=8640
-      // vatable=35040, vat=2452.8, financed=37492.8, monthly=round(37492.8/24,2)=1562.2
-      expect(result.current.principal).toBe(24000);
-      expect(result.current.interestTotal).toBe(8640);
-      expect(result.current.vatAmount).toBeCloseTo(2452.8, 4);
-      expect(result.current.financedAmount).toBeCloseTo(37492.8, 4);
-      expect(result.current.monthlyPayment).toBeCloseTo(1562.2, 2);
-    });
-  });
-
-  describe('cash-equivalent (downPayment >= sellingPrice)', () => {
-    it('clamps principal to 0 — no interest, no commission, no VAT', () => {
-      const { result } = setupHook({
-        product: makeProduct(10000),
-        config: makeConfig(),
-        initialDownPayment: 10000,
-        initialMonths: 12,
-      });
-      // Need to mark touched so the auto-set effect doesn't override
-      act(() => {
-        result.current.setDownPaymentTouched(true);
-        result.current.setDownPayment(10000);
-      });
-      expect(result.current.principal).toBe(0);
-      expect(result.current.storeCommission).toBe(0);
-      expect(result.current.interestTotal).toBe(0);
-      expect(result.current.vatAmount).toBe(0);
-      expect(result.current.financedAmount).toBe(0);
-      expect(result.current.monthlyPayment).toBe(0);
-    });
-
-    it('also clamps when downPayment overshoots the selling price', () => {
-      const { result } = setupHook({
-        product: makeProduct(8000),
-        config: makeConfig(),
-        initialDownPayment: 10000,
-        initialMonths: 12,
-      });
-      act(() => {
-        result.current.setDownPaymentTouched(true);
-        result.current.setDownPayment(10000);
-      });
-      expect(result.current.principal).toBe(0);
-    });
-  });
-
-  describe('totalMonths === 0 guard', () => {
-    it('returns monthlyPayment 0 instead of dividing by zero', () => {
-      const { result } = setupHook({
-        product: makeProduct(10000),
-        config: makeConfig({ minInstallmentMonths: 0, maxInstallmentMonths: 12 }),
-        initialDownPayment: 1000,
-        initialMonths: 0,
-      });
-      expect(result.current.monthlyPayment).toBe(0);
-      expect(Number.isFinite(result.current.monthlyPayment)).toBe(true);
     });
   });
 

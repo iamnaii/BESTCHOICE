@@ -1,3 +1,4 @@
+import PdfPreview from '@/components/PdfPreview';
 // Asset module — Phase 1 detail page
 // Read-only summary + action menu (DRAFT: edit/post/delete · POSTED: transfer/reverse · all: copy)
 // + transfer history timeline + audit trail sidebar.
@@ -29,7 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatDateShortThai, formatDateTime, formatNumberDecimal } from '@/utils/formatters';
-import api, { getErrorMessage } from '@/lib/api';
+import { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { assetsApi } from './api';
@@ -60,24 +61,10 @@ const fmt = (n: string | number | null | undefined): string =>
   n == null ? '-' : formatNumberDecimal(Number(n));
 
 /** Fetch the server-rendered ใบรับสินทรัพย์ PDF (JWT in-memory → axios) and open it. */
-async function openAssetReceiptPdf(assetId: string, assetCode: string): Promise<void> {
-  const res = await api.get(`/assets/${assetId}/receipt.pdf`, { responseType: 'blob' });
-  const blob = new Blob([res.data], { type: 'application/pdf' });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  if (!win) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${assetCode}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
 
 export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -144,11 +131,7 @@ export default function AssetDetailPage() {
     onError: (e) => toast.error(getErrorMessage(e)),
   });
 
-  const printMutation = useMutation({
-    mutationFn: ({ assetId, assetCode }: { assetId: string; assetCode: string }) =>
-      openAssetReceiptPdf(assetId, assetCode),
-    onError: () => toast.error('ไม่สามารถสร้างใบรับสินทรัพย์ PDF ได้'),
-  });
+
 
   const transferMutation = useMutation({
     mutationFn: (payload: Parameters<typeof assetsApi.transfer>[1]) =>
@@ -549,8 +532,12 @@ export default function AssetDetailPage() {
           onClose={() => navigate('/assets')}
           onPost={() => postMutation.mutate()}
           onReverse={(payload) => reverseMutation.mutate(payload)}
-          onPrint={() => printMutation.mutate({ assetId: asset.id, assetCode: asset.assetCode })}
+          onPrint={() => setPreviewId(asset.id)}
         />
+      )}
+      {asset && previewId === asset.id && (
+        <PdfPreview key={asset.id} path={`/assets/${asset.id}/receipt.pdf`} filename={`${asset.assetCode}.pdf`}
+          title="ตัวอย่างเอกสารสินทรัพย์" onClose={() => setPreviewId(null)} />
       )}
     </div>
   );

@@ -599,7 +599,7 @@ function DataTable<T extends { id: string }>({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => pagination.onPageChange(pagination.page - 1)}
+              aria-label="ก่อนหน้า" onClick={() => pagination.onPageChange(pagination.page - 1)}
               disabled={pagination.page <= 1}
             >
               <ChevronLeft className="h-3.5 w-3.5 mr-1" />
@@ -611,7 +611,7 @@ function DataTable<T extends { id: string }>({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => pagination.onPageChange(pagination.page + 1)}
+              aria-label="ถัดไป" onClick={() => pagination.onPageChange(pagination.page + 1)}
               disabled={pagination.page >= pagination.totalPages}
             >
               <span className="hidden sm:inline">ถัดไป</span>

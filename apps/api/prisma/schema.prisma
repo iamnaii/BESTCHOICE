@@ -794,10 +794,8 @@ model User {
   otherIncomeAttachments OtherIncomeAttachment[] @relation("OtherIncomeAttachmentUploader")
   otherIncomeTemplates   OtherIncomeTemplate[]   @relation("OtherIncomeTemplateCreator")
 
-  // D1.1.5.5 — Petty Cash custodian assignment (the user responsible for
-  // the petty-cash drawer). One user can be custodian for at most one
-  // CompanyInfo (SHOP or FINANCE), but the schema doesn't enforce that —
-  // it's an organizational policy that lives in service-layer validation.
+  // D1.1.5.5 — Petty Cash custodian (RETIRED 2026-09-13 — ดูคอมเมนต์ที่
+  // CompanyInfo.pettyCashCustodianId). Back-relation คงไว้คู่กับคอลัมน์.
   custodianForCompanies CompanyInfo[] @relation("CompanyPettyCashCustodian")
 
   // SP5 Phase 2 — Repair ticket audit trail
@@ -3444,13 +3442,14 @@ model CompanyInfo {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  // D1.1.5.5 — Petty Cash custodian. The user responsible for the cash
-  // drawer at this CompanyInfo (SHOP or FINANCE). Nullable so the row can
-  // exist before assignment; ON DELETE SET NULL keeps the company row even
-  // if the user is later soft-deleted. Role-eligibility (which UserRoles
-  // may hold this seat) is enforced at the service layer via SystemConfig
-  // key `petty_cash_custodian_role` — not by a DB constraint — to keep
-  // role policy editable without a schema migration.
+  // D1.1.5.5 — Petty Cash custodian. RETIRED 2026-09-13 (เจ้าของสั่งถอด —
+  // ไม่ได้ใช้): การ์ดตั้งค่า + endpoint `settings/petty-cash/*` ถูกลบแล้ว
+  // และไม่มีโค้ดอ่าน/เขียนคอลัมน์นี้อีก (prod ไม่เคยตั้งค่าเลย). คอลัมน์คงไว้
+  // เพราะ drop ในรอบเดียวกับที่ถอดโค้ดจะทำให้ API revision เก่าที่ยังรับ
+  // traffic ช่วง migrate → deploy พังทุก query ของ company_info — drop ได้
+  // ในรอบถัดไป (พร้อมถอดคอลัมน์นี้ออกจาก .claude/mcp/sql/grants.sql ด้วย
+  // ไม่งั้น setup.sh ของ MCP ล้มที่ ON_ERROR_STOP). ชื่อผู้ดูแลบนใบเบิกเงินสดย่อยเป็น free text ต่อใบ
+  // (`custodianName`) ไม่เกี่ยวกับคอลัมน์นี้.
   pettyCashCustodianId String? @map("petty_cash_custodian_id")
   pettyCashCustodian   User?   @relation("CompanyPettyCashCustodian", fields: [pettyCashCustodianId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 

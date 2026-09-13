@@ -11,6 +11,8 @@
 | 2026-09-13 | ย้อนหลังห้องแชทเดิม **ทั้งหมด 8,866 ห้อง** (ตั้งแต่ 12 พ.ค. 69) |
 | 2026-09-13 | เป้าหมายของเจ้าของ: เอาผู้สนใจไว้วิเคราะห์ lead + ทำการตลาดให้ถูกทาง |
 | 2026-09-13 | ถาม "ทักหลายช่องทางจะรู้ได้ไงว่าคนเดียวกัน" → รับทราบว่ารู้เองไม่ได้ กุญแจคือเบอร์/เลขบัตร/ยืนยัน LINE · **ให้ใส่ "คำใบ้อาจเป็นคนเดียวกัน" (ชื่อตรงกันข้ามช่องทาง) ในรอบนี้ — แนะนำให้พนักงานกดยืนยัน ไม่รวมอัตโนมัติ** |
+| 2026-09-13 | ถาม "จากผู้สนใจกลายเป็นลูกค้าจะเป็นยังไง" → ยืนยันว่าเปลี่ยนเองตามนิยาม (มีสัญญา/ใบขายใบแรก) ไม่มีปุ่ม · **"ok" ให้เพิ่ม KPI "มาจากแชท" + ตัวกรอง "ที่มา" ในแท็บลูกค้า** เพื่อวัดว่าทักมากี่คน ซื้อกี่คน |
+| 2026-09-13 | **"ลูกค้าทักมาใน LINE ของ shop ด้วย"** → LINE ร้าน (`LINE_SHOP`) เป็นช่องทางจริงที่ต้องรองรับเท่า Facebook (ดู 3.2 ข้อ 3 และ 3.3 (ง) ที่ขยายให้ครอบการผูก LINE ร้าน) |
 
 ## 1. เป้าหมาย (ประโยคเดียว)
 
@@ -59,7 +61,7 @@
 |---|---|
 | `name` | ชื่อจากห้องแชท (`displayName`) · ไม่มี → `"Facebook #" + รหัสผู้ใช้ของช่องทาง 4 ตัวท้าย` (รหัส = `lineUserId ?? externalUserId` ตาม externalKey ใน 3.2; LINE → `"LINE #…"`, TikTok → `"TikTok #…"`, เว็บ → `"เว็บ #…"`) |
 | `phone` | `null` |
-| `acquisitionSource` | `CHAT_FACEBOOK` / `CHAT_LINE` / `CHAT_TIKTOK` / `CHAT_WEB` (ตาม `chatLogoOf(channel)` ใน `packages/shared/customer-sort.ts` — LINE_FINANCE/LINE_SHOP ยุบเป็น LINE) — เก็บที่มาติดตัวไว้แม้ห้องถูกลบ |
+| `acquisitionSource` | `CHAT_` + ชื่อช่องทางจริง: `CHAT_FACEBOOK` / `CHAT_LINE_SHOP` / `CHAT_LINE_FINANCE` / `CHAT_TIKTOK` / `CHAT_WEB` — เก็บที่มาติดตัวไว้แม้ห้องถูกลบ · ตอนแสดง/กรอง `deriveSource` แปลงเป็นโลโก้ด้วย `chatLogoOf` (LINE_SHOP/LINE_FINANCE → LINE) จึงไม่ต้องเพิ่มค่าใน `PROSPECT_SOURCES` แต่ยังแยกได้ในฐานข้อมูลว่ามาจาก LINE ร้านหรือ LINE การเงิน |
 | `facebookUserId` / `facebookName` | PSID / ชื่อ (เฉพาะ Facebook — คอลัมน์มีอยู่แล้ว) |
 | `createdAt` | `room.createdAt` (วันทักครั้งแรก — ทั้งห้องใหม่และ backfill) |
 | `status` / `creditCheckStatus` / `chatConsent` | default (`ACTIVE` / `NONE` / `false`) |
@@ -82,7 +84,7 @@ API ส่งฟิลด์ใหม่ให้เว็บ: `chatPlaceholder:
 ensureForRoom(roomId):
   1. room.customerId มีแล้ว → คืนเลย
   2. ล็อกต่อคน: pg_advisory_xact_lock(hashtext(channel + ':' + externalKey))   // externalKey = lineUserId ?? externalUserId
-  3. หาห้องอื่นที่ยังไม่ถูกลบของ (channel, externalKey) ที่มี customerId → ใช้คนนั้น (ไม่สร้างใหม่)
+  3. หาคนเดิมก่อน ตามลำดับ: (ก) ห้องอื่นที่ยังไม่ถูกลบของ (channel, externalKey) ที่มี customerId · (ข) ห้อง LINE: `CustomerLineLink(lineUserId, channel)` **และ** `customers.lineIdShop` (LINE_SHOP) / `customers.lineIdFinance` (LINE_FINANCE) ที่ยังไม่ถูกลบ — เพราะฝั่ง LINE ร้านเก็บการผูกไว้ที่คอลัมน์ `lineIdShop` (`line-customer-link.service.ts:71` `selfLinkByPhone`) ไม่ใช่ตาราง `CustomerLineLink` ซึ่ง `getOrCreateRoom` เดิมเช็คอย่างเดียว (`room-manager.service.ts:186-197` — ช่องโหว่เดิม: ห้อง LINE ร้านของลูกค้าที่ผูกไว้แล้วไม่เคยถูกผูกอัตโนมัติ) → เจอ = ใช้คนนั้น
   4. ไม่มี → สร้าง placeholder ตาม 3.1 (createdAt = room.createdAt)
   5. อัปเดต room.customerId (verifiedAt คงเดิม)
 ```
@@ -115,7 +117,7 @@ ensureForRoom(roomId):
 - (ก) `PATCH /staff-chat/rooms/:id/customer` (`linkCustomer` `room-manager.service.ts:672`): ถ้า `room.customerId` เป็น placeholder และต่างจากเป้าหมาย → รวม แทนที่จะโยน "ห้องแชทนี้ผูกกับลูกค้ารายอื่นอยู่แล้ว" (กรณีลูกค้าจริง ↔ ลูกค้าจริง ยังโยนเหมือนเดิม)
 - (ข) `PATCH /customers/:id` เติมเบอร์แล้วซ้ำ → 409 เดิม (`existingCustomer` อยู่ใน payload แล้ว) → เว็บเสนอ "รวมกับ [ชื่อ]" → `POST /customers/:id/absorb-into/:targetId` (roles เดียวกับผูกห้อง: OWNER/BRANCH_MANAGER/FINANCE_MANAGER/SALES)
 - (ค) `SessionOpsService.mergeRooms` (`session-ops.service.ts:77`): ถ้าฝั่งใดเป็น placeholder → absorb เข้าลูกค้าอีกฝั่งก่อน แล้วรวมห้องตามเดิม; placeholder ทั้งคู่ → ย้ายห้องรองมาหาลูกค้าของห้องหลัก แล้วลบ placeholder ที่ว่าง (กติกาเดิม "ลูกค้าคนละคน" ใช้เฉพาะคนจริงทั้งคู่)
-- (ง) **LINE การเงินยืนยันตัวตน (แก้ Blocker 2):** `chatbot-finance.service.ts:218` เปลี่ยนเงื่อนไขเป็น `session.customerId !== linkStatus.customerId` และ `ChatRoomService.linkRoomToCustomer` (`chat-room.service.ts:142`) เมื่อห้องมี placeholder → absorb เข้า `linkStatus.customerId` ก่อนตั้ง `verifiedAt`
+- (ง) **ทุกทางที่ LINE ถูกผูกกับลูกค้า (แก้ Blocker 2 + ครอบ LINE ร้าน):** helper เดียว `absorbRoomsOfLineUser(lineUserId, channel, customerId)` = หาห้อง LINE ของ lineUserId นั้นที่ยังผูก placeholder อยู่ → absorb เข้าลูกค้าที่ผูก · เรียกจาก 3 จุด: (1) บอทการเงินยืนยันตัวตน — `chatbot-finance.service.ts:218` เปลี่ยนเงื่อนไขเป็น `session.customerId !== linkStatus.customerId` และ `ChatRoomService.linkRoomToCustomer` (`chat-room.service.ts:142`) absorb ก่อนตั้ง `verifiedAt` (2) LINE ร้าน ลูกค้าพิมพ์เบอร์ผูกเอง — `LineCustomerLinkService.selfLinkByPhone` (`line-customer-link.service.ts:52`) หลังตั้ง `lineIdShop` (3) ลงทะเบียน LIFF — `liff/register/confirm` (`liff-api.controller.ts:101` → `confirmLinkLine`) · `unlinkLineId` (unfollow) ไม่แตะห้อง (ห้องยังเป็นของลูกค้าคนนั้น — ประวัติไม่หาย)
 
 ### 3.4 โค้ดที่เคยถือว่า "ผูกแล้ว = ลูกค้าตัวจริง"
 
@@ -146,6 +148,7 @@ ensureForRoom(roomId):
 - **หน้ารายชื่อ/รายละเอียดลูกค้า**: `PhoneCell` แสดง "—" เมื่อ `null` · ป้าย "ผู้สนใจจากแชท" ในหน้ารายละเอียด · ฟอร์มแก้ไข: เบอร์ว่างได้เฉพาะ `chatPlaceholder` (ส่ง `undefined` ไม่ใช่ `''` — DTO update ปฏิเสธ `''` ที่ `customer.dto.ts:143`) · เซิร์ฟเวอร์: ห้ามล้างเบอร์ของคนที่มีเบอร์แล้ว
 - **ตัวเลือกลูกค้า** (`CustomerSelectStep.tsx:83`, `BookingsPage.tsx:423`, `useCreditCheckCreate.ts:80`): แสดง "จากแชท · ยังไม่มีเบอร์" แทนบรรทัดเบอร์ว่าง — ไม่ซ่อน (ค้นชื่อ Facebook เจอได้เป็นฟีเจอร์)
 - **คำใบ้ "อาจเป็นคนเดียวกัน" (เจ้าของสั่ง 2026-09-13):** ห้องแชทคืน `possibleSamePerson[]` (สูงสุด 3) = ลูกค้า/ผู้สนใจคนอื่นที่ยังไม่ถูกลบ ซึ่ง **ชื่อตรงกันเป๊ะหลัง normalize** (trim · ยุบช่องว่างซ้ำ · ไม่สนตัวพิมพ์ · ตัดคำนำหน้าใน `THAI_NAME_PREFIXES` · เทียบทั้ง `name` และ `facebookName`) และ (มีห้องแชทใน **ช่องทางอื่น** หรือ มีเบอร์แล้ว) — เรียง: คนที่มีเบอร์ก่อน แล้วตาม `createdAt` เก่าก่อน · **ไม่ทำ fuzzy match** (ชื่อคล้ายไม่นับ — กันสัญญาณรบกวน) · การ์ดผู้สนใจในแผงขวาแสดง "อาจเป็นคนเดียวกับ *สมชาย* (LINE · มีเบอร์) [รวม]" · กด "รวม" = absorb ตามทิศทาง: ห้องนี้เป็น placeholder → ดูดเข้าอีกคน · อีกคนเป็น placeholder และห้องนี้เป็นคนจริง → ดูดอีกคนเข้าห้องนี้ · placeholder ทั้งคู่ → ใหม่กว่าเข้าเก่ากว่า · คนจริงทั้งคู่ → ไม่มีปุ่ม (บอกให้ตรวจสอบเอง) · **ไม่รวมอัตโนมัติทุกกรณี** · หลังรวมแล้วคำใบ้หายเอง (ชื่อเดียวกันแต่เจ้าของกด "ไม่ใช่" → เก็บ `dismissedSamePerson` ไว้ในห้อง ไม่ถามซ้ำ)
+- **แท็บลูกค้า วัดผลจากแชท (เจ้าของ ok 2026-09-13):** การ์ด KPI ใบที่ 6 **"มาจากแชท"** = ลูกค้าที่ `acquisitionSource` ขึ้นต้น `CHAT_` (ทักมาก่อนแล้วค่อยซื้อ — ไม่นับคนที่ซื้อก่อนแล้วพนักงานผูกห้องทีหลัง) กดแล้วกรอง · ตัวกรอง **"ที่มา"** ชุดเดียวกับแท็บผู้สนใจใช้ได้ในแท็บลูกค้าด้วย (`customer-query.service.ts:327` ปัจจุบันจำกัด `source` ไว้เฉพาะ prospects → เปิดให้ทั้งสองแท็บ ใช้ `deriveSource`/`SOURCE_CHANNELS` เดิม) · ส่งออก Excel แท็บลูกค้าเพิ่มคอลัมน์ "ที่มา" · **ไม่เพิ่มคอลัมน์ในตาราง** (กติกา #1557: ความกว้าง 1120px เต็มแล้ว) ⇒ อ่านผล "ทักมา X ซื้อ Y" จาก KPI ผู้สนใจทั้งหมด + KPI มาจากแชท
 - **ส่งออก Excel (แก้ Major 3)**: เพดาน 10,000 คงเดิม (`export-snapshot.ts:8` + ฝั่งเว็บ `fetch-export-pages.ts:22`) · ปุ่มส่งออกแท็บผู้สนใจตรวจ `viewCounts.prospects` ก่อนยิง: เกิน 10,000 → บอกให้กรอง "ติดต่อล่าสุด" ก่อน (ไม่ยิงแล้วรอ error) — ผู้สนใจจะแตะ 10,000 ราว 2 สัปดาห์หลัง backfill
 
 ### 3.7 ฝั่ง API ที่แตะ (สรุปไฟล์)
@@ -174,6 +177,8 @@ ensureForRoom(roomId):
 - 11 ไฟล์ nullable phone: เทสเดิมต้องเขียว + เพิ่มเคส `phone: null` ที่ด่านใหม่
 - `backfill-chat-prospects.cli`: dry-run ไม่เขียน / จัดกลุ่มหลายห้อง / รันซ้ำไม่สร้างซ้ำ
 - `possibleSamePerson`: ชื่อตรงหลัง normalize (คำนำหน้า/ช่องว่าง/ตัวพิมพ์) / ไม่นับตัวเอง / ไม่นับช่องทางเดียวกันที่ไม่มีเบอร์ / ชื่อคล้ายไม่ขึ้น / สูงสุด 3 เรียงคนมีเบอร์ก่อน / dismiss แล้วไม่ขึ้นซ้ำ / ทิศทางรวม 4 กรณี
+- LINE ร้าน: ห้อง `LINE_SHOP` ของคนที่มี `lineIdShop` อยู่แล้ว → ไม่สร้าง placeholder / `selfLinkByPhone` และ LIFF confirm → ห้องที่มี placeholder ถูกดูดเข้าลูกค้าที่ผูก / unfollow ไม่แตะห้อง / `acquisitionSource` = `CHAT_LINE_SHOP` และ `deriveSource` แสดงเป็น LINE
+- แท็บลูกค้า: KPI "มาจากแชท" นับเฉพาะ `CHAT_*` / ตัวกรอง "ที่มา" ใช้ได้ทั้งสองแท็บ / ส่งออกมีคอลัมน์ที่มา
 
 **vitest (web)**: การ์ดผู้สนใจในแผงขวา (ปุ่ม 2 ปุ่ม, ไม่มีกล่องเหลือง) · `PhoneCell(null)` = "—" · ฟอร์มแก้ไขส่ง `undefined` · 409 → "รวมกับ …" · ปุ่มส่งออกเมื่อเกิน 10,000 · คำใบ้ในตัวเลือกลูกค้า
 
@@ -191,7 +196,7 @@ ensureForRoom(roomId):
 
 - **PDPA**: ชื่อ/PSID อยู่ใน `chat_rooms` อยู่แล้ว แถวใหม่ไม่เก็บอะไรเพิ่ม แต่ทำให้ค้นหา/ส่งออกจากหน้าลูกค้าได้ — `chatConsent=false` คงไว้ · DSAR ครอบคลุมโดยอัตโนมัติ
 - **ห้องซ้ำของคนเดียว** ไม่แก้ที่ต้นเหตุในรอบนี้ (follow-up: partial unique index) — แบบนี้แค่ทำให้ "คน" ไม่ซ้ำ
-- **LINE shop link ที่เกิดหลังห้อง** (`line-customer-link.service` ไม่แตะห้อง — บั๊กเดิม) ห้องจะยังผูก placeholder จนกว่าพนักงานกด "ผูกกับลูกค้าเดิม" — บันทึกเป็น follow-up
+- ~~LINE shop link ที่เกิดหลังห้อง — follow-up~~ → **ทำในรอบนี้แล้ว** (3.2 ข้อ 3 (ข) + 3.3 (ง)) เพราะเจ้าของยืนยัน 2026-09-13 ว่า LINE ร้านเป็นช่องทางจริง
 - แถวอัตโนมัติจากห้องเก่าที่เงียบไปแล้ว 1,764 ห้อง (ไม่คุยใน 90 วัน) จะอยู่ในแท็บผู้สนใจตลอด — เป็นความตั้งใจของเจ้าของ (KPI "เงียบเกิน 30 วัน" มีไว้กรอง)
 - **ตัวตนข้ามช่องทางรู้ได้เฉพาะจากเบอร์/เลขบัตร/ยืนยัน OTP LINE** — คนเดียวทัก Facebook + LINE จะเป็นผู้สนใจ 2 แถวจนกว่าจะรวม ⇒ ยอด "ผู้สนใจ" = จำนวนผู้ติดต่อต่อช่องทาง ส่วนยอด "ซื้อแล้ว" ถูกเสมอ (การซื้อผูกกับคนที่มีเบอร์) · วันนี้ prod เป็น Facebook 100% เรื่องนี้เริ่มมีผลเมื่อเปิด LINE/TikTok · แนวปฏิบัติ: ให้ทีม/บอทขอเบอร์ให้เร็วที่สุด
 

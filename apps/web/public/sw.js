@@ -75,3 +75,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 });
+
+// แตะที่แจ้งเตือนข้อความแชท → พาไปห้องนั้น
+// เดิมไม่มี handler นี้ ⇒ แตะแล้วไม่มีอะไรเกิดขึ้น แอดมินต้องเปิดแอปแล้วไล่หาห้องเอง
+// (roomId มากับ options.data ที่ chat-notification.ts ใส่ไว้)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const roomId = event.notification.data && event.notification.data.roomId;
+  const target = roomId ? `/inbox/${roomId}` : '/inbox';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      // มีหน้าต่างของเว็บเปิดอยู่แล้ว → ใช้ตัวนั้น ไม่เปิดแท็บซ้ำ
+      for (const client of clients) {
+        if (new URL(client.url).origin !== self.location.origin) continue;
+        const go = 'navigate' in client ? client.navigate(target).catch(() => client) : Promise.resolve(client);
+        return go.then((c) => (c && 'focus' in c ? c.focus() : undefined));
+      }
+      return self.clients.openWindow(target);
+    }),
+  );
+});

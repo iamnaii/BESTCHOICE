@@ -5,6 +5,8 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { readExportSnapshot } from '../src/common/helpers/export-snapshot';
 import { CustomerQueryService } from '../src/modules/customers/services/customer-query.service';
 import { CustomerTierService } from '../src/modules/customers/customer-tier.service';
+import { CustomerPurchaseSummaryService } from '../src/modules/customers/services/customer-purchase-summary.service';
+import { CustomerChatRoomsService } from '../src/modules/customers/services/customer-chat-rooms.service';
 
 if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Use isolated tools/test-chat-credit.sh');
 
@@ -49,16 +51,19 @@ describe('Server export snapshot and 10,000-customer benchmark', () => {
     const exportDb = new PrismaClient({ datasourceUrl: url.toString() }) as unknown as PrismaService;
     const tiers = new CustomerTierService(exportDb);
     const tierSpy = jest.spyOn(tiers, 'getCustomerTiers');
-    const query = new CustomerQueryService(exportDb, tiers, new CustomerPiiService(exportDb));
+    const query = new CustomerQueryService(exportDb, tiers,
+      new CustomerPurchaseSummaryService(exportDb), new CustomerChatRoomsService(exportDb),
+      new CustomerPiiService(exportDb));
     const started = performance.now();
-    const result = await query.exportRows(label, 1, 50, undefined, false, undefined, undefined, 'name', 'asc', 'GOOD');
+    const result = await query.exportRows({ search: label, sortBy: 'name', sortOrder: 'asc', tier: 'GOOD' });
     const elapsedMs = Math.round(performance.now() - started);
     expect(result.data).toHaveLength(10_000);
     expect(new Set(result.data.map(row => row.id)).size).toBe(10_000);
     expect(tierSpy).toHaveBeenCalledTimes(1);
-    expect(result.data.every(row => row.tier === 'GOOD')).toBe(true);
+    // findAll คืน union ของสองรูปแบบแถว (ลูกค้า / ผู้สนใจ) — ไม่ส่ง view จึงเป็นรูปแบบลูกค้า
+    expect(result.data.every(row => (row as { tier?: string }).tier === 'GOOD')).toBe(true);
     console.info(JSON.stringify({ benchmark: 'synthetic-customer-export', customers: 10_000, contracts: 10_000, payments: 10_000, elapsedMs, payloadBytes: Buffer.byteLength(JSON.stringify(result)) }));
     await db.customer.create({ data: { name: `${label}-OVER`, nationalId: randomUUID(), phone: '0800000000' } });
-    try { await expect(query.exportRows(label)).rejects.toThrow('ไม่เกิน 10,000'); } finally { await exportDb.$disconnect(); }
+    try { await expect(query.exportRows({ search: label })).rejects.toThrow('ไม่เกิน 10,000'); } finally { await exportDb.$disconnect(); }
   }, 120_000);
 });

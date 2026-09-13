@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
+import { outstandingOf, UNPAID_INSTALLMENT_WHERE } from './contract-outstanding';
 
 export interface BranchAccessUser {
   id: string;
@@ -104,8 +105,12 @@ export class ContractSnapshotService {
       // have amountPaid < amountDue (early-payoff ส่วนลดปิดยอด / ≤1฿ tolerance) — that
       // gap is a discount/write-down, NOT money owed. The old Σ amountDue − Σ
       // amountPaid over ALL rows wrongly reported the discount as คงค้าง.
+      //
+      // ตัวกรองมาจาก UNPAID_INSTALLMENT_WHERE และการบวก/clamp มาจาก outstandingOf
+      // (contract-outstanding.ts) — ตัวเดียวกับคอลัมน์ "คงค้าง" ของหน้า /customers
+      // ⇒ สองหน้าจอไม่มีทางแสดงเลขไม่ตรงกัน (D2)
       this.prisma.payment.aggregate({
-        where: { contractId: id, deletedAt: null, status: { not: 'PAID' } },
+        where: { contractId: id, ...UNPAID_INSTALLMENT_WHERE },
         _sum: { amountDue: true, amountPaid: true },
       }),
       this.prisma.payment.count({
@@ -147,10 +152,12 @@ export class ContractSnapshotService {
     ]);
 
     const totalAmount = Number(paymentAgg._sum.amountDue ?? 0);
-    const outstanding = Math.max(
-      0,
-      Number(unpaidAgg._sum.amountDue ?? 0) - Number(unpaidAgg._sum.amountPaid ?? 0),
-    );
+    // สัญญาเดียว ⇒ ส่ง "แถวสังเคราะห์" ที่ถือผลรวมของ groupBy เข้า outstandingOf
+    // (Σdue − Σpaid เท่ากับ Σ(due − paid) เสมอ จึงได้เลขเดิมเป๊ะ แต่กฎ clamp
+    // และเลขทศนิยมมาจากไฟล์กลาง ไม่ใช่สูตรที่เขียนซ้ำที่นี่)
+    const outstanding = outstandingOf([
+      { amountDue: unpaidAgg._sum.amountDue, amountPaid: unpaidAgg._sum.amountPaid },
+    ]);
     const installmentsRemaining = Math.max(0, contract.totalMonths - paidCountAgg);
 
     // Truncate the most recent collection note. We do not have a per-comment

@@ -3,9 +3,11 @@ import { useNavigate, useParams } from 'react-router';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { NOTIFICATION_SOUND_URL } from './components/notification-sound';
+import { showChatNotification, requestNotificationPermissionIfNeeded } from './components/chat-notification';
 import AppointmentAlertBar from './components/AppointmentAlertBar';
 import { apptState, nextAppointment } from './components/appointment';
 import { toast } from 'sonner';
+import { Lock } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
 import ConversationList, { type InboxFilters } from './components/ConversationList';
 import { describeSendError, SEND_ERROR_WINDOW, SEND_ERROR_TOKEN } from './components/send-error';
@@ -69,16 +71,10 @@ export default function UnifiedInboxPage() {
         audio.play().catch(() => {});
       } catch {}
       // Browser notification (only if granted + not the room you're viewing)
-      if (
-        'Notification' in window &&
-        Notification.permission === 'granted' &&
-        data.roomId !== activeRoomId
-      ) {
-        new Notification('ข้อความใหม่ — BESTCHOICE', {
-          body: data.text?.substring(0, 100) || 'มีข้อความใหม่',
-          icon: '/favicon.ico',
-          tag: `chat-${data.roomId}`,
-        });
+      // ผ่าน service worker — `new Notification()` ตรง ๆ โยน error บน Chrome Android
+      // ⇒ เดิมแจ้งเตือนบนมือถือไม่เคยเด้ง (ดู chat-notification.ts)
+      if (data.roomId !== activeRoomId) {
+        void showChatNotification({ roomId: data.roomId, text: data.text });
       }
     },
     [activeRoomId, isMuted],
@@ -90,9 +86,7 @@ export default function UnifiedInboxPage() {
     toggleMuteAll();
     // Turning notifications ON → request permission on this user gesture (deferred from mount).
     // If blocked, the desktop notification stays off but in-app sound still works.
-    if (wasMuted && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
+    if (wasMuted) requestNotificationPermissionIfNeeded();
   }, [muteAll, toggleMuteAll]);
 
   // Send-status state: in-flight ghosts (keyed by token) + unified failed list (both roomId-scoped)
@@ -277,7 +271,13 @@ export default function UnifiedInboxPage() {
     queryFn: () =>
       api.get(`/staff-chat/rooms/${activeRoomId}`).then((r) => r.data),
     enabled: !!activeRoomId,
+    // 403 = ห้องถูกเพื่อนรับไปแล้ว ไม่ใช่ความผิดพลาดชั่วคราว — retry ไปก็ได้ 403 เหมือนเดิม
+    retry: (count, err: any) => (err?.response?.status === 403 ? false : count < 2),
   });
+  const roomDenied = (sessionQuery.error as any)?.response?.status === 403;
+  const roomDeniedMessage =
+    (sessionQuery.error as any)?.response?.data?.message ??
+    'ห้องนี้มีพนักงานคนอื่นดูแลอยู่ ขอให้เขาโอนให้ก่อนจึงจะเปิดได้';
 
   // Fetch messages for active room
   // โน้ตภายในของห้อง — รวมเข้าไทม์ไลน์กับข้อความ (สเปกแผงกลาง 2026-09-06)
@@ -435,8 +435,19 @@ export default function UnifiedInboxPage() {
 
   // Handlers
   // URL คือแหล่งความจริงของห้องที่เปิด (สเปก §7 ลิงก์ห้องใน URL) — เลือกห้อง = เปลี่ยน URL
+  // เดิมขอสิทธิ์แจ้งเตือนเฉพาะตอนกดเปิดเสียงจากที่ปิดอยู่ ⇒ คนที่เสียงเปิดอยู่แล้วตั้งแต่แรก
+  // (ค่าเริ่มต้น) ไม่มีวันถูกขอ แจ้งเตือนจึงไม่เคยทำงานสำหรับคนส่วนใหญ่
+  // การคลิกเปิดห้องแชทเป็น user gesture ที่เบราว์เซอร์ยอมให้ขอสิทธิ์ และเข้าบริบทพอดี
+  // ถามครั้งเดียวต่อรอบ — ถ้าผู้ใช้กดไม่อนุญาต เบราว์เซอร์จะไม่ถามซ้ำเองอยู่แล้ว
+  const askedNotifyRef = useRef(false);
   const handleSelectRoom = useCallback(
-    (roomId: string) => navigate(`/inbox/${roomId}`),
+    (roomId: string) => {
+      if (!askedNotifyRef.current) {
+        askedNotifyRef.current = true;
+        requestNotificationPermissionIfNeeded();
+      }
+      navigate(`/inbox/${roomId}`);
+    },
     [navigate],
   );
 
@@ -609,6 +620,18 @@ export default function UnifiedInboxPage() {
 
       {/* Center panel: Chat */}
       <div className={`flex-1 flex flex-col min-h-0 min-w-0 ${!activeRoomId ? 'hidden lg:flex' : 'flex'}`}>
+        {roomDenied ? (
+          /* เดิม sessionQuery ไม่มี error handling ⇒ 403 ทำให้ ChatPanel ได้ session = undefined
+             แล้วเรนเดอร์หน้าว่าง "เลือกการสนทนา" เหมือนยังไม่ได้คลิกอะไร พนักงานจึงงงว่ากดไม่ติด
+             ทั้งที่ห้องยังอยู่ในรายการของทุกคน (SALES เปิดห้องที่เพื่อนรับไปแล้วไม่ได้) */
+          <div className="flex-1 flex items-center justify-center p-6">
+            <div className="max-w-sm text-center space-y-2">
+              <Lock className="size-8 mx-auto text-muted-foreground" />
+              <p className="text-sm font-medium text-foreground">เปิดห้องนี้ไม่ได้</p>
+              <p className="text-sm text-muted-foreground leading-snug">{roomDeniedMessage}</p>
+            </div>
+          </div>
+        ) : (
         <ChatPanel
           session={sessionQuery.data}
           messages={messagesQuery.data ?? []}
@@ -658,6 +681,7 @@ export default function UnifiedInboxPage() {
           failedSends={failedSends.filter((f) => f.roomId === activeRoomId)}
           onRetrySend={retrySend}
         />
+        )}
       </div>
 
       {/* Right panel: RoomDossier (โครง OBI · 3 แท็บ) — always visible on xl+ */}

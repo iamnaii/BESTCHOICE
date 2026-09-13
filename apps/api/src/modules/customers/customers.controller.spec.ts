@@ -94,22 +94,32 @@ describe('CustomersController PII (Phase 5)', () => {
       page: 1,
       limit: 50,
     });
-    const result = await controller.findAll(
-      { page: 1, limit: 50 } as any,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      reqOf('SALES'),
-    );
+    // ตัวกรองเป็น DTO ก้อนเดียว → req เป็นพารามิเตอร์ที่ 2 เสมอ
+    // (เวอร์ชันเดิมมี undefined 10 ตัวคั่น ถ้า @Query เปลี่ยนจำนวน req จะเลื่อนตำแหน่ง
+    //  role กลายเป็น 'UNKNOWN' แล้วการปิดเลขบัตรหยุดทำงานแบบเทสยังเขียว)
+    const result = await controller.findAll({ page: 1, limit: 50 } as any, reqOf('SALES'));
     expect((result.data[0] as any).nationalId).toBe('12345-XXXXX-XX-3');
     expect((result.data[1] as any).nationalId).toBe('12345-XXXXX-XX-4');
     expect((result.data[0] as any).phone).toBe('0812345678');
+  });
+
+
+  it('ส่ง filters ทั้งก้อนต่อให้ service — ตัวกรองใหม่ต้องไม่หายระหว่างทาง', async () => {
+    service.findAll.mockResolvedValue({ data: [], total: 0, page: 1, limit: 50 });
+    const filters = {
+      page: 1, limit: 50, view: 'prospects', search: 'ก', source: 'FACEBOOK',
+      contacted: '7d', tag: 'VIP,LOYAL', owner: 'unassigned', precheck: 'FULL_CHECK_PASSED',
+    } as any;
+    await controller.findAll(filters, reqOf('OWNER'));
+    expect(service.findAll).toHaveBeenCalledWith(filters);
+  });
+
+  it('export ใช้ตัวกรองชุดเดียวกับตาราง (ตาราง/Excel ต้องไม่หลุดจากกัน)', async () => {
+    (service as any).exportRows = jest.fn().mockResolvedValue({ data: [], total: 0 });
+    const filters = { page: 1, limit: 50, view: 'customers', purchase: 'CASH', branchId: 'br1' } as any;
+    await controller.exportRows(filters, reqOf('OWNER'));
+    expect((service as any).exportRows).toHaveBeenCalledWith(filters);
+    expect(service.findAll).not.toHaveBeenCalled();
   });
 
   it('returns null gracefully on findOne when customer not found', async () => {

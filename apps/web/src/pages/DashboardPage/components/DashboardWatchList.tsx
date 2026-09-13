@@ -105,7 +105,7 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
                 {upsell.total} ราย
               </span>
               <button
-                onClick={() => navigate('/customers?contractStatus=ACTIVE')}
+                onClick={() => navigate('/customers?purchase=INSTALLMENT&state=ACTIVE')}
                 className="text-xs text-primary hover:underline ml-2 flex items-center gap-1"
               >
                 ดูทั้งหมด <ArrowRight className="size-3" />

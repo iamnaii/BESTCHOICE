@@ -45,6 +45,8 @@
 - Forms ใช้ controlled components + validate ก่อน submit
 
 ## Reference Files
-- Page reference: `apps/web/src/pages/CustomersPage.tsx`
+- Page reference: `apps/web/src/pages/CustomersPage/` (โฟลเดอร์: `index.tsx` + `components/` + `hooks/`)
+  — ไฟล์เดี่ยว `pages/CustomersPage.tsx` **ถูกลบแล้ว**; หน้ารายการที่ซับซ้อนดูพี่น้องที่
+  `apps/web/src/pages/StockPage/` ด้วย
 - API client: `apps/web/src/lib/api.ts`
 - Auth context: `apps/web/src/contexts/AuthContext.tsx`

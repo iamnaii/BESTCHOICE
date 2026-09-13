@@ -112,6 +112,9 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
   const activeRoomIdRef = useRef(activeRoomId);
   const eventsRef = useRef(events);
   const hasConnectedRef = useRef(false);
+  // ตัวนับ/ตัวจับเวลาสำหรับกรณีเซิร์ฟเวอร์เป็นฝ่ายตัด (socket.io ไม่ retry ให้เอง)
+  const serverKickRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverKickAttemptsRef = useRef(0);
   useEffect(() => {
     activeRoomIdRef.current = activeRoomId;
     setStaffTyping(null);
@@ -125,7 +128,15 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
     if (!token) return;
 
     const socket = io(`${getWsBaseUrl()}/chat`, {
-      auth: { token },
+      // 🔴 ห้ามเป็น `auth: { token }` — ค่าคงที่ตัวนั้นถูก "แช่แข็ง" ไว้ตอนสร้าง socket
+      // prod ตั้ง JWT_EXPIRATION=15m แต่ Cloud Run ตัด WS ทุก timeoutSeconds=3600
+      // ⇒ ตอนต่อใหม่ socket.io ส่ง token เดิมที่หมดอายุไปแล้ว → gateway verify โยน →
+      // `client.disconnect()` (reason `io server disconnect`) ซึ่ง socket.io **ไม่ retry ต่อ**
+      // ⇒ ค้าง "ออฟไลน์" ทั้งวัน และเพราะเสียง/แจ้งเตือนยิงจาก socket event เท่านั้น
+      // แอดมินจะไม่รู้เลยว่ามีลูกค้าทักเข้ามา (polling สำรองไม่เคยทำให้เกิดเสียง)
+      // รูปฟังก์ชันทำให้ socket.io เรียกใหม่ทุกครั้งที่ handshake — ได้ token ปัจจุบันเสมอ
+      // (axios interceptor ต่ออายุ token ในหน่วยความจำให้อยู่แล้วจากทราฟฟิก HTTP ของหน้านี้)
+      auth: (cb: (data: { token: string }) => void) => cb({ token: getAccessToken() ?? '' }),
       transports: ['websocket'],  // Skip polling — avoids blocking on Vite proxy
       // Cloud Run ปิด WS ทุกครั้งที่ครบ request timeout — ต้องต่อใหม่ได้เรื่อย ๆ ไม่ใช่ยอมแพ้หลัง 3 ครั้ง
       reconnectionAttempts: 30,
@@ -143,6 +154,11 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
     // receiving message/typing/collision events until the user reselects it.
     socket.on('connect', () => {
       setStatus('connected');
+      serverKickAttemptsRef.current = 0;
+      if (serverKickRetryRef.current) {
+        clearTimeout(serverKickRetryRef.current);
+        serverKickRetryRef.current = null;
+      }
       const roomId = activeRoomIdRef.current;
       if (roomId) {
         socket.emit('chat:join', { roomId });
@@ -185,13 +201,29 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
     socket.on('connect_error', () => {
       // Silent — reconnection handles retry
     });
-    socket.on('disconnect', () => setStatus('disconnected'));
+    // `io server disconnect` = เซิร์ฟเวอร์เป็นฝ่ายตัด (ส่วนใหญ่คือ token หมดอายุตอน handshake)
+    // socket.io จงใจไม่ต่อกลับให้เองในกรณีนี้ ถ้าไม่สั่งเอง = เงียบยาวจนกว่าจะรีเฟรชหน้า
+    // ต่อใหม่แบบถอยหลังเพิ่มขึ้น (2→30 วิ) กัน loop รัวตอน token พังจริง ๆ
+    socket.on('disconnect', (reason) => {
+      setStatus('disconnected');
+      if (reason !== 'io server disconnect') return;
+      if (serverKickRetryRef.current) clearTimeout(serverKickRetryRef.current);
+      const attempt = serverKickAttemptsRef.current + 1;
+      serverKickAttemptsRef.current = attempt;
+      const delay = Math.min(2000 * attempt, 30000);
+      setStatus('reconnecting');
+      serverKickRetryRef.current = setTimeout(() => {
+        if (socketRef.current !== socket) return; // effect ถูก clean up ไปแล้ว
+        socket.connect();
+      }, delay);
+    });
     socket.io.on('reconnect_attempt', () => setStatus('reconnecting'));
     socket.io.on('reconnect_failed', () => setStatus('disconnected'));
 
     return () => {
       if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
       if (staffTypingTimerRef.current) clearTimeout(staffTypingTimerRef.current);
+      if (serverKickRetryRef.current) clearTimeout(serverKickRetryRef.current);
       socket.disconnect();
       socketRef.current = null;
     };

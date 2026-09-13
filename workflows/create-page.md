@@ -11,7 +11,7 @@
 - Roles ที่เข้าถึงได้
 
 ## Reference
-- List page: `apps/web/src/pages/CustomersPage.tsx`
+- List page: `apps/web/src/pages/CustomersPage/` (โฟลเดอร์: `index.tsx` + `components/` + `hooks/`) หรือ `apps/web/src/pages/StockPage/`
 - Detail page: `apps/web/src/pages/ContractDetailPage.tsx`
 - LIFF page: `apps/web/src/pages/liff/LiffPayment.tsx`
 

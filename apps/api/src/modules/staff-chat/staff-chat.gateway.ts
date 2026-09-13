@@ -219,18 +219,22 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
     });
 
     // Broadcast to all staff in the room
+    // 🔴 ต้องบอกสถานะการส่งไปด้วย — เดิม broadcast เหมือนสำเร็จเสมอ เพื่อนร่วมทีมจึงเห็น
+    // บับเบิลปกติทั้งที่ลูกค้าไม่ได้รับ แล้วเข้าใจว่า "ตอบแล้ว" ⇒ ลูกค้าหลุดเงียบ
     this.server.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.MESSAGE_NEW, {
       roomId: data.roomId,
       role: 'STAFF',
       staffId: userId,
       text: data.text,
       createdAt: new Date().toISOString(),
+      delivered: sendResult.success,
     });
 
-    // Notify the sending staff if external delivery (LINE/FB/etc.) failed so the
-    // UI can show the message as "not delivered" instead of a silent success tick.
+    // Notify external delivery (LINE/FB/etc.) failure.
+    // 🔴 ยิงให้ **ทั้งห้อง** ไม่ใช่แค่ `client` — คนที่สองที่เปิดห้องเดียวกันอยู่ต้องเห็นด้วย
+    // ว่าข้อความนั้นยังไม่ถึงลูกค้า ไม่งั้นเขาจะข้ามห้องนี้ไปเพราะคิดว่าเพื่อนตอบแล้ว
     if (!sendResult.success) {
-      client.emit(CHAT_EVENTS.MESSAGE_SEND_FAILED, {
+      this.server.to(CHAT_ROOMS.room(data.roomId)).emit(CHAT_EVENTS.MESSAGE_SEND_FAILED, {
         roomId: data.roomId,
         text: data.text,
         error: sendResult.error,
@@ -322,6 +326,17 @@ export class StaffChatGateway implements OnGatewayConnection, OnGatewayDisconnec
   emitNewMessage(roomId: string, payload: Record<string, unknown>): void {
     this.server?.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.MESSAGE_NEW, payload);
     this.server?.to(CHAT_ROOMS.INBOX).emit(CHAT_EVENTS.ROOM_UPDATE, {
+      roomId,
+      ...payload,
+    });
+  }
+
+  /**
+   * แจ้งทั้งห้องว่าข้อความที่เพิ่งส่งไปไม่ถึงลูกค้า (token หมดอายุ / พ้น 24 ชม. / rate limit)
+   * ยิงระดับห้อง ไม่ใช่เฉพาะคนส่ง — คนที่สองต้องไม่เข้าใจผิดว่าเคสนี้ตอบไปแล้ว
+   */
+  emitSendFailed(roomId: string, payload: { text: string; error?: string }): void {
+    this.server?.to(CHAT_ROOMS.room(roomId)).emit(CHAT_EVENTS.MESSAGE_SEND_FAILED, {
       roomId,
       ...payload,
     });

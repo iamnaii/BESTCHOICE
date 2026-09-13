@@ -10,6 +10,42 @@ import {
   UserProfile,
 } from '../chat-engine/interfaces/channel-adapter.interface';
 
+/** อ่านรหัสความผิดพลาดจาก body ของ Graph API (บางกรณีไม่ใช่ JSON) */
+function parseFbError(errBody: string): { code?: number; subcode?: number; message?: string } {
+  try {
+    const parsed = JSON.parse(errBody);
+    return {
+      code: parsed?.error?.code,
+      subcode: parsed?.error?.error_subcode,
+      message: parsed?.error?.message,
+    };
+  } catch {
+    const m = /\(#(\d+)\)/.exec(errBody);
+    return { code: m ? Number(m[1]) : undefined };
+  }
+}
+
+/**
+ * "ส่งนอกหน้าต่าง 24 ชม." ของ Messenger
+ * Graph ตอบ code 10 subcode 2018278 — เช็คข้อความสำรองไว้เผื่อ Meta เปลี่ยนรูป
+ */
+export function isOutsideWindowError(errBody: string): boolean {
+  const { code, subcode, message } = parseFbError(errBody);
+  if (subcode === 2018278) return true;
+  // ⚠️ ห้ามนับ code 10 เฉย ๆ — Graph ใช้ code 10 กับ "แอปไม่มีสิทธิ์" ด้วย
+  // (เช่น token ไม่มี pages_messaging) ถ้านับรวม จะไปลองแท็กซ้ำโดยเปล่าประโยชน์
+  // แล้วบอกผิดว่า "เพจยังไม่ได้รับอนุมัติ Human Agent" ทั้งที่ต้นเหตุคือสิทธิ์ของ token
+  return code === 10 && /outside of allowed window/i.test(message ?? errBody);
+}
+
+/** แปลงเป็นรูป `fb:<code>[:<subcode>]` ที่ฝั่งเว็บ (`send-error.ts`) รอแปลเป็นไทย */
+export function formatFbError(errBody: string): string {
+  const { code, subcode } = parseFbError(errBody);
+  if (code === undefined) return errBody;
+  const tag = subcode === undefined ? `fb:${code}` : `fb:${code}:${subcode}`;
+  return `${tag} ${errBody}`;
+}
+
 /**
  * Facebook Messenger adapter — uses FB Graph API Send API.
  *
@@ -117,30 +153,56 @@ export class FacebookAdapter implements IChannelAdapter {
         fbMessage.quick_replies = this.buildFbQuickReplies(message.quickReplies);
       }
 
-      const body: Record<string, unknown> = {
-        messaging_type: 'RESPONSE',
-        recipient: { id: message.externalUserId },
-        message: fbMessage,
+      const post = async (envelope: Record<string, unknown>) => {
+        const res = await fetch(this.messagesUrl(pageId), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${pageAccessToken}`,
+          },
+          body: JSON.stringify({
+            ...envelope,
+            recipient: { id: message.externalUserId },
+            message: fbMessage,
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { message_id?: string };
+          return { ok: true as const, messageId: data.message_id };
+        }
+        return { ok: false as const, status: res.status, errBody: await res.text() };
       };
 
-      const res = await fetch(this.messagesUrl(pageId), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${pageAccessToken}`,
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(10000),
-      });
+      // ปกติใช้ RESPONSE — ตอบในหน้าต่าง 24 ชม. ของ Meta
+      let attempt = await post({ messaging_type: 'RESPONSE' });
 
-      if (!res.ok) {
-        const errBody = await res.text();
-        this.logger.error(`[FB] API error ${res.status}: ${errBody}`);
-        return { success: false, error: errBody };
+      // 🔴 ถ้าพ้น 24 ชม. เดิมจบแค่ error ⇒ แอดมินตอบลูกค้าที่เงียบข้ามวันไม่ได้เลย
+      // ขณะที่แอป Facebook ของ Meta เองตอบได้ถึง 7 วันเพราะใช้หน้าต่าง human agent
+      // (prod: 8,703 จาก 8,789 ห้องอยู่นอกหน้าต่างตอนนี้ — เปิดห้องเก่าพิมพ์ = error ทุกใบ)
+      // ลองซ้ำครั้งเดียวด้วยแท็ก HUMAN_AGENT ซึ่งยืดเป็น 7 วัน
+      // ปลอดภัยกับของเดิม: ในหน้าต่าง 24 ชม. ไม่มีอะไรเปลี่ยน และถ้าเพจยังไม่ได้รับอนุมัติ
+      // ฟีเจอร์ Human Agent ก็แค่ล้มเหมือนเดิม ไม่ได้แย่ลง
+      const retriedHumanAgent = !attempt.ok && isOutsideWindowError(attempt.errBody);
+      if (retriedHumanAgent) {
+        this.logger.warn(
+          `[FB] พ้นหน้าต่าง 24 ชม. สำหรับ ${message.externalUserId} — ลองใหม่ด้วยแท็ก HUMAN_AGENT`,
+        );
+        attempt = await post({ messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' });
       }
 
-      const data = (await res.json()) as { message_id?: string };
-      return { success: true, externalMessageId: data.message_id };
+      if (!attempt.ok) {
+        this.logger.error(`[FB] API error ${attempt.status}: ${attempt.errBody}`);
+        return {
+          success: false,
+          // รูป `fb:<code>[:<subcode>]` — ฝั่งเว็บ (`send-error.ts`) รอรูปนี้อยู่แล้วเพื่อแปลเป็นไทย
+          // แนบตัวเต็มต่อท้ายไว้ไม่ให้ข้อมูลหาย · ถ้าลองแท็กแล้วยังไม่ผ่าน บอกให้ชัดว่าลองแล้ว
+          // ไม่งั้นจะขึ้นว่า "พ้น 24 ชม." เฉย ๆ ทั้งที่ระบบพยายามทางที่สองไปแล้ว
+          error: `${formatFbError(attempt.errBody)}${retriedHumanAgent ? ' (ลองแท็ก HUMAN_AGENT แล้วยังไม่ผ่าน — เพจอาจยังไม่ได้รับอนุมัติฟีเจอร์ Human Agent)' : ''}`,
+        };
+      }
+
+      return { success: true, externalMessageId: attempt.messageId };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       const isTimeout = err instanceof Error && err.name === 'TimeoutError';

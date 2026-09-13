@@ -40,3 +40,31 @@ export async function seedPreviewSales(db: PrismaService, actor: { id: string; r
   const result = await service.convertToSale(booking.id, { collectBalance: true, paymentMethod: 'BANK_TRANSFER' }, actor.id, actor);
   return { bookingId: booking.id, saleId: result.sale.id };
 }
+
+/**
+ * ใบขาย "ไฟแนนซ์นอก" หนึ่งใบ — มีไว้ให้ชิป ไฟแนนซ์นอก, KPI ไฟแนนซ์นอก และคอลัมน์
+ * ประกันถึง (ประกันร้านมาจาก Sale.shopWarrantyEndDate) มองเห็นได้จริงบน local preview
+ * ก่อนหน้านี้ฐานข้อมูล preview ไม่มีใบขายประเภทนี้เลย ⇒ ยืนยันไม่ได้ว่าทำงาน
+ */
+export async function seedPreviewExternalFinanceSale(db: PrismaService, salespersonId: string) {
+  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Sales fixtures require disposable PostgreSQL');
+  const saleNumber = `${TEST_DOC_PREFIX}LOCAL-EXTFIN-0001`;
+  const existing = await db.sale.findUnique({ where: { saleNumber } });
+  if (existing) return { saleId: existing.id };
+  const branch = await db.branch.findFirstOrThrow({ where: { name: 'LOCAL PREVIEW BRANCH', deletedAt: null } });
+  const customer = await db.customer.upsert({ where: { id: '53000000-0000-4000-8000-000000000011' }, update: {}, create: {
+    id: '53000000-0000-4000-8000-000000000011', name: `${TEST_NAME_PREFIX} — ลูกค้าไฟแนนซ์นอก`,
+    nationalId: '7900000000098', phone: '0800000098', addressCurrent: TEST_CUSTOMER_ADDRESS } });
+  const product = await db.product.upsert({ where: { id: '53000000-0000-4000-8000-000000000012' }, update: {}, create: {
+    id: '53000000-0000-4000-8000-000000000012', name: `${TEST_NAME_PREFIX} — เครื่องไฟแนนซ์นอก`, brand: 'Samsung',
+    model: 'Galaxy S24', storage: '256GB', category: 'PHONE_NEW', imeiSerial: `${TEST_DOC_PREFIX}LOCAL-EXTFIN`,
+    costPrice: 12000, cashPrice: 18000, branchId: branch.id, ownedByCompanyId: branch.companyId, status: 'SOLD_CASH',
+    warrantyExpireDate: new Date(Date.now() + 300 * 86400000) } });
+  const sale = await db.sale.create({ data: {
+    saleNumber, saleType: 'EXTERNAL_FINANCE', customerId: customer.id, productId: product.id,
+    branchId: branch.id, salespersonId, sellingPrice: 18000, netAmount: 18000,
+    financeCompany: 'LOCAL FINANCE CO', financeRefNumber: `${TEST_DOC_PREFIX}REF-0001`, financeAmount: 15000,
+    downPaymentAmount: 3000, notes: `${TEST_NOTE_MARKER} LOCAL-EXTERNAL-FINANCE`,
+    shopWarrantyStartDate: new Date(), shopWarrantyEndDate: new Date(Date.now() + 30 * 86400000) } });
+  return { saleId: sale.id };
+}

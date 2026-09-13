@@ -150,7 +150,13 @@ export class StaffChatController {
     // The room payload includes customer PII (phone/nationalId), so a SALES user must not be
     // able to read an arbitrary room by guessing its id. Cross-branch roles see all rooms.
     if (req.user.role === 'SALES' && room.assignedToId && room.assignedToId !== req.user.id) {
-      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+      // บอกชื่อคนที่ถืออยู่ด้วย — ข้อความลอย ๆ ทำให้พนักงานไม่รู้ว่าต้องไปคุยกับใคร
+      // และหน้าจอเดิมไม่แสดงอะไรเลย (ดู index.tsx: sessionQuery ไม่มี error handling)
+      throw new ForbiddenException(
+        room.assignedTo?.name
+          ? `ห้องนี้ ${room.assignedTo.name} กำลังดูแลอยู่ — ขอให้เขาโอนให้ก่อนจึงจะเปิดได้`
+          : 'ไม่มีสิทธิ์เข้าถึงห้องแชทนี้',
+      );
     }
     // PDPA: a SALES user can open an unassigned room to pick it up, but must not be
     // able to harvest national-ID PII by enumerating room ids. Redact nationalId unless
@@ -193,6 +199,8 @@ export class StaffChatController {
     });
 
     // Broadcast to staff viewing this room so the message appears in real-time
+    // 🔴 `delivered` สำคัญ — เดิมเส้นทางนี้ (เส้นหลักที่หน้าเว็บใช้) ไม่เคยบอกว่าส่งล้มเหลว
+    // เลยแม้แต่ช่องทางเดียว ทุกคนในห้องเห็นเป็นบับเบิลปกติทั้งที่ลูกค้าไม่ได้รับ
     this.staffChatGateway.emitNewMessage(id, {
       id: result.message?.id,
       roomId: id,
@@ -201,7 +209,12 @@ export class StaffChatController {
       text,
       clientMessageId: body?.clientMessageId,
       createdAt: result.message?.createdAt?.toISOString?.() ?? new Date().toISOString(),
+      delivered: result.success,
     });
+
+    if (!result.success) {
+      this.staffChatGateway.emitSendFailed(id, { text, error: result.error });
+    }
 
     return result;
   }

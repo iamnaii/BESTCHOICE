@@ -241,6 +241,31 @@ export class FacebookWebhookController {
             this.logger.log(
               `[FB postback router] PSID ${senderId} payload "${payload}" → ${routeResult.action ?? 'unknown'}${routeResult.error ? ` (error: ${routeResult.error})` : ''}`,
             );
+            // 🔴 เดิม return ตรงนี้เลย ⇒ ที่มา (referral) ที่พ่วงมากับ postback ใบนี้
+            // **ถูกทิ้งทั้งก้อน** เพราะ buildFbAttribution ด้านล่างไม่เคยถูกเรียก
+            // ยังไม่เกิดบน prod เพราะ payload จริงเป็น JSON ไม่ขึ้นต้นด้วย `TEMPLATE:`
+            // แต่เป็นกับดักรออยู่ — วันที่ใช้ quick-reply กับโฆษณาพร้อมกันคือวันที่ข้อมูลหาย
+            // try/catch แยกของตัวเอง: ถ้าบันทึกที่มาพัง ต้องไม่หลุดไปเดินเส้น legacy ซ้ำ
+            try {
+              const handledAttribution = buildFbAttribution(postback.referral ?? event.referral);
+              if (handledAttribution) {
+                await this.messageRouter.recordAdReferral(
+                  senderId,
+                  ChatChannel.FACEBOOK,
+                  handledAttribution,
+                );
+                if (handledAttribution.utmContent) {
+                  await this.handleProductReferral(
+                    senderId,
+                    String(handledAttribution.utmContent),
+                  );
+                }
+              }
+            } catch (attrErr) {
+              this.logger.warn(
+                `[FB referral] handled-postback attribution failed for PSID ${senderId}: ${attrErr instanceof Error ? attrErr.message : attrErr}`,
+              );
+            }
             return;
           }
         }
@@ -294,7 +319,13 @@ export class FacebookWebhookController {
     if (event.referral && !message && !postback) {
       // ลูกค้าเก่ากลับมาจากโฆษณา (source=ADS) — ต้อง subscribe messaging_referrals ถึงจะได้ event นี้
       const adAttribution = buildFbAttribution(event.referral);
-      if (adAttribution?.adId) {
+      // 🔴 เดิม gate ด้วย `adAttribution?.adId` ⇒ ลิงก์สินค้าจากเว็บร้าน
+      // (m.me/<page>?ref=p:<id> — `copy.ts` / `ProductDetailPage.tsx`) มีแต่ `ref` ไม่มี `ad_id`
+      // จึง **ไม่เคยถูกบันทึกเลยสักครั้ง** ทั้งที่เส้นลูกค้าใหม่ (message.referral ด้านล่าง)
+      // ไม่มี gate นี้ ⇒ ลูกค้าเก่ากับลูกค้าใหม่กดลิงก์เดียวกันแล้วได้ผลต่างกัน = บั๊ก ไม่ใช่ดีไซน์
+      // `linkAttribution` รองรับอยู่แล้ว: campaignKey = adId ?? utmCampaign ?? 'organic'
+      // และแยกโฆษณากับลิงก์สินค้าได้จาก `referrerUrl` (ADS vs SHORTLINK)
+      if (adAttribution) {
         await this.messageRouter.recordAdReferral(senderId, ChatChannel.FACEBOOK, adAttribution);
       }
       if (event.referral.ref) {
@@ -333,6 +364,15 @@ export class FacebookWebhookController {
     // dedup redelivery มี UNIQUE externalMessageId (mid) คุ้มที่ชั้น saveMessage แล้ว
     void this.messageRouter
       .routeInbound(inbound)
+      // 🔴 เดิมเส้นนี้ไม่เรียก handleProductReferral เลย (call site มีแค่ postback กับ
+      // standalone) ⇒ **ลูกค้าใหม่** ที่กดลิงก์สินค้าจากเว็บร้านแล้วทักเข้ามา ได้แถวที่มา
+      // แต่ไม่มีโน้ต "ลูกค้ากดมาจากสินค้า…" ในห้อง แอดมินจึงไม่รู้ว่าเขาสนใจรุ่นไหน
+      // ต้องต่อท้าย routeInbound เพราะโน้ตต้องรอห้องถูกสร้างก่อน (เหมือนเส้น postback)
+      .then(() =>
+        attribution?.utmContent
+          ? this.handleProductReferral(senderId, String(attribution.utmContent))
+          : undefined,
+      )
       .catch((err) =>
         this.logger.error(
           `[FB Webhook] routeInbound failed for mid ${message.mid}: ${err instanceof Error ? err.message : err}`,

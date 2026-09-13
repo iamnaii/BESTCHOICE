@@ -8,7 +8,7 @@ import { ContractDocumentsController } from '../../src/modules/contracts/contrac
 import { ContractFileAccessGuard } from '../../src/modules/contracts/contract-file-access.guard';
 import { seedPreviewDocuments } from './preview-documents-fixture';
 import { SettingsFlagsService } from '../../src/modules/settings/services/settings-flags.service';
-import { previewBookings, seedPreviewSales } from './preview-sales-fixture';
+import { previewBookings, seedPreviewExternalFinanceSale, seedPreviewSales } from './preview-sales-fixture';
 import { SalesQueryService } from '../../src/modules/sales/services/sales-query.service';
 import { SalesListQueryDto } from '../../src/modules/sales/dto/sales-list-query.dto';
 import { ContractsListQueryDto } from '../../src/modules/contracts/dto/contracts-list-query.dto';
@@ -71,6 +71,9 @@ import { ReceivablesReportService } from '../../src/modules/reports/services/rec
 import { seedPreviewStock } from './preview-stock-fixture';
 import { seedPreviewPortfolio } from './preview-portfolio-fixture';
 import { CustomerQueryService } from '../../src/modules/customers/services/customer-query.service';
+import { CustomerPurchaseSummaryService } from '../../src/modules/customers/services/customer-purchase-summary.service';
+import { CustomerChatRoomsService } from '../../src/modules/customers/services/customer-chat-rooms.service';
+import { CustomersListQueryDto } from '../../src/modules/customers/dto/customers-list-query.dto';
 import { CustomerTierService } from '../../src/modules/customers/customer-tier.service';
 import { DashboardOverviewService } from '../../src/modules/dashboard/services/dashboard-overview.service';
 import { DashboardCollectionsService } from '../../src/modules/dashboard/services/dashboard-collections.service';
@@ -113,7 +116,8 @@ const contractQuery = new ContractQueryService(db);
 const receivables = new ReceivablesReportService(db);
 const salesQuery = new SalesQueryService(db);
 const bookingQuery = previewBookings(db);
-const customerQuery = new CustomerQueryService(db, new CustomerTierService(db));
+const customerQuery = new CustomerQueryService(db, new CustomerTierService(db),
+  new CustomerPurchaseSummaryService(db), new CustomerChatRoomsService(db));
 // Real dashboard reads against the same synthetic database; only the cache facade is omitted.
 const dashboardOverview = new DashboardOverviewService(db);
 const dashboardCollections = new DashboardCollectionsService(db);
@@ -232,6 +236,11 @@ class PreviewController {
   @Get('branches') branches() {
     return db.branch.findMany({ where: { deletedAt: null } });
   }
+  // 🔴 ตัวกรอง "ผู้ดูแล" ของหน้า /customers เติมรายชื่อจาก endpoint นี้ — เดิม preview
+  // ตอบ 501 ⇒ ตัวเลือกว่างเปล่าและเจ้าของทดสอบตัวกรองนั้นไม่ได้เลย
+  @Get('users') users() {
+    return db.user.findMany({ select: { id: true, name: true }, take: 200 });
+  }
   @Get('companies') companies() { return companies.findAll(); }
   @Get('dashboard/kpis') dashboardKpis() { return dashboardOverview.computeKPIs(); }
   @Get('dashboard/monthly-trend') dashboardTrend() { return dashboardOverview.getMonthlyTrend(); }
@@ -276,9 +285,10 @@ class PreviewController {
   @Get('gfin-config/overprice-rules') overprice() { return gfin.listOverpriceRules(); }
   @Get('gfin-config/rate-factors') rateFactors() { return gfin.listRateFactors(); }
   @Get('settings/ui-flags') uiFlags() { return new SettingsFlagsService(db).getUiFlags(); }
-  @Get('customers/export') customersExport(@Query() query: Record<string, string>) {
-    return customerQuery.exportRows(query.search, 1, 50, query.contractStatus, query.hasOverdue === 'true', query.creditStatus,
-      query.branchId, query.sortBy, query.sortOrder, query.tier, query.creditCheckStatus);
+  // 🔴 ส่ง DTO ทั้งก้อนต่อ — เวอร์ชันเดิมแกะพารามิเตอร์รายตัว ตัวกรองใหม่จึงหายเงียบ ๆ
+  // และเจ้าของจะทดสอบบน preview แล้วเห็น "พฤติกรรมเดิม" โดยไม่มีอะไรฟ้อง
+  @Get('customers/export') customersExport(@Query() query: CustomersListQueryDto) {
+    return customerQuery.exportRows(query);
   }
   @Get('sales/export') salesExport(@Query() query: SalesListQueryDto) { return salesQuery.exportRows(query, actor); }
   @Get('sales/salespersons') salespersons() { return salesQuery.getSalespersons(actor); }
@@ -292,13 +302,12 @@ class PreviewController {
   @Get('bookings/:id') booking(@Param('id') id: string) { return bookingQuery.findOne(id, actor); }
   @Get('contracts/export') contractsExport(@Query() query: ContractsListQueryDto) { return contractQuery.exportRows(query, { ...actor, branchId: null }); }
   @Get('contracts') contracts(@Query() query: ContractsListQueryDto) { return contractQuery.findAll(query, { ...actor, branchId: null }); }
-  @Get('customers') customers(@Query() query: Record<string, string>) {
-    return customerQuery.findAll(
-      query.search, Math.max(1, parseInt(query.page, 10) || 1),
-      Math.max(1, Math.min(parseInt(query.limit, 10) || 50, 100)),
-      query.contractStatus, query.hasOverdue === 'true', query.creditStatus,
-      query.branchId, query.sortBy, query.sortOrder, query.tier, query.creditCheckStatus,
-    );
+  @Get('customers') customers(@Query() query: CustomersListQueryDto) {
+    return customerQuery.findAll({
+      ...query,
+      page: Math.max(1, Number(query.page) || 1),
+      limit: Math.max(1, Math.min(Number(query.limit) || 50, 100)),
+    });
   }
   @Get('interest-configs/by-category/:category') interest(@Param('category') category: string) {
     return db.interestConfig.findFirst({ where: { productCategories: { has: category as never }, isActive: true } });
@@ -435,6 +444,7 @@ async function main() {
   }
   await seedPreviewPortfolio(db, actor.id);
   const salesFixture = await seedPreviewSales(db, actor);
+  await seedPreviewExternalFinanceSale(db, actor.id);
   const module = await Test.createTestingModule({
     controllers: [
       TradeInController, ContactsController, ProductPhotosController,
@@ -536,7 +546,7 @@ async function main() {
     )
       return res.json({ data: [], total: 0 });
     if (
-      /^\/api\/(trade-ins|contacts|admin\/product-holds|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' ||
+      /^\/api\/(trade-ins|contacts|admin\/product-holds|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*)?)$/.test(path) ||
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,

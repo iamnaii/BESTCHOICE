@@ -394,6 +394,7 @@ describe('FacebookWebhookController — standalone referral จากลิง�
   let controller: FacebookWebhookController;
   let router: { routeInbound: jest.Mock; mirrorOutbound: jest.Mock; postSystemNote: jest.Mock; recordAdReferral: jest.Mock };
   let prisma: { chatRoom: { findFirst: jest.Mock }; product: { findFirst: jest.Mock } };
+  let postbackRouter: { route: jest.Mock };
 
   function referralEvent(ref: string) {
     return {
@@ -422,6 +423,7 @@ describe('FacebookWebhookController — standalone referral จากลิง�
       postSystemNote: jest.fn().mockResolvedValue(undefined),
       recordAdReferral: jest.fn().mockResolvedValue(undefined),
     };
+    postbackRouter = { route: jest.fn().mockResolvedValue({ handled: false }) };
     prisma = {
       chatRoom: { findFirst: jest.fn().mockResolvedValue({ id: 'room-1' }) },
       product: {
@@ -440,10 +442,7 @@ describe('FacebookWebhookController — standalone referral จากลิง�
         { provide: MessageRouterService, useValue: router },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(undefined) } },
         { provide: WebhookAnomalyService, useValue: { record: jest.fn() } },
-        {
-          provide: QuickReplyPostbackRouterService,
-          useValue: { route: jest.fn().mockResolvedValue({ handled: false }) },
-        },
+        { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
         { provide: PrismaService, useValue: prisma },
         { provide: IntegrationConfigService, useValue: fbConfigMock(FB_APP_SECRET) },
       ],
@@ -608,6 +607,87 @@ describe('FacebookWebhookController — standalone referral จากลิง�
     expect(inbound.text).toBe('ลูกค้ากดเริ่มต้นใช้งาน (Get Started)');
     expect(inbound.text).not.toContain('GET_STARTED_RAW');
     // referral ที่พ่วงมากับ Get Started ยังโพสต์โน้ตตามเดิม
+    expect(router.postSystemNote).toHaveBeenCalledWith(
+      'room-1',
+      'ลูกค้ากดมาจากสินค้า Apple iPhone 15 Pro 256GB Blue (3333) บนเว็บ',
+    );
+  });
+  // ── 2026-09-12: สามจุดที่ทำให้ที่มาของลูกค้าหล่น ────────────────────────────
+  // เจอตอนสืบว่าทำไม ads_attributions = 0 แถว (ไม่ใช่เหตุของ 0 แถว แต่กินข้อมูลจริง)
+
+  it('ลิงก์สินค้า m.me ของลูกค้าเก่า (มี ref ไม่มี ad_id) → บันทึกที่มาด้วย ไม่ใช่แค่โน้ต', async () => {
+    // เดิม gate `if (adAttribution?.adId)` ⇒ SHORTLINK ไม่เคยถูกบันทึกเลยสักครั้ง
+    // ทั้งที่เส้นลูกค้าใหม่ (message.referral) ไม่มี gate นี้ = ผลต่างกันบนลิงก์เดียวกัน
+    const { req, signature } = signedRequest(FB_APP_SECRET, referralEvent(`p:${PRODUCT_ID}`));
+    await controller.handleWebhook(req, referralEvent(`p:${PRODUCT_ID}`), signature);
+
+    expect(router.recordAdReferral).toHaveBeenCalledWith(
+      PSID,
+      'FACEBOOK',
+      expect.objectContaining({
+        utmSource: 'facebook',
+        adId: undefined,
+        utmContent: `p:${PRODUCT_ID}`,
+        referrerUrl: 'SHORTLINK',
+      }),
+    );
+    expect(router.postSystemNote).toHaveBeenCalledWith(
+      'room-1',
+      'ลูกค้ากดมาจากสินค้า Apple iPhone 15 Pro 256GB Blue (3333) บนเว็บ',
+    );
+  });
+
+  it('postback ที่ quick-reply router รับไปแล้ว ยังต้องบันทึกที่มาที่พ่วงมาด้วย', async () => {
+    // เดิม `if (routeResult.handled) return` ตัดก่อนถึง buildFbAttribution ⇒ referral หายทั้งก้อน
+    postbackRouter.route.mockResolvedValue({ handled: true, action: 'template_sent' });
+    const body = {
+      object: 'page',
+      entry: [{ id: 'page1', time: 1, messaging: [{
+        sender: { id: PSID }, recipient: { id: 'page1' }, timestamp: 1,
+        postback: { payload: 'TEMPLATE:abc', title: 'ราคา' },
+        referral: { ref: `p:${PRODUCT_ID}`, source: 'SHORTLINK', type: 'OPEN_THREAD' },
+      }] }],
+    };
+    const { req, signature } = signedRequest(FB_APP_SECRET, body);
+    await controller.handleWebhook(req, body, signature);
+    await new Promise((r) => setImmediate(r));
+
+    expect(router.recordAdReferral).toHaveBeenCalledWith(
+      PSID,
+      'FACEBOOK',
+      expect.objectContaining({ utmContent: `p:${PRODUCT_ID}` }),
+    );
+    expect(router.postSystemNote).toHaveBeenCalledWith(
+      'room-1',
+      'ลูกค้ากดมาจากสินค้า Apple iPhone 15 Pro 256GB Blue (3333) บนเว็บ',
+    );
+    // router รับไปแล้ว ต้องไม่สร้างข้อความซ้ำ
+    expect(router.routeInbound).not.toHaveBeenCalled();
+  });
+
+  it('ลูกค้าใหม่ทักพร้อม message.referral ของลิงก์สินค้า → ได้โน้ตบอกรุ่นด้วย', async () => {
+    // เดิมเส้น message ไม่เรียก handleProductReferral เลย (call site มีแค่ postback/standalone)
+    const body = {
+      object: 'page',
+      entry: [{ id: 'page1', time: 1, messaging: [{
+        sender: { id: PSID }, recipient: { id: 'page1' }, timestamp: 1,
+        message: {
+          mid: 'mid_new_from_product_link',
+          text: 'เครื่องนี้ยังมีไหมครับ',
+          referral: { ref: `p:${PRODUCT_ID}`, source: 'SHORTLINK', type: 'OPEN_THREAD' },
+        },
+      }] }],
+    };
+    const { req, signature } = signedRequest(FB_APP_SECRET, body);
+    await controller.handleWebhook(req, body, signature);
+    await new Promise((r) => setImmediate(r));
+
+    expect(router.routeInbound).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalUserId: PSID,
+        attribution: expect.objectContaining({ utmContent: `p:${PRODUCT_ID}` }),
+      }),
+    );
     expect(router.postSystemNote).toHaveBeenCalledWith(
       'room-1',
       'ลูกค้ากดมาจากสินค้า Apple iPhone 15 Pro 256GB Blue (3333) บนเว็บ',

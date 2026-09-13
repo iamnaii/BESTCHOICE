@@ -82,6 +82,13 @@ test.describe('Installment surfaces — page-load smoke', () => {
       throw new Error('/customers failed to load — likely error boundary or auth issue');
     }
 
+    // ลูกค้าที่ seed มาใหม่ยังไม่เคยซื้อ ⇒ อยู่แท็บ "ผู้สนใจ" ไม่ใช่แท็บเริ่มต้น "ลูกค้า"
+    const group = page.getByRole('group', { name: 'แสดงรายชื่อ' });
+    await expect(group).toBeVisible({ timeout: 15000 });
+    const prospects = group.getByRole('button', { name: /ผู้สนใจ/ });
+    await prospects.click();
+    await expect(prospects).toHaveAttribute('aria-pressed', 'true');
+
     // Search for the seeded customer by phone (unique per run)
     const search = page.getByPlaceholder(/ค้นหา|search/i).first();
     if (await search.isVisible({ timeout: 5000 }).catch(() => false)) {

@@ -22,6 +22,19 @@ import {
 
 import { gotoWithRetry, hasErrorBoundary } from './helpers/navigation';
 
+/**
+ * ลูกค้าที่เพิ่งสร้างใหม่ยัง **ไม่เคยซื้อ** ⇒ อยู่แท็บ "ผู้สนใจ" ของ /customers
+ * (แท็บเริ่มต้นคือ "ลูกค้า" = ซื้อกับเราแล้ว) ต้องกดสวิตช์ก่อนค้นหา ไม่ใช่
+ * `test.skip()` เมื่อหาไม่เจอ — อย่างนั้นคือเขียว ๆ ที่ไม่ได้ทดสอบอะไรเลย
+ */
+async function openProspectsTab(page: Page) {
+  const group = page.getByRole('group', { name: 'แสดงรายชื่อ' });
+  await expect(group).toBeVisible({ timeout: 15000 });
+  const prospects = group.getByRole('button', { name: /ผู้สนใจ/ });
+  await prospects.click();
+  await expect(prospects).toHaveAttribute('aria-pressed', 'true');
+}
+
 /* ================================================================
    Customer CRUD Flow
    ================================================================ */
@@ -112,22 +125,15 @@ test.describe('Customer CRUD Flow', () => {
     await loginViaAPI(page);
     await gotoWithRetry(page, '/customers');
 
+    await openProspectsTab(page);
+
     const search = page.getByPlaceholder(/ค้นหา|search/i).first();
     await expect(search).toBeVisible({ timeout: 10000 });
     await search.fill(testFirstName);
     await page.waitForTimeout(1000); // debounce
 
-    // Should find the customer in the list
-    const customerText = page.getByText(testFirstName).first();
-    const found = await customerText.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (!found) {
-      // Customer may not exist (seed not run) — skip gracefully
-      test.skip();
-      return;
-    }
-
-    await expect(customerText).toBeVisible();
+    // ต้องเจอจริง — ใบที่เทสต์นี้สร้างเองใน test 1 หาไม่เจอ = ของจริงพัง
+    await expect(page.getByText(testFirstName).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('3. Update — edit customer name', async ({ page }) => {
@@ -137,16 +143,14 @@ test.describe('Customer CRUD Flow', () => {
     await loginViaAPI(page);
     await gotoWithRetry(page, '/customers');
 
-    // Search and click
+    // Search and click (แท็บผู้สนใจ — ยังไม่เคยซื้อ)
+    await openProspectsTab(page);
     const search = page.getByPlaceholder(/ค้นหา|search/i).first();
     await search.fill(testFirstName);
     await page.waitForTimeout(1000);
 
     const customerRow = page.getByText(testFirstName).first();
-    if (!(await customerRow.isVisible({ timeout: 5000 }).catch(() => false))) {
-      test.skip();
-      return;
-    }
+    await expect(customerRow).toBeVisible({ timeout: 10000 });
     await customerRow.click();
     await page.waitForTimeout(1000);
 
@@ -186,15 +190,13 @@ test.describe('Customer CRUD Flow', () => {
     await loginViaAPI(page);
     await gotoWithRetry(page, '/customers');
 
+    await openProspectsTab(page);
     const search = page.getByPlaceholder(/ค้นหา|search/i).first();
     await search.fill(testFirstName);
     await page.waitForTimeout(1000);
 
     const customerRow = page.getByText(testFirstName).first();
-    if (!(await customerRow.isVisible({ timeout: 5000 }).catch(() => false))) {
-      // Already deleted — ok
-      return;
-    }
+    await expect(customerRow).toBeVisible({ timeout: 10000 });
     await customerRow.click();
     await page.waitForTimeout(1000);
 

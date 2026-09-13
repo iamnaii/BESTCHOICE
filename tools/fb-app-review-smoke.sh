@@ -141,8 +141,11 @@ fi
 
 echo
 echo "${BOLD}── 7. pages_manage_metadata ──${RESET}"
-call_api "Subscribe webhooks" POST '/api/facebook/app-review/subscribe-webhooks' \
-  '{"fields":"messages,messaging_postbacks,message_deliveries,message_reads,feed"}'
+# 🔴 ห้ามส่ง "fields" จากที่นี่ — subscribed_apps ของ Meta เขียนทับทั้งชุด ไม่ใช่เพิ่ม
+# รายการเดิมที่สคริปต์นี้เคยส่งไม่มี messaging_referrals ⇒ รันทีไรก็ถอดการรับที่มาโฆษณา
+# ของลูกค้าเก่าออกเงียบ ๆ (พบ 2026-09-12) ปล่อยว่างให้ API ใช้ DEFAULT_SUBSCRIBED_FIELDS
+# ซึ่งเป็นแหล่งความจริงเดียวที่ facebook-app-review.service.ts
+call_api "Subscribe webhooks" POST '/api/facebook/app-review/subscribe-webhooks' '{}'
 
 echo
 echo "${BOLD}── 8. pages_manage_engagement ──${RESET}"

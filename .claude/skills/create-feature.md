@@ -71,7 +71,7 @@ user_invocable: true
 - เพิ่ม lazy import ใน `apps/web/src/App.tsx`: `const XxxPage = lazy(() => import('@/pages/XxxPage'))`
 - เพิ่ม route ภายใต้ `<ProtectedRoute>` + `<MainLayout>`
 - เพิ่ม navigation link ใน Sidebar พร้อม icon จาก lucide-react
-- Reference: `apps/web/src/pages/CustomersPage.tsx`
+- Reference: `apps/web/src/pages/CustomersPage/` (โฟลเดอร์ — ไฟล์เดี่ยวชื่อเดียวกันถูกลบแล้ว) หรือ `apps/web/src/pages/StockPage/`
 
 ### 7. Verify
 ```bash

@@ -40,6 +40,7 @@ describe('StaffChatController', () => {
   let cannedResponseSender: CannedResponseSenderService;
   let roomManager: RoomManagerService;
   let gateway: StaffChatGateway;
+  let router: MessageRouterService;
   let aiAutoReply: AiAutoReplyService;
   let roomAiAccess: RoomAiAccessService;
   let aiAssistant: AiAssistantService;
@@ -78,7 +79,7 @@ describe('StaffChatController', () => {
         { provide: MediaContentService, useValue: {} },
         { provide: ChatToContractService, useValue: {} },
         { provide: StorageService, useValue: {} },
-        { provide: MessageRouterService, useValue: {} },
+        { provide: MessageRouterService, useValue: { sendStaffMessage: jest.fn() } },
         { provide: AiSuggestService, useValue: { suggest: jest.fn() } },
         { provide: LeadScoringService, useValue: {} },
         { provide: ProductDetectService, useValue: {} },
@@ -89,7 +90,7 @@ describe('StaffChatController', () => {
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: TrainingExtractCron, useValue: {} },
         { provide: EmbeddingBackfillCron, useValue: {} },
-        { provide: StaffChatGateway, useValue: { emitNewMessage: jest.fn() } },
+        { provide: StaffChatGateway, useValue: { emitNewMessage: jest.fn(), emitSendFailed: jest.fn() } },
         {
           provide: CannedResponseBubbleService,
           useValue: {
@@ -131,6 +132,7 @@ describe('StaffChatController', () => {
     cannedResponseSender = module.get(CannedResponseSenderService);
     roomManager = module.get(RoomManagerService);
     gateway = module.get(StaffChatGateway);
+    router = module.get(MessageRouterService);
     aiAutoReply = module.get(AiAutoReplyService);
     roomAiAccess = module.get(RoomAiAccessService);
     aiAssistant = module.get(AiAssistantService);
@@ -485,6 +487,53 @@ describe('StaffChatController', () => {
 
       expect(aiAutoReply.getRuntimeStatus).toHaveBeenCalledWith();
       expect(result).toEqual(status);
+    });
+  });
+
+  // 2026-09-13: เดิม broadcast เหมือนส่งสำเร็จเสมอ ⇒ เพื่อนร่วมทีมเห็นบับเบิลปกติ
+  // ทั้งที่ลูกค้าไม่ได้รับ แล้วข้ามห้องนั้นไปเพราะคิดว่า "ตอบแล้ว"
+  describe('POST /staff-chat/rooms/:id/messages — บอกสถานะการส่งให้ทั้งห้อง', () => {
+    it('ส่งสำเร็จ → delivered: true และไม่แจ้งล้มเหลว', async () => {
+      (router.sendStaffMessage as jest.Mock).mockResolvedValue({
+        success: true,
+        message: { id: 'msg-1', createdAt: new Date('2026-09-13T01:00:00Z') },
+      });
+
+      const result = await controller.sendRoomMessage(
+        'room-1',
+        { text: 'สวัสดีครับ' },
+        { user: { id: 'user-1' } } as any,
+      );
+
+      expect(gateway.emitNewMessage).toHaveBeenCalledWith(
+        'room-1',
+        expect.objectContaining({ role: 'STAFF', text: 'สวัสดีครับ', delivered: true }),
+      );
+      expect(gateway.emitSendFailed).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+    });
+
+    it('ส่งไม่สำเร็จ → delivered: false และแจ้งล้มเหลวให้ทั้งห้อง', async () => {
+      (router.sendStaffMessage as jest.Mock).mockResolvedValue({
+        success: false,
+        error: 'พ้นหน้าต่าง 24 ชั่วโมงของ Facebook',
+        message: { id: 'msg-2', createdAt: new Date('2026-09-13T01:00:00Z') },
+      });
+
+      await controller.sendRoomMessage(
+        'room-1',
+        { text: 'ยังสนใจอยู่ไหมครับ' },
+        { user: { id: 'user-1' } } as any,
+      );
+
+      expect(gateway.emitNewMessage).toHaveBeenCalledWith(
+        'room-1',
+        expect.objectContaining({ delivered: false }),
+      );
+      expect(gateway.emitSendFailed).toHaveBeenCalledWith('room-1', {
+        text: 'ยังสนใจอยู่ไหมครับ',
+        error: 'พ้นหน้าต่าง 24 ชั่วโมงของ Facebook',
+      });
     });
   });
 });

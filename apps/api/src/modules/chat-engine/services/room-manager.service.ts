@@ -27,6 +27,8 @@ import { StorageService } from '../../storage/storage.service';
 import { signMessageMedia } from './media-url.util';
 import { linkRoomCreditHistory, lockCreditRoom } from '../../credit-check/services/room-credit-history';
 import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
+import { CustomerMergeService } from '../../chat-prospects/customer-merge.service';
+import { PLACEHOLDER_FIELDS_SELECT, isLivePlaceholder } from '../../chat-prospects/chat-placeholder';
 import * as Sentry from '@sentry/nestjs';
 
 /** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
@@ -112,6 +114,8 @@ export class RoomManagerService {
     private messageRouter?: MessageRouterService,
     @Optional()
     private chatProspects?: ChatProspectService,
+    @Optional()
+    private merge?: CustomerMergeService,
   ) {}
 
   /**
@@ -699,8 +703,30 @@ export class RoomManagerService {
    * Link an existing Customer record to a ChatRoom. Throws if the room is
    * already linked to a different customer — relinking requires explicit
    * unlink-then-link, not silent overwrite.
+   * ยกเว้นห้องที่ผูก "ผู้สนใจอัตโนมัติ" (placeholder) อยู่ — ดูดเข้าคนที่เลือกแทน (สเปค 3.3 ก)
    */
   async linkCustomer(roomId: string, customerId: string, actor: { id: string; role: string }) {
+    // ทำนอกทรานแซกชันด้านล่าง เพราะ absorbPlaceholder เปิดทรานแซกชันของตัวเอง
+    // (ลูกค้าจริง ↔ ลูกค้าจริง ยังโยน "ผูกกับลูกค้ารายอื่น" ในทรานแซกชันเหมือนเดิม)
+    if (this.merge) {
+      const current = await this.prisma.chatRoom.findUnique({
+        where: { id: roomId },
+        select: {
+          id: true, customerId: true, deletedAt: true, assignedToId: true,
+          customer: { select: PLACEHOLDER_FIELDS_SELECT },
+        },
+      });
+      if (current && !current.deletedAt && current.customerId && current.customerId !== customerId
+        && isLivePlaceholder(current.customer)) {
+        // ตรวจสิทธิ์ก่อนรวม — การรวมย้ายห้องทุกห้องของ placeholder จึงห้ามเกิดก่อนด่านนี้
+        if (actor.role === 'SALES' && current.assignedToId && current.assignedToId !== actor.id) {
+          throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+        }
+        await this.merge.absorbPlaceholder(current.customerId, customerId, actor);
+        // แล้วไหลต่อทางผูกเดิม: ห้องอยู่กับคนที่เลือกแล้วจึงไม่ชน 409 และยังนำเข้าผลสเตทเม้นของห้อง
+        // ที่ค้างอยู่ (creditCheckId ว่าง) — absorb ย้ายเฉพาะผลที่นำเข้าแล้ว
+      }
+    }
     return this.prisma.$transaction(async tx => {
     await lockCreditRoom(tx, roomId);
     const room = await tx.chatRoom.findUnique({

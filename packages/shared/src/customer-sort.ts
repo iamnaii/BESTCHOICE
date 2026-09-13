@@ -108,3 +108,41 @@ export function chatLogoOf(channel: string): ChatLogo {
   if (channel === 'LINE_FINANCE' || channel === 'LINE_SHOP') return 'LINE';
   return 'WEB';
 }
+
+/** ที่มาของผู้สนใจอัตโนมัติจากแชท — เก็บช่องทางจริงติดตัว (`CHAT_LINE_SHOP` ≠ `CHAT_LINE_FINANCE`) แม้ห้องถูกลบ */
+export const CHAT_SOURCE_PREFIX = 'CHAT_';
+
+export function chatSourceOf(channel: string): string {
+  return CHAT_SOURCE_PREFIX + channel;
+}
+
+/** `CHAT_LINE_SHOP` → `LINE_SHOP` · ค่าที่ไม่ได้ขึ้นต้น CHAT_ (AI_CHAT, WALK_IN, null) → null */
+export function chatSourceChannel(source: string | null | undefined): string | null {
+  if (!source || !source.startsWith(CHAT_SOURCE_PREFIX)) return null;
+  const channel = source.slice(CHAT_SOURCE_PREFIX.length);
+  return channel.length > 0 ? channel : null;
+}
+
+/** คำนำหน้าที่ตัดออกก่อนเทียบชื่อ — เรียงยาวก่อน ไม่งั้น "นาง" กิน "นางสาว" */
+export const THAI_NAME_PREFIXES = ['นางสาว', 'นาง', 'นาย'] as const;
+
+/**
+ * ทำชื่อให้เทียบกันได้: trim · ยุบช่องว่างซ้ำ · ตัดคำนำหน้าไทย (มีหรือไม่มีช่องว่างหลังคำนำหน้าก็ได้
+ * แต่ต้องมีตัวอักษรตามหลัง — "นางฟ้า" คือชื่อ ไม่ใช่ นาง+ฟ้า) · ตัวพิมพ์เล็ก
+ * ใช้เฉพาะ "เทียบตรงกันเป๊ะ" เท่านั้น ไม่ทำ fuzzy (สเปค 3.6)
+ */
+export function normalizePersonName(raw: string | null | undefined): string {
+  let name = (raw ?? '').normalize('NFC').trim().replace(/\s+/g, ' ');
+  for (const prefix of THAI_NAME_PREFIXES) {
+    if (name.startsWith(prefix + ' ') && name.length > prefix.length + 1) {
+      name = name.slice(prefix.length + 1).trim();
+      break;
+    }
+    // ไม่มีช่องว่าง: ตัดเฉพาะเมื่อส่วนที่เหลือมีช่องว่างอยู่ (= ชื่อ+นามสกุล) กัน "นางฟ้า"
+    if (name.startsWith(prefix) && name.length > prefix.length && name.slice(prefix.length).includes(' ')) {
+      name = name.slice(prefix.length).trim();
+      break;
+    }
+  }
+  return name.toLowerCase();
+}

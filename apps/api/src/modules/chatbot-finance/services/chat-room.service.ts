@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel, ChatRoom, MessageRole, MessageType, Prisma } from '@prisma/client';
 import { StaffChatGateway } from '../../staff-chat/staff-chat.gateway';
 import { LineFinanceClientService } from './line-finance-client.service';
+import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
 
 /**
  * จัดการ ChatRoom + ChatMessage สำหรับ Finance Bot
@@ -17,6 +18,8 @@ export class ChatRoomService {
     private lineClient: LineFinanceClientService,
     @Optional() @Inject(forwardRef(() => StaffChatGateway))
     private staffChatGateway?: StaffChatGateway,
+    @Optional()
+    private chatProspects?: ChatProspectService,
   ) {}
 
   /** หา room เดิม หรือสร้างใหม่ */
@@ -55,7 +58,7 @@ export class ChatRoomService {
 
     const profile = await this.lineClient.getUserProfile(lineUserId);
 
-    return this.prisma.chatRoom.create({
+    const room = await this.prisma.chatRoom.create({
       data: {
         lineUserId,
         channel: ChatChannel.LINE_FINANCE,
@@ -65,6 +68,15 @@ export class ChatRoomService {
         pictureUrl: profile?.pictureUrl ?? null,
       },
     });
+    if (room.customerId || !this.chatProspects) return room;
+    // ผู้สนใจอัตโนมัติ (สเปค 3.2 ข้อ 2) — best-effort; ห้องต้องไม่ล้มเพราะสร้างผู้สนใจไม่ได้
+    try {
+      const ensured = await this.chatProspects.ensureForRoom(room.id);
+      return ensured ? { ...room, customerId: ensured.customerId } : room;
+    } catch (err) {
+      this.logger.warn(`[prospect] room ${room.id}: ${err instanceof Error ? err.message : err}`);
+      return room;
+    }
   }
 
   /** บันทึกข้อความ + อัปเดต room stats */

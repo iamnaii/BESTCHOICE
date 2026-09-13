@@ -224,6 +224,19 @@ describe('RoomManagerService', () => {
     });
   });
 
+  // widget:send (WebWidgetGateway) บันทึกข้อความเองไม่ผ่าน getOrCreateRoom → เรียกเมธอดนี้ตรง ๆ
+  describe('ensureProspect (เรียกจาก widget:send)', () => {
+    it('คืน customerId ของผู้สนใจที่ได้', async () => {
+      await expect(service.ensureProspect('room-web')).resolves.toBe('cust-auto');
+      expect(chatProspects.ensureForRoom).toHaveBeenCalledWith('room-web');
+    });
+
+    it('ensureForRoom ล้ม → คืน null ไม่โยน (best-effort)', async () => {
+      chatProspects.ensureForRoom.mockRejectedValue(new Error('db down'));
+      await expect(service.ensureProspect('room-web')).resolves.toBeNull();
+    });
+  });
+
   describe('saveMessage', () => {
     it('should create message and update room stats', async () => {
       const msg = { id: 'msg-1', createdAt: new Date() };

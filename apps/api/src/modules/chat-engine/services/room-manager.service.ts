@@ -248,9 +248,10 @@ export class RoomManagerService {
 
   /**
    * ผู้สนใจอัตโนมัติ (สเปค 3.2) — best-effort: ห้องต้องไม่ล้มเพราะสร้างผู้สนใจไม่ได้ (log + Sentry แล้วปล่อยผ่าน)
-   * กิ่ง existing ของ getOrCreateRoom เก็บตกให้ตอนคนทักกลับ
+   * กิ่ง existing ของ getOrCreateRoom เก็บตกให้ตอนคนทักกลับ · public เพราะ widget:send (WebWidgetGateway)
+   * บันทึกข้อความผู้ชมเว็บเองโดยไม่ผ่าน getOrCreateRoom/routeInbound — ไม่โยน error คืน null เมื่อไม่สำเร็จ
    */
-  private async ensureProspect(roomId: string): Promise<string | null> {
+  async ensureProspect(roomId: string): Promise<string | null> {
     if (!this.chatProspects) return null;
     try {
       const result = await this.chatProspects.ensureForRoom(roomId);

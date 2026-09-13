@@ -26,6 +26,8 @@ import { MessageRouterService } from './message-router.service';
 import { StorageService } from '../../storage/storage.service';
 import { signMessageMedia } from './media-url.util';
 import { linkRoomCreditHistory, lockCreditRoom } from '../../credit-check/services/room-credit-history';
+import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
+import * as Sentry from '@sentry/nestjs';
 
 /** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
  *  (getRoomBadgeCounts) เพื่อไม่ให้ "เลขบนป้าย" กับ "จำนวนแถวที่แท็บนั้นแสดง"
@@ -108,12 +110,18 @@ export class RoomManagerService {
     private assignmentService?: AssignmentService,
     @Optional() @Inject(forwardRef(() => MessageRouterService))
     private messageRouter?: MessageRouterService,
+    @Optional()
+    private chatProspects?: ChatProspectService,
   ) {}
 
   /**
    * Find or create a room for any channel.
    * ALWAYS returns existing room for same (externalUserId, channel).
    * Only creates a new room if truly none exists.
+   *
+   * ผู้สนใจอัตโนมัติ (สเปค 3.2): ห้องที่ยังไม่มีเจ้าของ (ใหม่ หรือเดิมที่ backfill ไม่ทัน) ได้ customerId
+   * กลับไปในผลลัพธ์เลย · `ensureProspect` ค่าตั้งต้น = ทุกช่องทางยกเว้น WEB (Ruling R3 — widget init/connect
+   * สร้างห้องทุกครั้งที่เปิดหน้าเว็บ ผู้เรียกที่รู้ว่าลูกค้าทักจริงส่ง `true` เอง)
    */
   async getOrCreateRoom(params: {
     externalUserId: string;
@@ -122,10 +130,12 @@ export class RoomManagerService {
     displayName?: string | null;
     pictureUrl?: string | null;
     attribution?: InboundAttribution;
+    ensureProspect?: boolean;
   }): Promise<ChatRoom> {
     const isLineChannel =
       params.channel === ChatChannel.LINE_FINANCE ||
       params.channel === ChatChannel.LINE_SHOP;
+    const wantsProspect = params.ensureProspect ?? params.channel !== ChatChannel.WEB;
 
     // Always find existing room first — no status filter
     let existing: ChatRoom | null = null;
@@ -169,10 +179,23 @@ export class RoomManagerService {
       if (!existing.pictureUrl && params.pictureUrl) {
         updateData.pictureUrl = params.pictureUrl;
       }
-      const room =
+      let room =
         Object.keys(updateData).length > 0
           ? await this.prisma.chatRoom.update({ where: { id: existing.id }, data: updateData })
           : existing;
+      if (!room.customerId) {
+        // self-heal ห้องที่ยังไม่มีเจ้าของ (backfill ไม่ทัน / สร้างผู้สนใจล้มรอบก่อน)
+        if (wantsProspect) {
+          const customerId = await this.ensureProspect(room.id);
+          if (customerId) room = { ...room, customerId };
+        }
+      } else if (updateData.displayName && this.chatProspects) {
+        // ห้องเกิดก่อนรู้ชื่อ (mirrorOutbound) → placeholder ที่ยังใช้ชื่อ fallback ได้ชื่อจริงตาม
+        const roomId = room.id;
+        await this.chatProspects.syncNameFromRoom(roomId).catch((err) =>
+          this.logger.warn(`[prospect] sync name ${roomId}: ${err instanceof Error ? err.message : err}`),
+        );
+      }
       // ลูกค้าเก่ากดโฆษณา/ลิงก์ซ้ำ — บันทึกที่มาครั้งล่าสุดให้ห้องเดิมด้วย (เดิมบันทึกเฉพาะห้องใหม่)
       if (params.attribution?.utmSource) {
         await this.linkAttribution(room.id, params.attribution, room.attributionId);
@@ -216,7 +239,27 @@ export class RoomManagerService {
 
     // ไม่แจกห้องอัตโนมัติอีก — ใครตอบก่อนได้เป็นเจ้าของ (AssignmentService.claimIfUnassigned · สเปก §5)
 
+    if (!room.customerId && wantsProspect) {
+      const prospectId = await this.ensureProspect(room.id);
+      if (prospectId) return { ...room, customerId: prospectId };
+    }
     return room;
+  }
+
+  /**
+   * ผู้สนใจอัตโนมัติ (สเปค 3.2) — best-effort: ห้องต้องไม่ล้มเพราะสร้างผู้สนใจไม่ได้ (log + Sentry แล้วปล่อยผ่าน)
+   * กิ่ง existing ของ getOrCreateRoom เก็บตกให้ตอนคนทักกลับ
+   */
+  private async ensureProspect(roomId: string): Promise<string | null> {
+    if (!this.chatProspects) return null;
+    try {
+      const result = await this.chatProspects.ensureForRoom(roomId);
+      return result?.customerId ?? null;
+    } catch (err) {
+      this.logger.warn(`[prospect] room ${roomId}: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { kind: 'chat-prospect' }, extra: { roomId } });
+      return null;
+    }
   }
 
   /** ชื่อพนักงานสำหรับข้อความระบบ ("มอบหมายให้ แนน โดย …") — ไม่พบคืน "พนักงาน" */

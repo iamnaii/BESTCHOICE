@@ -172,13 +172,14 @@ export class MessageRouterService {
       }
     }
 
-    // 1. Get or create room
+    // 1. Get or create room — ลูกค้าทักจริง ⇒ ผู้สนใจอัตโนมัติทุกช่องทาง รวม WEB (Ruling R3)
     const room = await this.roomManager.getOrCreateRoom({
       externalUserId: message.externalUserId,
       channel: message.channel,
       displayName: profile?.displayName,
       pictureUrl: profile?.avatarUrl,
       attribution: message.attribution,
+      ensureProspect: true,
     });
     // ทักจากโฆษณา → โน้ตระบบในห้อง ตรงเวลาที่เกิด (ท่า OBI logNotify) — ไม่ต้องเปิดแผงขวาก็เห็น
     if (message.attribution?.adId) {
@@ -612,6 +613,7 @@ export class MessageRouterService {
       displayName: profile?.displayName,
       pictureUrl: profile?.avatarUrl,
       attribution: message.attribution,
+      ensureProspect: true, // ลูกค้าทักจริง (Ruling R3)
     });
 
     await this.roomManager.saveMessage({

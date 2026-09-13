@@ -4,13 +4,19 @@ import { AssignmentService } from './assignment.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel, ChatRoomStatus, ChatPriority, MessageRole } from '@prisma/client';
 import { StorageService } from '../../storage/storage.service';
+import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
 
 describe('RoomManagerService', () => {
   let service: RoomManagerService;
   let prisma: any;
   let module: TestingModule;
+  let chatProspects: { ensureForRoom: jest.Mock; syncNameFromRoom: jest.Mock };
 
   beforeEach(async () => {
+    chatProspects = {
+      ensureForRoom: jest.fn().mockResolvedValue({ customerId: 'cust-auto', created: true }),
+      syncNameFromRoom: jest.fn().mockResolvedValue(false),
+    };
     prisma = {
       chatRoom: {
         findUnique: jest.fn(),
@@ -46,6 +52,7 @@ describe('RoomManagerService', () => {
           },
         },
         { provide: AssignmentService, useValue: { autoAssign: jest.fn() } },
+        { provide: ChatProspectService, useValue: chatProspects },
       ],
     }).compile();
 
@@ -62,7 +69,8 @@ describe('RoomManagerService', () => {
         channel: ChatChannel.LINE_FINANCE,
       });
 
-      expect(result).toEqual(existingRoom);
+      // ห้องยังไม่มีเจ้าของ → ได้ผู้สนใจกลับมาในผลลัพธ์ (self-heal)
+      expect(result).toEqual({ ...existingRoom, customerId: 'cust-auto' });
       expect(prisma.chatRoom.create).not.toHaveBeenCalled();
     });
 
@@ -95,7 +103,7 @@ describe('RoomManagerService', () => {
         channel: ChatChannel.LINE_FINANCE,
       });
 
-      expect(result).toEqual(newRoom);
+      expect(result).toEqual({ ...newRoom, customerId: 'cust-auto' });
       expect(prisma.chatRoom.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           lineUserId: 'U456',
@@ -148,6 +156,71 @@ describe('RoomManagerService', () => {
       await service.getOrCreateRoom({ externalUserId: 'PSID-new', channel: ChatChannel.FACEBOOK });
 
       expect(assignment.autoAssign).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getOrCreateRoom → ผู้สนใจอัตโนมัติ', () => {
+    it('ห้อง Facebook ใหม่ → เรียก ensureForRoom แล้วคืน customerId ที่ได้', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue(null);
+      prisma.chatRoom.create.mockResolvedValue({ id: 'room-new', channel: ChatChannel.FACEBOOK, customerId: null, attributionId: null });
+      const room = await service.getOrCreateRoom({ externalUserId: 'psid-1', channel: ChatChannel.FACEBOOK, displayName: 'สมชาย' });
+      expect(chatProspects.ensureForRoom).toHaveBeenCalledWith('room-new');
+      expect(room.customerId).toBe('cust-auto');
+    });
+
+    it('ห้องเดิมที่ยังไม่มีเจ้าของ → self-heal ด้วย ensureForRoom', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-old', channel: ChatChannel.FACEBOOK, status: ChatRoomStatus.ACTIVE, resolvedAt: null, customerId: null, displayName: 'สมชาย', pictureUrl: 'x', attributionId: null });
+      const room = await service.getOrCreateRoom({ externalUserId: 'psid-1', channel: ChatChannel.FACEBOOK });
+      expect(chatProspects.ensureForRoom).toHaveBeenCalledWith('room-old');
+      expect(room.customerId).toBe('cust-auto');
+    });
+
+    it('ห้องเดิมมีเจ้าของอยู่แล้วและเพิ่งได้ชื่อ → ไม่สร้าง แต่ซิงก์ชื่อ', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-old', channel: ChatChannel.FACEBOOK, status: ChatRoomStatus.ACTIVE, resolvedAt: null, customerId: 'cust-1', displayName: null, pictureUrl: null, attributionId: null });
+      prisma.chatRoom.update.mockResolvedValue({ id: 'room-old', customerId: 'cust-1', displayName: 'สมชาย', attributionId: null });
+      await service.getOrCreateRoom({ externalUserId: 'psid-1', channel: ChatChannel.FACEBOOK, displayName: 'สมชาย' });
+      expect(chatProspects.ensureForRoom).not.toHaveBeenCalled();
+      expect(chatProspects.syncNameFromRoom).toHaveBeenCalledWith('room-old');
+    });
+
+    it('ensureForRoom ล้ม → ห้องยังถูกคืนตามปกติ (best-effort)', async () => {
+      chatProspects.ensureForRoom.mockRejectedValue(new Error('db down'));
+      prisma.chatRoom.findFirst.mockResolvedValue(null);
+      prisma.chatRoom.create.mockResolvedValue({ id: 'room-new', channel: ChatChannel.FACEBOOK, customerId: null, attributionId: null });
+      const room = await service.getOrCreateRoom({ externalUserId: 'psid-1', channel: ChatChannel.FACEBOOK });
+      expect(room.id).toBe('room-new');
+      expect(room.customerId).toBeNull();
+    });
+
+    it('syncNameFromRoom ล้ม → ห้องยังถูกคืนตามปกติ (best-effort)', async () => {
+      chatProspects.syncNameFromRoom.mockRejectedValue(new Error('db down'));
+      prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-old', channel: ChatChannel.FACEBOOK, status: ChatRoomStatus.ACTIVE, resolvedAt: null, customerId: 'cust-1', displayName: null, pictureUrl: null, attributionId: null });
+      prisma.chatRoom.update.mockResolvedValue({ id: 'room-old', customerId: 'cust-1', displayName: 'สมชาย', attributionId: null });
+      const room = await service.getOrCreateRoom({ externalUserId: 'psid-1', channel: ChatChannel.FACEBOOK, displayName: 'สมชาย' });
+      expect(room).toEqual({ id: 'room-old', customerId: 'cust-1', displayName: 'สมชาย', attributionId: null });
+    });
+
+    // Ruling R3: widget init / socket connect สร้างห้อง WEB ทุกครั้งที่เปิดหน้าเว็บ — ยังไม่ใช่ "ลูกค้าที่ทักเข้ามา"
+    it('ห้อง WEB ใหม่ไม่ส่งธง (widget init) → ไม่สร้างผู้สนใจ', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue(null);
+      prisma.chatRoom.create.mockResolvedValue({ id: 'room-web', channel: ChatChannel.WEB, customerId: null, attributionId: null });
+      const room = await service.getOrCreateRoom({ externalUserId: 'visitor-1', channel: ChatChannel.WEB });
+      expect(chatProspects.ensureForRoom).not.toHaveBeenCalled();
+      expect(room.customerId).toBeNull();
+    });
+
+    it('ห้อง WEB เดิมไม่ส่งธง (socket connect ซ้ำ) → ไม่ self-heal', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-web', channel: ChatChannel.WEB, status: ChatRoomStatus.ACTIVE, resolvedAt: null, customerId: null, displayName: null, pictureUrl: null, attributionId: null });
+      const room = await service.getOrCreateRoom({ externalUserId: 'visitor-1', channel: ChatChannel.WEB });
+      expect(chatProspects.ensureForRoom).not.toHaveBeenCalled();
+      expect(room.customerId).toBeNull();
+    });
+
+    it('ห้อง WEB ที่ส่งธง ensureProspect: true (ผู้ชมทักจริง) → สร้างผู้สนใจ', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-web', channel: ChatChannel.WEB, status: ChatRoomStatus.ACTIVE, resolvedAt: null, customerId: null, displayName: null, pictureUrl: null, attributionId: null });
+      const room = await service.getOrCreateRoom({ externalUserId: 'visitor-1', channel: ChatChannel.WEB, ensureProspect: true });
+      expect(chatProspects.ensureForRoom).toHaveBeenCalledWith('room-web');
+      expect(room.customerId).toBe('cust-auto');
     });
   });
 

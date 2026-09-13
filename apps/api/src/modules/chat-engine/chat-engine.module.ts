@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
+import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
 import { RoomManagerService } from './services/room-manager.service';
 import { MessageRouterService } from './services/message-router.service';
 import { HandoffManagerService } from './services/handoff-manager.service';
@@ -20,7 +21,7 @@ import { AfterHoursService } from './services/after-hours.service';
  * Phase 2: Adapters (Agent B) + Domain handlers (Agent D) + WS gateway (Agent C)
  */
 @Module({
-  imports: [forwardRef(() => StaffChatModule)],
+  imports: [forwardRef(() => StaffChatModule), ChatProspectsModule],
   providers: [
     RoomManagerService,
     MessageRouterService,

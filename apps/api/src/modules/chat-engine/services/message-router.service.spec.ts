@@ -904,3 +904,25 @@ describe('MessageRouterService — ที่มาจากโฆษณา (PR-A
     );
   });
 });
+
+describe('MessageRouterService — ผู้สนใจอัตโนมัติ (Ruling R3)', () => {
+  it('routeInbound (ลูกค้าทักจริง) → ขอผู้สนใจ ensureProspect: true — รวมห้อง WEB', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.routeInbound({ ...baseMsg, channel: ChatChannel.WEB } as any);
+    expect(roomManager.getOrCreateRoom).toHaveBeenCalledWith(
+      expect.objectContaining({ channel: ChatChannel.WEB, ensureProspect: true }),
+    );
+  });
+
+  it('mirrorInbound (ลูกค้าทักจริง) → ขอผู้สนใจ ensureProspect: true', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.mirrorInbound(baseMsg as any);
+    expect(roomManager.getOrCreateRoom).toHaveBeenCalledWith(expect.objectContaining({ ensureProspect: true }));
+  });
+
+  it('mirrorOutbound (ข้อความขาออก) → ไม่ส่งธง ใช้ค่าตั้งต้นตามช่องทาง', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.mirrorOutbound({ externalUserId: 'PSID-1', channel: ChatChannel.FACEBOOK, role: MessageRole.BOT, text: 'สวัสดี' });
+    expect(roomManager.getOrCreateRoom.mock.calls[0][0]).not.toHaveProperty('ensureProspect');
+  });
+});

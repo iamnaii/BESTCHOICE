@@ -10,10 +10,11 @@
 | 2026-09-13 | **"ต้องเก็บข้อมูลไว้ — ลูกค้าที่ทักเข้ามา = ผู้สนใจ"** (กลับคำตัดสิน 12 ก.ย. ที่ให้แค่ดึงจากแชทมาแสดง) |
 | 2026-09-13 | ย้อนหลังห้องแชทเดิม **ทั้งหมด 8,866 ห้อง** (ตั้งแต่ 12 พ.ค. 69) |
 | 2026-09-13 | เป้าหมายของเจ้าของ: เอาผู้สนใจไว้วิเคราะห์ lead + ทำการตลาดให้ถูกทาง |
+| 2026-09-13 | ถาม "ทักหลายช่องทางจะรู้ได้ไงว่าคนเดียวกัน" → รับทราบว่ารู้เองไม่ได้ กุญแจคือเบอร์/เลขบัตร/ยืนยัน LINE · **ให้ใส่ "คำใบ้อาจเป็นคนเดียวกัน" (ชื่อตรงกันข้ามช่องทาง) ในรอบนี้ — แนะนำให้พนักงานกดยืนยัน ไม่รวมอัตโนมัติ** |
 
 ## 1. เป้าหมาย (ประโยคเดียว)
 
-ทุกคนที่ทักเข้ามาทางแชท (Facebook / LINE / TikTok / เว็บ) ต้องมีแถวใน `customers` เป็น "ผู้สนใจ" ทันที เพื่อให้แท็บผู้สนใจในหน้า `/customers` (PR #1590) ทำงานได้เต็ม — ที่มา · ติดต่อล่าสุด · ผู้ดูแล · ปุ่มเปิดแชท · KPI · ส่งออก Excel — และเป็นจุดยึดตอนเติมเบอร์/เลขบัตร หรือรวมเข้ากับลูกค้าเดิม โดย **คนหนึ่งคนต้องมีแถวเดียว**
+ทุกคนที่ทักเข้ามาทางแชท (Facebook / LINE / TikTok / เว็บ) ต้องมีแถวใน `customers` เป็น "ผู้สนใจ" ทันที เพื่อให้แท็บผู้สนใจในหน้า `/customers` (PR #1590) ทำงานได้เต็ม — ที่มา · ติดต่อล่าสุด · ผู้ดูแล · ปุ่มเปิดแชท · KPI · ส่งออก Excel — และเป็นจุดยึดตอนเติมเบอร์/เลขบัตร หรือรวมเข้ากับลูกค้าเดิม โดย **คนหนึ่งคนต้องมีแถวเดียวต่อช่องทาง** — ข้ามช่องทาง (Facebook + LINE) ระบบรู้เองไม่ได้ว่าเป็นคนเดียวกัน เพราะแต่ละแพลตฟอร์มให้รหัสคนละชุดและไม่ให้เบอร์ ⇒ รวมเมื่อรู้เบอร์/เลขบัตร หรือยืนยัน OTP ทาง LINE (3.3) และมีคำใบ้ชื่อตรงกันให้พนักงานกดยืนยัน (3.6)
 
 สิ่งที่ *ไม่* ทำในรอบนี้: ไม่ทำ pipeline/CRM stage · ไม่ทำ journal รายคน · ไม่แก้ตัวเลือกลูกค้าหน้าจอง/สัญญา/เช็คเครดิตนอกจากคำใบ้ · ไม่ทำ Web Push
 
@@ -50,7 +51,7 @@
 
 ### 3.1 ข้อมูล
 
-**Migration เดียว:** `ALTER TABLE customers ALTER COLUMN phone DROP NOT NULL` (+ `phone String?` ใน `schema.prisma`) — ไม่เพิ่มตาราง ไม่เพิ่มคอลัมน์
+**Migration 2 อย่าง (ไฟล์เดียว):** `ALTER TABLE customers ALTER COLUMN phone DROP NOT NULL` (+ `phone String?` ใน `schema.prisma`) และ `ALTER TABLE chat_rooms ADD COLUMN dismissed_same_person_ids text[] NOT NULL DEFAULT '{}'` (สำหรับคำใบ้ใน 3.6) — ไม่เพิ่มตาราง
 
 **ผู้สนใจอัตโนมัติ (placeholder)** = แถว `customers` ที่:
 
@@ -144,6 +145,7 @@ ensureForRoom(roomId):
 - **เบอร์ซ้ำตอนเติม** → ใช้กลไก `onUseExisting` ที่ `CustomerCreateDialog` มีอยู่แล้ว (409 → ปุ่ม "ใช้ลูกค้าเดิมคนนี้แทน") เปลี่ยนป้ายเป็น "รวมกับ [ชื่อ]" แล้วเรียก absorb
 - **หน้ารายชื่อ/รายละเอียดลูกค้า**: `PhoneCell` แสดง "—" เมื่อ `null` · ป้าย "ผู้สนใจจากแชท" ในหน้ารายละเอียด · ฟอร์มแก้ไข: เบอร์ว่างได้เฉพาะ `chatPlaceholder` (ส่ง `undefined` ไม่ใช่ `''` — DTO update ปฏิเสธ `''` ที่ `customer.dto.ts:143`) · เซิร์ฟเวอร์: ห้ามล้างเบอร์ของคนที่มีเบอร์แล้ว
 - **ตัวเลือกลูกค้า** (`CustomerSelectStep.tsx:83`, `BookingsPage.tsx:423`, `useCreditCheckCreate.ts:80`): แสดง "จากแชท · ยังไม่มีเบอร์" แทนบรรทัดเบอร์ว่าง — ไม่ซ่อน (ค้นชื่อ Facebook เจอได้เป็นฟีเจอร์)
+- **คำใบ้ "อาจเป็นคนเดียวกัน" (เจ้าของสั่ง 2026-09-13):** ห้องแชทคืน `possibleSamePerson[]` (สูงสุด 3) = ลูกค้า/ผู้สนใจคนอื่นที่ยังไม่ถูกลบ ซึ่ง **ชื่อตรงกันเป๊ะหลัง normalize** (trim · ยุบช่องว่างซ้ำ · ไม่สนตัวพิมพ์ · ตัดคำนำหน้าใน `THAI_NAME_PREFIXES` · เทียบทั้ง `name` และ `facebookName`) และ (มีห้องแชทใน **ช่องทางอื่น** หรือ มีเบอร์แล้ว) — เรียง: คนที่มีเบอร์ก่อน แล้วตาม `createdAt` เก่าก่อน · **ไม่ทำ fuzzy match** (ชื่อคล้ายไม่นับ — กันสัญญาณรบกวน) · การ์ดผู้สนใจในแผงขวาแสดง "อาจเป็นคนเดียวกับ *สมชาย* (LINE · มีเบอร์) [รวม]" · กด "รวม" = absorb ตามทิศทาง: ห้องนี้เป็น placeholder → ดูดเข้าอีกคน · อีกคนเป็น placeholder และห้องนี้เป็นคนจริง → ดูดอีกคนเข้าห้องนี้ · placeholder ทั้งคู่ → ใหม่กว่าเข้าเก่ากว่า · คนจริงทั้งคู่ → ไม่มีปุ่ม (บอกให้ตรวจสอบเอง) · **ไม่รวมอัตโนมัติทุกกรณี** · หลังรวมแล้วคำใบ้หายเอง (ชื่อเดียวกันแต่เจ้าของกด "ไม่ใช่" → เก็บ `dismissedSamePerson` ไว้ในห้อง ไม่ถามซ้ำ)
 - **ส่งออก Excel (แก้ Major 3)**: เพดาน 10,000 คงเดิม (`export-snapshot.ts:8` + ฝั่งเว็บ `fetch-export-pages.ts:22`) · ปุ่มส่งออกแท็บผู้สนใจตรวจ `viewCounts.prospects` ก่อนยิง: เกิน 10,000 → บอกให้กรอง "ติดต่อล่าสุด" ก่อน (ไม่ยิงแล้วรอ error) — ผู้สนใจจะแตะ 10,000 ราว 2 สัปดาห์หลัง backfill
 
 ### 3.7 ฝั่ง API ที่แตะ (สรุปไฟล์)
@@ -154,7 +156,7 @@ ensureForRoom(roomId):
 | helper | `packages/shared/src/customer-sort.ts` (เพิ่ม `CHAT_SOURCES`, `chatSourceOf(channel)`) · `apps/api/src/modules/customers/chat-placeholder.ts` (`isChatPlaceholder`) |
 | สร้าง | `customers/services/chat-prospect.service.ts` (ใหม่) · `chat-engine/services/room-manager.service.ts` · `chatbot-finance/services/chat-room.service.ts` |
 | รวม | `customers/services/customer-merge.service.ts` (ใหม่) · `customers/customers.controller.ts` (`POST :id/absorb-into/:targetId`) · `room-manager.service.ts` (`linkCustomer`) · `staff-chat/services/session-ops.service.ts` · `chatbot-finance.service.ts` |
-| อ่าน | `customer-query.service.ts` (`chatPlaceholder`, `deriveSource` กิ่ง `CHAT_*`) · `staff-chat` room detail |
+| อ่าน | `customer-query.service.ts` (`chatPlaceholder`, `deriveSource` กิ่ง `CHAT_*`) · `staff-chat` room detail (`customer.chatPlaceholder`, `possibleSamePerson[]`) · `PATCH /staff-chat/rooms/:id/same-person/dismiss` เขียน `chat_rooms.dismissed_same_person_ids text[]` (คอลัมน์ใหม่ default `{}` — ไม่ยัดลง `aiSalesState` เพราะนั่นเป็น state ของบอท) |
 | กติกา | `prepare-offer.service.ts` · `chat-commerce.service.ts` · `sales-bot/tools/capture-lead.tool.ts` |
 | nullable phone | 11 ไฟล์จาก spike (§2) — ทุกจุดใส่ด่านชัดเจน: snapshot สัญญา/ใบขาย/ใบจอง/รับซื้อ → `BadRequestException('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมก่อน')` · dunning/slip → ข้ามพร้อม log · verification → จับคู่เฉพาะเบอร์ที่ไม่ว่าง |
 | CLI | `apps/api/src/cli/backfill-chat-prospects.cli.ts` + npm script |
@@ -171,6 +173,7 @@ ensureForRoom(roomId):
 - `prepare-offer` / `chat-commerce` / `capture-lead`: กรณี placeholder
 - 11 ไฟล์ nullable phone: เทสเดิมต้องเขียว + เพิ่มเคส `phone: null` ที่ด่านใหม่
 - `backfill-chat-prospects.cli`: dry-run ไม่เขียน / จัดกลุ่มหลายห้อง / รันซ้ำไม่สร้างซ้ำ
+- `possibleSamePerson`: ชื่อตรงหลัง normalize (คำนำหน้า/ช่องว่าง/ตัวพิมพ์) / ไม่นับตัวเอง / ไม่นับช่องทางเดียวกันที่ไม่มีเบอร์ / ชื่อคล้ายไม่ขึ้น / สูงสุด 3 เรียงคนมีเบอร์ก่อน / dismiss แล้วไม่ขึ้นซ้ำ / ทิศทางรวม 4 กรณี
 
 **vitest (web)**: การ์ดผู้สนใจในแผงขวา (ปุ่ม 2 ปุ่ม, ไม่มีกล่องเหลือง) · `PhoneCell(null)` = "—" · ฟอร์มแก้ไขส่ง `undefined` · 409 → "รวมกับ …" · ปุ่มส่งออกเมื่อเกิน 10,000 · คำใบ้ในตัวเลือกลูกค้า
 
@@ -190,6 +193,7 @@ ensureForRoom(roomId):
 - **ห้องซ้ำของคนเดียว** ไม่แก้ที่ต้นเหตุในรอบนี้ (follow-up: partial unique index) — แบบนี้แค่ทำให้ "คน" ไม่ซ้ำ
 - **LINE shop link ที่เกิดหลังห้อง** (`line-customer-link.service` ไม่แตะห้อง — บั๊กเดิม) ห้องจะยังผูก placeholder จนกว่าพนักงานกด "ผูกกับลูกค้าเดิม" — บันทึกเป็น follow-up
 - แถวอัตโนมัติจากห้องเก่าที่เงียบไปแล้ว 1,764 ห้อง (ไม่คุยใน 90 วัน) จะอยู่ในแท็บผู้สนใจตลอด — เป็นความตั้งใจของเจ้าของ (KPI "เงียบเกิน 30 วัน" มีไว้กรอง)
+- **ตัวตนข้ามช่องทางรู้ได้เฉพาะจากเบอร์/เลขบัตร/ยืนยัน OTP LINE** — คนเดียวทัก Facebook + LINE จะเป็นผู้สนใจ 2 แถวจนกว่าจะรวม ⇒ ยอด "ผู้สนใจ" = จำนวนผู้ติดต่อต่อช่องทาง ส่วนยอด "ซื้อแล้ว" ถูกเสมอ (การซื้อผูกกับคนที่มีเบอร์) · วันนี้ prod เป็น Facebook 100% เรื่องนี้เริ่มมีผลเมื่อเปิด LINE/TikTok · แนวปฏิบัติ: ให้ทีม/บอทขอเบอร์ให้เร็วที่สุด
 
 ## 4. สิ่งที่เจ้าของต้องเคาะเพิ่ม (ถ้าไม่ทัก = ใช้ค่าตั้งต้น)
 

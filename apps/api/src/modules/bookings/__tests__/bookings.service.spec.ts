@@ -208,6 +208,8 @@ describe('BookingsService', () => {
       $transaction: jest.fn(async (fn: any) =>
         fn({
           $queryRaw: jest.fn().mockResolvedValue([]),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          customer: { findFirst: jest.fn((args: any) => prisma.customer.findFirst(args)) },
           booking: txBooking,
           bookingItem: txBookingItem,
           sale: txSale,
@@ -812,5 +814,56 @@ describe('BookingsService', () => {
     expect(prisma._tx.product.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ include: { po: { select: { poNumber: true } } } }),
     );
+  });
+
+  // ─── ด่านเบอร์ (spec 2026-09-13-chat-prospects) ──────────────────────────────
+
+  const chatProspect = { id: 'cust-chat', name: 'Facebook #a1b2', phone: null, addressCurrent: null };
+
+  it('create — ผู้สนใจจากแชทที่ยังไม่มีเบอร์ → BadRequest ก่อนเปิด tx', async () => {
+    prisma.customer.findFirst.mockResolvedValueOnce(chatProspect);
+    await expect(
+      service.create(
+        {
+          customerId: 'cust-chat',
+          branchId: 'br-1',
+          items: [{ description: 'iPhone 15', quantity: 1, unitPrice: 35000 }],
+          depositAmount: 1000,
+        },
+        'user-1',
+        OWNER,
+      ),
+    ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนจองสินค้า');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('update — เปลี่ยนลูกค้าในใบจองเป็นผู้สนใจที่ยังไม่มีเบอร์ → BadRequest ไม่แก้ใบจอง', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1',
+      depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000),
+      expireDate: new Date(Date.now() + 86400000) });
+    prisma.customer.findFirst.mockResolvedValueOnce(chatProspect);
+    await expect(service.update('bk-1', { customerId: 'cust-chat' }, OWNER)).rejects.toThrow(
+      'ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนจองสินค้า',
+    );
+    expect(prisma._tx.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('update — เปลี่ยนลูกค้าเป็นคนที่มีเบอร์ → แก้ใบจองได้ตามเดิม', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1',
+      depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000),
+      expireDate: new Date(Date.now() + 86400000) });
+    await service.update('bk-1', { customerId: 'cust-1' }, OWNER);
+    expect(prisma._tx.booking.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ customer: { connect: { id: 'cust-1' } } }) }),
+    );
+  });
+
+  it('convertToSale — ลูกค้าในใบจองไม่มีเบอร์ → BadRequest ไม่สร้าง Sale ไม่ตัดสต็อก', async () => {
+    prisma.booking.findFirst.mockResolvedValueOnce({ ...paidBooking(), customer: chatProspect });
+    await expect(
+      service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' }, SALES_BR1.id, SALES_BR1),
+    ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนเปิดใบขาย');
+    expect(prisma._tx.product.updateMany).not.toHaveBeenCalled();
+    expect(prisma._tx.sale.create).not.toHaveBeenCalled();
   });
 });

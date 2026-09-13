@@ -225,6 +225,26 @@ describe('DunningEngineService', () => {
       expect(mockNotificationsService.send).not.toHaveBeenCalled();
       expect(mockPrisma.dunningAction.create).not.toHaveBeenCalled();
     });
+
+    it('ลูกค้าไม่มีเบอร์ (phone null) — LINE ยังส่ง แต่ไม่มี SMS สำรอง (fallbackPhone = undefined ไม่ใช่ null)', async () => {
+      mockRuleService.findAllActiveRules.mockResolvedValueOnce([sampleRule]);
+      mockPrisma.payment.findMany.mockResolvedValueOnce([
+        {
+          ...samplePayment,
+          contract: {
+            ...samplePayment.contract,
+            customer: { ...samplePayment.contract.customer, phone: null },
+          },
+        },
+      ]);
+
+      await service.executeRules();
+
+      expect(mockNotificationsService.send).toHaveBeenCalledTimes(1);
+      const sent = mockNotificationsService.send.mock.calls[0][0];
+      expect(sent.recipient).toBe('U123');
+      expect(sent).toHaveProperty('fallbackPhone', undefined);
+    });
   });
 
   // --- executeEventTrigger tests ---
@@ -331,6 +351,35 @@ describe('DunningEngineService', () => {
         }),
       );
       expect(mockNotificationsService.send).not.toHaveBeenCalled();
+    });
+
+    it('ลูกค้าไม่มีเบอร์ (phone null) — กฎ SMS ข้าม (SKIPPED) ไม่ส่ง', async () => {
+      mockPrisma.dunningRule.findFirst.mockResolvedValueOnce({ ...eventRule, channel: 'SMS' });
+      mockPrisma.contract.findUnique.mockResolvedValueOnce({
+        ...sampleContract,
+        customer: { ...sampleContract.customer, phone: null },
+      });
+
+      await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, null);
+
+      expect(mockPrisma.dunningAction.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'SKIPPED' }),
+        }),
+      );
+      expect(mockNotificationsService.send).not.toHaveBeenCalled();
+    });
+
+    it('ลูกค้าไม่มีเบอร์ (phone null) — กฎ LINE ยังส่ง แต่ fallbackPhone = undefined', async () => {
+      mockPrisma.contract.findUnique.mockResolvedValueOnce({
+        ...sampleContract,
+        customer: { ...sampleContract.customer, phone: null },
+      });
+
+      await service.executeEventTrigger('CALL_NO_ANSWER', 'c-1', null, 'cl-1');
+
+      expect(mockNotificationsService.send).toHaveBeenCalledTimes(1);
+      expect(mockNotificationsService.send.mock.calls[0][0]).toHaveProperty('fallbackPhone', undefined);
     });
 
     it('creates action with FAILED status and captures to Sentry when send throws', async () => {

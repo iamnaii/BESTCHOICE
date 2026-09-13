@@ -153,6 +153,15 @@ export class VerificationService {
       );
     }
 
+    // ค้นด้วยเบอร์เจอแถวนี้ แปลว่ามีเบอร์แน่ — กันชนิด null จาก schema (ผู้สนใจจากแชทไม่มีทางถูกค้นเจอทางนี้)
+    const customerPhone = customer.phone;
+    if (!customerPhone) {
+      this.recordLookupFail(params.lineUserId);
+      throw new BadRequestException(
+        'ไม่พบเบอร์โทรนี้ในระบบค่ะ กรุณาตรวจสอบเบอร์โทร หรือติดต่อสาขา 063-134-6356',
+      );
+    }
+
     // T4-C9: successful lookup clears the fail counter
     this.clearLookupFails(params.lineUserId);
 
@@ -167,7 +176,7 @@ export class VerificationService {
       create: {
         lineUserId: params.lineUserId,
         customerId: customer.id,
-        phone: customer.phone,
+        phone: customerPhone,
         hash,
         expiresAt,
         attempts: 0,
@@ -175,7 +184,7 @@ export class VerificationService {
       },
       update: {
         customerId: customer.id,
-        phone: customer.phone,
+        phone: customerPhone,
         hash,
         expiresAt,
         attempts: 0,
@@ -190,15 +199,15 @@ export class VerificationService {
     // hold, and we fall through to the normal success return. MUST be OFF before go-live.
     if (await this.testMode.isEnabled()) {
       this.logger.warn(
-        `[TEST MODE] Skipping real OTP SMS send for ${maskPhone(customer.phone)} (TEST_MODE_BYPASS ON)`,
+        `[TEST MODE] Skipping real OTP SMS send for ${maskPhone(customerPhone)} (TEST_MODE_BYPASS ON)`,
       );
     } else {
       try {
         await this.notifications.sendSmsFromQueue(
-          customer.phone,
+          customerPhone,
           `BESTCHOICE: รหัส OTP ของคุณคือ ${otp} (ใช้ได้ใน 5 นาที)`,
         );
-        this.logger.log(`[Verify] OTP sent to ${maskPhone(customer.phone)}`);
+        this.logger.log(`[Verify] OTP sent to ${maskPhone(customerPhone)}`);
       } catch (err) {
         this.logger.error(
           `[Verify] SMS send failed: ${err instanceof Error ? err.message : err}`,
@@ -212,7 +221,7 @@ export class VerificationService {
     }
 
     return {
-      maskedPhone: maskPhone(customer.phone),
+      maskedPhone: maskPhone(customerPhone),
       expiresInSeconds: Math.floor(OTP_TTL_MS / 1000),
     };
   }

@@ -23,7 +23,7 @@ export interface ContractSnapshot {
   customer: {
     id: string;
     name: string;
-    phone: string;
+    phone: string | null;
   };
   product: {
     name: string;

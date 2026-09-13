@@ -129,6 +129,23 @@ describe('SlipProcessingService', () => {
     expect(prisma.paymentEvidence.create).toHaveBeenCalled();
   });
 
+  it('ลูกค้าไม่มีเบอร์ (phone null) — ยังแจ้งพนักงาน โดยไม่ส่งเบอร์ (undefined ไม่ใช่ null)', async () => {
+    prisma.contract.findFirst.mockResolvedValue({ ...contract, customer: { name: 'สมชาย', phone: null } });
+    vision.extractSlip.mockResolvedValue({
+      isSlip: true,
+      amount: 2000,
+      toAccount: '203-1-16520-5',
+      confidence: 0.9,
+    });
+
+    await service.processSlip(defaultParams);
+
+    expect(staffNotify.notifySlipReview).toHaveBeenCalledTimes(1);
+    const notified = staffNotify.notifySlipReview.mock.calls[0][0];
+    expect(notified.reason).toBe('amount_mismatch');
+    expect(notified).toHaveProperty('customerPhone', undefined);
+  });
+
   it('detects wrong bank account', async () => {
     financeConfig.isCompanyBankAccount.mockReturnValue(false);
 

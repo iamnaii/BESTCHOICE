@@ -91,6 +91,16 @@ describe('VerificationService', () => {
       expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
     });
 
+    it('แถวที่คืนมาไม่มีเบอร์ (ผู้สนใจจากแชท) → ปฏิเสธเหมือนไม่พบ ไม่ออก OTP ไม่ส่ง SMS', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'c-chat', name: 'Facebook #a1b2', phone: null });
+
+      await expect(
+        service.requestOtp({ lineUserId: 'U123', phone: '0891234567' }),
+      ).rejects.toThrow('ไม่พบเบอร์โทรนี้ในระบบ');
+      expect(prisma.chatbotOtpRequest.upsert).not.toHaveBeenCalled();
+      expect(notifications.sendSmsFromQueue).not.toHaveBeenCalled();
+    });
+
     it('throws on invalid phone format', async () => {
       await expect(
         service.requestOtp({ lineUserId: 'U123', phone: '12345' }),

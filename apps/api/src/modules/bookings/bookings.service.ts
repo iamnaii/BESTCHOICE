@@ -25,6 +25,7 @@ import { ShopCashSaleTemplate } from '../journal/cpa-templates/shop-cash-sale.te
 import { ShopBookingRefundTemplate } from '../journal/cpa-templates/shop-booking-refund.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { assertSaleProductEligible } from '../sales/services/sale-product-policy';
+import { assertCustomerHasPhone } from '../contracts/services/contract-create-policy';
 import {
   assertSameTestSide,
   TEST_SIDE_CUSTOMER_SELECT,
@@ -267,6 +268,7 @@ export class BookingsService {
     ]);
     if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
     if (!branch) throw new NotFoundException('ไม่พบสาขา');
+    assertCustomerHasPhone(customer, 'จองสินค้า');
 
     // test-data fence (spec 2026-09-05 §5.1): รายการที่ผูกเครื่องจริงต้องอยู่ฝั่งเดียวกับลูกค้า
     // (รายการที่มีแต่ description ไม่มีเครื่อง — ไม่มีอะไรให้ตรวจ)
@@ -361,6 +363,15 @@ export class BookingsService {
         throw new BadRequestException('รับมัดจำแล้ว ไม่สามารถแก้ลูกค้า สาขา สินค้า หรือยอดเงินในใบจองนี้');
       }
       if (dto.branchId) this.assertCanWriteBranch(user, dto.branchId);
+      if (dto.customerId) {
+        // เปลี่ยนเจ้าของใบจอง = จองให้คนใหม่ ⇒ ด่านเบอร์เดียวกับตอนสร้าง (spec 2026-09-13-chat-prospects)
+        const nextCustomer = await tx.customer.findFirst({
+          where: { id: dto.customerId, deletedAt: null },
+          select: { phone: true },
+        });
+        if (!nextCustomer) throw new NotFoundException('ไม่พบลูกค้า');
+        assertCustomerHasPhone(nextCustomer, 'จองสินค้า');
+      }
 
       const updates: Prisma.BookingUpdateInput = {};
       const nextDeposit = new Prisma.Decimal(dto.depositAmount ?? existing.depositAmount);
@@ -724,6 +735,9 @@ export class BookingsService {
         );
       }
       assertSaleProductEligible(product, booking.branchId, user, dto.previouslyDamagedAcknowledged);
+      // แปลงเป็นใบขาย — ด่านเบอร์เดียวกับ POS (spec 2026-09-13-chat-prospects); throw ใน tx นี้
+      // ย้อน claim PAID → CONVERTED ด้านบนให้เอง และยังไม่ถึงการตัดสต็อก
+      assertCustomerHasPhone(booking.customer, 'เปิดใบขาย');
       // test-data fence (spec 2026-09-05 §5.1) — ตอนแปลงเป็นใบขายคือจุดที่เครื่องพบลูกค้าจริง
       assertSameTestSide(booking.customer, product);
 

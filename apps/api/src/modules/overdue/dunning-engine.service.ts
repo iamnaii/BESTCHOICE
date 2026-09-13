@@ -210,7 +210,7 @@ export class DunningEngineService {
                     message: finalMessage,
                     relatedId: payment.contractId,
                     fallbackPhone:
-                      rule.channel === 'LINE' ? payment.contract.customer.phone : undefined,
+                      rule.channel === 'LINE' ? (payment.contract.customer.phone ?? undefined) : undefined,
                     customerId: payment.contract.customer.id,
                     category: NotificationCategory.DUNNING,
                   });
@@ -434,7 +434,7 @@ export class DunningEngineService {
             message: finalMessage,
             relatedId: contractId,
             fallbackPhone:
-              rule.channel === 'LINE' ? contract.customer.phone : undefined,
+              rule.channel === 'LINE' ? (contract.customer.phone ?? undefined) : undefined,
             customerId: contract.customer.id,
             category: NotificationCategory.DUNNING,
           });

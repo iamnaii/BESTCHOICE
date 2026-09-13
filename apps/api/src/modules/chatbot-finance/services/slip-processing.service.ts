@@ -152,7 +152,7 @@ export class SlipProcessingService {
       // Notify staff (fire-and-forget with error capture)
       this.staffNotify.notifySlipReview({
         customerName: contract.customer.name,
-        customerPhone: contract.customer.phone,
+        customerPhone: contract.customer.phone ?? undefined,
         contractNumber: contract.contractNumber,
         slipAmount: extracted.amount ?? 0,
         reason: 'wrong_account',
@@ -230,7 +230,7 @@ export class SlipProcessingService {
     if (expectedAmount === null) {
       this.staffNotify.notifySlipReview({
         customerName: contract.customer.name,
-        customerPhone: contract.customer.phone,
+        customerPhone: contract.customer.phone ?? undefined,
         contractNumber: contract.contractNumber,
         slipAmount,
         reason: 'unmatched',
@@ -250,7 +250,7 @@ export class SlipProcessingService {
     // ยอดไม่ตรง — notify staff
     this.staffNotify.notifySlipReview({
       customerName: contract.customer.name,
-      customerPhone: contract.customer.phone,
+      customerPhone: contract.customer.phone ?? undefined,
       contractNumber: contract.contractNumber,
       slipAmount,
       expectedAmount,

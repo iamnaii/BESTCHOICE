@@ -4,7 +4,7 @@ import { Injectable, HttpException, Logger, NotFoundException, BadRequestExcepti
 import { StructuredLoggerService } from '../../../common/logger';
 import { TradeInCreditService, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
 import { ContractQuoteService, contractQuotePayments } from './contract-quote.service';
-import { assertCustomerContractPolicy, customerContractSnapshot, contractDownTender } from './contract-create-policy';
+import { assertCustomerContractPolicy, assertCustomerHasPhone, customerContractSnapshot, contractDownTender } from './contract-create-policy';
 import { assertSaleProductEligible } from '../../sales/services/sale-product-policy';
 import { PlanType, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -103,6 +103,7 @@ export class ContractLifecycleService {
           if (!currentProduct.imeiSerial) throw new BadRequestException('สินค้าต้องมี IMEI/Serial Number');
           const customerData = await tx.customer.findUnique({ where: { id: dto.customerId, deletedAt: null } });
           if (!customerData) throw new BadRequestException('ไม่พบลูกค้า');
+          assertCustomerHasPhone(customerData, 'ทำสัญญา');
           assertSameTestSide(customerData, currentProduct);
           const customerSnapshot = customerContractSnapshot(customerData);
 

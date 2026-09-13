@@ -21,6 +21,7 @@ import {
 import { TradeInVoucherService } from './voucher.service';
 import { ContactResolverService } from '../../contacts/contact-resolver.service';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
+import { assertCustomerHasPhone } from '../../contracts/services/contract-create-policy';
 import { Prisma, TradeInFlow } from '@prisma/client';
 import { TRADE_IN_DECLARATION_VERSION, TRADE_IN_DECLARATION_TEXT, TRADE_IN_DECLARATION_VERSION_ERROR } from '@installment/shared';
 import { tradeInEvidenceError, TradeInEvidence } from '@installment/shared';
@@ -77,6 +78,9 @@ export class TradeInLifecycleService {
       if (!customer || customer.deletedAt) {
         throw new NotFoundException('ไม่พบลูกค้า');
       }
+      // ผู้สนใจจากแชทที่ยังไม่มีเบอร์รับซื้อไม่ได้ (spec 2026-09-13-chat-prospects) — ผู้ขาย walk-in
+      // ที่ไม่ผูก customerId ไม่เข้าด่านนี้ (เบอร์อยู่ที่ sellerPhone ของรายการเอง)
+      assertCustomerHasPhone(customer, 'รับซื้อเครื่อง');
     }
 
     if (dto.productId) {

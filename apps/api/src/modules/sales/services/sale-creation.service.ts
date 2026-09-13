@@ -12,6 +12,7 @@ import { InterCompanyService } from '../../inter-company/inter-company.service';
 import { DiscountPolicy } from './discount-policy.util';
 import { SaleWriterService } from './sale-writer.service';
 import { SaleWarrantyNotifierService } from './sale-warranty-notifier.service';
+import { assertCustomerHasPhone } from '../../contracts/services/contract-create-policy';
 import {
   assertSameTestSide,
   TEST_SIDE_CUSTOMER_SELECT,
@@ -182,23 +183,29 @@ export class SaleCreationService {
    * รั้วกันข้ามฝั่ง — โหลดลูกค้า + เครื่องหลัก + ของแถม ด้วย select ขั้นต่ำ (รวม po.poNumber
    * ที่ชนิดของ isTestProduct บังคับ) แล้วให้ util ตัดสิน. ไม่พบลูกค้า = NotFound ข้อความเดิม
    * ของโมดูลนี้ (writer จะโยนแบบเดียวกันอยู่แล้ว แต่รั้วต้องอ่านลูกค้าก่อน writer)
+   *
+   * ด่านเบอร์ (spec 2026-09-13-chat-prospects) อยู่ที่นี่เพราะ `create()` เรียกก่อน writer ทุกประเภท
+   * (CASH / INSTALLMENT / EXTERNAL_FINANCE) — writer เงินสด/ไฟแนนซ์นอกไม่โหลดลูกค้าเลย ⇒ ตรวจเบอร์
+   * ก่อนดูรายการเครื่อง ไม่ให้ใบที่ไม่มีรหัสสินค้าหลุดด่าน
    */
   private async assertSameTestSideForSale(dto: CreateSaleDto): Promise<void> {
     const productIds = [dto.productId, ...(dto.bundleProductIds ?? [])].filter(
       (id): id is string => !!id,
     );
-    if (productIds.length === 0) return;
     const [customer, products] = await Promise.all([
       this.prisma.customer.findFirst({
         where: { id: dto.customerId, deletedAt: null },
         select: TEST_SIDE_CUSTOMER_SELECT,
       }),
-      this.prisma.product.findMany({
-        where: { id: { in: productIds }, deletedAt: null },
-        select: TEST_SIDE_PRODUCT_SELECT,
-      }),
+      productIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.product.findMany({
+            where: { id: { in: productIds }, deletedAt: null },
+            select: TEST_SIDE_PRODUCT_SELECT,
+          }),
     ]);
     if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
+    assertCustomerHasPhone(customer, 'เปิดใบขาย');
     for (const product of products) assertSameTestSide(customer, product);
   }
 }

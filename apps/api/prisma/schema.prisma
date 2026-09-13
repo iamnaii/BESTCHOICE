@@ -902,7 +902,7 @@ model Customer {
   nickname           String? // ชื่อเล่น
   isForeigner        Boolean   @default(false) @map("is_foreigner") // ต่างด้าว
   birthDate          DateTime? @map("birth_date") // วันเกิด
-  phone              String
+  phone              String?   // null = ผู้สนใจอัตโนมัติจากแชทที่ยังไม่รู้เบอร์ (สเปค 2026-09-13-chat-prospects) — ห้ามล้างกลับเป็น null ผ่าน API
   phoneSecondary     String?   @map("phone_secondary")
   email              String? // อีเมล
   lineIdFinance      String?   @map("line_id_finance")
@@ -5361,6 +5361,9 @@ model ChatRoom {
   // Platform profile (fetched from LINE/FB on first contact — not always available for TikTok)
   displayName String? @map("display_name")
   pictureUrl  String? @map("picture_url")
+
+  /// คำใบ้ "อาจเป็นคนเดียวกัน" ที่พนักงานกด "ไม่ใช่" แล้ว — ไม่ถามซ้ำ (customer id)
+  dismissedSamePersonIds String[] @default([]) @map("dismissed_same_person_ids")
 
   /// สมุดสถานะการขายของบอท (slot memory — SalesStateService): รุ่นที่สนใจ/งบ/เรท/เอกสาร
   /// จดโดย Haiku หลังบอทตอบแต่ละเทิร์น · อยู่ข้ามวัน (ลูกค้าเก่ากลับมา บอททักต่อจากเดิม)

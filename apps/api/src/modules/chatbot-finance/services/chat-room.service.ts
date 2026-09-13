@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatChannel, ChatRoom, MessageRole, MessageType, Prisma } from '@prisma/client';
 import { StaffChatGateway } from '../../staff-chat/staff-chat.gateway';
@@ -75,6 +76,7 @@ export class ChatRoomService {
       return ensured ? { ...room, customerId: ensured.customerId } : room;
     } catch (err) {
       this.logger.warn(`[prospect] room ${room.id}: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { kind: 'chat-prospect' }, extra: { roomId: room.id } });
       return room;
     }
   }

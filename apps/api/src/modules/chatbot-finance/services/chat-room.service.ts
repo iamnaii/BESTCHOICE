@@ -5,6 +5,8 @@ import { ChatChannel, ChatRoom, MessageRole, MessageType, Prisma } from '@prisma
 import { StaffChatGateway } from '../../staff-chat/staff-chat.gateway';
 import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
+import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
+import { PLACEHOLDER_FIELDS_SELECT, isLivePlaceholder } from '../../chat-prospects/chat-placeholder';
 
 /**
  * จัดการ ChatRoom + ChatMessage สำหรับ Finance Bot
@@ -21,6 +23,8 @@ export class ChatRoomService {
     private staffChatGateway?: StaffChatGateway,
     @Optional()
     private chatProspects?: ChatProspectService,
+    @Optional()
+    private merge?: CustomerMergeService,
   ) {}
 
   /** หา room เดิม หรือสร้างใหม่ */
@@ -152,8 +156,40 @@ export class ChatRoomService {
     return msgs.reverse();
   }
 
-  /** Sync room.customerId หลังจาก LIFF verify (CustomerLineLink ถูกสร้างแล้ว) */
+  /**
+   * Sync room.customerId หลังจาก LIFF verify (CustomerLineLink ถูกสร้างแล้ว)
+   * ห้องที่ถือ "ผู้สนใจอัตโนมัติ" (placeholder) อยู่ถูกดูดเข้าคนที่เพิ่งยืนยันตัวตนก่อน (สเปค 3.3 ง)
+   * ห้องที่ผูกกับลูกค้าจริงคนอื่นอยู่แล้วไม่ถูกทับ — เก็บประวัติของเจ้าของเดิมไว้ (Ruling R4)
+   */
   async linkRoomToCustomer(roomId: string, customerId: string): Promise<void> {
+    if (this.merge) {
+      const room = await this.prisma.chatRoom.findUnique({
+        where: { id: roomId },
+        select: { id: true, customerId: true, customer: { select: PLACEHOLDER_FIELDS_SELECT } },
+      });
+      if (room?.customerId && room.customerId !== customerId) {
+        if (!isLivePlaceholder(room.customer)) {
+          this.logger.debug(
+            `[prospect] room ${roomId} already linked to ${room.customerId}, not overwriting with ${customerId}`,
+          );
+          return;
+        }
+        // best-effort: การผูก LINE เข้าลูกค้าที่ยืนยันตัวตนแล้วต้องไม่ล้มเพราะดูด placeholder ไม่ได้
+        // (เช่น placeholder ดันมีเอกสารพ่วงแบบ Task 8's absorbPlaceholder 409) — ห้องนี้ยังต้องผูกกับ
+        // ลูกค้าจริงต่อไปด้านล่าง ไม่งั้นบอทจะหาข้อมูลลูกค้าไม่เจอทั้งที่เพิ่งยืนยันตัวตนสำเร็จ
+        try {
+          await this.merge.absorbPlaceholder(room.customerId, customerId, SYSTEM_ACTOR);
+        } catch (err) {
+          this.logger.warn(
+            `[prospect] absorb room ${roomId} placeholder ${room.customerId} → ${customerId}: ${err instanceof Error ? err.message : err}`,
+          );
+          Sentry.captureException(err, {
+            tags: { kind: 'chat-prospect' },
+            extra: { roomId, placeholderId: room.customerId, customerId },
+          });
+        }
+      }
+    }
     await this.prisma.chatRoom.update({
       where: { id: roomId },
       data: {

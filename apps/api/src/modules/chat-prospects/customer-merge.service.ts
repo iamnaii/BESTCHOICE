@@ -2,10 +2,13 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
-import { PLACEHOLDER_FIELDS_SELECT, isChatPlaceholder } from './chat-placeholder';
+import { PLACEHOLDER_FIELDS_SELECT, isChatPlaceholder, isLivePlaceholder } from './chat-placeholder';
 
 export interface MergeActor { id: string; role: string }
 export interface AbsorbResult { placeholderId: string; targetId: string; movedRooms: number; movedCreditChecks: number }
+
+/** ทางที่ลูกค้าทำเอง (พิมพ์เบอร์ใน LINE / LIFF / OTP) ไม่มีพนักงาน — audit ระบุระบบ */
+export const SYSTEM_ACTOR: MergeActor = { id: 'system', role: 'SYSTEM' };
 
 /** relation ที่ placeholder ห้ามมี (สเปค 3.3) — ชื่อ relation ใน Prisma → ป้ายไทยในข้อความ 409 */
 const BLOCKING_RELATIONS = {
@@ -122,5 +125,36 @@ export class CustomerMergeService {
       `[merge] placeholder ${placeholderId} → ${targetId} rooms=${result.movedRooms} creditChecks=${result.movedCreditChecks} by ${actor.id}`,
     );
     return result;
+  }
+
+  /**
+   * LINE ถูกผูกกับลูกค้า (OTP บอทการเงิน / พิมพ์เบอร์ใน LINE ร้าน / LIFF) → ห้อง LINE ของคนนั้น
+   * ที่ยังถือ placeholder ต้องถูกดูดเข้าลูกค้าจริง ห้องที่ไม่มีเจ้าของผูกตรง (สเปค 3.3 ง)
+   * ห้องที่ผูกกับลูกค้าจริงคนอื่นอยู่แล้ว (ไม่ใช่ placeholder) ถูกข้ามไปเฉยๆ — ไม่ทับประวัติ
+   */
+  async absorbRoomsOfLineUser(
+    lineUserId: string,
+    channel: 'LINE_SHOP' | 'LINE_FINANCE',
+    customerId: string,
+    actor: MergeActor,
+  ): Promise<{ absorbed: number; linked: number }> {
+    const rooms = await this.prisma.chatRoom.findMany({
+      where: { lineUserId, channel, deletedAt: null },
+      select: { id: true, customerId: true, customer: { select: PLACEHOLDER_FIELDS_SELECT } },
+    });
+    let absorbed = 0;
+    let linked = 0;
+    const absorbedIds = new Set<string>();
+    for (const room of rooms) {
+      if (!room.customerId) {
+        await this.prisma.chatRoom.update({ where: { id: room.id }, data: { customerId } });
+        linked++;
+      } else if (room.customerId !== customerId && !absorbedIds.has(room.customerId) && isLivePlaceholder(room.customer)) {
+        await this.absorbPlaceholder(room.customerId, customerId, actor);
+        absorbedIds.add(room.customerId);
+        absorbed++;
+      }
+    }
+    return { absorbed, linked };
   }
 }

@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { toNum, calcOutstanding } from '../../utils/decimal.util';
 import { maskThaiName } from '../../utils/mask-name.util';
+import { CustomerMergeService, SYSTEM_ACTOR } from '../chat-prospects/customer-merge.service';
 // Return types for LIFF API (mirrors packages/shared/src/liff-types.ts)
 interface LiffPaymentItem { installmentNo: number; dueDate: string; amountDue: number; amountPaid: number; lateFee: number; status: string; paidDate: string | null; paymentMethod: string | null; }
 interface LiffContractItem { id: string; contractNumber: string; status: string; dunningStage: string; daysOverdue: number; product: string; sellingPrice: number; downPayment: number; monthlyPayment: number; totalMonths: number; paidInstallments: number; totalOutstanding: number; createdAt: string; payments: LiffPaymentItem[]; }
@@ -16,7 +18,10 @@ interface LiffRegisterLookupResponse { customerId: string; maskedName: string; }
 export class LiffApiService {
   private readonly logger = new Logger(LiffApiService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private merge?: CustomerMergeService,
+  ) {}
 
   // ─── Contracts ──────────────────────────────────────
 
@@ -193,6 +198,20 @@ export class LiffApiService {
 
     // Log by customer id, not name — name is PII (PDPA). The id is enough to trace.
     this.logger.log(`[LIFF] Linked LINE ${lineId} to customer ${customerId} via finance registration`);
+    // ห้อง LINE การเงินของคนนี้ที่ถือผู้สนใจอัตโนมัติอยู่ → ดูดเข้าลูกค้าที่เพิ่งผูก (สเปค 3.3 ง)
+    // best-effort: ผูก LINE สำเร็จแล้ว (update ข้างบน commit ไปแล้ว) ต้องไม่ถือว่าล้มเพราะดูด
+    // placeholder ไม่ได้ (เช่น placeholder มีเอกสารพ่วง — absorbPlaceholder โยน 409)
+    try {
+      await this.merge?.absorbRoomsOfLineUser(lineId, 'LINE_FINANCE', customerId, SYSTEM_ACTOR);
+    } catch (err) {
+      this.logger.warn(
+        `[prospect] absorb rooms of ${lineId} → ${customerId}: ${err instanceof Error ? err.message : err}`,
+      );
+      Sentry.captureException(err, {
+        tags: { kind: 'chat-prospect' },
+        extra: { lineId, customerId },
+      });
+    }
     return { success: true };
   }
 

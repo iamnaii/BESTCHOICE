@@ -120,3 +120,27 @@ describe('CustomerMergeService.absorbPlaceholder', () => {
     expect(audit.log).not.toHaveBeenCalled();
   });
 });
+
+describe('CustomerMergeService.absorbRoomsOfLineUser', () => {
+  it('ห้อง LINE ของ lineUserId: placeholder → absorb · ไม่มีเจ้าของ → ผูกตรง · คนจริงคนเดิม → ข้าม', async () => {
+    const prisma: any = {
+      chatRoom: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'r-ph', customerId: 'p1', customer: { acquisitionSource: 'CHAT_LINE_SHOP', phone: null, nationalId: null, deletedAt: null } },
+          { id: 'r-none', customerId: null, customer: null },
+          { id: 'r-same', customerId: 'cust-real', customer: { acquisitionSource: null, phone: '0812345678', nationalId: null, deletedAt: null } },
+        ]),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const service = new CustomerMergeService(prisma, { log: jest.fn() } as any);
+    const absorb = jest.spyOn(service, 'absorbPlaceholder').mockResolvedValue({ placeholderId: 'p1', targetId: 'cust-real', movedRooms: 1, movedCreditChecks: 0 });
+    await expect(service.absorbRoomsOfLineUser('Uabc', 'LINE_SHOP', 'cust-real', { id: 'system', role: 'SYSTEM' })).resolves.toEqual({ absorbed: 1, linked: 1 });
+    expect(prisma.chatRoom.findMany).toHaveBeenCalledWith({
+      where: { lineUserId: 'Uabc', channel: 'LINE_SHOP', deletedAt: null },
+      select: { id: true, customerId: true, customer: { select: { acquisitionSource: true, phone: true, nationalId: true, deletedAt: true } } },
+    });
+    expect(absorb).toHaveBeenCalledWith('p1', 'cust-real', { id: 'system', role: 'SYSTEM' });
+    expect(prisma.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'r-none' }, data: { customerId: 'cust-real' } });
+  });
+});

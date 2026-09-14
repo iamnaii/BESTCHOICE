@@ -38,3 +38,72 @@ describe('ChatRoomService.getOrCreate → ผู้สนใจอัตโน�
     await expect(service.getOrCreate('Ufin1')).resolves.toMatchObject({ id: 'room-fin' });
   });
 });
+
+describe('ChatRoomService.linkRoomToCustomer (หลัง LIFF verify)', () => {
+  it('ห้องยังไม่มีเจ้าของ → ผูกตรง ไม่เรียก absorb', async () => {
+    const prisma: any = {
+      chatRoom: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'room-fin', customerId: null, customer: null }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const merge = { absorbPlaceholder: jest.fn() };
+    const service = new ChatRoomService(prisma, {} as any, undefined, undefined, merge as any);
+    await service.linkRoomToCustomer('room-fin', 'cust-real');
+    expect(merge.absorbPlaceholder).not.toHaveBeenCalled();
+    expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+      where: { id: 'room-fin' },
+      data: { customerId: 'cust-real', verifiedAt: expect.any(Date), verificationAttempts: 0 },
+    });
+  });
+
+  it('ห้องถือ placeholder → absorb ก่อน แล้วค่อยตั้ง verifiedAt', async () => {
+    const prisma: any = {
+      chatRoom: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'room-fin', customerId: 'p1', customer: { acquisitionSource: 'CHAT_LINE_FINANCE', phone: null, nationalId: null, deletedAt: null } }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const merge = { absorbPlaceholder: jest.fn().mockResolvedValue({}) };
+    const service = new ChatRoomService(prisma, {} as any, undefined, undefined, merge as any);
+    await service.linkRoomToCustomer('room-fin', 'cust-real');
+    expect(merge.absorbPlaceholder).toHaveBeenCalledWith('p1', 'cust-real', { id: 'system', role: 'SYSTEM' });
+    // update ยังคง verificationAttempts: 0 เหมือนก่อน Task 10 — ตัวนี้คือ reset ตัวนับ OTP ล้มเหลว
+    // (ยืนยันแล้วว่าโค้ดจริงตั้งค่านี้เสมอที่ chat-room.service.ts:162 — brief ตัด field นี้ออกจากตัวอย่างเทส)
+    expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+      where: { id: 'room-fin' },
+      data: { customerId: 'cust-real', verifiedAt: expect.any(Date), verificationAttempts: 0 },
+    });
+  });
+
+  it('ห้องผูกลูกค้าจริงคนอื่นอยู่แล้ว → ไม่ทับประวัติ ไม่เรียก absorb (R4 กรณีที่สาม)', async () => {
+    const prisma: any = {
+      chatRoom: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'room-fin', customerId: 'cust-other', customer: { acquisitionSource: null, phone: '0812345678', nationalId: null, deletedAt: null } }),
+        update: jest.fn(),
+      },
+    };
+    const merge = { absorbPlaceholder: jest.fn() };
+    const service = new ChatRoomService(prisma, {} as any, undefined, undefined, merge as any);
+    await service.linkRoomToCustomer('room-fin', 'cust-real');
+    expect(merge.absorbPlaceholder).not.toHaveBeenCalled();
+    expect(prisma.chatRoom.update).not.toHaveBeenCalled();
+  });
+
+  it('absorb placeholder ล้ม (เช่น มีเอกสารพ่วง) → ห้องนี้ยังผูกกับลูกค้าที่ยืนยันตัวตนต่อไป (best-effort)', async () => {
+    const prisma: any = {
+      chatRoom: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'room-fin', customerId: 'p1', customer: { acquisitionSource: 'CHAT_LINE_FINANCE', phone: null, nationalId: null, deletedAt: null } }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+    const merge = { absorbPlaceholder: jest.fn().mockRejectedValue(new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ')) };
+    const service = new ChatRoomService(prisma, {} as any, undefined, undefined, merge as any);
+    await expect(service.linkRoomToCustomer('room-fin', 'cust-real')).resolves.toBeUndefined();
+    expect(merge.absorbPlaceholder).toHaveBeenCalledWith('p1', 'cust-real', { id: 'system', role: 'SYSTEM' });
+    expect(prisma.chatRoom.update).toHaveBeenCalledWith({
+      where: { id: 'room-fin' },
+      data: { customerId: 'cust-real', verifiedAt: expect.any(Date), verificationAttempts: 0 },
+    });
+  });
+});

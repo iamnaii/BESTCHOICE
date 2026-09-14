@@ -158,12 +158,26 @@ describe('มุมมอง ลูกค้า / ผู้สนใจ', () => 
     expect(and).toContainEqual({ referredById: { not: null } });
   });
 
-  it('ที่มา = LINE ครอบทั้ง LINE_FINANCE และ LINE_SHOP', async () => {
+  it('ที่มา = LINE ครอบทั้ง LINE_FINANCE และ LINE_SHOP (ห้องแชทจริง หรือที่มาติดตัว CHAT_LINE_*)', async () => {
     const { service, findMany } = fixture();
     await service.findAll({ view: 'prospects', source: 'LINE' });
-    expect(whereOf(findMany).AND).toContainEqual(
-      { chatRooms: { some: { deletedAt: null, channel: { in: ['LINE_FINANCE', 'LINE_SHOP'] } } } },
-    );
+    expect(whereOf(findMany).AND).toContainEqual({
+      OR: [
+        { chatRooms: { some: { deletedAt: null, channel: { in: ['LINE_FINANCE', 'LINE_SHOP'] } } } },
+        { acquisitionSource: { in: ['CHAT_LINE_FINANCE', 'CHAT_LINE_SHOP'] } },
+      ],
+    });
+  });
+
+  it('ที่มา ใช้ได้กับแท็บลูกค้าด้วย (Task 13 — เดิมเฉพาะผู้สนใจ)', async () => {
+    const { service, findMany } = fixture();
+    await service.findAll({ view: 'customers', source: 'FACEBOOK' });
+    expect(whereOf(findMany).AND).toContainEqual({
+      OR: [
+        { chatRooms: { some: { deletedAt: null, channel: { in: ['FACEBOOK'] } } } },
+        { acquisitionSource: { in: ['CHAT_FACEBOOK'] } },
+      ],
+    });
   });
 
   it('แท็ก comma-joined + deletedAt: null (แท็กที่ถอดแล้วยังเป็นแถวอยู่)', async () => {
@@ -304,7 +318,7 @@ describe('KPI / viewCounts กับตัวกรองที่คลี่�
     expect(result.total).toBe(GOLD.length);
     expect(result.data.map(row => row.id)).toEqual(GOLD);
     for (const value of Object.values(result.summary)) expect(value).toBeLessThanOrEqual(result.total);
-    expect(result.summary).toEqual({ total: 2, installment: 2, cash: 2, externalFinance: 2, overdue: 2 });
+    expect(result.summary).toEqual({ total: 2, installment: 2, cash: 2, externalFinance: 2, overdue: 2, fromChat: 2 });
     expect(Object.values(result.viewCounts).every(value => value <= result.total)).toBe(true);
     expect(result.viewCounts).toEqual({ customers: 2, prospects: 2 });
   });
@@ -318,10 +332,10 @@ describe('KPI / viewCounts กับตัวกรองที่คลี่�
 });
 
 describe('KPI และ viewCounts', () => {
-  it('KPI ทั้ง 5 ใบผูกกับตัวกรองของหน้านี้ (filter-scoped)', async () => {
+  it('KPI ทั้ง 6 ใบผูกกับตัวกรองของหน้านี้ (filter-scoped) — รวม "มาจากแชท" (Task 13)', async () => {
     const { service, count } = fixture();
     const result = await service.findAll({ view: 'customers', search: 'ก' });
-    expect(result.summary).toEqual({ total: 7, installment: 7, cash: 7, externalFinance: 7, overdue: 7 });
+    expect(result.summary).toEqual({ total: 7, installment: 7, cash: 7, externalFinance: 7, overdue: 7, fromChat: 7 });
     // นัดแรกที่ไม่ใช่ total ต้องถือ scopedWhere (มี search + predicate ของมุมมอง) ไว้ด้วย
     const kpiCall = count.mock.calls.find(call => call[0].where.AND?.[1]?.contracts);
     expect(kpiCall[0].where.AND[0].OR).toHaveLength(8);
@@ -403,15 +417,15 @@ describe('รูปร่างแถวที่ตอบกลับ (สั�
     return { db, service: buildQueryService(db, tier), prospect: over.prospect };
   }
 
-  it('แท็บลูกค้า: ฟิลด์เดิมครบ + ฟิลด์ใหม่ 5 ตัว และไม่มีคอลัมน์ ciphertext หลุด', async () => {
+  it('แท็บลูกค้า: ฟิลด์เดิมครบ + ฟิลด์ใหม่ (รวม source/acquisitionSourceRaw — Task 13) และไม่มีคอลัมน์ ciphertext หลุด', async () => {
     const { service } = richFixture();
     const result = await service.findAll({ view: 'customers' });
     const row = result.data[0] as Record<string, unknown>;
     expect(Object.keys(row).sort()).toEqual([
-      '_count', 'activeContracts', 'chatRooms', 'createdAt', 'creditCheckStatus', 'id', 'installmentBalance',
-      'latestCreditScore', 'latestCreditStatus', 'latestPurchase', 'lineIdFinance', 'lineIdShop',
-      'name', 'nationalId', 'nickname', 'occupation', 'overdueContracts', 'phone', 'purchase',
-      'salary', 'tier', 'warranty',
+      '_count', 'acquisitionSourceRaw', 'activeContracts', 'chatRooms', 'createdAt', 'creditCheckStatus', 'id',
+      'installmentBalance', 'latestCreditScore', 'latestCreditStatus', 'latestPurchase', 'lineIdFinance',
+      'lineIdShop', 'name', 'nationalId', 'nickname', 'occupation', 'overdueContracts', 'phone', 'purchase',
+      'salary', 'source', 'tier', 'warranty',
     ]);
     // 🔴 สอง enum คนละใบ ต้องมาทั้งคู่: คอลัมน์ "เครดิต" ของแท็บลูกค้าอ่าน creditCheckStatus
     // (CustomerCreditCheckStatus) ส่วน latestCreditStatus เป็นสถานะของใบตรวจ (CreditCheckStatus)
@@ -419,6 +433,13 @@ describe('รูปร่างแถวที่ตอบกลับ (สั�
     expect(row.creditCheckStatus).toBe('UNDER_REVIEW');
     expect(row.latestCreditStatus).toBe('APPROVED');
     expect(Object.keys(row).some(key => key.endsWith('Encrypted'))).toBe(false);
+    // ไม่มี acquisitionSource/referredById ดิบหลุดมาด้วย — เหลือแค่ที่มาที่อนุมานแล้ว + ค่าดิบ
+    // ที่ตั้งใจเปิด (acquisitionSourceRaw) เท่านั้น (Task 13, ดู owner rule: ไม่มีคอลัมน์ใหม่)
+    expect(row).not.toHaveProperty('acquisitionSource');
+    expect(row).not.toHaveProperty('referredById');
+    // ที่มา (Task 13): AI_CHAT_RETURN ชนะช่องทางห้องแชท (LINE_SHOP) เหมือนแท็บผู้สนใจ
+    expect(row.source).toBe('BOT');
+    expect(row.acquisitionSourceRaw).toBe('AI_CHAT_RETURN');
     expect(row.activeContracts).toBe(1);
     expect(row.overdueContracts).toBe(1);
     expect(row.tier).toBe('GOOD');
@@ -443,17 +464,19 @@ describe('รูปร่างแถวที่ตอบกลับ (สั�
     expect(row.chatRooms).toEqual([{ roomId: 'r1', channel: 'LINE_SHOP', logo: 'LINE' }]);
   });
 
-  it('แท็บผู้สนใจ: ไม่มี tier / purchase / warranty / _count และมีที่มา+ผู้ดูแล+ติดต่อล่าสุด', async () => {
+  it('แท็บผู้สนใจ: ไม่มี tier / purchase / warranty / _count และมีที่มา+ผู้ดูแล+ติดต่อล่าสุด+ธง chatPlaceholder', async () => {
     const { service } = richFixture();
     const result = await service.findAll({ view: 'prospects' });
     const row = result.data[0] as Record<string, unknown>;
     expect(Object.keys(row).sort()).toEqual([
-      'acquisitionSourceRaw', 'assignedTo', 'chatRooms', 'createdAt', 'creditCheckStatus', 'id',
+      'acquisitionSourceRaw', 'assignedTo', 'chatPlaceholder', 'chatRooms', 'createdAt', 'creditCheckStatus', 'id',
       'lastContactAt', 'lastContactSource', 'latestCreditScore', 'name', 'nationalId', 'nickname',
       'phone', 'source', 'tags',
     ]);
     expect(row.source).toBe('BOT'); // acquisitionSource = AI_CHAT_RETURN ชนะช่องทางห้องแชท
     expect(row.acquisitionSourceRaw).toBe('AI_CHAT_RETURN');
+    // มีทั้งเบอร์และเลขบัตรอยู่แล้ว (และที่มาไม่ใช่ CHAT_*) ⇒ ไม่ใช่ผู้สนใจอัตโนมัติ (Task 13)
+    expect(row.chatPlaceholder).toBe(false);
     expect(row.tags).toEqual([{ tag: 'VIP' }]);
     expect(row.creditCheckStatus).toBe('UNDER_REVIEW');
     expect(row.latestCreditScore).toBe(72);

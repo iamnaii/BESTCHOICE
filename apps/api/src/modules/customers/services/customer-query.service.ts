@@ -5,10 +5,13 @@ import {
   CUSTOMER_BOUGHT_CONTRACT_STATUSES,
   CUSTOMER_BOUGHT_SALE_TYPES,
   CUSTOMER_INSTALLMENT_STATE_STATUSES,
+  CHAT_SOURCE_PREFIX,
   chatLogoOf,
+  chatSourceChannel,
   type CustomerInstallmentState,
   type ProspectSource,
 } from '@installment/shared';
+import { isChatPlaceholder } from '../../chat-prospects/chat-placeholder';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { decryptPII, isEncrypted } from '../../../utils/crypto.util';
@@ -105,6 +108,14 @@ const SOURCE_CHANNELS: Record<string, Prisma.ChatRoomWhereInput['channel']> = {
   LINE: { in: ['LINE_FINANCE', 'LINE_SHOP'] },
 };
 
+/** ที่มา → ค่า acquisitionSource ของผู้สนใจอัตโนมัติที่นับว่าตรง (ห้องถูกลบไปแล้วก็ยังกรองได้) */
+const SOURCE_CHAT_VALUES: Record<string, string[]> = {
+  FACEBOOK: ['CHAT_FACEBOOK'],
+  TIKTOK: ['CHAT_TIKTOK'],
+  WEB: ['CHAT_WEB'],
+  LINE: ['CHAT_LINE_FINANCE', 'CHAT_LINE_SHOP'],
+};
+
 function assertEnumValue(value: string, allowed: string[], label: string): void {
   if (allowed.includes(value)) return;
   throw new BadRequestException(`${label}ไม่ถูกต้อง: "${value}" (ค่าที่รับได้: ${allowed.join(', ')})`);
@@ -177,8 +188,10 @@ function bkkDaysAgo(asOf: Date, days: number): Date {
 
 /**
  * "ที่มา" ของผู้สนใจ — อนุมาน ไม่ใช่คอลัมน์
- * ลำดับ: acquisitionSource ขึ้นต้น AI_CHAT → BOT · ไม่งั้นช่องทางห้องแชทล่าสุด
- * · ไม่งั้นมีคนแนะนำ → REFERRAL · ไม่งั้น WALK_IN   (ดู packages/shared/customer-sort.ts)
+ * ลำดับ: acquisitionSource ขึ้นต้น AI_CHAT → BOT · ไม่งั้นที่มาติดตัวจากตอนทักครั้งแรก
+ * (acquisitionSource ขึ้นต้น CHAT_ — ยังกรองได้แม้ห้องแชทถูกลบไปแล้ว ชนะห้องล่าสุด)
+ * · ไม่งั้นช่องทางห้องแชทล่าสุด · ไม่งั้นมีคนแนะนำ → REFERRAL · ไม่งั้น WALK_IN
+ * (ดู packages/shared/customer-sort.ts)
  */
 function deriveSource(
   acquisitionSource: string | null,
@@ -186,6 +199,8 @@ function deriveSource(
   referredById: string | null,
 ): ProspectSource {
   if (acquisitionSource?.startsWith('AI_CHAT')) return 'BOT';
+  const chatChannel = chatSourceChannel(acquisitionSource);
+  if (chatChannel) return chatLogoOf(chatChannel);
   if (newestChannel) return chatLogoOf(newestChannel);
   if (referredById) return 'REFERRAL';
   return 'WALK_IN';
@@ -218,6 +233,8 @@ const CUSTOMER_SELECT = {
   lineIdFinance: true,
   lineIdShop: true,
   createdAt: true,
+  acquisitionSource: true,
+  referredById: true,
   // 🔴 คอลัมน์ "เครดิต" ของแท็บลูกค้าอ่านค่านี้ (CustomerCreditCheckStatus) ไม่ใช่
   // latestCreditStatus ซึ่งเป็นสถานะของ **ใบตรวจ** (CreditCheckStatus) คนละ enum
   // คนละแผนที่ป้าย — แถวต้องพกมาทั้งสองค่า ฝั่งเว็บจึงเลือกแผนที่ถูกใบได้
@@ -324,7 +341,9 @@ export class CustomerQueryService {
     // ก่อน @Transform จะได้ทำงาน ⇒ ?hasOverdue=false เคยเปิดตัวกรอง (ดู DTO)
     const hasOverdue = !isProspects && (filters.hasOverdue === true || filters.hasOverdue === 'true');
     const creditCheckStatus = isProspects ? (filters.creditCheckStatus ?? filters.precheck) : undefined;
-    const source = isProspects ? filters.source : undefined;
+    // 🔴 "ที่มา" ใช้ได้ทั้งสองแท็บ (Task 13) — ต่างจากตัวกรองอื่นข้างบน/ล่างที่ยัง gate เฉพาะ
+    // แท็บผู้สนใจ: ลูกค้าที่ซื้อแล้วก็มี "ที่มา" เหมือนกัน (มาจากแชท/คนแนะนำ/walk-in)
+    const source = filters.source;
     const contacted = isProspects ? filters.contacted : undefined;
     const owner = isProspects ? assignedToId : undefined;
     const tags = isProspects
@@ -436,7 +455,16 @@ export class CustomerQueryService {
         // "มีห้องแชทช่องทางนี้" + ไม่ได้มาจากบอท — ไม่ใช่ "ห้องล่าสุดเป็นช่องทางนี้"
         // (ห้องล่าสุดเป็น aggregate ของ relation ซึ่ง Prisma where ทำไม่ได้) prod ยังไม่มี
         // ลูกค้าที่มีห้องซ้ำช่องทาง ⇒ ผลเท่ากัน แต่ถ้าวันหนึ่งมี คอลัมน์กับตัวกรองอาจไม่ตรงกัน
-        filterAnd.push(NOT_BOT_WHERE, { chatRooms: { some: { deletedAt: null, channel: SOURCE_CHANNELS[source] } } });
+        //
+        // 🔴 OR กับ acquisitionSource CHAT_* — ผู้สนใจอัตโนมัติที่ห้องแชทถูกลบไปแล้ว (รวม
+        // เข้าคนจริง / ลบห้อง) ยังต้องกรองด้วยที่มาติดตัวได้ ไม่งั้นหลุดจากตัวกรองทั้งที่ยัง
+        // มีป้าย "มาจากแชท" ติดอยู่
+        filterAnd.push(NOT_BOT_WHERE, {
+          OR: [
+            { chatRooms: { some: { deletedAt: null, channel: SOURCE_CHANNELS[source] } } },
+            { acquisitionSource: { in: SOURCE_CHAT_VALUES[source] } },
+          ],
+        });
       } else if (source === 'REFERRAL') {
         filterAnd.push(NOT_BOT_WHERE, NO_ROOM_WHERE, { referredById: { not: null } });
       } else if (source === 'WALK_IN') {
@@ -543,6 +571,9 @@ export class CustomerQueryService {
           { sales: { some: { deletedAt: null, saleType: 'CASH' } } },
           { sales: { some: { deletedAt: null, saleType: 'EXTERNAL_FINANCE' } } },
           { contracts: { some: { deletedAt: null, status: { in: ['OVERDUE', 'DEFAULT'] } } } },
+          // KPI "มาจากแชท" — นับด้วยที่มาติดตัว (acquisitionSource CHAT_*) ไม่ใช่ห้องแชทปัจจุบัน
+          // ⇒ ยังนับได้แม้ห้องแชทถูกลบไปแล้ว/ถูกรวมเข้าคนจริงแล้ว
+          { acquisitionSource: { startsWith: CHAT_SOURCE_PREFIX } },
         ];
 
     const [data, total, kpiCounts, viewCountPair] = await Promise.all([
@@ -593,7 +624,7 @@ export class CustomerQueryService {
 
     const summary = isProspects
       ? { total, contacted7d: kpiCounts[0] ?? 0, checkingCredit: kpiCounts[1] ?? 0, prechecked: kpiCounts[2] ?? 0, silent30d: kpiCounts[3] ?? 0 }
-      : { total, installment: kpiCounts[0] ?? 0, cash: kpiCounts[1] ?? 0, externalFinance: kpiCounts[2] ?? 0, overdue: kpiCounts[3] ?? 0 };
+      : { total, installment: kpiCounts[0] ?? 0, cash: kpiCounts[1] ?? 0, externalFinance: kpiCounts[2] ?? 0, overdue: kpiCounts[3] ?? 0, fromChat: kpiCounts[4] ?? 0 };
     const viewCounts = { customers: viewCountPair[0], prospects: viewCountPair[1] };
 
     const shaped = rows.map(row => {
@@ -616,6 +647,11 @@ export class CustomerQueryService {
             (row.referredById ?? null) as string | null,
           ),
           acquisitionSourceRaw: (row.acquisitionSource ?? null) as string | null,
+          chatPlaceholder: isChatPlaceholder({
+            acquisitionSource: (row.acquisitionSource ?? null) as string | null,
+            phone: (decrypted.phone ?? null) as string | null,
+            nationalId: (decrypted.nationalId ?? null) as string | null,
+          }),
           tags: (row.tags ?? []) as Array<{ tag: string }>,
           creditCheckStatus: row.creditCheckStatus as string,
           latestCreditScore: latestCredit?.aiScore ?? null,
@@ -629,9 +665,18 @@ export class CustomerQueryService {
       const contracts = (row.contracts ?? []) as Array<{ status: string }>;
       const activeContracts = contracts.filter(contract => contract.status === 'ACTIVE').length;
       const overdueContracts = contracts.filter(contract => ['OVERDUE', 'DEFAULT'].includes(contract.status)).length;
+      // ที่มา (Task 13) ต้องอ่านค่าดิบก่อนตัด acquisitionSource/referredById ออกจาก rest ด้านล่าง —
+      // ทั้งสองคอลัมน์นี้ไม่ใช่ฟิลด์ที่ตั้งใจส่งออกตรง ๆ (ไม่ใช่คอลัมน์ใหม่ของตาราง — แค่ที่มา
+      // ที่อนุมานแล้ว/ค่าดิบสำหรับ debug) เหมือนกับแท็บผู้สนใจข้างบน
+      const source = deriveSource(
+        (row.acquisitionSource ?? null) as string | null,
+        chatRooms[0]?.channel ?? null,
+        (row.referredById ?? null) as string | null,
+      );
+      const acquisitionSourceRaw = (row.acquisitionSource ?? null) as string | null;
       // relation ชั่วคราวทุกตัวต้องถูกถอดออกจากคำตอบ ไม่งั้น payload บวมและหลุดข้อมูลที่ไม่ได้ตั้งใจส่ง
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { contracts: _c, creditChecks: _cc, tags: _t, ...rest } = row;
+      const { contracts: _c, creditChecks: _cc, tags: _t, acquisitionSource: _as, referredById: _rb, ...rest } = row;
       // Phase 5: decrypt PII fields, then strip EVERY encrypted column from the response
       const decrypted = this.decryptCustomerPII(rest as RawRow, { strict }) as RawRow;
       const purchaseSummary = purchaseById.get(row.id);
@@ -641,6 +686,8 @@ export class CustomerQueryService {
         overdueContracts,
         latestCreditStatus: latestCredit?.status || null,
         latestCreditScore: latestCredit?.aiScore ?? null,
+        source,
+        acquisitionSourceRaw,
         tier: pageTiers.get(row.id)?.tier ?? 'NEW',
         purchase: purchaseSummary?.purchase ?? null,
         latestPurchase: purchaseSummary?.latestPurchase ?? null,
@@ -703,7 +750,15 @@ export class CustomerQueryService {
     // strict-mode rejection — if PDPA_STRICT_MODE=true and the row hasn't
     // been backfilled, BadRequestException is thrown with a clear message.
     const strict = this.piiService ? await this.piiService.isStrictMode() : false;
-    return this.decryptCustomerPII(customer as unknown as Record<string, unknown>, { strict }) as typeof customer;
+    const decrypted = this.decryptCustomerPII(customer as unknown as Record<string, unknown>, { strict }) as typeof customer;
+    return {
+      ...decrypted,
+      chatPlaceholder: isChatPlaceholder({
+        acquisitionSource: decrypted.acquisitionSource ?? null,
+        phone: decrypted.phone ?? null,
+        nationalId: decrypted.nationalId ?? null,
+      }),
+    };
   }
 
   async getReferrals(id: string) {

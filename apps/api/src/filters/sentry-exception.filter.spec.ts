@@ -1,4 +1,11 @@
-import { ArgumentsHost, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
 import { SentryExceptionFilter } from './sentry-exception.filter';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
@@ -42,5 +49,54 @@ describe('SentryExceptionFilter — response shape', () => {
     expect(status).toBe(500);
     expect(body).not.toHaveProperty('errors');
     expect(body.message).toBe('เกิดข้อผิดพลาดภายในระบบ กรุณาลองใหม่อีกครั้ง');
+  });
+
+  /**
+   * R47 (QA fix, 2026-09-14) — customer-write.service.ts's duplicate-contact
+   * ConflictExceptions carry `existingCustomer` + `field` so the web
+   * (CustomerCreateDialog / useOcrFlow) can offer "รวมกับลูกค้าเดิมคนนี้". The
+   * rewrite below used to drop both, same class of bug as the `errors` array
+   * fixed by DOC-05 above — allow-list them explicitly rather than spreading
+   * the whole response (the filter's redaction intent stands).
+   */
+  it('forwards existingCustomer and field on a 409 so the web can offer to merge with the existing customer', () => {
+    const { status, body } = run(
+      new ConflictException({
+        message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
+        existingCustomer: { id: 'c1', name: 'x' },
+        field: 'phone',
+      }),
+    );
+    expect(status).toBe(409);
+    expect(body).toMatchObject({
+      statusCode: 409,
+      message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
+      existingCustomer: { id: 'c1', name: 'x' },
+      field: 'phone',
+    });
+  });
+
+  it('still keeps the errors array of a plain 400 object response (regression guard)', () => {
+    const { status, body } = run(new BadRequestException({ message: 'bad', errors: [{ rule: 'r', msg: 'm' }] }));
+    expect(status).toBe(400);
+    expect(body).toMatchObject({ errors: [{ rule: 'r', msg: 'm' }] });
+  });
+
+  it('never leaks existingCustomer/field/errors on a 500 and hides the message in production', () => {
+    const { status, body } = run(new Error('boom'), 'production');
+    expect(status).toBe(500);
+    expect(body.message).toBe('เกิดข้อผิดพลาดภายในระบบ กรุณาลองใหม่อีกครั้ง');
+    expect(body).not.toHaveProperty('existingCustomer');
+    expect(body).not.toHaveProperty('field');
+    expect(body).not.toHaveProperty('errors');
+  });
+
+  it('passes through the message of a string-response HttpException without extra keys', () => {
+    const { status, body } = run(new NotFoundException('ไม่พบลูกค้า'));
+    expect(status).toBe(404);
+    expect(body.message).toBe('ไม่พบลูกค้า');
+    expect(body).not.toHaveProperty('existingCustomer');
+    expect(body).not.toHaveProperty('field');
+    expect(body).not.toHaveProperty('errors');
   });
 });

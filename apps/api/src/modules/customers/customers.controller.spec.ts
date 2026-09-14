@@ -5,6 +5,7 @@ import { CustomerTierService } from './customer-tier.service';
 import { SkipTracingService } from './skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
+import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -14,6 +15,7 @@ describe('CustomersController PII (Phase 5)', () => {
   let service: { findOne: jest.Mock; findAll: jest.Mock; search: jest.Mock };
   let piiAudit: { logDecryption: jest.Mock };
   let tierService: CustomerTierService;
+  let merge: { absorbPlaceholder: jest.Mock };
 
   beforeEach(async () => {
     service = {
@@ -22,6 +24,11 @@ describe('CustomersController PII (Phase 5)', () => {
       search: jest.fn(),
     };
     piiAudit = { logDecryption: jest.fn().mockResolvedValue(undefined) };
+    merge = {
+      absorbPlaceholder: jest
+        .fn()
+        .mockResolvedValue({ placeholderId: 'p1', targetId: 't1', movedRooms: 1, movedCreditChecks: 0 }),
+    };
 
     const module = await Test.createTestingModule({
       controllers: [CustomersController],
@@ -31,6 +38,7 @@ describe('CustomersController PII (Phase 5)', () => {
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         { provide: SkipTracingService, useValue: {} },
         { provide: CustomerInsightsService, useValue: {} },
+        { provide: CustomerMergeService, useValue: merge },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -146,6 +154,17 @@ describe('CustomersController PII (Phase 5)', () => {
       expect(tierSpy).toHaveBeenCalledWith('cust-1');
       expect(result.tier).toBe('GOLD');
     });
+  });
+
+  it('absorbInto ส่งต่อไป CustomerMergeService พร้อม actor', async () => {
+    const req = { user: { id: 'staff-1', role: 'SALES' } } as any;
+    await expect(controller.absorbInto('p1', 't1', req)).resolves.toEqual({
+      placeholderId: 'p1',
+      targetId: 't1',
+      movedRooms: 1,
+      movedCreditChecks: 0,
+    });
+    expect(merge.absorbPlaceholder).toHaveBeenCalledWith('p1', 't1', { id: 'staff-1', role: 'SALES' });
   });
 
 });

@@ -28,6 +28,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PiiAuditService } from '../pii/pii-audit.service';
+import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
 import { maskNationalId } from '../../utils/pii.util';
 
 type AuthRequest = Request & { user?: { id: string; role: string } };
@@ -43,6 +44,7 @@ export class CustomersController {
     private readonly tierService: CustomerTierService,
     private readonly skipTracingService: SkipTracingService,
     private readonly insightsService: CustomerInsightsService,
+    private readonly merge: CustomerMergeService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -259,6 +261,17 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   update(@Param('id') id: string, @Body() dto: UpdateCustomerDto) {
     return this.customersService.update(id, dto);
+  }
+
+  /** รวมผู้สนใจอัตโนมัติจากแชท (:id) เข้าลูกค้าเดิม (:targetId) — ใช้ตอนเติมเบอร์แล้วซ้ำ (สเปค 3.3 ข) */
+  @Post(':id/absorb-into/:targetId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  absorbInto(
+    @Param('id') id: string,
+    @Param('targetId') targetId: string,
+    @Req() req: { user: { id: string; role: string } },
+  ) {
+    return this.merge.absorbPlaceholder(id, targetId, { id: req.user.id, role: req.user.role });
   }
 
   @Delete(':id')

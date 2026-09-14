@@ -66,7 +66,8 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
     let error: unknown;
     try { await service.fillPlaceholderContact(p.id, { phone }, { id: 'staff-1', role: 'OWNER' }); } catch (e) { error = e; }
     expect(error).toBeInstanceOf(ConflictException);
-    expect((error as ConflictException).getResponse()).toEqual({ message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว', existingCustomer: { id: existing.id, name: 'fill spec existing' } });
+    // R44: `field` บอกช่องที่ชนจริง — เว็บใช้แยกข้อความ/ปุ่มแก้ไข ไม่เดาว่าเป็นเบอร์เสมอ
+    expect((error as ConflictException).getResponse()).toEqual({ message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว', existingCustomer: { id: existing.id, name: 'fill spec existing' }, field: 'phone' });
     const row = await prisma.customer.findUniqueOrThrow({ where: { id: p.id } });
     expect(row.phone).toBeNull();
     expect(audit.log).not.toHaveBeenCalled();
@@ -104,6 +105,7 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
     expect((error as ConflictException).getResponse()).toEqual({
       message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
       existingCustomer: { id: existing.id, name: 'fill spec nid existing' },
+      field: 'nationalId', // R44 — เว็บต้องแยกได้ว่านี่คือการชนเลขบัตร ไม่ใช่เบอร์
     });
     const row = await prisma.customer.findUniqueOrThrow({ where: { id: p.id } });
     expect(row.phone).toBeNull();

@@ -213,6 +213,26 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  // R44: เลขบัตรซ้ำต้องไม่ถูกเล่าเป็นเบอร์ซ้ำ — ปุ่ม "แก้เบอร์" เป็นประตูตันสำหรับเคสนี้
+  it('เลขบัตรซ้ำ (409 field=nationalId) → alert พูดถึงเลขบัตร + ปุ่ม "แก้เลขบัตร" · ไม่มีปุ่ม "แก้เบอร์" · ยังรวมกับคนเดิมได้', async () => {
+    apiPost.mockRejectedValue({ response: { status: 409, data: { message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว', existingCustomer: { id: 'c-old', name: 'สมชาย ใจดี' }, field: 'nationalId' } } });
+    const onUseExisting = vi.fn();
+    wrap(<CustomerCreateDialog open mode="fill" fillCustomerId="p1" onOpenChange={vi.fn()} initialValues={{ firstName: 'สมชาย', lastName: 'ใจดี' }} onCreated={vi.fn()} onUseExisting={onUseExisting} />);
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'นาย' } });
+    fireEvent.change(mainField('0XX-XXX-XXXX'), { target: { value: '0812345678' } });
+    fireEvent.change(mainField('X-XXXX-XXXXX-XX-X'), { target: { value: VALID_NID } });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(`เลขบัตรประชาชน ${VALID_NID} เป็นของลูกค้าเดิมอยู่แล้ว`);
+    expect(alert).toHaveTextContent('ระบบไม่สร้างซ้ำ — รวมแชทห้องนี้และผลเช็คเครดิตเข้าคนเดิม หรือแก้เลขบัตรแล้วบันทึกใหม่');
+    expect(alert).toHaveTextContent(`· เลขบัตร ${VALID_NID}`);
+    expect(alert).not.toHaveTextContent('เบอร์ 0812345678 เป็นของลูกค้าเดิมอยู่แล้ว');
+    expect(screen.getByRole('button', { name: 'แก้เลขบัตร' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'แก้เบอร์' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'รวมกับลูกค้าเดิมคนนี้' }));
+    expect(onUseExisting).toHaveBeenCalledWith({ id: 'c-old', name: 'สมชาย ใจดี' });
+  });
+
   it('alert 409 โชว์เบอร์ที่ส่งไปตอนกดบันทึก ไม่ใช่เบอร์ที่พิมพ์ทับระหว่างรอผล (กัน race — ช่องเบอร์ไม่ถูก disable ระหว่าง pending)', async () => {
     let rejectFn: ((reason?: unknown) => void) | undefined;
     apiPost.mockImplementation(() => new Promise((_resolve, reject) => { rejectFn = reject; }));

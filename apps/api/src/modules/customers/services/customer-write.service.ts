@@ -157,6 +157,10 @@ export class CustomerWriteService {
    * on collision with a non-soft-deleted record. `ignoreCustomerId` excludes
    * the customer being updated from the search (so update-in-place doesn't
    * collide with itself).
+   *
+   * R44: ทุก 409 ของ dedup แนบ `field` ('phone' | 'email' | 'nationalId') มาด้วย — ตัวเนื้อหาเดิม
+   * ไม่บอกว่าชนที่ช่องไหน เว็บจึงเดาเป็น "เบอร์ซ้ำ" เสมอและเสนอปุ่ม "แก้เบอร์" ให้กับการชนเลขบัตร
+   * (ประตูตัน: แก้เบอร์เท่าไรก็ยังชนเลขบัตรเดิม). เพิ่มคีย์อย่างเดียว ไม่แตะ message/existingCustomer
    */
   private async assertContactNotDuplicate(
     phone: string | null,
@@ -178,6 +182,7 @@ export class CustomerWriteService {
         throw new ConflictException({
           message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
           existingCustomer: dupPhone,
+          field: 'phone',
         });
       }
     }
@@ -199,6 +204,7 @@ export class CustomerWriteService {
         throw new ConflictException({
           message: 'ลูกค้าที่มีอีเมลนี้มีอยู่แล้ว',
           existingCustomer: dupEmail,
+          field: 'email',
         });
       }
     }
@@ -234,6 +240,7 @@ export class CustomerWriteService {
       throw new ConflictException({
         message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
         existingCustomer: { id: existing.id, name: existing.name },
+        field: 'nationalId',
       });
     }
     return existing;
@@ -511,7 +518,7 @@ export class CustomerWriteService {
       // หลุดผ่าน assertNationalIdNotDuplicate ข้างบน (race) แล้วชน @unique ตรง ๆ ตอน update
       // (pattern เดียวกับ stock-adjustments.service.ts) — แปลเป็นข้อความไทย ไม่ปล่อย P2002 ดิบเป็น 500
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new ConflictException({ message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว' });
+        throw new ConflictException({ message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว', field: 'nationalId' });
       }
       throw err;
     }

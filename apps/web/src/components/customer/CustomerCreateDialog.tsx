@@ -134,6 +134,10 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
   const [references, setReferences] = useState<ReferenceData[]>([{ ...emptyReference }, { ...emptyReference }]);
   const [existing, setExisting] = useState<ExistingCustomerRef | null>(null);
   const [dupPhone, setDupPhone] = useState('');
+  const [dupNationalId, setDupNationalId] = useState('');
+  /* R44: ช่องที่ชนจริงจาก 409 ('phone' | 'email' | 'nationalId') — ไม่มีมา = ถือเป็นเบอร์ (พฤติกรรมเดิม) */
+  const [dupField, setDupField] = useState('phone');
+  const nidDup = dupField === 'nationalId';
 
   // OCR state
   const ocrFileRef = useRef<HTMLInputElement>(null);
@@ -203,10 +207,14 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
       onClose();
     },
     onError: (err: unknown, variables: CustomerFormData) => {
-      const axiosErr = err as { response?: { status?: number; data?: { existingCustomer?: ExistingCustomerRef } } };
-      const dup = axiosErr.response?.status === 409 ? axiosErr.response.data?.existingCustomer : undefined;
+      const axiosErr = err as { response?: { status?: number; data?: { existingCustomer?: ExistingCustomerRef; field?: string } } };
+      const body = axiosErr.response?.status === 409 ? axiosErr.response.data : undefined;
+      const dup = body?.existingCustomer;
       if (dup?.id) {
+        // ค่าที่ส่งไปจริงตอนกดบันทึก (ไม่ใช่ค่าที่พิมพ์ทับระหว่างรอผล) — เหตุผลเดียวกับ dupPhone
         setDupPhone(variables.phone);
+        setDupNationalId(variables.nationalId);
+        setDupField(body?.field ?? 'phone');
         setExisting(dup);
         return;
       }
@@ -394,19 +402,25 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
 
           {existing && (
             <div role="alert" className="rounded-xl border border-warning bg-warning/10 p-4 text-sm">
+              {/* R44: การชนเลขบัตรต้องไม่ถูกเล่าเป็นการชนเบอร์ — ปุ่ม "แก้เบอร์" เป็นประตูตัน
+                  (แก้เบอร์เท่าไรก็ยังชนเลขบัตรเดิม) ⇒ แยกข้อความ/ชิป/ปุ่มตาม `field` ที่ API บอก */}
               <p className="m-0 font-semibold leading-snug">
-                {isFill ? `เบอร์ ${dupPhone} เป็นของลูกค้าเดิมอยู่แล้ว` : `มีลูกค้าเบอร์นี้หรืออีเมลนี้อยู่แล้ว: ${existing.name}`}
+                {isFill
+                  ? (nidDup ? `เลขบัตรประชาชน ${dupNationalId} เป็นของลูกค้าเดิมอยู่แล้ว` : `เบอร์ ${dupPhone} เป็นของลูกค้าเดิมอยู่แล้ว`)
+                  : (nidDup ? `มีลูกค้าเลขบัตรประชาชนนี้อยู่แล้ว: ${existing.name}` : `มีลูกค้าเบอร์นี้หรืออีเมลนี้อยู่แล้ว: ${existing.name}`)}
               </p>
               <p className="m-0 mt-0.5 text-xs leading-snug text-muted-foreground">
                 {isFill
-                  ? 'ระบบไม่สร้างซ้ำ — รวมแชทห้องนี้และผลเช็คเครดิตเข้าคนเดิม หรือแก้เบอร์แล้วบันทึกใหม่'
+                  ? (nidDup
+                      ? 'ระบบไม่สร้างซ้ำ — รวมแชทห้องนี้และผลเช็คเครดิตเข้าคนเดิม หรือแก้เลขบัตรแล้วบันทึกใหม่'
+                      : 'ระบบไม่สร้างซ้ำ — รวมแชทห้องนี้และผลเช็คเครดิตเข้าคนเดิม หรือแก้เบอร์แล้วบันทึกใหม่')
                   : 'ระบบไม่สร้างซ้ำ — ใช้คนเดิม หรือแก้เบอร์/อีเมลแล้วบันทึกใหม่'}
               </p>
               {isFill && (
                 <div className="mt-2.5 flex items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 text-xs">
                   <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><User className="size-3.5" strokeWidth={1.5} /></span>
                   <span className="min-w-0 truncate font-semibold">{existing.name}</span>
-                  <span className="text-muted-foreground">· โทร {dupPhone}</span>
+                  <span className="text-muted-foreground">{nidDup ? `· เลขบัตร ${dupNationalId}` : `· โทร ${dupPhone}`}</span>
                 </div>
               )}
               {(onUseExisting || isFill) && (
@@ -421,7 +435,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                     </button>
                   )}
                   {isFill && (
-                    <button type="button" onClick={() => setExisting(null)} className="text-sm text-muted-foreground hover:text-foreground">แก้เบอร์</button>
+                    <button type="button" onClick={() => setExisting(null)} className="text-sm text-muted-foreground hover:text-foreground">{nidDup ? 'แก้เลขบัตร' : 'แก้เบอร์'}</button>
                   )}
                 </div>
               )}

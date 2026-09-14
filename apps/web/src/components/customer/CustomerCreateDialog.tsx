@@ -196,11 +196,11 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
       }
       onClose();
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, variables: CustomerFormData) => {
       const axiosErr = err as { response?: { status?: number; data?: { existingCustomer?: ExistingCustomerRef } } };
       const dup = axiosErr.response?.status === 409 ? axiosErr.response.data?.existingCustomer : undefined;
       if (dup?.id) {
-        setDupPhone(form.getValues('phone'));
+        setDupPhone(variables.phone);
         setExisting(dup);
         return;
       }
@@ -403,20 +403,22 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                   <span className="text-muted-foreground">· โทร {dupPhone}</span>
                 </div>
               )}
-              <div className="mt-3 flex items-center gap-3">
-                {onUseExisting && (
-                  <button
-                    type="button"
-                    onClick={() => { onUseExisting(existing); onClose(); }}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
-                  >
-                    <Link2 className="size-4" strokeWidth={1.5} /> {isFill ? 'รวมกับลูกค้าเดิมคนนี้' : 'ใช้ลูกค้าเดิมคนนี้แทน'}
-                  </button>
-                )}
-                {isFill && (
-                  <button type="button" onClick={() => setExisting(null)} className="text-sm text-muted-foreground hover:text-foreground">แก้เบอร์</button>
-                )}
-              </div>
+              {(onUseExisting || isFill) && (
+                <div className="mt-3 flex items-center gap-3">
+                  {onUseExisting && (
+                    <button
+                      type="button"
+                      onClick={() => { onUseExisting(existing); onClose(); }}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+                    >
+                      <Link2 className="size-4" strokeWidth={1.5} /> {isFill ? 'รวมกับลูกค้าเดิมคนนี้' : 'ใช้ลูกค้าเดิมคนนี้แทน'}
+                    </button>
+                  )}
+                  {isFill && (
+                    <button type="button" onClick={() => setExisting(null)} className="text-sm text-muted-foreground hover:text-foreground">แก้เบอร์</button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -509,6 +511,11 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                   )}
                 />
               </div>
+              {isFill && (
+                <div className="col-span-6">
+                  <p className="m-0 text-xs leading-snug text-muted-foreground">ชื่อเติมให้จากห้องแชทแล้ว แก้ได้ · บันทึกแล้วผู้สนใจคนนี้จะเช็คเครดิตและทำสัญญาได้ทันที</p>
+                </div>
+              )}
               <div className="col-span-3">
                 <FormField
                   control={form.control}
@@ -564,341 +571,372 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                   )}
                 />
               </div>
-              <div className="col-span-2">
-                <FormField
-                  control={form.control}
-                  name="birthDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium">วันเกิด</FormLabel>
-                      <FormControl>
-                        <ThaiDateInput value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} className={inputClass} />
-                      </FormControl>
-                      <FormMessage className="text-xs" />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="col-span-1 flex items-end pb-1">
-                {form.watch('birthDate') && (() => {
-                  const bd = new Date(form.watch('birthDate') as string);
-                  const today = new Date();
-                  let age = today.getFullYear() - bd.getFullYear();
-                  if (today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) age--;
-                  return <span className="inline-flex items-center gap-1 text-xs font-medium text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg">อายุ {age} ปี</span>;
-                })()}
-              </div>
+              {!isFill && (
+                <div className="col-span-2">
+                  <FormField
+                    control={form.control}
+                    name="birthDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs font-medium">วันเกิด</FormLabel>
+                        <FormControl>
+                          <ThaiDateInput value={field.value ?? ''} onChange={(e) => field.onChange(e.target.value)} className={inputClass} />
+                        </FormControl>
+                        <FormMessage className="text-xs" />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+              {!isFill && (
+                <div className="col-span-1 flex items-end pb-1">
+                  {form.watch('birthDate') && (() => {
+                    const bd = new Date(form.watch('birthDate') as string);
+                    const today = new Date();
+                    let age = today.getFullYear() - bd.getFullYear();
+                    if (today.getMonth() < bd.getMonth() || (today.getMonth() === bd.getMonth() && today.getDate() < bd.getDate())) age--;
+                    return <span className="inline-flex items-center gap-1 text-xs font-medium text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg">อายุ {age} ปี</span>;
+                  })()}
+                </div>
+              )}
             </div>
           </div>
 
-          {/* ===== ที่อยู่ (collapsible) ===== */}
-          <details className="group rounded-xl border border-border bg-card">
-            <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-              <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
-                <MapPin className="size-4 text-muted-foreground" strokeWidth={1.5} />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-semibold text-foreground">ที่อยู่</h3>
-                <p className="text-xs text-muted-foreground">ตามบัตร + ปัจจุบัน</p>
-              </div>
-              <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="px-5 pb-5 border-t border-border pt-4 flex flex-col gap-4">
-              <div>
-                <h4 className="text-xs font-medium text-foreground mb-2">ที่อยู่ตามบัตรประชาชน</h4>
-                <AddressForm value={addressIdCard} onChange={setAddressIdCard} />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-xs font-medium text-foreground">ที่อยู่ปัจจุบัน</h4>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={sameAddress} onChange={(e) => setSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-ring/30" />
-                    <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
-                  </label>
+          {/* ===== ที่อยู่ (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}
+          {!isFill && (
+            <details className="group rounded-xl border border-border bg-card">
+              <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
+                <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                  <MapPin className="size-4 text-muted-foreground" strokeWidth={1.5} />
                 </div>
-                <div className="mb-3">
-                  <label className="block text-xs font-medium text-foreground mb-1.5">ประเภทที่อยู่</label>
-                  <select value={formExtra.addressCurrentType} onChange={(e) => setFormExtra(prev => ({ ...prev, addressCurrentType: e.target.value }))} className={inputClass}>
-                    <option value="">-- เลือก --</option>
-                    <option value="OWN">บ้านตัวเอง</option>
-                    <option value="RELATIVE">บ้านญาติ</option>
-                    <option value="RENT">เช่าอาศัย</option>
-                  </select>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-foreground">ที่อยู่</h3>
+                  <p className="text-xs text-muted-foreground">ตามบัตร + ปัจจุบัน</p>
                 </div>
-                {sameAddress ? (
-                  <p className="text-xs text-muted-foreground italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
-                ) : (
-                  <AddressForm value={addressCurrent} onChange={setAddressCurrent} />
+                <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="px-5 pb-5 border-t border-border pt-4 flex flex-col gap-4">
+                <div>
+                  <h4 className="text-xs font-medium text-foreground mb-2">ที่อยู่ตามบัตรประชาชน</h4>
+                  <AddressForm value={addressIdCard} onChange={setAddressIdCard} />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-xs font-medium text-foreground">ที่อยู่ปัจจุบัน</h4>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={sameAddress} onChange={(e) => setSameAddress(e.target.checked)} className="rounded border-input text-primary focus-visible:ring-ring/30" />
+                      <span className="text-xs text-muted-foreground">เหมือนที่อยู่ตามบัตร</span>
+                    </label>
+                  </div>
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-foreground mb-1.5">ประเภทที่อยู่</label>
+                    <select value={formExtra.addressCurrentType} onChange={(e) => setFormExtra(prev => ({ ...prev, addressCurrentType: e.target.value }))} className={inputClass}>
+                      <option value="">-- เลือก --</option>
+                      <option value="OWN">บ้านตัวเอง</option>
+                      <option value="RELATIVE">บ้านญาติ</option>
+                      <option value="RENT">เช่าอาศัย</option>
+                    </select>
+                  </div>
+                  {sameAddress ? (
+                    <p className="text-xs text-muted-foreground italic">ใช้ที่อยู่เดียวกับที่อยู่ตามบัตรประชาชน</p>
+                  ) : (
+                    <AddressForm value={addressCurrent} onChange={setAddressCurrent} />
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Google Map</label>
+                  <input type="url" value={formExtra.googleMapLink} onChange={(e) => setFormExtra(prev => ({ ...prev, googleMapLink: e.target.value }))} className={inputClass} placeholder="https://maps.google.com/..." />
+                </div>
+              </div>
+            </details>
+          )}
+
+          {/* ===== ข้อมูลติดต่อเพิ่มเติม (collapsible) — ซ่อนในโหมด fill ตาม mockup (ชื่อ Facebook มีบล็อกของตัวเองแทน) ===== */}
+          {!isFill && (
+            <details className="group rounded-xl border border-border bg-card">
+              <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
+                <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                  <Phone className="size-4 text-muted-foreground" strokeWidth={1.5} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-foreground">ข้อมูลติดต่อเพิ่มเติม</h3>
+                  <p className="text-xs text-muted-foreground">LINE, Facebook, เบอร์สำรอง</p>
+                </div>
+                <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="px-5 pb-5 border-t border-border pt-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name="phoneSecondary"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">เบอร์สำรอง</FormLabel>
+                          <FormControl>
+                            <input type="tel" {...field} className={inputClass} placeholder="0XX-XXX-XXXX" />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">อีเมล</FormLabel>
+                          <FormControl>
+                            <input type="email" {...field} className={inputClass} placeholder="email@example.com" autoComplete="email" />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name="lineIdFinance"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">LINE ID (Finance / น้องเบส)</FormLabel>
+                          <FormControl>
+                            <input type="text" {...field} className={inputClass} placeholder="U1234567890abcdef..." />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name="lineIdShop"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">LINE ID (Shop / ร้าน)</FormLabel>
+                          <FormControl>
+                            <input type="text" {...field} className={inputClass} placeholder="U1234567890abcdef..." />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name="facebookLink"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">ลิงก์ Facebook</FormLabel>
+                          <FormControl>
+                            <input type="url" {...field} className={inputClass} placeholder="https://facebook.com/..." />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name="facebookName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
+                          <FormControl>
+                            <input type="text" {...field} className={inputClass} placeholder="ชื่อบน Facebook" />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเพื่อน Facebook</label>
+                    <input type="text" value={formExtra.facebookFriends} onChange={(e) => setFormExtra(prev => ({ ...prev, facebookFriends: e.target.value }))} className={inputClass} placeholder="จำนวนเพื่อน" />
+                  </div>
+                </div>
+              </div>
+            </details>
+          )}
+
+          {/* ===== ชื่อ Facebook (fill mode เท่านั้น — ตาม mockup) ===== */}
+          {isFill && (
+            <div className="rounded-xl border border-border bg-card p-5">
+              <FormField
+                control={form.control}
+                name="facebookName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
+                    <FormControl>
+                      <input type="text" {...field} className={inputClass} placeholder="ชื่อบน Facebook" />
+                    </FormControl>
+                    <FormMessage className="text-xs" />
+                  </FormItem>
                 )}
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">ลิงก์ Google Map</label>
-                <input type="url" value={formExtra.googleMapLink} onChange={(e) => setFormExtra(prev => ({ ...prev, googleMapLink: e.target.value }))} className={inputClass} placeholder="https://maps.google.com/..." />
-              </div>
+              />
             </div>
-          </details>
+          )}
 
-          {/* ===== ข้อมูลติดต่อเพิ่มเติม (collapsible) ===== */}
-          <details className="group rounded-xl border border-border bg-card">
-            <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-              <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
-                <Phone className="size-4 text-muted-foreground" strokeWidth={1.5} />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-semibold text-foreground">ข้อมูลติดต่อเพิ่มเติม</h3>
-                <p className="text-xs text-muted-foreground">LINE, Facebook, เบอร์สำรอง</p>
-              </div>
-              <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="px-5 pb-5 border-t border-border pt-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="phoneSecondary"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">เบอร์สำรอง</FormLabel>
-                        <FormControl>
-                          <input type="tel" {...field} className={inputClass} placeholder="0XX-XXX-XXXX" />
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
+          {/* ===== ข้อมูลที่ทำงาน (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}
+          {!isFill && (
+            <details className="group rounded-xl border border-border bg-card">
+              <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
+                <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                  <Briefcase className="size-4 text-muted-foreground" strokeWidth={1.5} />
                 </div>
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">อีเมล</FormLabel>
-                        <FormControl>
-                          <input type="email" {...field} className={inputClass} placeholder="email@example.com" autoComplete="email" />
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-foreground">ข้อมูลที่ทำงาน</h3>
+                  <p className="text-xs text-muted-foreground">อาชีพ, เงินเดือน</p>
                 </div>
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="lineIdFinance"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">LINE ID (Finance / น้องเบส)</FormLabel>
-                        <FormControl>
-                          <input type="text" {...field} className={inputClass} placeholder="U1234567890abcdef..." />
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="lineIdShop"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">LINE ID (Shop / ร้าน)</FormLabel>
-                        <FormControl>
-                          <input type="text" {...field} className={inputClass} placeholder="U1234567890abcdef..." />
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="facebookLink"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">ลิงก์ Facebook</FormLabel>
-                        <FormControl>
-                          <input type="url" {...field} className={inputClass} placeholder="https://facebook.com/..." />
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="facebookName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
-                        <FormControl>
-                          <input type="text" {...field} className={inputClass} placeholder="ชื่อบน Facebook" />
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-foreground mb-1.5">จำนวนเพื่อน Facebook</label>
-                  <input type="text" value={formExtra.facebookFriends} onChange={(e) => setFormExtra(prev => ({ ...prev, facebookFriends: e.target.value }))} className={inputClass} placeholder="จำนวนเพื่อน" />
-                </div>
-              </div>
-            </div>
-          </details>
-
-          {/* ===== ข้อมูลที่ทำงาน (collapsible) ===== */}
-          <details className="group rounded-xl border border-border bg-card">
-            <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-              <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
-                <Briefcase className="size-4 text-muted-foreground" strokeWidth={1.5} />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-semibold text-foreground">ข้อมูลที่ทำงาน</h3>
-                <p className="text-xs text-muted-foreground">อาชีพ, เงินเดือน</p>
-              </div>
-              <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="px-5 pb-5 border-t border-border pt-4">
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="workplace"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">ชื่อที่ทำงาน</FormLabel>
-                        <FormControl>
-                          <input type="text" {...field} className={inputClass} placeholder="ชื่อบริษัท/สถานที่ทำงาน" />
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="occupation"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">อาชีพ</FormLabel>
-                        <FormControl>
-                          <select {...field} className={inputClass}>
-                            <option value="">-- เลือก --</option>
-                            <option value="พนักงานบริษัท">พนักงานบริษัท</option>
-                            <option value="รับจ้างทั่วไป">รับจ้างทั่วไป</option>
-                            <option value="ค้าขาย/ธุรกิจส่วนตัว">ค้าขาย/ธุรกิจส่วนตัว</option>
-                            <option value="พนักงานโรงงาน">พนักงานโรงงาน</option>
-                            <option value="เกษตรกร">เกษตรกร</option>
-                            <option value="ข้าราชการ/รัฐวิสาหกิจ">ข้าราชการ/รัฐวิสาหกิจ</option>
-                            <option value="ขับรถ/ส่งของ">ขับรถ/ส่งของ</option>
-                            <option value="ช่างซ่อม/ช่างเทคนิค">ช่างซ่อม/ช่างเทคนิค</option>
-                            <option value="ก่อสร้าง">ก่อสร้าง</option>
-                            <option value="ร้านอาหาร/บริการ">ร้านอาหาร/บริการ</option>
-                            <option value="Freelance/อิสระ">Freelance/อิสระ</option>
-                            <option value="นักศึกษา">นักศึกษา</option>
-                            <option value="แม่บ้าน/ไม่ได้ทำงาน">แม่บ้าน/ไม่ได้ทำงาน</option>
-                            <option value="อื่นๆ">อื่นๆ</option>
-                          </select>
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="occupationDetail"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">รายละเอียดอาชีพ</FormLabel>
-                        <FormControl>
-                          <input type="text" {...field} className={inputClass} placeholder="รายละเอียดเพิ่มเติม" />
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div>
-                  <FormField
-                    control={form.control}
-                    name="salary"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">เงินเดือน</FormLabel>
-                        <FormControl>
-                          <input type="number" {...field} className={inputClass} placeholder="0.00" />
-                        </FormControl>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-              <div className="mt-2">
-                <label className="block text-xs font-medium text-foreground mb-1.5">ที่อยู่ที่ทำงาน</label>
-                <AddressForm value={addressWork} onChange={setAddressWork} />
-              </div>
-            </div>
-          </details>
-
-          {/* ===== บุคคลอ้างอิง (collapsible) ===== */}
-          <details className="group rounded-xl border border-border bg-card">
-            <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
-              <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
-                <Users className="size-4 text-muted-foreground" strokeWidth={1.5} />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-sm font-semibold text-foreground">บุคคลอ้างอิง</h3>
-                <p className="text-xs text-muted-foreground">2 คน</p>
-              </div>
-              <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="px-5 pb-5 border-t border-border pt-4 flex flex-col gap-4">
-              {references.map((ref, idx) => (
-                <div key={idx} className="rounded-lg border border-dashed border-border p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="size-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-semibold">{idx + 1}</span>
-                    <span className="text-xs font-medium text-foreground">บุคคลอ้างอิง {idx + 1}</span>
+                <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="px-5 pb-5 border-t border-border pt-4">
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name="workplace"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">ชื่อที่ทำงาน</FormLabel>
+                          <FormControl>
+                            <input type="text" {...field} className={inputClass} placeholder="ชื่อบริษัท/สถานที่ทำงาน" />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
                   </div>
-                  <div className="grid grid-cols-6 gap-3">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
-                      <select value={ref.prefix} onChange={(e) => updateRef(idx, 'prefix', e.target.value)} className={selectClass}>
-                        <option value="">-- เลือก --</option>
-                        {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อ</label>
-                      <input type="text" value={ref.firstName} onChange={(e) => updateRef(idx, 'firstName', e.target.value)} className={inputClass} placeholder="กรอกชื่อ" />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="block text-xs font-medium text-foreground mb-1.5">นามสกุล</label>
-                      <input type="text" value={ref.lastName} onChange={(e) => updateRef(idx, 'lastName', e.target.value)} className={inputClass} placeholder="กรอกนามสกุล" />
-                    </div>
-                    <div className="col-span-3">
-                      <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก</label>
-                      <input type="tel" value={ref.phone} onChange={(e) => updateRef(idx, 'phone', e.target.value)} className={inputClass} placeholder="0XX-XXX-XXXX" />
-                    </div>
-                    <div className="col-span-3">
-                      <label className="block text-xs font-medium text-foreground mb-1.5">ความสัมพันธ์</label>
-                      <select value={ref.relationship} onChange={(e) => updateRef(idx, 'relationship', e.target.value)} className={selectClass}>
-                        <option value="">-- เลือก --</option>
-                        {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
-                    </div>
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name="occupation"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">อาชีพ</FormLabel>
+                          <FormControl>
+                            <select {...field} className={inputClass}>
+                              <option value="">-- เลือก --</option>
+                              <option value="พนักงานบริษัท">พนักงานบริษัท</option>
+                              <option value="รับจ้างทั่วไป">รับจ้างทั่วไป</option>
+                              <option value="ค้าขาย/ธุรกิจส่วนตัว">ค้าขาย/ธุรกิจส่วนตัว</option>
+                              <option value="พนักงานโรงงาน">พนักงานโรงงาน</option>
+                              <option value="เกษตรกร">เกษตรกร</option>
+                              <option value="ข้าราชการ/รัฐวิสาหกิจ">ข้าราชการ/รัฐวิสาหกิจ</option>
+                              <option value="ขับรถ/ส่งของ">ขับรถ/ส่งของ</option>
+                              <option value="ช่างซ่อม/ช่างเทคนิค">ช่างซ่อม/ช่างเทคนิค</option>
+                              <option value="ก่อสร้าง">ก่อสร้าง</option>
+                              <option value="ร้านอาหาร/บริการ">ร้านอาหาร/บริการ</option>
+                              <option value="Freelance/อิสระ">Freelance/อิสระ</option>
+                              <option value="นักศึกษา">นักศึกษา</option>
+                              <option value="แม่บ้าน/ไม่ได้ทำงาน">แม่บ้าน/ไม่ได้ทำงาน</option>
+                              <option value="อื่นๆ">อื่นๆ</option>
+                            </select>
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name="occupationDetail"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">รายละเอียดอาชีพ</FormLabel>
+                          <FormControl>
+                            <input type="text" {...field} className={inputClass} placeholder="รายละเอียดเพิ่มเติม" />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <FormField
+                      control={form.control}
+                      name="salary"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">เงินเดือน</FormLabel>
+                          <FormControl>
+                            <input type="number" {...field} className={inputClass} placeholder="0.00" />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
                   </div>
                 </div>
-              ))}
-            </div>
-          </details>
+                <div className="mt-2">
+                  <label className="block text-xs font-medium text-foreground mb-1.5">ที่อยู่ที่ทำงาน</label>
+                  <AddressForm value={addressWork} onChange={setAddressWork} />
+                </div>
+              </div>
+            </details>
+          )}
+
+          {/* ===== บุคคลอ้างอิง (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}
+          {!isFill && (
+            <details className="group rounded-xl border border-border bg-card">
+              <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
+                <div className="size-8 rounded-lg bg-muted flex items-center justify-center">
+                  <Users className="size-4 text-muted-foreground" strokeWidth={1.5} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-foreground">บุคคลอ้างอิง</h3>
+                  <p className="text-xs text-muted-foreground">2 คน</p>
+                </div>
+                <ChevronDown className="size-4 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
+              <div className="px-5 pb-5 border-t border-border pt-4 flex flex-col gap-4">
+                {references.map((ref, idx) => (
+                  <div key={idx} className="rounded-lg border border-dashed border-border p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="size-5 rounded-full bg-muted text-muted-foreground flex items-center justify-center text-xs font-semibold">{idx + 1}</span>
+                      <span className="text-xs font-medium text-foreground">บุคคลอ้างอิง {idx + 1}</span>
+                    </div>
+                    <div className="grid grid-cols-6 gap-3">
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-foreground mb-1.5">คำนำหน้า</label>
+                        <select value={ref.prefix} onChange={(e) => updateRef(idx, 'prefix', e.target.value)} className={selectClass}>
+                          <option value="">-- เลือก --</option>
+                          {THAI_NAME_PREFIXES.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-foreground mb-1.5">ชื่อ</label>
+                        <input type="text" value={ref.firstName} onChange={(e) => updateRef(idx, 'firstName', e.target.value)} className={inputClass} placeholder="กรอกชื่อ" />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-foreground mb-1.5">นามสกุล</label>
+                        <input type="text" value={ref.lastName} onChange={(e) => updateRef(idx, 'lastName', e.target.value)} className={inputClass} placeholder="กรอกนามสกุล" />
+                      </div>
+                      <div className="col-span-3">
+                        <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก</label>
+                        <input type="tel" value={ref.phone} onChange={(e) => updateRef(idx, 'phone', e.target.value)} className={inputClass} placeholder="0XX-XXX-XXXX" />
+                      </div>
+                      <div className="col-span-3">
+                        <label className="block text-xs font-medium text-foreground mb-1.5">ความสัมพันธ์</label>
+                        <select value={ref.relationship} onChange={(e) => updateRef(idx, 'relationship', e.target.value)} className={selectClass}>
+                          <option value="">-- เลือก --</option>
+                          {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
 
           </div>
           {/* Sticky Footer */}

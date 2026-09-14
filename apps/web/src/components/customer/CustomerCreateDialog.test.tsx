@@ -62,6 +62,11 @@ describe('CustomerCreateDialog', () => {
     expect(mainField('กรอกชื่อ')).toHaveValue('นันทิชา');
     expect(mainField('กรอกนามสกุล')).toHaveValue('ใจดี');
     expect(screen.getByPlaceholderText('ชื่อบน Facebook')).toHaveValue('Nan');
+    // โหมดสร้าง (ค่าเริ่มต้น) ต้องเห็นครบทุก section — ตรงข้ามกับโหมด fill ที่ซ่อนสี่ section นี้ตาม mockup
+    expect(screen.getByText('บุคคลอ้างอิง')).toBeInTheDocument();
+    expect(screen.getByText('ที่อยู่')).toBeInTheDocument();
+    expect(screen.getByText('ข้อมูลที่ทำงาน')).toBeInTheDocument();
+    expect(screen.getByText('ข้อมูลติดต่อเพิ่มเติม')).toBeInTheDocument();
 
     fillRequired();
     fireEvent.click(screen.getByRole('button', { name: 'บันทึกและผูกกับแชท' }));
@@ -134,6 +139,7 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
   it('หัวเป็น "เพิ่มเบอร์/ข้อมูลผู้สนใจ" · เลขบัตรไม่บังคับ · บันทึกแล้ว POST /customers/:id/fill-contact โดยไม่ส่ง nationalId ว่าง · เรียก onFilled แล้วปิด', async () => {
     apiPost.mockResolvedValue({ data: { id: 'p1', name: 'สมชาย ใจดี', phone: '0812345678' } });
     const onFilled = vi.fn();
+    const onCreated = vi.fn();
     const onOpenChange = vi.fn();
     wrap(
       <CustomerCreateDialog
@@ -143,12 +149,18 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
         onOpenChange={onOpenChange}
         initialValues={{ firstName: 'สมชาย', lastName: 'ใจดี', facebookName: 'สมชาย ใจดี' }}
         submitLabel="บันทึก"
-        onCreated={vi.fn()}
+        onCreated={onCreated}
         onFilled={onFilled}
       />,
     );
     expect(screen.getByRole('heading', { name: 'เพิ่มเบอร์/ข้อมูลผู้สนใจ' })).toBeInTheDocument();
     expect(screen.getByText(/ไม่บังคับ — เติมตอนทำสัญญาก็ได้/)).toBeInTheDocument();
+    expect(screen.getByText('ชื่อเติมให้จากห้องแชทแล้ว แก้ได้ · บันทึกแล้วผู้สนใจคนนี้จะเช็คเครดิตและทำสัญญาได้ทันที')).toBeInTheDocument();
+    // ตาม mockup board 3 — section เหล่านี้ต้องไม่โผล่ในโหมด fill (ตรงข้ามกับโหมดสร้างด้านบน)
+    expect(screen.queryByText('บุคคลอ้างอิง')).toBeNull();
+    expect(screen.queryByText('ที่อยู่')).toBeNull();
+    expect(screen.queryByText('ข้อมูลที่ทำงาน')).toBeNull();
+    expect(screen.queryByText('ข้อมูลติดต่อเพิ่มเติม')).toBeNull();
     fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'นาย' } });
     fireEvent.change(mainField('0XX-XXX-XXXX'), { target: { value: '0812345678' } });
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
@@ -159,6 +171,7 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
     expect(payload).not.toHaveProperty('nationalId');
     await waitFor(() => expect(onFilled).toHaveBeenCalledWith({ id: 'p1', name: 'สมชาย ใจดี', phone: '0812345678' }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(onCreated).not.toHaveBeenCalled();
   });
 
   it('เบอร์ซ้ำ (409 existingCustomer) → alert ตาม mockup + ปุ่ม "รวมกับลูกค้าเดิมคนนี้" เรียก onUseExisting แล้วปิด · ปุ่ม "แก้เบอร์" กลับไปแก้ฟอร์ม', async () => {
@@ -180,6 +193,22 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
     fireEvent.click(screen.getByRole('button', { name: 'รวมกับลูกค้าเดิมคนนี้' }));
     expect(onUseExisting).toHaveBeenCalledWith({ id: 'c-old', name: 'สมชาย ใจดี' });
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('alert 409 โชว์เบอร์ที่ส่งไปตอนกดบันทึก ไม่ใช่เบอร์ที่พิมพ์ทับระหว่างรอผล (กัน race — ช่องเบอร์ไม่ถูก disable ระหว่าง pending)', async () => {
+    let rejectFn: ((reason?: unknown) => void) | undefined;
+    apiPost.mockImplementation(() => new Promise((_resolve, reject) => { rejectFn = reject; }));
+    wrap(<CustomerCreateDialog open mode="fill" fillCustomerId="p1" onOpenChange={vi.fn()} initialValues={{ firstName: 'สมชาย', lastName: 'ใจดี' }} onCreated={vi.fn()} />);
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'นาย' } });
+    fireEvent.change(mainField('0XX-XXX-XXXX'), { target: { value: '0812345678' } });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
+    // พิมพ์เบอร์ใหม่ทับระหว่างรอผลจาก server — ก่อน fix ค่านี้จะไปโผล่ใน alert แทนเบอร์ที่ส่งจริง
+    fireEvent.change(mainField('0XX-XXX-XXXX'), { target: { value: '0899999999' } });
+    rejectFn!({ response: { status: 409, data: { existingCustomer: { id: 'c-old', name: 'สมชาย ใจดี' } } } });
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('เบอร์ 0812345678 เป็นของลูกค้าเดิมอยู่แล้ว');
+    expect(alert).not.toHaveTextContent('0899999999');
   });
 
 });

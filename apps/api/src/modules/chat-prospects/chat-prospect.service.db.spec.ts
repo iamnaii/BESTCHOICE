@@ -73,4 +73,38 @@ describe('ChatProspectService.ensureForRoom (real DB, race)', () => {
     await expect(service.ensureForRoom(room.id)).resolves.toEqual({ customerId: byColumn.id, created: false });
     expect((await prisma.chatRoom.findUniqueOrThrow({ where: { id: room.id } })).customerId).toBe(byColumn.id);
   });
+
+  /**
+   * Ruling R23 (I3) — ห้องที่ผูกกับลูกค้าที่ถูก soft-delete เคยเป็นทางตัน (ผูกไม่ได้ 409 · รวมไม่ได้ 404 ·
+   * ไม่มี endpoint ปลดการผูก). ปักพฤติกรรมบนฐานจริง: ห้ามนำแถวที่ตายแล้วมาใช้ซ้ำ และห้องเดิมต้องกลับมา
+   * บรรจบกับคนที่ยังมีชีวิตเอง (deterministic — ไม่พึ่งจังหวะเวลา)
+   */
+  it('เจ้าของถูก soft-delete → ห้องได้ผู้สนใจใหม่ ไม่ใช้แถวที่ตายแล้ว แล้วทุกห้องบรรจบที่คนเดียว', async () => {
+    const psidDead = `prospect-dead-${Date.now()}`;
+    const roomA = await prisma.chatRoom.create({
+      data: { channel: ChatChannel.FACEBOOK, externalUserId: psidDead, displayName: 'dead owner spec' },
+    });
+    roomIds.push(roomA.id);
+    const first = await service.ensureForRoom(roomA.id);
+    expect(first?.created).toBe(true);
+    extraCustomerIds.push(first!.customerId);
+
+    // เทียบเท่ากับ absorbPlaceholder ที่ commit ไปแล้ว (หรือ OWNER ลบผู้สนใจทิ้ง) — ห้องยังชี้แถวเดิมอยู่
+    await prisma.customer.update({ where: { id: first!.customerId }, data: { deletedAt: new Date() } });
+
+    // ห้องใหม่ของคนเดียวกัน: ห้องพี่น้องชี้แถวที่ตายแล้ว ⇒ ต้องสร้างคนใหม่ ไม่ใช่ใช้ซ้ำ
+    const roomB = await prisma.chatRoom.create({
+      data: { channel: ChatChannel.FACEBOOK, externalUserId: psidDead },
+    });
+    roomIds.push(roomB.id);
+    const second = await service.ensureForRoom(roomB.id);
+    expect(second?.created).toBe(true);
+    expect(second?.customerId).not.toBe(first?.customerId);
+    extraCustomerIds.push(second!.customerId);
+
+    // ห้องเดิมเรียกซ้ำ → เลิกชี้แถวที่ตายแล้ว มาบรรจบคนใหม่ (ไม่สร้างคนที่สาม)
+    await expect(service.ensureForRoom(roomA.id)).resolves.toEqual({ customerId: second!.customerId, created: false });
+    expect((await prisma.chatRoom.findUniqueOrThrow({ where: { id: roomA.id } })).customerId).toBe(second!.customerId);
+    expect(await prisma.customer.count({ where: { facebookUserId: psidDead, deletedAt: null } })).toBe(1);
+  });
 });

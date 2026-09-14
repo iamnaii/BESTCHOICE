@@ -193,6 +193,12 @@ export class RoomManagerService {
           const customerId = await this.ensureProspect(room.id);
           if (customerId) room = { ...room, customerId };
         }
+      } else if (wantsProspect && (await this.isOwnerSoftDeleted(room.customerId))) {
+        // เจ้าของถูก soft-delete แล้ว (แพ้ race กับการรวม / ถูกลบจากหน้าลูกค้า) = ถือว่าห้องไม่มีเจ้าของ
+        // (Ruling R23) — ห้องที่ผูกกับแถวที่ตายแล้วไม่มีทางกู้ผ่าน API: ผูกไม่ได้ (409) รวมไม่ได้ (404)
+        // รวมห้องไม่ได้ ("ลูกค้าคนละคน") และไม่มี endpoint ปลดการผูก
+        const customerId = await this.ensureProspect(room.id);
+        if (customerId) room = { ...room, customerId };
       } else if (updateData.displayName && this.chatProspects) {
         // ห้องเกิดก่อนรู้ชื่อ (mirrorOutbound) → placeholder ที่ยังใช้ชื่อ fallback ได้ชื่อจริงตาม
         const roomId = room.id;
@@ -265,6 +271,18 @@ export class RoomManagerService {
       Sentry.captureException(err, { tags: { kind: 'chat-prospect' }, extra: { roomId } });
       return null;
     }
+  }
+
+  /**
+   * เจ้าของห้องถูก soft-delete หรือยัง (Ruling R23) — อ่านแยกคำถามเดียวเพื่อไม่เปลี่ยนรูปผลลัพธ์
+   * ของ getOrCreateRoom (คืน ChatRoom ล้วน) · อ่านด้วย PK คีย์เดียว ไม่แพง
+   */
+  private async isOwnerSoftDeleted(customerId: string): Promise<boolean> {
+    const owner = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { deletedAt: true },
+    });
+    return !!owner?.deletedAt;
   }
 
   /** ชื่อพนักงานสำหรับข้อความระบบ ("มอบหมายให้ แนน โดย …") — ไม่พบคืน "พนักงาน" */
@@ -716,6 +734,8 @@ export class RoomManagerService {
           customer: { select: PLACEHOLDER_FIELDS_SELECT },
         },
       });
+      // เจ้าของที่ถูก soft-delete ไม่เข้าเงื่อนไขนี้ (isLivePlaceholder เป็นเท็จ) — ไม่มีอะไรให้รวม
+      // แล้วไหลไปผูกทับในทรานแซกชันข้างล่างซึ่งข้าม 409 ให้เจ้าของที่ตายแล้วเช่นกัน (Ruling R23)
       if (current && !current.deletedAt && current.customerId && current.customerId !== customerId
         && isLivePlaceholder(current.customer)) {
         // ตรวจสิทธิ์ก่อนรวม — การรวมย้ายห้องทุกห้องของ placeholder จึงห้ามเกิดก่อนด่านนี้
@@ -731,7 +751,10 @@ export class RoomManagerService {
     await lockCreditRoom(tx, roomId);
     const room = await tx.chatRoom.findUnique({
       where: { id: roomId },
-      select: { id: true, customerId: true, deletedAt: true, assignedToId: true },
+      select: {
+        id: true, customerId: true, deletedAt: true, assignedToId: true,
+        customer: { select: { deletedAt: true } },
+      },
     });
     if (!room || room.deletedAt) {
       throw new NotFoundException('ห้องแชทไม่พบหรือถูกลบ');
@@ -739,7 +762,9 @@ export class RoomManagerService {
     if (actor.role === 'SALES' && room.assignedToId && room.assignedToId !== actor.id) {
       throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
     }
-    if (room.customerId && room.customerId !== customerId) {
+    // เจ้าของที่ถูก soft-delete = ห้องไม่มีเจ้าของ (Ruling R23) — ผูกทับได้เลย ไม่ใช่ 409
+    // (ด่านก่อนทรานแซกชันก็ถือกติกาเดียวกัน: absorb เฉพาะ placeholder ที่ยังมีชีวิต)
+    if (room.customerId && room.customerId !== customerId && !room.customer?.deletedAt) {
       throw new ConflictException('ห้องแชทนี้ผูกกับลูกค้ารายอื่นอยู่แล้ว');
     }
     const customer = await tx.customer.findUnique({

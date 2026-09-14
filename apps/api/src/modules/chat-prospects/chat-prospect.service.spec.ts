@@ -8,6 +8,8 @@ afterAll(() => jest.restoreAllMocks());
 function makeTx() {
   return {
     $executeRaw: jest.fn().mockResolvedValue(1),
+    // FOR SHARE re-check ของห้องพี่น้อง (Ruling R23) — ค่าตั้งต้น = แถวยังมีชีวิต
+    $queryRaw: jest.fn().mockResolvedValue([{ id: 'cust-old' }]),
     chatRoom: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn().mockResolvedValue({}) },
     customerLineLink: { findUnique: jest.fn().mockResolvedValue(null) },
     customer: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
@@ -68,13 +70,38 @@ describe('ChatProspectService.ensureForRoom', () => {
     expect(tx.customer.create.mock.calls[0][0].data).toMatchObject({ name: 'Facebook #7890', facebookName: null });
   });
 
-  it('คนเดิมมีห้องอื่นในช่องทางเดียวกันที่ผูกแล้ว → ใช้คนนั้น ไม่สร้างใหม่', async () => {
+  it('คนเดิมมีห้องอื่นในช่องทางเดียวกันที่ผูกแล้ว → ใช้คนนั้น ไม่สร้างใหม่ (ยืนยันซ้ำด้วย FOR SHARE)', async () => {
     prisma.chatRoom.findUnique.mockResolvedValue(ROOM);
     tx.chatRoom.findUnique.mockResolvedValue({ customerId: null });
     tx.chatRoom.findFirst.mockResolvedValue({ customerId: 'cust-old' });
     await expect(service.ensureForRoom('room-1')).resolves.toEqual({ customerId: 'cust-old', created: false });
     expect(tx.customer.create).not.toHaveBeenCalled();
     expect(tx.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { customerId: 'cust-old' } });
+    // Ruling R23 — ล็อกอ่านแถวเจ้าของซ้ำในทรานแซกชันเดียวกัน (รอ absorb ที่ถือ FOR NO KEY UPDATE ให้จบก่อน)
+    const [shareSql, lockedId] = tx.$queryRaw.mock.calls[0];
+    expect(shareSql.join('?')).toContain('FOR SHARE');
+    expect(lockedId).toBe('cust-old');
+  });
+
+  // Ruling R23 (I3) — ห้องที่ผูกกับลูกค้าที่ถูก soft-delete เคยเป็นทางตัน: ผูกไม่ได้/รวมไม่ได้/ไม่มีปุ่มปลดผูก
+  it('ห้องผูกกับลูกค้าที่ถูกลบแล้ว → ถือว่าไม่มีเจ้าของ หา/สร้างคนใหม่แล้วชี้ห้องไปที่คนนั้น', async () => {
+    const dead = { deletedAt: new Date('2026-09-13T03:00:00Z') };
+    prisma.chatRoom.findUnique.mockResolvedValue({ ...ROOM, customerId: 'cust-dead', customer: dead });
+    tx.chatRoom.findUnique.mockResolvedValue({ customerId: 'cust-dead', customer: dead });
+    tx.chatRoom.findFirst.mockResolvedValue(null);
+    tx.customer.create.mockResolvedValue({ id: 'cust-new' });
+    await expect(service.ensureForRoom('room-1')).resolves.toEqual({ customerId: 'cust-new', created: true });
+    expect(tx.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { customerId: 'cust-new' } });
+  });
+
+  it('ห้องพี่น้องชี้คนที่เพิ่งถูกรวม (FOR SHARE ไม่เหลือแถว) → ไม่เอามาใช้ สร้างคนใหม่แทน', async () => {
+    prisma.chatRoom.findUnique.mockResolvedValue(ROOM);
+    tx.chatRoom.findUnique.mockResolvedValue({ customerId: null });
+    tx.chatRoom.findFirst.mockResolvedValue({ customerId: 'cust-merged-away' });
+    tx.$queryRaw.mockResolvedValue([]);
+    tx.customer.create.mockResolvedValue({ id: 'cust-new' });
+    await expect(service.ensureForRoom('room-1')).resolves.toEqual({ customerId: 'cust-new', created: true });
+    expect(tx.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { customerId: 'cust-new' } });
   });
 
   it('ห้อง LINE ร้าน: ลูกค้าที่ผูก lineIdShop ไว้แล้ว → ใช้คนนั้น (ช่องโหว่เดิม getOrCreateRoom เช็คแค่ CustomerLineLink)', async () => {

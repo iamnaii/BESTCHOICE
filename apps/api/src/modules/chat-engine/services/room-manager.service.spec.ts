@@ -191,6 +191,23 @@ describe('RoomManagerService', () => {
       expect(room.customerId).toBe('cust-auto');
     });
 
+    // Ruling R23 (I3) — ห้องที่ผูกกับลูกค้าที่ถูกลบ (แพ้ race กับการรวม / ถูกลบจากหน้าลูกค้า) ต้องกู้ได้เอง
+    it('ห้องเดิมที่เจ้าของถูกลบแล้ว → self-heal ด้วย ensureForRoom เหมือนห้องไม่มีเจ้าของ', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-dead', channel: ChatChannel.FACEBOOK, status: ChatRoomStatus.ACTIVE, resolvedAt: null, customerId: 'cust-dead', displayName: 'สมชาย', pictureUrl: 'x', attributionId: null });
+      prisma.customer.findUnique.mockResolvedValue({ deletedAt: new Date() });
+      const room = await service.getOrCreateRoom({ externalUserId: 'psid-1', channel: ChatChannel.FACEBOOK });
+      expect(chatProspects.ensureForRoom).toHaveBeenCalledWith('room-dead');
+      expect(room.customerId).toBe('cust-auto');
+    });
+
+    it('ห้อง WEB ที่เจ้าของถูกลบแต่ไม่ส่งธง → ไม่ self-heal (R3 ยังคุมอยู่)', async () => {
+      prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-web', channel: ChatChannel.WEB, status: ChatRoomStatus.ACTIVE, resolvedAt: null, customerId: 'cust-dead', displayName: null, pictureUrl: null, attributionId: null });
+      prisma.customer.findUnique.mockResolvedValue({ deletedAt: new Date() });
+      const room = await service.getOrCreateRoom({ externalUserId: 'visitor-1', channel: ChatChannel.WEB });
+      expect(chatProspects.ensureForRoom).not.toHaveBeenCalled();
+      expect(room.customerId).toBe('cust-dead');
+    });
+
     it('ห้องเดิมมีเจ้าของอยู่แล้วและเพิ่งได้ชื่อ → ไม่สร้าง แต่ซิงก์ชื่อ', async () => {
       prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-old', channel: ChatChannel.FACEBOOK, status: ChatRoomStatus.ACTIVE, resolvedAt: null, customerId: 'cust-1', displayName: null, pictureUrl: null, attributionId: null });
       prisma.chatRoom.update.mockResolvedValue({ id: 'room-old', customerId: 'cust-1', displayName: 'สมชาย', attributionId: null });
@@ -301,6 +318,19 @@ describe('RoomManagerService', () => {
       });
       await expect(service.linkCustomer('room-1', 'cust-b', actor)).rejects.toThrow('ห้องแชทนี้ผูกกับลูกค้ารายอื่นอยู่แล้ว');
       expect(merge.absorbPlaceholder).not.toHaveBeenCalled();
+    });
+
+    // Ruling R23 (I3) — เจ้าของที่ถูก soft-delete = ห้องไม่มีเจ้าของ ผูกทับได้เลย
+    it('ห้องผูกกับลูกค้าที่ถูกลบแล้ว → ผูกลูกค้าใหม่ได้ ไม่โยน 409 (ไม่ต้องรวมเพราะไม่มีอะไรให้รวม)', async () => {
+      const deadOwnerRoom = {
+        id: 'room-1', customerId: 'cust-dead', deletedAt: null, assignedToId: null,
+        customer: { acquisitionSource: 'CHAT_FACEBOOK', phone: null, nationalId: null, deletedAt: new Date() },
+      };
+      prisma.chatRoom.findUnique.mockResolvedValue(deadOwnerRoom);
+      const room = await service.linkCustomer('room-1', 'cust-real', actor);
+      expect(merge.absorbPlaceholder).not.toHaveBeenCalled();
+      expect(prisma.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { customerId: 'cust-real' } });
+      expect(room.customerId).toBe('cust-real');
     });
 
     it('SALES ที่ไม่ได้ดูแลห้อง → 403 ก่อนรวม (ไม่แตะ placeholder)', async () => {

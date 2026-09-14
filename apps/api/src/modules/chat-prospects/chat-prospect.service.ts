@@ -24,10 +24,15 @@ export class ChatProspectService {
   async ensureForRoom(roomId: string): Promise<{ customerId: string; created: boolean } | null> {
     const room = await this.prisma.chatRoom.findUnique({
       where: { id: roomId },
-      select: { id: true, channel: true, lineUserId: true, externalUserId: true, customerId: true, displayName: true, createdAt: true, deletedAt: true },
+      select: {
+        id: true, channel: true, lineUserId: true, externalUserId: true, customerId: true, displayName: true,
+        createdAt: true, deletedAt: true, customer: { select: { deletedAt: true } },
+      },
     });
     if (!room || room.deletedAt) return null;
-    if (room.customerId) return { customerId: room.customerId, created: false };
+    // เจ้าของที่ถูก soft-delete = ห้องไม่มีเจ้าของ (Ruling R23) — เดินต่อไปหา/สร้างคนใหม่แล้วชี้ห้องไปที่คนนั้น
+    // ไม่งั้นห้องค้างชี้แถวที่ตายแล้วถาวร: ผูกไม่ได้ (409) รวมไม่ได้ (404) และไม่มี endpoint ปลดการผูก
+    if (room.customerId && !room.customer?.deletedAt) return { customerId: room.customerId, created: false };
     const externalKey = room.lineUserId ?? room.externalUserId;
     if (!externalKey) return null;
 
@@ -35,8 +40,11 @@ export class ChatProspectService {
       // ล็อกต่อคน — ปล่อยเองตอนทรานแซกชันจบ · ต้องเป็น $executeRaw: $queryRaw อ่านผลชนิด void ไม่ได้ (Ruling R2)
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${room.channel}:${externalKey}`}))`;
       // อ่านซ้ำหลังได้ล็อก: อีกคำขออาจผูกห้องนี้ไปแล้วระหว่างรอ
-      const fresh = await tx.chatRoom.findUnique({ where: { id: roomId }, select: { customerId: true } });
-      if (fresh?.customerId) return { customerId: fresh.customerId, created: false };
+      const fresh = await tx.chatRoom.findUnique({
+        where: { id: roomId },
+        select: { customerId: true, customer: { select: { deletedAt: true } } },
+      });
+      if (fresh?.customerId && !fresh.customer?.deletedAt) return { customerId: fresh.customerId, created: false };
 
       const existingId = await this.findExistingCustomerId(tx, room.channel, externalKey);
       if (existingId) {
@@ -82,7 +90,16 @@ export class ChatProspectService {
       orderBy: { createdAt: 'asc' },
       select: { customerId: true },
     });
-    if (sibling?.customerId) return sibling.customerId;
+    if (sibling?.customerId) {
+      // Ruling R23 — absorbPlaceholder ถือ FOR NO KEY UPDATE บนแถวลูกค้าตลอดทรานแซกชันของมัน:
+      // อ่านห้องพี่น้องเจอเจ้าของที่ "ยังมีชีวิต" แล้ว merge commit soft-delete ทีหลังได้ (READ COMMITTED)
+      // ⇒ ห้องนี้จะไปผูกกับแถวที่ตายไปแล้ว. FOR SHARE ชนกับ FOR NO KEY UPDATE จึง "รอ" ให้ merge จบ
+      // แล้วประเมิน deleted_at ใหม่ (EvalPlanQual) — ไม่เหลือแถว = ข้ามไปหาทางอื่น/สร้างคนใหม่
+      const live = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM customers WHERE id = ${sibling.customerId} AND deleted_at IS NULL FOR SHARE
+      `;
+      if (live.length > 0) return sibling.customerId;
+    }
     if (!isLine) return null;
 
     const linkChannel = channel === ChatChannel.LINE_SHOP ? LineChannelType.SHOP : LineChannelType.FINANCE;

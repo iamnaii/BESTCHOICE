@@ -31,6 +31,7 @@ import { TrainingExtractCron } from './cron/training-extract.cron';
 import { EmbeddingBackfillCron } from './cron/embedding-backfill.cron';
 import { StorageService } from '../storage/storage.service';
 import { StaffChatGateway } from './staff-chat.gateway';
+import { SamePersonService } from '../chat-prospects/same-person.service';
 
 describe('StaffChatController', () => {
   let controller: StaffChatController;
@@ -46,13 +47,16 @@ describe('StaffChatController', () => {
   let aiAssistant: AiAssistantService;
   let aiSuggest: AiSuggestService;
   let config: ConfigService;
+  let samePerson: { findForRoom: jest.Mock; dismiss: jest.Mock };
 
   beforeEach(async () => {
+    samePerson = { findForRoom: jest.fn().mockResolvedValue([]), dismiss: jest.fn().mockResolvedValue(undefined) };
     const module = await Test.createTestingModule({
       controllers: [StaffChatController],
       providers: [
         { provide: RoomAiAccessService, useValue: { assertAccess: jest.fn().mockResolvedValue({}) } },
         { provide: PrismaService, useValue: {} },
+        { provide: SamePersonService, useValue: samePerson },
         {
           provide: RoomManagerService,
           useValue: {
@@ -63,6 +67,7 @@ describe('StaffChatController', () => {
             getCustomerMessages: jest.fn(),
             sendCustomerMessage: jest.fn(),
             getCrossChannelRooms: jest.fn(),
+            findById: jest.fn(),
           },
         },
         { provide: AssignmentService, useValue: {} },
@@ -450,6 +455,54 @@ describe('StaffChatController', () => {
         createdAt: expect.any(String),
       });
       expect(result).toEqual({ success: true });
+    });
+  });
+
+  describe('GET /staff-chat/rooms/:id — chatPlaceholder + possibleSamePerson (Task 16)', () => {
+    it('getRoom ติดธง chatPlaceholder และแนบ possibleSamePerson', async () => {
+      (roomManager.findById as jest.Mock).mockResolvedValue({
+        id: 'r1',
+        assignedToId: null,
+        customer: { id: 'p1', name: 'Facebook #7890', phone: null, nationalId: null, acquisitionSource: 'CHAT_FACEBOOK' },
+      });
+      samePerson.findForRoom.mockResolvedValue([{ customerId: 'c2' }]);
+
+      const res = await controller.getRoom('r1', { user: { id: 'u', role: 'OWNER' } } as any);
+
+      expect(res.customer).toMatchObject({ chatPlaceholder: true });
+      expect((res as any).possibleSamePerson).toEqual([{ customerId: 'c2' }]);
+      expect(samePerson.findForRoom).toHaveBeenCalledWith('r1');
+    });
+
+    it('SALES เปิดห้องที่ยังไม่มีเจ้าของ — ยังเห็น chatPlaceholder(false) + possibleSamePerson แต่ nationalId ถูกซ่อน (PDPA เดิม)', async () => {
+      // ลูกค้าจริง (มีทั้งเบอร์และเลขบัตร) — ไม่ใช่ placeholder แต่ยังต้องผ่านด่าน PDPA
+      // เดิมของห้องที่ยังไม่มีเจ้าของ เพื่อพิสูจน์ว่าการเติม chatPlaceholder/possibleSamePerson
+      // ไม่ได้ไปแทนที่โลจิกซ่อน nationalId ที่มีอยู่ก่อนแล้ว
+      (roomManager.findById as jest.Mock).mockResolvedValue({
+        id: 'r1',
+        assignedToId: null,
+        customer: {
+          id: 'p1',
+          name: 'สมชาย ใจดี',
+          phone: '0812345678',
+          nationalId: '1234567890123',
+          acquisitionSource: 'WALK_IN',
+        },
+      });
+      samePerson.findForRoom.mockResolvedValue([{ customerId: 'c2' }]);
+
+      const res: any = await controller.getRoom('r1', { user: { id: 'sales-1', role: 'SALES' } } as any);
+
+      expect(res.customer).toMatchObject({ chatPlaceholder: false, nationalId: null });
+      expect(res.possibleSamePerson).toEqual([{ customerId: 'c2' }]);
+    });
+  });
+
+  describe('PATCH /staff-chat/rooms/:id/same-person/dismiss', () => {
+    it('dismissSamePerson ต้องมี customerId แล้วส่งต่อ', async () => {
+      await expect(controller.dismissSamePerson('r1', '')).rejects.toThrow('กรุณาระบุ customerId');
+      await expect(controller.dismissSamePerson('r1', 'c2')).resolves.toEqual({ success: true });
+      expect(samePerson.dismiss).toHaveBeenCalledWith('r1', 'c2');
     });
   });
 

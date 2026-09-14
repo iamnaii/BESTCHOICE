@@ -59,6 +59,8 @@ import { ChatRoomStatus, ChatChannel, ChatPriority } from '@prisma/client';
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { StaffChatGateway } from './staff-chat.gateway';
 import { CHAT_EVENTS, CHAT_ROOMS } from '../chat-engine/constants/chat-events';
+import { SamePersonService } from '../chat-prospects/same-person.service';
+import { isChatPlaceholder } from '../chat-prospects/chat-placeholder';
 
 @Controller('staff-chat')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -89,6 +91,7 @@ export class StaffChatController {
     private cannedResponseQuickReply: CannedResponseQuickReplyService,
     private cannedResponseSender: CannedResponseSenderService,
     private roomAiAccess: RoomAiAccessService,
+    private samePerson: SamePersonService,
   ) {}
 
   // ─── Rooms ────────────────────────────────────────────
@@ -158,13 +161,19 @@ export class StaffChatController {
           : 'ไม่มีสิทธิ์เข้าถึงห้องแชทนี้',
       );
     }
+    // ผู้สนใจอัตโนมัติ (สเปค 3.1): ติดธง chatPlaceholder ให้การ์ดขวารู้ว่าห้องนี้ยังไม่มีคนจริงผูกอยู่
+    const customer = room.customer
+      ? { ...room.customer, chatPlaceholder: isChatPlaceholder(room.customer) }
+      : null;
+    // คำใบ้ "อาจเป็นคนเดียวกัน" (สเปค 3.6) — คำนวณเฉพาะห้องที่มีลูกค้าผูกอยู่แล้ว ไม่ทำ fuzzy ไม่รวมอัตโนมัติ
+    const possibleSamePerson = customer ? await this.samePerson.findForRoom(id) : [];
     // PDPA: a SALES user can open an unassigned room to pick it up, but must not be
     // able to harvest national-ID PII by enumerating room ids. Redact nationalId unless
     // the room is theirs — the inbox UI does not display it anyway.
-    if (req.user.role === 'SALES' && room.assignedToId !== req.user.id && room.customer) {
-      return { ...room, customer: { ...room.customer, nationalId: null } };
+    if (req.user.role === 'SALES' && room.assignedToId !== req.user.id && customer) {
+      return { ...room, customer: { ...customer, nationalId: null }, possibleSamePerson };
     }
-    return room;
+    return { ...room, customer, possibleSamePerson };
   }
 
   @Get('rooms/:id/messages')
@@ -280,6 +289,17 @@ export class StaffChatController {
       throw new BadRequestException('กรุณาระบุ customerId');
     }
     await this.roomManager.linkCustomer(id, customerId, req.user);
+    return { success: true };
+  }
+
+  /** กด "ไม่ใช่" บนคำใบ้อาจเป็นคนเดียวกัน — ไม่ถามซ้ำสำหรับคนนั้น (สเปค 3.6) */
+  @Patch('rooms/:id/same-person/dismiss')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async dismissSamePerson(@Param('id') id: string, @Body('customerId') customerId: string) {
+    if (!customerId || typeof customerId !== 'string') {
+      throw new BadRequestException('กรุณาระบุ customerId');
+    }
+    await this.samePerson.dismiss(id, customerId);
     return { success: true };
   }
 

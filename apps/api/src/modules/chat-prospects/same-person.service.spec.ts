@@ -57,4 +57,14 @@ describe('SamePersonService.findForRoom', () => {
     await service.dismiss('room-1', 'c-no');
     expect(prisma.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { dismissedSamePersonIds: { push: 'c-no' } } });
   });
+  it('ไม่มีชื่อให้เทียบ (name ว่าง, facebookName null) → คืน [] โดยไม่ค้นหาเพิ่ม', async () => {
+    const { service, prisma } = build([], { ...room, customer: { ...me, name: '', facebookName: null } });
+    await expect(service.findForRoom('room-1')).resolves.toEqual([]);
+    expect(prisma.customer.findMany).not.toHaveBeenCalled();
+  });
+  it('ลูกค้าของห้องนี้ถูกลบไปแล้ว (deletedAt) → คืน [] โดยไม่ค้นหาเพิ่ม', async () => {
+    const { service, prisma } = build([], { ...room, customer: { ...me, deletedAt: new Date('2026-09-01') } });
+    await expect(service.findForRoom('room-1')).resolves.toEqual([]);
+    expect(prisma.customer.findMany).not.toHaveBeenCalled();
+  });
 });

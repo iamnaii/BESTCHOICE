@@ -676,7 +676,7 @@ export class RoomManagerService {
     return this.prisma.chatRoom.findUnique({
       where: { id: roomId },
       include: {
-        customer: { select: { id: true, name: true, phone: true, nationalId: true } },
+        customer: { select: { id: true, name: true, phone: true, nationalId: true, acquisitionSource: true } },
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },
         tags: true,
         todos: ROOM_NEXT_APPOINTMENT,

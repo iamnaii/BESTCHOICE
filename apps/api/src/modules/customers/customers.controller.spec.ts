@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { ConflictException } from '@nestjs/common';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
@@ -165,6 +166,13 @@ describe('CustomersController PII (Phase 5)', () => {
       movedCreditChecks: 0,
     });
     expect(merge.absorbPlaceholder).toHaveBeenCalledWith('p1', 't1', { id: 'staff-1', role: 'SALES' });
+  });
+
+  it('absorbInto ไม่ครอบ exception จาก CustomerMergeService — 409/404/400 ส่งต่อให้ client ตรง ๆ', async () => {
+    const req = { user: { id: 'staff-1', role: 'OWNER' } } as any;
+    const err = new ConflictException('รวมไม่ได้: ผู้สนใจคนนี้มีสัญญา 1 รายการ — ให้แก้ที่รายการนั้นก่อน');
+    merge.absorbPlaceholder.mockRejectedValueOnce(err);
+    await expect(controller.absorbInto('p1', 't1', req)).rejects.toBe(err);
   });
 
 });

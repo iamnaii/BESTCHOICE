@@ -179,7 +179,7 @@ export class CustomersController {
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async findOne(@Param('id') id: string, @Req() req: AuthRequest) {
-    const customer = await this.customersService.findDetail(id);
+    const customer = await this.customersService.findOne(id);
     if (!customer) return customer;
 
     const role = req.user?.role || 'UNKNOWN';
@@ -197,6 +197,31 @@ export class CustomersController {
     });
 
     return this.applyRoleMask(customer as { nationalId?: string | null }, role);
+  }
+
+  /**
+   * หน้ารายละเอียดลูกค้า (/customers/:id บนเว็บ) เท่านั้น — findOne + สรุปการซื้อ/แชท/แท็ก/สัญญาที่กำลังผ่อน
+   * แยกจาก GET :id เพราะอินบ็อกซ์/สร้างสัญญา/OCR เรียก GET :id บ่อย ห้ามให้ทุกคนจ่ายค่า query เสริมชุดนี้
+   * findDetail โยน NotFoundException เองเมื่อไม่พบลูกค้า (ไม่ต้องเช็ค null ซ้ำ)
+   */
+  @Get(':id/detail')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  async findDetail(@Param('id') id: string, @Req() req: AuthRequest) {
+    const customer = await this.customersService.findDetail(id);
+    const role = req.user?.role || 'UNKNOWN';
+
+    // Fire-and-forget: never let audit log block the response
+    void this.piiAudit.logDecryption({
+      userId: req.user?.id || 'system',
+      customerId: id,
+      fields: ['nationalId', 'phone', 'address'],
+      role,
+      masked: role === 'SALES',
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+    });
+
+    return this.applyRoleMask(customer, role);
   }
 
   @Get(':id/contracts')

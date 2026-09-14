@@ -67,6 +67,23 @@ describe('buildContractProgress', () => {
     expect(p.outstanding).toBe(24200);
   });
 
+  it('ปรับโครงสร้างหนี้แล้วตารางงวดยาวกว่า totalMonths → จำนวนงวดทั้งหมดนับจากแถวจริง ผ่อนแล้ว + เหลือ = ทั้งหมด', () => {
+    // สัญญาเดิม 12 งวด แตกงวด 7-12 เป็น 8 งวดใหม่ ⇒ ตาราง 14 แถว แต่ totalMonths ยังเป็น 12
+    const rescheduled: ProgressPaymentRow[] = [
+      ...schedule.filter((row) => row.status === 'PAID'),
+      ...Array.from({ length: 8 }, (_, i) => pay(7 + i, 'PENDING', `2026-${String(10 + (i % 3)).padStart(2, '0')}-05T00:00:00.000Z`)),
+    ];
+    const [p] = buildContractProgress({ contracts: [contract], payments: rescheduled, lastCalls: [], now: NOW });
+    expect(p.totalInstallments).toBe(14);
+    expect(p.paidInstallments + p.remainingInstallments).toBe(p.totalInstallments);
+    expect(p).toMatchObject({ paidInstallments: 6, remainingInstallments: 8 });
+  });
+
+  it('ยังไม่มีตารางงวด → ใช้ totalMonths ของสัญญา', () => {
+    const [p] = buildContractProgress({ contracts: [contract], payments: [], lastCalls: [], now: NOW });
+    expect(p.totalInstallments).toBe(12);
+  });
+
   it('โทรล่าสุด + เครื่องล็อก + ไม่มีตารางงวด → ศูนย์และ null ไม่พัง', () => {
     const [p] = buildContractProgress({
       contracts: [{ ...contract, mdmLockedAt: new Date('2026-09-10T02:00:00.000Z'), product: null, branch: null }],

@@ -367,17 +367,21 @@ class PreviewController {
   @Get('customers/search') searchCustomers(@Query('q') q = '') {
     return db.customer.findMany({ where: { deletedAt: null, name: { contains: q } } });
   }
-  // R9: ต้องตรงกับ CustomersController.findOne จริง (customers.controller.ts) —
-  // เดิม endpoint นี้คืน raw customer row + contracts/sales ว่างเปล่า ไม่มี purchase/
-  // chatRooms/tags/source/openContracts ทำให้หน้ารายละเอียดลูกค้าใหม่พังบน preview ทุกคน
-  @Get('customers/:id') async customer(@Param('id') id: string) {
-    const customer = await customerQuery.findDetail(id);
-    if (!customer) return customer;
-    if (actor.role === 'SALES') {
-      return { ...customer, nationalId: customer.nationalId ? maskNationalId(customer.nationalId) : customer.nationalId };
-    }
-    return customer;
+  // ต้องตรงกับ CustomersController จริง (customers.controller.ts):
+  //   GET customers/:id        → findOne + ปิดบังเลขบัตรให้ SALES (อินบ็อกซ์/สร้างสัญญา/OCR ใช้)
+  //   GET customers/:id/detail → findDetail + ปิดบังเลขบัตรให้ SALES (หน้ารายละเอียดลูกค้าใช้)
+  // เดิม endpoint นี้คืน raw customer row + contracts/sales ว่างเปล่า ทำให้หน้ารายละเอียดลูกค้าพังบน preview (R9)
+  @Get('customers/:id/detail') async customerDetail(@Param('id') id: string) {
+    return maskForActor(await customerQuery.findDetail(id));
   }
+  @Get('customers/:id') async customer(@Param('id') id: string) {
+    return maskForActor(await customerQuery.findOne(id));
+  }
+}
+
+function maskForActor<T extends { nationalId?: string | null }>(customer: T): T {
+  if (actor.role !== 'SALES') return customer;
+  return { ...customer, nationalId: customer.nationalId ? maskNationalId(customer.nationalId) : customer.nationalId };
 }
 
 async function main() {
@@ -550,7 +554,7 @@ async function main() {
       return res.json({ data: [], total: 0 });
     if (
       /^\/api\/(trade-ins|contacts|admin\/product-holds|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
-      /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*)?)$/.test(path) ||
+      /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail)?)$/.test(path) ||
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||

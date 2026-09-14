@@ -65,20 +65,20 @@ describe('CustomersController PII (Phase 5)', () => {
     }) as any;
 
   it('masks nationalId for SALES role on findOne', async () => {
-    service.findDetail.mockResolvedValue({ id: 'c1', nationalId: '1234567890123', phone: '0812345678' });
+    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123', phone: '0812345678' });
     const result = await controller.findOne('c1', reqOf('SALES'));
     expect((result as any).nationalId).toBe('12345-XXXXX-XX-3');
     expect((result as any).phone).toBe('0812345678'); // not masked per Q1 matrix
   });
 
   it('returns full nationalId for OWNER on findOne', async () => {
-    service.findDetail.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
+    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
     const result = await controller.findOne('c1', reqOf('OWNER'));
     expect((result as any).nationalId).toBe('1234567890123');
   });
 
   it('logs PII_DECRYPT_MASKED for SALES on findOne', async () => {
-    service.findDetail.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
+    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
     await controller.findOne('c1', reqOf('SALES'));
     // Wait microtask for void this.piiAudit.logDecryption to fire
     await new Promise((r) => setImmediate(r));
@@ -88,7 +88,7 @@ describe('CustomersController PII (Phase 5)', () => {
   });
 
   it('logs PII_DECRYPT_FULL for OWNER on findOne', async () => {
-    service.findDetail.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
+    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
     await controller.findOne('c1', reqOf('OWNER'));
     await new Promise((r) => setImmediate(r));
     expect(piiAudit.logDecryption).toHaveBeenCalledWith(
@@ -135,16 +135,50 @@ describe('CustomersController PII (Phase 5)', () => {
   });
 
   it('returns null gracefully on findOne when customer not found', async () => {
-    service.findDetail.mockResolvedValue(null);
+    service.findOne.mockResolvedValue(null);
     const result = await controller.findOne('nope', reqOf('SALES'));
     expect(result).toBeNull();
   });
 
-  it('GET /customers/:id อ่านผ่าน findDetail ไม่ใช่ findOne (findOne ยังเป็นด่านเช็คของ endpoint อื่น)', async () => {
-    service.findDetail.mockResolvedValue({ id: 'c1', nationalId: '1234567890123', openContracts: [] });
+  it('GET /customers/:id ยังอ่านผ่าน findOne เบา ๆ (อินบ็อกซ์/สร้างสัญญา/OCR เรียกบ่อย) ไม่ใช่ findDetail', async () => {
+    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
     await controller.findOne('c1', reqOf('OWNER'));
-    expect(service.findDetail).toHaveBeenCalledWith('c1');
-    expect(service.findOne).not.toHaveBeenCalled();
+    expect(service.findOne).toHaveBeenCalledWith('c1');
+    expect(service.findDetail).not.toHaveBeenCalled();
+  });
+
+  describe('GET /customers/:id/detail (หน้ารายละเอียดลูกค้า)', () => {
+    const detailRow = { id: 'c1', nationalId: '1234567890123', phone: '0812345678', openContracts: [] };
+    type DetailResult = typeof detailRow | null;
+
+    it('อ่านผ่าน findDetail ไม่ใช่ findOne', async () => {
+      service.findDetail.mockResolvedValue(detailRow);
+      await controller.findDetail('c1', reqOf('OWNER'));
+      expect(service.findDetail).toHaveBeenCalledWith('c1');
+      expect(service.findOne).not.toHaveBeenCalled();
+    });
+
+    it('SALES เห็นเลขบัตรแบบปิดบัง และบันทึก PII_DECRYPT_MASKED', async () => {
+      service.findDetail.mockResolvedValue(detailRow);
+      const result = (await controller.findDetail('c1', reqOf('SALES'))) as DetailResult;
+      expect(result?.nationalId).toBe('12345-XXXXX-XX-3');
+      expect(result?.phone).toBe('0812345678');
+      expect(result?.openContracts).toEqual([]);
+      await new Promise((r) => setImmediate(r));
+      expect(piiAudit.logDecryption).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'u1', customerId: 'c1', role: 'SALES', masked: true }),
+      );
+    });
+
+    it('OWNER เห็นเลขบัตรเต็ม และบันทึก PII_DECRYPT_FULL', async () => {
+      service.findDetail.mockResolvedValue(detailRow);
+      const result = (await controller.findDetail('c1', reqOf('OWNER'))) as DetailResult;
+      expect(result?.nationalId).toBe('1234567890123');
+      await new Promise((r) => setImmediate(r));
+      expect(piiAudit.logDecryption).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'u1', customerId: 'c1', role: 'OWNER', masked: false }),
+      );
+    });
   });
 
   describe('GET /customers/:id/tier', () => {

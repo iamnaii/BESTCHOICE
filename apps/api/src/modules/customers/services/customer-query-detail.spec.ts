@@ -11,7 +11,7 @@ function detailFixture(overrides: Record<string, unknown> = {}) {
   const db = {
     customer: { findUnique },
     customerTag: { findMany: jest.fn().mockResolvedValue([{ tag: 'LOYAL' }]) },
-    callLog: { findMany: jest.fn().mockResolvedValue([]) },
+    callLog: { findFirst: jest.fn().mockResolvedValue(null) },
     ...enrich,
   };
   return { db, service: buildQueryService(db, {}) };
@@ -56,12 +56,39 @@ describe('CustomerQueryService.findDetail', () => {
             { contractId: 'k1', installmentNo: 2, status: 'PENDING', dueDate: new Date('2099-10-05T00:00:00.000Z'), amountDue: '4200.00', amountPaid: '0' },
           ],
     );
-    db.callLog.findMany.mockResolvedValue([
-      { contractId: 'k1', calledAt: new Date('2026-09-10T07:32:00.000Z'), result: 'ANSWERED', notes: null, caller: { name: 'แนน' } },
-    ]);
+    db.callLog.findFirst.mockImplementation(async (args: { where: { contractId: string } }) =>
+      args.where.contractId === 'k1'
+        ? { contractId: 'k1', calledAt: new Date('2026-09-10T07:32:00.000Z'), result: 'ANSWERED', notes: null, caller: { name: 'แนน' } }
+        : null,
+    );
     const res = await service.findDetail('c1');
     expect(res.openContracts).toHaveLength(1);
     expect(res.openContracts[0]).toMatchObject({ contractNumber: 'CT-2569-0042', paidInstallments: 1, remainingInstallments: 1, outstanding: 4200, lastCall: { result: 'ANSWERED', callerName: 'แนน' } });
+    // โทรล่าสุดต่อสัญญา = findFirst ใหม่สุดก่อน (ไม่ใช้ distinct ที่ Prisma กรองในหน่วยความจำ)
+    expect(db.callLog.findFirst).toHaveBeenCalledTimes(1);
+    expect(db.callLog.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { contractId: 'k1', deletedAt: null },
+      orderBy: [{ calledAt: 'desc' }, { id: 'desc' }],
+    }));
+  });
+
+  it('สัญญาเปิด 2 ใบ → ถามโทรล่าสุดทีละใบ ใบที่ไม่เคยโทรได้ lastCall null', async () => {
+    const { db, service } = detailFixture();
+    const row = (id: string, contractNumber: string) => ({
+      id, contractNumber, status: 'ACTIVE', monthlyPayment: '4200.00', totalMonths: 12,
+      createdAt: new Date('2026-08-05T03:00:00.000Z'), mdmLockedAt: null, shopWarrantyEndDate: null, branch: null, product: null,
+    });
+    db.contract.findMany.mockImplementation(async (args: { select?: Record<string, unknown> }) =>
+      args.select?.mdmLockedAt ? [row('k1', 'CT-1'), row('k2', 'CT-2')] : [],
+    );
+    db.callLog.findFirst.mockImplementation(async (args: { where: { contractId: string } }) =>
+      args.where.contractId === 'k2'
+        ? { contractId: 'k2', calledAt: new Date('2026-09-12T03:00:00.000Z'), result: 'NO_ANSWER', notes: null, caller: null }
+        : null,
+    );
+    const res = await service.findDetail('c1');
+    expect(db.callLog.findFirst).toHaveBeenCalledTimes(2);
+    expect(res.openContracts.map((k) => [k.id, k.lastCall?.result ?? null])).toEqual([['k1', null], ['k2', 'NO_ANSWER']]);
   });
 
   it('ลูกค้าไม่มีอยู่ → NotFoundException จาก findOne เดิม และไม่ยิง query เสริม', async () => {

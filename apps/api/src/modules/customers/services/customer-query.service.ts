@@ -840,12 +840,17 @@ export class CustomerQueryService {
             where: { contractId: { in: openIds }, deletedAt: null },
             select: { contractId: true, installmentNo: true, status: true, dueDate: true, amountDue: true, amountPaid: true },
           }),
-          this.prisma.callLog.findMany({
-            where: { contractId: { in: openIds }, deletedAt: null },
-            orderBy: [{ contractId: 'asc' }, { calledAt: 'desc' }, { id: 'desc' }],
-            distinct: ['contractId'],
-            select: { contractId: true, calledAt: true, result: true, notes: true, caller: { select: { name: true } } },
-          }),
+          // โทรล่าสุดของแต่ละสัญญา: findFirst ทีละใบ (ใช้ @@index([contractId]) + LIMIT 1) — `distinct` ของ Prisma
+          // ที่ไม่เปิด nativeDistinct จะดึงทุกแถวของทุกสัญญามากรองในหน่วยความจำ
+          Promise.all(
+            openIds.map((contractId) =>
+              this.prisma.callLog.findFirst({
+                where: { contractId, deletedAt: null },
+                orderBy: [{ calledAt: 'desc' }, { id: 'desc' }],
+                select: { contractId: true, calledAt: true, result: true, notes: true, caller: { select: { name: true } } },
+              }),
+            ),
+          ),
         ])
       : [[], []];
 
@@ -863,7 +868,12 @@ export class CustomerQueryService {
       chatRooms,
       lastContactAt: chat?.lastContactAt ?? null,
       assignedTo: chat?.assignedTo ?? null,
-      openContracts: buildContractProgress({ contracts: openContracts, payments, lastCalls, now: new Date() }),
+      openContracts: buildContractProgress({
+        contracts: openContracts,
+        payments,
+        lastCalls: lastCalls.filter((call): call is NonNullable<typeof call> => call !== null),
+        now: new Date(),
+      }),
     };
   }
 

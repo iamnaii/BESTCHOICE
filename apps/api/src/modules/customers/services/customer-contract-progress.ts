@@ -107,7 +107,8 @@ export function buildContractProgress(input: {
       branchName: contract.branch?.name ?? null,
       startedAt: contract.createdAt.toISOString(),
       monthlyPayment: d(contract.monthlyPayment).toDecimalPlaces(2).toNumber(),
-      totalInstallments: contract.totalMonths,
+      // หลังปรับโครงสร้างหนี้ตารางงวดอาจไม่เท่า totalMonths — นับจากแถวจริงเพื่อให้ "ผ่อนแล้ว x/y" กับ "เหลือ z" บวกกันลงตัว
+      totalInstallments: rows.length > 0 ? rows.length : contract.totalMonths,
       paidInstallments: rows.length - unpaid.length,
       remainingInstallments: unpaid.length,
       overdueInstallments: overdue.length,

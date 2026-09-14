@@ -139,7 +139,7 @@ export default function DetailHeader({ customer, tier, role, canEdit, canStartCr
             chatPlaceholder={!!customer.chatPlaceholder}
             canStartCredit={canStartCredit}
             onStartCredit={onStartCredit}
-            payContractId={customer.openContracts[0]?.id ?? null}
+            payContractNumber={customer.openContracts[0]?.contractNumber ?? null}
           />
         </div>
       </div>

@@ -159,7 +159,8 @@ describe('หัวหน้า + ตัวเลข + แถบเตือน 
     expect(screen.getByText(/ค้างชำระ 1 งวด/, { selector: '[data-testid="risk-banner"] *' })).toBeInTheDocument();
     // R2: อีกงานสร้างปุ่ม "รับชำระ" ตัวที่สองในการ์ดสัญญา — ต้องขอบเขตแค่ในแถบเตือนเท่านั้น
     fireEvent.click(within(screen.getByTestId('risk-banner')).getByRole('button', { name: 'รับชำระ' }));
-    expect(await screen.findByLabelText('current location')).toHaveTextContent('/payments?contractId=k1');
+    // R6: /payments อ่านแค่ ?search= (ไม่มีที่ไหนอ่าน ?contractId=) — ปุ่มพาไปด้วยเลขที่สัญญา
+    expect(await screen.findByLabelText('current location')).toHaveTextContent('/payments?search=CT-2569-0042');
   });
 
   it('ผู้สนใจจากแชท (SALES): ป้ายผู้สนใจ · ไม่มีเบอร์ · ปุ่มเติมเบอร์ · 4 ช่อง · เมนูไม่มีสร้างสัญญา', async () => {

@@ -48,7 +48,8 @@ export default function RiskBanner({ contracts }: { contracts: ContractProgress[
           )}
         </div>
       </div>
-      <Button variant="primary" size="sm" onClick={() => navigate(`/payments?contractId=${first.id}`)}>
+      {/* R6: /payments อ่านแค่ ?search= (ไม่มีที่ไหนอ่าน ?contractId=) — ไปหน้าชำระด้วยเลขที่สัญญา */}
+      <Button variant="primary" size="sm" onClick={() => navigate(`/payments?search=${encodeURIComponent(first.contractNumber)}`)}>
         รับชำระ
       </Button>
     </div>

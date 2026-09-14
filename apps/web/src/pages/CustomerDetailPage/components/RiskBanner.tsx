@@ -4,11 +4,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatDateShort } from '@/utils/formatters';
 import type { ContractProgress } from '../types';
+import { CALL_RESULT_LABELS } from '../utils/callResultLabels';
 
-// ป้ายเดียวกับ CALL_RESULT_LABELS ของ apps/api/src/modules/overdue/timeline.service.ts
-const CALL_RESULT_LABELS: Record<string, string> = {
-  NO_ANSWER: 'ไม่รับสาย', ANSWERED: 'รับสาย', PROMISED: 'นัดชำระ', REFUSED: 'ปฏิเสธ', WRONG_NUMBER: 'เบอร์ผิด', OTHER: 'อื่น ๆ',
-};
 const baht = (n: number) => `${n.toLocaleString('th-TH', { maximumFractionDigits: 2 })} ฿`;
 
 export default function RiskBanner({ contracts }: { contracts: ContractProgress[] }) {

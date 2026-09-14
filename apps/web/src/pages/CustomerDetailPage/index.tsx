@@ -15,10 +15,11 @@ import { useCustomerDetailData } from './hooks/useCustomerDetailData';
 import ContractsTab from './tabs/ContractsTab';
 import CreditTab from './tabs/CreditTab';
 import LoyaltyTab from './tabs/LoyaltyTab';
+import OverviewTab from './tabs/OverviewTab';
 import SalesTab from './tabs/SalesTab';
 import { kpiTiles } from './utils/kpiTiles';
 
-export const DEFAULT_TAB = 'contracts';
+export const DEFAULT_TAB = 'overview';
 export const LEGACY_TAB_REDIRECT: Record<string, string> = { info: DEFAULT_TAB, contact: DEFAULT_TAB, work: DEFAULT_TAB };
 
 export default function CustomerDetailPage() {
@@ -107,6 +108,7 @@ export default function CustomerDetailPage() {
           <Tabs value={activeTab} onValueChange={handleTabChange} className="min-w-0">
             <div className="mb-5 max-w-full overflow-x-auto">
               <TabsList variant="line" className="min-w-max">
+                <TabsTrigger value="overview">ภาพรวม</TabsTrigger>
                 <TabsTrigger value="credit">เครดิต ({creditChecks.length})</TabsTrigger>
                 <TabsTrigger value="contracts">สัญญา ({customer.contracts.length})</TabsTrigger>
                 <TabsTrigger value="purchases">การซื้อ ({purchases.length})</TabsTrigger>
@@ -120,6 +122,10 @@ export default function CustomerDetailPage() {
                 </TabsTrigger>
               </TabsList>
             </div>
+
+            <TabsContent className="min-w-0" value="overview">
+              <OverviewTab customer={customer} role={user?.role ?? ''} onOpenTab={handleTabChange} />
+            </TabsContent>
 
             <TabsContent className="min-w-0" value="credit">
               <CreditTab

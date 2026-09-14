@@ -198,3 +198,43 @@ describe('หัวหน้า + ตัวเลข + แถบเตือน 
     expect(screen.getByText('ติดต่อ')).toBeInTheDocument();
   });
 });
+
+describe('แท็บภาพรวม', () => {
+  it('เป็นแท็บเริ่มต้น และการ์ดสัญญาที่กำลังผ่อนบอกงวด ยอด และพาไปหน้าสัญญา', async () => {
+    mocks.detail = detail({
+      purchase: { ...emptyPurchase, installmentTotal: 1 },
+      installmentBalance: { outstanding: 25200, nextDueDate: '2026-10-05T00:00:00.000Z', nextAmountDue: 4200, openContracts: 1 },
+      openContracts: [progress()],
+    });
+    renderAt('/customers/c1');
+    const card = await screen.findByTestId('active-contract-k1');
+    expect(within(card).getByText('ผ่อนแล้ว 6/12 งวด')).toBeInTheDocument();
+    expect(within(card).getByText('งวด 7 · 4,200 ฿')).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: 'ดูสัญญา' }));
+    expect(await screen.findByLabelText('current location')).toHaveTextContent('/contracts/k1');
+  });
+
+  it('ปุ่ม "รับชำระ" ในการ์ดพาไปหน้าชำระด้วยเลขที่สัญญา (R6)', async () => {
+    mocks.detail = detail({
+      purchase: { ...emptyPurchase, installmentTotal: 1 },
+      installmentBalance: { outstanding: 25200, nextDueDate: '2026-10-05T00:00:00.000Z', nextAmountDue: 4200, openContracts: 1 },
+      openContracts: [progress()],
+    });
+    renderAt('/customers/c1');
+    const card = await screen.findByTestId('active-contract-k1');
+    fireEvent.click(within(card).getByRole('button', { name: 'รับชำระ' }));
+    expect(await screen.findByLabelText('current location')).toHaveTextContent('/payments?search=CT-2569-0042');
+  });
+
+  it('ลิงก์เก่า ?tab=info พามาที่ภาพรวม', async () => {
+    mocks.detail = detail({ purchase: { ...emptyPurchase, installmentTotal: 1 }, openContracts: [progress()] });
+    renderAt('/customers/c1?tab=info');
+    expect(await screen.findByTestId('active-contract-k1')).toBeInTheDocument();
+  });
+
+  it('ผู้สนใจที่ยังไม่มีเบอร์ บอกขั้นต่อไปตามจริง', async () => {
+    mocks.detail = detail({ phone: null, chatPlaceholder: true, purchase: emptyPurchase, contracts: [] });
+    renderAt('/customers/c1');
+    expect(await screen.findByText('ยังไม่มีเบอร์ — เปิดสัญญา / ใบขาย / ใบจองได้เมื่อมีเบอร์')).toBeInTheDocument();
+  });
+});

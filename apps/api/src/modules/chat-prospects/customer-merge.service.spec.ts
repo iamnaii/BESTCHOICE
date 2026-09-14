@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { ConflictException, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { CustomerMergeService } from './customer-merge.service';
 
@@ -221,6 +221,40 @@ describe('CustomerMergeService.absorbPlaceholder — R12 SYSTEM actor audit', ()
     await service.absorbPlaceholder('p1', 't1', { id: 'system', role: 'SYSTEM' });
     await service.absorbPlaceholder('p1', 't1', { id: 'system', role: 'SYSTEM' });
     expect(prisma.user.findFirst).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Ruling R26 (I6) — ปุ่มรวมของ SALES ต้องแน่นเท่าทางผูกห้อง (การรวมย้ายห้องทุกห้องของผู้สนใจคนนั้น)
+describe('CustomerMergeService.assertActorMayAbsorb', () => {
+  const build = (rows: any) => {
+    const prisma: any = { chatRoom: { findFirst: jest.fn().mockResolvedValue(rows) } };
+    return { service: new CustomerMergeService(prisma, { log: jest.fn() } as any), prisma };
+  };
+
+  it('SALES + มีห้องที่คนอื่นดูแลอยู่ → 403 ข้อความเดียวกับ linkCustomer', async () => {
+    const { service, prisma } = build({ id: 'room-other' });
+    await expect(service.assertActorMayAbsorb('p1', { id: 'sales-1', role: 'SALES' })).rejects.toThrow(
+      new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้'),
+    );
+    expect(prisma.chatRoom.findFirst).toHaveBeenCalledWith({
+      where: {
+        customerId: 'p1',
+        deletedAt: null,
+        AND: [{ assignedToId: { not: null } }, { assignedToId: { not: 'sales-1' } }],
+      },
+      select: { id: true },
+    });
+  });
+
+  it('SALES + ห้องยังไม่มีคนดูแล หรือเป็นห้องของตัวเอง → ผ่าน', async () => {
+    const { service } = build(null);
+    await expect(service.assertActorMayAbsorb('p1', { id: 'sales-1', role: 'SALES' })).resolves.toBeUndefined();
+  });
+
+  it('role อื่น (OWNER/BM/FM/SYSTEM) → ไม่ตรวจขอบเขตห้องเลย', async () => {
+    const { service, prisma } = build({ id: 'room-other' });
+    await expect(service.assertActorMayAbsorb('p1', { id: 'owner-1', role: 'OWNER' })).resolves.toBeUndefined();
+    expect(prisma.chatRoom.findFirst).not.toHaveBeenCalled();
   });
 });
 

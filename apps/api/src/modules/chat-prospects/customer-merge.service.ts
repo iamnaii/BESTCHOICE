@@ -1,4 +1,11 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -77,6 +84,27 @@ export class CustomerMergeService {
       Sentry.captureException(err, { tags: { kind: 'chat-prospect' } });
       return null;
     }
+  }
+
+  /**
+   * Ruling R26 (I6) — ปุ่ม "รวมเข้าลูกค้าเดิม" ของ SALES ต้องไม่หลวมกว่าทางผูกห้อง: การรวม **ย้ายห้อง
+   * ทุกห้อง** ของผู้สนใจคนนั้น ⇒ SALES ที่ไม่ได้ดูแลห้องต้องรวมไม่ได้ (กติกาเดียวกับ
+   * RoomManagerService.linkCustomer และ dismiss คำใบ้ — R19; ข้อความเดียวกันทุกตัวอักษร)
+   * เรียกจากเส้นทาง endpoint `/customers/:id/absorb-into/:targetId` เท่านั้น — ผู้เรียกอื่น
+   * (OTP / LIFF / ผูกห้อง / รวมห้องแชท) มีด่านของตัวเองอยู่แล้ว พฤติกรรมไม่เปลี่ยน
+   */
+  async assertActorMayAbsorb(placeholderId: string, actor: MergeActor): Promise<void> {
+    if (actor.role !== 'SALES') return;
+    const held = await this.prisma.chatRoom.findFirst({
+      where: {
+        customerId: placeholderId,
+        deletedAt: null,
+        // แยกเป็นสองเงื่อนไขใน AND: `{ not: actor.id }` เดี่ยว ๆ ตัดแถว assignedToId = NULL ทิ้งด้วย (SQL 3VL)
+        AND: [{ assignedToId: { not: null } }, { assignedToId: { not: actor.id } }],
+      },
+      select: { id: true },
+    });
+    if (held) throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
   }
 
   async absorbPlaceholder(

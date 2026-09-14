@@ -273,17 +273,16 @@ export class CustomersController {
    */
   @Post(':id/absorb-into/:targetId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  absorbInto(
+  async absorbInto(
     @Param('id') id: string,
     @Param('targetId') targetId: string,
     @Req() req: { user: { id: string; role: string } },
   ) {
-    return this.merge.absorbPlaceholder(
-      id,
-      targetId,
-      { id: req.user.id, role: req.user.role },
-      { allowPlaceholderTarget: true },
-    );
+    const actor = { id: req.user.id, role: req.user.role };
+    // Ruling R26 — SALES รวมได้เฉพาะผู้สนใจที่ห้องยังไม่มีคนดูแล หรือเป็นห้องของตัวเอง
+    // (การรวมย้ายห้องทุกห้อง จึงต้องแน่นเท่าทางผูกห้อง/กดไม่ใช่ ไม่ใช่แค่มี role)
+    await this.merge.assertActorMayAbsorb(id, actor);
+    return this.merge.absorbPlaceholder(id, targetId, actor, { allowPlaceholderTarget: true });
   }
 
   @Delete(':id')

@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CustomerDetailPage from '@/pages/CustomerDetailPage';
-import { detail } from './fixtures';
+import { formatNationalId, maskNationalId } from '@/utils/mask.util';
+import { detail, emptyPurchase, progress } from './fixtures';
 
 /**
  * harness ลอกจาก pages/CustomersPage/__tests__/CustomersPage.test.tsx
@@ -30,7 +32,6 @@ vi.mock('@/contexts/AuthContext', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const RESPONSES: Record<string, unknown> = {
-  '/customers/c1/risk-flag': { hasRisk: false, riskLevel: 'NONE', overdueContracts: [] },
   '/customers/c1/credit-check': [],
   '/customers/c1/tier': { tier: 'GOOD' },
   '/loyalty/c1/points': { balance: 120, lifetimeEarned: 140, lifetimeRedeemed: 20, referralCount: 0 },
@@ -121,5 +122,78 @@ describe('CustomerDetailPage', () => {
     fireEvent.mouseDown(screen.getByRole('tab', { name: /เครดิต/ }));
 
     expect(await screen.findByRole('button', { name: 'กำลังวิเคราะห์...' })).toBeDisabled();
+  });
+});
+
+function Location() {
+  const location = useLocation();
+  return <output aria-label="current location">{location.pathname}{location.search}</output>;
+}
+
+function renderAt(path: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route path="/customers/:id" element={<><CustomerDetailPage /><Location /></>} />
+          <Route path="*" element={<Location />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe('หัวหน้า + ตัวเลข + แถบเตือน + คอลัมน์ขวา', () => {
+  it('ลูกค้าผ่อนค้างชำระ: ป้ายระดับ + แท็ก + ช่องคงค้าง + แถบเตือนพาไปรับชำระ', async () => {
+    mocks.detail = detail({
+      tags: [{ tag: 'LOYAL' }],
+      purchase: { ...emptyPurchase, installmentTotal: 1 },
+      installmentBalance: { outstanding: 25200, nextDueDate: '2026-10-05T00:00:00.000Z', nextAmountDue: 4200, openContracts: 1 },
+      openContracts: [progress()],
+    });
+    renderAt('/customers/c1');
+    expect(await screen.findByText('ลูกค้าดี')).toBeInTheDocument();
+    expect(screen.getByText('ลูกค้าประจำ')).toBeInTheDocument();
+    expect(screen.getByText('คงค้าง')).toBeInTheDocument();
+    expect(screen.getByText(/ค้างชำระ 1 งวด/, { selector: '[data-testid="risk-banner"] *' })).toBeInTheDocument();
+    // R2: อีกงานสร้างปุ่ม "รับชำระ" ตัวที่สองในการ์ดสัญญา — ต้องขอบเขตแค่ในแถบเตือนเท่านั้น
+    fireEvent.click(within(screen.getByTestId('risk-banner')).getByRole('button', { name: 'รับชำระ' }));
+    expect(await screen.findByLabelText('current location')).toHaveTextContent('/payments?contractId=k1');
+  });
+
+  it('ผู้สนใจจากแชท (SALES): ป้ายผู้สนใจ · ไม่มีเบอร์ · ปุ่มเติมเบอร์ · 4 ช่อง · เมนูไม่มีสร้างสัญญา', async () => {
+    mocks.role = 'SALES';
+    mocks.detail = detail({ phone: null, chatPlaceholder: true, source: 'FACEBOOK', purchase: emptyPurchase, contracts: [] });
+    renderAt('/customers/c1');
+    expect(await screen.findByText('ผู้สนใจ')).toBeInTheDocument();
+    expect(screen.getAllByText('จากแชท · ยังไม่มีเบอร์').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'เติมเบอร์' })).toBeInTheDocument();
+    for (const label of ['ที่มา', 'ติดต่อล่าสุด', 'ผู้ดูแล', 'เครดิต']) expect(screen.getByText(label)).toBeInTheDocument();
+    // R2/Step 8 fallback: jsdom ไม่มี window.PointerEvent (@testing-library/dom fireEvent
+    // จึงคืนกลับไปสร้าง Event ธรรมดา — DropdownMenuTrigger เช็ค `event.button === 0` เลย
+    // toggle ไม่ติด) userEvent.click จำลอง pointerdown/click ครบชุดจึงเปิดเมนู Radix ได้จริง
+    const trigger = screen.getByRole('button', { name: /ดำเนินการ/ });
+    const user = userEvent.setup();
+    await user.click(trigger);
+    expect(await screen.findByRole('menuitem', { name: 'ตรวจเครดิตใหม่' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'สร้างสัญญาผ่อน' })).toBeNull();
+  });
+
+  it('คอลัมน์ขวา: เลขบัตรเต็มเฉพาะ OWNER · SALES เห็นแบบปิดบัง · LINE ยังไม่ผูก', async () => {
+    mocks.detail = detail({ nationalId: '1101401234567' });
+    const { unmount } = renderAt('/customers/c1');
+    expect(await screen.findByText(formatNationalId('1101401234567'))).toBeInTheDocument();
+    expect(screen.getAllByText('ยังไม่ผูก').length).toBe(2);
+    unmount();
+    mocks.role = 'SALES';
+    renderAt('/customers/c1');
+    expect(await screen.findByText(maskNationalId('1101401234567'))).toBeInTheDocument();
+  });
+
+  it('ลิงก์เก่า ?tab=contact ยังเปิดได้ (ข้อมูลติดต่อย้ายไปคอลัมน์ขวา)', async () => {
+    renderAt('/customers/c1?tab=contact');
+    expect(await screen.findByRole('heading', { level: 1, name: 'สมชาย ใจดี' })).toBeInTheDocument();
+    expect(screen.getByText('ติดต่อ')).toBeInTheDocument();
   });
 });

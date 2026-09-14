@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import api from '@/lib/api';
 import type { CustomerTierResponse } from '@/types/customer-tier';
-import type { CreditCheckItem, CustomerDetail, RiskFlag } from '../types';
+import type { CreditCheckItem, CustomerDetail } from '../types';
 
 export interface LoyaltyPoints {
   customerId: string;
@@ -51,11 +51,6 @@ export function useCustomerDetailData(id: string | undefined) {
   });
   useDocumentTitle(customer?.name);
 
-  const { data: risk } = useQuery<RiskFlag>({
-    queryKey: ['customer-risk', id],
-    queryFn: async () => { const { data } = await api.get(`/customers/${id}/risk-flag`); return data; },
-  });
-
   const { data: creditChecks = [] } = useQuery<CreditCheckItem[]>({
     queryKey: ['customer-credit-checks', id],
     queryFn: async () => { const { data } = await api.get(`/customers/${id}/credit-check`); return data; },
@@ -102,7 +97,6 @@ export function useCustomerDetailData(id: string | undefined) {
     customerError,
     customerErrorDetail,
     refetchCustomer,
-    risk,
     creditChecks,
     tierData,
     loyaltyPoints,

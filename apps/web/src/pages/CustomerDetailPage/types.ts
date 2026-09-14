@@ -82,12 +82,6 @@ export interface CustomerDetail {
   openContracts: ContractProgress[];
 }
 
-export interface RiskFlag {
-  hasRisk: boolean;
-  riskLevel: string;
-  overdueContracts: { id: string; contractNumber: string; status: string }[];
-}
-
 export interface CreditCheckItem {
   checkType?: string;
   id: string;

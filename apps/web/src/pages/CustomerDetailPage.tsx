@@ -1249,7 +1249,8 @@ export default function CustomerDetailPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก <span className="text-destructive">*</span></label>
+                {/* R41: ผู้สนใจจากแชทยังไม่มีเบอร์ — ช่องนี้ไม่ required สำหรับเขา ดาวจึงต้องหายไปด้วย ไม่ใช่ค้างอยู่ */}
+                <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก{!customer?.chatPlaceholder && <span className="text-destructive"> *</span>}</label>
                 <input type="tel" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" required={!customer?.chatPlaceholder} />
               </div>
               <div>

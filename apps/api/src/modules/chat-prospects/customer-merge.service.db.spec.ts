@@ -68,7 +68,29 @@ describe('CustomerMergeService.absorbPlaceholder (real DB)', () => {
     expect(await prisma.chatAutoTrigger.count({ where: { customerId: placeholder.id } })).toBe(0);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: placeholder.id } })).deletedAt).not.toBeNull();
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: target.id } })).creditCheckStatus).toBe('PRE_CHECK_PASSED');
+    // ปลายทางถูกสร้างก่อน placeholder (ซื้อก่อน ผูกห้องทีหลัง) → ที่มาไม่ถูกยก (Ruling R24)
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: target.id } })).acquisitionSource).toBeNull();
     expect(audit.log).toHaveBeenCalledTimes(1);
+  });
+
+  // Ruling R24 (แก้สเปค §3.3) — พิสูจน์บนคอลัมน์จริง: ทักมาก่อน แล้วพนักงานสร้างลูกค้าจากกล่องข้อความทีหลัง
+  it('แชทมาก่อนและปลายทางไม่มีที่มา → ยกที่มา CHAT_* + PSID ไปให้ปลายทาง (KPI มาจากแชทยังนับคนนี้)', async () => {
+    const { placeholder, room } = await createPlaceholder('source-carry');
+    await prisma.customer.update({
+      where: { id: placeholder.id },
+      data: { facebookUserId: `psid-carry-${stamp}`, facebookName: 'ชื่อจากเฟซ' },
+    });
+    // ปลายทางถูกสร้างหลัง placeholder — CreateCustomerDto ไม่มีช่อง acquisitionSource จึงเป็น null เสมอ
+    const target = await prisma.customer.create({ data: { name: 'merge spec target 3', phone: `06${String(stamp).slice(-8)}` } });
+    customerIds.push(target.id);
+
+    await service.absorbPlaceholder(placeholder.id, target.id, { id: 'staff-1', role: 'SALES' });
+
+    const after = await prisma.customer.findUniqueOrThrow({ where: { id: target.id } });
+    expect(after.acquisitionSource).toBe('CHAT_FACEBOOK');
+    expect(after.facebookUserId).toBe(`psid-carry-${stamp}`);
+    expect(after.facebookName).toBe('ชื่อจากเฟซ');
+    expect((await prisma.chatRoom.findUniqueOrThrow({ where: { id: room.id } })).customerId).toBe(target.id);
   });
 
   it('placeholder มีการผูก LINE → 409 บอกชื่อรายการ และห้องยังอยู่กับ placeholder', async () => {

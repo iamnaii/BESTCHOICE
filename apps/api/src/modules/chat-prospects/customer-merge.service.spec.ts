@@ -8,8 +8,17 @@ jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
 beforeAll(() => jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined));
 afterAll(() => jest.restoreAllMocks());
 
-const PLACEHOLDER = { id: 'p1', deletedAt: null, acquisitionSource: 'CHAT_FACEBOOK', phone: null, nationalId: null, creditCheckStatus: 'PRE_CHECK_PASSED' };
-const TARGET = { id: 't1', deletedAt: null, acquisitionSource: null, phone: '0812345678', nationalId: null, creditCheckStatus: 'NONE' };
+// แชททักมาก่อน (1 ก.ย.) แล้วพนักงานเพิ่งสร้างลูกค้าจากกล่องข้อความ (10 ก.ย.) — เคสหลักของ Ruling R24
+const PLACEHOLDER = {
+  id: 'p1', deletedAt: null, acquisitionSource: 'CHAT_FACEBOOK', phone: null, nationalId: null,
+  creditCheckStatus: 'PRE_CHECK_PASSED', createdAt: new Date('2026-09-01T03:00:00Z'),
+  facebookUserId: 'psid-1234567890', facebookName: 'สมชาย เฟซ',
+};
+const TARGET = {
+  id: 't1', deletedAt: null, acquisitionSource: null, phone: '0812345678', nationalId: null,
+  creditCheckStatus: 'NONE', createdAt: new Date('2026-09-10T03:00:00Z'),
+  facebookUserId: null, facebookName: null,
+};
 const ZERO_COUNTS = {
   contracts: 0, sales: 0, bookings: 0, reservations: 0, tradeIns: 0, onlineOrders: 0, savingPlans: 0, onlineApplications: 0,
   loyaltyPoints: 0, loyaltyRedemptions: 0, promotionUsages: 0, repairTickets: 0, otherIncomes: 0, partialPaymentLinks: 0,
@@ -68,19 +77,54 @@ describe('CustomerMergeService.absorbPlaceholder', () => {
     expect(tx.crmLead.updateMany).toHaveBeenCalledWith({ where: { customerId: 'p1' }, data: { customerId: 't1' } });
     expect(tx.adsAttribution.updateMany).toHaveBeenCalledWith({ where: { customerId: 'p1' }, data: { customerId: 't1' } });
     expect(tx.customerScore.deleteMany).toHaveBeenCalledWith({ where: { customerId: 'p1' } });
-    // สถานะเครดิต: ปลายทาง NONE, placeholder ผ่าน pre-check → คัดลอก
-    expect(tx.customer.update).toHaveBeenCalledWith({ where: { id: 't1' }, data: { creditCheckStatus: 'PRE_CHECK_PASSED' } });
+    // สถานะเครดิต: ปลายทาง NONE, placeholder ผ่าน pre-check → คัดลอก · ที่มา CHAT_* ยกไปด้วย (R24) ในใบเดียว
+    expect(tx.customer.update).toHaveBeenCalledWith({
+      where: { id: 't1' },
+      data: {
+        creditCheckStatus: 'PRE_CHECK_PASSED', acquisitionSource: 'CHAT_FACEBOOK',
+        facebookUserId: 'psid-1234567890', facebookName: 'สมชาย เฟซ',
+      },
+    });
     expect(tx.customer.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { deletedAt: expect.any(Date) } });
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'staff-1', action: 'CUSTOMER_PLACEHOLDER_MERGED', entity: 'customer', entityId: 't1',
-      oldValue: { placeholderId: 'p1' }, newValue: { roomIds: ['r1', 'r2'], movedCreditChecks: 1 },
+      oldValue: { placeholderId: 'p1' },
+      newValue: { roomIds: ['r1', 'r2'], movedCreditChecks: 1, sourceCopied: true },
     }));
   });
 
-  it('ปลายทางมีสถานะเครดิตอยู่แล้ว → คงของปลายทาง', async () => {
-    const tx = makeTx({ target: { creditCheckStatus: 'FULL_CHECK_PASSED' } });
+  it('ปลายทางมีสถานะเครดิตและที่มาอยู่แล้ว → ไม่แตะปลายทางเลย', async () => {
+    const tx = makeTx({ target: { creditCheckStatus: 'FULL_CHECK_PASSED', acquisitionSource: 'WALK_IN' } });
     await build(tx).absorbPlaceholder('p1', 't1', actor);
     expect(tx.customer.update).not.toHaveBeenCalledWith({ where: { id: 't1' }, data: expect.anything() });
+  });
+
+  // Ruling R24 (แก้สเปค §3.3) — KPI "มาจากแชท" ต้องนับคนที่ทักมาก่อนแล้วค่อยซื้อ
+  it('ปลายทางมีที่มาอยู่แล้ว → ไม่ทับที่มา (sourceCopied: false)', async () => {
+    const tx = makeTx({ target: { acquisitionSource: 'WALK_IN' } });
+    await build(tx).absorbPlaceholder('p1', 't1', actor);
+    expect(tx.customer.update).toHaveBeenCalledWith({ where: { id: 't1' }, data: { creditCheckStatus: 'PRE_CHECK_PASSED' } });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ newValue: expect.objectContaining({ sourceCopied: false }) }),
+    );
+  });
+
+  it('ปลายทางเกิดก่อนผู้สนใจ (ซื้อก่อน ผูกห้องทีหลัง) → ไม่ยกที่มา', async () => {
+    const tx = makeTx({ target: { createdAt: new Date('2026-08-20T03:00:00Z') } });
+    await build(tx).absorbPlaceholder('p1', 't1', actor);
+    expect(tx.customer.update).toHaveBeenCalledWith({ where: { id: 't1' }, data: { creditCheckStatus: 'PRE_CHECK_PASSED' } });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ newValue: expect.objectContaining({ sourceCopied: false }) }),
+    );
+  });
+
+  it('ปลายทางมีช่อง facebook อยู่แล้ว → ยกเฉพาะที่มา ไม่ทับ PSID/ชื่อเดิม', async () => {
+    const tx = makeTx({ target: { facebookUserId: 'psid-ของปลายทาง', facebookName: 'ชื่อเดิม' } });
+    await build(tx).absorbPlaceholder('p1', 't1', actor);
+    expect(tx.customer.update).toHaveBeenCalledWith({
+      where: { id: 't1' },
+      data: { creditCheckStatus: 'PRE_CHECK_PASSED', acquisitionSource: 'CHAT_FACEBOOK' },
+    });
   });
 
   it('placeholder มีใบจอง → 409 บอกชื่อรายการ ไม่แตะอะไร', async () => {

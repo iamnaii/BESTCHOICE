@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -22,6 +23,14 @@ const BLOCKING_RELATIONS = {
 } as const;
 type BlockingKey = keyof typeof BLOCKING_RELATIONS;
 const COUNT_SELECT = Object.fromEntries(Object.keys(BLOCKING_RELATIONS).map((k) => [k, true])) as Record<BlockingKey, true>;
+
+/** ช่องที่ใช้ตัดสิน/ยกที่มาตอนรวม (Ruling R24) + สถานะเครดิตเดิม — อ่านทั้งสองฝั่งด้วย select ชุดเดียว */
+const SOURCE_COPY_SELECT = {
+  creditCheckStatus: true,
+  createdAt: true,
+  facebookUserId: true,
+  facebookName: true,
+} as const;
 
 /**
  * รวม "ผู้สนใจอัตโนมัติจากแชท" เข้าลูกค้าตัวจริง — ทางเดียว ไม่ใช่ merge ลูกค้าทั่วไป
@@ -77,17 +86,17 @@ export class CustomerMergeService {
     opts: { allowPlaceholderTarget?: boolean } = {},
   ): Promise<AbsorbResult> {
     if (placeholderId === targetId) throw new BadRequestException('รวมกับตัวเองไม่ได้');
-    const { result, roomIds } = await this.prisma.$transaction(async (tx) => {
+    const { result, roomIds, sourceCopied } = await this.prisma.$transaction(async (tx) => {
       // ล็อกทั้งสองฝั่งเรียงตาม id กัน deadlock กับ absorb สวนทาง
       for (const id of [placeholderId, targetId].sort()) await lockCreditCustomer(tx, id);
       const [placeholder, target] = await Promise.all([
         tx.customer.findUnique({
           where: { id: placeholderId },
-          select: { id: true, ...PLACEHOLDER_FIELDS_SELECT, creditCheckStatus: true, _count: { select: COUNT_SELECT } },
+          select: { id: true, ...PLACEHOLDER_FIELDS_SELECT, ...SOURCE_COPY_SELECT, _count: { select: COUNT_SELECT } },
         }),
         tx.customer.findUnique({
           where: { id: targetId },
-          select: { id: true, ...PLACEHOLDER_FIELDS_SELECT, creditCheckStatus: true },
+          select: { id: true, ...PLACEHOLDER_FIELDS_SELECT, ...SOURCE_COPY_SELECT },
         }),
       ]);
       // แยก 404 (ไม่พบ/ถูกลบ) ออกจาก 409 (ไม่ใช่ placeholder) จึงไม่ใช้ isLivePlaceholder ตรงนี้
@@ -136,14 +145,37 @@ export class CustomerMergeService {
       }
       await tx.customerScore.deleteMany({ where: { customerId: placeholderId } });
 
+      const targetPatch: Prisma.CustomerUpdateInput = {};
       if (target.creditCheckStatus === 'NONE' && placeholder.creditCheckStatus !== 'NONE') {
-        await tx.customer.update({ where: { id: targetId }, data: { creditCheckStatus: placeholder.creditCheckStatus } });
+        targetPatch.creditCheckStatus = placeholder.creditCheckStatus;
+      }
+      // Ruling R24 (แก้สเปค §3.3) — ยกที่มา CHAT_* ไปให้ปลายทางเมื่อ "ทักมาก่อนแล้วค่อยซื้อ":
+      // ลูกค้าที่พนักงานสร้างจากกล่องข้อความไม่เคยมี acquisitionSource (CreateCustomerDto ไม่มีช่องนี้)
+      // ⇒ ถ้าไม่ยก KPI "มาจากแชท" จะไม่นับคนกลุ่มนี้เลย ทั้งที่เป็นเส้นทางหลักของอินบ็อกซ์
+      // เงื่อนไข: ปลายทางยังไม่มีที่มา **และ** ผู้สนใจเกิดก่อน/พร้อมกัน (ซื้อก่อนแล้วผูกห้องทีหลัง = ไม่ยก)
+      // ห้ามทับค่าที่ปลายทางมีอยู่แล้วทุกช่อง
+      const sourceCopied =
+        target.acquisitionSource == null &&
+        placeholder.acquisitionSource != null &&
+        placeholder.createdAt <= target.createdAt;
+      if (sourceCopied) {
+        targetPatch.acquisitionSource = placeholder.acquisitionSource;
+        if (target.facebookUserId == null && placeholder.facebookUserId != null) {
+          targetPatch.facebookUserId = placeholder.facebookUserId;
+        }
+        if (target.facebookName == null && placeholder.facebookName != null) {
+          targetPatch.facebookName = placeholder.facebookName;
+        }
+      }
+      if (Object.keys(targetPatch).length > 0) {
+        await tx.customer.update({ where: { id: targetId }, data: targetPatch });
       }
       await tx.customer.update({ where: { id: placeholderId }, data: { deletedAt: new Date() } });
 
       return {
         result: { placeholderId, targetId, movedRooms, movedCreditChecks },
         roomIds: rooms.map((r) => r.id),
+        sourceCopied,
       };
     });
 
@@ -159,7 +191,7 @@ export class CustomerMergeService {
         entity: 'customer',
         entityId: targetId,
         oldValue: { placeholderId },
-        newValue: { roomIds, movedCreditChecks: result.movedCreditChecks },
+        newValue: { roomIds, movedCreditChecks: result.movedCreditChecks, sourceCopied },
       });
     } else {
       this.logger.warn(

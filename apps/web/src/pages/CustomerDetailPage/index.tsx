@@ -20,7 +20,7 @@ import SalesTab from './tabs/SalesTab';
 import { kpiTiles } from './utils/kpiTiles';
 
 export const DEFAULT_TAB = 'overview';
-export const LEGACY_TAB_REDIRECT: Record<string, string> = { info: DEFAULT_TAB, contact: DEFAULT_TAB, work: DEFAULT_TAB };
+export const LEGACY_TAB_REDIRECT: Record<string, string> = { info: DEFAULT_TAB, contact: DEFAULT_TAB, work: DEFAULT_TAB, purchases: 'sales' };
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -83,7 +83,12 @@ export default function CustomerDetailPage() {
     return <DetailPageSkeleton />;
   }
 
-  const purchases = customer.sales ?? [];
+  const tabs = [
+    { value: 'overview', label: 'ภาพรวม', count: null as number | null },
+    { value: 'contracts', label: 'สัญญา', count: customer.contracts.length },
+    { value: 'sales', label: 'ใบขาย', count: (customer.sales ?? []).length },
+    { value: 'credit', label: 'เครดิต', count: creditChecks.length },
+  ];
 
   return (
     <div className="min-w-0">
@@ -108,16 +113,20 @@ export default function CustomerDetailPage() {
           <Tabs value={activeTab} onValueChange={handleTabChange} className="min-w-0">
             <div className="mb-5 max-w-full overflow-x-auto">
               <TabsList variant="line" className="min-w-max">
-                <TabsTrigger value="overview">ภาพรวม</TabsTrigger>
-                <TabsTrigger value="credit">เครดิต ({creditChecks.length})</TabsTrigger>
-                <TabsTrigger value="contracts">สัญญา ({customer.contracts.length})</TabsTrigger>
-                <TabsTrigger value="purchases">การซื้อ ({purchases.length})</TabsTrigger>
-                <TabsTrigger value="loyalty">
+                {tabs.map((tab) => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    data-empty={tab.count === 0 ? 'true' : undefined}
+                    className="data-[empty=true]:text-muted-foreground/55"
+                  >
+                    {tab.label}{tab.count !== null && ` (${tab.count})`}
+                  </TabsTrigger>
+                ))}
+                <TabsTrigger value="loyalty" data-empty={!loyaltyPoints?.balance ? 'true' : undefined} className="data-[empty=true]:text-muted-foreground/55">
                   แต้มสะสม
-                  {loyaltyPoints && loyaltyPoints.balance > 0 && (
-                    <span className="ml-1.5 px-1.5 py-0.5 rounded-md text-2xs font-bold bg-primary/10 text-primary">
-                      {loyaltyPoints.balance.toLocaleString()}
-                    </span>
+                  {!!loyaltyPoints?.balance && (
+                    <span className="ml-1.5 rounded-md bg-primary/10 px-1.5 py-0.5 text-2xs font-bold text-primary">{loyaltyPoints.balance.toLocaleString()}</span>
                   )}
                 </TabsTrigger>
               </TabsList>
@@ -141,8 +150,8 @@ export default function CustomerDetailPage() {
               <ContractsTab customer={customer} isOwner={user?.role === 'OWNER'} activityLogs={activityLogs} />
             </TabsContent>
 
-            {/* ─── Purchases Tab (ขายสด / ไฟแนนซ์นอก) ───────────────────────── */}
-            <TabsContent className="min-w-0" value="purchases">
+            {/* ─── Sales Tab (ขายสด / ไฟแนนซ์นอก) ───────────────────────────── */}
+            <TabsContent className="min-w-0" value="sales">
               <SalesTab customer={customer} />
             </TabsContent>
 

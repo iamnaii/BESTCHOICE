@@ -22,6 +22,14 @@ export function detail(over: Partial<CustomerDetail> = {}): CustomerDetail {
   };
 }
 
+export function sale(over: Partial<NonNullable<CustomerDetail['sales']>[number]> = {}): NonNullable<CustomerDetail['sales']>[number] {
+  return {
+    id: 's1', saleNumber: 'SL-2569-0001', saleType: 'CASH', netAmount: '15000.00', createdAt: '2026-05-01T00:00:00.000Z',
+    shopWarrantyEndDate: null, product: { id: 'p2', brand: 'Apple', model: 'iPhone 14', imeiSerial: null }, branch: { id: 'b1', name: 'สำนักงานใหญ่' },
+    ...over,
+  };
+}
+
 export function progress(over: Partial<ContractProgress> = {}): ContractProgress {
   return {
     id: 'k1', contractNumber: 'CT-2569-0042', status: 'OVERDUE', productLabel: 'Apple iPhone 15 128GB', imeiSerial: null, branchName: 'สำนักงานใหญ่',

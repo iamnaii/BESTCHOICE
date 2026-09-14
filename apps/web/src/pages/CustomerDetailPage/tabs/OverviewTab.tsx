@@ -47,8 +47,7 @@ export default function OverviewTab({ customer, role, onOpenTab }: { customer: C
 
       {sales.length > 0 && (
         <Card><CardContent className="p-5">
-          {/* Task 6 จะเปลี่ยนชื่อแท็บ purchases → sales — ตอนนี้ค่าแท็บที่มีจริงคือ 'purchases' */}
-          <SectionHead title="ใบขายเงินสด / ไฟแนนซ์นอก" count={sales.length} action={sales.length > 3 ? { label: 'ดูทั้งหมด', onClick: () => onOpenTab('purchases') } : undefined} />
+          <SectionHead title="ใบขายเงินสด / ไฟแนนซ์นอก" count={sales.length} action={sales.length > 3 ? { label: 'ดูทั้งหมด', onClick: () => onOpenTab('sales') } : undefined} />
           <SalesTable sales={sales} limit={3} />
         </CardContent></Card>
       )}

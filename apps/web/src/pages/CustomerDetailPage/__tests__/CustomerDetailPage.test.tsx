@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CustomerDetailPage from '@/pages/CustomerDetailPage';
 import { formatNationalId, maskNationalId } from '@/utils/mask.util';
-import { detail, emptyPurchase, progress } from './fixtures';
+import { detail, emptyPurchase, progress, sale } from './fixtures';
 
 /**
  * harness ลอกจาก pages/CustomersPage/__tests__/CustomersPage.test.tsx
@@ -236,5 +236,35 @@ describe('แท็บภาพรวม', () => {
     mocks.detail = detail({ phone: null, chatPlaceholder: true, purchase: emptyPurchase, contracts: [] });
     renderAt('/customers/c1');
     expect(await screen.findByText('ยังไม่มีเบอร์ — เปิดสัญญา / ใบขาย / ใบจองได้เมื่อมีเบอร์')).toBeInTheDocument();
+  });
+
+  // R7: ปุ่ม "ดูทั้งหมด" ในการ์ดใบขายของแท็บภาพรวม ต้องพาไปแท็บ 'sales' (เดิมชื่อ 'purchases')
+  it('ปุ่ม "ดูทั้งหมด" ในการ์ดใบขายพาไปแท็บใบขาย (R7)', async () => {
+    mocks.detail = detail({ sales: [1, 2, 3, 4].map((n) => sale({ id: `s${n}`, saleNumber: `SL-2569-000${n}` })) });
+    renderAt('/customers/c1');
+    fireEvent.click(await screen.findByRole('button', { name: 'ดูทั้งหมด' }));
+    expect(await screen.findByRole('tab', { name: /ใบขาย/ })).toHaveAttribute('data-state', 'active');
+  });
+});
+
+describe('ชุดแท็บ', () => {
+  it('ลำดับแท็บ + แท็บที่ไม่มีข้อมูลโชว์จางแต่ยังกดได้', async () => {
+    mocks.detail = detail({ contracts: [], sales: [] });
+    renderAt('/customers/c1');
+    await screen.findByRole('heading', { level: 1, name: 'สมชาย ใจดี' });
+    const names = screen.getAllByRole('tab').map((tab) => tab.textContent?.replace(/\s+/g, ' ').trim());
+    expect(names).toEqual(['ภาพรวม', 'สัญญา (0)', 'ใบขาย (0)', 'เครดิต (0)', expect.stringMatching(/^แต้มสะสม/)]);
+    const salesTab = screen.getByRole('tab', { name: /ใบขาย/ });
+    expect(salesTab).toHaveAttribute('data-empty', 'true');
+    fireEvent.mouseDown(salesTab);
+    fireEvent.click(salesTab);
+    expect(await screen.findByText('ยังไม่มีการซื้อแบบเงินสด/ไฟแนนซ์นอก')).toBeInTheDocument();
+  });
+
+  it('ลิงก์เก่า ?tab=purchases เปิดแท็บใบขาย', async () => {
+    mocks.detail = detail({ sales: [] });
+    renderAt('/customers/c1?tab=purchases');
+    expect(await screen.findByText('ยังไม่มีการซื้อแบบเงินสด/ไฟแนนซ์นอก')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /ใบขาย/ })).toHaveAttribute('data-state', 'active');
   });
 });

@@ -295,11 +295,15 @@ export class StaffChatController {
   /** กด "ไม่ใช่" บนคำใบ้อาจเป็นคนเดียวกัน — ไม่ถามซ้ำสำหรับคนนั้น (สเปค 3.6) */
   @Patch('rooms/:id/same-person/dismiss')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async dismissSamePerson(@Param('id') id: string, @Body('customerId') customerId: string) {
+  async dismissSamePerson(
+    @Param('id') id: string,
+    @Body('customerId') customerId: string,
+    @Req() req: { user: { id: string; role: string } },
+  ) {
     if (!customerId || typeof customerId !== 'string') {
       throw new BadRequestException('กรุณาระบุ customerId');
     }
-    await this.samePerson.dismiss(id, customerId);
+    await this.samePerson.dismiss(id, customerId, req.user);
     return { success: true };
   }
 

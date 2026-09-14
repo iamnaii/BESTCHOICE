@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { chatLogoOf, normalizePersonName, type ChatLogo } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { isLivePlaceholder, PLACEHOLDER_FIELDS_SELECT } from './chat-placeholder';
@@ -109,8 +109,21 @@ export class SamePersonService {
     return 'none';
   }
 
-  /** กด "ไม่ใช่" — ไม่ถามซ้ำสำหรับคนนั้นในห้องนี้อีก (สเปค 3.6) */
-  async dismiss(roomId: string, customerId: string): Promise<void> {
+  /** กด "ไม่ใช่" — ไม่ถามซ้ำสำหรับคนนั้นในห้องนี้อีก (สเปค 3.6)
+   * ใช้กติกาเข้าถึงห้องเดียวกับ RoomManagerService.linkCustomer (sibling write path, I1/R19) —
+   * เขียนห้ามหลวมกว่าอ่าน: SALES เปิดห้องที่ถูกคนอื่นถืออยู่ไม่ได้ ก็กด "ไม่ใช่" ไม่ได้เหมือนกัน
+   */
+  async dismiss(roomId: string, customerId: string, actor: { id: string; role: string }): Promise<void> {
+    const room = await this.prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { id: true, deletedAt: true, assignedToId: true },
+    });
+    if (!room || room.deletedAt) {
+      throw new NotFoundException('ห้องแชทไม่พบหรือถูกลบ');
+    }
+    if (actor.role === 'SALES' && room.assignedToId && room.assignedToId !== actor.id) {
+      throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+    }
     await this.prisma.chatRoom.update({
       where: { id: roomId },
       data: { dismissedSamePersonIds: { push: customerId } },

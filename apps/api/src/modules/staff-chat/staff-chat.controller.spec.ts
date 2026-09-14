@@ -499,10 +499,30 @@ describe('StaffChatController', () => {
   });
 
   describe('PATCH /staff-chat/rooms/:id/same-person/dismiss', () => {
-    it('dismissSamePerson ต้องมี customerId แล้วส่งต่อ', async () => {
-      await expect(controller.dismissSamePerson('r1', '')).rejects.toThrow('กรุณาระบุ customerId');
-      await expect(controller.dismissSamePerson('r1', 'c2')).resolves.toEqual({ success: true });
-      expect(samePerson.dismiss).toHaveBeenCalledWith('r1', 'c2');
+    it('dismissSamePerson ต้องมี customerId แล้วส่งต่อพร้อม actor (I1/R19)', async () => {
+      await expect(
+        controller.dismissSamePerson('r1', '', { user: { id: 'u1', role: 'OWNER' } } as any),
+      ).rejects.toThrow('กรุณาระบุ customerId');
+      await expect(
+        controller.dismissSamePerson('r1', 'c2', { user: { id: 'u1', role: 'OWNER' } } as any),
+      ).resolves.toEqual({ success: true });
+      expect(samePerson.dismiss).toHaveBeenCalledWith('r1', 'c2', { id: 'u1', role: 'OWNER' });
+    });
+
+    it('propagates ForbiddenException จาก samePerson.dismiss (ขอบเขตห้อง I1/R19) โดยไม่แก้ไข', async () => {
+      samePerson.dismiss.mockRejectedValueOnce(new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้'));
+
+      await expect(
+        controller.dismissSamePerson('r1', 'c2', { user: { id: 'sales-2', role: 'SALES' } } as any),
+      ).rejects.toThrow('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+    });
+
+    it('propagates NotFoundException จาก samePerson.dismiss (ห้องไม่พบ/ถูกลบ) โดยไม่แก้ไข', async () => {
+      samePerson.dismiss.mockRejectedValueOnce(new NotFoundException('ห้องแชทไม่พบหรือถูกลบ'));
+
+      await expect(
+        controller.dismissSamePerson('r1', 'c2', { user: { id: 'u1', role: 'OWNER' } } as any),
+      ).rejects.toThrow('ห้องแชทไม่พบหรือถูกลบ');
     });
   });
 

@@ -54,7 +54,7 @@ describe('SamePersonService.findForRoom', () => {
   });
   it('dismiss → push customerId ลง dismissedSamePersonIds', async () => {
     const { service, prisma } = build([]);
-    await service.dismiss('room-1', 'c-no');
+    await service.dismiss('room-1', 'c-no', { id: 'staff-1', role: 'OWNER' });
     expect(prisma.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { dismissedSamePersonIds: { push: 'c-no' } } });
   });
   it('ไม่มีชื่อให้เทียบ (name ว่าง, facebookName null) → คืน [] โดยไม่ค้นหาเพิ่ม', async () => {
@@ -66,5 +66,55 @@ describe('SamePersonService.findForRoom', () => {
     const { service, prisma } = build([], { ...room, customer: { ...me, deletedAt: new Date('2026-09-01') } });
     await expect(service.findForRoom('room-1')).resolves.toEqual([]);
     expect(prisma.customer.findMany).not.toHaveBeenCalled();
+  });
+});
+
+// I1/R19: dismiss ต้องใช้กติกาเข้าถึงห้องเดียวกับ RoomManagerService.linkCustomer (sibling write path) —
+// เขียนห้ามหลวมกว่าอ่าน: ไม่มี room-scope guard เดิม ทำให้ SALES ที่ไม่ได้ถือห้องเขียนห้องที่ตัวเองเปิดอ่านไม่ได้
+describe('SamePersonService.dismiss — ขอบเขตห้อง (I1/R19)', () => {
+  it('SALES ไม่ได้ถือห้องนี้ (คนอื่นถืออยู่) → 403 ไม่อัปเดต', async () => {
+    const { service, prisma } = build([], { ...room, assignedToId: 'staff-9' });
+    await expect(
+      service.dismiss('room-1', 'c-no', { id: 'sales-2', role: 'SALES' }),
+    ).rejects.toThrow('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+    expect(prisma.chatRoom.update).not.toHaveBeenCalled();
+  });
+
+  it('ห้องไม่พบ หรือถูกลบไปแล้ว → 404 ไทย ไม่อัปเดต', async () => {
+    const notFound = build([], null);
+    await expect(
+      notFound.service.dismiss('room-x', 'c-no', { id: 'u1', role: 'OWNER' }),
+    ).rejects.toThrow('ห้องแชทไม่พบหรือถูกลบ');
+    expect(notFound.prisma.chatRoom.update).not.toHaveBeenCalled();
+
+    const deleted = build([], { ...room, deletedAt: new Date('2026-09-01') });
+    await expect(
+      deleted.service.dismiss('room-1', 'c-no', { id: 'u1', role: 'OWNER' }),
+    ).rejects.toThrow('ห้องแชทไม่พบหรือถูกลบ');
+    expect(deleted.prisma.chatRoom.update).not.toHaveBeenCalled();
+  });
+
+  it('SALES ที่ถือห้องเอง และ OWNER ข้ามสาขา (รวมห้องที่ยังไม่มีเจ้าของ) → อัปเดตสำเร็จ', async () => {
+    const assignedToSelf = build([], { ...room, assignedToId: 'sales-2' });
+    await assignedToSelf.service.dismiss('room-1', 'c-no', { id: 'sales-2', role: 'SALES' });
+    expect(assignedToSelf.prisma.chatRoom.update).toHaveBeenCalledWith({
+      where: { id: 'room-1' },
+      data: { dismissedSamePersonIds: { push: 'c-no' } },
+    });
+
+    const owner = build([], { ...room, assignedToId: 'sales-9' });
+    await owner.service.dismiss('room-1', 'c-no', { id: 'owner-1', role: 'OWNER' });
+    expect(owner.prisma.chatRoom.update).toHaveBeenCalledWith({
+      where: { id: 'room-1' },
+      data: { dismissedSamePersonIds: { push: 'c-no' } },
+    });
+
+    // ห้องยังไม่มีเจ้าของ (assignedToId ว่าง) — SALES คนไหนก็ยังกด "ไม่ใช่" ได้ เหมือนสิทธิ์เปิดห้อง (pickup)
+    const unassigned = build([], { ...room, assignedToId: null });
+    await unassigned.service.dismiss('room-1', 'c-no', { id: 'sales-3', role: 'SALES' });
+    expect(unassigned.prisma.chatRoom.update).toHaveBeenCalledWith({
+      where: { id: 'room-1' },
+      data: { dismissedSamePersonIds: { push: 'c-no' } },
+    });
   });
 });

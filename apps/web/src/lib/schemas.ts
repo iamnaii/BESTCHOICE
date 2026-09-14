@@ -61,6 +61,16 @@ export const customerSchema = z.object({
 
 export type CustomerFormData = z.infer<typeof customerSchema>;
 
+/**
+ * โหมด "เพิ่มเบอร์/ข้อมูลผู้สนใจ" (สเปค 3.6): เลขบัตรไม่บังคับ — เติมตอนทำสัญญาก็ได้
+ * ช่องว่างผ่าน · มีค่าต้องเป็นเลขบัตร 13 หลักที่ checksum ถูก (ใช้ refine เดียว ไม่ใช้ union — union ให้ข้อความ "Invalid input" ภาษาอังกฤษ)
+ */
+export const prospectFillSchema = customerSchema.extend({
+  nationalId: z
+    .string()
+    .refine((v) => v === '' || (v.length === 13 && isValidThaiNationalId(v)), 'เลขบัตรประชาชนไม่ถูกต้อง (13 หลัก) — เว้นว่างได้'),
+});
+
 /* ─── Product schema ─── */
 export const productSchema = z.object({
   brand: z.string().min(1, 'กรุณากรอกยี่ห้อ'),

@@ -7,7 +7,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
-import { customerSchema, type CustomerFormData } from '@/lib/schemas';
+import { customerSchema, prospectFillSchema, type CustomerFormData } from '@/lib/schemas';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import AddressForm, { type AddressData, emptyAddress, serializeAddress } from '@/components/ui/AddressForm';
@@ -91,6 +91,12 @@ export interface CustomerCreateDialogProps {
   onCreated: (customer: CreatedCustomer) => void;
   /** เจอลูกค้าเดิม (409) แล้วผู้ใช้เลือก "ใช้คนเดิม" — ถ้าไม่ส่งมา จะโชว์แค่ข้อความ */
   onUseExisting?: (customer: ExistingCustomerRef) => void;
+  /** 'fill' = เพิ่มเบอร์/ข้อมูลให้ผู้สนใจอัตโนมัติคนเดิม (POST /customers/:id/fill-contact) — ไม่สร้างคนใหม่ (สเปค 3.6) */
+  mode?: 'create' | 'fill';
+  /** id ของผู้สนใจที่จะเติม — บังคับเมื่อ mode='fill' */
+  fillCustomerId?: string;
+  /** โหมด fill บันทึกสำเร็จ — dialog ปิดตัวเองหลังเรียก */
+  onFilled?: (customer: CreatedCustomer) => void;
 }
 
 export default function CustomerCreateDialog({ open, onOpenChange, ...formProps }: CustomerCreateDialogProps) {
@@ -99,7 +105,7 @@ export default function CustomerCreateDialog({ open, onOpenChange, ...formProps 
       <DialogContent
         className="top-8 max-h-[calc(100vh-4rem)] w-full max-w-2xl translate-y-0 gap-0 overflow-hidden rounded-xl p-0"
         showCloseButton={false}
-        aria-label="เพิ่มลูกค้าใหม่"
+        aria-label={formProps.mode === 'fill' ? 'เพิ่มเบอร์/ข้อมูลผู้สนใจ' : 'เพิ่มลูกค้าใหม่'}
       >
         {open && <CustomerCreateForm onClose={() => onOpenChange(false)} {...formProps} />}
       </DialogContent>
@@ -109,9 +115,10 @@ export default function CustomerCreateDialog({ open, onOpenChange, ...formProps 
 
 type FormProps = Omit<CustomerCreateDialogProps, 'open' | 'onOpenChange'> & { onClose: () => void };
 
-function CustomerCreateForm({ initialValues, context, submitLabel = 'บันทึก', onCreated, onUseExisting, onClose }: FormProps) {
+function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, context, submitLabel = 'บันทึก', onCreated, onFilled, onUseExisting, onClose }: FormProps) {
+  const isFill = mode === 'fill';
   const form = useForm<CustomerFormData>({
-    resolver: standardSchemaResolver(customerSchema),
+    resolver: standardSchemaResolver(isFill ? prospectFillSchema : customerSchema),
     defaultValues: { ...emptyForm, ...initialValues },
   });
   // Extra fields not in customerSchema (managed as separate state)
@@ -122,6 +129,7 @@ function CustomerCreateForm({ initialValues, context, submitLabel = 'บัน�
   const [addressWork, setAddressWork] = useState<AddressData>(emptyAddress);
   const [references, setReferences] = useState<ReferenceData[]>([{ ...emptyReference }, { ...emptyReference }]);
   const [existing, setExisting] = useState<ExistingCustomerRef | null>(null);
+  const [dupPhone, setDupPhone] = useState('');
 
   // OCR state
   const ocrFileRef = useRef<HTMLInputElement>(null);
@@ -132,6 +140,15 @@ function CustomerCreateForm({ initialValues, context, submitLabel = 'บัน�
   const createMutation = useMutation({
     mutationFn: async (data: CustomerFormData) => {
       const name = `${data.firstName} ${data.lastName}`.trim();
+      if (isFill) {
+        if (!fillCustomerId) throw new Error('fillCustomerId is required in fill mode');
+        const fillPayload: Record<string, unknown> = { phone: data.phone, name };
+        if (data.prefix) fillPayload.prefix = data.prefix;
+        if (data.nickname) fillPayload.nickname = data.nickname;
+        if (data.nationalId) fillPayload.nationalId = data.nationalId;
+        if (data.facebookName) fillPayload.facebookName = data.facebookName;
+        return api.post<CreatedCustomer>(`/customers/${fillCustomerId}/fill-contact`, fillPayload);
+      }
       const payload: Record<string, unknown> = {
         nationalId: data.nationalId,
         name,
@@ -170,14 +187,20 @@ function CustomerCreateForm({ initialValues, context, submitLabel = 'บัน�
       return api.post<CreatedCustomer>('/customers', payload);
     },
     onSuccess: (res) => {
-      toast.success('เพิ่มลูกค้าสำเร็จ');
-      onCreated(res.data);
+      if (isFill) {
+        toast.success('บันทึกข้อมูลผู้สนใจแล้ว');
+        onFilled?.(res.data);
+      } else {
+        toast.success('เพิ่มลูกค้าสำเร็จ');
+        onCreated(res.data);
+      }
       onClose();
     },
     onError: (err: unknown) => {
       const axiosErr = err as { response?: { status?: number; data?: { existingCustomer?: ExistingCustomerRef } } };
       const dup = axiosErr.response?.status === 409 ? axiosErr.response.data?.existingCustomer : undefined;
       if (dup?.id) {
+        setDupPhone(form.getValues('phone'));
         setExisting(dup);
         return;
       }
@@ -354,8 +377,8 @@ function CustomerCreateForm({ initialValues, context, submitLabel = 'บัน�
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           ปิด
         </button>
-        <DialogTitle className="text-lg font-semibold text-foreground">เพิ่มลูกค้าใหม่</DialogTitle>
-        <DialogDescription className="sr-only">กรอกข้อมูลลูกค้าใหม่ หรืออ่านจากบัตรประชาชน</DialogDescription>
+        <DialogTitle className="text-lg font-semibold text-foreground">{isFill ? 'เพิ่มเบอร์/ข้อมูลผู้สนใจ' : 'เพิ่มลูกค้าใหม่'}</DialogTitle>
+        <DialogDescription className="sr-only">{isFill ? 'แก้ข้อมูลของผู้สนใจคนเดิม — ไม่สร้างลูกค้าใหม่' : 'กรอกข้อมูลลูกค้าใหม่ หรืออ่านจากบัตรประชาชน'}</DialogDescription>
         <div className="w-16" />
       </div>
       {context}
@@ -365,17 +388,35 @@ function CustomerCreateForm({ initialValues, context, submitLabel = 'บัน�
 
           {existing && (
             <div role="alert" className="rounded-xl border border-warning bg-warning/10 p-4 text-sm">
-              <p className="m-0 font-semibold">มีลูกค้าเบอร์นี้หรืออีเมลนี้อยู่แล้ว: {existing.name}</p>
-              <p className="m-0 mt-0.5 text-xs text-muted-foreground">ระบบไม่สร้างซ้ำ — ใช้คนเดิม หรือแก้เบอร์/อีเมลแล้วบันทึกใหม่</p>
-              {onUseExisting && (
-                <button
-                  type="button"
-                  onClick={() => { onUseExisting(existing); onClose(); }}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
-                >
-                  <Link2 className="size-4" strokeWidth={1.5} /> ใช้ลูกค้าเดิมคนนี้แทน
-                </button>
+              <p className="m-0 font-semibold leading-snug">
+                {isFill ? `เบอร์ ${dupPhone} เป็นของลูกค้าเดิมอยู่แล้ว` : `มีลูกค้าเบอร์นี้หรืออีเมลนี้อยู่แล้ว: ${existing.name}`}
+              </p>
+              <p className="m-0 mt-0.5 text-xs leading-snug text-muted-foreground">
+                {isFill
+                  ? 'ระบบไม่สร้างซ้ำ — รวมแชทห้องนี้และผลเช็คเครดิตเข้าคนเดิม หรือแก้เบอร์แล้วบันทึกใหม่'
+                  : 'ระบบไม่สร้างซ้ำ — ใช้คนเดิม หรือแก้เบอร์/อีเมลแล้วบันทึกใหม่'}
+              </p>
+              {isFill && (
+                <div className="mt-2.5 flex items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 text-xs">
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><User className="size-3.5" strokeWidth={1.5} /></span>
+                  <span className="min-w-0 truncate font-semibold">{existing.name}</span>
+                  <span className="text-muted-foreground">· โทร {dupPhone}</span>
+                </div>
               )}
+              <div className="mt-3 flex items-center gap-3">
+                {onUseExisting && (
+                  <button
+                    type="button"
+                    onClick={() => { onUseExisting(existing); onClose(); }}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
+                  >
+                    <Link2 className="size-4" strokeWidth={1.5} /> {isFill ? 'รวมกับลูกค้าเดิมคนนี้' : 'ใช้ลูกค้าเดิมคนนี้แทน'}
+                  </button>
+                )}
+                {isFill && (
+                  <button type="button" onClick={() => setExisting(null)} className="text-sm text-muted-foreground hover:text-foreground">แก้เบอร์</button>
+                )}
+              </div>
             </div>
           )}
 
@@ -474,7 +515,10 @@ function CustomerCreateForm({ initialValues, context, submitLabel = 'บัน�
                   name="nationalId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-xs font-medium">เลขบัตรประชาชน (13 หลัก) <span className="text-destructive">*</span></FormLabel>
+                      <FormLabel className="text-xs font-medium">
+                        เลขบัตรประชาชน (13 หลัก){' '}
+                        {isFill ? <span className="font-normal text-muted-foreground">ไม่บังคับ — เติมตอนทำสัญญาก็ได้</span> : <span className="text-destructive">*</span>}
+                      </FormLabel>
                       <FormControl>
                         <input
                           type="text"

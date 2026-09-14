@@ -11712,7 +11712,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Create: `apps/web/src/pages/CustomerDetailPage/components/RecentActivityCard.tsx`
 - Create: `apps/web/src/pages/CustomerDetailPage/tabs/JourneyTab.tsx`
 - Modify: `apps/web/src/pages/CustomerDetailPage/tabs/OverviewTab.tsx` (ลูกตัวสุดท้ายของ `<div className="flex flex-col gap-5">` ถัดจากบล็อก `{kind !== 'PROSPECT' && customer.openContracts.length === 0 && sales.length === 0 && (` … `ยังไม่มีสัญญาหรือใบขาย`)
-- Modify: `apps/web/src/pages/CustomerDetailPage/index.tsx` (4 จุด: ถัดจาก `const { user } = useAuth();` · ถัดจาก `<KpiTiles tiles={kpiTiles(customer, loyaltyPoints?.balance ?? null)} />` · ถัดจาก `</TabsTrigger>` ของ `value="loyalty"` ก่อน `</TabsList>` · ถัดจาก `</TabsContent>` ของ `value="loyalty"` ก่อน `</Tabs>`)
+- Modify: `apps/web/src/pages/CustomerDetailPage/index.tsx` (5 จุด: ถัดจาก `const { user } = useAuth();` · ถัดจาก `<KpiTiles tiles={kpiTiles(customer, loyaltyPoints?.balance ?? null)} />` · ถัดจาก `</TabsTrigger>` ของ `value="loyalty"` ก่อน `</TabsList>` · ถัดจาก `</TabsContent>` ของ `value="loyalty"` ก่อน `</Tabs>` · ฟังก์ชัน `resolveTab` และผู้เรียก 2 จุด)
 - Modify: `apps/web/src/pages/CustomerDetailPage/__tests__/CustomerDetailPage.test.tsx` (import · `vi.hoisted` · `beforeEach` ระดับไฟล์ · ค่าที่คาดของเทส `ลำดับแท็บ + แท็บที่ไม่มีข้อมูลโชว์จางแต่ยังกดได้` · describe ใหม่ท้ายไฟล์)
 - อ่านอย่างเดียว (ยืนยันแล้ว): `apps/web/src/components/QueryBoundary.tsx:5-14,33` (default export · props `isLoading/isError/error/onRetry/errorTitle`) · `apps/web/src/components/ui/collapsible.tsx:34` · `apps/web/src/components/ui/card.tsx:123-131` (`CardTitle` = `h3`) · `apps/web/src/components/ui/badge.tsx:28,31,44` (variant `warning`/`destructive` · size `md` · appearance `light`) · `apps/web/src/utils/formatters.ts:104,142` (`formatDateShort`, `formatDateTime`) · `apps/api/src/modules/customers/services/customer-query.service.ts:796` (`findOne` โยน 404 เมื่อ `deletedAt` ไม่ว่าง ⇒ redirect ต้องเกิดก่อน early return ของหน้า) · `apps/web/src/config/menu.ts:1204-1208` (`CHAT_VISIBLE_ROLES` = OWNER/BRANCH_MANAGER/FINANCE_MANAGER/SALES ตรงกับ `JOURNEY_CHAT_ROLES` ของ Task 8 — กฎกลุ่มที่บทบาทไม่เห็นใช้ `JOURNEY_HIDDEN_GROUPS` จาก shared ชุดเดียวกับ API)
 
@@ -11722,7 +11722,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   - Task 8 — `GET /customers/:id/journey` roles `OWNER, BRANCH_MANAGER, FINANCE_MANAGER, ACCOUNTANT, SALES` · query `limit` (1-100, ค่าตั้งต้น 30) · `cursor` · `groups` (csv) · ไม่ส่ง `groups` = `JOURNEY_DEFAULT_GROUPS` · ตัด `JOURNEY_HIDDEN_GROUPS[role]` (ทั้งคู่จาก shared ของ Task 1) · `href` มีเฉพาะ `/inbox/:roomId` `/contracts/:id` `/insurance/:id` · ผู้สนใจที่ถูกรวมแล้ว → `JourneyRedirect`
   - Task 9 — query `include` (csv `summary`,`counts`) · หน้าแรก (ไม่มี cursor) ที่ส่ง `include=counts` มี `counts` ของทุกกลุ่มที่บทบาทเห็น (ไม่เกิน 100 ต่อกลุ่ม) · ไม่ส่ง = ไม่มี `counts` และไม่จ่ายค่าสแกน · หน้าที่มี cursor ไม่มี `counts` เสมอ · `GET /customers/:id/journey/summary` → `JourneySummary | JourneyRedirect` · ลบด้วยเหตุอื่น → 404 · ขั้นซื้อแล้วตรวจสดกับ `BOUGHT_WHERE` ทุกคำขอ · (`include=summary` มีให้แต่งานนี้ไม่ใช้ — แถบขั้นต้องแสดงทุกแท็บ จึงดึง `/summary` แยก)
   - Task 11 — `export function EventTimeline<T extends EventTimelineItem>(props: { events: T[]; getStyle?: (event: T) => EventStyle; renderExtra?: (event: T) => ReactNode; emptyText?: string; footer?: ReactNode })` (named export · ป้าย "ประมาณ" จาก `reliability` · หัวข้อเป็น `Link` เมื่อมี `href` · footer แสดงเมื่อมีรายการ) · `interface EventTimelineItem { id; type; group?; timestamp; title; subtitle?; reliability?; href?; metadata? }` · `GROUP_EVENT_STYLES: Readonly<Record<JourneyEventGroup, EventStyle>>` · `defaultEventStyle(event: { type: string; group?: string }): EventStyle` · `TimelineFilterChips` (default export) props `{ value: string; onChange: (value: string) => void; counts?: Partial<Record<string, number>>; chips?: TimelineChip[]; className?: string }` แต่ละชิปเป็น `<Button aria-pressed>` ชื่อ = label (+ตัวเลขเมื่อมี counts) · `interface TimelineChip { value: string; label: string }`
-  - Plan 1 (worktree): `OverviewTab({ customer, role, onOpenTab })` · `index.tsx`: `id` จาก `useParams`, `const { user } = useAuth();`, `handleTabChange`, early return `if (customerError)` / `if (isLoading || !customer)`, `<KpiTiles …/>`, TabsTrigger `loyalty` ตัวสุดท้าย · harness: `mocks` (`get`, `role`, `detail`), `RESPONSES`, `renderAt(path)`, `<output aria-label="current location">`, `detail()` + `emptyPurchase` จาก `./fixtures`, import `fireEvent, render, screen, waitFor, within`
+  - Plan 1 (worktree): `OverviewTab({ customer, role, onOpenTab })` · `index.tsx`: `id` จาก `useParams`, `const { user } = useAuth();`, `handleTabChange`, early return `if (customerError)` / `if (isLoading || !customer)`, `<KpiTiles …/>`, TabsTrigger `loyalty` ตัวสุดท้าย, `TAB_VALUES` + `resolveTab(raw)` ที่กรอง `?tab=` (Plan 1 รอบแก้สุดท้าย F10) · harness: `mocks` (`get`, `role`, `detail`), `RESPONSES`, `renderAt(path)`, `<output aria-label="current location">`, `detail()` + `emptyPurchase` จาก `./fixtures`, import `fireEvent, render, screen, waitFor, within`
 - Produces:
   - `utils/journeyGroups.ts`: `JOURNEY_VIEW_ROLES: ReadonlySet<string>` · `canViewJourney(role: string): boolean` · `DEFAULT_EXCLUDED_GROUPS: ReadonlySet<JourneyEventGroup>` (คำนวณจาก `JOURNEY_DEFAULT_GROUPS` ของ shared) · `OVERVIEW_GROUPS: readonly JourneyEventGroup[]` · `OVERVIEW_LIMIT = 6` · `SILENT_AFTER_DAYS = 30` · `journeyGroupsForRole(role: string): JourneyEventGroup[]` · `journeyGroupLabel(group: JourneyEventGroup): string` · `allChipNote(role: string): string | null` · `journeyActorLabel(actor: JourneyEvent['actor']): string | null` · `journeyEventSubtitle(event: Pick<JourneyEvent, 'subtitle' | 'actor'>): string`
   - `hooks/useCustomerJourney.ts`: `type CustomerJourneyResult = JourneyListResponse | JourneyRedirect` · `type JourneySummaryResult = JourneySummary | JourneyRedirect` · `JOURNEY_PAGE_SIZE = 30` · `isJourneyRedirect(value: CustomerJourneyResult | JourneySummaryResult | null | undefined): value is JourneyRedirect` · `useCustomerJourney(customerId: string, groups: readonly JourneyEventGroup[] | null, options?: { limit?: number; enabled?: boolean; include?: string })` (`useInfiniteQuery` key `['customer-journey', customerId, groups]` · `include` ส่งเฉพาะหน้าแรก — แท็บส่ง `'counts'` การ์ดไม่ส่ง) · `useJourneySummary(customerId: string, enabled?: boolean)` (key `['customer-journey-summary', customerId]`) · `useJourneySummaryRedirect(customerId: string, enabled: boolean): JourneySummary | null`
@@ -12707,7 +12707,37 @@ import { canViewJourney } from './utils/journeyGroups';
               </TabsContent>
             )}
 ```
-Run: `TZ=UTC npx vitest run src/pages/CustomerDetailPage/__tests__/CustomerDetailPage.test.tsx` → Expected: PASS ทุกเทสในไฟล์ (เทสของ Plan 1 เดิมทั้งหมด + 7 เทสใหม่ · `failed` = 0)
+จุดที่ 5 — `resolveTab` (Plan 1 รอบแก้สุดท้าย F10) กรอง `?tab=` ด้วย `TAB_VALUES` ที่ไม่มี `journey` ⇒ ถ้าไม่แก้ เทสที่เปิด `/customers/c1?tab=journey` จะตกไปแท็บภาพรวม · แทนฟังก์ชันเดิมทั้งก้อน (`TAB_VALUES` คงเดิม):
+```tsx
+/** ?tab= → แท็บที่มีจริง: ลิงก์เก่าผ่าน LEGACY_TAB_REDIRECT · แท็บการเดินทางเฉพาะบทบาทที่เห็น · ค่าที่ไม่รู้จักกลับไปแท็บเริ่มต้น (ไม่ปล่อยให้หน้าว่าง) */
+function resolveTab(raw: string | null, journeyVisible: boolean): string {
+  if (!raw) return DEFAULT_TAB;
+  const mapped = LEGACY_TAB_REDIRECT[raw] ?? raw;
+  if (mapped === 'journey') return journeyVisible ? mapped : DEFAULT_TAB;
+  return TAB_VALUES.includes(mapped) ? mapped : DEFAULT_TAB;
+}
+```
+แล้วแก้ผู้เรียก 2 จุด (`journeyVisible` จากจุดที่ 1 ประกาศก่อน `useState` อยู่แล้ว):
+```tsx
+  const [activeTab, setActiveTab] = useState(resolveTab(rawTab, journeyVisible));
+```
+```tsx
+  useEffect(() => {
+    const mapped = resolveTab(searchParams.get('tab'), journeyVisible);
+    if (mapped !== activeTab) setActiveTab(mapped);
+  }, [searchParams, journeyVisible]);
+```
+เพิ่มเทสนี้ท้าย `describe` เดียวกับเทสใหม่ของ Step นี้:
+```tsx
+  it('?tab=journey ของบทบาทที่ไม่เห็นการเดินทาง → แท็บภาพรวม ไม่ใช่หน้าว่าง', async () => {
+    mocks.role = 'VIEWER';
+    renderAt('/customers/c1?tab=journey');
+    await screen.findByRole('heading', { level: 1, name: 'สมชาย ใจดี' });
+    expect(screen.getByRole('tab', { name: 'ภาพรวม' })).toHaveAttribute('data-state', 'active');
+    expect(screen.queryByRole('tab', { name: 'การเดินทาง' })).toBeNull();
+  });
+```
+Run: `TZ=UTC npx vitest run src/pages/CustomerDetailPage/__tests__/CustomerDetailPage.test.tsx` → Expected: PASS ทุกเทสในไฟล์ (เทสของ Plan 1 เดิมทั้งหมด + 8 เทสใหม่ (7 ข้อข้างบน + เทสจุดที่ 5) · `failed` = 0)
 
 - [ ] **Step 10: ยืนยันทั้งโฟลเดอร์**
 
@@ -13453,6 +13483,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - **P2-R2 กติกากลุ่มตาม role และป้ายชื่ออยู่ที่ shared ชุดเดียว:** `JOURNEY_DEFAULT_GROUPS` · `JOURNEY_HIDDEN_GROUPS` · `JOURNEY_LOST_REASON_LABELS` · `JOURNEY_HEARD_FROM_LABELS` export จาก `packages/shared/src/customer-journey.ts` ให้ API และเว็บ import ตัวเดียวกัน — ผิดแล้ว: ไม่มี (กันชิปบนเว็บไม่ตรงกับที่ API กรอง)
 - **P2-R3 นับจำนวนต่อกลุ่มเมื่อขอเท่านั้น (`include=counts`):** แท็บการเดินทางขอ · การ์ดกิจกรรมล่าสุดไม่ขอ — ผิดแล้ว: แท็บการเดินทางยิงคำขอหนักขึ้นเฉพาะหน้าแรก
 - **P2-R4 สมมติฐานแทนเจ้าของ (a)(b)(c) ใน Global Constraints ใช้ทั้งแผน** — เปลี่ยนภายหลังได้: (a) แก้กติกาขั้นใน journey-state.sql + STAGE_LABELS · (b) แก้ `JOURNEY_HIDDEN_GROUPS` จุดเดียว · (c) ไม่มีโค้ดให้แก้
+- **P2-R6 (หลังรีวิวรอบแก้สุดท้ายของ Plan 1) แท็บการเดินทางต้องผ่าน `resolveTab`:** Plan 1 เพิ่ม `TAB_VALUES` + `resolveTab` หลังแผนนี้เขียนเสร็จ ⇒ Task 12 เพิ่ม "จุดที่ 5" ให้ `resolveTab(raw, journeyVisible)` ยอม `journey` เฉพาะบทบาทที่เห็นแท็บ ที่เหลือกลับภาพรวม + เทส VIEWER 1 ข้อ — ผิดแล้ว: แก้ฟังก์ชันเดียวใน `index.tsx` · ถ้าไม่มีข้อนี้ เทส 4 ข้อของ Task 12 ที่เปิด `?tab=journey` จะแดง และลิงก์ `?tab=journey` จะเปิดภาพรวมเงียบ ๆ
 
 ### ผู้แก้ขั้นที่ 1 (Task 1–9)
 

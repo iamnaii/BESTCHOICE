@@ -102,6 +102,18 @@ describe('CustomerMergeService.absorbPlaceholder', () => {
     await expect(build(tx2).absorbPlaceholder('p1', 't1', actor, { allowPlaceholderTarget: true })).resolves.toMatchObject({ movedRooms: 2 });
   });
 
+  // Ruling R22 — ปุ่ม "รวมเข้าลูกค้าเดิม" ส่งธงนี้เสมอ ต้องไม่เปิดทางให้รวมกลับทิศ
+  it('allowPlaceholderTarget ไม่ผ่อนปรนต้นทาง — ต้นทางมีเบอร์แล้วยัง 409 (รวมทางเดียวเหมือนเดิม)', async () => {
+    const tx = makeTx({
+      placeholder: { phone: '0899999999' },
+      target: { acquisitionSource: 'CHAT_LINE_SHOP', phone: null },
+    });
+    await expect(
+      build(tx).absorbPlaceholder('p1', 't1', actor, { allowPlaceholderTarget: true }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.chatRoom.updateMany).not.toHaveBeenCalled();
+  });
+
   it('รวมกับตัวเอง → 400 · ไม่พบ/ถูกลบ → 404', async () => {
     const tx = makeTx();
     await expect(build(tx).absorbPlaceholder('p1', 'p1', actor)).rejects.toBeInstanceOf(BadRequestException);

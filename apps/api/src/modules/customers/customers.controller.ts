@@ -263,7 +263,14 @@ export class CustomersController {
     return this.customersService.update(id, dto);
   }
 
-  /** รวมผู้สนใจอัตโนมัติจากแชท (:id) เข้าลูกค้าเดิม (:targetId) — ใช้ตอนเติมเบอร์แล้วซ้ำ (สเปค 3.3 ข) */
+  /**
+   * รวมผู้สนใจอัตโนมัติจากแชท (:id) เข้าลูกค้าเดิม (:targetId) — ใช้ตอนเติมเบอร์แล้วซ้ำ (สเปค 3.3 ข)
+   *
+   * ปลายทางเป็น "ผู้สนใจอัตโนมัติ" อีกคนได้ (Ruling R22): คำใบ้ "อาจเป็นคนเดียวกัน" ชี้ทิศทางรวม
+   * ของผู้สนใจสองคนไว้แล้ว (สเปค §3.6 ใหม่กว่าเข้าเก่ากว่า) และ "รวมห้องแชท" ก็รับปลายทาง
+   * placeholder อยู่ก่อน (R13) — ทางข้อมูลเดียวกันทุกประการ
+   * ต้นทางยังต้องเป็น placeholder ที่ยังไม่ถูกลบเสมอ (absorbPlaceholder ตรวจเอง) ⇒ ยังรวมทางเดียว
+   */
   @Post(':id/absorb-into/:targetId')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   absorbInto(
@@ -271,7 +278,12 @@ export class CustomersController {
     @Param('targetId') targetId: string,
     @Req() req: { user: { id: string; role: string } },
   ) {
-    return this.merge.absorbPlaceholder(id, targetId, { id: req.user.id, role: req.user.role });
+    return this.merge.absorbPlaceholder(
+      id,
+      targetId,
+      { id: req.user.id, role: req.user.role },
+      { allowPlaceholderTarget: true },
+    );
   }
 
   @Delete(':id')

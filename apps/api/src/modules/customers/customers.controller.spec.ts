@@ -165,7 +165,20 @@ describe('CustomersController PII (Phase 5)', () => {
       movedRooms: 1,
       movedCreditChecks: 0,
     });
-    expect(merge.absorbPlaceholder).toHaveBeenCalledWith('p1', 't1', { id: 'staff-1', role: 'SALES' });
+    expect(merge.absorbPlaceholder).toHaveBeenCalledWith(
+      'p1',
+      't1',
+      { id: 'staff-1', role: 'SALES' },
+      { allowPlaceholderTarget: true },
+    );
+  });
+
+  // Ruling R22 — คำใบ้ "อาจเป็นคนเดียวกัน" ชี้ทิศทางรวมผู้สนใจอัตโนมัติสองคนไว้ (สเปค §3.6)
+  // ปลายทางเป็น placeholder จึงต้องรวมได้ผ่านปุ่มนี้ ไม่ใช่ 409 "ให้ใช้รวมห้องแชท"
+  it('absorbInto ส่ง allowPlaceholderTarget: true — ปลายทางเป็นผู้สนใจอัตโนมัติอีกคนก็รวมได้ (R22)', async () => {
+    const req = { user: { id: 'owner-1', role: 'OWNER' } } as any;
+    await controller.absorbInto('p1', 'p2', req);
+    expect(merge.absorbPlaceholder.mock.calls[0][3]).toEqual({ allowPlaceholderTarget: true });
   });
 
   it('absorbInto ไม่ครอบ exception จาก CustomerMergeService — 409/404/400 ส่งต่อให้ client ตรง ๆ', async () => {

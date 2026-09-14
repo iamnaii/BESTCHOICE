@@ -42,6 +42,17 @@ import type { Todo, AssigneeRef } from '@/pages/TodosPage/types';
  * <Customer360Panel bare sections=[…]> — ไม่เขียนซ้ำ ไม่ทำฟีเจอร์เดิมหาย
  */
 
+/** คำใบ้ "อาจเป็นคนเดียวกัน" จาก GET /staff-chat/rooms/:id (สเปค 3.6 · สูงสุด 3 · ไม่รวมอัตโนมัติ) */
+export interface PossibleSamePerson {
+  customerId: string;
+  name: string;
+  channel: string;
+  hasPhone: boolean;
+  chatPlaceholder: boolean;
+  createdAt: string;
+  mergeDirection: 'absorb_current_into_other' | 'absorb_other_into_current' | 'none';
+}
+
 export interface DossierRoom {
   id: string;
   channel: string;
@@ -50,7 +61,9 @@ export interface DossierRoom {
   createdAt?: string;
   lastMessageAt?: string;
   totalMessages?: number;
-  customer?: { id: string; name: string; phone?: string | null } | null;
+  /** `chatPlaceholder` = ผู้สนใจอัตโนมัติจากแชท (API ตัดสินให้ — เว็บห้าม derive เอง) */
+  customer?: { id: string; name: string; phone?: string | null; chatPlaceholder?: boolean } | null;
+  possibleSamePerson?: PossibleSamePerson[];
   attribution?: {
     firstTouch?: string;
     lastTouch?: string | null;

@@ -3,16 +3,19 @@ import { useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatDateShort } from '@/utils/formatters';
-import type { ContractProgress } from '../types';
-import { CALL_RESULT_LABELS } from '../utils/callResultLabels';
+import type { CustomerDetail } from '../types';
+import { callResultLabel } from '../utils/callResultLabels';
+import { overdueContracts, paymentSearchFor } from '../utils/paymentTarget';
 
 const baht = (n: number) => `${n.toLocaleString('th-TH', { maximumFractionDigits: 2 })} ฿`;
 
-export default function RiskBanner({ contracts }: { contracts: ContractProgress[] }) {
+export default function RiskBanner({ customer }: { customer: Pick<CustomerDetail, 'phone' | 'openContracts'> }) {
   const navigate = useNavigate();
-  const late = contracts.filter((k) => k.overdueInstallments > 0);
+  // ค้างนานสุดขึ้นก่อน — บรรทัดสัญญา/จำนวนวันค้างของแถบเตือนอ้างถึงใบนี้
+  const late = overdueContracts(customer.openContracts);
   if (late.length === 0) return null;
   const first = late[0];
+  const paymentSearch = paymentSearchFor(customer) ?? first.contractNumber;
   const count = late.reduce((sum, k) => sum + k.overdueInstallments, 0);
   const amount = late.reduce((sum, k) => sum + k.overdueAmount, 0);
   const days = first.firstOverdueDueDate
@@ -41,12 +44,12 @@ export default function RiskBanner({ contracts }: { contracts: ContractProgress[
             <> งวด {first.firstOverdueInstallmentNo} ครบกำหนด {formatDateShort(first.firstOverdueDueDate)}{days !== null && ` (ค้าง ${days} วัน)`}</>
           )}
           {call && (
-            <> · โทรล่าสุด {formatDateShort(call.calledAt)} {CALL_RESULT_LABELS[call.result] ?? call.result}{call.notes ? ` "${call.notes}"` : ''}</>
+            <> · โทรล่าสุด {formatDateShort(call.calledAt)} {callResultLabel(call.result)}{call.notes ? ` "${call.notes}"` : ''}</>
           )}
         </div>
       </div>
-      {/* R6: /payments อ่านแค่ ?search= (ไม่มีที่ไหนอ่าน ?contractId=) — ไปหน้าชำระด้วยเลขที่สัญญา */}
-      <Button variant="primary" size="sm" onClick={() => navigate(`/payments?search=${encodeURIComponent(first.contractNumber)}`)}>
+      {/* R6: /payments อ่านแค่ ?search= — ค้างใบเดียวค้นด้วยเลขสัญญา ค้างหลายใบค้นด้วยเบอร์ (utils/paymentTarget.ts) */}
+      <Button variant="primary" size="sm" onClick={() => navigate(`/payments?search=${encodeURIComponent(paymentSearch)}`)}>
         รับชำระ
       </Button>
     </div>

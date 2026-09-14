@@ -53,6 +53,46 @@ describe('kpiTiles', () => {
     expect(tiles[4]).toMatchObject({ value: '0', tone: 'default' });
   });
 
+  it('สัญญาที่ยังผ่อนไม่มีงวดค้าง แต่มีสัญญาตัดหนี้สูญที่ยังมียอด → คงค้างแดงและบอกว่าหนี้สูญ (กฎเดียวกับ OutstandingCell)', () => {
+    const tiles = kpiTiles(detail({
+      purchase: { ...emptyPurchase, installmentTotal: 1, installmentByState: { ...emptyPurchase.installmentByState, BAD_DEBT: 1 } },
+      installmentBalance: { outstanding: 18000, nextDueDate: null, nextAmountDue: null, openContracts: 0 },
+      openContracts: [],
+    }), 0);
+    expect(tiles[1]).toMatchObject({ label: 'คงค้าง', value: baht(18000), sub: `ตัดหนี้สูญ ${baht(18000)}`, tone: 'destructive' });
+  });
+
+  it('มีงวดค้างในสัญญาที่ยังผ่อน → ข้อความค้างชำระชนะหนี้สูญ', () => {
+    const tiles = kpiTiles(detail({
+      purchase: { ...emptyPurchase, installmentTotal: 2, installmentByState: { ...emptyPurchase.installmentByState, OVERDUE: 1, BAD_DEBT: 1 } },
+      installmentBalance: { outstanding: 43200, nextDueDate: NEXT_DUE, nextAmountDue: 4200, openContracts: 1 },
+      openContracts: [progress()],
+    }), 0);
+    expect(tiles[1]).toMatchObject({ sub: `ค้างชำระ 1 งวด · ${baht(4200)}`, tone: 'destructive' });
+  });
+
+  it('หนี้สูญแต่ยอดคงค้างเป็น 0 → ไม่มีงวดค้าง ไม่แดง', () => {
+    const tiles = kpiTiles(detail({
+      purchase: { ...emptyPurchase, installmentTotal: 1, installmentByState: { ...emptyPurchase.installmentByState, BAD_DEBT: 1 } },
+      installmentBalance: { outstanding: 0, nextDueDate: null, nextAmountDue: null, openContracts: 0 },
+      openContracts: [],
+    }), 0);
+    expect(tiles[1]).toMatchObject({ sub: 'ไม่มีงวดค้าง', tone: 'default' });
+  });
+
+  it('สัญญาเปิด 2 ใบ → งวดถัดไปเลือกวันครบกำหนดที่ใกล้สุด พร้อมยอดและเลขสัญญาของใบนั้น', () => {
+    const EARLIER = '2026-09-25T00:00:00.000Z';
+    const tiles = kpiTiles(detail({
+      purchase: { ...emptyPurchase, installmentTotal: 2 },
+      installmentBalance: { outstanding: 40000, nextDueDate: EARLIER, nextAmountDue: 3100, openContracts: 2 },
+      openContracts: [
+        progress({ id: 'k1', contractNumber: 'CT-LATER', overdueInstallments: 0, overdueAmount: 0, nextDueDate: NEXT_DUE, nextAmountDue: 4200 }),
+        progress({ id: 'k2', contractNumber: 'CT-EARLIER', overdueInstallments: 0, overdueAmount: 0, nextDueDate: EARLIER, nextAmountDue: 3100 }),
+      ],
+    }), 0);
+    expect(tiles[2]).toMatchObject({ label: 'งวดถัดไป', value: formatDateShort(EARLIER), sub: `${baht(3100)} · CT-EARLIER` });
+  });
+
   it('ลูกค้าเงินสด/ไฟแนนซ์นอก: การซื้อ · ยอดซื้อรวม · ซื้อล่าสุด · ประกันถึง · แต้มสะสม', () => {
     const tiles = kpiTiles(detail({
       purchase: { ...emptyPurchase, cashCount: 1, externalFinanceCount: 1 },

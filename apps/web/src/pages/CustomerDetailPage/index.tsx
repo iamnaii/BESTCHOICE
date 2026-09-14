@@ -21,6 +21,14 @@ import { kpiTiles } from './utils/kpiTiles';
 
 export const DEFAULT_TAB = 'overview';
 export const LEGACY_TAB_REDIRECT: Record<string, string> = { info: DEFAULT_TAB, contact: DEFAULT_TAB, work: DEFAULT_TAB, purchases: 'sales' };
+const TAB_VALUES = ['overview', 'contracts', 'sales', 'credit', 'loyalty'];
+
+/** ?tab= → แท็บที่มีจริง: ลิงก์เก่าผ่าน LEGACY_TAB_REDIRECT · ค่าที่ไม่รู้จักกลับไปแท็บเริ่มต้น (ไม่ปล่อยให้หน้าว่าง) */
+function resolveTab(raw: string | null): string {
+  if (!raw) return DEFAULT_TAB;
+  const mapped = LEGACY_TAB_REDIRECT[raw] ?? raw;
+  return TAB_VALUES.includes(mapped) ? mapped : DEFAULT_TAB;
+}
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -28,13 +36,12 @@ export default function CustomerDetailPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState(rawTab ? (LEGACY_TAB_REDIRECT[rawTab] ?? rawTab) : DEFAULT_TAB);
+  const [activeTab, setActiveTab] = useState(resolveTab(rawTab));
   const [showCreditDialog, setShowCreditDialog] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
-    const tab = searchParams.get('tab');
-    const mapped = tab ? (LEGACY_TAB_REDIRECT[tab] ?? tab) : DEFAULT_TAB;
+    const mapped = resolveTab(searchParams.get('tab'));
     if (mapped !== activeTab) setActiveTab(mapped);
   }, [searchParams]);
 
@@ -104,7 +111,7 @@ export default function CustomerDetailPage() {
 
       <ContractReturnNotice customerId={id} />
 
-      <RiskBanner contracts={customer.openContracts} />
+      <RiskBanner customer={customer} />
 
       <KpiTiles tiles={kpiTiles(customer, loyaltyPoints?.balance ?? null)} />
 

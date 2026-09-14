@@ -85,7 +85,8 @@ describe('PaymentsPage — เปิดจากลิงก์ ?search= (R6: �
     renderPage('/payments?search=CT-2569-0042');
 
     // ไม่ล็อกช่วงวันที่ — งวดค้างจากเดือนก่อนต้องยังเห็น ไม่ใช่ถูกกรองด้วยหน้าต่างเดือนนี้เริ่มต้น
-    expect(screen.getByTestId('period-bar')).toHaveTextContent('|');
+    // ต้องตรงทั้งข้อความ — toHaveTextContent('|') เป็น substring จึงผ่านแม้วันที่ไม่ว่าง
+    expect(screen.getByTestId('period-bar')).toHaveTextContent(/^\|$/);
 
     await waitFor(() => {
       expect(apiGet).toHaveBeenCalledWith('/payments/pending?search=CT-2569-0042');

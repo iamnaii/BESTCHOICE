@@ -46,8 +46,10 @@ export function useCustomerDetailData(id: string | undefined) {
     error: customerErrorDetail,
     refetch: refetchCustomer,
   } = useQuery<CustomerDetail>({
-    queryKey: ['customer', id],
-    queryFn: async () => { const { data } = await api.get(`/customers/${id}`); return data; },
+    // GET /customers/:id/detail = findOne + สรุปของหน้านี้ (GET :id เบาไว้ให้อินบ็อกซ์/สร้างสัญญา/OCR)
+    // invalidateQueries({ queryKey: ['customer', id] }) ของหน้านี้ยังโดนคีย์นี้ด้วย prefix match
+    queryKey: ['customer', id, 'detail'],
+    queryFn: async () => { const { data } = await api.get(`/customers/${id}/detail`); return data; },
   });
   useDocumentTitle(customer?.name);
 

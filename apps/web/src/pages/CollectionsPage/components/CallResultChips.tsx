@@ -30,7 +30,7 @@ export type NegotiationResultTag =
   | 'NEGOTIATING'
   | 'NOT_APPLICABLE';
 
-const CALL_RESULTS: { value: CallResultTag; label: string }[] = [
+export const CALL_RESULTS: { value: CallResultTag; label: string }[] = [
   { value: 'ANSWERED', label: 'รับสาย' },
   { value: 'NO_ANSWER', label: 'ไม่รับสาย' },
   { value: 'BUSY', label: 'สายไม่ว่าง' },

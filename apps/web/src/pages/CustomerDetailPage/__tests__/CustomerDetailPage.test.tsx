@@ -58,7 +58,7 @@ beforeEach(() => {
   mocks.detail = detail();
   mocks.get.mockReset();
   mocks.get.mockImplementation(async (url: string) => {
-    if (url === '/customers/c1') return { data: mocks.detail };
+    if (url === '/customers/c1/detail') return { data: mocks.detail };
     if (url in RESPONSES) return { data: RESPONSES[url] };
     throw new Error(`unexpected GET ${url}`);
   });
@@ -99,7 +99,7 @@ describe('CustomerDetailPage', () => {
       checkedBy: null, contract: null, createdAt: '2026-09-01T00:00:00.000Z',
     };
     mocks.get.mockImplementation(async (url: string) => {
-      if (url === '/customers/c1') return { data: mocks.detail };
+      if (url === '/customers/c1/detail') return { data: mocks.detail };
       if (url === '/customers/c1/credit-check') return { data: [pendingCreditCheck] };
       if (url in RESPONSES) return { data: RESPONSES[url] };
       throw new Error(`unexpected GET ${url}`);
@@ -181,6 +181,58 @@ describe('หัวหน้า + ตัวเลข + แถบเตือน 
     expect(screen.queryByRole('menuitem', { name: 'สร้างสัญญาผ่อน' })).toBeNull();
   });
 
+  it('ลูกค้ามีเลขบัตรแต่ไม่มีเบอร์ (ไม่ใช่ผู้สนใจจากแชท): เมนูไม่เสนอสัญญา/หน้าขาย/หน้าจอง ที่ API จะปฏิเสธ', async () => {
+    mocks.detail = detail({ nationalId: '1101401234567', phone: null, chatPlaceholder: false });
+    renderAt('/customers/c1');
+    await screen.findByRole('heading', { level: 1, name: 'สมชาย ใจดี' });
+    // เติมเบอร์รับเฉพาะผู้สนใจจากแชท (chatPlaceholder) — คนนี้ไม่ใช่ จึงไม่มีปุ่ม
+    expect(screen.queryByRole('button', { name: 'เติมเบอร์' })).toBeNull();
+    await userEvent.setup().click(screen.getByRole('button', { name: /ดำเนินการ/ }));
+    expect(await screen.findByRole('menuitem', { name: 'ตรวจเครดิตใหม่' })).toBeInTheDocument();
+    for (const label of ['สร้างสัญญาผ่อน', 'เปิดหน้าขาย', 'เปิดหน้าจอง / มัดจำ']) {
+      expect(screen.queryByRole('menuitem', { name: label })).toBeNull();
+    }
+  });
+
+  it('ค้างหลายสัญญา: แถบเตือนชี้ใบที่ค้างนานสุด และ "รับชำระ" ค้นด้วยเบอร์ลูกค้าให้เห็นทุกใบ', async () => {
+    const phone = '0812345678';
+    mocks.detail = detail({
+      phone,
+      purchase: { ...emptyPurchase, installmentTotal: 2 },
+      installmentBalance: { outstanding: 50400, nextDueDate: '2026-10-05T00:00:00.000Z', nextAmountDue: 4200, openContracts: 2 },
+      // API เรียงใบใหม่สุดก่อน — ใบค้างนานสุดอยู่ท้าย
+      openContracts: [
+        progress({ id: 'k1', contractNumber: 'CT-NEW-0001', firstOverdueInstallmentNo: 2, firstOverdueDueDate: '2026-09-05T00:00:00.000Z' }),
+        progress({ id: 'k2', contractNumber: 'CT-OLD-0002', firstOverdueInstallmentNo: 5, firstOverdueDueDate: '2026-06-05T00:00:00.000Z' }),
+      ],
+    });
+    renderAt('/customers/c1');
+    const banner = await screen.findByTestId('risk-banner');
+    expect(within(banner).getByText(/ค้างชำระ 2 งวด/)).toBeInTheDocument();
+    expect(within(banner).getByText('CT-OLD-0002')).toBeInTheDocument();
+    expect(within(banner).queryByText('CT-NEW-0001')).toBeNull();
+    fireEvent.click(within(banner).getByRole('button', { name: 'รับชำระ' }));
+    expect(await screen.findByLabelText('current location')).toHaveTextContent(`/payments?search=${encodeURIComponent(phone)}`);
+  });
+
+  it('ค้างหลายสัญญา: "รับชำระ" ในเมนูดำเนินการก็ค้นด้วยเบอร์เดียวกัน', async () => {
+    const phone = '0812345678';
+    mocks.detail = detail({
+      phone,
+      purchase: { ...emptyPurchase, installmentTotal: 2 },
+      openContracts: [
+        progress({ id: 'k1', contractNumber: 'CT-NEW-0001', firstOverdueDueDate: '2026-09-05T00:00:00.000Z' }),
+        progress({ id: 'k2', contractNumber: 'CT-OLD-0002', firstOverdueDueDate: '2026-06-05T00:00:00.000Z' }),
+      ],
+    });
+    renderAt('/customers/c1');
+    await screen.findByTestId('risk-banner');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /ดำเนินการ/ }));
+    await user.click(await screen.findByRole('menuitem', { name: 'รับชำระ' }));
+    expect(await screen.findByLabelText('current location')).toHaveTextContent(`/payments?search=${encodeURIComponent(phone)}`);
+  });
+
   it('คอลัมน์ขวา: เลขบัตรเต็มเฉพาะ OWNER · SALES เห็นแบบปิดบัง · LINE ยังไม่ผูก', async () => {
     mocks.detail = detail({ nationalId: '1101401234567' });
     const { unmount } = renderAt('/customers/c1');
@@ -230,6 +282,13 @@ describe('แท็บภาพรวม', () => {
     mocks.detail = detail({ purchase: { ...emptyPurchase, installmentTotal: 1 }, openContracts: [progress()] });
     renderAt('/customers/c1?tab=info');
     expect(await screen.findByTestId('active-contract-k1')).toBeInTheDocument();
+  });
+
+  it('?tab= ที่ไม่รู้จัก → กลับไปแท็บภาพรวม ไม่ใช่หน้าว่าง', async () => {
+    mocks.detail = detail({ purchase: { ...emptyPurchase, installmentTotal: 1 }, openContracts: [progress()] });
+    renderAt('/customers/c1?tab=nope');
+    expect(await screen.findByTestId('active-contract-k1')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'ภาพรวม' })).toHaveAttribute('data-state', 'active');
   });
 
   it('ผู้สนใจที่ยังไม่มีเบอร์ บอกขั้นต่อไปตามจริง', async () => {

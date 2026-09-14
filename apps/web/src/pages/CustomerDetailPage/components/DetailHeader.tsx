@@ -21,6 +21,7 @@ import type { CustomerTier } from '@/types/customer-tier';
 import { formatDateShort } from '@/utils/formatters';
 import type { CustomerDetail } from '../types';
 import { customerKind } from '../utils/customerKind';
+import { paymentSearchFor } from '../utils/paymentTarget';
 import ActionsMenu from './ActionsMenu';
 
 /** ปุ่มคัดลอกเบอร์ — เดียวกับ CopyButton ใน CustomersPage/components/CustomerCells.tsx (ไม่ได้ export)
@@ -136,10 +137,10 @@ export default function DetailHeader({ customer, tier, role, canEdit, canStartCr
           <ActionsMenu
             customerId={customer.id}
             role={role}
-            chatPlaceholder={!!customer.chatPlaceholder}
+            hasPhone={!!customer.phone}
             canStartCredit={canStartCredit}
             onStartCredit={onStartCredit}
-            payContractNumber={customer.openContracts[0]?.contractNumber ?? null}
+            paymentSearch={paymentSearchFor(customer)}
           />
         </div>
       </div>

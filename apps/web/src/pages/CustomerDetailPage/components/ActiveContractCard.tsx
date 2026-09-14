@@ -6,15 +6,15 @@ import { contractStatusMap, getStatusBadgeProps } from '@/lib/status-badges';
 import { cn } from '@/lib/utils';
 import { formatDateShort } from '@/utils/formatters';
 import type { ContractProgress } from '../types';
-import { CALL_RESULT_LABELS } from '../utils/callResultLabels';
+import { callResultLabel } from '../utils/callResultLabels';
 
 const baht = (n: number) => `${n.toLocaleString('th-TH', { maximumFractionDigits: 2 })} ฿`;
 
 function Stat({ label, value, danger }: { label: string; value: string; danger?: boolean }) {
   return (
     <div className={cn('min-w-0 rounded-lg px-2.5 py-2', danger ? 'bg-destructive/5' : 'bg-muted/50')}>
-      <div className="truncate text-[11.5px] leading-snug text-muted-foreground">{label}</div>
-      <div className={cn('truncate text-sm font-bold leading-snug tabular-nums', danger && 'text-destructive')}>{value}</div>
+      <div className="truncate text-[11.5px] leading-snug text-muted-foreground" title={label}>{label}</div>
+      <div className={cn('truncate text-sm font-bold leading-snug tabular-nums', danger && 'text-destructive')} title={value}>{value}</div>
     </div>
   );
 }
@@ -94,7 +94,7 @@ export default function ActiveContractCard({ contract }: { contract: ContractPro
         {contract.lastCall && (
           <span className="inline-flex items-center gap-1.5">
             <Phone className="size-3.5" aria-hidden="true" />
-            โทรล่าสุด {formatDateShort(contract.lastCall.calledAt)} · {CALL_RESULT_LABELS[contract.lastCall.result] ?? contract.lastCall.result}
+            โทรล่าสุด {formatDateShort(contract.lastCall.calledAt)} · {callResultLabel(contract.lastCall.result)}
             {contract.lastCall.callerName && ` · ${contract.lastCall.callerName}`}
           </span>
         )}

@@ -55,15 +55,21 @@ export function kpiTiles(c: CustomerDetail, loyaltyBalance: number | null): KpiT
     const next = c.openContracts
       .filter((k) => k.nextDueDate)
       .sort((a, b) => (a.nextDueDate! < b.nextDueDate! ? -1 : 1))[0];
+    // ตัวเลขเดียวกับคอลัมน์ "คงค้าง" ของหน้ารายชื่อ (installmentBalance) — ห้ามรวมเองจาก openContracts
+    // installmentBalance นับสัญญาตัดหนี้สูญด้วย แต่ openContracts ไม่มี ⇒ ไม่มีงวดค้างในสัญญาที่ยังผ่อน
+    // แต่มีสัญญาหนี้สูญ ต้องบอกว่ายอดนี้คือหนี้สูญ (กฎเดียวกับ OutstandingCell ใน CustomersPage/components/CustomerCells.tsx)
+    const outstanding = c.installmentBalance?.outstanding ?? 0;
+    const badDebtOnly = overdueCount === 0 && (c.purchase?.installmentByState?.BAD_DEBT ?? 0) > 0 && outstanding > 0;
     return [
       purchaseTile(c),
       {
         key: 'outstanding',
         label: 'คงค้าง',
-        // ตัวเลขเดียวกับคอลัมน์ "คงค้าง" ของหน้ารายชื่อ (installmentBalance) — ห้ามรวมเองจาก openContracts
-        value: baht(c.installmentBalance?.outstanding ?? 0),
-        sub: overdueCount > 0 ? `ค้างชำระ ${overdueCount} งวด · ${baht(overdueAmount)}` : 'ไม่มีงวดค้าง',
-        tone: overdueCount > 0 ? 'destructive' : 'default',
+        value: baht(outstanding),
+        sub: overdueCount > 0
+          ? `ค้างชำระ ${overdueCount} งวด · ${baht(overdueAmount)}`
+          : badDebtOnly ? `ตัดหนี้สูญ ${baht(outstanding)}` : 'ไม่มีงวดค้าง',
+        tone: overdueCount > 0 || badDebtOnly ? 'destructive' : 'default',
       },
       {
         key: 'nextDue',

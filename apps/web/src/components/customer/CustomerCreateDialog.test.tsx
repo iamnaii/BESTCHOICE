@@ -174,6 +174,24 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
     expect(onCreated).not.toHaveBeenCalled();
   });
 
+  // R43: ชื่อในแชทมักเป็นคำเดียว (`splitDisplayName('Nan')` → lastName '') — โหมด fill ต้องไม่บังคับนามสกุล
+  // ไม่งั้นปุ่มหลักของการ์ดผู้สนใจกดไม่ผ่านตั้งแต่ครั้งแรก ทั้งที่ DTO ฝั่ง API รับ name แบบ optional
+  it('ชื่อคำเดียว (ไม่มีนามสกุล) → บันทึกผ่าน ไม่ขึ้น "กรุณากรอกนามสกุล" · name ที่ส่งไม่มีช่องว่างต่อท้าย', async () => {
+    apiPost.mockResolvedValue({ data: { id: 'p1', name: 'Nan', phone: '0812345678' } });
+    const onFilled = vi.fn();
+    wrap(<CustomerCreateDialog open mode="fill" fillCustomerId="p1" onOpenChange={vi.fn()} initialValues={{ firstName: 'Nan' }} onCreated={vi.fn()} onFilled={onFilled} />);
+    expect(mainField('กรอกนามสกุล')).toHaveValue('');
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'นาย' } });
+    fireEvent.change(mainField('0XX-XXX-XXXX'), { target: { value: '0812345678' } });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('กรุณากรอกนามสกุล')).toBeNull();
+    const [url, payload] = apiPost.mock.calls[0] as [string, Record<string, unknown>];
+    expect(url).toBe('/customers/p1/fill-contact');
+    expect(payload).toEqual({ phone: '0812345678', name: 'Nan', prefix: 'นาย' });
+    await waitFor(() => expect(onFilled).toHaveBeenCalledWith({ id: 'p1', name: 'Nan', phone: '0812345678' }));
+  });
+
   it('เบอร์ซ้ำ (409 existingCustomer) → alert ตาม mockup + ปุ่ม "รวมกับลูกค้าเดิมคนนี้" เรียก onUseExisting แล้วปิด · ปุ่ม "แก้เบอร์" กลับไปแก้ฟอร์ม', async () => {
     apiPost.mockRejectedValue({ response: { status: 409, data: { message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว', existingCustomer: { id: 'c-old', name: 'สมชาย ใจดี' } } } });
     const onUseExisting = vi.fn();

@@ -64,8 +64,13 @@ export type CustomerFormData = z.infer<typeof customerSchema>;
 /**
  * โหมด "เพิ่มเบอร์/ข้อมูลผู้สนใจ" (สเปค 3.6): เลขบัตรไม่บังคับ — เติมตอนทำสัญญาก็ได้
  * ช่องว่างผ่าน · มีค่าต้องเป็นเลขบัตร 13 หลักที่ checksum ถูก (ใช้ refine เดียว ไม่ใช้ union — union ให้ข้อความ "Invalid input" ภาษาอังกฤษ)
+ *
+ * R43: นามสกุลไม่บังคับด้วย — ชื่อในแชทเป็นคำเดียวได้ (`splitDisplayName('Nan')` → lastName '')
+ * และ DTO ของ `POST /customers/:id/fill-contact` ก็รับ `name` แบบ optional อยู่แล้ว
+ * ⇒ บังคับนามสกุลที่นี่ = ปิดปุ่มหลักของการ์ดผู้สนใจไว้เฉย ๆ. โหมดสร้าง (`customerSchema`) คงเดิม
  */
 export const prospectFillSchema = customerSchema.extend({
+  lastName: z.string().optional(),
   nationalId: z
     .string()
     .refine((v) => v === '' || (v.length === 13 && isValidThaiNationalId(v)), 'เลขบัตรประชาชนไม่ถูกต้อง (13 หลัก) — เว้นว่างได้'),

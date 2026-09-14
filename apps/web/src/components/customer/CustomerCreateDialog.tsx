@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type Resolver } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -118,7 +118,11 @@ type FormProps = Omit<CustomerCreateDialogProps, 'open' | 'onOpenChange'> & { on
 function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, context, submitLabel = 'บันทึก', onCreated, onFilled, onUseExisting, onClose }: FormProps) {
   const isFill = mode === 'fill';
   const form = useForm<CustomerFormData>({
-    resolver: standardSchemaResolver(isFill ? prospectFillSchema : customerSchema),
+    /* R43: `prospectFillSchema.lastName` เป็น optional (ชื่อในแชทคำเดียว) ⇒ ชนิด input/output ของ
+       สองสคีมาไม่เท่ากันเป๊ะอีกต่อไป และ `useForm<CustomerFormData>` ขอ resolver ชนิดเดียว.
+       ปักชนิดไว้ที่ `CustomerFormData` ได้อย่างปลอดภัย เพราะ `defaultValues` กาง `emptyForm`
+       (lastName: '') เสมอ ⇒ ค่าที่ resolver คืนมีคีย์นี้เป็น string เสมอ ไม่เคยเป็น undefined จริง */
+    resolver: standardSchemaResolver(isFill ? prospectFillSchema : customerSchema) as Resolver<CustomerFormData>,
     defaultValues: { ...emptyForm, ...initialValues },
   });
   // Extra fields not in customerSchema (managed as separate state)
@@ -139,7 +143,9 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
 
   const createMutation = useMutation({
     mutationFn: async (data: CustomerFormData) => {
-      const name = `${data.firstName} ${data.lastName}`.trim();
+      // R43: โหมด fill นามสกุลว่างได้ (ชื่อในแชทคำเดียว) — ต้องไม่เหลือช่องว่างคั่นกลาง
+      // โหมดสร้างนามสกุลบังคับอยู่แล้ว ผลลัพธ์จึงเท่าเดิมทุกไบต์
+      const name = [data.firstName, data.lastName].filter(Boolean).join(' ').trim();
       if (isFill) {
         if (!fillCustomerId) throw new Error('fillCustomerId is required in fill mode');
         const fillPayload: Record<string, unknown> = { phone: data.phone, name };

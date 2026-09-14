@@ -139,8 +139,11 @@ export class UpdateCustomerDto {
   birthDate?: string;
 
   // ไม่ส่ง = คงเบอร์เดิม · ส่ง null/ว่าง = ปฏิเสธ (ห้ามล้างเบอร์ของคนที่มีเบอร์แล้ว — สเปค 3.6)
+  // ไม่ใช้ @IsString() เพราะ @Matches() type-check อยู่แล้ว (typeof value === 'string' && ...)
+  // — ถ้าใส่ @IsString() ด้วย ค่าที่ไม่ใช่ string (เช่น null) จะโดนสองข้อความพร้อมกัน
+  // (isString ภาษาอังกฤษ default + matches ภาษาไทย) หลุดไปถึง client เพราะ ValidationPipe
+  // ไม่ได้ตั้ง stopAtFirstError (review finding I1)
   @ValidateIf((o) => o.phone !== undefined)
-  @IsString()
   @Matches(/^0[0-9]{9}$/, { message: 'เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0' })
   phone?: string;
 

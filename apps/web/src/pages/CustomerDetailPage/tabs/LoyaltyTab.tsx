@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
@@ -20,6 +20,7 @@ export default function LoyaltyTab({ customerId, canEdit, loyaltyPoints, loyalty
   const [redeemForm, setRedeemForm] = useState({ amount: '', description: '' });
 
   const redeemMutation = useMutation({
+    mutationKey: ['customer-loyalty-redeem', customerId],
     mutationFn: async () => {
       const { data } = await api.post(`/loyalty/${customerId}/redeem`, {
         amount: parseInt(redeemForm.amount),
@@ -35,6 +36,10 @@ export default function LoyaltyTab({ customerId, canEdit, loyaltyPoints, loyalty
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
+  // ใช้ cache กลาง useIsMutating แทน redeemMutation.isPending ตรง ๆ — TabsContent ของ Radix
+  // unmount แผงที่ไม่ active สลับแท็บแล้วกลับมาจะได้ instance ใหม่ที่ isPending=false ทั้งที่
+  // request เดิมยังค้างอยู่ (R5)
+  const isRedeeming = useIsMutating({ mutationKey: ['customer-loyalty-redeem', customerId] }) > 0;
 
   return (
     <>
@@ -106,7 +111,7 @@ export default function LoyaltyTab({ customerId, canEdit, loyaltyPoints, loyalty
               <button
                 onClick={() => redeemMutation.mutate()}
                 disabled={
-                  redeemMutation.isPending ||
+                  isRedeeming ||
                   !redeemForm.amount ||
                   !redeemForm.description ||
                   parseInt(redeemForm.amount) <= 0 ||
@@ -114,7 +119,7 @@ export default function LoyaltyTab({ customerId, canEdit, loyaltyPoints, loyalty
                 }
                 className="h-10 px-4 bg-primary text-primary-foreground text-sm rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {redeemMutation.isPending ? 'กำลังแลก...' : 'แลกแต้ม'}
+                {isRedeeming ? 'กำลังแลก...' : 'แลกแต้ม'}
               </button>
             </div>
           </CardContent>

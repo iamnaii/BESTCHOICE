@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useIsMutating, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { CreditApprovalPayload } from '@/components/credit-check/CreditAffordabilityForm';
 import CreditCheckCard from '@/components/credit-check/CreditCheckCard';
 import CreditCheckOverrideDialog, { compileReason } from '@/components/credit-check/CreditCheckOverrideDialog';
@@ -30,6 +30,7 @@ export default function CreditTab({ customer, creditChecks, canStartCredit, canR
   const [overrideNotes, setOverrideNotes] = useState('');
 
   const analyzeCreditMutation = useMutation({
+    mutationKey: ['customer-credit-analyze', customer.id],
     mutationFn: async (creditCheckId: string) => {
       const { data } = await api.post(`/customers/${id}/credit-check/${creditCheckId}/analyze`);
       return data;
@@ -40,6 +41,10 @@ export default function CreditTab({ customer, creditChecks, canStartCredit, canR
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
+  // ใช้ cache กลาง useIsMutating แทน analyzeCreditMutation.isPending ตรง ๆ — TabsContent ของ
+  // Radix unmount แผงที่ไม่ active (ไม่มี forceMount) สลับแท็บแล้วกลับมาจะได้ mutation instance
+  // ใหม่ที่ isPending=false ทั้งที่ request เดิมยังค้างอยู่ ปุ่มจะกลับมากดซ้ำได้ (ยิง POST ซ้ำ)
+  const isAnalyzing = useIsMutating({ mutationKey: ['customer-credit-analyze', customer.id] }) > 0;
 
   const overrideCreditMutation = useMutation({
     mutationFn: async (affordability?: CreditApprovalPayload | null) => {
@@ -92,7 +97,7 @@ export default function CreditTab({ customer, creditChecks, canStartCredit, canR
                 cc={cc}
                 canOverride={canReviewCredit}
                 canAnalyze={canStartCredit}
-                isAnalyzing={analyzeCreditMutation.isPending}
+                isAnalyzing={isAnalyzing}
                 onAnalyze={(ccId) => analyzeCreditMutation.mutate(ccId)}
                 onOverride={(ccId) => {
                   setOverrideId(ccId);

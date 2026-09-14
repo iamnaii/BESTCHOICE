@@ -86,4 +86,40 @@ describe('CustomerDetailPage', () => {
     await screen.findByRole('heading', { level: 1, name: 'สมชาย ใจดี' });
     expect(screen.queryByRole('button', { name: 'แก้ไขข้อมูล' })).toBeNull();
   });
+
+  // R5: CreditTab/LoyaltyTab อยู่ใน Radix TabsContent ที่ unmount แผงไม่ active — ถ้า mutation
+  // (analyzeCreditMutation) อยู่ในคอมโพเนนต์นั้น สลับแท็บออกแล้วกลับมาจะได้ instance ใหม่ที่
+  // isPending=false ทั้งที่ POST เดิมยังค้างอยู่ ⇒ ปุ่มกลับมากดซ้ำได้ ยิง POST ซ้ำ แก้ด้วย
+  // useIsMutating(mutationKey เดียวกัน) ซึ่งอ่านจาก mutation cache กลางที่ไม่ได้ unmount ไปด้วย
+  it('ปุ่ม AI วิเคราะห์ยังปิดอยู่ ถ้าสลับแท็บออกแล้วกลับมาระหว่าง request ค้าง (R5)', async () => {
+    const pendingCreditCheck = {
+      id: 'cc1', status: 'PENDING', bankName: null, statementFiles: [], statementMonths: 3,
+      aiScore: null, aiSummary: null, aiRecommendation: null, aiAnalysis: null, reviewNotes: null,
+      checkedBy: null, contract: null, createdAt: '2026-09-01T00:00:00.000Z',
+    };
+    mocks.get.mockImplementation(async (url: string) => {
+      if (url === '/customers/c1') return { data: mocks.detail };
+      if (url === '/customers/c1/credit-check') return { data: [pendingCreditCheck] };
+      if (url in RESPONSES) return { data: RESPONSES[url] };
+      throw new Error(`unexpected GET ${url}`);
+    });
+    mocks.post.mockReset();
+    mocks.post.mockImplementation(async (url: string) => {
+      if (url === '/customers/c1/credit-check/cc1/analyze') {
+        return new Promise(() => {}); // ค้างตลอดอายุเทสต์ — จำลอง request ที่ยังไม่ตอบกลับ
+      }
+      throw new Error(`unexpected POST ${url}`);
+    });
+
+    renderPage();
+    fireEvent.mouseDown(await screen.findByRole('tab', { name: /เครดิต/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'AI วิเคราะห์' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'กำลังวิเคราะห์...' })).toBeDisabled());
+
+    // สลับไปแท็บอื่นแล้วกลับมา — CreditTab unmount/remount ระหว่างที่ analyze ยังค้างอยู่
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /สัญญา/ }));
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /เครดิต/ }));
+
+    expect(await screen.findByRole('button', { name: 'กำลังวิเคราะห์...' })).toBeDisabled();
+  });
 });

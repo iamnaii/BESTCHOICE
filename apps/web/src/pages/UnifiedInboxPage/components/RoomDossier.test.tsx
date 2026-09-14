@@ -6,9 +6,11 @@ import type { ReactNode } from 'react';
 
 const apiGet = vi.fn();
 const apiPatch = vi.fn();
+const apiPost = vi.fn();
 vi.mock('@/lib/api', () => ({
   __esModule: true,
-  default: { get: (...args: unknown[]) => apiGet(...args), post: vi.fn(), patch: (...args: unknown[]) => apiPatch(...args) },
+  default: { get: (...args: unknown[]) => apiGet(...args), post: (...args: unknown[]) => apiPost(...args), patch: (...args: unknown[]) => apiPatch(...args) },
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : 'error'),
 }));
 // สิทธิ์สร้างลูกค้าอ่านจาก useAuth — ค่าเริ่มต้นเป็นฝ่ายขาย (สร้างได้) เทสสิทธิ์สลับเป็นบัญชี
 const authRole = { role: 'SALES' };
@@ -19,12 +21,13 @@ vi.mock('@/components/customer/CustomerCreateDialog', async () => {
   return {
     __esModule: true,
     splitDisplayName: actual.splitDisplayName,
-    default: (p: { open: boolean; submitLabel?: string; initialValues?: Record<string, string>; onCreated: (c: { id: string; name: string }) => void; onUseExisting?: (c: { id: string; name: string }) => void }) =>
+    default: (p: { open: boolean; mode?: string; fillCustomerId?: string; submitLabel?: string; initialValues?: Record<string, string>; onCreated: (c: { id: string; name: string }) => void; onFilled?: (c: { id: string; name: string }) => void; onUseExisting?: (c: { id: string; name: string }) => void }) =>
       p.open ? (
-        <div data-testid="create-dialog">
+        <div data-testid="create-dialog" data-mode={p.mode ?? 'create'} data-fill-id={p.fillCustomerId ?? ''}>
           <span>{JSON.stringify(p.initialValues)}</span>
           <span>{p.submitLabel}</span>
           <button onClick={() => p.onCreated({ id: 'c-new', name: 'ลูกค้าใหม่' })}>จำลองสร้างเสร็จ</button>
+          <button onClick={() => p.onFilled?.({ id: 'p1', name: 'สมชาย ใจดี' })}>จำลองเติมเสร็จ</button>
           <button onClick={() => p.onUseExisting?.({ id: 'c-old', name: 'คนเดิม' })}>จำลองใช้คนเดิม</button>
         </div>
       ) : null,
@@ -73,6 +76,8 @@ describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)',
     apiGet.mockResolvedValue({ data: [] });
     apiPatch.mockReset();
     apiPatch.mockResolvedValue({ data: {} });
+    apiPost.mockReset();
+    apiPost.mockResolvedValue({ data: {} });
     authRole.role = 'SALES';
   });
 
@@ -201,5 +206,76 @@ describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)',
       </QueryClientProvider>,
     );
     expect(screen.getByRole('tab', { name: /ข้อมูลลูกค้า/ })).toHaveAttribute('aria-selected', 'true');
+  });
+});
+
+const PROSPECT_ROOM = {
+  ...ROOM,
+  displayName: 'สมชาย ใจดี',
+  customer: { id: 'p1', name: 'สมชาย ใจดี', phone: null, chatPlaceholder: true },
+  possibleSamePerson: [
+    { customerId: 'c-line', name: 'สมชาย ใจดี', channel: 'LINE_SHOP', hasPhone: true, chatPlaceholder: false, createdAt: '2026-09-03T02:00:00Z', mergeDirection: 'absorb_current_into_other' as const },
+  ],
+};
+
+describe('RoomDossier — การ์ดผู้สนใจจากแชท (mockup 1388f98e บอร์ด 1-5)', () => {
+  it('ห้องที่ถือผู้สนใจอัตโนมัติ: ป้าย 2 ชิป · ปุ่มเพิ่มเบอร์ (primary) + ผูกกับลูกค้าเดิม · ไม่มีกล่องเหลือง · ไม่ยิง cross-channel/summary · หัวบอก "ผู้สนใจจากแชท · ยังไม่มีเบอร์"', () => {
+    wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    expect(screen.getByText('ผู้สนใจจากแชท')).toBeInTheDocument();
+    expect(screen.getByText('ยังไม่มีเบอร์')).toBeInTheDocument();
+    expect(screen.getByText(/ผู้สนใจจากแชท · ยังไม่มีเบอร์ · เริ่มคุย/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /ผูกกับลูกค้าเดิม/ })).toBeEnabled();
+    expect(screen.queryByText('⚠ ห้องนี้ยังไม่ได้ผูกกับลูกค้า')).toBeNull();
+    expect(screen.queryByRole('button', { name: /สร้างลูกค้าใหม่/ })).toBeNull();
+    expect(screen.getByText(/เติมเบอร์แล้วจะเช็คเครดิต ทำสัญญา และเห็นแชทช่องทางอื่นของคนนี้ได้/)).toBeInTheDocument();
+    expect(screen.getByText(/ยังไม่รู้ว่ามีช่องทางอื่นไหม — จะเห็นเมื่อเติมเบอร์ หรือผูกกับลูกค้าเดิม/)).toBeInTheDocument();
+    expect(apiGet).not.toHaveBeenCalledWith(expect.stringContaining('/cross-channel'));
+    expect(apiGet).not.toHaveBeenCalledWith(expect.stringContaining('/chat-summary'));
+    expect(screen.getByRole('button', { name: 'เปิดโปรไฟล์ลูกค้าเต็มหน้า' })).toBeEnabled();
+  });
+
+  it('เพิ่มเบอร์/ข้อมูล → เปิดฟอร์มโหมด fill ของผู้สนใจคนนี้ (ชื่อเติมให้) · เติมเสร็จโหลดห้องใหม่ · เบอร์ซ้ำ→ใช้คนเดิม = POST absorb-into', async () => {
+    wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ }));
+    const dlg = screen.getByTestId('create-dialog');
+    expect(dlg).toHaveAttribute('data-mode', 'fill');
+    expect(dlg).toHaveAttribute('data-fill-id', 'p1');
+    expect(JSON.parse(dlg.querySelector('span')!.textContent!)).toEqual({ firstName: 'สมชาย', lastName: 'ใจดี', facebookName: 'สมชาย ใจดี' });
+    fireEvent.click(screen.getByRole('button', { name: 'จำลองเติมเสร็จ' }));
+    expect(apiPatch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'จำลองใช้คนเดิม' }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/customers/p1/absorb-into/c-old'));
+  });
+
+  it('คำใบ้อาจเป็นคนเดียวกัน: ข้อความตาม mockup · "รวมเป็นคนเดียวกัน" ยิง absorb ตามทิศทาง · "ไม่ใช่" ยิง dismiss', async () => {
+    wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('LINE ร้าน · มีเบอร์ · ทักเมื่อ');
+    fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/customers/p1/absorb-into/c-line'));
+    fireEvent.click(screen.getByRole('button', { name: 'ไม่ใช่' }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/staff-chat/rooms/r-1/same-person/dismiss', { customerId: 'c-line' }));
+  });
+
+  it('ทิศทาง absorb_other_into_current = ดูดอีกคนเข้าห้องนี้ · mergeDirection none = ไม่มีปุ่มรวม', async () => {
+    const other = { ...PROSPECT_ROOM, possibleSamePerson: [
+      { customerId: 'p-other', name: 'สมชาย ใจดี', channel: 'TIKTOK', hasPhone: false, chatPlaceholder: true, createdAt: '2026-09-10T02:00:00Z', mergeDirection: 'absorb_other_into_current' as const },
+      { customerId: 'c-real2', name: 'สมชาย ใจดี', channel: 'WEB', hasPhone: true, chatPlaceholder: false, createdAt: '2026-09-01T02:00:00Z', mergeDirection: 'none' as const },
+    ] };
+    wrap(<RoomDossier room={other} customerId="p1" activeRoomId="r-1" />);
+    const buttons = screen.getAllByRole('button', { name: 'รวมเป็นคนเดียวกัน' });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/customers/p-other/absorb-into/p1'));
+    expect(screen.getByText('ตรวจสอบเอง')).toBeInTheDocument();
+  });
+
+  it('บทบาทที่ fill-contact ไม่รับ (ACCOUNTANT) → ปุ่มเพิ่มเบอร์ปิดพร้อมเหตุผล', () => {
+    authRole.role = 'ACCOUNTANT';
+    wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    const btn = screen.getByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute('title', expect.stringContaining('เจ้าของ'));
   });
 });

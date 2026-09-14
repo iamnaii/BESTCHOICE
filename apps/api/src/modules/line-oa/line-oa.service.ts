@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PDPAService } from '../pdpa/pdpa.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
 import type { LineChannelKey } from '../notifications/dto/create-notification.dto';
 import { LineMessagePayload } from './dto/webhook-event.dto';
 import { FlexMessagePayload } from './flex-messages/base-template';
@@ -32,9 +33,13 @@ export class LineOaService {
     private prisma: PrismaService,
     private pdpaService: PDPAService,
     private integrationConfig: IntegrationConfigService,
+    // ผู้สนใจอัตโนมัติจากแชท (Task 10) — LineCustomerLinkService ถูก `new` ขึ้นเองข้างล่าง
+    // ไม่ผ่าน Nest DI จึงต้องรับผ่าน constructor ของ facade นี้ (ตัวเดียวที่ Nest inject ให้จริง)
+    // แล้วส่งต่อ ไม่งั้น absorbRoomsOfLineUser จะไม่ถูกเรียกเลยในโปรดักชัน
+    @Optional() private merge?: CustomerMergeService,
   ) {
     this.apiClient = new LineApiClientService(this.configService, this.integrationConfig);
-    this.customerLink = new LineCustomerLinkService(this.prisma, this.apiClient);
+    this.customerLink = new LineCustomerLinkService(this.prisma, this.apiClient, this.merge);
     this.flexBuilder = new LineFlexBuilderService(
       this.prisma,
       this.pdpaService,

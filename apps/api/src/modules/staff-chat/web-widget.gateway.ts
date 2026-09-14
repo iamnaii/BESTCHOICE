@@ -55,6 +55,8 @@ export class WebWidgetGateway implements OnGatewayConnection, OnGatewayDisconnec
       // 3. Store roomId and visitorId on client for later use
       (client as any).roomId = room.id;
       (client as any).visitorId = visitorId;
+      // เจ้าของห้อง ณ ตอนต่อ — ว่าง = ข้อความแรกของผู้ชมจะขอผู้สนใจ (handleMessage) · connect เฉย ๆ ไม่สร้าง (Ruling R3)
+      (client as any).customerId = room.customerId ?? null;
 
       // 4. Join widget room
       client.join(WIDGET_ROOMS.room(room.id));
@@ -121,6 +123,13 @@ export class WebWidgetGateway implements OnGatewayConnection, OnGatewayDisconnec
       text,
       createdAt: msg.createdAt.toISOString(),
     });
+
+    // 2.5 ผู้สนใจอัตโนมัติ (สเปค 3.2) — ผู้ชมทักจริงแล้ว · ข้อความเว็บไม่ผ่าน routeInbound จึงขอเองที่นี่
+    // best-effort (ensureProspect ไม่โยน) · ได้แล้วจำไว้บน socket ไม่ถามซ้ำ · ไม่สำเร็จ = ลองใหม่ข้อความถัดไป
+    if (!(client as any).customerId) {
+      const customerId = await this.roomManager.ensureProspect(roomId);
+      if (customerId) (client as any).customerId = customerId;
+    }
 
     // 3. Notify staff inbox via the staff chat room
     // StaffChatGateway listens on CHAT_ROOMS — emit to room + inbox

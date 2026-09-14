@@ -26,10 +26,12 @@ export class SessionOpsController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   async mergeRooms(
     @Body() body: { primaryRoomId: string; secondaryRoomId: string },
+    @Req() req: { user: { id: string; role: string } },
   ) {
     await this.sessionOps.mergeRooms(
       body.primaryRoomId,
       body.secondaryRoomId,
+      { id: req.user.id, role: req.user.role },
     );
     return { success: true };
   }

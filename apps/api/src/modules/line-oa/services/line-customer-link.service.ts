@@ -1,8 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { CHATBOT_RESPONSES } from '../chatbot-system-prompt.constants';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LineMessagePayload } from '../dto/webhook-event.dto';
 import { LineApiClientService } from './line-api-client.service';
+import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
 
 @Injectable()
 export class LineCustomerLinkService {
@@ -11,6 +13,7 @@ export class LineCustomerLinkService {
   constructor(
     private prisma: PrismaService,
     private apiClient: LineApiClientService,
+    @Optional() private merge?: CustomerMergeService,
   ) {}
 
   // ─── Customer Management ──────────────────────────────
@@ -74,6 +77,20 @@ export class LineCustomerLinkService {
     });
 
     this.logger.log(`[LINE] Self-linked ${lineUserId} to customer ${customer.name} via phone ${phone}`);
+    // ห้อง LINE ร้านของคนนี้ที่ถือผู้สนใจอัตโนมัติอยู่ → ดูดเข้าลูกค้าที่เพิ่งผูก (สเปค 3.3 ง)
+    // best-effort: ผูก LINE ด้วยเบอร์สำเร็จแล้ว (update ข้างบน commit ไปแล้ว) ต้องไม่ถือว่าล้ม
+    // เพราะดูด placeholder ไม่ได้ (เช่น placeholder มีเอกสารพ่วง — absorbPlaceholder โยน 409)
+    try {
+      await this.merge?.absorbRoomsOfLineUser(lineUserId, 'LINE_SHOP', customer.id, SYSTEM_ACTOR);
+    } catch (err) {
+      this.logger.warn(
+        `[prospect] absorb rooms of ${lineUserId} → ${customer.id}: ${err instanceof Error ? err.message : err}`,
+      );
+      Sentry.captureException(err, {
+        tags: { kind: 'chat-prospect' },
+        extra: { lineUserId, customerId: customer.id },
+      });
+    }
     return { success: true, customerName: customer.name };
   }
 

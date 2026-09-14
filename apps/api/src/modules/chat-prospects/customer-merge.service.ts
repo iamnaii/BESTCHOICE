@@ -1,0 +1,265 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
+import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
+import { PLACEHOLDER_FIELDS_SELECT, isChatPlaceholder, isLivePlaceholder } from './chat-placeholder';
+
+export interface MergeActor { id: string; role: string }
+export interface AbsorbResult { placeholderId: string; targetId: string; movedRooms: number; movedCreditChecks: number }
+
+/** ทางที่ลูกค้าทำเอง (พิมพ์เบอร์ใน LINE / LIFF / OTP) ไม่มีพนักงาน — audit ระบุระบบ */
+export const SYSTEM_ACTOR: MergeActor = { id: 'system', role: 'SYSTEM' };
+
+/** relation ที่ placeholder ห้ามมี (สเปค 3.3) — ชื่อ relation ใน Prisma → ป้ายไทยในข้อความ 409 */
+const BLOCKING_RELATIONS = {
+  contracts: 'สัญญา', sales: 'ใบขาย', bookings: 'ใบจอง', reservations: 'การจองสินค้า', tradeIns: 'รายการรับซื้อ',
+  onlineOrders: 'คำสั่งซื้อออนไลน์', savingPlans: 'แผนออม', onlineApplications: 'ใบสมัครผ่อนออนไลน์',
+  loyaltyPoints: 'แต้มสะสม', loyaltyRedemptions: 'การแลกแต้ม', promotionUsages: 'การใช้โปรโมชัน', repairTickets: 'ใบซ่อม',
+  otherIncomes: 'รายได้อื่น', partialPaymentLinks: 'ลิงก์ชำระบางส่วน', kycVerifications: 'การยืนยันตัวตน',
+  pdpaConsents: 'ความยินยอม PDPA', dsarRequests: 'คำขอ PDPA', lineLinks: 'การผูก LINE', referrals: 'คนที่แนะนำมา',
+  reviews: 'รีวิว', creditApprovals: 'ผลอนุมัติเครดิต', websiteVisits: 'การเข้าเว็บ', websiteSessions: 'เซสชันเว็บ',
+} as const;
+type BlockingKey = keyof typeof BLOCKING_RELATIONS;
+const COUNT_SELECT = Object.fromEntries(Object.keys(BLOCKING_RELATIONS).map((k) => [k, true])) as Record<BlockingKey, true>;
+
+/** ช่องที่ใช้ตัดสิน/ยกที่มาตอนรวม (Ruling R24) + สถานะเครดิตเดิม — อ่านทั้งสองฝั่งด้วย select ชุดเดียว */
+const SOURCE_COPY_SELECT = {
+  creditCheckStatus: true,
+  createdAt: true,
+  facebookUserId: true,
+  facebookName: true,
+} as const;
+
+/**
+ * รวม "ผู้สนใจอัตโนมัติจากแชท" เข้าลูกค้าตัวจริง — ทางเดียว ไม่ใช่ merge ลูกค้าทั่วไป
+ * (docs/superpowers/specs/2026-09-13-chat-prospects-design.md §3.3)
+ * ย้ายเฉพาะ: ห้องแชท · CreditCheck ที่ import จากห้อง (updateMany ตรง — linkRoomCreditHistory ย้ายเฉพาะ
+ * ผลที่ยังไม่ import) · แท็ก · crmLeads · adsAttributions · chatAutoTriggers · แล้ว soft-delete placeholder
+ */
+@Injectable()
+export class CustomerMergeService {
+  private readonly logger = new Logger(CustomerMergeService.name);
+  private systemUserId: string | null = null;
+
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+
+  /**
+   * Ruling R12 — AuditLog.userId มี FK จริงไป User.id (audit_logs_user_id_fkey) และ
+   * SYSTEM_ACTOR.id = 'system' ไม่ใช่แถวที่มีอยู่จริง เขียนแล้วชน FK เงียบ ๆ เพราะ
+   * AuditService.log กลืน error ทุกกรณี (audit.service.ts) ⇒ ไม่มีแถว audit เลยโดยไม่มีใครรู้
+   * เมื่อ actor เป็น SYSTEM. แก้ด้วยการ resolve เป็น userId จริงก่อนเขียน audit เสมอ โดยใช้ idiom
+   * ที่มีอยู่แล้วในโค้ด — แถว User ที่ `isSystemUser: true` (seed โดย
+   * `apps/api/prisma/seeds/collections-foundation.seed.ts`, รันทั้ง dev seed.ts + prod
+   * seed-production.ts) แบบเดียวกับ `PaymentPostCommitHooks.getSystemUserId()`
+   * (payment-post-commit-hooks.ts:215) — ไม่ใช่ email `admin@bestchoice.com` แบบ
+   * journal-auto.service.ts/bookings.service.ts ซึ่งชี้พนักงานจริงคนหนึ่ง คนละความหมายกับ "ระบบ".
+   * Cache ต่อ process (ตาม pattern resolveFinanceCompanyId/resolveSystemUserId ของ
+   * journal-auto.service.ts) — resolve ไม่เจอ = คืน null แล้วให้ caller ข้าม audit ไปเลย
+   * (ห้ามปล่อยให้ FK พังเงียบใน AuditService.log ต่อ).
+   */
+  private async resolveSystemActorUserId(): Promise<string | null> {
+    if (this.systemUserId) return this.systemUserId;
+    try {
+      const user = await this.prisma.user.findFirst({ where: { isSystemUser: true }, select: { id: true } });
+      if (!user) {
+        this.logger.error('[prospect] system user (isSystemUser=true) not found — skipping merge audit');
+        Sentry.captureException(new Error('System user not found for chat-prospect merge audit'), {
+          tags: { kind: 'chat-prospect' },
+        });
+        return null;
+      }
+      this.systemUserId = user.id;
+      return user.id;
+    } catch (err) {
+      this.logger.error(`[prospect] failed to resolve system user id: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { kind: 'chat-prospect' } });
+      return null;
+    }
+  }
+
+  /**
+   * Ruling R26 (I6) — ปุ่ม "รวมเข้าลูกค้าเดิม" ของ SALES ต้องไม่หลวมกว่าทางผูกห้อง: การรวม **ย้ายห้อง
+   * ทุกห้อง** ของผู้สนใจคนนั้น ⇒ SALES ที่ไม่ได้ดูแลห้องต้องรวมไม่ได้ (กติกาเดียวกับ
+   * RoomManagerService.linkCustomer และ dismiss คำใบ้ — R19; ข้อความเดียวกันทุกตัวอักษร)
+   * เรียกจากเส้นทาง endpoint `/customers/:id/absorb-into/:targetId` เท่านั้น — ผู้เรียกอื่น
+   * (OTP / LIFF / ผูกห้อง / รวมห้องแชท) มีด่านของตัวเองอยู่แล้ว พฤติกรรมไม่เปลี่ยน
+   */
+  async assertActorMayAbsorb(placeholderId: string, actor: MergeActor): Promise<void> {
+    if (actor.role !== 'SALES') return;
+    const held = await this.prisma.chatRoom.findFirst({
+      where: {
+        customerId: placeholderId,
+        deletedAt: null,
+        // แยกเป็นสองเงื่อนไขใน AND: `{ not: actor.id }` เดี่ยว ๆ ตัดแถว assignedToId = NULL ทิ้งด้วย (SQL 3VL)
+        AND: [{ assignedToId: { not: null } }, { assignedToId: { not: actor.id } }],
+      },
+      select: { id: true },
+    });
+    if (held) throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+  }
+
+  async absorbPlaceholder(
+    placeholderId: string,
+    targetId: string,
+    actor: MergeActor,
+    opts: { allowPlaceholderTarget?: boolean } = {},
+  ): Promise<AbsorbResult> {
+    if (placeholderId === targetId) throw new BadRequestException('รวมกับตัวเองไม่ได้');
+    const { result, roomIds, sourceCopied } = await this.prisma.$transaction(async (tx) => {
+      // ล็อกทั้งสองฝั่งเรียงตาม id กัน deadlock กับ absorb สวนทาง
+      for (const id of [placeholderId, targetId].sort()) await lockCreditCustomer(tx, id);
+      const [placeholder, target] = await Promise.all([
+        tx.customer.findUnique({
+          where: { id: placeholderId },
+          select: { id: true, ...PLACEHOLDER_FIELDS_SELECT, ...SOURCE_COPY_SELECT, _count: { select: COUNT_SELECT } },
+        }),
+        tx.customer.findUnique({
+          where: { id: targetId },
+          select: { id: true, ...PLACEHOLDER_FIELDS_SELECT, ...SOURCE_COPY_SELECT },
+        }),
+      ]);
+      // แยก 404 (ไม่พบ/ถูกลบ) ออกจาก 409 (ไม่ใช่ placeholder) จึงไม่ใช้ isLivePlaceholder ตรงนี้
+      if (!placeholder || placeholder.deletedAt) throw new NotFoundException('ไม่พบผู้สนใจที่จะรวม');
+      if (!target || target.deletedAt) throw new NotFoundException('ไม่พบลูกค้าปลายทาง');
+      if (!isChatPlaceholder(placeholder)) {
+        throw new ConflictException('รวมได้เฉพาะผู้สนใจอัตโนมัติจากแชทที่ยังไม่มีเบอร์และเลขบัตร');
+      }
+      if (isChatPlaceholder(target) && !opts.allowPlaceholderTarget) {
+        throw new ConflictException('ปลายทางต้องเป็นลูกค้าหรือผู้สนใจที่มีเบอร์แล้ว — ผู้สนใจอัตโนมัติสองคนให้ใช้ "รวมห้องแชท"');
+      }
+      const blocking = (Object.keys(BLOCKING_RELATIONS) as BlockingKey[]).filter((k) => placeholder._count[k] > 0);
+      if (blocking.length > 0) {
+        const detail = blocking.map((k) => `${BLOCKING_RELATIONS[k]} ${placeholder._count[k]} รายการ`).join(', ');
+        throw new ConflictException(`รวมไม่ได้: ผู้สนใจคนนี้มี${detail} — ให้แก้ที่รายการนั้นก่อน`);
+      }
+
+      const rooms = await tx.chatRoom.findMany({ where: { customerId: placeholderId }, select: { id: true } });
+      const movedRooms = (await tx.chatRoom.updateMany({ where: { customerId: placeholderId }, data: { customerId: targetId } })).count;
+      const movedCreditChecks = (await tx.creditCheck.updateMany({ where: { customerId: placeholderId }, data: { customerId: targetId } })).count;
+
+      // แท็ก: unique [customerId, tag, deletedAt] — ที่ปลายทางมีแล้ว soft-delete แทนย้าย
+      const targetTags = new Set(
+        (await tx.customerTag.findMany({ where: { customerId: targetId, deletedAt: null }, select: { tag: true } })).map((t) => t.tag),
+      );
+      const tags = await tx.customerTag.findMany({ where: { customerId: placeholderId, deletedAt: null }, select: { id: true, tag: true } });
+      for (const tag of tags) {
+        await tx.customerTag.update({
+          where: { id: tag.id },
+          data: targetTags.has(tag.tag) ? { deletedAt: new Date() } : { customerId: targetId },
+        });
+      }
+
+      await tx.crmLead.updateMany({ where: { customerId: placeholderId }, data: { customerId: targetId } });
+      await tx.adsAttribution.updateMany({ where: { customerId: placeholderId }, data: { customerId: targetId } });
+
+      // trigger: unique [customerId, referenceKey] (รวมแถวที่ soft-delete แล้ว) — ตรวจชนก่อน
+      // ห้ามใช้ try/catch จับ unique violation ใน tx (Postgres ยกเลิกทั้งทรานแซกชันเมื่อ statement ล้ม)
+      const targetKeys = new Set(
+        (await tx.chatAutoTrigger.findMany({ where: { customerId: targetId }, select: { referenceKey: true } })).map((t) => t.referenceKey),
+      );
+      const triggers = await tx.chatAutoTrigger.findMany({ where: { customerId: placeholderId }, select: { id: true, referenceKey: true } });
+      for (const trigger of triggers) {
+        if (targetKeys.has(trigger.referenceKey)) await tx.chatAutoTrigger.delete({ where: { id: trigger.id } });
+        else await tx.chatAutoTrigger.update({ where: { id: trigger.id }, data: { customerId: targetId } });
+      }
+      await tx.customerScore.deleteMany({ where: { customerId: placeholderId } });
+
+      const targetPatch: Prisma.CustomerUpdateInput = {};
+      if (target.creditCheckStatus === 'NONE' && placeholder.creditCheckStatus !== 'NONE') {
+        targetPatch.creditCheckStatus = placeholder.creditCheckStatus;
+      }
+      // Ruling R24 (แก้สเปค §3.3) — ยกที่มา CHAT_* ไปให้ปลายทางเมื่อ "ทักมาก่อนแล้วค่อยซื้อ":
+      // ลูกค้าที่พนักงานสร้างจากกล่องข้อความไม่เคยมี acquisitionSource (CreateCustomerDto ไม่มีช่องนี้)
+      // ⇒ ถ้าไม่ยก KPI "มาจากแชท" จะไม่นับคนกลุ่มนี้เลย ทั้งที่เป็นเส้นทางหลักของอินบ็อกซ์
+      // เงื่อนไข: ปลายทางยังไม่มีที่มา **และ** ผู้สนใจเกิดก่อน/พร้อมกัน (ซื้อก่อนแล้วผูกห้องทีหลัง = ไม่ยก)
+      // ห้ามทับค่าที่ปลายทางมีอยู่แล้วทุกช่อง
+      const sourceCopied =
+        target.acquisitionSource == null &&
+        placeholder.acquisitionSource != null &&
+        placeholder.createdAt <= target.createdAt;
+      if (sourceCopied) {
+        targetPatch.acquisitionSource = placeholder.acquisitionSource;
+        if (target.facebookUserId == null && placeholder.facebookUserId != null) {
+          targetPatch.facebookUserId = placeholder.facebookUserId;
+        }
+        if (target.facebookName == null && placeholder.facebookName != null) {
+          targetPatch.facebookName = placeholder.facebookName;
+        }
+      }
+      if (Object.keys(targetPatch).length > 0) {
+        await tx.customer.update({ where: { id: targetId }, data: targetPatch });
+      }
+      await tx.customer.update({ where: { id: placeholderId }, data: { deletedAt: new Date() } });
+
+      return {
+        result: { placeholderId, targetId, movedRooms, movedCreditChecks },
+        roomIds: rooms.map((r) => r.id),
+        sourceCopied,
+      };
+    });
+
+    // audit หลัง commit เท่านั้น — AuditService.log เปิดทรานแซกชันของตัวเอง (คนละ connection)
+    // ถ้าเขียนใน tx ข้างบนแล้ว commit ล้ม จะเหลือ audit ของการรวมที่ไม่เกิดขึ้นจริง
+    // Ruling R12 — actor SYSTEM ต้อง resolve เป็น userId จริงก่อนเขียน (ดู resolveSystemActorUserId)
+    // resolve ไม่เจอ = ข้าม audit ทั้งใบ ไม่ปล่อยให้ FK พังเงียบใน AuditService.log
+    const auditUserId = actor.role === 'SYSTEM' ? await this.resolveSystemActorUserId() : actor.id;
+    if (auditUserId) {
+      await this.audit.log({
+        userId: auditUserId,
+        action: 'CUSTOMER_PLACEHOLDER_MERGED',
+        entity: 'customer',
+        entityId: targetId,
+        oldValue: { placeholderId },
+        newValue: { roomIds, movedCreditChecks: result.movedCreditChecks, sourceCopied },
+      });
+    } else {
+      this.logger.warn(
+        `[merge] skipped audit for placeholder ${placeholderId} → ${targetId} — could not resolve system actor user id`,
+      );
+    }
+    this.logger.log(
+      `[merge] placeholder ${placeholderId} → ${targetId} rooms=${result.movedRooms} creditChecks=${result.movedCreditChecks} by ${actor.id}`,
+    );
+    return result;
+  }
+
+  /**
+   * LINE ถูกผูกกับลูกค้า (OTP บอทการเงิน / พิมพ์เบอร์ใน LINE ร้าน / LIFF) → ห้อง LINE ของคนนั้น
+   * ที่ยังถือ placeholder ต้องถูกดูดเข้าลูกค้าจริง ห้องที่ไม่มีเจ้าของผูกตรง (สเปค 3.3 ง)
+   * ห้องที่ผูกกับลูกค้าจริงคนอื่นอยู่แล้ว (ไม่ใช่ placeholder) ถูกข้ามไปเฉยๆ — ไม่ทับประวัติ
+   */
+  async absorbRoomsOfLineUser(
+    lineUserId: string,
+    channel: 'LINE_SHOP' | 'LINE_FINANCE',
+    customerId: string,
+    actor: MergeActor,
+  ): Promise<{ absorbed: number; linked: number }> {
+    const rooms = await this.prisma.chatRoom.findMany({
+      where: { lineUserId, channel, deletedAt: null },
+      select: { id: true, customerId: true, customer: { select: PLACEHOLDER_FIELDS_SELECT } },
+    });
+    let absorbed = 0;
+    let linked = 0;
+    const absorbedIds = new Set<string>();
+    for (const room of rooms) {
+      if (!room.customerId) {
+        await this.prisma.chatRoom.update({ where: { id: room.id }, data: { customerId } });
+        linked++;
+      } else if (room.customerId !== customerId && !absorbedIds.has(room.customerId) && isLivePlaceholder(room.customer)) {
+        await this.absorbPlaceholder(room.customerId, customerId, actor);
+        absorbedIds.add(room.customerId);
+        absorbed++;
+      }
+    }
+    return { absorbed, linked };
+  }
+}

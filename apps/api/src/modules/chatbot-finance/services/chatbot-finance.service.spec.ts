@@ -223,6 +223,25 @@ describe('ChatbotFinanceService', () => {
     expect(sessions.linkRoomToCustomer).toHaveBeenCalledWith('sess-1', 'c1');
   });
 
+  it('session ถือ placeholder แต่ LINE ผูกลูกค้าจริงแล้ว → เรียก linkRoomToCustomer (เดิมเช็คแค่ !customerId)', async () => {
+    // session.customerId = 'p1' (ผู้สนใจอัตโนมัติที่เคยผูกห้องนี้ไว้) แต่ linkedStatus.customerId = 'c1'
+    // (คนละคนกัน — LINE ถูกผูกกับลูกค้าจริงแล้วผ่าน OTP/LIFF) เงื่อนไขเดิม `!session.customerId` จะไม่เรียก
+    // linkRoomToCustomer เลยเพราะ session.customerId ไม่ใช่ falsy — ต้องเทียบค่าแทน
+    sessions.getOrCreate.mockResolvedValue({ id: 'sess-1', customerId: 'p1' });
+
+    await service.handleEvent(makeTextEvent('ยอดเท่าไหร่'));
+
+    expect(sessions.linkRoomToCustomer).toHaveBeenCalledWith('sess-1', 'c1');
+  });
+
+  it('session ผูกลูกค้าจริงเดิมอยู่แล้ว (ตรงกับ LINE) → ไม่เรียก linkRoomToCustomer ซ้ำ', async () => {
+    sessions.getOrCreate.mockResolvedValue({ id: 'sess-1', customerId: 'c1' });
+
+    await service.handleEvent(makeTextEvent('ยอดเท่าไหร่'));
+
+    expect(sessions.linkRoomToCustomer).not.toHaveBeenCalled();
+  });
+
   describe('น้องเบสส่งรูปสินค้า (B3 Task 12)', () => {
     it('ส่ง text + image ใน reply เดียว และบันทึกทั้งสองข้อความ', async () => {
       ai.generateReply.mockResolvedValue({

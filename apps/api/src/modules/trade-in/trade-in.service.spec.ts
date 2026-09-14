@@ -172,6 +172,16 @@ describe('TradeInService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
+    it('ผู้สนใจจากแชทที่ยังไม่มีเบอร์ (customerId + phone null) → BadRequest ก่อนอัปโหลดรูป/สร้างรายการ', async () => {
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-chat', phone: null, deletedAt: null, nationalIdHash: null });
+
+      await expect(
+        service.create({ ...baseDto, customerId: 'cust-chat', idCardPhotoBase64: `data:image/jpeg;base64,${'A'.repeat(200)}` } as never),
+      ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนรับซื้อเครื่อง');
+      expect(storage.upload).not.toHaveBeenCalled();
+      expect(prisma.tradeIn.create).not.toHaveBeenCalled();
+    });
+
     it('throws BadRequestException for invalid Thai national ID', async () => {
       await expect(
         service.create({ ...baseDto, sellerIdCardNumber: '1234567890123' } as never),
@@ -284,8 +294,8 @@ describe('TradeInService', () => {
 
     // ── Task 3: unify trade-in seller with existing Customer/Contact ──
     it('keys trade-in seller by the customer nationalIdHash when customerId given', async () => {
-      // outer guard: customer exists + inside-tx lookup returns the hash
-      prisma.customer.findUnique.mockResolvedValue({ nationalIdHash: 'h1' });
+      // outer guard: customer exists (มีเบอร์ — ผ่านด่านเบอร์) + inside-tx lookup returns the hash
+      prisma.customer.findUnique.mockResolvedValue({ nationalIdHash: 'h1', phone: '0822222222' });
       prisma.tradeIn.findMany.mockResolvedValue([]);
       prisma.tradeIn.create.mockResolvedValue(makeTradeIn());
       contactResolver.findOrCreateByNaturalKey.mockResolvedValue({ id: 'cShared' });

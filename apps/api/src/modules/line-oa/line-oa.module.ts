@@ -30,6 +30,7 @@ import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module'
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
+import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
 
 @Module({
   imports: [
@@ -43,6 +44,10 @@ import { StaffChatModule } from '../staff-chat/staff-chat.module';
     // depends transitively on LineOaModule via ChatEngineModule, so we
     // wrap with forwardRef to break the cycle.
     forwardRef(() => StaffChatModule),
+    // ผู้สนใจอัตโนมัติจากแชท (Task 10) — LineOaService/LiffApiService inject
+    // CustomerMergeService เพื่อดูด placeholder ตอน LINE ถูกผูกกับลูกค้าจริง
+    // (ChatProspectsModule ไม่ import โมดูลอื่นเลย ไม่มีวงจร ไม่ต้อง forwardRef)
+    ChatProspectsModule,
   ],
   controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LiffWarrantyController, LineLinkInviteController, LineLoginController, BroadcastController],
   providers: [

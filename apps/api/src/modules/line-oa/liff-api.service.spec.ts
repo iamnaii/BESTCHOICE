@@ -1,12 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LiffApiService } from './liff-api.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
 import { Prisma } from '@prisma/client';
 
 describe('LiffApiService', () => {
   let service: LiffApiService;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let merge: any;
 
   beforeEach(async () => {
     prisma = {
@@ -28,11 +31,14 @@ describe('LiffApiService', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
+    // Task 10 — ดูดผู้สนใจอัตโนมัติหลังผูก LINE การเงินสำเร็จ (confirmLinkLine)
+    merge = { absorbRoomsOfLineUser: jest.fn().mockResolvedValue({ absorbed: 0, linked: 0 }) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LiffApiService,
         { provide: PrismaService, useValue: prisma },
+        { provide: CustomerMergeService, useValue: merge },
       ],
     }).compile();
 
@@ -238,6 +244,32 @@ describe('LiffApiService', () => {
 
       const result = await service.confirmLinkLine('cust1', 'U_line');
       expect(result.success).toBe(true);
+    });
+
+    it('confirmLinkLine สำเร็จ → absorbRoomsOfLineUser(lineId, LINE_FINANCE, customerId, SYSTEM)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: null });
+      prisma.customer.update.mockResolvedValue({});
+
+      await expect(service.confirmLinkLine('cust-1', 'Ufin')).resolves.toEqual({ success: true });
+      expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('Ufin', 'LINE_FINANCE', 'cust-1', { id: 'system', role: 'SYSTEM' });
+    });
+
+    it('confirmLinkLine ล้ม (LINE ผูกคนอื่นแล้ว) → ไม่เรียก absorb', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'other_customer' });
+
+      await service.confirmLinkLine('cust-1', 'Ufin');
+      expect(merge.absorbRoomsOfLineUser).not.toHaveBeenCalled();
+    });
+
+    it('absorbRoomsOfLineUser ล้ม (เช่น placeholder มีเอกสารพ่วง) → confirmLinkLine ยังคืน success (best-effort — ผูกไปแล้วจริง)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: null });
+      prisma.customer.update.mockResolvedValue({});
+      merge.absorbRoomsOfLineUser.mockRejectedValue(new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ'));
+
+      await expect(service.confirmLinkLine('cust-1', 'Ufin')).resolves.toEqual({ success: true });
+      expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('Ufin', 'LINE_FINANCE', 'cust-1', { id: 'system', role: 'SYSTEM' });
     });
   });
 

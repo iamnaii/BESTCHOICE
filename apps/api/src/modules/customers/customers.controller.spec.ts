@@ -1,10 +1,12 @@
 import { Test } from '@nestjs/testing';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
 import { CustomerTierService } from './customer-tier.service';
 import { SkipTracingService } from './skip-tracing.service';
 import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import { PiiAuditService } from '../pii/pii-audit.service';
+import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -14,6 +16,7 @@ describe('CustomersController PII (Phase 5)', () => {
   let service: { findOne: jest.Mock; findAll: jest.Mock; search: jest.Mock };
   let piiAudit: { logDecryption: jest.Mock };
   let tierService: CustomerTierService;
+  let merge: { absorbPlaceholder: jest.Mock; assertActorMayAbsorb: jest.Mock };
 
   beforeEach(async () => {
     service = {
@@ -22,6 +25,12 @@ describe('CustomersController PII (Phase 5)', () => {
       search: jest.fn(),
     };
     piiAudit = { logDecryption: jest.fn().mockResolvedValue(undefined) };
+    merge = {
+      absorbPlaceholder: jest
+        .fn()
+        .mockResolvedValue({ placeholderId: 'p1', targetId: 't1', movedRooms: 1, movedCreditChecks: 0 }),
+      assertActorMayAbsorb: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module = await Test.createTestingModule({
       controllers: [CustomersController],
@@ -31,6 +40,7 @@ describe('CustomersController PII (Phase 5)', () => {
         { provide: CustomerTierService, useValue: { getCustomerTier: jest.fn() } },
         { provide: SkipTracingService, useValue: {} },
         { provide: CustomerInsightsService, useValue: {} },
+        { provide: CustomerMergeService, useValue: merge },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -146,6 +156,54 @@ describe('CustomersController PII (Phase 5)', () => {
       expect(tierSpy).toHaveBeenCalledWith('cust-1');
       expect(result.tier).toBe('GOLD');
     });
+  });
+
+  it('absorbInto ส่งต่อไป CustomerMergeService พร้อม actor', async () => {
+    const req = { user: { id: 'staff-1', role: 'SALES' } } as any;
+    await expect(controller.absorbInto('p1', 't1', req)).resolves.toEqual({
+      placeholderId: 'p1',
+      targetId: 't1',
+      movedRooms: 1,
+      movedCreditChecks: 0,
+    });
+    expect(merge.absorbPlaceholder).toHaveBeenCalledWith(
+      'p1',
+      't1',
+      { id: 'staff-1', role: 'SALES' },
+      { allowPlaceholderTarget: true },
+    );
+  });
+
+  // Ruling R22 — คำใบ้ "อาจเป็นคนเดียวกัน" ชี้ทิศทางรวมผู้สนใจอัตโนมัติสองคนไว้ (สเปค §3.6)
+  // ปลายทางเป็น placeholder จึงต้องรวมได้ผ่านปุ่มนี้ ไม่ใช่ 409 "ให้ใช้รวมห้องแชท"
+  it('absorbInto ส่ง allowPlaceholderTarget: true — ปลายทางเป็นผู้สนใจอัตโนมัติอีกคนก็รวมได้ (R22)', async () => {
+    const req = { user: { id: 'owner-1', role: 'OWNER' } } as any;
+    await controller.absorbInto('p1', 'p2', req);
+    expect(merge.absorbPlaceholder.mock.calls[0][3]).toEqual({ allowPlaceholderTarget: true });
+  });
+
+  // Ruling R26 — การรวมย้ายห้องทุกห้องของผู้สนใจ ⇒ SALES ต้องผ่านด่านขอบเขตห้องก่อนเสมอ
+  it('absorbInto ตรวจขอบเขตห้องของ SALES ก่อนรวม แล้วค่อยเรียก absorbPlaceholder', async () => {
+    const req = { user: { id: 'sales-1', role: 'SALES' } } as any;
+    await controller.absorbInto('p1', 't1', req);
+    expect(merge.assertActorMayAbsorb).toHaveBeenCalledWith('p1', { id: 'sales-1', role: 'SALES' });
+    expect(merge.assertActorMayAbsorb.mock.invocationCallOrder[0]).toBeLessThan(
+      merge.absorbPlaceholder.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('absorbInto: ด่านขอบเขตห้องปฏิเสธ → 403 และไม่รวมเลย', async () => {
+    const req = { user: { id: 'sales-1', role: 'SALES' } } as any;
+    merge.assertActorMayAbsorb.mockRejectedValueOnce(new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้'));
+    await expect(controller.absorbInto('p1', 't1', req)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(merge.absorbPlaceholder).not.toHaveBeenCalled();
+  });
+
+  it('absorbInto ไม่ครอบ exception จาก CustomerMergeService — 409/404/400 ส่งต่อให้ client ตรง ๆ', async () => {
+    const req = { user: { id: 'staff-1', role: 'OWNER' } } as any;
+    const err = new ConflictException('รวมไม่ได้: ผู้สนใจคนนี้มีสัญญา 1 รายการ — ให้แก้ที่รายการนั้นก่อน');
+    merge.absorbPlaceholder.mockRejectedValueOnce(err);
+    await expect(controller.absorbInto('p1', 't1', req)).rejects.toBe(err);
   });
 
 });

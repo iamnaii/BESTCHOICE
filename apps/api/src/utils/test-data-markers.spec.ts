@@ -143,3 +143,12 @@ describe('assertSameTestSide', () => {
     }
   });
 });
+
+describe('isTestCustomer กับผู้สนใจอัตโนมัติ (phone null)', () => {
+  it('เบอร์ null + ที่อยู่ปกติ = ไม่ใช่ลูกค้าทดสอบ (ไม่ throw)', () => {
+    expect(isTestCustomer({ name: 'สมชาย ใจดี', phone: null, addressCurrent: null })).toBe(false);
+  });
+  it('เบอร์ null แต่ที่อยู่ทดสอบ = ลูกค้าทดสอบ', () => {
+    expect(isTestCustomer({ name: 'x', phone: null, addressCurrent: TEST_CUSTOMER_ADDRESS })).toBe(true);
+  });
+});

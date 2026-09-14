@@ -31,3 +31,15 @@ export function contractDownTender(amount: string | number, method?: string | nu
   return { downPaymentMethod: (method ?? 'CASH') as PaymentMethod, downPaymentReference: reference?.trim() || null,
     downPaymentReceivedAt: new Date() };
 }
+
+/**
+ * ผู้สนใจอัตโนมัติจากแชท (สเปค 2026-09-13-chat-prospects) มี phone = null —
+ * เอกสารที่ต้องติดต่อลูกค้าได้ (สัญญา ใบขาย ใบจอง รับซื้อ) ต้องบังคับให้เติมเบอร์ก่อน
+ * `action` = คำที่ต่อท้ายข้อความ เช่น 'ทำสัญญา' 'เปิดใบขาย' 'จองสินค้า' 'รับซื้อเครื่อง'
+ */
+export function assertCustomerHasPhone(customer: { phone: string | null }, action: string): string {
+  if (!customer.phone) {
+    throw new BadRequestException(`ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อน${action}`);
+  }
+  return customer.phone;
+}

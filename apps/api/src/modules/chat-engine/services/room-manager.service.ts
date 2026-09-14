@@ -26,6 +26,10 @@ import { MessageRouterService } from './message-router.service';
 import { StorageService } from '../../storage/storage.service';
 import { signMessageMedia } from './media-url.util';
 import { linkRoomCreditHistory, lockCreditRoom } from '../../credit-check/services/room-credit-history';
+import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
+import { CustomerMergeService } from '../../chat-prospects/customer-merge.service';
+import { PLACEHOLDER_FIELDS_SELECT, isLivePlaceholder } from '../../chat-prospects/chat-placeholder';
+import * as Sentry from '@sentry/nestjs';
 
 /** ตัวกรองห้องแชท — ใช้ร่วมกันระหว่างรายการห้อง (listRooms) กับตัวนับบนป้าย
  *  (getRoomBadgeCounts) เพื่อไม่ให้ "เลขบนป้าย" กับ "จำนวนแถวที่แท็บนั้นแสดง"
@@ -108,12 +112,20 @@ export class RoomManagerService {
     private assignmentService?: AssignmentService,
     @Optional() @Inject(forwardRef(() => MessageRouterService))
     private messageRouter?: MessageRouterService,
+    @Optional()
+    private chatProspects?: ChatProspectService,
+    @Optional()
+    private merge?: CustomerMergeService,
   ) {}
 
   /**
    * Find or create a room for any channel.
    * ALWAYS returns existing room for same (externalUserId, channel).
    * Only creates a new room if truly none exists.
+   *
+   * ผู้สนใจอัตโนมัติ (สเปค 3.2): ห้องที่ยังไม่มีเจ้าของ (ใหม่ หรือเดิมที่ backfill ไม่ทัน) ได้ customerId
+   * กลับไปในผลลัพธ์เลย · `ensureProspect` ค่าตั้งต้น = ทุกช่องทางยกเว้น WEB (Ruling R3 — widget init/connect
+   * สร้างห้องทุกครั้งที่เปิดหน้าเว็บ ผู้เรียกที่รู้ว่าลูกค้าทักจริงส่ง `true` เอง)
    */
   async getOrCreateRoom(params: {
     externalUserId: string;
@@ -122,10 +134,12 @@ export class RoomManagerService {
     displayName?: string | null;
     pictureUrl?: string | null;
     attribution?: InboundAttribution;
+    ensureProspect?: boolean;
   }): Promise<ChatRoom> {
     const isLineChannel =
       params.channel === ChatChannel.LINE_FINANCE ||
       params.channel === ChatChannel.LINE_SHOP;
+    const wantsProspect = params.ensureProspect ?? params.channel !== ChatChannel.WEB;
 
     // Always find existing room first — no status filter
     let existing: ChatRoom | null = null;
@@ -169,10 +183,29 @@ export class RoomManagerService {
       if (!existing.pictureUrl && params.pictureUrl) {
         updateData.pictureUrl = params.pictureUrl;
       }
-      const room =
+      let room =
         Object.keys(updateData).length > 0
           ? await this.prisma.chatRoom.update({ where: { id: existing.id }, data: updateData })
           : existing;
+      if (!room.customerId) {
+        // self-heal ห้องที่ยังไม่มีเจ้าของ (backfill ไม่ทัน / สร้างผู้สนใจล้มรอบก่อน)
+        if (wantsProspect) {
+          const customerId = await this.ensureProspect(room.id);
+          if (customerId) room = { ...room, customerId };
+        }
+      } else if (wantsProspect && (await this.isOwnerSoftDeleted(room.customerId))) {
+        // เจ้าของถูก soft-delete แล้ว (แพ้ race กับการรวม / ถูกลบจากหน้าลูกค้า) = ถือว่าห้องไม่มีเจ้าของ
+        // (Ruling R23) — ห้องที่ผูกกับแถวที่ตายแล้วไม่มีทางกู้ผ่าน API: ผูกไม่ได้ (409) รวมไม่ได้ (404)
+        // รวมห้องไม่ได้ ("ลูกค้าคนละคน") และไม่มี endpoint ปลดการผูก
+        const customerId = await this.ensureProspect(room.id);
+        if (customerId) room = { ...room, customerId };
+      } else if (updateData.displayName && this.chatProspects) {
+        // ห้องเกิดก่อนรู้ชื่อ (mirrorOutbound) → placeholder ที่ยังใช้ชื่อ fallback ได้ชื่อจริงตาม
+        const roomId = room.id;
+        await this.chatProspects.syncNameFromRoom(roomId).catch((err) =>
+          this.logger.warn(`[prospect] sync name ${roomId}: ${err instanceof Error ? err.message : err}`),
+        );
+      }
       // ลูกค้าเก่ากดโฆษณา/ลิงก์ซ้ำ — บันทึกที่มาครั้งล่าสุดให้ห้องเดิมด้วย (เดิมบันทึกเฉพาะห้องใหม่)
       if (params.attribution?.utmSource) {
         await this.linkAttribution(room.id, params.attribution, room.attributionId);
@@ -216,7 +249,40 @@ export class RoomManagerService {
 
     // ไม่แจกห้องอัตโนมัติอีก — ใครตอบก่อนได้เป็นเจ้าของ (AssignmentService.claimIfUnassigned · สเปก §5)
 
+    if (!room.customerId && wantsProspect) {
+      const prospectId = await this.ensureProspect(room.id);
+      if (prospectId) return { ...room, customerId: prospectId };
+    }
     return room;
+  }
+
+  /**
+   * ผู้สนใจอัตโนมัติ (สเปค 3.2) — best-effort: ห้องต้องไม่ล้มเพราะสร้างผู้สนใจไม่ได้ (log + Sentry แล้วปล่อยผ่าน)
+   * กิ่ง existing ของ getOrCreateRoom เก็บตกให้ตอนคนทักกลับ · public เพราะ widget:send (WebWidgetGateway)
+   * บันทึกข้อความผู้ชมเว็บเองโดยไม่ผ่าน getOrCreateRoom/routeInbound — ไม่โยน error คืน null เมื่อไม่สำเร็จ
+   */
+  async ensureProspect(roomId: string): Promise<string | null> {
+    if (!this.chatProspects) return null;
+    try {
+      const result = await this.chatProspects.ensureForRoom(roomId);
+      return result?.customerId ?? null;
+    } catch (err) {
+      this.logger.warn(`[prospect] room ${roomId}: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { kind: 'chat-prospect' }, extra: { roomId } });
+      return null;
+    }
+  }
+
+  /**
+   * เจ้าของห้องถูก soft-delete หรือยัง (Ruling R23) — อ่านแยกคำถามเดียวเพื่อไม่เปลี่ยนรูปผลลัพธ์
+   * ของ getOrCreateRoom (คืน ChatRoom ล้วน) · อ่านด้วย PK คีย์เดียว ไม่แพง
+   */
+  private async isOwnerSoftDeleted(customerId: string): Promise<boolean> {
+    const owner = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+      select: { deletedAt: true },
+    });
+    return !!owner?.deletedAt;
   }
 
   /** ชื่อพนักงานสำหรับข้อความระบบ ("มอบหมายให้ แนน โดย …") — ไม่พบคืน "พนักงาน" */
@@ -628,7 +694,7 @@ export class RoomManagerService {
     return this.prisma.chatRoom.findUnique({
       where: { id: roomId },
       include: {
-        customer: { select: { id: true, name: true, phone: true, nationalId: true } },
+        customer: { select: { id: true, name: true, phone: true, nationalId: true, acquisitionSource: true } },
         assignedTo: { select: { id: true, name: true, avatarUrl: true } },
         tags: true,
         todos: ROOM_NEXT_APPOINTMENT,
@@ -655,13 +721,40 @@ export class RoomManagerService {
    * Link an existing Customer record to a ChatRoom. Throws if the room is
    * already linked to a different customer — relinking requires explicit
    * unlink-then-link, not silent overwrite.
+   * ยกเว้นห้องที่ผูก "ผู้สนใจอัตโนมัติ" (placeholder) อยู่ — ดูดเข้าคนที่เลือกแทน (สเปค 3.3 ก)
    */
   async linkCustomer(roomId: string, customerId: string, actor: { id: string; role: string }) {
+    // ทำนอกทรานแซกชันด้านล่าง เพราะ absorbPlaceholder เปิดทรานแซกชันของตัวเอง
+    // (ลูกค้าจริง ↔ ลูกค้าจริง ยังโยน "ผูกกับลูกค้ารายอื่น" ในทรานแซกชันเหมือนเดิม)
+    if (this.merge) {
+      const current = await this.prisma.chatRoom.findUnique({
+        where: { id: roomId },
+        select: {
+          id: true, customerId: true, deletedAt: true, assignedToId: true,
+          customer: { select: PLACEHOLDER_FIELDS_SELECT },
+        },
+      });
+      // เจ้าของที่ถูก soft-delete ไม่เข้าเงื่อนไขนี้ (isLivePlaceholder เป็นเท็จ) — ไม่มีอะไรให้รวม
+      // แล้วไหลไปผูกทับในทรานแซกชันข้างล่างซึ่งข้าม 409 ให้เจ้าของที่ตายแล้วเช่นกัน (Ruling R23)
+      if (current && !current.deletedAt && current.customerId && current.customerId !== customerId
+        && isLivePlaceholder(current.customer)) {
+        // ตรวจสิทธิ์ก่อนรวม — การรวมย้ายห้องทุกห้องของ placeholder จึงห้ามเกิดก่อนด่านนี้
+        if (actor.role === 'SALES' && current.assignedToId && current.assignedToId !== actor.id) {
+          throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+        }
+        await this.merge.absorbPlaceholder(current.customerId, customerId, actor);
+        // แล้วไหลต่อทางผูกเดิม: ห้องอยู่กับคนที่เลือกแล้วจึงไม่ชน 409 และยังนำเข้าผลสเตทเม้นของห้อง
+        // ที่ค้างอยู่ (creditCheckId ว่าง) — absorb ย้ายเฉพาะผลที่นำเข้าแล้ว
+      }
+    }
     return this.prisma.$transaction(async tx => {
     await lockCreditRoom(tx, roomId);
     const room = await tx.chatRoom.findUnique({
       where: { id: roomId },
-      select: { id: true, customerId: true, deletedAt: true, assignedToId: true },
+      select: {
+        id: true, customerId: true, deletedAt: true, assignedToId: true,
+        customer: { select: { deletedAt: true } },
+      },
     });
     if (!room || room.deletedAt) {
       throw new NotFoundException('ห้องแชทไม่พบหรือถูกลบ');
@@ -669,7 +762,9 @@ export class RoomManagerService {
     if (actor.role === 'SALES' && room.assignedToId && room.assignedToId !== actor.id) {
       throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
     }
-    if (room.customerId && room.customerId !== customerId) {
+    // เจ้าของที่ถูก soft-delete = ห้องไม่มีเจ้าของ (Ruling R23) — ผูกทับได้เลย ไม่ใช่ 409
+    // (ด่านก่อนทรานแซกชันก็ถือกติกาเดียวกัน: absorb เฉพาะ placeholder ที่ยังมีชีวิต)
+    if (room.customerId && room.customerId !== customerId && !room.customer?.deletedAt) {
       throw new ConflictException('ห้องแชทนี้ผูกกับลูกค้ารายอื่นอยู่แล้ว');
     }
     const customer = await tx.customer.findUnique({

@@ -347,6 +347,16 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
     });
   });
 
+  // ─── ด่านเบอร์ (spec 2026-09-13-chat-prospects) ──────────────────────────────
+
+  it('ผู้สนใจจากแชทที่ยังไม่มีเบอร์ (phone null) → BadRequest ให้เติมเบอร์ก่อน ไม่สร้างสัญญา', async () => {
+    tx.customer.findUnique.mockResolvedValue({ ...mockCustomer, phone: null });
+    await expect(service.create({ ...baseDto } as never, 'sp-1')).rejects.toThrow(
+      'ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนทำสัญญา',
+    );
+    expect(tx.contract.create).not.toHaveBeenCalled();
+  });
+
   // ─── Task-7 reversal assertions ──────────────────────────────────────────────
 
   it('reverses the SHOP down payment when voiding a DRAFT contract that had a down JE', async () => {

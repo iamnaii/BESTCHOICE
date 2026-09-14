@@ -51,6 +51,37 @@ beforeEach(() => {
   process.env.SHOP_BASE_URL = 'https://www.bestchoicephone.com';
 });
 
+describe('ChatCommerceService.createPaymentLinkInChat — ห้องที่ถือผู้สนใจอัตโนมัติยังส่งข้อมูลชำระไม่ได้', () => {
+  function makeCommerceOnlyService() {
+    const prisma = { chatRoom: { findUnique: jest.fn() }, contract: { findUnique: jest.fn() } };
+    const svc = new ChatCommerceService(prisma as any, {} as any, {} as any, {} as any);
+    return { svc, prisma };
+  }
+
+  it('ห้องที่ถือผู้สนใจอัตโนมัติ (ไม่มีเบอร์) → 400 เหมือนยังไม่ผูกลูกค้า', async () => {
+    const { svc, prisma } = makeCommerceOnlyService();
+    prisma.chatRoom.findUnique.mockResolvedValue({
+      id: 's1', lineUserId: null, channel: 'FACEBOOK', customerId: 'p1',
+      customer: { id: 'p1', name: 'Facebook #7890', lineIdFinance: null, lineIdShop: null, acquisitionSource: 'CHAT_FACEBOOK', phone: null, nationalId: null },
+    });
+    await expect(
+      svc.createPaymentLinkInChat({ sessionId: 's1', staffId: 'u1', contractId: 'contract-1' }),
+    ).rejects.toThrow('ห้องแชทนี้ยังไม่ได้เชื่อมกับลูกค้า');
+    expect(prisma.contract.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('ลูกค้าจริงที่มีเบอร์แล้ว (ไม่ใช่ผู้สนใจอัตโนมัติ) → ผ่านด่านนี้ไป (ไปติดด่านถัดไปแทน คือไม่มี LINE ID)', async () => {
+    const { svc, prisma } = makeCommerceOnlyService();
+    prisma.chatRoom.findUnique.mockResolvedValue({
+      id: 's2', lineUserId: null, channel: 'FACEBOOK', customerId: 'c1',
+      customer: { id: 'c1', name: 'สมชาย ใจดี', lineIdFinance: null, lineIdShop: null, acquisitionSource: 'WALK_IN', phone: '0812345678', nationalId: '1234567890123' },
+    });
+    await expect(
+      svc.createPaymentLinkInChat({ sessionId: 's2', staffId: 'u1', contractId: 'contract-1' }),
+    ).rejects.toThrow('ลูกค้าไม่มี LINE ID ไม่สามารถสร้างลิงก์ชำระเงินได้');
+  });
+});
+
 describe('ChatCommerceService.searchProducts', () => {
   it('ห้าม select photos[] (base64) และคืนรูปจาก gallery[0]', async () => {
     const { svc, prisma } = makeService(PRODUCT);

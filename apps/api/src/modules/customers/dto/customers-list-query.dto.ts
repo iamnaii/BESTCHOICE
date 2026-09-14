@@ -58,8 +58,20 @@ export class CustomersListQueryDto extends PaginationDto {
   @IsOptional() @IsIn([...CUSTOMER_TIERS]) tier?: string;
   @IsOptional() @IsString() @MaxLength(128) branchId?: string;
 
-  // ---- แท็บ ผู้สนใจ ------------------------------------------------------
+  // ---- ที่มา (ร่วมสองแท็บ — Task 13 fix round, R16) -----------------------
+  // 🔴 เคยอยู่ใต้หัวข้อ "แท็บ ผู้สนใจ" แต่ source ใช้ได้ทั้งสองแท็บมาตั้งแต่ Task 13
+  // (ลูกค้าที่ซื้อแล้วก็มี "ที่มา" เหมือนกัน — มาจากแชท/คนแนะนำ/walk-in) ย้ายมาไว้หัวข้อ
+  // ของตัวเองกัน fromChat ที่เพิ่มใหม่ถูกเข้าใจผิดว่าเป็นตัวกรองเฉพาะแท็บผู้สนใจไปด้วย
   @IsOptional() @IsIn([...PROSPECT_SOURCES]) source?: string;
+  /**
+   * "มาจากแชท" (Task 13 fix round, R16) — กดการ์ด KPI "มาจากแชท" แล้วกรองซ้ำ (กดแล้วกรอง)
+   * ใช้ predicate เดียวกับที่ KPI นับ (CHAT_SOURCE_WHERE/NOT_CHAT_SOURCE_WHERE ใน
+   * CustomerQueryService) ไม่ใช่ overload ของ `source` — 🔴 ต้องเป็น **string** ไม่ใช่ boolean
+   * ด้วยเหตุผลเดียวกับ `hasOverdue` ด้านล่าง (enableImplicitConversion ทำ Boolean('false') === true)
+   */
+  @IsOptional() @IsIn(['true', 'false']) fromChat?: string;
+
+  // ---- แท็บ ผู้สนใจ ------------------------------------------------------
   /**
    * สถานะเครดิตของ **ลูกค้า** (CustomerCreditCheckStatus) — คนละ enum กับ creditStatus
    * ส่งสมาชิกของ CreditCheckStatus มาที่ฟิลด์นี้เคยทำให้ Prisma โยน 500

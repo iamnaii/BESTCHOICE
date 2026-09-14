@@ -30,6 +30,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { TestModeModule } from '../test-mode/test-mode.module';
+import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
 // B3 §5 — tool เดียวกับบอทขาย (import class ตรง ห้าม import ทั้งโมดูล sales-bot)
 import { SearchProductsTool } from '../sales-bot/tools/search-products.tool';
 import { CalculateInstallmentTool } from '../sales-bot/tools/calculate-installment.tool';
@@ -49,7 +50,7 @@ import { ListPromotionsTool } from '../sales-bot/tools/list-promotions.tool';
  *   E  ✅ admin endpoints + analytics/sessions/KB UI
  */
 @Module({
-  imports: [forwardRef(() => NotificationsModule), forwardRef(() => StaffChatModule), IntegrationsModule, TestModeModule], // SMS for OTP + WS events to Unified Inbox; TestModeModule for LIFF OTP bypass (UAT)
+  imports: [forwardRef(() => NotificationsModule), forwardRef(() => StaffChatModule), IntegrationsModule, TestModeModule, ChatProspectsModule], // SMS for OTP + WS events to Unified Inbox; TestModeModule for LIFF OTP bypass (UAT); ChatProspectsModule for chat prospect auto-creation
   controllers: [
     ChatbotFinanceController,
     ChatbotFinanceLiffController,

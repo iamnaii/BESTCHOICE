@@ -40,7 +40,7 @@ export interface TestSideProduct {
 
 export interface TestSideCustomer {
   name: string;
-  phone: string;
+  phone: string | null; // ผู้สนใจอัตโนมัติจากแชทยังไม่มีเบอร์
   addressCurrent: string | null;
 }
 
@@ -71,7 +71,7 @@ export function isTestProduct(p: TestSideProduct): boolean {
 }
 
 export function isTestCustomer(c: TestSideCustomer): boolean {
-  return c.addressCurrent === TEST_CUSTOMER_ADDRESS || c.phone.startsWith(TEST_DOC_PREFIX);
+  return c.addressCurrent === TEST_CUSTOMER_ADDRESS || (c.phone ?? '').startsWith(TEST_DOC_PREFIX);
 }
 
 export function isTestSupplier(s: { name: string }): boolean {

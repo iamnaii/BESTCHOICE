@@ -214,8 +214,10 @@ export class ChatbotFinanceService {
       return;
     }
 
-    // Sync session.customerId ถ้าจำเป็น
-    if (!session.customerId && linkStatus.customerId) {
+    // Sync session.customerId ถ้าจำเป็น — เทียบค่าแทน !session.customerId เพราะห้องอาจถือ
+    // "ผู้สนใจอัตโนมัติ" (placeholder, customerId ไม่ว่าง) อยู่แล้วตอน LINE เพิ่งถูกผูกกับลูกค้าจริง
+    // linkRoomToCustomer เองเป็นคนตัดสินว่าจะ absorb placeholder หรือข้าม (ลูกค้าจริงคนอื่น) — Ruling R4
+    if (linkStatus.customerId && session.customerId !== linkStatus.customerId) {
       await this.sessions.linkRoomToCustomer(session.id, linkStatus.customerId);
     }
 

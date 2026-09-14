@@ -111,6 +111,36 @@ describe('CaptureLeadTool', () => {
     expect(result.customerId).toBe('cust-existing');
   });
 
+  // Ruling R14 (fix round 1): Branch 2 ก็ต้องไม่ทับที่มา CHAT_* เหมือน Branch 1 —
+  // ลูกค้าที่จับคู่ได้ (phone+lineIdShop) อาจเป็นอดีต placeholder ที่เพิ่งได้เบอร์จาก
+  // ห้องอื่นมาก่อนแล้ว ที่มาต้องคงเดิม ไม่ใช่ถูกทับด้วย AI_CHAT_RETURN
+  it('Ruling R14: Branch 2 จับคู่ลูกค้าที่ที่มายังเป็น CHAT_LINE_SHOP → ไม่ทับที่มา', async () => {
+    prisma.chatRoom.findUnique.mockResolvedValue({
+      id: 'room-chat-sourced',
+      lineUserId: 'line-user-chat',
+      customerId: null,
+    });
+    prisma.systemConfig.findMany.mockResolvedValue([
+      { key: 'shop_bot_central_branch_id', value: 'branch-central' },
+    ]);
+    txClient.customer.findFirst.mockResolvedValue({
+      id: 'cust-chat-sourced', acquisitionSource: 'CHAT_LINE_SHOP', phone: '0888888888', nationalId: null,
+    });
+
+    await tool.run({
+      customerName: 'พี่แชท',
+      phone: '0888888888',
+      productId: 'prod-1',
+      packageChoice: 'B',
+      downAmount: 2900,
+      roomId: 'room-chat-sourced',
+    });
+
+    const data = txClient.customer.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('acquisitionSource');
+    expect(data.name).toBe('พี่แชท');
+  });
+
   it('throws when central branch not configured', async () => {
     prisma.chatRoom.findUnique.mockResolvedValue({
       id: 'room-3',
@@ -310,6 +340,78 @@ describe('CaptureLeadTool — ลูกค้าเดิมให้เบอ�
     expect(txClient.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         newValue: expect.objectContaining({ customerName: 'ฝน', phone: '0800000000' }),
+      }),
+    }));
+  });
+});
+
+describe('CaptureLeadTool — ห้องถือผู้สนใจอัตโนมัติ (placeholder) — เติมชื่อ/เบอร์ ห้ามทับที่มา CHAT_*', () => {
+  let tool: CaptureLeadTool;
+  let prisma: any;
+  let txClient: any;
+  const baseInput = {
+    roomId: 'room-1', customerName: 'สมชาย ใจดี', phone: '0812345678', downAmount: 3200,
+  } as any;
+
+  beforeEach(async () => {
+    txClient = {
+      customer: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+      chatRoom: { update: jest.fn() },
+      auditLog: { create: jest.fn() },
+    };
+    prisma = {
+      $transaction: jest.fn((fn) => fn(txClient)),
+      chatRoom: { findUnique: jest.fn().mockResolvedValue({ id: 'room-1', customerId: 'p1', lineUserId: null, channel: 'FACEBOOK' }) },
+      systemConfig: { findMany: jest.fn().mockResolvedValue([{ key: 'shop_bot_central_branch_id', value: 'branch-central' }]) },
+      user: { findFirst: jest.fn().mockResolvedValue({ id: 'sys' }) },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [CaptureLeadTool, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    tool = mod.get(CaptureLeadTool);
+  });
+
+  it('ห้องถือผู้สนใจอัตโนมัติ → เติมชื่อ+เบอร์ให้คนเดิม ไม่ทับที่มา CHAT_*', async () => {
+    txClient.customer.findUnique.mockResolvedValue({ phone: null, phoneSecondary: null, acquisitionSource: 'CHAT_FACEBOOK', nationalId: null });
+    await tool.run(baseInput);
+    expect(txClient.customer.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { name: 'สมชาย ใจดี', phone: '0812345678' },
+    });
+  });
+
+  // Ruling R14 (fix round 1): เดิมเทสนี้ปักพฤติกรรมที่ผิดไว้ว่า "ทับที่มา" — พลาดเพราะ
+  // isChatPlaceholder ต้องการทั้ง phone==null และ nationalId==null; พอ capture รอบแรกเติม
+  // เบอร์แล้ว placeholder=false ทันที ทั้งที่ที่มายังเป็น CHAT_FACEBOOK อยู่ (ยังไม่เคยผ่าน
+  // บอท AI_CHAT ตัวจริง) ⇒ capture รอบสอง (บอทขอเบอร์ซ้ำ, docstring บรรทัด 125-127) จะทับ
+  // ที่มาทิ้งอย่างเงียบๆ. ที่ถูกต้องคือที่มา CHAT_* ห้ามถูกทับไม่ว่าจะยังเป็น placeholder อยู่
+  // หรือไม่ (เช็คจาก acquisitionSource ปัจจุบันตรงๆ ไม่ใช่จาก isChatPlaceholder).
+  it('Ruling R14: capture รอบสองบนลูกค้าที่มี CHAT_FACEBOOK + มีเบอร์แล้ว (ไม่ใช่ placeholder แล้ว) → ยังไม่ทับที่มา', async () => {
+    txClient.customer.findUnique.mockResolvedValue({ phone: '0899999999', phoneSecondary: null, acquisitionSource: 'CHAT_FACEBOOK', nationalId: null });
+    await tool.run(baseInput);
+    const data = txClient.customer.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('acquisitionSource');
+    // การเติมเบอร์ยังทำงานตามเดิมทุกประการ (ruling สั่งห้ามแตะ logic นี้) — เบอร์ใหม่ไม่ตรง
+    // เบอร์เดิม และที่มาไม่ได้ขึ้นต้น AI_CHAT ⇒ ไปลง phoneSecondary เหมือนเดิม
+    expect(data.phone).toBeUndefined();
+    expect(data.phoneSecondary).toBe('0812345678');
+  });
+
+  // Regression pin: ลูกค้าที่ไม่ใช่ CHAT_* เลย (เช่น พนักงานผูกไว้เอง) ต้องทับที่มาเป็น
+  // AI_CHAT_RETURN เหมือนเดิมทุกประการ — Ruling R14 คุ้มครองเฉพาะที่มา CHAT_* เท่านั้น
+  it('regression pin: ลูกค้า WALK_IN (ไม่ใช่ CHAT_* เลย) → ยังทับที่มาเป็น AI_CHAT_RETURN ตามเดิม', async () => {
+    txClient.customer.findUnique.mockResolvedValue({ phone: '0811111111', phoneSecondary: null, acquisitionSource: 'WALK_IN', nationalId: null });
+    await tool.run(baseInput);
+    const data = txClient.customer.update.mock.calls[0][0].data;
+    expect(data.acquisitionSource).toBe('AI_CHAT_RETURN');
+  });
+
+  it('audit log ยังบันทึกชื่อ+เบอร์ล่าสุดตามปกติแม้เป็น placeholder', async () => {
+    txClient.customer.findUnique.mockResolvedValue({ phone: null, phoneSecondary: null, acquisitionSource: 'CHAT_LINE_SHOP', nationalId: null });
+    await tool.run(baseInput);
+    expect(txClient.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        newValue: expect.objectContaining({ customerName: 'สมชาย ใจดี', phone: '0812345678' }),
       }),
     }));
   });

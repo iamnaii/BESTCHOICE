@@ -117,3 +117,28 @@ describe('SaleCreationService.create — test-data fence', () => {
     await expect(service.create(baseDto as never, 'sp-1')).rejects.toThrow('ไม่พบลูกค้า');
   });
 });
+
+describe('SaleCreationService.create — ด่านเบอร์ (spec 2026-09-13-chat-prospects)', () => {
+  const chatProspect = { ...realCustomer, name: 'Facebook #a1b2', phone: null };
+
+  it.each([
+    ['CASH', 'createCashSale'],
+    ['INSTALLMENT', 'createInstallmentSale'],
+    ['EXTERNAL_FINANCE', 'createExternalFinanceSale'],
+  ] as const)('%s กับผู้สนใจที่ยังไม่มีเบอร์ → BadRequest ก่อนถึง writer', async (saleType, writerMethod) => {
+    const { service, writer } = makeService(chatProspect, [realProduct]);
+    await expect(
+      service.create({ ...baseDto, saleType } as never, 'sp-1', 'OWNER'),
+    ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนเปิดใบขาย');
+    expect(writer[writerMethod]).not.toHaveBeenCalled();
+  });
+
+  it('ไม่มีรหัสสินค้าในใบ ก็ยังตรวจเบอร์ลูกค้า (ด่านไม่ขึ้นกับรายการเครื่อง)', async () => {
+    const { service, writer, prisma } = makeService(chatProspect, []);
+    await expect(
+      service.create({ ...baseDto, productId: '' } as never, 'sp-1', 'OWNER'),
+    ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนเปิดใบขาย');
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+    expect(writer.createCashSale).not.toHaveBeenCalled();
+  });
+});

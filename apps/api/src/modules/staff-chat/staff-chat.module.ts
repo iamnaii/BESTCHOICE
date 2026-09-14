@@ -48,6 +48,7 @@ import { SalesStateService } from './services/sales-state.service';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 import { SalesBotModule } from '../sales-bot/sales-bot.module';
+import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
 import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.interface';
 // PaySolutions integration handled via forwardRef in ChatCommerceService
 
@@ -64,6 +65,7 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
   imports: [
     OcrModule,
     ChatEngineModule,
+    ChatProspectsModule,
     forwardRef(() => ChatbotFinanceModule),
     // SalesBotModule now imports StaffChatModule (forwardRef) to access
     // CHAT_GATEWAY_TOKEN for chat:room:update emits on handoff/capture_lead.

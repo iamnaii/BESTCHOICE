@@ -28,6 +28,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { PiiAuditService } from '../pii/pii-audit.service';
+import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
 import { maskNationalId } from '../../utils/pii.util';
 
 type AuthRequest = Request & { user?: { id: string; role: string } };
@@ -43,6 +44,7 @@ export class CustomersController {
     private readonly tierService: CustomerTierService,
     private readonly skipTracingService: SkipTracingService,
     private readonly insightsService: CustomerInsightsService,
+    private readonly merge: CustomerMergeService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -259,6 +261,28 @@ export class CustomersController {
   @Roles('OWNER', 'BRANCH_MANAGER')
   update(@Param('id') id: string, @Body() dto: UpdateCustomerDto) {
     return this.customersService.update(id, dto);
+  }
+
+  /**
+   * รวมผู้สนใจอัตโนมัติจากแชท (:id) เข้าลูกค้าเดิม (:targetId) — ใช้ตอนเติมเบอร์แล้วซ้ำ (สเปค 3.3 ข)
+   *
+   * ปลายทางเป็น "ผู้สนใจอัตโนมัติ" อีกคนได้ (Ruling R22): คำใบ้ "อาจเป็นคนเดียวกัน" ชี้ทิศทางรวม
+   * ของผู้สนใจสองคนไว้แล้ว (สเปค §3.6 ใหม่กว่าเข้าเก่ากว่า) และ "รวมห้องแชท" ก็รับปลายทาง
+   * placeholder อยู่ก่อน (R13) — ทางข้อมูลเดียวกันทุกประการ
+   * ต้นทางยังต้องเป็น placeholder ที่ยังไม่ถูกลบเสมอ (absorbPlaceholder ตรวจเอง) ⇒ ยังรวมทางเดียว
+   */
+  @Post(':id/absorb-into/:targetId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async absorbInto(
+    @Param('id') id: string,
+    @Param('targetId') targetId: string,
+    @Req() req: { user: { id: string; role: string } },
+  ) {
+    const actor = { id: req.user.id, role: req.user.role };
+    // Ruling R26 — SALES รวมได้เฉพาะผู้สนใจที่ห้องยังไม่มีคนดูแล หรือเป็นห้องของตัวเอง
+    // (การรวมย้ายห้องทุกห้อง จึงต้องแน่นเท่าทางผูกห้อง/กดไม่ใช่ ไม่ใช่แค่มี role)
+    await this.merge.assertActorMayAbsorb(id, actor);
+    return this.merge.absorbPlaceholder(id, targetId, actor, { allowPlaceholderTarget: true });
   }
 
   @Delete(':id')

@@ -45,6 +45,7 @@ import { spawn } from 'node:child_process';
 import { PDFDocument } from 'pdf-lib';
 import { parse } from 'dotenv';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { maskNationalId } from '../../src/utils/pii.util';
 import { RoomCreditService } from '../../src/modules/credit-check/services/room-credit.service';
 import { RoomCreditController } from '../../src/modules/staff-chat/room-credit.controller';
 import { OcrController } from '../../src/modules/ocr/ocr.controller';
@@ -366,14 +367,16 @@ class PreviewController {
   @Get('customers/search') searchCustomers(@Query('q') q = '') {
     return db.customer.findMany({ where: { deletedAt: null, name: { contains: q } } });
   }
+  // R9: ต้องตรงกับ CustomersController.findOne จริง (customers.controller.ts) —
+  // เดิม endpoint นี้คืน raw customer row + contracts/sales ว่างเปล่า ไม่มี purchase/
+  // chatRooms/tags/source/openContracts ทำให้หน้ารายละเอียดลูกค้าใหม่พังบน preview ทุกคน
   @Get('customers/:id') async customer(@Param('id') id: string) {
-    return {
-      ...(await db.customer.findUnique({ where: { id } })),
-      contracts: [],
-      sales: [],
-      documents: [],
-      references: [],
-    };
+    const customer = await customerQuery.findDetail(id);
+    if (!customer) return customer;
+    if (actor.role === 'SALES') {
+      return { ...customer, nationalId: customer.nationalId ? maskNationalId(customer.nationalId) : customer.nationalId };
+    }
+    return customer;
   }
 }
 

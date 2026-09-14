@@ -5,6 +5,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { TestModeService } from '../../test-mode/test-mode.service';
 import { AuditService } from '../../audit/audit.service';
+import { CustomerMergeService } from '../../chat-prospects/customer-merge.service';
 
 describe('VerificationService', () => {
   let service: VerificationService;
@@ -289,6 +290,127 @@ describe('VerificationService', () => {
           service.verifyOtp({ lineUserId: 'U123', otp: '999999' }),
         ).rejects.toThrow('ไม่ถูกต้อง');
         expect(audit.log).not.toHaveBeenCalled();
+      });
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // Fix round 1 — Finding I1 / Ruling R11: absorbRoomsOfLineUser before bind()
+    // ─────────────────────────────────────────────────────────────
+    it('ไม่มี CustomerMergeService ต่อสาย (@Optional เป็น undefined) → verifyOtp ยัง bind() สำเร็จตามปกติ', async () => {
+      // ใช้ service/prisma จาก beforeEach หลักของไฟล์นี้ตรงๆ — ไม่ได้ provide CustomerMergeService
+      // เลย ⇒ @Optional() ทำให้ merge = undefined ข้างใน service — พิสูจน์ absorbRoomsBeforeBind
+      // ไม่ throw เมื่อไม่มี merge และ bind() ยังรันต่อเหมือนก่อน Task 10 ทุกประการ
+      prisma.customer.findFirst.mockResolvedValue({ id: 'c1', name: 'สมชาย', phone: '0891234567' });
+      await service.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+      const upsertCall = prisma.chatbotOtpRequest.upsert.mock.calls[0][0];
+      const storedHash = upsertCall.create.hash;
+      prisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord(storedHash));
+      prisma.customer.findUnique.mockResolvedValue({ id: 'c1', name: 'สมชาย' });
+      const smsCall = notifications.sendSmsFromQueue.mock.calls[0][1] as string;
+      const otp = smsCall.match(/(\d{6})/)![1];
+
+      const result = await service.verifyOtp({ lineUserId: 'U123', otp });
+
+      expect(result.customerId).toBe('c1');
+      expect(prisma.$transaction).toHaveBeenCalled(); // bind() รันจริง
+      expect(prisma.chatbotOtpRequest.delete).toHaveBeenCalled();
+    });
+
+    describe('Fix round 1 — R11: absorbRoomsOfLineUser called before bind()', () => {
+      let mergedPrisma: any;
+      let mergedNotifications: any;
+      let mergedTestMode: any;
+      let mergedAudit: any;
+      let merge: any;
+      let mergedService: VerificationService;
+
+      beforeEach(async () => {
+        mergedPrisma = {
+          chatbotOtpRequest: {
+            findUnique: jest.fn().mockResolvedValue(null),
+            upsert: jest.fn().mockResolvedValue({ id: 'otp-1' }),
+            delete: jest.fn().mockResolvedValue({}),
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+            update: jest.fn(),
+          },
+          customer: { findFirst: jest.fn(), findUnique: jest.fn() },
+          customerLineLink: { findUnique: jest.fn(), upsert: jest.fn().mockResolvedValue({}) },
+          chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+          $transaction: jest.fn().mockImplementation((cb) => {
+            const tx = {
+              customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
+              chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+              customer: { update: jest.fn().mockResolvedValue({}) },
+            };
+            return cb(tx);
+          }),
+        };
+        mergedNotifications = { sendSmsFromQueue: jest.fn().mockResolvedValue(undefined) };
+        mergedTestMode = { isEnabled: jest.fn().mockResolvedValue(false) };
+        mergedAudit = { log: jest.fn().mockResolvedValue(undefined) };
+        merge = { absorbRoomsOfLineUser: jest.fn().mockResolvedValue({ absorbed: 1, linked: 0 }) };
+
+        const module: TestingModule = await Test.createTestingModule({
+          providers: [
+            VerificationService,
+            { provide: PrismaService, useValue: mergedPrisma },
+            { provide: NotificationsService, useValue: mergedNotifications },
+            { provide: TestModeService, useValue: mergedTestMode },
+            { provide: AuditService, useValue: mergedAudit },
+            { provide: CustomerMergeService, useValue: merge },
+          ],
+        }).compile();
+
+        mergedService = module.get(VerificationService);
+      });
+
+      it('real-verify branch: เรียก absorbRoomsOfLineUser(lineUserId, LINE_FINANCE, customerId, SYSTEM_ACTOR) ก่อน bind() เสมอ', async () => {
+        mergedPrisma.customer.findFirst.mockResolvedValue({ id: 'c1', name: 'สมชาย', phone: '0891234567' });
+        await mergedService.requestOtp({ lineUserId: 'U123', phone: '0891234567' });
+        const upsertCall = mergedPrisma.chatbotOtpRequest.upsert.mock.calls[0][0];
+        const storedHash = upsertCall.create.hash;
+        mergedPrisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord(storedHash));
+        mergedPrisma.customer.findUnique.mockResolvedValue({ id: 'c1', name: 'สมชาย' });
+        const smsCall = mergedNotifications.sendSmsFromQueue.mock.calls[0][1] as string;
+        const otp = smsCall.match(/(\d{6})/)![1];
+
+        const callOrder: string[] = [];
+        merge.absorbRoomsOfLineUser.mockImplementation(async () => {
+          callOrder.push('absorb');
+          return { absorbed: 1, linked: 0 };
+        });
+        mergedPrisma.$transaction.mockImplementation((cb: any) => {
+          callOrder.push('bind');
+          const tx = {
+            customerLineLink: { upsert: jest.fn().mockResolvedValue({}) },
+            chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+            customer: { update: jest.fn().mockResolvedValue({}) },
+          };
+          return cb(tx);
+        });
+
+        await mergedService.verifyOtp({ lineUserId: 'U123', otp });
+
+        expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith(
+          'U123', 'LINE_FINANCE', 'c1', { id: 'system', role: 'SYSTEM' },
+        );
+        expect(callOrder).toEqual(['absorb', 'bind']); // absorb ก่อน bind() เสมอ ไม่ใช่ทีหลัง
+      });
+
+      it('test-mode-bypass branch: absorb ล้ม (เช่น placeholder มีเอกสารพ่วง) → ยัง bind() สำเร็จ (best-effort)', async () => {
+        mergedTestMode.isEnabled.mockResolvedValue(true);
+        mergedPrisma.chatbotOtpRequest.findUnique.mockResolvedValue(makeRecord('wrong-hash'));
+        mergedPrisma.customer.findUnique.mockResolvedValue({ id: 'c1', name: 'สมชาย' });
+        merge.absorbRoomsOfLineUser.mockRejectedValue(new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ'));
+
+        const result = await mergedService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+
+        expect(result.customerId).toBe('c1');
+        expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith(
+          'U123', 'LINE_FINANCE', 'c1', { id: 'system', role: 'SYSTEM' },
+        );
+        expect(mergedPrisma.$transaction).toHaveBeenCalled(); // bind() ยังรันต่อแม้ absorb ล้ม
+        expect(mergedPrisma.chatbotOtpRequest.delete).toHaveBeenCalled();
       });
     });
   });

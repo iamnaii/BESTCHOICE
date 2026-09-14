@@ -90,7 +90,7 @@ describe('ChatRoomService.linkRoomToCustomer (หลัง LIFF verify)', () => 
     expect(prisma.chatRoom.update).not.toHaveBeenCalled();
   });
 
-  it('absorb placeholder ล้ม (เช่น มีเอกสารพ่วง) → ห้องนี้ยังผูกกับลูกค้าที่ยืนยันตัวตนต่อไป (best-effort)', async () => {
+  it('absorb placeholder ล้ม (เช่น มีเอกสารพ่วง) → ไม่ผูกห้องนี้กับ customerId ใหม่ (Finding I3 — เก็บ retry path ไว้ ไม่ตัดขาดประวัติ placeholder)', async () => {
     const prisma: any = {
       chatRoom: {
         findUnique: jest.fn().mockResolvedValue({ id: 'room-fin', customerId: 'p1', customer: { acquisitionSource: 'CHAT_LINE_FINANCE', phone: null, nationalId: null, deletedAt: null } }),
@@ -101,9 +101,9 @@ describe('ChatRoomService.linkRoomToCustomer (หลัง LIFF verify)', () => 
     const service = new ChatRoomService(prisma, {} as any, undefined, undefined, merge as any);
     await expect(service.linkRoomToCustomer('room-fin', 'cust-real')).resolves.toBeUndefined();
     expect(merge.absorbPlaceholder).toHaveBeenCalledWith('p1', 'cust-real', { id: 'system', role: 'SYSTEM' });
-    expect(prisma.chatRoom.update).toHaveBeenCalledWith({
-      where: { id: 'room-fin' },
-      data: { customerId: 'cust-real', verifiedAt: expect.any(Date), verificationAttempts: 0 },
-    });
+    // ก่อนแก้ I3: โค้ดเดิมยังรัน chatRoom.update ต่อแม้ absorb ล้ม — ทับ customerId ของห้องทิ้งประวัติ
+    // placeholder ถาวร (ไม่มีทาง retry). ตอนนี้ต้อง return ทันทีหลัง alarm โดยไม่ผูกห้องนี้เลย —
+    // ข้อความถัดไปจาก LINE user คนนี้จะมาเดิน linkRoomToCustomer ใหม่ (retry ธรรมชาติ)
+    expect(prisma.chatRoom.update).not.toHaveBeenCalled();
   });
 });

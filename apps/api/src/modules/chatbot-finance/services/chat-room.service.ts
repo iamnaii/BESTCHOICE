@@ -174,9 +174,13 @@ export class ChatRoomService {
           );
           return;
         }
-        // best-effort: การผูก LINE เข้าลูกค้าที่ยืนยันตัวตนแล้วต้องไม่ล้มเพราะดูด placeholder ไม่ได้
-        // (เช่น placeholder ดันมีเอกสารพ่วงแบบ Task 8's absorbPlaceholder 409) — ห้องนี้ยังต้องผูกกับ
-        // ลูกค้าจริงต่อไปด้านล่าง ไม่งั้นบอทจะหาข้อมูลลูกค้าไม่เจอทั้งที่เพิ่งยืนยันตัวตนสำเร็จ
+        // Finding I3 — best-effort แต่ห้ามทับประวัติ placeholder เดิมถ้าดูดไม่สำเร็จ (เช่น
+        // placeholder ดันมีเอกสารพ่วงแบบ Task 8's absorbPlaceholder 409): alarm แล้ว return
+        // ทันที ไม่รัน chatRoom.update — ปล่อยให้ห้องนี้ยังชี้ placeholder เดิมต่อไป เพื่อให้
+        // ข้อความถัดไปจาก LINE user คนนี้มาเดิน linkRoomToCustomer ใหม่ได้ (retry ธรรมชาติ)
+        // แทนที่จะตัดขาดห้องออกจาก placeholder ถาวรโดยไม่มี merge เกิดขึ้นจริง. บอทยังตอบลูกค้า
+        // ได้ปกติระหว่างนี้เพราะ chatbot-finance.service.ts อ่านข้อมูลลูกค้าจาก linkStatus.customerId
+        // ตรง ๆ (ไม่ใช่ session.customerId ของห้อง) ทั้งกิ่งรูปภาพและกิ่งตอบด้วย AI
         try {
           await this.merge.absorbPlaceholder(room.customerId, customerId, SYSTEM_ACTOR);
         } catch (err) {
@@ -187,6 +191,7 @@ export class ChatRoomService {
             tags: { kind: 'chat-prospect' },
             extra: { roomId, placeholderId: room.customerId, customerId },
           });
+          return;
         }
       }
     }

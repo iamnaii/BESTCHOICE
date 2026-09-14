@@ -1,5 +1,8 @@
 import { ConflictException, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { CustomerMergeService } from './customer-merge.service';
+
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
 
 // เงียบ log "[merge] placeholder …" ให้ผลเทสสะอาด
 beforeAll(() => jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined));
@@ -118,6 +121,50 @@ describe('CustomerMergeService.absorbPlaceholder', () => {
     const service = new CustomerMergeService(prisma, audit as any);
     await expect(service.absorbPlaceholder('p1', 't1', actor)).rejects.toThrow('commit failed');
     expect(audit.log).not.toHaveBeenCalled();
+  });
+});
+
+describe('CustomerMergeService.absorbPlaceholder — R12 SYSTEM actor audit', () => {
+  const buildSystem = (tx: any, userFindFirst?: any) => {
+    const audit = { log: jest.fn().mockResolvedValue(undefined) };
+    const prisma: any = {
+      $transaction: jest.fn((fn: any) => fn(tx)),
+      user: { findFirst: userFindFirst ?? jest.fn().mockResolvedValue({ id: 'sys-user-real-id' }) },
+    };
+    return { service: new CustomerMergeService(prisma, audit as any), audit, prisma };
+  };
+
+  it('actor SYSTEM → resolve isSystemUser:true แล้วเขียน audit ด้วย userId จริง ไม่ใช่ "system"', async () => {
+    const { service, audit, prisma } = buildSystem(makeTx());
+    await service.absorbPlaceholder('p1', 't1', { id: 'system', role: 'SYSTEM' });
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({ where: { isSystemUser: true }, select: { id: true } });
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ userId: 'sys-user-real-id' }));
+  });
+
+  it('resolve ไม่เจอ system user → ข้าม audit ทั้งใบ + alarm Sentry แต่ merge ยังสำเร็จ', async () => {
+    (Sentry.captureException as jest.Mock).mockClear();
+    const { service, audit, prisma } = buildSystem(makeTx(), jest.fn().mockResolvedValue(null));
+    await expect(
+      service.absorbPlaceholder('p1', 't1', { id: 'system', role: 'SYSTEM' }),
+    ).resolves.toMatchObject({ placeholderId: 'p1', targetId: 't1' });
+    expect(prisma.user.findFirst).toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
+    expect(Sentry.captureException).toHaveBeenCalled();
+  });
+
+  it('actor ไม่ใช่ SYSTEM (staff จริง) → ไม่เรียก resolver เลย ใช้ actor.id ตรงๆ เหมือนเดิม', async () => {
+    const { service, audit, prisma } = buildSystem(makeTx());
+    await service.absorbPlaceholder('p1', 't1', { id: 'staff-1', role: 'SALES' });
+    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ userId: 'staff-1' }));
+  });
+
+  it('cache ต่อ process — สอง absorb ติดกันด้วย actor SYSTEM เรียก findFirst แค่ครั้งเดียว', async () => {
+    const findFirst = jest.fn().mockResolvedValue({ id: 'sys-user-real-id' });
+    const { service, prisma } = buildSystem(makeTx(), findFirst);
+    await service.absorbPlaceholder('p1', 't1', { id: 'system', role: 'SYSTEM' });
+    await service.absorbPlaceholder('p1', 't1', { id: 'system', role: 'SYSTEM' });
+    expect(prisma.user.findFirst).toHaveBeenCalledTimes(1);
   });
 });
 

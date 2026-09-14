@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { createHash, randomInt } from 'crypto';
@@ -8,6 +8,7 @@ import { TestModeService } from '../../test-mode/test-mode.service';
 import { AuditService } from '../../audit/audit.service';
 import { LineChannelType } from '@prisma/client';
 import { maskPhone } from '../utils/mask-phone';
+import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 นาที
 const OTP_MAX_ATTEMPTS = 3;
@@ -52,6 +53,7 @@ export class VerificationService {
     private notifications: NotificationsService,
     private testMode: TestModeService,
     private audit: AuditService,
+    @Optional() private merge?: CustomerMergeService,
   ) {}
 
   /**
@@ -265,6 +267,7 @@ export class VerificationService {
         throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
       }
 
+      await this.absorbRoomsBeforeBind(params.lineUserId, customer.id);
       await this.bind(params.lineUserId, customer.id);
       await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
 
@@ -317,6 +320,7 @@ export class VerificationService {
       throw new NotFoundException('ไม่พบข้อมูลลูกค้า');
     }
 
+    await this.absorbRoomsBeforeBind(params.lineUserId, customer.id);
     await this.bind(params.lineUserId, customer.id);
     await this.prisma.chatbotOtpRequest.delete({ where: { id: record.id } });
 
@@ -363,6 +367,31 @@ export class VerificationService {
   }
 
   // ─── private ──────────────────────────────────────────────
+
+  /**
+   * Ruling R11 — bind() ด้านล่างนี้ re-point ห้อง LINE_FINANCE ทั้งหมดของ lineUserId ตรงๆ
+   * ผ่าน tx.chatRoom.updateMany ของตัวเอง โดยไม่ผ่าน hook ของ Task 10 เลย (ChatRoomService.
+   * linkRoomToCustomer เช็ค session.customerId !== linkStatus.customerId แต่พอถึงข้อความถัดไป
+   * ค่าทั้งสองเท่ากันแล้วเพราะ bind() ตั้งไปแล้ว) — ถ้ามี placeholder ถือห้องเหล่านั้นอยู่ก่อน
+   * ประวัติของ placeholder จะถูกตัดขาดเงียบ ๆ (ห้องเปลี่ยนเจ้าของตรง ไม่ผ่าน absorbPlaceholder เลย)
+   * ต้อง absorb ก่อน bind() เสมอ ขณะที่ห้องยังชี้ placeholder เดิมอยู่ — รันนอก transaction ใดๆ
+   * (ก่อน bind() เปิด tx ของมันเอง) best-effort: การยืนยัน OTP ต้องไม่มีวันถูกบล็อกเพราะ merge
+   * ล้ม (เช่น placeholder มีเอกสารพ่วงแบบ Task 8's absorbPlaceholder 409) — ยังต้องเรียก bind()
+   * ต่อเสมอไม่ว่า absorb จะสำเร็จหรือไม่
+   */
+  private async absorbRoomsBeforeBind(lineUserId: string, customerId: string): Promise<void> {
+    try {
+      await this.merge?.absorbRoomsOfLineUser(lineUserId, 'LINE_FINANCE', customerId, SYSTEM_ACTOR);
+    } catch (err) {
+      this.logger.warn(
+        `[prospect] absorb rooms of ${lineUserId.slice(0, 8)}... → ${customerId.slice(0, 8)}...: ${err instanceof Error ? err.message : err}`,
+      );
+      Sentry.captureException(err, {
+        tags: { kind: 'chat-prospect' },
+        extra: { lineUserId, customerId },
+      });
+    }
+  }
 
   private async bind(lineUserId: string, customerId: string): Promise<void> {
     await this.prisma.$transaction(async (tx) => {

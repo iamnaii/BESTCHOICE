@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
@@ -31,8 +32,43 @@ const COUNT_SELECT = Object.fromEntries(Object.keys(BLOCKING_RELATIONS).map((k) 
 @Injectable()
 export class CustomerMergeService {
   private readonly logger = new Logger(CustomerMergeService.name);
+  private systemUserId: string | null = null;
 
   constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+
+  /**
+   * Ruling R12 — AuditLog.userId มี FK จริงไป User.id (audit_logs_user_id_fkey) และ
+   * SYSTEM_ACTOR.id = 'system' ไม่ใช่แถวที่มีอยู่จริง เขียนแล้วชน FK เงียบ ๆ เพราะ
+   * AuditService.log กลืน error ทุกกรณี (audit.service.ts) ⇒ ไม่มีแถว audit เลยโดยไม่มีใครรู้
+   * เมื่อ actor เป็น SYSTEM. แก้ด้วยการ resolve เป็น userId จริงก่อนเขียน audit เสมอ โดยใช้ idiom
+   * ที่มีอยู่แล้วในโค้ด — แถว User ที่ `isSystemUser: true` (seed โดย
+   * `apps/api/prisma/seeds/collections-foundation.seed.ts`, รันทั้ง dev seed.ts + prod
+   * seed-production.ts) แบบเดียวกับ `PaymentPostCommitHooks.getSystemUserId()`
+   * (payment-post-commit-hooks.ts:215) — ไม่ใช่ email `admin@bestchoice.com` แบบ
+   * journal-auto.service.ts/bookings.service.ts ซึ่งชี้พนักงานจริงคนหนึ่ง คนละความหมายกับ "ระบบ".
+   * Cache ต่อ process (ตาม pattern resolveFinanceCompanyId/resolveSystemUserId ของ
+   * journal-auto.service.ts) — resolve ไม่เจอ = คืน null แล้วให้ caller ข้าม audit ไปเลย
+   * (ห้ามปล่อยให้ FK พังเงียบใน AuditService.log ต่อ).
+   */
+  private async resolveSystemActorUserId(): Promise<string | null> {
+    if (this.systemUserId) return this.systemUserId;
+    try {
+      const user = await this.prisma.user.findFirst({ where: { isSystemUser: true }, select: { id: true } });
+      if (!user) {
+        this.logger.error('[prospect] system user (isSystemUser=true) not found — skipping merge audit');
+        Sentry.captureException(new Error('System user not found for chat-prospect merge audit'), {
+          tags: { kind: 'chat-prospect' },
+        });
+        return null;
+      }
+      this.systemUserId = user.id;
+      return user.id;
+    } catch (err) {
+      this.logger.error(`[prospect] failed to resolve system user id: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { kind: 'chat-prospect' } });
+      return null;
+    }
+  }
 
   async absorbPlaceholder(
     placeholderId: string,
@@ -113,14 +149,23 @@ export class CustomerMergeService {
 
     // audit หลัง commit เท่านั้น — AuditService.log เปิดทรานแซกชันของตัวเอง (คนละ connection)
     // ถ้าเขียนใน tx ข้างบนแล้ว commit ล้ม จะเหลือ audit ของการรวมที่ไม่เกิดขึ้นจริง
-    await this.audit.log({
-      userId: actor.id,
-      action: 'CUSTOMER_PLACEHOLDER_MERGED',
-      entity: 'customer',
-      entityId: targetId,
-      oldValue: { placeholderId },
-      newValue: { roomIds, movedCreditChecks: result.movedCreditChecks },
-    });
+    // Ruling R12 — actor SYSTEM ต้อง resolve เป็น userId จริงก่อนเขียน (ดู resolveSystemActorUserId)
+    // resolve ไม่เจอ = ข้าม audit ทั้งใบ ไม่ปล่อยให้ FK พังเงียบใน AuditService.log
+    const auditUserId = actor.role === 'SYSTEM' ? await this.resolveSystemActorUserId() : actor.id;
+    if (auditUserId) {
+      await this.audit.log({
+        userId: auditUserId,
+        action: 'CUSTOMER_PLACEHOLDER_MERGED',
+        entity: 'customer',
+        entityId: targetId,
+        oldValue: { placeholderId },
+        newValue: { roomIds, movedCreditChecks: result.movedCreditChecks },
+      });
+    } else {
+      this.logger.warn(
+        `[merge] skipped audit for placeholder ${placeholderId} → ${targetId} — could not resolve system actor user id`,
+      );
+    }
     this.logger.log(
       `[merge] placeholder ${placeholderId} → ${targetId} rooms=${result.movedRooms} creditChecks=${result.movedCreditChecks} by ${actor.id}`,
     );

@@ -1,6 +1,7 @@
 import { ConflictException, Logger } from '@nestjs/common';
 import { ChatChannel, PrismaClient } from '@prisma/client';
 import { CustomerMergeService } from './customer-merge.service';
+import { AuditService } from '../audit/audit.service';
 
 /**
  * พิสูจน์กับ Postgres จริง (สเปค §3.3): ชื่อ relation ใน `_count` ถูกต้อง · trigger ที่ referenceKey ชนกับปลายทาง
@@ -81,5 +82,46 @@ describe('CustomerMergeService.absorbPlaceholder (real DB)', () => {
     );
     expect((await prisma.chatRoom.findUniqueOrThrow({ where: { id: room.id } })).customerId).toBe(placeholder.id);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: placeholder.id } })).deletedAt).toBeNull();
+  });
+});
+
+/**
+ * Ruling R12, ต่อจริงกับ Postgres (ไม่ใช่ audit mock แบบ describe ด้านบน) — พิสูจน์ว่า
+ * audit_logs_user_id_fkey ไม่พังเงียบอีกต่อไปเมื่อ actor เป็น SYSTEM_ACTOR: ต้อง resolve
+ * เป็นแถว User ที่ isSystemUser=true จริง (seed โดย collections-foundation.seed.ts) แล้ว
+ * เขียนแถว AuditLog สำเร็จจริงด้วย userId นั้น
+ */
+describe('CustomerMergeService.absorbPlaceholder — R12 SYSTEM actor audit (real DB + real AuditService)', () => {
+  const prisma = new PrismaClient();
+  const realAudit = new AuditService(prisma as any);
+  const service = new CustomerMergeService(prisma as any, realAudit);
+  const stamp = Date.now();
+  const customerIds: string[] = [];
+
+  beforeAll(() => jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined));
+
+  afterAll(async () => {
+    // AuditLog เป็น immutable (DB trigger T2-C4 บล็อก DELETE) — ปล่อยแถว audit ของเทสไว้ตามปกติ
+    await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
+    await prisma.$disconnect();
+    jest.restoreAllMocks();
+  });
+
+  it('actor SYSTEM_ACTOR → เขียน AuditLog สำเร็จจริงผ่าน FK ด้วย userId ของแถว isSystemUser=true', async () => {
+    const sysUser = await prisma.user.findFirstOrThrow({ where: { isSystemUser: true }, select: { id: true } });
+    const target = await prisma.customer.create({ data: { name: 'r12 db target', phone: `07${String(stamp).slice(-8)}` } });
+    customerIds.push(target.id);
+    const placeholder = await prisma.customer.create({
+      data: { name: 'r12 db placeholder', phone: null, acquisitionSource: 'CHAT_FACEBOOK' },
+    });
+    customerIds.push(placeholder.id);
+
+    await service.absorbPlaceholder(placeholder.id, target.id, { id: 'system', role: 'SYSTEM' });
+
+    const rows = await prisma.auditLog.findMany({
+      where: { action: 'CUSTOMER_PLACEHOLDER_MERGED', entity: 'customer', entityId: target.id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].userId).toBe(sysUser.id);
   });
 });

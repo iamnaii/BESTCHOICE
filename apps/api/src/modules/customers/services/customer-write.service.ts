@@ -1,12 +1,15 @@
-import { Injectable, ConflictException, BadRequestException, Optional } from '@nestjs/common';
+import { Injectable, ConflictException, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateCustomerDto, UpdateCustomerDto } from '../dto/customer.dto';
+import { FillProspectContactDto } from '../dto/fill-prospect-contact.dto';
 import { encryptPII } from '../../../utils/crypto.util';
 import { hashPII, encryptReferencesJson } from '../../../utils/pii.util';
 import { CustomerPiiService } from '../customer-pii.service';
 import { ContactResolverService } from '../../contacts/contact-resolver.service';
 import { CustomerQueryService } from './customer-query.service';
+import { AuditService } from '../../audit/audit.service';
+import { isChatPlaceholder, PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospects/chat-placeholder';
 
 /**
  * Write-path slice of the decomposed CustomersService.
@@ -29,6 +32,7 @@ export class CustomerWriteService {
     private readonly contactResolver: ContactResolverService,
     private readonly query: CustomerQueryService,
     @Optional() private readonly piiService?: CustomerPiiService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   private get piiKey(): string {
@@ -415,5 +419,54 @@ export class CustomerWriteService {
     }
     const check = (11 - (sum % 11)) % 10;
     return check === parseInt(id[12]);
+  }
+
+  /**
+   * เติมเบอร์/ชื่อให้ "ผู้สนใจอัตโนมัติจากแชท" (สเปค 3.6 · Ruling R27) — แถวเดิม ไม่สร้างคนใหม่
+   * ใช้ได้เฉพาะ placeholder ที่ยังไม่ถูกลบ · dedup เบอร์เหมือน create/update (409 พร้อม existingCustomer ให้เว็บเสนอ "รวม")
+   * ที่มา CHAT_* ไม่ถูกแตะ (เป็นข้อมูลวิเคราะห์ lead — R14/R24)
+   */
+  async fillPlaceholderContact(
+    id: string,
+    dto: FillProspectContactDto,
+    actor: { id: string; role: string },
+  ): Promise<{ id: string; name: string; phone: string }> {
+    const current = await this.prisma.customer.findUnique({
+      where: { id },
+      select: { id: true, name: true, ...PLACEHOLDER_FIELDS_SELECT }, // SELECT มี deletedAt อยู่แล้ว
+    });
+    if (!current || current.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
+    if (!isChatPlaceholder(current)) {
+      throw new ConflictException('เติมเบอร์ได้เฉพาะผู้สนใจอัตโนมัติจากแชทที่ยังไม่มีเบอร์ — คนนี้มีเบอร์แล้ว แก้ได้ที่หน้ารายละเอียดลูกค้า');
+    }
+    const phone = this.normalizePhone(dto.phone) ?? dto.phone;
+    const nationalId = dto.nationalId?.trim() || undefined;
+    await this.assertContactNotDuplicate(phone, null, id);
+
+    const piiEncrypted = this.buildPiiEncryptedFields({ phone, ...(nationalId ? { nationalId } : {}) });
+    const name = dto.name?.trim() || current.name;
+    const updated = await this.prisma.customer.update({
+      where: { id },
+      data: {
+        phone,
+        name,
+        ...(dto.prefix !== undefined ? { prefix: dto.prefix || null } : {}),
+        ...(dto.nickname !== undefined ? { nickname: dto.nickname || null } : {}),
+        ...(dto.facebookName !== undefined ? { facebookName: dto.facebookName || null } : {}),
+        ...(nationalId ? { nationalId } : {}),
+        ...(piiEncrypted as Partial<Prisma.CustomerUpdateInput>),
+      },
+      select: { id: true, name: true, phone: true },
+    });
+
+    await this.audit?.log({
+      userId: actor.id,
+      action: 'CUSTOMER_PLACEHOLDER_CONTACT_FILLED',
+      entity: 'customer',
+      entityId: id,
+      oldValue: { name: current.name, phone: null },
+      newValue: { name: updated.name, phone: updated.phone, nationalIdFilled: !!nationalId },
+    });
+    return { id: updated.id, name: updated.name, phone: updated.phone as string };
   }
 }

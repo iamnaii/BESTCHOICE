@@ -20,6 +20,7 @@ import { CustomerInsightsService } from '../overdue/customer-insights.service';
 import type { CustomerTierResponse } from './dto/tier.dto';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { UpdateCustomerContactDto } from './dto/skip-tracing.dto';
+import { FillProspectContactDto } from './dto/fill-prospect-contact.dto';
 import { UploadDocumentDto, DeleteDocumentDto } from './dto/document.dto';
 import { CustomersListQueryDto } from './dto/customers-list-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -283,6 +284,23 @@ export class CustomersController {
     // (การรวมย้ายห้องทุกห้อง จึงต้องแน่นเท่าทางผูกห้อง/กดไม่ใช่ ไม่ใช่แค่มี role)
     await this.merge.assertActorMayAbsorb(id, actor);
     return this.merge.absorbPlaceholder(id, targetId, actor, { allowPlaceholderTarget: true });
+  }
+
+  /**
+   * เติมเบอร์/ชื่อให้ "ผู้สนใจอัตโนมัติจากแชท" (สเปค 3.6 ปุ่ม "เพิ่มเบอร์/ข้อมูล" · Ruling R27)
+   * roles เท่าทางผูกห้อง — SALES ผ่านด่านห้องเดียวกับ absorb-into (R26): ห้องของ placeholder ต้องไม่มีคนดูแลหรือเป็นของตัวเอง
+   * เบอร์ซ้ำ → 409 พร้อม existingCustomer (รูปเดียวกับ POST /customers) ให้เว็บเสนอ "รวมกับลูกค้าเดิมคนนี้"
+   */
+  @Post(':id/fill-contact')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  async fillContact(
+    @Param('id') id: string,
+    @Body() dto: FillProspectContactDto,
+    @Req() req: { user: { id: string; role: string } },
+  ) {
+    const actor = { id: req.user.id, role: req.user.role };
+    await this.merge.assertActorMayAbsorb(id, actor);
+    return this.customersService.fillPlaceholderContact(id, dto, actor);
   }
 
   @Delete(':id')

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
+import { FillProspectContactDto } from './dto/fill-prospect-contact.dto';
 import { CustomerQueryService, type CustomersReadFilters } from './services/customer-query.service';
 import { CustomerWriteService } from './services/customer-write.service';
 import { CustomerAnalyticsService } from './services/customer-analytics.service';
@@ -68,6 +69,10 @@ export class CustomersService {
 
   update(id: string, dto: UpdateCustomerDto) {
     return this.write.update(id, dto);
+  }
+
+  fillPlaceholderContact(id: string, dto: FillProspectContactDto, actor: { id: string; role: string }) {
+    return this.write.fillPlaceholderContact(id, dto, actor);
   }
 
   remove(id: string) {

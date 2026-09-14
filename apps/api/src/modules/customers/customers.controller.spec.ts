@@ -13,7 +13,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 
 describe('CustomersController PII (Phase 5)', () => {
   let controller: CustomersController;
-  let service: { findOne: jest.Mock; findAll: jest.Mock; search: jest.Mock };
+  let service: { findOne: jest.Mock; findAll: jest.Mock; search: jest.Mock; fillPlaceholderContact: jest.Mock };
   let piiAudit: { logDecryption: jest.Mock };
   let tierService: CustomerTierService;
   let merge: { absorbPlaceholder: jest.Mock; assertActorMayAbsorb: jest.Mock };
@@ -23,6 +23,7 @@ describe('CustomersController PII (Phase 5)', () => {
       findOne: jest.fn(),
       findAll: jest.fn(),
       search: jest.fn(),
+      fillPlaceholderContact: jest.fn(),
     };
     piiAudit = { logDecryption: jest.fn().mockResolvedValue(undefined) };
     merge = {
@@ -204,6 +205,23 @@ describe('CustomersController PII (Phase 5)', () => {
     const err = new ConflictException('รวมไม่ได้: ผู้สนใจคนนี้มีสัญญา 1 รายการ — ให้แก้ที่รายการนั้นก่อน');
     merge.absorbPlaceholder.mockRejectedValueOnce(err);
     await expect(controller.absorbInto('p1', 't1', req)).rejects.toBe(err);
+  });
+
+  describe('POST /customers/:id/fill-contact', () => {
+    it('SALES: ผ่านด่านขอบเขตห้องก่อน แล้วส่ง dto + actor เข้า service', async () => {
+      service.fillPlaceholderContact.mockResolvedValue({ id: 'p1', name: 'สมชาย ใจดี', phone: '0812345678' });
+      const dto = { phone: '0812345678', name: 'สมชาย ใจดี' };
+      const result = await controller.fillContact('p1', dto as any, reqOf('SALES'));
+      expect(merge.assertActorMayAbsorb).toHaveBeenCalledWith('p1', { id: 'u1', role: 'SALES' });
+      expect(service.fillPlaceholderContact).toHaveBeenCalledWith('p1', dto, { id: 'u1', role: 'SALES' });
+      expect(result).toEqual({ id: 'p1', name: 'สมชาย ใจดี', phone: '0812345678' });
+    });
+
+    it('SALES นอกขอบเขตห้อง → 403 จากด่าน และไม่แตะ service', async () => {
+      merge.assertActorMayAbsorb.mockRejectedValueOnce(new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้'));
+      await expect(controller.fillContact('p1', { phone: '0812345678' } as any, reqOf('SALES'))).rejects.toBeInstanceOf(ForbiddenException);
+      expect(service.fillPlaceholderContact).not.toHaveBeenCalled();
+    });
   });
 
 });

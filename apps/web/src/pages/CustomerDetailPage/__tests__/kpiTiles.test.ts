@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { formatDateShort } from '@/utils/formatters';
 import { customerKind } from '../utils/customerKind';
 import { kpiTiles } from '../utils/kpiTiles';
-import type { ContractProgress, CustomerDetail } from '../types';
+import { detail, emptyPurchase, progress } from './fixtures';
 
 // วันที่คำนวณด้วย formatter ตัวเดียวกับหน้าจอเสมอ — CI รันเป็น UTC
 const NEXT_DUE = '2026-10-05T00:00:00.000Z';
@@ -10,31 +10,6 @@ const WARRANTY = '2026-11-20T00:00:00.000Z';
 const LATEST = '2026-08-20T09:05:00.000Z';
 const LAST_CONTACT = '2026-09-14T11:40:00.000Z';
 const baht = (n: number) => `${n.toLocaleString('th-TH', { maximumFractionDigits: 2 })} ฿`;
-
-const emptyPurchase = { installmentTotal: 0, installmentByState: { ACTIVE: 0, OVERDUE: 0, CLOSED: 0, BAD_DEBT: 0, OTHER: 0 }, cashCount: 0, externalFinanceCount: 0 };
-
-function detail(over: Partial<CustomerDetail> = {}): CustomerDetail {
-  return {
-    id: 'c1', nationalId: '', prefix: null, name: 'สมชาย ใจดี', nickname: null, isForeigner: false, birthDate: null,
-    phone: '0812345678', chatPlaceholder: false, phoneSecondary: null, email: null, lineIdFinance: null, lineIdShop: null,
-    facebookLink: null, facebookName: null, facebookFriends: null, googleMapLink: null, addressIdCard: null, addressCurrent: null,
-    occupation: null, occupationDetail: null, salary: null, workplace: null, addressWork: null, references: null, documents: null,
-    createdAt: '2024-04-05T03:00:00.000Z', contracts: [], sales: [],
-    acquisitionSource: null, creditCheckStatus: 'NONE', tags: [], source: 'WALK_IN', purchase: emptyPurchase,
-    latestPurchase: null, warranty: null, installmentBalance: null, chatRooms: [], lastContactAt: null, assignedTo: null, openContracts: [],
-    ...over,
-  };
-}
-
-function progress(over: Partial<ContractProgress> = {}): ContractProgress {
-  return {
-    id: 'k1', contractNumber: 'CT-2569-0042', status: 'OVERDUE', productLabel: 'Apple iPhone 15 128GB', imeiSerial: null, branchName: 'สำนักงานใหญ่',
-    startedAt: '2026-03-05T03:00:00.000Z', monthlyPayment: 4200, totalInstallments: 12, paidInstallments: 6, remainingInstallments: 6,
-    overdueInstallments: 1, overdueAmount: 4200, outstanding: 25200, nextDueDate: NEXT_DUE, nextAmountDue: 4200,
-    firstOverdueInstallmentNo: 7, firstOverdueDueDate: '2026-09-05T00:00:00.000Z', mdmLocked: false,
-    shopWarrantyEndDate: null, centerWarrantyEndDate: null, lastCall: null, ...over,
-  };
-}
 
 const latestPurchase = { at: LATEST, kind: 'CASH' as const, number: 'SL-2569-0210', productLabel: 'iPhone 13 128GB', imeiSerial: null, branchId: null, branchName: null };
 

@@ -3,8 +3,11 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { CustomerMergeService, MergeActor, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
+import { PLACEHOLDER_FIELDS_SELECT, isLivePlaceholder } from '../../chat-prospects/chat-placeholder';
 
 /**
  * SessionOpsService — ticket linking & conversation merge for staff chat.
@@ -16,7 +19,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 export class SessionOpsService {
   private readonly logger = new Logger(SessionOpsService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, @Optional() private merge?: CustomerMergeService) {}
 
   /**
    * Create a Todo/ticket from a chat room.
@@ -74,7 +77,7 @@ export class SessionOpsService {
    * Merge two rooms — move all data from secondary into primary.
    * Secondary room is soft-deleted after merge.
    */
-  async mergeRooms(primaryId: string, secondaryId: string) {
+  async mergeRooms(primaryId: string, secondaryId: string, actor: MergeActor = SYSTEM_ACTOR) {
     if (primaryId === secondaryId) {
       throw new BadRequestException('ไม่สามารถรวมห้องแชทเดียวกันได้');
     }
@@ -82,9 +85,11 @@ export class SessionOpsService {
     const [primary, secondary] = await Promise.all([
       this.prisma.chatRoom.findFirst({
         where: { id: primaryId, deletedAt: null },
+        include: { customer: { select: PLACEHOLDER_FIELDS_SELECT } },
       }),
       this.prisma.chatRoom.findFirst({
         where: { id: secondaryId, deletedAt: null },
+        include: { customer: { select: PLACEHOLDER_FIELDS_SELECT } },
       }),
     ]);
 
@@ -95,15 +100,23 @@ export class SessionOpsService {
       throw new NotFoundException('ไม่พบห้องแชทรอง');
     }
 
-    // Validate same customer (or secondary has no customer)
-    if (
-      secondary.customerId &&
-      primary.customerId &&
-      secondary.customerId !== primary.customerId
-    ) {
-      throw new BadRequestException(
-        'ไม่สามารถรวมเซสชันที่เป็นของลูกค้าคนละคนได้',
-      );
+    // ผู้สนใจอัตโนมัติ (สเปค 3.3 ค): placeholder ไม่ใช่ "ลูกค้าคนละคน" — ดูดเข้าอีกฝั่งก่อนรวมห้อง
+    // ทำนอกทรานแซกชันด้านล่างเสมอ เพราะ absorbPlaceholder เปิดทรานแซกชันของตัวเอง (ห้ามซ้อน)
+    if (secondary.customerId && primary.customerId && secondary.customerId !== primary.customerId) {
+      const primaryPh = isLivePlaceholder(primary.customer);
+      const secondaryPh = isLivePlaceholder(secondary.customer);
+      if (!this.merge || (!primaryPh && !secondaryPh)) {
+        throw new BadRequestException('ไม่สามารถรวมเซสชันที่เป็นของลูกค้าคนละคนได้');
+      }
+      if (secondaryPh && !primaryPh) {
+        await this.merge.absorbPlaceholder(secondary.customerId, primary.customerId, actor, { allowPlaceholderTarget: true });
+      } else if (primaryPh && !secondaryPh) {
+        await this.merge.absorbPlaceholder(primary.customerId, secondary.customerId, actor, { allowPlaceholderTarget: true });
+      } else {
+        // ทั้งคู่ placeholder → ใหม่กว่าเข้าเก่ากว่า
+        const [older, newer] = primary.createdAt <= secondary.createdAt ? [primary, secondary] : [secondary, primary];
+        await this.merge.absorbPlaceholder(newer.customerId!, older.customerId!, actor, { allowPlaceholderTarget: true });
+      }
     }
 
     await this.prisma.$transaction(async (tx) => {

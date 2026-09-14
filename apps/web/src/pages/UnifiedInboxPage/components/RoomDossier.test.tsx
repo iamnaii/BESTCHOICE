@@ -213,8 +213,9 @@ const PROSPECT_ROOM = {
   ...ROOM,
   displayName: 'สมชาย ใจดี',
   customer: { id: 'p1', name: 'สมชาย ใจดี', phone: null, chatPlaceholder: true },
+  // `channel` = โลโก้ช่องทางที่ API คืนจริง (`chatLogoOf` ยุบ LINE_SHOP/LINE_FINANCE → 'LINE') ไม่ใช่ช่องทางห้อง
   possibleSamePerson: [
-    { customerId: 'c-line', name: 'สมชาย ใจดี', channel: 'LINE_SHOP', hasPhone: true, chatPlaceholder: false, createdAt: '2026-09-03T02:00:00Z', mergeDirection: 'absorb_current_into_other' as const },
+    { customerId: 'c-line', name: 'สมชาย ใจดี', channel: 'LINE' as const, hasPhone: true, chatPlaceholder: false, createdAt: '2026-09-03T02:00:00Z', mergeDirection: 'absorb_current_into_other' as const },
   ],
 };
 
@@ -263,7 +264,7 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
 
   it('คำใบ้อาจเป็นคนเดียวกัน: ข้อความตาม mockup · "รวมเป็นคนเดียวกัน" ยิง absorb ตามทิศทาง · "ไม่ใช่" ยิง dismiss', async () => {
     wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
-    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('LINE ร้าน · มีเบอร์ · ทักเมื่อ');
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('LINE · มีเบอร์ · ทักเมื่อ');
     fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/customers/p1/absorb-into/c-line'));
     fireEvent.click(screen.getByRole('button', { name: 'ไม่ใช่' }));
@@ -272,8 +273,8 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
 
   it('ทิศทาง absorb_other_into_current = ดูดอีกคนเข้าห้องนี้ · mergeDirection none = ไม่มีปุ่มรวม', async () => {
     const other = { ...PROSPECT_ROOM, possibleSamePerson: [
-      { customerId: 'p-other', name: 'สมชาย ใจดี', channel: 'TIKTOK', hasPhone: false, chatPlaceholder: true, createdAt: '2026-09-10T02:00:00Z', mergeDirection: 'absorb_other_into_current' as const },
-      { customerId: 'c-real2', name: 'สมชาย ใจดี', channel: 'WEB', hasPhone: true, chatPlaceholder: false, createdAt: '2026-09-01T02:00:00Z', mergeDirection: 'none' as const },
+      { customerId: 'p-other', name: 'สมชาย ใจดี', channel: 'TIKTOK' as const, hasPhone: false, chatPlaceholder: true, createdAt: '2026-09-10T02:00:00Z', mergeDirection: 'absorb_other_into_current' as const },
+      { customerId: 'c-real2', name: 'สมชาย ใจดี', channel: 'WEB' as const, hasPhone: true, chatPlaceholder: false, createdAt: '2026-09-01T02:00:00Z', mergeDirection: 'none' as const },
     ] };
     wrap(<RoomDossier room={other} customerId="p1" activeRoomId="r-1" />);
     const buttons = screen.getAllByRole('button', { name: 'รวมเป็นคนเดียวกัน' });
@@ -281,6 +282,20 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     fireEvent.click(buttons[0]);
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/customers/p-other/absorb-into/p1'));
     expect(screen.getByText('ตรวจสอบเอง')).toBeInTheDocument();
+  });
+
+  // R42: API คืน channel = null ได้ (คนชื่อตรงกันที่มีเบอร์แล้วแต่ไม่เคยมีห้องแชท) — ต้องไม่เหลือขีดคั่นลอย " —  · "
+  it('คำใบ้ที่ไม่มีช่องทาง (channel = null) → ข้ามส่วนช่องทางไปเลย ไม่มีขีดคั่นค้าง', () => {
+    const noChannel = { ...PROSPECT_ROOM, possibleSamePerson: [
+      { customerId: 'c-nochan', name: 'สมชาย ใจดี', channel: null, hasPhone: true, chatPlaceholder: false, createdAt: '2026-09-03T02:00:00Z', mergeDirection: 'absorb_current_into_other' as const },
+    ] };
+    wrap(<RoomDossier room={noChannel} customerId="p1" activeRoomId="r-1" />);
+    const hint = screen.getByText(/อาจเป็นคนเดียวกับ/);
+    expect(hint).toHaveTextContent('— มีเบอร์ · ทักเมื่อ');
+    expect(hint.textContent).not.toContain(' —  ·');
+    expect(hint.textContent).not.toContain('null');
+    // ทิศทางยังใช้ได้ตามปกติ — คำใบ้ไม่มีช่องทางไม่ได้แปลว่ารวมไม่ได้
+    expect(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' })).toBeEnabled();
   });
 
   it('บทบาทที่ fill-contact ไม่รับ (ACCOUNTANT) → ปุ่มเพิ่มเบอร์ปิดพร้อมเหตุผล', () => {

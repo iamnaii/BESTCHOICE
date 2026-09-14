@@ -45,11 +45,15 @@ import type { Todo, AssigneeRef } from '@/pages/TodosPage/types';
  * <Customer360Panel bare sections=[…]> — ไม่เขียนซ้ำ ไม่ทำฟีเจอร์เดิมหาย
  */
 
+/** โลโก้ช่องทางแชทของคำใบ้ "อาจเป็นคนเดียวกัน" — API ยุบ LINE_FINANCE/LINE_SHOP เป็น LINE แล้ว (`chatLogoOf`) */
+export type SamePersonChannel = 'LINE' | 'FACEBOOK' | 'TIKTOK' | 'WEB';
+
 /** คำใบ้ "อาจเป็นคนเดียวกัน" จาก GET /staff-chat/rooms/:id (สเปค 3.6 · สูงสุด 3 · ไม่รวมอัตโนมัติ) */
 export interface PossibleSamePerson {
   customerId: string;
   name: string;
-  channel: string;
+  /** `null` = คนที่ชื่อตรงกันและมีเบอร์แล้ว แต่ยังไม่เคยมีห้องแชท (same-person.service คืน null ตรง ๆ) */
+  channel: SamePersonChannel | null;
   hasPhone: boolean;
   chatPlaceholder: boolean;
   createdAt: string;
@@ -80,6 +84,13 @@ const channelLabel: Record<string, string> = {
   FACEBOOK: 'Facebook',
   LINE_FINANCE: 'LINE การเงิน',
   LINE_SHOP: 'LINE ร้าน',
+  TIKTOK: 'TikTok',
+  WEB: 'เว็บ',
+};
+/** ป้ายของโลโก้ช่องทาง (คนละชุดกับ `channelLabel` ที่ key ด้วยช่องทางห้องจริง เช่น LINE_SHOP) */
+const chatLogoLabel: Record<SamePersonChannel, string> = {
+  LINE: 'LINE',
+  FACEBOOK: 'Facebook',
   TIKTOK: 'TikTok',
   WEB: 'เว็บ',
 };
@@ -211,29 +222,34 @@ function ProspectCard({ room, customerId, canFill, onFill, onLink, onOpenProfile
           <Search className="mr-1 size-3.5" /> ผูกกับลูกค้าเดิม
         </Button>
       </div>
-      {hints.map((p) => (
-        <div key={p.customerId} className="mt-2 rounded-lg border border-primary/35 bg-primary/5 px-2.5 py-2 text-xs leading-snug">
-          <p className="m-0">
-            <Users className="mr-1 inline size-3.5 text-primary" aria-hidden="true" />
-            อาจเป็นคนเดียวกับ <span className="font-semibold">{p.name}</span> — {channelLabel[p.channel] ?? p.channel} · {p.hasPhone ? 'มีเบอร์' : 'ยังไม่มีเบอร์'} · ทักเมื่อ {fmtDate(p.createdAt) || '—'}
-          </p>
-          <div className="mt-2 flex items-center gap-1.5">
-            {p.mergeDirection === 'none' ? (
-              <span className="text-muted-foreground">ตรวจสอบเอง</span>
-            ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={busy}
-                onClick={() => (p.mergeDirection === 'absorb_current_into_other' ? onMerge(customerId, p.customerId) : onMerge(p.customerId, customerId))}
-              >
-                รวมเป็นคนเดียวกัน
-              </Button>
-            )}
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => onDismiss(p.customerId)}>ไม่ใช่</Button>
+      {hints.map((p) => {
+        /* ทิศทางรวมต้องระบุชัดทั้งสองค่า — ค่าที่ไม่รู้จัก (API เพิ่มทิศทางใหม่) ต้องไม่มีปุ่มรวม
+           ไม่ใช่ตกไปทิศตรงข้ามเงียบ ๆ อย่าง ternary สองทาง (รวมผิดทิศ = ดูดคนจริงเข้าผู้สนใจ) */
+        const merge =
+          p.mergeDirection === 'absorb_current_into_other'
+            ? { placeholderId: customerId, targetId: p.customerId }
+            : p.mergeDirection === 'absorb_other_into_current'
+              ? { placeholderId: p.customerId, targetId: customerId }
+              : null;
+        return (
+          <div key={p.customerId} className="mt-2 rounded-lg border border-primary/35 bg-primary/5 px-2.5 py-2 text-xs leading-snug">
+            <p className="m-0">
+              <Users className="mr-1 inline size-3.5 text-primary" aria-hidden="true" />
+              อาจเป็นคนเดียวกับ <span className="font-semibold">{p.name}</span> — {p.channel ? `${chatLogoLabel[p.channel]} · ` : ''}{p.hasPhone ? 'มีเบอร์' : 'ยังไม่มีเบอร์'} · ทักเมื่อ {fmtDate(p.createdAt) || '—'}
+            </p>
+            <div className="mt-2 flex items-center gap-1.5">
+              {merge ? (
+                <Button variant="primary" size="sm" disabled={busy} onClick={() => onMerge(merge.placeholderId, merge.targetId)}>
+                  รวมเป็นคนเดียวกัน
+                </Button>
+              ) : p.mergeDirection === 'none' ? (
+                <span className="text-muted-foreground">ตรวจสอบเอง</span>
+              ) : null}
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => onDismiss(p.customerId)}>ไม่ใช่</Button>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </>
   );
 }

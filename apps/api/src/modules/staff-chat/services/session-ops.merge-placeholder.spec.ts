@@ -37,13 +37,15 @@ describe('mergeRooms กับผู้สนใจอัตโนมัติ',
     await service.mergeRooms('p', 's');
     expect(merge.absorbPlaceholder).toHaveBeenCalledWith('c-ph', 'c-real', { id: 'system', role: 'SYSTEM' }, { allowPlaceholderTarget: true });
   });
-  it('placeholder ทั้งคู่ → ใหม่กว่าเข้าเก่ากว่า', async () => {
+  it('placeholder ทั้งคู่ → ห้องรองเข้าห้องหลักเสมอ (Ruling R13 — ไม่สนใจ createdAt)', async () => {
+    // ห้องหลัก (p) ตั้งใจให้ "ใหม่กว่า" ห้องรอง (s) — พิสูจน์ว่าทิศทางไม่ได้ตัดสินด้วย
+    // createdAt อีกต่อไป (กติกาเดิม "ใหม่กว่าเข้าเก่ากว่า" จะให้ผลตรงข้ามกับที่ assert นี้)
     const { service, merge } = build(
-      { id: 'p', customerId: 'c-old', customer: ph(), createdAt: new Date('2026-01-01') },
-      { id: 's', customerId: 'c-new', customer: ph('CHAT_LINE_SHOP'), createdAt: new Date('2026-02-01') },
+      { id: 'p', customerId: 'c-primary', customer: ph(), createdAt: new Date('2026-02-01') },
+      { id: 's', customerId: 'c-secondary', customer: ph('CHAT_LINE_SHOP'), createdAt: new Date('2026-01-01') },
     );
     await service.mergeRooms('p', 's');
-    expect(merge.absorbPlaceholder).toHaveBeenCalledWith('c-new', 'c-old', { id: 'system', role: 'SYSTEM' }, { allowPlaceholderTarget: true });
+    expect(merge.absorbPlaceholder).toHaveBeenCalledWith('c-secondary', 'c-primary', { id: 'system', role: 'SYSTEM' }, { allowPlaceholderTarget: true });
   });
   it('คนจริงคนละคน → 400 เหมือนเดิม', async () => {
     const { service, merge } = build(

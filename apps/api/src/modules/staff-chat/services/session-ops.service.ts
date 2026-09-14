@@ -113,9 +113,9 @@ export class SessionOpsService {
       } else if (primaryPh && !secondaryPh) {
         await this.merge.absorbPlaceholder(primary.customerId, secondary.customerId, actor, { allowPlaceholderTarget: true });
       } else {
-        // ทั้งคู่ placeholder → ใหม่กว่าเข้าเก่ากว่า
-        const [older, newer] = primary.createdAt <= secondary.createdAt ? [primary, secondary] : [secondary, primary];
-        await this.merge.absorbPlaceholder(newer.customerId!, older.customerId!, actor, { allowPlaceholderTarget: true });
+        // ทั้งคู่ placeholder → ย้ายห้องรองมาหาลูกค้าของห้องหลักเสมอ (Ruling R13 — สเปค 3.3(ค):
+        // "placeholder ทั้งคู่ → ย้ายห้องรองมาหาลูกค้าของห้องหลัก" ไม่มี tie-break ตาม createdAt
+        await this.merge.absorbPlaceholder(secondary.customerId, primary.customerId, actor, { allowPlaceholderTarget: true });
       }
     }
 

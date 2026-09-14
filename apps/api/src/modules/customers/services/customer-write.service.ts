@@ -1,12 +1,15 @@
-import { Injectable, ConflictException, BadRequestException, Optional } from '@nestjs/common';
+import { Injectable, ConflictException, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateCustomerDto, UpdateCustomerDto } from '../dto/customer.dto';
+import { FillProspectContactDto } from '../dto/fill-prospect-contact.dto';
 import { encryptPII } from '../../../utils/crypto.util';
 import { hashPII, encryptReferencesJson } from '../../../utils/pii.util';
 import { CustomerPiiService } from '../customer-pii.service';
 import { ContactResolverService } from '../../contacts/contact-resolver.service';
 import { CustomerQueryService } from './customer-query.service';
+import { AuditService } from '../../audit/audit.service';
+import { isChatPlaceholder, PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospects/chat-placeholder';
 
 /**
  * Write-path slice of the decomposed CustomersService.
@@ -29,6 +32,7 @@ export class CustomerWriteService {
     private readonly contactResolver: ContactResolverService,
     private readonly query: CustomerQueryService,
     @Optional() private readonly piiService?: CustomerPiiService,
+    @Optional() private readonly audit?: AuditService,
   ) {}
 
   private get piiKey(): string {
@@ -153,6 +157,10 @@ export class CustomerWriteService {
    * on collision with a non-soft-deleted record. `ignoreCustomerId` excludes
    * the customer being updated from the search (so update-in-place doesn't
    * collide with itself).
+   *
+   * R44: ทุก 409 ของ dedup แนบ `field` ('phone' | 'email' | 'nationalId') มาด้วย — ตัวเนื้อหาเดิม
+   * ไม่บอกว่าชนที่ช่องไหน เว็บจึงเดาเป็น "เบอร์ซ้ำ" เสมอและเสนอปุ่ม "แก้เบอร์" ให้กับการชนเลขบัตร
+   * (ประตูตัน: แก้เบอร์เท่าไรก็ยังชนเลขบัตรเดิม). เพิ่มคีย์อย่างเดียว ไม่แตะ message/existingCustomer
    */
   private async assertContactNotDuplicate(
     phone: string | null,
@@ -174,6 +182,7 @@ export class CustomerWriteService {
         throw new ConflictException({
           message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
           existingCustomer: dupPhone,
+          field: 'phone',
         });
       }
     }
@@ -195,9 +204,46 @@ export class CustomerWriteService {
         throw new ConflictException({
           message: 'ลูกค้าที่มีอีเมลนี้มีอยู่แล้ว',
           existingCustomer: dupEmail,
+          field: 'email',
         });
       }
     }
+  }
+
+  /**
+   * Fix round 1 (Ruling R34, Finding 1) — dedup เลขบัตรผ่าน `nationalIdHash` เท่านั้น (คอลัมน์
+   * plaintext ถูก drop ไปแล้ว Phase 6), บล็อกเฉพาะแถวที่ยังไม่ถูกลบ. คืนแถวที่เจอ (รวมแถว
+   * soft-delete) ให้ caller ตัดสินใจต่อเอง — เดิม `create()` มีก้อนนี้ inline อยู่คนเดียว
+   * (ไม่มีใครกันซ้ำให้ `fillPlaceholderContact`); สกัดออกมาเป็น helper เดียว ใช้ร่วมกันทั้งสองที่
+   * แทนการก็อปบล็อก.
+   *
+   * `create()` ไม่มี `ignoreCustomerId` (แถวใหม่ ไม่มี "ตัวเอง" ให้กันซ้ำ) ⇒ ใช้ `findUnique`
+   * เดิมเป๊ะ เพื่อคง call shape ที่ `customers.service.spec.ts` mock/อ่านค่าอยู่ (byte-identical
+   * behavior — ห้ามสลับเป็น `findFirst` ที่เส้นทางนั้น). `fillPlaceholderContact` ส่ง
+   * `ignoreCustomerId` เพื่อกันชนกับตัวเอง (สมมาตรกับ `assertContactNotDuplicate`) ⇒ ต้องใช้
+   * `findFirst` เพราะ `findUnique` รับเฉพาะ where บนคอลัมน์ unique ล้วน ไม่ใส่เงื่อนไขอื่นปนได้.
+   */
+  private async assertNationalIdNotDuplicate(
+    nationalId: string,
+    ignoreCustomerId?: string,
+  ): Promise<{ id: string; name: string; deletedAt: Date | null } | null> {
+    const nidHash = hashPII(nationalId, this.hashSalt);
+    const existing = ignoreCustomerId
+      ? await this.prisma.customer.findFirst({
+          where: { nationalIdHash: nidHash, id: { not: ignoreCustomerId } },
+          select: { id: true, name: true, deletedAt: true },
+        })
+      : await this.prisma.customer.findUnique({
+          where: { nationalIdHash: nidHash },
+        });
+    if (existing && !existing.deletedAt) {
+      throw new ConflictException({
+        message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
+        existingCustomer: { id: existing.id, name: existing.name },
+        field: 'nationalId',
+      });
+    }
+    return existing;
   }
 
   async create(dto: CreateCustomerDto) {
@@ -212,16 +258,9 @@ export class CustomerWriteService {
 
     if (normalizedNid) {
       // Phase 5: use nationalIdHash for dedup (faster + correct post-Phase 6 drop of plaintext)
-      const nidHash = hashPII(normalizedNid, this.hashSalt);
-      const existing = await this.prisma.customer.findUnique({
-        where: { nationalIdHash: nidHash },
-      });
-      if (existing && !existing.deletedAt) {
-        throw new ConflictException({
-          message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
-          existingCustomer: { id: existing.id, name: existing.name },
-        });
-      }
+      // Fix round 1 (Ruling R34) — shared with fillPlaceholderContact via assertNationalIdNotDuplicate
+      // (no ignoreCustomerId here → identical findUnique() call shape as before).
+      const existing = await this.assertNationalIdNotDuplicate(normalizedNid);
       // Soft-deleted ghost with the same nationalIdHash would otherwise break
       // the create() below with a P2002 on the unique column. Treat it as the
       // same person being re-registered: revive + update with the new form data
@@ -415,5 +454,83 @@ export class CustomerWriteService {
     }
     const check = (11 - (sum % 11)) % 10;
     return check === parseInt(id[12]);
+  }
+
+  /**
+   * เติมเบอร์/ชื่อให้ "ผู้สนใจอัตโนมัติจากแชท" (สเปค 3.6 · Ruling R27) — แถวเดิม ไม่สร้างคนใหม่
+   * ใช้ได้เฉพาะ placeholder ที่ยังไม่ถูกลบ · dedup เบอร์+เลขบัตรเหมือน create/update (409 พร้อม
+   * existingCustomer ให้เว็บเสนอ "รวม") ที่มา CHAT_* ไม่ถูกแตะ (เป็นข้อมูลวิเคราะห์ lead — R14/R24)
+   *
+   * Fix round 1 (Ruling R34) — จงใจไม่ตรวจ checksum เลขบัตร (`validateNationalId`) บนเส้นทางนี้:
+   * DTO ไม่มี `isForeigner` ให้เลือก, ฟอร์มฝั่งเว็บบังคับ checksum อยู่แล้วก่อนส่งมา, และเลขบัตร
+   * จะถูกตรวจซ้ำอีกครั้งตอนเปิดสัญญา — อย่า "แก้" เพิ่ม validateNationalId เข้ามาทีหลัง.
+   */
+  async fillPlaceholderContact(
+    id: string,
+    dto: FillProspectContactDto,
+    actor: { id: string; role: string },
+  ): Promise<{ id: string; name: string; phone: string }> {
+    const current = await this.prisma.customer.findUnique({
+      where: { id },
+      select: { id: true, name: true, ...PLACEHOLDER_FIELDS_SELECT }, // SELECT มี deletedAt อยู่แล้ว
+    });
+    if (!current || current.deletedAt) throw new NotFoundException('ไม่พบลูกค้า');
+    if (!isChatPlaceholder(current)) {
+      // Fix round 1 (Ruling R35) — ข้อความเดิมสมมติว่า "มีเบอร์แล้ว" เสมอ (จริง ๆ อาจมีแค่เลขบัตร)
+      // และชี้ไปหน้า PATCH /customers/:id ซึ่ง SALES/FINANCE_MANAGER (roles ของ endpoint นี้) เปิดไม่ได้
+      // (@Roles('OWNER','BRANCH_MANAGER') เท่านั้น) — บอกบทบาทที่ทำได้จริงแทน
+      throw new ConflictException(
+        'เติมเบอร์ได้เฉพาะผู้สนใจอัตโนมัติจากแชทที่ยังไม่มีเบอร์และเลขบัตร — คนนี้มีข้อมูลติดต่อแล้ว ให้เจ้าของหรือผู้จัดการสาขาแก้ที่หน้ารายละเอียดลูกค้า',
+      );
+    }
+    const phone = this.normalizePhone(dto.phone) ?? dto.phone;
+    // Fix round 1 (Ruling R34, Finding 1) — normalizeNationalId (ไม่ใช่ trim เฉย ๆ) เพื่อให้
+    // เลขที่มีขีด/เว้นวรรคถูกเก็บแบบ normalize เหมือน create() ไม่งั้นค่าที่ไม่ normalize จะมองไม่เห็น
+    // จาก nationalIdHash lookup ของทุกจุดอื่นในระบบ
+    const nationalId = dto.nationalId ? this.normalizeNationalId(dto.nationalId) : undefined;
+    await this.assertContactNotDuplicate(phone, null, id);
+    if (nationalId) {
+      // ไม่สนใจ soft-deleted ghost ที่ helper คืนมา (ต่างจาก create() ที่ revive) — ปุ่มเติมเบอร์
+      // ผู้สนใจไม่ใช่หน้าที่ชุบชีวิตลูกค้าเก่า แค่กันซ้ำกับคนที่ยังไม่ถูกลบ; ghost ที่หลุดผ่านด่านนี้
+      // (เช่น race) ให้ P2002 ตอน update ด้านล่างจับแทน
+      await this.assertNationalIdNotDuplicate(nationalId, id);
+    }
+
+    const piiEncrypted = this.buildPiiEncryptedFields({ phone, ...(nationalId ? { nationalId } : {}) });
+    const name = dto.name?.trim() || current.name;
+    let updated: { id: string; name: string; phone: string | null };
+    try {
+      updated = await this.prisma.customer.update({
+        where: { id },
+        data: {
+          phone,
+          name,
+          ...(dto.prefix !== undefined ? { prefix: dto.prefix || null } : {}),
+          ...(dto.nickname !== undefined ? { nickname: dto.nickname || null } : {}),
+          ...(dto.facebookName !== undefined ? { facebookName: dto.facebookName || null } : {}),
+          ...(nationalId ? { nationalId } : {}),
+          ...(piiEncrypted as Partial<Prisma.CustomerUpdateInput>),
+        },
+        select: { id: true, name: true, phone: true },
+      });
+    } catch (err) {
+      // Fix round 1 (Ruling R34) — เผื่อแถว soft-deleted ghost ที่ยังถือ nationalIdHash เดิมอยู่
+      // หลุดผ่าน assertNationalIdNotDuplicate ข้างบน (race) แล้วชน @unique ตรง ๆ ตอน update
+      // (pattern เดียวกับ stock-adjustments.service.ts) — แปลเป็นข้อความไทย ไม่ปล่อย P2002 ดิบเป็น 500
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException({ message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว', field: 'nationalId' });
+      }
+      throw err;
+    }
+
+    await this.audit?.log({
+      userId: actor.id,
+      action: 'CUSTOMER_PLACEHOLDER_CONTACT_FILLED',
+      entity: 'customer',
+      entityId: id,
+      oldValue: { name: current.name, phone: null },
+      newValue: { name: updated.name, phone: updated.phone, nationalIdFilled: !!nationalId },
+    });
+    return { id: updated.id, name: updated.name, phone: updated.phone as string };
   }
 }

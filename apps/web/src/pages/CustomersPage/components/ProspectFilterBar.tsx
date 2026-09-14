@@ -3,6 +3,7 @@ import { PROSPECT_SOURCES } from '@installment/shared';
 import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
 import { customerCreditStatusMap } from '@/lib/status-badges';
 import FilterSelect, { type FilterOption } from './FilterSelect';
+import { SOURCE_LABELS } from './sourceLabels';
 
 /**
  * ตัวกรองแท็บ "ผู้สนใจ" — ค้นหา · ที่มา 148 · ผล pre-check 148 · แท็ก 148 ·
@@ -13,16 +14,6 @@ export const PROSPECT_SEARCH_PLACEHOLDER = 'ค้นหาชื่อ, ชื�
 
 /** sentinel ของ "ยังไม่มีผู้ดูแล" — ใช้ได้ทุกบทบาทเพราะไม่ต้องมีรายชื่อพนักงาน */
 export const UNASSIGNED = 'unassigned';
-
-const SOURCE_LABELS: Record<string, string> = {
-  BOT: 'บอทขาย',
-  FACEBOOK: 'แชท Facebook',
-  LINE: 'แชท LINE',
-  TIKTOK: 'แชท TikTok',
-  WEB: 'เว็บ',
-  REFERRAL: 'คนแนะนำ',
-  WALK_IN: 'หน้าร้าน',
-};
 
 /**
  * `PRE_CHECK_PASSED` **ถอดจากดรอปดาวน์** (ยังอยู่ใน badge map เพื่ออ่านข้อมูลเก่า):

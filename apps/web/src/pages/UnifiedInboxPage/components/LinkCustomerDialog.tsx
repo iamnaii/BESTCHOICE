@@ -16,10 +16,13 @@ export default function LinkCustomerDialog({
   open,
   onOpenChange,
   roomId,
+  mergesProspect = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   roomId: string;
+  /** true = ห้องนี้ถือผู้สนใจอัตโนมัติอยู่แล้ว — ผูกกับคนที่เลือกคือ "รวม" ไม่ใช่ "ผูกครั้งแรก" (สเปค 3.6) */
+  mergesProspect?: boolean;
 }) {
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search, 400);
@@ -30,7 +33,7 @@ export default function LinkCustomerDialog({
   });
   const link = useLinkRoomCustomer(roomId, {
     onSuccess: () => {
-      toast.success('ผูกลูกค้ากับแชทนี้แล้ว');
+      toast.success(mergesProspect ? 'ผูกกับลูกค้าเดิมและรวมข้อมูลแชทแล้ว' : 'ผูกลูกค้ากับแชทนี้แล้ว');
       onOpenChange(false);
       setSearch('');
     },
@@ -48,9 +51,13 @@ export default function LinkCustomerDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Link2 className="size-4" /> ผูกลูกค้าที่มีอยู่
+            <Link2 className="size-4" /> {mergesProspect ? 'ผูกกับลูกค้าเดิม' : 'ผูกลูกค้าที่มีอยู่'}
           </DialogTitle>
-          <DialogDescription className="sr-only">ค้นหาและผูกลูกค้าที่มีอยู่กับห้องแชทนี้</DialogDescription>
+          {mergesProspect ? (
+            <DialogDescription className="text-xs leading-snug text-muted-foreground">แชทและผลเช็คเครดิตของผู้สนใจคนนี้จะย้ายไปรวมกับลูกค้าที่เลือก — แถวผู้สนใจอัตโนมัติจะถูกเก็บ</DialogDescription>
+          ) : (
+            <DialogDescription className="sr-only">ค้นหาและผูกลูกค้าที่มีอยู่กับห้องแชทนี้</DialogDescription>
+          )}
         </DialogHeader>
         <input
           autoFocus

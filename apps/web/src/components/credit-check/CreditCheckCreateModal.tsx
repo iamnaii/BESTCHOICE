@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { ArrowLeft, User, FileText, Clock, BarChart3 } from 'lucide-react';
+import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
 import {
   type Customer,
   type CustomerHistory,
@@ -153,7 +154,7 @@ export default function CreditCheckCreateModal({
                     >
                       <div className="text-sm font-medium">{c.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {c.phone}{' '}
+                        <ProspectPhoneLine phone={c.phone} chatPlaceholder={c.chatPlaceholder} />{' '}
                         {c.salary
                           ? `| เงินเดือน ${parseFloat(c.salary).toLocaleString()} ฿`
                           : ''}
@@ -190,7 +191,7 @@ export default function CreditCheckCreateModal({
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
                       <div>
                         <div className="text-2xs text-muted-foreground">เบอร์โทร</div>
-                        <div className="text-xs font-medium">{selectedCustomer.phone}</div>
+                        <div className="text-xs font-medium"><ProspectPhoneLine phone={selectedCustomer.phone} chatPlaceholder={selectedCustomer.chatPlaceholder} /></div>
                       </div>
                       <div>
                         <div className="text-2xs text-muted-foreground">อาชีพ</div>

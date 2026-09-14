@@ -48,7 +48,8 @@ interface CustomerDetail {
   nickname: string | null;
   isForeigner: boolean;
   birthDate: string | null;
-  phone: string;
+  phone: string | null;
+  chatPlaceholder?: boolean;
   phoneSecondary: string | null;
   email: string | null;
   lineIdFinance: string | null;
@@ -229,7 +230,7 @@ export default function CustomerDetailPage() {
       prefix: customer.prefix || '',
       name: customer.name,
       nickname: customer.nickname || '',
-      phone: customer.phone,
+      phone: customer.phone || '',
       phoneSecondary: customer.phoneSecondary || '',
       email: customer.email || '',
       lineIdFinance: customer.lineIdFinance || '',
@@ -594,6 +595,9 @@ export default function CustomerDetailPage() {
               <h2 className="text-lg font-semibold text-foreground truncate">{displayName}</h2>
               <div className="flex flex-wrap items-center gap-2 mt-1.5">
                 {customer?.phone && <span className="text-sm text-muted-foreground">{customer.phone}</span>}
+                {customer?.chatPlaceholder && (
+                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">ผู้สนใจจากแชท · ยังไม่มีเบอร์</span>
+                )}
                 {customer?.contracts?.length > 0 && (
                   <button
                     type="button"
@@ -753,7 +757,7 @@ export default function CustomerDetailPage() {
               <CallButton
                 customerId={customer.id}
                 contractId={callableContract.id}
-                phone={customer.phone}
+                phone={customer.phone ?? undefined}
                 size="sm"
                 variant="outline"
               />
@@ -1245,8 +1249,9 @@ export default function CustomerDetailPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก <span className="text-destructive">*</span></label>
-                <input type="tel" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" required />
+                {/* R41: ผู้สนใจจากแชทยังไม่มีเบอร์ — ช่องนี้ไม่ required สำหรับเขา ดาวจึงต้องหายไปด้วย ไม่ใช่ค้างอยู่ */}
+                <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์หลัก{!customer?.chatPlaceholder && <span className="text-destructive"> *</span>}</label>
+                <input type="tel" value={editForm.phone} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} className="w-full h-10 px-3 rounded-lg border border-input bg-background text-sm transition-colors hover:border-primary/50 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/20" required={!customer?.chatPlaceholder} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-foreground mb-1.5">เบอร์สำรอง</label>
@@ -1390,6 +1395,7 @@ export default function CustomerDetailPage() {
           id: customer.id,
           name: customer.name,
           phone: customer.phone,
+          chatPlaceholder: customer.chatPlaceholder,
           nationalId: customer.nationalId,
           salary: customer.salary,
           occupation: customer.occupation,

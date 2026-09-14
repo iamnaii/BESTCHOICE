@@ -91,3 +91,10 @@ export const transferStatusLabels: Record<string, { label: string; className: st
  */
 export const CUSTOMER_CREATE_ROLES = ['OWNER', 'BRANCH_MANAGER', 'SALES'];
 export const canCreateCustomer = (role: string | null | undefined): boolean => CUSTOMER_CREATE_ROLES.includes(role ?? '');
+
+/**
+ * บทบาทที่ "เพิ่มเบอร์/ข้อมูล" ให้ผู้สนใจจากแชทได้ — ต้องตรงกับ `@Roles` ของ `POST /customers/:id/fill-contact`
+ * (เท่าทางผูกห้อง PATCH rooms/:id/customer — มี FINANCE_MANAGER ต่างจาก POST /customers)
+ */
+export const PROSPECT_CONTACT_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'];
+export const canFillProspectContact = (role: string | null | undefined): boolean => PROSPECT_CONTACT_ROLES.includes(role ?? '');

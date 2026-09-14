@@ -14,6 +14,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import api, { getErrorMessage } from '@/lib/api';
 import { canCreateCustomer as canCreateCustomerRole } from '@/lib/constants';
+import { EXPORT_ROW_LIMIT } from '@/lib/fetch-export-pages';
 import type { CustomerFormData } from '@/lib/schemas';
 import CustomerFilterBar from './components/CustomerFilterBar';
 import CustomerKpiCards, {
@@ -179,6 +180,14 @@ export default function CustomersPage() {
   // ── ส่งออก Excel ──────────────────────────────────────────────────────────────
   const [isExporting, setIsExporting] = useState(false);
   const handleExport = async () => {
+    // ด่านฝั่งจอ — กันยิง /customers/export ทั้งที่รู้อยู่แล้วว่าเกินเพดานที่ backend จะปฏิเสธ
+    // ข้อความห้ามอ้างตัวกรองเฉพาะแท็บ (เช่น "ติดต่อล่าสุด" มีแค่แท็บผู้สนใจ) เพราะด่านนี้ทำงานทั้งสองแท็บ
+    if (q.total > EXPORT_ROW_LIMIT) {
+      toast.error(
+        `รายการเกิน ${EXPORT_ROW_LIMIT.toLocaleString('en-US')} ราย — ใช้ตัวกรองหรือช่องค้นหาให้แคบลงก่อนส่งออก`,
+      );
+      return;
+    }
     setIsExporting(true);
     try {
       await exportCustomers({
@@ -195,7 +204,7 @@ export default function CustomersPage() {
   const activeKpiKey = useMemo(() => {
     const specs = isBuyers ? customerKpiCards() : prospectKpiCards();
     const current: Record<string, string> = isBuyers
-      ? { purchase: q.purchase, state: q.state, bought: q.bought }
+      ? { purchase: q.purchase, state: q.state, bought: q.bought, fromChat: q.fromChat, source: q.source }
       : { contacted: q.contacted, precheck: q.precheck, source: q.source };
     const match = specs.find(
       (spec) =>
@@ -205,7 +214,7 @@ export default function CustomersPage() {
     if (match) return match.key;
     const anyActive = Object.values(current).some(Boolean);
     return anyActive ? '' : 'all';
-  }, [isBuyers, q.purchase, q.state, q.bought, q.contacted, q.precheck, q.source]);
+  }, [isBuyers, q.purchase, q.state, q.bought, q.fromChat, q.contacted, q.precheck, q.source]);
 
   const rows: AnyCustomerRow[] = isBuyers
     ? (customerResult?.data ?? [])
@@ -286,6 +295,7 @@ export default function CustomersPage() {
         <CustomerFilterBar
           search={q.search}
           setSearch={q.setSearch}
+          source={q.source}
           purchase={q.purchase}
           state={q.state}
           bought={q.bought}

@@ -21,10 +21,16 @@ export class SentryExceptionFilter extends BaseExceptionFilter {
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = 'เกิดข้อผิดพลาดภายในระบบ';
     let errorCode = 'INTERNAL_ERROR';
-    // Structured validation detail a 4xx carries (e.g. other-income `errors: [{ rule, msg }]`)
-    // — the web reads it to name the failing rule, so it must survive the rewrite below
-    // (DOC-05 #1564: every rule failure used to reach the client as the bare message).
-    let details: { errors?: unknown[] } = {};
+    // Structured detail a 4xx carries that the web reads to drive its own UX,
+    // so it must survive the rewrite below — explicit allow-list, never a
+    // spread of the whole response (the filter's redaction intent stands):
+    //  - `errors` (e.g. other-income `[{ rule, msg }]`) — DOC-05 #1564: every
+    //    rule failure used to reach the client as the bare message.
+    //  - `existingCustomer` / `field` (customer-write.service.ts duplicate
+    //    ConflictExceptions) — R47: CustomerCreateDialog/useOcrFlow's
+    //    "รวมกับลูกค้าเดิมคนนี้" merge UX never fired against the real API
+    //    because both keys were dropped here.
+    const details: { errors?: unknown[]; existingCustomer?: unknown; field?: unknown } = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -35,7 +41,11 @@ export class SentryExceptionFilter extends BaseExceptionFilter {
         const resp = exceptionResponse as Record<string, unknown>;
         message = (resp.message as string) || message;
         errorCode = (resp.error as string) || errorCode;
-        if (status < 500 && Array.isArray(resp.errors)) details = { errors: resp.errors };
+        if (status < 500) {
+          if (Array.isArray(resp.errors)) details.errors = resp.errors;
+          if (resp.existingCustomer !== undefined) details.existingCustomer = resp.existingCustomer;
+          if (resp.field !== undefined) details.field = resp.field;
+        }
       }
     }
 

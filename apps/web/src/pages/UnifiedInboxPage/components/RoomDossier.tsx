@@ -3,7 +3,7 @@ import RoomCreditCard, { CreditFilePicker } from './RoomCreditCard';
 import { CREDIT_MESSAGE_MIME } from './credit-statement';
 import type { RoomCreditModel } from '../hooks/useRoomCredit';
 import { useNavigate } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CalendarPlus,
   ExternalLink,
@@ -11,10 +11,12 @@ import {
   UserPlus,
   Megaphone,
   MessagesSquare,
+  Phone,
+  Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apptState } from './appointment';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { getGeneratedAvatarUrl } from '@/lib/avatar';
 import { formatChatTimestamp } from '@/lib/chat-time';
@@ -23,8 +25,9 @@ import Customer360Panel from './Customer360Panel';
 import LinkCustomerDialog from './LinkCustomerDialog';
 import CustomerCreateDialog, { splitDisplayName } from '@/components/customer/CustomerCreateDialog';
 import { useLinkRoomCustomer } from '../hooks/useLinkRoomCustomer';
+import { useAbsorbCustomer, useDismissSamePerson } from '../hooks/useProspectActions';
 import { useAuth } from '@/contexts/AuthContext';
-import { canCreateCustomer } from '@/lib/constants';
+import { canCreateCustomer, canFillProspectContact } from '@/lib/constants';
 import { toast } from 'sonner';
 import { ContractHeroCard, PaymentsTimeline, CallLogList, DeviceWarrantyCard, type SummaryContract } from './DossierCards';
 import { TodoForm } from '@/pages/TodosPage/components/TodoForm';
@@ -42,6 +45,21 @@ import type { Todo, AssigneeRef } from '@/pages/TodosPage/types';
  * <Customer360Panel bare sections=[…]> — ไม่เขียนซ้ำ ไม่ทำฟีเจอร์เดิมหาย
  */
 
+/** โลโก้ช่องทางแชทของคำใบ้ "อาจเป็นคนเดียวกัน" — API ยุบ LINE_FINANCE/LINE_SHOP เป็น LINE แล้ว (`chatLogoOf`) */
+export type SamePersonChannel = 'LINE' | 'FACEBOOK' | 'TIKTOK' | 'WEB';
+
+/** คำใบ้ "อาจเป็นคนเดียวกัน" จาก GET /staff-chat/rooms/:id (สเปค 3.6 · สูงสุด 3 · ไม่รวมอัตโนมัติ) */
+export interface PossibleSamePerson {
+  customerId: string;
+  name: string;
+  /** `null` = คนที่ชื่อตรงกันและมีเบอร์แล้ว แต่ยังไม่เคยมีห้องแชท (same-person.service คืน null ตรง ๆ) */
+  channel: SamePersonChannel | null;
+  hasPhone: boolean;
+  chatPlaceholder: boolean;
+  createdAt: string;
+  mergeDirection: 'absorb_current_into_other' | 'absorb_other_into_current' | 'none';
+}
+
 export interface DossierRoom {
   id: string;
   channel: string;
@@ -50,7 +68,9 @@ export interface DossierRoom {
   createdAt?: string;
   lastMessageAt?: string;
   totalMessages?: number;
-  customer?: { id: string; name: string; phone?: string | null } | null;
+  /** `chatPlaceholder` = ผู้สนใจอัตโนมัติจากแชท (API ตัดสินให้ — เว็บห้าม derive เอง) */
+  customer?: { id: string; name: string; phone?: string | null; chatPlaceholder?: boolean } | null;
+  possibleSamePerson?: PossibleSamePerson[];
   attribution?: {
     firstTouch?: string;
     lastTouch?: string | null;
@@ -64,6 +84,13 @@ const channelLabel: Record<string, string> = {
   FACEBOOK: 'Facebook',
   LINE_FINANCE: 'LINE การเงิน',
   LINE_SHOP: 'LINE ร้าน',
+  TIKTOK: 'TikTok',
+  WEB: 'เว็บ',
+};
+/** ป้ายของโลโก้ช่องทาง (คนละชุดกับ `channelLabel` ที่ key ด้วยช่องทางห้องจริง เช่น LINE_SHOP) */
+const chatLogoLabel: Record<SamePersonChannel, string> = {
+  LINE: 'LINE',
+  FACEBOOK: 'Facebook',
   TIKTOK: 'TikTok',
   WEB: 'เว็บ',
 };
@@ -154,16 +181,91 @@ function AdGroup({ room }: { room: DossierRoom }) {
   );
 }
 
+/** ─── การ์ดผู้สนใจจากแชท (mockup 1388f98e บอร์ด 1-2) — ทุกห้องมีเจ้าของตั้งแต่ทักมา กล่องเหลือง "ยังไม่ผูก" จึงเหลือเฉพาะห้องที่ไม่มีเจ้าของจริง ๆ */
+function ProspectCard({ room, customerId, canFill, onFill, onLink, onOpenProfile, onMerge, onDismiss, busy }: {
+  room: DossierRoom;
+  customerId: string;
+  canFill: boolean;
+  onFill: () => void;
+  onLink: () => void;
+  onOpenProfile: () => void;
+  onMerge: (placeholderId: string, targetId: string) => void;
+  onDismiss: (customerId: string) => void;
+  busy: boolean;
+}) {
+  const hints = (room.possibleSamePerson ?? []).slice(0, 3);
+  return (
+    <>
+      <div className="flex flex-wrap gap-1.5">
+        <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold leading-4 text-primary">ผู้สนใจจากแชท</span>
+        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold leading-4 text-muted-foreground">ยังไม่มีเบอร์</span>
+      </div>
+      <button type="button" onClick={onOpenProfile} className="mt-2 flex w-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-left text-xs font-semibold hover:bg-muted">
+        <span className="min-w-0 flex-1 truncate">{room.customer?.name}</span>
+        <span className="text-muted-foreground">›</span>
+      </button>
+      <p className="m-0 mt-2 text-xs leading-relaxed text-muted-foreground">
+        เติมเบอร์แล้วจะเช็คเครดิต ทำสัญญา และเห็นแชทช่องทางอื่นของคนนี้ได้ · ถ้าเป็นลูกค้าเดิมอยู่แล้ว ผูกกับคนเดิมได้เลย
+      </p>
+      <div className="mt-2 flex gap-1.5">
+        <Button
+          variant="primary"
+          size="sm"
+          className="flex-1"
+          disabled={!canFill}
+          title={canFill ? undefined : 'เติมเบอร์ได้เฉพาะเจ้าของ ผู้จัดการสาขา ผู้จัดการการเงิน และฝ่ายขาย'}
+          onClick={onFill}
+        >
+          <Phone className="mr-1 size-3.5" /> เพิ่มเบอร์/ข้อมูล
+        </Button>
+        <Button variant="outline" size="sm" className="flex-1" onClick={onLink}>
+          <Search className="mr-1 size-3.5" /> ผูกกับลูกค้าเดิม
+        </Button>
+      </div>
+      {hints.map((p) => {
+        /* ทิศทางรวมต้องระบุชัดทั้งสองค่า — ค่าที่ไม่รู้จัก (API เพิ่มทิศทางใหม่) ต้องไม่มีปุ่มรวม
+           ไม่ใช่ตกไปทิศตรงข้ามเงียบ ๆ อย่าง ternary สองทาง (รวมผิดทิศ = ดูดคนจริงเข้าผู้สนใจ) */
+        const merge =
+          p.mergeDirection === 'absorb_current_into_other'
+            ? { placeholderId: customerId, targetId: p.customerId }
+            : p.mergeDirection === 'absorb_other_into_current'
+              ? { placeholderId: p.customerId, targetId: customerId }
+              : null;
+        return (
+          <div key={p.customerId} className="mt-2 rounded-lg border border-primary/35 bg-primary/5 px-2.5 py-2 text-xs leading-snug">
+            <p className="m-0">
+              <Users className="mr-1 inline size-3.5 text-primary" aria-hidden="true" />
+              อาจเป็นคนเดียวกับ <span className="font-semibold">{p.name}</span> — {p.channel ? `${chatLogoLabel[p.channel]} · ` : ''}{p.hasPhone ? 'มีเบอร์' : 'ยังไม่มีเบอร์'} · ทักเมื่อ {fmtDate(p.createdAt) || '—'}
+            </p>
+            <div className="mt-2 flex items-center gap-1.5">
+              {merge ? (
+                <Button variant="primary" size="sm" disabled={busy} onClick={() => onMerge(merge.placeholderId, merge.targetId)}>
+                  รวมเป็นคนเดียวกัน
+                </Button>
+              ) : p.mergeDirection === 'none' ? (
+                <span className="text-muted-foreground">ตรวจสอบเอง</span>
+              ) : null}
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => onDismiss(p.customerId)}>ไม่ใช่</Button>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 /** ─── ช่องทางแชท — ห้องนี้ + ห้องพี่น้อง (cross-channel ต้องผูกลูกค้าก่อน) แบบ OBI:
  *  ยังไม่ผูก = ไม่รู้ว่ามีช่องทางอื่นไหม จึงไม่วาดแถว "ยังไม่ผูก LINE" ให้ทางเดียวคือผูกก่อน */
 function ChannelsGroup({
   room,
   linked,
+  placeholder,
   onSelectRoom,
   onLink,
 }: {
   room: DossierRoom;
   linked: boolean;
+  placeholder: boolean;
   onSelectRoom?: (id: string) => void;
   onLink: () => void;
 }) {
@@ -199,7 +301,10 @@ function ChannelsGroup({
           <span className="text-muted-foreground">›</span>
         </button>
       ))}
-      {!linked && (
+      {placeholder && (
+        <p className="mb-0 mt-2 text-xs leading-relaxed text-muted-foreground">ยังไม่รู้ว่ามีช่องทางอื่นไหม — จะเห็นเมื่อเติมเบอร์ หรือผูกกับลูกค้าเดิม</p>
+      )}
+      {!linked && !placeholder && (
         <>
           <p className="mb-2 mt-2 text-xs leading-relaxed text-muted-foreground">
             ห้องนี้ยังไม่ได้ผูกกับลูกค้า จึงยังไม่รู้ว่าลูกค้ารายนี้มีแชทช่องทางอื่นอีกหรือไม่
@@ -382,7 +487,20 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
   });
   const [apptOpen, setApptOpen] = useState(false);
 
-  const linked = !!customerId;
+  /* ห้องมีเจ้าของ 3 แบบ: ไม่มีเลย (ห้องเว็บก่อนข้อความแรก / เจ้าของถูกลบ) · ผู้สนใจอัตโนมัติจากแชท (placeholder — ธงจาก API เท่านั้น) · ลูกค้าจริง
+     "linked" ของแผงเดิม = ลูกค้าจริงเท่านั้น (สัญญา/ประกัน/ช่องทางอื่นมีความหมายกับคนที่มีเบอร์แล้ว) */
+  const placeholder = !!customerId && !!room?.customer?.chatPlaceholder;
+  const linked = !!customerId && !placeholder;
+  const canFill = canFillProspectContact(user?.role);
+  const [fillOpen, setFillOpen] = useState(false);
+  const absorb = useAbsorbCustomer(room?.id ?? '', {
+    onSuccess: () => toast.success('รวมเป็นคนเดียวกันแล้ว — แชทและผลเช็คเครดิตย้ายไปแล้ว'),
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+  const dismiss = useDismissSamePerson(room?.id ?? '', {
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+  const queryClient = useQueryClient();
   // นัดของห้อง — คีย์ขึ้นต้น 'todos' เพื่อให้ TodoForm invalidate แล้วรายการนี้รีเฟรชด้วย
   const todosQuery = useQuery({
     queryKey: ['todos', 'room', room?.id],
@@ -420,9 +538,11 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
 
   const name = room.customer?.name ?? room.displayName ?? 'ไม่ระบุชื่อ';
   const avatar: string | undefined = room.pictureUrl || getGeneratedAvatarUrl(room.id) || undefined;
-  const metaLine = linked
-    ? [room.customer?.phone ? `โทร ${room.customer.phone}` : null, room.createdAt ? `เริ่มคุย ${fmtDate(room.createdAt)}` : null].filter(Boolean).join(' · ')
-    : 'ยังไม่ได้ผูกกับลูกค้าในระบบ';
+  const metaLine = placeholder
+    ? ['ผู้สนใจจากแชท · ยังไม่มีเบอร์', room.createdAt ? `เริ่มคุย ${fmtDate(room.createdAt)}` : null].filter(Boolean).join(' · ')
+    : linked
+      ? [room.customer?.phone ? `โทร ${room.customer.phone}` : null, room.createdAt ? `เริ่มคุย ${fmtDate(room.createdAt)}` : null].filter(Boolean).join(' · ')
+      : 'ยังไม่ได้ผูกกับลูกค้าในระบบ';
 
   const tabs: { key: TabKey; label: string; count?: number }[] = [
     { key: 'customer', label: 'ข้อมูลลูกค้า' },
@@ -465,9 +585,9 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
           </div>
           <button
             type="button"
-            title={linked ? 'เปิดโปรไฟล์ลูกค้าเต็มหน้า' : 'ผูกลูกค้าก่อนถึงเปิดโปรไฟล์ได้'}
+            title={customerId ? 'เปิดโปรไฟล์ลูกค้าเต็มหน้า' : 'ผูกลูกค้าก่อนถึงเปิดโปรไฟล์ได้'}
             aria-label="เปิดโปรไฟล์ลูกค้าเต็มหน้า"
-            disabled={!linked}
+            disabled={!customerId}
             onClick={() => customerId && navigate(`/customers/${customerId}`)}
             className="grid size-7 shrink-0 place-items-center rounded-lg border border-border text-muted-foreground hover:bg-muted disabled:opacity-40"
           >
@@ -510,14 +630,22 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
           <div className="flex flex-col gap-2.5 p-2.5">
             <Group label="ข้อมูลลูกค้า">
               {linked ? (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/customers/${customerId}`)}
-                  className="flex w-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-left text-xs font-semibold hover:bg-muted"
-                >
+                <button type="button" onClick={() => navigate(`/customers/${customerId}`)} className="flex w-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 text-left text-xs font-semibold hover:bg-muted">
                   <span className="min-w-0 flex-1 truncate">{room.customer?.name}</span>
                   <span className="text-muted-foreground">›</span>
                 </button>
+              ) : placeholder ? (
+                <ProspectCard
+                  room={room}
+                  customerId={customerId!}
+                  canFill={canFill}
+                  onFill={() => setFillOpen(true)}
+                  onLink={() => setLinkOpen(true)}
+                  onOpenProfile={() => navigate(`/customers/${customerId}`)}
+                  onMerge={(placeholderId, targetId) => absorb.mutate({ placeholderId, targetId })}
+                  onDismiss={(id) => dismiss.mutate(id)}
+                  busy={absorb.isPending || dismiss.isPending}
+                />
               ) : (
                 <div className="rounded-[10px] border border-dashed border-warning bg-warning/10 p-3 text-xs leading-relaxed text-foreground">
                   <p className="m-0 font-bold">⚠ ห้องนี้ยังไม่ได้ผูกกับลูกค้า</p>
@@ -553,6 +681,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
 
             <div ref={creditRef} className="scroll-mt-2">
               <Group label="ตรวจเครดิต" count={credit?.files.length || null} right={<CreditFilePicker credit={credit} />} className={creditFlash ? "ring-2 ring-primary/40" : undefined}>
+                {placeholder && <Hint>ผลจะติดอยู่กับผู้สนใจคนนี้ และตามไปเมื่อรวมกับลูกค้าเดิม</Hint>}
                 <RoomCreditCard key={room.id} credit={credit} customerId={customerId} />
               </Group>
             </div>
@@ -567,7 +696,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
               <ProductContextCard roomId={room.id} empty={<Hint>ยังไม่พบรุ่นในแชทนี้ — เลือกส่งได้จากปุ่มสินค้าที่แถบพิมพ์</Hint>} />
             </Group>
 
-            <ChannelsGroup room={room} linked={linked} onSelectRoom={onSelectRoom} onLink={() => setLinkOpen(true)} />
+            <ChannelsGroup room={room} linked={linked} placeholder={placeholder} onSelectRoom={onSelectRoom} onLink={() => setLinkOpen(true)} />
           </div>
         )}
 
@@ -623,7 +752,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
         )}
       </div>
 
-      <LinkCustomerDialog open={linkOpen} onOpenChange={setLinkOpen} roomId={room.id} />
+      <LinkCustomerDialog open={linkOpen} onOpenChange={setLinkOpen} roomId={room.id} mergesProspect={placeholder} />
       <CustomerCreateDialog
         key={room.id}
         open={createOpen}
@@ -647,6 +776,38 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
           </div>
         }
       />
+      {placeholder && customerId && (
+        <CustomerCreateDialog
+          key={`fill-${room.id}`}
+          mode="fill"
+          fillCustomerId={customerId}
+          open={fillOpen}
+          onOpenChange={setFillOpen}
+          initialValues={createInitialValues}
+          submitLabel="บันทึก"
+          onCreated={() => undefined}
+          onFilled={() => {
+            queryClient.invalidateQueries({ queryKey: ['chat-room', room.id] });
+            queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+            queryClient.invalidateQueries({ queryKey: ['customers'] });
+          }}
+          onUseExisting={(c) => absorb.mutate({ placeholderId: customerId, targetId: c.id })}
+          context={
+            <div className="flex items-center gap-2.5 border-b border-primary/25 bg-primary/8 px-6 py-2.5 text-xs leading-snug">
+              <span className="relative size-7 shrink-0 overflow-hidden rounded-full bg-muted ring-1 ring-border">
+                <img src={avatar} alt="" className="size-full object-cover" />
+                <span className={cn('absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-card', channelDot[room.channel] ?? 'bg-muted-foreground')} />
+              </span>
+              <span className="min-w-0 flex-1 truncate">
+                <span className="text-muted-foreground">แก้ข้อมูลของ </span>
+                <span className="font-semibold">{name}</span>
+                <span className="text-muted-foreground"> · {channelLabel[room.channel] ?? room.channel} · ไม่สร้างคนใหม่</span>
+              </span>
+              <span className="shrink-0 font-medium text-primary">ยังอยู่ในห้องนี้หลังบันทึก</span>
+            </div>
+          }
+        />
+      )}
       {/* ตั้งนัด = ฟอร์ม Todo ตัวเดิม ผูกห้อง + ชื่อล่วงหน้า · บันทึกแล้ว invalidate ['todos'] → รายการนัดข้างบนรีเฟรช */}
       <TodoForm
         open={apptOpen}

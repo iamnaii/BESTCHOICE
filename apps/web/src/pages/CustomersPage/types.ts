@@ -70,7 +70,7 @@ export interface CustomerRow {
   id: string;
   name: string;
   nickname: string | null;
-  phone: string;
+  phone: string | null;
   nationalId: string;
   occupation: string | null;
   salary: number | string | null;
@@ -88,6 +88,10 @@ export interface CustomerRow {
   warranty?: CustomerWarranty | null;
   installmentBalance?: CustomerInstallmentBalance | null;
   chatRooms?: CustomerChatRoom[];
+  /** ผู้สนใจอัตโนมัติจากแชท (API ตัดสินให้) — แท็บลูกค้าไม่มี แต่ตัวเลือกลูกค้า (ไม่ส่ง view) ได้แถวเดียวกัน */
+  chatPlaceholder?: boolean;
+  source?: ProspectSource | null;
+  acquisitionSourceRaw?: string | null;
 }
 
 /** แท็บ "ผู้สนใจ" — PLAN §1.3 (ไม่มี tier / purchase / contracts เลยโดยนิยาม) */
@@ -95,7 +99,7 @@ export interface ProspectRow {
   id: string;
   name: string;
   nickname: string | null;
-  phone: string;
+  phone: string | null;
   nationalId: string;
   createdAt: string;
   source: ProspectSource | null;
@@ -107,6 +111,7 @@ export interface ProspectRow {
   lastContactSource: 'CUSTOMER' | 'ROOM' | null;
   assignedTo: { id: string; name: string } | null;
   chatRooms?: CustomerChatRoom[];
+  chatPlaceholder?: boolean;
 }
 
 export interface CustomerTabSummary {
@@ -115,6 +120,7 @@ export interface CustomerTabSummary {
   cash: number;
   externalFinance: number;
   overdue: number;
+  fromChat: number;
 }
 
 export interface ProspectTabSummary {

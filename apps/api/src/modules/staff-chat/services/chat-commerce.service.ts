@@ -78,10 +78,13 @@ export class ChatCommerceService {
       throw new NotFoundException('ไม่พบห้องแชท');
     }
 
-    // ผู้สนใจอัตโนมัติจากแชท (ยังไม่มีเบอร์/เลขบัตร) นับเป็น "ยังไม่ได้เชื่อมกับลูกค้า" —
-    // ส่งข้อมูลชำระต้องมีคนที่ติดต่อได้จริง (สเปค 3.4)
-    if (!session.customerId || !session.customer || isChatPlaceholder(session.customer)) {
+    // ผู้สนใจอัตโนมัติจากแชท (ยังไม่มีเบอร์/เลขบัตร) ส่งข้อมูลชำระไม่ได้ — ต้องมีคนที่ติดต่อได้จริง (สเปค 3.4)
+    // ข้อความชี้ทางที่ทำได้จริงบนการ์ดผู้สนใจ (เติมเบอร์ / ผูกกับลูกค้าเดิม) ไม่ใช่ "ยังไม่ได้เชื่อม" ซึ่งชวนหาปุ่มผูกที่ไม่มี
+    if (!session.customerId || !session.customer) {
       throw new BadRequestException('ห้องแชทนี้ยังไม่ได้เชื่อมกับลูกค้า');
+    }
+    if (isChatPlaceholder(session.customer)) {
+      throw new BadRequestException('ผู้สนใจคนนี้ยังไม่มีเบอร์ — เติมเบอร์หรือผูกกับลูกค้าเดิมก่อนส่งข้อมูลชำระ');
     }
 
     // Resolve customer LINE ID per chat channel. Non-LINE channels (FACEBOOK,

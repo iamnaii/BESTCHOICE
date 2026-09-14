@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   mobile: false,
   /** ให้ `/customers` ตอบรายการว่าง — ใช้ทดสอบปุ่มในหน้าจอว่าง */
   empty: false,
+  /** บังคับ `total` ของ `/customers` ให้ต่างจาก `rows.length` — ใช้ทดสอบด่านส่งออกเกิน 10,000 */
+  total: null as number | null,
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -195,13 +197,13 @@ function show(initialPath = '/customers?zone=shop') {
         return {
           data: {
             data: rows,
-            total: rows.length,
+            total: mocks.total ?? rows.length,
             page: Number(params.page ?? 1),
             limit: 50,
             totalPages: 1,
             summary: isProspects
               ? { total: 30, contacted7d: 4, checkingCredit: 2, prechecked: 5, silent30d: 11 }
-              : { total: 10, installment: 6, cash: 3, externalFinance: 1, overdue: 2 },
+              : { total: 10, installment: 6, cash: 3, externalFinance: 1, overdue: 2, fromChat: 4 },
             viewCounts: { customers: 10, prospects: 30 },
           },
         };
@@ -236,6 +238,7 @@ beforeEach(() => {
   mocks.role = 'OWNER';
   mocks.mobile = false;
   mocks.empty = false;
+  mocks.total = null;
 });
 
 // ─── แท็บ ─────────────────────────────────────────────────────────────────────
@@ -481,10 +484,13 @@ describe('คอลัมน์ที่ซ่อนเป็นค่าเร�
 // ─── KPI ──────────────────────────────────────────────────────────────────────
 
 describe('การ์ด KPI กดเพื่อกรอง', () => {
-  it('แท็บลูกค้า: 5 ใบ พร้อมตัวเลขจาก summary และเขียน URL ชุดเดียวกับดรอปดาวน์', async () => {
+  it('แท็บลูกค้า: 6 ใบ (5 ใบเดิม + "มาจากแชท") พร้อมตัวเลขจาก summary และเขียน URL ชุดเดียวกับดรอปดาวน์', async () => {
     show();
     await screen.findByText('สมชาย ผ่อนดี');
     const kpis = within(screen.getByRole('group', { name: 'ตัวเลขสรุป' }));
+    expect(screen.getByRole('group', { name: 'ตัวเลขสรุป' }).querySelectorAll('button')).toHaveLength(
+      6,
+    );
     for (const [label, value] of [
       ['ลูกค้าทั้งหมด', '10'],
       ['ผ่อนกับเรา', '6'],
@@ -528,6 +534,52 @@ describe('การ์ด KPI กดเพื่อกรอง', () => {
 
     fireEvent.click(kpis.getByRole('button', { name: /เงียบเกิน 30 วัน/ }));
     await waitFor(() => expect(lastListParams().contacted).toBe('silent30'));
+  });
+});
+
+// ─── ผู้สนใจจากแชท (สเปค 3.6) ───────────────────────────────────────────────
+
+describe('ผู้สนใจจากแชท — KPI/ตัวกรอง/ส่งออก (สเปค 3.6)', () => {
+  it('แท็บลูกค้ามีการ์ดใบที่ 6 "มาจากแชท" กดแล้วเขียน ?fromChat=true และส่ง fromChat=true ให้ API', async () => {
+    show();
+    // รอข้อมูลจริงโหลดก่อน (เหมือนเทสต์อื่นทั้งไฟล์) — ป้ายการ์ด "มาจากแชท" ขึ้นตั้งแต่เรนเดอร์แรก
+    // ด้วยค่า ?? 0 อยู่แล้ว การรอแค่ป้ายจึงชนะ summary ที่ยังโหลดไม่เสร็จ (race)
+    await screen.findByText('สมชาย ผ่อนดี');
+    await screen.findByText('มาจากแชท');
+    expect(screen.getByRole('group', { name: 'ตัวเลขสรุป' }).querySelectorAll('button')).toHaveLength(6);
+    expect(screen.getByText('มาจากแชท').closest('button')).toHaveTextContent('4');
+    fireEvent.click(screen.getByText('มาจากแชท'));
+    await waitFor(() => expect(locationText()).toContain('fromChat=true'));
+    await waitFor(() => expect(lastListParams().fromChat).toBe('true'));
+    expect(screen.getByText('มาจากแชท').closest('button')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByText('ลูกค้าทั้งหมด'));
+    await waitFor(() => expect(locationText()).not.toContain('fromChat'));
+  });
+
+  it('ตัวกรอง "ที่มา" มีในแท็บลูกค้าด้วย และส่ง source ให้ API · มี source อยู่ = ไม่มีการ์ดไหนเด่น · การ์ด "ลูกค้าทั้งหมด" ล้าง source ด้วย', async () => {
+    show('/customers?zone=shop&source=LINE');
+    await waitFor(() => expect(lastListParams().source).toBe('LINE'));
+    expect(lastListParams().view).toBe('customers');
+    expect(screen.getByRole('combobox', { name: 'ที่มา' })).toBeInTheDocument();
+    expect(screen.getByText('ลูกค้าทั้งหมด').closest('button')).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByText('ลูกค้าทั้งหมด'));
+    await waitFor(() => expect(locationText()).not.toContain('source='));
+  });
+
+  it('ส่งออก Excel: เกิน 10,000 รายการ → เตือนให้กรองก่อน ไม่ยิง /customers/export', async () => {
+    mocks.total = 10_001;
+    show('/customers?zone=shop&view=prospects');
+    // รอข้อมูลจริงโหลดก่อน — ปุ่มส่งออกมีอยู่ตั้งแต่เรนเดอร์แรกไม่ว่า q.total จะโหลดเสร็จหรือยัง
+    // (เหมือนเหตุผลข้างบน) ไม่รอก่อน = คลิกตอน q.total ยังเป็น 0 ด่านไม่มีวันทำงาน
+    await screen.findByText('ผู้สนใจ หนึ่ง');
+    await screen.findByRole('button', { name: /ส่งออก Excel/ });
+    fireEvent.click(screen.getByRole('button', { name: /ส่งออก Excel/ }));
+    await waitFor(() =>
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        'รายการเกิน 10,000 ราย — ใช้ตัวกรองหรือช่องค้นหาให้แคบลงก่อนส่งออก',
+      ),
+    );
+    expect(mocks.get).not.toHaveBeenCalledWith('/customers/export', expect.anything());
   });
 });
 

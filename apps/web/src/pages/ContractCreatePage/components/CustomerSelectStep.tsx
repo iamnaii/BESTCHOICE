@@ -1,6 +1,7 @@
 import { AlertTriangle } from 'lucide-react';
 import { maskNationalId } from '@/utils/mask.util';
 import { useAuth } from '@/contexts/AuthContext';
+import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
 import type { Customer } from '../types';
 
 export interface CustomerSelectStepProps {
@@ -80,7 +81,7 @@ export function CustomerSelectStep({
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">{c.phone}</div>
+                  <div className="mt-1 text-xs text-muted-foreground"><ProspectPhoneLine phone={c.phone} chatPlaceholder={c.chatPlaceholder} /></div>
                   {c.salary && <div className="text-xs text-muted-foreground mt-1">เงินเดือน: <span className="tabular-nums font-mono">{parseFloat(c.salary).toLocaleString()}</span> ฿</div>}
                 </div>
                 <div className="text-xs text-muted-foreground font-mono">

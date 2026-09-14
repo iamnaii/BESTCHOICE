@@ -17,7 +17,8 @@ export interface Product {
 export interface Customer {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null;
+  chatPlaceholder?: boolean;
   nationalId: string;
   salary: string | null;
   occupation: string | null;

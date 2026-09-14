@@ -227,12 +227,16 @@ export function buildCustomerColumns({
             icon: <FileText className="size-4" />,
             onSelect: () => navigate(`/customers/${c.id}?tab=purchases`),
           },
-          {
-            key: 'copy-phone',
-            label: 'คัดลอกเบอร์โทร',
-            icon: <Copy className="size-4" />,
-            onSelect: () => onCopy(c.phone, 'เบอร์โทร'),
-          },
+          ...(c.phone
+            ? [
+                {
+                  key: 'copy-phone',
+                  label: 'คัดลอกเบอร์โทร',
+                  icon: <Copy className="size-4" />,
+                  onSelect: () => onCopy(c.phone as string, 'เบอร์โทร'),
+                },
+              ]
+            : []),
           ...(isOwnerOrManager
             ? [
                 {

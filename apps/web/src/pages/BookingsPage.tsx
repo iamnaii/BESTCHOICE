@@ -96,6 +96,7 @@ interface CustomerOption {
   id: string;
   name: string;
   phone?: string | null;
+  chatPlaceholder?: boolean;
 }
 
 interface BranchOption {
@@ -498,7 +499,7 @@ function CreateBookingDialog({
                 {(customers ?? []).map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
-                    {c.phone ? ` — ${c.phone}` : ''}
+                    {c.chatPlaceholder ? ' — จากแชท · ยังไม่มีเบอร์' : c.phone ? ` — ${c.phone}` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>

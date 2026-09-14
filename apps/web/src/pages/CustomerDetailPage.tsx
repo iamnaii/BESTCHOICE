@@ -48,7 +48,8 @@ interface CustomerDetail {
   nickname: string | null;
   isForeigner: boolean;
   birthDate: string | null;
-  phone: string;
+  phone: string | null;
+  chatPlaceholder?: boolean;
   phoneSecondary: string | null;
   email: string | null;
   lineIdFinance: string | null;
@@ -229,7 +230,7 @@ export default function CustomerDetailPage() {
       prefix: customer.prefix || '',
       name: customer.name,
       nickname: customer.nickname || '',
-      phone: customer.phone,
+      phone: customer.phone || '',
       phoneSecondary: customer.phoneSecondary || '',
       email: customer.email || '',
       lineIdFinance: customer.lineIdFinance || '',
@@ -594,6 +595,9 @@ export default function CustomerDetailPage() {
               <h2 className="text-lg font-semibold text-foreground truncate">{displayName}</h2>
               <div className="flex flex-wrap items-center gap-2 mt-1.5">
                 {customer?.phone && <span className="text-sm text-muted-foreground">{customer.phone}</span>}
+                {customer?.chatPlaceholder && (
+                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">ผู้สนใจจากแชท · ยังไม่มีเบอร์</span>
+                )}
                 {customer?.contracts?.length > 0 && (
                   <button
                     type="button"
@@ -753,7 +757,7 @@ export default function CustomerDetailPage() {
               <CallButton
                 customerId={customer.id}
                 contractId={callableContract.id}
-                phone={customer.phone}
+                phone={customer.phone ?? undefined}
                 size="sm"
                 variant="outline"
               />

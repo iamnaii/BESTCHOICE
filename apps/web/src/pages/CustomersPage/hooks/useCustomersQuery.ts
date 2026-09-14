@@ -41,7 +41,15 @@ import type {
  * แล้ว **แปลงเป็น `sortOrder` ใน buildParams** ถ้าลอกมาตรง ๆ การเรียงจะตายเงียบ
  */
 
-const CUSTOMER_FILTER_KEYS = ['purchase', 'state', 'bought', 'tier', 'branchId'] as const;
+const CUSTOMER_FILTER_KEYS = [
+  'purchase',
+  'state',
+  'bought',
+  'tier',
+  'branchId',
+  'source',
+  'fromChat',
+] as const;
 const PROSPECT_FILTER_KEYS = ['source', 'precheck', 'tag', 'contacted', 'owner'] as const;
 /** ลิงก์เก่าจากแดชบอร์ด — `?contractStatus=` ไม่มีผู้อ่านอีกแล้ว จึง map ตอนอ่าน */
 const LEGACY_KEYS = ['contractStatus', 'hasOverdue'] as const;
@@ -90,6 +98,7 @@ export interface UseCustomersQueryResult {
   branchId: string;
   /** ตัวกรองแท็บผู้สนใจ */
   source: string;
+  fromChat: string;
   precheck: string;
   tag: string;
   contacted: string;
@@ -140,8 +149,10 @@ export function useCustomersQuery(): UseCustomersQueryResult {
   const tier = isBuyers ? pick(searchParams.get('tier'), CUSTOMER_TIERS) : '';
   const branchId = isBuyers && canFilterBranch ? (searchParams.get('branchId') ?? '') : '';
 
-  // --- ตัวกรองแท็บผู้สนใจ ---
-  const source = !isBuyers ? pick(searchParams.get('source'), PROSPECT_SOURCES) : '';
+  // --- ตัวกรองแท็บผู้สนใจ (source ใช้ได้ทั้งสองแท็บ — แท็บลูกค้าก็กรองที่มาได้) ---
+  const source = pick(searchParams.get('source'), PROSPECT_SOURCES);
+  /** เฉพาะแท็บลูกค้า — "มาจากแชท" คือ CustomerRow ที่ API ปะ chatPlaceholder ให้ */
+  const fromChat = isBuyers && searchParams.get('fromChat') === 'true' ? 'true' : '';
   const precheck = !isBuyers
     ? pick(searchParams.get('precheck'), Object.keys(customerCreditStatusMap))
     : '';
@@ -282,6 +293,7 @@ export function useCustomersQuery(): UseCustomersQueryResult {
       // ส่ง view ชัดเจนเสมอ — ไม่ส่ง = "ทุกคน" ซึ่งเป็นพฤติกรรมที่ตัวเลือกลูกค้าหน้าอื่นพึ่งอยู่
       params.view = view;
       if (debouncedSearch) params.search = debouncedSearch;
+      if (source) params.source = source;
       if (isBuyers) {
         // ⚠️ ชื่อพารามิเตอร์คือ `purchase` ไม่ใช่ `saleType` — ValidationPipe ตั้ง
         // `whitelist: true` (ไม่มี forbidNonWhitelisted) ⇒ คีย์ที่ DTO ไม่รู้จักถูก
@@ -291,8 +303,8 @@ export function useCustomersQuery(): UseCustomersQueryResult {
         if (bought) params.purchasedWithin = bought;
         if (tier) params.tier = tier;
         if (branchId) params.branchId = branchId;
+        if (fromChat) params.fromChat = 'true';
       } else {
-        if (source) params.source = source;
         if (precheck) params.creditCheckStatus = precheck;
         if (tag) params.tag = tag;
         if (contacted) params.contacted = contacted;
@@ -317,6 +329,7 @@ export function useCustomersQuery(): UseCustomersQueryResult {
       tier,
       branchId,
       source,
+      fromChat,
       precheck,
       tag,
       contacted,
@@ -363,7 +376,7 @@ export function useCustomersQuery(): UseCustomersQueryResult {
   const hasActiveFilters = Boolean(
     debouncedSearch ||
       (isBuyers
-        ? purchase || state || bought || tier || branchId
+        ? purchase || state || bought || tier || branchId || source || fromChat
         : source || precheck || tag || contacted || owner),
   );
 
@@ -384,6 +397,7 @@ export function useCustomersQuery(): UseCustomersQueryResult {
     tier,
     branchId,
     source,
+    fromChat,
     precheck,
     tag,
     contacted,

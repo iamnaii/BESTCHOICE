@@ -47,7 +47,7 @@ export function customerKpiCards(summary?: CustomerTabSummary): KpiCardSpec[] {
       label: 'ลูกค้าทั้งหมด',
       tone: 'primary',
       value: summary?.total ?? 0,
-      params: { purchase: '', state: '', bought: '' },
+      params: { purchase: '', state: '', bought: '', fromChat: '', source: '' },
     },
     {
       key: 'installment',
@@ -76,6 +76,13 @@ export function customerKpiCards(summary?: CustomerTabSummary): KpiCardSpec[] {
       tone: 'destructive',
       value: summary?.overdue ?? 0,
       params: { purchase: 'INSTALLMENT', state: 'OVERDUE' },
+    },
+    {
+      key: 'fromChat',
+      label: 'มาจากแชท',
+      tone: 'info',
+      value: summary?.fromChat ?? 0,
+      params: { fromChat: 'true' },
     },
   ];
 }
@@ -141,7 +148,10 @@ export default function CustomerKpiCards({
     <div
       role="group"
       aria-label="ตัวเลขสรุป"
-      className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-5 lg:gap-4"
+      className={cn(
+        'mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 lg:gap-4',
+        cards.length === 6 ? 'lg:grid-cols-6' : 'lg:grid-cols-5',
+      )}
     >
       {cards.map((card) => {
         const on = card.key === activeKey;

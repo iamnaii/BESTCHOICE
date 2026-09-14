@@ -1,7 +1,9 @@
 import { Search } from 'lucide-react';
+import { PROSPECT_SOURCES } from '@installment/shared';
 import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
 import { TIER_LABELS } from '@/types/customer-tier';
 import FilterSelect from './FilterSelect';
+import { SOURCE_LABELS } from './sourceLabels';
 
 /**
  * ตัวกรองแท็บ "ลูกค้า" — ค้นหา · การซื้อ 168 · ซื้อล่าสุด 168 · ระดับลูกค้า 168 · สาขา 140
@@ -26,6 +28,7 @@ export function decodePurchase(value: string): { purchase: string; state: string
 export default function CustomerFilterBar({
   search,
   setSearch,
+  source,
   purchase,
   state,
   bought,
@@ -37,6 +40,7 @@ export default function CustomerFilterBar({
 }: {
   search: string;
   setSearch: (value: string) => void;
+  source: string;
   purchase: string;
   state: string;
   bought: string;
@@ -65,7 +69,17 @@ export default function CustomerFilterBar({
         </div>
       }
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <FilterSelect
+          ariaLabel="ที่มา"
+          placeholder="ทุกที่มา"
+          width={148}
+          value={source}
+          onChange={(value) => setFilters({ source: value })}
+          groups={[
+            { options: PROSPECT_SOURCES.map((key) => ({ value: key, label: SOURCE_LABELS[key] })) },
+          ]}
+        />
         <FilterSelect
           ariaLabel="การซื้อ"
           placeholder="ทุกแบบการซื้อ"

@@ -12,6 +12,9 @@ export function createExportGuard(): () => void {
 
 export interface ExportSnapshot<T> { data: T[]; total: number; asOf: string }
 
+/** เพดานจำนวนแถวที่ส่งออกได้ต่อครั้ง — ปุ่มส่งออกฝั่งหน้าจอเช็คก่อนยิงคำขอด้วยค่าเดียวกันนี้ */
+export const EXPORT_ROW_LIMIT = 10_000;
+
 export async function fetchExportSnapshot<T extends { id: string }>(
   request: () => Promise<ExportSnapshot<T>>,
   assertCurrent: () => void = createExportGuard(),
@@ -19,7 +22,7 @@ export async function fetchExportSnapshot<T extends { id: string }>(
   assertCurrent();
   const result = await request();
   assertCurrent();
-  if (!Number.isSafeInteger(result.total) || result.total < 0 || result.total > 10_000 ||
+  if (!Number.isSafeInteger(result.total) || result.total < 0 || result.total > EXPORT_ROW_LIMIT ||
     !Array.isArray(result.data) || result.data.length !== result.total ||
     !result.asOf || !Number.isFinite(Date.parse(result.asOf)) ||
     new Set(result.data.map(row => row.id)).size !== result.total || result.data.some(row => !row.id)) {

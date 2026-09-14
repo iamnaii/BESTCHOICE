@@ -11,6 +11,7 @@ import { exportToExcel, type ExcelColumn } from '@/utils/excel.util';
 import { formatDateShort } from '@/utils/formatters';
 import { customerCreditStatusMap, getStatusBadgeProps } from '@/lib/status-badges';
 import { TIER_LABELS } from '@/types/customer-tier';
+import { SOURCE_LABELS } from '../components/sourceLabels';
 import type { CustomerRow, CustomerView, ProspectRow } from '../types';
 
 /**
@@ -31,6 +32,7 @@ function customerColumns({ isOwnerOrManager, canViewSalary }: ExportRoleFlags): 
     { header: 'ชื่อ', key: 'name', width: 22 },
     { header: 'ชื่อเล่น', key: 'nickname', width: 14 },
     { header: 'เบอร์โทร', key: 'phone', width: 14 },
+    { header: 'ที่มา', key: 'source', width: 16 },
     { header: 'การซื้อ', key: 'purchase', width: 26 },
     { header: 'ซื้อล่าสุด', key: 'lastPurchase', width: 26 },
     { header: 'ประกันถึง', key: 'warranty', width: 14 },
@@ -64,16 +66,6 @@ function prospectColumns({ isOwnerOrManager }: ExportRoleFlags): ExcelColumn[] {
   if (isOwnerOrManager) cols.push({ header: 'เลขบัตร ปชช.', key: 'nationalId', width: 18 });
   return cols;
 }
-
-const SOURCE_LABELS: Record<string, string> = {
-  BOT: 'บอทขาย',
-  FACEBOOK: 'แชท Facebook',
-  LINE: 'แชท LINE',
-  TIKTOK: 'แชท TikTok',
-  WEB: 'เว็บ',
-  REFERRAL: 'คนแนะนำ',
-  WALK_IN: 'หน้าร้าน',
-};
 
 const STATE_LABELS: Record<string, string> = {
   ACTIVE: 'ใช้งาน',
@@ -159,6 +151,7 @@ export async function exportCustomers({
             name: c.name,
             nickname: c.nickname || '-',
             phone: c.phone,
+            source: c.source ? (SOURCE_LABELS[c.source] ?? c.source) : '-',
             purchase: purchaseText(c),
             lastPurchase: c.latestPurchase
               ? `${formatDateShort(c.latestPurchase.at)} · ${c.latestPurchase.productLabel}`

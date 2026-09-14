@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Length, Matches, MaxLength, ValidateIf } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
 
 /**
  * เติมเบอร์/ข้อมูลให้ "ผู้สนใจอัตโนมัติจากแชท" (สเปค 3.6 ปุ่ม "เพิ่มเบอร์/ข้อมูล", Ruling R27)
@@ -25,10 +25,12 @@ export class FillProspectContactDto {
   nickname?: string;
 
   // ไม่ส่ง = ไม่แตะ · ส่งค่าว่างไม่ได้ (ValidateIf ตรวจเมื่อมีค่าเท่านั้น — เหมือน CreateCustomerDto)
+  // Fix round 1 (Ruling R34, Finding 1 Minor) — Matches แทน Length: Length(13,13) ยอมรับ
+  // ตัวอักษรใดก็ได้ 13 ตัว (เช่น 'abc-def-ghi-jk') ส่วน Matches บังคับเป็นเลขล้วน 13 หลักจริง ๆ
   @IsOptional()
   @ValidateIf((o) => !!o.nationalId)
   @IsString()
-  @Length(13, 13, { message: 'เลขบัตรประชาชนต้อง 13 หลัก' })
+  @Matches(/^\d{13}$/, { message: 'เลขบัตรประชาชนต้อง 13 หลัก' })
   nationalId?: string;
 
   @IsOptional()

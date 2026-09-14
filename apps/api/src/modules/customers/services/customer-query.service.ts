@@ -23,6 +23,7 @@ import { CustomerPiiService } from '../customer-pii.service';
 import { CustomerPurchaseSummaryService, type CustomerPurchaseSummary } from './customer-purchase-summary.service';
 import { CustomerChatRoomsService } from './customer-chat-rooms.service';
 import { CUSTOMER_TIERS } from '../dto/customers-list-query.dto';
+import { buildContractProgress } from './customer-contract-progress';
 
 /** อ่านจาก enum ที่ Prisma generate — เพิ่มค่าใน schema แล้วรายการนี้ตามเองโดยไม่ต้องแก้ */
 const CREDIT_CHECK_STATUSES = Object.values(CreditCheckStatus) as string[];
@@ -805,6 +806,64 @@ export class CustomerQueryService {
         phone: decrypted.phone ?? null,
         nationalId: decrypted.nationalId ?? null,
       }),
+    };
+  }
+
+  /**
+   * หน้า /customers/:id เท่านั้น — findOne + ข้อมูลที่หน้ารายชื่อคำนวณอยู่แล้ว (ตัวเดียวกัน ห้ามเขียนสูตรใหม่)
+   * findOne เดิมไม่แตะ: ถูกใช้เป็นด่านเช็คว่ามีลูกค้าอยู่ใน getReferrals/getChatSummary ถ้าเติม query ลงไปทุกจุดจะช้าลง
+   */
+  async findDetail(id: string) {
+    const base = await this.findOne(id);
+    const OPEN_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT'] as const;
+
+    const [purchaseMap, chatMap, tags, openContracts] = await Promise.all([
+      this.purchaseSummary.forCustomers([id]),
+      this.chatRooms.forCustomers([id]),
+      this.prisma.customerTag.findMany({ where: { customerId: id, deletedAt: null }, select: { tag: true } }),
+      this.prisma.contract.findMany({
+        where: { customerId: id, deletedAt: null, status: { in: [...OPEN_STATUSES] } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true, contractNumber: true, status: true, monthlyPayment: true, totalMonths: true, createdAt: true,
+          mdmLockedAt: true, shopWarrantyEndDate: true,
+          branch: { select: { name: true } },
+          product: { select: { brand: true, model: true, storage: true, imeiSerial: true, warrantyExpireDate: true } },
+        },
+      }),
+    ]);
+
+    const openIds = openContracts.map((contract) => contract.id);
+    const [payments, lastCalls] = openIds.length
+      ? await Promise.all([
+          this.prisma.payment.findMany({
+            where: { contractId: { in: openIds }, deletedAt: null },
+            select: { contractId: true, installmentNo: true, status: true, dueDate: true, amountDue: true, amountPaid: true },
+          }),
+          this.prisma.callLog.findMany({
+            where: { contractId: { in: openIds }, deletedAt: null },
+            orderBy: [{ contractId: 'asc' }, { calledAt: 'desc' }, { id: 'desc' }],
+            distinct: ['contractId'],
+            select: { contractId: true, calledAt: true, result: true, notes: true, caller: { select: { name: true } } },
+          }),
+        ])
+      : [[], []];
+
+    const purchase = purchaseMap.get(id);
+    const chat = chatMap.get(id);
+    const chatRooms = chat?.chatRooms ?? [];
+    return {
+      ...base,
+      tags,
+      source: deriveSource(base.acquisitionSource ?? null, chatRooms[0]?.channel ?? null, base.referredById ?? null),
+      purchase: purchase?.purchase ?? null,
+      latestPurchase: purchase?.latestPurchase ?? null,
+      warranty: purchase?.warranty ?? null,
+      installmentBalance: purchase?.installmentBalance ?? null,
+      chatRooms,
+      lastContactAt: chat?.lastContactAt ?? null,
+      assignedTo: chat?.assignedTo ?? null,
+      openContracts: buildContractProgress({ contracts: openContracts, payments, lastCalls, now: new Date() }),
     };
   }
 

@@ -13,7 +13,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 
 describe('CustomersController PII (Phase 5)', () => {
   let controller: CustomersController;
-  let service: { findOne: jest.Mock; findAll: jest.Mock; search: jest.Mock; fillPlaceholderContact: jest.Mock };
+  let service: { findOne: jest.Mock; findDetail: jest.Mock; findAll: jest.Mock; search: jest.Mock; fillPlaceholderContact: jest.Mock };
   let piiAudit: { logDecryption: jest.Mock };
   let tierService: CustomerTierService;
   let merge: { absorbPlaceholder: jest.Mock; assertActorMayAbsorb: jest.Mock };
@@ -21,6 +21,7 @@ describe('CustomersController PII (Phase 5)', () => {
   beforeEach(async () => {
     service = {
       findOne: jest.fn(),
+      findDetail: jest.fn(),
       findAll: jest.fn(),
       search: jest.fn(),
       fillPlaceholderContact: jest.fn(),
@@ -64,20 +65,20 @@ describe('CustomersController PII (Phase 5)', () => {
     }) as any;
 
   it('masks nationalId for SALES role on findOne', async () => {
-    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123', phone: '0812345678' });
+    service.findDetail.mockResolvedValue({ id: 'c1', nationalId: '1234567890123', phone: '0812345678' });
     const result = await controller.findOne('c1', reqOf('SALES'));
     expect((result as any).nationalId).toBe('12345-XXXXX-XX-3');
     expect((result as any).phone).toBe('0812345678'); // not masked per Q1 matrix
   });
 
   it('returns full nationalId for OWNER on findOne', async () => {
-    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
+    service.findDetail.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
     const result = await controller.findOne('c1', reqOf('OWNER'));
     expect((result as any).nationalId).toBe('1234567890123');
   });
 
   it('logs PII_DECRYPT_MASKED for SALES on findOne', async () => {
-    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
+    service.findDetail.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
     await controller.findOne('c1', reqOf('SALES'));
     // Wait microtask for void this.piiAudit.logDecryption to fire
     await new Promise((r) => setImmediate(r));
@@ -87,7 +88,7 @@ describe('CustomersController PII (Phase 5)', () => {
   });
 
   it('logs PII_DECRYPT_FULL for OWNER on findOne', async () => {
-    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
+    service.findDetail.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
     await controller.findOne('c1', reqOf('OWNER'));
     await new Promise((r) => setImmediate(r));
     expect(piiAudit.logDecryption).toHaveBeenCalledWith(
@@ -134,9 +135,16 @@ describe('CustomersController PII (Phase 5)', () => {
   });
 
   it('returns null gracefully on findOne when customer not found', async () => {
-    service.findOne.mockResolvedValue(null);
+    service.findDetail.mockResolvedValue(null);
     const result = await controller.findOne('nope', reqOf('SALES'));
     expect(result).toBeNull();
+  });
+
+  it('GET /customers/:id อ่านผ่าน findDetail ไม่ใช่ findOne (findOne ยังเป็นด่านเช็คของ endpoint อื่น)', async () => {
+    service.findDetail.mockResolvedValue({ id: 'c1', nationalId: '1234567890123', openContracts: [] });
+    await controller.findOne('c1', reqOf('OWNER'));
+    expect(service.findDetail).toHaveBeenCalledWith('c1');
+    expect(service.findOne).not.toHaveBeenCalled();
   });
 
   describe('GET /customers/:id/tier', () => {

@@ -179,7 +179,7 @@ export class CustomersController {
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   async findOne(@Param('id') id: string, @Req() req: AuthRequest) {
-    const customer = await this.customersService.findOne(id);
+    const customer = await this.customersService.findDetail(id);
     if (!customer) return customer;
 
     const role = req.user?.role || 'UNKNOWN';

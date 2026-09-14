@@ -51,6 +51,10 @@ export class CustomersService {
     return this.query.findOne(id);
   }
 
+  findDetail(id: string) {
+    return this.query.findDetail(id);
+  }
+
   getReferrals(id: string) {
     return this.query.getReferrals(id);
   }

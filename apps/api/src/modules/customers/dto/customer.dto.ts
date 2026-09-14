@@ -138,8 +138,9 @@ export class UpdateCustomerDto {
   @IsOptional()
   birthDate?: string;
 
+  // ไม่ส่ง = คงเบอร์เดิม · ส่ง null/ว่าง = ปฏิเสธ (ห้ามล้างเบอร์ของคนที่มีเบอร์แล้ว — สเปค 3.6)
+  @ValidateIf((o) => o.phone !== undefined)
   @IsString()
-  @IsOptional()
   @Matches(/^0[0-9]{9}$/, { message: 'เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0' })
   phone?: string;
 

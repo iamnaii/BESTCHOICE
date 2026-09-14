@@ -6,12 +6,21 @@
  * ห้องเรียงตาม created_at จากเก่าไปใหม่ ⇒ ห้องแรกของคนหนึ่งสร้างแถว (createdAt = วันทักครั้งแรก)
  * ห้องถัดไปของคนเดียวกันเจอ sibling ที่ผูกแล้ว ⇒ ใช้คนเดิม · รันซ้ำได้ (ห้องที่ผูกแล้วถูกข้ามตั้งแต่ query)
  *
- * CURSOR (Ruling R7) — วน chatRoom.findMany ด้วย cursor เดินหน้าเสมอ
- * (orderBy createdAt,id + cursor:{id:lastId},skip:1) ไม่ใช่ re-query หัวตารางซ้ำแบบเดิม:
- * ห้องที่ล้ม/ข้ามในชุดหนึ่งยังขยับ cursor ผ่านมันไปเสมอ กันวนซ้ำชุดเดิมไม่รู้จบเมื่อมีห้องล้มเหลว
- * ค้างอยู่หัวตาราง ≥ batchSize ห้องติดกัน
+ * KEYSET PAGINATION (Ruling R20 — amends R7) — วน chatRoom.findMany ด้วย explicit keyset
+ * เดินหน้าเสมอ (orderBy createdAt,id + WHERE (createdAt,id) > (last.createdAt,last.id))
+ * แทน Prisma `cursor`/`skip`: R7's เดิม `cursor:{id:lastId},skip:1` มีบั๊ก — ensureForRoom
+ * เซ็ต customerId ให้ห้อง cursor เมื่อสำเร็จ ⇒ ห้องนั้นหลุดจาก BACKFILL_WHERE (customerId:null)
+ * ก่อนหน้า query ถัดไปจะรัน ⇒ cursor row ไม่อยู่ในเซตที่ถูกกรองอีกต่อไป ⇒ `skip:1` (ซึ่งเป็น SQL
+ * OFFSET หลังกรอง) ไปกิน "ห้องถัดไปที่ยังไม่ได้ประมวลผล" แทนแถว cursor ที่หายไปแล้ว — ห้องนั้นหลุด
+ * จากทุก batch ไปตลอดกาลแบบเงียบๆ (พิสูจน์แล้ว: 3 ห้อง r1<r2<r3, batchSize=1, ทั้งหมด linkable ⇒
+ * r2 หายไป). Keyset ไม่มีปัญหานี้เพราะเงื่อนไข ">last" ไม่สน ว่าห้อง last ยังอยู่ใน BACKFILL_WHERE
+ * หรือไม่ — เป็นตัวเปรียบเทียบ (createdAt,id) ล้วนๆ ห้องที่ล้ม/ข้าม/สำเร็จในชุดหนึ่งยังขยับคีย์
+ * ผ่านมันไปเสมอ กันวนซ้ำชุดเดิมไม่รู้จบเมื่อมีห้องล้มเหลวค้างอยู่หัวตาราง ≥ batchSize ห้องติดกัน
  *
- * ห้อง WEB ไม่นับเป็นผู้สนใจจนกว่าจะมีข้อความจากลูกค้าจริง (Ruling R3 / R7) — planBackfill/runBackfill
+ * plan.rooms vs result.processed — main() เทียบสองค่านี้หลังรันจริง และเตือน + exit 2 เมื่อต่างกัน
+ * (สัญญาณสุขภาพของ pagination เอง ไม่ใช่การพิสูจน์ — ห้องใหม่อาจเข้ามาระหว่าง plan กับ run ได้จริง)
+ *
+ * ห้อง WEB ไม่นับเป็นผู้สนใจจนกว่าจะมีข้อความจากลูกค้าจริง (Ruling R3) — planBackfill/runBackfill
  * กันห้อง channel=WEB ที่ยังไม่มีข้อความ role=CUSTOMER แม้แต่ข้อความเดียว
  *
  * GUARDS (แบบเดียวกับ backfill-payment-receipts.cli.ts)
@@ -86,8 +95,9 @@ export async function planBackfill(prisma: Db): Promise<BackfillPlan> {
 }
 
 /**
- * เขียนจริง: วนห้องที่ยังไม่มีเจ้าของด้วย cursor เดินหน้าเสมอ (Ruling R7) — ไม่ re-query หัวตารางซ้ำ
- * เพราะห้องที่ล้ม/ข้ามยังค้างอยู่หัว query เดิมได้ (จะวนไม่รู้จบถ้ามีห้องล้มเหลวติดกัน ≥ batchSize ห้อง)
+ * เขียนจริง: วนห้องที่ยังไม่มีเจ้าของด้วย explicit keyset เดินหน้าเสมอ (Ruling R20) — ไม่ใช้
+ * Prisma cursor/skip (บั๊ก — ดู docblock บนไฟล์) และไม่ re-query หัวตารางซ้ำ เพราะห้องที่ล้ม/ข้าม
+ * ยังค้างอยู่หัว query เดิมได้ (จะวนไม่รู้จบถ้ามีห้องล้มเหลวติดกัน ≥ batchSize ห้อง)
  */
 export async function runBackfill(
   prisma: Pick<PrismaClient, 'chatRoom'>,
@@ -95,14 +105,15 @@ export async function runBackfill(
   opts: { batchSize: number; log: (line: string) => void },
 ): Promise<BackfillResult> {
   const result: BackfillResult = { processed: 0, created: 0, linkedExisting: 0, skipped: 0, failed: 0 };
-  let lastId: string | undefined;
+  let last: { id: string; createdAt: Date } | undefined;
   for (;;) {
     const batch = (await prisma.chatRoom.findMany({
-      where: BACKFILL_WHERE,
+      where: last
+        ? { AND: [BACKFILL_WHERE, { OR: [{ createdAt: { gt: last.createdAt } }, { createdAt: last.createdAt, id: { gt: last.id } }] }] }
+        : BACKFILL_WHERE,
       select: ROOM_SELECT,
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: opts.batchSize,
-      ...(lastId ? { cursor: { id: lastId }, skip: 1 } : {}),
     })) as Room[];
     if (batch.length === 0) break;
     for (const room of batch) {
@@ -117,8 +128,10 @@ export async function runBackfill(
         opts.log(`FAILED room ${room.id} (${room.channel}): ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    // ขยับ cursor ไปที่ห้องสุดท้ายของชุดนี้เสมอ ไม่ว่าจะสำเร็จ/ล้ม/ข้ามกี่ห้อง — กันวนซ้ำชุดเดิมไม่รู้จบ (Ruling R7)
-    lastId = batch[batch.length - 1].id;
+    // ขยับ keyset ไปที่ห้องสุดท้ายของชุดนี้เสมอ ไม่ว่าจะสำเร็จ/ล้ม/ข้ามกี่ห้อง — กันวนซ้ำชุดเดิมไม่รู้จบ
+    // (Ruling R20) — ไม่พึ่งว่าห้องนั้นยังอยู่ใน BACKFILL_WHERE หรือไม่ (ต่างจาก Prisma cursor ที่พึ่ง)
+    const lastRoom = batch[batch.length - 1];
+    last = { id: lastRoom.id, createdAt: lastRoom.createdAt };
     opts.log(`batch done: processed=${result.processed} created=${result.created} linkedExisting=${result.linkedExisting} failed=${result.failed}`);
   }
   return result;
@@ -151,6 +164,14 @@ async function main(): Promise<void> {
       log: (l) => console.log('[run]', l),
     });
     console.log('[result]', JSON.stringify(result));
+    // plan.rooms vs result.processed: a sanity check on pagination health, not proof of a bug —
+    // new qualifying rooms can legitimately arrive between the plan snapshot and the run (Ruling R20).
+    if (result.processed !== plan.rooms) {
+      console.warn(
+        `[backfill-chat-prospects] WARNING: plan.rooms=${plan.rooms} vs result.processed=${result.processed} (gap=${plan.rooms - result.processed}) — check for a pagination gap or concurrent room activity during the run`,
+      );
+      process.exitCode = 2;
+    }
     if (result.failed > 0) process.exitCode = 2;
   } finally {
     await prisma.$disconnect();

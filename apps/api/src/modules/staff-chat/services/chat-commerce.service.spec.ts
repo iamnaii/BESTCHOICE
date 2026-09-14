@@ -58,7 +58,7 @@ describe('ChatCommerceService.createPaymentLinkInChat — ห้องที่�
     return { svc, prisma };
   }
 
-  it('ห้องที่ถือผู้สนใจอัตโนมัติ (ไม่มีเบอร์) → 400 เหมือนยังไม่ผูกลูกค้า', async () => {
+  it('ห้องที่ถือผู้สนใจอัตโนมัติ (ไม่มีเบอร์) → 400 บอกให้เติมเบอร์หรือผูกคนเดิม', async () => {
     const { svc, prisma } = makeCommerceOnlyService();
     prisma.chatRoom.findUnique.mockResolvedValue({
       id: 's1', lineUserId: null, channel: 'FACEBOOK', customerId: 'p1',
@@ -66,8 +66,14 @@ describe('ChatCommerceService.createPaymentLinkInChat — ห้องที่�
     });
     await expect(
       svc.createPaymentLinkInChat({ sessionId: 's1', staffId: 'u1', contractId: 'contract-1' }),
-    ).rejects.toThrow('ห้องแชทนี้ยังไม่ได้เชื่อมกับลูกค้า');
+    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — เติมเบอร์หรือผูกกับลูกค้าเดิมก่อนส่งข้อมูลชำระ');
     expect(prisma.contract.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('ห้องที่ไม่มีเจ้าของเลย → 400 ข้อความเดิม "ยังไม่ได้เชื่อมกับลูกค้า"', async () => {
+    const { svc, prisma } = makeCommerceOnlyService();
+    prisma.chatRoom.findUnique.mockResolvedValue({ id: 's1', lineUserId: null, channel: 'FACEBOOK', customerId: null, customer: null });
+    await expect(svc.createPaymentLinkInChat({ sessionId: 's1', staffId: 'u1', contractId: 'contract-1' })).rejects.toThrow('ห้องแชทนี้ยังไม่ได้เชื่อมกับลูกค้า');
   });
 
   it('ลูกค้าจริงที่มีเบอร์แล้ว (ไม่ใช่ผู้สนใจอัตโนมัติ) → ผ่านด่านนี้ไป (ไปติดด่านถัดไปแทน คือไม่มี LINE ID)', async () => {

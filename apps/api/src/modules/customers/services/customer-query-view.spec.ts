@@ -422,7 +422,7 @@ describe('รูปร่างแถวที่ตอบกลับ (สั�
     const result = await service.findAll({ view: 'customers' });
     const row = result.data[0] as Record<string, unknown>;
     expect(Object.keys(row).sort()).toEqual([
-      '_count', 'acquisitionSourceRaw', 'activeContracts', 'chatRooms', 'createdAt', 'creditCheckStatus', 'id',
+      '_count', 'acquisitionSourceRaw', 'activeContracts', 'chatPlaceholder', 'chatRooms', 'createdAt', 'creditCheckStatus', 'id',
       'installmentBalance', 'latestCreditScore', 'latestCreditStatus', 'latestPurchase', 'lineIdFinance',
       'lineIdShop', 'name', 'nationalId', 'nickname', 'occupation', 'overdueContracts', 'phone', 'purchase',
       'salary', 'source', 'tier', 'warranty',
@@ -440,6 +440,9 @@ describe('รูปร่างแถวที่ตอบกลับ (สั�
     // ที่มา (Task 13): AI_CHAT_RETURN ชนะช่องทางห้องแชท (LINE_SHOP) เหมือนแท็บผู้สนใจ
     expect(row.source).toBe('BOT');
     expect(row.acquisitionSourceRaw).toBe('AI_CHAT_RETURN');
+    // แท็บลูกค้ามีเบอร์/เลขบัตรจริง + ที่มาไม่ใช่ CHAT_* (เป็น AI_CHAT_RETURN) ⇒ ไม่ใช่ placeholder
+    // (Task 13 fix round, I1/R15 — เดิมแขนนี้ของ findAll ไม่เคยคำนวณ flag นี้เลย)
+    expect(row.chatPlaceholder).toBe(false);
     expect(row.activeContracts).toBe(1);
     expect(row.overdueContracts).toBe(1);
     expect(row.tier).toBe('GOOD');

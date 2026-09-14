@@ -8,6 +8,7 @@ import {
   CHAT_SOURCE_PREFIX,
   chatLogoOf,
   chatSourceChannel,
+  chatSourceOf,
   type CustomerInstallmentState,
   type ProspectSource,
 } from '@installment/shared';
@@ -63,6 +64,21 @@ const NOT_BOT_WHERE: Prisma.CustomerWhereInput = {
   OR: [{ acquisitionSource: null }, { acquisitionSource: { not: { startsWith: 'AI_CHAT' } } }],
 };
 
+/**
+ * "มาจากแชท" — ที่มาติดตัวขึ้นต้น CHAT_ (ผู้สนใจอัตโนมัติ + ที่เคยเป็นผู้สนใจอัตโนมัติมาก่อน)
+ *
+ * 🔴 R16: ต้องเป็นค่าคงที่ตัวเดียว ใช้ร่วมกันทั้ง KPI "มาจากแชท" (kpiPredicates) และตัวกรอง
+ * `fromChat=true` — ห้ามเขียนสูตรซ้ำสองที่ ไม่งั้นการ์ด KPI กับตัวกรองจะ drift กันได้
+ */
+const CHAT_SOURCE_WHERE: Prisma.CustomerWhereInput = {
+  acquisitionSource: { startsWith: CHAT_SOURCE_PREFIX },
+};
+
+/** ตรงข้ามของ CHAT_SOURCE_WHERE (`fromChat=false`) — OR กับ null กัน 3VL เหมือน NOT_BOT_WHERE */
+const NOT_CHAT_SOURCE_WHERE: Prisma.CustomerWhereInput = {
+  OR: [{ acquisitionSource: null }, { acquisitionSource: { not: { startsWith: CHAT_SOURCE_PREFIX } } }],
+};
+
 const NO_ROOM_WHERE: Prisma.CustomerWhereInput = { chatRooms: { none: { deletedAt: null } } };
 
 /**
@@ -108,13 +124,22 @@ const SOURCE_CHANNELS: Record<string, Prisma.ChatRoomWhereInput['channel']> = {
   LINE: { in: ['LINE_FINANCE', 'LINE_SHOP'] },
 };
 
-/** ที่มา → ค่า acquisitionSource ของผู้สนใจอัตโนมัติที่นับว่าตรง (ห้องถูกลบไปแล้วก็ยังกรองได้) */
-const SOURCE_CHAT_VALUES: Record<string, string[]> = {
-  FACEBOOK: ['CHAT_FACEBOOK'],
-  TIKTOK: ['CHAT_TIKTOK'],
-  WEB: ['CHAT_WEB'],
-  LINE: ['CHAT_LINE_FINANCE', 'CHAT_LINE_SHOP'],
-};
+/** ดึงรายชื่อ ChatChannel ออกจาก entry ของ SOURCE_CHANNELS (ทุก entry เป็นรูป `{ in: [...] }` เสมอ) */
+function channelsOf(filter: Prisma.ChatRoomWhereInput['channel']): string[] {
+  return (filter as { in?: readonly string[] } | undefined)?.in?.slice() ?? [];
+}
+
+/**
+ * ที่มา → ค่า acquisitionSource ของผู้สนใจอัตโนมัติที่นับว่าตรง (ห้องถูกลบไปแล้วก็ยังกรองได้)
+ *
+ * 🔴 R17: ต้อง derive จาก SOURCE_CHANNELS ผ่าน chatSourceOf เสมอ ห้ามเขียนเป็น literal map แยก —
+ * ถ้าเพิ่มช่องทางใหม่ใน SOURCE_CHANNELS แล้วลืมแก้ที่นี่ SOURCE_CHAT_VALUES[ช่องใหม่] จะเป็น
+ * undefined ⇒ `{ acquisitionSource: { in: undefined } }` ที่ Prisma ตัดเงื่อนไข undefined ทิ้ง
+ * ⇒ ทั้ง OR กลายเป็น always-true และ `?source=<ช่องใหม่>` จะคืนลูกค้าที่ไม่ใช่บอททุกคนเงียบ ๆ
+ */
+const SOURCE_CHAT_VALUES: Record<string, string[]> = Object.fromEntries(
+  Object.entries(SOURCE_CHANNELS).map(([source, filter]) => [source, channelsOf(filter).map(chatSourceOf)]),
+);
 
 function assertEnumValue(value: string, allowed: string[], label: string): void {
   if (allowed.includes(value)) return;
@@ -146,6 +171,8 @@ export interface CustomersReadFilters {
   /** ชื่อพ้องของ purchasedWithin */
   bought?: string;
   source?: string;
+  /** ใช้ได้ทั้งสองแท็บ (Task 13) — สตริง 'true'/'false' เหมือน hasOverdue */
+  fromChat?: string;
   tag?: string;
   contacted?: string;
   assignedToId?: string;
@@ -474,6 +501,15 @@ export class CustomerQueryService {
       }
     }
 
+    // 🔴 fromChat ใช้ได้ทั้งสองแท็บเหมือน source (Task 13 fix round, R16) — ต้อง push
+    // constant เดียวกับที่ KPI ใช้ (CHAT_SOURCE_WHERE/NOT_CHAT_SOURCE_WHERE) ไม่ใช่ copy เงื่อนไข
+    // ขึ้นมาใหม่ ไม่งั้น KPI กับตัวกรองจะ drift กันได้ในอนาคต
+    if (filters.fromChat === 'true') {
+      filterAnd.push(CHAT_SOURCE_WHERE);
+    } else if (filters.fromChat === 'false') {
+      filterAnd.push(NOT_CHAT_SOURCE_WHERE);
+    }
+
     if (tags.length) {
       // deletedAt: null บังคับ — @@unique([customerId, tag, deletedAt]) ทำให้แท็บที่ถอดแล้วยังเป็นแถวอยู่
       filterAnd.push({ tags: { some: { deletedAt: null, tag: { in: tags as Prisma.EnumCustomerTagTypeFilter['in'] } } } });
@@ -573,7 +609,8 @@ export class CustomerQueryService {
           { contracts: { some: { deletedAt: null, status: { in: ['OVERDUE', 'DEFAULT'] } } } },
           // KPI "มาจากแชท" — นับด้วยที่มาติดตัว (acquisitionSource CHAT_*) ไม่ใช่ห้องแชทปัจจุบัน
           // ⇒ ยังนับได้แม้ห้องแชทถูกลบไปแล้ว/ถูกรวมเข้าคนจริงแล้ว
-          { acquisitionSource: { startsWith: CHAT_SOURCE_PREFIX } },
+          // 🔴 R16: ใช้ค่าคงที่เดียวกับตัวกรอง fromChat=true (CHAT_SOURCE_WHERE) ห้ามเขียนสูตรซ้ำ
+          CHAT_SOURCE_WHERE,
         ];
 
     const [data, total, kpiCounts, viewCountPair] = await Promise.all([
@@ -688,6 +725,16 @@ export class CustomerQueryService {
         latestCreditScore: latestCredit?.aiScore ?? null,
         source,
         acquisitionSourceRaw,
+        // Task 13 fix round (R15) — ก่อนหน้านี้แท็บลูกค้า/ไม่มี view ไม่เคยคำนวณ chatPlaceholder
+        // เลย (มีแค่ฝั่งผู้สนใจด้านบน) ทั้งที่ picker หลายจุด (BookingsPage, credit-check) เรียก
+        // GET /customers โดยไม่ส่ง view=prospects แล้วคาดหวัง flag นี้เพื่อโชว์ "จากแชท · ยังไม่มีเบอร์"
+        // ต้องอ่าน acquisitionSourceRaw/decrypted ที่คำนวณไว้แล้วข้างบน ห้ามพึ่ง ...rest เพราะ
+        // acquisitionSource ถูกตัดออกจาก rest ไปแล้ว
+        chatPlaceholder: isChatPlaceholder({
+          acquisitionSource: acquisitionSourceRaw,
+          phone: (decrypted.phone ?? null) as string | null,
+          nationalId: (decrypted.nationalId ?? null) as string | null,
+        }),
         tier: pageTiers.get(row.id)?.tier ?? 'NEW',
         purchase: purchaseSummary?.purchase ?? null,
         latestPurchase: purchaseSummary?.latestPurchase ?? null,

@@ -67,7 +67,10 @@ export default function ActiveContractCard({ contract }: { contract: ContractPro
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+      {/* R8 real-screen measurement (1280×900): 4 คอลัมน์ตรงกับ index.tsx ที่กางแผงข้าง
+          360px ที่ xl (1280px) เหมือนกัน ทำให้คอลัมน์ "เหลือ" โดนตัด — คืนเป็น 2 คอลัมน์
+          เฉพาะช่วง xl-2xl แล้วค่อยกลับไป 4 คอลัมน์ตอน 2xl (1536px) ที่กว้างพอ */}
+      <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-2 2xl:grid-cols-4">
         <Stat label="งวดละ" value={baht(contract.monthlyPayment)} />
         <Stat label="เหลือ" value={`${contract.remainingInstallments} งวด · ${baht(contract.outstanding)}`} />
         <Stat

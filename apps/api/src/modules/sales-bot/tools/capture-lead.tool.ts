@@ -5,6 +5,17 @@ import {
   CHAT_GATEWAY_TOKEN,
 } from '../../chat-engine/interfaces/chat-gateway.interface';
 import { isChatPlaceholder } from '../../chat-prospects/chat-placeholder';
+import { CHAT_SOURCE_PREFIX } from '@installment/shared';
+
+/**
+ * ที่มา CHAT_* (ผู้สนใจจากแชท) ต้องคงอยู่ตลอดไป ไม่ว่าจะยังเป็น placeholder อยู่หรือไม่ —
+ * ต่างจาก isChatPlaceholder ที่ต้องการทั้ง phone==null และ nationalId==null ด้วย:
+ * ลูกค้าที่ capture_lead เติมเบอร์ให้แล้วในรอบก่อน (ไม่ใช่ placeholder แล้ว) ก็ยังห้ามถูก
+ * ทับที่มาในรอบถัดไป (Ruling R14, task-12 fix round 1)
+ */
+function isChatSourced(source: string | null | undefined): boolean {
+  return !!source?.startsWith(CHAT_SOURCE_PREFIX);
+}
 
 export const CAPTURE_LEAD_TOOL = {
   name: 'capture_lead',
@@ -131,6 +142,7 @@ export class CaptureLeadTool {
           select: { phone: true, phoneSecondary: true, acquisitionSource: true, nationalId: true },
         });
         const placeholder = !!bound && isChatPlaceholder(bound);
+        const chatSourced = isChatSourced(bound?.acquisitionSource);
         const phoneChanged = !!bound && bound.phone !== input.phone;
         const aiOwned = bound?.acquisitionSource?.startsWith('AI_CHAT') ?? false;
         await tx.customer.update({
@@ -138,7 +150,9 @@ export class CaptureLeadTool {
           data: {
             name: input.customerName,
             // ผู้สนใจอัตโนมัติ: ที่มายังเป็นช่องทางที่ทักมา (CHAT_*) ไม่ใช่บอท — สเปค 3.4
-            ...(placeholder ? {} : { acquisitionSource: 'AI_CHAT_RETURN' }),
+            // Ruling R14: ที่มา CHAT_* ห้ามถูกทับแม้เติมเบอร์จนไม่ใช่ placeholder แล้วก็ตาม
+            // (capture รอบสอง — เช็คจาก acquisitionSource ปัจจุบันตรงๆ ไม่ใช่ isChatPlaceholder)
+            ...(placeholder || chatSourced ? {} : { acquisitionSource: 'AI_CHAT_RETURN' }),
             ...(phoneChanged && (aiOwned || placeholder) ? { phone: input.phone } : {}),
             ...(phoneChanged && !aiOwned && !placeholder && !bound?.phoneSecondary
               ? { phoneSecondary: input.phone }
@@ -160,7 +174,9 @@ export class CaptureLeadTool {
             where: { id: existing.id },
             data: {
               name: input.customerName,
-              acquisitionSource: 'AI_CHAT_RETURN',
+              // Ruling R14: เหมือน Branch 1 — ลูกค้าที่จับคู่ได้อาจเป็นอดีต placeholder ที่
+              // ได้เบอร์มาจากห้องอื่นแล้ว (ที่มายังเป็น CHAT_*) ห้ามทับด้วย AI_CHAT_RETURN
+              ...(isChatSourced(existing.acquisitionSource) ? {} : { acquisitionSource: 'AI_CHAT_RETURN' }),
             },
           });
           cId = existing.id;

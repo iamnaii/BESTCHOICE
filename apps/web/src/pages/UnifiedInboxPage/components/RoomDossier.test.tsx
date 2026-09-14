@@ -219,6 +219,18 @@ const PROSPECT_ROOM = {
 };
 
 describe('RoomDossier — การ์ดผู้สนใจจากแชท (mockup 1388f98e บอร์ด 1-5)', () => {
+  // describe นี้เป็น sibling ของ describe บน — beforeEach ของ describe บนไม่ครอบเทสที่นี่ ต้องรีเซ็ตเอง
+  // ไม่พึ่งลำดับที่ describe บนรันจบก่อน (กัน state รั่วข้าม describe เวลา shuffle เทส)
+  beforeEach(() => {
+    apiGet.mockReset();
+    apiGet.mockResolvedValue({ data: [] });
+    apiPatch.mockReset();
+    apiPatch.mockResolvedValue({ data: {} });
+    apiPost.mockReset();
+    apiPost.mockResolvedValue({ data: {} });
+    authRole.role = 'SALES';
+  });
+
   it('ห้องที่ถือผู้สนใจอัตโนมัติ: ป้าย 2 ชิป · ปุ่มเพิ่มเบอร์ (primary) + ผูกกับลูกค้าเดิม · ไม่มีกล่องเหลือง · ไม่ยิง cross-channel/summary · หัวบอก "ผู้สนใจจากแชท · ยังไม่มีเบอร์"', () => {
     wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
     expect(screen.getByText('ผู้สนใจจากแชท')).toBeInTheDocument();

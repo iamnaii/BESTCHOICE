@@ -7,6 +7,8 @@ import { SearchProductsTool } from '../../sales-bot/tools/search-products.tool';
 import { CalculateInstallmentTool } from '../../sales-bot/tools/calculate-installment.tool';
 import { PrepareOfferDto } from '../dto/prepare-offer.dto';
 import { RoomAiAccessService, StaffAiActor } from './room-ai-access.service';
+import { offerContractPolicy } from './prepare-offer.policy';
+import { isChatPlaceholder } from '../../chat-prospects/chat-placeholder';
 
 const money = (amount: number) => amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const redactPersonalNumbers = (text: string) => text.replace(/\b\d(?:[\s-]?\d){9,12}\b/g, '[ข้อมูลส่วนบุคคล]');
@@ -40,6 +42,10 @@ export class PrepareOfferService {
 
   async prepare(roomId: string, input: PrepareOfferDto, actor: StaffAiActor) {
     const room = await this.access.assertAccess(roomId, actor);
+    const linkedCustomer = room.customerId
+      ? await this.prisma.customer.findUnique({ where: { id: room.customerId }, select: { acquisitionSource: true, phone: true, nationalId: true } })
+      : null;
+    const policy = offerContractPolicy({ customerId: room.customerId, placeholder: !!linkedCustomer && isChatPlaceholder(linkedCustomer) });
     // actor มาจาก req.user ซึ่ง JwtStrategy resolve สิทธิ์บริษัทให้แล้ว — เรียก helper ซ้ำ
     // เพื่อให้ผลถูกต้องด้วยเมื่อถูกเรียกจากทางอื่นที่ส่ง actor ดิบเข้ามา
     if (!['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(actor.role) ||
@@ -113,14 +119,14 @@ export class PrepareOfferService {
         validQuote ? 'ข้อเสนอเบื้องต้น ต้องผ่านการตรวจเครดิต และตรวจยอดงวดสุดท้ายในตารางสัญญาก่อนยืนยัน' : '',
       ].filter(Boolean).join('\n');
       const params = new URLSearchParams({ productId: product.id, fromRoom: roomId, months: String(input.tenureMonths) });
-      if (room.customerId) params.set('customerId', room.customerId);
+      if (policy.canContract && room.customerId) params.set('customerId', room.customerId);
       if (validQuote) params.set('downAmount', String(validQuote.downAmountThb));
       return {
         productId: product.id, name: product.name, branchName: product.branchName,
         cashPriceThb, photoUrl: product.photoUrl,
         quote: validQuote, quoteUnavailable: !validQuote,
         productPath: `/products/${product.id}`,
-        contractPath: room.customerId ? `/contracts/create?${params.toString()}` : null,
+        contractPath: policy.canContract ? `/contracts/create?${params.toString()}` : null,
         draft,
       };
     }));
@@ -129,7 +135,7 @@ export class PrepareOfferService {
       createdAt: new Date().toISOString(),
       sources: messages.map((m) => ({ messageId: m.id, createdAt: m.createdAt, excerpt: redactPersonalNumbers(m.text ?? '').slice(0, 250) })),
       products: products.filter((product) => product !== null),
-      nextStep: !room.customerId ? 'ผูกลูกค้ากับห้องแชทก่อนทำสัญญา' : 'ตรวจผลเครดิตและตารางผ่อนในหน้าสร้างสัญญาก่อนยืนยัน',
+      nextStep: policy.nextStep,
     };
   }
 }

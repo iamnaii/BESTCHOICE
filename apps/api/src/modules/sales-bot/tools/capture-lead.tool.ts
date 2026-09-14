@@ -4,6 +4,7 @@ import {
   IChatGateway,
   CHAT_GATEWAY_TOKEN,
 } from '../../chat-engine/interfaces/chat-gateway.interface';
+import { isChatPlaceholder } from '../../chat-prospects/chat-placeholder';
 
 export const CAPTURE_LEAD_TOOL = {
   name: 'capture_lead',
@@ -127,17 +128,19 @@ export class CaptureLeadTool {
         // - ลูกค้าที่พนักงานผูกไว้ (มีสัญญา/ประวัติจริง) → ห้ามทับเบอร์หลัก เก็บเป็นเบอร์สำรองแทน
         const bound = await tx.customer.findUnique({
           where: { id: room.customerId },
-          select: { phone: true, phoneSecondary: true, acquisitionSource: true },
+          select: { phone: true, phoneSecondary: true, acquisitionSource: true, nationalId: true },
         });
+        const placeholder = !!bound && isChatPlaceholder(bound);
         const phoneChanged = !!bound && bound.phone !== input.phone;
         const aiOwned = bound?.acquisitionSource?.startsWith('AI_CHAT') ?? false;
         await tx.customer.update({
           where: { id: room.customerId },
           data: {
             name: input.customerName,
-            acquisitionSource: 'AI_CHAT_RETURN',
-            ...(phoneChanged && aiOwned ? { phone: input.phone } : {}),
-            ...(phoneChanged && !aiOwned && !bound?.phoneSecondary
+            // ผู้สนใจอัตโนมัติ: ที่มายังเป็นช่องทางที่ทักมา (CHAT_*) ไม่ใช่บอท — สเปค 3.4
+            ...(placeholder ? {} : { acquisitionSource: 'AI_CHAT_RETURN' }),
+            ...(phoneChanged && (aiOwned || placeholder) ? { phone: input.phone } : {}),
+            ...(phoneChanged && !aiOwned && !placeholder && !bound?.phoneSecondary
               ? { phoneSecondary: input.phone }
               : {}),
           },

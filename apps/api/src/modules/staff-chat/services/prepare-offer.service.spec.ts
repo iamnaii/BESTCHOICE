@@ -13,6 +13,7 @@ describe('staff offer preparation', () => {
   const prisma = {
     chatRoom: { findFirst: jest.fn() },
     chatMessage: { findMany: jest.fn() },
+    customer: { findUnique: jest.fn() },
   };
   const ai = { isAvailable: true, generate: jest.fn() };
   const search = { run: jest.fn() };
@@ -23,6 +24,8 @@ describe('staff offer preparation', () => {
     jest.resetAllMocks();
     ai.isAvailable = true;
     prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-1', channel: 'LINE_SHOP', customerId: 'customer-1', assignedToId: actor.id, assignedTo: { branchId: actor.branchId }, customer: { id: 'customer-1', deletedAt: null } });
+    // ค่าเริ่มต้น = ลูกค้าจริงมีเบอร์แล้ว (ไม่ใช่ผู้สนใจอัตโนมัติ) — เทสด้านล่างจะ override เฉพาะเคส placeholder
+    prisma.customer.findUnique.mockResolvedValue({ acquisitionSource: 'WALK_IN', phone: '0812345678', nationalId: '1234567890123' });
     prisma.chatMessage.findMany.mockResolvedValue([{ id: 'message-1', text: 'สนใจ iPhone 14 โทร 0812345678', createdAt: new Date('2026-09-08') }]);
     ai.generate.mockResolvedValue(JSON.stringify({ summary: 'สนใจ iPhone 14', searchQuery: 'iPhone 14', price: 1, approved: true }));
     search.run.mockResolvedValue({ groups: [{ brand: 'Apple', model: 'iPhone 14', storage: '128GB', units: [unit, { ...unit, id: 'reserved-1', reserved: true }] }] });
@@ -92,6 +95,24 @@ describe('staff offer preparation', () => {
     const result = await service.prepare('room-1', { tenureMonths: 12 }, actor);
     expect(result.products[0].contractPath).toBeNull();
     expect(result.nextStep).toContain('ผูกลูกค้า');
+    expect(prisma.customer.findUnique).not.toHaveBeenCalled();
+  });
+
+  // ผู้สนใจอัตโนมัติจากแชท (acquisitionSource CHAT_* + phone/nationalId ยังว่าง) —
+  // ห้ามสร้างสัญญาจนกว่าจะมีเบอร์/เลขบัตร (สเปค 3.4, chat-placeholder.ts)
+  it('requires the linked placeholder to have a phone/national ID before creating contracts', async () => {
+    prisma.customer.findUnique.mockResolvedValue({ acquisitionSource: 'CHAT_FACEBOOK', phone: null, nationalId: null });
+    const result = await service.prepare('room-1', { tenureMonths: 12 }, actor);
+    expect(prisma.customer.findUnique).toHaveBeenCalledWith({ where: { id: 'customer-1' }, select: { acquisitionSource: true, phone: true, nationalId: true } });
+    expect(result.products[0].contractPath).toBeNull();
+    expect(result.nextStep).toBe('เติมเบอร์และเลขบัตรของผู้สนใจก่อนทำสัญญา');
+  });
+
+  it('a live linked customer with a phone still gets a contractPath', async () => {
+    const result = await service.prepare('room-1', { tenureMonths: 12 }, actor);
+    const params = new URL(result.products[0].contractPath!, 'https://local.invalid').searchParams;
+    expect(params.get('customerId')).toBe('customer-1');
+    expect(result.nextStep).toBe('ตรวจผลเครดิตและตารางผ่อนในหน้าสร้างสัญญาก่อนยืนยัน');
   });
 
   it('keeps explicit stock search usable without a provider and never invents a plan', async () => {

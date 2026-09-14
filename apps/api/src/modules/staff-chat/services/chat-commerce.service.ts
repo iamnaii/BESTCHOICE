@@ -12,6 +12,7 @@ import { ProductQuoteService } from './product-quote.service';
 import { buildProductCardText } from './product-card-text.util';
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
 import { evaluateReadiness } from '../../../utils/product-readiness.util';
+import { isChatPlaceholder } from '../../chat-prospects/chat-placeholder';
 
 export type ProductCardPart = 'PHOTO' | 'TEXT';
 
@@ -68,7 +69,7 @@ export class ChatCommerceService {
         channel: true,
         customerId: true,
         customer: {
-          select: { id: true, name: true, lineIdFinance: true, lineIdShop: true },
+          select: { id: true, name: true, lineIdFinance: true, lineIdShop: true, acquisitionSource: true, phone: true, nationalId: true },
         },
       },
     });
@@ -77,7 +78,9 @@ export class ChatCommerceService {
       throw new NotFoundException('ไม่พบห้องแชท');
     }
 
-    if (!session.customerId || !session.customer) {
+    // ผู้สนใจอัตโนมัติจากแชท (ยังไม่มีเบอร์/เลขบัตร) นับเป็น "ยังไม่ได้เชื่อมกับลูกค้า" —
+    // ส่งข้อมูลชำระต้องมีคนที่ติดต่อได้จริง (สเปค 3.4)
+    if (!session.customerId || !session.customer || isChatPlaceholder(session.customer)) {
       throw new BadRequestException('ห้องแชทนี้ยังไม่ได้เชื่อมกับลูกค้า');
     }
 

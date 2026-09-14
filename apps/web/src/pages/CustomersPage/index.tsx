@@ -181,9 +181,10 @@ export default function CustomersPage() {
   const [isExporting, setIsExporting] = useState(false);
   const handleExport = async () => {
     // ด่านฝั่งจอ — กันยิง /customers/export ทั้งที่รู้อยู่แล้วว่าเกินเพดานที่ backend จะปฏิเสธ
+    // ข้อความห้ามอ้างตัวกรองเฉพาะแท็บ (เช่น "ติดต่อล่าสุด" มีแค่แท็บผู้สนใจ) เพราะด่านนี้ทำงานทั้งสองแท็บ
     if (q.total > EXPORT_ROW_LIMIT) {
       toast.error(
-        `รายการเกิน ${EXPORT_ROW_LIMIT.toLocaleString('en-US')} ราย — กรอง "ติดต่อล่าสุด" หรือตัวกรองอื่นให้แคบลงก่อนส่งออก`,
+        `รายการเกิน ${EXPORT_ROW_LIMIT.toLocaleString('en-US')} ราย — ใช้ตัวกรองหรือช่องค้นหาให้แคบลงก่อนส่งออก`,
       );
       return;
     }

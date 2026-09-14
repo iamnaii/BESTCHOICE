@@ -574,7 +574,11 @@ describe('ผู้สนใจจากแชท — KPI/ตัวกรอง/
     await screen.findByText('ผู้สนใจ หนึ่ง');
     await screen.findByRole('button', { name: /ส่งออก Excel/ });
     fireEvent.click(screen.getByRole('button', { name: /ส่งออก Excel/ }));
-    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith(expect.stringContaining('เกิน 10,000')));
+    await waitFor(() =>
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        'รายการเกิน 10,000 ราย — ใช้ตัวกรองหรือช่องค้นหาให้แคบลงก่อนส่งออก',
+      ),
+    );
     expect(mocks.get).not.toHaveBeenCalledWith('/customers/export', expect.anything());
   });
 });

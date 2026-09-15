@@ -9,41 +9,49 @@ import { useAuth } from '@/contexts/AuthContext';
 import CustomerSidePanel from './components/CustomerSidePanel';
 import DetailHeader from './components/DetailHeader';
 import EditCustomerDialog from './components/EditCustomerDialog';
+import JourneyStageStrip from './components/JourneyStageStrip';
 import KpiTiles from './components/KpiTiles';
 import RiskBanner from './components/RiskBanner';
 import { useCustomerDetailData } from './hooks/useCustomerDetailData';
+import { useJourneySummaryRedirect } from './hooks/useCustomerJourney';
 import ContractsTab from './tabs/ContractsTab';
 import CreditTab from './tabs/CreditTab';
+import JourneyTab from './tabs/JourneyTab';
 import LoyaltyTab from './tabs/LoyaltyTab';
 import OverviewTab from './tabs/OverviewTab';
 import SalesTab from './tabs/SalesTab';
+import { canViewJourney } from './utils/journeyGroups';
 import { kpiTiles } from './utils/kpiTiles';
 
 export const DEFAULT_TAB = 'overview';
 export const LEGACY_TAB_REDIRECT: Record<string, string> = { info: DEFAULT_TAB, contact: DEFAULT_TAB, work: DEFAULT_TAB, purchases: 'sales' };
 const TAB_VALUES = ['overview', 'contracts', 'sales', 'credit', 'loyalty'];
 
-/** ?tab= → แท็บที่มีจริง: ลิงก์เก่าผ่าน LEGACY_TAB_REDIRECT · ค่าที่ไม่รู้จักกลับไปแท็บเริ่มต้น (ไม่ปล่อยให้หน้าว่าง) */
-function resolveTab(raw: string | null): string {
+/** ?tab= → แท็บที่มีจริง: ลิงก์เก่าผ่าน LEGACY_TAB_REDIRECT · แท็บการเดินทางเฉพาะบทบาทที่เห็น · ค่าที่ไม่รู้จักกลับไปแท็บเริ่มต้น (ไม่ปล่อยให้หน้าว่าง) */
+function resolveTab(raw: string | null, journeyVisible: boolean): string {
   if (!raw) return DEFAULT_TAB;
   const mapped = LEGACY_TAB_REDIRECT[raw] ?? raw;
+  if (mapped === 'journey') return journeyVisible ? mapped : DEFAULT_TAB;
   return TAB_VALUES.includes(mapped) ? mapped : DEFAULT_TAB;
 }
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const journeyVisible = canViewJourney(user?.role ?? '');
+  // ต้องอยู่ก่อน early return: id ของผู้สนใจที่ถูกรวมแล้ว GET /customers/:id/detail ตอบ 404 แต่ summary ตอบ redirectToCustomerId
+  const journeySummary = useJourneySummaryRedirect(id ?? '', journeyVisible);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState(resolveTab(rawTab));
+  const [activeTab, setActiveTab] = useState(resolveTab(rawTab, journeyVisible));
   const [showCreditDialog, setShowCreditDialog] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
-    const mapped = resolveTab(searchParams.get('tab'));
+    const mapped = resolveTab(searchParams.get('tab'), journeyVisible);
     if (mapped !== activeTab) setActiveTab(mapped);
-  }, [searchParams]);
+  }, [searchParams, journeyVisible]);
 
   const handleTabChange = (value: string) => {
     setActiveTab(value);
@@ -115,6 +123,8 @@ export default function CustomerDetailPage() {
 
       <KpiTiles tiles={kpiTiles(customer, loyaltyPoints?.balance ?? null)} />
 
+      {journeySummary && <JourneyStageStrip summary={journeySummary} />}
+
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">
           <Tabs value={activeTab} onValueChange={handleTabChange} className="min-w-0">
@@ -136,6 +146,7 @@ export default function CustomerDetailPage() {
                     <span className="ml-1.5 rounded-md bg-primary/10 px-1.5 py-0.5 text-2xs font-bold text-primary">{loyaltyPoints.balance.toLocaleString()}</span>
                   )}
                 </TabsTrigger>
+                {journeyVisible && <TabsTrigger value="journey">การเดินทาง</TabsTrigger>}
               </TabsList>
             </div>
 
@@ -172,6 +183,12 @@ export default function CustomerDetailPage() {
                 referralStats={referralStats}
               />
             </TabsContent>
+
+            {journeyVisible && (
+              <TabsContent className="min-w-0" value="journey">
+                <JourneyTab customerId={customer.id} role={user?.role ?? ''} />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
 

@@ -6,6 +6,7 @@ import { isChatVisibleForRole } from '@/config/menu';
 import { customerCreditStatusMap } from '@/lib/status-badges';
 import { formatDateShort } from '@/utils/formatters';
 import ActiveContractCard from '../components/ActiveContractCard';
+import RecentActivityCard from '../components/RecentActivityCard';
 import type { CustomerDetail } from '../types';
 import { customerKind } from '../utils/customerKind';
 import { SalesTable } from './SalesTab';
@@ -75,6 +76,8 @@ export default function OverviewTab({ customer, role, onOpenTab }: { customer: C
       {kind !== 'PROSPECT' && customer.openContracts.length === 0 && sales.length === 0 && (
         <div className="py-6 text-center text-sm text-muted-foreground">ยังไม่มีสัญญาหรือใบขาย</div>
       )}
+
+      <RecentActivityCard customerId={customer.id} role={role} onOpenJourney={() => onOpenTab('journey')} />
     </div>
   );
 }

@@ -6,6 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CustomerDetailPage from '@/pages/CustomerDetailPage';
 import { formatNationalId, maskNationalId } from '@/utils/mask.util';
 import { detail, emptyPurchase, progress, sale } from './fixtures';
+import { STAGE_LABELS } from '@installment/shared';
+import { formatDateShort, formatDateTime } from '@/utils/formatters';
+import { allChipNote } from '../utils/journeyGroups';
+import { journeyEvent, journeyPage, journeySummary, stageSteps } from './journeyFixtures';
 
 /**
  * harness ลอกจาก pages/CustomersPage/__tests__/CustomersPage.test.tsx
@@ -20,6 +24,10 @@ const mocks = vi.hoisted(() => ({
   del: vi.fn(),
   role: 'OWNER',
   detail: null as unknown,
+  /** summary ต่อ customer id — id ที่ไม่ได้ตั้งจะโยน error ⇒ แถบขั้นไม่วาด */
+  summaries: {} as Record<string, unknown>,
+  /** ตอบ GET /customers/c1/journey ตาม params (limit / groups / cursor) */
+  journey: vi.fn(),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -56,9 +64,19 @@ function renderPage() {
 beforeEach(() => {
   mocks.role = 'OWNER';
   mocks.detail = detail();
+  // ค่าเริ่มต้นไม่ตั้ง summary: แถบขั้นไม่วาด เทสของ Plan 1 ที่ getByText ข้อความสั้น ๆ จึงไม่เจอป้ายขั้นซ้ำ — เทสแถบขั้นตั้งเอง
+  mocks.summaries = {};
+  mocks.journey.mockReset();
+  mocks.journey.mockImplementation(() => journeyPage());
   mocks.get.mockReset();
-  mocks.get.mockImplementation(async (url: string) => {
+  mocks.get.mockImplementation(async (url: string, config?: { params?: Record<string, unknown> }) => {
     if (url === '/customers/c1/detail') return { data: mocks.detail };
+    const summaryId = /^\/customers\/([^/]+)\/journey\/summary$/.exec(url)?.[1];
+    if (summaryId) {
+      if (summaryId in mocks.summaries) return { data: mocks.summaries[summaryId] };
+      throw new Error(`summary ไม่ได้ตั้งสำหรับ ${summaryId}`);
+    }
+    if (url === '/customers/c1/journey') return { data: mocks.journey(config?.params ?? {}) };
     if (url in RESPONSES) return { data: RESPONSES[url] };
     throw new Error(`unexpected GET ${url}`);
   });
@@ -312,7 +330,7 @@ describe('ชุดแท็บ', () => {
     renderAt('/customers/c1');
     await screen.findByRole('heading', { level: 1, name: 'สมชาย ใจดี' });
     const names = screen.getAllByRole('tab').map((tab) => tab.textContent?.replace(/\s+/g, ' ').trim());
-    expect(names).toEqual(['ภาพรวม', 'สัญญา (0)', 'ใบขาย (0)', 'เครดิต (0)', expect.stringMatching(/^แต้มสะสม/)]);
+    expect(names).toEqual(['ภาพรวม', 'สัญญา (0)', 'ใบขาย (0)', 'เครดิต (0)', expect.stringMatching(/^แต้มสะสม/), 'การเดินทาง']);
     const salesTab = screen.getByRole('tab', { name: /ใบขาย/ });
     expect(salesTab).toHaveAttribute('data-empty', 'true');
     fireEvent.mouseDown(salesTab);
@@ -325,5 +343,168 @@ describe('ชุดแท็บ', () => {
     renderAt('/customers/c1?tab=purchases');
     expect(await screen.findByText('ยังไม่มีการซื้อแบบเงินสด/ไฟแนนซ์นอก')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /ใบขาย/ })).toHaveAttribute('data-state', 'active');
+  });
+});
+
+describe('การเดินทางของลูกค้า', () => {
+  it('แถบขั้นอยู่ใต้ช่องตัวเลข: ขั้นปัจจุบัน วันที่เข้าขั้น และวันที่ค้าง', async () => {
+    mocks.detail = detail({ phone: null, chatPlaceholder: true, source: 'FACEBOOK', purchase: emptyPurchase, contracts: [] });
+    mocks.summaries.c1 = journeySummary({
+      stage: 'INTERESTED',
+      daysInStage: 3,
+      steps: stageSteps(
+        { CONTACTED: 'done', IDENTIFIED: 'done', INTERESTED: 'current', CREDIT: 'todo', PURCHASED: 'todo' },
+        { CONTACTED: '2026-09-01T03:00:00.000Z', IDENTIFIED: '2026-09-02T03:00:00.000Z', INTERESTED: '2026-09-12T03:00:00.000Z' },
+      ),
+    });
+    renderAt('/customers/c1');
+    const strip = await screen.findByRole('region', { name: 'ขั้นการเดินทางของลูกค้า' });
+    const current = within(strip).getByText(STAGE_LABELS.INTERESTED).closest('li');
+    expect(current).toHaveAttribute('aria-current', 'step');
+    expect(current).toHaveTextContent(`${formatDateShort('2026-09-12T03:00:00.000Z')} · อยู่ขั้นนี้ 3 วัน`);
+    // ผู้สนใจ → ช่องตัวเลขช่องแรกคือ "ที่มา" (kpiTiles.ts) — แถบต้องมาหลังช่องตัวเลข
+    const firstTileLabel = screen.getAllByText('ที่มา')[0];
+    expect(firstTileLabel.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('ภาพรวม: การ์ดกิจกรรมล่าสุดขอ 6 รายการของแชท·เครดิต·ขาย และปุ่มพาไปแท็บการเดินทาง', async () => {
+    mocks.journey.mockImplementation((params: Record<string, unknown>) =>
+      params.limit === 6
+        ? journeyPage({
+            events: [
+              journeyEvent({
+                id: 'contract-k1',
+                type: 'CONTRACT_SIGNED',
+                group: 'sale',
+                stage: 'PURCHASED',
+                timestamp: '2026-08-20T09:05:00.000Z',
+                title: 'เซ็นสัญญา CT-2569-0042',
+                actor: { type: 'STAFF', name: 'บอส' },
+                href: '/contracts/k1',
+              }),
+            ],
+          })
+        : journeyPage(),
+    );
+    renderAt('/customers/c1');
+    expect(await screen.findByRole('heading', { name: 'กิจกรรมล่าสุด' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'เซ็นสัญญา CT-2569-0042' })).toHaveAttribute('href', '/contracts/k1');
+    expect(screen.getByText(`${formatDateTime('2026-08-20T09:05:00.000Z')} · บอส`)).toBeInTheDocument();
+    expect(mocks.journey).toHaveBeenCalledWith({ limit: 6, groups: 'chat,credit,sale' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'ดูการเดินทางทั้งหมด' }));
+    expect(await screen.findByRole('tab', { name: 'การเดินทาง', selected: true })).toBeInTheDocument();
+    expect(screen.getByLabelText('current location')).toHaveTextContent('/customers/c1?tab=journey');
+    await waitFor(() => expect(mocks.journey).toHaveBeenCalledWith({ limit: 30, include: 'counts' }));
+  });
+
+  it('แท็บการเดินทาง: ป้ายประมาณจาก reliability · ไม่แสดง metadata · โหลดเพิ่มด้วย cursor จนหมด', async () => {
+    mocks.journey.mockImplementation((params: Record<string, unknown>) =>
+      params.cursor === 'cur-2'
+        ? journeyPage({ events: [journeyEvent({ id: 'chat_room-r1', title: 'ทักแชทครั้งแรกทาง Facebook' })] })
+        : journeyPage({
+            events: [
+              journeyEvent({
+                id: 'credit_check-k1',
+                type: 'CREDIT_CHECK_OPENED',
+                group: 'credit',
+                stage: 'CREDIT',
+                timestamp: '2026-09-10T03:00:00.000Z',
+                title: 'เปิดตรวจเครดิต (จากสเตทเม้นในแชท)',
+                subtitle: 'คะแนน 72',
+                actor: null,
+                reliability: 'approximate',
+                metadata: { leaked: '0899999999' },
+              }),
+            ],
+            nextCursor: 'cur-2',
+            counts: { chat: 1, credit: 1 },
+          }),
+    );
+    renderAt('/customers/c1?tab=journey');
+    expect(await screen.findByText('เปิดตรวจเครดิต (จากสเตทเม้นในแชท)')).toBeInTheDocument();
+    const [item] = screen.getAllByTestId('event-timeline-item');
+    expect(within(item).getByText('คะแนน 72')).toBeInTheDocument();
+    expect(within(item).getByText('ประมาณ')).toBeInTheDocument();
+    expect(screen.queryByText(/0899999999/)).toBeNull();
+    // ชิปแสดงจำนวนจาก counts ของหน้าแรก (Task 9) ต่อท้ายป้าย
+    expect(screen.getByRole('button', { name: /^เครดิต\s*1$/ })).toHaveAttribute('aria-pressed', 'false');
+    expect(mocks.journey).toHaveBeenCalledWith({ limit: 30, include: 'counts' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'โหลดเพิ่ม' }));
+    expect(await screen.findByText('ทักแชทครั้งแรกทาง Facebook')).toBeInTheDocument();
+    // หน้าที่มี cursor ไม่ส่ง include (API ไม่แนบ counts ให้หน้าถัดไปอยู่แล้ว)
+    expect(mocks.journey).toHaveBeenCalledWith({ limit: 30, cursor: 'cur-2' });
+    expect(screen.queryByRole('button', { name: 'โหลดเพิ่ม' })).toBeNull();
+  });
+
+  it('ชิปกลุ่ม: กดแชทแล้วขอ groups=chat · OWNER เห็นชำระเงิน · SALES ไม่เห็นชำระเงินและติดตามหนี้', async () => {
+    const { unmount } = renderAt('/customers/c1?tab=journey');
+    expect(await screen.findByRole('button', { name: 'ชำระเงิน' })).toBeInTheDocument();
+    const note = allChipNote('OWNER');
+    expect(note).not.toBeNull();
+    expect(screen.getByText(String(note))).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'แชท/ติดต่อ' }));
+    await waitFor(() => expect(mocks.journey).toHaveBeenCalledWith({ limit: 30, groups: 'chat', include: 'counts' }));
+    expect(await screen.findByText('ยังไม่มีกิจกรรมในกลุ่มนี้')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'แชท/ติดต่อ' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText(String(note))).toBeNull();
+    unmount();
+
+    mocks.role = 'SALES';
+    renderAt('/customers/c1?tab=journey');
+    expect(await screen.findByRole('button', { name: 'เครดิต' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'ชำระเงิน' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'ติดตามหนี้' })).toBeNull();
+  });
+
+  it('ไม่มีกิจกรรม → ข้อความว่าง · รายการ "ระบบยังไม่เก็บ" พับไว้และกางได้', async () => {
+    mocks.journey.mockImplementation(() => journeyPage({ notRecorded: ['ลูกค้าหน้าร้านรู้จักร้านจากไหน', 'ผู้ถอดแท็ก การบล็อก/เลิกติดตาม LINE และการเข้าชมเว็บ'] }));
+    renderAt('/customers/c1?tab=journey');
+    expect(await screen.findByText('ยังไม่มีกิจกรรม')).toBeInTheDocument();
+    expect(screen.queryByText('ลูกค้าหน้าร้านรู้จักร้านจากไหน')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /ระบบยังไม่เก็บ \(2\)/ }));
+    expect(await screen.findByText('ลูกค้าหน้าร้านรู้จักร้านจากไหน')).toBeInTheDocument();
+    expect(screen.getByText('ผู้ถอดแท็ก การบล็อก/เลิกติดตาม LINE และการเข้าชมเว็บ')).toBeInTheDocument();
+  });
+
+  it('ลิงก์เก่าของผู้สนใจที่ถูกรวมแล้ว → summary ตอบ redirectToCustomerId → ไปหน้าลูกค้าจริง', async () => {
+    mocks.summaries.old = { redirectToCustomerId: 'c1' };
+    renderAt('/customers/old');
+    await waitFor(() => expect(screen.getByLabelText('current location')).toHaveTextContent('/customers/c1'));
+    expect(await screen.findByRole('heading', { level: 1, name: 'สมชาย ใจดี' })).toBeInTheDocument();
+  });
+
+  it('บทบาทที่ API การเดินทางไม่อนุญาต → ไม่มีแท็บ ไม่มีแถบขั้น ไม่มีการ์ด และไม่ยิง API', async () => {
+    mocks.role = 'VIEWER';
+    renderAt('/customers/c1');
+    await screen.findByRole('heading', { level: 1, name: 'สมชาย ใจดี' });
+    expect(screen.queryByRole('tab', { name: 'การเดินทาง' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'ขั้นการเดินทางของลูกค้า' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'กิจกรรมล่าสุด' })).toBeNull();
+    expect(mocks.get).not.toHaveBeenCalledWith('/customers/c1/journey/summary');
+    expect(mocks.journey).not.toHaveBeenCalled();
+  });
+
+  it('?tab=journey ของบทบาทที่ไม่เห็นการเดินทาง → แท็บภาพรวม ไม่ใช่หน้าว่าง', async () => {
+    mocks.role = 'VIEWER';
+    renderAt('/customers/c1?tab=journey');
+    await screen.findByRole('heading', { level: 1, name: 'สมชาย ใจดี' });
+    expect(screen.getByRole('tab', { name: 'ภาพรวม' })).toHaveAttribute('data-state', 'active');
+    expect(screen.queryByRole('tab', { name: 'การเดินทาง' })).toBeNull();
+  });
+
+  // preflight carry (ก): หน้าอาจว่างทั้งที่ nextCursor ยังไม่เป็น null — ต้องตัดสินจาก cursor ไม่ใช่จำนวนรายการ
+  it('หน้าแรกว่างแต่ยังมี cursor → ดึงหน้าถัดไปเองจนเจอรายการ ไม่ขึ้นว่า "ยังไม่มีกิจกรรม"', async () => {
+    mocks.journey.mockImplementation((params: Record<string, unknown>) =>
+      params.cursor === 'cur-2'
+        ? journeyPage({ events: [journeyEvent({ id: 'chat_room-r1', title: 'ทักแชทครั้งแรกทาง Facebook' })] })
+        : journeyPage({ nextCursor: 'cur-2' }),
+    );
+    renderAt('/customers/c1?tab=journey');
+    expect(await screen.findByText('ทักแชทครั้งแรกทาง Facebook')).toBeInTheDocument();
+    expect(mocks.journey).toHaveBeenCalledWith({ limit: 30, cursor: 'cur-2' });
+    expect(screen.queryByText('ยังไม่มีกิจกรรม')).toBeNull();
   });
 });

@@ -46,7 +46,7 @@ import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
     forwardRef(() => StaffChatModule),
     // ผู้สนใจอัตโนมัติจากแชท (Task 10) — LineOaService/LiffApiService inject
     // CustomerMergeService เพื่อดูด placeholder ตอน LINE ถูกผูกกับลูกค้าจริง
-    // (ChatProspectsModule ไม่ import โมดูลอื่นเลย ไม่มีวงจร ไม่ต้อง forwardRef)
+    // (ChatProspectsModule import แค่ CustomerJourneyModule ที่ไม่ import อะไรกลับมาหา line-oa — ไม่มีวงจร ไม่ต้อง forwardRef)
     ChatProspectsModule,
   ],
   controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LiffWarrantyController, LineLinkInviteController, LineLoginController, BroadcastController],

@@ -11,6 +11,9 @@ import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
+import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { JourneyStateService } from '../customer-journey/journey-state.service';
 import { PLACEHOLDER_FIELDS_SELECT, isChatPlaceholder, isLivePlaceholder } from './chat-placeholder';
 
 export interface MergeActor { id: string; role: string }
@@ -39,18 +42,32 @@ const SOURCE_COPY_SELECT = {
   facebookName: true,
 } as const;
 
+/** เวลาเก่าสุดที่ไม่ว่าง — ใช้กับค่าแช่แข็งของแคชการเดินทาง */
+function earliest(a: Date | null, b: Date | null): Date | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a < b ? a : b;
+}
+
 /**
  * รวม "ผู้สนใจอัตโนมัติจากแชท" เข้าลูกค้าตัวจริง — ทางเดียว ไม่ใช่ merge ลูกค้าทั่วไป
  * (docs/superpowers/specs/2026-09-13-chat-prospects-design.md §3.3)
  * ย้ายเฉพาะ: ห้องแชท · CreditCheck ที่ import จากห้อง (updateMany ตรง — linkRoomCreditHistory ย้ายเฉพาะ
- * ผลที่ยังไม่ import) · แท็ก · crmLeads · adsAttributions · chatAutoTriggers · แล้ว soft-delete placeholder
+ * ผลที่ยังไม่ import) · แท็ก · crmLeads · adsAttributions · chatAutoTriggers · บันทึกการเดินทาง (customer_journey_entries)
+ * แล้ว soft-delete placeholder คู่ merged_into_id — ทุกทางรวม (ผูกห้อง / absorb-into / รวมห้องแชท / OTP / LIFF /
+ * พิมพ์เบอร์ใน LINE) มาที่เมธอดนี้ จึงแก้การเดินทางที่เดียวครอบทุกทาง
  */
 @Injectable()
 export class CustomerMergeService {
   private readonly logger = new Logger(CustomerMergeService.name);
   private systemUserId: string | null = null;
 
-  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+    private readonly journeyEntries: JourneyEntryWriter,
+    private readonly journeyState: JourneyStateService,
+  ) {}
 
   /**
    * Ruling R12 — AuditLog.userId มี FK จริงไป User.id (audit_logs_user_id_fkey) และ
@@ -161,6 +178,15 @@ export class CustomerMergeService {
       await tx.crmLead.updateMany({ where: { customerId: placeholderId }, data: { customerId: targetId } });
       await tx.adsAttribution.updateMany({ where: { customerId: placeholderId }, data: { customerId: targetId } });
 
+      // การเดินทางของลูกค้า — ล็อกสองฝั่งแล้วข้างบน
+      // (1) บันทึกของ placeholder ย้ายตามเจ้าของ · originCustomerId คงเดิม · dedupeKey ผูกกับเอกสาร ไม่ผูกลูกค้า จึงไม่ชน unique
+      await tx.customerJourneyEntry.updateMany({ where: { customerId: placeholderId }, data: { customerId: targetId } });
+      // (2) ยุบ chain: คนที่เคยถูกรวมเข้า placeholder ตัวนี้ (รวมห้องแชท placeholder→placeholder) ชี้ไปปลายทางใหม่
+      //     ⇒ ตัวอ่านหา ids ได้ชั้นเดียวเสมอ: [customerId, ...customers.where({ mergedIntoId: customerId })]
+      await tx.customer.updateMany({ where: { mergedIntoId: placeholderId }, data: { mergedIntoId: targetId } });
+      // (4) แช่แข็งจุดเริ่มต้นของการเดินทางลงแคชของปลายทาง — ไม่ขึ้นกับ R24 ข้างล่าง (R24 ยกเฉพาะ acquisitionSource ที่ปลายทางยังว่าง)
+      await this.freezeJourneyOrigin(tx, placeholderId, targetId);
+
       // trigger: unique [customerId, referenceKey] (รวมแถวที่ soft-delete แล้ว) — ตรวจชนก่อน
       // ห้ามใช้ try/catch จับ unique violation ใน tx (Postgres ยกเลิกทั้งทรานแซกชันเมื่อ statement ล้ม)
       const targetKeys = new Set(
@@ -198,7 +224,21 @@ export class CustomerMergeService {
       if (Object.keys(targetPatch).length > 0) {
         await tx.customer.update({ where: { id: targetId }, data: targetPatch });
       }
-      await tx.customer.update({ where: { id: placeholderId }, data: { deletedAt: new Date() } });
+      const mergedAt = new Date();
+      // (3) merged_into_id คู่ deletedAt — ลิงก์เก่าที่ชี้ placeholder ตามไปหาลูกค้าจริงได้
+      await tx.customer.update({ where: { id: placeholderId }, data: { deletedAt: mergedAt, mergedIntoId: targetId } });
+      // (5) PLACEHOLDER_MERGED เขียนใน tx เดียวกับการรวม (ต่างจาก audit ที่ลงหลัง commit) — actorUserId เป็น null ได้
+      //     จึงไม่ติด FK และไม่ถูกข้ามแบบ audit R12 · ล้มตรงไหน = rollback พร้อมกันทั้งใบ
+      //     data มีแค่จำนวนห้อง — ห้ามใส่ข้อความแชท / เบอร์ / เลขบัตร / ที่อยู่ (PDPA)
+      await this.journeyEntries.recordInTx(tx, {
+        customerId: targetId,
+        kind: 'PLACEHOLDER_MERGED',
+        occurredAt: mergedAt,
+        actorType: actor.role === 'SYSTEM' ? 'SYSTEM' : 'STAFF',
+        actorUserId: actor.role === 'SYSTEM' ? null : actor.id,
+        data: { roomCount: rooms.length },
+        dedupeKey: journeyDedupeKey('PLACEHOLDER_MERGED', placeholderId),
+      });
 
       return {
         result: { placeholderId, targetId, movedRooms, movedCreditChecks },
@@ -226,10 +266,53 @@ export class CustomerMergeService {
         `[merge] skipped audit for placeholder ${placeholderId} → ${targetId} — could not resolve system actor user id`,
       );
     }
+    // (6) แคชสรุปคำนวณใหม่หลัง commit — ส่ง placeholderId ด้วย เพื่อเก็บแถวแคชที่ cron อาจเขียนแทรกระหว่างทรานแซกชัน
+    //     ล้มแล้วการรวมไม่ล้ม: summary endpoint ตรวจสดแล้วคำนวณใหม่ในคำขอ + cron journey:recompute คืนนั้นซ่อมเอง (Plan 2 Task 9)
+    try {
+      await this.journeyState.recompute([targetId, placeholderId]);
+    } catch (err) {
+      this.logger.warn(`[merge] journey recompute failed for ${targetId}: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { kind: 'customer-journey' } });
+    }
     this.logger.log(
       `[merge] placeholder ${placeholderId} → ${targetId} rooms=${result.movedRooms} creditChecks=${result.movedCreditChecks} by ${actor.id}`,
     );
     return result;
+  }
+
+  /**
+   * (4) แช่แข็งจุดเริ่มต้นของการเดินทาง — contactedAt / firstChannel / firstSource / firstAdCampaignId เป็นค่าแช่แข็ง
+   * (recompute เลือกได้แค่ค่าที่เก่ากว่า) · placeholder ทักมาก่อน ⇒ ปลายทางรับชุดจุดเริ่มต้นของ placeholder ทั้งชุด
+   * ปลายทางยังไม่มีแคช ⇒ สร้างจากแถวของ placeholder (stage/path ถูกแก้โดย recompute หลัง commit)
+   * แคชของ placeholder ถูกลบเสมอ — ลูกค้าที่ถูกรวมแล้วไม่มีแคชของตัวเอง
+   */
+  private async freezeJourneyOrigin(tx: Prisma.TransactionClient, placeholderId: string, targetId: string): Promise<void> {
+    const [from, into] = await Promise.all([
+      tx.customerJourneyState.findUnique({ where: { customerId: placeholderId } }),
+      tx.customerJourneyState.findUnique({ where: { customerId: targetId } }),
+    ]);
+    if (from && (!into || from.contactedAt < into.contactedAt)) {
+      const origin = {
+        contactedAt: from.contactedAt,
+        firstChannel: from.firstChannel,
+        firstSource: from.firstSource,
+        firstAdCampaignId: from.firstAdCampaignId,
+        firstStaffReplyAt: earliest(from.firstStaffReplyAt, into?.firstStaffReplyAt ?? null),
+      };
+      await tx.customerJourneyState.upsert({
+        where: { customerId: targetId },
+        update: origin,
+        create: {
+          customerId: targetId,
+          stage: from.stage,
+          stageEnteredAt: from.stageEnteredAt,
+          path: from.path,
+          computedAt: from.computedAt,
+          ...origin,
+        },
+      });
+    }
+    await tx.customerJourneyState.deleteMany({ where: { customerId: placeholderId } });
   }
 
   /**

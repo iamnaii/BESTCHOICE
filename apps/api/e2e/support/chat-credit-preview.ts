@@ -55,6 +55,7 @@ import { JwtAuthGuard } from '../../src/modules/auth/guards/jwt-auth.guard';
 import { BranchGuard } from '../../src/modules/auth/guards/branch.guard';
 import { RoomManagerService } from '../../src/modules/chat-engine/services/room-manager.service';
 import { CreditCheckService } from '../../src/modules/credit-check/credit-check.service';
+import { JourneyEntryWriter } from '../../src/modules/customer-journey/journey-entry-writer.service';
 import {
   CustomerCreditCheckController,
   GlobalCreditCheckController,
@@ -477,6 +478,7 @@ async function main() {
       { provide: StorageService, useValue: storageForPreview },
       { provide: OcrService, useValue: ocr },
       { provide: CreditCheckService, useValue: credits },
+      { provide: JourneyEntryWriter, useValue: { recordAfterCommit: async () => undefined, recordInTx: async () => undefined } },
     ],
   })
     .overrideGuard(JwtAuthGuard)

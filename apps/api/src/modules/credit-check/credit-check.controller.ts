@@ -8,6 +8,37 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CreditAffordabilityDto } from './dto/credit-affordability.dto';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
+
+/**
+ * การเดินทางของลูกค้า — ผู้เปิดตรวจเครดิต: CreditCheckService.create/createForCustomer ทิ้ง _userId
+ * ⇒ บันทึกที่ controller หลัง service คืนผล (tx ของ service commit แล้ว) โดยไม่แก้ service
+ * บันทึกเฉพาะใบที่เพิ่งเกิดในคำขอนี้: POST /contracts/:id/credit-check กับใบเดิมคือการอัปโหลดใหม่ ไม่ใช่การเปิดตรวจ
+ * เผื่อเวลา DB (created_at DEFAULT now()) กับเครื่องแอปคลาดกัน 60 วินาที · กดซ้ำภายใน 30 วินาทีได้ใบเดิม → dedupeKey กันแถวซ้ำ
+ */
+const OPENED_IN_REQUEST_TOLERANCE_MS = 60_000;
+
+async function recordCreditCheckOpened(
+  writer: JourneyEntryWriter,
+  check: { id: string; customerId: string; createdAt: Date },
+  userId: string,
+  via: 'CONTRACT' | 'CUSTOMER',
+  requestStartedAt: Date,
+): Promise<void> {
+  if (check.createdAt.getTime() < requestStartedAt.getTime() - OPENED_IN_REQUEST_TOLERANCE_MS) return;
+  await writer.recordAfterCommit({
+    customerId: check.customerId,
+    kind: 'CREDIT_CHECK_OPENED_BY',
+    occurredAt: check.createdAt,
+    actorType: 'STAFF',
+    actorUserId: userId,
+    refType: 'credit_check',
+    refId: check.id,
+    data: { via },
+    dedupeKey: journeyDedupeKey('CREDIT_CHECK_OPENED_BY', check.id),
+  });
+}
 
 // === Global credit check list ===
 @ApiTags('Credit Check')
@@ -97,7 +128,7 @@ export class GlobalCreditCheckController {
 @Controller('contracts/:contractId/credit-check')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CreditCheckController {
-  constructor(private service: CreditCheckService) {}
+  constructor(private service: CreditCheckService, private journeyEntries: JourneyEntryWriter) {}
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
@@ -107,12 +138,15 @@ export class CreditCheckController {
 
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  create(
+  async create(
     @Param('contractId') contractId: string,
     @Body() dto: CreateCreditCheckDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.service.create(contractId, dto, user.id);
+    const startedAt = new Date();
+    const creditCheck = await this.service.create(contractId, dto, user.id);
+    await recordCreditCheckOpened(this.journeyEntries, creditCheck, user.id, 'CONTRACT', startedAt);
+    return creditCheck;
   }
 
   @Post('analyze')
@@ -136,7 +170,7 @@ export class CreditCheckController {
 @Controller('customers/:customerId/credit-check')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class CustomerCreditCheckController {
-  constructor(private service: CreditCheckService) {}
+  constructor(private service: CreditCheckService, private journeyEntries: JourneyEntryWriter) {}
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
@@ -152,12 +186,15 @@ export class CustomerCreditCheckController {
 
   @Post()
   @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
-  create(
+  async create(
     @Param('customerId') customerId: string,
     @Body() dto: CreateCreditCheckDto,
     @CurrentUser() user: { id: string },
   ) {
-    return this.service.createForCustomer(customerId, dto, user.id);
+    const startedAt = new Date();
+    const creditCheck = await this.service.createForCustomer(customerId, dto, user.id);
+    await recordCreditCheckOpened(this.journeyEntries, creditCheck, user.id, 'CUSTOMER', startedAt);
+    return creditCheck;
   }
 
   @Post(':creditCheckId/analyze')

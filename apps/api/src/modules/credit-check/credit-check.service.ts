@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCreditCheckDto, OverrideCreditCheckDto } from './dto/credit-check.dto';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
@@ -8,6 +8,7 @@ import { CreditCheckAiAnalysisService } from './services/credit-check-ai-analysi
 import { CreditCheckCrudService } from './services/credit-check-crud.service';
 import { CreditCheckOverrideService } from './services/credit-check-override.service';
 import { CreditHistoryActor } from './services/room-credit-access';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 
 /**
  * Facade for credit-check. Keeps the 13-method public surface and delegates
@@ -32,9 +33,11 @@ export class CreditCheckService {
     private prisma: PrismaService,
     private integrationConfig: IntegrationConfigService,
     private provider: AiProviderService,
+    // การเดินทางของลูกค้า (CREDIT_AI_SCORED) — @Optional: เทสเดิมประกอบ facade ด้วย 3 อาร์กิวเมนต์
+    @Optional() private journeyEntries?: JourneyEntryWriter,
   ) {
     this.risk = new CreditCheckRiskService(this.prisma);
-    this.ai = new CreditCheckAiAnalysisService(this.prisma, this.integrationConfig, this.provider);
+    this.ai = new CreditCheckAiAnalysisService(this.prisma, this.integrationConfig, this.provider, this.journeyEntries);
     this.crud = new CreditCheckCrudService(this.prisma, this.risk); // crud needs risk for background auto-score
     this.override_ = new CreditCheckOverrideService(this.prisma);
   }

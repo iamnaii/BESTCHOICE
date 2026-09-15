@@ -18,6 +18,9 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
+import { d } from '../../utils/decimal.util';
 
 @ApiTags('Contracts')
 @ApiBearerAuth('JWT')
@@ -31,6 +34,7 @@ export class ContractsController {
     private documentService: ContractDocumentService,
     private snapshotService: ContractSnapshotService,
     private contractJournalQuery: ContractJournalQueryService,
+    private journeyEntries: JourneyEntryWriter,
   ) {}
 
   @Get('export')
@@ -181,7 +185,25 @@ export class ContractsController {
   ) {
     // Enforce branch-level access before activation
     await this.contractsService.findOne(id, user);
-    return this.workflowService.activate(id);
+    const activated = await this.workflowService.activate(id);
+    // การเดินทางของลูกค้า: contracts ไม่มี activatedAt และ activate(id) ไม่รับผู้ใช้ ⇒ บันทึกที่นี่หลัง tx ของ activate commit แล้ว
+    // recordAfterCommit ไม่โยน error — สัญญาเปิดสำเร็จแล้วต้องคืนผลเสมอ · ไม่คัดลอกข้อมูลลูกค้า (PDPA)
+    await this.journeyEntries.recordAfterCommit({
+      customerId: activated.customerId,
+      kind: 'CONTRACT_ACTIVATED',
+      occurredAt: new Date(),
+      actorType: 'STAFF',
+      actorUserId: user.id,
+      refType: 'contract',
+      refId: activated.id,
+      data: {
+        contractNumber: activated.contractNumber,
+        totalMonths: activated.totalMonths,
+        monthlyPayment: d(activated.monthlyPayment).toDecimalPlaces(2).toNumber(),
+      },
+      dedupeKey: journeyDedupeKey('CONTRACT_ACTIVATED', activated.id),
+    });
+    return activated;
   }
 
   @Post(':id/early-payoff')

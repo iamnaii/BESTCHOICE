@@ -25,6 +25,7 @@ import { CreditCheckRiskService } from '../src/modules/credit-check/services/cre
 import { visibleContractCredit } from '../src/modules/credit-check/services/room-credit-access';
 import { CustomerCreditCheckController } from '../src/modules/credit-check/credit-check.controller';
 import { CreditCheckService } from '../src/modules/credit-check/credit-check.service';
+import { JourneyEntryWriter } from '../src/modules/customer-journey/journey-entry-writer.service';
 import { IntegrationConfigService } from '../src/modules/integrations/integration-config.service';
 import { AiUsageService } from '../src/modules/ai-usage/ai-usage.service';
 import { AiProviderService } from '../src/modules/ai-usage/ai-provider.service';
@@ -144,6 +145,7 @@ describe('chat credit with real PostgreSQL, HTTP and synthetic storage/OCR', () 
         { provide: StorageService, useValue: storage },
         { provide: OcrService, useValue: ocr },
         { provide: CreditCheckService, useValue: creditService },
+        { provide: JourneyEntryWriter, useValue: { recordAfterCommit: async () => undefined, recordInTx: async () => undefined } },
       ],
     })
       .overrideGuard(JwtAuthGuard)

@@ -163,7 +163,7 @@ model CustomerJourneyState {
 
 firstChannel = acquisitionSource ของห้อง/แถวที่เก่าสุด · walk-in = WALK_IN · referredById ไม่ null = REFERRAL
 
-### 2 รู้ตัวตน (IDENTIFIED)
+### 2 ได้เบอร์ / ยืนยันตัวตน (IDENTIFIED)
 
 เข้าขั้นเมื่อมีข้อใดข้อหนึ่ง:
 - customers.phone หรือ nationalId ไม่ว่าง (คือพ้นสภาพ isChatPlaceholder)
@@ -262,10 +262,10 @@ firstPurchaseAt = LEAST ของ:
 | BOT_HANDOFF | บอทส่งต่อพนักงาน ({เหตุผล}) | แชท/ติดต่อ | entry SYSTEM เขียนใน HandoffManagerService.initiateHandoff หลังตั้ง handoffReason (dedupe = handoff:<roomId>:<timestamp>) | — | บอท | วันนี้ไม่ได้บันทึก (chat_rooms.handoffReason ถูกเขียนทับ) · เก็บตั้งแต่ deploy |
 | AI_LEAD_CAPTURED | บอทจดความสนใจ: {รุ่น} · {ผ่อน/สด} · ดาวน์ {x} | แชท/ติดต่อ | audit_logs action=AI_LEAD_CAPTURED entity='customer' entity_id ∈ ids · ใช้เฉพาะ productId/packageChoice/downAmount/visitPlan ห้ามส่ง phone/address | สนใจจริง | บอท | exact · prod = 0 (บอทยัง whitelist) |
 | APPOINTMENT | นัดเข้าร้าน {วัน เวลา} / มาตามนัดแล้ว | แชท/ติดต่อ | todos.room_id ∈ roomIds, due_date not null, created_at, completed_at, created_by_id | สนใจจริง | พนักงาน | exact · prod = 1 แถว · ไม่รู้ว่ามาจริงไหมถ้าไม่กด completed |
-| CUSTOMER_CREATED_BY_STAFF | พนักงานเพิ่มเป็นลูกค้า (หน้าร้าน) | แชท/ติดต่อ | customers.created_at เมื่อ acquisition_source ไม่ขึ้นต้น CHAT_ · actor = audit_logs entity='customers' action='POST' entity_id | ทักเข้ามา + รู้ตัวตน | พนักงาน | approximate (ทาง revive-ghost / stub-upgrade ใช้ created_at เก่า) |
-| CONTACT_ADDED | ได้เบอร์/เลขบัตรลูกค้าแล้ว | แชท/ติดต่อ | entry SYSTEM ใน CustomerWriteService.update / fill-contact เมื่อค่าเดิมเป็น null และค่าใหม่ไม่ null (เทียบค่าในโค้ด ไม่เก็บเบอร์) · capture-lead ที่เติมเบอร์ให้ placeholder | รู้ตัวตน | พนักงาน / บอท | วันนี้ไม่ได้บันทึก (body ใน audit ถูก REDACTED) · ย้อนหลัง = customers.updated_at (approximate) · เก็บ exact ตั้งแต่ deploy |
-| PLACEHOLDER_MERGED | รวมประวัติแชท {n} ห้องเข้ากับลูกค้าคนนี้ | แชท/ติดต่อ | entry SYSTEM เขียนใน tx ของ absorbPlaceholder (dedupe merge:<placeholderId>) · ย้อนหลัง = audit CUSTOMER_PLACEHOLDER_MERGED หรือ placeholder.deleted_at + merged_into_id | รู้ตัวตน | พนักงาน / ระบบ (OTP, LIFF, พิมพ์เบอร์ใน LINE) | exact (เขียนใน tx ไม่ถูกข้ามแบบ audit R12) |
-| LINE_LINKED | ผูก LINE {การเงิน\|ร้าน} แล้ว | แชท/ติดต่อ | entry SYSTEM ใน verification.service.ts bind, liff-api.service.ts, line-customer-link.service.ts selfLinkByPhone · ย้อนหลัง customer_line_links.linkedAt | รู้ตัวตน | ลูกค้า | FINANCE ย้อนหลัง approximate (ผูกซ้ำรีเซ็ต linkedAt) · LINE ร้าน วันนี้ไม่มีเวลา · exact ตั้งแต่ deploy |
+| CUSTOMER_CREATED_BY_STAFF | พนักงานเพิ่มเป็นลูกค้า (หน้าร้าน) | แชท/ติดต่อ | customers.created_at เมื่อ acquisition_source ไม่ขึ้นต้น CHAT_ · actor = audit_logs entity='customers' action='POST' entity_id | ทักเข้ามา + ได้เบอร์ / ยืนยันตัวตน | พนักงาน | approximate (ทาง revive-ghost / stub-upgrade ใช้ created_at เก่า) |
+| CONTACT_ADDED | ได้เบอร์/เลขบัตรลูกค้าแล้ว | แชท/ติดต่อ | entry SYSTEM ใน CustomerWriteService.update / fill-contact เมื่อค่าเดิมเป็น null และค่าใหม่ไม่ null (เทียบค่าในโค้ด ไม่เก็บเบอร์) · capture-lead ที่เติมเบอร์ให้ placeholder | ได้เบอร์ / ยืนยันตัวตน | พนักงาน / บอท | วันนี้ไม่ได้บันทึก (body ใน audit ถูก REDACTED) · ย้อนหลัง = customers.updated_at (approximate) · เก็บ exact ตั้งแต่ deploy |
+| PLACEHOLDER_MERGED | รวมประวัติแชท {n} ห้องเข้ากับลูกค้าคนนี้ | แชท/ติดต่อ | entry SYSTEM เขียนใน tx ของ absorbPlaceholder (dedupe merge:<placeholderId>) · ย้อนหลัง = audit CUSTOMER_PLACEHOLDER_MERGED หรือ placeholder.deleted_at + merged_into_id | ได้เบอร์ / ยืนยันตัวตน | พนักงาน / ระบบ (OTP, LIFF, พิมพ์เบอร์ใน LINE) | exact (เขียนใน tx ไม่ถูกข้ามแบบ audit R12) |
+| LINE_LINKED | ผูก LINE {การเงิน\|ร้าน} แล้ว | แชท/ติดต่อ | entry SYSTEM ใน verification.service.ts bind, liff-api.service.ts, line-customer-link.service.ts selfLinkByPhone · ย้อนหลัง customer_line_links.linkedAt | ได้เบอร์ / ยืนยันตัวตน | ลูกค้า | FINANCE ย้อนหลัง approximate (ผูกซ้ำรีเซ็ต linkedAt) · LINE ร้าน วันนี้ไม่มีเวลา · exact ตั้งแต่ deploy |
 | TOUCHPOINT | {พนักงาน} ติดต่อทาง {โทร\|แชทในแอป FB\|LINE\|หน้าร้าน}: {นัดแล้ว\|มาร้านแล้ว\|ขอคิดก่อน\|งบ/ดาวน์ไม่พอ\|ไม่รับสาย\|ซื้อที่อื่น\|ไม่สนใจ} | แชท/ติดต่อ | customer_journey_entries origin=MANUAL kind=TOUCHPOINT | APPOINTED/VISITED → สนใจจริง · อื่น ๆ ไม่เลื่อนขั้น | พนักงาน (created) | exact ตามที่พนักงานกด · มีเฉพาะที่กด |
 | HEARD_FROM | ลูกค้าบอกว่ารู้จักร้านจาก {โฆษณา FB\|เพจ/โพสต์\|TikTok\|LINE\|Google\|เพื่อนแนะนำ\|ผ่านหน้าร้าน\|ลูกค้าเก่า\|อื่น ๆ} | แชท/ติดต่อ | entries MANUAL kind=HEARD_FROM (CustomerCreateDialog / POS / สร้างสัญญา / แท็บการเดินทาง) | — | พนักงาน | ลูกค้าบอกเอง ไม่ใช่หลักฐาน · เก็บตั้งแต่ deploy |
 | MARKED_LOST / REOPENED | ติดป้ายหลุด: {เหตุผล} / เปิดใหม่ / กลับมาติดต่ออีกครั้ง | แชท/ติดต่อ | entries MANUAL kind=MARKED_LOST\|REOPENED · 'กลับมาติดต่อ' = ข้อความ CUSTOMER แรกหลัง lostAt (คำนวณตอนอ่าน) | ป้ายหลุด | พนักงาน / ลูกค้า | exact |
@@ -450,7 +450,7 @@ db.spec (test_db เท่านั้น) ต่อยอด customer-merge.ser
 
 ## คำตอบด้านการตลาด (เฟส 2)
 
-คำถาม 'ที่มาไหนนำไปสู่การซื้อจริง' ตอบด้วย GET /customers/journey/funnel หน่วยนับเป็นคน แบ่ง cohort ตามวันที่ทักครั้งแรก (contactedAt) ตัวอย่าง: 'ทักเข้ามาเดือน ต.ค. ทาง Facebook 3,100 คน → รู้ตัวตน 140 → นัด/จอง 40 → ตรวจเครดิต 25 → ซื้อ 12 (0.4%) · ค่ามัธยฐาน 9 วัน · ยอด X บาท'
+คำถาม 'ที่มาไหนนำไปสู่การซื้อจริง' ตอบด้วย GET /customers/journey/funnel หน่วยนับเป็นคน แบ่ง cohort ตามวันที่ทักครั้งแรก (contactedAt) ตัวอย่าง: 'ทักเข้ามาเดือน ต.ค. ทาง Facebook 3,100 คน → ได้เบอร์ / ยืนยันตัวตน 140 → นัด/จอง 40 → ตรวจเครดิต 25 → ซื้อ 12 (0.4%) · ค่ามัธยฐาน 9 วัน · ยอด X บาท'
 
 แยกได้ 4 มิติ:
 - firstChannel (CHAT_FACEBOOK/LINE_SHOP/LINE_FINANCE/TIKTOK/WEB/WALK_IN/REFERRAL)

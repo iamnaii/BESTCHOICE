@@ -22,16 +22,18 @@
 
 **pipeline:** push เข้า `main` เรียก `.github/workflows/deploy-gcp.yml`
 1. ด่านเทส: lint · test-web · test-api · test-integration · test-chat-credit · build-web → สรุปที่ job `lint-and-test`
-2. ทันทีที่ด่านเทสผ่าน pipeline แตกเป็น **สองสายที่วิ่งพร้อมกัน**:
-   - **สาย API:** `build-and-push-api` (push image `api:<github.sha>`) → **`migrate-db`** (Cloud Run job `bestchoice-migrate` รัน `prisma migrate deploy` กับ **ฐาน prod** — ลงทั้ง 2 migration ข้างบนใน job เดียว) → `deploy-api` (รัน**เฉพาะ**เมื่อ `migrate-db` เขียว)
-   - **สายเว็บ:** `deploy-web` — Firebase hosting admin + shop · `needs` แค่ `lint-and-test` + `build-web` ⇒ **ไม่รอ migration และไม่รอ API**
+   - **พร้อมกันกับด่านเทส** `build-and-push-api` build และ push image `api:<github.sha>` (ไม่รอเทส — job นี้ไม่มี `needs`)
+2. หลังด่านเทสผ่าน pipeline แยกเป็น **สองสายที่วิ่งพร้อมกัน**:
+   - **สาย API:** **`migrate-db`** (รัน**เฉพาะ**เมื่อ `lint-and-test` **และ** `build-and-push-api` เขียวทั้งคู่ · Cloud Run job `bestchoice-migrate` รัน `prisma migrate deploy` กับ **ฐาน prod** — ลงทั้ง 2 migration ข้างบนใน job เดียว) → `deploy-api` (รัน**เฉพาะ**เมื่อ `migrate-db` เขียว)
+   - **สายเว็บ:** `deploy-web` — Firebase hosting admin + shop · `needs` แค่ `lint-and-test` + `build-web` ⇒ **ไม่รอ image API ไม่รอ migration และไม่รอ API**
 
 ⇒ **กด merge = ลง migration + ขึ้น API และเว็บใหม่ทันทีที่ด่านเทสผ่าน**
 - ไม่มีช่วง "merge แล้วค่อยตรวจ" — ด่านทุกข้อในหัวข้อ 1 ต้องผ่านก่อนกดปุ่ม
-- 🚨 **เว็บอาจขึ้นก่อน API — หรือขึ้นทั้งที่ `migrate-db` / `deploy-api` แดง**
+- 🚨 **เว็บอาจขึ้นก่อน API — หรือขึ้นทั้งที่สาย API ไม่เขียว**
   - เว็บ 26.9.28 เรียก `GET /customers/:id/detail` (แผน 1) และ `GET /customers/:id/journey*` (แผน 2) ซึ่ง API เก่าไม่มี ⇒ หน้ารายละเอียดลูกค้าพังจนกว่า API ใหม่ขึ้น
   - run เขียวครบ = พังช่วงสั้น ๆ ระหว่างเว็บขึ้นกับ API ขึ้น ⇒ merge ช่วงคนใช้น้อย (ข้อ 1.3)
-  - `migrate-db` หรือ `deploy-api` แดง/ถูกยกเลิก = **ถอยเว็บทันที** (หัวข้อ "ถอย" → "ถอยเว็บ") แล้วค่อยหาสาเหตุ
+  - `deploy-web` เขียว แต่ `build-and-push-api` / `migrate-db` / `deploy-api` ตัวใดไม่เขียว (แดง · ถูกยกเลิก · **หรือ skipped**) = **ถอยเว็บทันที** (หัวข้อ "ถอย" → "ถอยเว็บ") แล้วค่อยหาสาเหตุ
+    - skipped ก็นับ: `build-and-push-api` พัง ⇒ `migrate-db` และ `deploy-api` ขึ้นเป็น **skipped** (ไม่ใช่แดง) แต่ `deploy-web` ยังขึ้น 26.9.28 กับ API เก่า
 
 **run นี้ขึ้นอะไรบ้าง:** ทุกอย่างบน main ที่ยังไม่เคย deploy + PR นี้
 - เฟส 0 (#1592/#1593) — run บน main ของสอง PR นั้นแดงที่ด่านเทส จึงยังไม่มีอะไรขึ้น prod
@@ -70,7 +72,7 @@
 | ขั้น | งาน |
 |---|---|
 | 1 | **ด่านก่อน merge** — ขั้นก่อน deploy ของเฟส 0 · EXPLAIN บนสำเนา prod ที่ถ่ายก่อน merge · ช่วงเวลา · lock ของทั้ง 2 migration · จดของเดิมไว้ถอย |
-| 2 | merge PR นี้ (ครั้งเดียว) — เฝ้า run · `migrate-db` / `deploy-api` แดง = ถอยเว็บทันที |
+| 2 | merge PR นี้ (ครั้งเดียว) — เฝ้า run · `build-and-push-api` / `migrate-db` / `deploy-api` ไม่เขียว (รวม skipped) = ถอยเว็บทันที |
 | 3 | apply สิทธิ์ MCP |
 | 4 | `backfill:chat-prospects` |
 | 5 | ตรวจก่อน backfill — ผู้สนใจที่ถูกรวมแต่ยังไม่มี `merged_into_id` |
@@ -154,6 +156,7 @@ SELECT DISTINCT c.id AS customer_id FROM hits h JOIN customers c ON c.id = h.mem
   - index ต้องขึ้นใน merge เดียวกัน — ไม่มีรอบ "merge แล้วค่อยเติมทีหลัง" เพราะ cron ไม่รอ
 
 **ถ้า PR นี้ถูก merge ไปแล้ว (= ขึ้น prod แล้ว) ตอนรู้ว่า EXPLAIN ช้า:**
+- 🚨 **ห้ามรันขั้น 4 (`backfill:chat-prospects`) จนกว่า EXPLAIN หลัง merge จะผ่านหรือ index ขึ้นแล้ว** — ทางถอย image ข้อ 2 ข้างล่างปลอดภัยเฉพาะก่อนขั้น 4 (หัวข้อ "ถอย" → "ถอย API")
 1. dev ส่ง index เป็น **migration ใหม่ใน PR ต่อท้าย** — merge PR นั้น = deploy index
    - `<SHA40 ของ PR นี้>` ในขั้น 6–7 ให้ใช้ commit ของ run ที่ขึ้น PR ต่อท้ายนั้นแทน
 2. ถ้า PR ต่อท้ายขึ้นไม่ทันก่อน 03:00 น. → ทำหัวข้อ "ถอย" ข้างล่าง **ก่อน 03:00 น.**
@@ -169,8 +172,8 @@ SELECT DISTINCT c.id AS customer_id FROM hits h JOIN customers c ON c.id = h.mem
 - **ห้าม merge ช่วง 03:00–04:30 น.**
 - **ถ้าทำ EXPLAIN ก่อน merge ไม่ได้จริง ๆ:**
   1. merge ช่วงเช้าเท่านั้น
-  2. EXPLAIN ไฟล์จริงบนสำเนาที่ลง migration แล้ว
-  3. ช้าและแก้ index ไม่ทันก่อน 03:00 น. → ถอย image **และเว็บ** (หัวข้อ "ถอย")
+  2. EXPLAIN ไฟล์จริงบนสำเนาที่ลง migration แล้ว — 🚨 **ห้ามรันขั้น 4 (`backfill:chat-prospects`) จนกว่า EXPLAIN นี้ผ่าน**
+  3. ช้าและแก้ index ไม่ทันก่อน 03:00 น. → ถอย image **และเว็บ** (หัวข้อ "ถอย") — ทำได้เพราะยังไม่ได้รันขั้น 4
   4. ถ้าไม่ทันเช้า → **เลื่อน merge ไปวันถัดไป**
 
 ### 1.4 lock ของ migration (ทั้ง 2 ตัวใน job เดียว)
@@ -209,9 +212,11 @@ SELECT DISTINCT c.id AS customer_id FROM hits h JOIN customers c ON c.id = h.mem
    - image ที่ pipeline push ใช้ tag นี้ — ใช้ในขั้น 4 และ 6–7
 2. เฝ้า run — สองสายวิ่งพร้อมกัน (ข้อ 0):
    - `deploy-web` เขียวก่อน `migrate-db` จบได้ — **อย่าอ่านว่า run จบแล้ว**
+   - `build-and-push-api` ต้องเขียว
    - `migrate-db` ต้องลงครบทั้ง `20261001100000_chat_prospects_phone_nullable` และ `20261002100000_customer_journey`
    - `deploy-api` ต้องเขียว
-3. 🚨 **`migrate-db` หรือ `deploy-api` แดง/ถูกยกเลิก:** `deploy-web` น่าจะขึ้นไปแล้วกับ API เก่า
+3. 🚨 **`deploy-web` เขียว แต่ `build-and-push-api` / `migrate-db` / `deploy-api` ตัวใดไม่เขียว (แดง · ถูกยกเลิก · **หรือ skipped**):** เว็บขึ้นไปแล้วกับ API เก่า
+   - skipped ก็นับ — `build-and-push-api` พังทำให้ `migrate-db` / `deploy-api` ขึ้นเป็น skipped ไม่ใช่แดง
    - หน้ารายละเอียดลูกค้า (แผน 1 เรียก `GET /customers/:id/detail`) และแท็บการเดินทาง / แถบขั้น / การ์ดกิจกรรมล่าสุด (`GET /customers/:id/journey*`) พัง
    - ⇒ **ถอยเว็บทันที** (หัวข้อ "ถอย" → "ถอยเว็บ") แล้วค่อยหาสาเหตุ — เหตุที่น่าจะเจอที่สุดคือ `migrate-db` รอ lock (ข้อ 1.4)
    - ห้าม merge/รัน pipeline ซ้ำจนกว่า dev ดู log ของ `bestchoice-migrate` แล้ว
@@ -367,7 +372,7 @@ gcloud run services update bestchoice-api --project=bestchoice-prod --region=asi
 - **ทางมือ:** Firebase console → Hosting → site admin (`bestchoicephone.app`) → ประวัติ release → Rollback ไป release ที่จดไว้ในข้อ 1.5
   - ไม่พบคำสั่งถอย Firebase Hosting ในรีโป (`docs/guides/DEPLOY.md` · `workflows/deploy.md` · job `deploy-web`) — ทางคอนโซลคือทางที่มี
   - site shop (`www.bestchoicephone.com`) ไม่ต้องถอย — branch นี้ไม่แตะ `apps/web-shop`
-- เว็บที่ถอยแล้วใช้กับ API เก่าได้ · ถ้าถอยเฉพาะเว็บเพราะ `migrate-db` / `deploy-api` แดง: หลังแก้สาเหตุ push ถัดไปเข้า main จะขึ้นเว็บใหม่อีกครั้ง
+- เว็บที่ถอยแล้วใช้กับ API เก่าได้ · ถ้าถอยเฉพาะเว็บเพราะ `build-and-push-api` / `migrate-db` / `deploy-api` ไม่เขียว (รวม skipped): หลังแก้สาเหตุ push ถัดไปเข้า main จะขึ้นเว็บใหม่อีกครั้ง
 - ถอยถาวร = revert PR นี้ (ดูหัวข้อถัดไป) — `workflows/deploy.md` เขียนไว้ว่า "revert commit + redeploy"
 
 ### 🚨 การถอย image เป็นของชั่วคราว
@@ -391,6 +396,7 @@ gcloud run services update bestchoice-api --project=bestchoice-prod --region=asi
 
 ### ถอยกรณี index ไม่ทัน (ด่าน 1.2)
 - ใช้คำสั่งถอย API ข้างบน **ก่อน 03:00 น.** และถอยเว็บพร้อมกัน
+- ใช้ได้เฉพาะ **ก่อนขั้น 4** (`backfill:chat-prospects`) — กรณี EXPLAIN ช้าหลัง merge จึงห้ามรันขั้น 4 จนกว่า EXPLAIN จะผ่าน · ถ้าขั้น 4 รันไปแล้ว ให้แก้ไปข้างหน้า (ดู "ถอย API")
 - แล้วค่อยขึ้นใหม่พร้อม index ใน PR ต่อท้าย
 
 ## Factory reset (Ruling FR-RESET)

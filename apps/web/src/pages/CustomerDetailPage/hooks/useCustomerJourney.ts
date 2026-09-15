@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useInfiniteQuery, useQuery, type InfiniteData } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import type { JourneyEventGroup, JourneyListResponse, JourneyRedirect, JourneySummary } from '@installment/shared';
 import api from '@/lib/api';
@@ -10,6 +10,15 @@ export type CustomerJourneyResult = JourneyListResponse | JourneyRedirect;
 export type JourneySummaryResult = JourneySummary | JourneyRedirect;
 
 export const JOURNEY_PAGE_SIZE = 30;
+
+/**
+ * หลังคำสั่งบนหน้าลูกค้าที่เขียนประวัติการเดินทาง (ตรวจเครดิต · วิเคราะห์/ตีตกเครดิต · แก้ข้อมูล · เติมเบอร์)
+ * prefix ครอบทุกชุดกลุ่มของแท็บและการ์ดกิจกรรมล่าสุด + แถบขั้น — main.tsx ปิด refetchOnWindowFocus จึงไม่รีเฟรชเอง
+ */
+export function invalidateCustomerJourney(queryClient: QueryClient, customerId: string) {
+  queryClient.invalidateQueries({ queryKey: ['customer-journey', customerId] });
+  queryClient.invalidateQueries({ queryKey: ['customer-journey-summary', customerId] });
+}
 
 export function isJourneyRedirect(
   value: CustomerJourneyResult | JourneySummaryResult | null | undefined,

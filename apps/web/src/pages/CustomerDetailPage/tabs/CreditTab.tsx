@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { openCreditDocument } from '@/lib/credit-document';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
+import { invalidateCustomerJourney } from '../hooks/useCustomerJourney';
 import type { CreditCheckItem, CustomerDetail } from '../types';
 
 interface CreditTabProps {
@@ -38,6 +39,7 @@ export default function CreditTab({ customer, creditChecks, canStartCredit, canR
     onSuccess: () => {
       toast.success('วิเคราะห์เครดิตเสร็จสิ้น');
       queryClient.invalidateQueries({ queryKey: ['customer-credit-checks', id] });
+      invalidateCustomerJourney(queryClient, id);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -66,6 +68,7 @@ export default function CreditTab({ customer, creditChecks, canStartCredit, canR
       queryClient.invalidateQueries({ queryKey: ['credit-checks'] });
       queryClient.invalidateQueries({ queryKey: ['customer', id] });
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      invalidateCustomerJourney(queryClient, id);
       setOverrideId(null);
       setOverrideStatus('');
       setOverrideReasonCategory('');

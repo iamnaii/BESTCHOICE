@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useSearchParams } from 'react-router';
 import ContractReturnNotice from '@/components/credit-check/ContractReturnNotice';
 import CreditCheckCreateDialog from '@/components/credit-check/CreditCheckCreateDialog';
@@ -13,7 +14,7 @@ import JourneyStageStrip from './components/JourneyStageStrip';
 import KpiTiles from './components/KpiTiles';
 import RiskBanner from './components/RiskBanner';
 import { useCustomerDetailData } from './hooks/useCustomerDetailData';
-import { useJourneySummaryRedirect } from './hooks/useCustomerJourney';
+import { invalidateCustomerJourney, useJourneySummaryRedirect } from './hooks/useCustomerJourney';
 import ContractsTab from './tabs/ContractsTab';
 import CreditTab from './tabs/CreditTab';
 import JourneyTab from './tabs/JourneyTab';
@@ -38,6 +39,7 @@ function resolveTab(raw: string | null, journeyVisible: boolean): string {
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const journeyVisible = canViewJourney(user?.role ?? '');
   // ต้องอยู่ก่อน early return: id ของผู้สนใจที่ถูกรวมแล้ว GET /customers/:id/detail ตอบ 404 แต่ summary ตอบ redirectToCustomerId
   const journeySummary = useJourneySummaryRedirect(id ?? '', journeyVisible);
@@ -206,6 +208,7 @@ export default function CustomerDetailPage() {
       <CreditCheckCreateDialog
         open={showCreditDialog}
         onClose={() => setShowCreditDialog(false)}
+        onCreated={() => invalidateCustomerJourney(queryClient, customer.id)}
         preselectedCustomer={customer ? {
           id: customer.id,
           name: customer.name,

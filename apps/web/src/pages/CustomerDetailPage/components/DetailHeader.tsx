@@ -19,6 +19,7 @@ import { ChatCell } from '@/pages/CustomersPage/components/CustomerCells';
 import { useAbsorbCustomer } from '@/pages/UnifiedInboxPage/hooks/useProspectActions';
 import type { CustomerTier } from '@/types/customer-tier';
 import { formatDateShort } from '@/utils/formatters';
+import { invalidateCustomerJourney } from '../hooks/useCustomerJourney';
 import type { CustomerDetail } from '../types';
 import { customerKind } from '../utils/customerKind';
 import { paymentSearchFor } from '../utils/paymentTarget';
@@ -158,6 +159,7 @@ export default function DetailHeader({ customer, tier, role, canEdit, canStartCr
           onFilled={() => {
             queryClient.invalidateQueries({ queryKey: ['customer', customer.id] });
             queryClient.invalidateQueries({ queryKey: ['customers'] });
+            invalidateCustomerJourney(queryClient, customer.id);
           }}
           onUseExisting={(c) => absorb.mutate({ placeholderId: customer.id, targetId: c.id }, { onSuccess: () => navigate(`/customers/${c.id}`, { replace: true }) })}
         />

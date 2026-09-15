@@ -5,6 +5,7 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { RELATIONSHIP_OPTIONS, THAI_NAME_PREFIXES } from '@/lib/constants';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
+import { invalidateCustomerJourney } from '../hooks/useCustomerJourney';
 import type { CustomerDetail, ReferenceData } from '../types';
 
 interface EditCustomerDialogProps {
@@ -116,6 +117,7 @@ export default function EditCustomerDialog({ customer, open, onClose }: EditCust
     onSuccess: () => {
       toast.success('แก้ไขข้อมูลลูกค้าสำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['customer', customer.id] });
+      invalidateCustomerJourney(queryClient, customer.id);
       onClose();
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),

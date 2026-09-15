@@ -507,4 +507,27 @@ describe('การเดินทางของลูกค้า', () => {
     expect(mocks.journey).toHaveBeenCalledWith({ limit: 30, cursor: 'cur-2' });
     expect(screen.queryByText('ยังไม่มีกิจกรรม')).toBeNull();
   });
+
+  // final review F4: main.tsx ปิด refetchOnWindowFocus — คำสั่งบนหน้าที่เขียนประวัติการเดินทางต้อง invalidate เอง
+  // ไม่งั้นการ์ดกิจกรรมล่าสุด/แถบขั้นค้างรายการเก่าข้างตัวเลขที่รีเฟรชแล้ว
+  it('บันทึกแก้ไขข้อมูลลูกค้า → การ์ดกิจกรรมล่าสุดและแถบขั้นดึงข้อมูลการเดินทางใหม่', async () => {
+    mocks.summaries.c1 = journeySummary();
+    mocks.patch.mockReset();
+    mocks.patch.mockResolvedValue({ data: {} });
+    const summaryCalls = () => mocks.get.mock.calls.filter(([url]) => url === '/customers/c1/journey/summary').length;
+    renderAt('/customers/c1');
+    expect(await screen.findByRole('heading', { name: 'กิจกรรมล่าสุด' })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.journey).toHaveBeenCalledWith({ limit: 6, groups: 'chat,credit,sale' }));
+    await waitFor(() => expect(summaryCalls()).toBeGreaterThan(0));
+    const journeyBefore = mocks.journey.mock.calls.length;
+    const summaryBefore = summaryCalls();
+
+    fireEvent.click(screen.getByRole('button', { name: 'แก้ไขข้อมูล' }));
+    const dialog = await screen.findByRole('dialog', { name: 'แก้ไขข้อมูลลูกค้า' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'บันทึก' }));
+
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/customers/c1', expect.any(Object)));
+    await waitFor(() => expect(mocks.journey.mock.calls.length).toBeGreaterThan(journeyBefore));
+    await waitFor(() => expect(summaryCalls()).toBeGreaterThan(summaryBefore));
+  });
 });

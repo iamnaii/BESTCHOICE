@@ -151,8 +151,28 @@ describe('CustomerMergeService.absorbPlaceholder — R12 SYSTEM actor audit (rea
   const stamp = Date.now();
   const customerIds: string[] = [];
 
-  beforeAll(() => {
+  beforeAll(async () => {
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    // ฐานเทสใหม่ (CI) ไม่มีแถว isSystemUser — seed เองแบบเดียวกับ collections-foundation.seed.ts (email/ธงเดียวกัน)
+    // upsert: ฐานที่ seed แล้วหรือสเปคอื่นทิ้งไว้ ใช้แถวเดิม ไม่สร้างซ้ำ
+    // ไม่ลบใน afterAll ทั้งกรณีมีอยู่ก่อนและกรณีสเปคนี้สร้าง — audit_logs อ้างอิงแถวนี้ (FK) และลบแถว audit ไม่ได้
+    const existing = await prisma.user.findFirst({ where: { isSystemUser: true }, select: { id: true } });
+    if (!existing) {
+      await prisma.user.upsert({
+        where: { email: 'system@bestchoice.internal' },
+        update: { isSystemUser: true, isActive: false },
+        create: {
+          email: 'system@bestchoice.internal',
+          name: 'SYSTEM',
+          role: 'OWNER',
+          password: '__NO_LOGIN__',
+          accessibleCompanies: ['SHOP', 'FINANCE'],
+          primaryCompany: 'SHOP',
+          isActive: false,
+          isSystemUser: true,
+        },
+      });
+    }
   });
 
   afterAll(async () => {

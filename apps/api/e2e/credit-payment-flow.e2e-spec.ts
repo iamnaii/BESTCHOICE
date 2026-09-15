@@ -148,7 +148,7 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     const product = await db.product.create({ data: { name: 'ISOLATED NEW DEVICE', brand: 'SYNTHETIC', model: 'TRADE-CREDIT', category: 'ACCESSORY',
       imeiSerial: `SYNTHETIC-${randomUUID()}`, branchId, ownedByCompanyId: shopId, costPrice: 6000, status: 'IN_STOCK' } });
     const intake = await tradeIns.create({ customerId: customer.id, branchId, deviceBrand: 'SYNTHETIC', deviceModel: 'OLD DEVICE',
-      sellerName: customer.name, sellerPhone: customer.phone, sellerIdCardNumber: nationalId, sellerAddress: '1 Synthetic Road',
+      sellerName: customer.name, sellerPhone: customer.phone ?? undefined, sellerIdCardNumber: nationalId, sellerAddress: '1 Synthetic Road',
       serialNumber: `SN-${randomUUID()}`, imeiMissingReason: 'Synthetic device without cellular radio' });
     await db.tradeIn.update({ where: { id: intake.id }, data: { status: 'APPRAISED', offeredPrice: 5500,
       quoteBreakdown: { cashPrice: '5000', exchangePrice: '5500' } } });

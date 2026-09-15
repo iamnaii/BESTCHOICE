@@ -22,13 +22,13 @@ interface ContractsTabProps {
 
 export default function ContractsTab({ customer, isOwner, activityLogs }: ContractsTabProps) {
   const contractColumns = [
-    { key: 'contractNumber', label: 'เลขสัญญา', render: (c: CustomerDetail['contracts'][0]) => <span className="font-mono text-sm tabular-nums">{c.contractNumber}</span> },
+    { key: 'contractNumber', label: 'เลขสัญญา', render: (c: CustomerDetail['contracts'][0]) => <span className="whitespace-nowrap font-mono text-sm tabular-nums">{c.contractNumber}</span> },
     { key: 'product', label: 'สินค้า', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm">{c.product.brand} {c.product.model}</span> },
     { key: 'status', label: 'สถานะ', render: (c: CustomerDetail['contracts'][0]) => {
       const cfg = getStatusBadgeProps(c.status, contractStatusMap);
       return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
     }},
-    { key: 'monthlyPayment', label: 'ค่างวด', render: (c: CustomerDetail['contracts'][0]) => <span className="text-sm tabular-nums font-mono">{parseFloat(c.monthlyPayment).toLocaleString()} ฿/เดือน</span> },
+    { key: 'monthlyPayment', label: 'ค่างวด', render: (c: CustomerDetail['contracts'][0]) => <span className="whitespace-nowrap text-sm tabular-nums font-mono">{parseFloat(c.monthlyPayment).toLocaleString()} ฿/เดือน</span> },
     { key: 'branch', label: 'สาขา', render: (c: CustomerDetail['contracts'][0]) => <span className="text-xs">{c.branch.name}</span> },
   ];
 
@@ -36,7 +36,8 @@ export default function ContractsTab({ customer, isOwner, activityLogs }: Contra
     <>
       {/* Contracts */}
       <div className="mb-6">
-        <DataTable columns={contractColumns} data={customer.contracts} emptyMessage="ยังไม่มีสัญญา" />
+        {/* ข้างคอลัมน์ขวา 360px ที่จอ 1280 ตารางเหลือ ~574px — บีบช่องไฟ ไม่ตัดคอลัมน์ (กติกาเจ้าของ "พอดีหน้า = บีบขนาด") · เลขสัญญา/ค่างวดไม่ตัดบรรทัด */}
+        <DataTable columns={contractColumns} data={customer.contracts} emptyMessage="ยังไม่มีสัญญา" minWidth="560px" density="compact" />
       </div>
 
       {/* Activity Timeline (OWNER only) */}

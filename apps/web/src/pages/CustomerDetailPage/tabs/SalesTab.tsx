@@ -10,7 +10,7 @@ const saleColumns = [
   {
     key: 'saleNumber',
     label: 'เลขที่ใบขาย',
-    render: (s: SaleRow) => <span className="font-mono text-sm tabular-nums">{s.saleNumber}</span>,
+    render: (s: SaleRow) => <span className="whitespace-nowrap font-mono text-sm tabular-nums">{s.saleNumber}</span>,
   },
   {
     key: 'product',
@@ -39,7 +39,7 @@ const saleColumns = [
     key: 'netAmount',
     label: 'ยอดสุทธิ',
     render: (s: SaleRow) => (
-      <span className="text-sm tabular-nums font-mono">
+      <span className="whitespace-nowrap text-sm tabular-nums font-mono">
         {parseFloat(s.netAmount).toLocaleString()} ฿
       </span>
     ),
@@ -64,7 +64,8 @@ const saleColumns = [
 
 export function SalesTable({ sales, limit }: { sales: NonNullable<CustomerDetail['sales']>; limit?: number }) {
   const rows = limit ? sales.slice(0, limit) : sales;
-  return <DataTable columns={saleColumns} data={rows} emptyMessage="ยังไม่มีการซื้อแบบเงินสด/ไฟแนนซ์นอก" />;
+  // ใช้ทั้งแท็บใบขายและการ์ดบนแท็บภาพรวม — ที่จอ 1280 เหลือ ~574px: 6 คอลัมน์ต้อง dense ถึงจะไม่ล้น (วัดจริง OD-8) ไม่ตัดคอลัมน์
+  return <DataTable columns={saleColumns} data={rows} emptyMessage="ยังไม่มีการซื้อแบบเงินสด/ไฟแนนซ์นอก" minWidth="560px" density="dense" />;
 }
 
 interface SalesTabProps {

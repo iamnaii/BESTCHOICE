@@ -47,8 +47,11 @@ export default function OverviewTab({ customer, role, onOpenTab }: { customer: C
       {kind === 'CASH' && <LineLinkInvite lineIdShop={customer.lineIdShop} customerName={customer.name} />}
 
       {sales.length > 0 && (
-        <Card><CardContent className="p-5">
-          <SectionHead title="ใบขายเงินสด / ไฟแนนซ์นอก" count={sales.length} action={sales.length > 3 ? { label: 'ดูทั้งหมด', onClick: () => onOpenTab('sales') } : undefined} />
+        // ตารางชิดขอบการ์ด (แบบการ์ดตารางหน้าอื่น เช่น SupplierDetailPage) ให้ได้ความกว้างเท่าในแท็บใบขาย — เว้นขอบเฉพาะหัวการ์ด
+        <Card><CardContent className="p-0">
+          <div className="px-5 pt-5">
+            <SectionHead title="ใบขายเงินสด / ไฟแนนซ์นอก" count={sales.length} action={sales.length > 3 ? { label: 'ดูทั้งหมด', onClick: () => onOpenTab('sales') } : undefined} />
+          </div>
           <SalesTable sales={sales} limit={3} />
         </CardContent></Card>
       )}

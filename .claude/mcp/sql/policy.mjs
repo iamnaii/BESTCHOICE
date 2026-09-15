@@ -43,7 +43,8 @@ export const PII_TABLE_ALLOWLIST = {
     // ยังไม่ให้: picture_url, ai_sales_state, line_user_id, external_user_id,
     //           handoff_reason, attribution_id
   ],
-  customers: ['id', 'created_at', 'updated_at', 'deleted_at', 'branch_id', 'customer_type', 'status'],
+  // merged_into_id = uuid ชี้ลูกค้าปลายทางของ placeholder ที่ถูกรวม (ไม่ใช่ตัวตน) — ใช้เทียบกับ audit CUSTOMER_PLACEHOLDER_MERGED
+  customers: ['id', 'created_at', 'updated_at', 'deleted_at', 'branch_id', 'customer_type', 'status', 'merged_into_id'],
   contacts: ['id', 'created_at', 'updated_at', 'deleted_at'],
   contracts: [
     'id', 'contract_number', 'customer_id', 'product_id', 'status',
@@ -64,6 +65,16 @@ export const PII_TABLE_ALLOWLIST = {
   refresh_tokens: ['id', 'user_id', 'created_at', 'expires_at', 'revoked_at'],
   ip_rate_limits: ['id', 'created_at'],
   staff_chat_activities: ['id', 'room_id', 'staff_id', 'action', 'created_at'],
+  // ── การเดินทางของลูกค้า (migration 20261002100000_customer_journey) — ระบุคอลัมน์เป๊ะ
+  //    ตั้งใจไม่ให้: note (บันทึกมือ ข้อความอิสระ ≤140 ตัว พนักงานอาจพิมพ์ชื่อ/รายละเอียดส่วนตัวลงไป แม้ DTO จะกันเลขยาว)
+  //    data (jsonb) ให้ได้เพราะผ่าน JOURNEY_DATA_SCHEMAS (zod whitelist) ที่ห้ามข้อความแชท/เบอร์/เลขบัตร/ที่อยู่
+  //    คอลัมน์ที่ migration เพิ่มทีหลังไม่ได้สิทธิ์จนกว่าจะใส่ในลิสต์นี้ = fail-closed
+  customer_journey_entries: [
+    'id', 'customer_id', 'origin_customer_id', 'origin', 'kind', 'occurred_at',
+    'actor_type', 'actor_user_id', 'room_id', 'ref_type', 'ref_id', 'data',
+    'channel', 'outcome', 'lost_reason', 'heard_from', 'dedupe_key',
+    'created_at', 'deleted_at', 'deleted_by_id',
+  ],
 }
 
 /**

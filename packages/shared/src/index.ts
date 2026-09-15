@@ -20,6 +20,7 @@ export * from './default-bc-installment';
 export * from './stock-sort';
 export * from './customer-sort';
 export * from './customer-journey';
+export * from './facebook-webhook-fields';
 export type * from './contract-quote';
 export * from './signature-requirements';
 

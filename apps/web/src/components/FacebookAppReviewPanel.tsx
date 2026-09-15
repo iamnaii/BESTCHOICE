@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { FACEBOOK_PAGE_SUBSCRIBED_FIELDS_CSV } from '@installment/shared';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -181,7 +182,7 @@ const TESTS: TestCase[] = [
   {
     key: 'subscribe_webhooks',
     permission: 'pages_manage_metadata',
-    title: 'Subscribe Page Webhooks (messages + referrals + feed comments)',
+    title: 'Subscribe Page Webhooks (messages + referrals + echoes ที่แอดมินตอบจากเพจ)',
     endpoint: '/facebook/app-review/subscribe-webhooks',
     method: 'POST',
     group: 'write',
@@ -190,11 +191,12 @@ const TESTS: TestCase[] = [
       {
         key: 'fields',
         label: 'Subscribed fields (comma-separated)',
-        // ต้องตรงกับ DEFAULT_SUBSCRIBED_FIELDS ใน facebook-app-review.service.ts เป๊ะ ๆ
+        // ชุดเดียวกับ DEFAULT_SUBSCRIBED_FIELDS ของ API — มาจาก packages/shared ห้ามพิมพ์รายการเอง
         // (subscribed_apps เขียนทับทั้งชุด — รายการที่ขาดฟิลด์ = ถอดฟิลด์นั้นออกจริง)
-        // messaging_referrals = ลูกค้าเก่ากลับมาจากโฆษณา · ถอด feed ออกแล้วเพราะตัวรับ
-        // webhook อ่านแค่ entry.messaging ไม่เคยอ่าน entry.changes ⇒ subscribe ไปก็ไม่มีใครรับ
-        defaultValue: 'messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads',
+        // message_echoes = พนักงานตอบจากกล่องข้อความของเพจ ⇒ ล้าง "รอตอบ" + หยุด AI
+        // messaging_referrals = ลูกค้าเก่ากลับมาจากโฆษณา · ไม่มี feed เพราะไม่มีใครรับ entry.changes
+        // API เติมฟิลด์บังคับกลับให้เองถ้าช่องนี้ถูกแก้จนขาด
+        defaultValue: FACEBOOK_PAGE_SUBSCRIBED_FIELDS_CSV,
       },
     ],
   },

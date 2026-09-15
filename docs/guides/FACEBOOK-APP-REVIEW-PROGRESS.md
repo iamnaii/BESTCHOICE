@@ -206,11 +206,12 @@ BESTCHOICE uses pages_manage_metadata to subscribe our app to Page webhook event
 Specifically, we call POST /{PAGE_ID}/subscribed_apps with subscribed_fields including:
 - messages — to receive Messenger messages from customers
 - messaging_postbacks — to handle quick reply button taps
+- messaging_referrals — to know which ad or m.me link brought a returning customer back
+- message_echoes — to record replies our staff send from the Page inbox (Meta Business Suite / Pages app) in our unified inbox and pause the AI for that conversation
 - message_deliveries — for delivery status tracking
 - message_reads — for read receipt tracking
-- feed — to receive notifications when customers comment on our posts/ads
 
-Without this permission, our app would have to poll the Graph API for new messages and comments, which is inefficient, increases latency from seconds to minutes, and conflicts with Meta's rate limit guidelines.
+Without this permission, our app would have to poll the Graph API for new messages, which is inefficient, increases latency from seconds to minutes, and conflicts with Meta's rate limit guidelines.
 
 The subscription is performed once during initial Page connection at bestchoicephone.app/settings/integrations and re-verified weekly. Our app is the sole subscriber for these fields on our Page.
 

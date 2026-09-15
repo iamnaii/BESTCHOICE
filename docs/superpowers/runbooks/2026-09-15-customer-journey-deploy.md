@@ -1,40 +1,44 @@
 # Runbook: ขึ้น prod — การเดินทางของลูกค้า เฟส 1 (web 26.9.28)
 
-- แผน: `docs/superpowers/plans/2026-09-15-customer-journey.md`
+- **PR เดียว** จาก branch `worktree-feat+customer-journey-p2` = แผน 1 (หน้ารายละเอียดลูกค้า) + แผน 2 (การเดินทางของลูกค้า) — Ruling FR-MERGE-ORDER-2
+- แผน: `docs/superpowers/plans/2026-09-15-customer-detail-redesign.md` (แผน 1) · `docs/superpowers/plans/2026-09-15-customer-journey.md` (แผน 2)
 - spec: `docs/superpowers/specs/2026-09-15-customer-journey-design.md`
-- migration: `apps/api/prisma/migrations/20261002100000_customer_journey/`
-  - เพิ่มคอลัมน์ `customers.merged_into_id`
-  - สร้าง 2 ตาราง: `customer_journey_entries` และ `customer_journey_states`
-  - เติม `merged_into_id` ย้อนหลังจาก audit `CUSTOMER_PLACEHOLDER_MERGED`
+- migration ที่ run นี้ลง (ทั้งคู่ยังไม่เคยขึ้น prod):
+  1. `apps/api/prisma/migrations/20261001100000_chat_prospects_phone_nullable/` — เฟส 0 (#1592) อยู่บน main แล้ว แต่ run ของ #1592/#1593 แดงจึงยังไม่เคย deploy
+     - `customers.phone` เลิกบังคับไม่ว่าง (DROP NOT NULL)
+     - เพิ่มคอลัมน์ `chat_rooms.dismissed_same_person_ids`
+  2. `apps/api/prisma/migrations/20261002100000_customer_journey/`
+     - เพิ่มคอลัมน์ `customers.merged_into_id`
+     - สร้าง 2 ตาราง: `customer_journey_entries` และ `customer_journey_states`
+     - เติม `merged_into_id` ย้อนหลังจาก audit `CUSTOMER_PLACEHOLDER_MERGED`
 - ไฟล์นี้คือแหล่งจริงของ runbook — PR body ลิงก์มาที่นี่ ห้ามแก้ใน PR body แยก
 
 > 🚨 ทุกคำสั่งในไฟล์นี้เป็นงานของเจ้าของ — dev/agent ไม่ได้รันอะไรกับ prod ในงานนี้
 
 ## 0. อ่านก่อน: merge เข้า main = deploy prod ทันที
 
-**pipeline:** push เข้า `main` เรียก `.github/workflows/deploy-gcp.yml` ซึ่งทำงานตามลำดับนี้
-1. ด่านเทส: lint · test-web · test-api · test-integration · test-chat-credit · build-web
-2. `build-and-push-api` — push image `api:<github.sha>`
-3. **`migrate-db`** — Cloud Run job `bestchoice-migrate` รัน `prisma migrate deploy` กับ **ฐาน prod**
-4. `deploy-api`
-5. `deploy-web` — Firebase hosting admin + shop
+**PR เดียว merge ครั้งเดียว = pipeline run เดียว** (Ruling FR-MERGE-ORDER-2)
+- ไม่มีขั้น "ระหว่างสอง merge" อีกแล้ว — ด่านทุกข้อทำก่อนกดครั้งเดียว และ backfill ทั้งสองตัวรันหลัง run นี้เขียว
+
+**pipeline:** push เข้า `main` เรียก `.github/workflows/deploy-gcp.yml`
+1. ด่านเทส: lint · test-web · test-api · test-integration · test-chat-credit · build-web → สรุปที่ job `lint-and-test`
+2. ทันทีที่ด่านเทสผ่าน pipeline แตกเป็น **สองสายที่วิ่งพร้อมกัน**:
+   - **สาย API:** `build-and-push-api` (push image `api:<github.sha>`) → **`migrate-db`** (Cloud Run job `bestchoice-migrate` รัน `prisma migrate deploy` กับ **ฐาน prod** — ลงทั้ง 2 migration ข้างบนใน job เดียว) → `deploy-api` (รัน**เฉพาะ**เมื่อ `migrate-db` เขียว)
+   - **สายเว็บ:** `deploy-web` — Firebase hosting admin + shop · `needs` แค่ `lint-and-test` + `build-web` ⇒ **ไม่รอ migration และไม่รอ API**
 
 ⇒ **กด merge = ลง migration + ขึ้น API และเว็บใหม่ทันทีที่ด่านเทสผ่าน**
-- ไม่มีช่วง "merge แล้วค่อยตรวจ" — ด่านทุกข้อในหัวข้อ "ก่อน merge" ต้องผ่านก่อนกดปุ่ม
+- ไม่มีช่วง "merge แล้วค่อยตรวจ" — ด่านทุกข้อในหัวข้อ 1 ต้องผ่านก่อนกดปุ่ม
+- 🚨 **เว็บอาจขึ้นก่อน API — หรือขึ้นทั้งที่ `migrate-db` / `deploy-api` แดง**
+  - เว็บ 26.9.28 เรียก `GET /customers/:id/detail` (แผน 1) และ `GET /customers/:id/journey*` (แผน 2) ซึ่ง API เก่าไม่มี ⇒ หน้ารายละเอียดลูกค้าพังจนกว่า API ใหม่ขึ้น
+  - run เขียวครบ = พังช่วงสั้น ๆ ระหว่างเว็บขึ้นกับ API ขึ้น ⇒ merge ช่วงคนใช้น้อย (ข้อ 1.3)
+  - `migrate-db` หรือ `deploy-api` แดง/ถูกยกเลิก = **ถอยเว็บทันที** (หัวข้อ "ถอย" → "ถอยเว็บ") แล้วค่อยหาสาเหตุ
 
-**run นี้ขึ้นอะไรบ้าง:** run ที่เขียวครั้งแรกบน main ขึ้น **ทุกอย่างที่อยู่บน main แต่ยังไม่เคย deploy**
+**run นี้ขึ้นอะไรบ้าง:** ทุกอย่างบน main ที่ยังไม่เคย deploy + PR นี้
 - เฟส 0 (#1592/#1593) — run บน main ของสอง PR นั้นแดงที่ด่านเทส จึงยังไม่มีอะไรขึ้น prod
-- แผน 1
-- PR นี้ ถ้า merge แล้ว
-
-**ลำดับ merge (Ruling FR-MERGE-ORDER):**
-- PR แผน 1 ก่อน ด้วย **merge commit — ห้าม squash**
-- แล้วค่อย PR นี้ (base `main`)
-- ถ้าแผน 1 ถูก squash: ต้อง `git rebase --onto` branch ของ PR นี้ก่อนเปิด PR
+- แผน 1 + แผน 2 — อยู่ใน PR นี้
 
 **run เข้าคิว ไม่ยกเลิกกัน** (`concurrency … cancel-in-progress: false`)
-- merge สองใบติดกัน = สอง run ต่อกัน
-- ⇒ **ห้าม merge PR นี้ติดกับแผน 1** — ขั้น 2–3 ข้างล่างต้องเกิดระหว่างสอง merge
+- ห้าม merge PR อื่นซ้อนจนกว่า run นี้เขียวและตรวจขั้น 2 เสร็จ — run ถัดไปจะขึ้น HEAD ใหม่ทับระหว่างที่ยังตรวจอยู่
 
 **commit ที่แตะแต่ `docs/**` หรือ `**.md` ไม่เรียก pipeline** (paths-ignore)
 - แก้ไฟล์นี้ทีหลังได้โดยไม่ deploy
@@ -45,6 +49,7 @@
 3. `gcloud run services update bestchoice-api --image=…`
    - 🚨 ห้ามใช้ `gcloud run deploy` ชุดเต็มจากเครื่อง เพราะ env/secret ของ service จะเพี้ยน
 4. build เว็บ แล้ว `firebase deploy --only hosting:admin,hosting:shop --project bestchoice-prod`
+   - **ทำข้อนี้หลัง API ใหม่ health ok เท่านั้น** — ทางนี้คุมลำดับได้ ต่างจาก pipeline (ดูข้างบน)
 
 ด่านทุกข้อในไฟล์นี้ใช้เหมือนกัน — อ่านคำว่า "merge" เป็น "รัน migrate job"
 
@@ -64,73 +69,40 @@
 
 | ขั้น | งาน |
 |---|---|
-| 1 | merge แผน 1 — เฟส 0 ขึ้นพร้อมกัน |
-| 2 | `backfill:chat-prospects` |
-| 3 | **ด่านก่อน merge PR นี้** — EXPLAIN บนสำเนา prod · ช่วงเวลา · lock |
-| 4 | merge PR นี้ |
-| 5 | apply สิทธิ์ MCP |
-| 6 | ตรวจ R12 |
-| 7 | `backfill:customer-journey` dry-run |
-| 8 | รันจริง |
-| 9 | เช้าวันถัดไป |
+| 1 | **ด่านก่อน merge** — ขั้นก่อน deploy ของเฟส 0 · EXPLAIN บนสำเนา prod ที่ถ่ายก่อน merge · ช่วงเวลา · lock ของทั้ง 2 migration · จดของเดิมไว้ถอย |
+| 2 | merge PR นี้ (ครั้งเดียว) — เฝ้า run · `migrate-db` / `deploy-api` แดง = ถอยเว็บทันที |
+| 3 | apply สิทธิ์ MCP |
+| 4 | `backfill:chat-prospects` |
+| 5 | ตรวจก่อน backfill — ผู้สนใจที่ถูกรวมแต่ยังไม่มี `merged_into_id` |
+| 6 | `backfill:customer-journey` dry-run |
+| 7 | รันจริง |
+| 8 | เช้าวันถัดไป |
 
 **ทำไม backfill ต้องเรียงแบบนี้:** `journey-state.sql` นับ "ทักครั้งแรก" จากแถว customers ของห้องแชท
 - ถ้ายังไม่ backfill ผู้สนใจ ห้องราว 8,991 ห้องยังไม่มีเจ้าของ
 - CLI `backfill:customer-journey` จะหยุดเอง (exit 1)
+- ทั้งสองตัวรันหลัง run ของ merge เขียว — `backfill:chat-prospects` ก่อน แล้วค่อย `backfill:customer-journey`
 
-## 1. merge แผน 1 (เฟส 0 ขึ้นใน run เดียวกัน)
+## 1. 🚨 ด่านก่อน merge
 
-1. ทำขั้น "ก่อน deploy" ตาม runbook ใน PR #1592 ก่อนกด merge
-   - merge นี้ลง migration ของ #1592 ใน run เดียวกัน
-2. merge PR แผน 1 แล้วรอ run เขียวครบ: ด่านเทส + `migrate-db` + `deploy-api` + `deploy-web`
-3. จด `<SHA40 แผน 1>` = commit ของ run นั้น — ดูจากหน้า Actions ของ run
-   - image ที่ pipeline push ใช้ tag นี้
+### 1.1 ขั้นก่อน deploy ของเฟส 0 (#1592)
 
-**ผ่านเมื่อ:** health ok และบันเดิลเป็น `26.9.27`
+- ทำขั้น "ก่อน deploy" ตาม runbook ใน PR #1592 ก่อนกด merge — migration ของ #1592 ลงใน run เดียวกับ PR นี้
 
-## 2. `backfill:chat-prospects`
-
-ทำตาม runbook ใน PR #1592 (นับ PSID ซ้ำก่อน) โดยใช้ image ของขั้น 1
-
-**dry-run:**
-```bash
-gcloud run jobs create bestchoice-backfill-chat-prospects --project=bestchoice-prod --region=asia-southeast1 \
-  --image=asia-southeast1-docker.pkg.dev/bestchoice-prod/bestchoice/api:<SHA40 แผน 1> \
-  --set-secrets=DATABASE_URL=DATABASE_URL:latest \
-  --set-cloudsql-instances=bestchoice-prod:asia-southeast1:bestchoice-db \
-  --command=npm --args=--prefix,apps/api,run,backfill:chat-prospects \
-  --set-env-vars=EXPECTED_DB_NAME=bestchoice --max-retries=0 --task-timeout=3600s
-gcloud run jobs execute bestchoice-backfill-chat-prospects --project=bestchoice-prod --region=asia-southeast1 --wait
-```
-
-**รันจริง** — เลือกช่วงเงียบ:
-```bash
-gcloud run jobs update bestchoice-backfill-chat-prospects --project=bestchoice-prod --region=asia-southeast1 \
-  --update-env-vars=CONFIRM_BACKFILL=YES_I_AM_SURE,ALLOW_PROD_BACKFILL=YES_I_AM_SURE,NODE_ENV=production
-```
-แล้ว `execute --wait` อีกครั้ง
-
-- exit 2 = เปิดดู log ก่อน ไม่ได้แปลว่าล้มเสมอ
-
-**ผ่านเมื่อ:**
-- MCP `SELECT count(*) FROM chat_rooms WHERE deleted_at IS NULL AND customer_id IS NULL` ≈ 0
-- คิวรีตรวจ 2 ตัวใน PR #1592 = 0 ทั้งคู่
-  - คิวรีนั้นใช้ `acquisition_source` และ `phone` ซึ่ง `mcp_ro` อ่านไม่ได้ ⇒ ต้องรันด้วย role เจ้าของ
-
-## 3. 🚨 ด่านก่อน merge PR นี้
-
-### 3.1 EXPLAIN ของ cron `journey:recompute`
+### 1.2 EXPLAIN ของ cron `journey:recompute`
 
 **ทำไมต้องทำก่อน merge:**
 - cron นี้**ไม่มีสวิตช์ปิด** — `customer-journey.cron.ts` เป็น `@Cron('30 3 * * *')` เปล่า ๆ ไม่อ่าน SystemConfig
 - merge แล้ว pipeline ขึ้นให้เอง ⇒ คืนนั้น 03:30 น. cron รันเลย
 - ⇒ ต้องรู้ว่าคิวรีเร็วพอ**ก่อน**กด merge ไม่ใช่หลัง
 
-**ทำที่ไหน:** บน **สำเนาข้อมูลขนาด prod**
+**ทำที่ไหน:** บน **สำเนาข้อมูลขนาด prod ที่ถ่ายก่อน merge**
 - เช่น clone instance ชั่วคราวจาก backup แล้วลบทิ้งหลังดูผล
 - **ห้ามรันบน prod ตรง**
-- ควรใช้สำเนาที่ถ่ายหลังขั้น 2 เพราะตอนนั้น `customers` / `chat_rooms` มีแถวผู้สนใจราว 9 พันแถวแล้ว
-- ทำเมื่อไรก็ได้ก่อนขั้น 4
+- PR เดียว ⇒ สำเนาที่ถ่ายก่อน merge คือ **ก่อน migration และก่อน backfill ผู้สนใจ** ⇒ ใช้ **ฉบับรันได้** ข้างล่าง (ไฟล์จริงรันบนสำเนานี้ไม่ได้)
+  - `chat_rooms` / `chat_messages` ในสำเนามีขนาดเท่า prod อยู่แล้ว
+  - `customers` ยังไม่มีแถวผู้สนใจราว 9 พันแถว (สร้างตอนขั้น 4) — ถ้าผลก้ำกึ่ง ให้ EXPLAIN ไฟล์จริงซ้ำบนสำเนาที่ถ่ายหลังขั้น 7
+- ทำเมื่อไรก็ได้ก่อนขั้น 2
 
 **ทำไมใช้ไฟล์จริงตรง ๆ ไม่ได้:** ไฟล์ `apps/api/src/modules/customer-journey/sql/journey-active-since.sql`
 - ใช้พารามิเตอร์ `$1` ทุกสาขา ⇒ รันตรง ๆ จะ error `there is no parameter $1`
@@ -177,19 +149,20 @@ SELECT DISTINCT c.id AS customer_id FROM hits h JOIN customers c ON c.id = h.mem
 - prod อาจมี index ที่สร้างมือเพิ่ม — ให้เชื่อแผนจาก EXPLAIN ไม่ใช่รายการนี้
 
 **ผลการตัดสิน:**
-- **ผ่าน** = Execution Time หลักวินาที → ไปขั้น 3.2
+- **ผ่าน** = Execution Time หลักวินาที → ไปข้อ 1.3
 - **ไม่ผ่าน** = หลักนาทีขึ้นไป → dev เพิ่ม index ใน migration **ของ PR นี้** แล้ว EXPLAIN ซ้ำ
   - index ต้องขึ้นใน merge เดียวกัน — ไม่มีรอบ "merge แล้วค่อยเติมทีหลัง" เพราะ cron ไม่รอ
 
 **ถ้า PR นี้ถูก merge ไปแล้ว (= ขึ้น prod แล้ว) ตอนรู้ว่า EXPLAIN ช้า:**
 1. dev ส่ง index เป็น **migration ใหม่ใน PR ต่อท้าย** — merge PR นั้น = deploy index
-   - `<SHA40 ของ PR นี้>` ในขั้น 7–8 ให้ใช้ commit ของ run ที่ขึ้น PR ต่อท้ายนั้นแทน
+   - `<SHA40 ของ PR นี้>` ในขั้น 6–7 ให้ใช้ commit ของ run ที่ขึ้น PR ต่อท้ายนั้นแทน
 2. ถ้า PR ต่อท้ายขึ้นไม่ทันก่อน 03:00 น. → ทำหัวข้อ "ถอย" ข้างล่าง **ก่อน 03:00 น.**
-   - ถอย `bestchoice-api` กลับ image ก่อนหน้า แล้วค่อยขึ้นใหม่พร้อม index
+   - ถอย `bestchoice-api` กลับ image ก่อนหน้า **และถอยเว็บพร้อมกัน** (image ก่อน PR นี้ไม่มี `GET /customers/:id/detail`) แล้วค่อยขึ้นใหม่พร้อม index
 
-### 3.2 ช่วงเวลาที่ merge ได้
+### 1.3 ช่วงเวลาที่ merge ได้
 
 - **merge ช่วงเช้า ให้ run จบก่อนเที่ยง** — เหลือเวลาแก้ index ก่อน 03:30 น. ถ้าต้องแก้
+- **ช่วงคนใช้น้อย** — เว็บขึ้นก่อน API ได้ (ข้อ 0) หน้ารายละเอียดลูกค้าพังช่วงสั้น ๆ ระหว่างนั้น
 - **ห้าม merge วันเสาร์**
   - คืนวันเสาร์→อาทิตย์ cron ไม่ใช้คิวรีข้างบน แต่รันโหมด sweep (`recomputeAll` ทุกลูกค้า — หนักพอ ๆ กับ backfill)
   - ให้คืนแรกเป็นโหมด 48 ชม.
@@ -197,16 +170,18 @@ SELECT DISTINCT c.id AS customer_id FROM hits h JOIN customers c ON c.id = h.mem
 - **ถ้าทำ EXPLAIN ก่อน merge ไม่ได้จริง ๆ:**
   1. merge ช่วงเช้าเท่านั้น
   2. EXPLAIN ไฟล์จริงบนสำเนาที่ลง migration แล้ว
-  3. ช้าและแก้ index ไม่ทันก่อน 03:00 น. → ถอย image (หัวข้อ "ถอย")
+  3. ช้าและแก้ index ไม่ทันก่อน 03:00 น. → ถอย image **และเว็บ** (หัวข้อ "ถอย")
   4. ถ้าไม่ทันเช้า → **เลื่อน merge ไปวันถัดไป**
 
-### 3.3 lock ของ migration
+### 1.4 lock ของ migration (ทั้ง 2 ตัวใน job เดียว)
 
-**ปัญหา:** migration `20261002100000_customer_journey` ถือ **ACCESS EXCLUSIVE lock บน `customers` ตลอดทั้งสคริปต์**
-- ช่วงที่ถือ lock: ADD COLUMN → สร้าง index / FK → เติม `merged_into_id` จาก `audit_logs` → ยุบ chain
-- ถ้ามีทรานแซกชันค้างนานที่แตะ `customers` (รายงาน · เซสชัน MCP · psql ที่เปิดทิ้ง):
+**ปัญหา:** `migrate-db` ลง 2 migration ต่อกัน — ALTER ของทั้งคู่ต้องได้ **ACCESS EXCLUSIVE lock** ⇒ หน้าต่าง lock ครอบทั้งสองตัว
+1. `20261001100000_chat_prospects_phone_nullable` — ALTER `customers` (DROP NOT NULL) และ `chat_rooms` (ADD COLUMN ค่าตั้งต้นคงที่) · สั้น
+2. `20261002100000_customer_journey` — ถือ lock บน `customers` **ตลอดทั้งสคริปต์**
+   - ช่วงที่ถือ lock: ADD COLUMN → สร้าง index / FK → เติม `merged_into_id` จาก `audit_logs` → ยุบ chain
+- ถ้ามีทรานแซกชันค้างนานที่แตะ `customers` หรือ `chat_rooms` (รายงาน · เซสชัน MCP · psql ที่เปิดทิ้ง):
   - ALTER ต้องรอ
-  - ทุกคำขอที่อ่าน/เขียนลูกค้าต่อคิวหลังมัน ขณะที่ revision เก่ายังรับ traffic อยู่
+  - ทุกคำขอที่อ่าน/เขียนลูกค้าหรือห้องแชทต่อคิวหลังมัน ขณะที่ revision เก่ายังรับ traffic อยู่ (webhook แชทเขียน `chat_rooms` ตลอด)
 
 **ก่อนกด merge:**
 1. ตรวจทรานแซกชันที่ค้างด้วย role เจ้าของ แล้วปิดเซสชันของตัวเองที่ค้างนาน:
@@ -216,25 +191,38 @@ SELECT DISTINCT c.id AS customer_id FROM hits h JOIN customers c ON c.id = h.mem
    WHERE datname = current_database() AND xact_start IS NOT NULL
    ORDER BY xact_start;
    ```
-2. merge ช่วงคนใช้น้อย — เช้าก่อนร้านเปิด ซึ่งตรงกับข้อ 3.2 อยู่แล้ว
+2. merge ช่วงคนใช้น้อย — เช้าก่อนร้านเปิด ซึ่งตรงกับข้อ 1.3 อยู่แล้ว
 
 **เรื่อง `lock_timeout`:** job `bestchoice-migrate` ใน pipeline ไม่มีช่องตั้งค่านี้
 - workflow ไม่ได้ตั้ง และ `prisma migrate deploy` ไม่มีตัวเลือกนี้
 - ⇒ ใช้การตรวจ `pg_stat_activity` + ช่วงคนน้อยแทน
 
-## 4. merge PR นี้
+### 1.5 จดของเดิมไว้ถอย
+
+- image ที่ `bestchoice-api` ใช้อยู่ก่อน merge = `<SHA40 ก่อน PR นี้>` — Cloud Run console → `bestchoice-api` → Revisions (ทางมือ)
+  - ตรวจ 2026-09-15: run ของ #1592/#1593 แดง ⇒ image บน prod ยังไม่มีโค้ดเฟส 0 (ไม่มีการสร้าง/รวมผู้สนใจ) — ยืนยันจาก tag ของ revision ตอนจด
+- release ปัจจุบันของ Firebase Hosting site admin (`bestchoicephone.app`) — Firebase console → Hosting → ประวัติ release (ทางมือ)
+
+## 2. merge PR นี้ (ครั้งเดียว)
 
 1. merge แล้วจด `<SHA40 ของ PR นี้>` = commit ของ run จากหน้า Actions
-   - ใช้เป็น image ของขั้น 7–8
-2. รอ run เขียว — `migrate-db` ต้องลง `20261002100000_customer_journey`
+   - image ที่ pipeline push ใช้ tag นี้ — ใช้ในขั้น 4 และ 6–7
+2. เฝ้า run — สองสายวิ่งพร้อมกัน (ข้อ 0):
+   - `deploy-web` เขียวก่อน `migrate-db` จบได้ — **อย่าอ่านว่า run จบแล้ว**
+   - `migrate-db` ต้องลงครบทั้ง `20261001100000_chat_prospects_phone_nullable` และ `20261002100000_customer_journey`
+   - `deploy-api` ต้องเขียว
+3. 🚨 **`migrate-db` หรือ `deploy-api` แดง/ถูกยกเลิก:** `deploy-web` น่าจะขึ้นไปแล้วกับ API เก่า
+   - หน้ารายละเอียดลูกค้า (แผน 1 เรียก `GET /customers/:id/detail`) และแท็บการเดินทาง / แถบขั้น / การ์ดกิจกรรมล่าสุด (`GET /customers/:id/journey*`) พัง
+   - ⇒ **ถอยเว็บทันที** (หัวข้อ "ถอย" → "ถอยเว็บ") แล้วค่อยหาสาเหตุ — เหตุที่น่าจะเจอที่สุดคือ `migrate-db` รอ lock (ข้อ 1.4)
+   - ห้าม merge/รัน pipeline ซ้ำจนกว่า dev ดู log ของ `bestchoice-migrate` แล้ว
 
-**ผ่านเมื่อ:** health ok และบันเดิลเป็น `26.9.28`
+**ผ่านเมื่อ:** run เขียวครบทุก job · health ok · บันเดิลเป็น `26.9.28` (ตรวจครั้งเดียว — ไม่มีรุ่นกลาง)
 
-⚠️ **ตั้งแต่คืนแรกหลัง merge จนกว่าขั้น 8 จะผ่าน:** Sentry error `journey:recompute แคช PURCHASED ไม่เท่ากับ BOUGHT_WHERE` **ขึ้นทุกคืนเป็นเรื่องปกติ**
+⚠️ **ตั้งแต่คืนแรกหลัง merge จนกว่าขั้น 7 จะผ่าน:** Sentry error `journey:recompute แคช PURCHASED ไม่เท่ากับ BOUGHT_WHERE` **ขึ้นทุกคืนเป็นเรื่องปกติ**
 - โหมด 48 ชม. คำนวณแค่คนที่ขยับ ⇒ แคชยังไม่ครบทุกคน
 - เมินได้เฉพาะช่วงนี้เท่านั้น
 
-## 5. apply สิทธิ์ MCP
+## 3. apply สิทธิ์ MCP
 
 รัน `bash .claude/mcp/setup.sh`
 
@@ -243,33 +231,64 @@ SELECT DISTINCT c.id AS customer_id FROM hits h JOIN customers c ON c.id = h.mem
 - `CREATE ROLE` แบบ `WHERE NOT EXISTS`
 - REVOKE/GRANT รายตาราง
 
-🚨 **ต้องทำหลังขั้น 4 เท่านั้น**
+🚨 **ต้องทำหลังขั้น 2 เท่านั้น**
 - ถ้าตารางยังไม่มี `REVOKE` จะ error และ `ON_ERROR_STOP` ยกเลิกทั้งไฟล์ (ไม่มีอะไรเปลี่ยน)
 
 **ผ่านเมื่อ** (เปิด session Claude Code ใหม่แล้ว):
 - MCP ไม่เตือน ACL drift
 - `SELECT count(*) FROM customer_journey_states` อ่านได้
 - `SELECT note FROM customer_journey_entries LIMIT 1` ถูกปฏิเสธ (ถูกต้อง)
-- `SELECT count(*) FROM customers WHERE merged_into_id IS NOT NULL` **≥** `SELECT count(*) FROM audit_logs WHERE action = 'CUSTOMER_PLACEHOLDER_MERGED'`
-  - ปกติเท่ากันหรือมากกว่า
-  - ต่างกันได้โดยไม่ผิด 2 เหตุ:
+- `SELECT count(*) FROM customers WHERE merged_into_id IS NOT NULL` เทียบกับ `SELECT count(*) FROM audit_logs WHERE action = 'CUSTOMER_PLACEHOLDER_MERGED'`
+  - **เท่ากัน หรือต่างได้ทั้งสองทิศจาก 2 เหตุนี้:**
     1. **merged_into_id มากกว่า** — การรวมหลัง deploy ที่หา system user ไม่เจอ: ระบบตั้ง `merged_into_id` แต่ข้าม audit (R12)
     2. **merged_into_id น้อยกว่า** — audit ที่แถวลูกค้าปลายทางไม่มีแล้ว: migration ข้ามไม่เติมให้
-  - ต่างจากสองเหตุนี้หรือไม่แน่ใจ → ตัวชี้ขาดคือคิวรี R12 ในขั้น 6 ต้องได้ 0
+  - ต่างด้วยเหตุอื่นหรือไม่แน่ใจ → รันคิวรีในขั้น 5 ("ผู้สนใจที่ถูกรวมแต่ยังไม่มี merged_into_id") ต้องได้ 0
+    - คิวรีนั้น**ตัดได้เฉพาะเหตุ 2** — แถวของเหตุ 1 มี `merged_into_id` แล้ว คิวรีจึงมองไม่เห็น
 
-## 6. ตรวจก่อน backfill (ใช้ role เจ้าของ ไม่ใช่ MCP)
+## 4. `backfill:chat-prospects`
 
-**ผู้สนใจที่ถูกรวมแต่ audit ถูกข้าม (R12):**
+ทำตาม runbook ใน PR #1592 (นับ PSID ซ้ำก่อน) โดยใช้ image ของขั้น 2 (`<SHA40 ของ PR นี้>`)
+- รันหลัง run ของ merge เขียวเท่านั้น (ไม่มีขั้นระหว่างสอง merge อีกแล้ว)
+
+**dry-run:**
+```bash
+gcloud run jobs create bestchoice-backfill-chat-prospects --project=bestchoice-prod --region=asia-southeast1 \
+  --image=asia-southeast1-docker.pkg.dev/bestchoice-prod/bestchoice/api:<SHA40 ของ PR นี้> \
+  --set-secrets=DATABASE_URL=DATABASE_URL:latest \
+  --set-cloudsql-instances=bestchoice-prod:asia-southeast1:bestchoice-db \
+  --command=npm --args=--prefix,apps/api,run,backfill:chat-prospects \
+  --set-env-vars=EXPECTED_DB_NAME=bestchoice --max-retries=0 --task-timeout=3600s
+gcloud run jobs execute bestchoice-backfill-chat-prospects --project=bestchoice-prod --region=asia-southeast1 --wait
+```
+
+**รันจริง** — เลือกช่วงเงียบ:
+```bash
+gcloud run jobs update bestchoice-backfill-chat-prospects --project=bestchoice-prod --region=asia-southeast1 \
+  --update-env-vars=CONFIRM_BACKFILL=YES_I_AM_SURE,ALLOW_PROD_BACKFILL=YES_I_AM_SURE,NODE_ENV=production
+```
+แล้ว `execute --wait` อีกครั้ง
+
+- exit 2 = เปิดดู log ก่อน ไม่ได้แปลว่าล้มเสมอ
+
+**ผ่านเมื่อ:**
+- MCP `SELECT count(*) FROM chat_rooms WHERE deleted_at IS NULL AND customer_id IS NULL` ≈ 0
+- คิวรีตรวจ 2 ตัวใน PR #1592 = 0 ทั้งคู่
+  - คิวรีนั้นใช้ `acquisition_source` และ `phone` ซึ่ง `mcp_ro` อ่านไม่ได้ ⇒ ต้องรันด้วย role เจ้าของ
+
+## 5. ตรวจก่อน backfill (ใช้ role เจ้าของ ไม่ใช่ MCP)
+
+**ผู้สนใจที่ถูกรวมแต่ยังไม่มี merged_into_id:**
 ```sql
 SELECT count(*) FROM customers WHERE acquisition_source LIKE 'CHAT_%' AND deleted_at IS NOT NULL AND merged_into_id IS NULL;
 ```
 - `mcp_ro` อ่าน `acquisition_source` ไม่ได้ ⇒ ต้องรันด้วยสิทธิ์เจ้าของ
+- คิวรีนี้ตัดได้เฉพาะเหตุ 2 ของขั้น 3 (`merged_into_id` น้อยกว่า audit) — การรวมที่ audit ถูกข้าม (เหตุ 1, R12) มี `merged_into_id` แล้วจึงไม่ขึ้นที่นี่
 - **ได้ 0** = ไปต่อ
 - **มากกว่า 0** = placeholder ที่ถูกรวมก่อนมี audit / `merged_into_id`
   - ประวัติแชทของคนกลุ่มนี้จะไม่ตามไปหน้าลูกค้าจริง
   - ตัดสินก่อนว่ายอมรับ หรือให้ dev เติมมือ
 
-## 7. `backfill:customer-journey` dry-run
+## 6. `backfill:customer-journey` dry-run
 
 🚨 **ห้ามรันช่วง cron (03:00–04:30 น. เวลาไทย)**
 - recompute ซ้อนกันแข่งเขียนแถวแคชชุดเดียวกัน
@@ -287,13 +306,13 @@ gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name=
 ```
 
 **อ่านผล:**
-- ดูบรรทัด `[plan]` ก่อน — ถ้า `unmergedDeletedChatPlaceholders` มากกว่า 0 ให้กลับไปดูคิวรี R12 ในขั้น 6 ก่อนรันต่อ (CLI ไม่เตือนแยกให้)
-- **exit 0** → ไปขั้น 8
-- **exit 1** = ห้องไม่มีเจ้าของเกิน 1% → กลับไปขั้น 2 ห้ามฝืน
+- ดูบรรทัด `[plan]` ก่อน — ถ้า `unmergedDeletedChatPlaceholders` มากกว่า 0 ให้กลับไปดูคิวรีในขั้น 5 ก่อนรันต่อ (CLI ไม่เตือนแยกให้)
+- **exit 0** → ไปขั้น 7
+- **exit 1** = ห้องไม่มีเจ้าของเกิน 1% → กลับไปขั้น 4 ห้ามฝืน
 - **exit 2** = จำนวน PURCHASED ≠ BOUGHT_WHERE หรือ recompute ล้มบางชุด (`[run] FAILED batch …`) → หยุด ส่ง log ให้ dev
   - log มีแค่ id และตัวเลข
 
-## 8. รันจริง
+## 7. รันจริง
 
 ช่วงเงียบ — ไม่ใช่ช่วง 03:00–04:30 น. · รันซ้ำได้ (`INSERT … ON CONFLICT`)
 
@@ -308,11 +327,11 @@ gcloud run jobs execute bestchoice-backfill-customer-journey --project=bestchoic
 - ผลรวมใกล้ `SELECT count(*) FROM customers WHERE deleted_at IS NULL`
 - เปิดหน้า `/customers/:id` ของผู้สนใจจริงหนึ่งคน แล้วดูแท็บ "การเดินทาง" และแถบขั้น
 
-## 9. เช้าวันถัดไป
+## 8. เช้าวันถัดไป
 
 **Sentry error `journey:recompute แคช PURCHASED ไม่เท่ากับ BOUGHT_WHERE`:**
-- นับเฉพาะคืนหลังขั้น 8 ผ่าน — คืนก่อนหน้านั้นคาดไว้แล้ว (ขั้น 4)
-- คืนหลังขั้น 8 ต้องไม่มี
+- นับเฉพาะคืนหลังขั้น 7 ผ่าน — คืนก่อนหน้านั้นคาดไว้แล้ว (ขั้น 2)
+- คืนหลังขั้น 7 ต้องไม่มี
 - log ของ cron มี `failedBatches=` — มากกว่า 0 = บางชุดล้ม ให้ดู Sentry ของชุดนั้น
   - ด่าน parity ยังรันทุกคืนแม้บางชุดล้ม
 
@@ -334,13 +353,18 @@ gcloud run jobs execute bestchoice-backfill-customer-journey --project=bestchoic
 gcloud run services update bestchoice-api --project=bestchoice-prod --region=asia-southeast1 \
   --image=asia-southeast1-docker.pkg.dev/bestchoice-prod/bestchoice/api:<SHA40 ก่อน PR นี้>
 ```
-- ปกติ `<SHA40 ก่อน PR นี้>` คือ `<SHA40 แผน 1>`
+- `<SHA40 ก่อน PR นี้>` = image ที่จดไว้ในข้อ 1.5 — PR เดียว ⇒ เป็น image **ก่อนทั้งเฟส 0 และแผน 1** (ไม่ใช่ image ของแผน 1 อีกแล้ว)
+- 🚨 **ถอย API = ถอยเว็บพร้อมกันเสมอ** — image ก่อน PR นี้ไม่มี `GET /customers/:id/detail` ที่เว็บ 26.9.28 ใช้
 - schema เป็นแบบเพิ่มอย่างเดียว — image เก่ารันบนฐานที่ลง migration แล้วได้
+  - ⚠️ หลังขั้น 4 มีลูกค้าที่ `phone` ว่างราว 9 พันแถว — Prisma client ของ image ก่อนเฟส 0 ยังถือว่า `phone` ไม่ว่าง และยังไม่ได้ทดสอบว่าอ่านแถวเหล่านี้ได้ปลอดภัย ⇒ หลังขั้น 4 ให้พิจารณาแก้ไปข้างหน้าก่อนถอย และอ่านเรื่องถอยใน runbook ของ PR #1592
 - ไม่มี down-migration · **ห้ามลบตาราง/คอลัมน์เอง**
 
 ### ถอยเว็บ
-- Firebase console → Hosting → ประวัติ release ของแต่ละ site → Rollback
-- หรือ deploy บันเดิลของ SHA ก่อนหน้า
+- **ทางมือ:** Firebase console → Hosting → site admin (`bestchoicephone.app`) → ประวัติ release → Rollback ไป release ที่จดไว้ในข้อ 1.5
+  - ไม่พบคำสั่งถอย Firebase Hosting ในรีโป (`docs/guides/DEPLOY.md` · `workflows/deploy.md` · job `deploy-web`) — ทางคอนโซลคือทางที่มี
+  - site shop (`www.bestchoicephone.com`) ไม่ต้องถอย — branch นี้ไม่แตะ `apps/web-shop`
+- เว็บที่ถอยแล้วใช้กับ API เก่าได้ · ถ้าถอยเฉพาะเว็บเพราะ `migrate-db` / `deploy-api` แดง: หลังแก้สาเหตุ push ถัดไปเข้า main จะขึ้นเว็บใหม่อีกครั้ง
+- ถอยถาวร = revert PR นี้ (ดูหัวข้อถัดไป) — `workflows/deploy.md` เขียนไว้ว่า "revert commit + redeploy"
 
 ### 🚨 การถอย image เป็นของชั่วคราว
 - push ถัดไปเข้า main จะขึ้น HEAD ใหม่ทั้งชุด
@@ -348,29 +372,28 @@ gcloud run services update bestchoice-api --project=bestchoice-prod --region=asi
   - migration ยังอยู่ ไม่เป็นไรเพราะเป็นแบบเพิ่มอย่างเดียว
 
 ### ระหว่างช่วงที่ถอยอยู่
-- โค้ดเก่ารวมผู้สนใจ **โดยไม่ตั้ง `merged_into_id`** — แต่ยังเขียน audit `CUSTOMER_PLACEHOLDER_MERGED` ตามเดิม
-- โค้ดเก่าไม่ย้ายบันทึกการเดินทางของ placeholder
-- bot/hook ไม่เขียน entry ใหม่
+- image ก่อน PR นี้ยังไม่มีโค้ดเฟส 0 ⇒ ไม่สร้าง/ไม่รวมผู้สนใจ · bot/hook ไม่เขียน entry ใหม่
+- ถ้าถอยไปใช้ image อื่นที่มีเฟส 0 แต่ไม่มีแผน 2 (เช่น build มือจาก commit กลาง): โค้ดนั้นรวมผู้สนใจ **โดยไม่ตั้ง `merged_into_id`** แต่ยังเขียน audit `CUSTOMER_PLACEHOLDER_MERGED` และไม่ย้ายบันทึกการเดินทางของ placeholder
 
 ### หลังกลับมาใช้ image ใหม่ (roll forward)
-1. รันคิวรี R12 (ขั้น 6) — มากกว่า 0 = มีการรวมระหว่างช่วงถอย
+1. รันคิวรีขั้น 5 — มากกว่า 0 = มีการรวมระหว่างช่วงถอย
 2. ถ้ามากกว่า 0: รันบล็อก `-- journey-backfill:start` … `-- journey-backfill:end` ใน `migration.sql` ซ้ำด้วย role เจ้าของ
    - รันซ้ำได้ แตะเฉพาะ placeholder ที่ถูกลบแล้วและยังไม่มี `merged_into_id`
    - บล็อกนี้สร้างลิงก์จาก audit ที่โค้ดเก่ายังเขียน
-3. คำนวณแคชใหม่: รัน `backfill:customer-journey` (ขั้น 7–8) หรือรอ sweep คืนวันอาทิตย์
+3. คำนวณแคชใหม่: รัน `backfill:customer-journey` (ขั้น 6–7) หรือรอ sweep คืนวันอาทิตย์
    - บันทึกที่ค้างใต้ id ของ placeholder ถูกนับผ่าน `merged_into_id` — แท็บและแคชอ่านผ่าน family ทั้งคู่ ไม่ต้องย้ายแถว
 - ข้อจำกัด: การรวมช่วงถอยที่ audit ถูกข้าม (หา system user ไม่เจอ) บล็อกนี้ซ่อมไม่ได้
-  - R12 จะยังเหลือมากกว่า 0 ให้ตัดสินแบบเดียวกับขั้น 6
+  - คิวรีขั้น 5 จะยังเหลือมากกว่า 0 ให้ตัดสินแบบเดียวกับขั้น 5
 
-### ถอยกรณี index ไม่ทัน (ด่าน 3.1)
-- ใช้คำสั่งถอย API ข้างบน **ก่อน 03:00 น.**
+### ถอยกรณี index ไม่ทัน (ด่าน 1.2)
+- ใช้คำสั่งถอย API ข้างบน **ก่อน 03:00 น.** และถอยเว็บพร้อมกัน
 - แล้วค่อยขึ้นใหม่พร้อม index ใน PR ต่อท้าย
 
 ## Factory reset (Ruling FR-RESET)
 
 - `factory:reset` ล้าง `customer_journey_entries` และ `customer_journey_states` **ทั้งตาราง** (`apps/api/src/cli/factory-reset-tables.ts`)
   - แม้ reset จะเก็บตาราง customers, ห้องแชท และการผูก LINE ไว้
-- **หลัง factory reset ทุกครั้ง:** รัน `backfill:customer-journey` (ขั้น 7–8)
+- **หลัง factory reset ทุกครั้ง:** รัน `backfill:customer-journey` (ขั้น 6–7)
   - แคชขั้นกลับมาจากข้อมูลธุรกิจที่เหลือ
 - **ประวัติเหตุการณ์หายถาวรโดยตั้งใจ** เช่น `PLACEHOLDER_MERGED` · `LINE_LINKED` · `BOT_HANDOFF` · `CONTACT_ADDED`
   - ไม่มีทางสร้างกลับ

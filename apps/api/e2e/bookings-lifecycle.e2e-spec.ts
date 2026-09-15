@@ -248,6 +248,6 @@ describe('Booking mutations and real SHOP ledger on isolated PostgreSQL', () => 
     expect(await bookings.autoExpire(cutoff)).toBe(1);
     expect(await readEntries(failing.id)).toHaveLength(2);
     expect(await bookings.autoExpire(cutoff)).toBe(0);
-  });
+  }, 60_000); // 501 ใบจอง × tx ต่อใบ — ใช้เวลาเกินเพดาน 5 วิของ jest เมื่อ runner มีงานชนกัน
 
 });

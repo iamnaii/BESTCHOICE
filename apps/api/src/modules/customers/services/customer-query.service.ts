@@ -40,7 +40,7 @@ const BOUGHT_SALE_TYPES = [...CUSTOMER_BOUGHT_SALE_TYPES];
  * (contract-workflow.service.ts) ⇒ คนที่มีแต่สัญญาร่างยังไม่ได้ซื้ออะไรเลย
  * รายการสถานะอยู่ที่ CUSTOMER_BOUGHT_CONTRACT_STATUSES ใน packages/shared จุดเดียว
  */
-const BOUGHT_WHERE: Prisma.CustomerWhereInput = {
+export const BOUGHT_WHERE: Prisma.CustomerWhereInput = {
   OR: [
     { contracts: { some: { deletedAt: null, status: { in: BOUGHT_CONTRACT_STATUSES } } } },
     { sales: { some: { deletedAt: null, saleType: { in: BOUGHT_SALE_TYPES } } } },

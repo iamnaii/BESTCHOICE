@@ -5,7 +5,7 @@
   "scripts": {
     "prebuild": "npm run build --workspace=@installment/shared",
     "build": "prisma generate && prisma generate --schema=prisma-finance/schema.prisma && nest build && npm run verify:assets",
-    "verify:assets": "node -e \"const fs=require('fs');const f='dist/src/modules/contracts/templates/hire-purchase-contract.html';if(!fs.existsSync(f)){console.error('❌ Missing critical asset:',f);process.exit(1)}console.log('✓ Assets verified')\"",
+    "verify:assets": "node -e \"const fs=require('fs');for(const f of ['dist/src/modules/contracts/templates/hire-purchase-contract.html','dist/src/modules/customer-journey/sql/journey-state.sql']){if(!fs.existsSync(f)){console.error('❌ Missing critical asset:',f);process.exit(1)}}console.log('✓ Assets verified')\"",
     "predev": "npm run build --workspace=@installment/shared",
     "dev": "nest start --watch",
     "start": "prisma migrate deploy && node dist/src/main",

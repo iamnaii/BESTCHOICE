@@ -2,18 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { formatThaiDateShort, formatThaiTime } from '@/lib/date';
 import { groupEventsByDate, relativeTimeLabel } from '../eventTimelineUtils';
 
-const NOW = new Date('2026-09-15T05:00:00.000Z');
-const OLDER = '2026-09-12T09:15:00.000Z';
+// ค่าทดสอบสร้างจากปฏิทินท้องถิ่น (new Date(y, m, d, ...)) ไม่ใช่ UTC instant ('...Z') —
+// groupEventsByDate ตัดวันด้วย setHours(0,0,0,0) ของเครื่องผู้ใช้ (เจตนา — ดู eventTimelineUtils.ts)
+// ค่า 'Z' ใกล้เที่ยงคืนจะข้ามวันไม่เหมือนกันในแต่ละ timezone ที่รันเทส (พังที่ Asia/Bangkok มาก่อน)
+const NOW = new Date(2026, 8, 15, 12, 0, 0); // 15 ก.ย. 2569 เที่ยง (เวลาท้องถิ่น)
+const OLDER = new Date(2026, 8, 12, 9, 15, 0).toISOString();
 
 describe('groupEventsByDate', () => {
   it('วันนี้ / เมื่อวาน / วันที่ — คงลำดับที่ส่งมา ไม่เรียงใหม่', () => {
     const groups = groupEventsByDate(
       [
-        { id: 'a', timestamp: '2026-09-15T04:30:00.000Z' },
-        { id: 'b', timestamp: '2026-09-15T01:00:00.000Z' },
-        { id: 'c', timestamp: '2026-09-14T23:59:00.000Z' },
+        { id: 'a', timestamp: new Date(2026, 8, 15, 11, 30, 0).toISOString() }, // วันนี้ เช้ากว่า NOW
+        { id: 'b', timestamp: new Date(2026, 8, 15, 8, 0, 0).toISOString() }, // วันนี้ เช้ากว่านั้นอีก
+        { id: 'c', timestamp: new Date(2026, 8, 14, 23, 59, 0).toISOString() }, // เมื่อวาน ดึกๆ
         { id: 'd', timestamp: OLDER },
-        { id: 'e', timestamp: '2026-09-12T08:00:00.000Z' },
+        { id: 'e', timestamp: new Date(2026, 8, 12, 8, 0, 0).toISOString() },
       ],
       NOW,
     );

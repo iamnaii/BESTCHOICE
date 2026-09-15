@@ -6,14 +6,17 @@
  * 🔴 PDPA: JourneyEvent และแถว entries ห้ามพกข้อความแชท · callLog.notes · เบอร์ · เลขบัตร · ที่อยู่
  */
 
-/** 5 ขั้นของเส้นทาง เรียงตามลำดับจริง — ขั้น 2 = รู้ตัวตน (ได้เบอร์/เลขบัตร/ผูก LINE แล้ว) ไม่ใช่ "คุยแล้ว" */
+/**
+ * 5 ขั้นของเส้นทาง เรียงตามลำดับจริง — ขั้น 2 IDENTIFIED = ได้เบอร์/เลขบัตร · ผูก LINE · เป็นปลายทางของการรวม ไม่ใช่ "คุยแล้ว"
+ * (prod: ข้อความพนักงานมี outbound_sent_at แค่ 1 ใน 74,514 ⇒ ขั้น "คุยแล้ว" ว่างเสมอ — คำตัดสิน OD-9 คงกติกา เปลี่ยนแค่ป้าย)
+ */
 export const JOURNEY_STAGES = ['CONTACTED', 'IDENTIFIED', 'INTERESTED', 'CREDIT', 'PURCHASED'] as const;
 export type JourneyStage = (typeof JOURNEY_STAGES)[number];
 
 /** ป้ายไทยของแต่ละขั้น — แถบขั้นใต้หัวหน้ารายละเอียดลูกค้าใช้ชุดนี้ */
 export const STAGE_LABELS: Record<JourneyStage, string> = {
   CONTACTED: 'ทักเข้ามา',
-  IDENTIFIED: 'รู้ตัวตน',
+  IDENTIFIED: 'ได้เบอร์ / ยืนยันตัวตน',
   INTERESTED: 'สนใจจริง / นัด-จอง',
   CREDIT: 'ตรวจเครดิต',
   PURCHASED: 'ซื้อแล้ว',

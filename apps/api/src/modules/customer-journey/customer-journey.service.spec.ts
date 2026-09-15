@@ -5,8 +5,8 @@ import { CustomerJourneyService, resolveJourneyGroups } from './customer-journey
 import { chatSource } from './sources/chat.source';
 import { collectionsSource } from './sources/collections.source';
 import { creditSource } from './sources/credit.source';
-import { entriesSource } from './sources/entries.source';
-import { decodeJourneyCursor, encodeJourneyCursor } from './sources/journey-window';
+import { entriesSourceFor } from './sources/entries.source';
+import { decodeJourneyCursor, encodeJourneyCursor, type JourneySource } from './sources/journey-window';
 import { paymentSource } from './sources/payment.source';
 import { pointsSource } from './sources/points.source';
 import { saleSource } from './sources/sale.source';
@@ -19,9 +19,12 @@ jest.mock('./sources/payment.source', () => ({ paymentSource: jest.fn() }));
 jest.mock('./sources/collections.source', () => ({ collectionsSource: jest.fn() }));
 jest.mock('./sources/service.source', () => ({ serviceSource: jest.fn() }));
 jest.mock('./sources/points.source', () => ({ pointsSource: jest.fn() }));
-jest.mock('./sources/entries.source', () => ({ entriesSource: jest.fn() }));
+jest.mock('./sources/entries.source', () => ({ entriesSourceFor: jest.fn() }));
 
-const ALL = [chatSource, creditSource, saleSource, paymentSource, collectionsSource, serviceSource, pointsSource, entriesSource];
+/** แหล่ง entries ที่ entriesSourceFor(กลุ่มที่ resolve แล้ว) คืนให้หน้า */
+const entriesPage = jest.fn<ReturnType<JourneySource>, Parameters<JourneySource>>();
+const ALL = [chatSource, creditSource, saleSource, paymentSource, collectionsSource, serviceSource, pointsSource, entriesPage];
+const groupSet = (...groups: JourneyEventGroup[]) => new Set<JourneyEventGroup>(groups);
 const day = (n: number) => new Date(Date.UTC(2026, 8, 1 + n)).toISOString();
 const ev = (id: string, timestamp: string, group: JourneyEventGroup): JourneyEvent => ({ id, type: 'TEST', group, stage: null, timestamp, title: id, actor: null, reliability: 'exact', origin: 'SOURCE' });
 const OWNER = { id: 'o1', role: 'OWNER' };
@@ -39,36 +42,43 @@ describe('CustomerJourneyService.list', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     for (const source of ALL) jest.mocked(source).mockResolvedValue([]);
+    jest.mocked(entriesSourceFor).mockReturnValue(entriesPage);
   });
 
   it('placeholder ที่รวมแล้ว → redirect ไม่เรียกแหล่ง · ไม่มี/ลบด้วยเหตุอื่น → 404', async () => {
     await expect(setup({ id: 'p1', deletedAt: new Date(), mergedIntoId: 'c1' }).service.list('p1', {}, OWNER)).resolves.toEqual({ redirectToCustomerId: 'c1' });
     for (const source of ALL) expect(source).not.toHaveBeenCalled();
+    expect(entriesSourceFor).not.toHaveBeenCalled();
     await expect(setup(null).service.list('x', {}, OWNER)).rejects.toThrow(new NotFoundException('ไม่พบลูกค้า'));
     await expect(setup({ id: 'd1', deletedAt: new Date(), mergedIntoId: null }).service.list('d1', {}, OWNER)).rejects.toThrow(NotFoundException);
   });
 
-  it('ids = ลูกค้า + placeholder ที่รวมเข้ามา · ค่าตั้งต้นเรียก chat/credit/sale/collections/service + entries ครั้งเดียว', async () => {
+  it('ids = ลูกค้า + placeholder ที่รวมเข้ามา · ค่าตั้งต้นเรียก chat/credit/sale/collections/service + entries ของกลุ่มชุดนั้นครั้งเดียว', async () => {
     const { prisma, service } = setup(LIVE, [{ id: 'p1' }, { id: 'p2' }]);
     const page = asPage(await service.list('c1', {}, OWNER));
     expect(prisma.customer.findMany).toHaveBeenCalledWith({ where: { mergedIntoId: 'c1' }, select: { id: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
     expect(page).toMatchObject({ customerId: 'c1', mergedCustomerIds: ['p1', 'p2'], events: [], nextCursor: null });
     expect(page.notRecorded.length).toBeGreaterThan(0);
     expect(chatSource).toHaveBeenCalledWith(prisma, ['c1', 'p1', 'p2'], { limit: 30, before: undefined, from: undefined, to: undefined }, OWNER);
-    for (const source of [chatSource, creditSource, saleSource, collectionsSource, serviceSource, entriesSource]) expect(source).toHaveBeenCalledTimes(1);
+    for (const source of [chatSource, creditSource, saleSource, collectionsSource, serviceSource, entriesPage]) expect(source).toHaveBeenCalledTimes(1);
+    expect(entriesSourceFor).toHaveBeenCalledTimes(1);
+    expect(entriesSourceFor).toHaveBeenCalledWith(groupSet('chat', 'credit', 'sale', 'collections', 'service'));
     expect(paymentSource).not.toHaveBeenCalled();
     expect(pointsSource).not.toHaveBeenCalled();
   });
 
-  it('ACCOUNTANT ไม่เรียกแชทและตัดกลุ่ม chat จาก entries · SALES ไม่เรียก payment/collections', async () => {
-    jest.mocked(entriesSource).mockResolvedValue([ev('entry-chat', day(2), 'chat'), ev('entry-credit', day(1), 'credit')]);
+  it('ACCOUNTANT ไม่เรียกแชท · entries อ่านเฉพาะกลุ่มที่เห็น (กลุ่มซ่อนไม่กินขอบหน้า) · SALES ไม่เรียก payment/collections', async () => {
+    jest.mocked(entriesPage).mockResolvedValue([ev('entry-chat', day(2), 'chat'), ev('entry-credit', day(1), 'credit')]);
     const page = asPage(await setup(LIVE).service.list('c1', { groups: ['chat', 'credit'] }, { id: 'a1', role: 'ACCOUNTANT' }));
     expect(chatSource).not.toHaveBeenCalled();
+    expect(entriesSourceFor).toHaveBeenCalledWith(groupSet('credit'));
     expect(page.events.map((e) => e.id)).toEqual(['entry-credit']);
+    jest.mocked(entriesSourceFor).mockClear();
     await setup(LIVE).service.list('c1', { groups: ['payment', 'collections', 'sale'] }, { id: 's1', role: 'SALES' });
     expect(paymentSource).not.toHaveBeenCalled();
     expect(collectionsSource).not.toHaveBeenCalled();
     expect(saleSource).toHaveBeenCalledTimes(1);
+    expect(entriesSourceFor).toHaveBeenCalledWith(groupSet('sale'));
     expect([...resolveJourneyGroups(undefined, 'SALES')]).toEqual(['chat', 'credit', 'sale', 'service']);
   });
 
@@ -84,5 +94,7 @@ describe('CustomerJourneyService.list', () => {
     const good = setup(LIVE);
     await good.service.list('c1', { cursor: encodeJourneyCursor({ timestamp: day(5), id: 'x-1' }), from: day(0), to: day(9), groups: ['service'], limit: 10 }, OWNER);
     expect(serviceSource).toHaveBeenCalledWith(good.prisma, ['c1'], { limit: 10, before: { ts: day(5), id: 'x-1' }, from: new Date(day(0)), to: new Date(day(9)) }, OWNER);
+    // กลุ่มที่ไม่มีบันทึก entries — ส่งชุดกลุ่มนี้ต่อ (entriesSourceFor ไม่ยิง DB เอง) ไม่ใช่ทุกกลุ่ม
+    expect(entriesSourceFor).toHaveBeenLastCalledWith(groupSet('service'));
   });
 });

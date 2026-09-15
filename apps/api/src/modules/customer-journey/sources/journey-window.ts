@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import type { JourneyEvent, JourneyEventGroup } from '@installment/shared';
+import { JOURNEY_HIDDEN_GROUPS, type JourneyEvent, type JourneyEventGroup } from '@installment/shared';
 import type { PrismaService } from '../../../prisma/prisma.service';
 
 export interface JourneyActor { id: string; role: string }
@@ -13,8 +13,14 @@ export type JourneySource = (prisma: PrismaService, customerIds: string[], windo
 type EventActor = NonNullable<JourneyEvent['actor']>;
 type EventKey = Pick<JourneyEvent, 'timestamp' | 'id'>;
 
-/** ชุดเดียวกับ CHAT_VISIBLE_ROLES (apps/web/src/config/menu.ts:1204) */
-export const JOURNEY_CHAT_ROLES: ReadonlySet<string> = new Set(['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']);
+/**
+ * กฎกลุ่มที่บทบาทไม่เห็นมีที่เดียว = JOURNEY_HIDDEN_GROUPS ของ shared (ห้ามประกาศชุดบทบาทซ้ำใน API)
+ * ทั้ง resolveJourneyGroups และทุกแหล่ง (แชท · ลิงก์แชท · ยอดชำระ · ติดตามหนี้) ถามผ่านฟังก์ชันนี้ — เจ้าของเคาะเปลี่ยนที่ shared แล้วมีผลทั้งเส้น
+ */
+export function roleSeesGroup(role: string, group: JourneyEventGroup): boolean {
+  const hidden = Object.prototype.hasOwnProperty.call(JOURNEY_HIDDEN_GROUPS, role) ? JOURNEY_HIDDEN_GROUPS[role] : [];
+  return !hidden.includes(group);
+}
 
 /** DB เรียงด้วยเวลาอย่างเดียว เวลาเท่ากันตัดสินด้วย id ใน JS (ไม่พึ่ง collation) — ผิดได้เมื่อมีแถวเวลาเดียวกันเกิน 200 แถวที่รอยตัดเท่านั้น */
 export const SOURCE_SCAN_PAD = 200;

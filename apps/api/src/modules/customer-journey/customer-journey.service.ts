@@ -1,12 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { JOURNEY_DEFAULT_GROUPS, JOURNEY_HIDDEN_GROUPS, type JourneyEventGroup, type JourneyListResponse, type JourneyRedirect } from '@installment/shared';
+import { JOURNEY_DEFAULT_GROUPS, type JourneyEventGroup, type JourneyListResponse, type JourneyRedirect } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { JourneyListQueryDto } from './dto/journey-list-query.dto';
 import { chatSource } from './sources/chat.source';
 import { collectionsSource } from './sources/collections.source';
 import { creditSource } from './sources/credit.source';
-import { entriesSource } from './sources/entries.source';
-import { decodeJourneyCursor, mergeJourneyPage, type JourneyActor, type JourneySource, type JourneyWindow } from './sources/journey-window';
+import { entriesSourceFor } from './sources/entries.source';
+import { decodeJourneyCursor, mergeJourneyPage, roleSeesGroup, type JourneyActor, type JourneySource, type JourneyWindow } from './sources/journey-window';
 import { paymentSource } from './sources/payment.source';
 import { pointsSource } from './sources/points.source';
 import { saleSource } from './sources/sale.source';
@@ -14,9 +14,10 @@ import { serviceSource } from './sources/service.source';
 
 export const DEFAULT_JOURNEY_LIMIT = 30;
 
+/** แหล่งเฉพาะกลุ่ม — บันทึก entries/แท็กมาจาก entriesSourceFor(groups) ตัวเดียวที่ sourcesForGroups ต่อท้ายให้ */
 const SOURCES_BY_GROUP: Record<JourneyEventGroup, readonly JourneySource[]> = {
-  chat: [chatSource, entriesSource], credit: [creditSource, entriesSource], sale: [saleSource, entriesSource],
-  payment: [paymentSource], collections: [collectionsSource], service: [serviceSource], points: [pointsSource], system: [entriesSource],
+  chat: [chatSource], credit: [creditSource], sale: [saleSource],
+  payment: [paymentSource], collections: [collectionsSource], service: [serviceSource], points: [pointsSource], system: [],
 };
 
 /** ข้อความท้ายแท็บ "ระบบยังไม่เก็บ" (synthesis notRecordedToday ที่พนักงานต้องรู้) */
@@ -32,11 +33,14 @@ export const JOURNEY_NOT_RECORDED: readonly string[] = [
 
 /** ไม่ส่ง groups = JOURNEY_DEFAULT_GROUPS · ตัด JOURNEY_HIDDEN_GROUPS[role] (ACCOUNTANT ไม่เห็นแชท · SALES ไม่เห็นยอดชำระ/ติดตามหนี้ — รอเจ้าของเคาะ ข้อ 5 · ชุดเดียวกับเว็บ) */
 export function resolveJourneyGroups(requested: readonly JourneyEventGroup[] | undefined, role: string): Set<JourneyEventGroup> {
-  const hidden = new Set<JourneyEventGroup>(JOURNEY_HIDDEN_GROUPS[role] ?? []);
-  return new Set((requested?.length ? requested : JOURNEY_DEFAULT_GROUPS).filter((g) => !hidden.has(g)));
+  return new Set((requested?.length ? requested : JOURNEY_DEFAULT_GROUPS).filter((g) => roleSeesGroup(role, g)));
 }
 
-export const sourcesForGroups = (groups: ReadonlySet<JourneyEventGroup>): JourneySource[] => [...new Set([...groups].flatMap((g) => SOURCES_BY_GROUP[g]))];
+/**
+ * แหล่งของกลุ่มที่ resolve แล้ว + entriesSourceFor(groups) หนึ่งตัว (DB กรอง kind ตามกลุ่มชุดนี้ · แท็กเฉพาะ system)
+ * ⇒ บันทึกของกลุ่มที่ไม่ได้ขอหรือบทบาทไม่เห็นไม่ถูกอ่านและไม่กินขอบ limit+1 ของ mergeJourneyPage (หน้าไม่สั้น/ว่างทั้งที่มี cursor)
+ */
+export const sourcesForGroups = (groups: ReadonlySet<JourneyEventGroup>): JourneySource[] => [...new Set([...groups].flatMap((g) => SOURCES_BY_GROUP[g])), entriesSourceFor(groups)];
 
 @Injectable()
 export class CustomerJourneyService {

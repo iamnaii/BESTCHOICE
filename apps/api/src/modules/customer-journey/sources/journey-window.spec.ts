@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import type { JourneyEvent, JourneyEventGroup } from '@installment/shared';
 import {
   bahtText, compareEventsDesc, dbTimeRange, decodeJourneyCursor, encodeJourneyCursor,
-  finalizeSource, mergeJourneyPage, pickMetadata, type JourneyWindow,
+  finalizeSource, mergeJourneyPage, pickMetadata, roleSeesGroup, type JourneyWindow,
 } from './journey-window';
 
 const day = (n: number) => new Date(Date.UTC(2026, 8, 1 + n)).toISOString();
@@ -11,6 +11,17 @@ const ev = (id: string, timestamp: string, group: JourneyEventGroup = 'chat'): J
 });
 
 describe('journey-window', () => {
+  it('roleSeesGroup อ่าน JOURNEY_HIDDEN_GROUPS ของ shared · บทบาทที่ไม่อยู่ในตาราง (รวมชื่อชนคีย์ของ Object) เห็นทุกกลุ่ม', () => {
+    expect(roleSeesGroup('ACCOUNTANT', 'chat')).toBe(false);
+    expect(roleSeesGroup('ACCOUNTANT', 'payment')).toBe(true);
+    expect(roleSeesGroup('SALES', 'payment')).toBe(false);
+    expect(roleSeesGroup('SALES', 'collections')).toBe(false);
+    expect(roleSeesGroup('SALES', 'chat')).toBe(true);
+    for (const role of ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'constructor', 'toString']) {
+      for (const group of ['chat', 'payment', 'collections', 'system'] as const) expect(roleSeesGroup(role, group)).toBe(true);
+    }
+  });
+
   it('cursor เข้ารหัส/ถอดกลับได้ · ค่าเสีย → 400', () => {
     const cursor = encodeJourneyCursor(ev('chatday-r1-2026-09-09', '2026-09-08T17:50:00.000Z'));
     expect(decodeJourneyCursor(cursor)).toEqual({ ts: '2026-09-08T17:50:00.000Z', id: 'chatday-r1-2026-09-09' });

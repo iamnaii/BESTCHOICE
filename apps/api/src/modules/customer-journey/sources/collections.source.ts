@@ -1,6 +1,6 @@
 import type { JourneyEvent } from '@installment/shared';
 import { customerContractEvents } from './contract-timeline';
-import { finalizeSource, pickMetadata, type JourneySource } from './journey-window';
+import { finalizeSource, pickMetadata, roleSeesGroup, type JourneySource } from './journey-window';
 
 const VIEWS: Record<string, { type: string; keys: readonly string[]; actorType: 'STAFF' | 'SYSTEM' }> = {
   CALL: { type: 'COLLECTION_CALL', keys: ['result'], actorType: 'STAFF' },
@@ -10,9 +10,9 @@ const VIEWS: Record<string, { type: string; keys: readonly string[]; actorType: 
   LETTER: { type: 'COLLECTION_LETTER', keys: ['status', 'letterNumber'], actorType: 'STAFF' },
 };
 
-/** PDPA: ไม่คัด subtitle (DUNNING = messageContent) · metadata เฉพาะคีย์ใน VIEWS · ชนิดที่ไม่รู้จักถูกทิ้ง */
+/** PDPA: ไม่คัด subtitle (DUNNING = messageContent) · metadata เฉพาะคีย์ใน VIEWS · ชนิดที่ไม่รู้จักถูกทิ้ง · บทบาทที่ไม่เห็นกลุ่ม collections ตาม JOURNEY_HIDDEN_GROUPS ได้ [] */
 export const collectionsSource: JourneySource = async (prisma, customerIds, window, actor) => {
-  if (actor.role === 'SALES') return [];
+  if (!roleSeesGroup(actor.role, 'collections')) return [];
   const events: JourneyEvent[] = [];
   for (const { contract, actorUserId, event } of await customerContractEvents(prisma, customerIds, window)) {
     const view = VIEWS[event.type];

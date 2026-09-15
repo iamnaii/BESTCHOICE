@@ -3,7 +3,7 @@ import { CHAT_SOURCE_PREFIX, type JourneyEvent } from '@installment/shared';
 import type { PrismaService } from '../../../prisma/prisma.service';
 import { formatDateTime } from '../../../utils/thai-date.util';
 import { roomAssignmentScope } from '../../credit-check/services/room-credit-access';
-import { JOURNEY_CHAT_ROLES, asRecord, bahtText, dbTimeRange, finalizeSource, scanTake, staffActor, type JourneyActor, type JourneySource, type JourneyWindow } from './journey-window';
+import { asRecord, bahtText, dbTimeRange, finalizeSource, roleSeesGroup, scanTake, staffActor, type JourneyActor, type JourneySource, type JourneyWindow } from './journey-window';
 
 export const CHAT_CHANNEL_LABELS: Record<string, string> = { FACEBOOK: 'Facebook', LINE_SHOP: 'LINE ร้าน', LINE_FINANCE: 'LINE การเงิน', TIKTOK: 'TikTok', WEB: 'เว็บ' };
 
@@ -102,7 +102,7 @@ async function createdEvents(prisma: PrismaService, customerIds: string[]): Prom
 
 /** กลุ่ม chat · PDPA: ไม่อ่าน chat_messages.text · todo.title/description · เบอร์/ที่อยู่ใน audit */
 export const chatSource: JourneySource = async (prisma, customerIds, window, actor) => {
-  if (!JOURNEY_CHAT_ROLES.has(actor.role)) return [];
+  if (!roleSeesGroup(actor.role, 'chat')) return [];
   const [rooms, leads, created] = await Promise.all([roomEvents(prisma, customerIds, actor), leadEvents(prisma, customerIds, window), createdEvents(prisma, customerIds)]);
   return finalizeSource([...rooms, ...leads, ...created], window);
 };

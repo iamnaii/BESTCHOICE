@@ -9,7 +9,7 @@ import {
 } from '@installment/shared';
 import { roomAssignmentScope } from '../../credit-check/services/room-credit-access';
 import { JOURNEY_DATA_SCHEMAS } from '../journey-data-schemas';
-import { JOURNEY_CHAT_ROLES, asActorType, asRecord, dbTimeRange, finalizeSource, scanTake, staffActor, whenAny, type JourneySource } from './journey-window';
+import { asActorType, asRecord, dbTimeRange, finalizeSource, roleSeesGroup, scanTake, staffActor, whenAny, type JourneySource } from './journey-window';
 
 type ShownKind = Exclude<JourneyEntryKind, 'CREDIT_CHECK_OPENED_BY'>; // credit.source.ts ใช้เติมผู้เปิดแทน
 const VIEWS: Record<ShownKind, { group: JourneyEventGroup; stage: JourneyStage | null; title: string }> = {
@@ -54,7 +54,7 @@ const isMergeDuplicate = (row: TagRow, all: readonly TagRow[]) => !!row.deletedA
 
 /**
  * แถว entries + แท็ก ของกลุ่มที่ขอ — kind กรองที่ DB (แถวของกลุ่มหนึ่งไม่ดันอีกกลุ่มหลุด take) · แท็ก (กลุ่ม system) อ่านเฉพาะเมื่อขอ system
- * entriesSource (ทุกกลุ่ม) ใช้ตัดหน้าตามเดิม · Task 9 สแกนทีละกลุ่มเพื่อนับตัวเลขบนชิป
+ * หน้า GET /customers/:id/journey ใช้ entriesSourceFor(กลุ่มที่ resolve แล้ว) — แถวของกลุ่มที่ไม่ได้ขอ/บทบาทไม่เห็นไม่กินขอบ limit+1 · กลุ่มที่ไม่มี kind และไม่ใช่ system = ไม่ยิง DB
  */
 export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): JourneySource {
   const kinds = kindsOf(groups);
@@ -74,10 +74,11 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
       ),
     ]);
     const roomIds = [...new Set(rows.map((r) => r.roomId).filter((id): id is string => id !== null))];
-    const visibleRooms = actor.role === 'SALES'
-      ? new Set((await whenAny(roomIds, () => prisma.chatRoom.findMany({ where: { id: { in: roomIds }, ...roomAssignmentScope(actor) }, select: { id: true } }))).map((r) => r.id))
+    const roomScope = roomAssignmentScope(actor); // กติกาห้องที่ดูแล (ด่านเดียวกับ room-manager) — ว่าง = บทบาทนี้ไม่จำกัดห้อง
+    const visibleRooms = Object.keys(roomScope).length
+      ? new Set((await whenAny(roomIds, () => prisma.chatRoom.findMany({ where: { id: { in: roomIds }, ...roomScope }, select: { id: true } }))).map((r) => r.id))
       : null;
-    const seesChat = JOURNEY_CHAT_ROLES.has(actor.role);
+    const seesChat = roleSeesGroup(actor.role, 'chat');
     const events: JourneyEvent[] = [];
 
     for (const row of rows) {
@@ -112,5 +113,5 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
   };
 }
 
-/** ทุกกลุ่ม — ตัดหน้าของ GET /customers/:id/journey (sourcesForGroups ใน customer-journey.service.ts) */
+/** ทุกกลุ่ม — สำหรับผู้เรียกที่ต้องการทุกกลุ่มจริง (หน้าไทม์ไลน์ใช้ entriesSourceFor(groups) ผ่าน sourcesForGroups) */
 export const entriesSource: JourneySource = entriesSourceFor(new Set(JOURNEY_EVENT_GROUPS));

@@ -1,6 +1,6 @@
 import type { JourneyEvent } from '@installment/shared';
 import { creditHistoryAccess, roomAssignmentScope } from '../../credit-check/services/room-credit-access';
-import { JOURNEY_CHAT_ROLES, asRecord, bahtText, dbTimeRange, finalizeSource, scanTake, staffActor, whenAny, type JourneySource } from './journey-window';
+import { asRecord, bahtText, dbTimeRange, finalizeSource, roleSeesGroup, scanTake, staffActor, whenAny, type JourneySource } from './journey-window';
 
 const DECISION_TITLES: Record<string, string> = { APPROVED: 'อนุมัติเครดิต', REJECTED: 'ไม่อนุมัติเครดิต', MANUAL_REVIEW: 'ส่งตรวจเครดิตเพิ่ม', PENDING: 'ตั้งผลเครดิตกลับเป็นรอตรวจ' };
 
@@ -8,7 +8,7 @@ const DECISION_TITLES: Record<string, string> = { APPROVED: 'อนุมัต�
 export const creditSource: JourneySource = async (prisma, customerIds, window, actor) => {
   const range = dbTimeRange(window);
   const take = scanTake(window);
-  const seesChat = JOURNEY_CHAT_ROLES.has(actor.role);
+  const seesChat = roleSeesGroup(actor.role, 'chat'); // สเตทเม้น/ลิงก์แชท = ข้อมูลกลุ่ม chat
   const checks = await prisma.creditCheck.findMany({
     where: { customerId: { in: customerIds }, deletedAt: null, ...creditHistoryAccess(actor) },
     select: { id: true, createdAt: true, roomAnalysis: { select: { roomId: true } } },

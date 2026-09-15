@@ -1,10 +1,10 @@
 import type { JourneyEvent } from '@installment/shared';
 import { customerContractEvents } from './contract-timeline';
-import { finalizeSource, pickMetadata, type JourneySource } from './journey-window';
+import { finalizeSource, pickMetadata, roleSeesGroup, type JourneySource } from './journey-window';
 
-/** SALES ไม่เห็น (รอเจ้าของเคาะ ข้อ 5) · เวลาอิง payments.updated_at จนกว่า PR paidDate */
+/** บทบาทที่ไม่เห็นกลุ่ม payment ตาม JOURNEY_HIDDEN_GROUPS ได้ [] (ตอนนี้ SALES — รอเจ้าของเคาะ ข้อ 5) · เวลาอิง payments.updated_at จนกว่า PR paidDate */
 export const paymentSource: JourneySource = async (prisma, customerIds, window, actor) => {
-  if (actor.role === 'SALES') return [];
+  if (!roleSeesGroup(actor.role, 'payment')) return [];
   const events: JourneyEvent[] = [];
   for (const { contract, actorUserId, event } of await customerContractEvents(prisma, customerIds, window)) {
     if (event.type !== 'PAYMENT') continue;

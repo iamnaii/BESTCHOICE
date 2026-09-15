@@ -1,5 +1,9 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
+import {
+  FACEBOOK_PAGE_SUBSCRIBED_FIELDS_CSV,
+  withRequiredFacebookPageFields,
+} from '@installment/shared';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import {
   CreateAdCampaignDto,
@@ -20,21 +24,26 @@ const GRAPH_BASE = 'https://graph.facebook.com/v25.0';
 const TIMEOUT_MS = 15_000;
 
 /**
- * ชุด webhook field ที่เพจต้อง subscribe — **แหล่งความจริงเดียว** ห้ามมีสำเนาที่สอง
+ * ชุด webhook field ที่เพจต้อง subscribe — ตัวจริงอยู่ที่ `FACEBOOK_PAGE_SUBSCRIBED_FIELDS`
+ * (`packages/shared/src/facebook-webhook-fields.ts`) เพื่อให้ช่องกรอกในหน้า Integration Hub
+ * ใช้ค่าเดียวกันเป๊ะ — เหตุผลรายฟิลด์อ่านที่นั่น
  *
  * 🔴 `POST /{page}/subscribed_apps` ของ Meta เป็นการ **เขียนทับทั้งชุด ไม่ใช่เพิ่มเข้าไป**
- * ⇒ ใครก็ตามที่ยิง endpoint นี้ด้วยรายการที่ขาดฟิลด์ใดไป = ถอดฟิลด์นั้นออกเงียบ ๆ
- * (2026-09-12 เจอ `tools/fb-app-review-smoke.sh` ยิงโดยไม่มี `messaging_referrals`
- * ซึ่งจะทำให้ระบบเลิกรู้ที่มาโฆษณาของลูกค้าเก่าทันทีที่มีคนรันสคริปต์)
+ * ⇒ รายการที่ขาดฟิลด์ใดไป = ถอดฟิลด์นั้นออกจากเพจจริงเงียบ ๆ
  *
  * - `messaging_referrals` = ลูกค้าเก่ากลับมาจากโฆษณา/ลิงก์ m.me — ขาดแล้วไม่รู้ที่มาเลย
- *   (ลูกค้าใหม่ referral มากับ `messages` / `messaging_postbacks` อยู่แล้ว)
+ *   (2026-09-12 เจอ `tools/fb-app-review-smoke.sh` ยิงโดยไม่มีฟิลด์นี้)
+ * - `message_echoes` = พนักงานตอบจากกล่องข้อความของเพจเอง (Meta Business Suite / แอป Page)
+ *   ⇒ เก็บเป็นข้อความ STAFF ผ่าน `mirrorOutbound` — ร่องรอยอัตโนมัติทางเดียวของการตอบนอกระบบ:
+ *   ล้าง "รอตอบ" · หยุด AI ห้องนั้น · นับ "ร้านตอบ" ในไทม์ไลน์ลูกค้า (prod ราว 4,600 แถว/7 วัน)
+ *   ขาดแล้ว = ห้องค้าง "รอตอบ" ทั้งที่ตอบแล้ว + บอทตอบแทรกพนักงาน
  * - **ไม่มี `feed` โดยตั้งใจ** — ตัวรับ webhook อ่านเฉพาะ `entry.messaging`
- *   (`facebook-webhook.controller.ts:173-175`) ไม่เคยอ่าน `entry.changes`
- *   ⇒ subscribe `feed` ไปก็ไม่มีอะไรรับ ได้แค่ทราฟฟิกเปล่า
+ *   (`facebook-webhook.controller.ts` handleWebhook) ไม่เคยอ่าน `entry.changes`
+ *
+ * `subscribePageWebhooks` เติมชุดนี้ให้ครบเสมอแม้ผู้เรียกส่งรายการสั้นมา
+ * (`withRequiredFacebookPageFields`) — ช่องกรอกแก้เองได้ และแท็บที่ถือ bundle เก่าก็ยังยิงได้
  */
-export const DEFAULT_SUBSCRIBED_FIELDS =
-  'messages,messaging_postbacks,messaging_referrals,message_deliveries,message_reads';
+export const DEFAULT_SUBSCRIBED_FIELDS = FACEBOOK_PAGE_SUBSCRIBED_FIELDS_CSV;
 
 export interface FbError {
   error?: {
@@ -279,8 +288,11 @@ export class FacebookAppReviewService {
   // ─── pages_manage_metadata ───────────────────────────────────────────────
   /**
    * POST /{PAGE_ID}/subscribed_apps — subscribe the app to Page webhook
-   * events (messages, messaging_postbacks, etc.). Required to receive
-   * Messenger webhook callbacks.
+   * events (messages, messaging_postbacks, message_echoes, etc.). Required to
+   * receive Messenger webhook callbacks.
+   *
+   * Meta เขียนทับทั้งชุด ⇒ ชุดบังคับ (`DEFAULT_SUBSCRIBED_FIELDS`) ถูกเติมให้ครบเสมอ
+   * ฟิลด์ที่ผู้เรียกส่งเพิ่มมาต่อท้ายได้ แต่ถอดฟิลด์บังคับออกจากที่นี่ไม่ได้
    *
    * Permissions: pages_manage_metadata
    */
@@ -290,7 +302,18 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const fields = dto.fields ?? DEFAULT_SUBSCRIBED_FIELDS;
+    const fields = withRequiredFacebookPageFields(dto.fields);
+    if (dto.fields !== undefined) {
+      const sent = new Set(dto.fields.split(',').map((f) => f.trim()));
+      const restored = DEFAULT_SUBSCRIBED_FIELDS.split(',').filter((f) => !sent.has(f));
+      if (restored.length > 0) {
+        // ไม่ใช่ error — แค่บอกว่ารายการที่ส่งมาจะถอดฟิลด์บังคับออก จึงเติมกลับให้
+        this.logger.warn(
+          `[FB App Review] subscribe_page_webhooks: re-added required fields missing from request: ${restored.join(',')}`,
+        );
+      }
+    }
+
     const url = `${GRAPH_BASE}/${c.pageId}/subscribed_apps`;
     const body = { subscribed_fields: fields };
     return this.call('POST', url, body, 'subscribe_page_webhooks', c.pageToken);

@@ -351,6 +351,120 @@ gcloud run jobs execute bestchoice-backfill-customer-journey --project=bestchoic
 - เริ่มมี `CONTRACT_ACTIVATED` / `CREDIT_CHECK_OPENED_BY` / `LINE_LINKED` ตามงานจริงของวันนั้น
 - `CONTACT_ADDED` มาจากหน้าลูกค้าและการเติมเบอร์ของพนักงานเท่านั้น — บอทขายไม่ได้ต่อในเฟสนี้
 
+## 9. PR ต่อท้าย: "ร้านตอบครั้งแรก" นับ echo จากเพจ (`first_staff_reply_at`)
+
+ใช้กับ PR ต่อท้าย #1594 (branch `worktree-feat+customer-journey-p3`) — **web `26.9.29`** · ไม่มี migration
+- `journey-state.sql` (`staff_reply` / `auto_anchor`): นับ echo จาก Meta Business Suite/แอป Page · ข้ามข้อความอัตโนมัติของเพจทุกครั้งที่ลูกค้าทัก · ไม่นับคำตอบก่อนข้อความลูกค้าแรกของช่องทางนั้น · ยึดข้ามห้องซ้ำของครอบครัว · ไม่นับข้อความสำเร็จรูปที่ผู้ใช้ระบบส่ง (Quick Reply)
+- subscribe `message_echoes` เสมอ — API + แผง Facebook App Review ในเว็บ (`FacebookAppReviewPanel.tsx`) ⇒ เว็บเปลี่ยน จึงขึ้นเลขเวอร์ชัน
+- ก่อน PR นี้ขึ้น แคช prod มีค่า `first_staff_reply_at` แค่ 1 จาก 9,067 แถว (ตรวจ 2026-09-15) — กติกาเดิมนับเฉพาะการส่งจาก inbox · ค่านั้นกติกาใหม่ยังให้ค่าเดิม (ตรวจซ้ำใน 9.0 ข้อ 3)
+- ขั้น 1–8 ข้างบนทำไปแล้วตอน #1594 — หัวข้อนี้ไม่ต้องทำซ้ำขั้นเหล่านั้น
+- ผลจำลองบน prod 2026-09-15 เทียบกติกาคอมมิตก่อนหน้า (`a2a84c8c0`): มีค่า 7,630 → 7,566 ราย · ว่างลง 64 · ช้าลง 113 · เร็วขึ้น 0 · ค่าที่มาก่อนข้อความลูกค้าแรก 117 → 0 · ห่างข้อความลูกค้า ≤3 วิ 17 → 11 (รายละเอียดในข้อความคอมมิต `7f5eeb0cc`)
+
+🚨 **ค่าเริ่มถูกแช่แข็งทันทีที่ image ใหม่รับ traffic — ไม่ต้องรอใครรัน backfill**
+- recompute ใช้ `LEAST` (การรวมผู้สนใจใช้ `earliest()`) ⇒ ค่าที่เขียนแล้วเลื่อนไปข้างหน้าไม่ได้อีก
+- ผู้เขียนค่ามี 4 ทาง ไม่ใช่แค่ CLI:
+  1. เปิดหน้า `/customers/:id` — `journey-summary.service.ts` recompute เมื่อ `needsRecompute`
+  2. cron `journey:recompute` 03:30 น. ทุกคืน — คนที่ขยับใน 48 ชม.
+  3. 03:30 น. วันอาทิตย์ (คืนเสาร์→อาทิตย์) = sweep ทุกคน (เท่ากับ backfill)
+  4. รวมผู้สนใจ `CustomerMergeService.absorbPlaceholder` — ผูกห้องกับลูกค้าจากอินบ็อกซ์ · `POST /customers/:id/absorb-into/:targetId` · LINE ดูดห้องของ placeholder (`chatbot-finance/services/chat-room.service.ts`) · `mergeRooms`
+     - ย้ายค่าแคชของ placeholder เข้าคนจริงด้วย `earliest()` แล้ว recompute ทั้งคู่ ⇒ ค่าที่ instance อื่นเขียนไว้ในแถวของ placeholder ไหลต่อไปได้
+- deploy จากเครื่อง (ทางสำรองในหัวข้อ 0): build จาก **HEAD ของ PR เท่านั้น** — ห้าม build จาก commit กลางที่นับ echo แต่ยังข้ามข้อความทักทายแค่ใบแรกของห้อง (greeting หลาย bubble / away message รอบหลัง จะกลายเป็นคำตอบแรกปลอมถาวร)
+
+**9.0 ก่อนกด merge**
+1. **จด image ของ `bestchoice-api` ที่รับ traffic อยู่** — ใช้ถอย (หัวข้อถอย) และใช้เทียบ image ของ job
+   ```bash
+   gcloud run services describe bestchoice-api --project=bestchoice-prod --region=asia-southeast1 --format='value(status.traffic)'
+   gcloud run revisions describe <REVISION ที่ได้ 100%> --project=bestchoice-prod --region=asia-southeast1 --format='value(spec.containers[0].image)'
+   ```
+   - คาดว่าได้ `asia-southeast1-docker.pkg.dev/bestchoice-prod/bestchoice/api:0e38e6d26dd390f1ae4bd53170cea9d0c709922a` (merge commit ของ #1594)
+   - **จดค่าที่เห็นจริงบน revision** ไม่ใช่ค่าคาด — ไม่ตรงค่าคาด = ถาม dev ก่อน merge · เรียกค่านี้ว่า `<SHA40 จาก 9.0>`
+   - จด release ปัจจุบันของ Firebase site admin (`26.9.28`) ไว้ด้วย — ใช้ถ้าต้องถอยเว็บ
+2. **ช่วงเวลา: จันทร์–พฤหัส ช่วงเช้า** · ห้ามวันเสาร์ · ห้าม 03:00–04:30 น.
+   - เหตุผล: 9.1 ตรวจเช้าวันถัดไป และถ้าไม่ผ่านต้องมีเวลาตัดสินก่อน sweep 03:30 น. วันอาทิตย์ (ดู 9.1 ทางไม่ผ่าน)
+   - ห้าม merge PR อื่นซ้อนจนกว่าจะผ่านด่านหลัง merge ข้างล่าง (หัวข้อ 0)
+3. **แคชเดิมยังถูกตามกติกาใหม่** — MCP:
+   ```sql
+   SELECT count(*) AS states_with_reply,
+     count(*) FILTER (WHERE EXISTS (
+       SELECT 1 FROM customers f JOIN chat_rooms r ON r.customer_id = f.id
+       JOIN chat_messages m ON m.room_id = r.id AND m.role = 'STAFF' AND m.outbound_sent_at IS NOT NULL
+       JOIN users u ON u.id = m.staff_id AND u.is_active
+       WHERE (f.id = s.customer_id OR f.merged_into_id = s.customer_id) AND m.created_at = s.first_staff_reply_at
+         AND m.created_at >= (SELECT MIN(c.created_at) FROM customers f2 JOIN chat_rooms r2 ON r2.customer_id = f2.id
+                              JOIN chat_messages c ON c.room_id = r2.id AND c.role = 'CUSTOMER'
+                              WHERE (f2.id = s.customer_id OR f2.merged_into_id = s.customer_id) AND r2.channel = r.channel)
+     )) AS still_counted
+   FROM customer_journey_states s WHERE s.first_staff_reply_at IS NOT NULL;
+   ```
+   - กติกา #1594 นับการส่งจาก inbox ที่กติกาใหม่ไม่นับ (ก่อนข้อความลูกค้าแรกของช่องทาง · ผู้ใช้ระบบ) — ค่าแบบนั้นที่ค้างในแคชจะถูก `LEAST` เก็บต่อ
+   - `mcp_ro` อ่าน `users.is_system_user` ไม่ได้ ⇒ ใช้ `is_active` แทน (ผู้ใช้ระบบ `is_active = false`) — พนักงานที่ปิดบัญชีแล้วจะนับเป็นไม่ตรงด้วย
+   - **เท่ากัน** → merge ได้ (ตรวจ 2026-09-15: 1 = 1) · **ไม่เท่า** → ห้าม merge ส่งตัวเลขให้ dev
+
+**ด่านหลัง merge — ต้องผ่านครบก่อนเริ่มนับ 9.1**
+- run ของ merge เขียวครบทุก job: `lint-and-test` · `build-and-push-api` · `migrate-db` · `deploy-api` · `deploy-web` (skipped นับเป็นไม่เขียว)
+- `curl https://api.bestchoicephone.app/api/health` ok
+- บันเดิลของ `https://bestchoicephone.app/` เป็น `26.9.29`
+- image ของ revision ที่รับ traffic 100% = `api:<SHA40 ของ merge PR นี้>` — คำสั่งเดียวกับ 9.0 ข้อ 1
+- ไม่ผ่านข้อใด = ยังไม่นับว่าขึ้น ห้ามเริ่ม 9.1/9.2 · เว็บขึ้นแต่ API ไม่ขึ้น ไม่ต้องถอยเว็บ (26.9.29 ใช้กับ API ของ #1594 ได้ — เปลี่ยนแค่ค่าตั้งต้นช่อง Subscribe) · หาสาเหตุก่อน merge/รัน pipeline ซ้ำ
+
+**9.1 เช้าหลังคืนแรกของ image ใหม่ (ก่อน backfill)** — cron 03:30 น. เขียนค่าให้คนที่ขยับใน 48 ชม. ไปแล้ว ใช้เป็นตัวอย่างตรวจ
+
+MCP (นับอย่างเดียว):
+```sql
+SELECT count(*) AS states_with_reply,
+  count(*) FILTER (WHERE EXISTS (
+    SELECT 1 FROM customers f JOIN chat_rooms r ON r.customer_id = f.id JOIN chat_messages c ON c.room_id = r.id AND c.role = 'CUSTOMER'
+    WHERE (f.id = s.customer_id OR f.merged_into_id = s.customer_id)
+      AND c.created_at BETWEEN s.first_staff_reply_at - interval '3 seconds' AND s.first_staff_reply_at + interval '3 seconds'
+  )) AS within_3s_of_customer
+FROM customer_journey_states s WHERE s.first_staff_reply_at IS NOT NULL;
+```
+- `within_3s_of_customer` = คำตอบแรกที่ห่างข้อความลูกค้าไม่เกิน 3 วิ ⇒ หน้าตาเหมือนข้อความอัตโนมัติของเพจ
+- จำลองกติกาบน prod ก่อน merge: 11 จาก 7,566 ราย (≈0.15%) — ลูกค้าส่งตามหลัง echo ทั้งที่มีข้อความลูกค้าใน 30 นาทีก่อนหน้า
+- **คืนแรกเป็นตัวอย่างเล็ก (หลักร้อย) ⇒ ใช้จำนวน ไม่ใช้ %:**
+  - **`within_3s_of_customer` ไม่เกิน 3 แถว** → ไป 9.2
+  - **มากกว่า 3** → ห้ามรัน backfill · ส่ง `customer_id` ให้ dev (id ไม่ใช่ PII):
+    ```sql
+    SELECT s.customer_id FROM customer_journey_states s
+    WHERE s.first_staff_reply_at IS NOT NULL AND EXISTS (
+      SELECT 1 FROM customers f JOIN chat_rooms r ON r.customer_id = f.id JOIN chat_messages c ON c.room_id = r.id AND c.role = 'CUSTOMER'
+      WHERE (f.id = s.customer_id OR f.merged_into_id = s.customer_id)
+        AND c.created_at BETWEEN s.first_staff_reply_at - interval '3 seconds' AND s.first_staff_reply_at + interval '3 seconds')
+    ORDER BY 1 LIMIT 50;
+    ```
+- **ทางไม่ผ่าน — ตัดสินก่อน 03:30 น. วันอาทิตย์ถัดไป** (sweep เขียนทุกคนด้วยกติกานี้) เลือกหนึ่งทาง:
+  - (ก) ถอย image ตามหัวข้อ "ถอยเพราะกติกา" ทั้งชุด ก่อนคืนวันเสาร์
+  - (ข) ยอมให้ sweep เขียน แล้ว PR แก้กติกาต้องมาพร้อม reset คอลัมน์ + คำนวณใหม่ (หัวข้อถอย ข้อ 3–5 แต่ใช้ image ของ PR แก้)
+  - ระหว่างรอ cron 48 ชม. และการเปิดหน้าลูกค้ายังเขียนค่าทุกวันอยู่แล้ว — ยิ่งรอ ยิ่งมีแถวให้ล้าง แต่ reset ล้างทั้งคอลัมน์ทีเดียวได้เสมอ
+
+**9.2 backfill** — job `bestchoice-backfill-customer-journey` มีอยู่แล้วจาก #1594 (ขั้น 6) และ**ยังถือ env เขียนจริงจากขั้น 7** ⇒ ห้ามทำตามขั้น 6–7 ตรง ๆ (`jobs create` ซ้ำไม่ได้ · "dry-run" บน job ที่ถือ env ขั้น 7 = เขียนจริง)
+- 🚨 ห้ามรันช่วง 03:00–04:30 น. เหมือนเดิม
+- หรือไม่รัน แล้วรอ sweep 03:30 น. วันอาทิตย์ (ค่าเข้าแคชครบในคืนนั้นเอง)
+
+dry-run — เปลี่ยน image + ถอด env เขียนจริง แล้วตรวจก่อนรัน:
+```bash
+gcloud run jobs update bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 \
+  --image=asia-southeast1-docker.pkg.dev/bestchoice-prod/bestchoice/api:<SHA40 ของ merge PR นี้> \
+  --remove-env-vars=CONFIRM_BACKFILL,ALLOW_PROD_BACKFILL,NODE_ENV
+gcloud run jobs describe bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 \
+  --format='value(spec.template.spec.template.spec.containers[0].image,spec.template.spec.template.spec.containers[0].env)'
+gcloud run jobs execute bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 --wait
+gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="bestchoice-backfill-customer-journey"' --project=bestchoice-prod --freshness=2h --limit=200 --format='value(textPayload,jsonPayload.message)'
+```
+- `describe` ต้องเห็น image = `<SHA40 ของ merge PR นี้>` และ env มีแค่ `DATABASE_URL` (secretKeyRef) กับ `EXPECTED_DB_NAME=bestchoice` — ต้องไม่มี `CONFIRM_BACKFILL` / `ALLOW_PROD_BACKFILL` / `NODE_ENV` · ไม่ตรงห้าม execute
+- อ่านผลแบบขั้น 6 (exit 0 ไปต่อ · exit 1/2 หยุด)
+
+รันจริง:
+```bash
+gcloud run jobs update bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 \
+  --update-env-vars=CONFIRM_BACKFILL=YES_I_AM_SURE,ALLOW_PROD_BACKFILL=YES_I_AM_SURE,NODE_ENV=production
+gcloud run jobs execute bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 --wait
+gcloud run jobs update bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 \
+  --remove-env-vars=CONFIRM_BACKFILL,ALLOW_PROD_BACKFILL,NODE_ENV
+```
+- คำสั่งสุดท้ายถอด env ทันทีหลังรัน — job ที่ค้าง env เขียนจริงคือกับดักของ dry-run ครั้งหน้า
+- หลังรัน: คิวรี 9.1 ซ้ำกับทั้งประชากร — `states_with_reply` ควรใกล้ 7,566 และ **`within_3s_of_customer` ไม่เกิน 1% ของ `states_with_reply`** (จำลอง ≈0.15%) · เกิน → ทางไม่ผ่านของ 9.1
+
 ## ถอย (rollback)
 
 ### ถอย API
@@ -367,6 +481,48 @@ gcloud run services update bestchoice-api --project=bestchoice-prod --region=asi
   - ถ้าจำเป็นต้องถอยจริง: ถอย **เว็บและ API พร้อมกัน** และต้องตรวจก่อนบนสำเนาฐานที่ผ่านขั้น 4 แล้ว ว่าหน้ารายชื่อลูกค้าและหน้ารายละเอียดลูกค้าของผู้สนใจที่ `phone` ว่างเปิดได้กับ image เก่า — ยังไม่เคยมีใครทดสอบ
   - อ่านเรื่องถอยใน runbook ของ PR #1592 ประกอบ
 - ไม่มี down-migration · **ห้ามลบตาราง/คอลัมน์เอง**
+
+### ถอยเพราะกติกา "ร้านตอบครั้งแรก" (หัวข้อ 9)
+ถอย image **อย่างเดียวไม่พอ** (`LEAST` เก็บค่าที่ image ใหม่เขียนไว้ต่อ) และ**เป็นของชั่วคราว** (push ถัดไปเข้า main ขึ้นกติกา echo ทับคอลัมน์ที่เพิ่งล้าง) — ทำครบตามลำดับ:
+
+1. **ถอย `bestchoice-api`** ไป image ที่จดใน 9.0 ข้อ 1:
+   ```bash
+   gcloud run services update bestchoice-api --project=bestchoice-prod --region=asia-southeast1 \
+     --image=asia-southeast1-docker.pkg.dev/bestchoice-prod/bestchoice/api:<SHA40 จาก 9.0>
+   ```
+   - 🚨 ไม่ใช่ `<SHA40 ก่อน PR นี้>` ของหัวข้อ "ถอย API" — ตัวนั้นเป็น image ก่อนเฟส 0 ใช้ได้เฉพาะก่อนขั้น 4 ซึ่งผ่านไปแล้ว
+   - เว็บไม่ต้องถอย — 26.9.29 ต่างจาก 26.9.28 แค่ค่าตั้งต้นช่อง Subscribe ในแผง Facebook App Review (endpoint เดิม)
+2. **ทำให้ถอยถาวร ก่อน merge อะไรเข้า main อีก** — PR ที่ `git revert` คอมมิตกติกาใน `journey-state.sql` (คอมมิตพวกนี้พา DB spec + สเปคคู่กันมาด้วย จึง revert ทั้งคอมมิต):
+   - `aecaff4a3` นับ echo · `b2e446a13` ข้ามช่วงอัตโนมัติ · `a2a84c8c0` ยึดทุกครั้งที่ลูกค้าทัก · `7f5eeb0cc` ด่านข้อความลูกค้าแรก/ห้องซ้ำ/ผู้ใช้ระบบ
+   - ตรวจบน main ว่าครบด้วย `git log --oneline -- apps/api/src/modules/customer-journey/sql/journey-state.sql`
+   - PR revert ต้อง bump `apps/web/package.json` (+ package-lock) เป็นเลขถัดไป (เช่น 26.9.30) — revert แตะ `apps/api/src/**` จึง deploy เว็บซ้ำด้วย · หลัง merge ใช้ด่านเดียวกับหลัง merge PR นี้: run เขียวครบ · health ok · bundle เห็นเลขใหม่ · revision image = SHA ของ merge revert
+   - merge PR revert เป็นอันดับแรก — จนกว่าจะ merge ห้าม merge PR อื่นใด (ทุก push ขึ้น HEAD ทั้งชุด)
+   - ขึ้นกติกา echo กลับภายหลัง (roll forward) **ต้องมาพร้อมขั้น reset ข้อ 3–5 ของตัวเอง** — ค่าที่ #1594 เขียนระหว่างถอย (ส่งจาก inbox ก่อนข้อความลูกค้าแรก / ข้อความสำเร็จรูปของผู้ใช้ระบบ) กติกา echo ไม่นับ ⇒ ไม่ reset = แช่แข็งค่าที่เร็วไป
+3. **รอให้ instance ของกติกาใหม่หมดก่อน reset** — ไม่งั้นหน้าลูกค้า/cron/การรวมผู้สนใจบน instance เก่าเขียนค่าที่เร็วไปกลับเข้ามาหลัง `UPDATE`
+   ```bash
+   gcloud run services describe bestchoice-api --project=bestchoice-prod --region=asia-southeast1 --format='value(status.traffic)'
+   ```
+   - revision ของ `<SHA40 จาก 9.0>` ได้ 100%
+   - revision ของ PR นี้ไม่มี instance เหลือ: Cloud Run console → `bestchoice-api` → Metrics → Container instance count แยกตาม revision = 0 · ดูไม่ได้ให้รอ ≥ 60 นาทีหลังสลับ traffic (timeout ของ service 3600 วิ)
+   - นอกช่วง 03:00–04:30 น.
+4. **reset** ด้วย role เจ้าของ (MCP เขียนไม่ได้):
+   ```sql
+   UPDATE customer_journey_states SET first_staff_reply_at = NULL;
+   ```
+   - ครอบแถวแคชของ placeholder ที่ยังไม่ถูกรวมด้วย ⇒ การรวมผู้สนใจหลังจากนี้ (`earliest()`) ไม่พาค่าเก่ากลับมา
+5. **คำนวณใหม่ทันที** ด้วย job ที่ image ตรงกับข้อ 1 — 9.2 เปลี่ยน image ของ job เป็น SHA ของ PR นี้ไปแล้ว:
+   ```bash
+   gcloud run jobs update bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 \
+     --image=asia-southeast1-docker.pkg.dev/bestchoice-prod/bestchoice/api:<SHA40 จาก 9.0> \
+     --update-env-vars=CONFIRM_BACKFILL=YES_I_AM_SURE,ALLOW_PROD_BACKFILL=YES_I_AM_SURE,NODE_ENV=production
+   gcloud run jobs describe bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 \
+     --format='value(spec.template.spec.template.spec.containers[0].image)'
+   gcloud run revisions describe <REVISION ที่ได้ 100% จากข้อ 3> --project=bestchoice-prod --region=asia-southeast1 --format='value(spec.containers[0].image)'
+   ```
+   - สองบรรทัดหลังต้องได้ image **เดียวกัน** — ไม่ตรงห้าม execute (คำนวณใหม่ด้วยกติกาที่เพิ่งถอยออก = แช่แข็งซ้ำ)
+   - แล้ว `gcloud run jobs execute bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 --wait`
+   - จบแล้วถอด env: `gcloud run jobs update bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 --remove-env-vars=CONFIRM_BACKFILL,ALLOW_PROD_BACKFILL,NODE_ENV`
+- ถอยไป `<SHA40 จาก 9.0>` ด้วยเหตุผลอื่นที่ไม่เกี่ยวกับกติกานี้ = ไม่ต้องล้างตอนถอย · แต่ตอนขึ้นกลับให้รันคิวรี 9.0 ข้อ 3 ก่อน (ค่าที่ #1594 เขียนระหว่างถอยต้องยังนับได้ตามกติกาใหม่ · ไม่เท่า = reset ข้อ 3–5 ด้วย image ใหม่)
 
 ### ถอยเว็บ
 - **ทางมือ:** Firebase console → Hosting → site admin (`bestchoicephone.app`) → ประวัติ release → Rollback ไป release ที่จดไว้ในข้อ 1.5
@@ -410,6 +566,20 @@ gcloud run services update bestchoice-api --project=bestchoice-prod --region=asi
   - ไทม์ไลน์เริ่มนับใหม่จากวันที่ reset
 
 ## เรื่องที่รู้แล้วและยอมรับ
+
+**`first_staff_reply_at` แช่แข็ง — เลื่อนไปข้างหน้าไม่ได้**
+- recompute ใช้ `LEAST` และการรวมผู้สนใจใช้ `earliest()` ⇒ ค่าที่เขียนลงแคชแล้วถูกแทนได้เฉพาะค่าที่เก่ากว่า
+- เริ่มแช่แข็งตั้งแต่ image รับ traffic (เปิดหน้าลูกค้า + cron 03:30 น.) ไม่ใช่ตอน backfill — ขั้นตอนหลัง deploy อยู่ในหัวข้อ 9
+- วันหน้าถ้าทำกติกา `staff_reply` / `auto_anchor` ใน `journey-state.sql` ให้แคบลง (ตัดแถวที่เคยนับ): ต้องมี `UPDATE customer_journey_states SET first_staff_reply_at = NULL` ใน PR เดียวกัน แล้วค่อยคำนวณใหม่ · การถอย image ที่กติกาแคบกว่าก็เข้าข้อนี้ (หัวข้อถอย)
+  - "แคบกว่า" ดูทีละข้อ ไม่ใช่ทั้งชุด: กติกาของ #1594 แคบกว่าเรื่อง echo แต่**กว้างกว่า**เรื่องส่งจาก inbox (นับแถวก่อนข้อความลูกค้าแรกและข้อความสำเร็จรูปของผู้ใช้ระบบ) ⇒ ทั้งถอยไป #1594 และขึ้นกลับจาก #1594 ต้องคิดเรื่อง reset (หัวข้อถอย + 9.0 ข้อ 3)
+- ทิศกลับ (ผ่อนกติกาให้นับเพิ่ม) ไม่ต้อง reset — LEAST รับค่าที่เก่ากว่าเอง
+- ค่าที่ยังเร็วไปโดยรู้ตัว (แช่แข็งถาวร):
+  - 11 จาก 7,566 ราย (จำลองบน prod 2026-09-15) ที่ลูกค้าส่งตามหลัง echo ≤3 วิ ขณะมีข้อความลูกค้าใน 30 นาทีก่อนหน้า
+  - ห้องที่ `mergeRooms` รวมข้ามช่องทาง: ข้อความลูกค้าช่องทางอื่นที่ย้ายมาทำให้ greeting ที่มาภายใน 30 นาทีหลังข้อความนั้นถูกนับ — แยกช่องทางเดิมของข้อความไม่ได้ · prod ยังไม่เคยมีห้องที่ถูกรวม (ไม่มี `chat_rooms` ที่ soft-delete เลย)
+- ครอบครัวที่ไม่มีข้อความลูกค้าเลย (เพจทักก่อน — 56 ราย) = ว่าง ไม่ได้ค่าจาก echo ใบแรกอีกแล้ว
+- **งานต่อ (ยังไม่ทำ):** เก็บ `message.app_id` ของ echo Facebook ลงคอลัมน์ใหม่แบบ additive nullable บน `chat_messages` + grant ให้ `mcp_ro`
+  - วันนี้ webhook log `app_id` ไว้ในบรรทัด `[FB Webhook] Echo …` แต่ไม่เก็บ ⇒ กติกา anchor ต้องเดาจากเวลา
+  - ก่อนเพิ่มคอลัมน์: วัดการกระจายของ `app_id` จาก Cloud Logging ก่อน (นับอย่างเดียว — บรรทัดนั้นมี PSID) ว่าแยกข้อความอัตโนมัติของเพจออกจากคนตอบได้จริงไหม
 
 **callLog / payment ที่ถูก soft-delete**
 - ไทม์ไลน์ติดตามหนี้เดิมและแท็บการเดินทางยังแสดงแถวเหล่านี้ (golden ของ Task 7 ล็อกพฤติกรรมเดิม)

@@ -181,7 +181,14 @@ Chicken-and-egg: ต้องยิง `ads_read` API หลายๆ call ภ�
 
 ### Use Case
 
-> We subscribe our Page to webhook events to receive (1) inbound Messenger messages so AI can reply within seconds, (2) feed events (comments on our posts/ads) so AI can triage and reply, (3) message_deliveries and message_reads for delivery tracking. We use POST /{PAGE_ID}/subscribed_apps with subscribed_fields="messages,messaging_postbacks,message_deliveries,message_reads,feed". Without this permission we cannot receive real-time webhooks and would have to poll the Graph API constantly which is inefficient and against Meta's rate limit guidelines.
+> We subscribe our Page to webhook events to receive (1) inbound Messenger messages and postback taps so AI can reply within seconds, (2) messaging_referrals so we know which ad or m.me link brought a returning customer back, (3) message_echoes so replies our staff send from the Page inbox (Meta Business Suite / Pages app) are recorded in our unified inbox and pause the AI for that conversation, (4) message_deliveries and message_reads for delivery tracking. We use POST /{PAGE_ID}/subscribed_apps with subscribed_fields="messages,messaging_postbacks,messaging_referrals,message_echoes,message_deliveries,message_reads". Without this permission we cannot receive real-time webhooks and would have to poll the Graph API constantly which is inefficient and against Meta's rate limit guidelines.
+
+> ⚠️ **รายการฟิลด์จริงอยู่ที่ `packages/shared/src/facebook-webhook-fields.ts` (`FACEBOOK_PAGE_SUBSCRIBED_FIELDS`)** — ย่อหน้าข้างบนต้องตรงกับไฟล์นั้นเสมอ
+>
+> - `subscribed_apps` ของ Meta **เขียนทับทั้งชุด** ⇒ ยิงด้วยรายการที่ขาดฟิลด์ = ถอดฟิลด์นั้นออกจากเพจจริง
+> - **`message_echoes` ห้ามขาด** — เป็นร่องรอยอัตโนมัติทางเดียวของการที่พนักงานตอบจากกล่องข้อความของเพจ (ล้าง "รอตอบ", หยุด AI ห้องนั้น, นับ "ร้านตอบ" ในไทม์ไลน์ลูกค้า)
+> - **ไม่มี `feed` โดยตั้งใจ** — ตัวรับ webhook อ่านเฉพาะ `entry.messaging` ไม่เคยอ่าน `entry.changes` (ความเห็นใต้โพสต์ใช้ `pages_read_engagement` ดึงเองแทน)
+> - API เติมฟิลด์บังคับกลับให้เองถ้ารายการที่ส่งมาขาด
 
 ### Screencast Script (45 sec)
 
@@ -189,7 +196,7 @@ Chicken-and-egg: ต้องยิง `ads_read` API หลายๆ call ภ�
 |---|---|
 | 0:00-0:10 | Open `Settings → Integrations` → show "Connected Page: BESTCHOICE Phone Shop" |
 | 0:10-0:20 | Open DevTools → expand **"Subscribe Page Webhooks"** card |
-| 0:20-0:30 | Show subscribed fields input pre-filled with `messages,messaging_postbacks,message_deliveries,message_reads,feed` |
+| 0:20-0:30 | Show subscribed fields input pre-filled with `messages,messaging_postbacks,messaging_referrals,message_echoes,message_deliveries,message_reads` |
 | 0:30-0:40 | Click **"ยิง API"** → DevTools shows `POST /v25.0/{PAGE_ID}/subscribed_apps` body `{subscribed_fields: "..."}` → 200 `{success: true}` |
 | 0:40-0:50 | Switch to FB Page Settings → New Page Experience → Linked Apps → BESTCHOICE app shows subscribed status |
 

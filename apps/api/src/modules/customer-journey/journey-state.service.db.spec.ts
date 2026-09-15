@@ -99,7 +99,7 @@ describe('JourneyStateService (real DB)', () => {
     await prisma.chatMessage.createMany({
       data: [
         { roomId: r.id, role: 'CUSTOMER', createdAt: at('2026-09-05T02:00:00.000Z'), deletedAt: at('2026-09-12T00:00:00.000Z') },
-        { roomId: r.id, role: 'STAFF', createdAt: at('2026-09-05T02:00:30.000Z'), outboundSentAt: at('2026-09-05T02:00:30.000Z') },
+        { roomId: r.id, role: 'STAFF', externalMessageId: `journey-mid-chat-greeting-${stamp}`, createdAt: at('2026-09-05T02:00:30.000Z') },
         { roomId: r.id, role: 'CUSTOMER', createdAt: at('2026-09-05T02:05:00.000Z') },
         { roomId: r.id, role: 'STAFF', createdAt: at('2026-09-05T03:10:00.000Z'), outboundSentAt: at('2026-09-05T03:10:00.000Z') },
         { roomId: r.id, role: 'CUSTOMER', createdAt: at('2026-09-11T09:00:00.000Z') },
@@ -156,6 +156,77 @@ describe('JourneyStateService (real DB)', () => {
     });
     await service.recompute([greeted.id]);
     expect((await stateOf(greeted.id)).firstStaffReplyAt?.toISOString()).toBe('2026-09-08T01:40:00.000Z');
+  });
+
+  it('ร้านตอบครั้งแรก: ข้าม echo ทั้งช่วงอัตโนมัติของเพจ — greeting หลาย bubble · echo บันทึกก่อนข้อความลูกค้า · away message ตอนลูกค้าทักรอบหลัง · ส่งจาก inbox ไม่ถูกข้าม', async () => {
+    const mid = (label: string) => `journey-burst-${label}-${stamp}`;
+    const chatCustomer = async (label: string, day: string) => {
+      const c = await customer({ name: `journey burst ${label}`, phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at(`${day}T00:00:00.000Z`) });
+      return { c, r: await room(c.id, `burst-${label}`, `${day}T00:00:00.000Z`) };
+    };
+    const firstReply = async (customerId: string) => {
+      await service.recompute([customerId]);
+      return (await stateOf(customerId)).firstStaffReplyAt?.toISOString() ?? null;
+    };
+
+    // greeting 2 bubble (instant reply + รูป) ห่างลูกค้า 2 และ 3 วิ → ข้ามทั้งคู่ · คนตอบจริง 40 นาทีต่อมานับ
+    const twoBubble = await chatCustomer('two-bubble', '2026-08-20');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: twoBubble.r.id, role: 'CUSTOMER', createdAt: at('2026-08-20T01:00:00.000Z') },
+        { roomId: twoBubble.r.id, role: 'STAFF', externalMessageId: mid('two-1'), createdAt: at('2026-08-20T01:00:02.000Z') },
+        { roomId: twoBubble.r.id, role: 'STAFF', externalMessageId: mid('two-2'), createdAt: at('2026-08-20T01:00:03.000Z') },
+        { roomId: twoBubble.r.id, role: 'STAFF', externalMessageId: mid('two-human'), createdAt: at('2026-08-20T01:40:00.000Z') },
+      ],
+    });
+    expect(await firstReply(twoBubble.c.id)).toBe('2026-08-20T01:40:00.000Z');
+
+    // echo ถูกบันทึกก่อนข้อความลูกค้าที่เป็นต้นเหตุ (routeInbound ไม่ await + ดึงโปรไฟล์ก่อน saveMessage) → ยังข้าม
+    const echoFirst = await chatCustomer('echo-first', '2026-08-21');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: echoFirst.r.id, role: 'STAFF', externalMessageId: mid('race-greeting'), createdAt: at('2026-08-21T01:00:00.000Z') },
+        { roomId: echoFirst.r.id, role: 'CUSTOMER', createdAt: at('2026-08-21T01:00:03.000Z') },
+        { roomId: echoFirst.r.id, role: 'STAFF', externalMessageId: mid('race-human'), createdAt: at('2026-08-21T01:40:00.000Z') },
+      ],
+    });
+    expect(await firstReply(echoFirst.c.id)).toBe('2026-08-21T01:40:00.000Z');
+
+    // ช่วงอัตโนมัติยึดคำตอบใบแรกสุด: bubble ที่สองเลย 60 วิจากข้อความลูกค้าไปแล้ว แต่ยังอยู่ในช่วงเดียวกัน → ข้าม
+    // · echo ที่ออกหลังคำตอบใบแรกสุดเกิน 60 วิ = ไม่ใช่ช่วงอัตโนมัติ → นับ
+    const longBurst = await chatCustomer('long-burst', '2026-08-22');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: longBurst.r.id, role: 'CUSTOMER', createdAt: at('2026-08-22T01:00:00.000Z') },
+        { roomId: longBurst.r.id, role: 'STAFF', externalMessageId: mid('long-1'), createdAt: at('2026-08-22T01:00:55.000Z') },
+        { roomId: longBurst.r.id, role: 'STAFF', externalMessageId: mid('long-2'), createdAt: at('2026-08-22T01:01:10.000Z') },
+        { roomId: longBurst.r.id, role: 'STAFF', externalMessageId: mid('long-human'), createdAt: at('2026-08-22T01:01:56.000Z') },
+      ],
+    });
+    expect(await firstReply(longBurst.c.id)).toBe('2026-08-22T01:01:56.000Z');
+
+    // ลูกค้าทักวันแรกไม่มีใครตอบ · ทักอีกทีวันที่สามแล้ว away message ยิงเป็นคำตอบใบแรกสุดของห้อง → ข้าม
+    const away = await chatCustomer('away', '2026-08-23');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: away.r.id, role: 'CUSTOMER', createdAt: at('2026-08-23T01:00:00.000Z') },
+        { roomId: away.r.id, role: 'CUSTOMER', createdAt: at('2026-08-25T14:00:00.000Z') },
+        { roomId: away.r.id, role: 'STAFF', externalMessageId: mid('away-auto'), createdAt: at('2026-08-25T14:00:02.000Z') },
+        { roomId: away.r.id, role: 'STAFF', externalMessageId: mid('away-human'), createdAt: at('2026-08-26T02:30:00.000Z') },
+      ],
+    });
+    expect(await firstReply(away.c.id)).toBe('2026-08-26T02:30:00.000Z');
+
+    // ส่งจาก inbox BESTCHOICE สำเร็จ (outbound_sent_at) ภายในนาทีแรก = คนกดส่ง → นับ แม้ echo greeting ข้างหน้าถูกข้าม
+    const inboxFast = await chatCustomer('inbox-fast', '2026-08-24');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: inboxFast.r.id, role: 'CUSTOMER', createdAt: at('2026-08-24T01:00:00.000Z') },
+        { roomId: inboxFast.r.id, role: 'STAFF', externalMessageId: mid('inbox-greeting'), createdAt: at('2026-08-24T01:00:02.000Z') },
+        { roomId: inboxFast.r.id, role: 'STAFF', outboundSentAt: at('2026-08-24T01:00:20.000Z'), createdAt: at('2026-08-24T01:00:20.000Z') },
+      ],
+    });
+    expect(await firstReply(inboxFast.c.id)).toBe('2026-08-24T01:00:20.000Z');
   });
 
   it('ทักเข้ามาแช่แข็ง: ห้องถูกนำเข้าใหม่ (created_at ใหม่กว่า ไม่มีข้อความ) → คำนวณใหม่ไม่เลื่อนไปข้างหลัง · CONTACT_ADDED → IDENTIFIED', async () => {

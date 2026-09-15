@@ -37,26 +37,36 @@ earliest_room AS (
 room_agg AS (
   SELECT ro.customer_id, MAX(ro.last_customer_at) AS last_customer_at FROM rooms ro GROUP BY ro.customer_id
 ),
+auto_opening AS (
+  -- ช่วงข้อความอัตโนมัติของเพจ (ข้อความทักทาย / away message) = คำตอบใบแรกสุดของห้อง (STAFF/BOT) ออกห่างข้อความลูกค้า
+  -- ไม่เกิน 60 วินาที **ทั้งสองทิศ**: webhook บันทึก echo ทันที (await) แต่ข้อความลูกค้าเข้าคิว routeInbound ที่ไม่ await
+  -- และดึงโปรไฟล์ Graph ก่อน saveMessage ⇒ created_at ของ greeting echo มาก่อนข้อความลูกค้าที่เป็นต้นเหตุได้บ่อย
+  SELECT ro.room_id, fo.first_out_at
+  FROM rooms ro
+  CROSS JOIN LATERAL (
+    SELECT MIN(p.created_at) AS first_out_at FROM chat_messages p WHERE p.room_id = ro.room_id AND p.role IN ('STAFF', 'BOT')
+  ) fo
+  WHERE EXISTS (
+    SELECT 1 FROM chat_messages c
+    WHERE c.room_id = ro.room_id AND c.role = 'CUSTOMER'
+      AND c.created_at BETWEEN fo.first_out_at - interval '60 seconds' AND fo.first_out_at + interval '60 seconds'
+  )
+),
 staff_reply AS (
-  -- กติกาเดียวกับ RoomManagerService.shouldSkipFirstOutboundClear: คำตอบใบแรกของห้องที่ออกภายใน 60 วินาทีหลังข้อความลูกค้า = ข้อความทักทาย
   -- "ถึงลูกค้าจริง" มีสองทาง: ส่งจาก inbox สำเร็จ = markOutboundSent stamp outbound_sent_at (LINE ไม่คืน message id)
   -- · echo จากเพจ (พนักงานตอบใน Meta Business Suite/แอป Page + ข้อความทักทายของเพจ) = mirrorOutbound เก็บ mid ไว้ใน
   -- external_message_id โดยไม่มี outbound_sent_at · ส่งจาก inbox ที่ล้มเหลือแถวไว้โดยไม่มีทั้งสองคอลัมน์ (save-before-send) จึงไม่นับ
+  -- ข้าม echo ทุกใบในช่วงอัตโนมัติ (ภายใน 60 วิหลังคำตอบใบแรกสุด) ไม่ใช่แค่ใบแรก — greeting ของเพจมาหลาย bubble ได้
+  -- (ข้อความ + รูป / instant reply + away message) · ส่งจาก inbox (outbound_sent_at) = คนกดส่งเสมอ จึงไม่ถูกข้าม
+  -- ต่อยอดจาก RoomManagerService.shouldSkipFirstOutboundClear (ข้ามเฉพาะใบแรก ⇒ bubble ที่สองของ greeting ล้างคิวรอตอบ)
+  -- ทิศที่เลือก: ข้ามเกิน (คนตอบภายในนาทีแรกหลัง greeting) = ค่าช้าไป กู้ได้ด้วย LEAST เมื่อผ่อนกติกา ·
+  -- นับเกิน = ค่าเร็วไป ถูกแช่แข็งถาวร (ดู ON CONFLICT ด้านล่าง)
   SELECT ro.customer_id, MIN(m.created_at) AS first_staff_reply_at
   FROM rooms ro
   JOIN chat_messages m ON m.room_id = ro.room_id AND m.role = 'STAFF'
    AND (m.outbound_sent_at IS NOT NULL OR m.external_message_id IS NOT NULL)
-  WHERE NOT (
-    NOT EXISTS (
-      SELECT 1 FROM chat_messages p
-      WHERE p.room_id = m.room_id AND p.role IN ('STAFF', 'BOT') AND (p.created_at, p.id) < (m.created_at, m.id)
-    )
-    AND EXISTS (
-      SELECT 1 FROM chat_messages c
-      WHERE c.room_id = m.room_id AND c.role = 'CUSTOMER'
-        AND c.created_at <= m.created_at AND c.created_at >= m.created_at - interval '60 seconds'
-    )
-  )
+  LEFT JOIN auto_opening ao ON ao.room_id = ro.room_id
+  WHERE NOT (m.outbound_sent_at IS NULL AND ao.first_out_at IS NOT NULL AND m.created_at <= ao.first_out_at + interval '60 seconds')
   GROUP BY ro.customer_id
 ),
 -- บันทึกการเดินทางอ่านผ่าน family (ลูกค้า + placeholder ที่ merged_into_id ชี้มา) เหมือนตัวอ่านอื่นทุกตัว —
@@ -247,6 +257,8 @@ ON CONFLICT (customer_id) DO UPDATE SET
   -- แช่แข็ง: เวลาเริ่มต้นไม่มีทางเลื่อนไปข้างหลัง (ข้อความ retention/ห้องนำเข้าใหม่/merge)
   contacted_at = LEAST(customer_journey_states.contacted_at, EXCLUDED.contacted_at),
   identified_at = LEAST(customer_journey_states.identified_at, EXCLUDED.identified_at),
+  -- 🚨 first_staff_reply_at แช่แข็งด้วย LEAST (merge ใช้ earliest() ด้วย): ค่าที่เร็วเกินจริงเลื่อนไปข้างหน้าไม่ได้อีก ⇒
+  -- ถ้าวันหน้าทำกติกา staff_reply ให้แคบลง (ตัดแถวที่เคยนับ) ต้องมี UPDATE ... SET first_staff_reply_at = NULL ใน PR เดียวกันก่อนคำนวณใหม่
   first_staff_reply_at = LEAST(customer_journey_states.first_staff_reply_at, EXCLUDED.first_staff_reply_at),
   stage_entered_at = CASE EXCLUDED.stage
     WHEN 'CONTACTED' THEN LEAST(customer_journey_states.contacted_at, EXCLUDED.contacted_at)

@@ -411,6 +411,12 @@ gcloud run services update bestchoice-api --project=bestchoice-prod --region=asi
 
 ## เรื่องที่รู้แล้วและยอมรับ
 
+**`first_staff_reply_at` แช่แข็ง — เลื่อนไปข้างหน้าไม่ได้**
+- recompute ใช้ `LEAST` และการรวมผู้สนใจใช้ `earliest()` ⇒ ค่าที่เขียนลงแคชแล้วถูกแทนได้เฉพาะค่าที่เก่ากว่า
+- ห้ามรัน `backfill:customer-journey` (หรือปล่อย sweep วันอาทิตย์) บน image ที่นับ echo จากเพจแต่ข้ามข้อความทักทายแค่ใบแรก — greeting หลาย bubble / echo ที่บันทึกก่อนข้อความลูกค้า จะกลายเป็น "ร้านตอบครั้งแรก" ปลอมถาวร
+- วันหน้าถ้าทำกติกา `staff_reply` ใน `journey-state.sql` ให้แคบลง (ตัดแถวที่เคยนับ): ต้องมี `UPDATE customer_journey_states SET first_staff_reply_at = NULL` ใน PR เดียวกัน แล้วค่อยคำนวณใหม่
+- ทิศกลับ (ผ่อนกติกาให้นับเพิ่ม) ไม่ต้อง reset — LEAST รับค่าที่เก่ากว่าเอง
+
 **callLog / payment ที่ถูก soft-delete**
 - ไทม์ไลน์ติดตามหนี้เดิมและแท็บการเดินทางยังแสดงแถวเหล่านี้ (golden ของ Task 7 ล็อกพฤติกรรมเดิม)
 - deploy นี้คือการเปิดใช้วงกว้างเลย — แท็บเปิดให้ 5 role ทันทีที่ขึ้น ไม่มีสวิตช์

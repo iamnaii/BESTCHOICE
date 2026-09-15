@@ -50,7 +50,9 @@ describe('ContractSummaryCard — การ์ดสัญญาแทนเค�
       </BrowserRouter>,
     );
     expect(screen.getByText('ชำระแล้ว 12 / 12 งวด')).toBeInTheDocument();
-    expect(screen.getByText('ครบกำหนด')).toBeInTheDocument();
+    // ป้ายสถานะ COMPLETED = "ผ่อนครบ" (exact match — ไม่ชนกับ "ผ่อนครบแล้ว" ด้านล่าง) · "ครบกำหนด" สงวนให้วันครบกำหนดของงวด
+    expect(screen.getByText('ผ่อนครบ')).toBeInTheDocument();
+    expect(screen.queryByText('ครบกำหนด')).toBeNull();
     expect(screen.getByText('ผ่อนครบแล้ว')).toBeInTheDocument();
   });
 });

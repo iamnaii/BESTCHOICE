@@ -26,7 +26,8 @@ export const contractStatusMap: Record<string, StatusConfig> = {
   OVERDUE: { variant: 'warning', appearance: 'light', label: 'ค้างชำระ' },
   DEFAULT: { variant: 'destructive', appearance: 'light', label: 'ผิดนัด' },
   EARLY_PAYOFF: { variant: 'primary', appearance: 'light', label: 'ปิดก่อนกำหนด' },
-  COMPLETED: { variant: 'success', appearance: 'light', label: 'ครบกำหนด' },
+  // "ผ่อนครบ" ไม่ใช่ "ครบกำหนด" — คำนั้นหมายถึงวันครบกำหนดของงวด (แถบเตือน/การ์ดสัญญา) · ตรงกับ LINE แจ้งปิดสัญญา "ผ่อนครบทุกงวด"
+  COMPLETED: { variant: 'success', appearance: 'light', label: 'ผ่อนครบ' },
   EXCHANGED: { variant: 'info', appearance: 'light', label: 'เปลี่ยนเครื่อง' },
   CLOSED_BAD_DEBT: { variant: 'destructive', label: 'ตัดหนี้สูญ' },
 };

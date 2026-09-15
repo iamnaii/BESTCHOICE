@@ -282,6 +282,8 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'crm_leads',  // FK ไป contracts
   'crm_notes',
   'customer_access_tokens',
+  'customer_journey_entries',  // log การเดินทาง (Plan 2) — อ้างสัญญา/ใบขายที่ถูกล้างไปพร้อมกัน
+  'customer_journey_states',   // แคชสรุป คำนวณใหม่ได้จาก journey-state.sql
   'customer_scores',
   'daily_assignments',
   'data_audit_logs',

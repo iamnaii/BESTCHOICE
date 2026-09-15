@@ -841,6 +841,9 @@ model User {
   equityDocsMade     EquityDocument[] @relation("EquityDocMaker")
   equityDocsApproved EquityDocument[] @relation("EquityDocApprover")
 
+  // การเดินทางของลูกค้า — พนักงานที่ทำให้เกิดช่วงเวลา/บันทึกมือ (null = ระบบ/ลูกค้า/บอท)
+  journeyEntriesActed CustomerJourneyEntry[] @relation("JourneyEntryActor")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -1039,6 +1042,14 @@ model Customer {
   contactId String?  @map("contact_id")
   contact   Contact? @relation(fields: [contactId], references: [id])
 
+  // การเดินทางของลูกค้า — ติดตัวตนข้ามการรวมผู้สนใจ: ตั้งใน tx ของ CustomerMergeService.absorbPlaceholder
+  // คู่กับ deletedAt · chain ถูกยุบเหลือชั้นเดียวเสมอ (ปลายทางของทุกแถวคือลูกค้าที่ยังไม่ถูกรวม)
+  mergedIntoId   String?                @map("merged_into_id")
+  mergedInto     Customer?              @relation("CustomerMergedInto", fields: [mergedIntoId], references: [id])
+  absorbed       Customer[]             @relation("CustomerMergedInto")
+  journeyEntries CustomerJourneyEntry[]
+  journeyState   CustomerJourneyState?
+
   @@index([phone])
   @@index([name])
   @@index([createdAt])
@@ -1046,6 +1057,7 @@ model Customer {
   @@index([referredById])
   @@index([phoneHash])
   @@index([contactId])
+  @@index([mergedIntoId])
   @@map("customers")
 }
 
@@ -6827,6 +6839,70 @@ model CustomerTag {
   @@index([tag])
   @@index([customerId])
   @@map("customer_tags")
+}
+
+/// การเดินทางของลูกค้า (Plan 2 · 2026-09-15-customer-journey) — แถวต่อท้ายอย่างเดียว
+/// SYSTEM = ช่วงเวลาที่ตารางต้นทางเขียนทับจนหาย · MANUAL = บันทึกมือของพนักงาน
+/// PDPA: ห้ามเก็บข้อความแชท · callLog.notes · เบอร์ · เลขบัตร · ที่อยู่ ใน data หรือ note
+model CustomerJourneyEntry {
+  id               String    @id @default(uuid())
+  customerId       String    @map("customer_id") // เจ้าของปัจจุบัน — ย้ายตามตอนรวมผู้สนใจ
+  customer         Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  originCustomerId String    @map("origin_customer_id") // id ตอนเขียน — ไม่เปลี่ยน
+  origin           String    @db.VarChar(8) // SYSTEM | MANUAL
+  kind             String    @db.VarChar(40) // JourneyEntryKind (packages/shared/src/customer-journey.ts)
+  occurredAt       DateTime  @map("occurred_at")
+  actorType        String    @map("actor_type") @db.VarChar(10) // STAFF | CUSTOMER | BOT | SYSTEM
+  actorUserId      String?   @map("actor_user_id") // null = ระบบ/ลูกค้า/บอท — ห้ามใส่ 'system' (Ruling R12)
+  actorUser        User?     @relation("JourneyEntryActor", fields: [actorUserId], references: [id])
+  roomId           String?   @map("room_id") // อ้างห้องเท่านั้น ไม่มีข้อความ
+  refType          String?   @map("ref_type") @db.VarChar(24) // contract | sale | credit_check | booking | product | audit_log
+  refId            String?   @map("ref_id")
+  data             Json? // ผ่าน JOURNEY_DATA_SCHEMAS[kind] (zod whitelist)
+  // เฉพาะ MANUAL
+  channel          String?   @db.VarChar(16) // PHONE | FB_APP | LINE_APP | WALK_IN | OTHER
+  outcome          String?   @db.VarChar(20) // APPOINTED | VISITED | THINKING | BUDGET | NO_ANSWER | BOUGHT_ELSEWHERE | NOT_INTERESTED
+  lostReason       String?   @map("lost_reason") @db.VarChar(20) // NOT_INTERESTED | BOUGHT_ELSEWHERE | CREDIT_FAILED | UNREACHABLE | OTHER
+  heardFrom        String?   @map("heard_from") @db.VarChar(16) // FB_AD | FB_PAGE | TIKTOK | LINE | GOOGLE | FRIEND | WALK_BY | OLD_CUSTOMER | OTHER
+  note             String?   @db.VarChar(140) // DTO ปฏิเสธเลขยาว · ไม่ grant ให้ MCP · ไม่ส่งออก Excel
+  dedupeKey        String?   @unique @map("dedupe_key") // SYSTEM: `${kind}:${sourceRowOrAuditId}` · MANUAL: null
+  createdAt        DateTime  @default(now()) @map("created_at")
+  deletedAt        DateTime? @map("deleted_at") // "เลิกทำ" ของ MANUAL เท่านั้น
+  deletedById      String?   @map("deleted_by_id")
+
+  @@index([customerId, occurredAt(sort: Desc), id])
+  @@index([kind, occurredAt])
+  @@map("customer_journey_entries")
+}
+
+/// แคชสรุปการเดินทาง 1:1 ต่อลูกค้า — คำนวณใหม่ได้ทั้งหมดจาก journey-state.sql ห้ามแก้มือ
+model CustomerJourneyState {
+  customerId        String    @id @map("customer_id")
+  customer          Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  stage             String    @db.VarChar(12) // CONTACTED | IDENTIFIED | INTERESTED | CREDIT | PURCHASED
+  stageEnteredAt    DateTime  @map("stage_entered_at")
+  path              String    @db.VarChar(18) // UNKNOWN | INSTALLMENT | CASH | EXTERNAL_FINANCE
+  contactedAt       DateTime  @map("contacted_at") // แช่แข็ง — รวมผู้สนใจแล้วเลือกค่าเก่ากว่า
+  identifiedAt      DateTime? @map("identified_at")
+  interestedAt      DateTime? @map("interested_at")
+  creditAt          DateTime? @map("credit_at")
+  firstPurchaseAt   DateTime? @map("first_purchase_at")
+  firstPurchaseKind String?   @map("first_purchase_kind") @db.VarChar(18)
+  firstStaffReplyAt DateTime? @map("first_staff_reply_at") // แช่แข็ง · ค่าประมาณ
+  firstChannel      String    @map("first_channel") @db.VarChar(20) // CHAT_FACEBOOK… | WALK_IN | REFERRAL | UNKNOWN
+  firstSource       String    @map("first_source") @db.VarChar(30) // แช่แข็ง: AD:<campaignId> > CHAT_* > REFERRAL > HEARD:<x> > WALK_IN
+  firstAdCampaignId String?   @map("first_ad_campaign_id")
+  heardFrom         String?   @map("heard_from") @db.VarChar(16)
+  lastCustomerAt    DateTime? @map("last_customer_at")
+  lastTouchAt       DateTime? @map("last_touch_at")
+  lostAt            DateTime? @map("lost_at")
+  lostReason        String?   @map("lost_reason") @db.VarChar(20)
+  computedAt        DateTime  @map("computed_at")
+
+  @@index([stage, stageEnteredAt])
+  @@index([firstSource, contactedAt])
+  @@index([firstChannel, contactedAt])
+  @@map("customer_journey_states")
 }
 
 /// Collector → OWNER approval flow for waiving late fees on specific payments.

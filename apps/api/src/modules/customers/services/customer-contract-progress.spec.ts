@@ -108,4 +108,47 @@ describe('buildContractProgress', () => {
       lastCall: { calledAt: '2026-09-10T07:32:00.000Z', result: 'PROMISED', notes: 'จะจ่ายวันที่ 15', callerName: 'แนน' },
     });
   });
+
+  describe('งวดค้าง/งวดถัดไป เทียบต้นวันเวลาไทย (payments.due_date เก็บเป็น 00:00 เวลาไทย = 17:00 UTC ของวันก่อน)', () => {
+    // งวด 1 ชำระแล้ว · งวด 2 ครบกำหนด 15/09 เวลาไทย · งวด 3 ครบกำหนด 15/10 เวลาไทย
+    const bkkMidnight = (isoDay: string) => new Date(new Date(`${isoDay}T00:00:00.000Z`).getTime() - 7 * 60 * 60 * 1000).toISOString();
+    const dueSchedule = (secondDueDay: string, thirdDueDay: string): ProgressPaymentRow[] => [
+      pay(1, 'PAID', bkkMidnight('2026-08-15'), '4200.00'),
+      pay(2, 'PENDING', bkkMidnight(secondDueDay)),
+      pay(3, 'PENDING', bkkMidnight(thirdDueDay)),
+    ];
+
+    it('งวดครบกำหนดวันนี้ ตอน 10:00 เวลาไทย (และตอนเที่ยงคืนพอดี) → เป็นงวดถัดไป ไม่ใช่งวดค้าง 0 วัน', () => {
+      const payments = dueSchedule('2026-09-15', '2026-10-15');
+      for (const now of [new Date('2026-09-15T03:00:00.000Z'), new Date(bkkMidnight('2026-09-15'))]) {
+        const [p] = buildContractProgress({ contracts: [contract], payments, lastCalls: [], now });
+        expect(p).toMatchObject({
+          overdueInstallments: 0,
+          overdueAmount: 0,
+          firstOverdueInstallmentNo: null,
+          firstOverdueDueDate: null,
+          nextDueDate: bkkMidnight('2026-09-15'),
+          nextAmountDue: 4200,
+          remainingInstallments: 2,
+        });
+      }
+    });
+
+    it('งวดครบกำหนดเมื่อวาน (เวลาไทย) → ค้าง 1 งวด · งวดถัดไปคือเดือนหน้า', () => {
+      const [p] = buildContractProgress({
+        contracts: [contract],
+        payments: dueSchedule('2026-09-14', '2026-10-14'),
+        lastCalls: [],
+        now: new Date('2026-09-15T03:00:00.000Z'),
+      });
+      expect(p).toMatchObject({
+        overdueInstallments: 1,
+        overdueAmount: 4200,
+        firstOverdueInstallmentNo: 2,
+        firstOverdueDueDate: bkkMidnight('2026-09-14'),
+        nextDueDate: bkkMidnight('2026-10-14'),
+        nextAmountDue: 4200,
+      });
+    });
+  });
 });

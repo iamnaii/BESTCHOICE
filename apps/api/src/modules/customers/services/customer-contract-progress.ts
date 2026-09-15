@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { bangkokStartOfDay } from '../../../utils/date.util';
 import { d } from '../../../utils/decimal.util';
 import { nextDueOf, outstandingOf } from '../../contracts/contract-outstanding';
 
@@ -58,7 +59,7 @@ export interface ContractProgress {
   overdueAmount: number;
   /** คงค้าง = กฎกลาง D2 ของ contract-outstanding.ts (งวดที่ยังไม่ PAID, ไม่รวมค่าปรับ) */
   outstanding: number;
-  /** งวดที่ยังไม่ปิดและยังไม่ถึงกำหนด ใกล้สุด — งวดที่เลยกำหนดแล้วอยู่ใน firstOverdue* */
+  /** งวดที่ยังไม่ปิดและครบกำหนดตั้งแต่วันนี้ (เวลาไทย) ใกล้สุด — งวดที่ครบกำหนดก่อนวันนี้อยู่ใน firstOverdue* */
   nextDueDate: string | null;
   nextAmountDue: number | null;
   firstOverdueInstallmentNo: number | null;
@@ -87,15 +88,17 @@ export function buildContractProgress(input: {
     paymentsByContract.set(row.contractId, group);
   }
   const callByContract = new Map(input.lastCalls.map((call) => [call.contractId, call]));
-  const nowMs = input.now.getTime();
+  // due_date เก็บเป็น 00:00 เวลาไทย ⇒ เทียบกับต้นวันเวลาไทย: งวดที่ครบกำหนดวันนี้ยังเป็นงวดถัดไป ไม่ใช่ "ค้าง 0 วัน"
+  // (ค่าปรับเริ่มนับเมื่อค้าง 1 วัน) — helper กลางตัวเดียวกับคิวติดตามหนี้/แดชบอร์ด ห้ามเขียนสูตรที่สอง
+  const todayStartMs = bangkokStartOfDay(input.now).getTime();
 
   return input.contracts.map((contract) => {
     const rows = paymentsByContract.get(contract.id) ?? [];
     const unpaid = rows.filter((row) => row.status !== 'PAID');
     const overdue = unpaid
-      .filter((row) => row.dueDate.getTime() < nowMs)
+      .filter((row) => row.dueDate.getTime() < todayStartMs)
       .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime() || a.installmentNo - b.installmentNo);
-    const next = nextDueOf(unpaid.filter((row) => row.dueDate.getTime() >= nowMs));
+    const next = nextDueOf(unpaid.filter((row) => row.dueDate.getTime() >= todayStartMs));
     const call = callByContract.get(contract.id) ?? null;
 
     return {

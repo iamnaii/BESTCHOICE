@@ -15,6 +15,7 @@ import { FacebookDomainModule } from '../facebook-domain/facebook-domain.module'
 import { MessageRouterService } from '../chat-engine/services/message-router.service';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
 
 /**
  * ChatAdaptersModule — provides IChannelAdapter implementations for all channels.
@@ -33,6 +34,8 @@ import { IntegrationsModule } from '../integrations/integrations.module';
     FacebookDomainModule,
     // FacebookWebhookController reads verify token + app secret from IntegrationConfig.
     IntegrationsModule,
+    // การเดินทางของลูกค้า — FacebookWebhookController บันทึก PRODUCT_LINK_CLICK
+    CustomerJourneyModule,
     // Phase 5 — FacebookWebhookController injects QuickReplyPostbackRouterService.
     forwardRef(() => StaffChatModule),
   ],

@@ -13,7 +13,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 
 describe('CustomersController PII (Phase 5)', () => {
   let controller: CustomersController;
-  let service: { findOne: jest.Mock; findDetail: jest.Mock; findAll: jest.Mock; search: jest.Mock; fillPlaceholderContact: jest.Mock };
+  let service: { findOne: jest.Mock; findDetail: jest.Mock; findAll: jest.Mock; search: jest.Mock; fillPlaceholderContact: jest.Mock; update: jest.Mock };
   let piiAudit: { logDecryption: jest.Mock };
   let tierService: CustomerTierService;
   let merge: { absorbPlaceholder: jest.Mock; assertActorMayAbsorb: jest.Mock };
@@ -25,6 +25,7 @@ describe('CustomersController PII (Phase 5)', () => {
       findAll: jest.fn(),
       search: jest.fn(),
       fillPlaceholderContact: jest.fn(),
+      update: jest.fn(),
     };
     piiAudit = { logDecryption: jest.fn().mockResolvedValue(undefined) };
     merge = {
@@ -266,4 +267,12 @@ describe('CustomersController PII (Phase 5)', () => {
     });
   });
 
+  describe('PATCH /customers/:id', () => {
+    it('ส่ง actor ต่อเข้า service — ใช้ระบุผู้เติมเบอร์ในแถว CONTACT_ADDED', async () => {
+      service.update.mockResolvedValue({ id: 'c1' });
+      const dto = { phone: '0812345678' };
+      await controller.update('c1', dto as any, reqOf('OWNER'));
+      expect(service.update).toHaveBeenCalledWith('c1', dto, { id: 'u1', role: 'OWNER' });
+    });
+  });
 });

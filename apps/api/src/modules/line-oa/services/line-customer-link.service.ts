@@ -5,6 +5,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LineMessagePayload } from '../dto/webhook-event.dto';
 import { LineApiClientService } from './line-api-client.service';
 import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
+import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
+import { lineLinkedEntry } from '../../customer-journey/chat-identity-entries';
 
 @Injectable()
 export class LineCustomerLinkService {
@@ -14,6 +16,8 @@ export class LineCustomerLinkService {
     private prisma: PrismaService,
     private apiClient: LineApiClientService,
     @Optional() private merge?: CustomerMergeService,
+    // การเดินทางของลูกค้า — LINE_LINKED (lineIdShop ไม่มีคอลัมน์เวลาผูก)
+    @Optional() private journey?: JourneyEntryWriter,
   ) {}
 
   // ─── Customer Management ──────────────────────────────
@@ -75,6 +79,7 @@ export class LineCustomerLinkService {
       where: { id: customer.id },
       data: { lineIdShop: lineUserId },
     });
+    const linkedAt = new Date();
 
     this.logger.log(`[LINE] Self-linked ${lineUserId} to customer ${customer.name} via phone ${phone}`);
     // ห้อง LINE ร้านของคนนี้ที่ถือผู้สนใจอัตโนมัติอยู่ → ดูดเข้าลูกค้าที่เพิ่งผูก (สเปค 3.3 ง)
@@ -91,6 +96,10 @@ export class LineCustomerLinkService {
         extra: { lineUserId, customerId: customer.id },
       });
     }
+    // LINE_LINKED หลังผูกสำเร็จ (absorb ล้มก็ยังบันทึก) · ไม่เก็บ lineUserId และเบอร์
+    await this.journey?.recordAfterCommit(
+      lineLinkedEntry({ customerId: customer.id, channel: 'SHOP', via: 'SELF_LINK_PHONE', occurredAt: linkedAt }),
+    );
     return { success: true, customerName: customer.name };
   }
 

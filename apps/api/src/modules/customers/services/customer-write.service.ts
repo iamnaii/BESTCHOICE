@@ -10,6 +10,9 @@ import { ContactResolverService } from '../../contacts/contact-resolver.service'
 import { CustomerQueryService } from './customer-query.service';
 import { AuditService } from '../../audit/audit.service';
 import { isChatPlaceholder, PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospects/chat-placeholder';
+import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
+import { contactAddedEntry, isBlankContact } from '../../customer-journey/chat-identity-entries';
+import type { ContactField } from '../../customer-journey/journey-data-schemas';
 
 /**
  * Write-path slice of the decomposed CustomersService.
@@ -33,6 +36,8 @@ export class CustomerWriteService {
     private readonly query: CustomerQueryService,
     @Optional() private readonly piiService?: CustomerPiiService,
     @Optional() private readonly audit?: AuditService,
+    // การเดินทางของลูกค้า — CONTACT_ADDED (body ใน audit ถูก REDACTED จึงย้อนหาเวลาที่ได้เบอร์ไม่ได้)
+    @Optional() private readonly journey?: JourneyEntryWriter,
   ) {}
 
   private get piiKey(): string {
@@ -352,8 +357,8 @@ export class CustomerWriteService {
     });
   }
 
-  async update(id: string, dto: UpdateCustomerDto) {
-    await this.query.findOne(id);
+  async update(id: string, dto: UpdateCustomerDto, actor?: { id: string; role: string }) {
+    const before = await this.query.findOne(id);
     // NID is intentionally not in UpdateCustomerDto — customers can't change
     // their ID through this endpoint. If NID needs correction, create a
     // dedicated admin-only flow that writes to an audit log.
@@ -398,10 +403,25 @@ export class CustomerWriteService {
         ? (dto.references as Prisma.InputJsonValue)
         : undefined,
     };
-    return this.prisma.customer.update({
+    const updated = await this.prisma.customer.update({
       where: { id },
       data,
     });
+
+    // CONTACT_ADDED — เบอร์จากว่าง → มีค่า เทียบในโค้ด ไม่เก็บตัวเบอร์ · เปลี่ยนเบอร์ที่มีอยู่แล้วไม่นับ
+    // (nationalId ไม่อยู่ใน UpdateCustomerDto ⇒ ทางนี้ได้แค่เบอร์)
+    if (finalPhone !== undefined && !isBlankContact(finalPhone) && isBlankContact(before.phone)) {
+      await this.journey?.recordAfterCommit(
+        contactAddedEntry({
+          customerId: id,
+          fields: ['phone'],
+          via: 'UPDATE',
+          actorUserId: actor?.id ?? null,
+          occurredAt: new Date(),
+        }),
+      );
+    }
+    return updated;
   }
 
   async remove(id: string) {
@@ -531,6 +551,11 @@ export class CustomerWriteService {
       oldValue: { name: current.name, phone: null },
       newValue: { name: updated.name, phone: updated.phone, nationalIdFilled: !!nationalId },
     });
+    // CONTACT_ADDED — ด่าน isChatPlaceholder ข้างบนรับประกันว่าเดิมไม่มีทั้งเบอร์และเลขบัตร จึงนับทุกครั้งที่เติมสำเร็จ
+    const filled: ContactField[] = nationalId ? ['phone', 'nationalId'] : ['phone'];
+    await this.journey?.recordAfterCommit(
+      contactAddedEntry({ customerId: id, fields: filled, via: 'FILL_CONTACT', actorUserId: actor.id, occurredAt: new Date() }),
+    );
     return { id: updated.id, name: updated.name, phone: updated.phone as string };
   }
 }

@@ -14,13 +14,14 @@ import { ContactsModule } from '../contacts/contacts.module';
 import { TestModeModule } from '../test-mode/test-mode.module';
 import { CreditCheckModule } from '../credit-check/credit-check.module';
 import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
+import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
 
 @Module({
   // CreditCheckModule — เดิม pre-check เรียกตัวอ่าน statement ด้วย AI (โมดูลนั้น import แค่
   // IntegrationsModule จึงไม่มี cycle กลับมาหา customers)
   // ChatProspectsModule — export CustomerMergeService สำหรับ POST /customers/:id/absorb-into/:targetId
   // (ไม่ import อะไรกลับมา — ตรวจแล้วไม่มี cycle)
-  imports: [OverdueModule, CustomerPiiModule, ContactsModule, TestModeModule, CreditCheckModule, ChatProspectsModule],
+  imports: [OverdueModule, CustomerPiiModule, ContactsModule, TestModeModule, CreditCheckModule, ChatProspectsModule, CustomerJourneyModule],
   controllers: [CustomersController],
   providers: [
     CustomersService,

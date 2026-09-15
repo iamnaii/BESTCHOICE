@@ -6,6 +6,7 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { TestModeService } from '../../test-mode/test-mode.service';
 import { AuditService } from '../../audit/audit.service';
 import { CustomerMergeService } from '../../chat-prospects/customer-merge.service';
+import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 
 describe('VerificationService', () => {
   let service: VerificationService;
@@ -411,6 +412,95 @@ describe('VerificationService', () => {
         );
         expect(mergedPrisma.$transaction).toHaveBeenCalled(); // bind() ยังรันต่อแม้ absorb ล้ม
         expect(mergedPrisma.chatbotOtpRequest.delete).toHaveBeenCalled();
+      });
+    });
+
+    describe('LINE_LINKED หลัง bind() commit', () => {
+      let jPrisma: any;
+      let upsert: jest.Mock;
+      let journey: { recordAfterCommit: jest.Mock };
+      let jService: VerificationService;
+      let order: string[];
+
+      beforeEach(async () => {
+        order = [];
+        upsert = jest.fn().mockResolvedValue({});
+        jPrisma = {
+          chatbotOtpRequest: {
+            findUnique: jest.fn().mockResolvedValue(makeRecord('ignored-in-test-mode')),
+            delete: jest.fn().mockResolvedValue({}),
+          },
+          customer: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', name: 'สมชาย' }) },
+          customerLineLink: { findUnique: jest.fn().mockResolvedValue(null) },
+          $transaction: jest.fn().mockImplementation(async (cb: any) => {
+            const result = await cb({
+              customerLineLink: { upsert },
+              chatRoom: { updateMany: jest.fn().mockResolvedValue({}) },
+              customer: { update: jest.fn().mockResolvedValue({}) },
+            });
+            order.push('commit');
+            return result;
+          }),
+        };
+        journey = {
+          recordAfterCommit: jest.fn().mockImplementation(async () => {
+            order.push('journey');
+          }),
+        };
+        const module: TestingModule = await Test.createTestingModule({
+          providers: [
+            VerificationService,
+            { provide: PrismaService, useValue: jPrisma },
+            { provide: NotificationsService, useValue: { sendSmsFromQueue: jest.fn() } },
+            // test-mode bypass: ข้ามการเทียบ hash แต่ผ่าน bind() เส้นเดียวกับยืนยันจริง
+            { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(true) } },
+            { provide: AuditService, useValue: { log: jest.fn().mockResolvedValue(undefined) } },
+            { provide: JourneyEntryWriter, useValue: journey },
+          ],
+        }).compile();
+        jService = module.get(VerificationService);
+      });
+
+      it('ยืนยันสำเร็จ → LINE_LINKED {FINANCE, VERIFICATION} หลัง transaction commit · linkedAt ตรงกับ occurredAt · ไม่มี LINE user id ในแถว', async () => {
+        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+
+        expect(order).toEqual(['commit', 'journey']);
+        const entry = journey.recordAfterCommit.mock.calls[0][0];
+        expect(entry).toMatchObject({
+          customerId: 'c1',
+          kind: 'LINE_LINKED',
+          actorType: 'CUSTOMER',
+          actorUserId: null,
+          data: { channel: 'FINANCE', via: 'VERIFICATION' },
+        });
+        expect(entry.dedupeKey).toBe(`LINE_LINKED:FINANCE:c1:${entry.occurredAt.getTime()}`);
+        expect(upsert.mock.calls[0][0].update.linkedAt).toEqual(entry.occurredAt);
+        expect(JSON.stringify(entry)).not.toContain('U123');
+        expect(jPrisma.customerLineLink.findUnique).toHaveBeenCalledWith({
+          where: { lineUserId_channel: { lineUserId: 'U123', channel: 'FINANCE' } },
+          select: { customerId: true, unlinkedAt: true, deletedAt: true },
+        });
+      });
+
+      it('ยืนยันซ้ำกับลูกค้าคนเดิมที่ยังผูกอยู่ → ไม่นับเป็นการผูกใหม่ ไม่บันทึก', async () => {
+        jPrisma.customerLineLink.findUnique.mockResolvedValue({ customerId: 'c1', unlinkedAt: null, deletedAt: null });
+        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+        expect(order).toEqual(['commit']);
+        expect(journey.recordAfterCommit).not.toHaveBeenCalled();
+      });
+
+      it('LINE นี้เคยผูกลูกค้าคนอื่น หรือเคยถูกยกเลิก → นับเป็นการผูกใหม่', async () => {
+        jPrisma.customerLineLink.findUnique.mockResolvedValueOnce({ customerId: 'c-old', unlinkedAt: null, deletedAt: null });
+        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+        jPrisma.customerLineLink.findUnique.mockResolvedValueOnce({ customerId: 'c1', unlinkedAt: new Date('2026-09-01T00:00:00.000Z'), deletedAt: null });
+        await jService.verifyOtp({ lineUserId: 'U123', otp: '999999' });
+        expect(journey.recordAfterCommit).toHaveBeenCalledTimes(2);
+      });
+
+      it('transaction ของ bind() ล้ม → ไม่บันทึก และ verifyOtp โยนต่อ', async () => {
+        jPrisma.$transaction.mockRejectedValue(new Error('deadlock'));
+        await expect(jService.verifyOtp({ lineUserId: 'U123', otp: '999999' })).rejects.toThrow('deadlock');
+        expect(journey.recordAfterCommit).not.toHaveBeenCalled();
       });
     });
   });

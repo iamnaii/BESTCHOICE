@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { LiffApiService } from './liff-api.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CustomerMergeService } from '../chat-prospects/customer-merge.service';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { Prisma } from '@prisma/client';
 
 describe('LiffApiService', () => {
@@ -10,6 +11,7 @@ describe('LiffApiService', () => {
   let prisma: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let merge: any;
+  let journey: { recordAfterCommit: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -33,12 +35,14 @@ describe('LiffApiService', () => {
     };
     // Task 10 — ดูดผู้สนใจอัตโนมัติหลังผูก LINE การเงินสำเร็จ (confirmLinkLine)
     merge = { absorbRoomsOfLineUser: jest.fn().mockResolvedValue({ absorbed: 0, linked: 0 }) };
+    journey = { recordAfterCommit: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LiffApiService,
         { provide: PrismaService, useValue: prisma },
         { provide: CustomerMergeService, useValue: merge },
+        { provide: JourneyEntryWriter, useValue: journey },
       ],
     }).compile();
 
@@ -270,6 +274,59 @@ describe('LiffApiService', () => {
 
       await expect(service.confirmLinkLine('cust-1', 'Ufin')).resolves.toEqual({ success: true });
       expect(merge.absorbRoomsOfLineUser).toHaveBeenCalledWith('Ufin', 'LINE_FINANCE', 'cust-1', { id: 'system', role: 'SYSTEM' });
+    });
+
+    it('ผูกสำเร็จ (ยังไม่เคยผูก) → LINE_LINKED {FINANCE, LIFF} · ไม่มี LINE user id ในแถว', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: null });
+      prisma.customer.update.mockResolvedValue({});
+
+      await service.confirmLinkLine('cust-1', 'Ufin');
+      expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
+      const entry = journey.recordAfterCommit.mock.calls[0][0];
+      expect(entry).toMatchObject({
+        customerId: 'cust-1',
+        kind: 'LINE_LINKED',
+        actorType: 'CUSTOMER',
+        actorUserId: null,
+        data: { channel: 'FINANCE', via: 'LIFF' },
+      });
+      expect(entry.dedupeKey).toBe(`LINE_LINKED:FINANCE:cust-1:${entry.occurredAt.getTime()}`);
+      expect(JSON.stringify(entry)).not.toContain('Ufin');
+    });
+
+    it('absorb ล้ม → ยังบันทึก LINE_LINKED (ผูกสำเร็จจริง)', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: null });
+      prisma.customer.update.mockResolvedValue({});
+      merge.absorbRoomsOfLineUser.mockRejectedValue(new Error('รวมไม่ได้: ผู้สนใจคนนี้มีใบจอง 1 รายการ'));
+
+      await expect(service.confirmLinkLine('cust-1', 'Ufin')).resolves.toEqual({ success: true });
+      expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
+    });
+
+    it('ลูกค้าคนเดิมกับ LINE เดิม (lineIdFinance เท่าเดิม) → ไม่นับเป็นการผูกใหม่', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: 'Ufin' });
+      prisma.customer.update.mockResolvedValue({});
+
+      await expect(service.confirmLinkLine('cust-1', 'Ufin')).resolves.toEqual({ success: true });
+      expect(journey.recordAfterCommit).not.toHaveBeenCalled();
+    });
+
+    it('ผูกไม่สำเร็จ (LINE ผูกคนอื่นแล้ว) → ไม่บันทึก', async () => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'other_customer' });
+      await service.confirmLinkLine('cust-1', 'Ufin');
+      expect(journey.recordAfterCommit).not.toHaveBeenCalled();
+    });
+
+    it('update ล้ม → ไม่บันทึก และโยนต่อ', async () => {
+      prisma.customer.findFirst.mockResolvedValue(null);
+      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-1', deletedAt: null, lineIdFinance: null });
+      prisma.customer.update.mockRejectedValue(new Error('db down'));
+
+      await expect(service.confirmLinkLine('cust-1', 'Ufin')).rejects.toThrow('db down');
+      expect(journey.recordAfterCommit).not.toHaveBeenCalled();
     });
   });
 

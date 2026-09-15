@@ -285,8 +285,12 @@ export class CustomersController {
 
   @Patch(':id')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  update(@Param('id') id: string, @Body() dto: UpdateCustomerDto) {
-    return this.customersService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateCustomerDto,
+    @Req() req: { user: { id: string; role: string } },
+  ) {
+    return this.customersService.update(id, dto, { id: req.user.id, role: req.user.role });
   }
 
   /**

@@ -11,6 +11,7 @@ import {
   InternalServerErrorException,
   Req,
   Res,
+  Optional,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import * as Sentry from '@sentry/nestjs';
@@ -25,6 +26,8 @@ import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.servi
 import { QuickReplyPostbackRouterService } from '../staff-chat/services/quick-reply-postback-router.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { productLinkClickEntry } from '../customer-journey/chat-identity-entries';
 
 /**
  * Facebook Messenger Webhook Controller
@@ -78,6 +81,8 @@ export class FacebookWebhookController {
     private postbackRouter: QuickReplyPostbackRouterService,
     private prisma: PrismaService,
     private integrationConfig: IntegrationConfigService,
+    // การเดินทางของลูกค้า — PRODUCT_LINK_CLICK (เดิมมีแค่ข้อความระบบในห้อง แกะย้อนหลังไม่ได้)
+    @Optional() private journey?: JourneyEntryWriter,
   ) {}
 
   /**
@@ -258,6 +263,7 @@ export class FacebookWebhookController {
                   await this.handleProductReferral(
                     senderId,
                     String(handledAttribution.utmContent),
+                    this.eventTime(event),
                   );
                 }
               }
@@ -303,7 +309,7 @@ export class FacebookWebhookController {
       void this.messageRouter
         .routeInbound(inbound)
         .then(() =>
-          attribution?.utmContent ? this.handleProductReferral(senderId, String(attribution.utmContent)) : undefined,
+          attribution?.utmContent ? this.handleProductReferral(senderId, String(attribution.utmContent), this.eventTime(event)) : undefined,
         )
         .catch((err) =>
           this.logger.error(
@@ -329,7 +335,7 @@ export class FacebookWebhookController {
         await this.messageRouter.recordAdReferral(senderId, ChatChannel.FACEBOOK, adAttribution);
       }
       if (event.referral.ref) {
-        await this.handleProductReferral(senderId, String(event.referral.ref));
+        await this.handleProductReferral(senderId, String(event.referral.ref), this.eventTime(event));
       }
       return;
     }
@@ -370,7 +376,7 @@ export class FacebookWebhookController {
       // ต้องต่อท้าย routeInbound เพราะโน้ตต้องรอห้องถูกสร้างก่อน (เหมือนเส้น postback)
       .then(() =>
         attribution?.utmContent
-          ? this.handleProductReferral(senderId, String(attribution.utmContent))
+          ? this.handleProductReferral(senderId, String(attribution.utmContent), this.eventTime(event))
           : undefined,
       )
       .catch((err) =>
@@ -442,14 +448,21 @@ export class FacebookWebhookController {
     });
   }
 
+  /** เวลาของ event จาก Meta (ms) — redelivery ส่งค่าเดิม จึงใช้ทำ dedupeKey ได้ · ไม่มีค่า = เวลาปัจจุบัน */
+  private eventTime(event: { timestamp?: number }): Date {
+    return event.timestamp ? new Date(event.timestamp) : new Date();
+  }
+
   /**
    * แปลง `ref` จากลิงก์ m.me เป็นโน้ตระบบในห้องแชท
    *
    * รูปแบบที่เว็บลูกค้าส่งมา: `p:<productId>` (ดู apps/web-shop/src/lib/copy.ts)
    * เจตนา: ให้ทีมงาน + ProductContextCard เห็นว่าลูกค้ามาจากเครื่องไหน โดย
    * ไม่ต้องมีคอลัมน์สถานะใหม่ (ChatRoom.attachedProductId ถูกตัดออกจาก scope)
+   * การเดินทางของลูกค้า: หลังโพสต์โน้ตสำเร็จ เขียน PRODUCT_LINK_CLICK เฉพาะ `p:<id>` ที่พบสินค้าจริง
+   * และห้องมีเจ้าของแล้ว (ref ที่มาจากลิงก์ปลอมจึงไม่ถูกเก็บ)
    */
-  private async handleProductReferral(senderId: string, ref: string): Promise<void> {
+  private async handleProductReferral(senderId: string, ref: string, occurredAt: Date): Promise<void> {
     try {
       const room = await this.prisma.chatRoom.findFirst({
         where: {
@@ -458,7 +471,7 @@ export class FacebookWebhookController {
           deletedAt: null,
         },
         orderBy: { lastMessageAt: 'desc' },
-        select: { id: true },
+        select: { id: true, customerId: true },
       });
       if (!room) {
         this.logger.log(
@@ -466,10 +479,16 @@ export class FacebookWebhookController {
         );
         return;
       }
-      const text = await this.buildReferralNote(ref);
-      if (!text) return;
-      await this.messageRouter.postSystemNote(room.id, text);
+      const note = await this.buildReferralNote(ref);
+      if (!note) return;
+      await this.messageRouter.postSystemNote(room.id, note.text);
       this.logger.log(`[FB referral] PSID ${senderId} ref="${ref}" → โน้ตระบบในห้อง ${room.id}`);
+      // writer ไม่โยน · ห้ามส่ง PSID หรือข้อความลูกค้าเข้าแถว
+      if (note.productId && room.customerId) {
+        await this.journey?.recordAfterCommit(
+          productLinkClickEntry({ customerId: room.customerId, roomId: room.id, productId: note.productId, occurredAt }),
+        );
+      }
     } catch (err) {
       // referral เป็นข้อมูลเสริม — ห้ามทำให้ webhook ทั้งก้อนล้ม
       this.logger.warn(
@@ -478,23 +497,24 @@ export class FacebookWebhookController {
     }
   }
 
-  private async buildReferralNote(ref: string): Promise<string | null> {
+  /** productId ไม่เป็น null เฉพาะเมื่อ ref เป็น `p:<id>` และพบสินค้าจริง */
+  private async buildReferralNote(ref: string): Promise<{ text: string; productId: string | null } | null> {
     const trimmed = ref.trim();
     if (!trimmed) return null;
     if (!trimmed.startsWith('p:')) {
-      return `ลูกค้ากดเข้ามาจากลิงก์เว็บ (ref: ${trimmed})`;
+      return { text: `ลูกค้ากดเข้ามาจากลิงก์เว็บ (ref: ${trimmed})`, productId: null };
     }
     const productId = trimmed.slice(2);
     const product = await this.prisma.product.findFirst({
       where: { id: productId, deletedAt: null },
       select: { brand: true, model: true, storage: true, color: true, imeiSerial: true },
     });
-    if (!product) return 'ลูกค้ากดเข้ามาจากลิงก์สินค้าบนเว็บ (ไม่พบสินค้านี้แล้ว)';
+    if (!product) return { text: 'ลูกค้ากดเข้ามาจากลิงก์สินค้าบนเว็บ (ไม่พบสินค้านี้แล้ว)', productId: null };
     const name = [product.brand, product.model, product.storage, product.color]
       .filter(Boolean)
       .join(' ');
     const tail = product.imeiSerial ? ` (${product.imeiSerial.slice(-4)})` : '';
-    return `ลูกค้ากดมาจากสินค้า ${name}${tail} บนเว็บ`;
+    return { text: `ลูกค้ากดมาจากสินค้า ${name}${tail} บนเว็บ`, productId };
   }
 
   /**

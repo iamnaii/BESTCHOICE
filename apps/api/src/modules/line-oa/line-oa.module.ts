@@ -31,6 +31,7 @@ import { IntegrationsModule } from '../integrations/integrations.module';
 import { ChatEngineModule } from '../chat-engine/chat-engine.module';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
+import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
 
 @Module({
   imports: [
@@ -48,6 +49,9 @@ import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
     // CustomerMergeService เพื่อดูด placeholder ตอน LINE ถูกผูกกับลูกค้าจริง
     // (ChatProspectsModule import แค่ CustomerJourneyModule ที่ไม่ import อะไรกลับมาหา line-oa — ไม่มีวงจร ไม่ต้อง forwardRef)
     ChatProspectsModule,
+    // การเดินทางของลูกค้า — LiffApiService / LineOaService บันทึก LINE_LINKED
+    // (CustomerJourneyModule ไม่ import โมดูลแชทหรือ LINE กลับมา จึงไม่มีวงจร)
+    CustomerJourneyModule,
   ],
   controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LiffWarrantyController, LineLinkInviteController, LineLoginController, BroadcastController],
   providers: [

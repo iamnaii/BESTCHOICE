@@ -108,7 +108,7 @@ describe('CustomerJourneyService.list + summary (Task 9)', () => {
     expect(chatSource).toHaveBeenCalledWith(prisma, ['c1', 'p1', 'p2'], { limit: JOURNEY_COUNT_CAP, before: undefined, from: undefined, to: undefined }, OWNER);
   });
 
-  it('ACCOUNTANT ไม่เรียกแชทและไม่สแกน entries กลุ่มแชท · counts ไม่มี chat · SALES ไม่เรียก payment/collections ทั้งหน้าแรกและหน้าถัดไป', async () => {
+  it('ACCOUNTANT ไม่เรียกแชทและไม่สแกน entries กลุ่มแชท · counts ไม่มี chat · SALES เรียก payment/collections ทั้งหน้าแรกและหน้าถัดไป (OD-10)', async () => {
     entryRows = [ev('entry-chat', day(2), 'chat'), ev('entry-credit', day(1), 'credit')];
     const page = asPage(await setup(LIVE).service.list('c1', { groups: ['chat', 'credit'], include: ['counts'] }, { id: 'a1', role: 'ACCOUNTANT' }));
     expect(chatSource).not.toHaveBeenCalled();
@@ -122,12 +122,12 @@ describe('CustomerJourneyService.list + summary (Task 9)', () => {
     const salesActor = { id: 's1', role: 'SALES' };
     await sales.service.list('c1', { groups: ['payment', 'collections', 'sale'], include: ['counts'] }, salesActor);
     await sales.service.list('c1', { groups: ['payment', 'collections', 'sale'], include: ['counts'], cursor: cursorAt(5) }, salesActor);
-    expect(paymentSource).not.toHaveBeenCalled();
-    expect(collectionsSource).not.toHaveBeenCalled();
+    expect(paymentSource).toHaveBeenCalledTimes(2);
+    expect(collectionsSource).toHaveBeenCalledTimes(2);
     expect(saleSource).toHaveBeenCalledTimes(2);
-    expect(entryScans).not.toContain('payment');
-    expect(entryScans).not.toContain('collections');
-    expect([...resolveJourneyGroups(undefined, 'SALES')]).toEqual(['chat', 'credit', 'sale', 'service']);
+    expect(entryScans).toEqual(expect.arrayContaining(['payment', 'collections']));
+    // ไม่ส่ง groups = JOURNEY_DEFAULT_GROUPS เต็มชุด (payment อยู่นอกค่าตั้งต้นของทุกบทบาท ไม่ใช่เพราะถูกซ่อน)
+    expect([...resolveJourneyGroups(undefined, 'SALES')]).toEqual(['chat', 'credit', 'sale', 'collections', 'service']);
   });
 
   it('รวมหลายแหล่ง ตัดที่ limit คืน nextCursor · cursor เสีย 400 ก่อนแตะ DB · หน้าถัดไปเรียกเฉพาะแหล่งที่ขอด้วย limit จริง ไม่มี counts แม้ขอ', async () => {

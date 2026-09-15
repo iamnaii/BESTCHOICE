@@ -8,7 +8,8 @@ import { creditSource } from './credit.source';
 import { entriesSourceFor } from './entries.source';
 import { paymentSource } from './payment.source';
 
-// สมมติเจ้าของเคาะกลับข้อ b: SALES เห็นยอดชำระ/ติดตามหนี้แต่ไม่เห็นแชท · ACCOUNTANT เห็นแชท — แก้ที่ shared ที่เดียว ทุกแหล่งต้องตาม
+// ตารางสมมติ (ไม่ใช่ค่าจริง — ค่าจริงหลัง OD-10 คือ { ACCOUNTANT: ['chat'] }): SALES ถูกซ่อนแชทแต่เห็นยอดชำระ/ติดตามหนี้ · ACCOUNTANT เห็นแชท
+// พิสูจน์ว่าแก้ที่ shared ที่เดียวแล้วทุกแหล่งตาม (ไม่มีชื่อบทบาทฝังในแหล่ง)
 jest.mock('@installment/shared', () => ({ ...jest.requireActual('@installment/shared'), JOURNEY_HIDDEN_GROUPS: { SALES: ['chat'] } }));
 jest.mock('./contract-timeline', () => ({ customerContractEvents: jest.fn() }));
 

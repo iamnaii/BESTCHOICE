@@ -59,11 +59,11 @@ export const JOURNEY_DEFAULT_GROUPS: readonly JourneyEventGroup[] = ['chat', 'cr
 
 /**
  * กลุ่มที่บทบาทไม่เห็น — API ตัดข้อมูลจริง (Task 8/9) · เว็บซ่อนชิปตามชุดเดียวกัน (Task 12) ห้ามลอกไปประกาศซ้ำ
- * ACCOUNTANT ไม่เห็นแชท · SALES ไม่เห็นยอดชำระ/ติดตามหนี้ (สมมติฐานเจ้าของข้อ b — เคาะเปลี่ยนที่นี่ที่เดียว)
+ * ACCOUNTANT ไม่เห็นแชท · SALES เห็นทุกกลุ่ม (คำตัดสิน OD-10 2026-09-15: ยอดชำระ/ติดตามหนี้ SALES เห็นอยู่แล้วในแถบเตือน/การ์ดสัญญา/full-timeline
+ * — การตัด PDPA อยู่ที่แหล่ง ไม่ใช่ที่ตารางนี้) · เปลี่ยนสิทธิ์ที่นี่ที่เดียว
  */
 export const JOURNEY_HIDDEN_GROUPS: Readonly<Record<string, readonly JourneyEventGroup[]>> = {
   ACCOUNTANT: ['chat'],
-  SALES: ['payment', 'collections'],
 };
 
 /** ป้ายเหตุผล "หลุด" — รหัสตาม lost_reason VARCHAR(20) ของ entries/states · รหัสที่ไม่มีในนี้ ผู้แสดงใช้คำกลางเอง (ห้ามแสดงค่าดิบ) */

@@ -1,4 +1,4 @@
-import { ChatChannel, MessageRole, PrismaClient } from '@prisma/client';
+import { ChatChannel, DunningActionStatus, DunningChannel, MessageRole, Prisma, PrismaClient } from '@prisma/client';
 import { NotFoundException } from '@nestjs/common';
 import { JOURNEY_EVENT_GROUPS, type JourneyListResponse } from '@installment/shared';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -24,7 +24,11 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
   const phone = `08${String(stamp).slice(-8)}`;
   const nationalId = `3${String(stamp).padStart(12, '0').slice(-12)}`;
   const address = 'บ้านเลขที่ 88/8 ซอยสเปคการเดินทาง';
-  const ids = { staff: '', other: '', target: '', placeholder: '', deleted: '', open: '', assigned: '' };
+  const ids = { staff: '', other: '', target: '', placeholder: '', deleted: '', open: '', assigned: '', buyer: '', branch: '', product: '', contract: '', rule: '' };
+  // OD-10: ข้อความที่ต้องไม่หลุดไปถึง SALES ในกลุ่มชำระเงิน/ติดตามหนี้ (ข้อมูลสังเคราะห์ของสเปค)
+  const callNote = `โน้ตโทรสเปค ${phone} ${address}`;
+  const dunningText = `ข้อความทวงสเปค คุณสมหมาย โทร ${phone}`;
+  const dec = (value: string) => new Prisma.Decimal(value);
   const OWNER = { id: 'owner-spec', role: 'OWNER' };
   const query = { groups: [...JOURNEY_EVENT_GROUPS], limit: 100 };
   const page = async (id: string, actor: { id: string; role: string }, extra: Record<string, unknown> = {}) => {
@@ -54,10 +58,34 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     const entry = { customerId: ids.target, occurredAt: new Date(), actorType: 'STAFF', actorUserId: ids.staff };
     await prisma.customerJourneyEntry.create({ data: { ...entry, originCustomerId: ids.placeholder, origin: 'SYSTEM', kind: 'PLACEHOLDER_MERGED', dedupeKey: journeyDedupeKey('PLACEHOLDER_MERGED', ids.placeholder), data: { roomCount: 1 } } });
     await prisma.customerJourneyEntry.create({ data: { ...entry, originCustomerId: ids.target, origin: 'MANUAL', kind: 'TOUCHPOINT', roomId: ids.assigned, channel: 'PHONE', outcome: 'APPOINTED', note: `โทร ${phone}` } });
+
+    // OD-10: ลูกค้าที่มีสัญญา — ชำระแล้ว 1 งวด · โทรติดตามพร้อมโน้ต · ทวงทาง LINE พร้อมข้อความ
+    ids.buyer = (await prisma.customer.create({ data: { name: `journey pdpa buyer ${stamp}` } })).id;
+    ids.branch = (await prisma.branch.create({ data: { name: `journey pdpa spec ${stamp}` } })).id;
+    ids.product = (await prisma.product.create({
+      data: { name: 'journey pdpa phone', brand: 'Apple', model: 'iPhone 15', category: 'PHONE_NEW', costPrice: dec('20000.00'), branchId: ids.branch, imeiSerial: `JPD-${stamp}` },
+    })).id;
+    ids.contract = (await prisma.contract.create({
+      data: {
+        contractNumber: `JPD-${stamp}`, customerId: ids.buyer, productId: ids.product, branchId: ids.branch, salespersonId: ids.staff, planType: 'STORE_WITH_INTEREST',
+        sellingPrice: dec('12000.00'), downPayment: dec('0.00'), interestRate: dec('0.0000'), totalMonths: 12, interestTotal: dec('0.00'),
+        financedAmount: dec('12000.00'), monthlyPayment: dec('1000.00'), status: 'OVERDUE',
+      },
+    })).id;
+    await prisma.payment.create({ data: { contractId: ids.contract, installmentNo: 1, dueDate: new Date(Date.UTC(2026, 7, 1)), amountDue: dec('1000.00'), amountPaid: dec('1000.00'), status: 'PAID' } });
+    await prisma.callLog.create({ data: { contractId: ids.contract, callerId: ids.staff, calledAt: new Date(), result: 'PROMISED', notes: callNote } });
+    ids.rule = (await prisma.dunningRule.create({ data: { name: `journey pdpa rule ${stamp}`, triggerDay: 7, channel: DunningChannel.LINE, messageTemplate: 'journey pdpa template' } })).id;
+    await prisma.dunningAction.create({ data: { dunningRuleId: ids.rule, contractId: ids.contract, channel: DunningChannel.LINE, status: DunningActionStatus.SENT, messageContent: dunningText } });
   });
 
   afterAll(async () => {
-    const customerIds = [ids.target, ids.placeholder, ids.deleted];
+    const customerIds = [ids.target, ids.placeholder, ids.deleted, ids.buyer];
+    await prisma.dunningAction.deleteMany({ where: { contractId: ids.contract } });
+    await prisma.dunningRule.deleteMany({ where: { id: ids.rule } });
+    await prisma.callLog.deleteMany({ where: { contractId: ids.contract } });
+    await prisma.payment.deleteMany({ where: { contractId: ids.contract } });
+    await prisma.contract.deleteMany({ where: { id: ids.contract } });
+    await prisma.product.deleteMany({ where: { id: ids.product } });
     const roomIds = [ids.open, ids.assigned];
     await prisma.customerJourneyEntry.deleteMany({ where: { customerId: { in: customerIds } } });
     await prisma.todo.deleteMany({ where: { roomId: { in: roomIds } } });
@@ -66,7 +94,8 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     await prisma.creditCheck.deleteMany({ where: { customerId: { in: customerIds } } });
     await prisma.customerTag.deleteMany({ where: { customerId: { in: customerIds } } });
     await prisma.customer.deleteMany({ where: { id: { in: [ids.placeholder, ids.deleted] } } });
-    await prisma.customer.deleteMany({ where: { id: ids.target } });
+    await prisma.customer.deleteMany({ where: { id: { in: [ids.target, ids.buyer] } } });
+    await prisma.branch.deleteMany({ where: { id: ids.branch } });
     await prisma.$disconnect();
   });
 
@@ -95,10 +124,24 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     const sales = await page(ids.target, { id: ids.staff, role: 'SALES' });
     expect(sales.events.some((e) => e.href === `/inbox/${ids.assigned}` || e.type === 'TOUCHPOINT')).toBe(false);
     expect(sales.events.some((e) => e.href === `/inbox/${ids.open}`)).toBe(true);
-    expect(sales.events.filter((e) => e.group === 'payment' || e.group === 'collections')).toEqual([]);
     const accountant = await page(ids.target, { id: 'acc-spec', role: 'ACCOUNTANT' });
     expect(accountant.events.filter((e) => e.group === 'chat')).toEqual([]);
     expect(accountant.events.map((e) => e.type)).toEqual(expect.arrayContaining(['CREDIT_CHECK_OPENED', 'TAG_ADDED']));
+  });
+
+  it('OD-10: SALES เห็นชำระเงินและติดตามหนี้ของสัญญา — ไม่มีโน้ตโทร ข้อความทวง เบอร์ ที่อยู่ · metadata อยู่ในชุดคีย์ที่อนุญาต', async () => {
+    const sales = await page(ids.buyer, { id: ids.other, role: 'SALES' });
+    expect(sales.events.map((e) => e.type)).toEqual(expect.arrayContaining(['PAYMENT_RECEIVED', 'COLLECTION_CALL', 'COLLECTION_DUNNING']));
+    const keys = allKeys(sales);
+    expect(FORBIDDEN_KEYS.filter((k) => keys.has(k))).toEqual([]);
+    const json = JSON.stringify(sales);
+    for (const secret of [phone, address, 'โน้ตโทรสเปค', 'ข้อความทวงสเปค']) expect(json).not.toContain(secret);
+    const allowedMetadata = ['amount', 'method', 'result', 'status', 'channel', 'action', 'letterNumber'];
+    for (const event of sales.events.filter((e) => e.group === 'payment' || e.group === 'collections')) {
+      expect(Object.keys(event).filter((k) => !EVENT_KEYS.includes(k))).toEqual([]);
+      expect(event).not.toHaveProperty('subtitle');
+      expect(Object.keys(event.metadata ?? {}).filter((k) => !allowedMetadata.includes(k))).toEqual([]);
+    }
   });
 
   it('เดินทีละ 2 จนหมด ได้ลำดับเดียวกับหน้าเดียว ไม่ซ้ำ ไม่ข้าม', async () => {

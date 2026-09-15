@@ -313,7 +313,7 @@ firstPurchaseAt = LEAST ของ:
   - ACCOUNTANT ไม่ได้กลุ่ม chat
   - SALES ได้กลุ่ม chat เฉพาะห้องที่ยังไม่มีผู้ดูแลหรือตัวเองดูแล
   - SALES ไม่เห็นเครดิตจากแชทของห้องคนอื่น (room-credit-access.ts)
-  - SALES ไม่เห็นยอดชำระ/ติดตามหนี้ (รอเจ้าของเคาะ ข้อ 5)
+  - SALES เห็นยอดชำระ/ติดตามหนี้ (ตัดสิน 2026-09-15 OD-10 — SALES เห็นข้อมูลเดียวกันในแถบเตือน/การ์ดสัญญา/full-timeline อยู่แล้ว · ยังตัด callLog.notes / messageContent เหมือนทุกบทบาท)
 - PDPA: ไม่มีข้อความแชท, messageContent, callLog.notes, phone, nationalId, address · มี snapshot test
 - ภาพรวม: ?limit=6&include=summary&groups=chat,credit,sale
 

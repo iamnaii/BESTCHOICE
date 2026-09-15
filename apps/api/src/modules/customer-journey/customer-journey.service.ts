@@ -47,7 +47,7 @@ export const JOURNEY_NOT_RECORDED: readonly string[] = [
   'สัญญาที่จบด้วยเหตุอื่นนอกจากผ่อนครบหรือปิดยอดก่อนกำหนด',
 ];
 
-/** ไม่ส่ง groups = JOURNEY_DEFAULT_GROUPS · ตัด JOURNEY_HIDDEN_GROUPS[role] (ACCOUNTANT ไม่เห็นแชท · SALES ไม่เห็นยอดชำระ/ติดตามหนี้ — รอเจ้าของเคาะ ข้อ 5 · ชุดเดียวกับเว็บ) */
+/** ไม่ส่ง groups = JOURNEY_DEFAULT_GROUPS · ตัด JOURNEY_HIDDEN_GROUPS[role] (ACCOUNTANT ไม่เห็นแชท · SALES เห็นทุกกลุ่มตามคำตัดสิน OD-10 · ชุดเดียวกับเว็บ) */
 export function resolveJourneyGroups(requested: readonly JourneyEventGroup[] | undefined, role: string): Set<JourneyEventGroup> {
   return new Set((requested?.length ? requested : JOURNEY_DEFAULT_GROUPS).filter((g) => roleSeesGroup(role, g)));
 }

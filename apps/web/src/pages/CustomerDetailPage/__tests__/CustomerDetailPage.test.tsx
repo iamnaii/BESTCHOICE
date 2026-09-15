@@ -438,7 +438,7 @@ describe('การเดินทางของลูกค้า', () => {
     expect(screen.queryByRole('button', { name: 'โหลดเพิ่ม' })).toBeNull();
   });
 
-  it('ชิปกลุ่ม: กดแชทแล้วขอ groups=chat · OWNER เห็นชำระเงิน · SALES ไม่เห็นชำระเงินและติดตามหนี้', async () => {
+  it('ชิปกลุ่ม: กดแชทแล้วขอ groups=chat · OWNER เห็นชำระเงิน · SALES เห็นชำระเงินและติดตามหนี้ (OD-10)', async () => {
     const { unmount } = renderAt('/customers/c1?tab=journey');
     expect(await screen.findByRole('button', { name: 'ชำระเงิน' })).toBeInTheDocument();
     const note = allChipNote('OWNER');
@@ -455,8 +455,9 @@ describe('การเดินทางของลูกค้า', () => {
     mocks.role = 'SALES';
     renderAt('/customers/c1?tab=journey');
     expect(await screen.findByRole('button', { name: 'เครดิต' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'ชำระเงิน' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'ติดตามหนี้' })).toBeNull();
+    expect(screen.getByRole('button', { name: /^ชำระเงิน(\s*\d+)?$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^ติดตามหนี้(\s*\d+)?$/ })).toBeInTheDocument();
+    expect(screen.getByText(String(allChipNote('SALES')))).toBeInTheDocument();
   });
 
   it('ไม่มีกิจกรรม → ข้อความว่าง · รายการ "ระบบยังไม่เก็บ" พับไว้และกางได้', async () => {

@@ -47,17 +47,26 @@ describe('paymentSource / collectionsSource', () => {
     expect(contractEventSources).not.toHaveBeenCalled();
   });
 
-  it('collections: ตัดข้อความที่ส่ง โน้ต เสียง newValue และชนิดที่ไม่รู้จัก · ผู้โทรมี id จาก row · SALES ได้ [] ทั้งสองกลุ่ม', async () => {
+  it('collections: ตัดข้อความที่ส่ง โน้ต เสียง newValue และชนิดที่ไม่รู้จัก · ผู้โทรมี id จาก row · SALES ได้รูปเดียวกันและตัด PDPA ชุดเดียวกัน (OD-10)', async () => {
     const events = await collectionsSource(db, ['c1'], { limit: 30 }, OWNER);
     expect(events.map((e) => e.type)).toEqual(['COLLECTION_CALL', 'COLLECTION_DUNNING', 'CONTRACT_STATUS_CHANGE']);
     expect(events[0]).toMatchObject({ title: 'โทรติดตาม: นัดชำระ · CT-2569-0042', actor: { type: 'STAFF', id: 'u-nan', name: 'แนน' }, metadata: { result: 'PROMISED' } });
     expect(events[1]).not.toHaveProperty('subtitle');
     expect(events[2].metadata).toEqual({ action: 'STATUS_CHANGE' });
     expect(JSON.stringify(events)).not.toMatch(/0812345678|voiceMemoUrl|notes|newValue|บ้านเลขที่|คุณสมชาย|ชนิดใหม่/);
-    jest.clearAllMocks();
-    await expect(paymentSource(db, ['c1'], { limit: 30 }, { id: 's1', role: 'SALES' })).resolves.toEqual([]);
-    await expect(collectionsSource(db, ['c1'], { limit: 30 }, { id: 's1', role: 'SALES' })).resolves.toEqual([]);
-    expect(prisma.contract.findMany).not.toHaveBeenCalled();
+    // OD-10: SALES เห็นทั้งสองกลุ่ม — ต้องได้ผลเดียวกับ OWNER ทุกไบต์ (ไม่มีโน้ตโทร/ข้อความทวง/เบอร์) และ metadata อยู่ในชุดคีย์ที่อนุญาตเท่านั้น
+    const SALES = { id: 's1', role: 'SALES' };
+    const salesCollections = await collectionsSource(db, ['c1'], { limit: 30 }, SALES);
+    const salesPayments = await paymentSource(db, ['c1'], { limit: 30 }, SALES);
+    expect(salesCollections).toEqual(events);
+    expect(salesPayments.map((e) => [e.id, e.metadata])).toEqual([['payment-1', { amount: '4200', method: 'TRANSFER' }]]);
+    const salesJson = JSON.stringify([...salesCollections, ...salesPayments]);
+    expect(salesJson).not.toMatch(/0812345678|voiceMemoUrl|notes|newValue|messageContent|บ้านเลขที่|คุณสมชาย|ชนิดใหม่/);
+    const allowedMetadata = ['result', 'status', 'channel', 'action', 'letterNumber', 'amount', 'method'];
+    for (const event of [...salesCollections, ...salesPayments]) {
+      expect(event).not.toHaveProperty('subtitle');
+      expect(Object.keys(event.metadata ?? {}).filter((key) => !allowedMetadata.includes(key))).toEqual([]);
+    }
   });
 });
 

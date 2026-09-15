@@ -63,7 +63,8 @@ describe('customer-journey — สัญญาร่วม API/เว็บ', ()
 
   it('กลุ่มค่าตั้งต้น + กลุ่มที่บทบาทไม่เห็น — ชุดเดียวที่ API (Task 8/9) และเว็บ (Task 12) ใช้ร่วมกัน', () => {
     expect(JOURNEY_DEFAULT_GROUPS).toEqual(['chat', 'credit', 'sale', 'collections', 'service']);
-    expect(JOURNEY_HIDDEN_GROUPS).toEqual({ ACCOUNTANT: ['chat'], SALES: ['payment', 'collections'] });
+    // คำตัดสิน OD-10 (2026-09-15): SALES เห็นยอดชำระ/ติดตามหนี้ (เห็นข้อมูลเดียวกันในแถบเตือน/การ์ดสัญญา/full-timeline อยู่แล้ว) · ACCOUNTANT ยังไม่เห็นแชท
+    expect(JOURNEY_HIDDEN_GROUPS).toEqual({ ACCOUNTANT: ['chat'] });
     const known: readonly string[] = JOURNEY_EVENT_GROUPS;
     for (const group of [...JOURNEY_DEFAULT_GROUPS, ...Object.values(JOURNEY_HIDDEN_GROUPS).flat()]) expect(known).toContain(group);
   });

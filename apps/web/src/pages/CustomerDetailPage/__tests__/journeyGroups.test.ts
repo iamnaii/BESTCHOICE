@@ -18,8 +18,8 @@ describe('journeyGroupsForRole — ตาม JOURNEY_HIDDEN_GROUPS ของ sha
     expect(journeyGroupsForRole('FINANCE_MANAGER')).toEqual([...JOURNEY_EVENT_GROUPS]);
   });
 
-  it('SALES ไม่เห็นชำระเงินและติดตามหนี้ (สมมติฐานเจ้าของข้อ b)', () => {
-    expect(journeyGroupsForRole('SALES')).toEqual(['chat', 'credit', 'sale', 'service', 'points', 'system']);
+  it('SALES เห็นครบทุกกลุ่มรวมชำระเงินและติดตามหนี้ (คำตัดสิน OD-10 — ข้อมูลเดียวกับแถบเตือน/การ์ดสัญญา)', () => {
+    expect(journeyGroupsForRole('SALES')).toEqual([...JOURNEY_EVENT_GROUPS]);
   });
 
   it('ACCOUNTANT ไม่เห็นแชท · บทบาทที่ API ไม่อนุญาตไม่ได้กลุ่มใดเลย', () => {
@@ -34,7 +34,7 @@ describe('allChipNote', () => {
   it('บอกกลุ่มที่ชิป "ทั้งหมด" ไม่รวม (กลุ่มนอก JOURNEY_DEFAULT_GROUPS) เฉพาะกลุ่มที่บทบาทนั้นเห็น', () => {
     expect([...DEFAULT_EXCLUDED_GROUPS]).toEqual(['payment', 'points', 'system']);
     expect(allChipNote('OWNER')).toBe('ทั้งหมด ไม่รวม ชำระเงิน · แต้ม · ระบบ — กดชิปของกลุ่มนั้นเพื่อดู');
-    expect(allChipNote('SALES')).toBe('ทั้งหมด ไม่รวม แต้ม · ระบบ — กดชิปของกลุ่มนั้นเพื่อดู');
+    expect(allChipNote('SALES')).toBe('ทั้งหมด ไม่รวม ชำระเงิน · แต้ม · ระบบ — กดชิปของกลุ่มนั้นเพื่อดู');
     expect(allChipNote('VIEWER')).toBeNull();
   });
 });

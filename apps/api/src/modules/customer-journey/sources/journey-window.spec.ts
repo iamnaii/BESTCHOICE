@@ -14,8 +14,9 @@ describe('journey-window', () => {
   it('roleSeesGroup อ่าน JOURNEY_HIDDEN_GROUPS ของ shared · บทบาทที่ไม่อยู่ในตาราง (รวมชื่อชนคีย์ของ Object) เห็นทุกกลุ่ม', () => {
     expect(roleSeesGroup('ACCOUNTANT', 'chat')).toBe(false);
     expect(roleSeesGroup('ACCOUNTANT', 'payment')).toBe(true);
-    expect(roleSeesGroup('SALES', 'payment')).toBe(false);
-    expect(roleSeesGroup('SALES', 'collections')).toBe(false);
+    // OD-10: SALES ไม่อยู่ในตารางแล้ว ⇒ เห็นยอดชำระ/ติดตามหนี้
+    expect(roleSeesGroup('SALES', 'payment')).toBe(true);
+    expect(roleSeesGroup('SALES', 'collections')).toBe(true);
     expect(roleSeesGroup('SALES', 'chat')).toBe(true);
     for (const role of ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'constructor', 'toString']) {
       for (const group of ['chat', 'payment', 'collections', 'system'] as const) expect(roleSeesGroup(role, group)).toBe(true);

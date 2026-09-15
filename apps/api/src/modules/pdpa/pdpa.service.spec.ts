@@ -77,6 +77,11 @@ function makePrismaMock(seed: {
   dsarYearCount?: number;
   /** the customer object returned by generateCustomerDataExport's include query */
   exportCustomer?: CustomerRow | null;
+  /** customer.findMany({ where: { mergedIntoId } }) — placeholder ที่ถูกรวมเข้าลูกค้าคนนี้ */
+  absorbedCustomerIds?: string[];
+  /** ผลนับของ deleteMany ตอนปิดคำร้อง DELETION */
+  journeyEntryCount?: number;
+  journeyStateCount?: number;
 }) {
   const customers = seed.customers ?? [];
   const consents = seed.consents ?? [];
@@ -110,6 +115,9 @@ function makePrismaMock(seed: {
         }
         return Promise.resolve(customers.find((c) => c.id === args.where.id) ?? null);
       }),
+      findMany: jest.fn().mockImplementation(() =>
+        Promise.resolve((seed.absorbedCustomerIds ?? []).map((id) => ({ id }))),
+      ),
     },
     pDPAConsent: {
       create: jest.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
@@ -182,7 +190,16 @@ function makePrismaMock(seed: {
         return Promise.resolve(row);
       }),
     },
+    customerJourneyEntry: {
+      deleteMany: jest.fn().mockResolvedValue({ count: seed.journeyEntryCount ?? 0 }),
+    },
+    customerJourneyState: {
+      deleteMany: jest.fn().mockResolvedValue({ count: seed.journeyStateCount ?? 0 }),
+    },
+    $transaction: jest.fn(),
   };
+  // interactive transaction: ส่ง mock ตัวเดียวกันเป็น tx
+  prisma.$transaction.mockImplementation((fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma));
 
   return prisma as unknown as jest.Mocked<PrismaService> & typeof prisma;
 }
@@ -568,6 +585,76 @@ describe('PDPAService (characterization)', () => {
       // Compliance: nationalId must be masked, never raw
       expect(exp.customer.nationalIdMasked).toBe('****0123');
       expect(exp.customer.name).toBe('สมชาย ใจดี');
+    });
+
+    it('DELETION + COMPLETED → ลบประวัติการเดินทางของลูกค้าและ placeholder ที่ถูกรวมเข้ามา ในทรานแซกชันเดียวกับการปิดคำร้อง', async () => {
+      const prisma = makePrismaMock({
+        dsarRequests: [
+          {
+            id: 'd1',
+            requestNumber: 'DSAR-2026-001',
+            customerId: 'cust-1',
+            requestType: 'DELETION',
+            description: 'desc',
+            dueDate: new Date(),
+            deletedAt: null,
+          },
+        ],
+        absorbedCustomerIds: ['placeholder-1'],
+        journeyEntryCount: 4,
+        journeyStateCount: 1,
+      });
+      const svc = new PDPAService(prisma);
+
+      await svc.processDSAR('d1', 'user-9', 'COMPLETED', 'ลบประวัติการเดินทางแล้ว');
+
+      const ids = ['cust-1', 'placeholder-1'];
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.customer.findMany).toHaveBeenCalledWith({ where: { mergedIntoId: 'cust-1' }, select: { id: true } });
+      expect(prisma.customerJourneyEntry.deleteMany).toHaveBeenCalledWith({
+        where: { OR: [{ customerId: { in: ids } }, { originCustomerId: { in: ids } }] },
+      });
+      expect(prisma.customerJourneyState.deleteMany).toHaveBeenCalledWith({ where: { customerId: { in: ids } } });
+      const data = prisma.dSARRequest.update.mock.calls[0][0].data;
+      expect(data.responseData).toEqual({ journeyEntriesDeleted: 4, journeyStatesDeleted: 1 });
+      expect(data.completedAt).toBeInstanceOf(Date);
+    });
+
+    it.each([
+      ['DELETION', 'IN_PROGRESS'],
+      ['DELETION', 'REJECTED'],
+      ['ACCESS', 'COMPLETED'],
+    ])('%s + %s → ไม่แตะประวัติการเดินทาง', async (requestType, status) => {
+      const prisma = makePrismaMock({
+        dsarRequests: [
+          {
+            id: 'd1',
+            requestNumber: 'DSAR-2026-001',
+            customerId: 'cust-1',
+            requestType,
+            description: 'desc',
+            dueDate: new Date(),
+            deletedAt: null,
+          },
+        ],
+        exportCustomer: {
+          id: 'cust-1',
+          name: 'สมหญิง',
+          phone: null,
+          email: null,
+          nationalId: null,
+          deletedAt: null,
+          contracts: [],
+          pdpaConsents: [],
+        },
+      });
+      const svc = new PDPAService(prisma);
+
+      await svc.processDSAR('d1', 'user-9', status, 'บันทึก');
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.customerJourneyEntry.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.customerJourneyState.deleteMany).not.toHaveBeenCalled();
     });
   });
 

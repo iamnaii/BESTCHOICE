@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { DSARRequestType } from '@prisma/client';
+import { DSARRequestType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const DEFAULT_PRIVACY_NOTICE = `ประกาศความเป็นส่วนตัว (Privacy Notice)
@@ -219,7 +219,39 @@ export class PDPAService {
       data.completedAt = new Date();
     }
 
+    // สิทธิ์ลบ (DELETION) ที่ปิดงาน: ลบประวัติการเดินทางของลูกค้า — บันทึกมือมี note อิสระ และแคชคัดลอก heardFrom/lostReason
+    // ทำในทรานแซกชันเดียวกับการปิดคำร้อง: ลบไม่สำเร็จ = คำร้องไม่ถูกปิด · ปิดซ้ำได้ (รอบสองลบ 0 แถว)
+    if (request.requestType === 'DELETION' && status === 'COMPLETED') {
+      return this.prisma.$transaction(async (tx) => {
+        const erased = await this.eraseCustomerJourney(tx, request.customerId);
+        data.responseData = { journeyEntriesDeleted: erased.entries, journeyStatesDeleted: erased.states };
+        return tx.dSARRequest.update({ where: { id }, data });
+      });
+    }
+
     return this.prisma.dSARRequest.update({ where: { id }, data });
+  }
+
+  /**
+   * ลบ customer_journey_entries + customer_journey_states ของเจ้าของข้อมูล
+   * - คำร้องที่ยื่นตอนยังเป็น placeholder แล้วถูกรวมไปก่อนปิด → เจ้าของปัจจุบันคือ merged_into_id (คนเดียวกัน)
+   * - ids = เจ้าของปัจจุบัน + placeholder ทุกตัวที่ถูกรวมเข้ามา (ชั้นเดียว เพราะ absorbPlaceholder ยุบ chain แล้ว)
+   * - entries จับทั้ง customerId (เจ้าของปัจจุบัน) และ originCustomerId (id ตอนเขียน)
+   * แถว customers / สัญญา / ใบขาย ไม่แตะ — อยู่ใต้อายุความตามประกาศความเป็นส่วนตัว · แคช state คำนวณใหม่ได้จากข้อมูลธุรกิจที่เหลือ
+   */
+  private async eraseCustomerJourney(
+    tx: Prisma.TransactionClient,
+    customerId: string,
+  ): Promise<{ entries: number; states: number }> {
+    const subject = await tx.customer.findUnique({ where: { id: customerId }, select: { mergedIntoId: true } });
+    const ownerId = subject?.mergedIntoId ?? customerId;
+    const absorbed = await tx.customer.findMany({ where: { mergedIntoId: ownerId }, select: { id: true } });
+    const ids = [ownerId, ...absorbed.map((row) => row.id)];
+    const entries = await tx.customerJourneyEntry.deleteMany({
+      where: { OR: [{ customerId: { in: ids } }, { originCustomerId: { in: ids } }] },
+    });
+    const states = await tx.customerJourneyState.deleteMany({ where: { customerId: { in: ids } } });
+    return { entries: entries.count, states: states.count };
   }
 
   /** Generate customer data export for DSAR ACCESS requests */

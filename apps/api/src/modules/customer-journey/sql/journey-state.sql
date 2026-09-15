@@ -39,9 +39,13 @@ room_agg AS (
 ),
 staff_reply AS (
   -- กติกาเดียวกับ RoomManagerService.shouldSkipFirstOutboundClear: คำตอบใบแรกของห้องที่ออกภายใน 60 วินาทีหลังข้อความลูกค้า = ข้อความทักทาย
+  -- "ถึงลูกค้าจริง" มีสองทาง: ส่งจาก inbox สำเร็จ = markOutboundSent stamp outbound_sent_at (LINE ไม่คืน message id)
+  -- · echo จากเพจ (พนักงานตอบใน Meta Business Suite/แอป Page + ข้อความทักทายของเพจ) = mirrorOutbound เก็บ mid ไว้ใน
+  -- external_message_id โดยไม่มี outbound_sent_at · ส่งจาก inbox ที่ล้มเหลือแถวไว้โดยไม่มีทั้งสองคอลัมน์ (save-before-send) จึงไม่นับ
   SELECT ro.customer_id, MIN(m.created_at) AS first_staff_reply_at
   FROM rooms ro
-  JOIN chat_messages m ON m.room_id = ro.room_id AND m.role = 'STAFF' AND m.outbound_sent_at IS NOT NULL
+  JOIN chat_messages m ON m.room_id = ro.room_id AND m.role = 'STAFF'
+   AND (m.outbound_sent_at IS NOT NULL OR m.external_message_id IS NOT NULL)
   WHERE NOT (
     NOT EXISTS (
       SELECT 1 FROM chat_messages p

@@ -114,6 +114,50 @@ describe('JourneyStateService (real DB)', () => {
     expect(s.lastCustomerAt?.toISOString()).toBe('2026-09-11T09:00:00.000Z');
   });
 
+  it('ร้านตอบครั้งแรก: echo จากเพจ (มี external_message_id ไม่มี outbound_sent_at) นับ · ส่งจาก inbox ที่ล้ม (ไม่มีทั้งคู่) ไม่นับ · greeting echo ภายใน 60 วิยังถูกข้าม', async () => {
+    const mid = (label: string) => `journey-mid-${label}-${stamp}`;
+
+    // (ก)+(ข) ส่งจาก inbox ล้มก่อน แล้วพนักงานตอบจาก Page Inbox — แคชที่เคยว่างต้องถูกเติมตอนคำนวณใหม่ (LEAST กับ NULL)
+    const echo = await customer({ name: 'journey echo', phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at('2026-09-06T00:00:00.000Z') });
+    const echoRoom = await room(echo.id, 'echo', '2026-09-06T00:00:00.000Z');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: echoRoom.id, role: 'CUSTOMER', createdAt: at('2026-09-06T01:00:00.000Z') },
+        { roomId: echoRoom.id, role: 'STAFF', createdAt: at('2026-09-06T01:30:00.000Z') },
+      ],
+    });
+    await service.recompute([echo.id]);
+    expect((await stateOf(echo.id)).firstStaffReplyAt).toBeNull();
+    await prisma.chatMessage.create({ data: { roomId: echoRoom.id, role: 'STAFF', externalMessageId: mid('echo'), createdAt: at('2026-09-06T02:15:00.000Z') } });
+    await service.recompute([echo.id]);
+    expect((await stateOf(echo.id)).firstStaffReplyAt?.toISOString()).toBe('2026-09-06T02:15:00.000Z');
+
+    // (ข) มีแต่การส่งที่ล้ม — ลูกค้าไม่เคยได้รับคำตอบ
+    const failed = await customer({ name: 'journey failed send', phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at('2026-09-07T00:00:00.000Z') });
+    const failedRoom = await room(failed.id, 'failed', '2026-09-07T00:00:00.000Z');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: failedRoom.id, role: 'CUSTOMER', createdAt: at('2026-09-07T01:00:00.000Z') },
+        { roomId: failedRoom.id, role: 'STAFF', createdAt: at('2026-09-07T03:00:00.000Z') },
+      ],
+    });
+    await service.recompute([failed.id]);
+    expect((await stateOf(failed.id)).firstStaffReplyAt).toBeNull();
+
+    // (ค) ข้อความทักทายอัตโนมัติของเพจมาเป็น echo STAFF ใบแรกภายใน 60 วิ → ข้าม · คำตอบจริงจากเพจใบถัดไปนับ
+    const greeted = await customer({ name: 'journey greeting echo', phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at('2026-09-08T00:00:00.000Z') });
+    const greetedRoom = await room(greeted.id, 'greeting', '2026-09-08T00:00:00.000Z');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: greetedRoom.id, role: 'CUSTOMER', createdAt: at('2026-09-08T01:00:00.000Z') },
+        { roomId: greetedRoom.id, role: 'STAFF', externalMessageId: mid('greeting'), createdAt: at('2026-09-08T01:00:05.000Z') },
+        { roomId: greetedRoom.id, role: 'STAFF', externalMessageId: mid('greeting-reply'), createdAt: at('2026-09-08T01:40:00.000Z') },
+      ],
+    });
+    await service.recompute([greeted.id]);
+    expect((await stateOf(greeted.id)).firstStaffReplyAt?.toISOString()).toBe('2026-09-08T01:40:00.000Z');
+  });
+
   it('ทักเข้ามาแช่แข็ง: ห้องถูกนำเข้าใหม่ (created_at ใหม่กว่า ไม่มีข้อความ) → คำนวณใหม่ไม่เลื่อนไปข้างหลัง · CONTACT_ADDED → IDENTIFIED', async () => {
     const c = await customer({ name: 'journey frozen', phone: null, acquisitionSource: 'CHAT_LINE_SHOP', createdAt: at('2026-08-01T00:00:00.000Z') });
     const r = await room(c.id, 'frozen', '2026-08-01T00:00:00.000Z', 'LINE_SHOP');

@@ -2,6 +2,8 @@ import { NotFoundException, BadRequestException, InternalServerErrorException, L
 import { AiProviderService, AiClient, AiRequest } from '../../ai-usage/ai-provider.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
+import type { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
+import { journeyDedupeKey } from '../../customer-journey/journey-data-schemas';
 
 /**
  * AI-analysis sub-service for credit-check. Plain class (NOT @Injectable) —
@@ -19,6 +21,8 @@ export class CreditCheckAiAnalysisService {
     private prisma: PrismaService,
     private integrationConfig: IntegrationConfigService,
     private provider: AiProviderService,
+    // การเดินทางของลูกค้า (CREDIT_AI_SCORED) — ไม่บังคับ: เทสเดิมประกอบด้วย 3 อาร์กิวเมนต์
+    private journeyEntries?: JourneyEntryWriter,
   ) {}
 
   private async getAnthropicClient(): Promise<AiClient | null> {
@@ -59,7 +63,7 @@ export class CreditCheckAiAnalysisService {
       userId,
     });
 
-    return this.prisma.creditCheck.update({
+    const updated = await this.prisma.creditCheck.update({
       where: { id: creditCheckId },
       data: {
         aiAnalysis: aiAnalysis.analysis,
@@ -73,6 +77,8 @@ export class CreditCheckAiAnalysisService {
         checkedBy: { select: { id: true, name: true } },
       },
     });
+    await this.recordAiScored(updated);
+    return updated;
   }
 
   async analyze(contractId: string, userId?: string) {
@@ -125,8 +131,35 @@ export class CreditCheckAiAnalysisService {
         checkedBy: { select: { id: true, name: true } },
       },
     });
+    await this.recordAiScored(updatedCheck);
 
     return updatedCheck;
+  }
+
+  /**
+   * การเดินทางของลูกค้า — credit_checks.status ถูกเขียนทับทุกรอบ และ updatedAt ขยับทุกครั้งที่แก้แถว (ใช้ย้อนหลังไม่ได้)
+   * ⇒ เก็บผลของรอบนี้เป็น entry หลัง update สำเร็จ · occurredAt = updatedAt ที่ update นี้เพิ่งเขียน
+   * เก็บแค่คะแนนกับผล ไม่เก็บ aiSummary/aiAnalysis (มีรายได้ ยอดคงเหลือ ชื่อนายจ้าง) · ผู้กระทำ = ระบบ
+   */
+  private async recordAiScored(check: {
+    id: string;
+    customerId: string;
+    aiScore: number | null;
+    status: string;
+    updatedAt: Date;
+  }): Promise<void> {
+    if (!this.journeyEntries) return;
+    await this.journeyEntries.recordAfterCommit({
+      customerId: check.customerId,
+      kind: 'CREDIT_AI_SCORED',
+      occurredAt: check.updatedAt,
+      actorType: 'SYSTEM',
+      actorUserId: null,
+      refType: 'credit_check',
+      refId: check.id,
+      data: { score: check.aiScore, status: check.status },
+      dedupeKey: journeyDedupeKey('CREDIT_AI_SCORED', check.id, check.updatedAt.toISOString()),
+    });
   }
 
   private async performAIAnalysis(params: {

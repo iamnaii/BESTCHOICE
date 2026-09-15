@@ -30,6 +30,8 @@ import * as crypto from 'crypto';
 import { CreditHistoryActor, visibleContractCredit } from '../credit-check/services/room-credit-access';
 import { assertContractCreditApproval } from '../credit-check/services/credit-approval';
 import { lockCreditCustomer } from '../credit-check/services/room-credit-history';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
 
 @Injectable()
 export class ContractWorkflowService {
@@ -45,6 +47,9 @@ export class ContractWorkflowService {
     private shopDownPaymentTemplate: ShopDownPaymentTemplate,
     private shopAccountResolver: ShopAccountResolver,
     @Optional() private testMode?: TestModeService,
+    // การเดินทางของลูกค้า (CONTRACT_REVIEWED) — @Optional: เทสเดิมประกอบ service ด้วย 9-10 อาร์กิวเมนต์
+    // ContractsModule import CustomerJourneyModule อยู่แล้ว (ContractsController ฉีดแบบบังคับ ถ้าลืม import แอปจะบูตไม่ขึ้น)
+    @Optional() private journeyEntries?: JourneyEntryWriter,
   ) {}
 
   /**
@@ -307,15 +312,17 @@ export class ContractWorkflowService {
       throw new BadRequestException(`ลายเซ็นไม่ครบ ไม่สามารถอนุมัติได้: ${missing.join(', ')}`);
     }
 
+    const reviewedAt = new Date();
     await this.prisma.contract.update({
       where: { id },
       data: {
         workflowStatus: 'APPROVED',
         reviewedById: userId,
-        reviewedAt: new Date(),
+        reviewedAt,
         reviewNotes,
       },
     });
+    await this.recordReviewRound(contract, 'APPROVED', userId, reviewedAt);
 
     return this.findOne(id);
   }
@@ -333,17 +340,45 @@ export class ContractWorkflowService {
       throw new ForbiddenException('ไม่สามารถปฏิเสธสัญญาที่ตัวเองสร้างได้');
     }
 
+    const reviewedAt = new Date();
     await this.prisma.contract.update({
       where: { id },
       data: {
         workflowStatus: 'REJECTED',
         reviewedById: userId,
-        reviewedAt: new Date(),
+        reviewedAt,
         reviewNotes,
       },
     });
+    await this.recordReviewRound(contract, 'REJECTED', userId, reviewedAt);
 
     return this.findOne(id);
+  }
+
+  /**
+   * การเดินทางของลูกค้า — contracts.reviewedAt/workflowStatus ถูกเขียนทับทุกรอบ เหลือแค่รอบล่าสุด
+   * ⇒ เก็บทุกรอบเป็น entry หลัง update สำเร็จ (update เดี่ยว = commit แล้ว) · dedupeKey ผูกเวลาของรอบ
+   * ไม่คัดลอก reviewNotes: ข้อความอิสระอาจมีเบอร์/ที่อยู่ และคอลัมน์ data ถูก grant ให้ MCP
+   * recordAfterCommit ไม่โยน error ⇒ การอนุมัติ/ตีกลับไม่มีทางล้มเพราะบันทึกนี้
+   */
+  private async recordReviewRound(
+    contract: { id: string; customerId: string; contractNumber: string },
+    decision: 'APPROVED' | 'REJECTED',
+    userId: string,
+    reviewedAt: Date,
+  ): Promise<void> {
+    if (!this.journeyEntries) return;
+    await this.journeyEntries.recordAfterCommit({
+      customerId: contract.customerId,
+      kind: 'CONTRACT_REVIEWED',
+      occurredAt: reviewedAt,
+      actorType: 'STAFF',
+      actorUserId: userId,
+      refType: 'contract',
+      refId: contract.id,
+      data: { decision, contractNumber: contract.contractNumber },
+      dedupeKey: journeyDedupeKey('CONTRACT_REVIEWED', contract.id, reviewedAt.toISOString()),
+    });
   }
 
   async activate(id: string) {

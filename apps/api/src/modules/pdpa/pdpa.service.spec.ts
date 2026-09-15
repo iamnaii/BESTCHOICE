@@ -40,6 +40,7 @@ interface CustomerRow {
   email?: string | null;
   nationalId?: string | null;
   deletedAt: Date | null;
+  mergedIntoId?: string | null;
   contracts?: unknown[];
   pdpaConsents?: unknown[];
 }
@@ -77,6 +78,14 @@ function makePrismaMock(seed: {
   dsarYearCount?: number;
   /** the customer object returned by generateCustomerDataExport's include query */
   exportCustomer?: CustomerRow | null;
+  /** customer.findMany({ where: { mergedIntoId } }) — placeholder ที่ถูกรวมเข้าลูกค้าคนนี้ */
+  absorbedCustomerIds?: string[];
+  /** ผลนับของ deleteMany ตอนปิดคำร้อง DELETION */
+  journeyEntryCount?: number;
+  journeyStateCount?: number;
+  /** ผลของ findMany ตอนส่งออก ACCESS */
+  journeyEntries?: unknown[];
+  journeyStates?: unknown[];
 }) {
   const customers = seed.customers ?? [];
   const consents = seed.consents ?? [];
@@ -110,6 +119,9 @@ function makePrismaMock(seed: {
         }
         return Promise.resolve(customers.find((c) => c.id === args.where.id) ?? null);
       }),
+      findMany: jest.fn().mockImplementation(() =>
+        Promise.resolve((seed.absorbedCustomerIds ?? []).map((id) => ({ id }))),
+      ),
     },
     pDPAConsent: {
       create: jest.fn().mockImplementation((args: { data: Record<string, unknown> }) => {
@@ -182,7 +194,18 @@ function makePrismaMock(seed: {
         return Promise.resolve(row);
       }),
     },
+    customerJourneyEntry: {
+      deleteMany: jest.fn().mockResolvedValue({ count: seed.journeyEntryCount ?? 0 }),
+      findMany: jest.fn().mockResolvedValue(seed.journeyEntries ?? []),
+    },
+    customerJourneyState: {
+      deleteMany: jest.fn().mockResolvedValue({ count: seed.journeyStateCount ?? 0 }),
+      findMany: jest.fn().mockResolvedValue(seed.journeyStates ?? []),
+    },
+    $transaction: jest.fn(),
   };
+  // interactive transaction: ส่ง mock ตัวเดียวกันเป็น tx
+  prisma.$transaction.mockImplementation((fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma));
 
   return prisma as unknown as jest.Mocked<PrismaService> & typeof prisma;
 }
@@ -569,6 +592,76 @@ describe('PDPAService (characterization)', () => {
       expect(exp.customer.nationalIdMasked).toBe('****0123');
       expect(exp.customer.name).toBe('สมชาย ใจดี');
     });
+
+    it('DELETION + COMPLETED → ลบประวัติการเดินทางของลูกค้าและ placeholder ที่ถูกรวมเข้ามา ในทรานแซกชันเดียวกับการปิดคำร้อง', async () => {
+      const prisma = makePrismaMock({
+        dsarRequests: [
+          {
+            id: 'd1',
+            requestNumber: 'DSAR-2026-001',
+            customerId: 'cust-1',
+            requestType: 'DELETION',
+            description: 'desc',
+            dueDate: new Date(),
+            deletedAt: null,
+          },
+        ],
+        absorbedCustomerIds: ['placeholder-1'],
+        journeyEntryCount: 4,
+        journeyStateCount: 1,
+      });
+      const svc = new PDPAService(prisma);
+
+      await svc.processDSAR('d1', 'user-9', 'COMPLETED', 'ลบประวัติการเดินทางแล้ว');
+
+      const ids = ['cust-1', 'placeholder-1'];
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.customer.findMany).toHaveBeenCalledWith({ where: { mergedIntoId: 'cust-1' }, select: { id: true } });
+      expect(prisma.customerJourneyEntry.deleteMany).toHaveBeenCalledWith({
+        where: { OR: [{ customerId: { in: ids } }, { originCustomerId: { in: ids } }] },
+      });
+      expect(prisma.customerJourneyState.deleteMany).toHaveBeenCalledWith({ where: { customerId: { in: ids } } });
+      const data = prisma.dSARRequest.update.mock.calls[0][0].data;
+      expect(data.responseData).toEqual({ journeyEntriesDeleted: 4, journeyStatesDeleted: 1 });
+      expect(data.completedAt).toBeInstanceOf(Date);
+    });
+
+    it.each([
+      ['DELETION', 'IN_PROGRESS'],
+      ['DELETION', 'REJECTED'],
+      ['ACCESS', 'COMPLETED'],
+    ])('%s + %s → ไม่แตะประวัติการเดินทาง', async (requestType, status) => {
+      const prisma = makePrismaMock({
+        dsarRequests: [
+          {
+            id: 'd1',
+            requestNumber: 'DSAR-2026-001',
+            customerId: 'cust-1',
+            requestType,
+            description: 'desc',
+            dueDate: new Date(),
+            deletedAt: null,
+          },
+        ],
+        exportCustomer: {
+          id: 'cust-1',
+          name: 'สมหญิง',
+          phone: null,
+          email: null,
+          nationalId: null,
+          deletedAt: null,
+          contracts: [],
+          pdpaConsents: [],
+        },
+      });
+      const svc = new PDPAService(prisma);
+
+      await svc.processDSAR('d1', 'user-9', status, 'บันทึก');
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.customerJourneyEntry.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.customerJourneyState.deleteMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('generateCustomerDataExport', () => {
@@ -621,6 +714,50 @@ describe('PDPAService (characterization)', () => {
       const svc = new PDPAService(prisma);
 
       await expect(svc.generateCustomerDataExport('ghost')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.customerJourneyEntry.findMany).not.toHaveBeenCalled();
+    });
+
+    it('แนบประวัติการเดินทางของลูกค้า + placeholder ที่ถูกรวมเข้ามา (ids ชุดเดียวกับสิทธิ์ลบ) · ไม่ส่ง id ภายใน/ผู้บันทึก', async () => {
+      const entries = [{ kind: 'CONTACT_ADDED', origin: 'SYSTEM', occurredAt: new Date('2026-09-01T03:00:00Z') }];
+      const states = [{ stage: 'IDENTIFIED', firstSource: 'CHAT_FACEBOOK' }];
+      const prisma = makePrismaMock({
+        exportCustomer: { id: 'cust-1', name: 'ทดสอบ', deletedAt: null, contracts: [], pdpaConsents: [] },
+        absorbedCustomerIds: ['placeholder-1'],
+        journeyEntries: entries,
+        journeyStates: states,
+      });
+      const svc = new PDPAService(prisma);
+
+      const result = await svc.generateCustomerDataExport('cust-1');
+
+      const ids = ['cust-1', 'placeholder-1'];
+      expect(prisma.customer.findMany).toHaveBeenCalledWith({ where: { mergedIntoId: 'cust-1' }, select: { id: true } });
+      const entryArgs = prisma.customerJourneyEntry.findMany.mock.calls[0][0];
+      expect(entryArgs.where).toEqual({ OR: [{ customerId: { in: ids } }, { originCustomerId: { in: ids } }] });
+      expect(entryArgs.select).toMatchObject({ kind: true, origin: true, occurredAt: true, actorType: true, refType: true, refId: true, channel: true, outcome: true, data: true, note: true });
+      for (const internal of ['customerId', 'originCustomerId', 'actorUserId', 'dedupeKey', 'roomId', 'id']) {
+        expect(entryArgs.select).not.toHaveProperty(internal);
+      }
+      const stateArgs = prisma.customerJourneyState.findMany.mock.calls[0][0];
+      expect(stateArgs.where).toEqual({ customerId: { in: ids } });
+      expect(stateArgs.select).not.toHaveProperty('customerId');
+      expect(result.journey).toEqual({ entries, states });
+      // ส่งออกอย่างเดียว ไม่ลบ
+      expect(prisma.customerJourneyEntry.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('เจ้าของข้อมูลเป็น placeholder ที่ถูกรวมไปแล้ว → ประวัติการเดินทางของเจ้าของปัจจุบัน (คนเดียวกัน)', async () => {
+      const prisma = makePrismaMock({
+        customers: [{ id: 'placeholder-1', deletedAt: new Date(), mergedIntoId: 'owner-1' }],
+        exportCustomer: { id: 'placeholder-1', name: 'แชท', deletedAt: new Date(), contracts: [], pdpaConsents: [] },
+        absorbedCustomerIds: ['placeholder-1'],
+      });
+      const svc = new PDPAService(prisma);
+
+      await svc.generateCustomerDataExport('placeholder-1');
+
+      expect(prisma.customer.findMany).toHaveBeenCalledWith({ where: { mergedIntoId: 'owner-1' }, select: { id: true } });
+      expect(prisma.customerJourneyState.findMany.mock.calls[0][0].where).toEqual({ customerId: { in: ['owner-1', 'placeholder-1'] } });
     });
   });
 });

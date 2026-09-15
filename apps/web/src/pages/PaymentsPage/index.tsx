@@ -61,9 +61,13 @@ export default function PaymentsPage() {
     }
   }, [tab, canSeeReceipts, setSearchParams]);
 
+  // R6: เปิดจากลิงก์ "รับชำระ" ของหน้ารายละเอียดลูกค้า (?search=<เลขที่สัญญา>) — ค้นด้วยเลขสัญญา
+  // ทันทีตั้งแต่เปิดหน้า และไม่ล็อกช่วงวันที่ไว้ที่ "เดือนนี้" (งวดค้างจากเดือนก่อนต้องยังเห็น)
+  // จับค่าตอน mount ครั้งเดียวเท่านั้น — ไม่ผูกกับ URL ต่อเนื่อง เปลี่ยนตัวกรองทีหลังได้ตามปกติ
+  const initialSearchFromUrl = searchParams.get('search') ?? '';
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(initialSearchFromUrl);
   const debouncedSearch = useDebounce(searchTerm, 400);
   // LOCAL date, not toISOString() — the UTC day is still yesterday before 07:00 BKK (PR #1327 bug class).
   const [summaryDate, setSummaryDate] = useState(toLocalDateString());
@@ -73,12 +77,15 @@ export default function PaymentsPage() {
   // thisMonth preset: the FULL calendar month, owner 2026-07-02) so that chip
   // reads active on load AND installments due later this month stay visible.
   // NOTE: a month default hides installments due in earlier months from the
-  // queue — switch to "ทั้งหมด" to chase back-dated overdue.
+  // queue — switch to "ทั้งหมด" to chase back-dated overdue. Also switches to
+  // "ทั้งหมด" automatically when opened with ?search= (see R6 comment above).
   const [startDate, setStartDate] = useState(() => {
+    if (initialSearchFromUrl) return '';
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
   });
   const [endDate, setEndDate] = useState(() => {
+    if (initialSearchFromUrl) return '';
     const now = new Date();
     const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     return `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;

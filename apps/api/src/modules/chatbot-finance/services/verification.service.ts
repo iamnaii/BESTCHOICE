@@ -9,6 +9,8 @@ import { AuditService } from '../../audit/audit.service';
 import { LineChannelType } from '@prisma/client';
 import { maskPhone } from '../utils/mask-phone';
 import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
+import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
+import { lineLinkedEntry } from '../../customer-journey/chat-identity-entries';
 
 const OTP_TTL_MS = 5 * 60 * 1000; // 5 นาที
 const OTP_MAX_ATTEMPTS = 3;
@@ -54,6 +56,8 @@ export class VerificationService {
     private testMode: TestModeService,
     private audit: AuditService,
     @Optional() private merge?: CustomerMergeService,
+    // การเดินทางของลูกค้า — LINE_LINKED (ผูกซ้ำรีเซ็ต customer_line_links.linkedAt ประวัติรอบก่อนจึงหาย)
+    @Optional() private journey?: JourneyEntryWriter,
   ) {}
 
   /**
@@ -394,13 +398,21 @@ export class VerificationService {
   }
 
   private async bind(lineUserId: string, customerId: string): Promise<void> {
+    // LINE_LINKED นับเฉพาะการผูกที่เปลี่ยนจริง — ยืนยัน OTP ซ้ำกับลูกค้าคนเดิมที่ยังผูกอยู่ไม่ใช่เหตุการณ์ใหม่
+    const previous = await this.prisma.customerLineLink.findUnique({
+      where: { lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE } },
+      select: { customerId: true, unlinkedAt: true, deletedAt: true },
+    });
+    const newlyLinked =
+      !previous || previous.customerId !== customerId || previous.unlinkedAt !== null || previous.deletedAt !== null;
+    const linkedAt = new Date();
     await this.prisma.$transaction(async (tx) => {
       await tx.customerLineLink.upsert({
         where: {
           lineUserId_channel: { lineUserId, channel: LineChannelType.FINANCE },
         },
         create: { customerId, lineUserId, channel: LineChannelType.FINANCE },
-        update: { customerId, unlinkedAt: null, linkedAt: new Date() },
+        update: { customerId, unlinkedAt: null, linkedAt },
       });
 
       await tx.chatRoom.updateMany({
@@ -422,6 +434,12 @@ export class VerificationService {
       });
     });
     this.logger.log(`[Verify] Bound ${lineUserId.slice(0, 8)}... → customer ${customerId.slice(0, 8)}...`);
+    // LINE_LINKED หลัง commit เท่านั้น — ห้ามย้ายเข้า $transaction (writer ใช้ prisma ของตัวเอง) · ไม่เก็บ lineUserId
+    if (newlyLinked) {
+      await this.journey?.recordAfterCommit(
+        lineLinkedEntry({ customerId, channel: 'FINANCE', via: 'VERIFICATION', occurredAt: linkedAt }),
+      );
+    }
   }
 
   /** Normalize เบอร์ไทย: 089-xxx-xxxx, 0891234567, 66891234567 → 0891234567 */

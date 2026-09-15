@@ -13,7 +13,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 
 describe('CustomersController PII (Phase 5)', () => {
   let controller: CustomersController;
-  let service: { findOne: jest.Mock; findAll: jest.Mock; search: jest.Mock; fillPlaceholderContact: jest.Mock };
+  let service: { findOne: jest.Mock; findDetail: jest.Mock; findAll: jest.Mock; search: jest.Mock; fillPlaceholderContact: jest.Mock; update: jest.Mock };
   let piiAudit: { logDecryption: jest.Mock };
   let tierService: CustomerTierService;
   let merge: { absorbPlaceholder: jest.Mock; assertActorMayAbsorb: jest.Mock };
@@ -21,9 +21,11 @@ describe('CustomersController PII (Phase 5)', () => {
   beforeEach(async () => {
     service = {
       findOne: jest.fn(),
+      findDetail: jest.fn(),
       findAll: jest.fn(),
       search: jest.fn(),
       fillPlaceholderContact: jest.fn(),
+      update: jest.fn(),
     };
     piiAudit = { logDecryption: jest.fn().mockResolvedValue(undefined) };
     merge = {
@@ -139,6 +141,47 @@ describe('CustomersController PII (Phase 5)', () => {
     expect(result).toBeNull();
   });
 
+  it('GET /customers/:id ยังอ่านผ่าน findOne เบา ๆ (อินบ็อกซ์/สร้างสัญญา/OCR เรียกบ่อย) ไม่ใช่ findDetail', async () => {
+    service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
+    await controller.findOne('c1', reqOf('OWNER'));
+    expect(service.findOne).toHaveBeenCalledWith('c1');
+    expect(service.findDetail).not.toHaveBeenCalled();
+  });
+
+  describe('GET /customers/:id/detail (หน้ารายละเอียดลูกค้า)', () => {
+    const detailRow = { id: 'c1', nationalId: '1234567890123', phone: '0812345678', openContracts: [] };
+    type DetailResult = typeof detailRow | null;
+
+    it('อ่านผ่าน findDetail ไม่ใช่ findOne', async () => {
+      service.findDetail.mockResolvedValue(detailRow);
+      await controller.findDetail('c1', reqOf('OWNER'));
+      expect(service.findDetail).toHaveBeenCalledWith('c1');
+      expect(service.findOne).not.toHaveBeenCalled();
+    });
+
+    it('SALES เห็นเลขบัตรแบบปิดบัง และบันทึก PII_DECRYPT_MASKED', async () => {
+      service.findDetail.mockResolvedValue(detailRow);
+      const result = (await controller.findDetail('c1', reqOf('SALES'))) as DetailResult;
+      expect(result?.nationalId).toBe('12345-XXXXX-XX-3');
+      expect(result?.phone).toBe('0812345678');
+      expect(result?.openContracts).toEqual([]);
+      await new Promise((r) => setImmediate(r));
+      expect(piiAudit.logDecryption).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'u1', customerId: 'c1', role: 'SALES', masked: true }),
+      );
+    });
+
+    it('OWNER เห็นเลขบัตรเต็ม และบันทึก PII_DECRYPT_FULL', async () => {
+      service.findDetail.mockResolvedValue(detailRow);
+      const result = (await controller.findDetail('c1', reqOf('OWNER'))) as DetailResult;
+      expect(result?.nationalId).toBe('1234567890123');
+      await new Promise((r) => setImmediate(r));
+      expect(piiAudit.logDecryption).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: 'u1', customerId: 'c1', role: 'OWNER', masked: false }),
+      );
+    });
+  });
+
   describe('GET /customers/:id/tier', () => {
     it('returns tier response from service', async () => {
       const mockResp = {
@@ -224,4 +267,12 @@ describe('CustomersController PII (Phase 5)', () => {
     });
   });
 
+  describe('PATCH /customers/:id', () => {
+    it('ส่ง actor ต่อเข้า service — ใช้ระบุผู้เติมเบอร์ในแถว CONTACT_ADDED', async () => {
+      service.update.mockResolvedValue({ id: 'c1' });
+      const dto = { phone: '0812345678' };
+      await controller.update('c1', dto as any, reqOf('OWNER'));
+      expect(service.update).toHaveBeenCalledWith('c1', dto, { id: 'u1', role: 'OWNER' });
+    });
+  });
 });

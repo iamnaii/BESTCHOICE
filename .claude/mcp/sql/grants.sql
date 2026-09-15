@@ -189,6 +189,12 @@ GRANT SELECT ("id", "lead_id", "staff_id", "created_at") ON public."crm_notes" T
 REVOKE ALL ON public."customer_access_tokens" FROM mcp_ro;
 GRANT SELECT ("id", "contract_id", "expires_at", "accessed_at", "access_count", "created_at") ON public."customer_access_tokens" TO mcp_ro;
 
+REVOKE ALL ON public."customer_journey_entries" FROM mcp_ro;
+GRANT SELECT ("id", "customer_id", "origin_customer_id", "origin", "kind", "occurred_at", "actor_type", "actor_user_id", "room_id", "ref_type", "ref_id", "data", "channel", "outcome", "lost_reason", "heard_from", "dedupe_key", "created_at", "deleted_at", "deleted_by_id") ON public."customer_journey_entries" TO mcp_ro;
+
+REVOKE ALL ON public."customer_journey_states" FROM mcp_ro;
+GRANT SELECT ("customer_id", "stage", "stage_entered_at", "path", "contacted_at", "identified_at", "interested_at", "credit_at", "first_purchase_at", "first_purchase_kind", "first_staff_reply_at", "first_channel", "first_source", "first_ad_campaign_id", "heard_from", "last_customer_at", "last_touch_at", "lost_at", "lost_reason", "computed_at") ON public."customer_journey_states" TO mcp_ro;
+
 REVOKE ALL ON public."customer_line_links" FROM mcp_ro;
 GRANT SELECT ("id", "customer_id", "channel", "linked_at", "unlinked_at", "deleted_at", "created_at", "updated_at") ON public."customer_line_links" TO mcp_ro;
 
@@ -199,7 +205,7 @@ REVOKE ALL ON public."customer_tags" FROM mcp_ro;
 GRANT SELECT ("id", "customer_id", "tag", "source", "reason", "applied_by_user_id", "created_at", "updated_at", "deleted_at") ON public."customer_tags" TO mcp_ro;
 
 REVOKE ALL ON public."customers" FROM mcp_ro;
-GRANT SELECT ("id", "created_at", "updated_at", "deleted_at", "status") ON public."customers" TO mcp_ro;
+GRANT SELECT ("id", "created_at", "updated_at", "deleted_at", "status", "merged_into_id") ON public."customers" TO mcp_ro;
 
 REVOKE ALL ON public."daily_assignments" FROM mcp_ro;
 GRANT SELECT ("id", "date", "collectorId", "contractId", "assignedAt", "source", "status", "startedAt", "completedAt", "outcome", "skipReason", "skipNote", "lockedAt", "lockExpiresAt", "escalationFlag", "paymentId", "lineMessageId", "position", "createdAt", "updatedAt", "deletedAt") ON public."daily_assignments" TO mcp_ro;

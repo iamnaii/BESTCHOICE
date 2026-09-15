@@ -5,6 +5,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { toNum, calcOutstanding } from '../../utils/decimal.util';
 import { maskThaiName } from '../../utils/mask-name.util';
 import { CustomerMergeService, SYSTEM_ACTOR } from '../chat-prospects/customer-merge.service';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { lineLinkedEntry } from '../customer-journey/chat-identity-entries';
 // Return types for LIFF API (mirrors packages/shared/src/liff-types.ts)
 interface LiffPaymentItem { installmentNo: number; dueDate: string; amountDue: number; amountPaid: number; lateFee: number; status: string; paidDate: string | null; paymentMethod: string | null; }
 interface LiffContractItem { id: string; contractNumber: string; status: string; dunningStage: string; daysOverdue: number; product: string; sellingPrice: number; downPayment: number; monthlyPayment: number; totalMonths: number; paidInstallments: number; totalOutstanding: number; createdAt: string; payments: LiffPaymentItem[]; }
@@ -21,6 +23,8 @@ export class LiffApiService {
   constructor(
     private prisma: PrismaService,
     @Optional() private merge?: CustomerMergeService,
+    // การเดินทางของลูกค้า — LINE_LINKED ตอนลงทะเบียน LINE การเงินผ่าน LIFF
+    @Optional() private journey?: JourneyEntryWriter,
   ) {}
 
   // ─── Contracts ──────────────────────────────────────
@@ -195,6 +199,7 @@ export class LiffApiService {
       where: { id: customerId },
       data: { lineIdFinance: lineId },
     });
+    const linkedAt = new Date();
 
     // Log by customer id, not name — name is PII (PDPA). The id is enough to trace.
     this.logger.log(`[LIFF] Linked LINE ${lineId} to customer ${customerId} via finance registration`);
@@ -211,6 +216,12 @@ export class LiffApiService {
         tags: { kind: 'chat-prospect' },
         extra: { lineId, customerId },
       });
+    }
+    // LINE_LINKED — ลูกค้าคนเดิมกับ LINE เดิมไม่ใช่การผูกใหม่ จึงไม่บันทึกซ้ำ · ไม่เก็บ lineId
+    if (customer.lineIdFinance !== lineId) {
+      await this.journey?.recordAfterCommit(
+        lineLinkedEntry({ customerId, channel: 'FINANCE', via: 'LIFF', occurredAt: linkedAt }),
+      );
     }
     return { success: true };
   }

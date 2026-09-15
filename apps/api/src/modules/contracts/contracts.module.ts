@@ -20,6 +20,7 @@ import { WarrantyModule } from '../warranty/warranty.module';
 import { ContractExchangeModule } from '../contract-exchange/contract-exchange.module';
 import { TestModeModule } from '../test-mode/test-mode.module';
 import { ReceiptsModule } from '../receipts/receipts.module';
+import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
 
 @Module({
   imports: [
@@ -41,6 +42,9 @@ import { ReceiptsModule } from '../receipts/receipts.module';
     // EARLY_PAYOFF receipt generation. forwardRef breaks the
     // Contracts → Receipts → LineOa → Contracts module cycle.
     forwardRef(() => ReceiptsModule),
+    // การเดินทางของลูกค้า: ContractsController เขียน CONTRACT_ACTIVATED และ ContractWorkflowService
+    // เขียน CONTRACT_REVIEWED ผ่าน JourneyEntryWriter — CustomerJourneyModule ไม่ import โมดูลโดเมน จึงไม่มีวงจร
+    CustomerJourneyModule,
   ],
   controllers: [ContractsController, ContractDocumentsController, DocumentsController],
   providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService, ContractFileAccessGuard, GhostSaleCron],

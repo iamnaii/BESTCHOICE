@@ -13,8 +13,9 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
   const SALT = 'fill-contact-spec-salt-0123456789abcdef';
   const prisma = new PrismaClient();
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
+  const journey = { recordAfterCommit: jest.fn().mockResolvedValue(undefined) };
   // contactResolver / query ไม่ถูกใช้ในเมธอดนี้ (อ่านผ่าน prisma ตรง) · ไม่ส่ง piiService = fallback inline (ไม่มี key → เก็บ plaintext, มี salt → hash จริง)
-  const service = new CustomerWriteService(prisma as any, {} as any, {} as any, undefined, audit as any);
+  const service = new CustomerWriteService(prisma as any, {} as any, {} as any, undefined, audit as any, journey as any);
   const stamp = String(Date.now()).slice(-8);
   const ids: string[] = [];
   let prevSalt: string | undefined;
@@ -32,7 +33,10 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
     if (prevSalt === undefined) delete process.env.PII_HASH_SALT; else process.env.PII_HASH_SALT = prevSalt;
     if (prevKey !== undefined) process.env.PII_ENCRYPTION_KEY = prevKey;
   });
-  beforeEach(() => audit.log.mockClear());
+  beforeEach(() => {
+    audit.log.mockClear();
+    journey.recordAfterCommit.mockClear();
+  });
 
   async function placeholder(label: string) {
     const row = await prisma.customer.create({
@@ -56,6 +60,30 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
       userId: 'staff-1', action: 'CUSTOMER_PLACEHOLDER_CONTACT_FILLED', entity: 'customer', entityId: p.id,
       newValue: expect.objectContaining({ phone, name: 'สมชาย ใจดี' }),
     }));
+  });
+
+  it('เติมเบอร์บนแถวจริง → CONTACT_ADDED หนึ่งครั้ง ไม่มีเบอร์ในแถว · เบอร์ซ้ำ 409 → ไม่บันทึก', async () => {
+    const p = await placeholder('journey');
+    const phone = `02${stamp}`;
+    await service.fillPlaceholderContact(p.id, { phone }, { id: 'staff-1', role: 'SALES' });
+    expect(journey.recordAfterCommit).toHaveBeenCalledTimes(1);
+    const entry = journey.recordAfterCommit.mock.calls[0][0];
+    expect(entry).toMatchObject({
+      customerId: p.id,
+      kind: 'CONTACT_ADDED',
+      actorType: 'STAFF',
+      actorUserId: 'staff-1',
+      data: { fields: ['phone'], via: 'FILL_CONTACT' },
+      dedupeKey: `CONTACT_ADDED:${p.id}:phone`,
+    });
+    expect(JSON.stringify(entry)).not.toContain(phone);
+
+    journey.recordAfterCommit.mockClear();
+    const again = await placeholder('journey-dup');
+    await expect(
+      service.fillPlaceholderContact(again.id, { phone }, { id: 'staff-1', role: 'SALES' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(journey.recordAfterCommit).not.toHaveBeenCalled();
   });
 
   it('เบอร์ซ้ำกับลูกค้าเดิม → 409 พร้อม existingCustomer {id, name} และไม่แตะแถว', async () => {

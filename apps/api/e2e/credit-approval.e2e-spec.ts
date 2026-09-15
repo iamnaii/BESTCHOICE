@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { CreditCheckService } from '../src/modules/credit-check/credit-check.service';
+import { JourneyEntryWriter } from '../src/modules/customer-journey/journey-entry-writer.service';
 import { CustomerCreditCheckController, GlobalCreditCheckController } from '../src/modules/credit-check/credit-check.controller';
 import { JwtAuthGuard } from '../src/modules/auth/guards/jwt-auth.guard';
 import { BranchGuard } from '../src/modules/auth/guards/branch.guard';
@@ -49,7 +50,11 @@ describe('verified credit approval with PostgreSQL and real HTTP controllers', (
     { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never);
     const module = await Test.createTestingModule({
       controllers: [GlobalCreditCheckController, CustomerCreditCheckController, ApprovalContractTestController],
-      providers: [{ provide: CreditCheckService, useValue: credits }, { provide: PrismaService, useValue: db }],
+      providers: [
+        { provide: CreditCheckService, useValue: credits },
+        { provide: JourneyEntryWriter, useValue: { recordAfterCommit: async () => undefined, recordInTx: async () => undefined } },
+        { provide: PrismaService, useValue: db },
+      ],
     }).overrideGuard(JwtAuthGuard).useValue({ canActivate: context => {
       context.switchToHttp().getRequest().user = { id: ownerId, role }; return true;
     } }).overrideGuard(BranchGuard).useValue({ canActivate: () => true }).compile();

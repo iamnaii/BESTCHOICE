@@ -417,7 +417,7 @@ export default function ContractsPage() {
             <option value="OVERDUE">ค้างชำระ</option>
             <option value="DEFAULT">ผิดนัด</option>
             <option value="EARLY_PAYOFF">ปิดก่อน</option>
-            <option value="COMPLETED">ครบ</option>
+            <option value="COMPLETED">ผ่อนครบ</option>
             <option value="EXCHANGED">เปลี่ยนเครื่อง</option>
             <option value="CLOSED_BAD_DEBT">หนี้สูญ</option>
           </select>

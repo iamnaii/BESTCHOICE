@@ -1,0 +1,188 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { Injectable, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
+import { CUSTOMER_BOUGHT_CONTRACT_STATUSES, CUSTOMER_BOUGHT_SALE_TYPES } from '@installment/shared';
+import { PrismaService } from '../../prisma/prisma.service';
+import { BOUGHT_WHERE } from '../customers/services/customer-query.service';
+
+const RECOMPUTE_BATCH = 500;
+/** ไฟล์ SQL ถูกคัดลอกเข้า dist ผ่าน nest-cli.json assets และตรวจใน verify:assets */
+const loadSql = (name: string) => readFileSync(join(__dirname, 'sql', name), 'utf8');
+const uniqueIds = (customerIds: string[]) => [...new Set(customerIds.filter(Boolean))];
+
+/** ผลของทาง cron — ชุดที่ล้มถูกนับแล้วข้ามไปชุดถัดไป */
+export interface JourneyRecomputeRun {
+  recomputed: number;
+  failedBatches: number;
+}
+
+/**
+ * แคช customer_journey_states — คำนวณได้ใหม่ทั้งหมดจากตารางต้นทาง ห้ามแก้มือ
+ * ผู้เรียก: CustomerMergeService หลัง commit (Task 4) · JourneySummaryService ในคำขอ + CustomerJourneyCron (Task 9) · CLI backfill (Task 10)
+ * สัญญา: ลูกค้าที่ deleted_at ไม่ว่าง (รวมผู้สนใจที่ถูกรวมแล้ว) ไม่มีแคชของตัวเองเสมอ · contactedAt/firstChannel/firstSource/firstAdCampaignId
+ * เลื่อนได้เฉพาะไปค่าที่เก่ากว่า (ON CONFLICT ใน journey-state.sql)
+ */
+@Injectable()
+export class JourneyStateService {
+  private readonly stateSql = loadSql('journey-state.sql');
+  private readonly probeSql = loadSql('journey-activity-probe.sql');
+  private readonly activeSinceSql = loadSql('journey-active-since.sql');
+
+  private readonly logger = new Logger(JourneyStateService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** ชุดใดล้ม = โยน error ทันที — ผู้เรียกที่ต้องรู้ผล (รวมผู้สนใจ / summary ในคำขอ) */
+  async recompute(customerIds: string[]): Promise<void> {
+    const ids = uniqueIds(customerIds);
+    const computedAt = new Date().toISOString();
+    for (let i = 0; i < ids.length; i += RECOMPUTE_BATCH) {
+      await this.recomputeBatch(ids.slice(i, i + RECOMPUTE_BATCH), computedAt);
+    }
+  }
+
+  /**
+   * ทางของ cron journey:recompute (โหมด 48 ชม.) — ชุดที่ล้ม (เช่น deadlock) log id ต้น/ท้ายชุด + Sentry แล้วไปชุดถัดไป
+   * ชุดเดียวล้มต้องไม่ทำให้ชุดหลัง ๆ และด่าน purchasedParity ของคืนนั้นหายไปเงียบ ๆ
+   */
+  async recomputeContinuing(customerIds: string[]): Promise<JourneyRecomputeRun> {
+    const ids = uniqueIds(customerIds);
+    const computedAt = new Date().toISOString();
+    let failedBatches = 0;
+    for (let i = 0; i < ids.length; i += RECOMPUTE_BATCH) {
+      if (!(await this.tryRecomputeBatch(ids.slice(i, i + RECOMPUTE_BATCH), computedAt))) failedBatches++;
+    }
+    return { recomputed: ids.length, failedBatches };
+  }
+
+  /**
+   * ทุกลูกค้าที่ยังไม่ถูกลบ ทีละ 500 (keyset ตาม id) — cron วันอาทิตย์ · ชุดที่ล้มถูกนับแล้วไปต่อ (แบบ recomputeContinuing)
+   * ท้ายรอบกวาดแคชของลูกค้าที่ถูกลบแล้วครั้งเดียว: recompute ที่ snapshot ยังเห็น placeholder มีชีวิต อาจเขียนแถวแคชของมัน
+   * หลังจากที่การรวมเก็บกวาดไปแล้ว และลูปนี้เดินเฉพาะ deletedAt null จึงไม่มีวันเจอแถวนั้นอีก
+   */
+  async recomputeAll(): Promise<JourneyRecomputeRun> {
+    let recomputed = 0;
+    let failedBatches = 0;
+    let cursor: string | undefined;
+    let more = true;
+    while (more) {
+      const rows = await this.prisma.customer.findMany({
+        where: { deletedAt: null, ...(cursor ? { id: { gt: cursor } } : {}) },
+        orderBy: { id: 'asc' },
+        take: RECOMPUTE_BATCH,
+        select: { id: true },
+      });
+      if (rows.length > 0) {
+        if (!(await this.tryRecomputeBatch(rows.map((row) => row.id), new Date().toISOString()))) failedBatches++;
+        recomputed += rows.length;
+        cursor = rows[rows.length - 1].id;
+      }
+      more = rows.length === RECOMPUTE_BATCH;
+    }
+    try {
+      await this.prisma.customerJourneyState.deleteMany({ where: { customer: { deletedAt: { not: null } } } });
+    } catch (err) {
+      failedBatches++;
+      this.logger.warn(`journey recompute orphan sweep failed: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { kind: 'cron-job', cron: 'journey:recompute' }, extra: { step: 'orphan-sweep' } });
+    }
+    return { recomputed, failedBatches };
+  }
+
+  private async recomputeBatch(batch: string[], computedAt: string): Promise<void> {
+    await this.prisma.$executeRawUnsafe(
+      this.stateSql,
+      batch,
+      [...CUSTOMER_BOUGHT_CONTRACT_STATUSES],
+      [...CUSTOMER_BOUGHT_SALE_TYPES],
+      computedAt,
+    );
+    // placeholder ที่รวมแล้ว / ลูกค้าที่ถูกลบ ไม่มีแคชของตัวเอง
+    await this.prisma.customerJourneyState.deleteMany({
+      where: { customerId: { in: batch }, customer: { deletedAt: { not: null } } },
+    });
+  }
+
+  /** PDPA: log/Sentry มีแค่ id ลูกค้า (uuid) กับตัวเลข */
+  private async tryRecomputeBatch(batch: string[], computedAt: string): Promise<boolean> {
+    try {
+      await this.recomputeBatch(batch, computedAt);
+      return true;
+    } catch (err) {
+      const firstId = batch[0];
+      const lastId = batch[batch.length - 1];
+      this.logger.warn(
+        `journey recompute batch failed first=${firstId} last=${lastId} size=${batch.length}: ${err instanceof Error ? err.message : err}`,
+      );
+      Sentry.captureException(err, {
+        tags: { kind: 'cron-job', cron: 'journey:recompute' },
+        extra: { firstId, lastId, size: batch.length },
+      });
+      return false;
+    }
+  }
+
+  /** ด่านความถูกต้อง: แคช PURCHASED ต้องเท่ากับจำนวนลูกค้าที่ BOUGHT_WHERE เป็นจริง */
+  async purchasedParity(): Promise<{ purchasedStates: number; bought: number }> {
+    const [purchasedStates, bought] = await Promise.all([
+      this.prisma.customerJourneyState.count({ where: { stage: 'PURCHASED', customer: { deletedAt: null } } }),
+      this.prisma.customer.count({ where: { AND: [{ deletedAt: null }, BOUGHT_WHERE] } }),
+    ]);
+    return { purchasedStates, bought };
+  }
+
+  /** familyIds = ลูกค้า + placeholder ที่ merged_into_id ชี้มา — summary ใช้ตัดสินว่าแคชที่เก่ากว่า 15 นาทีต้องคำนวณใหม่ไหม */
+  async hasActivitySince(familyIds: string[], since: Date): Promise<boolean> {
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ active: boolean }>>(this.probeSql, familyIds, since.toISOString());
+    return rows[0]?.active === true;
+  }
+
+  /** id ลูกค้าปัจจุบัน (placeholder ที่รวมแล้วชี้ไปคนจริง) ที่ขยับตั้งแต่ since — cron journey:recompute */
+  async activeCustomerIdsSince(since: Date): Promise<string[]> {
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ customer_id: string }>>(this.activeSinceSql, since.toISOString());
+    return rows.map((row) => row.customer_id);
+  }
+
+  /**
+   * ด่าน entry-guard: สัญญาที่ "เปิดจริง" ในช่วง [gte, lt) แต่ไม่มี entry CONTRACT_ACTIVATED (hook ของ Task 5 หลุด) — เรียงตาม id
+   * "เปิดจริง" = JournalEntry POSTED ที่ไม่ถูกลบ · postedAt อยู่ในช่วง · metadata เป็นใบเปิดสัญญา ซึ่งโพสต์ใน tx เดียวกับ
+   * ContractWorkflowService.activate() เสมอ (JE ล้ม = activate rollback ทั้งก้อน) — contractId อ่านจาก metadata.contractId:
+   *   - ContractActivation1ATemplate `{ tag: '1A', contractId }` — เปิดสัญญาปกติ
+   *   - ExchangeNewContract1ATemplate `{ flow: 'exchange-new-contract-1a', contractId }` — สัญญาใหม่ของการเปลี่ยนเครื่อง (ไม่มีใบขาย)
+   * ไม่ใช้ Sale.createdAt: ขายผ่อนที่ POS สร้างใบขาย INSTALLMENT ตอนสร้างสัญญา DRAFT แล้วค่อยเปิดวันหลังหรือไม่เปิดเลย
+   * ใบกลับรายการ (ยกเลิกสัญญา / ยกเลิกเปลี่ยนเครื่อง / เครื่องตำหนิ) ตั้ง tag 'REVERSAL' + flow ของตัวเอง จึงไม่เข้าเงื่อนไขอยู่แล้ว —
+   * ข้าม JE ที่มี reversesEntryId/originalEntryId อีกชั้นเผื่อใบกลับรายการในอนาคตลอก metadata ของใบเปิดมาทั้งก้อน
+   * ใบเปิดต้นฉบับที่ถูกกลับรายการภายหลัง (stamp reversed: true, postedAt เดิม) ยังนับ — สัญญาเคยเปิดจริง entry ต้องมี
+   */
+  async contractsMissingActivationEntry(range: { gte: Date; lt: Date }): Promise<string[]> {
+    const activations = await this.prisma.journalEntry.findMany({
+      where: {
+        status: 'POSTED',
+        deletedAt: null,
+        postedAt: range,
+        OR: [
+          { metadata: { path: ['tag'], equals: '1A' } },
+          { metadata: { path: ['flow'], equals: 'exchange-new-contract-1a' } },
+        ],
+      },
+      select: { metadata: true },
+    });
+    const contractIds = [
+      ...new Set(
+        activations.flatMap((row) => {
+          const meta = (row.metadata ?? {}) as Record<string, unknown>;
+          if (meta.reversesEntryId !== undefined || meta.originalEntryId !== undefined) return [];
+          return typeof meta.contractId === 'string' ? [meta.contractId] : [];
+        }),
+      ),
+    ];
+    if (contractIds.length === 0) return [];
+    const entries = await this.prisma.customerJourneyEntry.findMany({
+      where: { kind: 'CONTRACT_ACTIVATED', refId: { in: contractIds } },
+      select: { refId: true },
+    });
+    const seen = new Set(entries.map((row) => row.refId));
+    return contractIds.filter((id) => !seen.has(id)).sort();
+  }
+}

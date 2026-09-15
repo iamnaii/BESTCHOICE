@@ -46,7 +46,7 @@ const ROOM_SELECT = { id: true, channel: true, lineUserId: true, externalUserId:
  * ห้องที่ยังไม่มีเจ้าของ ยกเว้นห้อง WEB (widget) ที่ยังไม่มีข้อความจากลูกค้าเลย (Ruling R3) —
  * เปิดหน้าเว็บเฉยๆ ไม่ใช่ "ทักเข้ามา"; ใช้ร่วมกันทั้ง planBackfill และ runBackfill
  */
-const BACKFILL_WHERE: Prisma.ChatRoomWhereInput = {
+export const BACKFILL_WHERE: Prisma.ChatRoomWhereInput = {
   deletedAt: null,
   customerId: null,
   OR: [{ channel: { not: 'WEB' } }, { channel: 'WEB', messages: { some: { role: 'CUSTOMER' } } }],

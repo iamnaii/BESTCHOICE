@@ -51,6 +51,10 @@ export class CustomersService {
     return this.query.findOne(id);
   }
 
+  findDetail(id: string) {
+    return this.query.findDetail(id);
+  }
+
   getReferrals(id: string) {
     return this.query.getReferrals(id);
   }
@@ -67,8 +71,8 @@ export class CustomersService {
     return this.write.create(dto);
   }
 
-  update(id: string, dto: UpdateCustomerDto) {
-    return this.write.update(id, dto);
+  update(id: string, dto: UpdateCustomerDto, actor?: { id: string; role: string }) {
+    return this.write.update(id, dto, actor);
   }
 
   fillPlaceholderContact(id: string, dto: FillProspectContactDto, actor: { id: string; role: string }) {

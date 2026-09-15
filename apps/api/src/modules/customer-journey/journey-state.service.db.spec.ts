@@ -1,0 +1,232 @@
+import { Prisma, PrismaClient } from '@prisma/client';
+import { JourneyStateService } from './journey-state.service';
+import { journeyDedupeKey } from './journey-data-schemas';
+import { BOUGHT_WHERE } from '../customers/services/customer-query.service';
+
+/**
+ * journey-state.sql กับ Postgres จริง (Plan 2 Task 3) — session timezone ของฐานทดสอบ = Asia/Bangkok จึงจับบั๊ก now()/timestamptz ได้
+ * AuditLog ลบไม่ได้ (trigger audit_logs_no_delete) ⇒ ผู้ใช้ของ spec ถูกปล่อยไว้ ตามแบบ customer-merge.service.db.spec.ts
+ * รัน: DATABASE_URL=<ฐานทดสอบ> TZ=Asia/Bangkok npx jest <ไฟล์นี้> --runInBand
+ */
+describe('JourneyStateService (real DB)', () => {
+  const prisma = new PrismaClient();
+  const service = new JourneyStateService(prisma as any);
+  const stamp = Date.now();
+  const tail = String(stamp).slice(-7);
+  const at = (value: string) => new Date(value);
+  const customerIds: string[] = [];
+  const roomIds: string[] = [];
+  const saleIds: string[] = [];
+  const contractIds: string[] = [];
+  const todoIds: string[] = [];
+  let branchId: string;
+  let productId: string;
+  let userId: string;
+
+  const stateOf = (customerId: string) => prisma.customerJourneyState.findUniqueOrThrow({ where: { customerId } });
+  const boughtLive = async (customerId: string) => (await prisma.customer.count({ where: { AND: [{ id: customerId }, BOUGHT_WHERE] } })) > 0;
+
+  async function customer(data: Prisma.CustomerUncheckedCreateInput) {
+    const row = await prisma.customer.create({ data });
+    customerIds.push(row.id);
+    return row;
+  }
+  async function room(customerId: string, label: string, createdAt: string, channel: 'FACEBOOK' | 'LINE_SHOP' = 'FACEBOOK') {
+    const row = await prisma.chatRoom.create({ data: { channel, externalUserId: `journey-${label}-${stamp}`, customerId, createdAt: at(createdAt) } });
+    roomIds.push(row.id);
+    return row;
+  }
+  async function entry(customerId: string, kind: string, occurredAt: string, extra: Partial<Prisma.CustomerJourneyEntryUncheckedCreateInput> = {}) {
+    await prisma.customerJourneyEntry.create({
+      data: { customerId, originCustomerId: customerId, origin: 'MANUAL', kind, occurredAt: at(occurredAt), actorType: 'STAFF', ...extra },
+    });
+  }
+  async function sale(customerId: string, saleType: 'CASH' | 'INSTALLMENT', createdAt: string, contractId: string | null = null) {
+    const row = await prisma.sale.create({
+      data: { saleNumber: `JS-${tail}-${saleIds.length}`, saleType, customerId, productId, branchId, salespersonId: userId, sellingPrice: 25000, netAmount: 25000, contractId, createdAt: at(createdAt) },
+    });
+    saleIds.push(row.id);
+    return row;
+  }
+  async function contract(customerId: string, status: 'ACTIVE' | 'OVERDUE', createdAt: string) {
+    const row = await prisma.contract.create({
+      data: {
+        contractNumber: `JC-${tail}-${contractIds.length}`, customerId, productId, branchId, salespersonId: userId, planType: 'STORE_WITH_INTEREST',
+        sellingPrice: 25000, downPayment: 5000, interestRate: 0.02, totalMonths: 10, interestTotal: 4000, financedAmount: 20000, monthlyPayment: 2400,
+        status, createdAt: at(createdAt),
+      },
+    });
+    contractIds.push(row.id);
+    return row;
+  }
+
+  beforeAll(async () => {
+    branchId = (await prisma.branch.create({ data: { name: `journey spec ${stamp}` } })).id;
+    userId = (await prisma.user.create({ data: { email: `journey-state-${stamp}@spec.local`, password: 'x', name: 'journey spec' } })).id;
+    productId = (await prisma.product.create({ data: { name: 'journey spec phone', brand: 'Apple', model: 'iPhone 15', category: 'PHONE_NEW', costPrice: 20000, branchId } })).id;
+  });
+
+  afterAll(async () => {
+    await prisma.customerJourneyEntry.deleteMany({ where: { customerId: { in: customerIds } } });
+    await prisma.customerJourneyState.deleteMany({ where: { customerId: { in: customerIds } } });
+    await prisma.todo.deleteMany({ where: { id: { in: todoIds } } });
+    await prisma.sale.deleteMany({ where: { id: { in: saleIds } } });
+    await prisma.contract.deleteMany({ where: { id: { in: contractIds } } });
+    await prisma.creditCheck.deleteMany({ where: { customerId: { in: customerIds } } });
+    await prisma.chatMessage.deleteMany({ where: { roomId: { in: roomIds } } });
+    await prisma.chatRoom.deleteMany({ where: { id: { in: roomIds } } });
+    await prisma.customer.updateMany({ where: { id: { in: customerIds } }, data: { mergedIntoId: null } });
+    await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
+    await prisma.product.deleteMany({ where: { id: productId } });
+    await prisma.$disconnect();
+  });
+
+  it('ลูกค้าหน้าร้านมีเบอร์ → IDENTIFIED · ทักเข้ามา = created_at · WALK_IN · computedAt ไม่เลื่อน 7 ชม.', async () => {
+    const c = await customer({ name: 'journey walkin', phone: `081${tail}`, createdAt: at('2026-09-01T03:00:00.000Z') });
+    const before = Date.now();
+    await service.recompute([c.id]);
+    const s = await stateOf(c.id);
+    expect(s).toMatchObject({ stage: 'IDENTIFIED', path: 'UNKNOWN', firstChannel: 'WALK_IN', firstSource: 'WALK_IN', lostAt: null, firstPurchaseAt: null });
+    expect(s.contactedAt.toISOString()).toBe('2026-09-01T03:00:00.000Z');
+    expect(s.identifiedAt?.toISOString()).toBe('2026-09-01T03:00:00.000Z');
+    expect(s.stageEnteredAt.toISOString()).toBe('2026-09-01T03:00:00.000Z');
+    expect(Math.abs(s.computedAt.getTime() - before)).toBeLessThan(60_000);
+  });
+
+  it('ผู้สนใจจากแชท: ทักเข้ามา = ข้อความลูกค้าแรก (รวมแถว soft-delete) ก่อนเวลาสร้างห้อง · ข้ามข้อความทักทายภายใน 60 วิ', async () => {
+    const c = await customer({ name: 'journey chat', phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at('2026-09-10T00:00:00.000Z') });
+    const r = await room(c.id, 'chat', '2026-09-10T00:00:00.000Z');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: r.id, role: 'CUSTOMER', createdAt: at('2026-09-05T02:00:00.000Z'), deletedAt: at('2026-09-12T00:00:00.000Z') },
+        { roomId: r.id, role: 'STAFF', createdAt: at('2026-09-05T02:00:30.000Z'), outboundSentAt: at('2026-09-05T02:00:30.000Z') },
+        { roomId: r.id, role: 'CUSTOMER', createdAt: at('2026-09-05T02:05:00.000Z') },
+        { roomId: r.id, role: 'STAFF', createdAt: at('2026-09-05T03:10:00.000Z'), outboundSentAt: at('2026-09-05T03:10:00.000Z') },
+        { roomId: r.id, role: 'CUSTOMER', createdAt: at('2026-09-11T09:00:00.000Z') },
+      ],
+    });
+    await service.recompute([c.id]);
+    const s = await stateOf(c.id);
+    expect(s).toMatchObject({ stage: 'CONTACTED', firstChannel: 'CHAT_FACEBOOK', firstSource: 'CHAT_FACEBOOK', identifiedAt: null });
+    expect(s.contactedAt.toISOString()).toBe('2026-09-05T02:00:00.000Z');
+    expect(s.stageEnteredAt.toISOString()).toBe('2026-09-05T02:00:00.000Z');
+    expect(s.firstStaffReplyAt?.toISOString()).toBe('2026-09-05T03:10:00.000Z');
+    expect(s.lastCustomerAt?.toISOString()).toBe('2026-09-11T09:00:00.000Z');
+  });
+
+  it('ทักเข้ามาแช่แข็ง: ห้องถูกนำเข้าใหม่ (created_at ใหม่กว่า ไม่มีข้อความ) → คำนวณใหม่ไม่เลื่อนไปข้างหลัง · CONTACT_ADDED → IDENTIFIED', async () => {
+    const c = await customer({ name: 'journey frozen', phone: null, acquisitionSource: 'CHAT_LINE_SHOP', createdAt: at('2026-08-01T00:00:00.000Z') });
+    const r = await room(c.id, 'frozen', '2026-08-01T00:00:00.000Z', 'LINE_SHOP');
+    await service.recompute([c.id]);
+    await prisma.chatRoom.update({ where: { id: r.id }, data: { createdAt: at('2026-09-01T00:00:00.000Z') } });
+    await entry(c.id, 'CONTACT_ADDED', '2026-09-02T00:00:00.000Z', { origin: 'SYSTEM', dedupeKey: journeyDedupeKey('CONTACT_ADDED', c.id, 'phone') });
+    await service.recompute([c.id]);
+    const s = await stateOf(c.id);
+    expect(s.contactedAt.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+    expect(s).toMatchObject({ stage: 'IDENTIFIED', firstChannel: 'CHAT_LINE_SHOP' });
+    expect(s.identifiedAt?.toISOString()).toBe('2026-09-02T00:00:00.000Z');
+  });
+
+  it('HEARD_FROM ยกที่มาจาก WALK_IN · MARKED_LOST ติดป้าย · TOUCHPOINT หลังหลุดล้างป้าย', async () => {
+    const c = await customer({ name: 'journey lost', phone: null, createdAt: at('2026-09-01T00:00:00.000Z') });
+    await service.recompute([c.id]);
+    expect((await stateOf(c.id)).firstSource).toBe('WALK_IN');
+    await entry(c.id, 'HEARD_FROM', '2026-09-01T01:00:00.000Z', { heardFrom: 'FRIEND' });
+    await entry(c.id, 'MARKED_LOST', '2026-09-03T00:00:00.000Z', { lostReason: 'UNREACHABLE' });
+    await service.recompute([c.id]);
+    const lost = await stateOf(c.id);
+    expect(lost).toMatchObject({ firstSource: 'HEARD:FRIEND', heardFrom: 'FRIEND', lostReason: 'UNREACHABLE', stage: 'CONTACTED' });
+    expect(lost.lostAt?.toISOString()).toBe('2026-09-03T00:00:00.000Z');
+    await entry(c.id, 'TOUCHPOINT', '2026-09-04T00:00:00.000Z', { channel: 'PHONE', outcome: 'THINKING' });
+    await service.recompute([c.id]);
+    const back = await stateOf(c.id);
+    expect(back).toMatchObject({ lostAt: null, lostReason: null, stage: 'CONTACTED' });
+    expect(back.lastTouchAt?.toISOString()).toBe('2026-09-04T00:00:00.000Z');
+  });
+
+  it('นัด (todo ในห้อง) → INTERESTED · ใบตรวจเครดิต → CREDIT/INSTALLMENT · ใบขายสด → PURCHASED/CASH ตรงกับ BOUGHT_WHERE · ยกเลิกใบขาย → ถอยกลับ', async () => {
+    const c = await customer({ name: 'journey buyer', phone: `082${tail}`, createdAt: at('2026-09-01T00:00:00.000Z') });
+    const r = await room(c.id, 'buyer', '2026-09-01T01:00:00.000Z');
+    const todo = await prisma.todo.create({ data: { title: 'นัดดูเครื่อง', createdById: userId, roomId: r.id, dueDate: at('2026-09-06T03:00:00.000Z'), createdAt: at('2026-09-02T00:00:00.000Z') } });
+    todoIds.push(todo.id);
+    await prisma.creditCheck.create({ data: { customerId: c.id, createdAt: at('2026-09-03T00:00:00.000Z') } });
+    await service.recompute([c.id]);
+    const credit = await stateOf(c.id);
+    expect(credit).toMatchObject({ stage: 'CREDIT', path: 'INSTALLMENT' });
+    expect(credit.interestedAt?.toISOString()).toBe('2026-09-02T00:00:00.000Z');
+    expect(credit.stageEnteredAt.toISOString()).toBe('2026-09-03T00:00:00.000Z');
+
+    const parityBefore = await service.purchasedParity();
+    const cash = await sale(c.id, 'CASH', '2026-09-04T00:00:00.000Z');
+    await service.recompute([c.id]);
+    const bought = await stateOf(c.id);
+    expect(bought).toMatchObject({ stage: 'PURCHASED', path: 'CASH', firstPurchaseKind: 'CASH' });
+    expect(bought.firstPurchaseAt?.toISOString()).toBe('2026-09-04T00:00:00.000Z');
+    expect(await boughtLive(c.id)).toBe(true);
+    expect(await service.purchasedParity()).toEqual({ purchasedStates: parityBefore.purchasedStates + 1, bought: parityBefore.bought + 1 });
+
+    await prisma.sale.update({ where: { id: cash.id }, data: { deletedAt: at('2026-09-05T00:00:00.000Z') } });
+    await service.recompute([c.id]);
+    expect(await stateOf(c.id)).toMatchObject({ stage: 'CREDIT', firstPurchaseAt: null, firstPurchaseKind: null, path: 'INSTALLMENT' });
+    expect(await boughtLive(c.id)).toBe(false);
+  });
+
+  it('สัญญาผ่อน: firstPurchaseAt = entry CONTRACT_ACTIVATED ถ้าเก่ากว่าใบขาย · สัญญาที่ไม่มี entry ใช้เวลาใบขาย', async () => {
+    const c = await customer({ name: 'journey installment', phone: `083${tail}`, createdAt: at('2031-01-01T00:00:00.000Z') });
+    const k1 = await contract(c.id, 'ACTIVE', '2031-01-01T01:00:00.000Z');
+    const k2 = await contract(c.id, 'OVERDUE', '2031-01-01T02:00:00.000Z');
+    await sale(c.id, 'INSTALLMENT', '2031-01-01T05:00:00.000Z', k1.id);
+    await sale(c.id, 'INSTALLMENT', '2031-01-01T06:00:00.000Z', k2.id);
+    await entry(c.id, 'CONTRACT_ACTIVATED', '2031-01-01T04:59:00.000Z', { origin: 'SYSTEM', refType: 'contract', refId: k1.id, dedupeKey: journeyDedupeKey('CONTRACT_ACTIVATED', k1.id) });
+    await service.recompute([c.id]);
+    const s = await stateOf(c.id);
+    expect(s).toMatchObject({ stage: 'PURCHASED', path: 'INSTALLMENT', firstPurchaseKind: 'INSTALLMENT' });
+    expect(s.firstPurchaseAt?.toISOString()).toBe('2031-01-01T04:59:00.000Z');
+  });
+
+  it('placeholder ที่รวมแล้ว: ห้อง/AI_LEAD_CAPTURED ขึ้นใต้คนจริง · ไม่มีแคชของ placeholder', async () => {
+    const target = await customer({ name: 'journey target', phone: `084${tail}`, createdAt: at('2026-09-08T00:00:00.000Z') });
+    const placeholder = await customer({
+      name: 'journey placeholder', phone: null, acquisitionSource: 'CHAT_LINE_SHOP', createdAt: at('2026-09-02T00:00:00.000Z'),
+      deletedAt: at('2026-09-09T00:00:00.000Z'), mergedIntoId: target.id,
+    });
+    await room(target.id, 'merged', '2026-09-02T00:00:00.000Z', 'LINE_SHOP');
+    await prisma.auditLog.create({ data: { userId, action: 'AI_LEAD_CAPTURED', entity: 'customer', entityId: placeholder.id, createdAt: at('2026-09-03T05:00:00.000Z') } });
+    await service.recompute([target.id, placeholder.id]);
+    const s = await stateOf(target.id);
+    expect(s).toMatchObject({ stage: 'INTERESTED', firstChannel: 'CHAT_LINE_SHOP', firstSource: 'CHAT_LINE_SHOP' });
+    expect(s.contactedAt.toISOString()).toBe('2026-09-02T00:00:00.000Z');
+    expect(s.interestedAt?.toISOString()).toBe('2026-09-03T05:00:00.000Z');
+    expect(s.identifiedAt?.toISOString()).toBe('2026-09-08T00:00:00.000Z');
+    expect(await prisma.customerJourneyState.count({ where: { customerId: placeholder.id } })).toBe(0);
+  });
+
+  it('บันทึกที่ค้างใต้ id ของ placeholder ที่รวมแล้ว (เช่น ถอย image ระหว่างทาง) ยังนับเข้าแคชของคนจริงผ่าน family', async () => {
+    const target = await customer({ name: 'journey family target', phone: null, createdAt: at('2026-09-08T00:00:00.000Z') });
+    const placeholder = await customer({
+      name: 'journey family placeholder', phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at('2026-09-02T00:00:00.000Z'),
+      deletedAt: at('2026-09-09T00:00:00.000Z'), mergedIntoId: target.id,
+    });
+    // entries ยังอยู่ใต้ placeholder.id — ไม่ถูกย้ายไปใต้ target
+    await entry(placeholder.id, 'CONTACT_ADDED', '2026-09-05T00:00:00.000Z', { origin: 'SYSTEM', dedupeKey: journeyDedupeKey('CONTACT_ADDED', placeholder.id, 'family', stamp) });
+    await entry(placeholder.id, 'TOUCHPOINT', '2026-09-06T00:00:00.000Z', { channel: 'PHONE', outcome: 'APPOINTED' });
+    await entry(placeholder.id, 'HEARD_FROM', '2026-09-06T01:00:00.000Z', { heardFrom: 'FRIEND' });
+    await service.recompute([target.id]);
+    const s = await stateOf(target.id);
+    expect(s).toMatchObject({ stage: 'INTERESTED', heardFrom: 'FRIEND', firstSource: 'HEARD:FRIEND' });
+    // ถ้าอ่าน entries เฉพาะ target: identifiedAt = เวลารวม (09-09) · interestedAt/heardFrom ว่าง · ขั้น IDENTIFIED
+    expect(s.identifiedAt?.toISOString()).toBe('2026-09-05T00:00:00.000Z');
+    expect(s.interestedAt?.toISOString()).toBe('2026-09-06T00:00:00.000Z');
+    expect(s.lastTouchAt?.toISOString()).toBe('2026-09-06T00:00:00.000Z');
+  });
+
+  it('ลูกค้าที่ถูกลบ/ถูกรวมแล้ว: recompute ไม่สร้างแคชและลบแคชเดิม · id ว่าง/ซ้ำไม่พัง (สัญญาที่ Task 4 พึ่ง)', async () => {
+    const c = await customer({ name: 'journey removed', phone: null, createdAt: at('2026-09-01T00:00:00.000Z') });
+    await service.recompute([c.id]);
+    expect(await prisma.customerJourneyState.count({ where: { customerId: c.id } })).toBe(1);
+    await prisma.customer.update({ where: { id: c.id }, data: { deletedAt: at('2026-09-02T00:00:00.000Z') } });
+    await service.recompute([c.id, c.id, '']);
+    expect(await prisma.customerJourneyState.count({ where: { customerId: c.id } })).toBe(0);
+    await expect(service.recompute([])).resolves.toBeUndefined();
+  });
+});

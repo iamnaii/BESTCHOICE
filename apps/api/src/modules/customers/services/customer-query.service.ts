@@ -23,6 +23,7 @@ import { CustomerPiiService } from '../customer-pii.service';
 import { CustomerPurchaseSummaryService, type CustomerPurchaseSummary } from './customer-purchase-summary.service';
 import { CustomerChatRoomsService } from './customer-chat-rooms.service';
 import { CUSTOMER_TIERS } from '../dto/customers-list-query.dto';
+import { buildContractProgress } from './customer-contract-progress';
 
 /** อ่านจาก enum ที่ Prisma generate — เพิ่มค่าใน schema แล้วรายการนี้ตามเองโดยไม่ต้องแก้ */
 const CREDIT_CHECK_STATUSES = Object.values(CreditCheckStatus) as string[];
@@ -39,7 +40,7 @@ const BOUGHT_SALE_TYPES = [...CUSTOMER_BOUGHT_SALE_TYPES];
  * (contract-workflow.service.ts) ⇒ คนที่มีแต่สัญญาร่างยังไม่ได้ซื้ออะไรเลย
  * รายการสถานะอยู่ที่ CUSTOMER_BOUGHT_CONTRACT_STATUSES ใน packages/shared จุดเดียว
  */
-const BOUGHT_WHERE: Prisma.CustomerWhereInput = {
+export const BOUGHT_WHERE: Prisma.CustomerWhereInput = {
   OR: [
     { contracts: { some: { deletedAt: null, status: { in: BOUGHT_CONTRACT_STATUSES } } } },
     { sales: { some: { deletedAt: null, saleType: { in: BOUGHT_SALE_TYPES } } } },
@@ -804,6 +805,74 @@ export class CustomerQueryService {
         acquisitionSource: decrypted.acquisitionSource ?? null,
         phone: decrypted.phone ?? null,
         nationalId: decrypted.nationalId ?? null,
+      }),
+    };
+  }
+
+  /**
+   * หน้า /customers/:id เท่านั้น — findOne + ข้อมูลที่หน้ารายชื่อคำนวณอยู่แล้ว (ตัวเดียวกัน ห้ามเขียนสูตรใหม่)
+   * findOne เดิมไม่แตะ: ถูกใช้เป็นด่านเช็คว่ามีลูกค้าอยู่ใน getReferrals/getChatSummary ถ้าเติม query ลงไปทุกจุดจะช้าลง
+   */
+  async findDetail(id: string) {
+    const base = await this.findOne(id);
+    const OPEN_STATUSES = ['ACTIVE', 'OVERDUE', 'DEFAULT'] as const;
+
+    const [purchaseMap, chatMap, tags, openContracts] = await Promise.all([
+      this.purchaseSummary.forCustomers([id]),
+      this.chatRooms.forCustomers([id]),
+      this.prisma.customerTag.findMany({ where: { customerId: id, deletedAt: null }, select: { tag: true } }),
+      this.prisma.contract.findMany({
+        where: { customerId: id, deletedAt: null, status: { in: [...OPEN_STATUSES] } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true, contractNumber: true, status: true, monthlyPayment: true, totalMonths: true, createdAt: true,
+          mdmLockedAt: true, shopWarrantyEndDate: true,
+          branch: { select: { name: true } },
+          product: { select: { brand: true, model: true, storage: true, imeiSerial: true, warrantyExpireDate: true } },
+        },
+      }),
+    ]);
+
+    const openIds = openContracts.map((contract) => contract.id);
+    const [payments, lastCalls] = openIds.length
+      ? await Promise.all([
+          this.prisma.payment.findMany({
+            where: { contractId: { in: openIds }, deletedAt: null },
+            select: { contractId: true, installmentNo: true, status: true, dueDate: true, amountDue: true, amountPaid: true },
+          }),
+          // โทรล่าสุดของแต่ละสัญญา: findFirst ทีละใบ (ใช้ @@index([contractId]) + LIMIT 1) — `distinct` ของ Prisma
+          // ที่ไม่เปิด nativeDistinct จะดึงทุกแถวของทุกสัญญามากรองในหน่วยความจำ
+          Promise.all(
+            openIds.map((contractId) =>
+              this.prisma.callLog.findFirst({
+                where: { contractId, deletedAt: null },
+                orderBy: [{ calledAt: 'desc' }, { id: 'desc' }],
+                select: { contractId: true, calledAt: true, result: true, notes: true, caller: { select: { name: true } } },
+              }),
+            ),
+          ),
+        ])
+      : [[], []];
+
+    const purchase = purchaseMap.get(id);
+    const chat = chatMap.get(id);
+    const chatRooms = chat?.chatRooms ?? [];
+    return {
+      ...base,
+      tags,
+      source: deriveSource(base.acquisitionSource ?? null, chatRooms[0]?.channel ?? null, base.referredById ?? null),
+      purchase: purchase?.purchase ?? null,
+      latestPurchase: purchase?.latestPurchase ?? null,
+      warranty: purchase?.warranty ?? null,
+      installmentBalance: purchase?.installmentBalance ?? null,
+      chatRooms,
+      lastContactAt: chat?.lastContactAt ?? null,
+      assignedTo: chat?.assignedTo ?? null,
+      openContracts: buildContractProgress({
+        contracts: openContracts,
+        payments,
+        lastCalls: lastCalls.filter((call): call is NonNullable<typeof call> => call !== null),
+        now: new Date(),
       }),
     };
   }

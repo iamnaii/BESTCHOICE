@@ -5,7 +5,13 @@ import type { TimelineEvent } from '../hooks/useCustomer360';
 export type TimelineEventType = TimelineEvent['type'];
 export type TimelineFilterValue = TimelineEventType | 'ALL';
 
-const CHIPS: { value: TimelineFilterValue; label: string }[] = [
+export interface TimelineChip {
+  value: string;
+  label: string;
+}
+
+/** ชุดชิปของแผงติดตามหนี้ (Customer360) — ใช้เมื่อผู้เรียกไม่ส่ง chips */
+const DEFAULT_CHIPS: { value: TimelineFilterValue; label: string }[] = [
   { value: 'ALL', label: 'ทั้งหมด' },
   { value: 'PAYMENT', label: 'ชำระ' },
   { value: 'DUNNING_ACTION', label: 'แจ้งเตือน' },
@@ -16,16 +22,18 @@ const CHIPS: { value: TimelineFilterValue; label: string }[] = [
 ];
 
 interface Props {
-  value: TimelineFilterValue;
-  onChange: (value: TimelineFilterValue) => void;
-  counts?: Partial<Record<TimelineFilterValue, number>>;
+  value: string;
+  onChange: (value: string) => void;
+  counts?: Partial<Record<string, number>>;
+  /** ชุดชิปของหน้าอื่น เช่น กลุ่มของแท็บการเดินทางลูกค้า — ไม่ส่ง = ชุดติดตามหนี้เดิม */
+  chips?: TimelineChip[];
   className?: string;
 }
 
-export default function TimelineFilterChips({ value, onChange, counts, className }: Props) {
+export default function TimelineFilterChips({ value, onChange, counts, chips = DEFAULT_CHIPS, className }: Props) {
   return (
     <div className={cn('flex flex-wrap items-center gap-1', className)}>
-      {CHIPS.map((chip) => {
+      {chips.map((chip) => {
         const count = counts?.[chip.value];
         const isActive = value === chip.value;
         return (
@@ -35,6 +43,7 @@ export default function TimelineFilterChips({ value, onChange, counts, className
             variant={isActive ? 'primary' : 'ghost'}
             size="sm"
             className="h-7 px-2.5 text-xs"
+            aria-pressed={isActive}
             onClick={() => onChange(chip.value)}
           >
             <span className="leading-snug">{chip.label}</span>

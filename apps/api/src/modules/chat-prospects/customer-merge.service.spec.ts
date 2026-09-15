@@ -1,6 +1,12 @@
 import { ConflictException, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { CustomerMergeService } from './customer-merge.service';
+import { ChatProspectsModule } from './chat-prospects.module';
+import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { JourneyStateService } from '../customer-journey/journey-state.service';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
 
@@ -26,7 +32,7 @@ const ZERO_COUNTS = {
   websiteVisits: 0, websiteSessions: 0,
 };
 
-function makeTx(overrides: { placeholder?: any; target?: any; counts?: Partial<typeof ZERO_COUNTS> } = {}) {
+function makeTx(overrides: { placeholder?: any; target?: any; counts?: Partial<typeof ZERO_COUNTS>; states?: Record<string, any> } = {}) {
   const placeholder = { ...PLACEHOLDER, _count: { ...ZERO_COUNTS, ...(overrides.counts ?? {}) }, ...(overrides.placeholder ?? {}) };
   const target = { ...TARGET, ...(overrides.target ?? {}) };
   return {
@@ -34,6 +40,7 @@ function makeTx(overrides: { placeholder?: any; target?: any; counts?: Partial<t
     customer: {
       findUnique: jest.fn(({ where }: any) => Promise.resolve(where.id === 'p1' ? placeholder : where.id === 't1' ? target : null)),
       update: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     chatRoom: { findMany: jest.fn().mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]), updateMany: jest.fn().mockResolvedValue({ count: 2 }) },
     creditCheck: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -49,7 +56,26 @@ function makeTx(overrides: { placeholder?: any; target?: any; counts?: Partial<t
       delete: jest.fn().mockResolvedValue({}),
     },
     customerScore: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    customerJourneyEntry: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    customerJourneyState: {
+      findUnique: jest.fn(({ where }: any) => Promise.resolve(overrides.states?.[where.customerId] ?? null)),
+      upsert: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
   };
+}
+
+/** JourneyEntryWriter / JourneyStateService ปลอม — unit spec ตรวจแค่ว่าเรียกอะไร ด้วยค่าอะไร (ของจริงอยู่ใน db spec) */
+function makeJourney() {
+  return {
+    entries: { recordInTx: jest.fn().mockResolvedValue(undefined), recordAfterCommit: jest.fn().mockResolvedValue(undefined) },
+    state: { recompute: jest.fn().mockResolvedValue(undefined) },
+  };
+}
+
+function newService(prisma: any, audit: any): CustomerMergeService {
+  const journey = makeJourney();
+  return new CustomerMergeService(prisma, audit, journey.entries as any, journey.state as any);
 }
 
 describe('CustomerMergeService.absorbPlaceholder', () => {
@@ -58,7 +84,7 @@ describe('CustomerMergeService.absorbPlaceholder', () => {
   const build = (tx: any) => {
     audit = { log: jest.fn().mockResolvedValue(undefined) };
     const prisma: any = { $transaction: jest.fn((fn: any) => fn(tx)) };
-    return new CustomerMergeService(prisma, audit);
+    return newService(prisma, audit);
   };
 
   it('ย้ายห้อง/ผลเช็คเครดิต/แท็ก/lead/attribution/trigger แล้ว soft-delete placeholder + audit', async () => {
@@ -85,7 +111,7 @@ describe('CustomerMergeService.absorbPlaceholder', () => {
         facebookUserId: 'psid-1234567890', facebookName: 'สมชาย เฟซ',
       },
     });
-    expect(tx.customer.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { deletedAt: expect.any(Date) } });
+    expect(tx.customer.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { deletedAt: expect.any(Date), mergedIntoId: 't1' } });
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'staff-1', action: 'CUSTOMER_PLACEHOLDER_MERGED', entity: 'customer', entityId: 't1',
       oldValue: { placeholderId: 'p1' },
@@ -174,7 +200,7 @@ describe('CustomerMergeService.absorbPlaceholder', () => {
         throw new Error('commit failed');
       }),
     };
-    const service = new CustomerMergeService(prisma, audit as any);
+    const service = newService(prisma, audit);
     await expect(service.absorbPlaceholder('p1', 't1', actor)).rejects.toThrow('commit failed');
     expect(audit.log).not.toHaveBeenCalled();
   });
@@ -187,7 +213,7 @@ describe('CustomerMergeService.absorbPlaceholder — R12 SYSTEM actor audit', ()
       $transaction: jest.fn((fn: any) => fn(tx)),
       user: { findFirst: userFindFirst ?? jest.fn().mockResolvedValue({ id: 'sys-user-real-id' }) },
     };
-    return { service: new CustomerMergeService(prisma, audit as any), audit, prisma };
+    return { service: newService(prisma, audit), audit, prisma };
   };
 
   it('actor SYSTEM → resolve isSystemUser:true แล้วเขียน audit ด้วย userId จริง ไม่ใช่ "system"', async () => {
@@ -228,7 +254,7 @@ describe('CustomerMergeService.absorbPlaceholder — R12 SYSTEM actor audit', ()
 describe('CustomerMergeService.assertActorMayAbsorb', () => {
   const build = (rows: any) => {
     const prisma: any = { chatRoom: { findFirst: jest.fn().mockResolvedValue(rows) } };
-    return { service: new CustomerMergeService(prisma, { log: jest.fn() } as any), prisma };
+    return { service: newService(prisma, { log: jest.fn() }), prisma };
   };
 
   it('SALES + มีห้องที่คนอื่นดูแลอยู่ → 403 ข้อความเดียวกับ linkCustomer', async () => {
@@ -270,7 +296,7 @@ describe('CustomerMergeService.absorbRoomsOfLineUser', () => {
         update: jest.fn().mockResolvedValue({}),
       },
     };
-    const service = new CustomerMergeService(prisma, { log: jest.fn() } as any);
+    const service = newService(prisma, { log: jest.fn() });
     const absorb = jest.spyOn(service, 'absorbPlaceholder').mockResolvedValue({ placeholderId: 'p1', targetId: 'cust-real', movedRooms: 1, movedCreditChecks: 0 });
     await expect(service.absorbRoomsOfLineUser('Uabc', 'LINE_SHOP', 'cust-real', { id: 'system', role: 'SYSTEM' })).resolves.toEqual({ absorbed: 1, linked: 1 });
     expect(prisma.chatRoom.findMany).toHaveBeenCalledWith({
@@ -279,5 +305,202 @@ describe('CustomerMergeService.absorbRoomsOfLineUser', () => {
     });
     expect(absorb).toHaveBeenCalledWith('p1', 'cust-real', { id: 'system', role: 'SYSTEM' });
     expect(prisma.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'r-none' }, data: { customerId: 'cust-real' } });
+  });
+});
+
+// การเดินทางของลูกค้า (Plan 2 Task 4) — ทุกทางรวมผ่าน absorbPlaceholder จึงตรวจที่เดียว
+describe('CustomerMergeService.absorbPlaceholder — การเดินทางของลูกค้า', () => {
+  const actor = { id: 'staff-1', role: 'SALES' };
+  const PH_STATE = {
+    customerId: 'p1', stage: 'INTERESTED', stageEnteredAt: new Date('2026-08-02T03:00:00Z'), path: 'UNKNOWN',
+    contactedAt: new Date('2026-08-01T03:00:00Z'), firstChannel: 'CHAT_FACEBOOK', firstSource: 'CHAT_FACEBOOK',
+    firstAdCampaignId: null, firstStaffReplyAt: new Date('2026-08-01T04:00:00Z'), computedAt: new Date('2026-08-03T03:00:00Z'),
+  };
+  const TG_STATE = {
+    customerId: 't1', stage: 'PURCHASED', stageEnteredAt: new Date('2026-09-10T03:00:00Z'), path: 'CASH',
+    contactedAt: new Date('2026-09-10T03:00:00Z'), firstChannel: 'WALK_IN', firstSource: 'WALK_IN',
+    firstAdCampaignId: null, firstStaffReplyAt: null, computedAt: new Date('2026-09-10T03:05:00Z'),
+  };
+
+  const setup = (tx: any, opts: { commitFails?: boolean; systemUser?: { id: string } | null } = {}) => {
+    const journey = makeJourney();
+    const audit = { log: jest.fn().mockResolvedValue(undefined) };
+    const commitSeenByRecompute: boolean[] = [];
+    let committed = false;
+    const prisma: any = {
+      $transaction: jest.fn(async (fn: any) => {
+        const out = await fn(tx);
+        if (opts.commitFails) throw new Error('commit failed');
+        committed = true;
+        return out;
+      }),
+      user: { findFirst: jest.fn().mockResolvedValue(opts.systemUser === undefined ? { id: 'sys-user-real-id' } : opts.systemUser) },
+    };
+    journey.state.recompute.mockImplementation(async () => {
+      commitSeenByRecompute.push(committed);
+    });
+    const service = new CustomerMergeService(prisma, audit as any, journey.entries as any, journey.state as any);
+    return { service, journey, audit, commitSeenByRecompute };
+  };
+
+  it('ใน tx: ย้าย entries · ยุบ chain · soft-delete คู่ mergedIntoId · PLACEHOLDER_MERGED ผ่าน recordInTx (occurredAt = เวลาลบ · data มีแค่จำนวนห้อง)', async () => {
+    const tx = makeTx();
+    const { service, journey } = setup(tx);
+    await service.absorbPlaceholder('p1', 't1', actor);
+
+    expect(tx.customerJourneyEntry.updateMany).toHaveBeenCalledWith({ where: { customerId: 'p1' }, data: { customerId: 't1' } });
+    expect(tx.customer.updateMany).toHaveBeenCalledWith({ where: { mergedIntoId: 'p1' }, data: { mergedIntoId: 't1' } });
+    const softDelete = tx.customer.update.mock.calls.map(([arg]: any[]) => arg).find((arg: any) => arg.where.id === 'p1');
+    expect(softDelete).toEqual({ where: { id: 'p1' }, data: { deletedAt: expect.any(Date), mergedIntoId: 't1' } });
+    expect(journey.entries.recordInTx).toHaveBeenCalledTimes(1);
+    expect(journey.entries.recordInTx).toHaveBeenCalledWith(tx, {
+      customerId: 't1',
+      kind: 'PLACEHOLDER_MERGED',
+      occurredAt: softDelete.data.deletedAt,
+      actorType: 'STAFF',
+      actorUserId: 'staff-1',
+      data: { roomCount: 2 },
+      dedupeKey: 'PLACEHOLDER_MERGED:p1',
+    });
+    expect(journey.entries.recordAfterCommit).not.toHaveBeenCalled();
+  });
+
+  it('actor SYSTEM ที่หา system user ไม่เจอ → audit ถูกข้าม แต่ PLACEHOLDER_MERGED ยังเขียน (actorType SYSTEM · actorUserId null ไม่ติด FK)', async () => {
+    const tx = makeTx();
+    const { service, journey, audit } = setup(tx, { systemUser: null });
+    await service.absorbPlaceholder('p1', 't1', { id: 'system', role: 'SYSTEM' });
+    expect(audit.log).not.toHaveBeenCalled();
+    expect(journey.entries.recordInTx).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ kind: 'PLACEHOLDER_MERGED', actorType: 'SYSTEM', actorUserId: null, dedupeKey: 'PLACEHOLDER_MERGED:p1' }),
+    );
+  });
+
+  it('recompute([ปลายทาง, placeholder]) หลัง commit เท่านั้น · commit ล้ม → ไม่ recompute', async () => {
+    const ok = setup(makeTx());
+    await ok.service.absorbPlaceholder('p1', 't1', actor);
+    expect(ok.journey.state.recompute).toHaveBeenCalledWith(['t1', 'p1']);
+    expect(ok.commitSeenByRecompute).toEqual([true]);
+
+    const failed = setup(makeTx(), { commitFails: true });
+    await expect(failed.service.absorbPlaceholder('p1', 't1', actor)).rejects.toThrow('commit failed');
+    expect(failed.journey.state.recompute).not.toHaveBeenCalled();
+  });
+
+  it('recompute ล้ม → การรวมยังสำเร็จ + Sentry (summary endpoint และ cron ซ่อมแคชเอง)', async () => {
+    (Sentry.captureException as jest.Mock).mockClear();
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { service, journey } = setup(makeTx());
+    journey.state.recompute.mockRejectedValueOnce(new Error('recompute down'));
+    await expect(service.absorbPlaceholder('p1', 't1', actor)).resolves.toEqual({
+      placeholderId: 'p1', targetId: 't1', movedRooms: 2, movedCreditChecks: 1,
+    });
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'recompute down' }),
+      { tags: { kind: 'customer-journey' } },
+    );
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('journey recompute failed'));
+  });
+
+  it('แช่แข็ง: placeholder ทักก่อน + ปลายทางมีแคช → update เฉพาะช่องจุดเริ่มต้น แล้วลบแคช placeholder', async () => {
+    const tx = makeTx({ states: { p1: PH_STATE, t1: TG_STATE } });
+    await setup(tx).service.absorbPlaceholder('p1', 't1', actor);
+    expect(tx.customerJourneyState.upsert).toHaveBeenCalledWith({
+      where: { customerId: 't1' },
+      update: {
+        contactedAt: PH_STATE.contactedAt,
+        firstChannel: 'CHAT_FACEBOOK',
+        firstSource: 'CHAT_FACEBOOK',
+        firstAdCampaignId: null,
+        firstStaffReplyAt: PH_STATE.firstStaffReplyAt,
+      },
+      create: expect.objectContaining({ customerId: 't1', contactedAt: PH_STATE.contactedAt }),
+    });
+    expect(tx.customerJourneyState.deleteMany).toHaveBeenCalledWith({ where: { customerId: 'p1' } });
+  });
+
+  it('แช่แข็ง: เขียนแถวแคชเรียงตาม customer_id (ลำดับเดียวกับ journey-state.sql ORDER BY) — กัน deadlock กับ recompute', async () => {
+    // p1 < t1 → ลบแคช placeholder ก่อน แล้วค่อย upsert ปลายทาง
+    const tx = makeTx({ states: { p1: PH_STATE, t1: TG_STATE } });
+    await setup(tx).service.absorbPlaceholder('p1', 't1', actor);
+    expect(tx.customerJourneyState.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.customerJourneyState.upsert.mock.invocationCallOrder[0],
+    );
+
+    // ปลายทาง a0 < p1 → upsert ปลายทางก่อน แล้วค่อยลบแคช placeholder
+    const reversed = makeTx({ target: { id: 'a0' }, states: { p1: PH_STATE, a0: TG_STATE } });
+    reversed.customer.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve(where.id === 'p1' ? { ...PLACEHOLDER, _count: ZERO_COUNTS } : where.id === 'a0' ? { ...TARGET, id: 'a0' } : null),
+    );
+    await setup(reversed).service.absorbPlaceholder('p1', 'a0', actor);
+    expect(reversed.customerJourneyState.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { customerId: 'a0' } }));
+    expect(reversed.customerJourneyState.upsert.mock.invocationCallOrder[0]).toBeLessThan(
+      reversed.customerJourneyState.deleteMany.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('แช่แข็ง: ปลายทางยังไม่มีแคช → create จากแคช placeholder (ขั้น/path ให้ recompute แก้หลัง commit)', async () => {
+    const tx = makeTx({ states: { p1: PH_STATE } });
+    await setup(tx).service.absorbPlaceholder('p1', 't1', actor);
+    expect(tx.customerJourneyState.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: {
+        customerId: 't1',
+        stage: 'INTERESTED',
+        stageEnteredAt: PH_STATE.stageEnteredAt,
+        path: 'UNKNOWN',
+        computedAt: PH_STATE.computedAt,
+        contactedAt: PH_STATE.contactedAt,
+        firstChannel: 'CHAT_FACEBOOK',
+        firstSource: 'CHAT_FACEBOOK',
+        firstAdCampaignId: null,
+        firstStaffReplyAt: PH_STATE.firstStaffReplyAt,
+      },
+    }));
+  });
+
+  it('แช่แข็ง: ปลายทางทักก่อน หรือ placeholder ไม่มีแคช → ไม่ upsert แต่ยังลบแคช placeholder', async () => {
+    const olderTarget = makeTx({ states: { p1: PH_STATE, t1: { ...TG_STATE, contactedAt: new Date('2026-07-01T03:00:00Z') } } });
+    await setup(olderTarget).service.absorbPlaceholder('p1', 't1', actor);
+    expect(olderTarget.customerJourneyState.upsert).not.toHaveBeenCalled();
+    expect(olderTarget.customerJourneyState.deleteMany).toHaveBeenCalledWith({ where: { customerId: 'p1' } });
+
+    const noCache = makeTx({ states: { t1: TG_STATE } });
+    await setup(noCache).service.absorbPlaceholder('p1', 't1', actor);
+    expect(noCache.customerJourneyState.upsert).not.toHaveBeenCalled();
+    expect(noCache.customerJourneyState.deleteMany).toHaveBeenCalledWith({ where: { customerId: 'p1' } });
+  });
+
+  it('แช่แข็ง: placeholder ยังไม่เคยมีร้านตอบ → firstStaffReplyAt ใช้ของปลายทาง (ค่าเก่าสุดที่ไม่ว่าง)', async () => {
+    const tx = makeTx({
+      states: {
+        p1: { ...PH_STATE, firstStaffReplyAt: null },
+        t1: { ...TG_STATE, firstStaffReplyAt: new Date('2026-09-10T03:30:00Z') },
+      },
+    });
+    await setup(tx).service.absorbPlaceholder('p1', 't1', actor);
+    expect(tx.customerJourneyState.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({ firstStaffReplyAt: new Date('2026-09-10T03:30:00Z') }),
+    }));
+  });
+
+  it('409 เอกสารพ่วง → ไม่แตะ entries / chain / แคช / recordInTx / recompute', async () => {
+    const tx = makeTx({ counts: { bookings: 1 } });
+    const { service, journey } = setup(tx);
+    await expect(service.absorbPlaceholder('p1', 't1', actor)).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.customerJourneyEntry.updateMany).not.toHaveBeenCalled();
+    expect(tx.customer.updateMany).not.toHaveBeenCalled();
+    expect(tx.customerJourneyState.deleteMany).not.toHaveBeenCalled();
+    expect(journey.entries.recordInTx).not.toHaveBeenCalled();
+    expect(journey.state.recompute).not.toHaveBeenCalled();
+  });
+
+  it('DI: CustomerMergeService ขอ JourneyEntryWriter + JourneyStateService ตามชนิด · ChatProspectsModule import CustomerJourneyModule ที่ export ทั้งสอง', () => {
+    expect(Reflect.getMetadata('design:paramtypes', CustomerMergeService)).toEqual([
+      PrismaService, AuditService, JourneyEntryWriter, JourneyStateService,
+    ]);
+    expect(Reflect.getMetadata('imports', ChatProspectsModule)).toContain(CustomerJourneyModule);
+    expect(Reflect.getMetadata('exports', CustomerJourneyModule)).toEqual(
+      expect.arrayContaining([JourneyEntryWriter, JourneyStateService]),
+    );
   });
 });

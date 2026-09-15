@@ -6,30 +6,18 @@ export interface CreditHistoryActor {
   role: string;
 }
 
+/** กติกาห้องของ SALES (ด่านเดียวกับ room-manager.service.ts:742,762) — ห้องที่ยังไม่มีผู้ดูแลหรือตัวเองดูแล · บทบาทอื่นไม่จำกัด */
+export function roomAssignmentScope(actor: CreditHistoryActor): Prisma.ChatRoomWhereInput {
+  return actor.role === 'SALES' ? { OR: [{ assignedToId: null }, { assignedToId: actor.id }] } : {};
+}
+
 /** Imported statements keep the same visibility as their source chat room. */
 export function creditHistoryAccess(actor?: CreditHistoryActor): Prisma.CreditCheckWhereInput {
   if (!actor) return {}; // Internal contract checks already have their own access boundary.
   const legacy: Prisma.CreditCheckWhereInput = { roomAnalysis: { is: null } };
   if (!['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'].includes(actor.role)) return legacy;
   return {
-    OR: [
-      legacy,
-      {
-        roomAnalysis: {
-          is: {
-            deletedAt: null,
-            room: {
-              is: {
-                deletedAt: null,
-                ...(actor.role === 'SALES'
-                  ? { OR: [{ assignedToId: null }, { assignedToId: actor.id }] }
-                  : {}),
-              },
-            },
-          },
-        },
-      },
-    ],
+    OR: [legacy, { roomAnalysis: { is: { deletedAt: null, room: { is: { deletedAt: null, ...roomAssignmentScope(actor) } } } } }],
   };
 }
 

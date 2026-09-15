@@ -2,6 +2,8 @@ import { Injectable, Logger, Inject, Optional, NotFoundException } from '@nestjs
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatRoomStatus, ChatPriority } from '@prisma/client';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
+import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
+import { botHandoffEntry } from '../../customer-journey/chat-identity-entries';
 
 export interface HandoffParams {
   roomId: string;
@@ -31,19 +33,23 @@ export class HandoffManagerService {
   constructor(
     private prisma: PrismaService,
     @Optional() @Inject(CHAT_GATEWAY_TOKEN) private gateway?: IChatGateway,
+    // การเดินทางของลูกค้า — BOT_HANDOFF (chat_rooms.handoffReason ถูกเขียนทับทุกรอบและถูกล้างตอนปิดงาน)
+    @Optional() private journey?: JourneyEntryWriter,
   ) {}
 
   /** Initiate handoff — mark room for staff pickup */
   async initiateHandoff(params: HandoffParams): Promise<void> {
-    await this.prisma.chatRoom.update({
+    const taggedAt = new Date();
+    const room = await this.prisma.chatRoom.update({
       where: { id: params.roomId },
       data: {
         handoffMode: true,
         handoffReason: params.reason,
-        handoffTaggedAt: new Date(),
+        handoffTaggedAt: taggedAt,
         status: ChatRoomStatus.ACTIVE,
         priority: PRIORITY_MAP[params.priority] ?? ChatPriority.NORMAL,
       },
+      select: { customerId: true },
     });
 
     this.logger.warn(
@@ -57,6 +63,20 @@ export class HandoffManagerService {
       reason: params.reason,
       summary: params.summary,
     });
+
+    // best-effort หลังเขียนห้องสำเร็จ: recordAfterCommit ไม่โยน · ห้องที่ยังไม่มีเจ้าของไม่มีลูกค้าให้ผูก จึงข้าม
+    // PDPA: ห้ามส่ง params.summary (ข้อความลูกค้า) เข้าไป · reason ถูกแปลงเป็นรหัสปิดใน botHandoffEntry ไม่ลงแถว
+    if (room.customerId) {
+      await this.journey?.recordAfterCommit(
+        botHandoffEntry({
+          customerId: room.customerId,
+          roomId: params.roomId,
+          reason: params.reason,
+          priority: params.priority,
+          taggedAt,
+        }),
+      );
+    }
   }
 
   /** Resolve handoff — staff is done, return to AI or mark IDLE */

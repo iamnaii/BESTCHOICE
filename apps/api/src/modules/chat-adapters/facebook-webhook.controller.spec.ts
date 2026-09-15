@@ -10,6 +10,7 @@ import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.servi
 import { QuickReplyPostbackRouterService } from '../staff-chat/services/quick-reply-postback-router.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 
 /**
  * Mock IntegrationConfigService.getConfig('facebook') — the controller now
@@ -395,6 +396,7 @@ describe('FacebookWebhookController — standalone referral จากลิง�
   let router: { routeInbound: jest.Mock; mirrorOutbound: jest.Mock; postSystemNote: jest.Mock; recordAdReferral: jest.Mock };
   let prisma: { chatRoom: { findFirst: jest.Mock }; product: { findFirst: jest.Mock } };
   let postbackRouter: { route: jest.Mock };
+  let journey: { recordAfterCommit: jest.Mock };
 
   function referralEvent(ref: string) {
     return {
@@ -436,6 +438,7 @@ describe('FacebookWebhookController — standalone referral จากลิง�
         }),
       },
     };
+    journey = { recordAfterCommit: jest.fn().mockResolvedValue(undefined) };
     const mod: TestingModule = await Test.createTestingModule({
       controllers: [FacebookWebhookController],
       providers: [
@@ -445,6 +448,7 @@ describe('FacebookWebhookController — standalone referral จากลิง�
         { provide: QuickReplyPostbackRouterService, useValue: postbackRouter },
         { provide: PrismaService, useValue: prisma },
         { provide: IntegrationConfigService, useValue: fbConfigMock(FB_APP_SECRET) },
+        { provide: JourneyEntryWriter, useValue: journey },
       ],
     }).compile();
     controller = mod.get(FacebookWebhookController);
@@ -692,5 +696,87 @@ describe('FacebookWebhookController — standalone referral จากลิง�
       'room-1',
       'ลูกค้ากดมาจากสินค้า Apple iPhone 15 Pro 256GB Blue (3333) บนเว็บ',
     );
+  });
+
+  // ── PRODUCT_LINK_CLICK (การเดินทางของลูกค้า) ──
+  it('ลิงก์สินค้า p:<id> + ห้องมีเจ้าของ → PRODUCT_LINK_CLICK หลังโพสต์โน้ต · เวลาและ dedupe มาจาก timestamp ของ event', async () => {
+    prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-1', customerId: 'cust-1' });
+    const order: string[] = [];
+    router.postSystemNote.mockImplementation(async () => {
+      order.push('note');
+    });
+    journey.recordAfterCommit.mockImplementation(async () => {
+      order.push('journey');
+    });
+    const { req, signature } = signedRequest(FB_APP_SECRET, referralEvent(`p:${PRODUCT_ID}`));
+    await controller.handleWebhook(req, referralEvent(`p:${PRODUCT_ID}`), signature);
+
+    expect(order).toEqual(['note', 'journey']);
+    expect(journey.recordAfterCommit).toHaveBeenCalledWith({
+      customerId: 'cust-1',
+      kind: 'PRODUCT_LINK_CLICK',
+      occurredAt: new Date(1),
+      actorType: 'CUSTOMER',
+      actorUserId: null,
+      roomId: 'room-1',
+      refType: 'product',
+      refId: PRODUCT_ID,
+      data: { productId: PRODUCT_ID },
+      dedupeKey: `PRODUCT_LINK_CLICK:room-1:${PRODUCT_ID}:1`,
+    });
+    expect(JSON.stringify(journey.recordAfterCommit.mock.calls[0][0])).not.toContain(PSID);
+  });
+
+  it('ห้องยังไม่มีเจ้าของ (customerId null) → โน้ตยังโพสต์ แต่ไม่บันทึก', async () => {
+    prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-1', customerId: null });
+    const { req, signature } = signedRequest(FB_APP_SECRET, referralEvent(`p:${PRODUCT_ID}`));
+    await controller.handleWebhook(req, referralEvent(`p:${PRODUCT_ID}`), signature);
+    expect(router.postSystemNote).toHaveBeenCalled();
+    expect(journey.recordAfterCommit).not.toHaveBeenCalled();
+  });
+
+  it('ref ไม่ใช่สินค้า หรือไม่พบสินค้า → ไม่บันทึก', async () => {
+    prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-1', customerId: 'cust-1' });
+    const promo = signedRequest(FB_APP_SECRET, referralEvent('promo-songkran'));
+    await controller.handleWebhook(promo.req, referralEvent('promo-songkran'), promo.signature);
+    prisma.product.findFirst.mockResolvedValue(null);
+    const gone = signedRequest(FB_APP_SECRET, referralEvent(`p:${PRODUCT_ID}`));
+    await controller.handleWebhook(gone.req, referralEvent(`p:${PRODUCT_ID}`), gone.signature);
+    expect(router.postSystemNote).toHaveBeenCalledTimes(2);
+    expect(journey.recordAfterCommit).not.toHaveBeenCalled();
+  });
+
+  it('โพสต์โน้ตล้ม → ไม่บันทึก และ webhook ยังตอบ EVENT_RECEIVED', async () => {
+    prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-1', customerId: 'cust-1' });
+    router.postSystemNote.mockRejectedValue(new Error('send failed'));
+    const { req, signature } = signedRequest(FB_APP_SECRET, referralEvent(`p:${PRODUCT_ID}`));
+    await expect(controller.handleWebhook(req, referralEvent(`p:${PRODUCT_ID}`), signature)).resolves.toBe('EVENT_RECEIVED');
+    expect(journey.recordAfterCommit).not.toHaveBeenCalled();
+  });
+
+  it('ลูกค้าใหม่ทักพร้อม message.referral ของลิงก์สินค้า → บันทึกหลัง routeInbound ด้วยเวลา event · ข้อความลูกค้าไม่หลุดเข้าแถว', async () => {
+    prisma.chatRoom.findFirst.mockResolvedValue({ id: 'room-1', customerId: 'cust-1' });
+    const body = {
+      object: 'page',
+      entry: [{ id: 'page1', time: 1, messaging: [{
+        sender: { id: PSID }, recipient: { id: 'page1' }, timestamp: 1790000000000,
+        message: {
+          mid: 'mid_journey_product_click',
+          text: 'เครื่องนี้ยังมีไหมครับ',
+          referral: { ref: `p:${PRODUCT_ID}`, source: 'SHORTLINK', type: 'OPEN_THREAD' },
+        },
+      }] }],
+    };
+    const { req, signature } = signedRequest(FB_APP_SECRET, body);
+    await controller.handleWebhook(req, body, signature);
+    await new Promise((r) => setImmediate(r));
+
+    expect(journey.recordAfterCommit).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'PRODUCT_LINK_CLICK',
+      customerId: 'cust-1',
+      occurredAt: new Date(1790000000000),
+      dedupeKey: `PRODUCT_LINK_CLICK:room-1:${PRODUCT_ID}:1790000000000`,
+    }));
+    expect(JSON.stringify(journey.recordAfterCommit.mock.calls[0][0])).not.toContain('เครื่องนี้ยังมีไหมครับ');
   });
 });

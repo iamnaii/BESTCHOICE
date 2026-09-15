@@ -5,7 +5,7 @@
   "scripts": {
     "prebuild": "npm run build --workspace=@installment/shared",
     "build": "prisma generate && prisma generate --schema=prisma-finance/schema.prisma && nest build && npm run verify:assets",
-    "verify:assets": "node -e \"const fs=require('fs');const f='dist/src/modules/contracts/templates/hire-purchase-contract.html';if(!fs.existsSync(f)){console.error('❌ Missing critical asset:',f);process.exit(1)}console.log('✓ Assets verified')\"",
+    "verify:assets": "node -e \"const fs=require('fs');for(const f of ['dist/src/modules/contracts/templates/hire-purchase-contract.html','dist/src/modules/customer-journey/sql/journey-state.sql','dist/src/modules/customer-journey/sql/journey-activity-probe.sql','dist/src/modules/customer-journey/sql/journey-active-since.sql']){if(!fs.existsSync(f)){console.error('❌ Missing critical asset:',f);process.exit(1)}}console.log('✓ Assets verified')\"",
     "predev": "npm run build --workspace=@installment/shared",
     "dev": "nest start --watch",
     "start": "prisma migrate deploy && node dist/src/main",
@@ -57,6 +57,8 @@
     "backfill:receipts:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run backfill:receipts. To write: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run backfill:receipts'",
     "backfill:chat-prospects": "node dist/src/cli/backfill-chat-prospects.cli.js",
     "backfill:chat-prospects:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run backfill:chat-prospects. To write: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run backfill:chat-prospects'",
+    "backfill:customer-journey": "node dist/src/cli/backfill-customer-journey.cli.js",
+    "backfill:customer-journey:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run backfill:customer-journey. To write: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] [BATCH_SIZE=500] npm --prefix apps/api run backfill:customer-journey — รันหลัง backfill:chat-prospects เท่านั้น · exit 1 = DB ไม่ตรง หรือห้องแชทไม่มีเจ้าของเกิน 1% · exit 2 = PURCHASED ไม่ตรง BOUGHT_WHERE หรือ recompute ล้ม'",
     "seed:test-contracts": "node dist/src/cli/seed-test-contracts.cli.js",
     "seed:test-contracts:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run seed:test-contracts. To write: CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_SEED=YES_I_AM_SURE NODE_ENV=production] [TEST_CONTRACT_COUNT=7] npm --prefix apps/api run seed:test-contracts'",
     "cleanup:test-contracts": "node dist/src/cli/cleanup-test-contracts.cli.js",
@@ -148,7 +150,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",
-    "xmlbuilder2": "^3.1.1"
+    "xmlbuilder2": "^3.1.1",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

@@ -225,7 +225,7 @@ export function buildCustomerColumns({
             key: 'purchases',
             label: 'ดูใบขาย/ใบประกัน',
             icon: <FileText className="size-4" />,
-            onSelect: () => navigate(`/customers/${c.id}?tab=purchases`),
+            onSelect: () => navigate(`/customers/${c.id}?tab=sales`),
           },
           ...(c.phone
             ? [

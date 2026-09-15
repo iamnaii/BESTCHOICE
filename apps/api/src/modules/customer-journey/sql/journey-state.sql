@@ -37,36 +37,62 @@ earliest_room AS (
 room_agg AS (
   SELECT ro.customer_id, MAX(ro.last_customer_at) AS last_customer_at FROM rooms ro GROUP BY ro.customer_id
 ),
-auto_opening AS (
-  -- ช่วงข้อความอัตโนมัติของเพจ (ข้อความทักทาย / away message) = คำตอบใบแรกสุดของห้อง (STAFF/BOT) ออกห่างข้อความลูกค้า
-  -- ไม่เกิน 60 วินาที **ทั้งสองทิศ**: webhook บันทึก echo ทันที (await) แต่ข้อความลูกค้าเข้าคิว routeInbound ที่ไม่ await
-  -- และดึงโปรไฟล์ Graph ก่อน saveMessage ⇒ created_at ของ greeting echo มาก่อนข้อความลูกค้าที่เป็นต้นเหตุได้บ่อย
-  SELECT ro.room_id, fo.first_out_at
-  FROM rooms ro
-  CROSS JOIN LATERAL (
-    SELECT MIN(p.created_at) AS first_out_at FROM chat_messages p WHERE p.room_id = ro.room_id AND p.role IN ('STAFF', 'BOT')
-  ) fo
-  WHERE EXISTS (
-    SELECT 1 FROM chat_messages c
-    WHERE c.room_id = ro.room_id AND c.role = 'CUSTOMER'
-      AND c.created_at BETWEEN fo.first_out_at - interval '60 seconds' AND fo.first_out_at + interval '60 seconds'
-  )
+auto_anchor AS MATERIALIZED (
+  -- MATERIALIZED: ถ้าปล่อย inline ใน NOT EXISTS ของ staff_reply จะคำนวณ anchor ซ้ำต่อแถว STAFF (วัดบน prod ชุด 500 คน: 2.0 วิ → 0.45 วิ)
+  -- จุดเริ่มช่วงข้อความอัตโนมัติของเพจ (instant reply / away message / ตอบตาม keyword) — ยึดทุกครั้งที่ลูกค้าทัก
+  -- ไม่ใช่แค่คำตอบใบแรกของห้อง (ยึดใบแรกของห้อง ⇒ away message ตอนลูกค้ากลับมารอบหลังหลุดไปนับ และค่าที่เร็วไปแช่แข็งถาวร)
+  -- anchor = echo (มี external_message_id ไม่มี outbound_sent_at) ที่
+  --   (ก) ออกหลังข้อความลูกค้าไม่เกิน 10 วิ — echo หลังลูกค้าเปิดรอบใหม่บน prod กระจุก 0–6 วิ ร่องที่ 7–9 วิ
+  --       แล้วเป็นเส้นคนตอบตั้งแต่ ~10 วิ ⇒ คนที่ตอบ 10–60 วิหลังลูกค้า (ไม่มีข้อความอัตโนมัติคั่น) นับ
+  --   (ข) หรือบันทึกก่อนข้อความลูกค้าไม่เกิน 10 วิ และไม่มีข้อความลูกค้าเลยใน 30 นาทีก่อน echo — race ของ greeting:
+  --       webhook await echo ทันที แต่ routeInbound ไม่ await และดึงโปรไฟล์ Graph ก่อน saveMessage (prod: กระจุก 0–2 วิ)
+  --       ด่าน 30 นาทีกันคำตอบของคนที่ลูกค้าตอบกลับเร็ว หรือข้อความลูกค้าที่ค้างคิวต่อลูกค้าแล้วถูกบันทึกหลัง echo
+  -- ใช้เฉพาะแถวที่มีสิทธิ์ถูกนับ (STAFF echo) — BOT และส่งจาก inbox (outbound_sent_at = คนกดส่ง) ไม่เป็น anchor
+  SELECT a.room_id, a.created_at AS anchor_at
+  FROM chat_messages a
+  WHERE a.room_id IN (SELECT ro.room_id FROM rooms ro)
+    AND a.role = 'STAFF' AND a.outbound_sent_at IS NULL AND a.external_message_id IS NOT NULL
+    AND (
+      EXISTS (
+        SELECT 1 FROM chat_messages c
+        WHERE c.room_id = a.room_id AND c.role = 'CUSTOMER'
+          AND c.created_at BETWEEN a.created_at - interval '10 seconds' AND a.created_at
+      )
+      OR (
+        EXISTS (
+          SELECT 1 FROM chat_messages c
+          WHERE c.room_id = a.room_id AND c.role = 'CUSTOMER'
+            AND c.created_at > a.created_at AND c.created_at <= a.created_at + interval '10 seconds'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM chat_messages c
+          WHERE c.room_id = a.room_id AND c.role = 'CUSTOMER'
+            AND c.created_at BETWEEN a.created_at - interval '30 minutes' AND a.created_at
+        )
+      )
+    )
 ),
 staff_reply AS (
   -- "ถึงลูกค้าจริง" มีสองทาง: ส่งจาก inbox สำเร็จ = markOutboundSent stamp outbound_sent_at (LINE ไม่คืน message id)
-  -- · echo จากเพจ (พนักงานตอบใน Meta Business Suite/แอป Page + ข้อความทักทายของเพจ) = mirrorOutbound เก็บ mid ไว้ใน
+  -- · echo จากเพจ (พนักงานตอบใน Meta Business Suite/แอป Page + ข้อความอัตโนมัติของเพจ) = mirrorOutbound เก็บ mid ไว้ใน
   -- external_message_id โดยไม่มี outbound_sent_at · ส่งจาก inbox ที่ล้มเหลือแถวไว้โดยไม่มีทั้งสองคอลัมน์ (save-before-send) จึงไม่นับ
-  -- ข้าม echo ทุกใบในช่วงอัตโนมัติ (ภายใน 60 วิหลังคำตอบใบแรกสุด) ไม่ใช่แค่ใบแรก — greeting ของเพจมาหลาย bubble ได้
+  -- ข้าม echo ทุกใบที่ออกภายใน 60 วิหลัง anchor ใดก็ได้ของห้อง (รวมตัว anchor เอง) — ข้อความอัตโนมัติมาหลาย bubble ได้
   -- (ข้อความ + รูป / instant reply + away message) · ส่งจาก inbox (outbound_sent_at) = คนกดส่งเสมอ จึงไม่ถูกข้าม
-  -- ต่อยอดจาก RoomManagerService.shouldSkipFirstOutboundClear (ข้ามเฉพาะใบแรก ⇒ bubble ที่สองของ greeting ล้างคิวรอตอบ)
-  -- ทิศที่เลือก: ข้ามเกิน (คนตอบภายในนาทีแรกหลัง greeting) = ค่าช้าไป กู้ได้ด้วย LEAST เมื่อผ่อนกติกา ·
+  -- ต่อยอดจาก RoomManagerService.shouldSkipFirstOutboundClear (คิวรอตอบ — กติกาแยก ข้ามเฉพาะใบแรกของห้อง)
+  -- ทิศที่เลือก: ข้ามเกิน (คนตอบภายใน 60 วิหลังข้อความอัตโนมัติ) = ค่าช้าไป กู้ได้ด้วย LEAST เมื่อผ่อนกติกา ·
   -- นับเกิน = ค่าเร็วไป ถูกแช่แข็งถาวร (ดู ON CONFLICT ด้านล่าง)
+  -- ที่ยังรู้ตัว (prod 2026-09-15 ห้อง Facebook): ~11 ห้องจาก ~7.6 พันได้ค่าที่ห่างข้อความลูกค้า ≤3 วิ — ลูกค้าส่งตามหลัง echo
+  -- ทั้งที่มีข้อความลูกค้าใน 30 นาทีก่อนหน้า (แยกคนตอบ+คิวค้าง ออกจาก keyword response ไม่ได้จาก metadata) · ห้องที่เพจทักก่อน
+  -- โดยลูกค้าไม่เคยส่งข้อความเลย (~59 ห้อง) ยังได้ค่า เพราะไม่มีข้อความลูกค้าให้ยึด
   SELECT ro.customer_id, MIN(m.created_at) AS first_staff_reply_at
   FROM rooms ro
   JOIN chat_messages m ON m.room_id = ro.room_id AND m.role = 'STAFF'
    AND (m.outbound_sent_at IS NOT NULL OR m.external_message_id IS NOT NULL)
-  LEFT JOIN auto_opening ao ON ao.room_id = ro.room_id
-  WHERE NOT (m.outbound_sent_at IS NULL AND ao.first_out_at IS NOT NULL AND m.created_at <= ao.first_out_at + interval '60 seconds')
+  WHERE m.outbound_sent_at IS NOT NULL
+     OR NOT EXISTS (
+       SELECT 1 FROM auto_anchor aa
+       WHERE aa.room_id = m.room_id AND m.created_at BETWEEN aa.anchor_at AND aa.anchor_at + interval '60 seconds'
+     )
   GROUP BY ro.customer_id
 ),
 -- บันทึกการเดินทางอ่านผ่าน family (ลูกค้า + placeholder ที่ merged_into_id ชี้มา) เหมือนตัวอ่านอื่นทุกตัว —

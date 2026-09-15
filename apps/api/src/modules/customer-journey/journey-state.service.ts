@@ -1,6 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { CUSTOMER_BOUGHT_CONTRACT_STATUSES, CUSTOMER_BOUGHT_SALE_TYPES } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BOUGHT_WHERE } from '../customers/services/customer-query.service';
@@ -8,6 +9,13 @@ import { BOUGHT_WHERE } from '../customers/services/customer-query.service';
 const RECOMPUTE_BATCH = 500;
 /** ไฟล์ SQL ถูกคัดลอกเข้า dist ผ่าน nest-cli.json assets และตรวจใน verify:assets */
 const loadSql = (name: string) => readFileSync(join(__dirname, 'sql', name), 'utf8');
+const uniqueIds = (customerIds: string[]) => [...new Set(customerIds.filter(Boolean))];
+
+/** ผลของทาง cron — ชุดที่ล้มถูกนับแล้วข้ามไปชุดถัดไป */
+export interface JourneyRecomputeRun {
+  recomputed: number;
+  failedBatches: number;
+}
 
 /**
  * แคช customer_journey_states — คำนวณได้ใหม่ทั้งหมดจากตารางต้นทาง ห้ามแก้มือ
@@ -21,30 +29,41 @@ export class JourneyStateService {
   private readonly probeSql = loadSql('journey-activity-probe.sql');
   private readonly activeSinceSql = loadSql('journey-active-since.sql');
 
+  private readonly logger = new Logger(JourneyStateService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
+  /** ชุดใดล้ม = โยน error ทันที — ผู้เรียกที่ต้องรู้ผล (รวมผู้สนใจ / summary ในคำขอ) */
   async recompute(customerIds: string[]): Promise<void> {
-    const ids = [...new Set(customerIds.filter(Boolean))];
+    const ids = uniqueIds(customerIds);
     const computedAt = new Date().toISOString();
     for (let i = 0; i < ids.length; i += RECOMPUTE_BATCH) {
-      const batch = ids.slice(i, i + RECOMPUTE_BATCH);
-      await this.prisma.$executeRawUnsafe(
-        this.stateSql,
-        batch,
-        [...CUSTOMER_BOUGHT_CONTRACT_STATUSES],
-        [...CUSTOMER_BOUGHT_SALE_TYPES],
-        computedAt,
-      );
-      // placeholder ที่รวมแล้ว / ลูกค้าที่ถูกลบ ไม่มีแคชของตัวเอง
-      await this.prisma.customerJourneyState.deleteMany({
-        where: { customerId: { in: batch }, customer: { deletedAt: { not: null } } },
-      });
+      await this.recomputeBatch(ids.slice(i, i + RECOMPUTE_BATCH), computedAt);
     }
   }
 
-  /** ทุกลูกค้าที่ยังไม่ถูกลบ ทีละ 500 (keyset ตาม id) — cron วันอาทิตย์ */
-  async recomputeAll(): Promise<number> {
-    let total = 0;
+  /**
+   * ทางของ cron journey:recompute (โหมด 48 ชม.) — ชุดที่ล้ม (เช่น deadlock) log id ต้น/ท้ายชุด + Sentry แล้วไปชุดถัดไป
+   * ชุดเดียวล้มต้องไม่ทำให้ชุดหลัง ๆ และด่าน purchasedParity ของคืนนั้นหายไปเงียบ ๆ
+   */
+  async recomputeContinuing(customerIds: string[]): Promise<JourneyRecomputeRun> {
+    const ids = uniqueIds(customerIds);
+    const computedAt = new Date().toISOString();
+    let failedBatches = 0;
+    for (let i = 0; i < ids.length; i += RECOMPUTE_BATCH) {
+      if (!(await this.tryRecomputeBatch(ids.slice(i, i + RECOMPUTE_BATCH), computedAt))) failedBatches++;
+    }
+    return { recomputed: ids.length, failedBatches };
+  }
+
+  /**
+   * ทุกลูกค้าที่ยังไม่ถูกลบ ทีละ 500 (keyset ตาม id) — cron วันอาทิตย์ · ชุดที่ล้มถูกนับแล้วไปต่อ (แบบ recomputeContinuing)
+   * ท้ายรอบกวาดแคชของลูกค้าที่ถูกลบแล้วครั้งเดียว: recompute ที่ snapshot ยังเห็น placeholder มีชีวิต อาจเขียนแถวแคชของมัน
+   * หลังจากที่การรวมเก็บกวาดไปแล้ว และลูปนี้เดินเฉพาะ deletedAt null จึงไม่มีวันเจอแถวนั้นอีก
+   */
+  async recomputeAll(): Promise<JourneyRecomputeRun> {
+    let recomputed = 0;
+    let failedBatches = 0;
     let cursor: string | undefined;
     let more = true;
     while (more) {
@@ -55,13 +74,53 @@ export class JourneyStateService {
         select: { id: true },
       });
       if (rows.length > 0) {
-        await this.recompute(rows.map((row) => row.id));
-        total += rows.length;
+        if (!(await this.tryRecomputeBatch(rows.map((row) => row.id), new Date().toISOString()))) failedBatches++;
+        recomputed += rows.length;
         cursor = rows[rows.length - 1].id;
       }
       more = rows.length === RECOMPUTE_BATCH;
     }
-    return total;
+    try {
+      await this.prisma.customerJourneyState.deleteMany({ where: { customer: { deletedAt: { not: null } } } });
+    } catch (err) {
+      failedBatches++;
+      this.logger.warn(`journey recompute orphan sweep failed: ${err instanceof Error ? err.message : err}`);
+      Sentry.captureException(err, { tags: { kind: 'cron-job', cron: 'journey:recompute' }, extra: { step: 'orphan-sweep' } });
+    }
+    return { recomputed, failedBatches };
+  }
+
+  private async recomputeBatch(batch: string[], computedAt: string): Promise<void> {
+    await this.prisma.$executeRawUnsafe(
+      this.stateSql,
+      batch,
+      [...CUSTOMER_BOUGHT_CONTRACT_STATUSES],
+      [...CUSTOMER_BOUGHT_SALE_TYPES],
+      computedAt,
+    );
+    // placeholder ที่รวมแล้ว / ลูกค้าที่ถูกลบ ไม่มีแคชของตัวเอง
+    await this.prisma.customerJourneyState.deleteMany({
+      where: { customerId: { in: batch }, customer: { deletedAt: { not: null } } },
+    });
+  }
+
+  /** PDPA: log/Sentry มีแค่ id ลูกค้า (uuid) กับตัวเลข */
+  private async tryRecomputeBatch(batch: string[], computedAt: string): Promise<boolean> {
+    try {
+      await this.recomputeBatch(batch, computedAt);
+      return true;
+    } catch (err) {
+      const firstId = batch[0];
+      const lastId = batch[batch.length - 1];
+      this.logger.warn(
+        `journey recompute batch failed first=${firstId} last=${lastId} size=${batch.length}: ${err instanceof Error ? err.message : err}`,
+      );
+      Sentry.captureException(err, {
+        tags: { kind: 'cron-job', cron: 'journey:recompute' },
+        extra: { firstId, lastId, size: batch.length },
+      });
+      return false;
+    }
   }
 
   /** ด่านความถูกต้อง: แคช PURCHASED ต้องเท่ากับจำนวนลูกค้าที่ BOUGHT_WHERE เป็นจริง */

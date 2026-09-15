@@ -55,37 +55,39 @@ staff_reply AS (
   )
   GROUP BY ro.customer_id
 ),
+-- บันทึกการเดินทางอ่านผ่าน family (ลูกค้า + placeholder ที่ merged_into_id ชี้มา) เหมือนตัวอ่านอื่นทุกตัว —
+-- แถวที่ค้างใต้ id ของ placeholder (เช่น ถอย image ระหว่างทาง แล้วซ่อมด้วยการเติม merged_into_id) ยังนับเข้าแคชของคนจริง
 entry_agg AS (
-  SELECT e.customer_id,
+  SELECT f.customer_id,
          MIN(e.occurred_at) FILTER (WHERE e.kind IN ('CONTACT_ADDED', 'LINE_LINKED', 'PLACEHOLDER_MERGED')) AS identified_entry_at,
          MIN(e.occurred_at) FILTER (WHERE e.kind = 'TOUCHPOINT' AND e.outcome IN ('APPOINTED', 'VISITED')) AS manual_interest_at,
          MAX(e.occurred_at) FILTER (WHERE e.kind = 'TOUCHPOINT') AS last_touch_at
   FROM customer_journey_entries e
-  JOIN target t ON t.id = e.customer_id
+  JOIN family f ON f.member_id = e.customer_id
   WHERE e.deleted_at IS NULL
-  GROUP BY e.customer_id
+  GROUP BY f.customer_id
 ),
 activated AS (
-  SELECT e.customer_id, MIN(e.occurred_at) AS at
+  SELECT f.customer_id, MIN(e.occurred_at) AS at
   FROM customer_journey_entries e
-  JOIN target t ON t.id = e.customer_id
+  JOIN family f ON f.member_id = e.customer_id
   JOIN contracts k ON k.id = e.ref_id AND k.deleted_at IS NULL
   WHERE e.kind = 'CONTRACT_ACTIVATED' AND e.deleted_at IS NULL
-  GROUP BY e.customer_id
+  GROUP BY f.customer_id
 ),
 heard AS (
-  SELECT DISTINCT ON (e.customer_id) e.customer_id, e.heard_from
+  SELECT DISTINCT ON (f.customer_id) f.customer_id, e.heard_from
   FROM customer_journey_entries e
-  JOIN target t ON t.id = e.customer_id
+  JOIN family f ON f.member_id = e.customer_id
   WHERE e.kind = 'HEARD_FROM' AND e.deleted_at IS NULL AND e.heard_from IS NOT NULL
-  ORDER BY e.customer_id, e.occurred_at DESC, e.id DESC
+  ORDER BY f.customer_id, e.occurred_at DESC, e.id DESC
 ),
 lost_mark AS (
-  SELECT DISTINCT ON (e.customer_id) e.customer_id, e.kind, e.occurred_at, e.lost_reason
+  SELECT DISTINCT ON (f.customer_id) f.customer_id, e.kind, e.occurred_at, e.lost_reason
   FROM customer_journey_entries e
-  JOIN target t ON t.id = e.customer_id
+  JOIN family f ON f.member_id = e.customer_id
   WHERE e.kind IN ('MARKED_LOST', 'REOPENED') AND e.deleted_at IS NULL
-  ORDER BY e.customer_id, e.occurred_at DESC, e.id DESC
+  ORDER BY f.customer_id, e.occurred_at DESC, e.id DESC
 ),
 line_agg AS (
   SELECT f.customer_id, MIN(l.linked_at) AS linked_at
@@ -234,6 +236,9 @@ SELECT r.customer_id, r.stage,
        CASE WHEN r.lost_at IS NOT NULL THEN r.lost_mark_reason END,
        $4::timestamp
 FROM resolved r
+-- ล็อกแถวแคชเรียงตาม customer_id เสมอ — recompute หลายชุดพร้อมกัน (cron หลาย instance / CLI / summary)
+-- และ freezeJourneyOrigin ในทรานแซกชันรวมผู้สนใจ แตะแถวลำดับเดียวกัน จึงไม่ deadlock กันเอง
+ORDER BY r.customer_id
 ON CONFLICT (customer_id) DO UPDATE SET
   -- แช่แข็ง: เวลาเริ่มต้นไม่มีทางเลื่อนไปข้างหลัง (ข้อความ retention/ห้องนำเข้าใหม่/merge)
   contacted_at = LEAST(customer_journey_states.contacted_at, EXCLUDED.contacted_at),

@@ -419,6 +419,26 @@ describe('CustomerMergeService.absorbPlaceholder — การเดินทา
     expect(tx.customerJourneyState.deleteMany).toHaveBeenCalledWith({ where: { customerId: 'p1' } });
   });
 
+  it('แช่แข็ง: เขียนแถวแคชเรียงตาม customer_id (ลำดับเดียวกับ journey-state.sql ORDER BY) — กัน deadlock กับ recompute', async () => {
+    // p1 < t1 → ลบแคช placeholder ก่อน แล้วค่อย upsert ปลายทาง
+    const tx = makeTx({ states: { p1: PH_STATE, t1: TG_STATE } });
+    await setup(tx).service.absorbPlaceholder('p1', 't1', actor);
+    expect(tx.customerJourneyState.deleteMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.customerJourneyState.upsert.mock.invocationCallOrder[0],
+    );
+
+    // ปลายทาง a0 < p1 → upsert ปลายทางก่อน แล้วค่อยลบแคช placeholder
+    const reversed = makeTx({ target: { id: 'a0' }, states: { p1: PH_STATE, a0: TG_STATE } });
+    reversed.customer.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve(where.id === 'p1' ? { ...PLACEHOLDER, _count: ZERO_COUNTS } : where.id === 'a0' ? { ...TARGET, id: 'a0' } : null),
+    );
+    await setup(reversed).service.absorbPlaceholder('p1', 'a0', actor);
+    expect(reversed.customerJourneyState.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { customerId: 'a0' } }));
+    expect(reversed.customerJourneyState.upsert.mock.invocationCallOrder[0]).toBeLessThan(
+      reversed.customerJourneyState.deleteMany.mock.invocationCallOrder[0],
+    );
+  });
+
   it('แช่แข็ง: ปลายทางยังไม่มีแคช → create จากแคช placeholder (ขั้น/path ให้ recompute แก้หลัง commit)', async () => {
     const tx = makeTx({ states: { p1: PH_STATE } });
     await setup(tx).service.absorbPlaceholder('p1', 't1', actor);

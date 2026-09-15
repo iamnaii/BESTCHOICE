@@ -291,7 +291,8 @@ export class CustomerMergeService {
       tx.customerJourneyState.findUnique({ where: { customerId: placeholderId } }),
       tx.customerJourneyState.findUnique({ where: { customerId: targetId } }),
     ]);
-    if (from && (!into || from.contactedAt < into.contactedAt)) {
+    const freezeTarget = async () => {
+      if (!from || (into && from.contactedAt >= into.contactedAt)) return;
       const origin = {
         contactedAt: from.contactedAt,
         firstChannel: from.firstChannel,
@@ -311,8 +312,13 @@ export class CustomerMergeService {
           ...origin,
         },
       });
+    };
+    // เขียนแถวแคชทั้งสองเรียงตาม customer_id — ลำดับเดียวกับ INSERT … ORDER BY ของ journey-state.sql
+    // และ lockCreditCustomer ข้างบน ⇒ recompute ที่วิ่งพร้อมกัน (cron/CLI/summary) ไม่ deadlock กับการรวม
+    for (const id of [placeholderId, targetId].sort()) {
+      if (id === targetId) await freezeTarget();
+      else await tx.customerJourneyState.deleteMany({ where: { customerId: placeholderId } });
     }
-    await tx.customerJourneyState.deleteMany({ where: { customerId: placeholderId } });
   }
 
   /**

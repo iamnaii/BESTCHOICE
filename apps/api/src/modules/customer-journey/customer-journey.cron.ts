@@ -13,37 +13,56 @@ export class CustomerJourneyCron {
 
   constructor(private readonly journeyState: JourneyStateService) {}
 
-  /** 03:30 น. — คนที่ขยับใน 48 ชม. (วันอาทิตย์ = ทุกคน) แล้วเทียบจำนวน PURCHASED กับ BOUGHT_WHERE */
+  /**
+   * 03:30 น. — คนที่ขยับใน 48 ชม. (วันอาทิตย์ = ทุกคน) แล้วเทียบจำนวน PURCHASED กับ BOUGHT_WHERE
+   * ชุด recompute ที่ล้มถูกนับใน failedBatches แล้วไปต่อ · ด่าน parity รันทุกคืนแม้ขั้นคำนวณล้ม (ล้มแล้วค่อยโยนต่อหลังเทียบ)
+   * ⚠️ ScheduleModule ทำงานทุก instance ของ Cloud Run — คืนเดียวอาจรันซ้อนกันหลายตัว (แถวแคชเขียนเรียงตาม id จึงไม่ deadlock)
+   */
   @Cron('30 3 * * *', { name: 'journey:recompute', timeZone: 'Asia/Bangkok' })
   async recomputeDaily(
     now: Date = new Date(),
-  ): Promise<{ mode: 'sweep' | 'active'; recomputed: number; purchasedStates: number; bought: number }> {
+  ): Promise<{ mode: 'sweep' | 'active'; recomputed: number; failedBatches: number; purchasedStates: number; bought: number }> {
+    const mode: 'sweep' | 'active' = new Date(now.getTime() + BANGKOK_OFFSET_MS).getUTCDay() === 0 ? 'sweep' : 'active';
+    let recomputed = 0;
+    let failedBatches = 0;
+    let runError: unknown;
     try {
-      const mode: 'sweep' | 'active' = new Date(now.getTime() + BANGKOK_OFFSET_MS).getUTCDay() === 0 ? 'sweep' : 'active';
-      let recomputed: number;
       if (mode === 'sweep') {
-        recomputed = await this.journeyState.recomputeAll();
+        ({ recomputed, failedBatches } = await this.journeyState.recomputeAll());
       } else {
         const ids = await this.journeyState.activeCustomerIdsSince(new Date(now.getTime() - ACTIVE_WINDOW_MS));
-        await this.journeyState.recompute(ids);
-        recomputed = ids.length;
+        ({ recomputed, failedBatches } = await this.journeyState.recomputeContinuing(ids));
       }
-      const parity = await this.journeyState.purchasedParity();
-      const result = { mode, recomputed, ...parity };
-      this.logger.log(`journey:recompute mode=${mode} recomputed=${recomputed} purchased=${parity.purchasedStates} bought=${parity.bought}`);
-      if (parity.purchasedStates !== parity.bought) {
-        Sentry.captureMessage('journey:recompute แคช PURCHASED ไม่เท่ากับ BOUGHT_WHERE', {
-          level: 'error',
-          tags: { kind: 'cron-job', cron: 'journey:recompute' },
-          extra: result,
-        });
-      }
-      return result;
     } catch (err) {
-      this.logger.error(`journey:recompute failed: ${err instanceof Error ? err.message : err}`);
-      Sentry.captureException(err, { tags: { kind: 'cron-job', cron: 'journey:recompute' } });
-      throw err;
+      runError = err;
+      this.reportFailure(err);
     }
+
+    let parity: { purchasedStates: number; bought: number };
+    try {
+      parity = await this.journeyState.purchasedParity();
+    } catch (err) {
+      this.reportFailure(err);
+      throw runError ?? err;
+    }
+    const result = { mode, recomputed, failedBatches, ...parity };
+    this.logger.log(
+      `journey:recompute mode=${mode} recomputed=${recomputed} failedBatches=${failedBatches} purchased=${parity.purchasedStates} bought=${parity.bought}`,
+    );
+    if (parity.purchasedStates !== parity.bought) {
+      Sentry.captureMessage('journey:recompute แคช PURCHASED ไม่เท่ากับ BOUGHT_WHERE', {
+        level: 'error',
+        tags: { kind: 'cron-job', cron: 'journey:recompute' },
+        extra: result,
+      });
+    }
+    if (runError) throw runError;
+    return result;
+  }
+
+  private reportFailure(err: unknown): void {
+    this.logger.error(`journey:recompute failed: ${err instanceof Error ? err.message : err}`);
+    Sentry.captureException(err, { tags: { kind: 'cron-job', cron: 'journey:recompute' } });
   }
 
   /**

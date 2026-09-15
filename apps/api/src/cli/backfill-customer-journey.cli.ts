@@ -4,7 +4,7 @@
  *
  * ทำงานผ่าน JourneyStateService.recompute ตัวเดียวกับ runtime และ cron (journey-state.sql ไฟล์เดียว) —
  * CLI นี้ไม่มีสำเนาตรรกะขั้นที่สอง แค่แบ่งลูกค้าเป็นชุดแล้วเรียก recompute(ids) ทีละชุด
- * รันซ้ำได้: journey-state.sql เป็น INSERT … ON CONFLICT (customer_id) DO UPDATE · รันพร้อม cron journey:recompute ได้ (upsert ทั้งคู่)
+ * รันซ้ำได้ (INSERT … ON CONFLICT) · อย่ารันช่วง cron journey:recompute 03:00–04:30 น. เวลาไทย (ดู docs/superpowers/runbooks/2026-09-15-customer-journey-deploy.md)
  *
  * ลำดับบน prod: deploy → backfill:chat-prospects (ผูกห้องแชทให้ครบ) → backfill:customer-journey
  *
@@ -19,7 +19,7 @@
  *
  * KEYSET PAGINATION แบบเดียวกับ backfill-chat-prospects (Ruling R20): orderBy (createdAt,id) +
  * WHERE (createdAt,id) > ตัวสุดท้ายของชุดก่อนเสมอ ไม่ใช้ Prisma cursor/skip · ชุดที่ recompute ล้ม
- * ยังขยับคีย์ผ่านไป กันวนซ้ำชุดเดิมไม่รู้จบ (ไม่ใช้ recomputeAll เพราะชุดเดียวล้ม = หยุดทั้งรอบ)
+ * ยังขยับคีย์ผ่านไป กันวนซ้ำชุดเดิมไม่รู้จบ (ไม่ใช้ recomputeAll ของ cron — CLI นับ processed/failedCustomers เองเพื่อตัดสิน exit code)
  *
  * PDPA: log มีแค่ id ลูกค้า (uuid) กับตัวเลข — ไม่อ่าน/ไม่พิมพ์ชื่อ เบอร์ เลขบัตร ที่อยู่ ข้อความแชท
  *

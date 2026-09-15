@@ -201,6 +201,25 @@ describe('JourneyStateService (real DB)', () => {
     expect(await prisma.customerJourneyState.count({ where: { customerId: placeholder.id } })).toBe(0);
   });
 
+  it('บันทึกที่ค้างใต้ id ของ placeholder ที่รวมแล้ว (เช่น ถอย image ระหว่างทาง) ยังนับเข้าแคชของคนจริงผ่าน family', async () => {
+    const target = await customer({ name: 'journey family target', phone: null, createdAt: at('2026-09-08T00:00:00.000Z') });
+    const placeholder = await customer({
+      name: 'journey family placeholder', phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at('2026-09-02T00:00:00.000Z'),
+      deletedAt: at('2026-09-09T00:00:00.000Z'), mergedIntoId: target.id,
+    });
+    // entries ยังอยู่ใต้ placeholder.id — ไม่ถูกย้ายไปใต้ target
+    await entry(placeholder.id, 'CONTACT_ADDED', '2026-09-05T00:00:00.000Z', { origin: 'SYSTEM', dedupeKey: journeyDedupeKey('CONTACT_ADDED', placeholder.id, 'family', stamp) });
+    await entry(placeholder.id, 'TOUCHPOINT', '2026-09-06T00:00:00.000Z', { channel: 'PHONE', outcome: 'APPOINTED' });
+    await entry(placeholder.id, 'HEARD_FROM', '2026-09-06T01:00:00.000Z', { heardFrom: 'FRIEND' });
+    await service.recompute([target.id]);
+    const s = await stateOf(target.id);
+    expect(s).toMatchObject({ stage: 'INTERESTED', heardFrom: 'FRIEND', firstSource: 'HEARD:FRIEND' });
+    // ถ้าอ่าน entries เฉพาะ target: identifiedAt = เวลารวม (09-09) · interestedAt/heardFrom ว่าง · ขั้น IDENTIFIED
+    expect(s.identifiedAt?.toISOString()).toBe('2026-09-05T00:00:00.000Z');
+    expect(s.interestedAt?.toISOString()).toBe('2026-09-06T00:00:00.000Z');
+    expect(s.lastTouchAt?.toISOString()).toBe('2026-09-06T00:00:00.000Z');
+  });
+
   it('ลูกค้าที่ถูกลบ/ถูกรวมแล้ว: recompute ไม่สร้างแคชและลบแคชเดิม · id ว่าง/ซ้ำไม่พัง (สัญญาที่ Task 4 พึ่ง)', async () => {
     const c = await customer({ name: 'journey removed', phone: null, createdAt: at('2026-09-01T00:00:00.000Z') });
     await service.recompute([c.id]);

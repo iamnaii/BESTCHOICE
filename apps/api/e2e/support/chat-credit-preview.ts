@@ -83,6 +83,10 @@ import { DashboardOpsService } from '../../src/modules/dashboard/services/dashbo
 import { OverdueQueriesService } from '../../src/modules/overdue/services/overdue-queries.service';
 import { PromiseService } from '../../src/modules/overdue/promise.service';
 import { CustomerAnalyticsService } from '../../src/modules/customers/services/customer-analytics.service';
+import { CustomerJourneyService } from '../../src/modules/customer-journey/customer-journey.service';
+import { JourneySummaryService } from '../../src/modules/customer-journey/journey-summary.service';
+import { JourneyStateService } from '../../src/modules/customer-journey/journey-state.service';
+import { JourneyListQueryDto } from '../../src/modules/customer-journey/dto/journey-list-query.dto';
 import { RevenueReportService } from '../../src/modules/reports/services/revenue-report.service';
 import { TransactionalReportService } from '../../src/modules/accounting/transactional-report.service';
 import { CompanyResolverService } from '../../src/modules/journal/company-resolver.service';
@@ -126,6 +130,8 @@ const dashboardCollections = new DashboardCollectionsService(db);
 const dashboardOps = new DashboardOpsService(db);
 const overdueQuery = new OverdueQueriesService(db, new PromiseService(db));
 const customerAnalytics = new CustomerAnalyticsService(db, customerQuery);
+// แท็บการเดินทาง + แถบขั้น — service ตัวจริงกับฐาน preview (summary ใช้ recompute ตัวจริงเมื่อยังไม่มีแคช)
+const customerJourney = new CustomerJourneyService(db, new JourneySummaryService(db, new JourneyStateService(db)));
 const revenueReports = new RevenueReportService(db);
 const transactionalReports = new TransactionalReportService(db, new CompanyResolverService(db));
 const companies = new CompanyService(db);
@@ -375,6 +381,14 @@ class PreviewController {
   @Get('customers/:id/detail') async customerDetail(@Param('id') id: string) {
     return maskForActor(await customerQuery.findDetail(id));
   }
+  // ต้องตรงกับ CustomerJourneyController จริง: ส่ง DTO ทั้งก้อน + ผู้ใช้/บทบาทของ preview
+  // service กรองกลุ่มตามบทบาทเอง (resolveJourneyGroups/roleSeesGroup อ่าน JOURNEY_HIDDEN_GROUPS) เหมือน controller จริง
+  @Get('customers/:id/journey') customerJourneyList(@Param('id') id: string, @Query() query: JourneyListQueryDto) {
+    return customerJourney.list(id, query, { id: actor.id, role: actor.role });
+  }
+  @Get('customers/:id/journey/summary') customerJourneySummary(@Param('id') id: string) {
+    return customerJourney.summary(id, { id: actor.id, role: actor.role });
+  }
   @Get('customers/:id') async customer(@Param('id') id: string) {
     return maskForActor(await customerQuery.findOne(id));
   }
@@ -556,7 +570,7 @@ async function main() {
       return res.json({ data: [], total: 0 });
     if (
       /^\/api\/(trade-ins|contacts|admin\/product-holds|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
-      /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail)?)$/.test(path) ||
+      /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||

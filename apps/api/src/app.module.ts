@@ -143,6 +143,7 @@ import { FinanceTaxModule } from './modules/finance-tax/finance-tax.module';
 // Task 18 — GFIN admin config (max prices, overprice rules, rate factors)
 import { GfinConfigModule } from './modules/gfin-config/gfin-config.module';
 import { ImportedSalesModule } from './modules/imported-sales/imported-sales.module';
+import { CustomerJourneyModule } from './modules/customer-journey/customer-journey.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { SecurityMiddleware } from './modules/audit/security.middleware';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
@@ -399,6 +400,8 @@ import { AppCacheModule } from './cache/cache.module';
     GfinConfigModule,
     // Tooltify import flow — read-only imported sales stats (Excel import)
     ImportedSalesModule,
+    // การเดินทางของลูกค้า (Plan 2 2026-09-15) — ตัวเขียนบันทึก SYSTEM · แคชขั้น · GET /customers/:id/journey
+    CustomerJourneyModule,
   ],
   controllers: [AppController],
   providers: [

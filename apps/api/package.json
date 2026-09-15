@@ -57,6 +57,8 @@
     "backfill:receipts:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run backfill:receipts. To write: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run backfill:receipts'",
     "backfill:chat-prospects": "node dist/src/cli/backfill-chat-prospects.cli.js",
     "backfill:chat-prospects:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run backfill:chat-prospects. To write: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run backfill:chat-prospects'",
+    "backfill:customer-journey": "node dist/src/cli/backfill-customer-journey.cli.js",
+    "backfill:customer-journey:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run backfill:customer-journey. To write: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] [BATCH_SIZE=500] npm --prefix apps/api run backfill:customer-journey — รันหลัง backfill:chat-prospects เท่านั้น · exit 1 = DB ไม่ตรง หรือห้องแชทไม่มีเจ้าของเกิน 1% · exit 2 = PURCHASED ไม่ตรง BOUGHT_WHERE หรือ recompute ล้ม'",
     "seed:test-contracts": "node dist/src/cli/seed-test-contracts.cli.js",
     "seed:test-contracts:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run seed:test-contracts. To write: CONFIRM_SEED=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_SEED=YES_I_AM_SURE NODE_ENV=production] [TEST_CONTRACT_COUNT=7] npm --prefix apps/api run seed:test-contracts'",
     "cleanup:test-contracts": "node dist/src/cli/cleanup-test-contracts.cli.js",

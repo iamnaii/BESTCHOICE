@@ -1,6 +1,8 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { CustomerJourneyService } from './customer-journey.service';
+import { JourneyStateService } from './journey-state.service';
+import { JourneySummaryService } from './journey-summary.service';
 
 /**
  * สัญญาหนึ่งใบมีงวดที่ชำระแล้ว 60 งวด (มากกว่าเพดานเดิม 50 แถวต่อสัญญาของ full-timeline) —
@@ -9,7 +11,8 @@ import { CustomerJourneyService } from './customer-journey.service';
  */
 describe('CustomerJourneyService.list (real DB) — ชำระ 60 งวดเดินด้วย cursor', () => {
   const prisma = new PrismaClient();
-  const service = new CustomerJourneyService(prisma as unknown as PrismaService);
+  const db = prisma as unknown as PrismaService;
+  const service = new CustomerJourneyService(db, new JourneySummaryService(db, new JourneyStateService(db)));
   const stamp = Date.now();
   const OWNER = { id: 'owner-spec', role: 'OWNER' };
   const dec = (value: string) => new Prisma.Decimal(value);

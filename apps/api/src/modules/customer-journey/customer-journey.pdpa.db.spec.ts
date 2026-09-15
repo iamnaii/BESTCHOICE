@@ -3,6 +3,8 @@ import { NotFoundException } from '@nestjs/common';
 import { JOURNEY_EVENT_GROUPS, type JourneyListResponse } from '@installment/shared';
 import type { PrismaService } from '../../prisma/prisma.service';
 import { CustomerJourneyService } from './customer-journey.service';
+import { JourneyStateService } from './journey-state.service';
+import { JourneySummaryService } from './journey-summary.service';
 import { journeyDedupeKey } from './journey-data-schemas';
 
 const FORBIDDEN_KEYS = ['phone', 'phoneSecondary', 'nationalId', 'address', 'addressCurrent', 'addressIdCard', 'addressWork', 'text', 'content', 'messageContent', 'notes', 'note', 'voiceMemoUrl', 'overrideReason', 'customerName', 'reviewNotes', 'voidReason', 'defectDescription', 'reason'];
@@ -16,7 +18,8 @@ function allKeys(value: unknown, keys = new Set<string>()): Set<string> {
 /** PDPA snapshot ของคำตอบ GET /customers/:id/journey ทั้งก้อน กับ Postgres จริง — ต้อง apply migration ของ Task 1 แล้ว · audit_logs ลบไม่ได้ ค้างในฐานทดสอบโดยตั้งใจ */
 describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ · รวมผู้สนใจ · หน้า', () => {
   const prisma = new PrismaClient();
-  const service = new CustomerJourneyService(prisma as unknown as PrismaService);
+  const db = prisma as unknown as PrismaService;
+  const service = new CustomerJourneyService(db, new JourneySummaryService(db, new JourneyStateService(db)));
   const stamp = Date.now();
   const phone = `08${String(stamp).slice(-8)}`;
   const nationalId = `3${String(stamp).padStart(12, '0').slice(-12)}`;
@@ -109,5 +112,14 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
       cursor = next.nextCursor;
     }
     expect(walked).toEqual(full);
+  });
+
+  it('include=summary,counts: summary ที่แนบมาไม่มีเบอร์/เลขบัตร/ที่อยู่/ชื่อ · counts (entries สแกนทีละกลุ่มกับ DB จริง) มีแต่ชื่อกลุ่ม', async () => {
+    const result = await page(ids.target, OWNER, { include: ['summary', 'counts'] });
+    expect(result.summary).toMatchObject({ stage: expect.any(String), steps: expect.any(Array) });
+    expect(result.counts).toMatchObject({ chat: expect.any(Number), system: expect.any(Number) });
+    const json = JSON.stringify({ summary: result.summary, counts: result.counts });
+    for (const secret of [phone, nationalId, address, 'สมหมาย']) expect(json).not.toContain(secret);
+    expect(Object.keys(result.counts ?? {}).every((key) => (JOURNEY_EVENT_GROUPS as readonly string[]).includes(key))).toBe(true);
   });
 });

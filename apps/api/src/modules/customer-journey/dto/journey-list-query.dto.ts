@@ -8,7 +8,11 @@ function splitCsv(value: unknown): unknown {
   return parts ? parts.flatMap((p) => p.split(',')).map((p) => p.trim()).filter(Boolean) : value;
 }
 
-/** GET /customers/:id/journey — ไม่ส่ง groups = JOURNEY_DEFAULT_GROUPS (shared) */
+/** include ของหน้าแรก — summary = แนบ JourneySummary (คงไว้ตามแบบ เฟส 1 เว็บยังไม่ใช้) · counts = ตัวเลขบนชิปกรอง (แท็บการเดินทางขอ การ์ดภาพรวมไม่ขอ) */
+export const JOURNEY_LIST_INCLUDES = ['summary', 'counts'] as const;
+export type JourneyListInclude = (typeof JOURNEY_LIST_INCLUDES)[number];
+
+/** GET /customers/:id/journey — ไม่ส่ง groups = JOURNEY_DEFAULT_GROUPS (shared) · Task 9 เพิ่ม include */
 export class JourneyListQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit?: number = 30;
   /** base64('isoTs|eventId') จาก nextCursor */
@@ -17,4 +21,7 @@ export class JourneyListQueryDto {
   groups?: JourneyEventGroup[];
   @IsOptional() @IsISO8601() from?: string;
   @IsOptional() @IsISO8601() to?: string;
+  /** csv (summary,counts) — มีผลเฉพาะหน้าแรก (ไม่มี cursor) */
+  @IsOptional() @Transform(({ value }) => splitCsv(value)) @IsArray() @ArrayMaxSize(JOURNEY_LIST_INCLUDES.length) @IsIn([...JOURNEY_LIST_INCLUDES], { each: true })
+  include?: JourneyListInclude[];
 }

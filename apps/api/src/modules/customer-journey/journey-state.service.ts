@@ -18,6 +18,8 @@ const loadSql = (name: string) => readFileSync(join(__dirname, 'sql', name), 'ut
 @Injectable()
 export class JourneyStateService {
   private readonly stateSql = loadSql('journey-state.sql');
+  private readonly probeSql = loadSql('journey-activity-probe.sql');
+  private readonly activeSinceSql = loadSql('journey-active-since.sql');
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -40,7 +42,7 @@ export class JourneyStateService {
     }
   }
 
-  /** ทุกลูกค้าที่ยังไม่ถูกลบ ทีละ 500 (keyset ตาม id) — cron วันอาทิตย์ของ Task 9 */
+  /** ทุกลูกค้าที่ยังไม่ถูกลบ ทีละ 500 (keyset ตาม id) — cron วันอาทิตย์ */
   async recomputeAll(): Promise<number> {
     let total = 0;
     let cursor: string | undefined;
@@ -69,5 +71,33 @@ export class JourneyStateService {
       this.prisma.customer.count({ where: { AND: [{ deletedAt: null }, BOUGHT_WHERE] } }),
     ]);
     return { purchasedStates, bought };
+  }
+
+  /** familyIds = ลูกค้า + placeholder ที่ merged_into_id ชี้มา — summary ใช้ตัดสินว่าแคชที่เก่ากว่า 15 นาทีต้องคำนวณใหม่ไหม */
+  async hasActivitySince(familyIds: string[], since: Date): Promise<boolean> {
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ active: boolean }>>(this.probeSql, familyIds, since.toISOString());
+    return rows[0]?.active === true;
+  }
+
+  /** id ลูกค้าปัจจุบัน (placeholder ที่รวมแล้วชี้ไปคนจริง) ที่ขยับตั้งแต่ since — cron journey:recompute */
+  async activeCustomerIdsSince(since: Date): Promise<string[]> {
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ customer_id: string }>>(this.activeSinceSql, since.toISOString());
+    return rows.map((row) => row.customer_id);
+  }
+
+  /** ใบขาย INSTALLMENT ถูกสร้างใน tx เดียวกับ activate — สัญญาที่ไม่มี entry CONTRACT_ACTIVATED (Task 5) = hook หลุด */
+  async contractsMissingActivationEntry(range: { gte: Date; lt: Date }): Promise<string[]> {
+    const sales = await this.prisma.sale.findMany({
+      where: { saleType: 'INSTALLMENT', deletedAt: null, contractId: { not: null }, createdAt: range },
+      select: { contractId: true },
+    });
+    const contractIds = sales.map((row) => row.contractId).filter((id): id is string => id !== null);
+    if (contractIds.length === 0) return [];
+    const entries = await this.prisma.customerJourneyEntry.findMany({
+      where: { kind: 'CONTRACT_ACTIVATED', refId: { in: contractIds } },
+      select: { refId: true },
+    });
+    const seen = new Set(entries.map((row) => row.refId));
+    return contractIds.filter((id) => !seen.has(id)).sort();
   }
 }

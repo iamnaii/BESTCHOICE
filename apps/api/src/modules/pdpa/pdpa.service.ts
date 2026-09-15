@@ -32,6 +32,49 @@ const DEFAULT_PRIVACY_NOTICE = `ประกาศความเป็นส่
 
 ข้าพเจ้ายินยอมให้เก็บรวบรวม ใช้ เปิดเผยข้อมูลส่วนบุคคลเพื่อวัตถุประสงค์ข้างต้น`;
 
+/**
+ * DSAR ACCESS — ช่องของบันทึกการเดินทางที่ส่งให้เจ้าของข้อมูล: เนื้อหาของเหตุการณ์ครบ (รวม note ของเขาเอง)
+ * ไม่ส่ง id ภายใน (customerId / originCustomerId / dedupeKey / roomId) และไม่ส่ง actorUserId ของพนักงาน
+ */
+const JOURNEY_ENTRY_EXPORT_SELECT = {
+  kind: true,
+  origin: true,
+  occurredAt: true,
+  actorType: true,
+  refType: true,
+  refId: true,
+  channel: true,
+  outcome: true,
+  lostReason: true,
+  heardFrom: true,
+  data: true,
+  note: true,
+  deletedAt: true,
+} satisfies Prisma.CustomerJourneyEntrySelect;
+
+/** แคชสรุปการเดินทาง — ทุกช่องยกเว้น customerId */
+const JOURNEY_STATE_EXPORT_SELECT = {
+  stage: true,
+  stageEnteredAt: true,
+  path: true,
+  contactedAt: true,
+  identifiedAt: true,
+  interestedAt: true,
+  creditAt: true,
+  firstPurchaseAt: true,
+  firstPurchaseKind: true,
+  firstStaffReplyAt: true,
+  firstChannel: true,
+  firstSource: true,
+  firstAdCampaignId: true,
+  heardFrom: true,
+  lastCustomerAt: true,
+  lastTouchAt: true,
+  lostAt: true,
+  lostReason: true,
+  computedAt: true,
+} satisfies Prisma.CustomerJourneyStateSelect;
+
 @Injectable()
 export class PDPAService {
   constructor(private prisma: PrismaService) {}
@@ -233,23 +276,32 @@ export class PDPAService {
   }
 
   /**
-   * ลบ customer_journey_entries + customer_journey_states ของเจ้าของข้อมูล
+   * id ของเจ้าของประวัติการเดินทาง — ชุดเดียวกันทั้งสิทธิ์ลบ (DELETION) และสิทธิ์ขอเข้าถึง (ACCESS)
    * - คำร้องที่ยื่นตอนยังเป็น placeholder แล้วถูกรวมไปก่อนปิด → เจ้าของปัจจุบันคือ merged_into_id (คนเดียวกัน)
    * - ids = เจ้าของปัจจุบัน + placeholder ทุกตัวที่ถูกรวมเข้ามา (ชั้นเดียว เพราะ absorbPlaceholder ยุบ chain แล้ว)
-   * - entries จับทั้ง customerId (เจ้าของปัจจุบัน) และ originCustomerId (id ตอนเขียน)
+   */
+  private async journeySubjectIds(db: Pick<Prisma.TransactionClient, 'customer'>, customerId: string): Promise<string[]> {
+    const subject = await db.customer.findUnique({ where: { id: customerId }, select: { mergedIntoId: true } });
+    const ownerId = subject?.mergedIntoId ?? customerId;
+    const absorbed = await db.customer.findMany({ where: { mergedIntoId: ownerId }, select: { id: true } });
+    return [ownerId, ...absorbed.map((row) => row.id)];
+  }
+
+  /** entries จับทั้ง customerId (เจ้าของปัจจุบัน) และ originCustomerId (id ตอนเขียน) */
+  private journeyEntriesWhere(ids: string[]): Prisma.CustomerJourneyEntryWhereInput {
+    return { OR: [{ customerId: { in: ids } }, { originCustomerId: { in: ids } }] };
+  }
+
+  /**
+   * ลบ customer_journey_entries + customer_journey_states ของเจ้าของข้อมูล (ids จาก journeySubjectIds)
    * แถว customers / สัญญา / ใบขาย ไม่แตะ — อยู่ใต้อายุความตามประกาศความเป็นส่วนตัว · แคช state คำนวณใหม่ได้จากข้อมูลธุรกิจที่เหลือ
    */
   private async eraseCustomerJourney(
     tx: Prisma.TransactionClient,
     customerId: string,
   ): Promise<{ entries: number; states: number }> {
-    const subject = await tx.customer.findUnique({ where: { id: customerId }, select: { mergedIntoId: true } });
-    const ownerId = subject?.mergedIntoId ?? customerId;
-    const absorbed = await tx.customer.findMany({ where: { mergedIntoId: ownerId }, select: { id: true } });
-    const ids = [ownerId, ...absorbed.map((row) => row.id)];
-    const entries = await tx.customerJourneyEntry.deleteMany({
-      where: { OR: [{ customerId: { in: ids } }, { originCustomerId: { in: ids } }] },
-    });
+    const ids = await this.journeySubjectIds(tx, customerId);
+    const entries = await tx.customerJourneyEntry.deleteMany({ where: this.journeyEntriesWhere(ids) });
     const states = await tx.customerJourneyState.deleteMany({ where: { customerId: { in: ids } } });
     return { entries: entries.count, states: states.count };
   }
@@ -284,6 +336,20 @@ export class PDPAService {
 
     if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
 
+    // ประวัติการเดินทาง — ids ชุดเดียวกับสิทธิ์ลบ ⇒ สิ่งที่ส่งให้ดู = สิ่งที่คำร้องลบจะลบ (รวมบันทึกมือที่ถูกเลิกทำ พร้อม deletedAt)
+    const journeyIds = await this.journeySubjectIds(this.prisma, customerId);
+    const [journeyEntries, journeyStates] = await Promise.all([
+      this.prisma.customerJourneyEntry.findMany({
+        where: this.journeyEntriesWhere(journeyIds),
+        orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+        select: JOURNEY_ENTRY_EXPORT_SELECT,
+      }),
+      this.prisma.customerJourneyState.findMany({
+        where: { customerId: { in: journeyIds } },
+        select: JOURNEY_STATE_EXPORT_SELECT,
+      }),
+    ]);
+
     return {
       exportDate: new Date().toISOString(),
       customer: {
@@ -297,6 +363,7 @@ export class PDPAService {
       },
       contracts: customer.contracts,
       consents: customer.pdpaConsents,
+      journey: { entries: journeyEntries, states: journeyStates },
     };
   }
 }

@@ -40,6 +40,7 @@ interface CustomerRow {
   email?: string | null;
   nationalId?: string | null;
   deletedAt: Date | null;
+  mergedIntoId?: string | null;
   contracts?: unknown[];
   pdpaConsents?: unknown[];
 }
@@ -82,6 +83,9 @@ function makePrismaMock(seed: {
   /** ผลนับของ deleteMany ตอนปิดคำร้อง DELETION */
   journeyEntryCount?: number;
   journeyStateCount?: number;
+  /** ผลของ findMany ตอนส่งออก ACCESS */
+  journeyEntries?: unknown[];
+  journeyStates?: unknown[];
 }) {
   const customers = seed.customers ?? [];
   const consents = seed.consents ?? [];
@@ -192,9 +196,11 @@ function makePrismaMock(seed: {
     },
     customerJourneyEntry: {
       deleteMany: jest.fn().mockResolvedValue({ count: seed.journeyEntryCount ?? 0 }),
+      findMany: jest.fn().mockResolvedValue(seed.journeyEntries ?? []),
     },
     customerJourneyState: {
       deleteMany: jest.fn().mockResolvedValue({ count: seed.journeyStateCount ?? 0 }),
+      findMany: jest.fn().mockResolvedValue(seed.journeyStates ?? []),
     },
     $transaction: jest.fn(),
   };
@@ -708,6 +714,50 @@ describe('PDPAService (characterization)', () => {
       const svc = new PDPAService(prisma);
 
       await expect(svc.generateCustomerDataExport('ghost')).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.customerJourneyEntry.findMany).not.toHaveBeenCalled();
+    });
+
+    it('แนบประวัติการเดินทางของลูกค้า + placeholder ที่ถูกรวมเข้ามา (ids ชุดเดียวกับสิทธิ์ลบ) · ไม่ส่ง id ภายใน/ผู้บันทึก', async () => {
+      const entries = [{ kind: 'CONTACT_ADDED', origin: 'SYSTEM', occurredAt: new Date('2026-09-01T03:00:00Z') }];
+      const states = [{ stage: 'IDENTIFIED', firstSource: 'CHAT_FACEBOOK' }];
+      const prisma = makePrismaMock({
+        exportCustomer: { id: 'cust-1', name: 'ทดสอบ', deletedAt: null, contracts: [], pdpaConsents: [] },
+        absorbedCustomerIds: ['placeholder-1'],
+        journeyEntries: entries,
+        journeyStates: states,
+      });
+      const svc = new PDPAService(prisma);
+
+      const result = await svc.generateCustomerDataExport('cust-1');
+
+      const ids = ['cust-1', 'placeholder-1'];
+      expect(prisma.customer.findMany).toHaveBeenCalledWith({ where: { mergedIntoId: 'cust-1' }, select: { id: true } });
+      const entryArgs = prisma.customerJourneyEntry.findMany.mock.calls[0][0];
+      expect(entryArgs.where).toEqual({ OR: [{ customerId: { in: ids } }, { originCustomerId: { in: ids } }] });
+      expect(entryArgs.select).toMatchObject({ kind: true, origin: true, occurredAt: true, actorType: true, refType: true, refId: true, channel: true, outcome: true, data: true, note: true });
+      for (const internal of ['customerId', 'originCustomerId', 'actorUserId', 'dedupeKey', 'roomId', 'id']) {
+        expect(entryArgs.select).not.toHaveProperty(internal);
+      }
+      const stateArgs = prisma.customerJourneyState.findMany.mock.calls[0][0];
+      expect(stateArgs.where).toEqual({ customerId: { in: ids } });
+      expect(stateArgs.select).not.toHaveProperty('customerId');
+      expect(result.journey).toEqual({ entries, states });
+      // ส่งออกอย่างเดียว ไม่ลบ
+      expect(prisma.customerJourneyEntry.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('เจ้าของข้อมูลเป็น placeholder ที่ถูกรวมไปแล้ว → ประวัติการเดินทางของเจ้าของปัจจุบัน (คนเดียวกัน)', async () => {
+      const prisma = makePrismaMock({
+        customers: [{ id: 'placeholder-1', deletedAt: new Date(), mergedIntoId: 'owner-1' }],
+        exportCustomer: { id: 'placeholder-1', name: 'แชท', deletedAt: new Date(), contracts: [], pdpaConsents: [] },
+        absorbedCustomerIds: ['placeholder-1'],
+      });
+      const svc = new PDPAService(prisma);
+
+      await svc.generateCustomerDataExport('placeholder-1');
+
+      expect(prisma.customer.findMany).toHaveBeenCalledWith({ where: { mergedIntoId: 'owner-1' }, select: { id: true } });
+      expect(prisma.customerJourneyState.findMany.mock.calls[0][0].where).toEqual({ customerId: { in: ['owner-1', 'placeholder-1'] } });
     });
   });
 });

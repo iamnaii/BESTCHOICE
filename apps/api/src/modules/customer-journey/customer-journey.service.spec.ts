@@ -141,6 +141,11 @@ describe('CustomerJourneyService.list + summary (Task 9)', () => {
     const bad = setup(LIVE);
     await expect(bad.service.list('c1', { cursor: Buffer.from('nope').toString('base64') }, OWNER)).rejects.toThrow(BadRequestException);
     expect(bad.prisma.customer.findUnique).not.toHaveBeenCalled();
+    // วันที่รูปสัปดาห์/ลำดับวัน (หลุด DTO มาได้ถ้าเรียก service ตรง) และช่วงกลับหัว → 400 ไทย ไม่ใช่ Invalid Date เป็น 500
+    await expect(bad.service.list('c1', { from: '2026-W38' }, OWNER)).rejects.toThrow(new BadRequestException('ช่วงวันที่ไม่ถูกต้อง'));
+    await expect(bad.service.list('c1', { to: '2026-258' }, OWNER)).rejects.toThrow(BadRequestException);
+    await expect(bad.service.list('c1', { from: day(9), to: day(0) }, OWNER)).rejects.toThrow(BadRequestException);
+    expect(bad.prisma.customer.findUnique).not.toHaveBeenCalled();
 
     jest.clearAllMocks();
     entryScans = [];

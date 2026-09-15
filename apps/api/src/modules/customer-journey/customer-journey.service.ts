@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   JOURNEY_DEFAULT_GROUPS,
   JOURNEY_EVENT_GROUPS,
@@ -40,6 +40,11 @@ export const JOURNEY_NOT_RECORDED: readonly string[] = [
   'ลูกค้ากดมาจากโฆษณา (ยังไม่มีข้อมูลโฆษณาเข้าระบบ)',
   'ลูกค้าหน้าร้านรู้จักร้านจากไหน',
   'ผู้ถอดแท็ก การบล็อก/เลิกติดตาม LINE และการเข้าชมเว็บ',
+  // ขั้น "สนใจจริง / นัด-จอง" บนแถบนับจากสามอย่างนี้ด้วย แต่ยังไม่ขึ้นเป็นเหตุการณ์ในแท็บ
+  'การจองสินค้าผ่านเว็บ (ใช้นับขั้น "สนใจจริง" แต่ยังไม่แสดงเป็นเหตุการณ์)',
+  'ใบสมัครผ่อนออนไลน์ (ใช้นับขั้น "สนใจจริง" แต่ยังไม่แสดงเป็นเหตุการณ์)',
+  'รายการรับซื้อ/เทิร์นเครื่อง (ใช้นับขั้น "สนใจจริง" แต่ยังไม่แสดงเป็นเหตุการณ์)',
+  'สัญญาที่จบด้วยเหตุอื่นนอกจากผ่อนครบหรือปิดยอดก่อนกำหนด',
 ];
 
 /** ไม่ส่ง groups = JOURNEY_DEFAULT_GROUPS · ตัด JOURNEY_HIDDEN_GROUPS[role] (ACCOUNTANT ไม่เห็นแชท · SALES ไม่เห็นยอดชำระ/ติดตามหนี้ — รอเจ้าของเคาะ ข้อ 5 · ชุดเดียวกับเว็บ) */
@@ -70,6 +75,14 @@ export function countJourneyGroups(lists: readonly JourneyEvent[][], groups: Rea
 
 const isRedirect = (value: JourneySummary | JourneyRedirect): value is JourneyRedirect => 'redirectToCustomerId' in value;
 
+/** from/to ผ่าน DTO แล้ว — กันอีกชั้นไม่ให้ Invalid Date หลุดไปถึง Prisma / toISOString() เป็น 500 */
+function parseJourneyDate(value: string | undefined): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) throw new BadRequestException('ช่วงวันที่ไม่ถูกต้อง');
+  return date;
+}
+
 @Injectable()
 export class CustomerJourneyService {
   constructor(
@@ -79,6 +92,9 @@ export class CustomerJourneyService {
 
   async list(customerId: string, query: JourneyListQueryDto, actor: JourneyActor): Promise<JourneyListResponse | JourneyRedirect> {
     const before = query.cursor ? decodeJourneyCursor(query.cursor) : undefined;
+    const from = parseJourneyDate(query.from);
+    const to = parseJourneyDate(query.to);
+    if (from && to && from > to) throw new BadRequestException('ช่วงวันที่ไม่ถูกต้อง — วันเริ่มต้องไม่หลังวันสิ้นสุด');
     const customer = await this.prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, deletedAt: true, mergedIntoId: true } });
     if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
     if (customer.deletedAt) {
@@ -90,7 +106,7 @@ export class CustomerJourneyService {
     const mergedCustomerIds = merged.map((row) => row.id);
     const ids = [customerId, ...mergedCustomerIds];
     const groups = resolveJourneyGroups(query.groups, actor.role);
-    const window: JourneyWindow = { limit: query.limit ?? DEFAULT_JOURNEY_LIMIT, before, from: query.from ? new Date(query.from) : undefined, to: query.to ? new Date(query.to) : undefined };
+    const window: JourneyWindow = { limit: query.limit ?? DEFAULT_JOURNEY_LIMIT, before, from, to };
     const notRecorded = [...JOURNEY_NOT_RECORDED];
     // include มีผลเฉพาะหน้าแรก — หน้าที่มี cursor ไม่แนบ counts/summary
     const include = new Set<JourneyListInclude>(before ? [] : (query.include ?? []));

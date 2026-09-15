@@ -19,7 +19,12 @@ describe('JourneyListQueryDto', () => {
   it.each([
     [{ groups: 'chat,messages' }, 'groups'], [{ limit: '0' }, 'limit'], [{ limit: '101' }, 'limit'],
     [{ cursor: 'ไม่ใช่ cursor' }, 'cursor'], [{ from: 'เมื่อวาน' }, 'from'], [{ include: 'counts,events' }, 'include'],
+    // ISO8601 แบบสัปดาห์/ลำดับวัน ผ่าน @IsISO8601 แต่ new Date() ได้ Invalid Date
+    [{ from: '2026-W38' }, 'from'], [{ to: '2026-258' }, 'to'],
   ])('%j → error ที่ %s', async (plain, field) => {
     expect((await check(plain)).fields).toEqual([field]);
+  });
+  it('from/to รูปวันที่ปฏิทิน และวันที่+เวลา ผ่าน', async () => {
+    expect((await check({ from: '2026-09-01', to: '2026-09-15T23:59:59.999Z' })).fields).toEqual([]);
   });
 });

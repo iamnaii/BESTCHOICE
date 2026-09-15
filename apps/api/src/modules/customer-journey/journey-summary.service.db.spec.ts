@@ -13,6 +13,7 @@ describe('JourneySummaryService.summary (real DB)', () => {
   const stamp = Date.now();
   const tail = String(stamp).slice(-7);
   const customerIds: string[] = [];
+  const roomIds: string[] = [];
   const saleIds: string[] = [];
   const contractIds: string[] = [];
   let branchId: string;
@@ -46,6 +47,8 @@ describe('JourneySummaryService.summary (real DB)', () => {
     await prisma.customerJourneyState.deleteMany({ where: { customerId: { in: customerIds } } });
     await prisma.sale.deleteMany({ where: { id: { in: saleIds } } });
     await prisma.contract.deleteMany({ where: { id: { in: contractIds } } });
+    await prisma.roomCreditAnalysis.deleteMany({ where: { roomId: { in: roomIds } } });
+    await prisma.chatRoom.deleteMany({ where: { id: { in: roomIds } } });
     await prisma.creditCheck.deleteMany({ where: { customerId: { in: customerIds } } });
     await prisma.customer.updateMany({ where: { id: { in: customerIds } }, data: { mergedIntoId: null } });
     await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
@@ -124,6 +127,23 @@ describe('JourneySummaryService.summary (real DB)', () => {
     expect(res).toMatchObject({ stage: 'CREDIT', creditRejected: true });
     if (!('steps' in res)) throw new Error('คาดว่าเป็น JourneySummary');
     expect(res.steps.find((s) => s.stage === 'INTERESTED')).toMatchObject({ state: 'done', evidence: 'MANUAL' });
+  });
+
+  it('ใบเครดิตจากสเตทเม้นในแชทที่ถูกตีตก: ธง creditRejected เห็นเฉพาะ role ที่เห็นห้องนั้น (creditHistoryAccess เดียวกับ list)', async () => {
+    const c = await walkIn('chat-credit', `092${tail}`);
+    const room = await prisma.chatRoom.create({
+      data: { channel: 'FACEBOOK', externalUserId: `summary-credit-${stamp}`, customerId: c.id, assignedToId: userId },
+    });
+    roomIds.push(room.id);
+    const check = await prisma.creditCheck.create({ data: { customerId: c.id } });
+    await prisma.roomCreditAnalysis.create({ data: { roomId: room.id, fileIds: [], status: 'COMPLETED', creditCheckId: check.id } });
+    await prisma.auditLog.create({ data: { userId, action: 'CREDIT_CHECK_OVERRIDE', entity: 'credit_check', entityId: check.id, newValue: { status: 'REJECTED' } } });
+
+    expect(await service.summary(c.id, { id: 'owner-spec', role: 'OWNER' })).toMatchObject({ stage: 'CREDIT', creditRejected: true });
+    // SALES ที่ดูแลห้องเห็น · SALES คนอื่นกับ ACCOUNTANT ไม่เห็น (ขั้น CREDIT ยังแสดงตาม Ruling FR-CREDIT-STAGE)
+    expect(await service.summary(c.id, { id: userId, role: 'SALES' })).toMatchObject({ creditRejected: true });
+    expect(await service.summary(c.id, actor)).toMatchObject({ stage: 'CREDIT', creditRejected: false });
+    expect(await service.summary(c.id, { id: 'accountant-spec', role: 'ACCOUNTANT' })).toMatchObject({ stage: 'CREDIT', creditRejected: false });
   });
 
   it('ซื้อแล้ว: ป้ายหลังการขาย = สถานะสัญญาล่าสุด + ซื้อซ้ำ', async () => {

@@ -3,6 +3,7 @@ import { ContractStatus, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { CUSTOMER_BOUGHT_CONTRACT_STATUSES, CUSTOMER_BOUGHT_SALE_TYPES, type JourneyRedirect, type JourneySummary } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { creditHistoryAccess } from '../credit-check/services/room-credit-access';
 import { BOUGHT_WHERE } from '../customers/services/customer-query.service';
 import { JourneyStateService } from './journey-state.service';
 import {
@@ -34,8 +35,11 @@ export class JourneySummaryService {
     private readonly journeyState: JourneyStateService,
   ) {}
 
-  /** ข้อมูลเท่ากันทุก role ที่เข้าได้ — ไม่มียอดชำระ/ติดตามหนี้ (actor เก็บไว้ให้สัญญาเดียวกับ list) */
-  async summary(customerId: string, _actor: { id: string; role: string }): Promise<JourneySummary | JourneyRedirect> {
+  /**
+   * ไม่มียอดชำระ/ติดตามหนี้ · ธง creditRejected ใช้ใบตรวจเครดิตที่ actor เห็นเท่านั้น (creditHistoryAccess — กติกาเดียวกับ list)
+   * ขั้น CREDIT บนแถบยังนับจากการวิเคราะห์สเตทเม้นในแชทได้ทุก role (Ruling FR-CREDIT-STAGE)
+   */
+  async summary(customerId: string, actor: { id: string; role: string }): Promise<JourneySummary | JourneyRedirect> {
     const customer = await this.prisma.customer.findUnique({
       where: { id: customerId },
       select: { id: true, deletedAt: true, mergedIntoId: true, status: true },
@@ -66,7 +70,7 @@ export class JourneySummaryService {
     if (!state) throw new NotFoundException('ไม่พบลูกค้า');
 
     const live = withLiveBought(state, bought, now);
-    return buildJourneySummary(live, await this.extras(live, familyIds, customer.status), now);
+    return buildJourneySummary(live, await this.extras(live, familyIds, customer.status, actor), now);
   }
 
   private async needsRecompute(cached: JourneyStateRow | null, bought: boolean, familyIds: string[], now: Date): Promise<boolean> {
@@ -76,7 +80,12 @@ export class JourneySummaryService {
     return this.journeyState.hasActivitySince(familyIds, cached.computedAt);
   }
 
-  private async extras(state: JourneyStateRow, familyIds: string[], customerStatus: string): Promise<JourneySummaryExtras> {
+  private async extras(
+    state: JourneyStateRow,
+    familyIds: string[],
+    customerStatus: string,
+    actor: { id: string; role: string },
+  ): Promise<JourneySummaryExtras> {
     const purchased = state.stage === 'PURCHASED';
     const [ad, manualInterest, creditChecks, latestContract, contractCount, saleCount, repairCount] = await Promise.all([
       state.firstAdCampaignId
@@ -89,7 +98,10 @@ export class JourneySummaryService {
         : Promise.resolve(0),
       purchased
         ? Promise.resolve([])
-        : this.prisma.creditCheck.findMany({ where: { customerId: { in: familyIds }, deletedAt: null }, select: { id: true } }),
+        : this.prisma.creditCheck.findMany({
+            where: { customerId: { in: familyIds }, deletedAt: null, ...creditHistoryAccess(actor) },
+            select: { id: true },
+          }),
       purchased
         ? this.prisma.contract.findFirst({
             where: { customerId: { in: familyIds }, deletedAt: null, status: { in: BOUGHT_CONTRACT_STATUSES } },

@@ -25,6 +25,13 @@ describe('JourneyStateService (real DB)', () => {
 
   const stateOf = (customerId: string) => prisma.customerJourneyState.findUniqueOrThrow({ where: { customerId } });
   const boughtLive = async (customerId: string) => (await prisma.customer.count({ where: { AND: [{ id: customerId }, BOUGHT_WHERE] } })) > 0;
+  /** recompute แล้วคืน first_staff_reply_at (ISO | null) พร้อมตรวจด่านที่ต้องจริงเสมอ: คำตอบแรกไม่ก่อนเวลาทักเข้ามา */
+  const firstReplyOf = async (customerId: string) => {
+    await service.recompute([customerId]);
+    const s = await stateOf(customerId);
+    if (s.firstStaffReplyAt) expect(s.firstStaffReplyAt.getTime()).toBeGreaterThanOrEqual(s.contactedAt.getTime());
+    return s.firstStaffReplyAt?.toISOString() ?? null;
+  };
 
   async function customer(data: Prisma.CustomerUncheckedCreateInput) {
     const row = await prisma.customer.create({ data });
@@ -313,6 +320,265 @@ describe('JourneyStateService (real DB)', () => {
       ],
     });
     expect(await firstReply(keyword.c.id)).toBe('2026-08-13T01:20:00.000Z');
+  });
+
+  it('ร้านตอบครั้งแรก: ไม่มีคำตอบก่อนข้อความลูกค้าแรกของช่องทางนั้น — echo มาก่อนลูกค้าเกิน 10 วิ · ห้องมีแต่ echo · ส่งจาก inbox ก่อนลูกค้าทัก · ห้องซ้ำของคนเดียวกันยึดข้ามห้อง', async () => {
+    const mid = (label: string) => `journey-bound-${label}-${stamp}`;
+    const chatCustomer = async (label: string, day: string) => {
+      const c = await customer({ name: `journey bound ${label}`, phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at(`${day}T00:00:00.000Z`) });
+      return { c, r: await room(c.id, `bound-${label}`, `${day}T00:00:00.000Z`) };
+    };
+
+    // echo ถูกบันทึกก่อนข้อความลูกค้าแรก 40 วิ (ข้อความลูกค้าถูกบันทึกช้า / เพจทักก่อน) ในห้องที่ echo สร้าง — anchor (ข) ครอบไม่ถึง
+    // ⇒ ไม่นับ (เดิมได้ค่า = contacted_at แล้วแช่แข็ง) · คนตอบหลังลูกค้าทักนับ
+    const early = await chatCustomer('early-40s', '2026-07-01');
+    await prisma.chatRoom.update({ where: { id: early.r.id }, data: { createdAt: at('2026-07-01T01:00:00.000Z') } });
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: early.r.id, role: 'STAFF', externalMessageId: mid('early-echo'), createdAt: at('2026-07-01T01:00:00.000Z') },
+        { roomId: early.r.id, role: 'CUSTOMER', createdAt: at('2026-07-01T01:00:40.000Z') },
+        { roomId: early.r.id, role: 'STAFF', externalMessageId: mid('early-human'), createdAt: at('2026-07-01T01:25:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(early.c.id)).toBe('2026-07-01T01:25:00.000Z');
+
+    // ห้องที่มีแต่ echo (เพจทักก่อน ลูกค้าไม่เคยส่งข้อความ) → ว่าง ไม่ใช่เวลาของ echo
+    const onlyEcho = await chatCustomer('only-echo', '2026-07-02');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: onlyEcho.r.id, role: 'STAFF', externalMessageId: mid('only-1'), createdAt: at('2026-07-02T03:00:00.000Z') },
+        { roomId: onlyEcho.r.id, role: 'STAFF', externalMessageId: mid('only-2'), createdAt: at('2026-07-02T09:00:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(onlyEcho.c.id)).toBeNull();
+    // ลูกค้าทักเข้ามาทีหลัง แล้วคนตอบ → ได้ค่าตอนคำนวณใหม่ (ค่าว่างกู้ได้ด้วย LEAST)
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: onlyEcho.r.id, role: 'CUSTOMER', createdAt: at('2026-07-03T02:00:00.000Z') },
+        { roomId: onlyEcho.r.id, role: 'STAFF', externalMessageId: mid('only-human'), createdAt: at('2026-07-03T02:30:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(onlyEcho.c.id)).toBe('2026-07-03T02:30:00.000Z');
+
+    // ส่งจาก inbox สำเร็จก่อนลูกค้าเคยทักในช่องทางนั้น = ไม่ใช่คำตอบ → ไม่นับ · ส่งจาก inbox หลังลูกค้าทักนับ
+    const inboxFirst = await chatCustomer('inbox-first', '2026-07-04');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: inboxFirst.r.id, role: 'STAFF', outboundSentAt: at('2026-07-04T01:00:00.000Z'), createdAt: at('2026-07-04T01:00:00.000Z') },
+        { roomId: inboxFirst.r.id, role: 'CUSTOMER', createdAt: at('2026-07-04T05:00:00.000Z') },
+        { roomId: inboxFirst.r.id, role: 'STAFF', outboundSentAt: at('2026-07-04T05:10:00.000Z'), createdAt: at('2026-07-04T05:10:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(inboxFirst.c.id)).toBe('2026-07-04T05:10:00.000Z');
+
+    // ข้อความลูกค้าอยู่ LINE ห้องเดียว · ห้อง Facebook มีแต่ echo หลังจากนั้น → ไม่นับข้ามช่องทาง
+    const crossChannel = await chatCustomer('cross-channel', '2026-07-05');
+    const lineRoom = await room(crossChannel.c.id, 'bound-cross-line', '2026-07-05T00:00:00.000Z', 'LINE_SHOP');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: lineRoom.id, role: 'CUSTOMER', createdAt: at('2026-07-05T01:00:00.000Z') },
+        { roomId: crossChannel.r.id, role: 'STAFF', externalMessageId: mid('cross-echo'), createdAt: at('2026-07-05T04:00:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(crossChannel.c.id)).toBeNull();
+
+    // ห้อง Facebook ซ้ำของคนเดียวกัน (getOrCreateRoom แข่งกันสร้าง): greeting echo ตกห้อง A ข้อความลูกค้าตกห้อง B
+    // (ก) echo 1 วิหลังข้อความลูกค้าในห้องพี่น้อง → ข้าม · bubble ที่สองในห้อง A → ข้าม · คนตอบในห้อง A ทีหลังนับ
+    const splitAfter = await chatCustomer('split-after', '2026-07-06');
+    const splitAfterB = await room(splitAfter.c.id, 'bound-split-after-b', '2026-07-06T00:00:00.000Z');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: splitAfterB.id, role: 'CUSTOMER', createdAt: at('2026-07-06T01:00:00.000Z') },
+        { roomId: splitAfterB.id, role: 'CUSTOMER', createdAt: at('2026-07-06T01:00:30.000Z') },
+        { roomId: splitAfter.r.id, role: 'STAFF', externalMessageId: mid('split-after-greeting'), createdAt: at('2026-07-06T01:00:01.000Z') },
+        { roomId: splitAfter.r.id, role: 'STAFF', externalMessageId: mid('split-after-image'), createdAt: at('2026-07-06T01:00:04.000Z') },
+        { roomId: splitAfter.r.id, role: 'STAFF', externalMessageId: mid('split-after-human'), createdAt: at('2026-07-06T02:00:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(splitAfter.c.id)).toBe('2026-07-06T02:00:00.000Z');
+
+    // (ข) greeting บันทึกก่อนข้อความลูกค้า 3 วิ แต่ข้อความลูกค้าอยู่ห้องพี่น้อง · bubble ที่สองออก 17 วิหลังข้อความลูกค้า
+    // (ไม่ใช่ anchor (ก) เอง — ถูกข้ามได้ทางเดียวคือช่วง 60 วิหลัง greeting ที่ยึดข้ามห้อง) · ห้อง A มีข้อความลูกค้าทีหลัง (ห้องถูกใช้ต่อ) · คนตอบนับ
+    // ถ้ายึดเฉพาะห้องของ echo: greeting ไม่เป็น anchor (ห้อง A ไม่มีข้อความลูกค้าใน 10 วิ) ⇒ bubble ที่สองถูกนับ 01:00:20
+    const splitRace = await chatCustomer('split-race', '2026-07-07');
+    const splitRaceB = await room(splitRace.c.id, 'bound-split-race-b', '2026-07-07T00:00:00.000Z');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: splitRace.r.id, role: 'STAFF', externalMessageId: mid('split-race-greeting'), createdAt: at('2026-07-07T01:00:00.000Z') },
+        { roomId: splitRaceB.id, role: 'CUSTOMER', createdAt: at('2026-07-07T01:00:03.000Z') },
+        { roomId: splitRace.r.id, role: 'STAFF', externalMessageId: mid('split-race-image'), createdAt: at('2026-07-07T01:00:20.000Z') },
+        { roomId: splitRace.r.id, role: 'CUSTOMER', createdAt: at('2026-07-07T01:20:00.000Z') },
+        { roomId: splitRace.r.id, role: 'STAFF', externalMessageId: mid('split-race-human'), createdAt: at('2026-07-07T01:45:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(splitRace.c.id)).toBe('2026-07-07T01:45:00.000Z');
+
+    // echo ในห้อง A มาก่อนข้อความลูกค้าแรกในห้องพี่น้อง 40 วิ → ด่านข้อความลูกค้าแรกนับทั้งช่องทาง ไม่นับ echo นั้น
+    const splitEarly = await chatCustomer('split-early', '2026-07-08');
+    const splitEarlyB = await room(splitEarly.c.id, 'bound-split-early-b', '2026-07-08T00:00:00.000Z');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: splitEarly.r.id, role: 'STAFF', externalMessageId: mid('split-early-echo'), createdAt: at('2026-07-08T01:00:00.000Z') },
+        { roomId: splitEarlyB.id, role: 'CUSTOMER', createdAt: at('2026-07-08T01:00:40.000Z') },
+        { roomId: splitEarlyB.id, role: 'STAFF', externalMessageId: mid('split-early-human'), createdAt: at('2026-07-08T01:30:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(splitEarly.c.id)).toBe('2026-07-08T01:30:00.000Z');
+  });
+
+  it('ร้านตอบครั้งแรก ขอบของกติกา: echo +9 วิหลังข้อความลูกค้าข้าม / +11 วินับ · ด่าน 30 นาทีของ anchor (ข) — ข้อความลูกค้าก่อนหน้าห่าง 30:00 ตัด anchor (นับ) / 30:01 ไม่ตัด (ข้าม)', async () => {
+    const mid = (label: string) => `journey-edge-${label}-${stamp}`;
+    const chatCustomer = async (label: string, day: string) => {
+      const c = await customer({ name: `journey edge ${label}`, phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at(`${day}T00:00:00.000Z`) });
+      return { c, r: await room(c.id, `edge-${label}`, `${day}T00:00:00.000Z`) };
+    };
+
+    // echo 9 วิหลังข้อความลูกค้า = anchor (ก) → ข้าม · คนตอบทีหลังนับ
+    const plus9 = await chatCustomer('plus-9s', '2026-06-01');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: plus9.r.id, role: 'CUSTOMER', createdAt: at('2026-06-01T01:00:00.000Z') },
+        { roomId: plus9.r.id, role: 'STAFF', externalMessageId: mid('plus-9-auto'), createdAt: at('2026-06-01T01:00:09.000Z') },
+        { roomId: plus9.r.id, role: 'STAFF', externalMessageId: mid('plus-9-human'), createdAt: at('2026-06-01T02:00:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(plus9.c.id)).toBe('2026-06-01T02:00:00.000Z');
+
+    // echo 11 วิหลังข้อความลูกค้า (เลยช่วง anchor 10 วิ ไม่มีข้อความอัตโนมัติคั่น) = คนตอบเร็ว → นับ
+    const plus11 = await chatCustomer('plus-11s', '2026-06-02');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: plus11.r.id, role: 'CUSTOMER', createdAt: at('2026-06-02T01:00:00.000Z') },
+        { roomId: plus11.r.id, role: 'STAFF', externalMessageId: mid('plus-11-human'), createdAt: at('2026-06-02T01:00:11.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(plus11.c.id)).toBe('2026-06-02T01:00:11.000Z');
+
+    // echo บันทึกก่อนข้อความลูกค้า 3 วิ แต่มีข้อความลูกค้าก่อนหน้าห่าง echo 30:00 พอดี (ขอบ BETWEEN รวมปลาย)
+    // ⇒ ลูกค้ากำลังคุยอยู่ ไม่ใช่ race ของ greeting → ไม่เป็น anchor → นับ echo นั้น
+    const gap30 = await chatCustomer('gap-30m', '2026-06-03');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: gap30.r.id, role: 'CUSTOMER', createdAt: at('2026-06-03T01:00:00.000Z') },
+        { roomId: gap30.r.id, role: 'STAFF', externalMessageId: mid('gap-30-echo'), createdAt: at('2026-06-03T01:30:00.000Z') },
+        { roomId: gap30.r.id, role: 'CUSTOMER', createdAt: at('2026-06-03T01:30:03.000Z') },
+        { roomId: gap30.r.id, role: 'STAFF', externalMessageId: mid('gap-30-later'), createdAt: at('2026-06-03T02:00:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(gap30.c.id)).toBe('2026-06-03T01:30:00.000Z');
+
+    // ข้อความลูกค้าก่อนหน้าห่าง 30:01 → เลยด่าน 30 นาที ⇒ echo เป็น anchor (ข) → ข้าม · คนตอบทีหลังนับ
+    const gap3001 = await chatCustomer('gap-30m01s', '2026-06-04');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: gap3001.r.id, role: 'CUSTOMER', createdAt: at('2026-06-04T00:59:59.000Z') },
+        { roomId: gap3001.r.id, role: 'STAFF', externalMessageId: mid('gap-3001-echo'), createdAt: at('2026-06-04T01:30:00.000Z') },
+        { roomId: gap3001.r.id, role: 'CUSTOMER', createdAt: at('2026-06-04T01:30:03.000Z') },
+        { roomId: gap3001.r.id, role: 'STAFF', externalMessageId: mid('gap-3001-later'), createdAt: at('2026-06-04T02:00:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(gap3001.c.id)).toBe('2026-06-04T02:00:00.000Z');
+  });
+
+  it('ร้านตอบครั้งแรก ส่งจาก inbox: ห้อง LINE_SHOP (ไม่มี message id) นับ · ข้อความสำเร็จรูปที่ผู้ใช้ระบบส่งเมื่อลูกค้ากด Quick Reply ไม่นับ', async () => {
+    // ผู้ใช้ระบบ: ใช้แถวเดิมถ้ามี ไม่งั้น upsert แบบเดียวกับ customer-merge.service.db.spec.ts (email/ธงเดียวกัน · ไม่ลบใน afterAll)
+    const existingSystemUser = await prisma.user.findFirst({ where: { isSystemUser: true }, select: { id: true } });
+    const systemUserId =
+      existingSystemUser?.id ??
+      (
+        await prisma.user.upsert({
+          where: { email: 'system@bestchoice.internal' },
+          update: { isSystemUser: true, isActive: false },
+          create: {
+            email: 'system@bestchoice.internal', name: 'SYSTEM', role: 'OWNER', password: '__NO_LOGIN__',
+            accessibleCompanies: ['SHOP', 'FINANCE'], primaryCompany: 'SHOP', isActive: false, isSystemUser: true,
+          },
+          select: { id: true },
+        })
+      ).id;
+    const lineCustomer = async (label: string, day: string) => {
+      const c = await customer({ name: `journey inbox ${label}`, phone: null, acquisitionSource: 'CHAT_LINE_SHOP', createdAt: at(`${day}T00:00:00.000Z`) });
+      return { c, r: await room(c.id, `inbox-${label}`, `${day}T00:00:00.000Z`, 'LINE_SHOP') };
+    };
+    const sent = (value: string) => ({ outboundSentAt: at(value), createdAt: at(value) });
+
+    // LINE ไม่คืน message id — ส่งจาก inbox สำเร็จมีแค่ outbound_sent_at → นับ
+    const line = await lineCustomer('line-shop', '2026-05-20');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: line.r.id, role: 'CUSTOMER', createdAt: at('2026-05-20T01:00:00.000Z') },
+        { roomId: line.r.id, role: 'STAFF', staffId: userId, ...sent('2026-05-20T01:05:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(line.c.id)).toBe('2026-05-20T01:05:00.000Z');
+
+    // ลูกค้ากด Quick Reply → ระบบส่งข้อความสำเร็จรูป 2 bubble ด้วย staffId ของผู้ใช้ระบบ → ไม่นับ · พนักงานส่งจาก inbox ทีหลังนับ
+    const quick = await lineCustomer('quick-reply', '2026-05-21');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: quick.r.id, role: 'CUSTOMER', createdAt: at('2026-05-21T03:00:00.000Z') },
+        { roomId: quick.r.id, role: 'STAFF', staffId: systemUserId, ...sent('2026-05-21T03:00:01.000Z') },
+        { roomId: quick.r.id, role: 'STAFF', staffId: systemUserId, ...sent('2026-05-21T03:00:02.000Z') },
+        { roomId: quick.r.id, role: 'STAFF', staffId: userId, ...sent('2026-05-21T03:20:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(quick.c.id)).toBe('2026-05-21T03:20:00.000Z');
+
+    // มีแต่ข้อความสำเร็จรูปของระบบ → ว่าง
+    const quickOnly = await lineCustomer('quick-only', '2026-05-22');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: quickOnly.r.id, role: 'CUSTOMER', createdAt: at('2026-05-22T03:00:00.000Z') },
+        { roomId: quickOnly.r.id, role: 'STAFF', staffId: systemUserId, ...sent('2026-05-22T03:00:01.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(quickOnly.c.id)).toBeNull();
+  });
+
+  it('ร้านตอบครั้งแรก ครอบครัวเดียวกัน: ห้อง Facebook ของ placeholder ที่รวมแล้วยึด greeting ข้ามห้อง · ห้องที่รวมข้ามช่องทาง (mergeRooms) นับ greeting ได้ — ยอมรับโดยรู้ตัว', async () => {
+    const mid = (label: string) => `journey-family-reply-${label}-${stamp}`;
+
+    // ข้อความลูกค้าอยู่ห้องของ placeholder (รวมเข้าคนจริงแล้ว) · greeting + bubble ที่สอง (30 วิ ไม่ใช่ anchor เอง) ตกห้องของคนจริง
+    // → ยึดข้ามห้องของครอบครัว ข้ามทั้งคู่ · คนตอบนับ (ถ้าไม่ยึดข้ามห้อง greeting ถูกนับ 01:00:01)
+    const target = await customer({ name: 'journey family reply target', phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at('2026-05-01T00:00:00.000Z') });
+    const placeholder = await customer({
+      name: 'journey family reply placeholder', phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at('2026-05-01T00:00:00.000Z'),
+      deletedAt: at('2026-05-02T00:00:00.000Z'), mergedIntoId: target.id,
+    });
+    const targetRoom = await room(target.id, 'family-reply-target', '2026-05-01T00:00:00.000Z');
+    const placeholderRoom = await room(placeholder.id, 'family-reply-placeholder', '2026-05-01T00:00:00.000Z');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: placeholderRoom.id, role: 'CUSTOMER', createdAt: at('2026-05-01T01:00:00.000Z') },
+        { roomId: targetRoom.id, role: 'STAFF', externalMessageId: mid('greeting'), createdAt: at('2026-05-01T01:00:01.000Z') },
+        { roomId: targetRoom.id, role: 'STAFF', externalMessageId: mid('image'), createdAt: at('2026-05-01T01:00:30.000Z') },
+        { roomId: targetRoom.id, role: 'STAFF', externalMessageId: mid('human'), createdAt: at('2026-05-01T02:00:00.000Z') },
+      ],
+    });
+    expect(await firstReplyOf(target.id)).toBe('2026-05-01T02:00:00.000Z');
+
+    // ลูกค้าทัก LINE 10:00 · ทัก Facebook ครั้งแรก 10:10:03 โดย greeting ถูกบันทึกก่อน 3 วิ (race) · คนตอบ Facebook 10:40
+    const crossMerge = await customer({ name: 'journey cross merge', phone: null, acquisitionSource: 'CHAT_FACEBOOK', createdAt: at('2026-05-10T00:00:00.000Z') });
+    const fbRoom = await room(crossMerge.id, 'cross-merge-fb', '2026-05-10T00:00:00.000Z');
+    const lineRoom = await room(crossMerge.id, 'cross-merge-line', '2026-05-10T00:00:00.000Z', 'LINE_SHOP');
+    await prisma.chatMessage.createMany({
+      data: [
+        { roomId: lineRoom.id, role: 'CUSTOMER', createdAt: at('2026-05-10T10:00:00.000Z') },
+        { roomId: fbRoom.id, role: 'STAFF', externalMessageId: mid('cross-greeting'), createdAt: at('2026-05-10T10:10:00.000Z') },
+        { roomId: fbRoom.id, role: 'CUSTOMER', createdAt: at('2026-05-10T10:10:03.000Z') },
+        { roomId: fbRoom.id, role: 'STAFF', externalMessageId: mid('cross-human'), createdAt: at('2026-05-10T10:40:00.000Z') },
+      ],
+    });
+    // ห้องแยกกัน: greeting มาก่อนข้อความลูกค้าแรกของ Facebook → ไม่นับ · LINE ไม่นับแทน
+    expect(await firstReplyOf(crossMerge.id)).toBe('2026-05-10T10:40:00.000Z');
+
+    // mergeRooms (session-ops.service.ts) ย้ายข้อความห้อง LINE เข้าห้อง Facebook แล้ว soft-delete ห้อง LINE — ไม่ตรวจ channel
+    // ข้อความลูกค้า LINE 10:00 กลายเป็นของห้อง Facebook ⇒ ด่านข้อความลูกค้าแรกเลื่อนเป็น 10:00 และด่าน 30 นาทีตัด anchor (ข) ของ greeting
+    // ⇒ greeting ถูกนับ แล้ว LEAST แช่แข็ง 10:10:00 (เร็วไป) · แยกช่องทางเดิมของข้อความไม่ได้ จึงยอมรับ (prod ไม่เคยมีห้องที่ถูกรวม)
+    // 🚨 ถ้าวันหน้าแยกช่องทางเดิมได้แล้วทำให้เคสนี้ไม่นับ = กติกาแคบลง ⇒ แก้ expect นี้ + reset first_staff_reply_at ใน PR เดียวกัน
+    await prisma.chatMessage.updateMany({ where: { roomId: lineRoom.id }, data: { roomId: fbRoom.id } });
+    await prisma.chatRoom.update({ where: { id: lineRoom.id }, data: { deletedAt: at('2026-05-11T00:00:00.000Z') } });
+    expect(await firstReplyOf(crossMerge.id)).toBe('2026-05-10T10:10:00.000Z');
   });
 
   it('ทักเข้ามาแช่แข็ง: ห้องถูกนำเข้าใหม่ (created_at ใหม่กว่า ไม่มีข้อความ) → คำนวณใหม่ไม่เลื่อนไปข้างหลัง · CONTACT_ADDED → IDENTIFIED', async () => {

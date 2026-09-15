@@ -16,7 +16,14 @@ family AS (
 ),
 rooms AS (
   SELECT f.customer_id, r.id AS room_id, r.channel::text AS channel, r.created_at, r.attribution_id,
-         cm.first_customer_at, cm.last_customer_at
+         cm.first_customer_at, cm.last_customer_at,
+         -- ใช้กับ auto_anchor / staff_reply: ห้องทุกห้องของครอบครัวเดียวกัน (ลูกค้า + placeholder ที่รวมแล้ว) ในช่องทางเดียวกัน
+         -- ห้องซ้ำเกิดได้: Facebook chat_rooms ไม่มี unique (external_user_id, channel) และ getOrCreateRoom ทำ findFirst
+         -- แล้วค่อย create ⇒ echo กับข้อความลูกค้าแข่งกันสร้างห้องได้สองห้อง · ห้องของ placeholder ที่รวมแล้วก็เป็นพี่น้องกัน
+         -- ช่องทาง = ของห้องที่ข้อความอยู่ตอนนี้ — mergeRooms (session-ops) ย้ายข้อความข้ามช่องทางได้โดยไม่ตรวจ channel
+         -- และ chat_messages ไม่มีคอลัมน์ช่องทาง ⇒ ข้อความที่ถูกย้ายนับเป็นช่องทางของห้องหลัก (ดู "ห้องที่รวมข้ามช่องทาง" ใน staff_reply)
+         array_agg(r.id) OVER (PARTITION BY f.customer_id, r.channel) AS channel_room_ids,
+         MIN(cm.first_customer_at) OVER (PARTITION BY f.customer_id, r.channel) AS channel_first_customer_at
   FROM family f
   JOIN chat_rooms r ON r.customer_id = f.member_id
   LEFT JOIN LATERAL (
@@ -47,21 +54,25 @@ auto_anchor AS MATERIALIZED (
   --   (ข) หรือบันทึกก่อนข้อความลูกค้าไม่เกิน 10 วิ และไม่มีข้อความลูกค้าเลยใน 30 นาทีก่อน echo — race ของ greeting:
   --       webhook await echo ทันที แต่ routeInbound ไม่ await และดึงโปรไฟล์ Graph ก่อน saveMessage (prod: กระจุก 0–2 วิ)
   --       ด่าน 30 นาทีกันคำตอบของคนที่ลูกค้าตอบกลับเร็ว หรือข้อความลูกค้าที่ค้างคิวต่อลูกค้าแล้วถูกบันทึกหลัง echo
-  -- ใช้เฉพาะแถวที่มีสิทธิ์ถูกนับ (STAFF echo) — BOT และส่งจาก inbox (outbound_sent_at = คนกดส่ง) ไม่เป็น anchor
-  SELECT a.room_id, a.created_at AS anchor_at
-  FROM chat_messages a
-  WHERE a.room_id IN (SELECT ro.room_id FROM rooms ro)
-    AND a.role = 'STAFF' AND a.outbound_sent_at IS NULL AND a.external_message_id IS NOT NULL
+  -- ข้อความลูกค้าที่ (ก)/(ข) มองหา = ทุกห้องของครอบครัวเดียวกันช่องทางเดียวกัน (channel_room_ids) ไม่ใช่แค่ห้องของ echo:
+  --   ห้องซ้ำ (ดู rooms) ⇒ greeting ตกห้องหนึ่ง ข้อความลูกค้าตกอีกห้อง · prod 2026-09-15: ครอบครัวที่มีห้อง Facebook 2 ห้อง 7 ราย
+  --   (ห้องซ้ำของคนเดียวกันทั้งหมด) · ถ้ายึดเฉพาะห้องของ echo 4 รายได้ค่าเป็น echo ที่ออกไม่ถึง 1 วิหลังข้อความลูกค้าในห้องพี่น้อง
+  --   ส่วนด่าน 30 นาที (ตัด anchor ออก) ดูเฉพาะห้องของ echo — ขยายเฉพาะฝั่งที่เพิ่ม anchor ⇒ ข้ามได้เพิ่มอย่างเดียว ไม่นับเพิ่ม
+  -- ใช้เฉพาะแถวที่มีสิทธิ์ถูกนับ (STAFF echo) — BOT และส่งจาก inbox (outbound_sent_at) ไม่เป็น anchor
+  SELECT ro.customer_id, ro.channel, a.created_at AS anchor_at
+  FROM rooms ro
+  JOIN chat_messages a ON a.room_id = ro.room_id
+  WHERE a.role = 'STAFF' AND a.outbound_sent_at IS NULL AND a.external_message_id IS NOT NULL
     AND (
       EXISTS (
         SELECT 1 FROM chat_messages c
-        WHERE c.room_id = a.room_id AND c.role = 'CUSTOMER'
+        WHERE c.room_id = ANY(ro.channel_room_ids) AND c.role = 'CUSTOMER'
           AND c.created_at BETWEEN a.created_at - interval '10 seconds' AND a.created_at
       )
       OR (
         EXISTS (
           SELECT 1 FROM chat_messages c
-          WHERE c.room_id = a.room_id AND c.role = 'CUSTOMER'
+          WHERE c.room_id = ANY(ro.channel_room_ids) AND c.role = 'CUSTOMER'
             AND c.created_at > a.created_at AND c.created_at <= a.created_at + interval '10 seconds'
         )
         AND NOT EXISTS (
@@ -73,27 +84,54 @@ auto_anchor AS MATERIALIZED (
     )
 ),
 staff_reply AS (
-  -- "ถึงลูกค้าจริง" มีสองทาง: ส่งจาก inbox สำเร็จ = markOutboundSent stamp outbound_sent_at (LINE ไม่คืน message id)
-  -- · echo จากเพจ (พนักงานตอบใน Meta Business Suite/แอป Page + ข้อความอัตโนมัติของเพจ) = mirrorOutbound เก็บ mid ไว้ใน
-  -- external_message_id โดยไม่มี outbound_sent_at · ส่งจาก inbox ที่ล้มเหลือแถวไว้โดยไม่มีทั้งสองคอลัมน์ (save-before-send) จึงไม่นับ
-  -- ข้าม echo ทุกใบที่ออกภายใน 60 วิหลัง anchor ใดก็ได้ของห้อง (รวมตัว anchor เอง) — ข้อความอัตโนมัติมาหลาย bubble ได้
-  -- (ข้อความ + รูป / instant reply + away message) · ส่งจาก inbox (outbound_sent_at) = คนกดส่งเสมอ จึงไม่ถูกข้าม
+  -- "ถึงลูกค้าจริง" มีสองทาง แยกเป็นสองขา UNION ALL แล้ว MIN ต่อลูกค้า (ขาเดียวที่มี OR ⇒ NOT EXISTS ใต้ OR กลายเป็น SubPlan
+  -- สแกน auto_anchor ทั้งก้อนต่อแถว STAFF · แยกขาแล้ว NOT EXISTS อยู่ชั้นบนสุดของขา echo จึงเป็น anti join ·
+  -- prod 2026-09-15 ลูกค้า 500 รายที่ข้อความมากสุด (40,767 ข้อความ, รวมเวลาเลือก 500 ราย ~0.5 วิ): ขาเดียวแบบ OR 3.2 วิ → สองขา 0.64 วิ)
+  --   (1) ส่งจาก inbox สำเร็จ = markOutboundSent stamp outbound_sent_at (LINE ไม่คืน message id) — ไม่ถูกข้ามด้วย anchor
+  --       ยกเว้นแถวของผู้ใช้ระบบ (users.is_system_user): ลูกค้ากดปุ่ม Quick Reply (payload TEMPLATE:) ⇒ QuickReplyPostbackRouterService
+  --       ให้ CannedResponseSenderService ส่งข้อความสำเร็จรูปด้วย staffId ของผู้ใช้ระบบ = ระบบตอบเอง ไม่ใช่คนกดส่ง (prod 2026-09-15 ยังไม่มีแถวแบบนี้)
+  --   (2) echo จากเพจ (พนักงานตอบใน Meta Business Suite/แอป Page + ข้อความอัตโนมัติของเพจ) = mirrorOutbound เก็บ mid ไว้ใน
+  --       external_message_id โดยไม่มี outbound_sent_at · ข้ามทุกใบที่ออกภายใน 60 วิหลัง anchor ใดก็ได้ของครอบครัวช่องทางเดียวกัน
+  --       (รวมตัว anchor เอง) — ข้อความอัตโนมัติมาหลาย bubble ได้ (ข้อความ + รูป / instant reply + away message)
+  --   ส่งจาก inbox ที่ล้มเหลือแถวไว้โดยไม่มีทั้งสองคอลัมน์ (save-before-send) จึงไม่นับ
+  -- ทั้งสองขานับเฉพาะแถวที่ไม่ก่อนข้อความลูกค้าแรกของครอบครัวในช่องทางเดียวกัน (channel_first_customer_at):
+  --   คำตอบมาก่อนลูกค้าทักไม่ได้ · echo ที่บันทึกก่อนข้อความลูกค้าแรก = เพจทักก่อน หรือข้อความลูกค้าถูกบันทึกช้า
+  --   (routeInbound ไม่ await + getUserProfile ลอง Graph สองทางต่อกัน timeout ทางละ 10 วิ + คิวต่อลูกค้า) — anchor (ข) ครอบแค่ 10 วิ
+  --   ⇒ ไม่มีด่านนี้ echo นั้นถูกนับเป็นคำตอบที่ตรงกับหรือก่อน contacted_at แล้ว LEAST แช่แข็งไว้ถาวร
+  --   ไม่ผ่อนด่านลง 10 วิ: echo ทุกใบใน 10 วิก่อนข้อความลูกค้าแรกของช่องทางเป็น anchor (ข) อยู่แล้ว (ข้อความลูกค้าแรกอยู่ใน 10 วิถัดไป
+  --   และก่อนหน้าไม่มี) ⇒ ผ่อนแล้วได้เพิ่มแค่การส่งจาก inbox ที่บันทึกก่อนข้อความลูกค้า ซึ่งพนักงานยังไม่เห็นข้อความนั้น = ไม่ใช่คำตอบ
+  --   ช่องทางอื่นไม่นับแทนกัน (ลูกค้าทัก LINE แต่ห้อง Facebook มีแค่ echo → ว่าง) · ไม่มีข้อความลูกค้าในช่องทางนั้น = NULL → ว่าง
+  --   prod 2026-09-15 เทียบกติกาก่อนหน้า (echo แทนด้วย staff_id IS NULL AND outbound_sent_at IS NULL — MCP อ่าน external_message_id
+  --   ไม่ได้): ค่าที่มาก่อนข้อความลูกค้าแรก 117 ราย (<10 วิ 2 · 10–59 วิ 59 · 1–10 นาที 34 · ≥10 นาที 22) + ครอบครัวที่ไม่มีข้อความลูกค้าเลย 56 ราย
+  -- ห้องที่รวมข้ามช่องทาง (ดู rooms): ข้อความลูกค้าช่องทางอื่นที่ถูกย้ายมาทำให้ด่านข้อความลูกค้าแรกเร็วขึ้น และตัด anchor (ข) ด้วยด่าน
+  --   30 นาทีได้ ⇒ greeting ที่บันทึกก่อนข้อความลูกค้าแรกของช่องทางจริง ภายใน 30 นาทีหลังข้อความช่องทางอื่น ถูกนับ (เร็วไป แช่แข็ง)
+  --   แยกช่องทางเดิมของข้อความไม่ได้ถูก ๆ (ไม่มีคอลัมน์ · รูปแบบ id ของแพลตฟอร์มไม่ใช่สัญญา) จึงยอมรับ — prod 2026-09-15 ไม่มี
+  --   chat_rooms ที่ถูก soft-delete เลย (mergeRooms ไม่เคยถูกใช้) · spec "ห้องที่รวมข้ามช่องทาง" ปักพฤติกรรมนี้ไว้
   -- ต่อยอดจาก RoomManagerService.shouldSkipFirstOutboundClear (คิวรอตอบ — กติกาแยก ข้ามเฉพาะใบแรกของห้อง)
-  -- ทิศที่เลือก: ข้ามเกิน (คนตอบภายใน 60 วิหลังข้อความอัตโนมัติ) = ค่าช้าไป กู้ได้ด้วย LEAST เมื่อผ่อนกติกา ·
-  -- นับเกิน = ค่าเร็วไป ถูกแช่แข็งถาวร (ดู ON CONFLICT ด้านล่าง)
-  -- ที่ยังรู้ตัว (prod 2026-09-15 ห้อง Facebook): ~11 ห้องจาก ~7.6 พันได้ค่าที่ห่างข้อความลูกค้า ≤3 วิ — ลูกค้าส่งตามหลัง echo
-  -- ทั้งที่มีข้อความลูกค้าใน 30 นาทีก่อนหน้า (แยกคนตอบ+คิวค้าง ออกจาก keyword response ไม่ได้จาก metadata) · ห้องที่เพจทักก่อน
-  -- โดยลูกค้าไม่เคยส่งข้อความเลย (~59 ห้อง) ยังได้ค่า เพราะไม่มีข้อความลูกค้าให้ยึด
-  SELECT ro.customer_id, MIN(m.created_at) AS first_staff_reply_at
-  FROM rooms ro
-  JOIN chat_messages m ON m.room_id = ro.room_id AND m.role = 'STAFF'
-   AND (m.outbound_sent_at IS NOT NULL OR m.external_message_id IS NOT NULL)
-  WHERE m.outbound_sent_at IS NOT NULL
-     OR NOT EXISTS (
-       SELECT 1 FROM auto_anchor aa
-       WHERE aa.room_id = m.room_id AND m.created_at BETWEEN aa.anchor_at AND aa.anchor_at + interval '60 seconds'
-     )
-  GROUP BY ro.customer_id
+  -- ทิศที่เลือก: ข้ามเกิน (คนตอบภายใน 60 วิหลังข้อความอัตโนมัติ / ข้อความลูกค้าถูกบันทึกช้ากว่าคำตอบ) = ค่าช้าไปหรือว่าง
+  -- กู้ได้ด้วย LEAST เมื่อผ่อนกติกา · นับเกิน = ค่าเร็วไป ถูกแช่แข็งถาวร (ดู ON CONFLICT ด้านล่าง)
+  -- ที่ยังรู้ตัว (prod 2026-09-15 ห้อง Facebook): 11 จาก 7,566 รายได้ค่าที่ห่างข้อความลูกค้า ≤3 วิ — ลูกค้าส่งตามหลัง echo
+  -- ทั้งที่มีข้อความลูกค้าใน 30 นาทีก่อนหน้า (แยกคนตอบ+คิวค้าง ออกจาก keyword response ไม่ได้จาก metadata)
+  SELECT x.customer_id, MIN(x.replied_at) AS first_staff_reply_at
+  FROM (
+    SELECT ro.customer_id, m.created_at AS replied_at
+    FROM rooms ro
+    JOIN chat_messages m ON m.room_id = ro.room_id AND m.role = 'STAFF' AND m.outbound_sent_at IS NOT NULL
+     AND m.created_at >= ro.channel_first_customer_at
+    WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = m.staff_id AND u.is_system_user)
+    UNION ALL
+    SELECT ro.customer_id, m.created_at
+    FROM rooms ro
+    JOIN chat_messages m ON m.room_id = ro.room_id AND m.role = 'STAFF'
+     AND m.outbound_sent_at IS NULL AND m.external_message_id IS NOT NULL
+     AND m.created_at >= ro.channel_first_customer_at
+    WHERE NOT EXISTS (
+      SELECT 1 FROM auto_anchor aa
+      WHERE aa.customer_id = ro.customer_id AND aa.channel = ro.channel
+        AND m.created_at BETWEEN aa.anchor_at AND aa.anchor_at + interval '60 seconds'
+    )
+  ) x
+  GROUP BY x.customer_id
 ),
 -- บันทึกการเดินทางอ่านผ่าน family (ลูกค้า + placeholder ที่ merged_into_id ชี้มา) เหมือนตัวอ่านอื่นทุกตัว —
 -- แถวที่ค้างใต้ id ของ placeholder (เช่น ถอย image ระหว่างทาง แล้วซ่อมด้วยการเติม merged_into_id) ยังนับเข้าแคชของคนจริง

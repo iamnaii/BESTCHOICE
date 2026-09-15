@@ -47,8 +47,11 @@ export class CustomerJourneyCron {
   }
 
   /**
-   * 04:00 น. — ใบขายผ่อนของเมื่อวาน (เวลาไทย) ต้องมี entry CONTRACT_ACTIVATED ครบ ถ้าขาด = hook หลุด
-   * คืนแรกหลัง deploy อาจเตือนสัญญาที่เปิดก่อน deploy — ตรวจ contractIds ใน extra ก่อนสรุปว่าพัง
+   * 04:00 น. — สัญญาที่เปิดจริงเมื่อวาน (เวลาไทย) ต้องมี entry CONTRACT_ACTIVATED ครบ ถ้าขาด = hook หลุด
+   * "เปิดจริง" = JE เปิดสัญญา (tag 1A / flow exchange-new-contract-1a) ที่ postedAt อยู่ในวันนั้น — ไม่ดูใบขาย
+   * (ใบขายผ่อนจาก POS เกิดตอนสร้างสัญญา DRAFT ซึ่งอาจเปิดวันหลังหรือไม่เปิดเลย · สัญญาเปลี่ยนเครื่องไม่มีใบขาย)
+   * คืนแรกหลัง deploy อาจเตือนสัญญาที่เปิดก่อน deploy ในวันนั้น · CLI test-pack ที่เรียก ContractWorkflowService.activate ตรง
+   * (ไม่ผ่าน controller ที่เขียน entry) ก็ถูกนับว่าขาด — ตรวจ contractIds ใน extra ก่อนสรุปว่าพัง
    */
   @Cron('0 4 * * *', { name: 'journey:entry-guard', timeZone: 'Asia/Bangkok' })
   async entryGuard(now: Date = new Date()): Promise<{ missing: number }> {

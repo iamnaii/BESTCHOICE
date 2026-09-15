@@ -85,13 +85,39 @@ export class JourneyStateService {
     return rows.map((row) => row.customer_id);
   }
 
-  /** ใบขาย INSTALLMENT ถูกสร้างใน tx เดียวกับ activate — สัญญาที่ไม่มี entry CONTRACT_ACTIVATED (Task 5) = hook หลุด */
+  /**
+   * ด่าน entry-guard: สัญญาที่ "เปิดจริง" ในช่วง [gte, lt) แต่ไม่มี entry CONTRACT_ACTIVATED (hook ของ Task 5 หลุด) — เรียงตาม id
+   * "เปิดจริง" = JournalEntry POSTED ที่ไม่ถูกลบ · postedAt อยู่ในช่วง · metadata เป็นใบเปิดสัญญา ซึ่งโพสต์ใน tx เดียวกับ
+   * ContractWorkflowService.activate() เสมอ (JE ล้ม = activate rollback ทั้งก้อน) — contractId อ่านจาก metadata.contractId:
+   *   - ContractActivation1ATemplate `{ tag: '1A', contractId }` — เปิดสัญญาปกติ
+   *   - ExchangeNewContract1ATemplate `{ flow: 'exchange-new-contract-1a', contractId }` — สัญญาใหม่ของการเปลี่ยนเครื่อง (ไม่มีใบขาย)
+   * ไม่ใช้ Sale.createdAt: ขายผ่อนที่ POS สร้างใบขาย INSTALLMENT ตอนสร้างสัญญา DRAFT แล้วค่อยเปิดวันหลังหรือไม่เปิดเลย
+   * ใบกลับรายการ (ยกเลิกสัญญา / ยกเลิกเปลี่ยนเครื่อง / เครื่องตำหนิ) ตั้ง tag 'REVERSAL' + flow ของตัวเอง จึงไม่เข้าเงื่อนไขอยู่แล้ว —
+   * ข้าม JE ที่มี reversesEntryId/originalEntryId อีกชั้นเผื่อใบกลับรายการในอนาคตลอก metadata ของใบเปิดมาทั้งก้อน
+   * ใบเปิดต้นฉบับที่ถูกกลับรายการภายหลัง (stamp reversed: true, postedAt เดิม) ยังนับ — สัญญาเคยเปิดจริง entry ต้องมี
+   */
   async contractsMissingActivationEntry(range: { gte: Date; lt: Date }): Promise<string[]> {
-    const sales = await this.prisma.sale.findMany({
-      where: { saleType: 'INSTALLMENT', deletedAt: null, contractId: { not: null }, createdAt: range },
-      select: { contractId: true },
+    const activations = await this.prisma.journalEntry.findMany({
+      where: {
+        status: 'POSTED',
+        deletedAt: null,
+        postedAt: range,
+        OR: [
+          { metadata: { path: ['tag'], equals: '1A' } },
+          { metadata: { path: ['flow'], equals: 'exchange-new-contract-1a' } },
+        ],
+      },
+      select: { metadata: true },
     });
-    const contractIds = sales.map((row) => row.contractId).filter((id): id is string => id !== null);
+    const contractIds = [
+      ...new Set(
+        activations.flatMap((row) => {
+          const meta = (row.metadata ?? {}) as Record<string, unknown>;
+          if (meta.reversesEntryId !== undefined || meta.originalEntryId !== undefined) return [];
+          return typeof meta.contractId === 'string' ? [meta.contractId] : [];
+        }),
+      ),
+    ];
     if (contractIds.length === 0) return [];
     const entries = await this.prisma.customerJourneyEntry.findMany({
       where: { kind: 'CONTRACT_ACTIVATED', refId: { in: contractIds } },

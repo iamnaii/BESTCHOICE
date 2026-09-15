@@ -451,7 +451,7 @@ gcloud run jobs describe bestchoice-backfill-customer-journey --project=bestchoi
 gcloud run jobs execute bestchoice-backfill-customer-journey --project=bestchoice-prod --region=asia-southeast1 --wait
 gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="bestchoice-backfill-customer-journey"' --project=bestchoice-prod --freshness=2h --limit=200 --format='value(textPayload,jsonPayload.message)'
 ```
-- `describe` ต้องเห็น image = `<SHA40 ของ merge PR นี้>` และ env มีแค่ `EXPECTED_DB_NAME` — ไม่ตรงห้าม execute
+- `describe` ต้องเห็น image = `<SHA40 ของ merge PR นี้>` และ env มีแค่ `DATABASE_URL` (secretKeyRef) กับ `EXPECTED_DB_NAME=bestchoice` — ต้องไม่มี `CONFIRM_BACKFILL` / `ALLOW_PROD_BACKFILL` / `NODE_ENV` · ไม่ตรงห้าม execute
 - อ่านผลแบบขั้น 6 (exit 0 ไปต่อ · exit 1/2 หยุด)
 
 รันจริง:
@@ -495,6 +495,7 @@ gcloud run services update bestchoice-api --project=bestchoice-prod --region=asi
 2. **ทำให้ถอยถาวร ก่อน merge อะไรเข้า main อีก** — PR ที่ `git revert` คอมมิตกติกาใน `journey-state.sql` (คอมมิตพวกนี้พา DB spec + สเปคคู่กันมาด้วย จึง revert ทั้งคอมมิต):
    - `aecaff4a3` นับ echo · `b2e446a13` ข้ามช่วงอัตโนมัติ · `a2a84c8c0` ยึดทุกครั้งที่ลูกค้าทัก · `7f5eeb0cc` ด่านข้อความลูกค้าแรก/ห้องซ้ำ/ผู้ใช้ระบบ
    - ตรวจบน main ว่าครบด้วย `git log --oneline -- apps/api/src/modules/customer-journey/sql/journey-state.sql`
+   - PR revert ต้อง bump `apps/web/package.json` (+ package-lock) เป็นเลขถัดไป (เช่น 26.9.30) — revert แตะ `apps/api/src/**` จึง deploy เว็บซ้ำด้วย · หลัง merge ใช้ด่านเดียวกับหลัง merge PR นี้: run เขียวครบ · health ok · bundle เห็นเลขใหม่ · revision image = SHA ของ merge revert
    - merge PR revert เป็นอันดับแรก — จนกว่าจะ merge ห้าม merge PR อื่นใด (ทุก push ขึ้น HEAD ทั้งชุด)
    - ขึ้นกติกา echo กลับภายหลัง (roll forward) **ต้องมาพร้อมขั้น reset ข้อ 3–5 ของตัวเอง** — ค่าที่ #1594 เขียนระหว่างถอย (ส่งจาก inbox ก่อนข้อความลูกค้าแรก / ข้อความสำเร็จรูปของผู้ใช้ระบบ) กติกา echo ไม่นับ ⇒ ไม่ reset = แช่แข็งค่าที่เร็วไป
 3. **รอให้ instance ของกติกาใหม่หมดก่อน reset** — ไม่งั้นหน้าลูกค้า/cron/การรวมผู้สนใจบน instance เก่าเขียนค่าที่เร็วไปกลับเข้ามาหลัง `UPDATE`

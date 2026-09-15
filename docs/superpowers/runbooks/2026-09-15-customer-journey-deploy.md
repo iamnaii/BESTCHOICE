@@ -351,6 +351,42 @@ gcloud run jobs execute bestchoice-backfill-customer-journey --project=bestchoic
 - เริ่มมี `CONTRACT_ACTIVATED` / `CREDIT_CHECK_OPENED_BY` / `LINE_LINKED` ตามงานจริงของวันนั้น
 - `CONTACT_ADDED` มาจากหน้าลูกค้าและการเติมเบอร์ของพนักงานเท่านั้น — บอทขายไม่ได้ต่อในเฟสนี้
 
+## 9. PR ต่อท้าย: "ร้านตอบครั้งแรก" นับ echo จากเพจ (`first_staff_reply_at`)
+
+ใช้กับ PR ที่แก้ `staff_reply` / `auto_anchor` ใน `journey-state.sql` (นับ echo จาก Meta Business Suite/แอป Page + ข้ามข้อความอัตโนมัติของเพจทุกครั้งที่ลูกค้าทัก)
+- ก่อน PR นี้ขึ้น แคช prod มีค่า `first_staff_reply_at` แค่ 1 จาก 9,067 แถว (ตรวจ 2026-09-15) — กติกาเดิมนับเฉพาะการส่งจาก inbox
+- ขั้น 1–8 ข้างบนทำไปแล้วตอน #1594 — หัวข้อนี้ไม่ต้องทำซ้ำขั้นเหล่านั้น
+
+🚨 **ค่าเริ่มถูกแช่แข็งทันทีที่ image ใหม่รับ traffic — ไม่ต้องรอใครรัน backfill**
+- recompute ใช้ `LEAST` (การรวมผู้สนใจใช้ `earliest()`) ⇒ ค่าที่เขียนแล้วเลื่อนไปข้างหน้าไม่ได้อีก
+- ผู้เขียนค่ามี 3 ทาง ไม่ใช่แค่ CLI:
+  1. เปิดหน้า `/customers/:id` — `journey-summary.service.ts` recompute เมื่อ `needsRecompute`
+  2. cron `journey:recompute` 03:30 น. ทุกคืน — คนที่ขยับใน 48 ชม.
+  3. คืนวันอาทิตย์ = sweep ทุกคน (เท่ากับ backfill)
+- deploy จากเครื่อง (ทางสำรองในหัวข้อ 0): build จาก **HEAD ของ PR เท่านั้น** — ห้าม build จาก commit กลางที่นับ echo แต่ยังข้ามข้อความทักทายแค่ใบแรกของห้อง (greeting หลาย bubble / away message รอบหลัง จะกลายเป็นคำตอบแรกปลอมถาวร)
+
+**9.1 เช้าหลังคืนแรกของ image ใหม่ (ก่อน backfill)** — cron 03:30 น. เขียนค่าให้คนที่ขยับใน 48 ชม. ไปแล้ว ใช้เป็นตัวอย่างตรวจ
+
+MCP (นับอย่างเดียว):
+```sql
+SELECT count(*) AS states_with_reply,
+  count(*) FILTER (WHERE EXISTS (
+    SELECT 1 FROM customers f JOIN chat_rooms r ON r.customer_id = f.id JOIN chat_messages c ON c.room_id = r.id AND c.role = 'CUSTOMER'
+    WHERE (f.id = s.customer_id OR f.merged_into_id = s.customer_id)
+      AND c.created_at BETWEEN s.first_staff_reply_at - interval '3 seconds' AND s.first_staff_reply_at + interval '3 seconds'
+  )) AS within_3s_of_customer
+FROM customer_journey_states s WHERE s.first_staff_reply_at IS NOT NULL;
+```
+- `within_3s_of_customer` = คำตอบแรกที่ห่างข้อความลูกค้าไม่เกิน 3 วิ ⇒ หน้าตาเหมือนข้อความอัตโนมัติของเพจ
+- จำลองกติกาบน prod ก่อน merge: ~11 จาก ~7.6 พันห้อง (≈0.15%) — ลูกค้าส่งตามหลัง echo ทั้งที่มีข้อความลูกค้าใน 30 นาทีก่อนหน้า
+- **ไม่เกิน 1% ของ `states_with_reply`** → ไป 9.2
+- **เกิน 1%** → ห้ามรัน backfill · ส่งตัวเลขให้ dev · ถ้าจะแก้กติกาให้แคบลงต้องล้างคอลัมน์ก่อนคำนวณใหม่ (ดู "ถอยเพราะกติกานี้" ในหัวข้อถอย)
+
+**9.2 backfill** — ขั้น 6–7 ข้างบน ด้วย image ของ PR นี้ (`<SHA40>` = commit ของ run ที่ขึ้น PR นี้)
+- 🚨 ห้ามรันช่วง 03:00–04:30 น. เหมือนเดิม
+- หรือไม่รัน แล้วรอ sweep คืนวันอาทิตย์ (ค่าเข้าแคชครบในคืนนั้นเอง)
+- หลังรัน: คิวรี 9.1 ซ้ำ — `states_with_reply` ควรขึ้นหลักพัน (จำลองได้ ~7.6 พันห้อง Facebook) และสัดส่วน `within_3s_of_customer` ยังไม่เกิน 1%
+
 ## ถอย (rollback)
 
 ### ถอย API
@@ -367,6 +403,17 @@ gcloud run services update bestchoice-api --project=bestchoice-prod --region=asi
   - ถ้าจำเป็นต้องถอยจริง: ถอย **เว็บและ API พร้อมกัน** และต้องตรวจก่อนบนสำเนาฐานที่ผ่านขั้น 4 แล้ว ว่าหน้ารายชื่อลูกค้าและหน้ารายละเอียดลูกค้าของผู้สนใจที่ `phone` ว่างเปิดได้กับ image เก่า — ยังไม่เคยมีใครทดสอบ
   - อ่านเรื่องถอยใน runbook ของ PR #1592 ประกอบ
 - ไม่มี down-migration · **ห้ามลบตาราง/คอลัมน์เอง**
+
+### ถอยเพราะกติกา "ร้านตอบครั้งแรก" (หัวข้อ 9)
+- ถอยไป image **ก่อน PR ต่อท้ายนี้ = image ของ #1594** (คำสั่ง `gcloud run services update … --image=` แบบเดียวกับ "ถอย API")
+  - 🚨 ไม่ใช่ `<SHA40 ก่อน PR นี้>` ของหัวข้อ "ถอย API" — ตัวนั้นเป็น image ก่อนเฟส 0 ใช้ได้เฉพาะก่อนขั้น 4 ซึ่งผ่านไปแล้ว
+- ถอย image **อย่างเดียวไม่พอ** — image ของ #1594 นับเฉพาะการส่งจาก inbox (แคบกว่า) และ `LEAST` เก็บค่าที่ image ใหม่เขียนไว้ต่อ
+- บน image ที่ถอยแล้ว รันด้วย role เจ้าของ (MCP เขียนไม่ได้):
+  ```sql
+  UPDATE customer_journey_states SET first_staff_reply_at = NULL;
+  ```
+- แล้วคำนวณใหม่: `backfill:customer-journey` (ขั้น 6–7 ด้วย image ที่ถอยแล้ว) หรือรอ sweep คืนวันอาทิตย์ · ห้ามช่วง 03:00–04:30 น.
+- ถอยด้วยเหตุผลอื่นที่ไม่เกี่ยวกับกติกานี้ = ไม่ต้องล้าง — ค่าที่ image ใหม่เขียนยังถูกตามกติกาใหม่
 
 ### ถอยเว็บ
 - **ทางมือ:** Firebase console → Hosting → site admin (`bestchoicephone.app`) → ประวัติ release → Rollback ไป release ที่จดไว้ในข้อ 1.5
@@ -413,9 +460,10 @@ gcloud run services update bestchoice-api --project=bestchoice-prod --region=asi
 
 **`first_staff_reply_at` แช่แข็ง — เลื่อนไปข้างหน้าไม่ได้**
 - recompute ใช้ `LEAST` และการรวมผู้สนใจใช้ `earliest()` ⇒ ค่าที่เขียนลงแคชแล้วถูกแทนได้เฉพาะค่าที่เก่ากว่า
-- ห้ามรัน `backfill:customer-journey` (หรือปล่อย sweep วันอาทิตย์) บน image ที่นับ echo จากเพจแต่ข้ามข้อความทักทายแค่ใบแรก — greeting หลาย bubble / echo ที่บันทึกก่อนข้อความลูกค้า จะกลายเป็น "ร้านตอบครั้งแรก" ปลอมถาวร
-- วันหน้าถ้าทำกติกา `staff_reply` ใน `journey-state.sql` ให้แคบลง (ตัดแถวที่เคยนับ): ต้องมี `UPDATE customer_journey_states SET first_staff_reply_at = NULL` ใน PR เดียวกัน แล้วค่อยคำนวณใหม่
+- เริ่มแช่แข็งตั้งแต่ image รับ traffic (เปิดหน้าลูกค้า + cron 03:30 น.) ไม่ใช่ตอน backfill — ขั้นตอนหลัง deploy อยู่ในหัวข้อ 9
+- วันหน้าถ้าทำกติกา `staff_reply` / `auto_anchor` ใน `journey-state.sql` ให้แคบลง (ตัดแถวที่เคยนับ): ต้องมี `UPDATE customer_journey_states SET first_staff_reply_at = NULL` ใน PR เดียวกัน แล้วค่อยคำนวณใหม่ · การถอย image ที่กติกาแคบกว่าก็เข้าข้อนี้ (หัวข้อถอย)
 - ทิศกลับ (ผ่อนกติกาให้นับเพิ่ม) ไม่ต้อง reset — LEAST รับค่าที่เก่ากว่าเอง
+- ค่าที่ยังเร็วไปโดยรู้ตัว (แช่แข็งถาวร): ~11 จาก ~7.6 พันห้องที่ลูกค้าส่งตามหลัง echo ≤3 วิ ขณะมีข้อความลูกค้าใน 30 นาทีก่อนหน้า · ห้องที่เพจทักก่อนโดยลูกค้าไม่เคยส่งข้อความ (~59 ห้อง) ได้ค่าจาก echo ใบแรก
 
 **callLog / payment ที่ถูก soft-delete**
 - ไทม์ไลน์ติดตามหนี้เดิมและแท็บการเดินทางยังแสดงแถวเหล่านี้ (golden ของ Task 7 ล็อกพฤติกรรมเดิม)

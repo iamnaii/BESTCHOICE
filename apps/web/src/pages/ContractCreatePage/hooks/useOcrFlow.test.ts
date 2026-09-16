@@ -10,9 +10,11 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
 }));
+// อ่านข้อความจาก error ที่ได้รับจริง (รูปเดียวกับ axios) — เทส "ข้อความจาก API" จึงพิสูจน์ว่า hook ส่ง error ตัวนั้นมา
 vi.mock('@/lib/api', () => ({
   default: { get: mocks.get, post: mocks.post, patch: mocks.patch },
-  getErrorMessage: () => 'error',
+  getErrorMessage: (err: unknown) =>
+    (err as { response?: { data?: { message?: string } } } | undefined)?.response?.data?.message ?? 'ไม่ได้รับ error จาก API',
 }));
 vi.mock('sonner', () => ({
   toast: { error: mocks.toastError, success: mocks.toastSuccess, warning: vi.fn() },
@@ -138,7 +140,7 @@ describe('useOcrFlow — createCustomerFromOcr เจอ 409', () => {
 
     expect(mocks.get).not.toHaveBeenCalled();
     expect(setSelectedCustomer).not.toHaveBeenCalled();
-    expect(mocks.toastError).toHaveBeenCalledWith('error');
+    expect(mocks.toastError).toHaveBeenCalledWith('เลขบัตรประชาชนไม่ถูกต้อง');
     expect(result.current.showCreateCustomer).toBe(true);
   });
 });

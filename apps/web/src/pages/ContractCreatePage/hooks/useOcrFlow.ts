@@ -267,9 +267,10 @@ export function useOcrFlow({
       return;
     }
     setCreatingCustomer(true);
+    const sentPhone = newCustomerPhone.trim();
     try {
       const body: Record<string, unknown> = {
-        phone: newCustomerPhone.trim(),
+        phone: sentPhone,
       };
       if (ocrResult.nationalId && /^\d{13}$/.test(ocrResult.nationalId)) {
         body.nationalId = ocrResult.nationalId;
@@ -288,16 +289,32 @@ export function useOcrFlow({
       setNewCustomerPhone('');
       toast.success(`สร้างลูกค้าใหม่สำเร็จ: ${data.name}`);
     } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { existingCustomer?: { id: string; name: string } }; status?: number } };
+      const axiosErr = err as {
+        response?: {
+          data?: { existingCustomer?: { id: string; name: string }; field?: 'phone' | 'email' | 'nationalId' };
+          status?: number;
+        };
+      };
       const existing = axiosErr.response?.data?.existingCustomer;
-      if (existing && axiosErr.response?.status === 409) {
+      // R44: API บอกว่าชนช่องไหน — ไม่ส่ง (API เก่า) ถือเป็นเบอร์ ซึ่งเป็นทางที่ปลอดภัยกว่า
+      const field = axiosErr.response?.data?.field ?? 'phone';
+      if (existing && axiosErr.response?.status === 409 && field !== 'nationalId') {
+        // เบอร์/อีเมลเดียวกันเป็นของคนละคนได้ ⇒ ห้ามเลือกคนเดิมให้เอง (Step 4 updateCustomerFromOcr
+        // จะเขียนชื่อ/ที่อยู่จากบัตรทับลูกค้าคนนั้น) — แผงสร้างเปิดค้างไว้ให้แก้ค่าที่กรอก
+        toast.error(
+          field === 'email'
+            ? `อีเมลนี้เป็นของลูกค้าเดิม (${existing.name}) — ถ้าเป็นคนเดียวกันให้ค้นหาชื่อนี้แล้วเลือก`
+            : `เบอร์ ${sentPhone} เป็นของลูกค้าเดิม (${existing.name}) — ถ้าเป็นคนเดียวกันให้ค้นหาชื่อนี้แล้วเลือก ถ้าไม่ใช่ให้แก้เบอร์`,
+        );
+      } else if (existing && axiosErr.response?.status === 409) {
+        // บัตรเดียวกัน = คนเดียวกัน ⇒ เลือกคนเดิมให้อัตโนมัติ
         try {
           const { data: fullCustomer } = await api.get(`/customers/${existing.id}`);
           setSelectedCustomer(fullCustomer);
           setShowCreateCustomer(false);
           setShowOcrPanel(false);
           setNewCustomerPhone('');
-          toast.success(`ลูกค้ามีอยู่แล้ว: ${existing.name} - เลือกให้อัตโนมัติ`);
+          toast.success(`บัตรนี้เป็นของลูกค้าเดิม: ${existing.name} — เลือกให้อัตโนมัติ`);
         } catch {
           toast.error('ลูกค้ามีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ กรุณาค้นหาด้วยตนเอง');
         }

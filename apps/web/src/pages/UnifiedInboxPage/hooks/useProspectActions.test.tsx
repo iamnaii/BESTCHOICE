@@ -34,6 +34,29 @@ describe('useProspectActions', () => {
     expect(keys).toEqual(expect.arrayContaining([JSON.stringify(['chat-room', 'r-1']), JSON.stringify(['chat-rooms']), JSON.stringify(['customers'])]));
   });
 
+  it('useAbsorbCustomer: onSuccess ได้ผลลัพธ์ของการรวม (จำนวนผลวิเคราะห์ที่ย้าย) · ผู้เรียก mutate ได้ผลเดียวกัน', async () => {
+    apiPost.mockResolvedValue({ data: { placeholderId: 'p1', targetId: 'c1', movedRooms: 1, movedCreditChecks: 2 } });
+    const { wrapper } = makeWrapper();
+    const onSuccess = vi.fn();
+    const perCall = vi.fn();
+    const { result } = renderHook(() => useAbsorbCustomer('r-1', { onSuccess }), { wrapper });
+    result.current.mutate({ placeholderId: 'p1', targetId: 'c1' }, { onSuccess: perCall });
+    await waitFor(() => expect(perCall).toHaveBeenCalled());
+    const expected = { placeholderId: 'p1', targetId: 'c1', movedRooms: 1, movedCreditChecks: 2 };
+    expect(onSuccess).toHaveBeenCalledWith({ placeholderId: 'p1', targetId: 'c1' }, expected);
+    expect(perCall.mock.calls[0][0]).toEqual(expected);
+  });
+
+  it('useAbsorbCustomer: API ไม่คืนตัวนับ (รูปเก่า/ว่าง) → นับเป็น 0 ไม่พัง · id ถอยไปใช้ค่าที่ส่ง', async () => {
+    apiPost.mockResolvedValue({ data: {} });
+    const { wrapper } = makeWrapper();
+    const onSuccess = vi.fn();
+    const { result } = renderHook(() => useAbsorbCustomer('r-1', { onSuccess }), { wrapper });
+    result.current.mutate({ placeholderId: 'p1', targetId: 'c1' });
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(onSuccess.mock.calls[0][1]).toEqual({ placeholderId: 'p1', targetId: 'c1', movedRooms: 0, movedCreditChecks: 0 });
+  });
+
   it('useDismissSamePerson: PATCH /staff-chat/rooms/:id/same-person/dismiss { customerId } แล้ว invalidate ห้อง', async () => {
     apiPatch.mockResolvedValue({ data: {} });
     const { wrapper, spy } = makeWrapper();

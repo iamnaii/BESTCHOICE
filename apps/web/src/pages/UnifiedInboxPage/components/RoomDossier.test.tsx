@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import type { ReactNode } from 'react';
+import { toast } from 'sonner';
 
 const apiGet = vi.fn();
 const apiPatch = vi.fn();
@@ -304,5 +305,151 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     const btn = screen.getByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ });
     expect(btn).toBeDisabled();
     expect(btn).toHaveAttribute('title', expect.stringContaining('เจ้าของ'));
+  });
+
+  // C2 — `channel` (โลโก้) ยุบ LINE ร้าน/LINE การเงิน เป็นค่าเดียว · `channelDetail` คือช่องทางจริงของห้องล่าสุด
+  it('ป้ายช่องทางของคำใบ้ใช้ channelDetail ก่อน (LINE ร้าน) · ค่าที่ไม่รู้จักถอยไปใช้โลโก้', () => {
+    const base = PROSPECT_ROOM.possibleSamePerson[0];
+    const { unmount } = wrap(<RoomDossier room={{ ...PROSPECT_ROOM, possibleSamePerson: [{ ...base, channelDetail: 'LINE_SHOP' }] }} customerId="p1" activeRoomId="r-1" />);
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('— LINE ร้าน · มีเบอร์ · ทักเมื่อ');
+    unmount();
+    wrap(<RoomDossier room={{ ...PROSPECT_ROOM, possibleSamePerson: [{ ...base, channelDetail: 'LINE_SOMETHING_NEW' }] }} customerId="p1" activeRoomId="r-1" />);
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('— LINE · มีเบอร์ · ทักเมื่อ');
+  });
+
+  // C1 — ห้องผู้สนใจมีเจ้าของแล้ว: ห้ามบอก "ผูกลูกค้าแล้วจะเห็น…" (ทางที่ใช้ได้จริงคือเติมเบอร์ หรือผูกกับลูกค้าเดิม)
+  it('แท็บสัญญา/ชำระ + ประกัน ของห้องผู้สนใจ บอกทางเติมเบอร์/ผูกลูกค้าเดิม ไม่ใช่ "ผูกลูกค้า"', () => {
+    wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('tab', { name: /สัญญา\/ชำระ/ }));
+    expect(screen.getAllByText('ยังไม่มี — เติมเบอร์หรือผูกกับลูกค้าเดิมแล้วจะเห็นสัญญาและค่างวด')).toHaveLength(2);
+    expect(screen.getByText('ยังไม่มี — ผู้สนใจคนนี้ยังไม่มีเบอร์')).toBeInTheDocument();
+    expect(screen.queryByText(/ผูกลูกค้าแล้วจะเห็น/)).toBeNull();
+    expect(screen.queryByText(/ยังไม่ผูกลูกค้า/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: /ประกัน/ }));
+    expect(screen.getByText(/ยังไม่มีเบอร์ก็ตรวจได้ — ลูกค้าส่ง IMEI\/Serial มาในแชท/)).toBeInTheDocument();
+    expect(screen.queryByText(/ยังไม่ผูกลูกค้า/)).toBeNull();
+  });
+
+  // C4 — mockup บอร์ด 5: หลังรวม ผลวิเคราะห์ที่ย้ายไปอยู่กับคนที่รอด ต้องบอกว่าไปดูที่ไหน
+  it('รวมแล้วย้ายผลวิเคราะห์ 2 รายการ → ข้อความในกลุ่มตรวจเครดิต + ลิงก์แท็บเครดิตของคนที่รอด · สลับห้องแล้วหาย', async () => {
+    apiPost.mockResolvedValue({ data: { placeholderId: 'p1', targetId: 'c-line', movedRooms: 1, movedCreditChecks: 2 } });
+    const { rerender } = wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+    const notice = await screen.findByText(/ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ใน/);
+    expect(notice).toHaveTextContent('ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ในโปรไฟล์ลูกค้า › เครดิต');
+    const creditGroup = screen.getByRole('heading', { name: 'ตรวจเครดิต' }).closest('section')!;
+    expect(creditGroup).toContainElement(notice);
+    expect(within(creditGroup).getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/c-line?tab=credit');
+
+    const rerenderRoom = (room: typeof PROSPECT_ROOM) =>
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <RoomDossier room={room} customerId="p1" activeRoomId={room.id} />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    rerenderRoom({ ...PROSPECT_ROOM, id: 'r-2' });
+    expect(screen.queryByText(/ผลวิเคราะห์ 2 รายการ/)).toBeNull();
+    // กลับมาห้องเดิม — ไม่ persist (state ต่อห้อง หายเมื่อสลับห้อง)
+    rerenderRoom(PROSPECT_ROOM);
+    expect(screen.queryByText(/ผลวิเคราะห์ 2 รายการ/)).toBeNull();
+  });
+
+  it('รวมแล้วไม่มีผลวิเคราะห์ย้าย (movedCreditChecks = 0) → ไม่มีข้อความ', async () => {
+    apiPost.mockResolvedValue({ data: { placeholderId: 'p1', targetId: 'c-line', movedRooms: 1, movedCreditChecks: 0 } });
+    const success = vi.spyOn(toast, 'success');
+    try {
+      wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+      await waitFor(() => expect(success).toHaveBeenCalledWith('รวมเป็นคนเดียวกันแล้ว — แชทและผลเช็คเครดิตย้ายไปแล้ว'));
+      expect(screen.queryByText(/ผลวิเคราะห์/)).toBeNull();
+    } finally {
+      success.mockRestore();
+    }
+  });
+
+  it('เบอร์ซ้ำ → ใช้คนเดิม (ฟอร์มเติมเบอร์) แล้วย้ายผลวิเคราะห์ 1 รายการ → ข้อความชี้โปรไฟล์ของคนเดิม', async () => {
+    apiPost.mockResolvedValue({ data: { placeholderId: 'p1', targetId: 'c-old', movedRooms: 1, movedCreditChecks: 1 } });
+    wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'จำลองใช้คนเดิม' }));
+    await screen.findByText(/ผลวิเคราะห์ 1 รายการ ย้ายมาจากห้องนี้ตอนรวม/);
+    expect(screen.getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/c-old?tab=credit');
+  });
+});
+
+const LINKED_ROOM = {
+  ...ROOM,
+  displayName: 'สมชาย ใจดี',
+  customer: { id: 'cus-1', name: 'สมชาย ใจดี', phone: '0891112233', chatPlaceholder: false },
+  possibleSamePerson: [
+    { customerId: 'p-tiktok', name: 'สมชาย ใจดี', channel: 'TIKTOK' as const, channelDetail: 'TIKTOK', hasPhone: false, chatPlaceholder: true, createdAt: '2026-09-10T02:00:00Z', mergeDirection: 'absorb_other_into_current' as const },
+    { customerId: 'c-real2', name: 'สมชาย ใจดี', channel: 'WEB' as const, channelDetail: 'WEB', hasPhone: true, chatPlaceholder: false, createdAt: '2026-09-01T02:00:00Z', mergeDirection: 'none' as const },
+  ],
+};
+
+// C3 — สเปค §3.6: ห้องของลูกค้าจริงก็ต้องเห็นคำใบ้ (ดูดผู้สนใจอีกคนเข้าคนนี้)
+describe('RoomDossier — คำใบ้อาจเป็นคนเดียวกันในห้องลูกค้าจริง', () => {
+  beforeEach(() => {
+    apiGet.mockReset();
+    apiGet.mockResolvedValue({ data: [] });
+    apiPatch.mockReset();
+    apiPatch.mockResolvedValue({ data: {} });
+    apiPost.mockReset();
+    apiPost.mockResolvedValue({ data: {} });
+    authRole.role = 'SALES';
+  });
+
+  it('คำใบ้อยู่ในกลุ่มข้อมูลลูกค้าใต้ปุ่มชื่อ · รวม = ดูดผู้สนใจอีกคนเข้าคนนี้ · none = ตรวจสอบเอง · ไม่ใช่ = dismiss', async () => {
+    wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
+    const infoGroup = screen.getByRole('heading', { name: 'ข้อมูลลูกค้า' }).closest('section')!;
+    const hints = within(infoGroup).getAllByText(/อาจเป็นคนเดียวกับ/);
+    expect(hints).toHaveLength(2);
+    expect(hints[0]).toHaveTextContent('— TikTok · ยังไม่มีเบอร์ · ทักเมื่อ');
+    // ปุ่มชื่อลูกค้ามาก่อนคำใบ้
+    const nameButton = within(infoGroup).getByRole('button', { name: /สมชาย ใจดี/ });
+    expect(nameButton.compareDocumentPosition(hints[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // ห้องลูกค้าจริงไม่มีการ์ดผู้สนใจ
+    expect(screen.queryByText('ผู้สนใจจากแชท')).toBeNull();
+    expect(screen.queryByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ })).toBeNull();
+
+    const merge = within(infoGroup).getAllByRole('button', { name: 'รวมเป็นคนเดียวกัน' });
+    expect(merge).toHaveLength(1);
+    expect(within(infoGroup).getByText('ตรวจสอบเอง')).toBeInTheDocument();
+    fireEvent.click(merge[0]);
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/customers/p-tiktok/absorb-into/cus-1'));
+
+    fireEvent.click(within(infoGroup).getAllByRole('button', { name: 'ไม่ใช่' })[1]);
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/staff-chat/rooms/r-1/same-person/dismiss', { customerId: 'c-real2' }));
+  });
+
+  it('ทิศทางดูดห้องนี้เข้าคนอื่น ในห้องลูกค้าจริง = ผิดรูป → ไม่มีปุ่มรวม (fail-closed) · ยังกด "ไม่ใช่" ได้', () => {
+    const odd = { ...LINKED_ROOM, possibleSamePerson: [{ ...LINKED_ROOM.possibleSamePerson[0], mergeDirection: 'absorb_current_into_other' as const }] };
+    wrap(<RoomDossier room={odd} customerId="cus-1" activeRoomId="r-1" />);
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'รวมเป็นคนเดียวกัน' })).toBeNull();
+    expect(screen.queryByText('ตรวจสอบเอง')).toBeNull();
+    expect(screen.getByRole('button', { name: 'ไม่ใช่' })).toBeEnabled();
+  });
+
+  it('ดูดผู้สนใจอีกคนเข้ามาแล้วย้ายผลวิเคราะห์ 1 รายการ → ข้อความบอกว่ามาจากผู้สนใจที่รวมเข้ามา + ลิงก์โปรไฟล์ของคนนี้', async () => {
+    apiPost.mockResolvedValue({ data: { placeholderId: 'p-tiktok', targetId: 'cus-1', movedRooms: 1, movedCreditChecks: 1 } });
+    wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+    const notice = await screen.findByText(/ผลวิเคราะห์ 1 รายการ ย้ายมาจากผู้สนใจที่รวมเข้ามา — ดูได้ใน/);
+    expect(screen.getByRole('heading', { name: 'ตรวจเครดิต' }).closest('section')).toContainElement(notice);
+    expect(screen.getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/cus-1?tab=credit');
+  });
+
+  it('ห้องไม่มีเจ้าของ (customer: null) ไม่แสดงคำใบ้ แม้ API จะส่งมา · ข้อความแท็บสัญญา/ประกันคงเดิม', () => {
+    wrap(<RoomDossier room={{ ...ROOM, possibleSamePerson: LINKED_ROOM.possibleSamePerson }} customerId={null} activeRoomId="r-1" />);
+    expect(screen.queryByText(/อาจเป็นคนเดียวกับ/)).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: /สัญญา\/ชำระ/ }));
+    expect(screen.getAllByText('ยังไม่มี — ผูกลูกค้าแล้วจะเห็นสัญญาและค่างวด')).toHaveLength(2);
+    expect(screen.getByText('ยังไม่มี — ห้องนี้ยังไม่มีเบอร์และยังไม่ผูกลูกค้า')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /ประกัน/ }));
+    expect(screen.getByText(/ยังไม่ผูกลูกค้าก็ตรวจได้ — ลูกค้าส่ง IMEI\/Serial มาในแชท/)).toBeInTheDocument();
   });
 });

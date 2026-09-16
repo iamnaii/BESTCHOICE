@@ -6,6 +6,15 @@ import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useLinkRoomCustomer } from '../hooks/useLinkRoomCustomer';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
+
+/** แถวผลค้นหาของ `GET /customers/search` — `chatPlaceholder` เป็นธงจาก API (เว็บห้าม derive เอง) */
+interface CustomerSearchRow {
+  id: string;
+  name: string;
+  phone?: string | null;
+  chatPlaceholder?: boolean;
+}
 
 /**
  * ผูกลูกค้าที่มีอยู่กับห้องแชท — แยกออกมาจาก Customer360Panel เพื่อให้ RoomDossier เปิดได้จากหลายจุด
@@ -72,7 +81,7 @@ export default function LinkCustomerDialog({
           {!searchQuery.isFetching && debounced.trim().length >= 2 && (searchQuery.data?.length ?? 0) === 0 && (
             <p className="py-3 text-center text-xs leading-snug text-muted-foreground">ไม่พบลูกค้า</p>
           )}
-          {(searchQuery.data ?? []).map((c: { id: string; name: string; phone?: string }) => (
+          {(searchQuery.data ?? []).map((c: CustomerSearchRow) => (
             <button
               key={c.id}
               type="button"
@@ -81,7 +90,10 @@ export default function LinkCustomerDialog({
               className="w-full rounded-lg border border-border p-2.5 text-left text-sm transition-colors hover:bg-accent disabled:opacity-50"
             >
               <span className="font-medium text-foreground">{c.name}</span>
-              {c.phone && <span className="ml-2 text-xs text-muted-foreground">{c.phone}</span>}
+              {/* ห่อด้วย span — ส่ง className เข้า ProspectPhoneLine ตรง ๆ จะทับสีชิปผู้สนใจ (tailwind-merge) */}
+              <span className="ml-2 text-xs text-muted-foreground">
+                <ProspectPhoneLine phone={c.phone} chatPlaceholder={c.chatPlaceholder} />
+              </span>
             </button>
           ))}
         </div>

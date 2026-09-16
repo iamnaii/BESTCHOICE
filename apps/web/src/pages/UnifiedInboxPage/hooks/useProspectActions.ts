@@ -11,15 +11,31 @@ import { ROOM_LINK_INVALIDATE_KEYS } from './useLinkRoomCustomer';
  */
 export interface AbsorbArgs { placeholderId: string; targetId: string }
 
-export function useAbsorbCustomer(roomId: string, opts: { onSuccess?: (args: AbsorbArgs) => void; onError?: (err: unknown, args: AbsorbArgs) => void } = {}) {
+/** ผลของการรวม — รูปเดียวกับ `AbsorbResult` ของ customer-merge.service (API คืนตรง ๆ ไม่มีห่อ) */
+export interface AbsorbResult { placeholderId: string; targetId: string; movedRooms: number; movedCreditChecks: number }
+
+/** อ่านผลแบบไม่เชื่อรูป — ตัวนับที่หาย/ไม่ใช่ตัวเลข = 0 · id ที่หายถอยไปใช้ค่าที่ส่งไป */
+function toAbsorbResult(body: unknown, args: AbsorbArgs): AbsorbResult {
+  const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  const count = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  return {
+    placeholderId: typeof b.placeholderId === 'string' ? b.placeholderId : args.placeholderId,
+    targetId: typeof b.targetId === 'string' ? b.targetId : args.targetId,
+    movedRooms: count(b.movedRooms),
+    movedCreditChecks: count(b.movedCreditChecks),
+  };
+}
+
+export function useAbsorbCustomer(roomId: string, opts: { onSuccess?: (args: AbsorbArgs, result: AbsorbResult) => void; onError?: (err: unknown, args: AbsorbArgs) => void } = {}) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: AbsorbArgs) => api.post(`/customers/${args.placeholderId}/absorb-into/${args.targetId}`),
-    onSuccess: (_res, args) => {
+    mutationFn: (args: AbsorbArgs) =>
+      api.post(`/customers/${args.placeholderId}/absorb-into/${args.targetId}`).then((res) => toAbsorbResult(res?.data?.data ?? res?.data, args)),
+    onSuccess: (result, args) => {
       queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       for (const key of ROOM_LINK_INVALIDATE_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
-      opts.onSuccess?.(args);
+      opts.onSuccess?.(args, result);
     },
     onError: (err, args) => opts.onError?.(err, args),
   });

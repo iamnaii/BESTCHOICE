@@ -196,9 +196,10 @@ function hintChannelLabel(p: PossibleSamePerson): string | null {
 
 /** ท้ายคำใบ้: `createdAt` = วันที่สร้างลูกค้าคนนั้น — "ทักเมื่อ" จริงเฉพาะคนที่มีห้องแชท
  *  ไม่มีห้องเลย (channel + channelDetail ว่าง — มักเป็นลูกค้าหน้าร้านที่มีเบอร์) → "อยู่ในระบบตั้งแต่" */
+/** วันที่ท้ายคำใบ้ = `createdAt` ของแถวลูกค้า (ไม่ใช่วันที่ห้องแชท) — "ทักเมื่อ" จริงเฉพาะผู้สนใจอัตโนมัติ
+ *  (แถวถูกสร้างตอนทักแชทครั้งแรก) · คนอื่น (เช่น ลูกค้าหน้าร้านที่ผูก LINE ทีหลัง) ใช้ "อยู่ในระบบตั้งแต่" */
 function hintSinceLabel(p: PossibleSamePerson): string {
-  const hasRoom = p.channel != null || p.channelDetail != null;
-  return `${hasRoom ? 'ทักเมื่อ' : 'อยู่ในระบบตั้งแต่'} ${fmtDate(p.createdAt) || '—'}`;
+  return `${p.chatPlaceholder ? 'ทักเมื่อ' : 'อยู่ในระบบตั้งแต่'} ${fmtDate(p.createdAt) || '—'}`;
 }
 
 /** ─── คำใบ้ "อาจเป็นคนเดียวกัน" (สเปค 3.6) — ชุดเดียวใช้ทั้งการ์ดผู้สนใจและห้องของลูกค้าจริง

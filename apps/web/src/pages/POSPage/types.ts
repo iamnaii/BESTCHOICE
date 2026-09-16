@@ -26,7 +26,8 @@ export interface Product {
 export interface Customer {
   id: string;
   name: string;
-  phone: string;
+  /** null = ผู้สนใจจากแชทที่ยังไม่มีเบอร์ (GET /customers/search คืน null ได้) */
+  phone: string | null;
   nationalId: string;
   _count: { contracts: number };
   /** ผู้สนใจอัตโนมัติจากแชทที่ยังไม่มีเบอร์ — ธงจาก GET /customers/search (เว็บห้าม derive เอง) */

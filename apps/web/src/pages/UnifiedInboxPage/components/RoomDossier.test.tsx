@@ -265,7 +265,8 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
 
   it('คำใบ้อาจเป็นคนเดียวกัน: ข้อความตาม mockup · "รวมเป็นคนเดียวกัน" ยิง absorb ตามทิศทาง · "ไม่ใช่" ยิง dismiss', async () => {
     wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
-    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('LINE · มีเบอร์ · ทักเมื่อ');
+    // c-line เป็นลูกค้าจริง (chatPlaceholder: false) ⇒ วันที่คือวันที่อยู่ในระบบ ไม่ใช่วันที่ทัก
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('LINE · มีเบอร์ · อยู่ในระบบตั้งแต่');
     fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/customers/p1/absorb-into/c-line'));
     fireEvent.click(screen.getByRole('button', { name: 'ไม่ใช่' }));
@@ -292,7 +293,7 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     ] };
     wrap(<RoomDossier room={noChannel} customerId="p1" activeRoomId="r-1" />);
     const hint = screen.getByText(/อาจเป็นคนเดียวกับ/);
-    // ไม่เคยมีห้องแชท ⇒ "ทักเมื่อ" เป็นเท็จ — ท้ายคำใบ้บอกวันที่อยู่ในระบบแทน (ดูเทสถัดไป)
+    // ลูกค้าจริง (ไม่ใช่ผู้สนใจอัตโนมัติ) ⇒ "ทักเมื่อ" เป็นเท็จ — ท้ายคำใบ้บอกวันที่อยู่ในระบบแทน (ดูเทสถัดไป)
     expect(hint).toHaveTextContent('— มีเบอร์ · อยู่ในระบบตั้งแต่');
     expect(hint.textContent).not.toContain('ทักเมื่อ');
     expect(hint.textContent).not.toContain(' —  ·');
@@ -301,16 +302,18 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     expect(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' })).toBeEnabled();
   });
 
-  // `createdAt` ของคำใบ้ = วันที่สร้างลูกค้าคนนั้น — "ทักเมื่อ" จริงเฉพาะคนที่มีห้องแชท (มี channel/channelDetail)
-  // คนที่ไม่เคยมีห้องเลย (ทั้งคู่ว่าง — มักเป็นลูกค้าหน้าร้านที่มีเบอร์) ต้องเป็น "อยู่ในระบบตั้งแต่"
-  it('ท้ายคำใบ้: มีห้องแชท → "ทักเมื่อ <วันที่>" · ไม่มีห้องเลย (channel + channelDetail ว่าง) → "อยู่ในระบบตั้งแต่ <วันที่>"', () => {
+  // `createdAt` ของคำใบ้ = วันที่สร้างแถวลูกค้า (ไม่ใช่วันที่ห้องแชท) — "ทักเมื่อ" จริงเฉพาะผู้สนใจอัตโนมัติ
+  // (แถวเกิดตอนทักครั้งแรก) · ลูกค้าจริงทุกแบบ (ไม่มีห้อง หรือผูกห้องทีหลัง) ต้องเป็น "อยู่ในระบบตั้งแต่"
+  it('ท้ายคำใบ้: ผู้สนใจอัตโนมัติ → "ทักเมื่อ <วันที่>" · ลูกค้าจริง (มีหรือไม่มีห้อง) → "อยู่ในระบบตั้งแต่ <วันที่>"', () => {
     // เที่ยงวันตามเวลาเครื่อง ⇒ วันที่ที่แสดงเป็น 3 ก.ย. เสมอไม่ว่า TZ ไหน
     const createdAt = new Date(2026, 8, 3, 12).toISOString();
     const base = { name: 'สมชาย ใจดี', hasPhone: true, chatPlaceholder: false, createdAt, mergeDirection: 'none' as const };
     const cases = [
-      { hint: { ...base, customerId: 'c-chat', channel: 'LINE' as const, channelDetail: 'LINE_SHOP' }, expected: '— LINE ร้าน · มีเบอร์ · ทักเมื่อ 03/09/69', absent: 'อยู่ในระบบตั้งแต่' },
+      { hint: { ...base, customerId: 'p-chat', hasPhone: false, chatPlaceholder: true, channel: 'LINE' as const, channelDetail: 'LINE_SHOP' }, expected: '— LINE ร้าน · ยังไม่มีเบอร์ · ทักเมื่อ 03/09/69', absent: 'อยู่ในระบบตั้งแต่' },
+      // ลูกค้าหน้าร้านที่ผูก LINE ทีหลัง — มีห้อง แต่วันที่เป็นวันสร้างแถว ไม่ใช่วันทัก
+      { hint: { ...base, customerId: 'c-linked-later', channel: 'LINE' as const, channelDetail: 'LINE_FINANCE' }, expected: '— LINE การเงิน · มีเบอร์ · อยู่ในระบบตั้งแต่ 03/09/69', absent: 'ทักเมื่อ' },
       { hint: { ...base, customerId: 'c-walkin', channel: null, channelDetail: null }, expected: '— มีเบอร์ · อยู่ในระบบตั้งแต่ 03/09/69', absent: 'ทักเมื่อ' },
-      // API เก่า: ไม่มีคีย์ channelDetail เลย + channel null = ไม่มีห้องเหมือนกัน
+      // API เก่า: ไม่มีคีย์ channelDetail เลย
       { hint: { ...base, customerId: 'c-walkin-old', channel: null }, expected: '— มีเบอร์ · อยู่ในระบบตั้งแต่ 03/09/69', absent: 'ทักเมื่อ' },
     ];
     for (const { hint, expected, absent } of cases) {
@@ -335,10 +338,10 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
   it('ป้ายช่องทางของคำใบ้ใช้ channelDetail ก่อน (LINE ร้าน) · ค่าที่ไม่รู้จักถอยไปใช้โลโก้', () => {
     const base = PROSPECT_ROOM.possibleSamePerson[0];
     const { unmount } = wrap(<RoomDossier room={{ ...PROSPECT_ROOM, possibleSamePerson: [{ ...base, channelDetail: 'LINE_SHOP' }] }} customerId="p1" activeRoomId="r-1" />);
-    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('— LINE ร้าน · มีเบอร์ · ทักเมื่อ');
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('— LINE ร้าน · มีเบอร์ · อยู่ในระบบตั้งแต่');
     unmount();
     wrap(<RoomDossier room={{ ...PROSPECT_ROOM, possibleSamePerson: [{ ...base, channelDetail: 'LINE_SOMETHING_NEW' }] }} customerId="p1" activeRoomId="r-1" />);
-    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('— LINE · มีเบอร์ · ทักเมื่อ');
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('— LINE · มีเบอร์ · อยู่ในระบบตั้งแต่');
   });
 
   // C1 — ห้องผู้สนใจมีเจ้าของแล้ว: ห้ามบอก "ผูกลูกค้าแล้วจะเห็น…" (ทางที่ใช้ได้จริงคือเติมเบอร์ หรือผูกกับลูกค้าเดิม)

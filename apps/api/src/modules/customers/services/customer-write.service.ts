@@ -1,5 +1,5 @@
 import { Injectable, ConflictException, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { ContractStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateCustomerDto, UpdateCustomerDto } from '../dto/customer.dto';
 import { FillProspectContactDto } from '../dto/fill-prospect-contact.dto';
@@ -13,6 +13,34 @@ import { isChatPlaceholder, PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospec
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import { contactAddedEntry, isBlankContact } from '../../customer-journey/chat-identity-entries';
 import type { ContactField } from '../../customer-journey/journey-data-schemas';
+
+/** สัญญาที่ "ยังผ่อนอยู่" — ชุดเดียวกับ assertCustomerContractPolicy / CustomerQueryService.search */
+const ACTIVE_CONTRACT_STATUSES: ContractStatus[] = ['ACTIVE', 'OVERDUE', 'DEFAULT'];
+
+/**
+ * A7 (mockup บอร์ด 4) — ข้อมูลคนเดิมที่ 409 ข้อมูลซ้ำส่งให้เว็บ: ชื่อ · ลูกค้าตั้งแต่ · ผ่อนอยู่กี่สัญญา
+ * **ห้ามเพิ่มเบอร์/เลขบัตร/อีเมลของคนเดิม** — คนที่พิมพ์ข้อมูลซ้ำอาจไม่ใช่เจ้าของข้อมูลนั้น
+ * (SentryExceptionFilter ส่ง existingCustomer ทั้งก้อนต่อให้ client — R47)
+ */
+const EXISTING_CUSTOMER_REF_SELECT = {
+  id: true,
+  name: true,
+  createdAt: true,
+  _count: {
+    select: { contracts: { where: { deletedAt: null, status: { in: ACTIVE_CONTRACT_STATUSES } } } },
+  },
+} satisfies Prisma.CustomerSelect;
+
+type ExistingCustomerRow = Prisma.CustomerGetPayload<{ select: typeof EXISTING_CUSTOMER_REF_SELECT }>;
+
+function toExistingCustomerRef(row: ExistingCustomerRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.createdAt.toISOString(),
+    activeContracts: row._count.contracts,
+  };
+}
 
 /**
  * Write-path slice of the decomposed CustomersService.
@@ -166,6 +194,7 @@ export class CustomerWriteService {
    * R44: ทุก 409 ของ dedup แนบ `field` ('phone' | 'email' | 'nationalId') มาด้วย — ตัวเนื้อหาเดิม
    * ไม่บอกว่าชนที่ช่องไหน เว็บจึงเดาเป็น "เบอร์ซ้ำ" เสมอและเสนอปุ่ม "แก้เบอร์" ให้กับการชนเลขบัตร
    * (ประตูตัน: แก้เบอร์เท่าไรก็ยังชนเลขบัตรเดิม). เพิ่มคีย์อย่างเดียว ไม่แตะ message/existingCustomer
+   * A7: existingCustomer มาจาก toExistingCustomerRef ทุกเส้นทาง (id/name เดิม + createdAt/activeContracts)
    */
   private async assertContactNotDuplicate(
     phone: string | null,
@@ -181,12 +210,12 @@ export class CustomerWriteService {
           deletedAt: null,
           ...(ignoreCustomerId ? { id: { not: ignoreCustomerId } } : {}),
         },
-        select: { id: true, name: true },
+        select: EXISTING_CUSTOMER_REF_SELECT,
       });
       if (dupPhone) {
         throw new ConflictException({
           message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
-          existingCustomer: dupPhone,
+          existingCustomer: toExistingCustomerRef(dupPhone),
           field: 'phone',
         });
       }
@@ -203,12 +232,12 @@ export class CustomerWriteService {
           deletedAt: null,
           ...(ignoreCustomerId ? { NOT: { id: ignoreCustomerId } } : {}),
         },
-        select: { id: true, name: true },
+        select: EXISTING_CUSTOMER_REF_SELECT,
       });
       if (dupEmail) {
         throw new ConflictException({
           message: 'ลูกค้าที่มีอีเมลนี้มีอยู่แล้ว',
-          existingCustomer: dupEmail,
+          existingCustomer: toExistingCustomerRef(dupEmail),
           field: 'email',
         });
       }
@@ -227,24 +256,28 @@ export class CustomerWriteService {
    * behavior — ห้ามสลับเป็น `findFirst` ที่เส้นทางนั้น). `fillPlaceholderContact` ส่ง
    * `ignoreCustomerId` เพื่อกันชนกับตัวเอง (สมมาตรกับ `assertContactNotDuplicate`) ⇒ ต้องใช้
    * `findFirst` เพราะ `findUnique` รับเฉพาะ where บนคอลัมน์ unique ล้วน ไม่ใส่เงื่อนไขอื่นปนได้.
+   * A7: ทั้งสองทาง select ชุดเดียวกัน (EXISTING_CUSTOMER_REF_SELECT + deletedAt) — `findUnique` เดิมไม่มี
+   * select (ดึงทั้งแถวรวมคอลัมน์ PII) ทั้งที่ caller ใช้แค่ id/deletedAt; where ยังเป็น nationalIdHash เหมือนเดิม
    */
   private async assertNationalIdNotDuplicate(
     nationalId: string,
     ignoreCustomerId?: string,
-  ): Promise<{ id: string; name: string; deletedAt: Date | null } | null> {
+  ): Promise<{ id: string; deletedAt: Date | null } | null> {
     const nidHash = hashPII(nationalId, this.hashSalt);
+    const select = { ...EXISTING_CUSTOMER_REF_SELECT, deletedAt: true } satisfies Prisma.CustomerSelect;
     const existing = ignoreCustomerId
       ? await this.prisma.customer.findFirst({
           where: { nationalIdHash: nidHash, id: { not: ignoreCustomerId } },
-          select: { id: true, name: true, deletedAt: true },
+          select,
         })
       : await this.prisma.customer.findUnique({
           where: { nationalIdHash: nidHash },
+          select,
         });
     if (existing && !existing.deletedAt) {
       throw new ConflictException({
         message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
-        existingCustomer: { id: existing.id, name: existing.name },
+        existingCustomer: toExistingCustomerRef(existing),
         field: 'nationalId',
       });
     }

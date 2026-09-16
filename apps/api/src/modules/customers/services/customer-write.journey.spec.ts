@@ -132,7 +132,8 @@ describe('CustomerWriteService → CONTACT_ADDED', () => {
 
     it('เบอร์ซ้ำ (409) → ไม่บันทึก', async () => {
       prisma.customer.findUnique.mockResolvedValue(placeholderRow);
-      prisma.customer.findFirst.mockResolvedValueOnce({ id: 'other', name: 'ลูกค้าเดิม' });
+      // A7: รูปเดียวกับ select ของด่านเบอร์ซ้ำ (createdAt + _count สัญญาที่ยังผ่อน)
+      prisma.customer.findFirst.mockResolvedValueOnce({ id: 'other', name: 'ลูกค้าเดิม', createdAt: new Date('2026-01-01T00:00:00.000Z'), _count: { contracts: 0 } });
       await expect(
         service.fillPlaceholderContact('p1', { phone: PHONE }, { id: 'staff-1', role: 'SALES' }),
       ).rejects.toBeInstanceOf(ConflictException);

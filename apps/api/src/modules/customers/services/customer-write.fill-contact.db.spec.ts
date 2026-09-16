@@ -1,5 +1,5 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { ContractStatus, Prisma, PrismaClient } from '@prisma/client';
 import { CustomerWriteService } from './customer-write.service';
 import { hashPII } from '../../../utils/pii.util';
 
@@ -7,6 +7,8 @@ import { hashPII } from '../../../utils/pii.util';
  * พิสูจน์กับ Postgres จริง: เติมเบอร์ให้ placeholder เขียน phone + phoneHash (dedup ทำงานจริง) ·
  * เบอร์ซ้ำ → 409 พร้อม existingCustomer · คนที่มีเบอร์แล้ว → 409 · audit ถูกเรียก ·
  * Fix round 1 (Ruling R34) — เลขบัตร normalize ก่อนเก็บ + dedup ผ่าน nationalIdHash เหมือน create()
+ * A7 — existingCustomer มี createdAt (ISO) + activeContracts นับจากสัญญาจริง (ACTIVE/OVERDUE/DEFAULT ที่ไม่ถูกลบ)
+ * ผู้ใช้ของสเปคนี้ upsert ด้วยอีเมลคงที่และไม่ลบ (แบบเดียวกับ contract-event-sources.db.spec.ts)
  * รัน: DATABASE_URL=<ฐานทดสอบ> npx jest <ไฟล์นี้> --runInBand
  */
 describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
@@ -18,6 +20,9 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
   const service = new CustomerWriteService(prisma as any, {} as any, {} as any, undefined, audit as any, journey as any);
   const stamp = String(Date.now()).slice(-8);
   const ids: string[] = [];
+  const contractIds: string[] = [];
+  const productIds: string[] = [];
+  let branchId = '';
   let prevSalt: string | undefined;
   let prevKey: string | undefined;
 
@@ -28,6 +33,9 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
     delete process.env.PII_ENCRYPTION_KEY;
   });
   afterAll(async () => {
+    await prisma.contract.deleteMany({ where: { id: { in: contractIds } } });
+    await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+    if (branchId) await prisma.branch.deleteMany({ where: { id: branchId } });
     await prisma.customer.deleteMany({ where: { id: { in: ids } } });
     await prisma.$disconnect();
     if (prevSalt === undefined) delete process.env.PII_HASH_SALT; else process.env.PII_HASH_SALT = prevSalt;
@@ -86,16 +94,56 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
     expect(journey.recordAfterCommit).not.toHaveBeenCalled();
   });
 
-  it('เบอร์ซ้ำกับลูกค้าเดิม → 409 พร้อม existingCustomer {id, name} และไม่แตะแถว', async () => {
+  /** สัญญาของลูกค้าคนเดิม — ต้องมีสาขา/พนักงานขาย/สินค้าจริงตาม FK (สัญญาหลายใบใช้เครื่องเดียวกันได้ ไม่มี unique) */
+  async function seedContract(customerId: string, label: string, status: ContractStatus, deletedAt: Date | null = null) {
+    if (!branchId) {
+      branchId = (await prisma.branch.create({ data: { name: `fill-contact spec ${stamp}` } })).id;
+      const product = await prisma.product.create({
+        data: {
+          name: 'fill spec phone', brand: 'Apple', model: 'iPhone 15', category: 'PHONE_NEW',
+          costPrice: new Prisma.Decimal('20000.00'), branchId, imeiSerial: `FCS-${stamp}`,
+        },
+      });
+      productIds.push(product.id);
+    }
+    const user = await prisma.user.upsert({
+      where: { email: 'customer-write-fill-contact.db-spec@bestchoice.test' },
+      update: {},
+      create: { email: 'customer-write-fill-contact.db-spec@bestchoice.test', password: 'x', name: 'สเปคเติมเบอร์', role: 'OWNER' },
+    });
+    const contract = await prisma.contract.create({
+      data: {
+        contractNumber: `FCS-${stamp}-${label}`, customerId, productId: productIds[0], branchId, salespersonId: user.id,
+        planType: 'STORE_WITH_INTEREST', sellingPrice: new Prisma.Decimal('30000.00'), downPayment: new Prisma.Decimal('5000.00'),
+        interestRate: new Prisma.Decimal('0.0500'), totalMonths: 12, interestTotal: new Prisma.Decimal('15000.00'),
+        financedAmount: new Prisma.Decimal('25000.00'), monthlyPayment: new Prisma.Decimal('3333.33'), status, deletedAt,
+      },
+    });
+    contractIds.push(contract.id);
+  }
+
+  it('เบอร์ซ้ำกับลูกค้าเดิม → 409 พร้อม existingCustomer {id, name, createdAt, activeContracts} และไม่แตะแถว', async () => {
     const phone = `09${stamp}`;
     const existing = await prisma.customer.create({ data: { name: 'fill spec existing', phone, phoneHash: hashPII(phone, SALT) } });
     ids.push(existing.id);
+    // A7: นับเฉพาะ ACTIVE/OVERDUE/DEFAULT ที่ยังไม่ถูกลบ → 3 ใบ (ปิดแล้ว/ร่าง/ถูกลบ ไม่นับ)
+    await seedContract(existing.id, 'active', 'ACTIVE');
+    await seedContract(existing.id, 'overdue', 'OVERDUE');
+    await seedContract(existing.id, 'default', 'DEFAULT');
+    await seedContract(existing.id, 'completed', 'COMPLETED');
+    await seedContract(existing.id, 'draft', 'DRAFT');
+    await seedContract(existing.id, 'deleted', 'ACTIVE', new Date('2026-09-01T00:00:00.000Z'));
     const p = await placeholder('dup');
     let error: unknown;
     try { await service.fillPlaceholderContact(p.id, { phone }, { id: 'staff-1', role: 'OWNER' }); } catch (e) { error = e; }
     expect(error).toBeInstanceOf(ConflictException);
     // R44: `field` บอกช่องที่ชนจริง — เว็บใช้แยกข้อความ/ปุ่มแก้ไข ไม่เดาว่าเป็นเบอร์เสมอ
-    expect((error as ConflictException).getResponse()).toEqual({ message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว', existingCustomer: { id: existing.id, name: 'fill spec existing' }, field: 'phone' });
+    // A7: toEqual ตรงตัว = ไม่มีเบอร์/เลขบัตรของคนเดิมหลุดไปกับ payload
+    expect((error as ConflictException).getResponse()).toEqual({
+      message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
+      existingCustomer: { id: existing.id, name: 'fill spec existing', createdAt: existing.createdAt.toISOString(), activeContracts: 3 },
+      field: 'phone',
+    });
     const row = await prisma.customer.findUniqueOrThrow({ where: { id: p.id } });
     expect(row.phone).toBeNull();
     expect(audit.log).not.toHaveBeenCalled();
@@ -118,7 +166,7 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
 
   // Fix round 1 (Ruling R34, Finding 1b) — เลขบัตรซ้ำต้องได้ 409 ไทยแบบเดียวกับ create() ไม่ใช่
   // P2002 ดิบ (Customer.nationalId + nationalIdHash เป็น @unique ทั้งคู่)
-  it('เลขบัตรซ้ำกับลูกค้าเดิม → 409 พร้อม existingCustomer {id, name} และไม่แตะแถว ไม่มี audit', async () => {
+  it('เลขบัตรซ้ำกับลูกค้าเดิม → 409 พร้อม existingCustomer {id, name, createdAt, activeContracts: 0} และไม่แตะแถว ไม่มี audit', async () => {
     const digits = `2${stamp}0000`; // prefix ต่างจากเทสก่อนหน้า กันชนกันเอง
     const existing = await prisma.customer.create({
       data: { name: 'fill spec nid existing', nationalId: digits, nationalIdHash: hashPII(digits, SALT) },
@@ -132,7 +180,7 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
     expect(error).toBeInstanceOf(ConflictException);
     expect((error as ConflictException).getResponse()).toEqual({
       message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
-      existingCustomer: { id: existing.id, name: 'fill spec nid existing' },
+      existingCustomer: { id: existing.id, name: 'fill spec nid existing', createdAt: existing.createdAt.toISOString(), activeContracts: 0 },
       field: 'nationalId', // R44 — เว็บต้องแยกได้ว่านี่คือการชนเลขบัตร ไม่ใช่เบอร์
     });
     const row = await prisma.customer.findUniqueOrThrow({ where: { id: p.id } });

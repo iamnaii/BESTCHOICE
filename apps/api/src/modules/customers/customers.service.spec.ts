@@ -86,9 +86,13 @@ describe('CustomersService.create — NID normalization', () => {
   });
 
   it('rejects duplicate NID after normalization', async () => {
+    // A7: fixture ต้องตรงกับ select ใหม่ของด่านเลขบัตร (createdAt + _count สัญญาที่ยังผ่อน) —
+    // existingCustomer ใน 409 สร้างจากสองคีย์นี้
     prisma.customer.findUnique.mockResolvedValue({
       id: 'cust-existing',
       name: 'Existing',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      _count: { contracts: 0 },
       deletedAt: null,
     });
 
@@ -184,7 +188,8 @@ describe('CustomersService.create — T3-C9 phone + email dedup', () => {
     prisma.customer.findFirst.mockImplementation(
       (args: { where: { phoneHash?: string } }) => {
         if (args.where?.phoneHash) {
-          return Promise.resolve({ id: 'cust-existing', name: 'Previous' });
+          // A7: รูปเดียวกับ select ใหม่ (createdAt + _count) ที่ existingCustomer ใช้
+          return Promise.resolve({ id: 'cust-existing', name: 'Previous', createdAt: new Date('2026-01-01T00:00:00.000Z'), _count: { contracts: 0 } });
         }
         return Promise.resolve(null);
       },
@@ -210,7 +215,7 @@ describe('CustomersService.create — T3-C9 phone + email dedup', () => {
           typeof args.where.email === 'object' &&
           (args.where.email as { equals?: string }).equals === 'foo@example.com'
         ) {
-          return Promise.resolve({ id: 'cust-existing', name: 'Prev' });
+          return Promise.resolve({ id: 'cust-existing', name: 'Prev', createdAt: new Date('2026-01-01T00:00:00.000Z'), _count: { contracts: 0 } });
         }
         return Promise.resolve(null);
       },

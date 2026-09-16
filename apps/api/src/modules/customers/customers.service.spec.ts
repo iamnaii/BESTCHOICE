@@ -30,6 +30,8 @@ describe('CustomersService.create — NID normalization', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
         update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
+        // M-A3: 409 ข้อมูลซ้ำนับ BOUGHT_WHERE ของคนเดิม (existingCustomer.purchased)
+        count: jest.fn().mockResolvedValue(0),
       },
       // create() now always runs inside a transaction; invoke the callback
       // with the same prisma mock so customer.create/update assertions hold.
@@ -148,6 +150,8 @@ describe('CustomersService.create — T3-C9 phone + email dedup', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn((args) => Promise.resolve({ id: 'cust-new', ...args.data })),
         update: jest.fn((args) => Promise.resolve({ id: args.where.id, ...args.data })),
+        // M-A3: 409 ข้อมูลซ้ำนับ BOUGHT_WHERE ของคนเดิม (existingCustomer.purchased)
+        count: jest.fn().mockResolvedValue(0),
       },
       $transaction: jest.fn(async (cb) => cb(prisma)),
     };

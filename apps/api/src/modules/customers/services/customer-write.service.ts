@@ -7,7 +7,7 @@ import { encryptPII } from '../../../utils/crypto.util';
 import { hashPII, encryptReferencesJson } from '../../../utils/pii.util';
 import { CustomerPiiService } from '../customer-pii.service';
 import { ContactResolverService } from '../../contacts/contact-resolver.service';
-import { CustomerQueryService } from './customer-query.service';
+import { BOUGHT_WHERE, CustomerQueryService } from './customer-query.service';
 import { AuditService } from '../../audit/audit.service';
 import { isChatPlaceholder, PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospects/chat-placeholder';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
@@ -19,6 +19,7 @@ const ACTIVE_CONTRACT_STATUSES: ContractStatus[] = ['ACTIVE', 'OVERDUE', 'DEFAUL
 
 /**
  * A7 (mockup บอร์ด 4) — ข้อมูลคนเดิมที่ 409 ข้อมูลซ้ำส่งให้เว็บ: ชื่อ · ลูกค้าตั้งแต่ · ผ่อนอยู่กี่สัญญา
+ * (+ `purchased` — M-A3 คำนวณแยกใน CustomerWriteService.toExistingCustomerRef ด้วย BOUGHT_WHERE)
  * **ห้ามเพิ่มเบอร์/เลขบัตร/อีเมลของคนเดิม** — คนที่พิมพ์ข้อมูลซ้ำอาจไม่ใช่เจ้าของข้อมูลนั้น
  * (SentryExceptionFilter ส่ง existingCustomer ทั้งก้อนต่อให้ client — R47)
  */
@@ -32,15 +33,6 @@ const EXISTING_CUSTOMER_REF_SELECT = {
 } satisfies Prisma.CustomerSelect;
 
 type ExistingCustomerRow = Prisma.CustomerGetPayload<{ select: typeof EXISTING_CUSTOMER_REF_SELECT }>;
-
-function toExistingCustomerRef(row: ExistingCustomerRow) {
-  return {
-    id: row.id,
-    name: row.name,
-    createdAt: row.createdAt.toISOString(),
-    activeContracts: row._count.contracts,
-  };
-}
 
 /**
  * Write-path slice of the decomposed CustomersService.
@@ -186,6 +178,23 @@ export class CustomerWriteService {
   }
 
   /**
+   * existingCustomer ของ 409 ข้อมูลซ้ำ — id/name (เดิม) + createdAt/activeContracts (A7) + purchased (M-A3)
+   * `purchased` = คนเดิม "เป็นลูกค้าแล้ว" ตามนิยามเดียวกับแท็บลูกค้า (`view=customers`) —
+   * ใช้ BOUGHT_WHERE ตัวเดียวกับรายการลูกค้า (ห้ามเขียนสูตรที่สอง) · pattern เดียวกับ
+   * journey-summary.service.ts (`count` + `AND: [{ id }, BOUGHT_WHERE]`) · ยิงเฉพาะตอนชนจริง (ทาง 409)
+   */
+  private async toExistingCustomerRef(row: ExistingCustomerRow) {
+    const purchased = (await this.prisma.customer.count({ where: { AND: [{ id: row.id }, BOUGHT_WHERE] } })) > 0;
+    return {
+      id: row.id,
+      name: row.name,
+      createdAt: row.createdAt.toISOString(),
+      activeContracts: row._count.contracts,
+      purchased,
+    };
+  }
+
+  /**
    * T3-C9: application-level dedup for phone + email. Throws ConflictException
    * on collision with a non-soft-deleted record. `ignoreCustomerId` excludes
    * the customer being updated from the search (so update-in-place doesn't
@@ -194,7 +203,7 @@ export class CustomerWriteService {
    * R44: ทุก 409 ของ dedup แนบ `field` ('phone' | 'email' | 'nationalId') มาด้วย — ตัวเนื้อหาเดิม
    * ไม่บอกว่าชนที่ช่องไหน เว็บจึงเดาเป็น "เบอร์ซ้ำ" เสมอและเสนอปุ่ม "แก้เบอร์" ให้กับการชนเลขบัตร
    * (ประตูตัน: แก้เบอร์เท่าไรก็ยังชนเลขบัตรเดิม). เพิ่มคีย์อย่างเดียว ไม่แตะ message/existingCustomer
-   * A7: existingCustomer มาจาก toExistingCustomerRef ทุกเส้นทาง (id/name เดิม + createdAt/activeContracts)
+   * A7: existingCustomer มาจาก toExistingCustomerRef ทุกเส้นทาง (id/name เดิม + createdAt/activeContracts + purchased)
    */
   private async assertContactNotDuplicate(
     phone: string | null,
@@ -215,7 +224,7 @@ export class CustomerWriteService {
       if (dupPhone) {
         throw new ConflictException({
           message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
-          existingCustomer: toExistingCustomerRef(dupPhone),
+          existingCustomer: await this.toExistingCustomerRef(dupPhone),
           field: 'phone',
         });
       }
@@ -237,7 +246,7 @@ export class CustomerWriteService {
       if (dupEmail) {
         throw new ConflictException({
           message: 'ลูกค้าที่มีอีเมลนี้มีอยู่แล้ว',
-          existingCustomer: toExistingCustomerRef(dupEmail),
+          existingCustomer: await this.toExistingCustomerRef(dupEmail),
           field: 'email',
         });
       }
@@ -251,13 +260,14 @@ export class CustomerWriteService {
    * (ไม่มีใครกันซ้ำให้ `fillPlaceholderContact`); สกัดออกมาเป็น helper เดียว ใช้ร่วมกันทั้งสองที่
    * แทนการก็อปบล็อก.
    *
-   * `create()` ไม่มี `ignoreCustomerId` (แถวใหม่ ไม่มี "ตัวเอง" ให้กันซ้ำ) ⇒ ใช้ `findUnique`
-   * เดิมเป๊ะ เพื่อคง call shape ที่ `customers.service.spec.ts` mock/อ่านค่าอยู่ (byte-identical
-   * behavior — ห้ามสลับเป็น `findFirst` ที่เส้นทางนั้น). `fillPlaceholderContact` ส่ง
-   * `ignoreCustomerId` เพื่อกันชนกับตัวเอง (สมมาตรกับ `assertContactNotDuplicate`) ⇒ ต้องใช้
-   * `findFirst` เพราะ `findUnique` รับเฉพาะ where บนคอลัมน์ unique ล้วน ไม่ใส่เงื่อนไขอื่นปนได้.
-   * A7: ทั้งสองทาง select ชุดเดียวกัน (EXISTING_CUSTOMER_REF_SELECT + deletedAt) — `findUnique` เดิมไม่มี
-   * select (ดึงทั้งแถวรวมคอลัมน์ PII) ทั้งที่ caller ใช้แค่ id/deletedAt; where ยังเป็น nationalIdHash เหมือนเดิม
+   * `create()` ไม่มี `ignoreCustomerId` (แถวใหม่ ไม่มี "ตัวเอง" ให้กันซ้ำ) ⇒ ยังเป็น `findUnique`
+   * บน `where: { nationalIdHash }` เหมือนเดิม (ห้ามสลับเป็น `findFirst` ที่เส้นทางนั้น —
+   * `customers.service.spec.ts` mock/อ่าน `findUnique...where.nationalIdHash` อยู่) — ตั้งแต่ A7
+   * call นี้มี `select` เพิ่มแล้ว จึงไม่ byte-identical กับของเดิม คงไว้แค่เมธอด + where.
+   * `fillPlaceholderContact` ส่ง `ignoreCustomerId` เพื่อกันชนกับตัวเอง (สมมาตรกับ
+   * `assertContactNotDuplicate`) ⇒ ต้องใช้ `findFirst` เพราะ `findUnique` รับเฉพาะ where บนคอลัมน์ unique ล้วน ไม่ใส่เงื่อนไขอื่นปนได้.
+   * A7: ทั้งสองทาง select ชุดเดียวกัน (EXISTING_CUSTOMER_REF_SELECT + deletedAt) — `findUnique` ก่อน A7 ไม่มี
+   * select (ดึงทั้งแถวรวมคอลัมน์ PII) ทั้งที่ caller ใช้แค่ id/deletedAt
    */
   private async assertNationalIdNotDuplicate(
     nationalId: string,
@@ -277,7 +287,7 @@ export class CustomerWriteService {
     if (existing && !existing.deletedAt) {
       throw new ConflictException({
         message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
-        existingCustomer: toExistingCustomerRef(existing),
+        existingCustomer: await this.toExistingCustomerRef(existing),
         field: 'nationalId',
       });
     }
@@ -297,7 +307,7 @@ export class CustomerWriteService {
     if (normalizedNid) {
       // Phase 5: use nationalIdHash for dedup (faster + correct post-Phase 6 drop of plaintext)
       // Fix round 1 (Ruling R34) — shared with fillPlaceholderContact via assertNationalIdNotDuplicate
-      // (no ignoreCustomerId here → identical findUnique() call shape as before).
+      // (no ignoreCustomerId here → still findUnique() on nationalIdHash; since A7 it also carries a select).
       const existing = await this.assertNationalIdNotDuplicate(normalizedNid);
       // Soft-deleted ghost with the same nationalIdHash would otherwise break
       // the create() below with a P2002 on the unique column. Treat it as the

@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { CustomerWriteService } from './customer-write.service';
+import { BOUGHT_WHERE } from './customer-query.service';
 
 /**
  * A7 (mockup บอร์ด 4) — 409 ข้อมูลซ้ำต้องบอก "คนเดิม" พอให้พนักงานตัดสินใจ: ชื่อ · เป็นลูกค้าตั้งแต่เมื่อไร ·
@@ -20,11 +21,20 @@ describe('CustomerWriteService — existingCustomer ใน 409 ข้อมู�
     createdAt: new Date('2026-09-03T02:15:00.000Z'),
     _count: { contracts: 1 },
   };
-  const expectedRef = { id: 'c-old', name: 'สมชาย ใจดี', createdAt: '2026-09-03T02:15:00.000Z', activeContracts: 1 };
+  // M-A3: purchased = ตรง BOUGHT_WHERE (นิยามเดียวกับแท็บลูกค้า view=customers) — beforeEach ให้ count = 1 (ซื้อแล้ว)
+  const expectedRef = {
+    id: 'c-old',
+    name: 'สมชาย ใจดี',
+    createdAt: '2026-09-03T02:15:00.000Z',
+    activeContracts: 1,
+    purchased: true,
+  };
 
   let prevSalt: string | undefined;
   let prevKey: string | undefined;
-  let prisma: { customer: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; create: jest.Mock } };
+  let prisma: {
+    customer: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; create: jest.Mock; count: jest.Mock };
+  };
   let service: CustomerWriteService;
 
   beforeAll(() => {
@@ -47,6 +57,7 @@ describe('CustomerWriteService — existingCustomer ใน 409 ข้อมู�
         findFirst: jest.fn().mockResolvedValue(null),
         update: jest.fn(),
         create: jest.fn(),
+        count: jest.fn().mockResolvedValue(1),
       },
     };
     service = new CustomerWriteService(prisma as never, {} as never, {} as never);
@@ -72,6 +83,31 @@ describe('CustomerWriteService — existingCustomer ใน 409 ข้อมู�
     );
     const json = JSON.stringify(body);
     expect(json).not.toContain(PHONE);
+  });
+
+  it('purchased ใช้ BOUGHT_WHERE ตัวเดียวกับแท็บลูกค้า (ไม่มีสูตรที่สอง) · นับเฉพาะคนเดิมคนนั้น', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ ...existingRow });
+    await conflictOf(() => service.create({ name: 'คนใหม่', phone: PHONE } as never));
+    expect(prisma.customer.count).toHaveBeenCalledTimes(1);
+    const where = prisma.customer.count.mock.calls[0][0].where;
+    expect(where).toEqual({ AND: [{ id: 'c-old' }, BOUGHT_WHERE] });
+    expect(where.AND[1]).toBe(BOUGHT_WHERE);
+  });
+
+  it('คนเดิมมีเบอร์แต่ยังไม่เคยซื้อ (ผู้สนใจ) → purchased: false', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ ...existingRow, _count: { contracts: 0 } });
+    prisma.customer.count.mockResolvedValue(0);
+    const body = await conflictOf(() => service.create({ name: 'คนใหม่', phone: PHONE } as never));
+    expect(body.existingCustomer).toEqual({ ...expectedRef, activeContracts: 0, purchased: false });
+  });
+
+  it('ไม่ชนข้อมูลซ้ำ → ไม่ยิงคำถาม purchased เลย', async () => {
+    prisma.customer.create.mockResolvedValue({ id: 'c-new' });
+    const withTx = { ...prisma, $transaction: jest.fn(async (cb: (t: typeof prisma) => unknown) => cb(prisma)) };
+    const contactResolver = { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-1' }) };
+    const creating = new CustomerWriteService(withTx as never, contactResolver as never, {} as never);
+    await creating.create({ name: 'คนใหม่', phone: PHONE } as never);
+    expect(prisma.customer.count).not.toHaveBeenCalled();
   });
 
   it('อีเมลซ้ำ → existingCustomer รูปเดียวกัน', async () => {

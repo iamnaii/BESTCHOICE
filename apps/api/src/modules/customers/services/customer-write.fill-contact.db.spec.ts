@@ -8,6 +8,7 @@ import { hashPII } from '../../../utils/pii.util';
  * เบอร์ซ้ำ → 409 พร้อม existingCustomer · คนที่มีเบอร์แล้ว → 409 · audit ถูกเรียก ·
  * Fix round 1 (Ruling R34) — เลขบัตร normalize ก่อนเก็บ + dedup ผ่าน nationalIdHash เหมือน create()
  * A7 — existingCustomer มี createdAt (ISO) + activeContracts นับจากสัญญาจริง (ACTIVE/OVERDUE/DEFAULT ที่ไม่ถูกลบ)
+ * M-A3 — existingCustomer.purchased = ตรง BOUGHT_WHERE (แท็บลูกค้า) หรือไม่ — ตรวจกับสัญญาจริง
  * ผู้ใช้ของสเปคนี้ upsert ด้วยอีเมลคงที่และไม่ลบ (แบบเดียวกับ contract-event-sources.db.spec.ts)
  * รัน: DATABASE_URL=<ฐานทดสอบ> npx jest <ไฟล์นี้> --runInBand
  */
@@ -141,12 +142,36 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
     // A7: toEqual ตรงตัว = ไม่มีเบอร์/เลขบัตรของคนเดิมหลุดไปกับ payload
     expect((error as ConflictException).getResponse()).toEqual({
       message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
-      existingCustomer: { id: existing.id, name: 'fill spec existing', createdAt: existing.createdAt.toISOString(), activeContracts: 3 },
+      // M-A3: มีสัญญาที่ไม่ใช่ร่าง = ตรง BOUGHT_WHERE (แท็บลูกค้า) → purchased: true
+      existingCustomer: {
+        id: existing.id, name: 'fill spec existing', createdAt: existing.createdAt.toISOString(), activeContracts: 3, purchased: true,
+      },
       field: 'phone',
     });
     const row = await prisma.customer.findUniqueOrThrow({ where: { id: p.id } });
     expect(row.phone).toBeNull();
     expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  // M-A3 — ผู้สนใจที่มีเบอร์แล้วแต่ยังไม่เคยซื้อ (มีแค่สัญญาร่าง) ไม่ใช่ "ลูกค้า" ตามแท็บลูกค้า (BOUGHT_WHERE)
+  it('เบอร์ซ้ำกับผู้สนใจที่มีเบอร์แต่ยังไม่เคยซื้อ (มีแค่สัญญาร่าง) → purchased: false', async () => {
+    const phone = `01${stamp}`;
+    const existing = await prisma.customer.create({
+      data: { name: 'fill spec prospect with phone', phone, phoneHash: hashPII(phone, SALT), acquisitionSource: 'CHAT_FACEBOOK' },
+    });
+    ids.push(existing.id);
+    await seedContract(existing.id, 'prospect-draft', 'DRAFT');
+    const p = await placeholder('dup-prospect');
+    let error: unknown;
+    try { await service.fillPlaceholderContact(p.id, { phone }, { id: 'staff-1', role: 'OWNER' }); } catch (e) { error = e; }
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getResponse()).toEqual({
+      message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
+      existingCustomer: {
+        id: existing.id, name: 'fill spec prospect with phone', createdAt: existing.createdAt.toISOString(), activeContracts: 0, purchased: false,
+      },
+      field: 'phone',
+    });
   });
 
   // Fix round 1 (Ruling R34, Finding 1a) — เลขบัตรที่มีขีด/เว้นวรรคต้องถูก normalize ก่อนเก็บ
@@ -180,7 +205,9 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
     expect(error).toBeInstanceOf(ConflictException);
     expect((error as ConflictException).getResponse()).toEqual({
       message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
-      existingCustomer: { id: existing.id, name: 'fill spec nid existing', createdAt: existing.createdAt.toISOString(), activeContracts: 0 },
+      existingCustomer: {
+        id: existing.id, name: 'fill spec nid existing', createdAt: existing.createdAt.toISOString(), activeContracts: 0, purchased: false,
+      },
       field: 'nationalId', // R44 — เว็บต้องแยกได้ว่านี่คือการชนเลขบัตร ไม่ใช่เบอร์
     });
     const row = await prisma.customer.findUniqueOrThrow({ where: { id: p.id } });

@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { ChatChannel } from '@prisma/client';
 import { chatLogoOf, normalizePersonName, type ChatLogo } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { isLivePlaceholder, PLACEHOLDER_FIELDS_SELECT } from './chat-placeholder';
@@ -7,6 +8,11 @@ export interface PossibleSamePerson {
   customerId: string;
   name: string;
   channel: ChatLogo | null;
+  /**
+   * ช่องทางจริงของห้องล่าสุดของคนนั้น (เช่น `LINE_SHOP`) — `channel` (โลโก้) ยุบ LINE ร้าน/LINE การเงิน
+   * เป็นค่าเดียว ป้ายบนหน้าจอจึงแยกไม่ได้ · เพิ่มคีย์อย่างเดียว `channel` คงเป็นสัญญาเดิมของ API
+   */
+  channelDetail: ChatChannel | null;
   hasPhone: boolean;
   chatPlaceholder: boolean;
   createdAt: Date;
@@ -81,6 +87,7 @@ export class SamePersonService {
           customerId: c.id,
           name: c.name,
           channel: channelRaw ? chatLogoOf(channelRaw) : null,
+          channelDetail: channelRaw,
           hasPhone,
           chatPlaceholder: otherPlaceholder,
           createdAt: c.createdAt,

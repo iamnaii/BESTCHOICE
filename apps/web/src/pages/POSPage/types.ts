@@ -29,6 +29,8 @@ export interface Customer {
   phone: string;
   nationalId: string;
   _count: { contracts: number };
+  /** ผู้สนใจอัตโนมัติจากแชทที่ยังไม่มีเบอร์ — ธงจาก GET /customers/search (เว็บห้าม derive เอง) */
+  chatPlaceholder?: boolean;
 }
 
 export interface PosConfig {

@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import api, { getErrorMessage } from '@/lib/api';
+import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
 import type { Customer } from '../types';
 
 const inputClass =
@@ -118,7 +119,12 @@ export default function CustomerSearch({
             <div>
               <div className="text-sm font-medium">{selectedCustomer.name}</div>
               <div className="text-xs text-muted-foreground">
-                {selectedCustomer.phone} | สัญญา {selectedCustomer._count.contracts} รายการ
+                {/* ผู้สนใจจากแชทที่ยังไม่มีเบอร์ → ป้ายแทนช่องว่าง · ไม่ส่ง className เข้าไป (tailwind-merge จะทับสีชิป) */}
+                <ProspectPhoneLine
+                  phone={selectedCustomer.phone}
+                  chatPlaceholder={selectedCustomer.chatPlaceholder}
+                />{' '}
+                | สัญญา {selectedCustomer._count.contracts} รายการ
               </div>
             </div>
             <button onClick={onClearCustomer} className="text-xs text-destructive hover:underline">
@@ -157,7 +163,9 @@ export default function CustomerSearch({
                         className="w-full text-left px-3 py-2 hover:bg-muted/50 border-b last:border-b-0"
                       >
                         <div className="text-sm font-medium">{c.name}</div>
-                        <div className="text-xs text-muted-foreground">{c.phone}</div>
+                        <div className="text-xs text-muted-foreground">
+                          <ProspectPhoneLine phone={c.phone} chatPlaceholder={c.chatPlaceholder} />
+                        </div>
                       </button>
                     ))
                   ) : (

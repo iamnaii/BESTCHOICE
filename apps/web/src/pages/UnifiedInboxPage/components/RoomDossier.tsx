@@ -194,6 +194,13 @@ function hintChannelLabel(p: PossibleSamePerson): string | null {
   return (p.channelDetail ? channelLabel[p.channelDetail] : undefined) ?? (p.channel ? chatLogoLabel[p.channel] : undefined) ?? null;
 }
 
+/** ท้ายคำใบ้: `createdAt` = วันที่สร้างลูกค้าคนนั้น — "ทักเมื่อ" จริงเฉพาะคนที่มีห้องแชท
+ *  ไม่มีห้องเลย (channel + channelDetail ว่าง — มักเป็นลูกค้าหน้าร้านที่มีเบอร์) → "อยู่ในระบบตั้งแต่" */
+function hintSinceLabel(p: PossibleSamePerson): string {
+  const hasRoom = p.channel != null || p.channelDetail != null;
+  return `${hasRoom ? 'ทักเมื่อ' : 'อยู่ในระบบตั้งแต่'} ${fmtDate(p.createdAt) || '—'}`;
+}
+
 /** ─── คำใบ้ "อาจเป็นคนเดียวกัน" (สเปค 3.6) — ชุดเดียวใช้ทั้งการ์ดผู้สนใจและห้องของลูกค้าจริง
  *  `currentIsProspect` = เจ้าของห้องนี้เป็นผู้สนใจอัตโนมัติ (ธงจาก API) — ทิศ "ดูดห้องนี้เข้าคนอื่น" มีความหมายเฉพาะตอนนั้น */
 function SamePersonHints({ hints, customerId, currentIsProspect, onMerge, onDismiss, busy }: {
@@ -221,7 +228,7 @@ function SamePersonHints({ hints, customerId, currentIsProspect, onMerge, onDism
           <div key={p.customerId} className="mt-2 rounded-lg border border-primary/35 bg-primary/5 px-2.5 py-2 text-xs leading-snug">
             <p className="m-0">
               <Users className="mr-1 inline size-3.5 text-primary" aria-hidden="true" />
-              อาจเป็นคนเดียวกับ <span className="font-semibold">{p.name}</span> — {channel ? `${channel} · ` : ''}{p.hasPhone ? 'มีเบอร์' : 'ยังไม่มีเบอร์'} · ทักเมื่อ {fmtDate(p.createdAt) || '—'}
+              อาจเป็นคนเดียวกับ <span className="font-semibold">{p.name}</span> — {channel ? `${channel} · ` : ''}{p.hasPhone ? 'มีเบอร์' : 'ยังไม่มีเบอร์'} · {hintSinceLabel(p)}
             </p>
             <div className="mt-2 flex items-center gap-1.5">
               {merge ? (

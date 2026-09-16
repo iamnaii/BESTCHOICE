@@ -292,11 +292,35 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     ] };
     wrap(<RoomDossier room={noChannel} customerId="p1" activeRoomId="r-1" />);
     const hint = screen.getByText(/อาจเป็นคนเดียวกับ/);
-    expect(hint).toHaveTextContent('— มีเบอร์ · ทักเมื่อ');
+    // ไม่เคยมีห้องแชท ⇒ "ทักเมื่อ" เป็นเท็จ — ท้ายคำใบ้บอกวันที่อยู่ในระบบแทน (ดูเทสถัดไป)
+    expect(hint).toHaveTextContent('— มีเบอร์ · อยู่ในระบบตั้งแต่');
+    expect(hint.textContent).not.toContain('ทักเมื่อ');
     expect(hint.textContent).not.toContain(' —  ·');
     expect(hint.textContent).not.toContain('null');
     // ทิศทางยังใช้ได้ตามปกติ — คำใบ้ไม่มีช่องทางไม่ได้แปลว่ารวมไม่ได้
     expect(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' })).toBeEnabled();
+  });
+
+  // `createdAt` ของคำใบ้ = วันที่สร้างลูกค้าคนนั้น — "ทักเมื่อ" จริงเฉพาะคนที่มีห้องแชท (มี channel/channelDetail)
+  // คนที่ไม่เคยมีห้องเลย (ทั้งคู่ว่าง — มักเป็นลูกค้าหน้าร้านที่มีเบอร์) ต้องเป็น "อยู่ในระบบตั้งแต่"
+  it('ท้ายคำใบ้: มีห้องแชท → "ทักเมื่อ <วันที่>" · ไม่มีห้องเลย (channel + channelDetail ว่าง) → "อยู่ในระบบตั้งแต่ <วันที่>"', () => {
+    // เที่ยงวันตามเวลาเครื่อง ⇒ วันที่ที่แสดงเป็น 3 ก.ย. เสมอไม่ว่า TZ ไหน
+    const createdAt = new Date(2026, 8, 3, 12).toISOString();
+    const base = { name: 'สมชาย ใจดี', hasPhone: true, chatPlaceholder: false, createdAt, mergeDirection: 'none' as const };
+    const cases = [
+      { hint: { ...base, customerId: 'c-chat', channel: 'LINE' as const, channelDetail: 'LINE_SHOP' }, expected: '— LINE ร้าน · มีเบอร์ · ทักเมื่อ 03/09/69', absent: 'อยู่ในระบบตั้งแต่' },
+      { hint: { ...base, customerId: 'c-walkin', channel: null, channelDetail: null }, expected: '— มีเบอร์ · อยู่ในระบบตั้งแต่ 03/09/69', absent: 'ทักเมื่อ' },
+      // API เก่า: ไม่มีคีย์ channelDetail เลย + channel null = ไม่มีห้องเหมือนกัน
+      { hint: { ...base, customerId: 'c-walkin-old', channel: null }, expected: '— มีเบอร์ · อยู่ในระบบตั้งแต่ 03/09/69', absent: 'ทักเมื่อ' },
+    ];
+    for (const { hint, expected, absent } of cases) {
+      const { unmount } = wrap(<RoomDossier room={{ ...PROSPECT_ROOM, possibleSamePerson: [hint] }} customerId="p1" activeRoomId="r-1" />);
+      const p = screen.getByText(/อาจเป็นคนเดียวกับ/);
+      expect(p.textContent?.startsWith('อาจเป็นคนเดียวกับ ')).toBe(true);
+      expect(p).toHaveTextContent(expected);
+      expect(p.textContent).not.toContain(absent);
+      unmount();
+    }
   });
 
   it('บทบาทที่ fill-contact ไม่รับ (ACCOUNTANT) → ปุ่มเพิ่มเบอร์ปิดพร้อมเหตุผล', () => {

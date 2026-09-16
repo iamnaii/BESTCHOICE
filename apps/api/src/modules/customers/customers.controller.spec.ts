@@ -251,7 +251,7 @@ describe('CustomersController PII (Phase 5)', () => {
 
   it('absorbInto: ด่านขอบเขตห้องปฏิเสธ → 403 และไม่รวมเลย', async () => {
     const req = { user: { id: 'sales-1', role: 'SALES' } } as any;
-    merge.assertActorMayAbsorb.mockRejectedValueOnce(new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้'));
+    merge.assertActorMayAbsorb.mockRejectedValueOnce(new ForbiddenException('ห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมเบอร์หรือรวมให้'));
     await expect(controller.absorbInto('p1', 't1', req)).rejects.toBeInstanceOf(ForbiddenException);
     expect(merge.absorbPlaceholder).not.toHaveBeenCalled();
   });
@@ -274,7 +274,7 @@ describe('CustomersController PII (Phase 5)', () => {
     });
 
     it('SALES นอกขอบเขตห้อง → 403 จากด่าน และไม่แตะ service', async () => {
-      merge.assertActorMayAbsorb.mockRejectedValueOnce(new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้'));
+      merge.assertActorMayAbsorb.mockRejectedValueOnce(new ForbiddenException('ห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมเบอร์หรือรวมให้'));
       await expect(controller.fillContact('p1', { phone: '0812345678' } as any, reqOf('SALES'))).rejects.toBeInstanceOf(ForbiddenException);
       expect(service.fillPlaceholderContact).not.toHaveBeenCalled();
     });

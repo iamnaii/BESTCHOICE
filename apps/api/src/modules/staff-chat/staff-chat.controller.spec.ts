@@ -500,7 +500,7 @@ describe('StaffChatController', () => {
   });
 
   describe('PATCH /staff-chat/rooms/:id/customer', () => {
-    const owner = { user: { id: 'u1', role: 'OWNER' } } as any;
+    const owner = { user: { id: 'u1', role: 'OWNER' } };
 
     it('ต้องมี customerId — ไม่เรียก linkCustomer', async () => {
       await expect(controller.linkCustomerToRoom('r1', '', owner)).rejects.toThrow('กรุณาระบุ customerId');

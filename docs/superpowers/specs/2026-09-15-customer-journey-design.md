@@ -281,7 +281,7 @@ firstPurchaseAt = LEAST ของ:
 | CONTACT_ADDED | ได้เบอร์/เลขบัตรลูกค้าแล้ว | แชท/ติดต่อ | entry SYSTEM ใน CustomerWriteService.update / fill-contact เมื่อค่าเดิมเป็น null และค่าใหม่ไม่ null (เทียบค่าในโค้ด ไม่เก็บเบอร์) · capture-lead ที่เติมเบอร์ให้ placeholder | ได้เบอร์ / ยืนยันตัวตน | พนักงาน / บอท | วันนี้ไม่ได้บันทึก (body ใน audit ถูก REDACTED) · ย้อนหลัง = customers.updated_at (approximate) · เก็บ exact ตั้งแต่ deploy |
 | PLACEHOLDER_MERGED | รวมประวัติแชท {n} ห้องเข้ากับลูกค้าคนนี้ | แชท/ติดต่อ | entry SYSTEM เขียนใน tx ของ absorbPlaceholder (dedupe merge:<placeholderId>) · ย้อนหลัง = audit CUSTOMER_PLACEHOLDER_MERGED หรือ placeholder.deleted_at + merged_into_id | ได้เบอร์ / ยืนยันตัวตน | พนักงาน / ระบบ (OTP, LIFF, พิมพ์เบอร์ใน LINE) | exact (เขียนใน tx ไม่ถูกข้ามแบบ audit R12) |
 | LINE_LINKED | ผูก LINE {การเงิน\|ร้าน} แล้ว | แชท/ติดต่อ | entry SYSTEM ใน verification.service.ts bind, liff-api.service.ts, line-customer-link.service.ts selfLinkByPhone · ย้อนหลัง customer_line_links.linkedAt | ได้เบอร์ / ยืนยันตัวตน | ลูกค้า | FINANCE ย้อนหลัง approximate (ผูกซ้ำรีเซ็ต linkedAt) · LINE ร้าน วันนี้ไม่มีเวลา · exact ตั้งแต่ deploy |
-| TOUCHPOINT | {พนักงาน} ติดต่อทาง {โทร\|แชทในแอป FB\|LINE\|หน้าร้าน}: {นัดแล้ว\|มาร้านแล้ว\|ขอคิดก่อน\|งบ/ดาวน์ไม่พอ\|ไม่รับสาย\|ซื้อที่อื่น\|ไม่สนใจ} | แชท/ติดต่อ | customer_journey_entries origin=MANUAL kind=TOUCHPOINT | APPOINTED/VISITED → นัด / จอง · อื่น ๆ ไม่เลื่อนขั้น | พนักงาน (created) | exact ตามที่พนักงานกด · มีเฉพาะที่กด |
+| TOUCHPOINT | {พนักงาน} ติดต่อทาง {โทร\|แชทในแอป FB\|LINE\|หน้าร้าน}: {นัดแล้ว\|มาร้านแล้ว\|ขอคิดก่อน\|งบ/ดาวน์ไม่พอ\|ไม่รับสาย\|ซื้อที่อื่น\|ไม่สนใจ} | แชท/ติดต่อ | customer_journey_entries origin=MANUAL kind=TOUCHPOINT | APPOINTED/VISITED → นัด / จอง · อื่น ๆ ไม่เลื่อนขั้น | พนักงาน (ผู้กด) | exact — เวลาเซิร์ฟเวอร์ตอนกด ไม่มีช่องเปลี่ยนเวลา ไม่มีโน้ต (ขอบเขต v2) · มีเฉพาะที่กด |
 | HEARD_FROM | ลูกค้าบอกว่ารู้จักร้านจาก {โฆษณา FB\|เพจ/โพสต์\|TikTok\|LINE\|Google\|เพื่อนแนะนำ\|ผ่านหน้าร้าน\|ลูกค้าเก่า\|อื่น ๆ} | แชท/ติดต่อ | entries MANUAL kind=HEARD_FROM (CustomerCreateDialog / POS / สร้างสัญญา / แท็บการเดินทาง) | — | พนักงาน | ลูกค้าบอกเอง ไม่ใช่หลักฐาน · เก็บตั้งแต่ deploy |
 | MARKED_LOST / REOPENED / RECONTACTED | ติดป้ายหลุด: {เหตุผล} / เปิดใหม่ / กลับมาติดต่ออีกครั้ง | แชท/ติดต่อ | entries MANUAL kind=MARKED_LOST\|REOPENED · 'กลับมาติดต่ออีกครั้ง' (type RECONTACTED) คำนวณตอนอ่านใน chat.source ไม่เก็บ: entry ล่าสุดที่ไม่ถูกลบของครอบครัว kind MARKED_LOST\|REOPENED (occurred_at desc, id desc — กติกาเดียวกับ CTE lost_mark) ต้องเป็น MARKED_LOST → แถว = ข้อความ role=CUSTOMER แรกที่ created_at > เวลา mark ในห้องที่ผู้ดูเห็น (กติกาห้องของ SALES · รวมข้อความที่ retention soft-delete · คัดแค่ room_id + created_at) · ไม่ออกแถวเมื่อมีเอกสารที่ล้างป้ายเวลาอยู่ใน (mark, ข้อความ] — bookings.created_at · online_installment_applications.created_at · product_reservations.reserved_at · trade_ins.created_at · saving_plans.created_at · online_orders.created_at (ทุกสถานะ ไม่ถูกลบ ชุดเดียวกับ doc_last_at ใน journey-state.sql) แถวเอกสารอธิบายแทน · TOUCHPOINT ไม่กันแถว · มีเฉพาะรอบหลุดล่าสุด (ติดป้ายซ้ำ = แถวรอบก่อนหาย) · เลิกทำ mark หรือเปิดใหม่ = แถวหาย | ป้ายหลุด (RECONTACTED ไม่เลื่อนขั้น) | พนักงาน / ลูกค้า (RECONTACTED) | exact · RECONTACTED ลิงก์ /inbox/:roomId ของข้อความนั้น · SALES อาจไม่เห็นแถวทั้งที่ป้ายล้างแล้ว เมื่อข้อความอยู่ในห้องที่คนอื่นดูแล |
 | CREDIT_CHECK_OPENED | เปิดตรวจเครดิต (ที่ร้าน / จากสเตทเม้นในแชท) | เครดิต | credit_checks.created_at (ai_analysis->>'source'='chat-statement' = จากแชท) · actor จาก entry CREDIT_CHECK_OPENED_BY เขียนหลัง commit ใน credit-check.controller (ที่มี user อยู่แล้ว) | ตรวจเครดิต | พนักงาน (ตั้งแต่ deploy) · ย้อนหลังไม่ทราบ | เวลา exact สำหรับที่สร้างเอง · approximate สำหรับที่นำเข้าจากแชท (created_at ย้อนเป็นเวลา OCR) · ผู้เปิดวันนี้ไม่ได้บันทึก (_userId ถูกทิ้ง) |
@@ -343,17 +343,60 @@ firstPurchaseAt = LEAST ของ:
 - askHeardFrom = firstSource 'WALK_IN' · heardFrom ว่าง · ซื้อ (สัญญา + ใบขายที่นับว่าซื้อ) ไม่ถึง 2 ครั้ง — แบนเนอร์แท็บการเดินทางกับการ์ดหน้าสร้างสัญญาอ่านธงนี้ เว็บไม่คิดเงื่อนไขซ้ำ · ระบบไม่เขียน heardFrom ให้เอง
 - creditFilePending = ยังไม่ซื้อ · มีไฟล์เอกสารของลูกค้า (เงื่อนไขเดียวกัน) ในห้องของครอบครัว · customers.credit_check_status = NONE — ช่อง KPI "เครดิต" แสดง 'ส่งไฟล์แล้ว รอตรวจ' (คำตัดสินเจ้าของข้อ 13(3) · บอร์ด Main (a) ในแคนวาสที่เคาะยังวาดช่องนี้เป็น 'ยังไม่เคยตรวจ' หลังส่งไฟล์ — คำตัดสินข้อ 13(3) มาทีหลังจึงชนะ ห้ามแก้กลับตามบอร์ด)
 
-3) POST /customers/:id/journey/entries
+3) POST /customers/:id/journey/entries (เฟส 3 ขอบเขต v2 — คำตัดสินเจ้าของ 2026-09-15 ข้อ 4 และ 12)
+
+สิทธิ์
 - roles: OWNER, BRANCH_MANAGER, FINANCE_MANAGER, SALES
-- body แบบ discriminated:
-  - { kind: 'TOUCHPOINT', channel, outcome, note?, occurredAt? (≥ now-7d, ≤ now), roomId? }
-  - { kind: 'HEARD_FROM', heardFrom }
-  - { kind: 'MARKED_LOST', lostReason, note? }
-  - { kind: 'REOPENED' }
-- 409 เมื่อ MARKED_LOST กับคนที่ซื้อแล้ว
-- ถ้า :id เป็น placeholder ที่รวมแล้ว → เขียนไปที่ merged_into_id
-- note ตรง /\d[\d\s-]{8,}\d/ → 400 'ห้ามใส่เบอร์โทรหรือเลขบัตรในบันทึก'
-- 201 { event: JourneyEvent, summary: JourneySummary } (recompute รายคนแบบ sync ข้อมูลหลักสิบแถว)
+- FM บันทึกได้ (Q8) · ACCOUNTANT ไม่มีสิทธิ์เขียน
+
+body แบบ discriminated (CreateJourneyEntryDto) — **ไม่มี note / occurredAt / roomId** (ValidationPipe whitelist ตัดคีย์อื่นทิ้ง)
+- { kind: 'TOUCHPOINT', channel, outcome, clientRequestId? }
+  - channel: PHONE | FB_APP | LINE_APP | WALK_IN — OTHER ไม่รับ (คงไว้เป็นป้ายของแถวเก่าเท่านั้น)
+  - outcome: APPOINTED | VISITED | THINKING | BUDGET | NO_ANSWER | BOUGHT_ELSEWHERE | NOT_INTERESTED
+- { kind: 'HEARD_FROM', heardFrom, clientRequestId? }
+  - heardFrom: FB_AD | FB_PAGE | TIKTOK | LINE | GOOGLE | FRIEND | WALK_BY | OLD_CUSTOMER | OTHER
+- { kind: 'MARKED_LOST', lostReason, clientRequestId? }
+  - lostReason: NOT_INTERESTED | BOUGHT_ELSEWHERE | CREDIT_FAILED | UNREACHABLE | OTHER — ชิปอย่างเดียว
+- { kind: 'REOPENED', clientRequestId? }
+
+ข้อความ 400
+- 'ชนิดรายการไม่ถูกต้อง'
+- 'กรุณาเลือกช่องทาง'
+- 'กรุณาเลือกผลการติดต่อ'
+- 'กรุณาเลือกเหตุผล'
+- 'กรุณาเลือกช่องทางที่รู้จักร้าน'
+- 'รหัสคำขอไม่ถูกต้อง' (clientRequestId ต้องเป็น UUID v4)
+
+แถวที่เขียน
+- origin MANUAL · actorType STAFF · actorUserId = ผู้กด
+- occurredAt = เวลาเซิร์ฟเวอร์ ทุก kind
+- roomId / refType / refId / note = null
+- คอลัมน์ของ kind อื่น = null
+
+กติกา
+- :id เป็น placeholder ที่รวมแล้ว → เขียนที่ merged_into_id (customerId = originCustomerId = ลูกค้าจริง)
+- ไม่พบ หรือถูกลบด้วยเหตุอื่น → 404 'ไม่พบลูกค้า'
+- MARKED_LOST กับคนที่ซื้อแล้ว (BOUGHT_WHERE สด) → 409 'ลูกค้ารายนี้ซื้อแล้ว ติดป้ายหลุดไม่ได้'
+- หลุดอยู่แล้วติดซ้ำได้ = เปลี่ยนเหตุผล (Q4)
+- REOPENED ตอนไม่หลุด → ไม่เขียนแถว · ตอบ 201 { entryId: null, event: null, summary } · เว็บแสดง 'เปิดอยู่แล้ว' (Q4)
+  - คำนวณแคชใหม่ก่อนอ่านค่า lost
+
+กันกดซ้ำ (Q6)
+- dedupe_key = 'MANUAL:<kind>:<clientRequestId>'
+- เว็บสร้าง UUID ใหม่ทุกครั้งที่แตะ ส่ง UUID เดิมซ้ำเฉพาะตอน retry
+- ค้นแถวด้วย dedupe_key ก่อนตรวจกติกาข้างบน:
+  - เจอแถวของครอบครัวนี้ที่ยังไม่ถูกเลิกทำ → คืนแถวนั้น ไม่เขียนแถวที่สอง (retry ของคำขอที่สำเร็จแล้วได้ผลเดิมเสมอ)
+  - แถวนั้นถูกเลิกทำแล้ว หรือเป็นของลูกค้าคนอื่น → 409 'คำขอนี้ถูกใช้ไปแล้ว กรุณากดใหม่อีกครั้ง'
+- สองคำขอพร้อมกันชน unique (P2002) → ตัวที่แพ้โหลดแถวของตัวที่ชนะมาคืน
+
+หลังเขียน
+- recompute([ลูกค้าจริง]) แบบ sync
+- ถ้าล้ม: warn + Sentry (tags kind customer-journey · op manual-entry-recompute) · คำขอยังสำเร็จ
+
+คำตอบ
+- 201 JourneyEntryCreatedResponse { entryId, event: JourneyEvent, summary: JourneySummary }
+- event มาจากตัวแปลงเดียวกับรายการ (sources/manual-entry-event.ts) ⇒ ชื่อแถวสองทางตรงกันเสมอ
+- ไม่เขียน audit_logs เพิ่ม — แถว entries มีผู้กด เวลา และ deletedById อยู่แล้ว
 
 4) DELETE /customers/:id/journey/entries/:entryId
 - soft delete (deletedById) เฉพาะ origin=MANUAL
@@ -467,7 +510,7 @@ db.spec (test_db เท่านั้น) ต่อยอด customer-merge.ser
 - เลือกขั้นเอง
 - รายการ follow-up แยก (ถ้าเจ้าของต้องการ ให้ใช้ todos เดิมที่มี roomId/dueDate)
 
-ตัวชี้วัดการใช้งานหลังเปิด 2 สัปดาห์: นับ entries MANUAL ต่อพนักงาน ถ้า ≈0 ให้คงไว้แต่ไม่ขยาย
+ตัวชี้วัดการใช้งานหลังเปิด 2 สัปดาห์: นับ entries MANUAL ต่อพนักงาน ถ้า ≈0 ให้คงไว้แต่ไม่ขยาย — คิวรีนับอย่างเดียวอยู่ใน docs/superpowers/runbooks/2026-09-15-customer-journey-phase3-deploy.md หัวข้อ "ตัวชี้วัดการใช้งานบันทึกมือ"
 
 ## คำตอบด้านการตลาด (เฟส 2)
 

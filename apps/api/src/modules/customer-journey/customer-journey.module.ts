@@ -3,6 +3,7 @@ import { CustomerJourneyController } from './customer-journey.controller';
 import { CustomerJourneyCron } from './customer-journey.cron';
 import { CustomerJourneyService } from './customer-journey.service';
 import { JourneyEntryWriter } from './journey-entry-writer.service';
+import { JourneyManualEntryService } from './journey-manual-entry.service';
 import { JourneyStateService } from './journey-state.service';
 import { JourneySummaryService } from './journey-summary.service';
 
@@ -12,7 +13,7 @@ import { JourneySummaryService } from './journey-summary.service';
  */
 @Module({
   controllers: [CustomerJourneyController],
-  providers: [JourneyEntryWriter, JourneyStateService, JourneySummaryService, CustomerJourneyService, CustomerJourneyCron],
+  providers: [JourneyEntryWriter, JourneyStateService, JourneySummaryService, JourneyManualEntryService, CustomerJourneyService, CustomerJourneyCron],
   exports: [JourneyEntryWriter, JourneyStateService],
 })
 export class CustomerJourneyModule {}

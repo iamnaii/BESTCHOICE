@@ -204,3 +204,49 @@ SELECT count(*) AS moved FROM customer_journey_states WHERE stage = 'INTERESTED'
 
 - ไม่ต้อง reset คอลัมน์ใด (ไม่มีค่าที่ `LEAST` แช่แข็งในเรื่องนี้)
 - ถอย image ข้ามเส้นเฟส 3 **ด้วยเหตุผลอื่น** ก็ต้องทำข้อ 3–4 เหมือนกัน — ค่า `stage` ในแคชมีความหมายตาม image ที่เขียนล่าสุดเสมอ
+
+## ตัวชี้วัดการใช้งานบันทึกมือ — 2 สัปดาห์หลังเปิด (POST journey/entries)
+
+ที่มา: spec หัวข้อ "บันทึกด้วยมือ (เฟส 3)" — *"นับ entries MANUAL ต่อพนักงาน ถ้า ≈0 ให้คงไว้แต่ไม่ขยาย"*
+
+**ก่อนรัน:**
+- คิวรีนับอย่างเดียว ใช้ MCP (`mcp_ro`) ได้ — คอลัมน์ที่ใช้อยู่ใน grants แล้ว:
+  - `customer_journey_entries`: `origin`, `kind`, `actor_user_id`, `created_at`, `deleted_at`
+  - `users`: `id`, `role`
+  - ไม่แตะ `note` และไม่ดึงชื่อพนักงาน
+- `<LAUNCH_UTC>` = เวลาที่ revision ของ `bestchoice-api` ที่มี PR นี้เริ่มรับ traffic — **จุดเริ่มนับเดียวของตัวชี้วัดนี้** (หัวข้ออื่นในไฟล์นี้อ้างมาที่นี่ ไม่มีวันเริ่มนับชุดที่สอง)
+  - ดูที่ Cloud Run console → `bestchoice-api` → Revisions
+  - เขียนเป็น UTC เช่น `2026-09-20 03:00:00` (`created_at` เก็บเป็น UTC) · ห้ามใช้เวลาไทยหรือ `+07`
+- **วันวัด** = `<LAUNCH_UTC>` + 14 วัน · จด `<LAUNCH_UTC>` และวันวัดลง PR ตั้งแต่วันที่ขึ้น
+
+**ต่อชนิด:**
+```sql
+SELECT kind, count(*) FROM customer_journey_entries
+WHERE origin = 'MANUAL' AND deleted_at IS NULL AND created_at >= '<LAUNCH_UTC>'
+GROUP BY kind ORDER BY kind;
+```
+
+**ต่อพนักงาน (id + บทบาทเท่านั้น):**
+```sql
+SELECT e.actor_user_id, u.role, count(*) FROM customer_journey_entries e
+LEFT JOIN users u ON u.id = e.actor_user_id
+WHERE e.origin = 'MANUAL' AND e.deleted_at IS NULL AND e.created_at >= '<LAUNCH_UTC>'
+GROUP BY e.actor_user_id, u.role ORDER BY count(*) DESC;
+```
+
+**เก็บไว้ / เลิกทำ ต่อพนักงานต่อชนิด (id เท่านั้น):**
+```sql
+SELECT actor_user_id, kind,
+       count(*) FILTER (WHERE deleted_at IS NULL)     AS kept,
+       count(*) FILTER (WHERE deleted_at IS NOT NULL) AS undone
+FROM customer_journey_entries
+WHERE origin = 'MANUAL' AND created_at >= '<LAUNCH_UTC>'
+GROUP BY 1, 2
+ORDER BY 1, 2;
+```
+
+**อ่านผล:**
+- สองคิวรีแรกไม่นับรายการที่ถูกเลิกทำ (`deleted_at IS NULL`) · คิวรีที่สามแยก `kept` / `undone` ให้เห็นว่ากดผิดแล้วเลิกทำบ่อยแค่ไหน
+- ยอดรวมทุกแถว (= ผลรวม `kept`) ≈ 0 → คงปุ่มไว้แต่ไม่ขยาย (ไม่เพิ่มปุ่มในเมนูอื่น — Q9) แล้วส่งตัวเลขให้เจ้าของก่อนวางแผนเฟสถัดไป (AI อ่านแชท)
+- `undone` สูงเทียบกับ `kept` = ปุ่มกดพลาดง่าย → ส่งตัวเลขให้เจ้าของพร้อมกัน
+- `HEARD_FROM` ถามเฉพาะลูกค้าที่เริ่มจากหน้าร้าน ซึ่งมีน้อยมากเทียบกับลูกค้าที่ทักแชทก่อน — ตัวเลขต่ำไม่ได้แปลว่าปุ่มพัง

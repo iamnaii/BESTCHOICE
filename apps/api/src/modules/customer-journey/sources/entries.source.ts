@@ -1,9 +1,5 @@
 import {
   JOURNEY_EVENT_GROUPS,
-  JOURNEY_HEARD_FROM_LABELS,
-  JOURNEY_LOST_REASON_LABELS,
-  JOURNEY_TOUCH_CHANNEL_LABELS,
-  JOURNEY_TOUCH_OUTCOME_LABELS,
   type JourneyEntryKind,
   type JourneyEvent,
   type JourneyEventGroup,
@@ -12,6 +8,7 @@ import {
 import { roomAssignmentScope } from '../../credit-check/services/room-credit-access';
 import { JOURNEY_DATA_SCHEMAS } from '../journey-data-schemas';
 import { asActorType, asRecord, dbTimeRange, finalizeSource, roleSeesGroup, scanTake, staffActor, whenAny, type JourneySource } from './journey-window';
+import { isManualEntryKind, manualEntryToEvent } from './manual-entry-event';
 
 type ShownKind = Exclude<JourneyEntryKind, 'CREDIT_CHECK_OPENED_BY'>; // credit.source.ts ใช้เติมผู้เปิดแทน
 const VIEWS: Record<ShownKind, { group: JourneyEventGroup; stage: JourneyStage | null; title: string }> = {
@@ -28,9 +25,7 @@ const VIEWS: Record<ShownKind, { group: JourneyEventGroup; stage: JourneyStage |
   MARKED_LOST: { group: 'chat', stage: null, title: 'ติดป้ายหลุด' },
   REOPENED: { group: 'chat', stage: null, title: 'เปิดใหม่' },
 };
-// ป้ายช่องทาง / ผล / รู้จักร้านจาก / เหตุผลหลุด = label map ของ shared ชุดเดียวกับ summary และเว็บ (ห้ามประกาศซ้ำในไฟล์นี้)
-/** อ่านป้ายด้วยรหัสจากคอลัมน์ VARCHAR — ไม่มีในชุด = undefined ให้ผู้เรียกใช้คำกลางเอง (ไม่แสดงรหัสดิบ) */
-const labelOf = (labels: Readonly<Record<string, string>>, code: string | null): string | undefined => labels[code ?? ''];
+// ชื่อแถวบันทึกมือ (ติดต่อ / รู้จักร้านจาก / ติดป้ายหลุด / เปิดใหม่) อยู่ที่ manual-entry-event.ts ที่เดียว — คำตอบ POST journey/entries ใช้ตัวแปลงเดียวกัน
 /** ชุดเดียวกับ apps/web/src/pages/CustomersPage/components/ProspectFilterBar.tsx:30-36 */
 const TAG_LABELS: Record<string, string> = { VIP: 'VIP', HIGH_RISK: 'เสี่ยงสูง', NEW: 'ลูกค้าใหม่', LOYAL: 'ลูกค้าประจำ', BLACKLIST: 'BLACKLIST' };
 
@@ -82,22 +77,23 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
       : null;
     const seesChat = roleSeesGroup(actor.role, 'chat');
     const events: JourneyEvent[] = [];
+    const now = new Date();
 
     for (const row of rows) {
       const kind = row.kind;
       // DB กรอง kind แล้ว — ตรวจกลุ่มซ้ำฝั่งโค้ด · kind ที่ยังไม่มีใน VIEWS ถูกทิ้ง
       if (!isShownKind(kind) || !groups.has(VIEWS[kind].group) || (row.roomId && visibleRooms && !visibleRooms.has(row.roomId))) continue;
+      // บันทึกมือ — ตัวแปลงเดียวกับคำตอบ POST /customers/:id/journey/entries (ห้ามสร้างชื่อแถวซ้ำที่นี่)
+      if (isManualEntryKind(kind)) {
+        events.push(manualEntryToEvent(row, actor, now));
+        continue;
+      }
       const data = whitelisted(kind, row.data);
-      const title = kind === 'TOUCHPOINT' ? `ติดต่อทาง${labelOf(JOURNEY_TOUCH_CHANNEL_LABELS, row.channel) ?? 'อื่น ๆ'}: ${labelOf(JOURNEY_TOUCH_OUTCOME_LABELS, row.outcome) ?? 'บันทึกแล้ว'}`
-        : kind === 'HEARD_FROM' ? `ลูกค้าบอกว่ารู้จักร้านจาก${JOURNEY_HEARD_FROM_LABELS[row.heardFrom ?? ''] ?? 'อื่น ๆ'}`
-        : kind === 'MARKED_LOST' ? `ติดป้ายหลุด: ${JOURNEY_LOST_REASON_LABELS[row.lostReason ?? ''] ?? 'อื่น ๆ'}`
-        : kind === 'PLACEHOLDER_MERGED' && typeof data?.roomCount === 'number' ? `รวมประวัติแชท ${data.roomCount} ห้องเข้ากับลูกค้าคนนี้`
-        : VIEWS[kind].title;
+      const title = kind === 'PLACEHOLDER_MERGED' && typeof data?.roomCount === 'number' ? `รวมประวัติแชท ${data.roomCount} ห้องเข้ากับลูกค้าคนนี้` : VIEWS[kind].title;
       const href = row.refType === 'contract' && row.refId ? `/contracts/${row.refId}` : row.roomId && seesChat ? `/inbox/${row.roomId}` : undefined;
       const type = asActorType(row.actorType);
       events.push({
-        id: `entry-${row.id}`, type: kind, group: VIEWS[kind].group,
-        stage: kind === 'TOUCHPOINT' && (row.outcome === 'APPOINTED' || row.outcome === 'VISITED') ? 'INTERESTED' : VIEWS[kind].stage,
+        id: `entry-${row.id}`, type: kind, group: VIEWS[kind].group, stage: VIEWS[kind].stage,
         timestamp: row.occurredAt.toISOString(), title,
         actor: row.actorUser ? { type, id: row.actorUser.id, name: row.actorUser.name } : { type },
         reliability: 'exact', origin: row.origin === 'MANUAL' ? 'MANUAL' : 'SYSTEM_ENTRY',

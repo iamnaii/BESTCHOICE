@@ -191,7 +191,12 @@ export default function CustomerDetailPage() {
 
             {journeyVisible && (
               <TabsContent className="min-w-0" value="journey">
-                <JourneyTab customerId={customer.id} role={user?.role ?? ''} />
+                <JourneyTab
+                  customerId={customer.id}
+                  role={user?.role ?? ''}
+                  summary={journeySummary}
+                  canRecord={canRecord}
+                />
               </TabsContent>
             )}
           </Tabs>

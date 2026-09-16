@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CustomerDetailPage from '@/pages/CustomerDetailPage';
+import { readLastChannel, writeLastChannel } from '@/components/customer/journey/journeyStorage';
 import { formatNationalId, maskNationalId } from '@/utils/mask.util';
 import { detail, emptyPurchase, progress, sale } from './fixtures';
 import { STAGE_LABELS } from '@installment/shared';
@@ -24,6 +25,8 @@ const mocks = vi.hoisted(() => ({
   patch: vi.fn(),
   del: vi.fn(),
   role: 'OWNER',
+  /** useIsMobile() — true = ตัวเลือกบันทึกการติดต่อเป็น bottom sheet */
+  mobile: false,
   detail: null as unknown,
   /** summary ต่อ customer id — id ที่ไม่ได้ตั้งจะโยน error ⇒ แถบขั้นไม่วาด */
   summaries: {} as Record<string, unknown>,
@@ -40,6 +43,7 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', name: 'admin', role: mocks.role } }),
 }));
+vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => mocks.mobile }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }));
 
 const RESPONSES: Record<string, unknown> = {
@@ -66,6 +70,7 @@ function renderPage() {
 
 beforeEach(() => {
   mocks.role = 'OWNER';
+  mocks.mobile = false;
   mocks.detail = detail();
   // ค่าเริ่มต้นไม่ตั้ง summary: แถบขั้นไม่วาด เทสของ Plan 1 ที่ getByText ข้อความสั้น ๆ จึงไม่เจอป้ายขั้นซ้ำ — เทสแถบขั้นตั้งเอง
   mocks.summaries = {};
@@ -620,5 +625,395 @@ describe('แถบขั้นบนหน้า: ติดป้ายหล�
     mocks.summaries.c1 = prospectSummary({ creditFilePending: true });
     renderAt('/customers/c1');
     expect(await screen.findByText('ส่งไฟล์แล้ว รอตรวจ')).toBeInTheDocument();
+  });
+});
+
+describe('แท็บการเดินทาง: บันทึกการติดต่อ (เฟส 3)', () => {
+  const ENTRIES_URL = '/customers/c1/journey/entries';
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const OUTCOME_LABELS = ['นัดแล้ว', 'มาร้านแล้ว', 'ขอคิดก่อน', 'งบ/ดาวน์ไม่พอ', 'ไม่รับสาย', 'ซื้อที่อื่น', 'ไม่สนใจ'];
+
+  /** sonner ถูก mock ระดับไฟล์ — import แบบ dynamic เพื่อไม่ชนกับ import ของเทสอื่นในไฟล์ */
+  async function sonnerToast() {
+    return vi.mocked((await import('sonner')).toast);
+  }
+
+  /** POST ของบันทึกมือ — ตอบตามตัวรับ · URL อื่นโยน error พร้อม URL */
+  function answerEntries(respond: (body: Record<string, unknown>) => unknown) {
+    mocks.post.mockReset();
+    mocks.post.mockImplementation(async (url: string, body: Record<string, unknown>) => {
+      if (url === ENTRIES_URL) return respond(body);
+      throw new Error(`unexpected POST ${url}`);
+    });
+  }
+
+  function created(entryId: string, summary = journeySummary()) {
+    return {
+      data: {
+        entryId,
+        event: journeyEvent({ id: `entry-${entryId}`, type: 'TOUCHPOINT', origin: 'MANUAL', entryId, canDelete: true }),
+        summary,
+      },
+    };
+  }
+
+  function entryBodies(): Record<string, unknown>[] {
+    return mocks.post.mock.calls
+      .filter(([url]) => url === ENTRIES_URL)
+      .map(([, body]) => body as Record<string, unknown>);
+  }
+
+  async function openChooser(user: ReturnType<typeof userEvent.setup>) {
+    const trigger = await screen.findByRole('button', { name: 'บันทึกการติดต่อ' });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    await user.click(trigger);
+    return screen.findByRole('dialog', { name: 'บันทึกการติดต่อ' });
+  }
+
+  function rowWithTitle(title: string): HTMLElement {
+    const row = screen.getAllByTestId('event-timeline-item').find((item) => within(item).queryByText(title));
+    if (!row) throw new Error(`ไม่พบแถว ${title}`);
+    return row;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mocks.summaries.c1 = journeySummary();
+    mocks.del.mockReset();
+    mocks.del.mockImplementation(async (url: string) => {
+      if (url.startsWith(`${ENTRIES_URL}/`)) return { data: { summary: journeySummary() } };
+      throw new Error(`unexpected DELETE ${url}`);
+    });
+    answerEntries(() => created('e-new'));
+  });
+
+  it('ฝ่ายบัญชีไม่เห็นปุ่มบันทึกการติดต่อ และไม่เห็นลิงก์เลิกทำแม้แถวส่ง canDelete มา', async () => {
+    mocks.role = 'ACCOUNTANT';
+    mocks.journey.mockImplementation(() =>
+      journeyPage({
+        events: [
+          journeyEvent({
+            id: 'entry-e1',
+            type: 'TOUCHPOINT',
+            origin: 'MANUAL',
+            title: 'ติดต่อทางโทร: นัดแล้ว',
+            actor: { type: 'STAFF', name: 'admin' },
+            entryId: 'e1',
+            canDelete: true,
+          }),
+        ],
+      }),
+    );
+    renderAt('/customers/c1?tab=journey');
+    expect(await screen.findByText('ติดต่อทางโทร: นัดแล้ว')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'บันทึกการติดต่อ' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'เลิกทำ' })).toBeNull();
+  });
+
+  it('ปุ่มอยู่แถวของตัวเองชิดขวาก่อนชิปกรอง (Q16) และกดไม่ได้ระหว่างรอ summary', async () => {
+    let releaseSummary: (value: unknown) => void = () => {};
+    const baseGet = mocks.get.getMockImplementation();
+    mocks.get.mockImplementation((url: string, config?: { params?: Record<string, unknown> }) =>
+      url === '/customers/c1/journey/summary'
+        ? new Promise((resolve) => {
+            releaseSummary = resolve;
+          })
+        : baseGet!(url, config),
+    );
+    renderAt('/customers/c1?tab=journey');
+
+    const trigger = await screen.findByRole('button', { name: 'บันทึกการติดต่อ' });
+    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveClass('max-lg:h-11', 'max-lg:w-full');
+    expect(trigger.parentElement).toHaveClass('flex', 'justify-end');
+    const allChip = screen.getByRole('button', { name: 'ทั้งหมด' });
+    expect(trigger.compareDocumentPosition(allChip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    releaseSummary({ data: journeySummary() });
+    await waitFor(() => expect(trigger).toBeEnabled());
+  });
+
+  it('ช่องทางที่ใช้ครั้งก่อนถูกเลือกไว้ · ค่าที่ไม่รู้จักถูกทิ้ง · localStorage โยน error ก็ยังเปิดได้', async () => {
+    const user = userEvent.setup();
+    writeLastChannel('LINE_APP');
+    const first = renderAt('/customers/c1?tab=journey');
+    let dialog = await openChooser(user);
+    expect(within(dialog).getByRole('button', { name: 'LINE' })).toHaveAttribute('aria-pressed', 'true');
+    for (const name of ['โทร', 'แชทในแอป FB', 'หน้าร้าน']) {
+      expect(within(dialog).getByRole('button', { name })).toHaveAttribute('aria-pressed', 'false');
+    }
+    expect(within(dialog).getByRole('button', { name: 'นัดแล้ว' })).toBeEnabled();
+    expect(within(dialog).queryByText('เลือกช่องทางก่อน')).toBeNull();
+    first.unmount();
+
+    localStorage.setItem('customerJourney.lastChannel.v1', 'OTHER');
+    const second = renderAt('/customers/c1?tab=journey');
+    dialog = await openChooser(user);
+    expect(within(dialog).queryByRole('button', { pressed: true })).toBeNull();
+    expect(within(dialog).getByText('เลือกช่องทางก่อน')).toBeInTheDocument();
+    second.unmount();
+
+    renderAt('/customers/c1?tab=journey');
+    const trigger = await screen.findByRole('button', { name: 'บันทึกการติดต่อ' });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage blocked');
+    });
+    try {
+      await user.click(trigger);
+      dialog = await screen.findByRole('dialog', { name: 'บันทึกการติดต่อ' });
+      expect(within(dialog).queryByRole('button', { pressed: true })).toBeNull();
+      expect(within(dialog).getByText('เลือกช่องทางก่อน')).toBeInTheDocument();
+    } finally {
+      getItem.mockRestore();
+    }
+  });
+
+  it('ยังไม่มีช่องทาง: ผลกดไม่ได้ + คำใบ้ → เลือกโทร แตะไม่รับสาย = POST ทันที ชิปล็อกระหว่างรอ ปิดตัวเลือก ไม่ถามติดป้ายหลุด', async () => {
+    const user = userEvent.setup();
+    let resolvePost: (value: unknown) => void = () => {};
+    answerEntries(
+      () =>
+        new Promise((resolve) => {
+          resolvePost = resolve;
+        }),
+    );
+    renderAt('/customers/c1?tab=journey');
+    const dialog = await openChooser(user);
+
+    expect(dialog).toHaveAttribute('data-slot', 'popover-content');
+    // มีแค่ช่องทาง + ผล (ขอบเขตรอบ 2 ข้อ 4) — ไม่มีโน้ต ไม่มีเวลา ไม่มีปุ่มบันทึก
+    expect(within(dialog).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'โทร',
+      'แชทในแอป FB',
+      'LINE',
+      'หน้าร้าน',
+      ...OUTCOME_LABELS,
+    ]);
+    expect(within(dialog).queryByRole('textbox')).toBeNull();
+    expect(dialog.querySelector('input')).toBeNull();
+    expect(within(dialog).getByText('เลือกช่องทางก่อน')).toBeInTheDocument();
+    for (const name of OUTCOME_LABELS) expect(within(dialog).getByRole('button', { name })).toBeDisabled();
+
+    await user.click(within(dialog).getByRole('button', { name: 'โทร' }));
+    expect(within(dialog).getByRole('button', { name: 'โทร' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(dialog).queryByText('เลือกช่องทางก่อน')).toBeNull();
+    expect(readLastChannel() ?? null).toBeNull();
+
+    await user.click(within(dialog).getByRole('button', { name: 'ไม่รับสาย' }));
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'ไม่รับสาย' })).toHaveAttribute('aria-busy', 'true'),
+    );
+    expect(within(dialog).getByRole('button', { name: 'นัดแล้ว' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'โทร' })).toBeDisabled();
+
+    resolvePost(created('e-new'));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'บันทึกการติดต่อ' })).toBeNull());
+
+    const bodies = entryBodies();
+    expect(bodies).toHaveLength(1);
+    expect(Object.keys(bodies[0]).sort()).toEqual(['channel', 'clientRequestId', 'kind', 'outcome']);
+    expect(bodies[0]).toEqual({
+      kind: 'TOUCHPOINT',
+      channel: 'PHONE',
+      outcome: 'NO_ANSWER',
+      clientRequestId: expect.stringMatching(UUID),
+    });
+    const toast = await sonnerToast();
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith(
+      'บันทึกแล้ว',
+      expect.objectContaining({
+        duration: 10000,
+        action: expect.objectContaining({ label: 'เลิกทำ', onClick: expect.any(Function) }),
+      }),
+    );
+    expect(screen.queryByText('ติดป้ายหลุดไหม')).toBeNull();
+    expect(readLastChannel()).toBe('PHONE');
+  });
+
+  it('ซื้อที่อื่น → บันทึกแล้วถาม "ติดป้ายหลุดไหม" → "ใช่ ติดป้ายหลุด" ส่ง MARKED_LOST ด้วย clientRequestId ใหม่ แล้วปิด', async () => {
+    const user = userEvent.setup();
+    writeLastChannel('FB_APP');
+    answerEntries((body) => created(body.kind === 'MARKED_LOST' ? 'e-lost' : 'e-touch'));
+    renderAt('/customers/c1?tab=journey');
+    const dialog = await openChooser(user);
+
+    await user.click(within(dialog).getByRole('button', { name: 'ซื้อที่อื่น' }));
+
+    expect(await within(dialog).findByText('ติดป้ายหลุดไหม')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'นัดแล้ว' })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: 'ไม่ต้อง' })).toBeInTheDocument();
+    const toast = await sonnerToast();
+    expect(toast.success).toHaveBeenCalledWith('บันทึกแล้ว', expect.objectContaining({ duration: 10000 }));
+
+    await user.click(within(dialog).getByRole('button', { name: 'ใช่ ติดป้ายหลุด' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'บันทึกการติดต่อ' })).toBeNull());
+
+    const [touch, lost] = entryBodies();
+    expect(touch).toEqual({
+      kind: 'TOUCHPOINT',
+      channel: 'FB_APP',
+      outcome: 'BOUGHT_ELSEWHERE',
+      clientRequestId: expect.stringMatching(UUID),
+    });
+    expect(Object.keys(lost).sort()).toEqual(['clientRequestId', 'kind', 'lostReason']);
+    expect(lost).toEqual({ kind: 'MARKED_LOST', lostReason: 'BOUGHT_ELSEWHERE', clientRequestId: expect.stringMatching(UUID) });
+    expect(lost.clientRequestId).not.toBe(touch.clientRequestId);
+    expect(toast.success).toHaveBeenLastCalledWith(
+      'ติดป้ายหลุดแล้ว',
+      expect.objectContaining({ duration: 10000, action: expect.objectContaining({ label: 'เลิกทำ' }) }),
+    );
+  });
+
+  it('ไม่สนใจ → ถามติดป้ายหลุด → "ไม่ต้อง" ปิดตัวเลือก ไม่ส่งคำขอที่สอง · เปิดใหม่กลับมาเป็นชิป', async () => {
+    const user = userEvent.setup();
+    writeLastChannel('PHONE');
+    renderAt('/customers/c1?tab=journey');
+    const dialog = await openChooser(user);
+
+    await user.click(within(dialog).getByRole('button', { name: 'ไม่สนใจ' }));
+    await user.click(await within(dialog).findByRole('button', { name: 'ไม่ต้อง' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'บันทึกการติดต่อ' })).toBeNull());
+
+    expect(entryBodies()).toEqual([
+      { kind: 'TOUCHPOINT', channel: 'PHONE', outcome: 'NOT_INTERESTED', clientRequestId: expect.stringMatching(UUID) },
+    ]);
+    expect((await sonnerToast()).success).not.toHaveBeenCalledWith('ติดป้ายหลุดแล้ว', expect.anything());
+
+    const again = await openChooser(user);
+    expect(within(again).queryByText('ติดป้ายหลุดไหม')).toBeNull();
+    expect(within(again).getByRole('button', { name: 'นัดแล้ว' })).toBeEnabled();
+  });
+
+  it('ผลตอบกลับบอกว่าลูกค้าซื้อแล้ว → ไม่ถามติดป้ายหลุด ปิดตัวเลือกเลย', async () => {
+    const user = userEvent.setup();
+    writeLastChannel('WALK_IN');
+    answerEntries(() => created('e-touch', journeySummary({ stage: 'PURCHASED' })));
+    renderAt('/customers/c1?tab=journey');
+    const dialog = await openChooser(user);
+
+    await user.click(within(dialog).getByRole('button', { name: 'ซื้อที่อื่น' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'บันทึกการติดต่อ' })).toBeNull());
+
+    expect(screen.queryByText('ติดป้ายหลุดไหม')).toBeNull();
+    expect(entryBodies()).toHaveLength(1);
+  });
+
+  it('บันทึกไม่สำเร็จ → toast ข้อความจาก API · ตัวเลือกยังเปิดพร้อมช่องทางที่เลือก · ไม่จำช่องทาง', async () => {
+    const user = userEvent.setup();
+    answerEntries(() => Promise.reject({ response: { status: 400, data: { message: 'กรุณาเลือกผลการติดต่อ' } } }));
+    renderAt('/customers/c1?tab=journey');
+    const dialog = await openChooser(user);
+
+    await user.click(within(dialog).getByRole('button', { name: 'หน้าร้าน' }));
+    await user.click(within(dialog).getByRole('button', { name: 'งบ/ดาวน์ไม่พอ' }));
+
+    const toast = await sonnerToast();
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('ผิดพลาด'));
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'บันทึกการติดต่อ' })).toBe(dialog);
+    expect(within(dialog).getByRole('button', { name: 'หน้าร้าน' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'งบ/ดาวน์ไม่พอ' })).toBeEnabled());
+    expect(within(dialog).getByRole('button', { name: 'งบ/ดาวน์ไม่พอ' })).not.toHaveAttribute('aria-busy', 'true');
+    expect(readLastChannel() ?? null).toBeNull();
+  });
+
+  it('ลิงก์ "เลิกทำ" ขึ้นเฉพาะแถวที่ canDelete (Q18) · กดแล้วส่ง DELETE ของรายการนั้น', async () => {
+    mocks.journey.mockImplementation(() =>
+      journeyPage({
+        events: [
+          journeyEvent({
+            id: 'entry-e1',
+            type: 'TOUCHPOINT',
+            origin: 'MANUAL',
+            timestamp: '2026-09-15T03:00:00.000Z',
+            title: 'ติดต่อทางโทร: นัดแล้ว',
+            actor: { type: 'STAFF', name: 'admin' },
+            entryId: 'e1',
+            canDelete: true,
+          }),
+          journeyEvent({
+            id: 'entry-e2',
+            type: 'TOUCHPOINT',
+            origin: 'MANUAL',
+            timestamp: '2026-09-14T03:00:00.000Z',
+            title: 'ติดต่อทางLINE: ขอคิดก่อน',
+            actor: { type: 'STAFF', name: 'สุดา' },
+            entryId: 'e2',
+            canDelete: false,
+          }),
+          journeyEvent({
+            id: 'chatfile-r1-2026-09-13',
+            type: 'CHAT_CUSTOMER_FILE',
+            origin: 'SOURCE',
+            stage: 'CREDIT',
+            timestamp: '2026-09-13T03:00:00.000Z',
+            title: 'ลูกค้าส่งไฟล์ในแชท',
+            href: '/inbox/r1',
+          }),
+        ],
+      }),
+    );
+    renderAt('/customers/c1?tab=journey');
+    await screen.findByText('ติดต่อทางโทร: นัดแล้ว');
+
+    expect(within(rowWithTitle('ติดต่อทางโทร: นัดแล้ว')).getByRole('button', { name: 'เลิกทำ' })).toBeInTheDocument();
+    expect(within(rowWithTitle('ติดต่อทางLINE: ขอคิดก่อน')).queryByRole('button', { name: 'เลิกทำ' })).toBeNull();
+    expect(within(rowWithTitle('ลูกค้าส่งไฟล์ในแชท')).queryByRole('button', { name: 'เลิกทำ' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'เลิกทำ' })).toHaveLength(1);
+
+    fireEvent.click(within(rowWithTitle('ติดต่อทางโทร: นัดแล้ว')).getByRole('button', { name: 'เลิกทำ' }));
+    await waitFor(() =>
+      expect(mocks.del.mock.calls.map(([url]) => url)).toEqual(['/customers/c1/journey/entries/e1']),
+    );
+    const toast = await sonnerToast();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('เลิกทำแล้ว'));
+  });
+
+  it('กด "เลิกทำ" ใน toast หลังสลับไปแท็บอื่น (แท็บการเดินทาง unmount แล้ว) ยังส่ง DELETE', async () => {
+    const user = userEvent.setup();
+    writeLastChannel('PHONE');
+    answerEntries(() => created('e-toast'));
+    renderAt('/customers/c1?tab=journey');
+    const dialog = await openChooser(user);
+
+    await user.click(within(dialog).getByRole('button', { name: 'นัดแล้ว' }));
+    const toast = await sonnerToast();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('บันทึกแล้ว', expect.anything()));
+
+    // Radix TabsTrigger สลับแท็บด้วย mouseDown — TabsContent ของแท็บการเดินทาง unmount
+    fireEvent.mouseDown(screen.getByRole('tab', { name: /สัญญา/ }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'บันทึกการติดต่อ' })).toBeNull());
+
+    const options = toast.success.mock.calls.find(([title]) => title === 'บันทึกแล้ว')?.[1] as unknown as {
+      action: { onClick: () => void };
+    };
+    options.action.onClick();
+
+    await waitFor(() =>
+      expect(mocks.del.mock.calls.map(([url]) => url)).toEqual(['/customers/c1/journey/entries/e-toast']),
+    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('เลิกทำแล้ว'));
+  });
+
+  it('มือถือ (< 1024px): ตัวเลือกเป็น bottom sheet และแตะผลบันทึกได้เหมือนเดสก์ท็อป', async () => {
+    mocks.mobile = true;
+    const user = userEvent.setup();
+    writeLastChannel('LINE_APP');
+    renderAt('/customers/c1?tab=journey');
+    const dialog = await openChooser(user);
+
+    expect(dialog).toHaveClass('rounded-t-2xl');
+    expect(dialog).not.toHaveAttribute('data-slot', 'popover-content');
+    expect(within(dialog).getByRole('button', { name: 'LINE' })).toHaveAttribute('aria-pressed', 'true');
+
+    await user.click(within(dialog).getByRole('button', { name: 'ขอคิดก่อน' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'บันทึกการติดต่อ' })).toBeNull());
+
+    expect(entryBodies()).toEqual([
+      { kind: 'TOUCHPOINT', channel: 'LINE_APP', outcome: 'THINKING', clientRequestId: expect.stringMatching(UUID) },
+    ]);
   });
 });

@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import type { JourneyEvent, JourneyListResponse } from '@installment/shared';
+import type { JourneyEvent, JourneyListResponse, JourneySummary } from '@installment/shared';
 import QueryBoundary from '@/components/QueryBoundary';
 import { EventTimeline, type EventTimelineItem } from '@/components/timeline/EventTimeline';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { useDeleteJourneyEntry } from '@/hooks/customer-journey/journeyEntries';
+import { isJourneyRedirect, useCustomerJourney } from '@/hooks/customer-journey/useCustomerJourney';
 import { cn } from '@/lib/utils';
 import TimelineFilterChips, { type TimelineChip } from '@/pages/CollectionsPage/components/TimelineFilterChips';
-import { isJourneyRedirect, useCustomerJourney } from '@/hooks/customer-journey/useCustomerJourney';
+import RecordContactChooser from '../components/RecordContactChooser';
 import { allChipNote, journeyEventSubtitle, journeyGroupLabel, journeyGroupsForRole } from '../utils/journeyGroups';
 
 const ALL_CHIP = 'ALL';
 
+/** แถวไทม์ไลน์ + ข้อมูลเลิกทำของแถวบันทึกมือ (Task 8: entryId/canDelete มาจากเซิร์ฟเวอร์ — เว็บคำนวณช่วง 24 ชม. เองไม่ได้) */
+type JourneyTimelineItem = EventTimelineItem & { entryId?: string; canDelete?: boolean };
+
 /** ส่งเข้าไทม์ไลน์กลางเฉพาะฟิลด์ที่แสดง — ตัด metadata ทิ้ง (PDPA) · ผู้ทำต่อท้าย subtitle · ป้าย "ประมาณ" มาจาก reliability */
-function toTimelineItem(event: JourneyEvent): EventTimelineItem {
+function toTimelineItem(event: JourneyEvent): JourneyTimelineItem {
   return {
     id: event.id,
     type: event.type,
@@ -23,6 +28,8 @@ function toTimelineItem(event: JourneyEvent): EventTimelineItem {
     subtitle: journeyEventSubtitle(event) || undefined,
     reliability: event.reliability,
     href: event.href,
+    entryId: event.entryId,
+    canDelete: event.canDelete,
   };
 }
 
@@ -53,7 +60,16 @@ function NotRecordedList({ items }: { items: string[] }) {
   );
 }
 
-export default function JourneyTab({ customerId, role }: { customerId: string; role: string }) {
+interface JourneyTabProps {
+  customerId: string;
+  role: string;
+  /** summary ของหน้า (key เดียวกับแถบขั้น) — null = ยังโหลด/ผิดพลาด */
+  summary: JourneySummary | null;
+  /** บทบาทที่ POST/DELETE บันทึกมือได้ (canRecordJourney) — ฝ่ายบัญชีไม่เห็นปุ่มใด ๆ */
+  canRecord: boolean;
+}
+
+export default function JourneyTab({ customerId, role, summary, canRecord }: JourneyTabProps) {
   const visibleGroups = useMemo(() => journeyGroupsForRole(role), [role]);
   const [filter, setFilter] = useState<string>(ALL_CHIP);
   const groups = useMemo(() => {
@@ -62,6 +78,7 @@ export default function JourneyTab({ customerId, role }: { customerId: string; r
   }, [filter, visibleGroups]);
   // ตัวเลขบนชิปต้องใช้ counts ของหน้าแรก — การ์ดภาพรวมไม่ขอ จึงไม่จ่ายค่าสแกน
   const query = useCustomerJourney(customerId, groups, { include: 'counts' });
+  const deleteEntry = useDeleteJourneyEntry(customerId);
 
   const chips = useMemo<TimelineChip[]>(
     () => [
@@ -87,6 +104,12 @@ export default function JourneyTab({ customerId, role }: { customerId: string; r
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
+        {/* Q16: ปุ่มอยู่แถวของตัวเองชิดขวาเหนือชิปกรอง — ชิปกรองทั้งแถวอยู่บรรทัดเดียวที่ 1440 */}
+        {canRecord && (
+          <div className="flex justify-end">
+            <RecordContactChooser customerId={customerId} summary={summary} />
+          </div>
+        )}
         <TimelineFilterChips chips={chips} value={filter} onChange={setFilter} counts={first?.counts} />
         {note && <p className="text-xs leading-snug text-muted-foreground">{note}</p>}
       </div>
@@ -101,6 +124,21 @@ export default function JourneyTab({ customerId, role }: { customerId: string; r
         <EventTimeline
           events={items}
           emptyText={filter === ALL_CHIP ? 'ยังไม่มีกิจกรรม' : 'ยังไม่มีกิจกรรมในกลุ่มนี้'}
+          renderExtra={(event) => {
+            // Q18: ลิงก์ตาม canDelete — OWNER/ผจก.สาขา ทุกเวลา · ผจก.การเงิน/พนง.ขาย ของตัวเองภายใน 24 ชม.
+            const entryId = event.entryId;
+            if (!canRecord || !event.canDelete || !entryId) return null;
+            return (
+              <button
+                type="button"
+                className="text-xs leading-snug text-primary hover:underline"
+                disabled={deleteEntry.isPending}
+                onClick={() => deleteEntry.mutate(entryId)}
+              >
+                เลิกทำ
+              </button>
+            );
+          }}
           footer={
             query.hasNextPage ? (
               <div className="flex justify-center pt-3">

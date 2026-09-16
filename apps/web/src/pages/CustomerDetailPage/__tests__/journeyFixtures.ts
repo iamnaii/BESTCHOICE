@@ -12,14 +12,16 @@ export function stageSteps(
   states: Record<JourneyStage, JourneyStep['state']>,
   at: Partial<Record<JourneyStage, string>> = {},
   manual: readonly JourneyStage[] = [],
+  chatFile: readonly JourneyStage[] = [],
 ): JourneyStep[] {
   return JOURNEY_STAGES.map(
     (stage): JourneyStep => ({
       stage,
       label: STAGE_LABELS[stage],
+      // ตรงกับ journey-summary.builder: ขั้นที่ยังไม่ถึง / ข้าม / ไม่ต้องตรวจ ไม่มีวันที่
       at: states[stage] === 'todo' || states[stage] === 'skipped' || states[stage] === 'not_needed' ? null : at[stage] ?? null,
       state: states[stage],
-      evidence: manual.includes(stage) ? 'MANUAL' : 'SYSTEM',
+      evidence: manual.includes(stage) ? 'MANUAL' : chatFile.includes(stage) ? 'CHAT_FILE' : 'SYSTEM',
     }),
   );
 }

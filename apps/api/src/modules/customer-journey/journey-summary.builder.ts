@@ -27,6 +27,14 @@ export interface JourneyStateRow {
 export interface JourneySummaryExtras {
   firstAd: { id: string; name: string } | null;
   interestedByManualEntry: boolean;
+  /** เวลาเข้าขั้นเครดิตในแคช = เวลาไฟล์เอกสารที่ลูกค้าในครอบครัวส่งพอดี (CUSTOMER_DOCUMENT_FILE_SQL) ⇒ หลักฐานแรกของขั้นนี้คือไฟล์ในแชท */
+  creditByChatFile: boolean;
+  /** มีไฟล์เอกสารของลูกค้าในห้องของครอบครัว (เงื่อนไขเดียวกัน · ซื้อแล้ว = false) */
+  hasCustomerChatFile: boolean;
+  /** customers.credit_check_status ของลูกค้าที่ขอ */
+  creditCheckStatus: string;
+  /** สัญญา + ใบขายที่นับว่าซื้อของครอบครัว — ยังไม่ซื้อ = 0 */
+  purchaseCount: number;
   creditRejected: boolean;
   postSaleBadges: string[];
 }
@@ -113,18 +121,39 @@ export function withLiveBought(state: JourneyStateRow, bought: boolean, now: Dat
   };
 }
 
+/**
+ * ขั้นตรวจเครดิต "ไม่ต้องตรวจ" (คำตัดสินเจ้าของ 2026-09-15 ข้อ 11 + 13(1)): ซื้อแล้ว · ไม่มีเวลาเข้าขั้นเครดิต · ซื้อเงินสด/ไฟแนนซ์นอก
+ * ไม่นับเป็น "ข้าม" · กันด้วย purchased เพราะ withLiveBought ถอยขั้นตอนยกเลิกใบขายแต่ไม่ล้าง path
+ */
+const CREDIT_NOT_NEEDED_PATHS: readonly string[] = ['CASH', 'EXTERNAL_FINANCE'];
+
+function stepState(index: number, current: number, at: Date | null, notNeeded: boolean): Step['state'] {
+  if (index === current) return 'current';
+  if (index > current) return 'todo';
+  if (at) return 'done';
+  return notNeeded ? 'not_needed' : 'skipped';
+}
+
+/** MANUAL = หลักฐานแรกของขั้นนัด / จอง คือบันทึกมือ · CHAT_FILE = หลักฐานแรกของขั้นตรวจเครดิตคือไฟล์เอกสารที่ลูกค้าส่งในแชท (ชนิด + เวลาเท่านั้น ทุก role — Ruling FR-CREDIT-STAGE) */
+function stepEvidence(key: JourneyStage, extras: JourneySummaryExtras): Step['evidence'] {
+  if (key === 'INTERESTED' && extras.interestedByManualEntry) return 'MANUAL';
+  if (key === 'CREDIT' && extras.creditByChatFile) return 'CHAT_FILE';
+  return 'SYSTEM';
+}
+
 export function buildJourneySummary(state: JourneyStateRow, extras: JourneySummaryExtras, now: Date): JourneySummary {
   const stage = state.stage as JourneyStage;
   const current = JOURNEY_STAGES.indexOf(stage);
   const times = stageTimes(state);
   const purchased = stage === 'PURCHASED';
+  const creditNotNeeded = purchased && times.CREDIT === null && CREDIT_NOT_NEEDED_PATHS.includes(state.path);
   // stage ตัดสินขั้นเสมอ — identified_at แช่แข็งด้วย LEAST (Task 3) ⇒ ลบเบอร์แล้ว stage ถอยได้แต่เวลายังอยู่ ขั้นที่ยังไม่ถึง (todo) จึงไม่แสดงวันที่
   const steps = JOURNEY_STAGES.map((key, index): Step => ({
     stage: key,
     label: STAGE_LABELS[key],
     at: index > current ? null : iso(times[key]),
-    state: index === current ? 'current' : index > current ? 'todo' : times[key] ? 'done' : 'skipped',
-    evidence: key === 'INTERESTED' && extras.interestedByManualEntry ? 'MANUAL' : 'SYSTEM',
+    state: stepState(index, current, times[key], key === 'CREDIT' && creditNotNeeded),
+    evidence: stepEvidence(key, extras),
   }));
   const lastSeen = [state.lastCustomerAt, state.lastTouchAt, state.contactedAt]
     .filter((value): value is Date => value !== null)
@@ -151,8 +180,9 @@ export function buildJourneySummary(state: JourneyStateRow, extras: JourneySumma
     lost: state.lostAt ? { at: state.lostAt.toISOString(), reason: state.lostReason ?? 'OTHER' } : null,
     postSaleBadges: purchased ? extras.postSaleBadges : [],
     creditRejected: !purchased && extras.creditRejected,
-    // รูปของสัญญาเฟส 3 วางไว้ก่อน — ค่าจริง (ลูกค้าหน้าร้านที่ยังไม่ตอบ · ไฟล์ในแชทรอตรวจ) คำนวณจาก extras ในงานสรุปผลเฟส 3
-    askHeardFrom: false,
-    creditFilePending: false,
+    // ถามรู้จักร้านจากไหนเฉพาะลูกค้าหน้าร้านที่ยังไม่ตอบ และซื้อไม่ถึง 2 ครั้ง (ข้อ 3, 12) — แบนเนอร์แท็บการเดินทางกับการ์ดหน้าสร้างสัญญาอ่านธงเดียวกัน
+    askHeardFrom: state.firstSource === 'WALK_IN' && state.heardFrom === null && extras.purchaseCount < 2,
+    // KPI "เครดิต" = "ส่งไฟล์แล้ว รอตรวจ" (ข้อ 13(3)) — ส่งไฟล์ในแชทแล้วแต่ลูกค้ายังไม่มีผลตรวจเครดิต
+    creditFilePending: !purchased && extras.hasCustomerChatFile && extras.creditCheckStatus === 'NONE',
   };
 }

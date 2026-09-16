@@ -24,7 +24,16 @@ function row(over: Partial<JourneyStateRow> = {}): JourneyStateRow {
     computedAt: d('2026-09-15T04:59:00.000Z'), ...over,
   };
 }
-const extras: JourneySummaryExtras = { firstAd: null, interestedByManualEntry: false, creditRejected: false, postSaleBadges: [] };
+const extras: JourneySummaryExtras = {
+  firstAd: null,
+  interestedByManualEntry: false,
+  creditByChatFile: false,
+  hasCustomerChatFile: false,
+  creditCheckStatus: 'NONE',
+  purchaseCount: 0,
+  creditRejected: false,
+  postSaleBadges: [],
+};
 
 describe('buildJourneySummary', () => {
   it('ขั้น CREDIT (③): ก่อนหน้ามีเวลา=done · ถัดไป (④ นัด / จอง, ⑤) = todo ไม่มีวันที่ · ค้างขั้น/เงียบเป็นวันเต็ม', () => {
@@ -42,13 +51,13 @@ describe('buildJourneySummary', () => {
     });
   });
 
-  it('ซื้อเงินสดโดยไม่ตรวจเครดิต → CREDIT=skipped · silentDays=null · ป้ายหลังการขายแสดง · creditRejected ถูกปิด', () => {
+  it('ซื้อเงินสดโดยไม่ตรวจเครดิต → CREDIT=not_needed ไม่มีวันที่ · silentDays=null · ป้ายหลังการขายแสดง · creditRejected ถูกปิด', () => {
     const s = buildJourneySummary(
       row({ stage: 'PURCHASED', path: 'CASH', creditAt: null, firstPurchaseAt: d('2026-09-14T05:00:00.000Z'), stageEnteredAt: d('2026-09-14T05:00:00.000Z') }),
-      { ...extras, creditRejected: true, postSaleBadges: ['ซื้อซ้ำ'] },
+      { ...extras, creditRejected: true, postSaleBadges: ['ซื้อซ้ำ'], purchaseCount: 2 },
       NOW,
     );
-    expect(s.steps.find((x) => x.stage === 'CREDIT')?.state).toBe('skipped');
+    expect(s.steps.find((x) => x.stage === 'CREDIT')).toMatchObject({ state: 'not_needed', at: null });
     expect(s.steps.find((x) => x.stage === 'PURCHASED')).toMatchObject({ state: 'current', at: '2026-09-14T05:00:00.000Z' });
     expect(s).toMatchObject({ silentDays: null, postSaleBadges: ['ซื้อซ้ำ'], creditRejected: false, daysInStage: 1 });
   });
@@ -134,6 +143,89 @@ describe('ลำดับขั้น ③ ตรวจเครดิต → ④
     const ranked = [...(stageCase?.[1] ?? '').matchAll(/THEN '([A-Z]+)'/g)].map((match) => match[1]);
     expect(ranked).toEqual([...UNBUY_FALLBACK_STAGES]);
     expect(['PURCHASED', ...ranked, 'CONTACTED']).toEqual([...JOURNEY_STAGES].reverse());
+  });
+});
+
+describe('buildJourneySummary — เฟส 3: not_needed · CHAT_FILE · askHeardFrom · creditFilePending', () => {
+  type Summary = ReturnType<typeof buildJourneySummary>;
+  const PURCHASED_AT = d('2026-09-14T05:00:00.000Z');
+  const purchasedRow = (path: string, over: Partial<JourneyStateRow> = {}) =>
+    row({ stage: 'PURCHASED', path, interestedAt: null, creditAt: null, firstPurchaseAt: PURCHASED_AT, stageEnteredAt: PURCHASED_AT, ...over });
+  const statesOf = (s: Summary) => Object.fromEntries(s.steps.map((x) => [x.stage, x.state]));
+  const evidenceOf = (s: Summary) => Object.fromEntries(s.steps.map((x) => [x.stage, x.evidence]));
+  const creditOf = (s: Summary) => s.steps.find((x) => x.stage === 'CREDIT');
+
+  it.each(['CASH', 'EXTERNAL_FINANCE'])(
+    'ซื้อแล้ว path %s ไม่มีเวลาเข้าขั้นเครดิต → CREDIT not_needed ไม่มีวันที่ · ขั้นอื่นที่ไม่มีเวลายังเป็น skipped',
+    (path) => {
+      const s = buildJourneySummary(purchasedRow(path), { ...extras, purchaseCount: 1 }, NOW);
+      expect(creditOf(s)).toMatchObject({ state: 'not_needed', at: null, evidence: 'SYSTEM' });
+      expect(statesOf(s)).toEqual({ CONTACTED: 'done', IDENTIFIED: 'done', CREDIT: 'not_needed', INTERESTED: 'skipped', PURCHASED: 'current' });
+    },
+  );
+
+  it.each(['CASH', 'EXTERNAL_FINANCE'])('ซื้อแล้ว path %s แต่มีเวลาเข้าขั้นเครดิต (ส่งไฟล์ในแชทก่อนซื้อ) → CREDIT done พร้อมวันที่ หลักฐาน CHAT_FILE', (path) => {
+    const s = buildJourneySummary(
+      purchasedRow(path, { creditAt: d('2026-09-12T05:00:00.000Z') }),
+      { ...extras, creditByChatFile: true, purchaseCount: 1 },
+      NOW,
+    );
+    expect(creditOf(s)).toMatchObject({ state: 'done', at: '2026-09-12T05:00:00.000Z', evidence: 'CHAT_FILE' });
+  });
+
+  it.each(['INSTALLMENT', 'UNKNOWN'])('ซื้อแล้ว path %s ไม่มีเวลาเข้าขั้นเครดิต → skipped ไม่ใช่ not_needed', (path) => {
+    const s = buildJourneySummary(purchasedRow(path), { ...extras, purchaseCount: 1 }, NOW);
+    expect(creditOf(s)?.state).toBe('skipped');
+    expect(s.steps.some((x) => x.state === 'not_needed')).toBe(false);
+  });
+
+  it('ยกเลิกใบขายเงินสดจนไม่ซื้อแล้ว (withLiveBought) แต่แคชยังค้าง path CASH → CREDIT เป็น skipped ไม่ใช่ not_needed', () => {
+    const live = withLiveBought(purchasedRow('CASH', { interestedAt: d('2026-09-08T05:00:00.000Z') }), false, NOW);
+    expect(live).toMatchObject({ stage: 'INTERESTED', path: 'CASH' });
+    const s = buildJourneySummary(live, extras, NOW);
+    expect(statesOf(s)).toMatchObject({ CREDIT: 'skipped', INTERESTED: 'current', PURCHASED: 'todo' });
+    expect(s.steps.some((x) => x.state === 'not_needed')).toBe(false);
+  });
+
+  it('หลักฐาน CHAT_FILE ติดเฉพาะขั้นตรวจเครดิต · MANUAL เฉพาะขั้นนัด / จอง · ธงปิด = SYSTEM ทุกขั้น', () => {
+    const r = row({ stage: 'INTERESTED', interestedAt: d('2026-09-11T05:00:00.000Z'), creditAt: d('2026-09-10T05:00:00.000Z'), stageEnteredAt: d('2026-09-11T05:00:00.000Z') });
+    expect(evidenceOf(buildJourneySummary(r, { ...extras, creditByChatFile: true, interestedByManualEntry: true }, NOW))).toEqual({
+      CONTACTED: 'SYSTEM', IDENTIFIED: 'SYSTEM', CREDIT: 'CHAT_FILE', INTERESTED: 'MANUAL', PURCHASED: 'SYSTEM',
+    });
+    expect(evidenceOf(buildJourneySummary(r, extras, NOW))).toEqual({
+      CONTACTED: 'SYSTEM', IDENTIFIED: 'SYSTEM', CREDIT: 'SYSTEM', INTERESTED: 'SYSTEM', PURCHASED: 'SYSTEM',
+    });
+  });
+
+  it.each([
+    ['WALK_IN', null, 0, true],
+    ['WALK_IN', null, 1, true],
+    ['WALK_IN', null, 2, false],
+    ['WALK_IN', 'FRIEND', 0, false],
+    ['HEARD:FRIEND', 'FRIEND', 0, false],
+    ['CHAT_FACEBOOK', null, 0, false],
+    ['CHAT_LINE_SHOP', null, 1, false],
+    ['REFERRAL', null, 0, false],
+    ['AD:1203', null, 0, false],
+  ] as const)('askHeardFrom: firstSource %s · heardFrom %s · ซื้อ %i ครั้ง → %s', (firstSource, heardFrom, purchaseCount, expected) => {
+    const r =
+      purchaseCount > 0
+        ? purchasedRow('CASH', { firstSource, heardFrom })
+        : row({ stage: 'IDENTIFIED', path: 'UNKNOWN', creditAt: null, firstSource, heardFrom });
+    expect(buildJourneySummary(r, { ...extras, purchaseCount }, NOW).askHeardFrom).toBe(expected);
+  });
+
+  it.each([
+    [false, true, 'NONE', true],
+    [false, false, 'NONE', false],
+    [false, true, 'UNDER_REVIEW', false],
+    [false, true, 'PRE_CHECK_PASSED', false],
+    [false, true, 'FULL_CHECK_PASSED', false],
+    [false, true, 'REJECTED', false],
+    [true, true, 'NONE', false],
+  ] as const)('creditFilePending: ซื้อแล้ว %s · มีไฟล์ในแชท %s · สถานะเครดิตลูกค้า %s → %s', (purchased, hasCustomerChatFile, creditCheckStatus, expected) => {
+    const r = purchased ? purchasedRow('CASH') : row({ stage: 'CREDIT', path: 'UNKNOWN' });
+    expect(buildJourneySummary(r, { ...extras, hasCustomerChatFile, creditCheckStatus }, NOW).creditFilePending).toBe(expected);
   });
 });
 

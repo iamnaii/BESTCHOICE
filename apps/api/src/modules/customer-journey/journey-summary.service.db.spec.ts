@@ -76,7 +76,7 @@ describe('JourneySummaryService.summary (real DB)', () => {
     const res = await service.summary(c.id, actor);
     expect(res).toMatchObject({ stage: 'PURCHASED', path: 'CASH', silentDays: null });
     if (!('steps' in res)) throw new Error('คาดว่าเป็น JourneySummary');
-    expect(res.steps.find((s) => s.stage === 'CREDIT')?.state).toBe('skipped');
+    expect(res.steps.find((s) => s.stage === 'CREDIT')).toMatchObject({ state: 'not_needed', at: null });
   });
 
   it('แคชเก่ากว่า 15 นาที: มีความเคลื่อนไหวใหม่ → คำนวณใหม่ · ไม่มีอะไรขยับ → ใช้แคชเดิม', async () => {

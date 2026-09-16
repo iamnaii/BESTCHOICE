@@ -197,7 +197,7 @@ firstChannel = acquisitionSource ของห้อง/แถวที่เก�
 
 ถ้าผู้จัดการตัดสินล่าสุด (audit CREDIT_CHECK_OVERRIDE) เป็น REJECTED และยังไม่ซื้อ ⇒ ธง 'เครดิตไม่ผ่าน' ขั้นเป็นสีแดง (ยังแดงแม้ขั้นปัจจุบันเลยไปขั้น 4 นัด / จอง แล้ว)
 
-คนที่ซื้อเงินสดหรือไฟแนนซ์นอกโดยไม่มีใบตรวจ ⇒ แถบแสดง 'ข้าม (เงินสด/ไฟแนนซ์นอก)' ไม่นับว่าค้าง
+คนที่ซื้อแล้วโดยไม่มีหลักฐานขั้นนี้ และซื้อเงินสดหรือไฟแนนซ์นอก ⇒ summary ตั้งขั้นนี้เป็น state 'not_needed' (ไม่นับเป็นข้าม · ไม่มีวันที่) · แถบแสดงสีเทาชุดเดียวกับขั้นที่ข้าม คำบรรยาย 'ไม่ต้องตรวจ (ซื้อสด)' / 'ไฟแนนซ์นอกตรวจ' · ยกเลิกใบขายจนถอยขั้น = กลับเป็นกติกาปกติ (path ในแคชยังค้างได้ จึงดูจาก stage ซื้อแล้วก่อนเสมอ) · ยังไม่ซื้อแต่เลยขั้นนี้ไปโดยไม่มีหลักฐาน = 'ข้าม' ธรรมดา ไม่มีวงเล็บต่อท้าย · ซื้อสดแต่ส่งไฟล์ในแชท/ตรวจเครดิตมาก่อน = ขั้นนี้มีวันที่ตามปกติ
 
 ตั้งด้วยมือไม่ได้
 
@@ -331,9 +331,13 @@ firstPurchaseAt = LEAST ของ:
 - ภาพรวม: ?limit=6&include=summary&groups=chat,credit,sale
 
 2) GET /customers/:id/journey/summary (roles เดียวกัน)
-- 200 JourneySummary = { stage, stageLabel, stageEnteredAt, daysInStage, path, steps: [{ stage, label, at|null, state: 'done'|'current'|'skipped'|'todo', evidence: 'SYSTEM'|'MANUAL' }], firstChannel, firstSource, firstSourceLabel, firstAd: {id, name}|null, heardFrom, contactedAt, firstStaffReplyAt, firstPurchaseAt, lastCustomerAt, lastTouchAt, silentDays|null, lost: {at, reason}|null, postSaleBadges: string[], creditRejected: boolean }
+- 200 JourneySummary = { stage, stageLabel, stageEnteredAt, daysInStage, path, steps: [{ stage, label, at|null, state: 'done'|'current'|'skipped'|'todo'|'not_needed', evidence: 'SYSTEM'|'MANUAL'|'CHAT_FILE' }], firstChannel, firstSource, firstSourceLabel, firstAd: {id, name}|null, heardFrom, contactedAt, firstStaffReplyAt, firstPurchaseAt, lastCustomerAt, lastTouchAt, silentDays|null, lost: {at, reason}|null, postSaleBadges: string[], creditRejected: boolean, askHeardFrom: boolean, creditFilePending: boolean }
 - ลำดับการทำงาน: อ่านแคช → ตรวจสด BOUGHT exists → ถ้าไม่ตรง หรือ computedAt เก่ากว่า 15 นาทีและมี activity ใหม่กว่า computedAt → recompute([id]) ในคำขอนั้น
 - ใช้กับแถบขั้นใน header และ KPI tiles
+- steps[].state 'not_needed' มีเฉพาะขั้นตรวจเครดิต: stage ซื้อแล้ว · ไม่มีเวลาเข้าขั้นเครดิต · path CASH หรือ EXTERNAL_FINANCE — ขั้นอื่นที่เลยมาโดยไม่มีเวลา = 'skipped' เหมือนเดิม
+- evidence 'CHAT_FILE' มีเฉพาะขั้นตรวจเครดิต: เวลาเข้าขั้นเครดิตในแคช = เวลาไฟล์เอกสารที่ลูกค้าในครอบครัวส่งพอดี (เงื่อนไข CUSTOMER_DOCUMENT_FILE_SQL — .pdf / .doc(x) / .xls(x) · media_url ว่างและลิงก์แชร์ไม่นับ · คำตัดสินผู้ควบคุม R-P1 · เทียบเท่ากันพอดีแบบเดียวกับ 'MANUAL' ของขั้นนัด / จอง) · ใบตรวจเครดิตมาก่อนไฟล์ = 'SYSTEM' · ส่งให้ทุก role ที่อ่าน summary ได้ (ชนิด + เวลาเท่านั้น ตาม Ruling FR-CREDIT-STAGE)
+- askHeardFrom = firstSource 'WALK_IN' · heardFrom ว่าง · ซื้อ (สัญญา + ใบขายที่นับว่าซื้อ) ไม่ถึง 2 ครั้ง — แบนเนอร์แท็บการเดินทางกับการ์ดหน้าสร้างสัญญาอ่านธงนี้ เว็บไม่คิดเงื่อนไขซ้ำ · ระบบไม่เขียน heardFrom ให้เอง
+- creditFilePending = ยังไม่ซื้อ · มีไฟล์เอกสารของลูกค้า (เงื่อนไขเดียวกัน) ในห้องของครอบครัว · customers.credit_check_status = NONE — ช่อง KPI "เครดิต" แสดง 'ส่งไฟล์แล้ว รอตรวจ' (คำตัดสินเจ้าของข้อ 13(3) · บอร์ด Main (a) ในแคนวาสที่เคาะยังวาดช่องนี้เป็น 'ยังไม่เคยตรวจ' หลังส่งไฟล์ — คำตัดสินข้อ 13(3) มาทีหลังจึงชนะ ห้ามแก้กลับตามบอร์ด)
 
 3) POST /customers/:id/journey/entries
 - roles: OWNER, BRANCH_MANAGER, FINANCE_MANAGER, SALES

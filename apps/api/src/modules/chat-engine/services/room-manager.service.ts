@@ -65,6 +65,15 @@ export interface RoomFilterParams {
 /** แท็บของกล่องข้อความ — ป้ายแต่ละใบต้องนับ "จำนวนแถวที่แท็บนั้นแสดง" เป๊ะ ๆ */
 export type InboxTabKey = 'waiting' | 'mine' | 'all';
 
+/**
+ * M-A4 — ผลการรวมผู้สนใจที่ linkCustomer ทำให้ระหว่างผูกห้อง (null = ไม่ได้รวม)
+ * ส่งต่อให้ PATCH /staff-chat/rooms/:id/customer — เว็บใช้บอกว่าผลตรวจเครดิตย้ายมากี่รายการ
+ */
+export interface LinkedRoomAbsorb {
+  targetId: string;
+  movedCreditChecks: number;
+}
+
 /** หน้าต่างตอบของ Facebook Messenger นับจากข้อความล่าสุดของลูกค้า (สเปก §8) */
 export const FB_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** "ใกล้หมดเวลา" = เหลือไม่เกิน 3 ชม. — ชั้นแรกของการเรียงคิว */
@@ -722,8 +731,10 @@ export class RoomManagerService {
    * already linked to a different customer — relinking requires explicit
    * unlink-then-link, not silent overwrite.
    * ยกเว้นห้องที่ผูก "ผู้สนใจอัตโนมัติ" (placeholder) อยู่ — ดูดเข้าคนที่เลือกแทน (สเปค 3.3 ก)
+   * M-A4: คืนห้องที่ผูกแล้ว + `absorbed` (ผลการดูดข้างบน หรือ null เมื่อไม่ได้รวม) — เพิ่มคีย์อย่างเดียว
    */
   async linkCustomer(roomId: string, customerId: string, actor: { id: string; role: string }) {
+    let absorbed: LinkedRoomAbsorb | null = null;
     // ทำนอกทรานแซกชันด้านล่าง เพราะ absorbPlaceholder เปิดทรานแซกชันของตัวเอง
     // (ลูกค้าจริง ↔ ลูกค้าจริง ยังโยน "ผูกกับลูกค้ารายอื่น" ในทรานแซกชันเหมือนเดิม)
     if (this.merge) {
@@ -742,12 +753,13 @@ export class RoomManagerService {
         if (actor.role === 'SALES' && current.assignedToId && current.assignedToId !== actor.id) {
           throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
         }
-        await this.merge.absorbPlaceholder(current.customerId, customerId, actor);
+        const result = await this.merge.absorbPlaceholder(current.customerId, customerId, actor);
+        absorbed = { targetId: result.targetId, movedCreditChecks: result.movedCreditChecks };
         // แล้วไหลต่อทางผูกเดิม: ห้องอยู่กับคนที่เลือกแล้วจึงไม่ชน 409 และยังนำเข้าผลสเตทเม้นของห้อง
         // ที่ค้างอยู่ (creditCheckId ว่าง) — absorb ย้ายเฉพาะผลที่นำเข้าแล้ว
       }
     }
-    return this.prisma.$transaction(async tx => {
+    const linkedRoom = await this.prisma.$transaction(async tx => {
     await lockCreditRoom(tx, roomId);
     const room = await tx.chatRoom.findUnique({
       where: { id: roomId },
@@ -781,6 +793,7 @@ export class RoomManagerService {
     await linkRoomCreditHistory(tx, roomId, customerId);
     return linked;
     });
+    return { ...linkedRoom, absorbed };
   }
 
   /** ประกอบ where ของห้องแชทจากตัวกรองชุดเดียว — แหล่งเดียวของทั้งรายการและตัวนับ

@@ -288,9 +288,12 @@ describe('RoomManagerService', () => {
 
     it('ห้องผูก placeholder อยู่ → absorb เข้าลูกค้าที่เลือก แล้วคืนห้อง (ไม่โยน 409)', async () => {
       prisma.chatRoom.findUnique.mockResolvedValueOnce(placeholderRoom).mockResolvedValueOnce(roomAfterAbsorb);
+      merge.absorbPlaceholder.mockResolvedValueOnce({ placeholderId: 'p1', targetId: 'cust-real', movedRooms: 1, movedCreditChecks: 2 });
       const room = await service.linkCustomer('room-1', 'cust-real', actor);
       expect(merge.absorbPlaceholder).toHaveBeenCalledWith('p1', 'cust-real', actor);
       expect(room.customerId).toBe('cust-real');
+      // M-A4: ผลการรวมที่ PATCH ผูกห้องส่งต่อให้เว็บ (เฉพาะสองคีย์ที่เว็บใช้)
+      expect(room.absorbed).toEqual({ targetId: 'cust-real', movedCreditChecks: 2 });
       // absorbPlaceholder เปิดทรานแซกชันของตัวเอง — ต้องจบก่อนทรานแซกชันผูกห้อง (ไม่ซ้อนกัน)
       expect(merge.absorbPlaceholder.mock.invocationCallOrder[0]).toBeLessThan(
         prisma.$transaction.mock.invocationCallOrder[0],
@@ -331,6 +334,16 @@ describe('RoomManagerService', () => {
       expect(merge.absorbPlaceholder).not.toHaveBeenCalled();
       expect(prisma.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { customerId: 'cust-real' } });
       expect(room.customerId).toBe('cust-real');
+      expect(room.absorbed).toBeNull(); // M-A4: ไม่ได้รวม → null
+    });
+
+    it('ห้องยังไม่มีเจ้าของ → ผูกตรง ไม่รวม · absorbed: null (M-A4)', async () => {
+      prisma.chatRoom.findUnique.mockResolvedValue({
+        id: 'room-1', customerId: null, deletedAt: null, assignedToId: null, customer: null,
+      });
+      const room = await service.linkCustomer('room-1', 'cust-real', actor);
+      expect(merge.absorbPlaceholder).not.toHaveBeenCalled();
+      expect(room).toEqual({ id: 'room-1', customerId: 'cust-real', absorbed: null });
     });
 
     it('SALES ที่ไม่ได้ดูแลห้อง → 403 ก่อนรวม (ไม่แตะ placeholder)', async () => {

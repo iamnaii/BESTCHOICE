@@ -83,4 +83,39 @@ describe('entriesSource', () => {
     expect(system.customerJourneyEntry.findMany).not.toHaveBeenCalled();
     expect(systemEvents.map((e) => e.id)).toEqual(['tag-removed-new', 'tag-new', 'tag-vip-target']);
   });
+
+  it('ถ้อยคำบันทึกมือเท่าเดิมทุกไบต์: ช่องทาง 5 × ผล 7 · รหัสไม่รู้จัก · รู้จักร้านจาก 9 · เหตุผลหลุด 5 · เปิดใหม่', async () => {
+    // ค่าคาดหวังคัดลอกจากแผนที่เดิมใน entries.source.ts (ก่อนย้ายไป shared) — ห้ามอ่านจาก shared ไม่งั้นเทสนี้ไม่ตรึงอะไร
+    const CHANNEL_TEXT: Record<string, string> = { PHONE: 'โทร', FB_APP: 'แชทในแอป FB', LINE_APP: 'LINE', WALK_IN: 'หน้าร้าน', OTHER: 'อื่น ๆ' };
+    const OUTCOME_TEXT: Record<string, string> = { APPOINTED: 'นัดแล้ว', VISITED: 'มาร้านแล้ว', THINKING: 'ขอคิดก่อน', BUDGET: 'งบ/ดาวน์ไม่พอ', NO_ANSWER: 'ไม่รับสาย', BOUGHT_ELSEWHERE: 'ซื้อที่อื่น', NOT_INTERESTED: 'ไม่สนใจ' };
+    const HEARD_TEXT: Record<string, string> = { FB_AD: 'โฆษณา FB', FB_PAGE: 'เพจ/โพสต์', TIKTOK: 'TikTok', LINE: 'LINE', GOOGLE: 'Google', FRIEND: 'เพื่อนแนะนำ', WALK_BY: 'ผ่านหน้าร้าน', OLD_CUSTOMER: 'ลูกค้าเก่า', OTHER: 'อื่น ๆ' };
+    const LOST_TEXT: Record<string, string> = { NOT_INTERESTED: 'ไม่สนใจ', BOUGHT_ELSEWHERE: 'ซื้อที่อื่น', CREDIT_FAILED: 'เครดิตไม่ผ่าน', UNREACHABLE: 'ติดต่อไม่ได้', OTHER: 'อื่น ๆ' };
+    const rows: Record<string, unknown>[] = [];
+    const expected: Record<string, [string, string | null]> = {};
+    let minute = 0;
+    const push = (id: string, fields: Record<string, unknown>, title: string, stage: string | null) => {
+      rows.push(entry({ id, origin: 'MANUAL', occurredAt: new Date(Date.UTC(2026, 8, 1, 3, minute++)), ...fields }));
+      expected[`entry-${id}`] = [title, stage];
+    };
+    for (const channel of Object.keys(CHANNEL_TEXT)) {
+      for (const outcome of Object.keys(OUTCOME_TEXT)) {
+        const stage = outcome === 'APPOINTED' || outcome === 'VISITED' ? 'INTERESTED' : null;
+        push(`touch-${channel}-${outcome}`, { kind: 'TOUCHPOINT', channel, outcome }, `ติดต่อทาง${CHANNEL_TEXT[channel]}: ${OUTCOME_TEXT[outcome]}`, stage);
+      }
+    }
+    push('touch-unknown', { kind: 'TOUCHPOINT', channel: 'SMS', outcome: null }, 'ติดต่อทางอื่น ๆ: บันทึกแล้ว', null);
+    for (const code of Object.keys(HEARD_TEXT)) push(`heard-${code}`, { kind: 'HEARD_FROM', heardFrom: code }, `ลูกค้าบอกว่ารู้จักร้านจาก${HEARD_TEXT[code]}`, null);
+    push('heard-unknown', { kind: 'HEARD_FROM', heardFrom: 'RADIO' }, 'ลูกค้าบอกว่ารู้จักร้านจากอื่น ๆ', null);
+    for (const code of Object.keys(LOST_TEXT)) push(`lost-${code}`, { kind: 'MARKED_LOST', lostReason: code }, `ติดป้ายหลุด: ${LOST_TEXT[code]}`, null);
+    push('lost-unknown', { kind: 'MARKED_LOST', lostReason: null }, 'ติดป้ายหลุด: อื่น ๆ', null);
+    push('reopen', { kind: 'REOPENED' }, 'เปิดใหม่', null);
+
+    const prisma = db();
+    prisma.customerJourneyEntry.findMany.mockResolvedValue(rows);
+    const events = await entriesSourceFor(new Set<JourneyEventGroup>(['chat']))(prisma as unknown as PrismaService, ['c1'], { limit: 100 }, { id: 'o1', role: 'OWNER' });
+
+    expect(events).toHaveLength(53); // 35 + 1 + 9 + 1 + 5 + 1 + 1
+    expect(Object.fromEntries(events.map((e) => [e.id, [e.title, e.stage]]))).toEqual(expected);
+    expect(events.every((e) => e.group === 'chat' && e.origin === 'MANUAL')).toBe(true);
+  });
 });

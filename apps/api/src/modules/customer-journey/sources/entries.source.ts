@@ -2,6 +2,8 @@ import {
   JOURNEY_EVENT_GROUPS,
   JOURNEY_HEARD_FROM_LABELS,
   JOURNEY_LOST_REASON_LABELS,
+  JOURNEY_TOUCH_CHANNEL_LABELS,
+  JOURNEY_TOUCH_OUTCOME_LABELS,
   type JourneyEntryKind,
   type JourneyEvent,
   type JourneyEventGroup,
@@ -26,9 +28,9 @@ const VIEWS: Record<ShownKind, { group: JourneyEventGroup; stage: JourneyStage |
   MARKED_LOST: { group: 'chat', stage: null, title: 'ติดป้ายหลุด' },
   REOPENED: { group: 'chat', stage: null, title: 'เปิดใหม่' },
 };
-const TOUCH_CHANNELS: Record<string, string> = { PHONE: 'โทร', FB_APP: 'แชทในแอป FB', LINE_APP: 'LINE', WALK_IN: 'หน้าร้าน', OTHER: 'อื่น ๆ' };
-const OUTCOMES: Record<string, string> = { APPOINTED: 'นัดแล้ว', VISITED: 'มาร้านแล้ว', THINKING: 'ขอคิดก่อน', BUDGET: 'งบ/ดาวน์ไม่พอ', NO_ANSWER: 'ไม่รับสาย', BOUGHT_ELSEWHERE: 'ซื้อที่อื่น', NOT_INTERESTED: 'ไม่สนใจ' };
-// ป้ายรู้จักร้านจาก / เหตุผลหลุด = JOURNEY_HEARD_FROM_LABELS / JOURNEY_LOST_REASON_LABELS ของ shared (ชุดเดียวกับ summary และเว็บ)
+// ป้ายช่องทาง / ผล / รู้จักร้านจาก / เหตุผลหลุด = label map ของ shared ชุดเดียวกับ summary และเว็บ (ห้ามประกาศซ้ำในไฟล์นี้)
+/** อ่านป้ายด้วยรหัสจากคอลัมน์ VARCHAR — ไม่มีในชุด = undefined ให้ผู้เรียกใช้คำกลางเอง (ไม่แสดงรหัสดิบ) */
+const labelOf = (labels: Readonly<Record<string, string>>, code: string | null): string | undefined => labels[code ?? ''];
 /** ชุดเดียวกับ apps/web/src/pages/CustomersPage/components/ProspectFilterBar.tsx:30-36 */
 const TAG_LABELS: Record<string, string> = { VIP: 'VIP', HIGH_RISK: 'เสี่ยงสูง', NEW: 'ลูกค้าใหม่', LOYAL: 'ลูกค้าประจำ', BLACKLIST: 'BLACKLIST' };
 
@@ -86,7 +88,7 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
       // DB กรอง kind แล้ว — ตรวจกลุ่มซ้ำฝั่งโค้ด · kind ที่ยังไม่มีใน VIEWS ถูกทิ้ง
       if (!isShownKind(kind) || !groups.has(VIEWS[kind].group) || (row.roomId && visibleRooms && !visibleRooms.has(row.roomId))) continue;
       const data = whitelisted(kind, row.data);
-      const title = kind === 'TOUCHPOINT' ? `ติดต่อทาง${TOUCH_CHANNELS[row.channel ?? ''] ?? 'อื่น ๆ'}: ${OUTCOMES[row.outcome ?? ''] ?? 'บันทึกแล้ว'}`
+      const title = kind === 'TOUCHPOINT' ? `ติดต่อทาง${labelOf(JOURNEY_TOUCH_CHANNEL_LABELS, row.channel) ?? 'อื่น ๆ'}: ${labelOf(JOURNEY_TOUCH_OUTCOME_LABELS, row.outcome) ?? 'บันทึกแล้ว'}`
         : kind === 'HEARD_FROM' ? `ลูกค้าบอกว่ารู้จักร้านจาก${JOURNEY_HEARD_FROM_LABELS[row.heardFrom ?? ''] ?? 'อื่น ๆ'}`
         : kind === 'MARKED_LOST' ? `ติดป้ายหลุด: ${JOURNEY_LOST_REASON_LABELS[row.lostReason ?? ''] ?? 'อื่น ๆ'}`
         : kind === 'PLACEHOLDER_MERGED' && typeof data?.roomCount === 'number' ? `รวมประวัติแชท ${data.roomCount} ห้องเข้ากับลูกค้าคนนี้`

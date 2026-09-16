@@ -2,18 +2,33 @@ import { describe, it, expect } from 'vitest';
 import * as shared from './index';
 import {
   JOURNEY_ACTOR_TYPES,
+  JOURNEY_CHAT_CHANNEL_LABELS,
   JOURNEY_DEFAULT_GROUPS,
   JOURNEY_ENTRY_KINDS,
   JOURNEY_EVENT_GROUPS,
+  JOURNEY_HEARD_FROM_CODES,
   JOURNEY_HEARD_FROM_LABELS,
   JOURNEY_HIDDEN_GROUPS,
+  JOURNEY_LOST_PROMPT_OUTCOMES,
+  JOURNEY_LOST_REASONS,
   JOURNEY_LOST_REASON_LABELS,
+  JOURNEY_RECORDABLE_TOUCH_CHANNELS,
   JOURNEY_STAGES,
+  JOURNEY_TOUCH_CHANNELS,
+  JOURNEY_TOUCH_CHANNEL_LABELS,
+  JOURNEY_TOUCH_OUTCOMES,
+  JOURNEY_TOUCH_OUTCOME_LABELS,
   STAGE_LABELS,
+  firstChatContactTitle,
   journeyEntryOriginOf,
+  type JourneyEntryCreatedResponse,
   type JourneyEntryKind,
   type JourneyListResponse,
+  type JourneyManualEntryInput,
   type JourneyRedirect,
+  type JourneyStepEvidence,
+  type JourneyStepState,
+  type JourneySummary,
 } from './customer-journey';
 
 describe('customer-journey — สัญญาร่วม API/เว็บ', () => {
@@ -81,6 +96,61 @@ describe('customer-journey — สัญญาร่วม API/เว็บ', ()
     expect(JOURNEY_HEARD_FROM_LABELS.FRIEND).toBe('เพื่อนแนะนำ');
   });
 
+  it('ช่องทาง/ผลของบันทึกการติดต่อ: ลำดับชิป · ป้ายครบทุกรหัส · ช่องทางที่บันทึกได้ไม่มี อื่น ๆ · รหัสยาวไม่เกินคอลัมน์', () => {
+    expect(JOURNEY_TOUCH_CHANNELS).toEqual(['PHONE', 'FB_APP', 'LINE_APP', 'WALK_IN', 'OTHER']);
+    expect(Object.keys(JOURNEY_TOUCH_CHANNEL_LABELS)).toEqual([...JOURNEY_TOUCH_CHANNELS]);
+    expect(JOURNEY_TOUCH_CHANNEL_LABELS).toEqual({ PHONE: 'โทร', FB_APP: 'แชทในแอป FB', LINE_APP: 'LINE', WALK_IN: 'หน้าร้าน', OTHER: 'อื่น ๆ' });
+    expect(JOURNEY_RECORDABLE_TOUCH_CHANNELS).toEqual(['PHONE', 'FB_APP', 'LINE_APP', 'WALK_IN']);
+    expect(JOURNEY_TOUCH_OUTCOMES).toEqual(['APPOINTED', 'VISITED', 'THINKING', 'BUDGET', 'NO_ANSWER', 'BOUGHT_ELSEWHERE', 'NOT_INTERESTED']);
+    expect(Object.keys(JOURNEY_TOUCH_OUTCOME_LABELS)).toEqual([...JOURNEY_TOUCH_OUTCOMES]);
+    expect(JOURNEY_TOUCH_OUTCOME_LABELS).toEqual({
+      APPOINTED: 'นัดแล้ว',
+      VISITED: 'มาร้านแล้ว',
+      THINKING: 'ขอคิดก่อน',
+      BUDGET: 'งบ/ดาวน์ไม่พอ',
+      NO_ANSWER: 'ไม่รับสาย',
+      BOUGHT_ELSEWHERE: 'ซื้อที่อื่น',
+      NOT_INTERESTED: 'ไม่สนใจ',
+    });
+    for (const code of JOURNEY_TOUCH_CHANNELS) expect(code.length).toBeLessThanOrEqual(16); // channel VARCHAR(16)
+    for (const code of JOURNEY_TOUCH_OUTCOMES) expect(code.length).toBeLessThanOrEqual(20); // outcome VARCHAR(20)
+  });
+
+  it('รหัสเหตุผลหลุด/รู้จักร้านจาก เรียงเท่าคีย์ของป้ายเดิม · ผลที่ถาม "ติดป้ายหลุดไหม" จับคู่เหตุผล 1:1', () => {
+    expect(JOURNEY_LOST_REASONS).toEqual(['NOT_INTERESTED', 'BOUGHT_ELSEWHERE', 'CREDIT_FAILED', 'UNREACHABLE', 'OTHER']);
+    expect([...JOURNEY_LOST_REASONS]).toEqual(Object.keys(JOURNEY_LOST_REASON_LABELS));
+    expect(JOURNEY_HEARD_FROM_CODES).toEqual(['FB_AD', 'FB_PAGE', 'TIKTOK', 'LINE', 'GOOGLE', 'FRIEND', 'WALK_BY', 'OLD_CUSTOMER', 'OTHER']);
+    expect([...JOURNEY_HEARD_FROM_CODES]).toEqual(Object.keys(JOURNEY_HEARD_FROM_LABELS));
+    expect(JOURNEY_LOST_PROMPT_OUTCOMES).toEqual({ BOUGHT_ELSEWHERE: 'BOUGHT_ELSEWHERE', NOT_INTERESTED: 'NOT_INTERESTED' });
+  });
+
+  it('ป้ายช่องทางห้องแชท + ถ้อยคำ "ทักแชทครั้งแรกทาง" ชุดเดียว (คำตัดสิน 12)', () => {
+    expect(JOURNEY_CHAT_CHANNEL_LABELS).toEqual({ FACEBOOK: 'Facebook', LINE_SHOP: 'LINE ร้าน', LINE_FINANCE: 'LINE การเงิน', TIKTOK: 'TikTok', WEB: 'เว็บ' });
+    expect(firstChatContactTitle('CHAT_FACEBOOK')).toBe('ทักแชทครั้งแรกทาง Facebook');
+    expect(firstChatContactTitle('CHAT_LINE_SHOP')).toBe('ทักแชทครั้งแรกทาง LINE ร้าน');
+    expect(firstChatContactTitle('CHAT_LINE_FINANCE')).toBe('ทักแชทครั้งแรกทาง LINE การเงิน');
+    expect(firstChatContactTitle('CHAT_TIKTOK')).toBe('ทักแชทครั้งแรกทาง TikTok');
+    expect(firstChatContactTitle('CHAT_WEB')).toBe('ทักแชทครั้งแรกทาง เว็บ');
+    expect(firstChatContactTitle('CHAT_INSTAGRAM')).toBe('ทักแชทครั้งแรกทาง INSTAGRAM');
+    for (const notChat of ['WALK_IN', 'REFERRAL', 'UNKNOWN', 'AI_CHAT', 'CHAT_', '']) expect(firstChatContactTitle(notChat)).toBeNull();
+  });
+
+  it('รูป body/คำตอบของบันทึกมือ: 4 ชนิดตาม JOURNEY_ENTRY_KINDS.MANUAL · สถานะขั้น not_needed · หลักฐาน CHAT_FILE', () => {
+    const inputs: JourneyManualEntryInput[] = [
+      { kind: 'TOUCHPOINT', channel: 'PHONE', outcome: 'APPOINTED', clientRequestId: '3f0c2b7e-9a41-4c55-8d2e-6b1f0a9c7d21' },
+      { kind: 'HEARD_FROM', heardFrom: 'FRIEND' },
+      { kind: 'MARKED_LOST', lostReason: 'UNREACHABLE' },
+      { kind: 'REOPENED' },
+    ];
+    expect(inputs.map((input) => input.kind)).toEqual([...JOURNEY_ENTRY_KINDS.MANUAL]);
+    const states: JourneyStepState[] = ['done', 'current', 'skipped', 'todo', 'not_needed'];
+    const evidence: JourneyStepEvidence[] = ['SYSTEM', 'MANUAL', 'CHAT_FILE'];
+    expect([states.length, evidence.length]).toEqual([5, 3]);
+    const flags: Pick<JourneySummary, 'askHeardFrom' | 'creditFilePending'> = { askHeardFrom: false, creditFilePending: false };
+    const noop: JourneyEntryCreatedResponse = { entryId: null, event: null, summary: flags as JourneySummary };
+    expect(Object.keys(noop)).toEqual(['entryId', 'event', 'summary']);
+  });
+
   it('รูปคำตอบของ GET /customers/:id/journey: หน้าไทม์ไลน์ หรือ redirect ของผู้สนใจที่ถูกรวมแล้ว', () => {
     const page: JourneyListResponse = { customerId: 'c1', mergedCustomerIds: ['p1'], events: [], nextCursor: null, notRecorded: [] };
     const redirect: JourneyRedirect = { redirectToCustomerId: 'c1' };
@@ -98,5 +168,15 @@ describe('customer-journey — สัญญาร่วม API/เว็บ', ()
     expect(shared.JOURNEY_HIDDEN_GROUPS).toBe(JOURNEY_HIDDEN_GROUPS);
     expect(shared.JOURNEY_LOST_REASON_LABELS).toBe(JOURNEY_LOST_REASON_LABELS);
     expect(shared.JOURNEY_HEARD_FROM_LABELS).toBe(JOURNEY_HEARD_FROM_LABELS);
+    // เฟส 3 — ค่าที่ undefined ทั้งสองข้างผ่าน toBe ได้ ⇒ ตรวจว่ามีค่าจริงด้วย
+    const phase3 = {
+      JOURNEY_TOUCH_CHANNELS, JOURNEY_TOUCH_CHANNEL_LABELS, JOURNEY_RECORDABLE_TOUCH_CHANNELS, JOURNEY_TOUCH_OUTCOMES,
+      JOURNEY_TOUCH_OUTCOME_LABELS, JOURNEY_LOST_REASONS, JOURNEY_LOST_PROMPT_OUTCOMES, JOURNEY_HEARD_FROM_CODES,
+      JOURNEY_CHAT_CHANNEL_LABELS, firstChatContactTitle,
+    };
+    for (const [name, value] of Object.entries(phase3)) {
+      expect(value).toBeDefined();
+      expect((shared as unknown as Record<string, unknown>)[name]).toBe(value);
+    }
   });
 });

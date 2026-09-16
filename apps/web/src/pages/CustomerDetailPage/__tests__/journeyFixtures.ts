@@ -17,7 +17,7 @@ export function stageSteps(
     (stage): JourneyStep => ({
       stage,
       label: STAGE_LABELS[stage],
-      at: states[stage] === 'todo' || states[stage] === 'skipped' ? null : at[stage] ?? null,
+      at: states[stage] === 'todo' || states[stage] === 'skipped' || states[stage] === 'not_needed' ? null : at[stage] ?? null,
       state: states[stage],
       evidence: manual.includes(stage) ? 'MANUAL' : 'SYSTEM',
     }),
@@ -49,6 +49,8 @@ export function journeySummary(over: Partial<JourneySummary> = {}): JourneySumma
     lost: null,
     postSaleBadges: [],
     creditRejected: false,
+    askHeardFrom: false,
+    creditFilePending: false,
     ...over,
   };
 }

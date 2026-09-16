@@ -1,11 +1,9 @@
 import { Prisma } from '@prisma/client';
-import { CHAT_SOURCE_PREFIX, type JourneyEvent } from '@installment/shared';
+import { CHAT_SOURCE_PREFIX, JOURNEY_CHAT_CHANNEL_LABELS, chatSourceOf, firstChatContactTitle, type JourneyEvent } from '@installment/shared';
 import type { PrismaService } from '../../../prisma/prisma.service';
 import { formatDateTime } from '../../../utils/thai-date.util';
 import { roomAssignmentScope } from '../../credit-check/services/room-credit-access';
 import { asRecord, bahtText, dbTimeRange, finalizeSource, roleSeesGroup, scanTake, staffActor, type JourneyActor, type JourneySource, type JourneyWindow } from './journey-window';
-
-export const CHAT_CHANNEL_LABELS: Record<string, string> = { FACEBOOK: 'Facebook', LINE_SHOP: 'LINE ร้าน', LINE_FINANCE: 'LINE การเงิน', TIKTOK: 'TikTok', WEB: 'เว็บ' };
 
 interface ChatDayRow { roomId: string; day: string; customer: number; staff: number; bot: number; firstCustomerAt: Date | null; lastAt: Date }
 
@@ -51,7 +49,8 @@ async function roomEvents(prisma: PrismaService, customerIds: string[], actor: J
 
   const events: JourneyEvent[] = opened.map(({ room, at, imported }, index): JourneyEvent => ({
     id: `chatroom-${room.id}`, type: 'CHAT_ROOM_OPENED', group: 'chat', stage: index === 0 ? 'CONTACTED' : null, timestamp: at.toISOString(),
-    title: `${index === 0 ? 'ทักแชทครั้งแรกทาง' : 'ทักเพิ่มทาง'} ${CHAT_CHANNEL_LABELS[room.channel] ?? room.channel}`,
+    // channel ของห้องเป็น enum ChatChannel (ไม่ว่าง) ⇒ firstChatContactTitle ไม่คืน null · ถ้อยคำเดียวกับหน้าสร้างสัญญา (คำตัดสิน 12)
+    title: index === 0 ? firstChatContactTitle(chatSourceOf(room.channel))! : `ทักเพิ่มทาง ${JOURNEY_CHAT_CHANNEL_LABELS[room.channel] ?? room.channel}`,
     actor: { type: 'CUSTOMER' }, reliability: imported ? 'approximate' : 'exact', origin: 'SOURCE', href: `/inbox/${room.id}`, metadata: { channel: room.channel },
   }));
   for (const row of days) {

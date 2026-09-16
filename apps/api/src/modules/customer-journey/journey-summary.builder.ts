@@ -140,5 +140,8 @@ export function buildJourneySummary(state: JourneyStateRow, extras: JourneySumma
     lost: state.lostAt ? { at: state.lostAt.toISOString(), reason: state.lostReason ?? 'OTHER' } : null,
     postSaleBadges: purchased ? extras.postSaleBadges : [],
     creditRejected: !purchased && extras.creditRejected,
+    // รูปของสัญญาเฟส 3 วางไว้ก่อน — ค่าจริง (ลูกค้าหน้าร้านที่ยังไม่ตอบ · ไฟล์ในแชทรอตรวจ) คำนวณจาก extras ในงานสรุปผลเฟส 3
+    askHeardFrom: false,
+    creditFilePending: false,
   };
 }

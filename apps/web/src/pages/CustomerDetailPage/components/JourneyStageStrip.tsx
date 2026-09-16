@@ -9,6 +9,8 @@ const DOT_CLASS: Record<JourneyStep['state'], string> = {
   done: 'bg-success text-success-foreground',
   current: 'bg-primary text-primary-foreground',
   skipped: 'bg-muted text-muted-foreground',
+  // ขั้นตรวจเครดิตที่ไม่ต้องตรวจ (ซื้อสด / ไฟแนนซ์นอกตรวจ) — สีเทาชุดเดียวกับขั้นที่ข้าม ไม่เพิ่มสีใหม่ · จุดยังแสดงเลขขั้น
+  not_needed: 'bg-muted text-muted-foreground',
   todo: 'border border-dashed border-border bg-background text-muted-foreground',
 };
 

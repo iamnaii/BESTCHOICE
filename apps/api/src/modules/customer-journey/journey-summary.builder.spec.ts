@@ -70,6 +70,12 @@ describe('buildJourneySummary', () => {
       ['CREDIT', 'todo', null], ['PURCHASED', 'todo', null],
     ]);
   });
+
+  it('ธงเฟส 3 มีในคำตอบเสมอ: askHeardFrom / creditFilePending เป็น false สำหรับลูกค้าที่เริ่มจากแชทและไม่มีไฟล์รอตรวจ', () => {
+    const s = buildJourneySummary(row(), extras, NOW);
+    expect(s).toHaveProperty('askHeardFrom', false);
+    expect(s).toHaveProperty('creditFilePending', false);
+  });
 });
 
 describe('withLiveBought', () => {

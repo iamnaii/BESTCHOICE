@@ -349,10 +349,19 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
 
   // ─── ด่านเบอร์ (spec 2026-09-13-chat-prospects) ──────────────────────────────
 
-  it('ผู้สนใจจากแชทที่ยังไม่มีเบอร์ (phone null) → BadRequest ให้เติมเบอร์ก่อน ไม่สร้างสัญญา', async () => {
-    tx.customer.findUnique.mockResolvedValue({ ...mockCustomer, phone: null });
+  it('ผู้สนใจจากแชทที่ยังไม่มีเบอร์ (phone null) → BadRequest ชี้ปุ่มเติมเบอร์ ไม่สร้างสัญญา', async () => {
+    // A12: ข้อความแยกตาม isChatPlaceholder — ต้องเป็นแถวผู้สนใจจริง (ที่มา CHAT_* ไม่มีเบอร์และเลขบัตร)
+    tx.customer.findUnique.mockResolvedValue({ ...mockCustomer, phone: null, nationalId: null, acquisitionSource: 'CHAT_FACEBOOK' });
     await expect(service.create({ ...baseDto } as never, 'sp-1')).rejects.toThrow(
-      'ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนทำสัญญา',
+      'ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนทำสัญญา',
+    );
+    expect(tx.contract.create).not.toHaveBeenCalled();
+  });
+
+  it('ลูกค้าที่มีเลขบัตรแต่ไม่มีเบอร์ → BadRequest ชี้ "แก้ไขข้อมูล" ของเจ้าของ/ผู้จัดการสาขา ไม่สร้างสัญญา', async () => {
+    tx.customer.findUnique.mockResolvedValue({ ...mockCustomer, phone: null, acquisitionSource: null });
+    await expect(service.create({ ...baseDto } as never, 'sp-1')).rejects.toThrow(
+      'ลูกค้ายังไม่มีเบอร์โทร — ให้เจ้าของหรือผู้จัดการสาขากด "แก้ไขข้อมูล" ในหน้าลูกค้าเพื่อเติมเบอร์ก่อนทำสัญญา',
     );
     expect(tx.contract.create).not.toHaveBeenCalled();
   });

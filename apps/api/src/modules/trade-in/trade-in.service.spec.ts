@@ -173,11 +173,14 @@ describe('TradeInService', () => {
     });
 
     it('ผู้สนใจจากแชทที่ยังไม่มีเบอร์ (customerId + phone null) → BadRequest ก่อนอัปโหลดรูป/สร้างรายการ', async () => {
-      prisma.customer.findUnique.mockResolvedValue({ id: 'cust-chat', phone: null, deletedAt: null, nationalIdHash: null });
+      // A12: แถวผู้สนใจจริง (ที่มา CHAT_* ไม่มีเบอร์และเลขบัตร) → ข้อความชี้ปุ่มเติมเบอร์
+      prisma.customer.findUnique.mockResolvedValue({
+        id: 'cust-chat', phone: null, nationalId: null, acquisitionSource: 'CHAT_FACEBOOK', deletedAt: null, nationalIdHash: null,
+      });
 
       await expect(
         service.create({ ...baseDto, customerId: 'cust-chat', idCardPhotoBase64: `data:image/jpeg;base64,${'A'.repeat(200)}` } as never),
-      ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนรับซื้อเครื่อง');
+      ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนรับซื้อเครื่อง');
       expect(storage.upload).not.toHaveBeenCalled();
       expect(prisma.tradeIn.create).not.toHaveBeenCalled();
     });

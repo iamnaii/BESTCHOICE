@@ -45,6 +45,8 @@ export interface ExistingCustomerRef {
   createdAt?: string;
   /** A7: จำนวนสัญญาที่ยังผ่อนอยู่ (ACTIVE/OVERDUE/DEFAULT) — แสดงชิปเมื่อ > 0 */
   activeContracts?: number;
+  /** M-A3: คนเดิมเคยซื้อแล้วหรือยัง (นิยามเจ้าของ: ลูกค้า = ซื้อแล้ว ที่เหลือ = ผู้สนใจ) — API เก่าไม่ส่ง */
+  purchased?: boolean;
 }
 
 /** "3 ก.ย. 69" ของ createdAt — ไม่มีค่า/อ่านไม่ได้ ⇒ null (ตัดส่วนนั้นทิ้ง ไม่โชว์ "-" หรือ "Invalid") */
@@ -404,6 +406,12 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
   const selectClass = `${inputClass}`;
 
   const existingSince = customerSinceLabel(existing?.createdAt);
+  /* M-W3: "ลูกค้าตั้งแต่" เฉพาะคนที่ซื้อแล้ว · ยังไม่ซื้อ = "ผู้สนใจตั้งแต่" · API ไม่บอก ⇒ ไม่เดา ตัดส่วนวันที่ทิ้ง */
+  const existingPurchased = existing?.purchased;
+  const existingSinceText =
+    existingSince && typeof existingPurchased === 'boolean'
+      ? `${existingPurchased ? 'ลูกค้า' : 'ผู้สนใจ'}ตั้งแต่ ${existingSince}`
+      : null;
   const existingActiveContracts = existing?.activeContracts ?? 0;
   /** ปุ่ม "แก้เบอร์"/"แก้เลขบัตร" — ปิดกล่อง ล้างเฉพาะ error "เบอร์ซ้ำ" ที่ตั้งจาก 409 แล้วพาเคอร์เซอร์ไปช่องที่ต้องแก้ */
   const dismissExisting = () => {
@@ -511,14 +519,14 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                   : 'ระบบไม่สร้างซ้ำ — ใช้คนเดิม หรือแก้เบอร์/อีเมลแล้วบันทึกใหม่'}
               </p>
               {isFill && (
-                /* B7 (mockup บอร์ด 4): <ชื่อ> · โทร/เลขบัตร · ลูกค้าตั้งแต่ <วันที่> + ชิป "ผ่อนอยู่ N สัญญา" */
+                /* B7 (mockup บอร์ด 4): <ชื่อ> · โทร/เลขบัตร · ลูกค้า/ผู้สนใจตั้งแต่ <วันที่> + ชิป "ผ่อนอยู่ N สัญญา" */
                 <div className="mt-2.5 flex items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 text-xs">
                   <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><User className="size-3.5" strokeWidth={1.5} /></span>
                   <span className="min-w-0 flex-1 leading-snug">
                     <span className="font-semibold">{existing.name}</span>
                     <span className="text-muted-foreground">
                       {nidDup ? ` · เลขบัตร ${dupNationalId}` : ` · โทร ${dupPhone}`}
-                      {existingSince && ` · ลูกค้าตั้งแต่ ${existingSince}`}
+                      {existingSinceText && ` · ${existingSinceText}`}
                     </span>
                   </span>
                   {existingActiveContracts > 0 && (
@@ -746,7 +754,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
             </details>
           )}
 
-          {/* ===== ข้อมูลติดต่อเพิ่มเติม (collapsible) — ซ่อนในโหมด fill ตาม mockup (ชื่อ Facebook มีบล็อกของตัวเองแทน) ===== */}
+          {/* ===== ข้อมูลติดต่อเพิ่มเติม (collapsible) — ซ่อนในโหมด fill ตาม mockup (ชื่อ Facebook ของโหมด fill อยู่ในกริดข้อมูลหลักแล้ว) ===== */}
           {!isFill && (
             <details className="group rounded-xl border border-border bg-card">
               <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">

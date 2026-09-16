@@ -19,7 +19,7 @@ import { ChatCell } from '@/pages/CustomersPage/components/CustomerCells';
 import { useAbsorbCustomer } from '@/pages/UnifiedInboxPage/hooks/useProspectActions';
 import type { CustomerTier } from '@/types/customer-tier';
 import { formatDateShort } from '@/utils/formatters';
-import { invalidateCustomerJourney } from '../hooks/useCustomerJourney';
+import { invalidateCustomerJourney } from '@/hooks/customer-journey/useCustomerJourney';
 import type { CustomerDetail } from '../types';
 import { customerKind } from '../utils/customerKind';
 import { paymentSearchFor } from '../utils/paymentTarget';

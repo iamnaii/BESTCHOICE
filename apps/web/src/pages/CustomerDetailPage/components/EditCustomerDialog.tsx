@@ -5,7 +5,7 @@ import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { RELATIONSHIP_OPTIONS, THAI_NAME_PREFIXES } from '@/lib/constants';
 import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
-import { invalidateCustomerJourney } from '../hooks/useCustomerJourney';
+import { invalidateCustomerJourney } from '@/hooks/customer-journey/useCustomerJourney';
 import type { CustomerDetail, ReferenceData } from '../types';
 
 interface EditCustomerDialogProps {

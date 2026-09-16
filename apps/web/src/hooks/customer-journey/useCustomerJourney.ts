@@ -14,6 +14,7 @@ export const JOURNEY_PAGE_SIZE = 30;
 /**
  * หลังคำสั่งบนหน้าลูกค้าที่เขียนประวัติการเดินทาง (ตรวจเครดิต · วิเคราะห์/ตีตกเครดิต · แก้ข้อมูล · เติมเบอร์)
  * prefix ครอบทุกชุดกลุ่มของแท็บและการ์ดกิจกรรมล่าสุด + แถบขั้น — main.tsx ปิด refetchOnWindowFocus จึงไม่รีเฟรชเอง
+ * อยู่ใน hooks/customer-journey (ไม่ใช่ใต้หน้า) เพราะ POS · สร้างสัญญา · dialog สร้างลูกค้า ใช้ชุดเดียวกัน (เฟส 3)
  */
 export function invalidateCustomerJourney(queryClient: QueryClient, customerId: string) {
   queryClient.invalidateQueries({ queryKey: ['customer-journey', customerId] });

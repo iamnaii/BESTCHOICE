@@ -14,7 +14,7 @@ import JourneyStageStrip from './components/JourneyStageStrip';
 import KpiTiles from './components/KpiTiles';
 import RiskBanner from './components/RiskBanner';
 import { useCustomerDetailData } from './hooks/useCustomerDetailData';
-import { invalidateCustomerJourney, useJourneySummaryRedirect } from './hooks/useCustomerJourney';
+import { invalidateCustomerJourney, useJourneySummaryRedirect } from '@/hooks/customer-journey/useCustomerJourney';
 import ContractsTab from './tabs/ContractsTab';
 import CreditTab from './tabs/CreditTab';
 import JourneyTab from './tabs/JourneyTab';

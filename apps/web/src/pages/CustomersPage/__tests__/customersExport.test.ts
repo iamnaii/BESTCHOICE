@@ -115,3 +115,38 @@ describe('ส่งออก Excel — ช่องเบอร์โทรว�
     expect(exportedRows().map((row) => row.phone)).toEqual(['0820000001', '-']);
   });
 });
+
+// M-W8: `Customer.nationalId` เป็น nullable (ผู้สนใจจากแชท / ลูกค้าที่ยังไม่เคยให้บัตร)
+// ⇒ คอลัมน์เลขบัตร (เจ้าของ/ผู้จัดการเท่านั้น) ต้องเป็น "-" เหมือนเบอร์ ไม่ใช่เซลล์ว่าง
+describe('ส่งออก Excel — ช่องเลขบัตรว่าง (เจ้าของ/ผู้จัดการ)', () => {
+  const OWNER_FLAGS = { isOwnerOrManager: true, canViewSalary: false };
+
+  it('แท็บลูกค้า: เลขบัตรว่างเป็น "-" ส่วนแถวที่มีเลขบัตรคงเลขเดิม', async () => {
+    respondWith([
+      customerRow({ id: 'c1', nationalId: '1234567890123' }),
+      customerRow({ id: 'c2', nationalId: null }),
+    ]);
+    await exportCustomers({ view: 'customers', params: { view: 'customers' }, flags: OWNER_FLAGS });
+
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(exportedRows().map((row) => row.nationalId)).toEqual(['1234567890123', '-']);
+  });
+
+  it('แท็บผู้สนใจ: เลขบัตรว่างเป็น "-" ส่วนแถวที่มีเลขบัตรคงเลขเดิม', async () => {
+    respondWith([
+      prospectRow({ id: 'p1', nationalId: '9876543210123' }),
+      prospectRow({ id: 'p2', nationalId: null }),
+    ]);
+    await exportCustomers({ view: 'prospects', params: { view: 'prospects' }, flags: OWNER_FLAGS });
+
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(exportedRows().map((row) => row.nationalId)).toEqual(['9876543210123', '-']);
+  });
+
+  it('ไม่ใช่เจ้าของ/ผู้จัดการ → ไม่มีคีย์เลขบัตรในแถวเลย (ไม่ใช่ "-")', async () => {
+    respondWith([prospectRow({ id: 'p2', nationalId: null })]);
+    await exportCustomers({ view: 'prospects', params: { view: 'prospects' }, flags: FLAGS });
+
+    expect(exportedRows()[0]).not.toHaveProperty('nationalId');
+  });
+});

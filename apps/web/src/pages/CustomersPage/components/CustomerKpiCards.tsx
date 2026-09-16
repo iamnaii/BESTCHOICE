@@ -7,10 +7,11 @@ import type { CustomerTabSummary, CustomerView, ProspectTabSummary } from '../ty
  * ⇒ กดแล้วลิงก์บุ๊กมาร์กได้ และปุ่มส่งออก Excel ตามตัวกรองนั้นไปด้วย (buildParams ตัวเดียว)
  *
  * การ์ดแท็บลูกค้าต้อง **เขียนทับคีย์ของกันและกันครบ** — "มาจากแชท" ล้าง `purchase`/`state`
- * และใบอื่น (ยกเว้น "ทั้งหมด" ที่ล้างทุกคีย์อยู่แล้ว) ล้าง `fromChat` ⇒ กดต่อกันแล้วไม่เหลือ
- * ตัวกรองซ้อนที่มองไม่เห็น และ `activeKpiKey` (index.tsx) จับคู่ได้ใบเดียวเสมอ
+ * และใบการซื้อ/ค้างชำระล้าง `fromChat` ⇒ กดต่อกันแล้วไม่เหลือตัวกรองซ้อนที่มองไม่เห็น
+ * และ `activeKpiKey` (index.tsx) จับคู่ได้ใบเดียวเสมอ
  * (เดิมกด "ผ่อนกับเรา" → "มาจากแชท" แล้ว purchase ค้าง ⇒ ไฮไลต์ค้างที่ "ผ่อนกับเรา")
- * `bought` / `tier` / `source` / `branchId` เป็นของดรอปดาวน์ การ์ดไม่แตะ
+ * ใบอื่นไม่แตะคีย์ของดรอปดาวน์ (`bought` / `tier` / `source` / `branchId`) — ยกเว้น "ลูกค้าทั้งหมด"
+ * ที่ล้าง `purchase`/`state`/`fromChat` พร้อม `bought`/`source` ด้วย (แต่คง `tier`/`branchId` ไว้)
  *
  * "ผ่าน pre-check" ยิง `precheck=FULL_CHECK_PASSED` ไม่ใช่ `PRE_CHECK_PASSED`:
  * ไม่มีโค้ด production ที่ไหนเขียน `checkType: 'PRE'` เลย (ทุก `creditCheck.create` ปล่อยให้

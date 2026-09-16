@@ -137,7 +137,8 @@ export async function exportCustomers({
             chat: p.chatRooms?.length ? p.chatRooms.map((r) => r.logo).join(', ') : '-',
             fetchedAt,
           };
-          if (flags.isOwnerOrManager) row.nationalId = p.nationalId;
+          // เลขบัตรเป็น nullable (ผู้สนใจจากแชทยังไม่มี) — ขีดเหมือนเบอร์
+          if (flags.isOwnerOrManager) row.nationalId = p.nationalId || '-';
           return row;
         }),
         sheetName: 'ผู้สนใจ',
@@ -168,7 +169,7 @@ export async function exportCustomers({
             createdAt: formatDateShort(c.createdAt),
             fetchedAt,
           };
-          if (flags.isOwnerOrManager) row.nationalId = c.nationalId;
+          if (flags.isOwnerOrManager) row.nationalId = c.nationalId || '-';
           if (flags.canViewSalary) row.salary = c.salary ? Number(c.salary) : '-';
           return row;
         }),

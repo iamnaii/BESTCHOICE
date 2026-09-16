@@ -353,7 +353,7 @@ describe('การเดินทางของลูกค้า', () => {
       stage: 'INTERESTED',
       daysInStage: 3,
       steps: stageSteps(
-        { CONTACTED: 'done', IDENTIFIED: 'done', INTERESTED: 'current', CREDIT: 'todo', PURCHASED: 'todo' },
+        { CONTACTED: 'done', IDENTIFIED: 'done', CREDIT: 'skipped', INTERESTED: 'current', PURCHASED: 'todo' },
         { CONTACTED: '2026-09-01T03:00:00.000Z', IDENTIFIED: '2026-09-02T03:00:00.000Z', INTERESTED: '2026-09-12T03:00:00.000Z' },
       ),
     });
@@ -362,6 +362,8 @@ describe('การเดินทางของลูกค้า', () => {
     const current = within(strip).getByText(STAGE_LABELS.INTERESTED).closest('li');
     expect(current).toHaveAttribute('aria-current', 'step');
     expect(current).toHaveTextContent(`${formatDateShort('2026-09-12T03:00:00.000Z')} · อยู่ขั้นนี้ 3 วัน`);
+    // ③ ตรวจเครดิต มาก่อน ④ นัด / จอง — ผู้สนใจที่มีนัดแต่ไม่มีหลักฐานตรวจเครดิต ขั้น 3 ถูกข้าม
+    expect(within(strip).getByText(STAGE_LABELS.CREDIT).closest('li')).toHaveAttribute('data-state', 'skipped');
     // ผู้สนใจ → ช่องตัวเลขช่องแรกคือ "ที่มา" (kpiTiles.ts) — แถบต้องมาหลังช่องตัวเลข
     const firstTileLabel = screen.getAllByText('ที่มา')[0];
     expect(firstTileLabel.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

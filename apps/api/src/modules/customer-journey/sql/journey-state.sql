@@ -285,9 +285,12 @@ resolved AS (
               WHEN s.referred_by_id IS NOT NULL THEN 'REFERRAL'
               WHEN s.heard_from IS NOT NULL THEN left('HEARD:' || s.heard_from, 30)
               ELSE 'WALK_IN' END AS first_source,
+         -- ขั้น = ขั้นสูงสุดที่มีหลักฐาน เรียงตาม JOURNEY_STAGES (@installment/shared) จากท้ายมาหน้า — ไม่ใช่หลักฐานล่าสุดตามเวลา
+         -- ③ ตรวจเครดิต มาก่อน ④ นัด / จอง (เจ้าของสั่ง 2026-09-15) · UNBUY_FALLBACK_STAGES ใน journey-summary.builder.ts ใช้ลำดับเดียวกัน
+         -- (builder spec อ่านไฟล์นี้ปักไว้) · stage_entered_at = เวลาของขั้นนั้นเอง ⇒ วันที่บนแถบอาจไม่เรียง (ใบจองก่อน ตรวจเครดิตทีหลัง)
          CASE WHEN s.bought THEN 'PURCHASED'
-              WHEN s.credit_at IS NOT NULL THEN 'CREDIT'
               WHEN s.interested_at IS NOT NULL THEN 'INTERESTED'
+              WHEN s.credit_at IS NOT NULL THEN 'CREDIT'
               WHEN s.identified_at IS NOT NULL THEN 'IDENTIFIED'
               ELSE 'CONTACTED' END AS stage,
          CASE WHEN s.bought THEN s.first_purchase_kind

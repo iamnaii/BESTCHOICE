@@ -88,12 +88,23 @@ export function postSaleBadges(input: {
   return badges;
 }
 
+type UnbuyFallbackStage = Exclude<JourneyStage, 'PURCHASED' | 'CONTACTED'>;
+
+/**
+ * ขั้นที่ถอยกลับได้เมื่อการซื้อถูกยกเลิก เรียงสูง → ต่ำ — คำนวณจาก JOURNEY_STAGES (ห้ามเขียนลำดับซ้ำ)
+ * = ['INTERESTED', 'CREDIT', 'IDENTIFIED'] ตามเจ้าของสั่ง 2026-09-15 (③ ตรวจเครดิต มาก่อน ④ นัด / จอง)
+ * ต้องตรงกับ CASE ของ stage ใน journey-state.sql (CTE resolved) — journey-summary.builder.spec.ts อ่านไฟล์ SQL ปักไว้
+ */
+export const UNBUY_FALLBACK_STAGES: readonly UnbuyFallbackStage[] = [...JOURNEY_STAGES]
+  .reverse()
+  .filter((stage): stage is UnbuyFallbackStage => stage !== 'PURCHASED' && stage !== 'CONTACTED');
+
 /** แคชอาจตามไม่ทัน (recompute ล้ม) — ขั้นซื้อแล้วต้องตรงกับ BOUGHT_WHERE สดเสมอ */
 export function withLiveBought(state: JourneyStateRow, bought: boolean, now: Date): JourneyStateRow {
   if (bought === (state.stage === 'PURCHASED')) return state;
   if (bought) return { ...state, stage: 'PURCHASED', stageEnteredAt: state.firstPurchaseAt ?? now };
   const times = stageTimes(state);
-  const fallback = (['CREDIT', 'INTERESTED', 'IDENTIFIED'] as const).find((stage) => times[stage] !== null);
+  const fallback = UNBUY_FALLBACK_STAGES.find((stage) => times[stage] !== null);
   return {
     ...state,
     stage: fallback ?? 'CONTACTED',

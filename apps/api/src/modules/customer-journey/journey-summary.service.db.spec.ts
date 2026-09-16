@@ -116,7 +116,7 @@ describe('JourneySummaryService.summary (real DB)', () => {
     await expect(service.summary('00000000-0000-0000-0000-000000000000', actor)).rejects.toThrow('ไม่พบลูกค้า');
   });
 
-  it('ผู้จัดการตีตกเครดิตล่าสุด → creditRejected · นัดจากบันทึกมือ → evidence MANUAL', async () => {
+  it('ผู้จัดการตีตกเครดิตล่าสุด + นัดจากบันทึกมือ → ขั้นปัจจุบัน นัด / จอง (evidence MANUAL) · ขั้นตรวจเครดิต done แต่ creditRejected ยังจริง (แถบวาดแดง)', async () => {
     const c = await walkIn('rejected', `090${tail}`);
     const check = await prisma.creditCheck.create({ data: { customerId: c.id } });
     await prisma.auditLog.create({ data: { userId, action: 'CREDIT_CHECK_OVERRIDE', entity: 'credit_check', entityId: check.id, newValue: { status: 'REJECTED' } } });
@@ -124,9 +124,10 @@ describe('JourneySummaryService.summary (real DB)', () => {
       data: { customerId: c.id, originCustomerId: c.id, origin: 'MANUAL', kind: 'TOUCHPOINT', channel: 'FB_APP', outcome: 'APPOINTED', occurredAt: new Date(Date.now() - 86_400_000), actorType: 'STAFF', actorUserId: userId },
     });
     const res = await service.summary(c.id, actor);
-    expect(res).toMatchObject({ stage: 'CREDIT', creditRejected: true });
+    expect(res).toMatchObject({ stage: 'INTERESTED', stageLabel: STAGE_LABELS.INTERESTED, creditRejected: true });
     if (!('steps' in res)) throw new Error('คาดว่าเป็น JourneySummary');
-    expect(res.steps.find((s) => s.stage === 'INTERESTED')).toMatchObject({ state: 'done', evidence: 'MANUAL' });
+    expect(res.steps.find((s) => s.stage === 'CREDIT')).toMatchObject({ state: 'done', evidence: 'SYSTEM' });
+    expect(res.steps.find((s) => s.stage === 'INTERESTED')).toMatchObject({ state: 'current', evidence: 'MANUAL' });
   });
 
   it('ใบเครดิตจากสเตทเม้นในแชทที่ถูกตีตก: ธง creditRejected เห็นเฉพาะ role ที่เห็นห้องนั้น (creditHistoryAccess เดียวกับ list)', async () => {

@@ -32,10 +32,12 @@ import {
 } from './customer-journey';
 
 describe('customer-journey — สัญญาร่วม API/เว็บ', () => {
-  it('ขั้นเรียงตามลำดับจริง และทุกขั้นมีป้ายไทย (ขั้น 2 = ได้เบอร์ / ยืนยันตัวตน — OD-9)', () => {
-    expect(JOURNEY_STAGES).toEqual(['CONTACTED', 'IDENTIFIED', 'INTERESTED', 'CREDIT', 'PURCHASED']);
+  it('ขั้นเรียงตามลำดับจริง และทุกขั้นมีป้ายไทย (ขั้น 2 = ได้เบอร์ / ยืนยันตัวตน — OD-9 · ขั้น 3 ตรวจเครดิต ก่อนขั้น 4 นัด / จอง — เจ้าของสั่ง 2026-09-15)', () => {
+    expect(JOURNEY_STAGES).toEqual(['CONTACTED', 'IDENTIFIED', 'CREDIT', 'INTERESTED', 'PURCHASED']);
     expect(Object.keys(STAGE_LABELS)).toEqual([...JOURNEY_STAGES]);
     expect(STAGE_LABELS.IDENTIFIED).toBe('ได้เบอร์ / ยืนยันตัวตน');
+    expect(STAGE_LABELS.CREDIT).toBe('ตรวจเครดิต');
+    expect(STAGE_LABELS.INTERESTED).toBe('นัด / จอง');
     for (const stage of JOURNEY_STAGES) {
       expect(STAGE_LABELS[stage].trim().length).toBeGreaterThan(0);
       expect(stage.length).toBeLessThanOrEqual(12); // customer_journey_states.stage VARCHAR(12)

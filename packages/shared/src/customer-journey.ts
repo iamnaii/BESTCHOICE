@@ -11,16 +11,18 @@ import { chatSourceChannel } from './customer-sort';
 /**
  * 5 ขั้นของเส้นทาง เรียงตามลำดับจริง — ขั้น 2 IDENTIFIED = ได้เบอร์/เลขบัตร · ผูก LINE · เป็นปลายทางของการรวม ไม่ใช่ "คุยแล้ว"
  * (prod: ข้อความพนักงานมี outbound_sent_at แค่ 1 ใน 74,514 ⇒ ขั้น "คุยแล้ว" ว่างเสมอ — คำตัดสิน OD-9 คงกติกา เปลี่ยนแค่ป้าย)
+ * ขั้น 3 CREDIT มาก่อนขั้น 4 INTERESTED "นัด / จอง" — เจ้าของสั่ง 2026-09-15 "ต้องเช็คเครดิตก่อนนัด" (ชื่อ enum เดิม ไม่มี migration)
+ * ลำดับนี้คือแหล่งเดียว: CASE ของ stage ใน journey-state.sql และ UNBUY_FALLBACK_STAGES (journey-summary.builder.ts) ต้องตรงกัน — builder spec ปักไว้
  */
-export const JOURNEY_STAGES = ['CONTACTED', 'IDENTIFIED', 'INTERESTED', 'CREDIT', 'PURCHASED'] as const;
+export const JOURNEY_STAGES = ['CONTACTED', 'IDENTIFIED', 'CREDIT', 'INTERESTED', 'PURCHASED'] as const;
 export type JourneyStage = (typeof JOURNEY_STAGES)[number];
 
-/** ป้ายไทยของแต่ละขั้น — แถบขั้นใต้หัวหน้ารายละเอียดลูกค้าใช้ชุดนี้ */
+/** ป้ายไทยของแต่ละขั้น — แถบขั้นใต้หัวหน้ารายละเอียดลูกค้าใช้ชุดนี้ · ลำดับคีย์ = JOURNEY_STAGES */
 export const STAGE_LABELS: Record<JourneyStage, string> = {
   CONTACTED: 'ทักเข้ามา',
   IDENTIFIED: 'ได้เบอร์ / ยืนยันตัวตน',
-  INTERESTED: 'สนใจจริง / นัด-จอง',
   CREDIT: 'ตรวจเครดิต',
+  INTERESTED: 'นัด / จอง',
   PURCHASED: 'ซื้อแล้ว',
 };
 

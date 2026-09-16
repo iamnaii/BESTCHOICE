@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { JourneyEvent, JourneyEventGroup, JourneyListResponse, JourneySummary } from '@installment/shared';
 import type { PrismaService } from '../../prisma/prisma.service';
-import { CustomerJourneyService, JOURNEY_COUNT_CAP, countJourneyGroups, resolveJourneyGroups } from './customer-journey.service';
+import { CustomerJourneyService, JOURNEY_COUNT_CAP, JOURNEY_NOT_RECORDED, countJourneyGroups, resolveJourneyGroups } from './customer-journey.service';
 import type { JourneySummaryService } from './journey-summary.service';
 import { chatSource } from './sources/chat.source';
 import { collectionsSource } from './sources/collections.source';
@@ -208,5 +208,12 @@ describe('CustomerJourneyService.list + summary (Task 9)', () => {
     const { summaries, service } = setup(LIVE);
     await expect(service.summary('c1', OWNER)).resolves.toBe(SUMMARY);
     expect(summaries.summary).toHaveBeenCalledWith('c1', OWNER);
+  });
+});
+
+describe('JOURNEY_NOT_RECORDED — ชื่อขั้น 4 ใหม่ (เจ้าของสั่ง 2026-09-15)', () => {
+  it('ไม่มีคำว่า "สนใจจริง" แล้ว · เอกสาร 3 ชนิดที่ใช้นับขั้นแต่ยังไม่แสดงเป็นเหตุการณ์อ้างชื่อขั้น "นัด / จอง"', () => {
+    expect(JOURNEY_NOT_RECORDED.filter((line) => line.includes('สนใจจริง'))).toEqual([]);
+    expect(JOURNEY_NOT_RECORDED.filter((line) => line.includes('ขั้น "นัด / จอง"'))).toHaveLength(3);
   });
 });

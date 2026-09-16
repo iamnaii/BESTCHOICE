@@ -378,6 +378,59 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     await screen.findByText(/ผลวิเคราะห์ 1 รายการ ย้ายมาจากห้องนี้ตอนรวม/);
     expect(screen.getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/c-old?tab=credit');
   });
+
+  // M-W6 — ทาง "ผูกกับลูกค้าเดิม" (PATCH rooms/:id/customer) ก็รวมผู้สนใจ → ต้องบอกเหมือนกัน (mockup บอร์ด 5)
+  const linkViaDialog = async () => {
+    apiGet.mockImplementation((url: string) =>
+      url.startsWith('/customers/search')
+        ? Promise.resolve({ data: [{ id: 'c-old', name: 'สมชาย คนเดิม', phone: '0811111111', chatPlaceholder: false }] })
+        : Promise.resolve({ data: [] }),
+    );
+    wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /ผูกกับลูกค้าเดิม/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'ค้นหาลูกค้า' }), { target: { value: 'สมชาย' } });
+    fireEvent.click(await screen.findByRole('button', { name: /สมชาย คนเดิม/ }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/staff-chat/rooms/r-1/customer', { customerId: 'c-old' }));
+  };
+
+  it('ผูกกับลูกค้าเดิมแล้วรวมผู้สนใจ ย้ายผลวิเคราะห์ 2 รายการ → ข้อความในกลุ่มตรวจเครดิต + ลิงก์แท็บเครดิตของคนที่เลือก', async () => {
+    apiPatch.mockResolvedValue({ data: { success: true, absorbed: { targetId: 'c-old', movedCreditChecks: 2 } } });
+    await linkViaDialog();
+    const notice = await screen.findByText(/ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ใน/);
+    expect(notice).toHaveTextContent('ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ในโปรไฟล์ลูกค้า › เครดิต');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'ตรวจเครดิต' }).closest('section')).toContainElement(notice));
+    expect(within(notice).getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/c-old?tab=credit');
+  });
+
+  it.each([
+    ['absorbed: null (ไม่ได้รวม)', { success: true, absorbed: null }],
+    ['absorbed ย้าย 0 รายการ', { success: true, absorbed: { targetId: 'c-old', movedCreditChecks: 0 } }],
+    ['API เก่า (ไม่มีคีย์ absorbed)', { success: true }],
+  ])('ผูกกับลูกค้าเดิม — %s → ไม่มีข้อความผลวิเคราะห์', async (_label, body) => {
+    apiPatch.mockResolvedValue({ data: body });
+    const success = vi.spyOn(toast, 'success');
+    try {
+      await linkViaDialog();
+      await waitFor(() => expect(success).toHaveBeenCalledWith('ผูกกับลูกค้าเดิมและรวมข้อมูลแชทแล้ว'));
+      expect(screen.queryByText(/ผลวิเคราะห์/)).toBeNull();
+    } finally {
+      success.mockRestore();
+    }
+  });
+
+  // R-1 — ทิศ "ดูดห้องนี้เข้าคนอื่น" ด่านตรวจห้องของผู้สนใจคนนี้เอง ⇒ ข้อความ API ถูกอยู่แล้ว ไม่แปลง
+  it('รวมผู้สนใจของห้องนี้แล้วได้ 403 → แสดงข้อความจาก API ตามเดิม', async () => {
+    const apiMsg = 'ห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมเบอร์หรือรวมให้';
+    apiPost.mockImplementation(() => Promise.reject(Object.assign(new Error(apiMsg), { response: { status: 403, data: { message: apiMsg } } })));
+    const error = vi.spyOn(toast, 'error');
+    try {
+      wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+      await waitFor(() => expect(error).toHaveBeenCalledWith(apiMsg));
+    } finally {
+      error.mockRestore();
+    }
+  });
 });
 
 const LINKED_ROOM = {
@@ -441,6 +494,53 @@ describe('RoomDossier — คำใบ้อาจเป็นคนเดีย
     const notice = await screen.findByText(/ผลวิเคราะห์ 1 รายการ ย้ายมาจากผู้สนใจที่รวมเข้ามา — ดูได้ใน/);
     expect(screen.getByRole('heading', { name: 'ตรวจเครดิต' }).closest('section')).toContainElement(notice);
     expect(screen.getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/cus-1?tab=credit');
+  });
+
+  // M-W5 — ห้องลูกค้าจริงผูกแล้ว: "ยังไม่ผูกลูกค้า/ยังไม่มีเบอร์ก็ตรวจได้" เป็นเท็จ ⇒ เหลือแค่ประโยคที่เหลือ
+  it('ห้องลูกค้าจริงที่ไม่มีสัญญา: ช่องตรวจ IMEI ไม่บอก "ยังไม่…ก็ตรวจได้"', async () => {
+    wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('tab', { name: /ประกัน/ }));
+    expect(await screen.findByText('ลูกค้าส่ง IMEI/Serial มาในแชท ก็อปมาวางได้เลย')).toBeInTheDocument();
+    expect(screen.queryByText(/ก็ตรวจได้/)).toBeNull();
+    expect(screen.getByLabelText('IMEI หรือ Serial')).toBeInTheDocument();
+  });
+
+  // R-1 — ปุ่มรวมในห้องลูกค้าจริงดูด "ผู้สนใจอีกคน" เข้ามา: API ตรวจห้องของคนนั้น (assertActorMayAbsorb)
+  // ข้อความ "ผู้สนใจคนนี้" ของ API อ่านเป็นห้องที่เปิดอยู่ได้ ⇒ SALES ต้องเห็นว่าติดที่อีกคน + ใครกดแทนได้
+  const API_403 = 'ห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมเบอร์หรือรวมให้';
+  const OTHER_HELD = 'ผู้สนใจคนนั้นมีห้องแชทที่พนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้องนั้น หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน กดรวมแทน';
+  const rejectWith = (status: number, message: string) =>
+    apiPost.mockImplementation(() => Promise.reject(Object.assign(new Error(message), { response: { status, data: { message } } })));
+
+  it('SALES ดูดผู้สนใจอีกคนเข้ามาแล้วได้ 403 → บอกว่าติดที่ห้องของผู้สนใจคนนั้น และใครกดรวมแทนได้', async () => {
+    rejectWith(403, API_403);
+    const error = vi.spyOn(toast, 'error');
+    try {
+      wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+      await waitFor(() => expect(error).toHaveBeenCalledWith(OTHER_HELD));
+      expect(error).not.toHaveBeenCalledWith(API_403);
+      expect(error).not.toHaveBeenCalledWith('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it.each([
+    ['OWNER ได้ 403 (ด่านห้องไม่ตรวจ role นี้ — 403 มาจากที่อื่น)', 'OWNER', 403, 'ไม่มีสิทธิ์ทำรายการนี้'],
+    ['SALES ได้ 409', 'SALES', 409, 'รวมไม่ได้: ผู้สนใจคนนี้มีสัญญา — ให้แก้ที่รายการนั้นก่อน'],
+  ])('%s → แสดงข้อความจาก API ตามเดิม', async (_label, role, status, message) => {
+    authRole.role = role;
+    rejectWith(status, message);
+    const error = vi.spyOn(toast, 'error');
+    try {
+      wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+      await waitFor(() => expect(error).toHaveBeenCalledWith(message));
+      expect(error).not.toHaveBeenCalledWith(OTHER_HELD);
+    } finally {
+      error.mockRestore();
+    }
   });
 
   it('ห้องไม่มีเจ้าของ (customer: null) ไม่แสดงคำใบ้ แม้ API จะส่งมา · ข้อความแท็บสัญญา/ประกันคงเดิม', () => {

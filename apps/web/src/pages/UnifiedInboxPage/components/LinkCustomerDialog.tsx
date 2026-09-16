@@ -4,7 +4,7 @@ import { Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useLinkRoomCustomer } from '../hooks/useLinkRoomCustomer';
+import { useLinkRoomCustomer, type LinkRoomResult } from '../hooks/useLinkRoomCustomer';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
 
@@ -26,12 +26,15 @@ export default function LinkCustomerDialog({
   onOpenChange,
   roomId,
   mergesProspect = false,
+  onLinked,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   roomId: string;
   /** true = ห้องนี้ถือผู้สนใจอัตโนมัติอยู่แล้ว — ผูกกับคนที่เลือกคือ "รวม" ไม่ใช่ "ผูกครั้งแรก" (สเปค 3.6) */
   mergesProspect?: boolean;
+  /** ผูกสำเร็จ — ผลการรวมผู้สนใจ (ถ้ามี) ส่งต่อให้แผงขวาแสดงข้อความหลังรวม (mockup บอร์ด 5) */
+  onLinked?: (result: LinkRoomResult) => void;
 }) {
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search, 400);
@@ -41,8 +44,9 @@ export default function LinkCustomerDialog({
     enabled: open && debounced.trim().length >= 2,
   });
   const link = useLinkRoomCustomer(roomId, {
-    onSuccess: () => {
+    onSuccess: (_customerId, result) => {
       toast.success(mergesProspect ? 'ผูกกับลูกค้าเดิมและรวมข้อมูลแชทแล้ว' : 'ผูกลูกค้ากับแชทนี้แล้ว');
+      onLinked?.(result);
       onOpenChange(false);
       setSearch('');
     },

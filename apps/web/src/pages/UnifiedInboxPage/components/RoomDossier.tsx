@@ -24,7 +24,7 @@ import ProductContextCard from './ProductContextCard';
 import Customer360Panel from './Customer360Panel';
 import LinkCustomerDialog from './LinkCustomerDialog';
 import CustomerCreateDialog, { splitDisplayName } from '@/components/customer/CustomerCreateDialog';
-import { useLinkRoomCustomer } from '../hooks/useLinkRoomCustomer';
+import { useLinkRoomCustomer, type LinkRoomResult } from '../hooks/useLinkRoomCustomer';
 import { useAbsorbCustomer, useDismissSamePerson, type AbsorbArgs } from '../hooks/useProspectActions';
 import { useAuth } from '@/contexts/AuthContext';
 import { canCreateCustomer, canFillProspectContact } from '@/lib/constants';
@@ -182,6 +182,12 @@ function AdGroup({ room }: { room: DossierRoom }) {
     </Group>
   );
 }
+
+/** R-1: SALES กดรวม "ผู้สนใจอีกคน" เข้าห้องนี้ แต่ห้องของคนนั้นมีพนักงานคนอื่นดูแล (403 จาก assertActorMayAbsorb)
+ *  ทางที่ทำได้จริง: คนดูแลห้องนั้น (ผ่านด่านเพราะเป็นห้องของตัวเอง — กดรวมจากคำใบ้หรือ "ผูกกับลูกค้าเดิม" ในห้องนั้น)
+ *  หรือ role ที่ด่านนี้ไม่ตรวจ = @Roles ของ absorb-into ที่ไม่ใช่ SALES (OWNER/BRANCH_MANAGER/FINANCE_MANAGER) */
+const ABSORB_OTHER_HELD_MSG =
+  'ผู้สนใจคนนั้นมีห้องแชทที่พนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้องนั้น หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน กดรวมแทน';
 
 /** ป้ายช่องทางของคำใบ้: ช่องทางจริง (LINE ร้าน) ก่อน → โลโก้ (LINE) → ไม่มีทั้งคู่/ไม่รู้จัก = ไม่มีป้าย (R42) */
 function hintChannelLabel(p: PossibleSamePerson): string | null {
@@ -381,9 +387,19 @@ function AppointmentsGroup({ todos, onNew }: { todos: Todo[]; onNew: () => void 
   );
 }
 
+/** เจ้าของห้องแบบไหน — หัวช่องตรวจ IMEI พูดต่างกัน (M-W5) */
+type ImeiLookupOwner = 'none' | 'prospect' | 'customer';
+/** ส่วนนำของหัวช่องตรวจ IMEI — ห้องลูกค้าจริงไม่มี ("ยังไม่…ก็ตรวจได้" เป็นเท็จเมื่อผูกและมีเบอร์แล้ว) */
+const IMEI_LOOKUP_LEAD: Record<ImeiLookupOwner, string | null> = {
+  none: 'ยังไม่ผูกลูกค้าก็ตรวจได้',
+  prospect: 'ยังไม่มีเบอร์ก็ตรวจได้',
+  customer: null,
+};
+
 /** ─── ตรวจประกันจากเลขเครื่อง — ใช้ได้แม้ยังไม่ผูก (repair-tickets/warranty-lookup?imei=)
- *  `prospect` = ห้องผู้สนใจจากแชท: มีเจ้าของแล้ว จึงบอก "ยังไม่มีเบอร์" แทน "ยังไม่ผูกลูกค้า" */
-function ImeiLookup({ prospect = false }: { prospect?: boolean }) {
+ *  `owner`: ห้องไม่มีเจ้าของ · ผู้สนใจจากแชท (มีเจ้าของแล้วแต่ยังไม่มีเบอร์) · ลูกค้าจริงที่ยังไม่มีสัญญา */
+function ImeiLookup({ owner }: { owner: ImeiLookupOwner }) {
+  const lead = IMEI_LOOKUP_LEAD[owner];
   const [imei, setImei] = useState('');
   const [submitted, setSubmitted] = useState<string | null>(null);
   const q = useQuery({
@@ -403,7 +419,7 @@ function ImeiLookup({ prospect = false }: { prospect?: boolean }) {
           <span className="grid size-7 shrink-0 place-items-center rounded-lg border border-border bg-card"><Search className="size-3.5" /></span>
           <div>
             <p className="m-0 text-[12.5px] font-bold text-foreground">ตรวจประกันจากเลขเครื่อง</p>
-            {prospect ? 'ยังไม่มีเบอร์ก็ตรวจได้' : 'ยังไม่ผูกลูกค้าก็ตรวจได้'} — ลูกค้าส่ง IMEI/Serial มาในแชท ก็อปมาวางได้เลย
+            {lead ? `${lead} — ` : ''}ลูกค้าส่ง IMEI/Serial มาในแชท ก็อปมาวางได้เลย
           </div>
         </div>
         <form
@@ -490,6 +506,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
   }, [creditFocus, room?.id]);
   const acceptsCredit = (event: React.DragEvent) => !!credit && Array.from(event.dataTransfer.types).some(type => type === 'Files' || type === CREDIT_MESSAGE_MIME);
   /* หลังรวม: ผลวิเคราะห์ที่ย้ายไปอยู่กับคนที่รอด (mockup บอร์ด 5) — state ของห้องที่กดรวม ไม่ persist
+     มาจากสองทาง: ปุ่มรวม (absorb-into) และ "ผูกกับลูกค้าเดิม" (PATCH rooms/:id/customer คืน `absorbed`)
      `roomId` จับตอนกด ไม่ใช่ตอนสำเร็จ: สลับห้องระหว่างรอ response ต้องไม่ไปโผล่ในห้องอื่น */
   const [mergeNotice, setMergeNotice] = useState<{ roomId: string; count: number; targetId: string; fromThisRoom: boolean } | null>(null);
   // เปิดห้องใหม่ → กลับแท็บ 1 เสมอ (สิ่งที่ต้องรู้ก่อนพิมพ์คำแรก) · ข้อความหลังรวมของห้องก่อนหน้าหายไปด้วย
@@ -523,7 +540,13 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
   const [fillOpen, setFillOpen] = useState(false);
   const absorb = useAbsorbCustomer(room?.id ?? '', {
     onSuccess: () => toast.success('รวมเป็นคนเดียวกันแล้ว — แชทและผลเช็คเครดิตย้ายไปแล้ว'),
-    onError: (err) => toast.error(getErrorMessage(err)),
+    onError: (err, args) => {
+      /* R-1: ต้นทางเป็น "ผู้สนใจอีกคน" (ไม่ใช่เจ้าของห้องนี้) — ด่าน SALES ของ API ตรวจห้องของคนนั้น
+         ข้อความ API ("ผู้สนใจคนนี้") อ่านเป็นห้องที่เปิดอยู่ได้ ⇒ บอกให้ชัดว่าติดที่ใคร และใครกดแทนได้ */
+      const status = (err as { response?: { status?: number } } | null)?.response?.status;
+      const otherHeld = status === 403 && user?.role === 'SALES' && args.placeholderId !== customerId;
+      toast.error(otherHeld ? ABSORB_OTHER_HELD_MSG : getErrorMessage(err));
+    },
   });
   const dismiss = useDismissSamePerson(room?.id ?? '', {
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -587,16 +610,20 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
 
   /* รวมจากห้องนี้ (คำใบ้ทั้งสองแบบ + "ใช้คนเดิม" ในฟอร์มเติมเบอร์) — จับห้อง/ทิศทางไว้ตอนกด
      ต้นทางเป็นเจ้าของห้องนี้ = ผลวิเคราะห์ย้ายออกจากห้องนี้ · ไม่งั้น = ย้ายเข้ามาจากผู้สนใจอีกคน */
+  const noteMovedCredit = (roomId: string, targetId: string, count: number, fromThisRoom: boolean) => {
+    if (count > 0) setMergeNotice({ roomId, count, targetId, fromThisRoom });
+  };
   const mergeFromRoom = (args: AbsorbArgs) => {
     const roomId = room.id;
     const fromThisRoom = args.placeholderId === customerId;
     absorb.mutate(args, {
-      onSuccess: (result) => {
-        if (result.movedCreditChecks > 0) {
-          setMergeNotice({ roomId, count: result.movedCreditChecks, targetId: result.targetId, fromThisRoom });
-        }
-      },
+      onSuccess: (result) => noteMovedCredit(roomId, result.targetId, result.movedCreditChecks, fromThisRoom),
     });
+  };
+  /* M-W6: ผูกกับลูกค้าเดิม = รวมผู้สนใจของห้องนี้เข้าคนที่เลือก ⇒ ผลวิเคราะห์ "ย้ายมาจากห้องนี้" เสมอ
+     ห้องที่ยิงจริงมากับผลลัพธ์ (hook จับตอน mutate) · ห้องไม่มีเจ้าของได้ absorbed = null */
+  const onRoomLinked = ({ roomId, absorbed }: LinkRoomResult) => {
+    if (absorbed) noteMovedCredit(roomId, absorbed.targetId, absorbed.movedCreditChecks, true);
   };
   const samePersonHints = (currentIsProspect: boolean) => (
     <SamePersonHints
@@ -808,16 +835,16 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
                 <div className="rounded-[10px] border border-border bg-card">
                   <Customer360Panel bare customerId={customerId} activeRoomId={activeRoomId} onSelectRoom={onSelectRoom} sections={['mdm']} />
                 </div>
-                {contracts.length === 0 && <ImeiLookup />}
+                {contracts.length === 0 && <ImeiLookup owner="customer" />}
               </>
             ) : (
-              <ImeiLookup prospect={placeholder} />
+              <ImeiLookup owner={placeholder ? 'prospect' : 'none'} />
             )}
           </div>
         )}
       </div>
 
-      <LinkCustomerDialog open={linkOpen} onOpenChange={setLinkOpen} roomId={room.id} mergesProspect={placeholder} />
+      <LinkCustomerDialog open={linkOpen} onOpenChange={setLinkOpen} roomId={room.id} mergesProspect={placeholder} onLinked={onRoomLinked} />
       <CustomerCreateDialog
         key={room.id}
         open={createOpen}

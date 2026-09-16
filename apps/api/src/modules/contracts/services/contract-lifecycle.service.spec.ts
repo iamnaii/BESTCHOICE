@@ -353,7 +353,7 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
     // A12: ข้อความแยกตาม isChatPlaceholder — ต้องเป็นแถวผู้สนใจจริง (ที่มา CHAT_* ไม่มีเบอร์และเลขบัตร)
     tx.customer.findUnique.mockResolvedValue({ ...mockCustomer, phone: null, nationalId: null, acquisitionSource: 'CHAT_FACEBOOK' });
     await expect(service.create({ ...baseDto } as never, 'sp-1')).rejects.toThrow(
-      'ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนทำสัญญา',
+      'ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนทำสัญญา (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)',
     );
     expect(tx.contract.create).not.toHaveBeenCalled();
   });

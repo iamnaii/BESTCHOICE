@@ -180,7 +180,7 @@ describe('TradeInService', () => {
 
       await expect(
         service.create({ ...baseDto, customerId: 'cust-chat', idCardPhotoBase64: `data:image/jpeg;base64,${'A'.repeat(200)}` } as never),
-      ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนรับซื้อเครื่อง');
+      ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนรับซื้อเครื่อง (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)');
       expect(storage.upload).not.toHaveBeenCalled();
       expect(prisma.tradeIn.create).not.toHaveBeenCalled();
     });

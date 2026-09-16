@@ -42,6 +42,9 @@ export function contractDownTender(amount: string | number, method?: string | nu
  * ใช้ PLACEHOLDER_FIELDS_SELECT; endpoint ที่เจอด่านนี้ทั้งหมดเป็น OWNER/BRANCH_MANAGER/SALES):
  *  - ผู้สนใจอัตโนมัติ → ปุ่ม "เติมเบอร์" หน้าลูกค้า (DetailHeader) / "เพิ่มเบอร์/ข้อมูล" การ์ดผู้สนใจในอินบ็อกซ์
  *    = POST /customers/:id/fill-contact (@Roles OWNER/BM/FM/SALES)
+ *    R-0: SALES โดน 403 ที่ทางนี้เมื่อห้องแชทของผู้สนใจมีพนักงานคนอื่นดูแล
+ *    (CustomerMergeService.assertActorMayAbsorb) ⇒ ข้อความบอกทางสำรอง: คนดูแลห้อง หรือ
+ *    OWNER/BM/FM (ข้ามด่านห้องนั้น) — เข้าหน้าลูกค้า/อินบ็อกซ์และเห็นปุ่มได้ทั้งสาม role
  *  - คนอื่น → fill-contact ปฏิเสธ (ไม่ใช่ผู้สนใจอัตโนมัติ) ⇒ เหลือ "แก้ไขข้อมูล" = PATCH /customers/:id
  *    (@Roles OWNER/BM เท่านั้น — SALES ต้องให้เจ้าของ/ผู้จัดการสาขาทำ)
  */
@@ -49,7 +52,8 @@ export function assertCustomerHasPhone(customer: PlaceholderShape, action: strin
   if (!customer.phone) {
     throw new BadRequestException(
       isChatPlaceholder(customer)
-        ? `ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อน${action}`
+        ? `ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อน${action}` +
+          ' (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)'
         : `ลูกค้ายังไม่มีเบอร์โทร — ให้เจ้าของหรือผู้จัดการสาขากด "แก้ไขข้อมูล" ในหน้าลูกค้าเพื่อเติมเบอร์ก่อน${action}`,
     );
   }

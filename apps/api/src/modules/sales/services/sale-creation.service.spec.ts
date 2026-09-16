@@ -130,7 +130,7 @@ describe('SaleCreationService.create — ด่านเบอร์ (spec 2026-
     const { service, writer } = makeService(chatProspect, [realProduct]);
     await expect(
       service.create({ ...baseDto, saleType } as never, 'sp-1', 'OWNER'),
-    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนเปิดใบขาย');
+    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนเปิดใบขาย (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)');
     expect(writer[writerMethod]).not.toHaveBeenCalled();
   });
 
@@ -151,7 +151,7 @@ describe('SaleCreationService.create — ด่านเบอร์ (spec 2026-
     const { service, writer, prisma } = makeService(chatProspect, []);
     await expect(
       service.create({ ...baseDto, productId: '' } as never, 'sp-1', 'OWNER'),
-    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนเปิดใบขาย');
+    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนเปิดใบขาย (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)');
     expect(prisma.product.findMany).not.toHaveBeenCalled();
     expect(writer.createCashSale).not.toHaveBeenCalled();
   });

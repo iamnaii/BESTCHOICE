@@ -837,7 +837,7 @@ describe('BookingsService', () => {
         'user-1',
         OWNER,
       ),
-    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนจองสินค้า');
+    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนจองสินค้า (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)');
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.customer.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ select: expect.objectContaining({ addressCurrent: true, acquisitionSource: true, nationalId: true }) }),
@@ -850,7 +850,7 @@ describe('BookingsService', () => {
       expireDate: new Date(Date.now() + 86400000) });
     prisma.customer.findFirst.mockResolvedValueOnce(chatProspect);
     await expect(service.update('bk-1', { customerId: 'cust-chat' }, OWNER)).rejects.toThrow(
-      'ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนจองสินค้า',
+      'ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนจองสินค้า (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)',
     );
     expect(prisma._tx.booking.update).not.toHaveBeenCalled();
     expect(prisma.customer.findFirst).toHaveBeenCalledWith(expect.objectContaining({ select: placeholderKeys }));
@@ -870,7 +870,7 @@ describe('BookingsService', () => {
     prisma.booking.findFirst.mockResolvedValueOnce({ ...paidBooking(), customer: chatProspect });
     await expect(
       service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' }, SALES_BR1.id, SALES_BR1),
-    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนเปิดใบขาย');
+    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนเปิดใบขาย (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)');
     expect(prisma._tx.product.updateMany).not.toHaveBeenCalled();
     expect(prisma._tx.sale.create).not.toHaveBeenCalled();
     expect(prisma.booking.findFirst).toHaveBeenCalledWith(

@@ -12,8 +12,12 @@ import { assertCustomerHasPhone } from './contract-create-policy';
  */
 describe('assertCustomerHasPhone — ลูกค้าที่ยังไม่มีเบอร์ทำเอกสารไม่ได้', () => {
   const prospect = { acquisitionSource: 'CHAT_FACEBOOK', phone: null, nationalId: null };
+  // R-0: ปุ่มทั้งสองยิง fill-contact ซึ่ง SALES โดน 403 เมื่อห้องของผู้สนใจมีพนักงานคนอื่นดูแล
+  // (CustomerMergeService.assertActorMayAbsorb) ⇒ ต้องบอกทางสำรองที่ทำได้จริง: คนดูแลห้อง หรือ
+  // OWNER/BRANCH_MANAGER/FINANCE_MANAGER (ข้ามด่านห้องนั้น และอยู่ใน @Roles ของ fill-contact)
   const PROSPECT_MSG = (action: string) =>
-    `ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อน${action}`;
+    `ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อน${action}` +
+    ' (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)';
   const CUSTOMER_MSG = (action: string) =>
     `ลูกค้ายังไม่มีเบอร์โทร — ให้เจ้าของหรือผู้จัดการสาขากด "แก้ไขข้อมูล" ในหน้าลูกค้าเพื่อเติมเบอร์ก่อน${action}`;
 
@@ -27,7 +31,7 @@ describe('assertCustomerHasPhone — ลูกค้าที่ยังไม�
     throw new Error('ควรโยน BadRequestException');
   }
 
-  it('ผู้สนใจอัตโนมัติจากแชท (ที่มา CHAT_* ไม่มีเบอร์และเลขบัตร) → ชี้ปุ่ม "เติมเบอร์" / "เพิ่มเบอร์/ข้อมูล"', () => {
+  it('ผู้สนใจอัตโนมัติจากแชท (ที่มา CHAT_* ไม่มีเบอร์และเลขบัตร) → ชี้ปุ่ม "เติมเบอร์" / "เพิ่มเบอร์/ข้อมูล" + ทางสำรองเมื่อห้องมีคนอื่นดูแล', () => {
     expect(messageOf(() => assertCustomerHasPhone(prospect, 'ทำสัญญา'))).toBe(PROSPECT_MSG('ทำสัญญา'));
     expect(messageOf(() => assertCustomerHasPhone({ ...prospect, acquisitionSource: 'CHAT_LINE_SHOP' }, 'รับซื้อเครื่อง'))).toBe(
       PROSPECT_MSG('รับซื้อเครื่อง'),

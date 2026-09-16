@@ -1,4 +1,5 @@
-import { ConflictException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Logger, NotFoundException } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import type { JourneySummary } from '@installment/shared';
@@ -239,5 +240,169 @@ describe('JourneyManualEntryService.create — POST /customers/:id/journey/entri
 
   it('บันทึก "รู้จักร้านจากไหน" ได้แล้ว → ไม่อยู่ในรายการ "ระบบยังไม่เก็บ"', () => {
     expect(JOURNEY_NOT_RECORDED).not.toContain('ลูกค้าหน้าร้านรู้จักร้านจากไหน');
+  });
+});
+
+describe('JourneyManualEntryService.remove — เลิกทำ (DELETE /customers/:id/journey/entries/:entryId)', () => {
+  const NOW = new Date('2026-09-15T10:00:00.000Z');
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+  const SUMMARY = { stage: 'CONTACTED', lost: null } as unknown as JourneySummary;
+  const CUSTOMERS: Record<string, { id: string; deletedAt: Date | null; mergedIntoId: string | null }> = {
+    c1: { id: 'c1', deletedAt: null, mergedIntoId: null },
+    p1: { id: 'p1', deletedAt: ago(10 * 24 * HOUR), mergedIntoId: 'c1' },
+    gone: { id: 'gone', deletedAt: ago(10 * 24 * HOUR), mergedIntoId: null },
+  };
+  const ENTRY_SELECT = { id: true, customerId: true, origin: true, actorUserId: true, createdAt: true, deletedAt: true };
+  const manualRow = (o: Record<string, unknown> = {}) => ({
+    id: 'e1', customerId: 'c1', origin: 'MANUAL', actorUserId: 's1', createdAt: ago(5 * MINUTE), deletedAt: null, ...o,
+  });
+  let warn: jest.SpyInstance;
+
+  async function setup(entry: Record<string, unknown> | null) {
+    const prisma = {
+      customer: {
+        findUnique: jest.fn(({ where }: { where: { id: string } }) => Promise.resolve(CUSTOMERS[where.id] ?? null)),
+        findMany: jest.fn(({ where }: { where: { mergedIntoId: string } }) => Promise.resolve(where.mergedIntoId === 'c1' ? [{ id: 'p1' }] : [])),
+      },
+      customerJourneyEntry: {
+        findUnique: jest.fn().mockResolvedValue(entry),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const journeyState = { recompute: jest.fn().mockResolvedValue(undefined) };
+    const summaries = { summary: jest.fn().mockResolvedValue(SUMMARY) };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        JourneyManualEntryService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: JourneyStateService, useValue: journeyState },
+        { provide: JourneySummaryService, useValue: summaries },
+      ],
+    }).compile();
+    jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    return { service: moduleRef.get(JourneyManualEntryService), prisma, journeyState, summaries };
+  }
+
+  async function rejection(promise: Promise<unknown>): Promise<Error> {
+    try {
+      await promise;
+    } catch (err) {
+      return err as Error;
+    }
+    throw new Error('คาดว่า remove จะ throw');
+  }
+
+  beforeEach(() => {
+    jest.mocked(Sentry.captureException).mockClear();
+    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    warn.mockRestore();
+  });
+
+  it.each([
+    { label: 'SALES ผู้บันทึก 5 นาที (e1)', actor: { id: 's1', role: 'SALES' }, author: 's1' as string | null, age: 5 * MINUTE },
+    { label: 'SALES ผู้บันทึก 22 ชม. (e2)', actor: { id: 's1', role: 'SALES' }, author: 's1' as string | null, age: 22 * HOUR },
+    { label: 'SALES ผู้บันทึก ครบ 24 ชม. พอดี', actor: { id: 's1', role: 'SALES' }, author: 's1' as string | null, age: 24 * HOUR },
+    { label: 'FINANCE_MANAGER ผู้บันทึก 22 ชม.', actor: { id: 'f1', role: 'FINANCE_MANAGER' }, author: 'f1' as string | null, age: 22 * HOUR },
+    { label: 'BRANCH_MANAGER แถวของคนอื่น 29 ชม. (e5)', actor: { id: 'b1', role: 'BRANCH_MANAGER' }, author: 's1' as string | null, age: 29 * HOUR },
+    { label: 'OWNER แถวของคนอื่น 400 วัน (e5)', actor: { id: 'o1', role: 'OWNER' }, author: 's1' as string | null, age: 400 * 24 * HOUR },
+    { label: 'OWNER แถวที่ผู้บันทึกถูกลบบัญชี', actor: { id: 'o1', role: 'OWNER' }, author: null as string | null, age: 3 * HOUR },
+  ])('$label → ลบได้: compare-and-set ในครอบครัว แล้วคำนวณใหม่ แล้วคืน summary', async ({ actor, author, age }) => {
+    const { service, prisma, journeyState, summaries } = await setup(manualRow({ actorUserId: author, createdAt: ago(age) }));
+    await expect(service.remove('c1', 'e1', actor)).resolves.toEqual({ summary: SUMMARY });
+    expect(prisma.customerJourneyEntry.findUnique).toHaveBeenCalledWith({ where: { id: 'e1' }, select: ENTRY_SELECT });
+    expect(prisma.customerJourneyEntry.updateMany).toHaveBeenCalledWith({
+      where: { id: 'e1', origin: 'MANUAL', deletedAt: null, customerId: { in: ['c1', 'p1'] } },
+      data: { deletedAt: NOW, deletedById: actor.id },
+    });
+    expect(journeyState.recompute).toHaveBeenCalledWith(['c1']);
+    expect(prisma.customerJourneyEntry.updateMany.mock.invocationCallOrder[0]).toBeLessThan(journeyState.recompute.mock.invocationCallOrder[0]);
+    expect(summaries.summary).toHaveBeenCalledWith('c1', actor);
+  });
+
+  it.each([
+    { label: 'SALES ผู้บันทึก 29 ชม. (e3)', actor: { id: 's1', role: 'SALES' }, author: 's1' as string | null, age: 29 * HOUR },
+    { label: 'SALES ผู้บันทึก 24 ชม. + 1 วินาที', actor: { id: 's1', role: 'SALES' }, author: 's1' as string | null, age: 24 * HOUR + 1000 },
+    { label: 'SALES แถวของพนักงานอื่น 5 นาที (e4)', actor: { id: 's2', role: 'SALES' }, author: 's1' as string | null, age: 5 * MINUTE },
+    { label: 'FINANCE_MANAGER แถวของพนักงานอื่น 5 นาที (e4)', actor: { id: 'f1', role: 'FINANCE_MANAGER' }, author: 's1' as string | null, age: 5 * MINUTE },
+    { label: 'SALES แถวที่ผู้บันทึกถูกลบบัญชี', actor: { id: 's1', role: 'SALES' }, author: null as string | null, age: 5 * MINUTE },
+  ])('$label → 403 ไม่เขียน ไม่คำนวณใหม่', async ({ actor, author, age }) => {
+    const { service, prisma, journeyState } = await setup(manualRow({ actorUserId: author, createdAt: ago(age) }));
+    const err = await rejection(service.remove('c1', 'e1', actor));
+    expect(err).toBeInstanceOf(ForbiddenException);
+    expect(err.message).toBe('ลบได้เฉพาะรายการของตัวเองภายใน 24 ชั่วโมง');
+    expect(prisma.customerJourneyEntry.updateMany).not.toHaveBeenCalled();
+    expect(journeyState.recompute).not.toHaveBeenCalled();
+  });
+
+  it('แถวที่ระบบบันทึก (origin SYSTEM) → 400 แม้ผู้ลบเป็น OWNER · ด่าน origin มาก่อนด่านสิทธิ์', async () => {
+    const { service, prisma } = await setup(manualRow({ origin: 'SYSTEM', actorUserId: null }));
+    const err = await rejection(service.remove('c1', 'e1', { id: 'o1', role: 'OWNER' }));
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err.message).toBe('ลบได้เฉพาะรายการที่พนักงานบันทึกเอง');
+    expect(prisma.customerJourneyEntry.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('ไม่พบรายการ หรือรายการเป็นของลูกค้าคนอื่น → 404 ไม่พบรายการนี้', async () => {
+    const missing = await setup(null);
+    const errMissing = await rejection(missing.service.remove('c1', 'nope', { id: 'o1', role: 'OWNER' }));
+    expect(errMissing).toBeInstanceOf(NotFoundException);
+    expect(errMissing.message).toBe('ไม่พบรายการนี้');
+    jest.useRealTimers();
+
+    const foreign = await setup(manualRow({ customerId: 'c9' }));
+    const errForeign = await rejection(foreign.service.remove('c1', 'e1', { id: 'o1', role: 'OWNER' }));
+    expect(errForeign).toBeInstanceOf(NotFoundException);
+    expect(errForeign.message).toBe('ไม่พบรายการนี้');
+    expect(foreign.prisma.customerJourneyEntry.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('ลูกค้าไม่มีอยู่ หรือถูกลบด้วยเหตุอื่น → 404 ไม่พบลูกค้า โดยไม่อ่านรายการ', async () => {
+    const { service, prisma } = await setup(manualRow());
+    for (const id of ['no-such-customer', 'gone']) {
+      const err = await rejection(service.remove(id, 'e1', { id: 'o1', role: 'OWNER' }));
+      expect(err).toBeInstanceOf(NotFoundException);
+      expect(err.message).toBe('ไม่พบลูกค้า');
+    }
+    expect(prisma.customerJourneyEntry.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('id ของ placeholder ที่รวมแล้ว → ตามไปลูกค้าจริง: ครอบครัว [c1, p1] · คำนวณใหม่และ summary ของ c1', async () => {
+    const { service, prisma, journeyState, summaries } = await setup(manualRow());
+    const actor = { id: 's1', role: 'SALES' };
+    await expect(service.remove('p1', 'e1', actor)).resolves.toEqual({ summary: SUMMARY });
+    expect(prisma.customer.findUnique).toHaveBeenNthCalledWith(1, { where: { id: 'p1' }, select: { id: true, deletedAt: true, mergedIntoId: true } });
+    expect(prisma.customer.findUnique).toHaveBeenNthCalledWith(2, { where: { id: 'c1' }, select: { id: true, deletedAt: true, mergedIntoId: true } });
+    expect(prisma.customerJourneyEntry.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ customerId: { in: ['c1', 'p1'] } }) }));
+    expect(journeyState.recompute).toHaveBeenCalledWith(['c1']);
+    expect(summaries.summary).toHaveBeenCalledWith('c1', actor);
+  });
+
+  it('ลบไปแล้ว (กดเลิกทำซ้ำ) → 200 คืน summary ไม่เขียนซ้ำ ไม่คำนวณใหม่', async () => {
+    const { service, prisma, journeyState, summaries } = await setup(manualRow({ deletedAt: ago(MINUTE) }));
+    await expect(service.remove('c1', 'e1', { id: 's1', role: 'SALES' })).resolves.toEqual({ summary: SUMMARY });
+    expect(prisma.customerJourneyEntry.updateMany).not.toHaveBeenCalled();
+    expect(journeyState.recompute).not.toHaveBeenCalled();
+    expect(summaries.summary).toHaveBeenCalledWith('c1', { id: 's1', role: 'SALES' });
+  });
+
+  it('อีกคำขอลบไปก่อนระหว่างอ่านกับเขียน (count 0) → 200 คืน summary ไม่คำนวณใหม่', async () => {
+    const { service, prisma, journeyState } = await setup(manualRow());
+    prisma.customerJourneyEntry.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.remove('c1', 'e1', { id: 's1', role: 'SALES' })).resolves.toEqual({ summary: SUMMARY });
+    expect(journeyState.recompute).not.toHaveBeenCalled();
+  });
+
+  it('คำนวณใหม่ล้ม → ยังคืน summary (แถวถูกลบแล้ว ห้าม 500) + Sentry แยก op', async () => {
+    const { service, journeyState } = await setup(manualRow());
+    const failure = new Error('db down');
+    journeyState.recompute.mockRejectedValue(failure);
+    await expect(service.remove('c1', 'e1', { id: 's1', role: 'SALES' })).resolves.toEqual({ summary: SUMMARY });
+    expect(Sentry.captureException).toHaveBeenCalledWith(failure, { tags: { kind: 'customer-journey', op: 'manual-entry-undo-recompute' } });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('db down'));
   });
 });

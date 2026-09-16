@@ -8,7 +8,9 @@ import { JourneySummaryService } from './journey-summary.service';
 import { journeyDedupeKey } from './journey-data-schemas';
 
 const FORBIDDEN_KEYS = ['phone', 'phoneSecondary', 'nationalId', 'address', 'addressCurrent', 'addressIdCard', 'addressWork', 'text', 'mediaUrl', 'mediaType', 'content', 'messageContent', 'notes', 'note', 'voiceMemoUrl', 'overrideReason', 'customerName', 'reviewNotes', 'voidReason', 'defectDescription', 'reason'];
-const EVENT_KEYS = ['id', 'type', 'group', 'stage', 'timestamp', 'title', 'subtitle', 'actor', 'reliability', 'origin', 'href', 'metadata'];
+// entryId / undoableUntil / canDelete = แถว MANUAL เท่านั้น (เลิกทำ — เฟส 3)
+const EVENT_KEYS = ['id', 'type', 'group', 'stage', 'timestamp', 'title', 'subtitle', 'actor', 'reliability', 'origin', 'href', 'metadata', 'entryId', 'undoableUntil', 'canDelete'];
+const UNDO_KEYS = ['entryId', 'undoableUntil', 'canDelete'];
 function allKeys(value: unknown, keys = new Set<string>()): Set<string> {
   if (Array.isArray(value)) value.forEach((v) => allKeys(v, keys));
   else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) { keys.add(k); allKeys(v, keys); }
@@ -120,6 +122,23 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
       expect(Object.keys(event).filter((k) => !EVENT_KEYS.includes(k))).toEqual([]);
       expect(Object.keys(event.actor ?? {}).filter((k) => !['type', 'id', 'name'].includes(k))).toEqual([]);
     }
+  });
+
+  it('เลิกทำ: เฉพาะแถว MANUAL มี entryId/undoableUntil/canDelete · OWNER ลบแถวคนอื่นได้ (undoableUntil null) · ผู้จัดการการเงินไม่ได้', async () => {
+    const owner = await page(ids.target, OWNER);
+    const manual = owner.events.filter((e) => e.origin === 'MANUAL');
+    expect(manual.length).toBeGreaterThan(0);
+    for (const event of manual) {
+      expect(event.id).toBe(`entry-${event.entryId}`);
+      expect(event).toMatchObject({ canDelete: true, undoableUntil: null });
+    }
+    for (const event of owner.events.filter((e) => e.origin !== 'MANUAL')) {
+      for (const key of UNDO_KEYS) expect(event).not.toHaveProperty(key);
+    }
+    const finance = await page(ids.target, { id: 'fm-spec', role: 'FINANCE_MANAGER' });
+    const financeManual = finance.events.filter((e) => e.origin === 'MANUAL');
+    expect(financeManual.length).toBeGreaterThan(0);
+    for (const event of financeManual) expect(event).toMatchObject({ canDelete: false, undoableUntil: null });
   });
 
   it('SALES ไม่เห็นห้อง/บันทึกของห้องที่คนอื่นดูแล · ACCOUNTANT ไม่ได้ chat แม้ขอมา', async () => {

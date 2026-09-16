@@ -10,7 +10,7 @@ jest.mock('../journey-data-schemas', () => ({
 }));
 
 const at = (iso: string) => new Date(iso);
-const entry = (o: Record<string, unknown>) => ({ origin: 'SYSTEM', actorType: 'STAFF', roomId: null, refType: null, refId: null, data: null, channel: null, outcome: null, lostReason: null, heardFrom: null, actorUser: null, ...o });
+const entry = (o: Record<string, unknown>) => ({ origin: 'SYSTEM', actorType: 'STAFF', roomId: null, refType: null, refId: null, data: null, channel: null, outcome: null, lostReason: null, heardFrom: null, actorUser: null, createdAt: at('2026-09-01T00:00:00.000Z'), ...o });
 const byId = (events: JourneyEvent[], id: string) => events.find((e) => e.id === id);
 function db() {
   return {
@@ -117,5 +117,67 @@ describe('entriesSource', () => {
     expect(events).toHaveLength(53); // 35 + 1 + 9 + 1 + 5 + 1 + 1
     expect(Object.fromEntries(events.map((e) => [e.id, [e.title, e.stage]]))).toEqual(expected);
     expect(events.every((e) => e.group === 'chat' && e.origin === 'MANUAL')).toBe(true);
+  });
+
+  describe('แถว MANUAL: entryId / undoableUntil / canDelete ตามผู้ดู (TimelineRows e1-e5)', () => {
+    const NOW = new Date('2026-09-15T10:00:00.000Z');
+    const MINUTE = 60_000;
+    const HOUR = 60 * MINUTE;
+    const ago = (ms: number) => new Date(NOW.getTime() - ms);
+    const until = (createdAt: Date) => new Date(createdAt.getTime() + 24 * HOUR).toISOString();
+    const SOMSRI = { id: 'staff-somsri', name: 'สมศรี ตัวอย่าง' };
+    const MANA = { id: 'staff-mana', name: 'มานะ ทดสอบ' };
+    const rows = [
+      entry({ id: 'e1', kind: 'TOUCHPOINT', origin: 'MANUAL', occurredAt: ago(5 * MINUTE), createdAt: ago(5 * MINUTE), channel: 'PHONE', outcome: 'APPOINTED', actorUser: SOMSRI }),
+      entry({ id: 'e5', kind: 'MARKED_LOST', origin: 'MANUAL', occurredAt: ago(2 * HOUR), createdAt: ago(2 * HOUR), lostReason: 'NOT_INTERESTED', actorUser: MANA }),
+      entry({ id: 'e4', kind: 'TOUCHPOINT', origin: 'MANUAL', occurredAt: ago(3 * HOUR), createdAt: ago(3 * HOUR), channel: 'LINE_APP', outcome: 'APPOINTED', actorUser: MANA }),
+      entry({ id: 'e2', kind: 'TOUCHPOINT', origin: 'MANUAL', occurredAt: ago(22 * HOUR), createdAt: ago(22 * HOUR), channel: 'WALK_IN', outcome: 'THINKING', actorUser: SOMSRI }),
+      entry({ id: 'e3', kind: 'TOUCHPOINT', origin: 'MANUAL', occurredAt: ago(29 * HOUR), createdAt: ago(29 * HOUR), channel: 'PHONE', outcome: 'NO_ANSWER', actorUser: SOMSRI }),
+      entry({ id: 'sys', kind: 'CONTACT_ADDED', occurredAt: ago(30 * HOUR), createdAt: ago(30 * HOUR), actorUser: SOMSRI }),
+    ];
+    async function view(actor: { id: string; role: string }) {
+      const prisma = db();
+      prisma.customerJourneyEntry.findMany.mockResolvedValue(rows);
+      const events = await entriesSourceFor(new Set<JourneyEventGroup>(['chat']))(prisma as unknown as PrismaService, ['c1'], { limit: 30 }, actor);
+      return { prisma, events };
+    }
+    const undo = (events: JourneyEvent[], id: string) => {
+      const event = byId(events, `entry-${id}`);
+      if (!event) throw new Error(`ไม่พบแถว entry-${id}`);
+      return { entryId: event.entryId, undoableUntil: event.undoableUntil, canDelete: event.canDelete };
+    };
+
+    beforeEach(() => {
+      jest.useFakeTimers({ now: NOW, doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    });
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('SALES (สมศรี): e1/e2 ของตัวเองในหน้าต่างเลิกทำได้ · e3 เกิน 24 ชม. · e4/e5 ของคนอื่นไม่ได้ · แถว SYSTEM ไม่มีคีย์ · select มี createdAt ไม่มี note', async () => {
+      const { prisma, events } = await view({ id: SOMSRI.id, role: 'SALES' });
+      expect(undo(events, 'e1')).toEqual({ entryId: 'e1', undoableUntil: until(ago(5 * MINUTE)), canDelete: true });
+      expect(undo(events, 'e2')).toEqual({ entryId: 'e2', undoableUntil: until(ago(22 * HOUR)), canDelete: true });
+      expect(undo(events, 'e3')).toEqual({ entryId: 'e3', undoableUntil: null, canDelete: false });
+      expect(undo(events, 'e4')).toEqual({ entryId: 'e4', undoableUntil: null, canDelete: false });
+      expect(undo(events, 'e5')).toEqual({ entryId: 'e5', undoableUntil: null, canDelete: false });
+      const system = byId(events, 'entry-sys');
+      expect(system).toBeDefined();
+      for (const key of ['entryId', 'undoableUntil', 'canDelete']) expect(system).not.toHaveProperty(key);
+      const args = prisma.customerJourneyEntry.findMany.mock.calls[0][0];
+      expect(args.select).toHaveProperty('createdAt', true);
+      expect(args.select).not.toHaveProperty('note');
+    });
+
+    it('FINANCE_MANAGER: แถวของพนักงานอื่นเลิกทำไม่ได้', async () => {
+      const { events } = await view({ id: 'fm-1', role: 'FINANCE_MANAGER' });
+      expect(undo(events, 'e4')).toEqual({ entryId: 'e4', undoableUntil: null, canDelete: false });
+      expect(undo(events, 'e1')).toEqual({ entryId: 'e1', undoableUntil: null, canDelete: false });
+    });
+
+    it.each(['OWNER', 'BRANCH_MANAGER'])('%s: ทุกแถวที่พนักงานกดเลิกทำได้ ไม่จำกัด 24 ชม. (e5) · undoableUntil เป็น null เพราะไม่ใช่ผู้บันทึก', async (role) => {
+      const { events } = await view({ id: `viewer-${role}`, role });
+      for (const id of ['e1', 'e2', 'e3', 'e4', 'e5']) expect(undo(events, id)).toEqual({ entryId: id, undoableUntil: null, canDelete: true });
+    });
   });
 });

@@ -398,9 +398,17 @@ body แบบ discriminated (CreateJourneyEntryDto) — **ไม่มี note 
 - event มาจากตัวแปลงเดียวกับรายการ (sources/manual-entry-event.ts) ⇒ ชื่อแถวสองทางตรงกันเสมอ
 - ไม่เขียน audit_logs เพิ่ม — แถว entries มีผู้กด เวลา และ deletedById อยู่แล้ว
 
-4) DELETE /customers/:id/journey/entries/:entryId
-- soft delete (deletedById) เฉพาะ origin=MANUAL
-- ผู้บันทึกภายใน 24 ชม. หรือ OWNER/BRANCH_MANAGER
+4) DELETE /customers/:id/journey/entries/:entryId ("เลิกทำ" — เฟส 3)
+- roles: OWNER, BRANCH_MANAGER, FINANCE_MANAGER, SALES (ชุดเดียวกับ POST) · service ตัดสินสิทธิ์รายแถว
+- :id ที่เป็น placeholder ที่รวมแล้วตามไป merged_into_id · ครอบครัว = ลูกค้า + placeholder ที่รวมเข้ามา · ลูกค้าไม่พบ → 404 'ไม่พบลูกค้า'
+- ด่านตามลำดับ:
+  - ไม่พบรายการ หรือรายการไม่ใช่ของครอบครัวนี้ → 404 'ไม่พบรายการนี้'
+  - origin ไม่ใช่ MANUAL → 400 'ลบได้เฉพาะรายการที่พนักงานบันทึกเอง'
+  - OWNER/BRANCH_MANAGER ลบได้ทุกแถวทุกเวลา · FINANCE_MANAGER/SALES เฉพาะแถวที่ตัวเองบันทึก ภายใน 24 ชม. นับจาก created_at (ไม่ใช่ occurred_at · ครบ 24 ชม. พอดียังลบได้) · อื่น ๆ → 403 'ลบได้เฉพาะรายการของตัวเองภายใน 24 ชั่วโมง'
+  - ลบไปแล้ว (กดเลิกทำซ้ำ) → 200 { summary } ไม่เขียนซ้ำ
+- เขียนแบบ compare-and-set: updateMany where id + origin MANUAL + deleted_at null + customer_id ในครอบครัว → set deleted_at, deleted_by_id · count 0 (มีคำขออื่นเลิกทำไปก่อน) = 200 ไม่คำนวณใหม่
+- หลังเขียน recompute([ลูกค้า]) ใน try/catch + Sentry (kind customer-journey · op manual-entry-undo-recompute) แล้วคืน 200 { summary }
+- ฝั่งอ่าน: ทุกแถว MANUAL ใน GET /customers/:id/journey และ event ในคำตอบ POST มี entryId, undoableUntil (ผู้บันทึกที่ยังอยู่ในหน้าต่าง = created_at + 24 ชม. · อื่น ๆ null), canDelete (กติกาเดียวกับด่าน 403 — canDeleteManualEntry · เว็บแสดงลิงก์ "เลิกทำ" ตามค่านี้) · แถว SOURCE/SYSTEM_ENTRY ไม่มีสามคีย์นี้ · ยังไม่ select note
 
 5) GET /customers/journey/funnel
 - roles: OWNER, BRANCH_MANAGER

@@ -61,8 +61,8 @@ export function entriesSourceFor(groups: ReadonlySet<JourneyEventGroup>): Journe
       whenAny(kinds, () =>
         prisma.customerJourneyEntry.findMany({
           where: { customerId: { in: customerIds }, deletedAt: null, kind: { in: kinds }, occurredAt: dbTimeRange(window) },
-          // ไม่ select note (ข้อความอิสระ) ทุกกรณี
-          select: { id: true, kind: true, origin: true, occurredAt: true, actorType: true, roomId: true, refType: true, refId: true, data: true, channel: true, outcome: true, lostReason: true, heardFrom: true, actorUser: { select: { id: true, name: true } } },
+          // createdAt = หน้าต่างเลิกทำ 24 ชม. (ไม่ใช่ PII) · ยังไม่ select note (ข้อความอิสระ) ทุกกรณี
+          select: { id: true, kind: true, origin: true, occurredAt: true, createdAt: true, actorType: true, roomId: true, refType: true, refId: true, data: true, channel: true, outcome: true, lostReason: true, heardFrom: true, actorUser: { select: { id: true, name: true } } },
           orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], take: scanTake(window),
         }),
       ),

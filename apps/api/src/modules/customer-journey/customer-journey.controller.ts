@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import type { JourneyEntryCreatedResponse, JourneyListResponse, JourneyRedirect, JourneySummary } from '@installment/shared';
+import type { JourneyEntryCreatedResponse, JourneyEntryDeletedResponse, JourneyListResponse, JourneyRedirect, JourneySummary } from '@installment/shared';
 import { CustomerJourneyService } from './customer-journey.service';
 import { CreateJourneyEntryDto } from './dto/create-journey-entry.dto';
 import { JourneyListQueryDto } from './dto/journey-list-query.dto';
@@ -41,5 +41,16 @@ export class CustomerJourneyController {
   @ApiOperation({ summary: 'บันทึกมือแตะเดียว — ติดต่อ · รู้จักร้านจากไหน · ติดป้ายหลุด · เปิดใหม่ · เวลาเซิร์ฟเวอร์ · clientRequestId กันกดซ้ำ · 201 เสมอ (เปิดใหม่ตอนไม่หลุด = entryId null)' })
   createEntry(@Param('id') id: string, @Body() dto: CreateJourneyEntryDto, @CurrentUser() user: { id: string; role: string }): Promise<JourneyEntryCreatedResponse> {
     return this.manualEntries.create(id, dto, { id: user.id, role: user.role });
+  }
+
+  @Delete(':id/journey/entries/:entryId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  @ApiOperation({ summary: 'เลิกทำรายการที่พนักงานบันทึกเอง — OWNER/ผู้จัดการสาขาได้ทุกแถว · คนอื่นเฉพาะของตัวเองภายใน 24 ชม. · ลบซ้ำ = 200 ไม่ทำอะไร' })
+  removeEntry(
+    @Param('id') id: string,
+    @Param('entryId') entryId: string,
+    @CurrentUser() user: { id: string; role: string },
+  ): Promise<JourneyEntryDeletedResponse> {
+    return this.manualEntries.remove(id, entryId, { id: user.id, role: user.role });
   }
 }

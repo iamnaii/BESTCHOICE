@@ -1,7 +1,16 @@
 import type { JourneyEventGroup, JourneyStage } from '@installment/shared';
 import type { PrismaService } from '../../../prisma/prisma.service';
 import { entriesSourceFor } from './entries.source';
-import { isManualEntryKind, manualEntryTitle, manualEntryToEvent, type ManualEntryEventRow } from './manual-entry-event';
+import {
+  JOURNEY_UNDO_WINDOW_MS,
+  canDeleteManualEntry,
+  isManualEntryKind,
+  manualEntryTitle,
+  manualEntryToEvent,
+  manualEntryUndoFields,
+  type ManualEntryEventRow,
+  type ManualEntryUndoRow,
+} from './manual-entry-event';
 
 const OWNER = { id: 'o1', role: 'OWNER' };
 const NOW = new Date('2026-09-15T05:00:00.000Z');
@@ -84,5 +93,82 @@ describe('manualEntryToEvent — ตัวแปลงเดียวของ�
     };
     const events = await entriesSourceFor(new Set<JourneyEventGroup>(['chat']))(prisma as unknown as PrismaService, ['c1'], { limit: 30 }, OWNER);
     expect(events).toEqual(rows.map((r) => manualEntryToEvent(r, OWNER, NOW)));
+  });
+});
+
+describe('หน้าต่างเลิกทำ — canDeleteManualEntry / manualEntryUndoFields (TimelineRows e1-e5 · Q5 · Q18)', () => {
+  const NOW = new Date('2026-09-15T10:00:00.000Z');
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+  const until = (createdAt: Date) => new Date(createdAt.getTime() + JOURNEY_UNDO_WINDOW_MS).toISOString();
+  const SOMSRI = { id: 'staff-somsri', role: 'SALES' };
+  const MANA_ID = 'staff-mana';
+  const row = (o: Partial<ManualEntryUndoRow> = {}): ManualEntryUndoRow => ({
+    id: 'e1',
+    origin: 'MANUAL',
+    createdAt: ago(5 * MINUTE),
+    actorUserId: SOMSRI.id,
+    ...o,
+  });
+
+  it('หน้าต่าง = 24 ชั่วโมง', () => {
+    expect(JOURNEY_UNDO_WINDOW_MS).toBe(86_400_000);
+  });
+
+  it('e1 ผู้ดูเป็นผู้บันทึก 5 นาทีที่แล้ว → เลิกทำได้ · undoableUntil = createdAt + 24 ชม.', () => {
+    const createdAt = ago(5 * MINUTE);
+    expect(manualEntryUndoFields(row({ createdAt }), SOMSRI, NOW)).toEqual({ entryId: 'e1', undoableUntil: until(createdAt), canDelete: true });
+  });
+
+  it('e2 ผู้บันทึก 22 ชม. → ยังเลิกทำได้ · ครบ 24 ชม. พอดียังได้ · เกิน 1 มิลลิวินาทีไม่ได้', () => {
+    const created22h = ago(22 * HOUR);
+    expect(manualEntryUndoFields(row({ createdAt: created22h }), SOMSRI, NOW)).toEqual({ entryId: 'e1', undoableUntil: until(created22h), canDelete: true });
+    const created24h = ago(24 * HOUR);
+    expect(manualEntryUndoFields(row({ createdAt: created24h }), SOMSRI, NOW)).toEqual({ entryId: 'e1', undoableUntil: until(created24h), canDelete: true });
+    expect(manualEntryUndoFields(row({ createdAt: ago(24 * HOUR + 1) }), SOMSRI, NOW)).toEqual({ entryId: 'e1', undoableUntil: null, canDelete: false });
+  });
+
+  it('e3 ผู้บันทึก 29 ชม. → ลิงก์หาย (canDelete false · undoableUntil null)', () => {
+    expect(manualEntryUndoFields(row({ createdAt: ago(29 * HOUR) }), SOMSRI, NOW)).toEqual({ entryId: 'e1', undoableUntil: null, canDelete: false });
+  });
+
+  it('e4 แถวของพนักงานคนอื่น → SALES และผู้จัดการการเงินเลิกทำไม่ได้ · ผู้บันทึกถูกลบบัญชี (actorUserId null) ไม่นับเป็นของใคร', () => {
+    const others = row({ actorUserId: MANA_ID, createdAt: ago(3 * HOUR) });
+    expect(manualEntryUndoFields(others, SOMSRI, NOW)).toEqual({ entryId: 'e1', undoableUntil: null, canDelete: false });
+    expect(manualEntryUndoFields(others, { id: 'fm-1', role: 'FINANCE_MANAGER' }, NOW)).toEqual({ entryId: 'e1', undoableUntil: null, canDelete: false });
+    expect(canDeleteManualEntry({ actorUserId: null, createdAt: ago(MINUTE) }, SOMSRI, NOW)).toBe(false);
+  });
+
+  it('e5 OWNER / ผู้จัดการสาขา ดูแถวของคนอื่น → เลิกทำได้ทุกเวลา แต่ undoableUntil เป็นของผู้บันทึกเท่านั้น (null)', () => {
+    for (const role of ['OWNER', 'BRANCH_MANAGER']) {
+      const viewer = { id: `viewer-${role}`, role };
+      expect(manualEntryUndoFields(row({ actorUserId: MANA_ID, createdAt: ago(2 * HOUR) }), viewer, NOW)).toEqual({ entryId: 'e1', undoableUntil: null, canDelete: true });
+      expect(manualEntryUndoFields(row({ actorUserId: MANA_ID, createdAt: ago(400 * 24 * HOUR) }), viewer, NOW)).toEqual({ entryId: 'e1', undoableUntil: null, canDelete: true });
+    }
+  });
+
+  it('OWNER ที่บันทึกเองในหน้าต่าง ได้ undoableUntil ด้วย · ผู้จัดการการเงินเลิกทำแถวของตัวเองได้ภายใน 24 ชม.', () => {
+    const createdAt = ago(MINUTE);
+    expect(manualEntryUndoFields(row({ actorUserId: 'owner-1', createdAt }), { id: 'owner-1', role: 'OWNER' }, NOW)).toEqual({ entryId: 'e1', undoableUntil: until(createdAt), canDelete: true });
+    expect(canDeleteManualEntry({ actorUserId: 'fm-1', createdAt: ago(22 * HOUR) }, { id: 'fm-1', role: 'FINANCE_MANAGER' }, NOW)).toBe(true);
+  });
+
+  it('แถวที่ระบบบันทึก (origin SYSTEM) ไม่มีสามคีย์นี้เลย', () => {
+    expect(manualEntryUndoFields(row({ origin: 'SYSTEM', actorUserId: SOMSRI.id }), { id: 'owner-1', role: 'OWNER' }, NOW)).toEqual({});
+  });
+
+  it('manualEntryToEvent (ทางเดียวกับคำตอบ POST): แถวที่เพิ่งเขียน createdAt = now → entryId + undoableUntil = now + 24 ชม. + canDelete', () => {
+    const fresh = {
+      id: 'e-new', kind: 'TOUCHPOINT', origin: 'MANUAL', occurredAt: NOW, createdAt: NOW, actorType: 'STAFF',
+      roomId: null, refType: null, refId: null, data: null, channel: 'PHONE', outcome: 'APPOINTED', lostReason: null, heardFrom: null,
+      actorUser: { id: SOMSRI.id, name: 'สมศรี ตัวอย่าง' },
+    } as unknown as Parameters<typeof manualEntryToEvent>[0];
+    expect(manualEntryToEvent(fresh, SOMSRI, NOW)).toMatchObject({
+      origin: 'MANUAL',
+      entryId: 'e-new',
+      undoableUntil: '2026-09-16T10:00:00.000Z',
+      canDelete: true,
+    });
   });
 });

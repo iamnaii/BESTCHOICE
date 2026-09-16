@@ -1,14 +1,14 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
-import type { JourneyEntryCreatedResponse, JourneyManualEntryKind, JourneyRedirect, JourneySummary } from '@installment/shared';
+import type { JourneyEntryCreatedResponse, JourneyEntryDeletedResponse, JourneyManualEntryKind, JourneyRedirect, JourneySummary } from '@installment/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BOUGHT_WHERE } from '../customers/services/customer-query.service';
 import type { CreateJourneyEntryDto } from './dto/create-journey-entry.dto';
 import { JourneyStateService } from './journey-state.service';
 import { JourneySummaryService } from './journey-summary.service';
 import type { JourneyActor } from './sources/journey-window';
-import { MANUAL_ENTRY_EVENT_SELECT, manualEntryToEvent, type ManualEntryEventRow } from './sources/manual-entry-event';
+import { canDeleteManualEntry, MANUAL_ENTRY_EVENT_SELECT, manualEntryToEvent, type ManualEntryEventRow } from './sources/manual-entry-event';
 
 /** dedupe_key ของบันทึกมือ — มี kind ในคีย์: แตะ "ซื้อที่อื่น" แล้วกด "ใช่ ติดป้ายหลุด" เป็นคนละคำขอ ต้องไม่ชนกัน */
 export const manualEntryDedupeKey = (kind: JourneyManualEntryKind, clientRequestId: string): string => `MANUAL:${kind}:${clientRequestId}`;
@@ -94,6 +94,46 @@ export class JourneyManualEntryService {
     await this.recomputeQuietly(targetId);
     const event = manualEntryToEvent(row, actor, now);
     return { entryId: row.id, event, summary: await this.freshSummary(targetId, actor) };
+  }
+
+  /**
+   * DELETE /customers/:id/journey/entries/:entryId — "เลิกทำ" แถวที่พนักงานกดเอง (soft delete)
+   * ด่านตามลำดับ: ลูกค้าไม่พบ 404 → รายการไม่พบ/ไม่ใช่ของครอบครัว 404 → ไม่ใช่ MANUAL 400 → สิทธิ์ 403 → ลบไปแล้ว 200 ไม่เขียนซ้ำ
+   * สิทธิ์ = canDeleteManualEntry ตัวเดียวกับ canDelete บนแถวไทม์ไลน์ (หน้าต่าง 24 ชม. นับจาก createdAt ไม่ใช่ occurredAt)
+   */
+  async remove(customerId: string, entryId: string, actor: JourneyActor): Promise<JourneyEntryDeletedResponse> {
+    // กติกาครอบครัวเดียวกับ create() — placeholder ที่รวมแล้วตามไปลูกค้าจริง · ไม่พบ/ถูกลบ = 404 'ไม่พบลูกค้า'
+    const { targetId, familyIds } = await this.resolveFamily(customerId);
+    const entry = await this.prisma.customerJourneyEntry.findUnique({
+      where: { id: entryId },
+      select: { id: true, customerId: true, origin: true, actorUserId: true, createdAt: true, deletedAt: true },
+    });
+    if (!entry || !familyIds.includes(entry.customerId)) throw new NotFoundException('ไม่พบรายการนี้');
+    if (entry.origin !== 'MANUAL') throw new BadRequestException('ลบได้เฉพาะรายการที่พนักงานบันทึกเอง');
+    const now = new Date();
+    if (!canDeleteManualEntry(entry, actor, now)) throw new ForbiddenException('ลบได้เฉพาะรายการของตัวเองภายใน 24 ชั่วโมง');
+
+    if (!entry.deletedAt) {
+      // compare-and-set: กดเลิกทำพร้อมกันสองที่ = แถวถูกลบครั้งเดียว อีกคำขอได้ count 0 แล้วคืน summary เฉย ๆ
+      const { count } = await this.prisma.customerJourneyEntry.updateMany({
+        where: { id: entry.id, origin: 'MANUAL', deletedAt: null, customerId: { in: familyIds } },
+        data: { deletedAt: now, deletedById: actor.id },
+      });
+      if (count > 0) {
+        try {
+          await this.journeyState.recompute([targetId]);
+        } catch (err) {
+          // แถวถูกลบแล้ว — คำตอบต้องไม่เป็น 500 · แคชค้างได้จนหมดอายุ 15 นาที/cron คืนนี้
+          this.logger.warn(`journey undo recompute ล้ม customer=${targetId}: ${err instanceof Error ? err.message : err}`);
+          Sentry.captureException(err, { tags: { kind: 'customer-journey', op: 'manual-entry-undo-recompute' } });
+        }
+      }
+    }
+
+    const summary = await this.summaries.summary(targetId, actor);
+    // ครอบครัวเริ่มจากลูกค้าที่ยังไม่ถูกลบเสมอ — redirect ตรงนี้ไม่ควรเกิด
+    if (isRedirect(summary)) throw new NotFoundException('ไม่พบลูกค้า');
+    return { summary };
   }
 
   /** placeholder ที่รวมแล้วเขียนไปที่ลูกค้าจริง — chain ถูกยุบเหลือชั้นเดียวตอนรวม · ครอบครัว = ลูกค้าจริง + placeholder ที่ชี้มา */

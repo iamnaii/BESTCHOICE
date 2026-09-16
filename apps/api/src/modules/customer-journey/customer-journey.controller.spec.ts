@@ -55,3 +55,38 @@ describe('CustomerJourneyController', () => {
     expect(manualEntries.create).toHaveBeenCalledWith('c1', dto, { id: 'u1', role: 'FINANCE_MANAGER' });
   });
 });
+
+describe('CustomerJourneyController DELETE :id/journey/entries/:entryId', () => {
+  const manualEntries = { remove: jest.fn() };
+  let controller: CustomerJourneyController;
+
+  beforeEach(async () => {
+    manualEntries.remove.mockReset();
+    const allow = { canActivate: () => true };
+    const moduleRef = await Test.createTestingModule({
+      controllers: [CustomerJourneyController],
+      providers: [
+        { provide: CustomerJourneyService, useValue: {} },
+        { provide: JourneyManualEntryService, useValue: manualEntries },
+      ],
+    })
+      .overrideGuard(JwtAuthGuard).useValue(allow)
+      .overrideGuard(RolesGuard).useValue(allow)
+      .overrideGuard(BranchGuard).useValue(allow)
+      .compile();
+    controller = moduleRef.get(CustomerJourneyController);
+  });
+
+  it('DELETE · 4 บทบาทเดียวกับ POST (ไม่มี ACCOUNTANT) · ไม่ตั้ง HttpCode (= 200) · ส่งต่อ id/entryId/id+role ให้ service', async () => {
+    const handler = CustomerJourneyController.prototype.removeEntry;
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe(':id/journey/entries/:entryId');
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.DELETE);
+    expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual(['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']);
+    expect(Reflect.getMetadata(HTTP_CODE_METADATA, handler)).toBeUndefined();
+    const summary = { stage: 'CONTACTED' };
+    manualEntries.remove.mockResolvedValue({ summary });
+    const user = { id: 'u1', role: 'SALES', branchId: 'b1' };
+    await expect(controller.removeEntry('c1', 'e1', user)).resolves.toEqual({ summary });
+    expect(manualEntries.remove).toHaveBeenCalledWith('c1', 'e1', { id: 'u1', role: 'SALES' });
+  });
+});

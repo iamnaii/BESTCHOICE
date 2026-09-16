@@ -98,3 +98,11 @@ export const canCreateCustomer = (role: string | null | undefined): boolean => C
  */
 export const PROSPECT_CONTACT_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'];
 export const canFillProspectContact = (role: string | null | undefined): boolean => PROSPECT_CONTACT_ROLES.includes(role ?? '');
+
+/**
+ * บทบาทที่บันทึกการเดินทางลูกค้าด้วยมือได้ (บันทึกการติดต่อ · ติดป้ายหลุด/เปิดใหม่ · รู้จักร้านจากไหน · เลิกทำ)
+ * ต้องตรงกับ `@Roles` ของ `POST /customers/:id/journey/entries` และ `DELETE …/entries/:entryId` (customer-journey.controller.ts)
+ * ค่าเท่ากับ PROSPECT_CONTACT_ROLES วันนี้แต่ผูกกับคนละ endpoint จึงแยกค่าคงที่ — ACCOUNTANT ไม่ได้ (403 + มองไม่เห็นกลุ่มแชทที่แถวบันทึกมืออยู่)
+ */
+export const JOURNEY_RECORD_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'];
+export const canRecordJourney = (role: string | null | undefined): boolean => JOURNEY_RECORD_ROLES.includes(role ?? '');

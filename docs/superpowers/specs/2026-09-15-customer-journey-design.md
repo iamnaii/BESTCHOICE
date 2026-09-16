@@ -191,8 +191,9 @@ firstChannel = acquisitionSource ของห้อง/แถวที่เก�
 - credit_checks.created_at (customer_id อยู่ใน ids; แถวที่นำเข้าจากแชทมี created_at ย้อนเป็นเวลา OCR = approximate)
 - room_credit_analyses.created_at status COMPLETED บนห้องของลูกค้า
 - contracts.created_at (deleted_at null)
+- ข้อความ CUSTOMER ชนิด FILE ที่เป็นไฟล์เอกสารในห้องของลูกค้า: media_url ลงท้ายด้วย .pdf / .doc / .docx / .xls / .xlsx (ไม่สนตัวพิมพ์ · ตามด้วย ? ได้) — เงื่อนไขเดียวทั้งระบบคือ `CUSTOMER_DOCUMENT_FILE_SQL` ใน `apps/api/src/modules/customer-journey/chat-document-file.ts` (journey-state.sql เขียนตรงตัวอักษร เทสปักไว้ · คำตัดสินผู้ควบคุม R-P1) · นับแถว soft-delete · media_url ใช้ในเงื่อนไขเท่านั้น ไม่เลือกออกมา · ไม่อ่าน text / media_type / ชื่อไฟล์ · ไม่นับ: รูปภาพ · ไฟล์ของร้าน · media_url ว่าง · ลิงก์แชร์ (webhook Facebook เก็บไฟล์แนบชนิดที่ไม่รู้จัก เช่น fallback / template เป็น FILE) · **ไม่ตั้ง path** (คำตัดสินเจ้าของ 2026-09-15 ข้อ 11 + 13) · สัญญาณมาจาก Facebook อย่างเดียว · แก้ตัวแปลงของ webhook อยู่นอกเฟส 3
 
-ตั้ง path=INSTALLMENT
+ตั้ง path=INSTALLMENT เฉพาะจากใบตรวจเครดิต / วิเคราะห์สเตทเม้นจากแชท / สัญญา — ไฟล์เอกสารในแชทอย่างเดียวให้ขั้นนี้แต่ path คง UNKNOWN
 
 ถ้าผู้จัดการตัดสินล่าสุด (audit CREDIT_CHECK_OVERRIDE) เป็น REJECTED และยังไม่ซื้อ ⇒ ธง 'เครดิตไม่ผ่าน' ขั้นเป็นสีแดง (ยังแดงแม้ขั้นปัจจุบันเลยไปขั้น 4 นัด / จอง แล้ว)
 
@@ -209,6 +210,8 @@ firstChannel = acquisitionSource ของห้อง/แถวที่เก�
 - online_installment_applications.created_at
 - product_reservations.reserved_at (customer_id)
 - trade_ins.created_at (customer_id)
+- saving_plans.created_at (แผนออมเครื่อง · deleted_at null · ทุกสถานะ)
+- online_orders.created_at (คำสั่งซื้อออนไลน์ · deleted_at null · ทุกสถานะ)
 - entry MANUAL TOUCHPOINT outcome APPOINTED/VISITED (แถบขั้นติดป้ายเล็ก 'พนักงานบันทึก')
 
 เป็นขั้นเดียวที่บันทึกมือนับเป็นหลักฐานได้ เพราะทีมนัดลูกค้าในแอป FB ซึ่งระบบไม่เห็น
@@ -247,7 +250,11 @@ firstPurchaseAt = LEAST ของ:
 หลุด:
 - ตั้งด้วยมือเท่านั้น (entry MARKED_LOST พร้อม lostReason) และตั้งได้เฉพาะคนที่ยังไม่ซื้อ
 - ขั้นเดิมไม่เปลี่ยน แค่เพิ่มป้าย
-- ล้างเองเมื่อมีข้อความ CUSTOMER ใหม่ หรือ TOUCHPOINT หลัง lostAt (ไทม์ไลน์แสดง 'กลับมาติดต่ออีกครั้ง') หรือกดปุ่ม 'เปิดใหม่'
+- ล้างเองเมื่อมีสิ่งใดสิ่งหนึ่งต่อไปนี้ **หลัง** lostAt (เวลาเท่ากับ lostAt พอดีไม่ล้าง) หรือกดปุ่ม 'เปิดใหม่':
+  - ข้อความ CUSTOMER ใหม่ในห้องใดก็ได้ของลูกค้า (รวมไฟล์ · รวมแถว soft-delete) — ไทม์ไลน์แสดง 'กลับมาติดต่ออีกครั้ง'
+  - TOUCHPOINT ใหม่
+  - เอกสาร 6 ชนิดใหม่ (ทุกสถานะ · ตารางที่มี deleted_at นับเฉพาะแถวที่ไม่ถูกลบ): bookings.created_at · online_installment_applications.created_at · product_reservations.reserved_at · trade_ins.created_at · saving_plans.created_at · online_orders.created_at — ไม่มีแถว 'กลับมาติดต่ออีกครั้ง' (แถวของเอกสารอธิบายเอง)
+- ไม่ล้างป้าย: นัดหมาย (todos) · ใบตรวจเครดิต / วิเคราะห์สเตทเม้นจากแชท · สัญญา · บอทจดความสนใจ (AI_LEAD_CAPTURED) — คำตัดสินเจ้าของ 2026-09-15 ข้อ 5 + 12 ระบุเฉพาะเอกสาร 6 ชนิดข้างบน
 
 เงียบ:
 - คำนวณตอนอ่าน ไม่เก็บ

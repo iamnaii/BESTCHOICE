@@ -1,7 +1,7 @@
 -- journey-state.sql — คำนวณแคช customer_journey_states ใหม่ทั้งแถวของลูกค้าชุดหนึ่ง (recompute / cron / CLI backfill ใช้ไฟล์เดียวนี้)
 -- $1 text[] id ลูกค้า (แถวที่ถูกลบถูกข้าม) · $2 text[] CUSTOMER_BOUGHT_CONTRACT_STATUSES · $3 text[] CUSTOMER_BOUGHT_SALE_TYPES · $4 text เวลาคำนวณ ISO UTC
 -- 🚨 คอลัมน์เวลาเป็น timestamp without time zone เก็บ UTC และ session อาจเป็น Asia/Bangkok ⇒ ห้าม now()/timestamptz
--- 🚨 PDPA: ไม่อ่าน content ของ chat_messages / note ของ entries · phone, national_id ใช้แค่ IS NOT NULL
+-- 🚨 PDPA: ไม่อ่าน content ของ chat_messages / note ของ entries · media_url ใช้เฉพาะในเงื่อนไขไฟล์เอกสารของลูกค้า (pdf / doc / xls — FILTER ใน CTE rooms) ไม่เลือกออกมา · phone, national_id ใช้แค่ IS NOT NULL
 WITH target AS (
   SELECT c.id, c.created_at, c.updated_at, c.acquisition_source, c.referred_by_id,
          (c.phone IS NOT NULL OR c.national_id IS NOT NULL) AS has_contact,
@@ -16,7 +16,7 @@ family AS (
 ),
 rooms AS (
   SELECT f.customer_id, r.id AS room_id, r.channel::text AS channel, r.created_at, r.attribution_id,
-         cm.first_customer_at, cm.last_customer_at,
+         cm.first_customer_at, cm.last_customer_at, cm.first_file_at,
          -- ใช้กับ auto_anchor / staff_reply: ห้องทุกห้องของครอบครัวเดียวกัน (ลูกค้า + placeholder ที่รวมแล้ว) ในช่องทางเดียวกัน
          -- ห้องซ้ำเกิดได้: Facebook chat_rooms ไม่มี unique (external_user_id, channel) และ getOrCreateRoom ทำ findFirst
          -- แล้วค่อย create ⇒ echo กับข้อความลูกค้าแข่งกันสร้างห้องได้สองห้อง · ห้องของ placeholder ที่รวมแล้วก็เป็นพี่น้องกัน
@@ -27,7 +27,12 @@ rooms AS (
   FROM family f
   JOIN chat_rooms r ON r.customer_id = f.member_id
   LEFT JOIN LATERAL (
-    SELECT MIN(m.created_at) AS first_customer_at, MAX(m.created_at) AS last_customer_at
+    -- first_file_at = ไฟล์เอกสารแรกที่ลูกค้าส่ง = หลักฐานขั้น 3 ตรวจเครดิต แต่ไม่ตั้ง path (คำตัดสิน 2026-09-15 ข้อ 11 + 13)
+    -- เงื่อนไขใน FILTER = CUSTOMER_DOCUMENT_FILE_SQL ของ chat-document-file.ts ตรงตัวอักษร (คำตัดสินผู้ควบคุม R-P1 · chat-document-file.spec.ts ปักไว้ แก้ต้องแก้คู่กัน)
+    --   webhook Facebook เก็บไฟล์แนบชนิดที่ไม่รู้จัก (fallback/template เช่นแชร์ลิงก์) เป็นชนิดไฟล์ ⇒ นับเฉพาะ media_url ที่ลงท้ายด้วยนามสกุลเอกสาร
+    -- 🔴 PDPA: media_url อยู่ใน FILTER เท่านั้น ไม่ออกจาก CTE นี้ · ห้าม text / media_type · นับแถว soft-delete เหมือนสองคอลัมน์ข้างบน (retention ไม่ถอยขั้น)
+    SELECT MIN(m.created_at) AS first_customer_at, MAX(m.created_at) AS last_customer_at,
+           MIN(m.created_at) FILTER (WHERE m.role = 'CUSTOMER' AND m.type = 'FILE' AND m.media_url ~* '\.(pdf|docx?|xlsx?)(\?|$)') AS first_file_at
     FROM chat_messages m
     WHERE m.room_id = r.id AND m.role = 'CUSTOMER'
   ) cm ON true
@@ -42,7 +47,8 @@ earliest_room AS (
   ORDER BY ro.customer_id, LEAST(ro.created_at, ro.first_customer_at), ro.room_id
 ),
 room_agg AS (
-  SELECT ro.customer_id, MAX(ro.last_customer_at) AS last_customer_at FROM rooms ro GROUP BY ro.customer_id
+  SELECT ro.customer_id, MAX(ro.last_customer_at) AS last_customer_at, MIN(ro.first_file_at) AS first_file_at
+  FROM rooms ro GROUP BY ro.customer_id
 ),
 auto_anchor AS MATERIALIZED (
   -- MATERIALIZED: ถ้าปล่อย inline ใน NOT EXISTS ของ staff_reply จะคำนวณ anchor ซ้ำต่อแถว STAFF (วัดบน prod ชุด 500 คน: 2.0 วิ → 0.45 วิ)
@@ -179,18 +185,26 @@ merged_agg AS (
   GROUP BY m.merged_into_id
 ),
 interest_agg AS (
-  SELECT f.customer_id, MIN(x.at) AS at
+  -- at = หลักฐานขั้น 4 นัด / จอง ที่มาก่อนสุด
+  -- doc_last_at = เอกสารล่าสุดใน 6 ชนิดที่ล้างป้ายหลุด (คำตัดสินเจ้าของ 2026-09-15 ข้อ 5 + 12): ใบจอง · ใบสมัครผ่อนออนไลน์ · จองเครื่อง ·
+  --   เทิร์นเครื่อง · แผนออมเครื่อง · คำสั่งซื้อออนไลน์ — ทุกสถานะ แถวที่ไม่ถูกลบ (product_reservations ไม่มี deleted_at)
+  -- AI_LEAD_CAPTURED นับขั้นอย่างเดียว ไม่ล้างป้าย · นัดหมาย (todo_agg) / ใบตรวจเครดิต / สัญญา ไม่อยู่ใน CTE นี้ จึงไม่ล้างป้าย
+  SELECT f.customer_id, MIN(x.at) AS at, MAX(x.at) FILTER (WHERE x.clears_lost) AS doc_last_at
   FROM family f
   CROSS JOIN LATERAL (
-    SELECT b.created_at AS at FROM bookings b WHERE b.customer_id = f.member_id AND b.deleted_at IS NULL
+    SELECT b.created_at AS at, true AS clears_lost FROM bookings b WHERE b.customer_id = f.member_id AND b.deleted_at IS NULL
     UNION ALL
-    SELECT a.created_at FROM online_installment_applications a WHERE a.customer_id = f.member_id AND a.deleted_at IS NULL
+    SELECT a.created_at, true FROM online_installment_applications a WHERE a.customer_id = f.member_id AND a.deleted_at IS NULL
     UNION ALL
-    SELECT pr.reserved_at FROM product_reservations pr WHERE pr.customer_id = f.member_id
+    SELECT pr.reserved_at, true FROM product_reservations pr WHERE pr.customer_id = f.member_id
     UNION ALL
-    SELECT ti.created_at FROM trade_ins ti WHERE ti.customer_id = f.member_id AND ti.deleted_at IS NULL
+    SELECT ti.created_at, true FROM trade_ins ti WHERE ti.customer_id = f.member_id AND ti.deleted_at IS NULL
     UNION ALL
-    SELECT al.created_at FROM audit_logs al WHERE al.entity = 'customer' AND al.entity_id = f.member_id AND al.action = 'AI_LEAD_CAPTURED'
+    SELECT sp.created_at, true FROM saving_plans sp WHERE sp.customer_id = f.member_id AND sp.deleted_at IS NULL
+    UNION ALL
+    SELECT oo.created_at, true FROM online_orders oo WHERE oo.customer_id = f.member_id AND oo.deleted_at IS NULL
+    UNION ALL
+    SELECT al.created_at, false FROM audit_logs al WHERE al.entity = 'customer' AND al.entity_id = f.member_id AND al.action = 'AI_LEAD_CAPTURED'
   ) x
   GROUP BY f.customer_id
 ),
@@ -243,11 +257,14 @@ base AS (
                          la.linked_at, ma.merged_at)
          END AS identified_at,
          LEAST(ia.at, ta.at, ea.manual_interest_at) AS interested_at,
-         LEAST(ca.at, rca.at) AS credit_at,
+         -- credit_doc_at = หลักฐานเครดิตจากเอกสาร (ใบตรวจเครดิต / สัญญา / วิเคราะห์สเตทเม้น) — ตัวเดียวที่ตั้ง path INSTALLMENT · ใช้ในคำสั่งนี้เท่านั้น ไม่เก็บลงแคช
+         -- credit_at = credit_doc_at + ไฟล์เอกสารแรกที่ลูกค้าส่งในแชท (ไฟล์นับขั้น 3 แต่ห้ามตั้ง path)
+         LEAST(ca.at, rca.at) AS credit_doc_at,
+         LEAST(ca.at, rca.at, ra.first_file_at) AS credit_at,
          p.bought, p.cash_at, p.external_at,
          COALESCE(LEAST(act.at, p.installment_sale_at), p.bought_contract_at) AS installment_at,
          sr.first_staff_reply_at, ra.last_customer_at, ea.last_touch_at, h.heard_from,
-         lm.kind AS lost_kind, lm.occurred_at AS lost_mark_at, lm.lost_reason AS lost_mark_reason
+         lm.kind AS lost_kind, lm.occurred_at AS lost_mark_at, lm.lost_reason AS lost_mark_reason, ia.doc_last_at
   FROM target t
   JOIN purchase p ON p.customer_id = t.id
   LEFT JOIN earliest_room er ON er.customer_id = t.id
@@ -294,11 +311,13 @@ resolved AS (
               WHEN s.identified_at IS NOT NULL THEN 'IDENTIFIED'
               ELSE 'CONTACTED' END AS stage,
          CASE WHEN s.bought THEN s.first_purchase_kind
-              WHEN s.credit_at IS NOT NULL THEN 'INSTALLMENT'
+              WHEN s.credit_doc_at IS NOT NULL THEN 'INSTALLMENT'
               ELSE 'UNKNOWN' END AS path,
          CASE WHEN s.lost_kind = 'MARKED_LOST' AND NOT s.bought
                    AND (s.last_customer_at IS NULL OR s.last_customer_at <= s.lost_mark_at)
                    AND (s.last_touch_at IS NULL OR s.last_touch_at <= s.lost_mark_at)
+                   -- เอกสาร 6 ชนิดหลังติดป้าย (interest_agg.doc_last_at) ล้างป้าย · เวลาเท่ากับป้ายพอดีไม่ล้าง (กติกาเดียวกับข้อความ/TOUCHPOINT)
+                   AND (s.doc_last_at IS NULL OR s.doc_last_at <= s.lost_mark_at)
               THEN s.lost_mark_at END AS lost_at
   FROM shaped s
 )

@@ -15,5 +15,7 @@ SELECT (
   OR EXISTS (SELECT 1 FROM online_installment_applications a WHERE a.customer_id = ANY($1::text[]) AND a.updated_at > $2::timestamp)
   OR EXISTS (SELECT 1 FROM product_reservations pr WHERE pr.customer_id = ANY($1::text[]) AND pr.updated_at > $2::timestamp)
   OR EXISTS (SELECT 1 FROM trade_ins ti WHERE ti.customer_id = ANY($1::text[]) AND ti.updated_at > $2::timestamp)
+  OR EXISTS (SELECT 1 FROM saving_plans sp WHERE sp.customer_id = ANY($1::text[]) AND sp.updated_at > $2::timestamp)
+  OR EXISTS (SELECT 1 FROM online_orders oo WHERE oo.customer_id = ANY($1::text[]) AND oo.updated_at > $2::timestamp)
   OR EXISTS (SELECT 1 FROM audit_logs al WHERE al.entity = 'customer' AND al.entity_id = ANY($1::text[]) AND al.action = 'AI_LEAD_CAPTURED' AND al.created_at > $2::timestamp)
 ) AS active

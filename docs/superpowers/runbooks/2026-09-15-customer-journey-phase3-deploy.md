@@ -27,7 +27,7 @@
 
 | ขั้น | งาน |
 |---|---|
-| 1 | ด่านก่อน merge — PR "ร้านตอบครั้งแรก" ขึ้นและจบแล้ว · จดของเดิมไว้ถอย · นับก่อน · ช่วงเวลา |
+| 1 | ด่านก่อน merge — PR "ร้านตอบครั้งแรก" ขึ้นและจบแล้ว · จดของเดิมไว้ถอย · นับก่อน · ช่วงเวลา · นับห้องที่ลูกค้าส่งไฟล์ในแชท (1.6) |
 | 2 | merge PR นี้ + ด่านหลัง merge |
 | 3 | `backfill:customer-journey` dry-run |
 | 4 | รันจริง |
@@ -80,6 +80,29 @@ SELECT count(*) AS will_move FROM customer_journey_states WHERE stage = 'CREDIT'
 - **จันทร์–พฤหัส ช่วงเช้า** — ขั้น 3–5 ต้องจบวันเดียวกัน
 - **ห้าม 03:00–04:30 น.** (cron `journey:recompute` แข่งเขียนแคช) · **ห้ามวันเสาร์**
 - ห้าม merge PR อื่นซ้อนจนกว่าขั้น 5 ผ่าน — run เข้าคิวและขึ้น HEAD ใหม่ทับ (runbook เฟส 1 หัวข้อ 0)
+
+### 1.6 นับห้องที่ลูกค้าส่งไฟล์ในแชท (MCP นับอย่างเดียว · Task 3)
+
+หลัง deploy และ `backfill:customer-journey` ผู้สนใจทุกคนที่เคยส่งไฟล์เอกสารในแชทจะขึ้นขั้น 3 ตรวจเครดิต ⇒ นับก่อนกด merge
+
+- "ไฟล์เอกสาร" = `chat_messages` role `CUSTOMER` + type `FILE` + `media_url` ลงท้ายด้วย .pdf / .doc / .docx / .xls / .xlsx (ไม่สนตัวพิมพ์ · ตามด้วย `?` ได้) — เงื่อนไขเดียวกับโค้ด (`CUSTOMER_DOCUMENT_FILE_SQL` ใน `apps/api/src/modules/customer-journey/chat-document-file.ts` · คำตัดสินผู้ควบคุม R-P1)
+- ใช้ MCP `bestchoice-db` (อ่านอย่างเดียว — `mcp_ro` มีสิทธิ์คอลัมน์ `media_url` อยู่แล้ว) หรือ psql ผ่าน cloud-sql-proxy
+- **นับอย่างเดียว** — `media_url` อยู่ใน WHERE เท่านั้น · ห้ามเลือกคอลัมน์เนื้อหา (`text` / `media_url` / `media_type`) ออกมา และห้ามดึง `room_id` ออกมาเป็นรายการ
+
+```sql
+SELECT count(DISTINCT m.room_id) AS rooms_with_customer_document,
+       count(*) AS customer_documents
+FROM chat_messages m
+WHERE m.role = 'CUSTOMER' AND m.type = 'FILE' AND m.media_url ~* '\.(pdf|docx?|xlsx?)(\?|$)';
+```
+
+- ตัวเทียบ (นับรวมอย่างเดียว 2026-09-15): ประมาณ 416 ห้อง (818 ไฟล์ .pdf + เอกสาร office 1 ไฟล์) · จดตัวเลขที่ได้ลง PR
+- ตัวเลขสูงกว่าตัวเทียบมาก = แจ้งเจ้าของก่อน merge (ห้องเหล่านั้นทั้งหมดจะขึ้นขั้น 3 ทันทีหลัง backfill)
+- ⚠️ สิ่งที่เจ้าของต้องรู้: webhook Facebook (`facebook-webhook.controller.ts` `parseMessage`) เก็บไฟล์แนบชนิดที่ไม่รู้จัก (`fallback` / `template` เช่นลูกค้าแชร์ลิงก์หรือโพสต์) เป็น `FILE` (`attachmentTypeMap[attachment.type] ?? MessageType.FILE`)
+  - เงื่อนไขนามสกุลเอกสารกันไว้แล้ว: `media_url` ว่าง (ประมาณ 48 ห้อง) และลิงก์ facebook.com (ประมาณ 25 ห้อง) ไม่นับ ไม่ขึ้นขั้น 3
+  - เลิกแปลงลิงก์แชร์เป็น `FILE` ที่ตัวแปลงของ webhook = งานต่อยอดนอกเฟส 3 (เจ้าของตัดสิน)
+  - สัญญาณมาจาก Facebook อย่างเดียว (LINE ขาเข้าไม่เคยเขียน FILE)
+- สัญญาณนี้ไม่มีคอลัมน์ใหม่และไม่ตั้ง path ⇒ ถอย API image = คำนวณแคชใหม่ด้วย backfill ตัวเดียวกัน (ไม่มีข้อมูลต้องล้าง)
 
 ## 2. merge PR นี้ + ด่านหลัง merge
 

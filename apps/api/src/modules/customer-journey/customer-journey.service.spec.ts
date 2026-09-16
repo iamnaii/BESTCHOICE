@@ -209,6 +209,17 @@ describe('CustomerJourneyService.list + summary (Task 9)', () => {
     await expect(service.summary('c1', OWNER)).resolves.toBe(SUMMARY);
     expect(summaries.summary).toHaveBeenCalledWith('c1', OWNER);
   });
+
+  it('ระบบยังไม่เก็บ: จองเว็บ / สมัครผ่อนออนไลน์ / รับซื้อ-เทิร์น นับขั้น "นัด / จอง" และล้างป้ายหลุด แต่ยังไม่แสดงเป็นเหตุการณ์', () => {
+    expect(JOURNEY_NOT_RECORDED).toEqual(
+      expect.arrayContaining([
+        'การจองสินค้าผ่านเว็บ (ใช้นับขั้น "นัด / จอง" และล้างป้ายหลุด แต่ยังไม่แสดงเป็นเหตุการณ์)',
+        'ใบสมัครผ่อนออนไลน์ (ใช้นับขั้น "นัด / จอง" และล้างป้ายหลุด แต่ยังไม่แสดงเป็นเหตุการณ์)',
+        'รายการรับซื้อ/เทิร์นเครื่อง (ใช้นับขั้น "นัด / จอง" และล้างป้ายหลุด แต่ยังไม่แสดงเป็นเหตุการณ์)',
+      ]),
+    );
+    expect(JOURNEY_NOT_RECORDED.some((line) => line.includes('สนใจจริง'))).toBe(false);
+  });
 });
 
 describe('JOURNEY_NOT_RECORDED — ชื่อขั้น 4 ใหม่ (เจ้าของสั่ง 2026-09-15)', () => {

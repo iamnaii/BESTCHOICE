@@ -132,7 +132,14 @@ const creditNotesFrom = (createMock: jest.Mock) =>
     .map(([{ data }]: any) => data)
     .filter((d: any) => d.receiptType === 'CREDIT_NOTE');
 
+// ใบเสร็จใน fixture ออกวันที่ 2026-08-16 และ W-006 ปฏิเสธการยกเลิกใบที่ออกเกิน 30 วัน
+// (เทียบกับ Date.now()) ⇒ ต้องปักนาฬิกาไว้ ไม่งั้นเทสพังเองตั้งแต่ 2026-09-16
+// ค่านี้คือวันที่พบบั๊กบน prod (2026-08-18) — 2 วันหลังออกใบ
+const FIXTURE_NOW = new Date('2026-08-18T03:00:00.000Z');
+
 describe('ReceiptVoidService — credit note per voided receipt', () => {
+  beforeEach(() => { jest.useFakeTimers().setSystemTime(FIXTURE_NOW); });
+  afterEach(() => { jest.useRealTimers(); });
   beforeEach(() => { (consumePaymentApproval as jest.Mock).mockReset().mockResolvedValue({ requestedById: 'maker-1', approverId: 'approver-1', payload: {} }); });
   it('issues a credit note for the sibling receipt voided alongside the target', async () => {
     const { service, receiptCreate } = setup();

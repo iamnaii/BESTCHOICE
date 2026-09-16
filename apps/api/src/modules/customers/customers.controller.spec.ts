@@ -72,6 +72,19 @@ describe('CustomersController PII (Phase 5)', () => {
     expect((result as any).phone).toBe('0812345678'); // not masked per Q1 matrix
   });
 
+  // A8 — ช่องค้นหา "ผูกกับลูกค้าเดิม" โชว์ "จากแชท · ยังไม่มีเบอร์" จากธงนี้ · mask ของ SALES ต้องไม่ตัดธงทิ้ง
+  it('search: SALES เห็นเลขบัตรแบบ mask แต่ chatPlaceholder ยังอยู่ครบทุกแถว', async () => {
+    service.search.mockResolvedValue([
+      { id: 'p1', name: 'Facebook #1234', phone: null, nationalId: null, chatPlaceholder: true },
+      { id: 'c1', name: 'สมชาย', phone: '0812345678', nationalId: '1234567890123', chatPlaceholder: false },
+    ]);
+    const result = await controller.search('ส', reqOf('SALES'));
+    expect(result).toEqual([
+      { id: 'p1', name: 'Facebook #1234', phone: null, nationalId: null, chatPlaceholder: true },
+      { id: 'c1', name: 'สมชาย', phone: '0812345678', nationalId: '12345-XXXXX-XX-3', chatPlaceholder: false },
+    ]);
+  });
+
   it('returns full nationalId for OWNER on findOne', async () => {
     service.findOne.mockResolvedValue({ id: 'c1', nationalId: '1234567890123' });
     const result = await controller.findOne('c1', reqOf('OWNER'));

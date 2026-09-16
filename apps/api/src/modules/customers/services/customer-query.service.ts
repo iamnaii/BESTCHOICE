@@ -12,7 +12,7 @@ import {
   type CustomerInstallmentState,
   type ProspectSource,
 } from '@installment/shared';
-import { isChatPlaceholder } from '../../chat-prospects/chat-placeholder';
+import { isChatPlaceholder, PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospects/chat-placeholder';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { decryptPII, isEncrypted } from '../../../utils/crypto.util';
@@ -921,9 +921,9 @@ export class CustomerQueryService {
       select: {
         id: true,
         name: true,
-        phone: true,
+        // phone / nationalId (+ acquisitionSource/deletedAt สำหรับธง chatPlaceholder — A8) มาจาก select กลาง (R6)
+        ...PLACEHOLDER_FIELDS_SELECT,
         phoneEncrypted: true,
-        nationalId: true,
         nationalIdEncrypted: true,
         _count: { select: { contracts: true } },
         contracts: {
@@ -946,6 +946,12 @@ export class CustomerQueryService {
       nationalId: r['nationalId'],
       _count: r['_count'],
       activeContractCount: (r['contracts'] as unknown[]).length,
+      // A8 — นิยามเดียวกับ findAll/findOne (เบอร์/เลขบัตรที่ถอดรหัสแล้ว) · acquisitionSource ดิบไม่ออกไปกับคำตอบ
+      chatPlaceholder: isChatPlaceholder({
+        acquisitionSource: (r['acquisitionSource'] ?? null) as string | null,
+        phone: (r['phone'] ?? null) as string | null,
+        nationalId: (r['nationalId'] ?? null) as string | null,
+      }),
     }));
   }
 

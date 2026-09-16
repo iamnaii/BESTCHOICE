@@ -125,7 +125,8 @@ export async function exportCustomers({
           const row: Record<string, unknown> = {
             name: p.name,
             nickname: p.nickname || '-',
-            phone: p.phone,
+            // ผู้สนใจอัตโนมัติจากแชทยังไม่มีเบอร์ — ขีดเหมือนช่องว่างอื่นของไฟล์
+            phone: p.phone || '-',
             source: p.source ? (SOURCE_LABELS[p.source] ?? p.source) : '-',
             tags: p.tags?.length ? p.tags.map((t) => t.tag).join(', ') : '-',
             credit: getStatusBadgeProps(p.creditCheckStatus ?? '', customerCreditStatusMap).label,
@@ -150,7 +151,8 @@ export async function exportCustomers({
           const row: Record<string, unknown> = {
             name: c.name,
             nickname: c.nickname || '-',
-            phone: c.phone,
+            // ผู้สนใจอัตโนมัติจากแชทยังไม่มีเบอร์ — ขีดเหมือนช่องว่างอื่นของไฟล์
+            phone: c.phone || '-',
             source: c.source ? (SOURCE_LABELS[c.source] ?? c.source) : '-',
             purchase: purchaseText(c),
             lastPurchase: c.latestPurchase

@@ -3,8 +3,14 @@ import { cn } from '@/lib/utils';
 import type { CustomerTabSummary, CustomerView, ProspectTabSummary } from '../types';
 
 /**
- * การ์ด KPI 5 ใบต่อแท็บ — **กดเพื่อกรอง** และเขียน URL param ชุดเดียวกับที่ดรอปดาวน์เขียน
+ * การ์ด KPI ต่อแท็บ (ลูกค้า 6 ใบ · ผู้สนใจ 5 ใบ) — **กดเพื่อกรอง** และเขียน URL param ชุดเดียวกับที่ดรอปดาวน์เขียน
  * ⇒ กดแล้วลิงก์บุ๊กมาร์กได้ และปุ่มส่งออก Excel ตามตัวกรองนั้นไปด้วย (buildParams ตัวเดียว)
+ *
+ * การ์ดแท็บลูกค้าต้อง **เขียนทับคีย์ของกันและกันครบ** — "มาจากแชท" ล้าง `purchase`/`state`
+ * และใบอื่น (ยกเว้น "ทั้งหมด" ที่ล้างทุกคีย์อยู่แล้ว) ล้าง `fromChat` ⇒ กดต่อกันแล้วไม่เหลือ
+ * ตัวกรองซ้อนที่มองไม่เห็น และ `activeKpiKey` (index.tsx) จับคู่ได้ใบเดียวเสมอ
+ * (เดิมกด "ผ่อนกับเรา" → "มาจากแชท" แล้ว purchase ค้าง ⇒ ไฮไลต์ค้างที่ "ผ่อนกับเรา")
+ * `bought` / `tier` / `source` / `branchId` เป็นของดรอปดาวน์ การ์ดไม่แตะ
  *
  * "ผ่าน pre-check" ยิง `precheck=FULL_CHECK_PASSED` ไม่ใช่ `PRE_CHECK_PASSED`:
  * ไม่มีโค้ด production ที่ไหนเขียน `checkType: 'PRE'` เลย (ทุก `creditCheck.create` ปล่อยให้
@@ -54,35 +60,35 @@ export function customerKpiCards(summary?: CustomerTabSummary): KpiCardSpec[] {
       label: 'ผ่อนกับเรา',
       tone: 'success',
       value: summary?.installment ?? 0,
-      params: { purchase: 'INSTALLMENT', state: '' },
+      params: { purchase: 'INSTALLMENT', state: '', fromChat: '' },
     },
     {
       key: 'cash',
       label: 'เงินสด',
       tone: 'info',
       value: summary?.cash ?? 0,
-      params: { purchase: 'CASH', state: '' },
+      params: { purchase: 'CASH', state: '', fromChat: '' },
     },
     {
       key: 'externalFinance',
       label: 'ไฟแนนซ์นอก',
       tone: 'warning',
       value: summary?.externalFinance ?? 0,
-      params: { purchase: 'EXTERNAL_FINANCE', state: '' },
+      params: { purchase: 'EXTERNAL_FINANCE', state: '', fromChat: '' },
     },
     {
       key: 'overdue',
       label: 'ค้างชำระ',
       tone: 'destructive',
       value: summary?.overdue ?? 0,
-      params: { purchase: 'INSTALLMENT', state: 'OVERDUE' },
+      params: { purchase: 'INSTALLMENT', state: 'OVERDUE', fromChat: '' },
     },
     {
       key: 'fromChat',
       label: 'มาจากแชท',
       tone: 'info',
       value: summary?.fromChat ?? 0,
-      params: { fromChat: 'true' },
+      params: { fromChat: 'true', purchase: '', state: '' },
     },
   ];
 }
@@ -149,8 +155,9 @@ export default function CustomerKpiCards({
       role="group"
       aria-label="ตัวเลขสรุป"
       className={cn(
-        'mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 lg:gap-4',
-        cards.length === 6 ? 'lg:grid-cols-6' : 'lg:grid-cols-5',
+        'mb-5 grid grid-cols-2 gap-3 lg:gap-4',
+        // 6 ใบ = 3+3 บนแท็บเล็ต · 5 ใบ = แถวเดียวตั้งแต่แท็บเล็ต (md:grid-cols-3 จะตัดเป็น 3+2)
+        cards.length === 6 ? 'md:grid-cols-3 lg:grid-cols-6' : 'md:grid-cols-5',
       )}
     >
       {cards.map((card) => {

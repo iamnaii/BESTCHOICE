@@ -69,11 +69,35 @@ describe('กฎกลุ่มตามบทบาทมาจาก JOURNEY_H
       customerJourneyState: {
         findUnique: jest.fn().mockResolvedValue({ customerId: 'c1', firstStaffReplyAt: at('2026-09-10T02:15:00.000Z'), contactedAt: at('2026-09-10T02:00:00.000Z'), firstChannel: 'CHAT_FACEBOOK' }),
       },
+      // Task 6: roomEvents อ่านป้ายหลุดล่าสุดเพื่อทำแถว "กลับมาติดต่ออีกครั้ง" — ไม่มีป้าย ⇒ ไม่มีแถวนั้น
+      customerJourneyEntry: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const events = await chatSource(chat as unknown as PrismaService, ['c1', 'p1'], { limit: 30 }, ACCOUNTANT);
     expect(events.find((e) => e.type === 'CHAT_CUSTOMER_FILE')).toMatchObject({ id: 'chatfile-r1-2026-09-10', title: 'ลูกค้าส่งไฟล์ในแชท 2 ไฟล์', href: '/inbox/r1' });
     expect(events.find((e) => e.type === 'FIRST_STAFF_REPLY')).toMatchObject({ id: 'staffreply-c1', title: 'ร้านตอบครั้งแรก (หลังทัก 15 นาที)' });
     // ids[0] = ลูกค้าที่ยังมีชีวิต — ไม่ค้นแคชของ placeholder
     expect(chat.customerJourneyState.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { customerId: 'c1' } }));
+  });
+
+  it('แถว "กลับมาติดต่ออีกครั้ง" ตามกลุ่ม chat ของตาราง (บทบาทที่ตารางให้เห็นแชทได้แถว) · คัดข้อความแค่ห้อง + เวลา · เช็กเอกสาร 6 ตารางถึงเวลาข้อความ', async () => {
+    const mark = { findFirst: jest.fn().mockResolvedValue({ id: 'm1', kind: 'MARKED_LOST', occurredAt: at('2026-09-03T00:00:00.000Z') }) };
+    const message = { findFirst: jest.fn().mockResolvedValue({ roomId: 'r1', createdAt: at('2026-09-04T00:00:00.000Z') }) };
+    const tables: Record<string, unknown> = {
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      chatRoom: { findMany: jest.fn().mockResolvedValue([{ id: 'r1', channel: 'FACEBOOK', createdAt: at('2026-09-01T00:00:00.000Z') }]) },
+      customerJourneyEntry: mark,
+      chatMessage: message,
+    };
+    // ตารางอื่นทั้งหมด (todo · auditLog · customer · เอกสาร 6 ชนิด · ตัวอ่านของ Task 5) = ไม่มีแถว
+    const none = { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null), count: jest.fn().mockResolvedValue(0) };
+    const chatDb = new Proxy(tables, { get: (target, key) => (typeof key === 'string' && key in target ? target[key] : none) }) as unknown as PrismaService;
+
+    const events = await chatSource(chatDb, ['c1', 'p1'], { limit: 30 }, ACCOUNTANT);
+
+    expect(events).toContainEqual(expect.objectContaining({ id: 'recontact-m1', type: 'RECONTACTED', timestamp: '2026-09-04T00:00:00.000Z', href: '/inbox/r1' }));
+    expect(mark.findFirst).toHaveBeenCalledWith({ where: { customerId: { in: ['c1', 'p1'] }, kind: { in: ['MARKED_LOST', 'REOPENED'] }, deletedAt: null }, orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], select: { id: true, kind: true, occurredAt: true } });
+    expect(message.findFirst).toHaveBeenCalledWith({ where: { roomId: { in: ['r1'] }, role: 'CUSTOMER', createdAt: { gt: at('2026-09-03T00:00:00.000Z') } }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { roomId: true, createdAt: true } });
+    const documentChecks = none.findFirst.mock.calls.filter(([args]) => JSON.stringify(args?.where ?? {}).includes('"lte":"2026-09-04T00:00:00.000Z"'));
+    expect(documentChecks).toHaveLength(6);
   });
 });

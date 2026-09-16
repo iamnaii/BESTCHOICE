@@ -30,13 +30,61 @@ function chatDays(prisma: PrismaService, roomIds: string[]): Promise<ChatDayRow[
      GROUP BY 1, 2`;
 }
 
+const LOST_MARK_KINDS = ['MARKED_LOST', 'REOPENED'];
+
+/**
+ * เอกสารที่ลูกค้าสร้างซึ่งล้างป้ายหลุด — ชุดและเงื่อนไขเดียวกับ doc_last_at ใน sql/journey-state.sql (แก้ที่หนึ่งต้องแก้อีกที่ · chat.recontact.db.spec.ts ตรวจคู่กัน)
+ * ช่วง (after, upTo] · ทุกสถานะ · product_reservations ไม่มี deleted_at · คัดแค่ id
+ */
+async function clearingDocumentBetween(prisma: PrismaService, customerIds: string[], after: Date, upTo: Date): Promise<boolean> {
+  const customerId = { in: customerIds };
+  const between = { gt: after, lte: upTo };
+  const select = { id: true } as const;
+  const found = await Promise.all([
+    prisma.booking.findFirst({ where: { customerId, deletedAt: null, createdAt: between }, select }),
+    prisma.onlineInstallmentApplication.findFirst({ where: { customerId, deletedAt: null, createdAt: between }, select }),
+    prisma.productReservation.findFirst({ where: { customerId, reservedAt: between }, select }),
+    prisma.tradeIn.findFirst({ where: { customerId, deletedAt: null, createdAt: between }, select }),
+    prisma.savingPlan.findFirst({ where: { customerId, deletedAt: null, createdAt: between }, select }),
+    prisma.onlineOrder.findFirst({ where: { customerId, deletedAt: null, createdAt: between }, select }),
+  ]);
+  return found.some(Boolean);
+}
+
+/**
+ * "กลับมาติดต่ออีกครั้ง" (คำตัดสินเจ้าของ 2026-09-15 ข้อ 6) — คำนวณตอนอ่าน ไม่เก็บ
+ * mark ล่าสุดที่ไม่ถูกลบของครอบครัวต้องเป็น MARKED_LOST (กติกาเดียวกับ CTE lost_mark) · ไม่ตัดหน้าต่าง: mark อยู่คนละหน้ากับข้อความได้
+ * แถว = ข้อความ CUSTOMER แรกที่เวลา > mark ในห้องที่ผู้ดูเห็น · ไม่กรอง deletedAt ให้ตรงกับ last_customer_at · PDPA: select แค่ roomId + createdAt
+ * ไม่ออกแถวเมื่อเอกสารที่ล้างป้ายเกิดใน (mark, ข้อความ] — แถวเอกสารอธิบายแทน · TOUCHPOINT ไม่กันแถว · มีเฉพาะรอบหลุดล่าสุด
+ * SALES: ป้ายอาจล้างเพราะข้อความในห้องที่มองไม่เห็น แถวจึงอาจมาช้ากว่าหรือไม่มาเลย (เหมือนแถวแชทอื่น)
+ */
+async function recontactEvent(prisma: PrismaService, customerIds: string[], roomIds: string[]): Promise<JourneyEvent | null> {
+  const mark = await prisma.customerJourneyEntry.findFirst({
+    where: { customerId: { in: customerIds }, kind: { in: LOST_MARK_KINDS }, deletedAt: null },
+    orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
+    select: { id: true, kind: true, occurredAt: true },
+  });
+  if (!mark || mark.kind !== 'MARKED_LOST') return null;
+  const back = await prisma.chatMessage.findFirst({
+    where: { roomId: { in: roomIds }, role: 'CUSTOMER', createdAt: { gt: mark.occurredAt } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    select: { roomId: true, createdAt: true },
+  });
+  if (!back || (await clearingDocumentBetween(prisma, customerIds, mark.occurredAt, back.createdAt))) return null;
+  return {
+    id: `recontact-${mark.id}`, type: 'RECONTACTED', group: 'chat', stage: null, timestamp: back.createdAt.toISOString(),
+    title: 'กลับมาติดต่ออีกครั้ง', actor: { type: 'CUSTOMER' }, reliability: 'exact', origin: 'SOURCE', href: `/inbox/${back.roomId}`,
+  };
+}
+
 async function roomEvents(prisma: PrismaService, customerIds: string[], actor: JourneyActor): Promise<JourneyEvent[]> {
   // รวมห้องที่ soft-delete (mergeRooms) · SALES เห็นเฉพาะห้องที่ยังไม่มีผู้ดูแลหรือตัวเองดูแล
   const rooms = await prisma.chatRoom.findMany({ where: { customerId: { in: customerIds }, ...roomAssignmentScope(actor) }, select: { id: true, channel: true, createdAt: true } });
   if (!rooms.length) return [];
   const roomIds = rooms.map((room) => room.id);
-  const [days, todos] = await Promise.all([
+  const [days, recontact, todos] = await Promise.all([
     chatDays(prisma, roomIds),
+    recontactEvent(prisma, customerIds, roomIds),
     prisma.todo.findMany({
       where: { roomId: { in: roomIds }, dueDate: { not: null }, deletedAt: null },
       select: { id: true, roomId: true, dueDate: true, createdAt: true, completedAt: true, createdBy: { select: { id: true, name: true } } },
@@ -83,6 +131,7 @@ async function roomEvents(prisma: PrismaService, customerIds: string[], actor: J
     events.push({ id: `appointment-${todo.id}`, type: 'APPOINTMENT', group: 'chat', stage: 'INTERESTED', timestamp: todo.createdAt.toISOString(), title: `นัดเข้าร้าน ${formatDateTime(todo.dueDate)}`, actor: staffActor(todo.createdBy), reliability: 'exact', origin: 'SOURCE', href });
     if (todo.completedAt) events.push({ id: `appointment-done-${todo.id}`, type: 'APPOINTMENT_DONE', group: 'chat', stage: 'INTERESTED', timestamp: todo.completedAt.toISOString(), title: 'มาตามนัดแล้ว', actor: { type: 'STAFF' }, reliability: 'exact', origin: 'SOURCE', href });
   }
+  if (recontact) events.push(recontact);
   return events;
 }
 

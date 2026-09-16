@@ -106,6 +106,8 @@ describe('chatSource — ถ้อยคำแถวห้องแชทเท�
       customer: { findMany: jest.fn().mockResolvedValue([]) },
       // เฟส 3: chatSource อ่านแคช state เพื่อทำแถว "ร้านตอบครั้งแรก" ทุกครั้ง — ไม่มีแคช ⇒ ไม่มีแถวนั้น ถ้อยคำแถวเปิดห้องต้องเท่าเดิม
       customerJourneyState: { findUnique: jest.fn().mockResolvedValue(null) },
+      // Task 6: roomEvents อ่านป้ายหลุดล่าสุดเพื่อทำแถว "กลับมาติดต่ออีกครั้ง" — ไม่มีป้าย ⇒ ถ้อยคำแถวเปิดห้องเท่าเดิม
+      customerJourneyEntry: { findFirst: jest.fn().mockResolvedValue(null) },
     };
   }
 

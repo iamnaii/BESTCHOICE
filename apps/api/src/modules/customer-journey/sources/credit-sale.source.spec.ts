@@ -74,6 +74,11 @@ function saleDb() {
     signature: { findMany: jest.fn().mockResolvedValue([{ id: 'sig1', contractId: 'k1', signedAt: at('2026-09-04T11:00:00.000Z') }]) },
     customerJourneyEntry: { findMany: jest.fn().mockResolvedValue([{ kind: 'CONTRACT_ACTIVATED', refId: 'k2' }, { kind: 'CONTRACT_REVIEWED', refId: 'k2' }]) },
     payment: { findMany: jest.fn().mockResolvedValue([{ contractId: 'k2', paidDate: at('2026-08-31T04:00:00.000Z') }]) },
+    savingPlan: { findMany: jest.fn().mockResolvedValue([{ id: 'sp1', createdAt: at('2026-09-06T03:00:00.000Z') }]) },
+    onlineOrder: { findMany: jest.fn().mockResolvedValue([{ id: 'oo1', createdAt: at('2026-09-07T03:00:00.000Z') }]) },
+    productReservation: { findMany: jest.fn().mockResolvedValue([{ id: 'pr1', reservedAt: at('2026-09-08T03:00:00.000Z') }]) },
+    onlineInstallmentApplication: { findMany: jest.fn().mockResolvedValue([{ id: 'oa1', createdAt: at('2026-09-09T03:00:00.000Z') }]) },
+    tradeIn: { findMany: jest.fn().mockResolvedValue([{ id: 'ti1', createdAt: at('2026-09-10T03:00:00.000Z') }]) },
   };
 }
 
@@ -99,6 +104,28 @@ describe('saleSource', () => {
     expect(db.sale.findMany.mock.calls[0][0].select).not.toHaveProperty('voidReason');
     expect(db.signature.findMany.mock.calls[0][0].select).toEqual({ id: true, contractId: true, signedAt: true });
     expect(db.payment.findMany.mock.calls[0][0].where).toEqual({ contractId: { in: ['k2'] }, deletedAt: null, paidDate: { not: null } });
+  });
+
+  it('เอกสารที่ล้างป้ายหลุดมีแถวของตัวเองครบ (ออมเครื่อง · สั่งซื้อออนไลน์ · จองเครื่องบนเว็บ · สมัครผ่อนออนไลน์ · เทิร์นเครื่อง) = หลักฐานขั้นนัด / จอง · ไม่มีลิงก์ · คัดแค่ id + เวลา', async () => {
+    const db = saleDb();
+    const events = await saleSource(db as unknown as PrismaService, ['c1', 'p1'], { limit: 50 }, OWNER);
+    const row = (id: string, type: string, timestamp: string, title: string, actor: Record<string, string> = { type: 'CUSTOMER' }) =>
+      ({ id, type, group: 'sale', stage: 'INTERESTED', timestamp, title, actor, reliability: 'exact', origin: 'SOURCE' });
+    expect(byId(events, 'savingplan-sp1')).toEqual(row('savingplan-sp1', 'SAVING_PLAN_OPENED', '2026-09-06T03:00:00.000Z', 'สมัครออมเครื่อง'));
+    expect(byId(events, 'onlineorder-oo1')).toEqual(row('onlineorder-oo1', 'ONLINE_ORDER_PLACED', '2026-09-07T03:00:00.000Z', 'สั่งซื้อออนไลน์', { type: 'SYSTEM', name: 'ออนไลน์' }));
+    expect(byId(events, 'webhold-pr1')).toEqual(row('webhold-pr1', 'WEB_HOLD', '2026-09-08T03:00:00.000Z', 'กดจองเครื่องบนเว็บ'));
+    expect(byId(events, 'onlineapp-oa1')).toEqual(row('onlineapp-oa1', 'ONLINE_APPLICATION', '2026-09-09T03:00:00.000Z', 'ยื่นใบสมัครผ่อนออนไลน์'));
+    expect(byId(events, 'tradein-ti1')).toEqual(row('tradein-ti1', 'TRADE_IN', '2026-09-10T03:00:00.000Z', 'ส่งเครื่องเทิร์น/ขายคืน'));
+    const family = { customerId: { in: ['c1', 'p1'] } };
+    expect(db.savingPlan.findMany).toHaveBeenCalledWith({ where: { ...family, deletedAt: null }, select: { id: true, createdAt: true } });
+    expect(db.onlineOrder.findMany).toHaveBeenCalledWith({ where: { ...family, deletedAt: null }, select: { id: true, createdAt: true } });
+    // product_reservations ไม่มี deleted_at — เงื่อนไขเดียวกับ doc_last_at ใน journey-state.sql
+    expect(db.productReservation.findMany).toHaveBeenCalledWith({ where: family, select: { id: true, reservedAt: true } });
+    expect(db.onlineInstallmentApplication.findMany).toHaveBeenCalledWith({ where: { ...family, deletedAt: null }, select: { id: true, createdAt: true } });
+    expect(db.tradeIn.findMany).toHaveBeenCalledWith({ where: { ...family, deletedAt: null }, select: { id: true, createdAt: true } });
+    // PDPA: ไม่คัดที่อยู่ สลิป เลขอ้างอิงชำระ โค้ดส่วนลด รุ่นเป้าหมาย ชื่อ/เบอร์/เลขบัตรในใบสมัคร ข้อมูลผู้ขาย/IMEI/รูปของเทิร์น session ของการจอง
+    const calls = [db.savingPlan, db.onlineOrder, db.productReservation, db.onlineInstallmentApplication, db.tradeIn].map((model) => model.findMany.mock.calls);
+    expect(JSON.stringify(calls)).not.toMatch(/shippingAddress|bankSlipUrl|paymentRef|promoCode|targetProductModel|fullName|phone|nationalId|seller|imei|serialNumber|idCard|customerNotes|photoUrls|sessionId|Price|status/);
   });
 
   it('ไม่มีสัญญา → ไม่ยิงลายเซ็น/entry/งวด · คืนไม่เกิน limit+1', async () => {

@@ -12,6 +12,7 @@ import { STAGE_LABELS } from '@installment/shared';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import { allChipNote } from '../utils/journeyGroups';
 import { journeyEvent, journeyPage, journeySummary, stageSteps } from './journeyFixtures';
+import { isHeardFromSkipped } from '@/components/customer/journey/journeyStorage';
 
 /**
  * harness ลอกจาก pages/CustomersPage/__tests__/CustomersPage.test.tsx
@@ -1015,5 +1016,83 @@ describe('แท็บการเดินทาง: บันทึกกา�
     expect(entryBodies()).toEqual([
       { kind: 'TOUCHPOINT', channel: 'LINE_APP', outcome: 'THINKING', clientRequestId: expect.stringMatching(UUID) },
     ]);
+  });
+});
+
+describe('ถามรู้จักร้านจากไหน — แถบบนสุดของแท็บการเดินทาง (เฟส 3)', () => {
+  const walkIn = (over: Parameters<typeof journeySummary>[0] = {}) =>
+    journeySummary({ firstChannel: 'WALK_IN', firstSource: 'WALK_IN', firstSourceLabel: 'หน้าร้าน', askHeardFrom: true, ...over });
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const entryPosts = () => mocks.post.mock.calls.filter(([url]) => url === '/customers/c1/journey/entries');
+
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('OWNER + ลูกค้าหน้าร้านที่ยังไม่ตอบ: แถบอยู่บนสุด เหนือปุ่ม "บันทึกการติดต่อ"', async () => {
+    mocks.summaries.c1 = walkIn();
+    renderAt('/customers/c1?tab=journey');
+    const banner = await screen.findByTestId('heard-from-ask');
+    expect(within(banner).getByText('ลูกค้ารู้จักร้านจากไหน (ไม่บังคับ)')).toBeInTheDocument();
+    expect(within(banner).getByRole('button', { name: 'เพื่อนแนะนำ' })).toBeInTheDocument();
+    const record = screen.getByRole('button', { name: 'บันทึกการติดต่อ' });
+    expect(banner.compareDocumentPosition(record) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('ฝ่ายบัญชีไม่เห็นแถบ แม้ API ส่ง askHeardFrom = true', async () => {
+    mocks.role = 'ACCOUNTANT';
+    mocks.summaries.c1 = walkIn();
+    renderAt('/customers/c1?tab=journey');
+    await screen.findByRole('region', { name: 'ขั้นการเดินทางของลูกค้า' });
+    expect(await screen.findByText('ยังไม่มีกิจกรรม')).toBeInTheDocument();
+    expect(screen.queryByTestId('heard-from-ask')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'เพื่อนแนะนำ' })).toBeNull();
+  });
+
+  it('ลูกค้าที่ทักแชทมาก่อน (askHeardFrom = false): ไม่มีแถบ', async () => {
+    mocks.summaries.c1 = journeySummary({ firstChannel: 'CHAT_FACEBOOK', askHeardFrom: false });
+    renderAt('/customers/c1?tab=journey');
+    await screen.findByRole('region', { name: 'ขั้นการเดินทางของลูกค้า' });
+    expect(await screen.findByText('ยังไม่มีกิจกรรม')).toBeInTheDocument();
+    expect(screen.queryByTestId('heard-from-ask')).toBeNull();
+  });
+
+  it('"ข้าม" ซ่อนทั้ง session · เปิดหน้าใหม่ยังไม่ขึ้น · ล้าง session แล้วขึ้นอีก', async () => {
+    mocks.summaries.c1 = walkIn();
+    const first = renderAt('/customers/c1?tab=journey');
+    const banner = await screen.findByTestId('heard-from-ask');
+    fireEvent.click(within(banner).getByRole('button', { name: 'ข้าม' }));
+    expect(screen.queryByTestId('heard-from-ask')).toBeNull();
+    expect(isHeardFromSkipped('c1')).toBe(true);
+    expect(entryPosts()).toHaveLength(0);
+    first.unmount();
+
+    const second = renderAt('/customers/c1?tab=journey');
+    await screen.findByRole('region', { name: 'ขั้นการเดินทางของลูกค้า' });
+    expect(screen.queryByTestId('heard-from-ask')).toBeNull();
+    second.unmount();
+
+    sessionStorage.clear();
+    renderAt('/customers/c1?tab=journey');
+    expect(await screen.findByTestId('heard-from-ask')).toBeInTheDocument();
+  });
+
+  it('แตะชิป = บันทึกทันที → แถบยุบเป็น "ลูกค้าบอกว่ารู้จักร้านจากเพื่อนแนะนำ · เลิกทำ"', async () => {
+    mocks.summaries.c1 = walkIn();
+    mocks.post.mockImplementation(async (url: string) => {
+      if (url === '/customers/c1/journey/entries') {
+        return { data: { entryId: 'e-hf', event: null, summary: walkIn({ askHeardFrom: false, heardFrom: 'FRIEND' }) } };
+      }
+      throw new Error(`unexpected POST ${url}`);
+    });
+    renderAt('/customers/c1?tab=journey');
+    fireEvent.click(within(await screen.findByTestId('heard-from-ask')).getByRole('button', { name: 'เพื่อนแนะนำ' }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('heard-from-ask')).toHaveTextContent('ลูกค้าบอกว่ารู้จักร้านจากเพื่อนแนะนำ'),
+    );
+    expect(within(screen.getByTestId('heard-from-ask')).getByRole('button', { name: 'เลิกทำ' })).toBeInTheDocument();
+    expect(entryPosts()).toHaveLength(1);
+    expect(entryPosts()[0][1]).toEqual({ kind: 'HEARD_FROM', heardFrom: 'FRIEND', clientRequestId: expect.stringMatching(UUID_RE) });
   });
 });

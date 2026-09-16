@@ -4,6 +4,8 @@ import type { JourneyEvent, JourneyListResponse, JourneySummary } from '@install
 import QueryBoundary from '@/components/QueryBoundary';
 import { EventTimeline, type EventTimelineItem } from '@/components/timeline/EventTimeline';
 import { Button } from '@/components/ui/button';
+import HeardFromAsk from '@/components/customer/journey/HeardFromAsk';
+import { isHeardFromSkipped, markHeardFromSkipped } from '@/components/customer/journey/journeyStorage';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useDeleteJourneyEntry } from '@/hooks/customer-journey/journeyEntries';
 import { isJourneyRedirect, useCustomerJourney } from '@/hooks/customer-journey/useCustomerJourney';
@@ -72,6 +74,10 @@ interface JourneyTabProps {
 export default function JourneyTab({ customerId, role, summary, canRecord }: JourneyTabProps) {
   const visibleGroups = useMemo(() => journeyGroupsForRole(role), [role]);
   const [filter, setFilter] = useState<string>(ALL_CHIP);
+  // แถบถามรู้จักร้านจากไหน: "ข้าม" = ซ่อนทั้ง session ต่อลูกค้า (sessionStorage)
+  // ถือชุด id ในหน่วยความจำด้วย — storage เขียนไม่ได้ (โหมดส่วนตัว) แถบก็ยังหายทันที · ธง askHeardFrom อ่านใน HeardFromAsk
+  const [heardFromSkippedIds, setHeardFromSkippedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const heardFromSkipped = heardFromSkippedIds.has(customerId) || isHeardFromSkipped(customerId);
   const groups = useMemo(() => {
     const picked = visibleGroups.find((group) => group === filter);
     return picked ? [picked] : null;
@@ -103,6 +109,17 @@ export default function JourneyTab({ customerId, role, summary, canRecord }: Jou
 
   return (
     <div className="flex flex-col gap-3">
+      {canRecord && !heardFromSkipped && (
+        <HeardFromAsk
+          key={customerId}
+          customerId={customerId}
+          variant="banner"
+          onSkip={() => {
+            markHeardFromSkipped(customerId);
+            setHeardFromSkippedIds((ids) => new Set(ids).add(customerId));
+          }}
+        />
+      )}
       <div className="flex flex-col gap-1">
         {/* Q16: ปุ่มอยู่แถวของตัวเองชิดขวาเหนือชิปกรอง — ชิปกรองทั้งแถวอยู่บรรทัดเดียวที่ 1440 */}
         {canRecord && (

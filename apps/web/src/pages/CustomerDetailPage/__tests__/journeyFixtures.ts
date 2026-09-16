@@ -75,3 +75,14 @@ export function journeyEvent(over: Partial<JourneyEvent> = {}): JourneyEvent {
 export function journeyPage(over: Partial<JourneyListResponse> = {}): JourneyListResponse {
   return { customerId: 'c1', mergedCustomerIds: [], events: [], nextCursor: null, notRecorded: [], ...over };
 }
+
+/** ตั้งหลักฐานของบางขั้นทับผลของ stageSteps (เช่น CREDIT = 'CHAT_FILE') — ไม่แตะ state / at */
+export function withEvidence(
+  steps: JourneyStep[],
+  evidence: Partial<Record<JourneyStage, JourneyStep['evidence']>>,
+): JourneyStep[] {
+  return steps.map((step) => {
+    const next = evidence[step.stage];
+    return next ? { ...step, evidence: next } : step;
+  });
+}

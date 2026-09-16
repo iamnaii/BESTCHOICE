@@ -4,29 +4,41 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { formatDateShort } from '@/utils/formatters';
 import { SILENT_AFTER_DAYS } from '../utils/journeyGroups';
+import JourneyLostControls from './JourneyLostControls';
+
+/** เว้นวรรคแบบไม่ตัดบรรทัด — เลขกับคำว่า "วัน" อยู่บรรทัดเดียวกันเสมอเมื่อคำบรรยายขึ้น 2 บรรทัด (คำตัดสินเจ้าของ 2026-09-15 ข้อ 12) */
+const NBSP = ' ';
 
 const DOT_CLASS: Record<JourneyStep['state'], string> = {
   done: 'bg-success text-success-foreground',
   current: 'bg-primary text-primary-foreground',
   skipped: 'bg-muted text-muted-foreground',
-  // ขั้นตรวจเครดิตที่ไม่ต้องตรวจ (ซื้อสด / ไฟแนนซ์นอกตรวจ) — สีเทาชุดเดียวกับขั้นที่ข้าม ไม่เพิ่มสีใหม่ · จุดยังแสดงเลขขั้น
+  // "ไม่ต้องตรวจ" ใช้เทาชุดเดียวกับข้าม (ไม่เพิ่มสีใหม่) — ต่างกันที่คำบรรยาย · จุดยังแสดงเลขขั้น
   not_needed: 'bg-muted text-muted-foreground',
   todo: 'border border-dashed border-border bg-background text-muted-foreground',
 };
 
-function skippedCaption(path: JourneySummary['path']): string {
-  if (path === 'CASH') return 'ข้าม (เงินสด)';
-  if (path === 'EXTERNAL_FINANCE') return 'ข้าม (ไฟแนนซ์นอก)';
+/** ชื่อขั้นสีจาง: ยังไม่ถึง · ข้าม · ไม่ต้องตรวจ */
+const MUTED_STATES: ReadonlySet<JourneyStep['state']> = new Set<JourneyStep['state']>(['todo', 'skipped', 'not_needed']);
+
+/** API ตั้ง not_needed เฉพาะขั้นตรวจเครดิตของลูกค้าที่ซื้อแล้วแบบเงินสด / ไฟแนนซ์นอก (D1) — path อื่นไม่ควรเกิด จึงใช้คำกลาง "ข้าม" */
+function notNeededCaption(path: JourneySummary['path']): string {
+  if (path === 'CASH') return 'ไม่ต้องตรวจ (ซื้อสด)';
+  if (path === 'EXTERNAL_FINANCE') return 'ไฟแนนซ์นอกตรวจ';
   return 'ข้าม';
 }
 
 function stepCaption(step: JourneyStep, summary: JourneySummary, failed: boolean): string {
-  if (step.state === 'skipped') return skippedCaption(summary.path);
+  // ขั้นก่อนขั้นปัจจุบันที่ไม่มีหลักฐาน = "ข้าม" เปล่า ๆ ทุกขั้น (คำตัดสิน 13(2) — เลิกวงเล็บต่อท้ายตาม path)
+  if (step.state === 'skipped') return 'ข้าม';
+  if (step.state === 'not_needed') return notNeededCaption(summary.path);
   if (step.state === 'todo') return 'ยังไม่ถึง';
   const parts = [step.at ? formatDateShort(step.at) : '—'];
   if (failed) parts.push('เครดิตไม่ผ่าน');
-  else if (step.state === 'current' && step.stage !== 'PURCHASED') parts.push(`อยู่ขั้นนี้ ${summary.daysInStage} วัน`);
+  else if (step.state === 'current' && step.stage !== 'PURCHASED') parts.push(`อยู่ขั้นนี้ ${summary.daysInStage}${NBSP}วัน`);
   if (step.evidence === 'MANUAL') parts.push('พนักงานบันทึก');
+  // ไฟล์ในแชทพาขึ้นขั้นอย่างเดียว ผลตรวจมาจากใบตรวจเครดิต — เครดิตไม่ผ่านแสดงแค่ผล (บอร์ด StageStrip a4)
+  if (step.evidence === 'CHAT_FILE' && !failed) parts.push('ส่งไฟล์ในแชท');
   return parts.join(' · ');
 }
 
@@ -36,9 +48,17 @@ function lostLabel(reason: string): string {
   return label ? `หลุด · ${label}` : 'หลุด';
 }
 
+export interface JourneyStageStripProps {
+  summary: JourneySummary;
+  customerId: string;
+  /** บทบาทที่บันทึกการเดินทางได้ (canRecordJourney) — ACCOUNTANT = false ไม่มีปุ่มใด ๆ */
+  canRecord: boolean;
+}
+
 /** แถบ 5 ขั้นใต้ช่องตัวเลข — อ่านจาก summary เท่านั้น ห้าม derive ขั้นในเว็บ */
-export default function JourneyStageStrip({ summary }: { summary: JourneySummary }) {
+export default function JourneyStageStrip({ summary, customerId, canRecord }: JourneyStageStripProps) {
   const silentDays = summary.silentDays !== null && summary.silentDays > SILENT_AFTER_DAYS ? summary.silentDays : null;
+  const showControls = canRecord && summary.stage !== 'PURCHASED';
 
   return (
     <section
@@ -49,8 +69,8 @@ export default function JourneyStageStrip({ summary }: { summary: JourneySummary
         <ol className="flex min-w-0 flex-1 flex-wrap gap-x-4 gap-y-2">
           {summary.steps.map((step, index) => {
             const failed =
-              step.stage === 'CREDIT' && summary.creditRejected && step.state !== 'todo' && step.state !== 'skipped';
-            const muted = step.state === 'todo' || step.state === 'skipped';
+              step.stage === 'CREDIT' && summary.creditRejected && (step.state === 'done' || step.state === 'current');
+            const muted = MUTED_STATES.has(step.state);
             return (
               <li
                 key={step.stage}
@@ -77,9 +97,8 @@ export default function JourneyStageStrip({ summary }: { summary: JourneySummary
                   >
                     {STAGE_LABELS[step.stage]}
                   </span>
-                  <span
-                    className={cn('block truncate text-xs leading-snug', failed ? 'text-destructive' : 'text-muted-foreground')}
-                  >
+                  {/* Q15: คำบรรยายขึ้น 2 บรรทัด ไม่ตัดข้อมูล — ชื่อขั้นยังบรรทัดเดียว */}
+                  <span className={cn('line-clamp-2 text-xs leading-snug', failed ? 'text-destructive' : 'text-muted-foreground')}>
                     {stepCaption(step, summary, failed)}
                   </span>
                 </span>
@@ -87,8 +106,11 @@ export default function JourneyStageStrip({ summary }: { summary: JourneySummary
             );
           })}
         </ol>
-        {(summary.lost || silentDays !== null) && (
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+        {(summary.lost || silentDays !== null || showControls) && (
+          <div
+            data-testid="journey-stage-actions"
+            className="flex shrink-0 flex-wrap items-center gap-1.5 max-lg:w-full max-lg:justify-end"
+          >
             {summary.lost && (
               <Badge variant="destructive" appearance="light" size="md" className="leading-snug">
                 {lostLabel(summary.lost.reason)}
@@ -99,6 +121,7 @@ export default function JourneyStageStrip({ summary }: { summary: JourneySummary
                 {`เงียบ ${silentDays} วัน`}
               </Badge>
             )}
+            {showControls && <JourneyLostControls customerId={customerId} summary={summary} />}
           </div>
         )}
       </div>

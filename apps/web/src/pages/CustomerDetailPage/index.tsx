@@ -7,6 +7,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { DetailPageSkeleton } from '@/components/ui/page-skeletons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
+import { canRecordJourney } from '@/lib/constants';
 import CustomerSidePanel from './components/CustomerSidePanel';
 import DetailHeader from './components/DetailHeader';
 import EditCustomerDialog from './components/EditCustomerDialog';
@@ -67,6 +68,8 @@ export default function CustomerDetailPage() {
   const canStartCredit = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
   const canUploadDocuments = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
   const canReviewCredit = !!user && ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(user.role);
+  // ปุ่มบันทึกการเดินทาง (ติดป้ายหลุด / เปิดใหม่) — ตรง @Roles ของ POST /customers/:id/journey/entries · ACCOUNTANT ดูอย่างเดียว
+  const canRecord = canRecordJourney(user?.role ?? '');
 
   const {
     customer,
@@ -123,9 +126,9 @@ export default function CustomerDetailPage() {
 
       <RiskBanner customer={customer} />
 
-      <KpiTiles tiles={kpiTiles(customer, loyaltyPoints?.balance ?? null)} />
+      <KpiTiles tiles={kpiTiles(customer, loyaltyPoints?.balance ?? null, journeySummary)} />
 
-      {journeySummary && <JourneyStageStrip summary={journeySummary} />}
+      {journeySummary && <JourneyStageStrip summary={journeySummary} customerId={customer.id} canRecord={canRecord} />}
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="min-w-0">

@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { toast } from 'sonner';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import CustomerDetailPage from '@/pages/CustomerDetailPage';
@@ -28,6 +29,8 @@ const mocks = vi.hoisted(() => ({
   summaries: {} as Record<string, unknown>,
   /** ตอบ GET /customers/c1/journey ตาม params (limit / groups / cursor) */
   journey: vi.fn(),
+  /** ตอบ POST /customers/c1/journey/entries ตาม body — ค่าเริ่มต้นโยน error (เทสที่กดบันทึกต้องตั้งเอง) */
+  entry: vi.fn(),
 }));
 
 vi.mock('@/lib/api', () => ({
@@ -37,7 +40,7 @@ vi.mock('@/lib/api', () => ({
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'u1', name: 'admin', role: mocks.role } }),
 }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }));
 
 const RESPONSES: Record<string, unknown> = {
   '/customers/c1/credit-check': [],
@@ -68,6 +71,22 @@ beforeEach(() => {
   mocks.summaries = {};
   mocks.journey.mockReset();
   mocks.journey.mockImplementation(() => journeyPage());
+  // เฟส 3: POST / DELETE รีเซ็ตทุกเทส (เทส R5 ตั้ง post เองแล้วเคยรั่วไปเทสถัดไปตามลำดับ) · URL ที่ไม่ได้ลงทะเบียนโยน error พร้อม URL
+  mocks.entry.mockReset();
+  mocks.entry.mockImplementation(() => {
+    throw new Error('POST /customers/c1/journey/entries ไม่ได้ตั้งคำตอบ (mocks.entry)');
+  });
+  mocks.post.mockReset();
+  mocks.post.mockImplementation(async (url: string, body?: unknown) => {
+    if (url === '/customers/c1/journey/entries') return { data: mocks.entry(body) };
+    throw new Error(`unexpected POST ${url}`);
+  });
+  mocks.del.mockReset();
+  mocks.del.mockImplementation(async (url: string) => {
+    if (/^\/customers\/c1\/journey\/entries\/[^/]+$/.test(url)) return { data: { summary: mocks.summaries.c1 } };
+    throw new Error(`unexpected DELETE ${url}`);
+  });
+  for (const fn of [toast.success, toast.error, toast.info, toast.warning]) vi.mocked(fn).mockClear();
   mocks.get.mockReset();
   mocks.get.mockImplementation(async (url: string, config?: { params?: Record<string, unknown> }) => {
     if (url === '/customers/c1/detail') return { data: mocks.detail };
@@ -532,5 +551,74 @@ describe('การเดินทางของลูกค้า', () => {
     await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('/customers/c1', expect.any(Object)));
     await waitFor(() => expect(mocks.journey.mock.calls.length).toBeGreaterThan(journeyBefore));
     await waitFor(() => expect(summaryCalls()).toBeGreaterThan(summaryBefore));
+  });
+});
+
+describe('แถบขั้นบนหน้า: ติดป้ายหลุด / เปิดใหม่ · ช่องเครดิตรอตรวจ (เฟส 3)', () => {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const PROSPECT_AT = {
+    CONTACTED: '2026-09-10T03:00:00.000Z',
+    IDENTIFIED: '2026-09-11T03:00:00.000Z',
+    CREDIT: '2026-09-13T03:00:00.000Z',
+  };
+  const prospectDetail = () =>
+    detail({ phone: null, chatPlaceholder: true, source: 'FACEBOOK', purchase: emptyPurchase, contracts: [] });
+  const prospectSummary = (over: Parameters<typeof journeySummary>[0] = {}) =>
+    journeySummary({
+      stage: 'CREDIT',
+      stageEnteredAt: PROSPECT_AT.CREDIT,
+      daysInStage: 2,
+      steps: stageSteps(
+        { CONTACTED: 'done', IDENTIFIED: 'done', CREDIT: 'current', INTERESTED: 'todo', PURCHASED: 'todo' },
+        PROSPECT_AT,
+      ),
+      ...over,
+    });
+
+  it('OWNER: "ติดป้ายหลุด" → เลือกเหตุผล = บันทึกทันที → แถบเปลี่ยนเป็นป้ายหลุด + "เปิดใหม่" จาก summary ที่ API ตอบกลับ', async () => {
+    mocks.detail = prospectDetail();
+    const lost = prospectSummary({ lost: { at: '2026-09-15T03:00:00.000Z', reason: 'NOT_INTERESTED' } });
+    mocks.summaries.c1 = prospectSummary();
+    mocks.entry.mockImplementation(() => {
+      mocks.summaries.c1 = lost;
+      return { entryId: 'entry-1', event: null, summary: lost };
+    });
+    renderAt('/customers/c1');
+    const strip = await screen.findByRole('region', { name: 'ขั้นการเดินทางของลูกค้า' });
+    const user = userEvent.setup();
+    await user.click(within(strip).getByRole('button', { name: 'ติดป้ายหลุด' }));
+    const dialog = await screen.findByRole('dialog', { name: 'ติดป้ายหลุด — เพราะอะไร' });
+    await user.click(within(dialog).getByRole('button', { name: 'ไม่สนใจ' }));
+
+    expect(await within(strip).findByText('หลุด · ไม่สนใจ')).toBeInTheDocument();
+    expect(within(strip).getByRole('button', { name: 'เปิดใหม่' })).toBeInTheDocument();
+    expect(within(strip).queryByRole('button', { name: 'ติดป้ายหลุด' })).toBeNull();
+    expect(mocks.post).toHaveBeenCalledWith('/customers/c1/journey/entries', {
+      kind: 'MARKED_LOST',
+      lostReason: 'NOT_INTERESTED',
+      clientRequestId: expect.stringMatching(UUID),
+    });
+    expect(toast.success).toHaveBeenCalledWith('ติดป้ายหลุดแล้ว', {
+      duration: 10000,
+      action: { label: 'เลิกทำ', onClick: expect.any(Function) },
+    });
+  });
+
+  it('ACCOUNTANT: เห็นป้ายหลุดบนแถบ แต่ไม่มีปุ่มติดป้ายหลุด / เปิดใหม่ และไม่ยิง POST', async () => {
+    mocks.role = 'ACCOUNTANT';
+    mocks.detail = prospectDetail();
+    mocks.summaries.c1 = prospectSummary({ lost: { at: '2026-09-14T03:00:00.000Z', reason: 'BOUGHT_ELSEWHERE' } });
+    renderAt('/customers/c1');
+    const strip = await screen.findByRole('region', { name: 'ขั้นการเดินทางของลูกค้า' });
+    expect(within(strip).getByText('หลุด · ซื้อที่อื่น')).toBeInTheDocument();
+    expect(within(strip).queryAllByRole('button')).toHaveLength(0);
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it('ผู้สนใจที่ส่งไฟล์ในแชทแล้วแต่ยังไม่มีผลตรวจ → ช่องเครดิต "ส่งไฟล์แล้ว รอตรวจ" (ค่าจาก summary.creditFilePending)', async () => {
+    mocks.detail = prospectDetail();
+    mocks.summaries.c1 = prospectSummary({ creditFilePending: true });
+    renderAt('/customers/c1');
+    expect(await screen.findByText('ส่งไฟล์แล้ว รอตรวจ')).toBeInTheDocument();
   });
 });

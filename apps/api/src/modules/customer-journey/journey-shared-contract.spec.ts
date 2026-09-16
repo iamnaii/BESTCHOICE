@@ -104,6 +104,8 @@ describe('chatSource — ถ้อยคำแถวห้องแชทเท�
       todo: { findMany: jest.fn().mockResolvedValue([]) },
       auditLog: { findMany: jest.fn().mockResolvedValue([]) },
       customer: { findMany: jest.fn().mockResolvedValue([]) },
+      // เฟส 3: chatSource อ่านแคช state เพื่อทำแถว "ร้านตอบครั้งแรก" ทุกครั้ง — ไม่มีแคช ⇒ ไม่มีแถวนั้น ถ้อยคำแถวเปิดห้องต้องเท่าเดิม
+      customerJourneyState: { findUnique: jest.fn().mockResolvedValue(null) },
     };
   }
 

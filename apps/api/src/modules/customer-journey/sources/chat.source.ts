@@ -4,10 +4,16 @@ import type { PrismaService } from '../../../prisma/prisma.service';
 import { formatDateTime } from '../../../utils/thai-date.util';
 import { roomAssignmentScope } from '../../credit-check/services/room-credit-access';
 import { asRecord, bahtText, dbTimeRange, finalizeSource, roleSeesGroup, scanTake, staffActor, type JourneyActor, type JourneySource, type JourneyWindow } from './journey-window';
+import { CUSTOMER_DOCUMENT_FILE_FRAGMENT } from '../chat-document-file';
+import { formatReplyGap } from './reply-gap';
 
-interface ChatDayRow { roomId: string; day: string; customer: number; staff: number; bot: number; firstCustomerAt: Date | null; lastAt: Date }
+interface ChatDayRow { roomId: string; day: string; customer: number; staff: number; bot: number; files: number; lastFileAt: Date | null; firstCustomerAt: Date | null; lastAt: Date }
 
-/** นับแถวอย่างเดียว ไม่อ่าน text/media · รวมแถวที่ retention soft-delete · created_at = timestamp(3) เก็บ UTC · ไม่มี LIMIT (หลักร้อยวันต่อคน) ตัดใน finalizeSource */
+/**
+ * นับแถวอย่างเดียว ไม่อ่าน text/media_type และไม่ select media_url · รวมแถวที่ retention soft-delete · created_at = timestamp(3) เก็บ UTC · ไม่มี LIMIT (หลักร้อยวันต่อคน) ตัดใน finalizeSource
+ * files/lastFileAt = ไฟล์เอกสารที่ลูกค้าส่ง — เงื่อนไข CUSTOMER_DOCUMENT_FILE_FRAGMENT จาก chat-document-file.ts (ชุดเดียวกับ first_file_at ใน journey-state.sql · คำตัดสินผู้ควบคุม R-P1)
+ *   media_url อยู่ใน FILTER เท่านั้น · รูปภาพ / ไฟล์ของร้าน / ไม่มีลิงก์ / ลิงก์แชร์ ไม่นับ · CHAT_DAY ยังนับข้อความลูกค้าทุกชนิด
+ */
 function chatDays(prisma: PrismaService, roomIds: string[]): Promise<ChatDayRow[]> {
   return prisma.$queryRaw<ChatDayRow[]>`
     SELECT m.room_id AS "roomId",
@@ -15,6 +21,8 @@ function chatDays(prisma: PrismaService, roomIds: string[]): Promise<ChatDayRow[
            (COUNT(*) FILTER (WHERE m.role = 'CUSTOMER'))::int AS "customer",
            (COUNT(*) FILTER (WHERE m.role = 'STAFF'))::int AS "staff",
            (COUNT(*) FILTER (WHERE m.role = 'BOT'))::int AS "bot",
+           (COUNT(*) FILTER (WHERE ${CUSTOMER_DOCUMENT_FILE_FRAGMENT}))::int AS "files",
+           MAX(m.created_at) FILTER (WHERE ${CUSTOMER_DOCUMENT_FILE_FRAGMENT}) AS "lastFileAt",
            MIN(m.created_at) FILTER (WHERE m.role = 'CUSTOMER') AS "firstCustomerAt",
            MAX(m.created_at) AS "lastAt"
       FROM chat_messages m
@@ -61,6 +69,13 @@ async function roomEvents(prisma: PrismaService, customerIds: string[], actor: J
       reliability: row.staff > 0 ? 'approximate' : 'exact', origin: 'SOURCE', href: `/inbox/${row.roomId}`,
       metadata: { customerMessages: row.customer, staffMessages: row.staff, botMessages: row.bot },
     });
+    if (row.files > 0 && row.lastFileAt) {
+      // คำตัดสินข้อ 12: วันละแถวต่อห้อง ไม่ใช่แถวละไฟล์ · เวลา = ไฟล์เอกสารล่าสุดของวัน · CHAT_DAY ยังนับไฟล์รวมในจำนวนข้อความลูกค้า · หลักฐานขั้น 3 ตรวจเครดิต (ชุดเดียวกับแคช)
+      events.push({
+        id: `chatfile-${row.roomId}-${row.day}`, type: 'CHAT_CUSTOMER_FILE', group: 'chat', stage: 'CREDIT', timestamp: row.lastFileAt.toISOString(),
+        title: `ลูกค้าส่งไฟล์ในแชท${row.files > 1 ? ` ${row.files} ไฟล์` : ''}`, actor: { type: 'CUSTOMER' }, reliability: 'exact', origin: 'SOURCE', href: `/inbox/${row.roomId}`,
+      });
+    }
   }
   for (const todo of todos) {
     if (!todo.dueDate || !todo.roomId) continue;
@@ -99,9 +114,41 @@ async function createdEvents(prisma: PrismaService, customerIds: string[]): Prom
   });
 }
 
-/** กลุ่ม chat · PDPA: ไม่อ่าน chat_messages.text · todo.title/description · เบอร์/ที่อยู่ใน audit */
+/**
+ * "ร้านตอบครั้งแรก (หลังทัก …)" — อ่านแคช state.firstStaffReplyAt ตอนเปิดดู ไม่เขียนอะไร (หน้ารายการไม่คำนวณแคชใหม่ ⇒ อาจช้าตามรอบคำนวณแคช)
+ * อยู่นอก roomEvents: SALES ที่มองไม่เห็นห้องยังได้แถวนี้ — เวลาเดียวกันอยู่ใน summary ที่ทุกบทบาทอ่านได้ และแถวไม่มีลิงก์จึงไม่เปิดเผยห้อง
+ * customerIds[0] = ลูกค้าที่ยังมีชีวิต (แบบ JourneySummaryService) — placeholder อาจมีแคชค้างจาก race ของ recompute จน sweep วันอาทิตย์ จึงไม่ค้นด้วย in
+ * จุดเริ่มนับ: ทักแชทก่อน (firstChannel ขึ้นต้น CHAT_) = contactedAt (เวลาแถว "ทักแชทครั้งแรก") · มาหน้าร้าน/แนะนำก่อน = ข้อความลูกค้าแรกของทุกห้องในครอบครัว
+ * (ไม่จำกัดห้องตามสิทธิ์ · รวมห้อง/ข้อความที่ soft-delete แบบ journey-state.sql) — contactedAt ของคนที่มาร้านก่อนจะนับวันที่ยังไม่ได้ทักรวมไปด้วย
+ * ไม่ออกแถวเมื่อยังไม่มีคำตอบ · หาจุดเริ่มไม่ได้ · คำตอบมาก่อนจุดเริ่ม
+ */
+async function firstStaffReplyEvents(prisma: PrismaService, customerIds: string[]): Promise<JourneyEvent[]> {
+  const state = await prisma.customerJourneyState.findUnique({
+    where: { customerId: customerIds[0] },
+    select: { customerId: true, firstStaffReplyAt: true, contactedAt: true, firstChannel: true },
+  });
+  const repliedAt = state?.firstStaffReplyAt;
+  if (!state || !repliedAt) return [];
+  const anchor = state.firstChannel.startsWith(CHAT_SOURCE_PREFIX)
+    ? state.contactedAt
+    : (await prisma.chatMessage.aggregate({ where: { role: 'CUSTOMER', room: { is: { customerId: { in: customerIds } } } }, _min: { createdAt: true } }))._min.createdAt;
+  if (!anchor || repliedAt < anchor) return [];
+  return [{
+    id: `staffreply-${state.customerId}`, type: 'FIRST_STAFF_REPLY', group: 'chat', stage: null, timestamp: repliedAt.toISOString(),
+    title: `ร้านตอบครั้งแรก (หลังทัก ${formatReplyGap(repliedAt.getTime() - anchor.getTime())})`,
+    // ระบบข้ามข้อความในนาทีแรกหลังข้อความทักทายอัตโนมัติ ⇒ ตอบเร็วมากอาจแสดงช้ากว่าจริง · ไม่เลื่อนขั้น
+    actor: { type: 'STAFF' }, reliability: 'approximate', origin: 'SOURCE',
+  }];
+}
+
+/** กลุ่ม chat · PDPA: ไม่อ่าน chat_messages.text/media_type · media_url อยู่ในเงื่อนไขไฟล์เอกสารเท่านั้น (ไม่ select) · todo.title/description · เบอร์/ที่อยู่ใน audit */
 export const chatSource: JourneySource = async (prisma, customerIds, window, actor) => {
   if (!roleSeesGroup(actor.role, 'chat')) return [];
-  const [rooms, leads, created] = await Promise.all([roomEvents(prisma, customerIds, actor), leadEvents(prisma, customerIds, window), createdEvents(prisma, customerIds)]);
-  return finalizeSource([...rooms, ...leads, ...created], window);
+  const [rooms, leads, created, staffReply] = await Promise.all([
+    roomEvents(prisma, customerIds, actor),
+    leadEvents(prisma, customerIds, window),
+    createdEvents(prisma, customerIds),
+    firstStaffReplyEvents(prisma, customerIds),
+  ]);
+  return finalizeSource([...rooms, ...leads, ...created, ...staffReply], window);
 };

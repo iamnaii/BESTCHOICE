@@ -1,4 +1,4 @@
-import { ChatChannel, DunningActionStatus, DunningChannel, MessageRole, Prisma, PrismaClient } from '@prisma/client';
+import { ChatChannel, DunningActionStatus, DunningChannel, MessageRole, MessageType, Prisma, PrismaClient } from '@prisma/client';
 import { NotFoundException } from '@nestjs/common';
 import { JOURNEY_EVENT_GROUPS, type JourneyListResponse } from '@installment/shared';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -7,7 +7,7 @@ import { JourneyStateService } from './journey-state.service';
 import { JourneySummaryService } from './journey-summary.service';
 import { journeyDedupeKey } from './journey-data-schemas';
 
-const FORBIDDEN_KEYS = ['phone', 'phoneSecondary', 'nationalId', 'address', 'addressCurrent', 'addressIdCard', 'addressWork', 'text', 'content', 'messageContent', 'notes', 'note', 'voiceMemoUrl', 'overrideReason', 'customerName', 'reviewNotes', 'voidReason', 'defectDescription', 'reason'];
+const FORBIDDEN_KEYS = ['phone', 'phoneSecondary', 'nationalId', 'address', 'addressCurrent', 'addressIdCard', 'addressWork', 'text', 'mediaUrl', 'mediaType', 'content', 'messageContent', 'notes', 'note', 'voiceMemoUrl', 'overrideReason', 'customerName', 'reviewNotes', 'voidReason', 'defectDescription', 'reason'];
 const EVENT_KEYS = ['id', 'type', 'group', 'stage', 'timestamp', 'title', 'subtitle', 'actor', 'reliability', 'origin', 'href', 'metadata'];
 function allKeys(value: unknown, keys = new Set<string>()): Set<string> {
   if (Array.isArray(value)) value.forEach((v) => allKeys(v, keys));
@@ -49,6 +49,8 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     await prisma.chatMessage.createMany({ data: [
       { roomId: ids.open, role: MessageRole.CUSTOMER, text: `ผมสมหมาย เบอร์ ${phone}` },
       { roomId: ids.open, role: MessageRole.STAFF, text: `ส่งที่ ${address}` },
+      // เฟส 3: ไฟล์เอกสารของลูกค้า (ลิงก์ลงท้าย .pdf — R-P1) ขึ้นแถวไทม์ไลน์ได้ แต่ชื่อไฟล์/ลิงก์/ชนิดไฟล์ต้องไม่หลุด · media_url อยู่ใน FILTER เท่านั้น
+      { roomId: ids.open, role: MessageRole.CUSTOMER, type: MessageType.FILE, text: `สำเนาบัตร-${nationalId}.pdf`, mediaUrl: `https://files.example.test/${phone}.pdf`, mediaType: 'application/pdf' },
       { roomId: ids.assigned, role: MessageRole.CUSTOMER, text: 'ห้องที่คนอื่นดูแล' },
     ] });
     await prisma.todo.create({ data: { title: `โทรหา ${phone}`, description: address, createdById: ids.staff, roomId: ids.open, dueDate: new Date(Date.now() + 86_400_000) } });
@@ -105,7 +107,7 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     const result = await page(ids.target, OWNER);
     expect(result.mergedCustomerIds).toEqual([ids.placeholder]);
     const types = result.events.map((e) => e.type);
-    for (const type of ['CHAT_ROOM_OPENED', 'CHAT_DAY', 'APPOINTMENT', 'AI_LEAD_CAPTURED', 'CUSTOMER_CREATED_BY_STAFF', 'CREDIT_CHECK_OPENED', 'TAG_ADDED', 'PLACEHOLDER_MERGED', 'TOUCHPOINT']) expect(types).toContain(type);
+    for (const type of ['CHAT_ROOM_OPENED', 'CHAT_DAY', 'CHAT_CUSTOMER_FILE', 'APPOINTMENT', 'AI_LEAD_CAPTURED', 'CUSTOMER_CREATED_BY_STAFF', 'CREDIT_CHECK_OPENED', 'TAG_ADDED', 'PLACEHOLDER_MERGED', 'TOUCHPOINT']) expect(types).toContain(type);
   });
 
   it('PDPA snapshot: ไม่มีคีย์ต้องห้าม ไม่มีข้อความแชท/เบอร์/บัตร/ที่อยู่ · รูปรายการอยู่ในชุดคีย์ที่อนุญาต', async () => {

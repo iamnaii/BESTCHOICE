@@ -52,4 +52,28 @@ describe('กฎกลุ่มตามบทบาทมาจาก JOURNEY_H
     const groups = new Set<JourneyEventGroup>(['chat']);
     await expect(entriesSourceFor(groups)(entries as unknown as PrismaService, ['c1'], { limit: 30 }, ACCOUNTANT)).resolves.toMatchObject([{ id: 'entry-handoff', href: '/inbox/r2' }]);
   });
+
+  it('แถวไฟล์ในแชท · ร้านตอบครั้งแรก ตามกลุ่ม chat ของตาราง — บทบาทที่ถูกซ่อนไม่ได้ทั้งสองแถวและไม่ยิง DB · บทบาทที่เห็นได้ทั้งสองแถว', async () => {
+    // ตารางสมมติของไฟล์นี้ซ่อน chat จาก SALES ⇒ ไม่แตะ prisma เลย (รวมแคช state ของแถวร้านตอบครั้งแรก)
+    await expect(chatSource(untouchable, ['c1', 'p1'], { limit: 30 }, SALES)).resolves.toEqual([]);
+
+    const chat = {
+      chatRoom: { findMany: jest.fn().mockResolvedValue([{ id: 'r1', channel: 'FACEBOOK', createdAt: at('2026-09-10T02:00:00.000Z') }]) },
+      $queryRaw: jest.fn().mockResolvedValue([{
+        roomId: 'r1', day: '2026-09-10', customer: 3, staff: 1, bot: 0, files: 2, lastFileAt: at('2026-09-10T02:07:00.000Z'),
+        firstCustomerAt: at('2026-09-10T02:00:00.000Z'), lastAt: at('2026-09-10T02:15:00.000Z'),
+      }]),
+      todo: { findMany: jest.fn().mockResolvedValue([]) },
+      auditLog: { findMany: jest.fn().mockResolvedValue([]) },
+      customer: { findMany: jest.fn().mockResolvedValue([]) },
+      customerJourneyState: {
+        findUnique: jest.fn().mockResolvedValue({ customerId: 'c1', firstStaffReplyAt: at('2026-09-10T02:15:00.000Z'), contactedAt: at('2026-09-10T02:00:00.000Z'), firstChannel: 'CHAT_FACEBOOK' }),
+      },
+    };
+    const events = await chatSource(chat as unknown as PrismaService, ['c1', 'p1'], { limit: 30 }, ACCOUNTANT);
+    expect(events.find((e) => e.type === 'CHAT_CUSTOMER_FILE')).toMatchObject({ id: 'chatfile-r1-2026-09-10', title: 'ลูกค้าส่งไฟล์ในแชท 2 ไฟล์', href: '/inbox/r1' });
+    expect(events.find((e) => e.type === 'FIRST_STAFF_REPLY')).toMatchObject({ id: 'staffreply-c1', title: 'ร้านตอบครั้งแรก (หลังทัก 15 นาที)' });
+    // ids[0] = ลูกค้าที่ยังมีชีวิต — ไม่ค้นแคชของ placeholder
+    expect(chat.customerJourneyState.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { customerId: 'c1' } }));
+  });
 });

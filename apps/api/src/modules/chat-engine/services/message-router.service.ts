@@ -21,6 +21,7 @@ import { AfterHoursService } from './after-hours.service';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
 import { AiAutoReplyService } from '../../staff-chat/services/ai-auto-reply.service';
 import { MAX_BOT_ATTACHMENTS } from '../../../utils/bot-attachments.util';
+import { isAdAttribution } from '../utils/ad-attribution.util';
 
 /**
  * MessageRouter — the central nerve of the chat engine.
@@ -182,7 +183,8 @@ export class MessageRouterService {
       ensureProspect: true,
     });
     // ทักจากโฆษณา → โน้ตระบบในห้อง ตรงเวลาที่เกิด (ท่า OBI logNotify) — ไม่ต้องเปิดแผงขวาก็เห็น
-    if (message.attribution?.adId) {
+    // ด่านเดียวกับ linkAttribution / recordAdReferral: referral.source = 'ADS' เท่านั้น (ไม่ใช่แค่มี adId)
+    if (message.attribution && isAdAttribution(message.attribution)) {
       await this.postAdReferralNote(room.id, message.attribution);
     }
 
@@ -1011,12 +1013,15 @@ export class MessageRouterService {
   /**
    * ลูกค้าเก่ากลับมาจากโฆษณา (event messaging_referrals ไม่มี message) — ผูกที่มาให้ห้องเดิม + โน้ตระบบ
    * ไม่มีห้อง = ไม่ทำอะไร (ห้องจะถูกสร้างพร้อม attribution เมื่อข้อความแรกมาถึง)
+   * ไม่ใช่โฆษณา (referral.source ≠ 'ADS' เช่นลิงก์สินค้า m.me) = ไม่ทำอะไรเลย ก่อนแตะ DB
+   * — โน้ต "ลูกค้ากดมาจากสินค้า …" มาจาก handleProductReferral ใน controller อยู่แล้ว (เจ้าของเคาะ 2026-09-15 ข้อ 7)
    */
   async recordAdReferral(
     externalUserId: string,
     channel: ChatChannel,
     attribution: InboundAttribution,
   ): Promise<void> {
+    if (!isAdAttribution(attribution)) return;
     const room = await this.roomManager.findByExternalUser(externalUserId, channel);
     if (!room) return;
     await this.roomManager.linkAttribution(room.id, attribution, room.attributionId);

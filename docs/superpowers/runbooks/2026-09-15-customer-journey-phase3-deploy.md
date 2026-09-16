@@ -27,8 +27,8 @@
 
 | ขั้น | งาน |
 |---|---|
-| 1 | ด่านก่อน merge — PR "ร้านตอบครั้งแรก" ขึ้นและจบแล้ว · จดของเดิมไว้ถอย · นับก่อน · ช่วงเวลา · นับห้องที่ลูกค้าส่งไฟล์ในแชท (1.6) |
-| 2 | merge PR นี้ + ด่านหลัง merge |
+| 1 | ด่านก่อน merge — PR "ร้านตอบครั้งแรก" ขึ้นและจบแล้ว · จดของเดิมไว้ถอย · นับก่อน · ช่วงเวลา · นับที่มาโฆษณาที่ไม่ใช่ ADS (1.5) · นับห้องที่ลูกค้าส่งไฟล์ในแชท (1.6) |
+| 2 | merge PR นี้ + ด่านหลัง merge · ล้างที่มาโฆษณาในแคช **เฉพาะเมื่อ 1.5 ไม่เป็น 0** (2.1) |
 | 3 | `backfill:customer-journey` dry-run |
 | 4 | รันจริง |
 | 5 | ตรวจหลัง backfill |
@@ -81,6 +81,31 @@ SELECT count(*) AS will_move FROM customer_journey_states WHERE stage = 'CREDIT'
 - **ห้าม 03:00–04:30 น.** (cron `journey:recompute` แข่งเขียนแคช) · **ห้ามวันเสาร์**
 - ห้าม merge PR อื่นซ้อนจนกว่าขั้น 5 ผ่าน — run เข้าคิวและขึ้น HEAD ใหม่ทับ (runbook เฟส 1 หัวข้อ 0)
 
+### 1.5 นับที่มาโฆษณาที่ไม่ใช่ ADS (MCP นับอย่างเดียว · Task 9)
+
+PR นี้ให้ระบบนับว่า "มาจากโฆษณา" เฉพาะ referral ที่ Meta ส่ง `source = ADS` (เจ้าของเคาะ 2026-09-15 ข้อ 7) — API อย่างเดียว ไม่มี migration ไม่แตะเว็บ:
+- `RoomManagerService.linkAttribution` และ `MessageRouterService.recordAdReferral` ทิ้ง referral ที่ไม่ใช่ `ADS` ทันที (`isAdAttribution` ใน `apps/api/src/modules/chat-engine/utils/ad-attribution.util.ts`)
+  - ลิงก์สินค้า m.me (`SHORTLINK`) และ referral ที่ไม่มี source: ไม่สร้าง `ads_campaigns` / `ads_attributions` · ไม่ชี้ห้องไปที่มาใหม่ · ไม่มีโน้ต "ลูกค้าทักจากโฆษณา"
+  - โน้ต "ลูกค้ากดมาจากสินค้า …" ในห้องยังขึ้นตามเดิม
+  - กลับทิศของ `5f0dc62c4` (#1590) ที่เคยบันทึกลิงก์สินค้าเป็นแถวที่มา — ถ้าวันหน้าอยากนับคลิกลิงก์สินค้า ต้องใช้ตาราง/ชนิดรายการของตัวเอง ไม่ใช่ `ads_attributions`
+- `journey-state.sql` CTE `earliest_room`: join `ads_attributions` เฉพาะ `referrer_url = 'ADS'` ⇒ ห้องแรกที่ชี้ที่มาอื่นได้ `first_source = CHAT_<ช่องทาง>` ไม่ใช่ `AD:`
+- ตรวจ 2026-09-15: `ads_campaigns` 0 · `ads_attributions` 0 · `first_source LIKE 'AD:%'` 0 ⇒ เป็นการกันล่วงหน้า ต้องขึ้น prod **ก่อน** เจ้าของกด subscribe `messaging_referrals` หรือเปิดโฆษณาแบบทักแชท
+
+🚨 **`first_source` / `first_ad_campaign_id` ในแคชถูกแช่แข็ง** — recompute (หน้า `/customers/:id` · cron · `backfill:customer-journey` ขั้น 3–4) เปลี่ยนสองคอลัมน์นี้เฉพาะเมื่อ `contacted_at` ใหม่เก่ากว่าเดิม ⇒ กติกาใหม่ **ไม่ล้าง** ค่า `AD:` ที่เขียนไปแล้ว
+
+```sql
+SELECT count(*) FROM ads_attributions WHERE referrer_url IS DISTINCT FROM 'ADS';
+```
+- **ได้ 0** → merge ได้ · ข้าม 2.1
+- **มากกว่า 0** → merge ได้ แต่ต้องทำ 2.1 **หลังเจ้าของอนุมัติเท่านั้น** · นับแคชที่โดนไว้ด้วย:
+  ```sql
+  SELECT count(*) FROM customer_journey_states s
+  WHERE s.first_ad_campaign_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM ads_attributions aa WHERE aa.campaign_id = s.first_ad_campaign_id AND aa.referrer_url = 'ADS');
+  ```
+  จดตัวเลขนี้ลง PR
+- `mcp_ro` อ่าน `ads_attributions.referrer_url` และ `customer_journey_states.first_ad_campaign_id` ได้ (`.claude/mcp/sql/grants.sql`) — ไม่ต้องใช้ role เจ้าของ
+
 ### 1.6 นับห้องที่ลูกค้าส่งไฟล์ในแชท (MCP นับอย่างเดียว · Task 3)
 
 หลัง deploy และ `backfill:customer-journey` ผู้สนใจทุกคนที่เคยส่งไฟล์เอกสารในแชทจะขึ้นขั้น 3 ตรวจเครดิต ⇒ นับก่อนกด merge
@@ -113,6 +138,48 @@ WHERE m.role = 'CUSTOMER' AND m.type = 'FILE' AND m.media_url ~* '\.(pdf|docx?|x
    - บันเดิลของ `https://bestchoicephone.app/` เป็นเลข `version` ใน `apps/web/package.json` ของ merge commit
    - image ของ revision ที่รับ traffic 100% = `api:<SHA40 ของเฟส 3>` — คำสั่งเดียวกับข้อ 1.2
 3. ไม่ผ่านข้อใด = ยังไม่นับว่าขึ้น ห้ามเริ่มขั้น 3 · เว็บขึ้นแต่สาย API ไม่เขียว = ถอยเว็บ (หัวข้อ "ถอย" → ข้อ 2) แล้วหาสาเหตุก่อน merge/รัน pipeline ซ้ำ
+
+### 2.1 ล้างที่มาโฆษณาที่ไม่ใช่ ADS ในแคช — เฉพาะเมื่อ 1.5 ได้มากกว่า 0 และเจ้าของอนุมัติแล้ว
+
+1.5 ได้ 0 = ข้ามหัวข้อนี้
+
+ลำดับ: ด่านหลัง merge ของหัวข้อ 2 ผ่านแล้ว (image ใหม่รับ traffic 100% ⇒ แถวที่ไม่ใช่โฆษณาไม่งอกเพิ่มระหว่างทำ) → ทำหัวข้อนี้ → ขั้น 3 · ห้ามช่วง 03:00–04:30 น. · ใช้ role เจ้าของ (MCP เขียนไม่ได้)
+
+1. ล้างแคช — ทรานแซกชันเดียว:
+   ```sql
+   BEGIN;
+   SELECT count(*) FROM customer_journey_states s
+   WHERE s.first_ad_campaign_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM ads_attributions aa WHERE aa.campaign_id = s.first_ad_campaign_id AND aa.referrer_url = 'ADS');
+   UPDATE customer_journey_states s
+   SET first_ad_campaign_id = NULL, first_source = s.first_channel
+   WHERE s.first_ad_campaign_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM ads_attributions aa WHERE aa.campaign_id = s.first_ad_campaign_id AND aa.referrer_url = 'ADS');
+   -- ข้อความ UPDATE <n> ต้องเท่ากับ count ด้านบน · ไม่เท่า → ROLLBACK; แล้วส่งตัวเลขให้ dev
+   COMMIT;
+   ```
+   - `first_ad_campaign_id` มีค่าเฉพาะลูกค้าที่ทักแชทก่อน ⇒ `first_channel` ของแถวเหล่านี้เป็น `CHAT_<ช่องทาง>` เสมอ = ค่าที่กติกาใหม่คำนวณได้
+   - count ในทรานแซกชันต่างจากตัวเลขที่จดใน 1.5 ได้ (มีคนเปิดหน้าลูกค้าระหว่างนั้น) — เทียบกับ count ในทรานแซกชันเท่านั้น
+2. (ไม่บังคับ — เจ้าของอนุมัติแยก) ปลดห้องแชทออกจากที่มาที่ไม่ใช่โฆษณา ให้แผงขวาในอินบ็อกซ์เลิกโชว์ "มาจากโฆษณา" ของห้องเหล่านั้น — แถว `ads_attributions` ยังอยู่เป็นประวัติ (ห้ามลบ):
+   ```sql
+   BEGIN;
+   SELECT count(*) FROM chat_rooms
+   WHERE attribution_id IN (SELECT id FROM ads_attributions WHERE referrer_url IS DISTINCT FROM 'ADS');
+   UPDATE chat_rooms SET attribution_id = NULL
+   WHERE attribution_id IN (SELECT id FROM ads_attributions WHERE referrer_url IS DISTINCT FROM 'ADS');
+   -- UPDATE <n> ต้องเท่ากับ count ด้านบน · ไม่เท่า → ROLLBACK;
+   COMMIT;
+   ```
+   - `mcp_ro` อ่าน `chat_rooms.attribution_id` ไม่ได้ ⇒ count นี้ใช้ role เจ้าของเหมือนกัน
+3. คำนวณใหม่ = ขั้น 3–4 ของไฟล์นี้ตามปกติ · ถ้าขั้น 4 รันไปแล้วก่อนข้อ 1 ให้รันขั้น 4 ซ้ำหลัง COMMIT (รันซ้ำได้)
+4. หลังขั้น 4 ตรวจ (MCP นับอย่างเดียว):
+   ```sql
+   SELECT count(*) FROM customer_journey_states s
+   WHERE s.first_ad_campaign_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM ads_attributions aa WHERE aa.campaign_id = s.first_ad_campaign_id AND aa.referrer_url = 'ADS');
+   SELECT count(*) FROM customer_journey_states WHERE first_source LIKE 'AD:%' AND first_ad_campaign_id IS NULL;
+   ```
+   - **ทั้งคู่ต้องได้ 0** · ไม่เป็น 0 = ส่งตัวเลขให้ dev ห้ามแก้มือต่อ
 
 ## 3. `backfill:customer-journey` dry-run
 
@@ -166,6 +233,12 @@ SELECT count(*) AS moved FROM customer_journey_states WHERE stage = 'INTERESTED'
   แถบขั้นต้องเป็น "3 ตรวจเครดิต" มีวันที่ (หรือแดง "เครดิตไม่ผ่าน") และ "4 นัด / จอง" เป็นขั้นปัจจุบัน
 
 ## ถอย (rollback)
+
+### ถอยกับที่มาโฆษณา (1.5 / 2.1)
+
+- ถอย image API ข้ามเส้น PR นี้ = ลิงก์สินค้ากลับมาสร้างแถว `ads_attributions` และลูกค้าใหม่ที่ห้องแรกมาจากลิงก์สินค้าได้ `first_source = AD:…` ระหว่างที่ถอยอยู่
+- ค่าที่ 2.1 ล้างไปแล้วไม่ถูกเขียนกลับ (คอลัมน์แช่แข็ง)
+- ขึ้นกลับ (roll forward) → ทำ 1.5 ซ้ำ · ไม่เป็น 0 ทำ 2.1 ก่อนขั้น 3
 
 ### ถอยเพราะลำดับขั้น
 

@@ -42,7 +42,11 @@ earliest_room AS (
          ro.customer_id, ro.channel, LEAST(ro.created_at, ro.first_customer_at) AS first_at,
          ac.id AS ad_campaign_id, ac.campaign_id AS ad_platform_campaign_id
   FROM rooms ro
-  LEFT JOIN ads_attributions aa ON aa.id = ro.attribution_id
+  -- โฆษณาจริงเท่านั้น (เจ้าของเคาะ 2026-09-15 ข้อ 7): referrer_url = referral.source ของ Meta
+  -- literal ต้องตรง AD_REFERRAL_SOURCE ใน chat-engine/utils/ad-attribution.util.ts (มีเทสปักคู่) — แก้ต้องแก้คู่
+  -- ห้องแรกที่ชี้ที่มาอื่น (ลิงก์สินค้า SHORTLINK / ไม่มี source) ได้ ad_campaign_id ว่าง ⇒ first_source = CHAT_<ช่องทาง>
+  -- การเลือกห้องแรกไม่เปลี่ยน · ไม่ถอยไปหาห้องหลังที่มาจากโฆษณา · ไม่กรอง deleted_at ของแคมเปญ (พฤติกรรมเดิม)
+  LEFT JOIN ads_attributions aa ON aa.id = ro.attribution_id AND aa.referrer_url = 'ADS'
   LEFT JOIN ads_campaigns ac ON ac.id = aa.campaign_id
   ORDER BY ro.customer_id, LEAST(ro.created_at, ro.first_customer_at), ro.room_id
 ),

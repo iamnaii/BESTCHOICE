@@ -8,6 +8,7 @@ import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import { formatThaiDateShort } from '@/lib/date';
+import { existingNounOf } from '@/utils/existing-person-noun';
 import { customerSchema, prospectFillSchema, type CustomerFormData } from '@/lib/schemas';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
@@ -25,6 +26,7 @@ import type { OcrResult } from '@/types/ocr';
  *
  * เลขซ้ำ (409 จาก customer-write.service dedup เบอร์/อีเมล) ไม่ใช่แค่ error:
  * ถ้าผู้เรียกส่ง `onUseExisting` มา จะเสนอปุ่ม "ใช้ลูกค้าเดิมคนนี้แทน" ในฟอร์มเลย
+ * (คนเดิมยังไม่เคยซื้อ = "ใช้ผู้สนใจเดิมคนนี้แทน" — ดู `existingNounOf` ใน `@/utils/existing-person-noun`)
  * (ในแชท = ผูกห้องกับคนเดิม แทนที่จะสร้างซ้ำหรือติดตาย)
  *
  * state ทั้งหมดอยู่ใน `CustomerCreateForm` ซึ่ง mount เฉพาะตอน `open` — ปิดแล้วเปิดใหม่ได้ฟอร์มเปล่า
@@ -57,7 +59,9 @@ function customerSinceLabel(createdAt: string | undefined): string | null {
 }
 
 /** mockup บอร์ด 4 — error ใต้ช่องเบอร์เมื่อ 409 ชนเบอร์ (โหมด fill) */
-const DUP_PHONE_FIELD_ERROR = 'เบอร์นี้มีลูกค้าใช้อยู่แล้ว';
+function dupPhoneFieldError(purchased?: boolean): string {
+  return `เบอร์นี้มี${existingNounOf(purchased)}ใช้อยู่แล้ว`;
+}
 
 interface ReferenceData {
   prefix: string;
@@ -236,7 +240,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
         // (พิมพ์ทับระหว่างรอผลแล้ว = เบอร์ใหม่ยังไม่ได้ตรวจ ห้ามติดป้ายว่าซ้ำ). แก้ค่าในช่องแล้ว
         // resolver ตรวจซ้ำตอน onChange (ฟอร์มถูก submit แล้ว) ⇒ error นี้หายเอง
         if (isFill && field === 'phone' && form.getValues('phone') === variables.phone) {
-          form.setError('phone', { type: 'duplicate', message: DUP_PHONE_FIELD_ERROR });
+          form.setError('phone', { type: 'duplicate', message: dupPhoneFieldError(dup.purchased) });
         }
         return;
       }
@@ -412,6 +416,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
     existingSince && typeof existingPurchased === 'boolean'
       ? `${existingPurchased ? 'ลูกค้า' : 'ผู้สนใจ'}ตั้งแต่ ${existingSince}`
       : null;
+  const existingNoun = existingNounOf(existingPurchased);
   const existingActiveContracts = existing?.activeContracts ?? 0;
   /** ปุ่ม "แก้เบอร์"/"แก้เลขบัตร" — ปิดกล่อง ล้างเฉพาะ error "เบอร์ซ้ำ" ที่ตั้งจาก 409 แล้วพาเคอร์เซอร์ไปช่องที่ต้องแก้ */
   const dismissExisting = () => {
@@ -508,8 +513,8 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                   (แก้เบอร์เท่าไรก็ยังชนเลขบัตรเดิม) ⇒ แยกข้อความ/ชิป/ปุ่มตาม `field` ที่ API บอก */}
               <p className="m-0 font-semibold leading-snug">
                 {isFill
-                  ? (nidDup ? `เลขบัตรประชาชน ${dupNationalId} เป็นของลูกค้าเดิมอยู่แล้ว` : `เบอร์ ${dupPhone} เป็นของลูกค้าเดิมอยู่แล้ว`)
-                  : (nidDup ? `มีลูกค้าเลขบัตรประชาชนนี้อยู่แล้ว: ${existing.name}` : `มีลูกค้าเบอร์นี้หรืออีเมลนี้อยู่แล้ว: ${existing.name}`)}
+                  ? (nidDup ? `เลขบัตรประชาชน ${dupNationalId} เป็นของ${existingNoun}เดิมอยู่แล้ว` : `เบอร์ ${dupPhone} เป็นของ${existingNoun}เดิมอยู่แล้ว`)
+                  : (nidDup ? `มี${existingNoun}เลขบัตรประชาชนนี้อยู่แล้ว: ${existing.name}` : `มี${existingNoun}เบอร์นี้หรืออีเมลนี้อยู่แล้ว: ${existing.name}`)}
               </p>
               <p className="m-0 mt-0.5 text-xs leading-snug text-muted-foreground">
                 {isFill
@@ -544,7 +549,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                       onClick={() => { onUseExisting(existing); onClose(); }}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90"
                     >
-                      <Link2 className="size-4" strokeWidth={1.5} /> {isFill ? 'รวมกับลูกค้าเดิมคนนี้' : 'ใช้ลูกค้าเดิมคนนี้แทน'}
+                      <Link2 className="size-4" strokeWidth={1.5} /> {isFill ? `รวมกับ${existingNoun}เดิมคนนี้` : `ใช้${existingNoun}เดิมคนนี้แทน`}
                     </button>
                   )}
                   {isFill && (
@@ -602,7 +607,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                   name="prefix"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-xs font-medium">คำนำหน้า</FormLabel>
+                      <FormLabel className="text-xs font-medium">คำนำหน้า <span className="text-destructive">*</span></FormLabel>
                       <FormControl>
                         <select {...field} className={selectClass}>
                           <option value="">-- เลือก --</option>

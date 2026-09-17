@@ -4,6 +4,7 @@ import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard } from '@/lib/cardReader';
 import { AddressData } from '@/components/ui/AddressForm';
 import { toast } from 'sonner';
+import { existingNounOf } from '@/utils/existing-person-noun';
 import type { Customer, OcrResult } from '../types';
 import type { emptyCustForm } from '../constants';
 
@@ -291,20 +292,25 @@ export function useOcrFlow({
     } catch (err: unknown) {
       const axiosErr = err as {
         response?: {
-          data?: { existingCustomer?: { id: string; name: string }; field?: 'phone' | 'email' | 'nationalId' };
+          data?: {
+            existingCustomer?: { id: string; name: string; purchased?: boolean };
+            field?: 'phone' | 'email' | 'nationalId';
+          };
           status?: number;
         };
       };
       const existing = axiosErr.response?.data?.existingCustomer;
       // R44: API บอกว่าชนช่องไหน — ไม่ส่ง (API เก่า) ถือเป็นเบอร์ ซึ่งเป็นทางที่ปลอดภัยกว่า
       const field = axiosErr.response?.data?.field ?? 'phone';
+      // คำตัดสิน 2026-09-17: เรียกคนเดิมตามธง purchased (กติกาเดียวกับกล่องเบอร์ซ้ำของ CustomerCreateDialog)
+      const noun = existingNounOf(existing?.purchased);
       if (existing && axiosErr.response?.status === 409 && field !== 'nationalId') {
         // เบอร์/อีเมลเดียวกันเป็นของคนละคนได้ ⇒ ห้ามเลือกคนเดิมให้เอง (Step 4 updateCustomerFromOcr
         // จะเขียนชื่อ/ที่อยู่จากบัตรทับลูกค้าคนนั้น) — แผงสร้างเปิดค้างไว้ให้แก้ค่าที่กรอก
         toast.error(
           field === 'email'
-            ? `อีเมลนี้เป็นของลูกค้าเดิม (${existing.name}) — ถ้าเป็นคนเดียวกันให้ค้นหาชื่อนี้แล้วเลือก`
-            : `เบอร์ ${sentPhone} เป็นของลูกค้าเดิม (${existing.name}) — ถ้าเป็นคนเดียวกันให้ค้นหาชื่อนี้แล้วเลือก ถ้าไม่ใช่ให้แก้เบอร์`,
+            ? `อีเมลนี้เป็นของ${noun}เดิม (${existing.name}) — ถ้าเป็นคนเดียวกันให้ค้นหาชื่อนี้แล้วเลือก`
+            : `เบอร์ ${sentPhone} เป็นของ${noun}เดิม (${existing.name}) — ถ้าเป็นคนเดียวกันให้ค้นหาชื่อนี้แล้วเลือก ถ้าไม่ใช่ให้แก้เบอร์`,
         );
       } else if (existing && axiosErr.response?.status === 409) {
         // บัตรเดียวกัน = คนเดียวกัน ⇒ เลือกคนเดิมให้อัตโนมัติ
@@ -314,9 +320,9 @@ export function useOcrFlow({
           setShowCreateCustomer(false);
           setShowOcrPanel(false);
           setNewCustomerPhone('');
-          toast.success(`บัตรนี้เป็นของลูกค้าเดิม: ${existing.name} — เลือกให้อัตโนมัติ`);
+          toast.success(`บัตรนี้เป็นของ${noun}เดิม: ${existing.name} — เลือกให้อัตโนมัติ`);
         } catch {
-          toast.error('ลูกค้ามีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ กรุณาค้นหาด้วยตนเอง');
+          toast.error(`${noun}มีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ กรุณาค้นหาด้วยตนเอง`);
         }
       } else {
         toast.error(getErrorMessage(err));

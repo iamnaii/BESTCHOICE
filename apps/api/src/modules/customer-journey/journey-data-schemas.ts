@@ -17,7 +17,7 @@ export const HANDOFF_REASON_CODES = ['BOT_SEND_FAILED', 'LOW_CONFIDENCE', 'AI_ER
 export type HandoffReasonCode = (typeof HANDOFF_REASON_CODES)[number];
 export const CONTACT_FIELDS = ['phone', 'nationalId'] as const;
 export type ContactField = (typeof CONTACT_FIELDS)[number];
-/** UPDATE = PATCH /customers/:id · FILL_CONTACT = POST /customers/:id/fill-contact · CAPTURE_LEAD = สงวนไว้ให้ hook ของบอทขาย (capture_lead) ตอนเปิดบอท — เฟส 1 ไม่มีผู้เขียน */
+/** UPDATE = PATCH /customers/:id · FILL_CONTACT = POST /customers/:id/fill-contact · CAPTURE_LEAD = บอทขาย capture_lead เติมเบอร์หลักให้ลูกค้าที่ยังไม่มีเบอร์ (capture-lead.tool.ts, R25) */
 export const CONTACT_ADDED_VIA = ['UPDATE', 'FILL_CONTACT', 'CAPTURE_LEAD'] as const;
 export type ContactAddedVia = (typeof CONTACT_ADDED_VIA)[number];
 export const LINE_LINK_CHANNELS = ['FINANCE', 'SHOP'] as const;

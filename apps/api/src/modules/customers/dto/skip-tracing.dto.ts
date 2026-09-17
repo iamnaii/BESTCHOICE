@@ -1,4 +1,6 @@
 import { IsString, IsOptional, IsBoolean, Matches, MaxLength, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { normalizeThaiPhone } from '../../../utils/thai-phone.util';
 
 /**
  * Skip-tracing contact update DTO (P2 Collections — D6).
@@ -12,6 +14,9 @@ import { IsString, IsOptional, IsBoolean, Matches, MaxLength, MinLength } from '
  * change creates a `SKIP_TRACING_UPDATE` AuditLog row with old/new values.
  */
 export class UpdateCustomerContactDto {
+  // normalize ก่อน validate (ValidationPipe transform: true) — "081-234 5678" / "+66812345678" ผ่านได้
+  // ค่าที่ไม่ใช่สตริงปล่อยผ่านให้ @IsString ปฏิเสธ · service normalize + ตรวจซ้ำอีกชั้น
+  @Transform(({ value }) => (typeof value === 'string' ? (normalizeThaiPhone(value) ?? '') : value))
   @IsString()
   @IsOptional()
   @Matches(/^0[0-9]{9}$/, { message: 'เบอร์โทรต้องเป็นเลข 10 หลัก ขึ้นต้นด้วย 0' })

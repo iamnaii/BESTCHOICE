@@ -72,11 +72,12 @@ export type CustomerFormData = z.infer<typeof customerSchema>;
  * เป็น string ทั้งคู่เท่ากับ `CustomerFormData` ⇒ `useForm<CustomerFormData>` รับ resolver ได้โดยไม่ต้อง cast.
  * (ไม่ใช้ `.optional().default('')` — output เป็น string ก็จริง แต่ input กลายเป็น `string | undefined`
  *  ซึ่ง `Resolver<CustomerFormData>` ไม่รับ ⇒ tsc ไม่ผ่านถ้าไม่ cast)
- * M-W4: คำนำหน้าไม่บังคับด้วย (เทคนิคเดียวกับนามสกุล) — ป้ายในฟอร์มไม่มีดอกจัน (mockup บอร์ด 3)
- * และ `FillProspectContactDto.prefix` เป็น optional ⇒ ฟอร์มไม่ส่งคีย์ prefix เมื่อว่าง. โหมดสร้างยังบังคับ
+ * คำนำหน้า: บังคับทั้งสองโหมด (คำตัดสินเจ้าของ 2026-09-17 "บังคับดีกว่า" — แทน M-W4 / mockup บอร์ด 3
+ * ที่เคยปล่อยว่างได้) ⇒ ไม่ override `prefix` ที่นี่ รับ `customerSchema.prefix` (`min(1)`) ไปตรง ๆ.
+ * ฝั่ง API `FillProspectContactDto.prefix` ยังเป็น optional เหมือน `CreateCustomerDto.prefix` —
+ * API ไม่เคยบังคับคำนำหน้า ฟอร์มเป็นคนบังคับ
  */
 export const prospectFillSchema = customerSchema.extend({
-  prefix: z.string().catch(''),
   lastName: z.string().catch(''),
   nationalId: z
     .string()

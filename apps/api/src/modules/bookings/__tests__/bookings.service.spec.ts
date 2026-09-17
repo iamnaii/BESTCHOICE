@@ -818,7 +818,11 @@ describe('BookingsService', () => {
 
   // ─── ด่านเบอร์ (spec 2026-09-13-chat-prospects) ──────────────────────────────
 
-  const chatProspect = { id: 'cust-chat', name: 'Facebook #a1b2', phone: null, addressCurrent: null };
+  // A12: ข้อความแยกตาม isChatPlaceholder ⇒ ผู้สนใจต้องมีที่มา CHAT_* และไม่มีเลขบัตร (และ select ต้องโหลดสองคีย์นี้มาด้วย)
+  const chatProspect = {
+    id: 'cust-chat', name: 'Facebook #a1b2', phone: null, addressCurrent: null, nationalId: null, acquisitionSource: 'CHAT_FACEBOOK',
+  };
+  const placeholderKeys = expect.objectContaining({ phone: true, acquisitionSource: true, nationalId: true });
 
   it('create — ผู้สนใจจากแชทที่ยังไม่มีเบอร์ → BadRequest ก่อนเปิด tx', async () => {
     prisma.customer.findFirst.mockResolvedValueOnce(chatProspect);
@@ -833,8 +837,11 @@ describe('BookingsService', () => {
         'user-1',
         OWNER,
       ),
-    ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนจองสินค้า');
+    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนจองสินค้า (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)');
     expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.customer.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ addressCurrent: true, acquisitionSource: true, nationalId: true }) }),
+    );
   });
 
   it('update — เปลี่ยนลูกค้าในใบจองเป็นผู้สนใจที่ยังไม่มีเบอร์ → BadRequest ไม่แก้ใบจอง', async () => {
@@ -843,9 +850,10 @@ describe('BookingsService', () => {
       expireDate: new Date(Date.now() + 86400000) });
     prisma.customer.findFirst.mockResolvedValueOnce(chatProspect);
     await expect(service.update('bk-1', { customerId: 'cust-chat' }, OWNER)).rejects.toThrow(
-      'ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนจองสินค้า',
+      'ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนจองสินค้า (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)',
     );
     expect(prisma._tx.booking.update).not.toHaveBeenCalled();
+    expect(prisma.customer.findFirst).toHaveBeenCalledWith(expect.objectContaining({ select: placeholderKeys }));
   });
 
   it('update — เปลี่ยนลูกค้าเป็นคนที่มีเบอร์ → แก้ใบจองได้ตามเดิม', async () => {
@@ -862,8 +870,11 @@ describe('BookingsService', () => {
     prisma.booking.findFirst.mockResolvedValueOnce({ ...paidBooking(), customer: chatProspect });
     await expect(
       service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' }, SALES_BR1.id, SALES_BR1),
-    ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนเปิดใบขาย');
+    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนเปิดใบขาย (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)');
     expect(prisma._tx.product.updateMany).not.toHaveBeenCalled();
     expect(prisma._tx.sale.create).not.toHaveBeenCalled();
+    expect(prisma.booking.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ include: expect.objectContaining({ customer: { select: expect.objectContaining({ addressCurrent: true, acquisitionSource: true, nationalId: true }) } }) }),
+    );
   });
 });

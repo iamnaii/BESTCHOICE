@@ -68,6 +68,7 @@ describe('StaffChatController', () => {
             sendCustomerMessage: jest.fn(),
             getCrossChannelRooms: jest.fn(),
             findById: jest.fn(),
+            linkCustomer: jest.fn(),
           },
         },
         { provide: AssignmentService, useValue: {} },
@@ -495,6 +496,34 @@ describe('StaffChatController', () => {
 
       expect(res.customer).toMatchObject({ chatPlaceholder: false, nationalId: null });
       expect(res.possibleSamePerson).toEqual([{ customerId: 'c2' }]);
+    });
+  });
+
+  describe('PATCH /staff-chat/rooms/:id/customer', () => {
+    const owner = { user: { id: 'u1', role: 'OWNER' } };
+
+    it('ต้องมี customerId — ไม่เรียก linkCustomer', async () => {
+      await expect(controller.linkCustomerToRoom('r1', '', owner)).rejects.toThrow('กรุณาระบุ customerId');
+      expect(roomManager.linkCustomer).not.toHaveBeenCalled();
+    });
+
+    // M-A4: ผูกห้องที่มีผู้สนใจอัตโนมัติ = รวมผู้สนใจเข้าลูกค้าที่เลือก — เว็บต้องรู้ว่าผลเครดิตย้ายมากี่รายการ
+    it('ผูกแล้วมีการรวมผู้สนใจ → คืน { success: true, absorbed: { targetId, movedCreditChecks } }', async () => {
+      (roomManager.linkCustomer as jest.Mock).mockResolvedValue({
+        id: 'r1',
+        customerId: 'c-real',
+        absorbed: { targetId: 'c-real', movedCreditChecks: 2 },
+      });
+      await expect(controller.linkCustomerToRoom('r1', 'c-real', owner)).resolves.toEqual({
+        success: true,
+        absorbed: { targetId: 'c-real', movedCreditChecks: 2 },
+      });
+      expect(roomManager.linkCustomer).toHaveBeenCalledWith('r1', 'c-real', owner.user);
+    });
+
+    it('ผูกห้องธรรมดา (ไม่มีการรวม) → absorbed: null · ไม่ส่งตัวห้องกลับ (success คงเดิม)', async () => {
+      (roomManager.linkCustomer as jest.Mock).mockResolvedValue({ id: 'r1', customerId: 'c-real', absorbed: null });
+      await expect(controller.linkCustomerToRoom('r1', 'c-real', owner)).resolves.toEqual({ success: true, absorbed: null });
     });
   });
 

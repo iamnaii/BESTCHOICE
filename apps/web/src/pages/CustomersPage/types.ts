@@ -71,7 +71,8 @@ export interface CustomerRow {
   name: string;
   nickname: string | null;
   phone: string | null;
-  nationalId: string;
+  /** `Customer.nationalId` เป็น nullable — ผู้สนใจจากแชท/ลูกค้าที่ยังไม่เคยให้บัตร */
+  nationalId: string | null;
   occupation: string | null;
   salary: number | string | null;
   createdAt: string;
@@ -100,7 +101,7 @@ export interface ProspectRow {
   name: string;
   nickname: string | null;
   phone: string | null;
-  nationalId: string;
+  nationalId: string | null;
   createdAt: string;
   source: ProspectSource | null;
   acquisitionSourceRaw: string | null;

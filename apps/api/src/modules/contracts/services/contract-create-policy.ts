@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Customer, PaymentMethod, Prisma } from '@prisma/client';
+import { isChatPlaceholder, type PlaceholderShape } from '../../chat-prospects/chat-placeholder';
 
 /** Must run after lockCreditCustomer, in the same transaction as the credit claim. */
 export async function assertCustomerContractPolicy(tx: Prisma.TransactionClient, customerId: string, role: string, override = false) {
@@ -36,10 +37,25 @@ export function contractDownTender(amount: string | number, method?: string | nu
  * ผู้สนใจอัตโนมัติจากแชท (สเปค 2026-09-13-chat-prospects) มี phone = null —
  * เอกสารที่ต้องติดต่อลูกค้าได้ (สัญญา ใบขาย ใบจอง รับซื้อ) ต้องบังคับให้เติมเบอร์ก่อน
  * `action` = คำที่ต่อท้ายข้อความ เช่น 'ทำสัญญา' 'เปิดใบขาย' 'จองสินค้า' 'รับซื้อเครื่อง'
+ *
+ * A12 — ข้อความชี้ทางที่ทำได้จริงตามชนิดแถว (caller ต้องโหลด acquisitionSource/nationalId มาด้วย —
+ * ใช้ PLACEHOLDER_FIELDS_SELECT; endpoint ที่เจอด่านนี้ทั้งหมดเป็น OWNER/BRANCH_MANAGER/SALES):
+ *  - ผู้สนใจอัตโนมัติ → ปุ่ม "เติมเบอร์" หน้าลูกค้า (DetailHeader) / "เพิ่มเบอร์/ข้อมูล" การ์ดผู้สนใจในอินบ็อกซ์
+ *    = POST /customers/:id/fill-contact (@Roles OWNER/BM/FM/SALES)
+ *    R-0: SALES โดน 403 ที่ทางนี้เมื่อห้องแชทของผู้สนใจมีพนักงานคนอื่นดูแล
+ *    (CustomerMergeService.assertActorMayAbsorb) ⇒ ข้อความบอกทางสำรอง: คนดูแลห้อง หรือ
+ *    OWNER/BM/FM (ข้ามด่านห้องนั้น) — เข้าหน้าลูกค้า/อินบ็อกซ์และเห็นปุ่มได้ทั้งสาม role
+ *  - คนอื่น → fill-contact ปฏิเสธ (ไม่ใช่ผู้สนใจอัตโนมัติ) ⇒ เหลือ "แก้ไขข้อมูล" = PATCH /customers/:id
+ *    (@Roles OWNER/BM เท่านั้น — SALES ต้องให้เจ้าของ/ผู้จัดการสาขาทำ)
  */
-export function assertCustomerHasPhone(customer: { phone: string | null }, action: string): string {
+export function assertCustomerHasPhone(customer: PlaceholderShape, action: string): string {
   if (!customer.phone) {
-    throw new BadRequestException(`ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อน${action}`);
+    throw new BadRequestException(
+      isChatPlaceholder(customer)
+        ? `ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อน${action}` +
+          ' (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)'
+        : `ลูกค้ายังไม่มีเบอร์โทร — ให้เจ้าของหรือผู้จัดการสาขากด "แก้ไขข้อมูล" ในหน้าลูกค้าเพื่อเติมเบอร์ก่อน${action}`,
+    );
   }
   return customer.phone;
 }

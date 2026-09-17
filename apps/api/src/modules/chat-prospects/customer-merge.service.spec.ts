@@ -257,10 +257,14 @@ describe('CustomerMergeService.assertActorMayAbsorb', () => {
     return { service: newService(prisma, { log: jest.fn() }), prisma };
   };
 
-  it('SALES + มีห้องที่คนอื่นดูแลอยู่ → 403 ข้อความเดียวกับ linkCustomer', async () => {
+  // M-A2: ด่านนี้คือทางของปุ่ม "เติมเบอร์" / "เพิ่มเบอร์/ข้อมูล" / "รวมเข้าลูกค้าเดิม" — ข้อความต้องบอกว่าใครทำแทนได้
+  // (คนดูแลห้อง หรือ role ที่ข้ามด่านนี้: OWNER/BRANCH_MANAGER/FINANCE_MANAGER = @Roles ของ fill-contact/absorb-into ลบ SALES)
+  it('SALES + มีห้องที่คนอื่นดูแลอยู่ → 403 บอกว่าใครเติมเบอร์/รวมแทนได้', async () => {
     const { service, prisma } = build({ id: 'room-other' });
-    await expect(service.assertActorMayAbsorb('p1', { id: 'sales-1', role: 'SALES' })).rejects.toThrow(
-      new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้'),
+    const error = await service.assertActorMayAbsorb('p1', { id: 'sales-1', role: 'SALES' }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect((error as ForbiddenException).message).toBe(
+      'ห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมเบอร์หรือรวมให้',
     );
     expect(prisma.chatRoom.findFirst).toHaveBeenCalledWith({
       where: {

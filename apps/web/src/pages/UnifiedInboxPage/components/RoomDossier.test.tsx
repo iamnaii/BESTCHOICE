@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import type { ReactNode } from 'react';
+import { toast } from 'sonner';
 
 const apiGet = vi.fn();
 const apiPatch = vi.fn();
@@ -264,7 +265,8 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
 
   it('คำใบ้อาจเป็นคนเดียวกัน: ข้อความตาม mockup · "รวมเป็นคนเดียวกัน" ยิง absorb ตามทิศทาง · "ไม่ใช่" ยิง dismiss', async () => {
     wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
-    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('LINE · มีเบอร์ · ทักเมื่อ');
+    // c-line เป็นลูกค้าจริง (chatPlaceholder: false) ⇒ วันที่คือวันที่อยู่ในระบบ ไม่ใช่วันที่ทัก
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('LINE · มีเบอร์ · อยู่ในระบบตั้งแต่');
     fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/customers/p1/absorb-into/c-line'));
     fireEvent.click(screen.getByRole('button', { name: 'ไม่ใช่' }));
@@ -291,11 +293,37 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     ] };
     wrap(<RoomDossier room={noChannel} customerId="p1" activeRoomId="r-1" />);
     const hint = screen.getByText(/อาจเป็นคนเดียวกับ/);
-    expect(hint).toHaveTextContent('— มีเบอร์ · ทักเมื่อ');
+    // ลูกค้าจริง (ไม่ใช่ผู้สนใจอัตโนมัติ) ⇒ "ทักเมื่อ" เป็นเท็จ — ท้ายคำใบ้บอกวันที่อยู่ในระบบแทน (ดูเทสถัดไป)
+    expect(hint).toHaveTextContent('— มีเบอร์ · อยู่ในระบบตั้งแต่');
+    expect(hint.textContent).not.toContain('ทักเมื่อ');
     expect(hint.textContent).not.toContain(' —  ·');
     expect(hint.textContent).not.toContain('null');
     // ทิศทางยังใช้ได้ตามปกติ — คำใบ้ไม่มีช่องทางไม่ได้แปลว่ารวมไม่ได้
     expect(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' })).toBeEnabled();
+  });
+
+  // `createdAt` ของคำใบ้ = วันที่สร้างแถวลูกค้า (ไม่ใช่วันที่ห้องแชท) — "ทักเมื่อ" จริงเฉพาะผู้สนใจอัตโนมัติ
+  // (แถวเกิดตอนทักครั้งแรก) · ลูกค้าจริงทุกแบบ (ไม่มีห้อง หรือผูกห้องทีหลัง) ต้องเป็น "อยู่ในระบบตั้งแต่"
+  it('ท้ายคำใบ้: ผู้สนใจอัตโนมัติ → "ทักเมื่อ <วันที่>" · ลูกค้าจริง (มีหรือไม่มีห้อง) → "อยู่ในระบบตั้งแต่ <วันที่>"', () => {
+    // เที่ยงวันตามเวลาเครื่อง ⇒ วันที่ที่แสดงเป็น 3 ก.ย. เสมอไม่ว่า TZ ไหน
+    const createdAt = new Date(2026, 8, 3, 12).toISOString();
+    const base = { name: 'สมชาย ใจดี', hasPhone: true, chatPlaceholder: false, createdAt, mergeDirection: 'none' as const };
+    const cases = [
+      { hint: { ...base, customerId: 'p-chat', hasPhone: false, chatPlaceholder: true, channel: 'LINE' as const, channelDetail: 'LINE_SHOP' }, expected: '— LINE ร้าน · ยังไม่มีเบอร์ · ทักเมื่อ 03/09/69', absent: 'อยู่ในระบบตั้งแต่' },
+      // ลูกค้าหน้าร้านที่ผูก LINE ทีหลัง — มีห้อง แต่วันที่เป็นวันสร้างแถว ไม่ใช่วันทัก
+      { hint: { ...base, customerId: 'c-linked-later', channel: 'LINE' as const, channelDetail: 'LINE_FINANCE' }, expected: '— LINE การเงิน · มีเบอร์ · อยู่ในระบบตั้งแต่ 03/09/69', absent: 'ทักเมื่อ' },
+      { hint: { ...base, customerId: 'c-walkin', channel: null, channelDetail: null }, expected: '— มีเบอร์ · อยู่ในระบบตั้งแต่ 03/09/69', absent: 'ทักเมื่อ' },
+      // API เก่า: ไม่มีคีย์ channelDetail เลย
+      { hint: { ...base, customerId: 'c-walkin-old', channel: null }, expected: '— มีเบอร์ · อยู่ในระบบตั้งแต่ 03/09/69', absent: 'ทักเมื่อ' },
+    ];
+    for (const { hint, expected, absent } of cases) {
+      const { unmount } = wrap(<RoomDossier room={{ ...PROSPECT_ROOM, possibleSamePerson: [hint] }} customerId="p1" activeRoomId="r-1" />);
+      const p = screen.getByText(/อาจเป็นคนเดียวกับ/);
+      expect(p.textContent?.startsWith('อาจเป็นคนเดียวกับ ')).toBe(true);
+      expect(p).toHaveTextContent(expected);
+      expect(p.textContent).not.toContain(absent);
+      unmount();
+    }
   });
 
   it('บทบาทที่ fill-contact ไม่รับ (ACCOUNTANT) → ปุ่มเพิ่มเบอร์ปิดพร้อมเหตุผล', () => {
@@ -304,5 +332,251 @@ describe('RoomDossier — การ์ดผู้สนใจจากแชท
     const btn = screen.getByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ });
     expect(btn).toBeDisabled();
     expect(btn).toHaveAttribute('title', expect.stringContaining('เจ้าของ'));
+  });
+
+  // C2 — `channel` (โลโก้) ยุบ LINE ร้าน/LINE การเงิน เป็นค่าเดียว · `channelDetail` คือช่องทางจริงของห้องล่าสุด
+  it('ป้ายช่องทางของคำใบ้ใช้ channelDetail ก่อน (LINE ร้าน) · ค่าที่ไม่รู้จักถอยไปใช้โลโก้', () => {
+    const base = PROSPECT_ROOM.possibleSamePerson[0];
+    const { unmount } = wrap(<RoomDossier room={{ ...PROSPECT_ROOM, possibleSamePerson: [{ ...base, channelDetail: 'LINE_SHOP' }] }} customerId="p1" activeRoomId="r-1" />);
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('— LINE ร้าน · มีเบอร์ · อยู่ในระบบตั้งแต่');
+    unmount();
+    wrap(<RoomDossier room={{ ...PROSPECT_ROOM, possibleSamePerson: [{ ...base, channelDetail: 'LINE_SOMETHING_NEW' }] }} customerId="p1" activeRoomId="r-1" />);
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toHaveTextContent('— LINE · มีเบอร์ · อยู่ในระบบตั้งแต่');
+  });
+
+  // C1 — ห้องผู้สนใจมีเจ้าของแล้ว: ห้ามบอก "ผูกลูกค้าแล้วจะเห็น…" (ทางที่ใช้ได้จริงคือเติมเบอร์ หรือผูกกับลูกค้าเดิม)
+  it('แท็บสัญญา/ชำระ + ประกัน ของห้องผู้สนใจ บอกทางเติมเบอร์/ผูกลูกค้าเดิม ไม่ใช่ "ผูกลูกค้า"', () => {
+    wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('tab', { name: /สัญญา\/ชำระ/ }));
+    expect(screen.getAllByText('ยังไม่มี — เติมเบอร์หรือผูกกับลูกค้าเดิมแล้วจะเห็นสัญญาและค่างวด')).toHaveLength(2);
+    expect(screen.getByText('ยังไม่มี — ผู้สนใจคนนี้ยังไม่มีเบอร์')).toBeInTheDocument();
+    expect(screen.queryByText(/ผูกลูกค้าแล้วจะเห็น/)).toBeNull();
+    expect(screen.queryByText(/ยังไม่ผูกลูกค้า/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: /ประกัน/ }));
+    expect(screen.getByText(/ยังไม่มีเบอร์ก็ตรวจได้ — ลูกค้าส่ง IMEI\/Serial มาในแชท/)).toBeInTheDocument();
+    expect(screen.queryByText(/ยังไม่ผูกลูกค้า/)).toBeNull();
+  });
+
+  // C4 — mockup บอร์ด 5: หลังรวม ผลวิเคราะห์ที่ย้ายไปอยู่กับคนที่รอด ต้องบอกว่าไปดูที่ไหน
+  it('รวมแล้วย้ายผลวิเคราะห์ 2 รายการ → ข้อความในกลุ่มตรวจเครดิต + ลิงก์แท็บเครดิตของคนที่รอด · สลับห้องแล้วหาย', async () => {
+    apiPost.mockResolvedValue({ data: { placeholderId: 'p1', targetId: 'c-line', movedRooms: 1, movedCreditChecks: 2 } });
+    const { rerender } = wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+    const notice = await screen.findByText(/ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ใน/);
+    expect(notice).toHaveTextContent('ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ในโปรไฟล์ลูกค้า › เครดิต');
+    const creditGroup = screen.getByRole('heading', { name: 'ตรวจเครดิต' }).closest('section')!;
+    expect(creditGroup).toContainElement(notice);
+    expect(within(creditGroup).getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/c-line?tab=credit');
+
+    const rerenderRoom = (room: typeof PROSPECT_ROOM) =>
+      rerender(
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <RoomDossier room={room} customerId="p1" activeRoomId={room.id} />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    rerenderRoom({ ...PROSPECT_ROOM, id: 'r-2' });
+    expect(screen.queryByText(/ผลวิเคราะห์ 2 รายการ/)).toBeNull();
+    // กลับมาห้องเดิม — ไม่ persist (state ต่อห้อง หายเมื่อสลับห้อง)
+    rerenderRoom(PROSPECT_ROOM);
+    expect(screen.queryByText(/ผลวิเคราะห์ 2 รายการ/)).toBeNull();
+  });
+
+  it('รวมแล้วไม่มีผลวิเคราะห์ย้าย (movedCreditChecks = 0) → ไม่มีข้อความ', async () => {
+    apiPost.mockResolvedValue({ data: { placeholderId: 'p1', targetId: 'c-line', movedRooms: 1, movedCreditChecks: 0 } });
+    const success = vi.spyOn(toast, 'success');
+    try {
+      wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+      await waitFor(() => expect(success).toHaveBeenCalledWith('รวมเป็นคนเดียวกันแล้ว — แชทและผลเช็คเครดิตย้ายไปแล้ว'));
+      expect(screen.queryByText(/ผลวิเคราะห์/)).toBeNull();
+    } finally {
+      success.mockRestore();
+    }
+  });
+
+  it('เบอร์ซ้ำ → ใช้คนเดิม (ฟอร์มเติมเบอร์) แล้วย้ายผลวิเคราะห์ 1 รายการ → ข้อความชี้โปรไฟล์ของคนเดิม', async () => {
+    apiPost.mockResolvedValue({ data: { placeholderId: 'p1', targetId: 'c-old', movedRooms: 1, movedCreditChecks: 1 } });
+    wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'จำลองใช้คนเดิม' }));
+    await screen.findByText(/ผลวิเคราะห์ 1 รายการ ย้ายมาจากห้องนี้ตอนรวม/);
+    expect(screen.getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/c-old?tab=credit');
+  });
+
+  // M-W6 — ทาง "ผูกกับลูกค้าเดิม" (PATCH rooms/:id/customer) ก็รวมผู้สนใจ → ต้องบอกเหมือนกัน (mockup บอร์ด 5)
+  const linkViaDialog = async () => {
+    apiGet.mockImplementation((url: string) =>
+      url.startsWith('/customers/search')
+        ? Promise.resolve({ data: [{ id: 'c-old', name: 'สมชาย คนเดิม', phone: '0811111111', chatPlaceholder: false }] })
+        : Promise.resolve({ data: [] }),
+    );
+    wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: /ผูกกับลูกค้าเดิม/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'ค้นหาลูกค้า' }), { target: { value: 'สมชาย' } });
+    fireEvent.click(await screen.findByRole('button', { name: /สมชาย คนเดิม/ }));
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/staff-chat/rooms/r-1/customer', { customerId: 'c-old' }));
+  };
+
+  it('ผูกกับลูกค้าเดิมแล้วรวมผู้สนใจ ย้ายผลวิเคราะห์ 2 รายการ → ข้อความในกลุ่มตรวจเครดิต + ลิงก์แท็บเครดิตของคนที่เลือก', async () => {
+    apiPatch.mockResolvedValue({ data: { success: true, absorbed: { targetId: 'c-old', movedCreditChecks: 2 } } });
+    await linkViaDialog();
+    const notice = await screen.findByText(/ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ใน/);
+    expect(notice).toHaveTextContent('ผลวิเคราะห์ 2 รายการ ย้ายมาจากห้องนี้ตอนรวม — ดูได้ในโปรไฟล์ลูกค้า › เครดิต');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'ตรวจเครดิต' }).closest('section')).toContainElement(notice));
+    expect(within(notice).getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/c-old?tab=credit');
+  });
+
+  it.each([
+    ['absorbed: null (ไม่ได้รวม)', { success: true, absorbed: null }],
+    ['absorbed ย้าย 0 รายการ', { success: true, absorbed: { targetId: 'c-old', movedCreditChecks: 0 } }],
+    ['API เก่า (ไม่มีคีย์ absorbed)', { success: true }],
+  ])('ผูกกับลูกค้าเดิม — %s → ไม่มีข้อความผลวิเคราะห์', async (_label, body) => {
+    apiPatch.mockResolvedValue({ data: body });
+    const success = vi.spyOn(toast, 'success');
+    try {
+      await linkViaDialog();
+      await waitFor(() => expect(success).toHaveBeenCalledWith('ผูกกับลูกค้าเดิมและรวมข้อมูลแชทแล้ว'));
+      expect(screen.queryByText(/ผลวิเคราะห์/)).toBeNull();
+    } finally {
+      success.mockRestore();
+    }
+  });
+
+  // R-1 — ทิศ "ดูดห้องนี้เข้าคนอื่น" ด่านตรวจห้องของผู้สนใจคนนี้เอง ⇒ ข้อความ API ถูกอยู่แล้ว ไม่แปลง
+  it('รวมผู้สนใจของห้องนี้แล้วได้ 403 → แสดงข้อความจาก API ตามเดิม', async () => {
+    const apiMsg = 'ห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมเบอร์หรือรวมให้';
+    apiPost.mockImplementation(() => Promise.reject(Object.assign(new Error(apiMsg), { response: { status: 403, data: { message: apiMsg } } })));
+    const error = vi.spyOn(toast, 'error');
+    try {
+      wrap(<RoomDossier room={PROSPECT_ROOM} customerId="p1" activeRoomId="r-1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+      await waitFor(() => expect(error).toHaveBeenCalledWith(apiMsg));
+    } finally {
+      error.mockRestore();
+    }
+  });
+});
+
+const LINKED_ROOM = {
+  ...ROOM,
+  displayName: 'สมชาย ใจดี',
+  customer: { id: 'cus-1', name: 'สมชาย ใจดี', phone: '0891112233', chatPlaceholder: false },
+  possibleSamePerson: [
+    { customerId: 'p-tiktok', name: 'สมชาย ใจดี', channel: 'TIKTOK' as const, channelDetail: 'TIKTOK', hasPhone: false, chatPlaceholder: true, createdAt: '2026-09-10T02:00:00Z', mergeDirection: 'absorb_other_into_current' as const },
+    { customerId: 'c-real2', name: 'สมชาย ใจดี', channel: 'WEB' as const, channelDetail: 'WEB', hasPhone: true, chatPlaceholder: false, createdAt: '2026-09-01T02:00:00Z', mergeDirection: 'none' as const },
+  ],
+};
+
+// C3 — สเปค §3.6: ห้องของลูกค้าจริงก็ต้องเห็นคำใบ้ (ดูดผู้สนใจอีกคนเข้าคนนี้)
+describe('RoomDossier — คำใบ้อาจเป็นคนเดียวกันในห้องลูกค้าจริง', () => {
+  beforeEach(() => {
+    apiGet.mockReset();
+    apiGet.mockResolvedValue({ data: [] });
+    apiPatch.mockReset();
+    apiPatch.mockResolvedValue({ data: {} });
+    apiPost.mockReset();
+    apiPost.mockResolvedValue({ data: {} });
+    authRole.role = 'SALES';
+  });
+
+  it('คำใบ้อยู่ในกลุ่มข้อมูลลูกค้าใต้ปุ่มชื่อ · รวม = ดูดผู้สนใจอีกคนเข้าคนนี้ · none = ตรวจสอบเอง · ไม่ใช่ = dismiss', async () => {
+    wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
+    const infoGroup = screen.getByRole('heading', { name: 'ข้อมูลลูกค้า' }).closest('section')!;
+    const hints = within(infoGroup).getAllByText(/อาจเป็นคนเดียวกับ/);
+    expect(hints).toHaveLength(2);
+    expect(hints[0]).toHaveTextContent('— TikTok · ยังไม่มีเบอร์ · ทักเมื่อ');
+    // ปุ่มชื่อลูกค้ามาก่อนคำใบ้
+    const nameButton = within(infoGroup).getByRole('button', { name: /สมชาย ใจดี/ });
+    expect(nameButton.compareDocumentPosition(hints[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // ห้องลูกค้าจริงไม่มีการ์ดผู้สนใจ
+    expect(screen.queryByText('ผู้สนใจจากแชท')).toBeNull();
+    expect(screen.queryByRole('button', { name: /เพิ่มเบอร์\/ข้อมูล/ })).toBeNull();
+
+    const merge = within(infoGroup).getAllByRole('button', { name: 'รวมเป็นคนเดียวกัน' });
+    expect(merge).toHaveLength(1);
+    expect(within(infoGroup).getByText('ตรวจสอบเอง')).toBeInTheDocument();
+    fireEvent.click(merge[0]);
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/customers/p-tiktok/absorb-into/cus-1'));
+
+    fireEvent.click(within(infoGroup).getAllByRole('button', { name: 'ไม่ใช่' })[1]);
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/staff-chat/rooms/r-1/same-person/dismiss', { customerId: 'c-real2' }));
+  });
+
+  it('ทิศทางดูดห้องนี้เข้าคนอื่น ในห้องลูกค้าจริง = ผิดรูป → ไม่มีปุ่มรวม (fail-closed) · ยังกด "ไม่ใช่" ได้', () => {
+    const odd = { ...LINKED_ROOM, possibleSamePerson: [{ ...LINKED_ROOM.possibleSamePerson[0], mergeDirection: 'absorb_current_into_other' as const }] };
+    wrap(<RoomDossier room={odd} customerId="cus-1" activeRoomId="r-1" />);
+    expect(screen.getByText(/อาจเป็นคนเดียวกับ/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'รวมเป็นคนเดียวกัน' })).toBeNull();
+    expect(screen.queryByText('ตรวจสอบเอง')).toBeNull();
+    expect(screen.getByRole('button', { name: 'ไม่ใช่' })).toBeEnabled();
+  });
+
+  it('ดูดผู้สนใจอีกคนเข้ามาแล้วย้ายผลวิเคราะห์ 1 รายการ → ข้อความบอกว่ามาจากผู้สนใจที่รวมเข้ามา + ลิงก์โปรไฟล์ของคนนี้', async () => {
+    apiPost.mockResolvedValue({ data: { placeholderId: 'p-tiktok', targetId: 'cus-1', movedRooms: 1, movedCreditChecks: 1 } });
+    wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+    const notice = await screen.findByText(/ผลวิเคราะห์ 1 รายการ ย้ายมาจากผู้สนใจที่รวมเข้ามา — ดูได้ใน/);
+    expect(screen.getByRole('heading', { name: 'ตรวจเครดิต' }).closest('section')).toContainElement(notice);
+    expect(screen.getByRole('link', { name: 'โปรไฟล์ลูกค้า › เครดิต' })).toHaveAttribute('href', '/customers/cus-1?tab=credit');
+  });
+
+  // M-W5 — ห้องลูกค้าจริงผูกแล้ว: "ยังไม่ผูกลูกค้า/ยังไม่มีเบอร์ก็ตรวจได้" เป็นเท็จ ⇒ เหลือแค่ประโยคที่เหลือ
+  it('ห้องลูกค้าจริงที่ไม่มีสัญญา: ช่องตรวจ IMEI ไม่บอก "ยังไม่…ก็ตรวจได้"', async () => {
+    wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
+    fireEvent.click(screen.getByRole('tab', { name: /ประกัน/ }));
+    expect(await screen.findByText('ลูกค้าส่ง IMEI/Serial มาในแชท ก็อปมาวางได้เลย')).toBeInTheDocument();
+    expect(screen.queryByText(/ก็ตรวจได้/)).toBeNull();
+    expect(screen.getByLabelText('IMEI หรือ Serial')).toBeInTheDocument();
+  });
+
+  // R-1 — ปุ่มรวมในห้องลูกค้าจริงดูด "ผู้สนใจอีกคน" เข้ามา: API ตรวจห้องของคนนั้น (assertActorMayAbsorb)
+  // ข้อความ "ผู้สนใจคนนี้" ของ API อ่านเป็นห้องที่เปิดอยู่ได้ ⇒ SALES ต้องเห็นว่าติดที่อีกคน + ใครกดแทนได้
+  const API_403 = 'ห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมเบอร์หรือรวมให้';
+  const OTHER_HELD = 'ผู้สนใจคนนั้นมีห้องแชทที่พนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้องนั้น หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน กดรวมแทน';
+  const rejectWith = (status: number, message: string) =>
+    apiPost.mockImplementation(() => Promise.reject(Object.assign(new Error(message), { response: { status, data: { message } } })));
+
+  it('SALES ดูดผู้สนใจอีกคนเข้ามาแล้วได้ 403 → บอกว่าติดที่ห้องของผู้สนใจคนนั้น และใครกดรวมแทนได้', async () => {
+    rejectWith(403, API_403);
+    const error = vi.spyOn(toast, 'error');
+    try {
+      wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+      await waitFor(() => expect(error).toHaveBeenCalledWith(OTHER_HELD));
+      expect(error).not.toHaveBeenCalledWith(API_403);
+      expect(error).not.toHaveBeenCalledWith('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it.each([
+    ['OWNER ได้ 403 (ด่านห้องไม่ตรวจ role นี้ — 403 มาจากที่อื่น)', 'OWNER', 403, 'ไม่มีสิทธิ์ทำรายการนี้'],
+    ['SALES ได้ 409', 'SALES', 409, 'รวมไม่ได้: ผู้สนใจคนนี้มีสัญญา — ให้แก้ที่รายการนั้นก่อน'],
+  ])('%s → แสดงข้อความจาก API ตามเดิม', async (_label, role, status, message) => {
+    authRole.role = role;
+    rejectWith(status, message);
+    const error = vi.spyOn(toast, 'error');
+    try {
+      wrap(<RoomDossier room={LINKED_ROOM} customerId="cus-1" activeRoomId="r-1" />);
+      fireEvent.click(screen.getByRole('button', { name: 'รวมเป็นคนเดียวกัน' }));
+      await waitFor(() => expect(error).toHaveBeenCalledWith(message));
+      expect(error).not.toHaveBeenCalledWith(OTHER_HELD);
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  it('ห้องไม่มีเจ้าของ (customer: null) ไม่แสดงคำใบ้ แม้ API จะส่งมา · ข้อความแท็บสัญญา/ประกันคงเดิม', () => {
+    wrap(<RoomDossier room={{ ...ROOM, possibleSamePerson: LINKED_ROOM.possibleSamePerson }} customerId={null} activeRoomId="r-1" />);
+    expect(screen.queryByText(/อาจเป็นคนเดียวกับ/)).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: /สัญญา\/ชำระ/ }));
+    expect(screen.getAllByText('ยังไม่มี — ผูกลูกค้าแล้วจะเห็นสัญญาและค่างวด')).toHaveLength(2);
+    expect(screen.getByText('ยังไม่มี — ห้องนี้ยังไม่มีเบอร์และยังไม่ผูกลูกค้า')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: /ประกัน/ }));
+    expect(screen.getByText(/ยังไม่ผูกลูกค้าก็ตรวจได้ — ลูกค้าส่ง IMEI\/Serial มาในแชท/)).toBeInTheDocument();
   });
 });

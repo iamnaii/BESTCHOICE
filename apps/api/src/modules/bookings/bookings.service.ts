@@ -26,6 +26,7 @@ import { ShopBookingRefundTemplate } from '../journal/cpa-templates/shop-booking
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { assertSaleProductEligible } from '../sales/services/sale-product-policy';
 import { assertCustomerHasPhone } from '../contracts/services/contract-create-policy';
+import { PLACEHOLDER_FIELDS_SELECT } from '../chat-prospects/chat-placeholder';
 import {
   assertSameTestSide,
   TEST_SIDE_CUSTOMER_SELECT,
@@ -259,7 +260,8 @@ export class BookingsService {
     const [customer, branch] = await Promise.all([
       this.prisma.customer.findFirst({
         where: { id: dto.customerId, deletedAt: null },
-        select: TEST_SIDE_CUSTOMER_SELECT,
+        // PLACEHOLDER_FIELDS_SELECT — ด่านเบอร์แยกข้อความผู้สนใจ/ลูกค้าทั่วไป (A12)
+        select: { ...TEST_SIDE_CUSTOMER_SELECT, ...PLACEHOLDER_FIELDS_SELECT },
       }),
       this.prisma.branch.findFirst({
         where: { id: dto.branchId, deletedAt: null },
@@ -367,7 +369,7 @@ export class BookingsService {
         // เปลี่ยนเจ้าของใบจอง = จองให้คนใหม่ ⇒ ด่านเบอร์เดียวกับตอนสร้าง (spec 2026-09-13-chat-prospects)
         const nextCustomer = await tx.customer.findFirst({
           where: { id: dto.customerId, deletedAt: null },
-          select: { phone: true },
+          select: PLACEHOLDER_FIELDS_SELECT,
         });
         if (!nextCustomer) throw new NotFoundException('ไม่พบลูกค้า');
         assertCustomerHasPhone(nextCustomer, 'จองสินค้า');
@@ -647,7 +649,7 @@ export class BookingsService {
       await this.lockBooking(tx, id);
       const booking = await tx.booking.findFirst({
         where: { id, deletedAt: null },
-        include: { items: true, customer: { select: TEST_SIDE_CUSTOMER_SELECT } },
+        include: { items: true, customer: { select: { ...TEST_SIDE_CUSTOMER_SELECT, ...PLACEHOLDER_FIELDS_SELECT } } },
       });
       if (!booking) throw new NotFoundException('ไม่พบใบจอง');
 

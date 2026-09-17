@@ -119,7 +119,8 @@ describe('SaleCreationService.create — test-data fence', () => {
 });
 
 describe('SaleCreationService.create — ด่านเบอร์ (spec 2026-09-13-chat-prospects)', () => {
-  const chatProspect = { ...realCustomer, name: 'Facebook #a1b2', phone: null };
+  // A12: ข้อความแยกตาม isChatPlaceholder ⇒ ผู้สนใจต้องมีที่มา CHAT_* และไม่มีเลขบัตร (และ select ต้องโหลดสองคีย์นี้มาด้วย)
+  const chatProspect = { ...realCustomer, name: 'Facebook #a1b2', phone: null, nationalId: null, acquisitionSource: 'CHAT_FACEBOOK' };
 
   it.each([
     ['CASH', 'createCashSale'],
@@ -129,15 +130,28 @@ describe('SaleCreationService.create — ด่านเบอร์ (spec 2026-
     const { service, writer } = makeService(chatProspect, [realProduct]);
     await expect(
       service.create({ ...baseDto, saleType } as never, 'sp-1', 'OWNER'),
-    ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนเปิดใบขาย');
+    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนเปิดใบขาย (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)');
     expect(writer[writerMethod]).not.toHaveBeenCalled();
+  });
+
+  it('โหลดลูกค้าพร้อมคีย์ที่ใช้ตัดสินผู้สนใจ (acquisitionSource/nationalId) · มีเลขบัตรแต่ไม่มีเบอร์ → ชี้ "แก้ไขข้อมูล"', async () => {
+    const { service, writer, prisma } = makeService({ ...chatProspect, nationalId: '1103700012345' }, [realProduct]);
+    await expect(
+      service.create(baseDto as never, 'sp-1', 'OWNER'),
+    ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร — ให้เจ้าของหรือผู้จัดการสาขากด "แก้ไขข้อมูล" ในหน้าลูกค้าเพื่อเติมเบอร์ก่อนเปิดใบขาย');
+    expect(prisma.customer.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ phone: true, acquisitionSource: true, nationalId: true, addressCurrent: true }),
+      }),
+    );
+    expect(writer.createCashSale).not.toHaveBeenCalled();
   });
 
   it('ไม่มีรหัสสินค้าในใบ ก็ยังตรวจเบอร์ลูกค้า (ด่านไม่ขึ้นกับรายการเครื่อง)', async () => {
     const { service, writer, prisma } = makeService(chatProspect, []);
     await expect(
       service.create({ ...baseDto, productId: '' } as never, 'sp-1', 'OWNER'),
-    ).rejects.toThrow('ลูกค้ายังไม่มีเบอร์โทร กรุณาเติมเบอร์ก่อนเปิดใบขาย');
+    ).rejects.toThrow('ผู้สนใจคนนี้ยังไม่มีเบอร์ — กด "เติมเบอร์" ในหน้าลูกค้า หรือ "เพิ่มเบอร์/ข้อมูล" ในการ์ดผู้สนใจที่อินบ็อกซ์ ก่อนเปิดใบขาย (ถ้าห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมให้)');
     expect(prisma.product.findMany).not.toHaveBeenCalled();
     expect(writer.createCashSale).not.toHaveBeenCalled();
   });

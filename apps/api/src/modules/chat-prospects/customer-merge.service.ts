@@ -106,9 +106,14 @@ export class CustomerMergeService {
   /**
    * Ruling R26 (I6) — ปุ่ม "รวมเข้าลูกค้าเดิม" ของ SALES ต้องไม่หลวมกว่าทางผูกห้อง: การรวม **ย้ายห้อง
    * ทุกห้อง** ของผู้สนใจคนนั้น ⇒ SALES ที่ไม่ได้ดูแลห้องต้องรวมไม่ได้ (กติกาเดียวกับ
-   * RoomManagerService.linkCustomer และ dismiss คำใบ้ — R19; ข้อความเดียวกันทุกตัวอักษร)
-   * เรียกจากเส้นทาง endpoint `/customers/:id/absorb-into/:targetId` เท่านั้น — ผู้เรียกอื่น
-   * (OTP / LIFF / ผูกห้อง / รวมห้องแชท) มีด่านของตัวเองอยู่แล้ว พฤติกรรมไม่เปลี่ยน
+   * RoomManagerService.linkCustomer และ dismiss คำใบ้ — R19)
+   * เรียกจาก endpoint `/customers/:id/absorb-into/:targetId` และ `/customers/:id/fill-contact` —
+   * ผู้เรียกอื่น (OTP / LIFF / ผูกห้อง / รวมห้องแชท) มีด่านของตัวเองอยู่แล้ว พฤติกรรมไม่เปลี่ยน
+   *
+   * M-A2 — ข้อความ 403 ต่างจาก linkCustomer/dismiss โดยตั้งใจ: ด่านนี้ถูกชนจากหน้าลูกค้า
+   * (ปุ่ม "เติมเบอร์") และจากข้อความ "ยังไม่มีเบอร์" ของการเปิดเอกสาร ซึ่งไม่มีห้องแชทให้เห็น —
+   * "ไม่มีสิทธิ์เข้าถึงห้องแชทนี้" ลอย ๆ เป็นทางตัน จึงบอกว่าใครทำแทนได้: คนดูแลห้อง หรือ role ที่
+   * ข้ามด่านนี้ (OWNER/BRANCH_MANAGER/FINANCE_MANAGER = @Roles ของสองเส้นทางข้างบนที่ไม่ใช่ SALES)
    */
   async assertActorMayAbsorb(placeholderId: string, actor: MergeActor): Promise<void> {
     if (actor.role !== 'SALES') return;
@@ -121,7 +126,11 @@ export class CustomerMergeService {
       },
       select: { id: true },
     });
-    if (held) throw new ForbiddenException('ไม่มีสิทธิ์เข้าถึงห้องแชทนี้');
+    if (held) {
+      throw new ForbiddenException(
+        'ห้องแชทของผู้สนใจคนนี้มีพนักงานคนอื่นดูแลอยู่ — ให้คนดูแลห้อง หรือเจ้าของ/ผู้จัดการสาขา/ผู้จัดการการเงิน เติมเบอร์หรือรวมให้',
+      );
+    }
   }
 
   async absorbPlaceholder(

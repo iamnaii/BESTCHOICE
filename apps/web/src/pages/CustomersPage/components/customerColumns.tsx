@@ -237,13 +237,14 @@ export function buildCustomerColumns({
                 },
               ]
             : []),
-          ...(isOwnerOrManager
+          // เลขบัตรเป็น nullable — ไม่มีก็ไม่มีเมนูคัดลอก (แบบเดียวกับเบอร์โทร)
+          ...(isOwnerOrManager && c.nationalId
             ? [
                 {
                   key: 'copy-nid',
                   label: 'คัดลอกเลขบัตร',
                   icon: <Copy className="size-4" />,
-                  onSelect: () => onCopy(c.nationalId, 'เลขบัตร'),
+                  onSelect: () => onCopy(c.nationalId as string, 'เลขบัตร'),
                 },
               ]
             : []),

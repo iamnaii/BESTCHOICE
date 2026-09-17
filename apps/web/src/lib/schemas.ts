@@ -68,9 +68,16 @@ export type CustomerFormData = z.infer<typeof customerSchema>;
  * R43: นามสกุลไม่บังคับด้วย — ชื่อในแชทเป็นคำเดียวได้ (`splitDisplayName('Nan')` → lastName '')
  * และ DTO ของ `POST /customers/:id/fill-contact` ก็รับ `name` แบบ optional อยู่แล้ว
  * ⇒ บังคับนามสกุลที่นี่ = ปิดปุ่มหลักของการ์ดผู้สนใจไว้เฉย ๆ. โหมดสร้าง (`customerSchema`) คงเดิม
+ * B5: `z.string().catch('')` — ว่างผ่าน (ไม่มี `.min`) และไม่มีค่า (undefined) ได้ '' ⇒ ชนิด input และ output
+ * เป็น string ทั้งคู่เท่ากับ `CustomerFormData` ⇒ `useForm<CustomerFormData>` รับ resolver ได้โดยไม่ต้อง cast.
+ * (ไม่ใช้ `.optional().default('')` — output เป็น string ก็จริง แต่ input กลายเป็น `string | undefined`
+ *  ซึ่ง `Resolver<CustomerFormData>` ไม่รับ ⇒ tsc ไม่ผ่านถ้าไม่ cast)
+ * M-W4: คำนำหน้าไม่บังคับด้วย (เทคนิคเดียวกับนามสกุล) — ป้ายในฟอร์มไม่มีดอกจัน (mockup บอร์ด 3)
+ * และ `FillProspectContactDto.prefix` เป็น optional ⇒ ฟอร์มไม่ส่งคีย์ prefix เมื่อว่าง. โหมดสร้างยังบังคับ
  */
 export const prospectFillSchema = customerSchema.extend({
-  lastName: z.string().optional(),
+  prefix: z.string().catch(''),
+  lastName: z.string().catch(''),
   nationalId: z
     .string()
     .refine((v) => v === '' || (v.length === 13 && isValidThaiNationalId(v)), 'เลขบัตรประชาชนไม่ถูกต้อง (13 หลัก) — เว้นว่างได้'),

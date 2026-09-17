@@ -19,7 +19,19 @@ describe('SamePersonService.findForRoom', () => {
   it('ชื่อตรงกัน (หลัง normalize) ในช่องทางอื่น → ขึ้นคำใบ้ ทิศทาง: ห้องนี้ placeholder ดูดเข้าอีกคน', async () => {
     const { service } = build([cand({ id: 'c-line', name: 'นาย สมชาย ใจดี', phone: '0812345678' })]);
     const res = await service.findForRoom('room-1');
-    expect(res).toEqual([{ customerId: 'c-line', name: 'นาย สมชาย ใจดี', channel: 'LINE', hasPhone: true, chatPlaceholder: false, createdAt: new Date('2026-09-03'), mergeDirection: 'absorb_current_into_other' }]);
+    expect(res).toEqual([{ customerId: 'c-line', name: 'นาย สมชาย ใจดี', channel: 'LINE', channelDetail: 'LINE_SHOP', hasPhone: true, chatPlaceholder: false, createdAt: new Date('2026-09-03'), mergeDirection: 'absorb_current_into_other' }]);
+  });
+  // A2: ป้าย "LINE ร้าน" / "LINE การเงิน" ต้องรู้ช่องทางจริง — channel (โลโก้) ยุบสอง LINE เป็นค่าเดียว
+  // จึงเพิ่ม channelDetail (additive) · channel เดิมคงไว้เป็นสัญญาเดิมของ API
+  it('channelDetail = ChatChannel จริงของห้องล่าสุด (LINE_FINANCE) · channel ยังเป็นโลโก้ LINE เหมือนเดิม', async () => {
+    const { service } = build([cand({ id: 'c-fin', chatRooms: [{ channel: 'LINE_FINANCE' }] })]);
+    const [hint] = await service.findForRoom('room-1');
+    expect(hint).toMatchObject({ customerId: 'c-fin', channel: 'LINE', channelDetail: 'LINE_FINANCE' });
+  });
+  it('คนที่ไม่มีห้องแชท (มีเบอร์) → channel และ channelDetail เป็น null ทั้งคู่', async () => {
+    const { service } = build([cand({ id: 'c-noroom', phone: '0833333333', chatRooms: [] })]);
+    const [hint] = await service.findForRoom('room-1');
+    expect(hint).toMatchObject({ customerId: 'c-noroom', channel: null, channelDetail: null, hasPhone: true });
   });
   it('ชื่อคล้ายแต่ไม่ตรง → ไม่ขึ้น', async () => {
     const { service } = build([cand({ id: 'c2', name: 'สมชาย ใจดีมาก' })]);

@@ -3,6 +3,7 @@ import type { AvailableTradeInCredit } from '@installment/shared';
 import { toast } from 'sonner';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
+import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
 import { saleTypeConfig } from '@/lib/constants';
 import type { SaleType } from '@/lib/constants';
 import type { Product, Customer } from '../types';
@@ -125,17 +126,23 @@ export default function SaleSummary({
             </div>
             <div className="text-sm font-semibold text-foreground">{selectedCustomer.name}</div>
             <div className="flex items-center gap-1 mt-0.5">
-              <span className="text-xs text-muted-foreground">{selectedCustomer.phone}</span>
-              <button
-                onClick={() => {
-                  copy(selectedCustomer.phone);
-                  toast.success('คัดลอกแล้ว');
-                }}
-                className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                aria-label="คัดลอกเบอร์โทร"
-              >
-                <Copy className="size-3" />
-              </button>
+              {/* ผู้สนใจจากแชทที่ยังไม่มีเบอร์ → ป้ายแทนช่องว่าง · ไม่ส่ง className เข้าไป (tailwind-merge จะทับสีชิป) */}
+              <span className="text-xs text-muted-foreground">
+                <ProspectPhoneLine phone={selectedCustomer.phone} chatPlaceholder={selectedCustomer.chatPlaceholder} />
+              </span>
+              {selectedCustomer.phone && (
+                <button
+                  onClick={() => {
+                    if (!selectedCustomer.phone) return;
+                    copy(selectedCustomer.phone);
+                    toast.success('คัดลอกแล้ว');
+                  }}
+                  className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="คัดลอกเบอร์โทร"
+                >
+                  <Copy className="size-3" />
+                </button>
+              )}
             </div>
           </div>
         ) : (

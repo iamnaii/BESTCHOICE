@@ -288,8 +288,10 @@ export class StaffChatController {
     if (!customerId || typeof customerId !== 'string') {
       throw new BadRequestException('กรุณาระบุ customerId');
     }
-    await this.roomManager.linkCustomer(id, customerId, req.user);
-    return { success: true };
+    // M-A4: additive — `absorbed` = ผลการรวมผู้สนใจอัตโนมัติที่ผูกห้องทำให้ (null = ไม่ได้รวม)
+    // ไม่ส่งแถวห้องกลับ — คำตอบเดิมไม่เคยมี (เพิ่มคีย์อย่างเดียว)
+    const { absorbed } = await this.roomManager.linkCustomer(id, customerId, req.user);
+    return { success: true, absorbed };
   }
 
   /** กด "ไม่ใช่" บนคำใบ้อาจเป็นคนเดียวกัน — ไม่ถามซ้ำสำหรับคนนั้น (สเปค 3.6) */

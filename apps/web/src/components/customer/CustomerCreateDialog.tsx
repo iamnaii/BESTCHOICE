@@ -1,5 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { useForm, type Resolver } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -7,6 +7,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
+import { formatThaiDateShort } from '@/lib/date';
 import { customerSchema, prospectFillSchema, type CustomerFormData } from '@/lib/schemas';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
@@ -40,7 +41,23 @@ export interface CreatedCustomer {
 export interface ExistingCustomerRef {
   id: string;
   name: string;
+  /** A7: ISO — เป็นลูกค้าตั้งแต่เมื่อไร (API เก่าไม่ส่ง ⇒ ไม่แสดงส่วนวันที่) */
+  createdAt?: string;
+  /** A7: จำนวนสัญญาที่ยังผ่อนอยู่ (ACTIVE/OVERDUE/DEFAULT) — แสดงชิปเมื่อ > 0 */
+  activeContracts?: number;
+  /** M-A3: คนเดิมเคยซื้อแล้วหรือยัง (นิยามเจ้าของ: ลูกค้า = ซื้อแล้ว ที่เหลือ = ผู้สนใจ) — API เก่าไม่ส่ง */
+  purchased?: boolean;
 }
+
+/** "3 ก.ย. 69" ของ createdAt — ไม่มีค่า/อ่านไม่ได้ ⇒ null (ตัดส่วนนั้นทิ้ง ไม่โชว์ "-" หรือ "Invalid") */
+function customerSinceLabel(createdAt: string | undefined): string | null {
+  if (!createdAt) return null;
+  const label = formatThaiDateShort(createdAt);
+  return label === '-' ? null : label;
+}
+
+/** mockup บอร์ด 4 — error ใต้ช่องเบอร์เมื่อ 409 ชนเบอร์ (โหมด fill) */
+const DUP_PHONE_FIELD_ERROR = 'เบอร์นี้มีลูกค้าใช้อยู่แล้ว';
 
 interface ReferenceData {
   prefix: string;
@@ -118,11 +135,9 @@ type FormProps = Omit<CustomerCreateDialogProps, 'open' | 'onOpenChange'> & { on
 function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, context, submitLabel = 'บันทึก', onCreated, onFilled, onUseExisting, onClose }: FormProps) {
   const isFill = mode === 'fill';
   const form = useForm<CustomerFormData>({
-    /* R43: `prospectFillSchema.lastName` เป็น optional (ชื่อในแชทคำเดียว) ⇒ ชนิด input/output ของ
-       สองสคีมาไม่เท่ากันเป๊ะอีกต่อไป และ `useForm<CustomerFormData>` ขอ resolver ชนิดเดียว.
-       ปักชนิดไว้ที่ `CustomerFormData` ได้อย่างปลอดภัย เพราะ `defaultValues` กาง `emptyForm`
-       (lastName: '') เสมอ ⇒ ค่าที่ resolver คืนมีคีย์นี้เป็น string เสมอ ไม่เคยเป็น undefined จริง */
-    resolver: standardSchemaResolver(isFill ? prospectFillSchema : customerSchema) as Resolver<CustomerFormData>,
+    /* R43: `prospectFillSchema.lastName` ว่างได้ (ชื่อในแชทคำเดียว) — สคีมาใช้ `z.string().catch('')`
+       ให้ชนิด input/output เป็น string เท่ากับ `CustomerFormData` จึงไม่ต้อง cast resolver (B5) */
+    resolver: standardSchemaResolver(isFill ? prospectFillSchema : customerSchema),
     defaultValues: { ...emptyForm, ...initialValues },
   });
   // Extra fields not in customerSchema (managed as separate state)
@@ -214,8 +229,15 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
         // ค่าที่ส่งไปจริงตอนกดบันทึก (ไม่ใช่ค่าที่พิมพ์ทับระหว่างรอผล) — เหตุผลเดียวกับ dupPhone
         setDupPhone(variables.phone);
         setDupNationalId(variables.nationalId);
-        setDupField(body?.field ?? 'phone');
+        const field = body?.field ?? 'phone';
+        setDupField(field);
         setExisting(dup);
+        // B7 (mockup บอร์ด 4): ชี้ช่องเบอร์ — เฉพาะโหมด fill และเฉพาะเมื่อช่องยังเป็นเบอร์ที่ส่งไปจริง
+        // (พิมพ์ทับระหว่างรอผลแล้ว = เบอร์ใหม่ยังไม่ได้ตรวจ ห้ามติดป้ายว่าซ้ำ). แก้ค่าในช่องแล้ว
+        // resolver ตรวจซ้ำตอน onChange (ฟอร์มถูก submit แล้ว) ⇒ error นี้หายเอง
+        if (isFill && field === 'phone' && form.getValues('phone') === variables.phone) {
+          form.setError('phone', { type: 'duplicate', message: DUP_PHONE_FIELD_ERROR });
+        }
         return;
       }
       toast.error(getErrorMessage(err));
@@ -383,6 +405,86 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
   const inputClass = 'w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
   const selectClass = `${inputClass}`;
 
+  const existingSince = customerSinceLabel(existing?.createdAt);
+  /* M-W3: "ลูกค้าตั้งแต่" เฉพาะคนที่ซื้อแล้ว · ยังไม่ซื้อ = "ผู้สนใจตั้งแต่" · API ไม่บอก ⇒ ไม่เดา ตัดส่วนวันที่ทิ้ง */
+  const existingPurchased = existing?.purchased;
+  const existingSinceText =
+    existingSince && typeof existingPurchased === 'boolean'
+      ? `${existingPurchased ? 'ลูกค้า' : 'ผู้สนใจ'}ตั้งแต่ ${existingSince}`
+      : null;
+  const existingActiveContracts = existing?.activeContracts ?? 0;
+  /** ปุ่ม "แก้เบอร์"/"แก้เลขบัตร" — ปิดกล่อง ล้างเฉพาะ error "เบอร์ซ้ำ" ที่ตั้งจาก 409 แล้วพาเคอร์เซอร์ไปช่องที่ต้องแก้ */
+  const dismissExisting = () => {
+    setExisting(null);
+    if (form.getFieldState('phone').error?.type === 'duplicate') form.clearErrors('phone');
+    form.setFocus(nidDup ? 'nationalId' : 'phone');
+  };
+
+  /* ── ช่องข้อมูลหลักที่สองโหมดเรียงต่างกัน (B6) — ประกาศครั้งเดียว วางตามลำดับของแต่ละโหมดด้านล่าง
+     โหมดสร้าง: เลขบัตร(3) · เบอร์(2) · ชื่อเล่น(1) — คลาส/ข้อความเดิมทุกตัว
+     โหมด fill (mockup บอร์ด 3): เบอร์(4) · ชื่อเล่น(2) → เลขบัตร(4) · ชื่อ Facebook(2) ── */
+  const nationalIdField = (
+    <div className={isFill ? 'col-span-4' : 'col-span-3'}>
+      <FormField
+        control={form.control}
+        name="nationalId"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs font-medium">
+              เลขบัตรประชาชน (13 หลัก){' '}
+              {isFill ? <span className="font-normal text-muted-foreground">ไม่บังคับ — เติมตอนทำสัญญาก็ได้</span> : <span className="text-destructive">*</span>}
+            </FormLabel>
+            <FormControl>
+              <input
+                type="text"
+                maxLength={13}
+                {...field}
+                onChange={(e) => field.onChange(e.target.value.replace(/\D/g, ''))}
+                className={`${inputClass} font-mono`}
+                placeholder="X-XXXX-XXXXX-XX-X"
+              />
+            </FormControl>
+            <FormMessage className="text-xs" />
+          </FormItem>
+        )}
+      />
+    </div>
+  );
+  const phoneField = (
+    <div className={isFill ? 'col-span-4' : 'col-span-2'}>
+      <FormField
+        control={form.control}
+        name="phone"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs font-medium">เบอร์โทร <span className="text-destructive">*</span></FormLabel>
+            <FormControl>
+              <input type="tel" {...field} className={inputClass} placeholder="0XX-XXX-XXXX" autoComplete="tel" />
+            </FormControl>
+            <FormMessage className="text-xs" />
+          </FormItem>
+        )}
+      />
+    </div>
+  );
+  const nicknameField = (
+    <div className={isFill ? 'col-span-2' : 'col-span-1'}>
+      <FormField
+        control={form.control}
+        name="nickname"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs font-medium">ชื่อเล่น</FormLabel>
+            <FormControl>
+              <input type="text" {...field} className={inputClass} placeholder="ชื่อเล่น" />
+            </FormControl>
+            <FormMessage className="text-xs" />
+          </FormItem>
+        )}
+      />
+    </div>
+  );
+
   return (
     <>
       {/* Sticky Header */}
@@ -417,10 +519,21 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                   : 'ระบบไม่สร้างซ้ำ — ใช้คนเดิม หรือแก้เบอร์/อีเมลแล้วบันทึกใหม่'}
               </p>
               {isFill && (
+                /* B7 (mockup บอร์ด 4): <ชื่อ> · โทร/เลขบัตร · ลูกค้า/ผู้สนใจตั้งแต่ <วันที่> + ชิป "ผ่อนอยู่ N สัญญา" */
                 <div className="mt-2.5 flex items-center gap-2.5 rounded-lg border border-border bg-card px-2.5 py-2 text-xs">
                   <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><User className="size-3.5" strokeWidth={1.5} /></span>
-                  <span className="min-w-0 truncate font-semibold">{existing.name}</span>
-                  <span className="text-muted-foreground">{nidDup ? `· เลขบัตร ${dupNationalId}` : `· โทร ${dupPhone}`}</span>
+                  <span className="min-w-0 flex-1 leading-snug">
+                    <span className="font-semibold">{existing.name}</span>
+                    <span className="text-muted-foreground">
+                      {nidDup ? ` · เลขบัตร ${dupNationalId}` : ` · โทร ${dupPhone}`}
+                      {existingSinceText && ` · ${existingSinceText}`}
+                    </span>
+                  </span>
+                  {existingActiveContracts > 0 && (
+                    <span className="inline-flex shrink-0 items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold leading-snug text-primary">
+                      ผ่อนอยู่ {existingActiveContracts} สัญญา
+                    </span>
+                  )}
                 </div>
               )}
               {(onUseExisting || isFill) && (
@@ -435,7 +548,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                     </button>
                   )}
                   {isFill && (
-                    <button type="button" onClick={() => setExisting(null)} className="text-sm text-muted-foreground hover:text-foreground">{nidDup ? 'แก้เลขบัตร' : 'แก้เบอร์'}</button>
+                    <button type="button" onClick={dismissExisting} className="text-sm text-muted-foreground hover:text-foreground">{nidDup ? 'แก้เลขบัตร' : 'แก้เบอร์'}</button>
                   )}
                 </div>
               )}
@@ -522,7 +635,9 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                   name="lastName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-xs font-medium">นามสกุล <span className="text-destructive">*</span></FormLabel>
+                      <FormLabel className="text-xs font-medium">
+                        {isFill ? <>นามสกุล <span className="font-normal text-muted-foreground">ไม่บังคับ</span></> : <>นามสกุล <span className="text-destructive">*</span></>}
+                      </FormLabel>
                       <FormControl>
                         <input type="text" {...field} className={inputClass} placeholder="กรอกนามสกุล" autoComplete="family-name" />
                       </FormControl>
@@ -531,66 +646,34 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                   )}
                 />
               </div>
-              {isFill && (
-                <div className="col-span-6">
-                  <p className="m-0 text-xs leading-snug text-muted-foreground">ชื่อเติมให้จากห้องแชทแล้ว แก้ได้ · บันทึกแล้วผู้สนใจคนนี้จะเช็คเครดิตและทำสัญญาได้ทันที</p>
-                </div>
+              {isFill ? (
+                <>
+                  {phoneField}
+                  {nicknameField}
+                  {nationalIdField}
+                  <div className="col-span-2">
+                    <FormField
+                      control={form.control}
+                      name="facebookName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
+                          <FormControl>
+                            <input type="text" {...field} className={inputClass} placeholder="ชื่อบน Facebook" />
+                          </FormControl>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  {nationalIdField}
+                  {phoneField}
+                  {nicknameField}
+                </>
               )}
-              <div className="col-span-3">
-                <FormField
-                  control={form.control}
-                  name="nationalId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium">
-                        เลขบัตรประชาชน (13 หลัก){' '}
-                        {isFill ? <span className="font-normal text-muted-foreground">ไม่บังคับ — เติมตอนทำสัญญาก็ได้</span> : <span className="text-destructive">*</span>}
-                      </FormLabel>
-                      <FormControl>
-                        <input
-                          type="text"
-                          maxLength={13}
-                          {...field}
-                          onChange={(e) => field.onChange(e.target.value.replace(/\D/g, ''))}
-                          className={`${inputClass} font-mono`}
-                          placeholder="X-XXXX-XXXXX-XX-X"
-                        />
-                      </FormControl>
-                      <FormMessage className="text-xs" />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="col-span-2">
-                <FormField
-                  control={form.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium">เบอร์โทร <span className="text-destructive">*</span></FormLabel>
-                      <FormControl>
-                        <input type="tel" {...field} className={inputClass} placeholder="0XX-XXX-XXXX" autoComplete="tel" />
-                      </FormControl>
-                      <FormMessage className="text-xs" />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              <div className="col-span-1">
-                <FormField
-                  control={form.control}
-                  name="nickname"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium">ชื่อเล่น</FormLabel>
-                      <FormControl>
-                        <input type="text" {...field} className={inputClass} placeholder="ชื่อเล่น" />
-                      </FormControl>
-                      <FormMessage className="text-xs" />
-                    </FormItem>
-                  )}
-                />
-              </div>
               {!isFill && (
                 <div className="col-span-2">
                   <FormField
@@ -671,7 +754,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
             </details>
           )}
 
-          {/* ===== ข้อมูลติดต่อเพิ่มเติม (collapsible) — ซ่อนในโหมด fill ตาม mockup (ชื่อ Facebook มีบล็อกของตัวเองแทน) ===== */}
+          {/* ===== ข้อมูลติดต่อเพิ่มเติม (collapsible) — ซ่อนในโหมด fill ตาม mockup (ชื่อ Facebook ของโหมด fill อยู่ในกริดข้อมูลหลักแล้ว) ===== */}
           {!isFill && (
             <details className="group rounded-xl border border-border bg-card">
               <summary className="list-none flex items-center gap-2.5 p-5 cursor-pointer select-none hover:bg-accent/50 transition-colors [&::-webkit-details-marker]:hidden">
@@ -783,25 +866,6 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                 </div>
               </div>
             </details>
-          )}
-
-          {/* ===== ชื่อ Facebook (fill mode เท่านั้น — ตาม mockup) ===== */}
-          {isFill && (
-            <div className="rounded-xl border border-border bg-card p-5">
-              <FormField
-                control={form.control}
-                name="facebookName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-xs font-medium">ชื่อ Facebook</FormLabel>
-                    <FormControl>
-                      <input type="text" {...field} className={inputClass} placeholder="ชื่อบน Facebook" />
-                    </FormControl>
-                    <FormMessage className="text-xs" />
-                  </FormItem>
-                )}
-              />
-            </div>
           )}
 
           {/* ===== ข้อมูลที่ทำงาน (collapsible) — ซ่อนในโหมด fill ตาม mockup ===== */}
@@ -956,6 +1020,11 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
                 ))}
               </div>
             </details>
+          )}
+
+          {/* ===== โน้ตท้ายฟอร์ม (fill mode — mockup บอร์ด 3: หลังชื่อ Facebook ก่อนปุ่ม) ===== */}
+          {isFill && (
+            <p className="m-0 text-xs leading-snug text-muted-foreground">ชื่อเติมให้จากห้องแชทแล้ว แก้ได้ · บันทึกแล้วผู้สนใจคนนี้จะเช็คเครดิตและทำสัญญาได้ทันที</p>
           )}
 
           </div>

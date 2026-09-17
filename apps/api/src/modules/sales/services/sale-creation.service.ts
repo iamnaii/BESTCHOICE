@@ -13,6 +13,7 @@ import { DiscountPolicy } from './discount-policy.util';
 import { SaleWriterService } from './sale-writer.service';
 import { SaleWarrantyNotifierService } from './sale-warranty-notifier.service';
 import { assertCustomerHasPhone } from '../../contracts/services/contract-create-policy';
+import { PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospects/chat-placeholder';
 import {
   assertSameTestSide,
   TEST_SIDE_CUSTOMER_SELECT,
@@ -195,7 +196,8 @@ export class SaleCreationService {
     const [customer, products] = await Promise.all([
       this.prisma.customer.findFirst({
         where: { id: dto.customerId, deletedAt: null },
-        select: TEST_SIDE_CUSTOMER_SELECT,
+        // PLACEHOLDER_FIELDS_SELECT — ด่านเบอร์แยกข้อความผู้สนใจ/ลูกค้าทั่วไป (A12)
+        select: { ...TEST_SIDE_CUSTOMER_SELECT, ...PLACEHOLDER_FIELDS_SELECT },
       }),
       productIds.length === 0
         ? Promise.resolve([])

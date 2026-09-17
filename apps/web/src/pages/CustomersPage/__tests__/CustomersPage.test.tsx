@@ -183,6 +183,15 @@ function locationText(): string {
   return screen.getByLabelText('current location').textContent ?? '';
 }
 
+/** ป้ายของการ์ด KPI ที่ aria-pressed=true — ตัวกรองชุดเดียวต้องเด่นได้ไม่เกินหนึ่งใบ */
+function pressedKpiLabels(): string[] {
+  return Array.from(
+    screen
+      .getByRole('group', { name: 'ตัวเลขสรุป' })
+      .querySelectorAll('button[aria-pressed="true"]'),
+  ).map((button) => button.querySelector('span span')?.textContent ?? '');
+}
+
 function show(initialPath = '/customers?zone=shop') {
   mocks.get.mockImplementation(
     async (url: string, options?: { params?: Record<string, string> }) => {
@@ -535,6 +544,25 @@ describe('การ์ด KPI กดเพื่อกรอง', () => {
     fireEvent.click(kpis.getByRole('button', { name: /เงียบเกิน 30 วัน/ }));
     await waitFor(() => expect(lastListParams().contacted).toBe('silent30'));
   });
+
+  // จอแท็บเล็ต: 6 ใบแบ่ง 3+3 ส่วน 5 ใบต้องอยู่แถวเดียว — md:grid-cols-3 กับ 5 ใบ = ตัดแถว 3+2
+  it('แท็บลูกค้า (6 ใบ): 3 คอลัมน์บนแท็บเล็ต แล้ว 6 คอลัมน์บนจอใหญ่', async () => {
+    show();
+    await screen.findByText('สมชาย ผ่อนดี');
+    const group = screen.getByRole('group', { name: 'ตัวเลขสรุป' });
+    expect(group).toHaveClass('grid-cols-2', 'md:grid-cols-3', 'lg:grid-cols-6');
+    expect(group).not.toHaveClass('md:grid-cols-5');
+  });
+
+  it('แท็บผู้สนใจ (5 ใบ): 5 คอลัมน์ตั้งแต่แท็บเล็ต ไม่ตัดแถว 3+2', async () => {
+    show('/customers?view=prospects');
+    await screen.findByText('ผู้สนใจ หนึ่ง');
+    const group = screen.getByRole('group', { name: 'ตัวเลขสรุป' });
+    expect(group.querySelectorAll('button')).toHaveLength(5);
+    expect(group).toHaveClass('grid-cols-2', 'md:grid-cols-5');
+    expect(group).not.toHaveClass('md:grid-cols-3');
+    expect(group).not.toHaveClass('lg:grid-cols-6');
+  });
 });
 
 // ─── ผู้สนใจจากแชท (สเปค 3.6) ───────────────────────────────────────────────
@@ -554,6 +582,49 @@ describe('ผู้สนใจจากแชท — KPI/ตัวกรอง/
     expect(screen.getByText('มาจากแชท').closest('button')).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByText('ลูกค้าทั้งหมด'));
     await waitFor(() => expect(locationText()).not.toContain('fromChat'));
+  });
+
+  it('กด "ผ่อนกับเรา" ต่อด้วย "มาจากแชท" — การซื้อหลุด และไฮไลต์ย้ายไปที่ "มาจากแชท" ใบเดียว', async () => {
+    show();
+    await screen.findByText('สมชาย ผ่อนดี');
+    const kpis = within(screen.getByRole('group', { name: 'ตัวเลขสรุป' }));
+    fireEvent.click(kpis.getByRole('button', { name: /ผ่อนกับเรา/ }));
+    await waitFor(() => expect(locationText()).toContain('purchase=INSTALLMENT'));
+    expect(pressedKpiLabels()).toEqual(['ผ่อนกับเรา']);
+
+    fireEvent.click(kpis.getByRole('button', { name: /มาจากแชท/ }));
+    await waitFor(() => expect(locationText()).toContain('fromChat=true'));
+    // ของเดิม: purchase=INSTALLMENT ค้างอยู่ ⇒ การ์ด "ผ่อนกับเรา" ยังเด่นทั้งที่เพิ่งกด "มาจากแชท"
+    expect(locationText()).not.toContain('purchase=');
+    expect(pressedKpiLabels()).toEqual(['มาจากแชท']);
+    await waitFor(() => expect(lastListParams().fromChat).toBe('true'));
+    expect(lastListParams().purchase).toBeUndefined();
+  });
+
+  it('กด "มาจากแชท" ต่อด้วย "ค้างชำระ" — fromChat หลุด ไม่กรองซ้อนอยู่เบื้องหลัง', async () => {
+    show();
+    await screen.findByText('สมชาย ผ่อนดี');
+    const kpis = within(screen.getByRole('group', { name: 'ตัวเลขสรุป' }));
+    fireEvent.click(kpis.getByRole('button', { name: /มาจากแชท/ }));
+    await waitFor(() => expect(locationText()).toContain('fromChat=true'));
+
+    fireEvent.click(kpis.getByRole('button', { name: /ค้างชำระ/ }));
+    await waitFor(() => expect(locationText()).toContain('state=OVERDUE'));
+    expect(locationText()).toContain('purchase=INSTALLMENT');
+    expect(locationText()).not.toContain('fromChat');
+    expect(pressedKpiLabels()).toEqual(['ค้างชำระ']);
+    await waitFor(() =>
+      expect(lastListParams()).toMatchObject({ purchase: 'INSTALLMENT', state: 'OVERDUE' }),
+    );
+    expect(lastListParams().fromChat).toBeUndefined();
+  });
+
+  it('ลิงก์ที่ซ้อน fromChat กับการซื้อ (จากดรอปดาวน์) — ไม่มีการ์ดใบไหนเด่น เพราะไม่มีใบไหนอธิบายตัวกรองครบ', async () => {
+    show('/customers?zone=shop&purchase=CASH&fromChat=true');
+    await waitFor(() =>
+      expect(lastListParams()).toMatchObject({ purchase: 'CASH', fromChat: 'true' }),
+    );
+    expect(pressedKpiLabels()).toEqual([]);
   });
 
   it('ตัวกรอง "ที่มา" มีในแท็บลูกค้าด้วย และส่ง source ให้ API · มี source อยู่ = ไม่มีการ์ดไหนเด่น · การ์ด "ลูกค้าทั้งหมด" ล้าง source ด้วย', async () => {

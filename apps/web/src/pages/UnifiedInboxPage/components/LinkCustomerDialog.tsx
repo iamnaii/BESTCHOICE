@@ -4,8 +4,17 @@ import { Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useLinkRoomCustomer } from '../hooks/useLinkRoomCustomer';
+import { useLinkRoomCustomer, type LinkRoomResult } from '../hooks/useLinkRoomCustomer';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
+
+/** แถวผลค้นหาของ `GET /customers/search` — `chatPlaceholder` เป็นธงจาก API (เว็บห้าม derive เอง) */
+interface CustomerSearchRow {
+  id: string;
+  name: string;
+  phone?: string | null;
+  chatPlaceholder?: boolean;
+}
 
 /**
  * ผูกลูกค้าที่มีอยู่กับห้องแชท — แยกออกมาจาก Customer360Panel เพื่อให้ RoomDossier เปิดได้จากหลายจุด
@@ -17,12 +26,15 @@ export default function LinkCustomerDialog({
   onOpenChange,
   roomId,
   mergesProspect = false,
+  onLinked,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   roomId: string;
   /** true = ห้องนี้ถือผู้สนใจอัตโนมัติอยู่แล้ว — ผูกกับคนที่เลือกคือ "รวม" ไม่ใช่ "ผูกครั้งแรก" (สเปค 3.6) */
   mergesProspect?: boolean;
+  /** ผูกสำเร็จ — ผลการรวมผู้สนใจ (ถ้ามี) ส่งต่อให้แผงขวาแสดงข้อความหลังรวม (mockup บอร์ด 5) */
+  onLinked?: (result: LinkRoomResult) => void;
 }) {
   const [search, setSearch] = useState('');
   const debounced = useDebounce(search, 400);
@@ -32,8 +44,9 @@ export default function LinkCustomerDialog({
     enabled: open && debounced.trim().length >= 2,
   });
   const link = useLinkRoomCustomer(roomId, {
-    onSuccess: () => {
+    onSuccess: (_customerId, result) => {
       toast.success(mergesProspect ? 'ผูกกับลูกค้าเดิมและรวมข้อมูลแชทแล้ว' : 'ผูกลูกค้ากับแชทนี้แล้ว');
+      onLinked?.(result);
       onOpenChange(false);
       setSearch('');
     },
@@ -72,7 +85,7 @@ export default function LinkCustomerDialog({
           {!searchQuery.isFetching && debounced.trim().length >= 2 && (searchQuery.data?.length ?? 0) === 0 && (
             <p className="py-3 text-center text-xs leading-snug text-muted-foreground">ไม่พบลูกค้า</p>
           )}
-          {(searchQuery.data ?? []).map((c: { id: string; name: string; phone?: string }) => (
+          {(searchQuery.data ?? []).map((c: CustomerSearchRow) => (
             <button
               key={c.id}
               type="button"
@@ -81,7 +94,10 @@ export default function LinkCustomerDialog({
               className="w-full rounded-lg border border-border p-2.5 text-left text-sm transition-colors hover:bg-accent disabled:opacity-50"
             >
               <span className="font-medium text-foreground">{c.name}</span>
-              {c.phone && <span className="ml-2 text-xs text-muted-foreground">{c.phone}</span>}
+              {/* ห่อด้วย span — ส่ง className เข้า ProspectPhoneLine ตรง ๆ จะทับสีชิปผู้สนใจ (tailwind-merge) */}
+              <span className="ml-2 text-xs text-muted-foreground">
+                <ProspectPhoneLine phone={c.phone} chatPlaceholder={c.chatPlaceholder} />
+              </span>
             </button>
           ))}
         </div>

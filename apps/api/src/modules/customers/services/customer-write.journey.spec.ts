@@ -7,7 +7,7 @@ describe('CustomerWriteService → CONTACT_ADDED', () => {
   const NID = '1103700012345';
   let prevSalt: string | undefined;
   let prevKey: string | undefined;
-  let prisma: { customer: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock } };
+  let prisma: { customer: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; count: jest.Mock } };
   let query: { findOne: jest.Mock };
   let audit: { log: jest.Mock };
   let journey: { recordAfterCommit: jest.Mock };
@@ -31,6 +31,8 @@ describe('CustomerWriteService → CONTACT_ADDED', () => {
       customer: {
         findUnique: jest.fn(),
         findFirst: jest.fn().mockResolvedValue(null),
+        // M-A3: 409 ข้อมูลซ้ำนับ BOUGHT_WHERE ของคนเดิม (existingCustomer.purchased)
+        count: jest.fn().mockResolvedValue(0),
         update: jest
           .fn()
           .mockImplementation(async (args: { where: { id: string } }) => ({ id: args.where.id, name: 'สมชาย ใจดี', phone: PHONE })),
@@ -132,7 +134,8 @@ describe('CustomerWriteService → CONTACT_ADDED', () => {
 
     it('เบอร์ซ้ำ (409) → ไม่บันทึก', async () => {
       prisma.customer.findUnique.mockResolvedValue(placeholderRow);
-      prisma.customer.findFirst.mockResolvedValueOnce({ id: 'other', name: 'ลูกค้าเดิม' });
+      // A7: รูปเดียวกับ select ของด่านเบอร์ซ้ำ (createdAt + _count สัญญาที่ยังผ่อน)
+      prisma.customer.findFirst.mockResolvedValueOnce({ id: 'other', name: 'ลูกค้าเดิม', createdAt: new Date('2026-01-01T00:00:00.000Z'), _count: { contracts: 0 } });
       await expect(
         service.fillPlaceholderContact('p1', { phone: PHONE }, { id: 'staff-1', role: 'SALES' }),
       ).rejects.toBeInstanceOf(ConflictException);

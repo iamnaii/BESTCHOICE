@@ -68,6 +68,32 @@ pool starvation ⇒ และ `log()` **กลืน error ทิ้ง** ⇒ au
 อีกเหตุผลหนึ่ง: แถว audit ต้องบรรยาย "งานที่ commit แล้ว" — เขียนใน tx ที่อาจ rollback
 = phantom audit row.
 
+## ล็อกเบอร์หลักของลูกค้า (คำตัดสินเจ้าของ 2026-09-17)
+
+ลูกค้าที่ยังไม่ถูกลบสองคน**ห้าม**ถือเบอร์หลัก (`customers.phone` / `phone_hash`) เดียวกัน แต่**ไม่มี
+unique index** (ข้อมูลเก่ามีคู่ซ้ำ — แก้ทีละคู่ด้วยมือ) ⇒ กันด้วย advisory lock ระดับแอป:
+`lockCustomerPhone(tx, pii, phone)` (`apps/api/src/modules/customers/customer-phone-lock.ts`) —
+`pg_advisory_xact_lock(hashtext('customer-phone:' + hash(normalizeThaiPhone(phone))))`.
+
+ผู้เขียนเบอร์หลักทุกทางทำ **ล็อก → ตรวจซ้ำบน tx ตัวเดียวกัน → เขียน** ในทรานแซกชันเดียว:
+`CustomerWriteService.create` / `update` (เฉพาะตอนตั้งเบอร์) / `fillPlaceholderContact` และ
+`CaptureLeadTool.run` (บอทขาย) — ล็อกเดียวกันทั้งฝั่งพนักงานและบอท (ล็อกแค่ฝั่งเดียวกันได้แค่บอทชนบอท).
+พิสูจน์ด้วยสองคอนเนกชันจริงที่ `customer-phone-lock.race.db.spec.ts`.
+
+**กติกาลำดับล็อก (ห้ามฝ่า — ฝ่าแล้วได้ deadlock `40P01` เป็น 500 ดิบ):**
+1. ล็อกเบอร์เป็น **คำสั่งแรก** ของทรานแซกชัน
+2. **หนึ่งเบอร์ต่อทรานแซกชัน** (ถ้าวันหน้าต้องล็อกหลายเบอร์ ต้องเรียงคีย์ก่อน)
+3. **ห้ามล็อกหลัง** `lockCreditCustomer` / ล็อกแถวลูกค้า (`FOR NO KEY UPDATE`, UPDATE แถวลูกค้า)
+   หรือหลัง advisory lock `contact:code` (`ContactResolverService.nextContactCode`) — `create()` ล็อกเบอร์
+   ก่อนแล้วค่อยถึง `contact:code` ถ้ามีทางไหนกลับลำดับ = คู่ deadlock
+4. **ห้ามใส่ใน `ContactResolverService.ensureRole`** — ตอนรับซื้อ (trade-in accept) ถือ `contact:code`
+   อยู่แล้วเมื่อถึง ensureRole
+5. งานที่เปิดทรานแซกชันของตัวเอง (`absorbPlaceholder`, `ensureForRoom`) ต้องอยู่**นอก**ทรานแซกชันที่ถือล็อกเบอร์
+
+ล็อกช่วยเฉพาะผู้เขียนที่เรียกมัน และการตรวจซ้ำฝั่งพนักงานหาด้วย `phone_hash` อย่างเดียว ⇒ แถวที่มีเบอร์
+plaintext แต่ไม่มี hash (หรือรูปแบบเบอร์ไม่ normalize) ยังมองไม่เห็น — ต้องซ่อมข้อมูลเก่าแยกต่างหาก.
+อีเมลยังไม่มีล็อก (นอกขอบเขต).
+
 ## สถานะสินค้า & IMEI (Phase 5)
 
 > **ทำไมอยู่ในไฟล์นี้ ไม่ใช่ `accounting.md`:** ทั้งหัวข้อเป็นเรื่อง **ความถูกต้องของ

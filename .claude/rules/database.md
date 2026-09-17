@@ -76,8 +76,11 @@ unique index** (ข้อมูลเก่ามีคู่ซ้ำ — แ�
 `pg_advisory_xact_lock(hashtext('customer-phone:' + hash(normalizeThaiPhone(phone))))`.
 
 ผู้เขียนเบอร์หลัก**ที่อยู่ในรายการนี้**ทำ **ล็อก → ตรวจซ้ำบน tx ตัวเดียวกัน → เขียน** ในทรานแซกชันเดียว:
-`CustomerWriteService.create` / `update` (เฉพาะตอนตั้งเบอร์) / `fillPlaceholderContact` และ
-`CaptureLeadTool.run` (บอทขาย) — ล็อกเดียวกันทั้งฝั่งพนักงานและบอท (ล็อกแค่ฝั่งเดียวกันได้แค่บอทชนบอท).
+`CustomerWriteService.create` / `update` (เฉพาะตอนตั้งเบอร์) / `fillPlaceholderContact`,
+`CaptureLeadTool.run` (บอทขาย), `SkipTracingService.updateContact` (ติดตามหนี้ — เบอร์ของคนอื่น =
+เก็บเป็นเบอร์สำรองของลูกหนี้ ไม่บล็อก) และ `MigrationService.importCustomers` (ต่อแถว — เบอร์ของคนอื่น =
+แถวนั้นล้ม `field: 'phone'`) — ล็อกเดียวกันทั้งฝั่งพนักงานและบอท (ล็อกแค่ฝั่งเดียวกันได้แค่บอทชนบอท).
+ทุกทางข้างบน normalize เบอร์ (`normalizeThaiPhone`) และ dual-write `phone_hash` + `phone_encrypted`.
 พิสูจน์ด้วยสองคอนเนกชันจริงที่ `customer-phone-lock.race.db.spec.ts` (ลำดับคิวล็อกกำหนดได้ — ตรวจทางแพ้ทั้งสองฝั่ง).
 `create()` เรียงเป็น ล็อกเบอร์ → `contact:code` (`findOrCreateByNaturalKey`) → หา stub ของ contact →
 ตรวจเบอร์/อีเมลซ้ำ**โดยยกเว้น stub นั้น** → เขียน/upgrade stub — stub ของ contact เดียวกัน (จับคู่ด้วยเลขบัตรเท่านั้น)
@@ -85,9 +88,9 @@ unique index** (ข้อมูลเก่ามีคู่ซ้ำ — แ�
 
 **ผู้เขียน `customers.phone` ที่ยังไม่ล็อก (รู้ตัว — ห้ามอ่านรายการข้างบนว่า "ทุกทาง"):**
 - `ContactResolverService.ensureRole` stub CUSTOMER — **ไม่ล็อกถาวรโดยตั้งใจ** (กติกาข้อ 4 ด้านล่าง) และไม่บล็อก ⇒
-  ตอนรับซื้อ (trade-in accept) ยังสร้าง stub ที่เบอร์ซ้ำกับลูกค้าที่มีอยู่ได้ — เจ้าของยอมรับ แก้ทีละคู่ด้วยมือ
-- `skip-tracing.service.ts` (ติดตามหนี้) และ `MigrationService.importCustomers` (นำเข้าข้อมูล) — ยังไม่ล็อก
-  ⇒ เมื่อต่อล็อกแล้ว (Part B / Part C) ให้ย้ายขึ้นไปอยู่ในรายการข้างบน
+  ตอนรับซื้อ (trade-in accept) ยังสร้าง stub ที่เบอร์ซ้ำกับลูกค้าที่มีอยู่ได้ — เจ้าของยอมรับ แก้ทีละคู่ด้วยมือ.
+  แต่ stub **เขียนเบอร์ normalize + `phone_hash` + `phone_encrypted` แล้ว** (เบอร์ว่างคง `''`) ⇒ dedup
+  ฝั่งพนักงานมองเห็น stub และ `create()` upgrade stub ของ contact เดียวกันแทนการตอบ 409
 
 **กติกาลำดับล็อก (ห้ามฝ่า — ฝ่าแล้วได้ deadlock `40P01` เป็น 500 ดิบ):**
 1. ล็อกเบอร์เป็น **คำสั่งแรก** ของทรานแซกชัน

@@ -216,6 +216,38 @@ describe('CustomerWriteService.fillPlaceholderContact (real DB)', () => {
     expect(audit.log).not.toHaveBeenCalled();
   });
 
+  // ล็อกเบอร์ 2026-09-17 (A1-1) — ทาง P2002 จริง: แถวที่ถูกลบยังถือเลขบัตรไว้ ⇒ ด่าน assertNationalIdNotDuplicate
+  // ปล่อยผ่าน (ไม่ใช่แถวที่ยังไม่ถูกลบ) แล้ว update ชน unique index จริงในทรานแซกชันที่ถือล็อกเบอร์ ⇒
+  // ต้องได้ 409 เลขบัตรจาก uniqueClashToConflict (meta.target ของ Prisma บน Postgres ระบุคอลัมน์เลขบัตร)
+  // ไม่ใช่ข้อความกลางที่ไม่มี field และแถว placeholder ต้องไม่ถูกแตะ (ทรานแซกชันที่พังถูกยกเลิกทั้งก้อน)
+  it('แถวที่ถูกลบยังถือเลขบัตรเดียวกัน → P2002 จริง → 409 field nationalId · แถวไม่ถูกแตะ ไม่มี audit', async () => {
+    const digits = `3${stamp}0000`;
+    const ghost = await prisma.customer.create({
+      data: {
+        name: 'fill spec nid ghost', nationalId: digits, nationalIdHash: hashPII(digits, SALT),
+        deletedAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+    });
+    ids.push(ghost.id);
+    const p = await placeholder('nid-ghost');
+    let error: unknown;
+    try {
+      await service.fillPlaceholderContact(p.id, { phone: `0${stamp}9`, nationalId: digits }, { id: 'staff-1', role: 'OWNER' });
+    } catch (e) { error = e; }
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).getResponse()).toEqual({
+      message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
+      field: 'nationalId',
+    });
+    const row = await prisma.customer.findUniqueOrThrow({ where: { id: p.id } });
+    expect(row.phone).toBeNull();
+    expect(row.phoneHash).toBeNull();
+    expect(row.nationalId).toBeNull();
+    expect(row.nationalIdHash).toBeNull();
+    expect(audit.log).not.toHaveBeenCalled();
+    expect(journey.recordAfterCommit).not.toHaveBeenCalled();
+  });
+
   it('แถวที่มีเบอร์แล้ว (ไม่ใช่ placeholder) → 409 ข้อความชี้ทางไปหน้ารายละเอียด · แถวที่ถูกลบ → 404', async () => {
     const real = await prisma.customer.create({ data: { name: 'fill spec real', phone: `07${stamp}`, acquisitionSource: 'CHAT_LINE_SHOP' } });
     ids.push(real.id);

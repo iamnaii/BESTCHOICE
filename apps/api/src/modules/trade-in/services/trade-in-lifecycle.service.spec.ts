@@ -449,3 +449,106 @@ describe('TradeInLifecycleService.accept() — auto-mark เครื่อง�
     expect(tx.product.create.mock.calls[0][0].data.name).toBe('Apple iPhone 12');
   });
 });
+
+describe('TradeInLifecycleService.accept() — ผูก contact ผู้ขาย keyless ด้วยเลขบัตร (Part E)', () => {
+  const tradeIn = {
+    id: 'ti-e', status: 'APPRAISED', deletedAt: null, flow: 'EXCHANGE', customerId: null,
+    sellerContactId: 'contact-keyless', branchId: 'br-1', offeredPrice: new Decimal(5000),
+    estimatedValue: null, imei: null, deviceBrand: 'A', deviceModel: 'B', deviceColor: null,
+    deviceStorage: null, deviceCondition: null, notes: null,
+  };
+  const dto = { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' };
+
+  function setup(opts: { updateMany: jest.Mock; hash?: string | null }) {
+    const tx = {
+      ...makeTx(),
+      contact: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'contact-keyless', deletedAt: null, isActive: true, nationalIdHash: null }),
+        findFirst: jest.fn()
+          .mockResolvedValueOnce({ id: 'contact-keyless', nationalIdHash: null })
+          .mockResolvedValueOnce(null),
+        updateMany: opts.updateMany,
+      },
+    };
+    tx.tradeIn.findUnique.mockResolvedValue(tradeIn);
+    const prisma = { $transaction: jest.fn(async (cb: (t: unknown) => unknown) => cb(tx)) };
+    const resolver = { findOrCreateByNaturalKey: jest.fn(), ensureRole: jest.fn().mockResolvedValue({ customerId: 'cust-stub' }) };
+    const service = new TradeInLifecycleService(
+      prisma as never, {} as never, {} as never, resolver as never,
+      { hash: jest.fn().mockReturnValue(opts.hash === undefined ? 'nid-hash' : opts.hash) } as never,
+      {} as never, {} as never, { execute: jest.fn() } as never, { resolveOutflowCashAccount: jest.fn() } as never,
+      { issue: jest.fn() } as never,
+    );
+    return { service, tx, resolver };
+  }
+
+  it('อีกทรานแซกชันเติมเลขบัตรเดียวกันก่อน (P2002) → 409 ภาษาไทยให้ลองใหม่ ไม่สร้าง stub', async () => {
+    const p2002 = Object.assign(new Error('unique'), { code: 'P2002' });
+    const { service, resolver } = setup({ updateMany: jest.fn().mockRejectedValue(p2002) });
+    await expect(service.accept('ti-e', dto as never, 'u-1')).rejects.toMatchObject({
+      status: 409,
+      message: 'ผู้ติดต่อนี้ถูกสร้างพร้อมกัน กรุณาลองใหม่อีกครั้ง',
+    });
+    expect(resolver.ensureRole).not.toHaveBeenCalled();
+  });
+
+  it('contact ถูกเติมเลขบัตร/ลบระหว่างนั้น (updateMany = 0 แถว) → 409 ไม่เขียนทับ', async () => {
+    const { service, resolver } = setup({ updateMany: jest.fn().mockResolvedValue({ count: 0 }) });
+    await expect(service.accept('ti-e', dto as never, 'u-1')).rejects.toMatchObject({ status: 409 });
+    expect(resolver.ensureRole).not.toHaveBeenCalled();
+  });
+
+  function withHolder(
+    tx: ReturnType<typeof setup>['tx'],
+    customers: { holder: { id: string } | null; keyless: { id: string } | null },
+  ) {
+    tx.contact.findFirst = jest.fn()
+      .mockResolvedValueOnce({ id: 'contact-keyless', nationalIdHash: null })
+      .mockResolvedValueOnce({ id: 'contact-held' });
+    Object.assign(tx.customer, {
+      findFirst: jest.fn()
+        .mockResolvedValueOnce(customers.holder)
+        .mockResolvedValueOnce(customers.keyless),
+    });
+    tx.product.create.mockResolvedValue({ id: 'p-e' });
+    tx.tradeIn.update.mockResolvedValue({ id: 'ti-e' });
+  }
+
+  it('ย้ายเครดิตไปลูกค้าเดิมที่เป็นลูกค้าทดสอบ → ชื่อเครื่องติด marker "ทดสอบระบบ" (เลือกจากลูกค้าเครดิตที่ resolve แล้ว)', async () => {
+    const { service, tx, resolver } = setup({ updateMany: jest.fn() });
+    withHolder(tx, { holder: { id: 'cust-test' }, keyless: null });
+    resolver.findOrCreateByNaturalKey.mockResolvedValue({ id: 'contact-held' });
+    resolver.ensureRole.mockResolvedValue({ customerId: 'cust-test' });
+    tx.customer.findUnique.mockResolvedValue({
+      id: 'cust-test', name: 'ทดสอบระบบ ลูกค้า', phone: '0000000000',
+      addressCurrent: TEST_CUSTOMER_ADDRESS, nationalIdHash: null, deletedAt: null, contactId: 'contact-held',
+    });
+    await service.accept('ti-e', dto as never, 'u-1');
+    expect(resolver.ensureRole).toHaveBeenCalledWith(tx, 'contact-held', 'CUSTOMER');
+    expect(tx.customer.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'cust-test' } }));
+    expect(tx.product.create.mock.calls[0][0].data.name).toBe('ทดสอบระบบ A B');
+  });
+
+  it('contact ที่ถือเลขยังไม่มีลูกค้า แต่ contact keyless มี stub แล้ว → คงรายการไว้ที่ contact เดิม ไม่สร้าง stub ตัวที่สอง', async () => {
+    const updateMany = jest.fn();
+    const { service, tx, resolver } = setup({ updateMany });
+    withHolder(tx, { holder: null, keyless: { id: 'cust-old-stub' } });
+    resolver.ensureRole.mockResolvedValue({ customerId: 'cust-old-stub' });
+    await service.accept('ti-e', dto as never, 'u-1');
+    expect(resolver.findOrCreateByNaturalKey).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(resolver.ensureRole).toHaveBeenCalledWith(tx, 'contact-keyless', 'CUSTOMER');
+    expect(tx.tradeIn.update.mock.calls[0][0].data.sellerContactId).toBe('contact-keyless');
+  });
+
+  it('ไม่มี salt (hash = null) → ไม่แตะ contact · สร้าง stub ตามเดิม', async () => {
+    const updateMany = jest.fn();
+    const { service, tx, resolver } = setup({ updateMany, hash: null });
+    tx.product.create.mockResolvedValue({ id: 'p-e' });
+    tx.tradeIn.update.mockResolvedValue({ id: 'ti-e' });
+    await service.accept('ti-e', dto as never, 'u-1');
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(resolver.ensureRole).toHaveBeenCalledWith(tx, 'contact-keyless', 'CUSTOMER');
+    expect(tx.tradeIn.update.mock.calls[0][0].data.sellerContactId).toBe('contact-keyless');
+  });
+});

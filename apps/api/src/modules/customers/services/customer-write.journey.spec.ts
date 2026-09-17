@@ -7,7 +7,11 @@ describe('CustomerWriteService → CONTACT_ADDED', () => {
   const NID = '1103700012345';
   let prevSalt: string | undefined;
   let prevKey: string | undefined;
-  let prisma: { customer: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; count: jest.Mock } };
+  let prisma: {
+    customer: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; count: jest.Mock };
+    $transaction: jest.Mock;
+    $executeRaw: jest.Mock;
+  };
   let query: { findOne: jest.Mock };
   let audit: { log: jest.Mock };
   let journey: { recordAfterCommit: jest.Mock };
@@ -37,6 +41,9 @@ describe('CustomerWriteService → CONTACT_ADDED', () => {
           .fn()
           .mockImplementation(async (args: { where: { id: string } }) => ({ id: args.where.id, name: 'สมชาย ใจดี', phone: PHONE })),
       },
+      // เขียนเบอร์หลักวิ่งในทรานแซกชันที่ถือล็อกเบอร์ — tx = mock ตัวเดียวกัน
+      $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     query = { findOne: jest.fn() };
     audit = { log: jest.fn().mockResolvedValue(undefined) };

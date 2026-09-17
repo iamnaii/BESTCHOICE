@@ -10,6 +10,7 @@ import { isChatPlaceholder } from '../../chat-prospects/chat-placeholder';
 import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
 import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
+import { lockCustomerPhone } from '../../customers/customer-phone-lock';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import { contactAddedEntry, isBlankContact } from '../../customer-journey/chat-identity-entries';
 import { normalizeThaiPhone } from '../../../utils/thai-phone.util';
@@ -419,7 +420,7 @@ export class CaptureLeadTool {
       if (writePrimary) {
         const owners = await this.findPhoneOwners(tx, phone, c.id);
         if (owners.length > 0) {
-          // มีเจ้าของโผล่ระหว่างทาง — ไม่ absorb ในทรานแซกชัน (absorb เปิดทรานแซกชันของตัวเอง)
+          // มีเจ้าของโผล่ระหว่างทาง (เห็นได้เพราะถือล็อกเบอร์แล้ว) — ไม่ absorb ในทรานแซกชัน (absorb เปิดทรานแซกชันของตัวเอง)
           writePrimary = false;
           conflict = { reason: 'OWNER_APPEARED', customerIds: ids(owners) };
           outcome = 'DEFERRED';
@@ -439,7 +440,8 @@ export class CaptureLeadTool {
   }
 
   /**
-   * สร้างลูกค้าใหม่ — เช็คเจ้าของเบอร์ซ้ำก่อนเขียน (ไม่มี advisory lock เหมือนฝั่งพนักงาน)
+   * สร้างลูกค้าใหม่ — เช็คเจ้าของเบอร์ซ้ำก่อนเขียน บนทรานแซกชันที่ถือล็อกเบอร์ (lockCustomerPhone ใน run —
+   * ล็อกเดียวกับฝั่งพนักงาน ⇒ บอทกับพนักงานเขียนเบอร์หลักเดียวกันพร้อมกันไม่ได้)
    * มี conflict → เบอร์ไปช่องสำรอง และถ้าห้องมีรหัสผู้ใช้ ตั้งที่มาเป็น CHAT_* ของห้อง ⇒ เป็นผู้สนใจอัตโนมัติ
    * ที่ capture รอบหน้า/พนักงานรวมเข้าเจ้าของเบอร์ได้ ไม่ค้างเป็นแถวซ้ำถาวร
    */
@@ -542,6 +544,10 @@ export class CaptureLeadTool {
     const absorbedPlaceholderId = plan.kind === 'ATTACH' ? plan.absorbedPlaceholderId : null;
 
     const { customerId, contactAddedFor } = await this.prisma.$transaction(async (tx) => {
+      // ล็อกเบอร์หลักเป็นคำสั่งแรก (กติกาลำดับล็อก .claude/rules/database.md) — การตรวจเจ้าของเบอร์ซ้ำ
+      // ใน updateCustomer/createLead/ATTACH ด้านล่างจึงเห็นแถวที่ผู้เขียนคนก่อน (บอทหรือพนักงาน) commit แล้ว
+      // วางแผน / absorb / ensureForRoom อยู่นอกทรานแซกชันนี้ — ไม่มีล็อกซ้อน
+      await lockCustomerPhone(tx, this.pii, phone);
       let cId: string | null = null;
       let contactAdded: string | null = null;
       let createConflict: PhoneConflict | null = plan.kind === 'CREATE' ? plan.conflict : null;

@@ -1,6 +1,14 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { ContactRole, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CustomerPiiService } from '../customers/customer-pii.service';
+import { normalizeThaiPhone } from '../../utils/thai-phone.util';
 
 type Tx = Prisma.TransactionClient | PrismaService;
 
@@ -24,7 +32,16 @@ export interface EnsureRoleResult {
 
 @Injectable()
 export class ContactResolverService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly pii: CustomerPiiService;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    // CustomerPiiModule (leaf) — ไม่ฉีดมา (spec/CLI เก่าที่ new ด้วย prisma ตัวเดียว) = สร้างเอง
+    // encryptCustomerFields ไม่แตะ DB เลย จึงใช้ตัวที่สร้างเองได้ผลเท่ากัน
+    @Optional() pii?: CustomerPiiService,
+  ) {
+    this.pii = pii ?? new CustomerPiiService(prisma);
+  }
 
   /** Sequential internal code P-NNNNN, serialized via a global advisory lock. */
   async nextContactCode(tx: Tx): Promise<string> {
@@ -137,8 +154,11 @@ export class ContactResolverService {
           ).id;
       if (!existing) provisioned = true;
     } else if (role === 'CUSTOMER') {
-      // CUSTOMER stub: name + phone only. PII encryption/hash columns are left
-      // null and filled when the customer record is properly completed.
+      // CUSTOMER stub: name + phone only. เบอร์ไม่ว่าง → normalize แล้ว dual-write phoneHash +
+      // phoneEncrypted (แบบเดียวกับผู้เขียนเบอร์หลักอื่น — dedup ฝั่งพนักงานหาด้วย phoneHash จึงต้องเห็น stub)
+      // เบอร์ว่างคงเขียน '' แบบเดิม (ไม่ต้องใช้กุญแจ) · คอลัมน์ PII อื่นเติมตอนกรอกข้อมูลลูกค้าเต็ม
+      // **ไม่ล็อกเบอร์และไม่บล็อกเบอร์ซ้ำที่นี่** — trade-in accept ถือ `contact:code` มาก่อนถึงจุดนี้
+      // (กติกาลำดับล็อก .claude/rules/database.md "ล็อกเบอร์หลักของลูกค้า")
       const existing = await tx.customer.findFirst({
         where: { contactId, deletedAt: null },
         select: { id: true },
@@ -147,7 +167,7 @@ export class ContactResolverService {
         ? existing.id
         : (
             await tx.customer.create({
-              data: { name: contact.name, phone: contact.phone ?? '', contactId },
+              data: { name: contact.name, ...this.stubPhone(contact.phone), contactId },
               select: { id: true },
             })
           ).id;
@@ -167,6 +187,18 @@ export class ContactResolverService {
     if (role === 'SUPPLIER') return { contactId, role, supplierId, provisioned };
     if (role === 'CUSTOMER') return { contactId, role, customerId, provisioned };
     return { contactId, role, provisioned };
+  }
+
+  /** เบอร์ของ customer stub — ว่าง = '' แบบเดิม · ไม่ว่าง = normalize + hash + เข้ารหัส */
+  private stubPhone(raw: string | null | undefined): {
+    phone: string;
+    phoneHash?: string | null;
+    phoneEncrypted?: string | null;
+  } {
+    const phone = normalizeThaiPhone(raw) || '';
+    if (!phone) return { phone: '' };
+    const enc = this.pii.encryptCustomerFields({ phone });
+    return { phone, phoneHash: enc.phoneHash, phoneEncrypted: enc.phoneEncrypted };
   }
 
   private hashLockKey(key: string): number {

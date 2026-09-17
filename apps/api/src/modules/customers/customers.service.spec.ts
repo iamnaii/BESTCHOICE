@@ -36,6 +36,8 @@ describe('CustomersService.create — NID normalization', () => {
       // create() now always runs inside a transaction; invoke the callback
       // with the same prisma mock so customer.create/update assertions hold.
       $transaction: jest.fn(async (cb) => cb(prisma)),
+      // ล็อกเบอร์หลัก (lockCustomerPhone) ยิงบน client เดียวกัน
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
@@ -154,6 +156,8 @@ describe('CustomersService.create — T3-C9 phone + email dedup', () => {
         count: jest.fn().mockResolvedValue(0),
       },
       $transaction: jest.fn(async (cb) => cb(prisma)),
+      // ล็อกเบอร์หลัก (lockCustomerPhone) ยิงบน client เดียวกัน
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
@@ -251,6 +255,8 @@ describe('PII dual-write (Phase 3)', () => {
         update: jest.fn().mockResolvedValue({}),
       },
       $transaction: jest.fn(async (cb) => cb(prisma)),
+      // ล็อกเบอร์หลัก (lockCustomerPhone) ยิงบน client เดียวกัน
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
@@ -341,6 +347,8 @@ describe('PII read decryption (Phase 5)', () => {
         update: jest.fn().mockResolvedValue({}),
       },
       $transaction: jest.fn(async (cb) => cb(prisma)),
+      // ล็อกเบอร์หลัก (lockCustomerPhone) ยิงบน client เดียวกัน
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
@@ -496,6 +504,7 @@ describe('CustomersService.create — links Contact (party master)', () => {
     // tx client passed into the $transaction callback. It exposes the same
     // customer ops the service uses; create/update echo their data back.
     const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
       customer: {
         // P4: stub-upgrade guard calls findFirst inside the tx; return null (no stub)
         findFirst: jest.fn().mockResolvedValue(null),
@@ -578,7 +587,8 @@ describe('CustomersService.create — links Contact (party master)', () => {
 
 /**
  * P4 Cleanup 2 — stub-upgrade guard.
- * When ensureRole creates a lightweight Customer stub (phone:'', no hashes),
+ * When ensureRole creates a lightweight Customer stub (name + phone; a non-empty phone is
+ * normalized with phoneHash/phoneEncrypted, an empty one stays '' with no hashes),
  * a subsequent /customers create for the same person must UPGRADE the stub
  * (update in place) rather than create a second Customer row on the same
  * contactId. The upgrade must populate full PII-encrypted fields.
@@ -593,6 +603,7 @@ describe('CustomersService.create — stub-upgrade guard (P4)', () => {
     process.env.PII_HASH_SALT = 'b'.repeat(32);
 
     const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
       customer: {
         // findFirst returns null by default (no stub) — individual tests override.
         findFirst: jest.fn().mockResolvedValue(null),
@@ -643,6 +654,9 @@ describe('CustomersService.create — stub-upgrade guard (P4)', () => {
     ...overrides,
   }) as unknown as Parameters<CustomersService['create']>[0];
 
+  const stubOnly = async (args: { where?: { contactId?: string } }) =>
+    args?.where?.contactId ? { id: 'stub-existing-id' } : null;
+
   it('creates a new Customer row when no stub exists for the resolved contactId', async () => {
     // tx.customer.findFirst returns null → no stub
     await service.create(baseDto());
@@ -654,8 +668,9 @@ describe('CustomersService.create — stub-upgrade guard (P4)', () => {
   });
 
   it('upgrades the stub (update in place) when a Customer row already exists for that contactId', async () => {
-    // Simulate a pre-existing stub created by ensureRole
-    prisma._tx.customer.findFirst.mockResolvedValue({ id: 'stub-existing-id' });
+    // Simulate a pre-existing stub created by ensureRole — เฉพาะคำถามหา stub (contactId);
+    // ตรวจเบอร์ซ้ำที่ย้ายเข้ามาในทรานแซกชัน (ล็อกเบอร์ 2026-09-17) ต้องไม่เจอใคร
+    prisma._tx.customer.findFirst.mockImplementation(stubOnly);
 
     await service.create(baseDto());
 
@@ -669,7 +684,7 @@ describe('CustomersService.create — stub-upgrade guard (P4)', () => {
   });
 
   it('populates PII-encrypted fields on the stub upgrade path', async () => {
-    prisma._tx.customer.findFirst.mockResolvedValue({ id: 'stub-existing-id' });
+    prisma._tx.customer.findFirst.mockImplementation(stubOnly);
 
     await service.create(baseDto());
 

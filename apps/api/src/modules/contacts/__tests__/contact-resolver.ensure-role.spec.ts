@@ -2,6 +2,12 @@ import { Test } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ContactResolverService } from '../contact-resolver.service';
+import { CustomerPiiService } from '../../customers/customer-pii.service';
+import { hashPII } from '../../../utils/pii.util';
+import { decryptPII } from '../../../utils/crypto.util';
+
+const PII_KEY = 'd'.repeat(64);
+const PII_SALT = 'ensure-role-spec-salt-0123456789abcdef';
 
 describe('ContactResolverService.ensureRole', () => {
   let svc: ContactResolverService;
@@ -124,6 +130,82 @@ describe('ContactResolverService.ensureRole', () => {
       contactId: 'c5', role: 'CUSTOMER', customerId: 'cus5', provisioned: true,
     });
     expect(tx.supplier.create).not.toHaveBeenCalled();
+  });
+
+  describe('CUSTOMER stub ที่มีเบอร์ — normalize + hash + เข้ารหัส', () => {
+    const saved = { key: process.env.PII_ENCRYPTION_KEY, salt: process.env.PII_HASH_SALT };
+    beforeEach(() => {
+      process.env.PII_ENCRYPTION_KEY = PII_KEY;
+      process.env.PII_HASH_SALT = PII_SALT;
+    });
+    afterEach(() => {
+      if (saved.key === undefined) delete process.env.PII_ENCRYPTION_KEY;
+      else process.env.PII_ENCRYPTION_KEY = saved.key;
+      if (saved.salt === undefined) delete process.env.PII_HASH_SALT;
+      else process.env.PII_HASH_SALT = saved.salt;
+    });
+
+    it('เขียน phone ที่ normalize แล้ว + phoneHash + phoneEncrypted และไม่ล็อกเบอร์', async () => {
+      const lockTx = { ...tx, $executeRaw: jest.fn(), $executeRawUnsafe: jest.fn() };
+      lockTx.contact.findFirst.mockResolvedValue({
+        id: 'c9', name: 'Seller', phone: '081-234 5678', roles: ['TRADE_IN_SELLER'],
+      });
+      lockTx.customer.findFirst.mockResolvedValue(null);
+      lockTx.customer.create.mockResolvedValue({ id: 'cus9' });
+
+      const result = await svc.ensureRole(lockTx as never, 'c9', 'CUSTOMER');
+
+      const data = lockTx.customer.create.mock.calls[0][0].data;
+      expect(data.name).toBe('Seller');
+      expect(data.contactId).toBe('c9');
+      expect(data.phone).toBe('0812345678');
+      expect(data.phoneHash).toBe(hashPII('0812345678', PII_SALT));
+      expect(decryptPII(data.phoneEncrypted, PII_KEY)).toBe('0812345678');
+      expect(lockTx.$executeRaw).not.toHaveBeenCalled();
+      expect(lockTx.$executeRawUnsafe).not.toHaveBeenCalled();
+      expect(result.customerId).toBe('cus9');
+    });
+
+    it('ใช้ CustomerPiiService ที่ฉีดมา', async () => {
+      const pii = {
+        encryptCustomerFields: jest.fn().mockReturnValue({ phoneHash: 'H', phoneEncrypted: 'E' }),
+      };
+      const injected = new ContactResolverService({} as never, pii as unknown as CustomerPiiService);
+      tx.contact.findFirst.mockResolvedValue({
+        id: 'c10', name: 'Seller', phone: '+66812345678', roles: ['CUSTOMER'],
+      });
+      tx.customer.findFirst.mockResolvedValue(null);
+      tx.customer.create.mockResolvedValue({ id: 'cus10' });
+
+      await injected.ensureRole(tx as never, 'c10', 'CUSTOMER');
+
+      expect(pii.encryptCustomerFields).toHaveBeenCalledWith({ phone: '0812345678' });
+      expect(tx.customer.create).toHaveBeenCalledWith({
+        data: {
+          name: 'Seller', phone: '0812345678', phoneHash: 'H', phoneEncrypted: 'E', contactId: 'c10',
+        },
+        select: { id: true },
+      });
+    });
+  });
+
+  it('เบอร์ที่มีแต่ช่องว่าง/ขีด → เขียน \'\' ไม่ต้องใช้กุญแจ', async () => {
+    const saved = process.env.PII_ENCRYPTION_KEY;
+    delete process.env.PII_ENCRYPTION_KEY;
+    try {
+      tx.contact.findFirst.mockResolvedValue({
+        id: 'c11', name: 'Blank', phone: ' - ', roles: ['CUSTOMER'],
+      });
+      tx.customer.findFirst.mockResolvedValue(null);
+      tx.customer.create.mockResolvedValue({ id: 'cus11' });
+      await svc.ensureRole(tx as never, 'c11', 'CUSTOMER');
+      expect(tx.customer.create).toHaveBeenCalledWith({
+        data: { name: 'Blank', phone: '', contactId: 'c11' },
+        select: { id: true },
+      });
+    } finally {
+      if (saved !== undefined) process.env.PII_ENCRYPTION_KEY = saved;
+    }
   });
 
   it('returns the existing customer id without creating (idempotent)', async () => {

@@ -41,6 +41,10 @@ export NODE_ENV=test
 # services directly, so pin the same zone — on a UTC runner the local-time schedule dates would sit
 # 7 hours off the Bangkok quote schedule (CI run 34628863038).
 export TZ=Asia/Bangkok
+# customer stub จาก ContactResolverService.ensureRole (trade-in accept) เข้ารหัส + hash เบอร์แล้ว ⇒ ต้องมีกุญแจ PII
+# เหมือน e2e-tests.yml (key = hex 64 ตัว, salt ≥ 32) — ค่าทดสอบเท่านั้น
+export PII_ENCRYPTION_KEY=e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0e2e0
+export PII_HASH_SALT=e2e-pii-hash-salt-32-chars-minimum-ci
 if ! ./node_modules/.bin/prisma migrate deploy --schema apps/api/prisma/schema.prisma >"$CREDIT_PG_ROOT/migrate.log" 2>&1; then
   tail -60 "$CREDIT_PG_ROOT/migrate.log"
   exit 1

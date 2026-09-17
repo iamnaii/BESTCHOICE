@@ -68,6 +68,72 @@ pool starvation ⇒ และ `log()` **กลืน error ทิ้ง** ⇒ au
 อีกเหตุผลหนึ่ง: แถว audit ต้องบรรยาย "งานที่ commit แล้ว" — เขียนใน tx ที่อาจ rollback
 = phantom audit row.
 
+## ล็อกเบอร์หลักของลูกค้า (คำตัดสินเจ้าของ 2026-09-17)
+
+ลูกค้าที่ยังไม่ถูกลบสองคน**ห้าม**ถือเบอร์หลัก (`customers.phone` / `phone_hash`) เดียวกัน แต่**ไม่มี
+unique index** (ข้อมูลเก่ามีคู่ซ้ำ — แก้ทีละคู่ด้วยมือ) ⇒ กันด้วย advisory lock ระดับแอป:
+`lockCustomerPhone(tx, pii, phone)` (`apps/api/src/modules/customers/customer-phone-lock.ts`) —
+`pg_advisory_xact_lock(hashtext('customer-phone:' + hash(normalizeThaiPhone(phone))))`.
+
+ผู้เขียนเบอร์หลัก**ที่อยู่ในรายการนี้**ทำ **ล็อก → ตรวจซ้ำบน tx ตัวเดียวกัน → เขียน** ในทรานแซกชันเดียว:
+`CustomerWriteService.create` / `update` (เฉพาะตอนตั้งเบอร์) / `fillPlaceholderContact`,
+`CaptureLeadTool.run` (บอทขาย), `SkipTracingService.updateContact` (ติดตามหนี้ — เบอร์ของคนอื่น =
+เก็บเป็นเบอร์สำรองของลูกหนี้ ไม่บล็อก) และ `MigrationService.importCustomers` (ต่อแถว — เบอร์ของคนอื่น =
+แถวนั้นล้ม `field: 'phone'`) — ล็อกเดียวกันทั้งฝั่งพนักงานและบอท (ล็อกแค่ฝั่งเดียวกันได้แค่บอทชนบอท).
+ทุกทางข้างบน normalize เบอร์ (`normalizeThaiPhone`) และ dual-write `phone_hash` + `phone_encrypted`.
+พิสูจน์ด้วยสองคอนเนกชันจริงที่ `customer-phone-lock.race.db.spec.ts` (ลำดับคิวล็อกกำหนดได้ — ตรวจทางแพ้ทั้งสองฝั่ง).
+`create()` เรียงเป็น ล็อกเบอร์ → `contact:code` (`findOrCreateByNaturalKey`) → หา stub ของ contact →
+ตรวจเบอร์/อีเมลซ้ำ**โดยยกเว้น stub นั้น** → เขียน/upgrade stub — stub ของ contact เดียวกัน (จับคู่ด้วยเลขบัตรเท่านั้น)
+คือคนเดียวกัน ถ้านับเป็นเบอร์ซ้ำจะได้ 409 แทนการ upgrade และเติมเลขบัตรให้ stub ไม่ได้อีกเลย.
+
+**ผู้เขียน `customers.phone` ที่ยังไม่ล็อก (รู้ตัว — ห้ามอ่านรายการข้างบนว่า "ทุกทาง"):**
+- `ContactResolverService.ensureRole` stub CUSTOMER — **ไม่ล็อกถาวรโดยตั้งใจ** (กติกาข้อ 4 ด้านล่าง) และไม่บล็อก ⇒
+  ตอนรับซื้อ (trade-in accept) ยังสร้าง stub ที่เบอร์ซ้ำกับลูกค้าที่มีอยู่ได้ — เจ้าของยอมรับ แก้ทีละคู่ด้วยมือ.
+  แต่ stub **เขียนเบอร์ normalize + `phone_hash` + `phone_encrypted` แล้ว** (เบอร์ว่างคง `''`) ⇒ dedup
+  ฝั่งพนักงานมองเห็น stub และ `create()` upgrade stub ของ contact เดียวกันแทนการตอบ 409 —
+  **เฉพาะเมื่อ contact จับคู่ได้ด้วยเลขบัตร** — และตั้งแต่ Part E (2026-09-17) **การรับเครื่องเทิร์นผูกเลขบัตรให้ในเคสปกติ** (ข้อยกเว้นท้ายย่อหน้า):
+  `TradeInLifecycleService.accept` (ทาง EXCHANGE ที่สร้างลูกค้าเครดิต — ผู้เรียก `ensureRole(…, 'CUSTOMER')`
+  สำหรับผู้ขายรับซื้อมีจุดเดียว) เรียก `keySellerContactByNationalId` **ก่อน** `ensureRole` เมื่อ contact ผู้ขาย
+  ไม่มีเลขบัตร: มี contact อื่นถือ hash เลขบัตรที่ตรวจแล้ว → ย้ายรายการไปผูก contact นั้น
+  (`findOrCreateByNaturalKey` เติมบทบาท TRADE_IN_SELLER) และใช้ลูกค้าของมัน ไม่สร้าง stub ใหม่
+  — **ยกเว้น** contact นั้นยังไม่มีลูกค้าแต่ contact keyless มี stub อยู่แล้ว (จากการรับครั้งก่อน Part E) → คงรายการไว้ที่
+  contact เดิมและใช้ stub เดิม (ไม่งั้นได้ stub ตัวที่สอง เครดิตเทิร์นคนเดียวแตกสองแถว) · ไม่มี → เติม
+  `nationalIdHash` ให้ contact เดิมใน tx เดียวกัน (`updateMany … nationalIdHash: null`; P2002/0 แถว = 409 ให้ลองใหม่)
+  ⇒ พนักงานสร้างลูกค้าคนเดียวกัน (เลขบัตร X, เบอร์ P) ได้ contact เดิมแล้ว upgrade stub ไม่ใช่ 409 ทางตัน
+  (พิสูจน์บน DB จริง `trade-in-lifecycle.accept-contact.db.spec.ts`). contact ไม่มีเลขบัตรเดิมไม่ถูกลบ ·
+  **ทางตันที่ยังเหลือ (รู้ตัว):** (1) เคสยกเว้นข้างบน — stub อยู่บน contact ไม่มีเลขบัตร (CLI รายงานเป็นคู่ชน
+  `existingCustomerKeyed = false`) (2) มี**ลูกค้าที่ถูกลบ**ถือเลขบัตร X — `create()` เข้าทางชุบลูกค้าที่ถูกลบ
+  (`reviveGhostId`) ซึ่ง**ไม่ยกเว้น stub** ในการตรวจเบอร์ ⇒ ยัง 409 เบอร์ของ stub · ทั้งสองไม่มีเมนูแก้
+  (ฟอร์มแก้ลูกค้าล้างเบอร์/แก้เลขบัตรไม่ได้) ⇒ ส่งเจ้าของตัดสินรายคู่. การแก้ใน `create()` ต้องตัดสินก่อนว่าจะชุบ
+  ลูกค้าที่ถูกลบหรือ upgrade stub (ชุบทั้งคู่ = ลูกค้าสองแถวบน contact เดียว) ·
+  ไม่ล็อกเบอร์ · ไม่มี salt = ข้ามเหมือนเดิม · ทาง BUYBACK ไม่สร้าง stub จึงไม่ผูก (ไม่มีทางตัน).
+  **แถวเก่า**: CLI `repair:customer-phones` ขั้นผูก contact — contact ไม่มีเลขบัตร + มี stub → เลขบัตรจากรายการ
+  รับซื้อ**ที่ตรวจบัตรแล้ว** (หลายเลข = `contactsAmbiguous` ไม่แตะ) → เติม hash เมื่อไม่มี contact อื่นถือเลขนั้น
+  ไม่งั้นรายงานคู่ `contactIdConflicts` ให้แก้มือ (runbook ขั้น ⑥ข — ไม่รวมอัตโนมัติ; คู่ที่ contact ถือเลขยังไม่มีลูกค้า
+  แก้ด้วยเมนู OWNER "รวมผู้ติดต่อซ้ำ" `POST /contacts/merge` ซึ่งเขียน audit `CONTACTS_MERGED` หลัง commit).
+- `update()` ตรวจซ้ำ + ล็อก **เฉพาะเมื่อเบอร์ normalize แล้วต่างจากเบอร์เดิม** — ฟอร์มแก้ไขส่งเบอร์เดิมทุกครั้ง
+  ถ้าตรวจซ้ำทุกครั้ง ลูกค้าที่มีคู่ซ้ำอยู่แล้ว (เช่น stub ข้างบน) จะแก้ข้อมูลอะไรไม่ได้เลย.
+- นิยาม "เจ้าของเบอร์" ของ skip-tracing และการนำเข้า = `findLivePhoneOwner` (`customer-phone-owner.ts`) ตัวเดียว —
+  ข้ามแถวที่ `phone_hash` ตรงแต่ plaintext (normalize แล้ว) เป็นเบอร์อื่น (hash ค้างจากบั๊ก skip-tracing เดิม).
+  การตรวจซ้ำฝั่งพนักงานยังหาด้วย `phone_hash` อย่างเดียว (แถว hash ค้างยังบล็อกจนกว่าจะรัน CLI ซ่อม `repair:customer-phones` —
+  `apps/api/src/cli/repair-customer-phones.cli.ts`, runbook `docs/runbooks/2026-09-17-customer-phone-repair-runbook.md`;
+  CLI ถือ plaintext เป็นความจริง ล็อกเบอร์ทีละแถวตามกติกาข้างล่าง ไม่บล็อก/ไม่รวม/ไม่ลบ — รายงานกลุ่มเบอร์ซ้ำเป็น id ให้แก้มือ).
+  skip-tracing ที่ส่งเบอร์เดิมมาจะซ่อม hash/ciphertext/รูปแบบของแถวลูกหนี้เองในทรานแซกชันเดียวกัน.
+
+**กติกาลำดับล็อก (ห้ามฝ่า — ฝ่าแล้วได้ deadlock `40P01` เป็น 500 ดิบ):**
+1. ล็อกเบอร์เป็น **คำสั่งแรก** ของทรานแซกชัน
+2. **หนึ่งเบอร์ต่อทรานแซกชัน** (ถ้าวันหน้าต้องล็อกหลายเบอร์ ต้องเรียงคีย์ก่อน)
+3. **ห้ามล็อกหลัง** `lockCreditCustomer` / ล็อกแถวลูกค้า (`FOR NO KEY UPDATE`, UPDATE แถวลูกค้า)
+   หรือหลัง advisory lock `contact:code` (`ContactResolverService.nextContactCode`) — `create()` ล็อกเบอร์
+   ก่อนแล้วค่อยถึง `contact:code` ถ้ามีทางไหนกลับลำดับ = คู่ deadlock
+4. **ห้ามใส่ใน `ContactResolverService.ensureRole`** — ตอนรับซื้อ (trade-in accept) ถือ `contact:code`
+   อยู่แล้วเมื่อถึง ensureRole
+5. งานที่เปิดทรานแซกชันของตัวเอง (`absorbPlaceholder`, `ensureForRoom`) ต้องอยู่**นอก**ทรานแซกชันที่ถือล็อกเบอร์
+
+ล็อกช่วยเฉพาะผู้เขียนที่เรียกมัน และการตรวจซ้ำฝั่งพนักงานหาด้วย `phone_hash` อย่างเดียว ⇒ แถวที่มีเบอร์
+plaintext แต่ไม่มี hash (หรือรูปแบบเบอร์ไม่ normalize) ยังมองไม่เห็น — ต้องซ่อมข้อมูลเก่าแยกต่างหาก.
+อีเมลยังไม่มีล็อก (นอกขอบเขต).
+
 ## สถานะสินค้า & IMEI (Phase 5)
 
 > **ทำไมอยู่ในไฟล์นี้ ไม่ใช่ `accounting.md`:** ทั้งหัวข้อเป็นเรื่อง **ความถูกต้องของ

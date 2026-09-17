@@ -30,6 +30,8 @@ function makeHarness() {
   // ห้อง: ตัวอ่านก่อนทรานแซกชันกับตัวอ่านซ้ำในทรานแซกชัน (ก่อนผูก) ใช้ mock เดียวกัน
   const roomFind = jest.fn();
   const txClient = {
+    // ล็อกเบอร์หลัก (lockCustomerPhone) — คำสั่งแรกของทรานแซกชันเมื่อมีเบอร์ที่ใช้ได้
+    $executeRaw: jest.fn().mockResolvedValue(1),
     customer,
     chatRoom: { findUnique: roomFind, update: jest.fn() },
     auditLog: { create: jest.fn() },
@@ -48,6 +50,7 @@ function makeHarness() {
     user: { findFirst: jest.fn().mockResolvedValue({ id: 'system-user-1' }) },
   };
   const pii = {
+    hash: jest.fn((value: string) => `h:${value}`),
     searchByHash: jest.fn((_field: string, value: string) => ({ phoneHash: `h:${value}` })),
     encryptCustomerFields: jest.fn((input: Record<string, string>) => {
       const out: Record<string, string> = {};
@@ -125,6 +128,29 @@ describe('CaptureLeadTool', () => {
   beforeEach(async () => {
     h = makeHarness();
     tool = await buildTool(h);
+  });
+
+  it('ล็อกเบอร์หลักเป็นคำสั่งแรกของทรานแซกชัน (คีย์ = hash ของเบอร์ที่จัดรูปแล้ว) ก่อนตรวจเจ้าของ/สร้าง', async () => {
+    h.prisma.chatRoom.findUnique.mockResolvedValue(room());
+    await tool.run({ customerName: 'พี่เอ', phone: '089-999 9999', downAmount: 2900, roomId: 'room-1' });
+
+    expect(h.txClient.$executeRaw).toHaveBeenCalledTimes(1);
+    const [sql, key] = h.txClient.$executeRaw.mock.calls[0];
+    expect((sql as string[]).join('?')).toBe('SELECT pg_advisory_xact_lock(hashtext(?))');
+    expect(key).toBe('customer-phone:h:0899999999');
+    const lockAt = h.txClient.$executeRaw.mock.invocationCallOrder[0];
+    expect(lockAt).toBeGreaterThan(h.prisma.$transaction.mock.invocationCallOrder[0]);
+    // findMany ครั้งสุดท้าย = ตรวจเจ้าของซ้ำในทรานแซกชัน (ครั้งแรกคือตอนวางแผน นอกทรานแซกชัน)
+    const recheckAt = h.customer.findMany.mock.invocationCallOrder.at(-1)!;
+    expect(lockAt).toBeLessThan(recheckAt);
+    expect(lockAt).toBeLessThan(h.customer.create.mock.invocationCallOrder[0]);
+  });
+
+  it('ไม่มีเบอร์ที่ใช้ได้ → ไม่ล็อก', async () => {
+    h.prisma.chatRoom.findUnique.mockResolvedValue(room());
+    await tool.run({ customerName: 'พี่เอ', phone: 'ไม่มี', downAmount: 2900, roomId: 'room-1' });
+    expect(h.prisma.$transaction).toHaveBeenCalled();
+    expect(h.txClient.$executeRaw).not.toHaveBeenCalled();
   });
 
   it('creates new Customer + handoff + returns lead-only result for first-time lead', async () => {

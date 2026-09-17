@@ -187,6 +187,31 @@ describe('ContactsService.merge', () => {
       expect.objectContaining({ action: 'CONTACTS_MERGED', userId: 'owner-1' }),
     );
   });
+  it('writes the CONTACTS_MERGED audit only after the transaction commits (never inside it)', async () => {
+    prisma._tx.contact.findMany.mockResolvedValue([
+      { id: 'p1', roles: [], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
+      { id: 'd1', roles: [], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
+    ]);
+    let auditedInsideTx = false;
+    prisma.$transaction.mockImplementationOnce(async (cb: any) => {
+      const r = await cb(prisma._tx);
+      auditedInsideTx = audit.log.mock.calls.length > 0;
+      return r;
+    });
+    const out = await svc.merge({ primaryId: 'p1', duplicateId: 'd1' });
+    expect(auditedInsideTx).toBe(false);
+    expect(audit.log).toHaveBeenCalledTimes(1);
+    expect(out).toEqual({ primaryId: 'p1', mergedRoles: [] });
+  });
+  it('writes no audit when the transaction fails', async () => {
+    prisma._tx.contact.findMany.mockResolvedValue([
+      { id: 'p1', roles: [], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
+      { id: 'd1', roles: [], taxId: null, nationalIdHash: null, peakContactCode: null, phone: null, email: null },
+    ]);
+    prisma._tx.contact.update.mockRejectedValueOnce(new Error('boom'));
+    await expect(svc.merge({ primaryId: 'p1', duplicateId: 'd1' })).rejects.toThrow('boom');
+    expect(audit.log).not.toHaveBeenCalled();
+  });
   it('does not overwrite identity fields already set on primary', async () => {
     prisma._tx.contact.findMany.mockResolvedValue([
       { id: 'p1', roles: [], taxId: '9999', nationalIdHash: null, peakContactCode: null, phone: '08', email: null },

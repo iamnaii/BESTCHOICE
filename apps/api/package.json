@@ -79,6 +79,8 @@
     "backfill:encrypt-pii:help": "echo 'Usage: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> PII_ENCRYPTION_KEY=<64hex> PII_HASH_SALT=<>=32chars> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE] [PDPA_BACKFILL_BATCH_SIZE=100] npm run backfill:encrypt-pii'",
     "backfill:user-companies": "node dist/src/cli/backfill-user-companies.cli.js",
     "backfill:user-companies:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> npm --prefix apps/api run backfill:user-companies. To write: CONFIRM_BACKFILL=YES_I_AM_SURE EXPECTED_DB_NAME=<db> [ALLOW_PROD_BACKFILL=YES_I_AM_SURE NODE_ENV=production] npm --prefix apps/api run backfill:user-companies — เติม accessible_companies/primary_company ตาม role ให้แถวที่ยังว่าง (ข้าม system user)'",
+    "repair:customer-phones": "node dist/src/cli/repair-customer-phones.cli.js",
+    "repair:customer-phones:help": "echo 'Dry-run default: EXPECTED_DB_NAME=<db> PII_ENCRYPTION_KEY=<64hex> PII_HASH_SALT=<>=32chars> npm --prefix apps/api run repair:customer-phones (build first). To write: + APPLY=YES_I_AM_SURE [ALLOW_PROD_REPAIR=YES_I_AM_SURE NODE_ENV=production] [REPAIR_BATCH_SIZE=200] — normalize เบอร์ลูกค้า + เติม phone_hash/phone_encrypted + รายงานกลุ่มเบอร์ซ้ำ (id เท่านั้น) · runbook docs/runbooks/2026-09-17-customer-phone-repair-runbook.md'",
     "survey:pricing-templates": "tsx scripts/survey-pricing-templates.ts",
     "backfill:product-prices": "tsx scripts/backfill-product-prices.ts",
     "backfill:product-prices:help": "echo 'DRY-RUN default. เขียนจริง: APPLY=true DATABASE_URL=<db> npm --prefix apps/api run backfill:product-prices — ต้องรันก่อนเปิด readiness filter ใน deploy เดียวกัน'",

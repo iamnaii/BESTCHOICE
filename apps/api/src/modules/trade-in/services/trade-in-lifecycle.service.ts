@@ -390,6 +390,65 @@ export class TradeInLifecycleService {
     }
   }
 
+  /**
+   * ผูก contact ผู้ขายที่ยังไม่มีเลขบัตร (national_id_hash ว่าง) ด้วยเลขบัตรที่ตรวจแล้วตอน accept
+   * — ตัวตนที่แข็งที่สุดที่ natural-key policy ใช้อยู่แล้ว (Part E 2026-09-17)
+   *  - มี contact อื่น (ยังไม่ถูกลบ) ถือเลขบัตรนี้ = คนเดิมมีอยู่แล้ว → ใช้ contact นั้น
+   *    (findOrCreateByNaturalKey เติมบทบาท TRADE_IN_SELLER ให้แบบ idempotent) · contact keyless เดิมไม่ถูกแตะ
+   *  - ไม่มี → เติม hash ให้ contact เดิมในทรานแซกชันเดียวกัน (มีคนชิงเติมพร้อมกัน = 409 ให้ลองใหม่)
+   * contact มีเลขบัตรแล้ว / ไม่มี salt (hash = null) → คืน id เดิม ไม่เปลี่ยนอะไร
+   * ไม่ล็อกเบอร์ (กติกาลำดับล็อก — accept ไม่ถือล็อกเบอร์)
+   */
+  private async keySellerContactByNationalId(
+    tx: Prisma.TransactionClient,
+    contactId: string,
+    evidence: Pick<TradeInEvidence, 'sellerName' | 'sellerPhone' | 'sellerIdCardNumber'>,
+  ): Promise<string> {
+    const contact = await tx.contact.findFirst({
+      where: { id: contactId, deletedAt: null },
+      select: { id: true, nationalIdHash: true },
+    });
+    if (!contact || contact.nationalIdHash) return contactId;
+    const hash = this.pii.hash(normalizeNationalId(evidence.sellerIdCardNumber!));
+    if (!hash) return contactId;
+    const holder = await tx.contact.findFirst({
+      where: { nationalIdHash: hash, deletedAt: null, id: { not: contactId } },
+      select: { id: true },
+    });
+    if (holder) {
+      // contact ที่ถือเลขยังไม่มีลูกค้า แต่ contact keyless มีลูกค้า (stub จากการรับครั้งก่อน) อยู่แล้ว
+      // → คงรายการไว้ที่ contact เดิม (พฤติกรรมเดิม) ไม่งั้น ensureRole สร้าง stub ตัวที่สองบน holder
+      // แล้วเครดิตเทิร์นของคนเดียวกันแตกสองแถว · คู่นี้ CLI repair รายงานเป็น contactIdConflicts ให้แก้มือ
+      const [holderCustomer, keylessCustomer] = await Promise.all([
+        tx.customer.findFirst({ where: { contactId: holder.id, deletedAt: null }, select: { id: true } }),
+        tx.customer.findFirst({ where: { contactId, deletedAt: null }, select: { id: true } }),
+      ]);
+      if (!holderCustomer && keylessCustomer) return contactId;
+      const existing = await this.contactResolver.findOrCreateByNaturalKey(tx, {
+        name: evidence.sellerName!, phone: evidence.sellerPhone!, taxId: null,
+        nationalIdHash: hash, role: 'TRADE_IN_SELLER',
+      });
+      return existing.id;
+    }
+    let count: number;
+    try {
+      ({ count } = await tx.contact.updateMany({
+        where: { id: contactId, deletedAt: null, nationalIdHash: null },
+        data: { nationalIdHash: hash },
+      }));
+    } catch (e) {
+      // partial unique contacts_national_id_hash_active_key — อีกทรานแซกชันเติมเลขบัตรเดียวกันก่อน
+      if ((e as { code?: string })?.code === 'P2002') {
+        throw new ConflictException('ผู้ติดต่อนี้ถูกสร้างพร้อมกัน กรุณาลองใหม่อีกครั้ง');
+      }
+      throw e;
+    }
+    if (count === 0) {
+      throw new ConflictException('ผู้ติดต่อนี้ถูกแก้ไขพร้อมกัน กรุณาลองใหม่อีกครั้ง');
+    }
+    return contactId;
+  }
+
   private assertSellerDeclaration(dto: Pick<AcceptTradeInDto, 'declarationVersion' | 'sellerSignatureBase64'>) {
     if (dto.declarationVersion !== TRADE_IN_DECLARATION_VERSION) {
       throw new BadRequestException(TRADE_IN_DECLARATION_VERSION_ERROR);
@@ -473,6 +532,10 @@ export class TradeInLifecycleService {
             nationalIdHash: this.pii.hash(normalizeNationalId(evidence.sellerIdCardNumber!)), role: 'TRADE_IN_SELLER',
           });
           sellerContactId = contact.id;
+        } else {
+          // contact ที่สร้างตอนเปิดรายการโดยไม่มีเลขบัตร (keyless) — ผูกด้วยเลขบัตรที่เพิ่งตรวจก่อนสร้าง stub
+          // ไม่งั้นพนักงานสร้างลูกค้าคนเดียวกันด้วยเลขบัตรจะได้ contact ใหม่แล้วชน 409 เบอร์ของ stub โดยไม่มีทางไปต่อ
+          sellerContactId = await this.keySellerContactByNationalId(tx, sellerContactId, evidence);
         }
         creditCustomerId = (await this.contactResolver.ensureRole(tx, sellerContactId, 'CUSTOMER')).customerId!;
         await this.assertEvidence(evidence, sellerContactId, creditCustomerId, tx);
@@ -504,9 +567,11 @@ export class TradeInLifecycleService {
       // test-data fence auto-mark (spec 2026-09-05 §5.3): เครื่องที่รับซื้อจากลูกค้าทดสอบต้องมี
       // marker ติดตัวตั้งแต่เกิด ไม่งั้นคลังจะมองเป็นของจริง
       // (IMEI ไม่แตะ — เป็นของจริงของเครื่องทดสอบ)
-      const seller = tradeIn.customerId
+      // ใช้ลูกค้าเครดิตที่ resolve แล้ว (ทาง EXCHANGE ที่ tradeIn.customerId ว่างอาจผูกไปลูกค้าที่มีอยู่ ซึ่งอาจเป็นลูกค้าทดสอบ)
+      const sellerCustomerId = creditCustomerId ?? tradeIn.customerId;
+      const seller = sellerCustomerId
         ? await tx.customer.findUnique({
-            where: { id: tradeIn.customerId },
+            where: { id: sellerCustomerId },
             select: TEST_SIDE_CUSTOMER_SELECT,
           })
         : null;

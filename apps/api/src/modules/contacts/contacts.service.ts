@@ -82,7 +82,10 @@ export class ContactsService {
       throw new BadRequestException('ไม่สามารถรวมผู้ติดต่อกับตัวเองได้');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    // AuditService.log เปิด root $transaction เอง — เรียกใน tx นี้ = nested root-tx (P2028 แล้ว log กลืน error
+    // = audit หายเงียบ) และแถวจะบรรยายงานที่อาจ rollback ⇒ เก็บ payload ไว้ เขียนหลัง commit
+    // (.claude/rules/database.md หัวข้อ AuditLog)
+    const { result, auditEntry } = await this.prisma.$transaction(async (tx) => {
       const contacts = await tx.contact.findMany({
         where: { id: { in: [primaryId, duplicateId] }, deletedAt: null },
       });
@@ -135,7 +138,7 @@ export class ContactsService {
         data: { roles: { set: unionRoles }, ...carry },
       });
 
-      await this.audit.log({
+      const entry = {
         userId: actor?.userId,
         action: 'CONTACTS_MERGED',
         entity: 'contact',
@@ -158,10 +161,12 @@ export class ContactsService {
         newValue: { duplicateId, mergedRoles: unionRoles, carried: carry },
         ipAddress: actor?.ipAddress,
         userAgent: actor?.userAgent,
-      });
+      };
 
-      return { primaryId, mergedRoles: unionRoles };
+      return { result: { primaryId, mergedRoles: unionRoles }, auditEntry: entry };
     });
+    await this.audit.log(auditEntry);
+    return result;
   }
 
   async ensureRole(

@@ -7,6 +7,7 @@ import { encryptPII } from '../../../utils/crypto.util';
 import { hashPII, encryptReferencesJson } from '../../../utils/pii.util';
 import { normalizeThaiPhone } from '../../../utils/thai-phone.util';
 import { CustomerPiiService } from '../customer-pii.service';
+import { lockCustomerPhone } from '../customer-phone-lock';
 import { ContactResolverService } from '../../contacts/contact-resolver.service';
 import { BOUGHT_WHERE, CustomerQueryService } from './customer-query.service';
 import { AuditService } from '../../audit/audit.service';
@@ -34,6 +35,25 @@ const EXISTING_CUSTOMER_REF_SELECT = {
 } satisfies Prisma.CustomerSelect;
 
 type ExistingCustomerRow = Prisma.CustomerGetPayload<{ select: typeof EXISTING_CUSTOMER_REF_SELECT }>;
+
+/** client ที่ใช้ตรวจซ้ำ — ทรานแซกชันที่ถือล็อกเบอร์ (หรือ root เมื่อไม่มีการเขียนเบอร์หลัก) */
+type Db = PrismaService | Prisma.TransactionClient;
+
+/**
+ * P2002 ของตาราง customers → 409 ภาษาไทยตามช่องที่ชนจริง (`meta.target` เป็นรายชื่อคอลัมน์/ฟิลด์ หรือชื่อ index)
+ * รูป body เดียวกับ 409 ของด่านตรวจซ้ำ (`message` + `field`) — ไม่มี existingCustomer เพราะไม่รู้ว่าชนแถวไหน
+ */
+export function uniqueClashToConflict(err: Prisma.PrismaClientKnownRequestError): ConflictException {
+  const rawTarget = (err.meta as { target?: unknown } | undefined)?.target;
+  const target = (Array.isArray(rawTarget) ? rawTarget.join(',') : String(rawTarget ?? '')).toLowerCase();
+  if (target.includes('phone')) {
+    return new ConflictException({ message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว', field: 'phone' });
+  }
+  if (target.includes('national')) {
+    return new ConflictException({ message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว', field: 'nationalId' });
+  }
+  return new ConflictException('ข้อมูลลูกค้าซ้ำกับรายการที่มีอยู่แล้ว กรุณาตรวจสอบแล้วลองใหม่');
+}
 
 /**
  * Write-path slice of the decomposed CustomersService.
@@ -197,8 +217,12 @@ export class CustomerWriteService {
    * ไม่บอกว่าชนที่ช่องไหน เว็บจึงเดาเป็น "เบอร์ซ้ำ" เสมอและเสนอปุ่ม "แก้เบอร์" ให้กับการชนเลขบัตร
    * (ประตูตัน: แก้เบอร์เท่าไรก็ยังชนเลขบัตรเดิม). เพิ่มคีย์อย่างเดียว ไม่แตะ message/existingCustomer
    * A7: existingCustomer มาจาก toExistingCustomerRef ทุกเส้นทาง (id/name เดิม + createdAt/activeContracts + purchased)
+   *
+   * ล็อกเบอร์หลัก (2026-09-17): `db` = ทรานแซกชันที่เพิ่ง `lockCustomerPhone` ของเบอร์นี้ — การตรวจต้องวิ่งบน
+   * คอนเนกชันที่ถือล็อก ไม่ใช่ root (toExistingCustomerRef ยังใช้ root ได้ เพราะวิ่งเฉพาะตอนชนแล้ว)
    */
   private async assertContactNotDuplicate(
+    db: Db,
     phone: string | null,
     email: string | null,
     ignoreCustomerId?: string,
@@ -206,7 +230,7 @@ export class CustomerWriteService {
     if (phone) {
       // Phase 5: use phoneHash for lookup (faster, correct post-Phase 6 drop of plaintext)
       const phoneHash = hashPII(phone, this.hashSalt);
-      const dupPhone = await this.prisma.customer.findFirst({
+      const dupPhone = await db.customer.findFirst({
         where: {
           phoneHash,
           deletedAt: null,
@@ -228,7 +252,7 @@ export class CustomerWriteService {
       // normalization at write-time; the dedup lookup uses Prisma's
       // `mode: 'insensitive'` too, for belt-and-braces against any legacy
       // row that slipped through un-normalized.
-      const dupEmail = await this.prisma.customer.findFirst({
+      const dupEmail = await db.customer.findFirst({
         where: {
           email: { equals: email, mode: 'insensitive' },
           deletedAt: null,
@@ -261,19 +285,21 @@ export class CustomerWriteService {
    * `assertContactNotDuplicate`) ⇒ ต้องใช้ `findFirst` เพราะ `findUnique` รับเฉพาะ where บนคอลัมน์ unique ล้วน ไม่ใส่เงื่อนไขอื่นปนได้.
    * A7: ทั้งสองทาง select ชุดเดียวกัน (EXISTING_CUSTOMER_REF_SELECT + deletedAt) — `findUnique` ก่อน A7 ไม่มี
    * select (ดึงทั้งแถวรวมคอลัมน์ PII) ทั้งที่ caller ใช้แค่ id/deletedAt
+   * `db` — fillPlaceholderContact ส่งทรานแซกชันที่ถือล็อกเบอร์ (ตรวจบนคอนเนกชันเดียวกับที่เขียน) · create() ส่ง root
    */
   private async assertNationalIdNotDuplicate(
+    db: Db,
     nationalId: string,
     ignoreCustomerId?: string,
   ): Promise<{ id: string; deletedAt: Date | null } | null> {
     const nidHash = hashPII(nationalId, this.hashSalt);
     const select = { ...EXISTING_CUSTOMER_REF_SELECT, deletedAt: true } satisfies Prisma.CustomerSelect;
     const existing = ignoreCustomerId
-      ? await this.prisma.customer.findFirst({
+      ? await db.customer.findFirst({
           where: { nationalIdHash: nidHash, id: { not: ignoreCustomerId } },
           select,
         })
-      : await this.prisma.customer.findUnique({
+      : await db.customer.findUnique({
           where: { nationalIdHash: nidHash },
           select,
         });
@@ -301,7 +327,7 @@ export class CustomerWriteService {
       // Phase 5: use nationalIdHash for dedup (faster + correct post-Phase 6 drop of plaintext)
       // Fix round 1 (Ruling R34) — shared with fillPlaceholderContact via assertNationalIdNotDuplicate
       // (no ignoreCustomerId here → still findUnique() on nationalIdHash; since A7 it also carries a select).
-      const existing = await this.assertNationalIdNotDuplicate(normalizedNid);
+      const existing = await this.assertNationalIdNotDuplicate(this.prisma, normalizedNid);
       // Soft-deleted ghost with the same nationalIdHash would otherwise break
       // the create() below with a P2002 on the unique column. Treat it as the
       // same person being re-registered: revive + update with the new form data
@@ -313,9 +339,6 @@ export class CustomerWriteService {
         throw new ConflictException('เลขบัตรประชาชนไม่ถูกต้อง');
       }
     }
-
-    // T3-C9: reject duplicate phone / email at application level.
-    await this.assertContactNotDuplicate(normalizedPhone, normalizedEmail);
 
     const dataPlaintext = {
       ...dto,
@@ -350,6 +373,11 @@ export class CustomerWriteService {
     // directory, not the PII vault).
     const nationalIdHash = (piiEncrypted.nationalIdHash as string | null | undefined) ?? null;
     return this.prisma.$transaction(async (tx) => {
+      // ล็อกเบอร์หลักเป็นคำสั่งแรกของทรานแซกชัน (ก่อน contact:code ใน findOrCreateByNaturalKey) —
+      // กติกาลำดับล็อก .claude/rules/database.md
+      await lockCustomerPhone(tx, this.piiService, normalizedPhone);
+      // T3-C9: reject duplicate phone / email at application level — บนคอนเนกชันที่ถือล็อก
+      await this.assertContactNotDuplicate(tx, normalizedPhone, normalizedEmail);
       const contact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
         name: dto.name,
         taxId: null,
@@ -405,11 +433,10 @@ export class CustomerWriteService {
       dto.phoneSecondary !== undefined ? this.normalizePhone(dto.phoneSecondary) : undefined;
     const normalizedEmail = dto.email !== undefined ? this.normalizeEmail(dto.email) : undefined;
 
-    await this.assertContactNotDuplicate(
-      normalizedPhone ?? null,
-      normalizedEmail ?? null,
-      id,
-    );
+    // ตั้งเบอร์หลักที่ไม่ว่าง → ตรวจซ้ำในทรานแซกชันที่ถือล็อกเบอร์ (ด้านล่าง) · ไม่แตะเบอร์ = ตรวจที่นี่ตามเดิม
+    if (!normalizedPhone) {
+      await this.assertContactNotDuplicate(this.prisma, null, normalizedEmail ?? null, id);
+    }
 
     // Compute final plaintext values for fields being updated
     const finalPhone = normalizedPhone !== undefined ? (normalizedPhone ?? dto.phone) : undefined;
@@ -439,10 +466,15 @@ export class CustomerWriteService {
         ? (dto.references as Prisma.InputJsonValue)
         : undefined,
     };
-    const updated = await this.prisma.customer.update({
-      where: { id },
-      data,
-    });
+    // ตั้งเบอร์หลักที่ไม่ว่าง → ล็อก + ตรวจซ้ำ (ignoreCustomerId) + เขียน ในทรานแซกชันเดียว
+    // ไม่แตะเบอร์ = ทางเดิมไม่มีทรานแซกชัน · journey ยังบันทึกหลัง commit
+    const updated = normalizedPhone
+      ? await this.prisma.$transaction(async (tx) => {
+          await lockCustomerPhone(tx, this.piiService, normalizedPhone);
+          await this.assertContactNotDuplicate(tx, normalizedPhone, normalizedEmail ?? null, id);
+          return tx.customer.update({ where: { id }, data });
+        })
+      : await this.prisma.customer.update({ where: { id }, data });
 
     // CONTACT_ADDED — เบอร์จากว่าง → มีค่า เทียบในโค้ด ไม่เก็บตัวเบอร์ · เปลี่ยนเบอร์ที่มีอยู่แล้วไม่นับ
     // (nationalId ไม่อยู่ใน UpdateCustomerDto ⇒ ทางนี้ได้แค่เบอร์)
@@ -544,37 +576,42 @@ export class CustomerWriteService {
     // เลขที่มีขีด/เว้นวรรคถูกเก็บแบบ normalize เหมือน create() ไม่งั้นค่าที่ไม่ normalize จะมองไม่เห็น
     // จาก nationalIdHash lookup ของทุกจุดอื่นในระบบ
     const nationalId = dto.nationalId ? this.normalizeNationalId(dto.nationalId) : undefined;
-    await this.assertContactNotDuplicate(phone, null, id);
-    if (nationalId) {
-      // ไม่สนใจ soft-deleted ghost ที่ helper คืนมา (ต่างจาก create() ที่ revive) — ปุ่มเติมเบอร์
-      // ผู้สนใจไม่ใช่หน้าที่ชุบชีวิตลูกค้าเก่า แค่กันซ้ำกับคนที่ยังไม่ถูกลบ; ghost ที่หลุดผ่านด่านนี้
-      // (เช่น race) ให้ P2002 ตอน update ด้านล่างจับแทน
-      await this.assertNationalIdNotDuplicate(nationalId, id);
-    }
 
     const piiEncrypted = this.buildPiiEncryptedFields({ phone, ...(nationalId ? { nationalId } : {}) });
     const name = dto.name?.trim() || current.name;
     let updated: { id: string; name: string; phone: string | null };
     try {
-      updated = await this.prisma.customer.update({
-        where: { id },
-        data: {
-          phone,
-          name,
-          ...(dto.prefix !== undefined ? { prefix: dto.prefix || null } : {}),
-          ...(dto.nickname !== undefined ? { nickname: dto.nickname || null } : {}),
-          ...(dto.facebookName !== undefined ? { facebookName: dto.facebookName || null } : {}),
-          ...(nationalId ? { nationalId } : {}),
-          ...(piiEncrypted as Partial<Prisma.CustomerUpdateInput>),
-        },
-        select: { id: true, name: true, phone: true },
+      // ล็อกเบอร์ → ตรวจเบอร์ซ้ำ → ตรวจเลขบัตรซ้ำ → เขียน ในทรานแซกชันเดียว (ล็อกเบอร์ 2026-09-17)
+      updated = await this.prisma.$transaction(async (tx) => {
+        await lockCustomerPhone(tx, this.piiService, phone);
+        await this.assertContactNotDuplicate(tx, phone, null, id);
+        if (nationalId) {
+          // ไม่สนใจ soft-deleted ghost ที่ helper คืนมา (ต่างจาก create() ที่ revive) — ปุ่มเติมเบอร์
+          // ผู้สนใจไม่ใช่หน้าที่ชุบชีวิตลูกค้าเก่า แค่กันซ้ำกับคนที่ยังไม่ถูกลบ; ghost ที่หลุดผ่านด่านนี้
+          // ให้ P2002 ตอน update ด้านล่างจับแทน
+          await this.assertNationalIdNotDuplicate(tx, nationalId, id);
+        }
+        return tx.customer.update({
+          where: { id },
+          data: {
+            phone,
+            name,
+            ...(dto.prefix !== undefined ? { prefix: dto.prefix || null } : {}),
+            ...(dto.nickname !== undefined ? { nickname: dto.nickname || null } : {}),
+            ...(dto.facebookName !== undefined ? { facebookName: dto.facebookName || null } : {}),
+            ...(nationalId ? { nationalId } : {}),
+            ...(piiEncrypted as Partial<Prisma.CustomerUpdateInput>),
+          },
+          select: { id: true, name: true, phone: true },
+        });
       });
     } catch (err) {
       // Fix round 1 (Ruling R34) — เผื่อแถว soft-deleted ghost ที่ยังถือ nationalIdHash เดิมอยู่
-      // หลุดผ่าน assertNationalIdNotDuplicate ข้างบน (race) แล้วชน @unique ตรง ๆ ตอน update
-      // (pattern เดียวกับ stock-adjustments.service.ts) — แปลเป็นข้อความไทย ไม่ปล่อย P2002 ดิบเป็น 500
+      // ชน @unique ตรง ๆ ตอน update (pattern เดียวกับ stock-adjustments.service.ts) — แปลเป็นข้อความไทย
+      // ไม่ปล่อย P2002 ดิบเป็น 500 · จับนอก $transaction เพราะ Postgres ยกเลิกทรานแซกชันทันทีที่คำสั่งพัง
+      // · แยกช่องตาม meta.target — เดิมทุก P2002 ถูกเรียกว่า "เลขบัตรซ้ำ" แม้ชนที่ช่องอื่น
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new ConflictException({ message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว', field: 'nationalId' });
+        throw uniqueClashToConflict(err);
       }
       throw err;
     }

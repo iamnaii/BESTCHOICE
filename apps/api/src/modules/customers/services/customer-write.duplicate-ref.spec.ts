@@ -34,6 +34,8 @@ describe('CustomerWriteService — existingCustomer ใน 409 ข้อมู�
   let prevKey: string | undefined;
   let prisma: {
     customer: { findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock; create: jest.Mock; count: jest.Mock };
+    $transaction: jest.Mock;
+    $executeRaw: jest.Mock;
   };
   let service: CustomerWriteService;
 
@@ -59,6 +61,9 @@ describe('CustomerWriteService — existingCustomer ใน 409 ข้อมู�
         create: jest.fn(),
         count: jest.fn().mockResolvedValue(1),
       },
+      // ตรวจซ้ำเบอร์/อีเมลวิ่งในทรานแซกชันที่ถือล็อกเบอร์ — tx = mock ตัวเดียวกัน
+      $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
+      $executeRaw: jest.fn().mockResolvedValue(1),
     };
     service = new CustomerWriteService(prisma as never, {} as never, {} as never);
   });
@@ -158,6 +163,7 @@ describe('CustomerWriteService — existingCustomer ใน 409 ข้อมู�
   it('แถวที่เจอถูก soft-delete (ghost) → create() ไม่ 409 แต่ revive ตามเดิม', async () => {
     prisma.customer.findUnique.mockResolvedValue({ ...existingRow, deletedAt: new Date('2026-09-01') });
     const tx = {
+      $executeRaw: jest.fn().mockResolvedValue(1),
       customer: {
         update: jest.fn().mockResolvedValue({ id: 'c-old' }),
         findFirst: jest.fn(),

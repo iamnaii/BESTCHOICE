@@ -20,9 +20,9 @@ const CENTRAL_BRANCH_KEY = 'shop_bot_central_branch_id';
  * ถือเบอร์นั้นเป็นเบอร์หลักแค่คนเดียว
  *
  * ทำให้การแข่งไม่ขึ้นกับจังหวะเวลา: คอนเนกชัน "holder" ถือล็อกเบอร์ไว้ในทรานแซกชันที่เปิดค้าง
- * → ปล่อยผู้เขียนทั้งสองออกวิ่ง → รอจนเห็นทั้งสองรอล็อกนี้อยู่ใน pg_locks (ยืนยันว่าล็อกทำงานจริง)
- * → ค่อยปล่อย holder · ด่านนัดพบก่อน INSERT (ด้านล่าง) ทำให้โค้ดที่ไม่ล็อกแดงทุกครั้ง
- * (ถ้าโค้ดไม่ล็อก ผู้เขียนจะวิ่งจบเองโดยไม่รอ — การรอ pg_locks จึงแข่งกับ "ทั้งสองจบแล้ว")
+ * → ปล่อยผู้เขียนออกวิ่งทีละราย รอจนรายนั้นเข้าคิวใน pg_locks ก่อนเริ่มรายถัดไป (ยืนยันว่าล็อกทำงานจริง
+ * และกำหนดลำดับได้ — Postgres ให้ล็อกตามลำดับคิว) → ค่อยปล่อย holder · ด่านนัดพบก่อน INSERT (ด้านล่าง)
+ * ทำให้โค้ดที่ไม่ล็อกแดงทุกครั้ง (ถ้าโค้ดไม่ล็อก ผู้เขียนไม่เข้าคิวเลย มาถึงด่านแทน → เริ่มรายถัดไปทันที)
  *
  * รัน: DATABASE_URL=<ฐานทดสอบที่ apply migration แล้ว> npx jest <ไฟล์นี้> --runInBand
  */
@@ -145,8 +145,10 @@ describe('ล็อกเบอร์หลักของลูกค้า —
   }
 
   /**
-   * ถือล็อกเบอร์ไว้ → เริ่มผู้เขียน → รอจนทั้งสองรอล็อก (หรือจบไปเองเพราะไม่ล็อก) → ปล่อย
-   * คืนผล allSettled ของผู้เขียน
+   * ถือล็อกเบอร์ไว้ → เริ่มผู้เขียนทีละราย ตามลำดับใน `writers` (รอให้รายก่อนหน้าเข้าคิวล็อกก่อนเริ่มรายถัดไป)
+   * → ปล่อย · Postgres ให้ล็อก exclusive ตามลำดับคิว ⇒ ผู้เข้าคิวก่อนได้ล็อกก่อนเสมอ (ลำดับผลแพ้ชนะกำหนดได้)
+   * ถ้าโค้ดไม่ล็อก ผู้เขียนจะไม่เข้าคิวเลย — รอถึง deadline หรือจนงานจบ แล้ว `bothWaited = false`
+   * คืนผล allSettled ของผู้เขียน (ลำดับเดียวกับ `writers`)
    */
   async function raceUnderHeldLock(
     phone: string,
@@ -169,21 +171,29 @@ describe('ล็อกเบอร์หลักของลูกค้า —
     await lockTaken;
 
     arrivals = [];
-    const runs = Promise.allSettled(writers.map((w) => w()));
-    let settled = false;
-    void runs.then(() => (settled = true));
-    const deadline = Date.now() + 10_000;
-    let bothWaited = false;
-    while (!settled && Date.now() < deadline) {
-      if ((await waitersFor(key)) >= writers.length) {
-        bothWaited = true;
-        break;
+    const runs: Array<Promise<PromiseSettledResult<unknown>>> = [];
+    let bothWaited = true;
+    for (const [i, writer] of writers.entries()) {
+      const run = Promise.allSettled([writer()]).then(([r]) => r);
+      let settled = false;
+      void run.then(() => (settled = true));
+      runs.push(run);
+      const deadline = Date.now() + 10_000;
+      let queued = false;
+      // arrivals > 0 = รายนี้มาถึงด่านก่อน INSERT โดยไม่เข้าคิวล็อก (โค้ดไม่ล็อก) → เริ่มรายถัดไปทันที
+      // ให้ทั้งสองเจอกันที่ด่าน (แดงแน่นอน) แทนการรอจนรายแรก commit
+      while (!settled && arrivals.length === 0 && Date.now() < deadline) {
+        if ((await waitersFor(key)) >= i + 1) {
+          queued = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 25));
       }
-      await new Promise((r) => setTimeout(r, 25));
+      if (!queued) bothWaited = false;
     }
     release();
     await holder;
-    return { results: await runs, bothWaited };
+    return { results: await Promise.all(runs), bothWaited };
   }
 
   beforeAll(async () => {
@@ -296,12 +306,20 @@ describe('ล็อกเบอร์หลักของลูกค้า —
     expect(await primaryOwners(phone)).toHaveLength(1);
   });
 
-  it('(ข) บอท capture_lead สร้างลูกค้าใหม่แข่งกับพนักงานสร้างลูกค้า เบอร์ใหม่เดียวกัน → เจ้าของเบอร์หลักคนเดียว', async () => {
-    const phone = await freshPhone();
+  /** ห้องแชท FACEBOOK ของสเปคนี้ (มีรหัสผู้ใช้ ⇒ บอทที่แพ้เบอร์ตั้งที่มาเป็น CHAT_FACEBOOK) */
+  async function newRoom(tag: string) {
     const room = await holderDb.chatRoom.create({
-      data: { channel: ChatChannel.FACEBOOK, externalUserId: `phone-lock-race-${stamp}` },
+      data: { channel: ChatChannel.FACEBOOK, externalUserId: `phone-lock-race-${tag}-${stamp}` },
     });
     roomIds.push(room.id);
+    return room;
+  }
+
+  // ลำดับผลแพ้ชนะกำหนดได้: raceUnderHeldLock ปล่อยผู้เขียนเข้าคิวล็อกทีละราย และ Postgres ให้ล็อก exclusive
+  // ตามลำดับคิว ⇒ รายแรกในคิวได้ล็อกก่อน commit ก่อนเสมอ ⇒ ตรวจทางแพ้ของแต่ละฝั่งได้ตรงตัว (A1-3)
+  it('(ข-1) บอทเข้าคิวก่อน → บอทได้เบอร์หลัก · พนักงานได้ 409 field phone ชี้แถวของบอท', async () => {
+    const phone = await freshPhone();
+    const room = await newRoom('bot-first');
     const bot = botTool(dbA);
     const staff = staffService(dbB);
 
@@ -314,15 +332,91 @@ describe('ล็อกเบอร์หลักของลูกค้า —
 
     expect(bothWaited).toBe(true);
     const [botResult, staffResult] = results;
-    // บอทต้องไม่ล้มเพราะเบอร์ซ้ำ — แพ้ = เก็บเบอร์เป็นช่องสำรอง · พนักงานแพ้ = 409 ภาษาไทย
     expect(botResult.status).toBe('fulfilled');
-    if (staffResult.status === 'rejected') {
-      expect(staffResult.reason).toBeInstanceOf(ConflictException);
-      expect((staffResult.reason as ConflictException).getResponse()).toMatchObject({
-        field: 'phone',
-      });
-    }
-    const owners = await primaryOwners(phone);
-    expect(owners).toHaveLength(1);
+    const botId = (botResult as PromiseFulfilledResult<{ customerId: string }>).value.customerId;
+    expect(staffResult.status).toBe('rejected');
+    const err = (staffResult as PromiseRejectedResult).reason;
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as ConflictException).getResponse()).toMatchObject({
+      message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
+      field: 'phone',
+      existingCustomer: expect.objectContaining({ id: botId }),
+    });
+    expect(await primaryOwners(phone)).toEqual([botId]);
+    const botRow = await holderDb.customer.findUniqueOrThrow({ where: { id: botId } });
+    expect(botRow.acquisitionSource).toBe('AI_CHAT');
+  });
+
+  it('(ข-2) พนักงานเข้าคิวก่อน → พนักงานได้เบอร์หลัก · บอทเห็นแถวนั้นใต้ล็อก เก็บเบอร์เป็นเบอร์สำรอง', async () => {
+    const phone = await freshPhone();
+    const room = await newRoom('staff-first');
+    const bot = botTool(dbA);
+    const staff = staffService(dbB);
+
+    const { results, bothWaited } = await raceUnderHeldLock(phone, [
+      () => staff.create({ name: `race staff ${stamp}`, phone } as never),
+      () =>
+        bot.run({ roomId: room.id, customerName: `race bot ${stamp}`, phone, downAmount: 1000 }),
+    ]);
+    await track(phone);
+
+    expect(bothWaited).toBe(true);
+    const [staffResult, botResult] = results;
+    expect(staffResult.status).toBe('fulfilled');
+    expect(botResult.status).toBe('fulfilled');
+    const staffId = (staffResult as PromiseFulfilledResult<{ id: string }>).value.id;
+    const botId = (botResult as PromiseFulfilledResult<{ customerId: string }>).value.customerId;
+    expect(botId).not.toBe(staffId);
+    expect(await primaryOwners(phone)).toEqual([staffId]);
+    // ทาง OWNER_APPEARED ของ createLead: เบอร์ไปช่องสำรอง + ที่มา CHAT_* ของห้อง (เป็นผู้สนใจที่รวมเข้าเจ้าของเบอร์ได้)
+    const botRow = await holderDb.customer.findUniqueOrThrow({ where: { id: botId } });
+    expect(botRow.phone).toBeNull();
+    expect(botRow.phoneHash).toBeNull();
+    expect(botRow.phoneSecondary).toBe(phone);
+    expect(botRow.acquisitionSource).toBe('CHAT_FACEBOOK');
+  });
+  /** เลขบัตรประชาชนไทยสุ่มที่ checksum ถูก (ฐานเทสใช้ร่วมกัน — สุ่มกันชน) */
+  function randomThaiId(): string {
+    const d = [1, ...Array.from({ length: 11 }, () => Math.floor(Math.random() * 10))];
+    const sum = d.reduce((acc, n, i) => acc + n * (13 - i), 0);
+    return d.join('') + String((11 - (sum % 11)) % 10);
+  }
+
+  // A2-1: stub ของ contact เดียวกันที่ถือ phoneHash เดียวกัน (รูปที่ ensureRole จะเขียนหลัง Part C) ต้องถูก upgrade
+  // ไม่ใช่ 409 เบอร์ซ้ำ — ไม่งั้นลงทะเบียนคนนี้ด้วยเลขบัตรไม่ได้อีกเลย
+  it('(ค) stub ของ contact เดียวกันถือเบอร์เดียวกัน → create ด้วยเลขบัตร upgrade stub ไม่ใช่ 409', async () => {
+    const phone = await freshPhone();
+    const nid = randomThaiId();
+    const contact = await holderDb.contact.create({
+      data: {
+        contactCode: `RACE-${stamp}-${Math.floor(Math.random() * 1e6)}`,
+        name: `race stub ${stamp}`,
+        nationalIdHash: hashPII(nid, PII_SALT),
+        phone,
+        roles: ['CUSTOMER'],
+      },
+    });
+    const stub = await holderDb.customer.create({
+      data: {
+        name: `race stub ${stamp}`,
+        phone,
+        phoneHash: hashPII(phone, PII_SALT),
+        contactId: contact.id,
+      },
+    });
+    createdCustomerIds.add(stub.id);
+
+    const result = await staffService(rawB).create({
+      name: `race stub upgraded ${stamp}`,
+      nationalId: nid,
+      phone,
+    } as never);
+    await track(phone);
+
+    expect(result.id).toBe(stub.id);
+    expect(await primaryOwners(phone)).toEqual([stub.id]);
+    const row = await holderDb.customer.findUniqueOrThrow({ where: { id: stub.id } });
+    expect(row.nationalIdHash).toBe(hashPII(nid, PII_SALT));
+    expect(row.contactId).toBe(contact.id);
   });
 });

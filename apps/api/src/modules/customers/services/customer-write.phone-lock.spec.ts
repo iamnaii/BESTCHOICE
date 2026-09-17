@@ -80,27 +80,36 @@ describe('CustomerWriteService — ล็อกเบอร์หลัก', () 
 
   const lockKeyOf = (c: Record<string, any>) => c.$executeRaw.mock.calls[0][1];
 
-  it('create: ล็อกเบอร์ (คีย์ = hash ของเบอร์ที่จัดรูปแล้ว) → ตรวจซ้ำบน tx → contact:code → เขียน', async () => {
+  /** ตอบเฉพาะคำถามตรวจเบอร์ซ้ำ (where มี phoneHash) · คำถามอื่น (หา stub / อีเมล) ได้ null */
+  const onPhoneCheck = (row: unknown) => async (a: any) => (a.where.phoneHash ? row : null);
+  const OLD_ROW = {
+    id: 'c-old',
+    name: 'คนเดิม',
+    createdAt: new Date('2026-09-01T00:00:00Z'),
+    _count: { contracts: 0 },
+  };
+
+  it('create: ล็อกเบอร์ (คีย์ = hash ของเบอร์ที่จัดรูปแล้ว) → contact:code → หา stub → ตรวจซ้ำบน tx → เขียน', async () => {
     await service.create({ name: 'คนใหม่', phone: '081-234 5678' } as never);
     expect(lockKeyOf(tx)).toBe(LOCK_KEY);
     expect(calls).toEqual([
       'root.$transaction',
       'tx.lock',
-      'tx.findFirst', // ตรวจเบอร์ซ้ำ
-      'tx.contact:code',
+      'tx.contact:code', // ล็อก contact:code หลังล็อกเบอร์เสมอ (กติกาลำดับล็อก)
       'tx.findFirst', // หา stub ของ contact
+      'tx.findFirst', // ตรวจเบอร์ซ้ำ
       'tx.create',
     ]);
+    expect(tx.customer.findFirst.mock.calls[0][0].where).toEqual({ contactId: 'contact-1', deletedAt: null });
+    expect(tx.customer.findFirst.mock.calls[1][0].where).toEqual({
+      phoneHash: hashPII(PHONE, SALT),
+      deletedAt: null,
+    });
     expect(root.customer.findFirst).not.toHaveBeenCalled();
   });
 
-  it('create: เบอร์ซ้ำ → 409 เดิม (message/field/existingCustomer) และไม่ไปถึง contact:code/เขียน', async () => {
-    tx.customer.findFirst.mockImplementationOnce(async () => ({
-      id: 'c-old',
-      name: 'คนเดิม',
-      createdAt: new Date('2026-09-01T00:00:00Z'),
-      _count: { contracts: 0 },
-    }));
+  it('create: เบอร์ซ้ำ → 409 เดิม (message/field/existingCustomer) และไม่เขียน · count วิ่งบน tx ไม่ขอคอนเนกชันที่สอง', async () => {
+    tx.customer.findFirst.mockImplementation(onPhoneCheck(OLD_ROW));
     const err = await service.create({ name: 'คนใหม่', phone: PHONE } as never).catch((e) => e);
     expect(err).toBeInstanceOf(ConflictException);
     expect(err.getResponse()).toEqual({
@@ -108,14 +117,48 @@ describe('CustomerWriteService — ล็อกเบอร์หลัก', () 
       field: 'phone',
       existingCustomer: expect.objectContaining({ id: 'c-old', name: 'คนเดิม' }),
     });
-    expect(contactResolver.findOrCreateByNaturalKey).not.toHaveBeenCalled();
+    expect(tx.customer.create).not.toHaveBeenCalled();
+    expect(tx.customer.update).not.toHaveBeenCalled();
+    // A1-2: purchased (count) ต้องวิ่งบนคอนเนกชันที่ถือล็อก ไม่ใช่ root
+    expect(tx.customer.count).toHaveBeenCalledTimes(1);
+    expect(root.customer.count).not.toHaveBeenCalled();
+  });
+
+  it('create: stub ของ contact เดียวกันถือเบอร์เดียวกัน → upgrade stub ไม่ใช่ 409 (ยกเว้น stub จากการตรวจ)', async () => {
+    // ensureRole สร้าง stub บน contact ที่จับคู่ด้วยเลขบัตร — หลัง Part C stub จะมี phoneHash ด้วย
+    tx.customer.findFirst.mockImplementation(async (a: any) => {
+      if (a.where.contactId) return { id: 'stub-1' };
+      // จำลอง DB จริง: stub ถือ phoneHash เดียวกัน → เจอเฉพาะเมื่อไม่ได้ยกเว้น stub-1
+      if (a.where.phoneHash) return a.where.id?.not === 'stub-1' ? null : { ...OLD_ROW, id: 'stub-1' };
+      return null;
+    });
+    const result = await service.create({ name: 'คนเดิมตัวจริง', phone: PHONE } as never);
+    expect(result).toEqual(expect.objectContaining({ id: 'stub-1' }));
+    expect(tx.customer.findFirst.mock.calls[1][0].where).toEqual({
+      phoneHash: hashPII(PHONE, SALT),
+      deletedAt: null,
+      id: { not: 'stub-1' },
+    });
+    expect(tx.customer.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'stub-1' } }));
+    expect(tx.customer.create).not.toHaveBeenCalled();
+  });
+
+  it('create: มี stub แต่เบอร์เป็นของลูกค้าคนอื่น → ยัง 409 เบอร์ ไม่ upgrade', async () => {
+    tx.customer.findFirst.mockImplementation(async (a: any) => {
+      if (a.where.contactId) return { id: 'stub-1' };
+      return a.where.phoneHash ? OLD_ROW : null;
+    });
+    const err = await service.create({ name: 'คนใหม่', phone: PHONE } as never).catch((e) => e);
+    expect(err.getResponse()).toEqual(expect.objectContaining({ field: 'phone' }));
+    expect(tx.customer.update).not.toHaveBeenCalled();
     expect(tx.customer.create).not.toHaveBeenCalled();
   });
 
   it('create: ไม่มีเบอร์ → ไม่ล็อก แต่ยังตรวจอีเมลซ้ำบน tx', async () => {
     await service.create({ name: 'walk-in', email: 'A@x.com' } as never);
     expect(tx.$executeRaw).not.toHaveBeenCalled();
-    expect(tx.customer.findFirst.mock.calls[0][0].where.email).toEqual({
+    const emailCheck = tx.customer.findFirst.mock.calls.find((c: any[]) => c[0].where.email);
+    expect(emailCheck[0].where.email).toEqual({
       equals: 'a@x.com',
       mode: 'insensitive',
     });

@@ -65,8 +65,14 @@ describe('CustomerWriteService — existingCustomer ใน 409 ข้อมู�
       $transaction: jest.fn(async (cb: (tx: unknown) => unknown) => cb(prisma)),
       $executeRaw: jest.fn().mockResolvedValue(1),
     };
-    service = new CustomerWriteService(prisma as never, {} as never, {} as never);
+    // create() หา contact + stub ก่อนตรวจเบอร์ซ้ำ (stub ของคนเดียวกันถูกยกเว้นจากการตรวจ)
+    const contactResolver = { findOrCreateByNaturalKey: jest.fn().mockResolvedValue({ id: 'contact-1' }) };
+    service = new CustomerWriteService(prisma as never, contactResolver as never, {} as never);
   });
+
+  /** ตอบเฉพาะคำถามตรวจเบอร์ซ้ำ (phoneHash) — คำถามหา stub ด้วย contactId ได้ null */
+  const phoneDupOnly = (row: Record<string, unknown>) =>
+    async (args: { where: { phoneHash?: unknown } }) => (args.where.phoneHash ? row : null);
 
   async function conflictOf(run: () => Promise<unknown>): Promise<Record<string, unknown>> {
     let error: unknown;
@@ -80,7 +86,7 @@ describe('CustomerWriteService — existingCustomer ใน 409 ข้อมู�
   }
 
   it('เบอร์ซ้ำตอนสร้าง → existingCustomer = {id, name, createdAt ISO, activeContracts} ไม่มีเบอร์/เลขบัตรของคนเดิม', async () => {
-    prisma.customer.findFirst.mockResolvedValue({ ...existingRow });
+    prisma.customer.findFirst.mockImplementation(phoneDupOnly({ ...existingRow }));
     const body = await conflictOf(() => service.create({ name: 'คนใหม่', phone: PHONE } as never));
     expect(body).toEqual({ message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว', existingCustomer: expectedRef, field: 'phone' });
     expect(prisma.customer.findFirst).toHaveBeenCalledWith(
@@ -91,7 +97,7 @@ describe('CustomerWriteService — existingCustomer ใน 409 ข้อมู�
   });
 
   it('purchased ใช้ BOUGHT_WHERE ตัวเดียวกับแท็บลูกค้า (ไม่มีสูตรที่สอง) · นับเฉพาะคนเดิมคนนั้น', async () => {
-    prisma.customer.findFirst.mockResolvedValue({ ...existingRow });
+    prisma.customer.findFirst.mockImplementation(phoneDupOnly({ ...existingRow }));
     await conflictOf(() => service.create({ name: 'คนใหม่', phone: PHONE } as never));
     expect(prisma.customer.count).toHaveBeenCalledTimes(1);
     const where = prisma.customer.count.mock.calls[0][0].where;
@@ -100,7 +106,7 @@ describe('CustomerWriteService — existingCustomer ใน 409 ข้อมู�
   });
 
   it('คนเดิมมีเบอร์แต่ยังไม่เคยซื้อ (ผู้สนใจ) → purchased: false', async () => {
-    prisma.customer.findFirst.mockResolvedValue({ ...existingRow, _count: { contracts: 0 } });
+    prisma.customer.findFirst.mockImplementation(phoneDupOnly({ ...existingRow, _count: { contracts: 0 } }));
     prisma.customer.count.mockResolvedValue(0);
     const body = await conflictOf(() => service.create({ name: 'คนใหม่', phone: PHONE } as never));
     expect(body.existingCustomer).toEqual({ ...expectedRef, activeContracts: 0, purchased: false });

@@ -195,9 +195,11 @@ export class CustomerWriteService {
    * `purchased` = คนเดิม "เป็นลูกค้าแล้ว" ตามนิยามเดียวกับแท็บลูกค้า (`view=customers`) —
    * ใช้ BOUGHT_WHERE ตัวเดียวกับรายการลูกค้า (ห้ามเขียนสูตรที่สอง) · pattern เดียวกับ
    * journey-summary.service.ts (`count` + `AND: [{ id }, BOUGHT_WHERE]`) · ยิงเฉพาะตอนชนจริง (ทาง 409)
+   * `db` = client ตัวเดียวกับที่ตรวจซ้ำ — ทาง 409 ในทรานแซกชันที่ถือล็อกเบอร์ต้องไม่ขอคอนเนกชันที่สองจาก pool
+   * ระหว่างถือล็อก (pool เต็ม = รอจนทรานแซกชันหมดเวลา → P2028 500 แทน 409 ไทย)
    */
-  private async toExistingCustomerRef(row: ExistingCustomerRow) {
-    const purchased = (await this.prisma.customer.count({ where: { AND: [{ id: row.id }, BOUGHT_WHERE] } })) > 0;
+  private async toExistingCustomerRef(db: Db, row: ExistingCustomerRow) {
+    const purchased = (await db.customer.count({ where: { AND: [{ id: row.id }, BOUGHT_WHERE] } })) > 0;
     return {
       id: row.id,
       name: row.name,
@@ -219,7 +221,7 @@ export class CustomerWriteService {
    * A7: existingCustomer มาจาก toExistingCustomerRef ทุกเส้นทาง (id/name เดิม + createdAt/activeContracts + purchased)
    *
    * ล็อกเบอร์หลัก (2026-09-17): `db` = ทรานแซกชันที่เพิ่ง `lockCustomerPhone` ของเบอร์นี้ — การตรวจต้องวิ่งบน
-   * คอนเนกชันที่ถือล็อก ไม่ใช่ root (toExistingCustomerRef ยังใช้ root ได้ เพราะวิ่งเฉพาะตอนชนแล้ว)
+   * คอนเนกชันที่ถือล็อก ไม่ใช่ root (toExistingCustomerRef ก็ใช้ `db` ตัวเดียวกัน)
    */
   private async assertContactNotDuplicate(
     db: Db,
@@ -241,7 +243,7 @@ export class CustomerWriteService {
       if (dupPhone) {
         throw new ConflictException({
           message: 'ลูกค้าที่มีเบอร์โทรนี้มีอยู่แล้ว',
-          existingCustomer: await this.toExistingCustomerRef(dupPhone),
+          existingCustomer: await this.toExistingCustomerRef(db, dupPhone),
           field: 'phone',
         });
       }
@@ -263,7 +265,7 @@ export class CustomerWriteService {
       if (dupEmail) {
         throw new ConflictException({
           message: 'ลูกค้าที่มีอีเมลนี้มีอยู่แล้ว',
-          existingCustomer: await this.toExistingCustomerRef(dupEmail),
+          existingCustomer: await this.toExistingCustomerRef(db, dupEmail),
           field: 'email',
         });
       }
@@ -306,7 +308,7 @@ export class CustomerWriteService {
     if (existing && !existing.deletedAt) {
       throw new ConflictException({
         message: 'ลูกค้าที่มีเลขบัตรประชาชนนี้มีอยู่แล้ว',
-        existingCustomer: await this.toExistingCustomerRef(existing),
+        existingCustomer: await this.toExistingCustomerRef(db, existing),
         field: 'nationalId',
       });
     }
@@ -376,8 +378,6 @@ export class CustomerWriteService {
       // ล็อกเบอร์หลักเป็นคำสั่งแรกของทรานแซกชัน (ก่อน contact:code ใน findOrCreateByNaturalKey) —
       // กติกาลำดับล็อก .claude/rules/database.md
       await lockCustomerPhone(tx, this.piiService, normalizedPhone);
-      // T3-C9: reject duplicate phone / email at application level — บนคอนเนกชันที่ถือล็อก
-      await this.assertContactNotDuplicate(tx, normalizedPhone, normalizedEmail);
       const contact = await this.contactResolver.findOrCreateByNaturalKey(tx, {
         name: dto.name,
         taxId: null,
@@ -388,6 +388,24 @@ export class CustomerWriteService {
       const contactConnect: Prisma.ContactCreateNestedOneWithoutCustomersInput = {
         connect: { id: contact.id },
       };
+      // Stub-upgrade guard: ensureRole creates a lightweight Customer stub
+      // (name + phone mirrored from the contact, no nationalIdHash) that the
+      // nationalId dedup above cannot see. If a proper /customers create is
+      // called later for the same person, we must UPGRADE the stub rather than
+      // create a second Customer row on the same contact (Customer.contactId
+      // is not @unique, so Prisma would silently allow a second row).
+      // หา stub ก่อนตรวจเบอร์ซ้ำ แล้วยกเว้นแถวนั้นจากการตรวจ — stub ที่มี phoneHash ของเบอร์เดียวกัน
+      // คือคนเดียวกัน (contact จับคู่ด้วยเลขบัตรเท่านั้น ไม่เคยจับด้วยเบอร์ — findOrCreateByNaturalKey
+      // ⇒ ไม่มีเลขบัตร = contact ใหม่เสมอ = ไม่มี stub ให้ยกเว้น) ไม่งั้นได้ 409 แทนการ upgrade
+      // และเติมเลขบัตรให้ stub ไม่ได้อีกเลย (nationalId ไม่อยู่ใน UpdateCustomerDto)
+      const existingStub = reviveGhostId
+        ? null
+        : await tx.customer.findFirst({
+            where: { contactId: contact.id, deletedAt: null },
+            select: { id: true },
+          });
+      // T3-C9: reject duplicate phone / email at application level — บนคอนเนกชันที่ถือล็อก
+      await this.assertContactNotDuplicate(tx, normalizedPhone, normalizedEmail, existingStub?.id);
       if (reviveGhostId) {
         // Revive path: clear deletedAt and overwrite the row with the new
         // form submission. The admin is creating a customer whose nationalId
@@ -398,16 +416,6 @@ export class CustomerWriteService {
           data: { ...(data as Prisma.CustomerUpdateInput), contact: contactConnect, deletedAt: null },
         });
       }
-      // Stub-upgrade guard: ensureRole creates a lightweight Customer stub
-      // (phone:'', no phoneHash/nationalIdHash) that is invisible to the
-      // normalId/phone dedup checks above. If a proper /customers create is
-      // called later for the same person, we must UPGRADE the stub rather than
-      // create a second Customer row on the same contact (Customer.contactId
-      // is not @unique, so Prisma would silently allow a second row).
-      const existingStub = await tx.customer.findFirst({
-        where: { contactId: contact.id, deletedAt: null },
-        select: { id: true },
-      });
       if (existingStub) {
         // Upgrade the stub: overwrite with full create data (including all
         // PII-encrypted fields) — same logic as a regular create, just on

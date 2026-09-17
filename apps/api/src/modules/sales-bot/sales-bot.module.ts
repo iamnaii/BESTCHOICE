@@ -10,6 +10,9 @@ import { SearchKnowledgeBaseTool } from './tools/search-knowledge-base.tool';
 import { RecommendDevicesTool } from './tools/recommend-devices.tool';
 import { CompareDevicesTool } from './tools/compare-devices.tool';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
+import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
+import { CustomerPiiModule } from '../customers/customer-pii.module';
+import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
 import { ClaudeProvider } from './providers/claude.provider';
 import { GeminiProvider } from './providers/gemini.provider';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
@@ -19,6 +22,12 @@ import { LlmProviderRegistry } from './providers/llm-provider.registry';
     // For CHAT_GATEWAY_TOKEN — HandoffToHumanTool + CaptureLeadTool emit
     // chat:room:update so UnifiedInboxPage refreshes the handoff badge live.
     forwardRef(() => StaffChatModule),
+    // CaptureLeadTool (R25): CustomerMergeService + ChatProspectService (รวม/ผูกผู้สนใจด้วยเบอร์),
+    // CustomerPiiService (hash/encrypt เบอร์), JourneyEntryWriter (CONTACT_ADDED via CAPTURE_LEAD)
+    // ทั้งสามโมดูลไม่ import กลับมาถึง SalesBotModule — ไม่มีวงจร
+    ChatProspectsModule,
+    CustomerPiiModule,
+    CustomerJourneyModule,
   ],
   providers: [
     SalesBotService,

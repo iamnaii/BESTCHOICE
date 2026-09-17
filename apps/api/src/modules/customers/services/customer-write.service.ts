@@ -5,6 +5,7 @@ import { CreateCustomerDto, UpdateCustomerDto } from '../dto/customer.dto';
 import { FillProspectContactDto } from '../dto/fill-prospect-contact.dto';
 import { encryptPII } from '../../../utils/crypto.util';
 import { hashPII, encryptReferencesJson } from '../../../utils/pii.util';
+import { normalizeThaiPhone } from '../../../utils/thai-phone.util';
 import { CustomerPiiService } from '../customer-pii.service';
 import { ContactResolverService } from '../../contacts/contact-resolver.service';
 import { BOUGHT_WHERE, CustomerQueryService } from './customer-query.service';
@@ -152,18 +153,10 @@ export class CustomerWriteService {
    * T3-C9: Normalize a Thai mobile phone for application-level dedup. We do
    * NOT add a DB `@unique` constraint because existing data contains legacy
    * duplicates we can't auto-resolve; instead we block NEW writes from
-   * creating more. Strips spaces, dashes, parentheses, and optional +66
-   * country prefix, always returning a leading zero. Examples:
-   *   "081-234 5678"   → "0812345678"
-   *   "+66812345678"   → "0812345678"
-   *   "(081) 234 5678" → "0812345678"
+   * creating more. กติกาอยู่ที่ normalizeThaiPhone (ใช้ร่วมกับบอทขาย capture_lead)
    */
   private normalizePhone(raw: string | null | undefined): string | null {
-    if (!raw) return null;
-    const trimmed = raw.replace(/[\s()-]/g, '');
-    if (trimmed.startsWith('+66')) return '0' + trimmed.slice(3);
-    if (trimmed.startsWith('66') && trimmed.length === 11) return '0' + trimmed.slice(2);
-    return trimmed;
+    return normalizeThaiPhone(raw);
   }
 
   /**

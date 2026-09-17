@@ -42,6 +42,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { CHAT_SOURCE_PREFIX } from '@installment/shared';
 import { AuditService } from '../modules/audit/audit.service';
+import { BLOCKING_COUNT_SELECT } from '../modules/chat-prospects/customer-blocking-relations';
 import { lockCustomerPhone } from '../modules/customers/customer-phone-lock';
 import type { PrismaService } from '../prisma/prisma.service';
 import { decryptPII, encryptPII, isEncrypted } from '../utils/crypto.util';
@@ -101,8 +102,20 @@ export interface RowPlan {
   invalid: boolean;
   invalidSecondary: boolean;
   decryptFailed: boolean;
+  /** จำนวนคอลัมน์ ciphertext ที่ถอดไม่ออก (หน่วยเดียวกับ ciphertextCount — ตัวตั้งของด่านกุญแจ) */
+  decryptFailedColumns: number;
   /** ciphertext ถอดได้ตรงกับเบอร์ในแถว แต่ hash ไม่ตรงทั้งรูปแบบเดิมและรูปแบบใหม่ = สัญญาณ salt ผิด */
   saltSuspect: boolean;
+  /**
+   * `phone_hash` เก็บ plaintext ของเบอร์ (ผู้เขียนรุ่นเก่า fallback `salt ? hash(v) : v` ตอนไม่มี salt)
+   * = PII รั่วในคอลัมน์ hash — ซ่อมเป็น STALE ตามปกติ แต่ **ไม่นับเป็นสัญญาณ salt ผิด**
+   */
+  hashPlaintextLeak: boolean;
+  /**
+   * เบอร์บนหน้าจอจะเปลี่ยนหลัง APPLY: หน้าจอถอดจาก `phone_encrypted` ก่อน (decryptCustomerFields)
+   * และ ciphertext นั้นถอดได้เป็น "อีกเบอร์" (ไม่ใช่แค่รูปแบบต่าง) ของเบอร์ใน `phone`
+   */
+  displayChanged: boolean;
   /** ciphertext ที่อยู่ในรูปแบบเข้ารหัส (ใช้เป็นตัวหารของด่านกุญแจ) */
   ciphertextCount: number;
   /** ciphertext ตรงกับเบอร์ในแถวและมี hash (ตัวหารของด่าน salt) */
@@ -135,7 +148,10 @@ export function planPhoneRepair(row: RepairRow, crypto: PhoneCrypto): RowPlan {
   let primary: PrimaryPlan | null = null;
   let secondary: SecondaryPlan | null = null;
   let decryptFailed = false;
+  let decryptFailedColumns = 0;
   let saltSuspect = false;
+  let hashPlaintextLeak = false;
+  let displayChanged = false;
   let consistentWithHash = false;
   let ciphertextCount = 0;
   let groupKey: string | null = null;
@@ -147,7 +163,9 @@ export function planPhoneRepair(row: RepairRow, crypto: PhoneCrypto): RowPlan {
     const to = normalizeThaiPhone(raw) ?? '';
     const cipher = checkCiphertext(row.phoneEncrypted, to, crypto);
     if (cipher.encrypted) ciphertextCount++;
+    if (cipher.decryptFailed) decryptFailedColumns++;
     decryptFailed ||= cipher.decryptFailed;
+    if (cipher.plain !== null && (normalizeThaiPhone(cipher.plain) ?? '') !== to) displayChanged = true;
     let hashFix: FixKind;
     if (to === '') {
       hashFix = isBlank(row.phoneHash) ? null : 'STALE';
@@ -155,9 +173,11 @@ export function planPhoneRepair(row: RepairRow, crypto: PhoneCrypto): RowPlan {
       const target = crypto.hash(to);
       groupKey = target;
       hashFix = isBlank(row.phoneHash) ? 'FILLED' : row.phoneHash === target ? null : 'STALE';
+      hashPlaintextLeak = !isBlank(row.phoneHash) && (row.phoneHash === raw || row.phoneHash === to);
       if (cipher.plain === raw && !isBlank(row.phoneHash)) {
         consistentWithHash = true;
-        saltSuspect = row.phoneHash !== target && row.phoneHash !== crypto.hash(raw);
+        saltSuspect =
+          !hashPlaintextLeak && row.phoneHash !== target && row.phoneHash !== crypto.hash(raw);
       }
     }
     primary = { to, formatChanged: raw !== to, hashFix, encryptFix: cipher.fix };
@@ -169,6 +189,7 @@ export function planPhoneRepair(row: RepairRow, crypto: PhoneCrypto): RowPlan {
     const to = normalizeThaiPhone(raw) ?? '';
     const cipher = checkCiphertext(row.phoneSecondaryEncrypted, to, crypto);
     if (cipher.encrypted) ciphertextCount++;
+    if (cipher.decryptFailed) decryptFailedColumns++;
     decryptFailed ||= cipher.decryptFailed;
     secondary = { to, formatChanged: raw !== to, encryptFix: cipher.fix };
     invalidSecondary = !VALID_PHONE.test(to);
@@ -185,7 +206,10 @@ export function planPhoneRepair(row: RepairRow, crypto: PhoneCrypto): RowPlan {
     invalid,
     invalidSecondary,
     decryptFailed,
+    decryptFailedColumns,
     saltSuspect,
+    hashPlaintextLeak,
+    displayChanged,
     ciphertextCount,
     consistentWithHash,
     groupKey,
@@ -201,7 +225,9 @@ function secondaryChanged(s: SecondaryPlan | null): s is SecondaryPlan {
 }
 
 export interface KeySafetyStats {
-  decryptFailed: number;
+  /** จำนวน **คอลัมน์** ciphertext ที่ถอดไม่ออก — หน่วยเดียวกับ withCiphertext (ไม่ใช่จำนวนแถว) */
+  decryptFailedColumns: number;
+  /** จำนวนคอลัมน์ ciphertext ทั้งหมด (เบอร์หลัก + เบอร์สำรอง) */
   withCiphertext: number;
   saltSuspect: number;
   consistentWithHash: number;
@@ -216,9 +242,9 @@ export function assessKeySafety(s: KeySafetyStats): string[] {
   const reasons: string[] = [];
   const tripped = (count: number, base: number) =>
     count > 0 && (count >= Math.max(5, Math.ceil(base * 0.1)) || count >= base);
-  if (tripped(s.decryptFailed, s.withCiphertext)) {
+  if (tripped(s.decryptFailedColumns, s.withCiphertext)) {
     reasons.push(
-      `ถอดรหัสไม่ได้ ${s.decryptFailed}/${s.withCiphertext} แถว — PII_ENCRYPTION_KEY น่าจะไม่ใช่กุญแจของฐานนี้`,
+      `ถอดรหัสไม่ได้ ${s.decryptFailedColumns}/${s.withCiphertext} ค่า — PII_ENCRYPTION_KEY น่าจะไม่ใช่กุญแจของฐานนี้`,
     );
   }
   if (tripped(s.saltSuspect, s.consistentWithHash)) {
@@ -313,6 +339,10 @@ export interface RepairCounts {
   invalidSecondary: number;
   decryptFailed: number;
   saltSuspect: number;
+  /** แถวที่ `phone_hash` เก็บ plaintext ของเบอร์ (PII รั่ว) — APPLY เขียน hash จริงทับ */
+  hashPlaintextLeak: number;
+  /** แถวที่เบอร์บนหน้าจอจะเปลี่ยนเป็นอีกเบอร์หลัง APPLY (ciphertext ค้างของเบอร์เก่า) */
+  displayChanged: number;
   written: number;
   changedMeanwhile: number;
   failed: number;
@@ -327,8 +357,18 @@ export interface ReportGroup {
     acquisitionSource: string | null;
     createdAt: string;
     hashOnly: boolean;
+    /** สัญญาที่ยังไม่ถูกลบ (ทุกสถานะ) */
     contracts: number;
+    /** ใบขายที่ยังไม่ถูกยกเลิก */
     sales: number;
+    /**
+     * relation ที่ห้ามลบแถวนี้ทิ้ง (ชุดเดียวกับ CustomerMergeService + creditChecks) เฉพาะที่ > 0
+     * นับทุกแถวรวมแถวลูกที่ถูก soft-delete — ลบแถวนี้ได้ก็ต่อเมื่อ blockingTotal = 0
+     */
+    blocking: Record<string, number>;
+    blockingTotal: number;
+    /** ห้องแชทที่ยังไม่ถูกลบซึ่งผูกกับคนนี้ (ต้องย้ายหลังลบ — ไม่ใช่ตัวบล็อก) */
+    chatRooms: number;
   }>;
 }
 
@@ -342,6 +382,8 @@ export interface RepairReport {
   invalidIds: string[];
   invalidSecondaryIds: string[];
   decryptFailedIds: string[];
+  /** แถวที่เบอร์บนหน้าจอจะเปลี่ยนเป็นอีกเบอร์ — รายการที่เจ้าของต้องเห็นก่อน APPLY */
+  displayChangedIds: string[];
   failedIdTails: string[];
   duplicateGroupCount: number;
   duplicateGroups: ReportGroup[];
@@ -357,6 +399,8 @@ export interface RunRepairOptions {
   audit?: Pick<AuditService, 'log'>;
   /** หน่วงก่อนเขียนจริง (ms) — main ใช้ 5000 */
   cooldownMs?: number;
+  /** เทสต์เท่านั้น: ห่อ client ของทรานแซกชันเขียนแต่ละแถว (จำลองแถวที่เขียนพลาด) */
+  wrapWriteTx?: (tx: Prisma.TransactionClient, rowId: string) => Prisma.TransactionClient;
 }
 
 type PlannedWrite = { row: RepairRow; plan: RowPlan };
@@ -377,6 +421,40 @@ const nonBlank = (field: 'phone' | 'phoneSecondary' | 'phoneHash') => ({
 });
 
 const tail = (id: string) => `…${id.slice(-6)}`;
+
+/**
+ * relation ที่ห้ามลบแถวลูกค้าทิ้ง = ชุดเดียวกับ CustomerMergeService (BLOCKING_RELATIONS)
+ * + creditChecks (ผลเช็คเครดิตที่ไม่ได้มาจากห้องแชท — การรวมผู้สนใจย้ายเฉพาะที่มาจากห้อง)
+ */
+const REPORT_BLOCKING_SELECT = { ...BLOCKING_COUNT_SELECT, creditChecks: true } as const;
+
+/** สมาชิกต่อบรรทัด DUPLICATE_GROUP — Cloud Logging รับได้ราว 256KB ต่อรายการ (สมาชิกหนึ่งคน ≲ 1KB) */
+export const MAX_MEMBERS_PER_LINE = 200;
+
+/** บรรทัด log ของกลุ่มเบอร์ซ้ำ — กลุ่มใหญ่ (เช่นเบอร์หลอก 0000000000) แตกเป็นหลาย part */
+export function formatDuplicateGroupLines(groups: readonly ReportGroup[]): string[] {
+  const lines: string[] = [];
+  groups.forEach((g, i) => {
+    const head = `${TAG} DUPLICATE_GROUP ${i + 1}/${groups.length}`;
+    if (g.members.length <= MAX_MEMBERS_PER_LINE) {
+      lines.push(`${head} ${JSON.stringify(g)}`);
+      return;
+    }
+    const parts = Math.ceil(g.members.length / MAX_MEMBERS_PER_LINE);
+    for (let k = 0; k < parts; k++) {
+      const members = g.members.slice(k * MAX_MEMBERS_PER_LINE, (k + 1) * MAX_MEMBERS_PER_LINE);
+      const part = {
+        memberCount: g.members.length,
+        oversized: true,
+        hasBotOrChat: g.hasBotOrChat,
+        customerIds: members.map((m) => m.id),
+        members,
+      };
+      lines.push(`${head} part ${k + 1}/${parts} ${JSON.stringify(part)}`);
+    }
+  });
+  return lines;
+}
 
 export async function runRepair(
   prisma: PrismaClient,
@@ -401,6 +479,8 @@ export async function runRepair(
     invalidSecondary: 0,
     decryptFailed: 0,
     saltSuspect: 0,
+    hashPlaintextLeak: 0,
+    displayChanged: 0,
     written: 0,
     changedMeanwhile: 0,
     failed: 0,
@@ -408,10 +488,12 @@ export async function runRepair(
   const invalidIds: string[] = [];
   const invalidSecondaryIds: string[] = [];
   const decryptFailedIds: string[] = [];
+  const displayChangedIds: string[] = [];
   const failedIdTails: string[] = [];
   const writes: PlannedWrite[] = [];
   const groupInputs: GroupInput[] = [];
   let withCiphertext = 0;
+  let decryptFailedColumns = 0;
   let consistentWithHash = 0;
 
   // ① วางแผน (อ่านอย่างเดียว) — keyset ด้วย id
@@ -438,8 +520,14 @@ export async function runRepair(
       counts.scanned++;
       const plan = planPhoneRepair(row, crypto);
       withCiphertext += plan.ciphertextCount;
+      decryptFailedColumns += plan.decryptFailedColumns;
       if (plan.consistentWithHash) consistentWithHash++;
       if (plan.saltSuspect) counts.saltSuspect++;
+      if (plan.hashPlaintextLeak) counts.hashPlaintextLeak++;
+      if (plan.displayChanged && plan.needsWrite) {
+        counts.displayChanged++;
+        displayChangedIds.push(row.id);
+      }
       if (plan.invalid) {
         counts.invalid++;
         invalidIds.push(row.id);
@@ -505,7 +593,7 @@ export async function runRepair(
 
   // ด่านกุญแจคำนวณทุกโหมด — DRY-RUN แสดงเป็นคำเตือนให้เห็นก่อนสั่ง APPLY
   const keyWarnings = assessKeySafety({
-    decryptFailed: counts.decryptFailed,
+    decryptFailedColumns,
     withCiphertext,
     saltSuspect: counts.saltSuspect,
     consistentWithHash,
@@ -534,7 +622,8 @@ export async function runRepair(
         data.phoneSecondaryEncrypted = to ? crypto.encrypt(to) : null;
       }
       try {
-        const { count } = await prisma.$transaction(async (tx) => {
+        const { count } = await prisma.$transaction(async (rawTx) => {
+          const tx = opts.wrapWriteTx ? opts.wrapWriteTx(rawTx, row.id) : rawTx;
           if (primaryChanged(plan.primary)) await lockCustomerPhone(tx, hasher, plan.primary.to);
           return tx.customer.updateMany({
             where: {
@@ -564,11 +653,12 @@ export async function runRepair(
     }
   }
 
-  // ③ กลุ่มเบอร์ซ้ำ + จำนวนสัญญา/ใบขายต่อคน
+  // ③ กลุ่มเบอร์ซ้ำ + จำนวนสัญญา/ใบขาย/relation ที่บล็อกการลบ ต่อคน
   const groups = groupDuplicatePhones(groupInputs);
   const memberIds = groups.flatMap((g) => g.members.map((m) => m.id));
   const contractCounts = new Map<string, number>();
   const saleCounts = new Map<string, number>();
+  const relationCounts = new Map<string, { blocking: Record<string, number>; chatRooms: number }>();
   for (let i = 0; i < memberIds.length; i += ID_CHUNK) {
     const chunk = memberIds.slice(i, i + ID_CHUNK);
     const [contracts, sales] = await Promise.all([
@@ -585,6 +675,19 @@ export async function runRepair(
     ]);
     for (const c of contracts) contractCounts.set(c.customerId, c._count._all);
     for (const s of sales) saleCounts.set(s.customerId, s._count._all);
+    const withCounts = await prisma.customer.findMany({
+      where: { id: { in: chunk } },
+      select: {
+        id: true,
+        _count: { select: { ...REPORT_BLOCKING_SELECT, chatRooms: { where: { deletedAt: null } } } },
+      },
+    });
+    for (const c of withCounts) {
+      const { chatRooms, ...rest } = c._count;
+      const blocking: Record<string, number> = {};
+      for (const [k, v] of Object.entries(rest)) if (v > 0) blocking[k] = v;
+      relationCounts.set(c.id, { blocking, chatRooms });
+    }
   }
   const duplicateGroups: ReportGroup[] = groups.map((g) => ({
     customerIds: g.members.map((m) => m.id),
@@ -597,6 +700,9 @@ export async function runRepair(
       hashOnly: m.hashOnly,
       contracts: contractCounts.get(m.id) ?? 0,
       sales: saleCounts.get(m.id) ?? 0,
+      blocking: relationCounts.get(m.id)?.blocking ?? {},
+      blockingTotal: Object.values(relationCounts.get(m.id)?.blocking ?? {}).reduce((a, b) => a + b, 0),
+      chatRooms: relationCounts.get(m.id)?.chatRooms ?? 0,
     })),
   }));
 
@@ -626,6 +732,7 @@ export async function runRepair(
     invalidIds: invalidIds.slice(0, MAX_LISTED_IDS),
     invalidSecondaryIds: invalidSecondaryIds.slice(0, MAX_LISTED_IDS),
     decryptFailedIds: decryptFailedIds.slice(0, MAX_LISTED_IDS),
+    displayChangedIds: displayChangedIds.slice(0, MAX_LISTED_IDS),
     failedIdTails: failedIdTails.slice(0, MAX_LISTED_IDS),
     duplicateGroupCount: duplicateGroups.length,
     duplicateGroups,
@@ -649,6 +756,8 @@ export function formatSummary(report: RepairReport): string[] {
     row('invalid secondary', c.invalidSecondary),
     row('decrypt failed (skipped)', c.decryptFailed),
     row('salt suspect', c.saltSuspect),
+    row('hash held plaintext (leak)', c.hashPlaintextLeak),
+    row('display number changes', c.displayChanged),
   ];
   if (report.mode === 'APPLY') {
     lines.push(row('written', c.written), row('changed meanwhile', c.changedMeanwhile), row('failed', c.failed));
@@ -712,12 +821,10 @@ async function main(): Promise<void> {
 
     console.log('');
     for (const line of formatSummary(report)) console.log(line);
-    // Cloud Logging ตัดบรรทัดที่ยาวเกิน ~256KB ⇒ กลุ่มเบอร์ซ้ำพิมพ์บรรทัดละกลุ่ม
+    // Cloud Logging ตัดบรรทัดที่ยาวเกิน ~256KB ⇒ กลุ่มเบอร์ซ้ำพิมพ์บรรทัดละกลุ่ม (กลุ่มใหญ่แตกเป็น part)
     const { duplicateGroups, ...rest } = report;
     console.log(`${TAG} REPORT_JSON ${JSON.stringify(rest)}`);
-    duplicateGroups.forEach((g, i) => {
-      console.log(`${TAG} DUPLICATE_GROUP ${i + 1}/${duplicateGroups.length} ${JSON.stringify(g)}`);
-    });
+    for (const line of formatDuplicateGroupLines(duplicateGroups)) console.log(line);
 
     if (report.aborted.length > 0) {
       console.error(`${TAG} ไม่ได้เขียนอะไร — ตรวจ PII_ENCRYPTION_KEY / PII_HASH_SALT ของฐานนี้`);

@@ -3,8 +3,10 @@ import { hashPII } from '../utils/pii.util';
 import {
   PhoneCrypto,
   RepairRow,
+  MAX_MEMBERS_PER_LINE,
   assessKeySafety,
   classifyOrigin,
+  formatDuplicateGroupLines,
   groupDuplicatePhones,
   planPhoneRepair,
 } from './repair-customer-phones.cli';
@@ -174,25 +176,25 @@ describe('planPhoneRepair — ตัดสินใจต่อแถว (ไม
 describe('assessKeySafety — กันกุญแจ/salt ผิดก่อนเขียนจริง', () => {
   it('ไม่มีสัญญาณ → ผ่าน', () => {
     expect(
-      assessKeySafety({ decryptFailed: 0, withCiphertext: 100, saltSuspect: 0, consistentWithHash: 100 }),
+      assessKeySafety({ decryptFailedColumns: 0, withCiphertext: 100, saltSuspect: 0, consistentWithHash: 100 }),
     ).toEqual([]);
   });
 
   it('ถอดไม่ออกหลายแถว → หยุด', () => {
     expect(
-      assessKeySafety({ decryptFailed: 50, withCiphertext: 100, saltSuspect: 0, consistentWithHash: 0 }),
+      assessKeySafety({ decryptFailedColumns: 50, withCiphertext: 100, saltSuspect: 0, consistentWithHash: 0 }),
     ).toHaveLength(1);
   });
 
   it('ถอดไม่ออกแถวเดียวในหลายพัน → ข้ามแถวนั้นได้ ไม่หยุดทั้งงาน', () => {
     expect(
-      assessKeySafety({ decryptFailed: 1, withCiphertext: 5000, saltSuspect: 0, consistentWithHash: 5000 }),
+      assessKeySafety({ decryptFailedColumns: 1, withCiphertext: 5000, saltSuspect: 0, consistentWithHash: 5000 }),
     ).toEqual([]);
   });
 
   it('salt ผิด (ciphertext ตรงแต่ hash ไม่ตรงเกือบทั้งหมด) → หยุด', () => {
     expect(
-      assessKeySafety({ decryptFailed: 0, withCiphertext: 100, saltSuspect: 90, consistentWithHash: 100 }),
+      assessKeySafety({ decryptFailedColumns: 0, withCiphertext: 100, saltSuspect: 90, consistentWithHash: 100 }),
     ).toHaveLength(1);
   });
 });
@@ -236,5 +238,114 @@ describe('groupDuplicatePhones — กลุ่มลูกค้าที่ถ
       { id: 'b', groupKey: 'secret-hash', acquisitionSource: null, createdAt: t('02') },
     ]);
     expect(JSON.stringify(groups)).not.toContain('secret-hash');
+  });
+});
+
+describe('ด่านกุญแจนับหน่วยเดียวกัน (คอลัมน์ ciphertext) — ฐานเล็ก', () => {
+  it('3 แถวมีทั้งเบอร์หลัก+สำรองเข้ารหัสด้วยกุญแจอื่น → 6/6 คอลัมน์ถอดไม่ออก → หยุด', () => {
+    const plans = ['0811111111', '0822222222', '0833333333'].map((p, i) =>
+      planPhoneRepair(
+        row({
+          id: `k-${i}`,
+          phone: p,
+          phoneEncrypted: encryptPII(p, OTHER_KEY),
+          phoneSecondary: '0899999999',
+          phoneSecondaryEncrypted: encryptPII('0899999999', OTHER_KEY),
+        }),
+        crypto,
+      ),
+    );
+    expect(plans.map((p) => p.decryptFailedColumns)).toEqual([2, 2, 2]);
+    const stats = {
+      decryptFailedColumns: plans.reduce((a, p) => a + p.decryptFailedColumns, 0),
+      withCiphertext: plans.reduce((a, p) => a + p.ciphertextCount, 0),
+      saltSuspect: 0,
+      consistentWithHash: 0,
+    };
+    expect(stats).toMatchObject({ decryptFailedColumns: 6, withCiphertext: 6 });
+    expect(assessKeySafety(stats)).toHaveLength(1);
+  });
+});
+
+describe('phone_hash เก็บ plaintext (ผู้เขียนรุ่นเก่าไม่มี salt)', () => {
+  it('ซ่อมเป็น STALE · นับ hashPlaintextLeak · ไม่ใช่สัญญาณ salt ผิด', () => {
+    const plan = planPhoneRepair(row({ phoneHash: '0812345678' }), crypto);
+    expect(plan.hashPlaintextLeak).toBe(true);
+    expect(plan.saltSuspect).toBe(false);
+    expect(plan.primary?.hashFix).toBe('STALE');
+    expect(plan.needsWrite).toBe(true);
+  });
+
+  it('plaintext รูปแบบเดิม (มีขีด) ใน hash ก็นับเป็น leak', () => {
+    const raw = '081-234 5678';
+    const plan = planPhoneRepair(
+      row({ phone: raw, phoneHash: raw, phoneEncrypted: encryptPII(raw, KEY) }),
+      crypto,
+    );
+    expect(plan.hashPlaintextLeak).toBe(true);
+    expect(plan.saltSuspect).toBe(false);
+  });
+
+  it('ร้อยแถวที่ hash เป็น plaintext ไม่ทำให้ด่าน salt หยุด', () => {
+    const plans = Array.from({ length: 100 }, (_, i) => {
+      const p = `08100000${String(i).padStart(2, '0')}`;
+      return planPhoneRepair(row({ phone: p, phoneHash: p, phoneEncrypted: encryptPII(p, KEY) }), crypto);
+    });
+    expect(
+      assessKeySafety({
+        decryptFailedColumns: 0,
+        withCiphertext: 100,
+        saltSuspect: plans.filter((p) => p.saltSuspect).length,
+        consistentWithHash: plans.filter((p) => p.consistentWithHash).length,
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe('displayChanged — เบอร์บนหน้าจอจะเปลี่ยนหลัง APPLY', () => {
+  it('ciphertext ค้างของอีกเบอร์ → true', () => {
+    const plan = planPhoneRepair(row({ phoneEncrypted: encryptPII('0899999999', KEY) }), crypto);
+    expect(plan.displayChanged).toBe(true);
+  });
+
+  it('ciphertext ต่างแค่รูปแบบ → false', () => {
+    const plan = planPhoneRepair(row({ phoneEncrypted: encryptPII('+66812345678', KEY) }), crypto);
+    expect(plan.primary?.encryptFix).toBe('STALE');
+    expect(plan.displayChanged).toBe(false);
+  });
+
+  it('ไม่มี ciphertext / plaintext อยู่ในคอลัมน์ ciphertext → false (หน้าจอแสดงคอลัมน์ phone อยู่แล้ว)', () => {
+    expect(planPhoneRepair(row({ phoneEncrypted: null }), crypto).displayChanged).toBe(false);
+    expect(planPhoneRepair(row({ phoneEncrypted: '0899999999' }), crypto).displayChanged).toBe(false);
+  });
+});
+
+describe('formatDuplicateGroupLines — กลุ่มใหญ่แตกเป็นหลายบรรทัด', () => {
+  const member = (i: number) => ({
+    id: `id-${i}`,
+    origin: 'OTHER' as const,
+    acquisitionSource: null,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    hashOnly: false,
+    contracts: 0,
+    sales: 0,
+    blocking: {},
+    blockingTotal: 0,
+    chatRooms: 0,
+  });
+
+  it('กลุ่มเล็ก = บรรทัดเดียวรูปเดิม · กลุ่มใหญ่ = part ละไม่เกิน MAX_MEMBERS_PER_LINE คน สมาชิกครบ', () => {
+    const big = Array.from({ length: MAX_MEMBERS_PER_LINE * 2 + 1 }, (_, i) => member(i));
+    const lines = formatDuplicateGroupLines([
+      { customerIds: ['id-a', 'id-b'], hasBotOrChat: false, members: [member(0), member(1)] },
+      { customerIds: big.map((m) => m.id), hasBotOrChat: true, members: big },
+    ]);
+    expect(lines).toHaveLength(4);
+    expect(lines[0]).toContain('DUPLICATE_GROUP 1/2 {');
+    expect(lines[1]).toContain('DUPLICATE_GROUP 2/2 part 1/3 {');
+    const parts = lines.slice(1).map((l) => JSON.parse(l.slice(l.indexOf('{'))));
+    expect(parts.every((p) => p.oversized && p.memberCount === big.length)).toBe(true);
+    expect(parts.every((p) => p.members.length <= MAX_MEMBERS_PER_LINE)).toBe(true);
+    expect(parts.flatMap((p) => p.customerIds)).toEqual(big.map((m) => m.id));
   });
 });

@@ -2,6 +2,8 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { decryptPII, encryptPII } from '../utils/crypto.util';
 import { hashPII } from '../utils/pii.util';
 import { customerPhoneLockKey } from '../modules/customers/customer-phone-lock';
+import { AuditService } from '../modules/audit/audit.service';
+import type { PrismaService } from '../prisma/prisma.service';
 import { AUDIT_ACTION, PhoneCrypto, RepairReport, runRepair } from './repair-customer-phones.cli';
 
 const KEY = 'd'.repeat(64);
@@ -168,6 +170,10 @@ describe('runRepair (real DB)', () => {
     expect(report.counts.invalid).toBe(1);
     expect(report.counts.decryptFailed).toBe(1);
     expect(report.counts.saltSuspect).toBe(0);
+    expect(report.counts.hashPlaintextLeak).toBe(0);
+    // แถว stale: หน้าจอแสดงเบอร์เก่าจาก ciphertext → หลัง APPLY จะแสดงเบอร์ใน phone
+    expect(report.counts.displayChanged).toBe(1);
+    expect(report.displayChangedIds).toEqual([rows.stale.id]);
     expect(report.invalidIds).toEqual([rows.invalid.id]);
     expect(report.decryptFailedIds).toEqual([rows.wrongKey.id]);
     expect(report.aborted).toEqual([]);
@@ -290,6 +296,107 @@ describe('runRepair (real DB)', () => {
     const after = await prisma.customer.findUniqueOrThrow({ where: { id: row.id } });
     expect(after.phone).toBe(newer);
     expect(after.phoneHash).toBe(hashPII(newer, SALT));
+  });
+
+  it('รายงานนับสัญญา/ใบขายจริง (ใบขายที่ยกเลิกไม่นับใน sales) + relation ที่บล็อกการลบทุกแถว', async () => {
+    const p = await freshPhone();
+    const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    const branch = await prisma.branch.create({ data: { name: `repair-phones spec ${stamp}` } });
+    const user = await prisma.user.create({
+      data: { email: `repair-phones-${stamp}@spec.local`, password: 'x', name: 'repair-phones spec' },
+    });
+    const product = await prisma.product.create({
+      data: { name: 'repair-phones spec phone', brand: 'Apple', model: 'iPhone 15', category: 'PHONE_NEW', costPrice: 20000, branchId: branch.id },
+    });
+    const owner = await customer('counts-owner', clean(p));
+    const other = await customer('counts-other', { ...clean(p), acquisitionSource: 'AI_CHAT' });
+    const contract = await prisma.contract.create({
+      data: {
+        contractNumber: `RP-${stamp}`, customerId: owner.id, productId: product.id, branchId: branch.id,
+        salespersonId: user.id, planType: 'STORE_WITH_INTEREST', sellingPrice: 25000, downPayment: 5000,
+        interestRate: 0.02, totalMonths: 10, interestTotal: 4000, financedAmount: 20000, monthlyPayment: 2400,
+      },
+    });
+    const voided = await prisma.sale.create({
+      data: {
+        saleNumber: `RP-${stamp}`, saleType: 'CASH', customerId: owner.id, productId: product.id, branchId: branch.id,
+        salespersonId: user.id, sellingPrice: 25000, netAmount: 25000, deletedAt: new Date(),
+      },
+    });
+    try {
+      const report = await runRepair(prisma, crypto, { apply: false, customerIds: [owner.id, other.id], log });
+      expect(report.duplicateGroupCount).toBe(1);
+      const byId = new Map(report.duplicateGroups[0].members.map((m) => [m.id, m]));
+      expect(byId.get(owner.id)).toMatchObject({
+        contracts: 1,
+        sales: 0,
+        // ตัวบล็อกนับทุกแถวรวมที่ถูก soft-delete (ระวังไว้ก่อน) ⇒ ใบขายที่ยกเลิกยังบล็อกการลบ
+        blocking: { contracts: 1, sales: 1 },
+        blockingTotal: 2,
+        chatRooms: 0,
+      });
+      expect(byId.get(other.id)).toMatchObject({ contracts: 0, sales: 0, blocking: {}, blockingTotal: 0 });
+    } finally {
+      await prisma.sale.delete({ where: { id: voided.id } });
+      await prisma.contract.delete({ where: { id: contract.id } });
+      await prisma.product.delete({ where: { id: product.id } });
+      await prisma.user.delete({ where: { id: user.id } });
+      await prisma.branch.delete({ where: { id: branch.id } });
+    }
+  });
+
+  it('แถวที่เขียนพลาด → ข้าม นับ failed + id ท้าย · แถวอื่นยังถูกเขียน', async () => {
+    const a = await customer('fail-a', { phone: dashed(await freshPhone()) });
+    const bad = await customer('fail-bad', { phone: dashed(await freshPhone()) });
+    const c = await customer('fail-c', { phone: dashed(await freshPhone()) });
+    const scope = [a.id, bad.id, c.id];
+    const report = await runRepair(prisma, crypto, {
+      apply: true,
+      customerIds: scope,
+      log,
+      wrapWriteTx: (tx, rowId) => {
+        if (rowId !== bad.id) return tx;
+        return new Proxy(tx, {
+          get(target, prop) {
+            if (prop === 'customer') {
+              return { updateMany: () => Promise.reject(new Error('simulated write failure')) };
+            }
+            const value = (target as unknown as Record<string | symbol, unknown>)[prop];
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        });
+      },
+    });
+    expect(report.counts.needsWrite).toBe(3);
+    expect(report.counts.written).toBe(2);
+    expect(report.counts.failed).toBe(1);
+    expect(report.failedIdTails).toEqual([`…${bad.id.slice(-6)}`]);
+    const after = new Map((await snapshot(scope)).map((r) => [r.id, r]));
+    expect(after.get(bad.id)!.phone).toBe(bad.phone);
+    expect(after.get(bad.id)!.phoneHash).toBeNull();
+    expect(after.get(a.id)!.phoneHash).not.toBeNull();
+    expect(after.get(c.id)!.phoneHash).not.toBeNull();
+  });
+
+  it('APPLY กับ AuditService ตัวจริง → มีแถว audit_logs ที่อยู่ใน hash chain (ตัวเลขเท่านั้น)', async () => {
+    const pAudit = await freshPhone();
+    const row = await customer('audit', { phone: dashed(pAudit) });
+    const started = new Date();
+    const audit = new AuditService(prisma as unknown as PrismaService);
+    const report = await runRepair(prisma, crypto, { apply: true, customerIds: [row.id], log, audit });
+    expect(report.counts.written).toBe(1);
+
+    // audit_logs ห้ามลบ (trigger audit_logs_no_delete) — แถวนี้ค้างในฐานเทสโดยตั้งใจ
+    const rows = await prisma.auditLog.findMany({
+      where: { action: AUDIT_ACTION, createdAt: { gte: started } },
+      select: { entity: true, rowHash: true, sequenceNumber: true, newValue: true, oldValue: true },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].entity).toBe('customer');
+    expect(rows[0].rowHash).toEqual(expect.stringMatching(/^v2:/));
+    expect(rows[0].sequenceNumber).not.toBeNull();
+    expect(rows[0].newValue).toMatchObject({ written: 1, scanned: 1, duplicateGroupCount: 0 });
+    expect(JSON.stringify([rows[0].newValue, rows[0].oldValue])).not.toContain(pAudit);
   });
 
   it('ด่านกุญแจ: ciphertext ถอดไม่ออกทุกแถว → APPLY หยุดก่อนเขียนแถวแรก', async () => {

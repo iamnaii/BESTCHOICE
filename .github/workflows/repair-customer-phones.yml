@@ -91,3 +91,16 @@ jobs:
             --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}" \
             --wait
           echo "::notice::Done. Read the SUMMARY block, REPORT_JSON and DUPLICATE_GROUP lines in the Cloud Run Job execution logs."
+
+      # The stored job keeps the env of the last `update`. Without this step an `apply` run leaves
+      # APPLY / ALLOW_PROD_REPAIR on the job, so a later "Execute" from the Cloud Console (or a bare
+      # `gcloud run jobs execute`) would write again with no fresh backup and no dry-run.
+      # Always put the stored job back to dry-run, even when the execute step failed.
+      - name: Reset stored job to dry-run
+        if: always()
+        run: |
+          gcloud run jobs update bestchoice-repair-customer-phones \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}" \
+            --set-env-vars="TZ=Asia/Bangkok,EXPECTED_DB_NAME=${{ inputs.expected_db_name }}" \
+            || echo "::warning::Could not reset the job env to dry-run (job may not exist yet) — check it before any manual execute."

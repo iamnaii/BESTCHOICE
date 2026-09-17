@@ -33,6 +33,8 @@ DRY-RUN เป็นค่าเริ่มต้น · รันซ้ำไ�
 | `phone` ไม่อยู่ในรูปแบบ normalize (`081-234 5678`, `+66…`) | `phone` = รูปแบบใหม่ + hash/ciphertext ใหม่ | `primary format changed` |
 | `phone_hash` ว่าง / ไม่ตรงกับเบอร์ | `phone_hash` ใหม่ (+ ciphertext ใหม่) | `hash fixed (filled/stale)` |
 | `phone_encrypted` ว่าง / ถอดแล้วไม่ใช่เบอร์นี้ / เป็น plaintext | `phone_encrypted` ใหม่ | `encrypted filled` / `encrypted stale` |
+| `phone_encrypted` ถอดได้เป็น**อีกเบอร์** (ไม่ใช่แค่รูปแบบต่าง) — หน้าจอแสดงเบอร์นั้นอยู่ | ciphertext ใหม่ตาม `phone` ⇒ **เบอร์บนหน้าจอเปลี่ยน** | `display number changes` + `displayChangedIds` |
+| `phone_hash` เก็บ**เบอร์ตัวจริง** (ผู้เขียนรุ่นเก่าตอนไม่มี salt) | hash จริงทับ (ปิด PII รั่ว) — ไม่นับเป็นสัญญาณ salt ผิด | `hash held plaintext (leak)` |
 | `phone_secondary` ไม่ normalize หรือ `phone_secondary_encrypted` ว่าง/ไม่ตรง | ทั้งสองคอลัมน์ | `secondary fixed` |
 | เบอร์หลัง normalize ไม่ใช่ `0` + 9 หลัก | ซ่อมตามปกติ **ไม่ลบ** + ลงรายชื่อ id | `invalid primary` / `invalid secondary` |
 | `phone_encrypted` ถอดรหัสไม่ได้ | **ไม่แตะแถวนั้นเลย** + ลงรายชื่อ id | `decrypt failed (skipped)` |
@@ -41,7 +43,8 @@ DRY-RUN เป็นค่าเริ่มต้น · รันซ้ำไ�
 - เขียน**ทีละแถว คนละทรานแซกชัน**: ล็อกเบอร์หลักก่อน (ล็อกตัวเดียวกับฝั่งพนักงาน/บอท) แล้ว update
   แบบมีเงื่อนไขว่าค่าทั้งห้าคอลัมน์ยังเหมือนตอนสแกน
 - แถวที่ไม่มี `phone` เหลือแต่มี `phone_hash` ไม่ถูกซ่อม แต่ถูกนับเข้ากลุ่มเบอร์ซ้ำ (`hashOnly: true`)
-- **ด่านกุญแจ**: ถ้า ciphertext ถอดไม่ได้ ≥ 10% (ขั้นต่ำ 5 แถว หรือทุกแถว) หรือ hash ไม่ตรงทั้งที่
+- **ด่านกุญแจ**: ถ้า ciphertext ถอดไม่ได้ ≥ 10% ของค่าที่เข้ารหัสทั้งหมด (นับเป็น**ค่า** เบอร์หลัก+สำรอง
+  ขั้นต่ำ 5 ค่า หรือทุกค่า) หรือ hash ไม่ตรงทั้งที่
   ciphertext ตรง ≥ 10% ⇒ กุญแจ/salt ของ Job ไม่ใช่ของฐานนี้ ⇒ APPLY **หยุดก่อนเขียนแถวแรก**
   (log `ABORTED: …`, exit 1) · DRY-RUN แสดงเป็น `WARNING (APPLY จะถูกหยุด): …`
 - APPLY เขียน `audit_logs` หนึ่งแถว action `CUSTOMER_PHONE_REPAIR_RUN` (entity `customer`,
@@ -118,14 +121,24 @@ gcloud beta run jobs executions logs read <execution-id> --project=$PROJECT_ID -
 3. **ต้องไม่มี** บรรทัด `WARNING (APPLY จะถูกหยุด)` — ถ้ามี = กุญแจ/salt ใน Secret Manager ไม่ตรงกับ
    ข้อมูลในฐาน **หยุดแล้วถามเจ้าของ** (ห้ามไปหากุญแจอื่นมาลองเอง)
 4. บรรทัด `REPORT_JSON {...}` — ตัวเลขชุดเดียวกัน + `invalidIds` / `invalidSecondaryIds` /
-   `decryptFailedIds` (สูงสุด 500 id ต่อรายการ ยอดนับยังเต็ม)
-5. บรรทัด `DUPLICATE_GROUP n/N {...}` บรรทัดละกลุ่ม (ดูขั้น ⑥)
+   `decryptFailedIds` / `displayChangedIds` (สูงสุด 500 id ต่อรายการ ยอดนับยังเต็ม)
+5. บรรทัด `DUPLICATE_GROUP n/N {...}` บรรทัดละกลุ่ม (ดูขั้น ⑥) — กลุ่มที่ใหญ่เกิน 200 คน (มักเป็นเบอร์หลอก
+   เช่น `0000000000`) แตกเป็น `DUPLICATE_GROUP n/N part k/K {...}` และมี `"oversized":true` +
+   `memberCount` — กลุ่มแบบนี้เกือบแน่นอนว่าเป็นเบอร์หลอกที่หลายคนใช้ ไม่ใช่คนเดียวกัน → ส่งให้เจ้าของตัดสิน
+   ไม่ต้องไล่แก้ทีละคนในขั้น ⑥
 6. บรรทัดล่างสุด `DRY-RUN — ยังไม่เขียนอะไร …`
 
-**ส่งให้เจ้าของดูก่อน APPLY**: ตัวเลขใน SUMMARY + จำนวนกลุ่มเบอร์ซ้ำ + จำนวน invalid
+**ส่งให้เจ้าของดูก่อน APPLY**: ตัวเลขใน SUMMARY + จำนวนกลุ่มเบอร์ซ้ำ + จำนวน invalid +
+**รายการ `displayChangedIds`** (ต้องได้คำอนุมัติเป็นรายการนี้โดยเฉพาะ)
+- `display number changes` = ลูกค้าที่**เบอร์บนหน้าจอจะเปลี่ยนเป็นอีกเบอร์**หลัง APPLY: ciphertext ค้างของเบอร์เก่า
+  (บั๊ก skip-tracing เดิม) ทำให้หน้าจอยังแสดงเบอร์เก่าอยู่ ส่วนคอลัมน์ `phone` เป็นเบอร์ที่พนักงานแก้ล่าสุด
+  — APPLY ยึด `phone` ⇒ ให้เจ้าของ/ฝ่ายติดตามหนี้เปิดดูรายชื่อพวกนี้ก่อน (ส่วนใหญ่คือลูกหนี้ที่เคยถูกเปลี่ยนเบอร์)
+  ถ้าเจ้าของไม่อนุมัติบางคน **หยุด** แจ้ง dev (CLI ไม่มีตัวเลือกข้ามรายคน)
+
 ตัวเลขที่ควรสะดุด:
 - `hash fixed` ส่วน `stale` สูงผิดปกติ (หลักพัน) ทั้งที่ `salt suspect` เป็น 0 → ถามก่อน
 - `decrypt failed` มากกว่าหลักหน่วย → ถามก่อน (แถวพวกนี้จะไม่ถูกแตะอยู่แล้ว)
+- `hash held plaintext (leak)` มากกว่า 0 → แจ้งเจ้าของว่าเป็น PII รั่วในคอลัมน์ hash (APPLY ปิดให้) ไม่ต้องหยุด
 
 ## ④ APPLY (หลังเจ้าของเห็นรายงาน ③ และมี backup ①)
 
@@ -140,6 +153,10 @@ gcloud run jobs update $JOB --project=$PROJECT_ID --region=$REGION \
 gcloud run jobs execute $JOB --project=$PROJECT_ID --region=$REGION --wait
 ```
 
+> **หลังรัน APPLY ด้วย gcloud ต้องสั่ง `update` แบบขั้น ③ (ไม่มี `APPLY`) ทันที** — Job เก็บ env ของ `update`
+> ครั้งล่าสุดไว้ ถ้าไม่รีเซ็ต การกด Execute จาก Cloud Console ครั้งหน้าจะเขียนอีกรอบโดยไม่มี backup/dry-run
+> (workflow รีเซ็ตให้เองในขั้นสุดท้ายเสมอ แม้ขั้น execute ล้ม)
+
 ใน log ต้องเห็น `mode: APPLY`, `APPLY starting in 5s`, บรรทัด `...written N/N`, บล็อก
 `===== SUMMARY (APPLY) =====` ที่มี `written` / `changed meanwhile` / `failed` และ `Done.`
 
@@ -151,7 +168,11 @@ gcloud run jobs execute $JOB --project=$PROJECT_ID --region=$REGION --wait
 ## ⑤ ตรวจผล
 
 รัน **DRY-RUN อีกรอบ** (ขั้น ③) — ต้องได้ `needs repair (would-write): 0` (ยกเว้นแถวใน
-`decrypt failed` ซึ่งไม่ถูกแตะโดยตั้งใจ) และจำนวนกลุ่มเบอร์ซ้ำเท่าเดิม
+`decrypt failed` ซึ่งไม่ถูกแตะโดยตั้งใจ และแถวที่มีคนแก้ระหว่างรันซึ่งรัน APPLY ซ้ำได้)
+
+จำนวนกลุ่มเบอร์ซ้ำ**อาจเพิ่มขึ้น**ได้ ไม่ใช่ความผิดพลาด: กลุ่มในรายงาน APPLY คำนวณจากการสแกนก่อนเขียน
+ถ้ามีพนักงานสร้างลูกค้าเบอร์เดียวกับแถวที่ยังไม่มี hash ในช่วงนั้น (การตรวจเบอร์ซ้ำมองแถวนั้นไม่เห็นจนกว่าจะซ่อม)
+คู่ใหม่จะโผล่ในรอบตรวจนี้ ⇒ **ใช้รายการ `DUPLICATE_GROUP` จากรอบตรวจนี้**เป็นรายการทำงานของขั้น ⑥
 
 ตรวจเพิ่มด้วย SQL อ่านอย่างเดียว (ผู้ปฏิบัติที่ได้รับอนุญาต ผ่าน cloud-sql-proxy — **ห้ามผ่าน MCP**):
 
@@ -161,9 +182,10 @@ SELECT count(*) FROM customers
 WHERE deleted_at IS NULL AND phone IS NOT NULL AND phone <> ''
   AND (phone_hash IS NULL OR phone_encrypted IS NULL);
 
--- ต้องได้ 0: รูปแบบที่ยังไม่ normalize (ช่องว่าง ขีด วงเล็บ +66)
+-- เบอร์หลักที่ไม่ใช่ 0 + 9 หลัก — ต้องเท่ากับ `invalid primary` ในรายงาน DRY-RUN รอบตรวจ (ไม่ใช่ 0:
+-- เบอร์ต่างประเทศเช่น +855… คงเครื่องหมาย + ไว้ และเบอร์ผิดรูปแบบไม่ถูกลบ)
 SELECT count(*) FROM customers
-WHERE deleted_at IS NULL AND phone ~ '[\s()+-]';
+WHERE deleted_at IS NULL AND phone IS NOT NULL AND phone <> '' AND phone !~ '^0[0-9]{9}$';
 
 -- audit ของรอบ APPLY
 SELECT created_at, new_value FROM audit_logs
@@ -176,46 +198,112 @@ WHERE action = 'CUSTOMER_PHONE_REPAIR_RUN' ORDER BY created_at DESC LIMIT 3;
 
 ```json
 {"customerIds":["…","…"],"hasBotOrChat":true,
- "members":[{"id":"…","origin":"BOT","acquisitionSource":"AI_CHAT","createdAt":"…","hashOnly":false,"contracts":0,"sales":0}, …]}
+ "members":[{"id":"…","origin":"BOT","acquisitionSource":"AI_CHAT","createdAt":"…","hashOnly":false,
+             "contracts":0,"sales":0,"blocking":{},"blockingTotal":0,"chatRooms":1}, …]}
 ```
 
 - `origin`: `BOT` = ที่มาขึ้นต้น `AI_CHAT` (บอทขายสร้าง/แตะ) · `CHAT` = ที่มาขึ้นต้น `CHAT_`
   (ผู้สนใจจากแชทที่เติมเบอร์แล้ว) · `OTHER` = พนักงาน/อื่น ๆ
 - กลุ่มที่มีแถวบอท/แชทอยู่บนสุด และในกลุ่มเรียงบอท/แชทก่อน แล้วเก่าก่อน
-- `contracts` = จำนวนสัญญาทุกสถานะที่ยังไม่ถูกลบ · `sales` = ใบขายที่ยังไม่ถูกยกเลิก
+- `contracts` = สัญญาทุกสถานะที่ยังไม่ถูกลบ · `sales` = ใบขายที่ยังไม่ถูกยกเลิก (ไว้อ่านประกอบ)
+- **`blocking` = ตัวตัดสินว่าลบได้ไหม** — สิ่งที่ผูกกับคนนี้อยู่ (แสดงเฉพาะที่มี) ชุดเดียวกับที่ระบบใช้ตอนรวม
+  ผู้สนใจจากแชท: สัญญา ใบขาย ใบจอง/มัดจำ การจองสินค้า รายการรับซื้อ (รวมเครดิตเทิร์น) คำสั่งซื้อออนไลน์
+  แผนออม ใบสมัครผ่อนออนไลน์ แต้ม/การแลกแต้ม โปรโมชัน ใบซ่อม รายได้อื่น ลิงก์ชำระบางส่วน การยืนยันตัวตน
+  ความยินยอม/คำขอ PDPA การผูก LINE คนที่แนะนำมา รีวิว ผลอนุมัติเครดิต การเข้าเว็บ + ผลเช็คเครดิต
+  (`creditChecks`) — **นับทุกแถวรวมที่ถูกยกเลิก/ลบแล้ว** (ระวังไว้ก่อน) ⇒ ใบขายที่ยกเลิกไปแล้วก็ยังบล็อก
+- `blockingTotal` = ผลรวมของ `blocking` · `chatRooms` = ห้องแชทที่ยังไม่ถูกลบของคนนี้ (ต้องย้าย — ข้อ 6)
 
 **ทีละกลุ่ม:**
 
 1. เปิด `/customers/<id>` ของทุกคนในกลุ่ม ยืนยันด้วยตาว่าเป็นคนเดียวกันจริง (ชื่อ เลขบัตร ห้องแชท)
    ถ้า**ไม่ใช่**คนเดียวกัน (ใช้เบอร์ร่วมกันจริง เช่น ครอบครัว) → จดไว้ ปล่อยไว้ แจ้งเจ้าของ
-2. เลือกคน**ที่เก็บไว้** = คนที่มีสัญญา/ใบขาย ถ้าไม่มีใครมีเลยให้เก็บคนที่ข้อมูลครบกว่า (มีเลขบัตร)
-3. คนที่จะ**ลบ** ต้องมี `contracts = 0` **และ** `sales = 0` เท่านั้น
-   ถ้าทั้งสองฝั่งมีสัญญาหรือใบขาย → **หยุด ส่งให้เจ้าของตัดสิน** (เอกสารทางกฎหมาย/บัญชี ห้ามย้ายเอง)
-4. **ลบแบบ soft delete** ด้วย SQL ที่ผ่านการตรวจแล้ว (หน้าลูกค้า**ไม่มีปุ่มลบ** — API
-   `DELETE /customers/:id` เป็น OWNER เท่านั้นและกันแค่สัญญาที่ยังเปิด จึงหลวมกว่ากติกาข้อ 3):
+2. เลือกคน**ที่เก็บไว้** = คนที่มีสัญญา/ใบขาย/`blocking` ถ้าไม่มีใครมีเลยให้เก็บคนที่ข้อมูลครบกว่า (มีเลขบัตร)
+3. คนที่จะ**ลบ** ต้องมี **`blockingTotal = 0`** เท่านั้น (ไม่ใช่แค่ `contracts`/`sales` = 0 — แถวที่ไม่มีสัญญา
+   อาจถือมัดจำ เครดิตเทิร์น การผูก LINE หรือความยินยอม PDPA อยู่) ถ้า**ทั้งสองฝั่ง**มี `blockingTotal > 0`
+   → **หยุด ส่งให้เจ้าของตัดสิน** (เอกสารการเงิน/กฎหมาย ห้ามย้ายเอง ระบบไม่มีเครื่องมือรวมลูกค้า)
+4. **ก่อนลบ — เก็บสิ่งที่ต้องใช้ทีหลัง** (หลังลบ หน้า `/customers/<id>` ของคนที่ลบจะขึ้น "ไม่พบ" ดูอะไรไม่ได้แล้ว):
+   - ถ้าคนที่จะลบมีเบอร์สำรอง/LINE ID ที่คนที่เก็บไว้ไม่มี → เติมให้คนที่เก็บไว้ทางหน้าแก้ไขลูกค้า**ตอนนี้**
+   - จดรายการห้องแชทของคนที่จะลบ (ใช้ในข้อ 6):
+     `SELECT id, channel FROM chat_rooms WHERE customer_id = '<id-ที่จะลบ>' AND deleted_at IS NULL;`
+     ลิงก์ห้อง = `/inbox/<room id>`
+5. **ลบแบบ soft delete + ผูกไปหาคนที่เก็บไว้** ด้วย SQL ด้านล่าง (ผู้ปฏิบัติที่ได้รับอนุญาต ผ่าน
+   cloud-sql-proxy + `psql` — **ห้ามผ่าน MCP**)
+
+   > **ทำไมไม่ใช้เมนู "ลบลูกค้า"/"ลบรายชื่อ" ในหน้า `/customers`** (มีจริง เฉพาะ OWNER และบันทึก audit):
+   > `DELETE /customers/:id` ตั้งแค่ `deleted_at` และกันแค่สัญญาที่ยังเปิด — **ไม่ตั้ง `merged_into_id`
+   > และไม่ย้ายบันทึกการเดินทางของลูกค้า** ⇒ คำขอ PDPA (ขอดู/ขอลบ) ของคนที่เก็บไว้ ลิงก์เก่าของหน้า
+   > การเดินทาง และบอทขายที่ตามหาลูกค้าตัวจริง จะมองไม่เห็นแถวที่ลบไปแล้วเลย. SQL นี้ทำเหมือนที่ระบบทำตอน
+   > รวมผู้สนใจจากแชท (`CustomerMergeService`) ในทรานแซกชันเดียว พร้อมด่านครบชุดเดียวกับ `blocking`
+   >
+   > **SQL ไม่เขียน `audit_logs`** ⇒ ต้องจดทุกครั้งในข้อ 7 (ใครรัน เมื่อไร id ไหน) ไม่มีข้อยกเว้น
 
    ```sql
+   \set del  '<id-ที่จะลบ>'
+   \set keep '<id-ที่เก็บไว้>'
    BEGIN;
-   UPDATE customers SET deleted_at = now(), updated_at = now()
-   WHERE id = '<id-ที่จะลบ>' AND deleted_at IS NULL
-     AND NOT EXISTS (SELECT 1 FROM contracts WHERE customer_id = '<id-ที่จะลบ>' AND deleted_at IS NULL)
-     AND NOT EXISTS (SELECT 1 FROM sales WHERE customer_id = '<id-ที่จะลบ>' AND deleted_at IS NULL);
-   -- ต้องได้ UPDATE 1 — ได้ 0 = มีสัญญา/ใบขาย หรือถูกลบไปแล้ว → ROLLBACK แล้วกลับไปข้อ 3
+
+   -- (ก) ลบ + ผูก merged_into_id — ด่าน: สองแถวต่างกัน คนที่เก็บยังอยู่ และไม่มีอะไรผูกกับคนที่ลบเลย
+   UPDATE customers SET deleted_at = now(), updated_at = now(), merged_into_id = :'keep'
+   WHERE id = :'del' AND deleted_at IS NULL AND merged_into_id IS NULL
+     AND :'del' <> :'keep'
+     AND EXISTS (SELECT 1 FROM customers k WHERE k.id = :'keep' AND k.deleted_at IS NULL AND k.merged_into_id IS NULL)
+     AND NOT EXISTS (SELECT 1 FROM contracts                       WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM sales                           WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM bookings                        WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM product_reservations            WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM trade_ins                       WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM online_orders                   WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM saving_plans                    WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM online_installment_applications WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM loyalty_points                  WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM loyalty_redemptions             WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM promotion_usages                WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM repair_tickets                  WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM other_incomes                   WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM partial_payment_links           WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM kyc_verifications               WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM pdpa_consents                   WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM dsar_requests                   WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM customer_line_links             WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM customers                       WHERE referred_by_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM reviews                         WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM credit_approvals                WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM website_visits                  WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM website_sessions                WHERE customer_id = :'del')
+     AND NOT EXISTS (SELECT 1 FROM credit_checks                   WHERE customer_id = :'del');
+   -- ต้องได้ UPDATE 1 — ได้ 0 = มีอะไรผูกอยู่ / ถูกลบไปแล้ว / id ผิด → ROLLBACK; แล้วกลับไปข้อ 3
+
+   -- (ข) คนที่เคยถูกรวมเข้าคนที่ลบ ชี้ไปคนที่เก็บไว้ (ให้สายมีชั้นเดียวเสมอ)
+   UPDATE customers SET merged_into_id = :'keep', updated_at = now()
+   WHERE merged_into_id = :'del'
+     AND EXISTS (SELECT 1 FROM customers d WHERE d.id = :'del' AND d.merged_into_id = :'keep' AND d.deleted_at IS NOT NULL);
+
+   -- (ค) บันทึกการเดินทางย้ายตามเจ้าของ (origin_customer_id คงเดิม — ใช้ย้อนกลับได้)
+   UPDATE customer_journey_entries SET customer_id = :'keep'
+   WHERE customer_id = :'del'
+     AND EXISTS (SELECT 1 FROM customers d WHERE d.id = :'del' AND d.merged_into_id = :'keep' AND d.deleted_at IS NOT NULL);
+
    COMMIT;
    ```
 
-5. **ย้ายห้องแชทของคนที่ถูกลบไปหาคนที่เก็บไว้** ผ่านหน้าอินบ็อกซ์ (ไม่แก้ `chat_rooms` ด้วย SQL —
-   การผูกห้องย้ายประวัติเช็คเครดิตของห้องไปด้วย):
-   - ห้องที่เจ้าของถูก soft delete ถือว่า "ไม่มีเจ้าของ" — API ยอมให้ผูกทับได้ และเมื่อมีข้อความเข้าห้องนั้น
-     ครั้งถัดไป ระบบจะผูกห้องกับผู้สนใจอัตโนมัติตัวใหม่ให้เอง
-   - เปิดห้องนั้นในอินบ็อกซ์ **ดูการ์ดด้านขวาก่อน**:
-     - การ์ด "ผู้สนใจจากแชท" → กด **"ผูกกับลูกค้าเดิม"** แล้วเลือกคนที่เก็บไว้ (รวมผู้สนใจเข้าคนนั้น)
-     - การ์ด "ห้องนี้ยังไม่ได้ผูกกับลูกค้า" → กด **"ค้นหาลูกค้าเดิม"** แล้วเลือกคนที่เก็บไว้
-     - การ์ดยังแสดงคนที่ลบไปแล้ว → รอข้อความถัดไปของลูกค้า (ห้องจะกลายเป็นผู้สนใจจากแชท) แล้วทำตามข้อแรก
-       หรือแจ้ง dev
-   - ห้องที่คนที่ถูกลบถืออยู่: `SELECT id, channel FROM chat_rooms WHERE customer_id = '<id-ที่ลบ>' AND deleted_at IS NULL;`
-6. ถ้าคนที่ถูกลบมีเบอร์สำรอง/LINE ID ที่คนที่เก็บไว้ไม่มี → เติมให้คนที่เก็บไว้ทางหน้าแก้ไขลูกค้า
-7. จดกลุ่มที่แก้แล้ว (id ที่เก็บ / id ที่ลบ / ห้องที่ย้าย) ลงแชทหรือ PR
+   (ข) และ (ค) ไม่ทำอะไรเลยถ้า (ก) ไม่เกิด — แต่ถ้า (ก) ได้ 0 ให้ `ROLLBACK` อยู่ดี
+   แคชสรุปการเดินทางคำนวณใหม่เองใน cron `journey:recompute` 03:30 น. (รอบกวาดทั้งหมดคือคืนวันอาทิตย์)
+6. **ย้ายห้องแชทของคนที่ลบไปหาคนที่เก็บไว้** (รายการจากข้อ 4 — ไม่แก้ `chat_rooms` ด้วย SQL เพราะการผูกห้อง
+   ย้ายประวัติเช็คเครดิตของห้องไปด้วย):
+   - **ห้องของคนที่มีเบอร์ (`hashOnly: false`) — ทำจากหน้าอินบ็อกซ์ไม่ได้วันนี้**: การ์ดขวายังแสดงคนที่ลบไปแล้ว
+     เป็นลูกค้าที่ผูกอยู่ (ปุ่มโปรไฟล์ขึ้น "ไม่พบ") และไม่มีปุ่ม "ผูกกับลูกค้าเดิม"/"ค้นหาลูกค้าเดิม" ให้กด
+     ⇒ **ส่งรายการห้อง + id ที่เก็บไว้ให้ dev/OWNER ทันทีหลังข้อ 5** ให้เรียก
+     `PATCH /staff-chat/rooms/<room id>/customer` ด้วย body `{"customerId":"<id-ที่เก็บไว้>"}` ทีละห้อง
+     (API ยอมผูกทับห้องที่เจ้าของถูกลบแล้ว และย้ายประวัติเช็คเครดิตของห้องให้)
+   - ห้องของแถว `hashOnly: true` ที่ `origin: CHAT` และไม่มีเลขบัตร: เปิดห้องในอินบ็อกซ์ ถ้าการ์ดเป็น
+     "ผู้สนใจจากแชท" → กด **"ผูกกับลูกค้าเดิม"** แล้วเลือกคนที่เก็บไว้ (ผูกทับได้เพราะเจ้าของถูกลบแล้ว)
+     · ถ้าการ์ดเป็น "ห้องนี้ยังไม่ได้ผูกกับลูกค้า" → กด **"ค้นหาลูกค้าเดิม"** · ถ้าการ์ดแสดงชื่อคนที่ลบ
+     (ไม่มีปุ่มผูก) → ส่ง dev แบบข้อบน
+   - **อย่ารอให้ลูกค้าทักมาเอง**: ห้อง LINE/Facebook ผูกผู้สนใจอัตโนมัติตัวใหม่ให้เมื่อมีข้อความเข้าเท่านั้น
+     (อาจไม่มีวันทัก) และ**ห้องเว็บไม่เคยผูกเองเลย** — ระหว่างรอ การ์ดห้องแสดงชื่อคนที่ลบไปแล้ว
+   - ถ้าย้ายห้องไม่ได้ในวันเดียวกัน → **ยังไม่ต้องลบ** (ข้าม ข้อ 5) เก็บคู่นั้นไว้ก่อนแล้วแจ้ง dev
+7. จดกลุ่มที่แก้แล้วลงแชทหรือ PR: **ผู้รัน · วันเวลา · id ที่เก็บ · id ที่ลบ · ห้องที่ย้าย (และใครย้าย)**
+   — บันทึกนี้แทน audit ที่ SQL ไม่ได้เขียน
 8. จบทุกกลุ่มแล้ว รัน DRY-RUN อีกรอบ — กลุ่มที่แก้แล้วต้องหายไป
 
 **แถว `hashOnly: true`** (ไม่มีเบอร์ใน `phone` เหลือ มีแต่ hash) ทำแบบเดียวกัน แต่ดูเบอร์ได้จาก
@@ -269,5 +357,19 @@ unset PII_ENCRYPTION_KEY PII_HASH_SALT
 - CLI ไม่ลบข้อมูลใดเลย — ค่าที่เปลี่ยนคือรูปแบบเบอร์ + hash/ciphertext ที่คำนวณจากเบอร์นั้น
 - ถ้า hash/ciphertext ผิดทั้งชุด (กุญแจผิดแต่หลุดด่าน) → แก้กุญแจแล้วรัน APPLY ซ้ำ: แถวที่ ciphertext
   ถอดไม่ออกจะถูกข้าม ⇒ ต้องกู้จาก backup ที่จดไว้ในขั้น ① (ทางสุดท้าย — กระทบทั้งฐาน)
-- soft delete ในขั้น ⑥ ย้อนได้: `UPDATE customers SET deleted_at = NULL WHERE id = '<id>';`
-  (ห้องแชทที่ย้ายไปแล้วต้องย้ายกลับผ่านอินบ็อกซ์)
+- soft delete ในขั้น ⑥ ย้อนได้ (ทรานแซกชันเดียว — บันทึกการเดินทางกลับหาเจ้าของเดิมด้วย `origin_customer_id`):
+
+  ```sql
+  \set del  '<id-ที่ลบไป>'
+  \set keep '<id-ที่เก็บไว้>'
+  BEGIN;
+  UPDATE customers SET deleted_at = NULL, merged_into_id = NULL, updated_at = now()
+  WHERE id = :'del' AND merged_into_id = :'keep';
+  UPDATE customer_journey_entries SET customer_id = :'del'
+  WHERE customer_id = :'keep' AND origin_customer_id = :'del';
+  COMMIT;
+  ```
+
+  แถวที่ขั้น (ข) ย้ายสายมาไว้ที่คนที่เก็บ ไม่ย้อนอัตโนมัติ (ไม่รู้ว่าเดิมชี้คนไหน) — ถ้ามี ให้ส่ง dev ·
+  ห้องแชทที่ย้ายไปแล้ว**ย้ายกลับผ่าน API/อินบ็อกซ์ไม่ได้** (ห้องผูกกับคนที่เก็บไว้ซึ่งยังไม่ถูกลบ API ปฏิเสธการผูกทับ)
+  ⇒ ส่งรายการห้องจากบันทึกขั้น ⑥ ข้อ 7 ให้ dev

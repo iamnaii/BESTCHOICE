@@ -36,7 +36,12 @@ export function skipTracingSuccessMessage(
   if (data?.phoneStoredAs === 'SECONDARY') {
     const phone = data.phoneSecondary || payload.newPhone || '';
     const owner = data.phoneOwner?.name || 'ลูกค้าคนอื่น';
-    return `เบอร์ ${phone} เป็นของ ${owner} — บันทึกเป็นเบอร์สำรองของลูกค้าคนนี้แทน`;
+    const extras = [
+      payload.newLineId ? 'บันทึก LINE ID ใหม่แล้ว' : null,
+      payload.markAsLost ? 'ทำเครื่องหมาย "สูญหาย" แล้ว' : null,
+    ].filter(Boolean);
+    const base = `เบอร์ ${phone} เป็นของ ${owner} — บันทึกเป็นเบอร์สำรองของลูกค้าคนนี้แทน`;
+    return extras.length ? `${base} · ${extras.join(' · ')}` : base;
   }
   return payload.markAsLost ? 'ทำเครื่องหมาย "สูญหาย" แล้ว' : 'อัปเดตข้อมูลติดต่อแล้ว';
 }

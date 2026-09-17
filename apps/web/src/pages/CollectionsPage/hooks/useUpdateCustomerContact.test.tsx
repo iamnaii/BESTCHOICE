@@ -59,6 +59,23 @@ describe('skipTracingSuccessMessage', () => {
     ).toBe('เบอร์ 0820000000 เป็นของ สมชาย ใจดี — บันทึกเป็นเบอร์สำรองของลูกค้าคนนี้แทน');
   });
 
+  it('เบอร์ของคนอื่น + LINE ID ใหม่ในครั้งเดียว → บอกด้วยว่าบันทึก LINE ID แล้ว', () => {
+    expect(
+      skipTracingSuccessMessage(
+        {
+          ...base,
+          phoneSecondary: '0820000000',
+          lineIdFinance: 'new-line',
+          phoneStoredAs: 'SECONDARY',
+          phoneOwner: { id: 'c2', name: 'สมชาย ใจดี' },
+        },
+        { newPhone: '0820000000', newLineId: 'new-line', reason: 'เบอร์ภรรยา' },
+      ),
+    ).toBe(
+      'เบอร์ 0820000000 เป็นของ สมชาย ใจดี — บันทึกเป็นเบอร์สำรองของลูกค้าคนนี้แทน · บันทึก LINE ID ใหม่แล้ว',
+    );
+  });
+
   it('เป็นเบอร์หลักตามปกติ → ข้อความเดิม', () => {
     expect(
       skipTracingSuccessMessage(

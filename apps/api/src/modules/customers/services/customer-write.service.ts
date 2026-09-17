@@ -441,8 +441,12 @@ export class CustomerWriteService {
       dto.phoneSecondary !== undefined ? this.normalizePhone(dto.phoneSecondary) : undefined;
     const normalizedEmail = dto.email !== undefined ? this.normalizeEmail(dto.email) : undefined;
 
-    // ตั้งเบอร์หลักที่ไม่ว่าง → ตรวจซ้ำในทรานแซกชันที่ถือล็อกเบอร์ (ด้านล่าง) · ไม่แตะเบอร์ = ตรวจที่นี่ตามเดิม
-    if (!normalizedPhone) {
+    // ตั้งเบอร์หลักที่ไม่ว่าง **และต่างจากเบอร์เดิม** → ตรวจซ้ำในทรานแซกชันที่ถือล็อกเบอร์ (ด้านล่าง)
+    // ไม่แตะเบอร์ / ส่งเบอร์เดิมกลับมา (ฟอร์มแก้ไขส่งเบอร์ทุกครั้ง) = ตรวจแค่อีเมลที่นี่ตามเดิม — เบอร์เดิมไม่ได้
+    // สร้างคู่ซ้ำใหม่ และถ้าตรวจซ้ำ ลูกค้าที่มีคู่ซ้ำอยู่แล้ว (เช่น stub จาก ensureRole ที่ไม่บล็อกเบอร์) จะแก้ข้อมูลอะไรไม่ได้เลย
+    const phoneChanged =
+      !!normalizedPhone && this.normalizePhone(before.phone) !== normalizedPhone;
+    if (!phoneChanged) {
       await this.assertContactNotDuplicate(this.prisma, null, normalizedEmail ?? null, id);
     }
 
@@ -474,9 +478,9 @@ export class CustomerWriteService {
         ? (dto.references as Prisma.InputJsonValue)
         : undefined,
     };
-    // ตั้งเบอร์หลักที่ไม่ว่าง → ล็อก + ตรวจซ้ำ (ignoreCustomerId) + เขียน ในทรานแซกชันเดียว
-    // ไม่แตะเบอร์ = ทางเดิมไม่มีทรานแซกชัน · journey ยังบันทึกหลัง commit
-    const updated = normalizedPhone
+    // เปลี่ยนเบอร์หลักเป็นเบอร์ใหม่ที่ไม่ว่าง → ล็อก + ตรวจซ้ำ (ignoreCustomerId) + เขียน ในทรานแซกชันเดียว
+    // ไม่แตะเบอร์/เบอร์เดิม = ทางเดิมไม่มีทรานแซกชัน · journey ยังบันทึกหลัง commit
+    const updated = phoneChanged
       ? await this.prisma.$transaction(async (tx) => {
           await lockCustomerPhone(tx, this.piiService, normalizedPhone);
           await this.assertContactNotDuplicate(tx, normalizedPhone, normalizedEmail ?? null, id);

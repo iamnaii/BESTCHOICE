@@ -183,6 +183,21 @@ describe('CustomerWriteService — ล็อกเบอร์หลัก', () 
     expect(calls).toEqual(['root.findFirst', 'root.update']);
   });
 
+  it('update: ส่งเบอร์เดิมกลับมา (รูปแบบต่างได้) → ไม่ล็อก ไม่ตรวจเบอร์ซ้ำ แม้มีคู่ซ้ำอยู่แล้ว', async () => {
+    query.findOne.mockResolvedValueOnce({ id: 'c1', phone: PHONE });
+    root.customer.findFirst.mockImplementation(async (a: any) => {
+      calls.push('root.findFirst');
+      // มีคนอื่นถือเบอร์เดียวกันอยู่แล้ว (เช่น stub จาก ensureRole) — ถ้าตรวจเบอร์จะ 409
+      return a.where.phoneHash ? { id: 'stub-dup', name: 'x' } : null;
+    });
+    await expect(
+      service.update('c1', { phone: '081-234-5678', name: 'ชื่อใหม่' } as never),
+    ).resolves.toMatchObject({ id: 'c1' });
+    expect(root.$transaction).not.toHaveBeenCalled();
+    expect(root.$executeRaw).not.toHaveBeenCalled();
+    expect(calls).toEqual(['root.update']);
+  });
+
   it('update: เบอร์ซ้ำ → 409 และไม่ update', async () => {
     tx.customer.findFirst.mockImplementationOnce(async () => ({
       id: 'c-old',

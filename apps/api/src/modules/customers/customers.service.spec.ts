@@ -587,7 +587,8 @@ describe('CustomersService.create — links Contact (party master)', () => {
 
 /**
  * P4 Cleanup 2 — stub-upgrade guard.
- * When ensureRole creates a lightweight Customer stub (phone:'', no hashes),
+ * When ensureRole creates a lightweight Customer stub (name + phone; a non-empty phone is
+ * normalized with phoneHash/phoneEncrypted, an empty one stays '' with no hashes),
  * a subsequent /customers create for the same person must UPGRADE the stub
  * (update in place) rather than create a second Customer row on the same
  * contactId. The upgrade must populate full PII-encrypted fields.

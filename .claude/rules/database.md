@@ -91,11 +91,18 @@ unique index** (ข้อมูลเก่ามีคู่ซ้ำ — แ�
   ตอนรับซื้อ (trade-in accept) ยังสร้าง stub ที่เบอร์ซ้ำกับลูกค้าที่มีอยู่ได้ — เจ้าของยอมรับ แก้ทีละคู่ด้วยมือ.
   แต่ stub **เขียนเบอร์ normalize + `phone_hash` + `phone_encrypted` แล้ว** (เบอร์ว่างคง `''`) ⇒ dedup
   ฝั่งพนักงานมองเห็น stub และ `create()` upgrade stub ของ contact เดียวกันแทนการตอบ 409 —
-  **เฉพาะเมื่อ contact จับคู่ได้ด้วยเลขบัตร**. ⚠️ ช่องที่ยังเปิด (รอเจ้าของตัดสิน): ผู้ขายรับซื้อที่ไม่มีเลขบัตรตอน
-  สร้าง contact (`nationalIdHash = null` — accept ตรวจบัตรแต่ไม่เติม hash ให้ contact) ได้ stub ที่ถือเบอร์ P ⇒
-  พนักงานสร้างลูกค้าคนเดียวกัน (เลขบัตร X, เบอร์ P) ได้ contact ใหม่ ⇒ 409 ชี้ stub และไม่มีเมนูไหนเติมเลขบัตรให้
-  stub ได้ (`UpdateCustomerDto` ไม่มี nationalId, `fillPlaceholderContact` รับเฉพาะผู้สนใจจากแชท) — แก้ทีละคู่ด้วยมือ
-  หรือรอการตัดสิน (เติม hash เลขบัตรให้ contact ตอน accept / ให้ stub ถือ hash เลขบัตร).
+  **เฉพาะเมื่อ contact จับคู่ได้ด้วยเลขบัตร** — และตั้งแต่ Part E (2026-09-17) **การรับเครื่องเทิร์นทำให้จับคู่ได้เสมอ**:
+  `TradeInLifecycleService.accept` (ทาง EXCHANGE ที่สร้างลูกค้าเครดิต — ผู้เรียก `ensureRole(…, 'CUSTOMER')`
+  สำหรับผู้ขายรับซื้อมีจุดเดียว) เรียก `keySellerContactByNationalId` **ก่อน** `ensureRole` เมื่อ contact ผู้ขาย
+  ไม่มีเลขบัตร: มี contact อื่นถือ hash เลขบัตรที่ตรวจแล้ว → ย้ายรายการไปผูก contact นั้น
+  (`findOrCreateByNaturalKey` เติมบทบาท TRADE_IN_SELLER) และใช้ลูกค้าของมัน ไม่สร้าง stub ใหม่ · ไม่มี → เติม
+  `nationalIdHash` ให้ contact เดิมใน tx เดียวกัน (`updateMany … nationalIdHash: null`; P2002/0 แถว = 409 ให้ลองใหม่)
+  ⇒ พนักงานสร้างลูกค้าคนเดียวกัน (เลขบัตร X, เบอร์ P) ได้ contact เดิมแล้ว upgrade stub ไม่ใช่ 409 ทางตัน
+  (พิสูจน์บน DB จริง `trade-in-lifecycle.accept-contact.db.spec.ts`). contact ไม่มีเลขบัตรเดิมไม่ถูกลบ ·
+  ไม่ล็อกเบอร์ · ไม่มี salt = ข้ามเหมือนเดิม · ทาง BUYBACK ไม่สร้าง stub จึงไม่ผูก (ไม่มีทางตัน).
+  **แถวเก่า**: CLI `repair:customer-phones` ขั้นผูก contact — contact ไม่มีเลขบัตร + มี stub → เลขบัตรจากรายการ
+  รับซื้อ**ที่ตรวจบัตรแล้ว** (หลายเลข = `contactsAmbiguous` ไม่แตะ) → เติม hash เมื่อไม่มี contact อื่นถือเลขนั้น
+  ไม่งั้นรายงานคู่ `contactIdConflicts` ให้แก้มือ (runbook ขั้น ⑥ข — ไม่รวมอัตโนมัติ).
 - `update()` ตรวจซ้ำ + ล็อก **เฉพาะเมื่อเบอร์ normalize แล้วต่างจากเบอร์เดิม** — ฟอร์มแก้ไขส่งเบอร์เดิมทุกครั้ง
   ถ้าตรวจซ้ำทุกครั้ง ลูกค้าที่มีคู่ซ้ำอยู่แล้ว (เช่น stub ข้างบน) จะแก้ข้อมูลอะไรไม่ได้เลย.
 - นิยาม "เจ้าของเบอร์" ของ skip-tracing และการนำเข้า = `findLivePhoneOwner` (`customer-phone-owner.ts`) ตัวเดียว —

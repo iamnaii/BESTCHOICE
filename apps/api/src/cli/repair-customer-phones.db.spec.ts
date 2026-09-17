@@ -29,6 +29,8 @@ describe('runRepair (real DB)', () => {
   };
   const log = () => undefined;
   const ids = new Set<string>();
+  const contactIds = new Set<string>();
+  const tradeInIds = new Set<string>();
   const savedSalt = process.env.PII_HASH_SALT;
 
   beforeAll(async () => {
@@ -61,7 +63,9 @@ describe('runRepair (real DB)', () => {
   });
 
   afterAll(async () => {
+    await prisma.tradeIn.deleteMany({ where: { id: { in: [...tradeInIds] } } });
     await prisma.customer.deleteMany({ where: { id: { in: [...ids] } } });
+    await prisma.contact.deleteMany({ where: { id: { in: [...contactIds] } } });
     await Promise.all([prisma.$disconnect(), holderDb.$disconnect()]);
     if (savedSalt === undefined) delete process.env.PII_HASH_SALT;
     else process.env.PII_HASH_SALT = savedSalt;
@@ -423,5 +427,172 @@ describe('runRepair (real DB)', () => {
     expect(report.counts.written).toBe(0);
     expect(await snapshot(scope)).toEqual(before);
     expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  // ─── Part E: contact ผู้ขายรับซื้อที่ไม่มีเลขบัตรแต่มี stub ลูกค้า ─────────────────────────────
+  /** เลขบัตรไทยสุ่มที่ checksum ถูก */
+  function randomThaiId(): string {
+    const d = [1, ...Array.from({ length: 11 }, () => Math.floor(Math.random() * 10))];
+    const sum = d.reduce((acc, n, i) => acc + n * (13 - i), 0);
+    return d.join('') + String((11 - (sum % 11)) % 10);
+  }
+  const contactStamp = `${Date.now()}`.slice(-8);
+  let contactSeq = 0;
+
+  async function contact(label: string, data: Partial<Prisma.ContactUncheckedCreateInput> = {}) {
+    const row = await prisma.contact.create({
+      data: {
+        contactCode: `RPC-${contactStamp}-${++contactSeq}`,
+        name: `repair-phones contact ${label}`,
+        roles: ['TRADE_IN_SELLER', 'CUSTOMER'],
+        ...data,
+      },
+    });
+    contactIds.add(row.id);
+    return row;
+  }
+
+  async function stub(contactId: string, label: string) {
+    return customer(`stub ${label}`, { phone: '', contactId });
+  }
+
+  async function tradeIn(sellerContactId: string, sellerIdCardNumber: string | null, verifiedAt: Date | null) {
+    const row = await prisma.tradeIn.create({
+      data: {
+        deviceBrand: 'Apple',
+        deviceModel: 'repair-phones spec',
+        status: verifiedAt ? 'ACCEPTED' : 'APPRAISED',
+        sellerContactId,
+        sellerIdCardNumber,
+        idCardVerifiedAt: verifiedAt,
+      },
+    });
+    tradeInIds.add(row.id);
+    return row;
+  }
+
+  const hashes = (scope: string[]) =>
+    prisma.contact
+      .findMany({ where: { id: { in: scope } }, select: { id: true, nationalIdHash: true, updatedAt: true } })
+      .then((rows) => new Map(rows.map((r) => [r.id, r])));
+
+  it('contact ไม่มีเลขบัตร + stub: DRY-RUN รายงาน · APPLY เติม hash เฉพาะที่ผูกได้ · ชน/กำกวม ไม่แตะ', async () => {
+    const idLink = randomThaiId();
+    const idConflict = randomThaiId();
+    const idDup = randomThaiId();
+    const v1 = new Date('2026-09-01T00:00:00Z');
+    const v2 = new Date('2026-09-05T00:00:00Z');
+
+    // ผูกได้ — เลขบัตรมีขีด (normalize ก่อน hash) · รายการเก่าที่ยังไม่ตรวจบัตรเลขต่างไม่ทำให้กำกวม
+    const kLink = await contact('link');
+    const sLink = await stub(kLink.id, 'link');
+    await tradeIn(kLink.id, `${idLink.slice(0, 1)}-${idLink.slice(1)}`, v2);
+    await tradeIn(kLink.id, randomThaiId(), null);
+    // ชน — contact อื่นถือเลขบัตรนี้อยู่แล้ว (มีลูกค้า)
+    const existing = await contact('existing', { nationalIdHash: hashPII(idConflict, SALT) });
+    const existingCustomer = await customer('existing customer', {
+      phone: '',
+      contactId: existing.id,
+      nationalIdHash: hashPII(idConflict, SALT),
+    });
+    const kConflict = await contact('conflict');
+    const sConflict = await stub(kConflict.id, 'conflict');
+    await tradeIn(kConflict.id, idConflict, v1);
+    // กำกวม — ตรวจบัตรสองรายการคนละเลข
+    const kAmbiguous = await contact('ambiguous');
+    await stub(kAmbiguous.id, 'ambiguous');
+    await tradeIn(kAmbiguous.id, randomThaiId(), v1);
+    await tradeIn(kAmbiguous.id, randomThaiId(), v2);
+    // ไม่มีเลขบัตรที่ตรวจแล้ว
+    const kNoId = await contact('no-id');
+    await stub(kNoId.id, 'no-id');
+    await tradeIn(kNoId.id, null, v1);
+    // ไม่มี stub — ไม่อยู่ในขอบเขต
+    const kNoStub = await contact('no-stub');
+    await tradeIn(kNoStub.id, randomThaiId(), v1);
+    // คนเดียวกันสอง contact ในรอบเดียว — contact ที่สร้างก่อนได้ hash อีกตัวเป็นคู่ชน
+    const kDupFirst = await contact('dup-first', { createdAt: new Date('2026-08-01T00:00:00Z') });
+    const sDupFirst = await stub(kDupFirst.id, 'dup-first');
+    await tradeIn(kDupFirst.id, idDup, v1);
+    const kDupSecond = await contact('dup-second', { createdAt: new Date('2026-08-02T00:00:00Z') });
+    const sDupSecond = await stub(kDupSecond.id, 'dup-second');
+    await tradeIn(kDupSecond.id, idDup, v1);
+
+    const scope = [kLink, existing, kConflict, kAmbiguous, kNoId, kNoStub, kDupFirst, kDupSecond].map((c) => c.id);
+    const before = await hashes(scope);
+    const opts = { customerIds: [] as string[], contactIds: scope, log };
+
+    const dry = await runRepair(prisma, crypto, { ...opts, apply: false });
+    expect(dry.counts).toMatchObject({
+      contactsKeyless: 6, // link, conflict, ambiguous, no-id, dup-first, dup-second
+      contactsLinkable: 2, // link, dup-first
+      contactsLinked: 0,
+      contactsAmbiguous: 1,
+      contactIdConflicts: 2,
+    });
+    expect(dry.linkableContactIds.sort()).toEqual([kLink.id, kDupFirst.id].sort());
+    expect(dry.ambiguousContactIds).toEqual([kAmbiguous.id]);
+    expect(dry.contactIdConflicts).toEqual(
+      expect.arrayContaining([
+        {
+          keylessContactId: kConflict.id,
+          existingContactId: existing.id,
+          stubCustomerId: sConflict.id,
+          existingCustomerId: existingCustomer.id,
+        },
+        {
+          keylessContactId: kDupSecond.id,
+          existingContactId: kDupFirst.id,
+          stubCustomerId: sDupSecond.id,
+          existingCustomerId: sDupFirst.id,
+        },
+      ]),
+    );
+    expect(dry.contactIdConflicts).toHaveLength(2);
+    expect(await hashes(scope)).toEqual(before);
+    // รายงานไม่มีเลขบัตร/hash/ชื่อ
+    const json = JSON.stringify(dry);
+    for (const secret of [idLink, idConflict, idDup, hashPII(idLink, SALT), 'repair-phones contact']) {
+      expect(json).not.toContain(secret);
+    }
+
+    const applied = await runRepair(prisma, crypto, { ...opts, apply: true });
+    expect(applied.counts).toMatchObject({
+      contactsKeyless: 6,
+      contactsLinkable: 2,
+      contactsLinked: 2,
+      contactsAmbiguous: 1,
+      contactIdConflicts: 2,
+      contactsChangedMeanwhile: 0,
+      contactsLinkFailed: 0,
+    });
+    const after = await hashes(scope);
+    expect(after.get(kLink.id)!.nationalIdHash).toBe(hashPII(idLink, SALT));
+    expect(after.get(kDupFirst.id)!.nationalIdHash).toBe(hashPII(idDup, SALT));
+    for (const c of [existing, kConflict, kAmbiguous, kNoId, kNoStub, kDupSecond]) {
+      expect(after.get(c.id)).toEqual(before.get(c.id));
+    }
+    // stub ไม่ถูกแตะ (ผูกที่ contact เท่านั้น)
+    const stubAfter = await prisma.customer.findUniqueOrThrow({ where: { id: sLink.id } });
+    expect(stubAfter.nationalIdHash).toBeNull();
+
+    // รอบถัดไป: ที่ผูกแล้วไม่ใช่ keyless อีก · คู่ dup กลายเป็นชนกับ contact ที่มี hash จริง
+    const again = await runRepair(prisma, crypto, { ...opts, apply: true });
+    expect(again.counts).toMatchObject({
+      contactsKeyless: 4,
+      contactsLinkable: 0,
+      contactsLinked: 0,
+      contactsAmbiguous: 1,
+      contactIdConflicts: 2,
+    });
+  });
+
+  it('ส่ง customerIds อย่างเดียว (ไม่ส่ง contactIds) → ไม่แตะ contact เลย', async () => {
+    const k = await contact('scope-guard');
+    await stub(k.id, 'scope-guard');
+    await tradeIn(k.id, randomThaiId(), new Date());
+    const report = await runRepair(prisma, crypto, { apply: true, customerIds: [], log });
+    expect(report.counts.contactsKeyless).toBe(0);
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: k.id } })).nationalIdHash).toBeNull();
   });
 });

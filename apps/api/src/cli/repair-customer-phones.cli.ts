@@ -48,6 +48,7 @@ import type { PrismaService } from '../prisma/prisma.service';
 import { decryptPII, encryptPII, isEncrypted } from '../utils/crypto.util';
 import { hashPII } from '../utils/pii.util';
 import { normalizeThaiPhone } from '../utils/thai-phone.util';
+import { normalizeNationalId } from '../modules/trade-in/helpers/trade-in.helpers';
 
 const TAG = '[repair-customer-phones]';
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
@@ -323,6 +324,44 @@ export function groupDuplicatePhones(rows: readonly GroupInput[]): DuplicateGrou
   return groups;
 }
 
+export interface SellerIdInput {
+  sellerIdCardNumber: string | null;
+  idCardVerifiedAt: Date | null;
+  createdAt: Date;
+}
+
+export type ContactLinkPlan =
+  | { kind: 'NO_ID' }
+  | { kind: 'AMBIGUOUS' }
+  | { kind: 'LINKABLE'; nationalId: string };
+
+/**
+ * เลขบัตรที่ใช้ผูก contact ผู้ขายรับซื้อที่ไม่มีเลขบัตร (Part E) — นับเฉพาะรายการที่ **ตรวจบัตรแล้ว**
+ * (`id_card_verified_at` ไม่ว่าง — ตัวตนที่ยืนยันแล้ว แบบเดียวกับ accept) และเลขไม่ว่างหลัง normalize
+ * เลขต่างกันมากกว่าหนึ่งเลข = กำกวม ไม่เลือกให้ · เลขเดียว = ใช้เลขของรายการล่าสุด (ซึ่งก็คือเลขเดียวกัน)
+ */
+export function planContactLink(tradeIns: readonly SellerIdInput[]): ContactLinkPlan {
+  const verified = tradeIns
+    .filter((t) => t.idCardVerifiedAt)
+    .map((t) => ({ ...t, id: normalizeNationalId(t.sellerIdCardNumber ?? '') }))
+    .filter((t) => t.id !== '')
+    .sort(
+      (a, b) =>
+        b.idCardVerifiedAt!.getTime() - a.idCardVerifiedAt!.getTime() ||
+        b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+  if (verified.length === 0) return { kind: 'NO_ID' };
+  if (new Set(verified.map((t) => t.id)).size > 1) return { kind: 'AMBIGUOUS' };
+  return { kind: 'LINKABLE', nationalId: verified[0].id };
+}
+
+export interface ContactIdConflict {
+  keylessContactId: string;
+  existingContactId: string;
+  stubCustomerId: string;
+  existingCustomerId: string | null;
+}
+
 // ─── ตัวรันกับฐานจริง ─────────────────────────────────────────────────────────
 
 export interface RepairCounts {
@@ -346,6 +385,18 @@ export interface RepairCounts {
   written: number;
   changedMeanwhile: number;
   failed: number;
+  /** contact ที่ไม่มีเลขบัตรแต่มี stub ลูกค้า (ไม่มีเลขบัตร) — ขอบเขตของขั้นผูก contact */
+  contactsKeyless: number;
+  /** ผูกได้ (เลขบัตรจากรายการรับซื้อที่ตรวจแล้วเลขเดียว และไม่มี contact อื่นถือเลขนี้) */
+  contactsLinkable: number;
+  /** APPLY: เติม hash ให้ contact แล้ว */
+  contactsLinked: number;
+  contactsAmbiguous: number;
+  /** มี contact อื่นถือเลขบัตรนี้แล้ว — รายงานเป็นคู่ให้แก้ด้วยมือ */
+  contactIdConflicts: number;
+  /** APPLY: contact ถูกเติมเลขบัตร/ลบ หรือมีคนอื่นได้เลขนี้ไประหว่างวางแผนกับเขียน — ข้าม */
+  contactsChangedMeanwhile: number;
+  contactsLinkFailed: number;
 }
 
 export interface ReportGroup {
@@ -387,6 +438,9 @@ export interface RepairReport {
   failedIdTails: string[];
   duplicateGroupCount: number;
   duplicateGroups: ReportGroup[];
+  linkableContactIds: string[];
+  ambiguousContactIds: string[];
+  contactIdConflicts: ContactIdConflict[];
 }
 
 export interface RunRepairOptions {
@@ -394,6 +448,11 @@ export interface RunRepairOptions {
   batchSize?: number;
   /** จำกัดขอบเขต (เทสต์ / ซ่อมเฉพาะแถว) — ไม่ส่ง = ทั้งตาราง */
   customerIds?: string[];
+  /**
+   * ขอบเขตขั้นผูก contact ผู้ขายรับซื้อ (Part E) — ไม่ส่งทั้ง customerIds และ contactIds = ทั้งตาราง
+   * ส่ง customerIds อย่างเดียว = **ข้ามขั้นนี้** (กันเทสต์/ซ่อมเฉพาะลูกค้าไปแตะ contact ทั้งตาราง)
+   */
+  contactIds?: string[];
   log?: (line: string) => void;
   /** APPLY: เขียน AuditLog สรุปหนึ่งแถวด้วย system user หลังเขียนเสร็จ (นอกทรานแซกชันใด ๆ) */
   audit?: Pick<AuditService, 'log'>;
@@ -484,6 +543,13 @@ export async function runRepair(
     written: 0,
     changedMeanwhile: 0,
     failed: 0,
+    contactsKeyless: 0,
+    contactsLinkable: 0,
+    contactsLinked: 0,
+    contactsAmbiguous: 0,
+    contactIdConflicts: 0,
+    contactsChangedMeanwhile: 0,
+    contactsLinkFailed: 0,
   };
   const invalidIds: string[] = [];
   const invalidSecondaryIds: string[] = [];
@@ -591,6 +657,8 @@ export async function runRepair(
     }
   }
 
+  const contactPlan = await planContactLinks(prisma, crypto, opts, batchSize, counts);
+
   // ด่านกุญแจคำนวณทุกโหมด — DRY-RUN แสดงเป็นคำเตือนให้เห็นก่อนสั่ง APPLY
   const keyWarnings = assessKeySafety({
     decryptFailedColumns,
@@ -600,12 +668,13 @@ export async function runRepair(
   });
   const aborted = opts.apply ? keyWarnings : [];
 
-  // ② เขียน (APPLY เท่านั้น และด่านกุญแจผ่าน)
-  if (opts.apply && aborted.length === 0 && writes.length > 0) {
-    if (opts.cooldownMs) {
-      log(`${TAG} APPLY starting in ${opts.cooldownMs / 1000}s — Ctrl+C to abort.`);
-      await new Promise((r) => setTimeout(r, opts.cooldownMs));
-    }
+  // ② เขียน (APPLY เท่านั้น และด่านกุญแจผ่าน — salt ผิด = hash เลขบัตรผิดด้วย)
+  const canWrite = opts.apply && aborted.length === 0;
+  if (canWrite && opts.cooldownMs && (writes.length > 0 || contactPlan.links.length > 0)) {
+    log(`${TAG} APPLY starting in ${opts.cooldownMs / 1000}s — Ctrl+C to abort.`);
+    await new Promise((r) => setTimeout(r, opts.cooldownMs));
+  }
+  if (canWrite && writes.length > 0) {
     const hasher = { hash: (v: string | null | undefined) => (v ? crypto.hash(v) : null) };
     for (let i = 0; i < writes.length; i++) {
       const { row, plan } = writes[i];
@@ -649,6 +718,32 @@ export async function runRepair(
       }
       if ((i + 1) % batchSize === 0 || i === writes.length - 1) {
         log(`${TAG}   ...written ${i + 1}/${writes.length}`);
+      }
+    }
+  }
+
+  // ②ข ผูก contact ผู้ขายรับซื้อด้วยเลขบัตร — ทีละ contact คนละทรานแซกชัน (ไม่ล็อกเบอร์ ไม่แตะ stub)
+  if (canWrite) {
+    for (const link of contactPlan.links) {
+      try {
+        const count = await prisma.$transaction(async (tx) => {
+          const taken = await tx.contact.findFirst({
+            where: { nationalIdHash: link.hash, deletedAt: null, id: { not: link.contactId } },
+            select: { id: true },
+          });
+          if (taken) return 0;
+          const res = await tx.contact.updateMany({
+            where: { id: link.contactId, deletedAt: null, nationalIdHash: null },
+            data: { nationalIdHash: link.hash },
+          });
+          return res.count;
+        });
+        if (count > 0) counts.contactsLinked++;
+        else counts.contactsChangedMeanwhile++;
+      } catch (err) {
+        counts.contactsLinkFailed++;
+        const code = err instanceof Prisma.PrismaClientKnownRequestError ? err.code : (err as Error)?.name;
+        log(`${TAG}   contact link failed ${tail(link.contactId)} (${code ?? 'unknown'})`);
       }
     }
   }
@@ -707,7 +802,7 @@ export async function runRepair(
   }));
 
   // audit สรุปหนึ่งแถว (ตัวเลขเท่านั้น) — AuditService.log เปิดทรานแซกชันของตัวเอง จึงเรียกหลังทุกทรานแซกชันจบ
-  if (opts.apply && aborted.length === 0 && opts.audit) {
+  if (canWrite && opts.audit) {
     const systemUser = await prisma.user.findFirst({
       where: { isSystemUser: true, deletedAt: null },
       select: { id: true },
@@ -736,7 +831,149 @@ export async function runRepair(
     failedIdTails: failedIdTails.slice(0, MAX_LISTED_IDS),
     duplicateGroupCount: duplicateGroups.length,
     duplicateGroups,
+    linkableContactIds: contactPlan.links.map((l) => l.contactId).slice(0, MAX_LISTED_IDS),
+    ambiguousContactIds: contactPlan.ambiguousIds.slice(0, MAX_LISTED_IDS),
+    contactIdConflicts: contactPlan.conflicts.slice(0, MAX_LISTED_IDS),
   };
+}
+
+interface ContactLinkStage {
+  links: Array<{ contactId: string; hash: string }>;
+  ambiguousIds: string[];
+  conflicts: ContactIdConflict[];
+}
+
+type LinkCandidate = { contactId: string; stubId: string; hash: string; createdAt: Date };
+
+/** customer ที่นับเป็น stub: ยังไม่ถูกลบ และไม่มีเลขบัตรทั้ง hash และ plaintext */
+const STUB_WHERE: Prisma.CustomerWhereInput = {
+  deletedAt: null,
+  nationalIdHash: null,
+  OR: [{ nationalId: null }, { nationalId: '' }],
+};
+
+/**
+ * ขั้นวางแผนผูก contact (อ่านอย่างเดียว) — contact ที่ยังไม่ถูกลบ ไม่มีเลขบัตร และมี stub ลูกค้า
+ * → เลขบัตรจากรายการรับซื้อที่ตรวจแล้ว (planContactLink) → contact อื่นถือเลขนี้อยู่ = คู่ชน (รายงาน)
+ * · contact keyless หลายตัวเลขเดียวกันในรอบเดียว = ตัวที่สร้างก่อนได้ hash ที่เหลือเป็นคู่ชนกับมัน
+ *   (partial unique index ให้ถือเลขได้ contact เดียว)
+ */
+async function planContactLinks(
+  prisma: PrismaClient,
+  crypto: PhoneCrypto,
+  opts: RunRepairOptions,
+  batchSize: number,
+  counts: RepairCounts,
+): Promise<ContactLinkStage> {
+  const stage: ContactLinkStage = { links: [], ambiguousIds: [], conflicts: [] };
+  if (!opts.contactIds && opts.customerIds) return stage;
+  const scope: Prisma.ContactWhereInput = opts.contactIds ? { id: { in: opts.contactIds } } : {};
+
+  const candidates: LinkCandidate[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    const rows: Array<{
+      id: string;
+      createdAt: Date;
+      customers: Array<{ id: string }>;
+      tradeInsAsSeller: SellerIdInput[];
+    }> = await prisma.contact.findMany({
+      where: {
+        ...scope,
+        AND: [
+          { deletedAt: null, nationalIdHash: null, customers: { some: STUB_WHERE } },
+          ...(cursor ? [{ id: { gt: cursor } }] : []),
+        ],
+      },
+      select: {
+        id: true,
+        createdAt: true,
+        customers: {
+          where: STUB_WHERE,
+          select: { id: true },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          take: 1,
+        },
+        tradeInsAsSeller: {
+          where: { deletedAt: null, idCardVerifiedAt: { not: null }, sellerIdCardNumber: { not: null } },
+          select: { sellerIdCardNumber: true, idCardVerifiedAt: true, createdAt: true },
+        },
+      },
+      orderBy: { id: 'asc' },
+      take: batchSize,
+    });
+    if (rows.length === 0) break;
+    cursor = rows[rows.length - 1].id;
+    for (const row of rows) {
+      counts.contactsKeyless++;
+      const plan = planContactLink(row.tradeInsAsSeller);
+      if (plan.kind === 'AMBIGUOUS') {
+        counts.contactsAmbiguous++;
+        stage.ambiguousIds.push(row.id);
+      } else if (plan.kind === 'LINKABLE') {
+        candidates.push({
+          contactId: row.id,
+          stubId: row.customers[0].id,
+          hash: crypto.hash(plan.nationalId),
+          createdAt: row.createdAt,
+        });
+      }
+    }
+  }
+
+  // contact อื่นที่ถือเลขนี้อยู่แล้ว
+  const holders = new Map<string, string>();
+  const uniqueHashes = [...new Set(candidates.map((c) => c.hash))];
+  for (let i = 0; i < uniqueHashes.length; i += ID_CHUNK) {
+    const found = await prisma.contact.findMany({
+      where: { deletedAt: null, nationalIdHash: { in: uniqueHashes.slice(i, i + ID_CHUNK) } },
+      select: { id: true, nationalIdHash: true },
+    });
+    for (const f of found) holders.set(f.nationalIdHash!, f.id);
+  }
+
+  candidates.sort(
+    (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.contactId.localeCompare(b.contactId),
+  );
+  const pending: Array<{ c: LinkCandidate; existingContactId: string; existingStubId?: string }> = [];
+  const claimed = new Map<string, LinkCandidate>();
+  for (const c of candidates) {
+    const holder = holders.get(c.hash);
+    const earlier = claimed.get(c.hash);
+    if (holder) {
+      pending.push({ c, existingContactId: holder });
+    } else if (earlier) {
+      pending.push({ c, existingContactId: earlier.contactId, existingStubId: earlier.stubId });
+    } else {
+      claimed.set(c.hash, c);
+      stage.links.push({ contactId: c.contactId, hash: c.hash });
+    }
+  }
+  counts.contactsLinkable = stage.links.length;
+
+  // ลูกค้า (ยังไม่ถูกลบ, เก่าสุด) ของ contact ที่ถือเลขอยู่แล้ว
+  const holderIds = [...new Set(pending.filter((p) => !p.existingStubId).map((p) => p.existingContactId))];
+  const holderCustomer = new Map<string, string>();
+  for (let i = 0; i < holderIds.length; i += ID_CHUNK) {
+    const custs = await prisma.customer.findMany({
+      where: { deletedAt: null, contactId: { in: holderIds.slice(i, i + ID_CHUNK) } },
+      select: { id: true, contactId: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    for (const cu of custs) {
+      if (cu.contactId && !holderCustomer.has(cu.contactId)) holderCustomer.set(cu.contactId, cu.id);
+    }
+  }
+  for (const p of pending) {
+    stage.conflicts.push({
+      keylessContactId: p.c.contactId,
+      existingContactId: p.existingContactId,
+      stubCustomerId: p.c.stubId,
+      existingCustomerId: p.existingStubId ?? holderCustomer.get(p.existingContactId) ?? null,
+    });
+  }
+  counts.contactIdConflicts = stage.conflicts.length;
+  return stage;
 }
 
 /** สรุปอ่านง่าย — ตัวเลขกับ id เท่านั้น */
@@ -761,6 +998,19 @@ export function formatSummary(report: RepairReport): string[] {
   ];
   if (report.mode === 'APPLY') {
     lines.push(row('written', c.written), row('changed meanwhile', c.changedMeanwhile), row('failed', c.failed));
+  }
+  lines.push(
+    row('contacts keyless (+stub)', c.contactsKeyless),
+    row('contacts linkable', c.contactsLinkable),
+    row('contacts ambiguous', c.contactsAmbiguous),
+    row('contact ID conflicts', c.contactIdConflicts),
+  );
+  if (report.mode === 'APPLY') {
+    lines.push(
+      row('contacts linked', c.contactsLinked),
+      row('contacts changed meanwhile', c.contactsChangedMeanwhile),
+      row('contacts link failed', c.contactsLinkFailed),
+    );
   }
   const withBot = report.duplicateGroups.filter((g) => g.hasBotOrChat).length;
   lines.push(
@@ -836,7 +1086,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (report.counts.failed > 0) process.exitCode = 1;
+    if (report.counts.failed > 0 || report.counts.contactsLinkFailed > 0) process.exitCode = 1;
     console.log(`${TAG} Done.`);
   } finally {
     await prisma.$disconnect();

@@ -51,6 +51,29 @@ DRY-RUN เป็นค่าเริ่มต้น · รันซ้ำไ�
   ตัวเลขอย่างเดียว) ด้วยผู้ใช้ระบบ
 - log ไม่มีชื่อ/เบอร์/เลขบัตร มีแต่ตัวนับกับ id (แถวที่เขียนพลาดแสดงแค่ 6 ตัวท้ายของ id)
 
+### ขั้นผูก contact ผู้ขายรับซื้อที่ไม่มีเลขบัตร (เพิ่ม 2026-09-17 Part E)
+
+ปัญหาที่ปิด: รายการรับซื้อ/เทิร์นที่เปิดโดยไม่มีเลขบัตรได้ contact ที่ `national_id_hash` ว่าง ตอนรับเครื่อง
+ระบบตรวจบัตรแล้วสร้าง stub ลูกค้า (ถือเบอร์ + hash) บน contact นั้น ⇒ พนักงานสร้างลูกค้าคนเดียวกันด้วยเลขบัตร
+ได้ contact ใหม่แล้วชน 409 เบอร์ของ stub **โดยไม่มีเมนูไหนไปต่อได้** · ตั้งแต่โค้ดชุดนี้ การรับเครื่องผูก contact
+ด้วยเลขบัตรที่ตรวจแล้วให้เอง ส่วนแถวเก่า CLI ทำให้:
+
+ขอบเขต: `contacts` ที่ยังไม่ถูกลบ, `national_id_hash` ว่าง และมี stub ลูกค้า (ยังไม่ถูกลบ ไม่มีเลขบัตร)
+เลขบัตรที่ใช้ = `trade_ins.seller_id_card_number` ของรายการ**ที่ตรวจบัตรแล้ว** (`id_card_verified_at` ไม่ว่าง)
+ของ contact นั้น (normalize ขีด/ช่องว่างก่อน hash)
+
+| สถานการณ์ | สิ่งที่ APPLY เขียน | ตัวนับ / รายการใน REPORT_JSON |
+|---|---|---|
+| contact ในขอบเขตทั้งหมด | — | `contactsKeyless` |
+| เลขบัตรที่ตรวจแล้วมีเลขเดียว และไม่มี contact อื่นถือเลขนี้ | `contacts.national_id_hash` = hash ของเลขนั้น (**ไม่แตะ stub / รายการรับซื้อ**) | `contactsLinkable` / `contactsLinked` · `linkableContactIds` |
+| รายการที่ตรวจแล้วมี**หลายเลข** | ไม่แตะ | `contactsAmbiguous` · `ambiguousContactIds` |
+| contact อื่นถือเลขนี้อยู่แล้ว (หรือ contact ไม่มีเลขบัตรสองตัวของคนเดียวกันในรอบเดียว — ตัวที่สร้างก่อนได้เลข) | ไม่แตะ — **ไม่รวมอัตโนมัติ** | `contactIdConflicts` (ตัวเลข + รายการคู่ `{ keylessContactId, existingContactId, stubCustomerId, existingCustomerId }`) |
+| ไม่มีรายการที่ตรวจบัตรแล้ว | ไม่แตะ (นับอยู่ใน `contactsKeyless` เท่านั้น) | — |
+| มีคนเติมเลข/ได้เลขนี้ไประหว่างรัน | ข้าม | `contactsChangedMeanwhile` |
+
+- เขียนทีละ contact คนละทรานแซกชัน ไม่ล็อกเบอร์ · ติดด่านกุญแจชุดเดียวกัน (salt ผิด = hash เลขบัตรผิดด้วย)
+- หลัง APPLY รอบถัดไป contact ที่ผูกแล้วหลุดจากขอบเขต ⇒ `contactsKeyless` ลดลง · คู่ชนยังอยู่จนกว่าจะแก้มือ (ขั้น ⑥ข)
+
 ## ตัวแปรที่ต้องเตรียม
 
 ```bash
@@ -121,7 +144,8 @@ gcloud beta run jobs executions logs read <execution-id> --project=$PROJECT_ID -
 3. **ต้องไม่มี** บรรทัด `WARNING (APPLY จะถูกหยุด)` — ถ้ามี = กุญแจ/salt ใน Secret Manager ไม่ตรงกับ
    ข้อมูลในฐาน **หยุดแล้วถามเจ้าของ** (ห้ามไปหากุญแจอื่นมาลองเอง)
 4. บรรทัด `REPORT_JSON {...}` — ตัวเลขชุดเดียวกัน + `invalidIds` / `invalidSecondaryIds` /
-   `decryptFailedIds` / `displayChangedIds` (สูงสุด 500 id ต่อรายการ ยอดนับยังเต็ม)
+   `decryptFailedIds` / `displayChangedIds` + ขั้นผูก contact: `linkableContactIds` / `ambiguousContactIds` /
+   `contactIdConflicts` (สูงสุด 500 รายการต่อชุด ยอดนับยังเต็ม)
 5. บรรทัด `DUPLICATE_GROUP n/N {...}` บรรทัดละกลุ่ม (ดูขั้น ⑥) — กลุ่มที่ใหญ่เกิน 200 คน (มักเป็นเบอร์หลอก
    เช่น `0000000000`) แตกเป็น `DUPLICATE_GROUP n/N part k/K {...}` และมี `"oversized":true` +
    `memberCount` — กลุ่มแบบนี้เกือบแน่นอนว่าเป็นเบอร์หลอกที่หลายคนใช้ ไม่ใช่คนเดียวกัน → ส่งให้เจ้าของตัดสิน
@@ -164,6 +188,8 @@ gcloud run jobs execute $JOB --project=$PROJECT_ID --region=$REGION --wait
 - `failed` > 0 = บางแถวเขียนไม่ผ่าน (log แสดง 6 ตัวท้ายของ id + รหัส error) Job จะ exit 1
   ทั้งที่แถวอื่นเขียนแล้ว — รัน APPLY ซ้ำได้ (แถวที่เสร็จแล้วไม่ถูกแตะอีก) ถ้ายังพลาดแถวเดิม ส่ง id ท้ายให้ dev
 - `changed meanwhile` > 0 = มีคนแก้แถวนั้นระหว่างรัน ไม่ใช่ error — รันซ้ำเพื่อเก็บตก
+- ขั้นผูก contact: `contacts linked` ต้องเท่ากับ `contacts linkable` ของรอบ DRY-RUN (หรือน้อยกว่าด้วย
+  `contacts changed meanwhile`) · `contacts link failed` > 0 = Job exit 1 — รัน APPLY ซ้ำได้ ถ้ายังพลาดส่ง id ท้ายให้ dev
 
 ## ⑤ ตรวจผล
 
@@ -308,6 +334,46 @@ WHERE action = 'CUSTOMER_PHONE_REPAIR_RUN' ORDER BY created_at DESC LIMIT 3;
 
 **แถว `hashOnly: true`** (ไม่มีเบอร์ใน `phone` เหลือ มีแต่ hash) ทำแบบเดียวกัน แต่ดูเบอร์ได้จาก
 หน้าลูกค้าเท่านั้น (ระบบถอดจาก `phone_encrypted`)
+
+## ⑥ข แก้คู่ `contactIdConflicts` ทีละคู่ (ด้วยมือ)
+
+แต่ละคู่ = คนเดียวกันมีสอง contact: `keylessContactId` (ไม่มีเลขบัตร มี stub `stubCustomerId` จากการรับซื้อ)
+กับ `existingContactId` (ถือเลขบัตรนี้อยู่แล้ว) · CLI ไม่รวมให้ เพราะต้องมีคนยืนยันว่าเป็นคนเดียวกันจริง
+ใช้คู่จาก **DRY-RUN รอบตรวจ (ขั้น ⑤)** — คู่ที่ contact อีกตัวเพิ่งได้เลขในรอบ APPLY จะเปลี่ยน
+`existingCustomerId` เป็น stub ของ contact นั้น
+
+1. เปิด `/customers/<stubCustomerId>` และ `/customers/<existingCustomerId>` (ถ้ามี) ยืนยันด้วยตาว่าเป็นคนเดียวกัน
+   (ชื่อ เบอร์ รายการรับซื้อ) — ไม่ใช่คนเดียวกัน = **หยุด** ส่งเจ้าของ (เลขบัตรในรายการรับซื้อน่าจะพิมพ์ผิด)
+2. **`existingCustomerId` = `null`** (contact ที่มีเลขบัตรยังไม่มีลูกค้า — คู่นี้คือทางตันเดิม: พนักงานสร้างลูกค้า
+   ด้วยเลขบัตรจะได้ 409 ชี้ stub) → ย้าย stub และรายการรับซื้อไปอยู่ใต้ contact ที่มีเลขบัตร (ทรานแซกชันเดียว
+   ผ่าน cloud-sql-proxy — **ห้ามผ่าน MCP**):
+
+   ```sql
+   \set keyless  '<keylessContactId>'
+   \set existing '<existingContactId>'
+   \set stub     '<stubCustomerId>'
+   BEGIN;
+   -- ต้องได้ 1 แถวทั้งสองคำสั่ง ไม่งั้น ROLLBACK (ข้อมูลเปลี่ยนไปแล้ว — รัน DRY-RUN ใหม่)
+   UPDATE customers SET contact_id = :'existing', updated_at = now()
+   WHERE id = :'stub' AND contact_id = :'keyless' AND deleted_at IS NULL
+     AND national_id_hash IS NULL
+     AND NOT EXISTS (SELECT 1 FROM customers c2 WHERE c2.contact_id = :'existing' AND c2.deleted_at IS NULL);
+   UPDATE contacts
+   SET roles = ARRAY(SELECT DISTINCT unnest(roles || ARRAY['CUSTOMER','TRADE_IN_SELLER']::"ContactRole"[])),
+       updated_at = now()
+   WHERE id = :'existing' AND deleted_at IS NULL AND national_id_hash IS NOT NULL;
+   UPDATE trade_ins SET seller_contact_id = :'existing', updated_at = now()
+   WHERE seller_contact_id = :'keyless';
+   COMMIT;
+   ```
+
+   หลังจากนั้นพนักงานสร้างลูกค้าด้วยเลขบัตร + เบอร์เดิม ระบบจะ **upgrade stub** ให้เอง (ไม่ใช่ 409)
+   · contact ไม่มีเลขบัตรที่เหลือไม่ต้องลบ (ไม่มีอะไรอ้างถึงแล้ว ไม่มีผลกับการค้นหา)
+3. **`existingCustomerId` มีค่า** = คนเดียวกันมีลูกค้าสองแถว (stub จากการรับซื้อ + ลูกค้าตัวจริง) — ไม่ใช่ทางตัน
+   (พนักงานสร้างซ้ำจะได้ 409 เลขบัตรชี้ลูกค้าตัวจริงซึ่งถูกต้อง) แต่ stub มักถือ**เครดิตเทิร์น**
+   (`trade_ins.customer_id` = stub) ⇒ **ห้ามย้ายเครดิตหรือลบ stub ด้วย SQL** — ส่งคู่นี้ให้เจ้าของตัดสิน
+   ถ้าสองแถวอยู่ในกลุ่มเบอร์ซ้ำเดียวกันด้วย ให้ถือเป็นกลุ่มที่ `blockingTotal` > 0 (ขั้น ⑥)
+4. จดคู่ที่แก้แล้วแบบขั้น ⑥ ข้อ 7 (ผู้รัน · วันเวลา · id ทั้งสี่) แล้วรัน DRY-RUN อีกรอบ — คู่ที่แก้แล้วต้องหายไป
 
 ## ⑦ เรื่องปุ่ม "เริ่ม Backfill" (ตั้งค่า → PDPA)
 

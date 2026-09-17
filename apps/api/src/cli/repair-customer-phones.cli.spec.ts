@@ -8,6 +8,7 @@ import {
   classifyOrigin,
   formatDuplicateGroupLines,
   groupDuplicatePhones,
+  planContactLink,
   planPhoneRepair,
 } from './repair-customer-phones.cli';
 
@@ -347,5 +348,39 @@ describe('formatDuplicateGroupLines — กลุ่มใหญ่แตกเ�
     expect(parts.every((p) => p.oversized && p.memberCount === big.length)).toBe(true);
     expect(parts.every((p) => p.members.length <= MAX_MEMBERS_PER_LINE)).toBe(true);
     expect(parts.flatMap((p) => p.customerIds)).toEqual(big.map((m) => m.id));
+  });
+});
+
+describe('planContactLink — เลขบัตรจากรายการรับซื้อของ contact ที่ไม่มีเลขบัตร', () => {
+  const t = (id: string | null, verifiedAt: string | null, createdAt = '2026-09-01T00:00:00Z') => ({
+    sellerIdCardNumber: id,
+    idCardVerifiedAt: verifiedAt ? new Date(verifiedAt) : null,
+    createdAt: new Date(createdAt),
+  });
+
+  it('ไม่มีรายการที่ตรวจบัตรแล้วและมีเลขบัตร → NO_ID (รายการที่ยังไม่ตรวจบัตรไม่นับ)', () => {
+    expect(planContactLink([])).toEqual({ kind: 'NO_ID' });
+    expect(planContactLink([t(null, '2026-09-02T00:00:00Z'), t('  ', '2026-09-02T00:00:00Z')])).toEqual({
+      kind: 'NO_ID',
+    });
+    expect(planContactLink([t('1234567890123', null)])).toEqual({ kind: 'NO_ID' });
+  });
+
+  it('เลขเดียวกัน (ต่างแค่ขีด/ช่องว่าง) หลายรายการ → LINKABLE ด้วยเลขที่ normalize แล้ว', () => {
+    expect(
+      planContactLink([t('1-2345-67890-12-3', '2026-09-02T00:00:00Z'), t('1234567890123', '2026-09-05T00:00:00Z')]),
+    ).toEqual({ kind: 'LINKABLE', nationalId: '1234567890123' });
+  });
+
+  it('เลขต่างกัน → AMBIGUOUS ไม่เลือกให้', () => {
+    expect(
+      planContactLink([t('1234567890123', '2026-09-02T00:00:00Z'), t('9876543210987', '2026-09-05T00:00:00Z')]),
+    ).toEqual({ kind: 'AMBIGUOUS' });
+  });
+
+  it('รายการที่ยังไม่ตรวจบัตรซึ่งเลขต่างกันไม่ทำให้กำกวม', () => {
+    expect(
+      planContactLink([t('1234567890123', '2026-09-02T00:00:00Z'), t('9876543210987', null)]),
+    ).toEqual({ kind: 'LINKABLE', nationalId: '1234567890123' });
   });
 });

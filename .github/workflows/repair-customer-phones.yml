@@ -1,0 +1,93 @@
+name: Repair Customer Phones (prod)
+
+# Manually-triggered repair of customers.phone / phone_hash / phone_encrypted /
+# phone_secondary(_encrypted): normalize the phone format, fill missing or stale hash and
+# ciphertext, and report groups of live customers that share a primary phone (ids only).
+# Runs the CLI (apps/api/src/cli/repair-customer-phones.cli.ts → dist) as a Cloud Run Job,
+# mirroring backfill-user-companies.yml.
+#
+# Runbook (read it first — on-demand backup before `apply`):
+# docs/runbooks/2026-09-17-customer-phone-repair-runbook.md
+#
+# SAFETY: default mode is `dry-run` (read-only report). `apply` writes. The CLI itself guards:
+# EXPECTED_DB_NAME must equal current_database(); PII key (64 hex) + salt (>=32) required;
+# APPLY=YES_I_AM_SURE to write; (NODE_ENV=production OR db name `bestchoice`) also needs
+# ALLOW_PROD_REPAIR=YES_I_AM_SURE; a key/salt sanity gate stops `apply` before the first write
+# when many ciphertexts fail to decrypt or hashes disagree with consistent ciphertexts;
+# 5s cooldown. Idempotent — a second `apply` finds nothing to write.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_db_name:
+        description: 'Prod DB name — must equal current_database() or the job aborts. (= the part after the last "/" in the DATABASE_URL secret; prod is `bestchoice`.)'
+        required: true
+        type: string
+      mode:
+        description: '`dry-run` = report only (no writes). `apply` = write repairs (run dry-run + backup first).'
+        required: true
+        type: choice
+        options:
+          - dry-run
+          - apply
+        default: dry-run
+
+# Never let two repair runs overlap.
+concurrency:
+  group: repair-customer-phones
+  cancel-in-progress: false
+
+env:
+  API_IMAGE: asia-southeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bestchoice/api
+
+jobs:
+  repair-customer-phones:
+    name: Repair customer phones (Cloud Run Job)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Compose job env (dry-run vs apply)
+        id: cfg
+        run: |
+          if [ "${{ inputs.mode }}" = "apply" ]; then
+            echo "vars=TZ=Asia/Bangkok,EXPECTED_DB_NAME=${{ inputs.expected_db_name }},APPLY=YES_I_AM_SURE,ALLOW_PROD_REPAIR=YES_I_AM_SURE,NODE_ENV=production" >> "$GITHUB_OUTPUT"
+            echo "mode=APPLY — writing phone repairs" >> "$GITHUB_OUTPUT"
+          else
+            echo "vars=TZ=Asia/Bangkok,EXPECTED_DB_NAME=${{ inputs.expected_db_name }}" >> "$GITHUB_OUTPUT"
+            echo "mode=DRY-RUN — no writes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update repair job
+        run: |
+          # --set-env-vars replaces the whole env set, so a dry-run update drops APPLY from a previous run.
+          ARGS=(
+            --project="${{ secrets.GCP_PROJECT_ID }}"
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}"
+            --image="${{ env.API_IMAGE }}:latest"
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,PII_ENCRYPTION_KEY=pii-encryption-key:latest,PII_HASH_SALT=pii-hash-salt:latest
+            --set-cloudsql-instances="${{ secrets.CLOUD_SQL_CONNECTION_NAME }}"
+            --set-env-vars="${{ steps.cfg.outputs.vars }}"
+            --command=node
+            --args="apps/api/dist/src/cli/repair-customer-phones.cli.js"
+            --memory=1Gi
+            --max-retries=0
+            --task-timeout=3600s
+          )
+          gcloud run jobs update bestchoice-repair-customer-phones "${ARGS[@]}" 2>/dev/null \
+            || gcloud run jobs create bestchoice-repair-customer-phones "${ARGS[@]}"
+
+      - name: Execute repair (${{ steps.cfg.outputs.mode }})
+        run: |
+          echo "::notice::Repair mode → ${{ steps.cfg.outputs.mode }} (DB=${{ inputs.expected_db_name }})"
+          gcloud run jobs execute bestchoice-repair-customer-phones \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="${{ secrets.GCP_REGION || 'asia-southeast1' }}" \
+            --wait
+          echo "::notice::Done. Read the SUMMARY block, REPORT_JSON and DUPLICATE_GROUP lines in the Cloud Run Job execution logs."

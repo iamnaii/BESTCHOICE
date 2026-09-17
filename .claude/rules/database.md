@@ -100,7 +100,9 @@ unique index** (ข้อมูลเก่ามีคู่ซ้ำ — แ�
   ถ้าตรวจซ้ำทุกครั้ง ลูกค้าที่มีคู่ซ้ำอยู่แล้ว (เช่น stub ข้างบน) จะแก้ข้อมูลอะไรไม่ได้เลย.
 - นิยาม "เจ้าของเบอร์" ของ skip-tracing และการนำเข้า = `findLivePhoneOwner` (`customer-phone-owner.ts`) ตัวเดียว —
   ข้ามแถวที่ `phone_hash` ตรงแต่ plaintext (normalize แล้ว) เป็นเบอร์อื่น (hash ค้างจากบั๊ก skip-tracing เดิม).
-  การตรวจซ้ำฝั่งพนักงานยังหาด้วย `phone_hash` อย่างเดียว (แถว hash ค้างยังบล็อกจนกว่าจะรัน CLI ซ่อม).
+  การตรวจซ้ำฝั่งพนักงานยังหาด้วย `phone_hash` อย่างเดียว (แถว hash ค้างยังบล็อกจนกว่าจะรัน CLI ซ่อม `repair:customer-phones` —
+  `apps/api/src/cli/repair-customer-phones.cli.ts`, runbook `docs/runbooks/2026-09-17-customer-phone-repair-runbook.md`;
+  CLI ถือ plaintext เป็นความจริง ล็อกเบอร์ทีละแถวตามกติกาข้างล่าง ไม่บล็อก/ไม่รวม/ไม่ลบ — รายงานกลุ่มเบอร์ซ้ำเป็น id ให้แก้มือ).
   skip-tracing ที่ส่งเบอร์เดิมมาจะซ่อม hash/ciphertext/รูปแบบของแถวลูกหนี้เองในทรานแซกชันเดียวกัน.
 
 **กติกาลำดับล็อก (ห้ามฝ่า — ฝ่าแล้วได้ deadlock `40P01` เป็น 500 ดิบ):**

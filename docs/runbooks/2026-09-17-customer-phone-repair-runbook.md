@@ -17,9 +17,11 @@ DRY-RUN เป็นค่าเริ่มต้น · รันซ้ำไ�
 > skip-tracing / นำเข้า / stub รับซื้อ) normalize เบอร์และเขียน `phone_hash` + `phone_encrypted` แล้ว
 > ถ้าซ่อมก่อน deploy โค้ดเก่ายังสร้างแถวเสียเพิ่มได้ระหว่างนั้น (ไม่อันตราย แต่ต้องรันซ้ำ)
 >
-> **3. CLI ไม่รวมลูกค้า ไม่ลบลูกค้า ไม่บล็อกเบอร์ซ้ำ** — มันทำแค่ (ก) จัดรูปแบบเบอร์ (ข) เติม/แก้
+> **3. CLI ไม่รวมลูกค้า/ผู้ติดต่อ ไม่ย้าย ไม่ลบ ไม่บล็อกเบอร์ซ้ำ** — มันทำแค่ (ก) จัดรูปแบบเบอร์ (ข) เติม/แก้
 > `phone_hash` / `phone_encrypted` / `phone_secondary_encrypted` ให้ตรงกับเบอร์ในแถว (ค) รายงานกลุ่ม
-> ลูกค้าที่ถือเบอร์หลักเดียวกัน ส่วนการแก้คู่ซ้ำเป็นงานมือทีละคู่ (ขั้น ⑥)
+> ลูกค้าที่ถือเบอร์หลักเดียวกัน (ง) **เติม `contacts.national_id_hash`** ให้ผู้ติดต่อผู้ขายรับซื้อที่ไม่มีเลขบัตรแต่มี
+> stub ลูกค้า จากเลขบัตรในรายการรับซื้อที่ตรวจแล้ว (เลขเดียว + ไม่มีผู้ติดต่ออื่นถือเลขนั้น) — ที่ผูกไม่ได้รายงานไว้
+> ส่วนการแก้คู่ซ้ำ/คู่ชนเป็นงานมือทีละคู่ (ขั้น ⑥ / ⑥ข)
 >
 > **4. plaintext ในคอลัมน์ `phone` คือความจริง** — แถวที่ hash/ciphertext ค้างของเบอร์เก่า (บั๊ก
 > skip-tracing เดิมเปลี่ยน `phone` โดยไม่เขียน hash ใหม่) จะถูกเขียนทับตามเบอร์ใน `phone`
@@ -56,7 +58,8 @@ DRY-RUN เป็นค่าเริ่มต้น · รันซ้ำไ�
 ปัญหาที่ปิด: รายการรับซื้อ/เทิร์นที่เปิดโดยไม่มีเลขบัตรได้ contact ที่ `national_id_hash` ว่าง ตอนรับเครื่อง
 ระบบตรวจบัตรแล้วสร้าง stub ลูกค้า (ถือเบอร์ + hash) บน contact นั้น ⇒ พนักงานสร้างลูกค้าคนเดียวกันด้วยเลขบัตร
 ได้ contact ใหม่แล้วชน 409 เบอร์ของ stub **โดยไม่มีเมนูไหนไปต่อได้** · ตั้งแต่โค้ดชุดนี้ การรับเครื่องผูก contact
-ด้วยเลขบัตรที่ตรวจแล้วให้เอง ส่วนแถวเก่า CLI ทำให้:
+ด้วยเลขบัตรที่ตรวจแล้วให้เอง (ยกเว้น contact เก่าที่มี stub อยู่แล้วและผู้ติดต่อที่ถือเลขยังไม่มีลูกค้า — คงไว้ที่เดิม
+ให้แก้มือตามขั้น ⑥ข) ส่วนแถวเก่า CLI ทำให้:
 
 ขอบเขต: `contacts` ที่ยังไม่ถูกลบ, `national_id_hash` ว่าง และมี stub ลูกค้า (ยังไม่ถูกลบ ไม่มีเลขบัตร)
 เลขบัตรที่ใช้ = `trade_ins.seller_id_card_number` ของรายการ**ที่ตรวจบัตรแล้ว** (`id_card_verified_at` ไม่ว่าง)
@@ -67,7 +70,7 @@ DRY-RUN เป็นค่าเริ่มต้น · รันซ้ำไ�
 | contact ในขอบเขตทั้งหมด | — | `contactsKeyless` |
 | เลขบัตรที่ตรวจแล้วมีเลขเดียว และไม่มี contact อื่นถือเลขนี้ | `contacts.national_id_hash` = hash ของเลขนั้น (**ไม่แตะ stub / รายการรับซื้อ**) | `contactsLinkable` / `contactsLinked` · `linkableContactIds` |
 | รายการที่ตรวจแล้วมี**หลายเลข** | ไม่แตะ | `contactsAmbiguous` · `ambiguousContactIds` |
-| contact อื่นถือเลขนี้อยู่แล้ว (หรือ contact ไม่มีเลขบัตรสองตัวของคนเดียวกันในรอบเดียว — ตัวที่สร้างก่อนได้เลข) | ไม่แตะ — **ไม่รวมอัตโนมัติ** | `contactIdConflicts` (ตัวเลข + รายการคู่ `{ keylessContactId, existingContactId, stubCustomerId, existingCustomerId }`) |
+| contact อื่นถือเลขนี้อยู่แล้ว (หรือ contact ไม่มีเลขบัตรสองตัวของคนเดียวกันในรอบเดียว — ตัวที่สร้างก่อนได้เลข) | ไม่แตะ — **ไม่รวมอัตโนมัติ** | `contactIdConflicts` (ตัวเลข + รายการคู่ `{ keylessContactId, existingContactId, stubCustomerId, existingCustomerId, existingCustomerKeyed }` — `existingCustomerKeyed` = ลูกค้าฝั่งที่ถือเลขมีเลขบัตรจริงไหม ใช้แยกวิธีแก้ในขั้น ⑥ข) |
 | ไม่มีรายการที่ตรวจบัตรแล้ว | ไม่แตะ (นับอยู่ใน `contactsKeyless` เท่านั้น) | — |
 | มีคนเติมเลข/ได้เลขนี้ไประหว่างรัน | ข้าม | `contactsChangedMeanwhile` |
 
@@ -153,7 +156,13 @@ gcloud beta run jobs executions logs read <execution-id> --project=$PROJECT_ID -
 6. บรรทัดล่างสุด `DRY-RUN — ยังไม่เขียนอะไร …`
 
 **ส่งให้เจ้าของดูก่อน APPLY**: ตัวเลขใน SUMMARY + จำนวนกลุ่มเบอร์ซ้ำ + จำนวน invalid +
-**รายการ `displayChangedIds`** (ต้องได้คำอนุมัติเป็นรายการนี้โดยเฉพาะ)
+**รายการ `displayChangedIds`** (ต้องได้คำอนุมัติเป็นรายการนี้โดยเฉพาะ) +
+**ขั้นผูกผู้ติดต่อ**: ตัวเลข `contacts keyless / linkable / ambiguous / contact ID conflicts` +
+**รายการ `linkableContactIds`** (ต้องได้คำอนุมัติเป็นรายการนี้โดยเฉพาะ — APPLY ผูกผู้ติดต่อเหล่านี้กับเลขบัตรถาวร)
++ `ambiguousContactIds` / `contactIdConflicts` (ไม่ถูกแตะ แต่เจ้าของต้องรู้ว่ามีงานมือรออยู่ — ขั้น ⑥ข)
+- `linkableContactIds` = ผู้ติดต่อที่ APPLY จะเติมเลขบัตร (hash) ให้ — หลังจากนั้นพนักงานสร้างลูกค้าด้วยเลขบัตรนั้น
+  จะได้ผู้ติดต่อตัวนี้และ stub ของมัน ถ้าเจ้าของสงสัยรายใด (เช่น เลขบัตรในรายการรับซื้ออาจพิมพ์ผิด) **หยุด** แจ้ง dev
+  (CLI ไม่มีตัวเลือกข้ามรายคน)
 - `display number changes` = ลูกค้าที่**เบอร์บนหน้าจอจะเปลี่ยนเป็นอีกเบอร์**หลัง APPLY: ciphertext ค้างของเบอร์เก่า
   (บั๊ก skip-tracing เดิม) ทำให้หน้าจอยังแสดงเบอร์เก่าอยู่ ส่วนคอลัมน์ `phone` เป็นเบอร์ที่พนักงานแก้ล่าสุด
   — APPLY ยึด `phone` ⇒ ให้เจ้าของ/ฝ่ายติดตามหนี้เปิดดูรายชื่อพวกนี้ก่อน (ส่วนใหญ่คือลูกหนี้ที่เคยถูกเปลี่ยนเบอร์)
@@ -340,40 +349,82 @@ WHERE action = 'CUSTOMER_PHONE_REPAIR_RUN' ORDER BY created_at DESC LIMIT 3;
 แต่ละคู่ = คนเดียวกันมีสอง contact: `keylessContactId` (ไม่มีเลขบัตร มี stub `stubCustomerId` จากการรับซื้อ)
 กับ `existingContactId` (ถือเลขบัตรนี้อยู่แล้ว) · CLI ไม่รวมให้ เพราะต้องมีคนยืนยันว่าเป็นคนเดียวกันจริง
 ใช้คู่จาก **DRY-RUN รอบตรวจ (ขั้น ⑤)** — คู่ที่ contact อีกตัวเพิ่งได้เลขในรอบ APPLY จะเปลี่ยน
-`existingCustomerId` เป็น stub ของ contact นั้น
+`existingCustomerId` เป็น stub ของ contact นั้น (และ `existingCustomerKeyed` = `false`)
+
+แยกคู่เป็น 3 แบบตามสองช่องในรายงาน:
+
+| `existingCustomerId` | `existingCustomerKeyed` | ความหมาย | ทำอะไร |
+|---|---|---|---|
+| `null` | `false` | contact ที่มีเลขบัตรยังไม่มีลูกค้า — **ทางตัน** (พนักงานสร้างลูกค้าด้วยเลขบัตรจะได้ contact นั้น แล้วชน 409 เบอร์ของ stub) | ข้อ 2 — รวม contact |
+| มีค่า | `true` | มีลูกค้าตัวจริง (มีเลขบัตร) อยู่แล้ว — **ไม่ใช่ทางตัน** (สร้างซ้ำได้ 409 เลขบัตรชี้ลูกค้าตัวจริง ซึ่งถูกต้อง) | ข้อ 3 — ส่งเจ้าของ |
+| มีค่า | `false` | ลูกค้าฝั่งที่มีเลขบัตรก็เป็น **stub ไม่มีเลขบัตร** (คู่ชนที่เกิดในรอบเดียวกันเป็นแบบนี้เสมอ) — **ยังเป็นทางตัน** (สร้างด้วยเลขบัตรจะ upgrade stub ฝั่งมีเลข แต่ชน 409 เบอร์ของ stub ฝั่ง keyless) | ข้อ 4 — ส่งเจ้าของ |
 
 1. เปิด `/customers/<stubCustomerId>` และ `/customers/<existingCustomerId>` (ถ้ามี) ยืนยันด้วยตาว่าเป็นคนเดียวกัน
    (ชื่อ เบอร์ รายการรับซื้อ) — ไม่ใช่คนเดียวกัน = **หยุด** ส่งเจ้าของ (เลขบัตรในรายการรับซื้อน่าจะพิมพ์ผิด)
-2. **`existingCustomerId` = `null`** (contact ที่มีเลขบัตรยังไม่มีลูกค้า — คู่นี้คือทางตันเดิม: พนักงานสร้างลูกค้า
-   ด้วยเลขบัตรจะได้ 409 ชี้ stub) → ย้าย stub และรายการรับซื้อไปอยู่ใต้ contact ที่มีเลขบัตร (ทรานแซกชันเดียว
-   ผ่าน cloud-sql-proxy — **ห้ามผ่าน MCP**):
+2. **`existingCustomerId` = `null`** → **ใช้เมนู "รวมผู้ติดต่อ" ในระบบ (ทางหลัก — OWNER เท่านั้น)**:
+   เปิด `/contacts/<existingContactId>` → ปุ่ม **รวมผู้ติดต่อซ้ำ** → ค้นแล้วเลือก contact `<keylessContactId>` → ยืนยัน
+   - เมนูนี้ทำในทรานแซกชันเดียว: ย้ายลูกค้า (stub) + รายการรับซื้อ ไปอยู่ใต้ contact ที่มีเลขบัตร · รวมบทบาท ·
+     เลขบัตรของ contact หลักไม่ถูกทับ · **soft-delete contact ไม่มีเลขบัตร** (หายจากช่องค้นหาผู้ติดต่อด้วย) ·
+     บันทึก AuditLog `CONTACTS_MERGED` (เขียนหลังทรานแซกชัน commit)
+   - ⛔ **ห้ามใช้เมนูนี้กับคู่ที่ `existingCustomerId` มีค่า** — เมนูไม่ตรวจว่า contact หลักมีลูกค้าอยู่แล้ว
+     รวมแล้วจะได้ลูกค้าสองแถวบน contact เดียว
+   - ก่อนกด เปิด `/contacts/<existingContactId>` ดูว่า **ยังไม่มีลูกค้า** จริง (ข้อมูลอาจเปลี่ยนหลัง DRY-RUN)
+     ถ้ามีแล้ว = คู่นี้กลายเป็นแบบข้อ 3/4 → หยุด
+   - หลังรวม พนักงานสร้างลูกค้าด้วยเลขบัตร + เบอร์เดิม ระบบจะ **upgrade stub** ให้เอง (ไม่ใช่ 409)
+     — ยกเว้นลูกค้าคนนี้เคยถูก**ลบ**ไปแล้ว (ดูหมายเหตุท้ายขั้นนี้)
+
+   **ทางสำรอง (เมื่อเมนูใช้ไม่ได้เท่านั้น) — SQL ผ่าน cloud-sql-proxy, ห้ามผ่าน MCP:**
+   ทางนี้**ไม่มี AuditLog** และไม่ลบ contact ไม่มีเลขบัตร (มันยังโผล่ในช่องค้นหาผู้ติดต่อ) — จดลงบันทึกแก้มือเสมอ
+   บล็อกนี้**ไม่มี `COMMIT`** โดยตั้งใจ: วางทั้งบล็อก แล้ว**อ่านผลก่อน**จึงพิมพ์ `COMMIT;` เอง
 
    ```sql
    \set keyless  '<keylessContactId>'
    \set existing '<existingContactId>'
    \set stub     '<stubCustomerId>'
    BEGIN;
-   -- ต้องได้ 1 แถวทั้งสองคำสั่ง ไม่งั้น ROLLBACK (ข้อมูลเปลี่ยนไปแล้ว — รัน DRY-RUN ใหม่)
+   -- (1) ย้าย stub — ต้องได้ UPDATE 1
    UPDATE customers SET contact_id = :'existing', updated_at = now()
    WHERE id = :'stub' AND contact_id = :'keyless' AND deleted_at IS NULL
      AND national_id_hash IS NULL
-     AND NOT EXISTS (SELECT 1 FROM customers c2 WHERE c2.contact_id = :'existing' AND c2.deleted_at IS NULL);
+     AND NOT EXISTS (SELECT 1 FROM customers c2
+                     WHERE c2.contact_id = :'existing' AND c2.deleted_at IS NULL AND c2.id <> :'stub');
+   -- (2) เติมบทบาท — ต้องได้ UPDATE 1 · ทำเฉพาะเมื่อ (1) ย้ายสำเร็จจริง
    UPDATE contacts
    SET roles = ARRAY(SELECT DISTINCT unnest(roles || ARRAY['CUSTOMER','TRADE_IN_SELLER']::"ContactRole"[])),
        updated_at = now()
-   WHERE id = :'existing' AND deleted_at IS NULL AND national_id_hash IS NOT NULL;
+   WHERE id = :'existing' AND deleted_at IS NULL AND national_id_hash IS NOT NULL
+     AND EXISTS (SELECT 1 FROM customers s
+                 WHERE s.id = :'stub' AND s.contact_id = :'existing' AND s.deleted_at IS NULL);
+   -- (3) ย้ายรายการรับซื้อ — ได้ UPDATE n (n ≥ 1) · ทำเฉพาะเมื่อ (1) ย้ายสำเร็จจริง
    UPDATE trade_ins SET seller_contact_id = :'existing', updated_at = now()
-   WHERE seller_contact_id = :'keyless';
-   COMMIT;
+   WHERE seller_contact_id = :'keyless'
+     AND EXISTS (SELECT 1 FROM customers s
+                 WHERE s.id = :'stub' AND s.contact_id = :'existing' AND s.deleted_at IS NULL);
+   -- ⛔ อ่านผลสามบรรทัดก่อน: ได้ UPDATE 1 / UPDATE 1 / UPDATE n (n ≥ 1) เท่านั้น → พิมพ์ COMMIT;
+   --    อย่างอื่นทั้งหมด (โดยเฉพาะ UPDATE 0 ที่คำสั่งใดก็ตาม) → พิมพ์ ROLLBACK; แล้วรัน DRY-RUN ใหม่
    ```
 
-   หลังจากนั้นพนักงานสร้างลูกค้าด้วยเลขบัตร + เบอร์เดิม ระบบจะ **upgrade stub** ให้เอง (ไม่ใช่ 409)
-   · contact ไม่มีเลขบัตรที่เหลือไม่ต้องลบ (ไม่มีอะไรอ้างถึงแล้ว ไม่มีผลกับการค้นหา)
-3. **`existingCustomerId` มีค่า** = คนเดียวกันมีลูกค้าสองแถว (stub จากการรับซื้อ + ลูกค้าตัวจริง) — ไม่ใช่ทางตัน
-   (พนักงานสร้างซ้ำจะได้ 409 เลขบัตรชี้ลูกค้าตัวจริงซึ่งถูกต้อง) แต่ stub มักถือ**เครดิตเทิร์น**
-   (`trade_ins.customer_id` = stub) ⇒ **ห้ามย้ายเครดิตหรือลบ stub ด้วย SQL** — ส่งคู่นี้ให้เจ้าของตัดสิน
+   เงื่อนไข `EXISTS` ใน (2)/(3) ทำให้ถ้า (1) ได้ 0 แถว (contact ที่มีเลขบัตรเพิ่งได้ลูกค้าหลัง DRY-RUN /
+   พิมพ์ id ผิด) สองคำสั่งหลังก็ได้ 0 แถวด้วย — ไม่มีทางเหลือข้อมูลครึ่งเดียว (รายการรับซื้อชี้ contact ใหม่
+   แต่ stub ที่ถือเครดิตยังอยู่ contact เดิม) แม้เผลอ COMMIT
+3. **`existingCustomerId` มีค่า + `existingCustomerKeyed` = `true`** = คนเดียวกันมีลูกค้าสองแถว (stub จากการรับซื้อ
+   + ลูกค้าตัวจริง) — ไม่ใช่ทางตัน แต่ stub มักถือ**เครดิตเทิร์น** (`trade_ins.customer_id` = stub) ⇒
+   **ห้ามย้ายเครดิตหรือลบ stub ด้วย SQL และห้ามใช้เมนูรวมผู้ติดต่อ** — ส่งคู่นี้ให้เจ้าของตัดสิน
    ถ้าสองแถวอยู่ในกลุ่มเบอร์ซ้ำเดียวกันด้วย ให้ถือเป็นกลุ่มที่ `blockingTotal` > 0 (ขั้น ⑥)
-4. จดคู่ที่แก้แล้วแบบขั้น ⑥ ข้อ 7 (ผู้รัน · วันเวลา · id ทั้งสี่) แล้วรัน DRY-RUN อีกรอบ — คู่ที่แก้แล้วต้องหายไป
+4. **`existingCustomerId` มีค่า + `existingCustomerKeyed` = `false`** = สอง stub ไม่มีเลขบัตรของคนเดียวกัน —
+   **ยังเป็นทางตัน** และแก้ด้วยข้อ 2 ไม่ได้ (SQL ติดเงื่อนไข `NOT EXISTS`, เมนูรวมจะได้ลูกค้าสองแถว) ⇒ ส่งเจ้าของ
+   พร้อมคำถามชัด ๆ: stub ตัวไหนเก็บไว้ (ดูว่าตัวไหนถือเครดิตเทิร์น/สัญญา) และ soft-delete ตัวที่ว่างตามขั้น ⑥
+   — **ห้ามทำเองด้วย SQL**
+5. จดคู่ที่แก้แล้วแบบขั้น ⑥ ข้อ 7 (ผู้รัน · วันเวลา · id ทั้งสี่ · ใช้เมนูหรือ SQL) แล้วรัน DRY-RUN อีกรอบ
+   — คู่ที่แก้แล้วต้องหายไป · ถ้าใช้ SQL ให้ตรวจเพิ่มว่า stub อยู่ใต้ contact ที่มีเลขบัตรจริง
+   (`SELECT contact_id FROM customers WHERE id = '<stubCustomerId>'` ต้องได้ `<existingContactId>`)
+   เพราะคู่ที่ย้ายรายการรับซื้อไปแล้วแต่ stub ไม่ได้ย้าย ก็**หายจากรายงาน**ได้เหมือนกัน
+   (contact ไม่มีเลขบัตรไม่เหลือรายการที่ตรวจบัตรแล้ว)
+
+> **หมายเหตุ — ลูกค้าที่เคยถูกลบ:** ถ้ามีลูกค้าที่ถูกลบ (เมนูลบลูกค้าของ OWNER) ถือเลขบัตรนี้อยู่ พนักงานสร้างลูกค้า
+> ด้วยเลขบัตรจะเข้าทาง **ชุบลูกค้าที่ถูกลบกลับมา** ซึ่งไม่ยกเว้น stub ⇒ ยังชน 409 เบอร์ของ stub ได้แม้แก้คู่แล้ว
+> **ยังไม่มีเมนูไหนแก้เคสนี้ได้** (ฟอร์มแก้ลูกค้าล้างเบอร์ไม่ได้ — ต้องเป็นเลข 10 หลักเสมอ และแก้เลขบัตรไม่ได้)
+> ⇒ ส่งเจ้าของตัดสินว่าจะเก็บแถวไหน (ลูกค้าที่ถูกลบ หรือ stub) — **ห้ามแก้เองด้วย SQL**
 
 ## ⑦ เรื่องปุ่ม "เริ่ม Backfill" (ตั้งค่า → PDPA)
 

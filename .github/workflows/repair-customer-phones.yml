@@ -3,6 +3,9 @@ name: Repair Customer Phones (prod)
 # Manually-triggered repair of customers.phone / phone_hash / phone_encrypted /
 # phone_secondary(_encrypted): normalize the phone format, fill missing or stale hash and
 # ciphertext, and report groups of live customers that share a primary phone (ids only).
+# It ALSO writes contacts.national_id_hash for keyless trade-in seller contacts that carry a
+# customer stub, using the single verified ID card number on their trade-ins (never merges,
+# moves or deletes; ambiguous / conflicting contacts are only reported).
 # Runs the CLI (apps/api/src/cli/repair-customer-phones.cli.ts → dist) as a Cloud Run Job,
 # mirroring backfill-user-companies.yml.
 #

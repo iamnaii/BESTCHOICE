@@ -220,6 +220,32 @@ describe('TradeInLifecycleService.accept — ผูกผู้ขายไม�
     expect(await prisma.customer.count({ where: { contactId: existingContactId, deletedAt: null } })).toBe(1);
   });
 
+  it('(ง) contact อื่นถือเลขแต่ยังไม่มีลูกค้า + contact keyless มี stub จากครั้งก่อน → คงรายการไว้ที่ contact เดิม · ใช้ stub เดิม ไม่แตกสองแถว', async () => {
+    const nid = randomThaiId();
+    const holder = await resolver.findOrCreateByNaturalKey(prisma as never, {
+      name: `accept-contact D-holder ${stamp}`,
+      taxId: null,
+      nationalIdHash: hashPII(nid, PII_SALT),
+      phone: await freshPhone(),
+      role: 'TRADE_IN_SELLER',
+    });
+    contactIds.add(holder.id);
+    const phone = await freshPhone();
+    const keyless = await keylessContact('D', phone);
+    const oldStub = await resolver.ensureRole(prisma as never, keyless.id, 'CUSTOMER');
+    customerIds.add(oldStub.customerId!);
+    const ti = await appraisedExchange(keyless.id);
+
+    const accepted = await accept(ti.id, nid, phone);
+
+    expect(accepted.sellerContactId).toBe(keyless.id);
+    expect(accepted.customerId).toBe(oldStub.customerId);
+    expect(await prisma.customer.count({ where: { contactId: holder.id } })).toBe(0);
+    expect(await prisma.customer.count({ where: { contactId: keyless.id, deletedAt: null } })).toBe(1);
+    const untouched = await prisma.contact.findUniqueOrThrow({ where: { id: keyless.id } });
+    expect(untouched.nationalIdHash).toBeNull();
+  });
+
   it('(ค) contact มีเลขบัตรอยู่แล้ว → ใช้ contact เดิม สร้าง stub บน contact นั้นเหมือนเดิม', async () => {
     const phone = await freshPhone();
     const nid = randomThaiId();

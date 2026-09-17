@@ -416,6 +416,14 @@ export class TradeInLifecycleService {
       select: { id: true },
     });
     if (holder) {
+      // contact ที่ถือเลขยังไม่มีลูกค้า แต่ contact keyless มีลูกค้า (stub จากการรับครั้งก่อน) อยู่แล้ว
+      // → คงรายการไว้ที่ contact เดิม (พฤติกรรมเดิม) ไม่งั้น ensureRole สร้าง stub ตัวที่สองบน holder
+      // แล้วเครดิตเทิร์นของคนเดียวกันแตกสองแถว · คู่นี้ CLI repair รายงานเป็น contactIdConflicts ให้แก้มือ
+      const [holderCustomer, keylessCustomer] = await Promise.all([
+        tx.customer.findFirst({ where: { contactId: holder.id, deletedAt: null }, select: { id: true } }),
+        tx.customer.findFirst({ where: { contactId, deletedAt: null }, select: { id: true } }),
+      ]);
+      if (!holderCustomer && keylessCustomer) return contactId;
       const existing = await this.contactResolver.findOrCreateByNaturalKey(tx, {
         name: evidence.sellerName!, phone: evidence.sellerPhone!, taxId: null,
         nationalIdHash: hash, role: 'TRADE_IN_SELLER',
@@ -559,9 +567,11 @@ export class TradeInLifecycleService {
       // test-data fence auto-mark (spec 2026-09-05 §5.3): เครื่องที่รับซื้อจากลูกค้าทดสอบต้องมี
       // marker ติดตัวตั้งแต่เกิด ไม่งั้นคลังจะมองเป็นของจริง
       // (IMEI ไม่แตะ — เป็นของจริงของเครื่องทดสอบ)
-      const seller = tradeIn.customerId
+      // ใช้ลูกค้าเครดิตที่ resolve แล้ว (ทาง EXCHANGE ที่ tradeIn.customerId ว่างอาจผูกไปลูกค้าที่มีอยู่ ซึ่งอาจเป็นลูกค้าทดสอบ)
+      const sellerCustomerId = creditCustomerId ?? tradeIn.customerId;
+      const seller = sellerCustomerId
         ? await tx.customer.findUnique({
-            where: { id: tradeIn.customerId },
+            where: { id: sellerCustomerId },
             select: TEST_SIDE_CUSTOMER_SELECT,
           })
         : null;

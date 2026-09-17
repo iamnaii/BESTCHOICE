@@ -490,6 +490,12 @@ describe('runRepair (real DB)', () => {
     await tradeIn(kLink.id, randomThaiId(), null);
     // ชน — contact อื่นถือเลขบัตรนี้อยู่แล้ว (มีลูกค้า)
     const existing = await contact('existing', { nationalIdHash: hashPII(idConflict, SALT) });
+    // stub เก่ากว่าบน contact เดียวกัน — รายงานต้องเลือกลูกค้าที่มีเลขบัตร
+    await customer('existing older stub', {
+      phone: '',
+      contactId: existing.id,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+    });
     const existingCustomer = await customer('existing customer', {
       phone: '',
       contactId: existing.id,
@@ -539,12 +545,14 @@ describe('runRepair (real DB)', () => {
           existingContactId: existing.id,
           stubCustomerId: sConflict.id,
           existingCustomerId: existingCustomer.id,
+          existingCustomerKeyed: true,
         },
         {
           keylessContactId: kDupSecond.id,
           existingContactId: kDupFirst.id,
           stubCustomerId: sDupSecond.id,
           existingCustomerId: sDupFirst.id,
+          existingCustomerKeyed: false,
         },
       ]),
     );
@@ -584,6 +592,14 @@ describe('runRepair (real DB)', () => {
       contactsLinked: 0,
       contactsAmbiguous: 1,
       contactIdConflicts: 2,
+    });
+    // คู่ dup: contact ที่ถือเลขมีแค่ stub ไม่มีเลขบัตร ⇒ ยังเป็นทางตัน (ต้องให้เจ้าของตัดสิน)
+    expect(again.contactIdConflicts).toContainEqual({
+      keylessContactId: kDupSecond.id,
+      existingContactId: kDupFirst.id,
+      stubCustomerId: sDupSecond.id,
+      existingCustomerId: sDupFirst.id,
+      existingCustomerKeyed: false,
     });
   });
 

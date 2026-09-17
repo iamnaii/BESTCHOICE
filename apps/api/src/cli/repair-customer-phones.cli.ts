@@ -9,6 +9,9 @@
  * CLI นี้ทำให้ทุกแถว: `phone = normalizeThaiPhone(phone)`, `phone_hash = hash(เบอร์นั้น)`,
  * `phone_encrypted = encrypt(เบอร์นั้น)` และ normalize + เข้ารหัส `phone_secondary` — **plaintext คือความจริง**
  * แล้วรายงานกลุ่มลูกค้าที่ถือเบอร์หลักเดียวกัน (id เท่านั้น) ให้เจ้าของแก้ทีละคู่ด้วยมือ
+ * **และ (Part E)** เขียน `contacts.national_id_hash` ให้ contact ผู้ขายรับซื้อที่ไม่มีเลขบัตรแต่มี stub ลูกค้า
+ * จากเลขบัตรในรายการรับซื้อที่ตรวจแล้ว (เลขเดียว + ไม่มี contact อื่นถือเลขนั้น) — ไม่รวม/ไม่ย้าย/ไม่ลบอะไร
+ * ที่เหลือรายงานเป็น `contactIdConflicts` / `ambiguousContactIds`
  * (ไม่มีเครื่องมือรวมลูกค้า — คำตัดสินข้อ 4) · runbook: docs/runbooks/2026-09-17-customer-phone-repair-runbook.md
  *
  * GUARDS
@@ -30,6 +33,8 @@
  * ทรานแซกชันเดียวทั้ง batch ใช้ไม่ได้: Postgres ทำให้ทรานแซกชันพังทั้งก้อนเมื่อคำสั่งหนึ่งพัง (ข้ามแถวเสียไม่ได้)
  * และจะถือหลายคีย์เบอร์ในทรานแซกชันเดียว (ฝ่ากติกาลำดับล็อก)
  * ไม่บล็อกเบอร์ซ้ำ — เบอร์ซ้ำถูกรายงานเป็นกลุ่มให้แก้ด้วยมือ
+ * ขั้นผูก contact (หลังขั้นเบอร์) เขียน `contacts.national_id_hash` ทีละ contact คนละทรานแซกชัน
+ * (`updateMany … national_id_hash IS NULL` + ตรวจว่าไม่มี contact อื่นถือเลขนั้นในทรานแซกชันเดียวกัน) ไม่ล็อกเบอร์
  *
  * INVOCATION
  * ----------
@@ -360,6 +365,11 @@ export interface ContactIdConflict {
   existingContactId: string;
   stubCustomerId: string;
   existingCustomerId: string | null;
+  /**
+   * ลูกค้า `existingCustomerId` มีเลขบัตรไหม — false = เป็น stub ไม่มีเลขบัตร (รวมคู่ชนในรอบเดียวกันเสมอ)
+   * ⇒ ยังเป็นทางตัน: พนักงานสร้างด้วยเลขบัตรจะชน 409 เบอร์ของ stub ฝั่ง keyless ต้องให้เจ้าของตัดสินสอง stub
+   */
+  existingCustomerKeyed: boolean;
 }
 
 // ─── ตัวรันกับฐานจริง ─────────────────────────────────────────────────────────
@@ -953,23 +963,29 @@ async function planContactLinks(
 
   // ลูกค้า (ยังไม่ถูกลบ, เก่าสุด) ของ contact ที่ถือเลขอยู่แล้ว
   const holderIds = [...new Set(pending.filter((p) => !p.existingStubId).map((p) => p.existingContactId))];
-  const holderCustomer = new Map<string, string>();
+  // เลือกลูกค้าที่มีเลขบัตรก่อน (ถ้ามี) ไม่งั้นเก่าสุด
+  const holderCustomer = new Map<string, { id: string; keyed: boolean }>();
   for (let i = 0; i < holderIds.length; i += ID_CHUNK) {
     const custs = await prisma.customer.findMany({
       where: { deletedAt: null, contactId: { in: holderIds.slice(i, i + ID_CHUNK) } },
-      select: { id: true, contactId: true },
+      select: { id: true, contactId: true, nationalIdHash: true, nationalId: true },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     });
     for (const cu of custs) {
-      if (cu.contactId && !holderCustomer.has(cu.contactId)) holderCustomer.set(cu.contactId, cu.id);
+      if (!cu.contactId) continue;
+      const keyed = !!cu.nationalIdHash || !!cu.nationalId?.trim();
+      const prev = holderCustomer.get(cu.contactId);
+      if (!prev || (keyed && !prev.keyed)) holderCustomer.set(cu.contactId, { id: cu.id, keyed });
     }
   }
   for (const p of pending) {
+    const held = p.existingStubId ? undefined : holderCustomer.get(p.existingContactId);
     stage.conflicts.push({
       keylessContactId: p.c.contactId,
       existingContactId: p.existingContactId,
       stubCustomerId: p.c.stubId,
-      existingCustomerId: p.existingStubId ?? holderCustomer.get(p.existingContactId) ?? null,
+      existingCustomerId: p.existingStubId ?? held?.id ?? null,
+      existingCustomerKeyed: held?.keyed ?? false,
     });
   }
   counts.contactIdConflicts = stage.conflicts.length;

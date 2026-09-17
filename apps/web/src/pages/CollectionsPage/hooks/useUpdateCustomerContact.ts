@@ -19,8 +19,26 @@ export interface UpdateCustomerContactPayload {
 export interface UpdateCustomerContactResponse {
   id: string;
   phone: string | null;
+  phoneSecondary?: string | null;
   lineIdFinance: string | null;
   status: 'ACTIVE' | 'INACTIVE' | 'LOST';
+  /** เบอร์ใหม่ถูกเก็บช่องไหน — SECONDARY = เบอร์นี้เป็นเบอร์หลักของลูกค้าคนอื่นอยู่แล้ว */
+  phoneStoredAs?: 'PRIMARY' | 'SECONDARY' | null;
+  /** ลูกค้าคนอื่นที่ถือเบอร์นี้ (เฉพาะ SECONDARY) */
+  phoneOwner?: { id: string; name: string } | null;
+}
+
+/** ข้อความหลังบันทึกสำเร็จ — เบอร์ของคนอื่นต้องบอกผู้ใช้ว่าเก็บเป็นเบอร์สำรองแทน */
+export function skipTracingSuccessMessage(
+  data: UpdateCustomerContactResponse | undefined,
+  payload: UpdateCustomerContactPayload,
+): string {
+  if (data?.phoneStoredAs === 'SECONDARY') {
+    const phone = data.phoneSecondary || payload.newPhone || '';
+    const owner = data.phoneOwner?.name || 'ลูกค้าคนอื่น';
+    return `เบอร์ ${phone} เป็นของ ${owner} — บันทึกเป็นเบอร์สำรองของลูกค้าคนนี้แทน`;
+  }
+  return payload.markAsLost ? 'ทำเครื่องหมาย "สูญหาย" แล้ว' : 'อัปเดตข้อมูลติดต่อแล้ว';
 }
 
 export function useUpdateCustomerContact() {
@@ -39,12 +57,8 @@ export function useUpdateCustomerContact() {
       );
       return data;
     },
-    onSuccess: (_data, variables) => {
-      toast.success(
-        variables.payload.markAsLost
-          ? 'ทำเครื่องหมาย "สูญหาย" แล้ว'
-          : 'อัปเดตข้อมูลติดต่อแล้ว',
-      );
+    onSuccess: (data, variables) => {
+      toast.success(skipTracingSuccessMessage(data, variables.payload));
       // Refresh queue so updated phone / LOST tag propagates immediately.
       qc.invalidateQueries({ queryKey: ['overdue-queue'] });
       qc.invalidateQueries({ queryKey: ['customer', variables.customerId] });

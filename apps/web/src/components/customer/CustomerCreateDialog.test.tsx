@@ -4,6 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 const apiPost = vi.fn();
+const toastError = vi.fn();
+vi.mock('sonner', () => ({
+  toast: { error: (...args: unknown[]) => toastError(...args), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
 vi.mock('@/lib/api', () => ({
   __esModule: true,
   default: { post: (...args: unknown[]) => apiPost(...args) },
@@ -30,8 +34,9 @@ const fillRequired = () => {
   fireEvent.change(mainField('X-XXXX-XXXXX-XX-X'), { target: { value: VALID_NID } });
   fireEvent.change(mainField('0XX-XXX-XXXX'), { target: { value: '0812345678' } });
 };
-/** โหมด fill: ช่องบังคับมีแค่เบอร์ — คำนำหน้า/เลขบัตร/นามสกุลว่างได้ (M-W4) */
+/** โหมด fill: ช่องบังคับคือคำนำหน้า (คำตัดสินเจ้าของ 2026-09-17) + เบอร์ — เลขบัตร/นามสกุลว่างได้ */
 const fillProspectRequired = () => {
+  fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'นาย' } });
   fireEvent.change(mainField('0XX-XXX-XXXX'), { target: { value: '0812345678' } });
 };
 /** ป้ายของช่อง (FormLabel) ตามลำดับใน DOM — ใช้ตรวจลำดับช่องตาม mockup */
@@ -40,6 +45,7 @@ const formLabels = () => Array.from(document.querySelectorAll('[data-slot="form-
 const fieldError = (name: string) => document.getElementById(`${name}-error`);
 const FILL_NOTE = 'ชื่อเติมให้จากห้องแชทแล้ว แก้ได้ · บันทึกแล้วผู้สนใจคนนี้จะเช็คเครดิตและทำสัญญาได้ทันที';
 const DUP_PHONE_FIELD_ERROR = 'เบอร์นี้มีลูกค้าใช้อยู่แล้ว';
+const DUP_PHONE_FIELD_ERROR_PROSPECT = 'เบอร์นี้มีผู้สนใจใช้อยู่แล้ว';
 /**
  * 3 ก.ย. 2569 เวลา 11:30 UTC — `formatThaiDateShort` อ่านวันตาม timezone ของเครื่อง
  * เวลาท้องถิ่น = 11:30 + offset ⇒ ยังเป็นวันที่ 3 เมื่อ offset อยู่ในช่วง [−11:30, +12:30)
@@ -106,7 +112,7 @@ describe('CustomerCreateDialog', () => {
     expect(apiPost).not.toHaveBeenCalled();
   });
 
-  // M-W4 เปลี่ยนเฉพาะโหมด fill — โหมดสร้างยังบังคับคำนำหน้าเหมือนเดิม
+  // โหมดสร้างบังคับคำนำหน้ามาตลอด (โหมด fill บังคับตามตั้งแต่ 2026-09-17)
   it('โหมดสร้าง: ไม่เลือกคำนำหน้า → "กรุณาเลือกคำนำหน้า" และไม่ยิง API', async () => {
     wrap(<CustomerCreateDialog open onOpenChange={vi.fn()} initialValues={{ firstName: 'ก', lastName: 'ข' }} onCreated={vi.fn()} />);
     fireEvent.change(mainField('X-XXXX-XXXXX-XX-X'), { target: { value: VALID_NID } });
@@ -166,7 +172,7 @@ describe('CustomerCreateDialog', () => {
   it('โหมดสร้าง: ลำดับช่องข้อมูลหลักคงเดิม · นามสกุลยังบังคับ (มีดอกจัน)', () => {
     wrap(<CustomerCreateDialog open onOpenChange={vi.fn()} onCreated={vi.fn()} />);
     expect(formLabels().slice(0, 7)).toEqual([
-      'คำนำหน้า',
+      'คำนำหน้า *',
       'ชื่อ *',
       'นามสกุล *',
       'เลขบัตรประชาชน (13 หลัก) *',
@@ -190,6 +196,40 @@ describe('CustomerCreateDialog', () => {
     expect(alert).not.toHaveTextContent('ลูกค้าตั้งแต่');
     expect(alert).not.toHaveTextContent('ผ่อนอยู่');
     expect(fieldError('phone')).toBeNull();
+  });
+
+  // คำตัดสิน 2026-09-17: คำเรียกคนเดิมตามนิยามเจ้าของ — ลูกค้า = ซื้อแล้ว ที่เหลือ = ผู้สนใจ
+  it('โหมดสร้าง: 409 คนเดิมยังไม่เคยซื้อ (purchased: false) → หัวข้อ/ปุ่มเรียก "ผู้สนใจ"', async () => {
+    apiPost.mockImplementation(() =>
+      Promise.reject({ response: { status: 409, data: { existingCustomer: { id: 'c-old', name: 'สมชาย คนเดิม', purchased: false }, field: 'phone' } } }),
+    );
+    wrap(<CustomerCreateDialog open onOpenChange={vi.fn()} initialValues={{ firstName: 'สมชาย', lastName: 'ใหม่' }} onCreated={vi.fn()} onUseExisting={vi.fn()} />);
+    fillRequired();
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('มีผู้สนใจเบอร์นี้หรืออีเมลนี้อยู่แล้ว: สมชาย คนเดิม');
+    expect(screen.getByRole('button', { name: 'ใช้ผู้สนใจเดิมคนนี้แทน' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /ใช้ลูกค้าเดิมคนนี้แทน/ })).toBeNull();
+  });
+
+  it('โหมดสร้าง: 409 เลขบัตรซ้ำ purchased: false → "มีผู้สนใจเลขบัตรประชาชนนี้อยู่แล้ว" · purchased: true → "มีลูกค้า…"', async () => {
+    apiPost.mockImplementation(() =>
+      Promise.reject({ response: { status: 409, data: { existingCustomer: { id: 'c-old', name: 'สมชาย คนเดิม', purchased: false }, field: 'nationalId' } } }),
+    );
+    const { unmount } = wrap(<CustomerCreateDialog open onOpenChange={vi.fn()} initialValues={{ firstName: 'สมชาย', lastName: 'ใหม่' }} onCreated={vi.fn()} onUseExisting={vi.fn()} />);
+    fillRequired();
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('มีผู้สนใจเลขบัตรประชาชนนี้อยู่แล้ว: สมชาย คนเดิม');
+    unmount();
+
+    apiPost.mockImplementation(() =>
+      Promise.reject({ response: { status: 409, data: { existingCustomer: { id: 'c-old', name: 'สมชาย คนเดิม', purchased: true }, field: 'nationalId' } } }),
+    );
+    wrap(<CustomerCreateDialog open onOpenChange={vi.fn()} initialValues={{ firstName: 'สมชาย', lastName: 'ใหม่' }} onCreated={vi.fn()} onUseExisting={vi.fn()} />);
+    fillRequired();
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('มีลูกค้าเลขบัตรประชาชนนี้อยู่แล้ว: สมชาย คนเดิม');
+    expect(screen.getByRole('button', { name: 'ใช้ลูกค้าเดิมคนนี้แทน' })).toBeInTheDocument();
   });
 });
 
@@ -252,28 +292,28 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
     await waitFor(() => expect(onFilled).toHaveBeenCalledWith({ id: 'p1', name: 'Nan', phone: '0812345678' }));
   });
 
-  // M-W4: ป้าย "คำนำหน้า" ไม่มีดอกจัน (mockup บอร์ด 3) และ fill-contact รับ prefix แบบ optional ⇒ ไม่บังคับ
-  it('ไม่เลือกคำนำหน้า → บันทึกผ่าน ไม่ขึ้น "กรุณาเลือกคำนำหน้า" · payload ไม่มีคีย์ prefix', async () => {
-    apiPost.mockResolvedValue({ data: { id: 'p1', name: 'สมชาย ใจดี', phone: '0812345678' } });
+  // คำตัดสินเจ้าของ 2026-09-17 ("บังคับดีกว่า") — แทน M-W4 เดิมที่ปล่อยคำนำหน้าว่างได้ตาม mockup บอร์ด 3
+  it('ไม่เลือกคำนำหน้า → ขึ้น "กรุณาเลือกคำนำหน้า" และไม่ยิง fill-contact', async () => {
     const onFilled = vi.fn();
     wrap(<CustomerCreateDialog open mode="fill" fillCustomerId="p1" onOpenChange={vi.fn()} initialValues={{ firstName: 'สมชาย', lastName: 'ใจดี' }} onCreated={vi.fn()} onFilled={onFilled} />);
     expect(screen.getAllByRole('combobox')[0]).toHaveValue('');
     fireEvent.change(mainField('0XX-XXX-XXXX'), { target: { value: '0812345678' } });
     fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
-    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText('กรุณาเลือกคำนำหน้า')).toBeNull();
-    const [url, payload] = apiPost.mock.calls[0] as [string, Record<string, unknown>];
-    expect(url).toBe('/customers/p1/fill-contact');
-    expect(payload).toEqual({ phone: '0812345678', name: 'สมชาย ใจดี' });
-    expect(payload).not.toHaveProperty('prefix');
-    await waitFor(() => expect(onFilled).toHaveBeenCalled());
+    expect(await screen.findByText('กรุณาเลือกคำนำหน้า')).toBeInTheDocument();
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(onFilled).not.toHaveBeenCalled();
   });
 
-  it('สคีมาโหมด fill: ไม่ส่งคำนำหน้ามาเลย → ผ่านและได้สตริงว่าง · สคีมาโหมดสร้างยังปฏิเสธ', () => {
+  // ฟอร์มตั้งค่าเริ่มต้น prefix = '' เสมอ ⇒ ผู้ใช้เห็นข้อความของกรณีว่าง · ไม่มีคีย์เลย = ปฏิเสธเหมือนโหมดสร้าง
+  it('สคีมาโหมด fill: ไม่ส่งคำนำหน้า → ปฏิเสธ · ส่งว่าง → "กรุณาเลือกคำนำหน้า" เหมือนโหมดสร้าง', () => {
     const input = { firstName: 'Nan', nationalId: '', isForeigner: false, phone: '0812345678' };
-    const parsed = prospectFillSchema.safeParse(input);
-    expect(parsed.success).toBe(true);
-    expect(parsed.data?.prefix).toBe('');
+    const missing = prospectFillSchema.safeParse(input);
+    expect(missing.success).toBe(false);
+    expect(missing.error?.issues.some((i) => i.path[0] === 'prefix')).toBe(true);
+    const empty = prospectFillSchema.safeParse({ ...input, prefix: '' });
+    expect(empty.success).toBe(false);
+    expect(empty.error?.issues.find((i) => i.path[0] === 'prefix')?.message).toBe('กรุณาเลือกคำนำหน้า');
+    expect(prospectFillSchema.safeParse({ ...input, prefix: 'นาย' }).success).toBe(true);
     expect(customerSchema.safeParse({ ...input, lastName: 'ใจดี', nationalId: VALID_NID }).success).toBe(false);
   });
 
@@ -339,7 +379,7 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
   it('ลำดับช่องตาม mockup บอร์ด 3 · นามสกุลเป็น "ไม่บังคับ" · โน้ตอยู่ท้ายฟอร์มหลังชื่อ Facebook · ปุ่มอ่านบัตรอยู่บนสุด', () => {
     wrap(<CustomerCreateDialog open mode="fill" fillCustomerId="p1" onOpenChange={vi.fn()} initialValues={{ firstName: 'สมชาย', lastName: 'ใจดี' }} onCreated={vi.fn()} />);
     expect(formLabels()).toEqual([
-      'คำนำหน้า',
+      'คำนำหน้า *',
       'ชื่อ *',
       'นามสกุล ไม่บังคับ',
       'เบอร์โทร *',
@@ -392,6 +432,47 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
     expect(alert).not.toHaveTextContent('ผ่อนอยู่');
   });
 
+  // คำตัดสิน 2026-09-17: หัวข้อ/ปุ่ม/error ใต้ช่องเบอร์ เรียกคนเดิมตามธง purchased
+  it('เบอร์ซ้ำ purchased: false → หัวข้อ "เป็นของผู้สนใจเดิม" + ปุ่ม "รวมกับผู้สนใจเดิมคนนี้" + error ใต้ช่องเบอร์ "มีผู้สนใจใช้อยู่แล้ว"', async () => {
+    apiPost.mockImplementation(() =>
+      Promise.reject({ response: { status: 409, data: { existingCustomer: { id: 'c-old', name: 'สมชาย ใจดี', purchased: false }, field: 'phone' } } }),
+    );
+    wrap(<CustomerCreateDialog open mode="fill" fillCustomerId="p1" onOpenChange={vi.fn()} initialValues={{ firstName: 'สมชาย', lastName: 'ใจดี' }} onCreated={vi.fn()} onUseExisting={vi.fn()} />);
+    fillProspectRequired();
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('เบอร์ 0812345678 เป็นของผู้สนใจเดิมอยู่แล้ว');
+    expect(alert).not.toHaveTextContent('ลูกค้าเดิม');
+    expect(screen.getByRole('button', { name: 'รวมกับผู้สนใจเดิมคนนี้' })).toBeInTheDocument();
+    expect(fieldError('phone')).toHaveTextContent(DUP_PHONE_FIELD_ERROR_PROSPECT);
+  });
+
+  it('เลขบัตรซ้ำ purchased: false → หัวข้อ "เป็นของผู้สนใจเดิม" · ปุ่ม "รวมกับผู้สนใจเดิมคนนี้"', async () => {
+    apiPost.mockImplementation(() =>
+      Promise.reject({ response: { status: 409, data: { existingCustomer: { id: 'c-old', name: 'สมชาย ใจดี', purchased: false }, field: 'nationalId' } } }),
+    );
+    wrap(<CustomerCreateDialog open mode="fill" fillCustomerId="p1" onOpenChange={vi.fn()} initialValues={{ firstName: 'สมชาย', lastName: 'ใจดี' }} onCreated={vi.fn()} onUseExisting={vi.fn()} />);
+    fillProspectRequired();
+    fireEvent.change(mainField('X-XXXX-XXXXX-XX-X'), { target: { value: VALID_NID } });
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(`เลขบัตรประชาชน ${VALID_NID} เป็นของผู้สนใจเดิมอยู่แล้ว`);
+    expect(screen.getByRole('button', { name: 'รวมกับผู้สนใจเดิมคนนี้' })).toBeInTheDocument();
+  });
+
+  it('เบอร์ซ้ำ purchased: true → คงคำว่า "ลูกค้า" ทั้งหัวข้อ/ปุ่ม/error ใต้ช่อง', async () => {
+    apiPost.mockImplementation(() =>
+      Promise.reject({ response: { status: 409, data: { existingCustomer: { id: 'c-old', name: 'สมชาย ใจดี', purchased: true }, field: 'phone' } } }),
+    );
+    wrap(<CustomerCreateDialog open mode="fill" fillCustomerId="p1" onOpenChange={vi.fn()} initialValues={{ firstName: 'สมชาย', lastName: 'ใจดี' }} onCreated={vi.fn()} onUseExisting={vi.fn()} />);
+    fillProspectRequired();
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('เบอร์ 0812345678 เป็นของลูกค้าเดิมอยู่แล้ว');
+    expect(screen.getByRole('button', { name: 'รวมกับลูกค้าเดิมคนนี้' })).toBeInTheDocument();
+    expect(fieldError('phone')).toHaveTextContent(DUP_PHONE_FIELD_ERROR);
+  });
+
   it('API ส่ง createdAt แต่ไม่บอก purchased → ไม่เดาว่าเป็นลูกค้าหรือผู้สนใจ ตัดส่วนวันที่ทิ้ง (ชิปผ่อนอยู่ยังแสดง)', async () => {
     apiPost.mockImplementation(() =>
       Promise.reject({ response: { status: 409, data: { existingCustomer: { id: 'c-old', name: 'สมชาย ใจดี', createdAt: CREATED_AT, activeContracts: 1 }, field: 'phone' } } }),
@@ -416,6 +497,22 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
     expect(fieldError('phone')).toHaveTextContent(DUP_PHONE_FIELD_ERROR);
     fireEvent.change(mainField('0XX-XXX-XXXX'), { target: { value: '0812345679' } });
     await waitFor(() => expect(fieldError('phone')).toBeNull());
+  });
+
+  it('409 ที่ไม่มี existingCustomer → toast ข้อความจาก API · ไม่มีกล่องคนเดิม · ไม่ขึ้น error ใต้ช่องเบอร์ · ฟอร์มยังเปิด', async () => {
+    const onOpenChange = vi.fn();
+    toastError.mockClear();
+    apiPost.mockImplementation(() =>
+      Promise.reject(Object.assign(new Error('เลขบัตรประชาชนไม่ถูกต้อง'), { response: { status: 409, data: { message: 'เลขบัตรประชาชนไม่ถูกต้อง' } } })),
+    );
+    wrap(<CustomerCreateDialog open mode="fill" fillCustomerId="p1" onOpenChange={onOpenChange} initialValues={{ firstName: 'สมชาย', lastName: 'ใจดี' }} onCreated={vi.fn()} onUseExisting={vi.fn()} />);
+    fillProspectRequired();
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('เลขบัตรประชาชนไม่ถูกต้อง'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(fieldError('phone')).toBeNull();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'บันทึก' })).toBeInTheDocument();
   });
 
   it('409 จาก API เก่า (ไม่มี createdAt/activeContracts) → ชิปมีแค่ชื่อ · โทร ไม่มี "ลูกค้าตั้งแต่"/"ผ่อนอยู่" และไม่พัง', async () => {

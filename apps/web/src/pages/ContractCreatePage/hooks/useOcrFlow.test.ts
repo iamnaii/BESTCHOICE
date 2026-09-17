@@ -39,12 +39,19 @@ const ocr: OcrResult = {
 
 const existing = { id: 'cust-old', name: 'สมศรี มีสุข', createdAt: '2026-09-03T03:00:00.000Z', activeContracts: 1 };
 
-/** 409 ของ POST /customers — `field` ไม่ส่ง = API ก่อน R44 */
-function conflict(field?: 'phone' | 'email' | 'nationalId') {
+/**
+ * 409 ของ POST /customers — `field` ไม่ส่ง = API ก่อน R44 · `purchased` ไม่ส่ง = API ก่อน M-A3
+ * (คนเดิมซื้อแล้วหรือยัง — คำเรียกในข้อความตามนิยามเจ้าของ: ลูกค้า = ซื้อแล้ว ที่เหลือ = ผู้สนใจ)
+ */
+function conflict(field?: 'phone' | 'email' | 'nationalId', purchased?: boolean) {
   return Object.assign(new Error('Conflict'), {
     response: {
       status: 409,
-      data: { message: 'ซ้ำ', existingCustomer: existing, ...(field ? { field } : {}) },
+      data: {
+        message: 'ซ้ำ',
+        existingCustomer: purchased === undefined ? existing : { ...existing, purchased },
+        ...(field ? { field } : {}),
+      },
     },
   });
 }
@@ -127,6 +134,58 @@ describe('useOcrFlow — createCustomerFromOcr เจอ 409', () => {
     expect(result.current.showCreateCustomer).toBe(false);
     expect(result.current.showOcrPanel).toBe(false);
     expect(result.current.newCustomerPhone).toBe('');
+  });
+
+  // คำตัดสิน 2026-09-17 (กติกาเดียวกับกล่องเบอร์ซ้ำของ CustomerCreateDialog): คำเรียกคนเดิมตามธง purchased
+  it.each([
+    ['purchased: false', false, 'ผู้สนใจ'],
+    ['purchased: true', true, 'ลูกค้า'],
+    ['ไม่ส่ง purchased (API เก่า)', undefined, 'ลูกค้า'],
+  ])('ชนเบอร์ (%s) → ข้อความเรียกคนเดิมตามธง purchased', async (_label, purchased, noun) => {
+    mocks.post.mockRejectedValueOnce(conflict('phone', purchased));
+    const { result } = mountWithOpenPanel();
+
+    await act(() => result.current.createCustomerFromOcr());
+
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      `เบอร์ 0812345678 เป็นของ${noun}เดิม (สมศรี มีสุข) — ถ้าเป็นคนเดียวกันให้ค้นหาชื่อนี้แล้วเลือก ถ้าไม่ใช่ให้แก้เบอร์`,
+    );
+  });
+
+  it.each([
+    [false, 'ผู้สนใจ'],
+    [true, 'ลูกค้า'],
+  ])('ชนอีเมล purchased: %s → "อีเมลนี้เป็นของ%sเดิม"', async (purchased, noun) => {
+    mocks.post.mockRejectedValueOnce(conflict('email', purchased));
+    const { result } = mountWithOpenPanel();
+
+    await act(() => result.current.createCustomerFromOcr());
+
+    expect(mocks.toastError).toHaveBeenCalledWith(
+      `อีเมลนี้เป็นของ${noun}เดิม (สมศรี มีสุข) — ถ้าเป็นคนเดียวกันให้ค้นหาชื่อนี้แล้วเลือก`,
+    );
+  });
+
+  it.each([
+    [false, 'ผู้สนใจ'],
+    [true, 'ลูกค้า'],
+  ])('ชนเลขบัตร purchased: %s → "บัตรนี้เป็นของ%sเดิม" · เลือกให้อัตโนมัติ', async (purchased, noun) => {
+    mocks.post.mockRejectedValueOnce(conflict('nationalId', purchased));
+    const { result } = mountWithOpenPanel();
+
+    await act(() => result.current.createCustomerFromOcr());
+
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(`บัตรนี้เป็นของ${noun}เดิม: สมศรี มีสุข — เลือกให้อัตโนมัติ`);
+  });
+
+  it('ชนเลขบัตร purchased: false แต่โหลดคนเดิมไม่สำเร็จ → "ผู้สนใจมีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ"', async () => {
+    mocks.post.mockRejectedValueOnce(conflict('nationalId', false));
+    mocks.get.mockRejectedValueOnce(new Error('boom'));
+    const { result } = mountWithOpenPanel();
+
+    await act(() => result.current.createCustomerFromOcr());
+
+    expect(mocks.toastError).toHaveBeenCalledWith('ผู้สนใจมีอยู่แล้วแต่โหลดข้อมูลไม่สำเร็จ กรุณาค้นหาด้วยตนเอง');
   });
 
   it('409 ที่ไม่มี existingCustomer (เช่น เลขบัตรไม่ถูกต้อง) → แสดงข้อความจาก API ตามเดิม', async () => {

@@ -382,7 +382,7 @@ describe('ล็อกเบอร์หลักของลูกค้า —
     return d.join('') + String((11 - (sum % 11)) % 10);
   }
 
-  // A2-1: stub ของ contact เดียวกันที่ถือ phoneHash เดียวกัน (รูปที่ ensureRole จะเขียนหลัง Part C) ต้องถูก upgrade
+  // A2-1: stub ของ contact เดียวกันที่ถือ phoneHash เดียวกัน (ensureRole เขียน hash ให้ stub ตั้งแต่ Part C) ต้องถูก upgrade
   // ไม่ใช่ 409 เบอร์ซ้ำ — ไม่งั้นลงทะเบียนคนนี้ด้วยเลขบัตรไม่ได้อีกเลย
   it('(ค) stub ของ contact เดียวกันถือเบอร์เดียวกัน → create ด้วยเลขบัตร upgrade stub ไม่ใช่ 409', async () => {
     const phone = await freshPhone();
@@ -396,15 +396,17 @@ describe('ล็อกเบอร์หลักของลูกค้า —
         roles: ['CUSTOMER'],
       },
     });
-    const stub = await holderDb.customer.create({
-      data: {
-        name: `race stub ${stamp}`,
-        phone,
-        phoneHash: hashPII(phone, PII_SALT),
-        contactId: contact.id,
-      },
-    });
+    // stub จริงจาก ensureRole (Part C เขียน phoneHash/phoneEncrypted ให้ stub แล้ว)
+    const { customerId: stubId } = await new ContactResolverService(holderDb as never).ensureRole(
+      holderDb as never,
+      contact.id,
+      'CUSTOMER',
+    );
+    const stub = await holderDb.customer.findUniqueOrThrow({ where: { id: stubId! } });
     createdCustomerIds.add(stub.id);
+    expect(stub.phone).toBe(phone);
+    expect(stub.phoneHash).toBe(hashPII(phone, PII_SALT));
+    expect(stub.phoneEncrypted).toBeTruthy();
 
     const result = await staffService(rawB).create({
       name: `race stub upgraded ${stamp}`,

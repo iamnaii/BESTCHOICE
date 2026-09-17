@@ -35,20 +35,42 @@ describe('CaptureLeadTool (real DB) — เบอร์ซ้ำ', () => {
   let configCreated = false;
   let configRevived = false;
 
-  const nextPhone = () => `09${String(stamp).slice(-6)}${String(++phoneSeq).padStart(2, '0')}`;
+  /**
+   * เบอร์ที่ไม่มีลูกค้าคนไหนในฐานเทสถืออยู่ (ทั้ง plaintext และ hash) — ฐานเทสใช้ร่วมกับสเปคอื่น
+   * ถ้าชนแถวที่ไม่ใช่ของสเปคนี้ บอทจะไปรวม/แก้แถวนั้นแล้ว cleanup ย้อนไม่ได้
+   */
+  const nextPhone = async (): Promise<string> => {
+    for (let i = 0; i < 20; i++) {
+      const rand = String(Math.floor(Math.random() * 1e5)).padStart(5, '0');
+      const phone = `0977${String(++phoneSeq % 10)}${rand}`;
+      const taken = await prisma.customer.count({
+        where: { OR: [{ phone }, { phoneHash: hashPII(phone, PII_SALT) }, { phoneSecondary: phone }] },
+      });
+      if (taken === 0) return phone;
+    }
+    throw new Error('หาเบอร์ทดสอบที่ว่างไม่ได้');
+  };
+
+  beforeEach(() => {
+    audit.log.mockClear();
+  });
 
   beforeAll(async () => {
     process.env.PII_ENCRYPTION_KEY = PII_KEY;
     process.env.PII_HASH_SALT = PII_SALT;
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
-    // ฐานเทสใหม่ไม่มีแถว isSystemUser — seed แบบ customer-merge.service.db.spec.ts (ไม่ลบทิ้ง: audit_logs อ้าง FK)
+    // ฐานเทสใหม่ไม่มีแถว isSystemUser — seed แบบ customer-merge.service.db.spec.ts
+    // ตั้งใจทิ้งไว้หลังจบ (audit_logs อ้าง FK และ audit_logs เป็น immutable — แถว AI_LEAD_CAPTURED ของสเปคนี้ก็ค้างอยู่)
+    // สร้างเฉพาะเมื่อไม่มีทั้งผู้ใช้ระบบและอีเมลนี้ — ห้ามพลิกผู้ใช้ที่มีอยู่แล้วให้เป็นผู้ใช้ระบบ
     const sys = await prisma.user.findFirst({ where: { isSystemUser: true }, select: { id: true } });
+    const sameEmail = await prisma.user.findUnique({ where: { email: 'system@bestchoice.internal' }, select: { id: true } });
+    if (!sys && sameEmail) {
+      throw new Error('ฐานเทสมี system@bestchoice.internal ที่ไม่ใช่ผู้ใช้ระบบ — ไม่แก้แถวของคนอื่น');
+    }
     if (!sys) {
-      await prisma.user.upsert({
-        where: { email: 'system@bestchoice.internal' },
-        update: { isSystemUser: true, isActive: false },
-        create: {
+      await prisma.user.create({
+        data: {
           email: 'system@bestchoice.internal',
           name: 'SYSTEM',
           role: 'OWNER',
@@ -125,7 +147,7 @@ describe('CaptureLeadTool (real DB) — เบอร์ซ้ำ', () => {
   }
 
   it('placeholder + เจ้าของเบอร์แบบ hash-only → absorb: ย้ายห้อง, placeholder ถูกลบ+ชี้ mergedIntoId, ชื่อ/เบอร์ของเจ้าของไม่เปลี่ยน', async () => {
-    const phone = nextPhone();
+    const phone = await nextPhone();
     const p = await placeholder('absorb');
     const room = await fbRoom('absorb', p.id);
     const o = await hashOnlyOwner('capture db เจ้าของเดิม', phone);
@@ -151,7 +173,7 @@ describe('CaptureLeadTool (real DB) — เบอร์ซ้ำ', () => {
   });
 
   it('placeholder + ไม่มีเจ้าของเบอร์ → เขียน phone + phoneHash + phoneEncrypted และบันทึก CONTACT_ADDED', async () => {
-    const phone = nextPhone();
+    const phone = await nextPhone();
     const p = await placeholder('fill');
     const room = await fbRoom('fill', p.id);
 
@@ -171,7 +193,7 @@ describe('CaptureLeadTool (real DB) — เบอร์ซ้ำ', () => {
   });
 
   it('placeholder + เจ้าของเบอร์ 2 คน → ไม่ absorb · เบอร์ไปช่องสำรอง · เบอร์หลักยังว่าง', async () => {
-    const phone = nextPhone();
+    const phone = await nextPhone();
     const p = await placeholder('ambiguous');
     const room = await fbRoom('ambiguous', p.id);
     await plaintextOwner('capture db owner A', phone);
@@ -187,11 +209,12 @@ describe('CaptureLeadTool (real DB) — เบอร์ซ้ำ', () => {
     expect(after.phoneSecondary).toBe(phone);
     expect(decryptPII(after.phoneSecondaryEncrypted as string, PII_KEY)).toBe(phone);
     expect((await prisma.chatRoom.findUniqueOrThrow({ where: { id: room.id } })).customerId).toBe(p.id);
-    expect(audit.log).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'CUSTOMER_PLACEHOLDER_MERGED', entityId: p.id }));
+    // audit ของการรวมใช้ entityId = ผู้รับรวม และเก็บ placeholderId ใน oldValue — จึงเช็คว่าไม่มีการรวมเลย
+    expect(audit.log).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'CUSTOMER_PLACEHOLDER_MERGED' }));
   });
 
   it('ห้อง FB ยังไม่มีเจ้าของ + เจ้าของเบอร์ 1 คน (แถวบอทยุคเก่า plaintext) → ผูกห้องเข้าคนนั้น ไม่สร้างลูกค้าใหม่', async () => {
-    const phone = nextPhone();
+    const phone = await nextPhone();
     const room = await fbRoom('link', null);
     const o = await plaintextOwner('capture db legacy bot lead', phone);
     const typedName = `ลูกค้าใหม่-${stamp}`;
@@ -211,5 +234,27 @@ describe('CaptureLeadTool (real DB) — เบอร์ซ้ำ', () => {
       orderBy: { createdAt: 'desc' },
     });
     expect(auditRow?.newValue).toEqual(expect.objectContaining({ phoneOutcome: 'LINKED_BY_PHONE', phoneConflict: null }));
+  });
+
+  it('ผูกด้วยเบอร์แล้ว capture รอบสองด้วยชื่อ/เบอร์อื่น → ชื่อและเบอร์หลักของเจ้าของไม่เปลี่ยน (อ่าน audit ของห้องจริง)', async () => {
+    const phone = await nextPhone();
+    const other = await nextPhone();
+    const room = await fbRoom('relink', null);
+    const o = await plaintextOwner('capture db เจ้าของรอบสอง', phone);
+
+    await tool.run({ roomId: room.id, customerName: 'คนแปลกหน้า', phone, downAmount: 1000 });
+    const second = await tool.run({ roomId: room.id, customerName: 'คนแปลกหน้า', phone: other, downAmount: 1000 });
+
+    expect(second.customerId).toBe(o.id);
+    const after = await prisma.customer.findUniqueOrThrow({ where: { id: o.id } });
+    expect(after.name).toBe('capture db เจ้าของรอบสอง');
+    expect(after.phone).toBe(phone);
+    expect(after.phoneHash).toBeNull();
+    expect(after.phoneSecondary).toBe(other);
+    const rows = await prisma.auditLog.findMany({
+      where: { action: 'AI_LEAD_CAPTURED', entityId: o.id },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(rows.map((r) => (r.newValue as { phoneOutcome: string }).phoneOutcome)).toEqual(['LINKED_BY_PHONE', 'SECONDARY']);
   });
 });

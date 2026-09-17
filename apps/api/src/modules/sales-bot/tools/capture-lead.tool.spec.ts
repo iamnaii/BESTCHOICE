@@ -1,4 +1,5 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { Test, TestingModule } from '@nestjs/testing';
 import { CaptureLeadTool } from './capture-lead.tool';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -7,6 +8,11 @@ import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/custome
 import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import { CHAT_GATEWAY_TOKEN } from '../../chat-engine/interfaces/chat-gateway.interface';
+
+jest.mock('@sentry/nestjs', () => ({
+  ...jest.requireActual('@sentry/nestjs'),
+  captureException: jest.fn(),
+}));
 
 /**
  * prisma.customer กับ tx.customer ใช้ mock ชุดเดียวกัน — ตัวอ่านก่อนทรานแซกชัน (ตัดสินใจรวม/ผูก)
@@ -21,9 +27,11 @@ function makeHarness() {
     create: jest.fn().mockResolvedValue({ id: 'cust-new' }),
     update: jest.fn().mockResolvedValue({}),
   };
+  // ห้อง: ตัวอ่านก่อนทรานแซกชันกับตัวอ่านซ้ำในทรานแซกชัน (ก่อนผูก) ใช้ mock เดียวกัน
+  const roomFind = jest.fn();
   const txClient = {
     customer,
-    chatRoom: { update: jest.fn() },
+    chatRoom: { findUnique: roomFind, update: jest.fn() },
     auditLog: { create: jest.fn() },
   };
   const prisma = {
@@ -32,7 +40,8 @@ function makeHarness() {
       return fn(txClient);
     }),
     customer,
-    chatRoom: { findUnique: jest.fn() },
+    chatRoom: { findUnique: roomFind, findMany: jest.fn().mockResolvedValue([]) },
+    auditLog: { findFirst: jest.fn().mockResolvedValue(null) },
     systemConfig: {
       findMany: jest.fn().mockResolvedValue([{ key: 'shop_bot_central_branch_id', value: 'branch-central' }]),
     },
@@ -57,6 +66,7 @@ function makeHarness() {
     }),
   };
   const prospects = {
+    findExistingCustomerId: jest.fn().mockResolvedValue(null),
     ensureForRoom: jest.fn(async () => {
       order.push('ensure');
       return { customerId: 'cust-ensured', created: true };
@@ -101,7 +111,7 @@ function boundRoom(customerId: string, overrides: Record<string, unknown> = {}) 
 }
 
 function owner(id: string, overrides: Record<string, unknown> = {}) {
-  return { id, lineIdShop: null, lineIdFinance: null, facebookUserId: null, ...overrides };
+  return { id, lineIdShop: null, lineIdFinance: null, facebookUserId: null, chatRooms: [], ...overrides };
 }
 
 const auditValue = (h: Harness) => h.txClient.auditLog.create.mock.calls[0][0].data.newValue;
@@ -349,7 +359,7 @@ describe('CaptureLeadTool — ห้องยังไม่มีเจ้า�
   it('FB · เจ้าของเบอร์ 1 คน ไม่ชนตัวตน → ผูกห้องเข้าคนเดิม ไม่สร้างใหม่ ไม่แตะชื่อ/เบอร์', async () => {
     h.prisma.chatRoom.findUnique.mockResolvedValue(room());
     h.customer.findMany.mockResolvedValue([owner('cust-owner')]);
-    h.customer.findUnique.mockResolvedValue({ id: 'cust-owner', acquisitionSource: 'WALK_IN' });
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-owner', phone: '0800000000', acquisitionSource: 'WALK_IN' });
 
     const result = await tool.run(input);
 
@@ -366,13 +376,107 @@ describe('CaptureLeadTool — ห้องยังไม่มีเจ้า�
   it('LINE ไม่ match composite · เจ้าของเบอร์ 1 คน lineIdShop ว่าง → ผูก · ไม่ตั้ง lineIdShop ให้คนเดิม · ที่มา CHAT_* คงเดิม', async () => {
     h.prisma.chatRoom.findUnique.mockResolvedValue(room({ channel: 'LINE_SHOP', lineUserId: 'U1', externalUserId: null }));
     h.customer.findMany.mockResolvedValue([owner('cust-owner')]);
-    h.customer.findUnique.mockResolvedValue({ id: 'cust-owner', acquisitionSource: 'CHAT_LINE_SHOP' });
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-owner', phone: '0800000000', acquisitionSource: 'CHAT_LINE_SHOP' });
 
     const result = await tool.run(input);
 
     expect(result.customerId).toBe('cust-owner');
+    // ไม่มี update ลูกค้าเลย ⇒ ไม่ตั้ง lineIdShop และไม่แตะชื่อ/เบอร์
     expect(h.customer.update).not.toHaveBeenCalled();
     expect(h.customer.create).not.toHaveBeenCalled();
+    expect(h.txClient.chatRoom.update.mock.calls[0][0].data.customerId).toBe('cust-owner');
+    expect(auditValue(h)).toEqual(expect.objectContaining({
+      phoneOutcome: 'LINKED_BY_PHONE', phoneConflict: null, phoneOnlyBinding: true, roomId: 'room-1',
+    }));
+  });
+
+  it('LINE · เจ้าของเบอร์มีห้อง LINE ร้านของผู้ใช้อื่น (พนักงานผูกห้อง ไม่มี lineIdShop) → IDENTITY_CONFLICT ไม่ผูก', async () => {
+    h.prisma.chatRoom.findUnique.mockResolvedValue(room({ channel: 'LINE_SHOP', lineUserId: 'U1', externalUserId: null }));
+    h.customer.findMany.mockResolvedValue([
+      owner('cust-owner', { chatRooms: [{ channel: 'LINE_SHOP', lineUserId: 'U-other', externalUserId: null }] }),
+    ]);
+    h.customer.findUnique.mockResolvedValue({
+      id: 'cust-ensured', phone: null, phoneSecondary: null, acquisitionSource: 'CHAT_LINE_SHOP', nationalId: null,
+    });
+    const result = await tool.run(input);
+    expect(result.customerId).toBe('cust-ensured');
+    expect(auditValue(h).phoneConflict).toEqual({ reason: 'IDENTITY_CONFLICT', customerIds: ['cust-owner'] });
+  });
+
+  it('FB · เจ้าของเบอร์มีห้อง FB ของ PSID อื่น → IDENTITY_CONFLICT · ห้อง LINE ของเขาไม่นับ', async () => {
+    h.prisma.chatRoom.findUnique.mockResolvedValue(room());
+    h.customer.findMany.mockResolvedValue([
+      owner('cust-owner', { chatRooms: [{ channel: 'FACEBOOK', lineUserId: null, externalUserId: 'psid-other' }] }),
+    ]);
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-ensured', phone: null, phoneSecondary: null, acquisitionSource: 'CHAT_FACEBOOK', nationalId: null });
+    await tool.run(input);
+    expect(auditValue(h).phoneConflict).toEqual({ reason: 'IDENTITY_CONFLICT', customerIds: ['cust-owner'] });
+
+    const h2 = makeHarness();
+    const tool2 = await buildTool(h2);
+    h2.prisma.chatRoom.findUnique.mockResolvedValue(room());
+    h2.customer.findMany.mockResolvedValue([
+      owner('cust-owner', { chatRooms: [{ channel: 'LINE_SHOP', lineUserId: 'U-x', externalUserId: null }] }),
+    ]);
+    h2.customer.findUnique.mockResolvedValue({ id: 'cust-owner', phone: '0800000000', acquisitionSource: 'WALK_IN' });
+    await tool2.run(input);
+    expect(h2.txClient.auditLog.create.mock.calls[0][0].data.newValue.phoneOutcome).toBe('LINKED_BY_PHONE');
+  });
+
+  it('ห้อง LINE ที่ lineUserId เป็นของลูกค้า X อยู่แล้ว (ตัวตนแข็ง) → จบที่ X ไม่จับคู่ด้วยเบอร์', async () => {
+    h.prisma.chatRoom.findUnique.mockResolvedValue(room({ channel: 'LINE_SHOP', lineUserId: 'U1', externalUserId: null }));
+    h.prospects.findExistingCustomerId.mockResolvedValue('cust-x');
+    h.customer.findUnique.mockResolvedValue({
+      id: 'cust-x', phone: '0811111111', phoneSecondary: null, acquisitionSource: 'WALK_IN', nationalId: null,
+    });
+    h.customer.findMany.mockResolvedValue([owner('cust-owner')]);
+
+    const result = await tool.run(input);
+
+    expect(h.prospects.findExistingCustomerId).toHaveBeenCalledWith(h.prisma, 'LINE_SHOP', 'U1');
+    expect(result.customerId).toBe('cust-x');
+    expect(h.customer.findMany).not.toHaveBeenCalled();
+    expect(h.prospects.ensureForRoom).not.toHaveBeenCalled();
+    expect(h.txClient.chatRoom.update.mock.calls[0][0].data.customerId).toBe('cust-x');
+    // ลูกค้าจริงที่พนักงานรู้จัก → กติกา Branch 1 (เบอร์ไปช่องสำรอง ไม่ทับเบอร์หลัก)
+    expect(updateData(h)).toEqual(expect.objectContaining({ name: 'ฝน', phoneSecondary: '0800000000' }));
+    expect(updateData(h).phone).toBeUndefined();
+  });
+
+  it('ผูกด้วยเบอร์ · ในทรานแซกชันเจ้าของถูกลบไปแล้ว (ไม่มี mergedIntoId) → ไม่ผูกกับแถวที่ตาย สร้างใหม่แทน', async () => {
+    h.prisma.chatRoom.findUnique.mockResolvedValue(room());
+    h.customer.findMany.mockResolvedValueOnce([owner('cust-owner')]).mockResolvedValue([]);
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-owner', phone: '0800000000', deletedAt: new Date(), mergedIntoId: null });
+
+    const result = await tool.run(input);
+
+    expect(result.customerId).toBe('cust-new');
+    expect(h.customer.update).not.toHaveBeenCalled();
+    expect(h.customer.create.mock.calls[0][0].data).toEqual(expect.objectContaining({ phone: '0800000000', phoneHash: 'h:0800000000' }));
+    expect(h.txClient.chatRoom.update.mock.calls[0][0].data.customerId).toBe('cust-new');
+    expect(auditValue(h).phoneOutcome).toBe('CREATED');
+  });
+
+  it('ผูกด้วยเบอร์ · ในทรานแซกชันพบเจ้าของเพิ่มเป็น 2 คน → ไม่ผูก สร้างผู้สนใจ CHAT_* โดยเบอร์ไปช่องสำรอง', async () => {
+    h.prisma.chatRoom.findUnique.mockResolvedValue(room());
+    h.customer.findMany.mockResolvedValueOnce([owner('cust-owner')]).mockResolvedValue([owner('cust-owner'), owner('o2')]);
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-owner', phone: '0800000000', acquisitionSource: 'WALK_IN' });
+
+    await tool.run(input);
+
+    const data = h.customer.create.mock.calls[0][0].data;
+    expect(data).toEqual(expect.objectContaining({ phone: null, phoneSecondary: '0800000000', acquisitionSource: 'CHAT_FACEBOOK' }));
+    expect(auditValue(h).phoneConflict).toEqual({ reason: 'OWNER_APPEARED', customerIds: ['cust-owner', 'o2'] });
+  });
+
+  it('ห้องถูกพนักงานผูกกับลูกค้าคนอื่นระหว่างทาง → ไม่ทับการผูกนั้น', async () => {
+    h.prisma.chatRoom.findUnique
+      .mockResolvedValueOnce(room())
+      .mockResolvedValue({ customerId: 'cust-staff', customer: { deletedAt: null } });
+    await tool.run(input);
+    const data = h.txClient.chatRoom.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('customerId');
+    expect(data.handoffMode).toBe(true);
   });
 
   it('LINE · เจ้าของเบอร์มี lineIdShop ของคนอื่น → deferred ผ่าน ensureForRoom · เบอร์ไปช่องสำรอง', async () => {
@@ -422,7 +526,8 @@ describe('CaptureLeadTool — ห้องยังไม่มีเจ้า�
       id: 'o1', phone: '0800000000', phoneSecondary: null, acquisitionSource: 'AI_CHAT', nationalId: null,
     });
     await tool.run(input);
-    expect(updateData(h)).toEqual({ name: 'ฝน', acquisitionSource: 'AI_CHAT_RETURN' });
+    // ที่มา AI_CHAT (บอทสร้างเอง) คงเดิม — AI_CHAT_RETURN ใช้กับลูกค้าที่บอทไม่ได้สร้างเท่านั้น
+    expect(updateData(h)).toEqual({ name: 'ฝน' });
   });
 
   it('deferred · ensureForRoom คืน null (ห้องไม่มีรหัสผู้ใช้) → สร้าง AI_CHAT โดย phone null + เบอร์สำรอง', async () => {
@@ -453,11 +558,26 @@ describe('CaptureLeadTool — ห้องยังไม่มีเจ้า�
     const data = h.customer.create.mock.calls[0][0].data;
     expect(data.phone).toBeNull();
     expect(data.phoneSecondary).toBe('0800000000');
+    // เป็นผู้สนใจอัตโนมัติของห้อง (CHAT_*) ⇒ capture รอบหน้ารวมเข้าเจ้าของเบอร์ได้
+    expect(data.acquisitionSource).toBe('CHAT_FACEBOOK');
     expect(h.prospects.ensureForRoom).not.toHaveBeenCalled();
     expect(auditValue(h)).toEqual(expect.objectContaining({
       phoneOutcome: 'DEFERRED',
-      phoneConflict: { reason: 'AMBIGUOUS', customerIds: ['o-late'] },
+      phoneConflict: { reason: 'OWNER_APPEARED', customerIds: ['o-late'] },
     }));
+  });
+
+  it('capture รอบสองบนผู้สนใจที่เกิดจากการแข่งกัน (CHAT_*, เบอร์สำรองแล้ว) → absorb เข้าเจ้าของเบอร์', async () => {
+    h.prisma.chatRoom.findUnique.mockResolvedValue(boundRoom('shell'));
+    h.customer.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === 'shell'
+        ? { id: 'shell', phone: null, phoneSecondary: '0800000000', acquisitionSource: 'CHAT_FACEBOOK', nationalId: null }
+        : { id: 'o-late', phone: '0800000000', acquisitionSource: 'WALK_IN' },
+    );
+    h.customer.findMany.mockResolvedValue([owner('o-late')]);
+    const result = await tool.run(input);
+    expect(h.merge.absorbPlaceholder).toHaveBeenCalledWith('shell', 'o-late', SYSTEM_ACTOR);
+    expect(result.customerId).toBe('o-late');
   });
 });
 
@@ -539,6 +659,106 @@ describe('CaptureLeadTool — ลูกค้าเดิมให้เบอ�
       }),
     }));
   });
+
+  it('ลูกค้าที่บอทสร้างเอง (AI_CHAT) → ที่มาคงเป็น AI_CHAT ไม่พลิกเป็น AI_CHAT_RETURN', async () => {
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-1', phone: '0890000000', phoneSecondary: null, acquisitionSource: 'AI_CHAT', nationalId: null });
+    await tool.run(baseInput);
+    expect(updateData(h)).not.toHaveProperty('acquisitionSource');
+  });
+
+  it('ลูกค้าจริงที่บอทแตะแล้ว (AI_CHAT_RETURN) + เบอร์ใหม่ที่ไม่มีใครถือ → ห้ามทับเบอร์หลัก เบอร์ไปช่องสำรอง', async () => {
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-1', phone: '0811111111', phoneSecondary: null, acquisitionSource: 'AI_CHAT_RETURN', nationalId: null });
+    await tool.run(baseInput);
+    const data = updateData(h);
+    expect(data.phone).toBeUndefined();
+    expect(data).not.toHaveProperty('phoneHash');
+    expect(data.phoneSecondary).toBe('0800000000');
+    expect(h.customer.findMany).not.toHaveBeenCalled();
+    expect(auditValue(h).phoneOutcome).toBe('SECONDARY');
+  });
+
+  it('ห้องเคยผูกลูกค้าคนนี้ด้วยเบอร์อย่างเดียว → capture รอบถัดไปไม่แตะชื่อ/เบอร์หลัก (แม้ที่มาเป็น AI_CHAT)', async () => {
+    h.prisma.auditLog.findFirst.mockResolvedValue({ id: 'a-prev' });
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-1', phone: '0890000000', phoneSecondary: null, acquisitionSource: 'AI_CHAT', nationalId: null });
+
+    await tool.run(baseInput);
+
+    const where = h.prisma.auditLog.findFirst.mock.calls[0][0].where;
+    expect(where).toEqual(expect.objectContaining({ action: 'AI_LEAD_CAPTURED', entity: 'customer', entityId: 'cust-1' }));
+    expect(where.AND[0]).toEqual({ newValue: { path: ['roomId'], equals: 'room-1' } });
+    const data = updateData(h);
+    expect(data).not.toHaveProperty('name');
+    expect(data.phone).toBeUndefined();
+    expect(data).toEqual({
+      acquisitionSource: 'AI_CHAT_RETURN', phoneSecondary: '0800000000', phoneSecondaryEncrypted: 'e:0800000000',
+    });
+    expect(h.customer.findMany).not.toHaveBeenCalled();
+    expect(auditValue(h)).toEqual(expect.objectContaining({ phoneOutcome: 'SECONDARY', phoneOnlyBinding: true }));
+  });
+
+  it('ห้องเคยผูกด้วยเบอร์ · ช่องสำรองมีแล้ว → ไม่มี update ลูกค้าเลย', async () => {
+    h.prisma.auditLog.findFirst.mockResolvedValue({ id: 'a-prev' });
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-1', phone: '0890000000', phoneSecondary: '0822222222', acquisitionSource: 'AI_CHAT_RETURN', nationalId: null });
+    await tool.run(baseInput);
+    expect(h.customer.update).not.toHaveBeenCalled();
+    expect(auditValue(h).phoneOutcome).toBe('UNCHANGED');
+  });
+
+  it('ลูกค้าถูกรวมเข้าคนอื่นระหว่างวางแผนกับทรานแซกชัน → จบที่ผู้รับรวม ไม่แตะแถวที่ตาย', async () => {
+    let reads = 0;
+    h.customer.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
+      if (where.id === 'cust-1') {
+        reads++;
+        const row = { id: 'cust-1', phone: '0890000000', phoneSecondary: null, acquisitionSource: 'WALK_IN', nationalId: null };
+        return reads === 1 ? row : { ...row, deletedAt: new Date(), mergedIntoId: 'T' };
+      }
+      return { id: 'T', phone: '0870000000', phoneSecondary: null, acquisitionSource: 'CHAT_FACEBOOK', nationalId: null };
+    });
+    const result = await tool.run(baseInput);
+    expect(result.customerId).toBe('T');
+    expect(h.customer.update).toHaveBeenCalledTimes(1);
+    expect(h.customer.update.mock.calls[0][0]).toEqual({
+      where: { id: 'T' },
+      data: { phoneSecondary: '0800000000', phoneSecondaryEncrypted: 'e:0800000000' },
+    });
+    expect(auditEntityId(h)).toBe('T');
+  });
+
+  it.each(['ไม่มี', '081.234.5678', '0812345678(ภรรยา)', '12345'])(
+    'เบอร์ผิดรูปแบบ %p → ไม่หาเจ้าของ ไม่รวม ไม่เขียนเบอร์ · audit เก็บค่าที่พิมพ์ + phoneValid=false',
+    async (typed) => {
+      h.customer.findUnique.mockResolvedValue({ id: 'cust-1', phone: null, phoneSecondary: null, acquisitionSource: 'CHAT_FACEBOOK', nationalId: null });
+      await tool.run({ ...baseInput, phone: typed });
+      expect(h.customer.findMany).not.toHaveBeenCalled();
+      expect(h.pii.searchByHash).not.toHaveBeenCalled();
+      expect(h.merge.absorbPlaceholder).not.toHaveBeenCalled();
+      expect(h.pii.encryptCustomerFields).not.toHaveBeenCalled();
+      const data = updateData(h);
+      expect(data).toEqual({ name: 'ฝน' });
+      expect(auditValue(h)).toEqual(expect.objectContaining({ phoneValid: false, phoneOutcome: 'UNCHANGED' }));
+      expect(auditValue(h).phone).toBe(typed.replace(/[\s\-()]/g, ''));
+    },
+  );
+
+  it('ไม่มีกุญแจ PII → โยนก่อน absorb/ทรานแซกชัน (ไม่มีอะไรเปลี่ยน)', async () => {
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-1', phone: null, phoneSecondary: null, acquisitionSource: 'CHAT_FACEBOOK', nationalId: null });
+    h.customer.findMany.mockResolvedValue([owner('o1')]);
+    h.pii.encryptCustomerFields.mockImplementation(() => {
+      throw new Error('PII_ENCRYPTION_KEY missing or too short');
+    });
+    await expect(tool.run(baseInput)).rejects.toThrow('PII_ENCRYPTION_KEY');
+    expect(h.merge.absorbPlaceholder).not.toHaveBeenCalled();
+    expect(h.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('ไม่ได้ตั้ง salt (searchByHash → null) → หาเจ้าของเบอร์ด้วยคอลัมน์ phone อย่างเดียว', async () => {
+    h.pii.searchByHash.mockReturnValue(null as never);
+    h.customer.findUnique.mockResolvedValue({ id: 'cust-1', phone: '0890000000', phoneSecondary: null, acquisitionSource: 'AI_CHAT', nationalId: null });
+    await tool.run(baseInput);
+    expect(h.customer.findMany.mock.calls[0][0].where).toEqual({
+      deletedAt: null, id: { not: 'cust-1' }, OR: [{ phone: '0800000000' }],
+    });
+  });
 });
 
 describe('CaptureLeadTool — ห้องถือผู้สนใจอัตโนมัติ (placeholder)', () => {
@@ -572,7 +792,7 @@ describe('CaptureLeadTool — ห้องถือผู้สนใจอั�
 
   it('มีเจ้าของเบอร์ 1 คน ไม่ชนตัวตน → absorb ก่อนทรานแซกชัน · lead จบที่คนเดิม · ไม่แตะชื่อ/เบอร์ของคนเดิม', async () => {
     h.customer.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === 'p1' ? placeholderRow : { id: 'o1', acquisitionSource: 'CHAT_FACEBOOK' },
+      where.id === 'p1' ? placeholderRow : { id: 'o1', phone: '0812345678', acquisitionSource: 'CHAT_FACEBOOK' },
     );
     h.customer.findMany.mockResolvedValue([owner('o1', { facebookUserId: 'psid-1' })]);
 
@@ -594,7 +814,7 @@ describe('CaptureLeadTool — ห้องถือผู้สนใจอั�
 
   it('absorb เจ้าของเบอร์ที่ไม่มีที่มา → ตั้ง AI_CHAT_RETURN อย่างเดียว (ไม่แตะชื่อ/เบอร์)', async () => {
     h.customer.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === 'p1' ? placeholderRow : { id: 'o1', acquisitionSource: null },
+      where.id === 'p1' ? placeholderRow : { id: 'o1', phone: '0812345678', acquisitionSource: null },
     );
     h.customer.findMany.mockResolvedValue([owner('o1')]);
     await tool.run(baseInput);
@@ -604,10 +824,13 @@ describe('CaptureLeadTool — ห้องถือผู้สนใจอั�
   it('absorb ล้ม (409) → deferred: ไม่เขียนเบอร์หลัก เบอร์ไปช่องสำรองของ placeholder', async () => {
     h.customer.findUnique.mockResolvedValue(placeholderRow);
     h.customer.findMany.mockResolvedValue([owner('o1')]);
-    h.merge.absorbPlaceholder.mockRejectedValue(new ConflictException('รวมไม่ได้'));
+    const err = new ConflictException('รวมไม่ได้');
+    h.merge.absorbPlaceholder.mockRejectedValue(err);
+    (Sentry.captureException as jest.Mock).mockClear();
 
     const result = await tool.run(baseInput);
 
+    expect(Sentry.captureException).toHaveBeenCalledWith(err, { tags: { kind: 'chat-prospect' } });
     expect(result.customerId).toBe('p1');
     expect(updateData(h)).toEqual({
       name: 'สมชาย ใจดี', phoneSecondary: '0812345678', phoneSecondaryEncrypted: 'e:0812345678',
@@ -637,19 +860,84 @@ describe('CaptureLeadTool — ห้องถือผู้สนใจอั�
     expect(auditValue(h).phoneConflict).toEqual({ reason: 'IDENTITY_CONFLICT', customerIds: ['o1'] });
   });
 
-  it('LINE_SHOP · เจ้าของเบอร์ผูก LINE ร้านคนอื่น → IDENTITY_CONFLICT · LINE_FINANCE ของคนเดิมไม่นับ', async () => {
+  it('LINE_SHOP · เจ้าของเบอร์ผูก LINE ร้านคนอื่น → IDENTITY_CONFLICT · เบอร์ไปช่องสำรอง', async () => {
     h.prisma.chatRoom.findUnique.mockResolvedValue(boundRoom('p1', { channel: 'LINE_SHOP', lineUserId: 'U1', externalUserId: null }));
     h.customer.findUnique.mockResolvedValue({ ...placeholderRow, acquisitionSource: 'CHAT_LINE_SHOP' });
     h.customer.findMany.mockResolvedValue([owner('o1', { lineIdShop: 'U-other' })]);
     await tool.run(baseInput);
     expect(h.merge.absorbPlaceholder).not.toHaveBeenCalled();
+    expect(updateData(h).phone).toBeUndefined();
+    expect(updateData(h).phoneSecondary).toBe('0812345678');
     expect(auditValue(h).phoneConflict).toEqual({ reason: 'IDENTITY_CONFLICT', customerIds: ['o1'] });
+  });
+
+  it('placeholder มีห้องที่สอง (ช่องทางอื่น) ที่ชนตัวตนกับเจ้าของเบอร์ → ไม่ absorb', async () => {
+    h.customer.findUnique.mockResolvedValue(placeholderRow);
+    h.prisma.chatRoom.findMany.mockResolvedValue([
+      { channel: 'FACEBOOK', lineUserId: null, externalUserId: 'psid-1' },
+      { channel: 'LINE_SHOP', lineUserId: 'U-mine', externalUserId: null },
+    ]);
+    h.customer.findMany.mockResolvedValue([owner('o1', { lineIdShop: 'U-theirs' })]);
+    await tool.run(baseInput);
+    expect(h.prisma.chatRoom.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { customerId: 'p1', deletedAt: null },
+    }));
+    expect(h.merge.absorbPlaceholder).not.toHaveBeenCalled();
+    expect(auditValue(h).phoneConflict).toEqual({ reason: 'IDENTITY_CONFLICT', customerIds: ['o1'] });
+  });
+
+  it('absorb 404 เพราะ placeholder ถูกรวมไปแล้ว (mergedIntoId=T) → lead จบที่ T ไม่เขียนแถวที่ตาย', async () => {
+    let p1Reads = 0;
+    h.customer.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
+      if (where.id === 'p1') {
+        p1Reads++;
+        return p1Reads === 1 ? placeholderRow : { ...placeholderRow, deletedAt: new Date(), mergedIntoId: 'T' };
+      }
+      return { id: 'T', name: 'จริง', phone: '0870000000', phoneSecondary: '0880000000', acquisitionSource: 'WALK_IN', nationalId: null };
+    });
+    h.customer.findMany.mockResolvedValue([owner('o1')]);
+    h.merge.absorbPlaceholder.mockRejectedValue(new NotFoundException('ไม่พบผู้สนใจที่จะรวม'));
+    h.prisma.chatRoom.findUnique
+      .mockResolvedValueOnce(boundRoom('p1'))
+      .mockResolvedValue({ customerId: 'T', customer: { deletedAt: null } });
+
+    const result = await tool.run(baseInput);
+
+    expect(result.customerId).toBe('T');
+    expect(h.customer.update.mock.calls.every((c: [{ where: { id: string } }]) => c[0].where.id !== 'p1')).toBe(true);
+    // ไม่แตะชื่อ/เบอร์หลักของ T
+    expect(updateData(h)).toEqual({ acquisitionSource: 'AI_CHAT_RETURN' });
+    expect(h.txClient.chatRoom.update.mock.calls[0][0].data.customerId).toBe('T');
+    expect(auditEntityId(h)).toBe('T');
+    expect(auditValue(h).phoneOnlyBinding).toBe(true);
+  });
+
+  it('placeholder แบบ hash-only (มีเบอร์ใน phoneHash) ไม่ใช่ placeholder → ไม่ absorb ไม่บันทึก CONTACT_ADDED', async () => {
+    h.customer.findUnique.mockResolvedValue({ ...placeholderRow, phoneHash: 'h:0890000000' });
+    h.customer.findMany.mockResolvedValue([owner('o1')]);
+    await tool.run(baseInput);
+    expect(h.merge.absorbPlaceholder).not.toHaveBeenCalled();
+    expect(h.customer.findMany).not.toHaveBeenCalled();
+    const data = updateData(h);
+    expect(data.phone).toBeUndefined();
+    expect(data.phoneSecondary).toBe('0812345678');
+    expect(h.journey.recordAfterCommit).not.toHaveBeenCalled();
+  });
+
+  it('ลูกค้า hash-only ที่ถือเบอร์ที่พิมพ์อยู่แล้ว → เบอร์ไม่เปลี่ยน ไม่คัดลอกไปช่องสำรอง', async () => {
+    h.customer.findUnique.mockResolvedValue({
+      ...placeholderRow, phoneHash: 'h:0812345678', acquisitionSource: 'WALK_IN',
+    });
+    await tool.run(baseInput);
+    const data = updateData(h);
+    expect(data).not.toHaveProperty('phoneSecondary');
+    expect(auditValue(h).phoneOutcome).toBe('UNCHANGED');
   });
 
   it('LINE_SHOP · เจ้าของเบอร์มีแค่ lineIdFinance ของคนอื่น → ไม่ชน · absorb', async () => {
     h.prisma.chatRoom.findUnique.mockResolvedValue(boundRoom('p1', { channel: 'LINE_SHOP', lineUserId: 'U1', externalUserId: null }));
     h.customer.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === 'p1' ? { ...placeholderRow, acquisitionSource: 'CHAT_LINE_SHOP' } : { id: 'o1', acquisitionSource: 'WALK_IN' },
+      where.id === 'p1' ? { ...placeholderRow, acquisitionSource: 'CHAT_LINE_SHOP' } : { id: 'o1', phone: '0812345678', acquisitionSource: 'WALK_IN' },
     );
     h.customer.findMany.mockResolvedValue([owner('o1', { lineIdFinance: 'U-fin', lineIdShop: 'U1' })]);
     await tool.run(baseInput);
@@ -666,7 +954,7 @@ describe('CaptureLeadTool — ห้องถือผู้สนใจอั�
     });
     expect(auditValue(h)).toEqual(expect.objectContaining({
       phoneOutcome: 'DEFERRED',
-      phoneConflict: { reason: 'AMBIGUOUS', customerIds: ['o-late'] },
+      phoneConflict: { reason: 'OWNER_APPEARED', customerIds: ['o-late'] },
     }));
     expect(h.journey.recordAfterCommit).not.toHaveBeenCalled();
   });

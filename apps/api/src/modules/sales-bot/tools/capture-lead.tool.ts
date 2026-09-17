@@ -13,7 +13,7 @@ import { CustomerPiiService } from '../../customers/customer-pii.service';
 import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
 import { contactAddedEntry, isBlankContact } from '../../customer-journey/chat-identity-entries';
 import { normalizeThaiPhone } from '../../../utils/thai-phone.util';
-import { CHAT_SOURCE_PREFIX } from '@installment/shared';
+import { CHAT_SOURCE_PREFIX, chatSourceOf } from '@installment/shared';
 
 /**
  * ที่มา CHAT_* (ผู้สนใจจากแชท) ต้องคงอยู่ตลอดไป ไม่ว่าจะยังเป็น placeholder อยู่หรือไม่ —
@@ -95,18 +95,46 @@ export type PhoneOutcome =
   | 'MATCHED_LINE'
   | 'CREATED';
 
-/** เหตุที่ไม่เขียนเบอร์หลัก — ids เท่านั้น ห้ามใส่ชื่อ/เบอร์ของลูกค้าคนอื่น (PDPA) */
+/**
+ * เหตุที่ไม่เขียนเบอร์หลัก — ids เท่านั้น ห้ามใส่ชื่อ/เบอร์ของลูกค้าคนอื่น (PDPA)
+ * - AMBIGUOUS: ตอนวางแผนเจอเจ้าของเบอร์ ≥2 คน
+ * - IDENTITY_CONFLICT: เจ้าของเบอร์ถือตัวตนช่องทางเดียวกันของคนอื่นอยู่ (คอลัมน์ หรือห้องแชท)
+ * - ABSORB_FAILED: รวม placeholder เข้าเจ้าของเบอร์ไม่สำเร็จ
+ * - NOT_PLACEHOLDER: ลูกค้าที่บอทสร้างเองแต่ไม่ใช่ placeholder — ไม่รวมอัตโนมัติ
+ * - OWNER_APPEARED: ตรวจซ้ำในทรานแซกชันแล้วพบเจ้าของเบอร์ที่ตอนวางแผนยังไม่มี (แข่งกัน) — กี่คนก็ได้
+ */
 export interface PhoneConflict {
-  reason: 'AMBIGUOUS' | 'IDENTITY_CONFLICT' | 'ABSORB_FAILED' | 'NOT_PLACEHOLDER';
+  reason: 'AMBIGUOUS' | 'IDENTITY_CONFLICT' | 'ABSORB_FAILED' | 'NOT_PLACEHOLDER' | 'OWNER_APPEARED';
   customerIds: string[];
 }
 
 type Db = PrismaService | Prisma.TransactionClient;
 
-const OWNER_SELECT = { id: true, lineIdShop: true, lineIdFinance: true, facebookUserId: true } as const;
+/** เบอร์ที่ใช้ได้ — กติกาเดียวกับ DTO ฝั่งพนักงาน (@Matches(/^0[0-9]{9}$/)) */
+const VALID_PHONE = /^0\d{9}$/;
+
+const ROOM_KEY_SELECT = { channel: true, lineUserId: true, externalUserId: true } as const;
+
+const OWNER_SELECT = {
+  id: true,
+  lineIdShop: true,
+  lineIdFinance: true,
+  facebookUserId: true,
+  chatRooms: { where: { deletedAt: null }, select: ROOM_KEY_SELECT },
+} as const;
 type PhoneOwner = Prisma.CustomerGetPayload<{ select: typeof OWNER_SELECT }>;
 
-const BOUND_SELECT = { id: true, phone: true, phoneSecondary: true, acquisitionSource: true, nationalId: true } as const;
+const BOUND_SELECT = {
+  id: true,
+  phone: true,
+  phoneHash: true,
+  phoneSecondary: true,
+  acquisitionSource: true,
+  nationalId: true,
+  deletedAt: true,
+  mergedIntoId: true,
+} as const;
+type BoundRow = Prisma.CustomerGetPayload<{ select: typeof BOUND_SELECT }>;
 
 interface LeadRoom {
   channel: ChatChannel;
@@ -116,40 +144,56 @@ interface LeadRoom {
 
 /**
  * แผนที่ตัดสินก่อนเปิดทรานแซกชันหลัก (absorb / ensureForRoom เปิดทรานแซกชันของตัวเอง — ห้ามซ้อน)
- * - BOUND: อัปเดตลูกค้าที่ห้องถืออยู่ (เขียนเบอร์หลักได้เมื่อยังไม่มีเจ้าของเบอร์ — เช็คซ้ำในทรานแซกชัน)
+ * - BOUND: อัปเดตลูกค้าคนนั้น (เขียนเบอร์หลักได้เมื่อยังไม่มีเจ้าของเบอร์ — เช็คซ้ำในทรานแซกชัน)
  * - DEFER: อัปเดตลูกค้าคนนั้นโดยห้ามเขียนเบอร์หลัก (เบอร์ไปช่องสำรองถ้าว่าง)
+ * - WEAK: ห้องนี้เคยจบ lead ที่ลูกค้าคนนี้ด้วยเบอร์อย่างเดียว (ABSORBED / LINKED_BY_PHONE) —
+ *   capture รอบถัดไปก็ยังห้ามแตะชื่อ/เบอร์หลักของเขา
  * - ATTACH: lead จบที่เจ้าของเบอร์ (absorb แล้ว หรือผูกห้องด้วยเบอร์) — ไม่แตะชื่อ/เบอร์ของเขา
  * - MATCHED_LINE: composite match (lineIdShop + เบอร์) — อัปเดตชื่อ+ที่มาตามเดิม
- * - CREATE: สร้างลูกค้า AI_CHAT ใหม่ (เบอร์หลักเช็คเจ้าของซ้ำในทรานแซกชัน) · มี conflict = เบอร์ไปช่องสำรอง
+ * - CREATE: สร้างลูกค้าใหม่ (เบอร์หลักเช็คเจ้าของซ้ำในทรานแซกชัน) · มี conflict = เบอร์ไปช่องสำรอง
  */
 type LeadPlan =
   | { kind: 'BOUND'; customerId: string }
   | { kind: 'DEFER'; customerId: string; conflict: PhoneConflict }
+  | { kind: 'WEAK'; customerId: string }
   | { kind: 'ATTACH'; customerId: string; outcome: 'ABSORBED' | 'LINKED_BY_PHONE'; absorbedPlaceholderId: string | null }
   | { kind: 'MATCHED_LINE'; customerId: string; acquisitionSource: string | null }
   | { kind: 'CREATE'; conflict: PhoneConflict | null };
 
-/** ห้องกับเจ้าของเบอร์ชนตัวตนกัน = ตัวตนของช่องทางนี้มีค่าทั้งสองฝั่งและไม่ตรงกัน (แบบ selfLinkByPhone) */
-function identityConflict(room: LeadRoom, o: PhoneOwner): boolean {
-  let roomKey: string | null;
-  let stored: string | null;
-  switch (room.channel) {
+const LINE_CHANNELS: ReadonlySet<ChatChannel> = new Set([ChatChannel.LINE_SHOP, ChatChannel.LINE_FINANCE]);
+
+function roomKeyOf(r: LeadRoom): string | null {
+  return LINE_CHANNELS.has(r.channel) ? r.lineUserId : r.externalUserId;
+}
+
+function storedIdentity(channel: ChatChannel, o: PhoneOwner): string | null {
+  switch (channel) {
     case ChatChannel.LINE_SHOP:
-      roomKey = room.lineUserId;
-      stored = o.lineIdShop;
-      break;
+      return o.lineIdShop;
     case ChatChannel.LINE_FINANCE:
-      roomKey = room.lineUserId;
-      stored = o.lineIdFinance;
-      break;
+      return o.lineIdFinance;
     case ChatChannel.FACEBOOK:
-      roomKey = room.externalUserId;
-      stored = o.facebookUserId;
-      break;
+      return o.facebookUserId;
     default:
-      return false;
+      return null;
   }
-  return !!roomKey && !!stored && roomKey !== stored;
+}
+
+/**
+ * ห้องกับเจ้าของเบอร์ชนตัวตนกัน = ตัวตนของช่องทางนี้มีค่าทั้งสองฝั่งและไม่ตรงกัน (แบบ selfLinkByPhone)
+ * ดูทั้งคอลัมน์ตัวตนของเจ้าของ และห้องแชทช่องทางเดียวกันที่ผูกกับเจ้าของอยู่ — การผูกห้องโดยพนักงาน
+ * (linkCustomer) และการผูกด้วยเบอร์ของบอทเอง ไม่ได้เติมคอลัมน์ตัวตน
+ */
+function identityConflict(room: LeadRoom, o: PhoneOwner): boolean {
+  const key = roomKeyOf(room);
+  if (!key) return false;
+  const stored = storedIdentity(room.channel, o);
+  if (stored && stored !== key) return true;
+  return (o.chatRooms ?? []).some((r) => {
+    if (r.channel !== room.channel) return false;
+    const other = roomKeyOf(r);
+    return !!other && other !== key;
+  });
 }
 
 function ids(owners: PhoneOwner[]): string[] {
@@ -173,7 +217,8 @@ export class CaptureLeadTool {
 
   /**
    * ลูกค้าที่ยังมีชีวิตคนอื่นที่ถือเบอร์นี้เป็นเบอร์หลัก — ดูทั้งคอลัมน์ phone (แถวที่บอทเขียนยุคก่อน)
-   * และ phoneHash (แถว strict mode ที่ไม่มี plaintext) · take 2 พอบอกว่า 0 / 1 / หลายคน
+   * และ phoneHash (แถว strict mode ที่ไม่มี plaintext; ไม่ได้ตั้ง salt = ดู phone อย่างเดียว)
+   * · take 2 พอบอกว่า 0 / 1 / หลายคน
    */
   private findPhoneOwners(db: Db, phone: string, excludeId?: string): Promise<PhoneOwner[]> {
     const hashWhere = this.pii.searchByHash('phone', phone);
@@ -186,6 +231,17 @@ export class CaptureLeadTool {
       select: OWNER_SELECT,
       take: 2,
     });
+  }
+
+  /** เบอร์หลักของลูกค้าคนนี้ตรงกับเบอร์ที่พิมพ์ — แถว hash-only เทียบด้วย hash */
+  private samePhone(c: BoundRow, phone: string): boolean {
+    if (c.phone === phone) return true;
+    return !!c.phoneHash && c.phoneHash === this.pii.searchByHash('phone', phone)?.phoneHash;
+  }
+
+  /** placeholder ตามนิยามกลาง และต้องไม่มีเบอร์แบบ hash-only ด้วย */
+  private isPlaceholder(c: BoundRow): boolean {
+    return isChatPlaceholder(c) && !c.phoneHash;
   }
 
   /** เบอร์หลัก + hash/encrypted (dual-write แบบฝั่งพนักงาน — assertContactNotDuplicate หาด้วย phoneHash) */
@@ -213,30 +269,61 @@ export class CaptureLeadTool {
     }
   }
 
+  /** ห้องนี้เคยจบ lead ที่ลูกค้าคนนี้ด้วยการจับคู่เบอร์อย่างเดียวหรือไม่ (อ่านจาก AI_LEAD_CAPTURED ของห้องนี้) */
+  private async boundByPhoneOnly(roomId: string, customerId: string): Promise<boolean> {
+    const row = await this.prisma.auditLog.findFirst({
+      where: {
+        action: 'AI_LEAD_CAPTURED',
+        entity: 'customer',
+        entityId: customerId,
+        AND: [
+          { newValue: { path: ['roomId'], equals: roomId } },
+          {
+            OR: [
+              { newValue: { path: ['phoneOnlyBinding'], equals: true } },
+              { newValue: { path: ['phoneOutcome'], equals: 'ABSORBED' } },
+              { newValue: { path: ['phoneOutcome'], equals: 'LINKED_BY_PHONE' } },
+            ],
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    return !!row;
+  }
+
   /** (ผู้เรียกส่งเจ้าของ ≥1 คน) 1 คนที่รวม/ผูกได้ → owner · หลายคน / ไม่ใช่ placeholder / ชนตัวตน → conflict */
   private classifyOwners(
-    room: LeadRoom,
+    rooms: LeadRoom[],
     owners: PhoneOwner[],
     opts: { placeholder: boolean },
   ): { owner: PhoneOwner } | { conflict: PhoneConflict } {
     if (owners.length > 1) return { conflict: { reason: 'AMBIGUOUS', customerIds: ids(owners) } };
     if (!opts.placeholder) return { conflict: { reason: 'NOT_PLACEHOLDER', customerIds: ids(owners) } };
-    if (identityConflict(room, owners[0])) {
+    if (rooms.some((r) => identityConflict(r, owners[0]))) {
       return { conflict: { reason: 'IDENTITY_CONFLICT', customerIds: ids(owners) } };
     }
     return { owner: owners[0] };
   }
 
-  private async planBound(room: LeadRoom, customerId: string, phone: string | null): Promise<LeadPlan> {
+  private async planBound(roomId: string, room: LeadRoom, customerId: string, phone: string | null): Promise<LeadPlan> {
     const c = await this.prisma.customer.findUnique({ where: { id: customerId }, select: BOUND_SELECT });
-    const placeholder = !!c && isChatPlaceholder(c);
-    const aiOwned = c?.acquisitionSource?.startsWith('AI_CHAT') ?? false;
-    const phoneChanged = !!c && !!phone && c.phone !== phone;
+    if (!c) return { kind: 'BOUND', customerId };
+    if (await this.boundByPhoneOnly(roomId, customerId)) return { kind: 'WEAK', customerId };
+    const placeholder = this.isPlaceholder(c);
+    // "บอทเป็นเจ้าของ" = บอทสร้างเองเท่านั้น (AI_CHAT) — AI_CHAT_RETURN คือลูกค้าจริงที่บอทแตะ ห้ามทับเบอร์หลัก
+    const aiOwned = c.acquisitionSource === 'AI_CHAT';
+    const phoneChanged = !!phone && !this.samePhone(c, phone);
     if (!phone || !phoneChanged || !(placeholder || aiOwned)) return { kind: 'BOUND', customerId };
 
     const owners = await this.findPhoneOwners(this.prisma, phone, customerId);
     if (owners.length === 0) return { kind: 'BOUND', customerId };
-    const verdict = this.classifyOwners(room, owners, { placeholder });
+    // absorb ย้ายทุกห้องของ placeholder ⇒ ต้องไม่ชนตัวตนในห้องไหนเลย ไม่ใช่แค่ห้องนี้
+    const ownRooms =
+      placeholder && owners.length === 1
+        ? await this.prisma.chatRoom.findMany({ where: { customerId, deletedAt: null }, select: ROOM_KEY_SELECT })
+        : [];
+    const verdict = this.classifyOwners([room, ...(ownRooms ?? [])], owners, { placeholder });
     if ('conflict' in verdict) return { kind: 'DEFER', customerId, conflict: verdict.conflict };
     if (await this.tryAbsorb(customerId, verdict.owner.id)) {
       return { kind: 'ATTACH', customerId: verdict.owner.id, outcome: 'ABSORBED', absorbedPlaceholderId: customerId };
@@ -257,71 +344,134 @@ export class CaptureLeadTool {
       if (existing) return { kind: 'MATCHED_LINE', customerId: existing.id, acquisitionSource: existing.acquisitionSource };
     }
 
+    // ตัวตนที่แข็งกว่าเบอร์มาก่อน (ห้องพี่น้อง / LINE link / lineId) — เจอ = ปฏิบัติเหมือนห้องผูกกับคนนั้นแล้ว
+    const key = roomKeyOf(room);
+    if (key) {
+      const known = await this.prospects.findExistingCustomerId(this.prisma, room.channel, key);
+      if (known) return this.planBound(roomId, room, known, phone);
+    }
+
     // Branch 2 (ไม่ match) / Branch 3 (FB/Web/TikTok): ห้ามสร้างคนที่สองที่ถือเบอร์หลักเดียวกัน (R25)
     // เจ้าของ 1 คนที่ไม่ชนตัวตน → ผูกห้องเข้าคนนั้น (ห้องถัดไปของผู้ใช้คนนี้ผูกตามผ่านห้องพี่น้อง)
     const owners = await this.findPhoneOwners(this.prisma, phone);
     if (owners.length === 0) return { kind: 'CREATE', conflict: null };
-    const verdict = this.classifyOwners(room, owners, { placeholder: true });
+    const verdict = this.classifyOwners([room], owners, { placeholder: true });
     if ('owner' in verdict) {
       return { kind: 'ATTACH', customerId: verdict.owner.id, outcome: 'LINKED_BY_PHONE', absorbedPlaceholderId: null };
     }
-    // ไม่แน่ใจว่าเป็นใคร → ใช้ผู้สนใจของห้องนี้ (หาเจอด้วยตัวตนที่แข็งกว่า หรือสร้าง placeholder) แล้วเก็บเบอร์เป็นช่องสำรอง
+    // ไม่แน่ใจว่าเป็นใคร → ใช้ผู้สนใจของห้องนี้ (สร้าง placeholder) แล้วเก็บเบอร์เป็นช่องสำรอง
     const ensured = await this.prospects.ensureForRoom(roomId);
     if (ensured) return { kind: 'DEFER', customerId: ensured.customerId, conflict: verdict.conflict };
     return { kind: 'CREATE', conflict: verdict.conflict };
   }
 
+  /** ตามสาย mergedIntoId ไปหาลูกค้าที่ยังมีชีวิต (ถูกรวม/ลบระหว่างวางแผนกับทรานแซกชัน) — ไม่เจอ = null */
+  private async resolveLive(tx: Prisma.TransactionClient, id: string): Promise<BoundRow | null> {
+    let cur: string | null = id;
+    for (let hop = 0; cur && hop < 4; hop++) {
+      const row: BoundRow | null = await tx.customer.findUnique({ where: { id: cur }, select: BOUND_SELECT });
+      if (!row) return null;
+      if (!row.deletedAt) return row;
+      cur = row.mergedIntoId;
+    }
+    return null;
+  }
+
   /**
-   * อัปเดตลูกค้าที่ห้องถือ (Branch 1) — ชื่อ + ที่มา (Ruling R14) + เบอร์
-   * - บอทสร้างเอง (AI_CHAT*) / placeholder → เขียนเบอร์หลักได้ ถ้าไม่มีคนอื่นถือเบอร์ (เช็คซ้ำในทรานแซกชัน)
+   * อัปเดตลูกค้าที่ lead จบ
+   * FULL (ห้องถือลูกค้าคนนี้ด้วยตัวตน) — ชื่อ + ที่มา (Ruling R14) + เบอร์
+   * - บอทสร้างเอง (AI_CHAT) / placeholder → เขียนเบอร์หลักได้ ถ้าไม่มีคนอื่นถือเบอร์ (เช็คซ้ำในทรานแซกชัน)
    * - พนักงานผูกไว้ หรือ deferred → ห้ามทับเบอร์หลัก เก็บเป็นเบอร์สำรองเมื่อช่องสำรองว่าง
+   * - ที่มา CHAT_* และ AI_CHAT คงเดิม — AI_CHAT_RETURN ใช้กับลูกค้าที่บอทไม่ได้สร้างเท่านั้น
+   * WEAK (จับคู่ด้วยเบอร์อย่างเดียว) — ไม่แตะชื่อ/เบอร์หลัก · ที่มาไม่ใช่ CHAT_* → AI_CHAT_RETURN ·
+   *   เบอร์ที่ต่างจากเบอร์หลักไปช่องสำรองเมื่อว่าง
    * เบอร์ใหม่ที่ลูกค้าเพิ่งพิมพ์ต้องไม่ถูกทิ้ง (บั๊กจริง 2026-08-22: ลูกค้าให้เบอร์ใหม่
    * บอทขอซ้ำ 2 รอบ แต่ customers.phone ยังเป็นเบอร์จาก capture รอบแรก)
    */
-  private async updateBound(
+  private async updateCustomer(
     tx: Prisma.TransactionClient,
-    customerId: string,
+    c: BoundRow,
+    mode: 'FULL' | 'WEAK',
     phone: string | null,
     customerName: string,
     initialConflict: PhoneConflict | null,
   ): Promise<{ outcome: PhoneOutcome; conflict: PhoneConflict | null; contactAdded: boolean }> {
-    const c = await tx.customer.findUnique({ where: { id: customerId }, select: BOUND_SELECT });
-    const placeholder = !!c && isChatPlaceholder(c);
-    const aiOwned = c?.acquisitionSource?.startsWith('AI_CHAT') ?? false;
-    const phoneChanged = !!c && !!phone && c.phone !== phone;
+    const placeholder = this.isPlaceholder(c);
+    const aiOwned = c.acquisitionSource === 'AI_CHAT';
+    const phoneChanged = !!phone && !this.samePhone(c, phone);
 
-    const data: Prisma.CustomerUpdateInput = {
-      name: customerName,
+    let data: Prisma.CustomerUpdateInput;
+    if (mode === 'WEAK') {
+      const keep = isChatSourced(c.acquisitionSource) || c.acquisitionSource === 'AI_CHAT_RETURN';
+      data = keep ? {} : { acquisitionSource: 'AI_CHAT_RETURN' };
+    } else {
       // ผู้สนใจอัตโนมัติ: ที่มายังเป็นช่องทางที่ทักมา (CHAT_*) ไม่ใช่บอท — สเปค 3.4
       // Ruling R14: ที่มา CHAT_* ห้ามถูกทับแม้เติมเบอร์จนไม่ใช่ placeholder แล้วก็ตาม
-      ...(placeholder || isChatSourced(c?.acquisitionSource) ? {} : { acquisitionSource: 'AI_CHAT_RETURN' }),
-    };
+      const keep = placeholder || isChatSourced(c.acquisitionSource) || aiOwned;
+      data = { name: customerName, ...(keep ? {} : { acquisitionSource: 'AI_CHAT_RETURN' }) };
+    }
     let conflict = initialConflict;
     let outcome: PhoneOutcome = conflict ? 'DEFERRED' : 'UNCHANGED';
     let contactAdded = false;
 
     if (phone && phoneChanged) {
-      let writePrimary = !conflict && (placeholder || aiOwned);
+      let writePrimary = mode === 'FULL' && !conflict && (placeholder || aiOwned);
       if (writePrimary) {
-        const owners = await this.findPhoneOwners(tx, phone, customerId);
+        const owners = await this.findPhoneOwners(tx, phone, c.id);
         if (owners.length > 0) {
           // มีเจ้าของโผล่ระหว่างทาง — ไม่ absorb ในทรานแซกชัน (absorb เปิดทรานแซกชันของตัวเอง)
           writePrimary = false;
-          conflict = { reason: 'AMBIGUOUS', customerIds: ids(owners) };
+          conflict = { reason: 'OWNER_APPEARED', customerIds: ids(owners) };
           outcome = 'DEFERRED';
         }
       }
       if (writePrimary) {
         Object.assign(data, this.primaryPhoneFields(phone));
         outcome = 'FILLED';
-        contactAdded = isBlankContact(c?.phone);
-      } else if (!c?.phoneSecondary) {
+        contactAdded = isBlankContact(c.phone) && !c.phoneHash;
+      } else if (!c.phoneSecondary) {
         Object.assign(data, this.secondaryPhoneFields(phone));
         if (!conflict) outcome = 'SECONDARY';
       }
     }
-    await tx.customer.update({ where: { id: customerId }, data });
+    if (Object.keys(data).length > 0) await tx.customer.update({ where: { id: c.id }, data });
     return { outcome, conflict, contactAdded };
+  }
+
+  /**
+   * สร้างลูกค้าใหม่ — เช็คเจ้าของเบอร์ซ้ำก่อนเขียน (ไม่มี advisory lock เหมือนฝั่งพนักงาน)
+   * มี conflict → เบอร์ไปช่องสำรอง และถ้าห้องมีรหัสผู้ใช้ ตั้งที่มาเป็น CHAT_* ของห้อง ⇒ เป็นผู้สนใจอัตโนมัติ
+   * ที่ capture รอบหน้า/พนักงานรวมเข้าเจ้าของเบอร์ได้ ไม่ค้างเป็นแถวซ้ำถาวร
+   */
+  private async createLead(
+    tx: Prisma.TransactionClient,
+    room: LeadRoom,
+    phone: string | null,
+    customerName: string,
+    initialConflict: PhoneConflict | null,
+  ): Promise<{ id: string; outcome: PhoneOutcome; conflict: PhoneConflict | null }> {
+    let conflict = initialConflict;
+    if (phone && !conflict) {
+      const owners = await this.findPhoneOwners(tx, phone);
+      if (owners.length > 0) conflict = { reason: 'OWNER_APPEARED', customerIds: ids(owners) };
+    }
+    const phoneData = !phone
+      ? { phone: null }
+      : conflict
+        ? { phone: null, ...this.secondaryPhoneFields(phone) }
+        : this.primaryPhoneFields(phone);
+    const created = await tx.customer.create({
+      data: {
+        name: customerName,
+        ...phoneData,
+        chatConsent: true,
+        chatConsentAt: new Date(),
+        lineIdShop: room.lineUserId, // null for non-LINE channels — correct
+        status: 'ACTIVE',
+        acquisitionSource: conflict && roomKeyOf(room) ? chatSourceOf(room.channel) : 'AI_CHAT',
+      },
+    });
+    return { id: created.id, outcome: conflict ? 'DEFERRED' : 'CREATED', conflict };
   }
 
   async run(input: CaptureLeadInput): Promise<CaptureLeadResult> {
@@ -371,41 +521,69 @@ export class CaptureLeadTool {
       throw new Error('shop_bot_central_branch_id not configured');
     }
 
-    // เบอร์ว่าง = ไม่มีเบอร์ (ห้ามโยน — error ของ tool ทำให้ทั้งเทิร์นของบอทล้ม)
-    const phone = normalizeThaiPhone(input.phone) || null;
+    // เบอร์ว่าง/รูปแบบผิด = ไม่มีเบอร์ (ห้ามโยน — error ของ tool ทำให้ทั้งเทิร์นของบอทล้ม)
+    // เบอร์ผิดรูปแบบห้ามใช้หาเจ้าของ/รวม/ผูก/เขียน — เก็บไว้ใน audit ให้ทีมโทรกลับเท่านั้น
+    const typedPhone = normalizeThaiPhone(input.phone) || null;
+    const phone = typedPhone && VALID_PHONE.test(typedPhone) ? typedPhone : null;
+
+    // ไม่มีกุญแจ/salt PII = เขียนเบอร์ไม่ได้ — ล้มตั้งแต่ตรงนี้ ก่อน absorb/ensureForRoom จะเปลี่ยนอะไรไปแล้ว
+    if (phone) this.pii.encryptCustomerFields({ phone });
 
     // R25: capture_lead ห้ามเขียนเบอร์หลักที่ลูกค้าคนอื่น (ยังไม่ถูกลบ) ถืออยู่แล้ว
     // ห้องที่ชี้ลูกค้าที่ถูก soft-delete = ห้องยังไม่มีเจ้าของ
     const boundId = room.customerId && !room.customer?.deletedAt ? room.customerId : null;
     const plan = boundId
-      ? await this.planBound(room, boundId, phone)
+      ? await this.planBound(room.id, room, boundId, phone)
       : await this.planUnbound(room.id, room, phone);
 
     let outcome: PhoneOutcome = 'UNCHANGED';
     let conflict: PhoneConflict | null = null;
+    let phoneOnly = plan.kind === 'WEAK';
     const absorbedPlaceholderId = plan.kind === 'ATTACH' ? plan.absorbedPlaceholderId : null;
 
     const { customerId, contactAddedFor } = await this.prisma.$transaction(async (tx) => {
-      let cId: string;
+      let cId: string | null = null;
       let contactAdded: string | null = null;
+      let createConflict: PhoneConflict | null = plan.kind === 'CREATE' ? plan.conflict : null;
 
-      if (plan.kind === 'BOUND' || plan.kind === 'DEFER') {
-        // Branch 1 (หรือผู้สนใจที่ ensureForRoom คืนมา) — room.customerId ไม่ถูกเปลี่ยนเป็นคนอื่น
-        const r = await this.updateBound(
-          tx, plan.customerId, phone, input.customerName, plan.kind === 'DEFER' ? plan.conflict : null,
-        );
-        ({ outcome, conflict } = r);
-        if (r.contactAdded) contactAdded = plan.customerId;
-        cId = plan.customerId;
+      if (plan.kind === 'BOUND' || plan.kind === 'DEFER' || plan.kind === 'WEAK') {
+        const initial = plan.kind === 'DEFER' ? plan.conflict : null;
+        const c = await this.resolveLive(tx, plan.customerId);
+        if (c && c.id === plan.customerId) {
+          const r = await this.updateCustomer(
+            tx, c, plan.kind === 'WEAK' ? 'WEAK' : 'FULL', phone, input.customerName, initial,
+          );
+          ({ outcome, conflict } = r);
+          if (r.contactAdded) contactAdded = c.id;
+          cId = c.id;
+        } else if (c) {
+          // ถูกรวมเข้าคนอื่นระหว่างทาง (เช่น absorb พร้อมกัน) → จบที่ผู้รับรวม แบบไม่แตะชื่อ/เบอร์หลัก
+          const r = await this.updateCustomer(tx, c, 'WEAK', phone, input.customerName, initial);
+          ({ outcome, conflict } = r);
+          phoneOnly = true;
+          cId = c.id;
+        } else {
+          createConflict = initial;
+        }
       } else if (plan.kind === 'ATTACH') {
         // จับคู่ด้วยเบอร์อย่างเดียว อ่อนกว่าตัวตน ⇒ ห้ามแตะชื่อ/เบอร์ของเจ้าของ (ชื่อที่พิมพ์อาจเป็นของคนอื่น)
-        // อ่านที่มาในทรานแซกชัน — absorb (Ruling R24) อาจเพิ่งยก CHAT_* มาให้
-        const o = await tx.customer.findUnique({ where: { id: plan.customerId }, select: { acquisitionSource: true } });
-        if (!isChatSourced(o?.acquisitionSource)) {
-          await tx.customer.update({ where: { id: plan.customerId }, data: { acquisitionSource: 'AI_CHAT_RETURN' } });
+        // อ่านในทรานแซกชัน — absorb (Ruling R24) อาจเพิ่งยก CHAT_* มาให้ และเจ้าของอาจถูกรวม/ลบไปแล้ว
+        const o = await this.resolveLive(tx, plan.customerId);
+        let stillOwner = !!o;
+        if (o && plan.outcome === 'LINKED_BY_PHONE' && phone) {
+          const owners = await this.findPhoneOwners(tx, phone);
+          const same = owners.length === 1 && owners[0].id === o.id && !identityConflict(room, owners[0]);
+          if (!same && o.id === plan.customerId) {
+            stillOwner = false;
+            createConflict = owners.length > 0 ? { reason: 'OWNER_APPEARED', customerIds: ids(owners) } : null;
+          }
         }
-        outcome = plan.outcome;
-        cId = plan.customerId;
+        if (o && stillOwner) {
+          await this.updateCustomer(tx, o, 'WEAK', phone, input.customerName, null);
+          outcome = plan.outcome;
+          phoneOnly = true;
+          cId = o.id;
+        }
       } else if (plan.kind === 'MATCHED_LINE') {
         await tx.customer.update({
           where: { id: plan.customerId },
@@ -413,42 +591,39 @@ export class CaptureLeadTool {
             name: input.customerName,
             // Ruling R14: เหมือน Branch 1 — ลูกค้าที่จับคู่ได้อาจเป็นอดีต placeholder ที่
             // ได้เบอร์มาจากห้องอื่นแล้ว (ที่มายังเป็น CHAT_*) ห้ามทับด้วย AI_CHAT_RETURN
-            ...(isChatSourced(plan.acquisitionSource) ? {} : { acquisitionSource: 'AI_CHAT_RETURN' }),
+            ...(isChatSourced(plan.acquisitionSource) || plan.acquisitionSource === 'AI_CHAT'
+              ? {}
+              : { acquisitionSource: 'AI_CHAT_RETURN' }),
           },
         });
         outcome = 'MATCHED_LINE';
         cId = plan.customerId;
-      } else {
-        // สร้างใหม่ — เช็คเจ้าของเบอร์ซ้ำก่อนเขียน (ไม่มี advisory lock เหมือนฝั่งพนักงาน)
-        conflict = plan.conflict;
-        if (phone && !conflict) {
-          const owners = await this.findPhoneOwners(tx, phone);
-          if (owners.length > 0) conflict = { reason: 'AMBIGUOUS', customerIds: ids(owners) };
-        }
-        const phoneData = !phone
-          ? { phone: null }
-          : conflict
-            ? { phone: null, ...this.secondaryPhoneFields(phone) }
-            : this.primaryPhoneFields(phone);
-        const created = await tx.customer.create({
-          data: {
-            name: input.customerName,
-            ...phoneData,
-            chatConsent: true,
-            chatConsentAt: new Date(),
-            lineIdShop: room.lineUserId, // null for non-LINE channels — correct
-            status: 'ACTIVE',
-            acquisitionSource: 'AI_CHAT',
-          },
-        });
-        outcome = conflict ? 'DEFERRED' : 'CREATED';
+      }
+
+      if (!cId) {
+        const created = await this.createLead(tx, room, phone, input.customerName, createConflict);
+        ({ outcome, conflict } = created);
+        phoneOnly = false;
         cId = created.id;
       }
 
+      // ห้องถูกผูกกับลูกค้าที่ยังมีชีวิตคนอื่นระหว่างทาง (พนักงานผูกเอง) → ไม่ทับ
+      const current = await tx.chatRoom.findUnique({
+        where: { id: input.roomId },
+        select: { customerId: true, customer: { select: { deletedAt: true } } },
+      });
+      const keepBinding =
+        !!current?.customerId &&
+        current.customerId !== cId &&
+        !current.customer?.deletedAt &&
+        current.customerId !== boundId;
+      if (keepBinding) {
+        this.logger.warn(`[capture_lead] room ${input.roomId} re-bound concurrently — lead ended on ${cId}`);
+      }
       await tx.chatRoom.update({
         where: { id: input.roomId },
         data: {
-          customerId: cId,
+          ...(keepBinding ? {} : { customerId: cId }),
           ...(handoffAfterLead
             ? { handoffMode: true, handoffReason: 'lead_captured', handoffTaggedAt: new Date() }
             : {}),
@@ -463,16 +638,19 @@ export class CaptureLeadTool {
           entityId: cId,
           newValue: {
             customerName: input.customerName,
-            phone,
+            phone: typedPhone,
             productId: input.productId ?? null,
             packageChoice: input.packageChoice ?? null,
             productNote: input.productNote ?? null,
             downAmount: input.downAmount,
             address: input.address ?? null,
             visitPlan: input.visitPlan ?? null,
+            roomId: input.roomId,
+            phoneValid: typedPhone === null ? null : phone !== null,
             phoneOutcome: outcome,
             phoneConflict: conflict ? { reason: conflict.reason, customerIds: conflict.customerIds } : null,
             absorbedPlaceholderId,
+            phoneOnlyBinding: phoneOnly,
           },
         },
       });

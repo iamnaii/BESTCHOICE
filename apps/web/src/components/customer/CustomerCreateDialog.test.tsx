@@ -4,6 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 const apiPost = vi.fn();
+const toastError = vi.fn();
+vi.mock('sonner', () => ({
+  toast: { error: (...args: unknown[]) => toastError(...args), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}));
 vi.mock('@/lib/api', () => ({
   __esModule: true,
   default: { post: (...args: unknown[]) => apiPost(...args) },
@@ -493,6 +497,22 @@ describe('CustomerCreateDialog mode="fill" (เพิ่มเบอร์/ข�
     expect(fieldError('phone')).toHaveTextContent(DUP_PHONE_FIELD_ERROR);
     fireEvent.change(mainField('0XX-XXX-XXXX'), { target: { value: '0812345679' } });
     await waitFor(() => expect(fieldError('phone')).toBeNull());
+  });
+
+  it('409 ที่ไม่มี existingCustomer → toast ข้อความจาก API · ไม่มีกล่องคนเดิม · ไม่ขึ้น error ใต้ช่องเบอร์ · ฟอร์มยังเปิด', async () => {
+    const onOpenChange = vi.fn();
+    toastError.mockClear();
+    apiPost.mockImplementation(() =>
+      Promise.reject(Object.assign(new Error('เลขบัตรประชาชนไม่ถูกต้อง'), { response: { status: 409, data: { message: 'เลขบัตรประชาชนไม่ถูกต้อง' } } })),
+    );
+    wrap(<CustomerCreateDialog open mode="fill" fillCustomerId="p1" onOpenChange={onOpenChange} initialValues={{ firstName: 'สมชาย', lastName: 'ใจดี' }} onCreated={vi.fn()} onUseExisting={vi.fn()} />);
+    fillProspectRequired();
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('เลขบัตรประชาชนไม่ถูกต้อง'));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(fieldError('phone')).toBeNull();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'บันทึก' })).toBeInTheDocument();
   });
 
   it('409 จาก API เก่า (ไม่มี createdAt/activeContracts) → ชิปมีแค่ชื่อ · โทร ไม่มี "ลูกค้าตั้งแต่"/"ผ่อนอยู่" และไม่พัง', async () => {

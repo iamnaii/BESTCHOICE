@@ -8,6 +8,7 @@ import { compressImageForOcr } from '@/lib/compressImage';
 import { checkCardReaderStatus, readSmartCard, type SmartCardData } from '@/lib/cardReader';
 import { THAI_NAME_PREFIXES, RELATIONSHIP_OPTIONS } from '@/lib/constants';
 import { formatThaiDateShort } from '@/lib/date';
+import { existingNounOf } from '@/utils/existing-person-noun';
 import { customerSchema, prospectFillSchema, type CustomerFormData } from '@/lib/schemas';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
@@ -25,7 +26,7 @@ import type { OcrResult } from '@/types/ocr';
  *
  * เลขซ้ำ (409 จาก customer-write.service dedup เบอร์/อีเมล) ไม่ใช่แค่ error:
  * ถ้าผู้เรียกส่ง `onUseExisting` มา จะเสนอปุ่ม "ใช้ลูกค้าเดิมคนนี้แทน" ในฟอร์มเลย
- * (คนเดิมยังไม่เคยซื้อ = "ใช้ผู้สนใจเดิมคนนี้แทน" — ดู `existingNounOf`)
+ * (คนเดิมยังไม่เคยซื้อ = "ใช้ผู้สนใจเดิมคนนี้แทน" — ดู `existingNounOf` ใน `@/utils/existing-person-noun`)
  * (ในแชท = ผูกห้องกับคนเดิม แทนที่จะสร้างซ้ำหรือติดตาย)
  *
  * state ทั้งหมดอยู่ใน `CustomerCreateForm` ซึ่ง mount เฉพาะตอน `open` — ปิดแล้วเปิดใหม่ได้ฟอร์มเปล่า
@@ -55,14 +56,6 @@ function customerSinceLabel(createdAt: string | undefined): string | null {
   if (!createdAt) return null;
   const label = formatThaiDateShort(createdAt);
   return label === '-' ? null : label;
-}
-
-/**
- * คำเรียกคนเดิมในกล่องเบอร์ซ้ำ (คำตัดสิน 2026-09-17) ตามนิยามเจ้าของ 2026-09-12: ลูกค้า = ซื้อแล้ว
- * ที่เหลือ = ผู้สนใจ · ใช้ "ผู้สนใจ" เฉพาะเมื่อ API บอกชัดว่า `purchased: false` — ไม่บอก (API เก่า) ⇒ "ลูกค้า" ตามเดิม
- */
-function existingNounOf(purchased: boolean | undefined): 'ลูกค้า' | 'ผู้สนใจ' {
-  return purchased === false ? 'ผู้สนใจ' : 'ลูกค้า';
 }
 
 /** mockup บอร์ด 4 — error ใต้ช่องเบอร์เมื่อ 409 ชนเบอร์ (โหมด fill) */

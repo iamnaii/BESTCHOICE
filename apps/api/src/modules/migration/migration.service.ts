@@ -5,9 +5,14 @@ import { generateContractNumber } from '../../utils/sequence.util';
 import { normalizeThaiPhone } from '../../utils/thai-phone.util';
 import { CustomerPiiService } from '../customers/customer-pii.service';
 import { lockCustomerPhone } from '../customers/customer-phone-lock';
+import { findLivePhoneOwner } from '../customers/customer-phone-owner';
 
 /** เบอร์หลักของแถวนำเข้าเป็นของลูกค้าคนอื่นที่ยังไม่ถูกลบ (คำตัดสินเจ้าของ 2026-09-17 — ห้ามสองคนถือเบอร์หลักเดียวกัน) */
 export const IMPORT_PHONE_TAKEN_MSG = 'เบอร์โทรนี้เป็นของลูกค้าคนอื่นในระบบแล้ว';
+
+/** เลขบัตรของแถวนำเข้าชนกับลูกค้าเดิมที่ข้อมูลเลขบัตรไม่ตรงกัน (plaintext กับ hash อยู่คนละแถว) */
+export const IMPORT_NATIONAL_ID_CONFLICT_MSG =
+  'เลขบัตร ปชช. นี้ซ้ำกับลูกค้าในระบบที่ข้อมูลเลขบัตรไม่ตรงกัน — ต้องตรวจสอบด้วยมือ';
 
 export interface ImportResult {
   success: number;
@@ -108,28 +113,35 @@ export class MigrationService {
         const outcome = await this.prisma.$transaction(async (tx) => {
           // ล็อกเบอร์หลักเป็นคำสั่งแรก (.claude/rules/database.md "ล็อกเบอร์หลักของลูกค้า")
           await lockCustomerPhone(tx, this.pii, phone);
-          // แถวที่ upsert จะไปแตะ (ตามเลขบัตร) ไม่นับเป็นเจ้าของเบอร์คนอื่น
-          const target = await tx.customer.findUnique({
-            where: { nationalId: c.nationalId },
-            select: { id: true },
-          });
-          const phoneHash = enc.phoneHash;
-          const owner = await tx.customer.findFirst({
+          // แถวที่นำเข้าจะไปแตะ = เลขบัตรเดียวกัน (plaintext หรือ hash — แถวที่เหลือแต่ hash ก็คือคนเดียวกัน)
+          // unique ทั้งสองคอลัมน์ครอบแถวที่ถูกลบด้วย จึงไม่กรอง deletedAt · ไม่นับเป็นเจ้าของเบอร์คนอื่น
+          const nationalIdHash = enc.nationalIdHash;
+          const target = await tx.customer.findFirst({
             where: {
-              deletedAt: null,
-              ...(target ? { id: { not: target.id } } : {}),
-              OR: [{ phone }, ...(phoneHash ? [{ phoneHash }] : [])],
+              OR: [{ nationalId: c.nationalId }, ...(nationalIdHash ? [{ nationalIdHash }] : [])],
             },
             select: { id: true },
           });
+          // นิยามเจ้าของเดียวกับ skip-tracing — ข้ามแถวที่ hash ค้างแต่ plaintext เป็นเบอร์อื่น
+          const owner = await findLivePhoneOwner(
+            tx,
+            phone,
+            enc.phoneHash,
+            target ? [target.id] : [],
+          );
           if (owner) return 'PHONE_TAKEN' as const;
 
-          // Upsert: if nationalId exists, update; else create
-          await tx.customer.upsert({
-            where: { nationalId: c.nationalId },
-            update: { ...plain, ...encrypted },
-            create: { nationalId: c.nationalId, ...plain, ...encrypted },
-          });
+          if (target) {
+            await tx.customer.update({
+              where: { id: target.id },
+              // ไม่แตะ plaintext nationalId (เหมือน upsert เดิม) — แถวที่เหลือแต่ hash คงสภาพ strict
+              data: { ...plain, ...encrypted },
+            });
+          } else {
+            await tx.customer.create({
+              data: { nationalId: c.nationalId, ...plain, ...encrypted },
+            });
+          }
           return 'OK' as const;
         });
 
@@ -140,6 +152,12 @@ export class MigrationService {
         }
         result.success++;
       } catch (err) {
+        if ((err as { code?: string })?.code === 'P2002') {
+          // unique ของ customers มีแค่ national_id / national_id_hash — เช่น แถวหนึ่งถือ plaintext อีกแถวถือ hash
+          result.errors.push({ row, field: 'nationalId', message: IMPORT_NATIONAL_ID_CONFLICT_MSG });
+          result.failed++;
+          continue;
+        }
         result.errors.push({ row, message: err instanceof Error ? err.message : 'Unknown error' });
         result.failed++;
       }

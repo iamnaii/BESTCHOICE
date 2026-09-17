@@ -196,4 +196,46 @@ describe('SkipTracingService.updateContact (real DB)', () => {
     });
     expect(primaries.map((r) => r.id)).toEqual([ownerId]);
   });
+  it('เบอร์เดิมบนแถวที่เสียจากบั๊กเดิม (hash ค้าง + ไม่มี ciphertext) → ซ่อมในแถวเดียวกัน phoneStoredAs = null', async () => {
+    const phone = await freshPhone();
+    const staleFor = await freshPhone();
+    const debtor = await prisma.customer.create({
+      data: {
+        name: 'skip-tracing spec same-primary',
+        phone,
+        phoneHash: hashPII(staleFor, PII_SALT),
+        phoneEncrypted: null,
+      },
+    });
+    ids.add(debtor.id);
+
+    const result = await service.updateContact(
+      debtor.id,
+      { newPhone: phone, reason: 'ยืนยันเบอร์เดิม' },
+      { userId: undefined },
+    );
+
+    expect(result).toMatchObject({ phone, phoneStoredAs: null, phoneOwner: null });
+    const row = await prisma.customer.findUniqueOrThrow({ where: { id: debtor.id } });
+    expect(row.phoneHash).toBe(hashPII(phone, PII_SALT));
+    expect(decryptPII(row.phoneEncrypted!, PII_KEY)).toBe(phone);
+    // hash ค้างไม่บล็อกเบอร์ staleFor อีกต่อไป
+    expect(await prisma.customer.count({ where: { phoneHash: hashPII(staleFor, PII_SALT) } })).toBe(0);
+  });
+
+  it('เบอร์เดิมบนแถวที่ถูกต้องอยู่แล้ว → ไม่เขียนคอลัมน์เบอร์', async () => {
+    const phone = await freshPhone();
+    const debtor = await customerWithPhone('same-primary-clean', phone);
+
+    const result = await service.updateContact(
+      debtor.id,
+      { newPhone: phone, reason: 'ยืนยันเบอร์เดิม' },
+      { userId: undefined },
+    );
+
+    expect(result.phoneStoredAs).toBeNull();
+    const row = await prisma.customer.findUniqueOrThrow({ where: { id: debtor.id } });
+    expect(row.phoneEncrypted).toBe(debtor.phoneEncrypted);
+    expect(row.phoneHash).toBe(debtor.phoneHash);
+  });
 });

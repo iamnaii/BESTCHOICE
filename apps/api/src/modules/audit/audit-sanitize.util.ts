@@ -5,7 +5,9 @@ const SENSITIVE_FIELDS = [
   // PII — PDPA compliance
   'nationalId', 'vendorTaxId', 'taxId',
   'phone', 'mobilePhone', 'emergencyPhone',
-  'email', 'lineId', 'lineUserId',
+  // ชื่อคีย์ตรงตัว ไม่ใช้ /phone/i — จะไปปิด phoneStoredAs / phoneOwnerId (id ล้วน) ของ skip-tracing ด้วย
+  'phoneSecondary', 'newPhone',
+  'email', 'lineId', 'lineUserId', 'newLineId',
   'address', 'currentAddress', 'registeredAddress',
   'bankAccount', 'bankAccountNumber', 'accountNumber',
   // T2-C15: integration secrets stored under SystemConfig or passed in

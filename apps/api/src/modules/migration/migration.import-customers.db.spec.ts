@@ -120,4 +120,42 @@ describe('MigrationService.importCustomers (real DB)', () => {
     });
     expect(owners.map((o) => o.id)).toEqual([owner.id]);
   });
+  it('คนเดิมที่เหลือแต่ hash เลขบัตร (plaintext ว่าง) + เบอร์เดิม → แก้แถวเดิม ไม่ใช่ "เบอร์ของคนอื่น"', async () => {
+    const nid = await freshNid();
+    const phone = await freshPhone();
+    const hashOnly = await prisma.customer.create({
+      data: {
+        name: 'คนเดิม hash อย่างเดียว',
+        phone,
+        phoneHash: hashPII(phone, PII_SALT),
+        nationalIdHash: hashPII(nid, PII_SALT),
+      },
+    });
+    ids.add(hashOnly.id);
+
+    const res = await service.importCustomers([{ name: 'คนเดิม แก้ชื่อ', nationalId: nid, phone }]);
+
+    expect(res).toEqual({ success: 1, failed: 0, errors: [] });
+    const row = await prisma.customer.findUniqueOrThrow({ where: { id: hashOnly.id } });
+    expect(row.name).toBe('คนเดิม แก้ชื่อ');
+    expect(row.nationalId).toBeNull();
+    expect(await prisma.customer.count({ where: { nationalIdHash: hashPII(nid, PII_SALT) } })).toBe(1);
+  });
+
+  it('แถวที่ hash ค้างชี้เบอร์นี้แต่ plaintext เป็นเบอร์อื่น ไม่นับเป็นเจ้าของ', async () => {
+    const phone = await freshPhone();
+    const otherPhone = await freshPhone();
+    const stale = await prisma.customer.create({
+      data: { name: 'hash ค้าง สเปคนำเข้า', phone: otherPhone, phoneHash: hashPII(phone, PII_SALT) },
+    });
+    ids.add(stale.id);
+    const nid = await freshNid();
+
+    const res = await service.importCustomers([{ name: 'เจ้าของจริง', nationalId: nid, phone }]);
+
+    expect(res).toEqual({ success: 1, failed: 0, errors: [] });
+    const row = await prisma.customer.findUniqueOrThrow({ where: { nationalId: nid } });
+    ids.add(row.id);
+    expect(row.phone).toBe(phone);
+  });
 });

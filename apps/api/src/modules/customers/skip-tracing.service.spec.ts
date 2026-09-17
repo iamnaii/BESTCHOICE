@@ -4,6 +4,7 @@ import { SkipTracingService } from './skip-tracing.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CustomerPiiService } from './customer-pii.service';
+import { sanitizeAuditValue } from '../audit/audit-sanitize.util';
 
 describe('SkipTracingService', () => {
   let service: SkipTracingService;
@@ -22,6 +23,7 @@ describe('SkipTracingService', () => {
     id: 'cust-1',
     phone: '0810000000',
     phoneHash: 'h:0810000000',
+    phoneEncrypted: 'enc:0810000000',
     phoneSecondary: 'old-secondary',
     lineIdFinance: 'old-line',
     status: 'ACTIVE',
@@ -135,7 +137,7 @@ describe('SkipTracingService', () => {
       );
       const where = tx.customer.findMany.mock.calls[0][0].where;
       expect(where.deletedAt).toBeNull();
-      expect(where.id).toEqual({ not: 'cust-1' });
+      expect(where.id).toEqual({ notIn: ['cust-1'] });
       expect(where.OR).toEqual([{ phone: '0820000000' }, { phoneHash: 'h:0820000000' }]);
     });
 
@@ -227,6 +229,87 @@ describe('SkipTracingService', () => {
       const entry = audit.log.mock.calls[0][0];
       expect(entry.newValue.phoneStoredAs).toBeNull();
     });
+
+    it('แถวเสียจากบั๊กเดิม (hash ค้าง) → ซ่อม phone/phoneHash/phoneEncrypted แต่ phoneStoredAs ยัง null', async () => {
+      tx.customer.findFirst.mockResolvedValueOnce({
+        ...existingCustomer,
+        phoneHash: 'h:0899999999',
+      });
+      const result = await service.updateContact(
+        'cust-1',
+        { newPhone: '0810000000', reason: 'ยืนยันเบอร์เดิม' },
+        { userId: 'u' },
+      );
+      expect(tx.customer.findMany).not.toHaveBeenCalled();
+      expect(tx.customer.update.mock.calls[0][0].data).toEqual({
+        phone: '0810000000',
+        phoneHash: 'h:0810000000',
+        phoneEncrypted: 'enc:0810000000',
+      });
+      expect(result.phoneStoredAs).toBeNull();
+    });
+
+    it('ไม่มี ciphertext หรือ plaintext ยังไม่ normalize → ซ่อมด้วย', async () => {
+      tx.customer.findFirst.mockResolvedValueOnce({
+        ...existingCustomer,
+        phone: '081-000-0000',
+        phoneEncrypted: null,
+      });
+      await service.updateContact('cust-1', { newPhone: '0810000000', reason: 'x-x-x' }, { userId: 'u' });
+      expect(tx.customer.update.mock.calls[0][0].data).toEqual({
+        phone: '0810000000',
+        phoneHash: 'h:0810000000',
+        phoneEncrypted: 'enc:0810000000',
+      });
+    });
+
+    it('สตริกต์โหมด (plaintext ว่าง) hash ตรง → ไม่เขียนเบอร์ ไม่ค้นเจ้าของ', async () => {
+      tx.customer.findFirst.mockResolvedValueOnce({ ...existingCustomer, phone: '' });
+      const result = await service.updateContact(
+        'cust-1',
+        { newPhone: '0810000000', reason: 'x-x-x' },
+        { userId: 'u' },
+      );
+      expect(tx.customer.findMany).not.toHaveBeenCalled();
+      expect(tx.customer.update.mock.calls[0][0].data).toEqual({});
+      expect(result.phoneStoredAs).toBeNull();
+    });
+  });
+
+  it('เบอร์ของคนอื่น + LINE ID ใหม่ในครั้งเดียว → เบอร์สำรอง และ LINE ID ถูกบันทึกด้วย', async () => {
+    tx.customer.findMany.mockResolvedValueOnce([
+      { id: 'cust-2', name: 'สมชาย', phone: '0820000000', phoneHash: 'h:0820000000' },
+    ]);
+    const result = await service.updateContact(
+      'cust-1',
+      { newPhone: '0820000000', newLineId: 'new-line', reason: 'x-x-x' },
+      { userId: 'u' },
+    );
+    expect(tx.customer.update.mock.calls[0][0].data).toEqual({
+      phoneSecondary: '0820000000',
+      phoneSecondaryEncrypted: 'enc:0820000000',
+      lineIdFinance: 'new-line',
+    });
+    expect(result.phoneStoredAs).toBe('SECONDARY');
+    expect(result.lineIdFinance).toBe('new-line');
+  });
+
+  it('payload audit ผ่าน sanitizer จริง → เบอร์หลัก/เบอร์สำรองถูกปิด แต่ phoneStoredAs/phoneOwnerId ยังอ่านได้', async () => {
+    tx.customer.findMany.mockResolvedValueOnce([
+      { id: 'cust-2', name: 'สมชาย', phone: '0820000000', phoneHash: 'h:0820000000' },
+    ]);
+    await service.updateContact('cust-1', { newPhone: '0820000000', reason: 'x-x-x' }, { userId: 'u' });
+    const entry = audit.log.mock.calls[0][0];
+    const oldValue = sanitizeAuditValue(entry.oldValue) as Record<string, unknown>;
+    const newValue = sanitizeAuditValue(entry.newValue) as Record<string, unknown>;
+    expect(oldValue.phone).toBe('[REDACTED]');
+    expect(oldValue.phoneSecondary).toBe('[REDACTED]');
+    expect(newValue.phone).toBe('[REDACTED]');
+    expect(newValue.phoneSecondary).toBe('[REDACTED]');
+    expect(newValue.phoneStoredAs).toBe('SECONDARY');
+    expect(newValue.phoneOwnerId).toBe('cust-2');
+    const body = sanitizeAuditValue({ newPhone: '0820000000', newLineId: 'x' }) as Record<string, unknown>;
+    expect(body).toEqual({ newPhone: '[REDACTED]', newLineId: '[REDACTED]' });
   });
 
   it('เบอร์ที่ normalize แล้วไม่ใช่ 10 หลักขึ้นต้น 0 → 400 ไม่เปิดทรานแซกชัน', async () => {

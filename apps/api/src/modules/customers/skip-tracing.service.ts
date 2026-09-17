@@ -9,6 +9,7 @@ import { AuditService } from '../audit/audit.service';
 import { UpdateCustomerContactDto } from './dto/skip-tracing.dto';
 import { CustomerPiiService } from './customer-pii.service';
 import { lockCustomerPhone } from './customer-phone-lock';
+import { findLivePhoneOwner } from './customer-phone-owner';
 import { normalizeThaiPhone } from '../../utils/thai-phone.util';
 
 const THAI_MOBILE_RE = /^0\d{9}$/;
@@ -38,7 +39,7 @@ const CUSTOMER_CONTACT_SELECT = {
  *  - ไม่มีเจ้าของอื่น → เบอร์หลัก + phoneHash + phoneEncrypted (เดิมเขียนแต่ plaintext ⇒ hash ค้างชี้เบอร์เก่า)
  *  - เป็นของลูกค้าคนอื่น → ไม่แตะเบอร์หลัก เก็บเป็นเบอร์สำรอง (ทับของเดิม — ค่าเก่าอยู่ใน audit)
  *    แล้วบอกผู้ใช้ว่าเป็นเบอร์ของใคร
- *  - ตรงกับเบอร์หลักเดิม → ไม่เปลี่ยนเบอร์
+ *  - ตรงกับเบอร์หลักเดิม → ไม่เปลี่ยนเบอร์ (แต่ซ่อม hash/ciphertext/รูปแบบที่เสียจากบั๊กเดิมในแถวนี้)
  *
  * Each call writes a `SKIP_TRACING_UPDATE` audit log entry capturing the old
  * + new contact values + the collector-supplied reason — **หลัง commit**
@@ -82,7 +83,7 @@ export class SkipTracingService {
 
         const current = await tx.customer.findFirst({
           where: { id: customerId, deletedAt: null },
-          select: { ...CUSTOMER_CONTACT_SELECT, phoneHash: true },
+          select: { ...CUSTOMER_CONTACT_SELECT, phoneHash: true, phoneEncrypted: true },
         });
         if (!current) {
           throw new NotFoundException('ไม่พบลูกค้า');
@@ -100,8 +101,20 @@ export class SkipTracingService {
             ? currentPhone === newPhone
             : !!newHash && current.phoneHash === newHash;
 
-          if (!sameAsPrimary) {
-            owner = await this.findOtherOwner(tx, customerId, newPhone, newHash);
+          if (sameAsPrimary) {
+            // เบอร์เดิม — แต่แถวที่เสียจากบั๊กเดิม (hash ค้าง/ไม่มี ciphertext) ซ่อมตรงนี้เลย (ถือล็อกอยู่แล้ว)
+            // ยังรายงาน phoneStoredAs = null เพราะเบอร์ไม่ได้เปลี่ยน
+            if (
+              currentPhone &&
+              (current.phoneHash !== newHash || !current.phoneEncrypted || current.phone !== newPhone)
+            ) {
+              const enc = this.pii.encryptCustomerFields({ phone: newPhone });
+              data.phone = newPhone;
+              data.phoneHash = enc.phoneHash;
+              data.phoneEncrypted = enc.phoneEncrypted;
+            }
+          } else {
+            owner = await findLivePhoneOwner(tx, newPhone, newHash, [customerId]);
             if (owner) {
               storedAs = 'SECONDARY';
               const enc = this.pii.encryptCustomerFields({ phoneSecondary: newPhone });
@@ -155,32 +168,5 @@ export class SkipTracingService {
     });
 
     return { ...updated, phoneStoredAs, phoneOwner };
-  }
-
-  /**
-   * ลูกค้าคนอื่นที่ยังไม่ถูกลบซึ่งถือเบอร์นี้เป็นเบอร์หลัก (เก่าสุดก่อน) · แถวที่ hash ชี้เบอร์นี้แต่ plaintext
-   * เป็นเบอร์อื่น = hash ค้างจากบั๊กเดิม ไม่ใช่เจ้าของจริง ⇒ ข้าม
-   */
-  private async findOtherOwner(
-    tx: Prisma.TransactionClient,
-    customerId: string,
-    phone: string,
-    phoneHash: string | null,
-  ): Promise<{ id: string; name: string } | null> {
-    const candidates = await tx.customer.findMany({
-      where: {
-        deletedAt: null,
-        id: { not: customerId },
-        OR: [{ phone }, ...(phoneHash ? [{ phoneHash }] : [])],
-      },
-      select: { id: true, name: true, phone: true, phoneHash: true },
-      orderBy: { createdAt: 'asc' },
-      take: 10,
-    });
-    const owner = candidates.find((c) => {
-      const plain = normalizeThaiPhone(c.phone);
-      return plain ? plain === phone : !!phoneHash && c.phoneHash === phoneHash;
-    });
-    return owner ? { id: owner.id, name: owner.name } : null;
   }
 }

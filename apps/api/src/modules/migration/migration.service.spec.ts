@@ -3,7 +3,7 @@ import { MigrationService } from './migration.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ImportContractDto, ImportCustomerDto } from './dto/import.dto';
 import { CustomerPiiService } from '../customers/customer-pii.service';
-import { IMPORT_PHONE_TAKEN_MSG } from './migration.service';
+import { IMPORT_NATIONAL_ID_CONFLICT_MSG, IMPORT_PHONE_TAKEN_MSG } from './migration.service';
 
 /**
  * #17 — importContracts must write Product + Contract + Payments atomically
@@ -99,7 +99,7 @@ describe('MigrationService.importContracts — per-row atomicity (#17)', () => {
 
 /**
  * คำตัดสินเจ้าของ 2026-09-17 — นำเข้าลูกค้า: normalize เบอร์ · dual-write hash/เข้ารหัส ·
- * ต่อแถว ทรานแซกชันเดียว: ล็อกเบอร์ → เบอร์เป็นของคนอื่น = แถวนั้นล้ม (field phone) → ไม่งั้น upsert
+ * ต่อแถว ทรานแซกชันเดียว: ล็อกเบอร์ → เบอร์เป็นของคนอื่น = แถวนั้นล้ม (field phone) → ไม่งั้นแก้แถวเลขบัตรเดิม (plaintext หรือ hash) หรือสร้างใหม่
  */
 describe('MigrationService.importCustomers — เบอร์หลัก', () => {
   let service: MigrationService;
@@ -127,17 +127,21 @@ describe('MigrationService.importCustomers — เบอร์หลัก', () 
         return 0;
       }),
       customer: {
-        findUnique: jest.fn(async () => {
+        findFirst: jest.fn(async () => {
           events.push('target');
           return null;
         }),
-        findFirst: jest.fn(async () => {
+        findMany: jest.fn(async () => {
           events.push('owner-check');
-          return null;
+          return [];
         }),
-        upsert: jest.fn(async () => {
-          events.push('upsert');
+        create: jest.fn(async () => {
+          events.push('create');
           return { id: 'new' };
+        }),
+        update: jest.fn(async () => {
+          events.push('update');
+          return { id: 'same-person' };
         }),
       },
     };
@@ -177,13 +181,13 @@ describe('MigrationService.importCustomers — เบอร์หลัก', () 
     service = mod.get(MigrationService);
   });
 
-  it('normalize เบอร์ + dual-write เฉพาะคอลัมน์ที่มี · ล็อกก่อนอ่าน · upsert ผ่าน tx', async () => {
+  it('normalize เบอร์ + dual-write เฉพาะคอลัมน์ที่มี · ล็อกก่อนอ่าน · สร้างผ่าน tx', async () => {
     const res = await service.importCustomers([
       { ...base, phoneSecondary: '+66 82 000 0000', addressCurrent: 'บ้าน' },
     ]);
 
     expect(res).toEqual({ success: 1, failed: 0, errors: [] });
-    expect(events).toEqual(['lock', 'target', 'owner-check', 'upsert']);
+    expect(events).toEqual(['lock', 'target', 'owner-check', 'create']);
     expect(pii.encryptCustomerFields).toHaveBeenCalledWith({
       nationalId: NID,
       phone: '0812345678',
@@ -191,9 +195,8 @@ describe('MigrationService.importCustomers — เบอร์หลัก', () 
       addressIdCard: undefined,
       addressCurrent: 'บ้าน',
     });
-    const args = tx.customer.upsert.mock.calls[0][0];
-    expect(args.where).toEqual({ nationalId: NID });
-    expect(args.create).toMatchObject({
+    const data = tx.customer.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({
       nationalId: NID,
       phone: '0812345678',
       phoneHash: 'h:0812345678',
@@ -205,41 +208,71 @@ describe('MigrationService.importCustomers — เบอร์หลัก', () 
       addressCurrent: 'บ้าน',
       addressCurrentEncrypted: 'enc:บ้าน',
     });
-    expect(args.create.addressIdCardEncrypted).toBeUndefined();
-    expect(args.update).toMatchObject({ phone: '0812345678', phoneHash: 'h:0812345678' });
-    expect(args.update.nationalId).toBeUndefined();
-    // ไม่ส่งเบอร์สำรอง = ไม่แตะเบอร์สำรองเดิม
+    expect(data.addressIdCardEncrypted).toBeUndefined();
+    expect(tx.customer.update).not.toHaveBeenCalled();
     expect(prisma.customer.upsert).not.toHaveBeenCalled();
   });
 
-  it('ไม่ส่งเบอร์สำรอง → ไม่แตะคอลัมน์เบอร์สำรอง', async () => {
+  it('หาแถวเป้าหมายด้วยเลขบัตร plaintext หรือ hash (ไม่กรอง deletedAt)', async () => {
     await service.importCustomers([base]);
-    const args = tx.customer.upsert.mock.calls[0][0];
-    expect(args.update.phoneSecondary).toBeUndefined();
-    expect(args.update.phoneSecondaryEncrypted).toBeUndefined();
+    expect(tx.customer.findFirst.mock.calls[0][0].where).toEqual({
+      OR: [{ nationalId: NID }, { nationalIdHash: `h:${NID}` }],
+    });
+  });
+
+  it('คนเดิม (เจอด้วย hash) → update ตาม id ไม่แตะ plaintext เลขบัตร · ไม่แตะเบอร์สำรองเมื่อไม่ส่ง', async () => {
+    tx.customer.findFirst.mockResolvedValueOnce({ id: 'same-person' });
+    const res = await service.importCustomers([base]);
+    expect(res.success).toBe(1);
+    const args = tx.customer.update.mock.calls[0][0];
+    expect(args.where).toEqual({ id: 'same-person' });
+    expect(args.data).toMatchObject({ phone: '0812345678', phoneHash: 'h:0812345678' });
+    expect(args.data.nationalId).toBeUndefined();
+    expect(args.data.phoneSecondary).toBeUndefined();
+    expect(args.data.phoneSecondaryEncrypted).toBeUndefined();
+    expect(tx.customer.create).not.toHaveBeenCalled();
   });
 
   it('ค้นเจ้าของเบอร์ด้วย phone/phoneHash ยกเว้นแถวเลขบัตรเดียวกัน', async () => {
-    tx.customer.findUnique.mockResolvedValueOnce({ id: 'same-person' });
+    tx.customer.findFirst.mockResolvedValueOnce({ id: 'same-person' });
     await service.importCustomers([base]);
-    expect(tx.customer.findFirst.mock.calls[0][0].where).toEqual({
+    expect(tx.customer.findMany.mock.calls[0][0].where).toEqual({
       deletedAt: null,
-      id: { not: 'same-person' },
+      id: { notIn: ['same-person'] },
       OR: [{ phone: '0812345678' }, { phoneHash: 'h:0812345678' }],
     });
-    expect(tx.customer.upsert).toHaveBeenCalledTimes(1);
+    expect(tx.customer.update).toHaveBeenCalledTimes(1);
   });
 
-  it('เบอร์เป็นของลูกค้าคนอื่น → แถวนั้นล้ม (field phone) ไม่ upsert · แถวถัดไปยังทำต่อ', async () => {
-    tx.customer.findFirst.mockResolvedValueOnce({ id: 'someone-else' });
+  it('เบอร์เป็นของลูกค้าคนอื่น → แถวนั้นล้ม (field phone) ไม่เขียน · แถวถัดไปยังทำต่อ', async () => {
+    tx.customer.findMany.mockResolvedValueOnce([
+      { id: 'someone-else', name: 'x', phone: '0812345678', phoneHash: 'h:0812345678' },
+    ]);
     const res = await service.importCustomers([base, { ...base, phone: '0899999999' }]);
 
     expect(res.success).toBe(1);
     expect(res.failed).toBe(1);
     expect(res.errors).toEqual([{ row: 1, field: 'phone', message: IMPORT_PHONE_TAKEN_MSG }]);
-    expect(tx.customer.upsert).toHaveBeenCalledTimes(1);
-    expect(tx.customer.upsert.mock.calls[0][0].create.phone).toBe('0899999999');
+    expect(tx.customer.create).toHaveBeenCalledTimes(1);
+    expect(tx.customer.create.mock.calls[0][0].data.phone).toBe('0899999999');
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('hash ค้าง (plaintext ของอีกแถวเป็นเบอร์อื่น) ไม่นับเป็นเจ้าของ → นำเข้าได้', async () => {
+    tx.customer.findMany.mockResolvedValueOnce([
+      { id: 'stale', name: 'x', phone: '0899999999', phoneHash: 'h:0812345678' },
+    ]);
+    const res = await service.importCustomers([base]);
+    expect(res).toEqual({ success: 1, failed: 0, errors: [] });
+    expect(tx.customer.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('P2002 (เลขบัตรชนแถวที่ข้อมูลไม่ตรงกัน) → ข้อความไทย field nationalId', async () => {
+    tx.customer.create.mockRejectedValueOnce(Object.assign(new Error('Unique constraint'), { code: 'P2002' }));
+    const res = await service.importCustomers([base]);
+    expect(res.errors).toEqual([
+      { row: 1, field: 'nationalId', message: IMPORT_NATIONAL_ID_CONFLICT_MSG },
+    ]);
   });
 
   it('เบอร์ที่ normalize แล้วว่าง → เบอร์โทรห้ามว่าง ไม่เปิดทรานแซกชัน', async () => {
@@ -255,6 +288,6 @@ describe('MigrationService.importCustomers — เบอร์หลัก', () 
     const res = await service.importCustomers([base]);
     expect(res.failed).toBe(1);
     expect(res.errors[0].message).toMatch(/PII_ENCRYPTION_KEY/);
-    expect(tx.customer.upsert).not.toHaveBeenCalled();
+    expect(tx.customer.create).not.toHaveBeenCalled();
   });
 });

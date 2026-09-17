@@ -2,6 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ImportCustomerDto, ImportContractDto, BulkImportDto } from './dto/import.dto';
 import { generateContractNumber } from '../../utils/sequence.util';
+import { normalizeThaiPhone } from '../../utils/thai-phone.util';
+import { CustomerPiiService } from '../customers/customer-pii.service';
+import { lockCustomerPhone } from '../customers/customer-phone-lock';
+
+/** เบอร์หลักของแถวนำเข้าเป็นของลูกค้าคนอื่นที่ยังไม่ถูกลบ (คำตัดสินเจ้าของ 2026-09-17 — ห้ามสองคนถือเบอร์หลักเดียวกัน) */
+export const IMPORT_PHONE_TAKEN_MSG = 'เบอร์โทรนี้เป็นของลูกค้าคนอื่นในระบบแล้ว';
 
 export interface ImportResult {
   success: number;
@@ -13,7 +19,10 @@ export interface ImportResult {
 export class MigrationService {
   private readonly logger = new Logger(MigrationService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private pii: CustomerPiiService,
+  ) {}
 
   /**
    * Validate Thai national ID (13 digits with checksum)
@@ -54,41 +63,81 @@ export class MigrationService {
         result.failed++;
         continue;
       }
-      if (!c.phone?.trim()) {
+      // normalize ก่อนตรวจ/ล็อก/เขียน — กติกาเดียวกับผู้เขียนเบอร์หลักทุกทาง (hash ต้องมาจากค่าเดียวกัน)
+      const phone = normalizeThaiPhone(c.phone) || '';
+      if (!phone) {
         result.errors.push({ row, field: 'phone', message: 'เบอร์โทรห้ามว่าง' });
         result.failed++;
         continue;
       }
+      const phoneSecondary =
+        c.phoneSecondary === undefined ? undefined : normalizeThaiPhone(c.phoneSecondary) || '';
 
       try {
-        // Upsert: if nationalId exists, update; else create
-        await this.prisma.customer.upsert({
-          where: { nationalId: c.nationalId },
-          update: {
-            name: c.name,
-            phone: c.phone,
-            phoneSecondary: c.phoneSecondary,
-            // Legacy CSV `lineId` maps to `lineIdFinance` — historical imports were
-            // all finance-side (FINANCE OA was the only customer LINE channel before
-            // SHOP OA was added). Shop LINE IDs must be backfilled separately.
-            lineIdFinance: c.lineId,
-            addressIdCard: c.addressIdCard,
-            addressCurrent: c.addressCurrent,
-            occupation: c.occupation,
-            workplace: c.workplace,
-          },
-          create: {
-            nationalId: c.nationalId,
-            name: c.name,
-            phone: c.phone,
-            phoneSecondary: c.phoneSecondary,
-            lineIdFinance: c.lineId,
-            addressIdCard: c.addressIdCard,
-            addressCurrent: c.addressCurrent,
-            occupation: c.occupation,
-            workplace: c.workplace,
-          },
+        const plain = {
+          name: c.name,
+          phone,
+          phoneSecondary,
+          // Legacy CSV `lineId` maps to `lineIdFinance` — historical imports were
+          // all finance-side (FINANCE OA was the only customer LINE channel before
+          // SHOP OA was added). Shop LINE IDs must be backfilled separately.
+          lineIdFinance: c.lineId,
+          addressIdCard: c.addressIdCard,
+          addressCurrent: c.addressCurrent,
+          occupation: c.occupation,
+          workplace: c.workplace,
+        };
+        // dual-write เฉพาะคอลัมน์ PII ที่แถวนี้เขียนจริง (undefined = ไม่แตะ)
+        const enc = this.pii.encryptCustomerFields({
+          nationalId: c.nationalId,
+          phone,
+          phoneSecondary,
+          addressIdCard: c.addressIdCard,
+          addressCurrent: c.addressCurrent,
         });
+        const encrypted = {
+          nationalIdEncrypted: enc.nationalIdEncrypted,
+          nationalIdHash: enc.nationalIdHash,
+          phoneEncrypted: enc.phoneEncrypted,
+          phoneHash: enc.phoneHash,
+          phoneSecondaryEncrypted: enc.phoneSecondaryEncrypted,
+          addressIdCardEncrypted: enc.addressIdCardEncrypted,
+          addressCurrentEncrypted: enc.addressCurrentEncrypted,
+        };
+
+        const outcome = await this.prisma.$transaction(async (tx) => {
+          // ล็อกเบอร์หลักเป็นคำสั่งแรก (.claude/rules/database.md "ล็อกเบอร์หลักของลูกค้า")
+          await lockCustomerPhone(tx, this.pii, phone);
+          // แถวที่ upsert จะไปแตะ (ตามเลขบัตร) ไม่นับเป็นเจ้าของเบอร์คนอื่น
+          const target = await tx.customer.findUnique({
+            where: { nationalId: c.nationalId },
+            select: { id: true },
+          });
+          const phoneHash = enc.phoneHash;
+          const owner = await tx.customer.findFirst({
+            where: {
+              deletedAt: null,
+              ...(target ? { id: { not: target.id } } : {}),
+              OR: [{ phone }, ...(phoneHash ? [{ phoneHash }] : [])],
+            },
+            select: { id: true },
+          });
+          if (owner) return 'PHONE_TAKEN' as const;
+
+          // Upsert: if nationalId exists, update; else create
+          await tx.customer.upsert({
+            where: { nationalId: c.nationalId },
+            update: { ...plain, ...encrypted },
+            create: { nationalId: c.nationalId, ...plain, ...encrypted },
+          });
+          return 'OK' as const;
+        });
+
+        if (outcome === 'PHONE_TAKEN') {
+          result.errors.push({ row, field: 'phone', message: IMPORT_PHONE_TAKEN_MSG });
+          result.failed++;
+          continue;
+        }
         result.success++;
       } catch (err) {
         result.errors.push({ row, message: err instanceof Error ? err.message : 'Unknown error' });

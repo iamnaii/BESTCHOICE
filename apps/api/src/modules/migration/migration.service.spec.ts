@@ -1,7 +1,9 @@
 import { Test } from '@nestjs/testing';
 import { MigrationService } from './migration.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { ImportContractDto } from './dto/import.dto';
+import { ImportContractDto, ImportCustomerDto } from './dto/import.dto';
+import { CustomerPiiService } from '../customers/customer-pii.service';
+import { IMPORT_PHONE_TAKEN_MSG } from './migration.service';
 
 /**
  * #17 — importContracts must write Product + Contract + Payments atomically
@@ -51,7 +53,11 @@ describe('MigrationService.importContracts — per-row atomicity (#17)', () => {
     };
 
     const mod = await Test.createTestingModule({
-      providers: [MigrationService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        MigrationService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CustomerPiiService, useValue: {} },
+      ],
     }).compile();
     service = mod.get(MigrationService);
   });
@@ -88,5 +94,167 @@ describe('MigrationService.importContracts — per-row atomicity (#17)', () => {
     const res = await service.importContracts([dto, { ...dto }, { ...dto }]);
     expect(res.success).toBe(3);
     expect(prisma.$transaction).toHaveBeenCalledTimes(3);
+  });
+});
+
+/**
+ * คำตัดสินเจ้าของ 2026-09-17 — นำเข้าลูกค้า: normalize เบอร์ · dual-write hash/เข้ารหัส ·
+ * ต่อแถว ทรานแซกชันเดียว: ล็อกเบอร์ → เบอร์เป็นของคนอื่น = แถวนั้นล้ม (field phone) → ไม่งั้น upsert
+ */
+describe('MigrationService.importCustomers — เบอร์หลัก', () => {
+  let service: MigrationService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let tx: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pii: any;
+  let events: string[];
+
+  // เลขบัตรที่ checksum ถูก
+  const NID = '1101700230708';
+  const base: ImportCustomerDto = {
+    name: 'สมชาย นำเข้า',
+    nationalId: NID,
+    phone: '081-234 5678',
+  } as ImportCustomerDto;
+
+  beforeEach(async () => {
+    events = [];
+    tx = {
+      $executeRaw: jest.fn(async () => {
+        events.push('lock');
+        return 0;
+      }),
+      customer: {
+        findUnique: jest.fn(async () => {
+          events.push('target');
+          return null;
+        }),
+        findFirst: jest.fn(async () => {
+          events.push('owner-check');
+          return null;
+        }),
+        upsert: jest.fn(async () => {
+          events.push('upsert');
+          return { id: 'new' };
+        }),
+      },
+    };
+    prisma = {
+      $transaction: jest.fn(async (cb: (c: unknown) => unknown) => cb(tx)),
+      customer: { upsert: jest.fn() },
+    };
+    pii = {
+      hash: jest.fn((v: string | null | undefined) => (v ? `h:${v}` : null)),
+      encryptCustomerFields: jest.fn((input: Record<string, string | undefined>) => {
+        const out: Record<string, string | undefined> = {};
+        if (input.nationalId !== undefined) {
+          out.nationalIdEncrypted = `enc:${input.nationalId}`;
+          out.nationalIdHash = `h:${input.nationalId}`;
+        }
+        if (input.phone !== undefined) {
+          out.phoneEncrypted = `enc:${input.phone}`;
+          out.phoneHash = `h:${input.phone}`;
+        }
+        if (input.phoneSecondary !== undefined) {
+          out.phoneSecondaryEncrypted = input.phoneSecondary ? `enc:${input.phoneSecondary}` : '';
+        }
+        if (input.addressIdCard !== undefined) out.addressIdCardEncrypted = `enc:${input.addressIdCard}`;
+        if (input.addressCurrent !== undefined) {
+          out.addressCurrentEncrypted = `enc:${input.addressCurrent}`;
+        }
+        return out;
+      }),
+    };
+    const mod = await Test.createTestingModule({
+      providers: [
+        MigrationService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CustomerPiiService, useValue: pii },
+      ],
+    }).compile();
+    service = mod.get(MigrationService);
+  });
+
+  it('normalize เบอร์ + dual-write เฉพาะคอลัมน์ที่มี · ล็อกก่อนอ่าน · upsert ผ่าน tx', async () => {
+    const res = await service.importCustomers([
+      { ...base, phoneSecondary: '+66 82 000 0000', addressCurrent: 'บ้าน' },
+    ]);
+
+    expect(res).toEqual({ success: 1, failed: 0, errors: [] });
+    expect(events).toEqual(['lock', 'target', 'owner-check', 'upsert']);
+    expect(pii.encryptCustomerFields).toHaveBeenCalledWith({
+      nationalId: NID,
+      phone: '0812345678',
+      phoneSecondary: '0820000000',
+      addressIdCard: undefined,
+      addressCurrent: 'บ้าน',
+    });
+    const args = tx.customer.upsert.mock.calls[0][0];
+    expect(args.where).toEqual({ nationalId: NID });
+    expect(args.create).toMatchObject({
+      nationalId: NID,
+      phone: '0812345678',
+      phoneHash: 'h:0812345678',
+      phoneEncrypted: 'enc:0812345678',
+      phoneSecondary: '0820000000',
+      phoneSecondaryEncrypted: 'enc:0820000000',
+      nationalIdHash: `h:${NID}`,
+      nationalIdEncrypted: `enc:${NID}`,
+      addressCurrent: 'บ้าน',
+      addressCurrentEncrypted: 'enc:บ้าน',
+    });
+    expect(args.create.addressIdCardEncrypted).toBeUndefined();
+    expect(args.update).toMatchObject({ phone: '0812345678', phoneHash: 'h:0812345678' });
+    expect(args.update.nationalId).toBeUndefined();
+    // ไม่ส่งเบอร์สำรอง = ไม่แตะเบอร์สำรองเดิม
+    expect(prisma.customer.upsert).not.toHaveBeenCalled();
+  });
+
+  it('ไม่ส่งเบอร์สำรอง → ไม่แตะคอลัมน์เบอร์สำรอง', async () => {
+    await service.importCustomers([base]);
+    const args = tx.customer.upsert.mock.calls[0][0];
+    expect(args.update.phoneSecondary).toBeUndefined();
+    expect(args.update.phoneSecondaryEncrypted).toBeUndefined();
+  });
+
+  it('ค้นเจ้าของเบอร์ด้วย phone/phoneHash ยกเว้นแถวเลขบัตรเดียวกัน', async () => {
+    tx.customer.findUnique.mockResolvedValueOnce({ id: 'same-person' });
+    await service.importCustomers([base]);
+    expect(tx.customer.findFirst.mock.calls[0][0].where).toEqual({
+      deletedAt: null,
+      id: { not: 'same-person' },
+      OR: [{ phone: '0812345678' }, { phoneHash: 'h:0812345678' }],
+    });
+    expect(tx.customer.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('เบอร์เป็นของลูกค้าคนอื่น → แถวนั้นล้ม (field phone) ไม่ upsert · แถวถัดไปยังทำต่อ', async () => {
+    tx.customer.findFirst.mockResolvedValueOnce({ id: 'someone-else' });
+    const res = await service.importCustomers([base, { ...base, phone: '0899999999' }]);
+
+    expect(res.success).toBe(1);
+    expect(res.failed).toBe(1);
+    expect(res.errors).toEqual([{ row: 1, field: 'phone', message: IMPORT_PHONE_TAKEN_MSG }]);
+    expect(tx.customer.upsert).toHaveBeenCalledTimes(1);
+    expect(tx.customer.upsert.mock.calls[0][0].create.phone).toBe('0899999999');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('เบอร์ที่ normalize แล้วว่าง → เบอร์โทรห้ามว่าง ไม่เปิดทรานแซกชัน', async () => {
+    const res = await service.importCustomers([{ ...base, phone: ' - ' }]);
+    expect(res.errors).toEqual([{ row: 1, field: 'phone', message: 'เบอร์โทรห้ามว่าง' }]);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('เข้ารหัสไม่ได้ (ไม่มีกุญแจ) → แถวนั้นล้มพร้อมข้อความ ไม่เขียน plaintext', async () => {
+    pii.encryptCustomerFields.mockImplementationOnce(() => {
+      throw new Error('PII_ENCRYPTION_KEY missing or too short');
+    });
+    const res = await service.importCustomers([base]);
+    expect(res.failed).toBe(1);
+    expect(res.errors[0].message).toMatch(/PII_ENCRYPTION_KEY/);
+    expect(tx.customer.upsert).not.toHaveBeenCalled();
   });
 });

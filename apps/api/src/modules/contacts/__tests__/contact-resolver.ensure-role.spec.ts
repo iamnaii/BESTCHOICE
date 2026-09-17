@@ -153,7 +153,7 @@ describe('ContactResolverService.ensureRole', () => {
       lockTx.customer.findFirst.mockResolvedValue(null);
       lockTx.customer.create.mockResolvedValue({ id: 'cus9' });
 
-      const result = await svc.ensureRole(lockTx as any, 'c9', 'CUSTOMER');
+      const result = await svc.ensureRole(lockTx as never, 'c9', 'CUSTOMER');
 
       const data = lockTx.customer.create.mock.calls[0][0].data;
       expect(data.name).toBe('Seller');
@@ -177,7 +177,7 @@ describe('ContactResolverService.ensureRole', () => {
       tx.customer.findFirst.mockResolvedValue(null);
       tx.customer.create.mockResolvedValue({ id: 'cus10' });
 
-      await injected.ensureRole(tx as any, 'c10', 'CUSTOMER');
+      await injected.ensureRole(tx as never, 'c10', 'CUSTOMER');
 
       expect(pii.encryptCustomerFields).toHaveBeenCalledWith({ phone: '0812345678' });
       expect(tx.customer.create).toHaveBeenCalledWith({
@@ -198,7 +198,7 @@ describe('ContactResolverService.ensureRole', () => {
       });
       tx.customer.findFirst.mockResolvedValue(null);
       tx.customer.create.mockResolvedValue({ id: 'cus11' });
-      await svc.ensureRole(tx as any, 'c11', 'CUSTOMER');
+      await svc.ensureRole(tx as never, 'c11', 'CUSTOMER');
       expect(tx.customer.create).toHaveBeenCalledWith({
         data: { name: 'Blank', phone: '', contactId: 'c11' },
         select: { id: true },

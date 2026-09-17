@@ -79,7 +79,7 @@ export class ChatProspectService {
    * public: capture_lead ใช้หาตัวตนที่แข็งกว่าเบอร์ก่อนจับคู่ด้วยเบอร์ (R25) — เรียกด้วย root client ได้
    * (FOR SHARE นอกทรานแซกชันไม่มีผลเสีย แค่ไม่ได้รอ merge)
    */
-  async findExistingCustomerId(tx: Tx | PrismaService,channel: ChatChannel, externalKey: string): Promise<string | null> {
+  async findExistingCustomerId(tx: Tx | PrismaService, channel: ChatChannel, externalKey: string): Promise<string | null> {
     const isLine = LINE_CHANNELS.has(channel);
     const sibling = await tx.chatRoom.findFirst({
       where: {

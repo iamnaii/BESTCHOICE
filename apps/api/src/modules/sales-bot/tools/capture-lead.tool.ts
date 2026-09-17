@@ -323,7 +323,7 @@ export class CaptureLeadTool {
       placeholder && owners.length === 1
         ? await this.prisma.chatRoom.findMany({ where: { customerId, deletedAt: null }, select: ROOM_KEY_SELECT })
         : [];
-    const verdict = this.classifyOwners([room, ...(ownRooms ?? [])], owners, { placeholder });
+    const verdict = this.classifyOwners([room, ...ownRooms], owners, { placeholder });
     if ('conflict' in verdict) return { kind: 'DEFER', customerId, conflict: verdict.conflict };
     if (await this.tryAbsorb(customerId, verdict.owner.id)) {
       return { kind: 'ATTACH', customerId: verdict.owner.id, outcome: 'ABSORBED', absorbedPlaceholderId: customerId };

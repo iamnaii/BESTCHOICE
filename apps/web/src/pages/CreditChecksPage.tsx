@@ -263,6 +263,11 @@ export default function CreditChecksPage() {
   ];
 
   const summary = query.data?.summary;
+  // การ์ด "รอตรวจ" นับรวมสถานะรอผลวิเคราะห์ — คิวว่างแต่การ์ดยังไม่เป็น 0 ห้ามบอกว่าเคลียร์หมด
+  const awaitingAnalysis = summary?.pendingCount ?? 0;
+  const emptyQueueMessage = awaitingAnalysis > 0
+    ? `ไม่มีรายการรอผู้จัดการตรวจ — อีก ${awaitingAnalysis} รายการยังรอผลวิเคราะห์ (ดูได้จากตัวกรอง "รอผลวิเคราะห์")`
+    : 'ไม่มีรายการรอตรวจ — เคลียร์หมดแล้ว';
   const reasonInvalid = reason.trim().length < MIN_REASON_LENGTH || reason.trim().length > MAX_REASON_LENGTH;
 
   return (
@@ -326,11 +331,7 @@ export default function CreditChecksPage() {
           columns={columns}
           data={query.data?.data ?? []}
           emptyIcon={ShieldCheck}
-          emptyMessage={
-            status === 'MANUAL_REVIEW'
-              ? 'ไม่มีรายการรอตรวจ — เคลียร์หมดแล้ว'
-              : 'ไม่พบรายการตรวจเครดิต'
-          }
+          emptyMessage={status === 'MANUAL_REVIEW' ? emptyQueueMessage : 'ไม่พบรายการตรวจเครดิต'}
           onRowClick={(c: CreditCheckRow) =>
             c.customer && navigate(creditUrl(c.customer.id))
           }

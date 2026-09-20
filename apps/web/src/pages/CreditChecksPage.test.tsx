@@ -96,6 +96,13 @@ it.each([
   expect(screen.getByText(label)).toBeInTheDocument();
 });
 
+it('does not claim the queue is cleared while the "รอตรวจ" card still counts rows awaiting analysis', async () => {
+  rows = [];
+  showQueue();
+  expect(await screen.findByText(/อีก 1 รายการยังรอผลวิเคราะห์/)).toBeInTheDocument();
+  expect(screen.queryByText(/เคลียร์หมดแล้ว/)).not.toBeInTheDocument();
+});
+
 it('opens evidence in the credit tab and keeps the decision reason within the DTO limit', async () => {
   showQueue();
   fireEvent.click(await screen.findByRole('button', { name: 'อนุมัติ' }));

@@ -22,6 +22,7 @@ import { RefundPayoutTemplate } from '../journal/cpa-templates/refund-payout.tem
 import { RefundWaiveTemplate } from '../journal/cpa-templates/refund-waive.template';
 import { TradeInValuationService } from '../trade-in/services/trade-in-valuation.service';
 import { TradeInLifecycleService } from '../trade-in/services/trade-in-lifecycle.service';
+import { lookupTableBase, TableBaseHint } from './table-base.util';
 import { ShopCollectShopLegs } from '../journal/cpa-templates/shop-collect-shop-legs.template';
 import { shopCollectTypedBalance } from '../interco-settlement/interco-typed-balance';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
@@ -62,13 +63,8 @@ export interface RepossessionEligibility {
   reason: string | null;
 }
 
-/** ราคากลางแนะนำจากตารางรับซื้อมือสอง สำหรับเกรดที่เลือกบนหน้ายึด (preview-only) */
-export interface RepossessionValuationHint {
-  grade: string;
-  found: boolean;
-  suggestedPrice: number | null;
-  note: string | null;
-}
+/** ราคากลางแนะนำจากตารางรับซื้อมือสอง — รูปเดียวกับใบรับเครื่องคืน (table-base.util.ts) */
+export type RepossessionValuationHint = TableBaseHint;
 
 @Injectable()
 export class RepossessionsService {
@@ -95,31 +91,6 @@ export class RepossessionsService {
   static readonly TABLE_DEVIATION_LIMIT = new Prisma.Decimal(
     TradeInLifecycleService.PRICE_CEILING_RATIO,
   ).minus(1);
-
-  /**
-   * ราคาตารางรับซื้อของเครื่องนี้ที่เกรดที่เลือก (null = ไม่มีในตาราง / ค้นไม่ได้).
-   * อ่านอย่างเดียว ล้มเหลวต้องไม่ล้มการยึด — ตารางเป็นตัวช่วย ไม่ใช่ด่านบังคับ
-   */
-  private async lookupTableBase(
-    product: { brand: string | null; model: string | null; storage: string | null },
-    grade: string,
-  ): Promise<RepossessionValuationHint | null> {
-    if (!product.brand || !product.model) return null;
-    try {
-      const v = await this.valuationService.lookupValuation(
-        product.brand,
-        product.model,
-        product.storage ?? '',
-        grade,
-      );
-      return { grade, found: v.found, suggestedPrice: v.suggestedPrice, note: v.note };
-    } catch (err) {
-      this.logger.warn(
-        `valuation lookup failed (${product.brand} ${product.model} ${grade}): ${err instanceof Error ? err.message : err}`,
-      );
-      return null;
-    }
-  }
 
   async findAll(
     filters: { status?: string; branchId?: string; page?: number; limit?: number },
@@ -373,7 +344,7 @@ export class RepossessionsService {
     // หน้ารับซื้อ (TradeInValuationService.lookupValuation). ไม่พบ = ให้พนักงานกรอกเอง.
     // preview-only: ล้มเหลวต้องไม่ล้มทั้ง response (pattern เดียวกับ journalPreview)
     const valuation = options.conditionGrade
-      ? await this.lookupTableBase(contract.product, options.conditionGrade)
+      ? await lookupTableBase(this.valuationService, contract.product, options.conditionGrade)
       : null;
     // คำตัดสินเจ้าของ 2026-09-05: ไม่มีเงินคืนส่วนต่างให้ลูกค้า (ปพพ. ม.574 ไม่บังคับคืน) —
     // supersede คำสั่ง 2026-08-08 ข้อ 2; options.customerRefundEnabled ถูกละเลยใน preview และ
@@ -651,7 +622,7 @@ export class RepossessionsService {
         // ตารางรับซื้อเป็นตัวเทียบ: เก็บ snapshot ไว้ในคอลัมน์ marketValue (ไม่มีในตาราง = ราคาประเมิน)
         // และบังคับเหตุผลเมื่อต่างจากตารางเกิน ±15% (ตัวเลขชุดเดียวกับหน้ารับซื้อ)
         const appraisal = d(dto.appraisalPrice);
-        const table = await this.lookupTableBase(contract.product, dto.conditionGrade);
+        const table = await lookupTableBase(this.valuationService, contract.product, dto.conditionGrade);
         const tableBase =
           table?.found && table.suggestedPrice != null ? d(table.suggestedPrice) : null;
         if (tableBase && tableBase.gt(0)) {

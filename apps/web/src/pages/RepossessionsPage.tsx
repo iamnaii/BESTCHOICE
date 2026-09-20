@@ -13,25 +13,26 @@ import { Badge } from '@/components/ui/badge';
 import { getStatusBadgeProps, repossessionStatusMap, conditionGradeMap } from '@/lib/status-badges';
 import { Camera, Download, Send } from 'lucide-react';
 import { Link } from 'react-router';
-import { CashAccountSelect, CASH_ACCOUNT_CODES, KBANK_ONLY_CODES } from '@/components/CashAccountSelect';
+import {
+  CashAccountSelect,
+  CASH_ACCOUNT_CODES,
+  KBANK_ONLY_CODES,
+} from '@/components/CashAccountSelect';
 import { useAuth } from '@/contexts/AuthContext';
 import { RepossessionOverlay } from '@/pages/PaymentsPage/components/RepossessionOverlay';
 import ContractJournalDialog from '@/components/contract/ContractJournalDialog';
+import { DeviceReturnIntakeDialog } from '@/components/device-returns/DeviceReturnIntakeDialog';
+import { DeviceReturnList } from '@/components/device-returns/DeviceReturnList';
+import {
+  DEVICE_RETURN_CREATE_ROLES,
+  type AwaitingRepossessionResponse,
+  type AwaitingRepossessionRow,
+  type DeviceReturnRow,
+} from '@/components/device-returns/types';
 
-/** สัญญาที่บอกเลิกแล้ว (TERMINATED) — รอยึดเครื่อง. Subset of a GET /contracts list row. */
-interface AwaitingRepossessionContract {
-  id: string;
-  contractNumber: string;
-  status: string;
-  monthlyPayment: string;
-  customer: { id: string; name: string; phone: string };
-  product: { id: string; name: string; brand: string; model: string } | null;
-  branch: { id: string; name: string } | null;
-}
-
-/** Roles that may open the JP5 overlay (preview = OWNER/BM/FM; submit stays OWNER-only inside it). */
-const REPO_OPEN_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
-
+// รอยึดเครื่อง = `AwaitingRepossessionRow` (components/device-returns/types) — TERMINATED ที่ยัง
+// ไม่มีใบรับเครื่องคืนค้างยืนยันและไม่มีแถว Repossession (spec 2026-09-20 §5.7). ทางเข้า JP5
+// ย้ายไปที่ตาราง "รอ FINANCE ยืนยัน" (DeviceReturnList) — ไม่มี POST /repossessions อีกต่อไป.
 
 interface Repossession {
   id: string;
@@ -45,8 +46,10 @@ interface Repossession {
   /** เงินคืนส่วนต่างลูกค้า (คำสั่งเจ้าของ 2026-08-08 ข้อ 2) — ตั้งหนี้ 21-1107 ตอนยึด */
   customerRefundEnabled: boolean;
   customerRefund: string | null;
-  /** ยอด 11-2107 ลูกหนี้-หน้าร้าน (SHOP_COLLECT) ที่ยังค้างของสัญญานี้ — ปุ่ม "รับโอนหน้าร้าน" โชว์เฉพาะ > 0 */
+  /** ยอด 11-2107 ลูกหนี้-หน้าร้าน (SHOP_COLLECT) ที่ยังค้างของสัญญานี้ — ปุ่ม "รับโอนหน้าร้าน" โชว์เฉพาะ > 0 (แถวยึดยุคก่อนใบรับเครื่องคืน) */
   shopCollectOutstanding: string;
+  /** ยอด 11-2107 ประเภท DEVICE_RETURN สุทธิหลังหักรอบจ่าย POSTED — ป้าย "รอหักในรอบจ่าย" เมื่อ > 0 (spec 2026-09-20 §6.1) */
+  deviceReturnOutstanding: string;
   contract: {
     id: string;
     contractNumber: string;
@@ -69,9 +72,12 @@ interface Repossession {
   appraisedBy: { id: string; name: string };
   /** Auto-issued ใบลดหนี้ (CN) from JP5 repossession — null when this repossession
    *  wrote off no accrued-unpaid installments (outstandingBalance was 0). */
-  creditNote: { receiptId: string; receiptNumber: string; lastDeliveryStatus: string | null } | null;
+  creditNote: {
+    receiptId: string;
+    receiptNumber: string;
+    lastDeliveryStatus: string | null;
+  } | null;
 }
-
 
 export default function RepossessionsPage() {
   const queryClient = useQueryClient();
@@ -83,14 +89,17 @@ export default function RepossessionsPage() {
   // GET /repossessions/profit-loss = OWNER/FM/ACC — gate query กัน 403 เงียบๆ + retry รัวๆ
   const canViewPl = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(user?.role ?? '');
   const [statusFilter, setStatusFilter] = useState('');
-  // รอยึดเครื่อง — TERMINATED contract chosen for the JP5 overlay (owner 2026-09-05:
-  // these contracts left the รับชำระ queue, so this page is now the only doorway).
-  const [repoTarget, setRepoTarget] = useState<AwaitingRepossessionContract | null>(null);
+  // ใบรับเครื่องคืน (spec 2026-09-20): สาขาบันทึกใบ → FINANCE ยืนยันใน RepossessionOverlay
+  // โหมดยืนยัน — หน้านี้เป็นทางเข้าเดียวของ JP5 (POST /repossessions ถูกลบ)
+  const [intakeOpen, setIntakeOpen] = useState(false);
+  const [intakeContractId, setIntakeContractId] = useState<string | undefined>(undefined);
+  const [confirmTarget, setConfirmTarget] = useState<DeviceReturnRow | null>(null);
+  // POST /device-returns roles — SALES ไม่มี route มาหน้านี้ จึงเหลือ OWNER/BM ในทางปฏิบัติ
+  const canCreateReturn = DEVICE_RETURN_CREATE_ROLES.includes(user?.role ?? '');
   // "บัญชี" — บันทึกบัญชีของสัญญา (JE ทุกใบ ทั้งสมุด FINANCE/SHOP) ในหน้าเดิม
   const [journalTarget, setJournalTarget] = useState<{ id: string; contractNumber: string } | null>(
     null,
   );
-  const canOpenRepo = REPO_OPEN_ROLES.includes(user?.role ?? '');
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState<Repossession | null>(null);
   // Shop-collect settlement dialog (ยึดคืนแบบตั้งลูกหนี้-หน้าร้าน 11-2107)
@@ -145,24 +154,24 @@ export default function RepossessionsPage() {
     enabled: canViewPl,
   });
 
-  // TERMINATED = หนังสือบอกเลิกดิสแพตช์แล้ว แต่ยังไม่ยึดเครื่อง (JP5 flips it to
-  // CLOSED_BAD_DEBT). Key starts with 'contracts' so the overlay's own
-  // invalidateQueries(['contracts']) refreshes this list after a successful JP5.
+  // รอยึดเครื่อง = TERMINATED ที่ยังไม่มีใบรับเครื่องคืนค้างยืนยันและยังไม่มีแถว Repossession
+  // (spec 2026-09-20 §5.7). Key ขึ้นต้น 'device-returns' ให้ intake dialog / overlay ยืนยัน /
+  // ส่งกลับ / ยกเลิก (invalidate prefix เดียวกัน) refresh รายการนี้ด้วย.
   const {
     data: awaitingResult,
     isLoading: loadingAwaiting,
     isError: awaitingError,
     error: awaitingErrorDetail,
     refetch: refetchAwaiting,
-  } = useQuery<{ rows: AwaitingRepossessionContract[]; total: number }>({
-    queryKey: ['contracts', 'awaiting-repossession'],
+  } = useQuery<{ rows: AwaitingRepossessionRow[]; total: number }>({
+    queryKey: ['device-returns', 'awaiting-repossession'],
     queryFn: async () => {
-      // limit=100 = the /contracts SERVICE cap (contract-query.service clamps to 100
-      // even though the controller accepts 200). Keep `total` so a longer backlog
-      // shows as "แสดง N จาก M" instead of silently truncating (same pattern as the
-      // ชำระครบ tab on PaymentsPage). BRANCH_MANAGER is branch-scoped server-side.
-      const res = (await api.get('/contracts?status=TERMINATED&limit=100')).data;
-      const rows: AwaitingRepossessionContract[] = res?.data ?? [];
+      // limit=100 = cap เดียวกับ /contracts เดิม; เก็บ `total` ให้ backlog ยาวโชว์ "แสดง N จาก M"
+      // BRANCH_MANAGER ถูก scope สาขาฝั่ง server
+      const res: AwaitingRepossessionResponse = (
+        await api.get('/device-returns/awaiting-repossession?limit=100')
+      ).data;
+      const rows = res?.data ?? [];
       return { rows, total: res?.total ?? rows.length };
     },
   });
@@ -352,7 +361,11 @@ export default function RepossessionsPage() {
       label: 'สภาพ',
       render: (r: Repossession) => {
         const cfg = getStatusBadgeProps(r.conditionGrade, conditionGradeMap);
-        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+        return (
+          <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+            {cfg.label}
+          </Badge>
+        );
       },
     },
     {
@@ -378,9 +391,12 @@ export default function RepossessionsPage() {
       render: (r: Repossession) => {
         const cfg = getStatusBadgeProps(r.status, repossessionStatusMap);
         const inPhotoQueue = r.status === 'READY_FOR_SALE' && r.product.status === 'PHOTO_PENDING';
+        const deviceReturnOutstanding = Number(r.deviceReturnOutstanding ?? 0);
         return (
           <div className="flex flex-wrap items-center gap-1.5">
-            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
+            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+              {cfg.label}
+            </Badge>
             {inPhotoQueue && (
               <Link
                 to={`/products/${r.product.id}`}
@@ -389,6 +405,16 @@ export default function RepossessionsPage() {
               >
                 <Camera className="size-3" /> รอถ่ายรูป {r.product.photoAngles ?? 0}/6
               </Link>
+            )}
+            {deviceReturnOutstanding > 0 && (
+              <Badge
+                variant="info"
+                appearance="light"
+                size="sm"
+                title="ค่าเครื่องคืน (11-2107 DEVICE_RETURN) ยังไม่ถูกหัก — หักในรอบจ่าย INTER-CO ถัดไป หรือรับเงินสดที่หน้าจ่ายให้หน้าร้าน"
+              >
+                รอหักในรอบจ่าย {deviceReturnOutstanding.toLocaleString()} ฿
+              </Badge>
             )}
           </div>
         );
@@ -465,7 +491,9 @@ export default function RepossessionsPage() {
           )}
           {r.creditNote && (
             <>
-              <DocumentDownloadButton path={`/receipts/${r.creditNote!.receiptId}/pdf`} filename={`${r.creditNote!.receiptNumber}.pdf`}
+              <DocumentDownloadButton
+                path={`/receipts/${r.creditNote!.receiptId}/pdf`}
+                filename={`${r.creditNote!.receiptNumber}.pdf`}
                 title="ดูใบลดหนี้ PDF"
                 className="inline-flex items-center gap-1 text-info hover:text-info/80 text-sm font-medium"
               >
@@ -491,12 +519,29 @@ export default function RepossessionsPage() {
   return (
     <div>
       <PageHeader
-        title="ยึดคืน & ขายต่อ"
-        subtitle="สัญญาที่บอกเลิกแล้วรอยึดเครื่องอยู่ในรายการด้านล่าง — กดปุ่ม ยึดเครื่อง เพื่อบันทึกการยึดคืน (JP5) จากหน้านี้"
+        title="รับเครื่องคืน / ยึดคืน & ขายต่อ"
+        subtitle="สาขาบันทึกใบรับเครื่องคืนที่นี่ (ปุ่มด้านขวา หรือปุ่ม รับเครื่องคืน ในรายการรอยึดเครื่อง) เพื่อบันทึกการยึดคืน — FINANCE กดยืนยันจากตารางรอยืนยัน แล้วบัญชี JP5 ลงพร้อมขาคู่ SHOP"
+        action={
+          canCreateReturn ? (
+            <button
+              type="button"
+              onClick={() => {
+                setIntakeContractId(undefined);
+                setIntakeOpen(true);
+              }}
+              className="px-4 py-2 text-sm leading-snug bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 shadow-sm"
+            >
+              บันทึกรับเครื่องคืน
+            </button>
+          ) : undefined
+        }
       />
 
-      {/* รอยึดเครื่อง — TERMINATED contracts (owner 2026-09-05: moved here from the
-          รับชำระ queue, which now lists only contracts a receipt can be recorded on). */}
+      {/* ใบรับเครื่องคืน — รอ FINANCE ยืนยัน (spec 2026-09-20 §7): FINANCE ยืนยัน/ส่งกลับ/ส่งซ้ำไลน์, สาขายกเลิกใบตัวเอง */}
+      <DeviceReturnList onConfirm={(row) => setConfirmTarget(row)} />
+
+      {/* รอยึดเครื่อง — TERMINATED ที่ยังไม่มีใบรับเครื่องคืน (owner 2026-09-05: moved here from the
+          รับชำระ queue; 2026-09-20: ปุ่มเปิดใบรับเครื่องคืนแทนการยึดตรง). */}
       <Card className="shadow-card mb-6 overflow-hidden">
         <CardHeader className="px-4 py-3 border-b bg-secondary flex flex-row items-center justify-between">
           <h3 className="text-sm font-medium text-foreground leading-snug">
@@ -508,7 +553,8 @@ export default function RepossessionsPage() {
         </CardHeader>
         {awaitingTruncated && (
           <div className="px-4 py-2 border-b bg-warning/10 text-xs text-warning leading-snug">
-            แสดง {awaiting.length} จาก {awaitingTotal} สัญญา — ยึดเครื่องในรายการนี้ก่อน แล้วรายการที่เหลือจะเลื่อนขึ้นมาเอง
+            แสดง {awaiting.length} จาก {awaitingTotal} สัญญา — ยึดเครื่องในรายการนี้ก่อน
+            แล้วรายการที่เหลือจะเลื่อนขึ้นมาเอง
           </div>
         )}
         <QueryBoundary
@@ -556,13 +602,16 @@ export default function RepossessionsPage() {
                           >
                             บัญชี
                           </button>
-                          {canOpenRepo && (
+                          {canCreateReturn && (
                             <button
                               type="button"
-                              onClick={() => setRepoTarget(c)}
-                              className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                              onClick={() => {
+                                setIntakeContractId(c.id);
+                                setIntakeOpen(true);
+                              }}
+                              className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm leading-snug font-medium hover:bg-primary/90 transition-colors"
                             >
-                              ยึดเครื่อง
+                              รับเครื่องคืน
                             </button>
                           )}
                         </div>
@@ -588,25 +637,33 @@ export default function RepossessionsPage() {
           <Card className="shadow-card hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ราคาตีรวม</div>
-              <div className="text-lg font-bold">{(profitLoss.summary.totalAppraisal ?? 0).toLocaleString()} บาท</div>
+              <div className="text-lg font-bold">
+                {(profitLoss.summary.totalAppraisal ?? 0).toLocaleString()} บาท
+              </div>
             </CardContent>
           </Card>
           <Card className="shadow-card hover:shadow-card-hover transition-all border-l-[3px] border-l-warning">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ค่าซ่อมรวม</div>
-              <div className="text-lg font-bold">{(profitLoss.summary.totalRepairCost ?? 0).toLocaleString()} บาท</div>
+              <div className="text-lg font-bold">
+                {(profitLoss.summary.totalRepairCost ?? 0).toLocaleString()} บาท
+              </div>
             </CardContent>
           </Card>
           <Card className="shadow-card hover:shadow-card-hover transition-all border-l-[3px] border-l-success">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">ราคาขายรวม</div>
-              <div className="text-lg font-bold">{(profitLoss.summary.totalResellPrice ?? 0).toLocaleString()} บาท</div>
+              <div className="text-lg font-bold">
+                {(profitLoss.summary.totalResellPrice ?? 0).toLocaleString()} บาท
+              </div>
             </CardContent>
           </Card>
           <Card className="shadow-card hover:shadow-card-hover transition-all border-l-[3px] border-l-success">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">กำไร/ขาดทุน</div>
-              <div className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-success' : 'text-destructive'}`}>
+              <div
+                className={`text-lg font-bold ${(profitLoss.summary.totalProfit ?? 0) >= 0 ? 'text-success' : 'text-destructive'}`}
+              >
                 {(profitLoss.summary.totalProfit ?? 0).toLocaleString()} บาท
               </div>
             </CardContent>
@@ -636,23 +693,49 @@ export default function RepossessionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {profitLoss?.data?.map((item: { id: string; contract: string; customer: string; product: string; conditionGrade: string; appraisalPrice: number; repairCost: number; resellPrice: number; profit: number; marginPct: string }) => (
-                  <tr key={item.id} className="hover:bg-muted/50">
-                    <td className="px-4 py-2 font-medium text-primary">{item.contract}</td>
-                    <td className="px-4 py-2">{item.customer}</td>
-                    <td className="px-4 py-2">{item.product}</td>
-                    <td className="px-4 py-2 text-center">
-                      {(() => { const cfg = getStatusBadgeProps(item.conditionGrade, conditionGradeMap); return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>; })()}
-                    </td>
-                    <td className="px-4 py-2 text-right">{item.appraisalPrice.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right">{item.repairCost.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right">{item.resellPrice.toLocaleString()}</td>
-                    <td className={`px-4 py-2 text-right font-medium ${item.profit >= 0 ? 'text-success' : 'text-destructive'}`}>
-                      {item.profit.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-2 text-right text-muted-foreground">{item.marginPct}%</td>
-                  </tr>
-                ))}
+                {profitLoss?.data?.map(
+                  (item: {
+                    id: string;
+                    contract: string;
+                    customer: string;
+                    product: string;
+                    conditionGrade: string;
+                    appraisalPrice: number;
+                    repairCost: number;
+                    resellPrice: number;
+                    profit: number;
+                    marginPct: string;
+                  }) => (
+                    <tr key={item.id} className="hover:bg-muted/50">
+                      <td className="px-4 py-2 font-medium text-primary">{item.contract}</td>
+                      <td className="px-4 py-2">{item.customer}</td>
+                      <td className="px-4 py-2">{item.product}</td>
+                      <td className="px-4 py-2 text-center">
+                        {(() => {
+                          const cfg = getStatusBadgeProps(item.conditionGrade, conditionGradeMap);
+                          return (
+                            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">
+                              {cfg.label}
+                            </Badge>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {item.appraisalPrice.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right">{item.repairCost.toLocaleString()}</td>
+                      <td className="px-4 py-2 text-right">{item.resellPrice.toLocaleString()}</td>
+                      <td
+                        className={`px-4 py-2 text-right font-medium ${item.profit >= 0 ? 'text-success' : 'text-destructive'}`}
+                      >
+                        {item.profit.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right text-muted-foreground">
+                        {item.marginPct}%
+                      </td>
+                    </tr>
+                  ),
+                )}
               </tbody>
             </table>
           </div>
@@ -681,22 +764,36 @@ export default function RepossessionsPage() {
         onRetry={refetch}
         errorTitle="ไม่สามารถโหลดรายการยึดคืนได้"
       >
-        <DataTable columns={columns} data={repos} isLoading={isLoading} emptyMessage="ยังไม่มีการยึดคืน" />
+        <DataTable
+          columns={columns}
+          data={repos}
+          isLoading={isLoading}
+          emptyMessage="ยังไม่มีการยึดคืน"
+        />
       </QueryBoundary>
 
-      {/* JP5 overlay — the same component the payment wizard's "คืนเครื่อง" tab uses. */}
-      {repoTarget && (
+      {/* ยืนยันใบรับเครื่องคืน (JP5 + ขาคู่ SHOP) — RepossessionOverlay โหมดยืนยันอย่างเดียว */}
+      {confirmTarget && (
         <RepossessionOverlay
-          contractId={repoTarget.id}
-          contractNumber={repoTarget.contractNumber}
-          customerName={repoTarget.customer.name}
-          branchName={repoTarget.branch?.name}
-          onClose={() => setRepoTarget(null)}
-          onSuccess={() =>
-            queryClient.invalidateQueries({ queryKey: ['contracts', 'awaiting-repossession'] })
-          }
+          deviceReturnId={confirmTarget.id}
+          contractId={confirmTarget.contract.id}
+          contractNumber={confirmTarget.contract.contractNumber}
+          customerName={confirmTarget.contract.customer.name}
+          branchName={confirmTarget.receivingBranch.name}
+          onClose={() => setConfirmTarget(null)}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['device-returns'] })}
         />
       )}
+
+      {/* บันทึกรับเครื่องคืน — จากปุ่มหัวหน้า (ค้นสัญญาเอง) หรือจากรายการรอยึด (ล็อกสัญญา) */}
+      <DeviceReturnIntakeDialog
+        open={intakeOpen}
+        initialContractId={intakeContractId}
+        onClose={() => {
+          setIntakeOpen(false);
+          setIntakeContractId(undefined);
+        }}
+      />
 
       {/* บันทึกบัญชีของสัญญา — JE ทุกใบ (FINANCE + SHOP) */}
       <ContractJournalDialog
@@ -720,8 +817,12 @@ export default function RepossessionsPage() {
             className="space-y-4"
           >
             <div className="bg-muted rounded-lg p-3 text-sm space-y-0.5">
-              <div><strong>สัญญา:</strong> {settlementRepo.contract.contractNumber}</div>
-              <div><strong>ลูกค้า:</strong> {settlementRepo.contract.customer.name}</div>
+              <div>
+                <strong>สัญญา:</strong> {settlementRepo.contract.contractNumber}
+              </div>
+              <div>
+                <strong>ลูกค้า:</strong> {settlementRepo.contract.customer.name}
+              </div>
               <div className="text-xs text-muted-foreground leading-snug pt-1">
                 ล้างลูกหนี้-หน้าร้าน (Dr บัญชีรับเงิน / Cr 11-2107) — ใช้กับการยึดคืนที่ติ๊ก
                 "ตั้งลูกหนี้-หน้าร้าน" ไว้ · ระบบจะปฏิเสธถ้ายอดเกินลูกหนี้คงค้างของสัญญา
@@ -786,8 +887,12 @@ export default function RepossessionsPage() {
             className="space-y-4"
           >
             <div className="bg-muted rounded-lg p-3 text-sm space-y-0.5">
-              <div><strong>สัญญา:</strong> {refundRepo.contract.contractNumber}</div>
-              <div><strong>ลูกค้า:</strong> {refundRepo.contract.customer.name}</div>
+              <div>
+                <strong>สัญญา:</strong> {refundRepo.contract.contractNumber}
+              </div>
+              <div>
+                <strong>ลูกค้า:</strong> {refundRepo.contract.customer.name}
+              </div>
               <div className="text-xs text-muted-foreground leading-snug pt-1">
                 ล้างเจ้าหนี้เงินคืนลูกค้า-ยึดเครื่อง (Dr 21-1107 / Cr บัญชีจ่ายเงิน) — ใช้เมื่อ
                 ราคากลาง &gt; ยอดปิดสัญญาและติ๊ก "คืนเงินส่วนต่าง" ไว้ตอนยึด · ระบบจะปฏิเสธถ้ายอด
@@ -853,9 +958,16 @@ export default function RepossessionsPage() {
             className="space-y-4"
           >
             <div className="bg-muted rounded-lg p-3 text-sm space-y-0.5">
-              <div><strong>สัญญา:</strong> {waiveRepo.contract.contractNumber}</div>
-              <div><strong>ลูกค้า:</strong> {waiveRepo.contract.customer.name}</div>
-              <div><strong>ยอดเงินคืนตอนยึด:</strong> {Number(waiveRepo.customerRefund).toLocaleString()} บาท</div>
+              <div>
+                <strong>สัญญา:</strong> {waiveRepo.contract.contractNumber}
+              </div>
+              <div>
+                <strong>ลูกค้า:</strong> {waiveRepo.contract.customer.name}
+              </div>
+              <div>
+                <strong>ยอดเงินคืนตอนยึด:</strong>{' '}
+                {Number(waiveRepo.customerRefund).toLocaleString()} บาท
+              </div>
             </div>
             <div className="text-xs text-muted-foreground leading-snug">
               ระบบจะล้าง "ยอดคงเหลือจริง" ในบัญชี ซึ่งอาจต่ำกว่านี้ถ้าจ่ายคืนบางส่วนไปแล้ว
@@ -903,15 +1015,25 @@ export default function RepossessionsPage() {
             className="space-y-4"
           >
             <div className="bg-muted rounded-lg p-3 text-sm space-y-0.5">
-              <div><strong>สินค้า:</strong> {readyForSaleRepo.product.brand} {readyForSaleRepo.product.model}</div>
-              <div><strong>ราคาตี:</strong> {Number(readyForSaleRepo.appraisalPrice).toLocaleString()} บาท</div>
+              <div>
+                <strong>สินค้า:</strong> {readyForSaleRepo.product.brand}{' '}
+                {readyForSaleRepo.product.model}
+              </div>
+              <div>
+                <strong>ราคาตี:</strong> {Number(readyForSaleRepo.appraisalPrice).toLocaleString()}{' '}
+                บาท
+              </div>
               <div className="text-xs text-muted-foreground leading-snug pt-1">
-                เครื่องจะย้ายกลับคลังหลักและเข้าคิว "รอถ่ายรูป 6 มุม" เหมือนเครื่องรับซื้อ ถ่ายครบแล้วขึ้นขายเอง
+                เครื่องจะย้ายกลับคลังหลักและเข้าคิว "รอถ่ายรูป 6 มุม" เหมือนเครื่องรับซื้อ
+                ถ่ายครบแล้วขึ้นขายเอง
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
-                <label htmlFor="ready-for-sale-cash" className="block text-sm font-medium text-foreground mb-1">
+                <label
+                  htmlFor="ready-for-sale-cash"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
                   ราคาเงินสด (บาท) <span className="text-destructive">*</span>
                 </label>
                 <input
@@ -927,7 +1049,10 @@ export default function RepossessionsPage() {
                 />
               </div>
               <div>
-                <label htmlFor="ready-for-sale-installment" className="block text-sm font-medium text-foreground mb-1">
+                <label
+                  htmlFor="ready-for-sale-installment"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
                   ราคาผ่อน BESTCHOICE (บาท) <span className="text-destructive">*</span>
                 </label>
                 <input
@@ -944,7 +1069,8 @@ export default function RepossessionsPage() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground leading-snug">
-              ต้องกรอกทั้งสองราคา — เครื่องยังถือราคาผ่อนตอนเป็นเครื่องใหม่อยู่ ถ้าไม่ทับ POS จะหยิบราคาเก่าไปขาย
+              ต้องกรอกทั้งสองราคา — เครื่องยังถือราคาผ่อนตอนเป็นเครื่องใหม่อยู่ ถ้าไม่ทับ POS
+              จะหยิบราคาเก่าไปขาย
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <button
@@ -971,13 +1097,23 @@ export default function RepossessionsPage() {
       </Modal>
 
       {/* Update Modal */}
-      <Modal isOpen={isUpdateModalOpen} onClose={() => setIsUpdateModalOpen(false)} title="จัดการเครื่องยึดคืน">
+      <Modal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
+        title="จัดการเครื่องยึดคืน"
+      >
         {selectedRepo && (
           <form onSubmit={handleUpdate} className="space-y-4">
             <div className="bg-muted rounded-lg p-3 text-sm">
-              <div><strong>สินค้า:</strong> {selectedRepo.product.brand} {selectedRepo.product.model}</div>
-              <div><strong>สัญญา:</strong> {selectedRepo.contract.contractNumber}</div>
-              <div><strong>ลูกค้า:</strong> {selectedRepo.contract.customer.name}</div>
+              <div>
+                <strong>สินค้า:</strong> {selectedRepo.product.brand} {selectedRepo.product.model}
+              </div>
+              <div>
+                <strong>สัญญา:</strong> {selectedRepo.contract.contractNumber}
+              </div>
+              <div>
+                <strong>ลูกค้า:</strong> {selectedRepo.contract.customer.name}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">สถานะ</label>
@@ -988,25 +1124,35 @@ export default function RepossessionsPage() {
               >
                 {/* Show only valid status transitions based on current status —
                     พร้อมขาย ตั้งผ่านปุ่ม "พร้อมขาย" เท่านั้น (สองราคา + คิวรอถ่ายรูป, 2026-09-07) */}
-                {selectedRepo.status === 'REPOSSESSED' && <>
-                  <option value="REPOSSESSED">ยึดคืนแล้ว</option>
-                  <option value="UNDER_REPAIR">กำลังซ่อม</option>
-                </>}
-                {selectedRepo.status === 'UNDER_REPAIR' && <>
-                  <option value="UNDER_REPAIR">กำลังซ่อม</option>
-                </>}
-                {selectedRepo.status === 'READY_FOR_SALE' && <>
-                  {/* "ขายแล้ว" ตั้งด้วยมือไม่ได้ — ขายผ่าน POS แล้วระบบปิดให้เอง (2026-09-05) */}
-                  <option value="READY_FOR_SALE">พร้อมขาย</option>
-                </>}
-                {selectedRepo.status === 'SOLD' && <>
-                  <option value="SOLD">ขายแล้ว</option>
-                </>}
+                {selectedRepo.status === 'REPOSSESSED' && (
+                  <>
+                    <option value="REPOSSESSED">ยึดคืนแล้ว</option>
+                    <option value="UNDER_REPAIR">กำลังซ่อม</option>
+                  </>
+                )}
+                {selectedRepo.status === 'UNDER_REPAIR' && (
+                  <>
+                    <option value="UNDER_REPAIR">กำลังซ่อม</option>
+                  </>
+                )}
+                {selectedRepo.status === 'READY_FOR_SALE' && (
+                  <>
+                    {/* "ขายแล้ว" ตั้งด้วยมือไม่ได้ — ขายผ่าน POS แล้วระบบปิดให้เอง (2026-09-05) */}
+                    <option value="READY_FOR_SALE">พร้อมขาย</option>
+                  </>
+                )}
+                {selectedRepo.status === 'SOLD' && (
+                  <>
+                    <option value="SOLD">ขายแล้ว</option>
+                  </>
+                )}
               </select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ค่าซ่อม (บาท)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  ค่าซ่อม (บาท)
+                </label>
                 <input
                   type="number"
                   value={updateForm.repairCost}
@@ -1016,7 +1162,9 @@ export default function RepossessionsPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">ราคาขายต่อ (บาท)</label>
+                <label className="block text-sm font-medium text-foreground mb-1">
+                  ราคาขายต่อ (บาท)
+                </label>
                 <input
                   type="number"
                   value={updateForm.resellPrice}
@@ -1041,7 +1189,11 @@ export default function RepossessionsPage() {
               />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={() => setIsUpdateModalOpen(false)} className="px-4 py-2 text-sm text-muted-foreground">
+              <button
+                type="button"
+                onClick={() => setIsUpdateModalOpen(false)}
+                className="px-4 py-2 text-sm text-muted-foreground"
+              >
                 ยกเลิก
               </button>
               <button

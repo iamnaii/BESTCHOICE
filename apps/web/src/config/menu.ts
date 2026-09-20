@@ -167,6 +167,7 @@ const SALES_CONFIG: RoleMenuConfig = {
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
+        { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
       ],
     },
     {
@@ -219,6 +220,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: NAV_LABELS.home, path: '/', icon: Home },
         { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
+        { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'กำไร-ขาดทุน (P&L)', path: '/profit-loss', icon: PieChart },
@@ -359,6 +361,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // P3-SP5 W6 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
         // Standardized label + icon across all 4 role configs.
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
+        // สรุปเงินหน้าร้านรายวัน — ผจก.การเงินเห็นทุกสาขา (สเปค 2026-09-20-shop-tenders-daily-cash)
+        { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
@@ -507,7 +511,10 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
   sidebar: [
     {
       key: 'acc-shop-accounting', label: 'บัญชีหน้าร้าน (SHOP)', icon: Store, zone: 'shop',
-      items: [{ label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart }],
+      items: [
+        { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
+        { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
+      ],
     },
     {
       key: 'acc-daily',
@@ -678,6 +685,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
+        { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
       ],
     },
     {

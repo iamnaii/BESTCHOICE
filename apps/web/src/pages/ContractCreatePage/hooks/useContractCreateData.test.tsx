@@ -172,3 +172,33 @@ describe('contract → credit → contract', () => {
     fail.mockRestore();
   });
 });
+
+describe('ของแถมในสัญญาผ่อน', () => {
+  const caseItem = { id: 'acc-1', name: 'เคสใส', brand: 'B', model: 'Case', category: 'ACCESSORY', status: 'IN_STOCK', branchId: 'br-1' };
+  const soldItem = { id: 'acc-2', name: 'ฟิล์ม', brand: 'B', model: 'Film', category: 'ACCESSORY', status: 'SOLD_CASH', branchId: 'br-1' };
+  const phoneItem = { id: 'ph-9', name: 'iPhone', brand: 'Apple', model: '13', category: 'PHONE_USED', status: 'IN_STOCK', branchId: 'br-1' };
+
+  it('ของแถมที่ POS ส่งมาทาง URL ถูกเติมให้ — ชิ้นที่ไม่พร้อมขาย/ไม่ใช่อุปกรณ์เสริมถูกทิ้ง', async () => {
+    const base = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation(async (path: string) => {
+      if (path === '/products/acc-1') return { data: caseItem };
+      if (path === '/products/acc-2') return { data: soldItem };
+      if (path === '/products/ph-9') return { data: phoneItem };
+      return base(path);
+    });
+    const { result } = mount(`/contracts/create?customerId=${customer.id}&productId=${product.id}&bundleProductIds=acc-1,acc-2,ph-9`);
+    await waitFor(() => expect(result.current.bundleProducts.map((p) => p.id)).toEqual(['acc-1']));
+  });
+
+  it('เพิ่ม/นำออกของแถม และเก็บลงร่างอัตโนมัติ', async () => {
+    const { result } = mount(`/contracts/create?customerId=${customer.id}&productId=${product.id}`);
+    await waitFor(() => expect(result.current.selectedProduct?.id).toBe(product.id));
+    act(() => result.current.addBundle(caseItem));
+    act(() => result.current.addBundle(caseItem)); // กดซ้ำไม่เพิ่มซ้ำ
+    expect(result.current.bundleProducts.map((p) => p.id)).toEqual(['acc-1']);
+    act(() => result.current.openCustomerCredit()); // บังคับบันทึกร่างทันที
+    expect(JSON.parse(localStorage.getItem('bestchoice-contract-draft:staff-a')!).bundleProductIds).toEqual(['acc-1']);
+    act(() => result.current.removeBundle('acc-1'));
+    expect(result.current.bundleProducts).toEqual([]);
+  });
+});

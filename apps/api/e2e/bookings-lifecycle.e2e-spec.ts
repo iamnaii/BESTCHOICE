@@ -176,11 +176,20 @@ describe('Booking mutations and real SHOP ledger on isolated PostgreSQL', () => 
   ])('keeps net tender amounts correct: $depositMethod then $paymentMethod', async scenario => {
     const { booking } = await createBooking();
     await bookings.update(booking.id, { depositAmount: scenario.deposit }, actor);
-    await bookings.payDeposit(booking.id, { depositMethod: scenario.depositMethod }, actor);
+    // กติกาช่องรับเงิน (2026-09-20): โอน/QR ต้องมีเลขอ้างอิงจากสลิป — ฟิลด์แบบเดิม (depositMethod / paymentMethod) ไม่มีช่อง
+    // เลขอ้างอิง จึงส่งเป็น `tenders` (ยอด = มัดจำ / ส่วนที่เหลือพอดี) · เงินสดยังใช้ฟิลด์เดิมได้ ·
+    // depositMethod / Sale.paymentMethod ที่ระบบเก็บ = วิธีของ tender แรก ⇒ assertion ด้านล่างไม่เปลี่ยน
+    // เลขอ้างอิงไม่ซ้ำกันต่อใบ — รายงานสรุปเงินหน้าร้านติดธง "เลขอ้างอิงซ้ำ" ข้ามเอกสารแบบไม่จำกัดวัน
+    const transfer = (method: 'BANK_TRANSFER' | 'QR_EWALLET', amount: number) =>
+      [{ method, amount, reference: `TEST-REF-${randomUUID().slice(0, 8)}` }];
+    await bookings.payDeposit(booking.id, scenario.depositMethod === 'CASH'
+      ? { depositMethod: scenario.depositMethod } : { tenders: transfer(scenario.depositMethod, scenario.deposit) }, actor);
     const stored = await db.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(stored.depositMethod).toBe(scenario.depositMethod);
     expect(stored.depositAccountCode).toBe(scenario.depositMethod === 'CASH' ? 'S11-1101' : 'S11-1201');
     const result = await bookings.convertToSale(booking.id, { collectBalance: scenario.deposit < 10000,
-      paymentMethod: scenario.paymentMethod }, actor.id, actor);
+      ...(scenario.paymentMethod === 'BANK_TRANSFER'
+        ? { tenders: transfer(scenario.paymentMethod, 10000 - scenario.deposit) } : { paymentMethod: scenario.paymentMethod }) }, actor.id, actor);
     expect(result.sale.amountReceived?.toNumber()).toBe(10000);
     const detail = await new SalesQueryService(db).findOne(result.sale.id, actor);
     expect(detail.receiptBreakdown).toMatchObject({ depositAmount: scenario.deposit.toFixed(2),
@@ -202,7 +211,9 @@ describe('Booking mutations and real SHOP ledger on isolated PostgreSQL', () => 
 
   it('rejects an incorrect compatibility account without recording receipt metadata or JE', async () => {
     const { booking } = await createBooking();
-    await expect(bookings.payDeposit(booking.id, { depositMethod: 'BANK_TRANSFER', depositAccountCode: '11-1201' }, actor)).rejects.toThrow(/บัญชี/);
+    // โอนต้องมีเลขอ้างอิง (กติกาช่องรับเงิน) — ส่ง tender ที่ถูกต้องครบ เพื่อให้เทสยังไปชนด่าน "บัญชีรับเงินไม่ตรง" ไม่ใช่ด่านเลขอ้างอิง
+    await expect(bookings.payDeposit(booking.id, { tenders: [{ method: 'BANK_TRANSFER', amount: 1000, reference: 'TEST-REF-0001' }],
+      depositAccountCode: '11-1201' }, actor)).rejects.toThrow(/บัญชี/);
     expect((await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).depositPaidAt).toBeNull();
     expect(await readEntries(booking.id)).toHaveLength(0);
   });

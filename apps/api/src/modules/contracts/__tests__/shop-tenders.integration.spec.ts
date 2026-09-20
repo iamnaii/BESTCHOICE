@@ -1,0 +1,271 @@
+/**
+ * สมุดเงินหน้าร้าน + บิลจ่ายผสม — วงจรจริงบน DB จริง (สเปค 2026-09-20-shop-tenders-daily-cash)
+ *
+ * พิสูจน์สิ่งที่ unit test (mock prisma) มองไม่เห็น:
+ *  1. ขายสดจ่ายผสม → ยอดบัญชีลิ้นชัก/ธนาคาร = ยอดของแต่ละวิธีพอดี → ยกเลิกใบขาย → สุทธิ 0 + แถวเงินออก
+ *  2. เงินดาวน์จ่ายผสม → ลบร่างสัญญา → สุทธิ 0 (JE แยกยอดถูก mirror ด้วย) + แถวเงินออก
+ *  3. เงินดาวน์จ่ายผสม → เปิดใช้ → ยกเลิกสัญญา **ต้องไม่ชน cash tripwire** (JE แยกยอดจงใจไม่ stamp contractId)
+ *  4. หน้าสรุปเงินรายวันอ่านแถวเหล่านี้ได้จริง + ป้ายเลขอ้างอิงซ้ำ
+ *
+ * รัน: vitest (jest มองไม่เห็น *.integration.spec.ts) — CI glob `src/modules/contracts/__tests__/*.integration.spec.ts`
+ */
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { PrismaClient } from '@prisma/client';
+import { Decimal } from '@prisma/client/runtime/library';
+import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
+import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
+import { ContractWorkflowService } from '../contract-workflow.service';
+import { ContractLifecycleService } from '../services/contract-lifecycle.service';
+import { ContractQueryService } from '../services/contract-query.service';
+import { ContractCancellationService } from '../services/contract-cancellation.service';
+import { ProductsService } from '../../products/products.service';
+import { SalesService } from '../../sales/sales.service';
+import { SaleVoidService } from '../../sales/services/sale-void.service';
+import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { JournalAutoService } from '../../journal/journal-auto.service';
+import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
+import { ContractCancellationTemplate } from '../../journal/cpa-templates/contract-cancellation.template';
+import { ExchangeCancelReversalTemplate } from '../../journal/cpa-templates/exchange-cancel-reversal.template';
+import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-reverse.template';
+import { ShopInventoryTransferTemplate } from '../../journal/cpa-templates/shop-inventory-transfer.template';
+import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
+import { ShopDownPaymentReversalTemplate } from '../../journal/cpa-templates/shop-down-payment-reversal.template';
+import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/shop-external-finance-sale.template';
+import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
+import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
+import { normalizeTenders } from '../../shop-tenders/shop-tender.util';
+import { ShopTendersReportService } from '../../shop-tenders/shop-tenders-report.service';
+import { bangkokDateString } from '../../../utils/date.util';
+import { seedVerifiedContractApproval } from './credit-approval.fixture';
+
+const prisma = new PrismaClient();
+const journal = new JournalAutoService(prisma as never);
+const companyResolver = new CompanyResolverService(prisma as never);
+const shopAccountResolver = new ShopAccountResolver(prisma as never);
+const shopDownPayment = new ShopDownPaymentTemplate(journal, prisma as never, companyResolver);
+
+const workflow = new ContractWorkflowService(
+  prisma as never, null as never, journal, new ContractActivation1ATemplate(journal, prisma as never),
+  new ProductsService(prisma as never), null as never,
+  new ShopInventoryTransferTemplate(journal, prisma as never, companyResolver), shopDownPayment, shopAccountResolver,
+);
+const lifecycle = new ContractLifecycleService(
+  prisma as never, new ContractQueryService(prisma as never), shopDownPayment,
+  new ShopDownPaymentReversalTemplate(journal, prisma as never, companyResolver), shopAccountResolver,
+);
+const cancellationTemplate = new ContractCancellationTemplate(
+  prisma as never, new ExchangeCancelReversalTemplate(journal, prisma as never), new EclStageReverseTemplate(journal, prisma as never),
+);
+const cancellations = new ContractCancellationService(prisma as never, () => cancellationTemplate, () => companyResolver);
+const salesService = new SalesService(
+  prisma as never, null as never, new ShopCashSaleTemplate(journal, prisma as never, companyResolver), shopAccountResolver,
+  new ShopExternalFinanceSaleTemplate(journal, prisma as never, companyResolver), { notify: async () => {} } as never, shopDownPayment,
+);
+const saleVoidService = new SaleVoidService(prisma as never, new ExchangeCancelReversalTemplate(journal, prisma as never));
+const report = new ShopTendersReportService(prisma as never);
+
+const PREFIX = 'TENDERTEST-';
+const RUN = Date.now().toString(36).toUpperCase();
+const RUN_NUM = String(Date.now() % 1_000_000).padStart(6, '0');
+const dec = (s: string) => new Decimal(s);
+/** บัญชีลิ้นชักเฉพาะของเทสนี้ — ไม่ปนกับยอดของสาขาอื่นในฐานเดียวกัน */
+const TILL = 'S11-1103';
+const BANK = 'S11-1201';
+
+const created = { contracts: [] as string[], products: [] as string[], customers: [] as string[], sales: [] as string[] };
+let adminId: string;
+let shopCompanyId: string;
+let branchId: string;
+
+async function seedPhone(tag: string) {
+  const product = await prisma.product.create({
+    data: {
+      name: `${PREFIX}Phone ${tag}`, brand: `${PREFIX}Brand`, model: `${PREFIX}Model-${tag}`, storage: '128GB',
+      imeiSerial: `${PREFIX}${RUN}-${tag}`, category: 'PHONE_NEW', costPrice: dec('6000.00'), cashPrice: dec('9900.00'),
+      branchId, status: 'IN_STOCK', ownedByCompanyId: shopCompanyId, stockInDate: new Date(),
+    },
+  });
+  created.products.push(product.id);
+  return product;
+}
+
+async function seedCustomer(tag: string) {
+  const customer = await prisma.customer.create({
+    data: { name: `${PREFIX}Customer ${tag}`, phone: `09${RUN_NUM}${tag}`.slice(0, 12), nationalId: `${PREFIX}${RUN}-${tag}` },
+  });
+  created.customers.push(customer.id);
+  return customer;
+}
+
+/** ยอดสุทธิ (Dr − Cr) ของบัญชี นับเฉพาะ JE ที่สร้างหลัง `since` — แยกผลของเทสแต่ละเคสออกจากกัน */
+async function accountNetSince(accountCode: string, since: Date): Promise<string> {
+  const lines = await prisma.journalLine.findMany({
+    where: { accountCode, journalEntry: { status: 'POSTED', deletedAt: null, createdAt: { gte: since } } },
+    select: { debit: true, credit: true },
+  });
+  return lines.reduce((sum, l) => sum.plus(l.debit.toString()).minus(l.credit.toString()), new Decimal(0)).toFixed(2);
+}
+
+/** ร่างสัญญา + รับเงินดาวน์จ่ายผสม 2,000 สด + 3,000 QR ผ่าน template + recorder ตัวจริง (เหมือนที่ create() ทำใน tx เดียว) */
+async function seedDraftWithSplitDown(tag: string, opts: { signed: boolean }) {
+  const phone = await seedPhone(tag);
+  const customer = await seedCustomer(tag);
+  const consent = await prisma.pDPAConsent.create({
+    data: { customerId: customer.id, consentVersion: '1.0', privacyNoticeText: 'test', status: 'GRANTED', grantedAt: new Date() },
+  });
+  const contract = await prisma.contract.create({
+    data: {
+      contractNumber: `${PREFIX}${RUN}-${tag}`, customerId: customer.id, productId: phone.id, branchId,
+      salespersonId: adminId, pdpaConsentId: consent.id, planType: 'STORE_WITH_INTEREST',
+      sellingPrice: dec('15000.00'), downPayment: dec('5000.00'), downPaymentMethod: 'CASH', downPaymentReference: `QR${RUN}${tag}`,
+      downPaymentReceivedAt: new Date(), financedAmount: dec('10000.00'), interestRate: dec('0.0500'), totalMonths: 12,
+      interestTotal: dec('6000.00'), storeCommission: dec('1000.00'), vatAmount: dec('1190.00'), vatPct: dec('0.0700'),
+      monthlyPayment: dec('1515.83'), paymentDueDay: 1, status: 'DRAFT', workflowStatus: opts.signed ? 'APPROVED' : 'CREATING',
+    },
+  });
+  created.contracts.push(contract.id);
+  await prisma.product.update({ where: { id: phone.id }, data: { status: 'RESERVED' } });
+  const tenders = normalizeTenders(
+    [{ method: 'CASH', amount: 2000 }, { method: 'QR_EWALLET', amount: 3000, reference: `QR${RUN}${tag}` }], '5000.00');
+  await prisma.$transaction(async (tx) => {
+    await shopDownPayment.execute({ idempotencyKey: `shop-down-payment:${contract.id}`, contractId: contract.id,
+      contractNumber: contract.contractNumber, cashAccountCode: TILL, downAmount: dec('5000.00') }, tx);
+    await new ShopTenderRecorder(prisma as never).recordInflow(tx, { kind: 'CONTRACT_DOWN', branchId, actorId: adminId,
+      doc: { contractId: contract.id }, docNumber: contract.contractNumber, tenders });
+  });
+  if (opts.signed) {
+    await seedVerifiedContractApproval(prisma, contract.id, adminId);
+    for (const signerType of ['CUSTOMER', 'COMPANY', 'WITNESS_1', 'WITNESS_2'] as const) {
+      await prisma.signature.create({ data: { contractId: contract.id, signerType, signatureImage: 'data:image/png;base64,AA==' } });
+    }
+  }
+  return { contract, phone, customer };
+}
+
+const tendersOf = (where: Record<string, string>) => prisma.shopTender.findMany({ where, orderBy: [{ direction: 'asc' }, { seq: 'asc' }] });
+
+describe('สมุดเงินหน้าร้าน + บิลจ่ายผสม — วงจรจริงบน DB จริง', () => {
+  beforeAll(async () => {
+    await seedFinanceCoa(prisma);
+    await seedShopCoa(prisma);
+    shopCompanyId = (await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'SHOP', deletedAt: null } })).id;
+    await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'FINANCE', deletedAt: null } });
+    let admin = await prisma.user.findFirst({ where: { email: 'admin@bestchoice.com' } });
+    if (!admin) admin = await prisma.user.create({ data: { email: 'admin@bestchoice.com', password: 'x', name: 'admin', role: 'OWNER' } });
+    adminId = admin.id;
+    const branch = await prisma.branch.create({ data: { name: `${PREFIX}Branch ${RUN}`, companyId: shopCompanyId, shopCashAccountCode: TILL } });
+    branchId = branch.id;
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it('ขายสดจ่ายผสม: ลิ้นชักได้ 5,000 ธนาคารได้ 4,900 → ยกเลิกใบขาย → สุทธิ 0 และมีแถวเงินออกคู่กัน', async () => {
+    const since = new Date();
+    const phone = await seedPhone('S1');
+    const customer = await seedCustomer('S1');
+    const sale = await salesService.create({
+      saleType: 'CASH', customerId: customer.id, productId: phone.id, branchId, sellingPrice: 9900, discount: 0,
+      paymentMethod: 'CASH', previouslyDamagedAcknowledged: false,
+      tenders: [{ method: 'CASH', amount: 5000 }, { method: 'BANK_TRANSFER', amount: 4900, reference: `TR${RUN}S1` }],
+    } as never, adminId, 'OWNER', branchId);
+    created.sales.push(sale.id);
+
+    expect(await accountNetSince(TILL, since)).toBe('5000.00');
+    expect(await accountNetSince(BANK, since)).toBe('4900.00');
+    const stored = await prisma.sale.findUniqueOrThrow({ where: { id: sale.id } });
+    expect(stored.paymentMethod).toBe('CASH'); // คอลัมน์เดิม = วิธีของบรรทัดแรก
+    const inRows = await tendersOf({ saleId: sale.id });
+    expect(inRows.map((t) => [t.direction, t.kind, t.method, t.amount.toFixed(2), t.reference, t.actorId, t.seq, t.seqTotal])).toEqual([
+      ['IN', 'CASH_SALE', 'CASH', '5000.00', null, adminId, 1, 2],
+      ['IN', 'CASH_SALE', 'BANK_TRANSFER', '4900.00', `TR${RUN}S1`, adminId, 2, 2],
+    ]);
+
+    await saleVoidService.voidSale(sale.id, { id: adminId, role: 'OWNER', branchId: null } as never, 'คีย์ผิดรุ่น ทดสอบจ่ายผสม');
+
+    expect(await accountNetSince(TILL, since)).toBe('0.00');
+    expect(await accountNetSince(BANK, since)).toBe('0.00');
+    const all = await tendersOf({ saleId: sale.id });
+    expect(all.filter((t) => t.direction === 'OUT').map((t) => [t.kind, t.method, t.amount.toFixed(2)])).toEqual([
+      ['SALE_VOID_REFUND', 'CASH', '5000.00'],
+      ['SALE_VOID_REFUND', 'BANK_TRANSFER', '4900.00'],
+    ]);
+    expect(await statusOfProduct(phone.id)).toBe('IN_STOCK');
+  });
+
+  it('โอน/QR ไม่มีเลขอ้างอิง และยอดรวมไม่ครบ ถูกปฏิเสธก่อนแตะสต๊อก', async () => {
+    const phone = await seedPhone('S2');
+    const customer = await seedCustomer('S2');
+    const base = { saleType: 'CASH', customerId: customer.id, productId: phone.id, branchId, sellingPrice: 9900, discount: 0,
+      paymentMethod: 'BANK_TRANSFER', previouslyDamagedAcknowledged: false };
+    await expect(salesService.create(base as never, adminId, 'OWNER', branchId)).rejects.toThrow(/เลขอ้างอิง/);
+    await expect(salesService.create({ ...base, tenders: [{ method: 'CASH', amount: 9500 }] } as never, adminId, 'OWNER', branchId))
+      .rejects.toThrow(/ยังขาด 400/);
+    expect(await statusOfProduct(phone.id)).toBe('IN_STOCK');
+    expect(await prisma.shopTender.count({ where: { sale: { productId: phone.id } } })).toBe(0);
+  });
+
+  it('เงินดาวน์จ่ายผสม → ลบร่างสัญญา: ลิ้นชักและธนาคารกลับเป็น 0 (JE แยกยอดถูก mirror) + แถวเงินออก', async () => {
+    const since = new Date();
+    const { contract } = await seedDraftWithSplitDown('D1', { signed: false });
+    expect(await accountNetSince(TILL, since)).toBe('2000.00');
+    expect(await accountNetSince(BANK, since)).toBe('3000.00');
+
+    await lifecycle.softDelete(contract.id, adminId);
+
+    expect(await accountNetSince(TILL, since)).toBe('0.00');
+    expect(await accountNetSince(BANK, since)).toBe('0.00');
+    const out = (await tendersOf({ contractId: contract.id })).filter((t) => t.direction === 'OUT');
+    expect(out.map((t) => [t.kind, t.method, t.amount.toFixed(2)])).toEqual([
+      ['CONTRACT_DOWN_REFUND', 'CASH', '2000.00'],
+      ['CONTRACT_DOWN_REFUND', 'QR_EWALLET', '3000.00'],
+    ]);
+  });
+
+  it('เงินดาวน์จ่ายผสม → เปิดใช้ → ยกเลิกสัญญา: ไม่ชน cash tripwire และเงินดาวน์ยังอยู่ที่ลิ้นชัก/ธนาคารตามจริง', async () => {
+    const since = new Date();
+    const { contract } = await seedDraftWithSplitDown('A1', { signed: true });
+    await workflow.activate(contract.id);
+
+    const request = await cancellations.requestCancellation(contract.id, adminId, 'ทดสอบยกเลิกสัญญาที่รับดาวน์จ่ายผสม', 0);
+    await expect(cancellations.approveCancellation(request.id, adminId)).resolves.toBeDefined();
+
+    // JE ดาวน์จงใจไม่ถูก mirror ตอนยกเลิกสัญญา (S21-2001 ค้างรอคืนลูกค้า) ⇒ JE แยกยอดก็ต้องอยู่ครบเช่นกัน
+    expect(await accountNetSince(TILL, since)).toBe('2000.00');
+    expect(await accountNetSince(BANK, since)).toBe('3000.00');
+    expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('CANCELED');
+  });
+
+  it('หน้าสรุปเงินรายวันอ่านแถวของสาขานี้ได้: ยอดลิ้นชัก แยกพนักงาน และป้ายเลขอ้างอิงซ้ำ', async () => {
+    // ใช้เลขอ้างอิงของใบขายเคสแรกซ้ำกับเงินดาวน์อีกสัญญา → ต้องขึ้นป้าย
+    const phone = await seedPhone('R1');
+    const customer = await seedCustomer('R1');
+    const sale = await salesService.create({
+      saleType: 'CASH', customerId: customer.id, productId: phone.id, branchId, sellingPrice: 9900, discount: 0,
+      paymentMethod: 'BANK_TRANSFER', previouslyDamagedAcknowledged: false,
+      tenders: [{ method: 'BANK_TRANSFER', amount: 9900, reference: `qr${RUN}d1`.toUpperCase() }],
+    } as never, adminId, 'OWNER', branchId);
+    created.sales.push(sale.id);
+
+    const summary = await report.getDailySummary({ date: bangkokDateString(), branchId }, { id: adminId, role: 'OWNER', branchId: null });
+    expect(summary.scope).toBe('ALL');
+    expect(summary.rows.every((r) => r.branchId === branchId)).toBe(true);
+    // เงินสดเข้า: 5,000 (S1) + 2,000 (D1) + 2,000 (A1) · เงินสดออก: 5,000 (void S1) + 2,000 (ลบร่าง D1)
+    expect(summary.totals).toMatchObject({ cashIn: '9000.00', cashOut: '7000.00', expectedCashInDrawer: '2000.00' });
+    expect(summary.byStaff).toHaveLength(1);
+    expect(summary.byStaff[0]).toMatchObject({ actorId: adminId, netCash: '2000.00' });
+    const flagged = summary.rows.filter((r) => r.duplicateReference).map((r) => r.docNumber);
+    const { saleNumber } = await prisma.sale.findUniqueOrThrow({ where: { id: sale.id }, select: { saleNumber: true } });
+    expect(flagged).toEqual(expect.arrayContaining([saleNumber, `${PREFIX}${RUN}-D1`]));
+
+    // พนักงานขายคนอื่นไม่เห็นแถวของ admin
+    const other = await report.getDailySummary({ date: bangkokDateString() }, { id: '00000000-0000-0000-0000-000000000000', role: 'SALES', branchId });
+    expect(other.rows).toEqual([]);
+  });
+});
+
+async function statusOfProduct(id: string) {
+  return (await prisma.product.findUniqueOrThrow({ where: { id } })).status;
+}

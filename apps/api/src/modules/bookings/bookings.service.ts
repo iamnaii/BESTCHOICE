@@ -15,7 +15,9 @@ import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
 import { getBranchScope, hasCrossBranchAccess } from '../auth/branch-access.util';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { UpdateBookingDto } from './dto/update-booking.dto';
-import { BOOKING_PAYMENT_METHODS, PayDepositDto } from './dto/pay-deposit.dto';
+import { BOOKING_PAYMENT_METHODS, DepositMethod, PayDepositDto } from './dto/pay-deposit.dto';
+import { ShopTenderRecorder } from '../shop-tenders/shop-tender.recorder';
+import { normalizeTenders } from '../shop-tenders/shop-tender.util';
 import { CancelBookingDto } from './dto/cancel-booking.dto';
 import { ConvertBookingDto } from './dto/convert-booking.dto';
 import { ShopBookingDepositTemplate } from '../journal/cpa-templates/shop-booking-deposit.template';
@@ -460,9 +462,12 @@ export class BookingsService {
       }
       const now = new Date();
       this.assertNotExpired(booking.expireDate, now);
-      this.assertReceiptMethod(dto.depositMethod);
+      // ช่องรับเงินมัดจำ: จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง — tender แรก = primary ที่ JE มัดจำลงเต็มยอด
+      const depositTenders = normalizeTenders(dto.tenders, (booking.depositAmount ?? 0).toString(), { method: dto.depositMethod });
+      const depositMethod = (depositTenders[0]?.method ?? dto.depositMethod) as DepositMethod;
+      this.assertReceiptMethod(depositMethod);
       const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(
-        booking.branchId, dto.depositMethod, tx,
+        booking.branchId, depositMethod, tx,
       );
       if (dto.depositAccountCode && dto.depositAccountCode !== cashAccountCode) {
         throw new BadRequestException(`บัญชีรับเงินไม่ตรงกับสาขาและวิธีรับเงิน บัญชีที่ใช้คือ ${cashAccountCode}`);
@@ -477,7 +482,7 @@ export class BookingsService {
         data: {
           status: 'PAID',
           depositPaidAt: now,
-          depositMethod: dto.depositMethod,
+          depositMethod,
           depositAccountCode: cashAccountCode,
           depositReceivedById: user.id,
         },
@@ -500,6 +505,9 @@ export class BookingsService {
           },
           tx,
         );
+        // สมุดเงินหน้าร้าน + JE แยกยอดของมัดจำจ่ายผสม (ผู้รับ = ผู้กดรับมัดจำ)
+        await new ShopTenderRecorder(this.prisma).recordInflow(tx, { kind: 'BOOKING_DEPOSIT', branchId: booking.branchId,
+          actorId: user.id, doc: { bookingId: id }, docNumber: booking.bookingNumber, tenders: depositTenders, occurredAt: now });
       }
 
       const updated = await tx.booking.findFirst({
@@ -601,6 +609,10 @@ export class BookingsService {
           },
           tx,
         );
+        // คืนเงินตามวิธีที่รับมา: refund ข้างบนคืนเต็มยอดเข้าบัญชี primary (depositMethod) — มัดจำจ่ายผสม
+        // ต้อง mirror JE แยกยอดด้วย ไม่งั้นบัญชี primary ติดลบเท่าส่วนของวิธีอื่น · แถว OUT = ผู้กดยกเลิก
+        await new ShopTenderRecorder(this.prisma).recordRefund(tx, { doc: { bookingId: id }, kinds: ['BOOKING_DEPOSIT'],
+          actorId: user.id, reverseSplitJe: true, descriptionPrefix: '[ยกเลิกใบจอง]' });
       }
 
       const updated = await tx.booking.findFirst({
@@ -696,11 +708,13 @@ export class BookingsService {
         );
       }
 
-      if (!isFullPrepay && !dto.paymentMethod) {
+      if (!isFullPrepay && !dto.paymentMethod && !dto.tenders?.length) {
         throw new BadRequestException('กรุณาเลือกวิธีรับยอดส่วนต่าง');
       }
       if (dto.paymentMethod) this.assertReceiptMethod(dto.paymentMethod);
-      const salePaymentMethod = isFullPrepay ? (booking.depositMethod ?? 'CASH') : dto.paymentMethod!;
+      // ช่องรับเงินของส่วนที่เหลือ (จ่ายครบแล้ว = ไม่มีบรรทัด) — tender แรก = primary ที่ JE ขายลงเต็มยอด
+      const balanceTenders = normalizeTenders(dto.tenders, totalAmount.sub(depositAmount).toString(), { method: dto.paymentMethod });
+      const salePaymentMethod = isFullPrepay ? (booking.depositMethod ?? 'CASH') : (balanceTenders[0]?.method ?? dto.paymentMethod!);
       this.assertReceiptMethod(salePaymentMethod);
 
       // C1 — inline the SalesService.createCashSale invariants the original
@@ -821,6 +835,9 @@ export class BookingsService {
           tx,
         );
       }
+      // สมุดเงินหน้าร้าน: นับเฉพาะเงินที่รับเพิ่มตอนแปลง (มัดจำมีแถวของตัวเองตั้งแต่วันรับ — ไม่นับซ้ำ)
+      await new ShopTenderRecorder(this.prisma).recordInflow(tx, { kind: 'CASH_SALE', branchId: booking.branchId,
+        actorId: user.id, doc: { saleId: sale.id }, docNumber: saleNumber, tenders: balanceTenders });
 
       // 5. Auto-create sales commission (read from CommissionRule, fallback 3%).
       const nowCommission = new Date();

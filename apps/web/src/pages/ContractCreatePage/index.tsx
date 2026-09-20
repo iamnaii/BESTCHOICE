@@ -15,6 +15,8 @@ import { StepIndicator } from './components/StepIndicator';
 import { ProductSelectStep } from './components/ProductSelectStep';
 import { CustomerSelectStep } from './components/CustomerSelectStep';
 import { PlanDetailsStep } from './components/PlanDetailsStep';
+import BundleSearch from '@/components/bundle/BundleSearch';
+import { TenderInput } from '@/components/tender/TenderInput';
 import { ContractSummaryPanel } from './components/ContractSummaryPanel';
 import { CustomerCreateModal } from './components/CustomerCreateModal';
 import { EditProductModal } from './components/EditProductModal';
@@ -178,6 +180,22 @@ export default function ContractCreatePage() {
             monthOptions={calculation.monthOptions}
           />
 
+          {/* ของแถม — วางขั้นสุดท้ายติดกับสรุปก่อนยืนยัน (ขั้นเลือกสินค้าเป็นรายการยาว ช่องจะถูกดันจนมองไม่เห็น) */}
+          <div className="my-4 max-w-3xl">
+            <BundleSearch
+              bundleSearch={data.bundleSearch}
+              setBundleSearch={data.setBundleSearch}
+              bundleProducts={data.bundleProducts}
+              excludeIds={[...data.bundleProducts.map((p) => p.id), ...(data.selectedProduct ? [data.selectedProduct.id] : [])]}
+              onAddBundle={data.addBundle}
+              onRemoveBundle={data.removeBundle}
+              branchId={data.selectedProduct?.branchId}
+              disabled={data.createMutation.isPending}
+              hint="จองไว้ตอนสร้างสัญญา · ตัดสต๊อกเมื่อเปิดใช้สัญญา (ราคา 0 บาท)"
+              searchLabel="ค้นหาของแถมเพิ่ม (เฉพาะอุปกรณ์เสริมของสาขานี้) — ไม่มีของแถมก็ข้ามช่องนี้ได้"
+            />
+          </div>
+
           <div className="my-4 max-w-xl space-y-3" aria-live="polite">
             {quoteQuery.isFetching && <p role="status">กำลังคำนวณยอดและตารางผ่อนล่าสุด...</p>}
             {quoteQuery.isError && <div role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm">
@@ -189,15 +207,7 @@ export default function ContractCreatePage() {
             </div>}
             {data.downPayment > 0 && <fieldset disabled={data.createMutation.isPending} className="space-y-3 rounded-lg border border-border p-4">
               <legend className="px-1 font-medium">รับเงินดาวน์เข้าหน้าร้าน (SHOP)</legend>
-              <label className="block text-sm">วิธีรับเงินดาวน์
-                <select className="mt-1 min-h-11 w-full rounded-lg border border-input bg-background px-3" value={data.downPaymentMethod}
-                  onChange={event => data.setDownPaymentMethod(event.target.value as typeof data.downPaymentMethod)}>
-                  <option value="CASH">เงินสด</option><option value="BANK_TRANSFER">โอนธนาคาร</option><option value="QR_EWALLET">QR / e-Wallet</option>
-                </select>
-              </label>
-              <label className="block text-sm">เลขอ้างอิงการรับเงิน (ถ้ามี)
-                <input maxLength={128} className="mt-1 min-h-11 w-full rounded-lg border border-input bg-background px-3" value={data.downPaymentReference} onChange={event => data.setDownPaymentReference(event.target.value)} />
-              </label>
+              <TenderInput due={data.downPayment} value={data.tenderRows} onChange={data.setTenderRows} dueLabel="เงินดาวน์ที่ต้องรับ" disabled={data.createMutation.isPending} />
               <p className="text-sm text-muted-foreground">ยืนยันเมื่อได้รับเงิน {data.downPayment.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาทแล้ว การสร้างสัญญาจะบันทึกรับเงินดาวน์ทันที</p>
             </fieldset>}
             {data.selectedProduct?.wasPreviouslyDamaged && (data.canSellPreviouslyDamaged ? <label className="flex gap-3 text-sm">
@@ -231,6 +241,7 @@ export default function ContractCreatePage() {
               monthlyPayment={calculation.monthlyPayment}
               interestRate={calculation.interestRate}
               interestConfig={data.interestConfig}
+              bundleProducts={data.bundleProducts}
             />
           )}
         </>
@@ -261,7 +272,7 @@ export default function ContractCreatePage() {
             variant="primary"
             size="lg"
             onClick={handleSubmit}
-            disabled={!quoteReady || quoteChanged || (!!data.selectedProduct?.wasPreviouslyDamaged && (!data.canSellPreviouslyDamaged || !data.previouslyDamagedAcknowledged)) || data.createMutation.isPending || !!creditIssue || !data.tradeInCreditReady || calculation.totalDownPayment >= calculation.sellingPrice}
+            disabled={!quoteReady || quoteChanged || (!!data.selectedProduct?.wasPreviouslyDamaged && (!data.canSellPreviouslyDamaged || !data.previouslyDamagedAcknowledged)) || data.createMutation.isPending || !!creditIssue || !data.tradeInCreditReady || !data.tenderStatus.ready || calculation.totalDownPayment >= calculation.sellingPrice}
           >
             <Send className="size-4" />
             {data.createMutation.isPending ? 'กำลังสร้าง...' : data.downPayment > 0 ? 'สร้างสัญญาและบันทึกรับดาวน์' : 'สร้างสัญญา'}

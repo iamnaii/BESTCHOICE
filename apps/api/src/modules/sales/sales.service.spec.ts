@@ -226,6 +226,15 @@ describe('SalesService', () => {
       externalFinanceCompany: {
         upsert: jest.fn().mockResolvedValue({ id: 'mock-co' }),
       },
+      // สมุดเงินหน้าร้าน (shop_tenders, 2026-09-20): ShopTenderRecorder ถูกสร้าง inline ใน SaleWriterService และเขียนผ่าน
+      // tx ตัวเดียวกันในทุกเส้นทาง create*Sale. recorder ใช้ ShopAccountResolver ตัวจริงของมันเอง (ไม่ใช่ mock ที่ inject
+      // ให้ service) ⇒ tender เงินสดอ่าน branch.shopCashAccountCode จาก tx; journalEntry.findFirst ใช้เฉพาะบิลจ่ายผสม.
+      shopTender: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      branch: { findUnique: jest.fn().mockResolvedValue({ shopCashAccountCode: 'S11-1102' }) },
+      journalEntry: { findFirst: jest.fn().mockResolvedValue(null) },
       user: {
         findMany: jest.fn().mockResolvedValue([{ id: 'user-1', name: 'พนักงาน 1' }]),
       },
@@ -720,6 +729,8 @@ describe('SalesService', () => {
       branchId: 'branch-1',
       sellingPrice: 25000,
       paymentMethod: 'BANK_TRANSFER',
+      // โอน/QR บังคับเลขอ้างอิงจากสลิป (กติกาช่องรับเงิน 2026-09-20) — caller แบบเดิมส่งผ่าน downPaymentReference
+      downPaymentReference: 'TEST-REF-0001',
       financeCompany: 'GFIN',
       financeAmount: 20000,
       downPayment: 5000,

@@ -117,6 +117,12 @@ describe('SaleVoidService.voidSale', () => {
       accountingPeriod: { findUnique: jest.fn().mockResolvedValue(null) },
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
+      // สมุดเงินหน้าร้าน (shop_tenders): หลัง sweep JE, ShopTenderRecorder.recordRefund อ่านแถว IN ของใบขาย
+      // default = ใบขายก่อนมีสมุดนี้ (ไม่มีแถว IN) ⇒ ไม่เขียนแถว OUT
+      shopTender: {
+        findMany: jest.fn().mockResolvedValue([]),
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
     };
 
     prisma = {
@@ -594,6 +600,32 @@ describe('SaleVoidService.voidSale', () => {
     expect(res.saleNumber).toBe('SA-0001');
     expect(res.restoredProductIds).toEqual(['p1', 'p2']);
     expect(res.reversalEntryNumbers).toEqual(['JE-202608-0099']);
+  });
+
+  it('สมุดเงินหน้าร้าน: ใบขายที่มีแถวรับเงิน → เขียนแถว OUT คู่กัน (ผู้จ่าย = ผู้กดยกเลิก) โดยไม่กลับรายการ JE แยกยอดซ้ำ', async () => {
+    tx.shopTender.findMany.mockResolvedValue([
+      {
+        id: 't-in-1', kind: 'CASH_SALE', branchId: 'branch-1', method: 'BANK_TRANSFER', amount: new Decimal(12000),
+        reference: 'TEST-REF-0001', seq: 1, seqTotal: 1, saleId: 's1', contractId: null, bookingId: null,
+      },
+    ]);
+    await service.voidSale('s1', OWNER, 'คีย์ผิดรุ่น');
+
+    expect(tx.shopTender.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ direction: 'IN', saleId: 's1', kind: { in: ['CASH_SALE', 'EXTERNAL_FINANCE_DOWN'] } }),
+      }),
+    );
+    // tx.journalEntry ของไฟล์นี้ไม่มี findFirst ⇒ ถ้า recordRefund ไปหา JE แยกยอดเอง (reverseSplitJe: true) เทสนี้จะล้ม —
+    // ยกเลิกใบขายต้องปล่อยให้ sweep `metadata.saleId` mirror JE แยกยอดทางเดียว
+    expect(tx.shopTender.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          direction: 'OUT', kind: 'SALE_VOID_REFUND', branchId: 'branch-1', method: 'BANK_TRANSFER',
+          reference: 'TEST-REF-0001', actorId: 'u1', saleId: 's1', reversesTenderId: 't-in-1',
+        }),
+      ],
+    });
   });
 
   it('สำเร็จ: audit เก็บเลขที่ใบกลับรายการ + รหัสค่าคอมที่เรียกคืน', async () => {

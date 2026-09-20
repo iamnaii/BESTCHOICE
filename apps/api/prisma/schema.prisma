@@ -618,6 +618,9 @@ model Branch {
   // P2-SP4 — การจอง / มัดจำ
   bookings Booking[] @relation("BranchBookings")
 
+  // สมุดเงินเข้า/ออกหน้าร้าน (shop tenders)
+  shopTenders ShopTender[]
+
   @@index([companyId])
   @@map("branches")
 }
@@ -844,6 +847,9 @@ model User {
   // การเดินทางของลูกค้า — พนักงานที่ทำให้เกิดช่วงเวลา/บันทึกมือ (null = ระบบ/ลูกค้า/บอท)
   journeyEntriesActed CustomerJourneyEntry[] @relation("JourneyEntryActor")
 
+  // สมุดเงินเข้า/ออกหน้าร้าน — ผู้รับ/ผู้จ่ายเงิน
+  shopTendersActed ShopTender[] @relation("ShopTenderActor")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -1068,6 +1074,10 @@ model Contract {
   contractNumber           String         @unique @map("contract_number")
   customerId               String         @map("customer_id")
   productId                String         @map("product_id")
+  /// ของแถม (อุปกรณ์เสริมเท่านั้น) ที่ให้ไปกับสัญญา — จองตอนสร้าง ตัดสต๊อกตอนเปิดใช้ คืนเมื่อลบร่าง/ยกเลิก
+  /// (`contract-bundle.util.ts`). ตอนเปิดใช้ถูกคัดลอกลง `Sale.bundleProductIds` ของใบขายอัตโนมัติ
+  /// ซึ่งเป็นตัวที่ขาต้นทุนของ `ShopInventoryTransferTemplate` อ่าน
+  bundleProductIds         String[]       @default([]) @map("bundle_product_ids")
   branchId                 String         @map("branch_id")
   salespersonId            String         @map("salesperson_id")
   planType                 PlanType       @map("plan_type")
@@ -1261,6 +1271,9 @@ model Contract {
 
   // C2 — Inter-co settlement batch items (รอบจ่ายให้หน้าร้าน, 2026-07-30)
   interCoSettlementItems InterCoSettlementItem[]
+
+  // สมุดเงินเข้า/ออกหน้าร้าน — เงินดาวน์ที่รับ/คืน
+  shopTenders ShopTender[]
 
   @@index([customerId])
   @@index([branchId])
@@ -2637,6 +2650,9 @@ model Sale {
   // P2-SP4 — การจอง (origin) — set when sale was created via Booking conversion
   booking Booking? @relation("SaleBooking")
   costSnapshot SaleCostSnapshot?
+
+  // สมุดเงินเข้า/ออกหน้าร้าน — เงินที่รับ/คืนของใบขาย
+  shopTenders ShopTender[]
 
   @@index([saleType])
   @@index([branchId])
@@ -4980,6 +4996,9 @@ model TradeIn {
   sellerContactId String?  @map("seller_contact_id")
   sellerContact   Contact? @relation("TradeInSeller", fields: [sellerContactId], references: [id])
 
+  // สมุดเงินเข้า/ออกหน้าร้าน — เงินที่จ่ายรับซื้อ
+  shopTenders ShopTender[]
+
   @@index([customerId])
   @@index([status])
   @@index([createdAt])
@@ -7226,6 +7245,67 @@ model OtherIncomeTemplate {
 /// codes. The cashier wizard reads this to filter the cash-account selector
 /// based on the picked method, and to auto-pre-select the default account.
 /// Edited via the OWNER+FINANCE_MANAGER settings page at /settings/payment-methods.
+enum ShopTenderDirection {
+  IN
+  OUT
+}
+
+enum ShopTenderKind {
+  CASH_SALE
+  EXTERNAL_FINANCE_DOWN
+  CONTRACT_DOWN
+  BOOKING_DEPOSIT
+  TRADE_IN_PAYOUT
+  SALE_VOID_REFUND
+  CONTRACT_DOWN_REFUND
+  BOOKING_DEPOSIT_REFUND
+}
+
+/// สมุดเงินเข้า/ออกของหน้าร้าน (สเปค 2026-09-20-shop-tenders-daily-cash) — หนึ่งแถว = เงินหนึ่งก้อน
+/// ที่รับหรือจ่ายจริงด้วยวิธีเดียว บิลที่ลูกค้าจ่ายผสมมีหลายแถว (seq 1..seqTotal).
+/// แถวไม่ถูกแก้และไม่ถูกลบ: การคืนเงิน = แถว OUT ใหม่ที่ชี้ reversesTenderId.
+/// actorId = ผู้ใช้ที่ล็อกอินและกดทำรายการ (ไม่ใช่ salespersonId ที่เลือกได้) — หน้าสรุปเงินรายวันอ่านจากตารางนี้.
+model ShopTender {
+  id         String              @id @default(uuid())
+  direction  ShopTenderDirection
+  kind       ShopTenderKind
+  branchId   String              @map("branch_id")
+  method     PaymentMethod
+  amount     Decimal             @db.Decimal(12, 2)
+  reference  String?
+  actorId    String              @map("actor_id")
+  occurredAt DateTime            @default(now()) @map("occurred_at")
+  seq        Int                 @default(1)
+  seqTotal   Int                 @default(1) @map("seq_total")
+
+  saleId           String? @map("sale_id")
+  contractId       String? @map("contract_id")
+  bookingId        String? @map("booking_id")
+  tradeInId        String? @map("trade_in_id")
+  reversesTenderId String? @map("reverses_tender_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  branch   Branch    @relation(fields: [branchId], references: [id])
+  actor    User      @relation("ShopTenderActor", fields: [actorId], references: [id])
+  sale     Sale?     @relation(fields: [saleId], references: [id])
+  contract Contract? @relation(fields: [contractId], references: [id])
+  booking  Booking?  @relation(fields: [bookingId], references: [id])
+  tradeIn  TradeIn?  @relation(fields: [tradeInId], references: [id])
+
+  reverses   ShopTender?  @relation("ShopTenderReversal", fields: [reversesTenderId], references: [id])
+  reversedBy ShopTender[] @relation("ShopTenderReversal")
+
+  @@index([branchId, occurredAt])
+  @@index([actorId, occurredAt])
+  @@index([reference])
+  @@index([saleId])
+  @@index([contractId])
+  @@index([bookingId])
+  @@index([tradeInId])
+  @@map("shop_tenders")
+}
+
 model PaymentMethodConfig {
   id          String  @id @default(uuid())
   /// 'CASH' | 'TRANSFER' | 'QR' (string-typed; PaymentMethod prisma enum has more
@@ -7431,6 +7511,9 @@ model Booking {
   canceledBy      User?         @relation("BookingCanceledBy", fields: [canceledById], references: [id])
   convertedToSale Sale?         @relation("SaleBooking", fields: [convertedToSaleId], references: [id])
   items           BookingItem[]
+
+  // สมุดเงินเข้า/ออกหน้าร้าน — มัดจำที่รับ/คืน
+  shopTenders ShopTender[]
 
   @@index([customerId, deletedAt])
   @@index([branchId, status, deletedAt])

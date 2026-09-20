@@ -1,7 +1,7 @@
 import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
 import { contractReturnUrl } from '@/lib/contract-return';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import Decimal from 'decimal.js';
 import type { AvailableTradeInCredit } from '@installment/shared';
 import TradeInCreditPicker from '@/components/trade-in/TradeInCreditPicker';
@@ -15,14 +15,14 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { saleTypeConfig, type SaleType } from '@/lib/constants';
 import PageHeader from '@/components/ui/PageHeader';
-import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { posSaleSchema, type PosSaleFormData } from '@/lib/schemas';
-import type { Product, Customer, PosConfig, TopProduct } from './types';
+import type { Product, Customer, TopProduct } from './types';
 import { CASH_LABEL, INSTALLMENT_LABEL, getPositiveDisplayPrices, normalizePositive } from '@/utils/getDisplayPrices';
 
 import ProductSearch from './components/ProductSearch';
-import BundleSearch from './components/BundleSearch';
+import BundleSearch from '@/components/bundle/BundleSearch';
+import { useTenders } from '@/components/tender/TenderInput';
 import CustomerSearch from './components/CustomerSearch';
 import SaleDetailsForm from './components/SaleDetailsForm';
 import SaleSummary from './components/SaleSummary';
@@ -73,9 +73,6 @@ export default function POSPage() {
   // Price selection UI state (not submitted directly — maps to sellingPrice via form)
   const [selectedPriceId, setSelectedPriceId] = useState('');
 
-  // Installment fields
-  const planType = 'STORE_DIRECT';
-
   // Sale form — replaces individual useState for sale detail fields
   const saleForm = useForm<PosSaleFormData>({
     resolver: standardSchemaResolver(posSaleSchema),
@@ -88,16 +85,19 @@ export default function POSPage() {
       downPayment: 0,
       financeCompany: '',
       contractNumber: '',
-      totalMonths: '6',
       notes: '',
     },
     mode: 'onChange',
   });
 
+  // ช่องรับเงินถูกประกาศด้านล่าง (ต้องรู้ยอดที่ต้องรับก่อน) — effect ข้างล่างล้างมันผ่าน ref นี้
+  const tendersResetRef = useRef<() => void>(() => {});
+
   // Convenient watched values for derived calculations and summary display
   useEffect(() => {
     setTradeInCreditId(''); setTradeInCredit(null);
     saleForm.setValue('amountReceived', undefined);
+    tendersResetRef.current();
   }, [selectedCustomer?.id, selectedProduct?.id, saleType]);
 
   const sellingPrice = String(saleForm.watch('sellingPrice') || 0);
@@ -106,17 +106,6 @@ export default function POSPage() {
   const downPayment = String(saleForm.watch('downPayment') || 0);
   const contractNumber = saleForm.watch('contractNumber') ?? '';
   const financeCompany = saleForm.watch('financeCompany') ?? '';
-
-  // POS config (interest rate, down payment %, months range)
-  const posConfigQuery = useQuery<PosConfig>({
-    queryKey: ['pos-config'],
-    queryFn: async () => {
-      const { data } = await api.get('/sales/config');
-      return data;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-  const posConfig = posConfigQuery.data;
 
   // Top selling products for quick picks
   const { data: topProducts = [] } = useQuery<TopProduct[]>({
@@ -136,6 +125,11 @@ export default function POSPage() {
   }, [sellingPrice, discount, tradeInCredit]);
   const cashDue = new Decimal(netAmount).minus(tradeInCredit?.baseAmount ?? 0).toNumber();
   const creditReady = !tradeInCreditId || (tradeInCredit?.id === tradeInCreditId && cashDue >= 0);
+
+  // ช่องรับเงิน: ขายสด = ยอดชำระเพิ่มหลังหักเครื่องเทิร์น · ไฟแนนซ์นอก = เงินดาวน์ (จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง)
+  const tenderDue = saleType === 'CASH' ? Math.max(0, cashDue) : parseFloat(downPayment) || 0;
+  const tenders = useTenders(tenderDue);
+  tendersResetRef.current = tenders.reset;
 
   const changeAmount = useMemo(() => {
     const received = parseFloat(amountReceived) || 0;
@@ -211,30 +205,19 @@ export default function POSPage() {
         bundleProductIds: bundleProducts.map((p) => p.id),
       };
 
+      if (!tenders.status.ready) throw new Error(`ช่องรับเงินยังไม่ครบ — ${tenders.status.label}`);
       if (saleType === 'CASH') {
-        payload.paymentMethod = formValues.paymentMethod;
-        payload.amountReceived = formValues.amountReceived ?? cashDue;
-      } else if (saleType === 'INSTALLMENT') {
-        const down = formValues.downPayment ?? 0;
-        const minDownPct = posConfig?.minDownPaymentPct ?? 0.15;
-        const minDown = netAmount * minDownPct;
-        if (down < minDown) {
-          throw new Error(
-            `เงินดาวน์ขั้นต่ำ ${(minDownPct * 100).toFixed(0)}% = ${minDown.toLocaleString()} บาท`,
-          );
-        }
-        payload.planType = planType;
-        payload.downPayment = down;
-        payload.totalMonths = parseInt(formValues.totalMonths ?? '6');
-        payload.paymentMethod = formValues.paymentMethod;
-        payload.contractNumber = formValues.contractNumber || undefined;
+        payload.tenders = tenders.payload;
+        payload.paymentMethod = tenders.payload[0]?.method ?? formValues.paymentMethod;
+        payload.amountReceived = cashDue;
       } else if (saleType === 'EXTERNAL_FINANCE') {
         const down = formValues.downPayment ?? 0;
         payload.financeCompany = (formValues.financeCompany ?? '').trim();
         payload.contractNumber = formValues.contractNumber || undefined;
         payload.downPayment = down;
         payload.financeAmount = netAmount - down;
-        payload.paymentMethod = formValues.paymentMethod;
+        payload.tenders = tenders.payload;
+        payload.paymentMethod = tenders.payload[0]?.method ?? formValues.paymentMethod;
       }
 
       const { data } = await api.post('/sales', payload);
@@ -269,7 +252,6 @@ export default function POSPage() {
       downPayment: 0,
       financeCompany: '',
       contractNumber: '',
-      totalMonths: '6',
       notes: '',
     });
   };
@@ -278,13 +260,6 @@ export default function POSPage() {
     <div>
       <PageHeader title="POS - ขายสินค้า" subtitle="ระบบขายหน้าร้าน" />
 
-      <QueryBoundary
-        isLoading={posConfigQuery.isLoading}
-        isError={posConfigQuery.isError}
-        error={posConfigQuery.error}
-        onRetry={posConfigQuery.refetch}
-        errorTitle="ไม่สามารถโหลดการตั้งค่า POS ได้"
-      >
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-7.5">
         {/* Left Column - Main Form */}
         <div className="lg:col-span-2 flex flex-col gap-5">
@@ -311,33 +286,34 @@ export default function POSPage() {
                     }`}
                   >
                     <div
-                      className={`text-sm font-semibold ${saleType === type ? config.color : 'text-muted-foreground'}`}
+                      className={`text-sm font-semibold leading-snug ${saleType === type ? config.color : 'text-foreground'}`}
                     >
                       {config.label}
                     </div>
+                    {type === 'EXTERNAL_FINANCE' && (
+                      <div className="mt-0.5 text-xs text-muted-foreground leading-snug">GFIN และบริษัทไฟแนนซ์ภายนอก</div>
+                    )}
                   </button>
                 ))}
               </div>
-              <div className="mt-4 p-3 rounded-xl bg-primary/5 border border-primary/10 text-center">
+              {/* ผ่อนในเครือไม่บันทึกที่ POS — เปิดใช้สัญญาแล้วระบบตัดสต๊อก + ออกใบขาย INSTALLMENT ให้เอง
+                  (ContractWorkflowService.activate) บอกตรง ๆ กันพนักงานกลับมาบันทึกซ้ำ */}
+              <div className="mt-4 p-3.5 rounded-xl bg-primary/5 border border-primary/15 flex flex-wrap items-center gap-x-4 gap-y-3">
+                <div className="flex-1 min-w-[16rem]">
+                  <div className="text-sm font-semibold text-primary leading-snug">ผ่อนกับ BESTCHOICE ทำที่หน้าสัญญา</div>
+                  <div className="text-xs text-muted-foreground leading-snug mt-0.5">
+                    ระบบตัดสต๊อกและออกใบขายให้เองเมื่อเปิดใช้สัญญา ไม่ต้องบันทึกที่หน้านี้ซ้ำ
+                  </div>
+                </div>
                 <button
+                  type="button"
                   onClick={() => setHandoffOpen(true)}
-                  className="text-xs text-primary font-semibold hover:underline flex items-center gap-1 justify-center"
+                  className="shrink-0 min-h-11 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 flex items-center gap-1.5"
                 >
-                  ต้องการผ่อนกับ BESTCHOICE?
-                  <svg
-                    className="size-3"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={2.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="m9 18 6-6-6-6"
-                    />
-                  </svg>
                   ไปสร้างสัญญาผ่อนชำระ
+                  <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m9 18 6-6-6-6" />
+                  </svg>
                 </button>
               </div>
             </CardContent>
@@ -388,6 +364,9 @@ export default function POSPage() {
             transferAmount={transferAmount}
             sellingPrice={sellingPrice}
             discount={discount}
+            tenderDue={tenderDue}
+            tenderRows={tenders.rows}
+            onTenderChange={tenders.setRows}
           />
         </div>
 
@@ -410,26 +389,28 @@ export default function POSPage() {
             financeCompany={financeCompany}
             contractNumber={contractNumber}
             isSubmitting={createSaleMutation.isPending}
-            canSubmit={!!selectedProduct && !!selectedCustomer && Number(sellingPrice) > 0 && creditReady}
+            canSubmit={!!selectedProduct && !!selectedCustomer && Number(sellingPrice) > 0 && creditReady && tenders.status.ready}
             onSubmit={() => createSaleMutation.mutate()}
             onReset={resetForm}
           />
         </div>
       </div>
-      </QueryBoundary>
       <ConfirmDialog open={handoffOpen} onOpenChange={setHandoffOpen} title="ไปสร้างสัญญาผ่อนชำระ"
-        description="ใช้ลูกค้าและเครื่องที่เลือก แล้วคำนวณเงื่อนไขผ่อนในหน้าสัญญาอีกครั้ง"
+        description="ใช้ลูกค้า เครื่อง และของแถมที่เลือก แล้วคำนวณเงื่อนไขผ่อนในหน้าสัญญาอีกครั้ง"
         confirmLabel="ไปสร้างสัญญาด้วยข้อมูลนี้" cancelLabel="กลับมาแก้ไข"
         onConfirm={() => {
           const params = new URLSearchParams();
           if (selectedCustomer) params.set('customerId', selectedCustomer.id);
           if (selectedProduct) params.set('productId', selectedProduct.id);
+          // ของแถมไปด้วย — หน้าสัญญาจองให้ตอนสร้าง (ราคา/ส่วนลด/ดาวน์ ยังต้องระบุใหม่ที่นั่น)
+          if (bundleProducts.length) params.set('bundleProductIds', bundleProducts.map((p) => p.id).join(','));
           navigate(contractReturnUrl(`/contracts/create?${params}`)!);
         }}>
         <div className="text-sm space-y-3">
           <p>ลูกค้า: {selectedCustomer?.name ?? 'ยังไม่ได้เลือก'}<br />เครื่อง: {selectedProduct?.name ?? 'ยังไม่ได้เลือก'}</p>
-          <p>ราคาใน POS {Number(sellingPrice).toLocaleString()} บาท · ส่วนลด {Number(discount).toLocaleString()} บาท · ของแถม {bundleProducts.length} รายการ</p>
-          <p className="text-muted-foreground">ราคา ส่วนลด ของแถม เครดิตเทิร์น วิธีรับเงิน และดาวน์ใน POS จะไม่ถูกย้าย กรุณาตรวจและระบุเงื่อนไขใหม่ในหน้าสัญญา การส่งต่อนี้ยังไม่บันทึกรับเงิน</p>
+          <p>ราคาใน POS {Number(sellingPrice).toLocaleString()} บาท · ส่วนลด {Number(discount).toLocaleString()} บาท</p>
+          {bundleProducts.length > 0 && <p>ของแถม {bundleProducts.length} รายการจะถูกพาไปหน้าสัญญาด้วย</p>}
+          <p className="text-muted-foreground">ราคา ส่วนลด เครดิตเทิร์น วิธีรับเงิน และดาวน์ใน POS จะไม่ถูกย้าย กรุณาตรวจและระบุเงื่อนไขใหม่ในหน้าสัญญา การส่งต่อนี้ยังไม่บันทึกรับเงิน</p>
         </div>
       </ConfirmDialog>
     </div>

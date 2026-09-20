@@ -137,7 +137,11 @@ const OWNER = (): VoidSaleActor => ({ id: adminId, role: 'OWNER', branchId });
 // ---------------------------------------------------------------------------
 // Seed helpers
 // ---------------------------------------------------------------------------
-async function seedProduct(tag: string, opts: { costPrice?: string; cashPrice?: string } = {}) {
+// ของแถมต้องเป็นหมวดอุปกรณ์เสริม (markBundleProductsSold, คำตัดสินเจ้าของ 2026-09-20) — เคสที่มีของแถมส่ง category เอง
+async function seedProduct(
+  tag: string,
+  opts: { costPrice?: string; cashPrice?: string; category?: 'PHONE_NEW' | 'ACCESSORY' } = {},
+) {
   const product = await prisma.product.create({
     data: {
       name: `${PREFIX}Phone ${tag}`,
@@ -145,7 +149,7 @@ async function seedProduct(tag: string, opts: { costPrice?: string; cashPrice?: 
       model: `${PREFIX}Model-${tag}`,
       storage: '128GB',
       imeiSerial: `${PREFIX}${RUN}-${tag}`,
-      category: 'PHONE_NEW',
+      category: opts.category ?? 'PHONE_NEW',
       costPrice: dec(opts.costPrice ?? '6000.00'),
       ...(opts.cashPrice ? { cashPrice: dec(opts.cashPrice) } : {}),
       branchId,
@@ -200,6 +204,9 @@ async function cashSale(opts: {
       branchId,
       sellingPrice: opts.sellingPrice,
       paymentMethod: 'BANK_TRANSFER',
+      // กติกาช่องรับเงิน (2026-09-20): โอน/QR บังคับเลขอ้างอิงจากสลิป — caller แบบเดิมส่งผ่าน downPaymentReference.
+      // ไม่ซ้ำกันต่อใบขาย: รายงานสรุปเงินหน้าร้านติดธง "เลขอ้างอิงซ้ำ" ข้ามเอกสารแบบไม่จำกัดวัน
+      downPaymentReference: `${PREFIX}REF-${RUN}-${opts.productId.slice(0, 8)}`,
       amountReceived: opts.sellingPrice,
       bundleProductIds: opts.bundleProductIds ?? [],
     } as never,
@@ -225,6 +232,9 @@ async function externalFinanceSale(opts: {
       branchId,
       sellingPrice: opts.sellingPrice,
       paymentMethod: 'BANK_TRANSFER',
+      // ดาวน์ 0 = ไม่มียอดที่ต้องรับ ⇒ ไม่มีแถวรับเงินและเลขอ้างอิงนี้ไม่ถูกใช้ — ใส่ไว้ให้ helper ยังผ่านกติกา
+      // "โอนต้องมีเลขอ้างอิง" ถ้าวันหน้ามีเคสที่ส่งดาวน์ > 0
+      downPaymentReference: `${PREFIX}REF-${RUN}-${opts.productId.slice(0, 8)}`,
       financeCompany: FINCO,
       financeAmount: opts.sellingPrice,
       downPayment: 0,
@@ -419,6 +429,12 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
     await prisma.financeReceivable.deleteMany({ where: { saleId: { in: createdSaleIds } } });
     // sale_cost_snapshots FK-references sales (ON DELETE RESTRICT) — clear it before the sales.
     await prisma.saleCostSnapshot.deleteMany({ where: { saleId: { in: createdSaleIds } } });
+    // shop_tenders (สมุดเงินหน้าร้าน 2026-09-20): ขายสด/ยกเลิกใบขายเขียนแถว IN/OUT ที่อ้าง users + branches แบบ
+    // ON DELETE RESTRICT (ส่วน sale_id เป็น SET NULL) ⇒ ต้องลบ "ก่อน" ใบขาย ขณะยังระบุด้วย saleId ได้ — ไม่งั้นแถวกำพร้า
+    // จะบล็อกการลบ salesperson ต่อรันด้านล่าง. สาขา __voidtest_*__ เป็นของสเปคนี้คนเดียว จึงกวาดซากรันที่ crash ด้วย
+    await prisma.shopTender.deleteMany({
+      where: { OR: [{ saleId: { in: createdSaleIds } }, { branchId: { in: [branchId, branchBId].filter(Boolean) } }] },
+    });
     await prisma.sale.deleteMany({ where: { id: { in: createdSaleIds } } });
     await prisma.productPrice.deleteMany({ where: { productId: { in: createdProductIds } } });
     await prisma.productReservation.deleteMany({
@@ -485,7 +501,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
     'F1 regression: ขายสด+ของแถมที่มีต้นทุน → สร้างสำเร็จ, JE ต่อชิ้น reference ไม่ซ้ำ, void กวาดครบทุกใบสุทธิศูนย์',
     async () => {
       const main = await seedProduct('Z1', { costPrice: '6000.00' });
-      const bundle = await seedProduct('Z2', { costPrice: '500.00' });
+      const bundle = await seedProduct('Z2', { costPrice: '500.00', category: 'ACCESSORY' });
       const customer = await seedCustomer('Z1');
 
       const sale = await cashSale({
@@ -540,7 +556,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
     async () => {
       const s1 = await seedSalesperson('A0');
       const main = await seedProduct('A1', { costPrice: '6000.00', cashPrice: '9900.00' });
-      const bundle = await seedProduct('A2', { costPrice: '500.00' });
+      const bundle = await seedProduct('A2', { costPrice: '500.00', category: 'ACCESSORY' });
       const customer = await seedCustomer('A1');
       const buyer2 = await seedCustomer('A2');
 
@@ -637,7 +653,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
     'เคส 2: ขายผ่านไฟแนนซ์ภายนอก (+ของแถม) → ยกเลิก → JE ถูกกลับรายการ, receivable ถูกยกเลิก, ไม่แตะค่าคอม',
     async () => {
       const main = await seedProduct('B1');
-      const bundle = await seedProduct('B2', { costPrice: '400.00' });
+      const bundle = await seedProduct('B2', { costPrice: '400.00', category: 'ACCESSORY' });
       const customer = await seedCustomer('B1');
 
       const sale = await externalFinanceSale({

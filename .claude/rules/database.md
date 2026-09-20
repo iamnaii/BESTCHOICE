@@ -341,6 +341,22 @@ PHOTO_PENDING → (ถ่ายครบ 6 มุม) IN_STOCK → SOLD_CASH` + 
 อยู่ที่ `product-guard.integration.spec.ts`. ทั้งสองไฟล์อยู่ใต้
 `src/modules/contracts/__tests__/` ซึ่ง CI glob ครอบแล้ว (เพิ่มไว้ตั้งแต่ Phase 3).
 
+### ของแถม — อุปกรณ์เสริมเท่านั้น + เดินตามเครื่องหลักในสัญญาผ่อน (คำตัดสินเจ้าของ 2026-09-20)
+
+Spec: `docs/superpowers/specs/2026-09-20-installment-contract-freebies-design.md`
+
+- **ของแถมเลือกได้เฉพาะหมวด `ACCESSORY`** ทั้ง POS และสัญญาผ่อน — แหล่งเดียวของกติกา+ข้อความ:
+  `sales/services/bundle-policy.ts` `assertBundleIsAccessory` (เดิม POS รับสินค้าพร้อมขายอะไรก็ได้ ⇒ แถมมือถือ
+  ทั้งเครื่องราคา 0 บาทได้). หน้าจอกรองด้วย `category=ACCESSORY` (`components/bundle/BundleSearch.tsx`)
+- **สัญญาผ่อน**: `Contract.bundleProductIds` — วงจรอยู่ใน `contracts/services/contract-bundle.util.ts` ไฟล์เดียว:
+  สร้างสัญญา `IN_STOCK → RESERVED` · แก้ไข (`PATCH /contracts/:id/bundles`, DRAFT เท่านั้น) · ลบร่าง `→ IN_STOCK` ·
+  เปิดใช้ `RESERVED → SOLD_CASH` + คัดลอกลง `Sale.bundleProductIds` (ตัวที่ขาต้นทุนของ `ShopInventoryTransferTemplate`
+  อ่าน) · ยกเลิกสัญญา `SOLD_CASH → IN_STOCK`. ยึดเครื่อง/เปลี่ยนเครื่องไม่แตะของแถม
+- ของแถมที่ `RESERVED` ติดด่านชั้น 1 ของ `product-hold.util` (ลบ/แก้ IMEI ไม่ได้) เหมือนเครื่องหลัก — แต่ **ชั้น 2
+  มองไม่เห็นมัน** (สัญญาอ้างเครื่องหลักผ่าน `productId` ส่วนของแถมอยู่ในอาร์เรย์) ⇒ ของแถมที่สถานะเพี้ยนเป็น
+  `IN_STOCK` ทั้งที่สัญญายังถืออยู่จะหลุดด่าน. ยอมรับได้วันนี้: `sellContractBundles` ตรวจ `count` ตอนเปิดใช้และ
+  ล้มทั้ง tx พร้อมชี้ปุ่ม "แก้ไข" ที่การ์ดของแถม
+
 ### spec §7 ต่างจากความจริงตรงไหน (อ่านก่อนเชื่อสเปค)
 
 | สเปคเขียนว่า | ความจริงในโค้ด |

@@ -1,9 +1,12 @@
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 import { ContractQuoteService, contractQuotePayments } from '../../contracts/services/contract-quote.service';
 import { assertCustomerContractPolicy, customerContractSnapshot, contractDownTender } from '../../contracts/services/contract-create-policy';
+import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
+import { firstTransferReference, normalizeTenders } from '../../shop-tenders/shop-tender.util';
 import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
 import { assertSameTestSide } from '../../../utils/test-data-markers';
 import { assertSaleProductEligible, type SaleProductActor } from './sale-product-policy';
+import { assertBundleIsAccessory } from './bundle-policy';
 import { claimCreditApproval } from '../../credit-check/services/credit-approval';
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { lockCreditCustomer } from '../../credit-check/services/room-credit-history';
@@ -156,7 +159,7 @@ export class SaleWriterService {
     // Verify all bundle products are IN_STOCK
     const products = await tx.product.findMany({
       where: { id: { in: bundleProductIds }, deletedAt: null },
-      select: { id: true, status: true, name: true, branchId: true, deletedAt: true, wasPreviouslyDamaged: true },
+      select: { id: true, status: true, name: true, branchId: true, deletedAt: true, wasPreviouslyDamaged: true, category: true },
     });
     for (const p of products) {
       assertSaleProductEligible(p, branchId, actor, acknowledged);
@@ -164,6 +167,7 @@ export class SaleWriterService {
     if (products.length !== bundleProductIds.length) {
       throw new BadRequestException('ไม่พบสินค้าของแถมบางรายการ');
     }
+    assertBundleIsAccessory(products);
     // Update all bundle products to SOLD_CASH
     await tx.product.updateMany({
       where: { id: { in: bundleProductIds } },
@@ -190,6 +194,9 @@ export class SaleWriterService {
       if (credit && !credit.net.eq(netAmount)) throw new BadRequestException('ราคาหลังโบนัสเทิร์นเปลี่ยนแล้ว กรุณาตรวจยอดอีกครั้ง');
       const cashDue = new Decimal(netAmount).minus(credit?.base ?? 0);
       if (credit && new Decimal(dto.amountReceived ?? cashDue).lt(cashDue)) throw new BadRequestException('ยอดเงินที่รับยังไม่ครบ');
+      // ช่องรับเงิน: บิลเดียวจ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง — tender แรก = primary ที่ JE ขายลงเต็มยอด
+      const tenders = normalizeTenders(dto.tenders, cashDue, { method: dto.paymentMethod, reference: dto.downPaymentReference });
+      const primaryMethod = (tenders[0]?.method ?? dto.paymentMethod) as PaymentMethod;
       const mainProduct = await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
       await this.markBundleProductsSold(tx, dto.bundleProductIds || [], dto.branchId, actor, dto.previouslyDamagedAcknowledged);
       const saleNumber = await generateSaleNumber(tx);
@@ -209,7 +216,7 @@ export class SaleWriterService {
           sellingPrice: dto.sellingPrice,
           discount,
           netAmount,
-          paymentMethod: dto.paymentMethod as PaymentMethod,
+          paymentMethod: primaryMethod,
           amountReceived: dto.amountReceived ?? cashDue,
           bundleProductIds: dto.bundleProductIds || [],
           notes: dto.notes,
@@ -237,7 +244,7 @@ export class SaleWriterService {
         .filter((p): p is (typeof prods)[number] => !!p);
       const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(
         dto.branchId,
-        dto.paymentMethod as PaymentMethod,
+        primaryMethod,
         tx,
       );
       const allocations = allocateCashSaleByCost(
@@ -270,6 +277,11 @@ export class SaleWriterService {
         await tx.sale.update({ where: { id: sale.id }, data: { tradeInCreditSnapshot: snapshot } });
         sale.tradeInCreditSnapshot = snapshot;
       }
+
+      // สมุดเงินหน้าร้าน + JE แยกยอดของบิลจ่ายผสม (ผู้รับเงิน = ผู้ใช้ที่บันทึกใบขาย)
+      await new ShopTenderRecorder(this.prisma).recordInflow(tx, {
+        kind: 'CASH_SALE', branchId: dto.branchId, actorId: salespersonId, doc: { saleId: sale.id }, docNumber: saleNumber, tenders,
+      });
 
       // Auto-create sales commission (read from CommissionRule, fallback to 3%)
       const now = new Date();
@@ -318,7 +330,8 @@ export class SaleWriterService {
       if (!new Decimal(quote.sellingPrice).eq(new Decimal(netAmount).toDecimalPlaces(2))) {
         throw new BadRequestException('ยอดหลังส่วนลดและโบนัสเทิร์นเปลี่ยนแล้ว กรุณาทบทวนยอดใหม่');
       }
-      const tender = contractDownTender(cashDown, dto.paymentMethod, dto.downPaymentReference);
+      const downTenders = normalizeTenders(dto.tenders, cashDown, { method: dto.paymentMethod, reference: dto.downPaymentReference });
+      const tender = contractDownTender(downTenders);
       const calc = { principal: Number(quote.principal), interestTotal: Number(quote.interestTotal),
         storeCommission: Number(quote.storeCommission), vatAmount: Number(quote.vatAmount), monthlyPayment: Number(quote.monthlyPayment) };
       const params = { interestRate: Number(quote.interestRate), storeCommissionPct: Number(quote.storeCommissionPct), vatPct: Number(quote.effectiveVatPct) };
@@ -399,9 +412,11 @@ export class SaleWriterService {
         const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(dto.branchId, tender.downPaymentMethod, tx);
         await this.shopDownPaymentTemplate.execute({ idempotencyKey: `shop-down-payment:${contract.id}`,
           contractId: contract.id, contractNumber: contract.contractNumber, cashAccountCode, downAmount: new Decimal(cashDown) }, tx);
+        await new ShopTenderRecorder(this.prisma).recordInflow(tx, { kind: 'CONTRACT_DOWN', branchId: dto.branchId,
+          actorId: salespersonId, doc: { contractId: contract.id }, docNumber: contract.contractNumber, tenders: downTenders });
       }
 
-      if (cashDown > 0 && dto.paymentMethod == null) {
+      if (cashDown > 0 && dto.paymentMethod == null && !dto.tenders?.length) {
         await tx.auditLog.create({ data: { userId: salespersonId, action: 'CONTRACT_DOWN_METHOD_DEFAULTED', entity: 'contract',
           entityId: contract.id, newValue: { method: 'CASH', source: 'LEGACY_SALE_CALLER' } } });
       }
@@ -512,6 +527,9 @@ export class SaleWriterService {
     netAmount = net.toNumber();
     const downPayment = down.toNumber();
     const financeAmount = financed.toNumber();
+    // ช่องรับเงินของเงินดาวน์ไฟแนนซ์นอก (ดาวน์ 0 = ไม่มีบรรทัด) — tender แรก = primary ที่ JE ขายลงเต็มยอดดาวน์
+    const extTenders = normalizeTenders(dto.tenders, down, { method: dto.paymentMethod, reference: dto.downPaymentReference });
+    const extPrimaryMethod = (extTenders[0]?.method ?? dto.paymentMethod) as PaymentMethod;
 
     return this.runSaleTransaction(async (tx) => {
       const mainProduct = await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
@@ -533,7 +551,7 @@ export class SaleWriterService {
           sellingPrice: dto.sellingPrice,
           discount,
           netAmount,
-          paymentMethod: dto.paymentMethod as PaymentMethod,
+          paymentMethod: extPrimaryMethod,
           amountReceived: downPayment,
           downPaymentAmount: downPayment,
           financeCompany: dto.financeCompany,
@@ -560,6 +578,7 @@ export class SaleWriterService {
       // ⛔ template จะ **ข้ามเงียบ ๆ (คืน null)** จนกว่าผังจะมี S11-3101 + S51-1106
       //    ซึ่งยังรอคำวินิจฉัยผู้สอบ (คำถามรอบ 3 ข้อ 3) — ไม่ throw เพราะการขาย
       //    ต้องไม่ล่มเพราะเรื่องผังบัญชี ลูกค้ายืนรออยู่หน้าเคาน์เตอร์
+      let extSaleJe: Awaited<ReturnType<ShopExternalFinanceSaleTemplate['execute']>> = null;
       const extProduct = await tx.product.findUnique({ where: { id: dto.productId } });
       const extBundleProducts = dto.bundleProductIds?.length
         ? await tx.product.findMany({ where: { id: { in: dto.bundleProductIds } } })
@@ -567,11 +586,11 @@ export class SaleWriterService {
       if (extProduct) {
         const extCash = await this.shopAccountResolver.resolveInflowCashAccount(
           dto.branchId,
-          dto.paymentMethod as PaymentMethod,
+          extPrimaryMethod,
           tx,
         );
         const extAcc = this.shopAccountResolver.resolveProductAccounts(extProduct.category);
-        await this.shopExternalFinanceSaleTemplate.execute(
+        extSaleJe = await this.shopExternalFinanceSaleTemplate.execute(
           {
             idempotencyKey: `shop-ext-finance-sale:${sale.id}`,
             saleId: sale.id,
@@ -602,6 +621,13 @@ export class SaleWriterService {
           tx,
         );
       }
+
+      // สมุดเงินหน้าร้านบันทึกเสมอ (เงินรับจริง) — JE แยกยอดโพสต์เฉพาะเมื่อ JE ขายถูกโพสต์
+      // (template คืน null เมื่อบัญชีไฟแนนซ์นอกยังไม่พร้อม: ห้ามย้ายเงินที่ยังไม่เคยลงบัญชี)
+      await new ShopTenderRecorder(this.prisma).recordInflow(tx, {
+        kind: 'EXTERNAL_FINANCE_DOWN', branchId: dto.branchId, actorId: salespersonId, doc: { saleId: sale.id }, docNumber: saleNumber,
+        tenders: extTenders, postSplitJe: extSaleJe != null,
+      });
 
       // Auto-create FinanceReceivable to track money from finance company
       const expectedDate = new Date();

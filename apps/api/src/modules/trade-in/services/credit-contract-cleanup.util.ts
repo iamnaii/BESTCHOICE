@@ -5,12 +5,18 @@ import { creditSnapshot } from './trade-in-credit.service';
 /** Keep a canceled credit purchase out of sales/receivable/commission reports.
  * Runs in the contract transaction; settled money must be unwound first. */
 export async function cleanupCreditContractSale(tx: Prisma.TransactionClient,
-  contract: { id: string; status: string; tradeInCreditSnapshot?: Prisma.JsonValue }, actorId: string, reason: string) {
+  contract: { id: string; status: string; tradeInCreditSnapshot?: Prisma.JsonValue; bundleProductIds?: string[] | null },
+  actorId: string, reason: string) {
   if (!creditSnapshot(contract.tradeInCreditSnapshot)) return;
   const sales = await tx.sale.findMany({ where: { contractId: contract.id, deletedAt: null } });
   if (!sales.length) return;
   const ids = sales.map(s => s.id);
-  if (sales.some(s => s.onlineOrderId || s.bundleProductIds.length) || await tx.booking.findFirst({
+  // ของแถมที่ "สัญญาเป็นเจ้าของ" (contract.bundleProductIds) ผู้เรียกคืนเข้าคลังเองใน tx เดียวกัน
+  // (`restoreContractBundles` / `releaseContractBundles`) จึงไม่ต้องบล็อก — ที่ยังบล็อกคือของแถมของใบขาย
+  // จากเส้นทางเก่า (POST /sales) ซึ่งไม่มีใครคืนสต๊อกให้
+  const ownedByContract = new Set(contract.bundleProductIds ?? []);
+  const hasForeignBundle = sales.some(s => s.bundleProductIds.some(pid => !ownedByContract.has(pid)));
+  if (sales.some(s => s.onlineOrderId) || hasForeignBundle || await tx.booking.findFirst({
     where: { convertedToSaleId: { in: ids }, deletedAt: null }, select: { id: true } })) {
     throw new BadRequestException('รายการเทิร์นนี้ผูกการจอง/คำสั่งซื้อหรือของแถม ต้องยกเลิกรายการที่เกี่ยวข้องก่อน');
   }

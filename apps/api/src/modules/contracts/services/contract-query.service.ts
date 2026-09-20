@@ -184,7 +184,20 @@ export class ContractQueryService {
       }
     }
 
-    return visibleContractCredit(this.prisma, { ...contract, signatureRequirements: contractSignatureRequirements(contract) }, user);
+    // ของแถมของสัญญา (อุปกรณ์เสริม) — เรียงตามลำดับที่พนักงานเลือก. ไม่กรอง deletedAt โดยตั้งใจ:
+    // หน้ารายละเอียดต้องเห็นชิ้นที่ถูกลบภายหลังด้วย (สถานะบนการ์ดมาจาก status ของตัวสินค้า)
+    const bundleIds = contract.bundleProductIds ?? [];
+    const bundleRows = bundleIds.length
+      ? await this.prisma.product.findMany({
+          where: { id: { in: bundleIds } },
+          select: { id: true, name: true, brand: true, model: true, category: true, status: true, imeiSerial: true, deletedAt: true },
+        })
+      : [];
+    const bundleProducts = bundleIds
+      .map((pid) => bundleRows.find((row) => row.id === pid))
+      .filter((row): row is (typeof bundleRows)[number] => !!row);
+
+    return visibleContractCredit(this.prisma, { ...contract, bundleProducts, signatureRequirements: contractSignatureRequirements(contract) }, user);
   }
 
   /**

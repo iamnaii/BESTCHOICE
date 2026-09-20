@@ -54,11 +54,15 @@ describe('contract quote and down receipt confirmation', () => {
     await waitFor(() => expect(submit).toBeEnabled());
     expect(screen.getByText(/งวดสุดท้าย 1,546.70/)).toBeVisible();
     expect(screen.getByText('11,280.00 ฿')).toBeVisible();
-    await userEvent.selectOptions(screen.getByLabelText('วิธีรับเงินดาวน์'), 'BANK_TRANSFER');
-    await userEvent.type(screen.getByLabelText('เลขอ้างอิงการรับเงิน (ถ้ามี)'), 'SYNTHETIC-123');
+    await userEvent.selectOptions(screen.getByLabelText('วิธีรับเงิน'), 'BANK_TRANSFER');
+    // โอน/QR บังคับเลขอ้างอิง (เจ้าของเคาะ 2026-09-20) — ยังไม่กรอก = ปุ่มสร้างสัญญากดไม่ได้
+    await waitFor(() => expect(submit).toBeDisabled());
+    await userEvent.type(screen.getByLabelText(/เลขอ้างอิงการโอน/), 'SYNTHETIC-123');
+    await waitFor(() => expect(submit).toBeEnabled());
     await userEvent.click(submit);
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/contracts', expect.objectContaining({
       quoteFingerprint: 'a'.repeat(64), downPaymentMethod: 'BANK_TRANSFER', downPaymentReference: 'SYNTHETIC-123', downPayment: 2000,
+      tenders: [{ method: 'BANK_TRANSFER', amount: 2000, reference: 'SYNTHETIC-123' }],
     })));
   });
   it('blocks submission while a changed-input quote is loading or fails', async () => {

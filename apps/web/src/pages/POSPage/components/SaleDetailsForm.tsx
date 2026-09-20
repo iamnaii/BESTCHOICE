@@ -10,7 +10,8 @@ import {
   FormLabel,
 } from '@/components/ui/form';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { paymentMethods } from '@/lib/constants';
+import { TenderInput } from '@/components/tender/TenderInput';
+import type { TenderRow } from '@/components/tender/tender-utils';
 import { type PosSaleFormData } from '@/lib/schemas';
 import { externalFinanceApi, externalFinanceKeys } from '@/lib/api/external-finance';
 import type { Product } from '../types';
@@ -32,6 +33,10 @@ interface SaleDetailsFormProps {
   transferAmount: number;
   sellingPrice: string;
   discount: string;
+  /** ช่องรับเงิน: ขายสด = ยอดชำระเพิ่ม · ไฟแนนซ์นอก = เงินดาวน์ */
+  tenderDue: number;
+  tenderRows: TenderRow[];
+  onTenderChange: (rows: TenderRow[]) => void;
 }
 
 export default function SaleDetailsForm({
@@ -45,6 +50,9 @@ export default function SaleDetailsForm({
   transferAmount,
   sellingPrice,
   discount,
+  tenderDue,
+  tenderRows,
+  onTenderChange,
 }: SaleDetailsFormProps) {
   const sellingPriceId = useId();
   const { data: financeCompanies } = useQuery({
@@ -174,52 +182,8 @@ export default function SaleDetailsForm({
 
           {/* Conditional fields by sale type */}
           {saleType === 'CASH' && (
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <FormField
-                control={saleForm.control as any}
-                name="paymentMethod"
-                render={({ field }) => (
-                  <FormItem>
-                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                      วิธีชำระเงิน
-                    </label>
-                    <FormControl>
-                      <select {...field} className={selectClass}>
-                        {paymentMethods.map((m) => (
-                          <option key={m.value} value={m.value}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </select>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={saleForm.control as any}
-                name="amountReceived"
-                render={({ field }) => (
-                  <FormItem>
-                    <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                      เงินที่รับ
-                    </label>
-                    <FormControl>
-                      <input
-                        type="number"
-                        {...field}
-                        value={field.value ?? ''}
-                        onChange={(e) =>
-                          field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)
-                        }
-                        className={inputClass}
-                        placeholder={String(cashDue)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            <div className="mt-3">
+              <TenderInput due={tenderDue} value={tenderRows} onChange={onTenderChange} dueLabel="ยอดที่ต้องรับ" />
             </div>
           )}
 
@@ -297,28 +261,8 @@ export default function SaleDetailsForm({
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={saleForm.control as any}
-                  name="paymentMethod"
-                  render={({ field }) => (
-                    <FormItem>
-                      <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                        รับเงินดาวน์โดย
-                      </label>
-                      <FormControl>
-                        <select {...field} className={selectClass}>
-                          {paymentMethods.map((m) => (
-                            <option key={m.value} value={m.value}>
-                              {m.label}
-                            </option>
-                          ))}
-                        </select>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
+              <TenderInput due={tenderDue} value={tenderRows} onChange={onTenderChange} dueLabel="เงินดาวน์ที่ต้องรับ" />
               {/* Finance transfer amount highlight */}
               {transferAmount > 0 && (
                 <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">

@@ -1,6 +1,7 @@
 import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTenders } from '@/components/tender/TenderInput';
 import type { AvailableTradeInCredit, ContractQuote } from '@installment/shared';
 import Decimal from 'decimal.js';
 import { contractCreditIssue, type ApprovedContractLimit } from '../credit-approval';
@@ -9,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { serializeAddress, AddressData, emptyAddress } from '@/components/ui/AddressForm';
 import { toast } from 'sonner';
-import type { Product, Customer, InterestConfig, CustReferenceData } from '../types';
+import type { Product, Customer, InterestConfig, CustReferenceData, ContractBundleProduct } from '../types';
 import { emptyCustForm, emptyCustReference } from '../constants';
 import { useDraftStorage } from '@/hooks/useDraftStorage';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,7 +36,11 @@ export function useContractCreateData() {
       productId: params.get('productId') ?? restored?.productId,
       fromRoom: params.get('fromRoom') ?? restored?.fromRoom,
       downAmount: params.has('downAmount') ? Number(params.get('downAmount')) : restored?.downPayment,
-      months: params.has('months') ? Number(params.get('months')) : restored?.totalMonths };
+      months: params.has('months') ? Number(params.get('months')) : restored?.totalMonths,
+      // ของแถม: จาก POS (URL) ก่อน แล้วค่อยร่างที่กู้คืน — โหลดสถานะสดด้านล่าง ไม่เชื่อ id เฉย ๆ
+      bundleProductIds: params.has('bundleProductIds')
+        ? params.get('bundleProductIds')!.split(',').filter(Boolean)
+        : restored?.bundleProductIds ?? [] };
   });
   const [step, setStep] = useState(Math.min(entry.restored?.step ?? 0, !entry.productId ? 0 : !entry.customerId ? 1 : 2));
 
@@ -61,11 +66,39 @@ export function useContractCreateData() {
     customerRestored.current = true;
     setSelectedCustomerState(value);
   }, []);
+  // ของแถม (อุปกรณ์เสริมเท่านั้น) — จองตอนสร้างสัญญา ตัดสต๊อกตอนเปิดใช้
+  const [bundleSearch, setBundleSearch] = useState('');
+  const [bundleProducts, setBundleProducts] = useState<ContractBundleProduct[]>([]);
+  const bundlesTouched = useRef(false);
+  const addBundle = useCallback((item: ContractBundleProduct) => {
+    bundlesTouched.current = true;
+    setBundleProducts((prev) => (prev.some((p) => p.id === item.id) ? prev : [...prev, item]));
+    setBundleSearch('');
+  }, []);
+  const removeBundle = useCallback((id: string) => {
+    bundlesTouched.current = true;
+    setBundleProducts((prev) => prev.filter((p) => p.id !== id));
+  }, []);
   const planType = 'STORE_DIRECT';
   const [downPayment, setDownPayment] = useState(entry.downAmount ?? 0);
   const [totalMonths, setTotalMonths] = useState(entry.months ?? 6);
   const [downPaymentMethod, setDownPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET'>(entry.restored?.downPaymentMethod ?? 'CASH');
   const [downPaymentReference, setDownPaymentReference] = useState(entry.restored?.downPaymentReference ?? '');
+  // ช่องรับเงินดาวน์ (จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง) — ยอดที่ต้องรับ = เงินดาวน์ส่วนที่เป็นเงิน (ไม่นับเครดิตเครื่องเทิร์น)
+  const tenders = useTenders(downPayment);
+  const restoredTender = useRef(false);
+  useEffect(() => {
+    // ร่างที่กู้คืนเก็บไว้แค่วิธีเดียว + เลขอ้างอิง — ตั้งให้บรรทัดแรกครั้งเดียว
+    if (restoredTender.current || !entry.restored?.downPaymentMethod) return;
+    restoredTender.current = true;
+    tenders.setRows((rows) => rows.length === 1
+      ? [{ ...rows[0], method: entry.restored!.downPaymentMethod!, reference: entry.restored!.downPaymentReference ?? '' }] : rows);
+  }, [entry.restored, tenders]);
+  // คอลัมน์เดิมของสัญญา + ร่างที่บันทึก = วิธีของบรรทัดแรก และเลขอ้างอิงของบรรทัดแรกที่ไม่ใช่เงินสด
+  useEffect(() => {
+    setDownPaymentMethod(tenders.rows[0]?.method ?? 'CASH');
+    setDownPaymentReference(tenders.rows.find((r) => r.method !== 'CASH')?.reference ?? '');
+  }, [tenders.rows]);
   const [previouslyDamagedAcknowledged, setPreviouslyDamagedAcknowledged] = useState(false);
   const [notes, setNotes] = useState(entry.restored?.notes ?? '');
   const [paymentDueDay, setPaymentDueDay] = useState<number>(entry.restored?.paymentDueDay ?? 1);
@@ -102,7 +135,8 @@ export function useContractCreateData() {
     step, productId: selectedProduct?.id ?? (!productRestored.current ? entry.productId : undefined),
     customerId: selectedCustomer?.id ?? (!customerRestored.current ? entry.customerId : undefined), fromRoom: entry.fromRoom,
     downPayment, downPaymentMethod, downPaymentReference, totalMonths, paymentDueDay, notes, tradeInCreditId: tradeInCreditId || undefined,
-  }), [draft, step, selectedProduct?.id, selectedCustomer?.id, entry, downPayment, downPaymentMethod, downPaymentReference, totalMonths, paymentDueDay, notes, tradeInCreditId]);
+    bundleProductIds: bundlesTouched.current ? bundleProducts.map((p) => p.id) : entry.bundleProductIds,
+  }), [draft, step, selectedProduct?.id, selectedCustomer?.id, entry, downPayment, downPaymentMethod, downPaymentReference, totalMonths, paymentDueDay, notes, tradeInCreditId, bundleProducts]);
   const latestSave = useRef(saveDraft);
   useEffect(() => { latestSave.current = saveDraft; }, [saveDraft]);
   useEffect(() => {
@@ -215,6 +249,27 @@ export function useContractCreateData() {
     enabled: !!entry.productId,
     staleTime: 0,
   });
+
+  // ของแถมที่มาจาก POS / ร่างที่กู้คืน — โหลดสถานะสดทีละชิ้น แล้วรับเฉพาะอุปกรณ์เสริมที่ยังพร้อมขาย
+  // (เซิร์ฟเวอร์ตรวจซ้ำตอนสร้างสัญญาอยู่แล้ว ตรงนี้กันพนักงานเห็นของที่เลือกไม่ได้ค้างในรายการ)
+  const preselectBundlesQuery = useQuery<ContractBundleProduct[]>({
+    queryKey: ['preselect-bundles', user?.id, entry.bundleProductIds],
+    queryFn: async () => {
+      const rows = await Promise.all(entry.bundleProductIds.map(async (id) => {
+        try { return (await api.get(`/products/${id}`)).data as ContractBundleProduct & { status?: string }; } catch { return null; }
+      }));
+      return rows.filter((row): row is ContractBundleProduct & { status?: string } =>
+        !!row && row.category === 'ACCESSORY' && row.status === 'IN_STOCK');
+    },
+    enabled: entry.bundleProductIds.length > 0,
+    staleTime: Infinity,
+  });
+  useEffect(() => {
+    if (!preselectBundlesQuery.data || bundlesTouched.current) return;
+    setBundleProducts(preselectBundlesQuery.data);
+    const dropped = entry.bundleProductIds.length - preselectBundlesQuery.data.length;
+    if (dropped > 0) toast(`ของแถม ${dropped} รายการไม่พร้อมขายแล้ว จึงไม่ถูกนำมา — เลือกใหม่ได้ในขั้นเลือกแผนผ่อน`);
+  }, [preselectBundlesQuery.data, entry.bundleProductIds.length]);
   useEffect(() => {
     if (productRestored.current || productQuery.isError || !productQuery.isFetchedAfterMount || !productQuery.data) return;
     productRestored.current = true;
@@ -392,7 +447,8 @@ export function useContractCreateData() {
       planType,
       quoteFingerprint: quote.fingerprint,
       downPaymentMethod: downPayment > 0 ? downPaymentMethod : undefined,
-      downPaymentReference: downPayment > 0 ? downPaymentReference || undefined : undefined,
+      downPaymentReference: downPayment > 0 ? downPaymentReference.trim() || undefined : undefined,
+      tenders: downPayment > 0 ? tenders.payload : undefined,
       previouslyDamagedAcknowledged,
       sellingPrice,
       tradeInCreditId: tradeInCreditId || undefined,
@@ -401,6 +457,7 @@ export function useContractCreateData() {
       notes: notes || undefined,
       paymentDueDay,
       creditApprovalId: creditApproval!.id,
+      ...(bundleProducts.length ? { bundleProductIds: bundleProducts.map((p) => p.id) } : {}),
       ...(overrideActiveContractCheck ? { overrideActiveContractCheck: true } : {}),
     });
   };
@@ -427,8 +484,10 @@ export function useContractCreateData() {
   };
 
   return {
+    bundleSearch, setBundleSearch, bundleProducts, addBundle, removeBundle,
     tradeInCreditId, setTradeInCreditId, tradeInCredit, setTradeInCredit, tradeInCreditReady,
     downPaymentMethod, setDownPaymentMethod, downPaymentReference, setDownPaymentReference,
+    tenderRows: tenders.rows, setTenderRows: tenders.setRows, tenderStatus: tenders.status,
     previouslyDamagedAcknowledged, setPreviouslyDamagedAcknowledged, canSellPreviouslyDamaged: user?.role === 'OWNER',
     navigate,
     openCustomerCredit,

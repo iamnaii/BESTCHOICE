@@ -374,6 +374,10 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         // BANK_TRANSFER → S11-1201 (SHOP receiving bank) — ไม่พึ่ง branch.shopCashAccountCode
         // ซึ่ง fail-closed เมื่อสาขายังไม่ตั้งค่า (ShopAccountResolver.resolveInflowCashAccount)
         paymentMethod: 'BANK_TRANSFER',
+        // กติกาช่องรับเงิน (2026-09-20): โอน/QR บังคับเลขอ้างอิงจากสลิป (≥ 6 ตัว) — caller แบบเดิม
+        // (ไม่ส่ง tenders) ส่งผ่าน downPaymentReference; ยอด tender = ยอดสุทธิทั้งใบ ระบบคิดให้เอง.
+        // ต่อท้ายรหัสเครื่อง ⇒ ไม่ซ้ำแม้รันซ้ำในวันเดียวกัน (รายงานสรุปเงินหน้าร้านติดธงเลขอ้างอิงซ้ำข้ามเอกสาร)
+        downPaymentReference: `${TEST_DOC_PREFIX}DRIVE-CASH-${ctx.dateStr}-${product.id.slice(0, 8)}`,
         notes: testNote('ขายสดจากโหมดเดินเรื่อง'),
       };
       // role จริงของ actor — resolveRefs หา salespersonId ด้วย where { role: 'SALES' }.
@@ -434,6 +438,8 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         sellingPrice: price.toNumber(),
         discount: 0,
         paymentMethod: 'BANK_TRANSFER',
+        // เงินดาวน์รับโอน ⇒ ต้องมีเลขอ้างอิงจากสลิป (กติกาช่องรับเงิน 2026-09-20) — ยอด tender = เงินดาวน์ ระบบคิดให้เอง
+        downPaymentReference: `${TEST_DOC_PREFIX}DRIVE-EXTFIN-DOWN-${ctx.dateStr}-${product.id.slice(0, 8)}`,
         downPayment: down.toNumber(),
         financeCompany: financeCo.name,
         financeRefNumber: `TEST-DRIVE-EXTFIN-${ctx.dateStr}`,
@@ -464,16 +470,30 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
           deletedAt: null,
         },
         orderBy: { bookingNumber: 'asc' },
-        select: { id: true, bookingNumber: true },
+        select: { id: true, bookingNumber: true, depositAmount: true },
       });
       if (!booking) {
         return 'ข้าม — ไม่พบใบจองทดสอบสถานะ PENDING_DEPOSIT ที่ยังไม่หมดอายุ (รันโดเมน bookings ก่อน)';
       }
       const bookings = app.get(BookingsService, { strict: false });
+      // กติกาช่องรับเงิน (2026-09-20): โอน/QR บังคับเลขอ้างอิงจากสลิป — depositMethod แบบเดิมไม่มีช่องเลขอ้างอิง
+      // จึงส่งเป็น tender เดียวเท่ายอดมัดจำของใบจองพอดี (ระบบเก็บวิธีของ tender แรกลง depositMethod ให้เอง).
+      // มัดจำ 0 = ไม่มียอดที่ต้องรับ ⇒ ห้ามส่ง tenders (ถูกปฏิเสธ) ใช้ฟิลด์เดิมตามเดิม
+      const depositAmount = booking.depositAmount;
       await bookings.payDeposit(
         booking.id,
         {
-          depositMethod: 'BANK_TRANSFER',
+          ...(depositAmount.gt(0)
+            ? {
+                tenders: [
+                  {
+                    method: 'BANK_TRANSFER',
+                    amount: depositAmount.toNumber(),
+                    reference: `${TEST_DOC_PREFIX}DRIVE-BKDEP-${ctx.dateStr}-${booking.id.slice(0, 8)}`,
+                  },
+                ],
+              }
+            : { depositMethod: 'BANK_TRANSFER' as const }),
           // Backend resolves the SHOP receiving bank and persists the actual account.
           notes: testNote('รับมัดจำจากโหมดเดินเรื่อง'),
         },

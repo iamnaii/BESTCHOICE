@@ -251,14 +251,14 @@ for (const width of [1440, 390]) {
       await page.getByPlaceholder('พิมพ์อย่างน้อย 2 ตัวอักษร เช่น IMEI, ชื่อ, รุ่น...').fill('TEST');
       await page.getByRole('button').filter({ hasText: 'TEST PHONE' }).first().click();
       await expect(page.getByLabel(/ราคาขาย/)).toHaveValue('9000');
-      await page.getByRole('button', { name: 'ผ่อนไฟแนนซ์', exact: true }).click();
+      await page.getByRole('button', { name: /^ไฟแนนซ์นอก/ }).click();
       await expect(page.getByLabel(/ราคาขาย/)).toHaveValue('10000');
       await page.getByPlaceholder('พิมพ์อย่างน้อย 2 ตัวอักษร เช่น ชื่อ, เบอร์โทร, เลขบัตร...').fill('ลูกค้าตัวอย่าง 000');
       await page.getByRole('button', { name: 'ลูกค้าตัวอย่าง 000 0800000000', exact: true }).click();
-      await page.getByRole('button', { name: /ต้องการผ่อนกับ BESTCHOICE/ }).click();
+      await page.getByRole('button', { name: /ไปสร้างสัญญาผ่อนชำระ/ }).click();
       await expect(page.getByRole('dialog')).toContainText('ลูกค้า: ลูกค้าตัวอย่าง 000');
       await expect(page.getByRole('dialog')).toContainText('เครื่อง: เครื่องตัวอย่าง');
-      await expect(page.getByText(/ราคา ส่วนลด ของแถม เครดิตเทิร์น/)).toBeVisible();
+      await expect(page.getByText(/ราคา ส่วนลด เครดิตเทิร์น/)).toBeVisible();
       await snapshot(page, 'pos-handoff-review', width);
       await page.getByRole('button', { name: 'ไปสร้างสัญญาด้วยข้อมูลนี้' }).click();
       await expect(page).toHaveURL(/contracts\/create\?customerId=c000&productId=ux-product/);

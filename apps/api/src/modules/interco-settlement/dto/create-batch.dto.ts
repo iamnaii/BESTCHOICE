@@ -30,6 +30,12 @@ export class CreateBatchDto {
   @IsUUID('4', { each: true, message: 'recallContractIds ต้องเป็น UUID' })
   recallContractIds?: string[];
 
+  /** สัญญาที่มีค่าเครื่องคืน (ใบรับเครื่องคืน — 11-2107 DEVICE_RETURN) ที่เลือกหักในรอบนี้ — optional (2026-09-20 §6.3) */
+  @IsOptional()
+  @IsArray({ message: 'deviceReturnContractIds ต้องเป็น array' })
+  @IsUUID('4', { each: true, message: 'deviceReturnContractIds ต้องเป็น UUID' })
+  deviceReturnContractIds?: string[];
+
   /** วันโอนจริงตาม statement — โหมดย้อนหลังได้ (D2/D4) */
   @IsDateString({}, { message: 'วันที่โอนไม่ถูกต้อง' })
   transferDate!: string;

@@ -802,4 +802,161 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
       expect((await deviceReturnFinanceBalance(prisma, id)).toFixed(2)).toBe('0.00');
     });
   });
+  // ===========================================================================
+  // Task 7 — createBatch/updateBatch/submitBatch: snapshot แถว DEVICE_RETURN + guards
+  // (DRAFT ไม่ lock สัญญา — fixture X/Y ใช้ซ้ำได้จน submit)
+  // ===========================================================================
+  // Track guard calls too: a regression may unexpectedly create a batch before rejection fails.
+  async function createTrackedBatch(...args: Parameters<typeof settlementService.createBatch>) {
+    const batch = await settlementService.createBatch(...args);
+    createdBatchIds.push(batch.id);
+    return batch;
+  }
+
+  describe('createBatch/updateBatch/submitBatch — แถว DEVICE_RETURN (Task 7)', () => {
+    it('golden §6.5: Y (10,000+1,000) + ค่าเครื่องคืน X 7,000 → totals 11,000 / หัก 7,000 / โอนสุทธิ 4,000 ทั้งสองสมุด', async () => {
+      const batch = await createTrackedBatch(
+        {
+          contractIds: [normalId],
+          deviceReturnContractIds: [deviceReturnId],
+          transferDate: '2026-09-20',
+        },
+        adminId,
+      );
+
+      expect(batch.totalAmount.toFixed(2)).toBe('11000.00');
+      expect(batch.shopPostedAmount.toFixed(2)).toBe('11000.00');
+      expect(batch.totalDeduction.toFixed(2)).toBe('7000.00');
+      expect(batch.netTransferAmount!.toFixed(2)).toBe('4000.00');
+      expect(batch.shopNetAmount!.toFixed(2)).toBe('4000.00');
+      expect(batch.items).toHaveLength(2);
+
+      const dr = batch.items.find((i) => i.contractId === deviceReturnId)!;
+      expect(dr.itemType).toBe('DEVICE_RETURN');
+      expect(dr.deviceReturnAmount.toFixed(2)).toBe('7000.00');
+      expect(dr.swapCreditAmount.toFixed(2)).toBe('0.00');
+      expect(dr.recallAmount.toFixed(2)).toBe('0.00');
+      expect(dr.financedGl.toFixed(2)).toBe('0.00');
+      expect(dr.commissionGl.toFixed(2)).toBe('0.00');
+      expect(dr.shopFinancedGl.toFixed(2)).toBe('0.00');
+      expect(dr.shopCommissionGl.toFixed(2)).toBe('0.00');
+      expect(dr.legacyNoShop).toBe(false);
+
+      const y = batch.items.find((i) => i.contractId === normalId)!;
+      expect(y.itemType).toBe('SETTLEMENT');
+      expect(y.deviceReturnAmount.toFixed(2)).toBe('0.00');
+      expect(y.financedGl.toFixed(2)).toBe('10000.00');
+    });
+
+    it('guard: ยอดสุทธิติดลบ (มีแต่ค่าเครื่องคืน ไม่มีสัญญาจ่าย) → reject', async () => {
+      await expect(
+        createTrackedBatch(
+          {
+            contractIds: [],
+            deviceReturnContractIds: [deviceReturnId],
+            transferDate: '2026-09-20',
+          },
+          adminId,
+        ),
+      ).rejects.toThrow(/เกินยอดจ่ายของรอบ/);
+    });
+
+    it('guard: สองสมุดไม่ตรง (7,000 / 6,000) → reject; สัญญาปกติในรายการค่าเครื่องคืน → reject; ซ้ำสองรายการ → reject', async () => {
+      const mismatch = await seedBaseContract(7, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(mismatch, { shopAmount: '6000.00' });
+      await expect(
+        createTrackedBatch(
+          {
+            contractIds: [normalId],
+            deviceReturnContractIds: [mismatch],
+            transferDate: '2026-09-20',
+          },
+          adminId,
+        ),
+      ).rejects.toThrow(/ยอดค่าเครื่องคืนสองสมุดไม่ตรงกัน/);
+
+      await expect(
+        createTrackedBatch(
+          { contractIds: [], deviceReturnContractIds: [normalId], transferDate: '2026-09-20' },
+          adminId,
+        ),
+      ).rejects.toThrow(/ไม่อยู่ในคิวค่าเครื่องคืน/);
+
+      await expect(
+        createTrackedBatch(
+          {
+            contractIds: [normalId],
+            deviceReturnContractIds: [normalId],
+            transferDate: '2026-09-20',
+          },
+          adminId,
+        ),
+      ).rejects.toThrow(/ทั้งรายการจ่ายและรายการค่าเครื่องคืน/);
+    });
+
+    it('updateBatch: re-snapshot เพิ่มแถว DEVICE_RETURN + totals ใหม่', async () => {
+      const y = await seedBaseContract(8);
+      await seedNormalContract(y);
+      const batch = await createTrackedBatch(
+        { contractIds: [y], transferDate: '2026-09-20' },
+        adminId,
+      );
+      expect(batch.totalDeduction.toFixed(2)).toBe('0.00');
+
+      const updated = await settlementService.updateBatch(
+        batch.id,
+        { contractIds: [y], deviceReturnContractIds: [deviceReturnId], transferDate: '2026-09-20' },
+        adminId,
+      );
+      expect(updated.items).toHaveLength(2);
+      expect(updated.totalDeduction.toFixed(2)).toBe('7000.00');
+      expect(updated.netTransferAmount!.toFixed(2)).toBe('4000.00');
+      expect(updated.shopNetAmount!.toFixed(2)).toBe('4000.00');
+      const drItem = updated.items.find((i) => i.contractId === deviceReturnId)!;
+      expect(drItem.itemType).toBe('DEVICE_RETURN');
+      expect(drItem.deviceReturnAmount.toFixed(2)).toBe('7000.00');
+    });
+
+    it('submitBatch: แถว DEVICE_RETURN ที่สัญญามี SETTLEMENT item เก่าใน batch POSTED (ยึดหลังเคยถูกจ่าย) → submit ผ่าน; batch ที่สองจับสัญญาเดิม → reject', async () => {
+      const yA = await seedBaseContract(9);
+      await seedNormalContract(yA);
+      const yB = await seedBaseContract(10);
+      await seedNormalContract(yB);
+      const xOld = await seedBaseContract(11, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(xOld);
+
+      // สัญญาที่ถูกยึดเคยถูกจ่ายในรอบ POSTED มาก่อนโดยนิยาม — SETTLEMENT item ถาวร
+      const hist = await seedBatch('POSTED', 4);
+      await prisma.interCoSettlementItem.create({
+        data: {
+          batchId: hist.id,
+          contractId: xOld,
+          itemType: 'SETTLEMENT',
+          financedGl: dec('10000.00'),
+          commissionGl: dec('1000.00'),
+          shopFinancedGl: dec('10000.00'),
+          shopCommissionGl: dec('1000.00'),
+        },
+      });
+
+      const b1 = await createTrackedBatch(
+        { contractIds: [yA], deviceReturnContractIds: [xOld], transferDate: '2026-09-20' },
+        adminId,
+      );
+      const b2 = await createTrackedBatch(
+        { contractIds: [yB], deviceReturnContractIds: [xOld], transferDate: '2026-09-20' },
+        adminId,
+      );
+
+      const submitted = await settlementService.submitBatch(b1.id, adminId);
+      expect(submitted.status).toBe('PENDING_APPROVAL');
+
+      await expect(settlementService.submitBatch(b2.id, adminId)).rejects.toThrow(
+        /อยู่ในรอบจ่ายอื่นแล้ว/,
+      );
+      // xOld หลุดคิวค่าเครื่องคืนระหว่างที่ b1 ค้างอนุมัติ (settled gate)
+      const rows = await pendingService.getPendingDeviceReturns();
+      expect(rows.some((r) => r.contractId === xOld)).toBe(false);
+    });
+  });
 });

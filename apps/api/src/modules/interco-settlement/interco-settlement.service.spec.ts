@@ -117,6 +117,7 @@ describe('IntercoSettlementService', () => {
     pendingService = {
       getPendingContracts: jest.fn().mockResolvedValue([]),
       getPendingRecalls: jest.fn().mockResolvedValue([]),
+      getPendingDeviceReturns: jest.fn().mockResolvedValue([]),
     };
     batchNumberService = { next: jest.fn().mockResolvedValue('IC-20260801-0001') };
     // approveBatch/reverseBatch (Task 4) deps — unused by the create/update/
@@ -275,6 +276,146 @@ describe('IntercoSettlementService', () => {
     });
   });
 
+  describe('createBatch/submitBatch — แถว DEVICE_RETURN (ใบรับเครื่องคืน 2026-09-20 §6.3)', () => {
+    const deviceReturnRow = (over: Record<string, unknown> = {}) => ({
+      contractId: 'c-dr',
+      contractNumber: 'CT-0100',
+      customerName: 'ลูกค้า X',
+      deviceReturnGl: new Prisma.Decimal(7000),
+      shopDeviceReturnGl: new Prisma.Decimal(7000),
+      ...over,
+    });
+
+    it('snapshot: แถว DEVICE_RETURN ได้ deviceReturnAmount = net, GL 4 เลนส์ = 0, legacyNoShop=false; totals หัก 7,000 (golden §6.5: 11,000 − 7,000 = 4,000 ทั้งสองสมุด)', async () => {
+      pendingService.getPendingContracts.mockResolvedValue([pendingRow()]);
+      pendingService.getPendingDeviceReturns.mockResolvedValue([deviceReturnRow()]);
+      tx.interCoSettlementBatch.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({ id: 'batch-1', ...data }),
+      );
+
+      await service.createBatch(
+        dto({ contractIds: ['c-1'], deviceReturnContractIds: ['c-dr'] }),
+        'user-1',
+      );
+
+      const createArgs = tx.interCoSettlementBatch.create.mock.calls[0][0];
+      expect((createArgs.data.totalAmount as Prisma.Decimal).toString()).toBe('11000');
+      expect((createArgs.data.shopPostedAmount as Prisma.Decimal).toString()).toBe('11000');
+      expect((createArgs.data.totalDeduction as Prisma.Decimal).toString()).toBe('7000');
+      expect((createArgs.data.netTransferAmount as Prisma.Decimal).toString()).toBe('4000');
+      expect((createArgs.data.shopNetAmount as Prisma.Decimal).toString()).toBe('4000');
+
+      const items = createArgs.data.items.create as Array<Record<string, unknown>>;
+      expect(items).toHaveLength(2);
+      const drItem = items.find((i) => i.contractId === 'c-dr')!;
+      expect(drItem.itemType).toBe('DEVICE_RETURN');
+      expect(drItem.legacyNoShop).toBe(false);
+      expect((drItem.deviceReturnAmount as Prisma.Decimal).toString()).toBe('7000');
+      for (const key of [
+        'financedGl',
+        'commissionGl',
+        'shopFinancedGl',
+        'shopCommissionGl',
+        'swapCreditAmount',
+        'recallAmount',
+      ]) {
+        expect((drItem[key] as Prisma.Decimal).toString()).toBe('0');
+      }
+      const normalItem = items.find((i) => i.contractId === 'c-1')!;
+      expect(normalItem.itemType).toBe('SETTLEMENT');
+      expect((normalItem.deviceReturnAmount as Prisma.Decimal).toString()).toBe('0');
+
+      const audit = tx.auditLog.create.mock.calls[0][0].data.newValue;
+      expect(audit.deviceReturnContractIds).toEqual(['c-dr']);
+      expect(audit.totalDeduction).toBe('7000.00');
+    });
+
+    it('guard: ยอดค่าเครื่องคืนสองสมุดไม่ตรง → reject พร้อมเลขสัญญา', async () => {
+      pendingService.getPendingContracts.mockResolvedValue([pendingRow()]);
+      pendingService.getPendingDeviceReturns.mockResolvedValue([
+        deviceReturnRow({ shopDeviceReturnGl: new Prisma.Decimal(6000) }),
+      ]);
+      await expect(
+        service.createBatch(
+          dto({ contractIds: ['c-1'], deviceReturnContractIds: ['c-dr'] }),
+          'user-1',
+        ),
+      ).rejects.toThrow(/ยอดค่าเครื่องคืนสองสมุดไม่ตรงกัน สัญญา CT-0100/);
+      expect(tx.interCoSettlementBatch.create).not.toHaveBeenCalled();
+    });
+
+    it('guard: ไม่อยู่ในคิวค่าเครื่องคืน → reject พร้อมเลขสัญญา', async () => {
+      pendingService.getPendingContracts.mockResolvedValue([pendingRow()]);
+      pendingService.getPendingDeviceReturns.mockResolvedValue([]);
+      tx.contract.findMany.mockResolvedValue([{ id: 'c-dr', contractNumber: 'CT-0100' }]);
+      await expect(
+        service.createBatch(
+          dto({ contractIds: ['c-1'], deviceReturnContractIds: ['c-dr'] }),
+          'user-1',
+        ),
+      ).rejects.toThrow(/CT-0100 ไม่อยู่ในคิวค่าเครื่องคืน/);
+    });
+
+    it('guard: สัญญาเดียวกันอยู่ทั้งรายการจ่ายและรายการค่าเครื่องคืน → reject', async () => {
+      pendingService.getPendingContracts.mockResolvedValue([pendingRow()]);
+      await expect(
+        service.createBatch(
+          dto({ contractIds: ['c-1'], deviceReturnContractIds: ['c-1'] }),
+          'user-1',
+        ),
+      ).rejects.toThrow(/ทั้งรายการจ่ายและรายการค่าเครื่องคืน/);
+    });
+
+    it('guard: สัญญาเดียวกันอยู่ทั้งรายการเรียกคืนและรายการค่าเครื่องคืน → reject', async () => {
+      pendingService.getPendingContracts.mockResolvedValue([pendingRow()]);
+      pendingService.getPendingRecalls.mockResolvedValue([
+        {
+          contractId: 'c-x',
+          contractNumber: 'CT-0200',
+          customerName: 'ลูกค้า C',
+          recallGl: new Prisma.Decimal(1000),
+          shopRecallGl: new Prisma.Decimal(1000),
+        },
+      ]);
+      await expect(
+        service.createBatch(
+          dto({
+            contractIds: ['c-1'],
+            recallContractIds: ['c-x'],
+            deviceReturnContractIds: ['c-x'],
+          }),
+          'user-1',
+        ),
+      ).rejects.toThrow(/ทั้งรายการเรียกคืนและรายการค่าเครื่องคืน/);
+    });
+
+    it('submitBatch: แถว DEVICE_RETURN clash เฉพาะ itemType DEVICE_RETURN; แถว SETTLEMENT clash ทุกประเภท', async () => {
+      tx.interCoSettlementBatch.findUnique.mockResolvedValue({
+        id: 'batch-1',
+        makerId: 'maker-1',
+        status: 'DRAFT',
+        deletedAt: null,
+        batchNumber: 'IC-20260920-0001',
+        items: [
+          { contractId: 'c-1', itemType: 'SETTLEMENT' },
+          { contractId: 'c-dr', itemType: 'DEVICE_RETURN' },
+        ],
+      });
+      tx.interCoSettlementItem.findMany.mockResolvedValue([]);
+
+      const result = await service.submitBatch('batch-1', 'maker-1');
+      expect(result.status).toBe('PENDING_APPROVAL');
+      const where = tx.interCoSettlementItem.findMany.mock.calls[0][0].where;
+      expect(where.OR).toEqual([
+        { contractId: { in: ['c-1'] } },
+        { contractId: { in: ['c-dr'] }, itemType: 'DEVICE_RETURN' },
+      ]);
+      expect(where.batchId).toEqual({ not: 'batch-1' });
+      expect(where.batch.status.in).toEqual(['PENDING_APPROVAL', 'POSTED']);
+    });
+  });
+
   describe('updateBatch', () => {
     it('rejects editing a batch that is not DRAFT (e.g. PENDING_APPROVAL)', async () => {
       tx.interCoSettlementBatch.findUnique.mockResolvedValue({
@@ -363,7 +504,7 @@ describe('IntercoSettlementService', () => {
         status: 'DRAFT',
         deletedAt: null,
         batchNumber: 'IC-20260801-0001',
-        items: [{ contractId: 'c-1' }],
+        items: [{ contractId: 'c-1', itemType: 'SETTLEMENT' }],
       });
       tx.interCoSettlementItem.findMany.mockResolvedValue([
         { contractId: 'c-1', contract: { contractNumber: 'CT-0001' } },
@@ -382,7 +523,7 @@ describe('IntercoSettlementService', () => {
         status: 'DRAFT',
         deletedAt: null,
         batchNumber: 'IC-20260801-0001',
-        items: [{ contractId: 'c-1' }],
+        items: [{ contractId: 'c-1', itemType: 'SETTLEMENT' }],
       });
       tx.interCoSettlementItem.findMany.mockResolvedValue([]);
 
@@ -582,6 +723,7 @@ describe('IntercoSettlementService', () => {
             legacyNoShop: false,
             swapCreditAmount: new Prisma.Decimal(0),
             recallAmount: new Prisma.Decimal(0),
+            deviceReturnAmount: new Prisma.Decimal(0),
             contract: { contractNumber: 'CT-0001' },
           },
         ],

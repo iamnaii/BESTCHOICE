@@ -37,6 +37,65 @@ const OPEN_BATCH_STATUSES = ['PENDING_APPROVAL', 'POSTED'] as const;
 /** Drift-guard tolerance on the 4 GL lens amounts (spec §5.1). */
 const DRIFT_TOLERANCE = new Prisma.Decimal('0.01');
 
+/**
+ * บทบาทของแต่ละ itemType ในรอบจ่าย — `satisfies Record<InterCoItemType, …>` บังคับให้ค่า enum
+ * ใหม่ต้องถูกตัดสินที่นี่ก่อน compile ผ่าน (pattern DUE_STATUS_MAP / FOUND_POLICY):
+ *   PAYABLE        = แถวจ่ายเจ้าหนี้ (Dr 21-1101/21-1102 + Cr S11-3001/S11-3002; clash กับ item ทุกประเภท)
+ *   DEDUCTION_ONLY = แถวหักอย่างเดียว (Cr 11-2107 / Dr S21-1104; clash เฉพาะ item ประเภทเดียวกัน —
+ *                    สัญญาของแถวพวกนี้มี SETTLEMENT item ถาวรในรอบ POSTED เก่าโดยนิยาม)
+ */
+const ITEM_ROLE = {
+  SETTLEMENT: 'PAYABLE',
+  RECALL: 'DEDUCTION_ONLY',
+  DEVICE_RETURN: 'DEDUCTION_ONLY',
+} as const satisfies Record<InterCoItemType, 'PAYABLE' | 'DEDUCTION_ONLY'>;
+
+const DEDUCTION_ONLY_TYPES = (Object.keys(ITEM_ROLE) as InterCoItemType[]).filter(
+  (t) => ITEM_ROLE[t] === 'DEDUCTION_ONLY',
+);
+
+function isPayableRow(itemType: InterCoItemType): boolean {
+  return ITEM_ROLE[itemType] === 'PAYABLE';
+}
+
+/** คอลัมน์ deduction ของ item หนึ่งแถว (ทุกแถวมีครบสามคอลัมน์ — ที่ไม่เกี่ยวเป็น 0) */
+interface DeductionColumns {
+  swapCreditAmount: Prisma.Decimal;
+  recallAmount: Prisma.Decimal;
+  deviceReturnAmount: Prisma.Decimal;
+}
+
+/**
+ * Σ ยอดหักทุกประเภทของ items (swapCredit + recall + deviceReturn) — สูตรเดียวกับ
+ * `totalDeduction` ของ batch และ `postedDeductionsByContract` ของ pending lens (ห้ามมีสำเนา).
+ */
+function sumDeductions(items: ReadonlyArray<DeductionColumns>): Prisma.Decimal {
+  return items.reduce(
+    (s, i) => s.plus(i.swapCreditAmount).plus(i.recallAmount).plus(i.deviceReturnAmount),
+    new Prisma.Decimal(0),
+  );
+}
+
+/**
+ * เงื่อนไข clash ต่อประเภทแถว (submit + approve ใช้ชุดเดียวกัน): แถวจ่ายเจ้าหนี้ clash กับ item
+ * ทุกประเภทใน batch เปิดอื่น (กันจ่ายซ้ำ); แถวหักอย่างเดียว clash เฉพาะ item ประเภทเดียวกัน —
+ * mirror settled gate ของแต่ละคิว (`getPendingRecalls` / `getPendingDeviceReturns`); any-type
+ * จะทำให้รอบที่มีแถวหักแม้แถวเดียว submit/approve ไม่ได้ตลอดกาล (สัญญา C-2/ยึด มี SETTLEMENT
+ * item ถาวรในรอบ POSTED เก่าโดยนิยาม).
+ */
+function buildClashConditions(
+  items: ReadonlyArray<{ contractId: string; itemType: InterCoItemType }>,
+): Prisma.InterCoSettlementItemWhereInput[] {
+  const conditions: Prisma.InterCoSettlementItemWhereInput[] = [];
+  const payableIds = items.filter((i) => isPayableRow(i.itemType)).map((i) => i.contractId);
+  if (payableIds.length > 0) conditions.push({ contractId: { in: payableIds } });
+  for (const type of DEDUCTION_ONLY_TYPES) {
+    const ids = items.filter((i) => i.itemType === type).map((i) => i.contractId);
+    if (ids.length > 0) conditions.push({ contractId: { in: ids }, itemType: type });
+  }
+  return conditions;
+}
+
 /** Batch + items + per-item contractNumber — shape approve/reverse work with. */
 type BatchWithItems = Prisma.InterCoSettlementBatchGetPayload<{
   include: {
@@ -58,6 +117,8 @@ interface BuiltSnapshotItem {
   swapCreditAmount: Prisma.Decimal;
   /** Snapshot ยอดเรียกคืน (11-2107 PAYOUT_RECALL) — ใช้เฉพาะแถว RECALL */
   recallAmount: Prisma.Decimal;
+  /** Snapshot ค่าเครื่องคืน (11-2107 DEVICE_RETURN) — ใช้เฉพาะแถว DEVICE_RETURN (ใบรับเครื่องคืน 2026-09-20) */
+  deviceReturnAmount: Prisma.Decimal;
 }
 
 interface BuiltSnapshot {
@@ -66,7 +127,7 @@ interface BuiltSnapshot {
   totalCommission: Prisma.Decimal;
   totalAmount: Prisma.Decimal;
   shopPostedAmount: Prisma.Decimal;
-  /** Σ swapCreditAmount + recallAmount ของทุก item (Phase 2 หักกลบ) */
+  /** Σ swapCreditAmount + recallAmount + deviceReturnAmount ของทุก item (Phase 2 หักกลบ + ใบรับเครื่องคืน) */
   totalDeduction: Prisma.Decimal;
   /** เงินโอนจริงฝั่ง FINANCE = totalAmount − totalDeduction */
   netTransferAmount: Prisma.Decimal;
@@ -121,7 +182,10 @@ export class IntercoSettlementService {
    *   - RECALL rows (Flow C-2) come from `getPendingRecalls` and have no
    *     payable/receivable of their own (all 4 GL snapshots = 0,
    *     legacyNoShop = false) — only `recallAmount`.
-   *   - totals: totalDeduction = Σ(swapCredit + recall);
+   *   - DEVICE_RETURN rows (ใบรับเครื่องคืน 2026-09-20 §6.3) come from
+   *     `getPendingDeviceReturns` — same shape as RECALL rows, only
+   *     `deviceReturnAmount` (= net); rejected when the two books disagree > 0.01.
+   *   - totals: totalDeduction = Σ(swapCredit + recall + deviceReturn);
    *     netTransferAmount = totalAmount − totalDeduction;
    *     shopNetAmount = shopPostedAmount − totalDeduction — both must be ≥ 0
    *     (เงินสดส่วนที่หักเกินต้องเรียกคืนผ่านช่องทางรับโอนจากหน้าร้าน ไม่ใช่รอบจ่าย).
@@ -130,6 +194,7 @@ export class IntercoSettlementService {
     tx: Prisma.TransactionClient,
     contractIds: string[],
     recallContractIds?: string[],
+    deviceReturnContractIds?: string[],
   ): Promise<BuiltSnapshot> {
     if (new Set(contractIds).size !== contractIds.length) {
       throw new BadRequestException('มีสัญญาซ้ำในรายการที่เลือก');
@@ -188,6 +253,7 @@ export class IntercoSettlementService {
         legacyNoShop: p.legacyNoShop,
         swapCreditAmount,
         recallAmount: zero,
+        deviceReturnAmount: zero,
       };
     });
 
@@ -223,15 +289,60 @@ export class IntercoSettlementService {
           legacyNoShop: false,
           swapCreditAmount: zero,
           recallAmount: r.recallGl,
+          deviceReturnAmount: zero,
+        });
+      }
+    }
+
+    // DEVICE_RETURN rows (ใบรับเครื่องคืน — spec 2026-09-20 §6.3): mirror ของแถว RECALL
+    const deviceReturnIds = [...new Set(deviceReturnContractIds ?? [])];
+    if (deviceReturnIds.some((id) => contractIds.includes(id))) {
+      // ข้อจำกัด @@unique([batchId, contractId]) (สัญญาที่ยึดก่อนเคยถูกจ่าย) — ชี้ทางออกที่มีจริง
+      throw new BadRequestException(
+        'สัญญาเดียวกันอยู่ทั้งรายการจ่ายและรายการค่าเครื่องคืนไม่ได้ — ' +
+          'จ่ายเจ้าหนี้ในรอบนี้ก่อน แล้วหักค่าเครื่องคืนในรอบถัดไป หรือใช้ปุ่มรับเงินสดค่าเครื่องคืน',
+      );
+    }
+    if (deviceReturnIds.some((id) => recallIds.includes(id))) {
+      throw new BadRequestException(
+        'สัญญาเดียวกันอยู่ทั้งรายการเรียกคืนและรายการค่าเครื่องคืนไม่ได้',
+      );
+    }
+    if (deviceReturnIds.length > 0) {
+      const deviceReturns = await this.pendingService.getPendingDeviceReturns(tx);
+      const byId = new Map(deviceReturns.map((d) => [d.contractId, d]));
+      for (const id of deviceReturnIds) {
+        const d = byId.get(id);
+        if (!d) {
+          const labels = await this.resolveContractLabels(tx, [id]);
+          throw new BadRequestException(
+            `สัญญา ${labels[0]} ไม่อยู่ในคิวค่าเครื่องคืน หรืออยู่ในรอบจ่ายอื่นแล้ว`,
+          );
+        }
+        // ห้ามหักข้างเดียว: ฝั่ง SHOP ต้องมี S21-1104 ให้ Dr เท่ากัน ไม่งั้นใบ SHOP ไม่ balance
+        if (d.deviceReturnGl.minus(d.shopDeviceReturnGl).abs().gt('0.01')) {
+          throw new BadRequestException(
+            `ยอดค่าเครื่องคืนสองสมุดไม่ตรงกัน สัญญา ${d.contractNumber} ` +
+              `(FINANCE ${d.deviceReturnGl.toFixed(2)} / SHOP ${d.shopDeviceReturnGl.toFixed(2)}) — ตรวจสอบ GL ก่อนสร้างรอบ`,
+          );
+        }
+        items.push({
+          contractId: id,
+          itemType: 'DEVICE_RETURN' as const,
+          financedGl: zero,
+          commissionGl: zero,
+          shopFinancedGl: zero,
+          shopCommissionGl: zero,
+          legacyNoShop: false,
+          swapCreditAmount: zero,
+          recallAmount: zero,
+          deviceReturnAmount: d.deviceReturnGl,
         });
       }
     }
 
     const totalAmount = totalFinanced.plus(totalCommission);
-    const totalDeduction = items.reduce(
-      (s, i) => s.plus(i.swapCreditAmount).plus(i.recallAmount),
-      zero,
-    );
+    const totalDeduction = sumDeductions(items);
     const netTransferAmount = totalAmount.minus(totalDeduction);
     const shopNetAmount = shopPostedAmount.minus(totalDeduction);
     if (netTransferAmount.lt(0) || shopNetAmount.lt(0)) {
@@ -315,7 +426,12 @@ export class IntercoSettlementService {
 
   async createBatch(dto: CreateBatchDto, userId: string) {
     return this.prisma.$transaction(async (tx) => {
-      const snapshot = await this.buildSnapshot(tx, dto.contractIds, dto.recallContractIds);
+      const snapshot = await this.buildSnapshot(
+        tx,
+        dto.contractIds,
+        dto.recallContractIds,
+        dto.deviceReturnContractIds,
+      );
       const batchNumber = await this.batchNumberService.next(tx);
 
       const batch = await tx.interCoSettlementBatch.create({
@@ -341,6 +457,7 @@ export class IntercoSettlementService {
         include: { items: true },
       });
 
+      // Atomic lifecycle evidence must roll back with the batch; direct tx audit bypasses Merkle chaining.
       await tx.auditLog.create({
         data: {
           userId,
@@ -351,6 +468,7 @@ export class IntercoSettlementService {
             batchNumber: batch.batchNumber,
             contractIds: dto.contractIds,
             recallContractIds: dto.recallContractIds ?? [],
+            deviceReturnContractIds: dto.deviceReturnContractIds ?? [],
             totalAmount: snapshot.totalAmount.toFixed(2),
             shopPostedAmount: snapshot.shopPostedAmount.toFixed(2),
             totalDeduction: snapshot.totalDeduction.toFixed(2),
@@ -375,7 +493,12 @@ export class IntercoSettlementService {
         throw new BadRequestException('แก้ไขได้เฉพาะรอบสถานะร่าง (DRAFT) เท่านั้น');
       }
 
-      const snapshot = await this.buildSnapshot(tx, dto.contractIds, dto.recallContractIds);
+      const snapshot = await this.buildSnapshot(
+        tx,
+        dto.contractIds,
+        dto.recallContractIds,
+        dto.deviceReturnContractIds,
+      );
 
       // Hard delete (not soft) is deliberate here: (batchId, contractId) is a
       // plain (non-partial) unique index, so soft-deleting old items would
@@ -407,6 +530,7 @@ export class IntercoSettlementService {
         include: { items: true },
       });
 
+      // Atomic lifecycle evidence must roll back with the batch; direct tx audit bypasses Merkle chaining.
       await tx.auditLog.create({
         data: {
           userId,
@@ -417,6 +541,7 @@ export class IntercoSettlementService {
             batchNumber: batch.batchNumber,
             contractIds: dto.contractIds,
             recallContractIds: dto.recallContractIds ?? [],
+            deviceReturnContractIds: dto.deviceReturnContractIds ?? [],
             totalAmount: snapshot.totalAmount.toFixed(2),
             totalDeduction: snapshot.totalDeduction.toFixed(2),
             netTransferAmount: snapshot.netTransferAmount.toFixed(2),
@@ -446,26 +571,14 @@ export class IntercoSettlementService {
       // another batch that is now PENDING_APPROVAL/POSTED since createBatch
       // snapshotted them (race between two makers).
       //
-      // Type-aware per item (Phase 2): a RECALL row's contract BY DEFINITION
-      // carries a permanent SETTLEMENT item in some old POSTED batch (Flow
-      // C-2 = ยกเลิกหลังตัดจ่าย) — counting that as a clash would make every
-      // batch with a recall row structurally unsubmittable. Mirror
-      // `getPendingRecalls`'s settled gate instead: RECALL rows clash only
-      // with other RECALL items; SETTLEMENT rows keep the any-type clash
-      // (same as `getPendingContracts`'s gate).
-      const settlementIds = batch.items
-        .filter((i) => i.itemType !== 'RECALL')
-        .map((i) => i.contractId);
-      const recallIds = batch.items
-        .filter((i) => i.itemType === 'RECALL')
-        .map((i) => i.contractId);
-      const clashConditions: Prisma.InterCoSettlementItemWhereInput[] = [];
-      if (settlementIds.length > 0) {
-        clashConditions.push({ contractId: { in: settlementIds } });
-      }
-      if (recallIds.length > 0) {
-        clashConditions.push({ contractId: { in: recallIds }, itemType: 'RECALL' });
-      }
+      // Type-aware per item (Phase 2 + ใบรับเครื่องคืน 2026-09-20): a RECALL /
+      // DEVICE_RETURN row's contract BY DEFINITION carries a permanent SETTLEMENT
+      // item in some old POSTED batch (จ่ายไปแล้วก่อนยกเลิก/ยึด) — counting that
+      // as a clash would make every batch with a deduction-only row structurally
+      // unsubmittable. `buildClashConditions` mirrors each queue's settled gate:
+      // deduction-only rows clash only with items of the SAME type; SETTLEMENT
+      // rows keep the any-type clash (same as `getPendingContracts`'s gate).
+      const clashConditions = buildClashConditions(batch.items);
       if (clashConditions.length > 0) {
         const clashes = await tx.interCoSettlementItem.findMany({
           where: {
@@ -489,6 +602,7 @@ export class IntercoSettlementService {
         data: { status: 'PENDING_APPROVAL' },
       });
 
+      // Atomic lifecycle evidence must roll back with the batch; direct tx audit bypasses Merkle chaining.
       await tx.auditLog.create({
         data: {
           userId,

@@ -685,6 +685,227 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     expect(effects.notify).toHaveBeenCalledWith(row.id, 'DEVICE_RETURNED');
   }, 180_000);
 
+  it.each(['reject', 'cancel'] as const)(
+    'confirm versus %s uses one lock order and returns a clean conflict',
+    async (action) => {
+      const product = await seedProduct(`DR-${action}`);
+      const customer = await seedCustomer(`DR-${action}`);
+      const contract = await seedSignedDraftContract(`DR-${action}`, customer.id, product.id);
+      await workflow.activate(contract.id);
+      const intake = buildIntake(new DeviceReturnNumberService(prisma as never));
+      const pending = await intake.service.create(intakeDto(contract.id), OWNER_USER());
+      const closer = new PrismaClient();
+      let release!: () => void;
+      let reached!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const paused = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      let closePid: number | undefined;
+      const makeService = (client: PrismaClient, pauseFinancial: boolean) => {
+        const effects = {
+          log: vi.fn().mockResolvedValue(undefined),
+          recordAfterCommit: vi.fn().mockResolvedValue(undefined),
+          recomputeForCustomer: vi.fn().mockResolvedValue(undefined),
+          notify: vi.fn().mockResolvedValue(undefined),
+          deliver: vi.fn().mockResolvedValue(undefined),
+        };
+        const serviceClient = {
+          deviceReturn: client.deviceReturn,
+          user: client.user,
+          $transaction: (fn: (tx: Prisma.TransactionClient) => Promise<unknown>) =>
+            client.$transaction(
+              async (tx) => {
+                if (!pauseFinancial) {
+                  const [row] = await tx.$queryRaw<
+                    { pid: number }[]
+                  >`SELECT pg_backend_pid() AS pid`;
+                  closePid = row.pid;
+                }
+                return fn(tx);
+              },
+              { timeout: 20_000 },
+            ),
+        };
+        const financial = {
+          assertRepossessionPeriodsOpen:
+            repossessionsService.assertRepossessionPeriodsOpen.bind(repossessionsService),
+          createInTx: async (...args: Parameters<RepossessionsService['createInTx']>) => {
+            const result = await repossessionsService.createInTx(...args);
+            // Real financial writes hold the contract lock until this transaction commits.
+            reached();
+            await gate;
+            return result;
+          },
+        };
+        return {
+          service: new DeviceReturnsService(
+            serviceClient as never,
+            financial as never,
+            null as never,
+            effects as never,
+            effects as never,
+            effects as never,
+            effects as never,
+            effects as never,
+          ),
+          effects,
+        };
+      };
+      const confirming = makeService(prisma, true);
+      const closing = makeService(closer, false);
+      const settle = <T>(promise: Promise<T>) =>
+        promise.then(
+          (value) => ({ value, error: null }),
+          (error: unknown) => ({ value: null, error }),
+        );
+      const confirmation = settle(confirming.service.confirm(pending.id, {}, OWNER_USER()));
+      let closure: ReturnType<typeof settle> | undefined;
+      try {
+        await Promise.race([
+          paused,
+          confirmation.then(() => {
+            throw new Error('Confirm ended before its financial write barrier');
+          }),
+        ]);
+        closure = settle(
+          action === 'reject'
+            ? closing.service.reject(
+                pending.id,
+                { reason: 'ตรวจสอบใบรับเครื่องคืนใหม่' },
+                OWNER_USER(),
+              )
+            : closing.service.cancel(pending.id, OWNER_USER()),
+        );
+        const deadline = Date.now() + 10_000;
+        let waiting = false;
+        while (Date.now() < deadline) {
+          if (closePid) {
+            const rows = await prisma.$queryRaw<{ wait_event_type: string | null }[]>`
+              SELECT wait_event_type FROM pg_stat_activity WHERE pid = ${closePid}`;
+            if (rows[0]?.wait_event_type === 'Lock') {
+              waiting = true;
+              break;
+            }
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        expect(waiting).toBe(true); // observed database lock wait, not timing alone
+        release();
+        const [confirmed, closed] = await Promise.all([confirmation, closure]);
+        expect(confirmed.error).toBeNull();
+        expect(
+          closed.error,
+          closed.error instanceof Error ? closed.error.message : undefined,
+        ).toBeInstanceOf(ConflictException);
+        expect((closed.error as ConflictException).getStatus()).toBe(409);
+        const row = await prisma.deviceReturn.findUniqueOrThrow({ where: { id: pending.id } });
+        expect(row.status).toBe('CONFIRMED');
+        expect(row.confirmedById).toBe(adminId);
+        expect(row.confirmedAt).not.toBeNull();
+        expect(row.repossessionId).not.toBeNull();
+        expect(row.rejectedAt).toBeNull();
+        expect(row.canceledAt).toBeNull();
+        expect(
+          (await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status,
+        ).toBe('CLOSED_BAD_DEBT');
+        expect(await prisma.repossession.count({ where: { contractId: contract.id } })).toBe(1);
+        const entries = await prisma.journalEntry.findMany({
+          where: { metadata: { path: ['contractId'], equals: contract.id } },
+        });
+        expect(
+          entries.filter((entry) => (entry.metadata as Prisma.JsonObject).flow === 'repossession'),
+        ).toHaveLength(1);
+        expect(
+          entries.filter(
+            (entry) => (entry.metadata as Prisma.JsonObject).flow === 'shop-repossession-intake',
+          ),
+        ).toHaveLength(1);
+        expect(closing.effects.log).not.toHaveBeenCalled();
+        expect(closing.effects.notify).not.toHaveBeenCalled();
+        expect(closing.effects.recomputeForCustomer).not.toHaveBeenCalled();
+        expect(confirming.effects.log).toHaveBeenCalledTimes(1);
+      } finally {
+        release();
+        await confirmation;
+        if (closure) await closure;
+        await closer.$disconnect();
+      }
+    },
+    180_000,
+  );
+
+  it('financial failure rolls back the early document claim and all financial writes', async () => {
+    const product = await seedProduct('DR-ROLLBACK');
+    const customer = await seedCustomer('DR-ROLLBACK');
+    const contract = await seedSignedDraftContract('DR-ROLLBACK', customer.id, product.id);
+    await workflow.activate(contract.id);
+    const intake = buildIntake(new DeviceReturnNumberService(prisma as never));
+    const pending = await intake.service.create(intakeDto(contract.id), OWNER_USER());
+    const before = {
+      document: await prisma.deviceReturn.findUniqueOrThrow({ where: { id: pending.id } }),
+      contract: await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } }),
+      product: await prisma.product.findUniqueOrThrow({ where: { id: product.id } }),
+      journals: await prisma.journalEntry.findMany({
+        where: { metadata: { path: ['contractId'], equals: contract.id } },
+        include: { lines: { orderBy: { id: 'asc' } } },
+        orderBy: { id: 'asc' },
+      }),
+    };
+    const effects = {
+      log: vi.fn(),
+      notify: vi.fn(),
+      recordAfterCommit: vi.fn(),
+      recomputeForCustomer: vi.fn(),
+      deliver: vi.fn(),
+    };
+    const failure = new Error('Injected financial failure after real journal writes');
+    let claimedStatus: string | undefined;
+    const financial = {
+      assertRepossessionPeriodsOpen:
+        repossessionsService.assertRepossessionPeriodsOpen.bind(repossessionsService),
+      createInTx: async (...args: Parameters<RepossessionsService['createInTx']>) => {
+        claimedStatus = (
+          await args[0].deviceReturn.findUniqueOrThrow({ where: { id: pending.id } })
+        ).status;
+        await repossessionsService.createInTx(...args);
+        throw failure;
+      },
+    };
+    const service = new DeviceReturnsService(
+      prisma as never,
+      financial as never,
+      null as never,
+      effects as never,
+      effects as never,
+      effects as never,
+      effects as never,
+      effects as never,
+    );
+    await expect(service.confirm(pending.id, {}, OWNER_USER())).rejects.toBe(failure);
+    expect(claimedStatus).toBe('CONFIRMED');
+    expect(await prisma.deviceReturn.findUniqueOrThrow({ where: { id: pending.id } })).toEqual(
+      before.document,
+    );
+    expect(await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).toEqual(
+      before.contract,
+    );
+    expect(await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).toEqual(
+      before.product,
+    );
+    expect(
+      await prisma.journalEntry.findMany({
+        where: { metadata: { path: ['contractId'], equals: contract.id } },
+        include: { lines: { orderBy: { id: 'asc' } } },
+        orderBy: { id: 'asc' },
+      }),
+    ).toEqual(before.journals);
+    expect(await prisma.repossession.count({ where: { contractId: contract.id } })).toBe(0);
+    for (const effect of Object.values(effects)) expect(effect).not.toHaveBeenCalled();
+  }, 180_000);
+
   // -------------------------------------------------------------------------
   it('เครื่องเดียวเปิดสองสัญญาพร้อมกันไม่ได้ (สัญญาที่สองแพ้ตอน activate)', async () => {
     const product = await seedProduct('A1');

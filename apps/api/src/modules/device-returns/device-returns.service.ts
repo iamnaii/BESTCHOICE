@@ -18,6 +18,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { getBranchScope } from '../auth/branch-access.util';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
 import { CustomerTagsService } from '../customer-tags/customer-tags.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import {
@@ -33,10 +34,12 @@ import {
 import { lookupTableBase, TableBaseHint } from '../repossessions/table-base.util';
 import { TradeInValuationService } from '../trade-in/services/trade-in-valuation.service';
 import { d, dAdd, dSub } from '../../utils/decimal.util';
-import { isFutureBkkDay } from '../../utils/date.util';
+import { bkkYearMonth, isFutureBkkDay } from '../../utils/date.util';
 import { DeviceReturnNumberService } from './device-return-number.service';
 import { DeviceReturnNotifyService } from './device-return-notify.service';
 import { CreateDeviceReturnDto } from './dto/create-device-return.dto';
+import { ConfirmDeviceReturnDto } from './dto/confirm-device-return.dto';
+import { RejectDeviceReturnDto } from './dto/reject-device-return.dto';
 
 // ───────────────────────────── ข้อความคงที่ (ใช้ซ้ำใน preview.eligibility + create) ─────────────────────────────
 export const NOT_RETURNABLE_MSG = 'สัญญานี้ไม่อยู่ในสถานะที่รับเครื่องคืนได้';
@@ -561,6 +564,239 @@ export class DeviceReturnsService {
       })),
       total,
     };
+  }
+
+  // ───────────────────────────── confirm (FINANCE — spec §5.2) ─────────────────────────────
+
+  async confirm(id: string, dto: ConfirmDeviceReturnDto, user: RequestUser) {
+    const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+    if (Number.isNaN(paymentDate.getTime())) {
+      throw new BadRequestException('วันที่ลงบัญชีไม่ถูกต้อง');
+    }
+    // ยืนยัน = OWNER/FM (cross-branch) — findFirst ไม่ต้อง scope สาขา
+    const existing = await this.prisma.deviceReturn.findFirst({
+      where: { id, deletedAt: null },
+      include: DEVICE_RETURN_LIST_INCLUDE,
+    });
+    if (!existing) throw new NotFoundException(NOT_FOUND_MSG);
+    if (existing.status !== 'PENDING_CONFIRM') throw new ConflictException(CLOSED_MSG);
+
+    // ด่านนอก tx ของการยึด (วันอนาคต / เดือนปัจจุบัน / งวดเปิดทั้ง FINANCE+SHOP) — ก่อนเปิด tx เหมือน create() เดิม
+    const { financeCompanyId, shopCompanyId } =
+      await this.repossessions.assertRepossessionPeriodsOpen(paymentDate);
+
+    const result = await this.prisma
+      .$transaction(async (tx) => {
+        const dr = await tx.deviceReturn.findUnique({ where: { id } });
+        if (!dr || dr.deletedAt || dr.status !== 'PENDING_CONFIRM') {
+          throw new ConflictException(CLOSED_MSG);
+        }
+        // Claim the document before touching the contract, matching reject/cancel lock order.
+        // Financial failures roll this claim back with every journal and contract write.
+        const cas = await tx.deviceReturn.updateMany({
+          where: { id, status: 'PENDING_CONFIRM' },
+          data: { status: 'CONFIRMED', confirmedById: user.id, confirmedAt: new Date() },
+        });
+        if (cas.count !== 1) throw new ConflictException(CLOSED_MSG);
+        const created = await this.repossessions.createInTx(
+          tx,
+          {
+            contractId: dr.contractId,
+            repossessedDate: dr.deviceReceivedAt,
+            paymentDate,
+            conditionGrade: dr.conditionGrade,
+            // คอลัมน์ Decimal(12,2) ของใบ → number ตรงตัว (RepossessionCreateInput รับ number ตาม contract)
+            appraisalPrice: dr.appraisalPrice.toNumber(),
+            repairCost: dr.repairCost.toNumber(),
+            notes: dr.notes ?? undefined,
+            returnReason: dr.returnReason as RepossessionReturnReason,
+            discountPct: dto.discountPct,
+            appraisedById: dr.receivedById,
+            receivingBranchId: dr.receivingBranchId,
+            deviceReturnId: dr.id,
+            financeCompanyId,
+            shopCompanyId,
+          },
+          user.id,
+        );
+        await tx.deviceReturn.update({
+          where: { id },
+          data: { repossessionId: created.repossession.id },
+        });
+        return created;
+      })
+      .catch((err: unknown) => {
+        // ตาข่าย Repossession.productId @unique / JP5 reference unique — tx abort แล้ว re-query ไม่ได้ → 409 ไทย
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new ConflictException(RE_REPOSSESSION_MSG);
+        }
+        throw err;
+      });
+
+    // หลัง commit — best-effort ทั้งหมด (doctrine R-1)
+    await this.audit.log({
+      userId: user.id,
+      action: 'DEVICE_RETURN_CONFIRMED',
+      entity: 'device_return',
+      entityId: id,
+      newValue: {
+        docNumber: existing.docNumber,
+        contractNumber: existing.contract.contractNumber,
+        repossessionId: result.repossession.id,
+        paymentDate: paymentDate.toISOString(),
+        discountPct: dto.discountPct ?? null,
+        outstandingBalance: result.outstandingBalance.toFixed(2),
+        totalPaid: result.totalPaid.toFixed(2),
+        creditNote: result.creditNote?.outcome ?? null,
+      },
+    });
+    await this.journey.recordAfterCommit({
+      customerId: existing.customerId,
+      kind: 'DEVICE_RETURNED',
+      occurredAt: existing.deviceReceivedAt,
+      actorType: 'STAFF',
+      actorUserId: user.id,
+      refType: 'contract',
+      refId: existing.contractId,
+      data: {
+        docNumber: existing.docNumber,
+        contractNumber: existing.contract.contractNumber,
+        returnKind: existing.returnKind,
+        returnReason: existing.returnReason,
+      },
+      dedupeKey: journeyDedupeKey('DEVICE_RETURNED', id),
+    });
+    await this.recomputeTags(existing.customerId);
+    // ใบลดหนี้ทางไลน์ — เฉพาะหลัง commit (rollback แล้วต้องไม่มีลิงก์ไปใบที่ไม่มีจริง); fire-and-forget
+    if (result.creditNote?.outcome === 'ISSUED' && result.creditNote.receiptId) {
+      void this.cnDelivery
+        .deliver(result.creditNote.receiptId)
+        .catch((err) => Sentry.captureException(err, { tags: SENTRY_TAGS }));
+    }
+
+    const row = await this.findRow(id);
+    return { ...row, creditNote: result.creditNote ?? null };
+  }
+
+  // ───────────────────────────── reject (FINANCE §5.3) / cancel (สาขา §5.4) ─────────────────────────────
+
+  async reject(id: string, dto: RejectDeviceReturnDto, user: RequestUser) {
+    const existing = await this.prisma.deviceReturn.findFirst({
+      where: { id, deletedAt: null },
+      include: DEVICE_RETURN_LIST_INCLUDE,
+    });
+    if (!existing) throw new NotFoundException(NOT_FOUND_MSG);
+    return this.close(existing, 'REJECTED', user, dto.reason.trim());
+  }
+
+  async cancel(id: string, user: RequestUser) {
+    // OWNER ทุกใบ · BM เฉพาะใบที่สาขาตัวเองรับ (loadScoped → 404 ไม่ leak); SALES ไม่มีสิทธิ์ (controller @Roles)
+    const existing = await this.loadScoped(id, user);
+    return this.close(existing, 'CANCELED', user, null);
+  }
+
+  /**
+   * ส่งกลับ/ยกเลิก: CAS PENDING_CONFIRM → target; VOLUNTARY คืนสถานะสัญญาเดิมด้วย CAS
+   * (TERMINATED → previousContractStatus) + audit CONTRACT_STATUS_LEGAL ใน tx (atomic กับการคืนสถานะ).
+   * สัญญาที่ถูกเปลี่ยนสถานะไปแล้วระหว่างรอ (count 0) = ไม่คืน แต่ใบยังปิดได้ (บันทึกใน audit หลัง commit).
+   */
+  private async close(
+    existing: DeviceReturnWithRelations,
+    target: 'REJECTED' | 'CANCELED',
+    user: RequestUser,
+    reason: string | null,
+  ) {
+    if (existing.status !== 'PENDING_CONFIRM') throw new ConflictException(CLOSED_MSG);
+    const now = new Date();
+
+    const restored = await this.prisma.$transaction(async (tx) => {
+      const cas = await tx.deviceReturn.updateMany({
+        where: { id: existing.id, status: 'PENDING_CONFIRM' },
+        data:
+          target === 'REJECTED'
+            ? { status: 'REJECTED', rejectedById: user.id, rejectedAt: now, rejectReason: reason }
+            : { status: 'CANCELED', canceledById: user.id, canceledAt: now },
+      });
+      if (cas.count !== 1) throw new ConflictException(CLOSED_MSG);
+
+      if (existing.returnKind !== 'VOLUNTARY' || !existing.previousContractStatus) return null;
+      const contractCas = await tx.contract.updateMany({
+        where: { id: existing.contractId, status: 'TERMINATED' },
+        data: { status: existing.previousContractStatus },
+      });
+      if (contractCas.count !== 1) {
+        this.logger.warn(
+          `[device-return] ${existing.docNumber}: สัญญา ${existing.contract.contractNumber} ไม่อยู่ในสถานะ TERMINATED แล้ว — ไม่คืนสถานะ`,
+        );
+        return null;
+      }
+      // audit ใน tx — atomic กับการคืนสถานะ (หลุด Merkle chain โดยตั้งใจ; pattern contract-letter.service.ts:256-267)
+      await tx.auditLog.create({
+        data: {
+          userId: user.id,
+          action: 'CONTRACT_STATUS_LEGAL',
+          entity: 'contract',
+          entityId: existing.contractId,
+          newValue: {
+            from: 'TERMINATED',
+            to: existing.previousContractStatus,
+            reason: target === 'REJECTED' ? 'DEVICE_RETURN_REJECTED' : 'DEVICE_RETURN_CANCELED',
+            deviceReturnId: existing.id,
+            docNumber: existing.docNumber,
+          },
+        },
+      });
+      return existing.previousContractStatus;
+    });
+
+    await this.audit.log({
+      userId: user.id,
+      action: target === 'REJECTED' ? 'DEVICE_RETURN_REJECTED' : 'DEVICE_RETURN_CANCELED',
+      entity: 'device_return',
+      entityId: existing.id,
+      newValue: {
+        docNumber: existing.docNumber,
+        contractNumber: existing.contract.contractNumber,
+        returnKind: existing.returnKind,
+        reason,
+        contractStatusRestored: restored,
+      },
+    });
+    await this.recomputeTags(existing.customerId);
+    await this.notify.notify(existing.id, 'DEVICE_RETURN_CANCELED');
+
+    // spec §8: ใบข้ามเดือน — accrual ย้อนหลังของงวดที่ค้างระหว่างรอต้องผ่าน validatePeriodOpen(dueDate)
+    const crossedMonth = bkkYearMonth(existing.deviceReceivedAt) !== bkkYearMonth(now);
+    const notice =
+      restored && crossedMonth
+        ? 'ใบนี้ข้ามเดือน — งวดที่ค้าง accrual ระหว่างรอจะถูก accrual ย้อนหลังโดย cron 2A ซึ่งต้องให้งวดบัญชีของเดือนนั้นยังเปิดอยู่ ถ้าปิดแล้วให้ OWNER เปิดงวดใหม่ผ่าน PERIOD_REOPENED ก่อน'
+        : null;
+    const row = await this.findRow(existing.id);
+    return { ...row, notice };
+  }
+
+  // ───────────────────────────── resend LINE (§5.5) ─────────────────────────────
+
+  async resendLine(id: string, user: RequestUser): Promise<DeviceReturnRow> {
+    const existing = await this.loadScoped(id, user);
+    const eventType: 'DEVICE_RETURNED' | 'DEVICE_RETURN_CANCELED' =
+      existing.status === 'PENDING_CONFIRM' || existing.status === 'CONFIRMED'
+        ? 'DEVICE_RETURNED'
+        : 'DEVICE_RETURN_CANCELED';
+    await this.notify.notify(existing.id, eventType);
+    const row = await this.findRow(existing.id);
+    await this.audit.log({
+      userId: user.id,
+      action: 'DEVICE_RETURN_LINE_RESENT',
+      entity: 'device_return',
+      entityId: existing.id,
+      newValue: {
+        docNumber: existing.docNumber,
+        eventType,
+        lineNotifyStatus: row.lineNotifyStatus,
+      },
+    });
+    return row;
   }
 
   // ───────────────────────────── helpers ─────────────────────────────

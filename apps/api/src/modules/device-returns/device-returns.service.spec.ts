@@ -163,6 +163,7 @@ describe('DeviceReturnsService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn(),
+        update: jest.fn().mockResolvedValue({}),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       repossession: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -799,6 +800,368 @@ describe('DeviceReturnsService', () => {
         ],
         total: 1,
       });
+    });
+  });
+  describe('confirm (FINANCE)', () => {
+    const pending = () => makeReturnRow();
+
+    it('PENDING → createInTx ด้วยข้อมูลจากใบ (เกรด/ราคา/วันรับ/ผู้ตรวจ/สาขา/deviceReturnId + company ids), CAS → CONFIRMED, หลัง commit audit/journey/tag/ส่ง CN', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(pending());
+      prisma.deviceReturn.findUnique.mockResolvedValue(pending());
+      prisma.deviceReturn.findUniqueOrThrow.mockResolvedValue(
+        makeReturnRow({ status: 'CONFIRMED', confirmedById: 'fm-1', repossessionId: 'repo-1' }),
+      );
+      prisma.user.findMany.mockResolvedValue([{ id: 'fm-1', name: 'ผจก.การเงิน' }]);
+
+      let committed = false;
+      prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const result = await fn(prisma);
+        committed = true;
+        return result;
+      });
+      for (const effect of [
+        audit.log,
+        journey.recordAfterCommit,
+        tags.recomputeForCustomer,
+        cnDelivery.deliver,
+      ]) {
+        effect.mockImplementation(async () => {
+          expect(committed).toBe(true);
+        });
+      }
+
+      const result = await service.confirm('dr-1', { discountPct: 40 }, FM as never);
+
+      expect(repossessions.assertRepossessionPeriodsOpen).toHaveBeenCalledWith(expect.any(Date));
+      expect(repossessions.createInTx).toHaveBeenCalledWith(
+        prisma, // tx
+        {
+          contractId: 'contract-1',
+          repossessedDate: new Date('2026-09-20T03:00:00.000Z'),
+          paymentDate: expect.any(Date),
+          conditionGrade: 'B',
+          appraisalPrice: 6000,
+          repairCost: 0,
+          notes: undefined,
+          returnReason: 'UNAFFORDABLE',
+          discountPct: 40,
+          appraisedById: 'sales-a',
+          receivingBranchId: 'branch-a',
+          deviceReturnId: 'dr-1',
+          financeCompanyId: 'company-finance',
+          shopCompanyId: 'company-shop',
+        },
+        'fm-1',
+      );
+      expect(prisma.deviceReturn.updateMany).toHaveBeenCalledWith({
+        where: { id: 'dr-1', status: 'PENDING_CONFIRM' },
+        data: { status: 'CONFIRMED', confirmedById: 'fm-1', confirmedAt: expect.any(Date) },
+      });
+      expect(prisma.deviceReturn.update).toHaveBeenCalledWith({
+        where: { id: 'dr-1' },
+        data: { repossessionId: 'repo-1' },
+      });
+      expect(prisma.deviceReturn.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+        repossessions.createInTx.mock.invocationCallOrder[0],
+      );
+      const txOrder = prisma.$transaction.mock.invocationCallOrder[0];
+      expect(audit.log.mock.invocationCallOrder[0]).toBeGreaterThan(txOrder);
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'fm-1',
+          action: 'DEVICE_RETURN_CONFIRMED',
+          entity: 'device_return',
+          entityId: 'dr-1',
+          newValue: expect.objectContaining({
+            docNumber: 'DR-20260920-0001',
+            repossessionId: 'repo-1',
+            outstandingBalance: '2100.00',
+            creditNote: 'ISSUED',
+          }),
+        }),
+      );
+      expect(journey.recordAfterCommit).toHaveBeenCalledWith({
+        customerId: 'cust-1',
+        kind: 'DEVICE_RETURNED',
+        occurredAt: new Date('2026-09-20T03:00:00.000Z'),
+        actorType: 'STAFF',
+        actorUserId: 'fm-1',
+        refType: 'contract',
+        refId: 'contract-1',
+        data: {
+          docNumber: 'DR-20260920-0001',
+          contractNumber: 'BCP2609-00042',
+          returnKind: 'VOLUNTARY',
+          returnReason: 'UNAFFORDABLE',
+        },
+        dedupeKey: 'DEVICE_RETURNED:dr-1',
+      });
+      expect(tags.recomputeForCustomer).toHaveBeenCalledWith('cust-1');
+      expect(cnDelivery.deliver).toHaveBeenCalledWith('r1');
+      expect(cnDelivery.deliver.mock.invocationCallOrder[0]).toBeGreaterThan(txOrder);
+      expect(notify.notify).not.toHaveBeenCalled(); // ยืนยันไม่ส่งไลน์ซ้ำ — ลูกค้าได้ CN ทางไลน์จาก create path อยู่แล้ว
+      expect(result).toMatchObject({
+        status: 'CONFIRMED',
+        repossessionId: 'repo-1',
+        confirmedBy: { id: 'fm-1', name: 'ผจก.การเงิน' },
+        creditNote: { outcome: 'ISSUED', receiptId: 'r1' },
+      });
+    });
+
+    it('paymentDate จาก dto ถูกส่งเข้า assertRepossessionPeriodsOpen และ createInTx; period guard throw → ไม่เปิด tx', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(pending());
+      repossessions.assertRepossessionPeriodsOpen.mockRejectedValueOnce(
+        new BadRequestException('วันที่รับเงินต้องไม่เป็นวันในอนาคต'),
+      );
+      await expect(
+        service.confirm('dr-1', { paymentDate: '2099-01-01' }, FM as never),
+      ).rejects.toThrow(/อนาคต/);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('ใบไม่ใช่ PENDING → 409 CLOSED_MSG ก่อน period guard; ใบไม่พบ → 404', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(makeReturnRow({ status: 'REJECTED' }));
+      await expect(service.confirm('dr-1', {}, FM as never)).rejects.toThrow(
+        'ใบนี้ถูกยืนยัน/ส่งกลับ/ยกเลิกไปแล้ว',
+      );
+      expect(repossessions.assertRepossessionPeriodsOpen).not.toHaveBeenCalled();
+      prisma.deviceReturn.findFirst.mockResolvedValue(null);
+      await expect(service.confirm('missing', {}, FM as never)).rejects.toThrow(NotFoundException);
+    });
+
+    it('CAS แพ้ (count 0 — อีกคนยืนยันก่อน) → 409 และ rollback (throw ออกจาก tx)', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(pending());
+      prisma.deviceReturn.findUnique.mockResolvedValue(pending());
+      prisma.deviceReturn.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.confirm('dr-1', {}, FM as never)).rejects.toThrow(ConflictException);
+      expect(repossessions.createInTx).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+      expect(cnDelivery.deliver).not.toHaveBeenCalled();
+    });
+
+    it('createInTx โยน (เช่น ยอดค้าง 0 เพราะ webhook จ่ายหมดระหว่างรอ) → error เดิมทะลุออก ไม่มี post-commit', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(pending());
+      prisma.deviceReturn.findUnique.mockResolvedValue(pending());
+      repossessions.createInTx.mockRejectedValueOnce(
+        new BadRequestException('สัญญานี้ไม่มียอดค้างชำระ'),
+      );
+      await expect(service.confirm('dr-1', {}, FM as never)).rejects.toThrow(/ไม่มียอดค้างชำระ/);
+      expect(prisma.deviceReturn.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.deviceReturn.update).not.toHaveBeenCalled();
+      expect(journey.recordAfterCommit).not.toHaveBeenCalled();
+    });
+
+    it('P2002 ใน tx (แพ้ race ของ Repossession.productId unique) → 409 RE_REPOSSESSION_MSG', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(pending());
+      prisma.deviceReturn.findUnique.mockResolvedValue(pending());
+      repossessions.createInTx.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'test' }),
+      );
+      await expect(service.confirm('dr-1', {}, FM as never)).rejects.toThrow(/เคยถูกยึดคืนมาแล้ว/);
+    });
+
+    it('CN ไม่ได้ออก (SKIPPED_NO_ACCRUED) → ไม่เรียก deliver; creditNote ในผลลัพธ์ยังมี outcome', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(pending());
+      prisma.deviceReturn.findUnique.mockResolvedValue(pending());
+      prisma.deviceReturn.findUniqueOrThrow.mockResolvedValue(
+        makeReturnRow({ status: 'CONFIRMED' }),
+      );
+      repossessions.createInTx.mockResolvedValueOnce({
+        repossession: { id: 'repo-1' },
+        outstandingBalance: decimal(2100),
+        totalPaid: decimal(1000),
+        creditNote: { outcome: 'SKIPPED_NO_ACCRUED' },
+      });
+      const result = await service.confirm('dr-1', {}, FM as never);
+      expect(cnDelivery.deliver).not.toHaveBeenCalled();
+      expect(result.creditNote).toEqual({ outcome: 'SKIPPED_NO_ACCRUED' });
+    });
+  });
+
+  describe('reject / cancel', () => {
+    it('reject VOLUNTARY: CAS → REJECTED + คืนสถานะสัญญาเดิม (CAS TERMINATED→previous) + audit CONTRACT_STATUS_LEGAL ใน tx; หลัง commit audit/tag/ไลน์ยกเลิก', async () => {
+      // deviceReceivedAt = วันนี้ → ไม่ข้ามเดือน → notice null (fixture วันตายตัวจะทำให้เทสแดงเมื่อเดือนเปลี่ยน)
+      prisma.deviceReturn.findFirst.mockResolvedValue(
+        makeReturnRow({ deviceReceivedAt: new Date() }),
+      );
+      prisma.deviceReturn.findUniqueOrThrow.mockResolvedValue(
+        makeReturnRow({ status: 'REJECTED', rejectReason: 'ใบผิดสัญญา กรุณาตรวจใหม่' }),
+      );
+
+      const result = await service.reject(
+        'dr-1',
+        { reason: 'ใบผิดสัญญา กรุณาตรวจใหม่' },
+        FM as never,
+      );
+
+      expect(prisma.deviceReturn.updateMany).toHaveBeenCalledWith({
+        where: { id: 'dr-1', status: 'PENDING_CONFIRM' },
+        data: {
+          status: 'REJECTED',
+          rejectedById: 'fm-1',
+          rejectedAt: expect.any(Date),
+          rejectReason: 'ใบผิดสัญญา กรุณาตรวจใหม่',
+        },
+      });
+      expect(prisma.contract.updateMany).toHaveBeenCalledWith({
+        where: { id: 'contract-1', status: 'TERMINATED' },
+        data: { status: 'ACTIVE' },
+      });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          userId: 'fm-1',
+          action: 'CONTRACT_STATUS_LEGAL',
+          entity: 'contract',
+          entityId: 'contract-1',
+          newValue: {
+            from: 'TERMINATED',
+            to: 'ACTIVE',
+            reason: 'DEVICE_RETURN_REJECTED',
+            deviceReturnId: 'dr-1',
+            docNumber: 'DR-20260920-0001',
+          },
+        },
+      });
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'fm-1',
+          action: 'DEVICE_RETURN_REJECTED',
+          entity: 'device_return',
+          entityId: 'dr-1',
+          newValue: expect.objectContaining({
+            docNumber: 'DR-20260920-0001',
+            reason: 'ใบผิดสัญญา กรุณาตรวจใหม่',
+            contractStatusRestored: 'ACTIVE',
+          }),
+        }),
+      );
+      expect(tags.recomputeForCustomer).toHaveBeenCalledWith('cust-1');
+      expect(notify.notify).toHaveBeenCalledWith('dr-1', 'DEVICE_RETURN_CANCELED');
+      expect(result).toMatchObject({
+        status: 'REJECTED',
+        rejectReason: 'ใบผิดสัญญา กรุณาตรวจใหม่',
+        notice: null,
+      });
+    });
+
+    it('reject ใบข้ามเดือน (รับเครื่องเดือนก่อน) → notice บอกให้เปิดงวดถ้าปิดแล้ว (accrual ย้อนหลังติด validatePeriodOpen)', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(
+        makeReturnRow({ deviceReceivedAt: new Date('2020-01-15T03:00:00.000Z') }),
+      );
+      prisma.deviceReturn.findUniqueOrThrow.mockResolvedValue(
+        makeReturnRow({ status: 'REJECTED' }),
+      );
+      const result = await service.reject('dr-1', { reason: 'ส่งกลับให้ตรวจสอบ' }, FM as never);
+      expect(result.notice).toMatch(/PERIOD_REOPENED/);
+    });
+
+    it('reject REPOSSESSION: ไม่แตะสถานะสัญญา ไม่มี CONTRACT_STATUS_LEGAL', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(
+        makeReturnRow({
+          returnKind: 'REPOSSESSION',
+          returnReason: 'AFTER_TERMINATION',
+          previousContractStatus: null,
+        }),
+      );
+      prisma.deviceReturn.findUniqueOrThrow.mockResolvedValue(
+        makeReturnRow({ status: 'REJECTED' }),
+      );
+      await service.reject('dr-1', { reason: 'ส่งกลับให้ตรวจสอบ' }, FM as never);
+      expect(prisma.contract.updateMany).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('reject: สัญญาถูกเปลี่ยนสถานะระหว่างรอ (CAS สัญญา count 0) → ยังส่งกลับได้ แต่บันทึกว่าไม่ได้คืนสถานะ', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(makeReturnRow());
+      prisma.deviceReturn.findUniqueOrThrow.mockResolvedValue(
+        makeReturnRow({ status: 'REJECTED' }),
+      );
+      prisma.contract.updateMany.mockResolvedValueOnce({ count: 0 });
+      await service.reject('dr-1', { reason: 'ส่งกลับให้ตรวจสอบ' }, FM as never);
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: expect.objectContaining({ contractStatusRestored: null }),
+        }),
+      );
+    });
+
+    it('reject: ใบไม่ใช่ PENDING → 409; CAS แพ้ → 409', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(makeReturnRow({ status: 'CONFIRMED' }));
+      await expect(
+        service.reject('dr-1', { reason: 'ส่งกลับให้ตรวจสอบ' }, FM as never),
+      ).rejects.toThrow(ConflictException);
+      prisma.deviceReturn.findFirst.mockResolvedValue(makeReturnRow());
+      prisma.deviceReturn.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(
+        service.reject('dr-1', { reason: 'ส่งกลับให้ตรวจสอบ' }, FM as never),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('cancel: OWNER ยกเลิกใบสาขาใดก็ได้ → CANCELED + คืนสถานะ + audit DEVICE_RETURN_CANCELED + ไลน์', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(makeReturnRow());
+      prisma.deviceReturn.findUniqueOrThrow.mockResolvedValue(
+        makeReturnRow({ status: 'CANCELED' }),
+      );
+      const result = await service.cancel('dr-1', OWNER as never);
+      expect(prisma.deviceReturn.updateMany).toHaveBeenCalledWith({
+        where: { id: 'dr-1', status: 'PENDING_CONFIRM' },
+        data: { status: 'CANCELED', canceledById: 'owner-1', canceledAt: expect.any(Date) },
+      });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            newValue: expect.objectContaining({ reason: 'DEVICE_RETURN_CANCELED' }),
+          }),
+        }),
+      );
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'DEVICE_RETURN_CANCELED' }),
+      );
+      expect(notify.notify).toHaveBeenCalledWith('dr-1', 'DEVICE_RETURN_CANCELED');
+      expect(result.status).toBe('CANCELED');
+    });
+
+    it('cancel: BM ยกเลิกได้เฉพาะใบสาขาตัวเอง (สาขาอื่น → 404 ไม่ leak); BM ไม่มี branchId → 404', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(
+        makeReturnRow({ receivingBranchId: 'branch-b' }),
+      );
+      await expect(service.cancel('dr-1', BM_A as never)).rejects.toThrow(NotFoundException);
+      await expect(
+        service.cancel('dr-1', { id: 'bm', role: 'BRANCH_MANAGER', branchId: null } as never),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.deviceReturn.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resendLine', () => {
+    it('PENDING/CONFIRMED → ส่ง DEVICE_RETURNED; REJECTED/CANCELED → DEVICE_RETURN_CANCELED; audit DEVICE_RETURN_LINE_RESENT; BM สาขาอื่น → 404', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(makeReturnRow({ status: 'CONFIRMED' }));
+      prisma.deviceReturn.findUniqueOrThrow.mockResolvedValue(
+        makeReturnRow({ status: 'CONFIRMED', lineNotifyStatus: 'SENT' }),
+      );
+      const result = await service.resendLine('dr-1', BM_A as never);
+      expect(notify.notify).toHaveBeenCalledWith('dr-1', 'DEVICE_RETURNED');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'DEVICE_RETURN_LINE_RESENT',
+          entityId: 'dr-1',
+          newValue: expect.objectContaining({
+            eventType: 'DEVICE_RETURNED',
+            lineNotifyStatus: 'SENT',
+          }),
+        }),
+      );
+      expect(result.lineNotifyStatus).toBe('SENT');
+
+      prisma.deviceReturn.findFirst.mockResolvedValue(makeReturnRow({ status: 'CANCELED' }));
+      await service.resendLine('dr-1', FM as never);
+      expect(notify.notify).toHaveBeenLastCalledWith('dr-1', 'DEVICE_RETURN_CANCELED');
+
+      prisma.deviceReturn.findFirst.mockResolvedValue(
+        makeReturnRow({ receivingBranchId: 'branch-b' }),
+      );
+      await expect(service.resendLine('dr-1', BM_A as never)).rejects.toThrow(NotFoundException);
     });
   });
 });

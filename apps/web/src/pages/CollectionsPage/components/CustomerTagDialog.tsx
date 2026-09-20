@@ -30,7 +30,10 @@ interface Props {
   customerId: string | null;
 }
 
-const ALL_TAGS: { value: CustomerTagType; label: string; help: string }[] = [
+// RETURNED_DEVICE must follow intake/repossession evidence; manual edits cannot maintain it.
+export const AUTO_ONLY_TAGS: CustomerTagType[] = ['RETURNED_DEVICE'];
+
+export const MANUAL_TAG_OPTIONS: { value: CustomerTagType; label: string; help: string }[] = [
   {
     value: 'VIP',
     label: 'VIP',
@@ -99,34 +102,40 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
                 กำลังโหลด...
               </div>
             ) : tags.length === 0 ? (
-              <div className="text-sm text-muted-foreground italic leading-snug">
-                ยังไม่มี tag
-              </div>
+              <div className="text-sm text-muted-foreground italic leading-snug">ยังไม่มี tag</div>
             ) : (
               <ul className="space-y-1.5" data-testid="customer-tag-list">
-                {tags.map((t) => (
-                  <li
-                    key={t.id}
-                    className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2"
-                  >
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <CustomerTagChips tags={[{ tag: t.tag }]} compact />
-                      <div className="text-2xs text-muted-foreground leading-snug truncate">
-                        {t.source} {t.reason ? `· ${t.reason}` : ''}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemove(t.id)}
-                      disabled={remove.isPending}
-                      className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                      title="ลบ tag นี้"
-                      aria-label={`ลบ ${t.tag}`}
+                {tags.map((t) => {
+                  const autoOnly = AUTO_ONLY_TAGS.includes(t.tag);
+                  return (
+                    <li
+                      key={t.id}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2"
                     >
-                      <X className="size-4" />
-                    </button>
-                  </li>
-                ))}
+                      <div className="flex flex-col gap-1 min-w-0">
+                        <CustomerTagChips tags={[{ tag: t.tag }]} compact />
+                        <div className="text-2xs text-muted-foreground leading-snug truncate">
+                          {t.source} {t.reason ? `· ${t.reason}` : ''}
+                        </div>
+                        {autoOnly && (
+                          <div className="text-2xs text-muted-foreground leading-snug">
+                            ติดอัตโนมัติจากใบรับเครื่องคืน/รายการยึด — ถอดมือไม่ได้ (ระบบจะติดกลับ)
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(t.id)}
+                        disabled={remove.isPending || autoOnly}
+                        className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+                        title={autoOnly ? 'tag อัตโนมัติ — ถอดมือไม่ได้' : 'ลบ tag นี้'}
+                        aria-label={`ลบ ${t.tag}`}
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -146,7 +155,7 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
                     <SelectValue placeholder="เลือก tag..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {ALL_TAGS.map((t) => (
+                    {MANUAL_TAG_OPTIONS.map((t) => (
                       <SelectItem key={t.value} value={t.value}>
                         {t.label}
                       </SelectItem>
@@ -155,7 +164,7 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
                 </Select>
                 {selectedTag && (
                   <div className="text-2xs text-muted-foreground mt-1 leading-snug">
-                    {ALL_TAGS.find((t) => t.value === selectedTag)?.help}
+                    {MANUAL_TAG_OPTIONS.find((t) => t.value === selectedTag)?.help}
                   </div>
                 )}
               </div>
@@ -172,11 +181,7 @@ export default function CustomerTagDialog({ open, onClose, customerId }: Props) 
               </div>
             </div>
             <div className="flex justify-end pt-2">
-              <Button
-                onClick={handleAdd}
-                disabled={!selectedTag || apply.isPending}
-                size="sm"
-              >
+              <Button onClick={handleAdd} disabled={!selectedTag || apply.isPending} size="sm">
                 <Plus className="size-4" />
                 เพิ่ม tag
               </Button>

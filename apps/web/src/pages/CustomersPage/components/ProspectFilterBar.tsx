@@ -33,6 +33,7 @@ const TAG_LABELS: Record<string, string> = {
   NEW: 'ลูกค้าใหม่',
   LOYAL: 'ลูกค้าประจำ',
   BLACKLIST: 'BLACKLIST',
+  RETURNED_DEVICE: 'เคยคืนเครื่อง',
 };
 
 export default function ProspectFilterBar({

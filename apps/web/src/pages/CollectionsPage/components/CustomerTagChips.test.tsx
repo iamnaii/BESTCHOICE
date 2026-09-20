@@ -3,6 +3,13 @@ import { render, screen } from '@testing-library/react';
 import CustomerTagChips from './CustomerTagChips';
 
 describe('CustomerTagChips', () => {
+  it('renders the automatic returned-device chip with semantic warning tokens', () => {
+    render(<CustomerTagChips tags={[{ tag: 'RETURNED_DEVICE' }]} />);
+    const chip = screen.getByTestId('customer-tag-chip-RETURNED_DEVICE');
+    expect(chip).toHaveTextContent('เคยคืนเครื่อง');
+    expect(chip.className).toMatch(/bg-warning\/10/);
+    expect(chip.className).not.toMatch(/#[0-9a-fA-F]{6}/);
+  });
   it('renders nothing when no tags and no emptyLabel', () => {
     const { container } = render(<CustomerTagChips tags={[]} />);
     expect(container.firstChild).toBeNull();
@@ -14,11 +21,7 @@ describe('CustomerTagChips', () => {
   });
 
   it('renders the labelled chip per supplied tag', () => {
-    render(
-      <CustomerTagChips
-        tags={[{ tag: 'VIP' }, { tag: 'BLACKLIST' }, { tag: 'NEW' }]}
-      />,
-    );
+    render(<CustomerTagChips tags={[{ tag: 'VIP' }, { tag: 'BLACKLIST' }, { tag: 'NEW' }]} />);
     expect(screen.getByText('VIP')).toBeTruthy();
     expect(screen.getByText('BLACKLIST')).toBeTruthy();
     expect(screen.getByText('ลูกค้าใหม่')).toBeTruthy();

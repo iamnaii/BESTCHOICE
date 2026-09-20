@@ -1068,6 +1068,20 @@ Dr <บัญชีของวิธีอื่น>   [Σ บรรทัด�
   ต้องเห็น). JE แยกยอดของสัญญา/ใบจองตามด้วย `metadata.tenderDocId` + mirror จาก `reversesEntryId`
   (`findTenderSplitEntries`) เพราะไม่ stamp `contractId`/`bookingId`.
 
+### นับเงินปิดยอดลิ้นชักสาขา (shop cash close — คำตัดสินเจ้าของ 2026-09-20)
+
+Spec: `docs/superpowers/specs/2026-09-20-shop-cash-close-design.md` · โค้ด: `shop-tenders/shop-cash-close.service.ts` ·
+Integration: `contracts/__tests__/shop-cash-close.integration.spec.ts`
+
+- **ไม่มี JE แม้แต่ใบเดียว** — เงินขาด/เกิน และการย้ายเงินจากลิ้นชักไปธนาคาร/เจ้าของ เก็บเป็นข้อมูลใน `shop_cash_closes` อย่างเดียว
+  (`varianceAmount`, `receiveVariance`, `destination`). **ห้ามเดาบัญชีเงินขาด/เกินหรือ JE ย้ายเงินเอง** — รอผู้สอบบัญชีชี้บัญชี
+  (คลาสเดียวกับคำถามบิลจ่ายผสม). ผลคือยอดบัญชีลิ้นชัก (`shopCashAccountCode`) ในสมุด **ไม่ลดลงเมื่อส่งเงิน** จนกว่าจะมี JE ย้ายเงิน
+- "ต้องมีในลิ้นชัก" อ่านจาก `shop_tenders` (`method = CASH`) ไม่ได้อ่านจาก GL — เป็นคนละเลนส์กับยอดบัญชี และ **ไม่รวมเงินสดที่ไม่ผ่าน
+  สมุดเงินหน้าร้าน** (เช่น ค่าใช้จ่ายสาขาที่จ่ายจากลิ้นชัก, ใบขายออเดอร์ออนไลน์) ⇒ ส่วนต่างจากเรื่องพวกนี้ต้องอธิบายในช่องเหตุผล
+- รอบ = ตั้งแต่ปิดยอดที่ยังมีผลครั้งก่อน (`PENDING_CONFIRM`/`CONFIRMED`) ถึงตอนนับ · แถว `SENT_BACK` ไม่เป็นขอบรอบ ·
+  ตีกลับได้เฉพาะครั้งล่าสุดของสาขา · ผู้นับ (SALES/BM ของสาขา) ≠ ผู้ยืนยัน (OWNER/FM/BM) บังคับใน service
+- `factory:reset`: `shop_cash_closes` อยู่ใน `WIPE_TABLES`
+
 ---
 
 ## ค่าคอมพนักงานขายของสัญญาผ่อน BESTCHOICE (คำตัดสินเจ้าของ 2026-09-20)
@@ -1086,12 +1100,13 @@ Dr <บัญชีของวิธีอื่น>   [Σ บรรทัด�
   `SaleVoidService` G4b — `generatedAt = null` ถือว่าครอบ) · ตัว helper **ไม่บล็อกการยกเลิกสัญญา** แม้ค่าคอมถูกนับในรอบที่
   `APPROVED`/`PAID` (ต่างจากยกเลิกใบขายที่บล็อก) — รอบที่ล็อกถูกบันทึกใน AuditLog `CONTRACT_CANCELED*` →
   `newValue.commissionLockedPayoutIds` ให้เจ้าของ/ผจก.การเงินตัดสินเอง
-- **ข้อยกเว้นที่ยังบล็อกจริง — สัญญาที่ใช้เครดิตเทิร์น** (`tradeInCreditSnapshot`): `approveCancellation` เรียก
-  `cleanupCreditContractSale` (`trade-in/services/credit-contract-cleanup.util.ts`) **ก่อน** `clawbackContractCommission` และด่านของมัน
-  ปฏิเสธเมื่อค่าคอม `PAID` หรือถูกนับในรอบจ่าย `APPROVED`/`PAID` ("ต้องยกเลิกรอบจ่ายก่อนคืนเครดิตเทิร์น") — ตั้งแต่ค่าคอมเกิดตอน
-  เปิดใช้ สัญญาเครดิตเทิร์น**ทุกใบ**เข้าด่านนี้ (เดิมเข้าเฉพาะร่างจากเส้นทางเก่า) และ**ยังไม่มีเมนูยกเลิกรอบจ่ายค่าคอม** ⇒ เคสนี้
-  ยกเลิกสัญญาไม่ได้จนกว่าเจ้าของเคาะว่าจะให้ปล่อยผ่านเหมือนสัญญาทั่วไปหรือคงไว้ (ปักพฤติกรรมปัจจุบันที่
-  `e2e/credit-payment-flow.e2e-spec.ts` "blocks cancelling an activated trade-credit contract…") — **ห้ามสลับลำดับเองโดยไม่ถาม**
+- **สัญญาที่ใช้เครดิตเทิร์น = กติกาเดียวกัน (คำตัดสินเจ้าของ 2026-09-20 "ปล่อยให้ยกเลิกได้เหมือนสัญญาทั่วไป"):**
+  `approveCancellation` เรียก `cleanupCreditContractSale` (`trade-in/services/credit-contract-cleanup.util.ts`) ด้วย
+  `{ commissionHandledByCaller: true }` ⇒ ด่านค่าคอมของมัน (ค่าคอม `PAID` / รอบจ่าย `APPROVED`·`PAID` → ปฏิเสธ) **ถูกข้าม** และ
+  `clawbackContractCommission` เป็นผู้จัดการค่าคอมทางเดียว. เดิม (ช่วงสั้น ๆ หลัง #1612) ด่านนั้นบล็อกสัญญาเครดิตเทิร์นทุกใบ
+  ที่ค่าคอมอยู่ในรอบจ่ายที่อนุมัติแล้ว โดยไม่มีเมนูยกเลิกรอบจ่ายให้ไปต่อ. **`ContractLifecycleService.softDelete` (ลบร่าง) ไม่ส่ง
+  option นี้** — ด่านเดิมยังคุมร่างยุคเส้นทางเก่าที่มีค่าคอมตั้งแต่ตอนร่าง. ปักที่ `e2e/credit-payment-flow.e2e-spec.ts`
+  ("cancels an activated trade-credit contract even when…" + "does not return credit when a related commission payout…")
 - **เส้นทางเก่าถอดแล้ว (2026-09-20):** `SaleWriterService.createInstallmentSale` ถูกลบ · `POST /sales` ที่ส่ง `saleType: 'INSTALLMENT'`
   ได้ 400 (`INSTALLMENT_VIA_CONTRACT_MSG` ใน `sale-creation.service.ts` — ชี้เมนู "สัญญาผ่อนชำระ" → ปุ่ม "สร้างสัญญา") ก่อนแตะแต้ม/
   เครดิตเทิร์น/สต๊อก · โค้ดเก็บกวาดร่างยุคเก่า (`cleanupCreditContractSale`, ตัวกรอง `contractStatus` ของ `SalesQueryService`) **คงไว้**

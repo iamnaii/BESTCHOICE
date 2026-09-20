@@ -23,6 +23,7 @@ interface Branch {
   isMainWarehouse: boolean;
   /** ลิ้นชักเงินสดฝั่ง SHOP ของสาขา — ว่าง = ขายสดเงินสดไม่ได้ (fail-closed ฝั่ง API) */
   shopCashAccountCode: string | null;
+  shopCashFloat: string | number | null;
   _count: { users: number; products: number; contracts: number };
 }
 
@@ -32,8 +33,9 @@ export default function BranchesPage() {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
-  const [form, setForm] = useState({ name: '', phone: '', isActive: true, shopCashAccountCode: '' });
+  const [form, setForm] = useState({ name: '', phone: '', isActive: true, shopCashAccountCode: '', shopCashFloat: '' });
   const [address, setAddress] = useState<AddressData>(emptyAddress);
+  const floatInvalid = form.shopCashFloat.trim() !== '' && !/^\d+(\.\d{1,2})?$/.test(form.shopCashFloat.replace(/,/g, '').trim());
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
 
   const {
@@ -51,9 +53,9 @@ export default function BranchesPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (data: { name: string; phone: string; isActive: boolean; shopCashAccountCode: string; address: AddressData }) => {
+    mutationFn: async (data: { name: string; phone: string; isActive: boolean; shopCashAccountCode: string; shopCashFloat: string; address: AddressData }) => {
       const location = composeAddress(data.address) || undefined;
-      const payload: { name: string; location?: string; phone?: string; isActive?: boolean; shopCashAccountCode?: string } = {
+      const payload: { name: string; location?: string; phone?: string; isActive?: boolean; shopCashAccountCode?: string; shopCashFloat?: number } = {
         name: data.name,
         location,
         phone: data.phone || undefined,
@@ -62,6 +64,7 @@ export default function BranchesPage() {
         payload.isActive = data.isActive;
         // ส่งเฉพาะเมื่อเลือกไว้ — API ไม่รับสตริงว่าง (regex บังคับรูปแบบ S11-XXXX)
         if (data.shopCashAccountCode) payload.shopCashAccountCode = data.shopCashAccountCode;
+        if (data.shopCashFloat.trim() !== '') payload.shopCashFloat = Number(data.shopCashFloat.replace(/,/g, ''));
         return api.patch(`/branches/${editingBranch.id}`, payload);
       }
       // CreateBranchDto ยังไม่รับ shopCashAccountCode — สาขาใหม่ตั้งลิ้นชักได้ที่หน้าแก้ไข
@@ -79,14 +82,15 @@ export default function BranchesPage() {
 
   const openCreate = () => {
     setEditingBranch(null);
-    setForm({ name: '', phone: '', isActive: true, shopCashAccountCode: '' });
+    setForm({ name: '', phone: '', isActive: true, shopCashAccountCode: '', shopCashFloat: '' });
     setAddress(emptyAddress);
     setIsModalOpen(true);
   };
 
   const openEdit = (branch: Branch) => {
     setEditingBranch(branch);
-    setForm({ name: branch.name, phone: branch.phone || '', isActive: branch.isActive, shopCashAccountCode: branch.shopCashAccountCode || '' });
+    setForm({ name: branch.name, phone: branch.phone || '', isActive: branch.isActive, shopCashAccountCode: branch.shopCashAccountCode || '',
+      shopCashFloat: branch.shopCashFloat == null ? '' : String(Number(branch.shopCashFloat)) });
     setAddress(deserializeAddress(branch.location));
     setIsModalOpen(true);
   };
@@ -273,6 +277,27 @@ export default function BranchesPage() {
                       </div>
                     )}
                     {editingBranch && (
+                      <div>
+                        <label htmlFor="branch-cash-float" className="block text-xs font-medium text-foreground mb-1.5">
+                          เงินทอนตั้งต้นของลิ้นชัก (บาท)
+                        </label>
+                        <input
+                          id="branch-cash-float"
+                          type="text"
+                          inputMode="decimal"
+                          value={form.shopCashFloat}
+                          onChange={(e) => setForm({ ...form, shopCashFloat: e.target.value })}
+                          placeholder="เช่น 2000"
+                          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm tabular-nums"
+                        />
+                        <p className={`mt-1.5 text-xs ${floatInvalid ? 'text-destructive' : 'text-muted-foreground'}`}>
+                          {floatInvalid
+                            ? 'กรอกเป็นตัวเลขไม่ติดลบ ทศนิยมไม่เกิน 2 ตำแหน่ง'
+                            : 'ปิดยอดแล้วส่งเงินทั้งหมด เหลือยอดนี้ไว้ทอนวันถัดไป — ใช้คำนวณ "ต้องมีในลิ้นชัก" ที่หน้าสรุปเงินรายวัน'}
+                        </p>
+                      </div>
+                    )}
+                    {editingBranch && (
                       <label className="flex items-center justify-between gap-3 rounded-lg border border-input bg-muted/30 px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors">
                         <div>
                           <div className="text-sm font-medium text-foreground">เปิดใช้งานสาขา</div>
@@ -314,7 +339,7 @@ export default function BranchesPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={saveMutation.isPending}
+                  disabled={saveMutation.isPending || floatInvalid}
                   className="px-6 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 font-semibold transition-colors shadow-sm"
                 >
                   {saveMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}

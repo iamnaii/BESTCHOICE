@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -7,6 +7,10 @@ import PageHeader from '@/components/ui/PageHeader';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { tenderMethodLabel } from '@/components/tender/tender-utils';
+import { useAuth } from '@/contexts/AuthContext';
+import CashCloseCard, { cashCloseKey } from './shop-daily-cash/CashCloseCard';
+import CashCloseHistory from './shop-daily-cash/CashCloseHistory';
+import { latestEffectiveClose, varianceLabel, type CashCloseStatusResponse } from './shop-daily-cash/cash-close';
 
 /** สรุปเงินหน้าร้านรายวัน (mockup CnXmYLkT กระดาน 1-3, 5) — อ่านจาก GET /shop-tenders/daily-summary */
 
@@ -81,6 +85,20 @@ export default function ShopDailyCashPage() {
   const data = query.data;
   const own = data?.scope === 'OWN';
 
+  // กล่องปิดยอดผูกกับ "สาขาเดียว": เจ้าของ/การเงิน/บัญชี = สาขาที่เลือก · ผจก.สาขา = สาขาตัวเอง · พนักงานขาย = สาขาที่สังกัด
+  const { user } = useAuth();
+  const [tab, setTab] = useState<'DAILY' | 'HISTORY'>('DAILY');
+  const closeBranchId = data?.scope === 'ALL' ? branchId : data?.scope === 'BRANCH' ? (data.branchId ?? '') : (user?.branchId ?? '');
+  const isToday = date === todayBangkok();
+  // key เดียวกับ CashCloseCard ⇒ React Query ยิงครั้งเดียว — ใช้หาขอบ "หลังปิดยอด" ของตารางรายการ
+  const closeStatus = useQuery<CashCloseStatusResponse>({
+    queryKey: cashCloseKey(closeBranchId, date),
+    queryFn: async () => (await api.get('/shop-tenders/cash-close/status', { params: { branchId: closeBranchId, date } })).data,
+    enabled: !!closeBranchId,
+  });
+  const cutoff = closeBranchId ? latestEffectiveClose(closeStatus.data?.closes ?? []) : null;
+  const isAfterClose = (occurredAt: string) => !!cutoff && new Date(occurredAt).getTime() > new Date(cutoff.countedAt).getTime();
+
   const rows = useMemo(() => (data?.rows ?? []).filter((r) =>
     filter === 'ALL' ? true
       : filter === 'OUT' ? r.direction === 'OUT'
@@ -103,7 +121,8 @@ export default function ShopDailyCashPage() {
         subtitle={own ? 'ยอดที่ฉันรับและจ่ายในวันนี้' : 'เงินที่รับและจ่ายจริงที่หน้าร้าน แยกวิธีรับและผู้รับ'} />
 
       <div className="grid grid-cols-2 gap-3 sm:flex sm:items-end">
-        <div className="sm:w-48">
+        {/* แท็บประวัติเลือกเป็นเดือนของตัวเอง — วันที่ใช้เฉพาะแท็บสรุปรายวัน */}
+        <div className={`sm:w-48 ${tab === 'HISTORY' && !own ? 'hidden' : ''}`}>
           <span className="mb-1 block text-xs text-muted-foreground leading-snug">วันที่</span>
           <ThaiDateInput value={date} max={todayBangkok()} onChange={(e) => e.target.value && setDate(e.target.value)} className="h-11 w-full" />
         </div>
@@ -119,9 +138,31 @@ export default function ShopDailyCashPage() {
         )}
       </div>
 
+      {data && !own && (
+        <div role="tablist" aria-label="มุมมองของหน้าสรุปเงิน" className="flex gap-2">
+          {([['DAILY', 'สรุปรายวัน'], ['HISTORY', 'ประวัติการปิดยอด']] as const).map(([key, label]) => (
+            <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
+              className={`min-h-11 rounded-full border px-4 text-sm leading-snug ${tab === key ? 'border-primary bg-primary/10 font-semibold text-primary' : 'border-border bg-card text-foreground hover:bg-accent'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'HISTORY' && data && !own && <CashCloseHistory branchId={closeBranchId} branches={data.branches} />}
+
+      {(tab === 'DAILY' || own) && (
       <QueryBoundary isLoading={query.isLoading} isError={query.isError} error={query.error} onRetry={query.refetch}>
         {data && (
           <div className="space-y-5">
+            {closeBranchId
+              ? <CashCloseCard branchId={closeBranchId} date={date} isToday={isToday} />
+              : data.scope === 'ALL' && (
+                <p className="rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground leading-snug">
+                  เลือกสาขาเดียวเพื่อดูกล่องปิดยอดของสาขานั้น (ยอดที่ต้องมีในลิ้นชัก · นับเงิน · ยืนยันรับเงิน)
+                </p>
+              )}
+
             {own && (
               <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm leading-snug text-foreground">
                 คุณเห็นเฉพาะรายการที่คุณเป็นผู้รับหรือผู้จ่ายเงิน — ใช้ตรวจยอดของตัวเองก่อนส่งเงินให้ผู้จัดการ
@@ -235,10 +276,17 @@ export default function ShopDailyCashPage() {
                         {!own && <th className="py-2 text-left font-normal">ผู้รับ / ผู้จ่าย</th>}
                         <th className="py-2 text-right font-normal">จำนวนเงิน</th>
                       </tr></thead>
-                      <tbody>{rows.map((r) => (
-                        <tr key={r.id} className={`border-b border-border/60 last:border-0 ${r.direction === 'OUT' ? 'bg-destructive/5' : ''}`}>
+                      <tbody>{rows.map((r, index) => (
+                        <Fragment key={r.id}>
+                        {cutoff && isAfterClose(r.occurredAt) && (index === 0 || !isAfterClose(rows[index - 1].occurredAt)) && (
+                          <tr><td colSpan={own ? 7 : 8} className="py-2 text-center text-xs text-muted-foreground leading-snug">
+                            — ปิดยอด {timeOf(cutoff.countedAt)} · ต้องมี {baht(cutoff.expectedAmount)} · นับได้ {baht(cutoff.countedAmount)} · {varianceLabel(cutoff.varianceAmount)} —
+                          </td></tr>
+                        )}
+                        <tr className={`border-b border-border/60 last:border-0 ${r.direction === 'OUT' ? 'bg-destructive/5' : ''}`}>
                           <td className="py-2.5 pr-3 text-muted-foreground tabular-nums">{timeOf(r.occurredAt)}</td>
                           <td className="py-2.5 pr-3">{KIND_LABEL[r.kind]}
+                            {isAfterClose(r.occurredAt) && <span className="ml-2 inline-block rounded-full bg-warning/10 px-2 py-0.5 text-xs font-semibold leading-snug text-warning">หลังปิดยอด นับรวมรอบถัดไป</span>}
                             {r.seqTotal > 1 && <span className="block text-xs text-muted-foreground leading-snug">จ่ายผสม {r.seq} จาก {r.seqTotal}</span>}</td>
                           <td className="py-2.5 pr-3"><Link to={DOC_PATH[r.docType](r.docId)} className="text-primary hover:underline">{r.docNumber}</Link></td>
                           <td className="py-2.5 pr-3">{r.customerName ?? '—'}</td>
@@ -249,6 +297,7 @@ export default function ShopDailyCashPage() {
                           {!own && <td className="py-2.5 pr-3">{r.actorName}</td>}
                           <td className={`py-2.5 text-right font-medium tabular-nums ${r.direction === 'OUT' ? 'text-destructive' : ''}`}>{r.direction === 'OUT' ? '−' : ''}{baht(r.amount)}</td>
                         </tr>
+                        </Fragment>
                       ))}</tbody>
                     </table>
                   </div>
@@ -262,7 +311,8 @@ export default function ShopDailyCashPage() {
                         {r.seqTotal > 1 && <> · จ่ายผสม {r.seq}/{r.seqTotal}</>}
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5"><MethodBadge method={r.method} />
-                        {r.reference && <span className="text-xs text-foreground">อ้างอิง {r.reference}</span>}{r.duplicateReference && <DuplicateBadge />}</div>
+                        {r.reference && <span className="text-xs text-foreground">อ้างอิง {r.reference}</span>}{r.duplicateReference && <DuplicateBadge />}
+                        {isAfterClose(r.occurredAt) && <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-semibold leading-snug text-warning">หลังปิดยอด</span>}</div>
                     </div>
                   ))}</div>
                 </>
@@ -275,6 +325,7 @@ export default function ShopDailyCashPage() {
           </div>
         )}
       </QueryBoundary>
+      )}
     </div>
   );
 }

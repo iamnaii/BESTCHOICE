@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsBoolean, IsUUID, Matches } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsUUID, Matches, IsNumber, Min, Max } from 'class-validator';
 
 export class UpdateBranchDto {
   @IsString()
@@ -53,4 +53,14 @@ export class UpdateBranchDto {
   })
   @IsOptional()
   shopCashAccountCode?: string;
+
+  /**
+   * เงินทอนตั้งต้นของลิ้นชักสาขา (คำตัดสินเจ้าของ 2026-09-20) — ปิดยอดแล้วส่งเงินทั้งหมด เหลือยอดนี้คงที่ไว้ทอนวันถัดไป.
+   * หน้านับเงินปิดยอดใช้เป็นฐานของ "ต้องมีในลิ้นชัก" (= เงินทอนตั้งต้น + รับเงินสด − จ่ายเงินสดออก). ไม่ตั้ง = 0
+   */
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'เงินทอนตั้งต้นต้องเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง' })
+  @Min(0, { message: 'เงินทอนตั้งต้นต้องไม่ติดลบ' })
+  @Max(1_000_000, { message: 'เงินทอนตั้งต้นสูงเกินไป' })
+  @IsOptional()
+  shopCashFloat?: number;
 }

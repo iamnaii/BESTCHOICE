@@ -17,7 +17,8 @@ vi.mock('./components/ProductSearch', () => ({ default: ({ onSelectProduct }: { 
   <button onClick={() => onSelectProduct(mocks.product)}>เลือกเครื่องทดสอบ</button> }));
 vi.mock('./components/CustomerSearch', () => ({ default: ({ onSelectCustomer }: { onSelectCustomer: (customer: Customer) => void }) =>
   <button onClick={() => onSelectCustomer({ id: 'c1', name: 'ลูกค้าทดสอบ', phone: '0800000000', nationalId: '', _count: { contracts: 0 } })}>เลือกลูกค้าทดสอบ</button> }));
-vi.mock('./components/BundleSearch', () => ({ default: () => null }));
+vi.mock('@/components/bundle/BundleSearch', () => ({ default: ({ onAddBundle }: { onAddBundle: (product: Product) => void }) =>
+  <button onClick={() => onAddBundle({ ...mocks.product, id: 'acc1', name: 'เคสทดสอบ', category: 'ACCESSORY', imeiSerial: null })}>เพิ่มของแถมทดสอบ</button> }));
 
 function Location() { const location = useLocation(); return <output aria-label="current location">{location.pathname}{location.search}</output>; }
 function renderPOS() {
@@ -43,14 +44,32 @@ describe('POS price selection', () => {
   it('preserves selected customer/product on handoff after disclosing non-transferable conditions', async () => {
     renderPOS(); await selectProduct();
     await userEvent.click(screen.getByRole('button', { name: 'เลือกลูกค้าทดสอบ' }));
-    await userEvent.click(screen.getByRole('button', { name: /ต้องการผ่อนกับ BESTCHOICE/ }));
-    expect(screen.getByText(/ราคา ส่วนลด ของแถม เครดิตเทิร์น/)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: /ไปสร้างสัญญาผ่อนชำระ/ }));
+    expect(screen.getByText(/ราคา ส่วนลด เครดิตเทิร์น/)).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'กลับมาแก้ไข' }));
     expect(priceInput()).toHaveValue(9000);
-    await userEvent.click(screen.getByRole('button', { name: /ต้องการผ่อนกับ BESTCHOICE/ }));
+    await userEvent.click(screen.getByRole('button', { name: /ไปสร้างสัญญาผ่อนชำระ/ }));
     await userEvent.click(screen.getByRole('button', { name: 'ไปสร้างสัญญาด้วยข้อมูลนี้' }));
     expect(screen.getByLabelText('current location')).toHaveTextContent('/contracts/create?customerId=c1&productId=p1');
     expect(mocks.post).not.toHaveBeenCalled();
+  });
+
+  it('พาของแถมที่เลือกไว้ไปหน้าสัญญาด้วย (เดิมแจ้งว่า "ของแถมจะไม่ถูกย้าย")', async () => {
+    renderPOS(); await selectProduct();
+    await userEvent.click(screen.getByRole('button', { name: 'เลือกลูกค้าทดสอบ' }));
+    await userEvent.click(screen.getByRole('button', { name: 'เพิ่มของแถมทดสอบ' }));
+    await userEvent.click(screen.getByRole('button', { name: /ไปสร้างสัญญาผ่อนชำระ/ }));
+    expect(screen.getByText(/ของแถม 1 รายการจะถูกพาไปหน้าสัญญาด้วย/)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'ไปสร้างสัญญาด้วยข้อมูลนี้' }));
+    expect(screen.getByLabelText('current location')).toHaveTextContent('/contracts/create?customerId=c1&productId=p1&bundleProductIds=acc1');
+  });
+
+  it('ปุ่มประเภทการขายเขียนว่า "ไฟแนนซ์นอก" และบอกตรง ๆ ว่าผ่อนในเครือไม่ต้องบันทึกที่หน้านี้', async () => {
+    renderPOS();
+    expect(await screen.findByRole('button', { name: /ไฟแนนซ์นอก/ })).toHaveTextContent('GFIN และบริษัทไฟแนนซ์ภายนอก');
+    expect(screen.queryByRole('button', { name: /ผ่อนไฟแนนซ์/ })).not.toBeInTheDocument();
+    expect(screen.getByText('ผ่อนกับ BESTCHOICE ทำที่หน้าสัญญา')).toBeVisible();
+    expect(screen.getByText(/ระบบตัดสต๊อกและออกใบขายให้เองเมื่อเปิดใช้สัญญา ไม่ต้องบันทึกที่หน้านี้ซ้ำ/)).toBeVisible();
   });
 
   it('initializes CASH from the cash price and submits that exact amount', async () => {
@@ -65,7 +84,7 @@ describe('POS price selection', () => {
 
   it('reselects the default price on an intentional sale-type change', async () => {
     renderPOS(); await selectProduct();
-    await userEvent.click(screen.getByRole('button', { name: 'ผ่อนไฟแนนซ์' }));
+    await userEvent.click(screen.getByRole('button', { name: /ไฟแนนซ์นอก/ }));
     expect(priceInput()).toHaveValue(10000);
     await userEvent.click(screen.getByRole('button', { name: 'เงินสด' }));
     expect(priceInput()).toHaveValue(9000);

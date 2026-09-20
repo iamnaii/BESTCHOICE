@@ -4,6 +4,7 @@ import { assertCustomerContractPolicy, customerContractSnapshot, contractDownTen
 import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
 import { assertSameTestSide } from '../../../utils/test-data-markers';
 import { assertSaleProductEligible, type SaleProductActor } from './sale-product-policy';
+import { assertBundleIsAccessory } from './bundle-policy';
 import { claimCreditApproval } from '../../credit-check/services/credit-approval';
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { lockCreditCustomer } from '../../credit-check/services/room-credit-history';
@@ -156,7 +157,7 @@ export class SaleWriterService {
     // Verify all bundle products are IN_STOCK
     const products = await tx.product.findMany({
       where: { id: { in: bundleProductIds }, deletedAt: null },
-      select: { id: true, status: true, name: true, branchId: true, deletedAt: true, wasPreviouslyDamaged: true },
+      select: { id: true, status: true, name: true, branchId: true, deletedAt: true, wasPreviouslyDamaged: true, category: true },
     });
     for (const p of products) {
       assertSaleProductEligible(p, branchId, actor, acknowledged);
@@ -164,6 +165,7 @@ export class SaleWriterService {
     if (products.length !== bundleProductIds.length) {
       throw new BadRequestException('ไม่พบสินค้าของแถมบางรายการ');
     }
+    assertBundleIsAccessory(products);
     // Update all bundle products to SOLD_CASH
     await tx.product.updateMany({
       where: { id: { in: bundleProductIds } },

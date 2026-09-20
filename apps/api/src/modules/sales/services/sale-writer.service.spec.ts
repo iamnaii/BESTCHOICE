@@ -181,6 +181,30 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // (b0) ของแถม = อุปกรณ์เสริมเท่านั้น (คำตัดสินเจ้าของ 2026-09-20)
+  // เดิมช่องของแถมรับสินค้าพร้อมขายอะไรก็ได้ ⇒ กดแถมมือถือทั้งเครื่องราคา 0 บาทได้
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  it.each(['PHONE_NEW', 'PHONE_USED', 'TABLET'])(
+    '(b0) ของแถมหมวด %s → BadRequest และไม่มีสินค้าใดถูกตัดสต๊อก',
+    async (category) => {
+      tx.product.findMany.mockResolvedValueOnce([
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'iPhone 13', category },
+      ]);
+
+      await expect(
+        service.createCashSale(
+          { productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 1000, bundleProductIds: ['p2'], paymentMethod: 'CASH' } as any,
+          'sp-1', 1000, 0, { role: 'OWNER', branchId: 'br-1' },
+        ),
+      ).rejects.toThrow('ของแถมเลือกได้เฉพาะสินค้าหมวดอุปกรณ์เสริม — "iPhone 13" ไม่ใช่อุปกรณ์เสริม');
+
+      expect(tx.product.updateMany).not.toHaveBeenCalled();
+      expect(tx.sale.create).not.toHaveBeenCalled();
+      expect(shopCashSaleTemplate.execute).not.toHaveBeenCalled();
+    },
+  );
+
   // (b) 2-product bundle → 2 JEs, per-product keys, revenues sum to net
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -189,7 +213,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     // JE allocation block calls findMany({where:{id:{in:['p1','p2']}},...}) — return both with full data
     tx.product.findMany
       .mockResolvedValueOnce([
-        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY' },
       ])
       .mockResolvedValueOnce([
         { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(6000), status: 'IN_STOCK', name: 'Phone' },
@@ -300,7 +324,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     // JE allocation block calls findMany({where:{id:{in:['p1','p2']}},...}) — return both with full data
     tx.product.findMany
       .mockResolvedValueOnce([
-        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY' },
       ])
       .mockResolvedValueOnce([
         { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000), status: 'IN_STOCK', name: 'Phone' },
@@ -355,7 +379,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
 
   it('(e) createCashSale: ตัด hold ของเครื่องหลัก + ของแถม ภายใน tx เดียวกัน', async () => {
     tx.product.findMany
-      .mockResolvedValueOnce([{ branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case' }])
+      .mockResolvedValueOnce([{ branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY' }])
       .mockResolvedValueOnce([
         { id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000) },
         { id: 'p2', category: 'ACCESSORY', costPrice: new Decimal(500) },

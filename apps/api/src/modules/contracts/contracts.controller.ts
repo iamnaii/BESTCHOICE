@@ -10,7 +10,7 @@ import { ContractPaymentService } from './contract-payment.service';
 import { ContractDocumentService } from './contract-document.service';
 import { ContractSnapshotService } from './contract-snapshot.service';
 import { ContractJournalQueryService } from '../journal/contract-journal-query.service';
-import { CreateContractDto, UpdateContractDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto, RequestCancellationDto, RejectCancellationDto, ShopCollectSettlementDto } from './dto/contract.dto';
+import { CreateContractDto, UpdateContractDto, UpdateContractBundlesDto, EarlyPayoffDto, ReviewContractDto, RejectContractDto, RequestCancellationDto, RejectCancellationDto, ShopCollectSettlementDto } from './dto/contract.dto';
 import { PdpaConsentDto } from './dto/pdpa-consent.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -136,6 +136,20 @@ export class ContractsController {
     @CurrentUser() user: { id: string },
   ) {
     return this.contractsService.update(id, dto, user.id);
+  }
+
+  /**
+   * แก้ไขของแถมของสัญญา — ได้จนกว่าจะเปิดใช้. ขอบเขตสาขา/เจ้าของสัญญาบังคับใน service
+   * (route รูป /:id ไม่มี branchId ให้ BranchGuard ตรวจ)
+   */
+  @Patch(':id/bundles')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'SALES')
+  updateBundles(
+    @Param('id') id: string,
+    @Body() dto: UpdateContractBundlesDto,
+    @CurrentUser() user: { id: string; role: string; branchId?: string | null },
+  ) {
+    return this.contractsService.updateBundles(id, dto.bundleProductIds, user);
   }
 
   @Delete(':id')

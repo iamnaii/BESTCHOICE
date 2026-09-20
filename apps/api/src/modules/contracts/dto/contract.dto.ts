@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString, IsUUID, MaxLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString, IsUUID, MaxLength, IsArray, ArrayMaxSize } from 'class-validator';
 import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
@@ -61,6 +61,21 @@ export class CreateContractDto {
   @IsBoolean()
   @IsOptional()
   overrideActiveContractCheck?: boolean;
+
+  /** ของแถม (อุปกรณ์เสริมเท่านั้น) — จองตอนสร้าง ตัดสต๊อกตอนเปิดใช้ (contract-bundle.util.ts) */
+  @IsArray({ message: 'กรุณาระบุรายการของแถมเป็นรายการ' })
+  @ArrayMaxSize(10, { message: 'ของแถมต่อสัญญาได้ไม่เกิน 10 ชิ้น' })
+  @IsString({ each: true, message: 'รหัสของแถมต้องเป็นข้อความ' })
+  @IsOptional()
+  bundleProductIds?: string[];
+}
+
+/** PATCH /contracts/:id/bundles — แทนที่รายการของแถมทั้งชุด (ส่ง [] = ไม่มีของแถม) */
+export class UpdateContractBundlesDto {
+  @IsArray({ message: 'กรุณาระบุรายการของแถมเป็นรายการ' })
+  @ArrayMaxSize(10, { message: 'ของแถมต่อสัญญาได้ไม่เกิน 10 ชิ้น' })
+  @IsString({ each: true, message: 'รหัสของแถมต้องเป็นข้อความ' })
+  bundleProductIds: string[];
 }
 
 export class UpdateContractDto {

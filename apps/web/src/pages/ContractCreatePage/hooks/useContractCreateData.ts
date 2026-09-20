@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import { serializeAddress, AddressData, emptyAddress } from '@/components/ui/AddressForm';
 import { toast } from 'sonner';
-import type { Product, Customer, InterestConfig, CustReferenceData } from '../types';
+import type { Product, Customer, InterestConfig, CustReferenceData, ContractBundleProduct } from '../types';
 import { emptyCustForm, emptyCustReference } from '../constants';
 import { useDraftStorage } from '@/hooks/useDraftStorage';
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,7 +35,11 @@ export function useContractCreateData() {
       productId: params.get('productId') ?? restored?.productId,
       fromRoom: params.get('fromRoom') ?? restored?.fromRoom,
       downAmount: params.has('downAmount') ? Number(params.get('downAmount')) : restored?.downPayment,
-      months: params.has('months') ? Number(params.get('months')) : restored?.totalMonths };
+      months: params.has('months') ? Number(params.get('months')) : restored?.totalMonths,
+      // ของแถม: จาก POS (URL) ก่อน แล้วค่อยร่างที่กู้คืน — โหลดสถานะสดด้านล่าง ไม่เชื่อ id เฉย ๆ
+      bundleProductIds: params.has('bundleProductIds')
+        ? params.get('bundleProductIds')!.split(',').filter(Boolean)
+        : restored?.bundleProductIds ?? [] };
   });
   const [step, setStep] = useState(Math.min(entry.restored?.step ?? 0, !entry.productId ? 0 : !entry.customerId ? 1 : 2));
 
@@ -60,6 +64,19 @@ export function useContractCreateData() {
     setTradeInCreditId(''); setTradeInCredit(null);
     customerRestored.current = true;
     setSelectedCustomerState(value);
+  }, []);
+  // ของแถม (อุปกรณ์เสริมเท่านั้น) — จองตอนสร้างสัญญา ตัดสต๊อกตอนเปิดใช้
+  const [bundleSearch, setBundleSearch] = useState('');
+  const [bundleProducts, setBundleProducts] = useState<ContractBundleProduct[]>([]);
+  const bundlesTouched = useRef(false);
+  const addBundle = useCallback((item: ContractBundleProduct) => {
+    bundlesTouched.current = true;
+    setBundleProducts((prev) => (prev.some((p) => p.id === item.id) ? prev : [...prev, item]));
+    setBundleSearch('');
+  }, []);
+  const removeBundle = useCallback((id: string) => {
+    bundlesTouched.current = true;
+    setBundleProducts((prev) => prev.filter((p) => p.id !== id));
   }, []);
   const planType = 'STORE_DIRECT';
   const [downPayment, setDownPayment] = useState(entry.downAmount ?? 0);
@@ -102,7 +119,8 @@ export function useContractCreateData() {
     step, productId: selectedProduct?.id ?? (!productRestored.current ? entry.productId : undefined),
     customerId: selectedCustomer?.id ?? (!customerRestored.current ? entry.customerId : undefined), fromRoom: entry.fromRoom,
     downPayment, downPaymentMethod, downPaymentReference, totalMonths, paymentDueDay, notes, tradeInCreditId: tradeInCreditId || undefined,
-  }), [draft, step, selectedProduct?.id, selectedCustomer?.id, entry, downPayment, downPaymentMethod, downPaymentReference, totalMonths, paymentDueDay, notes, tradeInCreditId]);
+    bundleProductIds: bundlesTouched.current ? bundleProducts.map((p) => p.id) : entry.bundleProductIds,
+  }), [draft, step, selectedProduct?.id, selectedCustomer?.id, entry, downPayment, downPaymentMethod, downPaymentReference, totalMonths, paymentDueDay, notes, tradeInCreditId, bundleProducts]);
   const latestSave = useRef(saveDraft);
   useEffect(() => { latestSave.current = saveDraft; }, [saveDraft]);
   useEffect(() => {
@@ -215,6 +233,27 @@ export function useContractCreateData() {
     enabled: !!entry.productId,
     staleTime: 0,
   });
+
+  // ของแถมที่มาจาก POS / ร่างที่กู้คืน — โหลดสถานะสดทีละชิ้น แล้วรับเฉพาะอุปกรณ์เสริมที่ยังพร้อมขาย
+  // (เซิร์ฟเวอร์ตรวจซ้ำตอนสร้างสัญญาอยู่แล้ว ตรงนี้กันพนักงานเห็นของที่เลือกไม่ได้ค้างในรายการ)
+  const preselectBundlesQuery = useQuery<ContractBundleProduct[]>({
+    queryKey: ['preselect-bundles', user?.id, entry.bundleProductIds],
+    queryFn: async () => {
+      const rows = await Promise.all(entry.bundleProductIds.map(async (id) => {
+        try { return (await api.get(`/products/${id}`)).data as ContractBundleProduct & { status?: string }; } catch { return null; }
+      }));
+      return rows.filter((row): row is ContractBundleProduct & { status?: string } =>
+        !!row && row.category === 'ACCESSORY' && row.status === 'IN_STOCK');
+    },
+    enabled: entry.bundleProductIds.length > 0,
+    staleTime: Infinity,
+  });
+  useEffect(() => {
+    if (!preselectBundlesQuery.data || bundlesTouched.current) return;
+    setBundleProducts(preselectBundlesQuery.data);
+    const dropped = entry.bundleProductIds.length - preselectBundlesQuery.data.length;
+    if (dropped > 0) toast(`ของแถม ${dropped} รายการไม่พร้อมขายแล้ว จึงไม่ถูกนำมา — เลือกใหม่ได้ในขั้นเลือกแผนผ่อน`);
+  }, [preselectBundlesQuery.data, entry.bundleProductIds.length]);
   useEffect(() => {
     if (productRestored.current || productQuery.isError || !productQuery.isFetchedAfterMount || !productQuery.data) return;
     productRestored.current = true;
@@ -401,6 +440,7 @@ export function useContractCreateData() {
       notes: notes || undefined,
       paymentDueDay,
       creditApprovalId: creditApproval!.id,
+      ...(bundleProducts.length ? { bundleProductIds: bundleProducts.map((p) => p.id) } : {}),
       ...(overrideActiveContractCheck ? { overrideActiveContractCheck: true } : {}),
     });
   };
@@ -427,6 +467,7 @@ export function useContractCreateData() {
   };
 
   return {
+    bundleSearch, setBundleSearch, bundleProducts, addBundle, removeBundle,
     tradeInCreditId, setTradeInCreditId, tradeInCredit, setTradeInCredit, tradeInCreditReady,
     downPaymentMethod, setDownPaymentMethod, downPaymentReference, setDownPaymentReference,
     previouslyDamagedAcknowledged, setPreviouslyDamagedAcknowledged, canSellPreviouslyDamaged: user?.role === 'OWNER',

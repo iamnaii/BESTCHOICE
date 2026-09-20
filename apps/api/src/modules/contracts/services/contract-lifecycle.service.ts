@@ -19,9 +19,10 @@ import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-p
 import { ShopDownPaymentReversalTemplate } from '../../journal/cpa-templates/shop-down-payment-reversal.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { preemptReservationsInTx } from '../../../utils/reservation-preempt.util';
-import { assertSameTestSide } from '../../../utils/test-data-markers';
+import { assertSameTestSide, TEST_SIDE_CUSTOMER_SELECT } from '../../../utils/test-data-markers';
 import { claimCreditApproval, assertContractCreditApproval } from '../../credit-check/services/credit-approval';
 import { lockCreditCustomer } from '../../credit-check/services/room-credit-history';
+import { MAX_CONTRACT_BUNDLES, normalizeBundleIds, releaseContractBundles, reserveContractBundles } from './contract-bundle.util';
 
 /**
  * ContractLifecycleService — write-side lifecycle of a contract: create
@@ -115,6 +116,7 @@ export class ContractLifecycleService {
               contractNumber,
               customerId: dto.customerId,
               productId: dto.productId,
+              bundleProductIds: normalizeBundleIds(dto.bundleProductIds),
               branchId: dto.branchId,
               salespersonId,
               planType: (dto.planType || 'STORE_DIRECT') as PlanType,
@@ -174,6 +176,15 @@ export class ContractLifecycleService {
           });
           // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (กันขายซ้ำ)
           await preemptReservationsInTx(tx, [dto.productId]);
+          // ของแถมเดินตามเครื่องหลัก: จองใน tx เดียวกัน (ตรวจหมวด/สาขา/รั้วข้อมูลทดสอบข้างใน)
+          await reserveContractBundles(tx, {
+            bundleProductIds: dto.bundleProductIds ?? [],
+            mainProductId: dto.productId,
+            branchId: dto.branchId,
+            actor,
+            customer: customerData,
+            previouslyDamagedAcknowledged: dto.previouslyDamagedAcknowledged,
+          });
 
           // claimCreditApproval linked the check atomically with its single-use approval.
 
@@ -268,6 +279,75 @@ export class ContractLifecycleService {
   }
 
   // === UPDATE: แก้ไขรายละเอียดสัญญา (เฉพาะ CREATING/REJECTED) ===
+  /**
+   * แก้ไขของแถมของสัญญา — ได้จนกว่าจะเปิดใช้ (status = DRAFT ทุก workflowStatus).
+   * กว้างกว่า `update()` ที่ล็อกหลังส่งตรวจ โดยตั้งใจ: ของแถมราคา 0 บาท ไม่กระทบยอด/ตารางผ่อน/ลายเซ็น
+   * และทางเลือกอื่นของพนักงานที่ลืมใส่คือ "ลบร่างแล้วสร้างใหม่" ซึ่ง (ก) ลบได้เฉพาะ OWNER
+   * (ข) สิทธิ์อนุมัติเครดิตที่ใช้ไปแล้วใช้ซ้ำไม่ได้. หลังเปิดใช้ล็อก — ต้นทุนของแถมลงบัญชีไปแล้ว
+   *
+   * ขอบเขตสิทธิ์อยู่ที่นี่ ไม่ใช่ guard (route รูป /:id ไม่มี branchId ให้ BranchGuard ตรวจ):
+   * OWNER ทุกสัญญา · BRANCH_MANAGER เฉพาะสาขาตัวเอง (ไม่มี branchId = fail-closed) · SALES เฉพาะสัญญาที่ตัวเองสร้าง
+   */
+  async updateBundles(
+    id: string,
+    bundleProductIds: string[],
+    actor: { id: string; role: string; branchId?: string | null },
+  ) {
+    const next = normalizeBundleIds(bundleProductIds);
+    if (next.length > MAX_CONTRACT_BUNDLES) {
+      throw new BadRequestException(`ของแถมต่อสัญญาได้ไม่เกิน ${MAX_CONTRACT_BUNDLES} ชิ้น`);
+    }
+    await this.prisma.$transaction(async (tx) => {
+      // ล็อกแถวสัญญา — แก้ของแถมพร้อมกันสองคำขอเป็น read-modify-write บนคอลัมน์เดียว
+      await tx.$queryRaw`SELECT id FROM contracts WHERE id = ${id} FOR UPDATE`;
+      const contract = await tx.contract.findFirst({ where: { id, deletedAt: null } });
+      if (!contract) throw new NotFoundException('ไม่พบสัญญา');
+      if (actor.role === 'BRANCH_MANAGER' && (!actor.branchId || actor.branchId !== contract.branchId)) {
+        throw new ForbiddenException('แก้ไขของแถมได้เฉพาะสัญญาของสาขาตัวเอง');
+      }
+      if (actor.role === 'SALES' && contract.salespersonId !== actor.id) {
+        throw new ForbiddenException('แก้ไขของแถมได้เฉพาะสัญญาที่ตัวเองสร้าง');
+      }
+      if (contract.status !== 'DRAFT') {
+        throw new BadRequestException('แก้ไขของแถมได้เฉพาะก่อนเปิดใช้สัญญา — สัญญานี้เปิดใช้แล้ว ต้นทุนของแถมลงบัญชีไปแล้ว');
+      }
+
+      const current = contract.bundleProductIds ?? [];
+      const removed = current.filter((pid) => !next.includes(pid));
+      const added = next.filter((pid) => !current.includes(pid));
+      if (!removed.length && !added.length) return;
+
+      await releaseContractBundles(tx, removed);
+      if (added.length) {
+        const customer = await tx.customer.findUnique({
+          where: { id: contract.customerId },
+          select: TEST_SIDE_CUSTOMER_SELECT,
+        });
+        if (!customer) throw new BadRequestException('ไม่พบลูกค้า');
+        await reserveContractBundles(tx, {
+          bundleProductIds: added,
+          mainProductId: contract.productId,
+          branchId: contract.branchId,
+          actor,
+          customer,
+        });
+      }
+      await tx.contract.update({ where: { id }, data: { bundleProductIds: next } });
+      // atomic กับการ flip สถานะสินค้า (กติกา AuditLog ใน .claude/rules/database.md) — rollback แล้วต้องไม่เหลือแถว
+      await tx.auditLog.create({
+        data: {
+          userId: actor.id,
+          action: 'CONTRACT_BUNDLES_UPDATED',
+          entity: 'contract',
+          entityId: id,
+          oldValue: { bundleProductIds: current },
+          newValue: { bundleProductIds: next, added, removed, contractNumber: contract.contractNumber },
+        },
+      });
+    });
+    return this.query.findOne(id);
+  }
+
   async update(id: string, dto: UpdateContractDto, userId: string) {
     const initial = await this.query.findOne(id);
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true, branchId: true } });
@@ -440,6 +520,8 @@ export class ContractLifecycleService {
         where: { id: contract.productId, status: 'RESERVED' },
         data: { status: 'IN_STOCK' },
       });
+      // ของแถมที่จองไว้กับร่างนี้กลับเป็นพร้อมขายพร้อมเครื่องหลัก
+      await releaseContractBundles(tx, contract.bundleProductIds ?? []);
       await tx.auditLog.create({
         data: {
           userId,

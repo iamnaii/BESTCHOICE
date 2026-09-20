@@ -1068,6 +1068,10 @@ model Contract {
   contractNumber           String         @unique @map("contract_number")
   customerId               String         @map("customer_id")
   productId                String         @map("product_id")
+  /// ของแถม (อุปกรณ์เสริมเท่านั้น) ที่ให้ไปกับสัญญา — จองตอนสร้าง ตัดสต๊อกตอนเปิดใช้ คืนเมื่อลบร่าง/ยกเลิก
+  /// (`contract-bundle.util.ts`). ตอนเปิดใช้ถูกคัดลอกลง `Sale.bundleProductIds` ของใบขายอัตโนมัติ
+  /// ซึ่งเป็นตัวที่ขาต้นทุนของ `ShopInventoryTransferTemplate` อ่าน
+  bundleProductIds         String[]       @default([]) @map("bundle_product_ids")
   branchId                 String         @map("branch_id")
   salespersonId            String         @map("salesperson_id")
   planType                 PlanType       @map("plan_type")

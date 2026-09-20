@@ -15,6 +15,7 @@ import Modal from '@/components/ui/Modal';
 import DocumentUpload from '@/components/contract/DocumentUpload';
 import CreditCheckPanel from '@/components/contract/CreditCheckPanel';
 import ProductEditModal from '@/components/contract/ProductEditModal';
+import ContractBundlesCard, { type ContractBundleRow } from '@/components/contract/ContractBundlesCard';
 import CustomerEditModal from '@/components/contract/CustomerEditModal';
 import ContractPaymentSchedule from '@/components/contract/ContractPaymentSchedule';
 import ContractDocuments from '@/components/contract/ContractDocuments';
@@ -69,6 +70,8 @@ interface ContractDetail {
   customer: { id: string; name: string; phone: string; nationalId: string };
   customerSnapshot: { name: string; phone: string; nationalId?: string; prefix?: string; nickname?: string; occupation?: string; salary?: string } | null;
   product: { id: string; name: string; brand: string; model: string; category: string; color: string | null; storage: string | null; serialNumber: string | null; imeiSerial: string | null; costPrice: string; batteryHealth: number | null; warrantyExpired: boolean | null; warrantyExpireDate: string | null; hasBox: boolean | null; accessoryType: string | null; accessoryBrand: string | null };
+  /** ของแถม (อุปกรณ์เสริม) ของสัญญา — จองตอนสร้าง ตัดสต๊อกตอนเปิดใช้ */
+  bundleProducts?: ContractBundleRow[];
   branch: { id: string; name: string };
   salesperson: { id: string; name: string };
   reviewedBy: { id: string; name: string } | null;
@@ -287,6 +290,10 @@ const deleteMutation = useMutation({
   const isOwner = user?.role === 'OWNER';
   const canEdit = (isCreator || isOwner) && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
   const canEditMaster = user && ['OWNER', 'BRANCH_MANAGER'].includes(user.role);
+  // สิทธิ์แก้ของแถม = ชุดเดียวกับ PATCH /contracts/:id/bundles (เซิร์ฟเวอร์ตรวจซ้ำ + BM ต้องเป็นสาขาของสัญญา):
+  // OWNER · BRANCH_MANAGER · SALES เฉพาะสัญญาที่ตัวเองสร้าง
+  const canEditBundles = !!user && (['OWNER', 'BRANCH_MANAGER'].includes(user.role)
+    || (user.role === 'SALES' && contract.salespersonId === user.id));
   const canDelete = isOwner && (contract.workflowStatus === 'CREATING' || contract.workflowStatus === 'REJECTED');
   const allSigned = contract.signatureRequirements?.complete === true;
   const canSign = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '') && contract.status === 'DRAFT' && ['CREATING', 'REJECTED', 'PENDING_REVIEW', 'APPROVED'].includes(contract.workflowStatus);
@@ -855,6 +862,16 @@ const deleteMutation = useMutation({
             </div>
             <button onClick={() => navigate(`/products/${contract.product.id}`)} className="mt-3 text-xs text-primary hover:underline">ดูรายละเอียดสินค้า</button>
           </div>
+
+          <ContractBundlesCard
+            contractId={contract.id}
+            contractStatus={contract.status}
+            branchId={contract.branch.id}
+            mainProductId={contract.product.id}
+            bundleProducts={contract.bundleProducts ?? []}
+            canEdit={canEditBundles}
+            onSaved={() => queryClient.invalidateQueries({ queryKey: ['contract', id] })}
+          />
 
           {/* MDM Device Widget */}
           {contract.product.imeiSerial && (

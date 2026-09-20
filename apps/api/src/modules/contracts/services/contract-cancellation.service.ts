@@ -9,6 +9,7 @@ import { ContractCancellationTemplate } from '../../journal/cpa-templates/contra
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { shopCollectTypedBalance } from '../../interco-settlement/interco-typed-balance';
 import { reopenRepossessionOnUnsale } from '../../repossessions/repossession-resale.util';
+import { restoreContractBundles } from './contract-bundle.util';
 
 /**
  * ContractCancellationService — contract-cancellation workflow:
@@ -192,6 +193,7 @@ export class ContractCancellationService {
           creditBalance: true,
           rescheduleAdvanceBalance: true,
           tradeInCreditSnapshot: true,
+          bundleProductIds: true,
         },
       });
       if (contract.status !== 'ACTIVE') {
@@ -309,6 +311,9 @@ export class ContractCancellationService {
       // เครื่องยึดที่ถูกขายผ่อนใหม่แล้วสัญญาใหม่ถูกยกเลิก → เปิดรายการยึดกลับเป็น "พร้อมขาย"
       // (คู่ของ closeRepossessionOnSale ตอน activate — 2026-09-05). เครื่องปกติ = 0 แถว
       await reopenRepossessionOnUnsale(tx, [contract.productId]);
+      // ของแถมของสัญญา: sweep ข้างบนกลับรายการต้นทุนของแถมในสมุดแล้ว (อยู่ใน JE เดียวกับ COGS เครื่องหลัก)
+      // ⇒ สถานะสินค้าต้องตามให้ตรง. ชิ้นที่คืนไม่ได้ถูกบันทึกใน AuditLog ด้านล่าง ไม่บล็อกการยกเลิก
+      const bundleRestore = await restoreContractBundles(tx, contract.bundleProductIds ?? []);
       await tx.payment.updateMany({
         where: { contractId: contract.id, deletedAt: null },
         data: { deletedAt: now },
@@ -353,6 +358,10 @@ export class ContractCancellationService {
             reversalCount: jeResult.reversalJeIds.length,
             reversalJeIds: jeResult.reversalJeIds,
             refundAmount: cancellation.refundAmount.toString(),
+            // ของแถมของสัญญา — เขียนเฉพาะเมื่อสัญญามีของแถม (สัญญาเดิมได้ payload รูปเดิมทุกไบต์)
+            ...(bundleRestore.restoredIds.length || bundleRestore.skippedIds.length
+              ? { bundlesRestored: bundleRestore.restoredIds, bundlesNotRestored: bundleRestore.skippedIds }
+              : {}),
             // C-2: recallAmount = net เงินสดที่ FINANCE โอนจริง (settled gross −
             // deductions ที่รอบหักไว้) — นิยามเดียวกับ exchange audit / list API /
             // recall queue; settledTotal (gross) เก็บคู่กันไว้ตรวจย้อน redirect

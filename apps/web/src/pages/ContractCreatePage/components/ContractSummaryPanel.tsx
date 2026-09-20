@@ -1,4 +1,4 @@
-import type { Product, Customer, InterestConfig } from '../types';
+import type { Product, Customer, InterestConfig, ContractBundleProduct } from '../types';
 
 export interface ContractSummaryPanelProps {
   tradeInBaseAmount?: number;
@@ -10,6 +10,8 @@ export interface ContractSummaryPanelProps {
   monthlyPayment: number;
   interestRate: number;
   interestConfig: InterestConfig | null | undefined;
+  /** ของแถม (อุปกรณ์เสริม) ที่จะจองไปกับสัญญา */
+  bundleProducts?: ContractBundleProduct[];
 }
 
 export function ContractSummaryPanel({
@@ -22,6 +24,7 @@ export function ContractSummaryPanel({
   monthlyPayment,
   interestRate,
   interestConfig,
+  bundleProducts = [],
 }: ContractSummaryPanelProps) {
   return (
     <details className="mt-4">
@@ -36,6 +39,12 @@ export function ContractSummaryPanel({
           <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">จำนวนงวด</span><div className="font-medium mt-0.5">{totalMonths} เดือน</div></div>
           <div><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ค่างวด/เดือน</span><div className="font-bold text-primary tabular-nums font-mono mt-0.5">{monthlyPayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿</div></div>
           <div className="col-span-2"><span className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">ดอกเบี้ย</span><div className="font-medium mt-0.5">{(interestRate * 100).toFixed(2)}%{interestConfig ? ` (${interestConfig.name})` : ''}</div></div>
+          {bundleProducts.length > 0 && (
+            <div className="col-span-2 border-t border-border/60 pt-3">
+              <span className="text-2xs font-medium text-muted-foreground tracking-wider">ของแถม ({bundleProducts.length} รายการ · ไม่คิดเงิน)</span>
+              <div className="font-medium mt-0.5 leading-snug">{bundleProducts.map((p) => p.name).join(' · ')}</div>
+            </div>
+          )}
         </div>
       </div>
     </details>

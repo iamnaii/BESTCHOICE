@@ -15,6 +15,7 @@ import { StepIndicator } from './components/StepIndicator';
 import { ProductSelectStep } from './components/ProductSelectStep';
 import { CustomerSelectStep } from './components/CustomerSelectStep';
 import { PlanDetailsStep } from './components/PlanDetailsStep';
+import BundleSearch from '@/components/bundle/BundleSearch';
 import { ContractSummaryPanel } from './components/ContractSummaryPanel';
 import { CustomerCreateModal } from './components/CustomerCreateModal';
 import { EditProductModal } from './components/EditProductModal';
@@ -178,6 +179,22 @@ export default function ContractCreatePage() {
             monthOptions={calculation.monthOptions}
           />
 
+          {/* ของแถม — วางขั้นสุดท้ายติดกับสรุปก่อนยืนยัน (ขั้นเลือกสินค้าเป็นรายการยาว ช่องจะถูกดันจนมองไม่เห็น) */}
+          <div className="my-4 max-w-3xl">
+            <BundleSearch
+              bundleSearch={data.bundleSearch}
+              setBundleSearch={data.setBundleSearch}
+              bundleProducts={data.bundleProducts}
+              excludeIds={[...data.bundleProducts.map((p) => p.id), ...(data.selectedProduct ? [data.selectedProduct.id] : [])]}
+              onAddBundle={data.addBundle}
+              onRemoveBundle={data.removeBundle}
+              branchId={data.selectedProduct?.branchId}
+              disabled={data.createMutation.isPending}
+              hint="จองไว้ตอนสร้างสัญญา · ตัดสต๊อกเมื่อเปิดใช้สัญญา (ราคา 0 บาท)"
+              searchLabel="ค้นหาของแถมเพิ่ม (เฉพาะอุปกรณ์เสริมของสาขานี้) — ไม่มีของแถมก็ข้ามช่องนี้ได้"
+            />
+          </div>
+
           <div className="my-4 max-w-xl space-y-3" aria-live="polite">
             {quoteQuery.isFetching && <p role="status">กำลังคำนวณยอดและตารางผ่อนล่าสุด...</p>}
             {quoteQuery.isError && <div role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm">
@@ -231,6 +248,7 @@ export default function ContractCreatePage() {
               monthlyPayment={calculation.monthlyPayment}
               interestRate={calculation.interestRate}
               interestConfig={data.interestConfig}
+              bundleProducts={data.bundleProducts}
             />
           )}
         </>

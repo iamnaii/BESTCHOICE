@@ -110,7 +110,7 @@ export class CreateSaleDto {
   @Type(() => Number)
   financeAmount?: number;
 
-  // Bundle / freebie product IDs
+  // Bundle / freebie product IDs — หมวดอุปกรณ์เสริมเท่านั้น (ตรวจใน SaleWriterService.markBundleProductsSold)
   @IsArray({ message: 'กรุณาระบุรายการสินค้าแถม' })
   @IsString({ each: true, message: 'รหัสสินค้าแถมต้องเป็นข้อความ' })
   @IsOptional()

@@ -14,6 +14,9 @@ export interface Product {
   prices: { id: string; label: string; amount: string; isDefault: boolean }[];
 }
 
+/** ของแถมของสัญญา (อุปกรณ์เสริม) — รูปขั้นต่ำที่ช่องเลือกของแถมใช้ */
+export type ContractBundleProduct = import('@/components/bundle/BundleSearch').BundleProduct & { branchId?: string };
+
 export interface Customer {
   id: string;
   name: string;

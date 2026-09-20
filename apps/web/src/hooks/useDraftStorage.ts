@@ -4,6 +4,8 @@ const DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
 export interface ContractDraft {
   tradeInCreditId?: string;
+  /** ของแถม (อุปกรณ์เสริม) ที่เลือกไว้ — เก็บแค่ id แล้วโหลดสถานะสดตอนกู้คืน */
+  bundleProductIds?: string[];
   step: number;
   productId?: string;
   customerId?: string;

@@ -6,9 +6,9 @@ import { bangkokDateString } from '../../../utils/date.util';
  * ค่าคอมพนักงานขายของสัญญาผ่อน BESTCHOICE — คำตัดสินเจ้าของ 2026-09-20:
  *   "เหมือนขายสด · ตั้งตอนเปิดใช้สัญญา · ยกเลิกสัญญา = เรียกคืนค่าคอมที่ยังไม่จ่าย"
  *
- * เดิมค่าคอมของสัญญาผ่อนเกิดได้ทางเดียวคือเส้นทางเก่า `POST /sales` (SaleWriterService.createInstallmentSale)
+ * เดิมค่าคอมของสัญญาผ่อนเกิดได้ทางเดียวคือเส้นทางเก่า `POST /sales` แบบ INSTALLMENT (ถอดแล้ว 2026-09-20)
  * ซึ่งสร้างตั้งแต่สัญญายังเป็นร่าง — สัญญาที่ทำผ่านหน้าสัญญาไม่มีค่าคอมเลย. ตอนนี้ `ContractWorkflowService.activate`
- * เป็นผู้สร้าง (สัญญาที่ไม่ถูกเปิดใช้ = ยังไม่ได้ขาย = ยังไม่มีค่าคอม).
+ * เป็นผู้สร้างทางเดียว (สัญญาที่ไม่ถูกเปิดใช้ = ยังไม่ได้ขาย = ยังไม่มีค่าคอม).
  * สัญญาจากการเปลี่ยนเครื่อง (device swap) ไม่เข้าเส้นนี้ — ไม่ใช่การขายใหม่ของพนักงาน.
  */
 const FALLBACK_RATE = 0.03;
@@ -22,7 +22,7 @@ export async function ensureContractCommission(
   tx: Prisma.TransactionClient,
   input: { contractId: string; saleId: string; salespersonId: string; netAmount: Prisma.Decimal; now?: Date },
 ): Promise<'CREATED' | 'EXISTS'> {
-  // สัญญาจากเส้นทางเก่ามีค่าคอมตั้งแต่ตอนร่างแล้ว — ห้ามสร้างซ้ำ
+  // ร่างจากเส้นทางเก่า (ถอดแล้ว — อาจยังค้างในฐาน) มีค่าคอมตั้งแต่ตอนร่างแล้ว — ห้ามสร้างซ้ำ
   const existing = await tx.salesCommission.findFirst({ where: { contractId: input.contractId, deletedAt: null }, select: { id: true } });
   if (existing) return 'EXISTS';
 
@@ -62,6 +62,9 @@ export interface ContractCommissionClawback {
  * ยกเลิกสัญญา (C-1/C-2) → เรียกคืนค่าคอมที่ยังไม่จ่าย. **ไม่บล็อกการยกเลิกสัญญา** (ต่างจากยกเลิกใบขาย):
  * การยกเลิกสัญญาเป็นเรื่องทางกฎหมาย/การเงินกับลูกค้า ห้ามติดเพราะรอบจ่ายค่าคอมภายใน — รอบที่ล็อกแล้วถูกรายงานกลับ
  * ให้ผู้เรียกบันทึกใน audit แทน.
+ *
+ * ข้อยกเว้นที่อยู่นอกไฟล์นี้: สัญญาที่ใช้เครดิตเทิร์นผ่าน `cleanupCreditContractSale` ก่อนถึงตรงนี้ และด่านของมันยังปฏิเสธเมื่อค่าคอม
+ * จ่ายแล้ว/อยู่ในรอบจ่ายที่อนุมัติแล้ว — รอเจ้าของเคาะ (ดู `.claude/rules/accounting.md` หัวข้อค่าคอมสัญญาผ่อน).
  */
 export async function clawbackContractCommission(
   tx: Prisma.TransactionClient,

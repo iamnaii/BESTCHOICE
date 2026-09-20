@@ -60,6 +60,8 @@ Mockup ที่เจ้าของเคาะ: https://claude.ai/artifact/GW
 
 ## ที่ตั้งใจไม่ทำในงานนี้
 
+- > **อัปเดต 2026-09-20 (หลังเอกสารนี้):** ลำดับข้างล่างเดินครบแล้ว — เจ้าของเคาะค่าคอม → ย้ายไป `activate` (PR #1612) →
+  > `createInstallmentSale` ถูกลบ และ `POST /sales` ปฏิเสธ `INSTALLMENT`. ข้อความเดิมเก็บไว้เป็นที่มา.
 - **ไม่ลบ `createInstallmentSale` (POST /sales INSTALLMENT)** แม้ไม่มีหน้าจอเรียกแล้ว: แผน
   `2026-09-11-sales-contracts.md` ตั้งใจเก็บไว้พร้อมเทสเทียบผล `it.each(['direct','pos'])`
   (`apps/api/e2e/credit-payment-flow.e2e-spec.ts`) และมันคือ **ที่เดียวที่สร้าง `SalesCommission` ให้สัญญาผ่อน** —

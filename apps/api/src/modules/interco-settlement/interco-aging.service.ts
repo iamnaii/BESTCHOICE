@@ -482,7 +482,7 @@ export class IntercoAgingService {
    *
    * จำนวน query **คงที่** (4 ครั้ง — ไม่ขึ้นกับจำนวนสัญญา): Query A รวม 4
    * typed sums + 2 MIN(posted_at) ของ 11-2107 ใน CASE เดียว, Query B รวม
-   * S21-1104 สามประเภทด้วย conditional group key, Query C = deductions
+   * S21-1104 typed balances with conditional group key, Query C = deductions
    * groupBy, Query D = hydrate contract. ห้าม refactor กลับไปเรียก helper
    * ต่อสัญญาในลูป (N×5).
    *

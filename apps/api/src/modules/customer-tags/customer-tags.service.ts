@@ -315,6 +315,8 @@ export class CustomerTagsService {
         return 'AUTO: ลูกค้าสัญญาแรกอายุ <30 วัน';
       case 'LOYAL':
         return 'AUTO: เป็นลูกค้ามา >2 ปี และไม่เคยผิดนัด';
+      case 'RETURNED_DEVICE':
+        return 'AUTO: เคยคืน/ถูกยึดเครื่อง';
       case 'BLACKLIST':
         // Should never happen — BLACKLIST is MANUAL-only.
         throw new BadRequestException('BLACKLIST ไม่สามารถ apply โดยอัตโนมัติได้');

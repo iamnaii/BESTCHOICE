@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { RepossessionsService, RequestUser } from './repossessions.service';
-import { CreateRepossessionDto, UpdateRepossessionDto } from './dto/create-repossession.dto';
+import { UpdateRepossessionDto } from './dto/create-repossession.dto';
 import { ReadyForSaleDto } from './dto/ready-for-sale.dto';
 import { RefundPaymentDto, RefundWaiveDto } from './dto/refund-payment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -39,10 +39,7 @@ export class RepossessionsController {
 
   @Get('profit-loss')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  getProfitLoss(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
+  getProfitLoss(@Query('page') page?: string, @Query('limit') limit?: string) {
     const parsedPage = page ? parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Math.min(parseInt(limit, 10), 200) : undefined;
     return this.repossessionsService.getProfitLossSummary(
@@ -58,20 +55,16 @@ export class RepossessionsController {
     @CurrentUser() user: RequestUser,
     @Query('appraisalPrice') appraisalPrice?: string,
     @Query('discountPct') discountPct?: string,
-    @Query('customerRefundEnabled') customerRefundEnabled?: string,
-    @Query('depositAccountCode') depositAccountCode?: string,
-    @Query('collectedByShop') collectedByShop?: string,
     @Query('conditionGrade') conditionGrade?: string,
+    @Query('deviceReturnId') deviceReturnId?: string,
   ) {
     return this.repossessionsService.previewCalculation(
       contractId,
       {
         appraisalPrice: appraisalPrice ? parseFloat(appraisalPrice) : undefined,
         discountPct: discountPct ? parseFloat(discountPct) : undefined,
-        customerRefundEnabled: customerRefundEnabled === 'true',
-        depositAccountCode: depositAccountCode || undefined,
-        collectedByShop: collectedByShop === 'true',
         conditionGrade: conditionGrade || undefined,
+        deviceReturnId: deviceReturnId || undefined,
       },
       user,
     );
@@ -81,15 +74,6 @@ export class RepossessionsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   findOne(@Param('id') id: string, @CurrentUser() user: RequestUser) {
     return this.repossessionsService.findOne(id, user);
-  }
-
-  @Post()
-  @Roles('OWNER')
-  create(
-    @Body() dto: CreateRepossessionDto,
-    @CurrentUser() user: RequestUser,
-  ) {
-    return this.repossessionsService.create(dto, user.id);
   }
 
   @Patch(':id')

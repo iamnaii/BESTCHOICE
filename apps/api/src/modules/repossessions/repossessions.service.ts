@@ -7,10 +7,13 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateRepossessionDto, UpdateRepossessionDto, REPOSSESSION_RETURN_REASONS } from './dto/create-repossession.dto';
-import { ConditionGrade, RepossessionStatus, ProductStatus } from '@prisma/client';
+import {
+  UpdateRepossessionDto,
+  REPOSSESSION_RETURN_REASONS,
+  RepossessionReturnReason,
+} from './dto/create-repossession.dto';
+import { ConditionGrade, RepossessionStatus, ProductStatus, Repossession } from '@prisma/client';
 import { d, dAdd, dSub } from '../../utils/decimal.util';
 import { computePayoffQuote } from '../contracts/compute-payoff-quote';
 import { JournalAutoService } from '../journal/journal-auto.service';
@@ -24,7 +27,13 @@ import { TradeInValuationService } from '../trade-in/services/trade-in-valuation
 import { TradeInLifecycleService } from '../trade-in/services/trade-in-lifecycle.service';
 import { lookupTableBase, TableBaseHint } from './table-base.util';
 import { ShopCollectShopLegs } from '../journal/cpa-templates/shop-collect-shop-legs.template';
-import { shopCollectTypedBalance } from '../interco-settlement/interco-typed-balance';
+import {
+  shopCollectTypedBalance,
+  deviceReturnFinanceBalance,
+  // helper ของ Phase 1 — Σ deviceReturnAmount ของ item ใน batch POSTED ต่อสัญญา (same-type only)
+  postedDeductionsByContract,
+  DEVICE_RETURN_DEDUCTION_COLUMNS,
+} from '../interco-settlement/interco-typed-balance';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -61,6 +70,39 @@ export const RE_REPOSSESSION_MSG =
 export interface RepossessionEligibility {
   canRepossess: boolean;
   reason: string | null;
+}
+
+/**
+ * ข้อมูลตั้งต้นของการยึด/รับคืนที่ผ่านการยืนยันแล้ว (2026-09-20) — มาจากใบรับเครื่องคืน
+ * (DeviceReturnsService.confirm) ไม่ใช่ DTO สาธารณะ. company ids มาจาก assertRepossessionPeriodsOpen.
+ */
+export interface RepossessionCreateInput {
+  contractId: string;
+  /** วันรับเครื่องจริง (DeviceReturn.deviceReceivedAt) */
+  repossessedDate: Date;
+  /** วันลงบัญชี — JP5 entryDate + period guard (ต้องผ่าน assertRepossessionPeriodsOpen ก่อน) */
+  paymentDate: Date;
+  conditionGrade: string;
+  /** ราคาประเมิน 2 ตำแหน่ง — คอลัมน์ Decimal(12,2) ของใบ แปลงเป็น number ได้ตรงตัว */
+  appraisalPrice: number;
+  repairCost?: number;
+  notes?: string;
+  returnReason?: RepossessionReturnReason;
+  discountPct?: number;
+  /** ผู้ตรวจสภาพ/ตีราคาที่สาขา (DeviceReturn.receivedById) */
+  appraisedById: string;
+  /** สาขาที่รับเครื่องจริง — ไปเป็น product.branchId (D7 รับข้ามสาขาได้) */
+  receivingBranchId: string;
+  deviceReturnId: string;
+  financeCompanyId: string;
+  shopCompanyId: string;
+}
+
+export interface RepossessionCreateResult {
+  repossession: Repossession;
+  outstandingBalance: Prisma.Decimal;
+  totalPaid: Prisma.Decimal;
+  creditNote?: { outcome: string; receiptId?: string };
 }
 
 /** ราคากลางแนะนำจากตารางรับซื้อมือสอง — รูปเดียวกับใบรับเครื่องคืน (table-base.util.ts) */
@@ -131,7 +173,14 @@ export class RepossessionsService {
             },
           },
           product: {
-            select: { id: true, name: true, brand: true, model: true, imeiSerial: true, status: true },
+            select: {
+              id: true,
+              name: true,
+              brand: true,
+              model: true,
+              imeiSerial: true,
+              status: true,
+            },
           },
           appraisedBy: { select: { id: true, name: true } },
         },
@@ -187,6 +236,23 @@ export class RepossessionsService {
         ),
       ),
     );
+    // ค่าเครื่องคืน (11-2107 typed DEVICE_RETURN) ที่ยังรอหักในรอบจ่าย INTER-CO (2026-09-20) —
+    // NET = typed gross − Σ deviceReturnAmount ของ item ใน batch POSTED ของสัญญานั้น (**same-type เท่านั้น**
+    // — กติกาที่ Phase 1 ตัดสิน; ขาหักของ batch ไม่ stamp contractId จึงอ่านจาก item). สูตร/helper เดียวกับ
+    // IntercoPendingService.getPendingDeviceReturns — ห้ามเขียนสูตรรวม deduction ใหม่ที่นี่
+    const deviceReturnByContract = new Map<string, Prisma.Decimal>();
+    if (contractIds.length) {
+      const deductedByContract = await postedDeductionsByContract(
+        this.prisma,
+        contractIds,
+        DEVICE_RETURN_DEDUCTION_COLUMNS,
+      );
+      for (const cid of contractIds) {
+        const gross = await deviceReturnFinanceBalance(this.prisma, cid);
+        const net = gross.minus(deductedByContract.get(cid) ?? 0);
+        deviceReturnByContract.set(cid, net.gt(0) ? net : new Prisma.Decimal(0));
+      }
+    }
     // "รอถ่ายรูป n/6" บนแถวพร้อมขาย (2026-09-07) — นับมุมจากตารางรูป ไม่โหลด base64
     const photoAngles = await countPhotoAngles(
       this.prisma,
@@ -199,6 +265,9 @@ export class RepossessionsService {
         product: { ...r.product, photoAngles: photoAngles.get(r.product.id) ?? 0 },
         shopCollectOutstanding: (
           outstandingByContract.get(r.contract.id) ?? new Prisma.Decimal(0)
+        ).toFixed(2),
+        deviceReturnOutstanding: (
+          deviceReturnByContract.get(r.contract.id) ?? new Prisma.Decimal(0)
         ).toFixed(2),
         creditNote: cn
           ? {
@@ -222,11 +291,14 @@ export class RepossessionsService {
     options: {
       appraisalPrice?: number;
       discountPct?: number;
-      customerRefundEnabled?: boolean;
-      depositAccountCode?: string;
-      collectedByShop?: boolean;
       /** เกรดสภาพ A-D — ถ้าส่งมา preview จะค้นตารางรับซื้อ (TradeInValuation) ให้เป็นราคากลางแนะนำ */
       conditionGrade?: string;
+      /**
+       * โหมดยืนยันใบรับเครื่องคืน (2026-09-20): เกรด/ราคาประเมินอ่านจากใบ (DeviceReturn) — query
+       * conditionGrade/appraisalPrice ถูกละเลย เพื่อให้ preview === ใบที่จะถูกยืนยัน; discountPct ยังมาจาก
+       * query. ใบต้องเป็นของสัญญานี้และยังไม่ถูกลบ ไม่งั้น 404.
+       */
+      deviceReturnId?: string;
     },
     user?: RequestUser,
   ) {
@@ -256,6 +328,19 @@ export class RepossessionsService {
       if (!scope.branchId || contract.branchId !== scope.branchId) {
         throw new NotFoundException('ไม่พบสัญญา');
       }
+    }
+
+    let conditionGrade = options.conditionGrade;
+    let appraisalInput: Prisma.Decimal | null =
+      options.appraisalPrice != null ? new Prisma.Decimal(options.appraisalPrice) : null;
+    if (options.deviceReturnId) {
+      const deviceReturn = await this.prisma.deviceReturn.findFirst({
+        where: { id: options.deviceReturnId, contractId, deletedAt: null },
+        select: { conditionGrade: true, appraisalPrice: true },
+      });
+      if (!deviceReturn) throw new NotFoundException('ไม่พบใบรับเครื่องคืนของสัญญานี้');
+      conditionGrade = deviceReturn.conditionGrade;
+      appraisalInput = deviceReturn.appraisalPrice;
     }
 
     if (!contract.totalMonths || contract.totalMonths <= 0) {
@@ -336,19 +421,17 @@ export class RepossessionsService {
     // ราคาเดียว (2026-09-05): ราคาที่ใช้คำนวณกำไร/ขาดทุน = ราคาประเมินเท่านั้น — ตรงกับ create()
     // ทุกไบต์ (create ไม่อ่าน marketValue จาก DTO). ไม่มีราคาประเมิน = ยังคำนวณไม่ได้ (source null);
     // ไม่ถอยไป costPrice — ต้นทุนซื้อเข้าไม่ใช่ราคากลาง เคยทำให้จอโชว์เลขที่ไม่มีวันถูกบันทึกจริง
-    const marketValueSource: MarketValueSource =
-      options.appraisalPrice != null ? 'APPRAISAL' : null;
-    const marketValue = new Prisma.Decimal(options.appraisalPrice ?? 0);
+    const marketValueSource: MarketValueSource = appraisalInput ? 'APPRAISAL' : null;
+    const marketValue = appraisalInput ?? new Prisma.Decimal(0);
 
     // ราคากลางแนะนำจากตารางรับซื้อมือสอง (ยี่ห้อ+รุ่น+ความจุ+เกรด) — ตารางเดียวกับ
     // หน้ารับซื้อ (TradeInValuationService.lookupValuation). ไม่พบ = ให้พนักงานกรอกเอง.
     // preview-only: ล้มเหลวต้องไม่ล้มทั้ง response (pattern เดียวกับ journalPreview)
-    const valuation = options.conditionGrade
-      ? await lookupTableBase(this.valuationService, contract.product, options.conditionGrade)
+    const valuation = conditionGrade
+      ? await lookupTableBase(this.valuationService, contract.product, conditionGrade)
       : null;
     // คำตัดสินเจ้าของ 2026-09-05: ไม่มีเงินคืนส่วนต่างให้ลูกค้า (ปพพ. ม.574 ไม่บังคับคืน) —
-    // supersede คำสั่ง 2026-08-08 ข้อ 2; options.customerRefundEnabled ถูกละเลยใน preview และ
-    // create() ปฏิเสธเมื่อส่ง true. กำไร/ขาดทุนบนจอ = ราคาประเมิน − ยอดปิดสัญญา
+    // supersede คำสั่ง 2026-08-08 ข้อ 2. กำไร/ขาดทุนบนจอ = ราคาประเมิน − ยอดปิดสัญญา
     const customerRefund = new Prisma.Decimal(0);
     const profitLoss = TWO_DP(marketValue.sub(closingAmount));
     // ถังพักงวดสุดท้ายที่ยอดปิด "ดูดซับจริง" — clamp ด้วยยอดในถังจริงอีกชั้น
@@ -360,24 +443,22 @@ export class RepossessionsService {
       ),
     );
 
-    // JOURNAL AUTO preview (owner 2026-07-20) — dry-run JP5 ผ่าน buildJe ตัวเดียว
-    // กับตอน post จริงใน create() จึงตรงกันเสมอ. Mirror create(): repoValue =
-    // appraisalPrice (ไม่ใช่ marketValue), deposit = 11-2107 เมื่อตั้งลูกหนี้-
-    // หน้าร้าน ไม่งั้น KBank 11-1201. Preview fail ต้องไม่ล้มทั้ง response.
+    // JOURNAL AUTO preview (owner 2026-07-20) — dry-run JP5 ผ่าน buildJe ตัวเดียวกับตอน post จริง
+    // ใน createInTx จึงตรงกันเสมอ. ใบรับเครื่องคืน (2026-09-20): ขา Dr = 11-2107 ลูกหนี้-หน้าร้าน
+    // typed DEVICE_RETURN เสมอ (ไม่มีขาเงินสดวันรับเครื่อง — ค่าเครื่องหักในรอบจ่าย INTER-CO).
+    // Preview fail ต้องไม่ล้มทั้ง response.
     let journalPreview: RepossessionJePreview | null = null;
     if (outstandingForJe.greaterThan(0)) {
-      const previewDepositCode = options.collectedByShop
-        ? '11-2107'
-        : (options.depositAccountCode ?? '11-1201');
       try {
         journalPreview = await this.repossessionJP5Template.previewJe({
           contractId,
-          depositAccountCode: previewDepositCode,
-          repossessionValue: new Prisma.Decimal(options.appraisalPrice ?? 0),
-          shopReceivableType: options.collectedByShop ? 'SHOP_COLLECT' : undefined,
+          depositAccountCode: '11-2107',
+          repossessionValue: marketValue,
+          shopReceivableType: 'DEVICE_RETURN',
+          deviceReturnId: options.deviceReturnId,
           customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
           // ถังพักงวดสุดท้ายที่ยอดปิดดูดซับจริง → Dr 21-1103 (คำสั่งเจ้าของ
-          // 2026-08-16 §จุดหัก 3). ต้องส่งทั้ง preview และ create ไม่งั้น
+          // 2026-08-16 §จุดหัก 3). ต้องส่งทั้ง preview และ createInTx ไม่งั้น
           // preview ≠ posted
           parkRelief: parkReliefPreview.gt(0) ? parkReliefPreview : undefined,
         });
@@ -462,47 +543,23 @@ export class RepossessionsService {
   }
 
   /**
-   * Create repossession record and update contract/product statuses
+   * ด่านนอก tx ของการยึด/รับคืน (2026-09-20 — เดิมอยู่ต้น create()): วันลงบัญชีต้องไม่เป็นอนาคต
+   * (วันปฏิทินไทย), ต้องอยู่เดือนปัจจุบัน (ใบลดหนี้ออกเดือนปัจจุบันเสมอ — คำสั่งเจ้าของ 2026-08-08
+   * ข้อ 3 — JE ต้องอยู่งวดภาษีเดียวกัน), และงวดบัญชีของ **ทั้งสองบริษัท** ต้องเปิด (JP5 ลงสมุด
+   * FINANCE, ใบรับเข้าสต็อกลงสมุด SHOP). บริษัทไม่ครบ = fail LOUD (validatePeriodOpen เงียบเมื่อไม่มี
+   * companyId ซึ่งจะปิด guard ที่ด่านนี้มีไว้). ผู้เรียก: DeviceReturnsService.confirm ก่อนเปิด tx.
    */
-  async create(dto: CreateRepossessionDto, userId: string) {
-    if (dto.returnReason != null && !Object.prototype.hasOwnProperty.call(REPOSSESSION_RETURN_REASONS, dto.returnReason)) {
-      throw new BadRequestException('กรุณาเลือกเหตุผลคืนเครื่องที่ถูกต้อง');
-    }
-    if (dto.returnReason === 'OTHER' && !dto.notes?.trim()) {
-      throw new BadRequestException('กรุณาระบุรายละเอียดเหตุผลคืนเครื่อง');
-    }
-    // คำตัดสินเจ้าของ 2026-09-05: ไม่มีเงินคืนส่วนต่างให้ลูกค้า — ปฏิเสธตรงๆ แทนละเลยเงียบๆ
-    if (dto.customerRefundEnabled) {
-      throw new BadRequestException(
-        'ระบบไม่มีเงินคืนส่วนต่างให้ลูกค้าแล้ว (คำตัดสินเจ้าของ 2026-09-05) — กรุณาเอาตัวเลือก "คืนเงินส่วนต่างให้ลูกค้า" ออก',
-      );
-    }
-    // Validate condition grade
-    const validGrades = ['A', 'B', 'C', 'D'];
-    if (!validGrades.includes(dto.conditionGrade)) {
-      throw new BadRequestException(`เกรดสภาพต้องเป็น ${validGrades.join(', ')}`);
-    }
-
-    // วันที่รับเงิน/ลงบัญชี (mirror JP4 early payoff): drives the JP5 JE
-    // entryDate + period-lock guard. Backdate allowed while the period is
-    // open; future dates rejected on BKK calendar days.
-    const paymentDate = dto.paymentDate ? new Date(dto.paymentDate) : new Date();
+  async assertRepossessionPeriodsOpen(
+    paymentDate: Date,
+  ): Promise<{ financeCompanyId: string; shopCompanyId: string }> {
     if (isFutureBkkDay(paymentDate)) {
       throw new BadRequestException('วันที่รับเงินต้องไม่เป็นวันในอนาคต');
     }
-    // คำสั่งเจ้าของ 2026-08-08 (ข้อ 3): ใบลดหนี้ (CN) ออกวันที่/เลขที่เดือนปัจจุบันเสมอ
-    // → JE ต้องอยู่เดือนเดียวกัน ไม่งั้นงวด ภ.พ.30 ของ VAT reversal กับเอกสารแยกกัน
     if (bkkYearMonth(paymentDate) !== bkkYearMonth(new Date())) {
       throw new BadRequestException(
         'วันที่รับเงินย้อนหลังได้เฉพาะภายในเดือนปัจจุบัน (ใบลดหนี้ต้องอยู่งวดภาษีเดียวกับ JE)',
       );
     }
-    // Period-lock guard (mirror JP4 J3): cannot book a repossession JE into a
-    // closed (FINANCE) accounting period. Repossessions previously had no
-    // guard at all — JEs always landed on "now", which masked the gap.
-    // Missing FINANCE row must fail LOUD (mirror resolveFinanceCompanyId in
-    // contract-payment.service) — validatePeriodOpen silently no-ops without
-    // a companyId, which would quietly disable the guard this exists to add.
     const financeCompany = await this.prisma.companyInfo.findFirst({
       where: { companyCode: 'FINANCE', deletedAt: null },
       select: { id: true },
@@ -511,7 +568,6 @@ export class RepossessionsService {
       throw new InternalServerErrorException('FINANCE company not configured');
     }
     await validatePeriodOpen(this.prisma, paymentDate, financeCompany.id);
-    // ขาคู่ SHOP (2026-09-05) โพสต์ในสมุด SHOP — ต้องมีบริษัท + งวดบัญชีฝั่งนั้นเปิดด้วย
     const shopCompany = await this.prisma.companyInfo.findFirst({
       where: { companyCode: 'SHOP', deletedAt: null },
       select: { id: true },
@@ -520,379 +576,328 @@ export class RepossessionsService {
       throw new InternalServerErrorException('SHOP company not configured');
     }
     await validatePeriodOpen(this.prisma, paymentDate, shopCompany.id);
+    return { financeCompanyId: financeCompany.id, shopCompanyId: shopCompany.id };
+  }
 
-    const result = await this.prisma
-      .$transaction(async (tx) => {
-        const contract = await tx.contract.findUnique({
-          where: { id: dto.contractId },
-          include: {
-            product: true,
-            // mirror previewCalculation — แถว soft-deleted ห้ามเข้าสูตรยอดปิด/JP5 gate
-            payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
-          },
-        });
-
-        if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
-        // CPA Manual Termination Policy (ปพพ.386 + termination_policy.docx):
-        //   ยึดเครื่อง (JP5) ต้องมีหนังสือบอกเลิกสัญญาดิสแพตช์แล้ว = status='TERMINATED'
-        //   หากยังไม่ได้ส่งหนังสือ → ห้ามยึด · ต้องสร้าง CONTRACT_TERMINATION_60D letter
-        //   ผ่าน /api/contract-letters/:id/dispatch ก่อน
-        // Allow TERMINATED (after letter dispatch) · DEFAULT/OVERDUE for legacy compat
-        // (existing contracts pre-Manual-Termination workflow may still be DEFAULT)
-        if (!['TERMINATED', 'DEFAULT', 'OVERDUE'].includes(contract.status)) {
-          throw new BadRequestException(
-            'สัญญานี้ไม่อยู่ในสถานะที่สามารถยึดคืนได้ — ต้องเป็น TERMINATED (ส่งหนังสือบอกเลิกแล้ว) หรือ DEFAULT/OVERDUE',
-          );
-        }
-        // Strict mode: require TERMINATED (letter dispatched) — flagged via SystemConfig
-        const strictTerminationConfig = await tx.systemConfig.findUnique({
-          where: { key: 'jp5_require_terminated_status' },
-        });
-        const requireTerminated = strictTerminationConfig?.value === 'true';
-        if (requireTerminated && contract.status !== 'TERMINATED') {
-          throw new BadRequestException(
-            'JP5 strict mode: ต้องส่งหนังสือบอกเลิกสัญญา (CONTRACT_TERMINATION_60D) ก่อนยึดเครื่อง — ' +
-              'เมื่อสัญญาเป็น TERMINATED แล้ว ให้กดยึดเครื่องจากหน้ายึดคืน (/repossessions) รายการ "รอยึดเครื่อง"',
-          );
-        }
-
-        // Check if product is already repossessed
-        if (contract.product.status === 'REPOSSESSED') {
-          throw new BadRequestException('สินค้านี้ถูกยึดคืนแล้ว');
-        }
-        // Repossession.productId @unique — loop ยึด→ขายต่อ→ผ่อนใหม่→ยึดซ้ำ ชนด่านนี้ก่อน JP5 (ไม่ใช่ P2002 กลางทาง)
-        const priorRepossession = await tx.repossession.findFirst({
-          where: { productId: contract.productId, deletedAt: null },
-          select: { id: true },
-        });
-        if (priorRepossession) {
-          throw new ConflictException(RE_REPOSSESSION_MSG);
-        }
-
-        if (!contract.totalMonths || contract.totalMonths <= 0) {
-          throw new BadRequestException('ข้อมูลสัญญาผิดพลาด: จำนวนงวดต้องมากกว่า 0');
-        }
-
-        // Calculate outstanding balance (รวมค่าปรับ) — ใช้เฉพาะ gate JP5 + audit
-        // trail/return (ยอดลูกหนี้คงค้างตามบัญชีจริง) ไม่ใช่ฐานคำนวณยอดปิด
-        let outstandingBalance = new Prisma.Decimal(0);
-        let totalPaid = new Prisma.Decimal(0);
-        let remainingMonths = 0;
-        for (const p of contract.payments) {
-          if (p.status !== 'PAID') {
-            const lateFee = p.lateFeeWaived ? new Prisma.Decimal(0) : d(p.lateFee);
-            outstandingBalance = dAdd(
-              outstandingBalance,
-              dSub(dAdd(d(p.amountDue), lateFee), d(p.amountPaid)),
-            );
-            remainingMonths += 1;
-          }
-          totalPaid = dAdd(totalPaid, d(p.amountPaid));
-        }
-
-        // review 2026-09-05: ไม่มียอดค้าง = ผ่อนครบ เครื่องเป็นของลูกค้า (ปพพ. ม.572) — ยึดไม่ได้
-        // และห้ามปล่อยให้เครื่องไหลเข้าสต็อก SHOP โดยไม่มีใบรับเข้า (JP5+intake ไม่โพสต์ → S11-2002
-        // จะติดลบตอนขายต่อ). preview.eligibility ใช้กติกาเดียวกัน
-        if (outstandingBalance.lte(0)) {
-          throw new BadRequestException(ZERO_OUTSTANDING_MSG);
-        }
-
-        // ─── ยอดปิดสัญญา = สูตรเดียวกับปิดสัญญาก่อนกำหนด (computePayoffQuote) ───
-        // owner 2026-07-20: ยอดยึดคืนต้องตรงกับ JP4 quote เสมอ — ต้องตรงกับ
-        // previewCalculation ด้านบนเสมอด้วย (เรียกฟังก์ชันเดียวกัน)
-        const quote = computePayoffQuote({
-          monthlyPayment: contract.monthlyPayment,
-          remainingMonths,
-          totalMonths: contract.totalMonths,
-          creditBalance: contract.creditBalance,
-          rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
-          vatPct: contract.vatPct,
-          sellingPrice: contract.sellingPrice,
-          downPayment: contract.downPayment,
-          storeCommission: contract.storeCommission,
-          discountPctInput: dto.discountPct,
-          payments: contract.payments,
-        });
-        const financeCost = new Prisma.Decimal(quote.financeCost);
-        const remainingCost = new Prisma.Decimal(quote.remainingCost);
-        const discountPct = quote.discountPercent;
-        const discountAmount = new Prisma.Decimal(quote.discountAmount);
-        const closingAmount = new Prisma.Decimal(quote.totalPayoff);
-        // ราคาเดียว (คำตัดสินเจ้าของ 2026-09-05): ราคาประเมิน = ราคาที่หน้าร้านรับเครื่อง = ยอดที่ลงบัญชี.
-        // ตารางรับซื้อเป็นตัวเทียบ: เก็บ snapshot ไว้ในคอลัมน์ marketValue (ไม่มีในตาราง = ราคาประเมิน)
-        // และบังคับเหตุผลเมื่อต่างจากตารางเกิน ±15% (ตัวเลขชุดเดียวกับหน้ารับซื้อ)
-        const appraisal = d(dto.appraisalPrice);
-        const table = await lookupTableBase(this.valuationService, contract.product, dto.conditionGrade);
-        const tableBase =
-          table?.found && table.suggestedPrice != null ? d(table.suggestedPrice) : null;
-        if (tableBase && tableBase.gt(0)) {
-          const deviation = appraisal.sub(tableBase).div(tableBase).abs();
-          if (deviation.gt(RepossessionsService.TABLE_DEVIATION_LIMIT) && !dto.notes?.trim()) {
-            throw new BadRequestException(
-              `ราคาประเมิน ${appraisal.toFixed(2)} ฿ ต่างจากตารางรับซื้อ (เกรด ${dto.conditionGrade}: ${tableBase.toFixed(2)} ฿) ` +
-                `${deviation.mul(100).toDecimalPlaces(0)}% เกิน 15% — กรุณาระบุเหตุผลในหมายเหตุ`,
-            );
-          }
-        }
-        const marketValue = tableBase ?? appraisal;
-        const customerRefund = new Prisma.Decimal(0);
-        // กำไร/ขาดทุนบนจอ = ราคาประเมิน − ยอดปิดสัญญา (ต้องตรงกับ previewCalculation เสมอ)
-        const profitLoss = TWO_DP(appraisal.sub(closingAmount));
-        // ถังพักงวดสุดท้าย (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3): ยอดปิดหักเงินก้อนนี้
-        // ให้ลูกค้าไปแล้ว → ต้องปลดหนี้ 21-1103 จริงใน JE ด้วย ไม่งั้นเครดิตผีค้าง
-        // บนสัญญาที่ยึดไปแล้ว + plug ขาดทุน/กำไรเพี้ยน (บั๊ก C-3). ยอดที่ปลด = ยอดที่
-        // ยอดปิดดูดซับจริง (ส่วนที่ส่วนลดกินไปคงค้างในถังตามเดิม), clamp ด้วยยอดในถัง
-        const parkRelief = Prisma.Decimal.max(
-          0,
-          Prisma.Decimal.min(
-            d(quote.rescheduleAdvanceApplied),
-            d(contract.rescheduleAdvanceBalance ?? 0),
-          ),
-        );
-
-        // Create repossession
-        const repossession = await tx.repossession.create({
-          data: {
-            contractId: dto.contractId,
-            productId: contract.productId,
-            repossessedDate: new Date(dto.repossessedDate),
-            conditionGrade: dto.conditionGrade as ConditionGrade,
-            appraisalPrice: dto.appraisalPrice,
-            appraisedById: userId,
-            repairCost: dto.repairCost || 0,
-            resellPrice: dto.resellPrice,
-            notes: dto.returnReason
-              ? [`เหตุผลคืนเครื่อง: ${REPOSSESSION_RETURN_REASONS[dto.returnReason]}`, dto.notes?.trim()]
-                  .filter(Boolean).join('\n')
-              : dto.notes,
-            status: 'REPOSSESSED',
-            marketValue,
-            remainingMonths,
-            financeCost,
-            remainingCost,
-            discountPct,
-            discountAmount,
-            closingAmount,
-            customerRefundEnabled: dto.customerRefundEnabled || false,
-            customerRefund,
-            profitLoss,
-          },
-        });
-
-        // Update contract status
-        await tx.contract.update({
-          where: { id: dto.contractId },
-          data: { status: 'CLOSED_BAD_DEBT' },
-        });
-
-        // Auto bad-debt write-off journal: ตัด HP Receivable ที่เหลือออกจากบัญชี.
-        // (Audit finding J4: closes the silent accounting gap where
-        // repossessions left outstanding receivable on the books with no
-        // balancing entry.)
-        // Phase A.4b: replaced createBadDebtWriteOffJournal (old stub) with
-        // RepossessionJP5Template. Template handles both loss and gain paths and
-        // closes out remaining HP Receivable (spec §6.5).
-        // repossessionValue = appraisalValue from dto (amount FINANCE recovers from asset).
-        //
-        // Wave 1 / Task 3: JP5 ห่อใน outer $transaction พร้อม contract+product
-        // status updates. ปพพ.ม.392 — เลิกสัญญาต้องกลับสู่ฐานะเดิม. ก่อนหน้านี้
-        // .catch() fire-and-forget ทำให้ contract status commit แต่ JE อาจ fail
-        // ลูกหนี้ค้างใน ledger ตลอดกาล. ตอนนี้ ถ้า JE fail ทุกอย่าง rollback.
-        let creditNote: { outcome: string; receiptId?: string } | undefined;
-        if (outstandingBalance.greaterThan(0)) {
-          const repoValue =
-            dto.appraisalPrice != null ? new Decimal(String(dto.appraisalPrice)) : new Decimal('0');
-          // Owner rule 2026-07-08: direct FINANCE receipt = KBank (11-1201) only.
-          // collectedByShop mirrors JP4 early payoff — the shop takes the device
-          // (and any money) so FINANCE books Dr 11-2107 ลูกหนี้-หน้าร้าน instead;
-          // cleared later via POST /contracts/:id/shop-collect-settlement (the
-          // settlement sums 11-2107 lines by metadata.contractId, so JP5 debits
-          // are covered by the same endpoint as JP4).
-          const depositAccountCode = dto.collectedByShop
-            ? '11-2107'
-            : (dto.depositAccountCode ?? '11-1201');
-          const jp5Result = await this.repossessionJP5Template.execute(
-            {
-              contractId: dto.contractId,
-              depositAccountCode,
-              repossessionValue: repoValue,
-              shopReceivableType: dto.collectedByShop ? 'SHOP_COLLECT' : undefined,
-              postedAt: paymentDate,
-              customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
-              parkRelief: parkRelief.gt(0) ? parkRelief : undefined,
-            },
-            tx,
-          );
-
-          // ขาคู่ฝั่ง SHOP (คำตัดสินเจ้าของ 2026-09-05 — ปิด "ASYMMETRY ที่รู้ตัว" ต้นทาง JP5):
-          // SHOP รับเครื่องเข้าสต็อกมือสองที่ราคาประเมิน คู่กับที่ FINANCE ลง Dr ไปพอดี —
-          // ค้างจ่าย (Cr S21-1104 typed SHOP_COLLECT) หรือโอนให้แล้ว (Cr S11-1202). tx เดียวกับ JP5.
-          // ราคาประเมิน 0 (DTO ยอมรับ — เครื่องไม่มีมูลค่า) → SHOP รับเครื่องเข้าโดยไม่มีต้นทุน ไม่มีใบรับเข้า
-          if (repoValue.gt(0)) {
-            await this.shopLegs.postRepossessionIntake(
-              {
-                contractId: dto.contractId,
-                contractNumber: contract.contractNumber,
-                productId: contract.productId,
-                appraisal: repoValue,
-                shopCompanyId: shopCompany.id,
-                postedAt: paymentDate,
-              },
-              tx,
-            );
-          }
-
-          // ปลดถังพักให้ตรงกับขา Dr 21-1103 ที่ JP5 ลงจริง (template clamp ด้วยยอด
-          // GL 21-1103 อีกชั้น จึงต้องอ่านค่าที่ลงจริงกลับมา ไม่ใช่ค่าที่ส่งเข้าไป)
-          // d() = defensive: a test double / older stub of the template may return
-          // only { entryNo }; 0 relief must never crash the repossession flow.
-          const postedParkRelief = d(jp5Result.parkRelief);
-          if (postedParkRelief.gt(0)) {
-            await tx.contract.update({
-              where: { id: dto.contractId },
-              data: { rescheduleAdvanceBalance: { decrement: postedParkRelief } },
-            });
-            await tx.auditLog.create({
-              data: {
-                userId,
-                action: 'RESCHEDULE_ADVANCE_CONSUMED',
-                entity: 'contract',
-                entityId: dto.contractId,
-                newValue: {
-                  parkRelief: postedParkRelief.toFixed(2),
-                  beforeParkBalance: d(contract.rescheduleAdvanceBalance ?? 0).toFixed(2),
-                  afterParkBalance: dSub(
-                    d(contract.rescheduleAdvanceBalance ?? 0),
-                    postedParkRelief,
-                  ).toFixed(2),
-                  repossessionId: repossession.id,
-                  source: 'REPOSSESSION_PARK_RELIEF',
-                },
-              },
-            });
-          }
-
-          // Task 5 (2026-07-26, ECL-per-installment plan §2.4) — JP5 already
-          // released any remaining 11-2102 GL balance for this contract back to
-          // 51-1103 (see RepossessionJP5Template). Mark the DB-side
-          // BadDebtProvision rows REVERSED to match — the contract is
-          // derecognized, so there's no more receivable left to provide
-          // against. Same convention as BadDebtService.calculateProvisions'
-          // "REVERSE stale ACTIVE rows" step.
-          await tx.badDebtProvision.updateMany({
-            where: { status: 'ACTIVE', contractId: dto.contractId, deletedAt: null },
-            data: { status: 'REVERSED' },
-          });
-
-          // Mirrors SHOP_COLLECT_PAYOFF — forensic trail that the repossession
-          // value is parked as a shop receivable awaiting settlement.
-          if (dto.collectedByShop) {
-            await tx.auditLog.create({
-              data: {
-                userId,
-                action: 'SHOP_COLLECT_REPOSSESSION',
-                entity: 'contract',
-                entityId: dto.contractId,
-                newValue: {
-                  shopReceivable: '11-2107',
-                  shopReceivableType: 'SHOP_COLLECT',
-                  repossessionValue: repoValue.toFixed(2),
-                  repossessionId: repossession.id,
-                },
-              },
-            });
-          }
-
-          // Phase 3 Task 3: auto-issue ใบลดหนี้ (CN) for any accrued-unpaid
-          // installments written off by JP5 — MUST run inside this same tx
-          // (atomic with the JE: throw here rolls back JP5 + status updates
-          // too). LINE delivery of the CN is intentionally NOT triggered here
-          // (Task 5) — that must happen only after the $transaction commits,
-          // or a rollback would hand the customer a link to a receipt that
-          // never existed.
-          const cnResult = await this.creditNoteDocumentService.issueForContract(
-            {
-              contractId: dto.contractId,
-              source: 'REPOSSESSION',
-              sourceJournalEntryNo: jp5Result.entryNo,
-              actorUserId: userId,
-            },
-            tx,
-          );
-          creditNote = {
-            outcome: cnResult.outcome,
-            receiptId: cnResult.outcome === 'ISSUED' ? cnResult.receiptId : undefined,
-          };
-        }
-
-        // Update product status + กรรมสิทธิ์กลับ SHOP (สมุด SHOP ตั้งสต็อกแล้ว) + มือถือกลายเป็นมือสอง
-        // (บัญชี S11-2002 / ขายต่อผ่าน POS ต้องลง Cr S11-2002 ไม่ใช่ S11-2001 — 2026-09-05)
-        await tx.product.update({
-          where: { id: contract.productId },
-          data: {
-            status: 'REPOSSESSED',
-            ownedByCompanyId: shopCompany.id,
-            ...(contract.product.category === 'PHONE_NEW'
-              ? { category: 'PHONE_USED' as const }
-              : {}),
-          },
-        });
-
-        // Audit log for repossession
-        // Wave 3 / Task 4 (W-1): Decimal objects serialize to non-deterministic
-        // JSON (`{ s, e, d }`). Convert to fixed-precision strings so audit
-        // history remains human-readable and diff-able.
-        await tx.auditLog.create({
-          data: {
-            userId,
-            action: 'REPOSSESSION',
-            entity: 'repossession',
-            entityId: repossession.id,
-            newValue: {
-              contractId: dto.contractId,
-              contractNumber: contract.contractNumber,
-              productId: contract.productId,
-              conditionGrade: dto.conditionGrade,
-              ...(dto.returnReason ? { returnReason: dto.returnReason, returnReasonLabel: REPOSSESSION_RETURN_REASONS[dto.returnReason] } : {}),
-              appraisalPrice: dto.appraisalPrice,
-              outstandingBalance: outstandingBalance.toFixed(2),
-              totalPaid: totalPaid.toFixed(2),
-            },
-            ipAddress: '',
-          },
-        });
-
-        this.logger.log(`Repossession created for contract ${contract.contractNumber}`);
-
-        return {
-          ...repossession,
-          outstandingBalance: outstandingBalance.toNumber(),
-          totalPaid: totalPaid.toNumber(),
-          loss: outstandingBalance.sub(d(dto.appraisalPrice)).toNumber(),
-          creditNote,
-        };
-      })
-      .catch((err: unknown) => {
-        // ตาข่ายของ Repossession.productId @unique — ถ้าด่าน findFirst ด้านบนแพ้ race → 409 ไทย ไม่ใช่ raw 500
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-          throw new ConflictException(RE_REPOSSESSION_MSG);
-        }
-        throw err;
-      });
-
-    // Phase 3 Task 5: LINE delivery of the auto-issued CN fires ONLY after the
-    // $transaction above has committed — firing it from inside the tx would
-    // risk handing the customer a link to a receipt a later rollback erased.
-    // Fire-and-forget: never await, never let a delivery failure surface to
-    // the caller (RepossessionsController already returned successfully by
-    // the time this resolves).
-    if (result.creditNote?.outcome === 'ISSUED' && result.creditNote.receiptId) {
-      void this.cnDeliveryService
-        .deliver(result.creditNote.receiptId)
-        .catch((err) => Sentry.captureException(err));
+  /**
+   * ยึด/รับเครื่องคืน — ตรรกะใน tx ของ create() เดิม (2026-09-20 ใบรับเครื่องคืน). ผู้เรียก
+   * (DeviceReturnsService.confirm) เปิด $transaction เอง, เรียก assertRepossessionPeriodsOpen ก่อน,
+   * แปลง P2002 (Repossession.productId @unique แพ้ race) เป็น 409 เอง (tx ของมัน abort แล้ว —
+   * re-query ที่นี่ไม่ได้), และส่งไลน์ใบลดหนี้ **หลัง commit** (cnDeliveryService.deliver) เอง.
+   *
+   * โพสต์ใน tx: แถว Repossession → สัญญา CLOSED_BAD_DEBT → JP5 (ขา Dr 11-2107 typed DEVICE_RETURN
+   * เสมอ — ไม่มีขาเงินสด/โหมดโอนสดอีกต่อไป) → ขาคู่ SHOP (Dr S11-2002 / Cr S21-1104 DEVICE_RETURN)
+   * → ปลดถังพัก → flip ECL rows → ใบลดหนี้ → เครื่อง REPOSSESSED + กรรมสิทธิ์ SHOP + มือสอง +
+   * branchId = สาขาที่รับ → audit REPOSSESSION (tx.auditLog.create — atomic กับสถานะ; หลุด Merkle
+   * chain โดยตั้งใจเหมือนเดิม).
+   */
+  async createInTx(
+    tx: Prisma.TransactionClient,
+    input: RepossessionCreateInput,
+    actorUserId: string,
+  ): Promise<RepossessionCreateResult> {
+    if (
+      input.returnReason != null &&
+      !Object.prototype.hasOwnProperty.call(REPOSSESSION_RETURN_REASONS, input.returnReason)
+    ) {
+      throw new BadRequestException('กรุณาเลือกเหตุผลคืนเครื่องที่ถูกต้อง');
+    }
+    if (input.returnReason === 'OTHER' && !input.notes?.trim()) {
+      throw new BadRequestException('กรุณาระบุรายละเอียดเหตุผลคืนเครื่อง');
+    }
+    const validGrades = ['A', 'B', 'C', 'D'];
+    if (!validGrades.includes(input.conditionGrade)) {
+      throw new BadRequestException(`เกรดสภาพต้องเป็น ${validGrades.join(', ')}`);
     }
 
-    return result;
+    const contract = await tx.contract.findUnique({
+      where: { id: input.contractId },
+      include: {
+        product: true,
+        // mirror previewCalculation — แถว soft-deleted ห้ามเข้าสูตรยอดปิด/JP5 gate
+        payments: { where: { deletedAt: null }, orderBy: { installmentNo: 'asc' } },
+      },
+    });
+
+    if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+    // CPA Manual Termination Policy (ปพพ.386 + termination_policy.docx):
+    //   ยึดเครื่อง (JP5) ต้องมีหนังสือบอกเลิกสัญญาดิสแพตช์แล้ว = status='TERMINATED'
+    //   ใบรับเครื่องคืนแบบคืนเอง (VOLUNTARY) ถูก flip เป็น TERMINATED ตั้งแต่ตอนสาขาบันทึก (D4)
+    //   จึงผ่านด่านนี้โดยโครงสร้าง. DEFAULT/OVERDUE คงไว้เพื่อ legacy compat (strict mode ปิด)
+    if (!['TERMINATED', 'DEFAULT', 'OVERDUE'].includes(contract.status)) {
+      throw new BadRequestException(
+        'สัญญานี้ไม่อยู่ในสถานะที่สามารถยึดคืนได้ — ต้องเป็น TERMINATED (ส่งหนังสือบอกเลิกแล้ว) หรือ DEFAULT/OVERDUE',
+      );
+    }
+    const strictTerminationConfig = await tx.systemConfig.findUnique({
+      where: { key: 'jp5_require_terminated_status' },
+    });
+    const requireTerminated = strictTerminationConfig?.value === 'true';
+    if (requireTerminated && contract.status !== 'TERMINATED') {
+      throw new BadRequestException(
+        'JP5 strict mode: ต้องส่งหนังสือบอกเลิกสัญญา (CONTRACT_TERMINATION_60D) ก่อนยึดเครื่อง — ' +
+          'เมื่อสัญญาเป็น TERMINATED แล้ว ให้กดยึดเครื่องจากหน้ายึดคืน (/repossessions) รายการ "รอยึดเครื่อง"',
+      );
+    }
+
+    if (contract.product.status === 'REPOSSESSED') {
+      throw new BadRequestException('สินค้านี้ถูกยึดคืนแล้ว');
+    }
+    // Repossession.productId @unique — loop ยึด→ขายต่อ→ผ่อนใหม่→ยึดซ้ำ ชนด่านนี้ก่อน JP5 (ไม่ใช่ P2002 กลางทาง)
+    const priorRepossession = await tx.repossession.findFirst({
+      where: { productId: contract.productId, deletedAt: null },
+      select: { id: true },
+    });
+    if (priorRepossession) {
+      throw new ConflictException(RE_REPOSSESSION_MSG);
+    }
+
+    if (!contract.totalMonths || contract.totalMonths <= 0) {
+      throw new BadRequestException('ข้อมูลสัญญาผิดพลาด: จำนวนงวดต้องมากกว่า 0');
+    }
+
+    // ยอดค้าง (รวมค่าปรับ) — ใช้เฉพาะ gate JP5 + audit trail/return ไม่ใช่ฐานคำนวณยอดปิด
+    let outstandingBalance = new Prisma.Decimal(0);
+    let totalPaid = new Prisma.Decimal(0);
+    let remainingMonths = 0;
+    for (const p of contract.payments) {
+      if (p.status !== 'PAID') {
+        const lateFee = p.lateFeeWaived ? new Prisma.Decimal(0) : d(p.lateFee);
+        outstandingBalance = dAdd(
+          outstandingBalance,
+          dSub(dAdd(d(p.amountDue), lateFee), d(p.amountPaid)),
+        );
+        remainingMonths += 1;
+      }
+      totalPaid = dAdd(totalPaid, d(p.amountPaid));
+    }
+
+    // review 2026-09-05: ไม่มียอดค้าง = ผ่อนครบ เครื่องเป็นของลูกค้า (ปพพ. ม.572) — ยึดไม่ได้
+    // และห้ามปล่อยให้เครื่องไหลเข้าสต็อก SHOP โดยไม่มีใบรับเข้า. preview.eligibility ใช้กติกาเดียวกัน
+    if (outstandingBalance.lte(0)) {
+      throw new BadRequestException(ZERO_OUTSTANDING_MSG);
+    }
+
+    // ยอดปิดสัญญา = สูตรเดียวกับปิดสัญญาก่อนกำหนด (computePayoffQuote) — owner 2026-07-20
+    const quote = computePayoffQuote({
+      monthlyPayment: contract.monthlyPayment,
+      remainingMonths,
+      totalMonths: contract.totalMonths,
+      creditBalance: contract.creditBalance,
+      rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
+      vatPct: contract.vatPct,
+      sellingPrice: contract.sellingPrice,
+      downPayment: contract.downPayment,
+      storeCommission: contract.storeCommission,
+      discountPctInput: input.discountPct,
+      payments: contract.payments,
+    });
+    const financeCost = new Prisma.Decimal(quote.financeCost);
+    const remainingCost = new Prisma.Decimal(quote.remainingCost);
+    const discountPct = quote.discountPercent;
+    const discountAmount = new Prisma.Decimal(quote.discountAmount);
+    const closingAmount = new Prisma.Decimal(quote.totalPayoff);
+    // ราคาเดียว (คำตัดสินเจ้าของ 2026-09-05): ราคาประเมิน = ราคาที่หน้าร้านรับเครื่อง = ยอดที่ลงบัญชี.
+    // ตารางรับซื้อเป็นตัวเทียบ: snapshot ในคอลัมน์ marketValue (ไม่มีในตาราง = ราคาประเมิน)
+    // และบังคับเหตุผลเมื่อต่างจากตารางเกิน ±15% (ใบรับเครื่องคืนตรวจชั้นแรกตอนสาขาบันทึกด้วยกติกาเดียวกัน)
+    const appraisal = d(input.appraisalPrice);
+    const table = await lookupTableBase(
+      this.valuationService,
+      contract.product,
+      input.conditionGrade,
+    );
+    const tableBase = table?.found && table.suggestedPrice != null ? d(table.suggestedPrice) : null;
+    if (tableBase && tableBase.gt(0)) {
+      const deviation = appraisal.sub(tableBase).div(tableBase).abs();
+      if (deviation.gt(RepossessionsService.TABLE_DEVIATION_LIMIT) && !input.notes?.trim()) {
+        throw new BadRequestException(
+          `ราคาประเมิน ${appraisal.toFixed(2)} ฿ ต่างจากตารางรับซื้อ (เกรด ${input.conditionGrade}: ${tableBase.toFixed(2)} ฿) ` +
+            `${deviation.mul(100).toDecimalPlaces(0)}% เกิน 15% — กรุณาระบุเหตุผลในหมายเหตุ`,
+        );
+      }
+    }
+    const marketValue = tableBase ?? appraisal;
+    const customerRefund = new Prisma.Decimal(0);
+    const profitLoss = TWO_DP(appraisal.sub(closingAmount));
+    // ถังพักงวดสุดท้าย (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3) — ยอดที่ยอดปิดดูดซับจริง clamp ด้วยยอดในถัง
+    const parkRelief = Prisma.Decimal.max(
+      0,
+      Prisma.Decimal.min(
+        d(quote.rescheduleAdvanceApplied),
+        d(contract.rescheduleAdvanceBalance ?? 0),
+      ),
+    );
+
+    const repossession = await tx.repossession.create({
+      data: {
+        contractId: input.contractId,
+        productId: contract.productId,
+        repossessedDate: input.repossessedDate,
+        conditionGrade: input.conditionGrade as ConditionGrade,
+        appraisalPrice: input.appraisalPrice,
+        appraisedById: input.appraisedById,
+        repairCost: input.repairCost || 0,
+        notes: input.returnReason
+          ? [
+              `เหตุผลคืนเครื่อง: ${REPOSSESSION_RETURN_REASONS[input.returnReason]}`,
+              input.notes?.trim(),
+            ]
+              .filter(Boolean)
+              .join('\n')
+          : input.notes,
+        status: 'REPOSSESSED',
+        marketValue,
+        remainingMonths,
+        financeCost,
+        remainingCost,
+        discountPct,
+        discountAmount,
+        closingAmount,
+        customerRefundEnabled: false,
+        customerRefund,
+        profitLoss,
+      },
+    });
+
+    await tx.contract.update({
+      where: { id: input.contractId },
+      data: { status: 'CLOSED_BAD_DEBT' },
+    });
+
+    // JP5 ใน tx เดียวกับสถานะ (ปพพ.ม.392 — เลิกสัญญาต้องกลับสู่ฐานะเดิม; JE fail = rollback ทั้งชุด)
+    let creditNote: { outcome: string; receiptId?: string } | undefined;
+    if (outstandingBalance.greaterThan(0)) {
+      const repoValue = new Decimal(String(input.appraisalPrice));
+      // ใบรับเครื่องคืน (2026-09-20): ขา Dr เป็นลูกหนี้-หน้าร้าน 11-2107 typed DEVICE_RETURN เสมอ —
+      // SHOP ค้างจ่ายค่าเครื่อง แล้วหักจากยอดโอนในรอบจ่าย INTER-CO (IntercoPendingService.
+      // getPendingDeviceReturns) หรือรับเงินสดผ่าน settleDeductionCash('DEVICE_RETURN').
+      // ไม่มีขาเงินสด/โหมดโอนสดวันยึดอีกต่อไป (ยอดธนาคารในสมุดเคยเกินจริงเท่าราคาประเมิน).
+      const jp5Result = await this.repossessionJP5Template.execute(
+        {
+          contractId: input.contractId,
+          depositAccountCode: '11-2107',
+          repossessionValue: repoValue,
+          shopReceivableType: 'DEVICE_RETURN',
+          deviceReturnId: input.deviceReturnId,
+          postedAt: input.paymentDate,
+          customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
+          parkRelief: parkRelief.gt(0) ? parkRelief : undefined,
+        },
+        tx,
+      );
+
+      // ขาคู่ฝั่ง SHOP (คำตัดสินเจ้าของ 2026-09-05): SHOP รับเครื่องเข้าสต็อกมือสองที่ราคาประเมิน คู่กับ
+      // ที่ FINANCE ลง Dr — ค้างจ่าย Cr S21-1104 typed DEVICE_RETURN เสมอ (2026-09-20). tx เดียวกับ JP5.
+      // ราคาประเมิน 0 → SHOP รับเครื่องเข้าโดยไม่มีต้นทุน ไม่มีใบรับเข้า (ไม่มีบรรทัดศูนย์บาท)
+      if (repoValue.gt(0)) {
+        await this.shopLegs.postRepossessionIntake(
+          {
+            contractId: input.contractId,
+            contractNumber: contract.contractNumber,
+            productId: contract.productId,
+            appraisal: repoValue,
+            shopCompanyId: input.shopCompanyId,
+            deviceReturnId: input.deviceReturnId,
+            postedAt: input.paymentDate,
+          },
+          tx,
+        );
+      }
+
+      // ปลดถังพักให้ตรงกับขา Dr 21-1103 ที่ JP5 ลงจริง (template clamp ด้วย GL — อ่านค่าที่ลงจริงกลับมา)
+      const postedParkRelief = d(jp5Result.parkRelief);
+      if (postedParkRelief.gt(0)) {
+        await tx.contract.update({
+          where: { id: input.contractId },
+          data: { rescheduleAdvanceBalance: { decrement: postedParkRelief } },
+        });
+        await tx.auditLog.create({
+          data: {
+            userId: actorUserId,
+            action: 'RESCHEDULE_ADVANCE_CONSUMED',
+            entity: 'contract',
+            entityId: input.contractId,
+            newValue: {
+              parkRelief: postedParkRelief.toFixed(2),
+              beforeParkBalance: d(contract.rescheduleAdvanceBalance ?? 0).toFixed(2),
+              afterParkBalance: dSub(
+                d(contract.rescheduleAdvanceBalance ?? 0),
+                postedParkRelief,
+              ).toFixed(2),
+              repossessionId: repossession.id,
+              source: 'REPOSSESSION_PARK_RELIEF',
+            },
+          },
+        });
+      }
+
+      // Task 5 (2026-07-26) — JP5 ปล่อย 11-2102 ที่เหลือคืน 51-1103 แล้ว; flip แถว DB ให้ตรง
+      await tx.badDebtProvision.updateMany({
+        where: { status: 'ACTIVE', contractId: input.contractId, deletedAt: null },
+        data: { status: 'REVERSED' },
+      });
+
+      // ใบลดหนี้ (ม.82/5) ใน tx เดียวกับ JE — ส่งไลน์เป็นหน้าที่ผู้เรียกหลัง commit เท่านั้น
+      const cnResult = await this.creditNoteDocumentService.issueForContract(
+        {
+          contractId: input.contractId,
+          source: 'REPOSSESSION',
+          sourceJournalEntryNo: jp5Result.entryNo,
+          actorUserId,
+        },
+        tx,
+      );
+      creditNote = {
+        outcome: cnResult.outcome,
+        receiptId: cnResult.outcome === 'ISSUED' ? cnResult.receiptId : undefined,
+      };
+    }
+
+    // เครื่อง: REPOSSESSED + กรรมสิทธิ์กลับ SHOP + มือถือกลายเป็นมือสอง (S11-2002) +
+    // ที่อยู่จริง = สาขาที่รับเครื่อง (D7 รับข้ามสาขาได้ — 2026-09-20)
+    await tx.product.update({
+      where: { id: contract.productId },
+      data: {
+        status: 'REPOSSESSED',
+        ownedByCompanyId: input.shopCompanyId,
+        branchId: input.receivingBranchId,
+        ...(contract.product.category === 'PHONE_NEW' ? { category: 'PHONE_USED' as const } : {}),
+      },
+    });
+
+    // audit REPOSSESSION (Decimal → string 2dp เพื่อให้ diff ได้)
+    await tx.auditLog.create({
+      data: {
+        userId: actorUserId,
+        action: 'REPOSSESSION',
+        entity: 'repossession',
+        entityId: repossession.id,
+        newValue: {
+          contractId: input.contractId,
+          contractNumber: contract.contractNumber,
+          productId: contract.productId,
+          conditionGrade: input.conditionGrade,
+          ...(input.returnReason
+            ? {
+                returnReason: input.returnReason,
+                returnReasonLabel: REPOSSESSION_RETURN_REASONS[input.returnReason],
+              }
+            : {}),
+          appraisalPrice: input.appraisalPrice,
+          outstandingBalance: outstandingBalance.toFixed(2),
+          totalPaid: totalPaid.toFixed(2),
+          deviceReturnId: input.deviceReturnId,
+          receivingBranchId: input.receivingBranchId,
+        },
+        ipAddress: '',
+      },
+    });
+
+    this.logger.log(
+      `Repossession created for contract ${contract.contractNumber} (device return ${input.deviceReturnId})`,
+    );
+
+    return { repossession, outstandingBalance, totalPaid, creditNote };
   }
 
   /**

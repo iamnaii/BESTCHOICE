@@ -20,10 +20,11 @@ import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-rev
 import { ShopCollectSettlementTemplate } from '../journal/cpa-templates/shop-collect-settlement.template';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 import { seedShopCoa } from '../../../prisma/seed-coa-shop';
-import { RepossessionsService } from '../repossessions/repossessions.service';
 import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
-import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
-import { SHOP_COLLECT_SETTLEMENT_SHOP_FLOW, SHOP_REPOSSESSION_INTAKE_FLOW } from '../journal/cpa-templates/shop-collect-shop-legs.template';
+import {
+  SHOP_COLLECT_SETTLEMENT_SHOP_FLOW,
+  SHOP_REPOSSESSION_INTAKE_FLOW,
+} from '../journal/cpa-templates/shop-collect-shop-legs.template';
 import { shopCollectShopBalance } from '../interco-settlement/interco-typed-balance';
 
 const prisma = new PrismaClient();
@@ -34,6 +35,30 @@ const prisma = new PrismaClient();
 // site (ContractPaymentService.shopCollectSettlement), not a raw 500.
 const prisma2 = new PrismaClient();
 
+const createdContractIds: string[] = [];
+const createdProductIds: string[] = [];
+
+async function seedOwnedContract() {
+  const contract = await seedStandard17k12m(prisma);
+  createdContractIds.push(contract.id);
+  const original = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+  const product = await prisma.product.create({
+    data: {
+      name: 'Legacy settlement fixture',
+      brand: 'TestBrand',
+      model: 'LegacySettlement',
+      imeiSerial: `LEGACY-SETTLEMENT-${contract.id}`,
+      category: 'PHONE_NEW',
+      costPrice: new Decimal('8000.00'),
+      branchId: original.branchId,
+      status: 'SOLD_INSTALLMENT',
+    },
+  });
+  createdProductIds.push(product.id);
+  await prisma.contract.update({ where: { id: contract.id }, data: { productId: product.id } });
+  return contract;
+}
+
 function buildService(client: PrismaClient): ContractPaymentService {
   const journal = new JournalAutoService(client as any);
   const vat60Reversal = new Vat60dayReversalTemplate(journal, client as any);
@@ -41,7 +66,15 @@ function buildService(client: PrismaClient): ContractPaymentService {
   const products = new ProductsService(client as any);
   const settlementTemplate = new ShopCollectSettlementTemplate(journal, client as any);
   const eclStageReverseTemplate = new EclStageReverseTemplate(journal, client as any);
-  return new ContractPaymentService(client as any, products, journal, jp4, settlementTemplate, { generateReceipt: async () => undefined } as any, eclStageReverseTemplate);
+  return new ContractPaymentService(
+    client as any,
+    products,
+    journal,
+    jp4,
+    settlementTemplate,
+    { generateReceipt: async () => undefined } as any,
+    eclStageReverseTemplate,
+  );
 }
 
 async function ensureFinanceCompany(): Promise<void> {
@@ -61,7 +94,7 @@ async function ensureFinanceCompany(): Promise<void> {
   }
 }
 
-/** ขาคู่ SHOP (2026-09-05) โพสต์ในสมุด SHOP — RepossessionsService.create + settlement SHOP leg ต้องมีบริษัทนี้ */
+/** ขาคู่ SHOP (2026-09-05) โพสต์ในสมุด SHOP — historical JP5 fixture + settlement SHOP leg ต้องมีบริษัทนี้ */
 async function ensureShopCompany(): Promise<void> {
   const existing = await prisma.companyInfo.findFirst({ where: { companyCode: 'SHOP' } });
   if (!existing) {
@@ -141,58 +174,33 @@ describe('shop-collect-settlement integration', () => {
   let userId: string;
   let svc: ContractPaymentService;
 
+  // No database-wide wipes: every deleted record belongs to a contract seeded by this run.
   afterAll(async () => {
-    // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
-    // them first or this deleteMany trips P2003 when an asset spec ran earlier.
-    await prisma.receipt.deleteMany({});
-    await prisma.journalPostAuditLog.deleteMany({});
-    await prisma.journalLine.deleteMany({});
-    // contract_cancellations.reversal_journal_entry_id FK-references journal_entries —
-    // leftover rows from the cancellation integration spec block the wipe (P2003).
-    await prisma.contractCancellation.deleteMany({});
-    await prisma.journalEntry.deleteMany({});
-    await prisma.payment.deleteMany({});
-    await prisma.installmentSchedule.deleteMany({});
-    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
-    // contract written off via the real writeOffBadDebt() has a permanent
-    // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
-    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
-    // repossessions + bad_debt_provisions FK-reference contracts (JP5-origin cases below / ECL rows from other specs)
-    await prisma.repossession.deleteMany({});
-    await prisma.badDebtProvision.deleteMany({});
-    // inter_co_settlement_items.contract_id (Restrict) — rounds left by the interco specs
-    await prisma.interCoSettlementItem.deleteMany({});
-    await prisma.interCoSettlementBatch.deleteMany({});
-    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
-    await prisma.$disconnect();
-    await prisma2.$disconnect();
+    try {
+      const contractWhere = { contractId: { in: createdContractIds } };
+      const entries = await prisma.journalEntry.findMany({
+        where: {
+          OR: createdContractIds.map((id) => ({ metadata: { path: ['contractId'], equals: id } })),
+        },
+        select: { id: true },
+      });
+      const entryIds = entries.map((entry) => entry.id);
+      await prisma.receipt.deleteMany({ where: contractWhere });
+      await prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: entryIds } } });
+      await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: entryIds } } });
+      await prisma.journalEntry.deleteMany({ where: { id: { in: entryIds } } });
+      await prisma.payment.deleteMany({ where: contractWhere });
+      await prisma.installmentSchedule.deleteMany({ where: contractWhere });
+      await prisma.repossession.deleteMany({ where: contractWhere });
+      await prisma.badDebtProvision.deleteMany({ where: contractWhere });
+      await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
+      await prisma.product.deleteMany({ where: { id: { in: createdProductIds } } });
+    } finally {
+      await Promise.all([prisma.$disconnect(), prisma2.$disconnect()]);
+    }
   });
 
   beforeAll(async () => {
-    // Clean slate
-    // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
-    // them first or this deleteMany trips P2003 when an asset spec ran earlier.
-    await prisma.receipt.deleteMany({});
-    await prisma.journalPostAuditLog.deleteMany({});
-    await prisma.journalLine.deleteMany({});
-    // contract_cancellations.reversal_journal_entry_id FK-references journal_entries —
-    // leftover rows from the cancellation integration spec block the wipe (P2003).
-    await prisma.contractCancellation.deleteMany({});
-    await prisma.journalEntry.deleteMany({});
-    await prisma.payment.deleteMany({});
-    await prisma.installmentSchedule.deleteMany({});
-    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
-    // contract written off via the real writeOffBadDebt() has a permanent
-    // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
-    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
-    // repossessions + bad_debt_provisions FK-reference contracts (JP5-origin cases below / ECL rows from other specs)
-    await prisma.repossession.deleteMany({});
-    await prisma.badDebtProvision.deleteMany({});
-    // inter_co_settlement_items.contract_id (Restrict) — rounds left by the interco specs
-    await prisma.interCoSettlementItem.deleteMany({});
-    await prisma.interCoSettlementBatch.deleteMany({});
-    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
-
     await seedFinanceCoa(prisma);
     await seedShopCoa(prisma);
     await ensureFinanceCompany();
@@ -203,7 +211,7 @@ describe('shop-collect-settlement integration', () => {
 
   it('SETTLEMENT: Dr 11-1201 / Cr 11-2107 zeroes the shop receivable balance', async () => {
     // 1. Activate a contract via Task 2 shop-collect flow → creates Dr 11-2107 balance
-    const c = await seedStandard17k12m(prisma);
+    const c = await seedOwnedContract();
     const journal = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
     await seedPendingPayments(c.id, c.installmentCount);
@@ -276,7 +284,7 @@ describe('shop-collect-settlement integration', () => {
 
   it('OVER-SETTLE GUARD: amount > outstanding + 0.01 → BadRequestException', async () => {
     // Activate + payoff a second contract
-    const c2 = await seedStandard17k12m(prisma);
+    const c2 = await seedOwnedContract();
     const journal = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c2.id);
     await seedPendingPayments(c2.id, c2.installmentCount);
@@ -300,7 +308,7 @@ describe('shop-collect-settlement integration', () => {
 
   it('VOID REGRESSION: voided shop-collect payoff JE → outstanding = 0 → settlement throws BadRequestException', async () => {
     // 1. Activate a contract + shop-collect payoff → creates Dr 11-2107 balance
-    const cVoid = await seedStandard17k12m(prisma);
+    const cVoid = await seedOwnedContract();
     const journalVoid = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journalVoid, prisma as any).execute(cVoid.id);
     await seedPendingPayments(cVoid.id, cVoid.installmentCount);
@@ -313,7 +321,10 @@ describe('shop-collect-settlement integration', () => {
 
     // Confirm positive 11-2107 balance exists before voiding
     const balanceBeforeVoid = await getNet11_2107(cVoid.id);
-    expect(balanceBeforeVoid.gt(0), `Expected 11-2107 balance > 0 after shop-collect payoff, got ${balanceBeforeVoid.toFixed(2)}`).toBe(true);
+    expect(
+      balanceBeforeVoid.gt(0),
+      `Expected 11-2107 balance > 0 after shop-collect payoff, got ${balanceBeforeVoid.toFixed(2)}`,
+    ).toBe(true);
 
     // 2. VOID the early-payoff journal entry (simulates VOIDED status via DB update)
     const payoffJe = await prisma.journalEntry.findFirst({
@@ -344,7 +355,7 @@ describe('shop-collect-settlement integration', () => {
 
   it('NO-BALANCE GUARD: settling a contract with no 11-2107 balance → BadRequestException', async () => {
     // A regular (non-shop-collect) payoff contract — no 11-2107 line
-    const c3 = await seedStandard17k12m(prisma);
+    const c3 = await seedOwnedContract();
     const journal = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c3.id);
     await seedPendingPayments(c3.id, c3.installmentCount);
@@ -367,7 +378,7 @@ describe('shop-collect-settlement integration', () => {
 
   it('PARTIAL REMITTANCE: two partial settlements each post a balanced Dr cash / Cr 11-2107 JE and net 11-2107 ends at 0', async () => {
     // 1. Activate + shop-collect payoff → creates a Dr 11-2107 balance (= outstanding S)
-    const cPartial = await seedStandard17k12m(prisma);
+    const cPartial = await seedOwnedContract();
     const journalPartial = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journalPartial, prisma as any).execute(cPartial.id);
     await seedPendingPayments(cPartial.id, cPartial.installmentCount);
@@ -379,7 +390,10 @@ describe('shop-collect-settlement integration', () => {
     } as any);
 
     const outstanding = await getNet11_2107(cPartial.id);
-    expect(outstanding.gt(0), `Expected 11-2107 balance > 0 after shop-collect payoff, got ${outstanding.toFixed(2)}`).toBe(true);
+    expect(
+      outstanding.gt(0),
+      `Expected 11-2107 balance > 0 after shop-collect payoff, got ${outstanding.toFixed(2)}`,
+    ).toBe(true);
 
     // Split into two DIFFERENT partial amounts A and (S − A).
     // Use 1/3 rounded down so amountA ≠ amountB (avoids the idempotency guard
@@ -430,17 +444,27 @@ describe('shop-collect-settlement integration', () => {
     expect(settlementJes.length).toBe(2);
 
     for (const je of settlementJes) {
-      const drSum = je.lines.reduce((s, l) => s.plus(new Decimal(l.debit.toString())), new Decimal(0));
-      const crSum = je.lines.reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
+      const drSum = je.lines.reduce(
+        (s, l) => s.plus(new Decimal(l.debit.toString())),
+        new Decimal(0),
+      );
+      const crSum = je.lines.reduce(
+        (s, l) => s.plus(new Decimal(l.credit.toString())),
+        new Decimal(0),
+      );
       expect(
         drSum.minus(crSum).abs().lte('0.01'),
         `Settlement JE ${je.entryNumber} must be balanced: Dr=${drSum.toFixed(2)} Cr=${crSum.toFixed(2)}`,
       ).toBe(true);
 
-      const drLine = je.lines.find((l) => l.accountCode === '11-1201' && new Decimal(l.debit.toString()).gt(0));
+      const drLine = je.lines.find(
+        (l) => l.accountCode === '11-1201' && new Decimal(l.debit.toString()).gt(0),
+      );
       expect(drLine, `Expected Dr 11-1201 line in settlement JE ${je.entryNumber}`).toBeDefined();
 
-      const crLine = je.lines.find((l) => l.accountCode === '11-2107' && new Decimal(l.credit.toString()).gt(0));
+      const crLine = je.lines.find(
+        (l) => l.accountCode === '11-2107' && new Decimal(l.credit.toString()).gt(0),
+      );
       expect(crLine, `Expected Cr 11-2107 line in settlement JE ${je.entryNumber}`).toBeDefined();
     }
   });
@@ -448,7 +472,7 @@ describe('shop-collect-settlement integration', () => {
   it('requestId ต่างกัน ยอดเท่ากัน → post 2 JE (โอนซ้ำยอดเท่ากันโดยตั้งใจต้องไม่หาย)', async () => {
     // Seed a fresh contract with its OWN Dr 11-2107 balance — never reuse another
     // case's contract, the 11-2107 balances would mix across cases.
-    const cPartial2 = await seedStandard17k12m(prisma);
+    const cPartial2 = await seedOwnedContract();
     const journalPartial2 = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journalPartial2, prisma as any).execute(cPartial2.id);
     await seedPendingPayments(cPartial2.id, cPartial2.installmentCount);
@@ -460,7 +484,9 @@ describe('shop-collect-settlement integration', () => {
     } as any);
 
     const outstanding = await getNet11_2107(cPartial2.id);
-    expect(outstanding.gt(0), `Expected 11-2107 balance > 0, got ${outstanding.toFixed(2)}`).toBe(true);
+    expect(outstanding.gt(0), `Expected 11-2107 balance > 0, got ${outstanding.toFixed(2)}`).toBe(
+      true,
+    );
 
     // Same amount posted twice (equal halves — floor-rounded so the second call
     // never exceeds the remaining outstanding).
@@ -496,7 +522,7 @@ describe('shop-collect-settlement integration', () => {
     // collision, or a copy-pasted requestId across two dialog opens) would
     // match the OTHER contract's JE and skip posting entirely, silently
     // leaving that second contract's 11-2107 balance uncleared.
-    const cCrossA = await seedStandard17k12m(prisma);
+    const cCrossA = await seedOwnedContract();
     const journalCrossA = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journalCrossA, prisma as any).execute(cCrossA.id);
     await seedPendingPayments(cCrossA.id, cCrossA.installmentCount);
@@ -506,7 +532,7 @@ describe('shop-collect-settlement integration', () => {
       collectedByShop: true,
     } as any);
 
-    const cCrossB = await seedStandard17k12m(prisma);
+    const cCrossB = await seedOwnedContract();
     const journalCrossB = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journalCrossB, prisma as any).execute(cCrossB.id);
     await seedPendingPayments(cCrossB.id, cCrossB.installmentCount);
@@ -518,8 +544,14 @@ describe('shop-collect-settlement integration', () => {
 
     const outstandingA = await getNet11_2107(cCrossA.id);
     const outstandingB = await getNet11_2107(cCrossB.id);
-    expect(outstandingA.gt(0), `Expected contract A 11-2107 balance > 0, got ${outstandingA.toFixed(2)}`).toBe(true);
-    expect(outstandingB.gt(0), `Expected contract B 11-2107 balance > 0, got ${outstandingB.toFixed(2)}`).toBe(true);
+    expect(
+      outstandingA.gt(0),
+      `Expected contract A 11-2107 balance > 0, got ${outstandingA.toFixed(2)}`,
+    ).toBe(true);
+    expect(
+      outstandingB.gt(0),
+      `Expected contract B 11-2107 balance > 0, got ${outstandingB.toFixed(2)}`,
+    ).toBe(true);
 
     // Worst case for a cross-contract dedupe bug: identical amount on both.
     const amount = outstandingA.lt(outstandingB) ? outstandingA : outstandingB;
@@ -576,7 +608,7 @@ describe('shop-collect-settlement integration', () => {
   });
 
   it('requestId เดิมซ้ำ → JE เดียว (retry ปลอดภัย แม้หลังยอดถูกล้างหมดแล้ว)', async () => {
-    const cRetry = await seedStandard17k12m(prisma);
+    const cRetry = await seedOwnedContract();
     const journalRetry = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journalRetry, prisma as any).execute(cRetry.id);
     await seedPendingPayments(cRetry.id, cRetry.installmentCount);
@@ -588,7 +620,9 @@ describe('shop-collect-settlement integration', () => {
     } as any);
 
     const outstanding = await getNet11_2107(cRetry.id);
-    expect(outstanding.gt(0), `Expected 11-2107 balance > 0, got ${outstanding.toFixed(2)}`).toBe(true);
+    expect(outstanding.gt(0), `Expected 11-2107 balance > 0, got ${outstanding.toFixed(2)}`).toBe(
+      true,
+    );
 
     const requestId = '33333333-3333-4333-8333-333333333333';
 
@@ -633,15 +667,23 @@ describe('shop-collect-settlement integration', () => {
       newValue: { requestId?: string | null; deduped?: boolean } | null;
     }>;
     expect(firstAudit.newValue?.requestId).toBe(requestId);
-    expect(firstAudit.newValue?.deduped, 'First call posted a fresh JE — deduped must be false').toBe(false);
+    expect(
+      firstAudit.newValue?.deduped,
+      'First call posted a fresh JE — deduped must be false',
+    ).toBe(false);
     expect(secondAudit.newValue?.requestId).toBe(requestId);
-    expect(secondAudit.newValue?.deduped, 'Retry hit the requestId dedupe — deduped must be true').toBe(true);
+    expect(
+      secondAudit.newValue?.deduped,
+      'Retry hit the requestId dedupe — deduped must be true',
+    ).toBe(true);
   });
 
   it('requestId เดิมซ้ำแต่ยอดเปลี่ยน → ConflictException (ห้ามกลืนเงียบ ยอดใหม่ต้องไม่หาย)', async () => {
-    const cAmountChange = await seedStandard17k12m(prisma);
+    const cAmountChange = await seedOwnedContract();
     const journalAmountChange = new JournalAutoService(prisma as any);
-    await new ContractActivation1ATemplate(journalAmountChange, prisma as any).execute(cAmountChange.id);
+    await new ContractActivation1ATemplate(journalAmountChange, prisma as any).execute(
+      cAmountChange.id,
+    );
     await seedPendingPayments(cAmountChange.id, cAmountChange.installmentCount);
 
     await earlyPayoffWithApproval(prisma, svc, cAmountChange.id, userId, {
@@ -651,7 +693,9 @@ describe('shop-collect-settlement integration', () => {
     } as any);
 
     const outstanding = await getNet11_2107(cAmountChange.id);
-    expect(outstanding.gt(0), `Expected 11-2107 balance > 0, got ${outstanding.toFixed(2)}`).toBe(true);
+    expect(outstanding.gt(0), `Expected 11-2107 balance > 0, got ${outstanding.toFixed(2)}`).toBe(
+      true,
+    );
 
     const requestId = '44444444-4444-4444-8444-444444444444';
 
@@ -722,7 +766,7 @@ describe('shop-collect-settlement integration', () => {
     // PrismaClientKnownRequestError (or any non-HttpException) escape to the
     // caller — only a clean HttpException (409 ConflictException), or a
     // successful (possibly deduped) fulfillment.
-    const cRace = await seedStandard17k12m(prisma);
+    const cRace = await seedOwnedContract();
     const journalRace = new JournalAutoService(prisma as any);
     await new ContractActivation1ATemplate(journalRace, prisma as any).execute(cRace.id);
     await seedPendingPayments(cRace.id, cRace.installmentCount);
@@ -734,7 +778,10 @@ describe('shop-collect-settlement integration', () => {
     } as any);
 
     const outstanding = await getNet11_2107(cRace.id);
-    expect(outstanding.gt(0), `Expected 11-2107 balance > 0 before race, got ${outstanding.toFixed(2)}`).toBe(true);
+    expect(
+      outstanding.gt(0),
+      `Expected 11-2107 balance > 0 before race, got ${outstanding.toFixed(2)}`,
+    ).toBe(true);
 
     const raceRequestId = '66666666-6666-4666-8666-666666666666';
     const svcA = buildService(prisma);
@@ -822,9 +869,8 @@ describe('shop-collect-settlement integration', () => {
   //   รับโอนหน้าร้าน:              FINANCE Dr 11-1201 / Cr 11-2107 ↔ SHOP Dr S21-1104 / Cr S11-1202
   //   ต้นทาง JP4 (ปิดยอดหน้าร้านรับแทน) ยังไม่มีขาคู่ SHOP → settlement ต้องข้าม SHOP leg
   //   ไม่ดัน S21-1104 ติดลบ (flag NO_SHOP_PAYABLE ใน audit)
-  // เส้นทางนี้เป็นที่เดียวที่ RepossessionsService.create เดิน JP5 จริงบน DB จริง
-  // (product-lifecycle spec ใช้สัญญาที่ไม่มีแถว Payment ⇒ outstanding 0 ⇒ JP5 ไม่โพสต์)
-  // ──────────────────────────────────────────────────────────────────────────
+  // Historical pre-cutover SHOP_COLLECT records are seeded explicitly below.
+  // New DEVICE_RETURN service lifecycle is covered by product-lifecycle.integration.spec.ts.
   describe('JP5-origin — ขาคู่ SHOP', () => {
     const jeLines = (lines: Array<{ accountCode: string; debit: unknown; credit: unknown }>) =>
       lines.map((l) => [
@@ -850,61 +896,77 @@ describe('shop-collect-settlement integration', () => {
       const rows = await prisma.auditLog.findMany({
         where: { action: 'SHOP_COLLECT_SETTLED', entity: 'contract', entityId: contractId },
       });
-      return rows.map((r) => r.newValue as { deduped: boolean; shopLegEntryNo: string | null; shopLegSkipped: string | null });
+      return rows.map(
+        (r) =>
+          r.newValue as {
+            deduped: boolean;
+            shopLegEntryNo: string | null;
+            shopLegSkipped: string | null;
+          },
+      );
     };
 
-    function buildRepossessions(): RepossessionsService {
-      const journal = new JournalAutoService(prisma as any);
-      return new RepossessionsService(
-        prisma as any,
-        journal,
-        new RepossessionJP5Template(journal, prisma as any),
-        null as never, // refundPayoutTemplate — ไม่ถูกเรียกใน create()
-        null as never, // refundWaiveTemplate — ไม่ถูกเรียกใน create()
-        new CreditNoteDocumentService(prisma as any), // ไม่มี 2A accrual → SKIPPED_NO_ACCRUED
-        { deliver: async () => undefined } as never, // fire-and-forget หลัง tx — ไม่มี CN ให้ส่ง
-      );
-    }
-
-    /** สัญญา 17k/12m + 1A + 12 งวดค้าง → TERMINATED → JP5 หน้าร้านรับแทน ที่ราคาประเมิน 7,000 */
+    /** Historical pre-cutover fixture; never route new repossessions through SHOP_COLLECT. */
     async function seedShopCollectRepossession(tag: string) {
-      const c = await seedStandard17k12m(prisma);
+      const c = await seedOwnedContract();
       const journal = new JournalAutoService(prisma as any);
       await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
       await seedPendingPayments(c.id, c.installmentCount);
-      // seedStandard17k12m แชร์เครื่องเดียวกันทุกสัญญา — JP5 flip เป็น REPOSSESSED แล้ว create()
-      // รอบถัดไปจะปฏิเสธ ("สินค้านี้ถูกยึดคืนแล้ว") ⇒ แต่ละเคสใช้เครื่องของตัวเอง
-      const { branchId } = await prisma.contract.findUniqueOrThrow({
-        where: { id: c.id },
-        select: { branchId: true },
+      const contract = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+      const shop = await prisma.companyInfo.findFirstOrThrow({
+        where: { companyCode: 'SHOP', deletedAt: null },
       });
-      const product = await prisma.product.create({
-        data: {
-          name: `Repo ${tag}`,
-          brand: 'TestBrand',
-          model: `RepoModel-${tag}`,
-          imeiSerial: `REPO-${tag}-${Date.now()}`,
-          category: 'PHONE_NEW',
-          costPrice: new Decimal('8000.00'),
-          branchId,
-          status: 'SOLD_INSTALLMENT',
-        },
+      const repo = await prisma.$transaction(async (tx) => {
+        await new RepossessionJP5Template(journal, prisma as any).execute(
+          {
+            contractId: c.id,
+            depositAccountCode: '11-2107',
+            repossessionValue: new Decimal(7000),
+            shopReceivableType: 'SHOP_COLLECT',
+          },
+          tx,
+        );
+        // Balanced historical SHOP book, matching the pre-cutover JP5 receivable.
+        // Current postRepossessionIntake always produces DEVICE_RETURN, so is not a legacy fixture API.
+        await journal.createAndPost(
+          {
+            description: `Historical SHOP_COLLECT repossession fixture ${tag}`,
+            reference: `contract:${c.id}:repossession-intake`,
+            companyId: shop.id,
+            metadata: {
+              flow: SHOP_REPOSSESSION_INTAKE_FLOW,
+              idempotencyKey: `${SHOP_REPOSSESSION_INTAKE_FLOW}:${c.id}`,
+              contractId: c.id,
+              productId: contract.productId,
+              companyCode: 'SHOP',
+              shopReceivableType: 'SHOP_COLLECT',
+              appraisal: '7000.00',
+            },
+            lines: [
+              { accountCode: 'S11-2002', dr: new Decimal(7000), cr: new Decimal(0) },
+              { accountCode: 'S21-1104', dr: new Decimal(0), cr: new Decimal(7000) },
+            ],
+          },
+          tx,
+        );
+        await tx.contract.update({ where: { id: c.id }, data: { status: 'CLOSED_BAD_DEBT' } });
+        await tx.product.update({
+          where: { id: contract.productId },
+          data: { status: 'REPOSSESSED', category: 'PHONE_USED', ownedByCompanyId: shop.id },
+        });
+        return tx.repossession.create({
+          data: {
+            contractId: c.id,
+            productId: contract.productId,
+            repossessedDate: new Date(),
+            conditionGrade: 'B',
+            appraisalPrice: new Decimal(7000),
+            appraisedById: userId,
+            status: 'REPOSSESSED',
+          },
+        });
       });
-      await prisma.contract.update({
-        where: { id: c.id },
-        data: { productId: product.id, status: 'TERMINATED' },
-      });
-      const repo = await buildRepossessions().create(
-        {
-          contractId: c.id,
-          repossessedDate: new Date().toISOString(),
-          conditionGrade: 'B',
-          appraisalPrice: 7000,
-          collectedByShop: true,
-        } as never,
-        userId,
-      );
-      return { contractId: c.id, productId: product.id, repossessionId: repo.id };
+      return { contractId: c.id, productId: contract.productId, repossessionId: repo.id };
     }
 
     it('ยึดเครื่องหน้าร้านรับแทน → SHOP ลง Dr S11-2002 / Cr S21-1104 (typed SHOP_COLLECT) เท่าราคาประเมิน คู่กับ Dr 11-2107 ของ JP5', async () => {
@@ -927,7 +989,7 @@ describe('shop-collect-settlement integration', () => {
       expect(meta.productId).toBe(productId);
       expect(meta.idempotencyKey).toBe(`${SHOP_REPOSSESSION_INTAKE_FLOW}:${contractId}`);
 
-      // เครื่องกลับเป็นของ SHOP + กลายเป็นมือสอง (ขายต่อผ่าน POS ต้อง Cr S11-2002)
+      // Historical fixture consistency only; new service product transitions are tested in product-lifecycle.
       const shop = await prisma.companyInfo.findFirstOrThrow({
         where: { companyCode: 'SHOP', deletedAt: null },
       });
@@ -945,7 +1007,9 @@ describe('shop-collect-settlement integration', () => {
       await svc.shopCollectSettlement(contractId, userId, dto);
 
       expect((await getNet11_2107(contractId)).abs().lte('0.01')).toBe(true);
-      expect((await shopCollectShopBalance(prisma as any, contractId)).abs().lte('0.01')).toBe(true);
+      expect((await shopCollectShopBalance(prisma as any, contractId)).abs().lte('0.01')).toBe(
+        true,
+      );
 
       const shopLegs = await findByFlow(SHOP_COLLECT_SETTLEMENT_SHOP_FLOW, contractId);
       expect(shopLegs, 'Expected exactly one SHOP settlement leg').toHaveLength(1);
@@ -954,7 +1018,9 @@ describe('shop-collect-settlement integration', () => {
         ['S21-1104', '7000.00', '0.00'],
         ['S11-1202', '0.00', '7000.00'],
       ]);
-      expect((shopLegs[0].metadata as Record<string, unknown>).shopReceivableType).toBe('SHOP_COLLECT');
+      expect((shopLegs[0].metadata as Record<string, unknown>).shopReceivableType).toBe(
+        'SHOP_COLLECT',
+      );
       expect((shopLegs[0].metadata as Record<string, unknown>).requestId).toBe(requestId);
 
       const first = (await settlementAudits(contractId)).find((a) => a.deduped === false);
@@ -964,14 +1030,16 @@ describe('shop-collect-settlement integration', () => {
       // retry เดิม — FINANCE dedupe ⇒ SHOP leg ต้องไม่โพสต์ซ้ำเช่นกัน
       await svc.shopCollectSettlement(contractId, userId, dto);
       expect(await findByFlow(SHOP_COLLECT_SETTLEMENT_SHOP_FLOW, contractId)).toHaveLength(1);
-      expect((await shopCollectShopBalance(prisma as any, contractId)).abs().lte('0.01')).toBe(true);
+      expect((await shopCollectShopBalance(prisma as any, contractId)).abs().lte('0.01')).toBe(
+        true,
+      );
       const retry = (await settlementAudits(contractId)).find((a) => a.deduped === true);
       expect(retry?.shopLegSkipped).toBe('DEDUPED');
       expect(retry?.shopLegEntryNo).toBeNull();
     });
 
     it('ต้นทาง JP4 (ปิดยอดหน้าร้านรับแทน — สมุด SHOP ไม่มีขา Cr S21-1104) → settlement ข้าม SHOP leg พร้อม flag NO_SHOP_PAYABLE, S21-1104 ไม่ติดลบ', async () => {
-      const c = await seedStandard17k12m(prisma);
+      const c = await seedOwnedContract();
       const journal = new JournalAutoService(prisma as any);
       await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
       await seedPendingPayments(c.id, c.installmentCount);

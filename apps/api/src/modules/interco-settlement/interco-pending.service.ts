@@ -2,6 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InterCoBatchStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SHOP_RECEIVABLE_TYPES } from '../journal/shop-receivable-type.util';
+import {
+  ALL_DEDUCTION_COLUMNS,
+  DEVICE_RETURN_DEDUCTION_COLUMNS,
+  postedDeductionsByContract,
+} from './interco-typed-balance';
 
 /**
  * เมนู "จ่ายให้หน้าร้าน (INTER-CO)" — pending engine (คิวรอจ่าย).
@@ -62,12 +67,32 @@ export interface RecallCandidate {
   customerName: string;
   /**
    * ยอดเรียกคืน **สุทธิ** (Phase 3 Task 4 — carry b) = typed 11-2107
-   * [PAYOUT_RECALL] gross − Σ(swapCreditAmount + recallAmount) ของ item
-   * ทุกประเภทใน batch POSTED ของสัญญานั้น. ดู jsdoc `getPendingRecalls`.
+   * [PAYOUT_RECALL] gross − Σ(swapCreditAmount + recallAmount + deviceReturnAmount)
+   * ของ item ทุกประเภทใน batch POSTED ของสัญญานั้น. ดู jsdoc `getPendingRecalls`.
    */
   recallGl: Prisma.Decimal;
   /** S21-1104 PAYOUT_RECALL สุทธิด้วยสูตรเดียวกัน (ต้อง = recallGl จึงหักได้) */
   shopRecallGl: Prisma.Decimal;
+}
+
+/**
+ * แถวคิวหักค่าเครื่องคืน (ใบรับเครื่องคืน — spec 2026-09-20 §6.3): สัญญาที่ยึด/รับคืน
+ * แล้ว (CLOSED_BAD_DEBT) ที่มี 11-2107 [DEVICE_RETURN] ค้าง — แสดงเป็น "แถวหัก" ประเภทที่ 3
+ * ในหน้ารอบจ่าย (ไม่มีเจ้าหนี้ 21-1101/21-1102 ของตัวเอง เหมือนแถว RECALL).
+ */
+export interface DeviceReturnCandidate {
+  contractId: string;
+  contractNumber: string;
+  customerName: string;
+  /**
+   * ค่าเครื่องคืน **สุทธิ** = typed 11-2107 [DEVICE_RETURN] gross − Σ `deviceReturnAmount`
+   * ของ item ใน batch POSTED ของสัญญานั้น (**same-type เท่านั้น** — spec §6.3 ฉบับตัดสิน:
+   * ค่าเครื่องคืนเป็นหนี้ก้อนใหม่ เครดิตสวอป/เรียกคืนที่เคยหักไม่เกี่ยว; ต่างจากคิว recall ที่หัก
+   * ทุกประเภทเพราะ redirect นับเครดิตสวอปซ้ำใน gross). ดู jsdoc `getPendingDeviceReturns`.
+   */
+  deviceReturnGl: Prisma.Decimal;
+  /** S21-1104 DEVICE_RETURN สุทธิด้วยสูตรเดียวกัน (ต้อง = deviceReturnGl จึงหักได้) */
+  shopDeviceReturnGl: Prisma.Decimal;
 }
 
 export interface ReconcileTotals {
@@ -83,7 +108,9 @@ export interface ReconcileTotals {
   glSwapCreditTotal: Prisma.Decimal;
   /** 11-2107 typed PAYOUT_RECALL ทั้งบัญชี (Dr−Cr — explicit stamp เท่านั้น) */
   glRecallTotal: Prisma.Decimal;
-  /** S21-1104 ทั้งบัญชี (Cr−Dr — ไม่กรอง type) */
+  /** 11-2107 typed DEVICE_RETURN ทั้งบัญชี (Dr−Cr — explicit stamp เท่านั้น; ใบรับเครื่องคืน 2026-09-20) */
+  glDeviceReturnTotal: Prisma.Decimal;
+  /** S21-1104 ทั้งบัญชี (Cr−Dr — ไม่กรอง type: SWAP_CREDIT + PAYOUT_RECALL + DEVICE_RETURN + SHOP_COLLECT) */
   glShopBuybackTotal: Prisma.Decimal;
 }
 
@@ -119,9 +146,7 @@ export class IntercoPendingService {
    * คือ JE ใบแรกที่แตะ 21-1101/21-1102 พร้อม metadata.contractId ของสัญญานั้น
    * เสมอ ดังนั้น MIN(postedAt) ของกลุ่มนี้ = วันที่ activate จริงในทางปฏิบัติ.
    */
-  async getPendingContracts(
-    tx?: Prisma.TransactionClient,
-  ): Promise<PendingContract[]> {
+  async getPendingContracts(tx?: Prisma.TransactionClient): Promise<PendingContract[]> {
     const client = (tx ?? this.prisma) as Prisma.TransactionClient;
 
     // FINANCE lens — 21-1101 (ยอดจัด) / 21-1102 (ค่าคอม), grouped by
@@ -324,7 +349,7 @@ export class IntercoPendingService {
    * contract-cancellation.template.ts).
    *
    * สูตร NET (Phase 3 Task 4 — ปิด carry b): ยอดเรียกคืน = typed PAYOUT_RECALL
-   * gross − Σ(swapCreditAmount + recallAmount) ของ item **ทุกประเภท** ใน batch
+   * gross − Σ(swapCreditAmount + recallAmount + deviceReturnAmount) ของ item **ทุกประเภท** ใน batch
    * POSTED ของสัญญานั้น. เหตุผล (เลขทองของเฟส): สัญญา swap ที่ถูกยกเลิกหลัง
    * รอบจ่ายเคยหักเครดิต 8,000 มี redirect gross = 11,000 (เต็มยอดที่ตัดจ่าย)
    * แต่เงินที่ FINANCE โอนจริงในรอบนั้น = 3,000 — เสนอ gross จะทำให้รอบถัดไป
@@ -402,24 +427,15 @@ export class IntercoPendingService {
 
     // Σ deductions ต่อสัญญาจาก batch POSTED (ทุก itemType — สูตร NET, ดู jsdoc):
     // แถว SETTLEMENT ของรอบเก่าถือ swapCreditAmount ที่เคยหัก, แถว RECALL ของ
-    // รอบก่อนหน้าถือ recallAmount ที่เรียกคืนไปแล้ว — ทั้งสองก้อนคือเงินที่
-    // FINANCE ไม่เคยจ่ายจริง/ได้คืนแล้ว จึงหักออกจาก gross ทั้งคู่.
-    const postedDeductionItems = await client.interCoSettlementItem.findMany({
-      where: {
-        contractId: { in: remainingIds },
-        deletedAt: null,
-        batch: { status: 'POSTED', deletedAt: null },
-      },
-      select: { contractId: true, swapCreditAmount: true, recallAmount: true },
-    });
-    const postedDeductionByContract = new Map<string, Prisma.Decimal>();
-    for (const item of postedDeductionItems) {
-      const prev = postedDeductionByContract.get(item.contractId) ?? new Prisma.Decimal(0);
-      postedDeductionByContract.set(
-        item.contractId,
-        prev.plus(item.swapCreditAmount).plus(item.recallAmount),
-      );
-    }
+    // รอบก่อนหน้าถือ recallAmount ที่เรียกคืนไปแล้ว, แถว DEVICE_RETURN ถือ
+    // deviceReturnAmount — ทุกก้อนคือเงินที่ FINANCE ไม่เคยจ่ายจริง/ได้คืนแล้ว
+    // จึงหักออกจาก gross ทั้งหมด (ALL_DEDUCTION_COLUMNS — legacy-compatible กับเดิม;
+    // helper เดียวกับคิวค่าเครื่องคืนซึ่งส่งเฉพาะคอลัมน์ของตัวเอง — ห้ามมีสำเนา).
+    const postedDeductionByContract = await postedDeductionsByContract(
+      client,
+      remainingIds,
+      ALL_DEDUCTION_COLUMNS,
+    );
 
     const contracts = await client.contract.findMany({
       where: { id: { in: remainingIds }, deletedAt: null },
@@ -451,6 +467,128 @@ export class IntercoPendingService {
         customerName: contract.customer.name,
         recallGl,
         shopRecallGl,
+      });
+    }
+
+    return result;
+  }
+
+  /**
+   * คิวค่าเครื่องคืน (ใบรับเครื่องคืน — spec 2026-09-20 §6.3): สัญญาที่มี 11-2107
+   * [DEVICE_RETURN] ค้าง **สุทธิ** > 0 และไม่อยู่ใน batch เปิด. producer ของ JE คือ JP5
+   * ตอน FINANCE ยืนยันใบรับคืน (Phase 2 — `RepossessionsService.createInTx` ขา Dr =
+   * 11-2107 stamp DEVICE_RETURN) + ขาคู่ SHOP `Cr S21-1104` stamp เดียวกัน
+   * (`ShopCollectShopLegs.postRepossessionIntake`).
+   *
+   * Mirror ของ `getPendingRecalls` ทุกประการ (explicit stamp เท่านั้น — type ใหม่ไม่มี
+   * legacy; SQL twins = `deviceReturnFinanceBalance` / `deviceReturnShopBalance` +
+   * `DEVICE_RETURN_COND` ในรายงานอายุ — แก้ที่ไหนต้องแก้ทุกที่):
+   *   - settled gate เฉพาะ `itemType: 'DEVICE_RETURN'` ใน batch เปิด — สัญญาที่ถูกยึด
+   *     เคยถูกจ่ายในรอบ POSTED มาก่อนโดยนิยาม (มี SETTLEMENT item ถาวร); any-type gate
+   *     จะทำให้คิวนี้ว่างตลอดกาล
+   *   - ยอด = gross − Σ `deviceReturnAmount` ของ item ใน batch POSTED ของสัญญานั้น
+   *     (**same-type เท่านั้น** — spec §6.3 ฉบับตัดสิน: ค่าเครื่องคืนเป็นหนี้ก้อนใหม่ ไม่เกี่ยวกับ
+   *     เครดิตสวอป/เรียกคืนที่เคยหัก; สัญญา swap ที่ถูกหัก 8,000 แล้วภายหลังถูกยึด 7,000 ต้อง
+   *     อยู่ในคิวที่ 7,000 — สูตร all-types ของคิว recall จะให้ −1,000); net ≤ 0.01 หลุดคิว
+   *   - hydrate **ไม่กรอง status** — สัญญาที่ยึดแล้วเป็น CLOSED_BAD_DEBT โดยนิยาม
+   *     (คิวรอจ่ายกรอง CANCELED ออก; คิวนี้กับคิว recall ไม่กรอง)
+   */
+  async getPendingDeviceReturns(tx?: Prisma.TransactionClient): Promise<DeviceReturnCandidate[]> {
+    const client = (tx ?? this.prisma) as Prisma.TransactionClient;
+
+    // FINANCE lens — 11-2107 [DEVICE_RETURN] (explicit stamp เท่านั้น)
+    const financeRows = await client.$queryRaw<
+      Array<{ contract_id: string | null; amount: unknown }>
+    >`
+      SELECT je.metadata->>'contractId' AS contract_id,
+             COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS amount
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = '11-2107'
+        AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
+        AND je.metadata->>'contractId' IS NOT NULL
+        AND je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'
+      GROUP BY 1
+      HAVING SUM(jl.debit - jl.credit) > 0
+    `;
+    const validRows = financeRows.filter(
+      (r): r is { contract_id: string; amount: unknown } => !!r.contract_id,
+    );
+    if (validRows.length === 0) return [];
+
+    // SHOP lens — S21-1104 [DEVICE_RETURN], key ด้วย metadata.contractId (เหมือนขา recall)
+    const shopRows = await client.$queryRaw<Array<{ contract_id: string | null; amount: unknown }>>`
+      SELECT je.metadata->>'contractId' AS contract_id,
+             COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS amount
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = 'S21-1104'
+        AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
+        AND je.metadata->>'contractId' IS NOT NULL
+        AND je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'
+      GROUP BY 1
+    `;
+    const shopByContract = new Map<string, Prisma.Decimal>();
+    for (const row of shopRows) {
+      if (!row.contract_id) continue;
+      shopByContract.set(row.contract_id, new Prisma.Decimal(String(row.amount ?? 0)));
+    }
+
+    const contractIds = validRows.map((r) => r.contract_id);
+
+    // "settled" gate — เฉพาะ item DEVICE_RETURN ใน batch เปิด (ดู jsdoc ด้านบน)
+    const settledItems = await client.interCoSettlementItem.findMany({
+      where: {
+        contractId: { in: contractIds },
+        itemType: 'DEVICE_RETURN',
+        deletedAt: null,
+        batch: { status: { in: OPEN_BATCH_STATUSES }, deletedAt: null },
+      },
+      select: { contractId: true },
+    });
+    const settledContractIds = new Set(settledItems.map((i) => i.contractId));
+
+    const remainingIds = contractIds.filter((id) => !settledContractIds.has(id));
+    if (remainingIds.length === 0) return [];
+
+    // same-type NET (spec §6.3 ฉบับตัดสิน) — ส่งเฉพาะคอลัมน์ deviceReturnAmount
+    const postedDeductionByContract = await postedDeductionsByContract(
+      client,
+      remainingIds,
+      DEVICE_RETURN_DEDUCTION_COLUMNS,
+    );
+
+    // hydrate — ไม่กรอง status (CLOSED_BAD_DEBT โดยนิยาม); เลือกเฉพาะ id/เลขสัญญา/ชื่อลูกค้า
+    const contracts = await client.contract.findMany({
+      where: { id: { in: remainingIds }, deletedAt: null },
+      select: {
+        id: true,
+        contractNumber: true,
+        customer: { select: { name: true } },
+      },
+    });
+    const contractById = new Map(contracts.map((c) => [c.id, c]));
+
+    const result: DeviceReturnCandidate[] = [];
+    for (const row of validRows) {
+      const contract = contractById.get(row.contract_id);
+      if (!contract) continue; // settled, soft-deleted, or otherwise gone
+
+      const postedDeduction =
+        postedDeductionByContract.get(row.contract_id) ?? new Prisma.Decimal(0);
+      const deviceReturnGl = new Prisma.Decimal(String(row.amount ?? 0)).minus(postedDeduction);
+      // net ≤ 0.01 = หักครบแล้ว (หรือมีแต่ยอดที่เคยหักไว้) — ออกจากคิว
+      if (deviceReturnGl.lte('0.01')) continue;
+      const shopDeviceReturnGl = (
+        shopByContract.get(row.contract_id) ?? new Prisma.Decimal(0)
+      ).minus(postedDeduction);
+
+      result.push({
+        contractId: row.contract_id,
+        contractNumber: contract.contractNumber,
+        customerName: contract.customer.name,
+        deviceReturnGl,
+        shopDeviceReturnGl,
       });
     }
 
@@ -523,8 +661,22 @@ export class IntercoPendingService {
     `;
     const glRecallTotal = new Prisma.Decimal(String(recallTotalRows[0]?.balance ?? 0));
 
+    // 11-2107 typed DEVICE_RETURN ทั้งบัญชี (explicit stamp เท่านั้น — ใบรับเครื่องคืน 2026-09-20;
+    // gross สะสมเหมือนสองตัวบน: ขา Cr ของ batch ไม่ stamp จึงไม่ลดตัวเลขนี้)
+    const deviceReturnTotalRows = await this.prisma.$queryRaw<Array<{ balance: unknown }>>`
+      SELECT COALESCE(SUM(jl.debit - jl.credit), 0)::decimal AS balance
+      FROM journal_lines jl
+      JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE jl.account_code = '11-2107'
+        AND jl.deleted_at IS NULL
+        AND je.status = 'POSTED'
+        AND je.deleted_at IS NULL
+        AND je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'
+    `;
+    const glDeviceReturnTotal = new Prisma.Decimal(String(deviceReturnTotalRows[0]?.balance ?? 0));
+
     // S21-1104 ทั้งบัญชี — ไม่กรอง type (กระทบยอดรวมสองสมุด: SWAP_CREDIT +
-    // PAYOUT_RECALL รวมกันต้องหนุนยอดบัญชีนี้)
+    // PAYOUT_RECALL + DEVICE_RETURN (+ SHOP_COLLECT) รวมกันต้องหนุนยอดบัญชีนี้)
     const shopBuybackTotalRows = await this.prisma.$queryRaw<Array<{ balance: unknown }>>`
       SELECT COALESCE(SUM(jl.credit - jl.debit), 0)::decimal AS balance
       FROM journal_lines jl
@@ -543,6 +695,7 @@ export class IntercoPendingService {
       drift,
       glSwapCreditTotal,
       glRecallTotal,
+      glDeviceReturnTotal,
       glShopBuybackTotal,
     };
   }

@@ -203,3 +203,65 @@ export function deviceReturnShopBalance(
     AND je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'`,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Σ deduction ที่รอบจ่าย POSTED หักไปแล้ว — export ระดับ module (ใบรับเครื่องคืน 2026-09-20):
+// ผู้เรียก = IntercoPendingService (สองคิว) + Phase 2 RepossessionsService.findAll
+// (`deviceReturnOutstanding`) — สูตรเดียว ห้ามมีสำเนา; อยู่ไฟล์นี้เพราะรับ `Client` union
+// ชุดเดียวกับ typed-balance helpers (ใช้ได้ทั้งใน tx และ root prisma)
+// ---------------------------------------------------------------------------
+
+/** คอลัมน์ deduction บน InterCoSettlementItem — ทุกแถวมีครบสาม (คอลัมน์ที่ไม่เกี่ยวกับประเภทแถวเป็น 0) */
+export type DeductionColumn = 'swapCreditAmount' | 'recallAmount' | 'deviceReturnAmount';
+
+/** คิว recall: สูตร NET ทุกประเภท — gross ของ redirect C-2 นับเครดิตสวอปที่เคยหักไปแล้วซ้ำ (Phase 3 Task 4) */
+export const ALL_DEDUCTION_COLUMNS: readonly DeductionColumn[] = [
+  'swapCreditAmount',
+  'recallAmount',
+  'deviceReturnAmount',
+];
+
+/**
+ * คิวค่าเครื่องคืน + Phase 2 `findAll.deviceReturnOutstanding`: same-type เท่านั้น (spec
+ * 2026-09-20 §6.3 ฉบับตัดสิน) — ค่าเครื่องคืนเป็นหนี้ก้อนใหม่ ไม่เกี่ยวกับเครดิตสวอปเดิม; สัญญา
+ * swap ที่ถูกหัก 8,000 แล้วถูกยึด 7,000 ต้องอยู่คิวที่ 7,000
+ */
+export const DEVICE_RETURN_DEDUCTION_COLUMNS: readonly DeductionColumn[] = ['deviceReturnAmount'];
+
+/**
+ * Σ deduction ต่อสัญญาจาก batch POSTED (ไม่ถูกลบ) — item ทุก itemType แต่รวม**เฉพาะคอลัมน์ที่ขอ**
+ * (สถาปัตยกรรม gross-lens: "หักแล้วเท่าไร" อยู่ที่ item table ไม่ใช่ GL metadata — ขา Cr ของ batch
+ * ไม่ stamp contractId). สัญญาที่ไม่มี item = ไม่มี key ใน Map (ผู้เรียกใช้ `?? 0`).
+ * select ครบสามคอลัมน์เสมอ (รูป query เดียว) แล้วรวมเฉพาะที่ขอ — ผู้เรียก:
+ *   - `IntercoPendingService.getPendingRecalls` → `ALL_DEDUCTION_COLUMNS` (legacy-compatible กับก่อน 2026-09-20)
+ *   - `IntercoPendingService.getPendingDeviceReturns` → `DEVICE_RETURN_DEDUCTION_COLUMNS`
+ *   - Phase 2 `RepossessionsService.findAll` (`deviceReturnOutstanding`) → `DEVICE_RETURN_DEDUCTION_COLUMNS`
+ */
+export async function postedDeductionsByContract(
+  client: Client,
+  contractIds: string[],
+  columns: readonly DeductionColumn[],
+): Promise<Map<string, Prisma.Decimal>> {
+  const items = await client.interCoSettlementItem.findMany({
+    where: {
+      contractId: { in: contractIds },
+      deletedAt: null,
+      batch: { status: 'POSTED', deletedAt: null },
+    },
+    select: {
+      contractId: true,
+      swapCreditAmount: true,
+      recallAmount: true,
+      deviceReturnAmount: true,
+    },
+  });
+  const map = new Map<string, Prisma.Decimal>();
+  for (const item of items) {
+    const prev = map.get(item.contractId) ?? new Prisma.Decimal(0);
+    map.set(
+      item.contractId,
+      columns.reduce((s, col) => s.plus(item[col]), prev),
+    );
+  }
+  return map;
+}

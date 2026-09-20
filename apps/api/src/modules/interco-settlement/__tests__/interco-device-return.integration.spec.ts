@@ -21,7 +21,10 @@ import { IntercoPendingService } from '../interco-pending.service';
 import { IntercoBatchNumberService } from '../interco-batch-number.service';
 import { IntercoSettlementService } from '../interco-settlement.service';
 import { IntercoAgingService } from '../interco-aging.service';
-import { SHOP_RECEIVABLE_TYPES, classifyShopReceivable } from '../../journal/shop-receivable-type.util';
+import {
+  SHOP_RECEIVABLE_TYPES,
+  classifyShopReceivable,
+} from '../../journal/shop-receivable-type.util';
 import {
   deviceReturnFinanceBalance,
   deviceReturnShopBalance,
@@ -311,6 +314,7 @@ let normalId: string;
 let schemaProbeId: string;
 /** สัญญา X — ยึดแล้ว (CLOSED_BAD_DEBT) มีคู่ JE DEVICE_RETURN 7,000/7,000 */
 let deviceReturnId: string;
+let baselineTotals: Awaited<ReturnType<IntercoPendingService['getReconcileTotals']>>;
 
 describe('ใบรับเครื่องคืน — DEVICE_RETURN ครบทุกเลนส์ + รอบจ่าย INTER-CO (real DB)', () => {
   beforeAll(async () => {
@@ -350,6 +354,9 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
     normalId = await seedBaseContract(1);
     await seedNormalContract(normalId);
     schemaProbeId = await seedBaseContract(99);
+    // Whole-account baselines BEFORE this run's DEVICE_RETURN seeds — assertion เป็น delta
+    baselineTotals = await pendingService.getReconcileTotals();
+
     deviceReturnId = await seedBaseContract(2, 'CLOSED_BAD_DEBT');
     await seedDeviceReturnPair(deviceReturnId);
   }, 120_000);
@@ -381,7 +388,9 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
       await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
       await prisma.journalEntry.deleteMany({ where: { id: { in: jeIdList } } });
 
-      await prisma.interCoSettlementItem.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.interCoSettlementItem.deleteMany({
+        where: { batchId: { in: createdBatchIds } },
+      });
       await prisma.interCoSettlementBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
 
       await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
@@ -462,7 +471,10 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
 
     it('classifyShopReceivable ของ JE ทั้งสองใบ = DEVICE_RETURN (anti-drift util ↔ SQL)', async () => {
       const jes = await prisma.journalEntry.findMany({
-        where: { metadata: { path: ['contractId'], equals: deviceReturnId } as never, deletedAt: null },
+        where: {
+          metadata: { path: ['contractId'], equals: deviceReturnId } as never,
+          deletedAt: null,
+        },
         include: { lines: true },
       });
       const typed = jes.filter((je) =>
@@ -473,6 +485,115 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
         expect(classifyShopReceivable(je.metadata)).toBe('DEVICE_RETURN');
       }
       expect(SHOP_RECEIVABLE_TYPES).toContain('DEVICE_RETURN');
+    });
+  });
+  // ===========================================================================
+  // Task 4 — คิวค่าเครื่องคืน (mirror ของคิว recall) + reconcile totals
+  // ===========================================================================
+  describe('คิวค่าเครื่องคืน — getPendingDeviceReturns + glDeviceReturnTotal (Task 4)', () => {
+    it('X (CLOSED_BAD_DEBT) อยู่ในคิวที่ 7,000 ทั้งสองสมุด; ไม่โผล่คิวรอจ่าย/คิวเรียกคืน; Y ไม่โผล่คิวนี้', async () => {
+      const contract = await prisma.contract.findUniqueOrThrow({ where: { id: deviceReturnId } });
+      expect(contract.status).toBe('CLOSED_BAD_DEBT'); // hydrate ต้องไม่กรองสถานะนี้
+
+      const rows = await pendingService.getPendingDeviceReturns();
+      const row = rows.find((r) => r.contractId === deviceReturnId)!;
+      expect(row).toBeDefined();
+      expect(row.deviceReturnGl.toFixed(2)).toBe('7000.00');
+      expect(row.shopDeviceReturnGl.toFixed(2)).toBe('7000.00');
+      expect(row.contractNumber.startsWith('DRTEST-')).toBe(true);
+      expect(row.customerName).toContain('__DRTEST_');
+      expect(rows.some((r) => r.contractId === normalId)).toBe(false);
+
+      const pending = await pendingService.getPendingContracts();
+      expect(pending.some((p) => p.contractId === deviceReturnId)).toBe(false);
+      expect(pending.some((p) => p.contractId === normalId)).toBe(true);
+      const recalls = await pendingService.getPendingRecalls();
+      expect(recalls.some((r) => r.contractId === deviceReturnId)).toBe(false);
+    });
+
+    it('reconcile totals: glDeviceReturnTotal +7,000 และ glShopBuybackTotal +7,000 (delta จาก baseline); ยอดเดิมยังอยู่ครบ', async () => {
+      const totals = await pendingService.getReconcileTotals();
+      expect(totals.glDeviceReturnTotal.minus(baselineTotals.glDeviceReturnTotal).toFixed(2)).toBe(
+        '7000.00',
+      );
+      expect(totals.glShopBuybackTotal.minus(baselineTotals.glShopBuybackTotal).toFixed(2)).toBe(
+        '7000.00',
+      );
+      // SWAP_CREDIT / PAYOUT_RECALL ไม่ขยับ (แยกประเภทจริง)
+      expect(totals.glSwapCreditTotal.minus(baselineTotals.glSwapCreditTotal).toFixed(2)).toBe(
+        '0.00',
+      );
+      expect(totals.glRecallTotal.minus(baselineTotals.glRecallTotal).toFixed(2)).toBe('0.00');
+      expect(totals.pendingTotal).toBeDefined();
+      expect(totals.drift).toBeDefined();
+    });
+
+    it('same-type NET preserves prior swap credit; only open DEVICE_RETURN items gate the queue', async () => {
+      const g = await seedBaseContract(3, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(g);
+
+      // (a) สัญญาที่ยึดเคยถูกจ่ายในรอบ POSTED มาก่อนโดยนิยาม — item SETTLEMENT (ไม่มีอะไรหัก)
+      //     ต้องไม่บังคิวค่าเครื่องคืน
+      const b1 = await seedBatch('POSTED', 2);
+      await prisma.interCoSettlementItem.create({
+        data: {
+          batchId: b1.id,
+          contractId: g,
+          itemType: 'SETTLEMENT',
+          financedGl: dec('10000.00'),
+          commissionGl: dec('1000.00'),
+          shopFinancedGl: dec('10000.00'),
+          shopCommissionGl: dec('1000.00'),
+        },
+      });
+      let rows = await pendingService.getPendingDeviceReturns();
+      expect(rows.find((r) => r.contractId === g)!.deviceReturnGl.toFixed(2)).toBe('7000.00');
+
+      // (b) DEVICE_RETURN item ใน batch PENDING_APPROVAL → ตัดออกจากคิว
+      const b2 = await seedBatch('PENDING_APPROVAL', 3);
+      const gateItem = await prisma.interCoSettlementItem.create({
+        data: {
+          batchId: b2.id,
+          contractId: g,
+          itemType: 'DEVICE_RETURN',
+          financedGl: zero,
+          commissionGl: zero,
+          shopFinancedGl: zero,
+          shopCommissionGl: zero,
+          deviceReturnAmount: dec('7000.00'),
+        },
+      });
+      rows = await pendingService.getPendingDeviceReturns();
+      expect(rows.some((r) => r.contractId === g)).toBe(false);
+      expect(rows.some((r) => r.contractId === deviceReturnId)).toBe(true); // X ไม่เกี่ยว
+
+      // (c) รอบนั้น CANCELLED → item หลุด gate → กลับเข้าคิวเต็ม 7,000 (REVERSED/CANCELLED ไม่นับ)
+      await prisma.interCoSettlementBatch.update({
+        where: { id: b2.id },
+        data: { status: 'CANCELLED' },
+      });
+      rows = await pendingService.getPendingDeviceReturns();
+      expect(rows.find((r) => r.contractId === g)!.deviceReturnGl.toFixed(2)).toBe('7000.00');
+
+      // (ง) สูตร NET same-type (spec §6.3 ฉบับตัดสิน): deduction ของ item **ประเภทอื่น** ใน batch
+      //     POSTED ต้อง**ไม่**ลดค่าเครื่องคืน — SETTLEMENT item ของ b1 ถือ swapCreditAmount 8,000
+      //     (สัญญา swap ที่เคยถูกหักเครดิตแล้วภายหลังถูกยึด) → ยังอยู่ในคิวที่ 7,000 ทั้งสองสมุด
+      //     (สูตร all-types เดิมจะได้ 7,000 − 8,000 < 0 = หลุดคิวทั้งที่หนี้มีจริง)
+      await prisma.interCoSettlementItem.updateMany({
+        where: { batchId: b1.id, contractId: g },
+        data: { swapCreditAmount: dec('8000.00') },
+      });
+      rows = await pendingService.getPendingDeviceReturns();
+      const netRow = rows.find((r) => r.contractId === g)!;
+      expect(netRow).toBeDefined();
+      expect(netRow.deviceReturnGl.toFixed(2)).toBe('7000.00');
+      expect(netRow.shopDeviceReturnGl.toFixed(2)).toBe('7000.00');
+
+      // cleanup ของเทสนี้เอง — deduction สังเคราะห์ที่ไม่มี GL หนุนต้องไม่ค้างไปกวน
+      // Σ settledDeduction ทั้งตารางของ getTypedAccountDrift (Task 5)
+      await prisma.interCoSettlementItem.delete({ where: { id: gateItem.id } });
+      await prisma.interCoSettlementItem.deleteMany({ where: { batchId: b1.id } });
+      await prisma.interCoSettlementBatch.deleteMany({ where: { id: { in: [b1.id, b2.id] } } });
     });
   });
 });

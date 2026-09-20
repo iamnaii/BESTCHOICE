@@ -550,9 +550,28 @@ export class IntercoSettlementService {
     });
   }
 
+  /** A stale lifecycle read must not rewind POSTED status or replace its item evidence. */
+  private async runLifecycleTransaction<T>(
+    run: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.prisma.$transaction(run, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (err) {
+      // SSI can reject during a write or at commit; retain existing role/status errors.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+        throw new ConflictException(
+          'มีการบันทึกรายการนี้พร้อมกันจากอีกจุดหนึ่ง (write conflict) — กรุณาลองใหม่อีกครั้ง',
+        );
+      }
+      throw err;
+    }
+  }
+
   /** DRAFT-only, maker-only, full re-snapshot per spec §6 ("DRAFT แก้ได้"). */
   async updateBatch(id: string, dto: CreateBatchDto, userId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.runLifecycleTransaction(async (tx) => {
       const batch = await tx.interCoSettlementBatch.findUnique({ where: { id } });
       if (!batch || batch.deletedAt) throw new NotFoundException('ไม่พบรอบจ่าย');
       if (batch.makerId !== userId) {
@@ -623,7 +642,7 @@ export class IntercoSettlementService {
   }
 
   async submitBatch(id: string, userId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.runLifecycleTransaction(async (tx) => {
       const batch = await tx.interCoSettlementBatch.findUnique({
         where: { id },
         include: { items: { where: { deletedAt: null } } },
@@ -687,7 +706,7 @@ export class IntercoSettlementService {
   }
 
   async withdrawBatch(id: string, userId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.runLifecycleTransaction(async (tx) => {
       const batch = await tx.interCoSettlementBatch.findUnique({ where: { id } });
       if (!batch || batch.deletedAt) throw new NotFoundException('ไม่พบรอบจ่าย');
       if (batch.makerId !== userId) {
@@ -704,6 +723,7 @@ export class IntercoSettlementService {
         data: { status: 'DRAFT' },
       });
 
+      // Atomic lifecycle evidence must roll back with the batch; direct tx audit bypasses Merkle chaining.
       await tx.auditLog.create({
         data: {
           userId,
@@ -725,7 +745,7 @@ export class IntercoSettlementService {
    * cancelled this way (reverse an existing POSTED batch instead — Task 4).
    */
   async cancelBatch(id: string, userId: string) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.runLifecycleTransaction(async (tx) => {
       const batch = await tx.interCoSettlementBatch.findUnique({ where: { id } });
       if (!batch || batch.deletedAt) throw new NotFoundException('ไม่พบรอบจ่าย');
       if (batch.status !== 'DRAFT' && batch.status !== 'PENDING_APPROVAL') {
@@ -737,6 +757,7 @@ export class IntercoSettlementService {
         data: { status: 'CANCELLED' },
       });
 
+      // Atomic lifecycle evidence must roll back with the batch; direct tx audit bypasses Merkle chaining.
       await tx.auditLog.create({
         data: {
           userId,
@@ -1688,6 +1709,17 @@ export class IntercoSettlementService {
         throw new BadRequestException(kind.exceedMessage(amountStr, candidate.net.toFixed(2)));
       }
 
+      // DEVICE_RETURN follows the caller-owned period policy. Check both books
+      // after dedupe and share this instant with both JEs, including at month boundaries.
+      const postedAt = type === 'DEVICE_RETURN' ? new Date() : undefined;
+      let shopCompanyId: string | undefined;
+      if (postedAt) {
+        const financeCompanyId = await this.companyResolver.getFinanceCompanyId(tx);
+        shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+        await this.guardPeriodOpen(tx, postedAt, financeCompanyId, 'FINANCE');
+        await this.guardPeriodOpen(tx, postedAt, shopCompanyId, 'SHOP');
+      }
+
       // FINANCE leg — template เดิม + typeStamp (guards/idempotency ของ
       // template เดินครบทุกด่าน รวม gate (ii) untyped − POSTED deductions)
       const finance = await this.shopCollectTemplate.execute(
@@ -1698,6 +1730,7 @@ export class IntercoSettlementService {
           postedById: userId,
           requestId: dto.requestId,
           typeStamp: type,
+          ...(postedAt ? { postedAt } : {}),
         },
         tx,
       );
@@ -1711,12 +1744,13 @@ export class IntercoSettlementService {
       }
 
       // SHOP leg — Dr S21-1104 / Cr เงินสด/ธนาคาร SHOP
-      const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+      shopCompanyId ??= await this.companyResolver.getShopCompanyId(tx);
       let shopJe: { id: string; entryNumber: string };
       try {
         shopJe = await this.journalAuto.createAndPost(
           {
             description: kind.shopDescription(candidate.contractNumber),
+            ...(postedAt ? { postedAt } : {}),
             reference: `${contractId}:${kind.shopFlow}:${dto.requestId}`,
             companyId: shopCompanyId,
             metadata: {

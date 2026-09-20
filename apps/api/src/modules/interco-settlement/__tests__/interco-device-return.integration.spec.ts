@@ -1043,6 +1043,8 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
       expect(posted.status).toBe('POSTED');
       goldenFinanceJeId = posted.financeJournalEntryId!;
       goldenShopJeId = posted.shopJournalEntryId!;
+      expect(goldenFinanceJeId, 'golden approval must produce a FINANCE JE').toBeTruthy();
+      expect(goldenShopJeId, 'golden approval must produce a SHOP JE').toBeTruthy();
 
       const je = await prisma.journalEntry.findUniqueOrThrow({
         where: { id: goldenFinanceJeId },
@@ -1095,6 +1097,14 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
     }, 120_000);
 
     it('metadata.items ของทั้งสองใบ: type DEVICE_RETURN + deviceReturn 7000.00; ไม่ stamp contractId/shopReceivableType top-level', async () => {
+      expect(
+        goldenFinanceJeId,
+        'requires successful preceding golden approval (FINANCE JE)',
+      ).toBeTruthy();
+      expect(
+        goldenShopJeId,
+        'requires successful preceding golden approval (SHOP JE)',
+      ).toBeTruthy();
       const [financeJe, shopJe] = await Promise.all([
         prisma.journalEntry.findUniqueOrThrow({ where: { id: goldenFinanceJeId } }),
         prisma.journalEntry.findUniqueOrThrow({ where: { id: goldenShopJeId } }),
@@ -1131,6 +1141,8 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
     });
 
     it('residual alarm เงียบหลัง approve (typed gross 7,000 − Σ POSTED deduction 7,000 = 0)', async () => {
+      expect(goldenFinanceJeId, 'requires successful preceding golden approval').toBeTruthy();
+      expect(goldenBatchId, 'requires a golden batch before residual queries').toBeTruthy();
       const svc = settlementService as unknown as {
         alarmNettingResiduals(batchId: string): Promise<void>;
       };
@@ -1284,6 +1296,15 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
     }, 180_000);
 
     it('reverse → X กลับเข้าคิวที่ 7,000, Y กลับเข้าคิวรอจ่าย, mirror ครอบบรรทัดหักเอง, บัญชีกลับเท่าก่อน approve', async () => {
+      expect(goldenBatchId, 'requires a golden batch before reversal').toBeTruthy();
+      expect(
+        goldenFinanceJeId,
+        'requires successful preceding golden approval (FINANCE JE)',
+      ).toBeTruthy();
+      expect(
+        goldenShopJeId,
+        'requires successful preceding golden approval (SHOP JE)',
+      ).toBeTruthy();
       const preReverse2107 = await wholeAccountBalance('11-2107');
       const reversed = await settlementService.reverseBatch(
         goldenBatchId,
@@ -1645,6 +1666,338 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
       expect((audit!.newValue as Record<string, unknown>).recallNetBefore).toBe('11000.00');
       expect((await recallFinanceBalance(prisma, r)).toFixed(2)).toBe('0.00');
     }, 120_000);
+  });
+  describe('DEVICE_RETURN cash accounting periods', () => {
+    // Date-only clock leaves Prisma/network timers real. At local noon on the last
+    // day, grace=0 has expired; default grace=5 still permits the closed month.
+    const postingDate = new Date(2026, 8, 30, 12);
+    async function withPeriods(
+      closedBook: 'FINANCE' | 'SHOP' | undefined,
+      grace: string,
+      run: () => Promise<void>,
+    ) {
+      const originals = await prisma.accountingPeriod.findMany({
+        where: { companyId: { in: [financeId, shopId] }, year: 2026, month: 9 },
+      });
+      const config = await prisma.systemConfig.findUnique({ where: { key: 'period_grace_days' } });
+      const insertedIds: string[] = [];
+      const changedIds: string[] = [];
+      let changedConfig = false;
+      try {
+        for (const [book, companyId] of [
+          ['FINANCE', financeId],
+          ['SHOP', shopId],
+        ] as const) {
+          const original = originals.find((row) => row.companyId === companyId);
+          const status = book === closedBook ? 'CLOSED' : 'OPEN';
+          if (original) {
+            await prisma.accountingPeriod.update({ where: { id: original.id }, data: { status } });
+            changedIds.push(original.id);
+          } else {
+            const row = await prisma.accountingPeriod.create({
+              data: { companyId, year: 2026, month: 9, status },
+            });
+            insertedIds.push(row.id);
+          }
+        }
+        await prisma.systemConfig.upsert({
+          where: { key: 'period_grace_days' },
+          update: { value: grace },
+          create: { key: 'period_grace_days', value: grace },
+        });
+        changedConfig = true;
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(postingDate);
+        await run();
+      } finally {
+        vi.useRealTimers();
+        for (const original of originals.filter((row) => changedIds.includes(row.id))) {
+          await prisma.accountingPeriod.update({
+            where: { id: original.id },
+            data: { status: original.status, updatedAt: original.updatedAt },
+          });
+        }
+        await prisma.accountingPeriod.deleteMany({ where: { id: { in: insertedIds } } });
+        if (changedConfig) {
+          if (config) {
+            await prisma.systemConfig.update({
+              where: { id: config.id },
+              data: { value: config.value, updatedAt: config.updatedAt },
+            });
+          } else {
+            await prisma.systemConfig.delete({ where: { key: 'period_grace_days' } });
+          }
+        }
+      }
+    }
+
+    it.each(['FINANCE', 'SHOP'] as const)(
+      'rejects %s CLOSED past configured grace with no financial writes',
+      async (book) => {
+        const id = await seedBaseContract(book === 'FINANCE' ? 120 : 121, 'CLOSED_BAD_DEBT');
+        await seedDeviceReturnPair(id);
+        await withPeriods(book, '0', async () => {
+          const journalsBefore = await prisma.journalEntry.count();
+          const auditBefore = await prisma.auditLog.count({ where: { entityId: id } });
+          const result = await settlementService
+            .settleDeductionCash(
+              id,
+              'DEVICE_RETURN',
+              {
+                amount: 7000,
+                financeDepositAccountCode: '11-1201',
+                requestId: randomUUID(),
+              },
+              adminId,
+            )
+            .then(
+              () => undefined,
+              (error: unknown) => error,
+            );
+          expect
+            .soft(result)
+            .toMatchObject({
+              status: 400,
+              message: expect.stringContaining(`งวดบัญชีฝั่ง ${book} ปิดแล้ว`),
+            });
+          expect.soft(await prisma.journalEntry.count()).toBe(journalsBefore);
+          expect.soft(await prisma.auditLog.count({ where: { entityId: id } })).toBe(auditBefore);
+          expect.soft((await deviceReturnFinanceBalance(prisma, id)).toFixed(2)).toBe('7000.00');
+          expect.soft((await deviceReturnShopBalance(prisma, id)).toFixed(2)).toBe('7000.00');
+        });
+      },
+      60_000,
+    );
+
+    it('uses one captured posting timestamp in both books and dedupes a retry after closure', async () => {
+      const id = await seedBaseContract(122, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(id);
+      const dto = { amount: 7000, financeDepositAccountCode: '11-1201', requestId: randomUUID() };
+      await withPeriods(undefined, '0', async () => {
+        const realPost = journalAuto.createAndPost.bind(journalAuto);
+        const post = vi.spyOn(journalAuto, 'createAndPost').mockImplementation(async (...args) => {
+          const result = await realPost(...args);
+          vi.setSystemTime(new Date(postingDate.getTime() + 1000));
+          return result;
+        });
+        try {
+          const result = await settlementService.settleDeductionCash(
+            id,
+            'DEVICE_RETURN',
+            dto,
+            adminId,
+          );
+          const journals = await prisma.journalEntry.findMany({
+            where: { entryNumber: { in: [result.financeEntryNo, result.shopEntryNo] } },
+          });
+          expect(journals).toHaveLength(2);
+          for (const journal of journals) {
+            expect.soft(journal.entryDate).toEqual(postingDate);
+            expect.soft(journal.postedAt).toEqual(postingDate);
+          }
+          await prisma.accountingPeriod.updateMany({
+            where: { companyId: { in: [financeId, shopId] }, year: 2026, month: 9 },
+            data: { status: 'CLOSED' },
+          });
+          expect(
+            await settlementService.settleDeductionCash(id, 'DEVICE_RETURN', dto, adminId),
+          ).toEqual({ ...result, deduped: true });
+          expect(
+            await prisma.journalEntry.findMany({
+              where: { entryNumber: { in: [result.financeEntryNo, result.shopEntryNo] } },
+            }),
+          ).toEqual(journals);
+          expect(
+            await prisma.auditLog.count({
+              where: { entityId: id, action: 'INTERCO_DEVICE_RETURN_CASH_SETTLED' },
+            }),
+          ).toBe(1);
+        } finally {
+          post.mockRestore();
+        }
+      });
+    }, 60_000);
+
+    it('preserves CLOSED-within-default-grace posting behavior', async () => {
+      const id = await seedBaseContract(123, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(id);
+      await withPeriods('FINANCE', '5', async () => {
+        const result = await settlementService.settleDeductionCash(
+          id,
+          'DEVICE_RETURN',
+          {
+            amount: 7000,
+            financeDepositAccountCode: '11-1201',
+            requestId: randomUUID(),
+          },
+          adminId,
+        );
+        expect(result.deduped).toBe(false);
+        expect((await deviceReturnFinanceBalance(prisma, id)).toFixed(2)).toBe('0.00');
+        expect((await deviceReturnShopBalance(prisma, id)).toFixed(2)).toBe('0.00');
+      });
+    }, 60_000);
+  });
+
+  describe('lifecycle approval races — two independent connections', () => {
+    it.each(['withdraw', 'cancel', 'update', 'submit'] as const)(
+      'rejects stale %s and preserves the approved financial evidence',
+      async (operation) => {
+        const seq = 100 + ['withdraw', 'cancel', 'update', 'submit'].indexOf(operation) * 2;
+        const normal = await seedBaseContract(seq);
+        await seedNormalContract(normal);
+        const returned = await seedBaseContract(seq + 1, 'CLOSED_BAD_DEBT');
+        await seedDeviceReturnPair(returned);
+        const dto = {
+          contractIds: [normal],
+          deviceReturnContractIds: [returned],
+          transferDate: '2026-09-20',
+        };
+        const batch = await createTrackedBatch(dto, adminId);
+        if (operation === 'withdraw' || operation === 'cancel') {
+          await settlementService.submitBatch(batch.id, adminId);
+        }
+
+        const staleConnection = new PrismaClient();
+        let release!: () => void;
+        let arrived!: () => void;
+        const resume = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        const paused = new Promise<void>((resolve) => {
+          arrived = resolve;
+        });
+        const bounded = async <T>(promise: Promise<T>): Promise<T> => {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            return await Promise.race([
+              promise,
+              new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(new Error('Lifecycle barrier timed out')), 15_000);
+              }),
+            ]);
+          } finally {
+            clearTimeout(timer);
+          }
+        };
+        let hasPaused = false;
+        const staleClient = {
+          $transaction: (
+            run: (tx: Prisma.TransactionClient) => Promise<unknown>,
+            options: object,
+          ) =>
+            staleConnection.$transaction(
+              async (tx) => {
+                const wrapped = new Proxy(tx, {
+                  get(target, property) {
+                    const delegate = Reflect.get(target, property);
+                    const model =
+                      operation === 'update' ? 'interCoSettlementItem' : 'interCoSettlementBatch';
+                    if (property !== model) return delegate;
+                    return new Proxy(delegate, {
+                      get(modelTarget, method) {
+                        const original = Reflect.get(modelTarget, method);
+                        const barrierMethod = operation === 'update' ? 'deleteMany' : 'findUnique';
+                        if (method !== barrierMethod) return original;
+                        return async (...args: unknown[]) => {
+                          // Edit pauses after buildSnapshot, before it deletes any items.
+                          // Other transitions pause after the initial allowed-status read.
+                          if (hasPaused) return original.apply(modelTarget, args);
+                          hasPaused = true;
+                          const result =
+                            operation === 'update'
+                              ? undefined
+                              : await original.apply(modelTarget, args);
+                          arrived();
+                          await bounded(resume);
+                          return operation === 'update'
+                            ? original.apply(modelTarget, args)
+                            : result;
+                        };
+                      },
+                    });
+                  },
+                });
+                return run(wrapped);
+              },
+              { ...options, timeout: 20_000 },
+            ),
+        };
+        const staleService = new IntercoSettlementService(
+          staleClient as never,
+          pendingService,
+          batchNumberService,
+          pairedJournal,
+          companyResolver,
+          journalAuto,
+          storageStub as never,
+          shopCollectTemplate,
+        );
+        const stale = (
+          operation === 'update'
+            ? staleService.updateBatch(batch.id, { ...dto, deviceReturnContractIds: [] }, adminId)
+            : operation === 'submit'
+              ? staleService.submitBatch(batch.id, adminId)
+              : operation === 'withdraw'
+                ? staleService.withdrawBatch(batch.id, adminId)
+                : staleService.cancelBatch(batch.id, adminId)
+        ).then(
+          (value) => ({ value, error: undefined }),
+          (error: unknown) => ({ value: undefined, error }),
+        );
+        const readEvidence = async () => ({
+          batch: await prisma.interCoSettlementBatch.findUniqueOrThrow({
+            where: { id: batch.id },
+            include: { items: { orderBy: { id: 'asc' } } },
+          }),
+          journals: await prisma.journalEntry.findMany({
+            where: { metadata: { path: ['settlementBatchId'], equals: batch.id } },
+            include: { lines: { orderBy: { id: 'asc' } } },
+            orderBy: { id: 'asc' },
+          }),
+          audits: await prisma.auditLog.findMany({
+            where: { entityId: batch.id },
+            orderBy: { id: 'asc' },
+          }),
+        });
+        try {
+          await bounded(paused);
+          if (operation === 'update' || operation === 'submit') {
+            await settlementService.submitBatch(batch.id, adminId);
+          }
+          await settlementService.approveBatch(batch.id, adminId);
+          const approved = await readEvidence();
+          expect(approved.batch.status).toBe('POSTED');
+          expect(approved.journals).toHaveLength(2);
+          release();
+          const outcome = await bounded(stale);
+          expect.soft(outcome.error).toBeInstanceOf(ConflictException);
+          if (outcome.error instanceof ConflictException) {
+            expect(outcome.error.getStatus()).toBe(409);
+            expect(outcome.error.message).toMatch(/กรุณาลองใหม่/);
+          }
+          expect.soft(await readEvidence()).toEqual(approved);
+          expect
+            .soft(
+              (await pendingService.getPendingDeviceReturns()).some(
+                (r) => r.contractId === returned,
+              ),
+            )
+            .toBe(false);
+          expect
+            .soft((await pendingService.getPendingContracts()).some((r) => r.contractId === normal))
+            .toBe(false);
+        } finally {
+          release();
+          try {
+            await bounded(stale);
+          } finally {
+            await staleConnection.$disconnect();
+          }
+        }
+      },
+      60_000,
+    );
   });
 });
 

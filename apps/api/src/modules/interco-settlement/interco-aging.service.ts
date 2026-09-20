@@ -23,7 +23,7 @@ import { SHOP_RECEIVABLE_TYPES } from '../journal/shop-receivable-type.util';
  * IN-list ของ carve-out ทุกจุดสร้างจาก SHOP_RECEIVABLE_TYPES (Prisma.join) — เพิ่มประเภทที่ util
  * ที่เดียว (spec 2026-09-20 §6.2).
  *
- * ยอด "คงเหลือจริง" ของกลุ่มระหว่างกิจการ = typed gross ทั้งสองประเภทรวมกัน
+ * ยอด "คงเหลือจริง" ของกลุ่มระหว่างกิจการ = typed gross ทั้งสามประเภทรวมกัน
  * ลบ Σ deduction ของ item ใน batch POSTED (สถาปัตยกรรม gross-lens: ขา Cr ของ
  * batch ไม่ stamp type/contractId จึงไม่ลด typed balance) — invariant ถือที่ระดับ
  * สัญญา ไม่ใช่ระดับประเภท (สัญญา swap ที่ถูกยกเลิกมีประวัติข้ามประเภท).
@@ -256,7 +256,7 @@ export type OverdueCheckable = Pick<
  * ฟังก์ชันนี้เท่านั้น ห้าม inline สูตรซ้ำ (drift = เตือนไม่ตรงกับที่รายงานโชว์).
  *
  * แขนของหนี้แยกกัน: กลุ่มระหว่างกิจการ (`intercoNet`, อายุจากวันตั้งหนี้ typed
- * SWAP_CREDIT/PAYOUT_RECALL) กับหน้าร้านรับเงินแทน (`shopCollect`) — ยอดต้อง
+ * SWAP_CREDIT/PAYOUT_RECALL/DEVICE_RETURN) กับหน้าร้านรับเงินแทน (`shopCollect`) — ยอดต้อง
  * มากกว่า 0.01 คู่กับอายุถึงเกณฑ์เสมอ (แถวที่โผล่เพราะ `bookMismatch` แต่ยอด
  * เป็นศูนย์ ไม่ใช่หนี้ค้าง).
  *
@@ -480,9 +480,9 @@ export class IntercoAgingService {
    * Task 3 (daily cron), Task 4 (reconcile cron) เรียก method นี้ตัวเดียว
    * ห้ามคำนวณเอง.
    *
-   * จำนวน query **คงที่** (4 ครั้ง — ไม่ขึ้นกับจำนวนสัญญา): Query A รวม 3
+   * จำนวน query **คงที่** (4 ครั้ง — ไม่ขึ้นกับจำนวนสัญญา): Query A รวม 4
    * typed sums + 2 MIN(posted_at) ของ 11-2107 ใน CASE เดียว, Query B รวม
-   * S21-1104 สองประเภทด้วย conditional group key, Query C = deductions
+   * S21-1104 สามประเภทด้วย conditional group key, Query C = deductions
    * groupBy, Query D = hydrate contract. ห้าม refactor กลับไปเรียก helper
    * ต่อสัญญาในลูป (N×5).
    *
@@ -585,7 +585,7 @@ export class IntercoAgingService {
    */
   private async buildAllRows(asOf: Date): Promise<ShopReceivableAgingRow[]> {
     // Query A — 11-2107 ทั้งบัญชี group by metadata.contractId: typed sums
-    // สามประเภท + MIN(posted_at) ของขา Dr (วันตั้งหนี้เก่าสุด) สองกลุ่ม.
+    // สี่ประเภท + MIN(posted_at) ของขา Dr (วันตั้งหนี้เก่าสุด) สองกลุ่ม.
     // WHERE กรองเฉพาะบรรทัดที่ classify ได้ (UNKNOWN ไม่เข้ารายงานนี้ —
     // เหมือน twins; drift ระดับบัญชีเป็นหน้าที่ reconcile totals).
     const financeRows = await this.prisma.$queryRaw<FinanceAgingRow[]>(Prisma.sql`

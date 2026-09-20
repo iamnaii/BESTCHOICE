@@ -653,6 +653,92 @@ describe('IntercoPendingService.getPendingDeviceReturns (ใบรับเค�
     expect(row.shopDeviceReturnGl.toNumber()).toBe(0);
   });
 
+  it('routes every DEVICE_RETURN query through the supplied transaction, never the root client', async () => {
+    const forbiddenRootCall = () => {
+      throw new Error('Root client escaped supplied transaction');
+    };
+    prisma.$queryRaw.mockImplementation(forbiddenRootCall);
+    prisma.interCoSettlementItem.findMany.mockImplementation(forbiddenRootCall);
+    prisma.contract.findMany.mockImplementation(forbiddenRootCall);
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ contract_id: 'tx-only', amount: '7000.00' }])
+        .mockResolvedValueOnce([{ contract_id: 'tx-only', amount: '7000.00' }]),
+      interCoSettlementItem: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            {
+              contractId: 'tx-only',
+              swapCreditAmount: new Prisma.Decimal('8000.00'),
+              recallAmount: new Prisma.Decimal('0.00'),
+              deviceReturnAmount: new Prisma.Decimal('3000.00'),
+            },
+          ]),
+      },
+      contract: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            {
+              id: 'tx-only',
+              contractNumber: 'TX-ONLY',
+              customer: { name: 'transaction customer' },
+            },
+          ]),
+      },
+    };
+    const [row] = await service.getPendingDeviceReturns(tx as never);
+    expect(row).toMatchObject({
+      contractId: 'tx-only',
+      contractNumber: 'TX-ONLY',
+      customerName: 'transaction customer',
+    });
+    expect(row.deviceReturnGl.toFixed(2)).toBe('4000.00');
+    expect(row.shopDeviceReturnGl.toFixed(2)).toBe('4000.00');
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.interCoSettlementItem.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.contract.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(prisma.interCoSettlementItem.findMany).not.toHaveBeenCalled();
+    expect(prisma.contract.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['6999.99', '0.01', false],
+    ['6999.98', '0.02', true],
+  ] as const)(
+    'same-type deduction %s leaves exact net %s (included=%s)',
+    async (deduction, net, included) => {
+      queueDeviceReturnLenses(
+        [{ contract_id: 'c-1', amount: '7000.00' }],
+        [{ contract_id: 'c-1', amount: '7000.00' }],
+      );
+      lookupC1();
+      prisma.interCoSettlementItem.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            contractId: 'c-1',
+            swapCreditAmount: new Prisma.Decimal('0'),
+            recallAmount: new Prisma.Decimal('0'),
+            deviceReturnAmount: new Prisma.Decimal(deduction),
+          },
+        ]);
+      const rows = await service.getPendingDeviceReturns();
+      expect(rows).toHaveLength(included ? 1 : 0);
+      if (included) {
+        expect(rows[0].deviceReturnGl.toFixed(2)).toBe(net);
+        expect(rows[0].shopDeviceReturnGl.toFixed(2)).toBe(net);
+      }
+      expect(prisma.interCoSettlementItem.findMany.mock.calls[1][0].where.batch.status).toBe(
+        'POSTED',
+      );
+    },
+  );
+
   it('getPendingRecalls ก็รวม deviceReturnAmount ใน Σ deduction (helper เดียวกัน)', async () => {
     queueDeviceReturnLenses(
       [{ contract_id: 'c-1', recall: 11000 }],

@@ -15,6 +15,8 @@ export interface ShopCollectSettlementInput {
   /** Amount to settle — must be ≤ outstanding 11-2107 balance + 0.01 tolerance. */
   amount: number | Decimal;
   postedById?: string;
+  /** Optional caller-validated instant shared with a paired posting. */
+  postedAt?: Date;
   /**
    * Client-generated UUID ต่อการกดยืนยันหนึ่งครั้ง — dedupe เฉพาะ retry ของคำขอเดิม
    * โดยไม่กลืนการโอนซ้ำยอดเท่ากันที่ตั้งใจ. ไม่ส่ง = fallback dedupe แบบเก่า
@@ -379,6 +381,7 @@ export class ShopCollectSettlementTemplate {
       const result = await this.journal.createAndPost(
         {
           description: text.description(contractLabel),
+          ...(input.postedAt ? { postedAt: input.postedAt } : {}),
           reference: input.requestId
             ? `${contractId}:shop-collect-settlement:${input.requestId}`
             : `${contractId}:shop-collect-settlement:${amountStr}`,

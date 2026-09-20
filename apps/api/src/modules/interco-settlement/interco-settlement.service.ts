@@ -21,6 +21,8 @@ import { CompanyResolverService } from '../journal/company-resolver.service';
 import { JournalAutoService, JeLineInput } from '../journal/journal-auto.service';
 import { glContractBalance } from '../journal/gl-contract-balance';
 import {
+  deviceReturnFinanceBalance,
+  deviceReturnShopBalance,
   recallFinanceBalance,
   recallShopBalance,
   swapCreditFinanceBalance,
@@ -625,7 +627,9 @@ export class IntercoSettlementService {
         throw new ForbiddenException('เฉพาะผู้สร้างรอบจึงจะถอนกลับได้');
       }
       if (batch.status !== 'PENDING_APPROVAL') {
-        throw new BadRequestException('ถอนกลับได้เฉพาะรอบที่รอการอนุมัติ (PENDING_APPROVAL) เท่านั้น');
+        throw new BadRequestException(
+          'ถอนกลับได้เฉพาะรอบที่รอการอนุมัติ (PENDING_APPROVAL) เท่านั้น',
+        );
       }
 
       const updated = await tx.interCoSettlementBatch.update({
@@ -735,7 +739,9 @@ export class IntercoSettlementService {
 
     if (mime === 'application/pdf') {
       // %PDF-
-      return buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46 && buf[4] === 0x2d;
+      return (
+        buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46 && buf[4] === 0x2d
+      );
     }
     if (mime === 'image/jpeg') {
       // FF D8 FF
@@ -901,25 +907,13 @@ export class IntercoSettlementService {
       const contractIds = batch.items.map((i) => i.contractId);
 
       // 2. re-check no item's contract got grabbed by another PENDING_APPROVAL/POSTED batch.
-      //    Type-aware per item (Phase 2 — same split as submitBatch): a RECALL
-      //    row's contract BY DEFINITION carries a permanent SETTLEMENT item in
-      //    some old POSTED batch (Flow C-2 = ยกเลิกหลังตัดจ่าย) — counting that
-      //    as a clash would make every batch with a recall row structurally
-      //    unapprovable. RECALL rows clash only with other RECALL items;
-      //    SETTLEMENT rows keep the any-type clash (double-pay guard).
-      const clashSettlementIds = batch.items
-        .filter((i) => i.itemType !== 'RECALL')
-        .map((i) => i.contractId);
-      const clashRecallIds = batch.items
-        .filter((i) => i.itemType === 'RECALL')
-        .map((i) => i.contractId);
-      const clashConditions: Prisma.InterCoSettlementItemWhereInput[] = [];
-      if (clashSettlementIds.length > 0) {
-        clashConditions.push({ contractId: { in: clashSettlementIds } });
-      }
-      if (clashRecallIds.length > 0) {
-        clashConditions.push({ contractId: { in: clashRecallIds }, itemType: 'RECALL' });
-      }
+      //    Type-aware per item (Phase 2 + ใบรับเครื่องคืน 2026-09-20 — same split as
+      //    submitBatch): a RECALL / DEVICE_RETURN row's contract BY DEFINITION carries a
+      //    permanent SETTLEMENT item in some old POSTED batch — counting that as a clash
+      //    would make every batch with a deduction-only row structurally unapprovable.
+      //    `buildClashConditions`: deduction-only rows clash only with items of the SAME
+      //    type; SETTLEMENT rows keep the any-type clash (double-pay guard).
+      const clashConditions = buildClashConditions(batch.items);
       if (clashConditions.length > 0) {
         const clashes = await tx.interCoSettlementItem.findMany({
           where: {
@@ -950,12 +944,16 @@ export class IntercoSettlementService {
         // table ตาม architecture ruling, ไม่ใช่ GL metadata): ส่วนที่เหลือต้อง
         // ยังคุ้มยอดหักของ item นี้ ไม่งั้น approve จะ Cr 11-2107 เกินของจริง
         // (บัญชีติดลบ / SHOP ได้เงินสองเด้ง).
-        const deduction = item.swapCreditAmount.plus(item.recallAmount);
+        const deduction = sumDeductions([item]);
         // Σ deduction ที่ batch POSTED **อื่น** เคยหักไปแล้ว (ทุก itemType) —
-        // ใช้ร่วมกันทั้งด่าน (i) และเช็ค NET ของแถว RECALL ด้านล่าง. batch
-        // ปัจจุบันยัง PENDING_APPROVAL จึงไม่เข้า filter POSTED โดยสถานะอยู่แล้ว
+        // ใช้ร่วมกันทั้งด่าน (i) และเช็ค NET ของแถว RECALL / DEVICE_RETURN ด้านล่าง.
+        // batch ปัจจุบันยัง PENDING_APPROVAL จึงไม่เข้า filter POSTED โดยสถานะอยู่แล้ว
         // แต่ exclude ด้วย `batchId: { not: id }` ให้ชัดตาม pattern ด่าน (i).
         let priorPostedDeductions = new Prisma.Decimal(0);
+        // same-type (spec §6.3 ฉบับตัดสิน): แถว DEVICE_RETURN เทียบ NET ที่หักเฉพาะ deviceReturnAmount
+        // ของ batch POSTED อื่น — เครดิตสวอป/เรียกคืนที่เคยหักไม่ลดค่าเครื่องคืน (สูตรเดียวกับ
+        // getPendingDeviceReturns / DEVICE_RETURN_DEDUCTION_COLUMNS)
+        let priorPostedDeviceReturnDeductions = new Prisma.Decimal(0);
         if (deduction.gt(0)) {
           const [untypedBal, priorItems] = await Promise.all([
             glContractBalance(tx, item.contractId, '11-2107', 'dr'),
@@ -966,17 +964,40 @@ export class IntercoSettlementService {
                 deletedAt: null,
                 batch: { status: 'POSTED', deletedAt: null },
               },
-              select: { swapCreditAmount: true, recallAmount: true },
+              select: { swapCreditAmount: true, recallAmount: true, deviceReturnAmount: true },
             }),
           ]);
-          priorPostedDeductions = priorItems.reduce(
-            (s, i) => s.plus(i.swapCreditAmount).plus(i.recallAmount),
+          priorPostedDeductions = sumDeductions(priorItems);
+          priorPostedDeviceReturnDeductions = priorItems.reduce(
+            (s, i) => s.plus(i.deviceReturnAmount),
             new Prisma.Decimal(0),
           );
+          // ด่าน (i) ยังเป็นระดับสัญญา (untyped − ทุกประเภท): สัญญา swap ที่เคยถูกหัก 8,000 แล้วถูกยึด
+          // มี untyped 8,000 + 7,000 − 8,000 = 7,000 ≥ ยอดหัก 7,000 → ผ่าน
           if (untypedBal.minus(priorPostedDeductions).lt(deduction.minus(DRIFT_TOLERANCE))) {
             driftedContractNumbers.push(item.contract.contractNumber);
             continue;
           }
+        }
+        if (item.itemType === 'DEVICE_RETURN') {
+          // แถว DEVICE_RETURN (ใบรับเครื่องคืน §6.3 ฉบับตัดสิน) — same-type NET (ต่างจากแถว RECALL
+          // ด้านล่างที่หักทุกประเภท): typed DEVICE_RETURN ทั้งสองสมุด − Σ deviceReturnAmount ที่
+          // batch POSTED อื่นหักไปแล้ว ต้องเท่ากับ snapshot ±0.01 (snapshot จาก
+          // getPendingDeviceReturns เป็น net สูตรเดียวกัน — ถ้าหักทุกประเภทที่นี่ รอบที่ถูกต้องของ
+          // สัญญา swap-แล้วถูกยึด จะ reject ทันที: 7,000 − 8,000 ≠ 7,000)
+          const [drFin, drShop] = await Promise.all([
+            deviceReturnFinanceBalance(tx, item.contractId),
+            deviceReturnShopBalance(tx, item.contractId),
+          ]);
+          const netFin = drFin.minus(priorPostedDeviceReturnDeductions);
+          const netShop = drShop.minus(priorPostedDeviceReturnDeductions);
+          if (
+            netFin.minus(item.deviceReturnAmount).abs().gt(DRIFT_TOLERANCE) ||
+            netShop.minus(item.deviceReturnAmount).abs().gt(DRIFT_TOLERANCE)
+          ) {
+            driftedContractNumbers.push(item.contract.contractNumber);
+          }
+          continue;
         }
         if (item.itemType === 'RECALL') {
           // RECALL rows have no payable/receivable snapshot of their own —
@@ -1065,6 +1086,7 @@ export class IntercoSettlementService {
         commission: i.commissionGl.toFixed(2),
         swapCredit: i.swapCreditAmount.toFixed(2),
         recall: i.recallAmount.toFixed(2),
+        deviceReturn: i.deviceReturnAmount.toFixed(2),
       }));
       const netTransferMetadata = (batch.netTransferAmount ?? batch.totalAmount).toFixed(2);
       const financeDescription = `จ่ายให้หน้าร้าน รอบ ${batch.batchNumber} (โอนจริง ${this.formatBkkDate(batch.transferDate)})`;
@@ -1240,9 +1262,10 @@ export class IntercoSettlementService {
    * ของสัญญานั้นใน batch สถานะ POSTED ทั้งหมด. ค่าปกติ = 0 พอดี (เครดิตถูกหัก
    * ครบรอบเดียว); > 0 = เครดิตงอกหลัง snapshot/หักไม่ครบ; < 0 = หักซ้ำ.
    *
-   * สูตร COMBINED ต่อสัญญา (Phase 3 Task 4 — ปิด carry b): typed gross =
-   * SWAP_CREDIT + PAYOUT_RECALL **รวมสองประเภท** ต่อสมุด, เทียบกับ Σ deduction
-   * ทุก itemType ใน batch POSTED. เหตุผล: สัญญา swap ที่ถูกยกเลิก (C-2) มี
+   * สูตร COMBINED ต่อสัญญา (Phase 3 Task 4 — ปิด carry b; + DEVICE_RETURN ใบรับเครื่องคืน
+   * 2026-09-20 §6.3): typed gross = SWAP_CREDIT + PAYOUT_RECALL + DEVICE_RETURN **รวมทุก
+   * ประเภทของกลุ่ม interco** ต่อสมุด, เทียบกับ Σ deduction ทุก itemType ใน batch POSTED.
+   * เหตุผล: สัญญา swap ที่ถูกยกเลิก (C-2) มี
    * ประวัติข้ามประเภทบนสัญญาเดียว — SWAP_CREDIT ถูก mirror ตอน cancel จน typed
    * เหลือ 0 ขณะที่ deduction 8,000 ของมันยังค้างถาวรใน item table, ส่วน
    * PAYOUT_RECALL ถือ gross 11,000 ของ redirect. เทียบทีละประเภทตาม itemType
@@ -1258,29 +1281,28 @@ export class IntercoSettlementService {
     });
     if (!batch || batch.status !== 'POSTED') return;
     for (const item of batch.items) {
-      const deduction = item.itemType === 'RECALL' ? item.recallAmount : item.swapCreditAmount;
+      const deduction = sumDeductions([item]);
       if (deduction.lte(0)) continue;
-      const [swapFin, swapShop, recFin, recShop] = await Promise.all([
+      const [swapFin, swapShop, recFin, recShop, drFin, drShop] = await Promise.all([
         swapCreditFinanceBalance(this.prisma, item.contractId),
         swapCreditShopBalance(this.prisma, item.contractId),
         recallFinanceBalance(this.prisma, item.contractId),
         recallShopBalance(this.prisma, item.contractId),
+        deviceReturnFinanceBalance(this.prisma, item.contractId),
+        deviceReturnShopBalance(this.prisma, item.contractId),
       ]);
-      const fin = swapFin.plus(recFin);
-      const shop = swapShop.plus(recShop);
-      // Σ deduction ของสัญญานี้ในทุก batch POSTED (รวมรอบนี้เอง)
+      const fin = swapFin.plus(recFin).plus(drFin);
+      const shop = swapShop.plus(recShop).plus(drShop);
+      // Σ deduction ของสัญญานี้ในทุก batch POSTED (รวมรอบนี้เอง) — ทุก itemType
       const postedItems = await this.prisma.interCoSettlementItem.findMany({
         where: {
           contractId: item.contractId,
           deletedAt: null,
           batch: { status: 'POSTED', deletedAt: null },
         },
-        select: { swapCreditAmount: true, recallAmount: true },
+        select: { swapCreditAmount: true, recallAmount: true, deviceReturnAmount: true },
       });
-      const postedDeduction = postedItems.reduce(
-        (s, i) => s.plus(i.swapCreditAmount).plus(i.recallAmount),
-        new Prisma.Decimal(0),
-      );
+      const postedDeduction = sumDeductions(postedItems);
       const finResidual = fin.minus(postedDeduction);
       const shopResidual = shop.minus(postedDeduction);
       if (finResidual.abs().gt('0.01') || shopResidual.abs().gt('0.01')) {
@@ -1507,9 +1529,15 @@ export class IntercoSettlementService {
       const shopDupe = await tx.journalEntry.findFirst({
         where: {
           AND: [
-            { metadata: { path: ['flow'], equals: RECALL_CASH_SHOP_FLOW } } as Prisma.JournalEntryWhereInput,
-            { metadata: { path: ['requestId'], equals: dto.requestId } } as Prisma.JournalEntryWhereInput,
-            { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['flow'], equals: RECALL_CASH_SHOP_FLOW },
+            } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['requestId'], equals: dto.requestId },
+            } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['contractId'], equals: contractId },
+            } as Prisma.JournalEntryWhereInput,
           ],
           deletedAt: null,
         },
@@ -1526,9 +1554,15 @@ export class IntercoSettlementService {
         const financeDupe = await tx.journalEntry.findFirst({
           where: {
             AND: [
-              { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
-              { metadata: { path: ['requestId'], equals: dto.requestId } } as Prisma.JournalEntryWhereInput,
-              { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+              {
+                metadata: { path: ['flow'], equals: 'shop-collect-settlement' },
+              } as Prisma.JournalEntryWhereInput,
+              {
+                metadata: { path: ['requestId'], equals: dto.requestId },
+              } as Prisma.JournalEntryWhereInput,
+              {
+                metadata: { path: ['contractId'], equals: contractId },
+              } as Prisma.JournalEntryWhereInput,
             ],
             deletedAt: null,
           },
@@ -1691,18 +1725,53 @@ export class IntercoSettlementService {
   }
 
   /**
+   * ยอดหัก + คำอธิบายบรรทัดหัก (FINANCE `Cr 11-2107` / SHOP `Dr S21-1104`) ของ item หนึ่งแถว
+   * ตามประเภท — แหล่งเดียวของ mapping itemType → คอลัมน์ snapshot/ข้อความ (ห้าม inline ternary
+   * ซ้ำ): SETTLEMENT = เครดิตเปลี่ยนเครื่อง (swap), RECALL = เรียกคืนยกเลิก (C-2),
+   * DEVICE_RETURN = ค่าเครื่องคืน (ใบรับเครื่องคืน 2026-09-20 §6.3).
+   */
+  private deductionOf(item: BatchWithItems['items'][number]): {
+    amount: Prisma.Decimal;
+    financeDescription: string;
+    shopDescription: string;
+  } {
+    const no = item.contract.contractNumber;
+    switch (item.itemType) {
+      case 'RECALL':
+        return {
+          amount: item.recallAmount,
+          financeDescription: `หักเรียกคืนจากยกเลิก ${no}`,
+          shopDescription: `ล้างเจ้าหนี้ FINANCE-เรียกคืนยกเลิก ${no}`,
+        };
+      case 'DEVICE_RETURN':
+        return {
+          amount: item.deviceReturnAmount,
+          financeDescription: `หักค่าเครื่องคืน ${no}`,
+          shopDescription: `ล้างเจ้าหนี้ FINANCE-ค่าเครื่องคืน ${no}`,
+        };
+      default:
+        return {
+          amount: item.swapCreditAmount,
+          financeDescription: `หักเครดิตเปลี่ยนเครื่อง ${no}`,
+          shopDescription: `ล้างเจ้าหนี้ FINANCE-ค่าเครื่องรับคืน ${no}`,
+        };
+    }
+  }
+
+  /**
    * Dr 21-1101 per SETTLEMENT contract (always) + Dr 21-1102 per contract
-   * (skip zero) + Cr 11-2107 per deduction (swap credit / recall — Phase 2
-   * หักกลบ, workbook จุดที่ 3) + Cr bank = netTransferAmount (skip when 0 —
-   * รอบที่หักจนเงินโอนจริงเป็นศูนย์ต้องไม่มีบรรทัดธนาคาร). RECALL rows carry
-   * no payable snapshot of their own — they contribute ONLY the Cr 11-2107
-   * leg (never a zero-amount Dr 21-1101 line).
+   * (skip zero) + Cr 11-2107 per deduction (swap credit / recall / device
+   * return — Phase 2 หักกลบ workbook จุดที่ 3 + ใบรับเครื่องคืน 2026-09-20 §6.3)
+   * + Cr bank = netTransferAmount (skip when 0 — รอบที่หักจนเงินโอนจริงเป็นศูนย์
+   * ต้องไม่มีบรรทัดธนาคาร). Deduction-only rows (RECALL / DEVICE_RETURN) carry
+   * no payable snapshot of their own — they contribute ONLY the Cr 11-2107 leg
+   * (never a zero-amount Dr 21-1101 line).
    */
   private buildFinanceLines(batch: BatchWithItems, description: string): JeLineInput[] {
     const zero = new Prisma.Decimal(0);
     const lines: JeLineInput[] = [];
     for (const item of batch.items) {
-      if (item.itemType === 'RECALL') continue;
+      if (!isPayableRow(item.itemType)) continue;
       lines.push({
         accountCode: '21-1101',
         dr: item.financedGl,
@@ -1721,16 +1790,13 @@ export class IntercoSettlementService {
       }
     }
     for (const item of batch.items) {
-      const deduction = item.itemType === 'RECALL' ? item.recallAmount : item.swapCreditAmount;
-      if (deduction.gt(0)) {
+      const deduction = this.deductionOf(item);
+      if (deduction.amount.gt(0)) {
         lines.push({
           accountCode: '11-2107',
           dr: zero,
-          cr: deduction,
-          description:
-            item.itemType === 'RECALL'
-              ? `หักเรียกคืนจากยกเลิก ${item.contract.contractNumber}`
-              : `หักเครดิตเปลี่ยนเครื่อง ${item.contract.contractNumber}`,
+          cr: deduction.amount,
+          description: deduction.financeDescription,
         });
       }
     }
@@ -1750,19 +1816,17 @@ export class IntercoSettlementService {
 
   /**
    * Dr shopBankCode = shopNetAmount (skip when 0) + Dr S21-1104 per deduction
-   * row (ล้างเจ้าหนี้ FINANCE ฝั่ง SHOP — Phase 2 หักกลบ, ทั้ง SWAP_CREDIT ของ
-   * settlement items และ RECALL rows) + Cr S11-3001 per-contract (always) +
-   * Cr S11-3002 per-contract (skip zero) — settlement legs ONLY over
-   * SETTLEMENT items with `legacyNoShop=false`. Empty array = no SHOP half at
-   * all (caller skips `postPaired` and posts FINANCE alone via
+   * row (ล้างเจ้าหนี้ FINANCE ฝั่ง SHOP — Phase 2 หักกลบ: SWAP_CREDIT ของ
+   * settlement items, RECALL rows และ DEVICE_RETURN rows) + Cr S11-3001
+   * per-contract (always) + Cr S11-3002 per-contract (skip zero) — settlement
+   * legs ONLY over SETTLEMENT items with `legacyNoShop=false`. Empty array = no
+   * SHOP half at all (caller skips `postPaired` and posts FINANCE alone via
    * `JournalAutoService`).
    */
   private buildShopLines(batch: BatchWithItems): JeLineInput[] {
     const zero = new Prisma.Decimal(0);
     const shopItems = batch.items.filter((i) => i.itemType === 'SETTLEMENT' && !i.legacyNoShop);
-    const deductionItems = batch.items.filter((i) =>
-      (i.itemType === 'RECALL' ? i.recallAmount : i.swapCreditAmount).gt(0),
-    );
+    const deductionItems = batch.items.filter((i) => this.deductionOf(i).amount.gt(0));
     if (shopItems.length === 0 && deductionItems.length === 0) return [];
 
     const lines: JeLineInput[] = [];
@@ -1778,15 +1842,12 @@ export class IntercoSettlementService {
       });
     }
     for (const item of deductionItems) {
-      const deduction = item.itemType === 'RECALL' ? item.recallAmount : item.swapCreditAmount;
+      const deduction = this.deductionOf(item);
       lines.push({
         accountCode: 'S21-1104',
-        dr: deduction,
+        dr: deduction.amount,
         cr: zero,
-        description:
-          item.itemType === 'RECALL'
-            ? `ล้างเจ้าหนี้ FINANCE-เรียกคืนยกเลิก ${item.contract.contractNumber}`
-            : `ล้างเจ้าหนี้ FINANCE-ค่าเครื่องรับคืน ${item.contract.contractNumber}`,
+        description: deduction.shopDescription,
       });
     }
     for (const item of shopItems) {

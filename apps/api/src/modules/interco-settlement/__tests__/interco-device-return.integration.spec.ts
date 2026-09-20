@@ -286,6 +286,45 @@ async function wholeAccountBalance(code: string): Promise<Decimal> {
   return new Decimal(String(rows[0]?.balance ?? 0));
 }
 
+/**
+ * สัญญา swap ตาม workbook Case 8 (payable 10,000+1,000 / SHOP legs เท่ากัน / เครดิตรับซื้อ 8,000):
+ * A.3 → 11-2107 [SWAP_CREDIT] (flow legacy + explicit stamp), A.4 → S21-1104 [SWAP_CREDIT] key
+ * ด้วย metadata.newContractId. ใช้เป็น "สัญญาที่เคยถูกหักเครดิตในรอบจ่าย แล้วภายหลังถูกยึด".
+ */
+async function seedSwapContract(id: string) {
+  await seed1a(id);
+  await seedShopLegs(id, '10000', '1000');
+  await journalAuto.createAndPost({
+    description: 'A.3 synthetic',
+    companyId: financeId,
+    metadata: {
+      flow: 'exchange-buyback-receivable-11-2107',
+      idempotencyKey: `ta3:${id}`,
+      contractId: id,
+      shopReceivableType: 'SWAP_CREDIT',
+    },
+    lines: [
+      { accountCode: '11-2107', dr: dec('8000'), cr: zero },
+      { accountCode: '21-1106', dr: zero, cr: dec('8000') },
+    ],
+  });
+  await journalAuto.createAndPost({
+    description: 'A.4 synthetic',
+    companyId: shopId,
+    metadata: {
+      flow: 'shop-exchange-return',
+      idempotencyKey: `ta4:${id}`,
+      contractId: `${id}-old`,
+      newContractId: id,
+      shopReceivableType: 'SWAP_CREDIT',
+    },
+    lines: [
+      { accountCode: 'S11-2002', dr: dec('8000'), cr: zero },
+      { accountCode: 'S21-1104', dr: zero, cr: dec('8000') },
+    ],
+  });
+}
+
 /** Minimal batch row (ไม่มี JE) — สำหรับ settled-gate/clash fixtures. */
 async function seedBatch(status: InterCoBatchStatus, seq: number) {
   const batch = await prisma.interCoSettlementBatch.create({
@@ -958,5 +997,331 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
       const rows = await pendingService.getPendingDeviceReturns();
       expect(rows.some((r) => r.contractId === xOld)).toBe(false);
     });
+  });
+  // ===========================================================================
+  // Task 8 — approve/reverse: golden §6.5 สองสมุด + drift + residual + reverse
+  // ===========================================================================
+  describe('approveBatch/reverseBatch — golden §6.5 (Task 8)', () => {
+    let goldenNormalId: string;
+    let goldenDrId: string;
+    let goldenBatchId: string;
+    let goldenFinanceJeId: string;
+    let goldenShopJeId: string;
+    let preApprove2107: Decimal;
+    let preApproveS21: Decimal;
+    let preApproveDrift: Awaited<ReturnType<IntercoAgingService['getTypedAccountDrift']>>;
+
+    beforeAll(async () => {
+      // Safety nets (convention ของ netting spec): SoD flag / งวด 2026-09 ที่ปิดจาก run ก่อน
+      await prisma.systemConfig.deleteMany({ where: { key: 'interco_maker_checker_enabled' } });
+      await prisma.accountingPeriod.deleteMany({
+        where: { companyId: { in: [shopId, financeId] }, year: 2026, month: 9 },
+      });
+      goldenNormalId = await seedBaseContract(20);
+      await seedNormalContract(goldenNormalId);
+      goldenDrId = await seedBaseContract(21, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(goldenDrId);
+    }, 120_000);
+
+    it('approve → FINANCE Dr 21-1101 10,000 · Dr 21-1102 1,000 / Cr 11-2107 7,000 · Cr 11-1201 4,000; SHOP Dr S21-1104 7,000 · Dr S11-1201 4,000 / Cr S11-3001 10,000 · Cr S11-3002 1,000', async () => {
+      preApprove2107 = await wholeAccountBalance('11-2107');
+      preApproveS21 = await wholeAccountBalance('S21-1104');
+      preApproveDrift = await agingService.getTypedAccountDrift();
+
+      const batch = await createTrackedBatch(
+        {
+          contractIds: [goldenNormalId],
+          deviceReturnContractIds: [goldenDrId],
+          transferDate: '2026-09-20',
+        },
+        adminId,
+      );
+      goldenBatchId = batch.id;
+      await settlementService.submitBatch(batch.id, adminId);
+      const posted = await settlementService.approveBatch(batch.id, adminId);
+      expect(posted.status).toBe('POSTED');
+      goldenFinanceJeId = posted.financeJournalEntryId!;
+      goldenShopJeId = posted.shopJournalEntryId!;
+
+      const je = await prisma.journalEntry.findUniqueOrThrow({
+        where: { id: goldenFinanceJeId },
+        include: { lines: true },
+      });
+      expect(sumSide(je.lines, '21-1101', 'dr').toFixed(2)).toBe('10000.00');
+      expect(sumSide(je.lines, '21-1102', 'dr').toFixed(2)).toBe('1000.00');
+      expect(sumSide(je.lines, '11-2107', 'cr').toFixed(2)).toBe('7000.00');
+      expect(sumSide(je.lines, '11-1201', 'cr').toFixed(2)).toBe('4000.00');
+      expect(je.lines).toHaveLength(4); // แถว DEVICE_RETURN ไม่สร้าง Dr 21-1101 ยอด 0
+      const cr2107 = je.lines.find((l) => l.accountCode === '11-2107')!;
+      expect(cr2107.description).toContain('หักค่าเครื่องคืน');
+
+      const shopJe = await prisma.journalEntry.findUniqueOrThrow({
+        where: { id: goldenShopJeId },
+        include: { lines: true },
+      });
+      expect(sumSide(shopJe.lines, 'S21-1104', 'dr').toFixed(2)).toBe('7000.00');
+      expect(sumSide(shopJe.lines, 'S11-1201', 'dr').toFixed(2)).toBe('4000.00');
+      expect(sumSide(shopJe.lines, 'S11-3001', 'cr').toFixed(2)).toBe('10000.00');
+      expect(sumSide(shopJe.lines, 'S11-3002', 'cr').toFixed(2)).toBe('1000.00');
+      expect(shopJe.lines).toHaveLength(4);
+      const drS21 = shopJe.lines.find((l) => l.accountCode === 'S21-1104')!;
+      expect(drS21.description).toContain('ค่าเครื่องคืน');
+
+      // เลนส์ gross + item gate: typed ไม่ขยับ, item POSTED = หักแล้ว, X หลุดคิว
+      expect((await deviceReturnFinanceBalance(prisma, goldenDrId)).toFixed(2)).toBe('7000.00');
+      expect((await deviceReturnShopBalance(prisma, goldenDrId)).toFixed(2)).toBe('7000.00');
+      const rows = await pendingService.getPendingDeviceReturns();
+      expect(rows.some((r) => r.contractId === goldenDrId)).toBe(false);
+      const pending = await pendingService.getPendingContracts();
+      expect(pending.some((p) => p.contractId === goldenNormalId)).toBe(false);
+
+      // ระดับบัญชี (trial balance): ขา Cr/Dr ของ batch นับปกติ
+      expect((await wholeAccountBalance('11-2107')).minus(preApprove2107).toFixed(2)).toBe(
+        '-7000.00',
+      );
+      expect((await wholeAccountBalance('S21-1104')).minus(preApproveS21).toFixed(2)).toBe(
+        '7000.00',
+      );
+
+      // กระทบยอดระดับบัญชี: drift ไม่ขยับ (accountTotal −7,000 = expected −7,000 ผ่าน settledDeduction +7,000)
+      const drift = await agingService.getTypedAccountDrift();
+      for (const code of ['11-2107', 'S21-1104']) {
+        const b = preApproveDrift.find((d) => d.accountCode === code)!;
+        const a = drift.find((d) => d.accountCode === code)!;
+        expect(a.settledDeduction.minus(b.settledDeduction).toFixed(2)).toBe('7000.00');
+        expect(a.drift.minus(b.drift).abs().lte('0.01')).toBe(true);
+      }
+    }, 120_000);
+
+    it('metadata.items ของทั้งสองใบ: type DEVICE_RETURN + deviceReturn 7000.00; ไม่ stamp contractId/shopReceivableType top-level', async () => {
+      const [financeJe, shopJe] = await Promise.all([
+        prisma.journalEntry.findUniqueOrThrow({ where: { id: goldenFinanceJeId } }),
+        prisma.journalEntry.findUniqueOrThrow({ where: { id: goldenShopJeId } }),
+      ]);
+      for (const [je, book] of [
+        [financeJe, 'FINANCE'],
+        [shopJe, 'SHOP'],
+      ] as const) {
+        const meta = je.metadata as {
+          flow?: string;
+          idempotencyKey?: string;
+          netTransferAmount?: string;
+          contractId?: unknown;
+          shopReceivableType?: unknown;
+          items?: Array<Record<string, string>>;
+        };
+        expect(meta.flow).toBe('interco-settlement-batch');
+        expect(meta.idempotencyKey).toBe(`interco:${goldenBatchId}:${book}`);
+        expect(meta.netTransferAmount).toBe('4000.00');
+        expect(meta.contractId).toBeUndefined();
+        expect(meta.shopReceivableType).toBeUndefined();
+        const drMeta = meta.items!.find((i) => i.contractId === goldenDrId)!;
+        expect(drMeta.type).toBe('DEVICE_RETURN');
+        expect(drMeta.deviceReturn).toBe('7000.00');
+        expect(drMeta.swapCredit).toBe('0.00');
+        expect(drMeta.recall).toBe('0.00');
+        expect(drMeta.financed).toBe('0.00');
+        const yMeta = meta.items!.find((i) => i.contractId === goldenNormalId)!;
+        expect(yMeta.type).toBe('SETTLEMENT');
+        expect(yMeta.deviceReturn).toBe('0.00');
+      }
+      // JE ทั้งสองใบไม่เข้าเลนส์ใด — classify = UNKNOWN (ตามสถาปัตยกรรม)
+      expect(classifyShopReceivable(financeJe.metadata)).toBe('UNKNOWN');
+    });
+
+    it('residual alarm เงียบหลัง approve (typed gross 7,000 − Σ POSTED deduction 7,000 = 0)', async () => {
+      const svc = settlementService as unknown as {
+        alarmNettingResiduals(batchId: string): Promise<void>;
+      };
+      const captureMessage = vi.mocked(Sentry.captureMessage);
+      captureMessage.mockClear();
+      await svc.alarmNettingResiduals(goldenBatchId);
+      expect(
+        captureMessage.mock.calls.filter(
+          ([msg]) => msg === 'Interco netting: residual balance after approve',
+        ),
+      ).toHaveLength(0);
+    });
+
+    it('drift guard: JE DEVICE_RETURN แทรกหลัง submit → approve reject (net 7,500 ≠ snapshot 7,000)', async () => {
+      const y = await seedBaseContract(22);
+      await seedNormalContract(y);
+      const x = await seedBaseContract(23, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(x);
+
+      const batch = await createTrackedBatch(
+        { contractIds: [y], deviceReturnContractIds: [x], transferDate: '2026-09-20' },
+        adminId,
+      );
+      await settlementService.submitBatch(batch.id, adminId);
+
+      await journalAuto.createAndPost({
+        description: 'DEVICE_RETURN drift synthetic',
+        companyId: financeId,
+        metadata: {
+          flow: 'test-jp5-device-return',
+          idempotencyKey: `tjp5drift:${x}`,
+          contractId: x,
+          shopReceivableType: 'DEVICE_RETURN',
+        },
+        lines: [
+          { accountCode: '11-2107', dr: dec('500'), cr: zero },
+          { accountCode: '21-1103', dr: zero, cr: dec('500') },
+        ],
+      });
+
+      await expect(settlementService.approveBatch(batch.id, adminId)).rejects.toThrow(
+        /เปลี่ยนไปจากตอนสร้างรอบ/,
+      );
+      const after = await prisma.interCoSettlementBatch.findUniqueOrThrow({
+        where: { id: batch.id },
+      });
+      expect(after.status).toBe('PENDING_APPROVAL');
+      expect(after.financeJournalEntryId).toBeNull();
+    }, 120_000);
+
+    it('approve ผ่านทั้งที่สัญญาค่าเครื่องคืนมี SETTLEMENT item ใน batch POSTED เดิม (ยึดหลังเคยถูกจ่าย — clash type-aware ที่ approve)', async () => {
+      const y = await seedBaseContract(24);
+      await seedNormalContract(y);
+      const x = await seedBaseContract(25, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(x);
+      const hist = await seedBatch('POSTED', 800);
+      await prisma.interCoSettlementItem.create({
+        data: {
+          batchId: hist.id,
+          contractId: x,
+          itemType: 'SETTLEMENT',
+          financedGl: dec('10000.00'),
+          commissionGl: dec('1000.00'),
+          shopFinancedGl: dec('10000.00'),
+          shopCommissionGl: dec('1000.00'),
+        },
+      });
+
+      const batch = await createTrackedBatch(
+        { contractIds: [y], deviceReturnContractIds: [x], transferDate: '2026-09-20' },
+        adminId,
+      );
+      await settlementService.submitBatch(batch.id, adminId);
+      const posted = await settlementService.approveBatch(batch.id, adminId);
+      expect(posted.status).toBe('POSTED');
+    }, 120_000);
+
+    it('กติกาที่ตัดสิน (same-type NET): swap ที่ถูกหักเครดิต 8,000 ในรอบ POSTED แล้วถูกยึด (ค่าเครื่องคืน 7,000) → คิวเห็น 7,000, รอบถัดไปหัก 7,000 ผ่าน drift guard, ทั้งบัญชีปิดพอดี, residual alarm เงียบ', async () => {
+      const pre2107 = await wholeAccountBalance('11-2107');
+      const preS21 = await wholeAccountBalance('S21-1104');
+
+      // (1) swap ปกติ → รอบจ่ายแรกหักเครดิต 8,000 → POSTED (A.3 ไม่ถูก mirror เพราะไม่ได้ยกเลิก)
+      const swap = await seedBaseContract(26);
+      await seedSwapContract(swap);
+      const b1 = await createTrackedBatch(
+        { contractIds: [swap], transferDate: '2026-09-20' },
+        adminId,
+      );
+      await settlementService.submitBatch(b1.id, adminId);
+      await settlementService.approveBatch(b1.id, adminId);
+      expect((await swapCreditFinanceBalance(prisma, swap)).toFixed(2)).toBe('8000.00'); // เลนส์ gross
+
+      // (2) ภายหลังถูกยึด → คู่ JE DEVICE_RETURN 7,000 (สัญญา → CLOSED_BAD_DEBT)
+      await prisma.contract.update({ where: { id: swap }, data: { status: 'CLOSED_BAD_DEBT' } });
+      await seedDeviceReturnPair(swap);
+
+      // คิวค่าเครื่องคืน: NET หักเฉพาะ deviceReturnAmount — เครดิตสวอป 8,000 ที่หักไปแล้วไม่เกี่ยว
+      // (สูตร all-types จะได้ 7,000 − 8,000 < 0 ⇒ หลุดคิวทั้งที่หนี้ค่าเครื่องคืนมีจริง)
+      let rows = await pendingService.getPendingDeviceReturns();
+      const row = rows.find((r) => r.contractId === swap)!;
+      expect(row).toBeDefined();
+      expect(row.deviceReturnGl.toFixed(2)).toBe('7000.00');
+      expect(row.shopDeviceReturnGl.toFixed(2)).toBe('7000.00');
+      // รายงานอายุ (สูตร combined ระดับสัญญา — ไม่เปลี่ยน): 8,000 + 7,000 − 8,000 = 7,000
+      const aging = await agingService.getShopReceivableAging();
+      const agingRow = aging.rows.find((r) => r.contractId === swap)!;
+      expect(agingRow.intercoNet.toFixed(2)).toBe('7000.00');
+      expect(agingRow.shopMirrorNet.toFixed(2)).toBe('7000.00');
+      expect(agingRow.bookMismatch).toBe(false);
+
+      // (3) รอบถัดไป: Y ปกติ + ค่าเครื่องคืนของ swap → approve ผ่าน (drift branch ใช้ same-type;
+      //     ด่าน (i) untyped 15,000 − 8,000 = 7,000 ≥ 7,000)
+      const y = await seedBaseContract(27);
+      await seedNormalContract(y);
+      const b2 = await createTrackedBatch(
+        { contractIds: [y], deviceReturnContractIds: [swap], transferDate: '2026-09-20' },
+        adminId,
+      );
+      expect(b2.items.find((i) => i.contractId === swap)!.deviceReturnAmount.toFixed(2)).toBe(
+        '7000.00',
+      );
+      await settlementService.submitBatch(b2.id, adminId);
+      const posted = await settlementService.approveBatch(b2.id, adminId);
+      expect(posted.status).toBe('POSTED');
+      const je = await prisma.journalEntry.findUniqueOrThrow({
+        where: { id: posted.financeJournalEntryId! },
+        include: { lines: true },
+      });
+      expect(sumSide(je.lines, '11-2107', 'cr').toFixed(2)).toBe('7000.00');
+      expect(sumSide(je.lines, '11-1201', 'cr').toFixed(2)).toBe('4000.00');
+
+      // ทั้งบัญชี: +8,000 (A.3) −8,000 (b1) +7,000 (JP5) −7,000 (b2) = 0 ทั้งสองสมุด
+      expect((await wholeAccountBalance('11-2107')).minus(pre2107).toFixed(2)).toBe('0.00');
+      expect((await wholeAccountBalance('S21-1104')).minus(preS21).toFixed(2)).toBe('0.00');
+      rows = await pendingService.getPendingDeviceReturns();
+      expect(rows.some((r) => r.contractId === swap)).toBe(false);
+
+      // residual alarm (สูตร combined — ไม่เปลี่ยน): typed 8,000 + 7,000 − Σ POSTED 15,000 = 0 ทั้งสองรอบ
+      const svc = settlementService as unknown as {
+        alarmNettingResiduals(batchId: string): Promise<void>;
+      };
+      const captureMessage = vi.mocked(Sentry.captureMessage);
+      captureMessage.mockClear();
+      await svc.alarmNettingResiduals(b1.id);
+      await svc.alarmNettingResiduals(b2.id);
+      expect(
+        captureMessage.mock.calls.filter(
+          ([msg]) => msg === 'Interco netting: residual balance after approve',
+        ),
+      ).toHaveLength(0);
+    }, 180_000);
+
+    it('reverse → X กลับเข้าคิวที่ 7,000, Y กลับเข้าคิวรอจ่าย, mirror ครอบบรรทัดหักเอง, บัญชีกลับเท่าก่อน approve', async () => {
+      const preReverse2107 = await wholeAccountBalance('11-2107');
+      const reversed = await settlementService.reverseBatch(
+        goldenBatchId,
+        adminId,
+        'ทดสอบย้อนกลับรอบหักค่าเครื่องคืน',
+      );
+      expect(reversed.status).toBe('REVERSED');
+
+      const rows = await pendingService.getPendingDeviceReturns();
+      expect(rows.find((r) => r.contractId === goldenDrId)!.deviceReturnGl.toFixed(2)).toBe(
+        '7000.00',
+      );
+      const pending = await pendingService.getPendingContracts();
+      expect(pending.some((p) => p.contractId === goldenNormalId)).toBe(true);
+
+      const reversals = await prisma.journalEntry.findMany({
+        where: {
+          metadata: { path: ['flow'], equals: 'interco-settlement-batch-reverse' } as never,
+          deletedAt: null,
+        },
+        include: { lines: true },
+      });
+      const revFin = reversals.find(
+        (je) => (je.metadata as { reversesEntryId?: string }).reversesEntryId === goldenFinanceJeId,
+      )!;
+      expect(revFin).toBeDefined();
+      expect(sumSide(revFin.lines, '11-2107', 'dr').toFixed(2)).toBe('7000.00');
+      expect(sumSide(revFin.lines, '11-1201', 'dr').toFixed(2)).toBe('4000.00');
+      expect(sumSide(revFin.lines, '21-1101', 'cr').toFixed(2)).toBe('10000.00');
+      const revShop = reversals.find(
+        (je) => (je.metadata as { reversesEntryId?: string }).reversesEntryId === goldenShopJeId,
+      )!;
+      expect(revShop).toBeDefined();
+      expect(sumSide(revShop.lines, 'S21-1104', 'cr').toFixed(2)).toBe('7000.00');
+      expect(sumSide(revShop.lines, 'S11-1201', 'cr').toFixed(2)).toBe('4000.00');
+
+      expect((await wholeAccountBalance('11-2107')).minus(preReverse2107).toFixed(2)).toBe(
+        '7000.00',
+      );
+    }, 120_000);
   });
 });

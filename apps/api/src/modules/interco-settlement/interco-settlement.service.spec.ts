@@ -76,9 +76,11 @@ describe('IntercoSettlementService', () => {
       interCoSettlementBatch: {
         create: jest.fn(),
         findUnique: jest.fn(),
-        update: jest.fn().mockImplementation(({ data }: { data: unknown }) =>
-          Promise.resolve({ id: 'batch-1', ...(data as Record<string, unknown>) }),
-        ),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }: { data: unknown }) =>
+            Promise.resolve({ id: 'batch-1', ...(data as Record<string, unknown>) }),
+          ),
       },
       interCoSettlementItem: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -107,9 +109,11 @@ describe('IntercoSettlementService', () => {
         findMany: jest.fn(),
         count: jest.fn(),
         findUnique: jest.fn(),
-        update: jest.fn().mockImplementation(({ data }: { data: unknown }) =>
-          Promise.resolve({ id: 'batch-1', ...(data as Record<string, unknown>) }),
-        ),
+        update: jest
+          .fn()
+          .mockImplementation(({ data }: { data: unknown }) =>
+            Promise.resolve({ id: 'batch-1', ...(data as Record<string, unknown>) }),
+          ),
       },
       journalEntry: { findUnique: jest.fn() },
     };
@@ -128,7 +132,10 @@ describe('IntercoSettlementService', () => {
       getShopCompanyId: jest.fn().mockResolvedValue('company-shop'),
     };
     const journalAuto = { createAndPost: jest.fn() };
-    storage = { upload: jest.fn().mockResolvedValue(undefined), delete: jest.fn().mockResolvedValue(undefined) };
+    storage = {
+      upload: jest.fn().mockResolvedValue(undefined),
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
 
     const mod: TestingModule = await Test.createTestingModule({
       providers: [
@@ -425,9 +432,9 @@ describe('IntercoSettlementService', () => {
         deletedAt: null,
       });
 
-      await expect(
-        service.updateBatch('batch-1', dto(), 'maker-1'),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.updateBatch('batch-1', dto(), 'maker-1')).rejects.toThrow(
+        BadRequestException,
+      );
       expect(tx.interCoSettlementItem.deleteMany).not.toHaveBeenCalled();
     });
 
@@ -439,9 +446,9 @@ describe('IntercoSettlementService', () => {
         deletedAt: null,
       });
 
-      await expect(
-        service.updateBatch('batch-1', dto(), 'someone-else'),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.updateBatch('batch-1', dto(), 'someone-else')).rejects.toThrow(
+        ForbiddenException,
+      );
     });
 
     it('re-snapshots by deleting existing items and recreating from the pending engine', async () => {
@@ -453,7 +460,11 @@ describe('IntercoSettlementService', () => {
         batchNumber: 'IC-20260801-0001',
       });
       pendingService.getPendingContracts.mockResolvedValue([
-        pendingRow({ contractId: 'c-3', financedGl: new Prisma.Decimal(2000), commissionGl: new Prisma.Decimal(200) }),
+        pendingRow({
+          contractId: 'c-3',
+          financedGl: new Prisma.Decimal(2000),
+          commissionGl: new Prisma.Decimal(200),
+        }),
       ]);
 
       await service.updateBatch('batch-1', dto({ contractIds: ['c-3'] }), 'maker-1');
@@ -492,9 +503,7 @@ describe('IntercoSettlementService', () => {
         items: [],
       });
 
-      await expect(service.submitBatch('batch-1', 'maker-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.submitBatch('batch-1', 'maker-1')).rejects.toThrow(BadRequestException);
     });
 
     it('rejects when a contract got grabbed by another PENDING_APPROVAL/POSTED batch since createBatch', async () => {
@@ -510,9 +519,7 @@ describe('IntercoSettlementService', () => {
         { contractId: 'c-1', contract: { contractNumber: 'CT-0001' } },
       ]);
 
-      await expect(service.submitBatch('batch-1', 'maker-1')).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(service.submitBatch('batch-1', 'maker-1')).rejects.toThrow(BadRequestException);
       await expect(service.submitBatch('batch-1', 'maker-1')).rejects.toThrow(/CT-0001/);
     });
 
@@ -584,24 +591,19 @@ describe('IntercoSettlementService', () => {
   });
 
   describe('cancelBatch', () => {
-    it.each(['POSTED', 'REVERSED', 'CANCELLED'])(
-      'blocks cancelling a %s batch',
-      async (status) => {
-        tx.interCoSettlementBatch.findUnique.mockResolvedValue({
-          id: 'batch-1',
-          status,
-          makerId: 'maker-1',
-          deletedAt: null,
-        });
+    it.each(['POSTED', 'REVERSED', 'CANCELLED'])('blocks cancelling a %s batch', async (status) => {
+      tx.interCoSettlementBatch.findUnique.mockResolvedValue({
+        id: 'batch-1',
+        status,
+        makerId: 'maker-1',
+        deletedAt: null,
+      });
 
-        await expect(service.cancelBatch('batch-1', 'anyone')).rejects.toThrow(
-          BadRequestException,
-        );
-      },
-    );
+      await expect(service.cancelBatch('batch-1', 'anyone')).rejects.toThrow(BadRequestException);
+    });
 
     it.each(['DRAFT', 'PENDING_APPROVAL'])(
-      'allows cancelling a %s batch regardless of who calls it (role gating is the controller\'s job)',
+      "allows cancelling a %s batch regardless of who calls it (role gating is the controller's job)",
       async (status) => {
         tx.interCoSettlementBatch.findUnique.mockResolvedValue({
           id: 'batch-1',
@@ -631,9 +633,9 @@ describe('IntercoSettlementService', () => {
         deletedAt: null,
       });
 
-      await expect(
-        service.uploadSlip('batch-1', uploadedFile(), 'someone-else'),
-      ).rejects.toThrow(ForbiddenException);
+      await expect(service.uploadSlip('batch-1', uploadedFile(), 'someone-else')).rejects.toThrow(
+        ForbiddenException,
+      );
       expect(storage.upload).not.toHaveBeenCalled();
     });
 
@@ -647,9 +649,9 @@ describe('IntercoSettlementService', () => {
           deletedAt: null,
         });
 
-        await expect(
-          service.uploadSlip('batch-1', uploadedFile(), 'maker-1'),
-        ).rejects.toThrow(BadRequestException);
+        await expect(service.uploadSlip('batch-1', uploadedFile(), 'maker-1')).rejects.toThrow(
+          BadRequestException,
+        );
         expect(storage.upload).not.toHaveBeenCalled();
       },
     );
@@ -732,15 +734,21 @@ describe('IntercoSettlementService', () => {
 
     /** Wires tx.journalLine.findMany so glContractBalance reproduces the fixture's snapshot exactly (drift guard passes). */
     function noDriftJournalLineMock() {
-      tx.journalLine.findMany.mockImplementation(({ where }: { where: { accountCode: string } }) => {
-        if (where.accountCode === '21-1101') {
-          return Promise.resolve([{ debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(100) }]);
-        }
-        if (where.accountCode === 'S11-3001') {
-          return Promise.resolve([{ debit: new Prisma.Decimal(100), credit: new Prisma.Decimal(0) }]);
-        }
-        return Promise.resolve([]); // 21-1102 / S11-3002 → 0, matches fixture
-      });
+      tx.journalLine.findMany.mockImplementation(
+        ({ where }: { where: { accountCode: string } }) => {
+          if (where.accountCode === '21-1101') {
+            return Promise.resolve([
+              { debit: new Prisma.Decimal(0), credit: new Prisma.Decimal(100) },
+            ]);
+          }
+          if (where.accountCode === 'S11-3001') {
+            return Promise.resolve([
+              { debit: new Prisma.Decimal(100), credit: new Prisma.Decimal(0) },
+            ]);
+          }
+          return Promise.resolve([]); // 21-1102 / S11-3002 → 0, matches fixture
+        },
+      );
     }
 
     it('maker-checker DEFAULT OFF (no SystemConfig row): the SAME person may approve the batch they created — approverId === makerId, both still recorded', async () => {
@@ -787,7 +795,7 @@ describe('IntercoSettlementService', () => {
       expect(tx.interCoSettlementBatch.update).not.toHaveBeenCalled();
     });
 
-    it("maker-checker ON but a DIFFERENT person approves → allowed (the flag only blocks maker === approver)", async () => {
+    it('maker-checker ON but a DIFFERENT person approves → allowed (the flag only blocks maker === approver)', async () => {
       tx.interCoSettlementBatch.findUnique.mockResolvedValue(approvableBatchFixture());
       noDriftJournalLineMock();
       tx.systemConfig.findUnique.mockResolvedValue({ value: 'true' });
@@ -878,6 +886,182 @@ describe('IntercoSettlementService', () => {
           extra: expect.objectContaining({ batchId: 'batch-1', userId: 'approver-1' }),
         }),
       );
+    });
+    // --- ใบรับเครื่องคืน 2026-09-20 §6.3 — แถวหักประเภทที่ 3 --------------------
+    describe('แถว DEVICE_RETURN', () => {
+      const D = (v: number) => new Prisma.Decimal(v);
+      /** Golden ย่อ: Y เจ้าหนี้ 100 (ไม่มีค่าคอม) + ค่าเครื่องคืน X 70 → โอนสุทธิ 30 ทั้งสองสมุด */
+      function fixtureWithDeviceReturn() {
+        const fixture = approvableBatchFixture();
+        fixture.items.push({
+          contractId: 'c-dr',
+          itemType: 'DEVICE_RETURN',
+          financedGl: D(0),
+          commissionGl: D(0),
+          shopFinancedGl: D(0),
+          shopCommissionGl: D(0),
+          legacyNoShop: false,
+          swapCreditAmount: D(0),
+          recallAmount: D(0),
+          deviceReturnAmount: D(70),
+          contract: { contractNumber: 'CT-0100' },
+        });
+        fixture.totalDeduction = D(70);
+        fixture.netTransferAmount = D(30);
+        fixture.shopNetAmount = D(30);
+        return fixture;
+      }
+      /** GL ตรง snapshot: 21-1101/S11-3001 = 100, untyped 11-2107 ของ c-dr = 70 (ด่าน i), typed ตามข้อความ SQL */
+      function glMocks(typedDeviceReturn: number) {
+        tx.journalLine.findMany.mockImplementation(
+          ({ where }: { where: { accountCode: string } }) => {
+            if (where.accountCode === '21-1101')
+              return Promise.resolve([{ debit: D(0), credit: D(100) }]);
+            if (where.accountCode === 'S11-3001')
+              return Promise.resolve([{ debit: D(100), credit: D(0) }]);
+            if (where.accountCode === '11-2107')
+              return Promise.resolve([{ debit: D(70), credit: D(0) }]);
+            return Promise.resolve([]);
+          },
+        );
+        // sumTyped ส่ง Prisma.Sql เข้า $queryRaw — แยกประเภทจากข้อความ: DEVICE_RETURN = typed ของ
+        // c-dr, ที่เหลือ (SWAP_CREDIT ของ c-1) = 0 ไม่งั้น branch (ข) จะเห็นเครดิต nettable ปลอม
+        tx.$queryRaw.mockImplementation((sql: Prisma.Sql) => {
+          const text = sql.strings.join('');
+          return Promise.resolve([
+            { balance: text.includes("= 'DEVICE_RETURN'") ? typedDeviceReturn : 0 },
+          ]);
+        });
+      }
+      const tuples = (
+        lines: Array<{
+          accountCode: string;
+          dr: Prisma.Decimal;
+          cr: Prisma.Decimal;
+          description?: string;
+        }>,
+      ) => lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2), l.description]);
+
+      it('drift ผ่าน (typed net ทั้งสองสมุด = snapshot) → FINANCE Cr 11-2107 + SHOP Dr S21-1104 คำอธิบายค่าเครื่องคืน, ไม่มี Dr 21-1101 ยอด 0, metadata.items.deviceReturn', async () => {
+        tx.interCoSettlementBatch.findUnique.mockResolvedValue(fixtureWithDeviceReturn());
+        glMocks(70);
+        pairedJournal.postPaired.mockResolvedValue({
+          financeJournalEntryId: 'je-f',
+          shopJournalEntryId: 'je-s',
+        });
+
+        const posted = await service.approveBatch('batch-1', 'approver-1');
+        expect(posted.status).toBe('POSTED');
+
+        const args = pairedJournal.postPaired.mock.calls[0][0];
+        expect(tuples(args.finance.lines)).toEqual([
+          ['21-1101', '100.00', '0.00', 'ล้างเจ้าหนี้ยอดจัด CT-0001'],
+          ['11-2107', '0.00', '70.00', 'หักค่าเครื่องคืน CT-0100'],
+          ['11-1201', '0.00', '30.00', expect.stringContaining('จ่ายให้หน้าร้าน รอบ')],
+        ]);
+        expect(tuples(args.shop.lines)).toEqual([
+          ['S11-1201', '30.00', '0.00', expect.stringContaining('รับโอนจาก FINANCE รอบ')],
+          ['S21-1104', '70.00', '0.00', 'ล้างเจ้าหนี้ FINANCE-ค่าเครื่องคืน CT-0100'],
+          ['S11-3001', '0.00', '100.00', 'ล้างลูกหนี้ FINANCE-ยอดจัด CT-0001'],
+        ]);
+
+        for (const half of [args.finance, args.shop]) {
+          expect(half.metadata.netTransferAmount).toBe('30.00');
+          expect(half.metadata.contractId).toBeUndefined();
+          expect(half.metadata.shopReceivableType).toBeUndefined();
+          const drMeta = half.metadata.items.find(
+            (i: { contractId: string }) => i.contractId === 'c-dr',
+          );
+          expect(drMeta).toEqual({
+            contractId: 'c-dr',
+            type: 'DEVICE_RETURN',
+            financed: '0.00',
+            commission: '0.00',
+            swapCredit: '0.00',
+            recall: '0.00',
+            deviceReturn: '70.00',
+          });
+          const yMeta = half.metadata.items.find(
+            (i: { contractId: string }) => i.contractId === 'c-1',
+          );
+          expect(yMeta.deviceReturn).toBe('0.00');
+        }
+
+        // clash re-check type-aware (ชุดเดียวกับ submit)
+        const clashWhere = tx.interCoSettlementItem.findMany.mock.calls[0][0].where;
+        expect(clashWhere.OR).toEqual([
+          { contractId: { in: ['c-1'] } },
+          { contractId: { in: ['c-dr'] }, itemType: 'DEVICE_RETURN' },
+        ]);
+      });
+
+      it('drift: typed DEVICE_RETURN net (60) ≠ snapshot (70) → reject ไม่โพสต์', async () => {
+        tx.interCoSettlementBatch.findUnique.mockResolvedValue(fixtureWithDeviceReturn());
+        glMocks(60);
+        await expect(service.approveBatch('batch-1', 'approver-1')).rejects.toThrow(
+          /CT-0100.*เปลี่ยนไปจากตอนสร้างรอบ/,
+        );
+        expect(pairedJournal.postPaired).not.toHaveBeenCalled();
+        expect(tx.interCoSettlementBatch.update).not.toHaveBeenCalled();
+      });
+
+      it('ด่าน (i): untyped 11-2107 ของสัญญา (60) ไม่คุ้มยอดหัก (70) → reject (กันหักซ้ำกับใบรับโอน)', async () => {
+        tx.interCoSettlementBatch.findUnique.mockResolvedValue(fixtureWithDeviceReturn());
+        glMocks(70);
+        tx.journalLine.findMany.mockImplementation(
+          ({ where }: { where: { accountCode: string } }) => {
+            if (where.accountCode === '21-1101')
+              return Promise.resolve([{ debit: D(0), credit: D(100) }]);
+            if (where.accountCode === 'S11-3001')
+              return Promise.resolve([{ debit: D(100), credit: D(0) }]);
+            if (where.accountCode === '11-2107')
+              return Promise.resolve([{ debit: D(70), credit: D(10) }]);
+            return Promise.resolve([]);
+          },
+        );
+        await expect(service.approveBatch('batch-1', 'approver-1')).rejects.toThrow(
+          /เปลี่ยนไปจากตอนสร้างรอบ/,
+        );
+        expect(pairedJournal.postPaired).not.toHaveBeenCalled();
+      });
+
+      it('same-type NET (spec §6.3 ฉบับตัดสิน): เครดิตสวอป 80 ที่รอบ POSTED อื่นหักไปแล้วไม่ลดค่าเครื่องคืน 70 → approve ผ่าน (สูตร all-types จะ reject)', async () => {
+        tx.interCoSettlementBatch.findUnique.mockResolvedValue(fixtureWithDeviceReturn());
+        glMocks(70);
+        // untyped 11-2107 ของ c-dr = A.3 80 + JP5 70 = 150 (ขา Cr ของรอบเก่าไม่ stamp contractId)
+        tx.journalLine.findMany.mockImplementation(
+          ({ where }: { where: { accountCode: string } }) => {
+            if (where.accountCode === '21-1101')
+              return Promise.resolve([{ debit: D(0), credit: D(100) }]);
+            if (where.accountCode === 'S11-3001')
+              return Promise.resolve([{ debit: D(100), credit: D(0) }]);
+            if (where.accountCode === '11-2107')
+              return Promise.resolve([{ debit: D(150), credit: D(0) }]);
+            return Promise.resolve([]);
+          },
+        );
+        // call 0 = clash re-check (ว่าง), call 1 = priorItems ของ c-dr: SETTLEMENT item รอบเก่าที่หักเครดิตสวอป 80
+        tx.interCoSettlementItem.findMany
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            { swapCreditAmount: D(80), recallAmount: D(0), deviceReturnAmount: D(0) },
+          ]);
+        pairedJournal.postPaired.mockResolvedValue({
+          financeJournalEntryId: 'je-f',
+          shopJournalEntryId: 'je-s',
+        });
+
+        // ด่าน (i): 150 − 80 = 70 ≥ 70 ✓ · branch DEVICE_RETURN: typed 70 − same-type 0 = 70 = snapshot ✓
+        const posted = await service.approveBatch('batch-1', 'approver-1');
+        expect(posted.status).toBe('POSTED');
+        const args = pairedJournal.postPaired.mock.calls[0][0];
+        expect(tuples(args.finance.lines)).toContainEqual([
+          '11-2107',
+          '0.00',
+          '70.00',
+          'หักค่าเครื่องคืน CT-0100',
+        ]);
+      });
     });
   });
 });

@@ -21,6 +21,17 @@ import { IntercoPendingService } from '../interco-pending.service';
 import { IntercoBatchNumberService } from '../interco-batch-number.service';
 import { IntercoSettlementService } from '../interco-settlement.service';
 import { IntercoAgingService } from '../interco-aging.service';
+import { SHOP_RECEIVABLE_TYPES, classifyShopReceivable } from '../../journal/shop-receivable-type.util';
+import {
+  deviceReturnFinanceBalance,
+  deviceReturnShopBalance,
+  recallFinanceBalance,
+  recallShopBalance,
+  shopCollectShopBalance,
+  shopCollectTypedBalance,
+  swapCreditFinanceBalance,
+  swapCreditShopBalance,
+} from '../interco-typed-balance';
 
 /**
  * ใบรับเครื่องคืน — ประเภทลูกหนี้ DEVICE_RETURN ครบทุกเลนส์ + แถวหักประเภทที่ 3 ในรอบจ่าย
@@ -185,6 +196,63 @@ async function seedNormalContract(id: string) {
   await seedShopLegs(id, '10000', '1000');
 }
 
+/**
+ * JE คู่ของใบรับเครื่องคืนหลังยืนยัน — shape ตรง producer ของ Phase 2 (RepossessionsService.createInTx):
+ *   FINANCE JP5 (golden §6.5 — สัญญา 17,000/12 งวด จ่าย 4 ยังไม่ accrual ราคาประเมิน 7,000):
+ *     Dr 11-2107 7,000 · Dr 11-2106 4,000 · Dr 21-2102 793.32 · Dr 51-1102 5,126.68
+ *     / Cr 11-2101 11,333.36 · Cr 11-2105 793.32 · Cr 21-2101 793.32 · Cr 41-1101 4,000  (Σ 16,920.00)
+ *   SHOP intake (ShopCollectShopLegs.postRepossessionIntake): Dr S11-2002 / Cr S21-1104 [ราคาประเมิน]
+ * ทั้งสองใบ stamp shopReceivableType DEVICE_RETURN + metadata.contractId (key ของทุกเลนส์).
+ * JP5 ยัง stamp shopReceivable '11-2107' (marker เก่าของ JP4/JP5) — explicit stamp ต้องชนะ
+ * ไม่งั้นเลนส์ SHOP_COLLECT นับซ้ำ (นี่คือเหตุที่ IN-list ต้องมี DEVICE_RETURN — Task 3).
+ * `shopAmount` ต่างจาก 7,000 = fixture สองสมุดไม่ตรง (guard tests).
+ */
+async function seedDeviceReturnPair(contractId: string, opts: { shopAmount?: string } = {}) {
+  const contract = await prisma.contract.findUniqueOrThrow({
+    where: { id: contractId },
+    select: { productId: true },
+  });
+  await journalAuto.createAndPost({
+    description: 'JP5 synthetic (ใบรับเครื่องคืน)',
+    companyId: financeId,
+    metadata: {
+      flow: 'test-jp5-device-return',
+      idempotencyKey: `tjp5dr:${contractId}`,
+      tag: 'JP5',
+      contractId,
+      shopReceivableType: 'DEVICE_RETURN',
+      shopReceivable: '11-2107',
+    },
+    lines: [
+      { accountCode: '11-2107', dr: dec('7000.00'), cr: zero },
+      { accountCode: '11-2106', dr: dec('4000.00'), cr: zero },
+      { accountCode: '21-2102', dr: dec('793.32'), cr: zero },
+      { accountCode: '51-1102', dr: dec('5126.68'), cr: zero },
+      { accountCode: '11-2101', dr: zero, cr: dec('11333.36') },
+      { accountCode: '11-2105', dr: zero, cr: dec('793.32') },
+      { accountCode: '21-2101', dr: zero, cr: dec('793.32') },
+      { accountCode: '41-1101', dr: zero, cr: dec('4000.00') },
+    ],
+  });
+  const shopAmount = dec(opts.shopAmount ?? '7000.00');
+  await journalAuto.createAndPost({
+    description: 'SHOP intake synthetic (ใบรับเครื่องคืน)',
+    companyId: shopId,
+    metadata: {
+      flow: 'shop-repossession-intake',
+      idempotencyKey: `shop-repossession-intake:${contractId}`,
+      contractId,
+      productId: contract.productId,
+      companyCode: 'SHOP',
+      shopReceivableType: 'DEVICE_RETURN',
+    },
+    lines: [
+      { accountCode: 'S11-2002', dr: shopAmount, cr: zero },
+      { accountCode: 'S21-1104', dr: zero, cr: shopAmount },
+    ],
+  });
+}
+
 interface LineRow {
   accountCode: string;
   debit: { toString(): string };
@@ -241,6 +309,8 @@ async function seedBatch(status: InterCoBatchStatus, seq: number) {
 
 let normalId: string;
 let schemaProbeId: string;
+/** สัญญา X — ยึดแล้ว (CLOSED_BAD_DEBT) มีคู่ JE DEVICE_RETURN 7,000/7,000 */
+let deviceReturnId: string;
 
 describe('ใบรับเครื่องคืน — DEVICE_RETURN ครบทุกเลนส์ + รอบจ่าย INTER-CO (real DB)', () => {
   beforeAll(async () => {
@@ -280,6 +350,8 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
     normalId = await seedBaseContract(1);
     await seedNormalContract(normalId);
     schemaProbeId = await seedBaseContract(99);
+    deviceReturnId = await seedBaseContract(2, 'CLOSED_BAD_DEBT');
+    await seedDeviceReturnPair(deviceReturnId);
   }, 120_000);
 
   afterAll(async () => {
@@ -367,5 +439,40 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
       },
     });
     expect(legacy.deviceReturnAmount.toFixed(2)).toBe('0.00');
+  });
+  // ===========================================================================
+  // Task 3 — typed balances + classify (SQL twins ของ classifyShopReceivable)
+  // ===========================================================================
+  describe('typed balances — DEVICE_RETURN แยกประเภทจริง (Task 3)', () => {
+    it('deviceReturnFinanceBalance/ShopBalance = 7,000 ทั้งสองสมุด; ประเภทอื่นของ X = 0; สัญญาปกติ = 0', async () => {
+      expect((await deviceReturnFinanceBalance(prisma, deviceReturnId)).toFixed(2)).toBe('7000.00');
+      expect((await deviceReturnShopBalance(prisma, deviceReturnId)).toFixed(2)).toBe('7000.00');
+
+      // explicit stamp ชนะ marker เก่า (shopReceivable '11-2107' บน JP5) — ห้ามรั่วเข้า SHOP_COLLECT
+      expect((await shopCollectTypedBalance(prisma, deviceReturnId)).toFixed(2)).toBe('0.00');
+      expect((await shopCollectShopBalance(prisma, deviceReturnId)).toFixed(2)).toBe('0.00');
+      expect((await swapCreditFinanceBalance(prisma, deviceReturnId)).toFixed(2)).toBe('0.00');
+      expect((await swapCreditShopBalance(prisma, deviceReturnId)).toFixed(2)).toBe('0.00');
+      expect((await recallFinanceBalance(prisma, deviceReturnId)).toFixed(2)).toBe('0.00');
+      expect((await recallShopBalance(prisma, deviceReturnId)).toFixed(2)).toBe('0.00');
+
+      expect((await deviceReturnFinanceBalance(prisma, normalId)).toFixed(2)).toBe('0.00');
+      expect((await deviceReturnShopBalance(prisma, normalId)).toFixed(2)).toBe('0.00');
+    });
+
+    it('classifyShopReceivable ของ JE ทั้งสองใบ = DEVICE_RETURN (anti-drift util ↔ SQL)', async () => {
+      const jes = await prisma.journalEntry.findMany({
+        where: { metadata: { path: ['contractId'], equals: deviceReturnId } as never, deletedAt: null },
+        include: { lines: true },
+      });
+      const typed = jes.filter((je) =>
+        je.lines.some((l) => l.accountCode === '11-2107' || l.accountCode === 'S21-1104'),
+      );
+      expect(typed).toHaveLength(2);
+      for (const je of typed) {
+        expect(classifyShopReceivable(je.metadata)).toBe('DEVICE_RETURN');
+      }
+      expect(SHOP_RECEIVABLE_TYPES).toContain('DEVICE_RETURN');
+    });
   });
 });

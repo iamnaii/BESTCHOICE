@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient } from '@prisma/client';
+import { SHOP_RECEIVABLE_TYPES } from '../journal/shop-receivable-type.util';
 
 type Client = Prisma.TransactionClient | PrismaClient;
 
@@ -69,7 +70,7 @@ export function swapCreditFinanceBalance(
     AND (je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
          OR ((je.metadata->>'shopReceivableType' IS NULL
               OR je.metadata->>'shopReceivableType' NOT IN
-                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+                 (${Prisma.join([...SHOP_RECEIVABLE_TYPES])}))
              AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107'))`,
   );
 }
@@ -113,7 +114,7 @@ export function shopCollectTypedBalance(
     AND (je.metadata->>'shopReceivableType' = 'SHOP_COLLECT'
          OR ((je.metadata->>'shopReceivableType' IS NULL
               OR je.metadata->>'shopReceivableType' NOT IN
-                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+                 (${Prisma.join([...SHOP_RECEIVABLE_TYPES])}))
              AND (je.metadata->>'collectedByShop' = 'true'
                   OR je.metadata->>'shopReceivable' = '11-2107'
                   OR je.metadata->>'flow' = 'shop-collect-settlement')))`,
@@ -161,5 +162,44 @@ export function recallShopBalance(client: Client, contractId: string): Promise<P
     Prisma.sql`
     je.metadata->>'contractId' = ${contractId}
     AND je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'`,
+  );
+}
+
+/**
+ * 11-2107 Σ(Dr−Cr) เฉพาะประเภท DEVICE_RETURN ของสัญญาหนึ่ง — ค่าเครื่องคืนจากใบรับเครื่องคืน
+ * (spec 2026-09-20 §6.2; producer = JP5 ตอน FINANCE ยืนยันใบ — Phase 2). explicit stamp
+ * เท่านั้น ไม่มี legacy fallback (ประเภทใหม่ — JP5 ยุคก่อนหน้า stamp SHOP_COLLECT และล้าง
+ * ทางเดิม forward-only ตาม spec §6.6). Key ด้วย metadata.contractId ทั้งสองสมุด.
+ *
+ * ผู้ใช้: ด่านใบรับโอน (`ShopCollectSettlementTemplate` §6.4), drift guard แถว DEVICE_RETURN
+ * ใน `approveBatch`, `settleDeductionCash`, residual alarm — SQL twin ของเลนส์
+ * `getPendingDeviceReturns` + `DEVICE_RETURN_COND` ในรายงานอายุ (แก้ที่ไหนต้องแก้ทุกที่).
+ */
+export function deviceReturnFinanceBalance(
+  client: Client,
+  contractId: string,
+): Promise<Prisma.Decimal> {
+  return sumTyped(
+    client,
+    '11-2107',
+    'dr-cr',
+    Prisma.sql`
+    je.metadata->>'contractId' = ${contractId}
+    AND je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'`,
+  );
+}
+
+/** S21-1104 Σ(Cr−Dr) เฉพาะ DEVICE_RETURN — key ด้วย metadata.contractId (ขาคู่ SHOP ของ JP5 ใบรับเครื่องคืน) */
+export function deviceReturnShopBalance(
+  client: Client,
+  contractId: string,
+): Promise<Prisma.Decimal> {
+  return sumTyped(
+    client,
+    'S21-1104',
+    'cr-dr',
+    Prisma.sql`
+    je.metadata->>'contractId' = ${contractId}
+    AND je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'`,
   );
 }

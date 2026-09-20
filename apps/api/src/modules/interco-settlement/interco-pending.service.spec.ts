@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Sql } from '@prisma/client/runtime/library';
 import { IntercoPendingService } from './interco-pending.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SHOP_RECEIVABLE_TYPES } from '../journal/shop-receivable-type.util';
 
 describe('IntercoPendingService.getPendingContracts', () => {
   let service: IntercoPendingService;
@@ -259,6 +261,22 @@ describe('IntercoPendingService.getPendingContracts', () => {
       // ขา SWAP_CREDIT ฝั่ง SHOP ห้าม fallback ตาม flow (มี stamp ตั้งแต่ Phase 2 Task 1)
       expect(buybackSql).not.toContain("'shop-exchange-return'");
     });
+
+    it('anti-drift: IN-list ของ carve-out "stamp ที่รู้จักชนะ fallback" สร้างจาก SHOP_RECEIVABLE_TYPES (Prisma.join)', async () => {
+      queueLenses(financeRow, [], [], []);
+      lookupC1();
+      await service.getPendingContracts();
+
+      // tagged template: calls[i] = [TemplateStringsArray, ...values] — Prisma.join คืน Sql
+      // ที่ .values = ลิสต์ประเภท ⇒ ลิสต์ในตัวอักษร SQL หายไป ต้องมาจากค่าคงที่เท่านั้น
+      const swapCall = prisma.$queryRaw.mock.calls[2] as unknown[];
+      const swapSql = (swapCall[0] as string[]).join('');
+      expect(swapSql).not.toContain("'SHOP_COLLECT'");
+      const joinArgs = swapCall.slice(1).filter((v) => v instanceof Sql) as Sql[];
+      expect(joinArgs).toHaveLength(1);
+      expect(joinArgs[0].values).toEqual([...SHOP_RECEIVABLE_TYPES]);
+      expect(joinArgs[0].values).toContain('DEVICE_RETURN');
+    });
   });
 });
 
@@ -429,5 +447,19 @@ describe('IntercoPendingService.getReconcileTotals', () => {
     // S21-1104 ทั้งบัญชี — ไม่กรอง type เลย
     expect(sqlAt(5)).toContain('S21-1104');
     expect(sqlAt(5)).not.toContain('metadata');
+  });
+  it('anti-drift: glSwapCreditTotal ใช้ IN-list จาก SHOP_RECEIVABLE_TYPES เช่นกัน', async () => {
+    prisma.$queryRaw
+      .mockResolvedValueOnce([]) // FINANCE lens (pending) — empty
+      .mockResolvedValueOnce([{ balance: 0 }])
+      .mockResolvedValueOnce([{ balance: 0 }])
+      .mockResolvedValueOnce([{ balance: 0 }]) // glSwapCreditTotal
+      .mockResolvedValueOnce([{ balance: 0 }])
+      .mockResolvedValueOnce([{ balance: 0 }]);
+    await service.getReconcileTotals();
+    const swapCall = prisma.$queryRaw.mock.calls[3] as unknown[];
+    const joinArgs = swapCall.slice(1).filter((v) => v instanceof Sql) as Sql[];
+    expect(joinArgs).toHaveLength(1);
+    expect(joinArgs[0].values).toEqual([...SHOP_RECEIVABLE_TYPES]);
   });
 });

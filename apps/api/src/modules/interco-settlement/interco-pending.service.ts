@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InterCoBatchStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SHOP_RECEIVABLE_TYPES } from '../journal/shop-receivable-type.util';
 
 /**
  * เมนู "จ่ายให้หน้าร้าน (INTER-CO)" — pending engine (คิวรอจ่าย).
@@ -206,7 +207,7 @@ export class IntercoPendingService {
         AND (je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
              OR ((je.metadata->>'shopReceivableType' IS NULL
                   OR je.metadata->>'shopReceivableType' NOT IN
-                     ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+                     (${Prisma.join([...SHOP_RECEIVABLE_TYPES])}))
                  AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107'))
       GROUP BY 1
     `;
@@ -505,7 +506,7 @@ export class IntercoPendingService {
         AND (je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
              OR ((je.metadata->>'shopReceivableType' IS NULL
                   OR je.metadata->>'shopReceivableType' NOT IN
-                     ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+                     (${Prisma.join([...SHOP_RECEIVABLE_TYPES])}))
                  AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107'))
     `;
     const glSwapCreditTotal = new Prisma.Decimal(String(swapCreditTotalRows[0]?.balance ?? 0));

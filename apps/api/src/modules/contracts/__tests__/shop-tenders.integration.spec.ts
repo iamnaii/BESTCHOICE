@@ -37,6 +37,7 @@ import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
 import { normalizeTenders } from '../../shop-tenders/shop-tender.util';
 import { ShopTendersReportService } from '../../shop-tenders/shop-tenders-report.service';
 import { bangkokDateString } from '../../../utils/date.util';
+import { countShopTenders, deleteShopTenders, findTenderSplitEntries, testTenderWhere } from '../../../cli/shop-tender-cleanup.util';
 import { seedVerifiedContractApproval } from './credit-approval.fixture';
 
 const prisma = new PrismaClient();
@@ -286,6 +287,25 @@ describe('สมุดเงินหน้าร้าน + บิลจ่า�
     expect(await accountNetSince(TILL, since)).toBe('2000.00');
     expect(await accountNetSince(BANK, since)).toBe('3000.00');
     expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('CANCELED');
+  });
+
+  it('cleanup ข้อมูลทดสอบ: ตามเจอ JE แยกยอดของสัญญาจาก tenderDocId + ใบกลับรายการ และลบแถวสมุดเงินได้ครบ', async () => {
+    // JE แยกยอดของสัญญาไม่ stamp contractId ⇒ cleanup ที่ตามด้วย contractId มองไม่เห็น — helper นี้คือทางเดียวที่เจอ
+    const { contract } = await seedDraftWithSplitDown('C1', { signed: false });
+    const byContractId = await prisma.journalEntry.findMany({
+      where: { metadata: { path: ['contractId'], equals: contract.id } as never }, select: { metadata: true } });
+    expect(byContractId.some((je) => (je.metadata as { flow?: string }).flow === 'shop-tender-split')).toBe(false);
+    expect(await findTenderSplitEntries(prisma, [contract.id])).toHaveLength(1);
+
+    await lifecycle.softDelete(contract.id, adminId); // คืนเงิน ⇒ mirror ของ JE แยกยอด + แถว OUT
+    expect(await findTenderSplitEntries(prisma, [contract.id])).toHaveLength(2);
+
+    const where = testTenderWhere([{ contractId: { in: [contract.id] } }]);
+    expect(await countShopTenders(prisma, where)).toBe(4); // IN 2 + OUT 2
+    expect(await deleteShopTenders(prisma, where)).toBe(4); // OUT ชี้ IN ผ่าน reversesTenderId (SET NULL) — ลบรวดเดียวได้
+    expect(await countShopTenders(prisma, where)).toBe(0);
+    expect(await countShopTenders(prisma, testTenderWhere([]))).toBe(0); // ไม่มีเงื่อนไข = ไม่แตะอะไรเลย (ไม่ใช่ลบทั้งตาราง)
+    expect(await deleteShopTenders(prisma, testTenderWhere([]))).toBe(0);
   });
 
   it('หน้าสรุปเงินรายวันอ่านแถวของสาขานี้ได้: ยอดลิ้นชัก แยกพนักงาน และป้ายเลขอ้างอิงซ้ำ', async () => {

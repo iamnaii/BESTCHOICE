@@ -36,6 +36,8 @@ export const KEEP_TABLES: ReadonlySet<string> = new Set([
   // ── องค์กร / คน ────────────────────────────────────────────────
   'company_info',
   'branches',
+  'room_credit_analyses',  // ผลวิเคราะห์เอกสารเครดิตจากห้องแชท — ฝั่งแชท (ลิงก์ไป credit_checks ถูกถอดผ่าน FK_DROP_RECREATE)
+  'room_credit_files',  // ไฟล์เอกสารที่ลูกค้าส่งในแชท — ประวัติแชท สร้างกลับไม่ได้
   'users',
   'employee_profiles',              // ทะเบียนพนักงาน (เงินเดือน/ปกส./เลขบัญชีโอน) 1-1 กับ users
   'shareholders',                   // ทะเบียนผู้ถือหุ้น บอจ.5 — ใช้ออก ภ.ง.ด.2
@@ -193,6 +195,13 @@ export const FK_DROP_RECREATE: ReadonlyArray<{
     column: 'attribution_id',
     why: 'กัน TRUNCATE ads_attributions CASCADE ลบห้องแชท + ข้อความทั้งหมด',
   },
+  {
+    // nullable + @unique: ผลวิเคราะห์เป็นข้อมูลฝั่งแชท (เก็บ) แต่ใบตรวจเครดิตที่มันสร้างถูกล้าง ⇒ ถอดลิงก์
+    // (หลังล้าง พนักงานสร้างใบตรวจเครดิตจากผลวิเคราะห์เดิมได้ใหม่)
+    table: 'room_credit_analyses',
+    column: 'credit_check_id',
+    why: 'กัน TRUNCATE credit_checks CASCADE ลบผลวิเคราะห์เอกสารเครดิตของห้องแชท',
+  },
 ];
 
 /**
@@ -242,6 +251,8 @@ export const PRODUCT_STATUS_REPORT_ONLY: ReadonlyArray<string> = [
 export const WIPE_TABLES: ReadonlySet<string> = new Set([
   // ── ไม่อยู่ใน schema.prisma แต่มีจริงบน DB (สร้างโดย migration ตรง ๆ) ──
   '_b5_active_hold_dedupe_backup',  // สำรอง product_reservations ก่อน dedupe — ต้นฉบับก็ล้าง
+  'credit_approvals',  // ผลอนุมัติวงเงิน — ลูกของ credit_checks + contracts (ล้างทั้งคู่, FK RESTRICT)
+  'payment_approval_requests',  // คำขออนุมัติรายการรับชำระ — อ้าง contractId/targetId ของสัญญาที่ถูกล้าง
   'quotes',                         // ใบเสนอราคา SP5 (migration 20260940000000) — model ถูกถอด
   'quote_items',                    // ออกจาก schema.prisma แล้ว เหลือแต่ตาราง = schema drift
 
@@ -357,6 +368,7 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'repair_tickets',
   'repossessions',
   'reviews',
+  'sale_cost_snapshots',  // ต้นทุน ณ วันขาย — ลูกของ sales
   'sales',
   'sales_commissions',
   'saving_plan_payments',
@@ -373,6 +385,7 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'tax_reports',
   'todo_comments',
   'todos',
+  'trade_in_credit_redemptions',  // การใช้เครดิตเครื่องเทิร์น — ลูกของ trade_ins / sales / contracts
   'trade_ins',
   'vendor_settlement_details',
   'warranty_audit_logs',

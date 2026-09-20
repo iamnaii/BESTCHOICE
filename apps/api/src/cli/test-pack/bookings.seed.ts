@@ -1,6 +1,7 @@
 import { TEST_DOC_PREFIX, testNote } from './_context';
 import { nextNumberFrom } from './_helpers';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+import { countShopTenders, deleteShopTenders, findTenderSplitEntries, testTenderWhere } from '../shop-tender-cleanup.util';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -115,6 +116,14 @@ export const bookingsSeeder: DomainSeeder = {
           select: { id: true, entryNumber: true },
         })
       : [];
+    // JE แยกยอดของมัดจำจ่ายผสมไม่ stamp bookingId (ดู findTenderSplitEntries) — ตามด้วย tenderDocId + mirror
+    const seenJe = new Set(jes.map((j) => j.id));
+    for (const je of await findTenderSplitEntries(ctx.prisma, rows.map((row) => row.id))) {
+      if (!seenJe.has(je.id)) jes.push(je);
+    }
+    // สมุดเงินหน้าร้านของใบจองทดสอบ (มัดจำที่รับ/คืน) — ลบถาวร ไม่งั้นค้างในหน้าสรุปเงินรายวันของจริง
+    const tenderWhere = testTenderWhere(rows.length ? [{ bookingId: { in: rows.map((row) => row.id) } }] : []);
+    const tenderCount = await countShopTenders(ctx.prisma, tenderWhere);
     // เลข JE คือหลักฐานบัญชี และ query เป็น JSON path — พิมพ์ให้คนกดเห็นก่อนลบถาวรเสมอ
     // ทั้ง dry-run และ live (M1, 2026-08-26)
     for (const j of jes) console.log(`     รายการบัญชีมัดจำใบจอง ${j.entryNumber} (ลบถาวร)`);
@@ -128,6 +137,7 @@ export const bookingsSeeder: DomainSeeder = {
           await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
           await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
         }
+        await deleteShopTenders(tx, tenderWhere);
         // BookingItem ไม่มี deletedAt ⇒ hard delete; ตัวใบจองมี deletedAt ⇒ soft delete
         await tx.bookingItem.deleteMany({ where: { bookingId: { in: rows.map((r) => r.id) } } });
         await tx.booking.updateMany({
@@ -137,7 +147,7 @@ export const bookingsSeeder: DomainSeeder = {
       });
     }
     return {
-      removed: { ใบจอง: rows.length, 'รายการบัญชีมัดจำใบจอง (ลบถาวร)': jes.length },
+      removed: { ใบจอง: rows.length, 'รายการบัญชีมัดจำใบจอง (ลบถาวร)': jes.length, 'แถวสมุดเงินหน้าร้าน (ลบถาวร)': tenderCount },
       warnings: rows.some((r) => r.convertedToSaleId)
         ? [
             'มีใบจองที่ถูกแปลงเป็นใบขายแล้ว — ยกเลิกใบขายนั้นก่อนล้าง ไม่งั้นใบขายจะชี้ไปใบจองที่ถูกลบ',

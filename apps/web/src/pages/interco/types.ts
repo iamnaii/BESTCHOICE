@@ -46,6 +46,32 @@ export interface RecallCandidate {
   shopRecallGl: string;
 }
 
+/** ค่าเครื่องคืนสุทธิ หลังหักเฉพาะ deviceReturnAmount ของรอบ POSTED */
+export interface DeviceReturnCandidate {
+  contractId: string;
+  contractNumber: string;
+  customerName: string;
+  /** 11-2107 typed DEVICE_RETURN net */
+  deviceReturnGl: string;
+  /** S21-1104 typed DEVICE_RETURN net */
+  shopDeviceReturnGl: string;
+}
+
+/** แถวรับเงินสดที่ normalize จากคิวเรียกคืนหรือค่าเครื่องคืน */
+export interface CashSettleCandidate {
+  contractId: string;
+  contractNumber: string;
+  net: string;
+}
+
+export function recallToCashCandidate(r: RecallCandidate): CashSettleCandidate {
+  return { contractId: r.contractId, contractNumber: r.contractNumber, net: r.recallGl };
+}
+
+export function deviceReturnToCashCandidate(d: DeviceReturnCandidate): CashSettleCandidate {
+  return { contractId: d.contractId, contractNumber: d.contractNumber, net: d.deviceReturnGl };
+}
+
 export interface ReconcileTotals {
   pendingTotal: string;
   glFinanceTotal: string;
@@ -56,6 +82,7 @@ export interface ReconcileTotals {
 export interface PendingResponse {
   pending: PendingContract[];
   recalls: RecallCandidate[];
+  deviceReturns: DeviceReturnCandidate[];
   reconcile: ReconcileTotals;
 }
 
@@ -233,8 +260,8 @@ export interface BatchListResponse {
 export interface BatchItem {
   id: string;
   contractId: string;
-  /** SETTLEMENT = จ่ายเจ้าหนี้ตามปกติ; RECALL = แถวหักเรียกคืน (Flow C-2, ไม่มีเจ้าหนี้ของตัวเอง) */
-  itemType: 'SETTLEMENT' | 'RECALL';
+  /** SETTLEMENT = จ่ายเจ้าหนี้; RECALL / DEVICE_RETURN = แถวหักที่ไม่มีเจ้าหนี้ของตัวเอง */
+  itemType: 'SETTLEMENT' | 'RECALL' | 'DEVICE_RETURN';
   financedGl: string;
   commissionGl: string;
   shopFinancedGl: string;
@@ -244,6 +271,8 @@ export interface BatchItem {
   swapCreditAmount: string;
   /** ยอดหักเรียกคืน (11-2107 PAYOUT_RECALL) — > 0 เฉพาะแถว itemType RECALL */
   recallAmount: string;
+  /** ยอดหักค่าเครื่องคืน 11-2107 DEVICE_RETURN; รอบเก่า = "0.00" */
+  deviceReturnAmount: string;
   contract: {
     id: string;
     contractNumber: string;

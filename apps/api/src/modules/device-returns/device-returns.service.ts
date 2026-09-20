@@ -326,107 +326,123 @@ export class DeviceReturnsService {
     const receivingBranchId = await this.resolveReceivingBranch(dto.receivingBranchId, user);
 
     const created = await this.prisma
-      .$transaction(async (tx) => {
-        const contract = await tx.contract.findUnique({
-          where: { id: dto.contractId },
-          include: CONTRACT_INCLUDE,
-        });
-        if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
+      .$transaction(
+        async (tx) => {
+          const contract = await tx.contract.findUnique({
+            where: { id: dto.contractId },
+            include: CONTRACT_INCLUDE,
+          });
+          if (!contract || contract.deletedAt) throw new NotFoundException('ไม่พบสัญญา');
 
-        const kind = deriveReturnKind(contract.status);
-        const check = await this.evaluateEligibility(tx, contract, kind);
-        if (!check.ok) {
-          throw check.code === 'CONFLICT'
-            ? new ConflictException(check.reason)
-            : new BadRequestException(check.reason);
-        }
-        // kind ไม่ null แล้ว (evaluateEligibility ปฏิเสธ null ด้วย NOT_RETURNABLE_MSG)
-        const returnKind = kind as DeviceReturnKind;
-        const returnReason = this.resolveReturnReason(returnKind, dto.returnReason, dto.notes);
-
-        const appraisal = d(dto.appraisalPrice);
-        if (appraisal.lte(0)) {
-          throw new BadRequestException('กรุณาระบุราคาประเมินมากกว่า 0 บาท');
-        }
-        // ตารางรับซื้อเป็นตัวเทียบ ±15% (ชุดเดียวกับ createInTx / หน้ารับซื้อ) — snapshot ไว้บนใบ
-        const table = await lookupTableBase(
-          this.valuationService,
-          contract.product,
-          dto.conditionGrade,
-        );
-        const tableBase =
-          table?.found && table.suggestedPrice != null ? d(table.suggestedPrice) : null;
-        if (tableBase && tableBase.gt(0)) {
-          const deviation = appraisal.sub(tableBase).div(tableBase).abs();
-          if (deviation.gt(RepossessionsService.TABLE_DEVIATION_LIMIT) && !dto.notes?.trim()) {
-            throw new BadRequestException(
-              `ราคาประเมิน ${appraisal.toFixed(2)} ฿ ต่างจากตารางรับซื้อ (เกรด ${dto.conditionGrade}: ${tableBase.toFixed(2)} ฿) ` +
-                `${deviation.mul(100).toDecimalPlaces(0)}% เกิน 15% — กรุณาระบุเหตุผลในหมายเหตุ`,
-            );
+          const kind = deriveReturnKind(contract.status);
+          const check = await this.evaluateEligibility(tx, contract, kind);
+          if (!check.ok) {
+            throw check.code === 'CONFLICT'
+              ? new ConflictException(check.reason)
+              : new BadRequestException(check.reason);
           }
-        }
+          // kind ไม่ null แล้ว (evaluateEligibility ปฏิเสธ null ด้วย NOT_RETURNABLE_MSG)
+          const returnKind = kind as DeviceReturnKind;
+          const returnReason = this.resolveReturnReason(returnKind, dto.returnReason, dto.notes);
 
-        const docNumber = await this.numberService.next(tx);
-        const row = await tx.deviceReturn.create({
-          data: {
+          const appraisal = d(dto.appraisalPrice);
+          if (appraisal.lte(0)) {
+            throw new BadRequestException('กรุณาระบุราคาประเมินมากกว่า 0 บาท');
+          }
+          // ตารางรับซื้อเป็นตัวเทียบ ±15% (ชุดเดียวกับ createInTx / หน้ารับซื้อ) — snapshot ไว้บนใบ
+          const table = await lookupTableBase(
+            this.valuationService,
+            contract.product,
+            dto.conditionGrade,
+          );
+          const tableBase =
+            table?.found && table.suggestedPrice != null ? d(table.suggestedPrice) : null;
+          if (tableBase && tableBase.gt(0)) {
+            const deviation = appraisal.sub(tableBase).div(tableBase).abs();
+            if (deviation.gt(RepossessionsService.TABLE_DEVIATION_LIMIT) && !dto.notes?.trim()) {
+              throw new BadRequestException(
+                `ราคาประเมิน ${appraisal.toFixed(2)} ฿ ต่างจากตารางรับซื้อ (เกรด ${dto.conditionGrade}: ${tableBase.toFixed(2)} ฿) ` +
+                  `${deviation.mul(100).toDecimalPlaces(0)}% เกิน 15% — กรุณาระบุเหตุผลในหมายเหตุ`,
+              );
+            }
+          }
+
+          const docNumber = await this.numberService.next(tx);
+          const row = await tx.deviceReturn.create({
+            data: {
+              docNumber,
+              contractId: contract.id,
+              productId: contract.productId,
+              customerId: contract.customerId,
+              receivingBranchId,
+              receivedById: user.id,
+              returnKind,
+              returnReason,
+              deviceReceivedAt,
+              conditionGrade: dto.conditionGrade,
+              appraisalPrice: appraisal,
+              tableBasePrice: tableBase,
+              repairCost: d(dto.repairCost ?? 0),
+              notes: dto.notes?.trim() || null,
+              // เฉพาะคืนเอง — ใช้คืนสถานะเมื่อส่งกลับ/ยกเลิก (spec §4.1)
+              previousContractStatus: returnKind === 'VOLUNTARY' ? contract.status : null,
+              status: 'PENDING_CONFIRM',
+            },
+            include: DEVICE_RETURN_LIST_INCLUDE,
+          });
+
+          if (returnKind === 'VOLUNTARY') {
+            // D4: สัญญาหยุดทันทีที่รับเครื่องคืน — TERMINATED ให้ accrual/ค่าปรับ/จดหมาย/ทวงถามหยุดเอง
+            // (ไม่ยิง dunning event CONTRACT_TERMINATED — ข้อความนั้นสำหรับบอกเลิกฝ่ายเดียว)
+            await tx.contract.update({
+              where: { id: contract.id },
+              data: { status: 'TERMINATED' },
+            });
+            // audit ใน tx — atomic กับการ flip (rollback แล้วต้องไม่เหลือแถว); หลุด Merkle chain โดยตั้งใจ
+            // pattern contract-letter.service.ts:256-267
+            await tx.auditLog.create({
+              data: {
+                userId: user.id,
+                action: 'CONTRACT_STATUS_LEGAL',
+                entity: 'contract',
+                entityId: contract.id,
+                newValue: {
+                  from: contract.status,
+                  to: 'TERMINATED',
+                  reason: 'DEVICE_RETURN_INTAKE',
+                  deviceReturnId: row.id,
+                  docNumber,
+                },
+              },
+            });
+          }
+
+          return {
+            id: row.id,
             docNumber,
-            contractId: contract.id,
-            productId: contract.productId,
+            contractNumber: contract.contractNumber,
             customerId: contract.customerId,
-            receivingBranchId,
-            receivedById: user.id,
             returnKind,
             returnReason,
-            deviceReceivedAt,
             conditionGrade: dto.conditionGrade,
-            appraisalPrice: appraisal,
-            tableBasePrice: tableBase,
-            repairCost: d(dto.repairCost ?? 0),
-            notes: dto.notes?.trim() || null,
-            // เฉพาะคืนเอง — ใช้คืนสถานะเมื่อส่งกลับ/ยกเลิก (spec §4.1)
-            previousContractStatus: returnKind === 'VOLUNTARY' ? contract.status : null,
-            status: 'PENDING_CONFIRM',
-          },
-          include: DEVICE_RETURN_LIST_INCLUDE,
-        });
-
-        if (returnKind === 'VOLUNTARY') {
-          // D4: สัญญาหยุดทันทีที่รับเครื่องคืน — TERMINATED ให้ accrual/ค่าปรับ/จดหมาย/ทวงถามหยุดเอง
-          // (ไม่ยิง dunning event CONTRACT_TERMINATED — ข้อความนั้นสำหรับบอกเลิกฝ่ายเดียว)
-          await tx.contract.update({ where: { id: contract.id }, data: { status: 'TERMINATED' } });
-          // audit ใน tx — atomic กับการ flip (rollback แล้วต้องไม่เหลือแถว); หลุด Merkle chain โดยตั้งใจ
-          // pattern contract-letter.service.ts:256-267
-          await tx.auditLog.create({
-            data: {
-              userId: user.id,
-              action: 'CONTRACT_STATUS_LEGAL',
-              entity: 'contract',
-              entityId: contract.id,
-              newValue: {
-                from: contract.status,
-                to: 'TERMINATED',
-                reason: 'DEVICE_RETURN_INTAKE',
-                deviceReturnId: row.id,
-                docNumber,
-              },
-            },
-          });
-        }
-
-        return {
-          id: row.id,
-          docNumber,
-          contractNumber: contract.contractNumber,
-          customerId: contract.customerId,
-          returnKind,
-          returnReason,
-          conditionGrade: dto.conditionGrade,
-          appraisal,
-          tableBase,
-          receivingBranchId,
-        };
-      })
+            appraisal,
+            tableBase,
+            receivingBranchId,
+          };
+        },
+        {
+          // Eligibility is read before number allocation can wait. Reject a stale snapshot
+          // instead of overwriting a concurrently committed contract closure (e.g. early payoff).
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      )
       .catch((err: unknown) => {
+        // The transaction has aborted; ask the caller to refresh, never retry stale intake intent.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+          throw new ConflictException(
+            'ข้อมูลสัญญาเปลี่ยนระหว่างรับเครื่องคืน กรุณาตรวจสอบแล้วลองใหม่',
+          );
+        }
         // ตาข่าย partial unique device_returns_one_open_per_contract — แพ้ race → 409 ไทย ไม่ใช่ raw 500
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
           throw new ConflictException(PENDING_EXISTS_MSG);

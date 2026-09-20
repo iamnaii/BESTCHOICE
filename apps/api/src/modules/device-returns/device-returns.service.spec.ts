@@ -670,6 +670,26 @@ describe('DeviceReturnsService', () => {
       expect(notify.notify).not.toHaveBeenCalled();
     });
 
+    it('protects the eligibility snapshot with Serializable and returns Thai 409 without retry on P2034', async () => {
+      arm();
+      prisma.$transaction.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('write conflict', {
+          code: 'P2034',
+          clientVersion: 'test',
+        }),
+      );
+      await expect(service.create(dto(), SALES_A as never)).rejects.toThrow(
+        'ข้อมูลสัญญาเปลี่ยนระหว่างรับเครื่องคืน กรุณาตรวจสอบแล้วลองใหม่',
+      );
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+      expect(audit.log).not.toHaveBeenCalled();
+      expect(tags.recomputeForCustomer).not.toHaveBeenCalled();
+      expect(notify.notify).not.toHaveBeenCalled();
+    });
+
     it('exactly 15 percent deviation is accepted without notes', async () => {
       arm();
       prisma.tradeInValuation.findFirst.mockResolvedValue({ basePrice: decimal(8000), note: null });

@@ -32,7 +32,17 @@
  * Cleanup: SCOPED ตาม id ที่สเปคนี้สร้าง + สวีปตาม prefix `LIFECYCLETEST-` ปิดท้าย
  * (`audit_logs` ลบไม่ได้ — DB trigger `audit_logs_no_delete` ทำให้มัน immutable ตามดีไซน์)
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { ConflictException } from '@nestjs/common';
+import { earlyPayoffWithApproval } from '../../../../e2e/helpers/payment-approval';
+import { ContractPaymentService } from '../contract-payment.service';
+import { EarlyPayoffJP4Template } from '../../journal/cpa-templates/early-payoff-jp4.template';
+import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
+import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
+import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-reverse.template';
+import { DeviceReturnsService } from '../../device-returns/device-returns.service';
+import { DeviceReturnNumberService } from '../../device-returns/device-return-number.service';
+import { PAYMENT_APPROVAL_PERMISSIONS_KEY } from '../../payments/services/payment-approval-permissions';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
@@ -315,6 +325,36 @@ function posCashSale(customerId: string, productId: string, sellingPrice: number
 
 const OWNER_USER = () => ({ id: adminId, role: 'OWNER', branchId });
 
+function buildIntake(numberService: Pick<DeviceReturnNumberService, 'next'>) {
+  const effects = {
+    notify: vi.fn().mockResolvedValue(undefined),
+    recomputeForCustomer: vi.fn().mockResolvedValue(undefined),
+    log: vi.fn().mockResolvedValue(undefined),
+  };
+  const service = new DeviceReturnsService(
+    prisma as never,
+    repossessionsService,
+    numberService as DeviceReturnNumberService,
+    { notify: effects.notify } as never,
+    { recomputeForCustomer: effects.recomputeForCustomer } as never,
+    null as never, // journey is unused by intake
+    { log: effects.log } as never,
+    null as never, // credit-note delivery is unused by intake
+  );
+  return { service, effects };
+}
+
+function intakeDto(contractId: string) {
+  return {
+    contractId,
+    receivingBranchId: branchId,
+    deviceReceivedAt: new Date().toISOString(),
+    conditionGrade: 'B' as const,
+    appraisalPrice: 7000,
+    returnReason: 'UNAFFORDABLE' as const,
+  };
+}
+
 /**
  * interim (Task 4 ของแผนใบรับเครื่องคืน): create() ถูกลบ — ยึดผ่าน createInTx ใต้ tx ของเทสเอง
  * พร้อมใบรับเครื่องคืน synthetic. Task 10 แทนด้วย DeviceReturnsService.create+confirm (เส้นทางจริง).
@@ -485,6 +525,164 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     } finally {
       await prisma.$disconnect();
     }
+  }, 180_000);
+
+  it('intake preserves a real early payoff committed after eligibility was read', async () => {
+    const product = await seedProduct('DR-RACE');
+    const customer = await seedCustomer('DR-RACE');
+    const contract = await seedSignedDraftContract('DR-RACE', customer.id, product.id);
+    await workflow.activate(contract.id);
+    const closer = new PrismaClient(); // independent connection for the winning financial transaction
+    const approvalConfigBefore = await closer.systemConfig.findUnique({
+      where: { key: PAYMENT_APPROVAL_PERMISSIONS_KEY },
+      select: { value: true, deletedAt: true },
+    });
+    const closeJournal = new JournalAutoService(closer as never);
+    const payoff = new ContractPaymentService(
+      closer as never,
+      new ProductsService(closer as never),
+      closeJournal,
+      new EarlyPayoffJP4Template(
+        closeJournal,
+        closer as never,
+        new Vat60dayReversalTemplate(closeJournal, closer as never),
+      ),
+      new ShopCollectSettlementTemplate(closeJournal, closer as never),
+      { generateReceipt: async () => undefined } as never, // no receipt rendering or outbound delivery
+      new EclStageReverseTemplate(closeJournal, closer as never),
+    );
+    let resume!: () => void;
+    let reached!: () => void;
+    const paused = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const resumeGate = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const realNumbers = new DeviceReturnNumberService(prisma as never);
+    const { service, effects } = buildIntake({
+      next: async (tx) => {
+        // The real service has completed all eligibility reads; no intake writes yet.
+        reached();
+        await resumeGate;
+        return realNumbers.next(tx);
+      },
+    });
+    const intake = service.create(intakeDto(contract.id), OWNER_USER()).then(
+      (row) => ({ row, error: null }),
+      (error: unknown) => ({ row: null, error }),
+    );
+    try {
+      await Promise.race([
+        paused,
+        intake.then(() => {
+          throw new Error('Intake ended before the eligibility barrier');
+        }),
+      ]);
+      await earlyPayoffWithApproval(closer, payoff, contract.id, adminId, {
+        paymentMethod: 'BANK_TRANSFER',
+        discountPct: 0,
+      });
+      expect(
+        await closer.systemConfig.findUnique({
+          where: { key: PAYMENT_APPROVAL_PERMISSIONS_KEY },
+          select: { value: true, deletedAt: true },
+        }),
+      ).toEqual(approvalConfigBefore);
+      const closed = await closer.contract.findUniqueOrThrow({ where: { id: contract.id } });
+      const payments = await closer.payment.findMany({
+        where: { contractId: contract.id },
+        orderBy: { id: 'asc' },
+      });
+      const journals = await closer.journalEntry.findMany({
+        where: { metadata: { path: ['contractId'], equals: contract.id } },
+        include: { lines: { orderBy: { id: 'asc' } } },
+        orderBy: { id: 'asc' },
+      });
+      const ownedProduct = await closer.product.findUniqueOrThrow({ where: { id: product.id } });
+      expect(closed.status).toBe('EARLY_PAYOFF');
+      expect(payments.length).toBeGreaterThan(0);
+      expect(payments.every((p) => p.status === 'PAID')).toBe(true);
+      expect(journals.some((j) => (j.metadata as Prisma.JsonObject)?.flow === 'early-payoff')).toBe(
+        true,
+      );
+      expect(ownedProduct.ownedByCompanyId).toBeNull();
+
+      resume();
+      const outcome = await intake;
+      // Check persisted state first: RED must expose actual lost update, not merely an error shape.
+      expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe(
+        'EARLY_PAYOFF',
+      );
+      expect(await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).toEqual(
+        closed,
+      );
+      expect(outcome.error).toBeInstanceOf(ConflictException);
+      expect((outcome.error as ConflictException).getStatus()).toBe(409);
+      expect((outcome.error as Error).message).toBe(
+        'ข้อมูลสัญญาเปลี่ยนระหว่างรับเครื่องคืน กรุณาตรวจสอบแล้วลองใหม่',
+      );
+      expect(outcome.row).toBeNull();
+      expect(await prisma.deviceReturn.count({ where: { contractId: contract.id } })).toBe(0);
+      expect(
+        await prisma.auditLog.count({
+          where: {
+            entityId: contract.id,
+            action: 'CONTRACT_STATUS_LEGAL',
+            newValue: { path: ['reason'], equals: 'DEVICE_RETURN_INTAKE' },
+          },
+        }),
+      ).toBe(0);
+      expect(
+        await prisma.payment.findMany({
+          where: { contractId: contract.id },
+          orderBy: { id: 'asc' },
+        }),
+      ).toEqual(payments);
+      expect(
+        await prisma.journalEntry.findMany({
+          where: { metadata: { path: ['contractId'], equals: contract.id } },
+          include: { lines: { orderBy: { id: 'asc' } } },
+          orderBy: { id: 'asc' },
+        }),
+      ).toEqual(journals);
+      expect(await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).toEqual(
+        ownedProduct,
+      );
+      expect(effects.log).not.toHaveBeenCalled();
+      expect(effects.recomputeForCustomer).not.toHaveBeenCalled();
+      expect(effects.notify).not.toHaveBeenCalled();
+    } finally {
+      resume();
+      await intake;
+      await closer.$disconnect();
+    }
+  }, 180_000);
+
+  it('ordinary intake commits one pending document and its legal status audit', async () => {
+    const product = await seedProduct('DR-OK');
+    const customer = await seedCustomer('DR-OK');
+    const contract = await seedSignedDraftContract('DR-OK', customer.id, product.id);
+    await workflow.activate(contract.id);
+    const { service, effects } = buildIntake(new DeviceReturnNumberService(prisma as never));
+    const row = await service.create(intakeDto(contract.id), OWNER_USER());
+    expect(row.status).toBe('PENDING_CONFIRM');
+    expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe(
+      'TERMINATED',
+    );
+    expect(await prisma.deviceReturn.count({ where: { contractId: contract.id } })).toBe(1);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          entityId: contract.id,
+          action: 'CONTRACT_STATUS_LEGAL',
+          newValue: { path: ['reason'], equals: 'DEVICE_RETURN_INTAKE' },
+        },
+      }),
+    ).toBe(1);
+    expect(effects.log).toHaveBeenCalledTimes(1);
+    expect(effects.recomputeForCustomer).toHaveBeenCalledWith(customer.id);
+    expect(effects.notify).toHaveBeenCalledWith(row.id, 'DEVICE_RETURNED');
   }, 180_000);
 
   // -------------------------------------------------------------------------

@@ -19,6 +19,7 @@ import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { resolveStoreCommission } from '../../utils/store-commission.util';
 import { normalizeBundleIds, sellContractBundles } from './services/contract-bundle.util';
+import { ensureContractCommission } from './services/contract-commission.util';
 import { loadInstallmentConfig } from '../../utils/config.util';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
@@ -538,9 +539,10 @@ export class ContractWorkflowService {
       } else {
         // Standard activation flow — auto-create Sale record + post 1A JE.
         const existingSale = await tx.sale.findFirst({ where: { contractId: contract.id, deletedAt: null } });
+        let contractSaleId = existingSale?.id;
         if (!existingSale) {
         const saleNumber = await generateSaleNumber(tx);
-        await tx.sale.create({
+        const createdSale = await tx.sale.create({
           data: {
             saleNumber,
             saleType: 'INSTALLMENT',
@@ -562,6 +564,7 @@ export class ContractWorkflowService {
             notes: `สร้างอัตโนมัติจากสัญญา ${contract.contractNumber}`,
           },
         });
+        contractSaleId = createdSale.id;
         }
 
         if (existingSale) {
@@ -578,6 +581,13 @@ export class ContractWorkflowService {
               ? { bundleProductIds: Array.from(new Set([...(existingSale.bundleProductIds ?? []), ...contractBundleIds])) }
               : {}),
           } });
+        }
+
+        // ค่าคอมพนักงานขาย — เจ้าของเคาะ 2026-09-20: เหมือนขายสด ตั้งตอนเปิดใช้สัญญา
+        // (สัญญาจากเส้นทางเก่ามีค่าคอมตั้งแต่ตอนร่างแล้ว ⇒ helper ไม่สร้างซ้ำ)
+        if (contractSaleId) {
+          await ensureContractCommission(tx, { contractId: contract.id, saleId: contractSaleId,
+            salespersonId: contract.salespersonId, netAmount: new Decimal(contract.sellingPrice.toString()) });
         }
 
         // Auto journal entry — record contract activation (HP receivable).

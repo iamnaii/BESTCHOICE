@@ -10,6 +10,7 @@ import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { shopCollectTypedBalance } from '../../interco-settlement/interco-typed-balance';
 import { reopenRepossessionOnUnsale } from '../../repossessions/repossession-resale.util';
 import { restoreContractBundles } from './contract-bundle.util';
+import { clawbackContractCommission } from './contract-commission.util';
 
 /**
  * ContractCancellationService — contract-cancellation workflow:
@@ -194,6 +195,7 @@ export class ContractCancellationService {
           rescheduleAdvanceBalance: true,
           tradeInCreditSnapshot: true,
           bundleProductIds: true,
+          contractNumber: true,
         },
       });
       if (contract.status !== 'ACTIVE') {
@@ -314,6 +316,9 @@ export class ContractCancellationService {
       // ของแถมของสัญญา: sweep ข้างบนกลับรายการต้นทุนของแถมในสมุดแล้ว (อยู่ใน JE เดียวกับ COGS เครื่องหลัก)
       // ⇒ สถานะสินค้าต้องตามให้ตรง. ชิ้นที่คืนไม่ได้ถูกบันทึกใน AuditLog ด้านล่าง ไม่บล็อกการยกเลิก
       const bundleRestore = await restoreContractBundles(tx, contract.bundleProductIds ?? []);
+      // ค่าคอมพนักงานขายของสัญญา: เรียกคืนเฉพาะที่ยังไม่จ่าย (เจ้าของเคาะ 2026-09-20) — ไม่บล็อกการยกเลิก
+      const commissionClawback = await clawbackContractCommission(tx, {
+        contractId: contract.id, contractNumber: contract.contractNumber, reason: cancellation.reason, now });
       await tx.payment.updateMany({
         where: { contractId: contract.id, deletedAt: null },
         data: { deletedAt: now },
@@ -361,6 +366,13 @@ export class ContractCancellationService {
             // ของแถมของสัญญา — เขียนเฉพาะเมื่อสัญญามีของแถม (สัญญาเดิมได้ payload รูปเดิมทุกไบต์)
             ...(bundleRestore.restoredIds.length || bundleRestore.skippedIds.length
               ? { bundlesRestored: bundleRestore.restoredIds, bundlesNotRestored: bundleRestore.skippedIds }
+              : {}),
+            // ค่าคอม — เขียนเฉพาะเมื่อสัญญามีค่าคอม · lockedPayoutIds = รอบจ่ายที่อนุมัติ/จ่ายแล้วและนับค่าคอมนี้
+            // (ยอดของรอบนั้นไม่ถูกแก้ ต้องให้เจ้าของ/ผจก.การเงินตัดสิน)
+            ...(commissionClawback.clawedBackIds.length || commissionClawback.keptPaidIds.length
+              ? { commissionClawedBackIds: commissionClawback.clawedBackIds, commissionKeptPaidIds: commissionClawback.keptPaidIds,
+                  commissionDraftPayoutsVoided: commissionClawback.voidedDraftPayoutIds,
+                  commissionLockedPayoutIds: commissionClawback.lockedPayoutIds }
               : {}),
             // C-2: recallAmount = net เงินสดที่ FINANCE โอนจริง (settled gross −
             // deductions ที่รอบหักไว้) — นิยามเดียวกับ exchange audit / list API /

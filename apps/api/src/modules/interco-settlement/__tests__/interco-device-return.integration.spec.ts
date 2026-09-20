@@ -283,45 +283,51 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
   }, 120_000);
 
   afterAll(async () => {
-    const jeIds = new Set<string>();
-    for (const cid of createdContractIds) {
-      for (const key of ['contractId', 'newContractId']) {
+    try {
+      const jeIds = new Set<string>();
+      for (const cid of createdContractIds) {
+        for (const key of ['contractId', 'newContractId']) {
+          const rows = await prisma.journalEntry.findMany({
+            where: { metadata: { path: [key], equals: cid } as never },
+            select: { id: true },
+          });
+          rows.forEach((r) => jeIds.add(r.id));
+        }
+      }
+      // Settlement + reversal JEs carry metadata.settlementBatchId (NOT contractId — architecture ruling)
+      for (const bid of createdBatchIds) {
         const rows = await prisma.journalEntry.findMany({
-          where: { metadata: { path: [key], equals: cid } as never },
+          where: { metadata: { path: ['settlementBatchId'], equals: bid } as never },
           select: { id: true },
         });
         rows.forEach((r) => jeIds.add(r.id));
       }
-    }
-    // Settlement + reversal JEs carry metadata.settlementBatchId (NOT contractId — architecture ruling)
-    for (const bid of createdBatchIds) {
-      const rows = await prisma.journalEntry.findMany({
-        where: { metadata: { path: ['settlementBatchId'], equals: bid } as never },
-        select: { id: true },
-      });
-      rows.forEach((r) => jeIds.add(r.id));
-    }
-    const jeIdList = [...jeIds];
+      const jeIdList = [...jeIds];
 
-    // JournalPostAuditLog FK-references journal_entries — clear first (a48fe1fe convention)
-    await prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
-    await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
-    await prisma.journalEntry.deleteMany({ where: { id: { in: jeIdList } } });
+      // JournalPostAuditLog FK-references journal_entries — clear first (a48fe1fe convention)
+      await prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
+      await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
+      await prisma.journalEntry.deleteMany({ where: { id: { in: jeIdList } } });
 
-    await prisma.interCoSettlementItem.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.interCoSettlementBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
+      await prisma.interCoSettlementItem.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.interCoSettlementBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
 
-    await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
-    await prisma.product.deleteMany({ where: { id: { in: createdProductIds } } });
-    await prisma.customer.deleteMany({ where: { id: { in: createdCustomerIds } } });
-    if (createdBranchId) {
-      try {
-        await prisma.branch.delete({ where: { id: createdBranchId } });
-      } catch {
-        // referenced by rows outside this spec's scope — leave it
+      await prisma.contract.deleteMany({ where: { id: { in: createdContractIds } } });
+      await prisma.product.deleteMany({ where: { id: { in: createdProductIds } } });
+      await prisma.customer.deleteMany({ where: { id: { in: createdCustomerIds } } });
+      if (createdBranchId) {
+        try {
+          await prisma.branch.delete({ where: { id: createdBranchId } });
+        } catch (error) {
+          // Leave only branches referenced by rows outside this spec's scope.
+          if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2003') {
+            throw error;
+          }
+        }
       }
+    } finally {
+      await prisma.$disconnect();
     }
-    await prisma.$disconnect();
   }, 120_000);
 
   // ===========================================================================

@@ -354,23 +354,38 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     } finally { await db.commissionPayout.update({ where: { id: payout.id }, data: { deletedAt: new Date() } }); }
   });
 
-  it('blocks cancelling an activated trade-credit contract whose activation commission sits in an approved payout round', async () => {
-    // ค่าคอมตั้งตอนเปิดใช้สัญญา (ensureContractCommission) ⇒ สัญญาที่ใช้เครดิตเทิร์นทุกใบมีค่าคอม และ cleanupCreditContractSale
-    // รันก่อน clawbackContractCommission ใน approveCancellation ⇒ รอบจ่ายที่อนุมัติแล้วยังบล็อกการคืนเครดิตเทิร์น
-    const c = await exchangeCase(); await approve(c.customer.id);
-    const contractId = (await lifecycle.create(c.dto, ownerId, 'OWNER')).id;
-    await activate(contractId, c.customer.id);
-    const commission = await db.salesCommission.findFirstOrThrow({ where: { contractId, deletedAt: null } });
+  it('cancels an activated trade-credit contract even when its commission sits in an approved payout round or was already paid', async () => {
+    // คำตัดสินเจ้าของ 2026-09-20: สัญญาเครดิตเทิร์นยกเลิกได้เหมือนสัญญาทั่วไป — ค่าคอมที่ยังไม่จ่ายถูกเรียกคืน · ที่จ่ายแล้วไม่แตะ ·
+    // รอบจ่ายที่อนุมัติแล้วไม่บล็อก แต่ถูกรายงานใน audit (commissionLockedPayoutIds / commissionKeptPaidIds)
+    const locked = await exchangeCase(); await approve(locked.customer.id);
+    const lockedId = (await lifecycle.create(locked.dto, ownerId, 'OWNER')).id;
+    await activate(lockedId, locked.customer.id);
+    const commission = await db.salesCommission.findFirstOrThrow({ where: { contractId: lockedId, deletedAt: null } });
     expect(commission.status).toBe('PENDING'); expect(Number(commission.saleAmount)).toBe(14500);
+    const paid = await exchangeCase(); await approve(paid.customer.id);
+    const paidId = (await lifecycle.create(paid.dto, ownerId, 'OWNER')).id;
+    await activate(paidId, paid.customer.id);
+    const paidCommission = await db.salesCommission.findFirstOrThrow({ where: { contractId: paidId, deletedAt: null } });
+    await db.salesCommission.update({ where: { id: paidCommission.id }, data: { status: 'PAID', paidAt: new Date(), paidAmount: paidCommission.commissionAmount } });
     const payout = await db.commissionPayout.upsert({ where: { salespersonId_period: { salespersonId: commission.salespersonId, period: commission.period } },
-      create: { salespersonId: commission.salespersonId, period: commission.period, totalSales: 14500, totalCommission: 435, commissionCount: 1, status: 'APPROVED', generatedAt: new Date() },
+      create: { salespersonId: commission.salespersonId, period: commission.period, totalSales: 29000, totalCommission: 870, commissionCount: 2, status: 'APPROVED', generatedAt: new Date() },
       update: { status: 'APPROVED', generatedAt: new Date(), deletedAt: null } });
     try {
-      const cancellation = await cancellations.requestCancellation(contractId, ownerId, 'Synthetic locked payout cancellation', 0);
-      await expect(cancellations.approveCancellation(cancellation.id, ownerId)).rejects.toThrow(/รอบจ่าย/);
-      expect((await db.contract.findUniqueOrThrow({ where: { id: contractId } })).status).toBe('ACTIVE');
-      expect((await db.salesCommission.findUniqueOrThrow({ where: { id: commission.id } })).status).toBe('PENDING');
-      expect(await tradeCredits.available(c.customer.id, branchId)).toEqual([]);
+      for (const [contractId, customerId, intakeId] of [[lockedId, locked.customer.id, locked.intake.id], [paidId, paid.customer.id, paid.intake.id]]) {
+        const cancellation = await cancellations.requestCancellation(contractId, ownerId, 'Synthetic locked payout cancellation', 0);
+        await cancellations.approveCancellation(cancellation.id, ownerId);
+        expect((await db.contract.findUniqueOrThrow({ where: { id: contractId } })).status).toBe('CANCELED');
+        expect((await tradeCredits.available(customerId, branchId)).map((x) => x.id)).toContain(intakeId);
+        expect(await db.sale.count({ where: { contractId, deletedAt: null } })).toBe(0);
+      }
+      expect((await db.salesCommission.findUniqueOrThrow({ where: { id: commission.id } })).status).toBe('CLAWED_BACK');
+      expect((await db.salesCommission.findUniqueOrThrow({ where: { id: paidCommission.id } })).status).toBe('PAID');
+      expect((await db.commissionPayout.findUniqueOrThrow({ where: { id: payout.id } })).deletedAt).toBeNull(); // รอบที่อนุมัติแล้วไม่ถูกแตะ
+      const lockedAudit = await db.auditLog.findFirstOrThrow({ where: { entity: 'contract', entityId: lockedId, action: { startsWith: 'CONTRACT_CANCELED' } } });
+      expect((lockedAudit.newValue as Record<string, unknown>).commissionClawedBackIds).toEqual([commission.id]);
+      expect((lockedAudit.newValue as Record<string, unknown>).commissionLockedPayoutIds).toEqual([payout.id]);
+      const paidAudit = await db.auditLog.findFirstOrThrow({ where: { entity: 'contract', entityId: paidId, action: { startsWith: 'CONTRACT_CANCELED' } } });
+      expect((paidAudit.newValue as Record<string, unknown>).commissionKeptPaidIds).toEqual([paidCommission.id]);
     } finally { await db.commissionPayout.update({ where: { id: payout.id }, data: { deletedAt: new Date() } }); }
   });
 

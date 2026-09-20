@@ -286,7 +286,8 @@ export class ContractCancellationService {
         tx,
       );
 
-      await cleanupCreditContractSale(tx, contract, approverId, 'ยกเลิกสัญญาใช้เครดิตเทิร์น');
+      // ค่าคอมเป็นหน้าที่ของ clawbackContractCommission ด้านล่าง (ไม่บล็อก — คำตัดสินเจ้าของ 2026-09-20)
+      await cleanupCreditContractSale(tx, contract, approverId, 'ยกเลิกสัญญาใช้เครดิตเทิร์น', { commissionHandledByCaller: true });
       await new TradeInCreditService(this.prisma).release(tx, contract.tradeInCreditSnapshot,
         { contractId: contract.id }, approverId, 'ยกเลิกสัญญา');
 

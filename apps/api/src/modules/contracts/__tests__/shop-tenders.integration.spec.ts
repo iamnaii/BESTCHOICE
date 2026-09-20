@@ -289,8 +289,22 @@ describe('สมุดเงินหน้าร้าน + บิลจ่า�
     expect(Number(earned[0].saleAmount)).toBe(15000);
     expect(Number(earned[0].commissionAmount)).toBeCloseTo(15000 * rate, 2);
 
+    // เปิดใช้สัญญา = ระบบออกใบขาย INSTALLMENT ให้ และมันอยู่ในประวัติการขาย
+    const activeSale = await prisma.sale.findFirstOrThrow({ where: { contractId: contract.id, deletedAt: null } });
+    const owner = { id: adminId, role: 'OWNER' };
+    expect((await salesService.findAll({ branchId }, owner)).data.map((row) => row.id)).toContain(activeSale.id);
+
     const request = await cancellations.requestCancellation(contract.id, adminId, 'ทดสอบยกเลิกสัญญาที่รับดาวน์จ่ายผสม', 0);
     await expect(cancellations.approveCancellation(request.id, adminId)).resolves.toBeDefined();
+
+    // ยกเลิกสัญญา = การขายไม่เกิดขึ้น ⇒ ใบขายผ่อนถูกยกเลิกไปด้วยและหลุดจากประวัติการขาย (คำตัดสินเจ้าของ 2026-09-20)
+    const voidedSale = await prisma.sale.findUniqueOrThrow({ where: { id: activeSale.id } });
+    expect(voidedSale.deletedAt).not.toBeNull();
+    expect(voidedSale.voidedById).toBe(adminId);
+    expect(voidedSale.voidReason).toContain(contract.contractNumber);
+    expect((await salesService.findAll({ branchId }, owner)).data.map((row) => row.id)).not.toContain(activeSale.id);
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { entity: 'contract', entityId: contract.id, action: 'CONTRACT_CANCELED' } });
+    expect((audit.newValue as Record<string, unknown>).voidedSaleNumbers).toEqual([activeSale.saleNumber]);
 
     // JE ดาวน์จงใจไม่ถูก mirror ตอนยกเลิกสัญญา (S21-2001 ค้างรอคืนลูกค้า) ⇒ JE แยกยอดก็ต้องอยู่ครบเช่นกัน
     expect(await accountNetSince(TILL, since)).toBe('2000.00');

@@ -2613,6 +2613,11 @@ exchange เดิมที่ส่งแค่ `{ jeIds, newContractId }` ไ�
 **Restore (ใน tx เดียวกัน):** product → `IN_STOCK` + `ownedByCompanyId` = SHOP;
 soft-delete `Payment` + `InstallmentSchedule` ทุกแถว (cron/คิวเลิกเห็นสัญญา);
 cancellation → APPROVED + `reversalJournalEntryId`; contract → `CANCELED`.
+**ใบขาย `INSTALLMENT` ของสัญญา** (ที่ `activate` ออกให้) ถูกยกเลิกไปพร้อมกัน — `deletedAt` + `voidReason = 'ยกเลิกสัญญา <เลข>: <เหตุผล>'` +
+`voidedById` (คำตัดสินเจ้าของ 2026-09-20; เดิมค้างในประวัติการขาย/ยอดสรุปเหมือนขายสำเร็จ เพราะ `completedSaleWhere` ตัดเฉพาะสัญญา `DRAFT`).
+สัญญาเครดิตเทิร์นถูก `cleanupCreditContractSale` ยกเลิกใบขายไปก่อนแล้ว จึงเป็น 0 แถวที่ขั้นนี้. ลูกหนี้ไฟแนนซ์ในเครือของใบขายยุคเส้นทางเก่า
+ปิดไปด้วยเฉพาะที่ยังไม่มีเงินเข้า. AuditLog `CONTRACT_CANCELED*` เพิ่ม `newValue.voidedSaleNumbers` (เฉพาะเมื่อมี). **ไม่มี JE เพิ่ม** —
+sweep ด้านบนกลับรายการ JE ของการขายไปแล้ว ขั้นนี้แก้เฉพาะ "เอกสาร" ให้ตรงกับสมุด.
 
 **S21-2001 semantics (ตั้งใจ — ไม่ใช่บั๊ก):** หลังยกเลิกสัญญาที่มีเงินดาวน์ S21-2001 ค้าง
 **Cr downAmount** — sweep mirror JE B ของ activation (ที่เคย `Dr S21-2001` ล้างดาวน์) คืน

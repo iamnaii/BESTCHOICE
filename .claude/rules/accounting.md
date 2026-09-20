@@ -127,7 +127,7 @@ All templates are verified against CPA CSV golden fixtures in `__tests__/fixture
 | `PaymentReceipt2BTemplate` | Payment received (single) | Dr cash / Cr 11-2101 + 11-2103 + 21-2101 cleared from 21-2102 |
 | `PaymentReceipt2BSplitTemplate` | Partial payment | As above with pro-rata split |
 | `EarlyPayoffJP4Template` | Early payoff | Includes Dr 52-1106 (discount) + reverse remaining 11-2106 |
-| `RepossessionJP5Template` | Repossession | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102; `Dr <deposit>` = **ราคาประเมิน** (ราคาเดียว 2026-09-05). optional `input.customerRefund` → Cr 21-1107 ยังอยู่ใน template แต่ **caller ไม่ส่งอีกแล้ว** (`create()` ปฏิเสธ `customerRefundEnabled=true` — คำตัดสินเจ้าของ 2026-09-05 supersede 2026-08-08 ข้อ 2) |
+| `RepossessionJP5Template` | ยืนยันใบรับเครื่องคืน (`DeviceReturnsService.confirm` → `RepossessionsService.createInTx`; `create()` + `POST /repossessions` ถูกลบ 2026-09-20) | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102; `Dr <deposit>` = **ราคาประเมิน** (ราคาเดียว 2026-09-05) ลง **`11-2107` เสมอ stamp `shopReceivableType: 'DEVICE_RETURN'` + `deviceReturnId`** (2026-09-20 — ไม่มีโหมดโอนสด/`collectedByShop` อีก). optional `input.customerRefund` → Cr 21-1107 ยังอยู่ใน template แต่ **caller ไม่ส่งอีกแล้ว** (คำตัดสินเจ้าของ 2026-09-05 supersede 2026-08-08 ข้อ 2) |
 | `RefundPayoutTemplate` | Manual — `POST /repossessions/:id/refund-payment` — **legacy เท่านั้น (2026-09-05)**: ใช้ได้เฉพาะแถวยึดที่เคยติ๊กคืนเงินก่อนนโยบายใหม่ (prod ไม่มี) | Dr 21-1107 / Cr depositAccountCode — clears the 21-1107 balance JP5 parked |
 | `RefundWaiveTemplate` | Manual — `POST /repossessions/:id/refund-waive` — **legacy เท่านั้น (2026-09-05)** | Dr 21-1107 / Cr 41-1102 — ล้างยอด 21-1107 คงเหลือทั้งหมดเข้ารายได้จากการยึดสินค้า |
 | `RescheduleJP6Template` | Reschedule (6a/6b variants) | Reclassify overdue to 21-1103 advance |
@@ -144,20 +144,25 @@ Batch — เมนูจ่ายให้หน้าร้าน (C2, 2026-08
 ## ยึดเครื่อง — ราคาเดียว + ไม่มีเงินคืนส่วนต่าง (คำตัดสินเจ้าของ 2026-09-05)
 
 Spec: `docs/superpowers/specs/2026-09-05-repossession-single-price-design.md` · โค้ด:
-`repossessions.service.ts` (`previewCalculation` / `create`), `RepossessionOverlay.tsx`
+`repossessions.service.ts` (`previewCalculation` / `createInTx` — `create()` ถูกลบ 2026-09-20 ทางเข้าเดียวคือ
+`DeviceReturnsService.confirm`), `RepossessionOverlay.tsx` (โหมดยืนยันอย่างเดียว — ดูหัวข้อย่อย
+"ใบรับเครื่องคืน (DeviceReturn)" ท้ายส่วนนี้)
 
 **คำตัดสิน (ปิดประเด็น — อย่าเสนอกลับ):**
 1. **ไม่มีเงินคืนส่วนต่างให้ลูกค้า** — ปพพ. ม.574 ให้ผู้ให้เช่าซื้อริบเงินที่ชำระแล้วและเอาของคืน
    ไม่บังคับคืนส่วนต่าง ⇒ นโยบายเจ้าของเลือกไม่คืน **supersede คำสั่ง 2026-08-08 ข้อ 2**.
-   `create()` ปฏิเสธ `customerRefundEnabled=true` (400 ไทย) แทนละเลยเงียบๆ; overlay ถอดติ๊กออก;
+   เดิม `create()` ปฏิเสธ `customerRefundEnabled=true` (400 ไทย); ตั้งแต่ 2026-09-20 ลบ public `create()`
+   และ `POST /repossessions` แล้ว — ใบรับเครื่องคืน/โหมดยืนยันไม่มีตัวเลือกคืนเงินส่วนต่าง;
    `previewCalculation` คืน `customerRefund = 0` เสมอ. บัญชี 21-1107 + `RefundPayoutTemplate` /
    `RefundWaiveTemplate` + endpoints **คงไว้เพื่อแถวยึดเก่าที่เคยติ๊ก** (prod หลัง factory reset ไม่มี).
 2. **ราคาเดียว** — เหลือ "ราคาประเมิน" ช่องเดียว = ราคาที่หน้าร้านรับเครื่องไปจาก FINANCE = ยอดที่ JP5
-   ลง `Dr <deposit>`. ช่อง "ราคากลาง" ถูกถอดจากหน้าจอ (DTO `marketValue` deprecated — ค่าที่ส่งมาถูกละเลย).
+   ลง `Dr 11-2107`. ใบรับเครื่องคืนเก็บราคาตารางไว้เป็นตัวเทียบ ไม่ใช่ราคาที่กรอกเพิ่มเพื่อคำนวณเงินคืน
+   (DTO ของ public `create()` เดิมที่มี `marketValue` ถูกลบแล้ว).
 3. **ตารางรับซื้อมือสอง (`TradeInValuation`) เป็นค่าตั้งต้น + ตัวเทียบ** — เลือกเกรด → preview ค้น
    (ยี่ห้อ, รุ่น, ความจุ, เกรด) เติมราคาประเมินให้ (แก้ทับได้; ค่าที่พิมพ์เองไม่ถูกทับเมื่อสลับเกรด) ·
    **ด่าน ±15%** ชุดเดียวกับหน้ารับซื้อ (`TradeInLifecycleService.PRICE_CEILING/FLOOR_RATIO`):
-   ต่างจากตารางเกิน 15% ต้องมีเหตุผลใน `notes` ทั้งฝั่ง UI (ปุ่มยืนยันปิด) และ `create()`
+   ต่างจากตารางเกิน 15% ต้องมีเหตุผลใน `notes` ที่ intake UI และ `DeviceReturnsService.create`
+   พร้อมตรวจซ้ำใน `RepossessionsService.createInTx` ตอนยืนยัน
    (`RepossessionsService.TABLE_DEVIATION_LIMIT` → 400 ไทย) · ไม่มีรุ่นในตาราง = ตีราคาเอง ไม่มีด่าน.
 4. **คอลัมน์ `Repossession.marketValue` เปลี่ยนความหมายเป็น snapshot ราคาตารางรับซื้อ ณ วันยึด**
    (ไม่มีในตาราง = ราคาประเมิน) · `profitLoss` = ราคาประเมิน − ยอดปิดสัญญา · `customerRefund` = 0.
@@ -165,18 +170,22 @@ Spec: `docs/superpowers/specs/2026-09-05-repossession-single-price-design.md` ·
 5. **preview เลิกถอยไปใช้ `product.costPrice`** — ไม่มีราคาประเมิน = `marketValueSource: null` และจอโชว์ "—"
    (เดิมโชว์ต้นทุนซื้อเข้าเป็น "ราคากลาง" ทั้งที่ create ไม่เคยใช้เลขนั้น).
 
-**ขาคู่ฝั่ง SHOP ของการยึด (ทำแล้ว 2026-09-05 — ปิด "ASYMMETRY ที่รู้ตัว" ต้นทาง JP5):**
-`ShopCollectShopLegs` (`cpa-templates/shop-collect-shop-legs.template.ts`, ไม่ใช่ Nest provider —
-สร้างภายในผู้เรียก) โพสต์ใน tx เดียวกับ JP5 (`RepossessionsService.create`):
+**ขาคู่ฝั่ง SHOP ของการยึด (ทำแล้ว 2026-09-05 — ปิด "ASYMMETRY ที่รู้ตัว" ต้นทาง JP5; เหลือรูปเดียว 2026-09-20):**
+`ShopCollectShopLegs.postRepossessionIntake` (`cpa-templates/shop-collect-shop-legs.template.ts`, ไม่ใช่ Nest provider —
+สร้างภายในผู้เรียก) โพสต์ใน tx เดียวกับ JP5 (`RepossessionsService.createInTx`):
 
 ```
 Dr S11-2002 สินค้าคงคลัง-มือถือมือสอง        [ราคาประเมิน]
-   Cr S21-1104 เจ้าหนี้ FINANCE                 [ราคาประเมิน]   ← collectedByShop (FINANCE Dr 11-2107) · stamp SHOP_COLLECT
-   Cr S11-1202 ธนาคาร SHOP (จ่าย)               [ราคาประเมิน]   ← หน้าร้านโอนให้ FINANCE ทันที (FINANCE Dr KBank) · ไม่ stamp
+   Cr S21-1104 เจ้าหนี้ FINANCE                 [ราคาประเมิน]   ← เสมอ (FINANCE Dr 11-2107) · stamp DEVICE_RETURN + contractId + productId + deviceReturnId
 ```
 flow `shop-repossession-intake`, key `shop-repossession-intake:<contractId>`, `metadata.contractId`.
-`create()` ตรวจ `validatePeriodOpen` ของ **ทั้งสองบริษัท** และ flip `product.ownedByCompanyId` → SHOP +
-`category PHONE_NEW → PHONE_USED` (ขายต่อผ่าน POS จึงลง Cr S11-2002 ถูกบัญชี).
+**สาขา `Cr S11-1202` (หน้าร้านโอนให้ FINANCE ทันที, ไม่ stamp) ถูกลบ 2026-09-20** — วันยึด/รับคืนไม่มีเงินโอนจริง
+(spec 2026-09-20 §1: ค่าเริ่มต้นเดิม `collectedByShop=false` ทำให้ยอดธนาคาร FINANCE เกินจริงเท่าราคาประเมิน) · stamp
+`SHOP_COLLECT` บนขานี้เปลี่ยนเป็น `DEVICE_RETURN` (แถวยึดก่อน 2026-09-20 ยังเป็น `SHOP_COLLECT` — forward-only).
+`DeviceReturnsService.confirm` เรียก `assertRepossessionPeriodsOpen` เพื่อตรวจ `validatePeriodOpen` ของ
+**ทั้งสองบริษัท** ก่อนเปิด tx; `createInTx` ใน tx นั้น flip
+`product.ownedByCompanyId` → SHOP + `category PHONE_NEW → PHONE_USED` + **`branchId = receivingBranchId`** (ขายต่อผ่าน
+POS จึงลง Cr S11-2002 ถูกบัญชี และเครื่องอยู่ที่สาขาที่รับจริง — D7).
 
 ใบล้างเจ้าหนี้ (`ContractPaymentService.shopCollectSettlement` หลัง `ShopCollectSettlementTemplate`):
 `Dr S21-1104 / Cr S11-1202` flow `shop-collect-settlement-shop` key `<flow>:<contractId>:<requestId|amount>`
@@ -218,15 +227,116 @@ JE ตอนขาย = `ShopCashSaleTemplate` / `ShopInventoryTransferTemplate`
 - **ราคาประเมิน 0** (DTO ยอมรับ `@Min(0)`) → JP5 โพสต์ตามเดิม แต่ **ไม่โพสต์ใบรับเข้าสต็อก SHOP**
   (เครื่องไม่มีมูลค่า ต้นทุน 0 — ไม่มีบรรทัดศูนย์บาท).
 
-**หน้ายึด/วิซาร์ด:** `previewCalculation` คืน `eligibility {canRepossess, reason}` (สถานะสัญญา + strict
-mode กติกาเดียวกับ `create()`) → overlay โชว์แบนเนอร์ + ปิดปุ่มยืนยัน แทนปล่อยชน 400 · `findAll` คืน
-`shopCollectOutstanding` (11-2107 SHOP_COLLECT ต่อสัญญาผ่าน `shopCollectTypedBalance`) → ปุ่ม
-"รับโอนหน้าร้าน" โชว์เฉพาะแถวที่ยังมียอด และเติมยอดนั้นให้.
+**หน้ายึด/ใบรับเครื่องคืน:** `previewCalculation(contractId, { deviceReturnId, discountPct })` คืน `eligibility
+{canRepossess, reason}` (สถานะสัญญา + strict mode + ยอดค้าง กติกาเดียวกับ `createInTx`; เกรด/ราคาประเมิน/เหตุผลอ่านจาก
+ใบรับเครื่องคืน) → `RepossessionOverlay` โหมดยืนยันโชว์แบนเนอร์ + ปิดปุ่มยืนยัน แทนปล่อยชน 400 · `findAll` คืน
+`shopCollectOutstanding` (11-2107 SHOP_COLLECT ต่อสัญญาผ่าน `shopCollectTypedBalance` — แถวยึดก่อน 2026-09-20) → ปุ่ม
+"รับโอนหน้าร้าน" โชว์เฉพาะแถวที่ยังมียอด และเติมยอดนั้นให้ · และคืน `deviceReturnOutstanding` (11-2107 DEVICE_RETURN
+net ของ POSTED deductions) → ป้าย "รอหักในรอบจ่าย" บนแถว (ล้างผ่านรอบจ่าย INTER-CO/รับเงินสด ไม่ใช่ปุ่มรับโอน).
 
 **ที่ยังเปิดอยู่ (ไม่เกี่ยวกับเงินคืน):** เลข "บนจอ" กับ "ในสมุด" ยังต่างกันเท่า**ส่วนลดยอดปิด**
 (JP5 ไม่ book ส่วนลดแยกเหมือน JP4 `52-1106`) — คำถาม CPA 2026-08-08 ข้อ 1 ยังไม่ได้คำตอบ
 (ถามซ้ำแล้ว: `docs/accounting/cpa-followup-2026-09-05.txt`) · ขาคู่ SHOP ของ **JP4** ปิดยอดหน้าร้านรับแทน
 (`Dr <เงินสด SHOP ต่อสาขา> / Cr S21-1104`) ยังไม่ต่อ — รอตัดสินบัญชีเงินสด SHOP ต่อสาขา.
+
+### ใบรับเครื่องคืน (DeviceReturn) — สาขาบันทึก FINANCE ยืนยัน ค่าเครื่องหักในรอบจ่าย (2026-09-20)
+
+Spec: `docs/superpowers/specs/2026-09-20-device-return-intake-design.md` · Plans:
+`docs/superpowers/plans/2026-09-20-device-return-phase{1,2,3}-*.md` · โค้ด: `apps/api/src/modules/device-returns/` (ใบ),
+`repossessions.service.ts` (`createInTx` / `assertRepossessionPeriodsOpen` — `create()` + `POST /repossessions` ถูกลบ),
+`interco-settlement/*` (แถวหักประเภทที่ 3), web `apps/web/src/components/device-returns/*` + `RepossessionOverlay.tsx`
+(โหมดยืนยันอย่างเดียว).
+
+**คำตัดสินเจ้าของ (D1–D7, ปิดประเด็น — อย่าเสนอกลับ):** สาขา (OWNER/BM/SALES) บันทึก "ใบรับเครื่องคืน"
+`DR-YYYYMMDD-NNNN` (`DeviceReturnNumberService` — advisory lock ต่อวัน BKK แบบ `IntercoBatchNumberService`) พร้อมเกรด/
+ราคาประเมิน → **สัญญาหยุดทันทีที่รับคืน** (VOLUNTARY = สัญญา ACTIVE/OVERDUE/DEFAULT flip → `TERMINATED` เก็บ
+`previousContractStatus` + audit `CONTRACT_STATUS_LEGAL` reason `DEVICE_RETURN_INTAKE` ใน tx; REPOSSESSION = สัญญา
+`TERMINATED` อยู่แล้ว เหตุผลล็อก `AFTER_TERMINATION`; `jp5_require_terminated_status` คงไว้) → ลูกค้าได้ไลน์
+`DEVICE_RETURNED` (ไม่มีลายเซ็น ไม่มีราคาในข้อความ; แม่แบบแก้ได้ที่ `/notifications`) → OWNER/FM กด **ยืนยัน** หนึ่งคลิก
+= JP5 + ขาคู่ SHOP ใน tx เดียว (`DeviceReturnsService.confirm` → `RepossessionsService.createInTx`, CAS
+`PENDING_CONFIRM → CONFIRMED` count 0 → 409) → ค่าเครื่องหักผ่านรอบจ่าย INTER-CO (แนวทาง A — ประเภทหักใหม่ ไม่ใช้แถว
+เรียกคืนแทน) · รับได้ทุกสาขา ใบเก็บ `receivingBranchId` และเครื่องย้าย `branchId` ไปสาขาที่รับตอนยืนยัน · ส่งกลับ
+(`reject`, OWNER/FM, เหตุผล 10–500) / ยกเลิก (`cancel`, OWNER/BM สาขาตัวเอง) ปิดใบ + ไลน์
+`DEVICE_RETURN_CANCELED` โดย **คืนสถานะเฉพาะ VOLUNTARY ที่มี `previousContractStatus` และสัญญายังเป็น
+`TERMINATED`** (CAS); REPOSSESSION ไม่คืนสถานะ และถ้าสัญญาเปลี่ยนสถานะไปแล้วจะไม่เขียนทับ. ถ้าคืนสถานะ
+สำเร็จและใบข้ามเดือน ผลลัพธ์มี `notice` ให้ตรวจงวดบัญชีก่อน cron 2A accrual ย้อนหลัง — UI ต้องแสดง notice
+และไม่กล่าวว่าสัญญาคืนสถานะเสมอ. การตรวจงวดใช้ `validatePeriodOpen` รวม grace policy เดิม ไม่ใช่ปิดเดือนแล้วห้ามเสมอ.
+
+**JE ตอนยืนยัน — ขา Dr ของ JP5 = `11-2107` เสมอ stamp `shopReceivableType: 'DEVICE_RETURN'` (+ `deviceReturnId`,
+`shopReceivable: '11-2107'`); ไม่มีโหมด "โอนสดวันยึด" อีกต่อไป:**
+
+```
+FINANCE — RepossessionJP5Template (deposit '11-2107', typeStamp DEVICE_RETURN)
+  Dr 11-2107 ลูกหนี้-หน้าร้าน [ราคาประเมิน] + ขาล้าง 11-2101/11-2103/11-2105/11-2106/21-2102 + plug 41-1102/51-1102 ตามเดิม
+SHOP — ShopCollectShopLegs.postRepossessionIntake (สาขา Cr S11-1202 ถูกลบ)
+  Dr S11-2002 สินค้าคงคลัง-มือถือมือสอง [ราคาประเมิน]
+     Cr S21-1104 เจ้าหนี้ FINANCE            [ราคาประเมิน]   ← stamp DEVICE_RETURN + contractId + productId + deviceReturnId
+```
+flow `shop-repossession-intake` เดิม. ราคาประเมิน 0 → JP5 ลง แต่ไม่มีใบรับเข้าสต็อก SHOP และไม่มีแถวหักในรอบจ่าย.
+`SHOP_COLLECT_REPOSSESSION` audit ไม่เขียนอีก (แทนด้วย `DEVICE_RETURN_CONFIRMED` + metadata บน JE); audit `REPOSSESSION`
+เดิมยังเขียนใน `createInTx`.
+
+**ตัวเลขทอง (CSV กรณีที่ 5: 17,000/12 งวด, งวด 1–4 accrued และชำระแล้ว, งวด 5–12 ยังไม่ accrued,
+ราคาประเมิน 7,000; fixture จริง `device-returns/__tests__/device-return-flow.integration.spec.ts`, ส่วนคู่ JE
+สังเคราะห์/รอบจ่ายอยู่ที่ `interco-settlement/__tests__/interco-device-return.integration.spec.ts`):**
+FINANCE `Dr 11-2107 7,000.00 · Dr 11-2106 4,000.00 · Dr 21-2102 793.32 ·
+Dr 51-1102 5,126.68 / Cr 11-2101 11,333.36 · Cr 11-2105 793.32 · Cr 21-2101 793.32 · Cr 41-1101 4,000.00` (Σ 16,920.00)
+· SHOP `Dr S11-2002 7,000.00 / Cr S21-1104 7,000.00`.
+
+**ประเภท `DEVICE_RETURN` ครบทุกเลนส์** — ประกาศครั้งเดียว `SHOP_RECEIVABLE_TYPES` (`shop-receivable-type.util.ts`) และ
+SQL ทุกตัวสร้าง IN-list จาก `Prisma.join`; **ไม่มี `FLOW_MAP` fallback** (แถวยึดเก่า flow เดียวกันที่ไม่มี stamp คือโหมด
+โอนทันทีซึ่งไม่แตะ S21-1104 — ถ้าใส่ fallback จะถูกจัดเป็น DEVICE_RETURN โดยไม่มีหนี้จริง): `deviceReturnFinanceBalance` /
+`deviceReturnShopBalance` (`interco-typed-balance.ts`, stamp-only) · `getPendingDeviceReturns()` +
+`ReconcileTotals.glDeviceReturnTotal` · aging `deviceReturnGross` / `shopMirrorDeviceReturnGross` รวมใน `intercoNet` และ
+`shopMirrorGross` (key `metadata.contractId`) + `negativeTypedFields` · `getTypedAccountDrift` ⇒ anti-drift ไม่เพิ่มจาก
+baseline หลังยืนยันใบแรก (baseline สะอาด ⇒ 0; `device-returns/__tests__/device-return-flow.integration.spec.ts`).
+
+**แถวหักประเภทที่ 3 ในรอบจ่าย INTER-CO (`InterCoItemType.DEVICE_RETURN`, คอลัมน์ `deviceReturnAmount`) — mirror ของ RECALL
+ด้านโครงสร้าง แต่สูตร net แยกตามประเภท:** คิว `GET /interco-settlement/pending` คืน
+`{ pending, recalls, deviceReturns, reconcile }`. **คิวและ approval ของ DEVICE_RETURN: net = typed gross −
+Σ `deviceReturnAmount` เท่านั้น** ของ item ใน batch POSTED (`DEVICE_RETURN_DEDUCTION_COLUMNS`); ห้ามหัก
+`swapCreditAmount`/`recallAmount` ในเลนส์นี้ — เคยหัก swap 8,000 แล้วคืนเครื่อง 7,000 ต้องยังมีค่าเครื่องคืน 7,000.
+คิว recall และ combined residual หัก Σ **ทั้งสามคอลัมน์** (`ALL_DEDUCTION_COLUMNS`) ตามสูตรของตน.
+Hydrate คิว DEVICE_RETURN **ไม่กรอง**สถานะสัญญา
+— เป็น `CLOSED_BAD_DEBT` โดยนิยาม · `CreateBatchDto.deviceReturnContractIds` · guard สองสมุดต่างกัน > 0.01 → reject
+`ยอดค่าเครื่องคืนสองสมุดไม่ตรงกัน สัญญา {no}` · clash เฉพาะ `itemType: 'DEVICE_RETURN'` · drift guard เทียบ live net ±0.01 ·
+`buildFinanceLines` ข้าม Dr 21-1101/21-1102, `Cr 11-2107 [deviceReturnAmount]` "หักค่าเครื่องคืน {no}" · `buildShopLines`
+`Dr S21-1104 [deviceReturnAmount]` "ล้างเจ้าหนี้ FINANCE-ค่าเครื่องคืน {no}" · metadata `items[]` เพิ่ม `type: 'DEVICE_RETURN'`,
+`deviceReturn: '<2dp>'` (**ไม่ stamp** top-level `contractId`/`shopReceivableType` — สถาปัตยกรรม "เลนส์ gross + item gate"
+เดิม) · `alarmNettingResiduals` รวม 3 ประเภทต่อสมุด − Σ deduction ทุก itemType · reverse = mirror สองใบ แถวกลับเข้าคิวเอง
+ผ่าน gate. รอบถัดไปจ่ายสัญญา Y (10,000 + 1,000) เลือกแถว X: FINANCE `Dr 21-1101 10,000 · Dr 21-1102 1,000 / Cr 11-2107
+7,000 · Cr 11-1201 4,000`; SHOP `Dr S21-1104 7,000 · Dr S11-1201 4,000 / Cr S11-3001 10,000 · Cr S11-3002 1,000` — หลัง
+approve typed gross ยังเป็น 7,000 (ขาหักไม่ stamp) แต่คิว = 0, residual = 0, drift = 0, X หลุดคิว; reverse → X กลับเข้าคิว
+ที่ 7,000. ทางรับเงินสดสำรอง: `POST /interco-settlement/device-returns/:contractId/settle-cash` (OWNER/FM —
+`settleDeductionCash(contractId, 'DEVICE_RETURN', dto, userId)`; ดูหัวข้อ "เส้นทางรับเงินสดคืน (Task 6)").
+
+**ด่านกันล้างซ้ำสองทาง (`ShopCollectSettlementTemplate.execute`, หลัง requestId idempotency ก่อนคำนวณยอดค้าง):**
+`typeStamp !== 'DEVICE_RETURN'` และ (**`deviceReturnFinanceBalance(contractId) > 0` หรือมีประวัติ
+JE `POSTED` ที่ไม่ถูก soft-delete, stamp `DEVICE_RETURN` + `contractId`, มีบรรทัด `11-2107` ที่ไม่ถูก soft-delete**)
+→ 400 "สัญญานี้มีค่าเครื่องคืนที่ต้องหัก
+ผ่านรอบจ่าย INTER-CO — ใช้หน้าจ่ายให้หน้าร้าน รายการค่าเครื่องคืน หรือปุ่มรับเงินสดในหน้านั้น" — ไม่งั้นใบรับโอน (stamp
+SHOP_COLLECT) ล้าง 11-2107 โดยเลนส์ DEVICE_RETURN ไม่ลด → รอบจ่ายถัดไปหักซ้ำ. ปุ่ม "รับโอนหน้าร้าน" บน `/repossessions`
+ยังโชว์เฉพาะแถวเก่าที่ `shopCollectOutstanding > 0`; แถวใหม่โชว์ป้าย "รอหักในรอบจ่าย" จาก `deviceReturnOutstanding`.
+
+**`SHOP_COLLECT` เหลือต้นทางเดียวคือ JP4** (ปิดยอดหน้าร้านรับแทน) — ต้นทาง JP5 ถูกแทนด้วย `DEVICE_RETURN` ตั้งแต่
+2026-09-20; แถวยึดที่ลงไปแล้วด้วย `SHOP_COLLECT` ล้างทางเดิม (forward-only ไม่ย้ายรายการ ไม่ backfill ใบรับคืน).
+
+**หน้าจอ:** `/repossessions` (เมนู "รับเครื่องคืน / ยึดคืน") — ปุ่ม "บันทึกรับเครื่องคืน" (`DeviceReturnIntakeDialog`: ค้นสัญญา
+`GET /device-returns/lookup?q=` + `GET /device-returns/preview` ให้ eligibility/kind/ราคาตาราง/±15% — **ไม่มีส่วนบัญชี**) ·
+ตาราง "ใบรับเครื่องคืน — รอ FINANCE ยืนยัน" (`DeviceReturnList`: FINANCE ยืนยัน/ส่งกลับ/ส่งซ้ำไลน์, BM ยกเลิกใบสาขาตัวเอง) ·
+รายการ "รอยึดเครื่อง" = `GET /device-returns/awaiting-repossession` ปุ่ม "รับเครื่องคืน" · `RepossessionOverlay` = **โหมดยืนยัน
+อย่างเดียว** (prop `deviceReturnId` บังคับ; ข้อมูลใบอ่านอย่างเดียว; แก้ได้เฉพาะวันที่ลงบัญชี + ส่วนลดยอดปิด; preview
+`GET /repossessions/preview/:contractId?deviceReturnId=&discountPct=`; ยืนยัน = `POST /device-returns/:id/confirm`, ส่งกลับ =
+`POST /device-returns/:id/reject`) — ถอด CashAccountSelect/ช่องติ๊กลูกหนี้-หน้าร้าน/ปุ่มรับโอน/`POST /repossessions`; ชิป
+"คืนเครื่อง" ในวิซาร์ดรับชำระถูกถอด · `ContractDetailPage` ป้าย "รับเครื่องคืนแล้ว รอ FINANCE ยืนยัน DR-…" + ปุ่ม
+"รับเครื่องคืน" · INTER-CO `PendingTab` รายการที่ 3 "ค่าเครื่องคืน" + ปุ่ม "รับเงินสดค่าเครื่อง" (`RecallCashDialog
+kind='DEVICE_RETURN'`) + `BatchDetailSheet` badge "ค่าเครื่องคืน" · tag AUTO `RETURNED_DEVICE` "เคยคืนเครื่อง" (ห้ามติด/
+ถอดมือ — กฎที่ `evaluateAutoTags`) · journey kind `DEVICE_RETURNED` ป้าย "คืนเครื่อง" (`entries.source.ts` VIEWS).
+
+**ที่ยังเปิดอยู่:** ยึดเครื่องเดิมซ้ำ (`Repossession.productId @unique`) · ส่วนลดยอดปิดของ JP5 ลงบัญชีหรือไม่ (รอผู้สอบ —
+`docs/accounting/cpa-followup-2026-09-05.txt`; ยังต้องติดตามคำตอบผู้สอบ). ร่างบันทึกอธิบายวิธีใหม่ (Task 16 จะจัดทำ,
+ยังไม่ได้ส่ง): `docs/accounting/cpa-followup-2026-09-20-device-return.txt` · ไลน์เป็นข้อความธรรมดา (Flex ทีหลังผ่านแม่แบบเดียวกัน) ·
+MDM ปลดอัตโนมัติตอนรับคืน · ขาคู่ SHOP ของ JP4 ปิดยอดหน้าร้านรับแทน (ยังไม่ต่อ — ข้างบน).
 
 ---
 
@@ -2290,12 +2400,19 @@ Spec: `docs/superpowers/specs/2026-07-29-device-swap-priced-exchange-design.md` 
   (`exchange-cancel-reversal.template.ts`) copy key นี้ต่อ ให้เลนส์เห็นขากลับรายการด้วย.
   Prod ต้องรัน `seed:coa` หลัง deploy (บัญชีใหม่ S21-1104).
   (3) **11-2107/S21-1104 reference types** — `metadata.shopReceivableType`
-  (`SWAP_CREDIT` | `PAYOUT_RECALL` | `SHOP_COLLECT`) stamp ทุก JE ใหม่; แถวเก่า classify
-  ตอนอ่านผ่าน `classifyShopReceivable()` (`apps/api/src/modules/journal/shop-receivable-type.util.ts`).
-  จุดกำเนิด `SHOP_COLLECT` มี 2 ทาง (ตรงตาราง spec §2): JP4 ปิดยอดหน้าร้านรับแทน และ
-  JP5 ยึดเครื่องหน้าร้านรับแทน (`repossession-jp5.template.ts` — ค้นพบระหว่าง implement,
-  stamp แล้ว). ส่วนใบ settle (`shop-collect-settlement.template.ts` — Dr cash / Cr 11-2107)
-  เป็น**จุดล้าง** ไม่ใช่จุดกำเนิด แต่ stamp `SHOP_COLLECT` ด้วย เพื่อให้ classify ครบทั้งสองขา.
+  (`SWAP_CREDIT` | `PAYOUT_RECALL` | `SHOP_COLLECT` | **`DEVICE_RETURN`** ตั้งแต่ 2026-09-20 — ประกาศครั้งเดียวที่
+  `SHOP_RECEIVABLE_TYPES` ใน `shop-receivable-type.util.ts`, SQL ทุกตัวสร้าง IN-list จาก `Prisma.join`) stamp JE รายสัญญาใหม่;
+  **ยกเว้น batch JEs**: ใช้ metadata `items[]` ห้าม top-level `contractId`/`shopReceivableType` (gross lens + item deductions).
+  แถวเก่า classify ตอนอ่านผ่าน `classifyShopReceivable()` (`apps/api/src/modules/journal/shop-receivable-type.util.ts`
+  — `DEVICE_RETURN` **ไม่มี `FLOW_MAP` fallback**: แถวยึดเก่า flow `shop-repossession-intake` ที่ไม่มี stamp คือโหมด
+  โอนทันทีซึ่งไม่แตะ S21-1104).
+  จุดกำเนิด `SHOP_COLLECT` **เหลือทางเดียว (2026-09-20): JP4 ปิดยอดหน้าร้านรับแทน** — ต้นทาง JP5 ยึดเครื่องหน้าร้าน
+  รับแทน (`repossession-jp5.template.ts`) ถูกแทนด้วย `DEVICE_RETURN` (ขา Dr 11-2107 ของ JP5 stamp `DEVICE_RETURN`
+  เสมอ; แถวยึดก่อนหน้านั้นยัง `SHOP_COLLECT` ล้างทางเดิม). ส่วนใบ settle (`shop-collect-settlement.template.ts` —
+  Dr cash / Cr 11-2107) เป็น**จุดล้าง** ไม่ใช่จุดกำเนิด แต่ stamp ตาม `typeStamp` (`SHOP_COLLECT` | `PAYOUT_RECALL` |
+  `DEVICE_RETURN`) เพื่อให้ classify ครบทั้งสองขา — และมี**ด่านกันล้างซ้ำ**: `typeStamp !== 'DEVICE_RETURN'` แต่สัญญา
+  มี `deviceReturnFinanceBalance > 0` **หรือมีประวัติ JE POSTED ที่ไม่ถูกลบ stamp DEVICE_RETURN + contractId
+  และบรรทัด 11-2107 ที่ไม่ถูกลบ** → 400 แม้ยอดปัจจุบันถูกล้างเป็นศูนย์แล้ว (ดูหัวข้อ "ใบรับเครื่องคืน (DeviceReturn)" ในส่วนยึดเครื่อง).
 - Approval: AUTO (≥NCV + ≥basePrice×0.85) / REVIEW (BM) / ESCALATE (<70% NCV — OWNER) — `exchange-tier.util.ts`
 - Guards ก่อน finalize: GL 11-2103 = 0, ไม่มี advance/credit ค้าง
 - Cancellation: ยกเลิกได้ทุกเมื่อถ้าสัญญาใหม่ยังไม่มีการชำระ (owner ยกเลิก windows/ค่าปรับ 2026-07-31) — mirror-reverse ทุก JE รวม A.5 + A.1b SHOP-leg (สวีปตาม `metadata.contractId` ไม่ hardcode บัญชี — สวีปจับ SHOP JE ได้เองแม้ไม่มี id เก็บบน request row); 2A cron backfill เอง; **42-1107 ถูกลบออกจากผังบัญชีแล้ว 2026-08-03 (คำสั่ง CPA/owner) — ไม่มีบัญชีรองรับค่าปรับยกเลิกอีกต่อไป**. **Phase 3 (2026-08-20): ยกเลิกหลังสัญญาใหม่ถูกตัดจ่ายรอบจ่าย INTER-CO POSTED แล้ว "ทำได้"** — ไม่ใช่ mirror ตรง (จะทำเจ้าหนี้ติดลบ) แต่ redirect ขาเจ้าหนี้/ลูกหนี้รอบจ่ายเป็นลูกหนี้เรียกคืน `PAYOUT_RECALL` + `cancelWindow: 'AFTER_PAYOUT'` — ดูหัวข้อ "ยกเลิกสัญญา (Flow C — Phase 3)" ด้านล่าง
@@ -2585,6 +2702,16 @@ Guards ตามลำดับ: (0) idempotency `requestId` ก่อนทุ�
 — ห้ามโพสต์ข้างเดียว); (4) `amount ≤ recallGl net + 0.01`. Race: SSI abort (P2034) และ
 DB unique (P2002) แปลเป็น 409 ไทยทั้งคู่ — ไม่ใช่ raw 500. `typeStamp` default
 `'SHOP_COLLECT'` บน template ⇒ caller เดิม (JP4 shop-collect settle) byte-identical.
+
+**2026-09-20 — generalize เป็น `settleDeductionCash(contractId, type: 'PAYOUT_RECALL' | 'DEVICE_RETURN', dto, userId)`**
+(`settleRecallCash` เหลือเป็น wrapper บาง ๆ ที่ส่ง `'PAYOUT_RECALL'`): route ใหม่
+`POST /interco-settlement/device-returns/:contractId/settle-cash` (OWNER/FM, DTO เดียวกัน) — FINANCE ใช้
+`ShopCollectSettlementTemplate` + `typeStamp: 'DEVICE_RETURN'`, SHOP flow `interco-device-return-cash-shop`
+(`Dr S21-1104 / Cr <shopPayoutAccountCode>` stamp DEVICE_RETURN), guards ชุดเดียวกับ recall (คิว =
+`getPendingDeviceReturns` ยอด net, item DEVICE_RETURN ใน batch เปิด → reject, สองสมุดตรง ±0.01, amount ≤ net + 0.01),
+audit `INTERCO_DEVICE_RETURN_CASH_SETTLED`. UI: ปุ่ม "รับเงินสดค่าเครื่อง" ใน `PendingTab` รายการที่ 3 →
+`RecallCashDialog kind='DEVICE_RETURN'`. บัญชีรับ FINANCE default `11-1201`; บัญชีจ่าย SHOP default
+**DEVICE_RETURN = `S11-1202`**, ส่วน RECALL คง `S11-1201`.
 
 ### exchange-cancel C-2 (Task 5 — spec §5.5)
 

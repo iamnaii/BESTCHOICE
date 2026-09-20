@@ -281,6 +281,8 @@ jobs:
           SALES_FILES=$(ls src/modules/sales/__tests__/*.integration.spec.ts)
           # Stock go-live wipe (2026-09-05) — ตรรกะอยู่ใต้ src/cli/ ⇒ directory ใหม่ = glob ใหม่
           STOCK_GO_LIVE_FILES=$(ls src/cli/stock-go-live/__tests__/*.integration.spec.ts)
+          # Device-return intake (2026-09-20) — each new directory needs an explicit glob.
+          DEVRET_FILES=$(ls src/modules/device-returns/__tests__/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
@@ -295,7 +297,8 @@ jobs:
             $DASH_FILES \
             $EQUITY_FILES \
             $SALES_FILES \
-            $STOCK_GO_LIVE_FILES
+            $STOCK_GO_LIVE_FILES \
+            $DEVRET_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

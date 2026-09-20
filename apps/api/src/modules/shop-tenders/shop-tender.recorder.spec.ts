@@ -119,6 +119,27 @@ describe('ShopTenderRecorder.recordInflow', () => {
   });
 });
 
+describe('ShopTenderRecorder — account resolver', () => {
+  it('uses the resolver its caller was injected with, never a second one built from prisma', async () => {
+    // บัญชีของ JE แยกยอดต้องมาจากแหล่งเดียวกับ JE รับเงินหลักของเอกสาร (CI 2026-09-20: e2e ที่ฉีด resolver
+    // จำลอง + สาขาที่ไม่ได้ตั้งบัญชีลิ้นชัก ได้ 400 เพราะ recorder สร้าง resolver ของตัวเองไปอ่านสาขาจริง)
+    const accounts = { resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1101') };
+    const prisma = { branch: { findUnique: jest.fn() } };
+    const tx = { shopTender: { createMany: jest.fn().mockResolvedValue({ count: 1 }) }, branch: { findUnique: jest.fn() } };
+    const recorder = new ShopTenderRecorder(prisma as never, { accounts } as never);
+
+    const result = await recorder.recordInflow(tx as unknown as Prisma.TransactionClient, {
+      kind: 'CONTRACT_DOWN', branchId: 'branch-without-till', actorId: 'u1', doc: { contractId: 'c1' },
+      tenders: normalizeTenders([{ method: 'CASH', amount: 2000 }], 2000),
+    });
+
+    expect(result.primaryAccountCode).toBe('S11-1101');
+    expect(accounts.resolveInflowCashAccount).toHaveBeenCalledWith('branch-without-till', 'CASH', tx);
+    expect(tx.branch.findUnique).not.toHaveBeenCalled();
+    expect(prisma.branch.findUnique).not.toHaveBeenCalled();
+  });
+});
+
 describe('ShopTenderRecorder.recordRefund', () => {
   const inRows = [
     { id: 't1', kind: 'CONTRACT_DOWN', branchId: 'b1', method: 'CASH', amount: D(2000), reference: null, seq: 1, seqTotal: 2, saleId: null, contractId: 'c1', bookingId: null },

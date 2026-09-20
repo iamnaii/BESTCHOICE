@@ -506,7 +506,7 @@ export class BookingsService {
           tx,
         );
         // สมุดเงินหน้าร้าน + JE แยกยอดของมัดจำจ่ายผสม (ผู้รับ = ผู้กดรับมัดจำ)
-        await new ShopTenderRecorder(this.prisma).recordInflow(tx, { kind: 'BOOKING_DEPOSIT', branchId: booking.branchId,
+        await new ShopTenderRecorder(this.prisma, { accounts: this.shopAccountResolver }).recordInflow(tx, { kind: 'BOOKING_DEPOSIT', branchId: booking.branchId,
           actorId: user.id, doc: { bookingId: id }, docNumber: booking.bookingNumber, tenders: depositTenders, occurredAt: now });
       }
 
@@ -836,7 +836,7 @@ export class BookingsService {
         );
       }
       // สมุดเงินหน้าร้าน: นับเฉพาะเงินที่รับเพิ่มตอนแปลง (มัดจำมีแถวของตัวเองตั้งแต่วันรับ — ไม่นับซ้ำ)
-      await new ShopTenderRecorder(this.prisma).recordInflow(tx, { kind: 'CASH_SALE', branchId: booking.branchId,
+      await new ShopTenderRecorder(this.prisma, { accounts: this.shopAccountResolver }).recordInflow(tx, { kind: 'CASH_SALE', branchId: booking.branchId,
         actorId: user.id, doc: { saleId: sale.id }, docNumber: saleNumber, tenders: balanceTenders });
 
       // 5. Auto-create sales commission (read from CommissionRule, fallback 3%).

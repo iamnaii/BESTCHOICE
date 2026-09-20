@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 
 jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
 
@@ -36,6 +38,7 @@ describe('DeviceReturnNotifyService', () => {
   let notifications: any;
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     prisma = {
       deviceReturn: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
       todo: {
@@ -55,6 +58,54 @@ describe('DeviceReturnNotifyService', () => {
       ],
     }).compile();
     service = mod.get(DeviceReturnNotifyService);
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it('does not let an open FINANCE reminder suppress NO_LINE fallback for the same document', async () => {
+    const docNumber = 'DR-20260920-0001';
+    prisma.deviceReturn.findUnique.mockResolvedValue(
+      makeReturn({ customer: { id: 'cust-1', name: 'x', lineIdFinance: null, lineLinks: [] } }),
+    );
+    const todos = [
+      {
+        id: 'stale',
+        title: `ใบรับเครื่องคืน ${docNumber} รอ FINANCE ยืนยันเกิน 5 วัน (สัญญา BCP2609-00042)`,
+        tags: [DEVICE_RETURN_TODO_TAG],
+        status: 'OPEN',
+        deletedAt: null,
+      },
+    ];
+    prisma.todo.findFirst.mockImplementation(
+      async ({
+        where,
+      }: {
+        where: {
+          title: { contains?: string; startsWith?: string };
+          tags: { has: string };
+          status: { not: string };
+          deletedAt: null;
+        };
+      }) =>
+        todos.find(
+          (todo) =>
+            todo.tags.includes(where.tags.has) &&
+            todo.status !== where.status.not &&
+            todo.deletedAt === where.deletedAt &&
+            (!where.title.contains || todo.title.includes(where.title.contains)) &&
+            (!where.title.startsWith || todo.title.startsWith(where.title.startsWith)),
+        ) ?? null,
+    );
+    prisma.todo.create.mockImplementation(async ({ data }: { data: (typeof todos)[number] }) => {
+      const todo = { ...data, id: 'no-line', status: 'OPEN', deletedAt: null };
+      todos.push(todo);
+      return todo;
+    });
+    await service.notify('dr-1', 'DEVICE_RETURNED');
+    expect(prisma.todo.create).toHaveBeenCalledTimes(1);
+    await service.notify('dr-1', 'DEVICE_RETURNED');
+    expect(prisma.todo.create).toHaveBeenCalledTimes(1);
+    expect(notifications.sendFromTemplate).not.toHaveBeenCalled();
   });
 
   it('SENT: ส่งผ่านแม่แบบ DEVICE_RETURNED ไป lineLinks ก่อน lineIdFinance พร้อมตัวแปรครบ (ไม่มีราคาประเมิน ไม่มี fallbackPhone) แล้วบันทึกผลบนใบ', async () => {
@@ -120,11 +171,16 @@ describe('DeviceReturnNotifyService', () => {
   });
 
   it('FAILED: sendFromTemplate throw (เช่น ไม่มีแม่แบบ) → บันทึก FAILED, ไม่ throw ออก', async () => {
+    const errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const error = new Error('Notification template not found');
     prisma.deviceReturn.findUnique.mockResolvedValue(makeReturn());
-    notifications.sendFromTemplate.mockRejectedValueOnce(
-      new Error('Notification template not found'),
-    );
+    notifications.sendFromTemplate.mockRejectedValueOnce(error);
     await expect(service.notify('dr-1', 'DEVICE_RETURNED')).resolves.toBeUndefined();
+    expect(Sentry.captureException).toHaveBeenCalledWith(error, {
+      tags: { subsystem: 'device-return', eventType: 'DEVICE_RETURNED' },
+      extra: { deviceReturnId: 'dr-1' },
+    });
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining(error.message));
     expect(prisma.deviceReturn.update).toHaveBeenCalledWith({
       where: { id: 'dr-1' },
       data: {
@@ -154,7 +210,10 @@ describe('DeviceReturnNotifyService', () => {
     expect(prisma.todo.findFirst).toHaveBeenCalledWith({
       where: {
         tags: { has: DEVICE_RETURN_TODO_TAG },
-        title: { contains: 'DR-20260920-0001' },
+        title: {
+          contains: 'DR-20260920-0001',
+          startsWith: 'แจ้งลูกค้าไม่ได้ ไม่มีไลน์ผูก — ใบรับเครื่องคืน DR-20260920-0001 (',
+        },
         status: { not: 'DONE' },
         deletedAt: null,
       },
@@ -218,15 +277,20 @@ describe('DeviceReturnNotifyService', () => {
   });
 
   it.each(['load', 'record', 'todo'])('does not throw when %s fails', async (stage) => {
+    const errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const error = new Error(`${stage} failed`);
     prisma.deviceReturn.findUnique.mockResolvedValue(
       makeReturn({ customer: { id: 'cust-1', name: 'x', lineIdFinance: null, lineLinks: [] } }),
     );
-    if (stage === 'load')
-      prisma.deviceReturn.findUnique.mockRejectedValueOnce(new Error('load failed'));
-    if (stage === 'record')
-      prisma.deviceReturn.update.mockRejectedValueOnce(new Error('record failed'));
-    if (stage === 'todo') prisma.todo.create.mockRejectedValueOnce(new Error('todo failed'));
+    if (stage === 'load') prisma.deviceReturn.findUnique.mockRejectedValueOnce(error);
+    if (stage === 'record') prisma.deviceReturn.update.mockRejectedValueOnce(error);
+    if (stage === 'todo') prisma.todo.create.mockRejectedValueOnce(error);
     await expect(service.notify('dr-1', 'DEVICE_RETURNED')).resolves.toBeUndefined();
+    expect(Sentry.captureException).toHaveBeenCalledWith(error, {
+      tags: { subsystem: 'device-return', eventType: 'DEVICE_RETURNED' },
+      extra: { deviceReturnId: 'dr-1' },
+    });
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining(error.message));
   });
 
   it('records NO_LINE even when no system user can create the Todo', async () => {
@@ -237,6 +301,14 @@ describe('DeviceReturnNotifyService', () => {
     await expect(service.notify('dr-1', 'DEVICE_RETURNED')).resolves.toBeUndefined();
     expect(prisma.deviceReturn.update).toHaveBeenCalled();
     expect(prisma.todo.create).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      expect.stringContaining('SYSTEM user missing'),
+      {
+        level: 'warning',
+        tags: { subsystem: 'device-return' },
+        extra: { deviceReturnId: 'dr-1', docNumber: 'DR-20260920-0001' },
+      },
+    );
   });
 
   it('ใบไม่พบ/ถูกลบ → ไม่ทำอะไร ไม่ throw', async () => {

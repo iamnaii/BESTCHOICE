@@ -53,6 +53,50 @@ describe('DeviceReturnPendingCron', () => {
     jest.restoreAllMocks();
   });
 
+  it('does not let an open NO_LINE fallback suppress FINANCE reminders for the same document', async () => {
+    const now = new Date('2026-09-10T02:20:00Z');
+    jest.useFakeTimers().setSystemTime(now);
+    const docNumber = 'DR-20260905-0001';
+    prisma.deviceReturn.findMany.mockResolvedValue([pendingRow(docNumber, 5, now)]);
+    const todos = [
+      {
+        id: 'no-line',
+        title: `แจ้งลูกค้าไม่ได้ ไม่มีไลน์ผูก — ใบรับเครื่องคืน ${docNumber} (สมชาย)`,
+        tags: [DEVICE_RETURN_TODO_TAG],
+        status: 'OPEN',
+        deletedAt: null,
+      },
+    ];
+    prisma.todo.findFirst.mockImplementation(
+      async ({
+        where,
+      }: {
+        where: {
+          title: { contains?: string; startsWith?: string };
+          tags: { has: string };
+          status: { not: string };
+          deletedAt: null;
+        };
+      }) =>
+        todos.find(
+          (todo) =>
+            todo.tags.includes(where.tags.has) &&
+            todo.status !== where.status.not &&
+            todo.deletedAt === where.deletedAt &&
+            (!where.title.contains || todo.title.includes(where.title.contains)) &&
+            (!where.title.startsWith || todo.title.startsWith(where.title.startsWith)),
+        ) ?? null,
+    );
+    prisma.todo.create.mockImplementation(async ({ data }: { data: (typeof todos)[number] }) => {
+      const todo = { ...data, id: 'stale', status: 'OPEN', deletedAt: null };
+      todos.push(todo);
+      return todo;
+    });
+    expect(await cron.tick()).toMatchObject({ todosCreated: 1 });
+    expect(await cron.tick()).toMatchObject({ todosCreated: 0 });
+    expect(prisma.todo.create).toHaveBeenCalledTimes(1);
+  });
+
   it('registers daily 09:20 Bangkok scheduling without starting a scheduler', () => {
     expect(Reflect.getMetadata(SCHEDULE_CRON_OPTIONS, cron.tick)).toMatchObject({
       cronTime: '20 9 * * *',
@@ -112,7 +156,10 @@ describe('DeviceReturnPendingCron', () => {
     expect(prisma.todo.findFirst).toHaveBeenCalledWith({
       where: {
         tags: { has: DEVICE_RETURN_TODO_TAG },
-        title: { contains: 'DR-20260905-0001' },
+        title: {
+          contains: 'DR-20260905-0001',
+          startsWith: 'ใบรับเครื่องคืน DR-20260905-0001 รอ FINANCE ยืนยันเกิน ',
+        },
         status: { not: 'DONE' },
         deletedAt: null,
       },
@@ -158,7 +205,7 @@ describe('DeviceReturnPendingCron', () => {
     expect(prisma.todo.findFirst).toHaveBeenCalledWith({
       where: {
         tags: { has: DEVICE_RETURN_TODO_TAG },
-        title: { contains: 'สิ้นเดือน 2026-09' },
+        title: { contains: 'สิ้นเดือน 2026-09 —', startsWith: 'ใบรับเครื่องคืนค้างยืนยัน ' },
         status: { not: 'DONE' },
         deletedAt: null,
       },

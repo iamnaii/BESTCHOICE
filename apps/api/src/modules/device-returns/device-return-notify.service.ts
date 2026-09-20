@@ -142,7 +142,7 @@ export class DeviceReturnNotifyService {
     });
   }
 
-  /** Todo fallback แบบเดียวกับ credit-note-delivery.service.ts (dedup ต่อใบ: tag + docNumber ใน title + ยังไม่ DONE) */
+  /** Dedup existing NO_LINE titles only; FINANCE reminders for the same document remain independent. */
   private async createNoLineTodo(
     deviceReturnId: string,
     docNumber: string,
@@ -164,7 +164,10 @@ export class DeviceReturnNotifyService {
     const existing = await this.prisma.todo.findFirst({
       where: {
         tags: { has: DEVICE_RETURN_TODO_TAG },
-        title: { contains: docNumber },
+        title: {
+          contains: docNumber,
+          startsWith: `แจ้งลูกค้าไม่ได้ ไม่มีไลน์ผูก — ใบรับเครื่องคืน ${docNumber} (`,
+        },
         status: { not: 'DONE' },
         deletedAt: null,
       },

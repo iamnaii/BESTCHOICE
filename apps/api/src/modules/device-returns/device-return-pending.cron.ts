@@ -102,7 +102,13 @@ export class DeviceReturnPendingCron {
       for (const row of staleRows) {
         try {
           const ageDays = Math.floor((now.getTime() - row.createdAt.getTime()) / DAY_MS);
-          if (await this.hasOpenTodo(row.docNumber)) continue;
+          if (
+            await this.hasOpenTodo(
+              row.docNumber,
+              `ใบรับเครื่องคืน ${row.docNumber} รอ FINANCE ยืนยันเกิน `,
+            )
+          )
+            continue;
           await this.prisma.todo.create({
             data: {
               title: `ใบรับเครื่องคืน ${row.docNumber} รอ FINANCE ยืนยันเกิน ${ageDays} วัน (สัญญา ${row.contract.contractNumber})`,
@@ -131,7 +137,7 @@ export class DeviceReturnPendingCron {
       if (monthEnd) {
         try {
           const marker = `สิ้นเดือน ${yyyyMm}`;
-          if (!(await this.hasOpenTodo(marker))) {
+          if (!(await this.hasOpenTodo(`${marker} —`, 'ใบรับเครื่องคืนค้างยืนยัน '))) {
             const list = pending.map(
               (r) =>
                 `• ${r.docNumber} (สัญญา ${r.contract.contractNumber} · ${r.customer.name} · สาขา ${r.receivingBranch.name})`,
@@ -181,12 +187,12 @@ export class DeviceReturnPendingCron {
     }
   }
 
-  /** dedup: Todo tag device-return ที่ title มีข้อความนี้และยังไม่ DONE */
-  private async hasOpenTodo(titleContains: string): Promise<boolean> {
+  /** Existing title prefixes identify purpose; shared document tags alone also match NO_LINE Todos. */
+  private async hasOpenTodo(titleContains: string, titlePrefix: string): Promise<boolean> {
     const existing = await this.prisma.todo.findFirst({
       where: {
         tags: { has: DEVICE_RETURN_TODO_TAG },
-        title: { contains: titleContains },
+        title: { contains: titleContains, startsWith: titlePrefix },
         status: { not: 'DONE' },
         deletedAt: null,
       },

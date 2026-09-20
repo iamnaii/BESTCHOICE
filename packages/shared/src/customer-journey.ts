@@ -10,7 +10,13 @@
  * 5 ขั้นของเส้นทาง เรียงตามลำดับจริง — ขั้น 2 IDENTIFIED = ได้เบอร์/เลขบัตร · ผูก LINE · เป็นปลายทางของการรวม ไม่ใช่ "คุยแล้ว"
  * (prod: ข้อความพนักงานมี outbound_sent_at แค่ 1 ใน 74,514 ⇒ ขั้น "คุยแล้ว" ว่างเสมอ — คำตัดสิน OD-9 คงกติกา เปลี่ยนแค่ป้าย)
  */
-export const JOURNEY_STAGES = ['CONTACTED', 'IDENTIFIED', 'INTERESTED', 'CREDIT', 'PURCHASED'] as const;
+export const JOURNEY_STAGES = [
+  'CONTACTED',
+  'IDENTIFIED',
+  'INTERESTED',
+  'CREDIT',
+  'PURCHASED',
+] as const;
 export type JourneyStage = (typeof JOURNEY_STAGES)[number];
 
 /** ป้ายไทยของแต่ละขั้น — แถบขั้นใต้หัวหน้ารายละเอียดลูกค้าใช้ชุดนี้ */
@@ -25,11 +31,13 @@ export const STAGE_LABELS: Record<JourneyStage, string> = {
 /**
  * ชนิดแถวของ customer_journey_entries.kind แยกตาม origin
  * SYSTEM = ช่วงเวลาที่ตารางต้นทางเขียนทับจนหาย (เขียนหลัง commit ด้วย dedupe_key) · MANUAL = บันทึกมือ (เฟส 3)
+ * DEVICE_RETURNED (2026-09-20) = FINANCE ยืนยันใบรับเครื่องคืน — เขียนที่ DeviceReturnsService.confirm, data = เลขใบ/เลขสัญญา/รหัสปิดเท่านั้น
  */
 export const JOURNEY_ENTRY_KINDS = {
   SYSTEM: [
     'CONTRACT_ACTIVATED',
     'CONTRACT_REVIEWED',
+    'DEVICE_RETURNED',
     'CREDIT_CHECK_OPENED_BY',
     'CREDIT_AI_SCORED',
     'BOT_HANDOFF',
@@ -51,14 +59,29 @@ export function journeyEntryOriginOf(kind: JourneyEntryKind): JourneyEntryOrigin
 }
 
 /** กลุ่มของเหตุการณ์ในไทม์ไลน์ — ลำดับนี้คือลำดับชิปกรองในแท็บการเดินทาง */
-export const JOURNEY_EVENT_GROUPS = ['chat', 'credit', 'sale', 'payment', 'collections', 'service', 'points', 'system'] as const;
+export const JOURNEY_EVENT_GROUPS = [
+  'chat',
+  'credit',
+  'sale',
+  'payment',
+  'collections',
+  'service',
+  'points',
+  'system',
+] as const;
 export type JourneyEventGroup = (typeof JOURNEY_EVENT_GROUPS)[number];
 
 /**
  * ไม่ส่ง groups (ชิป "ทั้งหมด") = กลุ่มเหล่านี้ — GET /customers/:id/journey ใช้ตัดสิน · เว็บใช้บอกว่าชิป "ทั้งหมด" ไม่รวมกลุ่มไหน
  * ชนิดกว้าง (readonly JourneyEventGroup[]) เพื่อให้ .includes(group) รับ JourneyEventGroup ใดก็ได้
  */
-export const JOURNEY_DEFAULT_GROUPS: readonly JourneyEventGroup[] = ['chat', 'credit', 'sale', 'collections', 'service'];
+export const JOURNEY_DEFAULT_GROUPS: readonly JourneyEventGroup[] = [
+  'chat',
+  'credit',
+  'sale',
+  'collections',
+  'service',
+];
 
 /**
  * กลุ่มที่บทบาทไม่เห็น — API ตัดข้อมูลจริง (Task 8/9) · เว็บซ่อนชิปตามชุดเดียวกัน (Task 12) ห้ามลอกไปประกาศซ้ำ

@@ -23,6 +23,12 @@ const prisma = new PrismaClient();
 const HOOK_DATA: Record<JourneySystemEntryKind, Record<string, unknown>> = {
   CONTRACT_ACTIVATED: { contractNumber: 'BCP2609-00042', totalMonths: 12, monthlyPayment: 1813 },
   CONTRACT_REVIEWED: { decision: 'REJECTED', contractNumber: 'BCP2609-00042' },
+  DEVICE_RETURNED: {
+    docNumber: 'DR-20260920-0001',
+    contractNumber: 'BCP2609-00042',
+    returnKind: 'REPOSSESSION',
+    returnReason: 'AFTER_TERMINATION',
+  },
   CREDIT_CHECK_OPENED_BY: { via: 'CUSTOMER' },
   CREDIT_AI_SCORED: { score: null, status: 'MANUAL_REVIEW' },
   BOT_HANDOFF: { priority: 'normal', reasonCode: 'LOW_CONFIDENCE' },
@@ -43,7 +49,9 @@ describe('JourneyEntryWriter (real DB)', () => {
   let warn: jest.SpyInstance;
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [TestPrismaModule, CustomerJourneyModule] }).compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [TestPrismaModule, CustomerJourneyModule],
+    }).compile();
     writer = moduleRef.get(JourneyEntryWriter);
   });
 
@@ -64,12 +72,17 @@ describe('JourneyEntryWriter (real DB)', () => {
   });
 
   async function customer(label: string) {
-    const row = await prisma.customer.create({ data: { name: `journey writer spec ${label} ${stamp}`, phone: null } });
+    const row = await prisma.customer.create({
+      data: { name: `journey writer spec ${label} ${stamp}`, phone: null },
+    });
     customerIds.push(row.id);
     return row;
   }
 
-  function entry(customerId: string, overrides: Partial<JourneyEntryInput> = {}): JourneyEntryInput {
+  function entry(
+    customerId: string,
+    overrides: Partial<JourneyEntryInput> = {},
+  ): JourneyEntryInput {
     const refId = randomUUID();
     return {
       customerId,
@@ -88,7 +101,13 @@ describe('JourneyEntryWriter (real DB)', () => {
 
   it('เขียนแถว SYSTEM: originCustomerId = customerId · คีย์นอก whitelist ถูกตัดก่อนลงฐาน', async () => {
     const c = await customer('write');
-    const e = entry(c.id, { data: { decision: 'APPROVED', contractNumber: 'BCP2609-00042', reviewNotes: 'โทร 0812345678' } });
+    const e = entry(c.id, {
+      data: {
+        decision: 'APPROVED',
+        contractNumber: 'BCP2609-00042',
+        reviewNotes: 'โทร 0812345678',
+      },
+    });
 
     await expect(writer.recordAfterCommit(e)).resolves.toBeUndefined();
 
@@ -124,7 +143,9 @@ describe('JourneyEntryWriter (real DB)', () => {
     await writer.recordAfterCommit(e);
 
     expect(await prisma.customerJourneyEntry.count({ where: { dedupeKey: e.dedupeKey } })).toBe(1);
-    const row = await prisma.customerJourneyEntry.findUniqueOrThrow({ where: { dedupeKey: e.dedupeKey } });
+    const row = await prisma.customerJourneyEntry.findUniqueOrThrow({
+      where: { dedupeKey: e.dedupeKey },
+    });
     expect(row.occurredAt.toISOString()).toBe('2026-09-15T03:00:00.000Z');
     expect(Sentry.captureException).not.toHaveBeenCalled();
   });
@@ -155,14 +176,21 @@ describe('JourneyEntryWriter (real DB)', () => {
 
     await writer.recordAfterCommit(e);
 
-    const row = await prisma.customerJourneyEntry.findUniqueOrThrow({ where: { dedupeKey: e.dedupeKey } });
+    const row = await prisma.customerJourneyEntry.findUniqueOrThrow({
+      where: { dedupeKey: e.dedupeKey },
+    });
     expect(row.kind).toBe('BOT_HANDOFF');
     expect(row.data).toBeNull();
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
       expect.any(String),
-      expect.objectContaining({ level: 'warning', extra: { kind: 'BOT_HANDOFF', issues: ['reasonCode:invalid_enum_value'] } }),
+      expect.objectContaining({
+        level: 'warning',
+        extra: { kind: 'BOT_HANDOFF', issues: ['reasonCode:invalid_enum_value'] },
+      }),
     );
-    expect(JSON.stringify(jest.mocked(Sentry.captureMessage).mock.calls)).not.toContain('0812345678');
+    expect(JSON.stringify(jest.mocked(Sentry.captureMessage).mock.calls)).not.toContain(
+      '0812345678',
+    );
     expect(JSON.stringify(warn.mock.calls)).not.toContain('0812345678');
   });
 
@@ -201,18 +229,33 @@ describe('JourneyEntryWriter (real DB)', () => {
         throw new Error('rollback-spec');
       }),
     ).rejects.toThrow('rollback-spec');
-    expect(await prisma.customerJourneyEntry.count({ where: { dedupeKey: rolledBack.dedupeKey } })).toBe(0);
+    expect(
+      await prisma.customerJourneyEntry.count({ where: { dedupeKey: rolledBack.dedupeKey } }),
+    ).toBe(0);
 
-    const committed = { ...rolledBack, dedupeKey: journeyDedupeKey('PLACEHOLDER_MERGED', randomUUID()) };
+    const committed = {
+      ...rolledBack,
+      dedupeKey: journeyDedupeKey('PLACEHOLDER_MERGED', randomUUID()),
+    };
     await prisma.$transaction(async (tx) => {
       await writer.recordInTx(tx, committed);
       await writer.recordInTx(tx, committed);
       await tx.customer.update({ where: { id: c.id }, data: { nickname: 'หลังบันทึกซ้ำ' } });
     });
 
-    expect(await prisma.customerJourneyEntry.count({ where: { dedupeKey: committed.dedupeKey } })).toBe(1);
-    expect((await prisma.customerJourneyEntry.findUniqueOrThrow({ where: { dedupeKey: committed.dedupeKey } })).data).toEqual({ roomCount: 1 });
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).nickname).toBe('หลังบันทึกซ้ำ');
+    expect(
+      await prisma.customerJourneyEntry.count({ where: { dedupeKey: committed.dedupeKey } }),
+    ).toBe(1);
+    expect(
+      (
+        await prisma.customerJourneyEntry.findUniqueOrThrow({
+          where: { dedupeKey: committed.dedupeKey },
+        })
+      ).data,
+    ).toEqual({ roomCount: 1 });
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).nickname).toBe(
+      'หลังบันทึกซ้ำ',
+    );
   });
 
   it('recordInTx: ฐานข้อมูลปฏิเสธ → โยนต่อให้ทรานแซกชันของผู้เรียก rollback (ไม่กลืน)', async () => {
@@ -230,15 +273,22 @@ describe('JourneyEntryWriter (real DB)', () => {
         await writer.recordInTx(tx, ghost);
       }),
     ).rejects.toThrow();
-    expect(await prisma.customerJourneyEntry.count({ where: { dedupeKey: ghost.dedupeKey } })).toBe(0);
+    expect(await prisma.customerJourneyEntry.count({ where: { dedupeKey: ghost.dedupeKey } })).toBe(
+      0,
+    );
   });
 
   it('ทุก SYSTEM kind ด้วยรูป data ที่ hook ของ Task 4-6 ส่งจริง → คอลัมน์ data เท่ากับที่ส่งทุกคีย์ ไม่มี warning', async () => {
     const c = await customer('contract');
-    for (const [kind, data] of Object.entries(HOOK_DATA) as [JourneySystemEntryKind, Record<string, unknown>][]) {
+    for (const [kind, data] of Object.entries(HOOK_DATA) as [
+      JourneySystemEntryKind,
+      Record<string, unknown>,
+    ][]) {
       const e = entry(c.id, { kind, data, dedupeKey: journeyDedupeKey(kind, randomUUID()) });
       await writer.recordAfterCommit(e);
-      const row = await prisma.customerJourneyEntry.findUniqueOrThrow({ where: { dedupeKey: e.dedupeKey } });
+      const row = await prisma.customerJourneyEntry.findUniqueOrThrow({
+        where: { dedupeKey: e.dedupeKey },
+      });
       expect({ kind: row.kind, data: row.data }).toEqual({ kind, data });
     }
     expect(await prisma.customerJourneyEntry.count({ where: { customerId: c.id } })).toBe(9);

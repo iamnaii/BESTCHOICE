@@ -90,9 +90,7 @@ export function RejectDeviceReturnDialog({ target, onClose, onRejected }: Props)
             ใบ <span className="font-semibold">{target?.docNumber ?? ''}</span> สัญญา{' '}
             <span className="font-semibold">{target?.contract.contractNumber ?? ''}</span> —
             ระบุเหตุผล ให้สาขา ({REJECT_REASON_MIN}–{REJECT_REASON_MAX} ตัวอักษร)
-            {target?.returnKind === 'REPOSSESSION'
-              ? 'ลูกค้าจะได้รับไลน์แจ้งว่าใบถูกยกเลิก โดยสัญญายังบอกเลิกอยู่ตามเดิม'
-              : 'ลูกค้าจะได้รับไลน์แจ้งว่าใบถูกยกเลิกและสัญญาเดินต่อ'}
+            {' — ลูกค้าจะได้รับไลน์แจ้งว่าใบถูกยกเลิก'}
           </DialogDescription>
         </DialogHeader>
 

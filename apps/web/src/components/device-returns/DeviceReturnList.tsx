@@ -272,11 +272,7 @@ export function DeviceReturnList({ onConfirm }: Props) {
         title="ยกเลิกใบรับเครื่องคืน"
         description={
           cancelTarget
-            ? `ยกเลิกใบ ${cancelTarget.docNumber} สัญญา ${cancelTarget.contract.contractNumber}? ${
-                cancelTarget.returnKind === 'VOLUNTARY'
-                  ? 'สัญญาจะกลับไปสถานะเดิมและเดินค่างวด/ค่าปรับต่อ'
-                  : 'สัญญายังบอกเลิกอยู่ตามเดิม'
-              } — ลูกค้าจะได้รับไลน์แจ้งว่าใบถูกยกเลิก`
+            ? `ยกเลิกใบ ${cancelTarget.docNumber} สัญญา ${cancelTarget.contract.contractNumber}? ลูกค้าจะได้รับไลน์แจ้งว่าใบถูกยกเลิก`
             : ''
         }
         confirmLabel="ยืนยันยกเลิกใบ"

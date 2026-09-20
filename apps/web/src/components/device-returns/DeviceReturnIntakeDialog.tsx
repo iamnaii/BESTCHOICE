@@ -629,7 +629,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
             >
               <ul className="space-y-1.5 text-sm">
                 {returnKind === 'VOLUNTARY' && (
-                  <Effect text="สัญญาหยุดนับค่างวดและค่าปรับทันที (สถานะ → บอกเลิกสัญญา) — ส่งกลับ/ยกเลิกใบจะคืนสถานะเดิม" />
+                  <Effect text="สัญญาหยุดนับค่างวดและค่าปรับทันที (สถานะ → บอกเลิกสัญญา) — ส่งกลับ/ยกเลิกใบจะคืนสถานะเดิมเฉพาะเมื่อมีสถานะเดิมบันทึกไว้และสัญญายังอยู่ในสถานะบอกเลิก" />
                 )}
                 {returnKind === 'REPOSSESSION' && (
                   <Effect text="สัญญาบอกเลิกอยู่แล้ว — สถานะไม่เปลี่ยนจนกว่า FINANCE ยืนยัน" />

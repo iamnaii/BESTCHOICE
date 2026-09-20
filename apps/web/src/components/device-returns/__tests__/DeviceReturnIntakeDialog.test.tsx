@@ -350,6 +350,16 @@ describe('DeviceReturnIntakeDialog — request and validation boundaries', () =>
 });
 
 describe('DeviceReturnIntakeDialog — ค้นสัญญา + preview', () => {
+  it('explains that voluntary restoration depends on the stored and current contract status', async () => {
+    routeApi();
+    renderDialog({ initialContractId: 'c-1' });
+    expect(
+      await screen.findByText(
+        /คืนสถานะเดิมเฉพาะเมื่อมีสถานะเดิมบันทึกไว้และสัญญายังอยู่ในสถานะบอกเลิก/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('ค้นแล้วเลือกสัญญา → เรียก preview ด้วย contractId และแสดงสรุปสัญญา + ประเภทที่ระบบเลือก', async () => {
     routeApi();
     renderDialog();

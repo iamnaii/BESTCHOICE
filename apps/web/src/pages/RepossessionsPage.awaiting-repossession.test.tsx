@@ -127,6 +127,32 @@ beforeEach(() => {
 });
 
 describe('RepossessionsPage — รอยึดเครื่อง (GET /device-returns/awaiting-repossession)', () => {
+  it('ACCOUNTANT retains pending returns but never requests or renders the forbidden awaiting queue', async () => {
+    currentUser = { ...currentUser, role: 'ACCOUNTANT' };
+    routeApi([terminatedContract], [pendingReturn]);
+    render(<RepossessionsPage />, { wrapper });
+    expect(await screen.findByText(pendingReturn.docNumber)).toBeInTheDocument();
+    expect(
+      apiGet.mock.calls.some(([url]) =>
+        String(url).startsWith('/device-returns/awaiting-repossession'),
+      ),
+    ).toBe(false);
+    expect(screen.queryByText('รอยึดเครื่อง — บอกเลิกสัญญาแล้ว')).not.toBeInTheDocument();
+    expect(screen.queryByText('ไม่สามารถโหลดรายการรอยึดเครื่องได้')).not.toBeInTheDocument();
+  });
+
+  it.each(['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'])(
+    '%s retains the permitted awaiting queue',
+    async (role) => {
+      currentUser = { ...currentUser, role, branchId: role === 'BRANCH_MANAGER' ? 'b1' : null };
+      routeApi([terminatedContract]);
+      render(<RepossessionsPage />, { wrapper });
+      expect(await screen.findByText(terminatedContract.contractNumber)).toBeInTheDocument();
+      expect(screen.getByText('รอยึดเครื่อง — บอกเลิกสัญญาแล้ว')).toBeInTheDocument();
+      expect(apiGet).toHaveBeenCalledWith('/device-returns/awaiting-repossession?limit=100');
+    },
+  );
+
   it('lists awaiting contracts from the device-returns endpoint with a รับเครื่องคืน button', async () => {
     routeApi([terminatedContract]);
     render(<RepossessionsPage />, { wrapper });

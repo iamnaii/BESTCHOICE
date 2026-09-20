@@ -129,6 +129,17 @@ beforeEach(() => {
 });
 
 describe('DeviceReturnList — สิทธิ์ต่อบทบาท', () => {
+  it('cancel confirmation does not promise contract restoration', async () => {
+    routeApi();
+    render(<DeviceReturnList onConfirm={() => {}} />, { wrapper });
+    await screen.findByText(rows[0].docNumber);
+    fireEvent.click(within(rowOf(rows[0].docNumber)).getByRole('button', { name: 'ยกเลิก' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('ลูกค้าจะได้รับไลน์แจ้งว่าใบถูกยกเลิก');
+    expect(dialog).not.toHaveTextContent('สัญญาจะกลับไปสถานะเดิม');
+    expect(dialog).not.toHaveTextContent('เดินค่างวด/ค่าปรับต่อ');
+  });
+
   it('OWNER: ยืนยัน/ส่งกลับ/ยกเลิก ทุกแถว, ส่งซ้ำไลน์เฉพาะแถวที่ไลน์ไม่ SENT', async () => {
     routeApi();
     render(<DeviceReturnList onConfirm={() => {}} />, { wrapper });
@@ -278,7 +289,8 @@ describe('DeviceReturnList — query and mutation lifecycle', () => {
     await screen.findByText(rows[1].docNumber);
     fireEvent.click(within(rowOf(rows[1].docNumber)).getByRole('button', { name: 'ยกเลิก' }));
     const dialog = await screen.findByRole('dialog');
-    expect(dialog).toHaveTextContent('สัญญายังบอกเลิกอยู่ตามเดิม');
+    expect(dialog).toHaveTextContent('ลูกค้าจะได้รับไลน์แจ้งว่าใบถูกยกเลิก');
+    expect(dialog).not.toHaveTextContent('สัญญาจะกลับไปสถานะเดิม');
     fireEvent.click(within(dialog).getByRole('button', { name: 'ยกเลิก' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(apiPost).not.toHaveBeenCalled();
@@ -404,7 +416,8 @@ describe('DeviceReturnList — การกระทำ', () => {
     fireEvent.click(within(rowOf('DR-20260919-0001')).getByRole('button', { name: 'ยกเลิก' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(/DR-20260919-0001/);
-    expect(dialog).toHaveTextContent(/สัญญาจะกลับไปสถานะเดิม/);
+    expect(dialog).toHaveTextContent('ลูกค้าจะได้รับไลน์แจ้งว่าใบถูกยกเลิก');
+    expect(dialog).not.toHaveTextContent('สัญญาจะกลับไปสถานะเดิม');
     fireEvent.click(within(dialog).getByRole('button', { name: 'ยืนยันยกเลิกใบ' }));
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/device-returns/dr-1/cancel'));
   });

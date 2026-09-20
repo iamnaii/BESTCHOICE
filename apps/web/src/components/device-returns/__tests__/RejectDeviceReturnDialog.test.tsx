@@ -52,21 +52,26 @@ function wrapper({ children }: { children: ReactNode }) {
 
 beforeEach(() => {
   toast.dismiss();
-  apiPost
-    .mockReset()
-    .mockResolvedValue({
-      data: {
-        ...target,
-        status: 'REJECTED',
-        contract: { ...target.contract, status: 'ACTIVE' },
-        notice: null,
-      },
-    });
+  apiPost.mockReset().mockResolvedValue({
+    data: {
+      ...target,
+      status: 'REJECTED',
+      contract: { ...target.contract, status: 'ACTIVE' },
+      notice: null,
+    },
+  });
   toastSuccess.mockReset();
   toastError.mockReset();
 });
 
 describe('RejectDeviceReturnDialog', () => {
+  it('describes a cancellation notification without promising contract continuation', () => {
+    render(<RejectDeviceReturnDialog target={target} onClose={() => {}} />, { wrapper });
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('ลูกค้าจะได้รับไลน์แจ้งว่าใบถูกยกเลิก');
+    expect(dialog).not.toHaveTextContent('สัญญาเดินต่อ');
+  });
+
   it('renders the returned cross-month notice after rejecting', async () => {
     const notice = 'ใบนี้ข้ามเดือน — ให้ OWNER เปิดงวดใหม่ผ่าน PERIOD_REOPENED ก่อน';
     apiPost.mockResolvedValueOnce({
@@ -162,7 +167,7 @@ describe('RejectDeviceReturnDialog', () => {
       />,
       { wrapper },
     );
-    expect(screen.getByRole('dialog')).toHaveTextContent('สัญญายังบอกเลิกอยู่ตามเดิม');
+    expect(screen.getByRole('dialog')).toHaveTextContent('ลูกค้าจะได้รับไลน์แจ้งว่าใบถูกยกเลิก');
     expect(screen.getByRole('dialog')).not.toHaveTextContent('สัญญาเดินต่อ');
     fireEvent.change(await screen.findByLabelText(/เหตุผลที่ส่งกลับ/), {
       target: { value: 'ใบผิดสัญญา ต้องบันทึกใหม่' },

@@ -96,6 +96,8 @@ export default function RepossessionsPage() {
   const [confirmTarget, setConfirmTarget] = useState<DeviceReturnRow | null>(null);
   // POST /device-returns roles — SALES ไม่มี route มาหน้านี้ จึงเหลือ OWNER/BM ในทางปฏิบัติ
   const canCreateReturn = DEVICE_RETURN_CREATE_ROLES.includes(user?.role ?? '');
+  // GET /device-returns/awaiting-repossession roles; ACCOUNTANT still reads pending returns.
+  const canViewAwaiting = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(user?.role ?? '');
   // "บัญชี" — บันทึกบัญชีของสัญญา (JE ทุกใบ ทั้งสมุด FINANCE/SHOP) ในหน้าเดิม
   const [journalTarget, setJournalTarget] = useState<{ id: string; contractNumber: string } | null>(
     null,
@@ -165,6 +167,7 @@ export default function RepossessionsPage() {
     refetch: refetchAwaiting,
   } = useQuery<{ rows: AwaitingRepossessionRow[]; total: number }>({
     queryKey: ['device-returns', 'awaiting-repossession'],
+    enabled: canViewAwaiting,
     queryFn: async () => {
       // limit=100 = cap เดียวกับ /contracts เดิม; เก็บ `total` ให้ backlog ยาวโชว์ "แสดง N จาก M"
       // BRANCH_MANAGER ถูก scope สาขาฝั่ง server
@@ -542,88 +545,90 @@ export default function RepossessionsPage() {
 
       {/* รอยึดเครื่อง — TERMINATED ที่ยังไม่มีใบรับเครื่องคืน (owner 2026-09-05: moved here from the
           รับชำระ queue; 2026-09-20: ปุ่มเปิดใบรับเครื่องคืนแทนการยึดตรง). */}
-      <Card className="shadow-card mb-6 overflow-hidden">
-        <CardHeader className="px-4 py-3 border-b bg-secondary flex flex-row items-center justify-between">
-          <h3 className="text-sm font-medium text-foreground leading-snug">
-            รอยึดเครื่อง — บอกเลิกสัญญาแล้ว
-          </h3>
-          <Badge variant="warning" appearance="light" size="sm">
-            {awaitingTotal} สัญญา
-          </Badge>
-        </CardHeader>
-        {awaitingTruncated && (
-          <div className="px-4 py-2 border-b bg-warning/10 text-xs text-warning leading-snug">
-            แสดง {awaiting.length} จาก {awaitingTotal} สัญญา — ยึดเครื่องในรายการนี้ก่อน
-            แล้วรายการที่เหลือจะเลื่อนขึ้นมาเอง
-          </div>
-        )}
-        <QueryBoundary
-          isLoading={loadingAwaiting && awaiting.length === 0}
-          isError={awaitingError}
-          error={awaitingErrorDetail}
-          onRetry={refetchAwaiting}
-          errorTitle="ไม่สามารถโหลดรายการรอยึดเครื่องได้"
-        >
-          {awaiting.length === 0 ? (
-            <div className="px-4 py-6 text-sm text-muted-foreground text-center leading-snug">
-              ไม่มีสัญญาที่บอกเลิกแล้วรอยึดเครื่อง
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-secondary text-muted-foreground text-xs">
-                  <tr>
-                    <th className="px-4 py-2 text-left">สัญญา</th>
-                    <th className="px-4 py-2 text-left">ลูกค้า</th>
-                    <th className="px-4 py-2 text-left">สินค้า</th>
-                    <th className="px-4 py-2 text-left">สาขา</th>
-                    <th className="px-4 py-2 text-right">ค่างวด</th>
-                    <th className="px-4 py-2 text-right"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {awaiting.map((c) => (
-                    <tr key={c.id} className="hover:bg-muted/50">
-                      <td className="px-4 py-2 font-medium text-primary">{c.contractNumber}</td>
-                      <td className="px-4 py-2">{c.customer.name}</td>
-                      <td className="px-4 py-2">{c.product?.name ?? '-'}</td>
-                      <td className="px-4 py-2">{c.branch?.name ?? '-'}</td>
-                      <td className="px-4 py-2 text-right">
-                        {Number(c.monthlyPayment).toLocaleString()} บาท
-                      </td>
-                      <td className="px-4 py-2 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setJournalTarget({ id: c.id, contractNumber: c.contractNumber })
-                            }
-                            className="text-sm font-medium text-muted-foreground hover:text-foreground"
-                          >
-                            บัญชี
-                          </button>
-                          {canCreateReturn && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIntakeContractId(c.id);
-                                setIntakeOpen(true);
-                              }}
-                              className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm leading-snug font-medium hover:bg-primary/90 transition-colors"
-                            >
-                              รับเครื่องคืน
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {canViewAwaiting && (
+        <Card className="shadow-card mb-6 overflow-hidden">
+          <CardHeader className="px-4 py-3 border-b bg-secondary flex flex-row items-center justify-between">
+            <h3 className="text-sm font-medium text-foreground leading-snug">
+              รอยึดเครื่อง — บอกเลิกสัญญาแล้ว
+            </h3>
+            <Badge variant="warning" appearance="light" size="sm">
+              {awaitingTotal} สัญญา
+            </Badge>
+          </CardHeader>
+          {awaitingTruncated && (
+            <div className="px-4 py-2 border-b bg-warning/10 text-xs text-warning leading-snug">
+              แสดง {awaiting.length} จาก {awaitingTotal} สัญญา — ยึดเครื่องในรายการนี้ก่อน
+              แล้วรายการที่เหลือจะเลื่อนขึ้นมาเอง
             </div>
           )}
-        </QueryBoundary>
-      </Card>
+          <QueryBoundary
+            isLoading={loadingAwaiting && awaiting.length === 0}
+            isError={awaitingError}
+            error={awaitingErrorDetail}
+            onRetry={refetchAwaiting}
+            errorTitle="ไม่สามารถโหลดรายการรอยึดเครื่องได้"
+          >
+            {awaiting.length === 0 ? (
+              <div className="px-4 py-6 text-sm text-muted-foreground text-center leading-snug">
+                ไม่มีสัญญาที่บอกเลิกแล้วรอยึดเครื่อง
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-secondary text-muted-foreground text-xs">
+                    <tr>
+                      <th className="px-4 py-2 text-left">สัญญา</th>
+                      <th className="px-4 py-2 text-left">ลูกค้า</th>
+                      <th className="px-4 py-2 text-left">สินค้า</th>
+                      <th className="px-4 py-2 text-left">สาขา</th>
+                      <th className="px-4 py-2 text-right">ค่างวด</th>
+                      <th className="px-4 py-2 text-right"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {awaiting.map((c) => (
+                      <tr key={c.id} className="hover:bg-muted/50">
+                        <td className="px-4 py-2 font-medium text-primary">{c.contractNumber}</td>
+                        <td className="px-4 py-2">{c.customer.name}</td>
+                        <td className="px-4 py-2">{c.product?.name ?? '-'}</td>
+                        <td className="px-4 py-2">{c.branch?.name ?? '-'}</td>
+                        <td className="px-4 py-2 text-right">
+                          {Number(c.monthlyPayment).toLocaleString()} บาท
+                        </td>
+                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setJournalTarget({ id: c.id, contractNumber: c.contractNumber })
+                              }
+                              className="text-sm font-medium text-muted-foreground hover:text-foreground"
+                            >
+                              บัญชี
+                            </button>
+                            {canCreateReturn && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIntakeContractId(c.id);
+                                  setIntakeOpen(true);
+                                }}
+                                className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm leading-snug font-medium hover:bg-primary/90 transition-colors"
+                              >
+                                รับเครื่องคืน
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </QueryBoundary>
+        </Card>
+      )}
 
       {/* Profit/Loss Summary */}
       {profitLoss?.summary && (

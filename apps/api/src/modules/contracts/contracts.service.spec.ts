@@ -216,6 +216,9 @@ describe('ContractsService', () => {
       },
       commissionRule: { findFirst: jest.fn().mockResolvedValue(null) },
       commissionPayout: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // approveCancellation voids the contract's live INSTALLMENT sale rows (2026-09-20) — default = none
+      sale: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      financeReceivable: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
         // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)

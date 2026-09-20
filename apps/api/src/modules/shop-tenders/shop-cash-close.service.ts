@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import * as Sentry from '@sentry/node';
 import { Prisma, ShopCashCloseStatus, ShopCashDestination } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -75,6 +76,8 @@ const money = (value: Prisma.Decimal | null | undefined) => (value == null ? nul
 
 @Injectable()
 export class ShopCashCloseService {
+  private readonly logger = new Logger(ShopCashCloseService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -253,7 +256,35 @@ export class ShopCashCloseService {
       newValue: { branchId: created.branchId, attemptNo: created.attemptNo, expectedAmount: created.expectedAmount,
         countedAmount: created.countedAmount, varianceAmount: created.varianceAmount, varianceReason: created.varianceReason,
         sendAmount: created.sendAmount } });
+    if (created.varianceAmount.abs().gte(CENT)) {
+      await this.alarmVariance(actor.id, created, {
+        label: 'ปิดยอดเงินสด', variance: created.varianceAmount, by: `นับโดย ${created.countedBy.name}`,
+        detail: `ต้องมี ${created.expectedAmount.toFixed(2)} · นับได้ ${created.countedAmount.toFixed(2)} · เหตุผล: ${created.varianceReason ?? '-'}`,
+      });
+    }
     return this.present(created);
+  }
+
+  /**
+   * "แจ้งเตือนเจ้าของทุกครั้งที่ปิดยอดมีส่วนต่าง" (ข้อเสนอที่เจ้าของเคาะ 2026-09-20) = งานในหน้า "งานของทีม" (`/todos`) หนึ่งใบต่อครั้ง —
+   * ช่องทางเตือนคนในระบบแบบเดียวกับใบลดหนี้ส่งไม่ถึง/กระทบยอดระหว่างกิจการ. เงินขาด = HIGH · เงินเกิน = MEDIUM.
+   * เรียก **หลัง commit** เสมอและห้าม throw — การนับ/ยืนยันบันทึกไปแล้ว การเตือนพังต้องไม่ทำให้ผู้ใช้เห็นว่าบันทึกไม่สำเร็จ
+   */
+  private async alarmVariance(actorId: string, row: CloseRow,
+    info: { label: string; variance: Prisma.Decimal; by: string; detail: string }) {
+    try {
+      const short = info.variance.lt(0);
+      await this.prisma.todo.create({
+        data: {
+          title: `${info.label} ${row.branch.name} ${short ? 'ขาด' : 'เกิน'} ${info.variance.abs().toFixed(2)} ฿ — ${info.by}`,
+          description: `${info.detail}\nตรวจที่เมนู "สรุปเงินรายวัน" → แท็บ "ประวัติการปิดยอด" (วันที่ปิด ${bangkokDateString(row.countedAt)})`,
+          priority: short ? 'HIGH' : 'MEDIUM', tags: ['cash-close-variance'], branchId: row.branchId, createdById: actorId,
+        },
+      });
+    } catch (error) {
+      this.logger.error(`สร้างงานเตือนส่วนต่างปิดยอดไม่สำเร็จ (close ${row.id})`, error instanceof Error ? error.stack : String(error));
+      Sentry.captureException(error, { tags: { subsystem: 'shop-cash-close' }, extra: { closeId: row.id } });
+    }
   }
 
   /** โหลดแถวใต้ล็อกสาขา + ตรวจสิทธิ์ผู้ยืนยัน (ใช้ร่วมกันระหว่างยืนยันรับเงินกับตีกลับ) */
@@ -294,6 +325,12 @@ export class ShopCashCloseService {
       newValue: { branchId: updated.branchId, sendAmount: updated.sendAmount, receivedAmount: updated.receivedAmount,
         receiveVariance: updated.receiveVariance, receiveNote: updated.receiveNote, destination: updated.destination,
         countedById: updated.countedById } });
+    if (updated.receiveVariance && updated.receiveVariance.abs().gte(CENT)) {
+      await this.alarmVariance(actor.id, updated, {
+        label: 'รับเงินปิดยอด', variance: updated.receiveVariance, by: `รับโดย ${updated.confirmedBy?.name ?? '-'} (นับโดย ${updated.countedBy.name})`,
+        detail: `พนักงานแจ้งส่ง ${updated.sendAmount.toFixed(2)} · รับจริง ${updated.receivedAmount?.toFixed(2) ?? '-'} · หมายเหตุ: ${updated.receiveNote ?? '-'}`,
+      });
+    }
     return this.present(updated);
   }
 

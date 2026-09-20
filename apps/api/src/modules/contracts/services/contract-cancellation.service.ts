@@ -320,6 +320,22 @@ export class ContractCancellationService {
       // ค่าคอมพนักงานขายของสัญญา: เรียกคืนเฉพาะที่ยังไม่จ่าย (เจ้าของเคาะ 2026-09-20) — ไม่บล็อกการยกเลิก
       const commissionClawback = await clawbackContractCommission(tx, {
         contractId: contract.id, contractNumber: contract.contractNumber, reason: cancellation.reason, now });
+      // ใบขาย INSTALLMENT ที่ activate ออกให้: สัญญาถูกยกเลิก = การขายไม่เกิดขึ้น ⇒ ต้องออกจากประวัติการขาย/ยอดสรุป
+      // (คำตัดสินเจ้าของ 2026-09-20). สัญญาเครดิตเทิร์นถูก cleanupCreditContractSale ยกเลิกไปแล้วข้างบน = 0 แถวตรงนี้.
+      // ลูกหนี้ไฟแนนซ์ในเครือของใบขายยุคเส้นทางเก่า (ถ้ายังไม่มีเงินเข้า) ปิดไปพร้อมกัน — ที่รับเงินแล้วไม่แตะ
+      const liveSales = await tx.sale.findMany({ where: { contractId: contract.id, deletedAt: null }, select: { id: true, saleNumber: true } });
+      if (liveSales.length) {
+        const liveSaleIds = liveSales.map((sale) => sale.id);
+        await tx.financeReceivable.updateMany({
+          where: { saleId: { in: liveSaleIds }, deletedAt: null, status: { notIn: ['RECEIVED', 'PARTIALLY_RECEIVED'] },
+            OR: [{ receivedAmount: null }, { receivedAmount: 0 }] },
+          data: { deletedAt: now },
+        });
+        await tx.sale.updateMany({
+          where: { id: { in: liveSaleIds } },
+          data: { deletedAt: now, voidReason: `ยกเลิกสัญญา ${contract.contractNumber}: ${cancellation.reason}`, voidedById: approverId },
+        });
+      }
       await tx.payment.updateMany({
         where: { contractId: contract.id, deletedAt: null },
         data: { deletedAt: now },
@@ -375,6 +391,8 @@ export class ContractCancellationService {
                   commissionDraftPayoutsVoided: commissionClawback.voidedDraftPayoutIds,
                   commissionLockedPayoutIds: commissionClawback.lockedPayoutIds }
               : {}),
+            // ใบขายผ่อนของสัญญาที่ถูกยกเลิกไปพร้อมกัน — เขียนเฉพาะเมื่อมี (สัญญาเครดิตเทิร์นถูก cleanup ยกเลิกไปก่อนแล้ว)
+            ...(liveSales.length ? { voidedSaleNumbers: liveSales.map((sale) => sale.saleNumber) } : {}),
             // C-2: recallAmount = net เงินสดที่ FINANCE โอนจริง (settled gross −
             // deductions ที่รอบหักไว้) — นิยามเดียวกับ exchange audit / list API /
             // recall queue; settledTotal (gross) เก็บคู่กันไว้ตรวจย้อน redirect

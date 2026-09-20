@@ -56,6 +56,7 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     const branches = [branchId, otherBranchId].filter(Boolean);
     await prisma.shopCashClose.deleteMany({ where: { branchId: { in: branches } } });
     await prisma.shopTender.deleteMany({ where: { branchId: { in: branches } } });
+    await prisma.todo.deleteMany({ where: { branchId: { in: branches } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     await prisma.branch.deleteMany({ where: { id: { in: branches } } });
     await prisma.$disconnect();
@@ -86,6 +87,12 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
       sendAmount: 10510, varianceReason: 'ทอนเงินลูกค้าผิด 200', periodStart: null });
     expect(close.countedBy.id).toBe(users.sales.id);
     firstCloseId = close.id; firstCountedAt = close.countedAt;
+    // เตือนเจ้าของทุกครั้งที่ปิดยอดมีส่วนต่าง = งานในหน้า "งานของทีม" หนึ่งใบ (เงินขาด = HIGH)
+    const alarms = await prisma.todo.findMany({ where: { branchId, tags: { has: 'cash-close-variance' } } });
+    expect(alarms).toHaveLength(1);
+    expect(alarms[0]).toMatchObject({ priority: 'HIGH', createdById: users.sales.id });
+    expect(alarms[0].title).toContain('ขาด 200.00');
+    expect(alarms[0].description).toContain('ทอนเงินลูกค้าผิด 200');
   });
 
   it('รายการหลังปิดยอดไปรวมรอบถัดไป · ไม่มีเงินสดใหม่ = นับซ้ำไม่ได้', async () => {
@@ -107,6 +114,11 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     const confirmed = await service.confirm(users.owner, firstCloseId, { receivedAmount: 10500, destination: 'BANK_DEPOSIT', note: 'นับรับจริงขาดไป 10 บาท' });
     expect(confirmed).toMatchObject({ status: 'CONFIRMED', receivedAmount: 10500, receiveVariance: -10, destination: 'BANK_DEPOSIT' });
     expect(confirmed.confirmedBy?.id).toBe(users.owner.id);
+    // ส่วนต่างชั้นที่สอง (เงินหายระหว่างทาง) เตือนแยกอีกใบ
+    const alarms = await prisma.todo.findMany({ where: { branchId, tags: { has: 'cash-close-variance' } }, orderBy: { createdAt: 'asc' } });
+    expect(alarms).toHaveLength(2);
+    expect(alarms[1].title).toContain('รับเงินปิดยอด');
+    expect(alarms[1].title).toContain('ขาด 10.00');
     await expect(service.confirm(users.owner, firstCloseId, { receivedAmount: 10510, destination: 'OWNER_HOLD' })).rejects.toThrow('ยืนยันรับเงินไปแล้ว');
   });
 
@@ -125,6 +137,8 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     // รอบถอยกลับไปขอบของการปิดยอดที่ยังมีผลครั้งก่อน (ครั้งแรก) ⇒ รวม 890 ของรอบที่ถูกตีกลับ + 110 ที่เพิ่งเข้า
     expect(recount).toMatchObject({ attemptNo: 2, cashIn: 1000, expectedAmount: 3000, varianceAmount: 0, sendAmount: 1000 });
     expect(recount.periodStart).toEqual(firstCountedAt);
+    // นับตรง = ไม่มีงานเตือนเพิ่ม
+    expect(await prisma.todo.count({ where: { branchId, tags: { has: 'cash-close-variance' } } })).toBe(2);
   });
 
   it('ตีกลับได้เฉพาะการปิดยอดครั้งล่าสุด — ครั้งที่มีการปิดยอดใหม่ทับแล้วให้ยืนยันตามจริง', async () => {

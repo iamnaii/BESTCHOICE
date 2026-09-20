@@ -1068,6 +1068,20 @@ Dr <บัญชีของวิธีอื่น>   [Σ บรรทัด�
   ต้องเห็น). JE แยกยอดของสัญญา/ใบจองตามด้วย `metadata.tenderDocId` + mirror จาก `reversesEntryId`
   (`findTenderSplitEntries`) เพราะไม่ stamp `contractId`/`bookingId`.
 
+### นับเงินปิดยอดลิ้นชักสาขา (shop cash close — คำตัดสินเจ้าของ 2026-09-20)
+
+Spec: `docs/superpowers/specs/2026-09-20-shop-cash-close-design.md` · โค้ด: `shop-tenders/shop-cash-close.service.ts` ·
+Integration: `contracts/__tests__/shop-cash-close.integration.spec.ts`
+
+- **ไม่มี JE แม้แต่ใบเดียว** — เงินขาด/เกิน และการย้ายเงินจากลิ้นชักไปธนาคาร/เจ้าของ เก็บเป็นข้อมูลใน `shop_cash_closes` อย่างเดียว
+  (`varianceAmount`, `receiveVariance`, `destination`). **ห้ามเดาบัญชีเงินขาด/เกินหรือ JE ย้ายเงินเอง** — รอผู้สอบบัญชีชี้บัญชี
+  (คลาสเดียวกับคำถามบิลจ่ายผสม). ผลคือยอดบัญชีลิ้นชัก (`shopCashAccountCode`) ในสมุด **ไม่ลดลงเมื่อส่งเงิน** จนกว่าจะมี JE ย้ายเงิน
+- "ต้องมีในลิ้นชัก" อ่านจาก `shop_tenders` (`method = CASH`) ไม่ได้อ่านจาก GL — เป็นคนละเลนส์กับยอดบัญชี และ **ไม่รวมเงินสดที่ไม่ผ่าน
+  สมุดเงินหน้าร้าน** (เช่น ค่าใช้จ่ายสาขาที่จ่ายจากลิ้นชัก, ใบขายออเดอร์ออนไลน์) ⇒ ส่วนต่างจากเรื่องพวกนี้ต้องอธิบายในช่องเหตุผล
+- รอบ = ตั้งแต่ปิดยอดที่ยังมีผลครั้งก่อน (`PENDING_CONFIRM`/`CONFIRMED`) ถึงตอนนับ · แถว `SENT_BACK` ไม่เป็นขอบรอบ ·
+  ตีกลับได้เฉพาะครั้งล่าสุดของสาขา · ผู้นับ (SALES/BM ของสาขา) ≠ ผู้ยืนยัน (OWNER/FM/BM) บังคับใน service
+- `factory:reset`: `shop_cash_closes` อยู่ใน `WIPE_TABLES`
+
 ---
 
 ## ค่าคอมพนักงานขายของสัญญาผ่อน BESTCHOICE (คำตัดสินเจ้าของ 2026-09-20)

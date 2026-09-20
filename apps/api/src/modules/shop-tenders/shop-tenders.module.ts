@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ShopTendersController } from './shop-tenders.controller';
 import { ShopTendersReportService } from './shop-tenders-report.service';
+import { ShopCashCloseService } from './shop-cash-close.service';
 
 /**
  * สมุดเงินเข้า/ออกหน้าร้าน (สเปค 2026-09-20-shop-tenders-daily-cash).
@@ -9,6 +10,6 @@ import { ShopTendersReportService } from './shop-tenders-report.service';
  */
 @Module({
   controllers: [ShopTendersController],
-  providers: [ShopTendersReportService],
+  providers: [ShopTendersReportService, ShopCashCloseService],
 })
 export class ShopTendersModule {}

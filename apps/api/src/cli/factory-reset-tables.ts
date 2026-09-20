@@ -375,6 +375,7 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'saving_plans',
   'settlement_lines',
   'shop_tenders',  // สมุดเงินเข้า/ออกหน้าร้าน — ผูกกับใบขาย/สัญญา/ใบจอง/ใบรับซื้อที่ถูกล้างในรอบเดียวกัน
+  'shop_cash_closes',
   'signatures',
   'slip_fingerprints',
   'stock_adjustments',

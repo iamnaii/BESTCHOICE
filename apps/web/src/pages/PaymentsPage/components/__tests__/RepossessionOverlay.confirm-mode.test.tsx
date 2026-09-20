@@ -387,6 +387,67 @@ describe('RepossessionOverlay — โหมดยืนยันใบรับ�
     expect(screen.getByText('รายการบัญชีคืนเครื่อง (JP5)')).toBeInTheDocument();
   });
 
+  it('separates ledger gain from management gain, deducts parked advances and makes no VAT credit-note promise without a reversal', async () => {
+    // Retained display scenario from the former valuation suite: JP5 clears advances
+    // without receivable relief or VAT reversal. Its ledger gain differs from closing P&L.
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/device-returns/dr-1') return Promise.resolve({ data: deviceReturn() });
+      if (url.startsWith('/repossessions/preview/c-1?')) {
+        const data = preview(url);
+        data.calculation.rescheduleAdvanceApplied = 1714;
+        data.calculation.closingAmount = 226.42;
+        data.calculation.profitLoss = 6773.58;
+        data.journalPreview = {
+          lines: [
+            {
+              accountCode: '11-2107',
+              accountName: 'ลูกหนี้-หน้าร้าน',
+              debit: '7000.00',
+              credit: '0',
+              description: 'ค่าเครื่องคืน',
+            },
+            {
+              accountCode: '21-1103',
+              accountName: 'เงินรับล่วงหน้า',
+              debit: '1714.00',
+              credit: '0',
+              description: '',
+            },
+            {
+              accountCode: '41-1102',
+              accountName: 'กำไรจากการยึด',
+              debit: '0',
+              credit: '8714.00',
+              description: '',
+            },
+          ],
+          totalDebit: '8714.00',
+          totalCredit: '8714.00',
+          isBalanced: true,
+        };
+        return Promise.resolve({ data });
+      }
+      return Promise.reject(new Error('unexpected ' + url));
+    });
+    renderOverlay();
+    await waitFor(() => expect(confirmButton()).toBeEnabled());
+    expect(screen.getByText('หักเงินรับล่วงหน้าที่พักไว้').parentElement).toHaveTextContent(
+      '- 1,714.00 ฿',
+    );
+    expect(screen.getByText('ยอดปิดสัญญาสุทธิ').parentElement).toHaveTextContent('226.42 ฿');
+    expect(
+      screen.getByText('ส่วนต่างราคาประเมินเทียบยอดปิด').parentElement?.parentElement,
+    ).toHaveTextContent('+6,773.58 ฿');
+    expect(screen.getByText('กำไร/ขาดทุนจากรายการยึดคืน').parentElement).toHaveTextContent(
+      '+8,714.00 ฿',
+    );
+    expect(screen.getByText(/JP5 ชุดนี้ไม่มีบรรทัดตัดลูกหนี้/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/ตัวเลขนี้ใช้ฐานบัญชี ส่วนต่างด้านบนใช้ยอดปิดสัญญาหลังส่วนลด/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ออกใบลดหนี้/)).not.toBeInTheDocument();
+  });
+
   it('วันที่ลงบัญชีนอกเดือนปัจจุบัน → ปุ่มปิด', async () => {
     routeApi();
     renderOverlay();

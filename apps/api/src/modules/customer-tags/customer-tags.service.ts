@@ -11,6 +11,8 @@ import { PrismaService } from '../../prisma/prisma.service';
  *  - HIGH_RISK  : ≥3 BROKEN_PROMISE in last 90 days
  *  - NEW        : first contract createdAt < 30 days ago (no other contracts older)
  *  - LOYAL      : customer createdAt > 2 years AND zero BROKEN_PROMISE lifetime
+ *  - RETURNED_DEVICE : มีใบรับเครื่องคืน PENDING_CONFIRM/CONFIRMED หรือมีแถว Repossession
+ *                      ผ่านสัญญาของลูกค้า (spec 2026-09-20 §5.6 — ประวัติ "เคยคืนเครื่อง")
  *  - BLACKLIST  : MANUAL ONLY — never auto-applied
  *
  * Soft-delete with `(customerId, tag, deletedAt)` unique constraint means a
@@ -37,6 +39,7 @@ export class CustomerTagsService {
     'HIGH_RISK',
     'NEW',
     'LOYAL',
+    'RETURNED_DEVICE',
   ];
 
   constructor(private readonly prisma: PrismaService) {}
@@ -279,9 +282,16 @@ export class CustomerTagsService {
           });
 
     const newCutoff = new Date(now.getTime() - CustomerTagsService.NEW_LOOKBACK_DAYS * 86400000);
-    const loyalCutoff = new Date(
-      now.getTime() - CustomerTagsService.LOYAL_MIN_AGE_DAYS * 86400000,
-    );
+    const loyalCutoff = new Date(now.getTime() - CustomerTagsService.LOYAL_MIN_AGE_DAYS * 86400000);
+
+    // RETURNED_DEVICE includes active intake and legacy repossessions through the customer's contract.
+    // Rejected/cancelled intake does not count; recompute removes the tag when no qualifying row remains.
+    const deviceReturnCount = await this.prisma.deviceReturn.count({
+      where: { customerId, deletedAt: null, status: { in: ['PENDING_CONFIRM', 'CONFIRMED'] } },
+    });
+    const repossessionCount = await this.prisma.repossession.count({
+      where: { deletedAt: null, contract: { customerId } },
+    });
 
     const tags: CustomerTagType[] = [];
 
@@ -291,15 +301,15 @@ export class CustomerTagsService {
     if (brokenPromise90d >= CustomerTagsService.HIGH_RISK_BROKEN_PROMISES) {
       tags.push('HIGH_RISK');
     }
-    if (
-      firstContract &&
-      firstContract.createdAt >= newCutoff &&
-      contractCount === 1
-    ) {
+    if (firstContract && firstContract.createdAt >= newCutoff && contractCount === 1) {
       tags.push('NEW');
     }
     if (customerCreatedAt < loyalCutoff && brokenPromiseLifetime === 0) {
       tags.push('LOYAL');
+    }
+
+    if (deviceReturnCount > 0 || repossessionCount > 0) {
+      tags.push('RETURNED_DEVICE');
     }
 
     return tags;

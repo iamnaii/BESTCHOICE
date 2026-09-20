@@ -16,6 +16,12 @@ const mockPrisma = {
   auditLog: {
     count: jest.fn(),
   },
+  deviceReturn: {
+    count: jest.fn(),
+  },
+  repossession: {
+    count: jest.fn(),
+  },
   customerTag: {
     findFirst: jest.fn(),
     findMany: jest.fn(),
@@ -48,12 +54,11 @@ describe('CustomerTagsService', () => {
 
     mockPrisma.contract.findMany.mockResolvedValue([]);
     mockPrisma.auditLog.count.mockResolvedValue(0);
+    mockPrisma.deviceReturn.count.mockResolvedValue(0);
+    mockPrisma.repossession.count.mockResolvedValue(0);
 
     const mod: TestingModule = await Test.createTestingModule({
-      providers: [
-        CustomerTagsService,
-        { provide: PrismaService, useValue: mockPrisma },
-      ],
+      providers: [CustomerTagsService, { provide: PrismaService, useValue: mockPrisma }],
     }).compile();
     service = mod.get(CustomerTagsService);
   });
@@ -92,9 +97,7 @@ describe('CustomerTagsService', () => {
 
     it('removeById throws NotFoundException for missing tag', async () => {
       mockPrisma.customerTag.findFirst.mockResolvedValueOnce(null);
-      await expect(service.removeById('missing', 'user-1')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.removeById('missing', 'user-1')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -108,9 +111,11 @@ describe('CustomerTagsService', () => {
       broken90d?: number;
       customerCreatedAt?: Date;
     }) {
-      const contractIds = opts.contractIds ?? (opts.contractCount
-        ? Array.from({ length: opts.contractCount }, (_, i) => `c${i + 1}`)
-        : []);
+      const contractIds =
+        opts.contractIds ??
+        (opts.contractCount
+          ? Array.from({ length: opts.contractCount }, (_, i) => `c${i + 1}`)
+          : []);
       mockPrisma.customer.findFirst.mockResolvedValue({
         id: 'cust-1',
         createdAt: opts.customerCreatedAt ?? RECENT_DATE,
@@ -119,9 +124,7 @@ describe('CustomerTagsService', () => {
       mockPrisma.contract.findFirst.mockResolvedValue(
         opts.firstContractAt ? { createdAt: opts.firstContractAt } : null,
       );
-      mockPrisma.contract.findMany.mockResolvedValue(
-        contractIds.map((id) => ({ id })),
-      );
+      mockPrisma.contract.findMany.mockResolvedValue(contractIds.map((id) => ({ id })));
       // The lifetime / 12mo / 90d count calls fire in order inside the
       // service. The service early-returns 0 when contractIds is empty so we
       // only need to mock return values when contracts exist.
@@ -216,9 +219,78 @@ describe('CustomerTagsService', () => {
 
     it('NotFoundException when customer missing', async () => {
       mockPrisma.customer.findFirst.mockResolvedValueOnce(null);
-      await expect(service.recomputeForCustomer('missing')).rejects.toThrow(
-        NotFoundException,
+      await expect(service.recomputeForCustomer('missing')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('RETURNED_DEVICE — เคยคืน/ถูกยึดเครื่อง (spec 2026-09-20 §5.6)', () => {
+    function customerWithOneContract() {
+      mockPrisma.customer.findFirst.mockResolvedValue({ id: 'cust-1', createdAt: RECENT_DATE });
+      mockPrisma.contract.count.mockResolvedValue(1);
+      mockPrisma.contract.findFirst.mockResolvedValue({ createdAt: RECENT_DATE });
+      mockPrisma.contract.findMany.mockResolvedValue([{ id: 'c1' }]);
+      mockPrisma.auditLog.count.mockResolvedValue(0);
+    }
+
+    it('applies AUTO RETURNED_DEVICE with its reason for pending or confirmed intake', async () => {
+      customerWithOneContract();
+      mockPrisma.deviceReturn.count.mockResolvedValue(1);
+
+      const result = await service.recomputeForCustomer('cust-1');
+
+      expect(result.added).toContain('RETURNED_DEVICE');
+      expect(mockPrisma.deviceReturn.count).toHaveBeenCalledWith({
+        where: {
+          customerId: 'cust-1',
+          deletedAt: null,
+          status: { in: ['PENDING_CONFIRM', 'CONFIRMED'] },
+        },
+      });
+      expect(mockPrisma.customerTag.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tag: 'RETURNED_DEVICE',
+            source: 'AUTO',
+            reason: 'AUTO: เคยคืน/ถูกยึดเครื่อง',
+          }),
+        }),
       );
+    });
+
+    it('applies RETURNED_DEVICE for a repossession through the customer contract without intake', async () => {
+      customerWithOneContract();
+      mockPrisma.repossession.count.mockResolvedValue(1);
+
+      const result = await service.recomputeForCustomer('cust-1');
+
+      expect(result.added).toContain('RETURNED_DEVICE');
+      expect(mockPrisma.repossession.count).toHaveBeenCalledWith({
+        where: { deletedAt: null, contract: { customerId: 'cust-1' } },
+      });
+    });
+
+    it('soft-deletes stale AUTO RETURNED_DEVICE and excludes manual tags and BLACKLIST', async () => {
+      customerWithOneContract();
+      mockPrisma.customerTag.findMany.mockResolvedValue([
+        { id: 'tag-rd', tag: 'RETURNED_DEVICE', source: 'AUTO', deletedAt: null },
+      ]);
+
+      const result = await service.recomputeForCustomer('cust-1');
+
+      expect(result.removed).toEqual(['RETURNED_DEVICE']);
+      expect(mockPrisma.customerTag.update).toHaveBeenCalledWith({
+        where: { id: 'tag-rd' },
+        data: { deletedAt: expect.any(Date) },
+      });
+      const findArgs = mockPrisma.customerTag.findMany.mock.calls[0][0];
+      expect(findArgs.where.tag.in).toEqual([
+        'VIP',
+        'HIGH_RISK',
+        'NEW',
+        'LOYAL',
+        'RETURNED_DEVICE',
+      ]);
+      expect(findArgs.where.source).toBe('AUTO');
     });
   });
 

@@ -35,11 +35,21 @@ const UNITS = {
   p15b: { id: 'p15b', model: 'iPhone 15', storage: '128GB', condition: 'USED', grade: 'B', color: 'ชมพู', batteryPct: 87, priceThb: 17500 },
   p15a: { id: 'p15a', model: 'iPhone 15', storage: '128GB', condition: 'USED', grade: 'A', color: 'ฟ้า', batteryPct: 92, priceThb: 19900 },
   p14: { id: 'p14', model: 'iPhone 14', storage: '128GB', condition: 'USED', grade: 'A', color: 'ฟ้า', batteryPct: 90, priceThb: 13900 },
+  // S21: สต๊อกมีเครื่องนอกปนอยู่ — หน้าร้านจดช่องตำหนิขึ้นต้น "เครื่องนอก" + ประกันร้าน 30 วัน (tool จริงคืน cosmeticNotes/shopWarrantyDays)
+  p16th: { id: 'p16th', model: 'iPhone 16', storage: '128GB', condition: 'USED', grade: 'A', color: 'ดำ', batteryPct: 95, priceThb: 24900, cosmeticNotes: null, shopWarrantyDays: 60 },
+  // เครื่องไทย 2 ตัว (เหมือนโครง S4) — fixture calculate_installment คืนเลขคงที่ไม่ขึ้นกับ downPct/งวด: ถ้ามีเครื่องไทยตัวเดียว
+  // บอทจะลองคิดหลายแพ็กเกจแล้วได้เลขเดิมซ้ำ ๆ จนชนเพดาน hop (artifact ของ fixture ไม่ใช่พฤติกรรมจริง)
+  p16th2: { id: 'p16th2', model: 'iPhone 16', storage: '128GB', condition: 'USED', grade: 'B', color: 'ชมพู', batteryPct: 91, priceThb: 23900, cosmeticNotes: null, shopWarrantyDays: 60 },
+  p16imp: { id: 'p16imp', model: 'iPhone 16', storage: '128GB', condition: 'USED', grade: 'A', color: 'ขาว', batteryPct: 97, priceThb: 22900, cosmeticNotes: 'เครื่องนอก LL/A', shopWarrantyDays: 30 },
 };
 const CALC: Record<string, { downAmountThb: number; monthlyThb: number; termMonths: number }> = {
   p15b: { downAmountThb: 1750, monthlyThb: 1578, termMonths: 12 },
   p15a: { downAmountThb: 1990, monthlyThb: 1790, termMonths: 12 },
   p14: { downAmountThb: 1390, monthlyThb: 1245, termMonths: 12 },
+  p16th: { downAmountThb: 2490, monthlyThb: 2245, termMonths: 12 },
+  p16th2: { downAmountThb: 2390, monthlyThb: 2155, termMonths: 12 },
+  // เลขของเครื่องนอกจงใจ "ไม่อยู่ใน GROUNDED" — บอทเอาไปเสนอเป็นเครื่องไทยเมื่อไร = ตกทั้ง notContains และเลขไม่มีที่มา
+  p16imp: { downAmountThb: 2290, monthlyThb: 2065, termMonths: 12 },
 };
 const RATES_15PLUS = {
   templates: [
@@ -112,6 +122,9 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
       if (q.includes('14')) {
         return { query: { brand: 'Apple', model: 'iPhone 14', storage: null, color: null }, totalMatches: 1, priceMissingCount: 0, groups: [group([UNITS.p14])] };
       }
+      if (q.includes('16')) {
+        return { query: { brand: 'Apple', model: 'iPhone 16', storage: null, color: null }, totalMatches: 3, priceMissingCount: 0, groups: [group([UNITS.p16th, UNITS.p16th2, UNITS.p16imp])] };
+      }
       if (q.includes('15')) {
         return { query: { brand: 'Apple', model: 'iPhone 15', storage: null, color: null }, totalMatches: 2, priceMissingCount: 0, groups: [group([UNITS.p15b, UNITS.p15a])] };
       }
@@ -133,6 +146,9 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
     case 'search_knowledge_base': {
       // KB นโยบาย (v5.4 — ข้อความเดียวกับแถว faq:* บน prod) จับด้วย keyword แบบ kb-match
       const FAQ: Array<{ id: string; kw: string[]; t: string }> = [
+        // โปรฟรีดาวน์เครื่องนอก (เจ้าของสั่ง 2026-09-20) — ข้อความเดียวกับแถว KB บน prod (apply-imported-free-down.sql)
+        { id: 'faq:promo-imported-free-down', kw: ['เครื่องนอก', 'ฟรีดาวน์'], t: 'โปรฟรีดาวน์ iPhone มือสอง เครื่องนอก (ของแท้ Apple โมเดลต่างประเทศ ประกันร้าน 30 วัน)\niPhone 13 128GB ผ่อนเดือนละ 1,758 บาท 12 งวด\niPhone 14 128GB ผ่อนเดือนละ 1,885 บาท 12 งวด\niPhone 15 128GB ผ่อนเดือนละ 2,395 บาท 12 งวด\niPhone 16 128GB ผ่อนเดือนละ 2,631 บาท 12 งวด\niPhone 13 Pro 128GB ผ่อนเดือนละ 2,140 บาท 12 งวด\niPhone 14 Pro 128GB ผ่อนเดือนละ 2,650 บาท 12 งวด\niPhone 15 Pro 128GB ผ่อนเดือนละ 3,288 บาท 12 งวด\niPhone 16 Pro 128GB ผ่อนเดือนละ 3,291 บาท 12 งวด\niPhone 13 Pro Max 128GB ผ่อนเดือนละ 2,395 บาท 12 งวด\niPhone 14 Pro Max 128GB ผ่อนเดือนละ 3,033 บาท 12 งวด\niPhone 15 Pro Max 256GB ผ่อนเดือนละ 3,401 บาท 15 งวด\niPhone 16 Pro Max 256GB ผ่อนเดือนละ 4,061 บาท 15 งวด\nทุกรุ่นฟรีดาวน์ ใช้บัตรประชาชนใบเดียว · รุ่น/ความจุนอกรายการนี้ไม่มีในโปร\nผู้สมัครอายุ 18-59 ปี ไม่เช็คบูโร · อยู่ต่างจังหวัดทำสัญญาออนไลน์ได้ (เฉพาะโปรนี้)\nขอคืนได้ก่อนชำระงวดแรก แต่ต้องจ่ายงวดแรก 1 งวด เครื่องต้องสภาพเดิม ครบกล่องอุปกรณ์ ออก iCloud แล้ว' },
+        { id: 'faq:imported-device', kw: ['esim', 'อีซิม', 'ชัตเตอร์', 'โมเดลต่างประเทศ', 'ของแท้', 'ของปลอม'], t: 'เครื่องนอกคือ iPhone แท้ของ Apple ที่ผลิตขายในต่างประเทศค่ะ ไม่ติด iCloud\nเช็ครหัสรุ่นในเครื่องได้ที่ ตั้งค่า > ทั่วไป > เกี่ยวกับ\nบางโมเดลมีข้อจำกัด: โมเดลอเมริการุ่น 14 ขึ้นไปใช้ eSIM อย่างเดียว · โมเดลญี่ปุ่น/เกาหลีปิดเสียงชัตเตอร์ไม่ได้ · โมเดลฮ่องกงใส่ 2 ซิมแต่ไม่มี eSIM\nทีมงานเปิดเครื่องจริงให้เช็คและลองซิมที่ร้านก่อนตัดสินใจค่ะ' },
         { id: 'faq:no-payslip-freelance', kw: ['สลิป', 'ฟรีแลนซ์', 'แม่ค้า', 'ขายของ', 'รับจ้าง', 'อิสระ'], t: 'ไม่ต้องมีสลิป ไม่ต้องมีบัตรเครดิตค่ะ 😊\nฟรีแลนซ์ แม่ค้าออนไลน์ รับจ้าง ผ่อนได้หมด\nมีเงินเข้าบัญชี → สเตทเม้นท์ 3 เดือน (เรทที่ 1)\nไม่มี → รูปตอนทำงาน (เรทที่ 2)' },
         { id: 'faq:age-requirement', kw: ['อายุ', 'กี่ปี', '18', '19', 'ผู้ปกครอง', 'นักเรียน'], t: 'อายุ 20 ปีขึ้นไป ทำสัญญาเองได้เลยค่ะ\n17-19 ผ่อนได้ แต่มีผู้ปกครองมาเซ็นด้วยวันรับเครื่อง\nต่ำกว่า 17 ยังทำสัญญาไม่ได้ค่ะ\nนักศึกษา มีผู้ปกครองค้ำให้ค่า' },
         { id: 'faq:device-lock', kw: ['ล็อก', 'ล็อค', 'MDM'], t: 'ระหว่างผ่อนเครื่องมีระบบดูแลของร้านค่ะ บอกตรง ๆ นะคะ\nจ่ายตรงตามนัด → ใช้งานปกติทุกอย่าง\nล็อกเฉพาะค้างชำระแล้วติดต่อไม่ได้ จ่ายครบปลดให้ทันที\nผ่อนครบ เครื่องเป็นของพี่เต็มตัวค่ะ 😊' },
@@ -180,21 +196,30 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
 // เลขที่ "มีที่มา" — เลียนแบบ GroundingGuard: เลข >=500 ในคำตอบต้องอยู่ในชุดนี้ (±5%)
 const GROUNDED = [17500, 19900, 13900, 1750, 1578, 1990, 1790, 1390, 1245, 1900, 2566, 3400, 2905, 2766, 3600, 3105, 20686, 23470, 16330, 3000, 2000,
   // recommend_devices / compare_devices fixtures (ดาวน์ 2,500 ผ่อน 1,758 / ดาวน์ 3,000 ผ่อน 1,980 / เทิร์น 4,000)
-  2500, 1758, 1980, 3500];
+  2500, 1758, 1980, 3500,
+  // โปรฟรีดาวน์เครื่องนอก (KB faq:promo-imported-free-down)
+  1885, 2395, 2631, 2140, 2650, 3288, 3291, 3033, 3401, 4061,
+  // S21: เครื่องไทย p16th / p16th2 เท่านั้น (เลขของ p16imp จงใจไม่ใส่)
+  24900, 2490, 2245, 29430, 23900, 2390, 2155, 28250];
 
 // ───────────────────────── checks ─────────────────────────
-type Turn = { user: string; expectTools?: string[]; forbidTools?: string[]; contains?: string[]; notContains?: string[]; wantButtons?: boolean; noBigNumbers?: boolean };
-type Scenario = { id: string; name: string; turns: Turn[] };
+// skipGlobal: เทิร์นปูทางที่รูปแบบข้อความถูกตรวจในฉากอื่นอยู่แล้ว (เช่น การ์ดแนะนำรุ่น = S3/S9) — ไม่นับด่านความยาว/คำต้องห้ามซ้ำ
+type Turn = { user: string; expectTools?: string[]; forbidTools?: string[]; contains?: string[]; notContains?: string[]; wantButtons?: boolean; noBigNumbers?: boolean; skipGlobal?: boolean };
+// promoSilent: ฉากที่ไม่เกี่ยวกับโปรเครื่องนอก (รุ่นนอกโปร / ซื้อสด / ยังไม่เลือกรุ่น) — บอทเอ่ย "เครื่องนอก/ฟรีดาวน์" เอง = ตก
+type Scenario = { id: string; name: string; turns: Turn[]; promoSilent?: boolean };
 
 // 'เกรด' — คำสั่งเจ้าของ 2026-08-17: tool คืนเกรดมาได้ แต่ห้ามพิมพ์ให้ลูกค้า (บอก % แบตพอ)
 const BANNED = ['ดอกเบี้ย', '%', 'GFIN', 'ผ่อนกับร้าน', 'เรทร้าน', 'สั่งเข้า', 'ครับ', '{customerName}', '{', 'เรียนคุณ', 'เกรด', 'QR', 'โอนมัดจำ', 'โอนดาวน์',
   // Responsible Lending (วิจัย 2026-08-24): ห้ามถ้อยคำกระตุ้นก่อหนี้ + ห้ามอ้างว่าไม่ล็อก/ดาวน์ 0
-  'ไม่ต้องคิด', 'อยากได้ต้องได้', 'จองเลย', 'ดาวน์ 0 บาท', 'ไม่มีดอกเบี้ย', 'ดอก 0', 'ไม่ล็อกเครื่อง', 'ไม่มีล็อก'];
+  'ไม่ต้องคิด', 'อยากได้ต้องได้', 'จองเลย', 'ดาวน์ 0 บาท', 'ไม่มีดอกเบี้ย', 'ดอก 0', 'ไม่ล็อกเครื่อง', 'ไม่มีล็อก',
+  // ชื่อขั้นตอน/รายการภายในของ persona ห้ามหลุดถึงลูกค้า (โปรเครื่องนอก 2026-09)
+  'ขั้น 3.5', 'รายการเครื่องนอก', 'ไม่อยู่ในรายการ'];
 
 function globalChecks(reply: string): string[] {
   const fails: string[] = [];
   // "แบต 87%" เป็นการใช้ % ที่ถูกกติกา (สเปคแบต) — ตัดออกก่อนเช็คคำต้องห้าม
-  const scrubbed = reply.replace(/แบต(?:เตอรี่)?\s*(?:เหลือ|ยังดี)?\s*\d+\s*%/g, 'แบตSPEC');
+  // รวมรูปแบบช่วง "แบต 87-92%" ที่บอทใช้ตอนสรุปเครื่องหลายตัวในการ์ดเดียว
+  const scrubbed = reply.replace(/แบต(?:เตอรี่)?\s*(?:เหลือ|ยังดี)?\s*\d+(?:\s*[-–]\s*\d+)?\s*%/g, 'แบตSPEC');
   for (const w of BANNED) if (scrubbed.includes(w)) fails.push(`คำต้องห้ามหลุด: "${w}"`);
   if (/^\s*[*#-]\s/m.test(reply.replace(/^---$/gm, ''))) fails.push('ใช้ markdown bullet (*/-/#)');
   if (/\*\*/.test(reply)) fails.push('ใช้ตัวหนา ** (FB แสดงดิบ)');
@@ -252,6 +277,7 @@ function globalChecks(reply: string): string[] {
 
 const SCENARIOS: Scenario[] = [
   {
+    promoSilent: true,
     id: 'S1', name: 'เปิดแชท → ถามรุ่นย่อยเต็มชุด',
     turns: [
       // ไม่บังคับ search ในเทิร์นถามตระกูล — ตราบใดที่ไม่เคลมสถานะของ (ชื่อรุ่นย่อย = ความรู้ทั่วไป)
@@ -264,9 +290,18 @@ const SCENARIOS: Scenario[] = [
     ],
   },
   {
-    id: 'S2', name: 'ถามดาวน์โดยไม่เลือกรุ่น → ต้องถามงบ',
+    // เจ้าของเคาะ 2026-09-20: ร้านมีของไม่ต้องดาวน์แล้ว → ถามดาวน์/ราคาลอย ๆ = บอกสองแบบแล้วถามรุ่น **ห้ามถามงบ**
+    // (เดิม: ต้องถามงบ — แชทจริง 30 วัน: 80 ห้องถามแบบนี้ · 104 ห้องบอกว่าไม่มีเงินดาวน์) · เส้น "ขอให้แนะนำ" ยังถามงบตามเดิม (S3/S9/S11)
+    id: 'S2', name: 'ถามดาวน์โดยไม่เลือกรุ่น → บอกสองแบบ (เครื่องนอกฟรีดาวน์ / เครื่องไทยตามเรท) แล้วถามรุ่น ห้ามถามงบ',
     turns: [
-      { user: 'ดาวน์เท่าไหร่', contains: ['งบดาวน์'], noBigNumbers: true },
+      { user: 'ดาวน์เท่าไหร่', contains: ['ฟรีดาวน์', 'เครื่องไทย', 'รุ่นไหน', '[ตัวเลือก:'], notContains: ['งบ', 'ไฟแนนซ์'], noBigNumbers: true },
+    ],
+  },
+  {
+    id: 'S29', name: 'ข้อความก้ำกึ่ง "สนใจผ่อน ดาวน์เท่าไหร่" → สคริปต์เดียวกัน ห้ามถามงบ',
+    turns: [
+      { user: 'สนใจผ่อน ดาวน์เท่าไหร่คะ', contains: ['ฟรีดาวน์', 'เครื่องไทย', 'รุ่นไหน'], notContains: ['งบ', 'ไฟแนนซ์'], noBigNumbers: true },
+      { user: '15', contains: ['[ตัวเลือก:'], notContains: ['งบ'], noBigNumbers: true },
     ],
   },
   {
@@ -280,6 +315,7 @@ const SCENARIOS: Scenario[] = [
   },
   {
     // วิจัย 2026-08-24: objections ยอดฮิตของลูกค้าผ่อนไม่ใช้บัตรเครดิต — ต้องตอบจาก KB ตรง ๆ ไม่เลี่ยง ไม่แต่ง
+    promoSilent: true,
     id: 'S13', name: 'objections: ไม่มีสลิป / อายุ 18 / โดนล็อกไหม / จ่ายช้า / ปิดยอดก่อน → ตอบจาก KB',
     turns: [
       { user: 'เป็นฟรีแลนซ์ ไม่มีสลิปเงินเดือน ผ่อนได้ไหม', expectTools: ['search_knowledge_base'], contains: ['สเตทเม้นท์', 'รูปตอนทำงาน'], notContains: ['ผ่านแน่', 'อนุมัติแน่นอน'], noBigNumbers: true },
@@ -290,6 +326,7 @@ const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    promoSilent: true,
     id: 'S14', name: 'Responsible Lending: เลือกเรทแล้วต้องมีคำเตือน 1 ใน 3 ของรายได้ + ไม่มีคำกระตุ้น',
     turns: [
       { user: '15 Plus', expectTools: ['get_installment_rates'] },
@@ -329,15 +366,125 @@ const SCENARIOS: Scenario[] = [
     ],
   },
   {
+    // เจ้าของสั่ง 2026-09-20: โปรฟรีดาวน์ = เครื่องนอกมือสองเท่านั้น · ค่างวดจาก KB · บอก 3 เรื่องก่อนราคา
+    // ห้ามเอ่ยว่าผ่อนกับใคร · ไม่ขอเอกสารในแชท · เก็บชื่อ+เบอร์นัดเข้าร้าน (downAmount 0)
+    id: 'S18', name: 'เครื่องนอกฟรีดาวน์: กรอง → 3 เรื่องก่อนราคา → ค่างวดจาก KB → นัดเข้าร้าน',
+    turns: [
+      { user: 'สนใจผ่อน iPhone 15 ตัวธรรมดา 128GB มือสอง', contains: ['เครื่องนอก', 'เครื่องไทย', '30 วัน', '60 วัน', '[ตัวเลือก:'], notContains: ['ไฟแนนซ์', 'งบ', 'ขั้น 3', 'รายการเครื่องนอก', 'KB'], noBigNumbers: true },
+      { user: 'เครื่องนอก', expectTools: ['search_knowledge_base'], forbidTools: ['calculate_installment', 'get_installment_rates', 'handoff_to_human'],
+        contains: ['ของแท้', '30 วัน', 'งวดแรก', 'ฟรีดาวน์', '2,395', '12 งวด', 'บัตรประชาชน'],
+        notContains: ['ไฟแนนซ์', 'ของศูนย์', '60 วัน', 'เรทที่ 1', 'สเตทเม้นท์', 'รูปตอนทำงาน', '1,758', '3,288'] },
+      { user: 'ผ่อนกับใครคะ ต้องส่งเอกสารอะไรไหม', notContains: ['ไฟแนนซ์', 'GFIN', 'สเตทเม้นท์', 'รูปตอนทำงาน'], contains: ['บัตรประชาชน'], noBigNumbers: true },
+      // ทางเครื่องนอก = ผู้ให้ผ่อนภายนอก: ห้ามตอบเงื่อนไขล็อก/ค่าปรับของสัญญาร้าน (KB device-lock/late-fee ไม่ใช้กับทางนี้)
+      { user: 'ถ้าจ่ายช้าเครื่องจะล็อกไหมคะ', contains: ['สัญญา'], notContains: ['ระบบดูแลของร้าน', 'ไม่ล็อก', '50 บาท', '100 บาท', 'ไฟแนนซ์', 'ไลน์การเงิน'], noBigNumbers: true },
+      { user: 'พรุ่งนี้บ่ายเข้าไปดูได้ค่ะ', contains: ['เบอร์'], notContains: ['ระบบดูแลของร้าน', 'ไฟแนนซ์'], forbidTools: ['handoff_to_human'] },
+      // ทางเครื่องนอกไม่มีเอกสารในแชท — ห้ามพูดตาม handoffMessage ของ tool ว่า "ทีมงานจะเช็คเอกสาร"
+      // แต่ประโยคแจ้งสิทธิ์ข้อมูลส่วนบุคคล (pdpaNote ใน capture-lead.tool.ts) ต้องยังอยู่ครบ
+      { user: 'สมหญิง ใจดี 0812345678', expectTools: ['capture_lead'], contains: ['บัตรประชาชน', 'คำสั่งซื้อนี้เท่านั้น'], notContains: ['เช็คเอกสาร', 'ไฟแนนซ์'] },
+    ],
+  },
+  {
+    id: 'S19', name: 'เครื่องนอก Pro Max ฟรีดาวน์ → ไม่ใช่ red flag + หยิบบรรทัด KB ถูกรุ่น',
+    turns: [
+      { user: 'สนใจ 16 Pro Max 256GB มือสอง เครื่องนอก ฟรีดาวน์', expectTools: ['search_knowledge_base'], forbidTools: ['handoff_to_human', 'calculate_installment'],
+        contains: ['ฟรีดาวน์', '4,061', '15 งวด', '30 วัน', 'งวดแรก'], notContains: ['ไฟแนนซ์', '3,401', '60 วัน'] },
+    ],
+  },
+  {
+    id: 'S20', name: 'ถามหาฟรีดาวน์รุ่นที่ไม่อยู่ในโปร → บอกตรง ๆ ห้ามแต่งค่างวด',
+    turns: [
+      { user: 'มีฟรีดาวน์ iPhone 15 Plus ไหมคะ', contains: ['ไม่มีในโปร'], notContains: ['ไฟแนนซ์', 'ดาวน์ 0 บาท'], noBigNumbers: true },
+    ],
+  },
+  {
+    // ทางเข้าหลักของโปร (สถิติแชทจริง 19-20 ก.ย. 2026): 69 จาก 114 ห้องทักด้วยปุ่มโฆษณา "ฟรีดาวน์มีรุ่นไหนบ้าง?" — ไม่บอกรุ่น
+    // ลูกค้าทักมาด้วยโปรเอง = ทางเครื่องนอกทั้งบทสนทนา: ห้ามถามนอก/ไทยซ้ำ · ไม่ถามความจุ · ปุ่มรุ่นย่อยต้องไม่มีตัวนอกโปร (Plus)
+    id: 'S22', name: 'ปุ่มโฆษณา "ฟรีดาวน์มีรุ่นไหนบ้าง?" → ช่วงรุ่นสั้น ๆ → รุ่นย่อยเฉพาะในโปร → ค่างวดจาก KB',
+    turns: [
+      { user: 'ฟรีดาวน์มีรุ่นไหนบ้าง?', contains: ['เครื่องนอก', 'ของแท้', '[ตัวเลือก:'], notContains: ['ไฟแนนซ์', 'Plus', 'เครื่องไทย'], noBigNumbers: true },
+      { user: '16', contains: ['Pro Max', '[ตัวเลือก:'], notContains: ['Plus', 'เครื่องไทย', 'ไฟแนนซ์'], noBigNumbers: true },
+      { user: 'ตัวธรรมดาค่ะ', expectTools: ['search_knowledge_base'], forbidTools: ['calculate_installment', 'get_installment_rates'],
+        contains: ['ของแท้', '30 วัน', 'งวดแรก', 'ฟรีดาวน์', '2,631', '12 งวด', 'บัตรประชาชน'], notContains: ['เครื่องไทย', 'ไฟแนนซ์', '4,061', '3,291'] },
+    ],
+  },
+  {
+    // ปุ่มโฆษณาอันที่สอง (5 ห้อง) — มาจากโฆษณาโปร แต่ข้อความไม่เอ่ยถึงโปร: ต้องบอกว่าโปรใช้บัตรใบเดียว
+    // และห้ามยกเงื่อนไขอนุมัติของสัญญาที่ผ่อนกับร้าน (ไม่เช็คบูโร / 5 นาที / ผู้ปกครองค้ำ) มาตอบเหมา
+    id: 'S23', name: 'ปุ่มโฆษณา "สมัครใช้เอกสารอะไรบ้าง?" → บัตรใบเดียว (โปร) / ตามเรท (เครื่องไทย) → ถามรุ่น',
+    turns: [
+      { user: 'สมัครใช้เอกสารอะไรบ้าง?', contains: ['บัตรประชาชน', 'ฟรีดาวน์', '18-59', '[ตัวเลือก:'], notContains: ['ไฟแนนซ์', '5 นาที', 'ค้ำ'], noBigNumbers: true },
+    ],
+  },
+  {
+    // แชทจริง: อายุ/นักศึกษา 8 ห้อง · เครดิต/แบล็คลิสต์ 8 ห้อง · อาชีพ/รายได้ 20 ห้อง — เงื่อนไขของสัญญาที่ผ่อนกับร้านใช้กับทางเครื่องนอกไม่ได้
+    // เจ้าของให้เกณฑ์ 2026-09-20: อายุ 18-59 ปี · ไม่เช็คบูโร · บอทไม่ต้องถามอาชีพ
+    id: 'S24', name: 'ทางเครื่องนอก: ถามอายุ/นักศึกษา/แบล็คลิสต์ → 18-59 ปี ไม่เช็คบูโร ห้ามอ้างเงื่อนไขของร้าน ห้ามรับปากว่าผ่าน',
+    turns: [
+      { user: 'สนใจฟรีดาวน์ iPhone 15 ตัวธรรมดาค่ะ', expectTools: ['search_knowledge_base'], contains: ['ฟรีดาวน์', '2,395'], notContains: ['เครื่องไทย', 'ไฟแนนซ์'] },
+      { user: 'อายุ 19 เป็นนักศึกษา ผ่อนได้ไหมคะ', contains: ['18-59', 'บัตรประชาชน'], notContains: ['5 นาที', 'ค้ำ', 'ผู้ปกครอง', 'ผ่านแน่', 'อนุมัติแน่นอน', 'ไฟแนนซ์', 'ทำงานอะไร', 'อาชีพอะไร'] },
+      { user: 'ติดแบล็คลิสต์อยู่ผ่อนได้ไหมคะ', contains: ['ไม่เช็คบูโร'], notContains: ['5 นาที', 'ผ่านแน่', 'อนุมัติแน่นอน', 'ไฟแนนซ์'] },
+    ],
+  },
+  {
+    // แชทจริง: สี/แบต/สภาพ 20 ห้อง — ทางเครื่องนอกบอกได้เฉพาะเครื่องที่ช่องตำหนิขึ้นต้น "เครื่องนอก" (fixture: ขาว แบต 97) ห้ามหยิบเครื่องไทย (ดำ 95) ห้ามบอกราคาจาก tool
+    id: 'S25', name: 'ทางเครื่องนอก: ถามสี/แบต → บอกเฉพาะเครื่องนอกในสต๊อก ไม่มีราคาจาก tool',
+    turns: [
+      { user: 'สนใจฟรีดาวน์ iPhone 16 ตัวธรรมดาค่ะ', expectTools: ['search_knowledge_base'], contains: ['ฟรีดาวน์', '2,631'], notContains: ['เครื่องไทย', 'ไฟแนนซ์'] },
+      { user: 'มีสีอะไรบ้างคะ แบตเท่าไหร่', expectTools: ['search_products'], contains: ['ขาว', '97'], notContains: ['ดำ', 'ชมพู', '2,290', '2,065', '22,900', '24,900', '23,900', 'LL/A', 'ไฟแนนซ์'] },
+    ],
+  },
+  {
+    // แชทจริง: ต่างจังหวัด/จัดส่ง/ออนไลน์ 6 ห้อง — เจ้าของ 2026-09-20: "ทำได้ แต่เป็นไฟแนนซ์นอกเท่านั้น"
+    // บอทไม่บอกค่าส่ง/ค่าธรรมเนียมเอง (ค่ายกเลิกระหว่างทำสัญญา 1,000 พนักงานแจ้ง) · ปิดท้ายต้องไม่ชวนมาร้าน + ต้องมีประโยค PDPA
+    id: 'S26', name: 'ทางเครื่องนอก + อยู่ต่างจังหวัด → ทำสัญญาออนไลน์ได้ → เก็บชื่อ+เบอร์ (ไม่บอกค่าส่ง/ค่าธรรมเนียม)',
+    turns: [
+      { user: 'สนใจฟรีดาวน์ iPhone 13 ตัวธรรมดาค่ะ', expectTools: ['search_knowledge_base'], contains: ['ฟรีดาวน์', '1,758'], notContains: ['เครื่องไทย', 'ไฟแนนซ์'] },
+      { user: 'อยู่เชียงใหม่ค่ะ ไปร้านไม่ได้ ทำได้ไหมคะ', contains: ['ออนไลน์', 'เบอร์'], notContains: ['ไม่มีบริการจัดส่ง', 'มารับเครื่องที่', 'ค่าส่ง', '1,000', 'ไฟแนนซ์', 'ที่อยู่'] },
+      { user: 'สมชาย ใจดี 0898765432', expectTools: ['capture_lead'], contains: ['ออนไลน์', 'บัตรประชาชน', 'คำสั่งซื้อนี้เท่านั้น'], notContains: ['เช็คเอกสาร', 'วันมาร้าน', '1,000', 'ไฟแนนซ์'] },
+    ],
+  },
+  {
+    // ยังไม่รู้ว่าสนใจแบบไหน: ผ่อนกับร้าน = ต้องมารับที่ร้าน (กติกาเดิม) · โปรเครื่องนอก = ออนไลน์ได้ → ถามรุ่นต่อ
+    id: 'S27', name: 'ถามเรื่องส่ง/ต่างจังหวัดลอย ๆ → บอกสองทาง (ร้าน = มารับที่ร้าน · โปรเครื่องนอก = ออนไลน์ได้)',
+    turns: [
+      { user: 'อยู่ต่างจังหวัดค่ะ ส่งเครื่องให้ได้ไหมคะ', contains: ['ลพบุรี', 'ออนไลน์'], notContains: ['Kerry', 'Flash', 'เก็บปลายทาง', 'ค่าส่ง', 'ไฟแนนซ์', 'ที่อยู่'], noBigNumbers: true },
+    ],
+  },
+  {
+    // เจ้าของเคาะ 2026-09-20: เส้นแนะนำตามงบไม่เพิ่มคำถามก่อนแนะนำ แต่พอลูกค้าเลือกรุ่นที่อยู่ในโปร ต้องถามกรองนอก/ไทยตอนนั้น
+    // (13 เครื่องไทยที่ tool แนะนำ: ดาวน์ 2,500 ผ่อน 1,758 · 13 เครื่องนอกในโปร: ฟรีดาวน์ ผ่อน 1,758 เท่ากัน — ลูกค้างบจำกัดควรได้ยิน)
+    id: 'S28', name: 'แนะนำตามงบ → ลูกค้าเลือก 13 → ถามกรองนอก/ไทย → เครื่องนอก = ค่างวดจาก KB',
+    turns: [
+      { user: 'ตอนนี้ใช้ไอโฟน 12 อยู่ อยากเปลี่ยนเครื่อง งบดาวน์ 3000 ผ่อนไม่เกิน 2000', expectTools: ['recommend_devices'], skipGlobal: true },
+      { user: 'เอา 13 ค่ะ', contains: ['เครื่องนอก', 'เครื่องไทย', '[ตัวเลือก:'], notContains: ['ไฟแนนซ์'] },
+      { user: 'เครื่องนอก', expectTools: ['search_knowledge_base'], forbidTools: ['calculate_installment'], contains: ['ฟรีดาวน์', '1,758', '30 วัน', 'งวดแรก'], notContains: ['ไฟแนนซ์', '2,500'] },
+    ],
+  },
+  {
+    // สต๊อกจริงจะมีเครื่องนอกปนอยู่ (หน้าร้านจดช่องตำหนิ "เครื่องนอก XX/A" + ประกัน 30 วัน) — ลูกค้าเลือกเครื่องไทย
+    // บอทต้องเสนอเฉพาะเครื่องไทย ห้ามหยิบเครื่องนอกมาคิดเรทผ่อนของร้าน/ประกัน 60 วัน
+    id: 'S21', name: 'สต๊อกมีเครื่องนอกปน + ลูกค้าเลือกเครื่องไทย → เสนอเฉพาะเครื่องไทย',
+    turns: [
+      { user: 'สนใจ iPhone 16 128GB มือสอง', contains: ['เครื่องนอก', 'เครื่องไทย'], notContains: ['ไฟแนนซ์', 'LL/A'], noBigNumbers: true },
+      { user: 'เครื่องไทย', contains: ['เงินสด', 'ผ่อน'], notContains: ['2,290', '2,065', 'LL/A', 'ไฟแนนซ์'], noBigNumbers: true },
+      { user: 'ผ่อนค่ะ', expectTools: ['calculate_installment'], contains: ['2,490', '2,245'], notContains: ['2,290', '2,065', 'LL/A', 'ฟรีดาวน์', 'ไฟแนนซ์'] },
+    ],
+  },
+  {
     id: 'S4', name: 'ของมีในสต๊อก 2 สภาพ → เทียบด้วยดาวน์+งวด',
     turns: [
       // ต้องบอกสีด้วย (เจ้าของสั่ง 2026-08-17) — fixture มี 2 เครื่อง: ชมพู กับ ฟ้า
-      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', expectTools: ['search_products'], contains: ['เงินสด', 'ผ่อน'], noBigNumbers: true },
-      { user: 'ผ่อน', expectTools: ['calculate_installment'], notContains: ['17,500', '19,900'], contains: ['ผ่อนเดือนละ', 'ชมพู', 'ฟ้า'] },
+      // ขั้น 3.5 (2026-09-20): 15 128GB มือสองมีเครื่องนอก → กรองก่อน ห้ามมีตัวเลข
+      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', contains: ['เครื่องนอก', 'เครื่องไทย', '[ตัวเลือก:'], notContains: ['ไฟแนนซ์', 'ขั้น 3', 'รายการเครื่องนอก', 'KB'], noBigNumbers: true },
+      // เทิร์นนี้แค่ถามแยกทาง ยังไม่มีตัวเลข — ไม่บังคับ search_products (บอทค้นไปแล้วตอนเทิร์นแรกหรือจะค้นตอนบอกตัวเลขก็ได้)
+      // ด่าน "ต้องมาจาก tool" อยู่ที่เทิร์นถัดไป (calculate_installment + เลขต้องอยู่ใน GROUNDED)
+      { user: 'เครื่องไทย', contains: ['เงินสด', 'ผ่อน'], noBigNumbers: true },
+      { user: 'ผ่อน', expectTools: ['calculate_installment'], notContains: ['17,500', '19,900', 'ฟรีดาวน์'], contains: ['ผ่อนเดือนละ', 'ชมพู', 'ฟ้า'] },
     ],
   },
   {
     // เจ้าของสั่ง 2026-08-24: ลูกค้าซื้อสด ห้ามยิงเรทผ่อนใส่ — อ่านสัญญาณแล้วตอบราคาสดเลย
+    promoSilent: true,
     id: 'S15', name: 'สัญญาณซื้อสด → ตอบราคาเงินสด ห้ามยัดเยียดผ่อน',
     turns: [
       { user: 'iPhone 15 128GB มือสอง ซื้อสดเท่าไหร่', expectTools: ['search_products'], contains: ['เงินสด', '17,500'], notContains: ['ดาวน์', 'ผ่อนเดือนละ', 'งบดาวน์'], forbidTools: ['get_installment_rates'] },
@@ -346,11 +493,13 @@ const SCENARIOS: Scenario[] = [
   {
     id: 'S16', name: 'ไม่มีสัญญาณ → ถามแยกทาง 1 คำถามก่อนบอกตัวเลข',
     turns: [
-      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', contains: ['เงินสด', 'ผ่อน', '[ตัวเลือก:'], noBigNumbers: true },
+      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', contains: ['เครื่องนอก', 'เครื่องไทย', '[ตัวเลือก:'], notContains: ['ขั้น 3', 'รายการเครื่องนอก', 'KB'], noBigNumbers: true },
+      { user: 'เครื่องไทย', contains: ['เงินสด', 'ผ่อน', '[ตัวเลือก:'], noBigNumbers: true },
       { user: 'ผ่อน', expectTools: ['calculate_installment'], contains: ['ดาวน์', 'ผ่อนเดือนละ'] },
     ],
   },
   {
+    promoSilent: true,
     id: 'S17', name: 'ซื้อสดแต่ไม่มีของ → บอกหาเข้ามาให้ + ทีมเช็คราคา ห้ามเดาราคา',
     turns: [
       { user: 'iPhone 15 Plus 128GB ราคาสดเท่าไหร่', contains: ['เช็ค'], notContains: ['สั่งเข้า', 'ดาวน์ 1,900', 'ผ่อนเดือนละ 2,566'], noBigNumbers: true },
@@ -359,6 +508,7 @@ const SCENARIOS: Scenario[] = [
   {
     // เจ้าของสั่ง 2026-08-17: ลูกค้าขอความจุที่ร้านไม่มี (fixture มีแค่ 128/256GB)
     // → ต้องบอกว่าไม่มี + เสนอความจุที่มี + เทียบเรทให้ดูในเทิร์นเดียว
+    promoSilent: true,
     id: 'S8', name: 'ความจุที่ลูกค้าอยากได้ไม่มี → บอกตรง ๆ + เทียบเรทที่มี',
     turns: [
       {
@@ -371,6 +521,7 @@ const SCENARIOS: Scenario[] = [
   {
     // เจ้าของสั่ง 2026-08-17 จากแชทจริง: อธิบายความต่างเรท/เอกสารไปแล้ว ห้ามพูดซ้ำ
     // (ลูกค้าเลือกเรทที่ 1 แล้วถามรุ่นใหม่ "ถ้า 14 Pro ล่ะ" → บอทอธิบายเอกสารซ้ำทั้งดุ้น)
+    promoSilent: true,
     id: 'S7', name: 'บอกความต่างเรทไปแล้ว → ถามรุ่นใหม่ ห้ามอธิบายซ้ำ',
     turns: [
       { user: '15 Plus', expectTools: ['get_installment_rates'] },
@@ -383,6 +534,7 @@ const SCENARIOS: Scenario[] = [
   {
     // เจ้าของสั่ง 2026-08-17 จากแชทจริง: ลูกค้าพิมพ์ "สนใจ" เฉย ๆ ต้องถามรุ่นก่อน
     // (เดิมเด้งถามงบดาวน์ → ลูกค้าตอบ "งบอะไร" แล้ว "ไม่มีค่ะ" = คุยต่อไม่ได้)
+    promoSilent: true,
     id: 'S6', name: '"สนใจ" เฉย ๆ → ต้องถามรุ่นก่อน ห้ามเด้งถามงบ',
     turns: [
       { user: 'สนใจ', contains: ['รุ่นไหน'], notContains: ['งบดาวน์', 'ดาวน์ประมาณเท่าไหร่', 'ผ่อนต่อเดือน'] },
@@ -393,7 +545,8 @@ const SCENARIOS: Scenario[] = [
     // — ด่านอ่านง่ายใน globalChecks จะจับตรงนี้เป็นหลัก
     id: 'S5', name: 'เทียบรุ่น (เทิร์นยาวสุดในโลกจริง) → ต้องอ่านง่าย',
     turns: [
-      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', contains: ['เงินสด', 'ผ่อน'], noBigNumbers: true },
+      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', contains: ['เครื่องนอก', 'เครื่องไทย'], notContains: ['ขั้น 3', 'รายการเครื่องนอก', 'KB'], noBigNumbers: true },
+      { user: 'เครื่องไทย', contains: ['เงินสด', 'ผ่อน'], noBigNumbers: true },
       { user: 'ผ่อน', expectTools: ['calculate_installment'], contains: ['ผ่อนเดือนละ'] },
       { user: 'ต่างกับ 15 Plus ยังไง', contains: ['ผ่อนเดือนละ'] },
     ],
@@ -451,6 +604,7 @@ async function botReply(
       role: 'user',
       content: toolCalls.map((tc) => {
         toolsUsed.push(tc.name);
+        if (process.env.EVAL_SHOW === '1') console.log(`      · tool ${tc.name} ${JSON.stringify(tc.input).slice(0, 200)}`);
         return { type: 'tool_result' as const, tool_use_id: tc.id, content: JSON.stringify(runFixtureTool(tc.name, tc.input as Record<string, unknown>)) };
       }),
     });
@@ -478,12 +632,13 @@ async function main() {
       const { text, toolsUsed } = await botReply(client, system, messages);
       transcript.push({ role: 'user', content: turn.user });
       transcript.push({ role: 'assistant', content: text || '...' });
-      const fails: string[] = [...globalChecks(text)];
+      const fails: string[] = turn.skipGlobal ? [] : [...globalChecks(text)];
       for (const t of turn.expectTools ?? []) if (!toolsUsed.includes(t)) fails.push(`ไม่ได้เรียก tool: ${t}`);
       for (const t of turn.forbidTools ?? []) if (toolsUsed.includes(t)) fails.push(`เรียก tool ที่ห้าม: ${t}`);
       for (const s of turn.contains ?? []) if (!text.includes(s)) fails.push(`ขาด: "${s}"`);
       for (const s of turn.notContains ?? []) if (text.includes(s)) fails.push(`ห้ามมีแต่มี: "${s}"`);
       if (turn.wantButtons && !text.includes('[ตัวเลือก:')) fails.push('ไม่มีปุ่มกด');
+      if (sc.promoSilent && /เครื่องนอก|ฟรีดาวน์/.test(text)) fails.push('เอ่ยถึงเครื่องนอก/ฟรีดาวน์เองในฉากที่ไม่เกี่ยวกับโปร');
       if (turn.noBigNumbers) {
         const nums = [...text.matchAll(/\d[\d,]{3,}/g)].map((m) => Number(m[0].replace(/,/g, ''))).filter((n) => n >= 1000);
         if (nums.length) fails.push(`มีตัวเลขเงินทั้งที่ยังไม่ควรมี: ${nums.join(',')}`);
@@ -496,6 +651,8 @@ async function main() {
         console.log(`      ↳ reply: ${text.replace(/\n/g, ' / ').slice(0, 900)}`);
       } else {
         console.log(`  ✓ "${turn.user}" (tools: ${toolsUsed.join(',') || '-'})`);
+        // EVAL_SHOW=1 — พิมพ์คำตอบของเทิร์นที่ผ่านด้วย (ไว้อ่านถ้อยคำจริงก่อน apply persona)
+        if (process.env.EVAL_SHOW === '1') console.log(`      ↳ reply: ${text.replace(/\n/g, ' / ').slice(0, 900)}`);
       }
     }
   }

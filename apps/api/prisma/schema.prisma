@@ -4591,9 +4591,11 @@ enum InterCoBatchStatus {
 /// ประเภทแถวในรอบจ่าย (Phase 2 หักกลบ — workbook จุดที่ 3):
 /// SETTLEMENT = สัญญาปกติ/สัญญา swap (จ่ายเจ้าหนี้ อาจมีหักเครดิตเปลี่ยนเครื่อง)
 /// RECALL = สัญญายกเลิกหลังตัดจ่าย (Flow C-2) — หักเรียกคืนอย่างเดียว ไม่มีเจ้าหนี้
+/// DEVICE_RETURN = ใบรับเครื่องคืน (spec 2026-09-20 §6.3) — หักค่าเครื่องคืน (11-2107 DEVICE_RETURN ↔ S21-1104) อย่างเดียว ไม่มีเจ้าหนี้
 enum InterCoItemType {
   SETTLEMENT
   RECALL
+  DEVICE_RETURN
 }
 
 /// เอกสาร "รอบจ่าย" — FINANCE จ่ายยอดจัด+ค่าคอมให้ SHOP เป็นก้อนเดียว (หลายสัญญารวมยอดโอน
@@ -4616,7 +4618,7 @@ model InterCoSettlementBatch {
   /// แต่สมุด SHOP ไม่มีลูกหนี้รองรับ (สัญญา legacy/exchange) — ไม่เดาลงบัญชีแทน (spec §5.4, §11).
   shopPostedAmount Decimal @map("shop_posted_amount") @db.Decimal(12, 2)
 
-  /// Σ swapCreditAmount + recallAmount ของทุก item (Phase 2 หักกลบ)
+  /// Σ swapCreditAmount + recallAmount + deviceReturnAmount ของทุก item (Phase 2 หักกลบ + ใบรับเครื่องคืน 2026-09-20)
   totalDeduction Decimal @default(0) @map("total_deduction") @db.Decimal(12, 2)
   /// เงินโอนจริงฝั่ง FINANCE = totalAmount − totalDeduction; null = รอบก่อน Phase 2 (= totalAmount)
   netTransferAmount Decimal? @map("net_transfer_amount") @db.Decimal(12, 2)
@@ -4680,6 +4682,8 @@ model InterCoSettlementItem {
   swapCreditAmount Decimal @default(0) @map("swap_credit_amount") @db.Decimal(12, 2)
   /// Snapshot ยอดเรียกคืนจากยกเลิก (11-2107 PAYOUT_RECALL) — ใช้เฉพาะแถว RECALL
   recallAmount Decimal @default(0) @map("recall_amount") @db.Decimal(12, 2)
+  /// Snapshot ค่าเครื่องคืน (11-2107 DEVICE_RETURN = S21-1104 ของสัญญานี้) — ใช้เฉพาะแถว DEVICE_RETURN (ใบรับเครื่องคืน 2026-09-20 §6.3)
+  deviceReturnAmount Decimal @default(0) @map("device_return_amount") @db.Decimal(12, 2)
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

@@ -66,9 +66,12 @@ describe('JourneyEntryWriter (real DB)', () => {
   });
 
   afterAll(async () => {
-    await prisma.customerJourneyEntry.deleteMany({ where: { customerId: { in: customerIds } } });
-    await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
-    await prisma.$disconnect();
+    try {
+      await prisma.customerJourneyEntry.deleteMany({ where: { customerId: { in: customerIds } } });
+      await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
+    } finally {
+      await prisma.$disconnect();
+    }
   });
 
   async function customer(label: string) {
@@ -291,7 +294,9 @@ describe('JourneyEntryWriter (real DB)', () => {
       });
       expect({ kind: row.kind, data: row.data }).toEqual({ kind, data });
     }
-    expect(await prisma.customerJourneyEntry.count({ where: { customerId: c.id } })).toBe(9);
+    expect(await prisma.customerJourneyEntry.count({ where: { customerId: c.id } })).toBe(
+      Object.keys(HOOK_DATA).length,
+    );
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
     expect(Sentry.captureException).not.toHaveBeenCalled();
   });

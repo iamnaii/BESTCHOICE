@@ -34,6 +34,7 @@ describe('PromiseResolutionCron', () => {
       contract: { update: jest.fn().mockResolvedValue({}) },
       payment: { aggregate: jest.fn().mockResolvedValue({ _sum: { amountPaid: null } }) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
+      deviceReturn: { count: jest.fn().mockResolvedValue(0) },
       user: { findFirst: jest.fn().mockResolvedValue({ id: 'sys-uid' }) },
       // Expose the transaction callback + forward calls to txMock so assertions still work.
       $transaction: jest.fn(async (cb: any) => cb(txMock)),
@@ -68,7 +69,9 @@ describe('PromiseResolutionCron', () => {
         ],
       },
     ]);
-    prisma.__tx.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: { toNumber: () => 1500 } } });
+    prisma.__tx.payment.aggregate.mockResolvedValue({
+      _sum: { amountPaid: { toNumber: () => 1500 } },
+    });
 
     await cron.handleHourly();
 
@@ -98,7 +101,9 @@ describe('PromiseResolutionCron', () => {
         ],
       },
     ]);
-    prisma.__tx.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: { toNumber: () => 500 } } });
+    prisma.__tx.payment.aggregate.mockResolvedValue({
+      _sum: { amountPaid: { toNumber: () => 500 } },
+    });
 
     await cron.handleHourly();
 
@@ -155,7 +160,9 @@ describe('PromiseResolutionCron', () => {
     ]);
     // N2 fix: targets are cumulative — slot 1 (1000) + slot 2 (500) = 1500. To
     // mark slot 2 kept, payments in window must cover the cumulative target.
-    prisma.__tx.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: { toNumber: () => 1500 } } });
+    prisma.__tx.payment.aggregate.mockResolvedValue({
+      _sum: { amountPaid: { toNumber: () => 1500 } },
+    });
 
     await cron.handleHourly();
 
@@ -171,5 +178,51 @@ describe('PromiseResolutionCron', () => {
         data: { keptPromiseCount: { increment: 1 } },
       }),
     );
+  });
+  it('ใบรับเครื่องคืนเปิดอยู่ (เครื่องอยู่ที่สาขาแล้ว) → ยังนับ broken + audit ตามเดิม แต่ไม่สั่ง MDM autoLock (spec 2026-09-20 §5.7)', async () => {
+    prisma.callLog.findMany.mockResolvedValue([
+      {
+        id: 'cl-1',
+        contractId: 'c-1',
+        slots: [
+          {
+            id: 's-1',
+            slotIndex: 1,
+            settlementDate: new Date(Date.now() - 5 * 86400 * 1000),
+            settlementAmount: { toNumber: () => 1000 },
+            keptAt: null,
+            brokenAt: null,
+          },
+        ],
+      },
+    ]);
+    prisma.__tx.payment.aggregate.mockResolvedValue({ _sum: { amountPaid: null } });
+    prisma.deviceReturn.count.mockResolvedValue(1);
+
+    await cron.handleHourly();
+
+    expect(prisma.__tx.promiseSlot.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 's-1' },
+        data: expect.objectContaining({ brokenAt: expect.any(Date) }),
+      }),
+    );
+    expect(prisma.__tx.callLog.update).toHaveBeenCalledWith({
+      where: { id: 'cl-1' },
+      data: { brokenAt: expect.any(Date) },
+    });
+    expect(mdm.autoLock).not.toHaveBeenCalled();
+    expect(prisma.__tx.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'BROKEN_PROMISE', entityId: 'c-1' }),
+      }),
+    );
+    expect(prisma.deviceReturn.count).toHaveBeenCalledWith({
+      where: {
+        contractId: 'c-1',
+        status: { in: ['PENDING_CONFIRM', 'CONFIRMED'] },
+        deletedAt: null,
+      },
+    });
   });
 });

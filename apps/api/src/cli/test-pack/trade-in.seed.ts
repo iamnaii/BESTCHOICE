@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 
 import { TEST_NOTE_MARKER, testNote } from './_context';
 import type { CleanupStat, DomainSeeder, PlanRow, SeedContext, SeedStat } from './_types';
+import { countShopTenders, deleteShopTenders, testTenderWhere } from '../shop-tender-cleanup.util';
 
 /**
  * R2 — หยุดที่ APPRAISED
@@ -144,17 +145,24 @@ export const tradeInSeeder: DomainSeeder = {
       );
     }
     const accepted = rows.filter((r) => r.productId);
+    // สมุดเงินหน้าร้าน: แถว "จ่ายรับซื้อมือสอง" ของรายการทดสอบ (เกิดเมื่อกดรับซื้อ flow BUYBACK) — ลบถาวร
+    // ไม่งั้นค้างเป็นเงินออกในหน้าสรุปเงินรายวันของจริง
+    const tenderWhere = testTenderWhere(rows.length ? [{ tradeInId: { in: rows.map((row) => row.id) } }] : []);
+    const tenderCount = await countShopTenders(ctx.prisma, tenderWhere);
     // flow BUYBACK ตอนรับซื้อโพสต์ JE "shop-trade-in:<id>" โดยไม่มี marker/metadata ให้กวาด
     // (trade-in-lifecycle.service.ts) — pack กวาดไม่ถึงโดยเจตนา จึงเตือนรายแถวแทน
     const buybacks = rows.filter((r) => r.flow === 'BUYBACK');
     if (!dryRun && rows.length) {
-      await ctx.prisma.tradeIn.updateMany({
-        where: { id: { in: rows.map((r) => r.id) } },
-        data: { deletedAt: new Date() },
+      await ctx.prisma.$transaction(async (tx) => {
+        await deleteShopTenders(tx, tenderWhere);
+        await tx.tradeIn.updateMany({
+          where: { id: { in: rows.map((r) => r.id) } },
+          data: { deletedAt: new Date() },
+        });
       });
     }
     return {
-      removed: { รายการรับซื้อมือสอง: rows.length },
+      removed: { รายการรับซื้อมือสอง: rows.length, 'แถวสมุดเงินหน้าร้าน (ลบถาวร)': tenderCount },
       warnings: [
         ...(accepted.length
           ? [

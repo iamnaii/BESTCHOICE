@@ -47,6 +47,7 @@
  */
 
 import { PrismaService } from '../prisma/prisma.service';
+import { countShopTenders, deleteShopTenders, findTenderSplitEntries, testTenderWhere } from './shop-tender-cleanup.util';
 import {
   TEST_CONTRACT_PREFIX,
   TEST_CUSTOMER_ADDRESS,
@@ -67,6 +68,8 @@ export interface CleanupResult {
   financeReceivables: number;
   salesCommissions: number;
   tradeIns: number;
+  /** แถวสมุดเงินหน้าร้าน (shop_tenders) ของเอกสารทดสอบ — ลบถาวร */
+  shopTenders: number;
   repossessions: number;
   letters: number;
   cancellations: number;
@@ -88,6 +91,7 @@ export async function cleanupTestContracts(
     financeReceivables: 0,
     salesCommissions: 0,
     tradeIns: 0,
+    shopTenders: 0,
     repossessions: 0,
     letters: 0,
     cancellations: 0,
@@ -132,7 +136,9 @@ export async function cleanupTestContracts(
         select: { id: true },
       })
     : [];
-  const entryIds = entries.map((e) => e.id);
+  // JE แยกยอดของเงินดาวน์จ่ายผสมไม่ stamp contractId (ดู findTenderSplitEntries) — ตามด้วย tenderDocId + mirror
+  const splitEntries = await findTenderSplitEntries(prisma, contractIds);
+  const entryIds = [...new Set([...entries.map((e) => e.id), ...splitEntries.map((e) => e.id)])];
 
   // Sales: POS cash sales on test products / test customers + installment-linked sales.
   const saleWhereOr = [
@@ -154,6 +160,14 @@ export async function cleanupTestContracts(
     ...(saleIds.length ? [{ saleId: { in: saleIds } }] : []),
     ...(contractIds.length ? [{ contractId: { in: contractIds } }] : []),
   ];
+
+  // สมุดเงินหน้าร้านของเอกสารทดสอบ — relation filter ไม่กรอง deletedAt (ใบที่ถูก void/ลบไปก่อนก็ต้องกวาด)
+  const tenderWhere = testTenderWhere([
+    ...(contractIds.length ? [{ contractId: { in: contractIds } }] : []),
+    ...(saleWhereOr.length ? [{ sale: { OR: saleWhereOr } }] : []),
+    ...(testCustomerIds.length ? [{ tradeIn: { customerId: { in: testCustomerIds } } }, { booking: { customerId: { in: testCustomerIds } } }] : []),
+  ]);
+  const tenderCount = await countShopTenders(prisma, tenderWhere);
 
   const [payCount, schedCount, rcptCount, letterCount, repoCount, cancelCount, tradeInCount, finRecCount, commissionCount] =
     await Promise.all([
@@ -184,6 +198,7 @@ export async function cleanupTestContracts(
   result.sales = saleIds.length;
   result.financeReceivables = finRecCount;
   result.salesCommissions = commissionCount;
+  result.shopTenders = tenderCount;
   result.tradeIns = tradeInCount;
   result.repossessions = repoCount;
   result.letters = letterCount;
@@ -212,7 +227,7 @@ export async function cleanupTestContracts(
     console.log(`  would remove: ${contracts.length} contracts, ${payCount} payments, ${schedCount} schedules, ${rcptCount} receipts,`);
     console.log(`                ${entryIds.length} journal entries (hard), ${letterCount} letters, ${repoCount} repossessions,`);
     console.log(`                ${cancelCount} cancellations, ${saleIds.length} sales, ${finRecCount} finance receivables,`);
-    console.log(`                ${commissionCount} commissions, ${tradeInCount} trade-ins,`);
+    console.log(`                ${commissionCount} commissions, ${tradeInCount} trade-ins, ${tenderCount} shop tenders (hard),`);
     console.log(`                ${testProductIds.length} test products, ${testCustomerIds.length} test customers`);
     return result;
   }
@@ -270,6 +285,8 @@ export async function cleanupTestContracts(
         data: { deletedAt: now },
       });
     }
+    // สมุดเงินหน้าร้าน: ลบถาวรก่อน soft delete เอกสาร (ไม่งั้นแถวทดสอบค้างในหน้าสรุปเงินรายวันของจริง)
+    await deleteShopTenders(tx, tenderWhere);
     if (saleIds.length) {
       await tx.financeReceivable.updateMany({
         where: { saleId: { in: saleIds }, deletedAt: null },
@@ -357,6 +374,7 @@ async function main(): Promise<void> {
     console.log(`  sales                 : ${r.sales}`);
     console.log(`  finance receivables   : ${r.financeReceivables}`);
     console.log(`  sales commissions     : ${r.salesCommissions}`);
+    console.log(`  shop tenders (hard)   : ${r.shopTenders}`);
     console.log(`  trade-ins             : ${r.tradeIns}`);
     console.log(`  test products         : ${r.products}`);
     console.log(`  test customers        : ${r.customers}`);

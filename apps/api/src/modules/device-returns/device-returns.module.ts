@@ -8,6 +8,7 @@ import { DeviceReturnsController } from './device-returns.controller';
 import { DeviceReturnsService } from './device-returns.service';
 import { DeviceReturnNumberService } from './device-return-number.service';
 import { DeviceReturnNotifyService } from './device-return-notify.service';
+import { DeviceReturnPendingCron } from './device-return-pending.cron';
 
 /**
  * ใบรับเครื่องคืน (spec 2026-09-20). ไม่มี forwardRef: ไม่มีโมดูลใด import โมดูลนี้นอกจาก AppModule
@@ -24,7 +25,12 @@ import { DeviceReturnNotifyService } from './device-return-notify.service';
     CustomerJourneyModule,
   ],
   controllers: [DeviceReturnsController],
-  providers: [DeviceReturnsService, DeviceReturnNumberService, DeviceReturnNotifyService],
+  providers: [
+    DeviceReturnsService,
+    DeviceReturnNumberService,
+    DeviceReturnNotifyService,
+    DeviceReturnPendingCron,
+  ],
   exports: [DeviceReturnsService],
 })
 export class DeviceReturnsModule {}

@@ -132,7 +132,7 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                     จึงไม่โชว์บรรทัดหัก และยอดโอนสุทธิ = ยอดเต็ม (netAmountOf) */}
                 {batch.netTransferAmount !== null && (
                   <InfoField
-                    label="หักรวม (เครดิตเปลี่ยนเครื่อง + เรียกคืน)"
+                    label="หักรวม (เครดิตเปลี่ยนเครื่อง + เรียกคืน + ค่าเครื่องคืน)"
                     value={
                       <span className={Number(batch.totalDeduction) > 0 ? 'text-warning' : ''}>
                         −฿{fmtMoney(batch.totalDeduction)}
@@ -200,10 +200,17 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                     <tbody>
                       {batch.items.map((item) => {
                         const isRecall = item.itemType === 'RECALL';
-                        // item รอบเก่า (ก่อน Phase 2) ไม่มีคอลัมน์หัก — Prisma default
+                        const isDeviceReturn = item.itemType === 'DEVICE_RETURN';
+                        // แถวหักที่ไม่มีเจ้าหนี้ของตัวเอง (RECALL / DEVICE_RETURN) โชว์ '-' ในคอลัมน์เจ้าหนี้
+                        const noPayable = isRecall || isDeviceReturn;
+                        // item รอบเก่า (ก่อน Phase 2 / ก่อน 2026-09-20) ไม่มีคอลัมน์หัก — Prisma default
                         // ให้ "0.00" เสมอ แต่กันเผื่อ undefined จาก fixture/response เก่า
                         const deduction = Number(
-                          (isRecall ? item.recallAmount : item.swapCreditAmount) ?? 0,
+                          (isRecall
+                            ? item.recallAmount
+                            : isDeviceReturn
+                              ? item.deviceReturnAmount
+                              : item.swapCreditAmount) ?? 0,
                         );
                         return (
                           <tr key={item.id} className="border-t border-border">
@@ -220,6 +227,16 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                                     เรียกคืน
                                   </Badge>
                                 )}
+                                {isDeviceReturn && (
+                                  <Badge
+                                    variant="info"
+                                    appearance="light"
+                                    size="sm"
+                                    title="ค่าเครื่องคืน (ใบรับเครื่องคืนที่ยืนยันแล้ว) — หักจากยอดโอนของรอบนี้ ไม่มีเจ้าหนี้ของตัวเอง"
+                                  >
+                                    ค่าเครื่องคืน
+                                  </Badge>
+                                )}
                                 {item.legacyNoShop && (
                                   <Badge variant="warning" appearance="light" size="sm">
                                     LEGACY
@@ -231,16 +248,16 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                               </div>
                             </td>
                             <td className="p-2.5 text-right tabular-nums">
-                              {isRecall ? '-' : fmtMoney(item.financedGl)}
+                              {noPayable ? '-' : fmtMoney(item.financedGl)}
                             </td>
                             <td className="p-2.5 text-right tabular-nums">
-                              {isRecall ? '-' : fmtMoney(item.commissionGl)}
+                              {noPayable ? '-' : fmtMoney(item.commissionGl)}
                             </td>
                             <td className="p-2.5 text-right tabular-nums">
-                              {isRecall || item.legacyNoShop ? '-' : fmtMoney(item.shopFinancedGl)}
+                              {noPayable || item.legacyNoShop ? '-' : fmtMoney(item.shopFinancedGl)}
                             </td>
                             <td className="p-2.5 text-right tabular-nums">
-                              {isRecall || item.legacyNoShop
+                              {noPayable || item.legacyNoShop
                                 ? '-'
                                 : fmtMoney(item.shopCommissionGl)}
                             </td>

@@ -83,6 +83,16 @@ const pendingResponse = {
       shopRecallGl: '500.00',
     },
   ],
+  // ใบรับเครื่องคืนที่ยืนยันแล้ว (2026-09-20) — แถวหักประเภทที่ 3
+  deviceReturns: [
+    {
+      contractId: 'd1',
+      contractNumber: 'CT-0011',
+      customerName: 'ลูกค้า D',
+      deviceReturnGl: '7000.00',
+      shopDeviceReturnGl: '7000.00',
+    },
+  ],
   reconcile: {
     pendingTotal: '16500.00',
     glFinanceTotal: '16500.00',
@@ -191,6 +201,7 @@ function setupApiGet(pending: unknown = pendingResponse) {
         data: [
           { code: '11-1201', name: 'ธนาคาร KBank' },
           { code: 'S11-1201', name: 'ธนาคาร KBank หน้าร้าน' },
+          { code: 'S11-1202', name: 'ธนาคารจ่ายออกหน้าร้าน' },
         ],
       });
     }
@@ -472,5 +483,150 @@ describe('IntercompanySettlementPage', () => {
     await waitFor(() => expect(screen.getByText('CT-0009')).toBeInTheDocument());
     expect(screen.getByText('ยอดสองสมุดไม่ตรง')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'รับเงินสดคืน' })).toBeDisabled();
+  });
+});
+
+// ── ใบรับเครื่องคืน 2026-09-20: แถวหักประเภทที่ 3 "ค่าเครื่องคืน" + รับเงินสดสำรอง ─────────
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+describe('IntercompanySettlementPage — ค่าเครื่องคืน (DEVICE_RETURN)', () => {
+  it('shows the device-return section, folds it into the deduction summary and sends deviceReturnContractIds', async () => {
+    asRole('ACCOUNTANT', 'u1');
+    const user = userEvent.setup();
+    wrap(<IntercompanySettlementPage />);
+
+    await waitFor(() => expect(screen.getByText('CT-0001')).toBeInTheDocument());
+    expect(screen.getByText(/ค่าเครื่องคืน \(ใบรับเครื่องคืนที่ยืนยันแล้ว\)/)).toBeInTheDocument();
+    expect(screen.getByText('CT-0011')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('checkbox', { name: 'เลือกค่าเครื่องคืนสัญญา CT-0011' }));
+    // A deduction alone cannot create a payout batch.
+    expect(screen.getByRole('button', { name: 'สร้างรอบจ่าย' })).toBeDisabled();
+    await user.click(screen.getByRole('checkbox', { name: 'เลือกสัญญา CT-0001' }));
+    await user.click(screen.getByRole('button', { name: 'สร้างรอบจ่าย' }));
+
+    const dialog = await screen.findByRole('dialog');
+    // 11,000 gross − (2,000 swap credit + 7,000 device return) = 2,000 net
+    expect(within(dialog).getByText('฿2,000.00')).toBeInTheDocument();
+    expect(within(dialog).getByText('−฿9,000.00')).toBeInTheDocument();
+    expect(within(dialog).getByText(/\+ ค่าเครื่องคืน 1 รายการ/)).toBeInTheDocument();
+
+    apiPost.mockResolvedValueOnce({ data: { id: 'b10', batchNumber: 'IC-20260920-0001' } });
+    await user.click(within(dialog).getByRole('button', { name: 'สร้างรอบจ่าย' }));
+
+    await waitFor(() =>
+      expect(apiPost).toHaveBeenCalledWith(
+        '/interco-settlement/batches',
+        expect.objectContaining({ contractIds: ['c1'], deviceReturnContractIds: ['d1'] }),
+      ),
+    );
+  });
+
+  it('opens the device-return cash dialog and POSTs to the device-returns settle-cash endpoint', async () => {
+    asRole('OWNER');
+    const user = userEvent.setup();
+    wrap(<IntercompanySettlementPage />);
+
+    await waitFor(() => expect(screen.getByText('CT-0011')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'รับเงินสดค่าเครื่อง' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('รับเงินสดค่าเครื่องคืนจากหน้าร้าน')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/ยอดรับเงินค่าเครื่องคืน/)).toHaveValue(7000);
+
+    apiPost.mockResolvedValueOnce({
+      data: { financeEntryNo: 'JE-202609-00010', shopEntryNo: 'SJE-202609-00010', deduped: false },
+    });
+    await user.click(within(dialog).getByRole('button', { name: 'บันทึกรับเงินค่าเครื่องคืน' }));
+
+    await waitFor(() =>
+      expect(apiPost).toHaveBeenCalledWith(
+        '/interco-settlement/device-returns/d1/settle-cash',
+        expect.objectContaining({
+          amount: 7000,
+          financeDepositAccountCode: '11-1201',
+          shopPayoutAccountCode: 'S11-1202',
+          requestId: expect.stringMatching(UUID_RE),
+        }),
+      ),
+    );
+  });
+
+  it('disables selection and the cash button on a device-return row whose two books mismatch', async () => {
+    asRole('OWNER');
+    setupApiGet({
+      ...pendingResponse,
+      deviceReturns: [{ ...pendingResponse.deviceReturns[0], shopDeviceReturnGl: '6000.00' }],
+    });
+    wrap(<IntercompanySettlementPage />);
+
+    await waitFor(() => expect(screen.getByText('CT-0011')).toBeInTheDocument());
+    expect(
+      screen.getByRole('checkbox', { name: 'เลือกค่าเครื่องคืนสัญญา CT-0011' }),
+    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'รับเงินสดค่าเครื่อง' })).toBeDisabled();
+  });
+
+  it('hides รับเงินสดค่าเครื่อง from maker-side roles (endpoint is OWNER/FM only)', async () => {
+    asRole('ACCOUNTANT', 'u1');
+    wrap(<IntercompanySettlementPage />);
+
+    await waitFor(() => expect(screen.getByText('CT-0011')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: 'รับเงินสดค่าเครื่อง' })).not.toBeInTheDocument();
+  });
+
+  it('renders a DEVICE_RETURN batch item with its badge, deduction and the 3-part หักรวม label', async () => {
+    asRole('OWNER');
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/interco-settlement/pending') return Promise.resolve({ data: pendingResponse });
+      if (url === '/interco-settlement/batches') return Promise.resolve({ data: batchesResponse });
+      if (url.startsWith('/interco-settlement/batches/')) {
+        return Promise.resolve({
+          data: {
+            ...batchDetailResponse,
+            totalDeduction: '7500.00',
+            netTransferAmount: '3500.00',
+            shopNetAmount: '3500.00',
+            items: [
+              ...batchDetailResponse.items,
+              {
+                id: 'i3',
+                contractId: 'd1',
+                itemType: 'DEVICE_RETURN',
+                financedGl: '0.00',
+                commissionGl: '0.00',
+                shopFinancedGl: '0.00',
+                shopCommissionGl: '0.00',
+                legacyNoShop: false,
+                swapCreditAmount: '0.00',
+                recallAmount: '0.00',
+                deviceReturnAmount: '7000.00',
+                contract: { id: 'd1', contractNumber: 'CT-0011', customer: { name: 'ลูกค้า D' } },
+              },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({ data: {} });
+    });
+    const user = userEvent.setup();
+    wrap(<IntercompanySettlementPage />);
+
+    await user.click(screen.getByRole('tab', { name: 'รอบจ่าย' }));
+    await waitFor(() => expect(screen.getByText('IC-20260801-0001')).toBeInTheDocument());
+    await user.click(screen.getByText('IC-20260801-0001'));
+    await waitFor(() => expect(screen.getByText(/รายการสัญญา/)).toBeInTheDocument());
+
+    expect(screen.getByText('ค่าเครื่องคืน')).toBeInTheDocument(); // badge บนแถว DEVICE_RETURN
+    expect(screen.getByText('−7,000.00')).toBeInTheDocument(); // ยอดหักของแถวในตาราง items
+    const deviceReturnRow = screen.getByText('ค่าเครื่องคืน').closest('tr')!;
+    expect(
+      within(deviceReturnRow)
+        .getAllByRole('cell')
+        .slice(1, 5)
+        .map((cell) => cell.textContent),
+    ).toEqual(['-', '-', '-', '-']);
+    expect(
+      screen.getByText(/หักรวม \(เครดิตเปลี่ยนเครื่อง \+ เรียกคืน \+ ค่าเครื่องคืน\)/),
+    ).toBeInTheDocument();
   });
 });

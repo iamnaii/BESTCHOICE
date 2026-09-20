@@ -51,6 +51,11 @@ export interface DeviceReturnListResponse {
   limit: number;
 }
 
+/** POST /device-returns/:id/cancel and /reject return the refreshed row and any accounting notice. */
+export interface CloseDeviceReturnResponse extends DeviceReturnRow {
+  notice: string | null;
+}
+
 /** `GET /device-returns/preview?contractId&conditionGrade&appraisalPrice` */
 export interface DeviceReturnPreview {
   contract: {

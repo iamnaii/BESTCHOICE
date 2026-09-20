@@ -19,6 +19,7 @@ import {
   LINE_STATUS_LABEL,
   RETURN_REASON_LABEL,
   type DeviceReturnListResponse,
+  type CloseDeviceReturnResponse,
   type DeviceReturnRow,
   type LineNotifyStatus,
 } from './types';
@@ -61,13 +62,12 @@ export function DeviceReturnList({ onConfirm }: Props) {
   const cancelMutation = useMutation({
     retry: false,
     mutationFn: async (row: DeviceReturnRow) =>
-      (await api.post(`/device-returns/${row.id}/cancel`)).data,
-    onSuccess: (_res, row) => {
-      toast.success(
-        `ยกเลิกใบ ${row.docNumber} แล้ว — ${
-          row.returnKind === 'VOLUNTARY' ? 'สัญญากลับไปสถานะเดิม' : 'สัญญายังบอกเลิกอยู่ตามเดิม'
-        }`,
-      );
+      (await api.post<CloseDeviceReturnResponse>(`/device-returns/${row.id}/cancel`)).data,
+    onSuccess: (result, row) => {
+      // Closing the intake can succeed even when contract restoration was skipped.
+      toast.success(`ยกเลิกใบ ${row.docNumber} แล้ว`, {
+        description: result.notice?.trim() || undefined,
+      });
       queryClient.invalidateQueries({ queryKey: ['device-returns'] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
       queryClient.invalidateQueries({ queryKey: ['contract', row.contract.id] });

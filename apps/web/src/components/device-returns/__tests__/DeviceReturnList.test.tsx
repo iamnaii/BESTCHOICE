@@ -14,7 +14,16 @@ vi.mock('@/lib/api', () => ({
   default: { get: (...a: unknown[]) => apiGet(...a), post: (...a: unknown[]) => apiPost(...a) },
   getErrorMessage: (e: unknown) => String(e),
 }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('sonner')>();
+  return {
+    ...actual,
+    toast: Object.assign(actual.toast, {
+      success: vi.fn(actual.toast.success),
+      error: vi.fn(actual.toast.error),
+    }),
+  };
+});
 
 type TestUser = { id: string; name: string; role: string; branchId: string | null };
 let currentUser: TestUser = { id: 'u-owner', name: 'เจ้าของ', role: 'OWNER', branchId: null };
@@ -23,7 +32,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 
 import { DeviceReturnList } from '../DeviceReturnList';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 
 const baseRow = {
   status: 'PENDING_CONFIRM',
@@ -93,6 +102,7 @@ function wrapper({ children }: { children: ReactNode }) {
 const rowOf = (docNumber: string) => screen.getByTestId(`device-return-row-${docNumber}`);
 
 beforeEach(() => {
+  toast.dismiss();
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   vi.clearAllMocks();
   currentUser = { id: 'u-owner', name: 'เจ้าของ', role: 'OWNER', branchId: null };
@@ -102,6 +112,11 @@ beforeEach(() => {
     return Promise.resolve({
       data: {
         ...row,
+        contract: {
+          ...row.contract,
+          status: row.returnKind === 'VOLUNTARY' ? 'ACTIVE' : 'TERMINATED',
+        },
+        notice: null,
         status: url.endsWith('/cancel')
           ? 'CANCELED'
           : url.endsWith('/reject')
@@ -177,6 +192,52 @@ describe('DeviceReturnList — สิทธิ์ต่อบทบาท', () =
 });
 
 describe('DeviceReturnList — query and mutation lifecycle', () => {
+  it('renders the server cross-month cancellation notice after closing the dialog', async () => {
+    const notice = 'ใบนี้ข้ามเดือน — ให้ OWNER เปิดงวดใหม่ผ่าน PERIOD_REOPENED ก่อน';
+    apiPost.mockResolvedValueOnce({
+      data: {
+        ...rows[0],
+        status: 'CANCELED',
+        contract: { ...rows[0].contract, status: 'ACTIVE' },
+        notice,
+      },
+    });
+    routeApi();
+    render(
+      <>
+        <DeviceReturnList onConfirm={() => {}} />
+        <Toaster />
+      </>,
+      { wrapper },
+    );
+    await screen.findByText(rows[0].docNumber);
+    fireEvent.click(within(rowOf(rows[0].docNumber)).getByRole('button', { name: 'ยกเลิก' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันยกเลิกใบ' }));
+    expect(await screen.findByText(notice)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('does not promise restoration when cancellation returns an independently closed contract', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: {
+        ...rows[0],
+        status: 'CANCELED',
+        contract: { ...rows[0].contract, status: 'COMPLETED' },
+        notice: null,
+      },
+    });
+    routeApi();
+    render(<DeviceReturnList onConfirm={() => {}} />, { wrapper });
+    await screen.findByText(rows[0].docNumber);
+    fireEvent.click(within(rowOf(rows[0].docNumber)).getByRole('button', { name: 'ยกเลิก' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันยกเลิกใบ' }));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(`ยกเลิกใบ ${rows[0].docNumber} แล้ว`, {
+        description: undefined,
+      }),
+    );
+  });
+
   it('shows loading, query error, and retries the exact pending query', async () => {
     let fail!: (error: Error) => void;
     apiGet.mockImplementationOnce(
@@ -246,7 +307,16 @@ describe('DeviceReturnList — query and mutation lifecycle', () => {
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     routeApi([rows[1]]);
-    await act(async () => finish({ data: { ...rows[0], status: 'CANCELED' } }));
+    await act(async () =>
+      finish({
+        data: {
+          ...rows[0],
+          status: 'CANCELED',
+          contract: { ...rows[0].contract, status: 'ACTIVE' },
+          notice: null,
+        },
+      }),
+    );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     await waitFor(() => expect(screen.queryByText(rows[0].docNumber)).not.toBeInTheDocument());
     for (const queryKey of [
@@ -257,7 +327,10 @@ describe('DeviceReturnList — query and mutation lifecycle', () => {
     ]) {
       expect(invalidation).toHaveBeenCalledWith({ queryKey });
     }
-    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('สัญญากลับไปสถานะเดิม'));
+    expect(toast.success).toHaveBeenCalledWith(
+      `ยกเลิกใบ ${rows[0].docNumber} แล้ว`,
+      expect.anything(),
+    );
   });
 
   it('retains cancel target on failure and permits retry', async () => {

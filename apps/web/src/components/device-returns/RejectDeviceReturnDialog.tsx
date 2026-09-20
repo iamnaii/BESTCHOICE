@@ -13,7 +13,12 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { REJECT_REASON_MAX, REJECT_REASON_MIN, type DeviceReturnRow } from './types';
+import {
+  REJECT_REASON_MAX,
+  REJECT_REASON_MIN,
+  type DeviceReturnRow,
+  type CloseDeviceReturnResponse,
+} from './types';
 
 /**
  * ส่งกลับใบรับเครื่องคืน (spec 2026-09-20 §5.3) — OWNER/FINANCE_MANAGER:
@@ -51,18 +56,15 @@ export function RejectDeviceReturnDialog({ target, onClose, onRejected }: Props)
       session: number;
     }) =>
       (
-        await api.post(`/device-returns/${submitted.target.id}/reject`, {
+        await api.post<CloseDeviceReturnResponse>(`/device-returns/${submitted.target.id}/reject`, {
           reason: submitted.reason,
         })
       ).data,
-    onSuccess: (_data, submitted) => {
-      toast.success(
-        `ส่งกลับใบ ${submitted.target.docNumber} แล้ว — ${
-          submitted.target.returnKind === 'VOLUNTARY'
-            ? 'สัญญากลับไปสถานะเดิม'
-            : 'สัญญายังบอกเลิกอยู่ตามเดิม'
-        }`,
-      );
+    onSuccess: (result, submitted) => {
+      // The server may close the intake without restoring an independently changed contract.
+      toast.success(`ส่งกลับใบ ${submitted.target.docNumber} แล้ว`, {
+        description: result.notice?.trim() || undefined,
+      });
       queryClient.invalidateQueries({ queryKey: ['device-returns'] });
       queryClient.invalidateQueries({ queryKey: ['contracts'] });
       queryClient.invalidateQueries({ queryKey: ['contract', submitted.target.contract.id] });

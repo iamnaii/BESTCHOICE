@@ -14,14 +14,23 @@ vi.mock('@/lib/api', () => ({
 }));
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
-vi.mock('sonner', () => ({
-  toast: {
-    success: (...a: unknown[]) => toastSuccess(...a),
-    error: (...a: unknown[]) => toastError(...a),
-  },
-}));
+vi.mock('sonner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('sonner')>();
+  return {
+    ...actual,
+    toast: {
+      ...actual.toast,
+      success: (...a: Parameters<typeof actual.toast.success>) => {
+        toastSuccess(...a);
+        return actual.toast.success(...a);
+      },
+      error: (...a: unknown[]) => toastError(...a),
+    },
+  };
+});
 
 import { RejectDeviceReturnDialog } from '../RejectDeviceReturnDialog';
+import { toast, Toaster } from 'sonner';
 
 const target = {
   id: 'dr-1',
@@ -42,12 +51,67 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => {
-  apiPost.mockReset().mockResolvedValue({ data: { ...target, status: 'REJECTED' } });
+  toast.dismiss();
+  apiPost
+    .mockReset()
+    .mockResolvedValue({
+      data: {
+        ...target,
+        status: 'REJECTED',
+        contract: { ...target.contract, status: 'ACTIVE' },
+        notice: null,
+      },
+    });
   toastSuccess.mockReset();
   toastError.mockReset();
 });
 
 describe('RejectDeviceReturnDialog', () => {
+  it('renders the returned cross-month notice after rejecting', async () => {
+    const notice = 'ใบนี้ข้ามเดือน — ให้ OWNER เปิดงวดใหม่ผ่าน PERIOD_REOPENED ก่อน';
+    apiPost.mockResolvedValueOnce({
+      data: {
+        ...target,
+        status: 'REJECTED',
+        contract: { ...target.contract, status: 'ACTIVE' },
+        notice,
+      },
+    });
+    render(
+      <>
+        <RejectDeviceReturnDialog target={target} onClose={() => {}} />
+        <Toaster />
+      </>,
+      { wrapper },
+    );
+    fireEvent.change(screen.getByLabelText(/เหตุผลที่ส่งกลับ/), {
+      target: { value: 'ราคาประเมินไม่ถูกต้อง' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันส่งกลับ' }));
+    expect(await screen.findByText(notice)).toBeInTheDocument();
+  });
+
+  it('does not promise restoration when rejection returns an independently closed contract', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: {
+        ...target,
+        status: 'REJECTED',
+        contract: { ...target.contract, status: 'COMPLETED' },
+        notice: null,
+      },
+    });
+    render(<RejectDeviceReturnDialog target={target} onClose={() => {}} />, { wrapper });
+    fireEvent.change(screen.getByLabelText(/เหตุผลที่ส่งกลับ/), {
+      target: { value: 'ราคาประเมินไม่ถูกต้อง' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันส่งกลับ' }));
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith(`ส่งกลับใบ ${target.docNumber} แล้ว`, {
+        description: undefined,
+      }),
+    );
+  });
+
   it('ไม่ render อะไรเมื่อ target = null', () => {
     render(<RejectDeviceReturnDialog target={null} onClose={() => {}} />, { wrapper });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -81,10 +145,16 @@ describe('RejectDeviceReturnDialog', () => {
     );
     await waitFor(() => expect(onRejected).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
-    expect(toastSuccess).toHaveBeenCalledWith(expect.stringContaining('สัญญากลับไปสถานะเดิม'));
+    expect(toastSuccess).toHaveBeenCalledWith(
+      `ส่งกลับใบ ${target.docNumber} แล้ว`,
+      expect.anything(),
+    );
   });
 
-  it('ใบยึดเครื่อง (REPOSSESSION) → toast บอกว่าสัญญายังบอกเลิกอยู่ตามเดิม', async () => {
+  it('ใบยึดเครื่อง (REPOSSESSION) → toast ยืนยันส่งกลับ', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: { ...target, returnKind: 'REPOSSESSION', status: 'REJECTED', notice: null },
+    });
     render(
       <RejectDeviceReturnDialog
         target={{ ...target, returnKind: 'REPOSSESSION' }}
@@ -100,7 +170,8 @@ describe('RejectDeviceReturnDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันส่งกลับ' }));
     await waitFor(() =>
       expect(toastSuccess).toHaveBeenCalledWith(
-        expect.stringContaining('สัญญายังบอกเลิกอยู่ตามเดิม'),
+        `ส่งกลับใบ ${target.docNumber} แล้ว`,
+        expect.anything(),
       ),
     );
   });
@@ -217,11 +288,26 @@ describe('RejectDeviceReturnDialog', () => {
         onRejected={onRejected}
       />,
     );
-    await act(async () => resolve({ data: {} }));
-    await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith(expect.stringContaining('DR-20260920-0001')),
+    await act(async () =>
+      resolve({
+        data: {
+          ...target,
+          status: 'REJECTED',
+          contract: { ...target.contract, status: 'ACTIVE' },
+          notice: null,
+        },
+      }),
     );
-    expect(toastSuccess).toHaveBeenCalledWith(expect.stringContaining('สัญญากลับไปสถานะเดิม'));
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith(
+        expect.stringContaining('DR-20260920-0001'),
+        expect.anything(),
+      ),
+    );
+    expect(toastSuccess).toHaveBeenCalledWith(
+      `ส่งกลับใบ ${target.docNumber} แล้ว`,
+      expect.anything(),
+    );
     for (const queryKey of [
       ['device-returns'],
       ['contracts'],

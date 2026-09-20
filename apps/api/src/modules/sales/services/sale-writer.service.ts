@@ -1,24 +1,17 @@
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
-import { ContractQuoteService, contractQuotePayments } from '../../contracts/services/contract-quote.service';
-import { assertCustomerContractPolicy, customerContractSnapshot, contractDownTender } from '../../contracts/services/contract-create-policy';
 import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
 import { firstTransferReference, normalizeTenders } from '../../shop-tenders/shop-tender.util';
-import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
-import { assertSameTestSide } from '../../../utils/test-data-markers';
 import { assertSaleProductEligible, type SaleProductActor } from './sale-product-policy';
 import { assertBundleIsAccessory } from './bundle-policy';
-import { claimCreditApproval } from '../../credit-check/services/credit-approval';
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
-import { lockCreditCustomer } from '../../credit-check/services/room-credit-history';
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { closeRepossessionOnSale } from '../../repossessions/repossession-resale.util';
-import { PaymentMethod, PlanType, Prisma } from '@prisma/client';
+import { PaymentMethod, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateSaleDto } from '../dto/sale.dto';
 import { computeCommissionAmount } from '../../../utils/commission.util';
-import { generateContractNumber, generateSaleNumber } from '../../../utils/sequence.util';
-import { InterCompanyService } from '../../inter-company/inter-company.service';
+import { generateSaleNumber } from '../../../utils/sequence.util';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/shop-external-finance-sale.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
@@ -40,11 +33,9 @@ import {
 export class SaleWriterService {
   constructor(
     private prisma: PrismaService,
-    private interCompanyService: InterCompanyService,
     private shopCashSaleTemplate: ShopCashSaleTemplate,
     private shopAccountResolver: ShopAccountResolver,
     private shopExternalFinanceSaleTemplate: ShopExternalFinanceSaleTemplate,
-    private shopDownPaymentTemplate: ShopDownPaymentTemplate,
   ) {}
 
   /**
@@ -296,204 +287,6 @@ export class SaleWriterService {
           salespersonId,
           // T4-C10: cash sale has no contract — snapshot = current earner
           snapshotSalespersonId: salespersonId,
-          saleId: sale.id,
-          period,
-          saleAmount: netAmount,
-          commissionRate,
-          commissionAmount: computeCommissionAmount(netAmount, commissionRate),
-          status: 'PENDING',
-        },
-      });
-
-      return sale;
-    }, { isolationLevel: 'Serializable' });
-  }
-
-  async createInstallmentSale(dto: CreateSaleDto, salespersonId: string, netAmount: number, discount: number, userRole = 'SALES', userBranchId?: string | null) {
-    const actor = { id: salespersonId, role: userRole, branchId: userBranchId };
-    if (dto.downPayment == null) throw new BadRequestException('กรุณาใส่เงินดาวน์');
-    if (!dto.totalMonths) throw new BadRequestException('กรุณาเลือกจำนวนงวด');
-    const cashDown = new Decimal(dto.downPayment).toDecimalPlaces(2).toNumber();
-    const credits = new TradeInCreditService(this.prisma);
-    const creditInput = { ...dto, tradeInId: dto.tradeInCreditId!, priceAfterDiscount:
-      new Decimal(dto.sellingPrice).minus(dto.discount ?? 0).minus(dto.loyaltyPointsRedeemed ?? 0).toDecimalPlaces(2).toNumber() };
-    return this.runSaleTransaction(async (tx) => {
-      await lockCreditCustomer(tx, dto.customerId);
-      await assertCustomerContractPolicy(tx, dto.customerId, userRole, dto.overrideActiveContractCheck);
-      const product = await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
-      if (!product.imeiSerial) throw new BadRequestException('สินค้าต้องมี IMEI/Serial Number');
-      const customer = await tx.customer.findUnique({ where: { id: dto.customerId, deletedAt: null } });
-      if (!customer) throw new BadRequestException('ไม่พบลูกค้า');
-      assertSameTestSide(customer, product);
-      const quote = await new ContractQuoteService(this.prisma).resolve({ ...dto, sellingPrice: creditInput.priceAfterDiscount,
-        downPayment: cashDown, totalMonths: dto.totalMonths! }, actor, tx);
-      if (!new Decimal(quote.sellingPrice).eq(new Decimal(netAmount).toDecimalPlaces(2))) {
-        throw new BadRequestException('ยอดหลังส่วนลดและโบนัสเทิร์นเปลี่ยนแล้ว กรุณาทบทวนยอดใหม่');
-      }
-      const downTenders = normalizeTenders(dto.tenders, cashDown, { method: dto.paymentMethod, reference: dto.downPaymentReference });
-      const tender = contractDownTender(downTenders);
-      const calc = { principal: Number(quote.principal), interestTotal: Number(quote.interestTotal),
-        storeCommission: Number(quote.storeCommission), vatAmount: Number(quote.vatAmount), monthlyPayment: Number(quote.monthlyPayment) };
-      const params = { interestRate: Number(quote.interestRate), storeCommissionPct: Number(quote.storeCommissionPct), vatPct: Number(quote.effectiveVatPct) };
-      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], dto.branchId, actor, dto.previouslyDamagedAcknowledged);
-      const saleNumber = await generateSaleNumber(tx);
-
-      // Use provided contract number or auto-generate
-      let contractNumber = dto.contractNumber;
-      if (!contractNumber) {
-        contractNumber = await generateContractNumber(tx);
-      }
-
-      // Create contract (with storeCommission)
-      const contract = await tx.contract.create({
-        data: {
-          contractNumber,
-          customerId: dto.customerId,
-          productId: dto.productId,
-          branchId: dto.branchId,
-          salespersonId,
-          planType: (dto.planType ?? 'STORE_DIRECT') as PlanType,
-          sellingPrice: netAmount,
-          downPayment: quote.downPayment,
-          ...tender,
-          customerSnapshot: customerContractSnapshot(customer),
-          interestRate: params.interestRate,
-          totalMonths: dto.totalMonths!,
-          interestTotal: calc.interestTotal,
-          financedAmount: calc.principal,
-          storeCommission: calc.storeCommission,
-          vatAmount: calc.vatAmount,
-          vatPct: params.vatPct,
-          monthlyPayment: calc.monthlyPayment,
-          status: 'DRAFT',
-          workflowStatus: 'CREATING',
-          paymentDueDay: dto.paymentDueDay,
-          interestConfigId: quote.configId,
-          notes: dto.notes,
-        },
-      });
-
-      const payments = contractQuotePayments(quote, contract.id);
-      await claimCreditApproval(tx, { customerId: dto.customerId, contractId: contract.id,
-        creditApprovalId: dto.creditApprovalId, paymentDueDay: dto.paymentDueDay,
-        monthlyAmounts: payments.map(payment => Number(payment.amountDue)), firstPaymentDue: payments[0]?.dueDate,
-        actor: { id: salespersonId, role: userRole } });
-      await tx.payment.createMany({ data: payments });
-
-      // Tax point (จุดความรับผิดทางภาษี): วันส่งมอบสินค้า = วันที่สร้างรายการขาย
-      // Create sale record linked to contract
-      if (dto.tradeInCreditId) {
-        const snapshot = await credits.claim(tx, { ...creditInput, target: { contractId: contract.id }, cashAmount: cashDown, actorId: salespersonId });
-        await tx.contract.update({ where: { id: contract.id }, data: { tradeInCreditSnapshot: snapshot } });
-        contract.tradeInCreditSnapshot = snapshot;
-      }
-      const sale = await tx.sale.create({
-        data: {
-          saleNumber,
-          saleType: 'INSTALLMENT',
-          tradeInCreditSnapshot: contract.tradeInCreditSnapshot ?? undefined,
-          customerId: dto.customerId,
-          productId: dto.productId,
-          branchId: dto.branchId,
-          salespersonId,
-          sellingPrice: dto.sellingPrice,
-          discount,
-          netAmount,
-          paymentMethod: tender.downPaymentMethod,
-          amountReceived: cashDown,
-          downPaymentAmount: quote.downPayment,
-          contractId: contract.id,
-          bundleProductIds: dto.bundleProductIds || [],
-          notes: dto.notes,
-        },
-      });
-
-      if (cashDown > 0) {
-        const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(dto.branchId, tender.downPaymentMethod, tx);
-        await this.shopDownPaymentTemplate.execute({ idempotencyKey: `shop-down-payment:${contract.id}`,
-          contractId: contract.id, contractNumber: contract.contractNumber, cashAccountCode, downAmount: new Decimal(cashDown) }, tx);
-        await new ShopTenderRecorder(this.prisma, { accounts: this.shopAccountResolver }).recordInflow(tx, { kind: 'CONTRACT_DOWN', branchId: dto.branchId,
-          actorId: salespersonId, doc: { contractId: contract.id }, docNumber: contract.contractNumber, tenders: downTenders });
-      }
-
-      if (cashDown > 0 && dto.paymentMethod == null && !dto.tenders?.length) {
-        await tx.auditLog.create({ data: { userId: salespersonId, action: 'CONTRACT_DOWN_METHOD_DEFAULTED', entity: 'contract',
-          entityId: contract.id, newValue: { method: 'CASH', source: 'LEGACY_SALE_CALLER' } } });
-      }
-
-      // Reserve product
-      await tx.product.update({
-        where: { id: dto.productId },
-        data: { status: 'RESERVED' },
-      });
-      // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน
-      await preemptReservationsInTx(tx, [dto.productId]);
-
-      // W-007: COGS tracked via sale.product.costPrice + InterCompanyTransaction.costPrice.
-      // P&L report captures product cost by joining Sale → Product.costPrice.
-      // TODO: Implement perpetual inventory journal for real-time COGS ledger entries.
-
-      // ── Inter-Company Transaction: BESTCHOICE SHOP ↔ BESTCHOICE FINANCE ──
-      const costPrice = product ? Number(product.costPrice) : 0;
-      const downPaymentNum = Number(quote.downPayment);
-      // Shop profit = downPayment + principal + commission - costPrice
-      const shopProfit = downPaymentNum + calc.principal + calc.storeCommission - costPrice;
-      // Finance profit = interestTotal - commission (late fees added later)
-      const financeProfit = calc.interestTotal - calc.storeCommission;
-
-      // CR-8: Delegate inter-company transaction to InterCompanyService
-      await this.interCompanyService.createFromSaleInTx(tx, {
-        saleId: sale.id,
-        contractId: contract.id,
-        branchId: dto.branchId,
-        principal: calc.principal,
-        commission: calc.storeCommission,
-        commissionPct: params.storeCommissionPct,
-        vatAmount: calc.vatAmount,
-        vatPct: params.vatPct,
-        totalAmount: calc.principal + calc.storeCommission,
-        interestTotal: calc.interestTotal,
-        costPrice,
-        downPayment: downPaymentNum,
-        sellingPrice: netAmount,
-        shopProfit,
-        financeProfit,
-      });
-
-      // ── Finance Receivable for BESTCHOICE FINANCE (internal) ──
-      const expectedDate = new Date();
-      expectedDate.setDate(expectedDate.getDate() + 1); // Internal: expect next day
-      const bcFinanceId = await this.resolveExternalFinanceCompanyId(tx, 'BESTCHOICE FINANCE');
-      await tx.financeReceivable.create({
-        data: {
-          saleId: sale.id,
-          branchId: dto.branchId,
-          financeCompany: 'BESTCHOICE FINANCE',
-          externalFinanceCompanyId: bcFinanceId,
-          expectedAmount: calc.principal + calc.storeCommission,
-          commissionRate: params.storeCommissionPct,
-          commissionAmount: calc.storeCommission,
-          netExpectedAmount: calc.principal,
-          expectedDate,
-        },
-      });
-
-      // Auto-create sales commission (read from CommissionRule, fallback to 3%)
-      const now = new Date();
-      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const rule = await tx.commissionRule.findFirst({
-        where: { isActive: true, deletedAt: null },
-        orderBy: { createdAt: 'desc' },
-      });
-      const commissionRate = rule?.rate ? Number(rule.rate) : 0.03;
-      await tx.salesCommission.create({
-        data: {
-          salespersonId,
-          // T4-C10: snapshot earner from the contract at creation time. If
-          // the contract is later reassigned (admin action), commission
-          // stays tied to the original earner.
-          snapshotSalespersonId: contract.salespersonId,
-          contractId: contract.id,
           saleId: sale.id,
           period,
           saleAmount: netAmount,

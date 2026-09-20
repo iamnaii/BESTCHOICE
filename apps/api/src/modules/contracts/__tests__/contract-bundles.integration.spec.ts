@@ -86,7 +86,6 @@ const salesService = new SalesService(
   shopAccountResolver,
   new ShopExternalFinanceSaleTemplate(journal, prisma as never, companyResolver),
   { notify: async () => {} } as never,
-  shopDownPayment,
 );
 
 const PREFIX = 'BUNDLETEST-';

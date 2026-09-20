@@ -1,10 +1,10 @@
-import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import * as creditApproval from '../credit-check/services/credit-approval';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { validate } from 'class-validator';
 import { SalesService } from './sales.service';
+import { INSTALLMENT_VIA_CONTRACT_MSG } from './services/sale-creation.service';
 import { SalesController } from './sales.controller';
 import { VoidSaleDto } from './dto/void-sale.dto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -25,8 +25,7 @@ import { SaleWarrantyNotifierService } from './services/sale-warranty-notifier.s
  *                   OWNER profit visibility vs. non-OWNER cost stripping
  *  - findOne      : not-found, soft-deleted
  *  - create (CASH): payment-method guard, product-in-stock guard, commission from rule
- *  - create (INSTALLMENT): down-payment guard, totalMonths guard, contract + schedule
- *                           creation, product reservation, inter-company tx, finance receivable
+ *  - create (INSTALLMENT): rejected — in-house installment goes through the contract page only
  *  - create (EXTERNAL_FINANCE): finance-company guard, product marked SOLD_INSTALLMENT,
  *                                finance receivable created
  *  - getSalespersons: role-based branch scoping
@@ -260,7 +259,6 @@ describe('SalesService', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({}) } },
         SalesService,
         { provide: PrismaService, useValue: prisma },
         { provide: InterCompanyService, useValue: interCompanyService },
@@ -570,150 +568,18 @@ describe('SalesService', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // create — INSTALLMENT sale
+  // create — INSTALLMENT sale (rejected — contract page only)
   // ─────────────────────────────────────────────────────────────────────────────
 
   describe('create — INSTALLMENT', () => {
-    const installmentDto = {
-      saleType: 'INSTALLMENT' as const,
-      customerId: 'customer-1',
-      productId: 'product-1',
-      branchId: 'branch-1',
-      sellingPrice: 20000,
-      downPayment: 3500,   // > 15% min
-      totalMonths: 12,
-      paymentMethod: 'CASH',
-    };
-
-    it('throws BadRequestException when downPayment is not provided', async () => {
+    // ขายผ่อนในเครือทำผ่านหน้าสัญญาทางเดียว (2026-09-20) — เส้นทางเก่าที่สร้างสัญญา+ตารางงวด+ลูกหนี้ในเครือจาก POST /sales ถูกถอด
+    it('rejects with a pointer to the contract page and never opens a transaction', async () => {
       await expect(
-        service.create({ ...installmentDto, downPayment: undefined }, 'user-1', 'SALES', 'branch-1'),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('throws BadRequestException when totalMonths is not provided', async () => {
-      await expect(
-        service.create({ ...installmentDto, totalMonths: undefined }, 'user-1', 'SALES', 'branch-1'),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('throws BadRequestException when downPayment is below the minimum percentage', async () => {
-      // Min is 15% of netAmount (20000) = 3000; 2500 is below that
-      await expect(
-        service.create({ ...installmentDto, downPayment: 2500 }, 'user-1', 'SALES', 'branch-1'),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('throws BadRequestException when totalMonths is out of range', async () => {
-      await expect(
-        service.create({ ...installmentDto, totalMonths: 3 }, 'user-1', 'SALES', 'branch-1'),
-      ).rejects.toBeInstanceOf(BadRequestException);
-    });
-
-    it('creates a contract, payment schedule, and reserves the product', async () => {
-      let contractCreated = false;
-      let paymentsCreated = false;
-      let productReserved = false;
-
-      prisma.$transaction.mockImplementation(
-        async (fn: (tx: unknown) => Promise<unknown>) => {
-          const txPrisma = {
-            ...prisma,
-            product: {
-              findUnique: jest.fn().mockResolvedValue(mockProduct),
-              findMany: jest.fn().mockResolvedValue([]),
-              update: jest.fn().mockImplementation((args: { data: { status: string } }) => {
-                if (args.data.status === 'RESERVED') productReserved = true;
-                return Promise.resolve({ ...mockProduct, status: args.data.status });
-              }),
-            },
-            contract: { ...prisma.contract,
-              create: jest.fn().mockImplementation(() => {
-                contractCreated = true;
-                return Promise.resolve({ id: 'contract-1', contractNumber: 'BC-2026-TEST-001', totalMonths: 12 });
-              }),
-            },
-            payment: {
-              createMany: jest.fn().mockImplementation(() => {
-                paymentsCreated = true;
-                return Promise.resolve({ count: 12 });
-              }),
-            },
-            sale: { create: jest.fn().mockResolvedValue({ ...mockSale, saleType: 'INSTALLMENT' }) },
-            salesCommission: { create: jest.fn().mockResolvedValue({}) },
-            commissionRule: { findFirst: jest.fn().mockResolvedValue(mockCommissionRule) },
-            financeReceivable: { create: jest.fn().mockResolvedValue({}) },
-          };
-          return fn(txPrisma);
-        },
-      );
-
-      await service.create(installmentDto, 'user-1', 'SALES', 'branch-1');
-
-      expect(contractCreated).toBe(true);
-      expect(paymentsCreated).toBe(true);
-      expect(productReserved).toBe(true);
-    });
-
-    it('creates an inter-company transaction for BESTCHOICE SHOP ↔ FINANCE flow', async () => {
-      prisma.$transaction.mockImplementation(
-        async (fn: (tx: unknown) => Promise<unknown>) => {
-          const txPrisma = {
-            ...prisma,
-            product: {
-              findUnique: jest.fn().mockResolvedValue(mockProduct),
-              findMany: jest.fn().mockResolvedValue([]),
-              update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
-            },
-            contract: { ...prisma.contract,
-              create: jest.fn().mockResolvedValue({ id: 'contract-1', contractNumber: 'BC-2026-TEST-001', totalMonths: 12 }),
-            },
-            payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },
-            sale: { create: jest.fn().mockResolvedValue({ ...mockSale, saleType: 'INSTALLMENT' }) },
-            salesCommission: { create: jest.fn().mockResolvedValue({}) },
-            commissionRule: { findFirst: jest.fn().mockResolvedValue(mockCommissionRule) },
-            financeReceivable: { create: jest.fn().mockResolvedValue({}) },
-          };
-          return fn(txPrisma);
-        },
-      );
-
-      await service.create(installmentDto, 'user-1', 'SALES', 'branch-1');
-      expect(interCompanyService.createFromSaleInTx).toHaveBeenCalled();
-    });
-
-    it('creates a FinanceReceivable for the BESTCHOICE FINANCE entity', async () => {
-      let financeReceivableCreated = false;
-
-      prisma.$transaction.mockImplementation(
-        async (fn: (tx: unknown) => Promise<unknown>) => {
-          const txPrisma = {
-            ...prisma,
-            product: {
-              findUnique: jest.fn().mockResolvedValue(mockProduct),
-              findMany: jest.fn().mockResolvedValue([]),
-              update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'RESERVED' }),
-            },
-            contract: { ...prisma.contract,
-              create: jest.fn().mockResolvedValue({ id: 'contract-1', contractNumber: 'BC-2026-TEST-001', totalMonths: 12 }),
-            },
-            payment: { createMany: jest.fn().mockResolvedValue({ count: 12 }) },
-            sale: { create: jest.fn().mockResolvedValue({ ...mockSale, saleType: 'INSTALLMENT' }) },
-            salesCommission: { create: jest.fn().mockResolvedValue({}) },
-            commissionRule: { findFirst: jest.fn().mockResolvedValue(mockCommissionRule) },
-            financeReceivable: {
-              create: jest.fn().mockImplementation(() => {
-                financeReceivableCreated = true;
-                return Promise.resolve({});
-              }),
-            },
-          };
-          return fn(txPrisma);
-        },
-      );
-
-      await service.create(installmentDto, 'user-1', 'SALES', 'branch-1');
-      expect(financeReceivableCreated).toBe(true);
+        service.create({ saleType: 'INSTALLMENT', customerId: 'customer-1', productId: 'product-1', branchId: 'branch-1',
+          sellingPrice: 20000, downPayment: 3500, totalMonths: 12, paymentMethod: 'CASH' } as any, 'user-1'),
+      ).rejects.toThrow(INSTALLMENT_VIA_CONTRACT_MSG);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(interCompanyService.createFromSaleInTx).not.toHaveBeenCalled();
     });
   });
 

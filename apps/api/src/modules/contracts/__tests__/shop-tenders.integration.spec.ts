@@ -61,7 +61,7 @@ const cancellationTemplate = new ContractCancellationTemplate(
 const cancellations = new ContractCancellationService(prisma as never, () => cancellationTemplate, () => companyResolver);
 const salesService = new SalesService(
   prisma as never, null as never, new ShopCashSaleTemplate(journal, prisma as never, companyResolver), shopAccountResolver,
-  new ShopExternalFinanceSaleTemplate(journal, prisma as never, companyResolver), { notify: async () => {} } as never, shopDownPayment,
+  new ShopExternalFinanceSaleTemplate(journal, prisma as never, companyResolver), { notify: async () => {} } as never,
 );
 const saleVoidService = new SaleVoidService(prisma as never, new ExchangeCancelReversalTemplate(journal, prisma as never));
 const report = new ShopTendersReportService(prisma as never);

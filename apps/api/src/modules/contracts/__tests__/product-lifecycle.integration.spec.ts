@@ -54,6 +54,9 @@ import { SalesService } from '../../sales/sales.service';
 import { RepossessionsService } from '../../repossessions/repossessions.service';
 import { RepossessionJP5Template } from '../../journal/cpa-templates/repossession-jp5.template';
 import { CreditNoteDocumentService } from '../../receipts/services/credit-note-document.service';
+import { CustomerTagsService } from '../../customer-tags/customer-tags.service';
+import { JourneyEntryWriter } from '../../customer-journey/journey-entry-writer.service';
+
 import { ContractExchangeService } from '../../contract-exchange/contract-exchange.service';
 import { ExchangeCancelService } from '../../contract-exchange/contract-exchange-cancel.service';
 import { AuditService } from '../../audit/audit.service';
@@ -141,6 +144,19 @@ const repossessionsService = new RepossessionsService(
   null as never, // refundWaiveTemplate — ไม่ถูกเรียกใน create()
   new CreditNoteDocumentService(prisma as never),
   { deliver: async () => undefined } as never, // fire-and-forget หลัง tx — ไม่มี CN ให้ส่ง
+);
+
+// ใบรับเครื่องคืน (2026-09-20) — ทางเข้าเดียวของการยึด: create (สาขา) → confirm (FINANCE → createInTx)
+// ไลน์/ส่ง CN เป็น stub (ไม่ยิงออกเน็ตในเทส) · tag/journey ของจริง (เขียนหลัง commit, best-effort)
+const deviceReturnsService = new DeviceReturnsService(
+  prisma as never,
+  repossessionsService,
+  new DeviceReturnNumberService(prisma as never),
+  { notify: async () => undefined } as never,
+  new CustomerTagsService(prisma as never),
+  new JourneyEntryWriter(prisma as never),
+  audit,
+  { deliver: async () => ({ delivered: false }) } as never,
 );
 
 // ---------------------------------------------------------------------------
@@ -355,53 +371,6 @@ function intakeDto(contractId: string) {
   };
 }
 
-/**
- * interim (Task 4 ของแผนใบรับเครื่องคืน): create() ถูกลบ — ยึดผ่าน createInTx ใต้ tx ของเทสเอง
- * พร้อมใบรับเครื่องคืน synthetic. Task 10 แทนด้วย DeviceReturnsService.create+confirm (เส้นทางจริง).
- */
-async function repossessViaCreateInTx(
-  contractId: string,
-  productId: string,
-  customerId: string,
-  appraisalPrice: number,
-) {
-  const { financeCompanyId, shopCompanyId } =
-    await repossessionsService.assertRepossessionPeriodsOpen(new Date());
-  const dr = await prisma.deviceReturn.create({
-    data: {
-      docNumber: `DR-LIFECYCLE-${RUN}-${Date.now() % 100000}`,
-      contractId,
-      productId,
-      customerId,
-      receivingBranchId: branchId,
-      receivedById: adminId,
-      returnKind: 'REPOSSESSION',
-      returnReason: 'AFTER_TERMINATION',
-      deviceReceivedAt: new Date(),
-      conditionGrade: 'B',
-      appraisalPrice: dec(String(appraisalPrice)),
-    },
-  });
-  return prisma.$transaction((tx) =>
-    repossessionsService.createInTx(
-      tx,
-      {
-        contractId,
-        repossessedDate: new Date(),
-        paymentDate: new Date(),
-        conditionGrade: 'B',
-        appraisalPrice,
-        appraisedById: adminId,
-        receivingBranchId: branchId,
-        deviceReturnId: dr.id,
-        financeCompanyId,
-        shopCompanyId,
-      },
-      adminId,
-    ),
-  );
-}
-
 describe('State diagram ของเครื่อง — flow จริงบน DB จริง (Phase 5 Task 4)', () => {
   beforeAll(async () => {
     await seedFinanceCoa(prisma);
@@ -451,6 +420,10 @@ describe('State diagram ของเครื่อง — flow จริงบ�
 
   afterAll(async () => {
     try {
+      await prisma.customerJourneyEntry.deleteMany({
+        where: { customerId: { in: createdCustomerIds } },
+      });
+      await prisma.customerTag.deleteMany({ where: { customerId: { in: createdCustomerIds } } });
       await prisma.deviceReturn.deleteMany({ where: { contractId: { in: createdContractIds } } });
       // งวดค้างที่ seed ให้ JP5 (payments.contract_id FK) + แถวยึดของเคสยึดเครื่อง
       await prisma.payment.deleteMany({ where: { contractId: { in: createdContractIds } } });
@@ -1118,12 +1091,28 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     // `jp5_require_terminated_status = true` บังคับให้ต้อง TERMINATED ก่อนยึด
     await prisma.contract.update({ where: { id: contract.id }, data: { status: 'TERMINATED' } });
 
-    const { repossession } = await repossessViaCreateInTx(
-      contract.id,
-      product.id,
-      customer.id,
-      7000,
+    // สัญญา TERMINATED → ใบประเภท REPOSSESSION (เหตุผล AFTER_TERMINATION ตั้งให้เอง); OWNER ต้องระบุสาขาที่รับ
+    const returnIntake = await deviceReturnsService.create(
+      {
+        contractId: contract.id,
+        deviceReceivedAt: new Date().toISOString(),
+        conditionGrade: 'B',
+        appraisalPrice: 7000,
+        receivingBranchId: branchId,
+      },
+      OWNER_USER() as never,
     );
+    expect(returnIntake.status).toBe('PENDING_CONFIRM');
+    expect(returnIntake.returnKind).toBe('REPOSSESSION');
+    const confirmed = await deviceReturnsService.confirm(
+      returnIntake.id,
+      {},
+      OWNER_USER() as never,
+    );
+    expect(confirmed.status).toBe('CONFIRMED');
+    const repossession = await prisma.repossession.findUniqueOrThrow({
+      where: { id: confirmed.repossessionId! },
+    });
 
     const afterRepo = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
     expect(afterRepo.status).toBe('REPOSSESSED');
@@ -1237,12 +1226,22 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     await prisma.contract.update({ where: { id: contract.id }, data: { status: 'TERMINATED' } });
 
     await expect(
-      repossessViaCreateInTx(contract.id, product.id, customer.id, 7000),
+      deviceReturnsService.create(
+        {
+          contractId: contract.id,
+          deviceReceivedAt: new Date().toISOString(),
+          conditionGrade: 'B',
+          appraisalPrice: 7000,
+          receivingBranchId: branchId,
+        },
+        OWNER_USER() as never,
+      ),
     ).rejects.toThrow(/ไม่มียอดค้างชำระ/);
 
     const untouched = await prisma.product.findUniqueOrThrow({ where: { id: product.id } });
     expect(untouched.status).toBe('SOLD_INSTALLMENT');
     expect(await prisma.repossession.findFirst({ where: { productId: product.id } })).toBeNull();
+    expect(await prisma.deviceReturn.findFirst({ where: { contractId: contract.id } })).toBeNull();
   }, 180_000);
 
   // -------------------------------------------------------------------------

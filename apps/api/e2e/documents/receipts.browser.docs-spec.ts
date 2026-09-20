@@ -114,8 +114,10 @@ describe('DOC-01 browser evidence — receipts download points in the real web a
     }
     await h.prisma.contract.update({ where: { id: repossessed.id }, data: { status: 'OVERDUE' } });
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
-    const created = await h.client({ session: owner }).post('/repossessions', { contractId: repossessed.id, repossessedDate: today, conditionGrade: 'B', appraisalPrice: 3000, returnReason: 'UNAFFORDABLE', notes: 'ทดสอบระบบ ยึดคืน (browser)' });
-    if (created.status !== 201) throw new Error(`POST /repossessions → ${created.status} ${JSON.stringify(created.body)}`);
+    const intake = await h.client({ session: owner }).post('/device-returns', { contractId: repossessed.id, deviceReceivedAt: today, conditionGrade: 'B', appraisalPrice: 3000, returnReason: 'UNAFFORDABLE', notes: 'ทดสอบระบบ คืนเครื่อง (browser)', receivingBranchId: world.branches.a.id });
+    if (intake.status !== 201) throw new Error(`POST /device-returns → ${intake.status} ${JSON.stringify(intake.body)}`);
+    const created = await h.client({ session: owner }).post(`/device-returns/${intake.body.data.id}/confirm`, {});
+    if (created.status !== 201) throw new Error(`POST /device-returns/:id/confirm → ${created.status} ${JSON.stringify(created.body)}`);
     creditNote = (await receiptsOf(repossessed.id)).find((row) => row.receiptType === 'CREDIT_NOTE')!;
     cnSignature = contentSignature(await parsePdf(await apiPdf(creditNote.id)));
 

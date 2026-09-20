@@ -16,7 +16,7 @@ test.describe('Finance Receivable contact log', () => {
     // Wait briefly for query to resolve (avoid counting rows before data arrives)
     await page.waitForTimeout(2000);
 
-    // DataTable always renders a <tbody tr> even when empty (shows EmptyState inside it).
+    // An empty DataTable has no <tbody tr> (its EmptyState sits below the table scroller).
     // A real data row has a <button> inside the first cell ("รายการขาย" column).
     // Skip if no real rows exist in dev DB.
     const firstRowButton = page.locator('tbody tr').first().locator('button').first();

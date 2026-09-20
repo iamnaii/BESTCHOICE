@@ -560,19 +560,6 @@ function DataTable<T extends { id: string }>({
                   ))}
                 </tr>
               ))
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={table.getVisibleLeafColumns().length}>
-                  <EmptyState
-                    icon={emptyIcon}
-                    title={emptyMessage}
-                    description={emptyDescription}
-                    actionLabel={emptyActionLabel}
-                    onAction={onEmptyAction}
-                    className="py-16"
-                  />
-                </td>
-              </tr>
             ) : (
               rows.map((row) => (
                 <tr
@@ -613,6 +600,19 @@ function DataTable<T extends { id: string }>({
           </tbody>
         </table>
       </div>
+
+      {/* สถานะว่างอยู่นอกกล่องเลื่อน: จอแคบตารางกว้างกว่ากล่อง (minWidth) ถ้าอยู่ใน <td> จะถูกจัด
+          กึ่งกลางตามความกว้างตาราง แล้วข้อความ/ไอคอนหลุดขอบขวาของจอ */}
+      {!isLoading && rows.length === 0 && (
+        <EmptyState
+          icon={emptyIcon}
+          title={emptyMessage}
+          description={emptyDescription}
+          actionLabel={emptyActionLabel}
+          onAction={onEmptyAction}
+          className="py-16"
+        />
+      )}
 
       {/* Pagination — enhanced */}
       {pagination && pagination.totalPages > 1 && (

@@ -21,6 +21,7 @@ import ContractDocuments from '@/components/contract/ContractDocuments';
 import { ContractEarlyPayoffQuote, EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
 import ContractJournalDialog from '@/components/contract/ContractJournalDialog';
+import { ContractDeviceReturnActions } from '@/components/device-returns/ContractDeviceReturnActions';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
 import { Copy, CheckCircle2, XCircle, AlertTriangle, Check, ChevronRight, History, BookOpen } from 'lucide-react';
@@ -348,6 +349,13 @@ const deleteMutation = useMutation({
                 บันทึกบัญชี
               </button>
             )}
+
+            {/* ใบรับเครื่องคืน (spec 2026-09-20 §7) — ป้ายเมื่อมีใบรอยืนยัน / ปุ่มเมื่อสถานะเข้าเกณฑ์ + มีสิทธิ์ */}
+            <ContractDeviceReturnActions
+              contractId={contract.id}
+              contractStatus={contract.status}
+              role={user?.role ?? ''}
+            />
 
             {canActivate && ['ACTIVE', 'OVERDUE', 'DEFAULT'].includes(contract.status) && (
               <button onClick={() => setShowPayoffModal(true)} className="px-4 py-2 text-sm bg-warning text-warning-foreground rounded-lg hover:bg-warning/90 shadow-sm">

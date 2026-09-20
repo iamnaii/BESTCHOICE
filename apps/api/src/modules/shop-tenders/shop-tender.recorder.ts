@@ -52,17 +52,17 @@ function docKey(doc: TenderDoc): { type: 'sale' | 'contract' | 'booking'; id: st
 export class ShopTenderRecorder {
   private readonly deps: RecorderDeps;
 
-  constructor(prisma: PrismaService, deps?: RecorderDeps) {
-    if (deps) {
-      this.deps = deps;
-      return;
-    }
-    const journal = new JournalAutoService(prisma);
+  /**
+   * `deps.accounts`: ส่ง `ShopAccountResolver` ตัวเดียวกับที่ service ถืออยู่เสมอ — บัญชีของ JE แยกยอดต้องมาจาก
+   * แหล่งเดียวกับ JE รับเงินหลักของเอกสารนั้น (และเทสที่ฉีด resolver จำลองจะไม่ถูกข้าม). ที่เหลือสร้างเองจาก prisma.
+   */
+  constructor(prisma: PrismaService, deps: Partial<RecorderDeps> = {}) {
+    const journal = deps.journal ?? new JournalAutoService(prisma);
     this.deps = {
       journal,
-      companies: new CompanyResolverService(prisma),
-      accounts: new ShopAccountResolver(prisma),
-      reversal: new ExchangeCancelReversalTemplate(journal, prisma),
+      companies: deps.companies ?? new CompanyResolverService(prisma),
+      accounts: deps.accounts ?? new ShopAccountResolver(prisma),
+      reversal: deps.reversal ?? new ExchangeCancelReversalTemplate(journal as JournalAutoService, prisma),
     };
   }
 

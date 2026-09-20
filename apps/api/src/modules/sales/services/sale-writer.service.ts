@@ -279,7 +279,7 @@ export class SaleWriterService {
       }
 
       // สมุดเงินหน้าร้าน + JE แยกยอดของบิลจ่ายผสม (ผู้รับเงิน = ผู้ใช้ที่บันทึกใบขาย)
-      await new ShopTenderRecorder(this.prisma).recordInflow(tx, {
+      await new ShopTenderRecorder(this.prisma, { accounts: this.shopAccountResolver }).recordInflow(tx, {
         kind: 'CASH_SALE', branchId: dto.branchId, actorId: salespersonId, doc: { saleId: sale.id }, docNumber: saleNumber, tenders,
       });
 
@@ -412,7 +412,7 @@ export class SaleWriterService {
         const cashAccountCode = await this.shopAccountResolver.resolveInflowCashAccount(dto.branchId, tender.downPaymentMethod, tx);
         await this.shopDownPaymentTemplate.execute({ idempotencyKey: `shop-down-payment:${contract.id}`,
           contractId: contract.id, contractNumber: contract.contractNumber, cashAccountCode, downAmount: new Decimal(cashDown) }, tx);
-        await new ShopTenderRecorder(this.prisma).recordInflow(tx, { kind: 'CONTRACT_DOWN', branchId: dto.branchId,
+        await new ShopTenderRecorder(this.prisma, { accounts: this.shopAccountResolver }).recordInflow(tx, { kind: 'CONTRACT_DOWN', branchId: dto.branchId,
           actorId: salespersonId, doc: { contractId: contract.id }, docNumber: contract.contractNumber, tenders: downTenders });
       }
 
@@ -624,7 +624,7 @@ export class SaleWriterService {
 
       // สมุดเงินหน้าร้านบันทึกเสมอ (เงินรับจริง) — JE แยกยอดโพสต์เฉพาะเมื่อ JE ขายถูกโพสต์
       // (template คืน null เมื่อบัญชีไฟแนนซ์นอกยังไม่พร้อม: ห้ามย้ายเงินที่ยังไม่เคยลงบัญชี)
-      await new ShopTenderRecorder(this.prisma).recordInflow(tx, {
+      await new ShopTenderRecorder(this.prisma, { accounts: this.shopAccountResolver }).recordInflow(tx, {
         kind: 'EXTERNAL_FINANCE_DOWN', branchId: dto.branchId, actorId: salespersonId, doc: { saleId: sale.id }, docNumber: saleNumber,
         tenders: extTenders, postSplitJe: extSaleJe != null,
       });

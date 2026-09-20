@@ -158,9 +158,59 @@ describe('สมุดเงินหน้าร้าน + บิลจ่า�
     branchId = branch.id;
   });
 
+  // ล้างทุกแถวที่ไฟล์นี้สร้าง — เทสพี่น้องในฐานเดียวกันล้างตาราง contract / journalEntry ทั้งตาราง
+  // (`deleteMany({})`) ⇒ ลายเซ็น, รายการยกเลิกสัญญา หรือ JE ที่ค้างจากไฟล์นี้จะทำให้ชุดอื่นล้มที่ FK ทั้งชุด
+  // (พบจริงบน CI 2026-09-20). ลำดับตาม contract-bundles.integration.spec.ts + แถว shop_tenders และ JE แยกยอด.
   afterAll(async () => {
+    const products = created.products;
+    const sales = await prisma.sale.findMany({ where: { productId: { in: products } }, select: { id: true } });
+    const saleIds = sales.map((sale) => sale.id);
+    const jeIds = new Set<string>();
+    const collect = async (path: string, ids: string[]) => {
+      for (const id of ids) {
+        const rows = await prisma.journalEntry.findMany({ where: { metadata: { path: [path], equals: id } as never }, select: { id: true } });
+        rows.forEach((row) => jeIds.add(row.id));
+      }
+    };
+    await collect('contractId', created.contracts);
+    await collect('saleId', saleIds);
+    // JE แยกยอดของสัญญาจงใจไม่ stamp contractId — ตามจาก tenderDocId
+    await collect('tenderDocId', [...created.contracts, ...saleIds]);
+    // mirror ตอนยกเลิก/ลบร่าง/void ไม่ carry key เดิมเสมอไป — ตามจาก reversesEntryId (สองชั้นพอ)
+    for (let depth = 0; depth < 2 && jeIds.size; depth += 1) {
+      const mirrors = await prisma.journalEntry.findMany({
+        where: { OR: [...jeIds].map((id) => ({ metadata: { path: ['reversesEntryId'], equals: id } as never })) },
+        select: { id: true },
+      });
+      mirrors.forEach((row) => jeIds.add(row.id));
+    }
+    const jeIdList = [...jeIds];
+
+    if (branchId) await prisma.shopTender.deleteMany({ where: { branchId } });
+    await prisma.contractCancellation.updateMany({ where: { contractId: { in: created.contracts } }, data: { reversalJournalEntryId: null } });
+    await prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
+    await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
+    await prisma.journalEntry.deleteMany({ where: { id: { in: jeIdList } } });
+    await prisma.salesCommission.deleteMany({ where: { saleId: { in: saleIds } } });
+    await prisma.saleCostSnapshot.deleteMany({ where: { saleId: { in: saleIds } } });
+    await prisma.sale.deleteMany({ where: { id: { in: saleIds } } });
+    await prisma.contractCancellation.deleteMany({ where: { contractId: { in: created.contracts } } });
+    await prisma.signature.deleteMany({ where: { contractId: { in: created.contracts } } });
+    await prisma.installmentSchedule.deleteMany({ where: { contractId: { in: created.contracts } } });
+    await prisma.payment.deleteMany({ where: { contractId: { in: created.contracts } } });
+    await prisma.creditApproval.deleteMany({ where: { customerId: { in: created.customers } } });
+    await prisma.creditCheck.deleteMany({ where: { customerId: { in: created.customers } } });
+    await prisma.kycVerification.deleteMany({ where: { contractId: { in: created.contracts } } });
+    await prisma.contract.deleteMany({ where: { id: { in: created.contracts } } });
+    await prisma.productReservation.deleteMany({ where: { productId: { in: products } } });
+    await prisma.product.deleteMany({ where: { id: { in: products } } });
+    await prisma.pDPAConsent.deleteMany({ where: { customerId: { in: created.customers } } });
+    await prisma.customer.deleteMany({ where: { id: { in: created.customers } } });
+    if (branchId) {
+      try { await prisma.branch.delete({ where: { id: branchId } }); } catch { /* ถูกอ้างอิงจากแถวนอกขอบเขต — ปล่อยไว้ */ }
+    }
     await prisma.$disconnect();
-  });
+  }, 180_000);
 
   it('ขายสดจ่ายผสม: ลิ้นชักได้ 5,000 ธนาคารได้ 4,900 → ยกเลิกใบขาย → สุทธิ 0 และมีแถวเงินออกคู่กัน', async () => {
     const since = new Date();

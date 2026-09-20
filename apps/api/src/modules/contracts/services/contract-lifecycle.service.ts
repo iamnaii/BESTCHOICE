@@ -173,7 +173,7 @@ export class ContractLifecycleService {
             );
             // สมุดเงินหน้าร้าน + JE แยกยอดของบิลจ่ายผสม — ผู้รับเงินดาวน์ = ผู้ใช้ที่กดสร้างสัญญา (บันทึกถาวร
             // ไม่เปลี่ยนตาม salespersonId ของสัญญา)
-            await new ShopTenderRecorder(this.prisma).recordInflow(tx, { kind: 'CONTRACT_DOWN', branchId: dto.branchId,
+            await new ShopTenderRecorder(this.prisma, { accounts: this.shopAccountResolver }).recordInflow(tx, { kind: 'CONTRACT_DOWN', branchId: dto.branchId,
               actorId: actor.id, doc: { contractId: newContract.id }, docNumber: newContract.contractNumber, tenders: downTenders });
           }
 

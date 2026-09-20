@@ -13,11 +13,16 @@ export interface RepossessionInput {
   /** Fair market value of repossessed device (amount received from customer) */
   repossessionValue: Decimal;
   /**
-   * Shop-collect (2026-07-08): the caller substituted depositAccountCode with
-   * 11-2107 ลูกหนี้-หน้าร้าน — stamp metadata so audit reports can pair the JE
-   * with its later shop-collect settlement (same convention as JP4).
+   * ประเภทลูกหนี้-หน้าร้าน 11-2107 ที่ขา Dr ของ JP5 ตั้ง (ใบรับเครื่องคืน 2026-09-20):
+   * - 'DEVICE_RETURN' = ค่าเครื่องคืน ค้างจ่ายโดย SHOP หักผ่านรอบจ่าย INTER-CO
+   *   (ผู้เรียกเดียวใน production คือ RepossessionsService.createInTx — เสมอ)
+   * - 'SHOP_COLLECT'  = แบบเก่า ล้างผ่านใบรับโอนจากหน้าร้าน (คงไว้ให้ spec/แถวเก่า;
+   *   stamp `collectedByShop: true` เพิ่มให้รูป metadata เท่าแถวเก่าทุก key)
+   * ไม่ส่ง = ขา Dr เป็นเงินสด/ธนาคารจริง ไม่ stamp อะไร.
    */
-  collectedByShop?: boolean;
+  shopReceivableType?: 'SHOP_COLLECT' | 'DEVICE_RETURN';
+  /** ใบรับเครื่องคืนต้นทาง (DeviceReturn.id) — stamp ลง metadata เพื่อไล่ย้อนจาก JE ไปใบ */
+  deviceReturnId?: string;
   /**
    * วันที่รับเงิน/ลงบัญชี — JE entryDate + entry-number month series. Omitted →
    * now. Caller must run validatePeriodOpen on this date BEFORE the tx (C9:
@@ -113,6 +118,9 @@ export interface RepossessionInput {
  *     สามารถออกใบลดหนี้กลับได้.
  *   - Deferred portion (2A ยังไม่ run): VAT ยังอยู่ที่ 21-2102 (deferred) →
  *     ปิดบัญชีตรง ๆ ไม่ต้องออกใบลดหนี้เพราะยังไม่เกิดความรับผิด.
+ *
+ * ใบรับเครื่องคืน (2026-09-20): production เรียกด้วย depositAccountCode '11-2107' +
+ * shopReceivableType 'DEVICE_RETURN' เสมอ — ไม่มีขาเงินสดวันยึดอีกต่อไป; ค่าเครื่องหักในรอบจ่าย INTER-CO.
  */
 /** UI-shaped dry-run of the JP5 JE — same shape as JP4's journalPreview. */
 export interface RepossessionJePreview {
@@ -448,11 +456,13 @@ export class RepossessionJP5Template {
           // ถังพักงวดสุดท้ายที่ปลดหนี้ไปกับ JE นี้ (คำสั่งเจ้าของ 2026-08-16) —
           // stamp เฉพาะเมื่อมีจริง เพื่อไม่ให้ metadata ของสัญญาทั่วไปเปลี่ยนรูป
           ...(built.parkRelief.gt(0) ? { parkRelief: built.parkRelief.toFixed(2) } : {}),
-          ...(input.collectedByShop
+          ...(input.shopReceivableType
             ? {
-                collectedByShop: true,
                 shopReceivable: input.depositAccountCode,
-                shopReceivableType: 'SHOP_COLLECT',
+                shopReceivableType: input.shopReceivableType,
+                // แถวเก่าถูก classify ด้วย marker นี้ (classifyShopReceivable fallback) — คงไว้เฉพาะแบบเก่า
+                ...(input.shopReceivableType === 'SHOP_COLLECT' ? { collectedByShop: true } : {}),
+                ...(input.deviceReturnId ? { deviceReturnId: input.deviceReturnId } : {}),
               }
             : {}),
         },

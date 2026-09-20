@@ -374,7 +374,7 @@ export class RepossessionsService {
           contractId,
           depositAccountCode: previewDepositCode,
           repossessionValue: new Prisma.Decimal(options.appraisalPrice ?? 0),
-          collectedByShop: options.collectedByShop === true,
+          shopReceivableType: options.collectedByShop ? 'SHOP_COLLECT' : undefined,
           customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
           // ถังพักงวดสุดท้ายที่ยอดปิดดูดซับจริง → Dr 21-1103 (คำสั่งเจ้าของ
           // 2026-08-16 §จุดหัก 3). ต้องส่งทั้ง preview และ create ไม่งั้น
@@ -716,7 +716,7 @@ export class RepossessionsService {
               contractId: dto.contractId,
               depositAccountCode,
               repossessionValue: repoValue,
-              collectedByShop: dto.collectedByShop === true,
+              shopReceivableType: dto.collectedByShop ? 'SHOP_COLLECT' : undefined,
               postedAt: paymentDate,
               customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
               parkRelief: parkRelief.gt(0) ? parkRelief : undefined,
@@ -735,7 +735,6 @@ export class RepossessionsService {
                 contractNumber: contract.contractNumber,
                 productId: contract.productId,
                 appraisal: repoValue,
-                collectedByShop: dto.collectedByShop === true,
                 shopCompanyId: shopCompany.id,
                 postedAt: paymentDate,
               },

@@ -5,30 +5,27 @@ import { JournalAutoService } from '../journal-auto.service';
 import { ShopAccountResolver } from '../shop-account-resolver.service';
 
 /**
- * ขาคู่ฝั่ง SHOP ของ 11-2107 ประเภท SHOP_COLLECT ที่เกิดจากการ **ยึดเครื่อง** (JP5) —
- * คำตัดสินเจ้าของ 2026-09-05 (ราคาเดียว + ไม่มีเงินคืน) ปิดช่อง "ASYMMETRY ที่รู้ตัว"
- * ใน accounting.md สำหรับต้นทาง JP5. (ต้นทาง JP4 ปิดยอดหน้าร้านรับแทน **ยังไม่ต่อ** —
- * ต้องเลือกบัญชีเงินสด SHOP ต่อสาขาซึ่งเป็นด่าน fail-closed ของ `resolveBranchCashAccount`;
- * ใบ settle ด้านล่างจึงโพสต์ขา SHOP เฉพาะเมื่อ S21-1104 typed SHOP_COLLECT ของสัญญานั้น
- * คุ้มยอด — แถวต้นทาง JP4 / แถวก่อนฟีเจอร์นี้จะถูกข้ามพร้อม flag ใน audit.)
+ * ขาคู่ฝั่ง SHOP ของ 11-2107 ที่เกิดจากการยึด/รับเครื่องคืน (JP5).
  *
- * ใบรับเครื่องยึด (`postRepossessionIntake`) — mirror ของ A.4 `shop-exchange-return`:
+ * ใบรับเครื่องคืน (`postRepossessionIntake`, spec 2026-09-20 §6.1) — mirror ของ A.4 `shop-exchange-return`:
  *   Dr S11-2002 สินค้าคงคลัง-มือถือมือสอง            [ราคาประเมิน]
- *     Cr S21-1104 เจ้าหนี้ FINANCE                     [ราคาประเมิน]   ← collectedByShop (FINANCE Dr 11-2107)
- *     Cr S11-1202 ธนาคาร SHOP (จ่าย)                   [ราคาประเมิน]   ← หน้าร้านโอนให้ FINANCE ทันที (FINANCE Dr KBank)
+ *     Cr S21-1104 เจ้าหนี้ FINANCE                     [ราคาประเมิน]   ← FINANCE Dr 11-2107 typed DEVICE_RETURN
+ *   ค้างจ่ายเสมอ — ค่าเครื่องหักจากยอดโอนในรอบจ่าย INTER-CO (แถวหักประเภทที่ 3) หรือรับเงินสด
+ *   ผ่าน `POST /interco-settlement/device-returns/:contractId/settle-cash`. สาขา "โอนให้ FINANCE ทันที"
+ *   (Cr S11-1202) ถูกลบ 2026-09-20: วันรับเครื่องไม่มีการโอนเงินจริง.
  *
- * ใบล้างเจ้าหนี้ (`postSettlement`) — คู่ของ `ShopCollectSettlementTemplate` (FINANCE Dr KBank / Cr 11-2107):
+ * ใบล้างเจ้าหนี้ (`postSettlement`) — คู่ของ `ShopCollectSettlementTemplate` (FINANCE Dr KBank / Cr 11-2107)
+ * สำหรับแถวเก่าที่แท็ก SHOP_COLLECT (forward-only spec §6.6):
  *   Dr S21-1104 เจ้าหนี้ FINANCE                       [amount]
  *     Cr S11-1202 ธนาคาร SHOP (จ่าย)                   [amount]
  *
- * ทั้งสองใบ stamp `shopReceivableType: 'SHOP_COLLECT'` + `metadata.contractId` ให้เลนส์
- * S21-1104 (aging Query B / drift / `shopCollectShopBalance`) จัดประเภทได้ — B2 รอบ 2
- * (ผู้สอบ 2026-08-25): S21-1104 รับทุกประเภท แต่ต้องแยกแสดงด้วย metadata.
+ * ทั้งสองใบ stamp `shopReceivableType` + `metadata.contractId` ให้เลนส์ S21-1104 (aging Query B /
+ * drift / typed balances) จัดประเภทได้ — B2 รอบ 2 (ผู้สอบ 2026-08-25): S21-1104 รับทุกประเภท
+ * แต่ต้องแยกแสดงด้วย metadata.
  *
  * ไม่ใช่ Nest provider โดยตั้งใจ — สร้างด้วย `new ShopCollectShopLegs(journalAuto)` ในผู้เรียก
- * (pattern เดียวกับ `TradeInValuationService` ใน RepossessionsService) เพื่อไม่แตะ constructor
- * ที่มีจุดสร้างใน spec หลายแห่ง. Idempotency = `metadata.flow + idempotencyKey` (DB partial
- * unique index) — ผู้เรียมตรวจ dedupe ของใบ FINANCE ก่อนแล้วจึงเรียก.
+ * (pattern เดียวกับ `TradeInValuationService` ใน RepossessionsService). Idempotency = `metadata.flow
+ * + idempotencyKey` (DB partial unique index) — ผู้เรียกตรวจ dedupe ของใบ FINANCE ก่อนแล้วจึงเรียก.
  */
 export const SHOP_REPOSSESSION_INTAKE_FLOW = 'shop-repossession-intake';
 export const SHOP_COLLECT_SETTLEMENT_SHOP_FLOW = 'shop-collect-settlement-shop';
@@ -41,11 +38,11 @@ export interface ShopRepossessionIntakeInput {
   contractId: string;
   contractNumber: string;
   productId: string;
-  /** ราคาประเมิน = ยอดที่ JP5 ลง Dr ฝั่ง FINANCE (ราคาเดียว 2026-09-05) */
+  /** ราคาประเมิน = ยอดที่ JP5 ลง Dr 11-2107 ฝั่ง FINANCE (ราคาเดียว 2026-09-05) */
   appraisal: Decimal;
-  /** true = FINANCE ตั้งลูกหนี้-หน้าร้าน 11-2107 (SHOP ค้างจ่าย) · false = FINANCE รับเงินเข้า KBank แล้ว (SHOP จ่ายทันที) */
-  collectedByShop: boolean;
   shopCompanyId: string;
+  /** ใบรับเครื่องคืนต้นทาง — stamp ลง metadata คู่กับ JP5 */
+  deviceReturnId?: string;
   postedAt?: Date;
 }
 
@@ -70,14 +67,9 @@ export class ShopCollectShopLegs {
       throw new Error(`ShopCollectShopLegs: appraisal must be > 0 (received ${amount.toString()})`);
     }
     const zero = new Decimal(0);
-    const creditAccount = input.collectedByShop
-      ? SHOP_FINANCE_PAYABLE
-      : ShopAccountResolver.SHOP_PAYING_BANK;
     return this.journal.createAndPost(
       {
-        description: `รับเครื่องยึดเข้าสต็อก SHOP — สัญญา ${input.contractNumber} (${
-          input.collectedByShop ? 'ค้างจ่าย FINANCE' : 'โอนให้ FINANCE แล้ว'
-        })`,
+        description: `รับเครื่องคืนเข้าสต็อก SHOP — สัญญา ${input.contractNumber} (ค่าเครื่องค้างจ่าย FINANCE — หักในรอบจ่าย INTER-CO)`,
         reference: `contract:${input.contractId}:repossession-intake`,
         postedAt: input.postedAt,
         metadata: {
@@ -87,9 +79,9 @@ export class ShopCollectShopLegs {
           productId: input.productId,
           companyCode: 'SHOP',
           appraisal: amount.toFixed(2),
-          collectedByShop: input.collectedByShop,
-          // เฉพาะเคสค้างจ่าย — ใบที่จ่ายทันทีไม่มีหนี้ระหว่างกิจการให้เลนส์ตาม
-          ...(input.collectedByShop ? { shopReceivableType: 'SHOP_COLLECT' } : {}),
+          // ขาคู่ของ 11-2107 DEVICE_RETURN — เลนส์ S21-1104 key ด้วย metadata.contractId (Phase 1)
+          shopReceivableType: 'DEVICE_RETURN',
+          ...(input.deviceReturnId ? { deviceReturnId: input.deviceReturnId } : {}),
         },
         companyId: input.shopCompanyId,
         lines: [
@@ -97,15 +89,13 @@ export class ShopCollectShopLegs {
             accountCode: SHOP_USED_INVENTORY,
             dr: amount,
             cr: zero,
-            description: 'รับเครื่องยึดเข้าสต็อก SHOP (มือสอง — ราคาประเมิน)',
+            description: 'รับเครื่องคืนเข้าสต็อก SHOP (มือสอง — ราคาประเมิน)',
           },
           {
-            accountCode: creditAccount,
+            accountCode: SHOP_FINANCE_PAYABLE,
             dr: zero,
             cr: amount,
-            description: input.collectedByShop
-              ? 'เจ้าหนี้-FINANCE ค่าเครื่องยึด (รอโอนให้ FINANCE)'
-              : 'โอนค่าเครื่องยึดให้ FINANCE',
+            description: 'เจ้าหนี้-FINANCE ค่าเครื่องคืน (หักในรอบจ่าย INTER-CO)',
           },
         ],
       },

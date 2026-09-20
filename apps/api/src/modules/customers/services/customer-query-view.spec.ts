@@ -372,11 +372,29 @@ describe('KPI และ viewCounts', () => {
   });
 });
 
-describe('รูปร่างแถวที่ตอบกลับ (สัญญาที่ฝั่งเว็บอ่าน)', () => {
+describe.each([undefined, 'a'.repeat(64)])('รูปร่างแถวที่ตอบกลับ (สัญญาที่ฝั่งเว็บอ่าน), PII key=%s', (piiKey) => {
+  let originalPiiKey: string | undefined;
+  beforeEach(() => {
+    originalPiiKey = process.env.PII_ENCRYPTION_KEY;
+    if (piiKey === undefined) delete process.env.PII_ENCRYPTION_KEY;
+    else process.env.PII_ENCRYPTION_KEY = piiKey;
+  });
+  afterEach(() => {
+    if (originalPiiKey === undefined) delete process.env.PII_ENCRYPTION_KEY;
+    else process.env.PII_ENCRYPTION_KEY = originalPiiKey;
+  });
+  const excludedPii = Object.fromEntries([
+    'phoneSecondary', 'email', 'addressIdCard', 'addressCurrent', 'addressWork',
+    'guardianNationalId', 'guardianPhone', 'guardianAddress', 'references',
+  ].flatMap(field => [
+    [field, `sensitive-canary-${field}`],
+    [`${field}Encrypted`, `sensitive-canary-${field}-ciphertext`],
+  ]));
   const device = { brand: 'Apple', model: 'iPhone 15', storage: '256GB', imeiSerial: 'IMEI-9', warrantyExpireDate: new Date('2027-06-01T00:00:00Z') };
 
   function richFixture(over: { prospect?: boolean } = {}) {
     const row = {
+      ...excludedPii,
       id: 'cu1', name: 'สมชาย', nickname: 'ชาย', nationalId: '1234567890123',
       nationalIdEncrypted: 'enc:nid', phone: '0812345678', phoneEncrypted: 'enc:phone',
       occupation: 'ค้าขาย', salary: 25000, lineIdFinance: 'Lfin', lineIdShop: 'Lshop',
@@ -421,7 +439,10 @@ describe('รูปร่างแถวที่ตอบกลับ (สั�
     const { service } = richFixture();
     const result = await service.findAll({ view: 'customers' });
     const row = result.data[0] as Record<string, unknown>;
-    expect(Object.keys(row).sort()).toEqual([
+    // The HTTP contract is JSON; unselected PII may be own properties set to undefined.
+    const jsonRow = JSON.parse(JSON.stringify(row)) as Record<string, unknown>;
+    expect(JSON.stringify(jsonRow)).not.toContain('sensitive-canary-');
+    expect(Object.keys(jsonRow).sort()).toEqual([
       '_count', 'acquisitionSourceRaw', 'activeContracts', 'chatPlaceholder', 'chatRooms', 'createdAt', 'creditCheckStatus', 'id',
       'installmentBalance', 'latestCreditScore', 'latestCreditStatus', 'latestPurchase', 'lineIdFinance',
       'lineIdShop', 'name', 'nationalId', 'nickname', 'occupation', 'overdueContracts', 'phone', 'purchase',
@@ -471,7 +492,10 @@ describe('รูปร่างแถวที่ตอบกลับ (สั�
     const { service } = richFixture();
     const result = await service.findAll({ view: 'prospects' });
     const row = result.data[0] as Record<string, unknown>;
-    expect(Object.keys(row).sort()).toEqual([
+    const jsonRow = JSON.parse(JSON.stringify(row)) as Record<string, unknown>;
+    expect(JSON.stringify(jsonRow)).not.toContain('sensitive-canary-');
+    expect(Object.keys(row).some(key => key.endsWith('Encrypted'))).toBe(false);
+    expect(Object.keys(jsonRow).sort()).toEqual([
       'acquisitionSourceRaw', 'assignedTo', 'chatPlaceholder', 'chatRooms', 'createdAt', 'creditCheckStatus', 'id',
       'lastContactAt', 'lastContactSource', 'latestCreditScore', 'name', 'nationalId', 'nickname',
       'phone', 'source', 'tags',

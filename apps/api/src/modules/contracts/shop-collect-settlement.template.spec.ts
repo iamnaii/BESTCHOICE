@@ -62,6 +62,22 @@ describe('ShopCollectSettlementTemplate — P2002 race handling', () => {
   let journalMock: jest.Mocked<Pick<JournalAutoService, 'createAndPost'>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prismaMock: any;
+  let queryMocks: jest.Mock[];
+  let queryCountsAtFailure: number[] | undefined;
+
+  function rejectPostingWith(error: Error) {
+    journalMock.createAndPost.mockImplementation(async () => {
+      queryCountsAtFailure = queryMocks.map(query => query.mock.calls.length);
+      throw error;
+    });
+  }
+
+  function expectNoQueriesAfterPost() {
+    // Check after each execute(), before a new transaction can legitimately read again.
+    expect(queryCountsAtFailure).toBeDefined();
+    expect(queryMocks.map(query => query.mock.calls.length)).toEqual(queryCountsAtFailure);
+    queryCountsAtFailure = undefined;
+  }
 
   const contractId = 'contract-1';
   const requestId = '11111111-1111-4111-8111-111111111111';
@@ -72,10 +88,12 @@ describe('ShopCollectSettlementTemplate — P2002 race handling', () => {
       createAndPost: jest.fn(),
     };
     prismaMock = {
+      // No typed DEVICE_RETURN balance; retain the legacy settlement guard.
+      $queryRaw: jest.fn().mockResolvedValue([{ balance: new Decimal('0') }]),
       // resolveContractLabel (2026-09-05) reads the contract number for the JE description BEFORE createAndPost
       contract: { findUnique: jest.fn().mockResolvedValue({ contractNumber: 'TEST-20260905-001' }) },
       journalEntry: {
-        findFirst: jest.fn(),
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       journalLine: {
         // Outstanding 11-2107 = 2500.00 (Dr 2500 / Cr 0) — matches the
@@ -88,60 +106,61 @@ describe('ShopCollectSettlementTemplate — P2002 race handling', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
+    queryMocks = [prismaMock.$queryRaw, prismaMock.contract.findUnique,
+      prismaMock.journalEntry.findFirst, prismaMock.journalLine.findMany,
+      prismaMock.interCoSettlementItem.findMany];
+    queryCountsAtFailure = undefined;
 
     template = new ShopCollectSettlementTemplate(journalMock as unknown as JournalAutoService, prismaMock);
   });
 
   it('P2002 race + requestId present → clean ConflictException (409), NO further prisma query after createAndPost (poisoned-tx rule)', async () => {
-    // Only ONE findFirst call total: the up-front dedupe check (this call
-    // "wins" the check — nothing exists yet). There must be NO second
-    // findFirst — the tx is aborted after P2002, so a re-query would either
-    // throw a secondary error or, if it somehow succeeded, would be reading
-    // through a client the real call site can never provide.
+    // Dedupe and historical DEVICE_RETURN checks both run before posting.
+    // No query may run after the transaction has been aborted by P2002.
     prismaMock.journalEntry.findFirst.mockResolvedValueOnce(null);
-    journalMock.createAndPost.mockRejectedValue(makeP2002());
+    rejectPostingWith(makeP2002());
 
     await expect(
       template.execute({ contractId, depositAccountCode, amount: 2500, requestId }),
     ).rejects.toThrow(ConflictException);
+    expectNoQueriesAfterPost();
     await expect(
       template.execute({ contractId, depositAccountCode, amount: 2500, requestId }),
     ).rejects.toThrow('กำลังถูกบันทึกอยู่');
+    expectNoQueriesAfterPost();
 
-    // Exactly 2 calls total across the two execute() invocations above (one
-    // up-front findFirst per call) — proves no re-query was attempted after
-    // either P2002.
-    expect(prismaMock.journalEntry.findFirst).toHaveBeenCalledTimes(2);
+    expect(prismaMock.journalEntry.findFirst).toHaveBeenCalledTimes(4);
   });
 
   it('P2002 with NO requestId (legacy caller) → race-recovery is skipped entirely, rethrows the original error', async () => {
-    // No requestId ⇒ the up-front requestId block is skipped; the single
-    // findFirst call below is the legacy (contractId+amount) idempotency
-    // check.
+    // No requestId: legacy idempotency and historical DEVICE_RETURN checks.
     prismaMock.journalEntry.findFirst.mockResolvedValueOnce(null);
     const original = makeP2002();
-    journalMock.createAndPost.mockRejectedValue(original);
+    rejectPostingWith(original);
 
     await expect(
       template.execute({ contractId, depositAccountCode, amount: 2500 }),
     ).rejects.toBe(original);
+    expectNoQueriesAfterPost();
 
-    expect(prismaMock.journalEntry.findFirst).toHaveBeenCalledTimes(1);
+    expect(prismaMock.journalEntry.findFirst).toHaveBeenCalledTimes(2);
   });
 
   it('P2034 (Postgres SSI write conflict, empirically observed under the caller\'s SERIALIZABLE tx) → clean ConflictException (409), even without requestId', async () => {
     prismaMock.journalEntry.findFirst.mockResolvedValueOnce(null); // up-front check (no requestId branch this time)
-    journalMock.createAndPost.mockRejectedValue(makeP2034());
+    rejectPostingWith(makeP2034());
 
     await expect(
       template.execute({ contractId, depositAccountCode, amount: 2500 }),
     ).rejects.toThrow(ConflictException);
+    expectNoQueriesAfterPost();
     await expect(
       template.execute({ contractId, depositAccountCode, amount: 2500 }),
     ).rejects.toThrow('write conflict');
+    expectNoQueriesAfterPost();
 
     // No re-query after the P2034 catch — same poisoned-tx rule as P2002.
-    expect(prismaMock.journalEntry.findFirst).toHaveBeenCalledTimes(2);
+    expect(prismaMock.journalEntry.findFirst).toHaveBeenCalledTimes(4);
 
     // SentryExceptionFilter only captures status >= 500 — a 409 here would
     // otherwise be invisible, so P2034 must surface a Sentry warning.
@@ -155,13 +174,14 @@ describe('ShopCollectSettlementTemplate — P2002 race handling', () => {
   it('non-P2002 error from createAndPost → rethrown untouched, no race-recovery attempted', async () => {
     prismaMock.journalEntry.findFirst.mockResolvedValueOnce(null); // up-front check only
     const boom = new Error('boom — unrelated DB failure');
-    journalMock.createAndPost.mockRejectedValue(boom);
+    rejectPostingWith(boom);
 
     await expect(
       template.execute({ contractId, depositAccountCode, amount: 2500, requestId }),
     ).rejects.toBe(boom);
+    expectNoQueriesAfterPost();
 
-    // Must not attempt a second (retry) findFirst for a non-P2002 error.
-    expect(prismaMock.journalEntry.findFirst).toHaveBeenCalledTimes(1);
+    // Both reads precede posting; no retry after a non-P2002 error.
+    expect(prismaMock.journalEntry.findFirst).toHaveBeenCalledTimes(2);
   });
 });

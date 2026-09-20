@@ -1570,6 +1570,7 @@ describe('ContractsService', () => {
           shopCommissionGl: new Prisma.Decimal('1000.00'),
           swapCreditAmount: new Prisma.Decimal('2000.00'),
           recallAmount: new Prisma.Decimal(0),
+          deviceReturnAmount: new Prisma.Decimal(0),
           batch: { batchNumber: 'IC-20260820-0009' },
         },
       ]);
@@ -1707,6 +1708,7 @@ describe('ContractsService', () => {
             shopCommissionGl: new Prisma.Decimal('1000.00'),
             swapCreditAmount: new Prisma.Decimal('2000.00'),
             recallAmount: new Prisma.Decimal(0),
+            deviceReturnAmount: new Prisma.Decimal(0),
             batch: { batchNumber: 'IC-20260820-0009' },
           },
         ]),

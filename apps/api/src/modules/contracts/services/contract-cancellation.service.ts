@@ -38,7 +38,7 @@ export interface SettledPayout {
   settledTotal: Decimal;
   /** Σ shopFinancedGl + shopCommissionGl — ฝั่ง SHOP (template cross-check S21-1104) */
   settledShopTotal: Decimal;
-  /** Σ swapCreditAmount + recallAmount — ส่วนที่ถูกหักกลบในรอบ (เงินไม่เคยโอนจริง) */
+  /** Σ swapCreditAmount + recallAmount + deviceReturnAmount — ส่วนที่ถูกหักกลบในรอบ (เงินไม่เคยโอนจริง) */
   settledDeductions: Decimal;
   batchNumbers: string[];
 }
@@ -49,11 +49,12 @@ export interface SettledPayout {
  * C2_REDIRECTS): Σ snapshot ของ item SETTLEMENT ใน batch POSTED ต่อสัญญา.
  * RECALL item ไม่นับ — มันคือ "ถูกหักเรียกคืนไปแล้ว" ไม่ใช่ "ถูกจ่าย".
  *
- * `settledDeductions` = Σ(swapCreditAmount + recallAmount) ของ item ชุดเดียวกัน
- * — เงินส่วนที่ถูกหักกลบในรอบ ไม่เคยโอนจริง ⇒ ยอดเรียกคืนสุทธิที่ C-2 จะเหลือ
+ * `settledDeductions` = Σ(swapCreditAmount + recallAmount + deviceReturnAmount) ของ item
+ * ชุดเดียวกัน — เงินส่วนที่ถูกหักกลบในรอบ ไม่เคยโอนจริง ⇒ ยอดเรียกคืนสุทธิที่ C-2 จะเหลือ
  * ให้ตามเก็บ = settledTotal − settledDeductions (นิยามเดียวกับ net ของ
- * `IntercoPendingService.getPendingRecalls`). แถว SETTLEMENT มี recallAmount = 0
- * โดยนิยาม — รวมไว้เพื่อให้สูตรตรงกับ totalDeduction ของ batch แบบไบต์ต่อไบต์.
+ * `IntercoPendingService.getPendingRecalls`). แถว SETTLEMENT มี recallAmount และ
+ * deviceReturnAmount = 0 โดยนิยาม — รวมไว้เพื่อให้สูตรตรงกับ totalDeduction ของ batch
+ * แบบไบต์ต่อไบต์ (ใบรับเครื่องคืน 2026-09-20 เพิ่มคอลัมน์ที่สาม).
  */
 export async function settledPayoutByContract(
   client: Prisma.TransactionClient,
@@ -85,7 +86,8 @@ export async function settledPayoutByContract(
       .plus(item.shopCommissionGl.toString());
     entry.settledDeductions = entry.settledDeductions
       .plus(item.swapCreditAmount.toString())
-      .plus(item.recallAmount.toString());
+      .plus(item.recallAmount.toString())
+      .plus(item.deviceReturnAmount.toString());
     entry.batchNumbers.push(item.batch.batchNumber);
     map.set(item.contractId, entry);
   }

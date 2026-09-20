@@ -24,6 +24,12 @@ function makeTx() {
     // B0 §2.1: autofill hook queries pricingTemplate — empty means NO_TEMPLATE,
     // returns before touching product.update/systemConfig, so this is all that's needed.
     pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+    // สมุดเงินหน้าร้าน (shop_tenders): BUYBACK ที่ราคา > 0 เขียนแถวเงินออก TRADE_IN_PAYOUT ผ่าน
+    // ShopTenderRecorder.recordPayout (สร้าง inline ใน accept) — EXCHANGE ไม่จ่ายเงินจึงไม่เขียน
+    shopTender: {
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
 }
 
@@ -142,6 +148,7 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
     );
 
     expect(shopTradeInTemplate.execute).not.toHaveBeenCalled();
+    expect(tx.shopTender.createMany).not.toHaveBeenCalled(); // EXCHANGE = เครดิตเทิร์น ไม่มีเงินออกจากลิ้นชัก
   });
 
   // ─── Test 3: BUYBACK TRANSFER → routes Cr to S11-1202 ────────────────────
@@ -181,6 +188,12 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
     expect(shopAccountResolver.resolveOutflowCashAccount).toHaveBeenCalledWith('br-1', 'TRANSFER', tx);
     expect(shopTradeInTemplate.execute.mock.calls[0][0].cashAccountCode).toBe('S11-1202');
+    // สมุดเงินหน้าร้าน: เงินออกจ่ายรับซื้อ 1 แถว — TradeIn เก็บวิธีจ่ายเป็น 'TRANSFER' ⇒ ลงสมุดเป็น BANK_TRANSFER, ผู้จ่าย = ผู้กดยอมรับ
+    const payoutRows = tx.shopTender.createMany.mock.calls[0][0].data;
+    expect(payoutRows).toHaveLength(1);
+    expect(payoutRows[0]).toMatchObject({ direction: 'OUT', kind: 'TRADE_IN_PAYOUT', branchId: 'br-1', method: 'BANK_TRANSFER',
+      actorId: 'u-1', tradeInId: 'ti-3', seq: 1, seqTotal: 1 });
+    expect(payoutRows[0].amount.toString()).toBe('3000');
   });
 
   // ─── Task 5: stock costPrice must not be inflated by EXCHANGE bonus ─────

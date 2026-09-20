@@ -1,7 +1,7 @@
 import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
 import { contractReturnUrl } from '@/lib/contract-return';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import Decimal from 'decimal.js';
 import type { AvailableTradeInCredit } from '@installment/shared';
 import TradeInCreditPicker from '@/components/trade-in/TradeInCreditPicker';
@@ -22,6 +22,7 @@ import { CASH_LABEL, INSTALLMENT_LABEL, getPositiveDisplayPrices, normalizePosit
 
 import ProductSearch from './components/ProductSearch';
 import BundleSearch from '@/components/bundle/BundleSearch';
+import { useTenders } from '@/components/tender/TenderInput';
 import CustomerSearch from './components/CustomerSearch';
 import SaleDetailsForm from './components/SaleDetailsForm';
 import SaleSummary from './components/SaleSummary';
@@ -89,10 +90,14 @@ export default function POSPage() {
     mode: 'onChange',
   });
 
+  // ช่องรับเงินถูกประกาศด้านล่าง (ต้องรู้ยอดที่ต้องรับก่อน) — effect ข้างล่างล้างมันผ่าน ref นี้
+  const tendersResetRef = useRef<() => void>(() => {});
+
   // Convenient watched values for derived calculations and summary display
   useEffect(() => {
     setTradeInCreditId(''); setTradeInCredit(null);
     saleForm.setValue('amountReceived', undefined);
+    tendersResetRef.current();
   }, [selectedCustomer?.id, selectedProduct?.id, saleType]);
 
   const sellingPrice = String(saleForm.watch('sellingPrice') || 0);
@@ -120,6 +125,11 @@ export default function POSPage() {
   }, [sellingPrice, discount, tradeInCredit]);
   const cashDue = new Decimal(netAmount).minus(tradeInCredit?.baseAmount ?? 0).toNumber();
   const creditReady = !tradeInCreditId || (tradeInCredit?.id === tradeInCreditId && cashDue >= 0);
+
+  // ช่องรับเงิน: ขายสด = ยอดชำระเพิ่มหลังหักเครื่องเทิร์น · ไฟแนนซ์นอก = เงินดาวน์ (จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง)
+  const tenderDue = saleType === 'CASH' ? Math.max(0, cashDue) : parseFloat(downPayment) || 0;
+  const tenders = useTenders(tenderDue);
+  tendersResetRef.current = tenders.reset;
 
   const changeAmount = useMemo(() => {
     const received = parseFloat(amountReceived) || 0;
@@ -195,16 +205,19 @@ export default function POSPage() {
         bundleProductIds: bundleProducts.map((p) => p.id),
       };
 
+      if (!tenders.status.ready) throw new Error(`ช่องรับเงินยังไม่ครบ — ${tenders.status.label}`);
       if (saleType === 'CASH') {
-        payload.paymentMethod = formValues.paymentMethod;
-        payload.amountReceived = formValues.amountReceived ?? cashDue;
+        payload.tenders = tenders.payload;
+        payload.paymentMethod = tenders.payload[0]?.method ?? formValues.paymentMethod;
+        payload.amountReceived = cashDue;
       } else if (saleType === 'EXTERNAL_FINANCE') {
         const down = formValues.downPayment ?? 0;
         payload.financeCompany = (formValues.financeCompany ?? '').trim();
         payload.contractNumber = formValues.contractNumber || undefined;
         payload.downPayment = down;
         payload.financeAmount = netAmount - down;
-        payload.paymentMethod = formValues.paymentMethod;
+        payload.tenders = tenders.payload;
+        payload.paymentMethod = tenders.payload[0]?.method ?? formValues.paymentMethod;
       }
 
       const { data } = await api.post('/sales', payload);
@@ -351,6 +364,9 @@ export default function POSPage() {
             transferAmount={transferAmount}
             sellingPrice={sellingPrice}
             discount={discount}
+            tenderDue={tenderDue}
+            tenderRows={tenders.rows}
+            onTenderChange={tenders.setRows}
           />
         </div>
 
@@ -373,7 +389,7 @@ export default function POSPage() {
             financeCompany={financeCompany}
             contractNumber={contractNumber}
             isSubmitting={createSaleMutation.isPending}
-            canSubmit={!!selectedProduct && !!selectedCustomer && Number(sellingPrice) > 0 && creditReady}
+            canSubmit={!!selectedProduct && !!selectedCustomer && Number(sellingPrice) > 0 && creditReady && tenders.status.ready}
             onSubmit={() => createSaleMutation.mutate()}
             onReset={resetForm}
           />

@@ -304,6 +304,9 @@ function posCashSale(customerId: string, productId: string, sellingPrice: number
       branchId,
       sellingPrice,
       paymentMethod: 'BANK_TRANSFER',
+      // กติกาช่องรับเงิน (2026-09-20): โอน/QR บังคับเลขอ้างอิงจากสลิป — caller แบบเดิมส่งผ่าน downPaymentReference.
+      // ไม่ซ้ำกันต่อใบขาย: รายงานสรุปเงินหน้าร้านติดธง "เลขอ้างอิงซ้ำ" ข้ามเอกสารแบบไม่จำกัดวัน
+      downPaymentReference: `${PREFIX}REF-${RUN}-${productId.slice(0, 8)}`,
       amountReceived: sellingPrice,
     } as never,
     adminId,
@@ -397,6 +400,12 @@ describe('State diagram ของเครื่อง — flow จริงบ�
     // sale_cost_snapshots FK-references sales (ON DELETE RESTRICT) — clear it first, or this afterAll
     // aborts here and the credit approvals / contracts below survive into every later spec's cleanup.
     await prisma.saleCostSnapshot.deleteMany({ where: { saleId: { in: saleIds } } });
+    // shop_tenders (สมุดเงินหน้าร้าน 2026-09-20): ขายสดที่ POS เขียนแถว IN ที่อ้าง branches/users แบบ ON DELETE RESTRICT
+    // (sale_id เป็น SET NULL) ⇒ ลบ "ก่อน" ใบขาย ขณะยังระบุด้วย saleId ได้ — ไม่งั้นแถวกำพร้าค้างในดีบี และบล็อกการลบ
+    // สาขาทดสอบด้านล่างแบบเงียบ ๆ. สาขา __lifecycle_test_branch__ เป็นของสเปคนี้คนเดียว จึงกวาดซากรันที่ crash ด้วย
+    await prisma.shopTender.deleteMany({
+      where: { OR: [{ saleId: { in: saleIds } }, { branchId: { in: [branchId].filter(Boolean) } }] },
+    });
     await prisma.sale.deleteMany({ where: { id: { in: saleIds } } });
     await prisma.repossession.deleteMany({ where: { productId: { in: createdProductIds } } });
     await prisma.contractExchangeRequest.deleteMany({ where: { id: { in: createdRequestIds } } });

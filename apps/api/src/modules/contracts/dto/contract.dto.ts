@@ -1,10 +1,19 @@
-import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString, IsUUID, MaxLength, IsArray, ArrayMaxSize } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsInt, IsBoolean, IsPositive, Min, Max, Matches, IsIn, IsDateString, IsUUID, MaxLength, IsArray, ArrayMaxSize, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { TenderInputDto } from '../../shop-tenders/dto/tender-input.dto';
+import { MAX_TENDERS } from '../../shop-tenders/shop-tender.util';
 import { KBANK_ACCOUNT_CODE } from '../../../constants/cash-account.constants';
 
 export class CreateContractDto {
   @IsOptional() @IsString() @Matches(/^[a-f0-9]{64}$/) quoteFingerprint?: string;
   @IsOptional() @IsIn(['CASH', 'BANK_TRANSFER', 'QR_EWALLET']) downPaymentMethod?: 'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET';
   @IsOptional() @IsString() @MaxLength(128) downPaymentReference?: string;
+  /**
+   * ช่องรับเงินดาวน์ (สเปค 2026-09-20-shop-tenders-daily-cash): จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง.
+   * ไม่ส่ง = caller แบบเดิม → ระบบสร้างบรรทัดเดียวจาก downPaymentMethod + downPaymentReference แล้วผ่านกติกาเดียวกัน.
+   */
+  @IsOptional() @IsArray() @ArrayMaxSize(MAX_TENDERS) @ValidateNested({ each: true }) @Type(() => TenderInputDto)
+  tenders?: TenderInputDto[];
   @IsOptional() @IsBoolean() previouslyDamagedAcknowledged?: boolean;
   @IsUUID() @IsOptional() tradeInCreditId?: string;
   @IsUUID()

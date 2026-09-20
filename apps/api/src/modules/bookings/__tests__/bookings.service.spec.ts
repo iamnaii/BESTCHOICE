@@ -185,6 +185,15 @@ describe('BookingsService', () => {
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     };
 
+    // สมุดเงินหน้าร้าน (shop_tenders): ShopTenderRecorder ถูกสร้าง inline ใน service และเขียนผ่าน tx ตัวเดียวกัน.
+    // recorder ใช้ ShopAccountResolver ตัวจริงของมันเอง ⇒ tender เงินสดอ่าน branch.shopCashAccountCode จาก tx.
+    const txShopTender = {
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+      findMany: jest.fn().mockResolvedValue([]),
+    };
+    const txBranch = { findUnique: jest.fn().mockResolvedValue({ shopCashAccountCode: 'S11-1101' }) };
+    const txJournalEntry = { findFirst: jest.fn().mockResolvedValue(null) };
+
     prisma = {
       booking: {
         findFirst: jest.fn(),
@@ -218,6 +227,9 @@ describe('BookingsService', () => {
           salesCommission: txSalesCommission,
           auditLog: txAuditLog,
           productReservation: txProductReservation,
+          shopTender: txShopTender,
+          branch: txBranch,
+          journalEntry: txJournalEntry,
         }),
       ),
       _tx: {
@@ -229,6 +241,7 @@ describe('BookingsService', () => {
         salesCommission: txSalesCommission,
         auditLog: txAuditLog,
         productReservation: txProductReservation,
+        shopTender: txShopTender,
       },
     };
 
@@ -607,6 +620,11 @@ describe('BookingsService', () => {
     const saleArgs = prisma._tx.sale.create.mock.calls[0][0];
     expect(Number(saleArgs.data.amountReceived)).toBe(40990);
     expect(Number(saleArgs.data.downPaymentAmount)).toBe(5000);
+    // สมุดเงินหน้าร้าน: นับเฉพาะเงินที่รับเพิ่มตอนแปลง (40,990 − มัดจำ 5,000) — มัดจำมีแถวของตัวเองตั้งแต่วันรับ
+    const tenderRows = prisma._tx.shopTender.createMany.mock.calls[0][0].data;
+    expect(tenderRows).toHaveLength(1);
+    expect(tenderRows[0]).toMatchObject({ direction: 'IN', kind: 'CASH_SALE', method: 'CASH', saleId: 'sale-new', actorId: OWNER.id });
+    expect(Number(tenderRows[0].amount)).toBe(35990);
   });
 
   it('convertToSale — race: second concurrent caller throws Conflict (no Sale created)', async () => {

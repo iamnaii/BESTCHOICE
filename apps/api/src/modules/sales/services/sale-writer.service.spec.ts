@@ -58,7 +58,19 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       // ไม่มีแถว = ไม่ override ⇒ ใช้ค่าตามชนิดสินค้า
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
       interestConfig: { findFirst: jest.fn().mockResolvedValue(null) },
-      branch: { findUnique: jest.fn().mockResolvedValue(null) },
+      // branch มีผู้อ่านสองราย: (1) resolveBranchVat (include company) → null = ใช้ VAT จาก config ตามเดิม
+      // (2) ShopTenderRecorder — ใช้ ShopAccountResolver ตัวจริงของมันเอง (ไม่ใช่ mock ที่ inject ให้ service)
+      //     อ่านลิ้นชักเงินสดของสาขา (select shopCashAccountCode) เมื่อ tender แรกเป็นเงินสด
+      branch: {
+        findUnique: jest.fn(async (args: { select?: { shopCashAccountCode?: boolean } }) =>
+          args?.select?.shopCashAccountCode ? { shopCashAccountCode: 'S11-1102' } : null),
+      },
+      // สมุดเงินหน้าร้าน (shop_tenders, 2026-09-20) — recorder เขียนผ่าน tx ตัวเดียวกับใบขาย/สัญญา
+      shopTender: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      journalEntry: { findFirst: jest.fn().mockResolvedValue(null) },
       customer: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', name: 'Customer', phone: '0800000000', addressCurrent: null }) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
       // closeRepossessionOnSale (2026-09-05) — เครื่องยึดที่ขายผ่าน POS ปิดรายการยึดให้เอง
@@ -297,6 +309,8 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
         sellingPrice: 8000,
         bundleProductIds: [],
         paymentMethod: 'BANK_TRANSFER',
+        // โอน/QR บังคับเลขอ้างอิงจากสลิป (กติกาช่องรับเงิน 2026-09-20) — caller แบบเดิมส่งผ่าน downPaymentReference
+        downPaymentReference: 'TEST-REF-0001',
       } as any,
       'sp-1',
       8000,
@@ -313,6 +327,22 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       'BANK_TRANSFER',
       tx,
     );
+
+    // สมุดเงินหน้าร้าน: แถว IN เดียวเต็มยอด พร้อมเลขอ้างอิง · ผู้รับเงิน = ผู้บันทึกใบขาย
+    const tenderRows = tx.shopTender.createMany.mock.calls[0][0].data;
+    expect(tenderRows).toHaveLength(1);
+    expect(tenderRows[0]).toMatchObject({ direction: 'IN', kind: 'CASH_SALE', branchId: 'br-1', method: 'BANK_TRANSFER',
+      reference: 'TEST-REF-0001', actorId: 'sp-1', saleId: 'sale-1', seq: 1, seqTotal: 1 });
+    expect(Number(tenderRows[0].amount)).toBe(8000);
+  });
+
+  it('(c2) legacy BANK_TRANSFER ที่ไม่มีเลขอ้างอิง → ถูกปฏิเสธก่อนเขียนใบขาย (กติกาช่องรับเงิน)', async () => {
+    await expect(service.createCashSale(
+      { productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 8000, bundleProductIds: [], paymentMethod: 'BANK_TRANSFER' } as any,
+      'sp-1', 8000, 0, { role: 'SALES', branchId: 'br-1' },
+    )).rejects.toThrow(/เลขอ้างอิง/);
+    expect(tx.sale.create).not.toHaveBeenCalled();
+    expect(tx.shopTender.createMany).not.toHaveBeenCalled();
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

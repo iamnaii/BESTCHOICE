@@ -68,6 +68,7 @@ import { AccountingModule } from './modules/accounting/accounting.module';
 import { OtherIncomeModule } from './modules/other-income/other-income.module';
 import { EquityModule } from './modules/equity/equity.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
+import { ShopTendersModule } from './modules/shop-tenders/shop-tenders.module';
 import { ExpenseDocumentsModule } from './modules/expense-documents/expense-documents.module';
 import { PaymentMethodConfigModule } from './modules/payment-method-config/payment-method-config.module';
 import { CompanyModule } from './modules/company/company.module';
@@ -264,6 +265,7 @@ import { AppCacheModule } from './cache/cache.module';
     EquityModule,
     // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation + deposit)
     BookingsModule,
+    ShopTendersModule,
     // Expense Documents (เอกสารค่าใช้จ่าย — accrual workflow)
     ExpenseDocumentsModule,
     // Payment method ↔ Cash account mapping (cashier wizard filter)

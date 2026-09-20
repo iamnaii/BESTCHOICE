@@ -58,7 +58,8 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
   });
 
   it('ACCOUNTANT finds SHOP accounting in SHOP', () => {
-    expect(getSidebarForRole('ACCOUNTANT', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting']);
+    // + สรุปเงินหน้าร้านรายวัน (2026-09-20) — บัญชีเห็นทุกสาขา
+    expect(getSidebarForRole('ACCOUNTANT', 'shop').flatMap(s => s.items.map(i => i.path))).toEqual(['/shop/accounting', '/shop/daily-cash']);
   });
 
   it('ACCOUNTANT + fin returns accounting sections', () => {

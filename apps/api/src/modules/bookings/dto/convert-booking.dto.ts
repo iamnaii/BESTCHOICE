@@ -1,4 +1,7 @@
-import { IsBoolean, IsEnum, IsIn, IsOptional, IsString } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsIn, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { TenderInputDto } from '../../shop-tenders/dto/tender-input.dto';
+import { MAX_TENDERS } from '../../shop-tenders/shop-tender.util';
 
 import { BOOKING_PAYMENT_METHODS, DepositMethod } from './pay-deposit.dto';
 
@@ -34,6 +37,14 @@ export class ConvertBookingDto {
   @IsOptional()
   @IsBoolean({ message: 'collectBalance ต้องเป็น true/false' })
   collectBalance?: boolean;
+
+  /** ช่องรับเงินของส่วนที่เหลือ (จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง) — ผลรวมต้องเท่ายอดส่วนต่างพอดี */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_TENDERS)
+  @ValidateNested({ each: true })
+  @Type(() => TenderInputDto)
+  tenders?: TenderInputDto[];
 
   @IsOptional()
   @IsString()

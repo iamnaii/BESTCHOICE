@@ -5,6 +5,8 @@ import { StructuredLoggerService } from '../../../common/logger';
 import { TradeInCreditService, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
 import { ContractQuoteService, contractQuotePayments } from './contract-quote.service';
 import { assertCustomerContractPolicy, assertCustomerHasPhone, customerContractSnapshot, contractDownTender } from './contract-create-policy';
+import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
+import { normalizeTenders } from '../../shop-tenders/shop-tender.util';
 import { assertSaleProductEligible } from '../../sales/services/sale-product-policy';
 import { PlanType, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -75,7 +77,9 @@ export class ContractLifecycleService {
             throw new ConflictException({ code: 'CONTRACT_QUOTE_CHANGED',
               message: 'เงื่อนไขผ่อนเปลี่ยนแล้ว กรุณาทบทวนยอดใหม่ก่อนยืนยัน', quote });
           }
-          const tender = contractDownTender(quote.cashDownPayment, dto.downPaymentMethod, dto.downPaymentReference);
+          // ช่องรับเงินดาวน์: จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง — tender แรก = primary ที่ JE ดาวน์ลงเต็มยอด
+          const downTenders = normalizeTenders(dto.tenders, quote.cashDownPayment, { method: dto.downPaymentMethod, reference: dto.downPaymentReference });
+          const tender = contractDownTender(downTenders);
           // Verify credit check inside transaction for atomicity
           const approvedCreditCheck = await tx.creditCheck.findFirst({
             where: { customerId: dto.customerId, status: 'APPROVED', checkType: 'FULL', contractId: null, deletedAt: null },
@@ -167,6 +171,10 @@ export class ContractLifecycleService {
               },
               tx,
             );
+            // สมุดเงินหน้าร้าน + JE แยกยอดของบิลจ่ายผสม — ผู้รับเงินดาวน์ = ผู้ใช้ที่กดสร้างสัญญา (บันทึกถาวร
+            // ไม่เปลี่ยนตาม salespersonId ของสัญญา)
+            await new ShopTenderRecorder(this.prisma).recordInflow(tx, { kind: 'CONTRACT_DOWN', branchId: dto.branchId,
+              actorId: actor.id, doc: { contractId: newContract.id }, docNumber: newContract.contractNumber, tenders: downTenders });
           }
 
           // Reserve product
@@ -490,6 +498,10 @@ export class ContractLifecycleService {
             },
             tx,
           );
+          // คืนเงินตามวิธีที่รับมา: reversal ข้างบนคืนเต็มยอดเข้าบัญชี primary — ดาวน์จ่ายผสมต้อง mirror JE
+          // แยกยอดด้วย (ไม่งั้นบัญชี primary ติดลบเท่าส่วนของวิธีอื่น) · แถว OUT = ผู้กดลบร่าง
+          await new ShopTenderRecorder(this.prisma).recordRefund(tx, { doc: { contractId: id }, kinds: ['CONTRACT_DOWN'],
+            actorId: userId, reverseSplitJe: true, descriptionPrefix: '[ลบร่างสัญญา]', occurredAt: now });
         }
       }
 

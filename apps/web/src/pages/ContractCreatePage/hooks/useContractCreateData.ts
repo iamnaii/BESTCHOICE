@@ -1,6 +1,7 @@
 import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTenders } from '@/components/tender/TenderInput';
 import type { AvailableTradeInCredit, ContractQuote } from '@installment/shared';
 import Decimal from 'decimal.js';
 import { contractCreditIssue, type ApprovedContractLimit } from '../credit-approval';
@@ -83,6 +84,21 @@ export function useContractCreateData() {
   const [totalMonths, setTotalMonths] = useState(entry.months ?? 6);
   const [downPaymentMethod, setDownPaymentMethod] = useState<'CASH' | 'BANK_TRANSFER' | 'QR_EWALLET'>(entry.restored?.downPaymentMethod ?? 'CASH');
   const [downPaymentReference, setDownPaymentReference] = useState(entry.restored?.downPaymentReference ?? '');
+  // ช่องรับเงินดาวน์ (จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง) — ยอดที่ต้องรับ = เงินดาวน์ส่วนที่เป็นเงิน (ไม่นับเครดิตเครื่องเทิร์น)
+  const tenders = useTenders(downPayment);
+  const restoredTender = useRef(false);
+  useEffect(() => {
+    // ร่างที่กู้คืนเก็บไว้แค่วิธีเดียว + เลขอ้างอิง — ตั้งให้บรรทัดแรกครั้งเดียว
+    if (restoredTender.current || !entry.restored?.downPaymentMethod) return;
+    restoredTender.current = true;
+    tenders.setRows((rows) => rows.length === 1
+      ? [{ ...rows[0], method: entry.restored!.downPaymentMethod!, reference: entry.restored!.downPaymentReference ?? '' }] : rows);
+  }, [entry.restored, tenders]);
+  // คอลัมน์เดิมของสัญญา + ร่างที่บันทึก = วิธีของบรรทัดแรก และเลขอ้างอิงของบรรทัดแรกที่ไม่ใช่เงินสด
+  useEffect(() => {
+    setDownPaymentMethod(tenders.rows[0]?.method ?? 'CASH');
+    setDownPaymentReference(tenders.rows.find((r) => r.method !== 'CASH')?.reference ?? '');
+  }, [tenders.rows]);
   const [previouslyDamagedAcknowledged, setPreviouslyDamagedAcknowledged] = useState(false);
   const [notes, setNotes] = useState(entry.restored?.notes ?? '');
   const [paymentDueDay, setPaymentDueDay] = useState<number>(entry.restored?.paymentDueDay ?? 1);
@@ -431,7 +447,8 @@ export function useContractCreateData() {
       planType,
       quoteFingerprint: quote.fingerprint,
       downPaymentMethod: downPayment > 0 ? downPaymentMethod : undefined,
-      downPaymentReference: downPayment > 0 ? downPaymentReference || undefined : undefined,
+      downPaymentReference: downPayment > 0 ? downPaymentReference.trim() || undefined : undefined,
+      tenders: downPayment > 0 ? tenders.payload : undefined,
       previouslyDamagedAcknowledged,
       sellingPrice,
       tradeInCreditId: tradeInCreditId || undefined,
@@ -470,6 +487,7 @@ export function useContractCreateData() {
     bundleSearch, setBundleSearch, bundleProducts, addBundle, removeBundle,
     tradeInCreditId, setTradeInCreditId, tradeInCredit, setTradeInCredit, tradeInCreditReady,
     downPaymentMethod, setDownPaymentMethod, downPaymentReference, setDownPaymentReference,
+    tenderRows: tenders.rows, setTenderRows: tenders.setRows, tenderStatus: tenders.status,
     previouslyDamagedAcknowledged, setPreviouslyDamagedAcknowledged, canSellPreviouslyDamaged: user?.role === 'OWNER',
     navigate,
     openCustomerCredit,

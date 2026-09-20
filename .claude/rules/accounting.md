@@ -996,6 +996,70 @@ The existing `/expenses/ledger/trial-balance` and `/expenses/ledger/profit-loss`
 
 ---
 
+## สมุดเงินหน้าร้าน + บิลจ่ายผสม (shop tenders — 2026-09-20)
+
+Spec: `docs/superpowers/specs/2026-09-20-shop-tenders-daily-cash-design.md` · โค้ด:
+`apps/api/src/modules/shop-tenders/` · Integration:
+`apps/api/src/modules/contracts/__tests__/shop-tenders.integration.spec.ts`
+
+**คำตัดสินเจ้าของ 2026-09-20 (ปิดประเด็น):** ต้องมีสรุปเงินหน้าร้านรายวัน (กันพนักงานโกง) ·
+โอน/QR **บังคับเลขอ้างอิง** · ลูกค้าจ่ายผสมในบิลเดียว "มีบ่อย ต้องรองรับ" (สูงสุด 4 บรรทัด) · เลขอ้างอิงซ้ำ
+ไม่บล็อกแต่ขึ้นป้ายแดงในรายงาน · คืนเงินตามวิธีที่รับมา · "นับเงินปิดวัน" เป็นรอบถัดไป.
+
+- **ตาราง `shop_tenders`** = สมุดเงินเข้า/ออกของหน้าร้าน (แถวไม่ถูกแก้/ลบ — การคืนเงิน = แถว `OUT` ที่ชี้
+  `reversesTenderId`). `actorId` = **ผู้ใช้ที่ล็อกอินและกดทำรายการ** ไม่ใช่ `salespersonId`. เขียนใน tx เดียวกับ JE
+  ผ่าน `new ShopTenderRecorder(this.prisma)` (แบบเดียวกับ `TradeInCreditService` — ไม่เพิ่ม dependency ให้
+  constructor ของ service เดิม). หน้าสรุปเงินรายวัน (`GET /shop-tenders/daily-summary`) อ่านจากตารางนี้ตารางเดียว
+  — **ไม่ backfill** เอกสารเก่า.
+- **กติกา tender อยู่ที่เดียว:** `normalizeTenders` (`shop-tender.util.ts`) — ผลรวมต้องเท่ายอดที่ต้องรับพอดี,
+  โอน/QR ต้องมี `reference` 6–128 ตัว. caller ที่ไม่ส่ง `tenders` ได้บรรทัดเดียวจากฟิลด์เดิมแล้วผ่านกติกาเดียวกัน
+  (โอน/QR แบบเดิมที่ไม่มีเลขอ้างอิง = 400).
+- **คอลัมน์เดิม = tender แรก (primary):** `Sale.paymentMethod` / `Contract.downPaymentMethod` /
+  `Booking.depositMethod` เก็บวิธีของบรรทัดแรก · `Contract.downPaymentReference` = เลขอ้างอิงของบรรทัดแรกที่
+  ไม่ใช่เงินสด.
+
+### JE ของบิลจ่ายผสม — flow `shop-tender-split` (ไม่แตะ template รับเงินเดิม)
+
+Template รับเงินเดิม (`ShopCashSaleTemplate` / `ShopExternalFinanceSaleTemplate` / `ShopDownPaymentTemplate` /
+`ShopBookingDepositTemplate`) ยังลง **เต็มยอด** เข้าบัญชีของ primary ตามเดิมทุกประการ แล้ว recorder โพสต์ใบ
+"แยกยอด" 1 ใบเมื่อมีบรรทัดอื่นที่ลงคนละบัญชี:
+
+```
+Dr <บัญชีของวิธีอื่น>   [Σ บรรทัดที่บัญชีต่างจาก primary]      (เงินสด = ลิ้นชักสาขา · โอน/QR = S11-1201)
+   Cr <บัญชี primary>
+```
+
+เหตุผลที่ไม่ทำ Dr หลายขาใน template เดิม: ขายสดลง JE **ทีละสินค้า** (`allocateCashSaleByCost`) ·
+`TradeInCreditService.claim` เครดิตบัญชีเงินสดใบเดียว · deposit-applied ตอนแปลงใบจองเครดิต "บัญชีเดียวกับที่
+ใบขายเดบิต" · ลบร่างสัญญาอ่าน JE ดาวน์ต้องเจอ debit `S11-*` เท่ายอดดาวน์ **1 บรรทัดพอดี** — ทั้งหมดยังถูกต้อง
+ถ้า primary รับเต็มยอดก่อนแล้วค่อยย้ายส่วนของวิธีอื่นออก. ยอดสุทธิของลิ้นชัก/ธนาคาร = เงินจริงของแต่ละวิธี
+(ปักด้วย integration: ขายสด 5,000 สด + 4,900 โอน → ลิ้นชัก 5,000 / S11-1201 4,900).
+
+| เรื่อง | กติกา |
+|---|---|
+| metadata | `flow: 'shop-tender-split'`, `tenderDocType`, `tenderDocId`, `idempotencyKey: shop-tender-split:<docType>:<docId>` |
+| ใบขาย | ใส่ `metadata.saleId` ⇒ `SaleVoidService` (sweep `saleId`) mirror ให้เองตอนยกเลิกใบขาย |
+| **สัญญา** | **ห้ามใส่ `metadata.contractId`** — การยกเลิกสัญญา (C-1) และยกเลิกเปลี่ยนเครื่อง sweep ตาม `contractId` และมี **cash tripwire** ที่ throw เมื่อเจอบรรทัดเงินสด; JE ดาวน์เองก็จงใจไม่ถูก mirror ตอนยกเลิกสัญญา ⇒ ใบแยกยอดต้องอยู่นอก sweep เช่นกัน (ปักด้วย integration "เปิดใช้ → ยกเลิกสัญญา ไม่ชน tripwire") |
+| ใบจอง | ไม่ใส่ key ที่ sweep ใดใช้ |
+| ไฟแนนซ์นอกที่ JE ขายไม่ถูกโพสต์ (`execute()` คืน `null`) | เขียนแถว tender เสมอ แต่ **ไม่โพสต์ใบแยกยอด** (`postSplitJe: false`) — ห้ามย้ายเงินที่ยังไม่เคยลงบัญชี |
+
+### การคืนเงิน
+
+| เหตุการณ์ | บัญชี | tender |
+|---|---|---|
+| ยกเลิกใบขาย | sweep `saleId` mirror ทั้ง JE ขายและใบแยกยอด (ได้ฟรี) | `OUT SALE_VOID_REFUND` คู่กับแถว IN · actor = ผู้กดยกเลิก |
+| ลบร่างสัญญา | reversal เดิมคืนเต็มยอดเข้า primary + `recordRefund(reverseSplitJe: true)` mirror ใบแยกยอด (flow `shop-tender-split-reversed`) | `OUT CONTRACT_DOWN_REFUND` |
+| ยกเลิกใบจองที่รับมัดจำแล้ว | refund เดิม re-resolve จาก `depositMethod` (= primary) + mirror ใบแยกยอด | `OUT BOOKING_DEPOSIT_REFUND` |
+| จ่ายรับซื้อมือสอง (`accept` BUYBACK) | ของเดิม | `OUT TRADE_IN_PAYOUT` (`TRANSFER` → `BANK_TRANSFER`, ไม่บังคับ reference) |
+
+เอกสารก่อนมีสมุดนี้ไม่มีแถว IN ⇒ ไม่เขียนแถว OUT. ยึดมัดจำ (ใบจองหมดอายุ) ไม่มีเงินเคลื่อน ⇒ ไม่มี tender.
+ใบขายจากออเดอร์ออนไลน์ (`ONLINE_GATEWAY`) ไม่เขียน tender — เงินไม่ผ่านมือพนักงานหน้าร้าน.
+
+**ยังไม่ได้ถามผู้สอบบัญชี:** รูปแบบ "ลงเต็มยอดแล้วย้ายออก" ทำให้สมุดลิ้นชักเห็นเงินเข้า-ออกในวินาทีเดียวกัน
+(ยอดสุทธิถูกต้อง). ถ้าผู้สอบต้องการใบเดียวหลายขา ต้องรื้อ 4 จุดข้างบนพร้อมกัน — อย่าแก้จุดเดียว.
+
+---
+
 ## ยกเลิกใบขาย (void sale — 2026-08-23)
 
 Spec: `docs/superpowers/specs/2026-08-22-void-sale-design.md` · Plan:

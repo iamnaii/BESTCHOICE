@@ -190,6 +190,12 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       auditLog: {
         create: jest.fn().mockResolvedValue({}),
       },
+      // สมุดเงินหน้าร้าน (shop_tenders) — ShopTenderRecorder ถูกสร้าง inline และเขียนผ่าน tx ตัวเดียวกัน
+      // (create → recordInflow.createMany · softDelete → recordRefund.findMany; ไม่มีแถว IN = ไม่เขียนอะไร)
+      shopTender: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
     };
 
     // Outer prisma — $transaction passes the callback + tx
@@ -267,6 +273,18 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
       downPaymentMethod: 'BANK_TRANSFER', downPaymentReference: 'SYNTHETIC-TRANSFER', downPaymentReceivedAt: expect.any(Date),
     }) }));
     expect(shopDownPaymentTemplate.execute).toHaveBeenCalledWith(expect.objectContaining({ cashAccountCode: 'S11-1201' }), tx);
+    // สมุดเงินหน้าร้าน: แถว IN ของเงินดาวน์ — วิธี + เลขอ้างอิงตามที่รับจริง, ผู้รับ = ผู้กดสร้างสัญญา
+    const tenderRows = tx.shopTender.createMany.mock.calls[0][0].data;
+    expect(tenderRows).toHaveLength(1);
+    expect(tenderRows[0]).toMatchObject({ direction: 'IN', kind: 'CONTRACT_DOWN', branchId: 'br-1', method: 'BANK_TRANSFER',
+      reference: 'SYNTHETIC-TRANSFER', actorId: 'sp-1', contractId: 'c-1', seq: 1, seqTotal: 1 });
+    expect(Number(tenderRows[0].amount)).toBe(2000);
+  });
+
+  it('rejects a legacy bank-transfer down payment without a slip reference (shop-tenders rule)', async () => {
+    await expect(service.create({ ...baseDto, downPaymentMethod: 'BANK_TRANSFER' } as any, 'sp-1')).rejects.toThrow(/เลขอ้างอิง/);
+    expect(tx.contract.create).not.toHaveBeenCalled();
+    expect(tx.shopTender.createMany).not.toHaveBeenCalled();
   });
 
   it('posts ShopDownPayment when downPayment > 0', async () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { COMPANY_ACCESS_ROLES } from '@installment/shared';
-import { getSidebarForRole, getZoneConfigForRole, resolveZoneForPath } from './menu';
+import { getMenuConfig, getSidebarForRole, getZoneConfigForRole, resolveZoneForPath } from './menu';
 
 describe('getSidebarForRole — empty ZONE_CONFIG fallback', () => {
   it('returns empty array for unknown role', () => {
@@ -382,5 +382,32 @@ describe('resolveZoneForPath — hash-aware (regression: FM/ACC must not bounce 
   // ROLE_COMPANY_ACCESS แล้วลืมเพิ่มใน ZONE_CONFIG จะสร้างเหตุการณ์เดิมซ้ำโดย CI เขียว
   it.each(COMPANY_ACCESS_ROLES)('role %s มี ZONE_CONFIG ที่ให้โซนทำงานอย่างน้อยหนึ่งโซน', (role) => {
     expect(getZoneConfigForRole(role, [])?.zones.length ?? 0).toBeGreaterThan(0);
+  });
+});
+
+describe('เมนู /repossessions — ป้าย "รับเครื่องคืน / ยึดคืน" (ใบรับเครื่องคืน 2026-09-20 §7)', () => {
+  const flatItems = (role: string) =>
+    getMenuConfig(role).sidebar.flatMap((s) => s.items.flatMap((i) => [i, ...(i.children ?? [])]));
+
+  it.each(['BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'OWNER'])(
+    '%s: รายการ /repossessions ใช้ป้ายใหม่ path เดิม',
+    (role) => {
+      const repo = flatItems(role).filter((i) => i.path === '/repossessions');
+      expect(repo).toHaveLength(1);
+      expect(repo[0].label).toBe('รับเครื่องคืน / ยึดคืน');
+    },
+  );
+
+  it('ไม่มีป้ายเก่า "ยึดคืนเครื่อง" เหลืออยู่ในทุก role', () => {
+    for (const role of [
+      'SALES',
+      'BRANCH_MANAGER',
+      'FINANCE_MANAGER',
+      'ACCOUNTANT',
+      'OWNER',
+      'VIEWER',
+    ]) {
+      expect(flatItems(role).map((i) => i.label)).not.toContain('ยึดคืนเครื่อง');
+    }
   });
 });

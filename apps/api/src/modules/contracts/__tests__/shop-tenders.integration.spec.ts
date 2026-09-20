@@ -192,7 +192,7 @@ describe('สมุดเงินหน้าร้าน + บิลจ่า�
     await prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
     await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
     await prisma.journalEntry.deleteMany({ where: { id: { in: jeIdList } } });
-    await prisma.salesCommission.deleteMany({ where: { saleId: { in: saleIds } } });
+    await prisma.salesCommission.deleteMany({ where: { OR: [{ saleId: { in: saleIds } }, { contractId: { in: created.contracts } }] } });
     await prisma.saleCostSnapshot.deleteMany({ where: { saleId: { in: saleIds } } });
     await prisma.sale.deleteMany({ where: { id: { in: saleIds } } });
     await prisma.contractCancellation.deleteMany({ where: { contractId: { in: created.contracts } } });
@@ -280,6 +280,15 @@ describe('สมุดเงินหน้าร้าน + บิลจ่า�
     const { contract } = await seedDraftWithSplitDown('A1', { signed: true });
     await workflow.activate(contract.id);
 
+    // ค่าคอมพนักงานขาย (เจ้าของเคาะ 2026-09-20): เกิดตอนเปิดใช้สัญญา กติกาเดียวกับขายสด = อัตรา × ราคาขาย
+    const rule = await prisma.commissionRule.findFirst({ where: { isActive: true, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+    const rate = rule?.rate ? Number(rule.rate) : 0.03;
+    const earned = await prisma.salesCommission.findMany({ where: { contractId: contract.id } });
+    expect(earned).toHaveLength(1);
+    expect(earned[0]).toMatchObject({ status: 'PENDING', salespersonId: adminId, snapshotSalespersonId: adminId });
+    expect(Number(earned[0].saleAmount)).toBe(15000);
+    expect(Number(earned[0].commissionAmount)).toBeCloseTo(15000 * rate, 2);
+
     const request = await cancellations.requestCancellation(contract.id, adminId, 'ทดสอบยกเลิกสัญญาที่รับดาวน์จ่ายผสม', 0);
     await expect(cancellations.approveCancellation(request.id, adminId)).resolves.toBeDefined();
 
@@ -287,6 +296,10 @@ describe('สมุดเงินหน้าร้าน + บิลจ่า�
     expect(await accountNetSince(TILL, since)).toBe('2000.00');
     expect(await accountNetSince(BANK, since)).toBe('3000.00');
     expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('CANCELED');
+    // ยกเลิกสัญญา = เรียกคืนค่าคอมที่ยังไม่จ่าย
+    const clawed = await prisma.salesCommission.findUniqueOrThrow({ where: { id: earned[0].id } });
+    expect(clawed.status).toBe('CLAWED_BACK');
+    expect(clawed.clawbackReason).toContain(contract.contractNumber);
   });
 
   it('cleanup ข้อมูลทดสอบ: ตามเจอ JE แยกยอดของสัญญาจาก tenderDocId + ใบกลับรายการ และลบแถวสมุดเงินได้ครบ', async () => {

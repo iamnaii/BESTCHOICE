@@ -209,6 +209,13 @@ describe('ContractsService', () => {
 
     prisma = {
       $queryRaw: jest.fn().mockResolvedValue([]),
+      // ค่าคอมพนักงานขาย: สร้างตอนเปิดใช้สัญญา / เรียกคืนตอนยกเลิกสัญญา (2026-09-20) — ค่าเริ่มต้น = ไม่มีค่าคอม
+      salesCommission: {
+        findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'cm-1' }),
+        findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      commissionRule: { findFirst: jest.fn().mockResolvedValue(null) },
+      commissionPayout: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
         // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)

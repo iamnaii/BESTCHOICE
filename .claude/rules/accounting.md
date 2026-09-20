@@ -1070,6 +1070,25 @@ Dr <บัญชีของวิธีอื่น>   [Σ บรรทัด�
 
 ---
 
+## ค่าคอมพนักงานขายของสัญญาผ่อน BESTCHOICE (คำตัดสินเจ้าของ 2026-09-20)
+
+โค้ด: `apps/api/src/modules/contracts/services/contract-commission.util.ts` (ที่เดียว)
+
+- **กติกา = เหมือนขายสด:** อัตราจาก `CommissionRule` ที่ active ล่าสุด (ไม่มีกฎ = 3%) × ราคาขายของสัญญา (`sellingPrice` —
+  หลังส่วนลด/โบนัสเทิร์น) · `status: PENDING` · ผู้ได้ = `contract.salespersonId` ณ วันเปิดใช้ (`snapshotSalespersonId`)
+- **สร้างตอนเปิดใช้สัญญา** (`ContractWorkflowService.activate` → `ensureContractCommission`) ไม่ใช่ตอนร่าง —
+  สัญญาที่ไม่ถูกเปิดใช้ = ยังไม่ได้ขาย. เดิมสัญญาที่ทำผ่านหน้าสัญญา**ไม่มีค่าคอมเลย** (ค่าคอมเกิดได้ทางเดียวคือเส้นทางเก่า
+  `SaleWriterService.createInstallmentSale` ที่สร้างตั้งแต่ตอนร่าง) — helper ไม่สร้างซ้ำถ้าสัญญามีค่าคอมอยู่แล้ว
+- งวดจ่าย (`period`) คิดตามปฏิทินไทย (`bangkokDateString`) · สัญญาจากการเปลี่ยนเครื่อง (device swap) **ไม่เข้าเส้นนี้**
+- **ยกเลิกสัญญา (C-1/C-2)** → `clawbackContractCommission`: `PENDING`/`APPROVED` → `CLAWED_BACK` 100% ·
+  ที่**จ่ายไปแล้วไม่เรียกคืน** (คำตัดสินเจ้าของ) · รอบจ่าย `DRAFT` ที่นับค่าคอมนี้ถูก soft-delete ให้กดสร้างใหม่ (กติกาเดียวกับ
+  `SaleVoidService` G4b — `generatedAt = null` ถือว่าครอบ) · **ไม่บล็อกการยกเลิกสัญญา** แม้ค่าคอมถูกนับในรอบที่
+  `APPROVED`/`PAID` (ต่างจากยกเลิกใบขายที่บล็อก) — รอบที่ล็อกถูกบันทึกใน AuditLog `CONTRACT_CANCELED*` →
+  `newValue.commissionLockedPayoutIds` ให้เจ้าของ/ผจก.การเงินตัดสินเอง
+- ยังค้าง: ลบ `createInstallmentSale` + แก้ e2e parity `credit-payment-flow` เป็นเส้นทางเดียว (หน้า POS เลิกเรียกเส้นนี้แล้ว)
+
+---
+
 ## ยกเลิกใบขาย (void sale — 2026-08-23)
 
 Spec: `docs/superpowers/specs/2026-08-22-void-sale-design.md` · Plan:

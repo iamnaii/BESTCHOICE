@@ -730,4 +730,76 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
       }
     });
   });
+  // ===========================================================================
+  // Task 6 — ด่านใบรับโอนจากหน้าร้าน (§6.4) ผ่านเส้นทาง production จริง
+  // ===========================================================================
+  describe('ด่านใบรับโอนจากหน้าร้าน — ShopCollectSettlementTemplate (Task 6)', () => {
+    it('สัญญาที่มีค่าเครื่องคืนค้าง → ใบรับโอน (typeStamp เริ่มต้น) ถูกปฏิเสธ และ GL ไม่ขยับ', async () => {
+      const id = await seedBaseContract(600, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(id);
+
+      await expect(
+        shopCollectTemplate.execute({
+          contractId: id,
+          depositAccountCode: '11-1201',
+          amount: 7000,
+          requestId: randomUUID(),
+        }),
+      ).rejects.toThrow(/ค่าเครื่องคืนที่ต้องหักผ่านรอบจ่าย INTER-CO/);
+
+      expect((await glContractBalance(prisma, id, '11-2107', 'dr')).toFixed(2)).toBe('7000.00');
+      expect((await deviceReturnFinanceBalance(prisma, id)).toFixed(2)).toBe('7000.00');
+      // ยังอยู่ในคิวค่าเครื่องคืน — ทางล้างเดียวคือรอบจ่าย/รับเงินสด (Task 7-9)
+      const rows = await pendingService.getPendingDeviceReturns();
+      expect(rows.some((r) => r.contractId === id)).toBe(true);
+    });
+  });
+
+  describe('Task 6 - historical DEVICE_RETURN at zero balance', () => {
+    it('cleared typed history still blocks a generic receipt against unrelated legacy balance', async () => {
+      const id = await seedBaseContract(601, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(id);
+      await journalAuto.createAndPost({
+        description: 'Synthetic typed cash clearing',
+        companyId: financeId,
+        metadata: {
+          contractId: id,
+          flow: 'test-device-return-cash',
+          idempotencyKey: id,
+          shopReceivableType: 'DEVICE_RETURN',
+        },
+        lines: [
+          { accountCode: '11-2107', dr: zero, cr: dec('7000') },
+          { accountCode: '11-1201', dr: dec('7000'), cr: zero },
+        ],
+      });
+      expect((await deviceReturnFinanceBalance(prisma, id)).toFixed(2)).toBe('0.00');
+      await journalAuto.createAndPost({
+        description: 'Legacy shop collection fixture',
+        companyId: financeId,
+        metadata: {
+          contractId: id,
+          flow: 'test-legacy-shop-collect',
+          idempotencyKey: id,
+          shopReceivableType: 'SHOP_COLLECT',
+        },
+        lines: [
+          { accountCode: '11-2107', dr: dec('7000'), cr: zero },
+          { accountCode: '11-1201', dr: zero, cr: dec('7000') },
+        ],
+      });
+      const before = await prisma.journalEntry.count();
+      await expect(
+        shopCollectTemplate.execute({
+          contractId: id,
+          depositAccountCode: '11-1201',
+          amount: 7000,
+          requestId: randomUUID(),
+        }),
+      ).rejects.toThrow(/INTER-CO/);
+      expect(await prisma.journalEntry.count()).toBe(before);
+      expect((await glContractBalance(prisma, id, '11-2107', 'dr')).toFixed(2)).toBe('7000.00');
+      expect((await deviceReturnFinanceBalance(prisma, id)).toFixed(2)).toBe('0.00');
+    });
+  });
 });

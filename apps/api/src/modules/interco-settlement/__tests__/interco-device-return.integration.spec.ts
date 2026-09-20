@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { ContractStatus, InterCoBatchStatus, Prisma, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -1324,4 +1325,357 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
       );
     }, 120_000);
   });
+  // ===========================================================================
+  // Task 9 — settleDeductionCash(DEVICE_RETURN): รับเงินสดสำรอง (spec §6.3)
+  // ===========================================================================
+  describe('settleDeductionCash — รับเงินสดค่าเครื่องคืน (Task 9)', () => {
+    beforeAll(async () => {
+      await prisma.systemConfig.deleteMany({ where: { key: 'interco_maker_checker_enabled' } });
+      await prisma.accountingPeriod.deleteMany({
+        where: { companyId: { in: [shopId, financeId] }, year: 2026, month: 9 },
+      });
+    }, 60_000);
+
+    it('settle เต็ม 7,000 → FINANCE ใบ shop-collect-settlement stamp DEVICE_RETURN + SHOP Dr S21-1104 / Cr S11-1202 (default) stamp DEVICE_RETURN; typed = 0; หลุดคิว; audit', async () => {
+      const x = await seedBaseContract(30, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(x);
+      const requestId = randomUUID();
+
+      const result = await settlementService.settleDeductionCash(
+        x,
+        'DEVICE_RETURN',
+        { amount: 7000, financeDepositAccountCode: '11-1201', requestId },
+        adminId,
+      );
+      expect(result.deduped).toBe(false);
+
+      const financeJe = await prisma.journalEntry.findFirstOrThrow({
+        where: { entryNumber: result.financeEntryNo },
+        include: { lines: true },
+      });
+      expect(sumSide(financeJe.lines, '11-1201', 'dr').toFixed(2)).toBe('7000.00');
+      expect(sumSide(financeJe.lines, '11-2107', 'cr').toFixed(2)).toBe('7000.00');
+      expect(financeJe.lines).toHaveLength(2);
+      expect(financeJe.companyId).toBe(financeId);
+      expect(financeJe.description).toContain('ค่าเครื่องคืน');
+      const finMeta = financeJe.metadata as Record<string, unknown>;
+      expect(finMeta.flow).toBe('shop-collect-settlement');
+      expect(finMeta.shopReceivableType).toBe('DEVICE_RETURN');
+      expect(finMeta.contractId).toBe(x);
+
+      const shopJe = await prisma.journalEntry.findFirstOrThrow({
+        where: { entryNumber: result.shopEntryNo },
+        include: { lines: true },
+      });
+      expect(sumSide(shopJe.lines, 'S21-1104', 'dr').toFixed(2)).toBe('7000.00');
+      expect(sumSide(shopJe.lines, 'S11-1202', 'cr').toFixed(2)).toBe('7000.00'); // default SHOP_PAYING_BANK
+      expect(shopJe.lines).toHaveLength(2);
+      expect(shopJe.companyId).toBe(shopId);
+      const shopMeta = shopJe.metadata as Record<string, unknown>;
+      expect(shopMeta.flow).toBe('interco-device-return-cash-shop');
+      expect(shopMeta.idempotencyKey).toBe(`${x}:${requestId}:SHOP`);
+      expect(shopMeta.shopReceivableType).toBe('DEVICE_RETURN');
+      expect(shopMeta.contractId).toBe(x);
+      expect(shopJe.lines.find((l) => l.accountCode === 'S21-1104')!.description).toBe(
+        `ล้างเจ้าหนี้ FINANCE-ค่าเครื่องคืน DRTEST-${RUN}-30`,
+      );
+
+      // typed lens: ใบ settle stamp DEVICE_RETURN + contractId → หักใน typed ตรงๆ → 0 ทั้งสองสมุด
+      expect((await deviceReturnFinanceBalance(prisma, x)).toFixed(2)).toBe('0.00');
+      expect((await deviceReturnShopBalance(prisma, x)).toFixed(2)).toBe('0.00');
+      expect((await pendingService.getPendingDeviceReturns()).some((r) => r.contractId === x)).toBe(
+        false,
+      );
+      expect((await glContractBalance(prisma, x, '11-2107', 'dr')).toFixed(2)).toBe('0.00');
+      expect((await glContractBalance(prisma, x, 'S21-1104', 'cr')).toFixed(2)).toBe('0.00');
+      // explicit stamp ชนะ flow fallback 'shop-collect-settlement' — ไม่รั่วเข้าเลนส์ SHOP_COLLECT
+      expect((await shopCollectTypedBalance(prisma, x)).toFixed(2)).toBe('0.00');
+
+      const audit = await prisma.auditLog.findFirst({
+        where: { action: 'INTERCO_DEVICE_RETURN_CASH_SETTLED', entityId: x },
+      });
+      expect(audit).toBeTruthy();
+      const nv = audit!.newValue as Record<string, unknown>;
+      expect(nv.amount).toBe('7000.00');
+      expect(nv.deviceReturnNetBefore).toBe('7000.00');
+      expect(nv.shopPayoutAccountCode).toBe('S11-1202');
+      expect(nv.requestId).toBe(requestId);
+      const retry = await settlementService.settleDeductionCash(
+        x,
+        'DEVICE_RETURN',
+        { amount: 7000, financeDepositAccountCode: '11-1201', requestId },
+        adminId,
+      );
+      expect(retry).toEqual({ ...result, deduped: true });
+      expect(
+        await prisma.auditLog.count({
+          where: { action: 'INTERCO_DEVICE_RETURN_CASH_SETTLED', entityId: x },
+        }),
+      ).toBe(1);
+    }, 120_000);
+
+    it('settle เกิน net → reject; บางส่วน 3,000 → ผ่าน + คิวเหลือ 4,000 ทั้งสองสมุด; retry requestId เดิม → deduped; ยอดต่าง → 409', async () => {
+      const x = await seedBaseContract(31, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(x);
+
+      await expect(
+        settlementService.settleDeductionCash(
+          x,
+          'DEVICE_RETURN',
+          { amount: 7000.02, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+          adminId,
+        ),
+      ).rejects.toThrow(/เกินยอดค่าเครื่องคืนคงเหลือ/);
+
+      const requestId = randomUUID();
+      const partial = await settlementService.settleDeductionCash(
+        x,
+        'DEVICE_RETURN',
+        { amount: 3000, financeDepositAccountCode: '11-1201', requestId },
+        adminId,
+      );
+      expect(partial.deduped).toBe(false);
+      const row = (await pendingService.getPendingDeviceReturns()).find((r) => r.contractId === x)!;
+      expect(row.deviceReturnGl.toFixed(2)).toBe('4000.00');
+      expect(row.shopDeviceReturnGl.toFixed(2)).toBe('4000.00');
+      // A FINANCE-only receipt with this requestId must never gain a lone SHOP cash leg.
+      const foreignRequest = randomUUID();
+      await journalAuto.createAndPost({
+        description: 'Existing receipt request marker',
+        companyId: financeId,
+        metadata: {
+          flow: 'shop-collect-settlement',
+          idempotencyKey: `${x}:${foreignRequest}`,
+          contractId: x,
+          requestId: foreignRequest,
+          amount: '100.00',
+          shopReceivableType: 'SHOP_COLLECT',
+        },
+        lines: [
+          { accountCode: '11-1201', dr: dec('100'), cr: zero },
+          { accountCode: '21-1103', dr: zero, cr: dec('100') },
+        ],
+      });
+      await expect(
+        settlementService.settleDeductionCash(
+          x,
+          'DEVICE_RETURN',
+          { amount: 100, financeDepositAccountCode: '11-1201', requestId: foreignRequest },
+          adminId,
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(
+        await prisma.journalEntry.count({
+          where: { metadata: { path: ['requestId'], equals: foreignRequest } },
+        }),
+      ).toBe(1);
+      // A valid FINANCE post followed by a failed SHOP post must roll back both books.
+      const failedRequest = randomUUID();
+      await expect(
+        settlementService.settleDeductionCash(
+          x,
+          'DEVICE_RETURN',
+          {
+            amount: 100,
+            financeDepositAccountCode: '11-1201',
+            shopPayoutAccountCode: 'S-NOT-AN-ACCOUNT',
+            requestId: failedRequest,
+          },
+          adminId,
+        ),
+      ).rejects.toThrow();
+      expect(
+        await prisma.journalEntry.count({
+          where: { metadata: { path: ['requestId'], equals: failedRequest } },
+        }),
+      ).toBe(0);
+      expect((await deviceReturnFinanceBalance(prisma, x)).toFixed(2)).toBe('4000.00');
+      expect((await deviceReturnShopBalance(prisma, x)).toFixed(2)).toBe('4000.00');
+
+      const again = await settlementService.settleDeductionCash(
+        x,
+        'DEVICE_RETURN',
+        { amount: 3000, financeDepositAccountCode: '11-1201', requestId },
+        adminId,
+      );
+      expect(again.deduped).toBe(true);
+      expect(again.shopEntryNo).toBe(partial.shopEntryNo);
+
+      await expect(
+        settlementService.settleDeductionCash(
+          x,
+          'DEVICE_RETURN',
+          { amount: 1000, financeDepositAccountCode: '11-1201', requestId },
+          adminId,
+        ),
+      ).rejects.toThrow(ConflictException);
+    }, 120_000);
+
+    it('มี DEVICE_RETURN item ใน batch เปิด (PENDING/DRAFT) → reject ชี้รอบ; ยกเลิกรอบแล้ว settle ผ่าน (เลือกบัญชี S11-1101 ได้)', async () => {
+      const y = await seedBaseContract(32);
+      await seedNormalContract(y);
+      const x = await seedBaseContract(33, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(x);
+
+      const batch = await settlementService.createBatch(
+        { contractIds: [y], deviceReturnContractIds: [x], transferDate: '2026-09-20' },
+        adminId,
+      );
+      createdBatchIds.push(batch.id);
+      await settlementService.submitBatch(batch.id, adminId);
+      await expect(
+        settlementService.settleDeductionCash(
+          x,
+          'DEVICE_RETURN',
+          { amount: 7000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+          adminId,
+        ),
+      ).rejects.toThrow(/รายการค่าเครื่องคืนในรอบจ่าย/);
+
+      await settlementService.withdrawBatch(batch.id, adminId); // DRAFT ก็ block
+      await expect(
+        settlementService.settleDeductionCash(
+          x,
+          'DEVICE_RETURN',
+          { amount: 7000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+          adminId,
+        ),
+      ).rejects.toThrow(/รายการค่าเครื่องคืนในรอบจ่าย/);
+
+      await settlementService.cancelBatch(batch.id, adminId);
+      const result = await settlementService.settleDeductionCash(
+        x,
+        'DEVICE_RETURN',
+        {
+          amount: 7000,
+          financeDepositAccountCode: '11-1201',
+          shopPayoutAccountCode: 'S11-1101',
+          requestId: randomUUID(),
+        },
+        adminId,
+      );
+      const shopJe = await prisma.journalEntry.findFirstOrThrow({
+        where: { entryNumber: result.shopEntryNo },
+        include: { lines: true },
+      });
+      expect(sumSide(shopJe.lines, 'S11-1101', 'cr').toFixed(2)).toBe('7000.00');
+    }, 120_000);
+
+    it('สองสมุดไม่ตรง / ไม่อยู่ในคิว → reject (ห้ามโพสต์ข้างเดียว)', async () => {
+      const mismatch = await seedBaseContract(34, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(mismatch, { shopAmount: '6000.00' });
+      await expect(
+        settlementService.settleDeductionCash(
+          mismatch,
+          'DEVICE_RETURN',
+          { amount: 6000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+          adminId,
+        ),
+      ).rejects.toThrow(/ยอดค่าเครื่องคืนสองสมุดไม่ตรงกัน/);
+
+      await expect(
+        settlementService.settleDeductionCash(
+          normalId,
+          'DEVICE_RETURN',
+          { amount: 100, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+          adminId,
+        ),
+      ).rejects.toThrow(/ไม่อยู่ในคิวค่าเครื่องคืน/);
+    }, 120_000);
+
+    it('กติกาที่ตัดสิน (same-type NET): swap ที่ถูกหักเครดิต 8,000 แล้วถูกยึด → รับเงินสดค่าเครื่องคืน 7,000 ผ่านทั้ง cap ของคิวและด่าน untyped ของ template', async () => {
+      const swap = await seedBaseContract(36);
+      await seedSwapContract(swap);
+      const b1 = await settlementService.createBatch(
+        { contractIds: [swap], transferDate: '2026-09-20' },
+        adminId,
+      );
+      createdBatchIds.push(b1.id);
+      await settlementService.submitBatch(b1.id, adminId);
+      await settlementService.approveBatch(b1.id, adminId);
+      await prisma.contract.update({ where: { id: swap }, data: { status: 'CLOSED_BAD_DEBT' } });
+      await seedDeviceReturnPair(swap);
+
+      // cap = net จากคิว (same-type) = 7,000; template gate (ii) untyped ระดับสัญญา:
+      // 8,000 (A.3) + 7,000 (JP5) − Σ POSTED ทุกประเภท 8,000 = 7,000 → settle 7,000 พอดี
+      const result = await settlementService.settleDeductionCash(
+        swap,
+        'DEVICE_RETURN',
+        { amount: 7000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+        adminId,
+      );
+      expect(result.deduped).toBe(false);
+      expect((await deviceReturnFinanceBalance(prisma, swap)).toFixed(2)).toBe('0.00');
+      expect((await deviceReturnShopBalance(prisma, swap)).toFixed(2)).toBe('0.00');
+      expect((await swapCreditFinanceBalance(prisma, swap)).toFixed(2)).toBe('8000.00'); // เลนส์ gross ไม่ขยับ
+      expect(
+        (await pendingService.getPendingDeviceReturns()).some((r) => r.contractId === swap),
+      ).toBe(false);
+      // untyped ต่อสัญญาหลัง settle = 15,000 − 7,000 = 8,000 = เครดิตสวอปที่รอบ b1 หักไปแล้ว
+      // (ขา Cr ของ batch ไม่ stamp contractId — สถาปัตยกรรมเดิม)
+      expect((await glContractBalance(prisma, swap, '11-2107', 'dr')).toFixed(2)).toBe('8000.00');
+      // รายงานอายุ (combined): 8,000 + 0 − 8,000 = 0 — ไม่มีหนี้ค้าง ไม่ mismatch
+      const agingRow = (await agingService.getShopReceivableAging()).rows.find(
+        (r) => r.contractId === swap,
+      );
+      expect(agingRow).toBeUndefined(); // intercoNet 0 + ไม่ mismatch ⇒ ไม่ใช่ "หนี้ที่ต้องไปตาม"
+    }, 180_000);
+
+    it('wrapper settleRecallCash ยัง byte-identical: flow interco-recall-cash-shop, Cr S11-1201 default, audit INTERCO_RECALL_CASH_SETTLED', async () => {
+      const r = await seedBaseContract(35);
+      await seedRecallContract(r);
+      const result = await settlementService.settleRecallCash(
+        r,
+        { amount: 11000, financeDepositAccountCode: '11-1201', requestId: randomUUID() },
+        adminId,
+      );
+      const shopJe = await prisma.journalEntry.findFirstOrThrow({
+        where: { entryNumber: result.shopEntryNo },
+        include: { lines: true },
+      });
+      expect((shopJe.metadata as Record<string, unknown>).flow).toBe('interco-recall-cash-shop');
+      expect((shopJe.metadata as Record<string, unknown>).shopReceivableType).toBe('PAYOUT_RECALL');
+      expect(sumSide(shopJe.lines, 'S11-1201', 'cr').toFixed(2)).toBe('11000.00');
+      expect(shopJe.lines.find((l) => l.accountCode === 'S21-1104')!.description).toBe(
+        `ล้างเจ้าหนี้ FINANCE-เรียกคืนยกเลิก DRTEST-${RUN}-35`,
+      );
+      const audit = await prisma.auditLog.findFirst({
+        where: { action: 'INTERCO_RECALL_CASH_SETTLED', entityId: r },
+      });
+      expect((audit!.newValue as Record<string, unknown>).recallNetBefore).toBe('11000.00');
+      expect((await recallFinanceBalance(prisma, r)).toFixed(2)).toBe('0.00');
+    }, 120_000);
+  });
 });
+
+/** สัญญายกเลิก C-2 (shape ตาม netting spec) — regression ว่า settleRecallCash ยัง byte-identical */
+async function seedRecallContract(id: string) {
+  await journalAuto.createAndPost({
+    description: 'C-2 recall synthetic',
+    companyId: financeId,
+    metadata: {
+      flow: 'test-c2-recall',
+      idempotencyKey: `tc2:${id}`,
+      contractId: id,
+      shopReceivableType: 'PAYOUT_RECALL',
+    },
+    lines: [
+      { accountCode: '11-2107', dr: dec('11000'), cr: zero },
+      { accountCode: '21-1103', dr: zero, cr: dec('11000') },
+    ],
+  });
+  await journalAuto.createAndPost({
+    description: 'C-2 recall SHOP synthetic',
+    companyId: shopId,
+    metadata: {
+      flow: 'test-c2-recall-shop',
+      idempotencyKey: `tc2s:${id}`,
+      contractId: id,
+      shopReceivableType: 'PAYOUT_RECALL',
+    },
+    lines: [
+      { accountCode: 'S21-1104', dr: zero, cr: dec('11000') },
+      { accountCode: 'S11-1201', dr: dec('11000'), cr: zero },
+    ],
+  });
+}

@@ -1064,4 +1064,19 @@ describe('IntercoSettlementService', () => {
       });
     });
   });
+  describe('settleRecallCash (wrapper — ใบรับเครื่องคืน 2026-09-20 generalize เป็น settleDeductionCash)', () => {
+    it('delegates ไป settleDeductionCash ด้วย type PAYOUT_RECALL (พฤติกรรมเดิมทุกประการ)', async () => {
+      const spy = jest
+        .spyOn(service, 'settleDeductionCash')
+        .mockResolvedValue({ financeEntryNo: 'JE-1', shopEntryNo: 'JE-2', deduped: false });
+      const dto = {
+        amount: 3000,
+        financeDepositAccountCode: '11-1201',
+        requestId: '3f1a2b3c-4d5e-4f60-8a7b-9c0d1e2f3a4b',
+      };
+      const result = await service.settleRecallCash('c-recall', dto, 'approver-1');
+      expect(spy).toHaveBeenCalledWith('c-recall', 'PAYOUT_RECALL', dto, 'approver-1');
+      expect(result).toEqual({ financeEntryNo: 'JE-1', shopEntryNo: 'JE-2', deduped: false });
+    });
+  });
 });

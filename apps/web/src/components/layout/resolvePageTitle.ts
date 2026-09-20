@@ -14,6 +14,7 @@ export const PAGE_TITLE_MAP: Record<string, string> = {
   '/products': NAV_LABELS.stock,
   '/crm': NAV_LABELS.crm,
   '/inbox': NAV_LABELS.chat,
+  '/credit-checks': 'ตรวจเครดิต',
   '/overdue': 'ค้างชำระ',
   '/settings': 'ตั้งค่า',
   '/users': 'ผู้ใช้',

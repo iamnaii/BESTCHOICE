@@ -50,6 +50,10 @@ export class CreditCheckCrudService {
     }
     if (filters.checkedById) where.checkedById = filters.checkedById;
 
+    // การ์ดสรุปนับทุกสถานะ — หน้าคิวเปิดมาที่ MANUAL_REVIEW ถ้ากรองสถานะด้วย การ์ดอื่นจะเป็น 0 เสมอ
+    const summaryWhere = { ...where };
+    delete summaryWhere.status;
+
     const page = filters.page || 1;
     const limit = Math.min(filters.limit || 50, 200);
 
@@ -68,7 +72,7 @@ export class CreditCheckCrudService {
       }),
       this.prisma.creditCheck.count({ where }),
       this.prisma.creditCheck.findMany({
-        where,
+        where: summaryWhere,
         select: { status: true, aiScore: true },
       }),
     ]);

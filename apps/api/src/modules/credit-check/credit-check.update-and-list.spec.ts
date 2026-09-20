@@ -347,6 +347,21 @@ describe('CreditCheckService.findAll', () => {
     expect(res.totalPages).toBe(0); // ceil(0/50)
   });
 
+  it('summary cards ignore the status filter (the queue opens on MANUAL_REVIEW) but keep search', async () => {
+    const { prisma, svc } = setup({ total: 0, summary: [] });
+
+    await svc.findAll({ status: 'MANUAL_REVIEW', search: 'สมชาย' });
+
+    const [listQuery, summaryQuery] = prisma.creditCheck.findMany.mock.calls.map((c) => c[0]);
+    expect(listQuery.where.status).toBe('MANUAL_REVIEW');
+    // Filtering the cards by status zeroes every card except the selected one.
+    expect(summaryQuery.where.status).toBeUndefined();
+    expect(summaryQuery.where.customer).toEqual(listQuery.where.customer);
+    expect(summaryQuery.where.deletedAt).toBeNull();
+    // total drives pagination, so it still follows the list filter
+    expect(prisma.creditCheck.count.mock.calls[0][0].where.status).toBe('MANUAL_REVIEW');
+  });
+
   it('clamps a too-large limit to 200 and computes totalPages off the clamp', async () => {
     const { svc } = setup({ total: 250, summary: [] });
 

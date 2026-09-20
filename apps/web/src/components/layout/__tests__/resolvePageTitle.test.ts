@@ -13,6 +13,10 @@ describe('resolvePageTitle — ชื่อหน้าใน breadcrumb แถ�
     expect(resolvePageTitle('/')).not.toBe('');
   });
 
+  it('หน้าตรวจเครดิต → ชื่อไทยเดียวกับเมนู ไม่ใช่ "credit checks"', () => {
+    expect(resolvePageTitle('/credit-checks')).toBe('ตรวจเครดิต');
+  });
+
   it('path ที่ไม่รู้จัก → ใช้ segment สุดท้าย (ขีดกลางเป็นเว้นวรรค)', () => {
     expect(resolvePageTitle('/some/unknown-page')).toBe('unknown page');
   });

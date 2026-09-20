@@ -20,7 +20,7 @@ import { glContractBalance } from '../../journal/gl-contract-balance';
 import { IntercoPendingService } from '../interco-pending.service';
 import { IntercoBatchNumberService } from '../interco-batch-number.service';
 import { IntercoSettlementService } from '../interco-settlement.service';
-import { IntercoAgingService } from '../interco-aging.service';
+import { IntercoAgingService, negativeTypedFields } from '../interco-aging.service';
 import {
   SHOP_RECEIVABLE_TYPES,
   classifyShopReceivable,
@@ -594,6 +594,140 @@ describe('ใบรับเครื่องคืน — DEVICE_RETURN คร
       await prisma.interCoSettlementItem.delete({ where: { id: gateItem.id } });
       await prisma.interCoSettlementItem.deleteMany({ where: { batchId: b1.id } });
       await prisma.interCoSettlementBatch.deleteMany({ where: { id: { in: [b1.id, b2.id] } } });
+    });
+  });
+  // ===========================================================================
+  // Task 5 — รายงานอายุ + กระทบยอดระดับบัญชี (anti-drift บังคับตาม spec §6.2)
+  // ===========================================================================
+  describe('รายงานอายุ + getTypedAccountDrift (Task 5)', () => {
+    it('แถว X: deviceReturnGross 7,000 เข้ากลุ่ม interco, กระจก SHOP 7,000, ไม่ mismatch, ไม่ใช่ legacy, อายุ 0 วัน', async () => {
+      const res = await agingService.getShopReceivableAging();
+      const row = res.rows.find((r) => r.contractId === deviceReturnId)!;
+      expect(row).toBeDefined();
+      expect(row.deviceReturnGross.toFixed(2)).toBe('7000.00');
+      expect(row.swapCreditGross.toFixed(2)).toBe('0.00');
+      expect(row.payoutRecallGross.toFixed(2)).toBe('0.00');
+      expect(row.shopCollect.toFixed(2)).toBe('0.00'); // marker shopReceivable '11-2107' ต้องไม่รั่ว
+      expect(row.settledDeduction.toFixed(2)).toBe('0.00');
+      expect(row.intercoNet.toFixed(2)).toBe('7000.00');
+      expect(row.shopMirrorDeviceReturnGross.toFixed(2)).toBe('7000.00');
+      expect(row.shopMirrorGross.toFixed(2)).toBe('7000.00');
+      expect(row.shopMirrorSwapGross.toFixed(2)).toBe('0.00');
+      expect(row.shopMirrorRecallGross.toFixed(2)).toBe('0.00');
+      expect(row.shopMirrorCollectGross.toFixed(2)).toBe('0.00');
+      expect(row.shopMirrorNet.toFixed(2)).toBe('7000.00');
+      expect(row.bookMismatch).toBe(false);
+      expect(row.legacyOneBook).toBe(false);
+      expect(row.intercoAgeDays).toBe(0);
+      expect(row.shopCollectAgeDays).toBeNull();
+      // totals นับ X (ไม่ใช่ legacy) — อย่างน้อยเท่ายอดของ X
+      expect(res.totals.intercoNet.gte('7000.00')).toBe(true);
+    });
+
+    it('สองสมุดไม่ตรง (FINANCE 7,000 / SHOP 6,000) → bookMismatch = true และแถวยังรายงาน', async () => {
+      const id = await seedBaseContract(4, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(id, { shopAmount: '6000.00' });
+      const res = await agingService.getShopReceivableAging();
+      const row = res.rows.find((r) => r.contractId === id)!;
+      expect(row).toBeDefined();
+      expect(row.intercoNet.toFixed(2)).toBe('7000.00');
+      expect(row.shopMirrorNet.toFixed(2)).toBe('6000.00');
+      expect(row.bookMismatch).toBe(true);
+    });
+
+    it('getTypedAccountDrift: seed คู่ DEVICE_RETURN ใหม่ → lens/account ขยับ 7,000 เท่ากัน, drift ไม่ขยับ (ทั้ง 11-2107 และ S21-1104)', async () => {
+      const before = await agingService.getTypedAccountDrift();
+      const id = await seedBaseContract(5, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(id);
+      const after = await agingService.getTypedAccountDrift();
+      expect(after.map((d) => d.accountCode)).toEqual(['11-2107', 'S21-1104']);
+      for (const code of ['11-2107', 'S21-1104']) {
+        const b = before.find((d) => d.accountCode === code)!;
+        const a = after.find((d) => d.accountCode === code)!;
+        expect(a.accountTotal.minus(b.accountTotal).toFixed(2)).toBe('7000.00');
+        expect(a.lensTotal.minus(b.lensTotal).toFixed(2)).toBe('7000.00');
+        expect(a.settledDeduction.minus(b.settledDeduction).toFixed(2)).toBe('0.00');
+        expect(a.drift.minus(b.drift).abs().lte('0.01')).toBe(true);
+      }
+    });
+
+    it('negativeTypedFields รายงานช่อง deviceReturnGross / shopMirrorDeviceReturnGross ที่ติดลบ (แหล่งเดียวของ reconcile cron)', () => {
+      const base = {
+        intercoNet: dec('0'),
+        shopCollect: dec('0'),
+        shopMirrorNet: dec('0'),
+        shopMirrorCollectGross: dec('0'),
+        deviceReturnGross: dec('0'),
+        shopMirrorDeviceReturnGross: dec('0'),
+        legacyOneBook: false,
+      };
+      expect(negativeTypedFields(base)).toEqual([]);
+      const fields = negativeTypedFields({
+        ...base,
+        deviceReturnGross: dec('-7000'),
+        shopMirrorDeviceReturnGross: dec('-7000'),
+      }).map((f) => f.field);
+      expect(fields).toEqual(['deviceReturnGross', 'shopMirrorDeviceReturnGross']);
+      // แถว legacy ยังใช้ยอดรวมระดับสัญญา (ไม่แตะกติกาเดิม)
+      expect(
+        negativeTypedFields({ ...base, legacyOneBook: true, deviceReturnGross: dec('-1') }),
+      ).toEqual([]);
+    });
+    it('POSTED device return deductions reduce both aging nets and account lenses equally', async () => {
+      const id = await seedBaseContract(6, 'CLOSED_BAD_DEBT');
+      await seedDeviceReturnPair(id);
+      const before = await agingService.getTypedAccountDrift();
+      const batch = await seedBatch('POSTED', 5);
+      await prisma.interCoSettlementItem.create({
+        data: {
+          batchId: batch.id,
+          contractId: id,
+          itemType: 'DEVICE_RETURN',
+          financedGl: zero,
+          commissionGl: zero,
+          shopFinancedGl: zero,
+          shopCommissionGl: zero,
+          deviceReturnAmount: dec('2000.00'),
+        },
+      });
+      // Batch clearing legs deliberately have no contractId/type stamp: deductions supply the lens.
+      for (const [companyId, accountCode, bankCode, finance] of [
+        [financeId, '11-2107', '11-1201', true],
+        [shopId, 'S21-1104', 'S11-1201', false],
+      ] as const) {
+        await journalAuto.createAndPost({
+          description: 'Synthetic device return batch clearing',
+          companyId,
+          metadata: {
+            flow: 'test-device-return-clearing',
+            idempotencyKey: `${batch.id}:${companyId}`,
+            settlementBatchId: batch.id,
+          },
+          lines: [
+            { accountCode, dr: finance ? zero : dec('2000'), cr: finance ? dec('2000') : zero },
+            {
+              accountCode: bankCode,
+              dr: finance ? dec('2000') : zero,
+              cr: finance ? zero : dec('2000'),
+            },
+          ],
+        });
+      }
+      const row = (await agingService.getShopReceivableAging()).rows.find(
+        (r) => r.contractId === id,
+      )!;
+      expect(row.settledDeduction.toFixed(2)).toBe('2000.00');
+      expect(row.intercoNet.toFixed(2)).toBe('5000.00');
+      expect(row.shopMirrorNet.toFixed(2)).toBe('5000.00');
+      expect(row.bookMismatch).toBe(false);
+      const after = await agingService.getTypedAccountDrift();
+      for (const a of after) {
+        const b = before.find((d) => d.accountCode === a.accountCode)!;
+        expect(a.accountTotal.minus(b.accountTotal).toFixed(2)).toBe('-2000.00');
+        expect(a.lensTotal.minus(b.lensTotal).toFixed(2)).toBe('0.00');
+        expect(a.settledDeduction.minus(b.settledDeduction).toFixed(2)).toBe('2000.00');
+        expect(a.drift.minus(b.drift).abs().lte('0.01')).toBe(true);
+      }
     });
   });
 });

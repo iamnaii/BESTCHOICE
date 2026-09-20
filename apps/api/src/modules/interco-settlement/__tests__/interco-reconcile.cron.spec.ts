@@ -48,13 +48,15 @@ function makeRow(partial: Partial<ShopReceivableAgingRow>): ShopReceivableAgingR
     customerName: 'ลูกค้าทดสอบ',
     swapCreditGross: D(0),
     payoutRecallGross: D(0),
+    deviceReturnGross: D(0),
     settledDeduction: D(0),
     intercoNet: D(0),
     shopCollect: D(0),
     shopMirrorGross: D(0),
-  shopMirrorSwapGross: D(0),
-  shopMirrorRecallGross: D(0),
-  shopMirrorCollectGross: D(0),
+    shopMirrorSwapGross: D(0),
+    shopMirrorRecallGross: D(0),
+    shopMirrorDeviceReturnGross: D(0),
+    shopMirrorCollectGross: D(0),
     shopMirrorNet: D(0),
     intercoOldestPostedAt: null,
     intercoAgeDays: null,
@@ -76,7 +78,8 @@ function makePair(partial: Partial<PayablePairRow>): PayablePairRow {
   const commissionDiff = commissionGl.minus(shopCommissionGl);
   const diff = financedDiff.plus(commissionDiff);
   const legacyNoShop =
-    partial.legacyNoShop ?? (shopFinancedGl.abs().lte('0.01') && shopCommissionGl.abs().lte('0.01'));
+    partial.legacyNoShop ??
+    (shopFinancedGl.abs().lte('0.01') && shopCommissionGl.abs().lte('0.01'));
   return {
     contractId: 'p-0',
     contractNumber: 'CT-P0',
@@ -714,9 +717,7 @@ describe('IntercoReconcileCron', () => {
 
     expect(result.findings).toHaveLength(25);
     const data = prisma.todo.create.mock.calls[0][0].data;
-    const bullets = data.description
-      .split('\n')
-      .filter((l: string) => l.trim().startsWith('•'));
+    const bullets = data.description.split('\n').filter((l: string) => l.trim().startsWith('•'));
     expect(bullets).toHaveLength(20);
     expect(data.description).toContain('และอีก 5 รายการ');
   });

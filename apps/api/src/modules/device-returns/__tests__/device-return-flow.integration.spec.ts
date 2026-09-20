@@ -460,6 +460,9 @@ describe('ใบรับเครื่องคืน — create → confirm �
 
     // §6.2 anti-drift: ใบใหม่ทั้งสองต้องถูกเลนส์ classify ได้ครบ — drift ระดับบัญชีไม่ขยับ, lensTotal +7,000
     const driftAfter = await agingService.getTypedAccountDrift();
+    const expectedAccounts = ['11-2107', 'S21-1104'];
+    expect(driftBefore.map((row) => row.accountCode).sort()).toEqual(expectedAccounts);
+    expect(driftAfter.map((row) => row.accountCode).sort()).toEqual(expectedAccounts);
     for (const after of driftAfter) {
       const before = driftBefore.find((b) => b.accountCode === after.accountCode)!;
       expect(after.drift.minus(before.drift).toFixed(2), `${after.accountCode} drift delta`).toBe(
@@ -628,6 +631,62 @@ describe('ใบรับเครื่องคืน — create → confirm �
       'ACTIVE',
     );
   }, 120_000);
+
+  it.each([0.001, 0.004])(
+    'rejects sub-cent appraisal %s without an intake or contract status change',
+    async (appraisalPrice) => {
+      const { contract } = await seedContract(appraisalPrice === 0.001 ? 101 : 102, 'ACTIVE');
+      // Direct service regression: real persistence, not an HTTP/ValidationPipe test.
+      const outcome = await deviceReturns
+        .create(
+          {
+            contractId: contract.id,
+            deviceReceivedAt: new Date().toISOString(),
+            conditionGrade: 'A',
+            appraisalPrice,
+            receivingBranchId,
+            returnReason: 'UNAFFORDABLE',
+          },
+          OWNER() as never,
+        )
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+
+      // Check persisted state even when a regression unexpectedly creates an intake;
+      // cleanup tracks contracts, so those unexpected rows are also removed.
+      expect.soft(await prisma.deviceReturn.count({ where: { contractId: contract.id } })).toBe(0);
+      expect
+        .soft((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status)
+        .toBe('ACTIVE');
+      expect(outcome).toMatchObject({ message: 'กรุณาระบุราคาประเมินมากกว่า 0 บาท' });
+    },
+  );
+
+  it.each([0.01, 0.005])('accepts appraisal %s and persists one cent', async (appraisalPrice) => {
+    const { contract } = await seedContract(appraisalPrice === 0.01 ? 103 : 104, 'ACTIVE');
+    const intake = await deviceReturns.create(
+      {
+        contractId: contract.id,
+        deviceReceivedAt: new Date().toISOString(),
+        conditionGrade: 'A',
+        appraisalPrice,
+        receivingBranchId,
+        returnReason: 'UNAFFORDABLE',
+      },
+      OWNER() as never,
+    );
+    expect(intake.appraisalPrice).toBe('0.01');
+    expect(
+      (
+        await prisma.deviceReturn.findUniqueOrThrow({ where: { id: intake.id } })
+      ).appraisalPrice.toFixed(2),
+    ).toBe('0.01');
+    expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe(
+      'TERMINATED',
+    );
+  });
 
   // -------------------------------------------------------------------------
   it('สัญญา T (TERMINATED รอยึด): อยู่ในรายการ awaiting → create ใบประเภท REPOSSESSION (เหตุผลตั้งให้เอง) → หายจากรายการ', async () => {

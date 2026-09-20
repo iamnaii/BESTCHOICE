@@ -348,7 +348,8 @@ export class DeviceReturnsService {
           const returnKind = kind as DeviceReturnKind;
           const returnReason = this.resolveReturnReason(returnKind, dto.returnReason, dto.notes);
 
-          const appraisal = d(dto.appraisalPrice);
+          // Validate and use the amount persisted by Decimal(12, 2), including sub-cent input.
+          const appraisal = d(dto.appraisalPrice).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
           if (appraisal.lte(0)) {
             throw new BadRequestException('กรุณาระบุราคาประเมินมากกว่า 0 บาท');
           }

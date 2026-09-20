@@ -697,6 +697,18 @@ describe('DeviceReturnsService', () => {
       await service.create({ ...dto(), appraisalPrice: 6800 }, SALES_A as never);
       expect(String(prisma.deviceReturn.create.mock.calls[0][0].data.tableBasePrice)).toBe('8000');
     });
+
+    it('checks table deviation and audits using the normalized persisted appraisal', async () => {
+      arm();
+      prisma.tradeInValuation.findFirst.mockResolvedValue({ basePrice: decimal(8000), note: null });
+      await service.create({ ...dto(), appraisalPrice: 6799.999 }, SALES_A as never);
+      expect(String(prisma.deviceReturn.create.mock.calls[0][0].data.appraisalPrice)).toBe('6800');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: expect.objectContaining({ appraisalPrice: '6800.00' }),
+        }),
+      );
+    });
   });
 
   describe('list / findOne / awaitingRepossession', () => {

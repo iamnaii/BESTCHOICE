@@ -15,6 +15,9 @@ export interface CashClose {
   sentBackBy: Person | null; sentBackAt: string | null; sentBackReason: string | null;
   /** ลงบัญชีตอนยืนยันรับเงินแล้วหรือยัง (false หลังยืนยัน = ไม่มียอดให้ลง หรือสาขายังไม่ตั้งบัญชีลิ้นชัก) */
   journalPosted: boolean;
+  depositReference: string | null;
+  hasDepositSlip: boolean;
+  moneyState: CashCloseMoneyState;
 }
 
 export interface CashCloseStatusResponse {
@@ -22,11 +25,12 @@ export interface CashCloseStatusResponse {
   round: { periodStart: string | null; floatAmount: number; cashIn: number; cashOut: number; expectedAmount: number; movementCount: number };
   closes: CashClose[];
   awaitingConfirm: CashClose[];
-  permissions: { canCount: boolean; canConfirm: boolean; viewerId: string };
+  permissions: { canCount: boolean; canConfirm: boolean; viewerId: string; viewerRole?: string };
 }
 
 export interface CashCloseHistoryResponse {
   month: string; branchId: string | null; rows: CashClose[];
+  deposits: CashDeposit[];
   alerts: {
     unclosedYesterday: { branchId: string; branchName: string; date: string; cashIn: number }[];
     monthShortage: { branchId: string; branchName: string; count: number; amount: number }[];
@@ -79,3 +83,89 @@ export function parseAmount(text: string): number | null {
 export function latestEffectiveClose(closes: CashClose[]): CashClose | null {
   return closes.filter((c) => c.status !== 'SENT_BACK').sort((a, b) => b.countedAt.localeCompare(a.countedAt))[0] ?? null;
 }
+
+// ─── ปิดยอดทุกวัน + หลักฐานว่าเงินถึงบริษัท (mockup CnXmYLkT กระดาน 10–11 — เจ้าของเคาะ 2026-09-21) ───
+
+/** เงินของการปิดยอดครั้งนั้นถึงบริษัทแล้วหรือยัง — ตู้เซฟสาขา = ยังอยู่ที่สาขา จนกว่าจะบันทึกนำฝากครบ */
+export type CashCloseMoneyState = 'AWAITING_CONFIRM' | 'REACHED' | 'AT_BRANCH' | 'SENT_BACK';
+/** สถานะของหนึ่งวันของหนึ่งสาขา (ตารางสถานะของวัน + แถบ 14 วัน) */
+export type CashCloseDayState = 'REACHED' | 'AT_BRANCH' | 'AWAITING_CONFIRM' | 'NOT_COUNTED' | 'MISSED' | 'NO_CASH';
+export type CashDepositSource = 'BRANCH_SAFE' | 'OWNER_HOLD';
+
+export interface CashCloseOverviewRow {
+  branchId: string; branchName: string; state: CashCloseDayState; close: CashClose | null; closeCount: number;
+  dayCashIn: number; dayCashOut: number; lastCashInAt: string | null;
+  round: { floatAmount: number; cashIn: number; cashOut: number; expectedAmount: number; periodStart: string | null } | null;
+  canConfirm: boolean;
+}
+
+export interface CashHolding {
+  branchId: string; branchName: string; source: CashDepositSource; sourceLabel: string; reachedCompany: boolean;
+  outstanding: number; closeCount: number; oldestConfirmedAt: string | null;
+  openCloses: { id: string; confirmedAt: string; outstanding: number }[];
+  canDeposit: boolean;
+}
+
+export interface CashDeposit {
+  id: string; branchId: string; branchName: string; source: CashDepositSource; sourceLabel: string;
+  amount: number; reference: string; note: string | null; depositedBy: Person; depositedAt: string; journalPosted: boolean;
+}
+
+export interface CashCloseOverviewResponse {
+  date: string; today: string; asOf: string; viewerId: string; viewerRole: string;
+  rows: CashCloseOverviewRow[];
+  summary: { reached: number; atBranch: number; awaitingConfirm: number; notCounted: number; noCash: number };
+  strip: { dates: string[]; rows: { branchId: string; branchName: string; cells: CashCloseDayState[] }[] };
+  holdings: CashHolding[];
+}
+
+export interface CashCloseReminderResponse {
+  missed: { branchId: string; branchName: string; date: string; cashIn: number; expectedAmount: number } | null;
+  canCount: boolean;
+}
+
+export const DAY_STATE_LABEL: Record<CashCloseDayState, string> = {
+  REACHED: 'ถึงบริษัทแล้ว',
+  AT_BRANCH: 'รับเงินแล้ว ยังอยู่ที่สาขา',
+  AWAITING_CONFIRM: 'นับแล้ว รอยืนยันรับเงิน',
+  NOT_COUNTED: 'ยังไม่นับ',
+  MISSED: 'มีเงินสดแต่ไม่ปิดยอด',
+  NO_CASH: 'ไม่มีเงินสด',
+};
+
+/** ป้ายสถานะ (พื้น + ตัวอักษร) — ใช้โทเคนสีของธีมเท่านั้น */
+export const DAY_STATE_BADGE: Record<CashCloseDayState, string> = {
+  REACHED: 'bg-primary/10 text-primary',
+  AT_BRANCH: 'bg-warning/10 text-warning',
+  AWAITING_CONFIRM: 'bg-warning/10 text-warning',
+  NOT_COUNTED: 'bg-destructive/10 text-destructive',
+  MISSED: 'bg-destructive/10 text-destructive',
+  NO_CASH: 'bg-muted text-muted-foreground',
+};
+
+/** ช่องของแถบ 14 วัน — วันนี้ที่ยังไม่นับ = กรอบแดงโปร่ง (ยังไม่ถึงเวลาปิดยอด ไม่ใช่ "ไม่ปิดยอด") */
+export const DAY_STATE_CELL: Record<CashCloseDayState, string> = {
+  REACHED: 'bg-primary',
+  AT_BRANCH: 'bg-warning',
+  AWAITING_CONFIRM: 'bg-warning',
+  NOT_COUNTED: 'border-2 border-dashed border-destructive bg-destructive/10',
+  MISSED: 'bg-destructive',
+  NO_CASH: 'bg-muted',
+};
+
+export const MONEY_STATE_LABEL: Record<CashCloseMoneyState, string> = {
+  AWAITING_CONFIRM: 'รอยืนยันรับเงิน',
+  REACHED: 'ถึงบริษัทแล้ว',
+  AT_BRANCH: 'ยังอยู่ที่สาขา',
+  SENT_BACK: 'ตีกลับให้นับใหม่',
+};
+
+export const MIN_DEPOSIT_REFERENCE = 6;
+export const EVIDENCE_IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp';
+export const EVIDENCE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+export const thaiShortDate = (date: string) =>
+  new Date(`${date}T00:00:00+07:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: BKK });
+
+/** จำนวนวันเต็มตั้งแต่เวลานั้นถึงตอนนี้ (ปัดลง) */
+export const daysSince = (iso: string, now: number = Date.now()) => Math.max(0, Math.floor((now - new Date(iso).getTime()) / 86_400_000));

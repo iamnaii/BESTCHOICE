@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -10,6 +10,7 @@ import { tenderMethodLabel } from '@/components/tender/tender-utils';
 import { useAuth } from '@/contexts/AuthContext';
 import CashCloseCard, { cashCloseKey } from './shop-daily-cash/CashCloseCard';
 import CashCloseHistory from './shop-daily-cash/CashCloseHistory';
+import CashCloseOverview from './shop-daily-cash/CashCloseOverview';
 import { latestEffectiveClose, varianceLabel, type CashCloseStatusResponse } from './shop-daily-cash/cash-close';
 
 /** สรุปเงินหน้าร้านรายวัน (mockup CnXmYLkT กระดาน 1-3, 5) — อ่านจาก GET /shop-tenders/daily-summary */
@@ -85,6 +86,14 @@ export default function ShopDailyCashPage() {
   const data = query.data;
   const own = data?.scope === 'OWN';
 
+  // ร้านที่มีสาขาเดียว: เลือกสาขานั้นให้เองครั้งแรก — เปิดหน้ามาต้องเจอกล่องปิดยอดทันที (เดิมค้างที่ "ทุกสาขา" จึงไม่เห็นกล่องเลย)
+  const [autoPicked, setAutoPicked] = useState(false);
+  useEffect(() => {
+    if (autoPicked || data?.scope !== 'ALL') return;
+    setAutoPicked(true);
+    if (data.branches.length === 1) setBranchId(data.branches[0].id);
+  }, [autoPicked, data]);
+
   // กล่องปิดยอดผูกกับ "สาขาเดียว": เจ้าของ/การเงิน/บัญชี = สาขาที่เลือก · ผจก.สาขา = สาขาตัวเอง · พนักงานขาย = สาขาที่สังกัด
   const { user } = useAuth();
   const [tab, setTab] = useState<'DAILY' | 'HISTORY'>('DAILY');
@@ -155,13 +164,15 @@ export default function ShopDailyCashPage() {
       <QueryBoundary isLoading={query.isLoading} isError={query.isError} error={query.error} onRetry={query.refetch}>
         {data && (
           <div className="space-y-5">
-            {closeBranchId
-              ? <CashCloseCard branchId={closeBranchId} date={date} isToday={isToday} />
-              : data.scope === 'ALL' && (
-                <p className="rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground leading-snug">
-                  เลือกสาขาเดียวเพื่อดูกล่องปิดยอดของสาขานั้น (ยอดที่ต้องมีในลิ้นชัก · นับเงิน · ยืนยันรับเงิน)
-                </p>
-              )}
+            {closeBranchId && <CashCloseCard branchId={closeBranchId} date={date} isToday={isToday} />}
+            {!own && (
+              <CashCloseOverview date={date} branchId={closeBranchId} showTable={!closeBranchId}
+                onOpen={(openBranchId, openDate) => {
+                  if (data.scope === 'ALL') setBranchId(openBranchId);
+                  if (openDate) setDate(openDate);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }} />
+            )}
 
             {own && (
               <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm leading-snug text-foreground">

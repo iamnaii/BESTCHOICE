@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ShopTendersController } from './shop-tenders.controller';
 import { ShopTendersReportService } from './shop-tenders-report.service';
 import { ShopCashCloseService } from './shop-cash-close.service';
+import { ShopCashHoldingService } from './shop-cash-holding.service';
+import { ShopCashOverviewService } from './shop-cash-overview.service';
 import { JournalModule } from '../journal/journal.module';
 
 /**
@@ -12,6 +14,6 @@ import { JournalModule } from '../journal/journal.module';
 @Module({
   imports: [JournalModule],
   controllers: [ShopTendersController],
-  providers: [ShopTendersReportService, ShopCashCloseService],
+  providers: [ShopTendersReportService, ShopCashCloseService, ShopCashHoldingService, ShopCashOverviewService],
 })
 export class ShopTendersModule {}

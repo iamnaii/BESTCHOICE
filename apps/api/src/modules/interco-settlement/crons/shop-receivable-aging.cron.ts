@@ -286,7 +286,8 @@ export class ShopReceivableAgingCron {
         label: 'หน้าร้านรับเงินแทน',
         amount: row.shopCollect,
         ageDays: row.shopCollectAgeDays ?? thresholdDays,
-        howTo: 'ล้างโดยรับโอนจากหน้าร้าน (บันทึกรับเงินที่หน้าร้านเก็บแทน — Dr เงินสด/ธนาคาร / Cr 11-2107)',
+        howTo:
+          'ล้างโดยรับโอนจากหน้าร้าน (บันทึกรับเงินที่หน้าร้านเก็บแทน — Dr เงินสด/ธนาคาร / Cr 11-2107)',
       });
     }
     // แขนที่แก่ที่สุดขึ้นก่อน — ใช้เป็นหัวเรื่องของ Todo
@@ -323,6 +324,7 @@ export class ShopReceivableAgingCron {
         lines.push(
           `   - เครดิตเปลี่ยนเครื่อง (SWAP_CREDIT) ${formatAmount(row.swapCreditGross)} บาท · ` +
             `เรียกคืนจากยกเลิก (PAYOUT_RECALL) ${formatAmount(row.payoutRecallGross)} บาท · ` +
+            `ค่าเครื่องคืน (DEVICE_RETURN) ${formatAmount(row.deviceReturnGross)} บาท · ` +
             `หักไปแล้วในรอบจ่าย ${formatAmount(row.settledDeduction)} บาท`,
         );
       }

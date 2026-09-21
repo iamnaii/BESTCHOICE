@@ -66,6 +66,7 @@ const repossession = {
   customerRefundEnabled: false,
   customerRefund: null,
   shopCollectOutstanding: '0.00',
+  deviceReturnOutstanding: '0.00',
   contract: {
     id: 'c-repo-1',
     contractNumber: 'TEST-20260905-002',
@@ -81,8 +82,11 @@ const repossession = {
 
 function routeApi() {
   apiGet.mockImplementation((url: string) => {
-    if (url.startsWith('/contracts?status=TERMINATED')) {
+    if (url.startsWith('/device-returns/awaiting-repossession')) {
       return Promise.resolve({ data: { data: [terminatedContract], total: 1 } });
+    }
+    if (url.startsWith('/device-returns?')) {
+      return Promise.resolve({ data: { data: [], total: 0, page: 1, limit: 100 } });
     }
     if (url.startsWith('/repossessions/profit-loss')) return Promise.resolve({ data: {} });
     if (url.startsWith('/repossessions')) {

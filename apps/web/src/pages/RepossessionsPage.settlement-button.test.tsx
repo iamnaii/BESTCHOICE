@@ -41,6 +41,7 @@ const repo = (over: Record<string, unknown>) => ({
   customerRefundEnabled: false,
   customerRefund: null,
   shopCollectOutstanding: '0.00',
+  deviceReturnOutstanding: '0.00',
   contract: {
     id: 'c-1',
     contractNumber: 'TEST-20260905-010',
@@ -57,8 +58,10 @@ const repo = (over: Record<string, unknown>) => ({
 
 function routeApi(rows: unknown[]) {
   apiGet.mockImplementation((url: string) => {
-    if (url.startsWith('/contracts?status=TERMINATED'))
+    if (url.startsWith('/device-returns/awaiting-repossession'))
       return Promise.resolve({ data: { data: [], total: 0 } });
+    if (url.startsWith('/device-returns?'))
+      return Promise.resolve({ data: { data: [], total: 0, page: 1, limit: 100 } });
     if (url.startsWith('/repossessions/profit-loss')) return Promise.resolve({ data: {} });
     if (url.startsWith('/repossessions'))
       return Promise.resolve({ data: { data: rows, total: rows.length } });
@@ -108,5 +111,14 @@ describe('RepossessionsPage — รับโอนหน้าร้าน / ข
       .map((o) => (o as HTMLOptionElement).value);
     expect(options).toContain('READY_FOR_SALE');
     expect(options).not.toContain('SOLD');
+  });
+
+  it('shows the "รอหักในรอบจ่าย" badge when 11-2107 DEVICE_RETURN is still outstanding', async () => {
+    routeApi([repo({ deviceReturnOutstanding: '7000.00' })]);
+    render(<RepossessionsPage />, { wrapper });
+    await screen.findByText('TEST-20260905-010');
+    expect(screen.getByText(/รอหักในรอบจ่าย 7,000 ฿/)).toBeInTheDocument();
+    // ปุ่มรับโอนหน้าร้านยังผูกกับ SHOP_COLLECT เดิมเท่านั้น
+    expect(screen.queryByRole('button', { name: 'รับโอนหน้าร้าน' })).not.toBeInTheDocument();
   });
 });

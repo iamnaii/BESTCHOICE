@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/nestjs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { MdmLockService } from '../mdm-lock.service';
+import { OPEN_DEVICE_RETURN_STATUSES } from '../../device-returns/device-return.predicate';
 
 /**
  * Promise-resolution cron — evaluates open PromiseSlot entries once per hour.
@@ -189,6 +190,21 @@ export class PromiseResolutionCron {
     );
 
     if (brokenSlot) {
+      // spec 2026-09-20 §5.7: เครื่องอยู่ที่สาขาแล้ว (ใบรับเครื่องคืน PENDING_CONFIRM/CONFIRMED) —
+      // นับ broken/kept ตามเดิม (สถิติ/tag ยังต้องเห็น) แต่ไม่สั่งล็อค MDM ซ้ำบนเครื่องที่ไม่ได้อยู่กับลูกค้า
+      const heldByShop = await this.prisma.deviceReturn.count({
+        where: {
+          contractId: p.contractId,
+          status: { in: OPEN_DEVICE_RETURN_STATUSES },
+          deletedAt: null,
+        },
+      });
+      if (heldByShop > 0) {
+        this.logger.log(
+          `promise-resolution: contract ${p.contractId} มีใบรับเครื่องคืนเปิดอยู่ — ข้าม MDM autoLock (slot${brokenSlot.slotIndex})`,
+        );
+        return;
+      }
       try {
         await this.mdm.autoLock(
           p.contractId,

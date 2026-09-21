@@ -35,13 +35,15 @@ function makeRow(partial: Partial<ShopReceivableAgingRow>): ShopReceivableAgingR
     customerName: 'ลูกค้าทดสอบ',
     swapCreditGross: D(0),
     payoutRecallGross: D(0),
+    deviceReturnGross: D(0),
     settledDeduction: D(0),
     intercoNet: D(0),
     shopCollect: D(0),
     shopMirrorGross: D(0),
-  shopMirrorSwapGross: D(0),
-  shopMirrorRecallGross: D(0),
-  shopMirrorCollectGross: D(0),
+    shopMirrorSwapGross: D(0),
+    shopMirrorRecallGross: D(0),
+    shopMirrorDeviceReturnGross: D(0),
+    shopMirrorCollectGross: D(0),
     shopMirrorNet: D(0),
     intercoOldestPostedAt: null,
     intercoAgeDays: null,
@@ -117,7 +119,10 @@ function fixtureRows(): ShopReceivableAgingRow[] {
  * service ใช้ (`isShopReceivableOverdue` ที่ export ออกมา) และ **กันแถว legacy ออก**
  * ⇒ เทสต์ anti-drift ด้านล่างจับได้ทันทีถ้า cron ไปเขียนสูตรของตัวเอง.
  */
-function buildResult(rows: ShopReceivableAgingRow[], thresholdDays: number): ShopReceivableAgingResult {
+function buildResult(
+  rows: ShopReceivableAgingRow[],
+  thresholdDays: number,
+): ShopReceivableAgingResult {
   const nonLegacy = rows.filter((r) => !r.legacyOneBook);
   const legacy = rows.filter((r) => r.legacyOneBook);
   const zero = D(0);

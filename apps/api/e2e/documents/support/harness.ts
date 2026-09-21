@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { INestApplication, Logger } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
+import { SchedulerOrchestrator } from '@nestjs/schedule/dist/scheduler.orchestrator';
 import { Test, TestingModuleBuilder } from '@nestjs/testing';
 import request from 'supertest';
 import { configureApp, installRuntimeGlobals } from '../../../src/app.setup';
@@ -15,6 +16,7 @@ import { LineFinanceClientService } from '../../../src/modules/chatbot-finance/s
 import { seedFinanceCoa } from '../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../prisma/seed-coa-shop';
 import { assertDisposableRuntime } from './runtime';
+import { suppressScheduledJobs, SuppressedSchedulerOrchestrator } from './scheduler';
 
 /**
  * Documents integration harness — boots the REAL AppModule through the same
@@ -28,6 +30,8 @@ import { assertDisposableRuntime } from './runtime';
  * BranchGuard run as in production. The only fakes are the outbound message
  * transports (LINE / SMS / e-mail), which are recorded instead of sent — see
  * `harness.external.calls` and report them under `simulated`.
+ * Scheduled cron/interval/timeout callbacks are suppressed before bootstrap;
+ * scenarios explicitly invoke any business job they need to exercise.
  */
 export type Company = 'SHOP' | 'FINANCE';
 
@@ -44,7 +48,14 @@ export interface ClientOptions {
   company?: Company | null;
 }
 
-export interface ExternalCall { channel: 'line' | 'line-flex' | 'sms' | 'email'; recipient: string; summary: string; at: string }
+export interface ExternalCall {
+  channel: 'line' | 'line-flex' | 'sms' | 'email';
+  recipient: string;
+  summary: string;
+  at: string;
+  /** Complete synthetic LINE payload; summary is intentionally truncated. */
+  payload?: unknown;
+}
 export interface ExternalRecorder { calls: ExternalCall[]; restore(): void }
 
 export interface DocumentsHarness {
@@ -55,7 +66,7 @@ export interface DocumentsHarness {
   finance: PrismaFinanceService;
   storage: { backend: string; location: string };
   external: ExternalRecorder;
-  /** Names of the scheduled jobs stopped at boot (cron / interval / timeout) — they never fire on their own in a run. */
+  /** Discovered cron / interval / timeout jobs suppressed BEFORE timer mounting at bootstrap. Native timers are outside this boundary. */
   mutedJobs: string[];
   login(email: string, password: string): Promise<Session>;
   client(options?: ClientOptions): Client;
@@ -87,15 +98,15 @@ function recordExternalTransports(): ExternalRecorder {
   const at = () => new Date().toISOString();
   const transport = NotificationTransportService.prototype as any;
   const spies = [
-    jest.spyOn(transport, 'sendLine').mockImplementation(async (recipient: string, message: string) => { calls.push({ channel: 'line', recipient, summary: String(message).slice(0, 120), at: at() }); }),
-    jest.spyOn(transport, 'sendLineFlexMessage').mockImplementation(async (recipient: string) => { calls.push({ channel: 'line-flex', recipient, summary: 'flex message', at: at() }); }),
-    jest.spyOn(transport, 'sendLineFromQueue').mockImplementation(async (recipient: string, message: string) => { calls.push({ channel: 'line', recipient, summary: String(message).slice(0, 120), at: at() }); return undefined; }),
+    jest.spyOn(transport, 'sendLine').mockImplementation(async (recipient: string, message: string) => { calls.push({ channel: 'line', recipient, summary: String(message).slice(0, 120), payload: String(message), at: at() }); }),
+    jest.spyOn(transport, 'sendLineFlexMessage').mockImplementation(async (recipient: string, ...message: unknown[]) => { calls.push({ channel: 'line-flex', recipient, summary: 'flex message', payload: structuredClone(message), at: at() }); }),
+    jest.spyOn(transport, 'sendLineFromQueue').mockImplementation(async (recipient: string, message: string) => { calls.push({ channel: 'line', recipient, summary: String(message).slice(0, 120), payload: String(message), at: at() }); return undefined; }),
     jest.spyOn(transport, 'sendSms').mockImplementation(async (recipient: string, message: string) => { calls.push({ channel: 'sms', recipient, summary: String(message).slice(0, 120), at: at() }); return 'SIMULATED'; }),
     jest.spyOn(transport, 'sendSmsFromQueue').mockImplementation(async (recipient: string, message: string) => { calls.push({ channel: 'sms', recipient, summary: String(message).slice(0, 120), at: at() }); return 'SIMULATED'; }),
     jest.spyOn(EmailService.prototype as any, 'sendMail').mockImplementation(async (params: { to: string | string[]; subject: string }) => { calls.push({ channel: 'email', recipient: Array.isArray(params.to) ? params.to.join(',') : params.to, summary: params.subject, at: at() }); return true; }),
     // Direct LINE pushes that bypass NotificationTransportService (credit-note delivery, payment links, campaigns).
-    jest.spyOn(LineApiClientService.prototype as any, 'pushMessage').mockImplementation(async (to: string, messages: unknown[]) => { calls.push({ channel: 'line', recipient: String(to), summary: `${Array.isArray(messages) ? messages.length : 1} message(s) via LineApiClientService`, at: at() }); }),
-    jest.spyOn(LineFinanceClientService.prototype as any, 'pushMessage').mockImplementation(async (to: string, messages: unknown[]) => { calls.push({ channel: 'line', recipient: String(to), summary: `${Array.isArray(messages) ? messages.length : 1} message(s) via LineFinanceClientService`, at: at() }); }),
+    jest.spyOn(LineApiClientService.prototype as any, 'pushMessage').mockImplementation(async (to: string, messages: unknown[]) => { calls.push({ channel: 'line', recipient: String(to), summary: `${Array.isArray(messages) ? messages.length : 1} message(s) via LineApiClientService`, payload: structuredClone(messages), at: at() }); }),
+    jest.spyOn(LineFinanceClientService.prototype as any, 'pushMessage').mockImplementation(async (to: string, messages: unknown[]) => { calls.push({ channel: 'line', recipient: String(to), summary: `${Array.isArray(messages) ? messages.length : 1} message(s) via LineFinanceClientService`, payload: structuredClone(messages), at: at() }); }),
   ];
   return { calls, restore: () => spies.forEach((spy) => spy.mockRestore()) };
 }
@@ -138,9 +149,16 @@ export async function startDocumentsApp(options: StartOptions = {}): Promise<Doc
   const external = recordExternalTransports();
   let builder = Test.createTestingModule({ imports: [AppModule] });
   if (options.customize) builder = options.customize(builder);
+  builder = suppressScheduledJobs(builder);
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication({ logger: ['error', 'warn'] });
   configureApp(app, { swagger: false, logger: new Logger('DocumentsHarness') });
+  const orchestrator = app.get(SchedulerOrchestrator, { strict: false });
+  if (!(orchestrator instanceof SuppressedSchedulerOrchestrator)) {
+    await app.close();
+    external.restore();
+    throw new Error('Documents harness requires scheduler suppression before bootstrap');
+  }
   await app.listen(0, '127.0.0.1');
   const address = app.getHttpServer().address() as { port: number };
   const baseUrl = `http://127.0.0.1:${address.port}/api`;
@@ -156,14 +174,15 @@ export async function startDocumentsApp(options: StartOptions = {}): Promise<Doc
     await app.close();
     throw new Error(`Documents harness expects the database session timezone UTC (as production), got ${timezone} — run bash tools/docs-integration.sh, which starts PostgreSQL with -c timezone=UTC`);
   }
-  // The real AppModule registers ~30 cron/interval jobs; left running they fire by wall clock in
-  // the middle of a scenario (a 23:15 Bangkok run on CI recorded two outbound pushes from the
-  // hourly jobs). Scenarios that need a job call it explicitly (e.g. LetterAutoGenerateCron.run()).
+  // Discovery remains real, but the harness override never mounts scheduled timers.
+  // Scenarios that need a business job invoke it explicitly. Native timers are not suppressed.
   const scheduler = app.get(SchedulerRegistry, { strict: false });
-  const mutedJobs: string[] = [];
-  for (const [name, job] of scheduler.getCronJobs()) { job.stop(); mutedJobs.push(name); }
-  for (const name of scheduler.getIntervals()) { scheduler.deleteInterval(name); mutedJobs.push(`interval:${name}`); }
-  for (const name of scheduler.getTimeouts()) { scheduler.deleteTimeout(name); mutedJobs.push(`timeout:${name}`); }
+  if (scheduler.getCronJobs().size || scheduler.getIntervals().length || scheduler.getTimeouts().length) {
+    await app.close();
+    external.restore();
+    throw new Error('Documents harness requires scheduled timers suppressed before bootstrap');
+  }
+  const mutedJobs = [...orchestrator.suppressedJobs];
   const server = app.getHttpServer();
   return {
     app,

@@ -1,6 +1,9 @@
+import { Prisma } from '@prisma/client';
 import { Test, TestingModule } from '@nestjs/testing';
+import { Sql } from '@prisma/client/runtime/library';
 import { IntercoPendingService } from './interco-pending.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SHOP_RECEIVABLE_TYPES } from '../journal/shop-receivable-type.util';
 
 describe('IntercoPendingService.getPendingContracts', () => {
   let service: IntercoPendingService;
@@ -147,7 +150,14 @@ describe('IntercoPendingService.getPendingContracts', () => {
 
   it('(ง) amounts always come from GL rows — never from contract.financedAmount/storeCommission, even when they differ', async () => {
     queueLenses(
-      [{ contract_id: 'c-1', activated_at: new Date('2026-06-01T00:00:00Z'), financed: 10000, commission: 1000 }],
+      [
+        {
+          contract_id: 'c-1',
+          activated_at: new Date('2026-06-01T00:00:00Z'),
+          financed: 10000,
+          commission: 1000,
+        },
+      ],
       [],
     );
     // Decoy fields that would NEVER be selected by the service — if the
@@ -207,9 +217,12 @@ describe('IntercoPendingService.getPendingContracts', () => {
       ]);
 
     it('eligible เมื่อทั้งสองสมุดมียอดและเท่ากัน', async () => {
-      queueLenses(financeRow, [], [{ contract_id: 'c-1', credit: 8000 }], [
-        { contract_id: 'c-1', payable: 8000 },
-      ]);
+      queueLenses(
+        financeRow,
+        [],
+        [{ contract_id: 'c-1', credit: 8000 }],
+        [{ contract_id: 'c-1', payable: 8000 }],
+      );
       lookupC1();
       const [row] = await service.getPendingContracts();
       expect(row.swapCreditGl.toNumber()).toBe(8000);
@@ -227,16 +240,22 @@ describe('IntercoPendingService.getPendingContracts', () => {
     });
 
     it('tolerance ±0.01: ต่างกัน 0.01 พอดียัง eligible, เกินนั้นไม่', async () => {
-      queueLenses(financeRow, [], [{ contract_id: 'c-1', credit: 8000 }], [
-        { contract_id: 'c-1', payable: 7999.99 },
-      ]);
+      queueLenses(
+        financeRow,
+        [],
+        [{ contract_id: 'c-1', credit: 8000 }],
+        [{ contract_id: 'c-1', payable: 7999.99 }],
+      );
       lookupC1();
       const [within] = await service.getPendingContracts();
       expect(within.swapCreditEligible).toBe(true);
 
-      queueLenses(financeRow, [], [{ contract_id: 'c-1', credit: 8000 }], [
-        { contract_id: 'c-1', payable: 7999.98 },
-      ]);
+      queueLenses(
+        financeRow,
+        [],
+        [{ contract_id: 'c-1', credit: 8000 }],
+        [{ contract_id: 'c-1', payable: 7999.98 }],
+      );
       lookupC1();
       const [beyond] = await service.getPendingContracts();
       expect(beyond.swapCreditEligible).toBe(false);
@@ -258,6 +277,22 @@ describe('IntercoPendingService.getPendingContracts', () => {
       expect(buybackSql).toContain("je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'");
       // ขา SWAP_CREDIT ฝั่ง SHOP ห้าม fallback ตาม flow (มี stamp ตั้งแต่ Phase 2 Task 1)
       expect(buybackSql).not.toContain("'shop-exchange-return'");
+    });
+
+    it('anti-drift: IN-list ของ carve-out "stamp ที่รู้จักชนะ fallback" สร้างจาก SHOP_RECEIVABLE_TYPES (Prisma.join)', async () => {
+      queueLenses(financeRow, [], [], []);
+      lookupC1();
+      await service.getPendingContracts();
+
+      // tagged template: calls[i] = [TemplateStringsArray, ...values] — Prisma.join คืน Sql
+      // ที่ .values = ลิสต์ประเภท ⇒ ลิสต์ในตัวอักษร SQL หายไป ต้องมาจากค่าคงที่เท่านั้น
+      const swapCall = prisma.$queryRaw.mock.calls[2] as unknown[];
+      const swapSql = (swapCall[0] as string[]).join('');
+      expect(swapSql).not.toContain("'SHOP_COLLECT'");
+      const joinArgs = swapCall.slice(1).filter((v) => v instanceof Sql) as Sql[];
+      expect(joinArgs).toHaveLength(1);
+      expect(joinArgs[0].values).toEqual([...SHOP_RECEIVABLE_TYPES]);
+      expect(joinArgs[0].values).toContain('DEVICE_RETURN');
     });
   });
 });
@@ -365,11 +400,11 @@ describe('IntercoPendingService.getReconcileTotals', () => {
     service = mod.get(IntercoPendingService);
   });
 
-  it('computes drift = pendingTotal − glFinanceTotal (+ 3 typed whole-account totals ของ Phase 2)', async () => {
+  it('computes drift = pendingTotal − glFinanceTotal (+ 4 typed whole-account totals: Phase 2 + DEVICE_RETURN)', async () => {
     // Call order: getPendingContracts() → [finance rows, shop rows, swap-credit
-    // rows, shop-buyback rows], then getReconcileTotals' own 5 whole-account
+    // rows, shop-buyback rows], then getReconcileTotals' own 6 whole-account
     // queries: [finance total, shop total, swap-credit total, recall total,
-    // shop-buyback total].
+    // device-return total, shop-buyback total].
     prisma.$queryRaw
       .mockResolvedValueOnce([
         { contract_id: 'c-1', activated_at: new Date(), financed: 10000, commission: 1000 },
@@ -381,7 +416,8 @@ describe('IntercoPendingService.getReconcileTotals', () => {
       .mockResolvedValueOnce([{ balance: 9000 }]) // glShopTotal
       .mockResolvedValueOnce([{ balance: 16000 }]) // glSwapCreditTotal
       .mockResolvedValueOnce([{ balance: 22000 }]) // glRecallTotal
-      .mockResolvedValueOnce([{ balance: 30000 }]); // glShopBuybackTotal
+      .mockResolvedValueOnce([{ balance: 7000 }]) // glDeviceReturnTotal (ใบรับเครื่องคืน 2026-09-20)
+      .mockResolvedValueOnce([{ balance: 37000 }]); // glShopBuybackTotal
     prisma.contract.findMany.mockResolvedValue([
       { id: 'c-1', contractNumber: 'CT-0001', customer: { name: 'ลูกค้า A' } },
     ]);
@@ -393,25 +429,27 @@ describe('IntercoPendingService.getReconcileTotals', () => {
     expect(totals.drift.toNumber()).toBe(11000 - 12000);
     expect(totals.glSwapCreditTotal.toNumber()).toBe(16000);
     expect(totals.glRecallTotal.toNumber()).toBe(22000);
-    expect(totals.glShopBuybackTotal.toNumber()).toBe(30000);
+    expect(totals.glDeviceReturnTotal.toNumber()).toBe(7000);
+    expect(totals.glShopBuybackTotal.toNumber()).toBe(37000);
   });
 
   it('whole-account GL queries: ยอดเดิมไม่กรอง metadata — ยอด typed ใหม่กรองเฉพาะ type (ไม่กรอง contractId)', async () => {
     // getPendingContracts() short-circuits after an empty FINANCE lens (no
-    // further lens calls), so 6 total $queryRaw calls happen here: the empty
-    // lens + the 5 whole-account totals.
+    // further lens calls), so 7 total $queryRaw calls happen here: the empty
+    // lens + the 6 whole-account totals.
     prisma.$queryRaw
       .mockResolvedValueOnce([]) // FINANCE lens (pending) — empty
       .mockResolvedValueOnce([{ balance: 0 }]) // glFinanceTotal
       .mockResolvedValueOnce([{ balance: 0 }]) // glShopTotal
       .mockResolvedValueOnce([{ balance: 0 }]) // glSwapCreditTotal
       .mockResolvedValueOnce([{ balance: 0 }]) // glRecallTotal
+      .mockResolvedValueOnce([{ balance: 0 }]) // glDeviceReturnTotal
       .mockResolvedValueOnce([{ balance: 0 }]); // glShopBuybackTotal
 
     await service.getReconcileTotals();
 
     const calls = prisma.$queryRaw.mock.calls;
-    expect(calls.length).toBe(6);
+    expect(calls.length).toBe(7);
     const sqlAt = (i: number) => (calls[i][0] as unknown as string[]).join('');
 
     // ยอดเดิม 2 ตัว — ไม่กรอง metadata ใดๆ (พฤติกรรมเดิม ห้ามขยับ)
@@ -426,8 +464,297 @@ describe('IntercoPendingService.getReconcileTotals', () => {
     const recallSql = sqlAt(4);
     expect(recallSql).toContain("je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'");
     expect(recallSql).not.toContain('contractId');
+    // DEVICE_RETURN ทั้งบัญชี — explicit stamp เท่านั้น ไม่กรอง contractId ไม่มี flow fallback
+    const deviceReturnSql = sqlAt(5);
+    expect(deviceReturnSql).toContain('11-2107');
+    expect(deviceReturnSql).toContain("je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'");
+    expect(deviceReturnSql).not.toContain('contractId');
+    expect(deviceReturnSql).not.toContain("'flow'");
     // S21-1104 ทั้งบัญชี — ไม่กรอง type เลย
-    expect(sqlAt(5)).toContain('S21-1104');
-    expect(sqlAt(5)).not.toContain('metadata');
+    expect(sqlAt(6)).toContain('S21-1104');
+    expect(sqlAt(6)).not.toContain('metadata');
+  });
+  it('anti-drift: glSwapCreditTotal ใช้ IN-list จาก SHOP_RECEIVABLE_TYPES เช่นกัน', async () => {
+    prisma.$queryRaw
+      .mockResolvedValueOnce([]) // FINANCE lens (pending) — empty
+      .mockResolvedValueOnce([{ balance: 0 }])
+      .mockResolvedValueOnce([{ balance: 0 }])
+      .mockResolvedValueOnce([{ balance: 0 }]) // glSwapCreditTotal
+      .mockResolvedValueOnce([{ balance: 0 }])
+      .mockResolvedValueOnce([{ balance: 0 }])
+      .mockResolvedValueOnce([{ balance: 0 }]);
+    await service.getReconcileTotals();
+    const swapCall = prisma.$queryRaw.mock.calls[3] as unknown[];
+    const joinArgs = swapCall.slice(1).filter((v) => v instanceof Sql) as Sql[];
+    expect(joinArgs).toHaveLength(1);
+    expect(joinArgs[0].values).toEqual([...SHOP_RECEIVABLE_TYPES]);
+  });
+});
+
+describe('IntercoPendingService.getPendingDeviceReturns (ใบรับเครื่องคืน 2026-09-20 §6.3)', () => {
+  let service: IntercoPendingService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      $queryRaw: jest.fn(),
+      interCoSettlementItem: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const mod: TestingModule = await Test.createTestingModule({
+      providers: [IntercoPendingService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = mod.get(IntercoPendingService);
+  });
+
+  /** $queryRaw order: 11-2107 DEVICE_RETURN lens first, S21-1104 DEVICE_RETURN lens second. */
+  const queueDeviceReturnLenses = (
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    financeRows: any[],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    shopRows: any[] = [],
+  ) => {
+    prisma.$queryRaw.mockReset();
+    prisma.$queryRaw.mockResolvedValueOnce(financeRows).mockResolvedValueOnce(shopRows);
+  };
+  const lookupC1 = () =>
+    prisma.contract.findMany.mockResolvedValue([
+      { id: 'c-1', contractNumber: 'CT-0001', customer: { name: 'ลูกค้า X' } },
+    ]);
+
+  it('returns [] when the DEVICE_RETURN lens has no rows — no gate/lookup calls', async () => {
+    queueDeviceReturnLenses([]);
+    const result = await service.getPendingDeviceReturns();
+    expect(result).toEqual([]);
+    expect(prisma.interCoSettlementItem.findMany).not.toHaveBeenCalled();
+  });
+
+  it('เงื่อนไข SQL: DEVICE_RETURN explicit stamp เท่านั้น (ไม่มี flow fallback) key ด้วย contractId ทั้งสองสมุด', async () => {
+    queueDeviceReturnLenses(
+      [{ contract_id: 'c-1', amount: 7000 }],
+      [{ contract_id: 'c-1', amount: 7000 }],
+    );
+    lookupC1();
+
+    const [row] = await service.getPendingDeviceReturns();
+    expect(row.deviceReturnGl.toNumber()).toBe(7000);
+    expect(row.shopDeviceReturnGl.toNumber()).toBe(7000);
+    expect(row.contractNumber).toBe('CT-0001');
+    expect(row.customerName).toBe('ลูกค้า X');
+
+    const financeSql = (prisma.$queryRaw.mock.calls[0][0] as unknown as string[]).join('');
+    expect(financeSql).toContain('11-2107');
+    expect(financeSql).toContain("je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'");
+    expect(financeSql).not.toContain("'flow'");
+    expect(financeSql).toContain('HAVING SUM(jl.debit - jl.credit) > 0');
+
+    const shopSql = (prisma.$queryRaw.mock.calls[1][0] as unknown as string[]).join('');
+    expect(shopSql).toContain('S21-1104');
+    expect(shopSql).toContain("je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'");
+    expect(shopSql).toContain("je.metadata->>'contractId'");
+    expect(shopSql).not.toContain('newContractId');
+  });
+
+  it('settled gate กรอง itemType DEVICE_RETURN เท่านั้น — item SETTLEMENT เดิม (สัญญาที่ยึดเคยถูกจ่าย) ต้องไม่บังคิว', async () => {
+    queueDeviceReturnLenses([{ contract_id: 'c-1', amount: 7000 }], []);
+    prisma.interCoSettlementItem.findMany.mockResolvedValue([{ contractId: 'c-1' }]);
+
+    const result = await service.getPendingDeviceReturns();
+    expect(result).toEqual([]); // gated out by the mocked DEVICE_RETURN item
+
+    const where = prisma.interCoSettlementItem.findMany.mock.calls[0][0].where;
+    expect(where.itemType).toBe('DEVICE_RETURN');
+    expect(where.batch.status.in).toEqual(['PENDING_APPROVAL', 'POSTED']);
+    expect(where.batch.status.in).not.toContain('REVERSED');
+    expect(where.batch.status.in).not.toContain('CANCELLED');
+  });
+
+  it('hydrate ไม่กรองสถานะสัญญา (สัญญาที่ยึดเป็น CLOSED_BAD_DEBT โดยนิยาม) — where มีแค่ id + deletedAt', async () => {
+    queueDeviceReturnLenses([{ contract_id: 'c-1', amount: 7000 }], []);
+    lookupC1();
+    await service.getPendingDeviceReturns();
+
+    const where = prisma.contract.findMany.mock.calls[0][0].where;
+    expect(where).toEqual({ id: { in: ['c-1'] }, deletedAt: null });
+    expect(where).not.toHaveProperty('status');
+    const select = prisma.contract.findMany.mock.calls[0][0].select;
+    expect(select).not.toHaveProperty('financedAmount');
+  });
+
+  it('ยอด = gross − Σ deviceReturnAmount เท่านั้น (same-type NET — spec §6.3 ฉบับตัดสิน): เครดิตสวอปที่เคยหักไม่ลดค่าเครื่องคืน', async () => {
+    queueDeviceReturnLenses(
+      [{ contract_id: 'c-1', amount: 7000 }],
+      [{ contract_id: 'c-1', amount: 7000 }],
+    );
+    lookupC1();
+    prisma.interCoSettlementItem.findMany
+      .mockResolvedValueOnce([]) // settled gate — ไม่มี DEVICE_RETURN item ใน batch เปิด
+      .mockResolvedValueOnce([
+        // สัญญา swap ที่ถูกหักเครดิต 8,000 ในรอบเก่าแล้วภายหลังถูกยึด — deduction ประเภทอื่น
+        // ต้องไม่ลด gross ของค่าเครื่องคืน (สูตร all-types เดิมจะได้ −1,000 = หลุดคิว)
+        {
+          contractId: 'c-1',
+          swapCreditAmount: new Prisma.Decimal(8000),
+          recallAmount: new Prisma.Decimal(0),
+          deviceReturnAmount: new Prisma.Decimal(0),
+        },
+      ]);
+    const [row] = await service.getPendingDeviceReturns();
+    expect(row.deviceReturnGl.toNumber()).toBe(7000);
+    expect(row.shopDeviceReturnGl.toNumber()).toBe(7000);
+
+    // รูป query เดียวกับคิว recall: select ครบสามคอลัมน์เสมอ แล้วรวมเฉพาะที่ขอ
+    const select = prisma.interCoSettlementItem.findMany.mock.calls[1][0].select;
+    expect(select).toEqual({
+      contractId: true,
+      swapCreditAmount: true,
+      recallAmount: true,
+      deviceReturnAmount: true,
+    });
+  });
+
+  it('deduction ประเภทเดียวกัน (deviceReturnAmount) ลด net ทั้งสองสมุด; หักครบ → net 0 → หลุดคิว', async () => {
+    queueDeviceReturnLenses(
+      [{ contract_id: 'c-1', amount: 7000 }],
+      [{ contract_id: 'c-1', amount: 7000 }],
+    );
+    lookupC1();
+    prisma.interCoSettlementItem.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        contractId: 'c-1',
+        swapCreditAmount: new Prisma.Decimal(0),
+        recallAmount: new Prisma.Decimal(0),
+        deviceReturnAmount: new Prisma.Decimal(3000),
+      },
+    ]);
+    const [row] = await service.getPendingDeviceReturns();
+    expect(row.deviceReturnGl.toNumber()).toBe(4000);
+    expect(row.shopDeviceReturnGl.toNumber()).toBe(4000);
+
+    // หักครบ → net 0 → หลุดคิว
+    queueDeviceReturnLenses([{ contract_id: 'c-1', amount: 7000 }], []);
+    lookupC1();
+    prisma.interCoSettlementItem.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        contractId: 'c-1',
+        swapCreditAmount: new Prisma.Decimal(0),
+        recallAmount: new Prisma.Decimal(0),
+        deviceReturnAmount: new Prisma.Decimal(7000),
+      },
+    ]);
+    expect(await service.getPendingDeviceReturns()).toEqual([]);
+  });
+
+  it('shopDeviceReturnGl default 0 เมื่อฝั่ง SHOP ไม่มีแถว (JE ขาคู่หาย — guard สองสมุดของ buildSnapshot จับต่อ)', async () => {
+    queueDeviceReturnLenses([{ contract_id: 'c-1', amount: 7000 }], []);
+    lookupC1();
+    const [row] = await service.getPendingDeviceReturns();
+    expect(row.shopDeviceReturnGl.toNumber()).toBe(0);
+  });
+
+  it('routes every DEVICE_RETURN query through the supplied transaction, never the root client', async () => {
+    const forbiddenRootCall = () => {
+      throw new Error('Root client escaped supplied transaction');
+    };
+    prisma.$queryRaw.mockImplementation(forbiddenRootCall);
+    prisma.interCoSettlementItem.findMany.mockImplementation(forbiddenRootCall);
+    prisma.contract.findMany.mockImplementation(forbiddenRootCall);
+    const tx = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValueOnce([{ contract_id: 'tx-only', amount: '7000.00' }])
+        .mockResolvedValueOnce([{ contract_id: 'tx-only', amount: '7000.00' }]),
+      interCoSettlementItem: {
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            {
+              contractId: 'tx-only',
+              swapCreditAmount: new Prisma.Decimal('8000.00'),
+              recallAmount: new Prisma.Decimal('0.00'),
+              deviceReturnAmount: new Prisma.Decimal('3000.00'),
+            },
+          ]),
+      },
+      contract: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            {
+              id: 'tx-only',
+              contractNumber: 'TX-ONLY',
+              customer: { name: 'transaction customer' },
+            },
+          ]),
+      },
+    };
+    const [row] = await service.getPendingDeviceReturns(tx as never);
+    expect(row).toMatchObject({
+      contractId: 'tx-only',
+      contractNumber: 'TX-ONLY',
+      customerName: 'transaction customer',
+    });
+    expect(row.deviceReturnGl.toFixed(2)).toBe('4000.00');
+    expect(row.shopDeviceReturnGl.toFixed(2)).toBe('4000.00');
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.interCoSettlementItem.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.contract.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(prisma.interCoSettlementItem.findMany).not.toHaveBeenCalled();
+    expect(prisma.contract.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['6999.99', '0.01', false],
+    ['6999.98', '0.02', true],
+  ] as const)(
+    'same-type deduction %s leaves exact net %s (included=%s)',
+    async (deduction, net, included) => {
+      queueDeviceReturnLenses(
+        [{ contract_id: 'c-1', amount: '7000.00' }],
+        [{ contract_id: 'c-1', amount: '7000.00' }],
+      );
+      lookupC1();
+      prisma.interCoSettlementItem.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            contractId: 'c-1',
+            swapCreditAmount: new Prisma.Decimal('0'),
+            recallAmount: new Prisma.Decimal('0'),
+            deviceReturnAmount: new Prisma.Decimal(deduction),
+          },
+        ]);
+      const rows = await service.getPendingDeviceReturns();
+      expect(rows).toHaveLength(included ? 1 : 0);
+      if (included) {
+        expect(rows[0].deviceReturnGl.toFixed(2)).toBe(net);
+        expect(rows[0].shopDeviceReturnGl.toFixed(2)).toBe(net);
+      }
+      expect(prisma.interCoSettlementItem.findMany.mock.calls[1][0].where.batch.status).toBe(
+        'POSTED',
+      );
+    },
+  );
+
+  it('getPendingRecalls ก็รวม deviceReturnAmount ใน Σ deduction (helper เดียวกัน)', async () => {
+    queueDeviceReturnLenses(
+      [{ contract_id: 'c-1', recall: 11000 }],
+      [{ contract_id: 'c-1', recall: 11000 }],
+    );
+    lookupC1();
+    prisma.interCoSettlementItem.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        contractId: 'c-1',
+        swapCreditAmount: new Prisma.Decimal(0),
+        recallAmount: new Prisma.Decimal(0),
+        deviceReturnAmount: new Prisma.Decimal(1000),
+      },
+    ]);
+    const [row] = await service.getPendingRecalls();
+    expect(row.recallGl.toNumber()).toBe(10000);
+    expect(row.shopRecallGl.toNumber()).toBe(10000);
   });
 });

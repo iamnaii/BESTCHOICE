@@ -22,17 +22,17 @@ describe('ShopCollectShopLegs', () => {
   const lineTuples = (input: { lines: Array<{ accountCode: string; dr: Decimal; cr: Decimal }> }) =>
     input.lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)]);
 
-  describe('postRepossessionIntake', () => {
-    it('collectedByShop → Dr S11-2002 / Cr S21-1104 stamped SHOP_COLLECT + contractId', async () => {
+  describe('postRepossessionIntake (2026-09-20 — ค้างจ่าย FINANCE เสมอ หักผ่านรอบจ่าย INTER-CO)', () => {
+    it('Dr S11-2002 / Cr S21-1104 stamped DEVICE_RETURN + contractId + productId + deviceReturnId', async () => {
       const { legs, createAndPost } = build();
       await legs.postRepossessionIntake({
         contractId: 'c-1',
         contractNumber: 'TEST-001',
         productId: 'p-1',
         appraisal: new Decimal('6500'),
-        collectedByShop: true,
         shopCompanyId: 'shop-co',
-        postedAt: new Date('2026-09-05T00:00:00Z'),
+        deviceReturnId: 'dr-1',
+        postedAt: new Date('2026-09-20T00:00:00Z'),
       });
       const input = createAndPost.mock.calls[0][0];
       expect(lineTuples(input)).toEqual([
@@ -40,36 +40,37 @@ describe('ShopCollectShopLegs', () => {
         ['S21-1104', '0.00', '6500.00'],
       ]);
       expect(input.companyId).toBe('shop-co');
-      expect(input.postedAt).toEqual(new Date('2026-09-05T00:00:00Z'));
+      expect(input.postedAt).toEqual(new Date('2026-09-20T00:00:00Z'));
       expect(input.metadata).toMatchObject({
         flow: SHOP_REPOSSESSION_INTAKE_FLOW,
         idempotencyKey: `${SHOP_REPOSSESSION_INTAKE_FLOW}:c-1`,
         contractId: 'c-1',
         productId: 'p-1',
+        deviceReturnId: 'dr-1',
         companyCode: 'SHOP',
-        shopReceivableType: 'SHOP_COLLECT',
-        collectedByShop: true,
+        shopReceivableType: 'DEVICE_RETURN',
         appraisal: '6500.00',
       });
+      expect(input.metadata.collectedByShop).toBeUndefined();
       expect(input.reference).toBe('contract:c-1:repossession-intake');
     });
 
-    it('paid to FINANCE immediately → Cr S11-1202 (SHOP paying bank) and NO shopReceivableType stamp', async () => {
+    it('ไม่มีสาขาโอนสดทันทีอีกต่อไป — ไม่มีบรรทัด S11-1202 ไม่ว่ากรณีใด และ deviceReturnId ไม่ส่ง = ไม่ stamp key', async () => {
       const { legs, createAndPost } = build();
       await legs.postRepossessionIntake({
-        contractId: 'c-1',
-        contractNumber: 'TEST-001',
-        productId: 'p-1',
-        appraisal: new Decimal('6500'),
-        collectedByShop: false,
+        contractId: 'c-2',
+        contractNumber: 'TEST-002',
+        productId: 'p-2',
+        appraisal: new Decimal('1000'),
         shopCompanyId: 'shop-co',
       });
       const input = createAndPost.mock.calls[0][0];
-      expect(lineTuples(input)).toEqual([
-        ['S11-2002', '6500.00', '0.00'],
-        ['S11-1202', '0.00', '6500.00'],
+      expect(input.lines.map((l: { accountCode: string }) => l.accountCode)).toEqual([
+        'S11-2002',
+        'S21-1104',
       ]);
-      expect(input.metadata.shopReceivableType).toBeUndefined();
+      expect(input.metadata.shopReceivableType).toBe('DEVICE_RETURN');
+      expect('deviceReturnId' in input.metadata).toBe(false);
     });
 
     it('rejects a non-positive appraisal (programmer error, not a business path)', async () => {
@@ -80,7 +81,6 @@ describe('ShopCollectShopLegs', () => {
           contractNumber: 'TEST-001',
           productId: 'p-1',
           appraisal: new Decimal('0'),
-          collectedByShop: true,
           shopCompanyId: 'shop-co',
         }),
       ).rejects.toThrow(/appraisal must be > 0/);

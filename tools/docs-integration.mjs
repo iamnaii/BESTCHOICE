@@ -313,7 +313,7 @@ async function run(jestArgs) {
       'Storage is a private local directory (signed URLs answer 501)',
       'All company / branch / user / customer / contract rows are synthetic and marked as test data',
       'Outbound provider credentials are pinned to empty strings for the process',
-      'Scheduled jobs (cron / interval / timeout registered by AppModule) are stopped at boot; a scenario that needs a job invokes it explicitly',
+      'Scheduled jobs (cron / interval / timeout discovered by AppModule) are suppressed before bootstrap mounts timers; scenarios invoke required jobs explicitly. Native timers are outside this boundary',
     ],
     unsupported: [
       'GET /api/documents/:id/signed-url (501 under local storage)',

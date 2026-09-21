@@ -1,15 +1,9 @@
-import {
-  Crown,
-  AlertTriangle,
-  Sparkles,
-  Heart,
-  Ban,
-  Tag,
-} from 'lucide-react';
+import { Crown, AlertTriangle, Sparkles, Heart, Ban, PackageX, Tag } from 'lucide-react';
 import type { CustomerTagType } from '../hooks/useCustomerTags';
 
 /**
- * Read-only chip row for the 5 customer tag types. Keeps semantic tokens
+ * Read-only chip row for the 6 customer tag types, including automatic RETURNED_DEVICE.
+ * Keeps semantic tokens
  * (`bg-success`, `bg-warning`, `bg-destructive`, `bg-info`, `bg-muted`) so
  * the palette flexes with the active theme rather than freezing emerald/red.
  *
@@ -52,6 +46,12 @@ const META: Record<CustomerTagType, ChipMeta> = {
     icon: Ban,
     className: 'bg-destructive/10 text-destructive border-destructive/30',
   },
+  // Automatic: active return intake or repossession evidence, evaluated by the API.
+  RETURNED_DEVICE: {
+    label: 'เคยคืนเครื่อง',
+    icon: PackageX,
+    className: 'bg-warning/10 text-warning border-warning/30',
+  },
 };
 
 interface Props {
@@ -73,9 +73,7 @@ export default function CustomerTagChips({ tags, emptyLabel, compact }: Props) {
     );
   }
 
-  const sizeClasses = compact
-    ? 'text-2xs px-1.5 py-0.5 gap-0.5'
-    : 'text-2xs px-2 py-0.5 gap-1';
+  const sizeClasses = compact ? 'text-2xs px-1.5 py-0.5 gap-0.5' : 'text-2xs px-2 py-0.5 gap-1';
   const iconClasses = 'size-3';
 
   return (

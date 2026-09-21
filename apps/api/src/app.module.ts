@@ -30,6 +30,7 @@ import { DefectExchangeModule } from './modules/defect-exchange/defect-exchange.
 import { ContractExchangeModule } from './modules/contract-exchange/contract-exchange.module';
 import { RepairTicketsModule } from './modules/repair-tickets/repair-tickets.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
+import { DeviceReturnsModule } from './modules/device-returns/device-returns.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { NotificationQueueModule } from './modules/notifications/notification-queue.module';
@@ -220,6 +221,7 @@ import { AppCacheModule } from './cache/cache.module';
     // SP5 Phase 2 — Insurance / Repair Ticket
     RepairTicketsModule,
     RepossessionsModule,
+    DeviceReturnsModule,
     PurchaseOrdersModule,
     InventoryModule,
     CollectionsSessionModule,

@@ -51,10 +51,14 @@ describe('IntercoSettlementController', () => {
       settleRecallCash: jest
         .fn()
         .mockResolvedValue({ financeEntryNo: 'JE-1', shopEntryNo: 'JE-2', deduped: false }),
+      settleDeductionCash: jest
+        .fn()
+        .mockResolvedValue({ financeEntryNo: 'JE-3', shopEntryNo: 'JE-4', deduped: false }),
     };
     pendingService = {
       getPendingContracts: jest.fn().mockResolvedValue([{ contractId: 'c-1' }]),
       getPendingRecalls: jest.fn().mockResolvedValue([{ contractId: 'c-recall' }]),
+      getPendingDeviceReturns: jest.fn().mockResolvedValue([{ contractId: 'c-dr' }]),
       getReconcileTotals: jest.fn().mockResolvedValue({ pendingTotal: 0, drift: 0 }),
     };
     agingService = {
@@ -101,6 +105,7 @@ describe('IntercoSettlementController', () => {
       ['reverse', ['OWNER', 'FINANCE_MANAGER']],
       ['uploadSlip', ['ACCOUNTANT', 'FINANCE_MANAGER']],
       ['settleRecallCash', ['OWNER', 'FINANCE_MANAGER']],
+      ['settleDeviceReturnCash', ['OWNER', 'FINANCE_MANAGER']],
       ['aging', ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']],
       ['reconcileFindings', ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']],
       ['runReconcile', ['OWNER', 'FINANCE_MANAGER']],
@@ -123,22 +128,24 @@ describe('IntercoSettlementController', () => {
       }
     });
 
-    it('checker endpoints (approve/reverse/settleRecallCash) do NOT allow ACCOUNTANT (maker role only)', () => {
-      for (const m of ['approve', 'reverse', 'settleRecallCash']) {
+    it('checker endpoints (approve/reverse/settleRecallCash/settleDeviceReturnCash) do NOT allow ACCOUNTANT (maker role only)', () => {
+      for (const m of ['approve', 'reverse', 'settleRecallCash', 'settleDeviceReturnCash']) {
         expect(methodRoles(m)).not.toContain('ACCOUNTANT');
       }
     });
   });
 
   describe('pending()', () => {
-    it('combines getPendingContracts + getPendingRecalls + getReconcileTotals into { pending, recalls, reconcile }', async () => {
+    it('combines getPendingContracts + getPendingRecalls + getPendingDeviceReturns + getReconcileTotals into { pending, recalls, deviceReturns, reconcile }', async () => {
       const result = await controller.pending();
       expect(pendingService.getPendingContracts).toHaveBeenCalledTimes(1);
       expect(pendingService.getPendingRecalls).toHaveBeenCalledTimes(1);
+      expect(pendingService.getPendingDeviceReturns).toHaveBeenCalledTimes(1);
       expect(pendingService.getReconcileTotals).toHaveBeenCalledTimes(1);
       expect(result).toEqual({
         pending: [{ contractId: 'c-1' }],
         recalls: [{ contractId: 'c-recall' }],
+        deviceReturns: [{ contractId: 'c-dr' }],
         reconcile: { pendingTotal: 0, drift: 0 },
       });
     });
@@ -188,7 +195,11 @@ describe('IntercoSettlementController', () => {
   describe('approve()', () => {
     it('converts a provided postedAt string to a Date', async () => {
       await controller.approve('b-1', { postedAt: '2026-08-01' }, 'approver-1');
-      expect(service.approveBatch).toHaveBeenCalledWith('b-1', 'approver-1', new Date('2026-08-01'));
+      expect(service.approveBatch).toHaveBeenCalledWith(
+        'b-1',
+        'approver-1',
+        new Date('2026-08-01'),
+      );
     });
 
     it('passes undefined when postedAt is omitted (service falls back to transferDate)', async () => {
@@ -305,9 +316,32 @@ describe('IntercoSettlementController', () => {
 
   describe('uploadSlip()', () => {
     it('passes id + file + userId through to the service (maker/status guard lives in the service)', async () => {
-      const file = { buffer: Buffer.from('x'), mimetype: 'image/jpeg', originalname: 'slip.jpg' } as Express.Multer.File;
+      const file = {
+        buffer: Buffer.from('x'),
+        mimetype: 'image/jpeg',
+        originalname: 'slip.jpg',
+      } as Express.Multer.File;
       await controller.uploadSlip('b-1', 'maker-1', file);
       expect(service.uploadSlip).toHaveBeenCalledWith('b-1', file, 'maker-1');
+    });
+  });
+  describe('settleDeviceReturnCash()', () => {
+    it('passes contractId + type DEVICE_RETURN + dto + userId through to settleDeductionCash', async () => {
+      const dto = {
+        amount: 7000,
+        financeDepositAccountCode: '11-1201',
+        requestId: '3f1a2b3c-4d5e-4f60-8a7b-9c0d1e2f3a4b',
+      } as never;
+      const result = await controller.settleDeviceReturnCash('c-dr', dto, 'approver-1');
+      expect(service.settleDeductionCash).toHaveBeenCalledWith(
+        'c-dr',
+        'DEVICE_RETURN',
+        dto,
+        'approver-1',
+      );
+      expect(result).toEqual({ financeEntryNo: 'JE-3', shopEntryNo: 'JE-4', deduped: false });
+      // เส้นทางเดิมยังเรียก wrapper เดิม (ไม่ผ่าน settleDeductionCash ที่ controller)
+      expect(service.settleDeductionCash).toHaveBeenCalledTimes(1);
     });
   });
 });

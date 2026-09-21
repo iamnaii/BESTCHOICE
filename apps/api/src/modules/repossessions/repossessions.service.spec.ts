@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { RepossessionsService } from './repossessions.service';
+import type { RepossessionCreateInput } from './repossessions.service';
+import { ConflictException } from '@nestjs/common';
+
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RepossessionJP5Template } from '../journal/cpa-templates/repossession-jp5.template';
@@ -183,13 +186,29 @@ describe('RepossessionsService', () => {
       systemConfig: {
         findUnique: jest.fn().mockResolvedValue(null), // strict mode off by default
       },
+      // previewCalculation(deviceReturnId) — โหมดยืนยันใบรับเครื่องคืน (2026-09-20)
+      deviceReturn: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      // findAll.deviceReturnOutstanding — helper ของ Phase 1 `postedDeductionsByContract` อ่าน
+      // InterCoSettlementItem ผ่าน prisma ตัวนี้; รูป mock ต้องตาม implementation จริงของ Phase 1
+      // (ให้ทุก call คืนค่าว่าง → Σ deduction = 0). ถ้า helper ใช้ method อื่นเพิ่ม ให้เติมที่นี่
+      interCoSettlementItem: {
+        groupBy: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn().mockResolvedValue([]),
+        aggregate: jest.fn().mockResolvedValue({
+          _sum: { swapCreditAmount: null, recallAmount: null, deviceReturnAmount: null },
+        }),
+      },
       companyInfo: {
         // FINANCE companyId for the period-lock guard (validatePeriodOpen
         // no-ops in unit tests because the mock has no accountingPeriod)
         findFirst: jest
           .fn()
           .mockImplementation(async (args?: { where?: { companyCode?: string } }) =>
-            args?.where?.companyCode === 'SHOP' ? { id: 'company-shop' } : { id: 'company-finance' },
+            args?.where?.companyCode === 'SHOP'
+              ? { id: 'company-shop' }
+              : { id: 'company-finance' },
           ),
       },
       $transaction: jest.fn().mockImplementation(async (fn: unknown) => {
@@ -210,7 +229,9 @@ describe('RepossessionsService', () => {
             createBadDebtWriteOffJournal: jest.fn().mockResolvedValue('je-bd-1'),
             createRepossessionResaleJournal: jest.fn().mockResolvedValue('je-repo-1'),
             // ขาคู่ SHOP ตอนยึด (2026-09-05) — ShopCollectShopLegs.postRepossessionIntake
-            createAndPost: jest.fn().mockResolvedValue({ id: 'je-shop-1', entryNumber: 'JE-SHOP-1' }),
+            createAndPost: jest
+              .fn()
+              .mockResolvedValue({ id: 'je-shop-1', entryNumber: 'JE-SHOP-1' }),
           }),
         },
         {
@@ -219,8 +240,20 @@ describe('RepossessionsService', () => {
             execute: jest.fn().mockResolvedValue({ entryNo: 'JE-MOCK' }),
             previewJe: jest.fn().mockResolvedValue({
               lines: [
-                { accountCode: '11-1201', accountName: 'ธนาคาร KBank', debit: '6000.00', credit: '0.00', description: 'ราคากลางเครื่อง' },
-                { accountCode: '11-2103', accountName: 'ลูกหนี้ค้างชำระ', debit: '0.00', credit: '6000.00', description: 'ล้างลูกหนี้' },
+                {
+                  accountCode: '11-1201',
+                  accountName: 'ธนาคาร KBank',
+                  debit: '6000.00',
+                  credit: '0.00',
+                  description: 'ราคากลางเครื่อง',
+                },
+                {
+                  accountCode: '11-2103',
+                  accountName: 'ลูกหนี้ค้างชำระ',
+                  debit: '0.00',
+                  credit: '6000.00',
+                  description: 'ล้างลูกหนี้',
+                },
               ],
               totalDebit: '6000.00',
               totalCredit: '6000.00',
@@ -270,6 +303,42 @@ describe('RepossessionsService', () => {
   // findAll
   // ──────────────────────────────────────────────────────────────────────────
   describe('findAll', () => {
+    it.each([
+      ['0', '7000.00'],
+      ['1250.25', '5749.75'],
+      ['8000', '0.00'],
+    ])(
+      'deducts only posted device-return amounts (%s) and clamps at zero',
+      async (deduction, expected) => {
+        const repo = makeRepossession();
+        prisma.repossession.findMany.mockResolvedValue([
+          { ...repo, contract: { ...repo.contract, id: 'contract-1' } },
+        ]);
+        prisma.$queryRaw.mockResolvedValue([{ balance: '7000' }]);
+        prisma.interCoSettlementItem.findMany.mockResolvedValue([
+          {
+            contractId: 'contract-1',
+            swapCreditAmount: decimal(8000),
+            recallAmount: decimal(9000),
+            deviceReturnAmount: decimal(deduction),
+          },
+        ]);
+
+        const result = await service.findAll({});
+
+        expect(result.data[0].deviceReturnOutstanding).toBe(expected);
+        expect(prisma.interCoSettlementItem.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              contractId: { in: ['contract-1'] },
+              deletedAt: null,
+              batch: { status: 'POSTED', deletedAt: null },
+            },
+          }),
+        );
+      },
+    );
+
     it('returns paginated list with defaults', async () => {
       const repo = makeRepossession();
       prisma.repossession.findMany.mockResolvedValue([repo]);
@@ -284,6 +353,8 @@ describe('RepossessionsService', () => {
       expect(prisma.repossession.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { deletedAt: null } }),
       );
+      // typed DEVICE_RETURN ($queryRaw → 0) − Σ deviceReturnAmount ของ batch POSTED (helper Phase 1 → 0) = 0.00
+      expect(result.data[0].deviceReturnOutstanding).toBe('0.00');
     });
 
     it('passes status filter through to query', async () => {
@@ -309,15 +380,15 @@ describe('RepossessionsService', () => {
     });
 
     it('attaches creditNote (with lastDeliveryStatus) when a REPOSSESSION CN receipt exists for the contract', async () => {
-      const repo = makeRepossession({ contract: { ...makeRepossession().contract, id: 'contract-1' } });
+      const repo = makeRepossession({
+        contract: { ...makeRepossession().contract, id: 'contract-1' },
+      });
       prisma.repossession.findMany.mockResolvedValue([repo]);
       prisma.repossession.count.mockResolvedValue(1);
       prisma.receipt.findMany.mockResolvedValue([
         { id: 'rcpt-1', receiptNumber: 'RT-202607-00001', contractId: 'contract-1' },
       ]);
-      prisma.notificationLog.findMany.mockResolvedValue([
-        { relatedId: 'rcpt-1', status: 'SENT' },
-      ]);
+      prisma.notificationLog.findMany.mockResolvedValue([{ relatedId: 'rcpt-1', status: 'SENT' }]);
 
       const result = await service.findAll({});
 
@@ -334,7 +405,9 @@ describe('RepossessionsService', () => {
     });
 
     it('creditNote is null when no CN receipt exists for the contract', async () => {
-      const repo = makeRepossession({ contract: { ...makeRepossession().contract, id: 'contract-2' } });
+      const repo = makeRepossession({
+        contract: { ...makeRepossession().contract, id: 'contract-2' },
+      });
       prisma.repossession.findMany.mockResolvedValue([repo]);
       prisma.repossession.count.mockResolvedValue(1);
       prisma.receipt.findMany.mockResolvedValue([]);
@@ -352,9 +425,9 @@ describe('RepossessionsService', () => {
     it('throws NotFoundException when contract does not exist', async () => {
       prisma.contract.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.previewCalculation('no-contract', {}),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.previewCalculation('no-contract', {})).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('returns correct outstanding balance using Decimal arithmetic (late fee separated)', async () => {
@@ -391,7 +464,6 @@ describe('RepossessionsService', () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract());
 
       const result = await service.previewCalculation('contract-1', {
-        customerRefundEnabled: true,
         appraisalPrice: 5000,
       });
       expect(result.calculation.customerRefund).toBe(0);
@@ -425,7 +497,9 @@ describe('RepossessionsService', () => {
         }),
       );
       prisma.tradeInValuation = {
-        findFirst: jest.fn().mockResolvedValue({ basePrice: decimal(6500), note: 'ตัวเครื่องอย่างเดียว' }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ basePrice: decimal(6500), note: 'ตัวเครื่องอย่างเดียว' }),
       };
 
       const result = await service.previewCalculation('contract-1', { conditionGrade: 'B' });
@@ -455,7 +529,12 @@ describe('RepossessionsService', () => {
 
       const result = await service.previewCalculation('contract-1', { conditionGrade: 'D' });
 
-      expect(result.valuation).toEqual({ grade: 'D', found: false, suggestedPrice: null, note: null });
+      expect(result.valuation).toEqual({
+        grade: 'D',
+        found: false,
+        suggestedPrice: null,
+        note: null,
+      });
     });
 
     it('prefers appraisalPrice over costPrice as the marketValue fallback', async () => {
@@ -483,12 +562,11 @@ describe('RepossessionsService', () => {
       expect(result.calculation.profitLoss).toBeCloseTo(5000 - 2040.42, 2);
     });
 
-    it('profitLoss ignores the (retired) refund flag — market − closing even when customerRefundEnabled=true', async () => {
+    it('profitLoss = ราคากลาง − ยอดปิด — ไม่มี flag คืนเงินให้ส่งอีกต่อไป', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract());
 
       const result = await service.previewCalculation('contract-1', {
         appraisalPrice: 5000,
-        customerRefundEnabled: true,
       });
 
       expect(result.calculation.customerRefund).toBe(0);
@@ -542,33 +620,68 @@ describe('RepossessionsService', () => {
       expect(result.calculation.discountAmount).toBe(expected.discountAmount);
     });
 
-    it('includes journalPreview (dry-run JP5) — mirror create(): repoValue = appraisalPrice, 11-2107 เมื่อ collectedByShop', async () => {
+    it('journalPreview (dry-run JP5): ขา Dr = 11-2107 typed DEVICE_RETURN เสมอ, repoValue = appraisalPrice (2026-09-20)', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract());
 
-      const result = await service.previewCalculation('contract-1', {
-        appraisalPrice: 6000,
-        collectedByShop: true,
-      });
+      const result = await service.previewCalculation('contract-1', { appraisalPrice: 6000 });
 
       expect(result.journalPreview?.isBalanced).toBe(true);
       expect(jp5.previewJe).toHaveBeenCalledWith(
         expect.objectContaining({
           contractId: 'contract-1',
           depositAccountCode: '11-2107',
-          collectedByShop: true,
+          shopReceivableType: 'DEVICE_RETURN',
         }),
       );
-      expect(jp5.previewJe.mock.calls[0][0].repossessionValue.toFixed(2)).toBe('6000.00');
+      const input = jp5.previewJe.mock.calls[0][0];
+      expect(input.repossessionValue.toFixed(2)).toBe('6000.00');
+      expect(input.collectedByShop).toBeUndefined();
+      expect(input.deviceReturnId).toBeUndefined();
     });
 
-    it('default deposit = 11-1201 (KBank) เมื่อไม่ส่ง depositAccountCode', async () => {
+    it('deviceReturnId → เกรด/ราคาประเมินมาจากใบ (query ถูกละเลย) และ stamp deviceReturnId เข้า preview', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.deviceReturn.findFirst.mockResolvedValueOnce({
+        conditionGrade: 'C',
+        appraisalPrice: decimal(4500),
+      });
+      prisma.tradeInValuation = {
+        findFirst: jest.fn().mockResolvedValue({ basePrice: decimal(5000), note: null }),
+      };
 
-      await service.previewCalculation('contract-1', {});
+      const result = await service.previewCalculation('contract-1', {
+        appraisalPrice: 9999,
+        conditionGrade: 'A',
+        deviceReturnId: 'dr-1',
+      });
 
-      expect(jp5.previewJe).toHaveBeenCalledWith(
-        expect.objectContaining({ depositAccountCode: '11-1201', collectedByShop: false }),
+      expect(prisma.deviceReturn.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'dr-1', contractId: 'contract-1', deletedAt: null },
+        }),
       );
+      // เกรดจากใบ (C) ไม่ใช่ query (A) — ตารางถูกค้นด้วย condition 'C'
+      expect(prisma.tradeInValuation.findFirst.mock.calls[0][0].where.condition).toBe('C');
+      expect(result.valuation).toEqual({
+        grade: 'C',
+        found: true,
+        suggestedPrice: 5000,
+        note: null,
+      });
+      expect(result.calculation.marketValue).toBe(4500);
+      expect(result.calculation.marketValueSource).toBe('APPRAISAL');
+      expect(jp5.previewJe).toHaveBeenCalledWith(
+        expect.objectContaining({ deviceReturnId: 'dr-1', depositAccountCode: '11-2107' }),
+      );
+      expect(jp5.previewJe.mock.calls[0][0].repossessionValue.toFixed(2)).toBe('4500.00');
+    });
+
+    it('deviceReturnId ที่ไม่ใช่ของสัญญานี้ → NotFoundException', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+      prisma.deviceReturn.findFirst.mockResolvedValueOnce(null);
+      await expect(
+        service.previewCalculation('contract-1', { deviceReturnId: 'dr-other' }),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it('journalPreview = null เมื่อ previewJe ล้มเหลว — ไม่ล้มทั้ง response', async () => {
@@ -609,170 +722,60 @@ describe('RepossessionsService', () => {
   // ──────────────────────────────────────────────────────────────────────────
   // create (createRepossession)
   // ──────────────────────────────────────────────────────────────────────────
-  describe('create', () => {
-    const baseDto = {
-      contractId: 'contract-1',
-      conditionGrade: 'B',
-      appraisalPrice: 6000,
-      repossessedDate: '2026-01-15',
-      marketValue: 6000,
-    };
-
-    it('throws BadRequestException for invalid condition grade', async () => {
-      await expect(
-        service.create({ ...baseDto, conditionGrade: 'Z' } as never, 'user-1'),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('rejects invalid return reasons and Other without detail before writing', async () => {
-      await expect(service.create({ ...baseDto, returnReason: 'INVALID' } as never, 'user-1'))
-        .rejects.toThrow('กรุณาเลือกเหตุผลคืนเครื่องที่ถูกต้อง');
-      await expect(service.create({ ...baseDto, returnReason: 'OTHER', notes: '  ' } as never, 'user-1'))
-        .rejects.toThrow('กรุณาระบุรายละเอียดเหตุผลคืนเครื่อง');
-      expect(prisma.repossession.create).not.toHaveBeenCalled();
-    });
-
-    it('saves the selected return reason with readable notes and a structured audit code', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'TERMINATED' }));
-      prisma.repossession.create.mockResolvedValue(makeRepossession());
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      await service.create({ ...baseDto, returnReason: 'UNAFFORDABLE', notes: 'ผู้รับเครื่องตรวจสภาพแล้ว' } as never, 'user-1');
-      expect(prisma.repossession.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
-        notes: 'เหตุผลคืนเครื่อง: ลูกค้าไม่สามารถผ่อนต่อได้\nผู้รับเครื่องตรวจสภาพแล้ว',
-      }) }));
-      expect(prisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
-        action: 'REPOSSESSION', newValue: expect.objectContaining({ returnReason: 'UNAFFORDABLE', returnReasonLabel: 'ลูกค้าไม่สามารถผ่อนต่อได้' }),
-      }) }));
-    });
-
-    it('throws NotFoundException when contract is not found', async () => {
-      prisma.contract.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.create(baseDto as never, 'user-1'),
-      ).rejects.toThrow(NotFoundException);
-    });
-
-    it('throws BadRequestException when contract status is ACTIVE (no termination)', async () => {
-      prisma.contract.findUnique.mockResolvedValue(
-        makeContract({ status: 'ACTIVE' }),
-      );
-
-      await expect(
-        service.create(baseDto as never, 'user-1'),
-      ).rejects.toThrow(BadRequestException);
-    });
-
-    it('allows JP5 when contract status is LEGAL (termination letter dispatched)', async () => {
-      prisma.contract.findUnique.mockResolvedValue(
-        makeContract({ status: 'TERMINATED' }),
-      );
-      prisma.repossession.create.mockResolvedValue(makeRepossession({ id: 'repo-legal' }));
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-
-      const result = await service.create(baseDto as never, 'user-1');
-      expect(result).toBeDefined();
-    });
-
-    it('strict mode: rejects DEFAULT status when jp5_require_terminated_status=true', async () => {
-      // CPA Manual Termination Policy: enforce TERMINATED-only via SystemConfig
-      prisma.systemConfig.findUnique.mockResolvedValue({ value: 'true' });
-      prisma.contract.findUnique.mockResolvedValue(
-        makeContract({ status: 'DEFAULT' }),
-      );
-
-      await expect(
-        service.create(baseDto as never, 'user-1'),
-      ).rejects.toThrow(/strict mode|หนังสือบอกเลิก/);
-    });
-
-    it('throws BadRequestException when product is already repossessed', async () => {
-      prisma.contract.findUnique.mockResolvedValue(
-        makeContract({ product: { ...makeContract().product, status: 'REPOSSESSED' } }),
-      );
-
-      await expect(
-        service.create(baseDto as never, 'user-1'),
-      ).rejects.toThrow(BadRequestException);
-    });
+  // ──────────────────────────────────────────────────────────────────────────
+  // assertRepossessionPeriodsOpen — ด่านนอก tx ของ create() เดิม (2026-09-20 ใบรับเครื่องคืน)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('assertRepossessionPeriodsOpen', () => {
+    it.each(['company-finance', 'company-shop'])(
+      'rejects a closed %s period after the configured grace deadline',
+      async (companyId) => {
+        jest.useFakeTimers();
+        jest.setSystemTime(new Date(2026, 8, 30, 12));
+        try {
+          prisma.systemConfig.findUnique.mockResolvedValue({ value: '0' });
+          prisma.accountingPeriod = {
+            findUnique: jest.fn().mockImplementation(async (args) => ({
+              status: args.where.companyId_year_month.companyId === companyId ? 'CLOSED' : 'OPEN',
+            })),
+          };
+          await expect(service.assertRepossessionPeriodsOpen(new Date())).rejects.toThrow(
+            /งวดที่ปิดแล้ว/,
+          );
+        } finally {
+          jest.useRealTimers();
+        }
+      },
+    );
 
     it('rejects a future paymentDate (BKK calendar day)', async () => {
-      const tomorrow = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-      await expect(
-        service.create({ ...baseDto, paymentDate: tomorrow } as never, 'user-1'),
-      ).rejects.toThrow(/อนาคต/);
+      const tomorrow = new Date(Date.now() + 48 * 60 * 60 * 1000);
+      await expect(service.assertRepossessionPeriodsOpen(tomorrow)).rejects.toThrow(/อนาคต/);
     });
 
-    it('create() ปฏิเสธ paymentDate เดือนก่อนหน้า (ห้ามข้ามเดือน — คำสั่งเจ้าของ 2026-08-08 ข้อ 3)', async () => {
-      // ต้องสร้าง "วันสุดท้ายของเดือนก่อน" บนปฏิทิน **เวลาไทย** ให้ตรงกับ `bkkYearMonth`
-      // ที่ service ใช้ตัดสิน — เดิมใช้ `new Date()` + setDate ซึ่งเป็นเวลาเครื่อง ⇒ บน CI
-      // (TZ=UTC) วันที่ได้จะเป็น "วันสุดท้ายของเดือนก่อน เวลา <เวลาปัจจุบัน> UTC" ซึ่งเมื่อ
-      // แปลงเป็นเวลาไทย (+7) จะข้ามไปเป็นวันที่ 1 ของเดือนปัจจุบันทันทีที่รันหลัง 17:00 UTC
-      // (= หลังเที่ยงคืนเวลาไทย) ⇒ guard ไม่ยิง แล้วโค้ดไหลไปตกที่ 'ไม่พบสัญญา' แทน
-      // (เทสล้มจริงบน CI 2026-08-23 17:57Z, ผ่านตอน 14:10Z — ดู bkkYearMonth ใน date.util)
-      // ตรึงเวลาไว้เที่ยงวันไทยเพื่อให้ห่างจากขอบเดือนทั้งสองฝั่ง ไม่ว่าเครื่องจะอยู่ TZ ไหน
+    it('ปฏิเสธ paymentDate เดือนก่อนหน้า (ห้ามข้ามเดือน — คำสั่งเจ้าของ 2026-08-08 ข้อ 3)', async () => {
+      // "วันสุดท้ายของเดือนก่อน" บนปฏิทินเวลาไทย ตรึงเที่ยงวันไทยให้ห่างขอบเดือน (บทเรียน CI 2026-08-23)
       const [y, m] = bkkYearMonth(new Date()).split('-').map(Number);
-      const prevMonth = new Date(Date.UTC(y, m - 1, 1, 5, 0, 0)); // 12:00 ไทย ของวันที่ 1 เดือนนี้
-      prevMonth.setUTCDate(0); // ถอย 1 วัน → วันสุดท้ายของเดือนก่อน (ยังเป็นเที่ยงวันไทย)
-      await expect(
-        service.create(
-          {
-            contractId: 'contract-1',
-            repossessedDate: '2026-08-01',
-            conditionGrade: 'B',
-            appraisalPrice: 5000,
-            paymentDate: prevMonth.toISOString(),
-          },
-          'user-1',
-        ),
-      ).rejects.toThrow('วันที่รับเงินย้อนหลังได้เฉพาะภายในเดือนปัจจุบัน');
+      const prevMonth = new Date(Date.UTC(y, m - 1, 1, 5, 0, 0));
+      prevMonth.setUTCDate(0);
+      await expect(service.assertRepossessionPeriodsOpen(prevMonth)).rejects.toThrow(
+        'วันที่รับเงินย้อนหลังได้เฉพาะภายในเดือนปัจจุบัน',
+      );
     });
 
-    it('create() ผ่านเมื่อ paymentDate อยู่ภายในเดือนปัจจุบัน (ไม่ปฏิเสธด้วยข้อความ "ห้ามข้ามเดือน")', async () => {
-      // สัญญามีงวดค้าง (default ของ makeContract) — เดินเส้น JP5 ตามปกติด้วย mock template
-      prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'TERMINATED' }));
-      prisma.repossession.create.mockResolvedValue(makeRepossession());
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
-
-      await expect(
-        service.create(
-          {
-            contractId: 'contract-1',
-            repossessedDate: '2026-08-01',
-            conditionGrade: 'B',
-            appraisalPrice: 5000,
-            paymentDate: new Date().toISOString(),
-          },
-          'user-1',
-        ),
-      ).resolves.toBeDefined();
+    it('เดือนปัจจุบัน → คืน company ids ทั้งสองและ validatePeriodOpen ถูกเรียก 2 ครั้ง (FINANCE + SHOP)', async () => {
+      const spy = jest.spyOn(periodLockUtil, 'validatePeriodOpen');
+      spy.mockClear();
+      await expect(service.assertRepossessionPeriodsOpen(new Date())).resolves.toEqual({
+        financeCompanyId: 'company-finance',
+        shopCompanyId: 'company-shop',
+      });
+      expect(spy).toHaveBeenCalledTimes(2);
+      expect(spy.mock.calls[0][2]).toBe('company-finance');
+      expect(spy.mock.calls[1][2]).toBe('company-shop');
     });
 
     it('ยอมรับ paymentDate ในงวดที่ CLOSED แต่ยังอยู่ใน grace window (validatePeriodOpen ของจริง)', async () => {
-      // Task 1 (คำสั่งเจ้าของ 2026-08-08 ข้อ 3) บังคับ paymentDate ให้อยู่ภายในเดือน
-      // ปัจจุบันเท่านั้น (guard ใหม่ทำงานก่อน validatePeriodOpen เสมอ) — ผลคือกิ่ง
-      // "CLOSED + เลย grace window" ของ validatePeriodOpen เป็นไปไม่ได้อีกต่อไปทาง
-      // คณิตศาสตร์ที่ default grace_days >= 1 (default 5): graceEnd = วันสุดท้ายของ
-      // เดือนปัจจุบัน + graceDays ซึ่ง >= "วันนี้" เสมอตราบใดที่ "วันนี้" ยังอยู่ในเดือน
-      // นั้น จึง `now > graceEnd` เป็นเท็จเสมอ (กิ่งนี้ยังมี unit test ครบที่
-      // period-lock.util.spec.ts ซึ่งไม่ผ่าน guard เดือนของ repossessions เลย — ไม่
-      // ได้รับผลกระทบ). กิ่งที่ยัง reachable จริงคือ "CLOSED แต่ยังอยู่ใน grace" —
-      // เทสต์นี้เรียก validatePeriodOpen ของจริง (ไม่ mock reject) เพื่อพิสูจน์ integration
-      // ตรงนี้ยังทำงานถูกต้อง: closed-but-within-grace ต้องผ่าน ไม่ throw
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      prisma.repossession.create.mockResolvedValue(makeRepossession());
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
-
       const now = new Date();
-      // realistic AccountingPeriod row shape (period-lock.util.ts only reads
-      // .status, but mirror the real Prisma model shape for clarity/honesty)
       prisma.accountingPeriod = {
         findUnique: jest.fn().mockResolvedValue({
           id: 'period-1',
@@ -782,70 +785,193 @@ describe('RepossessionsService', () => {
           status: 'CLOSED',
         }),
       };
-      // prisma.systemConfig.findUnique is already mocked to resolve null in
-      // beforeEach ("strict mode off by default") — getGraceDays() falls back
-      // to the documented default of 5 days when the row is missing, so "now"
-      // (always inside the current month, per the Task 1 guard above) is
-      // always within the grace window.
-
-      await expect(
-        service.create({ ...baseDto, paymentDate: now.toISOString() } as never, 'user-1'),
-      ).resolves.toBeDefined();
+      await expect(service.assertRepossessionPeriodsOpen(now)).resolves.toBeDefined();
       expect(prisma.accountingPeriod.findUnique).toHaveBeenCalled();
     });
 
     it('fails loud when FINANCE company is not configured (period guard must not silently no-op)', async () => {
       prisma.companyInfo.findFirst.mockResolvedValue(null);
-
-      await expect(service.create(baseDto as never, 'user-1')).rejects.toThrow(
+      await expect(service.assertRepossessionPeriodsOpen(new Date())).rejects.toThrow(
         'FINANCE company not configured',
       );
     });
 
-    it('threads paymentDate through to JP5 postedAt (JE entryDate)', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
+    it('fails loud when SHOP company is not configured', async () => {
+      prisma.companyInfo.findFirst.mockImplementation(
+        async (args?: { where?: { companyCode?: string } }) =>
+          args?.where?.companyCode === 'SHOP' ? null : { id: 'company-finance' },
+      );
+      await expect(service.assertRepossessionPeriodsOpen(new Date())).rejects.toThrow(
+        'SHOP company not configured',
+      );
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // createInTx — ตรรกะใน tx ของ create() เดิม; ผู้เรียก production = DeviceReturnsService.confirm
+  // (mock $transaction ส่ง prisma เป็น tx จึงเรียกด้วย prisma ตรง ๆ ได้)
+  // ──────────────────────────────────────────────────────────────────────────
+  describe('createInTx', () => {
+    const baseInput = (): RepossessionCreateInput => ({
+      contractId: 'contract-1',
+      repossessedDate: new Date('2026-01-15T05:00:00.000Z'),
+      paymentDate: new Date(),
+      conditionGrade: 'B',
+      appraisalPrice: 6000,
+      appraisedById: 'user-branch',
+      receivingBranchId: 'branch-receiving',
+      deviceReturnId: 'dr-1',
+      financeCompanyId: 'company-finance',
+      shopCompanyId: 'company-shop',
+    });
+    const run = (over: Partial<RepossessionCreateInput> = {}) =>
+      service.createInTx(prisma, { ...baseInput(), ...over }, 'user-1');
+    const arm = (
+      contractOverrides: Partial<Record<string, unknown>> = { status: 'TERMINATED' },
+    ) => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract(contractOverrides));
       prisma.repossession.create.mockResolvedValue(makeRepossession());
       prisma.contract.update.mockResolvedValue({});
       prisma.product.update.mockResolvedValue({});
+      prisma.auditLog.create.mockResolvedValue({});
+    };
+    const shopIntakeCalls = () =>
+      journalAuto.createAndPost.mock.calls
+        .filter(
+          ([input]: [Record<string, unknown>]) =>
+            (input.metadata as Record<string, unknown>)?.flow === 'shop-repossession-intake',
+        )
+        .map(([input]: [Record<string, unknown>]) => input);
 
-      // วันที่ 1 ของเดือนปัจจุบัน (ไม่ใช่วันในอนาคต, ไม่ข้ามเดือน) แทนค่า hardcode
-      // เดิม '2026-01-10' ที่ตกเป็นเดือนก่อนหน้าเมื่อรันหลัง 2026-08-08 (task-1 guard)
-      const now = new Date();
-      const paymentDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+    it('consumes only the park relief actually posted by JP5 in the caller transaction', async () => {
+      arm({ status: 'TERMINATED', rescheduleAdvanceBalance: decimal(500) });
+      jp5.execute.mockResolvedValueOnce({ entryNo: 'JE-PARK', parkRelief: decimal(200) });
+      await run();
+      expect(jp5.execute.mock.calls[0][0].parkRelief.toFixed(2)).toBe('500.00');
+      expect(prisma.contract.update).toHaveBeenCalledWith({
+        where: { id: 'contract-1' },
+        data: { rescheduleAdvanceBalance: { decrement: decimal(200) } },
+      });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'RESCHEDULE_ADVANCE_CONSUMED',
+            newValue: expect.objectContaining({
+              parkRelief: '200.00',
+              beforeParkBalance: '500.00',
+              afterParkBalance: '300.00',
+            }),
+          }),
+        }),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
 
-      await service.create({ ...baseDto, paymentDate: paymentDateStr } as never, 'user-1');
+    it('throws BadRequestException for invalid condition grade', async () => {
+      await expect(run({ conditionGrade: 'Z' })).rejects.toThrow(BadRequestException);
+    });
 
+    it('rejects invalid return reasons and OTHER without detail before writing', async () => {
+      await expect(run({ returnReason: 'INVALID' as never })).rejects.toThrow(
+        'กรุณาเลือกเหตุผลคืนเครื่องที่ถูกต้อง',
+      );
+      await expect(run({ returnReason: 'OTHER', notes: '  ' })).rejects.toThrow(
+        'กรุณาระบุรายละเอียดเหตุผลคืนเครื่อง',
+      );
+      expect(prisma.repossession.create).not.toHaveBeenCalled();
+    });
+
+    it('saves the selected return reason with readable notes and a structured audit code', async () => {
+      arm();
+      await run({ returnReason: 'UNAFFORDABLE', notes: 'ผู้รับเครื่องตรวจสภาพแล้ว' });
+      expect(prisma.repossession.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            notes: 'เหตุผลคืนเครื่อง: ลูกค้าไม่สามารถผ่อนต่อได้\nผู้รับเครื่องตรวจสภาพแล้ว',
+            appraisedById: 'user-branch',
+            repossessedDate: new Date('2026-01-15T05:00:00.000Z'),
+          }),
+        }),
+      );
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'REPOSSESSION',
+            userId: 'user-1',
+            newValue: expect.objectContaining({
+              returnReason: 'UNAFFORDABLE',
+              returnReasonLabel: 'ลูกค้าไม่สามารถผ่อนต่อได้',
+              deviceReturnId: 'dr-1',
+              receivingBranchId: 'branch-receiving',
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('throws NotFoundException when contract is not found', async () => {
+      prisma.contract.findUnique.mockResolvedValue(null);
+      await expect(run()).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when contract status is ACTIVE (no termination)', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'ACTIVE' }));
+      await expect(run()).rejects.toThrow(BadRequestException);
+    });
+
+    it('strict mode: rejects DEFAULT status when jp5_require_terminated_status=true', async () => {
+      prisma.systemConfig.findUnique.mockResolvedValue({ value: 'true' });
+      prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'DEFAULT' }));
+      await expect(run()).rejects.toThrow(/strict mode|หนังสือบอกเลิก/);
+    });
+
+    it('throws BadRequestException when product is already repossessed', async () => {
+      prisma.contract.findUnique.mockResolvedValue(
+        makeContract({ product: { ...makeContract().product, status: 'REPOSSESSED' } }),
+      );
+      await expect(run()).rejects.toThrow(BadRequestException);
+    });
+
+    it('device already has a Repossession row (productId @unique) → 409 Thai before any JE', async () => {
+      arm();
+      prisma.repossession.findFirst.mockResolvedValue({ id: 'repo-old' });
+      await expect(run()).rejects.toThrow(ConflictException);
+      await expect(run()).rejects.toThrow(/เคยถูกยึดคืนมาแล้ว/);
+      expect(jp5.execute).not.toHaveBeenCalled();
+    });
+
+    it('P2002 (lost race on the unique index) propagates as-is — ผู้เรียกแปลงเป็น 409 เพราะ tx ของมัน abort แล้ว', async () => {
+      arm();
+      prisma.repossession.create.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'test' }),
+      );
+      await expect(run()).rejects.toMatchObject({ code: 'P2002' });
+    });
+
+    it('threads paymentDate through to JP5 postedAt (JE entryDate)', async () => {
+      arm({ status: 'DEFAULT' });
+      const paymentDate = new Date();
+      await run({ paymentDate });
       expect(jp5.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ postedAt: new Date(paymentDateStr) }),
+        expect.objectContaining({ postedAt: paymentDate }),
         prisma,
       );
     });
 
     it('stores profitLoss = ราคากลาง − ยอดปิดสัญญา on the repossession row', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      prisma.repossession.create.mockResolvedValue(makeRepossession());
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-
-      await service.create(baseDto as never, 'user-1');
-
+      arm({ status: 'DEFAULT' });
+      await run();
       const data = prisma.repossession.create.mock.calls[0][0].data;
-      // สูตรเดียวกับ preview + ปิดยอดก่อนกำหนด: ยอดค้าง 2000 − ส่วนลด 59.58
-      // + ค่าปรับ 100 = closing 2040.42; marketValue 6000 → profit 3959.58
+      // สูตรเดียวกับ preview + ปิดยอดก่อนกำหนด: ยอดค้าง 2000 − ส่วนลด 59.58 + ค่าปรับ 100 = closing 2040.42
       expect(Number(data.closingAmount)).toBeCloseTo(2040.42, 2);
       expect(Number(data.profitLoss)).toBeCloseTo(6000 - 2040.42, 2);
+      expect(data.customerRefundEnabled).toBe(false);
+      expect(String(data.customerRefund)).toBe('0');
     });
 
-    it('creates repossession, updates contract to CLOSED_BAD_DEBT, and sets product to REPOSSESSED', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      const createdRepo = { ...makeRepossession(), id: 'repo-new' };
-      prisma.repossession.create.mockResolvedValue(createdRepo);
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
-
-      const result = await service.create(baseDto as never, 'user-1');
-
+    it('creates repossession, contract → CLOSED_BAD_DEBT, product → REPOSSESSED + SHOP-owned + branchId = receivingBranchId', async () => {
+      arm();
+      const result = await run();
       expect(prisma.repossession.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ status: 'REPOSSESSED', conditionGrade: 'B' }),
@@ -854,45 +980,76 @@ describe('RepossessionsService', () => {
       expect(prisma.contract.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: { status: 'CLOSED_BAD_DEBT' } }),
       );
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'REPOSSESSED' }) }),
-      );
-      expect(result).toMatchObject({ id: 'repo-new' });
+      const productData = prisma.product.update.mock.calls[0][0].data;
+      expect(productData.status).toBe('REPOSSESSED');
+      expect(productData.ownedByCompanyId).toBe('company-shop');
+      expect(productData.branchId).toBe('branch-receiving');
+      expect(productData.category).toBeUndefined(); // fixture product has no category → untouched
+      expect(result.repossession).toMatchObject({ id: 'repo-1' });
+      expect(result.outstandingBalance.toFixed(2)).toBe('2100.00');
+      expect(result.totalPaid.toFixed(2)).toBe('1000.00');
     });
 
-    it('passes tx to JP5 template (atomic — JE inside outer $transaction)', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
-
-      await service.create(baseDto as never, 'user-1');
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const template = (service as any).repossessionJP5Template;
-      expect(template.execute).toHaveBeenCalledWith(
+    it('JP5 ขา Dr = 11-2107 typed DEVICE_RETURN + deviceReturnId เสมอ, ใน tx เดียวกับผู้เรียก', async () => {
+      arm();
+      await run();
+      expect(jp5.execute).toHaveBeenCalledWith(
         expect.objectContaining({
           contractId: 'contract-1',
-          // Owner rule 2026-07-08: direct FINANCE receipt = KBank only —
-          // the fallback is 11-1201, never a cash account / user default.
-          depositAccountCode: '11-1201',
-          collectedByShop: false,
+          depositAccountCode: '11-2107',
+          shopReceivableType: 'DEVICE_RETURN',
+          deviceReturnId: 'dr-1',
         }),
-        prisma, // tx (mock $transaction passes prisma itself as tx)
+        prisma, // tx ที่ผู้เรียกส่งมา
       );
+      expect(jp5.execute.mock.calls[0][0].collectedByShop).toBeUndefined();
+      expect(jp5.execute.mock.calls[0][0].repossessionValue.toFixed(2)).toBe('6000.00');
     });
 
-    it('issues CN inside the same tx as JP5, with source=REPOSSESSION and the entryNo JP5 just returned', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
+    it('ขาคู่ SHOP: Dr S11-2002 / Cr S21-1104 typed DEVICE_RETURN + deviceReturnId ที่ราคาประเมิน ในสมุด SHOP', async () => {
+      arm();
+      prisma.tradeInValuation = { findFirst: jest.fn().mockResolvedValue(null) };
+      await run();
+      const [je] = shopIntakeCalls();
+      expect(je).toBeDefined();
+      expect(je.companyId).toBe('company-shop');
+      const lines = je.lines as Array<{
+        accountCode: string;
+        dr: Prisma.Decimal;
+        cr: Prisma.Decimal;
+      }>;
+      expect(lines.map((l) => [l.accountCode, l.dr.toString(), l.cr.toString()])).toEqual([
+        ['S11-2002', '6000', '0'],
+        ['S21-1104', '0', '6000'],
+      ]);
+      const meta = je.metadata as Record<string, unknown>;
+      expect(meta.shopReceivableType).toBe('DEVICE_RETURN');
+      expect(meta.contractId).toBe('contract-1');
+      expect(meta.deviceReturnId).toBe('dr-1');
+      expect(meta.idempotencyKey).toBe('shop-repossession-intake:contract-1');
+      expect(jp5.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('appraisal 0 → JP5 still posts, SHOP intake skipped — no zero-value stock entry', async () => {
+      arm();
+      prisma.tradeInValuation = { findFirst: jest.fn().mockResolvedValue(null) };
+      await run({ appraisalPrice: 0 });
+      expect(shopIntakeCalls()).toHaveLength(0);
+      expect(jp5.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it('ไม่เขียน audit SHOP_COLLECT_REPOSSESSION อีกต่อไป (แทนด้วย DEVICE_RETURN_CONFIRMED ที่ผู้เรียก + metadata บน JE)', async () => {
+      arm();
+      await run();
+      const actions = prisma.auditLog.create.mock.calls.map((c: any[]) => c[0].data.action);
+      expect(actions).toContain('REPOSSESSION');
+      expect(actions).not.toContain('SHOP_COLLECT_REPOSSESSION');
+    });
+
+    it('issues CN inside the same tx as JP5, with source=REPOSSESSION, entryNo ของ JP5 และ actor ที่ส่งมา', async () => {
+      arm();
       jp5.execute.mockResolvedValueOnce({ entryNo: 'JE-JP5-123' });
-
-      const result = await service.create(baseDto as never, 'user-1');
-
+      const result = await run();
       expect(creditNoteService.issueForContract).toHaveBeenCalledWith(
         expect.objectContaining({
           contractId: 'contract-1',
@@ -900,28 +1057,25 @@ describe('RepossessionsService', () => {
           sourceJournalEntryNo: 'JE-JP5-123',
           actorUserId: 'user-1',
         }),
-        prisma, // same tx JP5 was called with — atomic
+        prisma,
       );
       expect(result.creditNote).toEqual({ outcome: 'ISSUED', receiptId: 'r1' });
+      // การส่งไลน์ CN เป็นหน้าที่ผู้เรียกหลัง commit — createInTx ห้ามยิงเอง
+      expect(cnDeliveryServiceMock.deliver).not.toHaveBeenCalled();
     });
 
     it('marks BadDebtProvision rows REVERSED right after JP5 posts (Task 5, 2026-07-26)', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
-
-      await service.create(baseDto as never, 'user-1');
-
+      arm();
+      await run();
       expect(prisma.badDebtProvision.updateMany).toHaveBeenCalledWith({
         where: { status: 'ACTIVE', contractId: 'contract-1', deletedAt: null },
         data: { status: 'REVERSED' },
       });
     });
 
-    it('rejects a contract with no outstanding balance before JP5/CN (ผ่อนครบ = เครื่องเป็นของลูกค้า — review 2026-09-05)', async () => {
-      const paidUpContract = makeContract({
+    it('rejects a contract with no outstanding balance before JP5/CN (ผ่อนครบ = เครื่องเป็นของลูกค้า)', async () => {
+      arm({
+        status: 'TERMINATED',
         payments: [
           {
             id: 'pay-1',
@@ -934,104 +1088,11 @@ describe('RepossessionsService', () => {
           },
         ],
       });
-      prisma.contract.findUnique.mockResolvedValue(paidUpContract);
-      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
-
-      await expect(service.create(baseDto as never, 'user-1')).rejects.toThrow(/ไม่มียอดค้างชำระ/);
-
+      await expect(run()).rejects.toThrow(/ไม่มียอดค้างชำระ/);
       expect(jp5.execute).not.toHaveBeenCalled();
       expect(creditNoteService.issueForContract).not.toHaveBeenCalled();
-      expect(prisma.badDebtProvision.updateMany).not.toHaveBeenCalled();
       expect(prisma.repossession.create).not.toHaveBeenCalled();
       expect(prisma.product.update).not.toHaveBeenCalled();
-    });
-
-    it('rejects customerRefundEnabled=true outright — no-refund policy (คำตัดสินเจ้าของ 2026-09-05)', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'TERMINATED' }));
-
-      await expect(
-        service.create({ ...baseDto, customerRefundEnabled: true } as never, 'user-1'),
-      ).rejects.toThrow(/ไม่มีเงินคืนส่วนต่าง/);
-
-      expect(prisma.repossession.create).not.toHaveBeenCalled();
-      expect(jp5.execute).not.toHaveBeenCalled();
-    });
-
-    describe('ขาคู่ฝั่ง SHOP ตอนยึด + กรรมสิทธิ์/หมวดสินค้า (2026-09-05)', () => {
-      const runCreate = async (dto: Record<string, unknown>) => {
-        prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'TERMINATED' }));
-        prisma.tradeInValuation = { findFirst: jest.fn().mockResolvedValue(null) };
-        prisma.repossession.create.mockResolvedValue(makeRepossession());
-        prisma.contract.update.mockResolvedValue({});
-        prisma.product.update.mockResolvedValue({});
-        await service.create({ ...baseDto, ...dto } as never, 'user-1');
-        const shopCalls = journalAuto.createAndPost.mock.calls.filter(
-          ([input]: [Record<string, unknown>]) =>
-            (input.metadata as Record<string, unknown>)?.flow === 'shop-repossession-intake',
-        );
-        return shopCalls.map(([input]: [Record<string, unknown>]) => input);
-      };
-
-      it('appraisal 0 (DTO allows it) → JP5 still posts, SHOP intake skipped — no zero-value stock entry', async () => {
-        const shopCalls = await runCreate({ appraisalPrice: 0, collectedByShop: true });
-        expect(shopCalls).toHaveLength(0);
-        expect(jp5.execute).toHaveBeenCalledTimes(1);
-      });
-
-      it('device already has a Repossession row (productId @unique) → 409 Thai before any JE', async () => {
-        prisma.repossession.findFirst.mockResolvedValueOnce({ id: 'repo-old' });
-        await expect(runCreate({ collectedByShop: true })).rejects.toThrow(/เคยถูกยึดคืนมาแล้ว/);
-        expect(jp5.execute).not.toHaveBeenCalled();
-        expect(prisma.repossession.create).not.toHaveBeenCalled();
-      });
-
-      it('P2002 from the unique index (lost race) → same 409 Thai, never a raw 500', async () => {
-        prisma.repossession.create.mockRejectedValueOnce(
-          new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'test' }),
-        );
-        await expect(runCreate({ collectedByShop: true })).rejects.toThrow(/เคยถูกยึดคืนมาแล้ว/);
-      });
-
-      it('collectedByShop → SHOP books Dr S11-2002 / Cr S21-1104 (typed SHOP_COLLECT) at the appraisal, same tx as JP5', async () => {
-        const [je] = await runCreate({ collectedByShop: true });
-        expect(je).toBeDefined();
-        expect(je.companyId).toBe('company-shop'); // สมุด SHOP — companyInfo mock แยก id ตาม companyCode
-        const lines = je.lines as Array<{ accountCode: string; dr: Prisma.Decimal; cr: Prisma.Decimal }>;
-        expect(lines.map((l) => [l.accountCode, l.dr.toString(), l.cr.toString()])).toEqual([
-          ['S11-2002', '6000', '0'],
-          ['S21-1104', '0', '6000'],
-        ]);
-        const meta = je.metadata as Record<string, unknown>;
-        expect(meta.shopReceivableType).toBe('SHOP_COLLECT');
-        expect(meta.contractId).toBe('contract-1');
-        expect(meta.idempotencyKey).toBe('shop-repossession-intake:contract-1');
-        expect(jp5.execute).toHaveBeenCalledTimes(1);
-      });
-
-      it('paid straight to FINANCE KBank → SHOP books Cr S11-1202 instead, with no interco stamp', async () => {
-        const [je] = await runCreate({ collectedByShop: false, depositAccountCode: '11-1201' });
-        const lines = je.lines as Array<{ accountCode: string }>;
-        expect(lines.map((l) => l.accountCode)).toEqual(['S11-2002', 'S11-1202']);
-        expect((je.metadata as Record<string, unknown>).shopReceivableType).toBeUndefined();
-      });
-
-      it('flips ownership to SHOP and PHONE_NEW → PHONE_USED on the repossessed product', async () => {
-        await runCreate({});
-        const productData = prisma.product.update.mock.calls[0][0].data;
-        expect(productData.status).toBe('REPOSSESSED');
-        expect(productData.ownedByCompanyId).toBe('company-shop'); // companyInfo mock แยก id ตาม companyCode
-        expect(productData.category).toBeUndefined(); // fixture product has no category → untouched
-      });
-
-      it('validates the SHOP accounting period too (validatePeriodOpen called for both companies)', async () => {
-        const spy = jest.spyOn(periodLockUtil, 'validatePeriodOpen');
-        spy.mockClear();
-        await runCreate({});
-        expect(spy).toHaveBeenCalledTimes(2);
-      });
     });
 
     describe('ราคาเดียว + ตารางรับซื้อเป็นตัวเทียบ (2026-09-05)', () => {
@@ -1040,204 +1101,52 @@ describe('RepossessionsService', () => {
       });
 
       it('requires a note when the appraisal deviates more than 15% from the valuation table', async () => {
-        prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'TERMINATED' }));
+        arm();
         prisma.tradeInValuation = tableRow(8000); // appraisal 6000 = −25%
-
-        await expect(
-          service.create({ ...baseDto, returnReason: 'UNAFFORDABLE', notes: '   ' } as never, 'user-1'),
-        ).rejects.toThrow(/เกิน 15%/);
-
+        await expect(run({ returnReason: 'UNAFFORDABLE', notes: '   ' })).rejects.toThrow(
+          /เกิน 15%/,
+        );
         expect(prisma.repossession.create).not.toHaveBeenCalled();
         expect(jp5.execute).not.toHaveBeenCalled();
       });
 
       it('stores the table price as the marketValue snapshot when a note explains the deviation', async () => {
-        prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'TERMINATED' }));
+        arm();
         prisma.tradeInValuation = tableRow(8000);
-        prisma.repossession.create.mockResolvedValue(makeRepossession());
-        prisma.contract.update.mockResolvedValue({});
-        prisma.product.update.mockResolvedValue({});
-
-        await service.create({ ...baseDto, notes: 'จอแตก กระจกหลังร้าว' } as never, 'user-1');
-
+        await run({ notes: 'จอแตก กระจกหลังร้าว' });
         const data = prisma.repossession.create.mock.calls[0][0].data;
         expect(String(data.marketValue)).toBe('8000');
-        expect(data.customerRefundEnabled).toBe(false);
-        expect(String(data.customerRefund)).toBe('0');
-        // กำไร/ขาดทุนบนจอ = ราคาประเมิน − ยอดปิด (ไม่ใช่ราคาตาราง)
         expect(Number(data.profitLoss)).toBeCloseTo(6000 - Number(data.closingAmount), 2);
       });
 
       it('within ±15% needs no note; marketValue falls back to the appraisal when the model is not in the table', async () => {
-        prisma.contract.findUnique.mockResolvedValue(makeContract({ status: 'TERMINATED' }));
+        arm();
         prisma.tradeInValuation = { findFirst: jest.fn().mockResolvedValue(null) };
-        prisma.repossession.create.mockResolvedValue(makeRepossession());
-        prisma.contract.update.mockResolvedValue({});
-        prisma.product.update.mockResolvedValue({});
-
-        await service.create(baseDto as never, 'user-1');
-
-        const data = prisma.repossession.create.mock.calls[0][0].data;
-        expect(String(data.marketValue)).toBe('6000');
+        await run();
+        expect(String(prisma.repossession.create.mock.calls[0][0].data.marketValue)).toBe('6000');
       });
     });
 
-    it('rolls back the whole repossession when CN issuance throws (atomicity)', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
+    it('propagates when CN issuance throws (atomicity is the caller tx — no swallow)', async () => {
+      arm();
       creditNoteService.issueForContract.mockRejectedValueOnce(new Error('CN fail'));
-
-      await expect(service.create(baseDto as never, 'user-1')).rejects.toThrow('CN fail');
-      expect(creditNoteService.issueForContract).toHaveBeenCalled();
+      await expect(run()).rejects.toThrow('CN fail');
     });
 
-    // Phase 3 Task 5 — post-commit LINE delivery hook.
-    describe('CreditNoteDeliveryService post-commit hook', () => {
-      it('fires deliver(receiptId) AFTER the $transaction resolves, with the ISSUED receiptId', async () => {
-        prisma.contract.findUnique.mockResolvedValue(makeContract());
-        prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-        prisma.contract.update.mockResolvedValue({});
-        prisma.product.update.mockResolvedValue({});
-        prisma.auditLog.create.mockResolvedValue({});
-
-        await service.create(baseDto as never, 'user-1');
-
-        expect(cnDeliveryServiceMock.deliver).toHaveBeenCalledWith('r1');
-        // Ordering proof: deliver's global invocation index must come AFTER
-        // $transaction's — i.e. the hook runs post-commit, never from inside
-        // the transaction callback.
-        const txOrder = prisma.$transaction.mock.invocationCallOrder[0];
-        const deliverOrder = cnDeliveryServiceMock.deliver.mock.invocationCallOrder[0];
-        expect(deliverOrder).toBeGreaterThan(txOrder);
-      });
-
-      it('does NOT call deliver when there is no outstanding balance (no CN issued)', async () => {
-        const paidUpContract = makeContract({
-          payments: [
-            {
-              id: 'pay-1',
-              installmentNo: 1,
-              status: 'PAID',
-              amountDue: decimal(1000),
-              amountPaid: decimal(1000),
-              lateFee: decimal(0),
-              lateFeeWaived: false,
-            },
-          ],
-        });
-        prisma.contract.findUnique.mockResolvedValue(paidUpContract);
-        prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-        prisma.contract.update.mockResolvedValue({});
-        prisma.product.update.mockResolvedValue({});
-        prisma.auditLog.create.mockResolvedValue({});
-
-        // review 2026-09-05: ไม่มียอดค้าง → ปฏิเสธก่อน JP5/CN — deliver ต้องไม่ถูกเรียกเช่นเดิม
-        await expect(service.create(baseDto as never, 'user-1')).rejects.toThrow(/ไม่มียอดค้างชำระ/);
-
-        expect(cnDeliveryServiceMock.deliver).not.toHaveBeenCalled();
-      });
-
+    it('propagates when JP5 throws (no fire-and-forget)', async () => {
+      arm();
+      jp5.execute.mockRejectedValueOnce(new Error('JE fail'));
+      await expect(run()).rejects.toThrow('JE fail');
     });
 
-    it('collectedByShop books the JP5 deposit leg to 11-2107 + writes SHOP_COLLECT_REPOSSESSION audit', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
-
-      await service.create({ ...baseDto, collectedByShop: true } as never, 'user-1');
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const template = (service as any).repossessionJP5Template;
-      expect(template.execute).toHaveBeenCalledWith(
-        expect.objectContaining({
-          contractId: 'contract-1',
-          depositAccountCode: '11-2107',
-          collectedByShop: true,
-        }),
-        prisma,
-      );
-      // Forensic trail mirrors SHOP_COLLECT_PAYOFF (JP4).
-      const auditActions = prisma.auditLog.create.mock.calls.map(
-        (c: any[]) => c[0].data.action,
-      );
-      expect(auditActions).toContain('SHOP_COLLECT_REPOSSESSION');
-      const scAudit = prisma.auditLog.create.mock.calls.find(
-        (c: any[]) => c[0].data.action === 'SHOP_COLLECT_REPOSSESSION',
-      )![0].data;
-      expect(scAudit.newValue.shopReceivable).toBe('11-2107');
-      expect(scAudit.newValue.repossessionValue).toBe('6000.00');
-    });
-
-    it('ignores a caller-sent depositAccountCode when collectedByShop=true (server substitution wins)', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
-
-      await service.create(
-        { ...baseDto, collectedByShop: true, depositAccountCode: '11-1201' } as never,
-        'user-1',
-      );
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const template = (service as any).repossessionJP5Template;
-      expect(template.execute).toHaveBeenCalledWith(
-        expect.objectContaining({ depositAccountCode: '11-2107' }),
-        prisma,
-      );
-    });
-
-    it('rolls back contract+product update when JP5 throws (atomicity)', async () => {
-      prisma.contract.findUnique.mockResolvedValue(makeContract());
-      prisma.repossession.create.mockResolvedValue({ ...makeRepossession(), id: 'repo-new' });
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
-
-      // Mock JP5 to reject — should propagate up through $transaction (no fire-and-forget)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const template = (service as any).repossessionJP5Template;
-      template.execute.mockRejectedValueOnce(new Error('JE fail'));
-
-      await expect(service.create(baseDto as never, 'user-1')).rejects.toThrow('JE fail');
-
-      // JP5 was awaited — error propagated (proves no .catch() fire-and-forget remains)
-      expect(template.execute).toHaveBeenCalled();
-    });
-
-    it('create() โหลด payments เฉพาะ deletedAt:null (เหมือน previewCalculation)', async () => {
-      // ทุกงวด PAID → outstandingBalance = 0 → ตั้งแต่ review 2026-09-05 create() ปฏิเสธ (หลังโหลดสัญญา)
-      // — test นี้สนแค่ shape ของ include ซึ่งถูกเรียกก่อนด่านนั้น จึงไม่ต้องพึ่ง mock ของ jp5/CN เลย
+    it('โหลด payments เฉพาะ deletedAt:null (เหมือน previewCalculation)', async () => {
       const allPaid = makeContract({ status: 'TERMINATED' }).payments.map((p) => ({
         ...p,
         status: 'PAID',
         amountPaid: p.amountDue,
       }));
-      prisma.contract.findUnique.mockResolvedValue(
-        makeContract({ status: 'TERMINATED', payments: allPaid }),
-      );
-      prisma.systemConfig.findUnique.mockResolvedValue(null);
-      prisma.repossession.create.mockResolvedValue(makeRepossession());
-      prisma.contract.update.mockResolvedValue({});
-      prisma.product.update.mockResolvedValue({});
-      prisma.auditLog.create.mockResolvedValue({});
-      await expect(
-        service.create(
-          {
-            contractId: 'contract-1',
-            repossessedDate: '2026-08-07',
-            conditionGrade: 'B',
-            appraisalPrice: 5000,
-          } as never,
-          'user-1',
-        ),
-      ).rejects.toThrow(/ไม่มียอดค้างชำระ/);
+      arm({ status: 'TERMINATED', payments: allPaid });
+      await expect(run()).rejects.toThrow(/ไม่มียอดค้างชำระ/);
       expect(prisma.contract.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({
           include: expect.objectContaining({
@@ -1260,7 +1169,9 @@ describe('RepossessionsService', () => {
         makeRepossession({ customerRefundEnabled: false }),
       );
 
-      await expect(service.refundPayment('repo-1', owner, dto)).rejects.toThrow(BadRequestException);
+      await expect(service.refundPayment('repo-1', owner, dto)).rejects.toThrow(
+        BadRequestException,
+      );
       expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
     });
 
@@ -1330,7 +1241,6 @@ describe('RepossessionsService', () => {
     it('BM ข้ามสาขา → NotFoundException (findOne branch scope) ก่อนถึง template', async () => {
       prisma.repossession.findUnique.mockResolvedValue(
         makeRepossession({
-          customerRefundEnabled: true,
           contract: {
             branchId: 'branch-1',
             contractNumber: 'BC-202601-0001',
@@ -1342,7 +1252,11 @@ describe('RepossessionsService', () => {
       );
 
       await expect(
-        service.refundPayment('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-2' }, dto),
+        service.refundPayment(
+          'repo-1',
+          { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-2' },
+          dto,
+        ),
       ).rejects.toThrow(NotFoundException);
       expect(refundPayoutTemplate.execute).not.toHaveBeenCalled();
     });
@@ -1483,7 +1397,6 @@ describe('RepossessionsService', () => {
     it('BM ข้ามสาขา → NotFoundException (findOne branch scope) ก่อนถึง template', async () => {
       prisma.repossession.findUnique.mockResolvedValue(
         makeRepossession({
-          customerRefundEnabled: true,
           contract: {
             branchId: 'branch-1',
             contractNumber: 'BC-202601-0001',
@@ -1495,7 +1408,11 @@ describe('RepossessionsService', () => {
       );
 
       await expect(
-        service.waiveRefund('repo-1', { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-2' }, dto),
+        service.waiveRefund(
+          'repo-1',
+          { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-2' },
+          dto,
+        ),
       ).rejects.toThrow(NotFoundException);
       expect(refundWaiveTemplate.execute).not.toHaveBeenCalled();
     });
@@ -1544,9 +1461,9 @@ describe('RepossessionsService', () => {
     it('throws BadRequestException for invalid transition REPOSSESSED → SOLD', async () => {
       prisma.repossession.findUnique.mockResolvedValue(makeRepossession({ status: 'REPOSSESSED' }));
 
-      await expect(
-        service.update('repo-1', { status: 'SOLD' } as never),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.update('repo-1', { status: 'SOLD' } as never)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('throws BadRequestException when moving to READY_FOR_SALE without resellPrice', async () => {
@@ -1554,9 +1471,9 @@ describe('RepossessionsService', () => {
         makeRepossession({ status: 'UNDER_REPAIR', resellPrice: null }),
       );
 
-      await expect(
-        service.update('repo-1', { status: 'READY_FOR_SALE' } as never),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.update('repo-1', { status: 'READY_FOR_SALE' } as never)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('PATCH สถานะเป็น READY_FOR_SALE ถูกปฏิเสธ — ต้องผ่านปุ่ม "พร้อมขาย" (สองราคา + คิวรอถ่ายรูป)', async () => {
@@ -1729,9 +1646,9 @@ describe('RepossessionsService', () => {
 
     it('transition ผิด (REPOSSESSED→SOLD) ยัง reject เหมือนเดิม', async () => {
       prisma.repossession.findUnique.mockResolvedValue(makeRepossession({ status: 'REPOSSESSED' }));
-      await expect(
-        service.update('repo-1', { status: 'SOLD' } as never, owner),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.update('repo-1', { status: 'SOLD' } as never, owner)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     // Finding 2 (WARNING): self-transition/plain PATCH must not silently
@@ -1749,9 +1666,9 @@ describe('RepossessionsService', () => {
       prisma.repossession.findUnique.mockResolvedValue(
         makeRepossession({ status: 'READY_FOR_SALE', resellPrice: decimal(6000) }),
       );
-      await expect(
-        service.update('repo-1', { resellPrice: 0 } as never, owner),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.update('repo-1', { resellPrice: 0 } as never, owner)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('READY_FOR_SALE + self-transition resellPrice=6000 (>0) → สำเร็จ', async () => {
@@ -1881,23 +1798,32 @@ describe('RepossessionsService', () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract({ branchId: 'branch-1' }));
 
       await expect(
-        service.previewCalculation('contract-1', {}, {
-          id: 'u1',
-          role: 'BRANCH_MANAGER',
-          branchId: 'branch-2',
-        }),
+        service.previewCalculation(
+          'contract-1',
+          { deviceReturnId: 'dr-1' },
+          {
+            id: 'u1',
+            role: 'BRANCH_MANAGER',
+            branchId: 'branch-2',
+          },
+        ),
       ).rejects.toThrow(NotFoundException);
+      expect(prisma.deviceReturn.findFirst).not.toHaveBeenCalled();
     });
 
     it('previewCalculation: BM สาขาเดียวกัน → ผ่าน', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract({ branchId: 'branch-1' }));
 
       await expect(
-        service.previewCalculation('contract-1', {}, {
-          id: 'u1',
-          role: 'BRANCH_MANAGER',
-          branchId: 'branch-1',
-        }),
+        service.previewCalculation(
+          'contract-1',
+          {},
+          {
+            id: 'u1',
+            role: 'BRANCH_MANAGER',
+            branchId: 'branch-1',
+          },
+        ),
       ).resolves.toBeTruthy();
     });
   });

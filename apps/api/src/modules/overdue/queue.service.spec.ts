@@ -102,7 +102,9 @@ describe('OverdueQueueService', () => {
   describe('getQueue — today tab', () => {
     it('returns correct ContractRow shape for today tab', async () => {
       const contract = makeContract({
-        callLogs: [{ result: 'NO_ANSWER', calledAt: new Date(Date.now() - 86400000), settlementDate: null }],
+        callLogs: [
+          { result: 'NO_ANSWER', calledAt: new Date(Date.now() - 86400000), settlementDate: null },
+        ],
       });
       mockPrisma.contract.findMany.mockResolvedValueOnce([contract]);
       mockPrisma.contract.count.mockResolvedValueOnce(1);
@@ -300,23 +302,48 @@ describe('OverdueQueueService', () => {
     it('sorts by priority score desc so biggest+oldest+no-answer surfaces first', async () => {
       const low = mkContract({
         id: 'low',
-        payments: [{ amountDue: '500', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 5 * 86400000).toISOString() }],
+        payments: [
+          {
+            amountDue: '500',
+            amountPaid: '0',
+            lateFee: '0',
+            dueDate: new Date(Date.now() - 5 * 86400000).toISOString(),
+          },
+        ],
       }); // 500 * 5 * 1 * 1 = 2500
       const mid = mkContract({
         id: 'mid',
-        payments: [{ amountDue: '2000', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 20 * 86400000).toISOString() }],
+        payments: [
+          {
+            amountDue: '2000',
+            amountPaid: '0',
+            lateFee: '0',
+            dueDate: new Date(Date.now() - 20 * 86400000).toISOString(),
+          },
+        ],
       }); // 2000 * 20 * 1 * 1 = 40000
       const high = mkContract({
         id: 'high',
         noAnswerCount: 2,
         _count: { callLogs: 3 }, // 3 broken promises
-        payments: [{ amountDue: '3000', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 30 * 86400000).toISOString() }],
+        payments: [
+          {
+            amountDue: '3000',
+            amountPaid: '0',
+            lateFee: '0',
+            dueDate: new Date(Date.now() - 30 * 86400000).toISOString(),
+          },
+        ],
       }); // 3000 * 30 * 3 * 7 = 1,890,000
 
       mockPrisma.contract.findMany.mockResolvedValueOnce([low, mid, high]);
       mockPrisma.contract.count.mockResolvedValueOnce(3);
 
-      const result = await service.getQueue({ tab: 'today', userRole: 'OWNER', userBranchId: null });
+      const result = await service.getQueue({
+        tab: 'today',
+        userRole: 'OWNER',
+        userBranchId: null,
+      });
 
       expect(result.data.map((r) => r.id)).toEqual(['high', 'mid', 'low']);
       // __priorityScore should be stripped from response
@@ -518,7 +545,12 @@ describe('OverdueQueueService', () => {
         noAnswerCount: 0,
         needsSkipTracing: false,
         deviceLocked: false,
-        customer: { id: `cust-${id}`, name: `ลูกค้า ${id}`, phone: '0800000000', lineIdFinance: null },
+        customer: {
+          id: `cust-${id}`,
+          name: `ลูกค้า ${id}`,
+          phone: '0800000000',
+          lineIdFinance: null,
+        },
         branch: { id: 'branch-1', name: 'สาขา 1' },
         assignedTo: null,
         payments: [
@@ -560,15 +592,30 @@ describe('OverdueQueueService', () => {
     it('filters by outstanding range (min/max)', async () => {
       const small = { ...makeContractWithDays('small', 10) };
       small.payments = [
-        { amountDue: '1000', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 10 * 86400000) },
+        {
+          amountDue: '1000',
+          amountPaid: '0',
+          lateFee: '0',
+          dueDate: new Date(Date.now() - 10 * 86400000),
+        },
       ];
       const mid = { ...makeContractWithDays('mid', 10) };
       mid.payments = [
-        { amountDue: '10000', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 10 * 86400000) },
+        {
+          amountDue: '10000',
+          amountPaid: '0',
+          lateFee: '0',
+          dueDate: new Date(Date.now() - 10 * 86400000),
+        },
       ];
       const large = { ...makeContractWithDays('large', 10) };
       large.payments = [
-        { amountDue: '50000', amountPaid: '0', lateFee: '0', dueDate: new Date(Date.now() - 10 * 86400000) },
+        {
+          amountDue: '50000',
+          amountPaid: '0',
+          lateFee: '0',
+          dueDate: new Date(Date.now() - 10 * 86400000),
+        },
       ];
       mockPrisma.contract.findMany.mockResolvedValueOnce([small, mid, large]);
       mockPrisma.contract.count.mockResolvedValueOnce(3);
@@ -589,9 +636,7 @@ describe('OverdueQueueService', () => {
       const b = makeContractWithDays('b', 10);
       mockPrisma.contract.findMany.mockResolvedValueOnce([a, b]);
       mockPrisma.contract.count.mockResolvedValueOnce(2);
-      mockPrisma.auditLog.groupBy.mockResolvedValueOnce([
-        { entityId: 'a', _count: { _all: 2 } },
-      ]);
+      mockPrisma.auditLog.groupBy.mockResolvedValueOnce([{ entityId: 'a', _count: { _all: 2 } }]);
 
       const result = await service.getQueue({
         tab: 'today',
@@ -1096,9 +1141,7 @@ describe('OverdueQueueService', () => {
     });
 
     it('queries snapshots in a ±1 day window around 7-days-ago (cron-skip tolerance)', async () => {
-      mockPrisma.contract.findMany.mockResolvedValueOnce([
-        makeContractWithDaysOverdue('a', 5),
-      ]);
+      mockPrisma.contract.findMany.mockResolvedValueOnce([makeContractWithDaysOverdue('a', 5)]);
       mockPrisma.contract.count.mockResolvedValueOnce(1);
 
       await service.getQueue({
@@ -1137,6 +1180,22 @@ describe('OverdueQueueService', () => {
       });
 
       expect(r.data[0].snoozedUntil).toEqual(future);
+    });
+  });
+  describe('promise tab — สัญญาที่มีใบรับเครื่องคืนเปิดอยู่ไม่เข้าคิว (spec 2026-09-20 §5.7)', () => {
+    it('where ของแท็บนัดชำระมี deviceReturns.none ของสถานะ PENDING_CONFIRM/CONFIRMED (predicate ตัวเดียวกับ promise cron)', async () => {
+      mockPrisma.contract.findMany.mockResolvedValueOnce([]);
+      mockPrisma.contract.count.mockResolvedValueOnce(0);
+
+      await service.getQueue({ tab: 'promise', userRole: 'OWNER', userBranchId: null });
+
+      const where = mockPrisma.contract.findMany.mock.calls[0][0].where;
+      expect(where.deviceReturns).toEqual({
+        none: { status: { in: ['PENDING_CONFIRM', 'CONFIRMED'] }, deletedAt: null },
+      });
+      // เงื่อนไขเดิมของแท็บยังอยู่ครบ
+      expect(where.callLogs.some.result).toBe('PROMISED');
+      expect(where.callLogs.some.brokenAt).toBeNull();
     });
   });
 });

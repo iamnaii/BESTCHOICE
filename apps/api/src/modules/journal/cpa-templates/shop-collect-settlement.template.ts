@@ -6,6 +6,7 @@ import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CASH_ACCOUNT_CODES } from '../../../constants/cash-account.constants';
 import { resolveContractLabel } from '../contract-label.util';
+import { deviceReturnFinanceBalance } from '../../interco-settlement/interco-typed-balance';
 
 export interface ShopCollectSettlementInput {
   contractId: string;
@@ -14,6 +15,8 @@ export interface ShopCollectSettlementInput {
   /** Amount to settle — must be ≤ outstanding 11-2107 balance + 0.01 tolerance. */
   amount: number | Decimal;
   postedById?: string;
+  /** Optional caller-validated instant shared with a paired posting. */
+  postedAt?: Date;
   /**
    * Client-generated UUID ต่อการกดยืนยันหนึ่งครั้ง — dedupe เฉพาะ retry ของคำขอเดิม
    * โดยไม่กลืนการโอนซ้ำยอดเท่ากันที่ตั้งใจ. ไม่ส่ง = fallback dedupe แบบเก่า
@@ -23,14 +26,45 @@ export interface ShopCollectSettlementInput {
   /**
    * ประเภทลูกหนี้ 11-2107 ที่ใบนี้ล้าง (Phase 3 Task 6 — เส้นทางรับเงินสดคืน):
    * default `'SHOP_COLLECT'` — caller เดิม (JP4/shop-collect settle) ต้องได้
-   * พฤติกรรม byte-identical. `'PAYOUT_RECALL'` ใช้โดย
-   * `IntercoSettlementService.settleRecallCash` เท่านั้น — stamp ลง
-   * `metadata.shopReceivableType` ให้ typed recall lens หักยอดต่อสัญญาได้ตรงประเภท.
+   * พฤติกรรมเดิมเมื่อไม่มีค่าเครื่องคืน. `'PAYOUT_RECALL'` ใช้โดย settleRecallCash;
+   * `'DEVICE_RETURN'` เตรียมให้ settleDeductionCash (Task 9) — stamp ลง
+   * `metadata.shopReceivableType` ให้ typed lens หักยอดต่อสัญญาได้ตรงประเภท.
    * Guards/idempotency/outstanding computation ไม่แตกต่างตามประเภท (untyped
-   * per-contract Σ − POSTED deductions เหมือนเดิมทุกเส้นทาง).
+   * per-contract Σ − POSTED deductions เหมือนเดิมทุกเส้นทาง) — ยกเว้นด่าน §6.4
+   * (ค่าเครื่องคืนค้างหรือมีประวัติ JE ประเภทนี้) ยกเว้นเฉพาะ `'DEVICE_RETURN'`.
    */
-  typeStamp?: 'SHOP_COLLECT' | 'PAYOUT_RECALL';
+  typeStamp?: ShopCollectTypeStamp;
 }
+
+/** ประเภทที่ใบรับโอน/รับเงินสดล้างได้ — ทุกค่าต้องเป็นสมาชิกของ SHOP_RECEIVABLE_TYPES */
+export type ShopCollectTypeStamp = 'SHOP_COLLECT' | 'PAYOUT_RECALL' | 'DEVICE_RETURN';
+
+/** ข้อความ JE ต่อประเภท — สองประเภทเดิม byte-identical กับก่อน 2026-09-20 */
+const TYPE_TEXT: Record<
+  ShopCollectTypeStamp,
+  {
+    description: (contractLabel: string) => string;
+    cashLine: (amountStr: string) => string;
+    receivableLine: string;
+  }
+> = {
+  SHOP_COLLECT: {
+    description: (label) => `รับโอนจากหน้าร้าน — สัญญา ${label} (ล้าง 11-2107)`,
+    cashLine: (amountStr) => `รับโอนจากหน้าร้าน ${amountStr} ฿`,
+    receivableLine: 'ล้างลูกหนี้-หน้าร้าน (shop-collect)',
+  },
+  PAYOUT_RECALL: {
+    description: (label) => `รับเงินคืนจากหน้าร้าน — สัญญา ${label} (ล้าง 11-2107 เรียกคืน)`,
+    cashLine: (amountStr) => `รับเงินคืนจากหน้าร้าน ${amountStr} ฿`,
+    receivableLine: 'ล้างลูกหนี้-หน้าร้าน (เรียกคืนยกเลิก)',
+  },
+  DEVICE_RETURN: {
+    description: (label) =>
+      `รับเงินค่าเครื่องคืนจากหน้าร้าน — สัญญา ${label} (ล้าง 11-2107 ค่าเครื่องคืน)`,
+    cashLine: (amountStr) => `รับเงินค่าเครื่องคืนจากหน้าร้าน ${amountStr} ฿`,
+    receivableLine: 'ล้างลูกหนี้-หน้าร้าน (ค่าเครื่องคืน)',
+  },
+};
 
 /**
  * Shop-Collect Settlement — clears the Dr 11-2107 receivable created by a
@@ -45,10 +79,17 @@ export interface ShopCollectSettlementInput {
  *
  * Guards:
  *   - depositAccountCode must be in CASH_ACCOUNT_CODES
+ *   - (ใบรับเครื่องคืน 2026-09-20 §6.4) rejected outright while the contract has a
+ *     positive typed DEVICE_RETURN balance or qualifying stamped history on 11-2107
+ *     and this call is NOT itself the
+ *     DEVICE_RETURN cash path (`typeStamp !== 'DEVICE_RETURN'`) — ค่าเครื่องคืนล้างได้
+ *     เฉพาะรอบจ่าย INTER-CO หรือ settleDeductionCash; ใบรับโอนที่ stamp ประเภทอื่นจะล้าง
+ *     11-2107 (type-blind ด้านล่าง) โดยเลนส์ DEVICE_RETURN ไม่ลด ⇒ รอบจ่ายถัดไปหักซ้ำ
  *   - outstanding 11-2107 (ΣDr − ΣCr over metadata.contractId, MINUS every
- *     deduction already taken by a POSTED interco batch — batch netting JEs
- *     deliberately carry no metadata.contractId, so "หักแล้ว" is read off
- *     InterCoSettlementItem, never GL metadata) must be > 0
+ *     deduction already taken by a POSTED interco batch — swap credit, recall AND
+ *     device-return columns; batch netting JEs deliberately carry no
+ *     metadata.contractId, so "หักแล้ว" is read off InterCoSettlementItem, never
+ *     GL metadata) must be > 0
  *   - rejected outright while the contract has a deduction row inside a
  *     PENDING_APPROVAL interco batch (final review C1 ด่าน (ii) — the same
  *     8,000 must not clear via cash here AND via the batch's netting leg;
@@ -98,9 +139,13 @@ export class ShopCollectSettlementTemplate {
     const dupe = await client.journalEntry.findFirst({
       where: {
         AND: [
-          { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
+          {
+            metadata: { path: ['flow'], equals: 'shop-collect-settlement' },
+          } as Prisma.JournalEntryWhereInput,
           { metadata: { path: ['requestId'], equals: requestId } } as Prisma.JournalEntryWhereInput,
-          { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+          {
+            metadata: { path: ['contractId'], equals: contractId },
+          } as Prisma.JournalEntryWhereInput,
         ],
         deletedAt: null,
       },
@@ -125,7 +170,8 @@ export class ShopCollectSettlementTemplate {
     const { contractId, depositAccountCode } = input;
     const amount = new Decimal(input.amount.toString());
     const amountStr = amount.toFixed(2);
-    const typeStamp = input.typeStamp ?? 'SHOP_COLLECT';
+    const typeStamp: ShopCollectTypeStamp = input.typeStamp ?? 'SHOP_COLLECT';
+    const text = TYPE_TEXT[typeStamp];
 
     // ── Validate deposit account ──────────────────────────────────────────────
     if (!(CASH_ACCOUNT_CODES as readonly string[]).includes(depositAccountCode)) {
@@ -180,6 +226,37 @@ export class ShopCollectSettlementTemplate {
       }
     }
 
+    // ── ด่านกันล้างซ้ำสองทาง (ใบรับเครื่องคืน 2026-09-20 §6.4) ────────────────────
+    // ค่าเครื่องคืน (11-2107 typed DEVICE_RETURN) ล้างได้ทาง "หักกลบรอบจ่าย INTER-CO" หรือ
+    // "รับเงินสด" (settleDeductionCash — ส่ง typeStamp DEVICE_RETURN มาเอง) เท่านั้น. ใบรับโอน
+    // ที่ stamp SHOP_COLLECT/PAYOUT_RECALL ล้าง 11-2107 ทั้งสัญญา (outstanding ด้านล่างเป็น
+    // type-blind) แต่เลนส์ DEVICE_RETURN ไม่ลด ⇒ รอบจ่ายถัดไปหักซ้ำ (S21-1104/11-2107 ติดลบ).
+    // อยู่หลัง requestId idempotency (retry ของคำขอเดิมต้องคืนผลเดิม) และก่อนคำนวณ outstanding.
+    if (typeStamp !== 'DEVICE_RETURN') {
+      const deviceReturnOutstanding = await deviceReturnFinanceBalance(client, contractId);
+      // Approved spec 6.4 also blocks historical stamped receivables after clearing.
+      // Match the typed lens: posted, nondeleted JE and nondeleted 11-2107 line.
+      const deviceReturnHistory = deviceReturnOutstanding.gt(0)
+        ? null
+        : await client.journalEntry.findFirst({
+            where: {
+              status: 'POSTED',
+              deletedAt: null,
+              AND: [
+                { metadata: { path: ['contractId'], equals: contractId } },
+                { metadata: { path: ['shopReceivableType'], equals: 'DEVICE_RETURN' } },
+              ],
+              lines: { some: { accountCode: '11-2107', deletedAt: null } },
+            },
+            select: { id: true },
+          });
+      if (deviceReturnOutstanding.gt(0) || deviceReturnHistory) {
+        throw new BadRequestException(
+          'สัญญานี้มีค่าเครื่องคืนที่ต้องหักผ่านรอบจ่าย INTER-CO — ใช้หน้าจ่ายให้หน้าร้าน รายการค่าเครื่องคืน หรือปุ่มรับเงินสดในหน้านั้น',
+        );
+      }
+    }
+
     // ── Compute outstanding 11-2107 for this contract ─────────────────────────
     // Sum all POSTED JL lines (Dr − Cr) where parentJE.metadata.contractId = contractId
     const lines = await client.journalLine.findMany({
@@ -187,7 +264,9 @@ export class ShopCollectSettlementTemplate {
         accountCode: '11-2107',
         journalEntry: {
           AND: [
-            { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['contractId'], equals: contractId },
+            } as Prisma.JournalEntryWhereInput,
             { status: 'POSTED' },
             { deletedAt: null },
           ],
@@ -197,7 +276,10 @@ export class ShopCollectSettlementTemplate {
     });
 
     const totalDr = lines.reduce((s, l) => s.plus(new Decimal(l.debit.toString())), new Decimal(0));
-    const totalCr = lines.reduce((s, l) => s.plus(new Decimal(l.credit.toString())), new Decimal(0));
+    const totalCr = lines.reduce(
+      (s, l) => s.plus(new Decimal(l.credit.toString())),
+      new Decimal(0),
+    );
     const grossOutstanding = totalDr.minus(totalCr);
 
     // ── กันหักซ้ำกับรอบจ่าย INTER-CO (final review C1 ด่าน (ii), 2026-08-20) ──
@@ -214,12 +296,17 @@ export class ShopCollectSettlementTemplate {
       where: {
         contractId,
         deletedAt: null,
-        OR: [{ swapCreditAmount: { gt: 0 } }, { recallAmount: { gt: 0 } }],
+        OR: [
+          { swapCreditAmount: { gt: 0 } },
+          { recallAmount: { gt: 0 } },
+          { deviceReturnAmount: { gt: 0 } },
+        ],
         batch: { status: { in: ['PENDING_APPROVAL', 'POSTED'] }, deletedAt: null },
       },
       select: {
         swapCreditAmount: true,
         recallAmount: true,
+        deviceReturnAmount: true,
         batch: { select: { status: true, batchNumber: true } },
       },
     });
@@ -230,7 +317,11 @@ export class ShopCollectSettlementTemplate {
       );
     }
     const postedDeductions = deductionItems.reduce(
-      (s, i) => s.plus(i.swapCreditAmount.toString()).plus(i.recallAmount.toString()),
+      (s, i) =>
+        s
+          .plus(i.swapCreditAmount.toString())
+          .plus(i.recallAmount.toString())
+          .plus(i.deviceReturnAmount.toString()),
       new Decimal(0),
     );
     const outstanding = grossOutstanding.minus(postedDeductions);
@@ -253,9 +344,15 @@ export class ShopCollectSettlementTemplate {
       const existing = await client.journalEntry.findFirst({
         where: {
           AND: [
-            { metadata: { path: ['flow'], equals: 'shop-collect-settlement' } } as Prisma.JournalEntryWhereInput,
-            { metadata: { path: ['contractId'], equals: contractId } } as Prisma.JournalEntryWhereInput,
-            { metadata: { path: ['amount'], equals: amount.toFixed(2) } } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['flow'], equals: 'shop-collect-settlement' },
+            } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['contractId'], equals: contractId },
+            } as Prisma.JournalEntryWhereInput,
+            {
+              metadata: { path: ['amount'], equals: amount.toFixed(2) },
+            } as Prisma.JournalEntryWhereInput,
           ],
           deletedAt: null,
         },
@@ -283,10 +380,8 @@ export class ShopCollectSettlementTemplate {
     try {
       const result = await this.journal.createAndPost(
         {
-          description:
-            typeStamp === 'PAYOUT_RECALL'
-              ? `รับเงินคืนจากหน้าร้าน — สัญญา ${contractLabel} (ล้าง 11-2107 เรียกคืน)`
-              : `รับโอนจากหน้าร้าน — สัญญา ${contractLabel} (ล้าง 11-2107)`,
+          description: text.description(contractLabel),
+          ...(input.postedAt ? { postedAt: input.postedAt } : {}),
           reference: input.requestId
             ? `${contractId}:shop-collect-settlement:${input.requestId}`
             : `${contractId}:shop-collect-settlement:${amountStr}`,
@@ -307,19 +402,13 @@ export class ShopCollectSettlementTemplate {
               accountCode: depositAccountCode,
               dr: amount,
               cr: zero,
-              description:
-                typeStamp === 'PAYOUT_RECALL'
-                  ? `รับเงินคืนจากหน้าร้าน ${amountStr} ฿`
-                  : `รับโอนจากหน้าร้าน ${amountStr} ฿`,
+              description: text.cashLine(amountStr),
             },
             {
               accountCode: '11-2107',
               dr: zero,
               cr: amount,
-              description:
-                typeStamp === 'PAYOUT_RECALL'
-                  ? 'ล้างลูกหนี้-หน้าร้าน (เรียกคืนยกเลิก)'
-                  : 'ล้างลูกหนี้-หน้าร้าน (shop-collect)',
+              description: text.receivableLine,
             },
           ],
         },
@@ -347,7 +436,11 @@ export class ShopCollectSettlementTemplate {
       // throw a clean, user-facing exception immediately instead. Throwing
       // needs no DB access, so it works inside the aborted tx and propagates
       // as a 409 instead of an unhandled 500.
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002' && input.requestId) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002' &&
+        input.requestId
+      ) {
         this.logger.warn(
           `[SCS] race on requestId ${input.requestId} (contract ${contractId}) — P2002 inside an aborted tx, rejecting with 409 instead of re-querying`,
         );

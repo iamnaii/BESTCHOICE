@@ -62,16 +62,20 @@ export class IntercoSettlementController {
     private readonly reconcileCron: IntercoReconcileCron,
   ) {}
 
-  /** คิวรอจ่าย + คิวหักเรียกคืน (C-2) + reconcile totals ระดับบัญชี (spec §4/§8 แท็บ "รอจ่าย"). */
+  /**
+   * คิวรอจ่าย + คิวหักเรียกคืน (C-2) + คิวค่าเครื่องคืน (ใบรับเครื่องคืน 2026-09-20 §6.3) +
+   * reconcile totals ระดับบัญชี (spec §4/§8 แท็บ "รอจ่าย").
+   */
   @Get('pending')
   @Roles('OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT')
   async pending() {
-    const [pending, recalls, reconcile] = await Promise.all([
+    const [pending, recalls, deviceReturns, reconcile] = await Promise.all([
       this.pendingService.getPendingContracts(),
       this.pendingService.getPendingRecalls(),
+      this.pendingService.getPendingDeviceReturns(),
       this.pendingService.getReconcileTotals(),
     ]);
-    return { pending, recalls, reconcile };
+    return { pending, recalls, deviceReturns, reconcile };
   }
 
   /**
@@ -242,6 +246,22 @@ export class IntercoSettlementController {
     @CurrentUser('id') userId: string,
   ) {
     return this.service.settleRecallCash(contractId, dto, userId);
+  }
+
+  /**
+   * รับเงินสดค่าเครื่องคืนจากหน้าร้าน (ใบรับเครื่องคืน 2026-09-20 §6.3): ล้างค่าเครื่องคืน
+   * (11-2107 DEVICE_RETURN ↔ S21-1104) ด้วยเงินสดแทนการหักในรอบจ่าย — JE สองสมุดทันที
+   * (ไม่มี batch/maker-checker ชั้นเอกสาร) จึง gate ด้วย role ระดับ checker เหมือน
+   * approve/reverse/settleRecallCash. DTO ชุดเดียวกับ recall.
+   */
+  @Post('device-returns/:contractId/settle-cash')
+  @Roles('OWNER', 'FINANCE_MANAGER')
+  settleDeviceReturnCash(
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+    @Body() dto: SettleRecallCashDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.service.settleDeductionCash(contractId, 'DEVICE_RETURN', dto, userId);
   }
 
   /** แนบสลิป/หลักฐานโอน (optional, maker-only, DRAFT/PENDING_APPROVAL only — service enforces). */

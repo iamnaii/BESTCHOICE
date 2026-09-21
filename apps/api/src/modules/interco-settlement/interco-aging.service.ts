@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SHOP_RECEIVABLE_TYPES } from '../journal/shop-receivable-type.util';
 
 /**
  * รายงานอายุลูกหนี้-หน้าร้าน 11-2107 / S21-1104 (Phase 4 — spec §6 ข้อ 1).
@@ -14,11 +15,15 @@ import { PrismaService } from '../../prisma/prisma.service';
  *                             stamp = SWAP_CREDIT, หรือไม่มี/ไม่รู้จัก stamp แล้ว
  *                             flow = 'exchange-buyback-receivable-11-2107' (legacy A.3)
  *   - 11-2107 PAYOUT_RECALL = explicit stamp เท่านั้น (type ใหม่ ไม่มี legacy)
+ *   - 11-2107 DEVICE_RETURN = explicit stamp เท่านั้น (ใบรับเครื่องคืน 2026-09-20 — JP5 ตอนยืนยัน)
  *   - 11-2107 SHOP_COLLECT  = explicit stamp ชนะ; ไม่มี stamp → flow/collectedByShop fallback
  *   - S21-1104 SWAP_CREDIT  key ด้วย metadata.newContractId (A.4 stamp)
  *   - S21-1104 PAYOUT_RECALL key ด้วย metadata.contractId (C-2 redirect / cash settle SHOP leg)
+ *   - S21-1104 DEVICE_RETURN key ด้วย metadata.contractId (ขาคู่ SHOP ของ JP5 ใบรับเครื่องคืน / cash settle SHOP leg)
+ * IN-list ของ carve-out ทุกจุดสร้างจาก SHOP_RECEIVABLE_TYPES (Prisma.join) — เพิ่มประเภทที่ util
+ * ที่เดียว (spec 2026-09-20 §6.2).
  *
- * ยอด "คงเหลือจริง" ของกลุ่มระหว่างกิจการ = typed gross ทั้งสองประเภทรวมกัน
+ * ยอด "คงเหลือจริง" ของกลุ่มระหว่างกิจการ = typed gross ทั้งสามประเภทรวมกัน
  * ลบ Σ deduction ของ item ใน batch POSTED (สถาปัตยกรรม gross-lens: ขา Cr ของ
  * batch ไม่ stamp type/contractId จึงไม่ลด typed balance) — invariant ถือที่ระดับ
  * สัญญา ไม่ใช่ระดับประเภท (สัญญา swap ที่ถูกยกเลิกมีประวัติข้ามประเภท).
@@ -31,9 +36,11 @@ export interface ShopReceivableAgingRow {
   swapCreditGross: Prisma.Decimal;
   /** 11-2107 typed PAYOUT_RECALL gross (Dr−Cr) ของสัญญา */
   payoutRecallGross: Prisma.Decimal;
-  /** Σ (swapCreditAmount + recallAmount) ของ item ทุก itemType ใน batch POSTED */
+  /** 11-2107 typed DEVICE_RETURN gross (Dr−Cr) ของสัญญา — ค่าเครื่องคืนจากใบรับเครื่องคืน (2026-09-20) */
+  deviceReturnGross: Prisma.Decimal;
+  /** Σ (swapCreditAmount + recallAmount + deviceReturnAmount) ของ item ทุก itemType ใน batch POSTED */
   settledDeduction: Prisma.Decimal;
-  /** ยอดกลุ่มระหว่างกิจการคงเหลือจริง = swapCreditGross + payoutRecallGross − settledDeduction */
+  /** ยอดกลุ่มระหว่างกิจการคงเหลือจริง = swapCreditGross + payoutRecallGross + deviceReturnGross − settledDeduction */
   intercoNet: Prisma.Decimal;
   /** 11-2107 typed SHOP_COLLECT (Dr−Cr) — เงินลูกค้าที่หน้าร้านรับแทน แยกคอลัมน์ ไม่ปนกลุ่ม interco */
   shopCollect: Prisma.Decimal;
@@ -49,6 +56,8 @@ export interface ShopReceivableAgingRow {
   shopMirrorSwapGross: Prisma.Decimal;
   /** S21-1104 เฉพาะ PAYOUT_RECALL (Cr−Dr) — คู่กระจกของ `payoutRecallGross` (B2 2026-08-25) */
   shopMirrorRecallGross: Prisma.Decimal;
+  /** S21-1104 เฉพาะ DEVICE_RETURN (Cr−Dr) — คู่กระจกของ `deviceReturnGross` (รวมใน `shopMirrorGross` — กลุ่ม interco) */
+  shopMirrorDeviceReturnGross: Prisma.Decimal;
   /**
    * S21-1104 เฉพาะ SHOP_COLLECT (Cr−Dr) — คู่กระจกของ `shopCollect` (ขาคู่ SHOP ของการยึดเครื่อง
    * 2026-09-05). แยกคอลัมน์เหมือนฝั่ง FINANCE — **ไม่รวม** ใน `shopMirrorGross`/`shopMirrorNet`/
@@ -203,7 +212,7 @@ export interface TypedAccountDriftRow {
   accountTotal: Prisma.Decimal;
   /** Σ บรรทัดที่เลนส์ typed classify ได้ (มี key สัญญา) */
   lensTotal: Prisma.Decimal;
-  /** Σ (swapCreditAmount + recallAmount) ของ item ทุกใบใน batch POSTED */
+  /** Σ (swapCreditAmount + recallAmount + deviceReturnAmount) ของ item ทุกใบใน batch POSTED */
   settledDeduction: Prisma.Decimal;
   /** lensTotal − settledDeduction */
   expected: Prisma.Decimal;
@@ -247,7 +256,7 @@ export type OverdueCheckable = Pick<
  * ฟังก์ชันนี้เท่านั้น ห้าม inline สูตรซ้ำ (drift = เตือนไม่ตรงกับที่รายงานโชว์).
  *
  * แขนของหนี้แยกกัน: กลุ่มระหว่างกิจการ (`intercoNet`, อายุจากวันตั้งหนี้ typed
- * SWAP_CREDIT/PAYOUT_RECALL) กับหน้าร้านรับเงินแทน (`shopCollect`) — ยอดต้อง
+ * SWAP_CREDIT/PAYOUT_RECALL/DEVICE_RETURN) กับหน้าร้านรับเงินแทน (`shopCollect`) — ยอดต้อง
  * มากกว่า 0.01 คู่กับอายุถึงเกณฑ์เสมอ (แถวที่โผล่เพราะ `bookMismatch` แต่ยอด
  * เป็นศูนย์ ไม่ใช่หนี้ค้าง).
  *
@@ -255,9 +264,16 @@ export type OverdueCheckable = Pick<
  * บริบท legacy โดยตั้งใจ (คณิตศาสตร์ล้วน) และทั้ง `totals` ที่นี่กับ cron
  * กรอง `!legacyOneBook` ก่อนเรียกเหมือนกัน (spec §11.4 = สภาพปกติ ห้าม alert).
  */
-export function overdueArms(row: OverdueCheckable, thresholdDays: number): ShopReceivableOverdueArm[] {
+export function overdueArms(
+  row: OverdueCheckable,
+  thresholdDays: number,
+): ShopReceivableOverdueArm[] {
   const arms: ShopReceivableOverdueArm[] = [];
-  if (row.intercoAgeDays !== null && row.intercoAgeDays >= thresholdDays && row.intercoNet.gt(EPS)) {
+  if (
+    row.intercoAgeDays !== null &&
+    row.intercoAgeDays >= thresholdDays &&
+    row.intercoNet.gt(EPS)
+  ) {
     arms.push('INTERCO');
   }
   if (
@@ -298,7 +314,13 @@ export function sortAgingRows(rows: ShopReceivableAgingRow[]): void {
 /** ฟิลด์ขั้นต่ำของ predicate ยอดติดลบ */
 export type NegativeCheckable = Pick<
   ShopReceivableAgingRow,
-  'intercoNet' | 'shopCollect' | 'shopMirrorNet' | 'shopMirrorCollectGross' | 'legacyOneBook'
+  | 'intercoNet'
+  | 'shopCollect'
+  | 'shopMirrorNet'
+  | 'shopMirrorCollectGross'
+  | 'deviceReturnGross'
+  | 'shopMirrorDeviceReturnGross'
+  | 'legacyOneBook'
 >;
 
 /**
@@ -338,10 +360,18 @@ export function negativeTypedFields(row: NegativeCheckable): NegativeTypedField[
     out.push({ field: 'intercoNet', label: 'กลุ่มระหว่างกิจการ (11-2107)', value: row.intercoNet });
   }
   if (row.shopMirrorNet.lt(neg)) {
-    out.push({ field: 'shopMirrorNet', label: 'กระจกฝั่ง SHOP (S21-1104)', value: row.shopMirrorNet });
+    out.push({
+      field: 'shopMirrorNet',
+      label: 'กระจกฝั่ง SHOP (S21-1104)',
+      value: row.shopMirrorNet,
+    });
   }
   if (row.shopCollect.lt(neg)) {
-    out.push({ field: 'shopCollect', label: 'หน้าร้านรับเงินแทน (11-2107)', value: row.shopCollect });
+    out.push({
+      field: 'shopCollect',
+      label: 'หน้าร้านรับเงินแทน (11-2107)',
+      value: row.shopCollect,
+    });
   }
   // ขาคู่ SHOP ของ SHOP_COLLECT (S21-1104, 2026-09-05) — ด่านใน shopCollectSettlement กันล้างเกินผ่านแอป
   // แต่ JV มือที่ stamp SHOP_COLLECT ยังทำให้ติดลบได้ ต้องเห็นที่ NEGATIVE_TYPED เหมือนช่องอื่น
@@ -350,6 +380,24 @@ export function negativeTypedFields(row: NegativeCheckable): NegativeTypedField[
       field: 'shopMirrorCollectGross',
       label: 'กระจกฝั่ง SHOP — หน้าร้านรับแทน (S21-1104)',
       value: row.shopMirrorCollectGross,
+    });
+  }
+  // ค่าเครื่องคืน (2026-09-20 §6.2): typed gross ต้องไม่ติดลบเลย — ขา Cr ของรอบจ่ายไม่ stamp
+  // (ไม่ลด typed) และเส้นทางรับเงินสด (settleDeductionCash) มีด่าน amount ≤ net ⇒ ติดลบ =
+  // JV มือ/ล้างเกิน. เช็คแยกช่องเพราะ intercoNet รวมสามประเภท — ค่าติดลบของประเภทนี้ถูก
+  // ยอดบวกของประเภทอื่นกลบได้
+  if (row.deviceReturnGross.lt(neg)) {
+    out.push({
+      field: 'deviceReturnGross',
+      label: 'ค่าเครื่องคืน (11-2107)',
+      value: row.deviceReturnGross,
+    });
+  }
+  if (row.shopMirrorDeviceReturnGross.lt(neg)) {
+    out.push({
+      field: 'shopMirrorDeviceReturnGross',
+      label: 'กระจกฝั่ง SHOP — ค่าเครื่องคืน (S21-1104)',
+      value: row.shopMirrorDeviceReturnGross,
     });
   }
   return out;
@@ -381,7 +429,7 @@ export function isSwapCreditOneBook(
 // ประกอบเข้า SWAP_COND) — เขียนซ้ำสองที่เมื่อไหร่คือประตู drift.
 const LEGACY_SWAP_COND = Prisma.sql`((je.metadata->>'shopReceivableType' IS NULL
               OR je.metadata->>'shopReceivableType' NOT IN
-                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+                 (${Prisma.join([...SHOP_RECEIVABLE_TYPES])}))
          AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107')`;
 // explicit stamp **ชนะ** flow fallback (Phase 4 Task 6) — mirror
 // `classifyShopReceivable` ที่เช็ค EXPLICIT ก่อน FLOW_MAP เหมือนที่
@@ -390,10 +438,16 @@ const LEGACY_SWAP_COND = Prisma.sql`((je.metadata->>'shopReceivableType' IS NULL
 const SWAP_COND = Prisma.sql`(je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
          OR ${LEGACY_SWAP_COND})`;
 const RECALL_COND = Prisma.sql`(je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL')`;
+// ค่าเครื่องคืน (ใบรับเครื่องคืน 2026-09-20) — explicit stamp เท่านั้น, twin ของ
+// deviceReturnFinanceBalance; JP5 ยัง stamp shopReceivable '11-2107' (marker เก่า) จึงต้อง
+// อยู่ใน IN-list ของ SHOP_COLLECT_COND ไม่งั้นถูกนับซ้ำเป็น SHOP_COLLECT
+const DEVICE_RETURN_COND = Prisma.sql`(je.metadata->>'shopReceivableType' = 'DEVICE_RETURN')`;
+// กลุ่มระหว่างกิจการ (intercoNet / interco_oldest / financeLensTotal) = 3 ประเภทนี้
+const INTERCO_COND = Prisma.sql`(${SWAP_COND} OR ${RECALL_COND} OR ${DEVICE_RETURN_COND})`;
 const SHOP_COLLECT_COND = Prisma.sql`(je.metadata->>'shopReceivableType' = 'SHOP_COLLECT'
          OR ((je.metadata->>'shopReceivableType' IS NULL
               OR je.metadata->>'shopReceivableType' NOT IN
-                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+                 (${Prisma.join([...SHOP_RECEIVABLE_TYPES])}))
              AND (je.metadata->>'collectedByShop' = 'true'
                   OR je.metadata->>'shopReceivable' = '11-2107'
                   OR je.metadata->>'flow' = 'shop-collect-settlement')))`;
@@ -410,6 +464,7 @@ interface FinanceAgingRow {
   contract_id: string | null;
   swap_gross: unknown;
   recall_gross: unknown;
+  device_return_gross: unknown;
   shop_collect: unknown;
   legacy_swap_gross: unknown;
   interco_oldest: Date | null;
@@ -425,9 +480,9 @@ export class IntercoAgingService {
    * Task 3 (daily cron), Task 4 (reconcile cron) เรียก method นี้ตัวเดียว
    * ห้ามคำนวณเอง.
    *
-   * จำนวน query **คงที่** (4 ครั้ง — ไม่ขึ้นกับจำนวนสัญญา): Query A รวม 3
+   * จำนวน query **คงที่** (4 ครั้ง — ไม่ขึ้นกับจำนวนสัญญา): Query A รวม 4
    * typed sums + 2 MIN(posted_at) ของ 11-2107 ใน CASE เดียว, Query B รวม
-   * S21-1104 สองประเภทด้วย conditional group key, Query C = deductions
+   * S21-1104 typed balances with conditional group key, Query C = deductions
    * groupBy, Query D = hydrate contract. ห้าม refactor กลับไปเรียก helper
    * ต่อสัญญาในลูป (N×5).
    *
@@ -530,16 +585,17 @@ export class IntercoAgingService {
    */
   private async buildAllRows(asOf: Date): Promise<ShopReceivableAgingRow[]> {
     // Query A — 11-2107 ทั้งบัญชี group by metadata.contractId: typed sums
-    // สามประเภท + MIN(posted_at) ของขา Dr (วันตั้งหนี้เก่าสุด) สองกลุ่ม.
+    // สี่ประเภท + MIN(posted_at) ของขา Dr (วันตั้งหนี้เก่าสุด) สองกลุ่ม.
     // WHERE กรองเฉพาะบรรทัดที่ classify ได้ (UNKNOWN ไม่เข้ารายงานนี้ —
     // เหมือน twins; drift ระดับบัญชีเป็นหน้าที่ reconcile totals).
     const financeRows = await this.prisma.$queryRaw<FinanceAgingRow[]>(Prisma.sql`
       SELECT je.metadata->>'contractId' AS contract_id,
              COALESCE(SUM(CASE WHEN ${SWAP_COND} THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS swap_gross,
              COALESCE(SUM(CASE WHEN ${RECALL_COND} THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS recall_gross,
+             COALESCE(SUM(CASE WHEN ${DEVICE_RETURN_COND} THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS device_return_gross,
              COALESCE(SUM(CASE WHEN ${SHOP_COLLECT_COND} THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS shop_collect,
              COALESCE(SUM(CASE WHEN ${LEGACY_SWAP_COND} THEN jl.debit - jl.credit ELSE 0 END), 0)::decimal AS legacy_swap_gross,
-             MIN(CASE WHEN jl.debit > 0 AND (${SWAP_COND} OR ${RECALL_COND}) THEN je.posted_at END) AS interco_oldest,
+             MIN(CASE WHEN jl.debit > 0 AND ${INTERCO_COND} THEN je.posted_at END) AS interco_oldest,
              MIN(CASE WHEN jl.debit > 0 AND ${SHOP_COLLECT_COND} THEN je.posted_at END) AS collect_oldest
       FROM journal_lines jl
       JOIN journal_entries je ON je.id = jl.journal_entry_id
@@ -548,29 +604,33 @@ export class IntercoAgingService {
         AND je.status = 'POSTED'
         AND je.deleted_at IS NULL
         AND je.metadata->>'contractId' IS NOT NULL
-        AND (${SWAP_COND} OR ${RECALL_COND} OR ${SHOP_COLLECT_COND})
+        AND (${INTERCO_COND} OR ${SHOP_COLLECT_COND})
       GROUP BY 1
     `);
 
     // Query B — S21-1104 group by conditional key (SWAP_CREDIT → newContractId,
-    // อื่น → contractId), Σ(Cr−Dr). WHERE จำกัดสองประเภท = union ของ twins
-    // `swapCreditShopBalance` + `recallShopBalance` ตรงตัว.
+    // อื่น → contractId), Σ(Cr−Dr). WHERE = ทุกประเภทใน SHOP_RECEIVABLE_TYPES = union ของ
+    // twins `swapCreditShopBalance` + `recallShopBalance` + `deviceReturnShopBalance` +
+    // `shopCollectShopBalance` ตรงตัว.
     const shopRows = await this.prisma.$queryRaw<
       Array<{
         contract_id: string | null;
         mirror_gross: unknown;
         mirror_swap: unknown;
         mirror_recall: unknown;
+        mirror_device_return: unknown;
         mirror_collect: unknown;
       }>
     >(Prisma.sql`
       SELECT ${SHOP_KEY} AS contract_id,
-             COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' IN ('SWAP_CREDIT', 'PAYOUT_RECALL')
+             COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' IN ('SWAP_CREDIT', 'PAYOUT_RECALL', 'DEVICE_RETURN')
                           THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_gross,
              COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
                           THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_swap,
              COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'
                           THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_recall,
+             COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'
+                          THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_device_return,
              COALESCE(SUM(CASE WHEN je.metadata->>'shopReceivableType' = 'SHOP_COLLECT'
                           THEN jl.credit - jl.debit ELSE 0 END), 0)::decimal AS mirror_collect
       FROM journal_lines jl
@@ -579,36 +639,40 @@ export class IntercoAgingService {
         AND jl.deleted_at IS NULL
         AND je.status = 'POSTED'
         AND je.deleted_at IS NULL
-        -- SHOP_COLLECT (2026-09-05): ขาคู่ SHOP ของการยึด — เก็บแยกคอลัมน์ ไม่เข้า mirror_gross
-        AND je.metadata->>'shopReceivableType' IN ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT')
+        -- SHOP_COLLECT (2026-09-05): ขาคู่ SHOP ของการยึดยุคก่อน — เก็บแยกคอลัมน์ ไม่เข้า mirror_gross
+        -- DEVICE_RETURN (2026-09-20): ขาคู่ SHOP ของใบรับเครื่องคืน — เข้า mirror_gross (กลุ่ม interco ล้างผ่านรอบจ่าย)
+        AND je.metadata->>'shopReceivableType' IN (${Prisma.join([...SHOP_RECEIVABLE_TYPES])})
         AND (${SHOP_KEY}) IS NOT NULL
       GROUP BY 1
     `);
     const shopByContract = new Map<string, Prisma.Decimal>();
-    // B2 (ผู้สอบ 2026-08-25): "ต้องแยกแสดง" — ฝั่ง 11-2107 แยก 3 ประเภทมานานแล้ว
+    // B2 (ผู้สอบ 2026-08-25): "ต้องแยกแสดง" — ฝั่ง 11-2107 แยกประเภทมานานแล้ว
     // แต่ฝั่ง S21-1104 เคยรวมเป็นก้อนเดียว ⇒ แยกให้ตรงกันทั้งสองสมุด
     //
     // ปลอดภัยเพราะ JE ที่ติด stamp แต่ละใบมีประเภทเดียวเสมอ (A.4 = SWAP_CREDIT,
-    // C-2 redirect = PAYOUT_RECALL, settleRecallCash = PAYOUT_RECALL) ส่วนใบรอบจ่าย
-    // ที่ผสมสองประเภทในใบเดียว **ไม่ stamp โดยตั้งใจ** จึงไม่เข้า WHERE ของคิวรีนี้อยู่แล้ว
+    // C-2 redirect = PAYOUT_RECALL, settleDeductionCash = PAYOUT_RECALL/DEVICE_RETURN,
+    // JP5 intake = DEVICE_RETURN) ส่วนใบรอบจ่ายที่ผสมหลายประเภทในใบเดียว **ไม่ stamp
+    // โดยตั้งใจ** จึงไม่เข้า WHERE ของคิวรีนี้อยู่แล้ว
     const shopSwapByContract = new Map<string, Prisma.Decimal>();
     const shopRecallByContract = new Map<string, Prisma.Decimal>();
+    const shopDeviceReturnByContract = new Map<string, Prisma.Decimal>();
     const shopCollectMirrorByContract = new Map<string, Prisma.Decimal>();
     for (const row of shopRows) {
       if (!row.contract_id) continue;
       shopByContract.set(row.contract_id, new Prisma.Decimal(String(row.mirror_gross ?? 0)));
       shopSwapByContract.set(row.contract_id, new Prisma.Decimal(String(row.mirror_swap ?? 0)));
       shopRecallByContract.set(row.contract_id, new Prisma.Decimal(String(row.mirror_recall ?? 0)));
+      shopDeviceReturnByContract.set(
+        row.contract_id,
+        new Prisma.Decimal(String(row.mirror_device_return ?? 0)),
+      );
       shopCollectMirrorByContract.set(
         row.contract_id,
         new Prisma.Decimal(String(row.mirror_collect ?? 0)),
       );
     }
 
-    const financeByContract = new Map<
-      string,
-      FinanceAgingRow & { contract_id: string }
-    >();
+    const financeByContract = new Map<string, FinanceAgingRow & { contract_id: string }>();
     for (const row of financeRows) {
       if (!row.contract_id) continue;
       financeByContract.set(row.contract_id, row as FinanceAgingRow & { contract_id: string });
@@ -634,13 +698,15 @@ export class IntercoAgingService {
         deletedAt: null,
         batch: { status: 'POSTED', deletedAt: null },
       },
-      _sum: { swapCreditAmount: true, recallAmount: true },
+      _sum: { swapCreditAmount: true, recallAmount: true, deviceReturnAmount: true },
     });
     const deductionByContract = new Map<string, Prisma.Decimal>();
     for (const g of deductionGroups) {
       deductionByContract.set(
         g.contractId,
-        new Prisma.Decimal(g._sum.swapCreditAmount ?? 0).plus(g._sum.recallAmount ?? 0),
+        new Prisma.Decimal(g._sum.swapCreditAmount ?? 0)
+          .plus(g._sum.recallAmount ?? 0)
+          .plus(g._sum.deviceReturnAmount ?? 0),
       );
     }
 
@@ -670,12 +736,17 @@ export class IntercoAgingService {
       const fin = financeByContract.get(contractId);
       const swapCreditGross = new Prisma.Decimal(String(fin?.swap_gross ?? 0));
       const payoutRecallGross = new Prisma.Decimal(String(fin?.recall_gross ?? 0));
+      const deviceReturnGross = new Prisma.Decimal(String(fin?.device_return_gross ?? 0));
       const shopCollect = new Prisma.Decimal(String(fin?.shop_collect ?? 0));
       const legacySwapGross = new Prisma.Decimal(String(fin?.legacy_swap_gross ?? 0));
       const settledDeduction = deductionByContract.get(contractId) ?? zero;
       const shopGross = shopByContract.get(contractId) ?? zero;
 
-      const intercoNet = swapCreditGross.plus(payoutRecallGross).minus(settledDeduction);
+      // invariant ถือที่ระดับสัญญา (ไม่ใช่ระดับประเภท) — สามประเภทของกลุ่ม interco รวมก่อนหัก
+      const intercoNet = swapCreditGross
+        .plus(payoutRecallGross)
+        .plus(deviceReturnGross)
+        .minus(settledDeduction);
       const shopMirrorNet = shopGross.minus(settledDeduction);
       // ความหมายคณิตศาสตร์บริสุทธิ์ — legacy แยกบริบทด้วย flag ไม่ใช่แก้สูตร
       const bookMismatch = intercoNet.minus(shopMirrorNet).abs().gt(EPS);
@@ -690,12 +761,14 @@ export class IntercoAgingService {
         customerName: contract?.customer.name ?? '',
         swapCreditGross,
         payoutRecallGross,
+        deviceReturnGross,
         settledDeduction,
         intercoNet,
         shopCollect,
         shopMirrorGross: shopGross,
         shopMirrorSwapGross: shopSwapByContract.get(contractId) ?? zero,
         shopMirrorRecallGross: shopRecallByContract.get(contractId) ?? zero,
+        shopMirrorDeviceReturnGross: shopDeviceReturnByContract.get(contractId) ?? zero,
         shopMirrorCollectGross: shopCollectMirrorByContract.get(contractId) ?? zero,
         shopMirrorNet,
         intercoOldestPostedAt,
@@ -794,8 +867,7 @@ export class IntercoAgingService {
         // ต่อขา ไม่ใช่ผลรวม: misclassification ที่ย้ายเงินระหว่าง 21-1101 กับ
         // 21-1102 (หรือ S11-3001 กับ S11-3002) ทำให้ diff รวมเป็น 0 พอดี —
         // ถ้าเทียบผลรวมจะเงียบทั้งที่สองสมุดผูกกันผิดขา
-        mismatch:
-          !legacyNoShop && (financedDiff.abs().gt(EPS) || commissionDiff.abs().gt(EPS)),
+        mismatch: !legacyNoShop && (financedDiff.abs().gt(EPS) || commissionDiff.abs().gt(EPS)),
       };
     });
   }
@@ -859,14 +931,15 @@ export class IntercoAgingService {
    */
   async getTypedAccountDrift(): Promise<TypedAccountDriftRow[]> {
     // Σ deduction ของ item ทุกใบใน batch POSTED = ขาล้างที่ไม่ stamp ทั้งสองสมุด
-    // (ทุกแถวหักลง `Cr 11-2107` ฝั่ง FINANCE และ `Dr S21-1104` ฝั่ง SHOP ยอดเท่ากัน)
+    // (ทุกแถวหักลง `Cr 11-2107` ฝั่ง FINANCE และ `Dr S21-1104` ฝั่ง SHOP ยอดเท่ากัน —
+    // รวมแถว DEVICE_RETURN ของใบรับเครื่องคืน 2026-09-20)
     const agg = await this.prisma.interCoSettlementItem.aggregate({
       where: { deletedAt: null, batch: { status: 'POSTED', deletedAt: null } },
-      _sum: { swapCreditAmount: true, recallAmount: true },
+      _sum: { swapCreditAmount: true, recallAmount: true, deviceReturnAmount: true },
     });
-    const settledDeduction = new Prisma.Decimal(agg._sum.swapCreditAmount ?? 0).plus(
-      agg._sum.recallAmount ?? 0,
-    );
+    const settledDeduction = new Prisma.Decimal(agg._sum.swapCreditAmount ?? 0)
+      .plus(agg._sum.recallAmount ?? 0)
+      .plus(agg._sum.deviceReturnAmount ?? 0);
 
     const scalar = async (sql: Prisma.Sql): Promise<Prisma.Decimal> => {
       const rows = await this.prisma.$queryRaw<Array<{ balance: unknown }>>(sql);
@@ -889,7 +962,7 @@ export class IntercoAgingService {
       WHERE jl.account_code = '11-2107'
         AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
         AND je.metadata->>'contractId' IS NOT NULL
-        AND (${SWAP_COND} OR ${RECALL_COND} OR ${SHOP_COLLECT_COND})
+        AND (${INTERCO_COND} OR ${SHOP_COLLECT_COND})
     `);
 
     // S21-1104 (credit-normal): WHERE ชุดเดียวกับ Query B
@@ -906,7 +979,7 @@ export class IntercoAgingService {
       JOIN journal_entries je ON je.id = jl.journal_entry_id
       WHERE jl.account_code = 'S21-1104'
         AND jl.deleted_at IS NULL AND je.status = 'POSTED' AND je.deleted_at IS NULL
-        AND je.metadata->>'shopReceivableType' IN ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT')
+        AND je.metadata->>'shopReceivableType' IN (${Prisma.join([...SHOP_RECEIVABLE_TYPES])})
         AND (${SHOP_KEY}) IS NOT NULL
     `);
 

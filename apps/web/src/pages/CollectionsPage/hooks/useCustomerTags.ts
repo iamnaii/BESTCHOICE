@@ -2,7 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 
-export type CustomerTagType = 'VIP' | 'HIGH_RISK' | 'NEW' | 'LOYAL' | 'BLACKLIST';
+/** RETURNED_DEVICE is managed automatically from device-return evidence. */
+export type CustomerTagType =
+  | 'VIP'
+  | 'HIGH_RISK'
+  | 'NEW'
+  | 'LOYAL'
+  | 'BLACKLIST'
+  | 'RETURNED_DEVICE';
 export type CustomerTagSource = 'AUTO' | 'MANUAL';
 
 export interface CustomerTag {
@@ -32,11 +39,7 @@ export function useCustomerTags(customerId: string | null) {
 export function useApplyCustomerTag() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: {
-      customerId: string;
-      tag: CustomerTagType;
-      reason?: string;
-    }) => {
+    mutationFn: async (payload: { customerId: string; tag: CustomerTagType; reason?: string }) => {
       const { data } = await api.post<CustomerTag>('/customer-tags', payload);
       return data;
     },

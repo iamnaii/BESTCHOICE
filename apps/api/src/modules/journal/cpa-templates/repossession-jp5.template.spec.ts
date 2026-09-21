@@ -11,6 +11,8 @@ import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template'
 import { BadRequestException } from '@nestjs/common';
 import { RepossessionJP5Template } from './repossession-jp5.template';
 import { ShopCollectSettlementTemplate } from './shop-collect-settlement.template';
+import { classifyShopReceivable } from '../shop-receivable-type.util';
+import { deviceReturnFinanceBalance } from '../../interco-settlement/interco-typed-balance';
 import { JournalAutoService } from '../journal-auto.service';
 
 const prisma = new PrismaClient();
@@ -201,19 +203,17 @@ describe('RepossessionJP5Template', () => {
     expect(loss, '51-1102 loss line should not exist in gain path').toBeUndefined();
   });
 
-  it('shop-collect (2026-07-08): deposit leg lands on 11-2107, metadata stamped, and the generic settlement clears it', async () => {
+  it('shop-collect แบบเก่า (shopReceivableType SHOP_COLLECT): deposit leg 11-2107, stamp เดิมครบ, ใบรับโอนล้างได้', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
 
     const tmpl = new RepossessionJP5Template(journal, prisma as any);
-    // Caller (repossessions.service) substitutes depositAccountCode='11-2107'
-    // when collectedByShop — mirror that contract here.
     await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-2107',
       repossessionValue: new Decimal('7000.00'),
-      collectedByShop: true,
+      shopReceivableType: 'SHOP_COLLECT',
     });
 
     const entries = await prisma.journalEntry.findMany({
@@ -221,27 +221,23 @@ describe('RepossessionJP5Template', () => {
       include: { lines: true },
     });
     expect(entries.length, 'expected exactly 1 repossession JE').toBe(1);
-
-    // Deposit leg parked as shop receivable — NOT a cash account.
     const shopLeg = entries[0].lines.find((l) => l.accountCode === '11-2107');
-    expect(shopLeg, 'Dr 11-2107 leg should exist').toBeDefined();
     expect(new Decimal(shopLeg!.debit.toString()).toFixed(2)).toBe('7000.00');
 
-    // Metadata pairs the JE with its later settlement (same convention as JP4).
+    // รูป metadata แบบเก่าคงเดิมทุก key (แถวเก่าถูก classify ด้วย collectedByShop / shopReceivable)
     const meta = entries[0].metadata as Record<string, unknown>;
     expect(meta.collectedByShop).toBe(true);
     expect(meta.shopReceivable).toBe('11-2107');
-    expect(meta.contractId).toBe(c.id);
+    expect(meta.shopReceivableType).toBe('SHOP_COLLECT');
+    expect(meta.deviceReturnId).toBeUndefined();
+    expect(classifyShopReceivable(meta)).toBe('SHOP_COLLECT');
 
-    // The generic settlement (sums 11-2107 by metadata.contractId) must find
-    // and clear the JP5-originated receivable — Dr KBank / Cr 11-2107.
     const settlement = new ShopCollectSettlementTemplate(journal, prisma as any);
     await settlement.execute({
       contractId: c.id,
       depositAccountCode: '11-1201',
       amount: new Decimal('7000.00'),
     });
-
     const lines = await prisma.journalLine.findMany({
       where: {
         accountCode: '11-2107',
@@ -260,15 +256,46 @@ describe('RepossessionJP5Template', () => {
       new Decimal(0),
     );
     expect(outstanding.toFixed(2), '11-2107 fully cleared after settlement').toBe('0.00');
+  });
 
-    // Second settlement on the same contract must be rejected (nothing left).
+  it('device-return (2026-09-20): deposit leg 11-2107 typed DEVICE_RETURN + deviceReturnId, ไม่มี collectedByShop, ใบรับโอนจากหน้าร้านปฏิเสธ', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
+
+    const tmpl = new RepossessionJP5Template(journal, prisma as any);
+    await tmpl.execute({
+      contractId: c.id,
+      depositAccountCode: '11-2107',
+      repossessionValue: new Decimal('7000.00'),
+      shopReceivableType: 'DEVICE_RETURN',
+      deviceReturnId: 'dr-spec-1',
+    });
+
+    const entries = await prisma.journalEntry.findMany({
+      where: { metadata: { path: ['flow'], equals: 'repossession' } } as any,
+      include: { lines: true },
+    });
+    expect(entries.length).toBe(1);
+    const meta = entries[0].metadata as Record<string, unknown>;
+    expect(meta.shopReceivableType).toBe('DEVICE_RETURN');
+    expect(meta.shopReceivable).toBe('11-2107');
+    expect(meta.deviceReturnId).toBe('dr-spec-1');
+    expect(meta.contractId).toBe(c.id);
+    expect(meta.collectedByShop).toBeUndefined();
+    expect(classifyShopReceivable(meta)).toBe('DEVICE_RETURN');
+    // typed lens ของ Phase 1 เห็นยอดนี้ (anti-drift ระหว่าง stamp ↔ SQL twin)
+    expect((await deviceReturnFinanceBalance(prisma, c.id)).toFixed(2)).toBe('7000.00');
+
+    // ค่าเครื่องคืนต้องหักผ่านรอบจ่าย INTER-CO — ใบรับโอนสด (SHOP_COLLECT) ต้องถูกด่าน Phase 1 ปฏิเสธ
+    const settlement = new ShopCollectSettlementTemplate(journal, prisma as any);
     await expect(
       settlement.execute({
         contractId: c.id,
         depositAccountCode: '11-1201',
-        amount: new Decimal('1.00'),
+        amount: new Decimal('7000.00'),
       }),
-    ).rejects.toThrow(/ไม่มียอด 11-2107/);
+    ).rejects.toThrow(/ค่าเครื่องคืนที่ต้องหักผ่านรอบจ่าย INTER-CO/);
   });
 
   /**

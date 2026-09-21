@@ -338,8 +338,12 @@ describe('DOC-01 receipts & credit notes — real payment services, real rendere
       accrued.push(posted!.entryNo);
     }
     await h.prisma.contract.update({ where: { id: contractD.id }, data: { status: 'OVERDUE' } });
-    await h.client({ session: salesA }).post('/repossessions', { contractId: contractD.id, repossessedDate: today, conditionGrade: 'B', appraisalPrice: 3000 }).expect(403);
-    const created = await ok(h.client({ session: owner }).post('/repossessions', { contractId: contractD.id, repossessedDate: today, conditionGrade: 'B', appraisalPrice: 3000, returnReason: 'UNAFFORDABLE', notes: 'ทดสอบระบบ ยึดคืน' }), 201, 'POST /repossessions');
+    // 2026-09-20 ใบรับเครื่องคืน: สาขา (SALES ของสาขา a) บันทึกรับเครื่องได้ — สัญญา OVERDUE = คืนเอง (VOLUNTARY) → TERMINATED ทันที;
+    // การยืนยัน (JP5 + ใบลดหนี้) เป็นของ OWNER/FINANCE_MANAGER เท่านั้น → SALES ได้ 403 ที่ขั้นนี้แทน
+    const intake = await ok(h.client({ session: salesA }).post('/device-returns', { contractId: contractD.id, deviceReceivedAt: today, conditionGrade: 'B', appraisalPrice: 3000, returnReason: 'UNAFFORDABLE', notes: 'ทดสอบระบบ คืนเครื่อง' }), 201, 'POST /device-returns');
+    const deviceReturnId = intake.body.data.id as string;
+    await h.client({ session: salesA }).post(`/device-returns/${deviceReturnId}/confirm`, {}).expect(403);
+    const created = await ok(h.client({ session: owner }).post(`/device-returns/${deviceReturnId}/confirm`, {}), 201, 'POST /device-returns/:id/confirm');
     const creditNote = created.body.data.creditNote as { outcome: string; receiptId?: string };
     expect(creditNote.outcome).toBe('ISSUED');
     const listing = await h.client({ session: accountant }).get('/repossessions').expect(200);

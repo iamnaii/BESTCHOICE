@@ -52,7 +52,6 @@ import {
 import { AdvanceBalanceBanner } from './AdvanceBalanceBanner';
 import { EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import { RescheduleOverlay } from './RescheduleOverlay';
-import { RepossessionOverlay } from './RepossessionOverlay';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -203,7 +202,6 @@ export function RecordPaymentWizard({
   const [showPartialConfirm, setShowPartialConfirm] = useState(false);
   const [showPayoffOverlay, setShowPayoffOverlay] = useState(false);
   const [showRescheduleOverlay, setShowRescheduleOverlay] = useState(false);
-  const [showRepoOverlay, setShowRepoOverlay] = useState(false);
   const { user } = useAuth();
   // Explicit payment-type override (null = auto-detect). แบ่งชำระ/ล่วงหน้า force the
   // API case; ปกติ falls back to the amount-detected case.
@@ -740,7 +738,6 @@ export function RecordPaymentWizard({
       setCaseOverride(null);
       setShowPayoffOverlay(false);
       setShowRescheduleOverlay(false);
-      setShowRepoOverlay(false);
       setWaiverStr('0');
       setWaiverReasonCode('');
       setPaidDate(bkkToday());
@@ -760,18 +757,19 @@ export function RecordPaymentWizard({
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent
           className="w-full max-w-5xl max-h-[92vh] flex flex-col p-0 gap-0"
-          // The payoff/reschedule/repossession overlays portal to document.body (outside
-          // this Dialog), so clicking them (incl. their ยกเลิก) reads as an "interact
-          // outside" and would close the wizard underneath. While an overlay is open,
-          // keep the wizard mounted so cancelling the overlay returns to รับชำระ.
+          // The payoff/reschedule overlays portal to document.body (outside this Dialog),
+          // so clicking them (incl. their ยกเลิก) reads as an "interact outside" and would
+          // close the wizard underneath. While an overlay is open, keep the wizard mounted
+          // so cancelling the overlay returns to รับชำระ. (ชิป "คืนเครื่อง" ถูกถอด 2026-09-20 —
+          // ยึดเครื่องเริ่มที่ใบรับเครื่องคืนบนหน้า /repossessions)
           onPointerDownOutside={(e) => {
-            if (showPayoffOverlay || showRescheduleOverlay || showRepoOverlay) e.preventDefault();
+            if (showPayoffOverlay || showRescheduleOverlay) e.preventDefault();
           }}
           onInteractOutside={(e) => {
-            if (showPayoffOverlay || showRescheduleOverlay || showRepoOverlay) e.preventDefault();
+            if (showPayoffOverlay || showRescheduleOverlay) e.preventDefault();
           }}
           onEscapeKeyDown={(e) => {
-            if (showPayoffOverlay || showRescheduleOverlay || showRepoOverlay) e.preventDefault();
+            if (showPayoffOverlay || showRescheduleOverlay) e.preventDefault();
           }}
         >
           {/* Header */}
@@ -872,13 +870,6 @@ export function RecordPaymentWizard({
                         label: 'ปรับดิว',
                         toggle: false,
                         onClick: () => setShowRescheduleOverlay(true),
-                        active: false,
-                      },
-                      {
-                        key: 'REPO',
-                        label: 'คืนเครื่อง',
-                        toggle: false,
-                        onClick: () => setShowRepoOverlay(true),
                         active: false,
                       },
                     ].map((t) => (
@@ -1552,21 +1543,6 @@ export function RecordPaymentWizard({
           onSuccess={() => {
             setShowRescheduleOverlay(false);
             onClose(); // close wizard after successful reschedule
-          }}
-        />
-      )}
-
-      {/* Repossession overlay (คืนเครื่อง) — self-portals; full create (OWNER-only submit). */}
-      {showRepoOverlay && (
-        <RepossessionOverlay
-          contractId={payment.contract.id}
-          contractNumber={payment.contract.contractNumber}
-          customerName={payment.contract.customer.name}
-          branchName={payment.contract.branch.name}
-          onClose={() => setShowRepoOverlay(false)}
-          onSuccess={() => {
-            setShowRepoOverlay(false);
-            onClose(); // close wizard after successful repossession
           }}
         />
       )}

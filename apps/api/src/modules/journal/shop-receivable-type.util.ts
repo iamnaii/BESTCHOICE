@@ -10,6 +10,15 @@
  * | SWAP_CREDIT   | เครดิตราคารับซื้อจากรับคืนเครื่อง (Flow B / A.3+A.4) | รอบจ่าย INTER-CO (Phase 2) หรือ shop-collect |
  * | PAYOUT_RECALL | เงินตัดจ่ายแล้วต้องเรียกคืน จากยกเลิกสัญญา (Flow C-2) | รอบจ่ายถัดไป หรือรับเงินสดคืน (Phase 3) |
  * | SHOP_COLLECT  | เงินลูกค้าที่หน้าร้านรับแทน (Flow D)                  | settleShopCollect — ไม่เข้ารอบจ่าย |
+ * | DEVICE_RETURN | ค่าเครื่องคืนจากใบรับเครื่องคืน (JP5 ยืนยัน 2026-09-20 §6.3) | หักในรอบจ่าย INTER-CO หรือรับเงินสด (settleDeductionCash) — ห้ามล้างผ่านใบรับโอน (§6.4) |
+ *
+ * `SHOP_RECEIVABLE_TYPES` คือ**แหล่งเดียว**ของลิสต์ประเภท: `EXPLICIT` และ IN-list ใน raw SQL
+ * ทุกตัว (`interco-typed-balance.ts`, `IntercoPendingService`, `IntercoAgingService`) สร้างจาก
+ * ค่านี้ผ่าน `Prisma.join([...SHOP_RECEIVABLE_TYPES])` — เพิ่มประเภทที่นี่ที่เดียว carve-out
+ * "stamp ที่รู้จักชนะ fallback" จะครอบประเภทใหม่ทุกจุดพร้อมกัน (spec 2026-09-20 §6.2).
+ * DEVICE_RETURN เป็น explicit-stamp-only **โดยตั้งใจ ห้ามเพิ่ม FLOW_MAP**: แถวยึดเก่า flow
+ * 'shop-repossession-intake' ที่ไม่มี stamp คือโหมดโอนทันที (Cr S11-1202 ไม่แตะ S21-1104) —
+ * flow fallback จะทำให้ util จัดเป็น DEVICE_RETURN โดยไม่มีหนี้จริง.
  *
  * SQL twins: เงื่อนไข explicit-stamp/FLOW_MAP ของ SWAP_CREDIT + PAYOUT_RECALL
  * ถูก reproduce เป็น raw SQL ใน `interco-settlement/interco-typed-balance.ts`,
@@ -18,11 +27,18 @@
  * NB: ฝั่ง S21-1104 SQL เป็น **stamp-only ไม่มี flow fallback** ทั้งที่ FLOW_MAP
  * map 'shop-exchange-return' → SWAP_CREDIT — แคบกว่า util ตัวนี้โดยตั้งใจ
  * (carry → Phase 5, ดู .claude/rules/accounting.md "ยังเปิดอยู่ → Phase 5")
- * (anti-drift net: interco-netting.integration.spec.ts).
+ * (anti-drift net: interco-netting.integration.spec.ts + interco-device-return.integration.spec.ts).
  */
-export type ShopReceivableType = 'SWAP_CREDIT' | 'PAYOUT_RECALL' | 'SHOP_COLLECT' | 'UNKNOWN';
+export const SHOP_RECEIVABLE_TYPES = [
+  'SWAP_CREDIT',
+  'PAYOUT_RECALL',
+  'SHOP_COLLECT',
+  'DEVICE_RETURN',
+] as const;
 
-const EXPLICIT: ReadonlySet<string> = new Set(['SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT']);
+export type ShopReceivableType = (typeof SHOP_RECEIVABLE_TYPES)[number] | 'UNKNOWN';
+
+const EXPLICIT: ReadonlySet<string> = new Set<string>(SHOP_RECEIVABLE_TYPES);
 
 /** Legacy flow → type (ตารางตายตัว — เพิ่มได้ ห้ามแก้ความหมายเดิม) */
 const FLOW_MAP: Readonly<Record<string, ShopReceivableType>> = {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, ClipboardList, Undo2 } from 'lucide-react';
+import { AlertTriangle, ClipboardList, PackageX, Undo2 } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -7,10 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { formatThaiDateShort } from '@/lib/date';
-import { RecallCashDialog } from './RecallCashDialog';
+import { RecallCashDialog, type CashSettleKind } from './RecallCashDialog';
 import {
+  deviceReturnToCashCandidate,
   fmtMoney,
   INTERCO_APPROVER_ROLES,
+  recallToCashCandidate,
+  type CashSettleCandidate,
+  type DeviceReturnCandidate,
   type PendingContract,
   type RecallCandidate,
   type ReconcileTotals,
@@ -22,6 +26,9 @@ import {
  * Reconcile strip = sanity check ระดับบัญชี (spec §4): ยอดคิวรอจ่ายรวม ต้อง
  * ใกล้เคียง GL 21-1101+21-1102 ทั้งบัญชี — drift ที่ไม่ใช่ 0 แปลว่ามี JE
  * แปลกปลอม/เส้นเก่าที่ไม่มี metadata.contractId (pre-flight §10 ข้อ 1).
+ *
+ * แถวหักมี 3 ประเภท: เครดิตเปลี่ยนเครื่อง (บนแถวสัญญาค้างจ่าย), เรียกคืน (Flow C-2),
+ * และค่าเครื่องคืน (ใบรับเครื่องคืน 2026-09-20 — 11-2107 [DEVICE_RETURN] คู่ S21-1104).
  */
 
 const DRIFT_TOLERANCE = 0.01;
@@ -36,9 +43,15 @@ function recallMismatch(r: RecallCandidate): boolean {
   return Math.abs(Number(r.recallGl) - Number(r.shopRecallGl)) > DRIFT_TOLERANCE;
 }
 
+/** เช่นเดียวกับ recall — `ยอดค่าเครื่องคืนสองสมุดไม่ตรงกัน` ฝั่ง server */
+function deviceReturnMismatch(d: DeviceReturnCandidate): boolean {
+  return Math.abs(Number(d.deviceReturnGl) - Number(d.shopDeviceReturnGl)) > DRIFT_TOLERANCE;
+}
+
 interface PendingTabProps {
   pending: PendingContract[];
   recalls: RecallCandidate[];
+  deviceReturns: DeviceReturnCandidate[];
   reconcile: ReconcileTotals | undefined;
   isLoading: boolean;
   isError: boolean;
@@ -49,12 +62,15 @@ interface PendingTabProps {
   onToggleAll: () => void;
   selectedRecallIds: Set<string>;
   onToggleRecall: (contractId: string) => void;
+  selectedDeviceReturnIds: Set<string>;
+  onToggleDeviceReturn: (contractId: string) => void;
   onCreateClick: () => void;
 }
 
 export function PendingTab({
   pending,
   recalls,
+  deviceReturns,
   reconcile,
   isLoading,
   isError,
@@ -65,13 +81,18 @@ export function PendingTab({
   onToggleAll,
   selectedRecallIds,
   onToggleRecall,
+  selectedDeviceReturnIds,
+  onToggleDeviceReturn,
   onCreateClick,
 }: PendingTabProps) {
   const { user } = useAuth();
-  // ปุ่มรับเงินสดคืนโพสต์ JE สองสมุดทันที — endpoint gate ที่ role ระดับ checker
+  // ปุ่มรับเงินสดโพสต์ JE สองสมุดทันที — endpoint gate ที่ role ระดับ checker
   // (OWNER/FINANCE_MANAGER) เหมือน approve/reverse จึงซ่อนจาก maker-side roles
-  const canSettleRecallCash = !!user && INTERCO_APPROVER_ROLES.includes(user.role);
-  const [cashRecall, setCashRecall] = useState<RecallCandidate | null>(null);
+  const canSettleCash = !!user && INTERCO_APPROVER_ROLES.includes(user.role);
+  const [cashTarget, setCashTarget] = useState<{
+    kind: CashSettleKind;
+    candidate: CashSettleCandidate;
+  } | null>(null);
 
   const drift = Number(reconcile?.drift ?? 0);
   const hasDrift = Math.abs(drift) > DRIFT_TOLERANCE;
@@ -85,8 +106,15 @@ export function PendingTab({
   const selectedRecallTotal = recalls
     .filter((r) => selectedRecallIds.has(r.contractId))
     .reduce((sum, r) => sum + Number(r.recallGl), 0);
+  const selectedDeviceReturnTotal = deviceReturns
+    .filter((d) => selectedDeviceReturnIds.has(d.contractId))
+    .reduce((sum, d) => sum + Number(d.deviceReturnGl), 0);
   const selectedDeduction =
-    selectedContracts.reduce((sum, p) => sum + rowDeduction(p), 0) + selectedRecallTotal;
+    selectedContracts.reduce((sum, p) => sum + rowDeduction(p), 0) +
+    selectedRecallTotal +
+    selectedDeviceReturnTotal;
+  const anySelected =
+    selectedIds.size > 0 || selectedRecallIds.size > 0 || selectedDeviceReturnIds.size > 0;
 
   return (
     <div className="space-y-4 pt-4">
@@ -259,7 +287,7 @@ export function PendingTab({
                         <th className="text-right p-3 font-medium text-muted-foreground">
                           ฝั่ง SHOP (S21-1104)
                         </th>
-                        {canSettleRecallCash && (
+                        {canSettleCash && (
                           <th className="text-right p-3 font-medium text-muted-foreground">
                             รับเงินสด
                           </th>
@@ -309,11 +337,8 @@ export function PendingTab({
                             <td className="p-3 text-right tabular-nums">
                               {fmtMoney(r.shopRecallGl)}
                             </td>
-                            {canSettleRecallCash && (
-                              <td
-                                className="p-3 text-right"
-                                onClick={(e) => e.stopPropagation()}
-                              >
+                            {canSettleCash && (
+                              <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -324,9 +349,125 @@ export function PendingTab({
                                       ? 'ยอดสองสมุดไม่ตรงกัน — ตรวจสอบ GL ก่อนรับเงินคืน'
                                       : 'รับเงินสดคืนจากหน้าร้านแทนการหักในรอบจ่าย'
                                   }
-                                  onClick={() => setCashRecall(r)}
+                                  onClick={() =>
+                                    setCashTarget({
+                                      kind: 'RECALL',
+                                      candidate: recallToCashCandidate(r),
+                                    })
+                                  }
                                 >
                                   รับเงินสดคืน
+                                </Button>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {deviceReturns.length > 0 && (
+            <Card>
+              <CardHeader>
+                <h2 className="text-lg font-semibold flex items-center gap-2 leading-snug">
+                  <PackageX className="h-5 w-5 text-warning" />
+                  ค่าเครื่องคืน (ใบรับเครื่องคืนที่ยืนยันแล้ว) ({deviceReturns.length} รายการ)
+                </h2>
+                <p className="text-xs text-muted-foreground leading-snug">
+                  ราคาประเมินที่หน้าร้านรับเครื่องไปจาก FINANCE (11-2107 ค่าเครื่องคืน คู่ S21-1104)
+                  — เลือกเพื่อหักจากยอดโอนของรอบจ่ายถัดไป (ต้องมีสัญญาค้างจ่ายในรอบอย่างน้อย 1
+                  สัญญา) หรือรับเงินสดจากหน้าร้านเป็นรายสัญญา
+                </p>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm leading-snug">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="w-10 p-3" aria-label="เลือกรายการค่าเครื่องคืน" />
+                        <th className="text-left p-3 font-medium text-muted-foreground">
+                          เลขสัญญา / ลูกค้า
+                        </th>
+                        <th className="text-right p-3 font-medium text-muted-foreground">
+                          ค่าเครื่องคืน (11-2107)
+                        </th>
+                        <th className="text-right p-3 font-medium text-muted-foreground">
+                          ฝั่ง SHOP (S21-1104)
+                        </th>
+                        {canSettleCash && (
+                          <th className="text-right p-3 font-medium text-muted-foreground">
+                            รับเงินสด
+                          </th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deviceReturns.map((d) => {
+                        const mismatch = deviceReturnMismatch(d);
+                        return (
+                          <tr
+                            key={d.contractId}
+                            className={`border-t border-border ${
+                              mismatch ? 'opacity-70' : 'hover:bg-accent/30 cursor-pointer'
+                            }`}
+                            onClick={() => !mismatch && onToggleDeviceReturn(d.contractId)}
+                          >
+                            <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                checked={selectedDeviceReturnIds.has(d.contractId)}
+                                onCheckedChange={() => onToggleDeviceReturn(d.contractId)}
+                                disabled={mismatch}
+                                aria-label={`เลือกค่าเครื่องคืนสัญญา ${d.contractNumber}`}
+                              />
+                            </td>
+                            <td className="p-3">
+                              <div className="font-medium leading-snug flex items-center gap-2 flex-wrap">
+                                {d.contractNumber}
+                                {mismatch && (
+                                  <Badge
+                                    variant="warning"
+                                    appearance="light"
+                                    size="sm"
+                                    title="ยอด 11-2107 กับ S21-1104 ไม่เท่ากัน — GL ผิดปกติ ตรวจสอบก่อนจึงจะหักเข้ารอบได้"
+                                  >
+                                    ยอดสองสมุดไม่ตรง
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground leading-snug">
+                                {d.customerName}
+                              </div>
+                            </td>
+                            <td className="p-3 text-right tabular-nums text-warning">
+                              −{fmtMoney(d.deviceReturnGl)}
+                            </td>
+                            <td className="p-3 text-right tabular-nums">
+                              {fmtMoney(d.shopDeviceReturnGl)}
+                            </td>
+                            {canSettleCash && (
+                              <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-3 text-xs"
+                                  disabled={mismatch}
+                                  title={
+                                    mismatch
+                                      ? 'ยอดสองสมุดไม่ตรงกัน — ตรวจสอบ GL ก่อนรับเงินสด'
+                                      : 'รับเงินสดค่าเครื่องคืนจากหน้าร้านแทนการหักในรอบจ่าย'
+                                  }
+                                  onClick={() =>
+                                    setCashTarget({
+                                      kind: 'DEVICE_RETURN',
+                                      candidate: deviceReturnToCashCandidate(d),
+                                    })
+                                  }
+                                >
+                                  รับเงินสดค่าเครื่อง
                                 </Button>
                               </td>
                             )}
@@ -342,7 +483,7 @@ export function PendingTab({
         </div>
       </QueryBoundary>
 
-      {(selectedIds.size > 0 || selectedRecallIds.size > 0) && (
+      {anySelected && (
         <div className="sticky bottom-4 z-10 flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 shadow-lg flex-wrap">
           <div className="text-sm leading-snug">
             เลือกแล้ว <strong>{selectedIds.size}</strong> สัญญา
@@ -350,6 +491,12 @@ export function PendingTab({
               <>
                 {' '}
                 + เรียกคืน <strong>{selectedRecallIds.size}</strong> รายการ
+              </>
+            )}
+            {selectedDeviceReturnIds.size > 0 && (
+              <>
+                {' '}
+                + ค่าเครื่องคืน <strong>{selectedDeviceReturnIds.size}</strong> รายการ
               </>
             )}{' '}
             • รวม <strong className="tabular-nums">฿{fmtMoney(selectedTotal)}</strong>
@@ -378,7 +525,11 @@ export function PendingTab({
         </div>
       )}
 
-      <RecallCashDialog recall={cashRecall} onClose={() => setCashRecall(null)} />
+      <RecallCashDialog
+        candidate={cashTarget?.candidate ?? null}
+        kind={cashTarget?.kind ?? 'RECALL'}
+        onClose={() => setCashTarget(null)}
+      />
     </div>
   );
 }

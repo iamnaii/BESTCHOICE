@@ -53,19 +53,39 @@ interface MdmDeviceWidgetProps {
 
 function getStatusBadge(response: DeviceStatusResponse) {
   if (!response.found) {
-    return <Badge variant="warning" appearance="outline" size="sm">ไม่พบใน MDM</Badge>;
+    return (
+      <Badge variant="warning" appearance="outline" size="sm">
+        ไม่พบใน MDM
+      </Badge>
+    );
   }
   const device = response.device;
   if (!device) {
-    return <Badge variant="outline" size="sm">ไม่ได้จัดการ</Badge>;
+    return (
+      <Badge variant="outline" size="sm">
+        ไม่ได้จัดการ
+      </Badge>
+    );
   }
   if (device.lossStatus === 1) {
-    return <Badge variant="destructive" appearance="light" size="sm">Lost Mode</Badge>;
+    return (
+      <Badge variant="destructive" appearance="light" size="sm">
+        Lost Mode
+      </Badge>
+    );
   }
   if (device.status === 0) {
-    return <Badge variant="outline" size="sm" className="text-muted-foreground">ไม่ได้จัดการ</Badge>;
+    return (
+      <Badge variant="outline" size="sm" className="text-muted-foreground">
+        ไม่ได้จัดการ
+      </Badge>
+    );
   }
-  return <Badge variant="success" appearance="light" size="sm">ปกติ</Badge>;
+  return (
+    <Badge variant="success" appearance="light" size="sm">
+      ปกติ
+    </Badge>
+  );
 }
 
 function formatLastSeen(lastTime: string): string {
@@ -85,6 +105,10 @@ function formatLastSeen(lastTime: string): string {
 export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const canViewStatus = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT'].includes(
+    user?.role ?? '',
+  );
+  const canViewLocation = user?.role === 'OWNER';
 
   const [lockDialogOpen, setLockDialogOpen] = useState(false);
   const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
@@ -93,8 +117,11 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
 
   const { data, isLoading, isError } = useQuery<DeviceStatusResponse>({
     queryKey: ['mdm-device-status', imei],
+    enabled: canViewStatus,
     queryFn: async () => {
-      const res = await api.get<DeviceStatusResponse>(`/mdm/device-status?imei=${encodeURIComponent(imei)}`);
+      const res = await api.get<DeviceStatusResponse>(
+        `/mdm/device-status?imei=${encodeURIComponent(imei)}`,
+      );
       return res.data;
     },
     retry: 1,
@@ -107,7 +134,7 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
       const res = await api.get<LocationResponse>(`/mdm/devices/${data!.device!.id}/location`);
       return res.data;
     },
-    enabled: gpsDialogOpen && !!data?.device?.id,
+    enabled: canViewLocation && gpsDialogOpen && !!data?.device?.id,
     retry: 1,
   });
 
@@ -138,6 +165,9 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
 
   const canLockUnlock = user?.role === 'OWNER' || user?.role === 'FINANCE_MANAGER';
 
+  // Match the status endpoint's read grants, including when query data is cached.
+  if (!canViewStatus) return null;
+
   // Loading state
   if (isLoading) {
     return (
@@ -160,7 +190,9 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
         <div className="flex items-center gap-2 mb-1">
           <Smartphone className="size-4 text-muted-foreground" />
           <span className="text-sm font-medium text-foreground">อุปกรณ์ MDM</span>
-          <Badge variant="warning" appearance="outline" size="sm">ไม่พบใน MDM</Badge>
+          <Badge variant="warning" appearance="outline" size="sm">
+            ไม่พบใน MDM
+          </Badge>
         </div>
         <p className="text-xs text-muted-foreground leading-snug">
           ไม่พบ IMEI {imei} ในระบบ MDM — อุปกรณ์อาจยังไม่ได้ลงทะเบียน
@@ -229,7 +261,7 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
               </Button>
             </>
           )}
-          {device && (
+          {canViewLocation && device && (
             <Button
               size="sm"
               variant="outline"
@@ -264,7 +296,10 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
           <DialogFooter className="gap-2 sm:gap-0">
             <Button
               variant="outline"
-              onClick={() => { setLockDialogOpen(false); setLockReason(''); }}
+              onClick={() => {
+                setLockDialogOpen(false);
+                setLockReason('');
+              }}
               disabled={lockMutation.isPending}
             >
               ยกเลิก
@@ -293,7 +328,7 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
       />
 
       {/* GPS Location Dialog */}
-      <Dialog open={gpsDialogOpen} onOpenChange={setGpsDialogOpen}>
+      <Dialog open={canViewLocation && gpsDialogOpen} onOpenChange={setGpsDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>ตำแหน่งอุปกรณ์</DialogTitle>
@@ -309,11 +344,15 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground leading-snug">ละติจูด</p>
-                    <p className="font-mono text-foreground">{locationData.data.latitude.toFixed(6)}</p>
+                    <p className="font-mono text-foreground">
+                      {locationData.data.latitude.toFixed(6)}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground leading-snug">ลองจิจูด</p>
-                    <p className="font-mono text-foreground">{locationData.data.longitude.toFixed(6)}</p>
+                    <p className="font-mono text-foreground">
+                      {locationData.data.longitude.toFixed(6)}
+                    </p>
                   </div>
                 </div>
                 {locationData.data.accuracy && (
@@ -337,11 +376,15 @@ export default function MdmDeviceWidget({ imei }: MdmDeviceWidgetProps) {
                 </a>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground leading-snug">ไม่สามารถดึงข้อมูลตำแหน่งได้</p>
+              <p className="text-sm text-muted-foreground leading-snug">
+                ไม่สามารถดึงข้อมูลตำแหน่งได้
+              </p>
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setGpsDialogOpen(false)}>ปิด</Button>
+            <Button variant="outline" onClick={() => setGpsDialogOpen(false)}>
+              ปิด
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

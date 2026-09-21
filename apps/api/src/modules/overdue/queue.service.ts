@@ -10,6 +10,7 @@ import {
 } from './dto/queue-query.dto';
 import { seededShuffle } from '../../utils/shuffle.util';
 import { todayQueueWhere } from './today-queue.predicate';
+import { noOpenDeviceReturnWhere } from '../device-returns/device-return.predicate';
 
 export type QueueTab = 'today' | 'promise';
 
@@ -89,8 +90,8 @@ export class OverdueQueueService {
       params.userRole === 'SALES' || params.userRole === 'BRANCH_MANAGER'
         ? { branchId: params.userBranchId ?? undefined }
         : params.branchId
-        ? { branchId: params.branchId }
-        : {};
+          ? { branchId: params.branchId }
+          : {};
 
     const where = this.buildWhere(params.tab, now, branchScope);
     this.applyFilterWhere(where, params, params.userId);
@@ -660,15 +661,11 @@ export class OverdueQueueService {
     const brokenMap = new Map<string, number>(
       brokenPromises.map((r) => [r.entityId, r._count._all]),
     );
-    const mdmMap = new Map<string, string>(
-      latestMdms.map((r) => [r.contractId, r.status]),
-    );
+    const mdmMap = new Map<string, string>(latestMdms.map((r) => [r.contractId, r.status]));
     const customerCountMap = new Map<string, number>(
       customerContractCounts.map((r) => [r.customerId, r._count._all]),
     );
-    const channelMap = new Map<string, string>(
-      lastChannels.map((r) => [r.contractId, r.channel]),
-    );
+    const channelMap = new Map<string, string>(lastChannels.map((r) => [r.contractId, r.channel]));
     const letterCountMap = new Map<string, number>(
       letterCounts.map((r) => [r.contractId, r._count._all]),
     );
@@ -707,12 +704,9 @@ export class OverdueQueueService {
       const call = callMap.get(c.id) ?? null;
       const action = actionMap.get(c.id) ?? null;
       const lastContactedAt =
-        call && action ? (call > action ? call : action) : call ?? action ?? null;
+        call && action ? (call > action ? call : action) : (call ?? action ?? null);
 
-      const trendingArrow = this.computeTrendingArrow(
-        base.daysOverdue,
-        sevenDayMap.get(c.id),
-      );
+      const trendingArrow = this.computeTrendingArrow(base.daysOverdue, sevenDayMap.get(c.id));
       const snoozedUntil = snoozeMap.get(c.id) ?? null;
       const ap = activePromiseMap.get(c.id) ?? null;
 
@@ -775,11 +769,7 @@ export class OverdueQueueService {
     if (!status) return 'NONE';
     if (status === 'PENDING') return 'PENDING';
     if (status === 'UNLOCKED') return 'UNLOCKED';
-    if (
-      status === 'APPROVED' ||
-      status === 'EXECUTED_MANUAL' ||
-      status === 'EXECUTED_API'
-    ) {
+    if (status === 'APPROVED' || status === 'EXECUTED_MANUAL' || status === 'EXECUTED_API') {
       return 'LOCKED';
     }
     // REJECTED / FAILED → treat as no active lock
@@ -834,6 +824,9 @@ export class OverdueQueueService {
     return {
       ...branchScope,
       deletedAt: null,
+      // spec 2026-09-20 §5.7: แท็บนี้ไม่มีตัวกรองสถานะสัญญา — สัญญาที่มีใบรับเครื่องคืนเปิดอยู่
+      // (เครื่องอยู่ที่สาขาแล้ว) ต้องไม่โผล่ให้ทวงตามนัดอีก; predicate ตัวเดียวกับ promise-resolution cron
+      ...noOpenDeviceReturnWhere(),
       callLogs: {
         some: {
           result: 'PROMISED',
@@ -857,7 +850,12 @@ export class OverdueQueueService {
       ? Math.max(0, Math.floor((now.getTime() - new Date(payment.dueDate).getTime()) / 86400000))
       : 0;
     const brokenPromiseCount = c._count?.callLogs ?? 0;
-    const __priorityScore = this.priorityScore(outstanding, daysOverdue, c.noAnswerCount ?? 0, brokenPromiseCount);
+    const __priorityScore = this.priorityScore(
+      outstanding,
+      daysOverdue,
+      c.noAnswerCount ?? 0,
+      brokenPromiseCount,
+    );
     return {
       id: c.id,
       contractNumber: c.contractNumber,

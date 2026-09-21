@@ -457,3 +457,52 @@ Spec: `docs/superpowers/specs/2026-09-20-installment-contract-freebies-design.md
   ไม่จด VAT) · ไม่มี 4-eyes (D3 — ขั้นเดียว คุมด้วยสิทธิ์)
 - **ผู้อ่าน `Sale` ใช้ `deletedAt` เป็นตัวกรอง** — ยกเว้น `generateSaleNumber` (`sequence.util.ts`)
   ที่**ห้ามกรอง** (ใบยกเลิกยังถือเลข) และ `findOne` ที่เปิดดูใบยกเลิกได้โดยตั้งใจ
+
+---
+
+## ใบรับเครื่องคืน (`DeviceReturn` — 2026-09-20)
+
+Spec: `docs/superpowers/specs/2026-09-20-device-return-intake-design.md` §4 · โมเดล `device_returns`
+(`apps/api/src/modules/device-returns/`) · กติกาบัญชีอยู่ที่ `.claude/rules/accounting.md` หัวข้อย่อย
+"ใบรับเครื่องคืน (DeviceReturn)" ใต้ "ยึดเครื่อง — ราคาเดียว".
+
+### หนึ่งสัญญามีใบรอยืนยันได้ใบเดียว — partial unique (raw SQL ใน migration)
+
+ชื่อจริงใน migration `20261003100000_device_returns`:
+
+```sql
+CREATE UNIQUE INDEX "device_returns_one_open_per_contract"
+  ON "device_returns" ("contract_id")
+  WHERE "status" = 'PENDING_CONFIRM' AND "deleted_at" IS NULL;
+```
+
+Prisma เขียน partial unique ไม่ได้ (precedent `products_imei_serial_active_unique`) ⇒ service ตรวจ "ไม่มีใบ
+`PENDING_CONFIRM` ของสัญญานี้" ก่อน แล้ว index เป็นตาข่าย (P2002 → 409 ไทย). ใบที่ `CONFIRMED`/`REJECTED`/`CANCELED`
+หลุดจาก index ⇒ สัญญาเดิมเปิดใบใหม่ได้หลังส่งกลับ/ยกเลิกเมื่อยังผ่านด่านสถานะ (ยืนยันแล้ว = สัญญา `CLOSED_BAD_DEBT` เปิดใหม่ไม่ได้อยู่แล้วโดย
+ด่านสถานะ). `repossessionId @unique` — หนึ่งรายการยึดผูกใบเดียว; `docNumber @unique` (`DR-YYYYMMDD-NNNN`, ตัวนับแบบ
+`IntercoBatchNumberService` ไม่ใช่ `DocNumberService` ที่ผูก enum `DocumentType`).
+
+### สถานะระหว่างรอยืนยัน (`PENDING_CONFIRM`)
+
+| สิ่งที่ | ระหว่างรอ | ตอน FINANCE ยืนยัน | ส่งกลับ/ยกเลิก |
+|---|---|---|---|
+| `Contract.status` | VOLUNTARY: flip `ACTIVE/OVERDUE/DEFAULT → TERMINATED` ทันที (เก็บ `previousContractStatus`) · REPOSSESSION: `TERMINATED` อยู่แล้ว | → `CLOSED_BAD_DEBT` (ใน `createInTx`) | VOLUNTARY: คืน `previousContractStatus` เฉพาะเมื่อมีค่าที่เก็บไว้และสถานะปัจจุบันยังเป็น `TERMINATED`; ถ้าสถานะเปลี่ยนไปแล้ว ปิดใบโดยไม่คืนสถานะ · REPOSSESSION: ไม่แตะ |
+| `Product` | **ไม่แตะ** (ยัง `SOLD_INSTALLMENT` ของ FINANCE — เครื่องอยู่ที่สาขาแล้วแต่ยังไม่ผ่านบัญชี) | → `REPOSSESSED` + `ownedByCompanyId` = SHOP + `PHONE_NEW → PHONE_USED` + **`branchId = receivingBranchId`** | ไม่แตะ |
+| `Repossession` แถว | ยังไม่มี | สร้าง (JP5 + ขาคู่ SHOP) + `DeviceReturn.repossessionId` | ไม่มี |
+| audit | เฉพาะ VOLUNTARY ที่ flip สถานะ: `CONTRACT_STATUS_LEGAL` reason `DEVICE_RETURN_INTAKE` เขียนใน tx ด้วย `tx.auditLog.create` (atomic กับ flip — แถวหลุด Merkle chain โดยตั้งใจ, รูปเดียวกับ `contract-letter.service.ts`) · ทุกใบ: `DEVICE_RETURN_CREATED` หลัง commit | `DEVICE_RETURN_CONFIRMED` (หลัง commit) + `REPOSSESSION` (ใน `createInTx`) | `CONTRACT_STATUS_LEGAL` reason `DEVICE_RETURN_REJECTED`/`DEVICE_RETURN_CANCELED` (ใน tx) เฉพาะเมื่อคืนสถานะจริง · ทุกใบที่ปิดสำเร็จ: `DEVICE_RETURN_REJECTED`/`DEVICE_RETURN_CANCELED` หลัง commit บันทึก `contractStatusRestored` (อาจเป็น `null`) |
+
+ผลของ `TERMINATED` ที่ได้ฟรี: accrual 2A / ค่าปรับ / จดหมายอัตโนมัติ / ล็อคจากไม่รับสาย / มอบหมายทวงถาม / dunning หยุด,
+หายจากคิวรับชำระและคิวทวงถาม "วันนี้" (รายการไฟล์ใน spec §5.1) · เพิ่มเติม: แท็บ "นัดชำระ" ของคิวทวงถามกรอง
+`noOpenDeviceReturnWhere()` และ `promise-resolution.cron` ไม่สั่ง `mdm.autoLock` เมื่อสัญญามีใบ `OPEN_DEVICE_RETURN_STATUSES`
+(นิยามใน `device-return.predicate.ts` = `PENDING_CONFIRM` และ `CONFIRMED`, เฉพาะ `deletedAt: null` — ต่างจาก partial unique ที่ครอบเฉพาะ `PENDING_CONFIRM`)
+(เครื่องอยู่ที่สาขาแล้ว — MDM ปลดมือ). ระหว่างรอ **เครื่องยังถูกถือครองโดยสัญญา** ในสายตา `product-hold.util.ts`
+(`TERMINATED` ไม่อยู่ใน `FINISHED_CONTRACT_STATUSES`) ⇒ ลบ/แก้ IMEI/เปิดสัญญาใหม่บนเครื่องนี้ไม่ได้ — ถูกต้องแล้ว.
+รายการ "รอยึดเครื่อง" = TERMINATED ที่ **ไม่มี** ใบ `PENDING_CONFIRM` และไม่มีแถว `Repossession`
+(`GET /device-returns/awaiting-repossession`).
+
+ลูกค้าจ่ายระหว่างรอ (webhook PaySolutions บันทึกได้ — เงินตัดจริง): ยอดค้างเป็น 0 → ยืนยันถูกปฏิเสธ 400
+(`ZERO_OUTSTANDING_MSG` เดิม) ต้องส่งกลับใบ. ใบข้ามเดือน: `paymentDate` ตอนยืนยันต้องเดือนปัจจุบัน ⇒ JE และใบลดหนี้ถ้ามีลงเดือนที่
+ยืนยัน; cron `device-return-pending.cron` (09:20 BKK) สร้าง Todo MEDIUM ต่อใบที่ผ่านไปอย่างน้อย 3 วันนับจาก `createdAt`
+(≥ 3 × 24 ชั่วโมง) และ Todo HIGH สรุปรวมใบค้างหนึ่งรายการในช่วง 2 วันสุดท้ายของเดือน (ไม่ใช่ HIGH ต่อใบ; ไม่สร้างซ้ำเมื่อยังมี Todo เดิมเปิดอยู่).
+tag AUTO `RETURNED_DEVICE` ติดเมื่อลูกค้ามี `DeviceReturn` `PENDING_CONFIRM`/`CONFIRMED` หรือแถว `Repossession` ผ่านสัญญา
+ของลูกค้า (กฎใน `evaluateAutoTags`; หน้าจอไม่ให้ติด/ถอดมือ — `recomputeForCustomer` ถอดเฉพาะแถว `source: 'AUTO'`).

@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient } from '@prisma/client';
+import { SHOP_RECEIVABLE_TYPES } from '../journal/shop-receivable-type.util';
 
 type Client = Prisma.TransactionClient | PrismaClient;
 
@@ -69,7 +70,7 @@ export function swapCreditFinanceBalance(
     AND (je.metadata->>'shopReceivableType' = 'SWAP_CREDIT'
          OR ((je.metadata->>'shopReceivableType' IS NULL
               OR je.metadata->>'shopReceivableType' NOT IN
-                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+                 (${Prisma.join([...SHOP_RECEIVABLE_TYPES])}))
              AND je.metadata->>'flow' = 'exchange-buyback-receivable-11-2107'))`,
   );
 }
@@ -113,7 +114,7 @@ export function shopCollectTypedBalance(
     AND (je.metadata->>'shopReceivableType' = 'SHOP_COLLECT'
          OR ((je.metadata->>'shopReceivableType' IS NULL
               OR je.metadata->>'shopReceivableType' NOT IN
-                 ('SWAP_CREDIT', 'PAYOUT_RECALL', 'SHOP_COLLECT'))
+                 (${Prisma.join([...SHOP_RECEIVABLE_TYPES])}))
              AND (je.metadata->>'collectedByShop' = 'true'
                   OR je.metadata->>'shopReceivable' = '11-2107'
                   OR je.metadata->>'flow' = 'shop-collect-settlement')))`,
@@ -162,4 +163,105 @@ export function recallShopBalance(client: Client, contractId: string): Promise<P
     je.metadata->>'contractId' = ${contractId}
     AND je.metadata->>'shopReceivableType' = 'PAYOUT_RECALL'`,
   );
+}
+
+/**
+ * 11-2107 Σ(Dr−Cr) เฉพาะประเภท DEVICE_RETURN ของสัญญาหนึ่ง — ค่าเครื่องคืนจากใบรับเครื่องคืน
+ * (spec 2026-09-20 §6.2; producer = JP5 ตอน FINANCE ยืนยันใบ — Phase 2). explicit stamp
+ * เท่านั้น ไม่มี legacy fallback (ประเภทใหม่ — JP5 ยุคก่อนหน้า stamp SHOP_COLLECT และล้าง
+ * ทางเดิม forward-only ตาม spec §6.6). Key ด้วย metadata.contractId ทั้งสองสมุด.
+ *
+ * ผู้ใช้: ด่านใบรับโอน (`ShopCollectSettlementTemplate` §6.4), drift guard แถว DEVICE_RETURN
+ * ใน `approveBatch`, `settleDeductionCash`, residual alarm — SQL twin ของเลนส์
+ * `getPendingDeviceReturns` + `DEVICE_RETURN_COND` ในรายงานอายุ (แก้ที่ไหนต้องแก้ทุกที่).
+ */
+export function deviceReturnFinanceBalance(
+  client: Client,
+  contractId: string,
+): Promise<Prisma.Decimal> {
+  return sumTyped(
+    client,
+    '11-2107',
+    'dr-cr',
+    Prisma.sql`
+    je.metadata->>'contractId' = ${contractId}
+    AND je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'`,
+  );
+}
+
+/** S21-1104 Σ(Cr−Dr) เฉพาะ DEVICE_RETURN — key ด้วย metadata.contractId (ขาคู่ SHOP ของ JP5 ใบรับเครื่องคืน) */
+export function deviceReturnShopBalance(
+  client: Client,
+  contractId: string,
+): Promise<Prisma.Decimal> {
+  return sumTyped(
+    client,
+    'S21-1104',
+    'cr-dr',
+    Prisma.sql`
+    je.metadata->>'contractId' = ${contractId}
+    AND je.metadata->>'shopReceivableType' = 'DEVICE_RETURN'`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Σ deduction ที่รอบจ่าย POSTED หักไปแล้ว — export ระดับ module (ใบรับเครื่องคืน 2026-09-20):
+// ผู้เรียก = IntercoPendingService (สองคิว) + Phase 2 RepossessionsService.findAll
+// (`deviceReturnOutstanding`) — สูตรเดียว ห้ามมีสำเนา; อยู่ไฟล์นี้เพราะรับ `Client` union
+// ชุดเดียวกับ typed-balance helpers (ใช้ได้ทั้งใน tx และ root prisma)
+// ---------------------------------------------------------------------------
+
+/** คอลัมน์ deduction บน InterCoSettlementItem — ทุกแถวมีครบสาม (คอลัมน์ที่ไม่เกี่ยวกับประเภทแถวเป็น 0) */
+export type DeductionColumn = 'swapCreditAmount' | 'recallAmount' | 'deviceReturnAmount';
+
+/** คิว recall: สูตร NET ทุกประเภท — gross ของ redirect C-2 นับเครดิตสวอปที่เคยหักไปแล้วซ้ำ (Phase 3 Task 4) */
+export const ALL_DEDUCTION_COLUMNS: readonly DeductionColumn[] = [
+  'swapCreditAmount',
+  'recallAmount',
+  'deviceReturnAmount',
+];
+
+/**
+ * คิวค่าเครื่องคืน + Phase 2 `findAll.deviceReturnOutstanding`: same-type เท่านั้น (spec
+ * 2026-09-20 §6.3 ฉบับตัดสิน) — ค่าเครื่องคืนเป็นหนี้ก้อนใหม่ ไม่เกี่ยวกับเครดิตสวอปเดิม; สัญญา
+ * swap ที่ถูกหัก 8,000 แล้วถูกยึด 7,000 ต้องอยู่คิวที่ 7,000
+ */
+export const DEVICE_RETURN_DEDUCTION_COLUMNS: readonly DeductionColumn[] = ['deviceReturnAmount'];
+
+/**
+ * Σ deduction ต่อสัญญาจาก batch POSTED (ไม่ถูกลบ) — item ทุก itemType แต่รวม**เฉพาะคอลัมน์ที่ขอ**
+ * (สถาปัตยกรรม gross-lens: "หักแล้วเท่าไร" อยู่ที่ item table ไม่ใช่ GL metadata — ขา Cr ของ batch
+ * ไม่ stamp contractId). สัญญาที่ไม่มี item = ไม่มี key ใน Map (ผู้เรียกใช้ `?? 0`).
+ * select ครบสามคอลัมน์เสมอ (รูป query เดียว) แล้วรวมเฉพาะที่ขอ — ผู้เรียก:
+ *   - `IntercoPendingService.getPendingRecalls` → `ALL_DEDUCTION_COLUMNS` (legacy-compatible กับก่อน 2026-09-20)
+ *   - `IntercoPendingService.getPendingDeviceReturns` → `DEVICE_RETURN_DEDUCTION_COLUMNS`
+ *   - Phase 2 `RepossessionsService.findAll` (`deviceReturnOutstanding`) → `DEVICE_RETURN_DEDUCTION_COLUMNS`
+ */
+export async function postedDeductionsByContract(
+  client: Client,
+  contractIds: string[],
+  columns: readonly DeductionColumn[],
+): Promise<Map<string, Prisma.Decimal>> {
+  const items = await client.interCoSettlementItem.findMany({
+    where: {
+      contractId: { in: contractIds },
+      deletedAt: null,
+      batch: { status: 'POSTED', deletedAt: null },
+    },
+    select: {
+      contractId: true,
+      swapCreditAmount: true,
+      recallAmount: true,
+      deviceReturnAmount: true,
+    },
+  });
+  const map = new Map<string, Prisma.Decimal>();
+  for (const item of items) {
+    const prev = map.get(item.contractId) ?? new Prisma.Decimal(0);
+    map.set(
+      item.contractId,
+      columns.reduce((s, col) => s.plus(item[col]), prev),
+    );
+  }
+  return map;
 }

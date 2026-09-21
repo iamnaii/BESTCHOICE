@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -14,69 +14,128 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CashAccountSelect, SHOP_CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
-import { fmtMoney, type RecallCandidate } from './types';
+import { fmtMoney, type CashSettleCandidate } from './types';
 
 /**
- * รับเงินสดคืนจากหน้าร้าน (Flow C-2 — Phase 3 Task 7, spec §5.4 ทางเลือกที่สอง
- * นอกจากหักกลบรอบจ่าย): `POST /interco-settlement/recalls/:contractId/settle-cash`.
+ * รับเงินสดคืนจากหน้าร้านแทนการหักในรอบจ่าย — สองประเภท (spec 2026-09-20 §6.3):
+ *   RECALL        → `POST /interco-settlement/recalls/:contractId/settle-cash` (Flow C-2 เดิม)
+ *   DEVICE_RETURN → `POST /interco-settlement/device-returns/:contractId/settle-cash`
+ *                   (ค่าเครื่องคืน — FINANCE Dr เงิน / Cr 11-2107 [DEVICE_RETURN] · SHOP Dr S21-1104 / Cr เงิน)
  *
- * - ยอด default = ยอดเรียกคืนสุทธิคงเหลือ (recallGl) — แก้ได้ แต่ห้ามเกิน net
- *   (server re-check เดียวกัน ±0.01)
- * - `requestId` = crypto.randomUUID() ต่อการเปิด dialog หนึ่งครั้ง — คงที่ระหว่าง
- *   retry (กัน double-post; server idempotency จับ requestId เดิม + ยอดเดิม)
+ * - ยอด default = ยอดสุทธิคงเหลือ (`candidate.net`) — แก้ได้ แต่ห้ามเกิน net (server re-check ±0.01)
+ * - `requestId` = crypto.randomUUID() ต่อการเปิด dialog หนึ่งครั้ง — คงที่ระหว่าง retry
  * - บัญชีรับเงิน FINANCE จาก CASH_ACCOUNT_CODES (default 11-1201 KBank);
- *   บัญชีจ่ายฝั่ง SHOP optional (default S11-1201 ตาม service)
+ *   บัญชีจ่ายฝั่ง SHOP default: RECALL S11-1201 / DEVICE_RETURN S11-1202 ตาม service
  */
 
+export type CashSettleKind = 'RECALL' | 'DEVICE_RETURN';
+
 interface RecallCashDialogProps {
-  /** แถว recall ที่จะรับเงินสดคืน — null = ปิด dialog */
-  recall: RecallCandidate | null;
+  /** แถวที่จะรับเงินสด (normalize แล้ว) — null = ปิด dialog */
+  candidate: CashSettleCandidate | null;
+  kind: CashSettleKind;
   onClose: () => void;
 }
 
 const DEFAULT_FINANCE_ACCOUNT = '11-1201';
-const DEFAULT_SHOP_ACCOUNT = 'S11-1201';
+const DEFAULT_SHOP_ACCOUNT: Record<CashSettleKind, string> = {
+  RECALL: 'S11-1201',
+  DEVICE_RETURN: 'S11-1202',
+};
 
-export function RecallCashDialog({ recall, onClose }: RecallCashDialogProps) {
+const ENDPOINT: Record<CashSettleKind, (contractId: string) => string> = {
+  RECALL: (id) => `/interco-settlement/recalls/${id}/settle-cash`,
+  DEVICE_RETURN: (id) => `/interco-settlement/device-returns/${id}/settle-cash`,
+};
+
+const COPY: Record<
+  CashSettleKind,
+  {
+    title: string;
+    what: string;
+    amountLabel: string;
+    exceeds: string;
+    submit: string;
+    success: string;
+  }
+> = {
+  RECALL: {
+    title: 'รับเงินสดคืนจากหน้าร้าน',
+    what: 'ล้างยอดเรียกคืนด้วยเงินสด',
+    amountLabel: 'ยอดรับเงินคืน (฿)',
+    exceeds: 'ยอดรับเงินคืนเกินยอดเรียกคืนคงเหลือ',
+    submit: 'บันทึกรับเงินคืน',
+    success: 'รับเงินสดคืนสำเร็จ',
+  },
+  DEVICE_RETURN: {
+    title: 'รับเงินสดค่าเครื่องคืนจากหน้าร้าน',
+    what: 'ล้างค่าเครื่องคืนด้วยเงินสด (แทนการหักในรอบจ่าย)',
+    amountLabel: 'ยอดรับเงินค่าเครื่องคืน (฿)',
+    exceeds: 'ยอดรับเงินเกินค่าเครื่องคืนคงเหลือ',
+    submit: 'บันทึกรับเงินค่าเครื่องคืน',
+    success: 'รับเงินสดค่าเครื่องคืนสำเร็จ',
+  },
+};
+
+export function RecallCashDialog({ candidate, kind, onClose }: RecallCashDialogProps) {
+  if (!candidate) return null;
+  // Identity belongs to the open contract/kind, not the parent's normalized object instance.
+  return (
+    <CashSettlementSession
+      key={`${kind}:${candidate.contractId}`}
+      candidate={candidate}
+      kind={kind}
+      onClose={onClose}
+    />
+  );
+}
+
+function CashSettlementSession({
+  candidate,
+  kind,
+  onClose,
+}: Omit<RecallCashDialogProps, 'candidate'> & { candidate: CashSettleCandidate }) {
   const queryClient = useQueryClient();
-  const [amount, setAmount] = useState('');
+  const copy = COPY[kind];
+  const [amount, setAmount] = useState(candidate.net);
   const [financeAccount, setFinanceAccount] = useState(DEFAULT_FINANCE_ACCOUNT);
-  const [shopAccount, setShopAccount] = useState(DEFAULT_SHOP_ACCOUNT);
-  const [requestId, setRequestId] = useState('');
+  const [shopAccount, setShopAccount] = useState(DEFAULT_SHOP_ACCOUNT[kind]);
+  const [requestId] = useState(() => crypto.randomUUID());
+  const submitting = useRef(false);
+  const active = useRef(true);
 
-  // Reset ต่อการเปิดหนึ่งครั้ง — `recall` เป็น object ที่ parent จับไว้ใน state
-  // (identity คงที่แม้ pending query refetch) ⇒ requestId ไม่ถูก regenerate
-  // ระหว่าง retry บนหน้าต่างเดิม
+  // A parent can replace the selected contract while a request completes in the background.
   useEffect(() => {
-    if (recall) {
-      setAmount(recall.recallGl);
-      setFinanceAccount(DEFAULT_FINANCE_ACCOUNT);
-      setShopAccount(DEFAULT_SHOP_ACCOUNT);
-      setRequestId(crypto.randomUUID());
-    }
-  }, [recall]);
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
 
   const mutation = useMutation({
-    mutationFn: async () => {
-      if (!recall) return null;
-      return (
-        await api.post(`/interco-settlement/recalls/${recall.contractId}/settle-cash`, {
-          amount: Number(amount),
-          financeDepositAccountCode: financeAccount,
-          shopPayoutAccountCode: shopAccount,
-          requestId,
-        })
-      ).data as { financeEntryNo: string; shopEntryNo: string; deduped: boolean };
+    retry: false,
+    mutationFn: async (payload: {
+      amount: number;
+      financeDepositAccountCode: string;
+      shopPayoutAccountCode: string;
+      requestId: string;
+    }) => {
+      return (await api.post(ENDPOINT[kind](candidate.contractId), payload)).data as {
+        financeEntryNo: string;
+        shopEntryNo: string;
+        deduped: boolean;
+      };
     },
     onSuccess: (data) => {
       toast.success(
         data?.deduped
           ? 'รายการนี้ถูกบันทึกไปก่อนหน้าแล้ว (ไม่บันทึกซ้ำ)'
-          : `รับเงินสดคืนสำเร็จ — ใบสำคัญ ${data?.financeEntryNo ?? ''} / ${data?.shopEntryNo ?? ''}`,
+          : `${copy.success} — ใบสำคัญ ${data?.financeEntryNo ?? ''} / ${data?.shopEntryNo ?? ''}`,
       );
       queryClient.invalidateQueries({ queryKey: ['interco-pending'] });
       queryClient.invalidateQueries({ queryKey: ['interco-aging'] });
-      onClose();
+      queryClient.invalidateQueries({ queryKey: ['repossessions'] });
+      if (active.current) onClose();
     },
     onError: (err: unknown) => {
       const msg =
@@ -84,30 +143,34 @@ export function RecallCashDialog({ recall, onClose }: RecallCashDialogProps) {
         'เกิดข้อผิดพลาด กรุณาลองใหม่';
       toast.error(msg);
     },
+    onSettled: () => {
+      submitting.current = false;
+    },
   });
 
-  const netNum = Number(recall?.recallGl ?? 0);
+  const netNum = Number(candidate?.net ?? 0);
   const amountNum = Number(amount);
   const amountInvalid = amount.trim() === '' || Number.isNaN(amountNum) || amountNum <= 0;
   const amountExceeds = !amountInvalid && amountNum > netNum + 0.01;
-  const canSubmit = !!recall && !amountInvalid && !amountExceeds && !mutation.isPending;
+  const locked = mutation.isPending || mutation.isSuccess;
+  const canSubmit = !amountInvalid && !amountExceeds && !locked;
 
   return (
-    <Dialog open={!!recall} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && !submitting.current && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>รับเงินสดคืนจากหน้าร้าน</DialogTitle>
+          <DialogTitle>{copy.title}</DialogTitle>
           <DialogDescription className="leading-snug">
-            สัญญา <span className="font-semibold">{recall?.contractNumber ?? ''}</span> — ล้างยอด
-            เรียกคืนด้วยเงินสด (FINANCE: Dr เงินสด/ธนาคาร / Cr 11-2107 · SHOP: Dr S21-1104 / Cr
+            สัญญา <span className="font-semibold">{candidate?.contractNumber ?? ''}</span> —{' '}
+            {copy.what} (FINANCE: Dr เงินสด/ธนาคาร / Cr 11-2107 · SHOP: Dr S21-1104 / Cr
             เงินสด/ธนาคาร) ยอดคงเหลือสุทธิ{' '}
-            <span className="font-semibold tabular-nums">฿{fmtMoney(recall?.recallGl)}</span>
+            <span className="font-semibold tabular-nums">฿{fmtMoney(candidate?.net)}</span>
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="recall-cash-amount">ยอดรับเงินคืน (฿)</Label>
+            <Label htmlFor="recall-cash-amount">{copy.amountLabel}</Label>
             <Input
               id="recall-cash-amount"
               type="number"
@@ -115,11 +178,12 @@ export function RecallCashDialog({ recall, onClose }: RecallCashDialogProps) {
               step="0.01"
               min="0"
               value={amount}
+              disabled={locked}
               onChange={(e) => setAmount(e.target.value)}
             />
             {amountExceeds && (
               <p className="text-xs text-destructive leading-snug">
-                ยอดรับเงินคืนเกินยอดเรียกคืนคงเหลือ ฿{fmtMoney(recall?.recallGl)} ไม่อนุญาต
+                {copy.exceeds} ฿{fmtMoney(candidate?.net)} ไม่อนุญาต
               </p>
             )}
           </div>
@@ -128,6 +192,7 @@ export function RecallCashDialog({ recall, onClose }: RecallCashDialogProps) {
             <Label>บัญชีรับเงินฝั่ง FINANCE</Label>
             <CashAccountSelect
               value={financeAccount}
+              disabled={locked}
               onChange={setFinanceAccount}
               placeholder="เลือกบัญชีรับเงิน"
             />
@@ -136,10 +201,13 @@ export function RecallCashDialog({ recall, onClose }: RecallCashDialogProps) {
           <div className="space-y-1.5">
             <Label>
               บัญชีจ่ายเงินฝั่ง SHOP{' '}
-              <span className="font-normal text-muted-foreground">(ค่าเริ่มต้น S11-1201)</span>
+              <span className="font-normal text-muted-foreground">
+                (ค่าเริ่มต้น {DEFAULT_SHOP_ACCOUNT[kind]})
+              </span>
             </Label>
             <CashAccountSelect
               value={shopAccount}
+              disabled={locked}
               onChange={setShopAccount}
               placeholder="เลือกบัญชีจ่ายเงิน"
               codes={SHOP_CASH_ACCOUNT_CODES}
@@ -148,11 +216,27 @@ export function RecallCashDialog({ recall, onClose }: RecallCashDialogProps) {
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={onClose} disabled={mutation.isPending}>
+          <Button
+            variant="outline"
+            onClick={() => !submitting.current && onClose()}
+            disabled={mutation.isPending}
+          >
             ยกเลิก
           </Button>
-          <Button onClick={() => mutation.mutate()} disabled={!canSubmit}>
-            {mutation.isPending ? 'กำลังบันทึก...' : 'บันทึกรับเงินคืน'}
+          <Button
+            onClick={() => {
+              if (!canSubmit || submitting.current) return;
+              submitting.current = true;
+              mutation.mutate({
+                amount: amountNum,
+                financeDepositAccountCode: financeAccount,
+                shopPayoutAccountCode: shopAccount,
+                requestId,
+              });
+            }}
+            disabled={!canSubmit}
+          >
+            {mutation.isPending ? 'กำลังบันทึก...' : copy.submit}
           </Button>
         </DialogFooter>
       </DialogContent>

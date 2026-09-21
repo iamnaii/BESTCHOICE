@@ -277,7 +277,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         // คำสั่งเจ้าของ 2026-08-08: หน้าร้าน (BM) ต้องเห็นเมนูยึดคืน — API/route/branch
         // scoping รองรับ BM อยู่แล้ว (#1397: เห็นเฉพาะสาขาตัวเอง) ขาดแค่รายการเมนู
-        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        { label: 'รับเครื่องคืน / ยึดคืน', path: '/repossessions', icon: Lock },
         { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
       ],
@@ -378,7 +378,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       items: [
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
-        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        { label: 'รับเครื่องคืน / ยึดคืน', path: '/repossessions', icon: Lock },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
       ],
@@ -526,7 +526,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'บันทึกรายจ่าย', path: '/expenses', icon: Receipt },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
-        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        { label: 'รับเครื่องคืน / ยึดคืน', path: '/repossessions', icon: Lock },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
@@ -720,7 +720,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'ติดตามลูกค้าค้างชำระ', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'ล็อคเครื่อง (MDM)', path: '/mdm', icon: Lock },
-        { label: 'ยึดคืนเครื่อง', path: '/repossessions', icon: Lock },
+        { label: 'รับเครื่องคืน / ยึดคืน', path: '/repossessions', icon: Lock },
         // CSV §2 placeholder — owner-flagged ✏ "ต้องสร้าง"
         { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
         { label: 'รายได้อื่น', path: '/other-income', icon: TrendingUp },

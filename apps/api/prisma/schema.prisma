@@ -254,6 +254,20 @@ enum ConditionGrade {
   D
 }
 
+/// ใบรับเครื่องคืน (spec 2026-09-20 §4.1) — VOLUNTARY = ลูกค้าคืนเองระหว่างสัญญาเดิน (ACTIVE/OVERDUE/DEFAULT)
+/// REPOSSESSION = รับคืนหลังบอกเลิกสัญญา (TERMINATED) — ระบบ derive จากสถานะสัญญา ไม่ให้ผู้ใช้เลือก
+enum DeviceReturnKind {
+  VOLUNTARY
+  REPOSSESSION
+}
+
+enum DeviceReturnStatus {
+  PENDING_CONFIRM
+  CONFIRMED
+  REJECTED
+  CANCELED
+}
+
 enum SignerType {
   CUSTOMER
   COMPANY // ผู้ขาย/ผู้ให้เช่าซื้อ (พนักงาน)
@@ -618,6 +632,7 @@ model Branch {
 
   // P2-SP4 — การจอง / มัดจำ
   bookings Booking[] @relation("BranchBookings")
+  deviceReturns DeviceReturn[]
 
   // สมุดเงินเข้า/ออกหน้าร้าน (shop tenders)
   shopTenders ShopTender[]
@@ -687,6 +702,7 @@ model User {
   purchaseOrdersCreated       PurchaseOrder[]           @relation("POCreatedBy")
   purchaseOrdersApproved      PurchaseOrder[]           @relation("POApprovedBy")
   repossessionsAppraised      Repossession[]            @relation("AppraisedBy")
+  deviceReturnsReceived       DeviceReturn[]            @relation("DeviceReturnReceivedBy")
   goodsReceivings             GoodsReceiving[]          @relation("GoodsReceivedBy")
   transfersConfirmed          StockTransfer[]           @relation("TransferConfirmedBy")
   transfersDispatched         StockTransfer[]           @relation("TransferDispatchedBy")
@@ -1034,6 +1050,7 @@ model Customer {
 
   // P3 Collections UI — segmentation tags (auto + manual)
   tags CustomerTag[]
+  deviceReturns DeviceReturn[]
 
   // Other Income module
   otherIncomes OtherIncome[] @relation("CustomerOtherIncome")
@@ -1276,6 +1293,7 @@ model Contract {
 
   // C2 — Inter-co settlement batch items (รอบจ่ายให้หน้าร้าน, 2026-07-30)
   interCoSettlementItems InterCoSettlementItem[]
+  deviceReturns          DeviceReturn[]
 
   // สมุดเงินเข้า/ออกหน้าร้าน — เงินดาวน์ที่รับ/คืน
   shopTenders ShopTender[]
@@ -1781,6 +1799,7 @@ model Product {
   contracts            Contract[]
   sales                Sale[]
   repossession         Repossession?
+  deviceReturns        DeviceReturn[]
   receivingItem        GoodsReceivingItem?
   branchReceivingItems BranchReceivingItem[]
   stockTransfers       StockTransfer[]
@@ -2226,10 +2245,68 @@ model Repossession {
   contract    Contract @relation(fields: [contractId], references: [id])
   product     Product  @relation(fields: [productId], references: [id])
   appraisedBy User     @relation("AppraisedBy", fields: [appraisedById], references: [id])
+  deviceReturn DeviceReturn?
 
   @@index([status])
   @@index([createdAt])
   @@map("repossessions")
+}
+
+/// ใบรับเครื่องคืน (spec docs/superpowers/specs/2026-09-20-device-return-intake-design.md §4.1)
+/// สาขาบันทึกรับเครื่อง (สัญญาหยุดทันทีเมื่อ VOLUNTARY) → FINANCE ยืนยันแล้ว RepossessionsService.createInTx
+/// จึงลง JP5 (Dr 11-2107 DEVICE_RETURN) + ขาคู่ SHOP (Cr S21-1104 DEVICE_RETURN) — ค่าเครื่องหักผ่านรอบจ่าย INTER-CO.
+/// Partial unique `device_returns_one_open_per_contract` (raw SQL ใน migration 20261003100000 — Prisma เขียนไม่ได้;
+/// precedent products_imei_partial_unique): หนึ่งสัญญามีใบ PENDING_CONFIRM ได้ใบเดียว.
+model DeviceReturn {
+  id                     String             @id @default(uuid())
+  docNumber              String             @unique @map("doc_number")
+  contractId             String             @map("contract_id")
+  productId              String             @map("product_id")
+  customerId             String             @map("customer_id")
+  receivingBranchId      String             @map("receiving_branch_id")
+  receivedById           String             @map("received_by_id")
+  returnKind             DeviceReturnKind   @map("return_kind")
+  /// key ของ REPOSSESSION_RETURN_REASONS (UNAFFORDABLE / NO_LONGER_NEEDED / AFTER_TERMINATION / OTHER)
+  returnReason           String             @map("return_reason")
+  deviceReceivedAt       DateTime           @map("device_received_at")
+  conditionGrade         ConditionGrade     @map("condition_grade")
+  appraisalPrice         Decimal            @map("appraisal_price") @db.Decimal(12, 2)
+  /// snapshot ตารางรับซื้อ (ยี่ห้อ/รุ่น/ความจุ/เกรด) ณ วันสร้าง — null = ไม่มีในตาราง
+  tableBasePrice         Decimal?           @map("table_base_price") @db.Decimal(12, 2)
+  repairCost             Decimal            @default(0) @map("repair_cost") @db.Decimal(12, 2)
+  notes                  String?
+  /// เฉพาะ VOLUNTARY — สถานะสัญญาก่อน flip เป็น TERMINATED ใช้คืนเมื่อส่งกลับ/ยกเลิก
+  previousContractStatus ContractStatus?    @map("previous_contract_status")
+  status                 DeviceReturnStatus @default(PENDING_CONFIRM)
+  confirmedById          String?            @map("confirmed_by_id")
+  confirmedAt            DateTime?          @map("confirmed_at")
+  repossessionId         String?            @unique @map("repossession_id")
+  rejectedById           String?            @map("rejected_by_id")
+  rejectedAt             DateTime?          @map("rejected_at")
+  rejectReason           String?            @map("reject_reason")
+  canceledById           String?            @map("canceled_by_id")
+  canceledAt             DateTime?          @map("canceled_at")
+  /// SENT / FAILED / NO_LINE
+  lineNotifyStatus       String?            @map("line_notify_status")
+  lineNotifiedAt         DateTime?          @map("line_notified_at")
+  /// NotificationLog.id ของการส่งล่าสุด
+  lineNotificationId     String?            @map("line_notification_id")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+  deletedAt              DateTime?          @map("deleted_at")
+
+  contract        Contract      @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  product         Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  customer        Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  receivingBranch Branch        @relation(fields: [receivingBranchId], references: [id], onDelete: Restrict)
+  receivedBy      User          @relation("DeviceReturnReceivedBy", fields: [receivedById], references: [id], onDelete: Restrict)
+  repossession    Repossession? @relation(fields: [repossessionId], references: [id])
+
+  @@index([contractId])
+  @@index([customerId])
+  @@index([status])
+  @@index([receivingBranchId])
+  @@map("device_returns")
 }
 
 // ============================================================
@@ -4612,9 +4689,11 @@ enum InterCoBatchStatus {
 /// ประเภทแถวในรอบจ่าย (Phase 2 หักกลบ — workbook จุดที่ 3):
 /// SETTLEMENT = สัญญาปกติ/สัญญา swap (จ่ายเจ้าหนี้ อาจมีหักเครดิตเปลี่ยนเครื่อง)
 /// RECALL = สัญญายกเลิกหลังตัดจ่าย (Flow C-2) — หักเรียกคืนอย่างเดียว ไม่มีเจ้าหนี้
+/// DEVICE_RETURN = ใบรับเครื่องคืน (spec 2026-09-20 §6.3) — หักค่าเครื่องคืน (11-2107 DEVICE_RETURN ↔ S21-1104) อย่างเดียว ไม่มีเจ้าหนี้
 enum InterCoItemType {
   SETTLEMENT
   RECALL
+  DEVICE_RETURN
 }
 
 /// เอกสาร "รอบจ่าย" — FINANCE จ่ายยอดจัด+ค่าคอมให้ SHOP เป็นก้อนเดียว (หลายสัญญารวมยอดโอน
@@ -4637,7 +4716,7 @@ model InterCoSettlementBatch {
   /// แต่สมุด SHOP ไม่มีลูกหนี้รองรับ (สัญญา legacy/exchange) — ไม่เดาลงบัญชีแทน (spec §5.4, §11).
   shopPostedAmount Decimal @map("shop_posted_amount") @db.Decimal(12, 2)
 
-  /// Σ swapCreditAmount + recallAmount ของทุก item (Phase 2 หักกลบ)
+  /// Σ swapCreditAmount + recallAmount + deviceReturnAmount ของทุก item (Phase 2 หักกลบ + ใบรับเครื่องคืน 2026-09-20)
   totalDeduction Decimal @default(0) @map("total_deduction") @db.Decimal(12, 2)
   /// เงินโอนจริงฝั่ง FINANCE = totalAmount − totalDeduction; null = รอบก่อน Phase 2 (= totalAmount)
   netTransferAmount Decimal? @map("net_transfer_amount") @db.Decimal(12, 2)
@@ -4701,6 +4780,8 @@ model InterCoSettlementItem {
   swapCreditAmount Decimal @default(0) @map("swap_credit_amount") @db.Decimal(12, 2)
   /// Snapshot ยอดเรียกคืนจากยกเลิก (11-2107 PAYOUT_RECALL) — ใช้เฉพาะแถว RECALL
   recallAmount Decimal @default(0) @map("recall_amount") @db.Decimal(12, 2)
+  /// Snapshot ค่าเครื่องคืน (11-2107 DEVICE_RETURN = S21-1104 ของสัญญานี้) — ใช้เฉพาะแถว DEVICE_RETURN (ใบรับเครื่องคืน 2026-09-20 §6.3)
+  deviceReturnAmount Decimal @default(0) @map("device_return_amount") @db.Decimal(12, 2)
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -6830,6 +6911,7 @@ enum CustomerTagType {
   NEW
   LOYAL
   BLACKLIST
+  RETURNED_DEVICE // AUTO — เคยคืน/ถูกยึดเครื่อง (spec 2026-09-20 §5.6; กฎใน CustomerTagsService.evaluateAutoTags)
 }
 
 enum CustomerTagSource {

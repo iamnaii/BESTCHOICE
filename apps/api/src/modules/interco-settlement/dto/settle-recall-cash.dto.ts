@@ -5,11 +5,13 @@ import {
 } from '../../../constants/cash-account.constants';
 
 /**
- * เส้นทางรับเงินสดคืนจากยกเลิกสัญญา (Flow C-2 — Phase 3 Task 6, spec §5.4
- * ทางเลือกที่สองนอกจากหักกลบรอบจ่าย):
- * `POST /interco-settlement/recalls/:contractId/settle-cash`.
+ * เส้นทางรับเงินสดล้างลูกหนี้-หน้าร้านประเภทหัก — ใช้ร่วมสองเส้นทาง:
+ *   - `POST /interco-settlement/recalls/:contractId/settle-cash` (Flow C-2 — Phase 3 Task 6,
+ *     spec §5.4 ทางเลือกที่สองนอกจากหักกลบรอบจ่าย; stamp PAYOUT_RECALL; default บัญชีจ่าย SHOP S11-1201)
+ *   - `POST /interco-settlement/device-returns/:contractId/settle-cash` (ใบรับเครื่องคืน 2026-09-20
+ *     §6.3; stamp DEVICE_RETURN; default บัญชีจ่าย SHOP S11-1202)
  *
- * FINANCE: `Dr <financeDepositAccountCode> / Cr 11-2107` (stamp PAYOUT_RECALL)
+ * FINANCE: `Dr <financeDepositAccountCode> / Cr 11-2107` (stamp ตามประเภท)
  * SHOP:    `Dr S21-1104 / Cr <shopPayoutAccountCode>` — สองใบใน tx เดียว.
  */
 export class SettleRecallCashDto {
@@ -25,7 +27,7 @@ export class SettleRecallCashDto {
   })
   financeDepositAccountCode!: string;
 
-  /** บัญชีเงินสด/ธนาคารฝั่ง SHOP ที่จ่ายเงินออก — default 'S11-1201' ที่ service */
+  /** บัญชีเงินสด/ธนาคารฝั่ง SHOP ที่จ่ายเงินออก — default recall 'S11-1201' / DEVICE_RETURN 'S11-1202' ที่ service */
   @IsOptional()
   @IsString({ message: 'shopPayoutAccountCode ต้องเป็นข้อความ' })
   @IsIn(SHOP_CASH_ACCOUNT_CODES as readonly string[], {

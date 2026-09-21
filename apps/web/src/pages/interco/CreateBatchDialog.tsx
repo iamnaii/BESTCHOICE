@@ -19,7 +19,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toLocalDateString } from '@/lib/date';
-import { fmtMoney, type PendingContract, type RecallCandidate } from './types';
+import {
+  fmtMoney,
+  type DeviceReturnCandidate,
+  type PendingContract,
+  type RecallCandidate,
+} from './types';
 
 /**
  * เมนู "จ่ายให้หน้าร้าน (INTER-CO)" — สร้างรอบจ่ายจากสัญญาที่เลือกในแท็บ "รอจ่าย".
@@ -69,6 +74,8 @@ interface CreateBatchDialogProps {
   selectedContracts: PendingContract[];
   /** แถวหักเรียกคืน (Flow C-2) ที่เลือกจาก section "รายการเรียกคืน" ในแท็บรอจ่าย */
   selectedRecalls: RecallCandidate[];
+  /** แถวหักค่าเครื่องคืน (ใบรับเครื่องคืน 2026-09-20) ที่เลือกจาก section "ค่าเครื่องคืน" */
+  selectedDeviceReturns: DeviceReturnCandidate[];
   onCreated: (batchId: string) => void;
 }
 
@@ -77,6 +84,7 @@ export function CreateBatchDialog({
   onOpenChange,
   selectedContracts,
   selectedRecalls,
+  selectedDeviceReturns,
   onCreated,
 }: CreateBatchDialogProps) {
   const [file, setFile] = useState<File | null>(null);
@@ -108,13 +116,17 @@ export function CreateBatchDialog({
   const legacyCount = selectedContracts.filter((c) => c.legacyNoShop).length;
 
   // Phase 2 หักกลบ — mirror ของ buildSnapshot ฝั่ง server (display เท่านั้น
-  // ตัวเลขจริง snapshot จาก GL ตอน POST): swap credit เฉพาะ eligible + เรียกคืน.
+  // ตัวเลขจริง snapshot จาก GL ตอน POST): swap credit เฉพาะ eligible + เรียกคืน + ค่าเครื่องคืน.
   const swapCreditTotal = selectedContracts.reduce(
     (sum, c) => sum + (c.swapCreditEligible ? Number(c.swapCreditGl) : 0),
     0,
   );
   const recallTotal = selectedRecalls.reduce((sum, r) => sum + Number(r.recallGl), 0);
-  const totalDeduction = swapCreditTotal + recallTotal;
+  const deviceReturnTotal = selectedDeviceReturns.reduce(
+    (sum, d) => sum + Number(d.deviceReturnGl),
+    0,
+  );
+  const totalDeduction = swapCreditTotal + recallTotal + deviceReturnTotal;
   const netTransferAmount = totalAmount - totalDeduction;
 
   const createMutation = useMutation({
@@ -125,6 +137,10 @@ export function CreateBatchDialog({
           contractIds: selectedContracts.map((c) => c.contractId),
           recallContractIds:
             selectedRecalls.length > 0 ? selectedRecalls.map((r) => r.contractId) : undefined,
+          deviceReturnContractIds:
+            selectedDeviceReturns.length > 0
+              ? selectedDeviceReturns.map((d) => d.contractId)
+              : undefined,
           transferDate: values.transferDate,
           financeBankCode: values.financeBankCode,
           shopBankCode: values.shopBankCode,
@@ -168,8 +184,11 @@ export function CreateBatchDialog({
           <DialogTitle>สร้างรอบจ่าย</DialogTitle>
           <DialogDescription className="leading-snug">
             เลือกแล้ว {selectedContracts.length} สัญญา
-            {selectedRecalls.length > 0 && <> + เรียกคืน {selectedRecalls.length} รายการ</>} • รวม ฿
-            {fmtMoney(totalAmount)}
+            {selectedRecalls.length > 0 && <> + เรียกคืน {selectedRecalls.length} รายการ</>}
+            {selectedDeviceReturns.length > 0 && (
+              <> + ค่าเครื่องคืน {selectedDeviceReturns.length} รายการ</>
+            )}{' '}
+            • รวม ฿{fmtMoney(totalAmount)}
             {legacyCount > 0 && (
               <span className="block mt-1 text-warning">
                 {legacyCount} สัญญาเป็น LEGACY (SHOP ไม่มียอดตั้งต้น) — ฝั่ง SHOP
@@ -266,7 +285,7 @@ export function CreateBatchDialog({
             </div>
             <div className="flex items-center justify-between leading-snug">
               <span className="text-muted-foreground">
-                หักรวม (เครดิตเปลี่ยนเครื่อง + เรียกคืน)
+                หักรวม (เครดิตเปลี่ยนเครื่อง + เรียกคืน + ค่าเครื่องคืน)
               </span>
               <span className="tabular-nums text-warning">−฿{fmtMoney(totalDeduction)}</span>
             </div>

@@ -172,8 +172,18 @@ export class ShopCashCloseService {
       where: { branchId: query.branchId, status: 'PENDING_CONFIRM' }, include: CLOSE_INCLUDE, orderBy: { countedAt: 'asc' },
     });
     const settled = await this.holdings.settledCloseIds([query.branchId]);
+    // "ตอนนี้รอใคร / สาขายังขาดอะไร" (mockup กระดาน 12–13): ลิ้นชักยังไม่ตั้ง = หน้าขายรับเงินสดไม่ได้ จึงไม่มีอะไรให้นับ ·
+    // ผู้นับ = พนักงานขาย/ผจก.สาขาของสาขานี้ที่ยังใช้งานอยู่ — ส่งชื่อไปให้คนที่รออยู่รู้ว่าต้องตามใคร
+    const setup = await this.prisma.branch.findUnique({ where: { id: query.branchId }, select: { shopCashAccountCode: true } });
+    const counters = await this.prisma.user.findMany({
+      where: { branchId: query.branchId, role: { in: COUNTER_ROLES as never }, isActive: true, deletedAt: null },
+      // enum UserRole ประกาศ SALES ก่อน BRANCH_MANAGER ⇒ desc = ผู้จัดการสาขาขึ้นก่อน
+      select: { id: true, name: true, role: true }, orderBy: [{ role: 'desc' }, { name: 'asc' }],
+    });
     return {
       date, asOf: now, branchId: round.branch.id, branchName: round.branch.name,
+      readiness: { hasDrawerAccount: !!setup?.shopCashAccountCode, floatAmount: money(round.floatAmount), counters },
+      holdings: await this.holdings.getHoldings(actor, [query.branchId]),
       round: { periodStart: round.periodStart, floatAmount: money(round.floatAmount), cashIn: money(round.cashIn),
         cashOut: money(round.cashOut), expectedAmount: money(round.expectedAmount), movementCount: round.movementCount },
       closes: closes.map((row) => this.present(row, settled)),

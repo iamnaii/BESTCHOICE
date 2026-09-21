@@ -34,8 +34,11 @@ async function fixture(page: Page, role = 'OWNER') {
     return { data: rows.slice((page - 1) * limit, page * limit), total: rows.length, page, limit, totalPages: Math.ceil(rows.length / limit) };
   };
   await page.routeWebSocket('**/socket.io/**', socket => socket.close());
-  await page.route('**/api/admin/**', async route => {
-    const request = route.request(), url = new URL(request.url()), rawPath = url.pathname.replace('/api/admin', '');
+  // ดักทุกคำขอ API ไม่ว่า bundle จะถูก build ด้วยฐานแบบไหน: dev = `/api/admin/*` (same-origin) แต่ CI E2E build ด้วย
+  // `VITE_API_URL=http://localhost:3000/api` ⇒ เรียก `/api/*` ข้าม origin. เดิมดักเฉพาะ `**/api/admin/**` คำขอใน CI จึงหลุดไปถึง API จริง
+  // ข้อมูลจำลองไม่เคยขึ้นจอ และทั้ง 30 เคสของไฟล์นี้แดงใน CI มาตลอดทั้งที่ผ่านในเครื่อง
+  await page.route(url => url.pathname.startsWith('/api/'), async route => {
+    const request = route.request(), url = new URL(request.url()), rawPath = url.pathname.replace(/^\/api(\/admin)?/, '');
     const isExport = rawPath.endsWith('/export'), routePath = rawPath.replace(/\/export$/, '');
     const exportOrPage = (rows: Row[], query: URLSearchParams) => isExport ? { data: rows, total: rows.length, asOf: '2026-09-11T03:00:00.000Z' } : paged(rows, query);
     const query = url.searchParams;
@@ -87,6 +90,10 @@ async function fixture(page: Page, role = 'OWNER') {
       return route.fulfill({ json: { ...exportOrPage(rows, query), summary: { total: rows.length, installment: 0, cash: rows.length, externalFinance: 0, overdue: 0 }, viewCounts: { customers: state.customers.length, prospects: 0 } } });
     }
     if (/^\/customers\/c\d+$/.test(routePath)) return route.fulfill({ json: state.customers.find(row => row.id === routePath.split('/')[2]) });
+    // หน้ารายละเอียดลูกค้าใหม่ (PR #1594) อ่านจาก /detail — ลูกค้าตัวอย่างไม่มีสัญญา/ใบขาย
+    if (/^\/customers\/c\d+\/detail$/.test(routePath)) return route.fulfill({ json: { ...state.customers.find(row => row.id === routePath.split('/')[2]), sales: [],
+      acquisitionSource: null, creditCheckStatus: 'NOT_CHECKED', tags: [], source: 'MANUAL', purchase: null, latestPurchase: null, warranty: null,
+      installmentBalance: null, chatRooms: [], lastContactAt: null, assignedTo: null, openContracts: [] } });
     if (/^\/customers\/c\d+\/risk-flag/.test(routePath)) return route.fulfill({ json: { hasRisk: false, overdueContracts: [] } });
     if (/^\/customers\/c\d+\/tier/.test(routePath)) return route.fulfill({ json: { tier: 'NEW', reasons: [], history: { totalContracts: 0, closedContracts: 0, activeContracts: 0, onTimePaymentPct: 0, maxOverdueDays: 0, currentOutstanding: 0 } } });
     if (routePath.endsWith('/credit-check/latest')) return route.fulfill({ json: { id: 'approved', status: 'APPROVED', checkType: 'FULL', approvals: [{ id: 'approval', approvedMonthlyPayment: '2000', salaryPayDay: 31 }] } });
@@ -204,18 +211,24 @@ for (const width of [1440, 390]) {
     test('customer detail: SALES can start credit/upload, cannot edit master; every tab fits', async ({ page }) => {
       await fixture(page, 'SALES');
       await page.goto('/customers/c000');
-      const tabs = ['ข้อมูลส่วนตัว', 'ติดต่อ & ที่อยู่', 'งาน & อ้างอิง', 'เครดิต', 'สัญญา', 'การซื้อ', 'แต้ม'];
-      await expect(page.getByRole('tab', { name: /ข้อมูลส่วนตัว/ })).toBeVisible();
+      // หน้ารายละเอียดลูกค้าถูกรีดีไซน์ (PR #1594): แท็บ = ภาพรวม / สัญญา / ใบขาย / เครดิต / แต้มสะสม · ข้อมูลส่วนตัว-ที่อยู่-งาน-เอกสาร
+      // ย้ายไปแผงข้าง · การกระทำหลักอยู่ในเมนู "ดำเนินการ" — เจตนาของเทสเดิมคงไว้ครบ (SALES เริ่มตรวจเครดิต/อัปโหลดได้ แก้ข้อมูลหลักไม่ได้)
+      const tabs = ['ภาพรวม', 'สัญญา', 'ใบขาย', 'เครดิต', 'แต้มสะสม'];
+      await expect(page.getByRole('tab', { name: /^ภาพรวม/ })).toBeVisible();
       for (const title of tabs) {
-        const tab = page.getByRole('tab').filter({ hasText: title }).first();
+        const tab = page.getByRole('tab', { name: new RegExp(`^${title}`) }).first();
         await tab.scrollIntoViewIfNeeded(); await tab.click();
         await snapshot(page, `customer-detail-${tabs.indexOf(title)}`, width);
       }
       await page.getByRole('tab', { name: /^เครดิต/ }).click();
       await expect(page.getByRole('button', { name: '+ ตรวจเครดิตใหม่', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'แก้ไขข้อมูล', exact: true })).toHaveCount(0);
-      await page.getByRole('tab', { name: /^งาน & อ้างอิง/ }).click();
-      await expect(page.locator('input[type="file"]')).toBeVisible();
+      await page.getByRole('button', { name: /^ดำเนินการ/ }).click();
+      await expect(page.getByRole('menuitem', { name: 'ตรวจเครดิตใหม่', exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
+      const upload = page.locator('input[type="file"]');
+      await upload.scrollIntoViewIfNeeded();
+      await expect(upload).toBeVisible();
     });
 
     test('credit queue: page51, no score, pending/error preserve filter focus and retry', async ({ page }) => {

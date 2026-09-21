@@ -100,7 +100,8 @@ test.describe('ประวัติการขาย', () => {
   test('should load sales history page', async ({ page }) => {
     const ok = await gotoWithRetry(page, '/sales');
     if (!ok) return;
-    await expect(page.getByText('ประวัติการขาย').first()).toBeVisible({ timeout: 15000 });
+    // หน้านี้เปลี่ยนชื่อจาก "ประวัติการขาย" เป็น "รายการขาย" (หัวหน้า + เมนู) — จับที่หัวเรื่องของหน้า
+    await expect(page.getByRole('heading', { name: 'รายการขาย', exact: true }).first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should display sales list or empty state', async ({ page }) => {

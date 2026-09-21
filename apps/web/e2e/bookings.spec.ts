@@ -38,7 +38,8 @@ test.describe('/bookings — booking lifecycle smoke', () => {
       timeout: 5000,
     });
     // Fields visible
-    await expect(page.getByText(/หมดอายุภายใน/).first()).toBeVisible();
+    // ป้ายช่องวันหมดอายุเปลี่ยนจาก "หมดอายุภายใน …" เป็น "ใช้ได้ถึงสิ้นวันที่ (เวลาไทย)" ตอนรีดีไซน์ฟอร์มใบจอง — จับที่ตัวช่องแทนข้อความ
+    await expect(page.getByLabel(/ใช้ได้ถึงสิ้นวันที่/)).toBeVisible();
     await expect(page.getByText(/มัดจำ/).first()).toBeVisible();
   });
 

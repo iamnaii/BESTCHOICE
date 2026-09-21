@@ -41,7 +41,8 @@ test.describe('Bookings — page-load + status filter', () => {
     await expect(b.dialogTitle()).toBeVisible({ timeout: 5000 });
 
     // Dialog should show deposit + expiry fields per BookingsPage spec
-    await expect(page.getByText(/หมดอายุภายใน/).first()).toBeVisible({ timeout: 5000 });
+    // ป้ายช่องวันหมดอายุเปลี่ยนเป็น "ใช้ได้ถึงสิ้นวันที่ (เวลาไทย)" ตอนรีดีไซน์ฟอร์มใบจอง — จับที่ตัวช่องแทนข้อความ
+    await expect(page.getByLabel(/ใช้ได้ถึงสิ้นวันที่/)).toBeVisible({ timeout: 5000 });
     await expect(page.getByText(/มัดจำ/).first()).toBeVisible();
 
     await b.assertNoAppError();

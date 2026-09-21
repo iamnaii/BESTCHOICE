@@ -2,6 +2,7 @@ import { BadRequestException, NotFoundException, ServiceUnavailableException } f
 import { Prisma } from '@prisma/client';
 import { ShopBuybackService } from './shop-buyback.service';
 import { BuybackPricingService } from './buyback-pricing.service';
+import { TradeInValuationService } from '../trade-in/services/trade-in-valuation.service';
 
 const D = (n: number) => new Prisma.Decimal(n);
 
@@ -101,6 +102,38 @@ describe('ShopBuybackService (instant quote)', () => {
     { questionKey: 'warranty', choiceIds: ['c11'] },
     { questionKey: 'functional-issues', choiceIds: [] },
   ];
+
+  it('discloses the imported AppleHouse benchmark without changing shop deductions', async () => {
+    prisma.tradeInValuation.findFirst.mockResolvedValue({ model: 'iPhone 15', storage: '128GB', basePrice: D(14000),
+      note: 'อ้างอิง applehouseth.com 2026-09-21 · เครื่องไทย' });
+    const questionnaire = await service.getQuestions('iPhone 15', '128GB');
+    expect(questionnaire).toMatchObject({ source: 'https://applehouseth.com/', capturedAt: '2026-09-21T00:00:00+07:00', pricingMode: 'SUM_PERCENT_FLOOR10' });
+    const quote = await service.quoteForAnswers('iPhone 15', '128GB', answers);
+    expect(quote.cashPrice).toBe('13500.00');
+    expect(quote.breakdown).toMatchObject({ source: questionnaire.source, capturedAt: questionnaire.capturedAt, pricingMode: questionnaire.pricingMode });
+  });
+
+  it('does not attribute manual or unspecified prices to AppleHouse', async () => {
+    expect((await service.getQuestions('iPhone 15', '128GB')).source).toBeUndefined();
+    expect((await service.quoteForAnswers('iPhone 15', '128GB', answers)).source).toBeUndefined();
+  });
+
+  it('stops attributing a staff override to AppleHouse while preserving recorded quotes', async () => {
+    const row = { id: 'v1', model: 'iPhone 15', storage: '128GB', basePrice: D(14000),
+      note: 'อ้างอิง applehouseth.com 2026-09-21 · เครื่องไทย' };
+    prisma.tradeInValuation.findFirst.mockImplementation(async () => ({ ...row }));
+    prisma.tradeInValuation.update = jest.fn().mockImplementation(async ({ data }) => Object.assign(row, data));
+    const recorded = await service.quoteForAnswers('iPhone 15', '128GB', answers);
+    const valuations = new TradeInValuationService(prisma);
+    const dto = { brand: 'Apple', model: row.model, storage: row.storage, condition: 'A', basePrice: 14000 };
+    await valuations.upsertValuation(dto);
+    expect((await service.getQuestions(row.model, row.storage)).source).toBe('https://applehouseth.com/');
+    await valuations.upsertValuation({ ...dto, basePrice: 15000 });
+    expect(row.note).toContain('ข้อมูลอ้างอิงเดิม');
+    expect((await service.getQuestions(row.model, row.storage)).source).toBeUndefined();
+    expect((await service.quoteForAnswers(row.model, row.storage, answers)).source).toBeUndefined();
+    expect(recorded.breakdown?.source).toBe('https://applehouseth.com/');
+  });
 
   describe('model/storage reference pricing', () => {
     const referenceQuestions = [

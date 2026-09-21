@@ -90,11 +90,16 @@ export class TradeInValuationService {
     });
 
     if (existing) {
+      const basePrice = new Prisma.Decimal(dto.basePrice);
+      const previousNote = dto.note ?? existing.note;
+      // A staff override is a shop price; keep the previous provenance as history only.
+      const note = !basePrice.equals(existing.basePrice) && previousNote?.startsWith('อ้างอิง applehouseth.com ')
+        ? `ร้านปรับราคาแล้ว · ข้อมูลอ้างอิงเดิม: ${previousNote}` : previousNote;
       return db.tradeInValuation.update({
         where: { id: existing.id },
         data: {
-          basePrice: new Prisma.Decimal(dto.basePrice),
-          note: dto.note ?? existing.note,
+          basePrice,
+          note,
         },
       });
     }

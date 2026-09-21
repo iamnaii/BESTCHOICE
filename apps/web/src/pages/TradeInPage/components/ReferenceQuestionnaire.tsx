@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { BuybackQuestion } from '@installment/shared';
+import { buybackSourceName } from '@installment/shared';
 
 export interface ReferenceQuestionnaireCatalog {
   source: string;
@@ -26,7 +27,7 @@ export default function ReferenceQuestionnaire({
         <div className="space-y-1 text-sm leading-relaxed">
           <h3 className="font-semibold">แบบตรวจ iPhone ตามรุ่นและความจุ</h3>
           <p className="text-muted-foreground">
-            อ้างอิง Yellobe · ข้อมูล ณ {new Date(catalog.capturedAt).toLocaleDateString('th-TH')}
+            อ้างอิง {buybackSourceName(catalog.source)} · ข้อมูล ณ {new Date(catalog.capturedAt).toLocaleDateString('th-TH')}
           </p>
           <p className="text-muted-foreground">
             รวมค่าหักเป็นบาท แล้วใช้เปอร์เซ็นต์หักที่สูงที่สุดจากผลตรวจทั้งหมด

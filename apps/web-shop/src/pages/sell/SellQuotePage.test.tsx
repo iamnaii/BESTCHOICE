@@ -75,6 +75,15 @@ beforeEach(() => {
 });
 
 describe('SellQuotePage scoped assessment', () => {
+  it('labels AppleHouse as the benchmark and shop rules as the deductions', async () => {
+    mocks.get.mockImplementation((url: string) => Promise.resolve({ data: url.endsWith('/catalog') ? catalog : {
+      ...config, source: 'https://applehouseth.com/', pricingMode: 'SUM_PERCENT_FLOOR10', eligibilityRequired: false,
+    } }));
+    mount();
+    await device();
+    expect(screen.getByText(/ราคากลางอ้างอิง AppleHouse/)).toHaveTextContent('หักสภาพตามเกณฑ์ร้าน');
+    expect(screen.queryByText(/Yellobe/)).not.toBeInTheDocument();
+  });
   it('requests questions only for the selected device and sends explicit eligibility with server-price quote', async () => {
     mount();
     await screen.findByLabelText('รุ่น');

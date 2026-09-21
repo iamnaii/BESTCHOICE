@@ -78,7 +78,7 @@ function UserDropdown() {
         >
           {/* Avatar */}
           <div className="size-8 rounded-full bg-primary flex items-center justify-center ring-2 ring-primary/20 shrink-0">
-            <span className="text-white text-[13px] font-bold leading-none">{initials}</span>
+            <span className="text-primary-foreground text-[13px] font-bold leading-none">{initials}</span>
           </div>
           {/* Name (hidden on small) */}
           <div className="hidden xl:flex min-w-0 max-w-44 flex-col items-start leading-tight">
@@ -96,7 +96,7 @@ function UserDropdown() {
         <DropdownMenuLabel className="font-normal pb-2">
           <div className="flex items-center gap-3">
             <div className="size-10 rounded-full bg-primary flex items-center justify-center ring-2 ring-primary/20 shrink-0">
-              <span className="text-white text-sm font-bold leading-none">{initials}</span>
+              <span className="text-primary-foreground text-sm font-bold leading-none">{initials}</span>
             </div>
             <div className="flex flex-col min-w-0">
               <p className="text-[13px] font-semibold text-foreground truncate">{user.name}</p>

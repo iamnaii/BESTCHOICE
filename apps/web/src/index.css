@@ -268,8 +268,10 @@ layer(base);
     --card-foreground: 25 14% 12%;
     --popover: 40 20% 99%;
     --popover-foreground: 25 14% 12%;
-    /* Primary: Emerald (Wood element) — slightly darker for text contrast */
-    --primary: 160 84% 32%;
+    /* Primary: Emerald (Wood element). L=26% (#0B7A55) — เจ้าของเคาะ 2026-09-21 (mockup CnXmYLkT กระดาน 18):
+       ตัวอักษรขาวบนปุ่ม 5.34:1 · ตัวอักษรเขียวบนการ์ด 5.25:1 · บนพื้นหน้า 5.04:1 · บนป้าย bg-primary/10 4.58:1
+       (เดิม L=32% ได้ 3.76 / 3.70 / 3.55 / 3.29 — ต่ำกว่าเกณฑ์ 4.5:1 ของตัวอักษรขนาดปกติ) */
+    --primary: 160 84% 26%;
     --primary-foreground: 0 0% 100%;
     /* Secondary/Muted/Accent: warm sand neutrals */
     --secondary: 36 14% 93%;
@@ -329,8 +331,10 @@ layer(base);
     --card-foreground: 0 0% 95%;
     --popover: 230 5% 14%;
     --popover-foreground: 0 0% 95%;
+    /* จอมืด: สีเขียวตัวเดียวเป็นทั้งพื้นปุ่มและสีตัวอักษร — ทำให้เข้มลงไม่ได้ (ตัวอักษรเขียวบนพื้นมืดจะอ่านยากแทน)
+       จึงคงเขียวเดิมแล้วให้ตัวอักษรบนพื้นเขียวเป็นสีเข้ม: 6.73:1 (เดิมตัวอักษรขาว 2.59:1) — กระดาน 19 */
     --primary: 160 84% 39%;
-    --primary-foreground: 0 0% 100%;
+    --primary-foreground: 160 40% 8%;
     --secondary: 230 4% 20%;
     --secondary-foreground: 0 0% 95%;
     --muted: 230 4% 20%;

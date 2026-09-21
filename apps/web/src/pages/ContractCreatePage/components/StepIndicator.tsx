@@ -37,8 +37,8 @@ export function StepIndicator({ steps, currentStep, onStepClick }: StepIndicator
                 <div
                   className={cn(
                     'size-10 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300',
-                    isCompleted && 'bg-primary text-white shadow-sm shadow-primary/30',
-                    isCurrent && 'bg-primary text-white shadow-md shadow-primary/40 ring-4 ring-primary/20',
+                    isCompleted && 'bg-primary text-primary-foreground shadow-sm shadow-primary/30',
+                    isCurrent && 'bg-primary text-primary-foreground shadow-md shadow-primary/40 ring-4 ring-primary/20',
                     !isCompleted && !isCurrent && 'bg-muted text-muted-foreground',
                     isClickable && 'group-hover:shadow-md',
                   )}
@@ -98,7 +98,7 @@ export function StepIndicator({ steps, currentStep, onStepClick }: StepIndicator
 
         {/* Current step info */}
         <div className="flex items-center gap-3">
-          <div className="size-9 rounded-lg bg-primary text-white flex items-center justify-center">
+          <div className="size-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center">
             {(() => { const Icon = stepIcons[currentStep] || Package; return <Icon className="size-4" />; })()}
           </div>
           <div>

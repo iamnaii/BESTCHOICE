@@ -107,7 +107,7 @@ export default function ChatAnalyticsPage() {
             onClick={() => setRange(opt.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               range === opt.key
-                ? 'bg-primary text-white'
+                ? 'bg-primary text-primary-foreground'
                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
             }`}
           >

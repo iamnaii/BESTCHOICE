@@ -126,7 +126,7 @@ export default function InspectionDetailPage() {
       { label: 'ไม่ผ่าน QC', status: 'QC_FAILED', variant: 'bg-destructive text-destructive-foreground hover:bg-destructive/90' },
     ],
     QC_PASSED: [
-      { label: 'เข้าสต็อก', status: 'IN_STOCK', variant: 'bg-primary hover:bg-primary/90 text-white' },
+      { label: 'เข้าสต็อก', status: 'IN_STOCK', variant: 'bg-primary hover:bg-primary/90 text-primary-foreground' },
     ],
     QC_FAILED: [
       { label: 'ตรวจใหม่', status: 'INSPECTING', variant: 'bg-warning text-warning-foreground hover:bg-warning/90' },

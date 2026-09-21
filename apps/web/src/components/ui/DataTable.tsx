@@ -426,7 +426,7 @@ function DataTable<T extends { id: string }>({
                         className={cn(
                           'size-4 rounded border flex items-center justify-center',
                           col.getIsVisible()
-                            ? 'bg-primary border-primary text-white'
+                            ? 'bg-primary border-primary text-primary-foreground'
                             : 'border-border',
                         )}
                       >

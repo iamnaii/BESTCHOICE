@@ -105,6 +105,13 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     expect(status.round).toMatchObject({ periodStart: null, floatAmount: 2000, cashIn: 16500, cashOut: 5790, expectedAmount: 12710, movementCount: 2 });
     expect(status.permissions).toMatchObject({ canCount: true, canConfirm: false });
     expect((await service.getStatus(users.owner, { branchId })).permissions).toMatchObject({ canCount: false, canConfirm: true });
+    // หน้าจอบอกว่าตอนนี้รอใคร / สาขายังขาดอะไร: ชื่อคนที่นับได้ของสาขา (ผจก.ก่อน แล้วพนักงานขาย) · สาขาที่ยังไม่ตั้งลิ้นชักเงินสด
+    expect(status.readiness).toMatchObject({ hasDrawerAccount: true, floatAmount: 2000 });
+    expect(status.readiness.counters.map((row) => [row.id, row.role])).toEqual([[users.manager.id, 'BRANCH_MANAGER'], [users.sales.id, 'SALES']]);
+    const other = await service.getStatus(users.owner, { branchId: otherBranchId });
+    expect(other.readiness).toMatchObject({ hasDrawerAccount: false, floatAmount: 0 });
+    expect(other.readiness.counters.map((row) => row.id)).toEqual([users.otherManager.id]);
+    expect(status.holdings).toEqual([]);
   });
 
   it('สิทธิ์: เจ้าของนับไม่ได้ · พนักงาน/ผจก.ต่างสาขานับและดูไม่ได้', async () => {

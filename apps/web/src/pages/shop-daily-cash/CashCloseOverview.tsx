@@ -38,6 +38,8 @@ export default function CashCloseOverview({ date, branchId, showTable, onOpen }:
   const query = useQuery<CashCloseOverviewResponse>({
     queryKey: cashCloseOverviewKey(date, branchId),
     queryFn: async () => (await api.get('/shop-tenders/cash-close/overview', { params: { date, branchId: branchId || undefined } })).data,
+    // ยอดเงินสดต้องสดเสมอ: ขายเงินสด/ตั้งค่าสาขาแล้วกลับมาหน้านี้ ต้องไม่เห็นของเก่าจาก cache 3 นาทีของแอป
+    staleTime: 0, refetchOnMount: 'always',
   });
   const data = query.data;
 

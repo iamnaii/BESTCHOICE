@@ -60,6 +60,8 @@ const dash = (value: string) => (Number(value) === 0 ? '—' : baht(value));
 const timeOf = (iso: string) =>
   new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' });
 const todayBangkok = () => new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const thaiLongDate = (date: string) =>
+  new Date(`${date}T00:00:00+07:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok' });
 
 type RowFilter = 'ALL' | 'CASH' | 'NON_CASH' | 'OUT';
 
@@ -82,6 +84,8 @@ export default function ShopDailyCashPage() {
   const query = useQuery<DailySummary>({
     queryKey: ['shop-tenders', 'daily-summary', date, branchId],
     queryFn: async () => (await api.get('/shop-tenders/daily-summary', { params: { date, branchId: branchId || undefined } })).data,
+    // ยอดเงินสดต้องสดเสมอ: ขายเงินสด/ตั้งค่าสาขาแล้วกลับมาหน้านี้ ต้องไม่เห็นของเก่าจาก cache 3 นาทีของแอป
+    staleTime: 0, refetchOnMount: 'always',
   });
   const data = query.data;
   const own = data?.scope === 'OWN';
@@ -103,6 +107,8 @@ export default function ShopDailyCashPage() {
   const closeStatus = useQuery<CashCloseStatusResponse>({
     queryKey: cashCloseKey(closeBranchId, date),
     queryFn: async () => (await api.get('/shop-tenders/cash-close/status', { params: { branchId: closeBranchId, date } })).data,
+    // ยอดเงินสดต้องสดเสมอ: ขายเงินสด/ตั้งค่าสาขาแล้วกลับมาหน้านี้ ต้องไม่เห็นของเก่าจาก cache 3 นาทีของแอป
+    staleTime: 0, refetchOnMount: 'always',
     enabled: !!closeBranchId,
   });
   const cutoff = closeBranchId ? latestEffectiveClose(closeStatus.data?.closes ?? []) : null;
@@ -159,6 +165,18 @@ export default function ShopDailyCashPage() {
       )}
 
       {tab === 'HISTORY' && data && !own && <CashCloseHistory branchId={closeBranchId} branches={data.branches} />}
+
+      {/* กดช่องในแถบ 14 วันแล้ว = ดูวันย้อนหลัง — ต้องบอกให้ชัดและมีทางกลับ (เจ้าของเคยค้างอยู่วันที่ 8 แล้วหาปุ่มนับไม่เจอ) */}
+      {(tab === 'DAILY' || own) && !isToday && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted px-4 py-3">
+          <div className="space-y-0.5 leading-snug">
+            <div className="text-sm font-semibold">กำลังดูวันที่ {thaiLongDate(date)} (ย้อนหลัง)</div>
+            <div className="text-[13px] text-muted-foreground">การนับเงินปิดยอดของรอบใหม่ทำได้เฉพาะวันนี้ · ยอดที่รอยืนยันรับเงินค้างอยู่ยังกดยืนยันได้จากหน้านี้</div>
+          </div>
+          <button type="button" onClick={() => setDate(todayBangkok())}
+            className="min-h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90">กลับมาวันนี้</button>
+        </div>
+      )}
 
       {(tab === 'DAILY' || own) && (
       <QueryBoundary isLoading={query.isLoading} isError={query.isError} error={query.error} onRetry={query.refetch}>

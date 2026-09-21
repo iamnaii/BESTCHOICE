@@ -25,6 +25,9 @@ export interface CashCloseStatusResponse {
   round: { periodStart: string | null; floatAmount: number; cashIn: number; cashOut: number; expectedAmount: number; movementCount: number };
   closes: CashClose[];
   awaitingConfirm: CashClose[];
+  /** สิ่งที่สาขาต้องมีก่อนปิดยอดได้ + ชื่อคนที่นับเงินได้ */
+  readiness: { hasDrawerAccount: boolean; floatAmount: number; counters: { id: string; name: string; role: string }[] };
+  holdings: CashHolding[];
   permissions: { canCount: boolean; canConfirm: boolean; viewerId: string; viewerRole?: string };
 }
 

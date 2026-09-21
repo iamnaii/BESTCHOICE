@@ -13,7 +13,12 @@ vi.mock('./shop-daily-cash/CashCloseCard', () => ({
   cashCloseKey: (branchId: string, date: string) => ['shop-tenders', 'cash-close', 'status', branchId, date],
 }));
 vi.mock('./shop-daily-cash/CashCloseOverview', () => ({
-  default: ({ branchId, showTable }: { branchId: string; showTable: boolean }) => <div data-testid="overview">{`${branchId || 'ALL'}|${showTable}`}</div>,
+  default: ({ branchId, showTable, onOpen }: { branchId: string; showTable: boolean; onOpen: (branchId: string, date?: string) => void }) => (
+    <div>
+      <div data-testid="overview">{`${branchId || 'ALL'}|${showTable}`}</div>
+      <button type="button" onClick={() => onOpen('branch-001', '2026-09-08')}>ช่องวันที่ 8 ของแถบ 14 วัน</button>
+    </div>
+  ),
 }));
 
 const summary = (branches: { id: string; name: string }[]) => ({
@@ -47,5 +52,20 @@ describe('ShopDailyCashPage — เจ้าของเปิดหน้าม
     renderPage([{ id: 'b1', name: 'ลาดพร้าว' }, { id: 'b2', name: 'รังสิต' }]);
     expect(await screen.findByTestId('overview')).toHaveTextContent('ALL|true');
     expect(screen.queryByTestId('close-card')).not.toBeInTheDocument();
+  });
+});
+
+describe('ShopDailyCashPage — ดูวันย้อนหลังต้องมีทางกลับ', () => {
+  it('เปลี่ยนไปดูวันก่อนหน้า → มีแถบบอกว่าย้อนหลัง + ปุ่ม "กลับมาวันนี้" พากลับวันนี้ แล้วแถบหาย', async () => {
+    renderPage([{ id: 'branch-001', name: 'ลพบุรี' }]);
+    await screen.findByTestId('close-card');
+    expect(screen.queryByRole('button', { name: 'กลับมาวันนี้' })).not.toBeInTheDocument();
+    const calls = () => mocks.get.mock.calls.filter(([path]) => path === '/shop-tenders/daily-summary').map(([, config]) => config.params.date as string);
+    const today = calls()[0];
+    await userEvent.click(screen.getByRole('button', { name: 'ช่องวันที่ 8 ของแถบ 14 วัน' })); // ทางเดียวกับที่เจ้าของหลงไปวันย้อนหลังบนระบบจริง
+    expect(await screen.findByText(/กำลังดูวันที่ 8 ก\.ย\. 2569 \(ย้อนหลัง\)/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'กลับมาวันนี้' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'กลับมาวันนี้' })).not.toBeInTheDocument());
+    expect(calls().at(-1)).toBe(today);
   });
 });

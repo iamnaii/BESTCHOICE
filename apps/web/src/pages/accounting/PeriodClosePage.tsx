@@ -48,7 +48,7 @@ const STATUS_LABELS: Record<PeriodStatus, string> = {
 const STATUS_CLASSES: Record<PeriodStatus, string> = {
   OPEN: 'bg-success/10 text-success',
   REVIEW: 'bg-primary/10 text-primary',
-  CLOSED: 'bg-warning/10 text-warning',
+  CLOSED: 'bg-warning/10 text-warning-strong',
   SYNCED: 'bg-muted text-muted-foreground',
 };
 

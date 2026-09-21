@@ -93,6 +93,8 @@ layer(base);
   --color-warning-600: #e5a600;
   --color-warning: hsl(var(--warning));
   --color-warning-foreground: hsl(var(--warning-foreground));
+  /* ตัวอักษรสีเหลืองบนพื้นอ่อน — เข้มกว่า --warning เพื่อให้อ่านออก (ดู .claude/rules/frontend.md) */
+  --color-warning-strong: hsl(var(--warning-strong));
 
   --color-orange: hsl(var(--orange));
   --color-orange-foreground: hsl(var(--orange-foreground));
@@ -281,13 +283,19 @@ layer(base);
     --accent: 36 14% 93%;
     --accent-foreground: 25 12% 14%;
     /* Destructive */
-    --destructive: 0 84.2% 60.2%;
+    /* แดง L=45% (#D31212) — เจ้าของเคาะ 2026-09-21 (กระดาน 20): ขาวบนปุ่ม 5.43 · เป็นตัวอักษร 5.34 · บนป้ายแดงอ่อน 4.52
+       (เดิม L=60.2% ได้ 3.76 / 3.70 / 3.26) */
+    --destructive: 0 84.2% 45%;
     --destructive-foreground: 0 0% 98%;
     /* Semantic */
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
+    /* เหลืองเตือน "แยกสองหน้าที่" — เจ้าของเคาะ 2026-09-21 (กระดาน 20 ทางเลือก ค):
+       --warning = พื้นสด (จุดสถานะ แถบ ป้ายทึบ) คงเดิม · ตัวอักษรบนพื้นนั้นเป็นสีเข้ม 6.70:1 (ขาวได้แค่ 2.13)
+       --warning-strong = สีที่ใช้เป็น "ตัวอักษรสีเหลือง" บนพื้นอ่อน 5.32:1 (เดิม 2.10) */
     --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
+    --warning-foreground: 38 95% 12%;
+    --warning-strong: 38 92% 30%;
     --orange: 25 95% 53%;
     --orange-foreground: 0 0% 100%;
     --info: 199 89% 48%;
@@ -342,12 +350,17 @@ layer(base);
     --muted-foreground: 230 6% 65%;
     --accent: 230 4% 20%;
     --accent-foreground: 0 0% 95%;
-    --destructive: 0 72% 55%;
-    --destructive-foreground: 0 0% 98%;
+    /* จอมืด: แดงอ่อนลงให้ตัวอักษรแดงอ่านออกบนพื้นจริง แล้วตัวอักษรบนพื้นแดงเป็นสีเข้ม
+       วัดบนหน้าแดชบอร์ดจริง 2026-09-21: ตัวเลขสีแดงอยู่บน bg-muted (สว่างกว่าการ์ด) ⇒ 0 72% 65% ได้แค่ 3.92
+       ค่านี้ (#F87272) บน bg-muted 4.67 · บนการ์ด 5.73 · บนพื้นหน้า 6.46 · ตัวอักษรบนปุ่มแดง 6.70 · บนป้ายแดงอ่อน 4.95 */
+    --destructive: 0 90% 71%;
+    --destructive-foreground: 0 60% 10%;
     --success: 142 71% 40%;
     --success-foreground: 0 0% 100%;
+    /* จอมืด: สีเหลืองคงเดิม (เป็นตัวอักษรบนการ์ดมืดได้ 5.97 อยู่แล้ว) เปลี่ยนเฉพาะตัวอักษรบนพื้นเหลือง 2.63 → 5.42 */
     --warning: 38 92% 45%;
-    --warning-foreground: 0 0% 100%;
+    --warning-foreground: 38 95% 12%;
+    --warning-strong: 38 92% 45%;
     --orange: 25 90% 55%;
     --orange-foreground: 0 0% 100%;
     --info: 199 89% 48%;

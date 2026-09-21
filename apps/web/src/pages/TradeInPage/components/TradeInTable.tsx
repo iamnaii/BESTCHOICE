@@ -186,7 +186,7 @@ export default function TradeInTable({
             <SubLine>
               <span className="ml-auto truncate">
                 {item.flow === 'EXCHANGE' ? (
-                  <span className="font-medium text-warning">เทิร์น</span>
+                  <span className="font-medium text-warning-strong">เทิร์น</span>
                 ) : (
                   'รับซื้อ'
                 )}

@@ -58,7 +58,7 @@ const paymentStatusColors: Record<string, string> = {
   PAID: 'bg-success/10 text-success dark:bg-success/15',
   PENDING: 'bg-muted text-muted-foreground',
   OVERDUE: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
-  PARTIALLY_PAID: 'bg-warning/10 text-warning dark:bg-warning/15',
+  PARTIALLY_PAID: 'bg-warning/10 text-warning-strong dark:bg-warning/15',
 };
 
 function CustomerPortalPage() {

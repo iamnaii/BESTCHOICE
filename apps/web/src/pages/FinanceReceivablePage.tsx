@@ -96,7 +96,7 @@ function BestchoiceFinanceTab() {
   const icSummaryCards = [
     { label: 'รายการทั้งหมด', value: profitSummary?.transactionCount || 0, isCount: true, icon: Receipt, color: 'text-primary', iconBg: 'bg-primary/20', stripe: 'bg-primary' },
     { label: 'ยอดเงินต้นรวม', value: profitSummary?.shop?.totalRevenue || 0, isCount: false, icon: Banknote, color: 'text-info', iconBg: 'bg-info/10', stripe: 'bg-info' },
-    { label: 'ค่าคอมมิชชันรวม', value: profitSummary?.finance?.totalCommissionPaid || 0, isCount: false, icon: Percent, color: 'text-warning', iconBg: 'bg-warning/10', stripe: 'bg-warning' },
+    { label: 'ค่าคอมมิชชันรวม', value: profitSummary?.finance?.totalCommissionPaid || 0, isCount: false, icon: Percent, color: 'text-warning-strong', iconBg: 'bg-warning/10', stripe: 'bg-warning' },
     { label: 'ยอดจ่ายรวม', value: profitSummary?.shop?.totalCost || 0, isCount: false, icon: Wallet, color: 'text-success', iconBg: 'bg-success/20', stripe: 'bg-success' },
   ];
 
@@ -295,7 +295,7 @@ export default function FinanceReceivablePage() {
   const receivedPct = totalAll > 0 ? (Number(summary?.receivedAmount || 0) / totalAll * 100) : 0;
 
   const summaryCards = [
-    { label: 'รอรับเงิน', count: summary?.totalPending || 0, amount: summary?.pendingAmount, icon: Clock, color: 'text-warning', iconBg: 'bg-warning/20', stripe: 'bg-warning' },
+    { label: 'รอรับเงิน', count: summary?.totalPending || 0, amount: summary?.pendingAmount, icon: Clock, color: 'text-warning-strong', iconBg: 'bg-warning/20', stripe: 'bg-warning' },
     { label: 'ได้รับแล้ว', count: summary?.totalReceived || 0, amount: summary?.receivedAmount, icon: CheckCircle2, color: 'text-success', iconBg: 'bg-success/20', stripe: 'bg-success' },
     { label: 'เกินกำหนด', count: summary?.totalOverdue || 0, amount: summary?.overdueAmount, icon: AlertTriangle, color: 'text-destructive', iconBg: 'bg-destructive/20', stripe: 'bg-destructive' },
     { label: 'มีปัญหา', count: summary?.totalDisputed || 0, amount: summary?.disputedAmount, icon: Ban, color: 'text-destructive', iconBg: 'bg-destructive/20', stripe: 'bg-destructive/60' },

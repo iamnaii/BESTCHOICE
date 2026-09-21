@@ -712,7 +712,7 @@ export default function LineGreetingPage() {
                 รีเซ็ต
               </Button>
               {isDirty && (
-                <span className="flex items-center gap-1.5 text-xs text-warning ml-1">
+                <span className="flex items-center gap-1.5 text-xs text-warning-strong ml-1">
                   <span className="w-2 h-2 rounded-full bg-warning shrink-0" />
                   มีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก
                 </span>

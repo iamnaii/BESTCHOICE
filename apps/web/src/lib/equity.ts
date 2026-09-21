@@ -78,7 +78,7 @@ export const STATUS_LABELS: Record<string, string> = {
 
 export const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-muted text-muted-foreground',
-  READY: 'bg-warning/10 text-warning',
+  READY: 'bg-warning/10 text-warning-strong',
   POSTED: 'bg-success/10 text-success',
   REVERSED: 'bg-destructive/10 text-destructive',
 };

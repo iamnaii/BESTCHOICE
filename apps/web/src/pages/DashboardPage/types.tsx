@@ -185,8 +185,8 @@ export const agingBarColors: Record<string, string> = {
 
 export const agingTextColors: Record<string, string> = {
   green: 'text-success',
-  yellow: 'text-warning',
-  orange: 'text-warning',
+  yellow: 'text-warning-strong',
+  orange: 'text-warning-strong',
   red: 'text-destructive',
 };
 
@@ -219,9 +219,9 @@ export const alertSeverityStyles = {
   },
   warning: {
     container: 'border-warning/30 bg-warning/5',
-    icon: 'bg-warning/10 text-warning',
-    badge: 'bg-warning/10 text-warning',
-    count: 'text-warning',
+    icon: 'bg-warning/10 text-warning-strong',
+    badge: 'bg-warning/10 text-warning-strong',
+    count: 'text-warning-strong',
   },
   info: {
     container: 'border-primary/20 bg-primary/5',

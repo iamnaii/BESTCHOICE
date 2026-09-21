@@ -95,7 +95,7 @@ export default function AssetTable({
         label: 'ค่าเสื่อมสะสม',
         sortable: true,
         render: (item: Asset) => (
-          <span className="font-mono text-sm tabular-nums text-warning">
+          <span className="font-mono text-sm tabular-nums text-warning-strong">
             {fmt(item.accumulatedDepreciation)}
           </span>
         ),

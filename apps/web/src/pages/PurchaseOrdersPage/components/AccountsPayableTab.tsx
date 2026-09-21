@@ -101,10 +101,10 @@ export function AccountsPayableTab({ payableData, onOpenDetail }: AccountsPayabl
                       const inSevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
                       const dueSoon = !isLate && due <= inSevenDays;
                       return (
-                        <span className={`text-sm ${isLate ? 'text-destructive font-semibold' : dueSoon ? 'text-warning font-medium' : 'text-muted-foreground'}`}>
+                        <span className={`text-sm ${isLate ? 'text-destructive font-semibold' : dueSoon ? 'text-warning-strong font-medium' : 'text-muted-foreground'}`}>
                           {formatDateShort(po.dueDate)}
                           {isLate && <span className="ml-1 text-2xs bg-destructive/10 text-destructive dark:bg-destructive/15 px-1.5 py-0.5 rounded-full leading-snug">เลยกำหนด</span>}
-                          {dueSoon && <span className="ml-1 text-2xs bg-warning/10 text-warning dark:bg-warning/15 px-1.5 py-0.5 rounded-full leading-snug">ใกล้ครบกำหนด</span>}
+                          {dueSoon && <span className="ml-1 text-2xs bg-warning/10 text-warning-strong dark:bg-warning/15 px-1.5 py-0.5 rounded-full leading-snug">ใกล้ครบกำหนด</span>}
                         </span>
                       );
                     })() : (

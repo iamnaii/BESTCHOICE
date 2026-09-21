@@ -209,7 +209,7 @@ export default function LiffFinanceVerify() {
   if (step === 'phone') {
     return (
       <div className="min-h-screen bg-background p-4">
-        <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
+        <div className="bg-primary rounded-xl p-5 text-primary-foreground shadow-md mb-4">
           <p className="text-xs opacity-80">BEST CHOICE FINANCE</p>
           <h1 className="text-base font-bold mt-1">ยืนยันตัวตน</h1>
         </div>
@@ -276,7 +276,7 @@ export default function LiffFinanceVerify() {
   if (step === 'otp') {
     return (
       <div className="min-h-screen bg-background p-4">
-        <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
+        <div className="bg-primary rounded-xl p-5 text-primary-foreground shadow-md mb-4">
           <p className="text-xs opacity-80">BEST CHOICE FINANCE</p>
           <h1 className="text-base font-bold mt-1">ยืนยันรหัส OTP</h1>
         </div>

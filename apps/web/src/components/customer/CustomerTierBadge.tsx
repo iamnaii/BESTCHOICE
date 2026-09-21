@@ -13,7 +13,7 @@ const TIER_STYLES: Record<CustomerTier, string> = {
   GOLD: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
   GOOD: 'bg-success/10 text-success border-success/30',
   NEW: 'bg-muted text-muted-foreground border-border',
-  RISKY: 'bg-warning/10 text-warning border-warning/30',
+  RISKY: 'bg-warning/10 text-warning-strong border-warning/30',
   BLACKLIST: 'bg-destructive/10 text-destructive border-destructive/30',
 };
 

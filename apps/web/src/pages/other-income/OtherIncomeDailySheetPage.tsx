@@ -141,7 +141,7 @@ export default function OtherIncomeDailySheetPage() {
             coercion so the OWNER knows their pick was overridden. */}
         {isAllCoerced && (
           <div className="flex items-center gap-2 px-3 py-2 text-xs bg-warning/10 border border-warning/30 text-foreground rounded-md">
-            <Info size={14} className="text-warning shrink-0" />
+            <Info size={14} className="text-warning-strong shrink-0" />
             <span>
               ค่าเริ่มต้น &ldquo;ทั้งหมด&rdquo; ใช้กับหน้านี้ไม่ได้ — แสดงเป็น
               &ldquo;เดือนนี้&rdquo; แทน
@@ -192,7 +192,7 @@ export default function OtherIncomeDailySheetPage() {
               <SummaryBox
                 label="VAT 7%"
                 value={Number(sheet.data.summary.vat)}
-                colorClass="text-warning"
+                colorClass="text-warning-strong"
               />
               <SummaryBox
                 label="หัก ณ ที่จ่าย"

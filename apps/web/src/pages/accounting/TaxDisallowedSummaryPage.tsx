@@ -54,7 +54,7 @@ export default function TaxDisallowedSummaryPage() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center gap-3">
-        <Ban className="size-6 text-warning" />
+        <Ban className="size-6 text-warning-strong" />
         <div>
           <h1 className="text-2xl font-semibold leading-snug">
             ค่าใช้จ่ายต้องห้าม (ภ.ง.ด.50/51)
@@ -157,10 +157,10 @@ function Card({
       }
     >
       <div className="flex items-center gap-2 mb-3">
-        <Icon className={highlight ? 'size-4 text-warning' : 'size-4 text-muted-foreground'} />
+        <Icon className={highlight ? 'size-4 text-warning-strong' : 'size-4 text-muted-foreground'} />
         <span className="text-xs font-medium leading-snug">{label}</span>
       </div>
-      <div className={`font-mono ${highlight ? 'text-2xl font-bold text-warning' : 'text-xl font-semibold'}`}>
+      <div className={`font-mono ${highlight ? 'text-2xl font-bold text-warning-strong' : 'text-xl font-semibold'}`}>
         {formatNumberDecimal(value)}
         <span className="text-xs font-normal text-muted-foreground ml-1.5">บาท</span>
       </div>

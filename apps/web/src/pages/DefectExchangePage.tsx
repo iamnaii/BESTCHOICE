@@ -439,7 +439,7 @@ export default function DefectExchangePage(props?: DefectExchangePageProps) {
                 <span className="tabular-nums font-mono">{formatNumber(elig.oldContract.paidAmount)} บาท</span>
               </div>
             </div>
-            <div className="mt-4 p-3 rounded-lg bg-warning/5 border border-warning/30 text-xs text-warning">
+            <div className="mt-4 p-3 rounded-lg bg-warning/5 border border-warning/30 text-xs text-warning-strong">
               <AlertTriangle className="size-3.5 inline mr-1" />
               ลูกค้าต้องเซ็นสัญญาใหม่ที่ร้านก่อนรับเครื่อง (เพื่อยืนยัน IMEI ใหม่ตามกฎหมาย)
             </div>

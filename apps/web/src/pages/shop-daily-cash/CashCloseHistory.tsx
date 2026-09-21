@@ -12,7 +12,7 @@ import {
 
 const STATUS_TONE: Record<CashCloseStatus, string> = {
   CONFIRMED: 'bg-primary/10 text-primary',
-  PENDING_CONFIRM: 'bg-warning/10 text-warning',
+  PENDING_CONFIRM: 'bg-warning/10 text-warning-strong',
   SENT_BACK: 'bg-muted text-muted-foreground',
 };
 
@@ -94,7 +94,7 @@ export default function CashCloseHistory({ branchId, branches }: { branchId: str
                         <td className="px-4 py-3">
                           <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold leading-snug ${STATUS_TONE[row.status]}`}>{STATUS_LABEL[row.status]}</span>
                           {row.status === 'CONFIRMED' && (
-                            <div className={`mt-0.5 text-xs ${row.moneyState === 'AT_BRANCH' ? 'font-semibold text-warning' : 'text-muted-foreground'}`}>
+                            <div className={`mt-0.5 text-xs ${row.moneyState === 'AT_BRANCH' ? 'font-semibold text-warning-strong' : 'text-muted-foreground'}`}>
                               {row.moneyState === 'AT_BRANCH' ? 'เงินยังอยู่ที่สาขา' : 'เงินถึงบริษัทแล้ว'}
                             </div>
                           )}

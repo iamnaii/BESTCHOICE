@@ -245,7 +245,7 @@ export default function ContractsPage() {
         const requirements = c.signatureRequirements;
         if (!requirements) return <span className="text-xs text-muted-foreground">รอตรวจผู้ลงนาม</span>;
         const count = requirements.checklist.filter(signer => signer.signed).length;
-        return <span className={`text-xs ${requirements.complete ? 'text-success' : 'text-warning'}`}>
+        return <span className={`text-xs ${requirements.complete ? 'text-success' : 'text-warning-strong'}`}>
           {requirements.complete ? 'ครบ' : 'ลงนามแล้ว'} {count}/{requirements.checklist.length}
         </span>;
       },
@@ -389,7 +389,7 @@ export default function ContractsPage() {
         {isManager && (
           <button
             onClick={() => updateParams({ tab: 'pending_review', status: '', workflow: '', q: '', page: '' })}
-            className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'pending_review' ? 'border-warning text-warning' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+            className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${viewTab === 'pending_review' ? 'border-warning text-warning-strong' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
           >
             รอตรวจสอบ
           </button>

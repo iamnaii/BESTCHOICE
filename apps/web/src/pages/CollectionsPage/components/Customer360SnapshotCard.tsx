@@ -27,7 +27,7 @@ interface Props {
 
 const STATUS_COLOR: Record<string, string> = {
   ACTIVE: 'bg-success/10 text-success border-success/30',
-  OVERDUE: 'bg-warning/10 text-warning border-warning/30',
+  OVERDUE: 'bg-warning/10 text-warning-strong border-warning/30',
   DEFAULT: 'bg-destructive/10 text-destructive border-destructive/30',
   LEGAL: 'bg-destructive/10 text-destructive border-destructive/30',
   CLOSED: 'bg-muted text-muted-foreground border-border',

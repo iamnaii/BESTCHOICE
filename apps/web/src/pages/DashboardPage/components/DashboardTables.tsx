@@ -95,8 +95,8 @@ export default function DashboardTables({
                             item.daysOverdue > 60
                               ? 'bg-destructive/10 text-destructive'
                               : item.daysOverdue > 30
-                                ? 'bg-warning/10 text-warning'
-                                : 'bg-warning/10 text-warning dark:bg-warning/15',
+                                ? 'bg-warning/10 text-warning-strong'
+                                : 'bg-warning/10 text-warning-strong dark:bg-warning/15',
                           )}
                         >
                           {item.daysOverdue} วัน
@@ -147,8 +147,8 @@ export default function DashboardTables({
                 };
                 const stageTextColors: Record<string, string> = {
                   NONE:          'text-muted-foreground',
-                  REMINDER:      'text-warning',
-                  NOTICE:        'text-warning',
+                  REMINDER:      'text-warning-strong',
+                  NOTICE:        'text-warning-strong',
                   FINAL_WARNING: 'text-destructive',
                   LEGAL_ACTION:  'text-destructive font-semibold',
                 };

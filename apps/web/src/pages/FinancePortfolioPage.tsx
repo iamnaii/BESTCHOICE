@@ -246,7 +246,7 @@ export default function FinancePortfolioPage() {
       value: summary?.totalOutstanding ?? 0,
       isCount: false,
       icon: Clock,
-      color: 'text-warning',
+      color: 'text-warning-strong',
       iconBg: 'bg-warning/10',
       stripe: 'bg-warning',
     },
@@ -274,7 +274,7 @@ export default function FinancePortfolioPage() {
     {
       label: 'ค้าง 1-30 วัน',
       bucket: aging?.days1to30,
-      color: 'text-warning',
+      color: 'text-warning-strong',
       bg: 'bg-warning/10 dark:bg-warning/15',
       border: 'border-warning/30',
       icon: AlertTriangle,
@@ -282,7 +282,7 @@ export default function FinancePortfolioPage() {
     {
       label: 'ค้าง 31-60 วัน',
       bucket: aging?.days31to60,
-      color: 'text-warning',
+      color: 'text-warning-strong',
       bg: 'bg-warning/20 dark:bg-warning/25',
       border: 'border-warning/40',
       icon: AlertTriangle,

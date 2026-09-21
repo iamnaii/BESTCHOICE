@@ -509,7 +509,7 @@ export default function EquityEntryPage() {
               )}
             </div>
             {NEEDS_RESOLUTION.includes(t) && (
-              <p className="text-xs text-warning leading-snug">
+              <p className="text-xs text-warning-strong leading-snug">
                 ประเภทนี้ต้องแนบไฟล์มติที่ประชุมก่อนลงบัญชี (V8) — แนบได้ในหน้าเอกสารหลังบันทึกร่าง
               </p>
             )}

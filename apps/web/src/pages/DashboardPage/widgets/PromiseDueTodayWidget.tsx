@@ -36,12 +36,12 @@ export default function PromiseDueTodayWidget() {
     <Card className="flex flex-col h-full">
       <CardHeader className="pb-2 flex-row items-center gap-2">
         <div className="size-8 rounded-lg bg-warning/10 flex items-center justify-center shrink-0">
-          <Bell className="size-4 text-warning" />
+          <Bell className="size-4 text-warning-strong" />
         </div>
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
           <span className="font-semibold text-sm leading-snug">ติดตามหนี้วันนี้</span>
           {data.length > 0 && (
-            <span className="text-2xs font-semibold bg-warning/15 text-warning px-1.5 py-0.5 rounded-full leading-snug shrink-0">
+            <span className="text-2xs font-semibold bg-warning/15 text-warning-strong px-1.5 py-0.5 rounded-full leading-snug shrink-0">
               {data.length}
             </span>
           )}

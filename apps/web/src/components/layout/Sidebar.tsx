@@ -72,7 +72,7 @@ function NavBadge({ badgeKey }: { badgeKey: MenuBadgeKey }) {
     : undefined;
   if (!count || count === 0) return null;
   const cls = badgeKey === 'qc-pending-count' || badgeKey === 'online-orders-pending'
-    ? 'bg-warning/10 text-warning dark:bg-warning/15'
+    ? 'bg-warning/10 text-warning-strong dark:bg-warning/15'
     : 'bg-primary/15 text-primary';
   return (
     <span className={`ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-medium ${cls}`}>

@@ -1,6 +1,6 @@
 const workflowLabels: Record<string, { label: string; className: string }> = {
   CREATING: { label: 'กำลังสร้าง', className: 'bg-muted text-foreground' },
-  PENDING_REVIEW: { label: 'รอตรวจสอบ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  PENDING_REVIEW: { label: 'รอตรวจสอบ', className: 'bg-warning/10 text-warning-strong dark:bg-warning/15' },
   APPROVED: { label: 'อนุมัติแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
   REJECTED: { label: 'ปฏิเสธ', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
 };

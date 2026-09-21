@@ -99,8 +99,8 @@ export const TONE_STYLES: Record<SummaryTone, { border: string; iconBox: string;
   warning: {
     border: 'bg-warning',
     iconBox: 'bg-warning/10 group-hover:bg-warning/20',
-    icon: 'text-warning',
-    pill: 'text-warning bg-warning/10',
+    icon: 'text-warning-strong',
+    pill: 'text-warning-strong bg-warning/10',
   },
   destructive: {
     border: 'bg-destructive',

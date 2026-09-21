@@ -106,7 +106,7 @@ export function mapExpenseStatusToIcab(status: ExpenseStatus): IcabStatus {
 }
 
 const STATUS_BADGE: Record<ExpenseStatus, { label: string; cls: string }> = {
-  DRAFT: { label: '📝 ฉบับร่าง', cls: 'border-warning/40 bg-warning/10 text-warning' },
+  DRAFT: { label: '📝 ฉบับร่าง', cls: 'border-warning/40 bg-warning/10 text-warning-strong' },
   PENDING_APPROVAL: { label: '⏳ รออนุมัติ', cls: 'border-info/40 bg-info/10 text-info' },
   APPROVED: { label: '✓ อนุมัติแล้ว', cls: 'border-success/40 bg-success/10 text-success' },
   ACCRUAL: { label: '📒 ตั้งค้างจ่าย', cls: 'border-info/40 bg-info/10 text-info' },

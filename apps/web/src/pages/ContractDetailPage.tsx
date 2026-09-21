@@ -543,8 +543,8 @@ const deleteMutation = useMutation({
             <div className={`text-sm font-bold ${
               contract.dunningStage === 'LEGAL_ACTION' ? 'text-destructive' :
               contract.dunningStage === 'FINAL_WARNING' ? 'text-destructive' :
-              contract.dunningStage === 'NOTICE' ? 'text-warning' :
-              'text-warning/80'
+              contract.dunningStage === 'NOTICE' ? 'text-warning-strong' :
+              'text-warning-strong/80'
             }`}>
               {{ REMINDER: 'แจ้งเตือน', NOTICE: 'แจ้งค้างชำระ', FINAL_WARNING: 'เตือนครั้งสุดท้าย', LEGAL_ACTION: 'ดำเนินคดี' }[contract.dunningStage]}
             </div>
@@ -567,7 +567,7 @@ const deleteMutation = useMutation({
             <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-full bg-warning/15 dark:bg-warning/25 flex items-center justify-center flex-shrink-0">
-                  <AlertTriangle className="w-5 h-5 text-warning" />
+                  <AlertTriangle className="w-5 h-5 text-warning-strong" />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground">รอการตรวจสอบจากคุณ</h3>
               </div>
@@ -692,7 +692,7 @@ const deleteMutation = useMutation({
               </button>
             </div>
             {canEdit && !isEditing && (
-              <button onClick={startEditing} className="px-3 py-1 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20">
+              <button onClick={startEditing} className="px-3 py-1 text-xs bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20">
                 แก้ไข
               </button>
             )}
@@ -827,7 +827,7 @@ const deleteMutation = useMutation({
                 )}
               </div>
               {canEditMaster && (
-                <button onClick={() => setIsEditingCustomer(true)} className="px-3 py-1 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20">
+                <button onClick={() => setIsEditingCustomer(true)} className="px-3 py-1 text-xs bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20">
                   แก้ไข
                 </button>
               )}
@@ -855,7 +855,7 @@ const deleteMutation = useMutation({
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-foreground">ข้อมูลสินค้า</h2>
               {canEditMaster && (
-                <button onClick={() => setIsEditingProduct(true)} className="px-3 py-1 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20">
+                <button onClick={() => setIsEditingProduct(true)} className="px-3 py-1 text-xs bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20">
                   แก้ไข
                 </button>
               )}

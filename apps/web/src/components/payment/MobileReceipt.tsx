@@ -86,13 +86,13 @@ export default function MobileReceipt({ receipt }: MobileReceiptProps) {
         {receipt.remainingBalance != null && (
           <div className="bg-linear-to-br from-warning/10 to-warning/20 border-2 border-warning/40 rounded-xl p-5">
             <div className="text-center">
-              <div className="text-sm text-warning font-medium mb-2">ยอดคงเหลือ</div>
-              <div className="text-3xl font-bold text-warning mb-1">
+              <div className="text-sm text-warning-strong font-medium mb-2">ยอดคงเหลือ</div>
+              <div className="text-3xl font-bold text-warning-strong mb-1">
                 {Number(receipt.remainingBalance).toLocaleString()}
                 <span className="text-xl ml-1">฿</span>
               </div>
               {receipt.remainingMonths != null && (
-                <div className="text-sm text-warning mt-2">
+                <div className="text-sm text-warning-strong mt-2">
                   เหลืออีก {receipt.remainingMonths} งวด
                 </div>
               )}

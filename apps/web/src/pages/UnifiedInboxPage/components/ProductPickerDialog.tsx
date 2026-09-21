@@ -216,7 +216,7 @@ export default function ProductPickerDialog({ isOpen, onClose, onInsert, roomId 
               {[selected.brand, selected.model, selected.storage].filter(Boolean).join(' ')}
             </div>
             {!selected.photoUrl && (
-              <p className="mt-1 text-[11px] leading-snug text-warning">ยังไม่มีรูปขึ้นเว็บ</p>
+              <p className="mt-1 text-[11px] leading-snug text-warning-strong">ยังไม่มีรูปขึ้นเว็บ</p>
             )}
             <pre className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
               {summary?.text ?? 'กำลังเตรียมข้อความ...'}

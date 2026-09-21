@@ -78,7 +78,7 @@ function getDocumentType(e: Expense): { label: string; cls: string } {
     case 'EXPENSE':
     default:
       return e.status === 'ACCRUAL'
-        ? { label: 'ตั้งหนี้', cls: 'bg-warning/10 text-warning border-warning/20' }
+        ? { label: 'ตั้งหนี้', cls: 'bg-warning/10 text-warning-strong border-warning/20' }
         : { label: 'Same-day', cls: 'bg-success/10 text-success border-success/20' };
   }
 }
@@ -89,7 +89,7 @@ function getStatusBadge(e: Expense): { label: string; cls: string } {
   if (e.status === 'DRAFT')
     return { label: 'ฉบับร่าง', cls: 'bg-muted text-muted-foreground border-border' };
   if (e.status === 'PENDING_APPROVAL')
-    return { label: 'รออนุมัติ', cls: 'bg-warning/10 text-warning border-warning/40' };
+    return { label: 'รออนุมัติ', cls: 'bg-warning/10 text-warning-strong border-warning/40' };
   if (e.status === 'APPROVED')
     return { label: 'อนุมัติแล้ว', cls: 'bg-info/10 text-info border-info/40' };
   if (e.status === 'VOIDED')
@@ -270,7 +270,7 @@ export default function ExpensesPage() {
     {
       key: 'number',
       label: 'เลขเอกสาร',
-      render: (e: Expense) => <span className="font-mono text-sm font-medium text-warning">{e.number}</span>,
+      render: (e: Expense) => <span className="font-mono text-sm font-medium text-warning-strong">{e.number}</span>,
     },
     {
       key: 'vendorName',
@@ -284,7 +284,7 @@ export default function ExpensesPage() {
         const code = e.expenseDetail?.lines?.[0]?.category;
         return code ? (
           <div className="min-w-0">
-            <div className="font-mono text-sm font-medium text-warning">{code}</div>
+            <div className="font-mono text-sm font-medium text-warning-strong">{code}</div>
             <div className="text-xs text-muted-foreground truncate">{codeToName.get(code) || code}</div>
           </div>
         ) : (

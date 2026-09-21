@@ -34,7 +34,7 @@ export default function RiskBanner({ customer }: { customer: Pick<CustomerDetail
     >
       <div className={cn('absolute bottom-0 left-0 top-0 w-1 rounded-r-full', severe ? 'bg-destructive' : 'bg-warning')} />
       <div className="min-w-0">
-        <div className={cn('flex items-center gap-2 text-sm font-semibold leading-snug', severe ? 'text-destructive' : 'text-warning')}>
+        <div className={cn('flex items-center gap-2 text-sm font-semibold leading-snug', severe ? 'text-destructive' : 'text-warning-strong')}>
           <AlertTriangle className="size-4" aria-hidden="true" />
           <span>ค้างชำระ {count} งวด · <span className="tabular-nums">{baht(amount)}</span></span>
         </div>

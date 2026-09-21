@@ -69,7 +69,7 @@ const badgeVariants = cva(
       {
         variant: 'warning',
         appearance: 'light',
-        className: 'text-warning bg-warning/10 dark:bg-warning/15',
+        className: 'text-warning-strong bg-warning/10 dark:bg-warning/15',
       },
       {
         variant: 'info',
@@ -94,7 +94,7 @@ const badgeVariants = cva(
       {
         variant: 'warning',
         appearance: 'outline',
-        className: 'text-warning border-warning/20 bg-warning/5 dark:bg-warning/10 dark:border-warning/30',
+        className: 'text-warning-strong border-warning/20 bg-warning/5 dark:bg-warning/10 dark:border-warning/30',
       },
       {
         variant: 'info',
@@ -124,7 +124,7 @@ const badgeVariants = cva(
       {
         variant: 'warning',
         appearance: 'ghost',
-        className: 'text-warning',
+        className: 'text-warning-strong',
       },
       {
         variant: 'info',

@@ -124,7 +124,7 @@ export default function AssetForm({
           {/* Section 2: การจัดหมวดหมู่ */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning-strong">
                 <Tag className="size-4" strokeWidth={1.5} />
               </div>
               <div>

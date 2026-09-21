@@ -13,10 +13,10 @@ export function agingColor(bucket: AgingBucket): string {
     case '1-7':
       return 'bg-success/15 text-success border-success/30';
     case '8-30':
-      return 'bg-warning/15 text-warning border-warning/30';
+      return 'bg-warning/15 text-warning-strong border-warning/30';
     case '31-60':
       // No semantic "orange" token — reuse warning with stronger emphasis
-      return 'bg-warning/25 text-warning border-warning/40';
+      return 'bg-warning/25 text-warning-strong border-warning/40';
     case '61-90':
       return 'bg-destructive/15 text-destructive border-destructive/30';
     case '90+':

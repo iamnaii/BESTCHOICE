@@ -72,7 +72,7 @@ interface StatCardConfig {
 const TONE_CLASSES: Record<StatCardConfig['tone'], string> = {
   muted: 'text-muted-foreground bg-muted',
   primary: 'text-primary bg-primary/10',
-  warning: 'text-warning bg-warning/10',
+  warning: 'text-warning-strong bg-warning/10',
   success: 'text-success bg-success/10',
   info: 'text-info bg-info/10',
 };

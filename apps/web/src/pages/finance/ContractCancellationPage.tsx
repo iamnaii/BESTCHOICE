@@ -154,7 +154,7 @@ export default function ContractCancellationPage() {
             <h2 className="text-base font-semibold leading-snug">
               รายการรอการอนุมัติ{' '}
               {cancellations && cancellations.length > 0 && (
-                <span className="ml-1 inline-flex items-center rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning leading-snug">
+                <span className="ml-1 inline-flex items-center rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning-strong leading-snug">
                   {cancellations.length} รายการ
                 </span>
               )}

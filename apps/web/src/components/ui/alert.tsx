@@ -36,7 +36,7 @@ const alertVariants = cva('flex items-stretch w-full gap-2', {
     { variant: 'destructive', appearance: 'outline', className: 'border border-border bg-background text-destructive' },
     { variant: 'success', appearance: 'outline', className: 'border border-border bg-background text-success' },
     { variant: 'info', appearance: 'outline', className: 'border border-border bg-background text-info' },
-    { variant: 'warning', appearance: 'outline', className: 'border border-border bg-background text-warning' },
+    { variant: 'warning', appearance: 'outline', className: 'border border-border bg-background text-warning-strong' },
     { variant: 'secondary', appearance: 'light', className: 'bg-muted border border-border text-foreground' },
     {
       variant: 'primary',
@@ -66,7 +66,7 @@ const alertVariants = cva('flex items-stretch w-full gap-2', {
       variant: 'warning',
       appearance: 'light',
       className:
-        'bg-warning/10 border border-warning/20 text-foreground **:data-[slot=alert-icon]:text-warning',
+        'bg-warning/10 border border-warning/20 text-foreground **:data-[slot=alert-icon]:text-warning-strong',
     },
   ],
   defaultVariants: {

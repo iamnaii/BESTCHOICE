@@ -745,14 +745,14 @@ export default function SalesHistoryPage() {
             </Label>
           </SwitchWrapper>
           {includeVoided && (
-            <span className="text-xs text-warning leading-snug">
+            <span className="text-xs text-warning-strong leading-snug">
               ยอดสรุปรวมใบที่ยกเลิกแล้วด้วย — ปิดสวิตช์เพื่อดูยอดเฉพาะใบที่ใช้อยู่
             </span>
           )}
         </div>
       </div>
 
-      {contractStatusFilter === 'DRAFT' && <p className="text-sm text-warning mb-4">รายการเตรียมสัญญา ยังไม่ใช่ยอดขายสำเร็จ</p>}
+      {contractStatusFilter === 'DRAFT' && <p className="text-sm text-warning-strong mb-4">รายการเตรียมสัญญา ยังไม่ใช่ยอดขายสำเร็จ</p>}
       {/* Sales Table */}
       <QueryBoundary
         isLoading={isLoading && !salesData}

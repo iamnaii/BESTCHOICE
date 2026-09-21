@@ -49,7 +49,7 @@ const PERIOD_STATUS_LABEL: Record<PeriodStatus, string> = {
 
 const PERIOD_STATUS_CLASS: Record<PeriodStatus, string> = {
   OPEN: 'bg-muted text-muted-foreground',
-  REVIEW: 'bg-warning/15 text-warning',
+  REVIEW: 'bg-warning/15 text-warning-strong',
   CLOSED: 'bg-success/15 text-success',
   SYNCED: 'bg-primary/15 text-primary',
 };
@@ -176,7 +176,7 @@ export default function AssetPeriodClosePage() {
                               สินทรัพย์)
                             </span>
                           ) : run?.status === 'REVERSED' ? (
-                            <span className="inline-flex items-center gap-1 text-warning text-xs font-medium">
+                            <span className="inline-flex items-center gap-1 text-warning-strong text-xs font-medium">
                               <AlertTriangle className="size-3.5" /> กลับรายการแล้ว
                             </span>
                           ) : isCurrent ? (

@@ -45,7 +45,7 @@ export default function BookingProductPicker({ branchId, selectedId, onSelect, o
               <span className="block font-medium">{product.name}</span>
               <span className="block break-all text-xs text-muted-foreground">IMEI / Serial: {product.imeiSerial || 'ไม่ระบุ'} · พร้อมขาย</span>
               <span className="block">{cash === null ? 'ยังไม่ได้ตั้งราคาเงินสด' : `ราคาเงินสด ${cash.toLocaleString('th-TH')} บาท`}</span>
-              {product.wasPreviouslyDamaged && <span className="block text-warning">มีประวัติเสียหาย ต้องให้ผู้มีสิทธิ์ยืนยันก่อนขาย</span>}
+              {product.wasPreviouslyDamaged && <span className="block text-warning-strong">มีประวัติเสียหาย ต้องให้ผู้มีสิทธิ์ยืนยันก่อนขาย</span>}
             </button>;
           })}
     </div>}

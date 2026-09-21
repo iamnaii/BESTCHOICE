@@ -189,7 +189,7 @@ function RevenueReport() {
         <h3 className="text-sm font-semibold text-foreground mb-4">รายงานรายได้ / กำไร-ขาดทุน</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <SummaryCard label="รายได้ดอกเบี้ย" value={data?.interestIncome || 0} color="text-success" />
-          <SummaryCard label="ค่าปรับ" value={data?.lateFeeIncome || 0} color="text-warning" />
+          <SummaryCard label="ค่าปรับ" value={data?.lateFeeIncome || 0} color="text-warning-strong" />
           <SummaryCard label="ยอดชำระรับ" value={data?.paymentsReceived || 0} color="text-primary" />
           <SummaryCard label="ยอดค้างชำระ" value={data?.outstandingTotal || 0} color="text-destructive" />
         </div>
@@ -280,7 +280,7 @@ function SalesReport() {
                       s.overdueRate > 20
                         ? 'bg-destructive/10 text-destructive dark:bg-destructive/15'
                         : s.overdueRate > 10
-                          ? 'bg-warning/10 text-warning dark:bg-warning/15'
+                          ? 'bg-warning/10 text-warning-strong dark:bg-warning/15'
                           : 'bg-success/10 text-success dark:bg-success/15'
                     }`}
                   >
@@ -548,7 +548,7 @@ function EntityProfitReport() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <SummaryCard label="รายได้ดอกเบี้ย" value={finance.interestIncome} color="text-primary" />
             <SummaryCard label="จ่ายคอมมิชชัน" value={finance.commissionExpense} color="text-destructive" />
-            <SummaryCard label="ค่าปรับล่าช้า" value={finance.lateFeeIncome} color="text-warning" />
+            <SummaryCard label="ค่าปรับล่าช้า" value={finance.lateFeeIncome} color="text-warning-strong" />
             <SummaryCard label="กำไร Finance" value={finance.profit} color="text-success" />
           </div>
           <div className="text-xs text-muted-foreground mt-3">

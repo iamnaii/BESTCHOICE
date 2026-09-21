@@ -190,7 +190,7 @@ export function CreateBatchDialog({
             )}{' '}
             • รวม ฿{fmtMoney(totalAmount)}
             {legacyCount > 0 && (
-              <span className="block mt-1 text-warning">
+              <span className="block mt-1 text-warning-strong">
                 {legacyCount} สัญญาเป็น LEGACY (SHOP ไม่มียอดตั้งต้น) — ฝั่ง SHOP
                 จะไม่ลงบัญชีให้สัญญากลุ่มนี้
               </span>
@@ -287,7 +287,7 @@ export function CreateBatchDialog({
               <span className="text-muted-foreground">
                 หักรวม (เครดิตเปลี่ยนเครื่อง + เรียกคืน + ค่าเครื่องคืน)
               </span>
-              <span className="tabular-nums text-warning">−฿{fmtMoney(totalDeduction)}</span>
+              <span className="tabular-nums text-warning-strong">−฿{fmtMoney(totalDeduction)}</span>
             </div>
             <div className="flex items-center justify-between border-t border-border pt-1 leading-snug">
               <span className="font-semibold">ยอดโอนสุทธิ</span>

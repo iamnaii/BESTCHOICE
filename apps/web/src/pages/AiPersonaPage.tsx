@@ -170,7 +170,7 @@ function EditablePersonaCard({
                 {draft.length.toLocaleString('th-TH')} / {maxChars.toLocaleString('th-TH')} ตัวอักษร
                 {' · '}≈ {approxTokenCount(draft).toLocaleString('th-TH')} tokens
               </span>
-              {dirty && <span className="text-warning">ยังไม่ได้บันทึก</span>}
+              {dirty && <span className="text-warning-strong">ยังไม่ได้บันทึก</span>}
             </div>
           </div>
 
@@ -184,7 +184,7 @@ function EditablePersonaCard({
           )}
 
           {warnings.length > 0 && (
-            <div className="rounded-md border border-warning/40 bg-warning/5 p-2.5 text-xs text-warning leading-snug space-y-1">
+            <div className="rounded-md border border-warning/40 bg-warning/5 p-2.5 text-xs text-warning-strong leading-snug space-y-1">
               <div className="flex items-center gap-2 font-semibold">
                 <AlertTriangle className="w-4 h-4" />
                 คำเตือนก่อนบันทึก

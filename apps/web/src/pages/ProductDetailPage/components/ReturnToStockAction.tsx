@@ -170,7 +170,7 @@ export default function ReturnToStockAction({
       >
         <div className="space-y-3">
           {hadPreviousPrice && (
-            <p className="text-xs text-warning leading-snug">
+            <p className="text-xs text-warning-strong leading-snug">
               ราคาด้านล่างคือ ราคาจากตอนขายครั้งก่อน — เครื่องมือสองที่รับคืนมายังไม่เคยถูกตั้งราคาใหม่
               กรุณาตรวจก่อนยืนยัน
             </p>

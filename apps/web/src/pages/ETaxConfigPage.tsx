@@ -120,7 +120,7 @@ export function ETaxConfigPage() {
         data-testid="etax-config-banner"
         className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/5 p-3 mb-4"
       >
-        <AlertCircle className="size-4 text-warning mt-0.5 shrink-0" aria-hidden />
+        <AlertCircle className="size-4 text-warning-strong mt-0.5 shrink-0" aria-hidden />
         <div className="text-sm text-foreground leading-snug">
           <p className="font-medium mb-1">
             โหมด disabled = ระบบสร้าง XML ได้ แต่ไม่ส่งให้สรรพากร

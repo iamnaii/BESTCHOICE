@@ -110,7 +110,7 @@ export function QrSentBadge({ paymentId }: { paymentId: string }) {
         {data.purpose === 'RESCHEDULE' ? 'QR ปรับดิว' : 'QR ส่งแล้ว'} · ฿{amountThb}
       </Badge>
       {data.purpose === 'RESCHEDULE' && (
-        <div className="text-[10px] text-warning leading-tight">ดิวจะเลื่อนเมื่อเงินเข้า</div>
+        <div className="text-[10px] text-warning-strong leading-tight">ดิวจะเลื่อนเมื่อเงินเข้า</div>
       )}
       <div className="text-[10px] text-muted-foreground font-mono leading-tight">
         {tier === 'expired' ? 'หมดอายุ · กดส่งใหม่' : display}

@@ -128,7 +128,7 @@ export default function SessionActions({
             onClick={() => setShowStaffList((v) => !v)}
             aria-haspopup="menu"
             aria-expanded={showStaffList}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs leading-snug bg-warning/10 text-warning rounded-lg hover:bg-warning/20 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs leading-snug bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20 transition-colors"
           >
             <ArrowRightLeft className="w-3.5 h-3.5" />
             โอนให้พนักงาน
@@ -267,7 +267,7 @@ export default function SessionActions({
               }
             }}
             disabled={isTakingOver}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-warning/10 text-warning rounded-lg hover:bg-warning/20 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-warning/10 text-warning-strong rounded-lg hover:bg-warning/20 transition-colors disabled:opacity-50"
             title="หยุด AI แล้วตอบเอง"
           >
             <Hand className="w-3.5 h-3.5" />

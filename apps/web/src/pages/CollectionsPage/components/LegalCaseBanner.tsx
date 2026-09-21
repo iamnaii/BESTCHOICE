@@ -30,7 +30,7 @@ export default function LegalCaseBanner({ contractId, contractStatus, onOpen }: 
     <div className="border border-warning/40 bg-warning/10 rounded-lg p-3 mb-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2 min-w-0">
-          <Gavel className="size-4 text-warning mt-0.5 shrink-0" />
+          <Gavel className="size-4 text-warning-strong mt-0.5 shrink-0" />
           <div className="min-w-0">
             <div className="text-sm font-medium leading-snug">คดีในชั้นศาล</div>
             {legalCase ? (

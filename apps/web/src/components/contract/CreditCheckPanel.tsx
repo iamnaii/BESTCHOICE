@@ -25,7 +25,7 @@ const statusLabels: Record<string, { label: string; className: string }> = {
   PENDING: { label: 'รอวิเคราะห์', className: 'bg-muted text-foreground' },
   APPROVED: { label: 'ผ่าน', className: 'bg-success/10 text-success' },
   REJECTED: { label: 'ไม่ผ่าน', className: 'bg-destructive/10 text-destructive' },
-  MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-warning/10 text-warning' },
+  MANUAL_REVIEW: { label: 'ต้องตรวจเพิ่ม', className: 'bg-warning/10 text-warning-strong' },
 };
 
 export default function CreditCheckPanel({ contractId }: { contractId: string }) {
@@ -142,7 +142,7 @@ export default function CreditCheckPanel({ contractId }: { contractId: string })
 
   const getScoreColor = (score: number) => {
     if (score >= 70) return 'text-success';
-    if (score >= 50) return 'text-warning';
+    if (score >= 50) return 'text-warning-strong';
     return 'text-destructive';
   };
 

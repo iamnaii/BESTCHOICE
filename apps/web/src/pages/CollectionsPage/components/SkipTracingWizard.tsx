@@ -232,7 +232,7 @@ export default function SkipTracingWizard({ open, onClose, contract }: Props) {
                 </a>
               </div>
             ) : (
-              <div className="rounded-lg border border-dashed border-warning/40 bg-warning/5 p-4 text-center text-xs text-warning leading-snug">
+              <div className="rounded-lg border border-dashed border-warning/40 bg-warning/5 p-4 text-center text-xs text-warning-strong leading-snug">
                 <AlertTriangle className="mx-auto mb-1 size-4" />
                 ลูกค้าไม่ได้ระบุผู้ติดต่อฉุกเฉินไว้
               </div>

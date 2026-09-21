@@ -292,8 +292,8 @@ export function RepossessionOverlay({
       <div className="p-6 space-y-5">
         {!canConfirm && (
           <div className="flex items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-3">
-            <Lock className="size-4 text-warning shrink-0 mt-0.5" />
-            <div className="text-xs text-warning leading-snug">
+            <Lock className="size-4 text-warning-strong shrink-0 mt-0.5" />
+            <div className="text-xs text-warning-strong leading-snug">
               <strong className="block">การยืนยันทำได้เฉพาะเจ้าของ / ผจก.การเงิน</strong>
               {canPreview
                 ? 'ดูตัวอย่างกำไร/ขาดทุนและรายการ JP5 ได้ แต่กดยืนยันไม่ได้'
@@ -399,7 +399,7 @@ export function RepossessionOverlay({
                 </span>
                 <span
                   className={`block text-[11px] leading-snug ${
-                    tableBase === null ? 'text-warning' : 'text-muted-foreground'
+                    tableBase === null ? 'text-warning-strong' : 'text-muted-foreground'
                   }`}
                 >
                   {tableBase === null
@@ -442,7 +442,7 @@ export function RepossessionOverlay({
           {notPending && deviceReturn && (
             <div
               role="alert"
-              className="mt-3 flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning leading-snug"
+              className="mt-3 flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-strong leading-snug"
             >
               <AlertTriangle className="size-4 mt-0.5 shrink-0" />
               <span>
@@ -457,7 +457,7 @@ export function RepossessionOverlay({
         {blockedByEligibility && (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning leading-snug"
+            className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-strong leading-snug"
           >
             <AlertTriangle className="size-4 mt-0.5 shrink-0" />
             <span>{preview?.eligibility?.reason}</span>
@@ -614,7 +614,7 @@ export function RepossessionOverlay({
                       ตัวเลขนี้ใช้ฐานบัญชี ส่วนต่างด้านบนใช้ยอดปิดสัญญาหลังส่วนลด
                     </p>
                     {!hasReceivableRelief && (
-                      <p className="text-warning leading-relaxed">
+                      <p className="text-warning-strong leading-relaxed">
                         JP5 ชุดนี้ไม่มีบรรทัดตัดลูกหนี้
                         ยอดจึงรวมมูลค่ารับคืนและเงินล่วงหน้าที่ล้างออก
                         ควรตรวจประวัติบัญชีของสัญญาประกอบ
@@ -721,7 +721,7 @@ export function RepossessionOverlay({
               title="รายการบัญชีคืนเครื่อง (JP5)"
               subtitle="ยังไม่มีรายการให้ตรวจสอบ"
             >
-              <p className="text-sm text-warning">
+              <p className="text-sm text-warning-strong">
                 ไม่สามารถเตรียมรายการ JP5 ได้ กรุณาตรวจสอบข้อมูลบัญชีของสัญญาแล้วลองอีกครั้ง
               </p>
               <button
@@ -766,7 +766,7 @@ export function RepossessionOverlay({
       {/* Footer */}
       <div className="sticky bottom-0 bg-background/95 backdrop-blur-xs border-t px-6 py-4 space-y-3">
         {submitBlockReason && (
-          <div id="repo-submit-block" role="status" className="text-sm text-warning leading-snug">
+          <div id="repo-submit-block" role="status" className="text-sm text-warning-strong leading-snug">
             <p>{submitBlockReason}</p>
             {blockedByEligibility && (
               <a href={`/contracts/${contractId}`} className="inline-block mt-1 underline">

@@ -119,7 +119,7 @@ export default function SystemStatusPage() {
         <div className={`rounded-lg p-4 mb-8 flex items-center gap-3 ${allOk ? 'bg-success/5 dark:bg-success/10 border border-success/20' : 'bg-warning/10 border border-warning/20'}`}>
           <StatusDot ok={allOk} />
           <div>
-            <p className={`font-semibold ${allOk ? 'text-success' : 'text-warning'}`}>
+            <p className={`font-semibold ${allOk ? 'text-success' : 'text-warning-strong'}`}>
               {allOk ? 'ระบบทั้งหมดทำงานปกติ' : 'มีบางบริการที่ไม่พร้อมใช้งาน'}
             </p>
             <p className="text-xs text-muted-foreground mt-0.5">รีเฟรชอัตโนมัติทุก 30 วินาที</p>
@@ -481,7 +481,7 @@ function ServiceCard({
   };
   const statusColors: Record<string, string> = {
     ok: 'text-success',
-    warn: 'text-warning',
+    warn: 'text-warning-strong',
     error: 'text-destructive',
   };
 

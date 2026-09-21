@@ -132,7 +132,7 @@ export function PendingTab({
       )}
 
       {hasDrift && (
-        <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning leading-snug">
+        <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning-strong leading-snug">
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
           <div>
             <strong>ยอดคิวรอจ่ายไม่ตรงกับ GL ทั้งบัญชี</strong> — ส่วนต่าง ฿
@@ -232,7 +232,7 @@ export function PendingTab({
                           </td>
                           <td className="p-3 text-right tabular-nums">
                             {p.swapCreditEligible ? (
-                              <span className="text-warning">−{fmtMoney(p.swapCreditGl)}</span>
+                              <span className="text-warning-strong">−{fmtMoney(p.swapCreditGl)}</span>
                             ) : Number(p.swapCreditGl) > 0 ? (
                               <Badge
                                 variant="secondary"
@@ -264,7 +264,7 @@ export function PendingTab({
             <Card>
               <CardHeader>
                 <h2 className="text-lg font-semibold flex items-center gap-2 leading-snug">
-                  <Undo2 className="h-5 w-5 text-warning" />
+                  <Undo2 className="h-5 w-5 text-warning-strong" />
                   รายการเรียกคืน (ยกเลิกหลังตัดจ่าย) ({recalls.length} รายการ)
                 </h2>
                 <p className="text-xs text-muted-foreground leading-snug">
@@ -331,7 +331,7 @@ export function PendingTab({
                                 {r.customerName}
                               </div>
                             </td>
-                            <td className="p-3 text-right tabular-nums text-warning">
+                            <td className="p-3 text-right tabular-nums text-warning-strong">
                               −{fmtMoney(r.recallGl)}
                             </td>
                             <td className="p-3 text-right tabular-nums">
@@ -374,7 +374,7 @@ export function PendingTab({
             <Card>
               <CardHeader>
                 <h2 className="text-lg font-semibold flex items-center gap-2 leading-snug">
-                  <PackageX className="h-5 w-5 text-warning" />
+                  <PackageX className="h-5 w-5 text-warning-strong" />
                   ค่าเครื่องคืน (ใบรับเครื่องคืนที่ยืนยันแล้ว) ({deviceReturns.length} รายการ)
                 </h2>
                 <p className="text-xs text-muted-foreground leading-snug">
@@ -442,7 +442,7 @@ export function PendingTab({
                                 {d.customerName}
                               </div>
                             </td>
-                            <td className="p-3 text-right tabular-nums text-warning">
+                            <td className="p-3 text-right tabular-nums text-warning-strong">
                               −{fmtMoney(d.deviceReturnGl)}
                             </td>
                             <td className="p-3 text-right tabular-nums">
@@ -504,7 +504,7 @@ export function PendingTab({
               <>
                 {' '}
                 • หัก{' '}
-                <strong className="tabular-nums text-warning">
+                <strong className="tabular-nums text-warning-strong">
                   ฿{fmtMoney(selectedDeduction)}
                 </strong>{' '}
                 • โอนสุทธิ{' '}
@@ -544,7 +544,7 @@ function StatTile({
   tone?: 'default' | 'warning' | 'success';
 }) {
   const toneClass =
-    tone === 'warning' ? 'text-warning' : tone === 'success' ? 'text-success' : 'text-foreground';
+    tone === 'warning' ? 'text-warning-strong' : tone === 'success' ? 'text-success' : 'text-foreground';
   return (
     <Card>
       <CardContent className="pt-4 pb-4">

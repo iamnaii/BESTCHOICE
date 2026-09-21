@@ -117,7 +117,7 @@ function SummaryCard({
   const valueColor = {
     success: 'text-success',
     sky: 'text-info',
-    warning: 'text-warning',
+    warning: 'text-warning-strong',
     primary: 'text-primary',
     destructive: 'text-destructive',
   }[accent];
@@ -289,7 +289,7 @@ export function CashFlowPage() {
                   Reconciled ±{fmt(Math.abs(cf.drift))}฿
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 text-warning px-2.5 py-1 text-xs leading-snug">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 text-warning-strong px-2.5 py-1 text-xs leading-snug">
                   <AlertTriangle className="size-3.5" />
                   ข้อมูลคลาดเคลื่อน {fmt(Math.abs(cf.drift))}฿ — กรุณาตรวจสอบบัญชี
                 </span>
@@ -374,7 +374,7 @@ export function CashFlowPage() {
                     </span>
                   </div>
                   {/* SP2 — known gap caveat (deferred to Phase A.5) */}
-                  <div className="my-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-xs text-warning leading-snug flex items-start gap-2">
+                  <div className="my-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-xs text-warning-strong leading-snug flex items-start gap-2">
                     <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
                     <div>
                       หมวด <strong>กิจกรรมลงทุน</strong> ใช้ข้อมูลจาก FixedAsset โดยตรง —

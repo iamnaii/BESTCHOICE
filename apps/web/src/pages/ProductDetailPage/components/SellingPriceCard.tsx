@@ -99,7 +99,7 @@ export default function SellingPriceCard({
           </p>
         )}
         {isFallback && (
-          <p className="text-sm text-warning leading-snug">
+          <p className="text-sm text-warning-strong leading-snug">
             ราคาจากระบบเดิม — ยังไม่ได้ตั้งราคาขายใหม่ เครื่องนี้จะยังไม่ขึ้นเว็บ
           </p>
         )}
@@ -110,7 +110,7 @@ export default function SellingPriceCard({
               {readiness.isReady ? (
                 <Check className="size-3.5 text-success" aria-hidden />
               ) : (
-                <X className="size-3.5 text-warning" aria-hidden />
+                <X className="size-3.5 text-warning-strong" aria-hidden />
               )}
               <span>
                 {readiness.isReady

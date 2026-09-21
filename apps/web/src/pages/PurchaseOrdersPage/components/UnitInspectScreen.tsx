@@ -224,7 +224,7 @@ export function UnitInspectScreen({
         <div
           className={cn(
             'grid size-[52px] shrink-0 place-items-center rounded-[14px]',
-            used ? 'bg-warning/10 text-warning' : 'bg-info/10 text-info',
+            used ? 'bg-warning/10 text-warning-strong' : 'bg-info/10 text-info',
           )}
         >
           <Smartphone className="size-6" />
@@ -261,7 +261,7 @@ export function UnitInspectScreen({
             />
           </div>
           {isDuplicate && (
-            <p className="mt-1.5 flex items-center gap-1 text-xs leading-snug text-warning">
+            <p className="mt-1.5 flex items-center gap-1 text-xs leading-snug text-warning-strong">
               <AlertTriangle className="size-3.5 shrink-0" /> IMEI ซ้ำกับเครื่องอื่นในรายการนี้
             </p>
           )}
@@ -368,7 +368,7 @@ export function UnitInspectScreen({
 
       {unit.status === 'PASS' && used && (
         <div className="flex flex-col gap-3.5 rounded-xl border border-warning/25 bg-warning/5 p-4" data-testid="used-panel">
-          <div className="text-[13px] font-semibold text-warning">ข้อมูลมือสอง — ต้องกรอกก่อนผ่าน</div>
+          <div className="text-[13px] font-semibold text-warning-strong">ข้อมูลมือสอง — ต้องกรอกก่อนผ่าน</div>
           <UsedDeviceDetailsFields value={unit} onChange={set} idPrefix={String(idx)} showRequired />
           <div className="flex items-center justify-between gap-3 border-t border-warning/25 pt-3">
             <span className="text-sm">

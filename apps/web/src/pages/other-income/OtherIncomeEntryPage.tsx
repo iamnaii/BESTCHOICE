@@ -690,7 +690,7 @@ export default function OtherIncomeEntryPage() {
                   ? 'bg-success/10 text-success'
                   : docStatus === 'REVERSED'
                     ? 'bg-destructive/10 text-destructive'
-                    : 'bg-warning/15 text-warning'
+                    : 'bg-warning/15 text-warning-strong'
               }`}
             >
               {docStatus}
@@ -717,7 +717,7 @@ export default function OtherIncomeEntryPage() {
             role="status"
             className="mb-4 flex items-start gap-3 rounded-lg border border-warning/40 bg-warning/10 p-3"
           >
-            <Info size={16} className="text-warning mt-0.5 shrink-0" aria-hidden="true" />
+            <Info size={16} className="text-warning-strong mt-0.5 shrink-0" aria-hidden="true" />
             <div className="flex-1 text-xs leading-snug text-foreground">
               <p className="font-medium">คัดลอกจากเอกสารเดิมเรียบร้อย</p>
               <p className="text-muted-foreground mt-0.5">
@@ -819,9 +819,9 @@ export default function OtherIncomeEntryPage() {
               className="rounded-xl border border-warning/40 bg-warning/5 p-4"
             >
               <div className="flex items-start gap-2">
-                <AlertTriangle size={16} className="text-warning shrink-0 mt-0.5" />
+                <AlertTriangle size={16} className="text-warning-strong shrink-0 mt-0.5" />
                 <div className="min-w-0 space-y-1">
-                  <p className="text-sm font-bold text-warning">
+                  <p className="text-sm font-bold text-warning-strong">
                     เตือน: ตรวจพบความเสี่ยงคีย์ค่าปรับ (42-1103) ซ้ำ
                   </p>
                   <ul className="text-xs text-foreground/80 space-y-1 leading-snug">
@@ -1001,7 +1001,7 @@ export default function OtherIncomeEntryPage() {
 
               {(Number(values.amountReceived) || 0) === 0 && (
                 <div className="flex items-start gap-2 p-3 rounded-md bg-muted/40 text-xs text-muted-foreground">
-                  <Lightbulb size={14} className="text-warning shrink-0 mt-0.5" />
+                  <Lightbulb size={14} className="text-warning-strong shrink-0 mt-0.5" />
                   <span>กรอก "จำนวนเงินที่ได้รับจริง" เพื่อตรวจเปรียบเทียบกับยอดสุทธิ</span>
                 </div>
               )}
@@ -1075,7 +1075,7 @@ export default function OtherIncomeEntryPage() {
                   />
                   <span
                     className={
-                      overrideMode ? 'text-warning font-semibold' : 'text-muted-foreground'
+                      overrideMode ? 'text-warning-strong font-semibold' : 'text-muted-foreground'
                     }
                   >
                     ใช้เอง (Override)
@@ -1130,7 +1130,7 @@ export default function OtherIncomeEntryPage() {
             )}
             <>
                 {needsAttachment && (
-                  <div className="flex items-start gap-2 mb-3 text-xs text-warning">
+                  <div className="flex items-start gap-2 mb-3 text-xs text-warning-strong">
                     <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                     <span>
                       ยอดรับ ≥ {formatNumber(attachmentThreshold)} ฿ — ต้องแนบไฟล์ประกอบเพื่อ POST
@@ -1252,7 +1252,7 @@ export default function OtherIncomeEntryPage() {
             </div>
             {(Number(values.amountReceived) || 0) === 0 && (
               <div className="mt-4 flex items-start gap-2 p-3 rounded-md bg-muted/40 text-xs text-muted-foreground">
-                <Lightbulb size={14} className="text-warning shrink-0 mt-0.5" />
+                <Lightbulb size={14} className="text-warning-strong shrink-0 mt-0.5" />
                 <span>กรอก "จำนวนเงินที่ได้รับจริง" เพื่อตรวจเปรียบเทียบกับยอดสุทธิ</span>
               </div>
             )}
@@ -1323,7 +1323,7 @@ function SummaryTile({
   const toneCls = {
     primary: 'bg-primary/5 text-primary',
     info: 'bg-info/5 text-info',
-    warning: 'bg-warning/5 text-warning',
+    warning: 'bg-warning/5 text-warning-strong',
     success: 'bg-success/5 text-success',
   }[tone];
   return (

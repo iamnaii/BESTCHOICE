@@ -183,7 +183,7 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
             className={
               letter.letterType === 'CONTRACT_TERMINATION_60D'
                 ? 'text-destructive font-medium leading-snug text-right'
-                : 'text-warning font-medium leading-snug text-right'
+                : 'text-warning-strong font-medium leading-snug text-right'
             }
           >
             {letter.letterType === 'RETURN_DEVICE_45D'
@@ -213,9 +213,9 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
           className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs space-y-2"
         >
           <div className="flex items-start gap-2">
-            <AlertTriangle className="size-4 text-warning shrink-0 mt-0.5" />
+            <AlertTriangle className="size-4 text-warning-strong shrink-0 mt-0.5" />
             <div className="leading-snug">
-              <div className="font-semibold text-warning">ยังไม่มีลายเซ็นในระบบ</div>
+              <div className="font-semibold text-warning-strong">ยังไม่มีลายเซ็นในระบบ</div>
               <div className="text-muted-foreground mt-0.5">
                 PDF ที่สร้างจะไม่มีลายเซ็น — แนะนำให้อัปโหลดลายเซ็นในการตั้งค่าก่อน
                 หรือกดปุ่มด้านล่างเพื่อสร้างต่อโดยไม่มีลายเซ็น
@@ -227,7 +227,7 @@ function GenerateSection({ letter, onGenerated, onClose }: GenerateSectionProps)
               <button
                 type="button"
                 onClick={() => setProceedWithoutSignature(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-warning/50 bg-background px-3 py-1.5 text-xs font-medium text-warning hover:bg-warning/10 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-warning/50 bg-background px-3 py-1.5 text-xs font-medium text-warning-strong hover:bg-warning/10 transition-colors"
               >
                 สร้างต่อโดยไม่มีลายเซ็น
               </button>

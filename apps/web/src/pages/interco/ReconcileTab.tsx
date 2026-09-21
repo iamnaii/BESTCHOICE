@@ -301,7 +301,7 @@ function RunSummary({ result }: { result: ReconcileRunResponse }) {
   }
   if (!result.enabled) {
     return (
-      <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning leading-snug">
+      <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning-strong leading-snug">
         การกระทบยอดถูกปิดไว้ (SystemConfig <code>interco_reconcile_enabled</code>) — ยังไม่ได้ตรวจอะไรเลย
         ให้ผู้ดูแลระบบเปิดค่านี้ในฐานข้อมูลก่อน (คีย์นี้ยังไม่มีหน้าจอตั้งค่า)
       </div>
@@ -315,7 +315,7 @@ function RunSummary({ result }: { result: ReconcileRunResponse }) {
     );
   }
   return (
-    <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning leading-snug">
+    <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning-strong leading-snug">
       <div>
         กระทบยอดแล้ว — พบ {result.total} รายการไม่ตรง:{' '}
         {Object.entries(result.counts)

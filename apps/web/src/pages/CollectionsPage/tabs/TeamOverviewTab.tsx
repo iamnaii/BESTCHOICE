@@ -57,7 +57,7 @@ export default function TeamOverviewTab() {
             label="นัดสำเร็จ"
             value={`${today.promisesMade}`}
             unit="ราย"
-            tone="text-warning"
+            tone="text-warning-strong"
             bg="bg-warning/10"
           />
         </div>
@@ -82,14 +82,14 @@ export default function TeamOverviewTab() {
       {/* Section 2: Alerts (only when there are any) */}
       {alerts.length > 0 && (
         <div className="rounded-2xl border border-warning/30 bg-warning/5 p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-warning leading-snug mb-2.5">
+          <div className="flex items-center gap-2 text-sm font-semibold text-warning-strong leading-snug mb-2.5">
             <AlertTriangle className="size-4" />
             ต้องดำเนินการ
           </div>
           <ul className="space-y-1.5">
             {alerts.map((a, i) => (
               <li key={i} className="text-sm text-foreground leading-snug flex items-start gap-2">
-                <span className="text-warning leading-snug">•</span>
+                <span className="text-warning-strong leading-snug">•</span>
                 <span>{a.message}</span>
               </li>
             ))}
@@ -163,7 +163,7 @@ function CollectorRow({ collector }: { collector: CollectorStatus }) {
     { color: string; bg: string; label: string }
   > = {
     'on-track': { color: 'text-success', bg: 'bg-success/10', label: 'ทำงานอยู่' },
-    behind: { color: 'text-warning', bg: 'bg-warning/10', label: 'ช้ากว่าเป้า' },
+    behind: { color: 'text-warning-strong', bg: 'bg-warning/10', label: 'ช้ากว่าเป้า' },
     idle: { color: 'text-destructive', bg: 'bg-destructive/10', label: 'เงียบนาน' },
     inactive: { color: 'text-muted-foreground', bg: 'bg-muted', label: 'ไม่ active' },
   };

@@ -398,7 +398,7 @@ export default function ProductInfoCard({
         {/* Used phone fields */}
         {form.category === 'PHONE_USED' && (
           <div className="col-span-2 mt-2 border border-warning/20 bg-warning/5 dark:bg-warning/10 rounded-lg p-4 space-y-4">
-            <h3 className="text-sm font-semibold text-warning">ข้อมูลมือสอง</h3>
+            <h3 className="text-sm font-semibold text-warning-strong">ข้อมูลมือสอง</h3>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">% แบตเตอรี่</label>

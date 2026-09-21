@@ -153,7 +153,7 @@ export function JeBlock({
             {flowLabel}
           </span>
           {je.reversed && (
-            <span className="px-1.5 py-0.5 rounded-full bg-warning/10 text-warning font-medium">
+            <span className="px-1.5 py-0.5 rounded-full bg-warning/10 text-warning-strong font-medium">
               ถูกกลับรายการ{je.reversedByEntryNumber ? ` โดย ${je.reversedByEntryNumber}` : ''}
             </span>
           )}
@@ -161,7 +161,7 @@ export function JeBlock({
             <span className="text-muted-foreground">รับจริง {money(je.deltaApplied)} ฿</span>
           )}
           {je.lateFeePortion && Number(je.lateFeePortion) > 0 && (
-            <span className="text-warning">ค่าปรับ {money(je.lateFeePortion)} ฿</span>
+            <span className="text-warning-strong">ค่าปรับ {money(je.lateFeePortion)} ฿</span>
           )}
         </div>
         <span

@@ -42,7 +42,7 @@ export function ReopenedPeriodBanner() {
             variant="warning"
             className="border-warning bg-warning/10"
           >
-            <AlertTriangle className="w-4 h-4 text-warning" />
+            <AlertTriangle className="w-4 h-4 text-warning-strong" />
             <AlertTitle>งวด {periodLabel} ถูกเปิดชั่วคราว</AlertTitle>
             <AlertDescription className="space-y-1">
               <p>

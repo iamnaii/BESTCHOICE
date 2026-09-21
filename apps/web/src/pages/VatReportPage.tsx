@@ -291,7 +291,7 @@ export function VatReportPage() {
               <Card data-testid="section-vat60day">
                 <CardHeader>
                   <h3 className="text-sm font-semibold text-foreground leading-snug flex items-center gap-2">
-                    <AlertCircle className="size-4 text-warning" aria-hidden />
+                    <AlertCircle className="size-4 text-warning-strong" aria-hidden />
                     VAT บังคับ-ลูกหนี้ค้าง 60 วัน (Cr 21-2103)
                   </h3>
                 </CardHeader>

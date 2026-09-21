@@ -23,8 +23,8 @@ const TONE_STYLES = {
   warning: {
     border: 'border-warning/40 hover:border-warning',
     bg: 'bg-warning/5 hover:bg-warning/10',
-    accent: 'bg-warning/15 text-warning',
-    text: 'text-warning',
+    accent: 'bg-warning/15 text-warning-strong',
+    text: 'text-warning-strong',
     badge: 'bg-warning text-warning-foreground',
   },
   destructive: {
@@ -138,7 +138,7 @@ export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList 
     <div className="mb-6">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-[15px] font-semibold flex items-center gap-2">
-          <AlertTriangle className="size-4 text-warning" strokeWidth={1.75} />
+          <AlertTriangle className="size-4 text-warning-strong" strokeWidth={1.75} />
           ต้องทำเลย
           <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
             ({total + warrantyExpiring.length})
@@ -185,8 +185,8 @@ export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList 
         <div className="rounded-xl border border-warning/30 bg-warning/5 p-3.5">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <ShieldAlert className="size-4 text-warning" strokeWidth={1.75} />
-              <span className="text-[13px] font-semibold text-warning">
+              <ShieldAlert className="size-4 text-warning-strong" strokeWidth={1.75} />
+              <span className="text-[13px] font-semibold text-warning-strong">
                 รับประกันใกล้หมด ({warrantyExpiring.length})
               </span>
             </div>
@@ -197,14 +197,14 @@ export function StockActionZone({ dashboard, warrantyExpiring, onNavigateToList 
                 <span className="text-foreground/90 truncate">
                   {p.brand} {p.model}
                 </span>
-                <span className="font-mono tabular-nums text-warning shrink-0">
+                <span className="font-mono tabular-nums text-warning-strong shrink-0">
                   {formatDateShort(p.warrantyExpireDate)}
                 </span>
               </div>
             ))}
           </div>
           {warrantyExpiring.length > 6 && (
-            <div className="text-[11px] text-warning/80 mt-1.5">
+            <div className="text-[11px] text-warning-strong/80 mt-1.5">
               + อีก {warrantyExpiring.length - 6} รายการ
             </div>
           )}

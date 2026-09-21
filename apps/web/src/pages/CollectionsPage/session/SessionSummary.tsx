@@ -82,7 +82,7 @@ export default function SessionSummary({
               label="ข้ามไปก่อน"
               value={summary.skipped}
               unit="ราย"
-              tone="text-warning"
+              tone="text-warning-strong"
             />
           )}
         </div>
@@ -96,7 +96,7 @@ export default function SessionSummary({
             tone="text-foreground"
             extra={
               <div
-                className={`text-sm font-medium leading-snug ${onTime ? 'text-success' : 'text-warning'}`}
+                className={`text-sm font-medium leading-snug ${onTime ? 'text-success' : 'text-warning-strong'}`}
               >
                 {fasterText}
               </div>

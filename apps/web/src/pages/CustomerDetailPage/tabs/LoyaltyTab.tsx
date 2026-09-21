@@ -66,7 +66,7 @@ export default function LoyaltyTab({ customerId, canEdit, loyaltyPoints, loyalty
         <Card className="rounded-xl border border-border/50 bg-card shadow-sm relative overflow-hidden">
           <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
           <CardContent className="p-5 text-center">
-            <div className="text-2xl font-bold text-warning tabular-nums">
+            <div className="text-2xl font-bold text-warning-strong tabular-nums">
               {loyaltyPoints?.lifetimeRedeemed?.toLocaleString() ?? 0}
             </div>
             <div className="text-xs text-muted-foreground mt-1">แต้มที่ใช้ไป</div>
@@ -144,7 +144,7 @@ export default function LoyaltyTab({ customerId, canEdit, loyaltyPoints, loyalty
                       className={`size-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                         item.type === 'EARN'
                           ? 'bg-success/10 text-success dark:bg-success/20'
-                          : 'bg-warning/10 text-warning dark:bg-warning/20'
+                          : 'bg-warning/10 text-warning-strong dark:bg-warning/20'
                       }`}
                     >
                       {item.type === 'EARN' ? '+' : '-'}
@@ -164,7 +164,7 @@ export default function LoyaltyTab({ customerId, canEdit, loyaltyPoints, loyalty
                   </div>
                   <span
                     className={`text-sm font-bold ${
-                      item.type === 'EARN' ? 'text-success' : 'text-warning'
+                      item.type === 'EARN' ? 'text-success' : 'text-warning-strong'
                     }`}
                   >
                     {item.type === 'EARN' ? '+' : '-'}

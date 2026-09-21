@@ -359,7 +359,7 @@ export default function PricingTemplatesPage() {
                     <td className="px-4 py-3 text-muted-foreground">{t.storage || '-'}</td>
                     <td className="px-4 py-3">
                       <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                        t.category === 'PHONE_NEW' ? 'bg-primary/10 text-primary dark:bg-primary/15' : 'bg-warning/10 text-warning dark:bg-warning/15'
+                        t.category === 'PHONE_NEW' ? 'bg-primary/10 text-primary dark:bg-primary/15' : 'bg-warning/10 text-warning-strong dark:bg-warning/15'
                       }`}>
                         {t.category === 'PHONE_NEW' ? 'มือ 1' : 'มือ 2'}
                       </span>

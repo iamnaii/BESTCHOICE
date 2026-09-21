@@ -53,14 +53,14 @@ export default function PaymentKpiCards({ summary, loading, collectedLabel }: Pa
       value: `${baht(s.waivedLateFee)} ฿`,
       foot: <>→ <code className="font-mono text-[11px]">Dr.52-1105</code> ส่วนลด</>,
       accent: 'bg-warning',
-      valueClass: 'text-warning',
+      valueClass: 'text-warning-strong',
     },
     {
       label: 'ค้าง ≥ 60 วัน',
       value: s.overdue60Count.toLocaleString('th-TH'),
       foot: <>trigger <code className="font-mono text-[11px]">21-2103</code> VAT</>,
       accent: 'bg-warning',
-      valueClass: 'text-warning',
+      valueClass: 'text-warning-strong',
     },
     {
       label: collectedLabel,

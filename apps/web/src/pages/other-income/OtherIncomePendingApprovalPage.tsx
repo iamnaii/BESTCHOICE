@@ -76,7 +76,7 @@ export default function OtherIncomePendingApprovalPage() {
                       {formatNumberDecimal(d.amountReceived)}
                     </td>
                     <td className="px-4 py-2 text-right">
-                      <Clock size={14} className="inline text-warning" />
+                      <Clock size={14} className="inline text-warning-strong" />
                     </td>
                   </tr>
                 ))}

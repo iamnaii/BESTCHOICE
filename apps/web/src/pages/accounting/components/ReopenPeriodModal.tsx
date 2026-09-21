@@ -44,7 +44,7 @@ export function ReopenPeriodModal({ open, period, onConfirm, onCancel }: Props) 
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-warning">
+          <DialogTitle className="flex items-center gap-2 text-warning-strong">
             <AlertTriangle className="w-5 h-5" />
             คุณกำลังเปิดงวด {period} ที่ปิดไปแล้ว
           </DialogTitle>

@@ -272,7 +272,7 @@ export function InternalControlActionBar(props: InternalControlActionBarProps) {
               </span>
               {showApprovalBadge && (
                 <span
-                  className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium leading-snug text-warning"
+                  className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2.5 py-1 text-xs font-medium leading-snug text-warning-strong"
                   title="เอกสารนี้ต้องผ่านการอนุมัติก่อนลงบัญชี"
                 >
                   ต้องอนุมัติ

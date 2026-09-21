@@ -342,7 +342,7 @@ export default function SupplierDetailPage() {
                     {paymentMethodLabels[pm.paymentMethod] || pm.paymentMethod}
                   </span>
                   {pm.isDefault && (
-                    <span className="px-2.5 py-0.5 rounded-full text-2xs font-semibold bg-warning/10 text-warning dark:bg-warning/15">
+                    <span className="px-2.5 py-0.5 rounded-full text-2xs font-semibold bg-warning/10 text-warning-strong dark:bg-warning/15">
                       ค่าเริ่มต้น
                     </span>
                   )}

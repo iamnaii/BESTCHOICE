@@ -172,7 +172,7 @@ export function EquityStatementPage() {
 
             {/* Caveat banner */}
             <div className="flex items-start gap-2 rounded-lg border border-warning/50 bg-warning/10 p-3 my-4 leading-snug">
-              <AlertTriangle className="size-5 text-warning shrink-0 mt-0.5" />
+              <AlertTriangle className="size-5 text-warning-strong shrink-0 mt-0.5" />
               <div className="text-sm text-warning-foreground">
                 <strong>หมายเหตุ:</strong> {equity.caveat}
                 {' — '}

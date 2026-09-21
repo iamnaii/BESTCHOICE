@@ -475,7 +475,7 @@ export default function StickerPrintPage() {
                           className={cn(
                             'size-4 shrink-0',
                             state === 'ready' && 'text-primary',
-                            state === 'noPrice' && 'text-warning',
+                            state === 'noPrice' && 'text-warning-strong',
                             state === 'missing' && 'text-destructive',
                             state === 'loading' && 'animate-spin text-muted-foreground',
                           )}
@@ -487,7 +487,7 @@ export default function StickerPrintPage() {
                           <div
                             className={cn(
                               'text-[11px] leading-snug',
-                              state === 'noPrice' ? 'text-warning' : state === 'missing' ? 'text-destructive' : 'text-muted-foreground',
+                              state === 'noPrice' ? 'text-warning-strong' : state === 'missing' ? 'text-destructive' : 'text-muted-foreground',
                             )}
                           >
                             #{index + 1} · {sub}

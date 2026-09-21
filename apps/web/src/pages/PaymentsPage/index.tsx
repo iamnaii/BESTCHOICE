@@ -874,7 +874,7 @@ export default function PaymentsPage() {
           />
 
           {paidTruncated && (
-            <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-warning leading-snug">
+            <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-2.5 text-sm text-warning-strong leading-snug">
               แสดง {paidPayments.length.toLocaleString('th-TH')} จาก{' '}
               {paidTotal.toLocaleString('th-TH')} รายการ (เรียงตามวันครบกำหนด) —
               ปรับช่วงวันที่ให้แคบลงเพื่อดูรายการทั้งหมด

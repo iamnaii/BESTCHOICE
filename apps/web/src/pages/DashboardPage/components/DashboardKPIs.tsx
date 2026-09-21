@@ -137,7 +137,7 @@ export default function DashboardKPIs({ kpis, comparativePL }: DashboardKPIsProp
           <div className="pl-2">
             <div className="flex items-center justify-between mb-4">
               <div className="size-10 rounded-xl bg-warning/10 flex items-center justify-center group-hover:bg-warning/20 transition-colors">
-                <Warehouse className="size-5 text-warning" />
+                <Warehouse className="size-5 text-warning-strong" />
               </div>
               <span className="text-2xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                 รวม <AnimatedCounter value={kpis.products.total} />

@@ -146,7 +146,7 @@ export function ReverseConfirmDialog({
 
         <div className="space-y-4 py-2">
           <div className="rounded-md border border-warning/40 bg-warning/10 p-3">
-            <p className="text-xs font-semibold text-warning mb-1.5 leading-snug">
+            <p className="text-xs font-semibold text-warning-strong mb-1.5 leading-snug">
               ⚠ ผลกระทบ
             </p>
             <ul className="space-y-1 text-xs text-muted-foreground leading-snug">

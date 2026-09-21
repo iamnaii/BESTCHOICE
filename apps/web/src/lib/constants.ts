@@ -5,15 +5,15 @@
 
 export const statusLabels: Record<string, { label: string; className: string }> = {
   PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-info/10 text-info' },
-  QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-warning/10 text-warning' },
-  PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-warning/10 text-warning' },
-  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-warning/10 text-warning' },
+  QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-warning/10 text-warning-strong' },
+  PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-warning/10 text-warning-strong' },
+  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-warning/10 text-warning-strong' },
   IN_STOCK: { label: 'พร้อมขาย', className: 'bg-success/10 text-success' },
-  RESERVED: { label: 'จอง', className: 'bg-warning/10 text-warning' },
+  RESERVED: { label: 'จอง', className: 'bg-warning/10 text-warning-strong' },
   SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-primary/10 text-primary' },
   SOLD_CASH: { label: 'ขายสด', className: 'bg-info/10 text-info' },
   REPOSSESSED: { label: 'ยึดคืน', className: 'bg-destructive/10 text-destructive' },
-  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-warning/10 text-warning' },
+  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-warning/10 text-warning-strong' },
   SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-info/10 text-info' },
   DAMAGED: { label: 'เสียหาย', className: 'bg-destructive/10 text-destructive' },
   LOST: { label: 'สูญหาย', className: 'bg-destructive/10 text-destructive' },
@@ -80,7 +80,7 @@ export const paymentMethods = [
 // --- Transfer Status ---
 
 export const transferStatusLabels: Record<string, { label: string; className: string }> = {
-  PENDING: { label: 'รอจัดส่ง', className: 'bg-warning/10 text-warning' },
+  PENDING: { label: 'รอจัดส่ง', className: 'bg-warning/10 text-warning-strong' },
   IN_TRANSIT: { label: 'ระหว่างโอนสินค้า', className: 'bg-primary/10 text-primary' },
   CONFIRMED: { label: 'รับแล้ว', className: 'bg-success/10 text-success' },
   REJECTED: { label: 'ปฏิเสธ', className: 'bg-destructive/10 text-destructive' },

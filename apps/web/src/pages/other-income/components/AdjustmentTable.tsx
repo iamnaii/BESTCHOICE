@@ -113,7 +113,7 @@ export function AdjustmentTable({
         </span>
       </div>
       {!balanced && (
-        <p className="text-[10px] mt-1 text-warning">
+        <p className="text-[10px] mt-1 text-warning-strong">
           ต้องระบุให้ครบ (V12: ผลรวม = ผลต่าง)
         </p>
       )}

@@ -194,7 +194,7 @@ export default function CreditCheckOverrideDialog({
           {/* Same status selected → block (no-op) */}
           {isNoOp && (
             <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 flex items-start gap-2">
-              <AlertTriangle className="size-4 text-warning shrink-0 mt-0.5" />
+              <AlertTriangle className="size-4 text-warning-strong shrink-0 mt-0.5" />
               <div className="text-xs text-foreground leading-snug">
                 สถานะนี้เหมือนสถานะปัจจุบัน — ถ้าไม่ต้องการเปลี่ยนให้กด "ยกเลิก"
               </div>
@@ -205,7 +205,7 @@ export default function CreditCheckOverrideDialog({
           {needsReason && (
             <>
               <div className="rounded-lg border border-warning/30 bg-warning/5 p-3 flex items-start gap-2">
-                <AlertTriangle className="size-4 text-warning shrink-0 mt-0.5" />
+                <AlertTriangle className="size-4 text-warning-strong shrink-0 mt-0.5" />
                 <div className="text-xs text-foreground leading-snug">
                   คุณกำลัง override ผล AI — ต้องระบุเหตุผลเพื่อ audit
                 </div>

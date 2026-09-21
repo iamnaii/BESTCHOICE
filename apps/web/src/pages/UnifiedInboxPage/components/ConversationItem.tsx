@@ -55,7 +55,7 @@ function AiStatusBadge({
   }
   if (aiPaused) {
     return (
-      <span className="inline-flex items-center gap-1 text-[10px] leading-snug text-warning">
+      <span className="inline-flex items-center gap-1 text-[10px] leading-snug text-warning-strong">
         <span className="size-1.5 rounded-full bg-warning" />
         พนักงาน
       </span>
@@ -201,7 +201,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
       <div className="flex-1 min-w-0 pt-0.5">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 min-w-0">
-            {isPinned && <Pin className="w-2.5 h-2.5 text-warning flex-shrink-0 fill-warning" />}
+            {isPinned && <Pin className="w-2.5 h-2.5 text-warning-strong flex-shrink-0 fill-warning" />}
             <span className={cn(
               'text-sm truncate',
               hasUnread ? 'font-bold text-foreground' : 'font-medium text-foreground/80',
@@ -323,8 +323,8 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           className={cn(
             'absolute right-2 top-2 p-1 min-h-11 min-w-11 inline-flex items-center justify-center rounded-md transition-all',
             isPinned
-              ? 'text-warning opacity-100'
-              : 'text-muted-foreground opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 hover:text-warning hover:bg-muted',
+              ? 'text-warning-strong opacity-100'
+              : 'text-muted-foreground opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 hover:text-warning-strong hover:bg-muted',
           )}
           title={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}
           aria-label={isPinned ? 'ถอดหมุด' : 'ปักหมุด'}

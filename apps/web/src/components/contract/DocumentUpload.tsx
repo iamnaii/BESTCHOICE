@@ -544,9 +544,9 @@ export default function DocumentUpload({ contractId, customerId, contractStatus 
       {showOcrPanel && ocrResult && (
         <div className={`${ocrResult.confidence < 0.7 ? 'bg-warning/10 border-warning/30' : 'bg-success/10 border-success/30'} border rounded-lg p-4 space-y-3`}>
           <div className="flex items-center justify-between">
-            <h3 className={`text-sm font-semibold ${ocrResult.confidence < 0.7 ? 'text-warning' : 'text-success'}`}>ข้อมูลที่อ่านจากบัตรประชาชน</h3>
+            <h3 className={`text-sm font-semibold ${ocrResult.confidence < 0.7 ? 'text-warning-strong' : 'text-success'}`}>ข้อมูลที่อ่านจากบัตรประชาชน</h3>
             <div className="flex items-center gap-2">
-              <span className={`text-xs ${ocrResult.confidence < 0.5 ? 'text-destructive font-bold' : ocrResult.confidence < 0.7 ? 'text-warning font-semibold' : 'text-success'}`}>ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
+              <span className={`text-xs ${ocrResult.confidence < 0.5 ? 'text-destructive font-bold' : ocrResult.confidence < 0.7 ? 'text-warning-strong font-semibold' : 'text-success'}`}>ความมั่นใจ: {(ocrResult.confidence * 100).toFixed(0)}%</span>
               <button onClick={() => setShowOcrPanel(false)} className="text-xs text-muted-foreground hover:text-foreground">ปิด</button>
             </div>
           </div>

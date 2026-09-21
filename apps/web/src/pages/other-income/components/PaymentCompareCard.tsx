@@ -31,7 +31,7 @@ export function PaymentCompareCard({ expected, received }: Props) {
   const colorMap = {
     success: 'border-success bg-success/10 text-success',
     info: 'border-info bg-info/10 text-info',
-    warning: 'border-warning bg-warning/10 text-warning',
+    warning: 'border-warning bg-warning/10 text-warning-strong',
   };
   return (
     <div className={`rounded-lg border-2 p-3 ${colorMap[tone]}`}>

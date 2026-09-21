@@ -172,7 +172,7 @@ function POCardImpl({
               <button
                 onClick={stop(() => onReject(po))}
                 disabled={rejectPending}
-                className={`${actionBtn} border-warning/30 text-warning hover:bg-warning/10`}
+                className={`${actionBtn} border-warning/30 text-warning-strong hover:bg-warning/10`}
                 aria-label={`ปฏิเสธ ${po.poNumber}`}
               >
                 <X className="size-4" />

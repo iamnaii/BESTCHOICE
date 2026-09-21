@@ -248,7 +248,7 @@ export default function ExchangeRequestsPage() {
             <h2 className="text-base font-semibold leading-snug">
               รายการรอการอนุมัติ{' '}
               {requests && requests.length > 0 && (
-                <span className="ml-1 inline-flex items-center rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning leading-snug">
+                <span className="ml-1 inline-flex items-center rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning-strong leading-snug">
                   {requests.length} รายการ
                 </span>
               )}
@@ -312,7 +312,7 @@ export default function ExchangeRequestsPage() {
                           </span>
                           {item.approvalTier && item.approvalTier !== 'AUTO' && (
                             <span className={`ml-1 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                              item.approvalTier === 'REVIEW' ? 'bg-warning/15 text-warning' : 'bg-destructive/15 text-destructive'}`}>
+                              item.approvalTier === 'REVIEW' ? 'bg-warning/15 text-warning-strong' : 'bg-destructive/15 text-destructive'}`}>
                               {item.approvalTier === 'REVIEW' ? 'ผจก.สาขา' : 'ผจก.ใหญ่'}
                             </span>
                           )}

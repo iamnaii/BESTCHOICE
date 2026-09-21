@@ -146,7 +146,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                   >
                     WHT%
                     {whtPct > 0 && (
-                      <span className="inline-flex items-center gap-0.5 text-warning">
+                      <span className="inline-flex items-center gap-0.5 text-warning-strong">
                         <Lightbulb size={10} />
                         {whtPct}%
                       </span>
@@ -169,7 +169,7 @@ export function ItemsTable({ control, register, watch, setValue }: Props) {
                     if (!sug || whtPct === sug.pct) return null;
                     return (
                       <p className="mt-1 text-[10px] text-muted-foreground inline-flex items-center gap-1">
-                        <Lightbulb size={10} className="text-warning" />
+                        <Lightbulb size={10} className="text-warning-strong" />
                         แนะนำ {sug.pct}% — {sug.reason}
                       </p>
                     );

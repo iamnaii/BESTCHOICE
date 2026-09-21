@@ -59,7 +59,7 @@ export function MakerCheckerConfirmDialog({
                 <li>เอกสารที่อยู่ในสถานะ READY จะถูก auto-approve</li>
                 <li>เอกสารใหม่จะ POST ทันที (ไม่ต้องอนุมัติ)</li>
               </ul>
-              <p className="text-warning font-medium">
+              <p className="text-warning-strong font-medium">
                 จำนวนเอกสาร READY ตอนนี้: {pendingReadyCount} ฉบับ
               </p>
             </>

@@ -138,7 +138,7 @@ export default function DashboardStaff({
                                   s.overdueRate > 20
                                     ? 'bg-destructive/10 text-destructive'
                                     : s.overdueRate > 10
-                                      ? 'bg-warning/10 text-warning'
+                                      ? 'bg-warning/10 text-warning-strong'
                                       : 'bg-success/10 text-success dark:bg-success/15',
                                 )}
                               >

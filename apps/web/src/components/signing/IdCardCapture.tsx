@@ -143,7 +143,7 @@ export default function IdCardCapture({ onCapture, disabled }: IdCardCaptureProp
   return (
     <div className="space-y-3">
       {cameraError && (
-        <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-warning">
+        <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-warning-strong">
           {cameraError}
         </div>
       )}

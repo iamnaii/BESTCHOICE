@@ -54,14 +54,14 @@ const BUCKET_BAR_COLORS: Record<string, string> = {
 
 const BUCKET_VALUE_COLORS: Record<string, string> = {
   bucket_0_30: 'text-success',
-  bucket_31_60: 'text-warning',
+  bucket_31_60: 'text-warning-strong',
   bucket_61_90: 'text-orange-500',
   bucket_90_plus: 'text-destructive',
 };
 
 const BUCKET_BADGE_COLORS: Record<string, string> = {
   bucket_0_30: 'bg-success/10 text-success',
-  bucket_31_60: 'bg-warning/10 text-warning',
+  bucket_31_60: 'bg-warning/10 text-warning-strong',
   bucket_61_90: 'bg-orange-500/10 text-orange-600',
   bucket_90_plus: 'bg-destructive/10 text-destructive',
 };

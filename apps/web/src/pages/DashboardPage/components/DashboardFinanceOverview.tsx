@@ -74,7 +74,7 @@ export default function DashboardFinanceOverview() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="size-9 rounded-xl bg-warning/10 flex items-center justify-center">
-                <Bell className="size-4 text-warning" />
+                <Bell className="size-4 text-warning-strong" />
               </div>
             </div>
             <div className="text-2xl font-bold text-foreground">{stages.REMINDER || 0}</div>
@@ -88,7 +88,7 @@ export default function DashboardFinanceOverview() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="size-9 rounded-xl bg-warning/10 flex items-center justify-center">
-                <FileWarning className="size-4 text-warning" />
+                <FileWarning className="size-4 text-warning-strong" />
               </div>
             </div>
             <div className="text-2xl font-bold text-foreground">{stages.NOTICE || 0}</div>

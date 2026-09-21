@@ -225,7 +225,7 @@ export default function RoomCreditCard({
               )}
               {!!result.riskFactors?.length && (
                 <div>
-                  <p className="mb-1 font-semibold text-warning">ปัจจัยเสี่ยง</p>
+                  <p className="mb-1 font-semibold text-warning-strong">ปัจจัยเสี่ยง</p>
                   {result.riskFactors.map((text, index) => (
                     <p key={index}>• {text}</p>
                   ))}

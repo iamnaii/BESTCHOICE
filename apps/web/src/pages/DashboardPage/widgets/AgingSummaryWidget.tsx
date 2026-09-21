@@ -19,7 +19,7 @@ interface AgingReport {
 }
 
 const BUCKETS: { key: keyof AgingBuckets; label: string; color: string }[] = [
-  { key: 'bucket_0_30', label: '0–30 วัน', color: 'text-warning' },
+  { key: 'bucket_0_30', label: '0–30 วัน', color: 'text-warning-strong' },
   { key: 'bucket_31_60', label: '31–60 วัน', color: 'text-orange-500' },
   { key: 'bucket_61_90', label: '61–90 วัน', color: 'text-destructive' },
   { key: 'bucket_90_plus', label: '90+ วัน', color: 'text-destructive font-bold' },

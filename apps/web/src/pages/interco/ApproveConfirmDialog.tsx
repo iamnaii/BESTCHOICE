@@ -199,7 +199,7 @@ export function ApproveConfirmDialog({
                   <span className="text-muted-foreground">
                     หักรวม (เครดิตเปลี่ยนเครื่อง + เรียกคืน)
                   </span>
-                  <span className="tabular-nums text-warning">
+                  <span className="tabular-nums text-warning-strong">
                     −฿{fmtMoney(batch.totalDeduction)}
                   </span>
                 </div>
@@ -221,7 +221,7 @@ export function ApproveConfirmDialog({
             )}
 
             {legacyItems.length > 0 && nonLegacyItems.length > 0 && (
-              <p className="text-xs text-warning leading-snug">
+              <p className="text-xs text-warning-strong leading-snug">
                 ฝั่ง SHOP ไม่รวม {legacyItems.length} สัญญา (legacy)
               </p>
             )}

@@ -82,7 +82,7 @@ export default function LockDeviceDialog({
         </DialogHeader>
 
         <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 flex gap-2.5">
-          <AlertTriangle className="size-5 text-warning shrink-0 mt-0.5" />
+          <AlertTriangle className="size-5 text-warning-strong shrink-0 mt-0.5" />
           <div className="text-sm leading-snug">
             <span className="font-semibold">{customerName}</span> ค้างมาแล้ว{' '}
             <span className="tabular-nums font-semibold">{daysOverdue}</span> วัน

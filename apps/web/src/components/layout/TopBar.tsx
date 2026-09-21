@@ -50,7 +50,7 @@ const roleBadgeColors: Record<string, string> = {
   BRANCH_MANAGER: 'bg-info/10 text-info',
   FINANCE_MANAGER:'bg-primary/10 text-primary',
   SALES:          'bg-success/10 text-success',
-  ACCOUNTANT:     'bg-warning/10 text-warning',
+  ACCOUNTANT:     'bg-warning/10 text-warning-strong',
 };
 
 /* ── UserDropdown ──────────────────────────────── */

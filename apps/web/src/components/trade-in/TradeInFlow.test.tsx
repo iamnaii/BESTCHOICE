@@ -140,6 +140,9 @@ describe('Counter purchase, seller payment and stock handoff', () => {
     render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={vi.fn()} />, { wrapper });
     const user = userEvent.setup();
     expect(screen.getByText('ขั้นที่ 1 / 4')).toBeVisible();
+    expect(screen.getByLabelText('เครื่องไทย / เครื่องนอก')).toBeVisible();
+    expect(screen.queryByLabelText('ประกันร้าน (วัน)')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('ผู้รับประกันและเงื่อนไขความคุ้มครอง')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'เลือกผู้ขายทดสอบ' })).not.toBeInTheDocument();
     await selectDevice(user);
     await user.click(nextButton());
@@ -382,6 +385,8 @@ describe('Counter purchase, seller payment and stock handoff', () => {
       declarationVersion: TRADE_IN_DECLARATION_VERSION,
       transferAccountNumber: method === 'TRANSFER' ? '1234567890' : undefined,
     }));
+    expect(purchaseCalls()[0][1]).not.toHaveProperty('shopWarrantyDays');
+    expect(purchaseCalls()[0][1]).not.toHaveProperty('warrantyTerms');
     expect(vi.mocked(api.get).mock.calls.some(([url]) => String(url).includes('bank-accounts'))).toBe(false);
   });
 
@@ -476,6 +481,8 @@ describe('Counter purchase, seller payment and stock handoff', () => {
       isPending={false} onChange={change} onConfirm={confirm} onClose={vi.fn()} />, { wrapper });
     expect(screen.getByLabelText('IMEI')).toHaveValue('359000000000082');
     expect(screen.getByLabelText('Serial Number')).toHaveValue('HANDOFF-SN-82');
+    expect(screen.queryByLabelText('ประกันร้าน (วัน)')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('ผู้รับประกันและเงื่อนไขความคุ้มครอง')).not.toBeInTheDocument();
     expect(screen.queryByRole('radio')).not.toBeInTheDocument();
     for (const clause of TRADE_IN_DECLARATION_CLAUSES) expect(screen.getByText(clause)).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเครื่องเทิร์น' }));

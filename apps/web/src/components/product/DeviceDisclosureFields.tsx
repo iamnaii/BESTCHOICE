@@ -6,6 +6,19 @@ export interface DeviceDisclosureForm {
   warrantyTerms?: string;
 }
 
+export function DeviceOriginField({ value, onChange, disabled }: {
+  value?: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  return <label htmlFor={id} className="block text-sm">เครื่องไทย / เครื่องนอก
+    <select id={id} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm disabled:opacity-50" value={value ?? ''} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+      <option value="">ยังไม่ระบุ</option><option value="THAI">เครื่องไทย</option><option value="IMPORTED">เครื่องนอก</option>
+    </select>
+  </label>;
+}
+
 export function DeviceDisclosureFields({ value, onChange, disabled }: {
   value: DeviceDisclosureForm;
   onChange: (key: keyof DeviceDisclosureForm, value: string) => void;
@@ -15,11 +28,7 @@ export function DeviceDisclosureFields({ value, onChange, disabled }: {
   const cls = 'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm disabled:opacity-50';
   return <div className="space-y-3 col-span-full">
     <div className="grid gap-3 sm:grid-cols-2">
-      <label htmlFor={`${id}-origin`} className="text-sm">เครื่องไทย / เครื่องนอก
-        <select id={`${id}-origin`} className={cls} value={value.deviceOrigin ?? ''} disabled={disabled} onChange={(e) => onChange('deviceOrigin', e.target.value)}>
-          <option value="">ยังไม่ระบุ</option><option value="THAI">เครื่องไทย</option><option value="IMPORTED">เครื่องนอก</option>
-        </select>
-      </label>
+      <DeviceOriginField value={value.deviceOrigin} onChange={(origin) => onChange('deviceOrigin', origin)} disabled={disabled} />
       <label htmlFor={`${id}-days`} className="text-sm">ประกันร้าน (วัน)
         <input id={`${id}-days`} type="number" min={0} step={1} className={cls} value={value.shopWarrantyDays ?? ''} disabled={disabled} onChange={(e) => onChange('shopWarrantyDays', e.target.value)} />
       </label>

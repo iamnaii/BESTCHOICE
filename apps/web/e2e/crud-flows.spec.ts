@@ -78,15 +78,12 @@ test.describe('Customer CRUD Flow', () => {
     const modal = page.locator('[role="dialog"], .modal').first();
     await expect(modal).toBeVisible({ timeout: 5000 });
 
-    // Fill text inputs by position (ชื่อ, นามสกุล, เลขบัตร, etc.)
-    const textInputs = modal.locator('input[type="text"]:visible');
-    const inputCount = await textInputs.count();
-
-    if (inputCount >= 3) {
-      await textInputs.nth(0).fill(testFirstName);
-      await textInputs.nth(1).fill(testLastName);
-      await textInputs.nth(2).fill(testNationalId);
-    }
+    // กรอกตามช่องจริง ไม่ใช่ตามลำดับ — ฟอร์มถูกจัดใหม่ (เลขบัตร → เบอร์ → ชื่อเล่น → คำนำหน้า* → ชื่อ → นามสกุล) และคำนำหน้าเป็นช่องบังคับ
+    // (PR #1598). เดิมกรอกตามตำแหน่ง ชื่อจึงไปลงช่องเลขบัตร ฟอร์มไม่ผ่าน ไม่มีลูกค้าถูกสร้าง แล้วเทส 2 (ค้นหา) ล้มแทน
+    await modal.getByPlaceholder('X-XXXX-XXXXX-XX-X').fill(testNationalId);
+    await modal.locator('select').filter({ has: page.locator('option', { hasText: /^นาย$/ }) }).first().selectOption('นาย');
+    await modal.getByPlaceholder('กรอกชื่อ').first().fill(testFirstName);
+    await modal.getByPlaceholder('กรอกนามสกุล').first().fill(testLastName);
 
     // Fill phone
     const phoneInput = modal
@@ -119,6 +116,8 @@ test.describe('Customer CRUD Flow', () => {
     if (result.data?.length > 0) {
       createdCustomerId = result.data[0].id;
     }
+    // ต้องสร้างได้จริง — ไม่งั้นความล้มเหลวจะไปโผล่ที่เทส 2 โดยไม่บอกสาเหตุ
+    expect(createdCustomerId, 'ลูกค้าที่เพิ่งกรอกในฟอร์มต้องถูกสร้างและค้นเจอผ่าน API').not.toBe('');
   });
 
   test('2. Read — find created customer via search', async ({ page }) => {

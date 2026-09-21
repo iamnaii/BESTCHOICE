@@ -637,6 +637,7 @@ model Branch {
   // สมุดเงินเข้า/ออกหน้าร้าน (shop tenders)
   shopTenders ShopTender[]
   shopCashCloses ShopCashClose[]
+  shopCashDeposits ShopCashDeposit[]
 
   @@index([companyId])
   @@map("branches")
@@ -870,6 +871,7 @@ model User {
   shopCashClosesCounted   ShopCashClose[] @relation("ShopCashCloseCounter")
   shopCashClosesConfirmed ShopCashClose[] @relation("ShopCashCloseConfirmer")
   shopCashClosesSentBack  ShopCashClose[] @relation("ShopCashCloseSentBack")
+  shopCashDeposits        ShopCashDeposit[] @relation("ShopCashDepositor")
 
   @@index([branchId])
   @@index([yeastarExtension])
@@ -7446,6 +7448,10 @@ model ShopCashClose {
   /// JE ที่โพสต์ตอนยืนยันรับเงิน (flow `shop-cash-close`) — null = ยังไม่ยืนยัน / ไม่มียอดให้ลง / ผังยังไม่พร้อม. ไม่ผูก FK โดยตั้งใจ (แบบเดียวกับ id ของ JE ใน metadata)
   journalEntryId String? @map("journal_entry_id")
 
+  /// หลักฐานเมื่อปลายทาง = นำฝากธนาคาร (คำตัดสินเจ้าของ 2026-09-21 กระดาน 11): รูปสลิปแนบก่อนยืนยัน + เลขอ้างอิงในสลิป — บังคับทั้งคู่ตอนยืนยัน
+  depositSlipKey   String? @map("deposit_slip_key")
+  depositReference String? @map("deposit_reference")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -7457,6 +7463,35 @@ model ShopCashClose {
   @@index([branchId, countedAt])
   @@index([status])
   @@map("shop_cash_closes")
+}
+
+/// บันทึกนำฝาก — ย้ายเงินที่รับจากการปิดยอดแล้วแต่ยังไม่เข้าธนาคาร (ตู้เซฟสาขา / เจ้าของเก็บไว้) เข้าบัญชีธนาคารของร้าน
+/// (คำตัดสินเจ้าของ 2026-09-21 กระดาน 11 ส่วน B). หลักฐานการเงิน: แก้/ลบไม่ได้ จึงไม่มี deletedAt โดยตั้งใจ (แบบเดียวกับ ShopCashClose)
+model ShopCashDeposit {
+  id       String              @id @default(uuid())
+  branchId String              @map("branch_id")
+  /// ที่มาของเงิน — `OWNER_HOLD` หรือ `BRANCH_SAFE` เท่านั้น (service บังคับ; `BANK_DEPOSIT` ถึงธนาคารตั้งแต่ตอนยืนยันรับเงินแล้ว)
+  source   ShopCashDestination
+  amount   Decimal             @db.Decimal(12, 2)
+
+  reference String
+  slipKey   String  @map("slip_key")
+  note      String?
+
+  depositedById String   @map("deposited_by_id")
+  depositedAt   DateTime @default(now()) @map("deposited_at")
+
+  /// JE ย้ายเงินเข้าธนาคาร (flow `shop-cash-deposit`) — null = ผังยังไม่พร้อม / ยอดต้นทางไม่เคยถูกลงบัญชี. ไม่ผูก FK โดยตั้งใจ
+  journalEntryId String? @map("journal_entry_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  branch      Branch @relation(fields: [branchId], references: [id])
+  depositedBy User   @relation("ShopCashDepositor", fields: [depositedById], references: [id])
+
+  @@index([branchId, source])
+  @@map("shop_cash_deposits")
 }
 
 model PaymentMethodConfig {

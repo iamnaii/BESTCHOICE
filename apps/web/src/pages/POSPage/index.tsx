@@ -15,6 +15,7 @@ import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { saleTypeConfig, type SaleType } from '@/lib/constants';
 import PageHeader from '@/components/ui/PageHeader';
+import CashCloseReminderBanner from '@/pages/shop-daily-cash/CashCloseReminderBanner';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { posSaleSchema, type PosSaleFormData } from '@/lib/schemas';
 import type { Product, Customer, TopProduct } from './types';
@@ -259,6 +260,7 @@ export default function POSPage() {
   return (
     <div>
       <PageHeader title="POS - ขายสินค้า" subtitle="ระบบขายหน้าร้าน" />
+      <CashCloseReminderBanner />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:gap-7.5">
         {/* Left Column - Main Form */}

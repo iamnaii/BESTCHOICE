@@ -299,6 +299,7 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'daily_assignments',
   'data_audit_logs',
   'depreciation_entries',
+  'device_returns',  // ใบรับเครื่องคืน (PR #1616) — ผูกกับสัญญา/รายการยึดที่ถูกล้างในรอบเดียวกัน
   'document_audit_logs',
   'dsar_requests',
   'dunning_actions',
@@ -376,6 +377,7 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'settlement_lines',
   'shop_tenders',  // สมุดเงินเข้า/ออกหน้าร้าน — ผูกกับใบขาย/สัญญา/ใบจอง/ใบรับซื้อที่ถูกล้างในรอบเดียวกัน
   'shop_cash_closes',
+  'shop_cash_deposits',
   'signatures',
   'slip_fingerprints',
   'stock_adjustments',

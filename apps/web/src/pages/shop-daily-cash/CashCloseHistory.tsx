@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
+import { EvidenceImageLink } from './EvidenceImage';
 import {
   baht, dayTimeOf, DESTINATION_LABEL, STATUS_LABEL, toSatang, varianceLabel, varianceTone,
   type CashClose, type CashCloseHistoryResponse, type CashCloseStatus,
@@ -92,6 +93,11 @@ export default function CashCloseHistory({ branchId, branches }: { branchId: str
                         <td className="px-3 py-3">{row.confirmedBy?.name ?? <span className="text-muted-foreground">—</span>}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold leading-snug ${STATUS_TONE[row.status]}`}>{STATUS_LABEL[row.status]}</span>
+                          {row.status === 'CONFIRMED' && (
+                            <div className={`mt-0.5 text-xs ${row.moneyState === 'AT_BRANCH' ? 'font-semibold text-warning' : 'text-muted-foreground'}`}>
+                              {row.moneyState === 'AT_BRANCH' ? 'เงินยังอยู่ที่สาขา' : 'เงินถึงบริษัทแล้ว'}
+                            </div>
+                          )}
                           {row.attemptNo > 1 && <div className="mt-0.5 text-xs text-muted-foreground">นับครั้งที่ {row.attemptNo}</div>}
                         </td>
                       </tr>
@@ -106,6 +112,43 @@ export default function CashCloseHistory({ branchId, branches }: { branchId: str
               </table>
             </div>
             <p className="text-xs text-muted-foreground leading-snug">กดแถว = เปิดรายละเอียดการปิดยอดครั้งนั้น · ระบบลงบัญชีให้ตอนยืนยันรับเงิน: ย้ายเงินออกจากลิ้นชักไปปลายทางที่เลือก และเงินขาด/เกินเข้าบัญชี “เงินขาด-เกินบัญชี”</p>
+
+            {data.deposits.length > 0 && (
+              <section className="rounded-xl border border-border bg-card" aria-label="รายการนำฝากของเดือน">
+                <h2 className="border-b border-border px-4 py-3 text-[15px] font-semibold leading-snug">รายการนำฝากของเดือน (เงินจากตู้เซฟสาขา / เงินที่เจ้าของเก็บไว้)</h2>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-sm leading-snug">
+                    <thead>
+                      <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                        <th className="px-4 py-3 font-medium">วันที่ฝาก</th>
+                        {showBranch && <th className="px-3 py-3 font-medium">สาขา</th>}
+                        <th className="px-3 py-3 font-medium">ที่มาของเงิน</th>
+                        <th className="px-3 py-3 text-right font-medium">ยอดนำฝาก</th>
+                        <th className="px-3 py-3 font-medium">เลขอ้างอิง</th>
+                        <th className="px-3 py-3 font-medium">ผู้บันทึก</th>
+                        <th className="px-4 py-3 font-medium">หลักฐาน</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.deposits.map((row) => (
+                        <tr key={row.id} className="border-b border-border/60 last:border-0">
+                          <td className="px-4 py-3 tabular-nums">{dayTimeOf(row.depositedAt)}</td>
+                          {showBranch && <td className="px-3 py-3">{row.branchName}</td>}
+                          <td className="px-3 py-3">{row.sourceLabel}</td>
+                          <td className="px-3 py-3 text-right font-semibold tabular-nums">{baht(row.amount)}</td>
+                          <td className="px-3 py-3">{row.reference}</td>
+                          <td className="px-3 py-3">{row.depositedBy.name}</td>
+                          <td className="px-4 py-3">
+                            <EvidenceImageLink path={`/shop-tenders/cash-deposits/${row.id}/slip`} title={`สลิปนำฝาก ${row.branchName}`} />
+                            {!row.journalPosted && <div className="mt-0.5 text-xs text-muted-foreground">ไม่ได้ลงบัญชี</div>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
           </div>
         )}
       </QueryBoundary>
@@ -121,6 +164,12 @@ function CloseDetail({ close }: { close: CashClose }) {
       <div><dt className="inline text-muted-foreground">เงินที่แจ้งส่ง: </dt><dd className="inline tabular-nums">{baht(close.sendAmount)}</dd></div>
       {close.varianceReason && <div><dt className="inline text-muted-foreground">เหตุผลส่วนต่าง: </dt><dd className="inline">{close.varianceReason}</dd></div>}
       {close.destination && <div><dt className="inline text-muted-foreground">นำเงินไปไว้ที่: </dt><dd className="inline">{DESTINATION_LABEL[close.destination]}</dd></div>}
+      {(close.depositReference || close.hasDepositSlip) && (
+        <div><dt className="inline text-muted-foreground">สลิปฝากเงิน: </dt><dd className="inline">
+          {close.depositReference ? `อ้างอิง ${close.depositReference}` : ''}{close.depositReference && close.hasDepositSlip ? ' · ' : ''}
+          {close.hasDepositSlip && <EvidenceImageLink path={`/shop-tenders/cash-close/${close.id}/deposit-slip`} title={`สลิปฝากเงิน ${close.branchName}`} />}
+        </dd></div>
+      )}
       {close.receiveVariance != null && toSatang(close.receiveVariance) !== 0 && (
         <div className="text-destructive"><dt className="inline">รับจริงต่างจากที่แจ้งส่ง: </dt><dd className="inline">{varianceLabel(close.receiveVariance)} — {close.receiveNote}</dd></div>
       )}

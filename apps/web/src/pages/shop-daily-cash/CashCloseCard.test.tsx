@@ -14,7 +14,8 @@ const close = (over: Partial<CashClose> = {}): CashClose => ({
   countedAt: '2026-09-20T13:40:00.000Z', floatAmount: 2000, cashIn: 16500, cashOut: 5790, expectedAmount: 12710, countedAmount: 12510,
   varianceAmount: -200, varianceReason: 'ทอนเงินลูกค้าผิด 200', sendAmount: 10510, countedBy: { id: 'u-sales', name: 'ธนา' },
   receivedAmount: null, receiveVariance: null, receiveNote: null, destination: null, confirmedBy: null, confirmedAt: null,
-  sentBackBy: null, sentBackAt: null, sentBackReason: null, journalPosted: false, ...over,
+  sentBackBy: null, sentBackAt: null, sentBackReason: null, journalPosted: false,
+  depositReference: null, hasDepositSlip: false, moneyState: 'AWAITING_CONFIRM', ...over,
 });
 
 const status = (over: Partial<CashCloseStatusResponse> = {}): CashCloseStatusResponse => ({
@@ -101,21 +102,59 @@ describe('CashCloseCard', () => {
     expect(screen.getByText(/คุณเป็นผู้นับ/)).toBeInTheDocument();
   });
 
-  it('ยืนยันรับเงิน: รับจริงไม่เท่ายอดแจ้งส่งต้องมีหมายเหตุ → ส่งยอด ปลายทาง และหมายเหตุ', async () => {
+  it('ยืนยันรับเงิน: ต้องเลือกปลายทางเอง · รับจริงไม่เท่ายอดแจ้งส่งต้องมีหมายเหตุ → ส่งยอด ปลายทาง และหมายเหตุ', async () => {
     mocks.post.mockResolvedValue({ data: close({ status: 'CONFIRMED' }) });
-    renderCard(status({ awaitingConfirm: [close()], closes: [close()], permissions: { canCount: false, canConfirm: true, viewerId: 'u-owner' } }));
+    renderCard(status({ awaitingConfirm: [close()], closes: [close()], permissions: { canCount: false, canConfirm: true, viewerId: 'u-owner', viewerRole: 'OWNER' } }));
     await userEvent.click(await screen.findByRole('button', { name: 'ยืนยันรับเงิน' }));
     const dialog = await screen.findByRole('dialog');
     const received = within(dialog).getByLabelText(/เงินที่รับมาจริง/);
     expect(received).toHaveValue('10,510.00');
-    await userEvent.clear(received); await userEvent.type(received, '10500');
     const confirm = within(dialog).getByRole('button', { name: 'ยืนยันรับเงินและปิดยอด' });
+    expect(confirm).toBeDisabled(); // ยังไม่ได้เลือกว่านำเงินไปไว้ที่ไหน
+    await userEvent.click(within(dialog).getByRole('radio', { name: /เจ้าของเก็บไว้/ }));
+    expect(confirm).toBeEnabled();
+    await userEvent.clear(received); await userEvent.type(received, '10500');
     expect(confirm).toBeDisabled();
     await userEvent.type(within(dialog).getByLabelText(/หมายเหตุ/), 'ขาดไป 10 บาท');
-    await userEvent.selectOptions(within(dialog).getByLabelText('นำเงินไปไว้ที่'), 'BANK_DEPOSIT');
     await userEvent.click(confirm);
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/shop-tenders/cash-close/cl-1/confirm',
-      { receivedAmount: 10500, destination: 'BANK_DEPOSIT', note: 'ขาดไป 10 บาท' }));
+      { receivedAmount: 10500, destination: 'OWNER_HOLD', note: 'ขาดไป 10 บาท', depositReference: undefined }));
+    expect(mocks.post).toHaveBeenCalledTimes(1); // ไม่ใช่นำฝากธนาคาร = ไม่มีการอัปโหลดสลิป
+  });
+
+  it('นำฝากธนาคาร: ต้องมีรูปสลิป + เลขอ้างอิงอย่างน้อย 6 ตัว → อัปโหลดสลิปก่อน แล้วจึงยืนยัน', async () => {
+    mocks.post.mockResolvedValue({ data: close({ status: 'CONFIRMED' }) });
+    renderCard(status({ awaitingConfirm: [close()], closes: [close()], permissions: { canCount: false, canConfirm: true, viewerId: 'u-bm2', viewerRole: 'BRANCH_MANAGER' } }));
+    await userEvent.click(await screen.findByRole('button', { name: 'ยืนยันรับเงิน' }));
+    const dialog = await screen.findByRole('dialog');
+    // ผู้จัดการสาขาเลือก "เจ้าของเก็บไว้" แทนเจ้าของไม่ได้
+    expect(within(dialog).getByRole('radio', { name: /เจ้าของเก็บไว้/ })).toBeDisabled();
+    await userEvent.click(within(dialog).getByRole('radio', { name: /นำฝากธนาคารของร้าน/ }));
+    const confirm = within(dialog).getByRole('button', { name: 'ยืนยันรับเงินและปิดยอด' });
+    expect(confirm).toBeDisabled();
+    const slip = new File([new Uint8Array([0xff, 0xd8, 0xff])], 'slip.jpg', { type: 'image/jpeg' });
+    await userEvent.upload(within(dialog).getByLabelText(/^รูปสลิปฝากเงิน/), slip);
+    await userEvent.type(within(dialog).getByLabelText(/เลขอ้างอิงในสลิป/), '12345');
+    expect(confirm).toBeDisabled();
+    await userEvent.type(within(dialog).getByLabelText(/เลขอ้างอิงในสลิป/), '6789');
+    await userEvent.click(confirm);
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(2));
+    const [slipPath, form] = mocks.post.mock.calls[0];
+    expect(slipPath).toBe('/shop-tenders/cash-close/cl-1/deposit-slip');
+    expect((form as FormData).get('file')).toBe(slip);
+    expect(mocks.post.mock.calls[1]).toEqual(['/shop-tenders/cash-close/cl-1/confirm',
+      { receivedAmount: 10510, destination: 'BANK_DEPOSIT', note: undefined, depositReference: '123456789' }]);
+  });
+
+  it('ปิดยอดแล้ว: ตู้เซฟสาขา = เงินยังอยู่ที่สาขา · ฝากธนาคาร = ถึงบริษัทแล้ว พร้อมเลขอ้างอิงและลิงก์ดูสลิป', async () => {
+    renderCard(status({ closes: [
+      close({ id: 'safe', status: 'CONFIRMED', receivedAmount: 10510, destination: 'BRANCH_SAFE', moneyState: 'AT_BRANCH', confirmedAt: '2026-09-20T13:52:00.000Z', confirmedBy: { id: 'u-bm', name: 'สุรชัย' } }),
+      close({ id: 'bank', status: 'CONFIRMED', receivedAmount: 10510, destination: 'BANK_DEPOSIT', moneyState: 'REACHED', depositReference: '2026092120521187', hasDepositSlip: true, confirmedAt: '2026-09-20T13:55:00.000Z', confirmedBy: { id: 'u-bm', name: 'สุรชัย' } }),
+    ] }));
+    expect(await screen.findByText('เงินยังอยู่ที่สาขา รอบันทึกนำฝาก')).toBeInTheDocument();
+    expect(screen.getByText('เงินถึงบริษัทแล้ว')).toBeInTheDocument();
+    expect(screen.getByText(/อ้างอิงสลิป 2026092120521187/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'ดูสลิป' })).toBeInTheDocument();
   });
 
   it('ตีกลับให้นับใหม่: ต้องมีเหตุผลก่อนยืนยัน', async () => {

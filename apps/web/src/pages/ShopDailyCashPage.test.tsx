@@ -1,0 +1,51 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import ShopDailyCashPage from './ShopDailyCashPage';
+
+const mocks = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('@/lib/api', () => ({ default: { get: mocks.get, post: vi.fn() }, getErrorMessage: (error: Error) => error.message }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u-owner', role: 'OWNER', branchId: null } }) }));
+vi.mock('./shop-daily-cash/CashCloseCard', () => ({
+  default: ({ branchId }: { branchId: string }) => <div data-testid="close-card">{branchId}</div>,
+  cashCloseKey: (branchId: string, date: string) => ['shop-tenders', 'cash-close', 'status', branchId, date],
+}));
+vi.mock('./shop-daily-cash/CashCloseOverview', () => ({
+  default: ({ branchId, showTable }: { branchId: string; showTable: boolean }) => <div data-testid="overview">{`${branchId || 'ALL'}|${showTable}`}</div>,
+}));
+
+const summary = (branches: { id: string; name: string }[]) => ({
+  date: '2026-09-21', scope: 'ALL', branchId: null, branches,
+  totals: { cashIn: '0', transferIn: '0', qrIn: '0', totalIn: '0', cashOut: '0', nonCashOut: '0', totalOut: '0', expectedCashInDrawer: '0', inCount: 0, outCount: 0 },
+  byStaff: [], byKind: [], rows: [], duplicateReferences: [],
+});
+
+function renderPage(branches: { id: string; name: string }[]) {
+  mocks.get.mockImplementation(async (path: string) => {
+    if (path === '/shop-tenders/daily-summary') return { data: summary(branches) };
+    return { data: { closes: [], awaitingConfirm: [] } };
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<MemoryRouter><QueryClientProvider client={client}><ShopDailyCashPage /></QueryClientProvider></MemoryRouter>);
+}
+
+beforeEach(() => vi.clearAllMocks());
+
+describe('ShopDailyCashPage — เจ้าของเปิดหน้ามาต้องเห็นเรื่องปิดยอดทันที', () => {
+  it('ร้านสาขาเดียว: เลือกสาขานั้นให้เอง → เจอกล่องปิดยอดของสาขา (เดิมค้างที่ "ทุกสาขา" ไม่เห็นอะไรเลย) · สลับกลับ "ทุกสาขา" ได้', async () => {
+    renderPage([{ id: 'branch-001', name: 'คลังสินค้าหลัก' }]);
+    expect(await screen.findByTestId('close-card')).toHaveTextContent('branch-001');
+    expect(screen.getByTestId('overview')).toHaveTextContent('branch-001|false');
+    await userEvent.selectOptions(screen.getByLabelText('สาขา'), '');
+    await waitFor(() => expect(screen.getByTestId('overview')).toHaveTextContent('ALL|true'));
+    expect(screen.queryByTestId('close-card')).not.toBeInTheDocument(); // ไม่ถูกบังคับเลือกซ้ำ
+  });
+
+  it('หลายสาขา: เปิดมาเป็น "ทุกสาขา" พร้อมตารางสถานะปิดยอดของทุกสาขา', async () => {
+    renderPage([{ id: 'b1', name: 'ลาดพร้าว' }, { id: 'b2', name: 'รังสิต' }]);
+    expect(await screen.findByTestId('overview')).toHaveTextContent('ALL|true');
+    expect(screen.queryByTestId('close-card')).not.toBeInTheDocument();
+  });
+});

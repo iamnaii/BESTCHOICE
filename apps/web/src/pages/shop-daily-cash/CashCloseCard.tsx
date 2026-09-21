@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import CashCloseConfirmDialog, { useInvalidateCashClose } from './CashCloseConfirmDialog';
+import { EvidenceImageLink } from './EvidenceImage';
 import {
   baht, dayTimeOf, DESTINATION_LABEL, parseAmount, timeOf, toSatang, varianceLabel, varianceTone,
-  type CashClose, type CashCloseStatusResponse, type CashDestination,
+  type CashClose, type CashCloseStatusResponse,
 } from './cash-close';
 
 /**
- * กล่อง "ปิดยอดวันนี้" (mockup CnXmYLkT กระดาน 7–8) — แสดงเมื่อเลือกสาขาเดียว
+ * กล่อง "ปิดยอดวันนี้" (mockup CnXmYLkT กระดาน 7–8) — แสดงเมื่อเลือกสาขาเดียว (ร้านสาขาเดียว = เลือกให้เอง)
  * 1 ยังไม่ปิดยอด → 2 นับแล้วรอยืนยันรับเงิน → 3 ปิดยอดแล้ว · ยอดนับแก้ไม่ได้ (นับผิด = ผู้ยืนยันตีกลับ)
  */
 const MIN_REASON = 5;
@@ -100,8 +102,8 @@ export default function CashCloseCard({ branchId, date, isToday }: { branchId: s
         <p className="text-sm text-muted-foreground leading-snug">วันที่เลือกไม่มีการปิดยอด</p>
       )}
 
-      {counting && <CountDialog status={data} date={date} onClose={() => setCounting(false)} />}
-      {deciding && <DecisionDialog close={deciding} date={date} onClose={() => setDeciding(null)} />}
+      {counting && <CountDialog status={data} onClose={() => setCounting(false)} />}
+      {deciding && <CashCloseConfirmDialog close={deciding} viewerRole={permissions.viewerRole} onClose={() => setDeciding(null)} />}
     </section>
   );
 }
@@ -123,6 +125,11 @@ function CloseSummary({ close, tone, children }: { close: CashClose; tone: 'pend
         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold leading-snug ${done ? 'bg-primary/10 text-primary' : 'bg-warning/10 text-warning'}`}>
           {done ? `ปิดยอดแล้ว ${close.confirmedAt ? timeOf(close.confirmedAt) : ''}` : 'นับแล้ว รอยืนยันรับเงิน'}
         </span>
+        {done && (
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold leading-snug ${close.moneyState === 'AT_BRANCH' ? 'bg-warning/10 text-warning' : 'bg-primary/10 text-primary'}`}>
+            {close.moneyState === 'AT_BRANCH' ? 'เงินยังอยู่ที่สาขา รอบันทึกนำฝาก' : 'เงินถึงบริษัทแล้ว'}
+          </span>
+        )}
         <span className="text-xs text-muted-foreground leading-snug">
           นับโดย {close.countedBy.name} {dayTimeOf(close.countedAt)}{close.attemptNo > 1 ? ` · นับครั้งที่ ${close.attemptNo}` : ''}
           {done && close.confirmedBy ? ` · รับ ${close.confirmedBy.name}` : ''}
@@ -140,6 +147,8 @@ function CloseSummary({ close, tone, children }: { close: CashClose; tone: 'pend
         <p className="mt-2 text-xs text-muted-foreground leading-snug">
           {close.varianceReason && <>เหตุผลส่วนต่าง: “{close.varianceReason}”</>}
           {done && close.destination && <>{close.varianceReason ? ' · ' : ''}นำเงินไปไว้ที่: {DESTINATION_LABEL[close.destination]}</>}
+          {done && close.depositReference && <> · อ้างอิงสลิป {close.depositReference}</>}
+          {done && close.hasDepositSlip && <> · <EvidenceImageLink path={`/shop-tenders/cash-close/${close.id}/deposit-slip`} title={`สลิปฝากเงิน ${close.branchName}`} /></>}
           {done && close.receiveVariance != null && toSatang(close.receiveVariance) !== 0 && (
             <span className="text-destructive"> · รับจริงต่างจากยอดที่แจ้งส่ง {varianceLabel(close.receiveVariance)}: “{close.receiveNote}”</span>
           )}
@@ -150,17 +159,9 @@ function CloseSummary({ close, tone, children }: { close: CashClose; tone: 'pend
   );
 }
 
-function useInvalidate(date: string) {
-  const client = useQueryClient();
-  return (branchId: string) => {
-    client.invalidateQueries({ queryKey: cashCloseKey(branchId, date) });
-    client.invalidateQueries({ queryKey: ['shop-tenders', 'cash-close', 'history'] });
-  };
-}
-
-function CountDialog({ status, date, onClose }: { status: CashCloseStatusResponse; date: string; onClose: () => void }) {
+function CountDialog({ status, onClose }: { status: CashCloseStatusResponse; onClose: () => void }) {
   const { round } = status;
-  const invalidate = useInvalidate(date);
+  const invalidate = useInvalidateCashClose();
   const [countedText, setCountedText] = useState('');
   const [reason, setReason] = useState('');
   const counted = parseAmount(countedText);
@@ -175,7 +176,7 @@ function CountDialog({ status, date, onClose }: { status: CashCloseStatusRespons
     })).data as CashClose,
     onSuccess: (close) => {
       toast.success(`บันทึกยอดนับแล้ว — ${varianceLabel(close.varianceAmount)} · ส่งเงิน ${baht(close.sendAmount)}`);
-      invalidate(status.branchId); onClose();
+      invalidate(); onClose();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -224,101 +225,6 @@ function CountDialog({ status, date, onClose }: { status: CashCloseStatusRespons
           <Button variant="primary" size="md" disabled={!ready || mutation.isPending} onClick={() => mutation.mutate()}>
             {mutation.isPending ? 'กำลังบันทึก…' : 'บันทึกยอดนับ'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function DecisionDialog({ close, date, onClose }: { close: CashClose; date: string; onClose: () => void }) {
-  const invalidate = useInvalidate(date);
-  const [receivedText, setReceivedText] = useState(baht(close.sendAmount));
-  const [destination, setDestination] = useState<CashDestination>('OWNER_HOLD');
-  const [note, setNote] = useState('');
-  const [sendingBack, setSendingBack] = useState(false);
-  const [backReason, setBackReason] = useState('');
-  const received = parseAmount(receivedText);
-  const differs = received != null && toSatang(received) !== toSatang(close.sendAmount);
-  const confirmReady = received != null && (!differs || note.trim().length >= MIN_REASON);
-
-  const done = (message: string) => { toast.success(message); invalidate(close.branchId); onClose(); };
-  const confirm = useMutation({
-    mutationFn: async () => (await api.post(`/shop-tenders/cash-close/${close.id}/confirm`, {
-      receivedAmount: received, destination, note: note.trim() || undefined })).data,
-    onSuccess: () => done('ยืนยันรับเงินและปิดยอดแล้ว'),
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-  const sendBack = useMutation({
-    mutationFn: async () => (await api.post(`/shop-tenders/cash-close/${close.id}/send-back`, { reason: backReason.trim() })).data,
-    onSuccess: () => done('ตีกลับให้นับใหม่แล้ว'),
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-  const busy = confirm.isPending || sendBack.isPending;
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{sendingBack ? 'ตีกลับให้นับใหม่' : 'ยืนยันรับเงิน'}</DialogTitle>
-          <DialogDescription>{close.branchName} · นับโดย {close.countedBy.name} {dayTimeOf(close.countedAt)}</DialogDescription>
-        </DialogHeader>
-        <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 rounded-lg bg-muted/60 p-3 text-sm leading-snug">
-          <dt className="text-muted-foreground">ต้องมีในลิ้นชัก</dt><dd className="text-right tabular-nums">{baht(close.expectedAmount)}</dd>
-          <dt className="text-muted-foreground">พนักงานนับได้</dt><dd className="text-right tabular-nums">{baht(close.countedAmount)}</dd>
-          <dt className={`font-semibold ${varianceTone(close.varianceAmount)}`}>ส่วนต่าง</dt>
-          <dd className={`text-right font-semibold tabular-nums ${varianceTone(close.varianceAmount)}`}>{varianceLabel(close.varianceAmount)}</dd>
-          {close.varianceReason && <dd className="col-span-2 text-xs text-muted-foreground">เหตุผล: {close.varianceReason}</dd>}
-        </dl>
-
-        {sendingBack ? (
-          <div className="space-y-1">
-            <label htmlFor="cash-close-back-reason" className="block text-xs text-muted-foreground leading-snug">เหตุผลที่ตีกลับ <span className="text-destructive">*</span></label>
-            <textarea id="cash-close-back-reason" rows={2} maxLength={500} autoFocus value={backReason} onChange={(e) => setBackReason(e.target.value)} className={areaClass} />
-            <p className="text-xs text-muted-foreground leading-snug">ยอดนับครั้งนี้จะถูกเก็บเป็นประวัติ และพนักงานต้องนับใหม่ทั้งรอบ</p>
-          </div>
-        ) : (
-          <>
-            <div className="space-y-1">
-              <label htmlFor="cash-close-received" className="block text-xs text-muted-foreground leading-snug">
-                เงินที่รับมาจริง <span className="text-destructive">*</span> (พนักงานแจ้งส่ง {baht(close.sendAmount)})
-              </label>
-              <input id="cash-close-received" inputMode="decimal" value={receivedText} onChange={(e) => setReceivedText(e.target.value)} className={inputClass} />
-              {receivedText.trim() !== '' && received == null && <p className="text-xs text-destructive leading-snug">กรอกเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง</p>}
-            </div>
-            {differs && (
-              <div className="space-y-1">
-                <label htmlFor="cash-close-note" className="block text-xs text-destructive leading-snug">
-                  รับจริงไม่เท่ายอดที่แจ้งส่ง ({varianceLabel((toSatang(received!) - toSatang(close.sendAmount)) / 100)}) — หมายเหตุ <span>*</span>
-                </label>
-                <textarea id="cash-close-note" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} className={areaClass} />
-              </div>
-            )}
-            <div className="space-y-1">
-              <label htmlFor="cash-close-destination" className="block text-xs text-muted-foreground leading-snug">นำเงินไปไว้ที่</label>
-              <select id="cash-close-destination" value={destination} onChange={(e) => setDestination(e.target.value as CashDestination)}
-                className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm">
-                {(Object.keys(DESTINATION_LABEL) as CashDestination[]).map((key) => <option key={key} value={key}>{DESTINATION_LABEL[key]}</option>)}
-              </select>
-            </div>
-          </>
-        )}
-
-        <DialogFooter className="sm:justify-between">
-          {sendingBack ? (
-            <>
-              <Button variant="outline" size="md" disabled={busy} onClick={() => setSendingBack(false)}>กลับ</Button>
-              <Button variant="destructive" size="md" disabled={backReason.trim().length < MIN_REASON || busy} onClick={() => sendBack.mutate()}>
-                {sendBack.isPending ? 'กำลังบันทึก…' : 'ยืนยันตีกลับ'}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="ghost" size="md" className="text-destructive" disabled={busy} onClick={() => setSendingBack(true)}>ตีกลับให้นับใหม่</Button>
-              <Button variant="primary" size="md" disabled={!confirmReady || busy} onClick={() => confirm.mutate()}>
-                {confirm.isPending ? 'กำลังบันทึก…' : 'ยืนยันรับเงินและปิดยอด'}
-              </Button>
-            </>
-          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

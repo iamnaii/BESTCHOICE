@@ -1,6 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
-import { ConfirmCashCloseDto, CountCashCloseDto, SendBackCashCloseDto } from './cash-close.dto';
+import { ConfirmCashCloseDto, CountCashCloseDto, CreateCashDepositDto, SendBackCashCloseDto } from './cash-close.dto';
 
 const messages = async (cls: new () => object, plain: object) =>
   (await validate(plainToInstance(cls, plain))).flatMap((error) => Object.values(error.constraints ?? {}));
@@ -21,5 +21,16 @@ describe('DTO นับเงินปิดยอด', () => {
     expect(await messages(ConfirmCashCloseDto, { receivedAmount: 10510, destination: 'BANK_DEPOSIT' })).toEqual([]);
     expect(await messages(ConfirmCashCloseDto, { receivedAmount: 10510, destination: 'UNDER_THE_MATTRESS' })).toContain('กรุณาเลือกว่านำเงินไปไว้ที่ไหน');
     expect(await messages(SendBackCashCloseDto, { reason: '' })).toContain('กรอกเหตุผลที่ตีกลับให้นับใหม่');
+  });
+
+  it('บันทึกนำฝาก (multipart — ตัวเลขมาเป็นข้อความ): แปลงยอดให้ · ที่มาต้องเป็นตู้เซฟสาขาหรือเงินที่เจ้าของเก็บ · เลขอ้างอิงอย่างน้อย 6 ตัว', async () => {
+    const parse = (plain: object) => plainToInstance(CreateCashDepositDto, plain, { enableImplicitConversion: true });
+    const ok = parse({ branchId: 'branch-002', source: 'BRANCH_SAFE', amount: '18200.00', reference: '2026092120521187' });
+    expect(await validate(ok)).toEqual([]);
+    expect(ok.amount).toBe(18200);
+    const bad = async (plain: object) => (await validate(parse(plain))).flatMap((error) => Object.values(error.constraints ?? {}));
+    expect(await bad({ branchId: 'b1', source: 'BANK_DEPOSIT', amount: '100', reference: '123456' })).toContain('เลือกที่มาของเงินเป็นตู้เซฟสาขา หรือเงินที่เจ้าของเก็บไว้');
+    expect(await bad({ branchId: 'b1', source: 'OWNER_HOLD', amount: '0', reference: '123456' })).toContain('ยอดนำฝากต้องมากกว่า 0');
+    expect(await bad({ branchId: 'b1', source: 'OWNER_HOLD', amount: '100', reference: '12345' })).toContain('เลขอ้างอิงในสลิปต้องมีอย่างน้อย 6 ตัว');
   });
 });

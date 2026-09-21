@@ -38,7 +38,7 @@ export default function SessionTimer({
     : ratio >= 1.3
       ? 'text-destructive'
       : ratio >= 1
-        ? 'text-warning'
+        ? 'text-warning-strong'
         : 'text-muted-foreground';
 
   return (

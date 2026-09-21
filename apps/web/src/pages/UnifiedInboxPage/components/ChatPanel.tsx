@@ -722,7 +722,7 @@ export default function ChatPanel({
               disabled={pinMutation.isPending}
               className={cn(
                 'size-7 @lg:size-8 inline-flex items-center justify-center rounded-md transition-colors',
-                session.pinnedAt ? 'bg-card text-warning shadow-sm dark:bg-white/10 dark:text-amber-300' : 'text-muted-foreground hover:text-foreground',
+                session.pinnedAt ? 'bg-card text-warning-strong shadow-sm dark:bg-white/10 dark:text-amber-300' : 'text-muted-foreground hover:text-foreground',
               )}
               title={session.pinnedAt ? 'ปักหมุดอยู่ — กดเพื่อถอด' : 'ปักหมุดห้องนี้ไว้บนสุด'}
               aria-label={session.pinnedAt ? 'ถอดหมุดห้องแชท' : 'ปักหมุดห้องแชท'}
@@ -816,7 +816,7 @@ export default function ChatPanel({
 
       {/* Persistent "another staff is viewing" banner */}
       {otherViewers && otherViewers.length > 0 && (
-        <div className="flex items-center gap-2 bg-warning/10 px-4 py-1.5 text-[11px] text-warning dark:bg-amber-400/10 dark:text-amber-200 leading-snug border-b border-warning/20">
+        <div className="flex items-center gap-2 bg-warning/10 px-4 py-1.5 text-[11px] text-warning-strong dark:bg-amber-400/10 dark:text-amber-200 leading-snug border-b border-warning/20">
           <Eye className="size-3.5 shrink-0" />
           <span className="truncate">
             {otherViewers.map((v) => v.userName).join(', ')} กำลังดูห้องนี้อยู่ — ระวังตอบซ้ำ
@@ -950,7 +950,7 @@ export default function ChatPanel({
       {/* หน้าต่าง 24 ชม. ของ Facebook (สเปก §8.1) — เตือน ไม่ปิดปุ่ม · อ่านจาก session.lastCustomerAt ที่เซิร์ฟเวอร์ตั้ง */}
       {!isResolved && !isNoteMode && fbWindow === 'closing' && (
         <div role="status" className="flex items-start gap-2 border-t border-border/60 bg-warning/10 px-3 py-2 text-xs leading-snug text-foreground">
-          <Clock className="mt-0.5 size-3.5 shrink-0 text-warning" />
+          <Clock className="mt-0.5 size-3.5 shrink-0 text-warning-strong" />
           <span><span className="font-semibold">ตอบได้อีก {fbWindowLeftText(session.lastCustomerAt)}</span> ก่อน Facebook ปิดหน้าต่าง 24 ชั่วโมง</span>
         </div>
       )}

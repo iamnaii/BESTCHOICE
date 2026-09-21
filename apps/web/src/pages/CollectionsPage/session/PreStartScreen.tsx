@@ -110,7 +110,7 @@ export default function PreStartScreen({ data, isLoading, onStart, starting }: P
               label="ค้าง 8-29 วัน"
               value={breakdown.medium}
               unit="ราย"
-              tone="text-warning"
+              tone="text-warning-strong"
             />
           </div>
         </div>

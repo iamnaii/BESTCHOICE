@@ -69,7 +69,7 @@ export default function CreditCheckCard({
       : cc.aiScore >= 70
         ? 'text-success'
         : cc.aiScore >= 50
-          ? 'text-warning'
+          ? 'text-warning-strong'
           : 'text-destructive';
   const scoreBg =
     cc.aiScore === null
@@ -171,7 +171,7 @@ export default function CreditCheckCard({
             <div className="bg-muted/40 rounded-lg border border-border/50 p-2.5">
               <div className="text-2xs text-muted-foreground">ความสม่ำเสมอรายได้</div>
               <div
-                className={`text-sm font-bold mt-0.5 ${ai.incomeConsistency === 'stable' ? 'text-success' : 'text-warning'}`}
+                className={`text-sm font-bold mt-0.5 ${ai.incomeConsistency === 'stable' ? 'text-success' : 'text-warning-strong'}`}
               >
                 {ai.incomeConsistency === 'stable' ? 'สม่ำเสมอ' : 'ไม่สม่ำเสมอ'}
               </div>
@@ -219,7 +219,7 @@ export default function CreditCheckCard({
             cc.aiScore && cc.aiScore >= 70
               ? 'bg-success/5 dark:bg-success/10 text-success'
               : cc.aiScore && cc.aiScore >= 50
-                ? 'bg-warning/10 text-warning'
+                ? 'bg-warning/10 text-warning-strong'
                 : 'bg-destructive/5 dark:bg-destructive/10 text-destructive'
           }`}
         >

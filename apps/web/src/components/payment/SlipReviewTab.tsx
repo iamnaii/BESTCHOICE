@@ -235,7 +235,7 @@ export default function SlipReviewTab() {
 
   const statusBadge = (status: string) => {
     const styles: Record<string, string> = {
-      PENDING_REVIEW: 'bg-warning/10 text-warning dark:bg-warning/15',
+      PENDING_REVIEW: 'bg-warning/10 text-warning-strong dark:bg-warning/15',
       APPROVED: 'bg-success/10 text-success dark:bg-success/15',
       REJECTED: 'bg-destructive/10 text-destructive dark:bg-destructive/15',
     };
@@ -253,7 +253,7 @@ export default function SlipReviewTab() {
         <Card className="border-l-[3px] border-l-warning hover:shadow-card-hover transition-all">
           <CardContent className="pt-4">
             <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">รอตรวจ</div>
-            <div className="text-2xl font-bold text-warning">{stats?.pendingCount ?? 0}</div>
+            <div className="text-2xl font-bold text-warning-strong">{stats?.pendingCount ?? 0}</div>
           </CardContent>
         </Card>
         <Card className="border-l-[3px] border-l-success hover:shadow-card-hover transition-all">
@@ -582,7 +582,7 @@ export default function SlipReviewTab() {
                                 <span className="font-medium">งวดที่ {match.installmentNo}</span>
                                 <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                                   pct >= 85 ? 'bg-success/10 text-success' :
-                                  pct >= 60 ? 'bg-warning/10 text-warning' :
+                                  pct >= 60 ? 'bg-warning/10 text-warning-strong' :
                                   'bg-muted text-muted-foreground'
                                 }`}>
                                   {pct}%

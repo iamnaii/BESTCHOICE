@@ -50,11 +50,11 @@ export function InstallmentCalculatorCard({
       <div className="rounded-md border border-warning/40 bg-warning/10 p-4 text-sm leading-snug">
         ยังไม่ได้กำหนดราคาเงินผ่อน
         {canEditPrice ? (
-          <button type="button" onClick={onEditPrice} className="ml-2 underline text-warning">
+          <button type="button" onClick={onEditPrice} className="ml-2 underline text-warning-strong">
             ไปแก้ราคา
           </button>
         ) : (
-          <span className="ml-2 text-warning">— แจ้งผู้จัดการให้กำหนดราคา</span>
+          <span className="ml-2 text-warning-strong">— แจ้งผู้จัดการให้กำหนดราคา</span>
         )}
       </div>
     );

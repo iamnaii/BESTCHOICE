@@ -75,7 +75,7 @@ export default function VariableHighlighter({ text, previewMode, resolvedText }:
     text: '',
     print: 'bg-primary/15 text-primary px-1 rounded',
     loop: 'bg-primary/15 text-primary px-1 rounded',
-    condition: 'bg-warning/15 text-warning px-1 rounded',
+    condition: 'bg-warning/15 text-warning-strong px-1 rounded',
     signature: 'bg-success/15 text-success px-1 rounded',
     invalid: 'bg-destructive/15 text-destructive px-1 rounded line-through',
   };

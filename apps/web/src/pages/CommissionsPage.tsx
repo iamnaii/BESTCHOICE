@@ -411,7 +411,7 @@ export default function CommissionsPage() {
             <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-warning">
               <CardContent className="p-5">
                 <div className="flex items-center gap-2 mb-2">
-                  <Clock className="size-4 text-warning" />
+                  <Clock className="size-4 text-warning-strong" />
                   <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider">
                     รออนุมัติ
                   </div>

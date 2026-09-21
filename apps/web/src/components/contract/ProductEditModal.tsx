@@ -181,7 +181,7 @@ export default function ProductEditModal({ product, onClose, onSuccess }: Props)
         {product.category === 'PHONE_USED' && (
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning-strong">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01"/><path d="M16 6h.01"/><path d="M12 6h.01"/></svg>
               </div>
               <div>

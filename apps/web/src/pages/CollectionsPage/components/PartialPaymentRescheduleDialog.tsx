@@ -231,7 +231,7 @@ export default function PartialPaymentRescheduleDialog({
                 นัดส่วนที่เหลือ
               </span>
               <span className="text-sm leading-snug">
-                <span className="text-base font-bold tabular-nums text-warning">
+                <span className="text-base font-bold tabular-nums text-warning-strong">
                   {formatNumber(outstandingAfter)}
                 </span>{' '}
                 ฿

@@ -777,8 +777,8 @@ export default function RichMenuPage() {
           {editingMenuId && (
             <div className="bg-warning/10 border border-warning/20 rounded-xl p-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Pencil size={16} className="text-warning" />
-                <span className="text-sm text-warning">กำลังแก้ไขเมนู — บันทึกจะสร้างเมนูใหม่แทนอันเก่า</span>
+                <Pencil size={16} className="text-warning-strong" />
+                <span className="text-sm text-warning-strong">กำลังแก้ไขเมนู — บันทึกจะสร้างเมนูใหม่แทนอันเก่า</span>
               </div>
               <Button size="sm" variant="ghost" onClick={() => setEditingMenuId(null)}>
                 ยกเลิก

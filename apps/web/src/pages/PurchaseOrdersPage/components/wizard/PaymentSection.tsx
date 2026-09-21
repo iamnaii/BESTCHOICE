@@ -79,7 +79,7 @@ export function PaymentSection({
     <>
       <Wrap className={wrapCls}>
         {variant === 'card' && (
-          <CardHeader icon={<CreditCard className="size-4.5" />} tone="bg-warning/10 text-warning" title="การจ่ายเงิน" hint={hint} />
+          <CardHeader icon={<CreditCard className="size-4.5" />} tone="bg-warning/10 text-warning-strong" title="การจ่ายเงิน" hint={hint} />
         )}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>

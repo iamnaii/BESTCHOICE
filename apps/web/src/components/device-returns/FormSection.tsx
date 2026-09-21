@@ -20,7 +20,7 @@ export function Section({
     tone === 'success'
       ? 'bg-success/10 text-success'
       : tone === 'warning'
-        ? 'bg-warning/10 text-warning'
+        ? 'bg-warning/10 text-warning-strong'
         : 'bg-primary/10 text-primary';
   return (
     <div className="rounded-xl border border-border bg-card p-5">
@@ -65,14 +65,14 @@ export function Row({
 export function Effect({ text, warning }: { text: string; warning?: boolean }) {
   return (
     <li className="flex items-start gap-2">
-      <span className={warning ? 'text-warning' : 'text-success'}>
+      <span className={warning ? 'text-warning-strong' : 'text-success'}>
         {warning ? (
           <AlertTriangle className="size-4 inline" />
         ) : (
           <Check className="size-4 inline" />
         )}
       </span>
-      <span className={warning ? 'text-warning' : 'text-foreground'}>{text}</span>
+      <span className={warning ? 'text-warning-strong' : 'text-foreground'}>{text}</span>
     </li>
   );
 }

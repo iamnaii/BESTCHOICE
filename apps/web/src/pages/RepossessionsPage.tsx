@@ -404,7 +404,7 @@ export default function RepossessionsPage() {
               <Link
                 to={`/products/${r.product.id}`}
                 title="เครื่องอยู่ในคิวรอถ่ายรูป 6 มุม — ครบแล้วขึ้นขายเอง"
-                className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning hover:bg-warning/20 dark:bg-warning/15"
+                className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-semibold text-warning-strong hover:bg-warning/20 dark:bg-warning/15"
               >
                 <Camera className="size-3" /> รอถ่ายรูป {r.product.photoAngles ?? 0}/6
               </Link>
@@ -469,7 +469,7 @@ export default function RepossessionsPage() {
             <button
               onClick={() => openSettlement(r)}
               title="บันทึกรับโอนจากหน้าร้าน — ล้างลูกหนี้-หน้าร้าน (11-2107) กรณียึดคืนแบบตั้งลูกหนี้-หน้าร้าน"
-              className="text-warning hover:text-warning/80 text-sm font-medium"
+              className="text-warning-strong hover:text-warning-strong/80 text-sm font-medium"
             >
               รับโอนหน้าร้าน
             </button>
@@ -556,7 +556,7 @@ export default function RepossessionsPage() {
             </Badge>
           </CardHeader>
           {awaitingTruncated && (
-            <div className="px-4 py-2 border-b bg-warning/10 text-xs text-warning leading-snug">
+            <div className="px-4 py-2 border-b bg-warning/10 text-xs text-warning-strong leading-snug">
               แสดง {awaiting.length} จาก {awaitingTotal} สัญญา — ยึดเครื่องในรายการนี้ก่อน
               แล้วรายการที่เหลือจะเลื่อนขึ้นมาเอง
             </div>

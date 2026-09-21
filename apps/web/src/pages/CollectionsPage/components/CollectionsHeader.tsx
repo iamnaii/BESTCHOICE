@@ -181,7 +181,7 @@ export default function CollectionsHeader({ onSwitchToToday }: Props) {
             <Metric
               icon={Handshake}
               iconBg="bg-warning/10"
-              iconColor="text-warning"
+              iconColor="text-warning-strong"
               label="นัดชำระสำเร็จ"
               value={today?.promisesKeptToday?.toString() ?? '-'}
               unit="ราย"
@@ -251,11 +251,11 @@ export default function CollectionsHeader({ onSwitchToToday }: Props) {
           <Metric
             icon={Handshake}
             iconBg="bg-warning/10"
-            iconColor="text-warning"
+            iconColor="text-warning-strong"
             label="รอชำระตามนัด"
             value={sys?.promisedCount?.toString() ?? '-'}
             unit="ราย"
-            valueClass="text-warning"
+            valueClass="text-warning-strong"
             loading={sysKpi.isLoading}
           />
           <Metric

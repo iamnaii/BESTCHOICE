@@ -55,7 +55,7 @@ export default function ComplianceDashboardSection() {
         </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <ComplianceCard
-            icon={<ShieldCheck className="h-5 w-5 text-warning" aria-hidden />}
+            icon={<ShieldCheck className="h-5 w-5 text-warning-strong" aria-hidden />}
             label="PDPA: ทวงถามถี่เกิน"
             value={dunning.isLoading ? null : pdpaCount}
             hint={
@@ -75,7 +75,7 @@ export default function ComplianceDashboardSection() {
             onClick={() => setOpenCard('legal')}
           />
           <ComplianceCard
-            icon={<AlertTriangle className="h-5 w-5 text-warning" aria-hidden />}
+            icon={<AlertTriangle className="h-5 w-5 text-warning-strong" aria-hidden />}
             label="Audit anomalies"
             value={audit.isLoading ? null : anomalyCount}
             hint="DENY events 7 วันที่ผ่านมา"

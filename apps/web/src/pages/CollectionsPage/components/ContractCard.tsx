@@ -219,7 +219,7 @@ export default function ContractCard({
 
           {/* No-answer count */}
           {contract.noAnswerCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 text-warning border border-warning/20 text-xs font-medium px-2.5 py-1 leading-snug">
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 text-warning-strong border border-warning/20 text-xs font-medium px-2.5 py-1 leading-snug">
               <PhoneMissed className="size-3.5" />
               ไม่รับสาย {contract.noAnswerCount} ครั้ง
             </span>
@@ -252,7 +252,7 @@ export default function ContractCard({
 
           {/* MDM */}
           {contract.mdmState === 'PENDING' && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 text-warning text-xs font-medium px-2.5 py-1 leading-snug">
+            <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/10 text-warning-strong text-xs font-medium px-2.5 py-1 leading-snug">
               <Lock className="size-3.5" /> รออนุมัติล็อคเครื่อง
             </span>
           )}

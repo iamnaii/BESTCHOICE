@@ -43,7 +43,7 @@ const paymentStatusLabels: Record<string, { label: string; className: string }> 
   PENDING: { label: 'รอชำระ', className: 'bg-secondary text-foreground' },
   PAID: { label: 'ชำระแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
   OVERDUE: { label: 'เกินกำหนด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-warning/10 text-warning-strong dark:bg-warning/15' },
 };
 
 type PaymentMethodMeta = {
@@ -56,7 +56,7 @@ const paymentMethodMeta: Record<string, PaymentMethodMeta> = {
   CASH:           { label: 'เงินสด',  icon: Banknote,   className: 'bg-success/10 text-success' },
   BANK_TRANSFER:  { label: 'โอน',     icon: Landmark,   className: 'bg-info/10 text-info' },
   QR_EWALLET:     { label: 'QR',      icon: QrCode,     className: 'bg-primary/10 text-primary' },
-  CREDIT_BALANCE: { label: 'เครดิต',  icon: Wallet,     className: 'bg-warning/10 text-warning' },
+  CREDIT_BALANCE: { label: 'เครดิต',  icon: Wallet,     className: 'bg-warning/10 text-warning-strong' },
   ONLINE_GATEWAY: { label: 'ออนไลน์', icon: CreditCard, className: 'bg-accent text-accent-foreground' },
 };
 
@@ -156,7 +156,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
                       {p.amountPaid && amountPaid > 0 ? (
                         p.status === 'PARTIALLY_PAID' ? (
                           <div className="flex flex-col gap-1 min-w-[120px]">
-                            <span className="text-sm font-medium text-warning">
+                            <span className="text-sm font-medium text-warning-strong">
                               {formatNumber(amountPaid)} / {formatNumber(amountDue)} บาท
                             </span>
                             <div className="h-1 rounded-full bg-border overflow-hidden">
@@ -259,7 +259,7 @@ export default function ContractPaymentSchedule({ contractId, payments }: Contra
 
                           {p.status === 'PARTIALLY_PAID' && (
                             <div className="flex items-center justify-between gap-3 px-3 py-2 bg-warning/5 border-t border-border">
-                              <span className="text-xs text-warning font-medium">
+                              <span className="text-xs text-warning-strong font-medium">
                                 ยังขาดอีก {formatNumber(remaining)} บาท
                               </span>
                               <button

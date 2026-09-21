@@ -47,7 +47,7 @@ export default function CashHoldingsCard({ date, branchId, onPick }: { date: str
             return (
               <li key={holding.source} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 py-2.5">
                 <span className="flex items-start gap-1.5">
-                  <Icon aria-hidden className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${holding.reachedCompany ? 'text-muted-foreground' : 'text-warning'}`} />
+                  <Icon aria-hidden className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${holding.reachedCompany ? 'text-muted-foreground' : 'text-warning-strong'}`} />
                   <span className="flex flex-col">
                     <span className="font-semibold text-foreground">{holding.sourceLabel}</span>
                     <span className="text-xs text-muted-foreground">

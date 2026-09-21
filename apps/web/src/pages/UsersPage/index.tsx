@@ -291,7 +291,7 @@ export default function UsersPage() {
                   <CardContent className="p-5 flex-1">
                     <div className="flex items-center gap-3">
                       <div className={`p-2 rounded-lg ${tooMany ? 'bg-destructive/10' : 'bg-warning/10'}`}>
-                        <Shield className={`size-5 ${tooMany ? 'text-destructive' : 'text-warning'}`} />
+                        <Shield className={`size-5 ${tooMany ? 'text-destructive' : 'text-warning-strong'}`} />
                       </div>
                       <div>
                         <div className="text-2xl font-bold tabular-nums text-foreground">

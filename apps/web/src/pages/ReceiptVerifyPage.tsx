@@ -57,11 +57,11 @@ export default function ReceiptVerifyPage() {
               </div>
             ) : (
               <div className="rounded-xl border border-warning/30 bg-warning/5 dark:bg-warning/10 shadow-sm p-6 mb-6 text-center">
-                <AlertCircle className="w-12 h-12 text-warning mx-auto mb-3" />
-                <h2 className="text-lg font-bold text-warning mb-1">ใบเสร็จถูกยกเลิก</h2>
-                <p className="text-warning/80 text-sm">ใบเสร็จนี้ถูกยกเลิกแล้ว</p>
+                <AlertCircle className="w-12 h-12 text-warning-strong mx-auto mb-3" />
+                <h2 className="text-lg font-bold text-warning-strong mb-1">ใบเสร็จถูกยกเลิก</h2>
+                <p className="text-warning-strong/80 text-sm">ใบเสร็จนี้ถูกยกเลิกแล้ว</p>
                 {receipt.voidReason && (
-                  <p className="text-warning/70 text-xs mt-2">
+                  <p className="text-warning-strong/70 text-xs mt-2">
                     เหตุผล: {receipt.voidReason}
                   </p>
                 )}

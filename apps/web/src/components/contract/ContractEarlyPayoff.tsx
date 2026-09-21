@@ -362,7 +362,7 @@ export function EarlyPayoffOverlay({
         {/* Section 3: รับชำระ */}
         <div className="rounded-xl border border-border bg-card p-5">
           <div className="flex items-center gap-2.5 mb-4">
-            <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
+            <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning-strong">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 className="size-4"
@@ -731,14 +731,14 @@ function Row({
 function Effect({ text, warning }: { text: string; warning?: boolean }) {
   return (
     <li className="flex items-start gap-2">
-      <span className={warning ? 'text-warning' : 'text-success'}>
+      <span className={warning ? 'text-warning-strong' : 'text-success'}>
         {warning ? (
           <AlertTriangle className="size-4 inline" />
         ) : (
           <Check className="size-4 inline" />
         )}
       </span>
-      <span className={warning ? 'text-warning' : 'text-foreground'}>{text}</span>
+      <span className={warning ? 'text-warning-strong' : 'text-foreground'}>{text}</span>
     </li>
   );
 }

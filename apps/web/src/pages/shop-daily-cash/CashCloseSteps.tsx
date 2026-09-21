@@ -211,7 +211,7 @@ export function ReadinessChecklist({ status }: { status: CashCloseStatusResponse
   );
   return (
     <div className="space-y-3">
-      <p className="text-sm font-semibold leading-snug text-warning">
+      <p className="text-sm font-semibold leading-snug text-warning-strong">
         สาขานี้ยังปิดยอดไม่ได้ — เหลือ {missing} อย่างที่ต้องตั้งก่อน{owner ? '' : ' · แจ้งเจ้าของให้ตั้งค่า'}
       </p>
       <ul className="space-y-2">

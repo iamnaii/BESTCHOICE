@@ -176,7 +176,7 @@ export default function CreditChecksPage() {
         ) : (
           <span
             className={`text-sm font-semibold tabular-nums ${
-              c.aiScore >= 50 ? 'text-success' : c.aiScore >= 40 ? 'text-warning' : 'text-destructive'
+              c.aiScore >= 50 ? 'text-success' : c.aiScore >= 40 ? 'text-warning-strong' : 'text-destructive'
             }`}
           >
             {c.aiScore}
@@ -282,7 +282,7 @@ export default function CreditChecksPage() {
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
           {[
-            { label: 'รอตรวจ', value: summary.pendingCount, tone: 'text-warning' },
+            { label: 'รอตรวจ', value: summary.pendingCount, tone: 'text-warning-strong' },
             { label: 'ผ่าน', value: summary.approvedCount, tone: 'text-success' },
             { label: 'ไม่ผ่าน', value: summary.rejectedCount, tone: 'text-destructive' },
             { label: 'คะแนนเฉลี่ย', value: summary.avgScore ?? 'ยังไม่มีคะแนน', tone: 'text-foreground' },

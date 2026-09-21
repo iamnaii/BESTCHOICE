@@ -112,7 +112,7 @@ export function PaymentModal({
                   <span>จ่ายแล้วก่อนหน้า:</span>
                   <span>{Number(selectedPO.paidAmount).toLocaleString()} บาท</span>
                 </div>
-                <div className="flex justify-between font-semibold text-warning">
+                <div className="flex justify-between font-semibold text-warning-strong">
                   <span>คงเหลือ:</span>
                   <span>{(Number(selectedPO.netAmount ?? selectedPO.totalAmount) - Number(selectedPO.paidAmount)).toLocaleString()} บาท</span>
                 </div>
@@ -221,7 +221,7 @@ export function PaymentModal({
               if (paid > 0 && remaining > 0) {
                 return (
                   <div className="mt-2 p-2 bg-warning/10 border border-warning/20 rounded-lg text-sm">
-                    <div className="flex justify-between text-warning">
+                    <div className="flex justify-between text-warning-strong">
                       <span>ยอดคงเหลือที่ต้องจ่าย:</span>
                       <span className="font-semibold">{remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท</span>
                     </div>

@@ -20,7 +20,7 @@ export const ROLE_AVATAR_COLORS: Record<string, string> = {
   BRANCH_MANAGER: 'bg-primary/15 text-primary',
   FINANCE_MANAGER: 'bg-info/15 text-info',
   SALES: 'bg-success/15 text-success',
-  ACCOUNTANT: 'bg-warning/15 text-warning',
+  ACCOUNTANT: 'bg-warning/15 text-warning-strong',
   // Owner Q4 (2026-05-17) — external auditor (CPA / สรรพากร). Read-only;
   // backend RolesGuard gates via `viewer_role_enabled` SystemConfig.
   VIEWER: 'bg-secondary text-secondary-foreground',
@@ -31,6 +31,6 @@ export const ROLE_COLORS: Record<string, string> = {
   BRANCH_MANAGER: 'bg-primary/10 text-primary dark:bg-primary/15',
   FINANCE_MANAGER: 'bg-info/10 text-info dark:bg-info/15',
   SALES: 'bg-success/10 text-success dark:bg-success/15',
-  ACCOUNTANT: 'bg-warning/10 text-warning dark:bg-warning/15',
+  ACCOUNTANT: 'bg-warning/10 text-warning-strong dark:bg-warning/15',
   VIEWER: 'bg-secondary text-secondary-foreground',
 };

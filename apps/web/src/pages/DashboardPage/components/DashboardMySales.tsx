@@ -113,11 +113,11 @@ export default function DashboardMySales() {
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="size-10 rounded-xl bg-warning/10 flex items-center justify-center">
-                <Clock className="size-5 text-warning" />
+                <Clock className="size-5 text-warning-strong" />
               </div>
             </div>
             <div className="text-lg font-bold text-foreground">
-              <span className="text-warning">{data.pendingCount}</span>
+              <span className="text-warning-strong">{data.pendingCount}</span>
               {' / '}
               <span className="text-primary">{data.approvedCount}</span>
               {' / '}

@@ -88,13 +88,13 @@ export function QuickStartPanel({ branchId, onMode, onPickTemplate, onClose }: P
                         className={cn(
                           'text-xs font-medium px-1.5 py-0.5 rounded',
                           tpl.isRecurring
-                            ? 'bg-warning/10 text-warning'
+                            ? 'bg-warning/10 text-warning-strong'
                             : 'bg-muted text-muted-foreground',
                         )}
                       >
                         {tpl.isRecurring ? 'recur' : 'manual'}
                       </span>
-                      {tpl.isRecurring && <Star className="size-3 text-warning" />}
+                      {tpl.isRecurring && <Star className="size-3 text-warning-strong" />}
                     </div>
                     <div className="text-sm font-medium leading-snug truncate">{tpl.name}</div>
                     <div className="text-xs text-muted-foreground leading-snug">

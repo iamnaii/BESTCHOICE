@@ -115,7 +115,7 @@ export default function FocusContractCard({
               </span>
             )}
             {(c.noAnswerCount ?? 0) > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 text-warning border border-warning/20 text-sm font-medium px-3 py-1.5 leading-snug">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 text-warning-strong border border-warning/20 text-sm font-medium px-3 py-1.5 leading-snug">
                 <PhoneMissed className="size-4" />
                 ไม่รับสาย {c.noAnswerCount} ครั้ง
               </span>

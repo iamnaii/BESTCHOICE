@@ -91,7 +91,7 @@ export default function OnlineAppraiseModal({ item, onClose }: Props) {
             <div className="font-semibold">
               {item.deviceBrand} {item.deviceModel} {item.deviceStorage ?? ''}
               <span
-                className={`ml-2 text-xs font-medium ${item.flow === 'EXCHANGE' ? 'text-warning' : 'text-muted-foreground'}`}
+                className={`ml-2 text-xs font-medium ${item.flow === 'EXCHANGE' ? 'text-warning-strong' : 'text-muted-foreground'}`}
               >
                 {item.flow === 'EXCHANGE' ? 'เทิร์นแลกเครื่องใหม่ (เครดิต)' : 'รับซื้อเงินสด'}
               </span>

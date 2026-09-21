@@ -29,7 +29,7 @@ export const GROUP_EVENT_STYLES: Readonly<Record<JourneyEventGroup, EventStyle>>
   credit: { Icon: CreditCard, iconBg: 'bg-info/10', iconText: 'text-info', typeLabel: 'เครดิต' },
   sale: { Icon: ShoppingBag, iconBg: 'bg-success/10', iconText: 'text-success', typeLabel: 'ขาย/สัญญา' },
   payment: { Icon: Banknote, iconBg: 'bg-success/10', iconText: 'text-success', typeLabel: 'ชำระเงิน' },
-  collections: { Icon: PhoneCall, iconBg: 'bg-warning/10', iconText: 'text-warning', typeLabel: 'ติดตามหนี้' },
+  collections: { Icon: PhoneCall, iconBg: 'bg-warning/10', iconText: 'text-warning-strong', typeLabel: 'ติดตามหนี้' },
   service: { Icon: Wrench, iconBg: 'bg-muted', iconText: 'text-muted-foreground', typeLabel: 'บริการ/ประกัน' },
   points: { Icon: Gift, iconBg: 'bg-primary/10', iconText: 'text-primary', typeLabel: 'แต้ม' },
   system: { Icon: Settings2, iconBg: 'bg-muted', iconText: 'text-muted-foreground', typeLabel: 'ระบบ' },

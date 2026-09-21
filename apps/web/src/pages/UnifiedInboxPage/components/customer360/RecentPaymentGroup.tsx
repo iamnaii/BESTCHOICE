@@ -78,7 +78,7 @@ export default function RecentPaymentGroup({ payment }: { payment: PaymentSummar
             <span
               className={cn(
                 'inline-flex items-center px-1 py-px rounded text-[9px] font-semibold',
-                isPartial ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success',
+                isPartial ? 'bg-warning/10 text-warning-strong' : 'bg-success/10 text-success',
               )}
             >
               {isPartial ? 'ชำระบางส่วน' : 'ครบ'}
@@ -90,7 +90,7 @@ export default function RecentPaymentGroup({ payment }: { payment: PaymentSummar
             {paid.toLocaleString()} บ.
           </div>
           {isPartial && (
-            <div className="text-[9px] text-warning tabular-nums">/ {due.toLocaleString()}</div>
+            <div className="text-[9px] text-warning-strong tabular-nums">/ {due.toLocaleString()}</div>
           )}
         </div>
       </button>

@@ -182,7 +182,7 @@ export default function CreditCheckCreateModal({
                             ลูกค้าเก่า
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning-strong">
                             ลูกค้าใหม่
                           </span>
                         )
@@ -441,7 +441,7 @@ export default function CreditCheckCreateModal({
                         ลูกค้าเก่า
                       </span>
                     ) : (
-                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-warning/10 text-warning-strong">
                         ลูกค้าใหม่
                       </span>
                     )}
@@ -463,7 +463,7 @@ export default function CreditCheckCreateModal({
                     <div className="text-lg font-bold">
                       <span className="text-success">{customerHistory.closedContracts}</span>
                       <span className="text-xs font-normal text-muted-foreground"> / </span>
-                      <span className="text-warning">{customerHistory.activeContracts}</span>
+                      <span className="text-warning-strong">{customerHistory.activeContracts}</span>
                     </div>
                   </div>
                   <div className="bg-muted/50 rounded-lg border p-3">
@@ -473,7 +473,7 @@ export default function CreditCheckCreateModal({
                         (customerHistory.onTimePaymentPct ?? 0) >= 80
                           ? 'text-success'
                           : (customerHistory.onTimePaymentPct ?? 0) >= 50
-                            ? 'text-warning'
+                            ? 'text-warning-strong'
                             : 'text-destructive'
                       }`}
                     >
@@ -500,7 +500,7 @@ export default function CreditCheckCreateModal({
           {selectedCustomer && (
             <div className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning">
+                <div className="flex items-center justify-center size-8 rounded-lg bg-warning/10 text-warning-strong">
                   <BarChart3 className="size-4" strokeWidth={1.5} />
                 </div>
                 <div>
@@ -536,7 +536,7 @@ export default function CreditCheckCreateModal({
                           riskScore.riskLevel === 'LOW'
                             ? 'bg-success/10 text-success'
                             : riskScore.riskLevel === 'MEDIUM'
-                              ? 'bg-warning/10 text-warning'
+                              ? 'bg-warning/10 text-warning-strong'
                               : 'bg-destructive/10 text-destructive'
                         }`}
                       >
@@ -555,7 +555,7 @@ export default function CreditCheckCreateModal({
                           (riskScore.debtToIncome ?? 0) <= 40
                             ? 'text-success'
                             : (riskScore.debtToIncome ?? 0) <= 60
-                              ? 'text-warning'
+                              ? 'text-warning-strong'
                               : 'text-destructive'
                         }`}
                       >

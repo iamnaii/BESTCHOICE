@@ -76,7 +76,7 @@ export const priorityConfig: Record<
   },
   MEDIUM: {
     label: 'ปานกลาง',
-    badge: 'bg-warning/10 text-warning',
+    badge: 'bg-warning/10 text-warning-strong',
     bar: 'bg-warning/60',
     dot: 'bg-warning',
   },

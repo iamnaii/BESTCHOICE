@@ -203,7 +203,7 @@ export function AgingTab({
                             </td>
                             <td
                               className={`p-3 text-right tabular-nums ${
-                                overdue ? 'text-warning font-medium' : ''
+                                overdue ? 'text-warning-strong font-medium' : ''
                               }`}
                               title={[
                                 r.intercoOldestPostedAt
@@ -283,7 +283,7 @@ function SummaryTile({
         <p className="text-xs text-muted-foreground leading-snug">{label}</p>
         <p
           className={`text-xl font-bold mt-1 tabular-nums leading-snug ${
-            tone === 'warning' ? 'text-warning' : 'text-foreground'
+            tone === 'warning' ? 'text-warning-strong' : 'text-foreground'
           }`}
         >
           {value}

@@ -222,7 +222,7 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
                 <section className={cn(cardCls, 'flex flex-col gap-3')} aria-label="ความคืบหน้าการรับสินค้า">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                      <div className={cn('flex size-8 items-center justify-center rounded-lg', goods.remaining === 0 && goods.total > 0 ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning')}>
+                      <div className={cn('flex size-8 items-center justify-center rounded-lg', goods.remaining === 0 && goods.total > 0 ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning-strong')}>
                         <Truck className="size-4.5" aria-hidden />
                       </div>
                       <span className="text-sm font-semibold text-foreground">รับสินค้า</span>
@@ -255,7 +255,7 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
                 <section className={cn(cardCls, 'flex flex-col gap-3')} aria-label="ความคืบหน้าการจ่ายเงิน">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                      <div className={cn('flex size-8 items-center justify-center rounded-lg', pay.pct >= 100 ? 'bg-success/10 text-success' : pay.pct > 0 ? 'bg-warning/10 text-warning' : 'bg-destructive/10 text-destructive')}>
+                      <div className={cn('flex size-8 items-center justify-center rounded-lg', pay.pct >= 100 ? 'bg-success/10 text-success' : pay.pct > 0 ? 'bg-warning/10 text-warning-strong' : 'bg-destructive/10 text-destructive')}>
                         <Coins className="size-4.5" aria-hidden />
                       </div>
                       <span className="text-sm font-semibold text-foreground">การจ่ายเงิน</span>
@@ -291,7 +291,7 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
 
               {/* Items — the same columns the purchase wizard shows, plus รับแล้ว */}
               <section className={cardCls} aria-label="รายการสินค้า">
-                <CardHeader icon={<Package className="size-4.5" aria-hidden />} tone="bg-warning/10 text-warning" title="รายการสินค้า" sub={`${po.items.length} รายการ · ${goods.total} ชิ้น`} />
+                <CardHeader icon={<Package className="size-4.5" aria-hidden />} tone="bg-warning/10 text-warning-strong" title="รายการสินค้า" sub={`${po.items.length} รายการ · ${goods.total} ชิ้น`} />
                 <div className="overflow-x-auto rounded-lg border border-border">
                   <table className="w-full min-w-180 table-fixed border-collapse text-sm">
                     <colgroup>
@@ -433,7 +433,7 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
 
               {po.notes && (
                 <section className={cardCls} aria-label="หมายเหตุ">
-                  <CardHeader icon={<PencilLine className="size-4.5" aria-hidden />} tone="bg-warning/10 text-warning" title="หมายเหตุ" sub="ติดไปกับใบสั่งซื้อ" />
+                  <CardHeader icon={<PencilLine className="size-4.5" aria-hidden />} tone="bg-warning/10 text-warning-strong" title="หมายเหตุ" sub="ติดไปกับใบสั่งซื้อ" />
                   <p className="text-sm leading-relaxed text-foreground">{po.notes}</p>
                 </section>
               )}

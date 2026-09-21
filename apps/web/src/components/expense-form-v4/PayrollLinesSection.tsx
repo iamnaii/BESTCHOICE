@@ -706,7 +706,7 @@ function CustomIncomeSubTable({
       {showWarning && (
         <div
           role="alert"
-          className="flex items-start gap-2 px-3 py-2 border-t border-border bg-warning/5 text-warning"
+          className="flex items-start gap-2 px-3 py-2 border-t border-border bg-warning/5 text-warning-strong"
         >
           <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
           <div className="text-xs leading-snug">

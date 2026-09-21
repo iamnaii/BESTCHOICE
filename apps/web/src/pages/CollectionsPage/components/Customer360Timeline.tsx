@@ -32,7 +32,7 @@ function getEventStyle(event: TimelineEvent): EventStyle {
     case 'MDM':
       return { Icon: Lock, iconBg: 'bg-destructive/10', iconText: 'text-destructive', typeLabel: 'เครื่อง' };
     case 'LETTER':
-      return { Icon: FileText, iconBg: 'bg-warning/10', iconText: 'text-warning', typeLabel: 'หนังสือ' };
+      return { Icon: FileText, iconBg: 'bg-warning/10', iconText: 'text-warning-strong', typeLabel: 'หนังสือ' };
     default:
       return { Icon: Activity, iconBg: 'bg-muted', iconText: 'text-muted-foreground', typeLabel: event.type };
   }

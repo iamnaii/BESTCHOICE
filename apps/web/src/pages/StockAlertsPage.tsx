@@ -472,7 +472,7 @@ export default function StockAlertsPage() {
             <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden hover:shadow-card-hover transition-all">
               <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-warning" />
               <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">แจ้งเตือนรอดำเนินการ</div>
-              <div className="text-2xl font-bold text-warning tabular-nums">{activeAlerts}</div>
+              <div className="text-2xl font-bold text-warning-strong tabular-nums">{activeAlerts}</div>
             </div>
             <div className="rounded-xl border border-border/50 bg-card p-5 shadow-sm relative overflow-hidden hover:shadow-card-hover transition-all">
               <div className="absolute left-0 top-0 bottom-0 w-1 rounded-r-full bg-primary" />

@@ -246,7 +246,7 @@ export default function ExchangeRequestForm() {
           <p className="text-xs text-destructive leading-snug">⛔ มีเงินรับล่วงหน้า/เครดิตค้าง — ใช้หรือคืนก่อนเปลี่ยนเครื่อง</p>
         )}
         {previewQ.data?.hasUnpaidLateFee && (
-          <p className="text-xs text-warning leading-snug">⚠ มีค่าปรับล่าช้าค้างเก็บ — แนะนำเก็บก่อนเปลี่ยนเครื่อง</p>
+          <p className="text-xs text-warning-strong leading-snug">⚠ มีค่าปรับล่าช้าค้างเก็บ — แนะนำเก็บก่อนเปลี่ยนเครื่อง</p>
         )}
 
         {newProductId && isMemo && (
@@ -294,7 +294,7 @@ export default function ExchangeRequestForm() {
               <div className="flex items-center gap-2 text-sm leading-snug">
                 <span className={
                   previewQ.data.tier === 'AUTO' ? 'inline-flex rounded-full bg-primary/15 text-primary px-2 py-0.5 text-xs font-medium'
-                  : previewQ.data.tier === 'REVIEW' ? 'inline-flex rounded-full bg-warning/15 text-warning px-2 py-0.5 text-xs font-medium'
+                  : previewQ.data.tier === 'REVIEW' ? 'inline-flex rounded-full bg-warning/15 text-warning-strong px-2 py-0.5 text-xs font-medium'
                   : 'inline-flex rounded-full bg-destructive/15 text-destructive px-2 py-0.5 text-xs font-medium'
                 }>
                   {previewQ.data.tier === 'AUTO' ? 'อนุมัติอัตโนมัติ' : previewQ.data.tier === 'REVIEW' ? 'ผจก.สาขาอนุมัติ' : 'ผจก.ใหญ่อนุมัติ'}

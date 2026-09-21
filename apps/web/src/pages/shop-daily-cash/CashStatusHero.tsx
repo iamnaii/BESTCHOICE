@@ -23,7 +23,7 @@ const FRAME: Record<Tone, string> = {
   wait: 'border-border bg-card',
   done: 'border-primary/20 bg-primary/5',
 };
-const HEAD_ICON: Record<Tone, string> = { act: 'text-warning', wait: 'text-muted-foreground', done: 'text-primary' };
+const HEAD_ICON: Record<Tone, string> = { act: 'text-warning-strong', wait: 'text-muted-foreground', done: 'text-primary' };
 
 const KIND_ICON: Record<HeroKind, LucideIcon> = {
   SEND: Banknote, WAIT_SEND: Clock, CONFIRM: Clock, WAIT_CONFIRM: Clock, DEPOSIT: Lock, DONE: CheckCircle2,

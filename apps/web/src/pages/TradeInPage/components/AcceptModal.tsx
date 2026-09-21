@@ -105,7 +105,7 @@ export default function AcceptModal({
     <Modal isOpen={!!item} onClose={() => { if (!isPending) onClose(); }} title={isCredit ? "ยืนยันรับเครื่องเทิร์น" : "ยืนยันการรับซื้อเครื่อง"} size="md">
       {item && (
         <div className="space-y-4">
-          <div className="rounded-lg bg-warning/10 dark:bg-warning/15 border border-warning/20 dark:border-warning/30 p-3 text-xs text-warning flex gap-2">
+          <div className="rounded-lg bg-warning/10 dark:bg-warning/15 border border-warning/20 dark:border-warning/30 p-3 text-xs text-warning-strong flex gap-2">
             <AlertTriangle className="size-4 shrink-0 mt-0.5" />
             <div>กรุณายืนยันตามขั้นตอนป้องกันการรับซื้อของโจรก่อนกดยอมรับ</div>
           </div>

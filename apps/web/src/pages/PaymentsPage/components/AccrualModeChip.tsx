@@ -22,7 +22,7 @@ export function AccrualModeChip({
         'mb-3 rounded-lg border p-2.5 text-xs leading-snug flex gap-2',
         isAhead
           ? 'border-primary/30 bg-primary/5 text-primary'
-          : 'border-warning/30 bg-warning/5 text-warning',
+          : 'border-warning/30 bg-warning/5 text-warning-strong',
       )}
     >
       <Info className="size-3.5 shrink-0 mt-0.5" />

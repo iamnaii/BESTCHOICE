@@ -174,7 +174,7 @@ export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEdit
                         const pp = first.status === 'PASS' ? photoProgress(first) : null;
                         if (!pp) return dash;
                         return (
-                          <span className={pp.shot >= pp.total ? 'font-medium text-success' : 'text-warning'}>
+                          <span className={pp.shot >= pp.total ? 'font-medium text-success' : 'text-warning-strong'}>
                             {pp.shot}/{pp.total} มุม
                           </span>
                         );
@@ -216,7 +216,7 @@ export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEdit
             {pt.pendingPhotos > 0 && (
               <div className="flex justify-between gap-3">
                 <span className="text-muted-foreground">รอถ่ายรูป 6 มุมก่อนขึ้นขาย</span>
-                <span className="font-semibold text-warning">{pt.pendingPhotos} ชิ้น</span>
+                <span className="font-semibold text-warning-strong">{pt.pendingPhotos} ชิ้น</span>
               </div>
             )}
             <div className="flex justify-between gap-3">

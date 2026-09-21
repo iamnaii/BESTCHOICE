@@ -156,7 +156,7 @@ export default function ConversationList({
                   'flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium leading-snug',
                   connectionStatus === 'disconnected'
                     ? 'bg-destructive/10 text-destructive'
-                    : 'bg-warning/10 text-warning',
+                    : 'bg-warning/10 text-warning-strong',
                 )}
               >
                 <span

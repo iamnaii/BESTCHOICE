@@ -86,7 +86,7 @@ const money = (n: number | string) => formatNumberDecimal(n, 2);
 
 /** Semantic tone → token class for the CASE column. */
 const CASE_TONE_CLASS: Record<CaseTone, string> = {
-  warning: 'text-warning',
+  warning: 'text-warning-strong',
   info: 'text-info',
   primary: 'text-primary',
   success: 'text-success',
@@ -320,7 +320,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                           <span>{money(allocation.amount)} ฿</span>
                                         </div>
                                         {allocation.kind === 'RESCHEDULE_ADVANCE' && (
-                                          <div className="text-xs text-warning">ล่วงหน้างวดสุดท้าย</div>
+                                          <div className="text-xs text-warning-strong">ล่วงหน้างวดสุดท้าย</div>
                                         )}
                                       </div>
                                     ))}
@@ -339,7 +339,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                   <span className="text-muted-foreground" title="ไม่พบข้อมูลค่าปรับแยกของใบเสร็จนี้">–</span>
                                 ) : lateFee > 0 ? (
                                   <div className="text-xs leading-snug">
-                                    <div className="text-warning">{money(lateFee)}฿</div>
+                                    <div className="text-warning-strong">{money(lateFee)}฿</div>
                                     {waived > 0 && (
                                       <div className="text-success">−อนุโลม {money(waived)}฿</div>
                                     )}
@@ -507,7 +507,7 @@ function SummaryCard({
     tone === 'success'
       ? 'text-success'
       : tone === 'warning'
-        ? 'text-warning'
+        ? 'text-warning-strong'
         : tone === 'info'
           ? 'text-info'
           : 'text-foreground';

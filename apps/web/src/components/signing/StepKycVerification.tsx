@@ -202,7 +202,7 @@ export default function StepKycVerification({ contractId, customerName, customer
                     OTP หมดอายุใน <span className="font-mono font-semibold text-foreground">{formatCountdown(countdown)}</span>
                   </p>
                 ) : otpSent ? (
-                  <p className="text-sm text-warning font-medium">OTP หมดอายุแล้ว กรุณากดส่งใหม่</p>
+                  <p className="text-sm text-warning-strong font-medium">OTP หมดอายุแล้ว กรุณากดส่งใหม่</p>
                 ) : null}
 
                 <button

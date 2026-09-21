@@ -722,7 +722,7 @@ export default function StockTransfersPage() {
               {/* Branch Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-warning/5 dark:bg-warning/10 rounded-lg p-3">
-                  <div className="text-xs text-warning font-medium mb-1">ต้นทาง</div>
+                  <div className="text-xs text-warning-strong font-medium mb-1">ต้นทาง</div>
                   <div className="font-semibold text-foreground">{first.fromBranch.name}</div>
                 </div>
                 <div className="bg-success/5 dark:bg-success/10 rounded-lg p-3">

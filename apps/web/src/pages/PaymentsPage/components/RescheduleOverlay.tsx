@@ -560,7 +560,7 @@ export function RescheduleOverlay({
                   )}
 
                   {method === 'QR' && (
-                    <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs text-warning leading-snug">
+                    <div className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs text-warning-strong leading-snug">
                       ระบบจะส่ง QR ยอด {collect.toFixed(2)} บาท ให้ลูกค้าใน LINE —
                       <strong> ดิวจะเลื่อนอัตโนมัติเมื่อเงินเข้าเท่านั้น</strong> (QR หมดอายุใน 24
                       ชม. ถ้าลูกค้าไม่จ่าย ดิวไม่เลื่อน)
@@ -774,14 +774,14 @@ function MethodButton({
 function Effect({ text, warning }: { text: string; warning?: boolean }) {
   return (
     <li className="flex items-start gap-2">
-      <span className={warning ? 'text-warning' : 'text-success'}>
+      <span className={warning ? 'text-warning-strong' : 'text-success'}>
         {warning ? (
           <AlertTriangle className="size-4 inline" />
         ) : (
           <Check className="size-4 inline" />
         )}
       </span>
-      <span className={warning ? 'text-warning' : 'text-foreground'}>{text}</span>
+      <span className={warning ? 'text-warning-strong' : 'text-foreground'}>{text}</span>
     </li>
   );
 }

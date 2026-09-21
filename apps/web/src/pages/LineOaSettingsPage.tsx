@@ -217,7 +217,7 @@ export default function LineOaSettingsPage() {
                 ? 'bg-info/20'
                 : 'bg-warning/20'
           }`}>
-            {data?.isConfigured && testResult?.success ? <CheckCircle2 className="size-4 text-success" /> : data?.isConfigured ? <Link2 className="size-4 text-primary" /> : <AlertTriangle className="size-4 text-warning" />}
+            {data?.isConfigured && testResult?.success ? <CheckCircle2 className="size-4 text-success" /> : data?.isConfigured ? <Link2 className="size-4 text-primary" /> : <AlertTriangle className="size-4 text-warning-strong" />}
           </div>
           <div className="flex-1">
             <h3 className="font-semibold text-lg">
@@ -393,8 +393,8 @@ export default function LineOaSettingsPage() {
 
           <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 ml-4 border-l-4 border-l-warning">
             <div className="bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg p-4 mb-4">
-              <p className="text-sm text-warning font-medium mb-2">วิธีสร้าง LIFF App:</p>
-              <ol className="text-sm text-warning space-y-1.5 list-decimal list-inside">
+              <p className="text-sm text-warning-strong font-medium mb-2">วิธีสร้าง LIFF App:</p>
+              <ol className="text-sm text-warning-strong space-y-1.5 list-decimal list-inside">
                 <li>เปิด LINE Developers Console &rarr; เลือก Channel</li>
                 <li>ไปที่ tab <strong>"LIFF"</strong> &rarr; กด <strong>"Add"</strong></li>
                 <li>ตั้งค่า:
@@ -407,7 +407,7 @@ export default function LineOaSettingsPage() {
                 </li>
                 <li>คัดลอก <strong>LIFF ID</strong> มาวางด้านล่าง</li>
               </ol>
-              <div className="mt-2 text-xs text-warning">
+              <div className="mt-2 text-xs text-warning-strong">
                 LIFF จะเปิดหน้าลงทะเบียนผูก LINE ให้ลูกค้าเชื่อมบัญชีกับระบบ
               </div>
             </div>
@@ -483,7 +483,7 @@ export default function LineOaSettingsPage() {
               <div className="text-sm text-muted-foreground mt-1">ลูกค้าเชื่อมต่อ LINE</div>
             </div>
             <div className="rounded-xl border border-border/50 bg-card shadow-sm p-5 text-center">
-              <div className={`text-3xl font-bold ${stats.pendingSlips > 0 ? 'text-warning' : 'text-success'}`}>
+              <div className={`text-3xl font-bold ${stats.pendingSlips > 0 ? 'text-warning-strong' : 'text-success'}`}>
                 {stats.pendingSlips}
               </div>
               <div className="text-sm text-muted-foreground mt-1">สลิปรอตรวจสอบ</div>
@@ -530,8 +530,8 @@ export default function LineOaSettingsPage() {
                   </button>
                 </div>
                 <div className="mt-2 p-3 bg-warning/5 dark:bg-warning/10 border border-warning/20 rounded-lg">
-                  <p className="text-sm text-warning font-medium mb-1">วิธีง่ายที่สุด:</p>
-                  <ol className="text-xs text-warning space-y-1 list-decimal list-inside">
+                  <p className="text-sm text-warning-strong font-medium mb-1">วิธีง่ายที่สุด:</p>
+                  <ol className="text-xs text-warning-strong space-y-1 list-decimal list-inside">
                     <li>เพิ่ม Bot เป็นเพื่อนในไลน์</li>
                     <li>พิมพ์ <strong>#owner</strong> ส่งไปในแชท Bot</li>
                     <li>กลับมากดปุ่ม <strong>"ดึง User ID"</strong> ด้านบน</li>

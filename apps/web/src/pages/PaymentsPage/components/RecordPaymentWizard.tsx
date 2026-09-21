@@ -1339,7 +1339,7 @@ export function RecordPaymentWizard({
                     </div>
                   </div>
                   {needsApproval && (
-                    <div className="flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning leading-snug">
+                    <div className="flex items-center gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning-strong leading-snug">
                       <AlertCircle className="size-3.5 shrink-0" />
                       <span>ต้องอนุมัติ ({approvalActions.join(' · ')})</span>
                     </div>

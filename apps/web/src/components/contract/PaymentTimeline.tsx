@@ -53,7 +53,7 @@ export default function PaymentProgressOverview({ payments }: PaymentProgressOve
           </span>
         )}
         {partial > 0 && (
-          <span className="flex items-center gap-1.5 text-warning">
+          <span className="flex items-center gap-1.5 text-warning-strong">
             <span className="size-2 rounded-full bg-warning" />
             ชำระบางส่วน {partial}
           </span>

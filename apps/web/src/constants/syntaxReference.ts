@@ -23,9 +23,9 @@ export const SYNTAX_REFERENCE: { group: string; items: SyntaxItem[] }[] = [
   {
     group: 'IF',
     items: [
-      { label: 'เงื่อนไข', syntax: '{{if COND}} ... {{/if}}', color: 'text-warning', bgColor: 'bg-warning/10' },
-      { label: 'เงื่อนไขย่อย', syntax: '{{elseif COND}}', color: 'text-warning', bgColor: 'bg-warning/10' },
-      { label: 'อื่นๆ', syntax: '{{else}}', color: 'text-warning', bgColor: 'bg-warning/10' },
+      { label: 'เงื่อนไข', syntax: '{{if COND}} ... {{/if}}', color: 'text-warning-strong', bgColor: 'bg-warning/10' },
+      { label: 'เงื่อนไขย่อย', syntax: '{{elseif COND}}', color: 'text-warning-strong', bgColor: 'bg-warning/10' },
+      { label: 'อื่นๆ', syntax: '{{else}}', color: 'text-warning-strong', bgColor: 'bg-warning/10' },
     ],
   },
   {

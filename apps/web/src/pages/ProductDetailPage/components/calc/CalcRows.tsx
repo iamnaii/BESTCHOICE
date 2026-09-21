@@ -131,7 +131,7 @@ export function NoticeBox({
       )}
     >
       <Icon
-        className={cn('mt-0.5 size-3.5 shrink-0', tone === 'warning' && 'text-warning')}
+        className={cn('mt-0.5 size-3.5 shrink-0', tone === 'warning' && 'text-warning-strong')}
         aria-hidden
       />
       <span>{children}</span>

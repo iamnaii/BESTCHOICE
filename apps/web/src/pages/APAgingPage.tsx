@@ -55,7 +55,7 @@ interface ApAgingResponse {
 const BUCKETS: Array<{ key: Bucket; label: string; icon: typeof Clock; tone: string }> = [
   { key: '0-30', label: '0–30 วัน', icon: Clock, tone: 'text-muted-foreground' },
   { key: '31-60', label: '31–60 วัน', icon: TrendingDown, tone: 'text-info' },
-  { key: '61-90', label: '61–90 วัน', icon: TrendingDown, tone: 'text-warning' },
+  { key: '61-90', label: '61–90 วัน', icon: TrendingDown, tone: 'text-warning-strong' },
   { key: '90+', label: '90+ วัน', icon: AlertCircle, tone: 'text-destructive' },
 ];
 
@@ -318,7 +318,7 @@ export default function APAgingPage() {
                             'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
                             d.bucket === '0-30' && 'bg-muted text-muted-foreground',
                             d.bucket === '31-60' && 'bg-info/10 text-info',
-                            d.bucket === '61-90' && 'bg-warning/10 text-warning',
+                            d.bucket === '61-90' && 'bg-warning/10 text-warning-strong',
                             d.bucket === '90+' && 'bg-destructive/10 text-destructive',
                           )}
                         >

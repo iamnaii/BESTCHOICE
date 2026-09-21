@@ -92,8 +92,8 @@ function getTriggerLabel(day: number): string {
 
 function getTriggerBadgeCls(day: number): string {
   if (day < 0) return 'bg-info/20 text-info border border-info/30';
-  if (day === 0) return 'bg-warning/20 text-warning border border-warning/30';
-  if (day <= 7) return 'bg-warning/30 text-warning border border-warning/40';
+  if (day === 0) return 'bg-warning/20 text-warning-strong border border-warning/30';
+  if (day <= 7) return 'bg-warning/30 text-warning-strong border border-warning/40';
   if (day <= 30) return 'bg-destructive/20 text-destructive border border-destructive/30';
   return 'bg-destructive/30 text-destructive border border-destructive/40';
 }
@@ -418,7 +418,7 @@ export default function DunningSettingsPage() {
           </div>
 
           {!signatureUrl && (
-            <div className="mt-4 rounded-lg bg-warning/5 border border-warning/20 p-3 text-xs text-warning leading-snug">
+            <div className="mt-4 rounded-lg bg-warning/5 border border-warning/20 p-3 text-xs text-warning-strong leading-snug">
               ยังไม่ได้อัปโหลดลายเซ็น — PDF ที่สร้างจะไม่มีลายเซ็น โปรดอัปโหลดก่อนใช้งานจริง
             </div>
           )}
@@ -555,7 +555,7 @@ export default function DunningSettingsPage() {
                             )}
                             {/* Manual badge */}
                             {!rule.autoExecute && (
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-warning/20 text-warning">
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-warning/20 text-warning-strong">
                                 Manual
                               </span>
                             )}

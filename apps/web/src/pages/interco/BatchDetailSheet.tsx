@@ -134,7 +134,7 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                   <InfoField
                     label="หักรวม (เครดิตเปลี่ยนเครื่อง + เรียกคืน + ค่าเครื่องคืน)"
                     value={
-                      <span className={Number(batch.totalDeduction) > 0 ? 'text-warning' : ''}>
+                      <span className={Number(batch.totalDeduction) > 0 ? 'text-warning-strong' : ''}>
                         −฿{fmtMoney(batch.totalDeduction)}
                       </span>
                     }
@@ -263,7 +263,7 @@ export function BatchDetailSheet({ batchId, onClose, onChanged }: BatchDetailShe
                             </td>
                             <td className="p-2.5 text-right tabular-nums">
                               {deduction > 0 ? (
-                                <span className="text-warning">−{fmtMoney(deduction)}</span>
+                                <span className="text-warning-strong">−{fmtMoney(deduction)}</span>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
                               )}

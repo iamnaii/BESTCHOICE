@@ -84,7 +84,7 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {dashboard.stockAging.map((bucket, i) => {
             const colors = ['border-l-success', 'border-l-warning', 'border-l-warning', 'border-l-destructive'];
-            const textColors = ['text-success', 'text-warning', 'text-warning', 'text-destructive'];
+            const textColors = ['text-success', 'text-warning-strong', 'text-warning-strong', 'text-destructive'];
             return (
               <div key={bucket.label} className={`bg-muted/40 rounded-lg p-3 border-l-4 ${colors[i]}`}>
                 <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
@@ -298,11 +298,11 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
                   <span
                     className={`size-6 rounded-md flex items-center justify-center text-[11px] font-mono font-bold tabular-nums ${
                       i === 0
-                        ? 'bg-warning/15 text-warning'
+                        ? 'bg-warning/15 text-warning-strong'
                         : i === 1
                           ? 'bg-muted text-foreground'
                           : i === 2
-                            ? 'bg-warning/10 text-warning/80'
+                            ? 'bg-warning/10 text-warning-strong/80'
                             : 'bg-muted/60 text-muted-foreground'
                     }`}
                   >
@@ -337,7 +337,7 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
                   <div key={`${item.name}-${i}`} className="flex items-center gap-3">
                     <span
                       className={`size-6 rounded-md flex items-center justify-center text-[11px] font-mono font-bold tabular-nums ${
-                        item.days > 90 ? 'bg-destructive/15 text-destructive' : 'bg-warning/15 text-warning'
+                        item.days > 90 ? 'bg-destructive/15 text-destructive' : 'bg-warning/15 text-warning-strong'
                       }`}
                     >
                       {i + 1}
@@ -352,7 +352,7 @@ export function StockDashboardTab({ dashboard, isManager }: StockDashboardTabPro
                     </div>
                     <span
                       className={`text-[12px] font-bold tabular-nums ${
-                        item.days > 90 ? 'text-destructive' : 'text-warning'
+                        item.days > 90 ? 'text-destructive' : 'text-warning-strong'
                       }`}
                     >
                       {item.days} <span className="font-normal text-muted-foreground">วัน</span>

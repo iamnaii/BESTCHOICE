@@ -33,7 +33,7 @@ exports[`CustomerTagChips > snapshot — full render of all 5 tag types 1`] = `
     VIP
   </span>
   <span
-    class="inline-flex items-center rounded-full border font-medium leading-snug bg-warning/10 text-warning border-warning/30 text-2xs px-2 py-0.5 gap-1"
+    class="inline-flex items-center rounded-full border font-medium leading-snug bg-warning/10 text-warning-strong border-warning/30 text-2xs px-2 py-0.5 gap-1"
     data-testid="customer-tag-chip-HIGH_RISK"
     title="เสี่ยงสูง"
   >

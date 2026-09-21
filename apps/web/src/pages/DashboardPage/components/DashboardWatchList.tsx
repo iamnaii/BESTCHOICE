@@ -25,7 +25,7 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
         <Card className="border-warning/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ShieldAlert className="size-4 text-warning" />
+              <ShieldAlert className="size-4 text-warning-strong" />
               Watch List — ลูกค้าเสี่ยงค้างชำระ
             </CardTitle>
             <CardToolbar>
@@ -97,11 +97,11 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Sparkles className="size-4 text-warning" />
+              <Sparkles className="size-4 text-warning-strong" />
               ลูกค้าพร้อมอัพเกรด
             </CardTitle>
             <CardToolbar>
-              <span className="text-2xs font-semibold text-warning bg-warning/10 px-2.5 py-1 rounded-md">
+              <span className="text-2xs font-semibold text-warning-strong bg-warning/10 px-2.5 py-1 rounded-md">
                 {upsell.total} ราย
               </span>
               <button
@@ -152,7 +152,7 @@ export default function DashboardWatchList({ watchListData, upsell }: DashboardW
                       </div>
                     </td>
                     <td className="px-5 py-3.5 hidden md:table-cell">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning font-medium">
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning-strong font-medium">
                         {c.reason}
                       </span>
                     </td>

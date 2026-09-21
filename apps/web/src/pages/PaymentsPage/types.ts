@@ -114,7 +114,7 @@ export const paymentStatusLabels: Record<string, { label: string; className: str
   },
   PARTIALLY_PAID: {
     label: 'ชำระบางส่วน',
-    className: 'bg-warning/10 text-warning dark:bg-warning/15',
+    className: 'bg-warning/10 text-warning-strong dark:bg-warning/15',
   },
 };
 

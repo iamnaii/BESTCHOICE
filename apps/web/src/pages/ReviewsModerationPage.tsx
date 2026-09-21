@@ -53,7 +53,7 @@ function Stars({ rating }: { rating: number }) {
         <Star
           key={n}
           className={`size-3.5 ${
-            n <= rating ? 'fill-warning text-warning' : 'text-muted-foreground/40'
+            n <= rating ? 'fill-warning text-warning-strong' : 'text-muted-foreground/40'
           }`}
         />
       ))}

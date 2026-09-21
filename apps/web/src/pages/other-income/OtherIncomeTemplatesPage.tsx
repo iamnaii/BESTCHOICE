@@ -81,7 +81,7 @@ export default function OtherIncomeTemplatesPage() {
         <button
           onClick={() => setFavoritesOnly((v) => !v)}
           className={`px-3 py-2 rounded-md border text-sm inline-flex items-center gap-1 ${
-            favoritesOnly ? 'bg-warning/10 border-warning text-warning' : ''
+            favoritesOnly ? 'bg-warning/10 border-warning text-warning-strong' : ''
           }`}
         >
           <Star size={14} />
@@ -114,7 +114,7 @@ export default function OtherIncomeTemplatesPage() {
                   <Star
                     size={16}
                     className={
-                      t.isFavorite ? 'fill-warning text-warning' : 'text-muted-foreground'
+                      t.isFavorite ? 'fill-warning text-warning-strong' : 'text-muted-foreground'
                     }
                   />
                 </button>

@@ -75,8 +75,8 @@ export function ContractInfoPanel({
             </span>,
           )}
           <div className="flex justify-between text-sm py-1 border-b border-border/50 border-t mt-1 pt-1">
-            <span className="text-warning font-bold leading-snug">ยอดเหลือ</span>
-            <span className="text-warning font-bold font-mono leading-snug">
+            <span className="text-warning-strong font-bold leading-snug">ยอดเหลือ</span>
+            <span className="text-warning-strong font-bold font-mono leading-snug">
               {totalDue.toNumber().toLocaleString('th-TH', { minimumFractionDigits: 2 })} ฿
             </span>
           </div>
@@ -111,7 +111,7 @@ export function ContractInfoPanel({
       <button
         type="button"
         onClick={onOpenPayoff}
-        className="mt-2 w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-warning/10 text-warning border border-warning/30 hover:bg-warning/20 transition-colors"
+        className="mt-2 w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg bg-warning/10 text-warning-strong border border-warning/30 hover:bg-warning/20 transition-colors"
       >
         <Lock className="size-4" />
         ปิดยอดสัญญาทั้งหมด
@@ -161,8 +161,8 @@ export function CaseBadge({
   if (detectedCase === 'OVERPAY') {
     return (
       <div className="flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-sm">
-        <AlertCircle className="size-4 text-warning shrink-0" />
-        <span className="text-warning font-medium leading-snug">
+        <AlertCircle className="size-4 text-warning-strong shrink-0" />
+        <span className="text-warning-strong font-medium leading-snug">
           จ่ายเกิน {absDiff} ฿ — บันทึกเข้า 53-1503 อัตโนมัติ
         </span>
       </div>
@@ -172,8 +172,8 @@ export function CaseBadge({
   if (detectedCase === 'UNDERPAY') {
     return (
       <div className="flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-sm">
-        <AlertCircle className="size-4 text-warning shrink-0" />
-        <span className="text-warning font-medium leading-snug">
+        <AlertCircle className="size-4 text-warning-strong shrink-0" />
+        <span className="text-warning-strong font-medium leading-snug">
           จ่ายขาด {absDiff} ฿ — Dr 52-1104 (ต้องอนุมัติ)
         </span>
       </div>
@@ -194,8 +194,8 @@ export function CaseBadge({
   if (detectedCase === 'PARTIAL') {
     return (
       <div className="flex items-center gap-1.5 rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-sm">
-        <AlertCircle className="size-4 text-warning shrink-0" />
-        <span className="text-warning font-medium leading-snug">
+        <AlertCircle className="size-4 text-warning-strong shrink-0" />
+        <span className="text-warning-strong font-medium leading-snug">
           จ่ายขาด {absDiff} ฿ — บันทึกบางส่วน ลูกค้าค้าง {absDiff} ฿ ต่อ
         </span>
       </div>

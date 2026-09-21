@@ -132,7 +132,7 @@ export function StickerPickerTable({
                 {product.batteryHealth != null ? `${product.batteryHealth}%` : '—'}
               </div>
               {product.hasBox != null && (
-                <div className={cn('text-[11px]', product.hasBox ? 'text-muted-foreground' : 'text-warning')}>
+                <div className={cn('text-[11px]', product.hasBox ? 'text-muted-foreground' : 'text-warning-strong')}>
                   {product.hasBox ? 'มีกล่อง' : 'ไม่มีกล่อง'}
                 </div>
               )}
@@ -167,7 +167,7 @@ export function StickerPickerTable({
           return cash != null ? (
             <span className="font-semibold tabular-nums whitespace-nowrap">{formatBaht(cash)}</span>
           ) : (
-            <span className="inline-flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-[11px] font-semibold text-warning leading-snug whitespace-nowrap">
+            <span className="inline-flex items-center gap-1 rounded-md bg-warning/15 px-1.5 py-0.5 text-[11px] font-semibold text-warning-strong leading-snug whitespace-nowrap">
               <AlertCircle aria-hidden="true" className="size-3" />
               ยังไม่ตั้งราคา
             </span>

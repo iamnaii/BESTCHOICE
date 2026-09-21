@@ -29,7 +29,7 @@ const META: Record<CustomerTagType, ChipMeta> = {
   HIGH_RISK: {
     label: 'เสี่ยงสูง',
     icon: AlertTriangle,
-    className: 'bg-warning/10 text-warning border-warning/30',
+    className: 'bg-warning/10 text-warning-strong border-warning/30',
   },
   NEW: {
     label: 'ลูกค้าใหม่',
@@ -50,7 +50,7 @@ const META: Record<CustomerTagType, ChipMeta> = {
   RETURNED_DEVICE: {
     label: 'เคยคืนเครื่อง',
     icon: PackageX,
-    className: 'bg-warning/10 text-warning border-warning/30',
+    className: 'bg-warning/10 text-warning-strong border-warning/30',
   },
 };
 

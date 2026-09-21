@@ -141,7 +141,7 @@ export function AdjustmentSection({
                 ? 'bg-muted text-muted-foreground'
                 : diffNum > 0
                   ? 'bg-success/10 text-success'
-                  : 'bg-warning/10 text-warning'
+                  : 'bg-warning/10 text-warning-strong'
             }`}
           >
             {diffNum >= 0 ? '+' : ''}

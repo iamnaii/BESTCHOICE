@@ -23,7 +23,7 @@ interface Props {
 }
 
 const CHIP: Record<string, { label: string; className: string }> = {
-  RESERVED: { label: 'จองไว้', className: 'bg-warning/10 text-warning' },
+  RESERVED: { label: 'จองไว้', className: 'bg-warning/10 text-warning-strong' },
   SOLD_CASH: { label: 'ตัดสต๊อกแล้ว', className: 'bg-primary/10 text-primary' },
   IN_STOCK: { label: 'คืนเข้าคลังแล้ว', className: 'bg-muted text-muted-foreground' },
 };

@@ -104,10 +104,10 @@ export function StockHeroKpi({ totalInStock, totalValue, dashboard, isManager }:
             <span className="text-[10px] font-mono uppercase tracking-[0.16em] text-muted-foreground">
               อายุเฉลี่ย
             </span>
-            <Clock className={`size-4 ${avgDaysAlarm ? 'text-warning' : 'text-muted-foreground'}`} />
+            <Clock className={`size-4 ${avgDaysAlarm ? 'text-warning-strong' : 'text-muted-foreground'}`} />
           </div>
           <div className="flex items-baseline gap-1">
-            <span className={`text-3xl font-bold tabular-nums ${avgDaysAlarm ? 'text-warning' : ''}`}>
+            <span className={`text-3xl font-bold tabular-nums ${avgDaysAlarm ? 'text-warning-strong' : ''}`}>
               {avgDays != null ? <AnimatedCounter value={avgDays} /> : '—'}
             </span>
             <span className="text-xs text-muted-foreground">วัน</span>

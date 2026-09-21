@@ -22,7 +22,7 @@ export default function PinnedNoteBar({ note, onUnpin }: { note: RoomNote; onUnp
       role="note"
       aria-label="โน้ตของห้อง"
     >
-      <StickyNote className="size-3.5 shrink-0 text-warning dark:text-amber-300" />
+      <StickyNote className="size-3.5 shrink-0 text-warning-strong dark:text-amber-300" />
       <span className="shrink-0 text-[10.5px] font-bold uppercase tracking-wide text-amber-800 dark:text-amber-200">โน้ตของห้อง</span>
       <span className="min-w-0 flex-1 truncate" title={note.content}>{note.content}</span>
       <span className="shrink-0 text-[11.5px] text-muted-foreground">

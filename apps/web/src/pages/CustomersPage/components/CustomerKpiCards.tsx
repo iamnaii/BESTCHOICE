@@ -33,7 +33,7 @@ const TONE_TEXT: Record<Tone, string> = {
   primary: 'text-foreground',
   success: 'text-success',
   info: 'text-info',
-  warning: 'text-warning',
+  warning: 'text-warning-strong',
   destructive: 'text-destructive',
   muted: 'text-muted-foreground',
 };

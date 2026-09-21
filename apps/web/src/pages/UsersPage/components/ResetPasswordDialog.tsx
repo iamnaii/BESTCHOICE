@@ -100,7 +100,7 @@ export default function ResetPasswordDialog({
         </div>
 
         <div className="flex gap-2 rounded-lg border border-warning/20 bg-warning/5 p-3">
-          <KeyRound className="size-4 shrink-0 text-warning mt-0.5" />
+          <KeyRound className="size-4 shrink-0 text-warning-strong mt-0.5" />
           <p className="text-[11px] leading-snug text-muted-foreground">
             {/* ถ้อยคำต้องตรงกับที่ระบบทำจริง: การรีเซ็ตเพิกถอน refresh token ทันที แต่
                 access token ที่ค้างอยู่ในหน้าจอยังใช้ได้จนหมดอายุ (JWT_EXPIRATION = 15 นาที)

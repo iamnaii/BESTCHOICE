@@ -60,5 +60,5 @@ export function getInviteStatus(invite: InviteToken): { label: string; className
   if (invite.usedAt) return { label: 'ใช้แล้ว', className: 'bg-success/10 text-success dark:bg-success/15' };
   if (new Date(invite.expiresAt) < new Date())
     return { label: 'หมดอายุ', className: 'bg-muted text-muted-foreground' };
-  return { label: 'รอลงทะเบียน', className: 'bg-warning/10 text-warning dark:bg-warning/15' };
+  return { label: 'รอลงทะเบียน', className: 'bg-warning/10 text-warning-strong dark:bg-warning/15' };
 }

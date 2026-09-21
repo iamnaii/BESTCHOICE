@@ -28,7 +28,7 @@ const fallback: BadgeConfig = {
 const contractStatus: Record<string, BadgeConfig> = {
   DRAFT: { label: 'ร่าง', className: 'bg-muted text-foreground' },
   ACTIVE: { label: 'ผ่อนอยู่', className: 'bg-success/10 text-success dark:bg-success/15' },
-  OVERDUE: { label: 'ค้างชำระ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  OVERDUE: { label: 'ค้างชำระ', className: 'bg-warning/10 text-warning-strong dark:bg-warning/15' },
   DEFAULT: { label: 'ผิดนัด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
   EARLY_PAYOFF: { label: 'ปิดก่อน', className: 'bg-primary/10 text-primary dark:bg-primary/15' },
   COMPLETED: { label: 'ครบ', className: 'bg-success/10 text-success dark:bg-success/15' },
@@ -41,21 +41,21 @@ const paymentStatus: Record<string, BadgeConfig> = {
   PENDING: { label: 'รอชำระ', className: 'bg-muted text-foreground' },
   PAID: { label: 'ชำระแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
   OVERDUE: { label: 'เกินกำหนด', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  PARTIALLY_PAID: { label: 'ชำระบางส่วน', className: 'bg-warning/10 text-warning-strong dark:bg-warning/15' },
 };
 
 // --- Product Status (re-exported from constants.ts pattern) ---
 const productStatus: Record<string, BadgeConfig> = {
   PO_RECEIVED: { label: 'รับจาก PO', className: 'bg-primary/10 text-primary' },
-  QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-warning/10 text-warning' },
+  QC_PENDING: { label: 'รอตรวจรับ', className: 'bg-warning/10 text-warning-strong' },
   PHOTO_PENDING: { label: 'รอถ่ายรูป', className: 'bg-primary/10 text-primary' },
-  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-warning/10 text-warning' },
+  INSPECTION: { label: 'กำลังตรวจ', className: 'bg-warning/10 text-warning-strong' },
   IN_STOCK: { label: 'พร้อมขาย', className: 'bg-success/10 text-success' },
   RESERVED: { label: 'จอง', className: 'bg-primary/10 text-primary' },
   SOLD_INSTALLMENT: { label: 'ขายผ่อน', className: 'bg-primary/10 text-primary' },
   SOLD_CASH: { label: 'ขายสด', className: 'bg-info/10 text-info' },
   REPOSSESSED: { label: 'ยึดคืน', className: 'bg-destructive/10 text-destructive' },
-  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-warning/10 text-warning' },
+  REFURBISHED: { label: 'ซ่อมแล้ว', className: 'bg-warning/10 text-warning-strong' },
   SOLD_RESELL: { label: 'ขายต่อ', className: 'bg-info/10 text-info' },
   DAMAGED: { label: 'เสียหาย', className: 'bg-destructive/10 text-destructive' },
   LOST: { label: 'สูญหาย', className: 'bg-destructive/10 text-destructive' },
@@ -64,7 +64,7 @@ const productStatus: Record<string, BadgeConfig> = {
 
 // --- Transfer Status ---
 const transferStatus: Record<string, BadgeConfig> = {
-  PENDING: { label: 'รอจัดส่ง', className: 'bg-warning/10 text-warning' },
+  PENDING: { label: 'รอจัดส่ง', className: 'bg-warning/10 text-warning-strong' },
   IN_TRANSIT: { label: 'ระหว่างโอนสินค้า', className: 'bg-primary/10 text-primary' },
   CONFIRMED: { label: 'รับแล้ว', className: 'bg-success/10 text-success' },
   REJECTED: { label: 'ปฏิเสธ', className: 'bg-destructive/10 text-destructive' },
@@ -73,9 +73,9 @@ const transferStatus: Record<string, BadgeConfig> = {
 // --- Purchase Order Status ---
 const purchaseOrderStatus: Record<string, BadgeConfig> = {
   PENDING: { label: 'รอดำเนินการ', className: 'bg-muted text-foreground' },
-  DRAFT: { label: 'รออนุมัติ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  DRAFT: { label: 'รออนุมัติ', className: 'bg-warning/10 text-warning-strong dark:bg-warning/15' },
   APPROVED: { label: 'อนุมัติแล้ว', className: 'bg-primary/10 text-primary' },
-  PARTIALLY_RECEIVED: { label: 'รับบางส่วน', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  PARTIALLY_RECEIVED: { label: 'รับบางส่วน', className: 'bg-warning/10 text-warning-strong dark:bg-warning/15' },
   FULLY_RECEIVED: { label: 'รับครบแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
   CANCELLED: { label: 'ยกเลิก', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
 };
@@ -83,7 +83,7 @@ const purchaseOrderStatus: Record<string, BadgeConfig> = {
 // --- PO Payment Status ---
 const poPaymentStatus: Record<string, BadgeConfig> = {
   UNPAID: { label: 'ยังไม่จ่าย', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
-  DEPOSIT_PAID: { label: 'จ่ายมัดจำ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  DEPOSIT_PAID: { label: 'จ่ายมัดจำ', className: 'bg-warning/10 text-warning-strong dark:bg-warning/15' },
   PARTIALLY_PAID: { label: 'จ่ายบางส่วน', className: 'bg-primary/10 text-primary' },
   FULLY_PAID: { label: 'จ่ายครบแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
 };
@@ -91,7 +91,7 @@ const poPaymentStatus: Record<string, BadgeConfig> = {
 // --- Workflow Status ---
 const workflowStatus: Record<string, BadgeConfig> = {
   CREATING: { label: 'กำลังสร้าง', className: 'bg-muted text-foreground' },
-  PENDING_REVIEW: { label: 'รออนุมัติ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  PENDING_REVIEW: { label: 'รออนุมัติ', className: 'bg-warning/10 text-warning-strong dark:bg-warning/15' },
   APPROVED: { label: 'อนุมัติ', className: 'bg-success/10 text-success dark:bg-success/15' },
   REJECTED: { label: 'ไม่อนุมัติ', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },
 };
@@ -99,15 +99,15 @@ const workflowStatus: Record<string, BadgeConfig> = {
 // --- Dunning Stage ---
 const dunningStatus: Record<string, BadgeConfig> = {
   NONE: { label: 'ปกติ', className: 'bg-muted/60 text-muted-foreground' },
-  REMINDER: { label: 'แจ้งเตือน', className: 'bg-warning/10 text-warning border-warning/30' },
-  NOTICE: { label: 'แจ้งค้างชำระ', className: 'bg-warning/10 text-warning border-warning/30' },
+  REMINDER: { label: 'แจ้งเตือน', className: 'bg-warning/10 text-warning-strong border-warning/30' },
+  NOTICE: { label: 'แจ้งค้างชำระ', className: 'bg-warning/10 text-warning-strong border-warning/30' },
   FINAL_WARNING: { label: 'เตือนครั้งสุดท้าย', className: 'bg-destructive/10 text-destructive border-destructive/30' },
   LEGAL_ACTION: { label: 'ดำเนินคดี', className: 'bg-destructive/20 text-destructive border-destructive/50' },
 };
 
 // --- Expense Status ---
 const expenseStatus: Record<string, BadgeConfig> = {
-  PENDING: { label: 'รออนุมัติ', className: 'bg-warning/10 text-warning dark:bg-warning/15' },
+  PENDING: { label: 'รออนุมัติ', className: 'bg-warning/10 text-warning-strong dark:bg-warning/15' },
   APPROVED: { label: 'อนุมัติ', className: 'bg-success/10 text-success dark:bg-success/15' },
   PAID: { label: 'จ่ายแล้ว', className: 'bg-success/10 text-success dark:bg-success/15' },
   REJECTED: { label: 'ไม่อนุมัติ', className: 'bg-destructive/10 text-destructive dark:bg-destructive/15' },

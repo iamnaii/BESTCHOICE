@@ -293,7 +293,7 @@ export function CreditNoteLinesSection({ state, onChange, onLinesChange }: Props
               />
             </div>
 
-            <div className="rounded-lg border border-warning/30 bg-warning/5 p-2 text-xs text-warning flex items-start gap-2">
+            <div className="rounded-lg border border-warning/30 bg-warning/5 p-2 text-xs text-warning-strong flex items-start gap-2">
               <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
               <span>
                 ใบลดหนี้แบบ Standalone ไม่ถูก cap ด้วยยอดของเอกสารต้นฉบับ

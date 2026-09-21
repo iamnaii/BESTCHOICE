@@ -181,7 +181,7 @@ export function ApprovePODialog({ open, po, supplier, pending, onClose, onReject
           <section>
             <SectionTitle
               icon={<CreditCard className="size-4" />}
-              tone="bg-warning/10 text-warning"
+              tone="bg-warning/10 text-warning-strong"
               title="จ่ายเงิน"
               hint='จ่ายตอนอนุมัติเลยก็บันทึกที่นี่ — ถ้าเป็นเครดิตปล่อย "ยังไม่จ่าย" แล้วค่อยบันทึกทีหลัง'
             />

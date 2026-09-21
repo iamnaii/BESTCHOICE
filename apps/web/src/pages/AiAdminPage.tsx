@@ -125,7 +125,7 @@ function StatCard({ icon, label, value, sub, tone = 'default' }: StatCardProps) 
   const toneMap = {
     default: 'text-foreground',
     success: 'text-success',
-    warning: 'text-warning',
+    warning: 'text-warning-strong',
     error: 'text-destructive',
   } as const;
   return (

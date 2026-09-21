@@ -139,7 +139,7 @@ export default function DashboardRevenue({
                       <div className="text-sm font-medium text-foreground">ค่าปรับ</div>
                       <div className="text-2xs text-muted-foreground">ค่าปรับล่าช้าสะสม</div>
                     </div>
-                    <div className="text-sm font-semibold text-warning">{revenue.lateFeeIncome.toLocaleString()} ฿</div>
+                    <div className="text-sm font-semibold text-warning-strong">{revenue.lateFeeIncome.toLocaleString()} ฿</div>
                   </div>
                 </div>
               ) : (
@@ -257,7 +257,7 @@ export default function DashboardRevenue({
                     <div className="text-sm font-medium text-foreground">ค่าปรับรวม</div>
                     <div className="text-2xs text-muted-foreground">ค่าปรับสะสมทั้งหมด</div>
                   </div>
-                  <div className="text-sm font-semibold text-warning">{kpis.financial.totalLateFees.toLocaleString()} ฿</div>
+                  <div className="text-sm font-semibold text-warning-strong">{kpis.financial.totalLateFees.toLocaleString()} ฿</div>
                 </div>
                 <div
                   className="flex items-center gap-4 px-5 py-3.5 cursor-pointer hover:bg-muted/50 transition-colors"
@@ -269,7 +269,7 @@ export default function DashboardRevenue({
                     <div className="text-2xs text-muted-foreground">สัญญาที่ต้องติดตาม</div>
                   </div>
                   <div className="text-sm font-semibold">
-                    <span className="text-warning">{kpis.contracts.overdue}</span>
+                    <span className="text-warning-strong">{kpis.contracts.overdue}</span>
                     <span className="text-muted-foreground mx-1">/</span>
                     <span className="text-destructive">{kpis.contracts.default}</span>
                   </div>

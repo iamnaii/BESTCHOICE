@@ -235,8 +235,8 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
       <fieldset disabled={mutation.isPending} className="space-y-4 min-w-0">
         {!canCreate && (
           <div className="flex items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-3">
-            <Lock className="size-4 text-warning shrink-0 mt-0.5" />
-            <div className="text-xs text-warning leading-snug">
+            <Lock className="size-4 text-warning-strong shrink-0 mt-0.5" />
+            <div className="text-xs text-warning-strong leading-snug">
               <strong className="block">
                 บันทึกรับเครื่องคืนได้เฉพาะเจ้าของ / ผจก.สาขา / พนักงานขาย
               </strong>
@@ -380,7 +380,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
         {blockedByEligibility && (
           <div
             role="alert"
-            className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning leading-snug"
+            className="flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning-strong leading-snug"
           >
             <AlertTriangle className="size-4 mt-0.5 shrink-0" />
             <span>{preview?.eligibility.reason}</span>
@@ -513,7 +513,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                             ? 'text-destructive'
                             : valuation.found
                               ? 'text-muted-foreground'
-                              : 'text-warning'
+                              : 'text-warning-strong'
                         }`}
                       >
                         {!valuation.found
@@ -575,7 +575,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
                 placeholder="เช่น สภาพเครื่อง หรือเหตุผลที่ราคาประเมินต่างจากตาราง..."
               />
               {needsReason && (
-                <p className="text-xs text-warning mt-1 leading-snug">
+                <p className="text-xs text-warning-strong mt-1 leading-snug">
                   กรุณาอธิบายเหตุผลที่ราคาประเมินต่างจากตารางเกิน 15%
                 </p>
               )}
@@ -648,7 +648,7 @@ export function DeviceReturnIntakeDialog({ open, onClose, initialContractId, onC
             <div
               id="device-return-submit-block"
               role="status"
-              className="text-sm text-warning leading-snug"
+              className="text-sm text-warning-strong leading-snug"
             >
               {submitBlockReason}
             </div>

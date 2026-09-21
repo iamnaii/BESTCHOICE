@@ -133,7 +133,7 @@ export default function QcCenterPage() {
         icon={<Camera className="size-5" />}
         badge={
           total > 0 ? (
-            <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-bold bg-warning/10 text-warning dark:bg-warning/15 leading-snug">
+            <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full text-xs font-bold bg-warning/10 text-warning-strong dark:bg-warning/15 leading-snug">
               {total}
             </span>
           ) : undefined

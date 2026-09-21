@@ -47,7 +47,7 @@ function severityAccent(daysOverdue: number): string {
 
 function daysOverdueStat(daysOverdue: number): { bg: string; fg: string } {
   if (daysOverdue >= 30) return { bg: 'bg-destructive/10', fg: 'text-destructive' };
-  if (daysOverdue >= 8) return { bg: 'bg-warning/10', fg: 'text-warning' };
+  if (daysOverdue >= 8) return { bg: 'bg-warning/10', fg: 'text-warning-strong' };
   if (daysOverdue >= 1) return { bg: 'bg-primary/10', fg: 'text-primary' };
   return { bg: 'bg-muted', fg: 'text-foreground' };
 }

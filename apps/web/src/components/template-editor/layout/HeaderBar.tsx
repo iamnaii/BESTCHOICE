@@ -134,7 +134,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
       </select>
 
       {isDirty && (
-        <span className="text-sm font-medium text-warning bg-warning/10 px-2.5 py-1 rounded-full">
+        <span className="text-sm font-medium text-warning-strong bg-warning/10 px-2.5 py-1 rounded-full">
           ยังไม่บันทึก
         </span>
       )}
@@ -170,7 +170,7 @@ export default function HeaderBar({ onBack, onToggleCheatSheet, showCheatSheet, 
             onClick={onToggleCheatSheet}
             className={`flex items-center gap-1.5 px-3 py-2 text-base rounded-lg transition-colors ${
               showCheatSheet
-                ? 'bg-warning/15 text-warning border border-warning/30'
+                ? 'bg-warning/15 text-warning-strong border border-warning/30'
                 : 'text-muted-foreground border border-input hover:bg-muted'
             }`}
           >

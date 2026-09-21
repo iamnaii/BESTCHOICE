@@ -168,7 +168,7 @@ export default function LiffRegister() {
     return (
       <div className="min-h-screen bg-background p-4">
         {/* Header */}
-        <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
+        <div className="bg-primary rounded-xl p-5 text-primary-foreground shadow-md mb-4">
           <p className="text-xs opacity-80">BEST CHOICE</p>
           <h1 className="text-base font-bold mt-1">ลงทะเบียนผูก LINE</h1>
         </div>
@@ -240,7 +240,7 @@ export default function LiffRegister() {
     return (
       <div className="min-h-screen bg-background p-4">
         {/* Header */}
-        <div className="bg-primary rounded-xl p-5 text-white shadow-md mb-4">
+        <div className="bg-primary rounded-xl p-5 text-primary-foreground shadow-md mb-4">
           <p className="text-xs opacity-80">BEST CHOICE</p>
           <h1 className="text-base font-bold mt-1">ยืนยันตัวตน</h1>
         </div>
@@ -252,7 +252,7 @@ export default function LiffRegister() {
             <p className="text-xs text-muted-foreground mb-6">เบอร์โทร: {phone}</p>
 
             <div className="bg-warning/10 border border-warning/20 rounded-lg p-4 mb-6">
-              <p className="text-sm text-warning">
+              <p className="text-sm text-warning-strong">
                 หากชื่อนี้คือคุณ กดยืนยันเพื่อผูกบัญชี LINE กับระบบ
               </p>
             </div>

@@ -101,7 +101,7 @@ export default function SaleDetailsForm({
 
           {selectedProduct && saleType === 'CASH' &&
             normalizePositive(getPositiveDisplayPrices(selectedProduct).cash) === null && (
-            <p role="status" className="mb-3 text-sm text-warning">
+            <p role="status" className="mb-3 text-sm text-warning-strong">
               ยังไม่ได้ตั้งราคาเงินสด กรุณาตรวจราคาสินค้าก่อนบันทึก
             </p>
           )}

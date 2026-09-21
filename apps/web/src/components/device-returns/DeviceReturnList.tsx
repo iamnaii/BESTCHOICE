@@ -246,7 +246,7 @@ export function DeviceReturnList({ onConfirm }: Props) {
                             <button
                               type="button"
                               onClick={() => setCancelTarget(r)}
-                              className="text-warning hover:text-warning/80 text-sm font-medium"
+                              className="text-warning-strong hover:text-warning-strong/80 text-sm font-medium"
                             >
                               ยกเลิก
                             </button>

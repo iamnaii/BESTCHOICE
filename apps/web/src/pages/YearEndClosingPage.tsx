@@ -442,7 +442,7 @@ export default function YearEndClosingPage() {
               ) : (
                 <Card className="border-warning/40 bg-warning/5">
                   <CardContent className="flex items-start gap-3 pt-6">
-                    <Info className="h-5 w-5 text-warning shrink-0 mt-0.5" />
+                    <Info className="h-5 w-5 text-warning-strong shrink-0 mt-0.5" />
                     <div className="flex-1 space-y-1">
                       <p className="text-sm font-semibold leading-snug">โหมดดูอย่างเดียว</p>
                       <p className="text-sm text-muted-foreground leading-snug">

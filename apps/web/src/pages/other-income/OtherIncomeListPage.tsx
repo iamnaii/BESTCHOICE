@@ -27,7 +27,7 @@ const STATUS_LABELS: Record<OtherIncomeStatus, string> = {
 
 const STATUS_COLORS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'bg-muted text-muted-foreground',
-  READY: 'bg-warning/10 text-warning',
+  READY: 'bg-warning/10 text-warning-strong',
   POSTED: 'bg-success/10 text-success',
   REVERSED: 'bg-destructive/10 text-destructive',
 };
@@ -63,7 +63,7 @@ const ACCENT_BAR: Record<StatusAccent, string> = {
 
 const ACCENT_ICON: Record<StatusAccent, string> = {
   primary: 'bg-primary/10 text-primary',
-  warning: 'bg-warning/10 text-warning',
+  warning: 'bg-warning/10 text-warning-strong',
   success: 'bg-success/10 text-success',
   muted: 'bg-muted text-muted-foreground',
 };
@@ -388,7 +388,7 @@ export default function OtherIncomeListPage() {
                               title="POST ด้วย Override JV — ตรวจ audit log"
                               aria-label="Override JV"
                             >
-                              <Pencil className="size-3.5 inline text-warning" />
+                              <Pencil className="size-3.5 inline text-warning-strong" />
                             </span>
                           )}
                           {doc.docNumber}

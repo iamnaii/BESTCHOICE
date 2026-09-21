@@ -290,7 +290,7 @@ export default function InterestConfigPage() {
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <h3 className="text-lg font-semibold text-foreground">ค่า Default</h3>
-              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning/20 text-warning">ใช้เมื่อไม่มี config ตามประเภท</span>
+              <span className="rounded-full px-2.5 py-0.5 text-xs font-semibold bg-warning/20 text-warning-strong">ใช้เมื่อไม่มี config ตามประเภท</span>
             </div>
             {!editingDefaults ? (
               <>

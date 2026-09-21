@@ -373,7 +373,7 @@ export function POListTab({
               <button
                 onClick={() => onReject(po)}
                 disabled={rejectPOMutation.isPending}
-                className="p-1.5 rounded-md text-warning hover:bg-warning/10 transition-colors disabled:opacity-50"
+                className="p-1.5 rounded-md text-warning-strong hover:bg-warning/10 transition-colors disabled:opacity-50"
                 title="ปฏิเสธ"
                 aria-label={`ปฏิเสธ ${po.poNumber}`}
               >

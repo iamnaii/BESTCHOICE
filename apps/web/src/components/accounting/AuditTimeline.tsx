@@ -25,7 +25,7 @@ const EVENT_META: Record<
   { icon: typeof PenLine; tone: string; label: string }
 > = {
   CREATED: { icon: PenLine, tone: 'text-info', label: 'สร้างเอกสาร' },
-  SUBMITTED_FOR_APPROVAL: { icon: Send, tone: 'text-warning', label: 'ส่งให้อนุมัติ' },
+  SUBMITTED_FOR_APPROVAL: { icon: Send, tone: 'text-warning-strong', label: 'ส่งให้อนุมัติ' },
   APPROVED: { icon: CheckCircle2, tone: 'text-success', label: 'อนุมัติ' },
   POSTED: { icon: CheckCircle2, tone: 'text-success', label: 'ลงบัญชี' },
   REJECTED: { icon: XCircle, tone: 'text-destructive', label: 'ปฏิเสธ' },

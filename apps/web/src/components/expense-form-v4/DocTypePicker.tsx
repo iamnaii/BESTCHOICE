@@ -119,7 +119,7 @@ export function DocTypePicker({
           <>
             Smart Default: invoice_date = today → SAMEDAY · invoice_date &lt; today → ACCRUAL
             {invoiceDateIsToday && value === 'EXPENSE_ACCRUAL' && (
-              <span className="text-warning"> · ตั้งหนี้แล้วทั้งที่วันที่เป็นวันนี้</span>
+              <span className="text-warning-strong"> · ตั้งหนี้แล้วทั้งที่วันที่เป็นวันนี้</span>
             )}
           </>
         ) : (

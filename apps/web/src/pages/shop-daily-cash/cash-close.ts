@@ -67,7 +67,7 @@ export function varianceLabel(variance: number) {
 }
 
 export const varianceTone = (variance: number) =>
-  toSatang(variance) === 0 ? 'text-muted-foreground' : toSatang(variance) < 0 ? 'text-destructive' : 'text-warning';
+  toSatang(variance) === 0 ? 'text-muted-foreground' : toSatang(variance) < 0 ? 'text-destructive' : 'text-warning-strong';
 
 const BKK = 'Asia/Bangkok';
 export const timeOf = (iso: string) =>
@@ -140,8 +140,8 @@ export const DAY_STATE_LABEL: Record<CashCloseDayState, string> = {
 /** ป้ายสถานะ (พื้น + ตัวอักษร) — ใช้โทเคนสีของธีมเท่านั้น */
 export const DAY_STATE_BADGE: Record<CashCloseDayState, string> = {
   REACHED: 'bg-primary/10 text-primary',
-  AT_BRANCH: 'bg-warning/10 text-warning',
-  AWAITING_CONFIRM: 'bg-warning/10 text-warning',
+  AT_BRANCH: 'bg-warning/10 text-warning-strong',
+  AWAITING_CONFIRM: 'bg-warning/10 text-warning-strong',
   NOT_COUNTED: 'bg-destructive/10 text-destructive',
   MISSED: 'bg-destructive/10 text-destructive',
   NO_CASH: 'bg-muted text-muted-foreground',

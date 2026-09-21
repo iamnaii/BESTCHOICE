@@ -43,7 +43,7 @@ const STATUS_LABELS: Record<OtherIncomeStatus, string> = {
 
 const STATUS_COLORS: Record<OtherIncomeStatus, string> = {
   DRAFT: 'bg-muted text-muted-foreground',
-  READY: 'bg-warning/10 text-warning',
+  READY: 'bg-warning/10 text-warning-strong',
   POSTED: 'bg-success/10 text-success',
   REVERSED: 'bg-destructive/10 text-destructive',
 };
@@ -401,7 +401,7 @@ export default function OtherIncomeViewPage() {
                 </>
               )}
               {doc.status === 'READY' && doc.rejectNote && (
-                <div className="rounded-md bg-warning/10 text-warning text-xs px-3 py-2">
+                <div className="rounded-md bg-warning/10 text-warning-strong text-xs px-3 py-2">
                   เคยถูกปฏิเสธ: {doc.rejectNote}
                 </div>
               )}
@@ -696,7 +696,7 @@ export default function OtherIncomeViewPage() {
                         className={
                           Math.abs(parseFloat(doc.amountReceived) - parseFloat(doc.netReceived)) >
                           0.01
-                            ? 'text-warning'
+                            ? 'text-warning-strong'
                             : 'text-success'
                         }
                       >
@@ -704,7 +704,7 @@ export default function OtherIncomeViewPage() {
                       </span>
                     </div>
                     {doc.isOverridden && (
-                      <p className="text-xs text-warning pt-1">* JE ถูก override โดยผู้ใช้</p>
+                      <p className="text-xs text-warning-strong pt-1">* JE ถูก override โดยผู้ใช้</p>
                     )}
                   </div>
                 </div>
@@ -743,7 +743,7 @@ export default function OtherIncomeViewPage() {
                 {/* READY shortcut info */}
                 {doc.status === 'READY' && (
                   <div className="rounded-xl border bg-card p-5 space-y-2">
-                    <div className="inline-flex items-center gap-2 text-warning text-sm font-semibold">
+                    <div className="inline-flex items-center gap-2 text-warning-strong text-sm font-semibold">
                       <Clock size={16} />
                       รออนุมัติ
                     </div>
@@ -771,7 +771,7 @@ export default function OtherIncomeViewPage() {
                       {log.action === 'JV_OVERRIDDEN' ? (
                         <div className="rounded border border-warning/50 bg-warning/10 p-3 space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="px-2 py-0.5 rounded bg-warning/20 font-mono text-xs font-semibold text-warning">
+                            <span className="px-2 py-0.5 rounded bg-warning/20 font-mono text-xs font-semibold text-warning-strong">
                               JV_OVERRIDDEN
                             </span>
                             <span className="text-xs text-muted-foreground">

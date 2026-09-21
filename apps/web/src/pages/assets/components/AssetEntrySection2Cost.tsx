@@ -262,7 +262,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
             </p>
             {noWhtBase && (
               <div className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm">
-                <p className="flex items-center gap-1.5 font-medium text-warning">
+                <p className="flex items-center gap-1.5 font-medium text-warning-strong">
                   <AlertTriangle className="size-4" />
                   ไม่มีฐานคำนวณ WHT
                 </p>
@@ -332,7 +332,7 @@ export function AssetEntrySection2Cost({ calc }: { calc: CalculationResult }) {
           </div>
           <div>
             <div className="text-muted-foreground">ค่าเสื่อม/เดือน</div>
-            <div className="text-xl font-semibold tabular-nums text-warning">
+            <div className="text-xl font-semibold tabular-nums text-warning-strong">
               {fmt(calc.monthlyDepr)} <span className="text-xs">฿</span>
             </div>
             <div className="text-[11px] text-muted-foreground">

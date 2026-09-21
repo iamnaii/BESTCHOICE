@@ -140,7 +140,7 @@ describe('Counter purchase, seller payment and stock handoff', () => {
     render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={vi.fn()} />, { wrapper });
     const user = userEvent.setup();
     expect(screen.getByText('ขั้นที่ 1 / 4')).toBeVisible();
-    expect(screen.getByLabelText('เครื่องไทย / เครื่องนอก')).toBeVisible();
+    expect(screen.queryByLabelText('เครื่องไทย / เครื่องนอก')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('ประกันร้าน (วัน)')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('ผู้รับประกันและเงื่อนไขความคุ้มครอง')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'เลือกผู้ขายทดสอบ' })).not.toBeInTheDocument();
@@ -182,6 +182,28 @@ describe('Counter purchase, seller payment and stock handoff', () => {
     expect(nextButton()).toBeDisabled();
     expect(screen.queryByText('฿5,000')).not.toBeInTheDocument();
     expect(purchaseCalls()).toHaveLength(0);
+  });
+
+  it('selects Thai/imported origin only in inspection and includes it in the price assessment', async () => {
+    const get = vi.mocked(api.get).getMockImplementation()!;
+    vi.mocked(api.get).mockImplementation((url, options) => String(url).endsWith('/questions')
+      ? Promise.resolve({ data: { ...questionnaire, questions: [{
+        id: 'origin', key: 'device-origin', title: 'เครื่องไทย / เครื่องนอก', selectType: 'SINGLE', choices: [
+          { id: 'thai', label: 'เครื่องศูนย์ไทย (TH)', deductType: 'FIXED', deductValue: '0' },
+          { id: 'imported', label: 'เครื่องนอก (โมเดลอื่น)', deductType: 'FIXED', deductValue: '1500' },
+        ],
+      }, ...questionnaire.questions] } }) : get(url, options));
+    render(<QuickBuyModal open onClose={vi.fn()} onSuccess={vi.fn()} onIncomplete={vi.fn()} />, { wrapper });
+    const user = userEvent.setup();
+    expect(screen.queryByText('เครื่องไทย / เครื่องนอก')).not.toBeInTheDocument();
+    await selectDevice(user);
+    await user.click(nextButton());
+    await user.click(await screen.findByRole('radio', { name: /เครื่องนอก/ }));
+    await answerQuestions(user);
+    expect(previewCalls()[0][1]).toMatchObject({ answers: [
+      { questionKey: 'device-origin', choiceIds: ['imported'] }, ...completeAnswers,
+    ] });
+    expect(screen.getAllByRole('radio', { name: /เครื่องนอก/ })).toHaveLength(1);
   });
 
   it('requires explicit no-issues and device eligibility before calculating a price', async () => {
@@ -386,6 +408,7 @@ describe('Counter purchase, seller payment and stock handoff', () => {
       transferAccountNumber: method === 'TRANSFER' ? '1234567890' : undefined,
     }));
     expect(purchaseCalls()[0][1]).not.toHaveProperty('shopWarrantyDays');
+    expect(purchaseCalls()[0][1]).not.toHaveProperty('deviceOrigin');
     expect(purchaseCalls()[0][1]).not.toHaveProperty('warrantyTerms');
     expect(vi.mocked(api.get).mock.calls.some(([url]) => String(url).includes('bank-accounts'))).toBe(false);
   });

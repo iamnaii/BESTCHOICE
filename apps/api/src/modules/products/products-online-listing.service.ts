@@ -50,6 +50,9 @@ export class ProductsOnlineListingService {
     return this.prisma.product.update({
       where: { id },
       data: {
+        ...(dto.deviceOrigin !== undefined ? { deviceOrigin: dto.deviceOrigin } : {}),
+        ...(dto.shopWarrantyDays !== undefined ? { shopWarrantyDays: dto.shopWarrantyDays } : {}),
+        ...(dto.warrantyTerms !== undefined ? { warrantyTerms: dto.warrantyTerms?.trim() || null } : {}),
         ...(dto.gallery !== undefined ? { gallery: dto.gallery } : {}),
         ...(dto.isOnlineVisible !== undefined ? { isOnlineVisible: dto.isOnlineVisible } : {}),
         ...(dto.onlineDescription !== undefined ? { onlineDescription: dto.onlineDescription } : {}),

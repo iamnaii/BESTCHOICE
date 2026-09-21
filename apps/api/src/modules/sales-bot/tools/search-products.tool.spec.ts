@@ -37,6 +37,16 @@ const makePrisma = (rows: unknown[], configValue: string | null = null) =>
   }) as unknown as PrismaService;
 
 describe('SearchProductsTool.run', () => {
+  it('keeps Thai and imported stock separate and preserves no-warranty terms', async () => {
+    const prisma = makePrisma([
+      row({ deviceOrigin: 'THAI', cashPrice: D('32000') }),
+      row({ id: 'imported', deviceOrigin: 'IMPORTED', cashPrice: D('28000'), shopWarrantyDays: 0, warrantyTerms: 'No warranty' }),
+    ]);
+    const result = await new SearchProductsTool(prisma).run({ query: 'iPhone 15 Pro Max', deviceOrigin: 'IMPORTED' });
+    expect(prisma.product.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ deviceOrigin: 'IMPORTED' }) }));
+    expect(result.groups).toHaveLength(2); // mocked DB returns both; grouping must still keep them separate
+    expect(result.groups.find(g => g.deviceOrigin === 'IMPORTED')?.units[0]).toMatchObject({ shopWarrantyDays: 0, warrantyTerms: 'No warranty' });
+  });
   const prevBase = process.env.SHOP_BASE_URL;
   beforeEach(() => {
     process.env.SHOP_BASE_URL = 'https://shop.example.com';
@@ -114,6 +124,7 @@ describe('SearchProductsTool.run', () => {
     const tool = new SearchProductsTool(makePrisma([row()]));
     const r = await tool.run({ query: 'iPhone 15 Pro Max' });
     expect(r.groups[0].units[0]).toEqual({
+      deviceOrigin: null, warrantyTerms: null,
       id: 'prd-1',
       priceThb: 32900,
       installmentPriceThb: 35900,

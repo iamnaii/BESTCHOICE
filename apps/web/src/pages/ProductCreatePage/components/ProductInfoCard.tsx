@@ -1,3 +1,4 @@
+import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card';
 import { brands, getModels, getModelInfo } from '@/data/productCatalog';
@@ -17,6 +18,7 @@ const chargerConnectorTypes = [
 ];
 
 interface ProductFormState {
+  deviceOrigin: string; shopWarrantyDays: string; warrantyTerms: string;
   name: string;
   brand: string;
   model: string;
@@ -72,6 +74,7 @@ export default function ProductInfoCard({
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-5 lg:gap-7.5">
+          {form.category !== 'ACCESSORY' && <DeviceDisclosureFields value={form} onChange={(key, value) => setForm({ ...form, [key]: value })} />}
           {/* ประเภท - FIRST */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-1">ประเภท *</label>

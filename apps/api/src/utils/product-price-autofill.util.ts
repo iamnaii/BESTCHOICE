@@ -21,6 +21,7 @@ export interface AutofillResult {
 }
 
 export interface AutofillInput {
+  deviceOrigin?: 'THAI' | 'IMPORTED' | null;
   productId: string;
   brand: string;
   model: string;
@@ -81,6 +82,7 @@ export async function autofillProductPriceFromTemplate(
 
   const rows = await tx.pricingTemplate.findMany({
     where: {
+      deviceOrigin: input.deviceOrigin ?? 'UNSPECIFIED',
       isActive: true,
       deletedAt: null,
       category: input.category,

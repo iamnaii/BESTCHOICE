@@ -1,7 +1,12 @@
 import { IsOptional, IsString, IsInt, Min, Max, MaxLength, IsEnum, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
+import { DeviceOrigin } from '@prisma/client';
 
 export class ListProductsDto {
+  @IsOptional()
+  @IsEnum(DeviceOrigin)
+  deviceOrigin?: DeviceOrigin;
+
   @IsOptional()
   @IsString()
   @MaxLength(60)

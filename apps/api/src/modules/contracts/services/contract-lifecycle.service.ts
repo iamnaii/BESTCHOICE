@@ -1,6 +1,9 @@
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 import { cleanupCreditContractSale } from '../../trade-in/services/credit-contract-cleanup.util';
 import { Injectable, HttpException, Logger, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException } from '@nestjs/common';
+import { captureProductDisclosure } from '../../../utils/product-disclosure.util';
+import { readStringFlag } from '../../../utils/config.util';
+import { SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../../warranty/shop-warranty-policy';
 import { StructuredLoggerService } from '../../../common/logger';
 import { TradeInCreditService, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
 import { ContractQuoteService, contractQuotePayments } from './contract-quote.service';
@@ -141,6 +144,7 @@ export class ContractLifecycleService {
               paymentDueDay: dto.paymentDueDay,
               interestConfigId: quote.configId,
               customerSnapshot,
+              productDisclosure: captureProductDisclosure(currentProduct, await readStringFlag(tx, SHOP_WARRANTY_DAYS_CONFIG_KEY, '')),
             },
           });
 

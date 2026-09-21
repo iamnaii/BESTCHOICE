@@ -10,6 +10,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Card, CardContent } from '@/components/ui/card';
 
 interface PricingTemplate {
+  deviceOrigin?: string;
   id: string;
   brand: string;
   model: string;
@@ -32,6 +33,7 @@ const CATEGORIES = [
 ];
 
 const defaultForm = {
+  deviceOrigin: 'UNSPECIFIED',
   brand: '',
   model: '',
   storage: '',
@@ -53,15 +55,17 @@ export default function PricingTemplatesPage() {
   const [form, setForm] = useState(defaultForm);
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterBrand, setFilterBrand] = useState('');
+  const [filterDeviceOrigin, setFilterDeviceOrigin] = useState('');
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; message: string; action: () => void }>({ open: false, message: '', action: () => {} });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: templates = [], isLoading, isError, error, refetch } = useQuery<PricingTemplate[]>({
-    queryKey: ['pricing-templates', filterCategory, filterBrand],
+    queryKey: ['pricing-templates', filterCategory, filterBrand, filterDeviceOrigin],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filterCategory) params.set('category', filterCategory);
       if (filterBrand) params.set('brand', filterBrand);
+      if (filterDeviceOrigin) params.set('deviceOrigin', filterDeviceOrigin);
       const { data } = await api.get(`/pricing-templates?${params}`);
       return data;
     },
@@ -136,6 +140,7 @@ export default function PricingTemplatesPage() {
       { header: 'ยี่ห้อ', key: 'brand', width: 12 },
       { header: 'รุ่น', key: 'model', width: 18 },
       { header: 'ความจุ', key: 'storage', width: 10 },
+      { header: 'เครื่องไทย/นอก', key: 'deviceOrigin', width: 16 },
       { header: 'ประเภท', key: 'category', width: 10 },
       { header: 'ประกัน', key: 'warranty', width: 14 },
       { header: 'ราคาเงินสด', key: 'cash', width: 14 },
@@ -157,6 +162,7 @@ export default function PricingTemplatesPage() {
       ['ยี่ห้อ', 'ชื่อยี่ห้อ เช่น Apple, Samsung, OPPO'],
       ['รุ่น', 'ชื่อรุ่น เช่น iPhone 15, Galaxy S24'],
       ['ความจุ', 'เว้นว่างได้ เช่น 128GB, 256GB'],
+      ['เครื่องไทย/นอก', 'เครื่องไทย หรือ เครื่องนอก; เว้นว่าง = ยังไม่ระบุ (ราคาแยกกัน)'],
       ['ประเภท', '"มือ 1" หรือ "มือ 2"'],
       ['ประกัน', 'สำหรับมือ 2: "มีประกัน" หรือ "ไม่มีประกัน" (มือ 1 เว้นว่าง)'],
       ['ราคาเงินสด', 'ตัวเลข เช่น 25000'],
@@ -164,7 +170,7 @@ export default function PricingTemplatesPage() {
       ['ราคาผ่อนไฟแนนซ์', 'ตัวเลข เช่น 26000'],
       [],
       ['หมายเหตุ', ''],
-      ['- หากมีข้อมูลซ้ำ (ยี่ห้อ+รุ่น+ความจุ+ประเภท+ประกัน) จะอัปเดตราคาทับ', ''],
+      ['- หากมีข้อมูลซ้ำ (ยี่ห้อ+รุ่น+ความจุ+ประเภท+ประกัน+เครื่องไทย/นอก) จะอัปเดตราคาทับ', ''],
       ['- มือ 2 ต้องระบุว่า "มีประกัน" หรือ "ไม่มีประกัน"', ''],
     ]);
 
@@ -185,6 +191,9 @@ export default function PricingTemplatesPage() {
       }
 
       const items = rows.map((row) => {
+        const originRaw = String(row['เครื่องไทย/นอก'] || '').trim();
+        const origins: Record<string, string> = { '': 'UNSPECIFIED', 'ยังไม่ระบุ': 'UNSPECIFIED', 'เครื่องไทย': 'THAI', 'เครื่องนอก': 'IMPORTED', THAI: 'THAI', IMPORTED: 'IMPORTED', UNSPECIFIED: 'UNSPECIFIED' };
+        if (!(originRaw in origins)) throw new Error('เครื่องไทย/นอกไม่ถูกต้อง');
         const categoryRaw = String(row['ประเภท'] || '').trim();
         const category = categoryRaw === 'มือ 2' ? 'PHONE_USED' : 'PHONE_NEW';
         const warrantyRaw = String(row['ประกัน'] || '').trim();
@@ -194,6 +203,7 @@ export default function PricingTemplatesPage() {
         }
         return {
           brand: String(row['ยี่ห้อ'] || '').trim(),
+          deviceOrigin: origins[originRaw],
           model: String(row['รุ่น'] || '').trim(),
           storage: String(row['ความจุ'] || '').trim() || undefined,
           category,
@@ -229,6 +239,7 @@ export default function PricingTemplatesPage() {
       model: t.model,
       storage: t.storage || '',
       category: t.category,
+      deviceOrigin: t.deviceOrigin ?? 'UNSPECIFIED',
       hasWarranty: t.hasWarranty,
       cashPrice: t.cashPrice,
       installmentBestchoicePrice: t.installmentBestchoicePrice,
@@ -287,7 +298,10 @@ export default function PricingTemplatesPage() {
       />
 
       {/* Filters */}
-      <div className="flex gap-3 mb-5">
+      <div className="flex flex-wrap gap-3 mb-5">
+        <select aria-label="เครื่องไทย / เครื่องนอก" value={filterDeviceOrigin} onChange={e => setFilterDeviceOrigin(e.target.value)} className="px-3 py-2 border border-input rounded-lg text-sm">
+          <option value="">ไทย/นอกทั้งหมด</option><option value="THAI">เครื่องไทย</option><option value="IMPORTED">เครื่องนอก</option><option value="UNSPECIFIED">ยังไม่ระบุ</option>
+        </select>
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
@@ -340,6 +354,7 @@ export default function PricingTemplatesPage() {
                   <tr key={t.id} className="border-b border-border/50 last:border-b-0 hover:bg-muted/40 transition-colors">
                     <td className="px-4 py-3">
                       <div className="font-medium text-foreground">{t.brand} {t.model}</div>
+                      <div className="text-xs text-muted-foreground">{t.deviceOrigin === 'THAI' ? 'เครื่องไทย' : t.deviceOrigin === 'IMPORTED' ? 'เครื่องนอก' : 'ยังไม่แยกไทย/นอก'}</div>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{t.storage || '-'}</td>
                     <td className="px-4 py-3">
@@ -382,6 +397,11 @@ export default function PricingTemplatesPage() {
       {showModal && (
         <Modal isOpen title={editId ? 'แก้ไขราคาตั้งต้น' : 'เพิ่มราคาตั้งต้น'} onClose={closeModal}>
           <div className="space-y-4">
+            <label className="block text-sm">ประเภทเครื่องของราคากลาง
+              <select aria-label="ประเภทเครื่องของราคากลาง" value={form.deviceOrigin} disabled={!!editId} onChange={(e) => setForm((f) => ({ ...f, deviceOrigin: e.target.value }))} className="w-full rounded-lg border border-input bg-background p-2">
+                <option value="UNSPECIFIED">ยังไม่แยกไทย/นอก</option><option value="THAI">เครื่องไทย</option><option value="IMPORTED">เครื่องนอก</option>
+              </select>
+            </label>
             {!editId && (
               <>
                 <div className="grid grid-cols-2 gap-3">

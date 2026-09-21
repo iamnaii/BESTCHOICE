@@ -6,6 +6,7 @@ import { computeDefaultTimeRange, formatThaiDateTime } from '@/lib/date';
 import { createExportGuard, ExportError, fetchExportSnapshot, type ExportSnapshot } from '@/lib/fetch-export-pages';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { TradeInCreditSnapshot } from '@installment/shared';
+import { DeviceDisclosureSummary, deviceOriginLabel, type DeviceDisclosureInfo } from '@/components/product/DeviceDisclosureSummary';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router';
@@ -37,6 +38,7 @@ interface Sale {
   costPriceSnapshot?: string | null;
   receiptBreakdown?: BookingSaleReceiptData | null;
   tradeInCreditSnapshot?: TradeInCreditSnapshot | null;
+  productDisclosure?: DeviceDisclosureInfo | null;
   id: string;
   saleNumber: string;
   saleType: string;
@@ -290,6 +292,9 @@ export default function SalesHistoryPage() {
         { header: 'เลขอ้างอิง', key: 'financeRef', width: 18 },
         { header: 'พนักงาน', key: 'salesperson', width: 16 },
         { header: 'สาขา', key: 'branch', width: 14 },
+        { header: 'เครื่องไทย/นอก ณ วันขาย', key: 'deviceOrigin', width: 22 },
+        { header: 'ประกันร้าน ณ วันขาย (วัน)', key: 'warrantyDays', width: 24 },
+        { header: 'เงื่อนไขประกัน ณ วันขาย', key: 'warrantyTerms', width: 50 },
       ];
 
       if (isOwner) {
@@ -326,6 +331,9 @@ export default function SalesHistoryPage() {
             date: formatDateShort(s.createdAt),
             saleType: saleTypeLabels[s.saleType] || s.saleType,
             product: `${s.product.brand} ${s.product.model}`,
+            deviceOrigin: s.productDisclosure ? deviceOriginLabel(s.productDisclosure.deviceOrigin) : 'ไม่มีข้อมูล ณ วันขาย',
+            warrantyDays: s.productDisclosure?.shopWarrantyDays ?? '',
+            warrantyTerms: s.productDisclosure?.warrantyTerms ?? '',
             imei: s.product.imeiSerial || s.product.serialNumber || '-',
             customer: s.customer.name,
             phone: s.customer.phone,
@@ -421,6 +429,7 @@ export default function SalesHistoryPage() {
       render: (s: Sale) => (
         <div>
           <div className="text-sm font-medium">{s.product.brand} {s.product.model}</div>
+          {s.productDisclosure && <DeviceDisclosureSummary product={s.productDisclosure} />}
           {(s.product.imeiSerial || s.product.serialNumber) && (
             <div className="text-xs text-muted-foreground font-mono">{s.product.imeiSerial || s.product.serialNumber}</div>
           )}
@@ -784,7 +793,7 @@ export default function SalesHistoryPage() {
             {saleDetail.data && <div className="space-y-5 text-sm">
               <div><p className="font-mono text-lg font-semibold">{saleDetail.data.saleNumber}</p><p className="text-muted-foreground">{formatThaiDateTime(saleDetail.data.createdAt, 'Asia/Bangkok')}</p>
                 <Badge variant={saleDetail.data.deletedAt ? 'destructive' : 'success'}>{saleDetail.data.deletedAt ? 'ยกเลิกแล้ว' : saleDetail.data.contract?.status === 'DRAFT' ? 'เตรียมสัญญา' : 'ขายสำเร็จ'}</Badge></div>
-              <div><Link className="text-primary underline" to={`/customers/${saleDetail.data.customer.id}`}>{saleDetail.data.customer.name}</Link><p>{saleDetail.data.product.name}</p><p className="font-mono text-xs text-muted-foreground">{saleDetail.data.product.imeiSerial || saleDetail.data.product.serialNumber}</p></div>
+              <div><Link className="text-primary underline" to={`/customers/${saleDetail.data.customer.id}`}>{saleDetail.data.customer.name}</Link><p>{saleDetail.data.product.name}</p>{saleDetail.data.productDisclosure && <DeviceDisclosureSummary product={saleDetail.data.productDisclosure} />}<p className="font-mono text-xs text-muted-foreground">{saleDetail.data.product.imeiSerial || saleDetail.data.product.serialNumber}</p></div>
               <dl className="space-y-2 tabular-nums">
                 {[
                   ['ราคาขาย', Number(saleDetail.data.sellingPrice)], ['ส่วนลด', Number(saleDetail.data.discount)], ['ยอดสุทธิ', Number(saleDetail.data.netAmount)],

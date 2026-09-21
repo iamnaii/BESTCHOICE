@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { DeviceOrigin } from '@prisma/client';
 import Decimal from 'decimal.js';
 import { PrismaService } from '../../prisma/prisma.service';
 import { productReadinessWhere } from '../../utils/product-readiness.util';
-import { readBoolFlag } from '../../utils/config.util';
+import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../warranty/shop-warranty-policy';
+import { readBoolFlag, readStringFlag } from '../../utils/config.util';
 import { calcBcInstallment } from '../../utils/installment-calc.util';
 import { resolveBcConfigForCategory } from '../../utils/bc-installment-config.util';
 import type { BcConfig } from '../../utils/installment-calc.types';
@@ -10,6 +12,7 @@ import { parseAccessories, parseQcChecklist, QcCheckItem } from './product-unit-
 import { parseDeviceQuery } from '../../utils/device-query-normalize.util';
 
 export interface ProductGroup {
+  deviceOrigin: DeviceOrigin | null;
   /** Representative product id — the catalog card links to /products/:id with this. */
   id: string;
   brand: string;
@@ -43,6 +46,9 @@ export interface ProductGroup {
 }
 
 export interface ProductDetail {
+  shopWarrantyDays?: number;
+  warrantyTerms?: string;
+  deviceOrigin: DeviceOrigin | null;
   id: string;
   brand: string;
   model: string;
@@ -59,6 +65,8 @@ export interface ProductDetail {
 }
 
 export interface ProductUnit {
+  warrantyTerms?: string;
+  deviceOrigin: DeviceOrigin | null;
   id: string;
   conditionGrade: string;
   batteryHealth?: number;
@@ -87,7 +95,7 @@ import {
   gradeRank,
 } from './catalog-item.util';
 
-const GROUP_BY = ['brand', 'model', 'storage', 'category'] as const;
+const GROUP_BY = ['brand', 'model', 'storage', 'category', 'deviceOrigin'] as const;
 
 /** Photos returned per catalog card. The card shows one large image plus a
  *  strip of up to four thumbnails, so anything past five is dead weight. */
@@ -124,6 +132,7 @@ export class ShopCatalogService {
   constructor(private prisma: PrismaService) {}
 
   async listGroupedByModel(filters: {
+    deviceOrigin?: DeviceOrigin;
     page?: number;
     limit?: number;
     brand?: string;
@@ -159,6 +168,7 @@ export class ShopCatalogService {
     const excludeDemo = await readBoolFlag(this.prisma, 'shop_hide_demo_products', false);
 
     const where: any = { ...shopBaseWhere(excludeDemo) };
+    if (filters.deviceOrigin) where.deviceOrigin = filters.deviceOrigin;
     if (filters.condition) {
       where.category = filters.condition === 'NEW' ? 'PHONE_NEW' : 'PHONE_USED';
     }
@@ -229,6 +239,7 @@ export class ShopCatalogService {
               storage: true,
               color: true,
               category: true,
+              deviceOrigin: true,
               cashPrice: true,
               installmentPrice: true,
               conditionGrade: true,
@@ -251,7 +262,7 @@ export class ShopCatalogService {
     ]);
     const now = new Date();
 
-    // New stock: one card per model+storage, with the cheapest unit as the face.
+    // New stock: one card per model+storage+origin, with a matching cheapest unit.
     const groupItems: SortableCard[] = await Promise.all(
         groups.map(async (g: any) => {
           const sample = await this.prisma.product.findFirst({
@@ -261,6 +272,7 @@ export class ShopCatalogService {
               model: g.model,
               storage: g.storage,
               category: g.category,
+              deviceOrigin: g.deviceOrigin ?? null,
             },
             orderBy: { cashPrice: 'asc' },
             select: { id: true, gallery: true, conditionGrade: true },
@@ -281,6 +293,7 @@ export class ShopCatalogService {
             isGroup: true,
             item: {
               kind: 'GROUP' as const,
+              deviceOrigin: g.deviceOrigin ?? null,
               id: sample?.id ?? '',
               brand: g.brand,
               model: g.model,
@@ -317,6 +330,7 @@ export class ShopCatalogService {
         isGroup: false,
         item: {
           kind: 'UNIT' as const,
+          deviceOrigin: u.deviceOrigin ?? null,
           id: u.id,
           displayNo: deriveDisplayNo(u.imeiSerial),
           brand: u.brand,
@@ -412,6 +426,7 @@ export class ShopCatalogService {
             model: g.model,
             storage: g.storage,
             category: g.category,
+            deviceOrigin: g.deviceOrigin ?? null,
           },
           orderBy: { cashPrice: 'asc' },
           select: {
@@ -450,6 +465,7 @@ export class ShopCatalogService {
         const quote = this.installmentFor(installment, configs.get(g.category) ?? null);
         return {
           kind: (isNew ? 'GROUP' : 'UNIT') as 'GROUP' | 'UNIT',
+          deviceOrigin: g.deviceOrigin ?? null,
           id: sample?.id ?? '',
           displayNo: isNew ? undefined : deriveDisplayNo(sample?.imeiSerial),
           brand: g.brand,
@@ -485,18 +501,22 @@ export class ShopCatalogService {
     });
     if (!product) return null;
 
-    // Get all units (same brand+model+storage+category, พร้อมขายจริง)
+    // Keep replacements in the same market, including unverified (null) stock.
+    // Get all units (same brand+model+storage+category+origin, พร้อมขายจริง)
     const allUnits = await this.prisma.product.findMany({
       where: {
         model: product.model,
+        brand: product.brand,
         storage: product.storage,
         category: product.category,
+        deviceOrigin: product.deviceOrigin ?? null,
         ...productReadinessWhere({ excludeDemo }),
       },
       orderBy: { cashPrice: 'asc' },
       include: { branch: { select: { name: true } } },
     });
 
+    const warrantyDefault = await readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, '');
     const tiers: Record<string, { minPrice: number; maxPrice: number; units: ProductUnit[] }> = {};
     for (const u of allUnits) {
       // B0: readiness fragment กรอง cashPrice > 0 มาแล้ว — ถ้ายังเจอ null แปลว่า
@@ -507,12 +527,14 @@ export class ShopCatalogService {
       const price = Number(u.cashPrice);
       const imeiPartial = u.imeiSerial ? `••••••••••${u.imeiSerial.slice(-4)}` : undefined;
       tiers[grade].units.push({
+        deviceOrigin: u.deviceOrigin ?? null,
         id: u.id,
         conditionGrade: grade,
         batteryHealth: u.batteryHealth ?? undefined,
         hasBox: u.hasBox ?? undefined,
         color: u.color ?? undefined,
-        shopWarrantyDays: u.shopWarrantyDays ?? undefined,
+        shopWarrantyDays: resolveShopWarrantyDays(u, warrantyDefault) ?? 0,
+        warrantyTerms: u.warrantyTerms ?? undefined,
         cashPrice: price,
         installmentPrice: u.installmentPrice != null ? Number(u.installmentPrice) : null,
         imeiPartial,
@@ -529,6 +551,9 @@ export class ShopCatalogService {
 
     return {
       id: product.id,
+      deviceOrigin: product.deviceOrigin ?? null,
+      shopWarrantyDays: resolveShopWarrantyDays(product, warrantyDefault) ?? 0,
+      warrantyTerms: product.warrantyTerms ?? undefined,
       brand: product.brand,
       model: product.model,
       storage: product.storage ?? undefined,

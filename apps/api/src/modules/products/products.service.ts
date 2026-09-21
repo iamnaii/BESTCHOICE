@@ -45,6 +45,8 @@ interface AccessorySkuRow {
   in_stock: bigint | number;
   last_cost: unknown;
 }
+import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../warranty/shop-warranty-policy';
+import { readStringFlag } from '../../utils/config.util';
 import { evaluateReadiness } from '../../utils/product-readiness.util';
 import {
   toActiveContractSummary,
@@ -99,6 +101,10 @@ export class ProductsService {
       if (!group) throw new NotFoundException('ไม่พบกลุ่มอุปกรณ์');
       where.AND = [group];
     }
+    if (filters.deviceOrigin) {
+      if (!['THAI', 'IMPORTED', 'UNKNOWN'].includes(filters.deviceOrigin)) throw new BadRequestException('Invalid device origin');
+      where.deviceOrigin = filters.deviceOrigin === 'UNKNOWN' ? null : filters.deviceOrigin;
+    }
     if (filters.branchId) where.branchId = filters.branchId;
     // status รับได้ทั้ง ?status=A, ?status=A&status=B (array) และ ?status=A,B
     // — FE ของ B1 ส่งแบบ comma เพื่อไม่ต้องพึ่ง query serializer ของ axios
@@ -139,7 +145,8 @@ export class ProductsService {
       this.prisma.product.count({ where }),
     ]);
 
-    return paginatedResponse(data, total, page, limit);
+    const defaults = await readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, '');
+    return paginatedResponse(data.map((p) => ({ ...p, effectiveShopWarrantyDays: resolveShopWarrantyDays(p, defaults) ?? 0 })), total, page, limit);
   }
 
   async findOne(id: string) {
@@ -148,7 +155,8 @@ export class ProductsService {
       include: productInclude,
     });
     if (!product || product.deletedAt) throw new NotFoundException('ไม่พบสินค้า');
-    return product;
+    const defaults = await readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, '');
+    return { ...product, effectiveShopWarrantyDays: resolveShopWarrantyDays(product, defaults) ?? 0 };
   }
 
   /**
@@ -264,6 +272,7 @@ export class ProductsService {
           tx,
           {
             productId: product.id,
+            deviceOrigin: product.deviceOrigin,
             brand: product.brand,
             model: product.model,
             storage: product.storage,

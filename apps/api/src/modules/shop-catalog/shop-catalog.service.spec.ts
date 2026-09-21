@@ -33,6 +33,42 @@ describe('ShopCatalogService', () => {
   });
 
   describe('listGroupedByModel', () => {
+    it.each(['THAI', 'IMPORTED'] as const)('filters both new and used stock by %s', async (deviceOrigin) => {
+      await service.listGroupedByModel({ deviceOrigin, search: 'iPhone 15' });
+      for (const query of [prisma.product.groupBy.mock.calls[0][0], prisma.product.findMany.mock.calls[0][0]]) {
+        expect(query.where.deviceOrigin).toBe(deviceOrigin);
+        expect(query.where.AND).toContainEqual({ status: 'IN_STOCK' });
+        expect(query.where.AND).toContainEqual({ model: { contains: 'iPhone 15', mode: 'insensitive' } });
+      }
+    });
+
+    it('keeps Thai, imported and unverified new stock in separate cards with matching samples', async () => {
+      const origins = ['THAI', 'IMPORTED', null];
+      prisma.product.groupBy.mockResolvedValue(origins.map((deviceOrigin, i) => ({
+        brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'PHONE_NEW',
+        deviceOrigin, _min: { cashPrice: 20000 + i * 1000 }, _count: { id: i + 1 },
+      })));
+      prisma.product.findFirst.mockImplementation(({ where }) => Promise.resolve({
+        id: `phone-${where.deviceOrigin}`, gallery: [],
+      }));
+      const result = await service.listGroupedByModel({ condition: 'NEW', sort: 'price_asc' });
+      expect(prisma.product.groupBy.mock.calls[0][0].by).toContain('deviceOrigin');
+      expect(result.data.map((p) => [p.deviceOrigin, p.id, p.stockCount])).toEqual([
+        ['THAI', 'phone-THAI', 1], ['IMPORTED', 'phone-IMPORTED', 2], [null, 'phone-null', 3],
+      ]);
+      expect(prisma.product.groupBy.mock.calls[0][0].where).not.toHaveProperty('deviceOrigin');
+    });
+
+    it('returns the actual origin of each used device, including unverified stock', async () => {
+      prisma.product.findMany.mockResolvedValue(['THAI', 'IMPORTED', null].map((deviceOrigin, i) => ({
+        id: `u${i}`, brand: 'Apple', model: 'iPhone 15', category: 'PHONE_USED',
+        deviceOrigin, cashPrice: 15000 + i, gallery: [],
+      })));
+      const result = await service.listGroupedByModel({ condition: 'USED', sort: 'price_asc' });
+      expect(prisma.product.findMany.mock.calls[0][0].select.deviceOrigin).toBe(true);
+      expect(result.data.map((p) => p.deviceOrigin)).toEqual(['THAI', 'IMPORTED', null]);
+    });
+
     it('hard-filters ผ่าน readiness fragment (brand/category/สถานะ/ราคา/รูป) และกรอง [DEMO] เมื่อเปิด flag shop_hide_demo_products', async () => {
       prisma.systemConfig.findFirst.mockResolvedValue({ value: 'true' });
       prisma.product.groupBy.mockResolvedValue([]);
@@ -603,6 +639,36 @@ describe('ShopCatalogService', () => {
   });
 
   describe('getProductDetail', () => {
+    it('returns warranty details per unit and preserves an explicit zero-day warranty', async () => {
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'p1', brand: 'Apple', model: 'iPhone 15', category: 'PHONE_USED', deviceOrigin: 'IMPORTED',
+        shopWarrantyDays: 60, warrantyTerms: 'ประกันร้าน 60 วัน', cashPrice: 15000, installmentPrice: null,
+      });
+      prisma.product.findMany.mockResolvedValue([
+        { id: 'p1', cashPrice: 15000, conditionGrade: 'A', shopWarrantyDays: 60, warrantyTerms: 'ประกันร้าน 60 วัน' },
+        { id: 'p2', cashPrice: 14000, conditionGrade: 'A', shopWarrantyDays: 0, warrantyTerms: 'ไม่มีความคุ้มครองเพิ่มเติม' },
+        { id: 'p3', category: 'PHONE_USED', cashPrice: 13000, conditionGrade: 'A', shopWarrantyDays: null, warrantyTerms: null },
+      ]);
+      const detail = await service.getProductDetail('p1');
+      expect(detail).toMatchObject({ shopWarrantyDays: 60, warrantyTerms: 'ประกันร้าน 60 วัน' });
+      expect(detail!.tiers.A.units.map((u) => [u.shopWarrantyDays, u.warrantyTerms])).toEqual([
+        [60, 'ประกันร้าน 60 วัน'], [0, 'ไม่มีความคุ้มครองเพิ่มเติม'], [60, undefined],
+      ]);
+    });
+
+    it.each(['THAI', 'IMPORTED', null] as const)('keeps detail units in the clicked origin (%s)', async (deviceOrigin) => {
+      prisma.product.findFirst.mockResolvedValue({
+        id: 'sold', brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'PHONE_NEW',
+        deviceOrigin, cashPrice: 20000, installmentPrice: null, gallery: [], gallery360: [],
+      });
+      const result = await service.getProductDetail('sold');
+      expect(prisma.product.findMany.mock.calls[0][0].where).toMatchObject({
+        brand: 'Apple', model: 'iPhone 15', storage: '128GB', category: 'PHONE_NEW', deviceOrigin,
+      });
+      expect(result?.deviceOrigin).toBe(deviceOrigin);
+      expect(result?.tiers).toEqual({});
+    });
+
     it('scopes units to the SAME category as the clicked card (no new/used mix)', async () => {
       prisma.product.findFirst.mockResolvedValue({
         id: 'p1',
@@ -899,7 +965,7 @@ describe('ShopCatalogService', () => {
 
       expect(prisma.product.groupBy).toHaveBeenCalledWith(
         expect.objectContaining({
-          by: ['brand', 'model', 'storage', 'category'],
+          by: ['brand', 'model', 'storage', 'category', 'deviceOrigin'],
           where: expect.objectContaining({
             model: { not: 'iPhone 16' },
             AND: expect.arrayContaining([{ brand: 'Apple' }]),

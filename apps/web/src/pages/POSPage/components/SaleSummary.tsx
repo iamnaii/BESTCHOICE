@@ -1,3 +1,4 @@
+import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
 import { Copy } from 'lucide-react';
 import type { AvailableTradeInCredit } from '@installment/shared';
 import { toast } from 'sonner';
@@ -77,6 +78,7 @@ export default function SaleSummary({
             <div className="text-sm font-semibold text-foreground">
               {selectedProduct.brand} {selectedProduct.model}
             </div>
+            <DeviceDisclosureSummary product={selectedProduct} />
             {selectedProduct.imeiSerial && (
               <div className="flex items-center gap-1 mt-1">
                 <span className="text-2xs text-muted-foreground font-mono">

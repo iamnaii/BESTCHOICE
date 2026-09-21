@@ -1,4 +1,5 @@
 import {
+  IsEnum,
   IsString,
   IsOptional,
   IsNumber,
@@ -11,6 +12,7 @@ import {
   Min,
   MaxLength,
 } from 'class-validator';
+import { DeviceOrigin } from '@prisma/client';
 import { Type } from 'class-transformer';
 
 export class CreatePriceDto {
@@ -26,6 +28,11 @@ export class CreatePriceDto {
 }
 
 export class CreateProductDto {
+  @IsOptional() @IsEnum(DeviceOrigin)
+  deviceOrigin?: DeviceOrigin | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  warrantyTerms?: string | null;
   @IsString()
   name: string;
 
@@ -82,7 +89,7 @@ export class CreateProductDto {
   @IsInt({ message: 'จำนวนวันประกันร้านต้องเป็นจำนวนเต็ม' })
   @Min(0, { message: 'จำนวนวันประกันร้านต้องไม่ติดลบ' })
   @IsOptional()
-  shopWarrantyDays?: number;
+  shopWarrantyDays?: number | null;
 
   @IsObject({ message: 'อุปกรณ์ที่แถมต้องเป็นอ็อบเจกต์' })
   @IsOptional()

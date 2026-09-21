@@ -4,7 +4,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { parseDeviceQuery, normalizeStorage } from '../../../utils/device-query-normalize.util';
 import { SHOP_PHONE_CATEGORIES, DEMO_NAME_PREFIX } from '../../../utils/product-readiness.util';
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
-import { readBoolFlag } from '../../../utils/config.util';
+import { readBoolFlag, readStringFlag } from '../../../utils/config.util';
+import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../../warranty/shop-warranty-policy';
 
 export const SEARCH_PRODUCTS_TOOL = {
   name: 'search_products',
@@ -15,6 +16,7 @@ export const SEARCH_PRODUCTS_TOOL = {
     'เครื่องที่ติดจองอยู่จะมี reserved=true — บอกลูกค้าว่า "มีของแต่ติดจองชั่วคราว" ห้ามบอกว่าไม่มี. ' +
     'groups[].reservedCount = จำนวนเครื่องติดจองทั้งกลุ่ม (นับรวมแม้บางเครื่องจะไม่ได้อยู่ใน units[] เพราะแสดงได้จำกัด) — ใช้บอกจำนวนติดจองได้แม้ units[] จะไม่ครบทุกเครื่อง. ' +
     'priceMissingCount > 0 แปลว่ามีเครื่องตรงรุ่นแต่ยังไม่ได้ตั้งราคา — อย่าเดาราคาเอง ให้ใช้ get_installment_rates ตอบเรทกลางแทน. ' +
+    'deviceOrigin ระบุเครื่องไทย THAI หรือเครื่องนอก IMPORTED; null = ยังไม่ระบุ ห้ามเดาเอง. warrantyTerms เป็นเงื่อนไขประกันรายเครื่อง. ' +
     'ห้าม quote ตัวเลขใด ๆ ที่ไม่ได้มาจากผลลัพธ์นี้.',
   input_schema: {
     type: 'object',
@@ -24,6 +26,7 @@ export const SEARCH_PRODUCTS_TOOL = {
         description: 'คำที่ลูกค้าพิมพ์มาเลย เช่น "ไอโฟน 15 โปรแม็กซ์ 256gb" หรือ "iPhone 13"',
       },
       maxPriceThb: { type: 'number', description: 'งบสูงสุดของลูกค้า (บาท) ถ้ามีบอก' },
+      deviceOrigin: { type: 'string', enum: ['THAI', 'IMPORTED'], description: 'ประเภทเครื่องที่ลูกค้าต้องการ ถ้าระบุ' },
     },
     required: ['query'],
   },
@@ -39,6 +42,8 @@ const CANDIDATE_TAKE = 40;
 export const RESERVED_NOTE = 'ติดจองชั่วคราว';
 
 export interface SearchProductUnit {
+  deviceOrigin?: string | null;
+  warrantyTerms?: string | null;
   id: string;
   priceThb: number;
   installmentPriceThb: number | null;
@@ -56,6 +61,7 @@ export interface SearchProductUnit {
 }
 
 export interface SearchProductGroup {
+  deviceOrigin?: string | null;
   brand: string;
   model: string;
   storage: string | null;
@@ -88,7 +94,7 @@ export interface SearchProductsResult {
 export class SearchProductsTool {
   constructor(private readonly prisma: PrismaService) {}
 
-  async run(input: { query: string; maxPriceThb?: number }, scope?: { branchId: string }): Promise<SearchProductsResult> {
+  async run(input: { query: string; maxPriceThb?: number; deviceOrigin?: string }, scope?: { branchId: string }): Promise<SearchProductsResult> {
     const raw = String(input?.query ?? '').trim();
     const parsed = parseDeviceQuery(raw);
     const emptyResult: SearchProductsResult = {
@@ -154,6 +160,7 @@ export class SearchProductsTool {
       // ที่ขายได้จริงออกจากแชท — บอกความจริงผ่าน photoAvailable แทน
     };
 
+    if (input.deviceOrigin === 'THAI' || input.deviceOrigin === 'IMPORTED') where.deviceOrigin = input.deviceOrigin;
     const rows = await this.prisma.product.findMany({
       where,
       take: CANDIDATE_TAKE,
@@ -172,6 +179,8 @@ export class SearchProductsTool {
         installmentPrice: true,
         batteryHealth: true,
         shopWarrantyDays: true,
+        deviceOrigin: true,
+        warrantyTerms: true,
         accessoriesIncluded: true,
         cosmeticNotes: true,
         gallery: true,
@@ -201,6 +210,7 @@ export class SearchProductsTool {
         : priced;
 
     const base = shopBaseUrl();
+    const warrantyDefault = await readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, '');
     const groups = new Map<string, SearchProductGroup>();
     for (const r of inBudget) {
       // ⚠️ category เป็นตัวตัดสินมือ 1/มือสองเสมอ — ห้ามใช้ "ไม่มีเกรด = NEW"
@@ -212,7 +222,7 @@ export class SearchProductsTool {
             : 'USED'
           : 'NEW';
       const storage = r.storage ? normalizeStorage(r.storage) : null;
-      const key = `${r.brand}|${r.model}|${storage ?? ''}|${condition}`;
+      const key = `${r.brand}|${r.model}|${storage ?? ''}|${condition}|${r.deviceOrigin ?? ''}`;
       const priceThb = Number(r.cashPrice);
       const unit: SearchProductUnit = {
         id: r.id,
@@ -220,7 +230,9 @@ export class SearchProductsTool {
         installmentPriceThb: r.installmentPrice != null ? Number(r.installmentPrice) : null,
         color: r.color ?? null,
         batteryHealth: r.batteryHealth ?? null,
-        shopWarrantyDays: r.shopWarrantyDays ?? null,
+        shopWarrantyDays: resolveShopWarrantyDays(r, warrantyDefault) ?? 0,
+        deviceOrigin: r.deviceOrigin ?? null,
+        warrantyTerms: r.warrantyTerms ?? null,
         accessories: Array.isArray(r.accessoriesIncluded)
           ? (r.accessoriesIncluded as unknown[]).map((a) => String(a))
           : null,
@@ -245,6 +257,7 @@ export class SearchProductsTool {
         g.units.push(unit);
       } else {
         groups.set(key, {
+          deviceOrigin: r.deviceOrigin ?? null,
           brand: r.brand,
           model: r.model,
           storage,

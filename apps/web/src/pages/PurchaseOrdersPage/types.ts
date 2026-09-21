@@ -95,6 +95,7 @@ export type DefectReasonValue =
 export type ReceivingStatus = 'PASS' | 'REJECT' | '';
 
 export interface ReceivingUnitForm {
+  deviceOrigin?: string; shopWarrantyDays?: string; warrantyTerms?: string;
   poItemId: string;
   label: string;
   category: string;

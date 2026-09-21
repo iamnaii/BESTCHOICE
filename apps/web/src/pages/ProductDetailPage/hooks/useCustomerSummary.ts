@@ -20,6 +20,9 @@ interface ProductForSummary {
   conditionGrade: string | null;
   batteryHealth: number | null;
   shopWarrantyDays: number | null;
+  effectiveShopWarrantyDays?: number;
+  deviceOrigin?: 'THAI' | 'IMPORTED' | null;
+  warrantyTerms?: string | null;
   accessoriesIncluded: string[] | null;
   cosmeticNotes: string | null;
   cashPrice: string | null;
@@ -107,7 +110,9 @@ export function useCustomerSummary(product: ProductForSummary | undefined, quote
       category: product.category,
       conditionGrade: product.conditionGrade,
       batteryHealth: product.batteryHealth,
-      shopWarrantyDays: product.shopWarrantyDays,
+      shopWarrantyDays: product.effectiveShopWarrantyDays ?? product.shopWarrantyDays,
+      deviceOrigin: product.deviceOrigin,
+      warrantyTerms: product.warrantyTerms,
       accessoriesIncluded: product.accessoriesIncluded,
       cosmeticNotes: product.cosmeticNotes,
       cashPrice: displayPrices.cash,

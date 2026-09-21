@@ -1,3 +1,4 @@
+import { DeviceOriginFilter } from '@/components/product/DeviceOriginFilter';
 import { useId, useState, type ReactNode } from 'react';
 import DataTable, { type TableSort } from '@/components/ui/DataTable';
 import EmptyState from '@/components/ui/EmptyState';
@@ -21,6 +22,8 @@ export interface StockListTabProps {
   setView: (view: StockView) => void;
   viewCounts?: StockViewCounts;
   accessoryGroupId: string;
+  filterDeviceOrigin: string;
+  setFilterDeviceOrigin: (value: string) => void;
   search: string;
   setSearch: (search: string) => void;
   clearFilters: () => void;
@@ -121,6 +124,7 @@ export function StockListTab({
   view,
   setView,
   viewCounts,
+  filterDeviceOrigin, setFilterDeviceOrigin,
   search,
   setSearch,
   clearFilters,
@@ -150,8 +154,8 @@ export function StockListTab({
   const [filtersOpen, setFiltersOpen] = useState(false);
   // ตัวกรองสถานะมีเฉพาะมุมมอง "ทั้งหมด" (มุมมองพร้อมขายล็อก IN_STOCK อยู่แล้ว จึงซ่อน select ที่ซ้ำซ้อน)
   const showStatusFilter = view === 'all';
-  const filterCount = [showStatusFilter ? filterStatus : '', filterBranch].filter(Boolean).length;
-  const hasAdditionalFilters = !!(search || (showStatusFilter && filterStatus) || filterBranch);
+  const filterCount = [showStatusFilter ? filterStatus : '', filterBranch, filterDeviceOrigin].filter(Boolean).length;
+  const hasAdditionalFilters = !!(search || (showStatusFilter && filterStatus) || filterBranch || filterDeviceOrigin);
   const hasFilters = hasAdditionalFilters || !!filterCategory;
   const emptyMessage = hasFilters ? 'ไม่พบสินค้าที่ตรงกับตัวกรอง' : 'ยังไม่มีสินค้าในคลัง';
   // ตารางคอมตัดคอลัมน์ที่ยุบเข้าช่องอื่นแล้วออก · การ์ดมือถือตัดคอลัมน์รวมสำหรับคอมออก
@@ -246,6 +250,7 @@ export function StockListTab({
             )}
             <StockViewSwitch view={view} setView={setView} counts={viewCounts} />
           </div>
+          <DeviceOriginFilter value={filterDeviceOrigin} onChange={setFilterDeviceOrigin} />
           <div className="min-w-0 flex-[1_1_240px]">
             <label
               htmlFor={`${id}-search`}

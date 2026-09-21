@@ -21,10 +21,11 @@ export const GET_INSTALLMENT_RATES_TOOL = {
     'attribute quoted numbers to the returned brand+model+storage verbatim. Use this whenever ' +
     'search_products found nothing (or every hit has priceMissing) so the bot can still answer with ' +
     'real down/monthly/term numbers instead of going silent. No match → templates: [] (ask the ' +
-    'customer for their budget instead of guessing).',
+    'customer for their budget instead of guessing). Always label deviceOrigin (THAI/IMPORTED/UNSPECIFIED) when quoting a rate; never apply one origin rate to another.',
   input_schema: {
     type: 'object',
     properties: {
+      deviceOrigin: { type: 'string', enum: ['THAI', 'IMPORTED', 'UNSPECIFIED'], description: 'Device origin requested by the customer, if specified' },
       query: {
         type: 'string',
         description:
@@ -44,6 +45,7 @@ export interface InstallmentRateOption {
 }
 
 export interface PricingTemplateRateMatch {
+  deviceOrigin?: string;
   brand: string;
   model: string;
   storage: string;
@@ -74,6 +76,7 @@ interface RateDefaults {
 }
 
 interface PricingTemplateRow {
+  deviceOrigin?: string;
   brand: string;
   model: string;
   storage: string;
@@ -94,7 +97,7 @@ export class GetInstallmentRatesTool {
   constructor(private readonly prisma: PrismaService) {}
 
   async run(
-    input: { query?: string } = {},
+    input: { query?: string; deviceOrigin?: string } = {},
   ): Promise<GetInstallmentRatesResult> {
     const rawQuery = String(input?.query ?? '').trim();
     if (!rawQuery) return { templates: [] };
@@ -108,6 +111,7 @@ export class GetInstallmentRatesTool {
 
     const rows: PricingTemplateRow[] = await this.prisma.pricingTemplate.findMany({
       where: {
+        ...(['THAI', 'IMPORTED', 'UNSPECIFIED'].includes(input.deviceOrigin ?? '') ? { deviceOrigin: input.deviceOrigin as 'THAI' | 'IMPORTED' | 'UNSPECIFIED' } : {}),
         isActive: true,
         deletedAt: null,
         OR: [
@@ -157,6 +161,7 @@ export class GetInstallmentRatesTool {
   // same two lines customers see on the physical in-store sticker (#1337).
   private toMatch(t: PricingTemplateRow, defaults: RateDefaults): PricingTemplateRateMatch {
     return {
+      deviceOrigin: t.deviceOrigin ?? 'UNSPECIFIED',
       brand: t.brand,
       model: t.model,
       storage: t.storage,

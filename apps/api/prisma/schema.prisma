@@ -1092,6 +1092,7 @@ model Customer {
 model Contract {
   tradeInCreditSnapshot Json? @map("trade_in_credit_snapshot")
   tradeInCreditRedemptions TradeInCreditRedemption[]
+  productDisclosure Json? @map("product_disclosure")
   id                       String         @id @default(uuid())
   contractNumber           String         @unique @map("contract_number")
   customerId               String         @map("customer_id")
@@ -1730,6 +1731,17 @@ model POItem {
   @@map("po_items")
 }
 
+enum DeviceOrigin {
+  THAI
+  IMPORTED
+}
+
+enum PricingDeviceOrigin {
+  UNSPECIFIED
+  THAI
+  IMPORTED
+}
+
 model Product {
   id                 String          @id @default(uuid())
   name               String
@@ -1809,6 +1821,10 @@ model Product {
   tradeIns             TradeIn[]
 
   // === Online shop additions (Phase 1) ===
+  /// Sales market, not manufacturing country. Null means not yet verified.
+  deviceOrigin      DeviceOrigin?        @map("device_origin")
+  /// Customer-facing warranty provider, coverage and exclusions for this unit.
+  warrantyTerms     String?              @map("warranty_terms") @db.Text
   conditionGrade    String?              @map("condition_grade") // A, B, C for used phones
   gallery           String[]             @default([]) // catalog photo URLs
   gallery360        String[]             @default([]) // 360° frame URLs (24-36 frames)
@@ -1897,6 +1913,7 @@ model ProductPrice {
 }
 
 model PricingTemplate {
+  deviceOrigin PricingDeviceOrigin @default(UNSPECIFIED) @map("device_origin")
   id                         String          @id @default(uuid())
   brand                      String
   model                      String
@@ -1916,7 +1933,7 @@ model PricingTemplate {
   updatedAt                  DateTime        @updatedAt @map("updated_at")
   deletedAt                  DateTime?       @map("deleted_at")
 
-  @@unique([brand, model, storage, category, hasWarranty])
+  @@unique([brand, model, storage, category, hasWarranty, deviceOrigin], map: "pricing_templates_market_key")
   @@index([brand, model])
   @@index([category])
   @@map("pricing_templates")
@@ -2681,6 +2698,7 @@ model SsoConfig {
 model Sale {
   tradeInCreditSnapshot Json? @map("trade_in_credit_snapshot")
   tradeInCreditRedemptions TradeInCreditRedemption[]
+  productDisclosure Json? @map("product_disclosure")
   id                String         @id @default(uuid())
   saleNumber        String         @unique @map("sale_number")
   saleType          SaleType       @map("sale_type")

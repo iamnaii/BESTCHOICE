@@ -24,6 +24,7 @@ import { copy } from '@/lib/copy';
 import { useTrackEvent } from '@/hooks/useTrackEvent';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { cn } from '@/lib/utils';
+import { deviceOriginLabel, parseDeviceOrigin } from '@/lib/device-origin';
 
 interface CatalogResponse {
   data: ProductGroup[];
@@ -91,6 +92,7 @@ export default function CatalogPage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const [filters, setFilters] = useState<CatalogFilters>(() => ({
+    deviceOrigin: parseDeviceOrigin(searchParams.get('deviceOrigin')),
     condition: (searchParams.get('condition') as 'NEW' | 'USED' | null) ?? undefined,
     model: searchParams.get('model') ?? undefined,
     search: searchParams.get('search') ?? undefined,
@@ -128,10 +130,11 @@ export default function CatalogPage() {
     const condition = (searchParams.get('condition') as 'NEW' | 'USED' | null) ?? undefined;
     const search = searchParams.get('search') ?? undefined;
     const model = searchParams.get('model') ?? undefined;
+    const deviceOrigin = parseDeviceOrigin(searchParams.get('deviceOrigin'));
     setFilters((f) =>
-      f.condition === condition && f.search === search && f.model === model
+      f.condition === condition && f.search === search && f.model === model && f.deviceOrigin === deviceOrigin
         ? f
-        : { ...f, condition, search, model },
+        : { ...f, condition, search, model, deviceOrigin },
     );
   }, [searchParams]);
 
@@ -140,6 +143,8 @@ export default function CatalogPage() {
   function updateFilters(next: CatalogFilters) {
     setFilters(next);
     const sp = new URLSearchParams(searchParams);
+    if (next.deviceOrigin) sp.set('deviceOrigin', next.deviceOrigin);
+    else sp.delete('deviceOrigin');
     if (next.condition) sp.set('condition', next.condition);
     else sp.delete('condition');
     if (next.model) sp.set('model', next.model);
@@ -190,6 +195,7 @@ export default function CatalogPage() {
     queryKey: ['shop', 'catalog', filters, sort, committedDown, months],
     queryFn: ({ pageParam }) => {
       const params = new URLSearchParams();
+      if (filters.deviceOrigin) params.set('deviceOrigin', filters.deviceOrigin);
       if (filters.condition) params.set('condition', filters.condition);
       if (filters.model) params.set('model', filters.model);
       if (filters.conditionGrade) params.set('conditionGrade', filters.conditionGrade);
@@ -296,6 +302,17 @@ export default function CatalogPage() {
           </div>
 
           <div className="lg:col-span-3 min-w-0">
+            {filters.deviceOrigin && (
+              <button
+                type="button"
+                onClick={() => updateFilters({ ...filters, deviceOrigin: undefined })}
+                aria-label={`ล้างตัวกรอง${deviceOriginLabel(filters.deviceOrigin)}`}
+                className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800"
+              >
+                {deviceOriginLabel(filters.deviceOrigin)}
+                <X className="size-3.5" aria-hidden />
+              </button>
+            )}
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2 mb-4">
               {/* สด/ผ่อน — a view switch, not a filter, so it gets a distinct

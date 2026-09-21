@@ -1,3 +1,6 @@
+import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../warranty/shop-warranty-policy';
+import { readStringFlag } from '../../utils/config.util';
+import { BadRequestException } from '@nestjs/common';
 import type { StockSortKey, StockSortDirection } from '@installment/shared';
 import { sortedStockPageKeys } from './products-stock-sort';
 import { Prisma } from '@prisma/client';
@@ -7,6 +10,7 @@ import type { productInclude } from './products.service';
 import { CASH_LABEL } from '../../utils/product-price-sync.util';
 
 export interface StockListFilters {
+  deviceOrigin?: string;
   search?: string;
   branchId?: string;
   status?: string | string[];
@@ -88,6 +92,11 @@ export async function findStockGroups(
   const page = Math.max(1, filters.page || 1);
   const limit = Math.min(100, Math.max(1, filters.limit || 50));
   const clauses: Prisma.Sql[] = [Prisma.sql`p.deleted_at IS NULL`];
+  if (filters.deviceOrigin) {
+    if (!['THAI', 'IMPORTED', 'UNKNOWN'].includes(filters.deviceOrigin)) throw new BadRequestException('Invalid device origin');
+    clauses.push(filters.deviceOrigin === 'UNKNOWN' ? Prisma.sql`p.device_origin IS NULL` : Prisma.sql`p.device_origin::text = ${filters.deviceOrigin}`);
+  }
+  const warrantyDefault = await readStringFlag(prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, '');
   const fields = {
     branchId: 'branch_id',
     category: 'category',
@@ -210,6 +219,7 @@ export async function findStockGroups(
         return [
           {
             ...product,
+            effectiveShopWarrantyDays: resolveShopWarrantyDays(product, warrantyDefault) ?? 0,
             ...(stockGroup
               ? {
                   imeiSerial: null,

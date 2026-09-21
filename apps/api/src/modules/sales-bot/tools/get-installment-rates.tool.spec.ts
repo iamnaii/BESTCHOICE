@@ -59,6 +59,7 @@ describe('GetInstallmentRatesTool.run', () => {
         brand: 'Apple',
         model: 'iPhone 15 Pro Max',
         storage: '256GB',
+        deviceOrigin: 'UNSPECIFIED',
         hasWarranty: false,
         rate1: { downPayment: 4900, monthlyPrice: 2490, termMonths: 24 },
         rate2: { downPayment: 1900, monthlyPrice: 2690, termMonths: 12 },

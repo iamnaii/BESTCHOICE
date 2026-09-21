@@ -5,6 +5,8 @@ import { assertSaleProductEligible, type SaleProductActor } from './sale-product
 import { assertBundleIsAccessory } from './bundle-policy';
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { captureProductDisclosure } from '../../../utils/product-disclosure.util';
+import { readStringFlag } from '../../../utils/config.util';
 import { closeRepossessionOnSale } from '../../repossessions/repossession-resale.util';
 import { PaymentMethod, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -127,15 +129,14 @@ export class SaleWriterService {
    */
   private async resolveSaleShopWarranty(
     tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
-    product: { category: string; shopWarrantyDays: number | null },
+    product: { category: string; shopWarrantyDays: number | null; deviceOrigin?: import('@prisma/client').DeviceOrigin | null; warrantyTerms?: string | null },
     soldAt: Date,
-  ): Promise<{ shopWarrantyStartDate?: Date; shopWarrantyEndDate?: Date }> {
-    const config = await tx.systemConfig.findUnique({
-      where: { key: SHOP_WARRANTY_DAYS_CONFIG_KEY },
-    });
-    const days = resolveShopWarrantyDays(product, config?.value);
-    if (days === null) return {};
-    return { shopWarrantyStartDate: soldAt, shopWarrantyEndDate: addDays(soldAt, days) };
+  ): Promise<{ shopWarrantyStartDate?: Date; shopWarrantyEndDate?: Date; productDisclosure: ReturnType<typeof captureProductDisclosure> }> {
+    const defaultDays = await readStringFlag(tx, SHOP_WARRANTY_DAYS_CONFIG_KEY, '');
+    const days = resolveShopWarrantyDays(product, defaultDays);
+    const productDisclosure = captureProductDisclosure(product, defaultDays);
+    if (days === null) return { productDisclosure };
+    return { productDisclosure, shopWarrantyStartDate: soldAt, shopWarrantyEndDate: addDays(soldAt, days) };
   }
 
   /** Mark bundle (freebie) products as SOLD_CASH */

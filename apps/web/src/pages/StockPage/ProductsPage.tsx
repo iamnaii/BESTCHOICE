@@ -61,6 +61,7 @@ export default function StockProductsPage() {
     clearFilters,
     filterStatus,
     setFilterStatus,
+    filterDeviceOrigin, setFilterDeviceOrigin,
     filterCategory,
     setFilterCategory,
     accessoryGroupId,
@@ -335,6 +336,8 @@ export default function StockProductsPage() {
         </div>
       )}
       <StockListTab
+        filterDeviceOrigin={filterDeviceOrigin}
+        setFilterDeviceOrigin={setFilterDeviceOrigin}
         accessoryGroupId={accessoryGroupId}
         search={search}
         setSearch={setSearch}

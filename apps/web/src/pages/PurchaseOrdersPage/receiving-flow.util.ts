@@ -128,6 +128,7 @@ export function withPriceDefaults(units: ReceivingUnitForm[], idx: number): Rece
   for (let j = idx - 1; j >= 0; j--) {
     const prev = units[j];
     if (unitGroupKey(prev) !== key) continue;
+    if ((prev.deviceOrigin || '') !== (u.deviceOrigin || '')) continue;
     if (!prev.sellingPrice.trim() && !prev.installmentPrice.trim()) continue;
     const next = [...units];
     next[idx] = {

@@ -1,7 +1,11 @@
+import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
+import { DeviceOriginFilter } from '@/components/product/DeviceOriginFilter';
 import type { Product } from '../types';
 import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
 
 export interface ProductSelectStepProps {
+  deviceOrigin: string;
+  setDeviceOrigin: (value: string) => void;
   products: Product[];
   productSearch: string;
   setProductSearch: (v: string) => void;
@@ -11,6 +15,7 @@ export interface ProductSelectStepProps {
 }
 
 export function ProductSelectStep({
+  deviceOrigin, setDeviceOrigin,
   products,
   productSearch,
   setProductSearch,
@@ -22,6 +27,7 @@ export function ProductSelectStep({
     ? [selectedProduct, ...products] : products;
   return (
     <div>
+      <DeviceOriginFilter value={deviceOrigin} onChange={setDeviceOrigin} />
       <input
         type="text"
         placeholder="ค้นหาสินค้า (ชื่อ, ยี่ห้อ, รุ่น, IMEI)..."
@@ -42,6 +48,7 @@ export function ProductSelectStep({
               <div>
                 <div className="font-medium text-sm">{p.brand} {p.model}</div>
                 <div className="text-xs text-muted-foreground mt-1">{p.name}</div>
+                <DeviceDisclosureSummary product={p} />
                 <div className="text-xs text-muted-foreground mt-1">
                   สาขา: {p.branch?.name}
                   <span className="ml-2 px-2 py-0.5 bg-secondary rounded-full text-2xs font-semibold">{p.category === 'PHONE_NEW' ? 'มือ 1' : p.category === 'PHONE_USED' ? 'มือ 2' : p.category}</span>

@@ -1,3 +1,5 @@
+import type { DeviceOrigin } from '@/lib/device-origin';
+
 export interface ShopProduct {
   id: string;
   name: string;
@@ -15,6 +17,8 @@ export interface QcCheckItem {
 }
 
 export interface ProductUnit {
+  warrantyTerms?: string;
+  deviceOrigin?: DeviceOrigin | null;
   id: string;
   conditionGrade: string;
   batteryHealth?: number;

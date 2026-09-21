@@ -1,5 +1,6 @@
 import type { ProductUnit } from '@/types/product';
 import { copy } from '@/lib/copy';
+import { deviceOriginLabel } from '@/lib/device-origin';
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -30,6 +31,7 @@ export function SpecTable({
   const qcFailed = qc.filter((q) => !q.passed);
 
   const rows: Array<{ label: string; value: string } | null> = [
+    { label: 'เครื่องไทย / เครื่องนอก', value: deviceOriginLabel(unit.deviceOrigin) },
     storage ? { label: 'ความจุ', value: storage } : null,
     unit.color ? { label: 'สี', value: unit.color } : null,
     !isNew && unit.batteryHealth != null
@@ -37,9 +39,6 @@ export function SpecTable({
       : null,
     accessories.length ? { label: copy.product.accessoriesLabel, value: accessories.join(' · ') } : null,
     unit.cosmeticNotes ? { label: copy.product.cosmeticLabel, value: unit.cosmeticNotes } : null,
-    unit.shopWarrantyDays != null
-      ? { label: 'ประกันร้าน', value: `${unit.shopWarrantyDays} วัน` }
-      : null,
     unit.branchName ? { label: copy.product.branchLabel, value: unit.branchName } : null,
     unit.imeiPartial ? { label: 'IMEI', value: unit.imeiPartial } : null,
   ];

@@ -13,6 +13,9 @@ export function buildDirectReceiveItem(i: ReceivingUnitForm) {
   const isUsed = i.category === 'PHONE_USED';
   return {
     category: i.category || undefined,
+    deviceOrigin: i.deviceOrigin || null,
+    shopWarrantyDays: i.shopWarrantyDays ? Number(i.shopWarrantyDays) : null,
+    warrantyTerms: i.warrantyTerms?.trim() || null,
     brand: i.brand || undefined,
     model: i.model || undefined,
     color: i.color || undefined,
@@ -257,6 +260,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
           const isUsed = i.category === 'PHONE_USED';
           return {
             poItemId: i.poItemId,
+            deviceOrigin: i.deviceOrigin || null,
+            shopWarrantyDays: i.shopWarrantyDays ? Number(i.shopWarrantyDays) : null,
+            warrantyTerms: i.warrantyTerms?.trim() || null,
             imeiSerial: i.imeiSerial || undefined,
             serialNumber: i.serialNumber || undefined,
             status: i.status,

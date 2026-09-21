@@ -1,3 +1,4 @@
+import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
 import { Check, Copy, MapPin } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { categoryLabels, statusLabels } from '@/lib/constants';
@@ -32,6 +33,7 @@ export function StockProductIdentity({
           ? product.name || product.model
           : product.model || product.name}
       </button>
+      {product.category !== 'ACCESSORY' && <DeviceDisclosureSummary product={product} />}
       {product.imeiSerial ? (
         <div className="flex min-w-0 items-center gap-1">
           <span

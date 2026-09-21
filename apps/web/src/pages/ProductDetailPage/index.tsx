@@ -83,6 +83,8 @@ interface Product {
   gallery: string[];
   isOnlineVisible: boolean;
   onlineDescription: string | null;
+  deviceOrigin?: 'THAI' | 'IMPORTED' | null;
+  warrantyTerms?: string | null;
   conditionGrade: string | null;
   cashPrice: string | null;
   installmentPrice: string | null;

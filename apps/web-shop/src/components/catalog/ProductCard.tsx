@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { cn } from '@/lib/utils';
 import { shopInfo } from '@/lib/copy';
+import { deviceOriginLabel, type DeviceOrigin } from '@/lib/device-origin';
 
 export interface ProductGroup {
+  deviceOrigin?: DeviceOrigin | null;
   /**
    * 'UNIT'  — one physical second-hand device. Grade, battery, colour and price
    *           all belong to THIS phone.
@@ -273,6 +275,11 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
               spreadsheet cell and left a dead gap across the card. */}
           <div className="mt-1 text-[11px] md:text-xs text-muted-foreground leading-snug truncate">
             {specValue || '—'}
+          </div>
+          <div className="mt-2">
+            <span className="inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] text-accent-foreground leading-snug">
+              {deviceOriginLabel(p.deviceOrigin)}
+            </span>
           </div>
 
           {/* Installment figure sits where the reference puts its view count:

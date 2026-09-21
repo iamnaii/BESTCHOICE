@@ -1,8 +1,10 @@
 import type { ProductUnit } from '@/types/product';
 import { cn } from '@/lib/utils';
+import { deviceOriginLabel } from '@/lib/device-origin';
 
 function unitLabel(u: ProductUnit, isNew: boolean): string {
   const parts = [
+    deviceOriginLabel(u.deviceOrigin),
     !isNew && u.conditionGrade && u.conditionGrade !== 'unknown'
       ? `เกรด ${u.conditionGrade}`
       : null,

@@ -58,6 +58,7 @@ export type RateLabel = 'เรทที่ 1' | 'เรทที่ 2';
 export type DeviceCondition = 'มือ 1' | 'มือสอง';
 
 export interface RecommendedDevice {
+  deviceOrigin?: string;
   brand: string;
   model: string;
   storage: string;
@@ -110,6 +111,7 @@ const MAX_RECOMMENDED = 2;
 const STOCK_TAKE = 200;
 
 interface StockRow {
+  deviceOrigin?: string | null;
   id: string;
   model: string;
   storage: string | null;
@@ -296,6 +298,7 @@ export class RecommendDevicesTool {
         model: true,
         storage: true,
         category: true,
+        deviceOrigin: true,
         color: true,
         batteryHealth: true,
         gallery: true,
@@ -310,6 +313,7 @@ export class RecommendDevicesTool {
         rows.filter(
           (r) =>
             r.category === t.category &&
+            (r.deviceOrigin ?? 'UNSPECIFIED') === (t.deviceOrigin ?? 'UNSPECIFIED') &&
             normalizeStorage(r.storage) === normalizeStorage(t.storage) &&
             sameModel(r.model, t.model),
         ),
@@ -332,6 +336,7 @@ export class RecommendDevicesTool {
     )[0];
     const diff = currentSpec && c.spec ? compareDevices(currentSpec, c.spec) : null;
     return {
+      deviceOrigin: t.deviceOrigin ?? 'UNSPECIFIED',
       brand: t.brand,
       model: t.model,
       storage: t.storage,
@@ -363,7 +368,7 @@ export class RecommendDevicesTool {
 }
 
 const stockKey = (t: PricingTemplateRateRow): string =>
-  `${t.category}|${t.model.toLowerCase()}|${normalizeStorage(t.storage)}`;
+  `${t.category}|${t.model.toLowerCase()}|${normalizeStorage(t.storage)}|${t.deviceOrigin ?? 'UNSPECIFIED'}`;
 
 /** generation ของรุ่น (ไม่รู้จัก → -1 ให้ไปท้ายสุด) */
 const genOf = (d: { model: string }): number => findDeviceSpec(d.model)?.generation ?? -1;

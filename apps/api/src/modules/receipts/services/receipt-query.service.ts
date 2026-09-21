@@ -143,6 +143,7 @@ export class ReceiptQueryService {
         contract: {
           select: {
             contractNumber: true,
+            productDisclosure: true,
             // Money fields for the per-installment VAT breakdown on the PDF
             // (computeInstallmentBreakdown — same rounding as the 2A ledger,
             // per CPA manual: Gross/งวด 1,416.66 + VAT/งวด 99.17 = 1,515.83).

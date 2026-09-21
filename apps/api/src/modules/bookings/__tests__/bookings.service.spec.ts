@@ -86,6 +86,16 @@ describe('BookingsService', () => {
 
   afterEach(() => jest.useRealTimers());
 
+  it.each([0, 30])('freezes imported warranty (%s days) when converting a booking', async days => {
+    prisma.booking.findFirst.mockResolvedValue(paidBooking());
+    prisma._tx.product.findUnique.mockResolvedValue({ id: 'prod-1', name: 'iPhone 15', branchId: 'br-1', status: 'IN_STOCK', category: 'PHONE_USED', costPrice: new Prisma.Decimal(100), deviceOrigin: 'IMPORTED', shopWarrantyDays: days, warrantyTerms: 'Agreed cover' });
+    await service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' }, SALES_BR1.id, SALES_BR1);
+    const { data } = prisma._tx.sale.create.mock.calls[0][0];
+    expect(data.productDisclosure).toEqual({ version: 1, deviceOrigin: 'IMPORTED', shopWarrantyDays: days, warrantyTerms: 'Agreed cover' });
+    if (days === 0) expect(data.shopWarrantyEndDate).toBeUndefined();
+    else expect(data.shopWarrantyEndDate.getTime() - data.shopWarrantyStartDate.getTime()).toBe(30 * 86400000);
+  });
+
   it('stores the resolved SHOP receipt account when compatibility code is omitted', async () => {
     prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
     await service.payDeposit('bk-1', { depositMethod: 'CASH' } as Parameters<typeof service.payDeposit>[1], SALES_BR1);

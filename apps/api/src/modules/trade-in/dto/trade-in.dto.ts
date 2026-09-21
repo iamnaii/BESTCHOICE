@@ -1,4 +1,6 @@
+import { DeviceOrigin } from '@prisma/client';
 import {
+  IsEnum, IsInt,
   IsString,
   IsOptional,
   IsNumber,
@@ -177,6 +179,19 @@ export class AcceptTradeInDto extends DeviceEvidenceDto {
 
   @IsIn([TRADE_IN_DECLARATION_VERSION], { message: TRADE_IN_DECLARATION_VERSION_ERROR })
   declarationVersion: string;
+  @IsOptional()
+  @IsEnum(DeviceOrigin)
+  deviceOrigin?: DeviceOrigin | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  shopWarrantyDays?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  warrantyTerms?: string | null;
 
   @IsBoolean({ message: 'ต้องยืนยันว่าตรวจบัตรประชาชนแล้ว' })
   idCardVerified: boolean;
@@ -239,6 +254,19 @@ export class QuickBuyTradeInDto extends DeviceEvidenceDto {
 
   @IsUUID('4', { message: 'กรุณารีเฟรชหน้าเพื่อเริ่มรายการรับซื้อ' })
   requestId: string;
+  @IsOptional()
+  @IsEnum(DeviceOrigin)
+  deviceOrigin?: DeviceOrigin | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  shopWarrantyDays?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  warrantyTerms?: string | null;
 
   // Seller (walk-in) — party-master contact resolved by the picker upstream
   @IsUUID('4')

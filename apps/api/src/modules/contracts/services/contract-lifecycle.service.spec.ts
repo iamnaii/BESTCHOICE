@@ -44,6 +44,7 @@ jest.mock('../../../utils/get-rate-for-months.util', () => ({
 }));
 
 jest.mock('../../../utils/config.util', () => ({
+  ...jest.requireActual('../../../utils/config.util'),
   loadInstallmentConfig: jest.fn().mockResolvedValue({}),
   resolveInstallmentParams: jest.fn().mockReturnValue({
     interestRate: 0.08,

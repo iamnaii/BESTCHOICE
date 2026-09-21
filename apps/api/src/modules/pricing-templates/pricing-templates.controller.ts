@@ -1,3 +1,5 @@
+import { PricingDeviceOrigin } from '@prisma/client';
+import { BadRequestException } from '@nestjs/common';
 import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PricingTemplatesService } from './pricing-templates.service';
@@ -15,8 +17,8 @@ export class PricingTemplatesController {
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
-  findAll(@Query('brand') brand?: string, @Query('category') category?: string) {
-    return this.service.findAll({ brand, category });
+  findAll(@Query('brand') brand?: string, @Query('category') category?: string, @Query('deviceOrigin') deviceOrigin?: string) {
+    return this.service.findAll({ brand, category, deviceOrigin });
   }
 
   @Get('lookup')
@@ -27,9 +29,12 @@ export class PricingTemplatesController {
     @Query('storage') storage?: string,
     @Query('category') category?: string,
     @Query('hasWarranty') hasWarranty?: string,
+    @Query('deviceOrigin') deviceOrigin?: string,
   ) {
+    const origin = deviceOrigin || 'UNSPECIFIED';
+    if (!Object.values(PricingDeviceOrigin).includes(origin as PricingDeviceOrigin)) throw new BadRequestException('Invalid device origin');
     const hw = hasWarranty === 'true' ? true : hasWarranty === 'false' ? false : null;
-    return this.service.lookup(brand, model, storage || null, category || 'PHONE_NEW', hw);
+    return this.service.lookup(brand, model, storage || null, category || 'PHONE_NEW', hw, origin as PricingDeviceOrigin);
   }
 
   @Get(':id')

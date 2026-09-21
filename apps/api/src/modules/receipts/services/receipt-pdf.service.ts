@@ -1,6 +1,7 @@
 import { paperSpacingScript, PAPER_SPACING_CSS } from '@installment/shared';
 import { BadRequestException } from '@nestjs/common';
 import { formatDateShort } from '../../../utils/thai-date.util';
+import { disclosureText } from '../../../utils/product-disclosure.util';
 import { Prisma } from '@prisma/client';
 import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
@@ -150,6 +151,7 @@ export class ReceiptPdfService {
       customerEmail: this.escapeHtml(customer?.email),
       contractNumber: this.escapeHtml(receipt.contract?.contractNumber),
       productName: this.escapeHtml(receipt.contract?.product?.name),
+      productDisclosure: this.escapeHtml(disclosureText(receipt.contract?.productDisclosure)),
       imeiSerial: this.escapeHtml(receipt.contract?.product?.imeiSerial),
       serialNumber: this.escapeHtml(receipt.contract?.product?.serialNumber),
       branchName: this.escapeHtml(receipt.contract?.branch?.name),
@@ -519,6 +521,7 @@ ${PAPER_SPACING_CSS}
     <div>
       <div class="party-heading">รายละเอียดสัญญา</div>
       ${safe.productName ? `<div class="party-name">${safe.productName}</div>` : `<div class="party-name">–</div>`}
+      ${safe.productDisclosure ? `<div style="white-space:pre-wrap;overflow-wrap:anywhere">${safe.productDisclosure}</div>` : ''}
       ${safe.imeiSerial ? `<div class="party-line"><strong>IMEI</strong> ${safe.imeiSerial}</div>` : (safe.serialNumber ? `<div class="party-line"><strong>S/N</strong> ${safe.serialNumber}</div>` : '')}
       ${displayedInstallmentNo && receipt.contract?.totalMonths ? `<div class="party-line"><strong>${advanceOnly ? 'งวดที่รับล่วงหน้า' : 'งวดที่ชำระ'}</strong> ${displayedInstallmentNo} จาก ${receipt.contract.totalMonths} งวด</div>` : ''}
     </div>

@@ -1,4 +1,5 @@
 import {
+  IsEnum,
   IsString,
   IsOptional,
   IsNumber,
@@ -9,8 +10,14 @@ import {
   Min,
   MaxLength,
 } from 'class-validator';
+import { DeviceOrigin } from '@prisma/client';
 
 export class UpdateProductDto {
+  @IsOptional() @IsEnum(DeviceOrigin)
+  deviceOrigin?: DeviceOrigin | null;
+
+  @IsOptional() @IsString() @MaxLength(2000)
+  warrantyTerms?: string | null;
   @IsString()
   @IsOptional()
   name?: string;
@@ -69,7 +76,7 @@ export class UpdateProductDto {
   @IsInt({ message: 'จำนวนวันประกันร้านต้องเป็นจำนวนเต็ม' })
   @Min(0, { message: 'จำนวนวันประกันร้านต้องไม่ติดลบ' })
   @IsOptional()
-  shopWarrantyDays?: number;
+  shopWarrantyDays?: number | null;
 
   /**
    * Task 4 (B1): แก้จาก B0 เดิม (`@IsObject()` / `Record<string, unknown>`) เป็น string[] —

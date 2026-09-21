@@ -1,4 +1,8 @@
 export interface StockProduct {
+  deviceOrigin?: 'THAI' | 'IMPORTED' | null;
+  shopWarrantyDays?: number | null;
+  effectiveShopWarrantyDays?: number | null;
+  warrantyTerms?: string | null;
   id: string;
   name: string;
   brand: string;

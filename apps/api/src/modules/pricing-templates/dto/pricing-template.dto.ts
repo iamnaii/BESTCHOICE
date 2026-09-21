@@ -1,5 +1,7 @@
 import { IsString, IsNumber, IsOptional, IsBoolean, IsEnum, IsInt, Min } from 'class-validator';
 
+import { PricingDeviceOrigin } from '@prisma/client';
+
 enum ProductCategory {
   PHONE_NEW = 'PHONE_NEW',
   PHONE_USED = 'PHONE_USED',
@@ -8,6 +10,8 @@ enum ProductCategory {
 }
 
 export class CreatePricingTemplateDto {
+  @IsOptional() @IsEnum(PricingDeviceOrigin)
+  deviceOrigin?: PricingDeviceOrigin;
   @IsString()
   brand: string;
 

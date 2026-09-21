@@ -79,6 +79,12 @@ export function useStockProducts() {
     },
     [searchParams, setSearchParams],
   );
+  const filterDeviceOrigin = searchParams.get('deviceOrigin') ?? '';
+  const setFilterDeviceOrigin = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set('deviceOrigin', value); else next.delete('deviceOrigin');
+    next.delete('page'); setSearchParams(next, { replace: true });
+  };
 
   const setFilterBranch = useCallback(
     (v: string) => {
@@ -129,6 +135,7 @@ export function useStockProducts() {
       'branchId',
       'page',
       'accessoryGroupId',
+      'deviceOrigin',
       'sortBy',
       'sortDirection',
     ].forEach((key) => next.delete(key));
@@ -168,6 +175,7 @@ export function useStockProducts() {
     filterBranch,
     filterStatus,
     filterCategory,
+    filterDeviceOrigin,
     debouncedSearch,
     page,
     accessoryGroupId,
@@ -219,6 +227,7 @@ export function useStockProducts() {
       debouncedSearch,
       filterStatus,
       filterCategory,
+      filterDeviceOrigin,
       filterBranch,
       page,
       accessoryGroupId,
@@ -229,6 +238,7 @@ export function useStockProducts() {
       if (view === 'ready') params.status = 'IN_STOCK';
       else if (filterStatus) params.status = filterStatus;
       if (filterCategory) params.category = filterCategory;
+      if (filterDeviceOrigin) params.deviceOrigin = filterDeviceOrigin;
       if (filterBranch) params.branchId = filterBranch;
       if (sort) {
         params.sortBy = sort.key;
@@ -426,6 +436,7 @@ export function useStockProducts() {
     setFilterBranch,
     filterStatus,
     setFilterStatus,
+    filterDeviceOrigin, setFilterDeviceOrigin,
     filterCategory,
     setFilterCategory,
     accessoryGroupId,

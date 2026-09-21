@@ -72,8 +72,9 @@ export const varianceTone = (variance: number) =>
 const BKK = 'Asia/Bangkok';
 export const timeOf = (iso: string) =>
   new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: BKK });
-export const dayTimeOf = (iso: string) =>
-  `${new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: BKK })} ${timeOf(iso)}`;
+/** "19 ก.ย." ของเวลา ISO (เวลาไทย — ห้ามตัดสตริง UTC เพราะหลังเที่ยงคืนไทยยังเป็นวันก่อนใน UTC) */
+export const dayOf = (iso: string) => new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', timeZone: BKK });
+export const dayTimeOf = (iso: string) => `${dayOf(iso)} ${timeOf(iso)}`;
 
 /** แปลงข้อความที่พิมพ์ ("12,510.00") เป็นจำนวนเงิน — ไม่ใช่ตัวเลข/ติดลบ/ทศนิยมเกิน 2 ตำแหน่ง = null */
 export function parseAmount(text: string): number | null {
@@ -130,9 +131,9 @@ export interface CashCloseReminderResponse {
 export const DAY_STATE_LABEL: Record<CashCloseDayState, string> = {
   REACHED: 'ถึงบริษัทแล้ว',
   AT_BRANCH: 'รับเงินแล้ว ยังอยู่ที่สาขา',
-  AWAITING_CONFIRM: 'นับแล้ว รอยืนยันรับเงิน',
-  NOT_COUNTED: 'ยังไม่นับ',
-  MISSED: 'มีเงินสดแต่ไม่ปิดยอด',
+  AWAITING_CONFIRM: 'ส่งยอดแล้ว รอยืนยันรับเงิน',
+  NOT_COUNTED: 'ยังไม่ส่งยอด',
+  MISSED: 'มีเงินสดแต่ไม่ส่งยอด',
   NO_CASH: 'ไม่มีเงินสด',
 };
 

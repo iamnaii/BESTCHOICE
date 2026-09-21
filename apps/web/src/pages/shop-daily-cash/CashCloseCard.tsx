@@ -6,15 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import CashCloseConfirmDialog, { useInvalidateCashClose } from './CashCloseConfirmDialog';
 import CashDepositDialog from './CashDepositDialog';
-import { CloseSteps, ReadinessChecklist, RoundSteps } from './CashCloseSteps';
+import CashStatusHero from './CashStatusHero';
 import {
-  baht, parseAmount, timeOf, toSatang, varianceLabel, varianceTone,
+  baht, parseAmount, toSatang, varianceLabel, varianceTone,
   type CashClose, type CashCloseStatusResponse, type CashHolding,
 } from './cash-close';
 
 /**
- * กล่อง "ปิดยอดวันนี้" (mockup CnXmYLkT กระดาน 7–8) — แสดงเมื่อเลือกสาขาเดียว (ร้านสาขาเดียว = เลือกให้เอง)
- * 1 ยังไม่ปิดยอด → 2 นับแล้วรอยืนยันรับเงิน → 3 ปิดยอดแล้ว · ยอดนับแก้ไม่ได้ (นับผิด = ผู้ยืนยันตีกลับ)
+ * กล่องปิดยอดของสาขา = ตัวโหลดข้อมูล + หน้าต่าง · หน้าตาอยู่ที่ `CashStatusHero` (mockup CnXmYLkT กระดาน 7–8 → 12–14 → 15–16) — แสดงเมื่อเลือกสาขาเดียว (ร้านสาขาเดียว = เลือกให้เอง)
+ * ปุ่ม "ส่งยอดรายวัน" → หน้าต่างบันทึก → ผู้รับกด "ยืนยันรับเงิน" → เงินถึงบริษัท · ยอดที่ส่งแล้วแก้ไม่ได้ (นับผิด = ผู้ยืนยันตีกลับ)
  */
 const MIN_REASON = 5;
 const inputClass = 'h-12 w-full rounded-lg border border-input bg-background px-3.5 text-right text-lg font-semibold tabular-nums';
@@ -44,51 +44,13 @@ export default function CashCloseCard({ branchId, date, isToday }: { branchId: s
     );
   }
 
-  const { round, permissions, readiness } = data;
-  const awaitingIds = new Set(data.awaitingConfirm.map((c) => c.id));
-  const confirmed = data.closes.filter((c) => c.status === 'CONFIRMED' && !awaitingIds.has(c.id));
-  const sentBack = data.closes.filter((c) => c.status === 'SENT_BACK');
-  const nothingNew = round.movementCount === 0 && round.periodStart !== null;
-  const closedToday = data.closes.some((c) => c.status !== 'SENT_BACK');
-  const safeHolding = data.holdings.find((holding) => holding.source === 'BRANCH_SAFE') ?? null;
-  // สาขายังไม่พร้อม = ยังไม่ตั้งลิ้นชักเงินสด (หน้าขายรับเงินสดไม่ได้) หรือยังไม่มีบัญชีที่นับเงินได้ — บอกสิ่งที่ขาดแทนกล่องว่างที่ขึ้น 0.00
-  const notReady = !readiness.hasDrawerAccount || readiness.counters.length === 0;
-
   return (
-    <section className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5" aria-label="ปิดยอดลิ้นชักสาขา">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold leading-snug">{isToday ? 'ปิดยอดวันนี้' : 'การปิดยอดของวันที่เลือก'} · {data.branchName}</h2>
-        <span className="text-xs text-muted-foreground leading-snug">พนักงานนับเงิน → ผู้รับยืนยัน → เงินถึงบริษัท · ปิดยอดแล้วส่งเงินทั้งหมด เหลือเงินทอนตั้งต้น</span>
-      </div>
-
-      {[...data.awaitingConfirm, ...confirmed].map((close) => (
-        <CloseSteps key={close.id} close={close} permissions={permissions} safeHolding={safeHolding} onConfirm={setDeciding} onDeposit={setDepositing} />
-      ))}
-
-      {sentBack.map((close) => (
-        <p key={close.id} className="text-xs text-muted-foreground leading-snug">
-          นับครั้งที่ {close.attemptNo} เวลา {timeOf(close.countedAt)} โดย {close.countedBy.name} ({baht(close.countedAmount)}) ถูกตีกลับโดย {close.sentBackBy?.name ?? '-'}: “{close.sentBackReason}”
-        </p>
-      ))}
-
-      {isToday && notReady && <ReadinessChecklist status={data} />}
-      {isToday && !notReady && (closedToday && nothingNew ? (
-        <p className="text-xs text-muted-foreground leading-snug">รอบใหม่หลังปิดยอด: ยังไม่มีรายการเงินสดใหม่ตั้งแต่ปิดยอดครั้งก่อน</p>
-      ) : (
-        <div className="space-y-2">
-          {closedToday && <div className="text-sm font-medium leading-snug">รอบใหม่หลังปิดยอด</div>}
-          <RoundSteps status={data} nothingNew={nothingNew} onCount={() => setCounting(true)} />
-        </div>
-      ))}
-
-      {!isToday && data.closes.length === 0 && data.awaitingConfirm.length === 0 && (
-        <p className="text-sm text-muted-foreground leading-snug">วันที่เลือกไม่มีการปิดยอด</p>
-      )}
-
+    <>
+      <CashStatusHero status={data} date={date} isToday={isToday} onSend={() => setCounting(true)} onConfirm={setDeciding} onDeposit={setDepositing} />
       {counting && <CountDialog status={data} onClose={() => setCounting(false)} />}
-      {deciding && <CashCloseConfirmDialog close={deciding} viewerRole={permissions.viewerRole} onClose={() => setDeciding(null)} />}
+      {deciding && <CashCloseConfirmDialog close={deciding} viewerRole={data.permissions.viewerRole} onClose={() => setDeciding(null)} />}
       {depositing && <CashDepositDialog holding={depositing} onClose={() => setDepositing(null)} />}
-    </section>
+    </>
   );
 }
 
@@ -108,7 +70,7 @@ function CountDialog({ status, onClose }: { status: CashCloseStatusResponse; onC
       branchId: status.branchId, countedAmount: counted, varianceReason: needsReason ? reason.trim() : undefined,
     })).data as CashClose,
     onSuccess: (close) => {
-      toast.success(`บันทึกยอดนับแล้ว — ${varianceLabel(close.varianceAmount)} · ส่งเงิน ${baht(close.sendAmount)}`);
+      toast.success(`บันทึกส่งยอดแล้ว — ยอดที่ส่ง ${baht(close.sendAmount)} · ${varianceLabel(close.varianceAmount)}`);
       invalidate(); onClose();
     },
     onError: (err) => toast.error(getErrorMessage(err)),
@@ -118,12 +80,12 @@ function CountDialog({ status, onClose }: { status: CashCloseStatusResponse; onC
     <Dialog open onOpenChange={(open) => !open && !mutation.isPending && onClose()}>
       <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>นับเงินปิดยอด</DialogTitle>
-          <DialogDescription>{status.branchName} · ผู้นับ = คุณ (ผู้ที่ล็อกอินอยู่)</DialogDescription>
+          <DialogTitle>ส่งยอดรายวัน</DialogTitle>
+          <DialogDescription>{status.branchName} · ผู้ส่งยอด = คุณ (ผู้ที่ล็อกอินอยู่)</DialogDescription>
         </DialogHeader>
         <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 rounded-lg bg-muted/60 p-3 text-sm leading-snug">
           <dt className="text-muted-foreground">เงินทอนตั้งต้น</dt><dd className="text-right tabular-nums">{baht(round.floatAmount)}</dd>
-          <dt className="text-muted-foreground">+ รับเงินสดตั้งแต่ปิดยอดครั้งก่อน</dt><dd className="text-right tabular-nums">{baht(round.cashIn)}</dd>
+          <dt className="text-muted-foreground">+ รับเงินสดตั้งแต่ส่งยอดครั้งก่อน</dt><dd className="text-right tabular-nums">{baht(round.cashIn)}</dd>
           <dt className="text-muted-foreground">− จ่ายเงินสดออก</dt><dd className="text-right tabular-nums text-destructive">{baht(round.cashOut)}</dd>
           <dt className="border-t border-border pt-1.5 font-semibold">ต้องมีในลิ้นชัก</dt>
           <dd className="border-t border-border pt-1.5 text-right font-bold tabular-nums">{baht(round.expectedAmount)}</dd>
@@ -148,15 +110,16 @@ function CountDialog({ status, onClose }: { status: CashCloseStatusResponse; onC
         )}
         {send != null && (
           <div className="rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-3 text-sm leading-snug">
-            <div><span className="font-semibold">ส่งเงิน {baht(send)}</span> ให้ผู้จัดการหรือเจ้าของ</div>
-            <div className="text-xs text-muted-foreground">เหลือเงินทอนตั้งต้นในลิ้นชัก {baht(Math.min(counted ?? 0, round.floatAmount))} สำหรับวันถัดไป</div>
+            <div className="text-[13px] text-muted-foreground">ยอดที่ส่งวันนี้</div>
+            <div className="text-2xl font-bold tabular-nums text-primary">{baht(send)} ฿</div>
+            <div className="text-xs text-muted-foreground">ส่งให้ผู้จัดการหรือเจ้าของ · เหลือเงินทอนตั้งต้นในลิ้นชัก {baht(Math.min(counted ?? 0, round.floatAmount))} สำหรับวันถัดไป</div>
           </div>
         )}
-        <p className="text-xs text-muted-foreground leading-snug">บันทึกแล้วแก้ยอดนับไม่ได้ ถ้านับผิดให้ผู้ยืนยันกด “ตีกลับให้นับใหม่” (ระบบเก็บประวัติทุกครั้ง)</p>
+        <p className="text-xs text-muted-foreground leading-snug">บันทึกแล้วแก้ยอดไม่ได้ ถ้านับผิดให้ผู้ยืนยันกด “ตีกลับให้นับใหม่” (ระบบเก็บประวัติทุกครั้ง)</p>
         <DialogFooter>
           <Button variant="outline" size="md" disabled={mutation.isPending} onClick={onClose}>ยกเลิก</Button>
           <Button variant="primary" size="md" disabled={!ready || mutation.isPending} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? 'กำลังบันทึก…' : 'บันทึกยอดนับ'}
+            {mutation.isPending ? 'กำลังบันทึก…' : 'บันทึกส่งยอด'}
           </Button>
         </DialogFooter>
       </DialogContent>

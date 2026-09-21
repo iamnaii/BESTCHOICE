@@ -70,7 +70,7 @@ export default function CashCloseHistory({ branchId, branches }: { branchId: str
                     <th className="px-3 py-3 text-right font-medium">นับได้</th>
                     <th className="px-3 py-3 text-right font-medium">ส่วนต่าง</th>
                     <th className="px-3 py-3 text-right font-medium">รับเงินจริง</th>
-                    <th className="px-3 py-3 font-medium">ผู้นับ</th>
+                    <th className="px-3 py-3 font-medium">ผู้ส่งยอด</th>
                     <th className="px-3 py-3 font-medium">ผู้รับ</th>
                     <th className="px-4 py-3 font-medium">สถานะ</th>
                   </tr>

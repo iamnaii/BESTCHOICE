@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Customer, PaymentMethod, Prisma } from '@prisma/client';
 import { isChatPlaceholder, type PlaceholderShape } from '../../chat-prospects/chat-placeholder';
+import { firstTransferReference, type NormalizedTender } from '../../shop-tenders/shop-tender.util';
 
 /** Must run after lockCreditCustomer, in the same transaction as the credit claim. */
 export async function assertCustomerContractPolicy(tx: Prisma.TransactionClient, customerId: string, role: string, override = false) {
@@ -25,11 +26,14 @@ export function customerContractSnapshot(customer: Customer): Prisma.InputJsonVa
   };
 }
 
-/** Omitted method is a compatibility default only for a NEW receipt. Never backfill historical contracts. */
-export function contractDownTender(amount: string | number, method?: string | null, reference?: string) {
-  if (new Prisma.Decimal(amount).lte(0)) return { downPaymentMethod: null, downPaymentReference: null, downPaymentReceivedAt: null };
-  if (method != null && !['CASH', 'BANK_TRANSFER', 'QR_EWALLET'].includes(method)) throw new BadRequestException('วิธีรับเงินดาวน์ไม่ถูกต้อง');
-  return { downPaymentMethod: (method ?? 'CASH') as PaymentMethod, downPaymentReference: reference?.trim() || null,
+/**
+ * คอลัมน์รับเงินดาวน์แบบเดิมของสัญญา — ตั้งจากรายการรับเงินที่ผ่าน `normalizeTenders` แล้ว:
+ * วิธี = tender แรก (primary ที่ JE ดาวน์ลงเต็มยอด) · เลขอ้างอิง = บรรทัดแรกที่ไม่ใช่เงินสด.
+ * ไม่มีเงินที่ต้องรับ = ทุกช่องเป็น null. Never backfill historical contracts.
+ */
+export function contractDownTender(tenders: NormalizedTender[]) {
+  if (!tenders.length) return { downPaymentMethod: null, downPaymentReference: null, downPaymentReceivedAt: null };
+  return { downPaymentMethod: tenders[0].method as PaymentMethod, downPaymentReference: firstTransferReference(tenders),
     downPaymentReceivedAt: new Date() };
 }
 

@@ -3,14 +3,25 @@ import { Prisma } from '@prisma/client';
 import { creditSnapshot } from './trade-in-credit.service';
 
 /** Keep a canceled credit purchase out of sales/receivable/commission reports.
- * Runs in the contract transaction; settled money must be unwound first. */
+ * Runs in the contract transaction; settled money must be unwound first.
+ *
+ * `opts.commissionHandledByCaller` — ยกเลิกสัญญา (approveCancellation) ส่ง true: คำตัดสินเจ้าของ 2026-09-20
+ * "สัญญาเครดิตเทิร์นยกเลิกได้เหมือนสัญญาทั่วไป" ⇒ ค่าคอมที่จ่ายแล้ว/อยู่ในรอบจ่ายที่อนุมัติแล้ว **ไม่บล็อก** —
+ * `clawbackContractCommission` เรียกคืนเฉพาะที่ยังไม่จ่ายและรายงานรอบที่ล็อกไว้ใน audit แทน. ลบร่างสัญญา (softDelete)
+ * ไม่ส่ง ⇒ ด่านค่าคอมเดิมยังคุมร่างยุคเส้นทางเก่าตามเดิม. */
 export async function cleanupCreditContractSale(tx: Prisma.TransactionClient,
-  contract: { id: string; status: string; tradeInCreditSnapshot?: Prisma.JsonValue }, actorId: string, reason: string) {
+  contract: { id: string; status: string; tradeInCreditSnapshot?: Prisma.JsonValue; bundleProductIds?: string[] | null },
+  actorId: string, reason: string, opts: { commissionHandledByCaller?: boolean } = {}) {
   if (!creditSnapshot(contract.tradeInCreditSnapshot)) return;
   const sales = await tx.sale.findMany({ where: { contractId: contract.id, deletedAt: null } });
   if (!sales.length) return;
   const ids = sales.map(s => s.id);
-  if (sales.some(s => s.onlineOrderId || s.bundleProductIds.length) || await tx.booking.findFirst({
+  // ของแถมที่ "สัญญาเป็นเจ้าของ" (contract.bundleProductIds) ผู้เรียกคืนเข้าคลังเองใน tx เดียวกัน
+  // (`restoreContractBundles` / `releaseContractBundles`) จึงไม่ต้องบล็อก — ที่ยังบล็อกคือของแถมของใบขาย
+  // จากเส้นทางเก่า (POST /sales) ซึ่งไม่มีใครคืนสต๊อกให้
+  const ownedByContract = new Set(contract.bundleProductIds ?? []);
+  const hasForeignBundle = sales.some(s => s.bundleProductIds.some(pid => !ownedByContract.has(pid)));
+  if (sales.some(s => s.onlineOrderId) || hasForeignBundle || await tx.booking.findFirst({
     where: { convertedToSaleId: { in: ids }, deletedAt: null }, select: { id: true } })) {
     throw new BadRequestException('รายการเทิร์นนี้ผูกการจอง/คำสั่งซื้อหรือของแถม ต้องยกเลิกรายการที่เกี่ยวข้องก่อน');
   }
@@ -25,28 +36,30 @@ export async function cleanupCreditContractSale(tx: Prisma.TransactionClient,
     contractId: contract.id, deletedAt: null, batch: { status: { in: ['DRAFT', 'PENDING_APPROVAL', 'POSTED'] }, deletedAt: null } }, select: { id: true } })) {
     throw new BadRequestException('ร่างสัญญานี้อยู่ในชุดจ่ายระหว่างบริษัท ต้องยกเลิกชุดจ่ายก่อน');
   }
-  const commissions = await tx.salesCommission.findMany({ where: {
-    OR: [{ contractId: contract.id }, { saleId: { in: ids } }], deletedAt: null, status: { not: 'CLAWED_BACK' } } });
-  if (commissions.some(c => !['PENDING', 'APPROVED'].includes(c.status) || c.paidAt || Number(c.paidAmount) > 0)) {
-    throw new BadRequestException('ค่าคอมรายการนี้จ่ายแล้ว ต้องเรียกคืนค่าคอมก่อนคืนเครดิตเทิร์น');
-  }
-  const payouts = commissions.length ? await tx.commissionPayout.findMany({ where: { deletedAt: null,
-    OR: commissions.map(c => ({ salespersonId: c.salespersonId, period: c.period })) } }) : [];
-  const covering = payouts.filter(p => commissions.some(c => c.salespersonId === p.salespersonId
-    && c.period === p.period && (!p.generatedAt || c.createdAt <= p.generatedAt)));
-  if (covering.some(p => !['DRAFT', 'CANCELLED'].includes(p.status))) {
-    throw new BadRequestException('ค่าคอมรายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ต้องยกเลิกรอบจ่ายก่อนคืนเครดิตเทิร์น');
-  }
   const now = new Date();
-  for (const payout of covering.filter(p => p.status === 'DRAFT')) {
-    const result = await tx.commissionPayout.updateMany({ where: { id: payout.id, status: 'DRAFT', deletedAt: null }, data: { deletedAt: now } });
-    if (result.count !== 1) throw new ConflictException('รอบจ่ายค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่');
-  }
-  if (commissions.length) {
-    const result = await tx.salesCommission.updateMany({ where: { id: { in: commissions.map(c => c.id) },
-      status: { in: ['PENDING', 'APPROVED'] }, paidAt: null, OR: [{ paidAmount: null }, { paidAmount: 0 }], deletedAt: null },
-      data: { status: 'CLAWED_BACK', clawbackAt: now, clawbackPercent: 100, clawbackReason: reason } });
-    if (result.count !== commissions.length) throw new ConflictException('สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่');
+  if (!opts.commissionHandledByCaller) {
+    const commissions = await tx.salesCommission.findMany({ where: {
+      OR: [{ contractId: contract.id }, { saleId: { in: ids } }], deletedAt: null, status: { not: 'CLAWED_BACK' } } });
+    if (commissions.some(c => !['PENDING', 'APPROVED'].includes(c.status) || c.paidAt || Number(c.paidAmount) > 0)) {
+      throw new BadRequestException('ค่าคอมรายการนี้จ่ายแล้ว ต้องเรียกคืนค่าคอมก่อนคืนเครดิตเทิร์น');
+    }
+    const payouts = commissions.length ? await tx.commissionPayout.findMany({ where: { deletedAt: null,
+      OR: commissions.map(c => ({ salespersonId: c.salespersonId, period: c.period })) } }) : [];
+    const covering = payouts.filter(p => commissions.some(c => c.salespersonId === p.salespersonId
+      && c.period === p.period && (!p.generatedAt || c.createdAt <= p.generatedAt)));
+    if (covering.some(p => !['DRAFT', 'CANCELLED'].includes(p.status))) {
+      throw new BadRequestException('ค่าคอมรายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ต้องยกเลิกรอบจ่ายก่อนคืนเครดิตเทิร์น');
+    }
+    for (const payout of covering.filter(p => p.status === 'DRAFT')) {
+      const result = await tx.commissionPayout.updateMany({ where: { id: payout.id, status: 'DRAFT', deletedAt: null }, data: { deletedAt: now } });
+      if (result.count !== 1) throw new ConflictException('รอบจ่ายค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่');
+    }
+    if (commissions.length) {
+      const result = await tx.salesCommission.updateMany({ where: { id: { in: commissions.map(c => c.id) },
+        status: { in: ['PENDING', 'APPROVED'] }, paidAt: null, OR: [{ paidAmount: null }, { paidAmount: 0 }], deletedAt: null },
+        data: { status: 'CLAWED_BACK', clawbackAt: now, clawbackPercent: 100, clawbackReason: reason } });
+      if (result.count !== commissions.length) throw new ConflictException('สถานะค่าคอมเปลี่ยนแล้ว กรุณาตรวจใหม่');
+    }
   }
   for (const receivable of receivables) {
     const result = await tx.financeReceivable.updateMany({ where: { id: receivable.id, status: receivable.status,

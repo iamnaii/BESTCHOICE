@@ -1,4 +1,5 @@
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
+import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
 import {
   BadRequestException,
   ConflictException,
@@ -481,6 +482,11 @@ export class SaleVoidService {
     }
 
     await new TradeInCreditService(this.prisma).release(tx, sale.tradeInCreditSnapshot, { saleId: sale.id }, user.id, reason);
+    // สมุดเงินหน้าร้าน: คืนเงินตามวิธีที่รับมา — แถว OUT คู่กับแถว IN ของใบขาย (ผู้จ่าย = ผู้กดยกเลิก).
+    // JE แยกยอดของบิลจ่ายผสม stamp `metadata.saleId` ไว้ ⇒ sweep ข้างบน mirror ให้แล้ว ไม่ต้องกลับรายการซ้ำ.
+    // ใบขายก่อนมีสมุดนี้ไม่มีแถว IN ⇒ ไม่เขียนอะไร.
+    await new ShopTenderRecorder(this.prisma).recordRefund(tx, { doc: { saleId: sale.id },
+      kinds: ['CASH_SALE', 'EXTERNAL_FINANCE_DOWN'], actorId: user.id, reverseSplitJe: false, occurredAt: now });
 
     // 3. FinanceReceivable → soft delete (G3 การันตีแล้วว่ายังไม่มีเงินเข้า)
     if (receivable) {

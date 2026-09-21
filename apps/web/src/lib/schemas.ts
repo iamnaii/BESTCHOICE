@@ -125,7 +125,6 @@ export const posSaleSchema = z.object({
   downPayment: z.number().min(0).optional(),
   financeCompany: z.string().optional(),
   contractNumber: z.string().optional(),
-  totalMonths: z.string().optional(),
   notes: z.string().optional(),
 }).superRefine((data, ctx) => {
   if (data.saleType === 'EXTERNAL_FINANCE' && !data.financeCompany?.trim()) {

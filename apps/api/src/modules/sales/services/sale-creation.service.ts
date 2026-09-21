@@ -21,6 +21,14 @@ import {
 } from '../../../utils/test-data-markers';
 
 /**
+ * ปลายทางตรวจแล้ว 2026-09-20: เมนูข้าง "สัญญาผ่อนชำระ" / แถบล่างมือถือ "สัญญา" (`/contracts`, menu.ts) มีปุ่ม "สร้างสัญญา"
+ * (ContractsPage) → `/contracts/create` และ `POST /contracts` เปิดให้ OWNER / BRANCH_MANAGER / SALES ชุดเดียวกับ
+ * `POST /sales` — ใครเจอข้อความนี้ก็ไปต่อได้จริง
+ */
+export const INSTALLMENT_VIA_CONTRACT_MSG =
+  'ขายผ่อนในเครือไม่บันทึกที่หน้าขายแล้ว — ไปที่เมนู "สัญญาผ่อนชำระ" (บนมือถือชื่อ "สัญญา") แล้วกดปุ่ม "สร้างสัญญา" เมื่อเปิดใช้สัญญา ระบบจะตัดสต๊อกและออกใบขายให้เอง';
+
+/**
  * Sale-creation orchestrator extracted from SalesService.create.
  *
  * Owns the pre-tx validation (loyalty pre-validation, wasPreviouslyDamaged
@@ -42,6 +50,9 @@ export class SaleCreationService {
   ) {}
 
   async create(dto: CreateSaleDto, salespersonId: string, userRole = 'SALES', userBranchId?: string | null) {
+    // ขายผ่อนในเครือทำผ่านหน้าสัญญาทางเดียว (2026-09-20) — เปิดใช้สัญญาแล้ว ContractWorkflowService.activate ตัดสต๊อก
+    // + ออกใบขาย INSTALLMENT + ตั้งค่าคอมให้เอง. ปฏิเสธก่อนแตะแต้ม/เครดิตเทิร์น/ส่วนลด/ฐานข้อมูลใด ๆ
+    if (dto.saleType === 'INSTALLMENT') throw new BadRequestException(INSTALLMENT_VIA_CONTRACT_MSG);
     const baseDiscount = dto.discount || 0;
 
     // T6-C1: loyalty redeem at POS — validate customer balance and fold the
@@ -129,9 +140,6 @@ export class SaleCreationService {
     switch (dto.saleType) {
       case 'CASH':
         sale = await this.writer.createCashSale(dto, salespersonId, netAmount, discount, { role: userRole, branchId: userBranchId });
-        break;
-      case 'INSTALLMENT':
-        sale = await this.writer.createInstallmentSale(dto, salespersonId, netAmount, discount, userRole, userBranchId);
         break;
       case 'EXTERNAL_FINANCE':
         sale = await this.writer.createExternalFinanceSale(dto, salespersonId, netAmount, discount, { role: userRole, branchId: userBranchId });

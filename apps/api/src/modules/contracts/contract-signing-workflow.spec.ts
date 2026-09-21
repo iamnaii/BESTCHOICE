@@ -179,6 +179,9 @@ describe('Contract Signing & Workflow', () => {
         count: jest.fn().mockResolvedValue(0),
         createMany: jest.fn().mockResolvedValue({ count: 12 }),
       },
+      // ค่าคอมพนักงานขายถูกสร้างตอนเปิดใช้สัญญา (2026-09-20) — ค่าเริ่มต้น = ยังไม่มีค่าคอม + ไม่มีกฎ (fallback 3%)
+      salesCommission: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'cm-1' }) },
+      commissionRule: { findFirst: jest.fn().mockResolvedValue(null) },
       sale: {
         create: jest.fn().mockResolvedValue({ id: 'sale-1' }),
         // ตอน activate ต้องหาของแถมจากใบขาย (Sale.bundleProductIds) เพื่อตัดสต็อก

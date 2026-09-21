@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { findUnclosedYesterday, staleAwaitingConfirmWhere } from '../../shop-tenders/shop-cash-close.service';
 
 @Injectable()
 export class DashboardOpsService {
@@ -163,6 +164,31 @@ export class DashboardOpsService {
         message: `มี ${pendingEvidenceCount} สลิปรอตรวจสอบ`,
         link: '/slip-review',
         count: pendingEvidenceCount,
+      });
+    }
+
+    // นับเงินปิดยอดลิ้นชักสาขา (คำตัดสินเจ้าของ 2026-09-20) — เงื่อนไขชุดเดียวกับแถบเตือนของแท็บประวัติการปิดยอด
+    const now = new Date();
+    const [unclosedBranches, staleCashCloses] = await Promise.all([
+      findUnclosedYesterday(this.prisma, now, branchId),
+      this.prisma.shopCashClose.count({ where: staleAwaitingConfirmWhere(now, branchId) }),
+    ]);
+    if (unclosedBranches.length > 0) {
+      alerts.push({
+        type: 'cash_close_missed',
+        severity: 'warning',
+        message: `${unclosedBranches.length} สาขายังไม่ปิดยอดเงินสดของเมื่อวาน`,
+        link: '/shop/daily-cash',
+        count: unclosedBranches.length,
+      });
+    }
+    if (staleCashCloses > 0) {
+      alerts.push({
+        type: 'cash_close_awaiting',
+        severity: 'critical',
+        message: `มี ${staleCashCloses} ยอดเงินสดที่นับแล้ว รอยืนยันรับเงินเกิน 1 วัน`,
+        link: '/shop/daily-cash',
+        count: staleCashCloses,
       });
     }
 

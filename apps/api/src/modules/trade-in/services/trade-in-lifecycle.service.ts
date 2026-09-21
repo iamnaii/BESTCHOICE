@@ -1,3 +1,4 @@
+import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
 import {
   NotFoundException,
   BadRequestException,
@@ -703,6 +704,9 @@ export class TradeInLifecycleService {
           },
           tx,
         );
+        // สมุดเงินหน้าร้าน: เงินออกจ่ายรับซื้อ (ผู้จ่าย = ผู้กดยอมรับราคา)
+        await new ShopTenderRecorder(this.prisma).recordPayout(tx, { tradeInId: tradeIn.id, branchId: effectiveBranchId,
+          actorId: userId, method: paymentMethod, amount: costPrice });
       }
 
       return updated;

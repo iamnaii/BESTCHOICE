@@ -1,4 +1,3 @@
-import { ShopDownPaymentTemplate } from '../../journal/cpa-templates/shop-down-payment.template';
 import * as creditApproval from '../../credit-check/services/credit-approval';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
@@ -6,7 +5,6 @@ import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { SaleWriterService } from './sale-writer.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { InterCompanyService } from '../../inter-company/inter-company.service';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopExternalFinanceSaleTemplate } from '../../journal/cpa-templates/shop-external-finance-sale.template';
@@ -58,7 +56,19 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       // ไม่มีแถว = ไม่ override ⇒ ใช้ค่าตามชนิดสินค้า
       systemConfig: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
       interestConfig: { findFirst: jest.fn().mockResolvedValue(null) },
-      branch: { findUnique: jest.fn().mockResolvedValue(null) },
+      // branch มีผู้อ่านสองราย: (1) resolveBranchVat (include company) → null = ใช้ VAT จาก config ตามเดิม
+      // (2) ShopTenderRecorder — ใช้ ShopAccountResolver ตัวจริงของมันเอง (ไม่ใช่ mock ที่ inject ให้ service)
+      //     อ่านลิ้นชักเงินสดของสาขา (select shopCashAccountCode) เมื่อ tender แรกเป็นเงินสด
+      branch: {
+        findUnique: jest.fn(async (args: { select?: { shopCashAccountCode?: boolean } }) =>
+          args?.select?.shopCashAccountCode ? { shopCashAccountCode: 'S11-1102' } : null),
+      },
+      // สมุดเงินหน้าร้าน (shop_tenders, 2026-09-20) — recorder เขียนผ่าน tx ตัวเดียวกับใบขาย/สัญญา
+      shopTender: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      journalEntry: { findFirst: jest.fn().mockResolvedValue(null) },
       customer: { findUnique: jest.fn().mockResolvedValue({ id: 'c1', name: 'Customer', phone: '0800000000', addressCurrent: null }) },
       auditLog: { create: jest.fn().mockResolvedValue({}) },
       // closeRepossessionOnSale (2026-09-05) — เครื่องยึดที่ขายผ่าน POS ปิดรายการยึดให้เอง
@@ -92,7 +102,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       $transaction: jest.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb(tx),
       ),
-      // createInstallmentSale reads these BEFORE opening its $transaction.
+      // Root-client reads made outside the $transaction (collaborators built from `this.prisma`).
       // interestConfig = null → params fall back to config.util DEFAULTS
       // (minDownPaymentPct 0.15 / months 6-12) และ getRateForMonths ไม่ถูกเรียก
       // → เลขเงินคุมได้จาก DTO อย่างเดียว ไม่มี I/O ซ่อน
@@ -117,10 +127,8 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({}) } },
         SaleWriterService,
         { provide: PrismaService, useValue: prisma },
-        { provide: InterCompanyService, useValue: { createFromSaleInTx: jest.fn() } },
         { provide: ShopCashSaleTemplate, useValue: shopCashSaleTemplate },
         { provide: ShopAccountResolver, useValue: shopAccountResolver },
         {
@@ -181,6 +189,30 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // (b0) ของแถม = อุปกรณ์เสริมเท่านั้น (คำตัดสินเจ้าของ 2026-09-20)
+  // เดิมช่องของแถมรับสินค้าพร้อมขายอะไรก็ได้ ⇒ กดแถมมือถือทั้งเครื่องราคา 0 บาทได้
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  it.each(['PHONE_NEW', 'PHONE_USED', 'TABLET'])(
+    '(b0) ของแถมหมวด %s → BadRequest และไม่มีสินค้าใดถูกตัดสต๊อก',
+    async (category) => {
+      tx.product.findMany.mockResolvedValueOnce([
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'iPhone 13', category },
+      ]);
+
+      await expect(
+        service.createCashSale(
+          { productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 1000, bundleProductIds: ['p2'], paymentMethod: 'CASH' } as any,
+          'sp-1', 1000, 0, { role: 'OWNER', branchId: 'br-1' },
+        ),
+      ).rejects.toThrow('ของแถมเลือกได้เฉพาะสินค้าหมวดอุปกรณ์เสริม — "iPhone 13" ไม่ใช่อุปกรณ์เสริม');
+
+      expect(tx.product.updateMany).not.toHaveBeenCalled();
+      expect(tx.sale.create).not.toHaveBeenCalled();
+      expect(shopCashSaleTemplate.execute).not.toHaveBeenCalled();
+    },
+  );
+
   // (b) 2-product bundle → 2 JEs, per-product keys, revenues sum to net
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -189,7 +221,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     // JE allocation block calls findMany({where:{id:{in:['p1','p2']}},...}) — return both with full data
     tx.product.findMany
       .mockResolvedValueOnce([
-        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY' },
       ])
       .mockResolvedValueOnce([
         { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(6000), status: 'IN_STOCK', name: 'Phone' },
@@ -273,6 +305,8 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
         sellingPrice: 8000,
         bundleProductIds: [],
         paymentMethod: 'BANK_TRANSFER',
+        // โอน/QR บังคับเลขอ้างอิงจากสลิป (กติกาช่องรับเงิน 2026-09-20) — caller แบบเดิมส่งผ่าน downPaymentReference
+        downPaymentReference: 'TEST-REF-0001',
       } as any,
       'sp-1',
       8000,
@@ -289,6 +323,22 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       'BANK_TRANSFER',
       tx,
     );
+
+    // สมุดเงินหน้าร้าน: แถว IN เดียวเต็มยอด พร้อมเลขอ้างอิง · ผู้รับเงิน = ผู้บันทึกใบขาย
+    const tenderRows = tx.shopTender.createMany.mock.calls[0][0].data;
+    expect(tenderRows).toHaveLength(1);
+    expect(tenderRows[0]).toMatchObject({ direction: 'IN', kind: 'CASH_SALE', branchId: 'br-1', method: 'BANK_TRANSFER',
+      reference: 'TEST-REF-0001', actorId: 'sp-1', saleId: 'sale-1', seq: 1, seqTotal: 1 });
+    expect(Number(tenderRows[0].amount)).toBe(8000);
+  });
+
+  it('(c2) legacy BANK_TRANSFER ที่ไม่มีเลขอ้างอิง → ถูกปฏิเสธก่อนเขียนใบขาย (กติกาช่องรับเงิน)', async () => {
+    await expect(service.createCashSale(
+      { productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 8000, bundleProductIds: [], paymentMethod: 'BANK_TRANSFER' } as any,
+      'sp-1', 8000, 0, { role: 'SALES', branchId: 'br-1' },
+    )).rejects.toThrow(/เลขอ้างอิง/);
+    expect(tx.sale.create).not.toHaveBeenCalled();
+    expect(tx.shopTender.createMany).not.toHaveBeenCalled();
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -300,7 +350,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     // JE allocation block calls findMany({where:{id:{in:['p1','p2']}},...}) — return both with full data
     tx.product.findMany
       .mockResolvedValueOnce([
-        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY' },
       ])
       .mockResolvedValueOnce([
         { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000), status: 'IN_STOCK', name: 'Phone' },
@@ -355,7 +405,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
 
   it('(e) createCashSale: ตัด hold ของเครื่องหลัก + ของแถม ภายใน tx เดียวกัน', async () => {
     tx.product.findMany
-      .mockResolvedValueOnce([{ branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case' }])
+      .mockResolvedValueOnce([{ branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY' }])
       .mockResolvedValueOnce([
         { id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000) },
         { id: 'p2', category: 'ACCESSORY', costPrice: new Decimal(500) },
@@ -388,49 +438,6 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     await expect(service.createCashSale({ saleType: 'CASH', productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 8000,
       paymentMethod: 'CASH', amountReceived: 8000 }, 'sp-1', 8000, 0, { role: 'SALES', branchId: 'br-1' })).rejects.toMatchObject({ status: 409 });
     expect(prisma.$transaction).toHaveBeenCalledTimes(3);
-  });
-
-  it('claims an approved monthly limit before completing an installment sale', async () => {
-    const approval = await import('../../credit-check/services/credit-approval');
-    const claim = jest.spyOn(approval, 'claimCreditApproval').mockRejectedValue(new Error('ต้องอนุมัติยอดผ่อน'));
-    tx.contract = { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
-    tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
-    tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
-    tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
-    try {
-      await expect(service.createInstallmentSale({ productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
-        bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH', paymentDueDay: 25 } as never,
-        'sp-1', 20000, 0, 'SALES', 'br-1')).rejects.toThrow('ต้องอนุมัติยอดผ่อน');
-      expect(tx.payment.createMany).not.toHaveBeenCalled();
-    } finally { claim.mockRestore(); }
-  });
-
-  it('(f) createInstallmentSale: ตัด hold หลัง flip เครื่องเป็น RESERVED', async () => {
-    // downPayment 3000 = 15% ของ 20000 พอดี = ค่า DEFAULTS.minDownPaymentPct
-    // (config.util.ts:183) → ผ่านเงื่อนไข `downPayment < netAmount * pct` แบบเฉียดฉิว
-    // ห้ามลดเลขนี้ ไม่งั้นจะโดน BadRequestException 'เงินดาวน์ขั้นต่ำ 15%' แทน
-    tx.contract = { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
-    tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
-    tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
-    tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
-    tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
-
-    await service.createInstallmentSale(
-      {
-        productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
-        bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH',
-      } as any,
-      'sp-1', 20000, 0, 'SALES', 'br-1',
-    );
-
-    expect(tx.contract.create.mock.calls[0][0].data.financedAmount).toBe(17000);
-    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable' });
-
-    const call = tx.productReservation.updateMany.mock.calls.at(-1)[0];
-    expect(call.where.productId).toEqual({ in: ['p1'] });
-    expect(call.where.status).toBe('ACTIVE');
-    expect(call.where.expiresAt.gt).toBeInstanceOf(Date);
-    expect(call.data).toEqual({ status: 'PREEMPTED' });
   });
 
   it('(g) createExternalFinanceSale: ตัด hold หลัง flip เป็น SOLD_INSTALLMENT', async () => {
@@ -499,9 +506,8 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
   // (h)-(m) B5 forward-flag — P2002/P2034 retry wrapper around $transaction.
   // Serializable tx + new productReservation writes raise write-write
   // conflict odds (P2034); separately, sequence.util.ts's unlocked
-  // findFirst(desc)+parseInt+1 number generators give createInstallmentSale
-  // (default isolation) a genuine P2002 race on Contract.contractNumber /
-  // Sale.saleNumber. Neither should surface as a raw 500 at the cashier's
+  // findFirst(desc)+parseInt+1 number generator gives every writer a genuine
+  // P2002 race on Sale.saleNumber. Neither should surface as a raw 500 at the cashier's
   // screen. Pattern mirrors contract-lifecycle.service.ts:255-259
   // (MAX_RETRIES=3, retry on Prisma-known P2002 OR P2034, everything else
   // propagates immediately — fix round 1: widened from P2034-only after
@@ -535,43 +541,18 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(2);
     });
 
-    it('(i) createInstallmentSale: first $transaction attempt rejects P2034 → retried → succeeds', async () => {
-      tx.contract = { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
-      tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
-      tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
-      tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+    it('revalidates product stock after a cash-sale serialization conflict', async () => {
+      tx.product.findMany.mockResolvedValue([{ id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000) }]);
       tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
-      prisma.$transaction
-        .mockImplementationOnce(async () => { throw p2034; })
-        .mockImplementationOnce(async (cb: (tx: unknown) => Promise<unknown>) => cb(tx));
-
-      const result = await service.createInstallmentSale(
-        {
-          productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
-          bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH',
-        } as any,
-        'sp-1', 20000, 0, 'SALES', 'br-1',
-      );
-
-      expect(result).toEqual(mockSale);
-      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
-    });
-
-    it('revalidates product stock after an installment serialization conflict', async () => {
-      tx.contract = { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
-      tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
-      tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
-      tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
       prisma.$transaction.mockImplementationOnce(async (callback: (client: unknown) => Promise<unknown>) => {
         await callback(tx);
         tx.product.findUnique.mockResolvedValue({ id: 'p1', status: 'SOLD_CASH', deletedAt: null, branchId: 'br-1', wasPreviouslyDamaged: false });
         throw p2034; // The real transaction rolls back; a competing sale won the product.
       });
-      await expect(service.createInstallmentSale({ saleType: 'INSTALLMENT', productId: 'p1', branchId: 'br-1', customerId: 'c1',
-        sellingPrice: 20000, downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH' }, 'sp-1', 20000, 0, 'SALES', 'br-1')).rejects.toThrow(/สินค้าไม่พร้อมขาย/);
+      await expect(service.createCashSale({ productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 10000,
+        bundleProductIds: [], paymentMethod: 'CASH' } as any, 'sp-1', 10000, 0, { role: 'SALES', branchId: 'br-1' })).rejects.toThrow(/สินค้าไม่พร้อมขาย/);
       expect(prisma.$transaction).toHaveBeenCalledTimes(2);
       expect(prisma.$transaction.mock.calls.every((call: unknown[]) => (call[1] as { isolationLevel: string }).isolationLevel === 'Serializable')).toBe(true);
-      expect(tx.product.findUnique).toHaveBeenCalledTimes(3); // eligibility + quote, then retry eligibility
       expect(tx.sale.create).toHaveBeenCalledTimes(1); // No additional sale is attempted on retry.
     });
 
@@ -632,31 +613,26 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(3);
     });
 
-    it('(m) createInstallmentSale: first attempt rejects P2002 (unlocked contractNumber race) → retried → succeeds', async () => {
-      // Fix round 1: sequence.util.ts's generateContractNumber/generateSaleNumber
-      // have no advisory lock (plain findFirst(desc)+parseInt+1) — two concurrent
-      // installment sales (default isolation, no Serializable) can race to INSERT
-      // the same Contract.contractNumber, producing a real P2002. This must retry
-      // exactly like contract-lifecycle.service.ts's own P2002 branch for that field.
+    it('(m) createCashSale: first attempt rejects P2002 (unlocked saleNumber race) → retried → succeeds', async () => {
+      // sequence.util.ts's generateSaleNumber has no advisory lock (plain findFirst(desc)+parseInt+1) — two
+      // concurrent sales can race to INSERT the same Sale.saleNumber, producing a real P2002. This must retry
+      // exactly like contract-lifecycle.service.ts's own P2002 branch.
       const p2002 = new Prisma.PrismaClientKnownRequestError(
-        'Unique constraint failed on Contract.contractNumber',
+        'Unique constraint failed on Sale.saleNumber',
         { code: 'P2002', clientVersion: 'x' },
       );
-      tx.contract = { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
-      tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
-      tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
-      tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+      tx.product.findMany.mockResolvedValue([{ id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000) }]);
       tx.productReservation.updateMany.mockResolvedValue({ count: 1 });
       prisma.$transaction
         .mockImplementationOnce(async () => { throw p2002; })
         .mockImplementationOnce(async (cb: (tx: unknown) => Promise<unknown>) => cb(tx));
 
-      const result = await service.createInstallmentSale(
+      const result = await service.createCashSale(
         {
-          productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000,
-          bundleProductIds: [], downPayment: 3000, totalMonths: 12, paymentMethod: 'CASH',
+          productId: 'p1', branchId: 'br-1', customerId: 'c1',
+          sellingPrice: 10000, bundleProductIds: [], paymentMethod: 'CASH',
         } as any,
-        'sp-1', 20000, 0, 'SALES', 'br-1',
+        'sp-1', 10000, 0, { role: 'SALES', branchId: 'br-1' },
       );
 
       expect(result).toEqual(mockSale);

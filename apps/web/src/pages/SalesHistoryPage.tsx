@@ -44,6 +44,8 @@ interface Sale {
   discount: string;
   netAmount: string;
   paymentMethod: string;
+  /** เงินที่รับจริงของใบขาย — บิลจ่ายผสมมีหลายแถว (สมุดเงินหน้าร้าน) */
+  shopTenders?: { method: string; amount: string | number; reference: string | null; seq: number }[];
   amountReceived: string | null;
   downPaymentAmount: string | null;
   financeCompany: string | null;
@@ -94,6 +96,12 @@ const paymentMethodLabels: Record<string, string> = {
   CASH: 'เงินสด',
   BANK_TRANSFER: 'โอนเงิน',
   QR_EWALLET: 'QR/E-Wallet',
+};
+
+/** วิธีรับของใบขาย: บิลจ่ายผสมแสดงทุกวิธี ("เงินสด + โอนเงิน") · ใบขายก่อนมีสมุดเงินหน้าร้านใช้ `paymentMethod` เดิม */
+const saleMethodLabel = (sale: { paymentMethod: string; shopTenders?: { method: string }[] }): string => {
+  const methods = sale.shopTenders?.length ? [...new Set(sale.shopTenders.map((t) => t.method))] : [sale.paymentMethod];
+  return methods.filter(Boolean).map((m) => paymentMethodLabels[m] || m).join(' + ');
 };
 
 
@@ -324,7 +332,7 @@ export default function SalesHistoryPage() {
             sellingPrice: Number(s.sellingPrice),
             discount: Number(s.discount),
             netAmount: Number(s.netAmount),
-            paymentMethod: s.receiptBreakdown ? 'ดูรายละเอียดใบจอง' : paymentMethodLabels[s.paymentMethod] || s.paymentMethod || '-',
+            paymentMethod: s.receiptBreakdown ? 'ดูรายละเอียดใบจอง' : saleMethodLabel(s) || '-',
             downPayment: !s.receiptBreakdown && s.downPaymentAmount != null ? Number(s.downPaymentAmount) : '-',
             tradeCash: s.tradeInCreditSnapshot ? Number(s.tradeInCreditSnapshot.cashDownAmount) : '-',
             tradeBase: s.tradeInCreditSnapshot ? Number(s.tradeInCreditSnapshot.baseAmount) : '-',
@@ -460,7 +468,7 @@ export default function SalesHistoryPage() {
       label: 'การชำระ',
       render: (s: Sale) => (
         <div className="text-xs">
-          <div>{paymentMethodLabels[s.paymentMethod] || s.paymentMethod || '-'}</div>
+          <div>{saleMethodLabel(s) || '-'}</div>
           {s.tradeInCreditSnapshot && <div className="space-y-1 mt-1">
             <div>เงินสด/โอนสุทธิ {Number(s.tradeInCreditSnapshot.cashDownAmount).toLocaleString()} ฿</div>
             <div>เครดิตเครื่องเทิร์น {Number(s.tradeInCreditSnapshot.baseAmount).toLocaleString()} ฿</div>
@@ -788,7 +796,7 @@ export default function SalesHistoryPage() {
               </dl>
               {isOwner && saleDetail.data.costPriceSnapshot == null && <p className="text-muted-foreground">ไม่ทราบต้นทุน ณ วันขาย จึงยังคำนวณกำไรไม่ได้</p>}
               {saleDetail.data.receiptBreakdown && <BookingSaleReceipt receipt={saleDetail.data.receiptBreakdown} />}
-              <div>{!saleDetail.data.receiptBreakdown && <p>วิธีรับ: {paymentMethodLabels[saleDetail.data.paymentMethod] ?? 'ยังไม่ระบุ'}</p>}<p>พนักงาน: {saleDetail.data.salesperson.name}</p><p>สาขา: {saleDetail.data.branch.name}</p></div>
+              <div>{!saleDetail.data.receiptBreakdown && <p>วิธีรับ: {saleMethodLabel(saleDetail.data) || 'ยังไม่ระบุ'}</p>}<p>พนักงาน: {saleDetail.data.salesperson.name}</p><p>สาขา: {saleDetail.data.branch.name}</p></div>
               {saleDetail.data.tradeInCreditSnapshot && <div className="rounded-lg border border-border p-3">
                 <p>เงินสด/โอนสุทธิ {Number(saleDetail.data.tradeInCreditSnapshot.cashDownAmount).toLocaleString()} บาท</p>
                 <p>เครดิตเทิร์น {Number(saleDetail.data.tradeInCreditSnapshot.baseAmount).toLocaleString()} บาท</p>

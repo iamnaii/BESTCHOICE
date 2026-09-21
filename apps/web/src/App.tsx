@@ -94,6 +94,7 @@ const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
+const ShopDailyCashPage = lazy(() => import('@/pages/ShopDailyCashPage'));
 const ImportedSalesPage = lazy(() => import('@/pages/ImportedSalesPage'));
 // PricingTemplatesPage moved to settings-registry (P2b products migration)
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
@@ -501,6 +502,7 @@ function App() {
           <Route path="/stickers" element={<StickerPrintPage />} />
           <Route path="/pos" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><POSPage /></ProtectedRoute>} />
           <Route path="/sales" element={<SalesHistoryPage />} />
+          <Route path="/shop/daily-cash" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'SALES']}><ShopDailyCashPage /></ProtectedRoute>} />
           <Route path="/imported-sales" element={<ImportedSalesPage />} />
           <Route path="/todos" element={<TodosPage />} />
           {/* เส้นทางเดียว (roomId เป็น optional segment) — สองเส้นทางแยกทำให้หน้าถูก mount ใหม่ทุกครั้งที่เปิดห้อง:

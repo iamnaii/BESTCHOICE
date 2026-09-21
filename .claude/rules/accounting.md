@@ -1106,6 +1106,124 @@ The existing `/expenses/ledger/trial-balance` and `/expenses/ledger/profit-loss`
 
 ---
 
+## สมุดเงินหน้าร้าน + บิลจ่ายผสม (shop tenders — 2026-09-20)
+
+Spec: `docs/superpowers/specs/2026-09-20-shop-tenders-daily-cash-design.md` · โค้ด:
+`apps/api/src/modules/shop-tenders/` · Integration:
+`apps/api/src/modules/contracts/__tests__/shop-tenders.integration.spec.ts`
+
+**คำตัดสินเจ้าของ 2026-09-20 (ปิดประเด็น):** ต้องมีสรุปเงินหน้าร้านรายวัน (กันพนักงานโกง) ·
+โอน/QR **บังคับเลขอ้างอิง** · ลูกค้าจ่ายผสมในบิลเดียว "มีบ่อย ต้องรองรับ" (สูงสุด 4 บรรทัด) · เลขอ้างอิงซ้ำ
+ไม่บล็อกแต่ขึ้นป้ายแดงในรายงาน · คืนเงินตามวิธีที่รับมา · "นับเงินปิดวัน" เป็นรอบถัดไป.
+
+- **ตาราง `shop_tenders`** = สมุดเงินเข้า/ออกของหน้าร้าน (แถวไม่ถูกแก้/ลบ — การคืนเงิน = แถว `OUT` ที่ชี้
+  `reversesTenderId`). `actorId` = **ผู้ใช้ที่ล็อกอินและกดทำรายการ** ไม่ใช่ `salespersonId`. เขียนใน tx เดียวกับ JE
+  ผ่าน `new ShopTenderRecorder(this.prisma)` (แบบเดียวกับ `TradeInCreditService` — ไม่เพิ่ม dependency ให้
+  constructor ของ service เดิม). หน้าสรุปเงินรายวัน (`GET /shop-tenders/daily-summary`) อ่านจากตารางนี้ตารางเดียว
+  — **ไม่ backfill** เอกสารเก่า.
+- **กติกา tender อยู่ที่เดียว:** `normalizeTenders` (`shop-tender.util.ts`) — ผลรวมต้องเท่ายอดที่ต้องรับพอดี,
+  โอน/QR ต้องมี `reference` 6–128 ตัว. caller ที่ไม่ส่ง `tenders` ได้บรรทัดเดียวจากฟิลด์เดิมแล้วผ่านกติกาเดียวกัน
+  (โอน/QR แบบเดิมที่ไม่มีเลขอ้างอิง = 400).
+- **คอลัมน์เดิม = tender แรก (primary):** `Sale.paymentMethod` / `Contract.downPaymentMethod` /
+  `Booking.depositMethod` เก็บวิธีของบรรทัดแรก · `Contract.downPaymentReference` = เลขอ้างอิงของบรรทัดแรกที่
+  ไม่ใช่เงินสด.
+
+### JE ของบิลจ่ายผสม — flow `shop-tender-split` (ไม่แตะ template รับเงินเดิม)
+
+Template รับเงินเดิม (`ShopCashSaleTemplate` / `ShopExternalFinanceSaleTemplate` / `ShopDownPaymentTemplate` /
+`ShopBookingDepositTemplate`) ยังลง **เต็มยอด** เข้าบัญชีของ primary ตามเดิมทุกประการ แล้ว recorder โพสต์ใบ
+"แยกยอด" 1 ใบเมื่อมีบรรทัดอื่นที่ลงคนละบัญชี:
+
+```
+Dr <บัญชีของวิธีอื่น>   [Σ บรรทัดที่บัญชีต่างจาก primary]      (เงินสด = ลิ้นชักสาขา · โอน/QR = S11-1201)
+   Cr <บัญชี primary>
+```
+
+เหตุผลที่ไม่ทำ Dr หลายขาใน template เดิม: ขายสดลง JE **ทีละสินค้า** (`allocateCashSaleByCost`) ·
+`TradeInCreditService.claim` เครดิตบัญชีเงินสดใบเดียว · deposit-applied ตอนแปลงใบจองเครดิต "บัญชีเดียวกับที่
+ใบขายเดบิต" · ลบร่างสัญญาอ่าน JE ดาวน์ต้องเจอ debit `S11-*` เท่ายอดดาวน์ **1 บรรทัดพอดี** — ทั้งหมดยังถูกต้อง
+ถ้า primary รับเต็มยอดก่อนแล้วค่อยย้ายส่วนของวิธีอื่นออก. ยอดสุทธิของลิ้นชัก/ธนาคาร = เงินจริงของแต่ละวิธี
+(ปักด้วย integration: ขายสด 5,000 สด + 4,900 โอน → ลิ้นชัก 5,000 / S11-1201 4,900).
+
+| เรื่อง | กติกา |
+|---|---|
+| metadata | `flow: 'shop-tender-split'`, `tenderDocType`, `tenderDocId`, `idempotencyKey: shop-tender-split:<docType>:<docId>` |
+| ใบขาย | ใส่ `metadata.saleId` ⇒ `SaleVoidService` (sweep `saleId`) mirror ให้เองตอนยกเลิกใบขาย |
+| **สัญญา** | **ห้ามใส่ `metadata.contractId`** — การยกเลิกสัญญา (C-1) และยกเลิกเปลี่ยนเครื่อง sweep ตาม `contractId` และมี **cash tripwire** ที่ throw เมื่อเจอบรรทัดเงินสด; JE ดาวน์เองก็จงใจไม่ถูก mirror ตอนยกเลิกสัญญา ⇒ ใบแยกยอดต้องอยู่นอก sweep เช่นกัน (ปักด้วย integration "เปิดใช้ → ยกเลิกสัญญา ไม่ชน tripwire") |
+| ใบจอง | ไม่ใส่ key ที่ sweep ใดใช้ |
+| ไฟแนนซ์นอกที่ JE ขายไม่ถูกโพสต์ (`execute()` คืน `null`) | เขียนแถว tender เสมอ แต่ **ไม่โพสต์ใบแยกยอด** (`postSplitJe: false`) — ห้ามย้ายเงินที่ยังไม่เคยลงบัญชี |
+
+### การคืนเงิน
+
+| เหตุการณ์ | บัญชี | tender |
+|---|---|---|
+| ยกเลิกใบขาย | sweep `saleId` mirror ทั้ง JE ขายและใบแยกยอด (ได้ฟรี) | `OUT SALE_VOID_REFUND` คู่กับแถว IN · actor = ผู้กดยกเลิก |
+| ลบร่างสัญญา | reversal เดิมคืนเต็มยอดเข้า primary + `recordRefund(reverseSplitJe: true)` mirror ใบแยกยอด (flow `shop-tender-split-reversed`) | `OUT CONTRACT_DOWN_REFUND` |
+| ยกเลิกใบจองที่รับมัดจำแล้ว | refund เดิม re-resolve จาก `depositMethod` (= primary) + mirror ใบแยกยอด | `OUT BOOKING_DEPOSIT_REFUND` |
+| จ่ายรับซื้อมือสอง (`accept` BUYBACK) | ของเดิม | `OUT TRADE_IN_PAYOUT` (`TRANSFER` → `BANK_TRANSFER`, ไม่บังคับ reference) |
+
+เอกสารก่อนมีสมุดนี้ไม่มีแถว IN ⇒ ไม่เขียนแถว OUT. ยึดมัดจำ (ใบจองหมดอายุ) ไม่มีเงินเคลื่อน ⇒ ไม่มี tender.
+ใบขายจากออเดอร์ออนไลน์ (`ONLINE_GATEWAY`) ไม่เขียน tender — เงินไม่ผ่านมือพนักงานหน้าร้าน.
+
+**ยังไม่ได้คำตอบจากผู้สอบบัญชี:** รูปแบบ "ลงเต็มยอดแล้วย้ายออก" ทำให้สมุดลิ้นชักเห็นเงินเข้า-ออกในวินาทีเดียวกัน
+(ยอดสุทธิถูกต้อง). คำถามร่างไว้ให้เจ้าของส่ง: `docs/accounting/cpa-question-split-tender-2026-09-20.txt`.
+ถ้าผู้สอบต้องการใบเดียวหลายขา ต้องรื้อ 4 จุดข้างบนพร้อมกัน — อย่าแก้จุดเดียว.
+
+### ล้างข้อมูลทดสอบ (2026-09-20)
+
+- `factory:reset`: `shop_tenders` อยู่ใน `WIPE_TABLES`.
+- `cleanup:test-contracts` + cleanup ของ test-pack (`bookings`, `trade-in`) **ลบแถว `shop_tenders` ของเอกสารทดสอบถาวร**
+  ผ่าน `src/cli/shop-tender-cleanup.util.ts` — เอกสารถูก soft delete ⇒ ถ้าไม่ลบ แถวทดสอบจะค้างในหน้าสรุปเงินรายวัน
+  ของจริง; หน้ารายงาน**ห้าม**กรองด้วย `deletedAt` ของเอกสาร (ใบขายที่ถูก void ก็เป็น soft delete — แถวรับ+คืนของมันคือสิ่งที่
+  ต้องเห็น). JE แยกยอดของสัญญา/ใบจองตามด้วย `metadata.tenderDocId` + mirror จาก `reversesEntryId`
+  (`findTenderSplitEntries`) เพราะไม่ stamp `contractId`/`bookingId`.
+
+### นับเงินปิดยอดลิ้นชักสาขา (shop cash close — คำตัดสินเจ้าของ 2026-09-20)
+
+Spec: `docs/superpowers/specs/2026-09-20-shop-cash-close-design.md` · โค้ด: `shop-tenders/shop-cash-close.service.ts` ·
+Integration: `contracts/__tests__/shop-cash-close.integration.spec.ts`
+
+- **ไม่มี JE แม้แต่ใบเดียว** — เงินขาด/เกิน และการย้ายเงินจากลิ้นชักไปธนาคาร/เจ้าของ เก็บเป็นข้อมูลใน `shop_cash_closes` อย่างเดียว
+  (`varianceAmount`, `receiveVariance`, `destination`). **ห้ามเดาบัญชีเงินขาด/เกินหรือ JE ย้ายเงินเอง** — รอผู้สอบบัญชีชี้บัญชี
+  (คลาสเดียวกับคำถามบิลจ่ายผสม). ผลคือยอดบัญชีลิ้นชัก (`shopCashAccountCode`) ในสมุด **ไม่ลดลงเมื่อส่งเงิน** จนกว่าจะมี JE ย้ายเงิน
+- "ต้องมีในลิ้นชัก" อ่านจาก `shop_tenders` (`method = CASH`) ไม่ได้อ่านจาก GL — เป็นคนละเลนส์กับยอดบัญชี และ **ไม่รวมเงินสดที่ไม่ผ่าน
+  สมุดเงินหน้าร้าน** (เช่น ค่าใช้จ่ายสาขาที่จ่ายจากลิ้นชัก, ใบขายออเดอร์ออนไลน์) ⇒ ส่วนต่างจากเรื่องพวกนี้ต้องอธิบายในช่องเหตุผล
+- รอบ = ตั้งแต่ปิดยอดที่ยังมีผลครั้งก่อน (`PENDING_CONFIRM`/`CONFIRMED`) ถึงตอนนับ · แถว `SENT_BACK` ไม่เป็นขอบรอบ ·
+  ตีกลับได้เฉพาะครั้งล่าสุดของสาขา · ผู้นับ (SALES/BM ของสาขา) ≠ ผู้ยืนยัน (OWNER/FM/BM) บังคับใน service
+- `factory:reset`: `shop_cash_closes` อยู่ใน `WIPE_TABLES`
+
+---
+
+## ค่าคอมพนักงานขายของสัญญาผ่อน BESTCHOICE (คำตัดสินเจ้าของ 2026-09-20)
+
+โค้ด: `apps/api/src/modules/contracts/services/contract-commission.util.ts` (ที่เดียว)
+
+- **กติกา = เหมือนขายสด:** อัตราจาก `CommissionRule` ที่ active ล่าสุด (ไม่มีกฎ = 3%) × ราคาขายของสัญญา (`sellingPrice` —
+  หลังส่วนลด/โบนัสเทิร์น) · `status: PENDING` · ผู้ได้ = `contract.salespersonId` ณ วันเปิดใช้ (`snapshotSalespersonId`)
+- **สร้างตอนเปิดใช้สัญญา** (`ContractWorkflowService.activate` → `ensureContractCommission`) ไม่ใช่ตอนร่าง —
+  สัญญาที่ไม่ถูกเปิดใช้ = ยังไม่ได้ขาย. เดิมสัญญาที่ทำผ่านหน้าสัญญา**ไม่มีค่าคอมเลย** (ค่าคอมเกิดได้ทางเดียวคือเส้นทางเก่า
+  `POST /sales` แบบ `INSTALLMENT` ที่สร้างตั้งแต่ตอนร่าง — **ถอดแล้ว 2026-09-20**, ดูข้อสุดท้าย) — helper ไม่สร้างซ้ำถ้าสัญญา
+  มีค่าคอมอยู่แล้ว (ร่างยุคเส้นทางเก่าที่อาจยังค้างในฐาน)
+- งวดจ่าย (`period`) คิดตามปฏิทินไทย (`bangkokDateString`) · สัญญาจากการเปลี่ยนเครื่อง (device swap) **ไม่เข้าเส้นนี้**
+- **ยกเลิกสัญญา (C-1/C-2)** → `clawbackContractCommission`: `PENDING`/`APPROVED` → `CLAWED_BACK` 100% ·
+  ที่**จ่ายไปแล้วไม่เรียกคืน** (คำตัดสินเจ้าของ) · รอบจ่าย `DRAFT` ที่นับค่าคอมนี้ถูก soft-delete ให้กดสร้างใหม่ (กติกาเดียวกับ
+  `SaleVoidService` G4b — `generatedAt = null` ถือว่าครอบ) · ตัว helper **ไม่บล็อกการยกเลิกสัญญา** แม้ค่าคอมถูกนับในรอบที่
+  `APPROVED`/`PAID` (ต่างจากยกเลิกใบขายที่บล็อก) — รอบที่ล็อกถูกบันทึกใน AuditLog `CONTRACT_CANCELED*` →
+  `newValue.commissionLockedPayoutIds` ให้เจ้าของ/ผจก.การเงินตัดสินเอง
+- **สัญญาที่ใช้เครดิตเทิร์น = กติกาเดียวกัน (คำตัดสินเจ้าของ 2026-09-20 "ปล่อยให้ยกเลิกได้เหมือนสัญญาทั่วไป"):**
+  `approveCancellation` เรียก `cleanupCreditContractSale` (`trade-in/services/credit-contract-cleanup.util.ts`) ด้วย
+  `{ commissionHandledByCaller: true }` ⇒ ด่านค่าคอมของมัน (ค่าคอม `PAID` / รอบจ่าย `APPROVED`·`PAID` → ปฏิเสธ) **ถูกข้าม** และ
+  `clawbackContractCommission` เป็นผู้จัดการค่าคอมทางเดียว. เดิม (ช่วงสั้น ๆ หลัง #1612) ด่านนั้นบล็อกสัญญาเครดิตเทิร์นทุกใบ
+  ที่ค่าคอมอยู่ในรอบจ่ายที่อนุมัติแล้ว โดยไม่มีเมนูยกเลิกรอบจ่ายให้ไปต่อ. **`ContractLifecycleService.softDelete` (ลบร่าง) ไม่ส่ง
+  option นี้** — ด่านเดิมยังคุมร่างยุคเส้นทางเก่าที่มีค่าคอมตั้งแต่ตอนร่าง. ปักที่ `e2e/credit-payment-flow.e2e-spec.ts`
+  ("cancels an activated trade-credit contract even when…" + "does not return credit when a related commission payout…")
+- **เส้นทางเก่าถอดแล้ว (2026-09-20):** `SaleWriterService.createInstallmentSale` ถูกลบ · `POST /sales` ที่ส่ง `saleType: 'INSTALLMENT'`
+  ได้ 400 (`INSTALLMENT_VIA_CONTRACT_MSG` ใน `sale-creation.service.ts` — ชี้เมนู "สัญญาผ่อนชำระ" → ปุ่ม "สร้างสัญญา") ก่อนแตะแต้ม/
+  เครดิตเทิร์น/สต๊อก · โค้ดเก็บกวาดร่างยุคเก่า (`cleanupCreditContractSale`, ตัวกรอง `contractStatus` ของ `SalesQueryService`) **คงไว้**
+  เพราะร่างแบบนั้นอาจยังค้างในฐานจริง · e2e `credit-payment-flow` เหลือเส้นทางหน้าสัญญาทางเดียว
+
+---
+
 ## ยกเลิกใบขาย (void sale — 2026-08-23)
 
 Spec: `docs/superpowers/specs/2026-08-22-void-sale-design.md` · Plan:
@@ -2612,6 +2730,11 @@ exchange เดิมที่ส่งแค่ `{ jeIds, newContractId }` ไ�
 **Restore (ใน tx เดียวกัน):** product → `IN_STOCK` + `ownedByCompanyId` = SHOP;
 soft-delete `Payment` + `InstallmentSchedule` ทุกแถว (cron/คิวเลิกเห็นสัญญา);
 cancellation → APPROVED + `reversalJournalEntryId`; contract → `CANCELED`.
+**ใบขาย `INSTALLMENT` ของสัญญา** (ที่ `activate` ออกให้) ถูกยกเลิกไปพร้อมกัน — `deletedAt` + `voidReason = 'ยกเลิกสัญญา <เลข>: <เหตุผล>'` +
+`voidedById` (คำตัดสินเจ้าของ 2026-09-20; เดิมค้างในประวัติการขาย/ยอดสรุปเหมือนขายสำเร็จ เพราะ `completedSaleWhere` ตัดเฉพาะสัญญา `DRAFT`).
+สัญญาเครดิตเทิร์นถูก `cleanupCreditContractSale` ยกเลิกใบขายไปก่อนแล้ว จึงเป็น 0 แถวที่ขั้นนี้. ลูกหนี้ไฟแนนซ์ในเครือของใบขายยุคเส้นทางเก่า
+ปิดไปด้วยเฉพาะที่ยังไม่มีเงินเข้า. AuditLog `CONTRACT_CANCELED*` เพิ่ม `newValue.voidedSaleNumbers` (เฉพาะเมื่อมี). **ไม่มี JE เพิ่ม** —
+sweep ด้านบนกลับรายการ JE ของการขายไปแล้ว ขั้นนี้แก้เฉพาะ "เอกสาร" ให้ตรงกับสมุด.
 
 **S21-2001 semantics (ตั้งใจ — ไม่ใช่บั๊ก):** หลังยกเลิกสัญญาที่มีเงินดาวน์ S21-2001 ค้าง
 **Cr downAmount** — sweep mirror JE B ของ activation (ที่เคย `Dr S21-2001` ล้างดาวน์) คืน

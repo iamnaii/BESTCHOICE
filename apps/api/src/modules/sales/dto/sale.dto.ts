@@ -1,5 +1,7 @@
-import { IsBoolean, MaxLength, IsUUID, IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max } from 'class-validator';
+import { IsBoolean, MaxLength, IsUUID, IsString, IsOptional, IsNumber, IsEnum, IsIn, IsArray, IsInt, Min, Max, ArrayMaxSize, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { TenderInputDto } from '../../shop-tenders/dto/tender-input.dto';
+import { MAX_TENDERS } from '../../shop-tenders/shop-tender.util';
 
 export class CreateSaleDto {
   @IsOptional() @IsBoolean() overrideActiveContractCheck?: boolean;
@@ -62,6 +64,17 @@ export class CreateSaleDto {
   @Type(() => Number)
   amountReceived?: number;
 
+  /**
+   * ช่องรับเงิน (สเปค 2026-09-20-shop-tenders-daily-cash): บิลเดียวจ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง.
+   * ไม่ส่ง = caller แบบเดิม → ระบบสร้างบรรทัดเดียวจาก paymentMethod (+downPaymentReference) แล้วผ่านกติกาเดียวกัน.
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_TENDERS)
+  @ValidateNested({ each: true })
+  @Type(() => TenderInputDto)
+  tenders?: TenderInputDto[];
+
   // Down payment (for INSTALLMENT and EXTERNAL_FINANCE)
   @IsNumber({}, { message: 'กรุณาระบุเงินดาวน์' })
   @IsOptional()
@@ -110,7 +123,7 @@ export class CreateSaleDto {
   @Type(() => Number)
   financeAmount?: number;
 
-  // Bundle / freebie product IDs
+  // Bundle / freebie product IDs — หมวดอุปกรณ์เสริมเท่านั้น (ตรวจใน SaleWriterService.markBundleProductsSold)
   @IsArray({ message: 'กรุณาระบุรายการสินค้าแถม' })
   @IsString({ each: true, message: 'รหัสสินค้าแถมต้องเป็นข้อความ' })
   @IsOptional()

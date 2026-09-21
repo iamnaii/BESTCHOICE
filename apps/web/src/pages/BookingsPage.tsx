@@ -34,6 +34,8 @@ import {
 import BookingProductPicker from '@/components/bookings/BookingProductPicker';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import { TenderInput, useTenders } from '@/components/tender/TenderInput';
+import type { TenderRow } from '@/components/tender/tender-utils';
 import {
   CalendarDays,
   Plus,
@@ -168,23 +170,13 @@ function useBookingClock() {
   return now;
 }
 
-function ReceiptMethodSelect({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <div className="space-y-2"><Label>{label}</Label>
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger aria-label={label}><SelectValue placeholder="เลือกวิธีรับเงิน" /></SelectTrigger>
-      <SelectContent>
-        <SelectItem value="CASH">เงินสด</SelectItem>
-        <SelectItem value="BANK_TRANSFER">โอนธนาคาร</SelectItem>
-        <SelectItem value="QR_EWALLET">QR / e-Wallet</SelectItem>
-      </SelectContent>
-    </Select>
-  </div>;
-}
-
-function ReceiptAccount({ branch, method }: { branch: Booking['branch']; method: string }) {
-  return <p className="text-xs text-muted-foreground">รับเข้าบัญชี SHOP · {method === 'CASH'
-    ? `เงินสด ${branch.name} (${branch.shopCashAccountCode || 'ยังไม่ได้ตั้งบัญชีเงินสดสาขา'})`
-    : 'ธนาคารรับเงิน (S11-1201)'}</p>;
+/** บอกว่าเงินแต่ละวิธีของบิลนี้ลงบัญชีไหน — เงินสดเข้าลิ้นชักสาขา โอน/QR เข้าธนาคารรับเงินของร้าน */
+function ReceiptAccounts({ branch, rows }: { branch: Booking['branch']; rows: TenderRow[] }) {
+  const cash = rows.some((r) => r.method === 'CASH');
+  const bank = rows.some((r) => r.method !== 'CASH');
+  return <p className="text-xs text-muted-foreground leading-snug">รับเข้าบัญชี SHOP ·{' '}
+    {[cash && `เงินสด ${branch.name} (${branch.shopCashAccountCode || 'ยังไม่ได้ตั้งบัญชีเงินสดสาขา'})`,
+      bank && 'ธนาคารรับเงิน (S11-1201)'].filter(Boolean).join(' · ')}</p>;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -694,11 +686,9 @@ function BookingDetailDialog({
     },
   });
 
-  const [depositMethod, setDepositMethod] = useState('CASH');
   const { user } = useAuth();
   const now = useBookingClock();
   const [editOpen, setEditOpen] = useState(false);
-  const [balanceMethod, setBalanceMethod] = useState('');
   const [damageAcknowledged, setDamageAcknowledged] = useState(false);
   const expired = !!booking && awaitingExpiry(booking, now);
   const conversionBlocked = !!booking && (booking.items.length !== 1 || !booking.items[0]?.productId || booking.items[0]?.quantity !== 1);
@@ -713,11 +703,16 @@ function BookingDetailDialog({
   const outstandingBalance = booking
     ? Number(booking.totalAmount) - Number(booking.depositAmount)
     : 0;
+  // ช่องรับเงิน (จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง): มัดจำ และส่วนที่เหลือตอนแปลงเป็นใบขาย
+  const depositTenders = useTenders(booking ? Number(booking.depositAmount) : 0);
+  const balanceTenders = useTenders(isPartialDeposit ? outstandingBalance : 0);
+  const usesCash = (rows: TenderRow[]) => rows.some((r) => r.method === 'CASH');
 
   const payMut = useMutation({
     mutationFn: () =>
       api.post(`/bookings/${bookingId}/pay-deposit`, {
-        depositMethod,
+        depositMethod: depositTenders.payload[0]?.method ?? 'CASH',
+        tenders: depositTenders.payload,
       }),
     onSuccess: () => {
       toast.success('บันทึกการรับมัดจำแล้ว');
@@ -744,7 +739,8 @@ function BookingDetailDialog({
         saleType: 'CASH',
         // Only relevant on partial-deposit bookings; backend ignores otherwise.
         collectBalance: isPartialDeposit ? collectBalance : undefined,
-        paymentMethod: isPartialDeposit ? balanceMethod : undefined,
+        paymentMethod: isPartialDeposit ? balanceTenders.payload[0]?.method : undefined,
+        tenders: isPartialDeposit ? balanceTenders.payload : undefined,
         previouslyDamagedAcknowledged: damageAcknowledged || undefined,
       }),
     onSuccess: () => {
@@ -877,8 +873,9 @@ function BookingDetailDialog({
 
             {canMutate && booking.status === 'PENDING_DEPOSIT' && !expired && (
               <div className="space-y-3 rounded-md border border-border bg-muted/20 p-3">
-                <ReceiptMethodSelect label="วิธีรับมัดจำ" value={depositMethod} onChange={setDepositMethod} />
-                <ReceiptAccount branch={booking.branch} method={depositMethod} />
+                <TenderInput due={Number(booking.depositAmount)} value={depositTenders.rows} onChange={depositTenders.setRows}
+                  dueLabel="มัดจำที่ต้องรับ" disabled={mutationPending} />
+                <ReceiptAccounts branch={booking.branch} rows={depositTenders.rows} />
               </div>
             )}
 
@@ -897,8 +894,9 @@ function BookingDetailDialog({
                     </span>{' '}
                     บาท
                   </div>
-                  <ReceiptMethodSelect label="วิธีรับส่วนต่าง" value={balanceMethod} onChange={setBalanceMethod} />
-                  {balanceMethod && <ReceiptAccount branch={booking.branch} method={balanceMethod} />}
+                  <TenderInput due={outstandingBalance} value={balanceTenders.rows} onChange={balanceTenders.setRows}
+                    dueLabel="ส่วนต่างที่ต้องรับ" disabled={mutationPending} />
+                  <ReceiptAccounts branch={booking.branch} rows={balanceTenders.rows} />
                   <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border bg-background p-2">
                     <Checkbox
                       checked={collectBalance}
@@ -940,7 +938,7 @@ function BookingDetailDialog({
           {canMutate && booking?.status === 'PENDING_DEPOSIT' && !expired && !isError && (
             <Button
               onClick={() => payMut.mutate()}
-              disabled={mutationPending || (depositMethod === 'CASH' && !booking.branch.shopCashAccountCode)}
+              disabled={mutationPending || !depositTenders.status.ready || (usesCash(depositTenders.rows) && !booking.branch.shopCashAccountCode)}
               className="gap-2"
             >
               <HandCoins className="h-4 w-4" /> บันทึกรับมัดจำ
@@ -961,7 +959,7 @@ function BookingDetailDialog({
             <Button
               onClick={() => convertMut.mutate()}
               disabled={
-                mutationPending || conversionBlocked || (isPartialDeposit && (!collectBalance || !balanceMethod || (balanceMethod === 'CASH' && !booking.branch.shopCashAccountCode)))
+                mutationPending || conversionBlocked || (isPartialDeposit && (!collectBalance || !balanceTenders.status.ready || (usesCash(balanceTenders.rows) && !booking.branch.shopCashAccountCode)))
               }
               className="gap-2"
               title={

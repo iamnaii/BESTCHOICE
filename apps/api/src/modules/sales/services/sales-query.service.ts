@@ -20,6 +20,13 @@ const completedSaleWhere: Prisma.SaleWhereInput = {
  * Read-side of SalesService — pure queries with role-dependent response shaping
  * All reads are actor-scoped, including detail, summaries and POS suggestions.
  */
+/** เงินที่รับจริงของใบขาย (บิลจ่ายผสม = หลายแถว) — หน้าจอใช้แสดง "เงินสด + โอน" แทนวิธีเดียวใน `paymentMethod` */
+const SALE_TENDERS_SELECT = {
+  where: { direction: 'IN' },
+  select: { method: true, amount: true, reference: true, seq: true },
+  orderBy: { seq: 'asc' },
+} as const;
+
 export class SalesQueryService {
   constructor(private prisma: PrismaService) {}
 
@@ -72,6 +79,7 @@ export class SalesQueryService {
           // ชื่อผู้ยกเลิก — หน้ารายการแสดงบนแถวที่ถูกยกเลิกเมื่อเปิด includeVoided
           // (deletedAt / voidReason เป็น scalar มากับ include อยู่แล้ว)
           voidedBy: { select: { id: true, name: true } },
+          shopTenders: SALE_TENDERS_SELECT,
         },
       }),
       db.sale.count({ where }),
@@ -152,6 +160,7 @@ export class SalesQueryService {
         branch: { select: { id: true, name: true } },
         salesperson: { select: { id: true, name: true } },
         voidedBy: { select: { id: true, name: true } },
+        shopTenders: SALE_TENDERS_SELECT,
         // Contract snapshots include private customer data; follow the contract
         // link through its own authorized endpoint for anything beyond this summary.
         contract: { select: CONTRACT_SALE_SELECT },

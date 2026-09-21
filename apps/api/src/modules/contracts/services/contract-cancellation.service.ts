@@ -9,6 +9,8 @@ import { ContractCancellationTemplate } from '../../journal/cpa-templates/contra
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { shopCollectTypedBalance } from '../../interco-settlement/interco-typed-balance';
 import { reopenRepossessionOnUnsale } from '../../repossessions/repossession-resale.util';
+import { restoreContractBundles } from './contract-bundle.util';
+import { clawbackContractCommission } from './contract-commission.util';
 
 /**
  * ContractCancellationService — contract-cancellation workflow:
@@ -194,6 +196,8 @@ export class ContractCancellationService {
           creditBalance: true,
           rescheduleAdvanceBalance: true,
           tradeInCreditSnapshot: true,
+          bundleProductIds: true,
+          contractNumber: true,
         },
       });
       if (contract.status !== 'ACTIVE') {
@@ -284,7 +288,8 @@ export class ContractCancellationService {
         tx,
       );
 
-      await cleanupCreditContractSale(tx, contract, approverId, 'ยกเลิกสัญญาใช้เครดิตเทิร์น');
+      // ค่าคอมเป็นหน้าที่ของ clawbackContractCommission ด้านล่าง (ไม่บล็อก — คำตัดสินเจ้าของ 2026-09-20)
+      await cleanupCreditContractSale(tx, contract, approverId, 'ยกเลิกสัญญาใช้เครดิตเทิร์น', { commissionHandledByCaller: true });
       await new TradeInCreditService(this.prisma).release(tx, contract.tradeInCreditSnapshot,
         { contractId: contract.id }, approverId, 'ยกเลิกสัญญา');
 
@@ -311,6 +316,28 @@ export class ContractCancellationService {
       // เครื่องยึดที่ถูกขายผ่อนใหม่แล้วสัญญาใหม่ถูกยกเลิก → เปิดรายการยึดกลับเป็น "พร้อมขาย"
       // (คู่ของ closeRepossessionOnSale ตอน activate — 2026-09-05). เครื่องปกติ = 0 แถว
       await reopenRepossessionOnUnsale(tx, [contract.productId]);
+      // ของแถมของสัญญา: sweep ข้างบนกลับรายการต้นทุนของแถมในสมุดแล้ว (อยู่ใน JE เดียวกับ COGS เครื่องหลัก)
+      // ⇒ สถานะสินค้าต้องตามให้ตรง. ชิ้นที่คืนไม่ได้ถูกบันทึกใน AuditLog ด้านล่าง ไม่บล็อกการยกเลิก
+      const bundleRestore = await restoreContractBundles(tx, contract.bundleProductIds ?? []);
+      // ค่าคอมพนักงานขายของสัญญา: เรียกคืนเฉพาะที่ยังไม่จ่าย (เจ้าของเคาะ 2026-09-20) — ไม่บล็อกการยกเลิก
+      const commissionClawback = await clawbackContractCommission(tx, {
+        contractId: contract.id, contractNumber: contract.contractNumber, reason: cancellation.reason, now });
+      // ใบขาย INSTALLMENT ที่ activate ออกให้: สัญญาถูกยกเลิก = การขายไม่เกิดขึ้น ⇒ ต้องออกจากประวัติการขาย/ยอดสรุป
+      // (คำตัดสินเจ้าของ 2026-09-20). สัญญาเครดิตเทิร์นถูก cleanupCreditContractSale ยกเลิกไปแล้วข้างบน = 0 แถวตรงนี้.
+      // ลูกหนี้ไฟแนนซ์ในเครือของใบขายยุคเส้นทางเก่า (ถ้ายังไม่มีเงินเข้า) ปิดไปพร้อมกัน — ที่รับเงินแล้วไม่แตะ
+      const liveSales = await tx.sale.findMany({ where: { contractId: contract.id, deletedAt: null }, select: { id: true, saleNumber: true } });
+      if (liveSales.length) {
+        const liveSaleIds = liveSales.map((sale) => sale.id);
+        await tx.financeReceivable.updateMany({
+          where: { saleId: { in: liveSaleIds }, deletedAt: null, status: { notIn: ['RECEIVED', 'PARTIALLY_RECEIVED'] },
+            OR: [{ receivedAmount: null }, { receivedAmount: 0 }] },
+          data: { deletedAt: now },
+        });
+        await tx.sale.updateMany({
+          where: { id: { in: liveSaleIds } },
+          data: { deletedAt: now, voidReason: `ยกเลิกสัญญา ${contract.contractNumber}: ${cancellation.reason}`, voidedById: approverId },
+        });
+      }
       await tx.payment.updateMany({
         where: { contractId: contract.id, deletedAt: null },
         data: { deletedAt: now },
@@ -355,6 +382,19 @@ export class ContractCancellationService {
             reversalCount: jeResult.reversalJeIds.length,
             reversalJeIds: jeResult.reversalJeIds,
             refundAmount: cancellation.refundAmount.toString(),
+            // ของแถมของสัญญา — เขียนเฉพาะเมื่อสัญญามีของแถม (สัญญาเดิมได้ payload รูปเดิมทุกไบต์)
+            ...(bundleRestore.restoredIds.length || bundleRestore.skippedIds.length
+              ? { bundlesRestored: bundleRestore.restoredIds, bundlesNotRestored: bundleRestore.skippedIds }
+              : {}),
+            // ค่าคอม — เขียนเฉพาะเมื่อสัญญามีค่าคอม · lockedPayoutIds = รอบจ่ายที่อนุมัติ/จ่ายแล้วและนับค่าคอมนี้
+            // (ยอดของรอบนั้นไม่ถูกแก้ ต้องให้เจ้าของ/ผจก.การเงินตัดสิน)
+            ...(commissionClawback.clawedBackIds.length || commissionClawback.keptPaidIds.length
+              ? { commissionClawedBackIds: commissionClawback.clawedBackIds, commissionKeptPaidIds: commissionClawback.keptPaidIds,
+                  commissionDraftPayoutsVoided: commissionClawback.voidedDraftPayoutIds,
+                  commissionLockedPayoutIds: commissionClawback.lockedPayoutIds }
+              : {}),
+            // ใบขายผ่อนของสัญญาที่ถูกยกเลิกไปพร้อมกัน — เขียนเฉพาะเมื่อมี (สัญญาเครดิตเทิร์นถูก cleanup ยกเลิกไปก่อนแล้ว)
+            ...(liveSales.length ? { voidedSaleNumbers: liveSales.map((sale) => sale.saleNumber) } : {}),
             // C-2: recallAmount = net เงินสดที่ FINANCE โอนจริง (settled gross −
             // deductions ที่รอบหักไว้) — นิยามเดียวกับ exchange audit / list API /
             // recall queue; settledTotal (gross) เก็บคู่กันไว้ตรวจย้อน redirect

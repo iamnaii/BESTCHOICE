@@ -61,7 +61,8 @@ export type SaleType = 'CASH' | 'INSTALLMENT' | 'EXTERNAL_FINANCE';
 export const saleTypeConfig: Record<SaleType, { label: string; color: string; bg: string }> = {
   CASH: { label: 'เงินสด', color: 'text-success', bg: 'bg-success/10 border-success/30 ring-success' },
   INSTALLMENT: { label: 'ผ่อนกับ BESTCHOICE', color: 'text-primary', bg: 'bg-primary/10 border-primary/30 ring-primary' },
-  EXTERNAL_FINANCE: { label: 'ผ่อนไฟแนนซ์', color: 'text-primary', bg: 'bg-primary/10 border-primary/30 ring-primary' },
+  // "ไฟแนนซ์นอก" ไม่ใช่ "ผ่อนไฟแนนซ์" — ร้านเรียกผ่อนในเครือว่า "ไฟแนนซ์ BESTCHOICE" ชื่อเดิมจึงชวนกดผิดช่อง (เจ้าของเคาะ 2026-09-20)
+  EXTERNAL_FINANCE: { label: 'ไฟแนนซ์นอก', color: 'text-primary', bg: 'bg-primary/10 border-primary/30 ring-primary' },
 };
 
 // --- Plan Type (single type: STORE_DIRECT) ---

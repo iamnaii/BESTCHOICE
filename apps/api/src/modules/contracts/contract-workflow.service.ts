@@ -18,6 +18,8 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-activation-1a.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { resolveStoreCommission } from '../../utils/store-commission.util';
+import { normalizeBundleIds, sellContractBundles } from './services/contract-bundle.util';
+import { ensureContractCommission } from './services/contract-commission.util';
 import { loadInstallmentConfig } from '../../utils/config.util';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
@@ -486,6 +488,10 @@ export class ContractWorkflowService {
         },
       });
       await tx.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } });
+      // ของแถมของสัญญา (จองไว้ตั้งแต่ตอนสร้าง) → ตัดสต๊อกพร้อมเครื่องหลัก. อ่านจากแถวใน tx (`current`)
+      // ไม่ใช่ snapshot นอก tx — การแก้ของแถมที่ commit คั่นกลางต้องถูกเห็น. สัญญาจากเปลี่ยนเครื่อง = [] เสมอ
+      const contractBundleIds = normalizeBundleIds(current.bundleProductIds);
+      await sellContractBundles(tx, contractBundleIds);
       // เครื่องยึดที่ถูกนำกลับเข้าคลังแล้วขายผ่อนใหม่ → ปิดรายการยึดเป็น SOLD พร้อมราคาขายจริง
       // (คู่ของ POS ใน SaleWriterService; ยกเลิกสัญญา C-1 เปิดกลับ — 2026-09-05). เครื่องปกติ = 0 แถว
       await closeRepossessionOnSale(tx, {
@@ -533,9 +539,10 @@ export class ContractWorkflowService {
       } else {
         // Standard activation flow — auto-create Sale record + post 1A JE.
         const existingSale = await tx.sale.findFirst({ where: { contractId: contract.id, deletedAt: null } });
+        let contractSaleId = existingSale?.id;
         if (!existingSale) {
         const saleNumber = await generateSaleNumber(tx);
-        await tx.sale.create({
+        const createdSale = await tx.sale.create({
           data: {
             saleNumber,
             saleType: 'INSTALLMENT',
@@ -552,10 +559,12 @@ export class ContractWorkflowService {
             amountReceived: cashDownPayment(contract),
             downPaymentAmount: contract.downPayment,
             contractId: contract.id,
-            bundleProductIds: [],
+            // ของแถมผูกกับใบขาย — ขาต้นทุนด้านล่าง (saleForBundles → bundleCosts) อ่านจากตรงนี้
+            bundleProductIds: contractBundleIds,
             notes: `สร้างอัตโนมัติจากสัญญา ${contract.contractNumber}`,
           },
         });
+        contractSaleId = createdSale.id;
         }
 
         if (existingSale) {
@@ -567,7 +576,18 @@ export class ContractWorkflowService {
             downPaymentAmount: contract.downPayment, amountReceived: cashDownPayment(contract),
             ...(contract.downPaymentMethod ? { paymentMethod: contract.downPaymentMethod } : {}),
             tradeInCreditSnapshot: contract.tradeInCreditSnapshot ?? undefined,
+            // ใบขายจากเส้นทางเก่า (POST /sales) ถือของแถมของตัวเองอยู่แล้ว — รวมของแถมฝั่งสัญญาเข้าไปไม่ให้ตกหล่น
+            ...(contractBundleIds.length
+              ? { bundleProductIds: Array.from(new Set([...(existingSale.bundleProductIds ?? []), ...contractBundleIds])) }
+              : {}),
           } });
+        }
+
+        // ค่าคอมพนักงานขาย — เจ้าของเคาะ 2026-09-20: เหมือนขายสด ตั้งตอนเปิดใช้สัญญา
+        // (สัญญาจากเส้นทางเก่ามีค่าคอมตั้งแต่ตอนร่างแล้ว ⇒ helper ไม่สร้างซ้ำ)
+        if (contractSaleId) {
+          await ensureContractCommission(tx, { contractId: contract.id, saleId: contractSaleId,
+            salespersonId: contract.salespersonId, netAmount: new Decimal(contract.sellingPrice.toString()) });
         }
 
         // Auto journal entry — record contract activation (HP receivable).

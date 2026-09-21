@@ -112,6 +112,10 @@ export class ContractsService {
     return this.lifecycle.update(id, dto, userId);
   }
 
+  updateBundles(id: string, bundleProductIds: string[], actor: { id: string; role: string; branchId?: string | null }) {
+    return this.lifecycle.updateBundles(id, bundleProductIds, actor);
+  }
+
   softDelete(id: string, userId: string) {
     return this.lifecycle.softDelete(id, userId);
   }

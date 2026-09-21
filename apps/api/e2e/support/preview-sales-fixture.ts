@@ -37,7 +37,11 @@ export async function seedPreviewSales(db: PrismaService, actor: { id: string; r
     expireDate: new Date(Date.now() + 7 * 86400000).toISOString(), notes: note,
     items: [{ productId: product.id, description: product.name, quantity: 1, unitPrice: 10000 }] }, actor.id, actor);
   if (booking.status === 'PENDING_DEPOSIT') await service.payDeposit(booking.id, { depositMethod: 'CASH' }, actor);
-  const result = await service.convertToSale(booking.id, { collectBalance: true, paymentMethod: 'BANK_TRANSFER' }, actor.id, actor);
+  // กติกาช่องรับเงิน (2026-09-20): โอนต้องมีเลขอ้างอิงจากสลิป — paymentMethod แบบเดิมไม่มีช่องเลขอ้างอิง จึงส่งเป็น tender เดียว
+  // เท่ายอดส่วนที่เหลือพอดี (ยอดรวม 10,000 − มัดจำ 1,000 = 9,000; อ่านจากใบจองเพื่อรองรับใบที่ seed ค้างไว้จากรอบก่อน)
+  const balance = booking.totalAmount.minus(booking.depositAmount).toNumber();
+  const result = await service.convertToSale(booking.id, { collectBalance: true,
+    tenders: [{ method: 'BANK_TRANSFER', amount: balance, reference: `${TEST_DOC_PREFIX}REF-BOOKING-0001` }] }, actor.id, actor);
   return { bookingId: booking.id, saleId: result.sale.id };
 }
 

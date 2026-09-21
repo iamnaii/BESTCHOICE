@@ -98,6 +98,12 @@ describe('TradeInService', () => {
       // B0 §2.1: autofill hook (trade-in accept/quickBuy) queries pricingTemplate —
       // empty means NO_TEMPLATE, returns before touching product.update/systemConfig.
       pricingTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+      // สมุดเงินหน้าร้าน (shop_tenders): accept() ทาง BUYBACK ที่ราคา > 0 เขียนแถวเงินออก TRADE_IN_PAYOUT
+      // ผ่าน ShopTenderRecorder.recordPayout (สร้าง inline — ใช้ tx ตัวเดียวกับใบรับซื้อ)
+      shopTender: {
+        createMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       auditLog: {
         create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
       },

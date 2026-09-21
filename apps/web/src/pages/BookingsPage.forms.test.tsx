@@ -54,27 +54,34 @@ describe('Booking forms and actionable states', () => {
   it('requires a balance method and confirmation, then submits the selected tender', async () => {
     await detail(); const convert = screen.getByRole('button', { name: /รับส่วนต่างและขาย|ขายโดยใช้มัดจำที่รับแล้ว/ });
     expect(convert).toBeDisabled();
-    await choose('วิธีรับส่วนต่าง', 'โอนธนาคาร');
-    expect(convert).toBeDisabled();
+    // ช่องรับเงินกลาง: โอน/QR บังคับเลขอ้างอิง (เจ้าของเคาะ 2026-09-20) — ติ๊กยืนยันแล้วแต่ยังไม่มีเลขอ้างอิง = ยังกดไม่ได้
+    await userEvent.selectOptions(screen.getByLabelText('วิธีรับเงิน'), 'BANK_TRANSFER');
     await userEvent.click(screen.getByRole('checkbox', { name: 'ยืนยันว่าได้รับยอดส่วนต่างครบแล้ว' }));
+    expect(convert).toBeDisabled();
+    await userEvent.type(screen.getByLabelText(/เลขอ้างอิงการโอน/), 'SYNTHETIC-REF');
     await userEvent.click(convert);
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/bookings/bk-1/convert', expect.objectContaining({
       collectBalance: true, paymentMethod: 'BANK_TRANSFER', saleType: 'CASH',
+      tenders: [{ method: 'BANK_TRANSFER', amount: 9000, reference: 'SYNTHETIC-REF' }],
     })));
   });
   it('does not request imaginary additional payment for a fully prepaid booking', async () => {
     mocks.booking.depositAmount = '10000'; await detail();
-    expect(screen.queryByRole('combobox', { name: 'วิธีรับส่วนต่าง' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('วิธีรับเงิน')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /รับส่วนต่างและขาย|ขายโดยใช้มัดจำที่รับแล้ว/ }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/bookings/bk-1/convert', expect.objectContaining({ paymentMethod: undefined, collectBalance: undefined })));
   });
   it('uses a read-only SHOP destination and omits the old FINANCE account input', async () => {
     Object.assign(mocks.booking, { status: 'PENDING_DEPOSIT', depositPaidAt: null }); await detail();
     expect(screen.getByText(/รับเข้าบัญชี SHOP/)).toHaveTextContent('S11-1101');
-    await choose('วิธีรับมัดจำ', 'โอนธนาคาร');
+    await userEvent.selectOptions(screen.getByLabelText('วิธีรับเงิน'), 'BANK_TRANSFER');
     expect(screen.getByText(/รับเข้าบัญชี SHOP/)).toHaveTextContent('S11-1201');
+    expect(screen.getByRole('button', { name: 'บันทึกรับมัดจำ' })).toBeDisabled(); // ยังไม่มีเลขอ้างอิง
+    await userEvent.type(screen.getByLabelText(/เลขอ้างอิงการโอน/), 'SYNTHETIC-REF');
     await userEvent.click(screen.getByRole('button', { name: 'บันทึกรับมัดจำ' }));
-    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/bookings/bk-1/pay-deposit', { depositMethod: 'BANK_TRANSFER' }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/bookings/bk-1/pay-deposit', {
+      depositMethod: 'BANK_TRANSFER', tenders: [{ method: 'BANK_TRANSFER', amount: 1000, reference: 'SYNTHETIC-REF' }],
+    }));
   });
   it('blocks a legacy booking whose additional items would be discarded', async () => {
     mocks.booking.items = [{ id: 'i1', description: 'รายการเดิม', quantity: 2, productId: 'p1', unitPrice: 5000, amount: 10000 }];

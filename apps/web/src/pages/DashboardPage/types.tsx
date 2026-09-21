@@ -1,10 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import {
-  AlertTriangle,
-  Package,
-  FileCheck,
-  ImageIcon,
-} from 'lucide-react';
+import { AlertTriangle, Package, FileCheck, ImageIcon, Banknote } from 'lucide-react';
 
 /* ─── Types ─── */
 
@@ -211,6 +206,8 @@ export const alertIconMap: Record<string, LucideIcon> = {
   low_stock: Package,
   pending_contracts: FileCheck,
   payment_mismatch: ImageIcon,
+  cash_close_missed: Banknote,
+  cash_close_awaiting: Banknote,
 };
 
 export const alertSeverityStyles = {

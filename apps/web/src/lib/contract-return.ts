@@ -8,6 +8,10 @@ export function contractReturnUrl(value: string | null): string | null {
     const id = url.searchParams.get(key);
     if (id && /^[\w-]{1,128}$/.test(id)) params.set(key, id);
   }
+  // ของแถมที่เลือกไว้ใน POS — รายการ id คั่นจุลภาค · id ผิดรูปถูกทิ้งทีละตัว · สูงสุด 10 ชิ้น (เพดานเดียวกับ API)
+  const bundleIds = (url.searchParams.get('bundleProductIds') ?? '').split(',')
+    .filter(id => /^[\w-]{1,128}$/.test(id)).slice(0, 10);
+  if (bundleIds.length) params.set('bundleProductIds', bundleIds.join(','));
   for (const key of ['downAmount', 'months']) {
     const raw = url.searchParams.get(key);
     const number = Number(raw);

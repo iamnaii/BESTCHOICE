@@ -162,6 +162,9 @@ describe('ContractWorkflowService', () => {
         // ดึงของแถมมาตัดสต็อกตอน activate — ค่าเริ่มต้น = ไม่มีของแถม
         findMany: jest.fn().mockResolvedValue([]),
       },
+      // ค่าคอมพนักงานขายถูกสร้างตอนเปิดใช้สัญญา (2026-09-20) — ค่าเริ่มต้น = ยังไม่มีค่าคอม + ไม่มีกฎ (fallback 3%)
+      salesCommission: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'cm-1' }) },
+      commissionRule: { findFirst: jest.fn().mockResolvedValue(null) },
       sale: {
         update: jest.fn().mockResolvedValue({}),
         create: jest.fn().mockResolvedValue({ id: 'sale-1' }),

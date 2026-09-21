@@ -3,7 +3,7 @@
  * เครื่อง TEST- ↔ ลูกค้าทดสอบ เท่านั้น / เครื่องจริง ↔ ลูกค้าจริง เท่านั้น — ตรวจทุกชิ้นในใบ
  */
 import { BadRequestException } from '@nestjs/common';
-import { SaleCreationService } from './sale-creation.service';
+import { INSTALLMENT_VIA_CONTRACT_MSG, SaleCreationService } from './sale-creation.service';
 import { TEST_CUSTOMER_ADDRESS } from '../../../utils/test-data-markers';
 
 const realCustomer = {
@@ -51,7 +51,6 @@ function makeService(customer: unknown, products: unknown[]) {
   };
   const writer = {
     createCashSale: jest.fn().mockResolvedValue({ id: 'sale-1' }),
-    createInstallmentSale: jest.fn().mockResolvedValue({ id: 'sale-2', contractId: 'c-1' }),
     createExternalFinanceSale: jest.fn().mockResolvedValue({ id: 'sale-3' }),
   };
   const service = new SaleCreationService(
@@ -118,13 +117,25 @@ describe('SaleCreationService.create — test-data fence', () => {
   });
 });
 
+describe('SaleCreationService.create — ขายผ่อนในเครือทำผ่านหน้าสัญญาทางเดียว (2026-09-20)', () => {
+  it('INSTALLMENT → BadRequest ชี้ไปปุ่ม "สร้างสัญญา" ก่อนแตะลูกค้า/สินค้า/writer ใด ๆ', async () => {
+    const { service, writer, prisma } = makeService(realCustomer, [realProduct]);
+    await expect(
+      service.create({ ...baseDto, saleType: 'INSTALLMENT' } as never, 'sp-1', 'OWNER'),
+    ).rejects.toThrow(INSTALLMENT_VIA_CONTRACT_MSG);
+    expect(prisma.customer.findFirst).not.toHaveBeenCalled();
+    expect(prisma.product.findMany).not.toHaveBeenCalled();
+    expect(writer.createCashSale).not.toHaveBeenCalled();
+    expect(writer.createExternalFinanceSale).not.toHaveBeenCalled();
+  });
+});
+
 describe('SaleCreationService.create — ด่านเบอร์ (spec 2026-09-13-chat-prospects)', () => {
   // A12: ข้อความแยกตาม isChatPlaceholder ⇒ ผู้สนใจต้องมีที่มา CHAT_* และไม่มีเลขบัตร (และ select ต้องโหลดสองคีย์นี้มาด้วย)
   const chatProspect = { ...realCustomer, name: 'Facebook #a1b2', phone: null, nationalId: null, acquisitionSource: 'CHAT_FACEBOOK' };
 
   it.each([
     ['CASH', 'createCashSale'],
-    ['INSTALLMENT', 'createInstallmentSale'],
     ['EXTERNAL_FINANCE', 'createExternalFinanceSale'],
   ] as const)('%s กับผู้สนใจที่ยังไม่มีเบอร์ → BadRequest ก่อนถึง writer', async (saleType, writerMethod) => {
     const { service, writer } = makeService(chatProspect, [realProduct]);

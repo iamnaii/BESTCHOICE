@@ -209,6 +209,16 @@ describe('ContractsService', () => {
 
     prisma = {
       $queryRaw: jest.fn().mockResolvedValue([]),
+      // ค่าคอมพนักงานขาย: สร้างตอนเปิดใช้สัญญา / เรียกคืนตอนยกเลิกสัญญา (2026-09-20) — ค่าเริ่มต้น = ไม่มีค่าคอม
+      salesCommission: {
+        findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'cm-1' }),
+        findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      commissionRule: { findFirst: jest.fn().mockResolvedValue(null) },
+      commissionPayout: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // approveCancellation voids the contract's live INSTALLMENT sale rows (2026-09-20) — default = none
+      sale: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      financeReceivable: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
         // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
@@ -264,6 +274,18 @@ describe('ContractsService', () => {
       },
       journalEntry: {
         findFirst: jest.fn().mockResolvedValue(null),
+      },
+      // สมุดเงินหน้าร้าน (shop_tenders, 2026-09-20): create() ที่มีเงินดาวน์เขียนแถว IN ผ่าน ShopTenderRecorder
+      // (สร้าง inline ใน ContractLifecycleService — ใช้ tx ตัวเดียวกับสัญญา) · softDelete อ่านแถว IN เพื่อเขียนแถวคืนเงิน.
+      // recorder ใช้ ShopAccountResolver ตัวจริงของมันเอง (ไม่ใช่ mock ที่ inject ให้ service) ⇒ tender เงินสดอ่าน
+      // ลิ้นชักของสาขา (select shopCashAccountCode) จาก tx; ผู้อ่าน branch รายอื่นได้ null ตามเดิม
+      shopTender: {
+        createMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      branch: {
+        findUnique: jest.fn(async (args: { select?: { shopCashAccountCode?: boolean } }) =>
+          args?.select?.shopCashAccountCode ? { shopCashAccountCode: 'S11-1102' } : null),
       },
       $transaction: makeTxMock(),
     };

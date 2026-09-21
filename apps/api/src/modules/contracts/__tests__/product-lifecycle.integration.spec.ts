@@ -107,7 +107,6 @@ const salesService = new SalesService(
   // ประกันทาง LINE เป็น fire-and-forget หลัง commit — ไฟล์นี้ไม่ตรวจการส่ง
   // ใส่ตัวปลอมที่ไม่ทำอะไร กันไม่ให้ยิงออกเน็ตจริงตอนรันเทสต์
   { notify: async () => {} } as never,
-  new ShopDownPaymentTemplate(journal, prisma as never, companyResolver),
 );
 
 // เปลี่ยนเครื่องโหมด MEMO: ไม่มี JE เลย (workbook Case 1) — เทมเพลตทั้ง 5 + SHOP legs
@@ -332,6 +331,9 @@ function posCashSale(customerId: string, productId: string, sellingPrice: number
       branchId,
       sellingPrice,
       paymentMethod: 'BANK_TRANSFER',
+      // กติกาช่องรับเงิน (2026-09-20): โอน/QR บังคับเลขอ้างอิงจากสลิป — caller แบบเดิมส่งผ่าน downPaymentReference.
+      // ไม่ซ้ำกันต่อใบขาย: รายงานสรุปเงินหน้าร้านติดธง "เลขอ้างอิงซ้ำ" ข้ามเอกสารแบบไม่จำกัดวัน
+      downPaymentReference: `${PREFIX}REF-${RUN}-${productId.slice(0, 8)}`,
       amountReceived: sellingPrice,
     } as never,
     adminId,
@@ -461,6 +463,12 @@ describe('State diagram ของเครื่อง — flow จริงบ�
       // sale_cost_snapshots FK-references sales (ON DELETE RESTRICT) — clear it first, or this afterAll
       // aborts here and the credit approvals / contracts below survive into every later spec's cleanup.
       await prisma.saleCostSnapshot.deleteMany({ where: { saleId: { in: saleIds } } });
+      // Preserve upstream tender cleanup before sale IDs are lost to SET NULL.
+      await prisma.shopTender.deleteMany({
+        where: {
+          OR: [{ saleId: { in: saleIds } }, { branchId: { in: [branchId].filter(Boolean) } }],
+        },
+      });
       await prisma.sale.deleteMany({ where: { id: { in: saleIds } } });
       await prisma.repossession.deleteMany({ where: { productId: { in: createdProductIds } } });
       await prisma.contractExchangeRequest.deleteMany({ where: { id: { in: createdRequestIds } } });

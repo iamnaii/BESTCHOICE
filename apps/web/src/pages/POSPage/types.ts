@@ -33,10 +33,3 @@ export interface Customer {
   /** ผู้สนใจอัตโนมัติจากแชทที่ยังไม่มีเบอร์ — ธงจาก GET /customers/search (เว็บห้าม derive เอง) */
   chatPlaceholder?: boolean;
 }
-
-export interface PosConfig {
-  interestRate: number;
-  minDownPaymentPct: number;
-  minInstallmentMonths: number;
-  maxInstallmentMonths: number;
-}

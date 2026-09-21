@@ -599,6 +599,7 @@ model Branch {
   isMainWarehouse     Boolean   @default(false) @map("is_main_warehouse")
   deletedAt           DateTime? @map("deleted_at")
   shopCashAccountCode String?   @map("shop_cash_account_code")
+  shopCashFloat       Decimal   @default(0) @map("shop_cash_float") @db.Decimal(12, 2)
 
   company                  CompanyInfo?              @relation(fields: [companyId], references: [id])
   users                    User[]
@@ -632,6 +633,10 @@ model Branch {
   // P2-SP4 — การจอง / มัดจำ
   bookings Booking[] @relation("BranchBookings")
   deviceReturns DeviceReturn[]
+
+  // สมุดเงินเข้า/ออกหน้าร้าน (shop tenders)
+  shopTenders ShopTender[]
+  shopCashCloses ShopCashClose[]
 
   @@index([companyId])
   @@map("branches")
@@ -860,6 +865,12 @@ model User {
   // การเดินทางของลูกค้า — พนักงานที่ทำให้เกิดช่วงเวลา/บันทึกมือ (null = ระบบ/ลูกค้า/บอท)
   journeyEntriesActed CustomerJourneyEntry[] @relation("JourneyEntryActor")
 
+  // สมุดเงินเข้า/ออกหน้าร้าน — ผู้รับ/ผู้จ่ายเงิน
+  shopTendersActed ShopTender[] @relation("ShopTenderActor")
+  shopCashClosesCounted   ShopCashClose[] @relation("ShopCashCloseCounter")
+  shopCashClosesConfirmed ShopCashClose[] @relation("ShopCashCloseConfirmer")
+  shopCashClosesSentBack  ShopCashClose[] @relation("ShopCashCloseSentBack")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -1085,6 +1096,10 @@ model Contract {
   contractNumber           String         @unique @map("contract_number")
   customerId               String         @map("customer_id")
   productId                String         @map("product_id")
+  /// ของแถม (อุปกรณ์เสริมเท่านั้น) ที่ให้ไปกับสัญญา — จองตอนสร้าง ตัดสต๊อกตอนเปิดใช้ คืนเมื่อลบร่าง/ยกเลิก
+  /// (`contract-bundle.util.ts`). ตอนเปิดใช้ถูกคัดลอกลง `Sale.bundleProductIds` ของใบขายอัตโนมัติ
+  /// ซึ่งเป็นตัวที่ขาต้นทุนของ `ShopInventoryTransferTemplate` อ่าน
+  bundleProductIds         String[]       @default([]) @map("bundle_product_ids")
   branchId                 String         @map("branch_id")
   salespersonId            String         @map("salesperson_id")
   planType                 PlanType       @map("plan_type")
@@ -1279,6 +1294,9 @@ model Contract {
   // C2 — Inter-co settlement batch items (รอบจ่ายให้หน้าร้าน, 2026-07-30)
   interCoSettlementItems InterCoSettlementItem[]
   deviceReturns          DeviceReturn[]
+
+  // สมุดเงินเข้า/ออกหน้าร้าน — เงินดาวน์ที่รับ/คืน
+  shopTenders ShopTender[]
 
   @@index([customerId])
   @@index([branchId])
@@ -2714,6 +2732,9 @@ model Sale {
   // P2-SP4 — การจอง (origin) — set when sale was created via Booking conversion
   booking Booking? @relation("SaleBooking")
   costSnapshot SaleCostSnapshot?
+
+  // สมุดเงินเข้า/ออกหน้าร้าน — เงินที่รับ/คืนของใบขาย
+  shopTenders ShopTender[]
 
   @@index([saleType])
   @@index([branchId])
@@ -5061,6 +5082,9 @@ model TradeIn {
   sellerContactId String?  @map("seller_contact_id")
   sellerContact   Contact? @relation("TradeInSeller", fields: [sellerContactId], references: [id])
 
+  // สมุดเงินเข้า/ออกหน้าร้าน — เงินที่จ่ายรับซื้อ
+  shopTenders ShopTender[]
+
   @@index([customerId])
   @@index([status])
   @@index([createdAt])
@@ -7308,6 +7332,130 @@ model OtherIncomeTemplate {
 /// codes. The cashier wizard reads this to filter the cash-account selector
 /// based on the picked method, and to auto-pre-select the default account.
 /// Edited via the OWNER+FINANCE_MANAGER settings page at /settings/payment-methods.
+enum ShopTenderDirection {
+  IN
+  OUT
+}
+
+enum ShopTenderKind {
+  CASH_SALE
+  EXTERNAL_FINANCE_DOWN
+  CONTRACT_DOWN
+  BOOKING_DEPOSIT
+  TRADE_IN_PAYOUT
+  SALE_VOID_REFUND
+  CONTRACT_DOWN_REFUND
+  BOOKING_DEPOSIT_REFUND
+}
+
+/// สมุดเงินเข้า/ออกของหน้าร้าน (สเปค 2026-09-20-shop-tenders-daily-cash) — หนึ่งแถว = เงินหนึ่งก้อน
+/// ที่รับหรือจ่ายจริงด้วยวิธีเดียว บิลที่ลูกค้าจ่ายผสมมีหลายแถว (seq 1..seqTotal).
+/// แถวไม่ถูกแก้และไม่ถูกลบ: การคืนเงิน = แถว OUT ใหม่ที่ชี้ reversesTenderId.
+/// actorId = ผู้ใช้ที่ล็อกอินและกดทำรายการ (ไม่ใช่ salespersonId ที่เลือกได้) — หน้าสรุปเงินรายวันอ่านจากตารางนี้.
+model ShopTender {
+  id         String              @id @default(uuid())
+  direction  ShopTenderDirection
+  kind       ShopTenderKind
+  branchId   String              @map("branch_id")
+  method     PaymentMethod
+  amount     Decimal             @db.Decimal(12, 2)
+  reference  String?
+  actorId    String              @map("actor_id")
+  occurredAt DateTime            @default(now()) @map("occurred_at")
+  seq        Int                 @default(1)
+  seqTotal   Int                 @default(1) @map("seq_total")
+
+  saleId           String? @map("sale_id")
+  contractId       String? @map("contract_id")
+  bookingId        String? @map("booking_id")
+  tradeInId        String? @map("trade_in_id")
+  reversesTenderId String? @map("reverses_tender_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  branch   Branch    @relation(fields: [branchId], references: [id])
+  actor    User      @relation("ShopTenderActor", fields: [actorId], references: [id])
+  sale     Sale?     @relation(fields: [saleId], references: [id])
+  contract Contract? @relation(fields: [contractId], references: [id])
+  booking  Booking?  @relation(fields: [bookingId], references: [id])
+  tradeIn  TradeIn?  @relation(fields: [tradeInId], references: [id])
+
+  reverses   ShopTender?  @relation("ShopTenderReversal", fields: [reversesTenderId], references: [id])
+  reversedBy ShopTender[] @relation("ShopTenderReversal")
+
+  @@index([branchId, occurredAt])
+  @@index([actorId, occurredAt])
+  @@index([reference])
+  @@index([saleId])
+  @@index([contractId])
+  @@index([bookingId])
+  @@index([tradeInId])
+  @@map("shop_tenders")
+}
+
+enum ShopCashCloseStatus {
+  PENDING_CONFIRM
+  CONFIRMED
+  SENT_BACK
+}
+
+enum ShopCashDestination {
+  OWNER_HOLD
+  BANK_DEPOSIT
+  BRANCH_SAFE
+}
+
+/// นับเงินปิดยอดลิ้นชักของสาขา (สเปค 2026-09-20-shop-cash-close) — หนึ่งแถว = การนับหนึ่งครั้ง ของหนึ่งลิ้นชักต่อสาขา.
+/// รอบ = (periodStart, countedAt] โดย periodStart = countedAt ของการปิดยอดที่ยังมีผลครั้งก่อน (แถว SENT_BACK ไม่นับ).
+/// ยอดนับแก้ไม่ได้: นับผิดให้ผู้ยืนยันตีกลับ (SENT_BACK) แล้วนับใหม่เป็นแถวใหม่ (attemptNo + 1) — แถวเดิมคงไว้เป็นประวัติ.
+/// ตัวเลข float/cashIn/cashOut/expected เป็น snapshot ณ ตอนนับ — รายการที่เกิดหลัง countedAt ไปรวมรอบถัดไป.
+/// ไม่มี deletedAt โดยตั้งใจ — หลักฐานการนับเงินห้ามลบ (append-only แบบเดียวกับ shop_tenders); updatedAt เดินตอนยืนยัน/ตีกลับ.
+model ShopCashClose {
+  id          String              @id @default(uuid())
+  branchId    String              @map("branch_id")
+  status      ShopCashCloseStatus @default(PENDING_CONFIRM)
+  attemptNo   Int                 @default(1) @map("attempt_no")
+  periodStart DateTime?           @map("period_start")
+
+  floatAmount    Decimal @map("float_amount") @db.Decimal(12, 2)
+  cashIn         Decimal @map("cash_in") @db.Decimal(12, 2)
+  cashOut        Decimal @map("cash_out") @db.Decimal(12, 2)
+  expectedAmount Decimal @map("expected_amount") @db.Decimal(12, 2)
+  countedAmount  Decimal @map("counted_amount") @db.Decimal(12, 2)
+  /// นับได้ − ต้องมี (ติดลบ = ขาด · บวก = เกิน)
+  varianceAmount Decimal @map("variance_amount") @db.Decimal(12, 2)
+  varianceReason String? @map("variance_reason")
+  /// เงินที่ส่งให้ผู้รับ = นับได้ − เงินทอนตั้งต้น (ไม่ต่ำกว่า 0)
+  sendAmount     Decimal @map("send_amount") @db.Decimal(12, 2)
+
+  countedById String   @map("counted_by_id")
+  countedAt   DateTime @default(now()) @map("counted_at")
+
+  receivedAmount  Decimal?             @map("received_amount") @db.Decimal(12, 2)
+  /// รับจริง − ยอดที่แจ้งส่ง (ส่วนต่างชั้นที่สอง — เงินหายระหว่างทาง)
+  receiveVariance Decimal?             @map("receive_variance") @db.Decimal(12, 2)
+  receiveNote     String?              @map("receive_note")
+  destination     ShopCashDestination?
+  confirmedById   String?              @map("confirmed_by_id")
+  confirmedAt     DateTime?            @map("confirmed_at")
+
+  sentBackById   String?   @map("sent_back_by_id")
+  sentBackAt     DateTime? @map("sent_back_at")
+  sentBackReason String?   @map("sent_back_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  branch      Branch @relation(fields: [branchId], references: [id])
+  countedBy   User   @relation("ShopCashCloseCounter", fields: [countedById], references: [id])
+  confirmedBy User?  @relation("ShopCashCloseConfirmer", fields: [confirmedById], references: [id])
+  sentBackBy  User?  @relation("ShopCashCloseSentBack", fields: [sentBackById], references: [id])
+
+  @@index([branchId, countedAt])
+  @@index([status])
+  @@map("shop_cash_closes")
+}
+
 model PaymentMethodConfig {
   id          String  @id @default(uuid())
   /// 'CASH' | 'TRANSFER' | 'QR' (string-typed; PaymentMethod prisma enum has more
@@ -7513,6 +7661,9 @@ model Booking {
   canceledBy      User?         @relation("BookingCanceledBy", fields: [canceledById], references: [id])
   convertedToSale Sale?         @relation("SaleBooking", fields: [convertedToSaleId], references: [id])
   items           BookingItem[]
+
+  // สมุดเงินเข้า/ออกหน้าร้าน — มัดจำที่รับ/คืน
+  shopTenders ShopTender[]
 
   @@index([customerId, deletedAt])
   @@index([branchId, status, deletedAt])

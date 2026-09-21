@@ -7,7 +7,7 @@ import { TRADE_IN_DECLARATION_VERSION } from '@installment/shared';
 import { TradeInService } from '../src/modules/trade-in/trade-in.service';
 import { TradeInCreditService } from '../src/modules/trade-in/services/trade-in-credit.service';
 import { tradeInProviders } from './support/trade-in-fixture';
-import { SaleCreationService } from '../src/modules/sales/services/sale-creation.service';
+import { INSTALLMENT_VIA_CONTRACT_MSG, SaleCreationService } from '../src/modules/sales/services/sale-creation.service';
 import { SaleWriterService } from '../src/modules/sales/services/sale-writer.service';
 import { SaleVoidService } from '../src/modules/sales/services/sale-void.service';
 import { InterCompanyService } from '../src/modules/inter-company/inter-company.service';
@@ -96,8 +96,8 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     const journal = new JournalAutoService(db), resolver = new CompanyResolverService(db);
     const shopAccounts = new ShopAccountResolver(db), audit = new AuditService(db), products = new ProductsService(db);
     const interco = new InterCompanyService(db);
-    sales = new SaleCreationService(db, new SaleWriterService(db, interco, new ShopCashSaleTemplate(journal, db, resolver),
-      shopAccounts, new ShopExternalFinanceSaleTemplate(journal, db, resolver), new ShopDownPaymentTemplate(journal, db, resolver)), interco, { notify: async () => undefined } as never);
+    sales = new SaleCreationService(db, new SaleWriterService(db, new ShopCashSaleTemplate(journal, db, resolver),
+      shopAccounts, new ShopExternalFinanceSaleTemplate(journal, db, resolver)), interco, { notify: async () => undefined } as never);
     const sweep = new ExchangeCancelReversalTemplate(journal, db);
     saleVoid = new SaleVoidService(db, sweep);
     cancellations = new ContractCancellationService(db,
@@ -245,19 +245,15 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     } finally { await db.companyInfo.update({ where: { id: shopId }, data: { vatRegistered: company.vatRegistered } }); }
   });
 
-  it.each(['direct', 'pos'])('carries bank-transfer receipts through %s activation exactly once', async path => {
+  it('carries bank-transfer receipts through activation exactly once', async () => {
     const c = await exchangeCase(); await approve(c.customer.id);
-    const created = path === 'direct' ? await lifecycle.create({ ...c.dto, downPaymentMethod: 'BANK_TRANSFER', downPaymentReference: 'SYNTHETIC-BANK' }, ownerId, 'OWNER')
-      : await sales.create({ ...c.dto, saleType: 'INSTALLMENT', paymentMethod: 'BANK_TRANSFER', downPaymentReference: 'SYNTHETIC-BANK' }, ownerId, 'OWNER');
-    const contractId = path === 'direct' ? created.id : (await db.sale.findUniqueOrThrow({ where: { id: created.id } })).contractId!;
+    const created = await lifecycle.create({ ...c.dto, downPaymentMethod: 'BANK_TRANSFER', downPaymentReference: 'SYNTHETIC-BANK' }, ownerId, 'OWNER');
+    const contractId = created.id;
     const query = new SalesQueryService(db), actor = { id: ownerId, role: 'OWNER' };
-    const draftRows = await query.findAll({ contractStatus: 'DRAFT', branchId }, actor);
-    if (path === 'pos') expect(draftRows.data.map(row => row.id)).toContain(created.id);
     expect((await query.findAll({ branchId }, actor)).data.map(row => row.contractId)).not.toContain(contractId);
     expect(sum(await readEntries(contractId), 'S11-1201', 'debit').toNumber()).toBe(2000);
     await activate(contractId, c.customer.id);
     const sale = await db.sale.findFirstOrThrow({ where: { contractId, deletedAt: null } });
-    if (path === 'pos') expect(sale.id).toBe(created.id);
     expect(sale.paymentMethod).toBe('BANK_TRANSFER'); expect(sale.amountReceived!.toNumber()).toBe(2000);
     expect((await db.saleCostSnapshot.findUniqueOrThrow({ where: { saleId: sale.id } })).mainProductCost.toNumber()).toBe(6000);
     await db.product.update({ where: { id: c.product.id }, data: { costPrice: 6999 } });
@@ -268,11 +264,9 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     expect(sum(await readEntries(contractId), 'S11-1101', 'debit').toNumber()).toBe(0);
   });
 
-  it.each(['direct', 'pos'])('keeps cash down separate through %s installment creation, activation and cancellation', async (path) => {
+  it('keeps cash down separate through installment creation, activation and cancellation', async () => {
     const c = await exchangeCase(); await approve(c.customer.id);
-    const created = path === 'direct' ? await lifecycle.create(c.dto, ownerId, 'OWNER')
-      : await sales.create({ ...c.dto, saleType: 'INSTALLMENT' }, ownerId, 'OWNER');
-    const contractId = path === 'direct' ? created.id : (await db.sale.findUniqueOrThrow({ where: { id: created.id } })).contractId!;
+    const contractId = (await lifecycle.create(c.dto, ownerId, 'OWNER')).id;
     const stored = await db.contract.findUniqueOrThrow({ where: { id: contractId } });
     expect(stored.downPayment.toNumber()).toBe(7000); expect(stored.sellingPrice.toNumber()).toBe(14500);
     expect(stored.financedAmount.toNumber()).toBe(7500);
@@ -290,10 +284,9 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     expect(sum(after, 'S21-2001', 'credit').minus(sum(after, 'S21-2001', 'debit')).toNumber()).toBe(2000);
   });
 
-  it.each(['direct', 'pos'])('returns credit and only actual cash when deleting an unsigned %s draft', async (path) => {
+  it('returns credit and only actual cash when deleting an unsigned draft', async () => {
     const c = await exchangeCase(); await approve(c.customer.id);
-    const created = path === 'direct' ? await lifecycle.create(c.dto, ownerId, 'OWNER') : await sales.create({ ...c.dto, saleType: 'INSTALLMENT' }, ownerId, 'OWNER');
-    const contract = path === 'direct' ? created : { id: (await db.sale.findUniqueOrThrow({ where: { id: created.id } })).contractId! };
+    const contract = await lifecycle.create(c.dto, ownerId, 'OWNER');
     await lifecycle.softDelete(contract.id, ownerId);
     expect((await tradeCredits.available(c.customer.id, branchId)).map((x) => x.id)).toContain(c.intake.id);
     const entries = await readEntries(contract.id);
@@ -303,6 +296,16 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     expect(await db.financeReceivable.count({ where: { sale: { contractId: contract.id }, deletedAt: null } })).toBe(0);
     expect(await db.salesCommission.count({ where: { contractId: contract.id, status: { not: 'CLAWED_BACK' }, deletedAt: null } })).toBe(0);
     expect(await db.interCompanyTransaction.count({ where: { contractId: contract.id, deletedAt: null } })).toBe(0);
+  });
+
+  it('rejects an in-house installment sale through POST /sales before touching stock, credit or documents', async () => {
+    const c = await exchangeCase(); await approve(c.customer.id);
+    await expect(sales.create({ ...c.dto, saleType: 'INSTALLMENT' }, ownerId, 'OWNER')).rejects.toThrow(INSTALLMENT_VIA_CONTRACT_MSG);
+    expect((await db.product.findUniqueOrThrow({ where: { id: c.product.id } })).status).toBe('IN_STOCK');
+    expect((await tradeCredits.available(c.customer.id, branchId)).map((x) => x.id)).toContain(c.intake.id);
+    expect(await db.contract.count({ where: { customerId: c.customer.id } })).toBe(0);
+    expect(await db.sale.count({ where: { customerId: c.customer.id } })).toBe(0);
+    expect(await db.creditApproval.count({ where: { creditCheck: { customerId: c.customer.id }, usedByContractId: { not: null } } })).toBe(0);
   });
 
   it('accepts satang prices without false credit re-quote failures', async () => {
@@ -322,8 +325,7 @@ describe('approved credit → real create/sign/activate → partial/complete pay
     const issued = await report.getBalanceSheet(date, branchId);
     expect(issued.liabilities.totalLiabilities - before.liabilities.totalLiabilities).toBe(5000);
     await approve(c.customer.id);
-    const sale = await sales.create({ ...c.dto, saleType: 'INSTALLMENT' }, ownerId, 'OWNER');
-    const contractId = (await db.sale.findUniqueOrThrow({ where: { id: sale.id } })).contractId!;
+    const contractId = (await lifecycle.create(c.dto, ownerId, 'OWNER')).id;
     await activate(contractId, c.customer.id);
     const active = await report.getBalanceSheet(date, branchId);
     const cancellation = await cancellations.requestCancellation(contractId, ownerId, 'Synthetic report cancellation', 0);
@@ -335,9 +337,13 @@ describe('approved credit → real create/sign/activate → partial/complete pay
 
   it('does not return credit when a related commission payout has already been approved', async () => {
     const c = await exchangeCase(); await approve(c.customer.id);
-    const sale = await sales.create({ ...c.dto, saleType: 'INSTALLMENT' }, ownerId, 'OWNER');
-    const contractId = (await db.sale.findUniqueOrThrow({ where: { id: sale.id } })).contractId!;
-    const commission = await db.salesCommission.findFirstOrThrow({ where: { saleId: sale.id } });
+    // จำลองร่างสัญญายุคเส้นทางเก่า (POST /sales INSTALLMENT — ถอดแล้ว 2026-09-20): ร่างแบบนั้นมีใบขาย + ค่าคอมตั้งแต่ยังเป็นร่าง
+    // และอาจยังค้างอยู่ในฐานจริง ⇒ ด่านของ cleanupCreditContractSale ต้องยังทำงานกับมัน
+    const contractId = (await lifecycle.create(c.dto, ownerId, 'OWNER')).id;
+    const sale = await db.sale.create({ data: { saleNumber: `LEGACY-${randomUUID()}`, saleType: 'INSTALLMENT', customerId: c.customer.id,
+      productId: c.product.id, branchId, salespersonId: ownerId, sellingPrice: 15000, discount: 500, netAmount: 14500, contractId } });
+    const commission = await db.salesCommission.create({ data: { salespersonId: ownerId, snapshotSalespersonId: ownerId, contractId, saleId: sale.id,
+      period: new Date().toLocaleDateString('en-CA').slice(0, 7), saleAmount: 14500, commissionRate: 0.03, commissionAmount: 435, status: 'PENDING' } });
     const payout = await db.commissionPayout.upsert({ where: { salespersonId_period: { salespersonId: ownerId, period: commission.period } },
       create: { salespersonId: ownerId, period: commission.period, totalSales: 14500, totalCommission: 435, commissionCount: 1, status: 'APPROVED', generatedAt: new Date() },
       update: { status: 'APPROVED', generatedAt: new Date(), deletedAt: null } });
@@ -345,6 +351,41 @@ describe('approved credit → real create/sign/activate → partial/complete pay
       await expect(lifecycle.softDelete(contractId, ownerId)).rejects.toThrow(/รอบจ่าย/);
       expect(await tradeCredits.available(c.customer.id, branchId)).toEqual([]);
       expect((await db.sale.findUniqueOrThrow({ where: { id: sale.id } })).deletedAt).toBeNull();
+    } finally { await db.commissionPayout.update({ where: { id: payout.id }, data: { deletedAt: new Date() } }); }
+  });
+
+  it('cancels an activated trade-credit contract even when its commission sits in an approved payout round or was already paid', async () => {
+    // คำตัดสินเจ้าของ 2026-09-20: สัญญาเครดิตเทิร์นยกเลิกได้เหมือนสัญญาทั่วไป — ค่าคอมที่ยังไม่จ่ายถูกเรียกคืน · ที่จ่ายแล้วไม่แตะ ·
+    // รอบจ่ายที่อนุมัติแล้วไม่บล็อก แต่ถูกรายงานใน audit (commissionLockedPayoutIds / commissionKeptPaidIds)
+    const locked = await exchangeCase(); await approve(locked.customer.id);
+    const lockedId = (await lifecycle.create(locked.dto, ownerId, 'OWNER')).id;
+    await activate(lockedId, locked.customer.id);
+    const commission = await db.salesCommission.findFirstOrThrow({ where: { contractId: lockedId, deletedAt: null } });
+    expect(commission.status).toBe('PENDING'); expect(Number(commission.saleAmount)).toBe(14500);
+    const paid = await exchangeCase(); await approve(paid.customer.id);
+    const paidId = (await lifecycle.create(paid.dto, ownerId, 'OWNER')).id;
+    await activate(paidId, paid.customer.id);
+    const paidCommission = await db.salesCommission.findFirstOrThrow({ where: { contractId: paidId, deletedAt: null } });
+    await db.salesCommission.update({ where: { id: paidCommission.id }, data: { status: 'PAID', paidAt: new Date(), paidAmount: paidCommission.commissionAmount } });
+    const payout = await db.commissionPayout.upsert({ where: { salespersonId_period: { salespersonId: commission.salespersonId, period: commission.period } },
+      create: { salespersonId: commission.salespersonId, period: commission.period, totalSales: 29000, totalCommission: 870, commissionCount: 2, status: 'APPROVED', generatedAt: new Date() },
+      update: { status: 'APPROVED', generatedAt: new Date(), deletedAt: null } });
+    try {
+      for (const [contractId, customerId, intakeId] of [[lockedId, locked.customer.id, locked.intake.id], [paidId, paid.customer.id, paid.intake.id]]) {
+        const cancellation = await cancellations.requestCancellation(contractId, ownerId, 'Synthetic locked payout cancellation', 0);
+        await cancellations.approveCancellation(cancellation.id, ownerId);
+        expect((await db.contract.findUniqueOrThrow({ where: { id: contractId } })).status).toBe('CANCELED');
+        expect((await tradeCredits.available(customerId, branchId)).map((x) => x.id)).toContain(intakeId);
+        expect(await db.sale.count({ where: { contractId, deletedAt: null } })).toBe(0);
+      }
+      expect((await db.salesCommission.findUniqueOrThrow({ where: { id: commission.id } })).status).toBe('CLAWED_BACK');
+      expect((await db.salesCommission.findUniqueOrThrow({ where: { id: paidCommission.id } })).status).toBe('PAID');
+      expect((await db.commissionPayout.findUniqueOrThrow({ where: { id: payout.id } })).deletedAt).toBeNull(); // รอบที่อนุมัติแล้วไม่ถูกแตะ
+      const lockedAudit = await db.auditLog.findFirstOrThrow({ where: { entity: 'contract', entityId: lockedId, action: { startsWith: 'CONTRACT_CANCELED' } } });
+      expect((lockedAudit.newValue as Record<string, unknown>).commissionClawedBackIds).toEqual([commission.id]);
+      expect((lockedAudit.newValue as Record<string, unknown>).commissionLockedPayoutIds).toEqual([payout.id]);
+      const paidAudit = await db.auditLog.findFirstOrThrow({ where: { entity: 'contract', entityId: paidId, action: { startsWith: 'CONTRACT_CANCELED' } } });
+      expect((paidAudit.newValue as Record<string, unknown>).commissionKeptPaidIds).toEqual([paidCommission.id]);
     } finally { await db.commissionPayout.update({ where: { id: payout.id }, data: { deletedAt: new Date() } }); }
   });
 

@@ -14,7 +14,7 @@ const close = (over: Partial<CashClose> = {}): CashClose => ({
   countedAt: '2026-09-20T13:40:00.000Z', floatAmount: 2000, cashIn: 16500, cashOut: 5790, expectedAmount: 12710, countedAmount: 12510,
   varianceAmount: -200, varianceReason: 'ทอนเงินลูกค้าผิด 200', sendAmount: 10510, countedBy: { id: 'u-sales', name: 'ธนา' },
   receivedAmount: null, receiveVariance: null, receiveNote: null, destination: null, confirmedBy: null, confirmedAt: null,
-  sentBackBy: null, sentBackAt: null, sentBackReason: null, ...over,
+  sentBackBy: null, sentBackAt: null, sentBackReason: null, journalPosted: false, ...over,
 });
 
 const status = (over: Partial<CashCloseStatusResponse> = {}): CashCloseStatusResponse => ({

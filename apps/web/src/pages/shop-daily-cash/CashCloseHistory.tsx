@@ -105,7 +105,7 @@ export default function CashCloseHistory({ branchId, branches }: { branchId: str
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-muted-foreground leading-snug">กดแถว = เปิดรายละเอียดการปิดยอดครั้งนั้น · ระบบยังไม่ลงบัญชีเงินขาด/เกินและการย้ายเงินให้อัตโนมัติ (รอผู้สอบบัญชี)</p>
+            <p className="text-xs text-muted-foreground leading-snug">กดแถว = เปิดรายละเอียดการปิดยอดครั้งนั้น · ระบบลงบัญชีให้ตอนยืนยันรับเงิน: ย้ายเงินออกจากลิ้นชักไปปลายทางที่เลือก และเงินขาด/เกินเข้าบัญชี “เงินขาด-เกินบัญชี”</p>
           </div>
         )}
       </QueryBoundary>
@@ -123,6 +123,9 @@ function CloseDetail({ close }: { close: CashClose }) {
       {close.destination && <div><dt className="inline text-muted-foreground">นำเงินไปไว้ที่: </dt><dd className="inline">{DESTINATION_LABEL[close.destination]}</dd></div>}
       {close.receiveVariance != null && toSatang(close.receiveVariance) !== 0 && (
         <div className="text-destructive"><dt className="inline">รับจริงต่างจากที่แจ้งส่ง: </dt><dd className="inline">{varianceLabel(close.receiveVariance)} — {close.receiveNote}</dd></div>
+      )}
+      {close.status === 'CONFIRMED' && (
+        <div><dt className="inline text-muted-foreground">ลงบัญชี: </dt><dd className="inline">{close.journalPosted ? 'ลงแล้ว' : 'ไม่ได้ลง — ไม่มียอดให้ลง หรือสาขายังไม่ตั้งลิ้นชักเงินสด'}</dd></div>
       )}
       {close.status === 'SENT_BACK' && (
         <div><dt className="inline text-muted-foreground">ตีกลับโดย: </dt><dd className="inline">{close.sentBackBy?.name ?? '-'} {close.sentBackAt ? dayTimeOf(close.sentBackAt) : ''} — {close.sentBackReason}</dd></div>

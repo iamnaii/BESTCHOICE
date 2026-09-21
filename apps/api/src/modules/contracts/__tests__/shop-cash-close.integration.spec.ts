@@ -13,13 +13,20 @@ import { ShopCashCloseService, type CashCloseActor } from '../../shop-tenders/sh
 import { bkkDayRange } from '../../shop-tenders/shop-tenders-report.service';
 import { bangkokDateString } from '../../../utils/date.util';
 import { DashboardOpsService } from '../../dashboard/services/dashboard-ops.service';
+import { JournalAutoService } from '../../journal/journal-auto.service';
+import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
 
 const prisma = new PrismaClient();
 // AuditLog ลบไม่ได้ (immutable trigger) ⇒ ถ้าเขียนจริง ผู้ใช้ของเทสจะลบไม่ออกเพราะ FK — payload ของ audit ปักที่ unit spec แทน
-const service = new ShopCashCloseService(prisma as never, { log: async () => undefined } as never);
+const journal = new JournalAutoService(prisma as never);
+const companies = new CompanyResolverService(prisma as never);
+const service = new ShopCashCloseService(prisma as never, { log: async () => undefined } as never, journal, companies);
 
 const RUN = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
 const tick = () => new Promise((resolve) => setTimeout(resolve, 8));
+/** บัญชีลิ้นชักของสาขาทดสอบ — เลือกตัวที่ไฟล์พี่น้องไม่ใช้เทียบยอด */
+const DRAWER = 'S11-1102';
 
 let branchId = '';
 let otherBranchId = '';
@@ -43,7 +50,13 @@ async function tender(branch: string, direction: 'IN' | 'OUT', method: 'CASH' | 
 
 describe('นับเงินปิดยอด (shop cash close)', () => {
   beforeAll(async () => {
-    const branch = await prisma.branch.create({ data: { name: `CASHCLOSE Branch ${RUN}`, shopCashFloat: 2000 } });
+    await seedShopCoa(prisma as never); // JE ตอนยืนยันรับเงินต้องมีบัญชีลิ้นชัก/ปลายทาง/เงินขาด-เกินในผัง
+    const shop = await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'SHOP', deletedAt: null } });
+    // JournalAutoService posts as the system user — shared with sibling specs, so never deleted here
+    if (!(await prisma.user.findFirst({ where: { email: 'admin@bestchoice.com' } }))) {
+      await prisma.user.create({ data: { email: 'admin@bestchoice.com', password: 'x', name: 'admin', role: 'OWNER' } });
+    }
+    const branch = await prisma.branch.create({ data: { name: `CASHCLOSE Branch ${RUN}`, shopCashFloat: 2000, companyId: shop.id, shopCashAccountCode: DRAWER } });
     const other = await prisma.branch.create({ data: { name: `CASHCLOSE Other ${RUN}` } });
     branchId = branch.id; otherBranchId = other.id;
     await seedUser('sales', 'SALES', branchId);
@@ -54,6 +67,11 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
 
   afterAll(async () => {
     const branches = [branchId, otherBranchId].filter(Boolean);
+    const entries = await prisma.journalEntry.findMany({ where: { metadata: { path: ['flow'], equals: 'shop-cash-close' }, OR: branches.map((id) => ({ metadata: { path: ['branchId'], equals: id } })) }, select: { id: true } });
+    const entryIds = entries.map((entry) => entry.id);
+    await prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: entryIds } } });
+    await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: entryIds } } });
+    await prisma.journalEntry.deleteMany({ where: { id: { in: entryIds } } });
     await prisma.shopCashClose.deleteMany({ where: { branchId: { in: branches } } });
     await prisma.shopTender.deleteMany({ where: { branchId: { in: branches } } });
     await prisma.todo.deleteMany({ where: { branchId: { in: branches } } });
@@ -114,6 +132,17 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     const confirmed = await service.confirm(users.owner, firstCloseId, { receivedAmount: 10500, destination: 'BANK_DEPOSIT', note: 'นับรับจริงขาดไป 10 บาท' });
     expect(confirmed).toMatchObject({ status: 'CONFIRMED', receivedAmount: 10500, receiveVariance: -10, destination: 'BANK_DEPOSIT' });
     expect(confirmed.confirmedBy?.id).toBe(users.owner.id);
+    // ลงบัญชีใบเดียวตอนยืนยัน (คำตัดสินเจ้าของ 2026-09-21): ลิ้นชักออก 200 (นับขาด) + 10,510 (ส่งเงิน) · ธนาคารเข้า 10,500 (รับจริง) ·
+    // เงินขาด-เกินบัญชี 200 + 10 (หายระหว่างทาง) — บัญชีเดียว
+    expect(confirmed.journalPosted).toBe(true);
+    const je = await prisma.journalEntry.findFirstOrThrow({ where: { metadata: { path: ['shopCashCloseId'], equals: firstCloseId } }, include: { lines: true } });
+    expect(je.status).toBe('POSTED');
+    expect((je.metadata as Record<string, unknown>).flow).toBe('shop-cash-close');
+    const line = (code: string) => je.lines.filter((row) => row.accountCode === code).map((row) => [Number(row.debit), Number(row.credit)]);
+    expect(line(DRAWER)).toEqual([[0, 10710]]);
+    expect(line('S11-1201')).toEqual([[10500, 0]]);
+    expect(line('S53-1104')).toEqual([[210, 0]]);
+    expect(je.lines).toHaveLength(3);
     // ส่วนต่างชั้นที่สอง (เงินหายระหว่างทาง) เตือนแยกอีกใบ
     const alarms = await prisma.todo.findMany({ where: { branchId, tags: { has: 'cash-close-variance' } }, orderBy: { createdAt: 'asc' } });
     expect(alarms).toHaveLength(2);
@@ -180,5 +209,30 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     expect(await dashboard.computeAlerts(branchId)).toContainEqual(
       expect.objectContaining({ type: 'cash_close_awaiting', severity: 'critical', count: 2 }));
     expect((await service.getHistory(users.owner, { branchId })).alerts.awaitingOverOneDay).toHaveLength(2);
+  });
+
+  it('นับเกิน + เจ้าของเก็บเงิน: ลิ้นชักสุทธิ = −ยอดส่ง + ยอดเกิน · เงินเกินเป็นฝั่งเครดิตของบัญชีเดียวกัน', async () => {
+    await tick();
+    await tender(branchId, 'IN', 'CASH', 300);
+    // เทสก่อนหน้าย้อนเวลาการนับที่ค้างไว้ ขอบรอบจึงไม่ตายตัว — อ่านยอดที่ต้องมีจากระบบแล้วนับให้เกิน 50 พอดี
+    const expected = (await service.getStatus(users.sales, { branchId })).round.expectedAmount!;
+    const send = expected + 50 - 2000;
+    const over = await service.count(users.sales, { branchId, countedAmount: expected + 50, varianceReason: 'ลูกค้าไม่รับเงินทอน 50' });
+    expect(over).toMatchObject({ expectedAmount: expected, varianceAmount: 50, sendAmount: send });
+    const confirmed = await service.confirm(users.owner, over.id, { receivedAmount: send, destination: 'OWNER_HOLD' });
+    expect(confirmed.journalPosted).toBe(true);
+    const je = await prisma.journalEntry.findFirstOrThrow({ where: { metadata: { path: ['shopCashCloseId'], equals: over.id } }, include: { lines: true } });
+    const net = (code: string) => je.lines.filter((row) => row.accountCode === code).reduce((sum, row) => sum + Number(row.debit) - Number(row.credit), 0);
+    expect(net(DRAWER)).toBe(50 - send); // +50 (เกิน) − ยอดส่ง ⇒ ลิ้นชักในสมุดเหลือเท่าเงินทอนตั้งต้น
+    expect(net('S11-1104')).toBe(send); // เจ้าของเก็บรักษา
+    expect(net('S53-1104')).toBe(-50); // เงินเกิน = เครดิต
+  });
+
+  it('สาขาที่ยังไม่ตั้งบัญชีลิ้นชัก: ยืนยันรับเงินได้ตามปกติ แต่ไม่ลงบัญชี (ไม่บล็อกการรับเงิน)', async () => {
+    const counted = await service.count(users.otherManager, { branchId: otherBranchId, countedAmount: 8400 });
+    expect(counted).toMatchObject({ expectedAmount: 8400, varianceAmount: 0, sendAmount: 8400 });
+    const confirmed = await service.confirm(users.owner, counted.id, { receivedAmount: 8400, destination: 'BANK_DEPOSIT' });
+    expect(confirmed).toMatchObject({ status: 'CONFIRMED', journalPosted: false });
+    expect(await prisma.journalEntry.count({ where: { metadata: { path: ['shopCashCloseId'], equals: counted.id } } })).toBe(0);
   });
 });

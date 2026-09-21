@@ -1,6 +1,7 @@
 import { useId } from 'react';
 import { Check } from 'lucide-react';
 import type { BuybackQuestion, BuybackQuestionsResponse } from '@installment/shared';
+import { buybackSourceName } from '@installment/shared';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -52,11 +53,13 @@ export default function InspectionQuestions({
     <>
       {questionnaire.source && (
         <p className="border-l-2 border-border pl-3 text-xs leading-relaxed text-muted-foreground">
-          ราคาและเงื่อนไขอ้างอิง Yellobe
+          {questionnaire.pricingMode === 'SUM_PERCENT_FLOOR10' ? 'ราคากลางอ้างอิง' : 'ราคาและเงื่อนไขอ้างอิง'} {buybackSourceName(questionnaire.source)}
           {questionnaire.capturedAt &&
             ` · ข้อมูล ณ ${new Date(questionnaire.capturedAt).toLocaleDateString('th-TH')}`}
           <br />
-          ค่าหักเป็นบาทรวมกัน แล้วหักเปอร์เซ็นต์ที่สูงที่สุดตามผลตรวจ
+          {questionnaire.pricingMode === 'SUM_PERCENT_FLOOR10'
+            ? 'หักสภาพตามเกณฑ์ร้าน: รวมค่าหักเป็นบาทและเปอร์เซ็นต์ตามผลตรวจ'
+            : 'ค่าหักเป็นบาทรวมกัน แล้วหักเปอร์เซ็นต์ที่สูงที่สุดตามผลตรวจ'}
         </p>
       )}
       {questionnaire.eligibilityRequired && (

@@ -99,9 +99,14 @@ export class ShopBuybackService {
     const reference = await this.referenceFor(model, storage);
     const questions = reference?.profile.questions ?? await this.loadActiveQuestions();
     const bonusPct = await this.getBonusPct();
+    const valuation = !reference && model && storage ? await this.prisma.tradeInValuation.findFirst({
+      where: { brand: { equals: 'Apple', mode: 'insensitive' }, model: { equals: model, mode: 'insensitive' },
+        storage: { equals: storage, mode: 'insensitive' }, condition: 'A', deletedAt: null },
+      select: { note: true },
+    }) : null;
     return {
       bonusPct: bonusPct.toString(),
-      ...this.referenceMetadata(reference),
+      ...this.referenceMetadata(reference, valuation?.note),
       questions: questions.map((q) => ({
         id: q.id,
         key: q.key,
@@ -141,11 +146,14 @@ export class ShopBuybackService {
     return { catalog, assignment, profileId: assignment.profileId, profile: catalog.profiles[assignment.profileId] };
   }
 
-  private referenceMetadata(reference: Awaited<ReturnType<ShopBuybackService['referenceFor']>>): ReferencePricingMetadata {
+  private referenceMetadata(reference: Awaited<ReturnType<ShopBuybackService['referenceFor']>>, valuationNote?: string | null): ReferencePricingMetadata {
+    const applehouseDate = /^อ้างอิง applehouseth\.com (\d{4}-\d{2}-\d{2}) ·/.exec(valuationNote ?? '')?.[1];
+    const benchmark = applehouseDate && Number.isFinite(Date.parse(applehouseDate))
+      ? { source: 'https://applehouseth.com/', capturedAt: `${applehouseDate}T00:00:00+07:00` } : {};
     return reference ? { pricingMode: reference.profile.pricingMode, source: reference.catalog.source,
       capturedAt: reference.catalog.capturedAt, profileId: reference.profileId,
       eligibilityRequired: reference.profile.eligibilityRequired, eligibilityText: reference.profile.eligibilityText }
-      : { pricingMode: 'SUM_PERCENT_FLOOR10' as const, eligibilityRequired: false };
+      : { pricingMode: 'SUM_PERCENT_FLOOR10' as const, eligibilityRequired: false, ...benchmark };
   }
 
   /** โบนัสเทิร์น % จาก SystemConfig — default 10, นอกช่วง 0–100 → 10 (spec /sell §3) */
@@ -274,9 +282,9 @@ export class ShopBuybackService {
       bonusPct: bonusPct.toString(),
       maxPrice: maxPrice.toFixed(2),
       grade: this.pricing.gradeFromPct(comp.pctTotal),
-      ...this.referenceMetadata(reference),
+      ...this.referenceMetadata(reference, valuation.note),
       breakdown: {
-        ...this.referenceMetadata(reference),
+        ...this.referenceMetadata(reference, valuation.note),
         maxPrice: maxPrice.toFixed(2),
         fixedTotal: comp.fixedTotal.toFixed(2),
         pctTotal: comp.pctTotal.toString(),

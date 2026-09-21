@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { buybackSourceName } from '@installment/shared';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
@@ -105,7 +106,7 @@ function SellQuoteForm({ model, storage, onModelChange, onStorageChange, models,
   const questions = useMemo(() => questionData?.questions ?? [], [questionData]);
   const eligibilityReady = !questionData?.eligibilityRequired || deviceEligibilityConfirmed;
   const sourceDate = questionData?.capturedAt ? new Date(questionData.capturedAt) : null;
-  const sourceName = questionData?.source?.toLowerCase().includes('yellobe') ? 'Yellobe' : questionData?.source;
+  const sourceName = buybackSourceName(questionData?.source);
 
   const answersPayload = useMemo(
     () => questions.map((q) => ({ questionKey: q.key, choiceIds: answers[q.key] ?? [] })),
@@ -288,7 +289,8 @@ function SellQuoteForm({ model, storage, onModelChange, onStorageChange, models,
                 <p className="text-sm text-muted-foreground">ยังไม่มีแบบประเมินสำหรับรุ่นและความจุนี้ กรุณาสอบถามร้าน</p>
               )}
               {sourceName && <p className="text-xs text-muted-foreground leading-snug">
-                เงื่อนไขอ้างอิง {sourceName}
+                {questionData?.pricingMode === 'SUM_PERCENT_FLOOR10' ? 'ราคากลางอ้างอิง' : 'เงื่อนไขอ้างอิง'} {sourceName}
+                {questionData?.pricingMode === 'SUM_PERCENT_FLOOR10' && ' · หักสภาพตามเกณฑ์ร้าน'}
                 {sourceDate && !Number.isNaN(sourceDate.getTime()) && ` · ข้อมูล ${sourceDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok' })}`}
               </p>}
               {questions.map((q, qi) => {

@@ -13,6 +13,8 @@ export interface CashClose {
   receivedAmount: number | null; receiveVariance: number | null; receiveNote: string | null;
   destination: CashDestination | null; confirmedBy: Person | null; confirmedAt: string | null;
   sentBackBy: Person | null; sentBackAt: string | null; sentBackReason: string | null;
+  /** ลงบัญชีตอนยืนยันรับเงินแล้วหรือยัง (false หลังยืนยัน = ไม่มียอดให้ลง หรือสาขายังไม่ตั้งบัญชีลิ้นชัก) */
+  journalPosted: boolean;
 }
 
 export interface CashCloseStatusResponse {

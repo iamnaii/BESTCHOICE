@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ShopTendersController } from './shop-tenders.controller';
 import { ShopTendersReportService } from './shop-tenders-report.service';
 import { ShopCashCloseService } from './shop-cash-close.service';
+import { JournalModule } from '../journal/journal.module';
 
 /**
  * สมุดเงินเข้า/ออกหน้าร้าน (สเปค 2026-09-20-shop-tenders-daily-cash).
@@ -9,6 +10,7 @@ import { ShopCashCloseService } from './shop-cash-close.service';
  * ตามแบบ TradeInCreditService; module นี้มีเฉพาะฝั่งอ่าน (หน้าสรุปเงินรายวัน).
  */
 @Module({
+  imports: [JournalModule],
   controllers: [ShopTendersController],
   providers: [ShopTendersReportService, ShopCashCloseService],
 })

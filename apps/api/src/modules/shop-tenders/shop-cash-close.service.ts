@@ -6,6 +6,10 @@ import { AuditService } from '../audit/audit.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { bangkokDateRange, bangkokDateString } from '../../utils/date.util';
 import { bkkDayRange } from './shop-tenders-report.service';
+import { JeLineInput, JournalAutoService } from '../journal/journal-auto.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { validatePeriodOpen } from '../../utils/period-lock.util';
 
 export interface CashCloseActor {
   id: string;
@@ -25,6 +29,17 @@ const COUNTER_ROLES = ['SALES', 'BRANCH_MANAGER'];
 const CONFIRMER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
 const MIN_REASON_LENGTH = 5;
 const CENT = new Prisma.Decimal('0.005');
+
+/** JE ตอนยืนยันรับเงินปิดยอด (คำตัดสินเจ้าของ 2026-09-21) */
+export const SHOP_CASH_CLOSE_FLOW = 'shop-cash-close';
+/** เงินขาด-เกินบัญชี — บัญชีเดียว ขาด = Dr · เกิน = Cr */
+export const CASH_OVER_SHORT_ACCOUNT = 'S53-1104';
+export const CASH_CLOSE_DESTINATION_ACCOUNT: Record<ShopCashDestination, string> = {
+  BANK_DEPOSIT: ShopAccountResolver.SHOP_RECEIVING_BANK, // S11-1201
+  OWNER_HOLD: 'S11-1104',
+  BRANCH_SAFE: 'S11-1105',
+};
+interface ConfirmJournalResult { entryId: string | null; entryNumber: string | null; skipped: string | null }
 
 /** การปิดยอดที่ "ยังมีผล" — เป็นขอบรอบของครั้งถัดไป. แถวที่ถูกตีกลับไม่นับ */
 export const EFFECTIVE_CASH_CLOSE_STATUSES: ShopCashCloseStatus[] = ['PENDING_CONFIRM', 'CONFIRMED'];
@@ -81,6 +96,8 @@ export class ShopCashCloseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly journal: JournalAutoService,
+    private readonly companies: CompanyResolverService,
   ) {}
 
   // ─── สิทธิ์ ────────────────────────────────────────────────────────────────
@@ -138,6 +155,7 @@ export class ShopCashCloseService {
       receivedAmount: money(row.receivedAmount), receiveVariance: money(row.receiveVariance), receiveNote: row.receiveNote,
       destination: row.destination, confirmedBy: row.confirmedBy, confirmedAt: row.confirmedAt,
       sentBackBy: row.sentBackBy, sentBackAt: row.sentBackAt, sentBackReason: row.sentBackReason,
+      journalPosted: !!row.journalEntryId,
     };
   }
 
@@ -308,23 +326,33 @@ export class ShopCashCloseService {
   async confirm(actor: CashCloseActor, id: string, input: { receivedAmount: number; destination: ShopCashDestination; note?: string | null }) {
     const received = new Prisma.Decimal(input.receivedAmount).toDecimalPlaces(2);
     const note = input.note?.trim() || null;
+    let journal: ConfirmJournalResult = { entryId: null, entryNumber: null, skipped: null };
     const updated = await this.prisma.$transaction(async (tx) => {
       const row = await this.loadForDecision(tx, actor, id);
       const receiveVariance = received.minus(row.sendAmount);
       if (receiveVariance.abs().gte(CENT) && (!note || note.length < MIN_REASON_LENGTH)) {
         throw new BadRequestException(`เงินที่รับมาจริงไม่เท่ายอดที่พนักงานแจ้งส่ง — กรอกหมายเหตุของส่วนต่างก่อนยืนยัน (อย่างน้อย ${MIN_REASON_LENGTH} ตัวอักษร)`);
       }
-      return tx.shopCashClose.update({
+      const confirmedAt = new Date();
+      const confirmed = await tx.shopCashClose.update({
         where: { id },
         data: { status: 'CONFIRMED', receivedAmount: received, receiveVariance, receiveNote: note, destination: input.destination,
-          confirmedById: actor.id, confirmedAt: new Date() },
+          confirmedById: actor.id, confirmedAt },
         include: CLOSE_INCLUDE,
       });
+      // ลงบัญชีใน tx เดียวกับการยืนยัน — JE พัง = การยืนยันไม่เกิด (ไม่มีสถานะ "ยืนยันแล้วแต่สมุดไม่ขยับ" ที่ไม่มีใครรู้)
+      journal = await this.postConfirmJournal(tx, confirmed, confirmedAt);
+      if (!journal.entryId) return confirmed;
+      return tx.shopCashClose.update({ where: { id }, data: { journalEntryId: journal.entryId }, include: CLOSE_INCLUDE });
     });
+    if (journal.skipped) {
+      Sentry.captureMessage('[shop-cash-close] confirmed without a journal entry', {
+        level: 'warning', tags: { subsystem: 'shop-cash-close' }, extra: { closeId: id, reason: journal.skipped } });
+    }
     await this.audit.log({ userId: actor.id, action: 'SHOP_CASH_CLOSE_CONFIRMED', entity: 'shop_cash_close', entityId: id,
       newValue: { branchId: updated.branchId, sendAmount: updated.sendAmount, receivedAmount: updated.receivedAmount,
         receiveVariance: updated.receiveVariance, receiveNote: updated.receiveNote, destination: updated.destination,
-        countedById: updated.countedById } });
+        countedById: updated.countedById, journalEntryNumber: journal.entryNumber, journalSkipped: journal.skipped } });
     if (updated.receiveVariance && updated.receiveVariance.abs().gte(CENT)) {
       await this.alarmVariance(actor.id, updated, {
         label: 'รับเงินปิดยอด', variance: updated.receiveVariance, by: `รับโดย ${updated.confirmedBy?.name ?? '-'} (นับโดย ${updated.countedBy.name})`,
@@ -332,6 +360,65 @@ export class ShopCashCloseService {
       });
     }
     return this.present(updated);
+  }
+
+  /**
+   * JE ตอนยืนยันรับเงิน — คำตัดสินเจ้าของ 2026-09-21: เงินขาด/เกินลง **บัญชีเดียว** `S53-1104 เงินขาด-เกินบัญชี` (รวมส่วนต่างชั้นที่สอง)
+   * และการย้ายเงินออกจากลิ้นชักลง **ทุกปลายทาง ณ วันที่ผู้รับยืนยัน**. ไม่ลงอะไรตอนนับ — ยอดนับถูกตีกลับได้ จึงไม่มี JE ให้ต้องกลับรายการ.
+   *
+   *   นับขาด |V|   : Dr S53-1104 / Cr ลิ้นชัก        นับเกิน V   : Dr ลิ้นชัก / Cr S53-1104
+   *   ส่งเงินออก    : Dr ปลายทาง [รับจริง] / Cr ลิ้นชัก [แจ้งส่ง]   · ต่างกัน = S53-1104 (ขาด Dr · เกิน Cr)
+   *
+   * รวมยอดต่อบัญชีแล้วออกบรรทัดเดียวต่อบัญชี ⇒ สมดุลโดยโครงสร้าง และกรณีลิ้นชักกับปลายทางเป็นบัญชีเดียวกัน
+   * (สาขาที่ตั้งบัญชีธนาคารเป็นลิ้นชัก) ขาย้ายเงินหักล้างกันเองไม่เกิดบรรทัด Dr/Cr บัญชีเดียวกัน.
+   * หลังใบนี้ ยอดบัญชีลิ้นชักในสมุด = เงินทอนตั้งต้น (เมื่อสมุดเดินตรงกับสมุดเงินหน้าร้านมาตลอด).
+   * ผังไม่พร้อม (สาขายังไม่ตั้งลิ้นชัก / บัญชีใหม่ยังไม่มีในผัง) = ข้ามพร้อมเหตุผล ไม่บล็อกการรับเงิน — แบบเดียวกับ `externalFinanceAccountsReady`.
+   */
+  private async postConfirmJournal(tx: Prisma.TransactionClient, row: CloseRow, confirmedAt: Date): Promise<ConfirmJournalResult> {
+    const none: ConfirmJournalResult = { entryId: null, entryNumber: null, skipped: null };
+    const branch = await tx.branch.findUnique({ where: { id: row.branchId }, select: { shopCashAccountCode: true } });
+    const drawer = branch?.shopCashAccountCode ?? null;
+    const destination = row.destination ? CASH_CLOSE_DESTINATION_ACCOUNT[row.destination] : null;
+    const received = row.receivedAmount ?? new Prisma.Decimal(0);
+
+    const net = new Map<string, Prisma.Decimal>(); // บวก = Dr · ลบ = Cr
+    const move = (code: string, amount: Prisma.Decimal) => net.set(code, (net.get(code) ?? new Prisma.Decimal(0)).plus(amount));
+    const DRAWER = '__drawer__', DEST = '__destination__';
+    move(DRAWER, row.varianceAmount); move(CASH_OVER_SHORT_ACCOUNT, row.varianceAmount.neg());
+    move(DRAWER, row.sendAmount.neg()); move(DEST, received);
+    move(CASH_OVER_SHORT_ACCOUNT, row.sendAmount.minus(received));
+    if (drawer && destination === drawer) { move(DRAWER, net.get(DEST) ?? new Prisma.Decimal(0)); net.delete(DEST); }
+    const entries = [...net.entries()].filter(([, amount]) => amount.abs().gte(CENT));
+    if (entries.length === 0) return none; // นับตรง ไม่มีเงินส่ง = ไม่มีอะไรให้ลง
+
+    if (!drawer) return { ...none, skipped: 'NO_DRAWER_ACCOUNT' };
+    if (entries.some(([code]) => code === DEST) && !destination) return { ...none, skipped: 'NO_DESTINATION' };
+    const label: Record<string, string> = {
+      [DRAWER]: 'ลิ้นชักเงินสดสาขา', [DEST]: row.destination ? `ปลายทางเงินปิดยอด (${row.destination})` : 'ปลายทางเงินปิดยอด',
+      [CASH_OVER_SHORT_ACCOUNT]: 'เงินขาด-เกินจากการนับ/รับเงินปิดยอด',
+    };
+    const lines: JeLineInput[] = entries.map(([code, amount]) => ({
+      accountCode: code === DRAWER ? drawer : code === DEST ? destination! : code,
+      dr: amount.gt(0) ? amount : new Prisma.Decimal(0), cr: amount.lt(0) ? amount.neg() : new Prisma.Decimal(0),
+      description: label[code] ?? code,
+    }));
+    const codes = [...new Set(lines.map((line) => line.accountCode))];
+    const known = await tx.chartOfAccount.findMany({ where: { code: { in: codes }, deletedAt: null }, select: { code: true } });
+    if (known.length !== codes.length) return { ...none, skipped: 'ACCOUNTS_NOT_IN_CHART' };
+
+    const companyId = await this.companies.getShopCompanyId(tx);
+    await validatePeriodOpen(tx, confirmedAt, companyId);
+    const entry = await this.journal.createAndPost({
+      description: `ปิดยอดเงินสด ${row.branch.name} ${bangkokDateString(row.countedAt)} — นับ ${row.countedAmount.toFixed(2)} (${row.varianceAmount.gte(0) ? '+' : ''}${row.varianceAmount.toFixed(2)}) · ส่ง ${row.sendAmount.toFixed(2)} · รับจริง ${received.toFixed(2)}`,
+      reference: `shop-cash-close:${row.id}`,
+      metadata: {
+        flow: SHOP_CASH_CLOSE_FLOW, idempotencyKey: `${SHOP_CASH_CLOSE_FLOW}:${row.id}`, shopCashCloseId: row.id, branchId: row.branchId,
+        destination: row.destination, varianceAmount: row.varianceAmount.toFixed(2), sendAmount: row.sendAmount.toFixed(2),
+        receivedAmount: received.toFixed(2), receiveVariance: received.minus(row.sendAmount).toFixed(2),
+      },
+      postedAt: confirmedAt, companyId, lines,
+    }, tx);
+    return { entryId: entry.id, entryNumber: entry.entryNumber, skipped: null };
   }
 
   async sendBack(actor: CashCloseActor, id: string, input: { reason: string }) {

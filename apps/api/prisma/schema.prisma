@@ -7443,6 +7443,9 @@ model ShopCashClose {
   sentBackAt     DateTime? @map("sent_back_at")
   sentBackReason String?   @map("sent_back_reason")
 
+  /// JE ที่โพสต์ตอนยืนยันรับเงิน (flow `shop-cash-close`) — null = ยังไม่ยืนยัน / ไม่มียอดให้ลง / ผังยังไม่พร้อม. ไม่ผูก FK โดยตั้งใจ (แบบเดียวกับ id ของ JE ใน metadata)
+  journalEntryId String? @map("journal_entry_id")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

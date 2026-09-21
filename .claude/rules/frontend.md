@@ -28,6 +28,13 @@
   - `border-border` แทน `border-gray-*`
   - `hover:bg-accent` แทน `hover:bg-gray-*`
 - **Theme**: Minimal Zinc + Emerald Accent (primary = emerald, sidebar = white/light)
+- **ตัวอักษรบนพื้น `bg-primary` ต้องใช้ `text-primary-foreground` — ห้าม `text-white`** (คำตัดสินเจ้าของ 2026-09-21,
+  mockup CnXmYLkT กระดาน 18–19): จอสว่าง `--primary` = `160 84% 26%` (ตัวอักษรขาว 5.34:1 · ตัวอักษรเขียวบนป้าย
+  `bg-primary/10` 4.58:1 — เกณฑ์ตัวอักษรขนาดปกติ 4.5:1) · จอมืดคงเขียวเดิม `160 84% 39%` แต่ `--primary-foreground`
+  เป็นสีเข้ม `160 40% 8%` (6.73:1; ตัวอักษรขาวได้แค่ 2.59:1) ⇒ `text-white` ที่เขียนตายตัวจะอ่านไม่ออกในจอมืด.
+  ยังค้าง: การ์ดหัวของหน้า LIFF 7 จุดยังเป็น `text-white` (LIFF เปิดจอสว่างเสมอ — ลูกในการ์ดใช้ `text-white/80` ต้องไล่ทั้งการ์ด) ·
+  สีเหลืองเตือน (ขาวบนเหลือง 2.13:1) และสีแดง (3.76:1) ยังไม่ได้ปรับ — บนพื้นอ่อนให้ใช้ `text-foreground` แทน `text-warning`
+- **สถานะห้ามบอกด้วยสีอย่างเดียว** — ต้องมีไอคอนหรือข้อความกำกับ (ตัวอย่าง: `DAY_STATE_ICON` ใน `pages/shop-daily-cash/cash-hero.ts`)
 - **Font**: Inter (English) + IBM Plex Sans Thai (ไทย)
 - **Thai text**: ใช้ `leading-snug` เสมอ (ห้าม `leading-none` — ตัด สระบน ไทย)
 

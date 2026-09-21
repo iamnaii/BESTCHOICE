@@ -73,7 +73,7 @@ export default function CashCloseConfirmDialog({ close, viewerRole, onClose }: {
       <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{sendingBack ? 'ตีกลับให้นับใหม่' : 'ยืนยันรับเงิน'}</DialogTitle>
-          <DialogDescription>{close.branchName} · นับโดย {close.countedBy.name} {dayTimeOf(close.countedAt)}</DialogDescription>
+          <DialogDescription>{close.branchName} · ส่งยอดโดย {close.countedBy.name} {dayTimeOf(close.countedAt)}</DialogDescription>
         </DialogHeader>
         <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 rounded-lg bg-muted/60 p-3 text-sm leading-snug">
           <dt className="text-muted-foreground">ต้องมีในลิ้นชัก</dt><dd className="text-right tabular-nums">{baht(close.expectedAmount)}</dd>

@@ -247,10 +247,10 @@ export class ShopCashCloseService {
   /** พนักงานนับเงินปิดยอด — snapshot ยอดรอบ ณ ตอนนับ ภายใต้ล็อกของสาขา (กันสองคนนับพร้อมกัน/กดซ้ำ) */
   async count(actor: CashCloseActor, input: { branchId: string; countedAmount: number; varianceReason?: string | null }) {
     if (!COUNTER_ROLES.includes(actor.role)) {
-      throw new ForbiddenException('ผู้นับเงินปิดยอดต้องเป็นพนักงานขายหรือผู้จัดการสาขาของสาขานั้น');
+      throw new ForbiddenException('ผู้ส่งยอดรายวันต้องเป็นพนักงานขายหรือผู้จัดการสาขาของสาขานั้น');
     }
     if (!this.canCount(actor, input.branchId)) {
-      throw new ForbiddenException('นับเงินปิดยอดได้เฉพาะสาขาของตัวเอง');
+      throw new ForbiddenException('ส่งยอดรายวันได้เฉพาะสาขาของตัวเอง');
     }
     const counted = new Prisma.Decimal(input.countedAmount).toDecimalPlaces(2);
     const reason = input.varianceReason?.trim() || null;
@@ -260,7 +260,7 @@ export class ShopCashCloseService {
       const now = new Date();
       const round = await this.computeRound(tx, input.branchId, now);
       if (round.hasPreviousClose && round.movementCount === 0) {
-        throw new BadRequestException('ยังไม่มีรายการเงินสดใหม่ตั้งแต่ปิดยอดครั้งก่อน — ไม่ต้องนับซ้ำ');
+        throw new BadRequestException('ยังไม่มีรายการเงินสดใหม่ตั้งแต่ส่งยอดครั้งก่อน — ไม่ต้องส่งยอดซ้ำ');
       }
       const variance = counted.minus(round.expectedAmount);
       if (variance.abs().gte(CENT) && (!reason || reason.length < MIN_REASON_LENGTH)) {
@@ -325,7 +325,7 @@ export class ShopCashCloseService {
       throw new ForbiddenException('ผู้ยืนยันรับเงินต้องเป็นเจ้าของ ผู้จัดการการเงิน หรือผู้จัดการสาขาของสาขานั้น');
     }
     if (row.countedById === actor.id) {
-      throw new ForbiddenException('ผู้ยืนยันรับเงินต้องไม่ใช่คนเดียวกับผู้นับ — ให้เจ้าของ ผู้จัดการการเงิน หรือผู้จัดการสาขาคนอื่นเป็นผู้ยืนยัน');
+      throw new ForbiddenException('ผู้ยืนยันรับเงินต้องไม่ใช่คนเดียวกับผู้ส่งยอด — ให้เจ้าของ ผู้จัดการการเงิน หรือผู้จัดการสาขาคนอื่นเป็นผู้ยืนยัน');
     }
     if (row.status !== 'PENDING_CONFIRM') {
       throw new ConflictException(row.status === 'CONFIRMED' ? 'รายการนี้ยืนยันรับเงินไปแล้ว' : 'รายการนี้ถูกตีกลับให้นับใหม่แล้ว');
@@ -342,7 +342,7 @@ export class ShopCashCloseService {
     const row = await this.prisma.shopCashClose.findUnique({ where: { id }, select: { branchId: true, countedById: true, status: true, depositSlipKey: true } });
     if (!row) throw new NotFoundException('ไม่พบรายการปิดยอด');
     if (!this.canConfirmBranch(actor, row.branchId) || row.countedById === actor.id) {
-      throw new ForbiddenException('แนบสลิปฝากเงินได้เฉพาะผู้ยืนยันรับเงินของสาขานั้น และต้องไม่ใช่ผู้นับ');
+      throw new ForbiddenException('แนบสลิปฝากเงินได้เฉพาะผู้ยืนยันรับเงินของสาขานั้น และต้องไม่ใช่ผู้ส่งยอด');
     }
     if (row.status !== 'PENDING_CONFIRM') throw new ConflictException('แนบสลิปได้เฉพาะรายการที่ยังรอยืนยันรับเงิน');
     const key = `shop-cash-close/${id}/${Date.now()}-${randomUUID()}.${evidenceImageExtension(file.mimetype)}`;

@@ -43,7 +43,7 @@ export default function ContractVerifyPage() {
         {/* Logo */}
         <div className="flex items-center gap-2.5 mb-8 justify-center">
           <div className="size-9 rounded-lg bg-primary flex items-center justify-center">
-            <span className="text-white font-bold text-sm">B</span>
+            <span className="text-primary-foreground font-bold text-sm">B</span>
           </div>
           <span className="text-xl font-bold text-foreground tracking-tight">
             BEST<span className="text-primary">CHOICE</span>

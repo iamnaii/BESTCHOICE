@@ -76,12 +76,12 @@ describe('CashCloseOverview — มุมมองเจ้าของ (กร�
     expect(within(rowOf('ลาดพร้าว')).getByRole('button', { name: 'มีสลิป' })).toBeInTheDocument();
     expect(within(rowOf('รังสิต')).getByText('แจ้งส่ง 4,300.00')).toBeInTheDocument();
     expect(within(rowOf('รังสิต')).getByRole('button', { name: 'ยืนยันรับเงิน' })).toBeInTheDocument();
-    expect(within(rowOf('บางนา')).getByText('ยังไม่นับ')).toBeInTheDocument();
+    expect(within(rowOf('บางนา')).getByText('ยังไม่ส่งยอด')).toBeInTheDocument();
     expect(within(rowOf('บางนา')).getByText('8,400.00')).toBeInTheDocument();
-    expect(within(rowOf('บางนา')).getByText(/มีเงินสดรับ 6,400.00 ตั้งแต่ปิดยอดครั้งก่อน/)).toBeInTheDocument();
+    expect(within(rowOf('บางนา')).getByText(/มีเงินสดรับ 6,400.00 ตั้งแต่ส่งยอดครั้งก่อน/)).toBeInTheDocument();
     expect(within(rowOf('ดอนเมือง')).getByText('ไม่มีเงินสด')).toBeInTheDocument();
     expect(within(rowOf('ดอนเมือง')).queryByRole('button')).not.toBeInTheDocument();
-    expect(screen.getByText(/ถึงบริษัทแล้ว 1 สาขา · ยังอยู่ที่สาขา 0 · รอยืนยันรับเงิน 1 · ยังไม่นับ 1 · ไม่มีเงินสด 1/)).toBeInTheDocument();
+    expect(screen.getByText(/ถึงบริษัทแล้ว 1 สาขา · ยังอยู่ที่สาขา 0 · รอยืนยันรับเงิน 1 · ยังไม่ส่งยอด 1 · ไม่มีเงินสด 1/)).toBeInTheDocument();
     expect(mocks.get).toHaveBeenCalledWith('/shop-tenders/cash-close/overview', { params: { date: '2026-09-21', branchId: undefined } });
   });
 
@@ -90,7 +90,7 @@ describe('CashCloseOverview — มุมมองเจ้าของ (กร�
     const table = await screen.findByRole('table');
     await userEvent.click(within(table).getByRole('button', { name: 'ยืนยันรับเงิน' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/รังสิต · นับโดย วิชัย/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/รังสิต · ส่งยอดโดย วิชัย/)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/เงินที่รับมาจริง/)).toHaveValue('4,300.00');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
     await userEvent.click(within(table).getByRole('button', { name: 'เปิดสาขานี้' }));
@@ -99,9 +99,9 @@ describe('CashCloseOverview — มุมมองเจ้าของ (กร�
 
   it('แถบ 14 วัน: ช่องละวันต่อสาขา กดแล้วเปิดวันนั้นของสาขานั้น', async () => {
     const { onOpen } = renderOverview(overview());
-    const missed = await screen.findByRole('button', { name: /บางนา 20 ก\.ย\. มีเงินสดแต่ไม่ปิดยอด/ });
+    const missed = await screen.findByRole('button', { name: /บางนา 20 ก\.ย\. มีเงินสดแต่ไม่ส่งยอด/ });
     expect(screen.getAllByRole('button', { name: /^บางนา \d+ ก\.ย\./ })).toHaveLength(14);
-    expect(screen.getByRole('button', { name: /บางนา 21 ก\.ย\. ยังไม่นับ/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /บางนา 21 ก\.ย\. ยังไม่ส่งยอด/ })).toBeInTheDocument();
     await userEvent.click(missed);
     expect(onOpen).toHaveBeenCalledWith('br-bn', '2026-09-20');
   });

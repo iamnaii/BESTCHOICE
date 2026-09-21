@@ -115,7 +115,7 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
   });
 
   it('สิทธิ์: เจ้าของนับไม่ได้ · พนักงาน/ผจก.ต่างสาขานับและดูไม่ได้', async () => {
-    await expect(service.count(users.owner, { branchId, countedAmount: 12710 })).rejects.toThrow('ผู้นับเงินปิดยอดต้องเป็นพนักงานขายหรือผู้จัดการสาขา');
+    await expect(service.count(users.owner, { branchId, countedAmount: 12710 })).rejects.toThrow('ผู้ส่งยอดรายวันต้องเป็นพนักงานขายหรือผู้จัดการสาขา');
     await expect(service.count(users.otherManager, { branchId, countedAmount: 12710 })).rejects.toThrow('เฉพาะสาขาของตัวเอง');
     await expect(service.getStatus(users.otherManager, { branchId })).rejects.toThrow('เฉพาะสาขาของตัวเอง');
   });
@@ -138,7 +138,7 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
   });
 
   it('รายการหลังปิดยอดไปรวมรอบถัดไป · ไม่มีเงินสดใหม่ = นับซ้ำไม่ได้', async () => {
-    await expect(service.count(users.sales, { branchId, countedAmount: 2000 })).rejects.toThrow('ยังไม่มีรายการเงินสดใหม่ตั้งแต่ปิดยอดครั้งก่อน');
+    await expect(service.count(users.sales, { branchId, countedAmount: 2000 })).rejects.toThrow('ยังไม่มีรายการเงินสดใหม่ตั้งแต่ส่งยอดครั้งก่อน');
     await tick();
     await tender(branchId, 'IN', 'CASH', 890);
     const status = await service.getStatus(users.manager, { branchId });
@@ -156,7 +156,7 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     // หลักฐานว่าเงินถึงบริษัท (เจ้าของเคาะ 2026-09-21): "เจ้าของเก็บไว้" = เจ้าของต้องยืนยันเอง · นำฝากธนาคาร = ต้องมีรูปสลิป + เลขอ้างอิง
     await expect(service.confirm(users.manager, firstCloseId, { receivedAmount: 10510, destination: 'OWNER_HOLD' })).rejects.toThrow('เฉพาะเมื่อเจ้าของเป็นผู้กดยืนยันรับเงินเอง');
     await expect(service.confirm(users.owner, firstCloseId, { receivedAmount: 10510, destination: 'BANK_DEPOSIT' })).rejects.toThrow('ต้องแนบรูปสลิปฝากเงินก่อนยืนยัน');
-    await expect(service.attachDepositSlip(users.sales, firstCloseId, slip())).rejects.toThrow('ต้องไม่ใช่ผู้นับ');
+    await expect(service.attachDepositSlip(users.sales, firstCloseId, slip())).rejects.toThrow('ต้องไม่ใช่ผู้ส่งยอด');
     await expect(service.attachDepositSlip(users.owner, firstCloseId, { mimetype: 'image/jpeg', buffer: Buffer.from('not-an-image-at-all') } as never)).rejects.toThrow('ต้องเป็นไฟล์ JPEG, PNG หรือ WEBP');
     await service.attachDepositSlip(users.owner, firstCloseId, slip());
     await service.attachDepositSlip(users.owner, firstCloseId, slip()); // แนบใหม่ = แทนรูปเดิม ไม่ทิ้งไฟล์ค้าง
@@ -189,7 +189,7 @@ describe('นับเงินปิดยอด (shop cash close)', () => {
     const second = await service.count(users.manager, { branchId, countedAmount: 2890 });
     expect(second).toMatchObject({ attemptNo: 1, expectedAmount: 2890, varianceAmount: 0, sendAmount: 890, varianceReason: null });
     expect(second.periodStart).toEqual(firstCountedAt);
-    await expect(service.confirm(users.manager, second.id, { receivedAmount: 890, destination: 'BRANCH_SAFE' })).rejects.toThrow('ต้องไม่ใช่คนเดียวกับผู้นับ');
+    await expect(service.confirm(users.manager, second.id, { receivedAmount: 890, destination: 'BRANCH_SAFE' })).rejects.toThrow('ต้องไม่ใช่คนเดียวกับผู้ส่งยอด');
     await expect(service.sendBack(users.owner, second.id, { reason: 'x' })).rejects.toThrow('กรอกเหตุผลที่ตีกลับ');
     const back = await service.sendBack(users.owner, second.id, { reason: 'นับรวมธนบัตรปลอม ให้นับใหม่' });
     expect(back).toMatchObject({ status: 'SENT_BACK', sentBackReason: 'นับรวมธนบัตรปลอม ให้นับใหม่' });

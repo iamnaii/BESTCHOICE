@@ -679,7 +679,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                   <div className="space-y-3 mb-3 max-h-64 overflow-y-auto pr-1">
                     {comments.map((c) => (
                       <div key={c.id} className="flex gap-2.5">
-                        <div className="size-7 rounded-full bg-primary flex items-center justify-center text-white text-[10px] font-bold shrink-0">
+                        <div className="size-7 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-[10px] font-bold shrink-0">
                           {(c.user?.nickname || c.user?.name || '?')[0].toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -743,7 +743,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
               type="button"
               onClick={() => saveMutation.mutate()}
               disabled={saveMutation.isPending}
-              className="px-5 py-2.5 text-sm font-semibold bg-primary text-white hover:bg-primary/90 rounded-xl disabled:opacity-50 shadow-sm transition-all"
+              className="px-5 py-2.5 text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl disabled:opacity-50 shadow-sm transition-all"
             >
               {saveMutation.isPending ? 'กำลังบันทึก...' : editing ? 'บันทึกการแก้ไข' : 'สร้างงาน'}
             </button>

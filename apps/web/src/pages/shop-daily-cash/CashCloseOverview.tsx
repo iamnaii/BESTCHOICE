@@ -1,26 +1,25 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import api, { getErrorMessage } from '@/lib/api';
+import { getErrorMessage } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import CashCloseConfirmDialog from './CashCloseConfirmDialog';
 import CashDepositDialog from './CashDepositDialog';
 import { EvidenceImageLink } from './EvidenceImage';
+import { useCashCloseOverview } from './cash-close-overview.query';
+import { DAY_STATE_ICON } from './cash-hero';
 import {
   baht, DAY_STATE_BADGE, DAY_STATE_CELL, DAY_STATE_LABEL, daysSince, DESTINATION_LABEL, thaiShortDate, timeOf, varianceLabel, varianceTone,
-  type CashClose, type CashCloseDayState, type CashCloseOverviewResponse, type CashCloseOverviewRow, type CashHolding,
+  type CashClose, type CashCloseDayState, type CashCloseOverviewRow, type CashHolding,
 } from './cash-close';
 
 /**
  * มุมมองเจ้าของ (mockup CnXmYLkT กระดาน 10): ตารางสถานะปิดยอดของวัน (ทุกสาขา) + แถบ 14 วัน "ปิดยอดครบทุกวันไหม" +
  * เงินที่รับจากพนักงานแล้วแต่ยังไม่ถึงบริษัท. เมื่อเลือกสาขาเดียว หน้าแสดงกล่องปิดยอดของสาขาแทนตาราง (`showTable = false`)
  */
-export const cashCloseOverviewKey = (date: string, branchId: string) => ['shop-tenders', 'cash-close', 'overview', date, branchId];
-
 const LEGEND: { state: CashCloseDayState; label: string }[] = [
   { state: 'REACHED', label: 'ถึงบริษัทแล้ว' },
   { state: 'AWAITING_CONFIRM', label: 'รอยืนยัน / ยังอยู่ที่สาขา' },
-  { state: 'MISSED', label: 'มีเงินสดแต่ไม่ปิดยอด' },
-  { state: 'NOT_COUNTED', label: 'วันนี้ยังไม่นับ' },
+  { state: 'MISSED', label: 'มีเงินสดแต่ไม่ส่งยอด' },
+  { state: 'NOT_COUNTED', label: 'วันนี้ยังไม่ส่งยอด' },
   { state: 'NO_CASH', label: 'ไม่มีเงินสด' },
 ];
 
@@ -35,12 +34,7 @@ interface Props {
 export default function CashCloseOverview({ date, branchId, showTable, onOpen }: Props) {
   const [deciding, setDeciding] = useState<CashClose | null>(null);
   const [depositing, setDepositing] = useState<CashHolding | null>(null);
-  const query = useQuery<CashCloseOverviewResponse>({
-    queryKey: cashCloseOverviewKey(date, branchId),
-    queryFn: async () => (await api.get('/shop-tenders/cash-close/overview', { params: { date, branchId: branchId || undefined } })).data,
-    // ยอดเงินสดต้องสดเสมอ: ขายเงินสด/ตั้งค่าสาขาแล้วกลับมาหน้านี้ ต้องไม่เห็นของเก่าจาก cache 3 นาทีของแอป
-    staleTime: 0, refetchOnMount: 'always',
-  });
+  const query = useCashCloseOverview(date, branchId);
   const data = query.data;
 
   if (query.isLoading) return <div className="h-40 animate-pulse rounded-xl border border-border bg-card" />;
@@ -64,7 +58,7 @@ export default function CashCloseOverview({ date, branchId, showTable, onOpen }:
           <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
             <h2 className="text-[15px] font-semibold leading-snug">ปิดยอดประจำวัน · {thaiShortDate(data.date)}</h2>
             <span className="text-xs text-muted-foreground leading-snug">
-              ถึงบริษัทแล้ว {summary.reached} สาขา · ยังอยู่ที่สาขา {summary.atBranch} · รอยืนยันรับเงิน {summary.awaitingConfirm} · ยังไม่นับ {summary.notCounted} · ไม่มีเงินสด {summary.noCash}
+              ถึงบริษัทแล้ว {summary.reached} สาขา · ยังอยู่ที่สาขา {summary.atBranch} · รอยืนยันรับเงิน {summary.awaitingConfirm} · ยังไม่ส่งยอด {summary.notCounted} · ไม่มีเงินสด {summary.noCash}
             </span>
           </div>
           <div className="hidden overflow-x-auto md:block">
@@ -135,17 +129,21 @@ export default function CashCloseOverview({ date, branchId, showTable, onOpen }:
               <span className="col-span-full truncate text-sm font-semibold leading-snug sm:col-span-1">{row.branchName}</span>
               {row.cells.map((state, index) => {
                 const day = data.strip.dates[index];
+                const Icon = DAY_STATE_ICON[state];
                 return (
                   <button key={day} type="button" onClick={() => onOpen(row.branchId, day)}
                     title={`${row.branchName} · ${thaiShortDate(day)} · ${DAY_STATE_LABEL[state]}`}
                     aria-label={`${row.branchName} ${thaiShortDate(day)} ${DAY_STATE_LABEL[state]}`}
-                    className={`h-7 rounded-md outline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${DAY_STATE_CELL[state]}`} />
+                    className={`flex h-7 items-center justify-center rounded-md outline-offset-2 hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring ${DAY_STATE_CELL[state]}`}>
+                    {/* ไอคอนคู่กับสี — สถานะต้องอ่านออกแม้แยกสีไม่ได้ */}
+                    <Icon aria-hidden className={`h-3.5 w-3.5 ${CELL_ICON_TONE[state]}`} />
+                  </button>
                 );
               })}
             </div>
           ))}
           <p className="text-xs text-muted-foreground leading-snug">
-            กดช่อง = เปิดวันนั้นของสาขานั้น · สีแดง = สิ้นวันยังมีเงินสดรับที่ไม่มีใครนับ (เงินจะไปรวมกับการนับครั้งถัดไป แต่ช่องยังแดงเป็นประวัติ)
+            กดช่อง = เปิดวันนั้นของสาขานั้น · สีแดง = สิ้นวันยังมีเงินสดรับที่ไม่มีใครส่งยอด (เงินจะไปรวมกับการส่งยอดครั้งถัดไป แต่ช่องยังแดงเป็นประวัติ)
           </p>
         </div>
       </section>
@@ -171,6 +169,16 @@ export default function CashCloseOverview({ date, branchId, showTable, onOpen }:
   );
 }
 
+/** สีไอคอนบนช่องสีทึบของแถบ 14 วัน */
+const CELL_ICON_TONE: Record<CashCloseDayState, string> = {
+  REACHED: 'text-primary-foreground',
+  AT_BRANCH: 'text-warning-foreground',
+  AWAITING_CONFIRM: 'text-warning-foreground',
+  NOT_COUNTED: 'text-destructive',
+  MISSED: 'text-destructive-foreground',
+  NO_CASH: 'text-muted-foreground',
+};
+
 const Dash = () => <span className="text-muted-foreground">—</span>;
 const money = (value: number | null | undefined) => (value == null ? <Dash /> : baht(value));
 const isAlarm = (state: CashCloseDayState) => state === 'NOT_COUNTED' || state === 'MISSED';
@@ -190,18 +198,18 @@ function StateCell({ row }: { row: CashCloseOverviewRow }) {
     <div className="flex flex-col items-start gap-1">
       <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold leading-snug ${DAY_STATE_BADGE[row.state]}`}>{DAY_STATE_LABEL[row.state]}</span>
       <span className={`text-xs leading-snug ${isAlarm(row.state) ? 'text-destructive' : 'text-muted-foreground'}`}>
-        {close && close.moneyState === 'AWAITING_CONFIRM' && <>นับ {close.countedBy.name} {timeOf(close.countedAt)}</>}
+        {close && close.moneyState === 'AWAITING_CONFIRM' && <>{close.countedBy.name} ส่งยอด {timeOf(close.countedAt)}</>}
         {close && close.moneyState !== 'AWAITING_CONFIRM' && (
           <>
-            {close.destination ? DESTINATION_LABEL[close.destination] : 'ปิดยอดแล้ว'}{close.confirmedAt ? ` ${timeOf(close.confirmedAt)}` : ''} · นับ {close.countedBy.name} · รับ {close.confirmedBy?.name ?? '-'}
+            {close.destination ? DESTINATION_LABEL[close.destination] : 'ปิดยอดแล้ว'}{close.confirmedAt ? ` ${timeOf(close.confirmedAt)}` : ''} · ส่ง {close.countedBy.name} · รับ {close.confirmedBy?.name ?? '-'}
             {close.moneyState === 'AT_BRANCH' && ' — รอบันทึกนำฝาก'}
             {close.hasDepositSlip && <> · <EvidenceImageLink path={`/shop-tenders/cash-close/${close.id}/deposit-slip`} title={`สลิปฝากเงิน ${close.branchName}`} label="มีสลิป" /></>}
           </>
         )}
         {!close && row.state === 'NOT_COUNTED' && (
-          <>มีเงินสดรับ {baht(row.round?.cashIn ?? row.dayCashIn)} {row.round?.periodStart ? 'ตั้งแต่ปิดยอดครั้งก่อน' : 'ที่ยังไม่เคยถูกนับ'}{row.lastCashInAt ? ` · รายการล่าสุด ${timeOf(row.lastCashInAt)}` : ''}</>
+          <>มีเงินสดรับ {baht(row.round?.cashIn ?? row.dayCashIn)} {row.round?.periodStart ? 'ตั้งแต่ส่งยอดครั้งก่อน' : 'ที่ยังไม่เคยส่งยอด'}{row.lastCashInAt ? ` · รายการล่าสุด ${timeOf(row.lastCashInAt)}` : ''}</>
         )}
-        {!close && row.state === 'MISSED' && (row.dayCashIn > 0 ? <>วันนั้นรับเงินสด {baht(row.dayCashIn)} · ไม่มีการนับปิดยอด</> : <>มีเงินสดค้างจากวันก่อนหน้าที่ยังไม่มีใครนับ</>)}
+        {!close && row.state === 'MISSED' && (row.dayCashIn > 0 ? <>วันนั้นรับเงินสด {baht(row.dayCashIn)} · ไม่มีการส่งยอด</> : <>มีเงินสดค้างจากวันก่อนหน้าที่ยังไม่มีใครส่งยอด</>)}
         {!close && row.state === 'NO_CASH' && <>ไม่มีเงินสดรับที่ต้องปิดยอด</>}
         {row.closeCount > 1 && <> · ปิดยอด {row.closeCount} ครั้งในวันนี้</>}
       </span>

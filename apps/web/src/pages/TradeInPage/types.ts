@@ -74,8 +74,6 @@ export interface TradeInsResponse {
 
 export interface AcceptFormState {
   deviceOrigin?: string;
-  shopWarrantyDays?: string;
-  warrantyTerms?: string;
   idCardVerified: boolean;
   sellerConsentSigned: boolean;
   policeReportAcknowledged: boolean;

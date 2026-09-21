@@ -104,11 +104,15 @@ describe('TradeInLifecycleService.accept() — SHOP JE wiring (Task 2)', () => {
 
     await service.accept(
       'ti-1',
-      { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH' } as any,
+      { sellerName: 'TEST SELLER', sellerPhone: '0000000000', sellerAddress: 'TEST ADDRESS', sellerIdCardNumber: '0000000000001', serialNumber: 'TEST-SN', imeiMissingReason: 'TEST: no cellular radio', idCardVerified: true, sellerConsentSigned: true, declarationVersion: TRADE_IN_DECLARATION_VERSION, sellerSignatureBase64: 'data:image/png;base64,dGVzdA==', paymentMethod: 'CASH', deviceOrigin: 'IMPORTED', shopWarrantyDays: 365, warrantyTerms: 'Stale intake form' } as any,
       'u-1',
     );
 
     expect(shopTradeInTemplate.execute).toHaveBeenCalledTimes(1);
+    const productData = tx.product.create.mock.calls[0][0].data;
+    expect(productData.deviceOrigin).toBe('IMPORTED');
+    expect(productData).not.toHaveProperty('shopWarrantyDays');
+    expect(productData).not.toHaveProperty('warrantyTerms');
     const input = shopTradeInTemplate.execute.mock.calls[0][0];
     expect(input).toMatchObject({
       idempotencyKey: 'shop-trade-in:ti-1',

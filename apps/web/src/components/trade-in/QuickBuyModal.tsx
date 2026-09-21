@@ -10,7 +10,7 @@ import {
 import SellerDeclaration from './SellerDeclaration';
 import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
+import { DeviceOriginField } from '@/components/product/DeviceDisclosureFields';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -159,7 +159,7 @@ export default function QuickBuyModal({
   });
 
   const [form, setForm] = useState({
-    deviceOrigin: '', shopWarrantyDays: '', warrantyTerms: '',
+    deviceOrigin: '',
     // Step 3: seller (address ใช้ AddressForm แยก state)
     sellerContactId: '', // contact FK (party master)
     sellerName: '',
@@ -294,7 +294,7 @@ export default function QuickBuyModal({
     setSellerHistory(null);
     setAddress({ ...emptyAddress });
     setForm({
-      deviceOrigin: '', shopWarrantyDays: '', warrantyTerms: '',
+      deviceOrigin: '',
       sellerContactId: '',
       sellerName: '',
       sellerPhone: '',
@@ -340,8 +340,6 @@ export default function QuickBuyModal({
         idCardPhotoBase64: form.idCardPhotoBase64 || undefined,
         idCardSource: form.idCardSource || undefined,
         deviceOrigin: form.deviceOrigin || null,
-        shopWarrantyDays: form.shopWarrantyDays === '' ? null : Number(form.shopWarrantyDays),
-        warrantyTerms: form.warrantyTerms.trim() || null,
         deviceBrand: form.deviceBrand,
         deviceModel: form.deviceModel,
         deviceStorage: form.deviceStorage || undefined,
@@ -876,7 +874,7 @@ export default function QuickBuyModal({
                   รับซื้อเฉพาะ iPhone เลือกรุ่นและความจุ แล้วตรวจสภาพเพื่อดูราคา
                 </p>
               </div>
-              <DeviceDisclosureFields value={form} onChange={(key, value) => setForm(f => ({ ...f, [key]: value }))} />
+              <DeviceOriginField value={form.deviceOrigin} onChange={(deviceOrigin) => setForm(f => ({ ...f, deviceOrigin }))} />
               {catalog.isPending ? (
                 <p role="status" className="md:col-span-2">
                   กำลังโหลดรุ่นและราคารับซื้อ...

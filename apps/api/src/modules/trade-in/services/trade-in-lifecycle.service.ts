@@ -593,8 +593,6 @@ export class TradeInLifecycleService {
         data: {
           name: productName,
           deviceOrigin: resolveTradeInDeviceOrigin(dto.deviceOrigin, tradeIn.conditionAnswers),
-          shopWarrantyDays: dto.shopWarrantyDays ?? null,
-          warrantyTerms: dto.warrantyTerms?.trim() || null,
           brand: tradeIn.deviceBrand,
           model: tradeIn.deviceModel,
           color: tradeIn.deviceColor ?? null,
@@ -844,8 +842,6 @@ export class TradeInLifecycleService {
         created.id,
         {
           deviceOrigin: dto.deviceOrigin,
-          shopWarrantyDays: dto.shopWarrantyDays,
-          warrantyTerms: dto.warrantyTerms,
           idCardVerified: dto.idCardVerified,
           sellerConsentSigned: dto.sellerConsentSigned,
           declarationVersion: dto.declarationVersion,

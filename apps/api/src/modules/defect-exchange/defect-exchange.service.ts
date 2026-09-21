@@ -16,6 +16,9 @@ import { generateContractNumber } from '../../utils/sequence.util';
 import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
 import { assertSameTestSide, TEST_SIDE_CUSTOMER_SELECT } from '../../utils/test-data-markers';
 import { Decimal } from '@prisma/client/runtime/library';
+import { readStringFlag } from '../../utils/config.util';
+import { captureProductDisclosure } from '../../utils/product-disclosure.util';
+import { SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../warranty/shop-warranty-policy';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -262,6 +265,7 @@ export class DefectExchangeService {
         const newContract = await tx.contract.create({
           data: {
             contractNumber,
+            productDisclosure: captureProductDisclosure(newProductRec, await readStringFlag(tx, SHOP_WARRANTY_DAYS_CONFIG_KEY, '')),
             customerId: oldContract.customerId,
             productId: dto.newProductId,
             branchId: oldContract.branchId,

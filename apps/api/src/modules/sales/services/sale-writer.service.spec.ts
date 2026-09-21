@@ -54,7 +54,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       },
       // resolveSaleShopWarranty อ่านคีย์ warranty.shopWarrantyDays ใน tx เดียวกัน
       // ไม่มีแถว = ไม่ override ⇒ ใช้ค่าตามชนิดสินค้า
-      systemConfig: { findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
       interestConfig: { findFirst: jest.fn().mockResolvedValue(null) },
       // branch มีผู้อ่านสองราย: (1) resolveBranchVat (include company) → null = ใช้ VAT จาก config ตามเดิม
       // (2) ShopTenderRecorder — ใช้ ShopAccountResolver ตัวจริงของมันเอง (ไม่ใช่ mock ที่ inject ให้ service)
@@ -638,6 +638,20 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       expect(result).toEqual(mockSale);
       expect(prisma.$transaction).toHaveBeenCalledTimes(2);
     });
+  });
+  it.each(['CASH', 'EXTERNAL_FINANCE'])('freezes imported origin and zero warranty in %s sales', async saleType => {
+    tx.product.findUnique.mockResolvedValue({ id: 'p1', status: 'IN_STOCK', category: 'PHONE_USED', deviceOrigin: 'IMPORTED', shopWarrantyDays: 0, warrantyTerms: 'Original terms', branchId: 'br-1', costPrice: new Decimal(7000) });
+    tx.systemConfig.findFirst.mockResolvedValue({ value: '90' });
+    tx.contract = { create: jest.fn().mockResolvedValue({ id: 'ct-1', salespersonId: 'sp-1' }) };
+    tx.payment = { createMany: jest.fn().mockResolvedValue({ count: 12 }) };
+    tx.financeReceivable = { create: jest.fn().mockResolvedValue({}) };
+    tx.externalFinanceCompany = { upsert: jest.fn().mockResolvedValue({ id: 'ef-1' }) };
+    const dto = { productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 20000, bundleProductIds: [], paymentMethod: 'CASH', downPayment: 3000, totalMonths: 12, financeCompany: 'GFIN' } as any;
+    if (saleType === 'CASH') await service.createCashSale(dto, 'sp-1', 20000, 0, { role: 'OWNER' });
+    else await service.createExternalFinanceSale(dto, 'sp-1', 20000, 0, { role: 'OWNER' });
+    const saleData = tx.sale.create.mock.calls[0][0].data;
+    expect(saleData.productDisclosure).toEqual({ version: 1, deviceOrigin: 'IMPORTED', shopWarrantyDays: 0, warrantyTerms: 'Original terms' });
+    expect(saleData.shopWarrantyEndDate).toBeUndefined();
   });
 });
 

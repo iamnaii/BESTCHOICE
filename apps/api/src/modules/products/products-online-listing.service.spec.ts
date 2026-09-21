@@ -45,6 +45,48 @@ describe('ProductsOnlineListingService', () => {
   });
 
   describe('updateOnlineListing', () => {
+    it('saves warranty duration and trimmed terms together', async () => {
+      const dto = plainToInstance(UpdateOnlineListingDto, { shopWarrantyDays: 60, warrantyTerms: '  ประกันร้าน\nไม่รวมตกน้ำ  ' });
+      expect(await validate(dto)).toHaveLength(0);
+      await service.updateOnlineListing('p1', dto);
+      expect(prisma.product.update.mock.calls[0][0].data).toEqual({ shopWarrantyDays: 60, warrantyTerms: 'ประกันร้าน\nไม่รวมตกน้ำ' });
+    });
+
+    it.each([0, null])('preserves no-warranty versus unverified duration (%s)', async (shopWarrantyDays) => {
+      const dto = plainToInstance(UpdateOnlineListingDto, { shopWarrantyDays, warrantyTerms: null });
+      expect(await validate(dto)).toHaveLength(0);
+      await service.updateOnlineListing('p1', dto);
+      expect(prisma.product.update.mock.calls[0][0].data).toEqual({ shopWarrantyDays, warrantyTerms: null });
+    });
+
+    it('clears blank terms without changing existing warranty days', async () => {
+      await service.updateOnlineListing('p1', { warrantyTerms: ' \n ' });
+      expect(prisma.product.update.mock.calls[0][0].data).toEqual({ warrantyTerms: null });
+    });
+
+    it.each([{ shopWarrantyDays: -1 }, { shopWarrantyDays: 1.5 }, { warrantyTerms: 'x'.repeat(2001) }])(
+      'rejects invalid warranty input %j', async (input) => {
+        expect((await validate(plainToInstance(UpdateOnlineListingDto, input))).length).toBeGreaterThan(0);
+      },
+    );
+
+    it.each(['THAI', 'IMPORTED', null] as const)('validates and persists origin %s', async (deviceOrigin) => {
+      const dto = plainToInstance(UpdateOnlineListingDto, { deviceOrigin });
+      expect(await validate(dto)).toHaveLength(0);
+      await service.updateOnlineListing('p1', dto);
+      expect(prisma.product.update.mock.calls[0][0].data).toEqual({ deviceOrigin });
+    });
+
+    it('does not reset origin when editing another listing field', async () => {
+      await service.updateOnlineListing('p1', { onlineDescription: 'updated' });
+      expect(prisma.product.update.mock.calls[0][0].data).not.toHaveProperty('deviceOrigin');
+    });
+
+    it('rejects unsupported origins', async () => {
+      const errors = await validate(plainToInstance(UpdateOnlineListingDto, { deviceOrigin: 'US' }));
+      expect(errors.some((error) => error.property === 'deviceOrigin')).toBe(true);
+    });
+
     it('reorders/removes gallery when new list is a subset of the current one', async () => {
       await service.updateOnlineListing('p1', { gallery: ['https://cdn.example.com/b.jpg'] });
       expect(prisma.product.update).toHaveBeenCalledWith(

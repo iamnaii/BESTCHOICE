@@ -121,6 +121,8 @@ export default function ContractCreatePage() {
       {data.step === 0 && (
         <ProductSelectStep
           products={data.products}
+          deviceOrigin={data.deviceOrigin}
+          setDeviceOrigin={data.setDeviceOrigin}
           productSearch={data.productSearch}
           setProductSearch={data.setProductSearch}
           selectedProduct={data.selectedProduct}

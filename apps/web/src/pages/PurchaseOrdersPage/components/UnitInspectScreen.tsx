@@ -1,3 +1,4 @@
+import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
 import { useRef, useState } from 'react';
 import { AlertTriangle, Camera, Check, ListChecks, ScanLine, Smartphone, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -231,6 +232,7 @@ export function UnitInspectScreen({
       </div>
 
       <SpecStrip unit={unit} costLabel={costLabel} />
+      <DeviceDisclosureFields value={unit} onChange={(key, value) => onChange(idx, { [key]: value, ...(key === 'deviceOrigin' && value !== unit.deviceOrigin ? { sellingPrice: '', installmentPrice: '' } : {}) })} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>

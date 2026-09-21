@@ -23,6 +23,8 @@ import { Breadcrumb } from '@/components/catalog/Breadcrumb';
 import { SpecTable } from '@/components/catalog/SpecTable';
 import { UnitPicker } from '@/components/catalog/UnitPicker';
 import { ProductGallery } from '@/components/catalog/ProductGallery';
+import { WarrantyDetails } from '@/components/catalog/WarrantyDetails';
+import { deviceOriginLabel, type DeviceOrigin } from '@/lib/device-origin';
 import { RelatedSection } from '@/components/catalog/RelatedSection';
 import { StockIndicator } from '@/components/catalog/StockIndicator';
 import {
@@ -38,6 +40,9 @@ import {
 } from '@/components';
 
 interface ProductDetail {
+  shopWarrantyDays?: number;
+  warrantyTerms?: string;
+  deviceOrigin?: DeviceOrigin | null;
   id: string;
   brand: string;
   model: string;
@@ -142,12 +147,11 @@ export default function ProductDetailPage() {
   const metaTitle = data
     ? [data.brand, data.model, data.storage, data.color].filter(Boolean).join(' ')
     : undefined;
-  const metaWarrantyDays =
-    flatUnits.find((u) => u.shopWarrantyDays != null)?.shopWarrantyDays ?? null;
+  const metaWarrantyDays = (selectedUnit ?? data)?.shopWarrantyDays ?? null;
   usePageMeta(
     metaTitle,
     metaTitle
-      ? `${metaTitle} ผ่อนได้บัตรประชาชนใบเดียว${metaWarrantyDays != null ? ` รับประกันร้าน ${metaWarrantyDays} วัน` : ''}`
+      ? `${metaTitle} ผ่อนได้บัตรประชาชนใบเดียว${metaWarrantyDays != null && metaWarrantyDays > 0 ? ` รับประกันร้าน ${metaWarrantyDays} วัน` : ''}`
       : undefined,
   );
 
@@ -306,6 +310,9 @@ export default function ProductDetailPage() {
             <h1 className="text-2xl md:text-3xl font-bold leading-snug">{displayName}</h1>
 
             <div className="flex flex-wrap gap-2 items-center">
+              <Badge variant="outline" size="md">
+                {deviceOriginLabel(selectedUnit ? selectedUnit.deviceOrigin : data.deviceOrigin)}
+              </Badge>
               <Badge variant={isNew ? 'condition-new' : 'condition-b'} size="md">
                 {isNew ? 'เครื่องใหม่ · มือ 1' : 'มือสอง · มือ 2'}
               </Badge>
@@ -315,11 +322,6 @@ export default function ProductDetailPage() {
                     เกรด {g}
                   </Badge>
                 ))}
-              {isNew && (
-                <span className="text-xs text-muted-foreground leading-snug">
-                  เครื่องใหม่ · ประกันศูนย์
-                </span>
-              )}
             </div>
 
             <UnitPicker
@@ -373,6 +375,7 @@ export default function ProductDetailPage() {
             )}
 
             {selectedUnit && <SpecTable unit={selectedUnit} storage={data.storage} isNew={isNew} />}
+            <WarrantyDetails warranty={selectedUnit ?? data} />
 
             {data.description && (
               <p className="text-sm md:text-base text-muted-foreground leading-snug">

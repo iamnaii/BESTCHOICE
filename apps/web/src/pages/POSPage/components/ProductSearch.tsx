@@ -1,5 +1,7 @@
+import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { DeviceOriginFilter } from '@/components/product/DeviceOriginFilter';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import api from '@/lib/api';
@@ -29,17 +31,18 @@ export default function ProductSearch({
   bundleProductIds,
 }: ProductSearchProps) {
   const debouncedProductSearch = useDebounce(productSearch);
+  const [deviceOrigin, setDeviceOrigin] = useState('');
 
   const {
     data: products,
     isFetching: productsFetching,
     isError: productsError,
   } = useQuery<Product[]>({
-    queryKey: ['pos-products', debouncedProductSearch],
+    queryKey: ['pos-products', debouncedProductSearch, deviceOrigin],
     queryFn: async () => {
       if (!debouncedProductSearch || debouncedProductSearch.length < 2) return [];
       const { data } = await api.get('/products', {
-        params: { search: debouncedProductSearch, status: 'IN_STOCK', limit: '10' },
+        params: { search: debouncedProductSearch, status: 'IN_STOCK', limit: '10', deviceOrigin: deviceOrigin || undefined },
       });
       return data.data ?? [];
     },
@@ -92,6 +95,7 @@ export default function ProductSearch({
           <div className="text-sm font-semibold text-foreground">สินค้าหลัก</div>
         </CardHeader>
         <CardContent>
+          {!selectedProduct && <DeviceOriginFilter value={deviceOrigin} onChange={setDeviceOrigin} />}
           {selectedProduct ? (
             <div className="flex items-center justify-between bg-muted rounded-lg p-3">
               <div>
@@ -106,6 +110,7 @@ export default function ProductSearch({
                     <span className="ml-2">| {selectedProduct.branch.name}</span>
                   )}
                 </div>
+                <DeviceDisclosureSummary product={selectedProduct} />
                 {selectedProduct.prices.length > 0 && (
                   <div className="flex gap-2 mt-1">
                     {selectedProduct.prices.map((p) => (
@@ -154,6 +159,7 @@ export default function ProductSearch({
                           {p.brand} {p.model}
                         </div>
                         <div className="text-xs text-muted-foreground">
+                          <DeviceDisclosureSummary product={p} />
                           {p.imeiSerial && <span className="font-mono">IMEI: {p.imeiSerial}</span>}
                           <span className="ml-2">{p.branch?.name}</span>
                           {(() => {

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useProductReadiness, PRODUCT_READINESS_QUERY_KEY } from '../hooks/useProductReadiness';
 import ReadinessCard from './ReadinessCard';
+import ProductWarrantyForm from './ProductWarrantyForm';
 
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 type Angle = (typeof ANGLES)[number];
@@ -22,6 +23,7 @@ const ANGLE_LABELS: Record<Angle, string> = {
 };
 
 const MAX_GALLERY = 8;
+type DeviceOrigin = 'THAI' | 'IMPORTED';
 
 interface PhotoData {
   productId: string;
@@ -30,6 +32,9 @@ interface PhotoData {
 }
 
 interface OnlineListingProduct {
+  shopWarrantyDays?: number | null;
+  warrantyTerms?: string | null;
+  deviceOrigin?: DeviceOrigin | null;
   id: string;
   category: string;
   photos: string[];
@@ -52,6 +57,11 @@ export default function OnlineListingPanel({
   const readiness = useProductReadiness(product.id);
   const [localGallery, setLocalGallery] = useState<string[]>(product.gallery);
   const [description, setDescription] = useState(product.onlineDescription ?? '');
+  const [deviceOrigin, setDeviceOrigin] = useState<DeviceOrigin | ''>(product.deviceOrigin ?? '');
+
+  useEffect(() => {
+    setDeviceOrigin(product.deviceOrigin ?? '');
+  }, [product.id, product.deviceOrigin]);
   // Last server gallery this component has reconciled against — lets the
   // resync effect below tell "brand-new URL from the server" apart from
   // "URL the user just removed locally", instead of only comparing to the
@@ -94,7 +104,7 @@ export default function OnlineListingPanel({
     enabled: product.category === 'PHONE_USED',
   });
 
-  const invalidateProduct = () => queryClient.invalidateQueries({ queryKey: ['product', product.id] });
+  const invalidateProduct = () => Promise.all([['product', product.id], ['stock-list'], ['products'], ['pos-products'], ['products-available']].map(queryKey => queryClient.invalidateQueries({ queryKey })));
   // gallery/photos/visibility all feed evaluateReadiness() (PHOTO/IN_STOCK/SHOP_GATE
   // checks etc.) directly — invalidate the readiness card alongside the product on
   // every mutation that can move it, or the card shows a stale checklist for up to
@@ -129,6 +139,15 @@ export default function OnlineListingPanel({
       invalidateProduct();
       invalidateReadiness();
       toast.success('อัปเดตสถานะแสดงบนเว็บสำเร็จ');
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const originMutation = useMutation({
+    mutationFn: () => api.patch(`/products/${product.id}/online-listing`, { deviceOrigin: deviceOrigin || null }),
+    onSuccess: () => {
+      invalidateProduct();
+      toast.success('บันทึกประเภทเครื่องสำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -188,6 +207,7 @@ export default function OnlineListingPanel({
   return (
     <div className="space-y-4">
       <ReadinessCard isLoading={readiness.isLoading} isError={readiness.isError} data={readiness.data} />
+      <ProductWarrantyForm product={product} canEdit={canEdit} />
 
       {/* รูปที่ขึ้นเว็บ */}
       <div className="bg-card rounded-lg border p-4">
@@ -317,6 +337,35 @@ export default function OnlineListingPanel({
 
       {/* สถานะ + คำอธิบาย */}
       <div className="bg-card rounded-lg border p-4 space-y-4">
+        <div>
+          <Label htmlFor="device-origin" className="block text-sm mb-2">เครื่องไทย / เครื่องนอก</Label>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              id="device-origin"
+              value={deviceOrigin}
+              onChange={(e) => setDeviceOrigin(e.target.value as DeviceOrigin | '')}
+              disabled={!canEdit || originMutation.isPending}
+              className="h-10 rounded-lg border border-input bg-background px-3 text-sm disabled:opacity-50"
+            >
+              <option value="">ยังไม่ระบุ</option>
+              <option value="THAI">เครื่องไทย</option>
+              <option value="IMPORTED">เครื่องนอก</option>
+            </select>
+            <button
+              type="button"
+              onClick={() => originMutation.mutate()}
+              disabled={!canEdit || deviceOrigin === (product.deviceOrigin ?? '') || originMutation.isPending}
+              className="px-3 py-2 bg-primary text-primary-foreground rounded text-xs font-medium disabled:opacity-50"
+            >
+              {originMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกประเภทเครื่อง'}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground leading-snug">
+            ระบุตามตลาดที่จำหน่ายเครื่อง ไม่ใช่ประเทศที่ผลิต ข้อมูลนี้แสดงบนเว็บและใช้กรองสินค้า
+            หากยังไม่ได้ตรวจสอบให้เลือก “ยังไม่ระบุ”
+          </p>
+        </div>
+
         <div>
           <div className="flex items-center gap-3">
             <Switch

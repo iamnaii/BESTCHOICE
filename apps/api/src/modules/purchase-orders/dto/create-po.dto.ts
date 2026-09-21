@@ -1,6 +1,6 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean, ArrayMinSize, Min, IsEnum, ArrayNotEmpty, IsNotEmpty } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean, ArrayMinSize, Min, IsEnum, ArrayNotEmpty, IsNotEmpty, IsInt, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
-import { DefectReason } from '@prisma/client';
+import { DefectReason, DeviceOrigin } from '@prisma/client';
 
 export class POItemDto {
   @IsString()
@@ -201,6 +201,10 @@ export class AnglePhotosDto {
 
 // New goods receiving DTOs
 export class GoodsReceivingItemDto {
+  @IsOptional() @IsEnum(DeviceOrigin) deviceOrigin?: DeviceOrigin | null;
+  @IsOptional() @IsInt() @Min(0) shopWarrantyDays?: number | null;
+  @IsOptional() @IsString() @MaxLength(2000) warrantyTerms?: string | null;
+
   @IsString()
   poItemId: string;
 
@@ -281,6 +285,10 @@ export class GoodsReceivingDto {
 }
 
 export class DirectReceiveItemDto {
+  @IsOptional() @IsEnum(DeviceOrigin) deviceOrigin?: DeviceOrigin | null;
+  @IsOptional() @IsInt() @Min(0) shopWarrantyDays?: number | null;
+  @IsOptional() @IsString() @MaxLength(2000) warrantyTerms?: string | null;
+
   // Product spec (mirrors POItemDto)
   @IsString() @IsOptional() brand?: string;
   @IsString() @IsOptional() model?: string;

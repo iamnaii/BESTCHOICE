@@ -160,7 +160,7 @@ export default function TradeInPage() {
 
   const acceptMutation = useMutation({
     mutationFn: async ({ id, body }: { id: string; body: AcceptRequest }) =>
-      api.post(`/trade-ins/${id}/accept`, body),
+      api.post(`/trade-ins/${id}/accept`, { ...body, deviceOrigin: body.deviceOrigin || null, shopWarrantyDays: body.shopWarrantyDays ? Number(body.shopWarrantyDays) : null, warrantyTerms: body.warrantyTerms?.trim() || null }),
     onSuccess: (res) => {
       if (res.data.productId) setReceived(res.data);
       queryClient.invalidateQueries({ queryKey: ['products'] });

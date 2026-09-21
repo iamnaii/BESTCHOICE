@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { SlidersHorizontal, Sparkles, Smartphone, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { parseDeviceOrigin, type DeviceOrigin } from '@/lib/device-origin';
 
 export interface CatalogFilters {
+  deviceOrigin?: DeviceOrigin;
   brand?: string;
   condition?: 'NEW' | 'USED';
   model?: string;
@@ -84,6 +86,7 @@ interface Props {
 export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) {
   const isNew = filters.condition === 'NEW';
   const active =
+    filters.deviceOrigin ||
     filters.condition ||
     filters.model ||
     filters.conditionGrade ||
@@ -133,6 +136,22 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
             );
           })}
         </div>
+      </div>
+
+      <div>
+        <label className={labelCls} htmlFor={bare ? 'mobile-filter-origin' : 'filter-origin'}>
+          เครื่องไทย / เครื่องนอก
+        </label>
+        <select
+          id={bare ? 'mobile-filter-origin' : 'filter-origin'}
+          className={selectCls}
+          value={filters.deviceOrigin ?? ''}
+          onChange={(e) => onChange({ ...filters, deviceOrigin: parseDeviceOrigin(e.target.value) })}
+        >
+          <option value="">ทั้งหมด</option>
+          <option value="THAI">เครื่องไทย</option>
+          <option value="IMPORTED">เครื่องนอก</option>
+        </select>
       </div>
 
       <div>

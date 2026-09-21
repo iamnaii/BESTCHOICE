@@ -1,16 +1,20 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePricingTemplateDto, UpdatePricingTemplateDto } from './dto/pricing-template.dto';
-import { Prisma, ProductCategory } from '@prisma/client';
+import { Prisma, ProductCategory, PricingDeviceOrigin } from '@prisma/client';
 
 @Injectable()
 export class PricingTemplatesService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(query?: { brand?: string; category?: string }) {
+  async findAll(query?: { brand?: string; category?: string; deviceOrigin?: string }) {
     const where: Prisma.PricingTemplateWhereInput = { isActive: true };
     if (query?.brand) where.brand = { contains: query.brand, mode: 'insensitive' };
     if (query?.category) where.category = query.category as ProductCategory;
+    if (query?.deviceOrigin) {
+      if (!Object.values(PricingDeviceOrigin).includes(query.deviceOrigin as PricingDeviceOrigin)) throw new BadRequestException('Invalid device origin');
+      where.deviceOrigin = query.deviceOrigin as PricingDeviceOrigin;
+    }
 
     return this.prisma.pricingTemplate.findMany({
       where,
@@ -27,10 +31,11 @@ export class PricingTemplatesService {
   /**
    * Lookup pricing template for auto-fill when creating a product
    */
-  async lookup(brand: string, model: string, storage: string | null, category: string, hasWarranty: boolean | null) {
+  async lookup(brand: string, model: string, storage: string | null, category: string, hasWarranty: boolean | null, deviceOrigin: PricingDeviceOrigin = 'UNSPECIFIED') {
     // Try exact match first
     const template = await this.prisma.pricingTemplate.findFirst({
       where: {
+        deviceOrigin,
         brand: { equals: brand, mode: 'insensitive' },
         model: { equals: model, mode: 'insensitive' },
         storage: storage || '',
@@ -46,6 +51,7 @@ export class PricingTemplatesService {
     if (storage) {
       return this.prisma.pricingTemplate.findFirst({
         where: {
+          deviceOrigin,
           brand: { equals: brand, mode: 'insensitive' },
           model: { equals: model, mode: 'insensitive' },
           storage: '',
@@ -63,6 +69,7 @@ export class PricingTemplatesService {
     try {
       return await this.prisma.pricingTemplate.create({
         data: {
+          deviceOrigin: dto.deviceOrigin ?? 'UNSPECIFIED',
           brand: dto.brand,
           model: dto.model,
           storage: dto.storage || '',
@@ -109,12 +116,13 @@ export class PricingTemplatesService {
         const hasWarranty = item.category === 'PHONE_USED' ? (item.hasWarranty ?? false) : false;
         await this.prisma.pricingTemplate.upsert({
           where: {
-            brand_model_storage_category_hasWarranty: {
+            brand_model_storage_category_hasWarranty_deviceOrigin: {
               brand: item.brand,
               model: item.model,
               storage: item.storage || '',
               category: item.category as ProductCategory,
               hasWarranty,
+              deviceOrigin: item.deviceOrigin ?? 'UNSPECIFIED',
             },
           },
           update: {
@@ -129,6 +137,7 @@ export class PricingTemplatesService {
             storage: item.storage || '',
             category: item.category as ProductCategory,
             hasWarranty,
+            deviceOrigin: item.deviceOrigin ?? 'UNSPECIFIED',
             cashPrice: item.cashPrice,
             installmentBestchoicePrice: item.installmentBestchoicePrice,
             installmentFinancePrice: item.installmentFinancePrice,

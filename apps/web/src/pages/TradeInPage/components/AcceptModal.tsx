@@ -1,3 +1,4 @@
+import { DeviceDisclosureFields } from '@/components/product/DeviceDisclosureFields';
 import { useState, useEffect } from 'react';
 import { TRADE_IN_DECLARATION_VERSION, tradeInEvidenceError } from '@installment/shared';
 import SellerDeclaration from '@/components/trade-in/SellerDeclaration';
@@ -147,6 +148,7 @@ export default function AcceptModal({
 
           {!identifiers.imei && <div><Label htmlFor="accept-imei-reason">เหตุผลที่ไม่มี IMEI *</Label><Input id="accept-imei-reason" disabled={isPending} maxLength={300} value={identifiers.imeiMissingReason} onChange={(e) => changeIdentifiers({ imeiMissingReason: e.target.value })} /></div>}
           {!identifiers.serialNumber.trim() && <div><Label htmlFor="accept-serial-reason">เหตุผลที่ไม่มี Serial Number *</Label><Input id="accept-serial-reason" disabled={isPending} maxLength={300} value={identifiers.serialNumberMissingReason} onChange={(e) => changeIdentifiers({ serialNumberMissingReason: e.target.value })} /></div>}
+          <DeviceDisclosureFields value={form} onChange={(key, value) => onChange({ [key]: value })} />
 
           {needBranch && (
             <div>

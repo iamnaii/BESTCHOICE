@@ -5,6 +5,8 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { readProductDisclosure } from '../../utils/product-disclosure.util';
+import { readStringFlag } from '../../utils/config.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { addDays, isPast, differenceInDays } from 'date-fns';
 import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from './shop-warranty-policy';
@@ -71,17 +73,15 @@ export class WarrantyService {
         include: { product: true },
       });
 
-      if (!contract?.product) return;
+      if (!contract?.product || contract.shopWarrantyStartDate || contract.shopWarrantyEndDate) return;
 
       const product = contract.product;
 
       // สูตรจำนวนวันย้ายไป shop-warranty-policy.ts แล้ว — ใบขาย (ขายสด/ไฟแนนซ์นอก)
       // ใช้สูตรเดียวกันนี้ ห้ามคำนวณแยก ไม่งั้นลูกค้าคนเดียวกันได้ประกันไม่เท่ากัน
       // แล้วแต่ว่าซื้อแบบผ่อนหรือสด
-      const configDays = await this.prisma.systemConfig.findUnique({
-        where: { key: SHOP_WARRANTY_DAYS_CONFIG_KEY },
-      });
-      const warrantyDays = resolveShopWarrantyDays(product, configDays?.value);
+      const disclosure = readProductDisclosure(contract.productDisclosure);
+      const warrantyDays = disclosure ? (disclosure.shopWarrantyDays || null) : resolveShopWarrantyDays(product, await readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, ''));
       if (warrantyDays === null) return;
 
       const startDate = contract.createdAt;

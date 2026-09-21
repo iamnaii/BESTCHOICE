@@ -105,6 +105,8 @@ describe('DefectExchangeService', () => {
     category: 'PHONE_USED',
     status: 'IN_STOCK',
     shopWarrantyDays: 30,
+    deviceOrigin: 'IMPORTED',
+    warrantyTerms: 'Replacement warranty',
     stockInDate: new Date(),
     supplierId: 'sup-1',
     ...REAL_PRODUCT_FENCE,
@@ -233,6 +235,9 @@ describe('DefectExchangeService', () => {
       );
 
       expect(result.newContract).toBeDefined();
+      expect(tx.contract.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        productDisclosure: { version: 1, deviceOrigin: 'IMPORTED', shopWarrantyDays: 30, warrantyTerms: 'Replacement warranty' },
+      }) }));
       expect(result.oldContract.status).toBe('DEFECT_EXCHANGED');
       expect(tx.payment.count).toHaveBeenCalledWith({
         where: {

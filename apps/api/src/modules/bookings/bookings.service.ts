@@ -10,7 +10,10 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateBookingNumber, generateSaleNumber } from '../../utils/sequence.util';
-import { readNumberFlag } from '../../utils/config.util';
+import { readNumberFlag, readStringFlag } from '../../utils/config.util';
+import { captureProductDisclosure } from '../../utils/product-disclosure.util';
+import { SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../warranty/shop-warranty-policy';
+import { addDays } from 'date-fns';
 import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
 import { getBranchScope, hasCrossBranchAccess } from '../auth/branch-access.util';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -770,9 +773,16 @@ export class BookingsService {
       // 3. Create the Sale row. amountReceived = depositAmount when no balance
       // collected, totalAmount when fully prepaid OR balance collected now.
       const amountReceived = isFullPrepay || dto.collectBalance ? totalAmount : depositAmount;
+      const productDisclosure = captureProductDisclosure(product, await readStringFlag(tx, SHOP_WARRANTY_DAYS_CONFIG_KEY, ''));
+      const soldAt = new Date();
       const sale = await tx.sale.create({
         data: {
           saleNumber,
+          productDisclosure,
+          ...(productDisclosure.shopWarrantyDays > 0 ? {
+            shopWarrantyStartDate: soldAt,
+            shopWarrantyEndDate: addDays(soldAt, productDisclosure.shopWarrantyDays),
+          } : {}),
           saleType: 'CASH',
           costSnapshot: { create: { mainProductCost: product.costPrice } },
           customerId: booking.customerId,

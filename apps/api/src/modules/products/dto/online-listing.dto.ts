@@ -1,6 +1,17 @@
 import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUrl, MaxLength, Min } from 'class-validator';
+import { DeviceOrigin } from '@prisma/client';
 
 export class UpdateOnlineListingDto {
+  /** Omitted = unchanged; null = not yet verified. */
+  @IsOptional() @IsEnum(DeviceOrigin)
+  deviceOrigin?: DeviceOrigin | null;
+
+  @IsOptional() @IsInt() @Min(0)
+  shopWarrantyDays?: number | null;
+
+  @IsOptional() @IsString() @MaxLength(2000, { message: 'เงื่อนไขประกันยาวเกิน 2000 ตัวอักษร' })
+  warrantyTerms?: string | null;
+
   /** จัดเรียง/ลบรูปที่อยู่ใน gallery เดิมเท่านั้น — เพิ่มรูปใหม่ต้องผ่าน endpoint promote */
   @IsOptional() @IsArray() @IsUrl({ require_tld: false }, { each: true })
   @ArrayUnique({ message: 'มีรูปซ้ำในรายการ' })

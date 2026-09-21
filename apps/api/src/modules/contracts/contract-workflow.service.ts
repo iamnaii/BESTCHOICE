@@ -548,6 +548,7 @@ export class ContractWorkflowService {
             saleType: 'INSTALLMENT',
             costSnapshot: { create: { mainProductCost: prod.costPrice } },
             tradeInCreditSnapshot: contract.tradeInCreditSnapshot ?? undefined,
+            ...(contract.productDisclosure ? { productDisclosure: contract.productDisclosure as Prisma.InputJsonValue } : {}),
             customerId: contract.customerId,
             productId: contract.productId,
             branchId: contract.branchId,

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -24,6 +24,7 @@ export default function ProductCreatePage() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
+    deviceOrigin: '', shopWarrantyDays: '', warrantyTerms: '',
     name: '',
     brand: '',
     model: '',
@@ -77,48 +78,42 @@ export default function ProductCreatePage() {
   });
   const suppliers = supplierResult?.data ?? [];
 
-  // Auto-fill prices from pricing template when brand/model/storage/category/warranty change
-  const lookupPrices = useCallback(async () => {
-    if (!form.brand || !form.model) return;
-    if (form.category === 'ACCESSORY') return;
-    try {
-      const params = new URLSearchParams({
-        brand: form.brand,
-        model: form.model,
-        category: form.category,
-      });
-      if (form.storage) params.set('storage', form.storage);
-      if (form.category === 'PHONE_USED') {
-        params.set('hasWarranty', String(!form.warrantyExpired));
-      }
-      const { data } = await api.get(`/pricing-templates/lookup?${params}`);
-      if (data) {
-        setPrices([
-          {
-            label: 'ราคาเงินสด',
-            amount: String(parseFloat(data.cashPrice)),
-            isDefault: true,
-          },
-          {
-            label: 'ราคาผ่อน BESTCHOICE',
-            amount: String(parseFloat(data.installmentBestchoicePrice)),
-            isDefault: false,
-          },
-          {
-            label: 'ราคาผ่อนไฟแนนซ์',
-            amount: String(parseFloat(data.installmentFinancePrice)),
-            isDefault: false,
-          },
-        ]);
-      }
-    } catch {
-      // No template found, keep manual input
-    }
-  }, [form.brand, form.model, form.storage, form.category, form.warrantyExpired]);
-
+  // Ignore stale requests and clear only prices that were filled automatically.
+  const lastAutomaticPrices = useRef<string | null>(null);
+  const pricesRef = useRef(prices);
+  pricesRef.current = prices;
   useEffect(() => {
-    lookupPrices();
-  }, [lookupPrices]);
+    let cancelled = false;
+    const before = JSON.stringify(pricesRef.current);
+    const automatic = lastAutomaticPrices.current;
+    const mayAutofill = before === automatic || pricesRef.current.every(p => !p.amount);
+    if (before === automatic) {
+      setPrices(current => current.map(p => ({ ...p, amount: '' })));
+      lastAutomaticPrices.current = null;
+    }
+    if (!form.brand || !form.model || form.category === 'ACCESSORY' || !mayAutofill) return;
+    const params = new URLSearchParams({
+      brand: form.brand, model: form.model, category: form.category,
+      deviceOrigin: form.deviceOrigin || 'UNSPECIFIED',
+    });
+    if (form.storage) params.set('storage', form.storage);
+    if (form.category === 'PHONE_USED') params.set('hasWarranty', String(!form.warrantyExpired));
+    api.get(`/pricing-templates/lookup?${params}`).then(({ data }) => {
+      if (cancelled || !data) return;
+      setPrices(current => {
+        // The operator may have entered prices while the request was pending.
+        if (JSON.stringify(current) !== before && current.some(p => p.amount)) return current;
+        const next = [
+          { label: 'ราคาเงินสด', amount: String(Number(data.cashPrice)), isDefault: true },
+          { label: 'ราคาผ่อน BESTCHOICE', amount: String(Number(data.installmentBestchoicePrice)), isDefault: false },
+          { label: 'ราคาผ่อนไฟแนนซ์', amount: String(Number(data.installmentFinancePrice)), isDefault: false },
+        ];
+        lastAutomaticPrices.current = JSON.stringify(next);
+        return next;
+      });
+    }).catch(() => { /* Manual entry remains available if no matching template exists. */ });
+    return () => { cancelled = true; };
+  }, [form.brand, form.model, form.storage, form.category, form.warrantyExpired, form.deviceOrigin]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -143,6 +138,9 @@ export default function ProductCreatePage() {
         imeiSerial: form.imeiSerial || undefined,
         serialNumber: form.serialNumber || undefined,
         category: form.category,
+        deviceOrigin: isAccessory ? undefined : form.deviceOrigin || null,
+        shopWarrantyDays: form.shopWarrantyDays === '' ? null : Number(form.shopWarrantyDays),
+        warrantyTerms: form.warrantyTerms.trim() || null,
         costPrice: parseFloat(form.costPrice),
         supplierId: form.supplierId || undefined,
         branchId: form.branchId,

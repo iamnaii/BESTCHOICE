@@ -62,6 +62,7 @@ export class ProductsController {
     @Query('supplierId') supplierId?: string,
     @Query('model') model?: string,
     @Query('storage') storage?: string,
+    @Query('deviceOrigin') deviceOrigin?: string,
   ) {
     const stockView = pagination.groupAccessories === 'true' || !!pagination.accessoryGroupId || !!pagination.sortBy;
     if (stockView && !hasCrossBranchAccess(user)) {
@@ -77,6 +78,7 @@ export class ProductsController {
       groupAccessories: pagination.groupAccessories === 'true',
       accessoryGroupId: pagination.accessoryGroupId,
       search, branchId, status, category, brand, supplierId, model, storage,
+      deviceOrigin,
       page: pagination.page,
       limit: pagination.limit,
     });

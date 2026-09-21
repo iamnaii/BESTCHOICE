@@ -18,6 +18,7 @@ it('shows the restored customer outside the search page and starts credit from t
 });
 it('shows the restored stock item even outside the current product search page', () => {
   render(<ProductSelectStep products={[]} productSearch="" setProductSearch={vi.fn()}
+    deviceOrigin="" setDeviceOrigin={vi.fn()}
     selectedProduct={{ id: 'product-a', name: 'สินค้าที่กู้คืน', brand: 'Apple', model: '15', prices: [] } as unknown as Product}
     setSelectedProduct={vi.fn()} onNext={vi.fn()} />);
   expect(screen.getByText('สินค้าที่กู้คืน')).toBeVisible();

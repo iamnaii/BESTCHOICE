@@ -20,6 +20,8 @@ export function formatBaht(value: number): string {
 }
 
 export interface CustomerSummaryInput {
+  deviceOrigin?: 'THAI' | 'IMPORTED' | null;
+  warrantyTerms?: string | null;
   brand?: string | null;
   model?: string | null;
   storage?: string | null;
@@ -123,13 +125,18 @@ export function buildCustomerSummary(input: CustomerSummaryInput): string {
     .filter((a) => a.length > 0);
 
   const specs = [
-    input.batteryHealth != null && input.batteryHealth > 0 ? `แบต ${input.batteryHealth}%` : null,
+    input.deviceOrigin === 'THAI' ? 'เครื่องไทย' : input.deviceOrigin === 'IMPORTED' ? 'เครื่องนอก' : null,
+    input.shopWarrantyDays === 0 ? 'ไม่มีประกันร้าน' : null,
+    input.batteryHealth != null && input.batteryHealth > 0
+      ? `แบต ${input.batteryHealth}%`
+      : null,
     input.shopWarrantyDays != null && input.shopWarrantyDays > 0
       ? `ประกันร้าน ${input.shopWarrantyDays} วัน`
       : null,
     accessories.length > 0 ? `อุปกรณ์: ${accessories.join(', ')}` : null,
   ].filter((s): s is string => s !== null);
   if (specs.length > 0) lines.push(specs.join(' | '));
+  if (nonEmpty(input.warrantyTerms)) lines.push(`เงื่อนไขประกัน: ${nonEmpty(input.warrantyTerms)}`);
 
   const notes = nonEmpty(input.cosmeticNotes);
   if (notes) lines.push(`ตำหนิ: ${notes}`);

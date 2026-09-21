@@ -1,3 +1,4 @@
+import { resolveTradeInDeviceOrigin } from '../../../utils/trade-in-device-origin.util';
 import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
 import {
   NotFoundException,
@@ -591,6 +592,9 @@ export class TradeInLifecycleService {
       const product = await tx.product.create({
         data: {
           name: productName,
+          deviceOrigin: resolveTradeInDeviceOrigin(dto.deviceOrigin, tradeIn.conditionAnswers),
+          shopWarrantyDays: dto.shopWarrantyDays ?? null,
+          warrantyTerms: dto.warrantyTerms?.trim() || null,
           brand: tradeIn.deviceBrand,
           model: tradeIn.deviceModel,
           color: tradeIn.deviceColor ?? null,
@@ -625,6 +629,7 @@ export class TradeInLifecycleService {
           tx,
           {
             productId: product.id,
+            deviceOrigin: product.deviceOrigin,
             brand: product.brand,
             model: product.model,
             storage: product.storage,
@@ -755,6 +760,7 @@ export class TradeInLifecycleService {
     // Recompute before any seller/device/storage/payout write. Completed retries above
     // return their historical result even if the price table has changed since then.
     const assessment = computed ? await appraisal!.prepareQuickBuy(dto, userId) : null;
+    resolveTradeInDeviceOrigin(dto.deviceOrigin, assessment?.data.conditionAnswers);
     // Resolve branch — prefer DTO (explicit pick), fall back to user's home branch.
     // OWNER/cross-branch users have no default branch, so they must pass branchId
     // explicitly; surface a clear error instead of letting accept() fail later.
@@ -837,6 +843,9 @@ export class TradeInLifecycleService {
       const accepted = await this.accept(
         created.id,
         {
+          deviceOrigin: dto.deviceOrigin,
+          shopWarrantyDays: dto.shopWarrantyDays,
+          warrantyTerms: dto.warrantyTerms,
           idCardVerified: dto.idCardVerified,
           sellerConsentSigned: dto.sellerConsentSigned,
           declarationVersion: dto.declarationVersion,

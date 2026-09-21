@@ -49,6 +49,7 @@ export function useContractCreateData() {
   const customerRestored = useRef(false);
   const [productSearch, setProductSearch] = useState('');
   const [selectedProduct, setSelectedProductState] = useState<Product | null>(null);
+  const [deviceOrigin, setDeviceOrigin] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const debouncedCustomerSearch = useDebounce(customerSearch);
   const [selectedCustomer, setSelectedCustomerState] = useState<Customer | null>(null);
@@ -198,10 +199,11 @@ export function useContractCreateData() {
 
   // Queries
   const { data: products = [] } = useQuery<Product[]>({
-    queryKey: ['products-available', productSearch],
+    queryKey: ['products-available', productSearch, deviceOrigin],
     queryFn: async () => {
       const params = new URLSearchParams({ status: 'IN_STOCK' });
       if (productSearch) params.set('search', productSearch);
+      if (deviceOrigin) params.set('deviceOrigin', deviceOrigin);
       const { data } = await api.get(`/products?${params}&limit=200`);
       return data.data || [];
     },
@@ -496,6 +498,7 @@ export function useContractCreateData() {
     fromRoom: entry.fromRoom,
     step,
     setStep,
+    deviceOrigin, setDeviceOrigin,
     productSearch,
     setProductSearch,
     selectedProduct,

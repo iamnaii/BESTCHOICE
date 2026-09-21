@@ -2,6 +2,7 @@ import { DOCUMENT_STYLE, documentTypographyCss } from '@installment/shared';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { creditSnapshot, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
 import { Injectable, Logger } from '@nestjs/common';
+import { disclosureText, readProductDisclosure } from '../../../utils/product-disclosure.util';
 import { Prisma } from '@prisma/client';
 import { formatDateShort, formatDateMedium, formatDateLong, getThaiDateParts } from '../../../utils/thai-date.util';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -188,6 +189,7 @@ ${(() => {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async replacePlaceholders(html: string, contract: any, lessorSig?: { image: string; name: string } | null): Promise<string> {
+    const disclosure = readProductDisclosure(contract.productDisclosure);
     // Load configurable settings with hardcoded fallbacks
     const configMap: Record<string, string> = {};
     try {
@@ -422,7 +424,9 @@ ${(() => {
       'CONTRACT.FIRST_PAYMENT_DATE': firstPaymentDue,
       'CONTRACT.LAST_PAYMENT_DATE': lastPaymentDue,
       'CONTRACT.PENALTY_RATE': cfg('contract_penalty_rate', '100'),
-      'CONTRACT.WARRANTY_DAYS': cfg('contract_warranty_days', '30'),
+      'CONTRACT.WARRANTY_DAYS': disclosure ? String(disclosure.shopWarrantyDays) : cfg('contract_warranty_days', '30'),
+      'PHONE.DEVICE_ORIGIN': esc(disclosure?.deviceOrigin === 'THAI' ? 'เครื่องไทย' : disclosure?.deviceOrigin === 'IMPORTED' ? 'เครื่องนอก' : 'ยังไม่ระบุ'),
+      'PHONE.WARRANTY_TERMS': esc(disclosure?.warrantyTerms || '-'),
       'CONTRACT.EARLY_DISCOUNT': cfg('contract_early_discount', '50'),
       'CONTRACT.MIN_MONTHS_EARLY': cfg('contract_min_months_early', '6'),
       'CONTRACT.NOTES': esc(contract.notes || ''),
@@ -645,6 +649,10 @@ ${(() => {
         โบนัสเทิร์น ${tender.bonusAmount} บาท รวมเป็นส่วนลดในราคาขายแล้ว (ไม่ใช่เงินสดรับ)
       </section>`;
       result = result.includes('</body>') ? result.replace('</body>', `${disclosure}</body>`) : result + disclosure;
+    }
+    if (disclosure) {
+      const block = `<section style="break-inside:avoid;border:1px solid #999;padding:12px;margin-top:16px;white-space:pre-wrap;overflow-wrap:anywhere"><strong>ประเภทเครื่องและเงื่อนไขประกัน ณ วันทำรายการ</strong><br>${esc(disclosureText(disclosure))}</section>`;
+      result = /<\/body>/i.test(result) ? result.replace(/<\/body>/i, `${block}</body>`) : result + block;
     }
     return result;
   }

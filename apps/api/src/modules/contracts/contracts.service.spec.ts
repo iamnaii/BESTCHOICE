@@ -55,6 +55,7 @@ jest.mock('../../utils/get-rate-for-months.util', () => ({
 }));
 
 jest.mock('../../utils/config.util', () => ({
+  ...jest.requireActual('../../utils/config.util'),
   loadInstallmentConfig: jest.fn().mockResolvedValue({
     interestRate: 0.08,
     minDownPaymentPct: 0.15,

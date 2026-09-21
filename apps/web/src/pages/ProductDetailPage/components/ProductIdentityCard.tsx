@@ -1,3 +1,4 @@
+import { DeviceDisclosureSummary, type DeviceDisclosureInfo } from '@/components/product/DeviceDisclosureSummary';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, Copy, ImageIcon, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,7 +11,7 @@ import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { categoryLabels } from '@/lib/constants';
 import { formatDateShort } from '@/utils/formatters';
 
-export interface ProductForIdentity {
+export interface ProductForIdentity extends DeviceDisclosureInfo {
   id: string;
   name: string;
   brand: string;
@@ -119,6 +120,7 @@ export default function ProductIdentityCard({
     else toast.error('คัดลอกไม่สำเร็จ กรุณาลองใหม่');
   };
 
+  const days = product.effectiveShopWarrantyDays ?? product.shopWarrantyDays;
   const chips: string[] = [];
   if (!isAccessory) {
     if (product.storage) chips.push(product.storage);
@@ -128,7 +130,7 @@ export default function ProductIdentityCard({
   // หมวดสินค้าอยู่ที่ป้ายหัวการ์ดแล้ว — ชิปเก็บเฉพาะสเปก/สภาพ
   if (isUsed && product.conditionGrade) chips.push(`เกรด ${product.conditionGrade}`);
   if (isUsed && product.batteryHealth != null) chips.push(`แบต ${product.batteryHealth}%`);
-  if (product.shopWarrantyDays != null) chips.push(`ประกันร้าน ${product.shopWarrantyDays} วัน`);
+  if (days != null) chips.push(`ประกันร้าน ${days} วัน`);
 
   const warrantyText = product.warrantyExpired
     ? 'หมดประกันแล้ว'
@@ -152,6 +154,7 @@ export default function ProductIdentityCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!isAccessory && <DeviceDisclosureSummary product={product} />}
         <div className="flex items-start gap-4">
           <div className="flex size-22 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-dashed border-border bg-muted/35 text-muted-foreground">
             {frontPhoto ? (
@@ -275,7 +278,7 @@ export default function ProductIdentityCard({
           )}
           <Field
             label="ประกันร้าน"
-            value={product.shopWarrantyDays != null ? `${product.shopWarrantyDays} วัน` : null}
+            value={days != null ? `${days} วัน` : null}
           />
           <Field
             label="อุปกรณ์ที่แถม"

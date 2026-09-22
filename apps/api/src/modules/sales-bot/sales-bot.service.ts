@@ -40,6 +40,7 @@ import {
   type BotAttachment,
 } from '../../utils/bot-attachments.util';
 import { stripStrayForeignScript } from '../../utils/bot-reply-sanitize.util';
+import { SHOP_OPEN_HOUR, SHOP_CLOSE_HOUR, isShopOpen } from '../../utils/shop-hours.util';
 
 export interface SalesBotInput {
   text: string;
@@ -84,9 +85,8 @@ export const NO_STOCK_TOOL_RESULT = {
     'สี/แบต/รูปเครื่องจริง → notify_staff',
 };
 
-/** เวลาทำการหน้าร้าน (KB store_location_hours: เปิดทุกวัน 10:00-19:00) */
-export const SHOP_OPEN_HOUR = 10;
-export const SHOP_CLOSE_HOUR = 19;
+// เวลาทำการอยู่ที่ utils/shop-hours.util (ใช้ร่วมกับตัวส่งข้อความ) — re-export ให้ผู้เรียกเดิม
+export { SHOP_OPEN_HOUR, SHOP_CLOSE_HOUR };
 const TH_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 
 /**
@@ -100,8 +100,7 @@ export function shopClockLine(now: Date): string {
   const mm = String(bkk.getUTCMinutes()).padStart(2, '0');
   const dd = String(bkk.getUTCDate()).padStart(2, '0');
   const mo = String(bkk.getUTCMonth() + 1).padStart(2, '0');
-  const open = h >= SHOP_OPEN_HOUR && h < SHOP_CLOSE_HOUR;
-  const state = open ? 'ในเวลาทำการ' : 'นอกเวลาทำการ';
+  const state = isShopOpen(now) ? 'ในเวลาทำการ' : 'นอกเวลาทำการ';
   return `[เวลาร้านตอนนี้: ${TH_DAYS[bkk.getUTCDay()]} ${dd}/${mo} ${hh}:${mm} น. · ${state} (ร้านเปิด ${SHOP_OPEN_HOUR}:00-${SHOP_CLOSE_HOUR}:00) — ข้อความระบบ ลูกค้าไม่เห็น]`;
 }
 

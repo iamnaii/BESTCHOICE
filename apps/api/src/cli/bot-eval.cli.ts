@@ -289,7 +289,8 @@ function optBudget(v: unknown): number | undefined {
 
 function runRecommend(input: Record<string, unknown>, mode: StockMode): unknown {
   const cur = String(input.currentModel ?? '').trim();
-  const recognized = /12/.test(cur);
+  // ตัดความจุก่อนจับเลขรุ่น เหมือน runCompare — "Samsung A54 128GB" ไม่ใช่ iPhone 12
+  const recognized = /12/.test(stripStorageToken(cur));
   const current = cur ? { model: recognized ? 'iPhone 12' : cur, recognized } : null;
   const down = optBudget(input.downBudget);
   const monthly = optBudget(input.monthlyBudget);
@@ -324,17 +325,21 @@ function runRecommend(input: Record<string, unknown>, mode: StockMode): unknown 
 function runCompare(input: Record<string, unknown>): unknown {
   const cur = String(input.currentModel ?? '');
   const cand = String(input.candidateModel ?? '');
-  if (/12/.test(cur)) return { ...COMPARE_11_TO_15, candidateHighlights: CANDIDATE_15_HIGHLIGHTS };
+  // ตัดความจุออกก่อนจับเลขรุ่นเสมอ — "iPhone 16 128GB" มี "12" อยู่ใน "128GB"
+  // ⇒ ของเดิมเข้าสาขา iPhone 12 แล้วคืนราคาเทิร์น 3,500 ให้เครื่อง 16 (E22 ตกเพราะ fixture ไม่ใช่เพราะบอท)
+  const curModel = stripStorageToken(cur);
+  const candModel = stripStorageToken(cand);
+  if (/12/.test(curModel)) return { ...COMPARE_11_TO_15, candidateHighlights: CANDIDATE_15_HIGHLIGHTS };
   // E22: ขาย/เทิร์น iPhone 16 — ใช้แค่ tradeIn (รุ่นเดียวกัน/ไม่มีสเปคให้เทียบ = ห้ามพูดสเปค)
-  if (/16/.test(cur) && !/(samsung|ซัมซุง|oppo|vivo|xiaomi)/i.test(cur)) {
+  if (/16/.test(curModel) && !/(samsung|ซัมซุง|oppo|vivo|xiaomi)/i.test(curModel)) {
     return {
       current: { model: 'iPhone 16', recognized: true },
-      candidate: { model: cand || 'iPhone 16', recognized: /16/.test(cand) },
+      candidate: { model: cand || 'iPhone 16', recognized: /16/.test(candModel) },
       candidateHighlights: [],
       better: [],
       same: [],
       worse: [],
-      generationGap: /16/.test(cand) ? 0 : null,
+      generationGap: /16/.test(candModel) ? 0 : null,
       tradeIn: TRADE_IN_16,
     };
   }
@@ -421,7 +426,9 @@ const KB_FIXTURE: KbRow[] = [
       'iPhone 15 Pro Max 256GB ผ่อนเดือนละ 3,401 บาท 15 งวด',
       'iPhone 16 Pro Max 256GB ผ่อนเดือนละ 4,061 บาท 15 งวด',
       'ทุกรุ่นฟรีดาวน์ ใช้บัตรประชาชนใบเดียว · แถมเคสกับฟิล์มทุกเครื่องในโปร · รุ่น/ความจุนอกรายการนี้ไม่มีในโปร',
-      'ฟรีดาวน์ = วันรับเครื่องไม่ต้องวางเงินดาวน์ ค่างวดยังผ่อนครบตามจำนวนงวด · ค่าใช้จ่ายอื่นตามเงื่อนไข ทีมงานเปิดให้ดูครบก่อนเซ็น',
+      // ถ้อยคำวันรับเครื่อง = ฉบับที่เจ้าของเคาะแล้ว (ตรงกับ kb_changes.json ของรอบนี้ — ของเดิม
+      // "ไม่ต้องวางเงินดาวน์ / ค่างวดเริ่มจ่ายงวดแรกตามวันที่ในสัญญา" ถูกแทนที่แล้ว)
+      'ฟรีดาวน์ = วันรับเครื่องไม่ต้องจ่ายเงิน ค่างวดยังผ่อนครบตามจำนวนงวด · งวดแรกจ่ายเดือนถัดไป วันเดียวกับวันที่ทำสัญญา · ค่าใช้จ่ายอื่นตามเงื่อนไข ทีมงานเปิดให้ดูครบก่อนเซ็น',
       'โปรนี้ใช้ต่อเนื่องจนกว่าร้านจะแจ้งเปลี่ยน',
       'ผู้สมัครอายุ 18-59 ปี ไม่เช็คบูโร · อยู่ต่างจังหวัดทำสัญญาออนไลน์ได้ (เฉพาะโปรนี้)',
       'ขอคืนได้ก่อนชำระงวดแรก แต่ต้องจ่ายงวดแรก 1 งวด เครื่องต้องสภาพเดิม ครบกล่องอุปกรณ์ ออก iCloud แล้ว',
@@ -731,7 +738,13 @@ function globalChecks(reply: string, spoken: Set<number>): string[] {
   // คำถามได้ข้อเดียว และอยู่ก้อนสุดท้าย
   // ใช้ splitBubbles (= MessageRouterService) ที่เดียวทั้งไฟล์ — ก่อนหน้านี้ด่านนี้ตัดด้วย /\n---\n/ เคร่ง ๆ
   // ทำให้คำตอบที่คั่นด้วย '----' หรือ '--- ' (router แตกให้จริง) ถูกนับเป็นก้อนเดียวแล้วตกด่านความยาวลอย ๆ
-  const bubbles = splitBubbles(reply);
+  // ปุ่มกด "[ตัวเลือก: …]" ท้ายข้อความ: MessageRouterService ตัดออกเป็น quick replies **ก่อน** แตกก้อน
+  // (message-router.service.ts — regex เดียวกันนี้ แล้ว .trim().filter(Boolean) ก่อน slice)
+  // ⇒ ลูกค้าไม่เห็นเป็นข้อความในบับเบิล ด่านความยาว/จำนวนบรรทัด/จำนวนก้อนจึงต้องวัดหลังตัดปุ่ม
+  // (ด่านความยาวทั้งเทิร์น `visible` และด่านความยาวบรรทัดตัดปุ่มออกอยู่แล้ว — ตรงนี้เคยตกหล่นที่เดียว
+  //  ทำให้ก้อนที่อ่านง่ายอยู่แล้วตกด่านเพราะป้ายปุ่มไปกินโควตาบรรทัด/ตัวอักษร)
+  const layoutText = reply.replace(/\n?\s*\[ตัวเลือก:\s*([^\]]+)\]\s*$/, '');
+  const bubbles = splitBubbles(layoutText).map((b) => b.trim()).filter(Boolean);
   const isQ = (line: string) => /(?:(?<!นะ)คะ|ไหม|มั้ย)\s*$/.test(line.trim()) && !/(ค่ะ|ค่า|นะคะ)\s*$/.test(line.trim());
   let qCount = 0;
   bubbles.forEach((b) => b.split('\n').forEach((l) => { if (l.trim() && isQ(l)) qCount++; }));
@@ -1167,7 +1180,10 @@ const SCENARIOS: Scenario[] = [
     noStock: true,
     id: 'NS9', name: 'แนะนำตามงบตอนไม่มีสต๊อก → การ์ดไม่มีแบต/สี/สถานะของ',
     turns: [
-      { user: 'ใช้ไอโฟน 12 อยู่ ดาวน์ 3000 ผ่อนไม่เกิน 2000 แนะนำหน่อยค่ะ', expectTools: ['recommend_devices'], contains: ['ดาวน์', 'ผ่อนเดือนละ'], notContains: ['แบต', 'มีของ', 'พร้อมรับ', 'หมด', 'กำลังเข้า'], notMatch: [/สี\s*(ดำ|ฟ้า)/] },
+      // ห้ามเคลม **%แบตของเครื่องจริง** (sampleUnit ถูกตัดในโหมดนี้) — ไม่ใช่ห้ามคำว่า "แบต":
+      // บรรทัด betterThanCurrent ของ tool มี "แบตนานขึ้น ~3 ชม." ซึ่งเป็นสเปคเทียบรุ่น ไม่ใช่ของเครื่องในสต๊อก
+      { user: 'ใช้ไอโฟน 12 อยู่ ดาวน์ 3000 ผ่อนไม่เกิน 2000 แนะนำหน่อยค่ะ', expectTools: ['recommend_devices'], contains: ['ดาวน์', 'ผ่อนเดือนละ'],
+        notContains: ['มีของ', 'พร้อมรับ', 'หมด', 'กำลังเข้า'], notMatch: [/สี\s*(ดำ|ฟ้า)/, /แบต(?:เตอรี่)?\s*(?:เหลือ|ยังดี)?\s*\d{1,3}\s*%/] },
     ],
   },
   {
@@ -1201,15 +1217,22 @@ const SCENARIOS: Scenario[] = [
     ],
   },
   {
-    // "เทิร์น 3-4 มี ไม่ต้องวางเงินดาวน์/ตามวันที่ในสัญญา/ก่อนเซ็น" — เทิร์น 3 ต้องครบทั้งสคริปต์ เทิร์น 4 ต้องตอบเรื่องงวดแรก
-    // ถ้อยคำ "ตามวันที่ในสัญญา" = ฉบับกลางระหว่างรอเจ้าของตอบ O04 (คำตัดสินรอบนี้ข้อ 4)
+    // เทิร์น 3 ต้องครบทั้งสคริปต์บังคับ (persona "ถามเงินวันรับเครื่อง/งวดแรก/ค่าเอกสาร" คำต่อคำ) เทิร์น 4 ต้องตอบเรื่องงวดแรก
+    // ถ้อยคำเจ้าของเคาะแล้ว: "วันรับเครื่องไม่ต้องจ่ายเงิน · งวดแรกจ่ายเดือนถัดไป วันเดียวกับวันที่ทำสัญญา"
+    // — แทนฉบับกลางเดิม "ไม่ต้องวางเงินดาวน์ / ตามวันที่ในสัญญา" (O04 ตอบแล้ว) · เทิร์น 4 เป็นคำตอบรับ-ปฏิเสธ
+    // ของลูกค้า ไม่ใช่จังหวะสคริปต์เต็ม จึงรับถ้อยคำเทียบเท่า ("วันทำสัญญา" ไม่มี "ที่") แต่ยังห้ามบอกวันที่เจาะจง
     anyMode: true,
-    id: 'E03', source: 'synth E03 · P03 · K2', name: 'ทางโปร: วันรับเครื่องจ่ายเท่าไหร่ / ไม่ต้องจ่ายงวดแรกหรอ → ไม่วางดาวน์ + งวดแรกตามสัญญา ไม่ handoff',
+    id: 'E03', source: 'synth E03 · P03 · K2', name: 'ทางโปร: วันรับเครื่องจ่ายเท่าไหร่ / ไม่ต้องจ่ายงวดแรกหรอ → วันรับเครื่องไม่ต้องจ่ายเงิน + งวดแรกเดือนถัดไป ไม่ handoff',
     turns: [
       { user: 'ฟรีดาวน์มีรุ่นไหนบ้าง?', notContains: ['ไฟแนนซ์'] },
       { user: 'iPhone 14 ธรรมดาค่ะ', contains: ['1,885'], allowedMonthly: [1885], notContains: ['ไฟแนนซ์'] },
-      { user: 'วันไปรับเครื่องต้องจ่ายเท่าไหร่คะ', forbidTools: ['handoff_to_human'], contains: ['ไม่ต้องวางเงินดาวน์', 'ตามวันที่ในสัญญา', 'ก่อนเซ็น'], notContains: ['ไม่มีค่าใช้จ่าย', 'ฟรีงวดแรก', '1,000', 'ไฟแนนซ์', 'ไม่มีบริการจัดส่ง'] },
-      { user: 'ไม่มีดาวน์ แล้วไม่ต้องจ่ายงวดแรกหรอคะ', forbidTools: ['handoff_to_human'], contains: ['งวดแรก', 'ตามวันที่ในสัญญา'], notContains: ['ไม่มีค่าใช้จ่าย', 'ฟรีงวดแรก', '1,000', 'ไฟแนนซ์', 'ไม่มีบริการจัดส่ง'] },
+      { user: 'วันไปรับเครื่องต้องจ่ายเท่าไหร่คะ', forbidTools: ['handoff_to_human'],
+        contains: ['วันรับเครื่องไม่ต้องจ่ายเงิน', 'งวดแรกจ่ายเดือนถัดไป', 'วันเดียวกับวันที่ทำสัญญา', 'ก่อนเซ็น'],
+        notContains: ['ไม่มีค่าใช้จ่าย', 'ฟรีงวดแรก', '1,000', 'ไฟแนนซ์', 'ไม่มีบริการจัดส่ง'] },
+      // ห้ามบอกวันที่เจาะจงของงวดแรก (persona: บอกได้แค่ "เดือนถัดไป วันเดียวกับวันที่ทำสัญญา")
+      { user: 'ไม่มีดาวน์ แล้วไม่ต้องจ่ายงวดแรกหรอคะ', forbidTools: ['handoff_to_human'], contains: ['งวดแรก', 'เดือนถัดไป'],
+        match: [/วันเดียวกับวัน(?:ที่)?ทำสัญญา/], notMatch: [/(?:ทุก)?วันที่\s*\d{1,2}/],
+        notContains: ['ไม่มีค่าใช้จ่าย', 'ฟรีงวดแรก', '1,000', 'ไฟแนนซ์', 'ไม่มีบริการจัดส่ง'] },
     ],
   },
   {
@@ -1327,7 +1350,12 @@ const SCENARIOS: Scenario[] = [
     turns: [
       { user: 'ร้านอยู่ตรงไหนคะ', expectCalls: [{ tool: 'send_rate_card', inputIncludes: 'shop_map' }], forbidTools: ['handoff_to_human'], contains: ['บขส', 'maps.app.goo.gl', '19:00 น.'], notContains: ['เดี๋ยวเช็คให้'] },
       { user: 'ร้านปิดกี่โมงคะ', forbidTools: ['handoff_to_human'], contains: ['19:00 น.'], notContains: ['เดี๋ยวเช็คให้'] },
-      { user: 'วันนี้เข้าไปได้ไหมคะ', clockIso: AFTER_CLOSE_CLOCK, forbidTools: ['handoff_to_human'], contains: ['ร้านปิด 19:00 น. แล้ว', 'พรุ่งนี้ 10:00'], notContains: ['เดี๋ยวเช็คให้', 'แวะมาได้เลย', 'คืนนี้'] },
+      // persona รอบ 3 (R2-hours-verbatim) กำกับบรรทัดเวลาร้านว่า **คำต่อคำ ห้ามเรียบเรียงใหม่ ห้ามย้ายเวลาไปไว้ในวงเล็บ**
+      // ⇒ ด่านนี้กลับมาบังคับสตริงของ persona เป๊ะ ๆ ("ตอนนี้ร้านปิดแล้วค่ะ (ปิด 19:00 น.)" = ตก)
+      // ถ้าเจ้าของอยากให้เรียบเรียงได้ ต้องถอย R2-hours-verbatim ออกจาก persona ด้วย ไม่ใช่ผ่อนที่ด่านนี้ที่เดียว
+      { user: 'วันนี้เข้าไปได้ไหมคะ', clockIso: AFTER_CLOSE_CLOCK, forbidTools: ['handoff_to_human'],
+        contains: ['ร้านปิด 19:00 น. แล้ว', 'พรุ่งนี้ 10:00'],
+        notContains: ['เดี๋ยวเช็คให้', 'แวะมาได้เลย', 'คืนนี้'] },
     ],
   },
   {
@@ -1336,7 +1364,11 @@ const SCENARIOS: Scenario[] = [
     clockIso: NIGHT_CLOCK,
     history: THAI_RATE1_HISTORY,
     turns: [
-      { user: FILE_INBOUND, forbidTools: ['handoff_to_human'], contains: ['ได้รับแล้ว', 'ร้านเปิด', '10 โมง'], match: [/สะดวก|วันไหน|เข้ามา/], notContains: ['5 นาที', 'รอสักครู่', 'ไวเลย', 'รหัส', 'ส่งซ้ำ', 'ส่งใหม่', 'พรุ่งนี้'] },
+      // persona รอบ 3 (R2-doc-ack-verbatim) สั่งว่า "ได้รับแล้ว" ต้องติดกันเป๊ะ ๆ และ **ห้าม** "ได้รับเอกสารแล้ว"/"ได้รับไฟล์แล้ว"
+      // ⇒ ด่านนี้บังคับสตริงเดิม (ถ้าจะยอมให้แทรกคำ ต้องถอย R2-doc-ack-verbatim ออกจาก persona ด้วย)
+      { user: FILE_INBOUND, forbidTools: ['handoff_to_human'], contains: ['ได้รับแล้ว', 'ร้านเปิด', '10 โมง'],
+        match: [/สะดวก|วันไหน|เข้ามา/],
+        notContains: ['5 นาที', 'รอสักครู่', 'ไวเลย', 'รหัส', 'ส่งซ้ำ', 'ส่งใหม่', 'พรุ่งนี้'] },
       { user: 'ส่งสเตทเม้นให้แล้วนะคะ', forbidTools: ['handoff_to_human'], notContains: ['5 นาที', 'รอสักครู่', 'ไวเลย', 'รหัส', 'ส่งซ้ำ', 'ส่งใหม่', 'พรุ่งนี้'] },
     ],
   },
@@ -1394,8 +1426,11 @@ const SCENARIOS: Scenario[] = [
     id: 'E24', source: 'synth E24 · P15 · P18', name: 'ลูกค้าเก่าส่งรูป + "โอนค่างวดแล้ว งวดหน้าวันไหน" → ได้รับรูปแล้ว + notify_staff + ขอชื่อ-นามสกุล ห้ามบอกวัน/ยอด',
     turns: [
       { user: IMAGE_INBOUND },
+      // persona รอบ 3 (R2-service-image-ack) ตัดสินให้แล้วว่า "ลูกค้าส่งรูป/สลิปมาในบทสนทนานี้ = บรรทัดแรกต้องขึ้นต้นด้วย
+      // ได้รับรูปแล้วค่ะ เสมอ ชนะบรรทัดแทนอันอื่น" ⇒ รับ "เรื่องวันครบกำหนด…" เฉย ๆ ไม่ได้ (ลูกค้าส่งสลิปมาแล้วบอทไม่รับรูป = ของจริงที่ต้องจับ)
       { user: 'โอนค่างวดแล้วนะคะ งวดหน้าต้องจ่ายวันไหนคะ', expectTools: ['notify_staff'], forbidTools: ['search_products', 'get_installment_rates', 'capture_lead'],
-        contains: ['ได้รับรูปแล้ว', 'ชื่อ-นามสกุล'], notContains: ['ไฟแนนซ์', 'เลขบัญชี'], notMatch: [/(ทุก)?วันที่\s*\d{1,2}|\d{1,2}\s*(ต\.?ค\.?|ก\.?ย\.?|พ\.?ย\.?)/], noBigNumbers: true },
+        contains: ['ได้รับรูปแล้ว', 'ชื่อ-นามสกุล'],
+        notContains: ['ไฟแนนซ์', 'เลขบัญชี'], notMatch: [/(ทุก)?วันที่\s*\d{1,2}|\d{1,2}\s*(ต\.?ค\.?|ก\.?ย\.?|พ\.?ย\.?)/], noBigNumbers: true },
     ],
   },
   {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ปรับบอทขายจากแชท 3 วันล่าสุด (2026-09-22) — ชั้นที่ 2 ต่อจาก apply-imported-free-down.sql
-#   persona (แก้เฉพาะจุด 12 ตำแหน่ง) + KB 16 แถว + ค่าตั้ง 3 ตัว:
+#   persona EXTRAS 51 จุด + BASE 1 บรรทัด + KB 18 แถว (แก้ 17 · ใหม่ faq:credit-history) + ค่าตั้ง 3 ตัว:
 #   shop_bot_rate_cards (รูปตารางโปร + แผนที่ร้าน) · shop_bot_page_autoreply_markers · shop_bot_stock_mode = NO_STOCK
 # ต้องมาก่อน: deploy โค้ดที่มี send_rate_card / notify_staff / BotRuntimeConfigService + รัน apply-imported-free-down.sh แล้ว
 # รัน:  IMAGES_DIR=<โฟลเดอร์รูป> bash scripts/ops/apply-bot-tune-2026-09-22.sh
@@ -54,7 +54,7 @@ BK="${BACKUP_DIR:-$HOME/bestchoice-ops-backups}/bot-tune-2026-09-22-${BK_TAG}-$(
 mkdir -p "$BK" || die "สร้างโฟลเดอร์สำรองไม่ได้: $BK"
 psql "$PGURL" -qAt -c "SELECT value FROM system_config WHERE key='shop_bot_persona_bot_extras' AND deleted_at IS NULL" > "$BK/extras.txt" || die "สำรอง EXTRAS ไม่ได้"
 psql "$PGURL" -qAt -c "SELECT value FROM system_config WHERE key='shop_bot_persona_base' AND deleted_at IS NULL" > "$BK/base.txt" || die "สำรอง BASE ไม่ได้"
-psql "$PGURL" -qAt -c "SELECT json_agg(json_build_object('id',id,'priority',priority,'trigger_keywords',trigger_keywords,'response_template',response_template,'active',active) ORDER BY id) FROM chat_knowledge_base WHERE id IN ('faq:age-requirement','faq:device-lock','faq:early-payoff','faq:late-fee','faq:no-payslip-freelance','faq:paid-still-locked','faq:payment-channel-reminder','promo:imported-free-down','faq:imported-device','faq:imported-tradein','extracted:price_installment','extracted:product_availability','extracted:installment_terms','extracted:approval_process','extracted:second_hand_condition','extracted:store_location_hours')" > "$BK/kb-rows.json" || die "สำรอง KB ไม่ได้"
+psql "$PGURL" -qAt -c "SELECT json_agg(json_build_object('id',id,'intent',intent,'priority',priority,'trigger_keywords',trigger_keywords,'example_questions',example_questions,'response_template',response_template,'active',active,'deleted_at',deleted_at) ORDER BY id) FROM chat_knowledge_base WHERE id IN ('faq:age-requirement','faq:device-lock','faq:early-payoff','faq:late-fee','faq:paid-still-locked','faq:payment-channel-reminder','faq:no-payslip-freelance','promo:imported-free-down','faq:imported-device','faq:imported-tradein','extracted:price_installment','extracted:product_availability','extracted:installment_terms','extracted:approval_process','extracted:second_hand_condition','extracted:store_location_hours','faq:no-delivery-pickup-only','faq:credit-history')" > "$BK/kb-rows.json" || die "สำรอง KB ไม่ได้"
 psql "$PGURL" -qAt -c "SELECT json_agg(json_build_object('key',key,'value',value,'deleted_at',deleted_at) ORDER BY key) FROM system_config WHERE key IN ('shop_bot_rate_cards','shop_bot_page_autoreply_markers','shop_bot_stock_mode')" > "$BK/config-rows.json" || die "สำรอง system_config ไม่ได้"
 [ -s "$BK/extras.txt" ] && [ -s "$BK/base.txt" ] && [ -s "$BK/kb-rows.json" ] || die "ไฟล์สำรองว่าง — ไม่ทำต่อ"
 ok "สำรองค่าก่อนรันไว้ที่ $BK"

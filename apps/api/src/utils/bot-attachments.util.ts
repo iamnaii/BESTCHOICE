@@ -73,6 +73,15 @@ export function collectAttachmentsFromToolResult(
     return;
   }
 
+  // รูปตารางผ่อน/แผนที่ของร้าน (send_rate_card) — id = `card:<key>` ไม่ใช่ productId
+  // ป้ายจดลงประวัติเป็น "[รูป <label>]" ⇒ บอทรู้ว่าส่งตารางไหนไปแล้ว ไม่ส่งซ้ำ
+  if (toolName === 'send_rate_card') {
+    const images = (result as { images?: unknown }).images;
+    if (!Array.isArray(images)) return;
+    for (const im of images) push(im as Record<string, unknown>);
+    return;
+  }
+
   if (toolName === 'calculate_installment') {
     const r = result as { productId?: unknown; photoUrl?: unknown; webUrl?: unknown; productName?: unknown };
     push({ id: r.productId, photoUrl: r.photoUrl, webUrl: r.webUrl, productName: r.productName });

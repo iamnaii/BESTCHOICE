@@ -12,6 +12,8 @@
  *     (ทดสอบ prompt ฉบับร่างก่อน apply — ไม่แตะ DB)
  * ตัวเลือก: EVAL_MODEL (default claude-sonnet-5) · EVAL_EFFORT (default medium)
  *          EVAL_ONLY=S3 (รันเฉพาะ scenario เดียว)
+ *          EVAL_NO_STOCK=1 (โหมดไม่มีสต๊อก 2026-09-22 — ตัด search_products/calculate_installment
+ *            + ต่อท้าย NO_STOCK_PROMPT เหมือน SalesBotService; รันเฉพาะฉาก noStock เว้นแต่ระบุ EVAL_ONLY)
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { readFileSync } from 'fs';
@@ -24,10 +26,14 @@ import { GET_INSTALLMENT_RATES_TOOL } from '../modules/sales-bot/tools/get-insta
 import { SEARCH_KNOWLEDGE_BASE_TOOL } from '../modules/sales-bot/tools/search-knowledge-base.tool';
 import { RECOMMEND_DEVICES_TOOL } from '../modules/sales-bot/tools/recommend-devices.tool';
 import { COMPARE_DEVICES_TOOL } from '../modules/sales-bot/tools/compare-devices.tool';
+import { SEND_RATE_CARD_TOOL } from '../modules/sales-bot/tools/send-rate-card.tool';
+import { NOTIFY_STAFF_TOOL } from '../modules/sales-bot/tools/notify-staff.tool';
+import { NO_STOCK_PROMPT } from '../modules/sales-bot/bot-runtime-config.service';
 
 const MODEL = process.env.EVAL_MODEL ?? 'claude-sonnet-5';
 const EFFORT = (process.env.EVAL_EFFORT ?? 'medium') as 'low' | 'medium' | 'high';
 const MAX_HOPS = 4;
+const NO_STOCK = process.env.EVAL_NO_STOCK === '1';
 
 // ───────────────────────── fixtures ─────────────────────────
 // สต๊อกจำลอง: 15 128GB มือสอง 2 สภาพ + 14 128GB + (15 Plus ไม่มีของ — เทสโหมดรับออเดอร์)
@@ -62,6 +68,26 @@ const RATES_15PLUS = {
       brand: 'Apple', model: 'iPhone 15 Plus', storage: '256GB', hasWarranty: false,
       rate1: { downPayment: 1900, monthlyPrice: 2766, termMonths: 12 },
       rate2: { downPayment: 3600, monthlyPrice: 3105, termMonths: 12 },
+    },
+  ],
+};
+
+// โหมดไม่มีสต๊อก: เรทมือ 2 ตามตารางของร้าน (ตัวเลขเดียวกับ pricing_templates บน prod)
+const RATES_15 = {
+  templates: [
+    {
+      brand: 'Apple', model: 'iPhone 15', storage: '128GB', hasWarranty: false, deviceOrigin: 'UNSPECIFIED',
+      rate1: { downPayment: 900, monthlyPrice: 2424, termMonths: 12 },
+      rate2: { downPayment: 3700, monthlyPrice: 2523, termMonths: 12 },
+    },
+  ],
+};
+const RATES_16 = {
+  templates: [
+    {
+      brand: 'Apple', model: 'iPhone 16', storage: '128GB', hasWarranty: false, deviceOrigin: 'UNSPECIFIED',
+      rate1: { downPayment: 3300, monthlyPrice: 2652, termMonths: 12 },
+      rate2: { downPayment: 3900, monthlyPrice: 2741, termMonths: 15 },
     },
   ],
 };
@@ -133,6 +159,8 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
     }
     case 'get_installment_rates':
       if (q.includes('plus')) return RATES_15PLUS;
+      if (q.includes('16')) return RATES_16;
+      if (q.includes('15')) return RATES_15;
       return { templates: [] };
     case 'calculate_installment': {
       const pid = String(input.productId ?? '');
@@ -188,6 +216,14 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
       return { customerId: 'eval-c1', promptPayQr: null, downAmount: Number(input.downAmount ?? 0), handoffMessage: 'ทีมงานจะเช็คเอกสารแล้วติดต่อกลับไปนะคะ ยังไม่ต้องโอนอะไรทั้งนั้นค่ะ' };
     case 'handoff_to_human':
       return { ok: true };
+    case 'send_rate_card': {
+      // รูปที่ตั้งไว้บน prod ตอนนี้: เครื่องนอก + แผนที่ (ตารางเครื่องไทย/มือ 1 รอรูปฉบับล่าสุดจากเจ้าของ)
+      const LABELS: Record<string, string> = { imported_free_down: 'ตารางผ่อนฟรีดาวน์ไอโฟนมือ 2 (เครื่องนอก)', shop_map: 'วิธีเดินทางมาร้าน', used_rate1: 'ตารางผ่อนไอโฟนมือ 2 เรทที่ 1', used_rate2: 'ตารางผ่อนไอโฟนมือ 2 เรทที่ 2' };
+      const cards = (Array.isArray(input.cards) ? input.cards : [input.cards]).map(String);
+      return { sent: cards.filter((c) => LABELS[c]).map((c) => ({ card: c, label: LABELS[c] })), missing: cards.filter((c) => !LABELS[c]) };
+    }
+    case 'notify_staff':
+      return { staffNotified: true };
     default:
       return { error: 'unknown_tool' };
   }
@@ -200,13 +236,16 @@ const GROUNDED = [17500, 19900, 13900, 1750, 1578, 1990, 1790, 1390, 1245, 1900,
   // โปรฟรีดาวน์เครื่องนอก (KB faq:promo-imported-free-down)
   1885, 2395, 2631, 2140, 2650, 3288, 3291, 3033, 3401, 4061,
   // S21: เครื่องไทย p16th / p16th2 เท่านั้น (เลขของ p16imp จงใจไม่ใส่)
-  24900, 2490, 2245, 29430, 23900, 2390, 2155, 28250];
+  24900, 2490, 2245, 29430, 23900, 2390, 2155, 28250,
+  // โหมดไม่มีสต๊อก: RATES_15 / RATES_16
+  900, 2424, 3700, 2523, 3300, 2652, 3900, 2741];
 
 // ───────────────────────── checks ─────────────────────────
 // skipGlobal: เทิร์นปูทางที่รูปแบบข้อความถูกตรวจในฉากอื่นอยู่แล้ว (เช่น การ์ดแนะนำรุ่น = S3/S9) — ไม่นับด่านความยาว/คำต้องห้ามซ้ำ
 type Turn = { user: string; expectTools?: string[]; forbidTools?: string[]; contains?: string[]; notContains?: string[]; wantButtons?: boolean; noBigNumbers?: boolean; skipGlobal?: boolean };
 // promoSilent: ฉากที่ไม่เกี่ยวกับโปรเครื่องนอก (รุ่นนอกโปร / ซื้อสด / ยังไม่เลือกรุ่น) — บอทเอ่ย "เครื่องนอก/ฟรีดาวน์" เอง = ตก
-type Scenario = { id: string; name: string; turns: Turn[]; promoSilent?: boolean };
+// noStock: ฉากของโหมดไม่มีสต๊อก — รันเมื่อ EVAL_NO_STOCK=1 เท่านั้น (ฉากเดิมรันเมื่อไม่ได้ตั้ง)
+type Scenario = { id: string; name: string; turns: Turn[]; promoSilent?: boolean; noStock?: boolean };
 
 // 'เกรด' — คำสั่งเจ้าของ 2026-08-17: tool คืนเกรดมาได้ แต่ห้ามพิมพ์ให้ลูกค้า (บอก % แบตพอ)
 const BANNED = ['ดอกเบี้ย', '%', 'GFIN', 'ผ่อนกับร้าน', 'เรทร้าน', 'สั่งเข้า', 'ครับ', '{customerName}', '{', 'เรียนคุณ', 'เกรด', 'QR', 'โอนมัดจำ', 'โอนดาวน์',
@@ -571,10 +610,11 @@ async function loadPersona(): Promise<string> {
   return `${base}${extras}`;
 }
 
+// ลำดับ/ชุดเดียวกับ SalesBotService.buildToolDefinitions
 const TOOLS = [
-  SEARCH_PRODUCTS_TOOL, CALCULATE_INSTALLMENT_TOOL, LIST_PROMOTIONS_TOOL,
+  ...(NO_STOCK ? [] : [SEARCH_PRODUCTS_TOOL, CALCULATE_INSTALLMENT_TOOL]), LIST_PROMOTIONS_TOOL,
   HANDOFF_TO_HUMAN_TOOL, CAPTURE_LEAD_TOOL, GET_INSTALLMENT_RATES_TOOL, SEARCH_KNOWLEDGE_BASE_TOOL,
-  RECOMMEND_DEVICES_TOOL, COMPARE_DEVICES_TOOL,
+  RECOMMEND_DEVICES_TOOL, COMPARE_DEVICES_TOOL, SEND_RATE_CARD_TOOL, NOTIFY_STAFF_TOOL,
 ].map((t: { name: string; description: string; input_schema?: unknown; inputSchema?: unknown }) => ({
   name: t.name,
   description: t.description,
@@ -614,8 +654,9 @@ async function botReply(
 
 async function main() {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ต้องมี ANTHROPIC_API_KEY');
-  const system = await loadPersona();
-  console.log(`bot-eval: model=${MODEL} effort=${EFFORT} persona=${system.length.toLocaleString()} chars\n`);
+  const persona = await loadPersona();
+  const system = NO_STOCK ? `${persona}\n${NO_STOCK_PROMPT}` : persona;
+  console.log(`bot-eval: model=${MODEL} effort=${EFFORT} persona=${system.length.toLocaleString()} chars${NO_STOCK ? ' · NO_STOCK' : ''}\n`);
   const client = new Anthropic();
   const only = process.env.EVAL_ONLY;
   const onlyIds = only ? new Set(only.split(',').map((x) => x.trim())) : null;
@@ -623,6 +664,7 @@ async function main() {
 
   for (const sc of SCENARIOS) {
     if (onlyIds && !onlyIds.has(sc.id)) continue;
+    if (!onlyIds && !!sc.noStock !== NO_STOCK) continue;
     console.log(`━━ ${sc.id}: ${sc.name}`);
     // fidelity เท่ากับ prod: ประวัติข้ามเทิร์นเก็บเฉพาะ "ข้อความ" (ai-auto-reply สร้าง
     // priorMessages จาก chat_messages) — ผล tool ของเทิร์นก่อนหายไป บอทต้องเรียกใหม่เอง

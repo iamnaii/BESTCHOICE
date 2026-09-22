@@ -285,8 +285,10 @@ export class MessageRouterService {
           // takeover ของพนักงาน — ต้องส่งข้อความปิดท้ายให้ลูกค้าตามปกติ
           // (บั๊กจริง 2026-08-20: ลูกค้าให้ชื่อ+เบอร์ → บอทเก็บ lead สำเร็จ + ปักธงเอง
           //  → re-check เห็นธงตัวเอง เลยกลืนคำตอบทิ้ง ลูกค้าเจอความเงียบทั้งที่ปิดการขายได้)
-          const flaggedByBotThisTurn =
-            (result.toolsUsed ?? []).some((t) => t === 'capture_lead' || t === 'handoff_to_human');
+          // notify_staff (2026-09-22) = บอทตอบเองแล้ว แค่ขอให้พนักงานส่งรูปเครื่องจริงต่อ
+          const flaggedByBotThisTurn = (result.toolsUsed ?? []).some(
+            (t) => t === 'capture_lead' || t === 'handoff_to_human' || t === 'notify_staff',
+          );
           if (!flaggedByBotThisTurn && (fresh?.aiPaused || fresh?.handoffMode)) {
             await this.aiAutoReplyService.logAutoReply({
               roomId: room.id,
@@ -340,9 +342,17 @@ export class MessageRouterService {
             // ระบบบันทึกเหมือนส่งสำเร็จทั้งที่ลูกค้าไม่ได้อะไร; ตอนนี้ bubble แรกล่ม =
             // นับว่าเทิร์นล่ม → ปักธงพนักงาน, bubble หลังล่ม = ตัดที่เหลือทิ้ง (แรกถึงแล้ว)
             let firstBubbleFailed = false;
+            // รูป (การ์ดสินค้า/ตารางผ่อน) ปกติส่งตามหลังข้อความทั้งหมด — แต่ถ้าก้อนสุดท้ายมีปุ่มกด
+            // ต้องส่งรูป "ก่อน" ก้อนสุดท้าย ไม่งั้นรูปกลายเป็นข้อความล่าสุดแล้วปุ่มหายทันที
+            // (FB/LINE แสดง quick reply เฉพาะข้อความล่าสุด — 2026-09-22 ตอนเพิ่ม send_rate_card)
+            const imagesBeforeLast =
+              !!quickReplies && (result.attachments ?? []).some((a) => !!a.imageUrl);
             for (let i = 0; i < parts.length; i++) {
               // 350ms (เดิม 700): ยังได้จังหวะ "คนทยอยพิมพ์" แต่เทิร์น 4 ก้อนประหยัด ~1 วิ
               if (i > 0) await new Promise((r) => setTimeout(r, 350));
+              if (imagesBeforeLast && i === parts.length - 1) {
+                await this.sendBotAttachments(adapter, message, room.id, result.attachments);
+              }
               const sendResult = await adapter.sendMessage({
                 externalUserId: message.externalUserId,
                 channel: message.channel,
@@ -395,8 +405,11 @@ export class MessageRouterService {
               });
               return;
             }
-            // B3 §5 — ส่งรูปสินค้าตามหลังข้อความ (best-effort)
-            await this.sendBotAttachments(adapter, message, room.id, result.attachments);
+            // B3 §5 — ส่งรูปสินค้าตามหลังข้อความ (best-effort) · ส่งไปแล้วก่อนก้อนสุดท้าย = ข้าม
+            // (รูปส่งแบบ push ไม่ใช้ replyToken — ก้อนแรกของ LINE ยังตอบด้วย replyToken ได้ตามเดิม)
+            if (!imagesBeforeLast) {
+              await this.sendBotAttachments(adapter, message, room.id, result.attachments);
+            }
           }
           await this.aiAutoReplyService.logAutoReply({
             roomId: room.id,

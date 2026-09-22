@@ -9,6 +9,9 @@ import { GetInstallmentRatesTool } from './tools/get-installment-rates.tool';
 import { SearchKnowledgeBaseTool } from './tools/search-knowledge-base.tool';
 import { RecommendDevicesTool } from './tools/recommend-devices.tool';
 import { CompareDevicesTool } from './tools/compare-devices.tool';
+import { SendRateCardTool } from './tools/send-rate-card.tool';
+import { NotifyStaffTool } from './tools/notify-staff.tool';
+import { BotRuntimeConfigService } from './bot-runtime-config.service';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
 import { CustomerPiiModule } from '../customers/customer-pii.module';
@@ -40,6 +43,9 @@ import { LlmProviderRegistry } from './providers/llm-provider.registry';
     SearchKnowledgeBaseTool,
     RecommendDevicesTool,
     CompareDevicesTool,
+    SendRateCardTool,
+    NotifyStaffTool,
+    BotRuntimeConfigService,
     ClaudeProvider,
     GeminiProvider,
     LlmProviderRegistry,

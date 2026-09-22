@@ -9,6 +9,9 @@ import { GetInstallmentRatesTool } from './tools/get-installment-rates.tool';
 import { SearchKnowledgeBaseTool } from './tools/search-knowledge-base.tool';
 import { RecommendDevicesTool } from './tools/recommend-devices.tool';
 import { CompareDevicesTool } from './tools/compare-devices.tool';
+import { SendRateCardTool } from './tools/send-rate-card.tool';
+import { NotifyStaffTool } from './tools/notify-staff.tool';
+import { BotRuntimeConfigService, NO_STOCK_PROMPT } from './bot-runtime-config.service';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import { PersonaService } from '../staff-chat/services/persona.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
@@ -1096,5 +1099,104 @@ describe('redactMediaUrls', () => {
     expect(redactMediaUrls('x')).toBe('x');
     expect(redactMediaUrls([1, 2])).toEqual([1, 2]);
     expect(redactMediaUrls(null)).toBeNull();
+  });
+});
+
+describe('SalesBotService — โหมดไม่มีสต๊อก / ส่งรูปตารางผ่อน / notify_staff (2026-09-22)', () => {
+  async function buildWith(chat: jest.Mock, stockMode: 'LIVE' | 'NO_STOCK') {
+    const provider: ILlmProvider = {
+      providerName: 'claude',
+      chat: chat as unknown as (...args: any[]) => Promise<LlmChatResponse>,
+    };
+    const persona = {
+      getBase: jest.fn(), getBotExtras: jest.fn(), invalidateCache: jest.fn(), isCustomized: jest.fn(),
+      getBot: jest.fn().mockResolvedValue('PERSONA'),
+    };
+    const runtime = { getStockMode: jest.fn().mockResolvedValue(stockMode), getRateCards: jest.fn() };
+    const sendRateCard = {
+      run: jest.fn().mockResolvedValue({
+        sent: [{ card: 'imported_free_down', label: 'ตารางผ่อนฟรีดาวน์' }],
+        missing: [],
+        images: [{ id: 'card:imported_free_down', photoUrl: 'https://s.example.com/i.jpg', productName: 'ตารางผ่อนฟรีดาวน์' }],
+      }),
+    };
+    const notifyStaff = { run: jest.fn().mockResolvedValue({ staffNotified: true }) };
+    const noop = { run: jest.fn() };
+    const mod = await Test.createTestingModule({
+      providers: [
+        SalesBotService,
+        { provide: LlmProviderRegistry, useValue: { getActive: jest.fn().mockResolvedValue(provider) } },
+        { provide: SearchProductsTool, useValue: noop },
+        { provide: CalculateInstallmentTool, useValue: noop },
+        { provide: ListPromotionsTool, useValue: noop },
+        { provide: HandoffToHumanTool, useValue: noop },
+        { provide: CaptureLeadTool, useValue: noop },
+        { provide: GetInstallmentRatesTool, useValue: noop },
+        { provide: SearchKnowledgeBaseTool, useValue: noop },
+        { provide: RecommendDevicesTool, useValue: noop },
+        { provide: CompareDevicesTool, useValue: noop },
+        { provide: PersonaService, useValue: persona },
+        { provide: AiUsageService, useValue: { record: jest.fn() } },
+        { provide: BotRuntimeConfigService, useValue: runtime },
+        { provide: SendRateCardTool, useValue: sendRateCard },
+        { provide: NotifyStaffTool, useValue: notifyStaff },
+      ],
+    }).compile();
+    return { svc: mod.get(SalesBotService), sendRateCard, notifyStaff };
+  }
+
+  const final = (text: string) => ({ text, toolCalls: [], inputTokens: 1, outputTokens: 1, modelName: 'm' });
+  const call = (name: string, input: Record<string, unknown>) => ({
+    text: '', toolCalls: [{ id: 't1', name, input }], inputTokens: 1, outputTokens: 1, modelName: 'm',
+  });
+
+  it('NO_STOCK: ไม่เสนอ search_products / calculate_installment + ต่อท้ายคำสั่งโหมดไม่มีสต๊อก', async () => {
+    const chat = jest.fn().mockResolvedValue(final('สนใจรุ่นไหนคะ'));
+    const { svc } = await buildWith(chat, 'NO_STOCK');
+    await svc.generateReply({ text: 'สวัสดี', roomId: 'r1', customerId: null });
+    const req = chat.mock.calls[0][0];
+    const names = req.tools.map((t: { name: string }) => t.name);
+    expect(names).not.toContain('search_products');
+    expect(names).not.toContain('calculate_installment');
+    expect(names).toEqual(expect.arrayContaining(['get_installment_rates', 'send_rate_card', 'notify_staff']));
+    expect(req.systemPrompt).toBe(`PERSONA\n${NO_STOCK_PROMPT}`);
+  });
+
+  it('LIVE: ชุดเครื่องมือเดิมครบ + prompt เดิมไม่ถูกต่อท้าย', async () => {
+    const chat = jest.fn().mockResolvedValue(final('สนใจรุ่นไหนคะ'));
+    const { svc } = await buildWith(chat, 'LIVE');
+    await svc.generateReply({ text: 'สวัสดี', roomId: 'r1', customerId: null });
+    const req = chat.mock.calls[0][0];
+    expect(req.tools.map((t: { name: string }) => t.name)).toEqual(
+      expect.arrayContaining(['search_products', 'calculate_installment', 'send_rate_card']),
+    );
+    expect(req.systemPrompt).toBe('PERSONA');
+  });
+
+  it('send_rate_card → แนบรูปตาราง (ลิงก์ไม่ถึงโมเดล)', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(call('send_rate_card', { cards: ['imported_free_down'] }))
+      .mockResolvedValue(final('อันนี้ตารางผ่อนฟรีดาวน์ค่ะ\nสนใจรุ่นไหนคะ'));
+    const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+    const r = await svc.generateReply({ text: 'ฟรีดาวน์มีรุ่นไหนบ้าง?', roomId: 'r1', customerId: null });
+    expect(sendRateCard.run).toHaveBeenCalledWith({ cards: ['imported_free_down'] });
+    expect(r.attachments).toEqual([
+      { productId: 'card:imported_free_down', imageUrl: 'https://s.example.com/i.jpg', label: 'ตารางผ่อนฟรีดาวน์' },
+    ]);
+    const toolMsg = chat.mock.calls[1][0].messages.find((m: { role: string }) => m.role === 'tool');
+    expect(toolMsg.content).not.toContain('https://');
+  });
+
+  it('notify_staff → ส่งห้อง + เหตุผล และความมั่นใจไม่ถูกลด (คำตอบยังส่งถึงลูกค้า)', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(call('notify_staff', { reason: 'iPhone 15 ขอดูรูปเครื่องจริง' }))
+      .mockResolvedValue(final('ได้เลยค่ะ เดี๋ยวแอดมินส่งรูปเครื่องจริงให้ดูนะคะ'));
+    const { svc, notifyStaff } = await buildWith(chat, 'NO_STOCK');
+    const r = await svc.generateReply({ text: 'ขอดูรูปเครื่องจริง', roomId: 'room-9', customerId: null });
+    expect(notifyStaff.run).toHaveBeenCalledWith({ reason: 'iPhone 15 ขอดูรูปเครื่องจริง', roomId: 'room-9' });
+    expect(r.toolsUsed).toEqual(['notify_staff']);
+    expect(r.confidence).toBe(0.95);
   });
 });

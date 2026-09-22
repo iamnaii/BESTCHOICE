@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PersonaService } from '../staff-chat/services/persona.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { SearchProductsTool, SEARCH_PRODUCTS_TOOL } from './tools/search-products.tool';
@@ -19,6 +19,9 @@ import {
 } from './tools/search-knowledge-base.tool';
 import { RecommendDevicesTool, RECOMMEND_DEVICES_TOOL } from './tools/recommend-devices.tool';
 import { CompareDevicesTool, COMPARE_DEVICES_TOOL } from './tools/compare-devices.tool';
+import { SendRateCardTool, SEND_RATE_CARD_TOOL } from './tools/send-rate-card.tool';
+import { NotifyStaffTool, NOTIFY_STAFF_TOOL } from './tools/notify-staff.tool';
+import { BotRuntimeConfigService, NO_STOCK_PROMPT, type StockMode } from './bot-runtime-config.service';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import {
   LlmChatMessage,
@@ -124,7 +127,36 @@ export class SalesBotService {
     private readonly compareDevices: CompareDevicesTool,
     private readonly persona: PersonaService,
     private readonly aiUsage: AiUsageService,
+    // @Optional: ของใหม่ 2026-09-22 (โหมดไม่มีสต๊อก + ส่งรูปตารางผ่อน + แจ้งพนักงาน) —
+    // ผู้สร้าง service แบบเดิม (spec/CLI) ที่ไม่ได้ให้มาจะได้พฤติกรรมเดิมทุกประการ
+    @Optional() private readonly runtimeConfig?: BotRuntimeConfigService,
+    @Optional() private readonly sendRateCard?: SendRateCardTool,
+    @Optional() private readonly notifyStaff?: NotifyStaffTool,
   ) {}
+
+  /**
+   * ชุดเครื่องมือของเทิร์นนี้ — โหมดไม่มีสต๊อกตัด search_products / calculate_installment
+   * (สองตัวที่ต้องมีเครื่องในสต๊อก) ออกจากสายตาโมเดล แทนการสั่งด้วยคำพูดอย่างเดียว
+   */
+  static buildToolDefinitions(opts: {
+    stockMode: StockMode;
+    rateCards: boolean;
+    notifyStaff: boolean;
+  }): LlmToolDefinition[] {
+    const stockTools = opts.stockMode === 'NO_STOCK' ? [] : [SEARCH_PRODUCTS_TOOL, CALCULATE_INSTALLMENT_TOOL];
+    return [
+      ...stockTools,
+      LIST_PROMOTIONS_TOOL,
+      HANDOFF_TO_HUMAN_TOOL,
+      CAPTURE_LEAD_TOOL,
+      GET_INSTALLMENT_RATES_TOOL,
+      SEARCH_KNOWLEDGE_BASE_TOOL,
+      RECOMMEND_DEVICES_TOOL,
+      COMPARE_DEVICES_TOOL,
+      ...(opts.rateCards ? [SEND_RATE_CARD_TOOL] : []),
+      ...(opts.notifyStaff ? [NOTIFY_STAFF_TOOL] : []),
+    ].map(adaptTool);
+  }
 
   // ต้อง await เสมอ — Cloud Run ตั้ง cpu-throttling=true: หลังจบ awaited chain ของ
   // webhook เบื้องหลัง CPU ถูกตัด ทำให้ promise ที่ไม่มีใคร await ค้างและตายเงียบ
@@ -155,17 +187,12 @@ export class SalesBotService {
     input: SalesBotInput,
     explicitProvider?: import('./providers/llm-provider.interface').ILlmProvider,
   ): Promise<SalesBotResult> {
-    const tools: LlmToolDefinition[] = [
-      SEARCH_PRODUCTS_TOOL,
-      CALCULATE_INSTALLMENT_TOOL,
-      LIST_PROMOTIONS_TOOL,
-      HANDOFF_TO_HUMAN_TOOL,
-      CAPTURE_LEAD_TOOL,
-      GET_INSTALLMENT_RATES_TOOL,
-      SEARCH_KNOWLEDGE_BASE_TOOL,
-      RECOMMEND_DEVICES_TOOL,
-      COMPARE_DEVICES_TOOL,
-    ].map(adaptTool);
+    const stockMode: StockMode = (await this.runtimeConfig?.getStockMode()) ?? 'LIVE';
+    const tools: LlmToolDefinition[] = SalesBotService.buildToolDefinitions({
+      stockMode,
+      rateCards: !!this.sendRateCard,
+      notifyStaff: !!this.notifyStaff,
+    });
 
     const messages: LlmChatMessage[] = [
       ...(input.sessionNote ? [{ role: 'user', content: input.sessionNote } as LlmChatMessage] : []),
@@ -180,7 +207,9 @@ export class SalesBotService {
     // edit from /settings/ai-persona doesn't flip the system prompt halfway
     // through a tool loop. PersonaService cache makes this O(1) most of the
     // time anyway.
-    const systemPrompt = await this.persona.getBot();
+    const personaPrompt = await this.persona.getBot();
+    // ต่อท้าย (ไม่แทรกกลาง) ⇒ prefix ของ persona ยังเป็นก้อนเดียวกับโหมดปกติ
+    const systemPrompt = stockMode === 'NO_STOCK' ? `${personaPrompt}\n${NO_STOCK_PROMPT}` : personaPrompt;
     const toolsUsed: string[] = [];
     // Grounding ledger: every priceThb the model has seen via tool results
     // this session. Used by guardGrounding() to catch hallucinated prices
@@ -402,6 +431,12 @@ export class SalesBotService {
           currentModel: String(input.currentModel ?? ''),
           candidateModel: String(input.candidateModel ?? ''),
         });
+      case 'send_rate_card':
+        if (!this.sendRateCard) return { error: 'unknown_tool' };
+        return this.sendRateCard.run({ cards: input.cards });
+      case 'notify_staff':
+        if (!this.notifyStaff) return { error: 'unknown_tool' };
+        return this.notifyStaff.run({ reason: String(input.reason ?? ''), roomId });
       default:
         return { error: 'unknown_tool' };
     }

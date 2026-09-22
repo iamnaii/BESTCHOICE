@@ -121,6 +121,78 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
     ]);
   }, 10000);
 
+  it('notify_staff (บอทปักธงเอง) → ยังส่งคำตอบของบอท ไม่กลืนทิ้งเหมือนพนักงาน takeover', async () => {
+    const { router, adapter, roomManager } = makeRouter({
+      aiEligible: true,
+      aiResult: {
+        reply: 'ได้เลยค่ะ เดี๋ยวแอดมินส่งรูปเครื่องจริงให้ดูนะคะ',
+        confidence: 0.95,
+        toolsUsed: ['notify_staff'],
+        inputTokens: 1,
+        outputTokens: 1,
+      },
+    });
+    // หลังบอทเรียก notify_staff ห้องถูกปักธง handoff แล้ว — re-check ก่อนส่งจะเห็นธงนี้
+    roomManager.findById.mockResolvedValue({ aiPaused: false, handoffMode: true });
+    await router.routeInbound(baseMsg as any);
+    expect(adapter.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'ได้เลยค่ะ เดี๋ยวแอดมินส่งรูปเครื่องจริงให้ดูนะคะ' }),
+    );
+  }, 10000);
+
+  it('ธง handoff ที่ไม่ได้มาจากบอทเทิร์นนี้ (พนักงาน takeover) → ไม่ส่งคำตอบ', async () => {
+    const { router, adapter, roomManager } = makeRouter({
+      aiEligible: true,
+      aiResult: { reply: 'มีค่ะ', confidence: 0.95, toolsUsed: ['get_installment_rates'], inputTokens: 1, outputTokens: 1 },
+    });
+    roomManager.findById.mockResolvedValue({ aiPaused: false, handoffMode: true });
+    await router.routeInbound(baseMsg as any);
+    expect(adapter.sendMessage).not.toHaveBeenCalled();
+  }, 10000);
+
+  it('รูปตาราง + ก้อนสุดท้ายมีปุ่ม → ส่งรูปก่อนก้อนสุดท้าย (ปุ่มต้องอยู่ข้อความล่าสุด)', async () => {
+    const { router, adapter } = makeRouter({
+      aiEligible: true,
+      aiResult: {
+        reply: 'โปรฟรีดาวน์เป็นไอโฟนมือสองค่ะ\n---\nพี่สนใจรุ่นไหนคะ\n[ตัวเลือก: iPhone 13 | iPhone 14]',
+        confidence: 0.95,
+        toolsUsed: ['send_rate_card'],
+        inputTokens: 1,
+        outputTokens: 1,
+        attachments: [{ productId: 'card:imported_free_down', imageUrl: 'https://s.example.com/t.jpg', label: 'ตาราง' }],
+      },
+    });
+    await router.routeInbound(baseMsg as any);
+    const sent = adapter.sendMessage.mock.calls.map((c: any[]) => c[0]);
+    expect(sent.map((m: any) => m.imageUrl ?? m.text)).toEqual([
+      'โปรฟรีดาวน์เป็นไอโฟนมือสองค่ะ',
+      'https://s.example.com/t.jpg',
+      'พี่สนใจรุ่นไหนคะ',
+    ]);
+    expect(sent[2].quickReplies).toHaveLength(2);
+  }, 10000);
+
+  it('ไม่มีปุ่ม → รูปตามหลังข้อความทั้งหมดเหมือนเดิม', async () => {
+    const { router, adapter } = makeRouter({
+      aiEligible: true,
+      aiResult: {
+        reply: 'อันนี้ตารางผ่อนค่ะ\n---\nเดี๋ยวแอดมินส่งรูปเครื่องจริงให้นะคะ',
+        confidence: 0.95,
+        toolsUsed: ['send_rate_card'],
+        inputTokens: 1,
+        outputTokens: 1,
+        attachments: [{ productId: 'card:shop_map', imageUrl: 'https://s.example.com/m.jpg', label: 'แผนที่' }],
+      },
+    });
+    await router.routeInbound(baseMsg as any);
+    const sent = adapter.sendMessage.mock.calls.map((c: any[]) => c[0]);
+    expect(sent.map((m: any) => m.imageUrl ?? m.text)).toEqual([
+      'อันนี้ตารางผ่อนค่ะ',
+      'เดี๋ยวแอดมินส่งรูปเครื่องจริงให้นะคะ',
+      'https://s.example.com/m.jpg',
+    ]);
+  }, 10000);
+
   it('threads the replyToken into the after-hours reply', async () => {
     const { router, adapter } = makeRouter({ afterHours: true });
     await router.routeInbound(baseMsg as any);

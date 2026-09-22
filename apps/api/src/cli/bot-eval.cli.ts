@@ -779,7 +779,19 @@ function globalChecks(reply: string, spoken: Set<number>): string[] {
   // v5.2: เทิร์นแนะนำอัปเกรด = 2 การ์ด (4 บรรทัด) + เทิร์น 2 บรรทัด + คำถาม — แยก 3 ก้อนแล้วอ่านง่าย
   // ยอมให้ 470 เฉพาะเมื่อมีบรรทัด "ดีกว่า ...:" (ไม่ใช่ผ่อนคลายเพดานทั่วไป)
   const hasUpgradeLines = /^ดีกว่า .*:/m.test(reply);
-  const totalCap = totalCards >= 2 ? (hasUpgradeLines ? 470 : 430) : 380;
+  // v5.3: เทิร์นแนะนำที่งบไม่ถึง (nearMiss) มีของบังคับครบชุดในเทิร์นเดียว — การ์ด 1 ใบ + บรรทัด
+  // "ดีกว่า …" + 2 บรรทัดเทิร์นเครื่องเก่า + บรรทัดชวนโปรฟรีดาวน์ + คำถาม+ปุ่ม แตกเป็น 4 ก้อนสั้น
+  // ยังอ่านรวดเดียวจบ (วัดจริง 399) — ตัดบรรทัดใดออกคือตัดข้อมูลที่เจ้าของสั่งให้บอก
+  const hasTradeInLine = /เทิร์นได้ประมาณ/.test(reply);
+  const hasFreeDownOffer = /ฟรีดาวน์เครื่องนอก/.test(reply);
+  const totalCap =
+    totalCards >= 2
+      ? hasUpgradeLines
+        ? 470
+        : 430
+      : hasUpgradeLines && hasTradeInLine && hasFreeDownOffer
+        ? 430
+        : 380;
   if (visible.length > totalCap) {
     fails.push(`ทั้งเทิร์นยาว ${visible.length} ตัวอักษร (เพดาน ${totalCap})`);
   }

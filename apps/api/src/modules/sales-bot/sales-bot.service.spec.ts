@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { SalesBotService, redactMediaUrls, shopClockLine } from './sales-bot.service';
+import { SalesBotService, redactMediaUrls, shopClockLine, NO_STOCK_TOOL_RESULT } from './sales-bot.service';
 import { SearchProductsTool } from './tools/search-products.tool';
 import { CalculateInstallmentTool } from './tools/calculate-installment.tool';
 import { ListPromotionsTool } from './tools/list-promotions.tool';
@@ -194,8 +194,37 @@ describe('SalesBotService', () => {
     });
     expect(result.reply).toContain('staff');
     expect(result.confidence).toBeLessThanOrEqual(0.3);
-    // MAX_TOOL_HOPS (4) hops × 1 tool call each.
-    expect(searchProducts.run).toHaveBeenCalledTimes(4);
+    // MAX_TOOL_HOPS (6) hops × 1 tool call each (โมเดลจำลองไม่ฟัง toolChoice จึงเรียกต่อถึงรอบสุดท้าย)
+    expect(searchProducts.run).toHaveBeenCalledTimes(6);
+  });
+
+  it('รอบสุดท้ายของลูปบังคับ toolChoice none (ให้เขียนคำตอบ) · รอบก่อนหน้าไม่ส่ง', async () => {
+    const chat = jest.fn().mockResolvedValue({
+      text: '',
+      toolCalls: [{ id: 'tu_loop', name: 'search_products', input: { query: 'x' } }],
+      inputTokens: 1,
+      outputTokens: 1,
+      modelName: 'm',
+    } satisfies LlmChatResponse);
+    const { svc, searchProducts } = await build(chat);
+    searchProducts.run.mockResolvedValue({ products: [] });
+    await svc.generateReply({ text: '???', roomId: 'r1', customerId: null });
+    const choices = chat.mock.calls.map((c) => c[0].toolChoice);
+    expect(choices).toEqual([undefined, undefined, undefined, undefined, undefined, 'none']);
+  });
+
+  it('คำตอบว่าง (ไม่มีข้อความ ไม่มีเครื่องมือ) → ข้อความสำรองให้พนักงานเช็ค ไม่ส่งบับเบิลว่าง', async () => {
+    const chat = jest.fn().mockResolvedValue({
+      text: '  ',
+      toolCalls: [],
+      inputTokens: 1,
+      outputTokens: 1,
+      modelName: 'm',
+    } satisfies LlmChatResponse);
+    const { svc } = await build(chat);
+    const result = await svc.generateReply({ text: 'สวัสดี', roomId: 'r1', customerId: null });
+    expect(result.reply).toContain('staff');
+    expect(result.confidence).toBeLessThanOrEqual(0.3);
   });
 
   it('records usage via AiUsageService with the provider-reported model', async () => {
@@ -1153,16 +1182,31 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
     text: '', toolCalls: [{ id: 't1', name, input }], inputTokens: 1, outputTokens: 1, modelName: 'm',
   });
 
-  it('NO_STOCK: ไม่เสนอ search_products / calculate_installment + ต่อท้ายคำสั่งโหมดไม่มีสต๊อก', async () => {
+  it('NO_STOCK: ยังประกาศเครื่องมือสต๊อก (คืน unavailable) + ต่อท้ายคำสั่งโหมดไม่มีสต๊อก', async () => {
     const chat = jest.fn().mockResolvedValue(final('สนใจรุ่นไหนคะ'));
     const { svc } = await buildWith(chat, 'NO_STOCK');
     await svc.generateReply({ text: 'สวัสดี', roomId: 'r1', customerId: null });
     const req = chat.mock.calls[0][0];
     const names = req.tools.map((t: { name: string }) => t.name);
-    expect(names).not.toContain('search_products');
-    expect(names).not.toContain('calculate_installment');
-    expect(names).toEqual(expect.arrayContaining(['get_installment_rates', 'send_rate_card', 'notify_staff']));
+    expect(names).toEqual(
+      expect.arrayContaining(['search_products', 'calculate_installment', 'get_installment_rates', 'send_rate_card', 'notify_staff']),
+    );
     expect(req.systemPrompt).toBe(`PERSONA\n${NO_STOCK_PROMPT}`);
+  });
+
+  it('NO_STOCK: โมเดลเรียก search_products → ไม่ค้น DB จริง คืน unavailable ให้โมเดลอ่าน', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(call('search_products', { query: 'iPhone 15' }))
+      .mockResolvedValue(final('สนใจความจุไหนคะ'));
+    const { svc } = await buildWith(chat, 'NO_STOCK');
+    const searchProducts = (svc as unknown as { searchProducts: { run: jest.Mock } }).searchProducts;
+    searchProducts.run.mockClear();
+    const r = await svc.generateReply({ text: 'iPhone 15 มีไหม', roomId: 'r1', customerId: null });
+    expect(searchProducts.run).not.toHaveBeenCalled();
+    const toolMsg = chat.mock.calls[1][0].messages.find((m: { role: string }) => m.role === 'tool');
+    expect(JSON.parse(toolMsg.content)).toEqual(NO_STOCK_TOOL_RESULT);
+    expect(r.reply).toBe('สนใจความจุไหนคะ');
   });
 
   it('LIVE: ชุดเครื่องมือเดิมครบ + prompt เดิมไม่ถูกต่อท้าย', async () => {
@@ -1201,6 +1245,82 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
     expect(notifyStaff.run).toHaveBeenCalledWith({ reason: 'iPhone 15 ขอดูรูปเครื่องจริง', roomId: 'room-9' });
     expect(r.toolsUsed).toEqual(['notify_staff']);
     expect(r.confidence).toBe(0.95);
+  });
+
+  const callWithText = (text: string, name: string, input: Record<string, unknown>) => ({
+    ...call(name, input),
+    text,
+  });
+
+  it('เขียนคำตอบมาพร้อม send_rate_card ที่ส่งครบ → จบเทิร์นด้วยข้อความนั้นเลย ไม่วนรอบที่ทำให้ข้อความหาย', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(
+        callWithText('อันนี้ตารางผ่อนฟรีดาวน์ค่ะ\nสนใจรุ่นไหนคะ', 'send_rate_card', { cards: ['imported_free_down'] }),
+      )
+      .mockResolvedValue(final(''));
+    const { svc } = await buildWith(chat, 'NO_STOCK');
+    const r = await svc.generateReply({ text: 'ฟรีดาวน์มีรุ่นไหนบ้าง?', roomId: 'r1', customerId: null });
+    expect(chat).toHaveBeenCalledTimes(1);
+    expect(r.reply).toBe('อันนี้ตารางผ่อนฟรีดาวน์ค่ะ\nสนใจรุ่นไหนคะ');
+    expect(r.attachments).toHaveLength(1);
+  });
+
+  it('เขียนคำตอบมาพร้อม notify_staff ที่สำเร็จ → จบเทิร์นทันที', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(
+        callWithText('ได้เลยค่ะ\nเดี๋ยวแอดมินส่งรูปเครื่องจริงให้ดูนะคะ', 'notify_staff', { reason: 'iPhone 15 ขอรูป' }),
+      )
+      .mockResolvedValue(final('ไม่ควรถูกเรียก'));
+    const { svc } = await buildWith(chat, 'NO_STOCK');
+    const r = await svc.generateReply({ text: 'ขอดูรูปเครื่องจริง', roomId: 'r1', customerId: null });
+    expect(chat).toHaveBeenCalledTimes(1);
+    expect(r.reply).toBe('ได้เลยค่ะ\nเดี๋ยวแอดมินส่งรูปเครื่องจริงให้ดูนะคะ');
+  });
+
+  it('รูปที่ขอบางใบไม่มีในระบบ → วนต่อให้โมเดลเห็นผลแล้วเขียนใหม่ (ไม่อ้างว่าส่งตารางทั้งที่ไม่ได้ส่ง)', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(callWithText('ส่งตารางให้ดูนะคะ', 'send_rate_card', { cards: ['used_rate1'] }))
+      .mockResolvedValue(final('เรทที่ 1 ดาวน์ตามตารางค่ะ'));
+    const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+    sendRateCard.run.mockResolvedValueOnce({ sent: [], missing: ['used_rate1'], images: [] });
+    const r = await svc.generateReply({ text: 'ขอดูเรท', roomId: 'r1', customerId: null });
+    expect(chat).toHaveBeenCalledTimes(2);
+    expect(r.reply).toBe('เรทที่ 1 ดาวน์ตามตารางค่ะ');
+  });
+
+  it('ข้อความที่มาพร้อมเครื่องมือข้อมูล (ไม่ใช่ลงมือแทน) → วนต่อตามเดิม', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(callWithText('ขอเช็คเรทให้นะคะ', 'list_promotions', {}))
+      .mockResolvedValue(final('สนใจความจุไหนคะ'));
+    const { svc } = await buildWith(chat, 'NO_STOCK');
+    (svc as unknown as { listPromotions: { run: jest.Mock } }).listPromotions.run.mockResolvedValue({ promotions: [] });
+    const r = await svc.generateReply({ text: 'ผ่อน 15', roomId: 'r1', customerId: null });
+    expect(chat).toHaveBeenCalledTimes(2);
+    expect(r.reply).toBe('สนใจความจุไหนคะ');
+  });
+
+  it('ตัวเลขในข้อความไม่มีที่มา → ไม่จบทันที วนต่อให้ผ่านด่าน grounding ตามเดิม', async () => {
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(
+        callWithText('ผ่อนเดือนละ 9,999 บาทค่ะ', 'send_rate_card', { cards: ['imported_free_down'] }),
+      )
+      .mockResolvedValue(final('อันนี้ตารางผ่อนค่ะ สนใจรุ่นไหนคะ'));
+    const { svc } = await buildWith(chat, 'NO_STOCK');
+    const r = await svc.generateReply({ text: 'ผ่อนเท่าไหร่', roomId: 'r1', customerId: null });
+    expect(chat).toHaveBeenCalledTimes(2);
+    expect(r.reply).toBe('อันนี้ตารางผ่อนค่ะ สนใจรุ่นไหนคะ');
+  });
+
+  it('ตัดอักษรจีนที่หลุดมาในคำตอบ', async () => {
+    const chat = jest.fn().mockResolvedValue(final('ได้เลยค่ะ\n自 iPhone 16 มือสอง'));
+    const { svc } = await buildWith(chat, 'NO_STOCK');
+    const r = await svc.generateReply({ text: 'สวัสดี', roomId: 'r1', customerId: null });
+    expect(r.reply).toBe('ได้เลยค่ะ\niPhone 16 มือสอง');
   });
 });
 

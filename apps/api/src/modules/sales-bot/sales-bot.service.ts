@@ -39,6 +39,7 @@ import {
   MAX_BOT_ATTACHMENTS,
   type BotAttachment,
 } from '../../utils/bot-attachments.util';
+import { stripStrayForeignScript } from '../../utils/bot-reply-sanitize.util';
 
 export interface SalesBotInput {
   text: string;
@@ -55,6 +56,33 @@ export interface SalesBotInput {
   /** เวลาปัจจุบัน (เทสส่งค่าคงที่ได้) — ไม่ส่ง = new Date() */
   now?: Date;
 }
+
+const STOCK_TOOL_NAMES = new Set(['search_products', 'calculate_installment']);
+/**
+ * เครื่องมือที่ "ลงมือแทน" (ส่งรูป / ปักธงให้พนักงาน) — ผลของมันไม่มีข้อมูลให้โมเดลเอาไปเขียนคำตอบ
+ * ถ้าโมเดลเขียนคำตอบมาแล้วในข้อความเดียวกับที่เรียกเฉพาะตัวเหล่านี้ และทุกตัวสำเร็จ → จบเทิร์นด้วย
+ * ข้อความนั้นเลย (ดู isCleanSideEffectResult). เดิมวนอีกรอบแล้วใช้เฉพาะข้อความรอบสุดท้าย ซึ่งมักเป็น
+ * "ส่งตารางให้ดูนะคะ" หรือว่างเปล่า ⇒ ข้อความเรทที่เขียนไว้แล้วหายทั้งก้อน (bot:eval 2026-09-22)
+ */
+export const SIDE_EFFECT_TOOL_NAMES = new Set(['send_rate_card', 'notify_staff']);
+
+/** ส่งรูปครบทุกใบที่ขอ / ปักธงสำเร็จ — ไม่ครบ = ให้โมเดลเห็นผลแล้วแก้คำตอบเอง */
+export function isCleanSideEffectResult(name: string, result: unknown): boolean {
+  const r = (result ?? {}) as Record<string, unknown>;
+  if (name === 'send_rate_card') {
+    return Array.isArray(r.sent) && r.sent.length > 0 && Array.isArray(r.missing) && r.missing.length === 0;
+  }
+  if (name === 'notify_staff') return r.staffNotified === true;
+  return false;
+}
+/** ผลของเครื่องมือสต๊อกในโหมดไม่มีสต๊อก — แชร์กับ bot-eval ให้ fixture ตรงกับของจริง */
+export const NO_STOCK_TOOL_RESULT = {
+  unavailable: true,
+  note:
+    'โหมดไม่มีสต๊อก: ระบบยังไม่มีรายการเครื่อง (หน้าร้านมีเครื่องจริง) — ห้ามพูดว่าหมด/มีของ/สีอะไร · ' +
+    'ค่างวดใช้ get_installment_rates (เครื่องไทย) หรือ search_knowledge_base (โปรเครื่องนอก) · ' +
+    'สี/แบต/รูปเครื่องจริง → notify_staff',
+};
 
 /** เวลาทำการหน้าร้าน (KB store_location_hours: เปิดทุกวัน 10:00-19:00) */
 export const SHOP_OPEN_HOUR = 10;
@@ -108,9 +136,11 @@ export function redactMediaUrls(value: unknown): unknown {
   return value;
 }
 
-// 4 (เดิม 3): เผื่อทางเดิน self-correct ของ GroundingGuard — search(hop0) →
-// คำตอบโดนบล็อก+retry(hop1) → โมเดลเรียก calculate/rates เพิ่ม(hop2) → ตอบจริง(hop3)
-const MAX_TOOL_HOPS = 4;
+// 6 (เดิม 4): โมเดลมักเรียกเครื่องมือทีละตัวต่อรอบ — เทิร์นเรทแรกเดิน rates → send_rate_card
+// (+ search_products ที่โหมดไม่มีสต๊อกตอบว่าไม่มี) → ตอบ เกิน 4 รอบบ่อย จนได้ข้อความสำรอง
+// "ให้พี่ staff เช็ค" แทนเรท (bot:eval 2026-09-22) · รอบสุดท้ายบังคับ toolChoice 'none' ให้เขียนคำตอบเสมอ
+const MAX_TOOL_HOPS = 6;
+const STAFF_FALLBACK_REPLY = 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ';
 
 /**
  * Convert legacy Anthropic-style tool definition (uses `input_schema`)
@@ -161,14 +191,18 @@ export class SalesBotService {
    * ชุดเครื่องมือของเทิร์นนี้ — โหมดไม่มีสต๊อกตัด search_products / calculate_installment
    * (สองตัวที่ต้องมีเครื่องในสต๊อก) ออกจากสายตาโมเดล แทนการสั่งด้วยคำพูดอย่างเดียว
    */
+  /**
+   * โหมดไม่มีสต๊อกยังประกาศเครื่องมือสต๊อกไว้ (runTool คืน NO_STOCK_TOOL_RESULT) — ถอดออกแล้วโมเดลยัง
+   * เรียกชื่อที่ไม่ได้ประกาศอยู่ดี (persona อ้างถึงทั้งเล่ม) หรือหลุดไปใช้สคริปต์ "ของกำลังเข้ามา"
+   * (bot:eval A/B 2026-09-22) และ Gemini ปฏิเสธการเรียกฟังก์ชันที่ไม่ได้ประกาศ
+   */
   static buildToolDefinitions(opts: {
-    stockMode: StockMode;
     rateCards: boolean;
     notifyStaff: boolean;
   }): LlmToolDefinition[] {
-    const stockTools = opts.stockMode === 'NO_STOCK' ? [] : [SEARCH_PRODUCTS_TOOL, CALCULATE_INSTALLMENT_TOOL];
     return [
-      ...stockTools,
+      SEARCH_PRODUCTS_TOOL,
+      CALCULATE_INSTALLMENT_TOOL,
       LIST_PROMOTIONS_TOOL,
       HANDOFF_TO_HUMAN_TOOL,
       CAPTURE_LEAD_TOOL,
@@ -212,7 +246,6 @@ export class SalesBotService {
   ): Promise<SalesBotResult> {
     const stockMode: StockMode = (await this.runtimeConfig?.getStockMode()) ?? 'LIVE';
     const tools: LlmToolDefinition[] = SalesBotService.buildToolDefinitions({
-      stockMode,
       rateCards: !!this.sendRateCard,
       notifyStaff: !!this.notifyStaff,
     });
@@ -273,6 +306,7 @@ export class SalesBotService {
           systemPrompt,
           messages,
           tools,
+          ...(hop === MAX_TOOL_HOPS - 1 ? { toolChoice: 'none' as const } : {}),
         });
         totalIn += resp.inputTokens;
         totalOut += resp.outputTokens;
@@ -306,7 +340,20 @@ export class SalesBotService {
             }
             await this.recordUsage(modelUsed, totalIn, totalOut);
             return {
-              reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
+              reply: STAFF_FALLBACK_REPLY,
+              confidence: 0.3,
+              toolsUsed,
+              inputTokens: totalIn,
+              outputTokens: totalOut,
+              modelUsed,
+            };
+          }
+          // ไม่มีทั้งข้อความและการเรียกเครื่องมือ (เช่น โดน max_tokens ตัด) — ห้ามส่งบับเบิลว่าง
+          if (!resp.text.trim()) {
+            this.logger.warn(`[FinalReply] room=${input.roomId} hop=${hop} EMPTY_REPLY → staff fallback`);
+            await this.recordUsage(modelUsed, totalIn, totalOut);
+            return {
+              reply: STAFF_FALLBACK_REPLY,
               confidence: 0.3,
               toolsUsed,
               inputTokens: totalIn,
@@ -316,7 +363,7 @@ export class SalesBotService {
           }
           await this.recordUsage(modelUsed, totalIn, totalOut);
           return {
-            reply: resp.text,
+            reply: stripStrayForeignScript(resp.text),
             confidence: this.estimateConfidence(resp.text, toolsUsed),
             toolsUsed,
             inputTokens: totalIn,
@@ -337,7 +384,7 @@ export class SalesBotService {
         const executed = await Promise.all(
           resp.toolCalls.map(async (tc) => {
             try {
-              return { tc, result: await this.runTool(tc.name, tc.input, input.roomId) };
+              return { tc, result: await this.runTool(tc.name, tc.input, input.roomId, stockMode) };
             } catch (toolError) {
               // Tag before rethrow — tools are Prisma-backed and can throw for
               // reasons that have nothing to do with the LLM provider (DB down,
@@ -363,6 +410,33 @@ export class SalesBotService {
           });
         }
 
+        // คำตอบเขียนเสร็จแล้ว + เรียกแค่เครื่องมือลงมือแทนที่สำเร็จ → ใช้ข้อความนี้เป็นคำตอบเลย
+        // (grounding ไม่ผ่าน = เดินรอบต่อตามปกติ ให้โมเดลเขียนใหม่ผ่านด่านเดิม)
+        if (
+          resp.text.trim() &&
+          executed.every(
+            ({ tc, result }) =>
+              SIDE_EFFECT_TOOL_NAMES.has(tc.name) && isCleanSideEffectResult(tc.name, result),
+          ) &&
+          guardGrounding(resp.text, groundedPrices).ok
+        ) {
+          this.logger.log(
+            `[FinalReply] room=${input.roomId} hop=${hop} sideEffectOnly toolsUsed=${JSON.stringify(toolsUsed)} reply=${JSON.stringify(resp.text).slice(0, 400)}`,
+          );
+          await this.recordUsage(modelUsed, totalIn, totalOut);
+          return {
+            reply: stripStrayForeignScript(resp.text),
+            confidence: this.estimateConfidence(resp.text, toolsUsed),
+            toolsUsed,
+            inputTokens: totalIn,
+            outputTokens: totalOut,
+            modelUsed,
+            ...(attachments.size > 0
+              ? { attachments: [...attachments.values()].slice(0, MAX_BOT_ATTACHMENTS) }
+              : {}),
+          };
+        }
+
         // Conversation grows: assistant turn (text + tool_calls) then tool results.
         messages.push({
           role: 'assistant',
@@ -374,7 +448,7 @@ export class SalesBotService {
 
       await this.recordUsage(modelUsed, totalIn, totalOut);
       return {
-        reply: 'ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติมสักครู่นะคะ',
+        reply: STAFF_FALLBACK_REPLY,
         confidence: 0.3,
         toolsUsed,
         inputTokens: totalIn,
@@ -399,7 +473,12 @@ export class SalesBotService {
     name: string,
     input: Record<string, unknown>,
     roomId: string,
+    stockMode: StockMode = 'LIVE',
   ): Promise<unknown> {
+    // โหมดไม่มีสต๊อก: ถอดเครื่องมือสต๊อกออกจากรายการแล้ว แต่ persona ยังเอ่ยชื่อบ่อย โมเดลจึงเรียกชื่อเองได้
+    // (API ไม่บล็อกชื่อที่ไม่ได้ประกาศ — เจอจริงใน bot:eval 2026-09-22) — ผลว่างจะทำให้บอทพูดว่า "หมด"
+    // จึงคืนข้อความบอกโหมดแทน
+    if (stockMode === 'NO_STOCK' && STOCK_TOOL_NAMES.has(name)) return NO_STOCK_TOOL_RESULT;
     switch (name) {
       case 'search_products':
         return this.searchProducts.run(input as { query: string; maxPriceThb?: number });

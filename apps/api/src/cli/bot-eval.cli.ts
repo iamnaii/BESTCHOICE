@@ -29,10 +29,17 @@ import { COMPARE_DEVICES_TOOL } from '../modules/sales-bot/tools/compare-devices
 import { SEND_RATE_CARD_TOOL } from '../modules/sales-bot/tools/send-rate-card.tool';
 import { NOTIFY_STAFF_TOOL } from '../modules/sales-bot/tools/notify-staff.tool';
 import { NO_STOCK_PROMPT } from '../modules/sales-bot/bot-runtime-config.service';
+import {
+  shopClockLine,
+  NO_STOCK_TOOL_RESULT,
+  SIDE_EFFECT_TOOL_NAMES,
+  isCleanSideEffectResult,
+} from '../modules/sales-bot/sales-bot.service';
+import { stripStrayForeignScript } from '../utils/bot-reply-sanitize.util';
 
 const MODEL = process.env.EVAL_MODEL ?? 'claude-sonnet-5';
 const EFFORT = (process.env.EVAL_EFFORT ?? 'medium') as 'low' | 'medium' | 'high';
-const MAX_HOPS = 4;
+const MAX_HOPS = 6; // = MAX_TOOL_HOPS ของ SalesBotService (รอบสุดท้ายบังคับ tool_choice none)
 const NO_STOCK = process.env.EVAL_NO_STOCK === '1';
 
 // ───────────────────────── fixtures ─────────────────────────
@@ -139,6 +146,8 @@ function group(units: (typeof UNITS)[keyof typeof UNITS][]) {
 }
 
 function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
+  // เหมือน SalesBotService.runTool: โหมดไม่มีสต๊อก เครื่องมือสต๊อกคืนข้อความบอกโหมด
+  if (NO_STOCK && (name === 'search_products' || name === 'calculate_installment')) return NO_STOCK_TOOL_RESULT;
   const q = String(input.query ?? '').toLowerCase();
   switch (name) {
     case 'search_products': {
@@ -175,10 +184,11 @@ function runFixtureTool(name: string, input: Record<string, unknown>): unknown {
       // KB นโยบาย (v5.4 — ข้อความเดียวกับแถว faq:* บน prod) จับด้วย keyword แบบ kb-match
       const FAQ: Array<{ id: string; kw: string[]; t: string }> = [
         // โปรฟรีดาวน์เครื่องนอก (เจ้าของสั่ง 2026-09-20) — ข้อความเดียวกับแถว KB บน prod (apply-imported-free-down.sql)
-        { id: 'faq:promo-imported-free-down', kw: ['เครื่องนอก', 'ฟรีดาวน์'], t: 'โปรฟรีดาวน์ iPhone มือสอง เครื่องนอก (ของแท้ Apple โมเดลต่างประเทศ ประกันร้าน 30 วัน)\niPhone 13 128GB ผ่อนเดือนละ 1,758 บาท 12 งวด\niPhone 14 128GB ผ่อนเดือนละ 1,885 บาท 12 งวด\niPhone 15 128GB ผ่อนเดือนละ 2,395 บาท 12 งวด\niPhone 16 128GB ผ่อนเดือนละ 2,631 บาท 12 งวด\niPhone 13 Pro 128GB ผ่อนเดือนละ 2,140 บาท 12 งวด\niPhone 14 Pro 128GB ผ่อนเดือนละ 2,650 บาท 12 งวด\niPhone 15 Pro 128GB ผ่อนเดือนละ 3,288 บาท 12 งวด\niPhone 16 Pro 128GB ผ่อนเดือนละ 3,291 บาท 12 งวด\niPhone 13 Pro Max 128GB ผ่อนเดือนละ 2,395 บาท 12 งวด\niPhone 14 Pro Max 128GB ผ่อนเดือนละ 3,033 บาท 12 งวด\niPhone 15 Pro Max 256GB ผ่อนเดือนละ 3,401 บาท 15 งวด\niPhone 16 Pro Max 256GB ผ่อนเดือนละ 4,061 บาท 15 งวด\nทุกรุ่นฟรีดาวน์ ใช้บัตรประชาชนใบเดียว · รุ่น/ความจุนอกรายการนี้ไม่มีในโปร\nผู้สมัครอายุ 18-59 ปี ไม่เช็คบูโร · อยู่ต่างจังหวัดทำสัญญาออนไลน์ได้ (เฉพาะโปรนี้)\nขอคืนได้ก่อนชำระงวดแรก แต่ต้องจ่ายงวดแรก 1 งวด เครื่องต้องสภาพเดิม ครบกล่องอุปกรณ์ ออก iCloud แล้ว' },
+        { id: 'faq:promo-imported-free-down', kw: ['เครื่องนอก', 'ฟรีดาวน์'], t: 'โปรฟรีดาวน์ iPhone มือสอง เครื่องนอก (ของแท้ Apple โมเดลต่างประเทศ ประกันร้าน 30 วัน)\niPhone 13 128GB ผ่อนเดือนละ 1,758 บาท 12 งวด\niPhone 14 128GB ผ่อนเดือนละ 1,885 บาท 12 งวด\niPhone 15 128GB ผ่อนเดือนละ 2,395 บาท 12 งวด\niPhone 16 128GB ผ่อนเดือนละ 2,631 บาท 12 งวด\niPhone 13 Pro 128GB ผ่อนเดือนละ 2,140 บาท 12 งวด\niPhone 14 Pro 128GB ผ่อนเดือนละ 2,650 บาท 12 งวด\niPhone 15 Pro 128GB ผ่อนเดือนละ 3,288 บาท 12 งวด\niPhone 16 Pro 128GB ผ่อนเดือนละ 3,291 บาท 12 งวด\niPhone 13 Pro Max 128GB ผ่อนเดือนละ 2,395 บาท 12 งวด\niPhone 14 Pro Max 128GB ผ่อนเดือนละ 3,033 บาท 12 งวด\niPhone 15 Pro Max 256GB ผ่อนเดือนละ 3,401 บาท 15 งวด\niPhone 16 Pro Max 256GB ผ่อนเดือนละ 4,061 บาท 15 งวด\nทุกรุ่นฟรีดาวน์ ใช้บัตรประชาชนใบเดียว · แถมเคสกับฟิล์มทุกเครื่องในโปร · รุ่น/ความจุนอกรายการนี้ไม่มีในโปร\nผู้สมัครอายุ 18-59 ปี ไม่เช็คบูโร · อยู่ต่างจังหวัดทำสัญญาออนไลน์ได้ (เฉพาะโปรนี้)\nขอคืนได้ก่อนชำระงวดแรก แต่ต้องจ่ายงวดแรก 1 งวด เครื่องต้องสภาพเดิม ครบกล่องอุปกรณ์ ออก iCloud แล้ว' },
         { id: 'faq:imported-device', kw: ['esim', 'อีซิม', 'ชัตเตอร์', 'โมเดลต่างประเทศ', 'ของแท้', 'ของปลอม'], t: 'เครื่องนอกคือ iPhone แท้ของ Apple ที่ผลิตขายในต่างประเทศค่ะ ไม่ติด iCloud\nเช็ครหัสรุ่นในเครื่องได้ที่ ตั้งค่า > ทั่วไป > เกี่ยวกับ\nบางโมเดลมีข้อจำกัด: โมเดลอเมริการุ่น 14 ขึ้นไปใช้ eSIM อย่างเดียว · โมเดลญี่ปุ่น/เกาหลีปิดเสียงชัตเตอร์ไม่ได้ · โมเดลฮ่องกงใส่ 2 ซิมแต่ไม่มี eSIM\nทีมงานเปิดเครื่องจริงให้เช็คและลองซิมที่ร้านก่อนตัดสินใจค่ะ' },
+        { id: 'extracted:store_location_hours', kw: ['ที่ไหน', 'ร้านอยู่', 'เปิด', 'กี่โมง', 'แผนที่', 'บขส', 'พิกัด', 'ทางไป'], t: 'ร้านอยู่เส้นหลัง บขส สระแก้วลพบุรีค่ะ\nที่เดียวกับร้านประกัน ตรงข้ามชาบูแม็คซิโกเลยค่า\n\nแผนที่ 🗺️ https://maps.app.goo.gl/bqGcmr5FupWLw1378\nเปิดทุกวัน 10 โมงเช้าถึง 1 ทุ่มค่ะ' },
         { id: 'faq:no-payslip-freelance', kw: ['สลิป', 'ฟรีแลนซ์', 'แม่ค้า', 'ขายของ', 'รับจ้าง', 'อิสระ'], t: 'ไม่ต้องมีสลิป ไม่ต้องมีบัตรเครดิตค่ะ 😊\nฟรีแลนซ์ แม่ค้าออนไลน์ รับจ้าง ผ่อนได้หมด\nมีเงินเข้าบัญชี → สเตทเม้นท์ 3 เดือน (เรทที่ 1)\nไม่มี → รูปตอนทำงาน (เรทที่ 2)' },
-        { id: 'faq:age-requirement', kw: ['อายุ', 'กี่ปี', '18', '19', 'ผู้ปกครอง', 'นักเรียน'], t: 'อายุ 20 ปีขึ้นไป ทำสัญญาเองได้เลยค่ะ\n17-19 ผ่อนได้ แต่มีผู้ปกครองมาเซ็นด้วยวันรับเครื่อง\nต่ำกว่า 17 ยังทำสัญญาไม่ได้ค่ะ\nนักศึกษา มีผู้ปกครองค้ำให้ค่า' },
+        { id: 'faq:age-requirement', kw: ['อายุ', 'กี่ปี', '18', '19', 'ผู้ปกครอง', 'นักเรียน'], t: 'อายุ 18 ปีขึ้นไป ทำสัญญาเองได้เลยค่ะ\nต่ำกว่า 18 ยังทำสัญญาไม่ได้นะคะ\nนักศึกษา มีผู้ปกครองค้ำให้ค่า' },
         { id: 'faq:device-lock', kw: ['ล็อก', 'ล็อค', 'MDM'], t: 'ระหว่างผ่อนเครื่องมีระบบดูแลของร้านค่ะ บอกตรง ๆ นะคะ\nจ่ายตรงตามนัด → ใช้งานปกติทุกอย่าง\nล็อกเฉพาะค้างชำระแล้วติดต่อไม่ได้ จ่ายครบปลดให้ทันที\nผ่อนครบ เครื่องเป็นของพี่เต็มตัวค่ะ 😊' },
         { id: 'faq:late-fee', kw: ['จ่ายช้า', 'ผิดนัด', 'ค้าง', 'ค่าปรับ', 'ลืมจ่าย', 'เลยกำหนด', 'ไม่ทัน'], t: 'เลยกำหนดมีค่าปรับต่องวดแบบเหมาค่ะ\nเลย 1-2 วัน 50 บาท · วันที่ 3 ขึ้นไป 100 บาท (ไม่คิดรายวัน)\nค้างนานแล้วติดต่อไม่ได้ เครื่องอาจถูกล็อกจนกว่าจะชำระ\n---\nจ่ายไม่ทันจริง ๆ ทักมาเลื่อนนัดก่อนถึงวันได้เลย ทีมช่วยดูให้ค่ะ\nค่างวดไม่เกิน 1 ใน 3 ของรายได้ต่อเดือนจะผ่อนสบายสุดนะคะ 😊' },
         { id: 'faq:early-payoff', kw: ['ปิดยอด', 'ปิดก่อน', 'โปะ', 'ปิดสัญญา'], t: 'ปิดยอดก่อนกำหนดได้ทุกเมื่อค่ะ ไม่มีค่าปรับ 😊\nแถมมีส่วนลดให้สำหรับงวดที่ยังไม่ถึงกำหนดด้วยค่ะ\n\nยอดปิดจริงทีมการเงินคำนวณแจ้งให้ตอนขอปิดนะคะ' },
@@ -245,7 +255,11 @@ const GROUNDED = [17500, 19900, 13900, 1750, 1578, 1990, 1790, 1390, 1245, 1900,
 type Turn = { user: string; expectTools?: string[]; forbidTools?: string[]; contains?: string[]; notContains?: string[]; wantButtons?: boolean; noBigNumbers?: boolean; skipGlobal?: boolean };
 // promoSilent: ฉากที่ไม่เกี่ยวกับโปรเครื่องนอก (รุ่นนอกโปร / ซื้อสด / ยังไม่เลือกรุ่น) — บอทเอ่ย "เครื่องนอก/ฟรีดาวน์" เอง = ตก
 // noStock: ฉากของโหมดไม่มีสต๊อก — รันเมื่อ EVAL_NO_STOCK=1 เท่านั้น (ฉากเดิมรันเมื่อไม่ได้ตั้ง)
-type Scenario = { id: string; name: string; turns: Turn[]; promoSilent?: boolean; noStock?: boolean };
+// history: ข้อความก่อนหน้าในห้อง (เช่นข้อความอัตโนมัติของเพจ) · clockIso: เวลาที่ระบบแนบต้นข้อความ (ค่าเริ่ม = บ่าย 2 เวลาไทย)
+type Scenario = {
+  id: string; name: string; turns: Turn[]; promoSilent?: boolean; noStock?: boolean;
+  history?: { role: 'user' | 'assistant'; content: string }[]; clockIso?: string;
+};
 
 // 'เกรด' — คำสั่งเจ้าของ 2026-08-17: tool คืนเกรดมาได้ แต่ห้ามพิมพ์ให้ลูกค้า (บอก % แบตพอ)
 const BANNED = ['ดอกเบี้ย', '%', 'GFIN', 'ผ่อนกับร้าน', 'เรทร้าน', 'สั่งเข้า', 'ครับ', '{customerName}', '{', 'เรียนคุณ', 'เกรด', 'QR', 'โอนมัดจำ', 'โอนดาวน์',
@@ -358,7 +372,7 @@ const SCENARIOS: Scenario[] = [
     id: 'S13', name: 'objections: ไม่มีสลิป / อายุ 18 / โดนล็อกไหม / จ่ายช้า / ปิดยอดก่อน → ตอบจาก KB',
     turns: [
       { user: 'เป็นฟรีแลนซ์ ไม่มีสลิปเงินเดือน ผ่อนได้ไหม', expectTools: ['search_knowledge_base'], contains: ['สเตทเม้นท์', 'รูปตอนทำงาน'], notContains: ['ผ่านแน่', 'อนุมัติแน่นอน'], noBigNumbers: true },
-      { user: 'อายุ 18 ผ่อนได้ไหม', contains: ['ผู้ปกครอง'], notContains: ['20 ปีขึ้นไปเท่านั้น'], noBigNumbers: true },
+      { user: 'อายุ 18 ผ่อนได้ไหม', contains: ['18'], notContains: ['20 ปี', 'ผู้ปกครองมาเซ็น'], noBigNumbers: true },
       { user: 'แล้วเครื่องโดนล็อกไหม', expectTools: ['search_knowledge_base'], contains: ['ค้างชำระ'], notContains: ['ไม่ล็อก', 'UFUND', 'Samsung Finance'], noBigNumbers: true },
       { user: 'ถ้าจ่ายช้าโดนอะไรบ้าง', expectTools: ['search_knowledge_base'], contains: ['50', '100', 'ค่าปรับ'], notContains: ['ต่อวัน', 'เดี๋ยวเช็คให้'], forbidTools: ['handoff_to_human'] },
       { user: 'ปิดยอดก่อนได้ไหม', expectTools: ['search_knowledge_base'], contains: ['ได้'], notContains: ['ดอกเบี้ย', '%', '50%'], noBigNumbers: true },
@@ -590,6 +604,71 @@ const SCENARIOS: Scenario[] = [
       { user: 'ต่างกับ 15 Plus ยังไง', contains: ['ผ่อนเดือนละ'] },
     ],
   },
+  // ───────── โหมดไม่มีสต๊อก + รูปตาราง (2026-09-22 — ประโยคจริงจากแชท 19-22 ก.ย.) · รันด้วย EVAL_NO_STOCK=1 ─────────
+  {
+    noStock: true,
+    id: 'NS1', name: 'ปุ่มโฆษณา "ฟรีดาวน์มีรุ่นไหนบ้าง?" → รูปตารางโปร + ประกัน/ของแถม → รุ่นย่อย → ค่างวดจาก KB',
+    turns: [
+      { user: 'ฟรีดาวน์มีรุ่นไหนบ้าง?', expectTools: ['send_rate_card'], contains: ['ฟรีดาวน์', '30 วัน', 'เคส', '[ตัวเลือก:'], notContains: ['หมด', 'กำลังเข้ามา', 'กำลังจะเข้า', 'ไฟแนนซ์', 'Plus'], noBigNumbers: true },
+      { user: '16', contains: ['Pro Max', '[ตัวเลือก:'], notContains: ['Plus', 'หมด', 'กำลังเข้ามา'], forbidTools: ['send_rate_card'], noBigNumbers: true },
+      { user: '16 ธรรมดา', expectTools: ['search_knowledge_base'], contains: ['2,631', '12 งวด', '30 วัน', 'งวดแรก'], notContains: ['หมด', 'กำลังเข้ามา', 'ไฟแนนซ์', 'เครื่องไทย'] },
+    ],
+  },
+  {
+    noStock: true,
+    id: 'NS2', name: 'ต่อจากข้อความอัตโนมัติของเพจ → ไม่ส่งตาราง/ไม่อธิบายโปรซ้ำ ไม่ลอก "ดาวน์ 0 บาท"',
+    history: [
+      { role: 'user', content: 'ฟรีดาวน์มีรุ่นไหนบ้าง?' },
+      { role: 'assistant', content: 'อันนี้ตารางผ่อนเครื่องนอกค่ะ 😊\n\nดาวน์ 0 บาท\nประกันร้าน 30 วัน\nแถมเคสกับฟิล์มให้ด้วยค่ะ\n\nสนใจรุ่นไหนคะ' },
+    ],
+    turns: [
+      { user: '15 Pro ค่ะ', expectTools: ['search_knowledge_base'], forbidTools: ['send_rate_card'], contains: ['3,288', '30 วัน'], notContains: ['โปรฟรีดาวน์เป็น', 'ไฟแนนซ์', 'บริษัทสินเชื่อ', 'หมด'] },
+    ],
+  },
+  {
+    noStock: true,
+    id: 'NS3', name: 'เครื่องไทยมือสอง ตอนไม่มีสต๊อก → เรท 2 แบบจากตาราง ห้ามพูดหมด/กำลังเข้า/พร้อมรับ',
+    turns: [
+      { user: 'สนใจ iPhone 15 ตัวธรรมดา 128GB มือสอง', contains: ['เครื่องนอก', 'เครื่องไทย'], notContains: ['หมด', 'กำลังเข้ามา'], noBigNumbers: true },
+      { user: 'เครื่องไทย ผ่อนค่ะ', expectTools: ['get_installment_rates'], contains: ['เรทที่ 1', 'เรทที่ 2', '2,424', '2,523'], notContains: ['หมด', 'กำลังเข้ามา', 'กำลังจะเข้ามา', 'จองไว้ก่อน', 'พร้อมรับที่ร้าน', 'ของเข้า'] },
+    ],
+  },
+  {
+    noStock: true,
+    id: 'NS4', name: 'ขอดูรูปเครื่องจริง/ถามสี → บอกแอดมินส่งรูป + notify_staff ห้ามเดาสี ห้ามพูดหมด',
+    turns: [
+      { user: 'iPhone 16 มือสอง มีสีอะไรบ้างคะ ขอดูรูปเครื่องจริงหน่อย', expectTools: ['notify_staff'], forbidTools: ['handoff_to_human'], contains: ['รูป'], notContains: ['หมด', 'กำลังเข้ามา', 'กำลังจะเข้ามา', 'ชมพู', 'สีดำ', 'สีขาว'] },
+    ],
+  },
+  {
+    noStock: true,
+    id: 'NS5', name: 'ถามที่ตั้งร้าน → KB + รูปแผนที่ ไม่ handoff',
+    turns: [
+      { user: 'ร้านอยู่ตรงไหนคะ เปิดกี่โมง', expectTools: ['send_rate_card', 'search_knowledge_base'], forbidTools: ['handoff_to_human'], contains: ['บขส'], notContains: ['หมด'] },
+    ],
+  },
+  {
+    noStock: true,
+    id: 'NS6', name: 'รุ่นเพิ่งออก iPhone 18 Pro (ไม่มีในตาราง) → ห้ามบอกว่ามือ 1 ไม่มีผลิต ห้ามถามงบ → แจ้งพนักงาน',
+    turns: [
+      { user: 'สนใจ iPhone 18 Pro ผ่อนเท่าไหร่คะ', expectTools: ['get_installment_rates', 'notify_staff'], notContains: ['ไม่มีผลิตแล้ว', 'งบ', 'หมด', 'กำลังเข้ามา'], noBigNumbers: true },
+    ],
+  },
+  {
+    noStock: true,
+    id: 'NS7', name: 'อายุ 18 → ทำเองได้ (เจ้าของ 2026-09-22)',
+    turns: [
+      { user: 'อายุ 18 ผ่อนได้ไหมคะ', expectTools: ['search_knowledge_base'], contains: ['18'], notContains: ['20 ปี', 'ผู้ปกครองมาเซ็น'], noBigNumbers: true },
+    ],
+  },
+  {
+    noStock: true,
+    id: 'NS8', name: 'ตีสองถามผลอนุมัติ → ห้ามสัญญา 5 นาที/รอสักครู่ บอกช่วงร้านเปิด',
+    clockIso: '2026-09-22T19:10:00Z',
+    turns: [
+      { user: 'ถ้าส่งสเตทเม้นท์ไปตอนนี้ รู้ผลกี่นาทีคะ', notContains: ['5 นาที', 'รอสักครู่', 'แอดมินกำลัง'], contains: ['10 โมง'] },
+    ],
+  },
 ];
 
 // ───────────────────────── engine ─────────────────────────
@@ -612,7 +691,7 @@ async function loadPersona(): Promise<string> {
 
 // ลำดับ/ชุดเดียวกับ SalesBotService.buildToolDefinitions
 const TOOLS = [
-  ...(NO_STOCK ? [] : [SEARCH_PRODUCTS_TOOL, CALCULATE_INSTALLMENT_TOOL]), LIST_PROMOTIONS_TOOL,
+  SEARCH_PRODUCTS_TOOL, CALCULATE_INSTALLMENT_TOOL, LIST_PROMOTIONS_TOOL, // NO_STOCK ยังประกาศ (runFixtureTool คืน unavailable)
   HANDOFF_TO_HUMAN_TOOL, CAPTURE_LEAD_TOOL, GET_INSTALLMENT_RATES_TOOL, SEARCH_KNOWLEDGE_BASE_TOOL,
   RECOMMEND_DEVICES_TOOL, COMPARE_DEVICES_TOOL, SEND_RATE_CARD_TOOL, NOTIFY_STAFF_TOOL,
 ].map((t: { name: string; description: string; input_schema?: unknown; inputSchema?: unknown }) => ({
@@ -630,6 +709,7 @@ async function botReply(
       model: MODEL, max_tokens: 4096,
       system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
       tools: TOOLS.map((t, i) => (i === TOOLS.length - 1 ? { ...t, cache_control: { type: 'ephemeral' as const } } : t)),
+      ...(hop === MAX_HOPS - 1 ? { tool_choice: { type: 'none' as const } } : {}),
       output_config: { effort: EFFORT },
       messages,
     });
@@ -637,16 +717,22 @@ async function botReply(
     const text = resp.content.find((c): c is Anthropic.TextBlock => c.type === 'text')?.text ?? '';
     if (toolCalls.length === 0) {
       messages.push({ role: 'assistant', content: text || '...' });
-      return { text, toolsUsed };
+      return { text: stripStrayForeignScript(text), toolsUsed };
+    }
+    const results = toolCalls.map((tc) => {
+      toolsUsed.push(tc.name);
+      if (process.env.EVAL_SHOW === '1') console.log(`      · tool ${tc.name} ${JSON.stringify(tc.input).slice(0, 200)}`);
+      return { tc, result: runFixtureTool(tc.name, tc.input as Record<string, unknown>) };
+    });
+    // เหมือน SalesBotService: เขียนคำตอบมาพร้อมเครื่องมือลงมือแทนที่สำเร็จ = จบเทิร์นด้วยข้อความนั้น
+    if (text.trim() && results.every(({ tc, result }) => SIDE_EFFECT_TOOL_NAMES.has(tc.name) && isCleanSideEffectResult(tc.name, result))) {
+      messages.push({ role: 'assistant', content: text });
+      return { text: stripStrayForeignScript(text), toolsUsed };
     }
     messages.push({ role: 'assistant', content: resp.content.filter((c) => c.type === 'text' || c.type === 'tool_use') as Anthropic.ContentBlockParam[] });
     messages.push({
       role: 'user',
-      content: toolCalls.map((tc) => {
-        toolsUsed.push(tc.name);
-        if (process.env.EVAL_SHOW === '1') console.log(`      · tool ${tc.name} ${JSON.stringify(tc.input).slice(0, 200)}`);
-        return { type: 'tool_result' as const, tool_use_id: tc.id, content: JSON.stringify(runFixtureTool(tc.name, tc.input as Record<string, unknown>)) };
-      }),
+      content: results.map(({ tc, result }) => ({ type: 'tool_result' as const, tool_use_id: tc.id, content: JSON.stringify(result) })),
     });
   }
   return { text: '', toolsUsed };
@@ -668,9 +754,11 @@ async function main() {
     console.log(`━━ ${sc.id}: ${sc.name}`);
     // fidelity เท่ากับ prod: ประวัติข้ามเทิร์นเก็บเฉพาะ "ข้อความ" (ai-auto-reply สร้าง
     // priorMessages จาก chat_messages) — ผล tool ของเทิร์นก่อนหายไป บอทต้องเรียกใหม่เอง
-    const transcript: Anthropic.MessageParam[] = [];
+    const transcript: Anthropic.MessageParam[] = [...(sc.history ?? [])];
+    // เหมือน SalesBotService: บรรทัดเวลาร้านนำหน้าเฉพาะข้อความล่าสุด (ประวัติเก็บข้อความดิบ)
+    const clock = shopClockLine(new Date(sc.clockIso ?? '2026-09-22T07:00:00Z'));
     for (const turn of sc.turns) {
-      const messages: Anthropic.MessageParam[] = [...transcript, { role: 'user', content: turn.user }];
+      const messages: Anthropic.MessageParam[] = [...transcript, { role: 'user', content: `${clock}\n${turn.user}` }];
       const { text, toolsUsed } = await botReply(client, system, messages);
       transcript.push({ role: 'user', content: turn.user });
       transcript.push({ role: 'assistant', content: text || '...' });

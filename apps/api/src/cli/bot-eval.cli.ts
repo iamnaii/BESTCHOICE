@@ -60,12 +60,12 @@ const CALC: Record<string, { downAmountThb: number; monthlyThb: number; termMont
 const RATES_15PLUS = {
   templates: [
     {
-      brand: 'Apple', model: 'iPhone 15 Plus', storage: '128GB', hasWarranty: false,
+      brand: 'Apple', model: 'iPhone 15 Plus', storage: '128GB', hasWarranty: false, condition: 'มือสอง',
       rate1: { downPayment: 1900, monthlyPrice: 2566, termMonths: 12 },
       rate2: { downPayment: 3400, monthlyPrice: 2905, termMonths: 12 },
     },
     {
-      brand: 'Apple', model: 'iPhone 15 Plus', storage: '256GB', hasWarranty: false,
+      brand: 'Apple', model: 'iPhone 15 Plus', storage: '256GB', hasWarranty: false, condition: 'มือสอง',
       rate1: { downPayment: 1900, monthlyPrice: 2766, termMonths: 12 },
       rate2: { downPayment: 3600, monthlyPrice: 3105, termMonths: 12 },
     },
@@ -76,7 +76,7 @@ const RATES_15PLUS = {
 const RATES_15 = {
   templates: [
     {
-      brand: 'Apple', model: 'iPhone 15', storage: '128GB', hasWarranty: false, deviceOrigin: 'UNSPECIFIED',
+      brand: 'Apple', model: 'iPhone 15', storage: '128GB', hasWarranty: false, deviceOrigin: 'UNSPECIFIED', condition: 'มือสอง',
       rate1: { downPayment: 900, monthlyPrice: 2424, termMonths: 12 },
       rate2: { downPayment: 3700, monthlyPrice: 2523, termMonths: 12 },
     },
@@ -85,7 +85,7 @@ const RATES_15 = {
 const RATES_16 = {
   templates: [
     {
-      brand: 'Apple', model: 'iPhone 16', storage: '128GB', hasWarranty: false, deviceOrigin: 'UNSPECIFIED',
+      brand: 'Apple', model: 'iPhone 16', storage: '128GB', hasWarranty: false, deviceOrigin: 'UNSPECIFIED', condition: 'มือสอง',
       rate1: { downPayment: 3300, monthlyPrice: 2652, termMonths: 12 },
       rate2: { downPayment: 3900, monthlyPrice: 2741, termMonths: 15 },
     },

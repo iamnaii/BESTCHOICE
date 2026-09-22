@@ -60,6 +60,7 @@ describe('GetInstallmentRatesTool.run', () => {
         model: 'iPhone 15 Pro Max',
         storage: '256GB',
         deviceOrigin: 'UNSPECIFIED',
+        condition: 'มือ 1',
         hasWarranty: false,
         rate1: { downPayment: 4900, monthlyPrice: 2490, termMonths: 24 },
         rate2: { downPayment: 1900, monthlyPrice: 2690, termMonths: 12 },
@@ -253,5 +254,39 @@ describe('storage parsing หลัง re-point ไป util B0 (B3 Task 5)', () 
     const r = await tool.run({ query: 'iPhone 15 1TB' });
     expect(r.templates).toHaveLength(1);
     expect(r.templates[0].storage).toBe('128GB');
+  });
+});
+
+describe('GetInstallmentRatesTool — condition / deviceOrigin (2026-09-22)', () => {
+  it('ทุกแถวบอก condition: PHONE_NEW = มือ 1 · อื่น = มือสอง', async () => {
+    const tool = new GetInstallmentRatesTool(
+      makePrisma([tpl({ category: 'PHONE_NEW', model: 'iPhone 15', storage: '128GB' }), tpl({ category: 'PHONE_USED', model: 'iPhone 15', storage: '128GB' })]),
+    );
+    const r = await tool.run({ query: 'iPhone 15 128GB' });
+    expect(r.templates.map((t) => t.condition)).toEqual(['มือ 1', 'มือสอง']);
+  });
+
+  it('condition ส่งเข้า where: มือ 1 → PHONE_NEW · มือสอง/มือ 2 → ไม่ใช่ PHONE_NEW · ค่าอื่นไม่กรอง', async () => {
+    const prisma = makePrisma([tpl()]);
+    const tool = new GetInstallmentRatesTool(prisma);
+    const findMany = prisma.pricingTemplate.findMany as jest.Mock;
+    await tool.run({ query: 'iPhone 15', condition: 'มือ 1' });
+    expect(findMany.mock.calls[0][0].where.category).toBe('PHONE_NEW');
+    await tool.run({ query: 'iPhone 15', condition: 'มือ 2' });
+    expect(findMany.mock.calls[1][0].where.category).toEqual({ not: 'PHONE_NEW' });
+    await tool.run({ query: 'iPhone 15', condition: 'ใหม่' });
+    expect(findMany.mock.calls[2][0].where.category).toBeUndefined();
+  });
+
+  it('deviceOrigin THAI รวมแถวที่ยังไม่ติดป้าย (UNSPECIFIED) · IMPORTED ตรงตัว · ไม่ส่ง = ไม่กรอง', async () => {
+    const prisma = makePrisma([tpl()]);
+    const tool = new GetInstallmentRatesTool(prisma);
+    const findMany = prisma.pricingTemplate.findMany as jest.Mock;
+    await tool.run({ query: 'iPhone 15', deviceOrigin: 'THAI' });
+    expect(findMany.mock.calls[0][0].where.deviceOrigin).toEqual({ in: ['THAI', 'UNSPECIFIED'] });
+    await tool.run({ query: 'iPhone 15', deviceOrigin: 'IMPORTED' });
+    expect(findMany.mock.calls[1][0].where.deviceOrigin).toBe('IMPORTED');
+    await tool.run({ query: 'iPhone 15' });
+    expect(findMany.mock.calls[2][0].where.deviceOrigin).toBeUndefined();
   });
 });

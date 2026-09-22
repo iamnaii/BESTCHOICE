@@ -31,6 +31,30 @@ const THAI_PARTICLES = [
   'ของ', 'ให้', 'กับ', 'จะ', 'อยาก', 'ต้องการ',
 ];
 
+/**
+ * token ที่ประกอบด้วยคำลงท้าย/คำเชื่อมล้วน ๆ ("ไหม" "ได้ไหม" "ไหมคะ" "ครับ") — ไม่มีความหมายให้จับคู่
+ * เดิมหลุดเป็น token แล้วไป "ตรงบางส่วน" (+2) กับทุกแถวที่คีย์เวิร์ดลงท้ายด้วยไหม เช่น "ล็อกไหม"
+ * "ส่งได้ไหม" ⇒ คำถามใดก็ตามที่ลงท้าย "ได้ไหม" ดึงแถวเดิมซ้ำ ๆ มาแย่ง 3 อันดับแรก
+ * (วัดกับคลังจริง 2026-09-22: "เครื่องนอกเทิร์นได้ไหม" ไม่เจอแถวเทิร์นเครื่องนอก)
+ */
+const FILLER_ONLY = [...THAI_PARTICLES, 'มั้ย', 'มั๊ย', 'เหรอ', 'คับ', 'จ้ะ', 'บ้าง'];
+
+function isFillerOnly(token: string): boolean {
+  let rest = token;
+  let progressed = true;
+  while (rest && progressed) {
+    progressed = false;
+    for (const f of FILLER_ONLY) {
+      if (rest.startsWith(f)) {
+        rest = rest.slice(f.length);
+        progressed = true;
+        break;
+      }
+    }
+  }
+  return rest.length === 0;
+}
+
 export function tokenizeThai(text: string): string[] {
   const tokens = text
     .split(/[\s,.\-!?:;()[\]{}/\\|@#$%^&*+=<>~`'"]+/)
@@ -46,7 +70,7 @@ export function tokenizeThai(text: string): string[] {
       }
     }
   }
-  return [...new Set([...tokens, ...extraTokens])].filter((t) => t.length >= 2);
+  return [...new Set([...tokens, ...extraTokens])].filter((t) => t.length >= 2 && !isFillerOnly(t));
 }
 
 export function scoreKbEntries(

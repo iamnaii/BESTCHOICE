@@ -21,11 +21,19 @@ export const GET_INSTALLMENT_RATES_TOOL = {
     'attribute quoted numbers to the returned brand+model+storage verbatim. Use this whenever ' +
     'search_products found nothing (or every hit has priceMissing) so the bot can still answer with ' +
     'real down/monthly/term numbers instead of going silent. No match → templates: [] (ask the ' +
-    'customer for their budget instead of guessing). Always label deviceOrigin (THAI/IMPORTED/UNSPECIFIED) when quoting a rate; never apply one origin rate to another.',
+    'customer for their budget instead of guessing). Always label deviceOrigin (THAI/IMPORTED/UNSPECIFIED) when quoting a rate; never apply one origin rate to another. ' +
+    'Each match carries `condition` ("มือ 1" = new, "มือสอง" = used) — the same model+storage can have BOTH rows ' +
+    'with different numbers; quote ONLY the row whose condition matches what the customer is buying ' +
+    '(pass `condition` to filter). deviceOrigin THAI also returns rows not yet labelled (UNSPECIFIED).',
   input_schema: {
     type: 'object',
     properties: {
       deviceOrigin: { type: 'string', enum: ['THAI', 'IMPORTED', 'UNSPECIFIED'], description: 'Device origin requested by the customer, if specified' },
+      condition: {
+        type: 'string',
+        enum: ['มือ 1', 'มือสอง'],
+        description: 'ใส่เมื่อรู้แล้วว่าลูกค้าสนใจมือ 1 หรือมือสอง — กรองให้เหลือเฉพาะแถวประเภทนั้น',
+      },
       query: {
         type: 'string',
         description:
@@ -44,8 +52,12 @@ export interface InstallmentRateOption {
   termMonths: number;
 }
 
+export type RateCondition = 'มือ 1' | 'มือสอง';
+
 export interface PricingTemplateRateMatch {
   deviceOrigin?: string;
+  /** มือ 1 (PHONE_NEW) / มือสอง (อื่น ๆ) — รุ่น+ความจุเดียวกันมีได้ทั้งสองแถวที่ตัวเลขต่างกัน */
+  condition: RateCondition;
   brand: string;
   model: string;
   storage: string;
@@ -59,9 +71,8 @@ export interface GetInstallmentRatesResult {
 }
 
 /**
- * แถวเต็มจาก `listAllRates()` — shape ของ `run()` คงเดิม (ไม่มี category) เพื่อไม่กระทบ
- * ผลลัพธ์ที่โมเดลเห็น/เทสต์ toEqual เดิม; ผู้เรียกภายใน (recommend_devices) ต้องรู้
- * category เพื่อแปลงเป็น "มือ 1 / มือสอง" — `hasWarranty` **ไม่ใช่** ตัวบอกมือ 1
+ * แถวเต็มจาก `listAllRates()` — ผลของ `run()` บอกแค่ `condition` (มือ 1/มือสอง) ส่วนผู้เรียกภายใน
+ * (recommend_devices) ต้องรู้ category ดิบ — `hasWarranty` **ไม่ใช่** ตัวบอกมือ 1
  * (schema: true = มือสองที่ยังมีประกัน — ดู stickers.service.ts composeOne)
  */
 export interface PricingTemplateRateRow extends PricingTemplateRateMatch {
@@ -97,7 +108,7 @@ export class GetInstallmentRatesTool {
   constructor(private readonly prisma: PrismaService) {}
 
   async run(
-    input: { query?: string; deviceOrigin?: string } = {},
+    input: { query?: string; deviceOrigin?: string; condition?: string } = {},
   ): Promise<GetInstallmentRatesResult> {
     const rawQuery = String(input?.query ?? '').trim();
     if (!rawQuery) return { templates: [] };
@@ -111,7 +122,8 @@ export class GetInstallmentRatesTool {
 
     const rows: PricingTemplateRow[] = await this.prisma.pricingTemplate.findMany({
       where: {
-        ...(['THAI', 'IMPORTED', 'UNSPECIFIED'].includes(input.deviceOrigin ?? '') ? { deviceOrigin: input.deviceOrigin as 'THAI' | 'IMPORTED' | 'UNSPECIFIED' } : {}),
+        ...originFilter(input.deviceOrigin),
+        ...conditionFilter(input.condition),
         isActive: true,
         deletedAt: null,
         OR: [
@@ -162,6 +174,7 @@ export class GetInstallmentRatesTool {
   private toMatch(t: PricingTemplateRow, defaults: RateDefaults): PricingTemplateRateMatch {
     return {
       deviceOrigin: t.deviceOrigin ?? 'UNSPECIFIED',
+      condition: String(t.category) === 'PHONE_NEW' ? 'มือ 1' : 'มือสอง',
       brand: t.brand,
       model: t.model,
       storage: t.storage,
@@ -200,4 +213,21 @@ export class GetInstallmentRatesTool {
       rate2Term: Number(map.get('sticker.rate2.defaultTerm') ?? 12),
     };
   }
+}
+
+/**
+ * THAI นับรวมแถวที่ยังไม่ติดป้าย (UNSPECIFIED) — ตารางเรทบน prod ทั้งชุดเป็นแถวก่อน #1619
+ * (ยังไม่ระบุ origin) ถ้ากรองตรงตัว ลูกค้าที่เลือก "เครื่องไทย" จะได้ผลว่างทุกรุ่น
+ */
+function originFilter(origin: string | undefined) {
+  if (origin === 'THAI') return { deviceOrigin: { in: ['THAI', 'UNSPECIFIED'] as ('THAI' | 'UNSPECIFIED')[] } };
+  if (origin === 'IMPORTED' || origin === 'UNSPECIFIED') return { deviceOrigin: origin as 'IMPORTED' | 'UNSPECIFIED' };
+  return {};
+}
+
+function conditionFilter(condition: string | undefined) {
+  const c = String(condition ?? '').replace(/\s+/g, '');
+  if (c === 'มือ1') return { category: 'PHONE_NEW' as const };
+  if (c === 'มือสอง' || c === 'มือ2') return { category: { not: 'PHONE_NEW' as const } };
+  return {};
 }

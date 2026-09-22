@@ -16,6 +16,7 @@ const tpl = (over: Partial<PricingTemplateRateRow> = {}): PricingTemplateRateRow
   model: 'iPhone 13',
   storage: '128GB',
   category: 'PHONE_USED',
+  condition: 'มือสอง',
   hasWarranty: false,
   rate1: { downPayment: 1900, monthlyPrice: 1990, termMonths: 24 },
   rate2: { downPayment: 2500, monthlyPrice: 1758, termMonths: 12 },

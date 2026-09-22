@@ -24,6 +24,21 @@ describe('tokenizeThai', () => {
   });
 });
 
+describe('tokenizeThai — ตัด token ที่เป็นคำลงท้ายล้วน (2026-09-22)', () => {
+  it('"ได้ไหม" "ไหม" ไม่หลุดเป็น token · ส่วนที่มีความหมายยังอยู่', () => {
+    const t = tokenizeThai('เครื่องนอกเทิร์นได้ไหม');
+    expect(t).toContain('เครื่องนอกเทิร์น');
+    expect(t).not.toContain('ได้ไหม');
+    expect(t).not.toContain('ไหม');
+    expect(tokenizeThai('ไหมคะ ครับ')).toEqual([]);
+  });
+
+  it('คำถามลงท้าย "ได้ไหม" ไม่ไปตรงบางส่วนกับคีย์เวิร์ดที่ลงท้ายไหม (เช่น "ล็อกไหม")', () => {
+    const lock = entry({ intent: 'device_lock', triggerKeywords: ['ล็อกไหม'], exampleQuestions: [] });
+    expect(scoreKbEntries('ปิดยอดก่อนได้ไหม', [lock])).toEqual([]);
+  });
+});
+
 describe('scoreKbEntries', () => {
   it('คำถามตรง keyword ได้คะแนนสูงสุด', () => {
     const r = scoreKbEntries('ค่าปรับล่าช้า', [entry(), entry({ intent: 'other', triggerKeywords: ['สาขา'] })]);

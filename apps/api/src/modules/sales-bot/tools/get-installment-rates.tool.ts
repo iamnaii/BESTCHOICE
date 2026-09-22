@@ -20,11 +20,15 @@ export const GET_INSTALLMENT_RATES_TOOL = {
     'sticker). Matches can be sibling models (asked "iPhone 15", got "iPhone 15 Pro Max") — ALWAYS ' +
     'attribute quoted numbers to the returned brand+model+storage verbatim. Use this whenever ' +
     'search_products found nothing (or every hit has priceMissing) so the bot can still answer with ' +
-    'real down/monthly/term numbers instead of going silent. No match → templates: [] (ask the ' +
-    'customer for their budget instead of guessing). Always label deviceOrigin (THAI/IMPORTED/UNSPECIFIED) when quoting a rate; never apply one origin rate to another. ' +
+    'real down/monthly/term numbers instead of going silent. No match → templates: [] — do NOT guess ' +
+    "a rate and do NOT ask for the customer's budget; retry once with the plain English model name " +
+    'without storage, then follow the persona rule for an empty table. ' +
+    'deviceOrigin and condition are internal labels — never print THAI/IMPORTED/UNSPECIFIED to the ' +
+    "customer; UNSPECIFIED rows are the shop's regular (Thai) table. Never quote these rows for the " +
+    'imported free-down promo (promo rates come from search_knowledge_base only). ' +
     'Each match carries `condition` ("มือ 1" = new, "มือสอง" = used) — the same model+storage can have BOTH rows ' +
-    'with different numbers; quote ONLY the row whose condition matches what the customer is buying ' +
-    '(pass `condition` to filter). deviceOrigin THAI also returns rows not yet labelled (UNSPECIFIED).',
+    'with different numbers (มือ 1 rows come first); quote ONLY the row whose condition matches what the ' +
+    'customer is buying (pass `condition` to filter). deviceOrigin THAI also returns rows not yet labelled (UNSPECIFIED).',
   input_schema: {
     type: 'object',
     properties: {
@@ -103,6 +107,19 @@ interface PricingTemplateRow {
 
 const MAX_MATCHES = 3;
 
+/**
+ * เรียงผลให้คงที่ และแถวแฝด (รุ่น+ความจุเดียวกัน) ออก มือ 1 ก่อน มือสอง — enum ProductCategory ใน
+ * Postgres เรียงตามลำดับประกาศ (PHONE_NEW, PHONE_USED, …) ⇒ category asc = PHONE_NEW ก่อน
+ * (เดิมไม่มี category ใน orderBy ⇒ ลำดับแถวแฝดขึ้นกับ DB และ MAX_MATCHES ตัดทิ้งแถวไหนก็ได้ — synth C04)
+ */
+const RATE_ORDER_BY = [
+  { brand: 'asc' as const },
+  { model: 'asc' as const },
+  { storage: 'asc' as const },
+  { category: 'asc' as const },
+  { hasWarranty: 'asc' as const },
+];
+
 @Injectable()
 export class GetInstallmentRatesTool {
   constructor(private readonly prisma: PrismaService) {}
@@ -131,7 +148,7 @@ export class GetInstallmentRatesTool {
           { brand: { contains: modelQuery, mode: 'insensitive' } },
         ],
       },
-      orderBy: [{ brand: 'asc' }, { model: 'asc' }, { storage: 'asc' }, { hasWarranty: 'asc' }],
+      orderBy: RATE_ORDER_BY,
     });
 
     if (rows.length === 0) return { templates: [] };
@@ -160,7 +177,7 @@ export class GetInstallmentRatesTool {
   async listAllRates(): Promise<PricingTemplateRateRow[]> {
     const rows: PricingTemplateRow[] = await this.prisma.pricingTemplate.findMany({
       where: { isActive: true, deletedAt: null },
-      orderBy: [{ brand: 'asc' }, { model: 'asc' }, { storage: 'asc' }, { hasWarranty: 'asc' }],
+      orderBy: RATE_ORDER_BY,
     });
     if (rows.length === 0) return [];
     const defaults = await this.loadDefaults();

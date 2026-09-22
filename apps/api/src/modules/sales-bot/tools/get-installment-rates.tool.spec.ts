@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { GetInstallmentRatesTool } from './get-installment-rates.tool';
+import { GET_INSTALLMENT_RATES_TOOL, GetInstallmentRatesTool } from './get-installment-rates.tool';
 
 /**
  * Issue #1337 — v2 rework of #1332. Owner live-test verdict: percent-only
@@ -186,7 +186,7 @@ describe('GetInstallmentRatesTool.run', () => {
     expect(r.templates).toHaveLength(3);
   });
 
-  it('no PricingTemplate match → empty templates array (persona takes the ask-budget path)', async () => {
+  it('no PricingTemplate match → empty templates array (persona takes the empty-table path — no budget question)', async () => {
     const tool = new GetInstallmentRatesTool(makePrisma([]));
     const r = await tool.run({ query: 'Nokia 3310' });
 
@@ -288,5 +288,44 @@ describe('GetInstallmentRatesTool — condition / deviceOrigin (2026-09-22)', ()
     expect(findMany.mock.calls[1][0].where.deviceOrigin).toBe('IMPORTED');
     await tool.run({ query: 'iPhone 15' });
     expect(findMany.mock.calls[2][0].where.deviceOrigin).toBeUndefined();
+  });
+
+  it('แถวแฝด (รุ่น+ความจุเดียวกัน) เรียง มือ 1 ก่อนมือสอง: orderBy มี category ก่อน hasWarranty (run + listAllRates)', async () => {
+    const prisma = makePrisma([tpl()]);
+    const tool = new GetInstallmentRatesTool(prisma);
+    const findMany = prisma.pricingTemplate.findMany as jest.Mock;
+    const expected = [
+      { brand: 'asc' },
+      { model: 'asc' },
+      { storage: 'asc' },
+      // enum ProductCategory ประกาศ PHONE_NEW ก่อน PHONE_USED ⇒ asc = มือ 1 ก่อน
+      { category: 'asc' },
+      { hasWarranty: 'asc' },
+    ];
+    await tool.run({ query: 'iPhone 15' });
+    expect(findMany.mock.calls[0][0].orderBy).toEqual(expected);
+    await tool.listAllRates();
+    expect(findMany.mock.calls[1][0].orderBy).toEqual(expected);
+  });
+});
+
+describe('GET_INSTALLMENT_RATES_TOOL description (synth C04)', () => {
+  const d = GET_INSTALLMENT_RATES_TOOL.description;
+
+  it('ไม่มีผล → ห้ามเดาเรท ห้ามถามงบ (เดิมสั่ง "ask the customer for their budget")', () => {
+    expect(d).not.toMatch(/ask the customer for their budget/i);
+    expect(d).toContain("do NOT ask for the customer's budget");
+    expect(d).toContain('retry once with the plain English model name');
+  });
+
+  it('deviceOrigin/condition เป็นป้ายภายใน ห้ามพิมพ์ · UNSPECIFIED = ตารางปกติ · ห้ามใช้กับโปรฟรีดาวน์เครื่องนอก', () => {
+    expect(d).not.toMatch(/Always label deviceOrigin/);
+    expect(d).toContain('never print THAI/IMPORTED/UNSPECIFIED');
+    expect(d).toContain("UNSPECIFIED rows are the shop's regular (Thai) table");
+    expect(d).toContain('Never quote these rows for the imported free-down promo');
+  });
+
+  it('ไม่เปลี่ยน enum condition ของ input (มือ 1 / มือสอง)', () => {
+    expect(GET_INSTALLMENT_RATES_TOOL.input_schema.properties.condition.enum).toEqual(['มือ 1', 'มือสอง']);
   });
 });

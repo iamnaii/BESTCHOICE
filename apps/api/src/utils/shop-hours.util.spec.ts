@@ -1,4 +1,4 @@
-import { bangkokHour, isShopOpen } from './shop-hours.util';
+import { bangkokHour, isShopOpen, SHOP_OPEN_LABEL_TH } from './shop-hours.util';
 
 describe('shop-hours.util', () => {
   it('ใช้เวลาไทย (UTC+7) ไม่ขึ้นกับ timezone เครื่อง', () => {
@@ -11,5 +11,9 @@ describe('shop-hours.util', () => {
     expect(isShopOpen(new Date('2026-09-22T03:00:00Z'))).toBe(true); // 10:00
     expect(isShopOpen(new Date('2026-09-22T11:59:00Z'))).toBe(true); // 18:59
     expect(isShopOpen(new Date('2026-09-22T12:00:00Z'))).toBe(false); // 19:00
+  });
+
+  it('คำเรียกเวลาร้านเปิดในประโยคถึงลูกค้า = "10 โมง" (ผูกกับ SHOP_OPEN_HOUR)', () => {
+    expect(SHOP_OPEN_LABEL_TH).toBe('10 โมง');
   });
 });

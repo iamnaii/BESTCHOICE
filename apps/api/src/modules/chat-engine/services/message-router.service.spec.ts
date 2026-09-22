@@ -1,6 +1,21 @@
 import { MessageRouterService } from './message-router.service';
 import { ChatChannel, MessageType, MessageRole } from '@prisma/client';
 import { RoomManagerService } from './room-manager.service';
+import { makeFakeChatPrisma } from './__tests__/fake-chat-prisma';
+import { BOT_STAFF_ATTENTION_PREFIX } from '../constants/bot-staff-attention';
+import { FacebookDomainHandler } from '../../facebook-domain/facebook-domain.handler';
+import { FacebookQuickReplyService } from '../../facebook-domain/facebook-quick-reply.service';
+import { AiAutoReplyService } from '../../staff-chat/services/ai-auto-reply.service';
+
+// ปิดการรอรวมข้อความ (ของจริง 3 วิ) ทั้งไฟล์ — เทสต์ส่วนใหญ่ส่งข้อความเดียว การรอ 3 วิจริงต่อเทสต์ทำให้ไฟล์ช้า
+// (~100 วิ) และหลุด timeout 10 วิเมื่อเครื่องรันหลายชุดพร้อมกัน · ชุด "coalesce" ตั้ง 30ms ของมันเองแล้วคืนค่านี้
+// ตั้งตอนโหลดไฟล์ (ก่อน describe เก็บค่าเดิมไว้คืน) ไม่ใช่ใน beforeAll
+const PREV_COALESCE_MS = process.env.CHAT_COALESCE_MS;
+process.env.CHAT_COALESCE_MS = '0';
+afterAll(() => {
+  if (PREV_COALESCE_MS === undefined) delete process.env.CHAT_COALESCE_MS;
+  else process.env.CHAT_COALESCE_MS = PREV_COALESCE_MS;
+});
 
 const baseMsg = {
   externalMessageId: 'em1',
@@ -121,7 +136,7 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
     ]);
   }, 10000);
 
-  it('notify_staff (บอทปักธงเอง) → ยังส่งคำตอบของบอท ไม่กลืนทิ้งเหมือนพนักงาน takeover', async () => {
+  it('notify_staff (บอทขอให้พนักงานตามต่อ) → ยังส่งคำตอบของบอท ไม่กลืนทิ้งเหมือนพนักงาน takeover', async () => {
     const { router, adapter, roomManager } = makeRouter({
       aiEligible: true,
       aiResult: {
@@ -132,12 +147,39 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
         outputTokens: 1,
       },
     });
-    // หลังบอทเรียก notify_staff ห้องถูกปักธง handoff แล้ว — re-check ก่อนส่งจะเห็นธงนี้
-    roomManager.findById.mockResolvedValue({ aiPaused: false, handoffMode: true });
+    // คำตัดสิน 2026-09-22: notify_staff ปักธงให้พนักงานเห็น (handoffReason) แต่ไม่ตั้ง handoffMode — บอทคุยต่อได้
+    roomManager.findById.mockResolvedValue({
+      aiPaused: false,
+      handoffMode: false,
+      handoffReason: '[บอทขอให้พนักงานตามต่อ] iPhone 15 ขอดูรูปเครื่องจริง',
+    });
     await router.routeInbound(baseMsg as any);
     expect(adapter.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ text: 'ได้เลยค่ะ เดี๋ยวแอดมินส่งรูปเครื่องจริงให้ดูนะคะ' }),
     );
+  }, 10000);
+
+  it('notify_staff แต่พนักงานตอบแทรกระหว่างบอทคิด (aiPaused) → ไม่ส่งคำตอบบอททับพนักงาน', async () => {
+    const { router, adapter, roomManager, aiAutoReply } = makeRouter({
+      aiEligible: true,
+      aiResult: { reply: 'ได้เลยค่ะ', confidence: 0.95, toolsUsed: ['notify_staff'], inputTokens: 1, outputTokens: 1 },
+    });
+    roomManager.findById.mockResolvedValue({ aiPaused: true, handoffMode: false });
+    await router.routeInbound(baseMsg as any);
+    expect(adapter.sendMessage).not.toHaveBeenCalled();
+    expect(aiAutoReply.logAutoReply).toHaveBeenCalledWith(
+      expect.objectContaining({ autoSent: false, handoffReason: 'พนักงาน takeover ระหว่างบอทกำลังคิด' }),
+    );
+  }, 10000);
+
+  it('capture_lead ปักธง handoffMode เองในเทิร์นนี้ → ยังส่งข้อความปิดท้ายตามเดิม (บั๊ก 2026-08-20)', async () => {
+    const { router, adapter, roomManager } = makeRouter({
+      aiEligible: true,
+      aiResult: { reply: 'รับเรื่องแล้วค่ะ', confidence: 0.95, toolsUsed: ['capture_lead'], inputTokens: 1, outputTokens: 1 },
+    });
+    roomManager.findById.mockResolvedValue({ aiPaused: false, handoffMode: true });
+    await router.routeInbound(baseMsg as any);
+    expect(adapter.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: 'รับเรื่องแล้วค่ะ' }));
   }, 10000);
 
   it('ธง handoff ที่ไม่ได้มาจากบอทเทิร์นนี้ (พนักงาน takeover) → ไม่ส่งคำตอบ', async () => {
@@ -198,7 +240,7 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
       aiEligible: true,
       aiResult: { reply: 'มีค่ะ', confidence: 0.95, toolsUsed: [], inputTokens: 1, outputTokens: 1 },
     });
-    (roomManager as any).hasPageAutoReplySince = jest.fn().mockResolvedValue(true);
+    (roomManager as any).pageAutoReplyCoversTurn = jest.fn().mockResolvedValue(true);
     await router.routeInbound(baseMsg as any);
     expect(aiAutoReply.autoReply).not.toHaveBeenCalled();
     expect(adapter.sendMessage).not.toHaveBeenCalled();
@@ -209,7 +251,7 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
       aiEligible: true,
       aiResult: { reply: 'มีค่ะ', confidence: 0.95, toolsUsed: [], inputTokens: 1, outputTokens: 1 },
     });
-    (roomManager as any).hasPageAutoReplySince = jest.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+    (roomManager as any).pageAutoReplyCoversTurn = jest.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
     await router.routeInbound(baseMsg as any);
     expect(aiAutoReply.autoReply).toHaveBeenCalled();
     expect(adapter.sendMessage).not.toHaveBeenCalled();
@@ -1021,5 +1063,564 @@ describe('MessageRouterService — ผู้สนใจอัตโนมัต
     const { router, roomManager } = makeRouter({});
     await router.mirrorOutbound({ externalUserId: 'PSID-1', channel: ChatChannel.FACEBOOK, role: MessageRole.BOT, text: 'สวัสดี' });
     expect(roomManager.getOrCreateRoom.mock.calls[0][0]).not.toHaveProperty('ensureProspect');
+  });
+});
+
+// ─── 2026-09-22 lane CHAT ROUTING: ข้อความอัตโนมัติของเพจ / เวลาร้าน / notify_staff / C01 ─────────────
+// (การรอรวมข้อความปิดทั้งไฟล์ — ดูหัวไฟล์ · ไม่มีเทสต์ไหนในชุดนี้ทดสอบการรวมข้อความ)
+
+const PAGE_MARKER = 'อันนี้ตารางผ่อนเครื่องนอก';
+const PAGE_SCRIPT = `${PAGE_MARKER}ค่ะ 😊\nสนใจรุ่นไหนคะ`;
+const AFTER_HOURS_TEXT = 'รับเรื่องไว้แล้วนะคะ ทีมงานเข้ามาตอบตอนร้านเปิด 10 โมงค่ะ 🙏';
+const LOW_CONF_TEXT = 'อันนี้เดี๋ยวแอดมินเข้ามาตอบให้นะคะ รอสักครู่ค่า 🙏';
+const APOLOGY_TEXT = 'ขออภัยค่ะ ระบบขัดข้องชั่วคราว เดี๋ยวแอดมินเข้ามาดูแลต่อให้นะคะ 🙏';
+/** 14:00 น. เวลาไทย (ร้านเปิด) */
+const IN_HOURS = new Date('2026-09-22T07:00:00.000Z');
+/** 21:00 น. เวลาไทย (ร้านปิด) */
+const AFTER_HOURS = new Date('2026-09-22T14:00:00.000Z');
+
+/** แทนเฉพาะนาฬิกา (Date) — setTimeout/setImmediate ยังเป็นของจริง */
+function useFakeClock(now: Date) {
+  jest.useFakeTimers({
+    now,
+    doNotFake: [
+      'nextTick',
+      'setImmediate',
+      'clearImmediate',
+      'setTimeout',
+      'clearTimeout',
+      'setInterval',
+      'clearInterval',
+      'queueMicrotask',
+      'hrtime',
+      'performance',
+    ],
+  });
+}
+
+const flushAsync = async (rounds = 5) => {
+  for (let i = 0; i < rounds; i++) await new Promise((r) => setImmediate(r));
+};
+
+describe('MessageRouterService — lane CHAT ROUTING (2026-09-22)', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const fbMsg = {
+    externalMessageId: 'mid-customer-1',
+    externalUserId: 'PSID-1',
+    channel: ChatChannel.FACEBOOK,
+    type: MessageType.TEXT,
+    text: 'ฟรีดาวน์มีรุ่นไหนบ้าง?',
+  };
+
+  /**
+   * RoomManagerService ตัวจริงบน prisma จำลอง (ตัดสินข้อความอัตโนมัติด้วยตรรกะจริง) — mock เฉพาะการหา/สร้างห้อง
+   */
+  function makeStoreRouter(opts: {
+    room?: Record<string, unknown>;
+    aiResult?: any;
+    aiEligible?: boolean;
+    profile?: () => Promise<{ displayName?: string } | null>;
+  }) {
+    const fake = makeFakeChatPrisma({
+      room: {
+        id: 'r1',
+        channel: ChatChannel.FACEBOOK,
+        handoffMode: false,
+        aiPaused: false,
+        verifiedAt: null,
+        waitingSince: null,
+        firstResponseAt: null,
+        ...opts.room,
+      },
+      markers: [PAGE_MARKER],
+    });
+    const roomManager = new RoomManagerService(fake.prisma as any, {} as any);
+    jest.spyOn(roomManager, 'getOrCreateRoom').mockImplementation(async () => fake.room as any);
+    jest.spyOn(roomManager, 'findById').mockImplementation(async () => fake.room as any);
+    const handoffManager = { initiateHandoff: jest.fn() };
+    const aiAutoReply = {
+      shouldAutoReply: jest.fn().mockResolvedValue(opts.aiEligible ?? true),
+      autoReply: jest.fn().mockResolvedValue(opts.aiResult ?? null),
+      logAutoReply: jest.fn().mockResolvedValue(undefined),
+    };
+    const adapter: any = {
+      channel: ChatChannel.FACEBOOK,
+      sendMessage: jest.fn().mockResolvedValue({ success: true }),
+    };
+    if (opts.profile) adapter.getUserProfile = jest.fn(opts.profile);
+    const router = new MessageRouterService(
+      roomManager,
+      handoffManager as any,
+      { get: jest.fn().mockReturnValue(undefined) } as any,
+      undefined,
+      aiAutoReply as any,
+    );
+    router.registerAdapter(adapter);
+    return { router, fake, roomManager, adapter, aiAutoReply, handoffManager };
+  }
+
+  describe('ROUTER-2 — ขอบล่างของการเช็คข้อความอัตโนมัติอิงเวลาข้อความ ไม่ใช่เวลาหลังดึงโปรไฟล์', () => {
+    it('echo ของเพจถูกบันทึกระหว่างดึงโปรไฟล์ (ก่อนบันทึกข้อความลูกค้า) → ไม่เรียก AI ไม่ตอบซ้ำ', async () => {
+      useFakeClock(IN_HOURS);
+      const T0 = IN_HOURS.getTime();
+      let releaseProfile!: () => void;
+      const profileGate = new Promise<void>((r) => (releaseProfile = r));
+      const { router, fake, adapter, aiAutoReply } = makeStoreRouter({
+        aiResult: { reply: 'ฟรีดาวน์มีรุ่น 13-16 ค่ะ', confidence: 0.95, toolsUsed: [] },
+        profile: async () => {
+          await profileGate;
+          return { displayName: 'ลูกค้า' };
+        },
+      });
+
+      const turn = router.routeInbound({ ...fbMsg, timestamp: new Date(T0 - 300) } as any);
+      await flushAsync();
+      expect(adapter.getUserProfile).toHaveBeenCalled(); // ยังค้างอยู่ที่ดึงโปรไฟล์
+
+      jest.setSystemTime(new Date(T0 + 1_500));
+      await router.mirrorOutbound({
+        externalUserId: 'PSID-1',
+        channel: ChatChannel.FACEBOOK,
+        role: MessageRole.STAFF,
+        text: PAGE_SCRIPT,
+        externalMessageId: 'mid-page-auto',
+        pauseAi: true,
+      });
+
+      jest.setSystemTime(new Date(T0 + 2_500));
+      releaseProfile();
+      await turn;
+
+      const script = fake.messages.find((m) => m.text === PAGE_SCRIPT)!;
+      const customerRow = fake.messages.find((m) => m.role === MessageRole.CUSTOMER)!;
+      // ลำดับที่ทำให้บั๊กเดิมพลาด: echo ถูกบันทึกก่อนข้อความลูกค้า
+      expect(script.createdAt.getTime()).toBeLessThan(customerRow.createdAt.getTime());
+      expect(aiAutoReply.autoReply).not.toHaveBeenCalled();
+      expect(adapter.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('ส่ง since = เวลาของ Meta − 2 วิ และ turnAt = เวลาบันทึกข้อความลูกค้า', async () => {
+      useFakeClock(IN_HOURS);
+      const T0 = IN_HOURS.getTime();
+      const { router, roomManager } = makeStoreRouter({ aiResult: null });
+      const covers = jest.spyOn(roomManager, 'pageAutoReplyCoversTurn').mockResolvedValue(true);
+      await router.routeInbound({ ...fbMsg, timestamp: new Date(T0 - 5_000) } as any);
+      // ตัวที่ 4 = เวลารับเข้าที่ยังค้างในคิว (ของเทิร์นนี้เอง) · ไม่มีข้อความใหม่รอคิว = ไม่มีขอบบน scriptsBefore
+      expect(covers).toHaveBeenCalledWith('r1', new Date(T0 - 7_000), IN_HOURS, {
+        extraCustomerAt: [IN_HOURS],
+      });
+    });
+
+    it('ไม่มีเวลาจาก Meta / เวลา Meta ล้ำหน้านาฬิกาเรา → ใช้เวลารับเข้า − 2 วิ', async () => {
+      useFakeClock(IN_HOURS);
+      const T0 = IN_HOURS.getTime();
+      for (const timestamp of [undefined, new Date(T0 + 60_000)]) {
+        const { router, roomManager } = makeStoreRouter({ aiResult: null });
+        const covers = jest.spyOn(roomManager, 'pageAutoReplyCoversTurn').mockResolvedValue(true);
+        await router.routeInbound({ ...fbMsg, timestamp } as any);
+        expect(covers.mock.calls[0][1]).toEqual(new Date(T0 - 2_000));
+      }
+    });
+  });
+
+  describe('ROUTER-4 — ข้ามเทิร์นเฉพาะเมื่อข้อความอัตโนมัติตอบครบทุกข้อความของลูกค้า', () => {
+    it('กดปุ่มโฆษณา + พิมพ์คำถามจริงในช่วงรวมข้อความ แล้วเพจตอบ → บอทยังตอบคำถาม', async () => {
+      useFakeClock(new Date(IN_HOURS.getTime() + 5_000));
+      const T0 = IN_HOURS.getTime();
+      const { router, fake, adapter, aiAutoReply } = makeStoreRouter({
+        aiResult: { reply: '15 Pro Max ผ่อนได้ค่ะ', confidence: 0.95, toolsUsed: [] },
+      });
+      fake.addMessage({ role: MessageRole.CUSTOMER, text: 'ฟรีดาวน์มีรุ่นไหนบ้าง?', createdAt: new Date(T0) });
+      fake.addMessage({ role: MessageRole.STAFF, type: MessageType.IMAGE, createdAt: new Date(T0 + 3_500) });
+      fake.addMessage({ role: MessageRole.STAFF, text: PAGE_SCRIPT, createdAt: new Date(T0 + 4_000) });
+
+      await router.routeInbound({
+        ...fbMsg,
+        externalMessageId: 'mid-customer-2',
+        text: 'สนใจ 15 Pro Max ค่ะ',
+        timestamp: new Date(T0 + 2_000),
+      } as any);
+
+      expect(aiAutoReply.autoReply).toHaveBeenCalledTimes(1);
+      expect(adapter.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: '15 Pro Max ผ่อนได้ค่ะ' }));
+    });
+
+    it('RT-V2: ลูกค้าพิมพ์คำถาม แล้วกดปุ่มโฆษณาระหว่างบอทคิด (เพจตอบปุ่มนั้น) → คำตอบของคำถามยังถูกส่ง', async () => {
+      useFakeClock(IN_HOURS);
+      const T0 = IN_HOURS.getTime();
+      const { router, fake, adapter, aiAutoReply } = makeStoreRouter({});
+      // ปุ่มแรกเมื่อนาทีก่อน — เพจตอบไปแล้ว
+      fake.addMessage({ role: MessageRole.CUSTOMER, text: 'ฟรีดาวน์มีรุ่นไหนบ้าง?', createdAt: new Date(T0 - 60_000) });
+      fake.addMessage({ role: MessageRole.STAFF, text: PAGE_SCRIPT, createdAt: new Date(T0 - 59_000) });
+
+      let tapTurn: Promise<void> | undefined;
+      aiAutoReply.autoReply
+        .mockImplementationOnce(async () => {
+          // ระหว่างบอทคิดคำถาม: ลูกค้ากดปุ่มอีกครั้ง (เข้าคิว — แถวยังไม่ถูกบันทึก) แล้ว echo ของเพจตามมา
+          jest.setSystemTime(new Date(T0 + 10_000));
+          tapTurn = router.routeInbound({
+            ...fbMsg,
+            externalMessageId: 'mid-tap-2',
+            timestamp: new Date(T0 + 10_000),
+          } as any);
+          jest.setSystemTime(new Date(T0 + 11_000));
+          await router.mirrorOutbound({
+            externalUserId: 'PSID-1',
+            channel: ChatChannel.FACEBOOK,
+            role: MessageRole.STAFF,
+            text: PAGE_SCRIPT,
+            externalMessageId: 'mid-page-auto-2',
+            pauseAi: true,
+          });
+          jest.setSystemTime(new Date(T0 + 20_000));
+          return { reply: '15 Pro ผ่อนได้ค่ะ', confidence: 0.95, toolsUsed: [] };
+        })
+        .mockResolvedValue({ reply: 'ANSWER-TO-TAP', confidence: 0.95, toolsUsed: [] });
+
+      await router.routeInbound({
+        ...fbMsg,
+        externalMessageId: 'mid-question',
+        text: 'ผ่อน 15 pro เดือนละเท่าไหร่',
+        timestamp: new Date(T0),
+      } as any);
+      await tapTurn;
+
+      const sent = adapter.sendMessage.mock.calls.map((c: any[]) => c[0].text);
+      expect(sent[0]).toBe('15 Pro ผ่อนได้ค่ะ');
+      expect(aiAutoReply.logAutoReply).not.toHaveBeenCalledWith(
+        expect.objectContaining({ customerMessage: 'ผ่อน 15 pro เดือนละเท่าไหร่', autoSent: false }),
+      );
+    });
+  });
+
+  describe('ROUTER-3 — echo ข้อความอัตโนมัติของเพจในห้องที่บอทเคยตอบ ต้องไม่หยุด AI', () => {
+    const echo = {
+      externalUserId: 'PSID-1',
+      channel: ChatChannel.FACEBOOK,
+      role: MessageRole.STAFF,
+      pauseAi: true,
+    };
+    const withBotHistory = (fake: ReturnType<typeof makeFakeChatPrisma>) =>
+      fake.addMessage({
+        role: MessageRole.BOT,
+        text: 'สวัสดีค่ะ สนใจรุ่นไหนคะ',
+        createdAt: new Date(IN_HOURS.getTime() - 3_600_000),
+      });
+
+    /** ลูกค้ากดปุ่มโฆษณา — ตัวจุดของข้อความอัตโนมัติ (RT-F3: สคริปต์ต้องมีลูกค้าทักภายใน ±15 วิ) */
+    const customerTap = (fake: ReturnType<typeof makeFakeChatPrisma>, msAgo = 1_000) =>
+      fake.addMessage({
+        role: MessageRole.CUSTOMER,
+        text: 'ฟรีดาวน์มีรุ่นไหนบ้าง?',
+        createdAt: new Date(IN_HOURS.getTime() - msAgo),
+      });
+
+    it('สคริปต์อัตโนมัติ (ขึ้นต้นตาม marker + ลูกค้าเพิ่งกดปุ่ม) → ไม่ pause แม้ผ่านช่วงรอไปแล้ว', async () => {
+      jest.useFakeTimers({ now: IN_HOURS });
+      const { router, fake, roomManager } = makeStoreRouter({});
+      withBotHistory(fake);
+      customerTap(fake);
+      const pause = jest.spyOn(roomManager, 'pauseAiIfActive');
+      await router.mirrorOutbound({ ...echo, text: PAGE_SCRIPT, externalMessageId: 'mid-a1' });
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(pause).not.toHaveBeenCalled();
+      expect(fake.room.aiPaused).toBe(false);
+    });
+
+    it('RT-F3: พนักงานพิมพ์ประโยคขึ้นต้นเหมือนสคริปต์ 5 นาทีหลังข้อความลูกค้าล่าสุด → pause (หลังรอรอบเดียว)', async () => {
+      jest.useFakeTimers({ now: IN_HOURS });
+      const { router, fake } = makeStoreRouter({});
+      withBotHistory(fake);
+      customerTap(fake, 5 * 60_000);
+      await router.mirrorOutbound({
+        ...echo,
+        text: `${PAGE_MARKER}ค่ะ ถ้าสะดวกแวะร้านได้เลยนะคะ`,
+        externalMessageId: 'mid-staff-marker',
+      });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(fake.room.aiPaused).toBe(false); // ยังรอเผื่อแถวลูกค้าถูกบันทึกช้า
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(fake.room.aiPaused).toBe(true);
+    });
+
+    it('RT-F3: echo มาระหว่างที่ข้อความลูกค้ายังค้างอยู่ที่ดึงโปรไฟล์ (ยังไม่มีแถว) → รู้จากเวลารับเข้า ไม่ pause ไม่ตอบซ้ำ', async () => {
+      useFakeClock(IN_HOURS);
+      const T0 = IN_HOURS.getTime();
+      let releaseProfile!: () => void;
+      const profileGate = new Promise<void>((r) => (releaseProfile = r));
+      const { router, fake, roomManager, adapter, aiAutoReply } = makeStoreRouter({
+        aiResult: { reply: 'ฟรีดาวน์มีรุ่น 13-16 ค่ะ', confidence: 0.95, toolsUsed: [] },
+        profile: async () => {
+          await profileGate;
+          return { displayName: 'ลูกค้า' };
+        },
+      });
+      withBotHistory(fake);
+      const echoCheck = jest.spyOn(roomManager, 'isPageAutoReplyEcho');
+
+      const turn = router.routeInbound({ ...fbMsg, timestamp: new Date(T0 - 300) } as any);
+      await flushAsync();
+      jest.setSystemTime(new Date(T0 + 1_500));
+      await router.mirrorOutbound({ ...echo, text: PAGE_SCRIPT, externalMessageId: 'mid-page-auto-q' });
+      await flushAsync();
+      // ตัดสินได้ตั้งแต่ครั้งแรก (ไม่ต้องรอ 8 วิ) เพราะ router รู้ว่าลูกค้าเพิ่งทักเข้ามา
+      expect(echoCheck).toHaveBeenCalledTimes(1);
+      expect(await echoCheck.mock.results[0].value).toBe(true);
+
+      jest.setSystemTime(new Date(T0 + 2_500));
+      releaseProfile();
+      await turn;
+      expect(fake.room.aiPaused).toBe(false);
+      expect(aiAutoReply.autoReply).not.toHaveBeenCalled();
+      expect(adapter.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('พนักงานพิมพ์ตอบเองจาก Business Suite → pause ตามเดิม', async () => {
+      const { router, fake } = makeStoreRouter({});
+      withBotHistory(fake);
+      await router.mirrorOutbound({ ...echo, text: 'รุ่นนี้มีสีดำค่ะ', externalMessageId: 'mid-a2' });
+      await flushAsync();
+      expect(fake.room.aiPaused).toBe(true);
+    });
+
+    it('รูปตารางที่เพจส่งนำหน้าสคริปต์ → รอสคริปต์ตามมาแล้วไม่ pause', async () => {
+      jest.useFakeTimers({ now: IN_HOURS });
+      const { router, fake } = makeStoreRouter({});
+      withBotHistory(fake);
+      customerTap(fake);
+      await router.mirrorOutbound({ ...echo, type: MessageType.IMAGE, externalMessageId: 'mid-img' });
+      await jest.advanceTimersByTimeAsync(1_500);
+      await router.mirrorOutbound({ ...echo, text: PAGE_SCRIPT, externalMessageId: 'mid-script' });
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(fake.room.aiPaused).toBe(false);
+    });
+
+    it('พนักงานส่งรูปเอง (ไม่มีสคริปต์ตามมา) → pause หลังรอ', async () => {
+      jest.useFakeTimers({ now: IN_HOURS });
+      const { router, fake } = makeStoreRouter({});
+      withBotHistory(fake);
+      await router.mirrorOutbound({ ...echo, type: MessageType.IMAGE, externalMessageId: 'mid-img-staff' });
+      await jest.advanceTimersByTimeAsync(1_000);
+      expect(fake.room.aiPaused).toBe(false); // ยังรออยู่
+      await jest.advanceTimersByTimeAsync(10_000);
+      expect(fake.room.aiPaused).toBe(true);
+    });
+  });
+
+  describe('ROUTER-5 — เช็คข้อความอัตโนมัติหลังบอทคิดเสร็จ ทุกทาง (มั่นใจต่ำ / ขัดข้อง)', () => {
+    it('ความมั่นใจต่ำ + echo มาระหว่างบอทคิด → ไม่ส่ง "เดี๋ยวแอดมินเข้ามาตอบ" ไม่ปักธงปิดปากบอท', async () => {
+      const { router, adapter, aiAutoReply, roomManager, handoffManager } = makeRouter({
+        aiEligible: true,
+        aiResult: null,
+      });
+      (roomManager as any).pageAutoReplyCoversTurn = jest.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+      await router.routeInbound(baseMsg as any);
+      expect(adapter.sendMessage).not.toHaveBeenCalled();
+      expect(handoffManager.initiateHandoff).not.toHaveBeenCalled();
+      expect(aiAutoReply.logAutoReply).toHaveBeenCalledWith(
+        expect.objectContaining({ autoSent: false, aiReply: '', handoffReason: 'เพจตอบอัตโนมัติข้อความนี้ไปแล้ว' }),
+      );
+    });
+
+    it('AI ขัดข้อง + เพจตอบข้อความนี้แล้ว → ไม่ขอโทษ ไม่ส่งต่อพนักงาน', async () => {
+      const { router, adapter, aiAutoReply, roomManager, handoffManager } = makeRouter({ aiEligible: true });
+      aiAutoReply.autoReply.mockRejectedValue(new Error('LLM timeout'));
+      (roomManager as any).pageAutoReplyCoversTurn = jest.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+      await router.routeInbound(baseMsg as any);
+      expect(adapter.sendMessage).not.toHaveBeenCalled();
+      expect(handoffManager.initiateHandoff).not.toHaveBeenCalled();
+    });
+
+    it('ไม่มีข้อความอัตโนมัติ → ความมั่นใจต่ำยังส่งข้อความรอแอดมิน + ส่งต่อพนักงานตามเดิม', async () => {
+      useFakeClock(IN_HOURS);
+      const { router, adapter, roomManager, handoffManager } = makeRouter({ aiEligible: true, aiResult: null });
+      (roomManager as any).pageAutoReplyCoversTurn = jest.fn().mockResolvedValue(false);
+      await router.routeInbound(baseMsg as any);
+      expect(adapter.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: LOW_CONF_TEXT }));
+      expect(handoffManager.initiateHandoff).toHaveBeenCalled();
+    });
+  });
+
+  describe('C03 / PROMPT-8 — ข้อความส่งต่อแอดมินรู้เวลาร้าน', () => {
+    it('ความมั่นใจต่ำตอนร้านปิด (21:00) → บอกเวลาร้านเปิด ไม่สัญญา "รอสักครู่"', async () => {
+      useFakeClock(AFTER_HOURS);
+      const { router, adapter, roomManager } = makeRouter({ aiEligible: true, aiResult: null });
+      await router.routeInbound(baseMsg as any);
+      expect(adapter.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: AFTER_HOURS_TEXT }));
+      expect(roomManager.saveMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ role: MessageRole.BOT, text: AFTER_HOURS_TEXT }),
+      );
+    });
+
+    it('ความมั่นใจต่ำตอนร้านเปิด (14:00) → ข้อความเดิม', async () => {
+      useFakeClock(IN_HOURS);
+      const { router, adapter } = makeRouter({ aiEligible: true, aiResult: null });
+      await router.routeInbound(baseMsg as any);
+      expect(adapter.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: LOW_CONF_TEXT }));
+    });
+
+    it('AI ขัดข้องตอนร้านปิด → บอกเวลาร้านเปิด · ตอนร้านเปิด → ขอโทษแบบเดิม', async () => {
+      for (const [now, expected] of [
+        [AFTER_HOURS, AFTER_HOURS_TEXT],
+        [IN_HOURS, APOLOGY_TEXT],
+      ] as const) {
+        useFakeClock(now);
+        const { router, adapter, aiAutoReply, handoffManager } = makeRouter({ aiEligible: true });
+        aiAutoReply.autoReply.mockRejectedValue(new Error('LLM timeout'));
+        await router.routeInbound(baseMsg as any);
+        expect(adapter.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ text: expected }));
+        expect(handoffManager.initiateHandoff).toHaveBeenCalled();
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  describe('C01 — ห้อง FB ที่พนักงานรับไปแล้ว (aiPaused) ต้องไม่ได้ข้อความ "รบกวนยืนยันตัวตน"', () => {
+    function makeFbRouter(room: Record<string, unknown>) {
+      const roomManager = {
+        getOrCreateRoom: jest.fn().mockResolvedValue({ id: 'r1', handoffMode: false, aiPaused: false, ...room }),
+        saveMessage: jest.fn().mockResolvedValue({ id: 'm1' }),
+        findById: jest.fn(),
+      };
+      const config = { get: jest.fn().mockReturnValue(undefined) }; // FB_BOT_DISABLED ไม่ได้ตั้ง
+      const handler = new FacebookDomainHandler(new FacebookQuickReplyService(), config as any);
+      const aiAutoReply = {
+        shouldAutoReply: jest.fn().mockResolvedValue(false), // aiPaused → บอทไม่รับ
+        autoReply: jest.fn(),
+        logAutoReply: jest.fn(),
+      };
+      const afterHours = { isAfterHours: jest.fn().mockReturnValue(false), getAutoReply: jest.fn() };
+      const adapter = { channel: ChatChannel.FACEBOOK, sendMessage: jest.fn().mockResolvedValue({ success: true }) };
+      const router = new MessageRouterService(
+        roomManager as any,
+        { initiateHandoff: jest.fn() } as any,
+        config as any,
+        afterHours as any,
+        aiAutoReply as any,
+        undefined,
+        [handler],
+      );
+      router.registerAdapter(adapter as any);
+      return { router, adapter };
+    }
+
+    it('aiPaused + ยังไม่ยืนยันตัวตน พิมพ์ "ขอบคุณค่ะ" → เงียบ (พนักงานคุยอยู่)', async () => {
+      const { router, adapter } = makeFbRouter({ aiPaused: true, verifiedAt: null });
+      await router.routeInbound({ ...fbMsg, text: 'ขอบคุณค่ะ' } as any);
+      expect(adapter.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('aiPaused + ยืนยันตัวตนแล้ว ส่งรูปสลิป → ยังได้ "ได้รับสลิปแล้วค่ะ"', async () => {
+      const { router, adapter } = makeFbRouter({ aiPaused: true, verifiedAt: new Date('2026-09-01T00:00:00Z') });
+      await router.routeInbound({
+        ...fbMsg,
+        type: MessageType.IMAGE,
+        text: undefined,
+        mediaUrl: 'https://example.com/slip.jpg',
+      } as any);
+      expect(adapter.sendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ text: expect.stringContaining('ได้รับสลิปแล้วค่ะ') }),
+      );
+    });
+  });
+
+  describe('คำตัดสิน 1 — notify_staff ไม่ปิดปากบอท (ฝั่ง router)', () => {
+    /** AiAutoReplyService ตัวจริง (ด่าน shouldAutoReply จริง) — แทนเฉพาะ autoReply ที่เรียก LLM */
+    function makeNotifyRouter() {
+      const room: Record<string, any> = {
+        id: 'r1',
+        channel: ChatChannel.FACEBOOK,
+        handoffMode: false,
+        handoffReason: null,
+        handoffTaggedAt: null,
+        aiPaused: false,
+        verifiedAt: null,
+      };
+      const prisma = {
+        systemConfig: {
+          findMany: jest.fn().mockResolvedValue([
+            { key: 'ai.autoEnabled', value: 'true' },
+            { key: 'ai.autoChannels', value: '["FACEBOOK"]' },
+            { key: 'ai.autoMaxRepliesPerSession', value: '50' },
+            { key: 'shop_bot_central_branch_id', value: 'branch-1' },
+          ]),
+        },
+        aiAutoReplyLog: { count: jest.fn().mockResolvedValue(0), create: jest.fn().mockResolvedValue({}) },
+        chatRoom: { update: jest.fn() },
+      };
+      const ai = new AiAutoReplyService(
+        { get: () => undefined } as any,
+        prisma as any,
+        { generateReply: jest.fn() } as any,
+        { invalidateCache: jest.fn() } as any,
+        {} as any,
+      );
+      const roomManager = {
+        getOrCreateRoom: jest.fn(async () => room),
+        findById: jest.fn(async () => room),
+        saveMessage: jest.fn().mockResolvedValue({ id: 'm1' }),
+      };
+      const handoffManager = { initiateHandoff: jest.fn() };
+      const adapter = { channel: ChatChannel.FACEBOOK, sendMessage: jest.fn().mockResolvedValue({ success: true }) };
+      const router = new MessageRouterService(
+        roomManager as any,
+        handoffManager as any,
+        { get: jest.fn().mockReturnValue(undefined) } as any,
+        undefined,
+        ai,
+      );
+      router.registerAdapter(adapter as any);
+      return { router, room, ai, prisma, adapter, handoffManager };
+    }
+
+    it('หลังเทิร์นที่บอทเรียก notify_staff ข้อความถัดไปของลูกค้ายังได้คำตอบจากบอท', async () => {
+      const { router, room, ai, adapter, handoffManager } = makeNotifyRouter();
+      jest
+        .spyOn(ai, 'autoReply')
+        .mockImplementationOnce(async () => {
+          // ผลของ notify_staff ตามคำตัดสิน: ปักเหตุผลให้พนักงานเห็น แต่ไม่ตั้ง handoffMode
+          room.handoffReason = `${BOT_STAFF_ATTENTION_PREFIX} iPhone 15 ขอดูรูปเครื่องจริง`;
+          room.handoffTaggedAt = new Date();
+          return { reply: 'ได้เลยค่ะ เดี๋ยวแอดมินส่งรูปเครื่องจริงให้นะคะ', confidence: 0.95, toolsUsed: ['notify_staff'] };
+        })
+        .mockResolvedValueOnce({ reply: '15 ผ่อนเดือนละ 2,778 ค่ะ', confidence: 0.95, toolsUsed: ['get_installment_rates'] });
+
+      await router.routeInbound({ ...fbMsg, text: 'iPhone 15 ขอดูรูปหน่อย' } as any);
+      await router.routeInbound({ ...fbMsg, externalMessageId: 'mid-customer-2', text: 'ผ่อนเดือนละเท่าไหร่' } as any);
+
+      const sent = adapter.sendMessage.mock.calls.map((c: any[]) => c[0].text);
+      expect(sent).toEqual(['ได้เลยค่ะ เดี๋ยวแอดมินส่งรูปเครื่องจริงให้นะคะ', '15 ผ่อนเดือนละ 2,778 ค่ะ']);
+      expect(ai.autoReply).toHaveBeenCalledTimes(2);
+      expect(handoffManager.initiateHandoff).not.toHaveBeenCalled();
+      expect(room.handoffReason).toContain(BOT_STAFF_ATTENTION_PREFIX); // คำขอยังอยู่ให้พนักงานเห็น
+    });
+
+    it('พนักงานตอบเองหลังคำขอของบอท (echo จาก Business Suite) → หยุด AI ตามเดิม', async () => {
+      const roomManager = {
+        getOrCreateRoom: jest.fn().mockResolvedValue({ id: 'r1' }),
+        saveMessage: jest.fn().mockResolvedValue({ id: 'm1' }),
+        hasBotReplied: jest.fn().mockResolvedValue(true),
+        isPageAutoReplyText: jest.fn().mockResolvedValue(false),
+        pauseAiIfActive: jest.fn().mockResolvedValue(true),
+      };
+      const router = new MessageRouterService(
+        roomManager as any,
+        { initiateHandoff: jest.fn() } as any,
+        { get: jest.fn() } as any,
+      );
+      await router.mirrorOutbound({
+        externalUserId: 'PSID-1',
+        channel: ChatChannel.FACEBOOK,
+        role: MessageRole.STAFF,
+        text: 'ส่งรูปเครื่องจริงให้แล้วนะคะ',
+        externalMessageId: 'mid-staff-1',
+        pauseAi: true,
+      });
+      await flushAsync();
+      expect(roomManager.pauseAiIfActive).toHaveBeenCalledWith('r1', undefined);
+    });
   });
 });

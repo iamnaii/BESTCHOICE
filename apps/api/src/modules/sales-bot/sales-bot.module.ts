@@ -22,8 +22,8 @@ import { LlmProviderRegistry } from './providers/llm-provider.registry';
 
 @Module({
   imports: [
-    // For CHAT_GATEWAY_TOKEN — HandoffToHumanTool + CaptureLeadTool emit
-    // chat:room:update so UnifiedInboxPage refreshes the handoff badge live.
+    // For CHAT_GATEWAY_TOKEN — HandoffToHumanTool + CaptureLeadTool + NotifyStaffTool emit
+    // chat:room:update so UnifiedInboxPage refreshes the handoff/"ด่วน" badge live.
     forwardRef(() => StaffChatModule),
     // CaptureLeadTool (R25): CustomerMergeService + ChatProspectService (รวม/ผูกผู้สนใจด้วยเบอร์),
     // CustomerPiiService (hash/encrypt เบอร์), JourneyEntryWriter (CONTACT_ADDED via CAPTURE_LEAD)

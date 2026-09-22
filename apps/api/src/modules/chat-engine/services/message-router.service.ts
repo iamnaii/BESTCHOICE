@@ -14,13 +14,14 @@ import {
   DomainContext,
   DOMAIN_HANDLER_TOKEN,
 } from '../interfaces/domain-handler.interface';
-import { RoomManagerService } from './room-manager.service';
+import { RoomManagerService, type PageAutoReplyCheckOptions } from './room-manager.service';
 import { AssignmentService } from './assignment.service';
 import { HandoffManagerService } from './handoff-manager.service';
 import { AfterHoursService } from './after-hours.service';
 import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.interface';
 import { AiAutoReplyService } from '../../staff-chat/services/ai-auto-reply.service';
 import { MAX_BOT_ATTACHMENTS } from '../../../utils/bot-attachments.util';
+import { isShopOpen, SHOP_OPEN_HOUR } from '../../../utils/shop-hours.util';
 
 /**
  * MessageRouter — the central nerve of the chat engine.
@@ -130,6 +131,14 @@ export class MessageRouterService {
   private readonly inboundTickets = new Map<string, number>();
   private inboundSeq = 0;
   /**
+   * ข้อความลูกค้าที่รับเข้าแล้วแต่เทิร์นยังไม่จบ ต่อ chainKey (เรียงตามลำดับรับเข้า = ตั๋วน้อยไปมาก) — ลบเมื่อเทิร์นนั้นจบ
+   * ด่านข้อความอัตโนมัติของเพจต้องรู้สองอย่างที่ฐานยังไม่มี (แถวลูกค้าถูกบันทึกเมื่อคิวเดินถึงเท่านั้น):
+   *   1. มีข้อความใหม่รอคิวหลังเทิร์นนี้ไหม + รับเข้าเมื่อไร — สคริปต์ที่มาหลังจากนั้นเป็นของใบใหม่ (RT-V2)
+   *   2. ลูกค้าทักจริงเมื่อไร — echo ขึ้นต้นตาม marker นับเป็นข้อความอัตโนมัติเมื่อมีลูกค้าทักใกล้ ๆ (RT-F3)
+   * หน่วยความจำต่อ instance เหมือน inboundTickets/inboundChains — webhook ข้าม instance ใช้แถวในฐานแทน
+   */
+  private readonly inboundPending = new Map<string, { ticket: number; receivedAt: Date }[]>();
+  /**
    * 3 วิ — ยาวพอให้พิมพ์ท่อนถัดไปจบ สั้นพอไม่รู้สึกว่าบอทอืด (มี typing indicator คั่นแล้ว)
    * ปรับได้ด้วย env CHAT_COALESCE_MS โดยไม่ต้องแก้โค้ด (0 = ปิดการรอ)
    */
@@ -138,13 +147,63 @@ export class MessageRouterService {
     return Number.isFinite(v) && v >= 0 ? v : 3000;
   }
 
+  /**
+   * เผื่อนาฬิกา Meta กับเซิร์ฟเวอร์เหลื่อมกัน — echo ของข้อความอัตโนมัติถูกประทับเวลาด้วยนาฬิกาเรา
+   * ส่วนข้อความลูกค้าใช้เวลาของ Meta (ROUTER-2)
+   */
+  private static readonly AUTO_REPLY_CLOCK_SKEW_MS = 2_000;
+  /**
+   * echo ที่เป็นรูปอย่างเดียว: เพจส่ง "รูปตาราง" นำหน้าสคริปต์ — รอให้สคริปต์ตามมาถึงก่อนตัดสินว่าเป็น
+   * พนักงานตอบจริง (ต้อง pause AI) หรือข้อความอัตโนมัติของเพจ (ห้าม pause) · รอเฉพาะเมื่อตั้ง markers ไว้
+   */
+  private static readonly PAGE_AUTOREPLY_MEDIA_WAIT_MS = 8_000;
+  /** รูปกับสคริปต์ของข้อความอัตโนมัติชุดเดียวกันห่างกันไม่เกินนี้ */
+  private static readonly PAGE_AUTOREPLY_MEDIA_WINDOW_MS = 20_000;
+  private static readonly PAGE_AUTO_REPLIED_REASON = 'เพจตอบอัตโนมัติข้อความนี้ไปแล้ว';
+  /** tool ที่ตั้ง handoffMode เอง — ธงจากเทิร์นนี้ไม่ใช่การ takeover ของพนักงาน */
+  private static readonly HANDOFF_TOOLS = new Set(['capture_lead', 'handoff_to_human']);
+  /** ข้อความส่งต่อแอดมิน (ความมั่นใจต่ำ / AI ขัดข้อง) — ในเวลาทำการ */
+  private static readonly LOW_CONFIDENCE_MSG = 'อันนี้เดี๋ยวแอดมินเข้ามาตอบให้นะคะ รอสักครู่ค่า 🙏';
+  private static readonly AI_ERROR_APOLOGY_MSG =
+    'ขออภัยค่ะ ระบบขัดข้องชั่วคราว เดี๋ยวแอดมินเข้ามาดูแลต่อให้นะคะ 🙏';
+  /**
+   * ตอนร้านปิด ห้ามสัญญา "รอสักครู่/เดี๋ยวแอดมินเข้ามา" — ตีสองไม่มีใครตอบจนร้านเปิด (C03 / PROMPT-8)
+   * ใช้ทั้งทางความมั่นใจต่ำและทาง AI ขัดข้อง
+   */
+  private static readonly AFTER_HOURS_HANDOFF_MSG = `รับเรื่องไว้แล้วนะคะ ทีมงานเข้ามาตอบตอนร้านเปิด ${SHOP_OPEN_HOUR} โมงค่ะ 🙏`;
+
+  /** ข้อความส่งต่อแอดมินตามเวลาร้าน — ร้านปิดใช้ประโยคที่บอกเวลาร้านเปิด */
+  private static staffFollowUpText(inHoursText: string, now: Date = new Date()): string {
+    return isShopOpen(now) ? inHoursText : MessageRouterService.AFTER_HOURS_HANDOFF_MSG;
+  }
+
+  /**
+   * ขอบล่างของ "echo ที่นับเป็นคำตอบของข้อความนี้" (ROUTER-2): เวลาที่ Meta ประทับบน event หรือเวลาที่
+   * webhook รับเข้า (ก่อนต่อคิว/ดึงโปรไฟล์) อันที่เก่ากว่า แล้วเผื่อนาฬิกาเหลื่อม 2 วิ
+   * เดิมใช้ new Date() หลังดึงโปรไฟล์ (Graph 2 ครั้ง) + หาห้อง + โน้ตโฆษณา — echo ของข้อความอัตโนมัติที่ถูก
+   * บันทึกระหว่างนั้น (หรือระหว่างรอคิวหลังเทิร์นก่อนหน้า 10-30 วิ) หลุดขอบ บอทจึงตอบซ้ำกับเพจ
+   */
+  private static autoReplyWindowStart(eventAt: Date | undefined, receivedAt: Date): Date {
+    const event = eventAt ? new Date(eventAt).getTime() : NaN;
+    const base =
+      Number.isFinite(event) && event < receivedAt.getTime() ? event : receivedAt.getTime();
+    return new Date(base - MessageRouterService.AUTO_REPLY_CLOCK_SKEW_MS);
+  }
+
   async routeInbound(message: InboundMessage): Promise<void> {
+    // เวลารับเข้า — จับก่อนเข้าคิว/ดึงโปรไฟล์ (ขอบล่างของการเช็คข้อความอัตโนมัติของเพจ — ROUTER-2)
+    const receivedAt = new Date();
     const chainKey = `${message.channel}:${message.externalUserId}`;
     // ออกตั๋วตั้งแต่ "รับเข้า" (ไม่ใช่ตอนถึงคิว) เพื่อให้เทิร์นที่กำลังรออยู่รู้ทันทีว่ามีข้อความใหม่
     const ticket = ++this.inboundSeq;
     this.inboundTickets.set(chainKey, ticket);
+    const pending = this.inboundPending.get(chainKey) ?? [];
+    pending.push({ ticket, receivedAt });
+    this.inboundPending.set(chainKey, pending);
     const prev = this.inboundChains.get(chainKey) ?? Promise.resolve();
-    const run = prev.then(() => this.routeInboundInner(message, chainKey, ticket));
+    const run = prev
+      .then(() => this.routeInboundInner(message, chainKey, ticket, receivedAt))
+      .finally(() => this.releaseInbound(chainKey, ticket));
     // เก็บลง map แบบกลืน error — เทิร์นถัดไปต้องไม่ตายตามเทิร์นก่อนหน้า
     const settled = run.catch(() => undefined);
     this.inboundChains.set(chainKey, settled);
@@ -154,10 +213,48 @@ export class MessageRouterService {
     return run;
   }
 
+  /** เทิร์นของตั๋วนี้จบแล้ว — เอาออกจากรายการที่รอ (ว่างแล้วลบคีย์ กัน map โต) */
+  private releaseInbound(chainKey: string, ticket: number): void {
+    const list = this.inboundPending.get(chainKey);
+    if (!list) return;
+    const rest = list.filter((p) => p.ticket !== ticket);
+    if (rest.length > 0) this.inboundPending.set(chainKey, rest);
+    else this.inboundPending.delete(chainKey);
+  }
+
+  /** เวลารับเข้าของข้อความลูกค้าที่ยังค้างในคิวของลูกค้าคนนี้ (รวมเทิร์นที่กำลังทำอยู่) */
+  private pendingInboundTimes(chainKey: string | undefined): Date[] {
+    if (!chainKey) return [];
+    return (this.inboundPending.get(chainKey) ?? []).map((p) => p.receivedAt);
+  }
+
+  /**
+   * ข้อมูลเสริมให้ pageAutoReplyCoversTurn: เวลารับเข้าที่ยังไม่อยู่ในฐาน + ขอบบนของสคริปต์ที่นับเป็นของเทิร์นนี้
+   * — มีข้อความใหม่ (ตั๋วใหญ่กว่า) รอคิวอยู่ = สคริปต์ที่มาหลังใบใหม่ถูกรับเข้า เป็นคำตอบของใบใหม่ ไม่ใช่ของเทิร์นนี้
+   *   (ลูกค้าพิมพ์คำถาม แล้วกดปุ่มโฆษณาระหว่างบอทคิด — เดิมคำถามถูกกลืน แล้วบอทไปตอบปุ่มซ้ำกับเพจ · RT-V2)
+   *   ใช้ใบใหม่ใบ "แรก" (เก่าสุดที่ใหม่กว่าเรา) ไม่ใช่ใบล่าสุด — ใบถัด ๆ ไปก็มาหลังใบแรกอยู่แล้ว
+   */
+  private pageAutoReplyCheckOptions(chainKey?: string, ticket?: number): PageAutoReplyCheckOptions {
+    if (!chainKey) return {};
+    const pending = this.inboundPending.get(chainKey) ?? [];
+    const newer = ticket === undefined ? undefined : pending.find((p) => p.ticket > ticket);
+    return {
+      extraCustomerAt: pending.map((p) => p.receivedAt),
+      ...(newer
+        ? {
+            scriptsBefore: new Date(
+              newer.receivedAt.getTime() - MessageRouterService.AUTO_REPLY_CLOCK_SKEW_MS,
+            ),
+          }
+        : {}),
+    };
+  }
+
   private async routeInboundInner(
     message: InboundMessage,
     chainKey?: string,
     ticket?: number,
+    receivedAt: Date = new Date(),
   ): Promise<void> {
     // 0. Best-effort profile fetch — never block webhook on profile API issues
     const adapter = this.adapterMap.get(message.channel);
@@ -187,9 +284,10 @@ export class MessageRouterService {
     }
 
     // 2. Save inbound message
-    // เวลารับข้อความนี้ — ใช้ดูว่าข้อความอัตโนมัติของเพจตอบข้อความนี้ไปแล้วหรือยัง (กันบอทตอบซ้ำ)
-    const inboundAt = new Date();
-    await this.roomManager.saveMessage({
+    // ขอบล่างของ echo ข้อความอัตโนมัติของเพจที่นับเป็นคำตอบของข้อความนี้ (กันบอทตอบซ้ำ) — อิงเวลา Meta/รับเข้า
+    // ไม่ใช่ "ตอนนี้" ซึ่งอยู่หลังดึงโปรไฟล์ + รอคิวไปแล้ว (ROUTER-2)
+    const inboundAt = MessageRouterService.autoReplyWindowStart(message.timestamp, receivedAt);
+    const inboundRow = await this.roomManager.saveMessage({
       roomId: room.id,
       externalMessageId: message.externalMessageId,
       role: MessageRole.CUSTOMER,
@@ -198,6 +296,8 @@ export class MessageRouterService {
       mediaUrl: message.mediaUrl,
       mediaType: message.mediaType,
     });
+    // เวลาบันทึกข้อความตัวตั้งเทิร์นนี้ — ข้อความลูกค้าที่มาหลังจากนี้เป็นของเทิร์นถัดไป (ROUTER-4)
+    const turnAt = inboundRow?.createdAt ?? new Date();
 
     // 3. Notify staff inbox of every inbound customer message (real-time room list refresh)
     this.gateway?.emitNewMessage(room.id, {
@@ -262,9 +362,10 @@ export class MessageRouterService {
     }
 
     if (this.aiAutoReplyService && (await this.aiAutoReplyService.shouldAutoReply(room))) {
-      // เพจตอบอัตโนมัติไปแล้ว (เช่นปุ่มโฆษณา → รูปตาราง+สคริปต์) — ข้ามข้อความนี้ ไม่เรียก AI
+      // เพจตอบอัตโนมัติครบทุกข้อความของเทิร์นนี้แล้ว (เช่นปุ่มโฆษณา → รูปตาราง+สคริปต์) — ข้าม ไม่เรียก AI
       // บอทรับช่วงต่อจากข้อความถัดไปของลูกค้า โดยเห็นคำตอบอัตโนมัติในประวัติ
-      if (await this.roomManager.hasPageAutoReplySince?.(room.id, inboundAt)) {
+      // (ลูกค้าพิมพ์คำถามจริงมาในช่วงรวมข้อความด้วย = ไม่ครบ ⇒ บอทตอบ — ROUTER-4)
+      if (await this.isCoveredByPageAutoReply(room.id, inboundAt, turnAt, chainKey, ticket)) {
         this.logger.log(`[AiAutoReply] room=${room.id} skip=pageAutoReplied (before LLM)`);
         return;
       }
@@ -284,36 +385,42 @@ export class MessageRouterService {
         }
         const result = await this.aiAutoReplyService.autoReply(room.id, customerMessage);
 
+        // echo ของข้อความอัตโนมัติอาจมาถึงระหว่างบอทคิด (10-30 วิ) — เช็คครั้งเดียว "ก่อนทุกทาง"
+        // (ส่งคำตอบ / ข้อความรอแอดมินตอนความมั่นใจต่ำ / ส่งต่อพนักงาน). เดิมเช็คเฉพาะตอนมั่นใจ ทางความมั่นใจต่ำ
+        // จึงส่ง "เดี๋ยวแอดมินเข้ามาตอบ" ตามหลังตารางของเพจแล้วปักธงปิดปากบอททั้งห้อง (ROUTER-5)
+        if (await this.isCoveredByPageAutoReply(room.id, inboundAt, turnAt, chainKey, ticket)) {
+          await this.aiAutoReplyService.logAutoReply({
+            roomId: room.id,
+            customerMessage,
+            aiReply: result?.reply ?? '',
+            confidence: result?.confidence ?? 0,
+            autoSent: false,
+            handoffReason: MessageRouterService.PAGE_AUTO_REPLIED_REASON,
+            toolsUsed: result?.toolsUsed,
+            inputTokens: result?.inputTokens,
+            outputTokens: result?.outputTokens,
+          });
+          this.logger.log(
+            `[AiAutoReply] room=${room.id} skip=pageAutoReplied (after LLM${result === null ? ', low confidence' : ''})`,
+          );
+          return;
+        }
+
         // เทิร์น LLM กิน 10-30s — พนักงานอาจ takeover (aiPaused) หรือห้องเข้าสถานะ
         // handoff ระหว่างที่บอทคิด: อ่านสถานะสดอีกครั้งก่อนส่ง ไม่งั้นบอทยิงคำตอบ
         // ทับหลังพนักงานที่เพิ่งตอบไป (คำตอบไม่หาย — เก็บใน log autoSent=false)
         if (result !== null) {
           const fresh = await this.roomManager.findById(room.id);
-          // ธงที่ "บอทปักเอง" ระหว่างเทิร์นนี้ (capture_lead / handoff_to_human) ไม่ใช่การ
+          // ธง handoffMode ที่ "บอทปักเอง" ระหว่างเทิร์นนี้ (capture_lead / handoff_to_human) ไม่ใช่การ
           // takeover ของพนักงาน — ต้องส่งข้อความปิดท้ายให้ลูกค้าตามปกติ
           // (บั๊กจริง 2026-08-20: ลูกค้าให้ชื่อ+เบอร์ → บอทเก็บ lead สำเร็จ + ปักธงเอง
           //  → re-check เห็นธงตัวเอง เลยกลืนคำตอบทิ้ง ลูกค้าเจอความเงียบทั้งที่ปิดการขายได้)
-          // notify_staff (2026-09-22) = บอทตอบเองแล้ว แค่ขอให้พนักงานส่งรูปเครื่องจริงต่อ
-          const flaggedByBotThisTurn = (result.toolsUsed ?? []).some(
-            (t) => t === 'capture_lead' || t === 'handoff_to_human' || t === 'notify_staff',
+          // notify_staff (คำตัดสิน 2026-09-22) ไม่ตั้ง handoffMode/aiPaused แล้ว — บอทคุยต่อได้ จึงไม่อยู่ใน
+          // รายการยกเว้น: ห้องติดธงระหว่างเทิร์นที่บอทแค่ "ขอให้พนักงานตามต่อ" = คนเป็นคนปัก ต้องเงียบ
+          const botRaisedHandoffThisTurn = (result.toolsUsed ?? []).some((t) =>
+            MessageRouterService.HANDOFF_TOOLS.has(t),
           );
-          // echo ของข้อความอัตโนมัติอาจมาถึงหลังบอทเริ่มคิด — เช็คซ้ำก่อนส่ง
-          if (await this.roomManager.hasPageAutoReplySince?.(room.id, inboundAt)) {
-            await this.aiAutoReplyService.logAutoReply({
-              roomId: room.id,
-              customerMessage,
-              aiReply: result.reply,
-              confidence: result.confidence,
-              autoSent: false,
-              handoffReason: 'เพจตอบอัตโนมัติข้อความนี้ไปแล้ว',
-              toolsUsed: result.toolsUsed,
-              inputTokens: result.inputTokens,
-              outputTokens: result.outputTokens,
-            });
-            this.logger.log(`[AiAutoReply] room=${room.id} skip=pageAutoReplied (after LLM)`);
-            return;
-          }
-          if (!flaggedByBotThisTurn && (fresh?.aiPaused || fresh?.handoffMode)) {
+          if (!botRaisedHandoffThisTurn && (fresh?.aiPaused || fresh?.handoffMode)) {
             await this.aiAutoReplyService.logAutoReply({
               roomId: room.id,
               customerMessage,
@@ -467,7 +574,10 @@ export class MessageRouterService {
             handoffReason: 'ความมั่นใจของ AI ต่ำกว่า threshold',
           });
           // บอกลูกค้าก่อนเงียบ — ไม่งั้นเห็น "กำลังพิมพ์..." แล้วหายไปเฉย ๆ
-          const lowConfMsg = 'อันนี้เดี๋ยวแอดมินเข้ามาตอบให้นะคะ รอสักครู่ค่า 🙏';
+          // ร้านปิด = ห้ามสัญญา "รอสักครู่" (ไม่มีใครตอบจนร้านเปิด) — บอกเวลาร้านเปิดแทน
+          const lowConfMsg = MessageRouterService.staffFollowUpText(
+            MessageRouterService.LOW_CONFIDENCE_MSG,
+          );
           const lowConfAdapter = this.adapterMap.get(message.channel);
           if (lowConfAdapter) {
             await lowConfAdapter.sendMessage({
@@ -499,10 +609,22 @@ export class MessageRouterService {
         // AI ล่ม: ห้ามหลุดไป domain handler — ห้อง FB ขายของส่วนใหญ่ยังไม่ verify
         // จะโดนข้อความ "ยืนยันตัวตน" ของ flow ไฟแนนซ์ซึ่งผิดเรื่อง — ขอโทษสั้น ๆ
         // + ปักธงให้พนักงานเห็นในคิว "ต้องตอบ" แล้วจบเทิร์น
+        // ยกเว้นเพจตอบอัตโนมัติข้อความนี้ไปแล้ว — ไม่ต้องขอโทษต่อท้ายตาราง และไม่ปักธงปิดปากบอท (ROUTER-5)
+        try {
+          if (await this.isCoveredByPageAutoReply(room.id, inboundAt, turnAt, chainKey, ticket)) {
+            this.logger.log(`[AiAutoReply] room=${room.id} skip=pageAutoReplied (AI error)`);
+            return;
+          }
+        } catch {
+          // เช็คไม่ได้ = ทำตามทางเดิม (ขอโทษ + ส่งต่อพนักงาน)
+        }
         try {
           const errAdapter = this.adapterMap.get(message.channel);
           if (errAdapter) {
-            const apology = 'ขออภัยค่ะ ระบบขัดข้องชั่วคราว เดี๋ยวแอดมินเข้ามาดูแลต่อให้นะคะ 🙏';
+            // ร้านปิด = บอกเวลาร้านเปิด ไม่สัญญาว่าแอดมินจะเข้ามาเดี๋ยวนี้
+            const apology = MessageRouterService.staffFollowUpText(
+              MessageRouterService.AI_ERROR_APOLOGY_MSG,
+            );
             await errAdapter.sendMessage({
               externalUserId: message.externalUserId,
               channel: message.channel,
@@ -706,16 +828,16 @@ export class MessageRouterService {
     // แยกด้วย "บอทเคยตอบในห้องนี้แล้วหรือยัง" — greeting มาก่อนบอทเสมอ
     // (บั๊กจริง 2026-08-21: 633 ห้องโดนปิด AI หมดเพราะ auto-greeting ของเพจ
     //  ถ้าเปิดทั้งเพจโดยไม่แก้ บอทจะไม่ได้ตอบใครเลยสักห้อง)
+    //   (ค) **ข้อความตอบกลับอัตโนมัติของเพจ** (ปุ่มโฆษณา → รูปตาราง + สคริปต์) → ห้าม pause เช่นกัน
+    //       ห้องที่บอทเคยตอบแล้วกดปุ่มโฆษณาซ้ำ = 43/173 ครั้ง (ROUTER-3 / C09)
     if (params.role === MessageRole.STAFF && params.pauseAi) {
-      void (async () => {
-        try {
-          if (!(await this.roomManager.hasBotReplied?.(room.id))) return;
-          const paused = await this.roomManager.pauseAiIfActive?.(room.id, params.staffId);
-          if (paused) this.gateway?.emitRoomUpdate(room.id, { roomId: room.id, aiPaused: true });
-        } catch {
-          // best-effort
-        }
-      })();
+      void this.pauseAiForStaffEcho(
+        room.id,
+        `${params.channel}:${params.externalUserId}`,
+        params.text,
+        params.staffId,
+        new Date(),
+      );
     }
     let saved: { id: string } | undefined;
     try {
@@ -758,6 +880,94 @@ export class MessageRouterService {
       channel: params.channel,
       roomId: room.id,
     });
+  }
+
+  /**
+   * echo STAFF จากนอกระบบ → pause AI เมื่อเป็น "คนตอบจริง" เท่านั้น (best-effort ไม่โยน)
+   *
+   * - ห้องที่บอทยังไม่เคยตอบ = ข้อความทักทายอัตโนมัติของเพจ → ไม่ pause (เดิม)
+   * - สคริปต์ตอบกลับอัตโนมัติของเพจ → ไม่ pause (ROUTER-3) — ต้องครบสองข้อ: ขึ้นต้นตาม
+   *   shop_bot_page_autoreply_markers **และ** มีข้อความลูกค้า (ในฐาน หรือที่รับเข้าแล้วยังรอคิว) ภายใน ±15 วิ
+   *   (RT-F3 — คำขึ้นต้นอย่าง "ใช้บัตรประชาชนยื่นได้เลยค่ะ" พนักงานพิมพ์เองได้; ไม่มีลูกค้าทักใกล้ ๆ = คนตอบจริง)
+   *   คำขึ้นต้นตรงแต่ยังไม่เห็นลูกค้า → รอ 8 วิแล้วดูอีกรอบ (แถวลูกค้าอาจยังไม่ถูกบันทึก — webhook ข้อความเข้า
+   *   อีก instance ที่ยังดึงโปรไฟล์อยู่) · ยังไม่เห็น = pause
+   * - echo รูปอย่างเดียว: เพจส่งรูปตาราง "นำหน้า" สคริปต์ — รอ 8 วิให้สคริปต์ตามมา แล้วดูว่ามีสคริปต์ (ที่ผ่านด่าน
+   *   เวลาเดียวกัน) ในช่วง ±20 วิไหม · มี = รูปของข้อความอัตโนมัติ ไม่ pause · ไม่มี = พนักงานส่งรูปเอง pause ตามเดิม
+   *   (รอเฉพาะเมื่อตั้ง markers ไว้ — ปิดข้อความอัตโนมัติแล้ว = pause ทันทีเหมือนเดิม)
+   * พนักงานพิมพ์ตอบเอง (ตัวหนังสือไม่ตรง marker) → pause ทันทีเหมือนเดิม
+   */
+  private async pauseAiForStaffEcho(
+    roomId: string,
+    chainKey: string,
+    text: string | undefined,
+    staffId: string | undefined,
+    echoAt: Date,
+  ): Promise<void> {
+    try {
+      if (!(await this.roomManager.hasBotReplied?.(roomId))) return;
+      if (text?.trim()) {
+        if (await this.roomManager.isPageAutoReplyText?.(text)) {
+          const isPageEcho = async () =>
+            (await this.roomManager.isPageAutoReplyEcho?.(
+              roomId,
+              text,
+              echoAt,
+              this.pendingInboundTimes(chainKey),
+            )) === true;
+          if (await isPageEcho()) {
+            this.logger.log(`[mirrorOutbound] room=${roomId} ข้อความอัตโนมัติของเพจ — ไม่หยุด AI`);
+            return;
+          }
+          await new Promise((r) => setTimeout(r, MessageRouterService.PAGE_AUTOREPLY_MEDIA_WAIT_MS));
+          if (await isPageEcho()) {
+            this.logger.log(
+              `[mirrorOutbound] room=${roomId} ข้อความอัตโนมัติของเพจ (ลูกค้าถูกบันทึกทีหลัง) — ไม่หยุด AI`,
+            );
+            return;
+          }
+          this.logger.log(
+            `[mirrorOutbound] room=${roomId} ขึ้นต้นเหมือนสคริปต์ของเพจแต่ไม่มีลูกค้าทักใกล้ ๆ = พนักงานพิมพ์เอง — หยุด AI`,
+          );
+        }
+      } else if (await this.roomManager.hasPageAutoReplyMarkers?.()) {
+        await new Promise((r) => setTimeout(r, MessageRouterService.PAGE_AUTOREPLY_MEDIA_WAIT_MS));
+        if (
+          await this.roomManager.hasPageAutoReplyNear?.(
+            roomId,
+            echoAt,
+            MessageRouterService.PAGE_AUTOREPLY_MEDIA_WINDOW_MS,
+            this.pendingInboundTimes(chainKey),
+          )
+        ) {
+          this.logger.log(
+            `[mirrorOutbound] room=${roomId} รูปของข้อความอัตโนมัติของเพจ — ไม่หยุด AI`,
+          );
+          return;
+        }
+      }
+      const paused = await this.roomManager.pauseAiIfActive?.(roomId, staffId);
+      if (paused) this.gateway?.emitRoomUpdate(roomId, { roomId, aiPaused: true });
+    } catch {
+      // best-effort
+    }
+  }
+
+  /** เพจตอบอัตโนมัติครบทุกข้อความของเทิร์นนี้แล้วหรือยัง (`?.` — spec หลายตัว mock roomManager บางส่วน) */
+  private async isCoveredByPageAutoReply(
+    roomId: string,
+    since: Date,
+    turnAt: Date,
+    chainKey?: string,
+    ticket?: number,
+  ): Promise<boolean> {
+    return (
+      (await this.roomManager.pageAutoReplyCoversTurn?.(
+        roomId,
+        since,
+        turnAt,
+        this.pageAutoReplyCheckOptions(chainKey, ticket),
+      )) === true
+    );
   }
 
   /**

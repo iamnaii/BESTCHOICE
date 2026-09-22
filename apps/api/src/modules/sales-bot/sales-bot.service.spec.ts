@@ -1,5 +1,19 @@
 import { Test } from '@nestjs/testing';
-import { SalesBotService, redactMediaUrls, shopClockLine, NO_STOCK_TOOL_RESULT } from './sales-bot.service';
+import {
+  SalesBotService,
+  redactMediaUrls,
+  shopClockLine,
+  NO_STOCK_TOOL_RESULT,
+  STAFF_FALLBACK_REPLY,
+  groundingGuardNote,
+  isBarePromise,
+  isCleanSideEffectResult,
+  rateCardMissingNote,
+  reconcileRateCardResult,
+  staffFallbackReply,
+  stripUnsentImageClaims,
+  withSystemNote,
+} from './sales-bot.service';
 import { SearchProductsTool } from './tools/search-products.tool';
 import { CalculateInstallmentTool } from './tools/calculate-installment.tool';
 import { ListPromotionsTool } from './tools/list-promotions.tool';
@@ -9,9 +23,9 @@ import { GetInstallmentRatesTool } from './tools/get-installment-rates.tool';
 import { SearchKnowledgeBaseTool } from './tools/search-knowledge-base.tool';
 import { RecommendDevicesTool } from './tools/recommend-devices.tool';
 import { CompareDevicesTool } from './tools/compare-devices.tool';
-import { SendRateCardTool } from './tools/send-rate-card.tool';
+import { NO_CARD_REQUESTED, SendRateCardTool } from './tools/send-rate-card.tool';
 import { NotifyStaffTool } from './tools/notify-staff.tool';
-import { BotRuntimeConfigService, NO_STOCK_PROMPT } from './bot-runtime-config.service';
+import { BotRuntimeConfigService, NO_STOCK_PROMPT, type RateCardsConfig } from './bot-runtime-config.service';
 import { LlmProviderRegistry } from './providers/llm-provider.registry';
 import { PersonaService } from '../staff-chat/services/persona.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
@@ -274,9 +288,27 @@ describe('SalesBotService', () => {
       expect(c).toBe(0.95);
     });
 
-    it('short/incomplete reply → 0.6', () => {
-      const c = (svc as any).estimateConfidence('ค่ะ', []);
-      expect(c).toBe(0.6);
+    // synth C02 (2026-09-22): เลิกกฎ "สั้นกว่า 20 ตัวอักษร = 0.6" — คำตอบสั้นที่ถูกต้องเคยถูกเปลี่ยน
+    // เป็นข้อความรอแอดมิน · เหลือ 0.6 เฉพาะ "รับปากเปล่า ๆ" ที่ไม่ได้เรียกเครื่องมือในเทิร์นนั้น
+    it('คำตอบสั้นที่ไม่ใช่การรับปาก (ไม่มี tool) → ≥ 0.8 ส่งได้', () => {
+      expect((svc as any).estimateConfidence('ยินดีค่ะ 😊', [])).toBeGreaterThanOrEqual(0.8);
+      expect((svc as any).estimateConfidence('ค่ะ', [])).toBeGreaterThanOrEqual(0.8);
+      expect((svc as any).estimateConfidence('ได้ค่ะ ขอบคุณค่ะ', [])).toBeGreaterThanOrEqual(0.8);
+    });
+
+    it('รับปากเปล่า ๆ สั้น ๆ ไม่ได้เรียก tool → 0.6 (กันรับปากนโยบาย/อนุมัติ/สต๊อกเอง)', () => {
+      for (const t of ['ได้ค่ะ', 'ผ่านค่ะ', 'มีค่ะ', 'ส่งได้ค่ะ', 'ได้เลยค่ะ 😊', 'ผ่านแน่นอนค่ะ!', 'ได้ค่ะพี่']) {
+        expect((svc as any).estimateConfidence(t, [])).toBe(0.6);
+      }
+    });
+
+    it('รับปากสั้น ๆ แต่เทิร์นนั้นเรียก tool แล้ว → 0.95', () => {
+      expect((svc as any).estimateConfidence('มีค่ะ', ['get_installment_rates'])).toBe(0.95);
+    });
+
+    it('คำตอบว่าง → 0', () => {
+      expect((svc as any).estimateConfidence('', [])).toBe(0);
+      expect((svc as any).estimateConfidence('   \n', ['search_products'])).toBe(0);
     });
 
     it('handoff_to_human used → 0.3', () => {
@@ -1135,7 +1167,17 @@ describe('redactMediaUrls', () => {
 });
 
 describe('SalesBotService — โหมดไม่มีสต๊อก / ส่งรูปตารางผ่อน / notify_staff (2026-09-22)', () => {
-  async function buildWith(chat: jest.Mock, stockMode: 'LIVE' | 'NO_STOCK') {
+  // ค่าตั้งรูปที่ขึ้น prod รอบแรก — มีแค่ตารางเครื่องนอก + แผนที่
+  const PROD_CARDS: RateCardsConfig = {
+    imported_free_down: { storageKey: 'bot-media/rate-cards/imported.jpg', label: 'ตารางผ่อนฟรีดาวน์' },
+    shop_map: { storageKey: 'bot-media/rate-cards/map.jpg', label: 'วิธีเดินทางมาร้าน' },
+  };
+
+  async function buildWith(
+    chat: jest.Mock,
+    stockMode: 'LIVE' | 'NO_STOCK',
+    rateCards: RateCardsConfig | undefined = PROD_CARDS,
+  ) {
     const provider: ILlmProvider = {
       providerName: 'claude',
       chat: chat as unknown as (...args: any[]) => Promise<LlmChatResponse>,
@@ -1144,7 +1186,10 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
       getBase: jest.fn(), getBotExtras: jest.fn(), invalidateCache: jest.fn(), isCustomized: jest.fn(),
       getBot: jest.fn().mockResolvedValue('PERSONA'),
     };
-    const runtime = { getStockMode: jest.fn().mockResolvedValue(stockMode), getRateCards: jest.fn() };
+    const runtime = {
+      getStockMode: jest.fn().mockResolvedValue(stockMode),
+      getRateCards: jest.fn().mockResolvedValue(rateCards),
+    };
     const sendRateCard = {
       run: jest.fn().mockResolvedValue({
         sent: [{ card: 'imported_free_down', label: 'ตารางผ่อนฟรีดาวน์' }],
@@ -1153,20 +1198,26 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
       }),
     };
     const notifyStaff = { run: jest.fn().mockResolvedValue({ staffNotified: true }) };
-    const noop = { run: jest.fn() };
+    const noop = () => ({ run: jest.fn() });
+    const tools = {
+      searchProducts: noop(),
+      calcInstallment: noop(),
+      recommendDevices: noop(),
+      getInstallmentRates: noop(),
+    };
     const mod = await Test.createTestingModule({
       providers: [
         SalesBotService,
         { provide: LlmProviderRegistry, useValue: { getActive: jest.fn().mockResolvedValue(provider) } },
-        { provide: SearchProductsTool, useValue: noop },
-        { provide: CalculateInstallmentTool, useValue: noop },
-        { provide: ListPromotionsTool, useValue: noop },
-        { provide: HandoffToHumanTool, useValue: noop },
-        { provide: CaptureLeadTool, useValue: noop },
-        { provide: GetInstallmentRatesTool, useValue: noop },
-        { provide: SearchKnowledgeBaseTool, useValue: noop },
-        { provide: RecommendDevicesTool, useValue: noop },
-        { provide: CompareDevicesTool, useValue: noop },
+        { provide: SearchProductsTool, useValue: tools.searchProducts },
+        { provide: CalculateInstallmentTool, useValue: tools.calcInstallment },
+        { provide: ListPromotionsTool, useValue: noop() },
+        { provide: HandoffToHumanTool, useValue: noop() },
+        { provide: CaptureLeadTool, useValue: noop() },
+        { provide: GetInstallmentRatesTool, useValue: tools.getInstallmentRates },
+        { provide: SearchKnowledgeBaseTool, useValue: noop() },
+        { provide: RecommendDevicesTool, useValue: tools.recommendDevices },
+        { provide: CompareDevicesTool, useValue: noop() },
         { provide: PersonaService, useValue: persona },
         { provide: AiUsageService, useValue: { record: jest.fn() } },
         { provide: BotRuntimeConfigService, useValue: runtime },
@@ -1174,13 +1225,19 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
         { provide: NotifyStaffTool, useValue: notifyStaff },
       ],
     }).compile();
-    return { svc: mod.get(SalesBotService), sendRateCard, notifyStaff };
+    return { svc: mod.get(SalesBotService), sendRateCard, notifyStaff, runtime, ...tools };
   }
 
   const final = (text: string) => ({ text, toolCalls: [], inputTokens: 1, outputTokens: 1, modelName: 'm' });
-  const call = (name: string, input: Record<string, unknown>) => ({
-    text: '', toolCalls: [{ id: 't1', name, input }], inputTokens: 1, outputTokens: 1, modelName: 'm',
+  const call = (name: string, input: Record<string, unknown>, id = 't1') => ({
+    text: '', toolCalls: [{ id, name, input }], inputTokens: 1, outputTokens: 1, modelName: 'm',
   });
+  const callWithText = (text: string, name: string, input: Record<string, unknown>) => ({
+    ...call(name, input),
+    text,
+  });
+  const toolMessages = (req: { messages: { role: string; content: string }[] }) =>
+    req.messages.filter((m) => m.role === 'tool').map((m) => JSON.parse(m.content));
 
   it('NO_STOCK: ยังประกาศเครื่องมือสต๊อก (คืน unavailable) + ต่อท้ายคำสั่งโหมดไม่มีสต๊อก', async () => {
     const chat = jest.fn().mockResolvedValue(final('สนใจรุ่นไหนคะ'));
@@ -1199,13 +1256,10 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
       .fn()
       .mockResolvedValueOnce(call('search_products', { query: 'iPhone 15' }))
       .mockResolvedValue(final('สนใจความจุไหนคะ'));
-    const { svc } = await buildWith(chat, 'NO_STOCK');
-    const searchProducts = (svc as unknown as { searchProducts: { run: jest.Mock } }).searchProducts;
-    searchProducts.run.mockClear();
+    const { svc, searchProducts } = await buildWith(chat, 'NO_STOCK');
     const r = await svc.generateReply({ text: 'iPhone 15 มีไหม', roomId: 'r1', customerId: null });
     expect(searchProducts.run).not.toHaveBeenCalled();
-    const toolMsg = chat.mock.calls[1][0].messages.find((m: { role: string }) => m.role === 'tool');
-    expect(JSON.parse(toolMsg.content)).toEqual(NO_STOCK_TOOL_RESULT);
+    expect(toolMessages(chat.mock.calls[1][0])[0]).toEqual(NO_STOCK_TOOL_RESULT);
     expect(r.reply).toBe('สนใจความจุไหนคะ');
   });
 
@@ -1218,6 +1272,36 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
       expect.arrayContaining(['search_products', 'calculate_installment', 'send_rate_card']),
     );
     expect(req.systemPrompt).toBe('PERSONA');
+  });
+
+  describe('send_rate_card ประกาศเฉพาะรูปที่ตั้งไว้ (คำตัดสินข้อ 2 · รีวิว TOOLLOOP-1/PROMPT-2)', () => {
+    it('ค่าตั้ง prod (เครื่องนอก + แผนที่) → enum มีแค่สองใบ · คำอธิบายไม่เอ่ยตารางเครื่องไทย/มือ 1', async () => {
+      const chat = jest.fn().mockResolvedValue(final('สนใจรุ่นไหนคะ'));
+      const { svc } = await buildWith(chat, 'NO_STOCK');
+      await svc.generateReply({ text: 'สวัสดี', roomId: 'r1', customerId: null });
+      const def = chat.mock.calls[0][0].tools.find((t: { name: string }) => t.name === 'send_rate_card');
+      expect(def.inputSchema.properties.cards.items.enum).toEqual(['imported_free_down', 'shop_map']);
+      expect(def.description).not.toMatch(/used_rate|new_rate/);
+    });
+
+    it('ไม่มีรูปที่ตั้งไว้เลย → ไม่ประกาศ send_rate_card (เครื่องมืออื่นครบ)', async () => {
+      const chat = jest.fn().mockResolvedValue(final('สนใจรุ่นไหนคะ'));
+      const { svc } = await buildWith(chat, 'NO_STOCK', {});
+      await svc.generateReply({ text: 'สวัสดี', roomId: 'r1', customerId: null });
+      const names = chat.mock.calls[0][0].tools.map((t: { name: string }) => t.name);
+      expect(names).not.toContain('send_rate_card');
+      expect(names).toEqual(expect.arrayContaining(['get_installment_rates', 'notify_staff']));
+    });
+
+    it('buildToolDefinitions: ไม่ส่งค่าตั้ง = ไม่ประกาศ · ส่งค่าตั้ง = enum ตามค่าตั้ง', () => {
+      const without = SalesBotService.buildToolDefinitions({ notifyStaff: true }).map((t) => t.name);
+      expect(without).not.toContain('send_rate_card');
+      expect(without).toContain('notify_staff');
+      const withCards = SalesBotService.buildToolDefinitions({ rateCards: PROD_CARDS, notifyStaff: false });
+      const def = withCards.find((t) => t.name === 'send_rate_card')!;
+      expect((def.inputSchema as any).properties.cards.items.enum).toEqual(['imported_free_down', 'shop_map']);
+      expect(withCards.map((t) => t.name)).not.toContain('notify_staff');
+    });
   });
 
   it('send_rate_card → แนบรูปตาราง (ลิงก์ไม่ถึงโมเดล)', async () => {
@@ -1233,6 +1317,7 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
     ]);
     const toolMsg = chat.mock.calls[1][0].messages.find((m: { role: string }) => m.role === 'tool');
     expect(toolMsg.content).not.toContain('https://');
+    expect(JSON.parse(toolMsg.content).systemNote).toBeUndefined();
   });
 
   it('notify_staff → ส่งห้อง + เหตุผล และความมั่นใจไม่ถูกลด (คำตอบยังส่งถึงลูกค้า)', async () => {
@@ -1245,11 +1330,6 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
     expect(notifyStaff.run).toHaveBeenCalledWith({ reason: 'iPhone 15 ขอดูรูปเครื่องจริง', roomId: 'room-9' });
     expect(r.toolsUsed).toEqual(['notify_staff']);
     expect(r.confidence).toBe(0.95);
-  });
-
-  const callWithText = (text: string, name: string, input: Record<string, unknown>) => ({
-    ...call(name, input),
-    text,
   });
 
   it('เขียนคำตอบมาพร้อม send_rate_card ที่ส่งครบ → จบเทิร์นด้วยข้อความนั้นเลย ไม่วนรอบที่ทำให้ข้อความหาย', async () => {
@@ -1279,19 +1359,331 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
     expect(r.reply).toBe('ได้เลยค่ะ\nเดี๋ยวแอดมินส่งรูปเครื่องจริงให้ดูนะคะ');
   });
 
-  it('รูปที่ขอบางใบไม่มีในระบบ → วนต่อให้โมเดลเห็นผลแล้วเขียนใหม่ (ไม่อ้างว่าส่งตารางทั้งที่ไม่ได้ส่ง)', async () => {
-    const chat = jest
-      .fn()
-      .mockResolvedValueOnce(callWithText('ส่งตารางให้ดูนะคะ', 'send_rate_card', { cards: ['used_rate1'] }))
-      .mockResolvedValue(final('เรทที่ 1 ดาวน์ตามตารางค่ะ'));
-    const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
-    sendRateCard.run.mockResolvedValueOnce({ sent: [], missing: ['used_rate1'], images: [] });
-    const r = await svc.generateReply({ text: 'ขอดูเรท', roomId: 'r1', customerId: null });
-    expect(chat).toHaveBeenCalledTimes(2);
-    expect(r.reply).toBe('เรทที่ 1 ดาวน์ตามตารางค่ะ');
+  describe('รูปบางใบส่งไม่ได้ → ไม่จบเทิร์น ไม่วนเงียบ: systemNote ในผลเครื่องมือสั่งเขียนคำตอบเต็มใหม่', () => {
+    it('มีข้อความมาด้วย → บอกว่าข้อความยังไม่ถึงลูกค้า ให้เขียนใหม่ทั้งหมด (ตัวเลขชุดเดิม) โดยไม่พูดถึงรูปที่ไม่มี', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(
+          callWithText('เรทที่ 1 ดาวน์ตามตารางค่ะ\nส่งตารางให้ดูนะคะ', 'send_rate_card', { cards: ['used_rate1'] }),
+        )
+        .mockResolvedValue(final('เรทที่ 1 ดาวน์ตามตารางค่ะ\nสนใจเรทไหนคะ'));
+      const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+      sendRateCard.run.mockResolvedValueOnce({ sent: [], missing: ['used_rate1'], images: [] });
+      const r = await svc.generateReply({ text: 'ขอดูเรท', roomId: 'r1', customerId: null });
+      expect(chat).toHaveBeenCalledTimes(2);
+      const note = toolMessages(chat.mock.calls[1][0])[0].systemNote as string;
+      expect(note).toContain('รูป used_rate1 ส่งไม่ได้');
+      expect(note).toContain('ยังไม่ถูกส่งถึงลูกค้า');
+      expect(note).toContain('เขียนคำตอบทั้งหมดใหม่');
+      expect(note).toContain('ห้ามเรียก send_rate_card ขอรูปนี้ซ้ำ');
+      // คำสั่งอยู่ในผลเครื่องมือ — ไม่มีข้อความ user แทรก (Gemini ต้องสลับบทบาทเคร่ง)
+      const msgs = chat.mock.calls[1][0].messages;
+      expect(msgs[msgs.length - 1].role).toBe('tool');
+      expect(r.reply).toBe('เรทที่ 1 ดาวน์ตามตารางค่ะ\nสนใจเรทไหนคะ');
+    });
+
+    it('เรียกเครื่องมือเฉย ๆ ไม่มีข้อความ → ให้ตอบเป็นข้อความตามปกติ + บอกรูปที่ถึงแล้ว', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(call('send_rate_card', { cards: ['imported_free_down', 'used_rate1'] }))
+        .mockResolvedValue(final('อันนี้ตารางค่ะ สนใจรุ่นไหนคะ'));
+      const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+      sendRateCard.run.mockResolvedValueOnce({
+        sent: [{ card: 'imported_free_down', label: 'ตารางผ่อนฟรีดาวน์' }],
+        missing: ['used_rate1'],
+        images: [{ id: 'card:imported_free_down', photoUrl: 'https://s.example.com/i.jpg', productName: 'ตารางผ่อนฟรีดาวน์' }],
+      });
+      const r = await svc.generateReply({ text: 'ขอตาราง', roomId: 'r1', customerId: null });
+      const note = toolMessages(chat.mock.calls[1][0])[0].systemNote as string;
+      expect(note).toContain('ตอบลูกค้าเป็นข้อความตามปกติ');
+      expect(note).toContain('รูปที่ถึงลูกค้าแล้ว: imported_free_down');
+      expect(note).not.toContain('ยังไม่ถูกส่งถึงลูกค้า');
+      expect(r.attachments).toHaveLength(1);
+    });
   });
 
-  it('ข้อความที่มาพร้อมเครื่องมือข้อมูล (ไม่ใช่ลงมือแทน) → วนต่อตามเดิม', async () => {
+  describe('กระทบยอด sent/missing กับช่องแนบจริง (รีวิว TOOLLOOP-2 / ATTACH-1)', () => {
+    it('LIVE: รูปสินค้า 2 ใบจาก search_products เต็มช่อง → รูปตารางชนะ (ถอดรูปสินค้าใบแรก) และนับว่าส่งแล้ว', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(call('search_products', { query: 'iPhone 13' }))
+        .mockResolvedValueOnce(callWithText('iPhone 13 มี 2 เครื่องค่ะ\nร้านอยู่ตามแผนที่นะคะ', 'send_rate_card', { cards: ['shop_map'] }))
+        .mockResolvedValue(final('ไม่ควรถูกเรียก'));
+      const { svc, searchProducts, sendRateCard } = await buildWith(chat, 'LIVE');
+      searchProducts.run.mockResolvedValue({
+        groups: [
+          {
+            units: [
+              { id: 'p1', photoUrl: 'https://cdn.example.com/p1.jpg' },
+              { id: 'p2', photoUrl: 'https://cdn.example.com/p2.jpg' },
+            ],
+          },
+        ],
+      });
+      sendRateCard.run.mockResolvedValueOnce({
+        sent: [{ card: 'shop_map', label: 'วิธีเดินทางมาร้าน' }],
+        missing: [],
+        images: [{ id: 'card:shop_map', photoUrl: 'https://s.example.com/map.jpg', productName: 'วิธีเดินทางมาร้าน' }],
+      });
+      const r = await svc.generateReply({ text: 'iPhone 13 มีไหม ร้านอยู่ไหน', roomId: 'r1', customerId: null });
+      expect(chat).toHaveBeenCalledTimes(2);
+      expect(r.attachments?.map((a) => a.productId)).toEqual(['p2', 'card:shop_map']);
+    });
+
+    it('ช่องเต็มด้วยรูปตารางแล้ว → ใบใหม่ถูกย้ายไป missing + systemNote (ไม่อ้างว่าส่ง)', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(call('send_rate_card', { cards: ['imported_free_down', 'shop_map'] }))
+        .mockResolvedValueOnce(callWithText('อันนี้ตารางใหม่ค่ะ', 'send_rate_card', { cards: ['imported_free_down'] }))
+        .mockResolvedValue(final('ตารางกับแผนที่ส่งให้แล้วค่ะ สนใจรุ่นไหนคะ'));
+      const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+      sendRateCard.run
+        .mockResolvedValueOnce({
+          sent: [
+            { card: 'imported_free_down', label: 'ตารางผ่อนฟรีดาวน์' },
+            { card: 'shop_map', label: 'วิธีเดินทางมาร้าน' },
+          ],
+          missing: [],
+          images: [
+            { id: 'card:imported_free_down', photoUrl: 'https://s.example.com/i.jpg', productName: 'ตารางผ่อนฟรีดาวน์' },
+            { id: 'card:shop_map', photoUrl: 'https://s.example.com/m.jpg', productName: 'วิธีเดินทางมาร้าน' },
+          ],
+        })
+        // เครื่องมือบอกว่าส่งได้ แต่ช่องแนบของคำตอบเต็มด้วยรูปตาราง 2 ใบแล้ว (สมมติรูปคนละไฟล์)
+        .mockResolvedValueOnce({
+          sent: [{ card: 'used_rate1', label: 'เรท 1' }],
+          missing: [],
+          images: [{ id: 'card:used_rate1', photoUrl: 'https://s.example.com/u1.jpg', productName: 'เรท 1' }],
+        });
+      const r = await svc.generateReply({ text: 'ขอตาราง + แผนที่', roomId: 'r1', customerId: null });
+      expect(chat).toHaveBeenCalledTimes(3);
+      const second = toolMessages(chat.mock.calls[2][0])[1];
+      expect(second.sent).toEqual([]);
+      expect(second.missing).toEqual(['used_rate1']);
+      expect(second.systemNote).toContain('รูป used_rate1 ส่งไม่ได้');
+      expect(r.attachments?.map((a) => a.productId)).toEqual(['card:imported_free_down', 'card:shop_map']);
+    });
+  });
+
+  describe('ตัวเลขไม่มีที่มาในข้อความที่มากับเครื่องมือลงมือแทน (รีวิว TOOLLOOP-3)', () => {
+    it('แก้ตัวครั้งเดียว: คำสั่ง SYSTEM GUARD อยู่ในผลเครื่องมือ (ไม่ใช่ข้อความ user) แล้วใช้คำตอบที่เขียนใหม่', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(
+          callWithText('ผ่อนเดือนละ 9,999 บาทค่ะ', 'send_rate_card', { cards: ['imported_free_down'] }),
+        )
+        .mockResolvedValue(final('อันนี้ตารางผ่อนค่ะ สนใจรุ่นไหนคะ'));
+      const { svc } = await buildWith(chat, 'NO_STOCK');
+      const r = await svc.generateReply({ text: 'ผ่อนเท่าไหร่', roomId: 'r1', customerId: null });
+      expect(chat).toHaveBeenCalledTimes(2);
+      const req = chat.mock.calls[1][0];
+      expect(req.messages[req.messages.length - 1].role).toBe('tool');
+      const note = toolMessages(req)[0].systemNote as string;
+      expect(note).toContain('[SYSTEM GUARD');
+      expect(note).toContain('ยังไม่ถูกส่งถึงลูกค้า');
+      expect(note).toContain('ห้ามเรียกซ้ำ');
+      expect(r.reply).toBe('อันนี้ตารางผ่อนค่ะ สนใจรุ่นไหนคะ');
+    });
+
+    it('ใช้สิทธิ์แก้ตัวไปแล้ว (groundingRetried) → คำตอบรอบถัดไปมั่วอีก = ข้อความสำรอง ไม่แก้ตัวซ้ำ', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(
+          callWithText('ผ่อนเดือนละ 9,999 บาทค่ะ', 'notify_staff', { reason: 'ขอราคาเงินสด' }),
+        )
+        .mockResolvedValue(final('ผ่อนเดือนละ 8,888 บาทค่ะ'));
+      const { svc } = await buildWith(chat, 'NO_STOCK');
+      const r = await svc.generateReply({ text: 'ผ่อนเท่าไหร่', roomId: 'r1', customerId: null });
+      expect(chat).toHaveBeenCalledTimes(2);
+      expect(r.reply).toContain('staff');
+      expect(r.confidence).toBe(0.3);
+    });
+
+    it('แก้ตัวไปแล้วตั้งแต่รอบไม่มีเครื่องมือ → รอบที่มากับ notify_staff มั่วอีก = ข้อความสำรองทันที', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(final('ผ่อนเดือนละ 9,999 บาทค่ะ'))
+        .mockResolvedValueOnce(callWithText('ผ่อนเดือนละ 8,888 บาทค่ะ', 'notify_staff', { reason: 'x' }))
+        .mockResolvedValue(final('ไม่ควรถูกเรียก'));
+      const { svc } = await buildWith(chat, 'NO_STOCK');
+      const r = await svc.generateReply({ text: 'ผ่อนเท่าไหร่', roomId: 'r1', customerId: null });
+      expect(chat).toHaveBeenCalledTimes(2);
+      expect(r.confidence).toBe(0.3);
+    });
+
+    it('ข้อความไม่มีตัวเลขแปลก + รูปบางใบหาย → ไม่มีคำสั่ง GUARD (มีแต่หมายเหตุรูป)', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(callWithText('ส่งตารางให้ดูนะคะ', 'send_rate_card', { cards: ['used_rate1'] }))
+        .mockResolvedValue(final('สนใจรุ่นไหนคะ'));
+      const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+      sendRateCard.run.mockResolvedValueOnce({ sent: [], missing: ['used_rate1'], images: [] });
+      await svc.generateReply({ text: 'ขอตาราง', roomId: 'r1', customerId: null });
+      const note = toolMessages(chat.mock.calls[1][0])[0].systemNote as string;
+      expect(note).not.toContain('SYSTEM GUARD');
+    });
+  });
+
+  describe('รูปส่งไม่ได้ต้องไม่ทำให้ข้อความที่เขียนแล้วหาย — รอบเขียนใหม่ล้ม = ส่งข้อความเดิม (คำตัดสินข้อ 2 · รีวิว SB-V2/SB-V3)', () => {
+    const missingOnly = (card: string) => ({ sent: [], missing: [card], images: [] });
+
+    it('รอบเขียนใหม่ว่าง → ส่งข้อความเดิมที่ผ่านด่านแล้ว (ไม่ใช่ข้อความสำรอง 0.3)', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(
+          callWithText('เรทที่ 1 ดาวน์ตามตารางค่ะ\nสนใจเรทไหนคะ', 'send_rate_card', { cards: ['used_rate1'] }),
+        )
+        .mockResolvedValue(final(''));
+      const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+      sendRateCard.run.mockResolvedValueOnce(missingOnly('used_rate1'));
+      const r = await svc.generateReply({ text: 'ขอเรท', roomId: 'r1', customerId: null });
+      expect(chat).toHaveBeenCalledTimes(2);
+      expect(r.reply).toBe('เรทที่ 1 ดาวน์ตามตารางค่ะ\nสนใจเรทไหนคะ');
+      expect(r.confidence).toBe(0.95);
+      expect(r.attachments).toBeUndefined();
+    });
+
+    it('ส่งข้อความเดิม = ตัดบรรทัดที่อ้างรูปซึ่งไม่ได้แนบ · รูปที่แนบได้ยังอ้างได้และแนบไปด้วย', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(
+          callWithText('แนบแผนที่ให้แล้วนะคะ\nอันนี้ตารางผ่อนค่ะ\nสนใจรุ่นไหนคะ', 'send_rate_card', {
+            cards: ['shop_map', 'used_rate1'],
+          }),
+        )
+        .mockResolvedValue(final(''));
+      const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+      sendRateCard.run.mockResolvedValueOnce({
+        sent: [{ card: 'shop_map', label: 'วิธีเดินทางมาร้าน' }],
+        missing: ['used_rate1'],
+        images: [{ id: 'card:shop_map', photoUrl: 'https://s.example.com/m.jpg', productName: 'วิธีเดินทางมาร้าน' }],
+      });
+      const r = await svc.generateReply({ text: 'ร้านอยู่ไหน ขอตารางด้วย', roomId: 'r1', customerId: null });
+      expect(r.reply).toBe('แนบแผนที่ให้แล้วนะคะ\nสนใจรุ่นไหนคะ');
+      expect(r.attachments?.map((a) => a.productId)).toEqual(['card:shop_map']);
+    });
+
+    it('ข้อความเดิมเหลือแต่คำอ้างรูป → ข้อความสำรองของพนักงานตามเดิม', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(callWithText('ส่งตารางให้ดูนะคะ', 'send_rate_card', { cards: ['used_rate1'] }))
+        .mockResolvedValue(final(''));
+      const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+      sendRateCard.run.mockResolvedValueOnce(missingOnly('used_rate1'));
+      const r = await svc.generateReply({ text: 'ขอตาราง', roomId: 'r1', customerId: null });
+      expect(r.confidence).toBe(0.3);
+      expect(r.reply).toContain('staff');
+    });
+
+    it('รอบเขียนใหม่แต่งตัวเลข → ใช้ข้อความเดิมทันที ไม่เสียรอบแก้ตัวเพิ่ม', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(
+          callWithText('เรทที่ 1 ดาวน์ตามตารางค่ะ\nสนใจเรทไหนคะ', 'send_rate_card', { cards: ['used_rate1'] }),
+        )
+        .mockResolvedValueOnce(final('ผ่อนเดือนละ 9,999 บาทค่ะ'))
+        .mockResolvedValue(final('ไม่ควรถูกเรียก'));
+      const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+      sendRateCard.run.mockResolvedValueOnce(missingOnly('used_rate1'));
+      const r = await svc.generateReply({ text: 'ขอเรท', roomId: 'r1', customerId: null });
+      expect(chat).toHaveBeenCalledTimes(2);
+      expect(r.reply).toBe('เรทที่ 1 ดาวน์ตามตารางค่ะ\nสนใจเรทไหนคะ');
+    });
+
+    it('เรียก send_rate_card โดยไม่ระบุรูป → มีหมายเหตุ (ไม่วนเงียบ) และรอบเขียนใหม่ว่างก็ยังได้ข้อความเดิม', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(
+          callWithText('เรทที่ 1 ดาวน์ตามตารางค่ะ\nสนใจเรทไหนคะ', 'send_rate_card', { cards: [] }),
+        )
+        .mockResolvedValue(final(''));
+      const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+      sendRateCard.run.mockResolvedValueOnce(missingOnly(NO_CARD_REQUESTED));
+      const r = await svc.generateReply({ text: 'ขอเรท', roomId: 'r1', customerId: null });
+      const note = toolMessages(chat.mock.calls[1][0])[0].systemNote as string;
+      expect(note).toContain('ไม่ระบุรูป');
+      expect(note).toContain('ยังไม่ถูกส่งถึงลูกค้า');
+      expect(r.reply).toBe('เรทที่ 1 ดาวน์ตามตารางค่ะ\nสนใจเรทไหนคะ');
+    });
+
+    it('ตัวเลขในข้อความเดิมไม่ผ่านด่าน → ไม่เก็บไว้ส่ง (รอบแก้ตัวว่าง = ข้อความสำรอง)', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(
+          callWithText('ผ่อนเดือนละ 9,999 บาทค่ะ', 'send_rate_card', { cards: ['used_rate1'] }),
+        )
+        .mockResolvedValue(final(''));
+      const { svc, sendRateCard } = await buildWith(chat, 'NO_STOCK');
+      sendRateCard.run.mockResolvedValueOnce(missingOnly('used_rate1'));
+      const r = await svc.generateReply({ text: 'ขอเรท', roomId: 'r1', customerId: null });
+      expect(r.confidence).toBe(0.3);
+      expect(r.reply).not.toContain('9,999');
+    });
+  });
+
+  it('รอบแก้ตัวที่ตกรอบสุดท้าย (toolChoice none) ไม่สั่งให้เรียกเครื่องมือ (รีวิว TOOLLOOP-6)', async () => {
+    const chat = jest.fn();
+    for (let i = 0; i < 4; i++) chat.mockResolvedValueOnce(call('get_installment_rates', { query: 'iPhone 15' }, `t${i}`));
+    chat
+      .mockResolvedValueOnce(final('ผ่อนเดือนละ 7,777 บาทค่ะ')) // hop 4 โดนบล็อก → แก้ตัวที่ hop 5
+      .mockResolvedValue(final('สนใจความจุไหนคะ'));
+    const { svc, getInstallmentRates } = await buildWith(chat, 'LIVE');
+    getInstallmentRates.run.mockResolvedValue({ templates: [] });
+    const r = await svc.generateReply({ text: 'ผ่อน 15', roomId: 'r1', customerId: null });
+    expect(chat).toHaveBeenCalledTimes(6);
+    const lastReq = chat.mock.calls[5][0];
+    expect(lastReq.toolChoice).toBe('none');
+    const guard = lastReq.messages[lastReq.messages.length - 1].content as string;
+    expect(guard).toContain('[SYSTEM GUARD');
+    expect(guard).toContain('รอบนี้เรียกเครื่องมือไม่ได้แล้ว');
+    expect(guard).not.toMatch(/เรียก (calculate_installment|get_installment_rates)/);
+    expect(r.reply).toBe('สนใจความจุไหนคะ');
+  });
+
+  describe('recommend_devices ในโหมดไม่มีสต๊อก (รีวิว TOOLLOOP-4)', () => {
+    const rawResult = {
+      recommended: [
+        {
+          model: 'iPhone 13', monthlyPrice: 1758, downPayment: 2500, inStock: true, unitCount: 2,
+          sampleUnit: { productId: 'p1', batteryHealth: 92, color: 'ม่วงพาสเทล', photoUrl: null },
+        },
+      ],
+      nearMiss: [{ model: 'iPhone 15', monthlyPrice: 3000, inStock: false, unitCount: 0, overBy: { down: 0, monthly: 1000 } }],
+      tradeIn: null,
+    };
+
+    it('NO_STOCK: ไม่อ่านสต๊อก (ignoreStock) + ตัดฟิลด์สต๊อก/สี/แบตก่อนถึงโมเดล', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(call('recommend_devices', { downBudget: 3000, monthlyBudget: '2,000' }))
+        .mockResolvedValue(final('แนะนำ iPhone 13 ค่ะ'));
+      const { svc, recommendDevices } = await buildWith(chat, 'NO_STOCK');
+      recommendDevices.run.mockResolvedValue(rawResult);
+      await svc.generateReply({ text: 'ดาวน์ 3000 ผ่อนไม่เกิน 2000 แนะนำหน่อย', roomId: 'r1', customerId: null });
+      expect(recommendDevices.run).toHaveBeenCalledWith(
+        { currentModel: undefined, downBudget: 3000, monthlyBudget: 2000, preferStorage: undefined },
+        { ignoreStock: true },
+      );
+      const seen = toolMessages(chat.mock.calls[1][0])[0];
+      expect(JSON.stringify(seen)).not.toMatch(/inStock|unitCount|sampleUnit|ม่วงพาสเทล/);
+      expect(seen.stockNote).toContain('โหมดไม่มีสต๊อก');
+      expect(seen.recommended[0].monthlyPrice).toBe(1758);
+    });
+
+    it('LIVE: เรียกแบบเดิม (อาร์กิวเมนต์เดียว) และส่งฟิลด์สต๊อกตามเดิม', async () => {
+      const chat = jest
+        .fn()
+        .mockResolvedValueOnce(call('recommend_devices', { downBudget: 3000 }))
+        .mockResolvedValue(final('แนะนำ iPhone 13 ค่ะ'));
+      const { svc, recommendDevices } = await buildWith(chat, 'LIVE');
+      recommendDevices.run.mockResolvedValue(rawResult);
+      await svc.generateReply({ text: 'ดาวน์ 3000 แนะนำหน่อย', roomId: 'r1', customerId: null });
+      expect(recommendDevices.run.mock.calls[0]).toHaveLength(1);
+      expect(toolMessages(chat.mock.calls[1][0])[0].recommended[0].inStock).toBe(true);
+    });
+  });
+
+  it('ตัวเลขในข้อความที่มากับ list_promotions (เครื่องมือข้อมูล) → วนต่อตามเดิม', async () => {
     const chat = jest
       .fn()
       .mockResolvedValueOnce(callWithText('ขอเช็คเรทให้นะคะ', 'list_promotions', {}))
@@ -1303,17 +1695,19 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
     expect(r.reply).toBe('สนใจความจุไหนคะ');
   });
 
-  it('ตัวเลขในข้อความไม่มีที่มา → ไม่จบทันที วนต่อให้ผ่านด่าน grounding ตามเดิม', async () => {
-    const chat = jest
-      .fn()
-      .mockResolvedValueOnce(
-        callWithText('ผ่อนเดือนละ 9,999 บาทค่ะ', 'send_rate_card', { cards: ['imported_free_down'] }),
-      )
-      .mockResolvedValue(final('อันนี้ตารางผ่อนค่ะ สนใจรุ่นไหนคะ'));
+  it('ข้อความสำรองนอกเวลาทำการไม่สัญญา "สักครู่" (synth C03)', async () => {
+    const chat = jest.fn().mockResolvedValue(final(''));
     const { svc } = await buildWith(chat, 'NO_STOCK');
-    const r = await svc.generateReply({ text: 'ผ่อนเท่าไหร่', roomId: 'r1', customerId: null });
-    expect(chat).toHaveBeenCalledTimes(2);
-    expect(r.reply).toBe('อันนี้ตารางผ่อนค่ะ สนใจรุ่นไหนคะ');
+    const night = await svc.generateReply({
+      text: 'สวัสดี', roomId: 'r1', customerId: null, now: new Date('2026-09-22T14:30:00Z'), // 21:30 น.
+    });
+    expect(night.reply).toBe('ขออนุญาตให้พี่ staff เช็คข้อมูลเพิ่มเติม แล้วตอบกลับช่วงร้านเปิด 10 โมงนะคะ');
+    expect(night.reply).not.toContain('สักครู่');
+    expect(night.confidence).toBe(0.3);
+    const day = await svc.generateReply({
+      text: 'สวัสดี', roomId: 'r1', customerId: null, now: new Date('2026-09-22T05:00:00Z'), // 12:00 น.
+    });
+    expect(day.reply).toBe(STAFF_FALLBACK_REPLY);
   });
 
   it('ตัดอักษรจีนที่หลุดมาในคำตอบ', async () => {
@@ -1321,6 +1715,109 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
     const { svc } = await buildWith(chat, 'NO_STOCK');
     const r = await svc.generateReply({ text: 'สวัสดี', roomId: 'r1', customerId: null });
     expect(r.reply).toBe('ได้เลยค่ะ\niPhone 16 มือสอง');
+  });
+});
+
+describe('ตัวช่วยของลูปเครื่องมือ (แชร์กับ bot-eval)', () => {
+  it('reconcileRateCardResult: ใบที่ไม่อยู่ในช่องแนบย้ายจาก sent ไป missing · ครบแล้วคืนตัวเดิม', () => {
+    const result = {
+      sent: [{ card: 'imported_free_down', label: 'a' }, { card: 'shop_map', label: 'b' }],
+      missing: ['used_rate1'],
+      images: [
+        { id: 'card:imported_free_down', photoUrl: 'https://x/a.jpg', productName: 'a' },
+        { id: 'card:shop_map', photoUrl: 'https://x/b.jpg', productName: 'b' },
+      ],
+    };
+    const attached = new Map([['card:imported_free_down', { productId: 'card:imported_free_down' }]]);
+    expect(reconcileRateCardResult(result, attached)).toEqual({
+      sent: [{ card: 'imported_free_down', label: 'a' }],
+      missing: ['used_rate1', 'shop_map'],
+      images: [{ id: 'card:imported_free_down', photoUrl: 'https://x/a.jpg', productName: 'a' }],
+    });
+    const all = new Map([
+      ['card:imported_free_down', { productId: 'card:imported_free_down' }],
+      ['card:shop_map', { productId: 'card:shop_map' }],
+    ]);
+    expect(reconcileRateCardResult(result, all)).toBe(result);
+    expect(reconcileRateCardResult({ error: 'unknown_tool' }, all)).toEqual({ error: 'unknown_tool' });
+  });
+
+  it('isCleanSideEffectResult: รูปหายแม้ใบเดียว = ไม่สะอาด', () => {
+    expect(isCleanSideEffectResult('send_rate_card', { sent: [{ card: 'a' }], missing: [] })).toBe(true);
+    expect(isCleanSideEffectResult('send_rate_card', { sent: [{ card: 'a' }], missing: ['b'] })).toBe(false);
+    expect(isCleanSideEffectResult('send_rate_card', { sent: [], missing: [] })).toBe(false);
+    expect(isCleanSideEffectResult('notify_staff', { staffNotified: true })).toBe(true);
+  });
+
+  it('withSystemNote ต่อท้ายหมายเหตุเดิม ไม่ทับ', () => {
+    const a = withSystemNote({ sent: [] }, 'หนึ่ง');
+    expect(withSystemNote(a, 'สอง')).toEqual({ sent: [], systemNote: 'หนึ่ง\nสอง' });
+    expect(withSystemNote([1], 'x')).toEqual({ result: [1], systemNote: 'x' });
+  });
+
+  it('groundingGuardNote: NO_STOCK ไม่เอ่ย calculate_installment · รอบสุดท้ายไม่สั่งเรียกเครื่องมือ', () => {
+    const live = groundingGuardNote({ reason: 'r', canCallTools: true, stockMode: 'LIVE', sideEffect: false });
+    expect(live).toContain('เรียก calculate_installment (ของในสต็อก) หรือ get_installment_rates (รับออเดอร์) ก่อน');
+    const ns = groundingGuardNote({ reason: 'r', canCallTools: true, stockMode: 'NO_STOCK', sideEffect: false });
+    expect(ns).toContain('เรียก get_installment_rates ก่อน');
+    expect(ns).not.toContain('calculate_installment');
+    const last = groundingGuardNote({ reason: 'r', canCallTools: false, stockMode: 'LIVE', sideEffect: true });
+    expect(last).not.toMatch(/เรียก (calculate_installment|get_installment_rates)/);
+    expect(last).toContain('ตอบเป็นข้อความอย่างเดียว');
+    expect(last).toContain('เขียนคำตอบทั้งหมดใหม่');
+  });
+
+  it('rateCardMissingNote: ไม่ระบุรูป (NO_CARD_REQUESTED) → ไม่เอ่ยชื่อรูปปลอม แต่ยังสั่งเขียนใหม่', () => {
+    const note = rateCardMissingNote({ missing: [NO_CARD_REQUESTED], sent: [], textWasWritten: true });
+    expect(note).toContain('ไม่ระบุรูป');
+    expect(note).not.toContain(`รูป ${NO_CARD_REQUESTED} ส่งไม่ได้`);
+    expect(note).toContain('เขียนคำตอบทั้งหมดใหม่');
+    const named = rateCardMissingNote({ missing: ['used_rate1'], sent: ['shop_map'], textWasWritten: false });
+    expect(named).toContain('รูป used_rate1 ส่งไม่ได้');
+    expect(named).toContain('รูปที่ถึงลูกค้าแล้ว: shop_map');
+    expect(named).not.toContain('ไม่ระบุรูป');
+  });
+
+  it('stripUnsentImageClaims: ตัดเฉพาะบรรทัดที่อ้างรูปซึ่งไม่ได้แนบ', () => {
+    const text = [
+      'อันนี้ตารางผ่อนค่ะ',
+      'ส่งแผนที่ให้ดูนะคะ',
+      'เดี๋ยวแอดมินส่งรูปเครื่องจริงให้ดูนะคะ',
+      'เรทที่ 1 ดาวน์ตามตารางค่ะ',
+      'ตามตารางนี้ ผ่อน 2,395 x12 ค่ะ',
+      'สนใจรุ่นไหนคะ',
+    ].join('\n');
+    // ไม่มีรูปแนบเลย: ตัดคำอ้างตาราง/แผนที่ · คงคำรับปากของแอดมิน บรรทัดที่มีตัวเลข และบรรทัดที่ไม่อ้างว่าส่ง
+    expect(stripUnsentImageClaims(text, [])).toBe(
+      [
+        'เดี๋ยวแอดมินส่งรูปเครื่องจริงให้ดูนะคะ',
+        'เรทที่ 1 ดาวน์ตามตารางค่ะ',
+        'ตามตารางนี้ ผ่อน 2,395 x12 ค่ะ',
+        'สนใจรุ่นไหนคะ',
+      ].join('\n'),
+    );
+    // แผนที่แนบแล้ว: คำอ้างแผนที่อยู่ได้ · ตารางยังไม่แนบ
+    expect(stripUnsentImageClaims(text, ['shop_map'])).toContain('ส่งแผนที่ให้ดูนะคะ');
+    expect(stripUnsentImageClaims(text, ['shop_map'])).not.toContain('อันนี้ตารางผ่อนค่ะ');
+    // ตารางใดก็ได้แนบแล้ว: คำอ้างตารางอยู่ได้
+    expect(stripUnsentImageClaims(text, ['imported_free_down'])).toContain('อันนี้ตารางผ่อนค่ะ');
+    // "รูป" เฉย ๆ ตัดเมื่อไม่มีรูปแนบเลยสักใบ
+    expect(stripUnsentImageClaims('ส่งรูปให้แล้วค่ะ', [])).toBe('');
+    expect(stripUnsentImageClaims('ส่งรูปให้แล้วค่ะ', ['shop_map'])).toBe('ส่งรูปให้แล้วค่ะ');
+  });
+
+  it('staffFallbackReply ตามเวลาร้าน (เวลาไทย)', () => {
+    expect(staffFallbackReply(new Date('2026-09-22T03:00:00Z'))).toBe(STAFF_FALLBACK_REPLY); // 10:00
+    expect(staffFallbackReply(new Date('2026-09-22T12:00:00Z'))).toContain('ช่วงร้านเปิด 10 โมง'); // 19:00
+    expect(staffFallbackReply(new Date('2026-09-22T19:00:00Z'))).toContain('ช่วงร้านเปิด 10 โมง'); // 02:00
+  });
+
+  it('isBarePromise: เฉพาะคำรับปากสั้น ๆ', () => {
+    expect(isBarePromise('ได้ค่ะ')).toBe(true);
+    expect(isBarePromise('ส่งได้ค่ะ 🙏')).toBe(true);
+    expect(isBarePromise('ยินดีค่ะ 😊')).toBe(false);
+    expect(isBarePromise('ได้ค่ะ เดี๋ยวแอดมินส่งรูปเครื่องจริงให้ดูนะคะ')).toBe(false);
+    expect(isBarePromise('')).toBe(false);
   });
 });
 

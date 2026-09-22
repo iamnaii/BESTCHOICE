@@ -6,6 +6,7 @@ import {
   IChatGateway,
   CHAT_GATEWAY_TOKEN,
 } from '../../chat-engine/interfaces/chat-gateway.interface';
+import { mergeWithBotStaffAttention } from '../../chat-engine/constants/bot-staff-attention';
 import { isChatPlaceholder } from '../../chat-prospects/chat-placeholder';
 import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
 import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
@@ -616,7 +617,13 @@ export class CaptureLeadTool {
       // ห้องถูกผูกกับลูกค้าที่ยังมีชีวิตคนอื่นระหว่างทาง (พนักงานผูกเอง) → ไม่ทับ
       const current = await tx.chatRoom.findUnique({
         where: { id: input.roomId },
-        select: { customerId: true, customer: { select: { deletedAt: true } } },
+        select: {
+          customerId: true,
+          customer: { select: { deletedAt: true } },
+          handoffMode: true,
+          handoffReason: true,
+          handoffTaggedAt: true,
+        },
       });
       const keepBinding =
         !!current?.customerId &&
@@ -630,8 +637,14 @@ export class CaptureLeadTool {
         where: { id: input.roomId },
         data: {
           ...(keepBinding ? {} : { customerId: cId }),
+          // คำขอของบอทที่ยังค้าง (notify_staff) ต่อท้ายไว้ ไม่เขียนทับด้วย 'lead_captured'
+          // — พอ handoffMode = true แล้วไม่มีใคร merge ให้อีก พนักงานจะไม่เห็นว่าบอทขออะไรไว้ (รีวิว RT-X5)
           ...(handoffAfterLead
-            ? { handoffMode: true, handoffReason: 'lead_captured', handoffTaggedAt: new Date() }
+            ? {
+                handoffMode: true,
+                handoffReason: mergeWithBotStaffAttention('lead_captured', current),
+                handoffTaggedAt: new Date(),
+              }
             : {}),
         },
       });

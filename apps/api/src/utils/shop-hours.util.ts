@@ -6,6 +6,12 @@
 export const SHOP_OPEN_HOUR = 10;
 export const SHOP_CLOSE_HOUR = 19;
 
+/**
+ * "10 โมง" — คำเรียกเวลาร้านเปิดในประโยคถึงลูกค้า ("ทีมงานตอบช่วงร้านเปิด 10 โมงนะคะ")
+ * ผูกกับ SHOP_OPEN_HOUR ⇒ ข้อความของบอท/ตัวส่งข้อความเปลี่ยนตามเวลาเปิดร้านที่เดียว
+ */
+export const SHOP_OPEN_LABEL_TH = `${SHOP_OPEN_HOUR} โมง`;
+
 /** ชั่วโมง 0-23 ตามเวลาไทย */
 export function bangkokHour(now: Date): number {
   return new Date(now.getTime() + 7 * 3_600_000).getUTCHours();

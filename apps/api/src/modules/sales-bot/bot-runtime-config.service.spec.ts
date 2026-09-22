@@ -1,4 +1,4 @@
-import { BotRuntimeConfigService, parseRateCards } from './bot-runtime-config.service';
+import { BotRuntimeConfigService, NO_STOCK_PROMPT, parseRateCards } from './bot-runtime-config.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 
 const makePrisma = (rows: { key: string; value: string }[] | Error) =>
@@ -64,5 +64,34 @@ describe('parseRateCards', () => {
     expect(parseRateCards('[]')).toEqual({});
     expect(parseRateCards('')).toEqual({});
     expect(parseRateCards(null)).toEqual({});
+  });
+});
+
+describe('NO_STOCK_PROMPT (2026-09-22 รอบปรับจากแชทจริง)', () => {
+  it('notify_staff ไม่ปิดบอท — ไม่มีคำสั่งเดิมที่ให้บอทหยุด/ห้ามคุยต่อ (คำตัดสินข้อ 1 · รีวิว PROMPT-1)', () => {
+    expect(NO_STOCK_PROMPT).toContain('บอทยังตอบห้องนี้ต่อได้ตามปกติ');
+    expect(NO_STOCK_PROMPT).toContain('บอทคุยต่อได้: ก้อนถัดไปเดินขั้นขายต่อ 1 เรื่องตามปกติ');
+    expect(NO_STOCK_PROMPT).not.toContain('แอดมินคุยต่อเอง');
+    expect(NO_STOCK_PROMPT).not.toContain('เทิร์นนั้นมีแค่ 2 บรรทัดนี้');
+  });
+
+  it('เครื่องไทย/มือ 1 ที่ไม่มีสัญญาณซื้อสด → บอกเรทเลย ไม่ถามเงินสด/ผ่อน (คำตัดสินข้อ 3 · synth C04)', () => {
+    expect(NO_STOCK_PROMPT).toContain('ห้ามถาม "เงินสดหรือผ่อน"');
+    expect(NO_STOCK_PROMPT).toContain('condition: "มือสอง" หรือ "มือ 1"');
+    expect(NO_STOCK_PROMPT).toContain('เสนอเรทแบบ 4B ในเทิร์นนั้นเลย');
+    expect(NO_STOCK_PROMPT).toContain('ขั้น 3 ตัดสินมือ 1/มือสองจากรายการมือ 1 + condition ในตารางเรท');
+    expect(NO_STOCK_PROMPT).toContain('"มีของพร้อมรับที่ร้านค่ะ"');
+  });
+
+  it('การ์ด recommend_devices ห้ามมีแบต/สี/"มีของ" (รีวิว TOOLLOOP-4)', () => {
+    expect(NO_STOCK_PROMPT).toMatch(/recommend_devices .*ห้ามมีแบต%\/สี/);
+  });
+
+  it('ซื้อสด: แจ้งพนักงานโดยไม่ขอชื่อ-เบอร์ซ้อน (synth P20)', () => {
+    expect(NO_STOCK_PROMPT).toContain('เทิร์นนั้นไม่ต้องขอชื่อ-เบอร์');
+  });
+
+  it('เวลาร้านเปิดมาจาก utils/shop-hours (แหล่งเดียว)', () => {
+    expect(NO_STOCK_PROMPT).toContain('แอดมินส่งรูปให้ช่วงร้านเปิด 10 โมงนะคะ');
   });
 });

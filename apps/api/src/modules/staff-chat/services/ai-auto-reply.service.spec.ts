@@ -573,3 +573,70 @@ describe('AiAutoReplyService.getRuntimeStatus', () => {
     expect(status.financeBotSeparatePipeline).toBe(true);
   });
 });
+
+describe('AiAutoReplyService — คำขอของบอทให้พนักงานตามต่อ (notify_staff) ไม่หยุดบอท (2026-09-22)', () => {
+  const pending = '[บอทขอให้พนักงานตามต่อ] iPhone 15 ขอดูรูปเครื่องจริง';
+  let svc: AiAutoReplyService;
+  let prisma: { systemConfig: any; aiAutoReplyLog: any; chatRoom: any };
+
+  beforeEach(() => {
+    prisma = {
+      systemConfig: {
+        findMany: jest.fn().mockResolvedValue([
+          { key: 'ai.autoEnabled', value: 'true' },
+          { key: 'ai.autoChannels', value: '["FACEBOOK"]' },
+          { key: 'ai.autoMaxRepliesPerSession', value: '50' },
+          { key: 'shop_bot_central_branch_id', value: 'branch-1' },
+        ]),
+      },
+      aiAutoReplyLog: { count: jest.fn().mockResolvedValue(0) },
+      chatRoom: { update: jest.fn().mockResolvedValue({}) },
+    };
+    svc = new AiAutoReplyService(
+      { get: () => undefined } as any,
+      prisma as any,
+      { generateReply: jest.fn() } as any,
+      makeLlmRegistryMock() as any,
+      makePersonaMock() as any,
+    );
+  });
+
+  it('ห้องที่บอทขอให้พนักงานตามต่อ (handoffMode=false) → บอทยังตอบข้อความถัดไป', async () => {
+    const room = {
+      id: 'r1',
+      channel: 'FACEBOOK',
+      aiPaused: false,
+      handoffMode: false,
+      handoffReason: pending,
+      handoffTaggedAt: new Date(),
+    };
+    expect(await svc.shouldAutoReply(room)).toBe(true);
+  });
+
+  it('ชนโควต้า 24 ชม. ในห้องที่มีคำขอค้าง → ส่งต่อพนักงานโดยต่อท้ายคำขอเดิม ไม่เขียนทับ', async () => {
+    prisma.aiAutoReplyLog.count.mockResolvedValueOnce(50);
+    const room = {
+      id: 'r1',
+      channel: 'FACEBOOK',
+      aiPaused: false,
+      handoffMode: false,
+      handoffReason: pending,
+      handoffTaggedAt: new Date(),
+    };
+    expect(await svc.shouldAutoReply(room)).toBe(false);
+    expect(prisma.chatRoom.update.mock.calls[0][0].data).toEqual(
+      expect.objectContaining({
+        handoffMode: true,
+        handoffReason: `บอทตอบครบโควต้า 24 ชม. — ส่งต่อพนักงาน · ${pending}`,
+      }),
+    );
+  });
+
+  it('ชนโควต้าในห้องปกติ → เหตุผลเดิมทุกตัวอักษร', async () => {
+    prisma.aiAutoReplyLog.count.mockResolvedValueOnce(50);
+    await svc.shouldAutoReply({ id: 'r1', channel: 'FACEBOOK', aiPaused: false, handoffMode: false });
+    expect(prisma.chatRoom.update.mock.calls[0][0].data.handoffReason).toBe(
+      'บอทตอบครบโควต้า 24 ชม. — ส่งต่อพนักงาน',
+    );
+  });
+});

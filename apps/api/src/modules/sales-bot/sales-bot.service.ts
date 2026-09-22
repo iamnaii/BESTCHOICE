@@ -52,6 +52,29 @@ export interface SalesBotInput {
   sessionNote?: string;
   /** โน้ตเก่ากว่า 48 ชม. — ห้าม seed เลขในโน้ตเป็น grounded (เรทอาจเปลี่ยน ต้องเรียก tool ใหม่) */
   sessionNoteStale?: boolean;
+  /** เวลาปัจจุบัน (เทสส่งค่าคงที่ได้) — ไม่ส่ง = new Date() */
+  now?: Date;
+}
+
+/** เวลาทำการหน้าร้าน (KB store_location_hours: เปิดทุกวัน 10:00-19:00) */
+export const SHOP_OPEN_HOUR = 10;
+export const SHOP_CLOSE_HOUR = 19;
+const TH_DAYS = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+
+/**
+ * "[เวลาร้านตอนนี้: จันทร์ 22/09 21:05 น. · นอกเวลาทำการ (ร้านเปิด 10:00-19:00)]" — เวลาไทยเสมอ
+ * (Cloud Run เป็น UTC) · persona ใช้บรรทัดนี้ตัดสินว่าจะพูด "รอสักครู่/รู้ผลใน 5 นาที" ได้ไหม
+ */
+export function shopClockLine(now: Date): string {
+  const bkk = new Date(now.getTime() + 7 * 3_600_000);
+  const h = bkk.getUTCHours();
+  const hh = String(h).padStart(2, '0');
+  const mm = String(bkk.getUTCMinutes()).padStart(2, '0');
+  const dd = String(bkk.getUTCDate()).padStart(2, '0');
+  const mo = String(bkk.getUTCMonth() + 1).padStart(2, '0');
+  const open = h >= SHOP_OPEN_HOUR && h < SHOP_CLOSE_HOUR;
+  const state = open ? 'ในเวลาทำการ' : 'นอกเวลาทำการ';
+  return `[เวลาร้านตอนนี้: ${TH_DAYS[bkk.getUTCDay()]} ${dd}/${mo} ${hh}:${mm} น. · ${state} (ร้านเปิด ${SHOP_OPEN_HOUR}:00-${SHOP_CLOSE_HOUR}:00) — ข้อความระบบ ลูกค้าไม่เห็น]`;
 }
 
 export type SalesBotAttachment = BotAttachment; // re-export ชื่อเดิมไว้ให้ผู้เรียกอ่านง่าย
@@ -199,7 +222,9 @@ export class SalesBotService {
       ...(input.priorMessages ?? []).map(
         (m): LlmChatMessage => ({ role: m.role, content: m.content }),
       ),
-      { role: 'user', content: input.text },
+      // บอกเวลาร้านตอนนี้ไว้ต้นข้อความล่าสุด (ไม่ใส่ใน system — prompt cache ต้องคงที่) —
+      // เดิมบอทไม่รู้เวลาเลย ตอบตีสองก็ยังสัญญา "รู้ผลใน 5 นาที/รอสักครู่" (พบ 2026-09-22)
+      { role: 'user', content: `${shopClockLine(input.now ?? new Date())}\n${input.text}` },
     ];
 
     const provider = explicitProvider ?? (await this.providerRegistry.getActive());
@@ -397,6 +422,8 @@ export class SalesBotService {
           productId: input.productId ? String(input.productId) : undefined,
           packageChoice: input.packageChoice as 'A' | 'B' | 'C' | undefined,
           productNote: input.productNote ? String(input.productNote) : undefined,
+          // schema ประกาศ visitPlan ไว้แต่เดิมไม่ถูกส่งต่อ ⇒ แผนเข้าร้านของลูกค้าหายทุก lead (พบ 2026-09-22)
+          visitPlan: input.visitPlan ? String(input.visitPlan) : undefined,
           downAmount: Number(input.downAmount ?? 0),
           roomId,
         });

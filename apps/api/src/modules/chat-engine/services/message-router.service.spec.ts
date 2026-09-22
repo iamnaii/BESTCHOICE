@@ -193,6 +193,31 @@ describe('MessageRouterService — replyToken + aiPaused', () => {
     ]);
   }, 10000);
 
+  it('เพจตอบอัตโนมัติข้อความนี้ไปแล้ว (ก่อนเรียก AI) → ไม่เรียก AI ไม่ส่งซ้ำ', async () => {
+    const { router, adapter, aiAutoReply, roomManager } = makeRouter({
+      aiEligible: true,
+      aiResult: { reply: 'มีค่ะ', confidence: 0.95, toolsUsed: [], inputTokens: 1, outputTokens: 1 },
+    });
+    (roomManager as any).hasPageAutoReplySince = jest.fn().mockResolvedValue(true);
+    await router.routeInbound(baseMsg as any);
+    expect(aiAutoReply.autoReply).not.toHaveBeenCalled();
+    expect(adapter.sendMessage).not.toHaveBeenCalled();
+  }, 10000);
+
+  it('echo ข้อความอัตโนมัติมาถึงระหว่างบอทคิด → ไม่ส่งคำตอบ + บันทึกว่าไม่ได้ส่ง', async () => {
+    const { router, adapter, aiAutoReply, roomManager } = makeRouter({
+      aiEligible: true,
+      aiResult: { reply: 'มีค่ะ', confidence: 0.95, toolsUsed: [], inputTokens: 1, outputTokens: 1 },
+    });
+    (roomManager as any).hasPageAutoReplySince = jest.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+    await router.routeInbound(baseMsg as any);
+    expect(aiAutoReply.autoReply).toHaveBeenCalled();
+    expect(adapter.sendMessage).not.toHaveBeenCalled();
+    expect(aiAutoReply.logAutoReply).toHaveBeenCalledWith(
+      expect.objectContaining({ autoSent: false, handoffReason: 'เพจตอบอัตโนมัติข้อความนี้ไปแล้ว' }),
+    );
+  }, 10000);
+
   it('threads the replyToken into the after-hours reply', async () => {
     const { router, adapter } = makeRouter({ afterHours: true });
     await router.routeInbound(baseMsg as any);

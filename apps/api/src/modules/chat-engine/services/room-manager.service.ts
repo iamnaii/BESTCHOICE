@@ -432,6 +432,45 @@ export class RoomManagerService {
    * (ต้อง pause AI) ออกจาก "ข้อความทักทายอัตโนมัติของเพจตอนลูกค้าทักครั้งแรก"
    * (ห้าม pause — ไม่งั้นทุกห้องใหม่โดนปิด AI ตั้งแต่ข้อความแรก)
    */
+  /**
+   * ข้อความตอบกลับอัตโนมัติของเพจ (ตั้งใน Meta เช่น ปุ่มโฆษณา "ฟรีดาวน์มีรุ่นไหนบ้าง?") ตอบลูกค้าไปแล้ว
+   * หลัง `since` หรือยัง — ใช้กันบอทตอบซ้ำข้อความเดียวกัน (2026-09-22: 164/173 ครั้งที่ลูกค้ากดปุ่มโฆษณา
+   * เพจตอบรูปตาราง+สคริปต์ภายใน 10 วิ ผ่าน echo แอปเดียวกับพนักงาน — แยกด้วย app_id ไม่ได้)
+   * รายการคำขึ้นต้นอยู่ที่ SystemConfig `shop_bot_page_autoreply_markers` (JSON array) · ว่าง = ปิดด่านนี้
+   */
+  async hasPageAutoReplySince(roomId: string, since: Date): Promise<boolean> {
+    const markers = await this.getPageAutoReplyMarkers();
+    if (markers.length === 0) return false;
+    const rows = await this.prisma.chatMessage.findMany({
+      where: { roomId, role: MessageRole.STAFF, deletedAt: null, createdAt: { gte: since }, text: { not: null } },
+      select: { text: true },
+      take: 10,
+    });
+    return rows.some((r) => markers.some((m) => (r.text ?? '').trim().startsWith(m)));
+  }
+
+  private autoReplyMarkers: { value: string[]; readAt: number } | null = null;
+
+  private async getPageAutoReplyMarkers(): Promise<string[]> {
+    const now = Date.now();
+    if (this.autoReplyMarkers && now - this.autoReplyMarkers.readAt < 60_000) return this.autoReplyMarkers.value;
+    let value: string[] = [];
+    try {
+      const row = await this.prisma.systemConfig.findFirst({
+        where: { key: 'shop_bot_page_autoreply_markers', deletedAt: null },
+        select: { value: true },
+      });
+      const parsed: unknown = row?.value ? JSON.parse(row.value) : [];
+      value = Array.isArray(parsed)
+        ? parsed.map((x) => String(x ?? '').trim()).filter((x) => x.length >= 4)
+        : [];
+    } catch {
+      value = []; // JSON พัง = ปิดด่าน (บอทตอบตามปกติ) — ไม่ throw บนเส้นทางตอบลูกค้า
+    }
+    this.autoReplyMarkers = { value, readAt: now };
+    return value;
+  }
+
   async hasBotReplied(roomId: string): Promise<boolean> {
     const row = await this.prisma.chatMessage.findFirst({
       where: { roomId, role: MessageRole.BOT, deletedAt: null },

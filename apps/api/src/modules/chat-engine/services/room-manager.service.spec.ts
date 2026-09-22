@@ -770,3 +770,35 @@ describe('RoomManagerService.listDueAppointments — นัดที่ถึง
     expect(args.select.room.select.customer).toEqual({ select: { name: true } });
   });
 });
+
+describe('RoomManagerService.hasPageAutoReplySince — กันบอทตอบซ้ำข้อความอัตโนมัติของเพจ (2026-09-22)', () => {
+  const make = (configValue: string | null, staffTexts: string[]) => {
+    const prisma = {
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(configValue === null ? null : { value: configValue }) },
+      chatMessage: { findMany: jest.fn().mockResolvedValue(staffTexts.map((text) => ({ text }))) },
+    };
+    return { svc: new RoomManagerService(prisma as any, {} as any), prisma };
+  };
+  const since = new Date('2026-09-22T10:00:00Z');
+
+  it('ข้อความพนักงานหลัง since ขึ้นต้นตามรายการ → true', async () => {
+    const { svc, prisma } = make(JSON.stringify(['อันนี้ตารางผ่อนเครื่องนอก']), ['อันนี้ตารางผ่อนเครื่องนอกค่ะ 😊\n\nดาวน์ 0 บาท']);
+    expect(await svc.hasPageAutoReplySince('r1', since)).toBe(true);
+    expect(prisma.chatMessage.findMany.mock.calls[0][0].where).toEqual(
+      expect.objectContaining({ roomId: 'r1', role: 'STAFF', createdAt: { gte: since } }),
+    );
+  });
+
+  it('ข้อความอื่น (เช่นพนักงานพิมพ์เอง/ทักทาย) → false', async () => {
+    const { svc } = make(JSON.stringify(['อันนี้ตารางผ่อนเครื่องนอก']), ['สวัสดีค่ะ ลูกค้าสนใจรุ่นไหนคะ']);
+    expect(await svc.hasPageAutoReplySince('r1', since)).toBe(false);
+  });
+
+  it('ไม่ได้ตั้งรายการ / JSON พัง / คำสั้นเกิน → ปิดด่าน ไม่อ่านแชท', async () => {
+    for (const cfg of [null, '{bad', JSON.stringify(['ab'])]) {
+      const { svc, prisma } = make(cfg, ['อันนี้ตารางผ่อนเครื่องนอกค่ะ']);
+      expect(await svc.hasPageAutoReplySince('r1', since)).toBe(false);
+      expect(prisma.chatMessage.findMany).not.toHaveBeenCalled();
+    }
+  });
+});

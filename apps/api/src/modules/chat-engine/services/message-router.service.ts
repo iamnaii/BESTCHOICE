@@ -187,6 +187,8 @@ export class MessageRouterService {
     }
 
     // 2. Save inbound message
+    // เวลารับข้อความนี้ — ใช้ดูว่าข้อความอัตโนมัติของเพจตอบข้อความนี้ไปแล้วหรือยัง (กันบอทตอบซ้ำ)
+    const inboundAt = new Date();
     await this.roomManager.saveMessage({
       roomId: room.id,
       externalMessageId: message.externalMessageId,
@@ -260,6 +262,12 @@ export class MessageRouterService {
     }
 
     if (this.aiAutoReplyService && (await this.aiAutoReplyService.shouldAutoReply(room))) {
+      // เพจตอบอัตโนมัติไปแล้ว (เช่นปุ่มโฆษณา → รูปตาราง+สคริปต์) — ข้ามข้อความนี้ ไม่เรียก AI
+      // บอทรับช่วงต่อจากข้อความถัดไปของลูกค้า โดยเห็นคำตอบอัตโนมัติในประวัติ
+      if (await this.roomManager.hasPageAutoReplySince?.(room.id, inboundAt)) {
+        this.logger.log(`[AiAutoReply] room=${room.id} skip=pageAutoReplied (before LLM)`);
+        return;
+      }
       // ข้อความไม่มี text (รูป/สติกเกอร์/เสียง/วิดีโอ/ไฟล์) ห้ามส่ง '' เข้า Claude —
       // API ปฏิเสธ text block ว่าง → ลูกค้าเห็น "กำลังพิมพ์" แล้วเงียบ/หลุดไปข้อความยืนยันตัวตน
       // สำคัญสุดกับขั้นรับเอกสาร: ลูกค้าส่งรูปสเตทเม้นท์ = IMAGE → บอทต้องตอบรับแล้วเดินขั้นถัดไป
@@ -289,6 +297,22 @@ export class MessageRouterService {
           const flaggedByBotThisTurn = (result.toolsUsed ?? []).some(
             (t) => t === 'capture_lead' || t === 'handoff_to_human' || t === 'notify_staff',
           );
+          // echo ของข้อความอัตโนมัติอาจมาถึงหลังบอทเริ่มคิด — เช็คซ้ำก่อนส่ง
+          if (await this.roomManager.hasPageAutoReplySince?.(room.id, inboundAt)) {
+            await this.aiAutoReplyService.logAutoReply({
+              roomId: room.id,
+              customerMessage,
+              aiReply: result.reply,
+              confidence: result.confidence,
+              autoSent: false,
+              handoffReason: 'เพจตอบอัตโนมัติข้อความนี้ไปแล้ว',
+              toolsUsed: result.toolsUsed,
+              inputTokens: result.inputTokens,
+              outputTokens: result.outputTokens,
+            });
+            this.logger.log(`[AiAutoReply] room=${room.id} skip=pageAutoReplied (after LLM)`);
+            return;
+          }
           if (!flaggedByBotThisTurn && (fresh?.aiPaused || fresh?.handoffMode)) {
             await this.aiAutoReplyService.logAutoReply({
               roomId: room.id,

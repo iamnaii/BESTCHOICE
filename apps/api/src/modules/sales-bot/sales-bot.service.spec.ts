@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { SalesBotService, redactMediaUrls } from './sales-bot.service';
+import { SalesBotService, redactMediaUrls, shopClockLine } from './sales-bot.service';
 import { SearchProductsTool } from './tools/search-products.tool';
 import { CalculateInstallmentTool } from './tools/calculate-installment.tool';
 import { ListPromotionsTool } from './tools/list-promotions.tool';
@@ -1038,7 +1038,8 @@ describe('SalesBotService', () => {
       const req = chat.mock.calls[0][0];
       expect(req.messages[0]).toEqual({ role: 'user', content: NOTE });
       expect(req.messages[1]).toEqual({ role: 'assistant', content: 'สนใจความจุไหนคะ' });
-      expect(req.messages[2]).toEqual({ role: 'user', content: 'เอา 128 ค่ะ' });
+      // ข้อความล่าสุดมีบรรทัดเวลาร้านนำหน้า (2026-09-22)
+      expect(req.messages[2]).toEqual({ role: 'user', content: expect.stringMatching(/^\[เวลาร้านตอนนี้: .*\]\nเอา 128 ค่ะ$/) });
     });
 
     it('เลขในโน้ต (งบข้ามวัน) นับเป็น grounded — บอททวนได้โดยไม่เรียก tool ไม่โดน block', async () => {
@@ -1072,7 +1073,9 @@ describe('SalesBotService', () => {
       const { svc } = await build(chat);
       await svc.generateReply({ text: 'สวัสดีครับ', roomId: 'r1', customerId: null });
       const req = chat.mock.calls[0][0];
-      expect(req.messages).toEqual([{ role: 'user', content: 'สวัสดีครับ' }]);
+      expect(req.messages).toEqual([
+        { role: 'user', content: expect.stringMatching(/^\[เวลาร้านตอนนี้: .*\]\nสวัสดีครับ$/) },
+      ]);
     });
   });
 });
@@ -1198,5 +1201,19 @@ describe('SalesBotService — โหมดไม่มีสต๊อก / ส�
     expect(notifyStaff.run).toHaveBeenCalledWith({ reason: 'iPhone 15 ขอดูรูปเครื่องจริง', roomId: 'room-9' });
     expect(r.toolsUsed).toEqual(['notify_staff']);
     expect(r.confidence).toBe(0.95);
+  });
+});
+
+describe('shopClockLine — เวลาร้านต่อหน้าข้อความล่าสุด (2026-09-22)', () => {
+  it('เวลาไทย + ในเวลาทำการ', () => {
+    // 2026-09-22 03:05 UTC = 10:05 น. เวลาไทย วันอังคาร
+    expect(shopClockLine(new Date('2026-09-22T03:05:00Z'))).toBe(
+      '[เวลาร้านตอนนี้: อังคาร 22/09 10:05 น. · ในเวลาทำการ (ร้านเปิด 10:00-19:00) — ข้อความระบบ ลูกค้าไม่เห็น]',
+    );
+  });
+
+  it('19:00 ขึ้นไป / ก่อน 10:00 = นอกเวลาทำการ (ข้ามวันตามเวลาไทย)', () => {
+    expect(shopClockLine(new Date('2026-09-22T12:00:00Z'))).toContain('19:00 น. · นอกเวลาทำการ');
+    expect(shopClockLine(new Date('2026-09-22T19:30:00Z'))).toContain('พุธ 23/09 02:30 น. · นอกเวลาทำการ');
   });
 });

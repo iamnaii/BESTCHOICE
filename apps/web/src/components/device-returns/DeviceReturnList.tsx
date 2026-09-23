@@ -14,6 +14,7 @@ import { RejectDeviceReturnDialog } from './RejectDeviceReturnDialog';
 import {
   canCancelDeviceReturn,
   DEVICE_RETURN_CONFIRM_ROLES,
+  DEVICE_RETURN_PREVIEW_ROLES,
   DEVICE_RETURN_KIND_LABEL,
   DEVICE_RETURN_RESEND_ROLES,
   LINE_STATUS_LABEL,
@@ -25,7 +26,11 @@ import {
 } from './types';
 
 interface Props {
-  /** FINANCE กด "ยืนยัน" → parent เปิด RepossessionOverlay โหมดยืนยันด้วยแถวนี้ */
+  /**
+   * FINANCE กด "ยืนยัน" → parent เปิด RepossessionOverlay โหมดยืนยันด้วยแถวนี้ ·
+   * role อื่นกด "ดูยอดปิด" → overlay เดียวกันแบบอ่านอย่างเดียว (คำสั่งเจ้าของ 2026-09-23:
+   * "คนอื่นคำนวณได้ แต่ผู้จัดการอนุมัติทีหลัง" — overlay ซ่อนปุ่มยืนยันเองตาม role)
+   */
   onConfirm: (row: DeviceReturnRow) => void;
 }
 
@@ -45,6 +50,7 @@ export function DeviceReturnList({ onConfirm }: Props) {
   const { user } = useAuth();
   const role = user?.role ?? '';
   const canConfirm = DEVICE_RETURN_CONFIRM_ROLES.includes(role);
+  const canPreview = DEVICE_RETURN_PREVIEW_ROLES.includes(role);
   const canResend = DEVICE_RETURN_RESEND_ROLES.includes(role);
   const [rejectTarget, setRejectTarget] = useState<DeviceReturnRow | null>(null);
   const [cancelTarget, setCancelTarget] = useState<DeviceReturnRow | null>(null);
@@ -208,6 +214,16 @@ export function DeviceReturnList({ onConfirm }: Props) {
                       </td>
                       <td className="px-4 py-2 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-3">
+                          {canPreview && !canConfirm && (
+                            <button
+                              type="button"
+                              onClick={() => onConfirm(r)}
+                              title="ดูตัวเลขยอดปิด/กำไรขาดทุน — ยืนยันได้เฉพาะเจ้าของ / ผจก.การเงิน"
+                              className="px-3 py-1.5 border border-input rounded-lg text-sm font-medium text-foreground hover:bg-accent transition-colors"
+                            >
+                              ดูยอดปิด
+                            </button>
+                          )}
                           {canConfirm && (
                             <>
                               <button

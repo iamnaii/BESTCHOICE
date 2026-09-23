@@ -24,6 +24,7 @@ import {
   computeDeviationPct,
   formatDeviationLabel,
   DEVICE_RETURN_CONFIRM_ROLES,
+  DEVICE_RETURN_PREVIEW_ROLES,
   DEVICE_RETURN_KIND_LABEL,
   DEVICE_RETURN_STATUS_LABEL,
   LINE_STATUS_LABEL,
@@ -97,8 +98,6 @@ interface RepoPreview {
   } | null;
 }
 
-const PREVIEW_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
-
 const LINE_BADGE: Record<LineNotifyStatus, 'success' | 'destructive' | 'warning'> = {
   SENT: 'success',
   FAILED: 'destructive',
@@ -134,7 +133,8 @@ const inputClass =
  * ข้อมูลใบ (เกรด/ราคาประเมิน/เหตุผล/สาขา) อ่านอย่างเดียวจากใบที่สาขาบันทึก; FINANCE แก้ได้เฉพาะ
  * วันที่ลงบัญชี + ส่วนลดยอดปิด. ยืนยัน = `POST /device-returns/:id/confirm` (server เรียก
  * `RepossessionsService.createInTx` — ขา Dr JP5 = 11-2107 stamp DEVICE_RETURN เสมอ).
- * Roles: ยืนยัน/ส่งกลับ = OWNER / FINANCE_MANAGER; preview = OWNER / BM / FM.
+ * Roles: ยืนยัน/ส่งกลับ = OWNER / FINANCE_MANAGER; preview = ทุก role (เจ้าของ 2026-09-23 —
+ * "คนอื่นคำนวณได้ แต่ผู้จัดการอนุมัติทีหลัง"; role ที่ยืนยันไม่ได้เห็นตัวเลขแบบอ่านอย่างเดียว).
  */
 export function RepossessionOverlay({
   deviceReturnId,
@@ -147,7 +147,7 @@ export function RepossessionOverlay({
 }: Props) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const canPreview = PREVIEW_ROLES.includes(user?.role ?? '');
+  const canPreview = DEVICE_RETURN_PREVIEW_ROLES.includes(user?.role ?? '');
   const canConfirm = DEVICE_RETURN_CONFIRM_ROLES.includes(user?.role ?? '');
 
   const [discountPct, setDiscountPct] = useState('50');
@@ -499,7 +499,7 @@ export function RepossessionOverlay({
             </div>
             {!canPreview ? (
               <div className="py-6 text-center text-sm leading-snug text-muted-foreground">
-                ดูตัวอย่าง P&L ได้เฉพาะ OWNER / ผจก.สาขา / ผจก.การเงิน
+                บัญชีนี้ไม่มีสิทธิ์ดูตัวอย่าง P&L
               </div>
             ) : previewFailed ? (
               <div

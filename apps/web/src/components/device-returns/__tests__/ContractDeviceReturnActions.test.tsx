@@ -15,6 +15,13 @@ vi.mock('../DeviceReturnIntakeDialog', () => ({
   DeviceReturnIntakeDialog: (p: { open: boolean; initialContractId?: string }) =>
     p.open ? <div data-testid="intake-dialog">intake:{p.initialContractId}</div> : null,
 }));
+vi.mock('@/pages/PaymentsPage/components/RepossessionOverlay', () => ({
+  RepossessionOverlay: (p: { deviceReturnId: string; contractNumber: string; branchName: string }) => (
+    <div data-testid="repo-overlay">
+      overlay:{p.deviceReturnId}:{p.contractNumber}:{p.branchName}
+    </div>
+  ),
+}));
 
 import { ContractDeviceReturnActions } from '../ContractDeviceReturnActions';
 
@@ -22,7 +29,8 @@ const pendingRow = {
   id: 'dr-1',
   docNumber: 'DR-20260920-0007',
   status: 'PENDING_CONFIRM',
-  contract: { id: 'c-1', contractNumber: 'TEST-1' },
+  receivingBranch: { id: 'b1', name: 'ลพบุรี' },
+  contract: { id: 'c-1', contractNumber: 'TEST-1', customer: { id: 'cu1', name: 'สมชาย' } },
 };
 
 function routeApi(pending: unknown[]) {
@@ -57,6 +65,21 @@ describe('ContractDeviceReturnActions', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'รับเครื่องคืน' })).not.toBeInTheDocument();
   });
+
+  // คำสั่งเจ้าของ 2026-09-23: "คนอื่นคำนวณได้ แต่ผู้จัดการอนุมัติทีหลัง" — ทุก role
+  // (รวม SALES ที่ไม่มีทางไปหน้า /repossessions) เปิดตัวเลขยอดปิดจากหน้าสัญญาได้
+  it.each(['SALES', 'ACCOUNTANT', 'BRANCH_MANAGER', 'OWNER'])(
+    '%s + มีใบ PENDING_CONFIRM → ปุ่ม ดูยอดปิด เปิด overlay ของใบนั้น',
+    async (role) => {
+      routeApi([pendingRow]);
+      render(
+        <ContractDeviceReturnActions contractId="c-1" contractStatus="TERMINATED" role={role} />,
+        { wrapper },
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'ดูยอดปิด' }));
+      expect(screen.getByTestId('repo-overlay')).toHaveTextContent('overlay:dr-1:TEST-1:ลพบุรี');
+    },
+  );
 
   it.each([
     ['OWNER', 'ACTIVE'],

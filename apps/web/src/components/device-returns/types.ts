@@ -166,6 +166,18 @@ export const LINE_STATUS_LABEL: Record<LineNotifyStatus, string> = {
 export const DEVICE_RETURN_CREATE_ROLES = ['OWNER', 'BRANCH_MANAGER', 'SALES'];
 /** `POST /device-returns/:id/confirm` + `/reject` */
 export const DEVICE_RETURN_CONFIRM_ROLES = ['OWNER', 'FINANCE_MANAGER'];
+/**
+ * ดูตัวเลขยอดปิด/P&L ก่อนยืนยัน = `GET /repossessions/preview/:contractId` — ทุก role
+ * (คำสั่งเจ้าของ 2026-09-23: "คนอื่นคำนวณได้ แต่ผู้จัดการอนุมัติทีหลัง"); ยืนยันยัง
+ * DEVICE_RETURN_CONFIRM_ROLES เท่านั้น
+ */
+export const DEVICE_RETURN_PREVIEW_ROLES = [
+  'OWNER',
+  'FINANCE_MANAGER',
+  'BRANCH_MANAGER',
+  'ACCOUNTANT',
+  'SALES',
+];
 /** `POST /device-returns/:id/resend-line` */
 export const DEVICE_RETURN_RESEND_ROLES = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
 /** สถานะสัญญาที่รับเครื่องคืนได้ (spec §5.1 ข้อ 2) — server เป็นผู้ตัดสินจริงผ่าน preview.eligibility */

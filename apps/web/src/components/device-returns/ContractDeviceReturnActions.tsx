@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { PackageX } from 'lucide-react';
+import { Calculator, PackageX } from 'lucide-react';
 import api from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
+import { RepossessionOverlay } from '@/pages/PaymentsPage/components/RepossessionOverlay';
 import { DeviceReturnIntakeDialog } from './DeviceReturnIntakeDialog';
 import {
   DEVICE_RETURN_CREATE_ROLES,
   DEVICE_RETURN_INTAKE_ELIGIBLE_STATUSES,
+  DEVICE_RETURN_PREVIEW_ROLES,
   type DeviceReturnListResponse,
 } from './types';
 
@@ -23,8 +25,12 @@ interface Props {
  */
 export function ContractDeviceReturnActions({ contractId, contractStatus, role }: Props) {
   const [intakeOpen, setIntakeOpen] = useState(false);
+  // "ดูยอดปิด" (คำสั่งเจ้าของ 2026-09-23: คนอื่นคำนวณได้ ผู้จัดการอนุมัติทีหลัง) — overlay
+  // ตัวเดียวกับหน้ายึดคืน ซ่อนปุ่มยืนยันเองเมื่อ role ไม่ใช่ OWNER/FM
+  const [previewOpen, setPreviewOpen] = useState(false);
   const eligible = DEVICE_RETURN_INTAKE_ELIGIBLE_STATUSES.includes(contractStatus);
   const canCreate = DEVICE_RETURN_CREATE_ROLES.includes(role);
+  const canPreview = DEVICE_RETURN_PREVIEW_ROLES.includes(role);
 
   const { data, isPending, isError, isFetching, refetch } = useQuery<DeviceReturnListResponse>({
     queryKey: ['device-returns', 'by-contract', contractId, 'PENDING_CONFIRM'],
@@ -65,15 +71,42 @@ export function ContractDeviceReturnActions({ contractId, contractStatus, role }
 
   if (pending) {
     return (
-      <Badge
-        variant="warning"
-        appearance="light"
-        size="lg"
-        title={`ใบ ${pending.docNumber} รอ FINANCE ยืนยัน — ยืนยันได้ที่หน้า รับเครื่องคืน / ยึดคืน`}
-      >
-        <PackageX className="size-3.5" />
-        รับเครื่องคืนแล้ว รอ FINANCE ยืนยัน {pending.docNumber}
-      </Badge>
+      <div className="inline-flex flex-wrap items-center gap-2">
+        <Badge
+          variant="warning"
+          appearance="light"
+          size="lg"
+          title={`ใบ ${pending.docNumber} รอ FINANCE ยืนยัน — ยืนยันได้ที่หน้า รับเครื่องคืน / ยึดคืน`}
+        >
+          <PackageX className="size-3.5" />
+          รับเครื่องคืนแล้ว รอ FINANCE ยืนยัน {pending.docNumber}
+        </Badge>
+        {canPreview && (
+          <button
+            type="button"
+            onClick={() => setPreviewOpen(true)}
+            title="ดูตัวเลขยอดปิด/กำไรขาดทุน — ยืนยันได้เฉพาะเจ้าของ / ผจก.การเงิน"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm leading-snug border border-input rounded-lg text-foreground hover:bg-accent"
+          >
+            <Calculator className="size-4" />
+            ดูยอดปิด
+          </button>
+        )}
+        {canPreview && previewOpen && (
+          <RepossessionOverlay
+            deviceReturnId={pending.id}
+            contractId={pending.contract.id}
+            contractNumber={pending.contract.contractNumber}
+            customerName={pending.contract.customer.name}
+            branchName={pending.receivingBranch.name}
+            onClose={() => setPreviewOpen(false)}
+            onSuccess={() => {
+              setPreviewOpen(false);
+              void refetch();
+            }}
+          />
+        )}
+      </div>
     );
   }
 

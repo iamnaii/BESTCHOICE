@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { AfterSalesLookupService } from '../services/after-sales-lookup.service';
 
 describe('AfterSalesLookupService.lookup', () => {
@@ -101,5 +102,64 @@ describe('AfterSalesLookupService.lookup', () => {
     expect(result.outcomes[0].outcome).toBe('REPAIR');
     expect(defect.checkEligibility).not.toHaveBeenCalled();
     expect(photos.getPhotos).toHaveBeenCalledWith('product-2');
+  });
+
+  it('พบ+มีใบขายสด ไม่มีสัญญา → source CASH_SALE ไม่เรียก checkEligibility แต่เรียก getPhotos', async () => {
+    repair.lookupByImei.mockResolvedValue({
+      found: true,
+      product: {
+        id: 'product-3',
+        brand: 'Apple',
+        model: 'iPhone 14',
+        storage: '256GB',
+        imeiSerial: '359555666777888',
+        category: 'PHONE_USED',
+      },
+      sale: { id: 's1', saleType: 'CASH' },
+      customer: { id: 'customer-3', name: 'คุณเงินสด', phone: '0899999999' },
+      contract: null,
+      warrantyStatus: 'IN_7DAY_DEFECT',
+      daysRemainingIn7Day: 3,
+      purchasedAt: new Date('2026-09-21T00:00:00.000Z'),
+      shopWarrantyEndDate: null,
+      manufacturerWarrantyEndDate: null,
+    });
+
+    const result = await svc.lookup({ imei: '359555666777888' }, user);
+
+    expect(result.source).toBe('CASH_SALE');
+    expect(result.warranty.status).toBe('IN_7DAY_DEFECT');
+    expect(defect.checkEligibility).not.toHaveBeenCalled();
+    expect(photos.getPhotos).toHaveBeenCalledWith('product-3');
+    expect(result.outcomes.map((o) => o.outcome)).toEqual(['REPAIR', 'CASH_SAME_MODEL_EXCHANGE']);
+  });
+
+  it('R10: checkEligibility throw ไม่ทำให้ lookup ทั้งก้อนล้ม — ปิด SAME_MODEL_EXCHANGE พร้อมเหตุผลจาก error', async () => {
+    repair.lookupByImei.mockResolvedValue({
+      found: true,
+      product: {
+        id: 'product-4',
+        brand: 'Apple',
+        model: 'iPhone 13',
+        storage: '128GB',
+        imeiSerial: '359123456789099',
+        category: 'PHONE_USED',
+      },
+      sale: null,
+      customer: { id: 'customer-4', name: 'คุณผ่อน', phone: '0888888888' },
+      contract: { id: 'contract-4', contractNumber: 'CT-0004', status: 'ACTIVE' },
+      warrantyStatus: 'IN_7DAY_DEFECT',
+      daysRemainingIn7Day: 2,
+      purchasedAt: new Date('2026-09-20T00:00:00.000Z'),
+      shopWarrantyEndDate: null,
+      manufacturerWarrantyEndDate: null,
+    });
+    defect.checkEligibility.mockRejectedValue(new NotFoundException('ไม่พบสัญญา'));
+
+    const result = await svc.lookup({ imei: '359123456789099' }, user);
+
+    expect(result.source).toBe('INSTALLMENT_CONTRACT');
+    const sameModel = result.outcomes.find((o) => o.outcome === 'SAME_MODEL_EXCHANGE')!;
+    expect(sameModel).toMatchObject({ enabled: false, reason: 'ไม่พบสัญญา' });
   });
 });

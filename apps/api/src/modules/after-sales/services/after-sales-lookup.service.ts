@@ -92,9 +92,20 @@ export class AfterSalesLookupService {
     let defectEligible = false;
     let defectReasons: string[] = [];
     if (r.contract) {
-      const e = await this.defect.checkEligibility(r.contract.id);
-      defectEligible = e.eligible;
-      defectReasons = e.reasons;
+      // R10: checkEligibility can throw (e.g. NotFoundException('ไม่พบสัญญา') on a
+      // race where the contract was deleted between lookupByImei and here) — a
+      // throw here must not fail this whole read-only lookup. Fail closed:
+      // treat as ineligible and surface the error message as the disabled reason.
+      try {
+        const e = await this.defect.checkEligibility(r.contract.id);
+        defectEligible = e.eligible;
+        defectReasons = e.reasons;
+      } catch (err) {
+        defectEligible = false;
+        defectReasons = [
+          err instanceof Error && err.message ? err.message : 'ตรวจสิทธิ์เปลี่ยนรุ่นเดิมไม่ได้',
+        ];
+      }
     }
     const photos = await this.photos.getPhotos(r.product.id);
     const openCase = await this.prisma.afterSalesCase.findFirst({

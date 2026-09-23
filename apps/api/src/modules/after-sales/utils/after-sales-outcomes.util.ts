@@ -50,26 +50,48 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
   }
 
   // INSTALLMENT_CONTRACT
-  const sameModel: OutcomeOption = i.defectEligible
-    ? {
-        outcome: 'SAME_MODEL_EXCHANGE',
-        enabled: true,
-        implemented: false,
-        note: 'ผจก.สาขา ต้องยืนยัน',
-      }
-    : managerUp
-      ? {
-          outcome: 'SAME_MODEL_EXCHANGE',
-          enabled: true,
-          implemented: false,
-          note: 'ข้ามกรอบ 7 วัน — ผจก. ต้องยืนยัน',
-        }
-      : {
-          outcome: 'SAME_MODEL_EXCHANGE',
-          enabled: false,
-          implemented: false,
-          reason: i.defectReasons[0] ?? 'ไม่เข้าเงื่อนไขเปลี่ยนรุ่นเดิม',
-        };
+  // R9: SAME_MODEL_EXCHANGE must respect the same warranty/contract gates as
+  // PRICED_EXCHANGE before falling through to defectEligible/managerUp — a
+  // BM/OWNER must not be able to enable it on a manufacturer-warranty device
+  // or a non-active/overdue contract (spec row "ผ่อน ในประกันศูนย์ → ซ่อม
+  // เคลมศูนย์ เท่านั้น").
+  let sameModel: OutcomeOption;
+  if (i.warrantyStatus === 'IN_MANUFACTURER') {
+    sameModel = {
+      outcome: 'SAME_MODEL_EXCHANGE',
+      enabled: false,
+      implemented: false,
+      reason: 'อยู่ในประกันศูนย์ — ส่งเคลมก่อน',
+    };
+  } else if (i.contractStatus !== 'ACTIVE' && i.contractStatus !== 'OVERDUE') {
+    sameModel = {
+      outcome: 'SAME_MODEL_EXCHANGE',
+      enabled: false,
+      implemented: false,
+      reason: 'สัญญาไม่ได้อยู่ในสถานะเปิดใช้',
+    };
+  } else if (i.defectEligible) {
+    sameModel = {
+      outcome: 'SAME_MODEL_EXCHANGE',
+      enabled: true,
+      implemented: false,
+      note: 'ผจก.สาขา ต้องยืนยัน',
+    };
+  } else if (managerUp) {
+    sameModel = {
+      outcome: 'SAME_MODEL_EXCHANGE',
+      enabled: true,
+      implemented: false,
+      note: 'ข้ามกรอบ 7 วัน — ผจก. ต้องยืนยัน',
+    };
+  } else {
+    sameModel = {
+      outcome: 'SAME_MODEL_EXCHANGE',
+      enabled: false,
+      implemented: false,
+      reason: i.defectReasons[0] ?? 'ไม่เข้าเงื่อนไขเปลี่ยนรุ่นเดิม',
+    };
+  }
 
   let priced: OutcomeOption;
   if (i.contractStatus !== 'ACTIVE') {
@@ -92,6 +114,15 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
       enabled: true,
       implemented: false,
       note: 'มีขั้นอนุมัติตามราคารับซื้อ',
+    };
+  } else if (i.warrantyStatus === 'OUT_OF_WARRANTY') {
+    // R11: OUT_OF_WARRANTY gets its own disabled reason — distinct from the
+    // "still within a warranty window but past 7 days" (IN_SHOP_WARRANTY) case.
+    priced = {
+      outcome: 'PRICED_EXCHANGE',
+      enabled: false,
+      implemented: false,
+      reason: 'หมดประกันแล้ว — ผจก.สาขาหรือเจ้าของยื่นได้',
     };
   } else {
     priced = {

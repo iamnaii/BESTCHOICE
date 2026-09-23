@@ -68,6 +68,26 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
       enabled: false,
       reason: 'อยู่ในประกันศูนย์ — ส่งเคลมก่อน',
     });
+    // R9: SAME_MODEL_EXCHANGE must be gated the same way — even OWNER cannot
+    // enable it on a manufacturer-warranty device.
+    expect(pick(o, 'SAME_MODEL_EXCHANGE')).toMatchObject({
+      enabled: false,
+      reason: 'อยู่ในประกันศูนย์ — ส่งเคลมก่อน',
+    });
+  });
+
+  it('R9: สัญญาไม่ได้อยู่ในสถานะเปิดใช้ → เปลี่ยนรุ่นเดิมปิดแม้ viewer เป็น OWNER', () => {
+    const o = computeOutcomes({
+      ...base,
+      contractStatus: 'CLOSED',
+      defectEligible: false,
+      defectReasons: [],
+      viewerRole: 'OWNER',
+    });
+    expect(pick(o, 'SAME_MODEL_EXCHANGE')).toMatchObject({
+      enabled: false,
+      reason: 'สัญญาไม่ได้อยู่ในสถานะเปิดใช้',
+    });
   });
 
   it('ผ่อน หมดประกัน: ซ่อมลูกค้าจ่าย · มีราคาได้ (BM)', () => {
@@ -81,6 +101,20 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
     });
     expect(pick(o, 'REPAIR').payerDefault).toBe('CUSTOMER');
     expect(pick(o, 'PRICED_EXCHANGE').enabled).toBe(true);
+  });
+
+  it('R11: ผ่อน หมดประกัน (SALES) → เปลี่ยนแบบมีราคาปิดด้วยเหตุผลหมดประกัน ไม่ใช่ข้อความ 7 วัน', () => {
+    const o = computeOutcomes({
+      ...base,
+      warrantyStatus: 'OUT_OF_WARRANTY',
+      daysRemainingIn7Day: 0,
+      defectEligible: false,
+      defectReasons: ['เกินกรอบ 7 วัน'],
+    });
+    expect(pick(o, 'PRICED_EXCHANGE')).toMatchObject({
+      enabled: false,
+      reason: 'หมดประกันแล้ว — ผจก.สาขาหรือเจ้าของยื่นได้',
+    });
   });
 
   it('ขายสด ≤7 วัน: ซ่อม + เปลี่ยนรุ่นเดิม(ขายสด) แต่ปิดรอกติกาบัญชี · ไม่มีเปลี่ยนแบบมีราคา', () => {

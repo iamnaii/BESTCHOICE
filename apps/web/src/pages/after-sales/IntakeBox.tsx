@@ -65,7 +65,13 @@ export default function IntakeBox({ onOpenCase }: IntakeBoxProps) {
         กรอกเลข IMEI หรือเลขเครื่อง — ระบบจะบอกว่าอยู่ในประกันแบบไหนและทำอะไรได้บ้าง
       </p>
 
-      <div className="mt-3 flex flex-col gap-2.5 sm:flex-row">
+      <form
+        className="mt-3 flex flex-col gap-2.5 sm:flex-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (trimmed && !lookup.isPending) lookup.mutate(trimmed);
+        }}
+      >
         <input
           ref={inputRef}
           id="after-sales-imei"
@@ -77,12 +83,11 @@ export default function IntakeBox({ onOpenCase }: IntakeBoxProps) {
         />
         <div className="flex gap-2.5">
           <Button
-            type="button"
+            type="submit"
             variant="outline"
             size="lg"
             className="h-14 flex-1 sm:flex-none"
             disabled={!trimmed || lookup.isPending}
-            onClick={() => lookup.mutate(trimmed)}
           >
             เช็คประกัน
           </Button>
@@ -107,7 +112,7 @@ export default function IntakeBox({ onOpenCase }: IntakeBoxProps) {
             </Button>
           )}
         </div>
-      </div>
+      </form>
 
       {lookup.isError && (
         <p role="alert" className="mt-3 text-sm leading-snug text-destructive">

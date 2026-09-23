@@ -92,7 +92,10 @@ export default function AfterSalesPage() {
       <IntakeBox />
 
       {query.data?.summary && (
-        <SummaryStrip summary={query.data.summary} showMoney={user?.role !== 'SALES'} />
+        <SummaryStrip
+          summary={query.data.summary}
+          showMoney={query.data.summary.repairCostShop != null}
+        />
       )}
 
       <div className="flex flex-wrap items-center gap-2">
@@ -113,19 +116,19 @@ export default function AfterSalesPage() {
               {TAB_LABEL[t]}
             </button>
           ))}
-          <button
-            type="button"
-            aria-pressed={staleOnly}
-            onClick={() => setStaleOnly((v) => !v)}
-            className={`min-h-11 rounded-full border px-3.5 text-sm leading-snug ${
-              staleOnly
-                ? 'border-warning bg-warning/10 font-semibold text-warning-strong'
-                : 'border-border bg-card text-foreground hover:bg-accent'
-            }`}
-          >
-            ค้างนาน
-          </button>
         </div>
+        <button
+          type="button"
+          aria-pressed={staleOnly}
+          onClick={() => setStaleOnly((v) => !v)}
+          className={`min-h-11 rounded-full border px-3.5 text-sm leading-snug ${
+            staleOnly
+              ? 'border-warning bg-warning/10 font-semibold text-warning-strong'
+              : 'border-border bg-card text-foreground hover:bg-accent'
+          }`}
+        >
+          ค้างนาน
+        </button>
         <input
           type="search"
           value={search}
@@ -150,12 +153,13 @@ export default function AfterSalesPage() {
                 แสดง 500 เคสแรก — ค้นหาหรือกรองให้แคบลง
               </p>
             )}
-            <p className="text-xs leading-snug text-muted-foreground">
-              ป้ายค้างนาน: ส่งซ่อมเกิน 14 วัน · รอรับเกิน 7 วัน · รออนุมัติเกิน 2 วัน
-            </p>
           </div>
         )}
       </QueryBoundary>
+
+      <p className="text-xs leading-snug text-muted-foreground">
+        ป้ายค้างนาน: ส่งซ่อมเกิน 14 วัน · รอรับเกิน 7 วัน · รออนุมัติเกิน 2 วัน
+      </p>
     </div>
   );
 }

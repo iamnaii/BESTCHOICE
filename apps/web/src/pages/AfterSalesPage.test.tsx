@@ -244,4 +244,17 @@ describe('AfterSalesPage — หน้าหลัก หลังการข�
     const continueLink = screen.getByRole('link', { name: 'แจ้งปัญหาเครื่อง ต่อเลย' });
     expect(continueLink).toHaveAttribute('href', '/after-sales/case-9');
   });
+
+  it('ผจก.สาขา (BRANCH_MANAGER): summary.repairCostShop เป็น null (ไม่ใช่ role เงิน) → ไม่เห็น "ค่าซ่อม" แต่ยังเห็นแท็บ "รออนุมัติ" (อนุมัติได้)', async () => {
+    auth.user = { id: 'u3', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
+    mockGet({
+      list: listResponse({ summary: summary({ repairCostShop: null, repairCostCustomer: null }) }),
+    });
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    expect(await screen.findByText('เคลมศูนย์เดือนนี้')).toBeInTheDocument();
+    expect(screen.queryByText(/ค่าซ่อม/)).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'รออนุมัติ' })).toBeInTheDocument();
+  });
 });

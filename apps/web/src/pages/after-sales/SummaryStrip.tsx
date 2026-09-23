@@ -44,7 +44,7 @@ export default function SummaryStrip({ summary, showMoney }: SummaryStripProps) 
         sub="เกินกรอบเวลาของขั้นตอนนั้น"
       />
       <Cell label="รออนุมัติ" value={summary.awaitingApproval} sub="รอผจก. / เจ้าของตัดสิน" />
-      {showMoney ? (
+      {showMoney && summary.repairCostShop != null ? (
         <Cell
           label="เดือนนี้ ค่าซ่อม"
           value={`${baht(repairCostTotal)} ฿`}

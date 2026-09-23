@@ -187,12 +187,40 @@ export const PAYER_LABEL: Record<Payer, string> = {
   CUSTOMER: 'ลูกค้าจ่าย',
   SUPPLIER_CLAIM: 'เคลมศูนย์',
 };
+export type WarrantyStatus =
+  | 'IN_7DAY_DEFECT'
+  | 'IN_SHOP_WARRANTY'
+  | 'IN_MANUFACTURER'
+  | 'OUT_OF_WARRANTY'
+  | 'WALK_IN';
+/** รายการ WarrantyStatus ทั้งหมด — ใช้ทดสอบว่า WARRANTY_LABEL/WARRANTY_TILE มีครบทุกค่า */
+export const WARRANTY_STATUSES: WarrantyStatus[] = [
+  'IN_7DAY_DEFECT',
+  'IN_SHOP_WARRANTY',
+  'IN_MANUFACTURER',
+  'OUT_OF_WARRANTY',
+  'WALK_IN',
+];
+// Record<string, string> (ไม่ใช่ Record<WarrantyStatus, string>) เพราะ LookupResult['warranty']['status']
+// มาจาก API เป็น string ทั่วไป — indexing ด้วย WarrantyStatus ที่แคบกว่าจะพัง TS ที่ทุกจุดเรียกใช้
+// (`WARRANTY_LABEL[result.warranty.status]`). ความครบถ้วนของทั้งสองแมพตรวจด้วยเทสต์แทน (ดู
+// after-sales.test.ts + WARRANTY_STATUSES ด้านบน)
 export const WARRANTY_LABEL: Record<string, string> = {
   IN_7DAY_DEFECT: 'อยู่ในกรอบ 7 วัน',
   IN_SHOP_WARRANTY: 'ในประกันร้าน',
   IN_MANUFACTURER: 'ในประกันศูนย์',
   OUT_OF_WARRANTY: 'หมดประกัน',
   WALK_IN: 'ไม่ได้ซื้อจากร้าน',
+};
+/** ป้ายสถานะประกัน (โทเคนเท่านั้น) — ใช้ร่วมกันทั้ง IntakeBox และ AfterSalesNewPage
+ * (ไม่ยืมสี STAGE_TILE ตรงๆ เพราะประกันไม่ใช่ขั้นตอนของเคส — คงกฎ "ห้ามบอกสถานะด้วยสีอย่างเดียว"
+ * ด้วยข้อความในป้ายเอง) */
+export const WARRANTY_TILE: Record<string, string> = {
+  IN_7DAY_DEFECT: 'border-warning/40 bg-warning/10 text-warning-strong',
+  IN_SHOP_WARRANTY: 'border-primary/20 bg-primary/10 text-primary',
+  IN_MANUFACTURER: 'border-primary/20 bg-primary/10 text-primary',
+  OUT_OF_WARRANTY: 'border-border bg-muted text-muted-foreground',
+  WALK_IN: 'border-border bg-muted text-muted-foreground',
 };
 const STALE_DAYS: Partial<Record<AfterSalesStage, [number, string]>> = {
   IN_REPAIR: [14, 'ส่งศูนย์'],

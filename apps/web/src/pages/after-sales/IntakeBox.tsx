@@ -8,6 +8,7 @@ import {
   OUTCOME_LABEL,
   SOURCE_LABEL,
   WARRANTY_LABEL,
+  WARRANTY_TILE,
   dayOf,
   type LookupResult,
 } from './after-sales';
@@ -23,16 +24,6 @@ interface IntakeBoxProps {
 }
 
 const PURCHASE_PHOTO_KEYS = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
-
-/** ป้ายสถานะประกัน — โทเคนเดียวกับ chip เขียว/เทาที่ใช้ทั้งไฟล์ (ไม่ยืมสี STAGE_TILE ตรงๆ
- * เพราะประกันไม่ใช่ขั้นตอนของเคส — คงกฎ "ห้ามบอกสถานะด้วยสีอย่างเดียว" ด้วยข้อความในป้ายเอง) */
-const WARRANTY_TILE: Record<string, string> = {
-  IN_7DAY_DEFECT: 'border-warning/40 bg-warning/10 text-warning-strong',
-  IN_SHOP_WARRANTY: 'border-primary/20 bg-primary/10 text-primary',
-  IN_MANUFACTURER: 'border-primary/20 bg-primary/10 text-primary',
-  OUT_OF_WARRANTY: 'border-border bg-muted text-muted-foreground',
-  WALK_IN: 'border-border bg-muted text-muted-foreground',
-};
 
 export default function IntakeBox({ onOpenCase }: IntakeBoxProps) {
   const [searchParams] = useSearchParams();

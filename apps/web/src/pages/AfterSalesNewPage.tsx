@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle } from 'lucide-react';
@@ -22,20 +22,11 @@ import {
   PAYER_LABEL,
   SOURCE_LABEL,
   WARRANTY_LABEL,
+  WARRANTY_TILE,
   type AfterSalesOutcome,
   type LookupResult,
   type Payer,
 } from './after-sales/after-sales';
-
-/** mirror ของ CROSS_BRANCH_ROLES ฝั่ง API — ใช้ตัดสินว่าต้องเลือกสาขาเองหรือไม่ (route นี้อนุญาต
- * เฉพาะ OWNER/BRANCH_MANAGER/SALES แต่ user.branchId เป็นตัวชี้ขาดจริง — ให้ตรงกับ AfterSalesPage) */
-const WARRANTY_TILE: Record<string, string> = {
-  IN_7DAY_DEFECT: 'border-warning/40 bg-warning/10 text-warning-strong',
-  IN_SHOP_WARRANTY: 'border-primary/20 bg-primary/10 text-primary',
-  IN_MANUFACTURER: 'border-primary/20 bg-primary/10 text-primary',
-  OUT_OF_WARRANTY: 'border-border bg-muted text-muted-foreground',
-  WALK_IN: 'border-border bg-muted text-muted-foreground',
-};
 
 const inputClass =
   'h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70';
@@ -88,6 +79,8 @@ export default function AfterSalesNewPage() {
   const [repairSupplier, setRepairSupplier] = useState<{ id: string; name: string } | null>(null);
   const [branchId, setBranchId] = useState(user?.branchId ?? '');
 
+  // mirror ของ CROSS_BRANCH_ROLES ฝั่ง API — ใช้ตัดสินว่าต้องเลือกสาขาเองหรือไม่ (route นี้อนุญาต
+  // เฉพาะ OWNER/BRANCH_MANAGER/SALES แต่ user.branchId เป็นตัวชี้ขาดจริง — ให้ตรงกับ AfterSalesPage)
   const branchRequired = !user?.branchId;
   const branches = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -481,7 +474,13 @@ export default function AfterSalesNewPage() {
                   <AlertTriangle aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
                   <p>
                     เครื่องนี้มีเคสที่ยังไม่ปิด {lookup.data.openCase.caseNumber} —
-                    บันทึกเคสใหม่ไม่ได้
+                    บันทึกเคสใหม่ไม่ได้ ·{' '}
+                    <Link
+                      to={`/after-sales/${lookup.data.openCase.id}`}
+                      className="font-semibold underline"
+                    >
+                      เปิดดูเคสนี้
+                    </Link>
                   </p>
                 </div>
               )}

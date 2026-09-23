@@ -194,4 +194,20 @@ describe('AfterSalesNewPage — แจ้งปัญหาเครื่อง
     expect(screen.queryByRole('button', { name: /เปลี่ยนรุ่นเดิม/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /เปลี่ยนแบบมีราคา/ })).not.toBeInTheDocument();
   });
+
+  it('มี openCase ในผล lookup: แสดงคำเตือน + เลขเคส + ลิงก์ไปเคสนั้น และปุ่ม "บันทึกและเปิดเคส" ถูกปิด', async () => {
+    mockGet({
+      ...foundResult,
+      openCase: { id: 'as-9', caseNumber: 'AS-20260901-0009', stage: 'IN_REPAIR' },
+    });
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+
+    expect(
+      await screen.findByText(/เครื่องนี้มีเคสที่ยังไม่ปิด AS-20260901-0009/),
+    ).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'เปิดดูเคสนี้' });
+    expect(link).toHaveAttribute('href', '/after-sales/as-9');
+    expect(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' })).toBeDisabled();
+  });
 });

@@ -7763,6 +7763,7 @@ model AfterSalesCase {
   @@map("after_sales_cases")
 }
 
+/// Append-only event log — updatedAt/deletedAt intentionally omitted (mirrors RepairStatusLog)
 model AfterSalesEvent {
   id        String             @id @default(uuid())
   caseId    String             @map("case_id")

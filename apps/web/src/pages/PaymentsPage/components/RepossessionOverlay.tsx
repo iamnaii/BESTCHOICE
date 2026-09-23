@@ -58,6 +58,11 @@ interface RepoPreview {
   calculation: {
     remainingMonths: number;
     totalPaid: number;
+    /** ค่างวด × งวดคงเหลือ ก่อนหักยอดชำระล่วงหน้า/ถังพัก (optional — API เก่าไม่ส่ง) */
+    totalRemaining?: number;
+    /** creditBalance + งวดจ่ายบางส่วน */
+    advancePayment?: number;
+    /** ยอดค้างหลังหักยอดชำระล่วงหน้าและค่าปรับดิวที่พักไว้แล้ว */
     outstandingBalance: number;
     principalExVat: number;
     financeCost: number;
@@ -512,6 +517,28 @@ export function RepossessionOverlay({
               </div>
             ) : (
               <div className="rounded-xl bg-muted/60 p-4 space-y-2">
+                {/* ค่าปรับดิวที่พักไว้หักออกจากยอดค้าง "ก่อน" คิดฐานส่วนลด (เจ้าของ 2026-09-23)
+                    — outstandingBalance เป็นยอดหลังหักแล้ว จึงไล่บรรทัดหักไว้เหนือมัน */}
+                {((preview.calculation.advancePayment ?? 0) > 0 ||
+                  (preview.calculation.rescheduleAdvanceApplied ?? 0) > 0) &&
+                  preview.calculation.totalRemaining != null && (
+                    <Row
+                      label="รวมค้างชำระ (รวม VAT)"
+                      value={`${formatNumberDecimal(preview.calculation.totalRemaining)} ฿`}
+                    />
+                  )}
+                {(preview.calculation.advancePayment ?? 0) > 0 && (
+                  <Row
+                    label="ยอดชำระล่วงหน้า"
+                    value={`- ${formatNumberDecimal(preview.calculation.advancePayment!)} ฿`}
+                  />
+                )}
+                {(preview.calculation.rescheduleAdvanceApplied ?? 0) > 0 && (
+                  <Row
+                    label="หักเงินรับล่วงหน้าที่พักไว้"
+                    value={`- ${formatNumberDecimal(preview.calculation.rescheduleAdvanceApplied!)} ฿`}
+                  />
+                )}
                 <Row
                   label="ยอดค้าง (รวม VAT)"
                   value={`${preview.calculation.outstandingBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
@@ -536,12 +563,6 @@ export function RepossessionOverlay({
                     label="ค่าปรับค้างชำระ"
                     value={`+ ${preview.calculation.unpaidLateFees.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
                     destructive
-                  />
-                )}
-                {(preview.calculation.rescheduleAdvanceApplied ?? 0) > 0 && (
-                  <Row
-                    label="หักเงินรับล่วงหน้าที่พักไว้"
-                    value={`- ${formatNumberDecimal(preview.calculation.rescheduleAdvanceApplied!)} ฿`}
                   />
                 )}
                 <div className="border-t border-border pt-2">

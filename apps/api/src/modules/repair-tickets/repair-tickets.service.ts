@@ -62,6 +62,16 @@ export class RepairTicketsService {
     return this.lifecycle.create(dto, user);
   }
 
+  /**
+   * PUBLIC helper — also called by AfterSalesCaseService within its own
+   * $transaction so the repair ticket and the after-sales case are written
+   * atomically in one commit. Does not open a tx and does not call audit
+   * (per createInTx's own contract) — the caller's tx owns both.
+   */
+  async createInTx(dto: CreateRepairTicketDto, user: ReqUser, tx: Prisma.TransactionClient) {
+    return this.lifecycle.createInTx(dto, user, tx);
+  }
+
   async send(id: string, dto: SendDto, user: ReqUser) {
     return this.lifecycle.send(id, dto, user);
   }

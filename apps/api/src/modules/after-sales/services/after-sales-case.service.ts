@@ -19,7 +19,7 @@ type ReqUser = { id: string; role: string; branchId?: string | null };
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 export const MAX_INTAKE_PHOTOS = 6;
 
-interface CreateCaseResult {
+export interface CreateCaseResult {
   id: string;
   caseNumber: string;
   repairTicketId: string | null;

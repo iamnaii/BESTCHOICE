@@ -85,7 +85,9 @@ describe('AfterSalesCaseService.createCase', () => {
     assertEvidenceImage.mockImplementation(() => undefined);
 
     tx = {
+      $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
       afterSalesCase: {
+        findFirst: jest.fn().mockResolvedValue(null), // R12: re-check ใน tx ก่อนสร้าง — ไม่มีเคสซ้ำโดย default
         create: jest.fn().mockResolvedValue({
           id: 'as-1',
           caseNumber: 'AS-20260924-0001',
@@ -133,9 +135,15 @@ describe('AfterSalesCaseService.createCase', () => {
 
     expect(result).toEqual({ id: 'as-1', caseNumber: 'AS-20260924-0001', repairTicketId: 'rt-1' });
 
-    // repair.createInTx เรียกด้วย customerId ของลูกค้าที่ lookup เจอ
+    // repair.createInTx เรียกด้วย customerId ของลูกค้าที่ lookup เจอ + สัญญา/สินค้า/IMEI ที่ค้นเจอ
     expect(repair.createInTx).toHaveBeenCalledWith(
-      expect.objectContaining({ customerId: 'cust-1', branchId: BASE_DTO.branchId }),
+      expect.objectContaining({
+        customerId: 'cust-1',
+        branchId: BASE_DTO.branchId,
+        contractId: 'ct-1',
+        productId: 'p-1',
+        deviceImei: BASE_DTO.imei,
+      }),
       USER,
       tx,
     );
@@ -217,6 +225,40 @@ describe('AfterSalesCaseService.createCase', () => {
     await expect(svc.createCase(BASE_DTO as never, files, USER)).rejects.toThrow('DB ล่ม');
 
     // 2 รูปตอนรับฝาก + 6 รูปตอนซื้อ = 8 key ถูกอัปโหลดก่อน tx พัง
+    expect(storage.upload).toHaveBeenCalledTimes(8);
+    expect(storage.delete).toHaveBeenCalledTimes(8);
+    const uploadedKeys = storage.upload.mock.calls.map((c: any) => c[0]).sort();
+    const deletedKeys = storage.delete.mock.calls.map((c: any) => c[0]).sort();
+    expect(deletedKeys).toEqual(uploadedKeys);
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  // (f) R12 — TOCTOU: pre-tx lookup ไม่เจอเคสเปิดค้าง แต่ re-check ใน tx (advisory lock) เจอ
+  it('R12: pre-tx lookup ไม่เจอเคสซ้ำ แต่ in-tx re-check เจอ → ConflictException + ลบรูปที่อัปโหลดไปแล้วครบ', async () => {
+    const files = [mockFile({ originalname: 'front.jpg' }), mockFile({ originalname: 'back.jpg' })];
+    // pre-tx lookup (fast path) ไม่เจอเคสเปิดค้าง — ผ่านด่านแรกไปอัปโหลดรูป
+    lookupSvc.lookup.mockResolvedValue(buildLookupResult({ openCase: null }));
+    // แต่พอเข้า tx (หลัง advisory lock) มีอีกคำขอคอมมิตเคสไปก่อนแล้ว
+    tx.afterSalesCase.findFirst.mockResolvedValue({ caseNumber: 'AS-20260924-0009' });
+
+    let err: unknown;
+    try {
+      await svc.createCase(BASE_DTO as never, files, USER);
+    } catch (e) {
+      err = e;
+    }
+
+    expect(err).toBeInstanceOf(ConflictException);
+    expect((err as Error).message).toContain('AS-20260924-0009');
+    // advisory lock ถูกล็อกก่อนเช็คซ้ำ (ในเทสนี้เรียกครั้งเดียวพอดี — ไม่มี nextCaseNumber เพราะ throw ก่อน)
+    expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('pg_advisory_xact_lock'),
+    );
+    expect(docNumber.nextCaseNumber).not.toHaveBeenCalled();
+    expect(repair.createInTx).not.toHaveBeenCalled();
+    expect(tx.afterSalesCase.create).not.toHaveBeenCalled();
+
+    // 2 รูปตอนรับฝาก + 6 รูปตอนซื้อ = 8 key ถูกอัปโหลดไปแล้วก่อน tx พัง — ต้องลบครบทุกตัว
     expect(storage.upload).toHaveBeenCalledTimes(8);
     expect(storage.delete).toHaveBeenCalledTimes(8);
     const uploadedKeys = storage.upload.mock.calls.map((c: any) => c[0]).sort();

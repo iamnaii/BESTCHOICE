@@ -4,15 +4,26 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { AuditService } from '../../audit/audit.service';
 import { RepairTicketsService } from '../../repair-tickets/repair-tickets.service';
+import {
+  CreateRepairTicketDto,
+  RepairPayerInput,
+} from '../../repair-tickets/dto/create-repair-ticket.dto';
 import { AfterSalesDocNumberService } from './after-sales-doc-number.service';
 import { AfterSalesLookupService } from './after-sales-lookup.service';
 import { CreateCaseDto } from '../dto/create-case.dto';
 import { assertEvidenceImage, evidenceImageExtension } from '../../../utils/upload-image.util';
+import { hashLockKey } from '../../../utils/advisory-lock.util';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 export const MAX_INTAKE_PHOTOS = 6;
+
+interface CreateCaseResult {
+  id: string;
+  caseNumber: string;
+  repairTicketId: string | null;
+}
 
 @Injectable()
 export class AfterSalesCaseService {
@@ -33,6 +44,7 @@ export class AfterSalesCaseService {
     files.forEach((f) => assertEvidenceImage(f, 'รูปตอนรับฝาก'));
 
     const look = await this.lookupSvc.lookup({ imei: dto.imei }, user);
+    // R12 fast path — เช็คซ้ำอีกครั้งใน tx ด้วย advisory lock ก่อนสร้างจริง (กัน TOCTOU)
     if (look.openCase) {
       throw new ConflictException(
         `เครื่องนี้มีเคสที่ยังไม่ปิดอยู่แล้ว: ${look.openCase.caseNumber}`,
@@ -44,6 +56,7 @@ export class AfterSalesCaseService {
     if (!outcome?.enabled)
       throw new BadRequestException(outcome?.reason ?? 'ทางออกนี้ทำไม่ได้กับเครื่องนี้');
 
+    const imei = look.product?.imeiSerial ?? dto.imei;
     const id = randomUUID();
     const uploaded: string[] = [];
     const put = async (key: string, buf: Buffer, mime: string) => {
@@ -52,16 +65,20 @@ export class AfterSalesCaseService {
       return key;
     };
 
+    let result: CreateCaseResult;
     try {
-      const photoKeys = await Promise.all(
-        files.map((f) =>
-          put(
+      // R14: sequential — ทุก key ที่อัปโหลดสำเร็จต้องถูกจดไว้ใน `uploaded` ก่อนไฟล์ถัดไป
+      // (Promise.all ปล่อยให้ upload ที่ยังไม่ resolve ตอนตัวอื่นพัง หลุดจากการ cleanup)
+      const photoKeys: string[] = [];
+      for (const f of files) {
+        photoKeys.push(
+          await put(
             `after-sales/${id}/intake-${Date.now()}-${randomUUID()}.${evidenceImageExtension(f.mimetype)}`,
             f.buffer,
             f.mimetype,
           ),
-        ),
-      );
+        );
+      }
 
       const purchasePhotoKeys: string[] = [];
       for (const angle of ANGLES) {
@@ -79,27 +96,36 @@ export class AfterSalesCaseService {
         );
       }
 
-      const result = await this.prisma.$transaction(async (tx) => {
-        const caseNumber = await this.docNumber.nextCaseNumber(tx);
-        const { ticket } = await this.repair.createInTx(
-          {
-            customerId,
-            contractId: look.contract?.id,
-            productId: look.product?.id,
-            branchId: dto.branchId,
-            deviceBrand: look.product?.brand ?? dto.deviceBrand,
-            deviceModel: look.product?.model ?? dto.deviceModel,
-            deviceImei: look.product?.imeiSerial ?? dto.imei,
-            deviceSerial: dto.deviceSerial,
-            defectDescription: dto.symptom,
-            payer: dto.payer ?? outcome.payerDefault,
-            estimatedCost: dto.estimatedCost,
-            repairSupplierId: dto.repairSupplierId,
-            notes: dto.note,
-          } as never,
-          user,
-          tx,
+      result = await this.prisma.$transaction(async (tx) => {
+        // R12 — re-check ภายใน tx ด้วย advisory lock ก่อน nextCaseNumber (กัน 2 คำขอพร้อมกันสำหรับ IMEI เดียวกัน
+        // ทั้งคู่ผ่าน pre-tx fast-path แล้วคอมมิตสำเร็จทั้งคู่ — Review Focus 2)
+        await tx.$executeRawUnsafe(
+          `SELECT pg_advisory_xact_lock(${hashLockKey(`as-imei:${imei}`)})`,
         );
+        const dup = await tx.afterSalesCase.findFirst({
+          where: { deviceImei: imei, deletedAt: null, stage: { notIn: ['CLOSED', 'CANCELLED'] } },
+          select: { caseNumber: true },
+        });
+        if (dup)
+          throw new ConflictException(`เครื่องนี้มีเคสที่ยังไม่ปิดอยู่แล้ว: ${dup.caseNumber}`);
+
+        const caseNumber = await this.docNumber.nextCaseNumber(tx);
+        const repairDto: CreateRepairTicketDto = {
+          customerId,
+          contractId: look.contract?.id,
+          productId: look.product?.id,
+          branchId: dto.branchId,
+          deviceBrand: look.product?.brand ?? dto.deviceBrand,
+          deviceModel: look.product?.model ?? dto.deviceModel,
+          deviceImei: imei,
+          deviceSerial: dto.deviceSerial,
+          defectDescription: dto.symptom,
+          payer: (dto.payer ?? outcome.payerDefault) as RepairPayerInput,
+          estimatedCost: dto.estimatedCost,
+          repairSupplierId: dto.repairSupplierId,
+          notes: dto.note,
+        };
+        const { ticket } = await this.repair.createInTx(repairDto, user, tx);
         const c = await tx.afterSalesCase.create({
           data: {
             id,
@@ -146,22 +172,24 @@ export class AfterSalesCaseService {
         });
         return c;
       });
-
-      await this.audit.log({
-        userId: user.id,
-        action: 'AFTER_SALES_CASE_CREATED',
-        entity: 'after_sales_case',
-        entityId: result.id,
-        newValue: {
-          caseNumber: result.caseNumber,
-          outcome: 'REPAIR',
-          repairTicketId: result.repairTicketId,
-        },
-      });
-      return result;
     } catch (err) {
       await Promise.all(uploaded.map((k) => this.storage.delete(k).catch(() => undefined)));
       throw err;
     }
+
+    // R13 — audit.log อยู่นอก try/catch: ถ้ามันเองพังหลัง tx commit แล้ว ต้องไม่ไปลบรูปของ
+    // เคสที่บันทึกสำเร็จแล้ว (catch ด้านบนมีไว้กัน storage/tx เท่านั้น)
+    await this.audit.log({
+      userId: user.id,
+      action: 'AFTER_SALES_CASE_CREATED',
+      entity: 'after_sales_case',
+      entityId: result.id,
+      newValue: {
+        caseNumber: result.caseNumber,
+        outcome: 'REPAIR',
+        repairTicketId: result.repairTicketId,
+      },
+    });
+    return result;
   }
 }

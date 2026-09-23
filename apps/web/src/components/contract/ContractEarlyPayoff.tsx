@@ -314,6 +314,15 @@ export function EarlyPayoffOverlay({
                   muted
                 />
               )}
+              {/* ค่าปรับดิวที่พักไว้หักออกจากยอดค้าง "ก่อน" คิดฐานส่วนลด
+                  (คำสั่งเจ้าของ 2026-09-23) — บรรทัดนี้จึงอยู่เหนือ "คงเหลือยอดค้าง" */}
+              {quote.rescheduleAdvanceApplied > 0 && (
+                <Row
+                  label="หักค่าปรับดิวที่จ่ายล่วงหน้าไว้"
+                  value={`-${formatNumber(quote.rescheduleAdvanceApplied)} บาท`}
+                  success
+                />
+              )}
               <Row
                 label="คงเหลือยอดค้าง"
                 value={`${formatNumber(quote.remainingBalance)} บาท`}
@@ -334,13 +343,6 @@ export function EarlyPayoffOverlay({
                 value={`-${formatNumber(quote.discountAmount)} บาท`}
                 success
               />
-              {quote.rescheduleAdvanceApplied > 0 && (
-                <Row
-                  label="หักค่าปรับดิวที่จ่ายล่วงหน้าไว้"
-                  value={`-${formatNumber(quote.rescheduleAdvanceApplied)} บาท`}
-                  success
-                />
-              )}
               {quote.unpaidLateFees > 0 && (
                 <Row
                   label="ค่าปรับค้างชำระ"

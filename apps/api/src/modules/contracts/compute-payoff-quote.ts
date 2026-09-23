@@ -49,17 +49,17 @@ export interface PayoffQuoteResult {
   payoffBeforeLateFees: number;
   totalPayoff: number;
   /**
-   * ส่วนของถังพักงวดสุดท้าย (`rescheduleAdvanceBalance`) ที่ยอดปิดสัญญานี้
-   * "ดูดซับจริง" = ยอดที่ลูกค้าจ่ายน้อยลงเพราะมีเงินพักอยู่
-   *   = payoffBeforeLateFees(ไม่มีถังพัก) − payoffBeforeLateFees(มีถังพัก)
+   * ส่วนของถังพักงวดสุดท้าย (`rescheduleAdvanceBalance`) ที่ถูกหักออกจากยอดค้าง
+   * ในการปิดสัญญานี้ = ยอดถังพัก **เต็มจำนวน** clamp ไม่ให้เกินยอดค้างหลังหัก
+   * ยอดชำระล่วงหน้า (`totalRemaining − advancePayment`).
    *
-   * ทำไมไม่ใช่ยอดถังพักเต็มจำนวน: ถังพักลด `remainingBalance` → ลดกำไรขั้นต้น →
-   * **ส่วนลดลดตามไปด้วย** (ข้อ 6-7) และยังมี clamp `max(0, …)` ที่ข้อ 8 —
-   * ยอดที่ลูกค้าจ่ายน้อยลงจริงจึงน้อยกว่าหรือเท่ากับยอดในถังเสมอ.
+   * คำสั่งเจ้าของ 2026-09-23: ค่าปรับดิวที่พักไว้ "ต้องนำไปหักก่อน" — หักออกจาก
+   * ยอดค้าง (ข้อ 2b) ก่อนคิด ex-VAT/ต้นทุน/กำไร/ส่วนลด ไม่ใช่บรรทัดท้ายสุด.
+   * ลูกค้าจึงจ่ายน้อยลง **น้อยกว่า** ยอดถัง (ส่วนลดเล็กลงตามฐานกำไรที่เล็กลง)
+   * แต่ถังพักถูกใช้หมดทั้งก้อน ไม่มีเศษค้างใน 21-1103.
    *
-   * JP4/JP5 ใช้ค่านี้เป็น "ยอดปลดหนี้ 21-1103" (Dr 21-1103) เพื่อให้ขาเงินสด
-   * ของ JE ขยับเท่ากับเงินที่ลูกค้าจ่ายจริงพอดี — ส่วนที่เหลือในถัง (ถ้ามี)
-   * ยังค้างอยู่ใน 21-1103 ตามเดิม ไม่ปลดเกินที่ยอดปิดดูดซับไป.
+   * JP4/JP5 ใช้ค่านี้เป็น "ยอดปลดหนี้ 21-1103" (Dr 21-1103) — ขาเงินสดของ JE
+   * ลดลงเท่ากัน ยอด Dr รวมเท่าเดิม ทุกขา Cr ไม่ขยับ.
    */
   rescheduleAdvanceApplied: number;
 }
@@ -74,18 +74,28 @@ export interface PayoffQuoteResult {
  * Owner rule 2026-07-20: ยอดปิดสัญญาตอนยึดคืนต้องเท่ากับยอดปิดสัญญาก่อนกำหนด
  * ของสัญญาเดียวกัน/ส่วนลดเดียวกันเสมอ — ห้าม copy สูตรนี้ไปแก้เฉพาะที่
  *
- * Logic:
+ * Logic (คำสั่งเจ้าของ 2026-09-23 — ค่าปรับดิวที่พักไว้ "ต้องนำไปหักก่อน"):
  *   (1) รวมค้างชำระ      = ค่างวด × งวดคงเหลือ (รวม VAT)
- *   (2) ยอดชำระล่วงหน้า  = creditBalance + พักงวดสุดท้าย + Σ amountPaid ของงวด PARTIALLY_PAID
- *   (3) คงเหลือยอดค้าง   = (1) - (2)
+ *   (2) ยอดชำระล่วงหน้า  = creditBalance + Σ amountPaid ของงวด PARTIALLY_PAID
+ *   (2b) ค่าปรับดิวพัก   = min(rescheduleAdvanceBalance, (1) − (2)) — หักเต็มจำนวน
+ *   (3) คงเหลือยอดค้าง   = (1) - (2) - (2b)
  *   (4) ค่างวดไม่รวม VAT = (3) ÷ (1 + vatPct)
- *   (5) ต้นทุนยอดค้าง    = ((sellingPrice - downPayment) + storeCommission) ÷ totalMonths × งวดคงเหลือ
+ *   (5) ต้นทุนยอดค้าง    = ((sellingPrice - downPayment) + storeCommission) ÷ totalMonths × งวดคงเหลือสุทธิ
+ *                          งวดคงเหลือสุทธิ = งวดคงเหลือ − (2b) ÷ ค่างวด
  *                          (ยอดจัดจริง + ค่าคอมที่ FINANCE จ่ายให้ SHOP, เฉลี่ยต่องวด —
- *                          ห้ามใช้ contract.financedAmount: field นั้นเก็บยอดรวมที่ลูกค้าต้องจ่าย)
+ *                          ห้ามใช้ contract.financedAmount: field นั้นเก็บยอดรวมที่ลูกค้าต้องจ่าย
+ *                          · ค่าปรับดิวพัก = เงินจ่ายงวดล่วงหน้า (CPA CSV 6a/6b) จึงลดต้นทุน
+ *                          ตามสัดส่วนงวดเหมือนงวดที่จ่ายแล้ว — ตารางเจ้าของ "ต้นทุน 45%"
+ *                          = ต้นทุนต่อบาทของยอดค้างเท่าเดิมทั้งก่อน/หลังหัก)
  *   (6) กำไรขั้นต้น      = (4) - (5)
  *   (7) ส่วนลด           = (6) × discountPct, ปัดลง (ROUND_DOWN — เข้าข้าง FINANCE, owner 2026-07-02)
  *   (8) ยอดชำระปิดยอด    = max(0, (3) - (7)) + ค่าปรับค้างชำระ
  *                          (ค่าปรับไม่มี VAT และไม่ร่วมส่วนลด — บวกทั้งก้อนตอนท้าย)
+ *
+ * ประวัติ: 2026-08-26 ผู้สอบให้สูตร `ยอดปิดจริง = ยอดปิดปกติ − 21-1103` (หักถังพัก
+ * เป็นบรรทัดท้ายสุด ไม่ลดฐานส่วนลด) — เจ้าของสั่งเปลี่ยน 2026-09-23 ให้หักก่อน
+ * ตามตารางที่ส่งมา (สัญญาจริง 3,671 × 7 งวด พัก 1,714 → 18,135.85 ไม่ใช่ 17,717.97).
+ * ถังพักยังถูกใช้เต็มจำนวนเหมือนเดิม (ไม่มีเศษค้าง) — ต่างกันเฉพาะฐานส่วนลด.
  */
 export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
   const round2 = (v: Prisma.Decimal) => dRound(v).toNumber();
@@ -102,75 +112,57 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
   const partialPaid = dSum(
     input.payments.filter((p) => p.status === 'PARTIALLY_PAID').map((p) => d(p.amountPaid)),
   );
-  const park = d(input.rescheduleAdvanceBalance ?? 0);
-  const advancePaymentNoPark = round2(dAdd(d(input.creditBalance), partialPaid));
-  // ⚠️ **ไม่รวมถังพัก** ตั้งแต่ 2026-08-26 (คำวินิจฉัยผู้สอบ) — ถังพักถูกหักเป็น
-  // บรรทัดแยกที่ท้ายสุด ไม่ใช่ยอดชำระล่วงหน้าที่ไปลดฐานส่วนลด
-  // ถ้ารวมไว้ที่นี่ ตัวเลขบนหน้าจอจะไม่ลงตัว: UI คิด
-  // `คงเหลือยอดค้าง = รวมค้างชำระ − ยอดชำระล่วงหน้า` ซึ่ง remainingBalance
-  // ไม่หักถังพักแล้ว · ยอดถังพักดูที่ `rescheduleAdvanceApplied`
-  const advancePayment = advancePaymentNoPark;
+  // ⚠️ **ไม่รวมถังพัก** ใน advancePayment — UI แสดงถังพักเป็นบรรทัดของตัวเอง
+  // ("หักค่าปรับดิวที่จ่ายล่วงหน้าไว้") ระหว่าง "ยอดชำระล่วงหน้า" กับ "คงเหลือยอดค้าง"
+  // และ JP4/JP5 ใช้ยอดนี้เป็นขา Dr 21-1103 แยกจากเครดิตทั่วไป
+  const advancePayment = round2(dAdd(d(input.creditBalance), partialPaid));
 
-  // (5) ต้นทุนยอดค้าง = ยอดจัดจริง + commission (ไม่ขึ้นกับยอดชำระล่วงหน้า)
+  // (2b) ค่าปรับดิวที่พักไว้ — หักเต็มจำนวน clamp ไม่เกินยอดค้างที่เหลือหลังหัก
+  // ยอดชำระล่วงหน้า (ยอดค้างชน 0 อยู่แล้ว ⇒ ถังพักดูดซับอะไรไม่ได้ · ส่วนเกิน
+  // คงค้างใน 21-1103 ต่อไป · JE clamp ด้วย totalCash อีกชั้น)
+  const balanceBeforePark = dSub(totalRemaining, advancePayment);
+  const rescheduleAdvanceApplied = Prisma.Decimal.max(
+    0,
+    Prisma.Decimal.min(dRound(d(input.rescheduleAdvanceBalance ?? 0)), balanceBeforePark),
+  ).toNumber();
+
+  // (3) คงเหลือยอดค้าง — คำสั่งเจ้าของ 2026-09-23: ค่าปรับดิว "ต้องนำไปหักก่อน"
+  // ทุกบรรทัดถัดจากนี้ (ex-VAT / ต้นทุน / กำไร / ส่วนลด) คิดจากยอดหลังหักแล้ว
+  const remainingBalance = round2(dSub(balanceBeforePark, rescheduleAdvanceApplied));
+
+  // (5) ต้นทุนยอดค้าง = ยอดจัดจริง + commission เฉลี่ยต่องวด × งวดคงเหลือสุทธิ
+  // ค่าปรับดิวพัก = เงินจ่ายงวดล่วงหน้า (CPA CSV 6a/6b) ⇒ นับเป็นเศษงวดที่จ่ายแล้ว
+  // (1,714 ÷ 3,671 = 0.467 งวด) ลดต้นทุนตามสัดส่วนเหมือนงวด PAID — ตรงตาราง
+  // เจ้าของที่ "ต้นทุน 45%" ของยอดค้างคงที่ทั้งก่อน/หลังหัก. เครดิตทั่วไป
+  // (advancePayment) ยังไม่ลดต้นทุนเหมือนเดิม — ไม่อยู่ในคำสั่งนี้
   const truePrincipal = dSub(input.sellingPrice, input.downPayment);
   const financeCost = dAdd(truePrincipal, d(input.storeCommission));
-  const remainingCost = round2(dMul(dDiv(financeCost, input.totalMonths), input.remainingMonths));
+  const parkMonths =
+    rescheduleAdvanceApplied > 0 && monthlyPayment.gt(0)
+      ? dDiv(rescheduleAdvanceApplied, monthlyPayment)
+      : d(0);
+  const netRemainingMonths = Prisma.Decimal.max(0, dSub(input.remainingMonths, parkMonths));
+  const remainingCost = round2(dMul(dDiv(financeCost, input.totalMonths), netRemainingMonths));
 
   // (7) ส่วนลด (default 50%, max 50% ตามนโยบาย)
   const discountPercent =
     input.discountPctInput != null ? Math.max(0, Math.min(50, input.discountPctInput)) : 50;
   const vatPct = d(input.vatPct);
 
-  /**
-   * ข้อ (3)(4)(6)(7)(8) ทั้งชุด แยกเป็นฟังก์ชันเพื่อประเมิน 2 รอบ: รอบจริง
-   * (มีถังพัก) และรอบเทียบ (ไม่มีถังพัก) — ผลต่างของ payoffBeforeLateFees คือ
-   * "ยอดที่ถังพักดูดซับจริง" (ดู `rescheduleAdvanceApplied`). สูตรภายในเหมือนเดิม
-   * ทุกบรรทัด — ไม่มีการเปลี่ยนวิธีคำนวณค่าเดิมแม้แต่ค่าเดียว.
-   */
-  const tail = (advance: number) => {
-    // (3) คงเหลือยอดค้าง
-    const remainingBalance = round2(dSub(totalRemaining, advance));
+  // (4) ค่างวดไม่รวม VAT
+  const remainingExVat = vatPct.gt(0)
+    ? round2(dDiv(remainingBalance, dAdd(1, vatPct)))
+    : remainingBalance;
 
-    // (4) ค่างวดไม่รวม VAT
-    const remainingExVat = vatPct.gt(0)
-      ? round2(dDiv(remainingBalance, dAdd(1, vatPct)))
-      : remainingBalance;
+  // (6) กำไรขั้นต้น (อาจติดลบเคสขาดทุน — แสดงค่าจริง)
+  const grossProfit = round2(dSub(remainingExVat, remainingCost));
 
-    // (6) กำไรขั้นต้น (อาจติดลบเคสขาดทุน — แสดงค่าจริง)
-    const grossProfit = round2(dSub(remainingExVat, remainingCost));
+  // (7) ถ้ากำไรติดลบ → ส่วนลด = 0 (ไม่ลดเพิ่ม ไม่บวกเพิ่ม)
+  const discountAmount =
+    grossProfit > 0 ? dRoundDown(dMul(grossProfit, discountPercent / 100)).toNumber() : 0;
 
-    // (7) ถ้ากำไรติดลบ → ส่วนลด = 0 (ไม่ลดเพิ่ม ไม่บวกเพิ่ม)
-    const discountAmount =
-      grossProfit > 0 ? dRoundDown(dMul(grossProfit, discountPercent / 100)).toNumber() : 0;
-
-    // (8) ยอดชำระปิดยอดก่อนบวกค่าปรับ
-    const payoffBeforeLateFees = Math.max(0, round2(dSub(remainingBalance, discountAmount)));
-
-    return { remainingBalance, remainingExVat, grossProfit, discountAmount, payoffBeforeLateFees };
-  };
-
-  // ── คำวินิจฉัยผู้สอบบัญชี 2026-08-26 — เงินพักไม่ลดฐานส่วนลด ────────────
-  //
-  // สูตรที่ผู้สอบให้: `ยอดปิดยอดจริง = ยอดปิดยอดปกติ − 21-1103 คงเหลือ`
-  // โดย "ยอดปิดยอดปกติ" = คำนวณเหมือนสัญญาที่ไม่เคยปรับดิว
-  // ⇒ ถังพักถูกหัก **เต็มจำนวน** ตอนท้าย ไม่ใช่ไหลผ่านฐานส่วนลด
-  //
-  // เดิม: ถังพักรวมใน advancePayment → ลด remainingBalance → ลดกำไรขั้นต้น →
-  // **ลดส่วนลดดอกเบี้ยไปด้วย** ⇒ ยอดที่ลูกค้าจ่ายลดน้อยกว่ายอดพัก เหลือเศษค้าง
-  // ในถัง (เคสตัวอย่าง: พัก 354 ลดจริง 188.58 เหลือ 165.42)
-  // ผู้สอบตอบว่า "ไม่ควรมียอดค้าง" ⇒ เศษนั้นไม่ควรเกิดตั้งแต่แรก
-  //
-  // หลักการ: 21-1103 คือ **หนี้สินที่ค้างลูกค้า** ปิดยอดก่อนกำหนดต้องคืนเต็มจำนวน
-  // ไม่ใช่เอาไปลดฐานคำนวณส่วนลดซึ่งทำให้คืนได้ไม่ครบ
-  const main = tail(advancePaymentNoPark);
-  const { remainingBalance, remainingExVat, grossProfit, discountAmount } = main;
-
-  // หักถังพักเต็มจำนวน — clamp ไม่ให้ยอดที่ลูกค้าจ่ายติดลบ
-  // (ส่วนเกินคงค้างใน 21-1103 ต่อไป · JE clamp ด้วย totalCash อีกชั้น)
-  const rescheduleAdvanceApplied = Math.min(round2(park), main.payoffBeforeLateFees);
-  const payoffBeforeLateFees = round2(
-    dSub(main.payoffBeforeLateFees, rescheduleAdvanceApplied),
-  );
+  // (8) ยอดชำระปิดยอดก่อนบวกค่าปรับ
+  const payoffBeforeLateFees = Math.max(0, round2(dSub(remainingBalance, discountAmount)));
 
   // (8) ยอดชำระปิดยอด — ค่าปรับบวกทั้งก้อน (ไม่คิด VAT ไม่ลด ตามนโยบาย)
   const unpaidLateFees = dSum(

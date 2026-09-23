@@ -114,7 +114,62 @@ describe('computePayoffQuote', () => {
     });
   });
 
-  describe('park-at-last-installment (owner directive 2026-08-16)', () => {
+  /**
+   * Golden 2 = ตารางที่เจ้าของส่งมา 2026-09-23 (สัญญาจริงสาขาลพบุรี — จอโปรแกรมได้
+   * 17,717.97 แต่ที่ถูกต้องคือ 18,135.85):
+   *
+   *   ยอดค้าง 3,671 × 7 งวด               25,697.00
+   *   หัก ค่าปรับดิว (ถังพัก)                1,714.00   ← "ต้องนำไปหักก่อน"
+   *   ยอดค้างชำระ                          23,983.00
+   *   ยอดค้าง ไม่ VAT (1)                   22,414.02   = 23,983 ÷ 1.07
+   *   ต้นทุน (2) "45%"                     10,719.72   = ต้นทุนต่องวด × (23,983 ÷ 3,671 งวด)
+   *   (1) − (2)                            11,694.30
+   *   ลด 50%                                5,847.15
+   *   ยอดปิดชำระ                           18,135.85
+   *
+   * ต้นทุนของเจ้าของไม่ใช่ 45% ตายตัว — 11,485.83 ÷ 25,697 = 10,719.72 ÷ 23,983 =
+   * 44.697% คือ "ต้นทุนต่อบาทของยอดค้าง" เท่าเดิม ⇒ ค่าปรับดิวที่พักไว้ถูกมองเป็น
+   * เงินที่จ่ายงวดล่วงหน้าไปแล้ว (เศษงวด 1,714 ÷ 3,671 = 0.467 งวด) จึงลดทั้งยอดค้าง
+   * และต้นทุนตามสัดส่วน เหมือนงวดที่จ่ายแล้วทุกประการ.
+   */
+  const ownerCase20260923 = () => ({
+    ...prodCaseInput(),
+    remainingMonths: 7,
+    payments: makeProdCasePayments().map((p, i) =>
+      i < 5 ? { ...p, status: 'PAID', amountPaid: decimal(3671), lateFee: decimal(0) } : { ...p, lateFee: decimal(0) },
+    ),
+    rescheduleAdvanceBalance: decimal(1714),
+  });
+
+  describe('golden: ตารางเจ้าของ 2026-09-23 (ค่าปรับดิวต้องหักก่อนคิดฐานส่วนลด)', () => {
+    it('reproduces the owner spreadsheet exactly', () => {
+      const q = computePayoffQuote(ownerCase20260923());
+
+      expect(q.totalRemaining).toBe(25697);
+      expect(q.advancePayment).toBe(0);
+      expect(q.rescheduleAdvanceApplied).toBe(1714); // หักเต็มจำนวน ไม่มีเศษค้าง
+      expect(q.remainingBalance).toBe(23983); // 25697 − 1714 — หักก่อน
+      expect(q.remainingExVat).toBe(22414.02);
+      expect(q.remainingCost).toBe(10719.72); // ไม่ใช่ 11485.83 (7 งวดเต็ม)
+      expect(q.grossProfit).toBe(11694.3);
+      expect(q.discountAmount).toBe(5847.15);
+      expect(q.payoffBeforeLateFees).toBe(18135.85);
+      expect(q.totalPayoff).toBe(18135.85); // ไม่ใช่ 17717.97 (สูตรเดิมหักหลังส่วนลด)
+    });
+
+    it('ไม่มีถังพัก → ตัวเลข 7 งวดเต็มตามจอเดิม (ต้นทุน 11,485.83 · ปิด 19,431.97)', () => {
+      const q = computePayoffQuote({ ...ownerCase20260923(), rescheduleAdvanceBalance: decimal(0) });
+
+      expect(q.remainingBalance).toBe(25697);
+      expect(q.remainingExVat).toBe(24015.89);
+      expect(q.remainingCost).toBe(11485.83);
+      expect(q.grossProfit).toBe(12530.06);
+      expect(q.discountAmount).toBe(6265.03);
+      expect(q.totalPayoff).toBe(19431.97);
+    });
+  });
+
+  describe('park-at-last-installment (owner directive 2026-08-16, สูตรหักก่อน 2026-09-23)', () => {
     it('omitting rescheduleAdvanceBalance behaves exactly as before (backward-compatible default 0)', () => {
       const q = computePayoffQuote(prodCaseInput());
       expect(q.advancePayment).toBe(0);
@@ -131,12 +186,11 @@ describe('computePayoffQuote', () => {
         rescheduleAdvanceBalance: decimal(354),
       });
 
-      // คำวินิจฉัยผู้สอบ 2026-08-26: ถังพัก **ไม่ใช่** ยอดชำระล่วงหน้าที่ไปลด
-      // ฐานส่วนลด — หักเป็นบรรทัดแยกที่ท้ายสุดแทน
-      // 500 (creditBalance) + 1000 (PARTIALLY_PAID) = 1500 · ถังพัก 354 แยกออก
+      // 500 (creditBalance) + 1000 (PARTIALLY_PAID) = 1500 · ถังพัก 354 แยกบรรทัด
+      // แต่หักออกจากยอดค้างก่อนคิดฐานส่วนลดเหมือนกัน (เจ้าของ 2026-09-23)
       expect(q.advancePayment).toBe(1500);
-      expect(q.remainingBalance).toBe(42552); // 44052 − 1500
-      expect(q.rescheduleAdvanceApplied).toBe(354); // หักเต็มจำนวนตอนท้าย
+      expect(q.remainingBalance).toBe(42198); // 44052 − 1500 − 354
+      expect(q.rescheduleAdvanceApplied).toBe(354); // หักเต็มจำนวน
     });
 
     it('does NOT double count when rescheduleAdvanceBalance is 0 (explicit zero == omitted)', () => {
@@ -174,28 +228,31 @@ describe('computePayoffQuote', () => {
       expect(without.totalPayoff - withPark.totalPayoff).toBeCloseTo(354, 2);
     });
 
-    // คำวินิจฉัยผู้สอบบัญชี 2026-08-26: `ยอดปิดยอดจริง = ยอดปิดยอดปกติ − 21-1103`
-    // ถังพักหักเต็มจำนวน **ไม่ลดฐานส่วนลด** ⇒ ไม่มีเศษค้างในถังอีกต่อไป
-    // (เดิมหักได้แค่ 188.58 จาก 354 เพราะถังไปลดกำไรขั้นต้น → ลดส่วนลดตาม
-    //  เหลือ 165.42 ค้าง ซึ่งผู้สอบตอบว่า "ไม่ควรมียอดค้าง")
-    it('ถังพักหักเต็มจำนวนจากยอดปิดยอดปกติ — ไม่ลดฐานส่วนลด ไม่เหลือเศษ', () => {
+    // คำสั่งเจ้าของ 2026-09-23 (แทนคำวินิจฉัยผู้สอบ 2026-08-26 ที่หักหลังส่วนลด):
+    // ถังพักหักออกจากยอดค้าง **ก่อน** คิด ex-VAT/ต้นทุน/กำไร/ส่วนลด — ต้นทุนลด
+    // ตามสัดส่วนงวดที่เงินพักครอบ (เหมือนงวดที่จ่ายแล้ว) ⇒ ฐานส่วนลดเล็กลง
+    // ส่วนลดจึงเล็กลงด้วย แต่ถังพักยังถูกหักเต็มจำนวน ไม่มีเศษค้าง
+    it('ถังพักหักเต็มจำนวนจากยอดค้างก่อนคิดส่วนลด — ต้นทุนลดตามสัดส่วน ไม่เหลือเศษ', () => {
       const withPark = computePayoffQuote({
         ...prodCaseInput(),
         rescheduleAdvanceBalance: decimal(354),
       });
       const without = computePayoffQuote(prodCaseInput());
 
-      // ฐานส่วนลดคำนวณจาก "ไม่มีถัง" ทั้งคู่ ⇒ ส่วนลดเท่ากันเป๊ะ
-      expect(withPark.discountAmount).toBe(without.discountAmount);
-      expect(withPark.remainingBalance).toBe(without.remainingBalance);
+      // ยอดค้างและต้นทุนลดตามสัดส่วนเดียวกัน (354 ÷ 3671 = 0.0964 งวด)
+      expect(withPark.remainingBalance).toBe(43698); // 44052 − 354
+      expect(withPark.remainingCost).toBe(19531.77); // 19690 × 43698 ÷ 44052
+      expect(withPark.remainingExVat).toBe(40839.25); // 43698 ÷ 1.07
+      // กำไร 21307.48 × 50% = 10653.74 (เล็กกว่า 10740.04 ตอนไม่มีถัง)
+      expect(withPark.discountAmount).toBe(10653.74);
+      expect(withPark.discountAmount).toBeLessThan(without.discountAmount);
 
-      // ยอดปิดยอดปกติ 33311.96 − ถังพัก 354 = 32957.96
+      // 43698 − 10653.74 = 33044.26 (ไม่ใช่ 33311.96 − 354 = 32957.96 สูตรเดิม)
       expect(without.payoffBeforeLateFees).toBe(33311.96);
-      expect(withPark.payoffBeforeLateFees).toBe(32957.96);
+      expect(withPark.payoffBeforeLateFees).toBe(33044.26);
 
-      // หักเต็มจำนวน — ลูกค้าจ่ายน้อยลงเท่ายอดพักพอดี ไม่มีเศษค้าง
+      // ถังพักถูกใช้เต็มจำนวน — ปลดหนี้ 21-1103 ทั้งก้อน ไม่มีเศษค้าง
       expect(withPark.rescheduleAdvanceApplied).toBe(354);
-      expect(without.totalPayoff - withPark.totalPayoff).toBeCloseTo(354, 2);
     });
 
     it('ถังพักใหญ่กว่ายอดค้าง → clamp ที่ยอดที่ดูดซับได้จริง (ยอดปิดชน 0 ไม่ติดลบ)', () => {

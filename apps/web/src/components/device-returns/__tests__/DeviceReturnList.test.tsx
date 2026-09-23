@@ -186,12 +186,47 @@ describe('DeviceReturnList — สิทธิ์ต่อบทบาท', () =
     expect(r2.getByRole('button', { name: /ส่งซ้ำไลน์/ })).toBeInTheDocument();
   });
 
-  it.each(['SALES', 'ACCOUNTANT', 'UNKNOWN'])('%s: สถานะอย่างเดียว ไม่มีปุ่ม', async (role) => {
+  it.each(['SALES', 'ACCOUNTANT'])('%s: มีแค่ปุ่ม ดูยอดปิด — ไม่มียืนยัน/ส่งกลับ/ยกเลิก/ส่งซ้ำ', async (role) => {
     currentUser = { id: 'u-s', name: 'พนักงาน', role, branchId: 'b1' };
     routeApi();
     render(<DeviceReturnList onConfirm={() => {}} />, { wrapper });
     await screen.findByText('DR-20260919-0001');
+    const buttons = screen.queryAllByRole('button');
+    expect(buttons).toHaveLength(rows.length);
+    expect(buttons.every((b) => b.textContent === 'ดูยอดปิด')).toBe(true);
+  });
+
+  it('role ที่ระบบไม่รู้จัก: สถานะอย่างเดียว ไม่มีปุ่ม (preview API ไม่เปิดให้)', async () => {
+    currentUser = { id: 'u-s', name: 'พนักงาน', role: 'UNKNOWN', branchId: 'b1' };
+    routeApi();
+    render(<DeviceReturnList onConfirm={() => {}} />, { wrapper });
+    await screen.findByText('DR-20260919-0001');
     expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  // คำสั่งเจ้าของ 2026-09-23: "คนอื่นคำนวณได้ แต่ผู้จัดการอนุมัติทีหลัง" — role ที่ยืนยันไม่ได้
+  // เห็นปุ่ม ดูยอดปิด (ส่งแถวให้ parent เปิด overlay เดียวกัน ซึ่งซ่อนปุ่มยืนยันเองตาม role)
+  it.each([
+    ['BRANCH_MANAGER', 'b1'],
+    ['SALES', 'b1'],
+    ['ACCOUNTANT', null],
+  ])('%s: ปุ่ม ดูยอดปิด ส่งแถวให้ parent (ไม่มีปุ่มยืนยัน)', async (role, branchId) => {
+    currentUser = { id: 'u-x', name: role, role, branchId };
+    routeApi();
+    const onConfirm = vi.fn();
+    render(<DeviceReturnList onConfirm={onConfirm} />, { wrapper });
+    const r1 = within(await screen.findByTestId('device-return-row-DR-20260919-0001'));
+    expect(r1.queryByRole('button', { name: 'ยืนยัน' })).not.toBeInTheDocument();
+    fireEvent.click(r1.getByRole('button', { name: 'ดูยอดปิด' }));
+    expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ id: 'dr-1' }));
+  });
+
+  it('OWNER/FM ไม่มีปุ่ม ดูยอดปิด (ใช้ ยืนยัน แทน)', async () => {
+    routeApi();
+    render(<DeviceReturnList onConfirm={() => {}} />, { wrapper });
+    const r1 = within(await screen.findByTestId('device-return-row-DR-20260919-0001'));
+    expect(r1.queryByRole('button', { name: 'ดูยอดปิด' })).not.toBeInTheDocument();
+    expect(r1.getByRole('button', { name: 'ยืนยัน' })).toBeInTheDocument();
   });
 
   it('ว่าง → ข้อความว่างและจำนวน 0 ใบ', async () => {

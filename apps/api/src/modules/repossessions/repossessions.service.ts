@@ -492,6 +492,11 @@ export class RepossessionsService {
       calculation: {
         remainingMonths,
         totalPaid: TWO_DP(totalPaid).toNumber(),
+        // ยอดค้างก่อนหัก (ค่างวด × งวดคงเหลือ) + สองบรรทัดที่หักออก — จอต้องไล่
+        // "รวมค้าง → หักล่วงหน้า → หักค่าปรับดิวพัก → ยอดค้าง" เหมือนหน้าปิดก่อนกำหนด
+        // เพราะ outstandingBalance หักถังพักไปแล้ว (เจ้าของ 2026-09-23)
+        totalRemaining: quote.totalRemaining,
+        advancePayment: quote.advancePayment,
         outstandingBalance: quote.remainingBalance,
         principalExVat: quote.remainingExVat,
         financeCost: quote.financeCost,

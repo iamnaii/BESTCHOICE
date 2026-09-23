@@ -24,6 +24,7 @@ import {
   computeDeviationPct,
   formatDeviationLabel,
   DEVICE_RETURN_CONFIRM_ROLES,
+  DEVICE_RETURN_PREVIEW_ROLES,
   DEVICE_RETURN_KIND_LABEL,
   DEVICE_RETURN_STATUS_LABEL,
   LINE_STATUS_LABEL,
@@ -58,6 +59,11 @@ interface RepoPreview {
   calculation: {
     remainingMonths: number;
     totalPaid: number;
+    /** ค่างวด × งวดคงเหลือ ก่อนหักยอดชำระล่วงหน้า/ถังพัก (optional — API เก่าไม่ส่ง) */
+    totalRemaining?: number;
+    /** creditBalance + งวดจ่ายบางส่วน */
+    advancePayment?: number;
+    /** ยอดค้างหลังหักยอดชำระล่วงหน้าและค่าปรับดิวที่พักไว้แล้ว */
     outstandingBalance: number;
     principalExVat: number;
     financeCost: number;
@@ -91,8 +97,6 @@ interface RepoPreview {
     isBalanced: boolean;
   } | null;
 }
-
-const PREVIEW_ROLES = ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'];
 
 const LINE_BADGE: Record<LineNotifyStatus, 'success' | 'destructive' | 'warning'> = {
   SENT: 'success',
@@ -129,7 +133,8 @@ const inputClass =
  * ข้อมูลใบ (เกรด/ราคาประเมิน/เหตุผล/สาขา) อ่านอย่างเดียวจากใบที่สาขาบันทึก; FINANCE แก้ได้เฉพาะ
  * วันที่ลงบัญชี + ส่วนลดยอดปิด. ยืนยัน = `POST /device-returns/:id/confirm` (server เรียก
  * `RepossessionsService.createInTx` — ขา Dr JP5 = 11-2107 stamp DEVICE_RETURN เสมอ).
- * Roles: ยืนยัน/ส่งกลับ = OWNER / FINANCE_MANAGER; preview = OWNER / BM / FM.
+ * Roles: ยืนยัน/ส่งกลับ = OWNER / FINANCE_MANAGER; preview = ทุก role (เจ้าของ 2026-09-23 —
+ * "คนอื่นคำนวณได้ แต่ผู้จัดการอนุมัติทีหลัง"; role ที่ยืนยันไม่ได้เห็นตัวเลขแบบอ่านอย่างเดียว).
  */
 export function RepossessionOverlay({
   deviceReturnId,
@@ -142,7 +147,7 @@ export function RepossessionOverlay({
 }: Props) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const canPreview = PREVIEW_ROLES.includes(user?.role ?? '');
+  const canPreview = DEVICE_RETURN_PREVIEW_ROLES.includes(user?.role ?? '');
   const canConfirm = DEVICE_RETURN_CONFIRM_ROLES.includes(user?.role ?? '');
 
   const [discountPct, setDiscountPct] = useState('50');
@@ -494,7 +499,7 @@ export function RepossessionOverlay({
             </div>
             {!canPreview ? (
               <div className="py-6 text-center text-sm leading-snug text-muted-foreground">
-                ดูตัวอย่าง P&L ได้เฉพาะ OWNER / ผจก.สาขา / ผจก.การเงิน
+                บัญชีนี้ไม่มีสิทธิ์ดูตัวอย่าง P&L
               </div>
             ) : previewFailed ? (
               <div
@@ -512,6 +517,28 @@ export function RepossessionOverlay({
               </div>
             ) : (
               <div className="rounded-xl bg-muted/60 p-4 space-y-2">
+                {/* ค่าปรับดิวที่พักไว้หักออกจากยอดค้าง "ก่อน" คิดฐานส่วนลด (เจ้าของ 2026-09-23)
+                    — outstandingBalance เป็นยอดหลังหักแล้ว จึงไล่บรรทัดหักไว้เหนือมัน */}
+                {((preview.calculation.advancePayment ?? 0) > 0 ||
+                  (preview.calculation.rescheduleAdvanceApplied ?? 0) > 0) &&
+                  preview.calculation.totalRemaining != null && (
+                    <Row
+                      label="รวมค้างชำระ (รวม VAT)"
+                      value={`${formatNumberDecimal(preview.calculation.totalRemaining)} ฿`}
+                    />
+                  )}
+                {(preview.calculation.advancePayment ?? 0) > 0 && (
+                  <Row
+                    label="ยอดชำระล่วงหน้า"
+                    value={`- ${formatNumberDecimal(preview.calculation.advancePayment!)} ฿`}
+                  />
+                )}
+                {(preview.calculation.rescheduleAdvanceApplied ?? 0) > 0 && (
+                  <Row
+                    label="หักเงินรับล่วงหน้าที่พักไว้"
+                    value={`- ${formatNumberDecimal(preview.calculation.rescheduleAdvanceApplied!)} ฿`}
+                  />
+                )}
                 <Row
                   label="ยอดค้าง (รวม VAT)"
                   value={`${preview.calculation.outstandingBalance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
@@ -536,12 +563,6 @@ export function RepossessionOverlay({
                     label="ค่าปรับค้างชำระ"
                     value={`+ ${preview.calculation.unpaidLateFees.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ฿`}
                     destructive
-                  />
-                )}
-                {(preview.calculation.rescheduleAdvanceApplied ?? 0) > 0 && (
-                  <Row
-                    label="หักเงินรับล่วงหน้าที่พักไว้"
-                    value={`- ${formatNumberDecimal(preview.calculation.rescheduleAdvanceApplied!)} ฿`}
                   />
                 )}
                 <div className="border-t border-border pt-2">

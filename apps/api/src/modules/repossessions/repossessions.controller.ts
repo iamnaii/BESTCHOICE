@@ -48,8 +48,10 @@ export class RepossessionsController {
     );
   }
 
+  // คำสั่งเจ้าของ 2026-09-23: "คนอื่นคำนวณได้ แต่ผู้จัดการอนุมัติทีหลัง" — ทุก role เปิดดู
+  // ตัวเลขยอดปิด/P&L ได้ ส่วนการยืนยัน (JP5) ยังเป็น OWNER/FM ที่ `POST /device-returns/:id/confirm`
   @Get('preview/:contractId')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   previewCalculation(
     @Param('contractId') contractId: string,
     @CurrentUser() user: RequestUser,

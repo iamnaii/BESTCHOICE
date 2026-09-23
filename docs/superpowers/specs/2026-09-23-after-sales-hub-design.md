@@ -136,7 +136,7 @@ model AfterSalesCase {
   accessories   Json                       // {box,charger,case,other:string}
   unlockConfirmed Boolean
   photoPaths    String[]                   // ≥1 ≤6 รูปตอนรับฝาก
-  purchasePhotoSnapshot String[]           // path รูป 6 มุมของ ProductPhoto ณ วันแจ้ง (D6) — สแนปช็อต ถ่ายรูปเครื่องใหม่ภายหลังไม่กระทบหลักฐาน · ว่าง = ไม่มีรูปตอนซื้อ
+  purchasePhotoKeys String[]  // key ไฟล์สำเนา ProductPhoto 6 มุมบน StorageService ณ วันแจ้ง (ไม่เก็บ base64 ในตาราง)
   warrantySnapshot Json                    // {status: WarrantyStatus, within7Days, shopWarrantyEnd, manufacturerWarrantyEnd, checkedAt}
   outcome       AfterSalesOutcome?
   repairTicketId          String? @unique

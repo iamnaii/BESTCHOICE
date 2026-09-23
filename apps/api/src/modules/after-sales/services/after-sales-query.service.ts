@@ -14,6 +14,10 @@ const TAB_STAGES = {
   DONE: ['CLOSED', 'CANCELLED'],
 } as const;
 
+/** R15 (fix round 1): เพดานจำนวนแถวที่ดึงมา sort ทั้งก้อนก่อน paginate — ต้อง sort ก่อนตัดหน้า
+ * ไม่งั้นเคสค้างนานที่ `receivedAt` ช้ากว่าจะไม่มีวันโผล่มาก่อนถ้าจำนวนในแท็บเกิน limit */
+export const LIST_FETCH_CAP = 500;
+
 const ROW_SELECT = {
   id: true,
   caseNumber: true,
@@ -111,27 +115,35 @@ export class AfterSalesQueryService {
     }
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 50;
+    // R15 (fix round 1 — Important finding): ต้อง sort ทั้งก้อนก่อน paginate ไม่ใช่ query
+    // ทีละหน้าจาก DB แล้วค่อย sort เฉพาะหน้านั้น — ไม่งั้นเคสค้างนาน (stale) ที่ receivedAt
+    // ช้ากว่าจะไปตกหน้า 2+ และไม่มีวันขึ้นก่อนเคสไม่ค้างของหน้า 1 เมื่อจำนวนในแท็บเกิน limit.
+    // ดึงแบบไม่มี skip + เพดาน LIST_FETCH_CAP แถว (เรียง receivedAt asc ไว้ก่อน — ลำดับใน
+    // ก้อนที่ดึงมาไม่สำคัญเพราะจะ sort ใหม่ทั้งหมดอยู่ดี), decorate ครบ, กรอง stale (ถ้าขอ),
+    // sort จริง (ค้างนานก่อน แล้วค่อย stageSince เก่าสุดก่อน) แล้วค่อย slice หน้าที่ต้องการ.
+    // `total` ยังเป็นยอดจริงของทั้งแท็บจาก DB count (ไม่กรอง stale) — ไม่ใช่ยอดหลัง cap.
     const [rows, total] = await Promise.all([
       this.prisma.afterSalesCase.findMany({
         where,
         select: { ...ROW_SELECT, cancelledAt: true },
         orderBy: { receivedAt: 'asc' },
-        skip: (page - 1) * limit,
-        take: limit,
+        take: LIST_FETCH_CAP,
       }),
       this.prisma.afterSalesCase.count({ where }),
     ]);
-    let data = rows.map((r) => this.decorate(r));
-    if (dto.stale) data = data.filter((r) => r.stale);
-    data.sort(
+    let decorated = rows.map((r) => this.decorate(r));
+    if (dto.stale) decorated = decorated.filter((r) => r.stale);
+    decorated.sort(
       (a, b) =>
         Number(b.stale) - Number(a.stale) || a.stageSince.getTime() - b.stageSince.getTime(),
     ); // ค้างนานก่อน
+    const data = decorated.slice((page - 1) * limit, page * limit);
     return {
       data,
       total,
       page,
       limit,
+      truncated: total > LIST_FETCH_CAP,
       summary: dto.summary ? await this.summary(user, dto.branchId) : undefined,
     };
   }

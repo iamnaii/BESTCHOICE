@@ -1,5 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
-import { AfterSalesQueryService } from '../services/after-sales-query.service';
+import { AfterSalesQueryService, LIST_FETCH_CAP } from '../services/after-sales-query.service';
 
 const BRANCH_A = 'branch-a';
 const BRANCH_B = 'branch-b';
@@ -146,6 +146,62 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
       expect(result.repairCostShop).toBe(500);
       expect(result.repairCostCustomer).toBe(300);
       expect(result.supplierClaims).toBe(1);
+    });
+  });
+
+  describe('(c) R15 — sort ทั้งก้อนก่อน paginate (fix round 1)', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+    const DAY_MS = 86400000;
+
+    it('เคสค้างนานที่ receivedAt ช้ากว่าขึ้นหน้าแรกก่อนเคสไม่ค้างของ "หน้า 1" เดิม + findMany ไม่มี skip และ take = 500', async () => {
+      // 3 แถวเรียง receivedAt asc ตามที่ DB คืนมา — แถวสุดท้าย (receivedAt ช้าสุด) เป็น
+      // เคสค้างนาน (IN_REPAIR เกิน STALE_DAYS.IN_REPAIR = 14 วัน) ส่วนสองแถวแรกไม่ค้าง
+      const notStale1 = buildCaseA({
+        id: 'as-1',
+        receivedAt: new Date('2026-09-01T00:00:00.000Z'),
+        repairTicket: buildRepairTicket({
+          status: 'IN_PROGRESS',
+          sentToRepairAt: new Date(Date.now() - 5 * DAY_MS),
+        }),
+      });
+      const notStale2 = buildCaseA({
+        id: 'as-2',
+        receivedAt: new Date('2026-09-05T00:00:00.000Z'),
+        repairTicket: buildRepairTicket({
+          status: 'IN_PROGRESS',
+          sentToRepairAt: new Date(Date.now() - 3 * DAY_MS),
+        }),
+      });
+      const staleButLatest = buildCaseA({
+        id: 'as-3',
+        receivedAt: new Date('2026-09-10T00:00:00.000Z'),
+        repairTicket: buildRepairTicket({
+          status: 'IN_PROGRESS',
+          sentToRepairAt: new Date(Date.now() - 20 * DAY_MS), // ค้างเกิน 14 วัน = stale
+        }),
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([notStale1, notStale2, staleButLatest]);
+      prisma.afterSalesCase.count.mockResolvedValue(3);
+
+      const result = await svc.list({ page: 1, limit: 2 } as never, owner);
+
+      expect(result.data).toHaveLength(2);
+      expect(result.data[0].id).toBe('as-3'); // stale ต้องขึ้นก่อนแม้ receivedAt ช้าสุด
+      expect(result.data[0].stale).toBe(true);
+      expect(result.truncated).toBe(false);
+
+      const findManyArgs = prisma.afterSalesCase.findMany.mock.calls[0][0];
+      expect(findManyArgs.skip).toBeUndefined();
+      expect(findManyArgs.take).toBe(LIST_FETCH_CAP);
+    });
+
+    it('truncated = true เมื่อยอดทั้งแท็บเกิน LIST_FETCH_CAP', async () => {
+      prisma.afterSalesCase.findMany.mockResolvedValue([]);
+      prisma.afterSalesCase.count.mockResolvedValue(LIST_FETCH_CAP + 1);
+
+      const result = await svc.list({} as never, owner);
+
+      expect(result.truncated).toBe(true);
     });
   });
 });

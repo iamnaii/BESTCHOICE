@@ -28,7 +28,9 @@ import { AfterSalesService } from '../after-sales.service';
  * device-return-flow.integration.spec.ts / interco-netting.integration.spec.ts.
  * StorageService / ProductPhotosService / DefectExchangeService เป็นตัวปลอมในหน่วยความจำ
  * ตามที่ task-7-brief.md กำหนด — ทุกอย่างอื่น (RepairTicketsService, ExpenseDocumentsService,
- * AuditService, ฯลฯ) เป็นของจริงต่อกันเป็นห่วงโซ่ real dependency.
+ * AuditService, ฯลฯ) เป็นของจริงต่อกันเป็นห่วงโซ่ real dependency. เคส 3-8 เรียกผ่าน facade
+ * `AfterSalesService` (ไม่ใช่ sub-service ตรง ๆ) เพื่อให้การ delegate ของ facade เองถูกทดสอบด้วย
+ * (fix round 1 Minor).
  *
  * Runner: vitest (jest ignore *.integration.spec.ts).
  *   cd apps/api && DATABASE_URL=postgresql://test:test@localhost:5432/test_db?schema=public \
@@ -38,6 +40,12 @@ import { AfterSalesService } from '../after-sales.service';
  *
  * Cleanup: SCOPED ตาม id ที่สเปคนี้สร้างเท่านั้น (afterAll ลบลูกก่อนแม่) — audit_logs ลบไม่ได้
  * (DB trigger immutable ตามดีไซน์ — precedent เดียวกับ device-return-flow spec).
+ *
+ * Fix round 1 (2026-09-24) — Critical: R16 บังคับ branch scope ใน
+ * AfterSalesCaseService.createCase เอง (BranchGuard มองไม่เห็น branchId ใน multipart body) —
+ * เคส 8 พิสูจน์ว่า SALES สาขาอื่นสร้างเคสให้สาขาอื่นไม่ได้และไม่มีแถวใหม่เกิด. Important: R17
+ * จับ expenseDocumentId ทันทีหลัง fetch ticket ก่อน assertion ใด ๆ กัน ExpenseDocument ที่สร้าง
+ * สำเร็จหลุด cleanup ถ้า assertion ถัดไปพัง.
  */
 
 const prisma = new PrismaClient();
@@ -335,7 +343,7 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
       outcome: 'REPAIR' as const,
       branchId,
     };
-    const result = await caseSvc.createCase(dto as never, [fakeJpeg('intake.jpg')], OWNER());
+    const result = await svc.createCase(dto as never, [fakeJpeg('intake.jpg')], OWNER());
     caseId = result.id;
     repairTicketId = result.repairTicketId!;
 
@@ -368,33 +376,35 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
       outcome: 'REPAIR' as const,
       branchId,
     };
-    await expect(
-      caseSvc.createCase(dto as never, [fakeJpeg('intake2.jpg')], OWNER()),
-    ).rejects.toThrow(ConflictException);
+    await expect(svc.createCase(dto as never, [fakeJpeg('intake2.jpg')], OWNER())).rejects.toThrow(
+      ConflictException,
+    );
   });
 
   // -------------------------------------------------------------------------
   it('5) send → IN_REPAIR · markRepaired(1500, SHOP) → READY_FOR_PICKUP · returnToCustomer({}) → CLOSED + ใบซ่อม CLOSED + expenseDocumentId ไม่ null', async () => {
-    let r = await repairSvc.send(caseId, { repairSupplierId: supplierId } as never, OWNER());
+    let r = await svc.send(caseId, { repairSupplierId: supplierId } as never, OWNER());
     expect(r.stage).toBe('IN_REPAIR');
 
-    r = await repairSvc.markRepaired(caseId, { actualCost: 1500, payer: 'SHOP' } as never, OWNER());
+    r = await svc.markRepaired(caseId, { actualCost: 1500, payer: 'SHOP' } as never, OWNER());
     expect(r.stage).toBe('READY_FOR_PICKUP');
 
-    r = await repairSvc.returnToCustomer(caseId, {} as never, OWNER());
+    r = await svc.returnToCustomer(caseId, {} as never, OWNER());
     expect(r.stage).toBe('CLOSED');
 
     const ticket = await prisma.repairTicket.findUniqueOrThrow({
       where: { id: repairTicketId },
     });
+    // R17 (fix round 1, Important) — จับ id ไว้ก่อนสำหรับ afterAll ทันทีที่รู้ค่า ก่อน assertion
+    // ใด ๆ ที่อาจ throw แล้วปล่อยให้ ExpenseDocument ที่สร้างสำเร็จแล้วหลุด cleanup
+    expenseDocumentId = ticket.expenseDocumentId ?? null;
     expect(ticket.status).toBe('CLOSED');
     expect(ticket.expenseDocumentId).not.toBeNull();
-    expenseDocumentId = ticket.expenseDocumentId;
   });
 
   // -------------------------------------------------------------------------
   it('6) list({tab:DONE, summary:true}, owner) → มีเคสนี้ + summary.repairCostShop >= 1500', async () => {
-    const result = await querySvc.list({ tab: 'DONE', summary: true } as never, OWNER());
+    const result = await svc.list({ tab: 'DONE', summary: true } as never, OWNER());
     expect(result.data.some((d) => d.id === caseId)).toBe(true);
     expect(result.summary).toBeTruthy();
     expect(result.summary!.repairCostShop).toBeGreaterThanOrEqual(1500);
@@ -403,6 +413,32 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
   // -------------------------------------------------------------------------
   it('7) SALES ของสาขาอื่น getCase → ForbiddenException', async () => {
     const other = { id: randomUUID(), role: 'SALES', branchId: randomUUID() };
-    await expect(querySvc.getCase(caseId, other)).rejects.toThrow(ForbiddenException);
+    await expect(svc.getCase(caseId, other)).rejects.toThrow(ForbiddenException);
+  });
+
+  // -------------------------------------------------------------------------
+  // 8) CRITICAL (fix round 1) — SALES ของสาขาอื่นเรียก createCase สำหรับสาขาที่ seed ไว้
+  // (dto.branchId = สาขาที่สร้างเคส แต่ user.branchId เป็นสาขาอื่น) ต้องถูกปฏิเสธที่ service ชั้นแรก
+  // ก่อนแตะ storage/lookup/tx ใด ๆ — ไม่มีแถวใหม่เกิดขึ้นเลย (นับ after_sales_cases ของ RUN นี้
+  // ไม่ขยับจากที่ case 3 ทิ้งไว้)
+  it('8) SALES ของสาขาอื่น createCase สำหรับสาขานี้ → ForbiddenException ไม่มีแถวใหม่เกิดขึ้น', async () => {
+    const before = await prisma.afterSalesCase.count({ where: { deviceImei: IMEI } });
+
+    const otherBranchUser = { id: randomUUID(), role: 'SALES', branchId: randomUUID() };
+    const dto = {
+      imei: IMEI,
+      symptom: 'ทดสอบ R16 — สาขาอื่นสร้างเคสสาขานี้ไม่ได้',
+      accessories: { box: false, charger: false, case: false },
+      unlockConfirmed: true,
+      outcome: 'REPAIR' as const,
+      branchId, // สาขาที่ seed ไว้ — ไม่ใช่สาขาของ otherBranchUser
+    };
+
+    await expect(
+      svc.createCase(dto as never, [fakeJpeg('intake3.jpg')], otherBranchUser),
+    ).rejects.toThrow(ForbiddenException);
+
+    const after = await prisma.afterSalesCase.count({ where: { deviceImei: IMEI } });
+    expect(after).toBe(before);
   });
 });

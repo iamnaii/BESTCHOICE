@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
@@ -13,6 +18,7 @@ import { AfterSalesLookupService } from './after-sales-lookup.service';
 import { CreateCaseDto } from '../dto/create-case.dto';
 import { assertEvidenceImage, evidenceImageExtension } from '../../../utils/upload-image.util';
 import { hashLockKey } from '../../../utils/advisory-lock.util';
+import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 
@@ -37,6 +43,13 @@ export class AfterSalesCaseService {
   ) {}
 
   async createCase(dto: CreateCaseDto, files: Express.Multer.File[], user: ReqUser) {
+    // R16 (fix round 1, Critical) — BranchGuard อ่าน request.body?.branchId แต่ guards รันก่อน
+    // FilesInterceptor แกะ multipart/form-data เสร็จ ⇒ ตอนถึง guard body ยังว่าง (ไม่มี branchId
+    // ให้เห็น) จึงปล่อยผ่านเสมอบน POST /after-sales — ต้องบังคับ scope สาขาที่ service เอง ก่อนแตะ
+    // storage/lookup/tx ใด ๆ (แบบเดียวกับ security.md "Branch scope บน route ที่มีแต่ :id")
+    if (!hasCrossBranchAccess(user) && dto.branchId !== user.branchId) {
+      throw new ForbiddenException('ไม่สามารถเข้าถึงสาขาอื่นได้');
+    }
     if (!files?.length) throw new BadRequestException('ต้องมีรูปตอนรับฝากอย่างน้อย 1 รูป');
     if (files.length > MAX_INTAKE_PHOTOS) {
       throw new BadRequestException(`รูปตอนรับฝากได้ไม่เกิน ${MAX_INTAKE_PHOTOS} รูป`);

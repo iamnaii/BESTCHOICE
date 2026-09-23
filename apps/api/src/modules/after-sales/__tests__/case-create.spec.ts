@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { AfterSalesCaseService, MAX_INTAKE_PHOTOS } from '../services/after-sales-case.service';
 
 jest.mock('../../../utils/upload-image.util', () => ({
@@ -265,5 +265,20 @@ describe('AfterSalesCaseService.createCase', () => {
     const deletedKeys = storage.delete.mock.calls.map((c: any) => c[0]).sort();
     expect(deletedKeys).toEqual(uploadedKeys);
     expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  // (g) R16 — fix round 1 Critical: BranchGuard มองไม่เห็น branchId ใน multipart body (guards รัน
+  // ก่อน FilesInterceptor แกะฟอร์ม) ⇒ ต้องบังคับ scope สาขาที่ service เอง ก่อนแตะ storage/lookup/tx
+  it('SALES ของสาขาอื่นส่ง dto.branchId ต่างจาก user.branchId → ForbiddenException ไม่แตะ storage/lookup/tx', async () => {
+    const otherBranchUser = { id: 'u-2', role: 'SALES', branchId: 'br-A' };
+    const dto = { ...BASE_DTO, branchId: 'br-B' };
+
+    await expect(svc.createCase(dto as never, [mockFile()], otherBranchUser)).rejects.toThrow(
+      ForbiddenException,
+    );
+
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(lookupSvc.lookup).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

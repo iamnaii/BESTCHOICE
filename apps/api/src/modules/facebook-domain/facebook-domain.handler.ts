@@ -48,6 +48,13 @@ export class FacebookDomainHandler implements IDomainHandler {
       return { replies: [] };
     }
 
+    // พนักงานรับห้องไปแล้ว (aiPaused — พิมพ์ตอบเอง/กดรับเรื่อง) และลูกค้ายังไม่ยืนยันตัวตน → เงียบ
+    // เดิมหลุดมาข้อความ "รบกวนยืนยันตัวตน" ของ flow ไฟแนนซ์ทุกข้อความ แทรกกลางบทสนทนาที่คนคุยอยู่
+    // (ห้องขายของบน FB แทบทั้งหมดยังไม่ยืนยันตัวตน — C01) · ยืนยันแล้วยังได้ข้อความตอบรับสลิปตามเดิม
+    if (room.aiPaused && !isVerified) {
+      return { replies: [] };
+    }
+
     // If not verified, prompt for verification with onboarding quick replies
     if (!isVerified) {
       return {

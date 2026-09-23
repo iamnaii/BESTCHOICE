@@ -20,6 +20,20 @@ export interface BotAttachment {
 /** ส่งได้มากสุด 2 ใบต่อ 1 คำตอบ — LINE reply รับ 5 ข้อความ/ครั้ง เหลือที่ให้ text + เผื่อ */
 export const MAX_BOT_ATTACHMENTS = 2;
 
+/** id ของรูปตารางผ่อน/แผนที่ร้าน (send_rate_card) ในช่องแนบ = `card:<key>` — ไม่ใช่ productId */
+export const RATE_CARD_ID_PREFIX = 'card:';
+
+/** ช่องเต็ม → ถอดรูปสินค้าที่ใส่ก่อนสุด (Map เรียงตามลำดับที่ใส่) · มีแต่รูปตาราง = ไม่ถอด คืน false */
+function evictOldestProductAttachment(into: Map<string, BotAttachment>): boolean {
+  for (const key of into.keys()) {
+    if (!key.startsWith(RATE_CARD_ID_PREFIX)) {
+      into.delete(key);
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * public HTTPS เท่านั้น — กัน storage key ดิบ (S3 key), `http://`, หรือ scheme
  * แปลก ๆ (`line://`, `javascript:`) ไม่ให้หลุดไปถึงปลายทาง (Task 9 → MessageRouter →
@@ -70,6 +84,27 @@ export function collectAttachmentsFromToolResult(
     );
     if (units.length === 0 || units.length > MAX_BOT_ATTACHMENTS) return;
     for (const u of units) push(u as Record<string, unknown>);
+    return;
+  }
+
+  // รูปตารางผ่อน/แผนที่ของร้าน (send_rate_card) — id = `card:<key>` ไม่ใช่ productId
+  // ป้ายจดลงประวัติเป็น "[รูป <label>]" ⇒ บอทรู้ว่าส่งตารางไหนไปแล้ว ไม่ส่งซ้ำ
+  // รูปตารางที่บอทตั้งใจส่ง "ชนะ" รูปสินค้าที่ติดมากับผลค้น (เพดาน 2 ใบต่อคำตอบ): ช่องเต็มด้วยรูปสินค้า
+  // → ถอดรูปสินค้าที่ใส่ก่อนสุดออก · เต็มด้วยรูปตารางแล้ว = ไม่แนบ (SalesBotService กระทบยอด
+  // sent/missing กับช่องแนบจริง ⇒ โมเดลไม่อ้างว่าส่งรูปที่ลูกค้าไม่ได้รับ — รีวิว ATTACH-1 2026-09-22)
+  if (toolName === 'send_rate_card') {
+    const images = (result as { images?: unknown }).images;
+    if (!Array.isArray(images)) return;
+    for (const im of images) {
+      const u = (im ?? {}) as Record<string, unknown>;
+      const attachable =
+        typeof u.id === 'string' &&
+        !into.has(u.id) &&
+        !!(httpsUrlOrUndefined(u.photoUrl) || httpsUrlOrUndefined(u.webUrl));
+      // ถอดรูปสินค้าเฉพาะเมื่อรูปตารางใบนี้แนบได้จริง — ไม่งั้นเสียรูปสินค้าไปฟรี ๆ
+      if (attachable && into.size >= MAX_BOT_ATTACHMENTS) evictOldestProductAttachment(into);
+      push(u);
+    }
     return;
   }
 

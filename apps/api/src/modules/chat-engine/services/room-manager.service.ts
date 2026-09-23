@@ -75,6 +75,22 @@ export interface LinkedRoomAbsorb {
 }
 
 /** หน้าต่างตอบของ Facebook Messenger นับจากข้อความล่าสุดของลูกค้า (สเปก §8) */
+/**
+ * ข้อมูลเสริมจาก router สำหรับด่าน "ข้อความอัตโนมัติของเพจ" — สิ่งที่อยู่ในหน่วยความจำ ยังไม่อยู่ในฐาน
+ */
+export interface PageAutoReplyCheckOptions {
+  /**
+   * เวลารับเข้าข้อความลูกค้าที่ router รับแล้วแต่เทิร์นยังไม่จบ (รอคิว/กำลังดึงโปรไฟล์ — แถวในฐานอาจยังไม่มี
+   * หรือถูกบันทึกช้ากว่าเวลาที่ลูกค้าทักจริง) ใช้คู่กับแถว CUSTOMER ในฐานตอนตัดสินว่า echo "ถูกจุดด้วยข้อความลูกค้า"
+   */
+  extraCustomerAt?: Date[];
+  /**
+   * นับเฉพาะสคริปต์ที่มาก่อนเวลานี้ — มีข้อความลูกค้าใบใหม่รอคิวอยู่ (ยังไม่มีแถวในฐาน) สคริปต์ที่มาหลังจากนั้น
+   * เป็นคำตอบของใบใหม่ ไม่ใช่ของเทิร์นนี้ (RT-V2)
+   */
+  scriptsBefore?: Date;
+}
+
 export const FB_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** "ใกล้หมดเวลา" = เหลือไม่เกิน 3 ชม. — ชั้นแรกของการเรียงคิว */
 export const FB_CLOSING_MS = 3 * 60 * 60 * 1000;
@@ -426,7 +442,246 @@ export class RoomManagerService {
     });
   }
 
-  /** Save a message and update room stats */
+  // ── ข้อความตอบกลับอัตโนมัติของเพจ (ตั้งใน Meta เช่น ปุ่มโฆษณา "ฟรีดาวน์มีรุ่นไหนบ้าง?") — 2026-09-22:
+  // 164/173 ครั้งที่ลูกค้ากดปุ่มโฆษณา เพจตอบ "รูปตาราง แล้วตามด้วยสคริปต์" ภายใน 10 วิ ผ่าน echo แอปเดียวกับ
+  // พนักงาน (แยกด้วย app_id ไม่ได้) ⇒ จำด้วยคำขึ้นต้นของสคริปต์ใน SystemConfig
+  // `shop_bot_page_autoreply_markers` (JSON array) · ว่าง/ไม่ได้ตั้ง/JSON พัง = ปิดทุกด่านที่เกี่ยวกับข้อความนี้
+  // echo ที่ขึ้นต้นตาม marker นับเป็น "ข้อความอัตโนมัติ" เฉพาะเมื่อมีข้อความลูกค้าภายใน ±15 วิ (ตัวจุดของมัน) —
+  // บางคำขึ้นต้น เช่น "ใช้บัตรประชาชนยื่นได้เลยค่ะ" พนักงานพิมพ์เองได้ตอนตอบเรื่องเอกสาร (RT-F3)
+
+  /** อ่าน echo สูงสุดกี่แถวต่อการเช็ค — ช่วงเวลาที่เช็คแคบ (วินาที) จึงไม่ถึงอยู่แล้วในการใช้งานจริง */
+  private static readonly PAGE_AUTOREPLY_MAX_ECHOES = 10;
+  /**
+   * ข้อความลูกค้าที่เก่ากว่าข้อความอัตโนมัติเกินนี้ ไม่นับเป็น "สิ่งที่เทิร์นนี้ต้องตอบ" — ห้องที่ลูกค้าเคยทิ้ง
+   * ข้อความไว้นานแล้วไม่มีใครตอบ (ช่วงบอทปิด) ไม่ควรทำให้บอทตอบปุ่มโฆษณาซ้ำกับเพจ
+   */
+  private static readonly PAGE_AUTOREPLY_TURN_LOOKBACK_MS = 10 * 60_000;
+  /**
+   * ข้อความอัตโนมัติถูกจุดด้วยข้อความลูกค้า (กดปุ่มโฆษณา) — ค่ากลาง 1.18 วิ, 37/40 ห้องภายใน 10 วิ
+   * echo ขึ้นต้นตาม marker ที่ไม่มีข้อความลูกค้าภายใน ± เท่านี้ = พนักงานพิมพ์ประโยคเดียวกันเอง (RT-F3)
+   * ใช้ ± (ไม่ใช่แค่ "ก่อน") เพราะแถวลูกค้าอาจถูกบันทึกทีหลัง echo (ดึงโปรไฟล์อยู่ — ROUTER-2)
+   */
+  static readonly PAGE_AUTOREPLY_TRIGGER_WINDOW_MS = 15_000;
+  /** แถวลูกค้าสูงสุดที่อ่านมาเทียบเวลา — เกินนี้ (ลูกค้าพิมพ์ >100 ข้อความใน 10 นาที) สคริปต์เก่าหลุดการนับ = บอทตอบ */
+  private static readonly PAGE_AUTOREPLY_MAX_CUSTOMER_ROWS = 100;
+
+  /** ข้อความนี้ขึ้นต้นตามรายการสคริปต์อัตโนมัติของเพจหรือไม่ (ดูแค่ตัวหนังสือ — ไม่ดูเวลา) */
+  async isPageAutoReplyText(text: string | null | undefined): Promise<boolean> {
+    if (!text?.trim()) return false;
+    const markers = await this.getPageAutoReplyMarkers();
+    return RoomManagerService.matchesPageAutoReplyMarker(text, markers);
+  }
+
+  /** ตั้งคำขึ้นต้นข้อความอัตโนมัติของเพจไว้หรือไม่ — ไม่ได้ตั้ง = ไม่ต้องรอ/เช็คอะไรเพิ่ม */
+  async hasPageAutoReplyMarkers(): Promise<boolean> {
+    return (await this.getPageAutoReplyMarkers()).length > 0;
+  }
+
+  /**
+   * echo ของพนักงานใบนี้ (เวลา `at`) เป็นข้อความอัตโนมัติของเพจหรือไม่: ขึ้นต้นตาม marker **และ** มีข้อความลูกค้า
+   * (ในฐาน หรือที่ router รับเข้าแล้วแต่ยังไม่บันทึก) ภายใน ±15 วิ — ไม่มี = คนพิมพ์เอง ต้อง pause AI (RT-F3)
+   */
+  async isPageAutoReplyEcho(
+    roomId: string,
+    text: string | null | undefined,
+    at: Date,
+    extraCustomerAt: Date[] = [],
+  ): Promise<boolean> {
+    if (!(await this.isPageAutoReplyText(text))) return false;
+    const t = at.getTime();
+    const w = RoomManagerService.PAGE_AUTOREPLY_TRIGGER_WINDOW_MS;
+    const customerTimes = await this.customerMessageTimes(roomId, t - w, t + w, extraCustomerAt);
+    return RoomManagerService.nearCustomerMessage(t, customerTimes);
+  }
+
+  /**
+   * มีสคริปต์ตอบกลับอัตโนมัติของเพจในห้องนี้ ภายใน ±windowMs รอบเวลา `at` หรือไม่
+   * ใช้ตัดสิน echo ที่เป็นรูปอย่างเดียว (ไม่มีตัวหนังสือให้จับคำขึ้นต้น) — รูปตารางที่เพจส่งนำหน้าสคริปต์
+   * สคริปต์ต้องผ่านด่านเวลาเดียวกับ isPageAutoReplyEcho (มีข้อความลูกค้าภายใน ±15 วิ) ด้วย
+   */
+  async hasPageAutoReplyNear(
+    roomId: string,
+    at: Date,
+    windowMs: number,
+    extraCustomerAt: Date[] = [],
+  ): Promise<boolean> {
+    const markers = await this.getPageAutoReplyMarkers();
+    if (markers.length === 0) return false;
+    const rows = await this.prisma.chatMessage.findMany({
+      where: {
+        roomId,
+        role: MessageRole.STAFF,
+        deletedAt: null,
+        text: { not: null },
+        createdAt: { gte: new Date(at.getTime() - windowMs), lte: new Date(at.getTime() + windowMs) },
+      },
+      // ใหม่สุดก่อน — ไม่ใส่ = Postgres คืน 10 แถวไหนก็ได้ สคริปต์ที่เพิ่งมาอาจไม่อยู่ในชุด (RT-Q4)
+      orderBy: { createdAt: 'desc' },
+      select: { text: true, createdAt: true },
+      take: RoomManagerService.PAGE_AUTOREPLY_MAX_ECHOES,
+    });
+    const scripts = rows.filter((r) =>
+      RoomManagerService.matchesPageAutoReplyMarker(r.text, markers),
+    );
+    if (scripts.length === 0) return false;
+    const times = scripts.map((r) => r.createdAt.getTime());
+    const w = RoomManagerService.PAGE_AUTOREPLY_TRIGGER_WINDOW_MS;
+    const customerTimes = await this.customerMessageTimes(
+      roomId,
+      Math.min(...times) - w,
+      Math.max(...times) + w,
+      extraCustomerAt,
+    );
+    return times.some((t) => RoomManagerService.nearCustomerMessage(t, customerTimes));
+  }
+
+  /**
+   * ข้อความอัตโนมัติของเพจ "ตอบครบทุกอย่างที่ลูกค้าส่งมาในเทิร์นนี้" แล้วหรือยัง — ใช้ตัดสินว่าบอทข้ามเทิร์นได้
+   *
+   * - `since` = ขอบล่างของสคริปต์ที่นับเป็นคำตอบของเทิร์นนี้ (เวลาข้อความลูกค้าตาม Meta − เผื่อนาฬิกาเหลื่อม)
+   * - `turnAt` = createdAt ของข้อความลูกค้าที่เป็นตัวตั้งเทิร์นนี้ (ใบล่าสุดของชุดที่ถูกรวม) — ข้อความที่มาหลังจากนี้
+   *   เป็นของเทิร์นถัดไป ไม่นับ
+   * - `opts.scriptsBefore` = มีข้อความลูกค้าใบใหม่รอคิว (ยังไม่มีแถว) — สคริปต์หลังเวลานี้เป็นของใบใหม่ ไม่นับ (RT-V2)
+   * - `opts.extraCustomerAt` = เวลารับเข้าข้อความลูกค้าที่ยังไม่อยู่ในฐาน ใช้ในด่านเวลาของสคริปต์ (RT-F3)
+   *
+   * "สคริปต์" = echo STAFF ขึ้นต้นตาม marker ที่มีข้อความลูกค้าภายใน ±15 วิ · "คำตอบจริง" = BOT/STAFF ที่มีตัวหนังสือ
+   * และไม่ใช่สคริปต์ · ขอบ `floor` = คำตอบจริงใบล่าสุด หรือ turnAt − 10 นาที (อันที่ใหม่กว่า)
+   * นับสองฝั่งจากขอบเดียวกัน (RT-V1 — เดิมนับสคริปต์เฉพาะหลัง `since` แต่นับลูกค้าจาก floor: กดปุ่มฟรีดาวน์
+   * แล้วกดปุ่มเอกสารอีก 60 วิ = ลูกค้า 2 ใบ สคริปต์ 1 ใบ บอทจึงตอบซ้ำกับเพจ):
+   *   1. สคริปต์หลัง floor (และก่อน scriptsBefore)
+   *   2. ข้อความลูกค้าหลัง floor ถึง `turnAt`
+   * ข้ามได้เมื่อมีสคริปต์อย่างน้อย 1 ใบที่มาหลัง `since` (เพจตอบข้อความของเทิร์นนี้จริง) และ (2) ≤ (1)
+   * ลูกค้าพิมพ์คำถามจริงตามมาในช่วงรวมข้อความ = ข้อความเกินจำนวนสคริปต์ ⇒ บอทตอบ โดยเห็นสคริปต์ในประวัติ (ROUTER-4)
+   * · echo ที่เป็นรูปอย่างเดียว (รูปตารางที่เพจส่งนำหน้าสคริปต์) ไม่นับเป็นคำตอบ — ไม่งั้นมันกลายเป็นขอบ
+   *   แล้วคำถามที่ลูกค้าพิมพ์ก่อนรูปจะดูเหมือนมีคนตอบแล้ว
+   * · สคริปต์ที่มาก่อนคำตอบจริงใบล่าสุด ไม่นับ — มีคนตอบต่อจากมันไปแล้ว ข้อความลูกค้าหลังจากนั้นเป็นเรื่องใหม่
+   * กรณีกำกวมเลือกทาง "บอทตอบ" เสมอ (อย่างแย่คือตอบซ้ำกับเพจ) ดีกว่ากลืนคำถามจริงของลูกค้าทิ้ง
+   */
+  async pageAutoReplyCoversTurn(
+    roomId: string,
+    since: Date,
+    turnAt: Date,
+    opts: PageAutoReplyCheckOptions = {},
+  ): Promise<boolean> {
+    const markers = await this.getPageAutoReplyMarkers();
+    if (markers.length === 0) return false;
+    const lookbackFloor = turnAt.getTime() - RoomManagerService.PAGE_AUTOREPLY_TURN_LOOKBACK_MS;
+    const scriptsBefore = opts.scriptsBefore?.getTime() ?? Number.POSITIVE_INFINITY;
+
+    // ข้อความขาออกที่มีตัวหนังสือในช่วงย้อนหลัง ใหม่สุดก่อน — ใช้ทั้งหา "คำตอบจริงใบล่าสุด" และนับสคริปต์
+    // (แถวที่เก่ากว่า lookbackFloor ไม่มีผล: ขอบไม่มีทางต่ำกว่า lookbackFloor อยู่แล้ว)
+    const outbound = await this.prisma.chatMessage.findMany({
+      where: {
+        roomId,
+        role: { in: [MessageRole.BOT, MessageRole.STAFF] },
+        deletedAt: null,
+        text: { not: null },
+        createdAt: { gt: new Date(lookbackFloor) },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { role: true, text: true, createdAt: true },
+      take: RoomManagerService.PAGE_AUTOREPLY_MAX_ECHOES * 2,
+    });
+    const markerRows = outbound.filter(
+      (r) =>
+        r.role === MessageRole.STAFF &&
+        RoomManagerService.matchesPageAutoReplyMarker(r.text, markers),
+    );
+    if (markerRows.length === 0) return false;
+
+    const w = RoomManagerService.PAGE_AUTOREPLY_TRIGGER_WINDOW_MS;
+    const customerTimes = await this.customerMessageTimes(
+      roomId,
+      Math.min(...markerRows.map((r) => r.createdAt.getTime())) - w,
+      Math.max(...markerRows.map((r) => r.createdAt.getTime())) + w,
+      opts.extraCustomerAt,
+    );
+    const scriptRows = new Set(
+      markerRows.filter((r) =>
+        RoomManagerService.nearCustomerMessage(r.createdAt.getTime(), customerTimes),
+      ),
+    );
+
+    const lastAnswerAt =
+      outbound.find((r) => !scriptRows.has(r))?.createdAt.getTime() ?? lookbackFloor;
+    const floor = Math.max(lastAnswerAt, lookbackFloor);
+    const scripts = [...scriptRows].filter((r) => {
+      const t = r.createdAt.getTime();
+      return t > floor && t < scriptsBefore;
+    });
+    if (!scripts.some((r) => r.createdAt.getTime() >= since.getTime())) return false;
+
+    const pendingCustomerMessages = await this.prisma.chatMessage.count({
+      where: {
+        roomId,
+        role: MessageRole.CUSTOMER,
+        deletedAt: null,
+        createdAt: { gt: new Date(floor), lte: turnAt },
+      },
+    });
+    return pendingCustomerMessages <= scripts.length;
+  }
+
+  /** เวลาข้อความลูกค้า (ms) ในช่วง [from, to] จากฐาน + เวลารับเข้าที่ router ส่งมา (ยังไม่มีแถว) */
+  private async customerMessageTimes(
+    roomId: string,
+    from: number,
+    to: number,
+    extraCustomerAt: Date[] = [],
+  ): Promise<number[]> {
+    const rows = await this.prisma.chatMessage.findMany({
+      where: {
+        roomId,
+        role: MessageRole.CUSTOMER,
+        deletedAt: null,
+        createdAt: { gte: new Date(from), lte: new Date(to) },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+      take: RoomManagerService.PAGE_AUTOREPLY_MAX_CUSTOMER_ROWS,
+    });
+    return [
+      ...rows.map((r) => r.createdAt.getTime()),
+      ...extraCustomerAt.map((d) => new Date(d).getTime()).filter((t) => Number.isFinite(t)),
+    ];
+  }
+
+  private static nearCustomerMessage(at: number, customerTimes: number[]): boolean {
+    return customerTimes.some(
+      (c) => Math.abs(c - at) <= RoomManagerService.PAGE_AUTOREPLY_TRIGGER_WINDOW_MS,
+    );
+  }
+
+  private static matchesPageAutoReplyMarker(
+    text: string | null | undefined,
+    markers: string[],
+  ): boolean {
+    const t = (text ?? '').trim();
+    return t.length > 0 && markers.some((m) => t.startsWith(m));
+  }
+
+  private autoReplyMarkers: { value: string[]; readAt: number } | null = null;
+
+  private async getPageAutoReplyMarkers(): Promise<string[]> {
+    const now = Date.now();
+    if (this.autoReplyMarkers && now - this.autoReplyMarkers.readAt < 60_000) return this.autoReplyMarkers.value;
+    let value: string[] = [];
+    try {
+      const row = await this.prisma.systemConfig.findFirst({
+        where: { key: 'shop_bot_page_autoreply_markers', deletedAt: null },
+        select: { value: true },
+      });
+      const parsed: unknown = row?.value ? JSON.parse(row.value) : [];
+      value = Array.isArray(parsed)
+        ? parsed.map((x) => String(x ?? '').trim()).filter((x) => x.length >= 4)
+        : [];
+    } catch {
+      value = []; // JSON พัง = ปิดด่าน (บอทตอบตามปกติ) — ไม่ throw บนเส้นทางตอบลูกค้า
+    }
+    this.autoReplyMarkers = { value, readAt: now };
+    return value;
+  }
+
   /**
    * ห้องนี้บอทเคยตอบไปแล้วหรือยัง — ใช้แยก "พนักงานแทรกกลางบทสนทนาที่บอทคุยอยู่"
    * (ต้อง pause AI) ออกจาก "ข้อความทักทายอัตโนมัติของเพจตอนลูกค้าทักครั้งแรก"
@@ -456,6 +711,7 @@ export class RoomManagerService {
     return res.count > 0;
   }
 
+  /** Save a message and update room stats */
   async saveMessage(params: {
     roomId: string;
     externalMessageId?: string;

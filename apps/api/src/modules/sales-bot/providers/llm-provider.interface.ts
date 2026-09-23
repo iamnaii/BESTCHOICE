@@ -45,6 +45,11 @@ export interface LlmChatRequest {
   messages: LlmChatMessage[];
   tools?: LlmToolDefinition[];
   maxOutputTokens?: number;
+  /**
+   * 'none' = ส่งนิยามเครื่องมือไปตามเดิม (แคชไม่แตก) แต่ห้ามโมเดลเรียก — บังคับให้เขียนคำตอบ
+   * ใช้กับรอบสุดท้ายของลูปเครื่องมือ · ไม่ส่ง = ให้โมเดลเลือกเอง
+   */
+  toolChoice?: 'none';
 }
 
 export interface LlmChatResponse {

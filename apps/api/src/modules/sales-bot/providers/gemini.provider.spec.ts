@@ -216,6 +216,23 @@ describe('GeminiProvider', () => {
       );
     });
 
+    it("toolChoice 'none' → functionCallingConfig NONE · ไม่ส่ง = ไม่มี toolConfig", async () => {
+      fakeFetchResponse(fetchSpy, {
+        candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+      });
+      const tools = [{ name: 't1', description: 'd', inputSchema: { type: 'object' } }];
+      await p.chat({ systemPrompt: 'x', messages: [{ role: 'user', content: 'hi' }], tools, toolChoice: 'none' });
+      const body = JSON.parse(fetchSpy.mock.calls[0][1].body as string);
+      expect(body.toolConfig).toEqual({ functionCallingConfig: { mode: 'NONE' } });
+      fakeFetchResponse(fetchSpy, {
+        candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+        usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1 },
+      });
+      await p.chat({ systemPrompt: 'x', messages: [{ role: 'user', content: 'hi' }], tools });
+      expect(JSON.parse(fetchSpy.mock.calls[1][1].body as string)).not.toHaveProperty('toolConfig');
+    });
+
     it('round-trips tool-use turn → tool result correctly', async () => {
       fakeFetchResponse(fetchSpy, {
         candidates: [{ content: { parts: [{ text: 'พบ iPhone 15 ราคา 32,900' }] } }],

@@ -204,6 +204,9 @@ export class GeminiProvider implements ILlmProvider {
       body.tools = [
         { functionDeclarations: req.tools.map((t) => this.toGeminiTool(t)) },
       ];
+      if (req.toolChoice === 'none') {
+        body.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
+      }
     }
 
     return body;

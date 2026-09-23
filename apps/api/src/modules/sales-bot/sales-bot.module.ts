@@ -9,6 +9,9 @@ import { GetInstallmentRatesTool } from './tools/get-installment-rates.tool';
 import { SearchKnowledgeBaseTool } from './tools/search-knowledge-base.tool';
 import { RecommendDevicesTool } from './tools/recommend-devices.tool';
 import { CompareDevicesTool } from './tools/compare-devices.tool';
+import { SendRateCardTool } from './tools/send-rate-card.tool';
+import { NotifyStaffTool } from './tools/notify-staff.tool';
+import { BotRuntimeConfigService } from './bot-runtime-config.service';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
 import { CustomerPiiModule } from '../customers/customer-pii.module';
@@ -19,8 +22,8 @@ import { LlmProviderRegistry } from './providers/llm-provider.registry';
 
 @Module({
   imports: [
-    // For CHAT_GATEWAY_TOKEN — HandoffToHumanTool + CaptureLeadTool emit
-    // chat:room:update so UnifiedInboxPage refreshes the handoff badge live.
+    // For CHAT_GATEWAY_TOKEN — HandoffToHumanTool + CaptureLeadTool + NotifyStaffTool emit
+    // chat:room:update so UnifiedInboxPage refreshes the handoff/"ด่วน" badge live.
     forwardRef(() => StaffChatModule),
     // CaptureLeadTool (R25): CustomerMergeService + ChatProspectService (รวม/ผูกผู้สนใจด้วยเบอร์),
     // CustomerPiiService (hash/encrypt เบอร์), JourneyEntryWriter (CONTACT_ADDED via CAPTURE_LEAD)
@@ -40,6 +43,9 @@ import { LlmProviderRegistry } from './providers/llm-provider.registry';
     SearchKnowledgeBaseTool,
     RecommendDevicesTool,
     CompareDevicesTool,
+    SendRateCardTool,
+    NotifyStaffTool,
+    BotRuntimeConfigService,
     ClaudeProvider,
     GeminiProvider,
     LlmProviderRegistry,

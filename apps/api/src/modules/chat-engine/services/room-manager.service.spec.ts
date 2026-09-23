@@ -7,6 +7,7 @@ import { ChatChannel, ChatRoomStatus, ChatPriority, MessageRole } from '@prisma/
 import { StorageService } from '../../storage/storage.service';
 import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
 import { CustomerMergeService } from '../../chat-prospects/customer-merge.service';
+import { makeFakeChatPrisma } from './__tests__/fake-chat-prisma';
 
 describe('RoomManagerService', () => {
   let service: RoomManagerService;
@@ -768,5 +769,265 @@ describe('RoomManagerService.listDueAppointments — นัดที่ถึง
     expect(args.orderBy).toEqual({ dueDate: 'asc' });
     expect(args.take).toBe(20);
     expect(args.select.room.select.customer).toEqual({ select: { name: true } });
+  });
+});
+
+describe('RoomManagerService — ข้อความตอบกลับอัตโนมัติของเพจ (2026-09-22)', () => {
+  const MARKER = 'อันนี้ตารางผ่อนเครื่องนอก';
+  const SCRIPT = `${MARKER}ค่ะ 😊\nสนใจรุ่นไหนคะ`;
+  // สคริปต์ปุ่ม "ใช้บัตรอะไรยื่นได้บ้าง" — คำขึ้นต้นที่พนักงานพิมพ์เองได้ตอนตอบเรื่องเอกสาร (RT-F3)
+  const DOCS_MARKER = 'ใช้บัตรประชาชนยื่นได้เลยค่ะ';
+  const DOCS_SCRIPT = `${DOCS_MARKER} 😊 ผลอนุมัติขึ้นอยู่กับบริษัทสินเชื่อ`;
+  const T0 = new Date('2026-09-22T10:00:00.000Z').getTime();
+  const at = (sec: number) => new Date(T0 + sec * 1000);
+
+  const make = (opts: { markers?: string[] | null; rawMarkers?: string } = {}) => {
+    const fake = makeFakeChatPrisma({
+      room: { id: 'r1' },
+      markers: opts.markers === undefined ? [MARKER, DOCS_MARKER] : opts.markers,
+      rawMarkers: opts.rawMarkers,
+    });
+    return { ...fake, svc: new RoomManagerService(fake.prisma as any, {} as any) };
+  };
+  const customer = (fake: ReturnType<typeof make>, sec: number, text = 'ฟรีดาวน์มีรุ่นไหนบ้าง?') =>
+    fake.addMessage({ role: MessageRole.CUSTOMER, text, createdAt: at(sec) });
+  const pageImage = (fake: ReturnType<typeof make>, sec: number) =>
+    fake.addMessage({ role: MessageRole.STAFF, type: 'IMAGE', text: null, createdAt: at(sec) });
+  const pageScript = (fake: ReturnType<typeof make>, sec: number, text = SCRIPT) =>
+    fake.addMessage({ role: MessageRole.STAFF, text, createdAt: at(sec) });
+
+  describe('isPageAutoReplyText / hasPageAutoReplyMarkers', () => {
+    it('ขึ้นต้นตามรายการ (มีช่องว่างนำหน้าก็นับ) → true · ข้อความอื่น/ว่าง → false', async () => {
+      const f = make();
+      expect(await f.svc.isPageAutoReplyText(SCRIPT)).toBe(true);
+      expect(await f.svc.isPageAutoReplyText(`  ${SCRIPT}`)).toBe(true);
+      expect(await f.svc.isPageAutoReplyText('สวัสดีค่ะ สนใจรุ่นไหนคะ')).toBe(false);
+      expect(await f.svc.isPageAutoReplyText(null)).toBe(false);
+      expect(await f.svc.hasPageAutoReplyMarkers()).toBe(true);
+    });
+
+    it('ไม่ได้ตั้งรายการ / JSON พัง / คำสั้นเกิน → ปิดด่านทั้งหมด ไม่อ่านแชท', async () => {
+      for (const cfg of [{ markers: null }, { rawMarkers: '{bad' }, { markers: ['ab'] }]) {
+        const f = make(cfg);
+        pageScript(f, 1);
+        expect(await f.svc.isPageAutoReplyText(SCRIPT)).toBe(false);
+        expect(await f.svc.hasPageAutoReplyMarkers()).toBe(false);
+        expect(await f.svc.hasPageAutoReplyNear('r1', at(0), 20_000)).toBe(false);
+        expect(await f.svc.pageAutoReplyCoversTurn('r1', at(-2), at(0))).toBe(false);
+        expect(f.prisma.chatMessage.findMany).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  describe('hasPageAutoReplyNear — รูปตารางที่เพจส่งนำหน้าสคริปต์', () => {
+    it('สคริปต์มาหลังรูปไม่กี่วิ → true · สคริปต์ห่างเกินหน้าต่าง → false', async () => {
+      const f = make();
+      customer(f, 0);
+      pageScript(f, 3);
+      expect(await f.svc.hasPageAutoReplyNear('r1', at(1), 20_000)).toBe(true);
+      expect(await f.svc.hasPageAutoReplyNear('r1', at(60), 20_000)).toBe(false);
+    });
+
+    it('ข้อความพนักงานพิมพ์เองใกล้ ๆ ไม่นับ', async () => {
+      const f = make();
+      customer(f, 0);
+      f.addMessage({ role: MessageRole.STAFF, text: 'รุ่นนี้มีสีดำค่ะ', createdAt: at(2) });
+      expect(await f.svc.hasPageAutoReplyNear('r1', at(1), 20_000)).toBe(false);
+    });
+
+    it('RT-F3: ข้อความขึ้นต้นเหมือนสคริปต์แต่ไม่มีลูกค้าทักใกล้ ๆ (พนักงานพิมพ์เอง) ไม่นับ · ลูกค้ารอคิวอยู่ (ยังไม่มีแถว) นับ', async () => {
+      const f = make();
+      customer(f, -300, 'ต้องใช้เอกสารอะไรบ้างคะ');
+      pageScript(f, 3, DOCS_SCRIPT);
+      expect(await f.svc.hasPageAutoReplyNear('r1', at(1), 20_000)).toBe(false);
+      expect(await f.svc.hasPageAutoReplyNear('r1', at(1), 20_000, [at(1)])).toBe(true);
+    });
+
+    it('RT-Q4: อ่าน echo ใหม่สุดก่อน — echo เก่าเกิน 10 แถวในช่วงเดียวกันไม่ดันสคริปต์ที่เพิ่งมาหลุดชุด', async () => {
+      const f = make();
+      for (let i = 0; i < 12; i++) {
+        f.addMessage({ role: MessageRole.STAFF, text: `ข้อความพนักงาน ${i}`, createdAt: at(-19 + i) });
+      }
+      customer(f, 0);
+      pageScript(f, 3);
+      expect(await f.svc.hasPageAutoReplyNear('r1', at(1), 20_000)).toBe(true);
+    });
+  });
+
+  describe('isPageAutoReplyEcho — RT-F3 คำขึ้นต้นตรง + มีลูกค้าทักภายใน ±15 วิ', () => {
+    it('ลูกค้ากดปุ่มแล้วเพจตอบภายในไม่กี่วิ → true', async () => {
+      const f = make();
+      customer(f, 0, 'ใช้บัตรอะไรยื่นได้บ้าง?');
+      expect(await f.svc.isPageAutoReplyEcho('r1', DOCS_SCRIPT, at(1.2))).toBe(true);
+    });
+
+    it('พนักงานพิมพ์ประโยคเดียวกับสคริปต์ 5 นาทีหลังข้อความลูกค้าล่าสุด → false (คนตอบจริง)', async () => {
+      const f = make();
+      customer(f, 0, 'ต้องใช้เอกสารอะไรบ้างคะ');
+      expect(
+        await f.svc.isPageAutoReplyEcho('r1', `${DOCS_MARKER} ถ้าสะดวกแวะร้านได้เลยนะคะ`, at(300)),
+      ).toBe(false);
+    });
+
+    it('echo ถูกบันทึกก่อนแถวลูกค้า (ดึงโปรไฟล์อยู่ — ROUTER-2) → ยังนับ เพราะหน้าต่างเป็น ± ไม่ใช่แค่ "ก่อน"', async () => {
+      const f = make();
+      customer(f, 2);
+      expect(await f.svc.isPageAutoReplyEcho('r1', DOCS_SCRIPT, at(0.5))).toBe(true);
+    });
+
+    it('แถวลูกค้ายังไม่ถูกบันทึก (รอคิวหลังเทิร์นก่อน) แต่ router รับเข้าแล้ว → นับจากเวลารับเข้า', async () => {
+      const f = make();
+      customer(f, -60, 'สนใจ 15 Pro ค่ะ');
+      expect(await f.svc.isPageAutoReplyEcho('r1', SCRIPT, at(3))).toBe(false);
+      expect(await f.svc.isPageAutoReplyEcho('r1', SCRIPT, at(3), [at(1)])).toBe(true);
+    });
+
+    it('ข้อความไม่ขึ้นต้นตาม marker → false โดยไม่อ่านแชท', async () => {
+      const f = make();
+      customer(f, 0);
+      expect(await f.svc.isPageAutoReplyEcho('r1', 'รุ่นนี้มีสีดำค่ะ', at(1))).toBe(false);
+      expect(f.prisma.chatMessage.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pageAutoReplyCoversTurn — ข้ามเทิร์นได้เฉพาะเมื่อเพจตอบครบทุกข้อความของลูกค้า', () => {
+    it('กดปุ่มโฆษณา 1 ครั้ง → เพจส่งรูป+สคริปต์ → ข้ามได้', async () => {
+      const f = make();
+      customer(f, 0);
+      pageImage(f, 1);
+      pageScript(f, 1.5);
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(-2), at(0))).toBe(true);
+    });
+
+    it('ROUTER-4: กดปุ่ม + พิมพ์คำถามจริงในช่วงรวมข้อความ (echo มาทีหลัง) → ห้ามข้าม', async () => {
+      const f = make();
+      customer(f, 0);
+      customer(f, 2, 'สนใจ 15 Pro Max ค่ะ');
+      pageImage(f, 4.9); // รูปอย่างเดียวต้องไม่กลายเป็น "คำตอบ" ของคำถาม
+      pageScript(f, 5);
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(0), at(2))).toBe(false);
+    });
+
+    it('กดปุ่ม → เพจตอบ → พิมพ์คำถามต่อทันที (ถูกรวมเป็นเทิร์นเดียว) → ห้ามข้าม', async () => {
+      const f = make();
+      customer(f, 0);
+      pageScript(f, 1);
+      customer(f, 2, 'สนใจ 15 Pro Max ค่ะ');
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(0), at(2))).toBe(false);
+    });
+
+    it('เช็คหลังบอทคิดของเทิร์นปุ่มโฆษณา: ข้อความใหม่ที่มาหลังตัวตั้งเทิร์นเป็นของเทิร์นถัดไป ไม่นับ → ข้ามได้', async () => {
+      const f = make();
+      customer(f, 0);
+      pageScript(f, 5);
+      customer(f, 15, 'สนใจ 15 Pro Max ค่ะ'); // รอคิวอยู่ — เทิร์นของมันจะตอบเอง
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(-2), at(0))).toBe(true);
+    });
+
+    it('กดปุ่มซ้ำ 2 ครั้งติดกัน เพจตอบทั้ง 2 ครั้ง → ข้ามได้', async () => {
+      const f = make();
+      customer(f, 0);
+      customer(f, 1);
+      pageScript(f, 2);
+      pageScript(f, 3);
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(-1), at(1))).toBe(true);
+    });
+
+    it('ข้อความเก่าที่ค้างไม่มีใครตอบ (เกิน 10 นาที) ไม่ทำให้บอทตอบปุ่มโฆษณาซ้ำกับเพจ', async () => {
+      const f = make();
+      customer(f, -3 * 24 * 3600, 'ยังมีเครื่องไหมคะ');
+      customer(f, 0);
+      pageScript(f, 1);
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(-2), at(0))).toBe(true);
+    });
+
+    it('พนักงานตอบต่อจากสคริปต์แล้ว ลูกค้าถามต่อ → สคริปต์นั้นไม่ใช่คำตอบของคำถามใหม่ → ห้ามข้าม', async () => {
+      const f = make();
+      customer(f, 0);
+      pageScript(f, 1);
+      f.addMessage({ role: MessageRole.STAFF, text: 'ฟรีดาวน์เป็นเครื่องนอกนะคะ', createdAt: at(1.5) });
+      customer(f, 2.5, 'สนใจ 15 Pro Max ค่ะ');
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(0.5), at(2.5))).toBe(false);
+    });
+
+    it('บอทพิมพ์ประโยคขึ้นต้นเหมือนสคริปต์ = คำตอบของบอท ไม่ใช่ข้อความอัตโนมัติของเพจ', async () => {
+      const f = make();
+      customer(f, 0);
+      f.addMessage({ role: MessageRole.BOT, text: SCRIPT, createdAt: at(1) });
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(-2), at(0))).toBe(false);
+    });
+
+    it('สคริปต์ก่อนขอบ since (ตอบปุ่มครั้งก่อน) + คำถามใหม่ → ห้ามข้าม', async () => {
+      const f = make();
+      customer(f, 0);
+      pageScript(f, 1);
+      customer(f, 40, 'ผ่อนเดือนละเท่าไหร่คะ');
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(38), at(40))).toBe(false);
+    });
+
+    it('RT-V1: กดปุ่มฟรีดาวน์ → เพจตอบ → กดปุ่มเอกสารอีก 60 วิ → เพจตอบ → ข้ามได้ทั้งสองเทิร์น', async () => {
+      const f = make();
+      customer(f, 0);
+      pageImage(f, 2);
+      pageScript(f, 3);
+      customer(f, 60, 'ใช้บัตรอะไรยื่นได้บ้าง?');
+      pageScript(f, 62, DOCS_SCRIPT);
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(-2), at(0))).toBe(true);
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(58), at(60))).toBe(true);
+    });
+
+    it('RT-V1: กดปุ่มเดิมซ้ำห่างกัน 2 นาที เพจตอบทั้งสองครั้ง → ข้ามได้', async () => {
+      const f = make();
+      customer(f, 0);
+      pageScript(f, 1);
+      customer(f, 120);
+      pageScript(f, 121);
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(118), at(120))).toBe(true);
+    });
+
+    it('RT-V1: กดปุ่ม 2 ครั้ง + พิมพ์คำถาม 1 ข้อ (สคริปต์ 2 ใบ ลูกค้า 3 ข้อความ) → ห้ามข้าม', async () => {
+      const f = make();
+      customer(f, 0);
+      pageScript(f, 1);
+      customer(f, 60, 'ใช้บัตรอะไรยื่นได้บ้าง?');
+      pageScript(f, 61, DOCS_SCRIPT);
+      customer(f, 62, 'แล้ว 15 Pro มีไหมคะ');
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(60), at(62))).toBe(false);
+    });
+
+    it('RT-V2: คำถามที่ลูกค้าพิมพ์ + กดปุ่มระหว่างบอทคิด (ปุ่มยังรอคิว ไม่มีแถว) → สคริปต์หลังขอบ scriptsBefore ไม่นับ → ห้ามข้าม', async () => {
+      const f = make();
+      customer(f, 0);
+      pageScript(f, 1);
+      customer(f, 30, 'ผ่อน 15 pro เดือนละเท่าไหร่');
+      // ลูกค้ากดปุ่มที่ 40 (router รับเข้าแล้ว แต่แถวยังไม่ถูกบันทึกเพราะเทิร์นคำถามยังไม่จบ) เพจตอบที่ 41
+      pageScript(f, 41);
+      // ไม่มีขอบบน = ตรรกะเห็นสคริปต์ 2 ใบ ลูกค้า 2 ข้อความ แล้วกลืนคำถามทิ้ง (บั๊กเดิม)
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(28), at(30))).toBe(true);
+      expect(
+        await f.svc.pageAutoReplyCoversTurn('r1', at(28), at(30), {
+          scriptsBefore: at(38),
+          extraCustomerAt: [at(30), at(40)],
+        }),
+      ).toBe(false);
+    });
+
+    it('RT-F3: พนักงานพิมพ์ประโยคขึ้นต้นเหมือนสคริปต์ 5 นาทีหลังลูกค้า → ไม่ใช่สคริปต์ ไม่ข้าม', async () => {
+      const f = make();
+      f.addMessage({ role: MessageRole.BOT, text: 'สวัสดีค่ะ สนใจรุ่นไหนคะ', createdAt: at(-600) });
+      customer(f, 0, 'ต้องใช้เอกสารอะไรบ้างคะ');
+      pageScript(f, 300, `${DOCS_MARKER} ถ้าสะดวกแวะร้านได้เลยนะคะ`);
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(-2), at(0))).toBe(false);
+    });
+
+    it('RT-F3: ลูกค้ายังไม่มีแถว (รอคิว) แต่ router รับเข้าแล้ว → สคริปต์ผ่านด่านเวลาจากเวลารับเข้า', async () => {
+      const f = make();
+      pageScript(f, 3);
+      customer(f, 40); // แถวของปุ่มถูกบันทึกช้าเพราะรอคิวหลังเทิร์นก่อนหน้า (รับเข้าจริงที่ 1)
+      expect(await f.svc.pageAutoReplyCoversTurn('r1', at(-1), at(40))).toBe(false);
+      expect(
+        await f.svc.pageAutoReplyCoversTurn('r1', at(-1), at(40), { extraCustomerAt: [at(1)] }),
+      ).toBe(true);
+    });
   });
 });

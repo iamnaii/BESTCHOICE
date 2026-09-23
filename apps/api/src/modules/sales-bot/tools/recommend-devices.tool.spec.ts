@@ -1,7 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GetInstallmentRatesTool, PricingTemplateRateRow } from './get-installment-rates.tool';
-import { RecommendDevicesTool, storageGb } from './recommend-devices.tool';
+import {
+  RECOMMEND_NO_STOCK_NOTE,
+  RecommendDevicesTool,
+  storageGb,
+  stripRecommendStockFields,
+} from './recommend-devices.tool';
 import { TRADE_IN_NOTE } from './trade-in-estimate';
 
 /**
@@ -16,6 +21,7 @@ const tpl = (over: Partial<PricingTemplateRateRow> = {}): PricingTemplateRateRow
   model: 'iPhone 13',
   storage: '128GB',
   category: 'PHONE_USED',
+  condition: 'มือสอง',
   hasWarranty: false,
   rate1: { downPayment: 1900, monthlyPrice: 1990, termMonths: 24 },
   rate2: { downPayment: 2500, monthlyPrice: 1758, termMonths: 12 },
@@ -312,5 +318,52 @@ describe('storageGb', () => {
     expect(storageGb('')).toBeNull();
     expect(storageGb(null)).toBeNull();
     expect(storageGb('N/A')).toBeNull();
+  });
+});
+
+describe('RecommendDevicesTool — โหมดไม่มีสต๊อก (รีวิว TOOLLOOP-4 2026-09-22)', () => {
+  const liveProducts = [
+    // แถวค้าง/เดโมในระบบ — โหมดปกติจะดัน 13 ขึ้นก่อน 14 และส่งสี/แบตให้โมเดล
+    stock({ id: 'p13', model: 'iPhone 13', storage: '128GB', batteryHealth: 92, color: 'ม่วงพาสเทล', gallery: ['https://cdn/x.jpg'] }),
+  ];
+
+  it('ignoreStock → ไม่อ่านตาราง Product · ทุกใบ inStock=false · ลำดับตามงบ/รุ่นใหม่กว่า (ไม่ถูกสต๊อกค้างดันขึ้น)', async () => {
+    const { tool, product } = build([tpl({ model: 'iPhone 13' }), tpl({ model: 'iPhone 14' })], { products: liveProducts });
+    const r = await tool.run({ currentModel: 'iPhone 11', downBudget: 99_999, monthlyBudget: 99_999 }, { ignoreStock: true });
+    expect(product.findMany).not.toHaveBeenCalled();
+    expect(r.recommended.map((d) => [d.model, d.inStock, d.unitCount])).toEqual([
+      ['iPhone 14', false, 0],
+      ['iPhone 13', false, 0],
+    ]);
+    expect(r.recommended.every((d) => d.sampleUnit === undefined)).toBe(true);
+  });
+
+  it('โหมดปกติ (ไม่ส่ง opts) ยังอ่านสต๊อกเหมือนเดิม', async () => {
+    const { tool, product } = build([tpl({ model: 'iPhone 13' }), tpl({ model: 'iPhone 14' })], { products: liveProducts });
+    const r = await tool.run({ currentModel: 'iPhone 11', downBudget: 99_999, monthlyBudget: 99_999 });
+    expect(product.findMany).toHaveBeenCalledTimes(1);
+    expect(r.recommended[0].model).toBe('iPhone 13');
+    expect(r.recommended[0].sampleUnit?.color).toBe('ม่วงพาสเทล');
+  });
+
+  it('stripRecommendStockFields ตัด inStock/unitCount/sampleUnit ทั้ง recommended และ nearMiss + แนบหมายเหตุ · ไม่แก้ต้นฉบับ', async () => {
+    const { tool } = build(
+      [tpl({ model: 'iPhone 13' }), tpl({ model: 'iPhone 15', rate1: { downPayment: 9000, monthlyPrice: 3000, termMonths: 12 }, rate2: { downPayment: 9000, monthlyPrice: 3000, termMonths: 12 } })],
+      { products: liveProducts },
+    );
+    const raw = await tool.run({ currentModel: 'iPhone 11', downBudget: 3000, monthlyBudget: 2000 });
+    expect(raw.recommended[0].sampleUnit).toBeDefined();
+    const s = stripRecommendStockFields(raw) as unknown as Record<string, unknown[]> & { stockNote: string };
+    for (const item of [...s.recommended, ...s.nearMiss] as Record<string, unknown>[]) {
+      expect(item).not.toHaveProperty('inStock');
+      expect(item).not.toHaveProperty('unitCount');
+      expect(item).not.toHaveProperty('sampleUnit');
+      expect(item).toHaveProperty('monthlyPrice');
+    }
+    expect(s.nearMiss).toHaveLength(1);
+    expect(s.stockNote).toBe(RECOMMEND_NO_STOCK_NOTE);
+    expect(JSON.stringify(s)).not.toContain('ม่วงพาสเทล');
+    expect(JSON.stringify(s)).not.toContain('https://cdn/x.jpg');
+    expect(raw.recommended[0].sampleUnit).toBeDefined(); // ต้นฉบับไม่ถูกแก้
   });
 });

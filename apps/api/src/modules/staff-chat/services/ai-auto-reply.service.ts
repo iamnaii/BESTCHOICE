@@ -5,6 +5,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { SalesBotService, SalesBotResult } from '../../sales-bot/sales-bot.service';
 import { LlmProviderRegistry } from '../../sales-bot/providers/llm-provider.registry';
 import { MessageRouterService } from '../../chat-engine/services/message-router.service';
+import { mergeWithBotStaffAttention } from '../../chat-engine/constants/bot-staff-attention';
 import { PersonaService } from './persona.service';
 import { SalesStateService, type SalesState } from './sales-state.service';
 import {
@@ -42,6 +43,8 @@ export class AiAutoReplyService {
       this.logger.log(`[ShouldAutoReply] room=${session.id} skip=handoffMode`);
       return false;
     }
+    // คำขอของบอทให้พนักงานตามต่อ (notify_staff: handoffReason ขึ้นต้น BOT_STAFF_ATTENTION_PREFIX,
+    // handoffMode = false) ไม่ใช่เหตุให้หยุด — บอทตอบต่อจนกว่าพนักงานจะตอบเอง (ตอนนั้น aiPaused ถูกตั้ง)
 
     // Defense-in-depth: skip channels whose adapter is stub (TikTok)
     // Even if aiAutoChannels misconfigured to include TIKTOK, prevent wasted Claude tokens.
@@ -83,12 +86,16 @@ export class AiAutoReplyService {
       );
       // ชนแคป = คุยเข้มข้นผิดปกติ/ลูป — ปักธงให้ห้องเด้งเข้าคิว "ต้องตอบ" หนึ่งครั้ง
       // (ห้องที่ handoffMode แล้วถูกกรองไว้บนสุดของฟังก์ชัน — จึงไม่ปักซ้ำ)
+      // คำขอของบอทที่ยังค้าง (notify_staff — ไม่ตั้ง handoffMode) ต่อท้ายไว้ ไม่เขียนทับ
       try {
         await this.prisma.chatRoom.update({
           where: { id: session.id },
           data: {
             handoffMode: true,
-            handoffReason: 'บอทตอบครบโควต้า 24 ชม. — ส่งต่อพนักงาน',
+            handoffReason: mergeWithBotStaffAttention(
+              'บอทตอบครบโควต้า 24 ชม. — ส่งต่อพนักงาน',
+              session,
+            ),
             handoffTaggedAt: new Date(),
           },
         });

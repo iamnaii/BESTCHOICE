@@ -106,6 +106,47 @@ export interface RecommendDevicesInput {
   preferStorage?: string;
 }
 
+export interface RecommendDevicesOptions {
+  /**
+   * โหมดไม่มีสต๊อก (`shop_bot_stock_mode` = NO_STOCK): ไม่อ่านตาราง Product เลย — แถวค้าง/ของเดโม
+   * ต้องไม่ถูกดันขึ้นก่อน และสี/แบตของเครื่องในระบบต้องไม่ถึงโมเดล (รีวิว TOOLLOOP-4 2026-09-22)
+   * ⇒ ทุกใบ inStock=false ลำดับเหลือแค่งบ/รุ่นใหม่กว่า
+   */
+  ignoreStock?: boolean;
+}
+
+/** ฟิลด์ในการ์ดแนะนำที่มาจากแถว Product สด (สต๊อก/สี/แบต/รูป) — ตัดทิ้งในโหมดไม่มีสต๊อก */
+export const RECOMMEND_STOCK_FIELDS = ['inStock', 'unitCount', 'sampleUnit'] as const;
+
+/** หมายเหตุที่แนบกับผล recommend_devices ในโหมดไม่มีสต๊อก (แชร์กับ bot-eval ให้ fixture ตรงของจริง) */
+export const RECOMMEND_NO_STOCK_NOTE =
+  'โหมดไม่มีสต๊อก: การ์ดนี้ไม่มีข้อมูลสต๊อก — ห้ามพูดว่ามีของ/พร้อมรับที่ร้าน/หมด/กำลังเข้า ห้ามใส่สีหรือแบต% ' +
+  'บอกได้แค่รุ่น ความจุ มือ 1/มือสอง เรท ดาวน์ ผ่อน งวด ตามผลนี้';
+
+/**
+ * ตัดฟิลด์สต๊อกออกจาก recommended[] / nearMiss[] + แนบหมายเหตุโหมดไม่มีสต๊อก — ไม่แก้ต้นฉบับ
+ * (ใช้ร่วมกันระหว่าง SalesBotService.runTool กับ fixture ของ bot-eval)
+ */
+export function stripRecommendStockFields<T>(result: T): T {
+  if (!result || typeof result !== 'object') return result;
+  const strip = (items: unknown): unknown =>
+    Array.isArray(items)
+      ? items.map((it) => {
+          if (!it || typeof it !== 'object') return it;
+          const copy = { ...(it as Record<string, unknown>) };
+          for (const f of RECOMMEND_STOCK_FIELDS) delete copy[f];
+          return copy;
+        })
+      : items;
+  const r = result as Record<string, unknown>;
+  return {
+    ...r,
+    recommended: strip(r.recommended),
+    nearMiss: strip(r.nearMiss),
+    stockNote: RECOMMEND_NO_STOCK_NOTE,
+  } as T;
+}
+
 const MAX_RECOMMENDED = 2;
 /** เพดาน Product ที่ดึงมานับสต็อก (รุ่นละไม่กี่เครื่อง — 200 พอสำหรับทุก template ที่ผ่านตัวกรอง) */
 const STOCK_TAKE = 200;
@@ -160,7 +201,10 @@ export class RecommendDevicesTool {
     private readonly rates: GetInstallmentRatesTool,
   ) {}
 
-  async run(input: RecommendDevicesInput = {}): Promise<RecommendDevicesResult> {
+  async run(
+    input: RecommendDevicesInput = {},
+    opts: RecommendDevicesOptions = {},
+  ): Promise<RecommendDevicesResult> {
     const currentText = String(input?.currentModel ?? '').trim();
     const currentSpec = currentText ? findDeviceSpec(currentText) : null;
     const current = currentText
@@ -215,7 +259,10 @@ export class RecommendDevicesTool {
     const missing = eligible.filter((c) => c.fit === null);
 
     // (6) นับสต็อกครั้งเดียวสำหรับทุก candidate ที่เข้างบ (+ nearMiss ต้องรู้ inStock ด้วย)
-    const stock = await this.loadStock([...fitting, ...missing].map((c) => c.template));
+    // โหมดไม่มีสต๊อก: ไม่อ่าน Product เลย (ทุกใบ inStock=false ⇒ การเรียงไม่ขึ้นกับแถวค้างในระบบ)
+    const stock = opts.ignoreStock
+      ? new Map<string, StockRow[]>()
+      : await this.loadStock([...fitting, ...missing].map((c) => c.template));
 
     // รู้งบทั้งสองด้าน → ใหม่กว่าดีกว่า (ทุกตัวเข้างบแล้ว) · รู้ด้านเดียว → ด้านที่ไม่รู้ต้องถูกสุดก่อน
     // (ไม่งั้นลูกค้าบอกแค่ดาวน์ 5,000 จะได้รุ่นใหม่สุดที่ผ่อนเดือนละ 3,900 ทั้งที่อาจไหวแค่ 2,000)

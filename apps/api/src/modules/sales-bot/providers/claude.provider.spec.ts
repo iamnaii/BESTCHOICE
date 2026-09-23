@@ -151,6 +151,19 @@ describe('ClaudeProvider', () => {
     expect(call.tools[1].cache_control).toEqual({ type: 'ephemeral', ttl: '1h' });
   });
 
+  it("toolChoice 'none' → tool_choice none (นิยามเครื่องมือยังส่งไป แคชไม่แตก) · ไม่ส่ง = ไม่มี tool_choice", async () => {
+    createMock.mockResolvedValue({
+      content: [{ type: 'text', text: 'ok' }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    const tools = [{ name: 'a', description: 'A', inputSchema: { type: 'object' } }];
+    await provider.chat({ systemPrompt: 'p', messages: [{ role: 'user', content: 'hi' }], tools, toolChoice: 'none' });
+    await provider.chat({ systemPrompt: 'p', messages: [{ role: 'user', content: 'hi' }], tools });
+    expect(createMock.mock.calls[0][0].tool_choice).toEqual({ type: 'none' });
+    expect(createMock.mock.calls[0][0].tools).toHaveLength(1);
+    expect(createMock.mock.calls[1][0]).not.toHaveProperty('tool_choice');
+  });
+
   it('inputTokens = billing-equivalent per-TTL (read ×0.1, write 5m ×1.25, write 1h ×2)', async () => {
     createMock.mockResolvedValue({
       content: [{ type: 'text', text: 'ok' }],

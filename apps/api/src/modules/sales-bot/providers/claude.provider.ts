@@ -81,6 +81,7 @@ export class ClaudeProvider implements ILlmProvider {
         },
       ],
       ...(tools ? { tools } : {}),
+      ...(tools && req.toolChoice === 'none' ? { tool_choice: { type: 'none' as const } } : {}),
       // effort คุมความลึกการคิดของตระกูล Claude 5 = คันเร่ง latency หลักของแชทบอท
       output_config: { effort: effort as 'low' | 'medium' | 'high' },
       messages,

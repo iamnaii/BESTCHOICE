@@ -179,7 +179,7 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
         { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
-        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
       ],
@@ -240,7 +240,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
         { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
-        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
       ],
@@ -365,7 +365,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
-        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
         { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
       ],
@@ -533,7 +533,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'เอกสารยกเลิกสัญญา', path: '/finance/contract-cancellation', icon: FileText },
         { label: 'ใบเสร็จอิเล็กทรอนิกส์อัตโนมัติ', path: '/finance/e-receipt-auto', icon: Receipt },
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
-        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
       ],
     },
     {
@@ -694,7 +694,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
       icon: Shield,
       zone: 'shop',
       items: [
-        { label: 'รับซ่อม/รับประกัน', path: '/insurance', icon: ShieldCheck },
+        { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
         { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
         // คำสั่งเจ้าของ 2026-08-29: ยึดคืนอยู่ zone ไฟแนนซ์ที่เดียว (owner-fin-revenue)
         // — กลับคำสั่งเดิม 2026-08-08 ที่ให้ duplicate ไว้ทั้งสอง zone.

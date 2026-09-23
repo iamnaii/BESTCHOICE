@@ -48,11 +48,17 @@ export function SendRepairDialog({ caseId, open, onOpenChange }: DialogBaseProps
     }
   }, [open]);
 
+  // ค่าซ่อมประมาณเป็นช่องไม่บังคับ — ว่างได้ แต่ถ้ากรอกต้องเป็นตัวเลข >= 0 (R22 fix round 1,
+  // แบบเดียวกับ MarkRepairedDialog.actualCost)
+  const estimatedCostParsed = Number(estimatedCost);
+  const estimatedCostValid =
+    estimatedCost.trim() === '' || (!Number.isNaN(estimatedCostParsed) && estimatedCostParsed >= 0);
+
   const mutate = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = { repairSupplierId: supplier!.id };
       if (claimNo.trim()) body.externalClaimNo = claimNo.trim();
-      if (estimatedCost.trim()) body.estimatedCost = Number(estimatedCost);
+      if (estimatedCost.trim()) body.estimatedCost = estimatedCostParsed;
       return (await api.post(`/after-sales/${caseId}/repair/send`, body)).data;
     },
     onSuccess: () => {
@@ -102,6 +108,9 @@ export function SendRepairDialog({ caseId, open, onOpenChange }: DialogBaseProps
             onChange={(e) => setEstimatedCost(e.target.value)}
             className={inputClass}
           />
+          {!estimatedCostValid && (
+            <p className="text-xs leading-snug text-destructive">กรอกเป็นตัวเลขตั้งแต่ 0 ขึ้นไป</p>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutate.isPending}>
@@ -109,7 +118,7 @@ export function SendRepairDialog({ caseId, open, onOpenChange }: DialogBaseProps
           </Button>
           <Button
             variant="primary"
-            disabled={!supplier || mutate.isPending}
+            disabled={!supplier || !estimatedCostValid || mutate.isPending}
             onClick={() => mutate.mutate()}
           >
             {mutate.isPending ? 'กำลังบันทึก…' : 'ส่งซ่อม'}

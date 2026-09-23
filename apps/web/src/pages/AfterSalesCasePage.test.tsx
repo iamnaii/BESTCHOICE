@@ -18,6 +18,16 @@ vi.mock('@/lib/api', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: auth.user }) }));
+// mock ทั้ง component (ไม่ใช่แค่ ContactCombobox ข้างใน) — พฤติกรรมค้นหา/debounce ของ
+// combobox จริงไม่ใช่สิ่งที่ Task 11 ทดสอบ; แค่ต้องเรียก onSelect ด้วย payload ที่ถูกต้อง
+// (ตรวจจาก RepairCenterCombobox.tsx: onSelect({ id: childId, name }) — R22 fix round 1)
+vi.mock('@/pages/insurance/components/RepairCenterCombobox', () => ({
+  RepairCenterCombobox: ({ onSelect }: { onSelect: (s: { id: string; name: string }) => void }) => (
+    <button type="button" onClick={() => onSelect({ id: 'sup-1', name: 'iCare' })}>
+      เลือกศูนย์ซ่อม (ทดสอบ)
+    </button>
+  ),
+}));
 
 function caseDetail(over: Partial<CaseDetail> = {}): CaseDetail {
   const base: CaseDetail = {
@@ -234,5 +244,46 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     renderPage(detail.id);
     await screen.findByRole('heading', { name: detail.caseNumber });
     expect(screen.getByRole('button', { name: 'ยกเลิกเคส' })).toBeInTheDocument();
+  });
+
+  it('(f) stage RECEIVED: กด "ส่งซ่อม" → ยืนยันปิดจนกว่าจะเลือกศูนย์ซ่อม → กรอกเลขเคลม+ค่าซ่อมประมาณ → POST repair/send', async () => {
+    const base = caseDetail();
+    const detail = caseDetail({
+      stage: 'RECEIVED',
+      stale: false,
+      daysInStage: 0,
+      repairTicket: {
+        ...base.repairTicket!,
+        status: 'OPEN',
+        repairSupplier: null,
+        sentToRepairAt: null,
+      },
+    });
+    mockGet(detail);
+    mocks.post.mockResolvedValue({ data: { id: detail.id, stage: 'IN_REPAIR' } });
+    renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    const [primaryButton] = primaryButtonsOutsideMobileBar('ส่งซ่อม');
+    await userEvent.click(primaryButton);
+
+    const dialog = await screen.findByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', { name: 'ส่งซ่อม' });
+    expect(confirmButton).toBeDisabled();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'เลือกศูนย์ซ่อม (ทดสอบ)' }));
+    expect(confirmButton).not.toBeDisabled();
+
+    await userEvent.type(within(dialog).getByLabelText('เลขเคลม'), 'IC-1');
+    await userEvent.type(within(dialog).getByLabelText(/ค่าซ่อมประมาณ/), '1500');
+    await userEvent.click(confirmButton);
+
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(`/after-sales/${detail.id}/repair/send`, {
+        repairSupplierId: 'sup-1',
+        externalClaimNo: 'IC-1',
+        estimatedCost: 1500,
+      }),
+    );
   });
 });

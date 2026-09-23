@@ -527,7 +527,7 @@ export default function AfterSalesNewPage() {
                   </div>
                   <div className="space-y-1">
                     <span className="block text-xs leading-snug text-muted-foreground">
-                      ศูนย์ซ่อม (ว่าง = ซ่อมที่ร้าน)
+                      ศูนย์ซ่อม (เลือกทีหลังได้ตอนส่งซ่อม)
                     </span>
                     <RepairCenterCombobox
                       value={repairSupplier?.id ?? ''}

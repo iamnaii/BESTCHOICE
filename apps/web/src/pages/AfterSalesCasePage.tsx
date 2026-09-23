@@ -165,13 +165,14 @@ export default function AfterSalesCasePage() {
               const deviceLine =
                 [data.deviceBrand, data.deviceModel].filter(Boolean).join(' ') ||
                 'ไม่ทราบรุ่นเครื่อง';
+              // ไม่มีเส้นทางซ่อมในร้าน (in-shop) ในระบบ (R21, fix round 1) — repairTicket
+              // ที่ยังไม่ได้เลือกศูนย์ (ยังไม่กด "ส่งซ่อม") ไม่มีข้อความส่วนนี้เลย
+              // แทนที่จะอ้างความสามารถที่ไม่มีจริง
               const centerLine = data.repairTicket?.repairSupplier?.name
                 ? `ศูนย์ ${data.repairTicket.repairSupplier.name}`
                 : data.repairTicket?.externalClaimNo
                   ? `เลขเคลม ${data.repairTicket.externalClaimNo}`
-                  : data.repairTicket
-                    ? 'ซ่อมที่ร้าน'
-                    : null;
+                  : null;
               const summaryLine = [data.customer.name, deviceLine, centerLine]
                 .filter(Boolean)
                 .join(' · ');
@@ -213,15 +214,9 @@ export default function AfterSalesCasePage() {
                         </Button>
                       )}
                       <div className="flex flex-wrap justify-end gap-2">
-                        {data.stage === 'RECEIVED' && canAct && (
-                          <Button
-                            variant="outline"
-                            size="md"
-                            onClick={() => setDialog('mark-repaired')}
-                          >
-                            ซ่อมที่ร้านเสร็จแล้ว
-                          </Button>
-                        )}
+                        {/* R21 (fix round 1): ปุ่มรอง "ซ่อมเสร็จแล้ว" สำหรับซ่อมในร้านถูกถอดออก —
+                            backend ไม่มีเส้นทางนั้น (markRepaired รับเฉพาะ IN_PROGRESS, send()
+                            บังคับ repairSupplierId เสมอ) RECEIVED เหลือปุ่มหลัก "ส่งซ่อม" ทางเดียว */}
                         {data.stage === 'READY_FOR_PICKUP' && canAct && (
                           <Button
                             variant="outline"

@@ -113,6 +113,7 @@ describe('DefectExchangeService', () => {
   };
 
   const OWNER = { id: 'user-owner', role: 'OWNER', branchId: null };
+  const MGR = { id: 'user-mgr', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
 
   beforeEach(async () => {
     const txMock = {
@@ -134,6 +135,9 @@ describe('DefectExchangeService', () => {
       },
       repairTicket: {
         findUnique: jest.fn(),
+      },
+      afterSalesCase: {
+        findFirst: jest.fn(),
       },
       productReservation: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -426,6 +430,75 @@ describe('DefectExchangeService', () => {
           }),
         }),
       );
+    });
+  });
+
+  // Task 5 (after-sales-hub PR2) — bypass ต้นทางแบบเคสหลังการขาย (ไม่มี repair ticket)
+  describe('execute — bypassWindowCheck via after-sales case origin (Task 5)', () => {
+    const caseBypassDto = {
+      oldContractId,
+      newProductId,
+      defectReason: 'ซ่อมไม่ได้ที่ร้าน',
+      bypassWindowCheck: true,
+      originAfterSalesCaseId: 'as-case-1',
+    } as any;
+
+    it('(a) bypass ผ่าน originAfterSalesCaseId (ไม่มี ticket) โดย BM → ผ่าน guard, ไม่เรียก markReplaced, เขียน audit newValue.originAfterSalesCaseId', async () => {
+      const tx = prisma.__tx;
+      tx.afterSalesCase.findFirst.mockResolvedValue({
+        contractId: oldContractId,
+        outcome: 'SAME_MODEL_EXCHANGE',
+        cancelledAt: null,
+      });
+      tx.payment.count.mockResolvedValue(0);
+      tx.contract.findUnique.mockResolvedValue(baseContract());
+      tx.product.findUnique.mockResolvedValue(newProductRec);
+      prisma.contract.findUnique.mockResolvedValue(baseContract());
+      prisma.product.findUnique.mockResolvedValue(newProductRec);
+
+      const result = await service.execute(caseBypassDto, MGR);
+
+      expect(result.newContract).toBeDefined();
+      expect(repairTickets.markReplaced).not.toHaveBeenCalled();
+      expect(tx.afterSalesCase.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 'as-case-1',
+          deletedAt: null,
+          stage: { notIn: ['CLOSED', 'CANCELLED'] },
+          replacementContractId: null,
+        },
+        select: { contractId: true, outcome: true, cancelledAt: true },
+      });
+      expect(tx.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'DEFECT_EXCHANGE_WINDOW_BYPASSED',
+            newValue: { originAfterSalesCaseId: 'as-case-1' },
+          }),
+        }),
+      );
+    });
+
+    it('(b) bypassWindowCheck ไม่มีทั้ง originRepairTicketId และ originAfterSalesCaseId → BadRequestException ข้อความระบุทั้งสองต้นทาง', async () => {
+      await expect(
+        service.execute({ ...caseBypassDto, originAfterSalesCaseId: undefined }, MGR),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'bypassWindowCheck ต้องระบุ originRepairTicketId หรือ originAfterSalesCaseId',
+        ),
+      );
+      expect(prisma.__tx.afterSalesCase.findFirst).not.toHaveBeenCalled();
+      expect(prisma.__tx.repairTicket.findUnique).not.toHaveBeenCalled();
+    });
+    it('(c) M5: เคสต้นทางปิด/ยกเลิกแล้ว หรือยืนยันไปแล้ว (findFirst ที่กรอง stage/replacementContractId ไม่เจอ) → NotFoundException ไม่เขียนอะไร', async () => {
+      const tx = prisma.__tx;
+      tx.afterSalesCase.findFirst.mockResolvedValue(null);
+      await expect(service.execute(caseBypassDto, MGR)).rejects.toThrow(
+        new NotFoundException('ไม่พบเคสหลังการขายที่ยังเปิดอยู่'),
+      );
+      expect(tx.contract.update).not.toHaveBeenCalled();
+      expect(tx.contract.create).not.toHaveBeenCalled();
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
     });
   });
 

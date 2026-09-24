@@ -9,6 +9,8 @@ const base = {
   defectReasons: [] as string[],
   viewerRole: 'SALES',
 };
+// ข้อความจริงของ DefectExchangeService.checkEligibility (กรอบ 7 วัน)
+const WINDOW = 'พ้นกำหนด 7 วันแล้ว (รับเครื่องเมื่อ 2026-09-01)';
 const pick = (opts: ReturnType<typeof computeOutcomes>, o: string) =>
   opts.find((x) => x.outcome === o)!;
 
@@ -29,11 +31,12 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
       warrantyStatus: 'IN_SHOP_WARRANTY',
       daysRemainingIn7Day: 0,
       defectEligible: false,
-      defectReasons: ['เกินกรอบ 7 วัน'],
+      defectReasons: [WINDOW],
     });
     expect(pick(sales, 'SAME_MODEL_EXCHANGE')).toMatchObject({
       enabled: false,
-      reason: 'เกินกรอบ 7 วัน',
+      // M15 — ข้อความ engine "(รับเครื่องเมื่อ …)" ห้ามขึ้นจอ → แปลงเป็นข้อความ UI
+      reason: 'พ้นกรอบ 7 วัน — ผจก. ยืนยันได้',
     });
     expect(pick(sales, 'PRICED_EXCHANGE')).toMatchObject({
       enabled: false,
@@ -44,7 +47,7 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
       warrantyStatus: 'IN_SHOP_WARRANTY',
       daysRemainingIn7Day: 0,
       defectEligible: false,
-      defectReasons: ['เกินกรอบ 7 วัน'],
+      defectReasons: [WINDOW],
       viewerRole: 'BRANCH_MANAGER',
     });
     expect(pick(bm, 'SAME_MODEL_EXCHANGE')).toMatchObject({
@@ -152,7 +155,69 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
     expect(o[0]).toMatchObject({ outcome: 'REPAIR', enabled: true, payerDefault: 'CUSTOMER' });
   });
 
-  it('ทุกทางออกที่ไม่ใช่ REPAIR ยัง implemented=false ใน PR 1', () => {
-    expect(computeOutcomes(base).map((x) => x.implemented)).toEqual([true, false, false]);
+  it('SAME_MODEL_EXCHANGE และ PRICED_EXCHANGE implemented=true · CASH_SAME_MODEL_EXCHANGE ยัง false', () => {
+    // ผ่อน ≤7 วัน: ทั้งสามทางออกเปิดอยู่ (จาก `base`) — PR 2 เปิดใช้งานสองทางออกเปลี่ยนเครื่องแล้ว
+    expect(computeOutcomes(base).map((x) => x.implemented)).toEqual([true, true, true]);
+    // ขายสด — เปลี่ยนรุ่นเดิม(ขายสด) ยังรอกติกาบัญชี (สเปกข้อ 10) ไม่เกี่ยวกับ PR 2 นี้
+    const cash = computeOutcomes({ ...base, source: 'CASH_SALE', contractStatus: undefined });
+    expect(pick(cash, 'CASH_SAME_MODEL_EXCHANGE').implemented).toBe(false);
+  });
+
+  describe('I1 — ผจก. ข้ามได้เฉพาะกรอบ 7 วัน ไม่ใช่กติกาอื่นของ engine', () => {
+    it('PHONE_NEW (เหตุผล PHONE_USED) ในกรอบ → BM/OWNER เปลี่ยนรุ่นเดิมไม่ได้ พร้อมเหตุผลจริง', () => {
+      for (const viewerRole of ['BRANCH_MANAGER', 'OWNER']) {
+        const o = computeOutcomes({
+          ...base,
+          defectEligible: false,
+          defectReasons: ['เปลี่ยนเครื่องได้เฉพาะมือสอง (PHONE_USED)'],
+          viewerRole,
+        });
+        expect(pick(o, 'SAME_MODEL_EXCHANGE')).toMatchObject({
+          enabled: false,
+          reason: 'เปลี่ยนเครื่องได้เฉพาะมือสอง (PHONE_USED)',
+        });
+      }
+    });
+
+    it('กรอบ 7 วัน + เหตุผลอื่นพร้อมกัน → BM ปิด ใช้เหตุผลที่ไม่ใช่กรอบ 7 วัน', () => {
+      const o = computeOutcomes({
+        ...base,
+        warrantyStatus: 'IN_SHOP_WARRANTY',
+        daysRemainingIn7Day: 0,
+        defectEligible: false,
+        defectReasons: [WINDOW, 'เปลี่ยนเครื่องได้เฉพาะมือสอง (PHONE_USED)'],
+        viewerRole: 'BRANCH_MANAGER',
+      });
+      expect(pick(o, 'SAME_MODEL_EXCHANGE')).toMatchObject({
+        enabled: false,
+        reason: 'เปลี่ยนเครื่องได้เฉพาะมือสอง (PHONE_USED)',
+      });
+    });
+
+    it('เหตุผลเดียว = กรอบ 7 วัน → BM เปิดได้พร้อมหมายเหตุข้ามกรอบ', () => {
+      const o = computeOutcomes({
+        ...base,
+        warrantyStatus: 'IN_SHOP_WARRANTY',
+        daysRemainingIn7Day: 0,
+        defectEligible: false,
+        defectReasons: [WINDOW],
+        viewerRole: 'BRANCH_MANAGER',
+      });
+      expect(pick(o, 'SAME_MODEL_EXCHANGE')).toMatchObject({
+        enabled: true,
+        note: 'ข้ามกรอบ 7 วัน — ผจก. ต้องยืนยัน',
+      });
+    });
+
+    it('M15 — ข้อความที่ส่งออกไม่มีคำว่า "รับเครื่อง" เลย', () => {
+      const o = computeOutcomes({
+        ...base,
+        warrantyStatus: 'IN_SHOP_WARRANTY',
+        daysRemainingIn7Day: 0,
+        defectEligible: false,
+        defectReasons: [WINDOW],
+      });
+      expect(JSON.stringify(o)).not.toContain('รับเครื่อง');
+    });
   });
 });

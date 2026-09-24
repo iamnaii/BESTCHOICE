@@ -28,4 +28,10 @@ export class ExecuteDefectExchangeDto {
   @IsOptional()
   @IsUUID('4')
   originRepairTicketId?: string;
+
+  /** เคสหลังการขายที่เป็นต้นเหตุ (ใช้คู่กับ bypassWindowCheck=true เมื่อไม่มี repair ticket —
+   * เช่น เคสเปลี่ยนรุ่นเดิมที่ยื่นตรงตอนแจ้งปัญหา ไม่เคยผ่านใบซ่อม) */
+  @IsOptional()
+  @IsUUID('4')
+  originAfterSalesCaseId?: string;
 }

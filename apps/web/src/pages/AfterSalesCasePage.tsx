@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { useEffect, useState } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Clock } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
@@ -11,6 +12,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import StepBar, { type StepBarStep } from './after-sales/StepBar';
 import PhotoCompare from './after-sales/PhotoCompare';
 import CaseTimeline from './after-sales/CaseTimeline';
+import ExchangeCard from './after-sales/ExchangeCard';
 import {
   SendRepairDialog,
   MarkRepairedDialog,
@@ -18,49 +20,69 @@ import {
   CancelCaseDialog,
 } from './after-sales/RepairActionDialogs';
 import {
+  ConfirmExchangeDialog,
+  RejectExchangeDialog,
+  SwitchToRepairDialog,
+  ApprovePricedDialog,
+  CancelSwapDialog,
+  DeliverExchangeConfirm,
+} from './after-sales/ExchangeActionDialogs';
+import {
   afterSalesKeys,
   baht,
   dayOf,
   dayTimeOf,
   OUTCOME_LABEL,
   PAYER_LABEL,
+  primaryAction,
+  secondaryActions,
   SOURCE_LABEL,
   STAGE_ICON,
   STAGE_LABEL,
   STAGE_TILE,
+  stageIndex,
   STALE_ICON,
   staleLabel,
+  STEP_TITLES_BY_OUTCOME,
   WARRANTY_LABEL,
   WARRANTY_TILE,
   type AfterSalesStage,
   type CaseDetail,
+  type CaseDialogId,
 } from './after-sales/after-sales';
 
-/** ทำได้ (ส่งซ่อม/บันทึกซ่อมเสร็จ/ส่งซ่อมต่อ/ส่งมอบคืน) — FM/ACCOUNTANT อ่านอย่างเดียว */
+/** ทำได้ (ส่งซ่อม/บันทึกซ่อมเสร็จ/ส่งซ่อมต่อ/ส่งมอบคืน) — FM/ACCOUNTANT อ่านอย่างเดียว
+ * (เกตปุ่มแนบไฟล์รูปเทียบ — decision บนปุ่มหลัก/รองย้ายไปอยู่ที่ `primaryAction`/`secondaryActions`
+ * ใน after-sales.ts แล้วทั้งหมด ตั้งแต่ Task 11) */
 const STAFF_ROLES = new Set(['OWNER', 'BRANCH_MANAGER', 'SALES']);
-/** ยกเลิกเคสได้เฉพาะ BM/OWNER */
-const CANCEL_ROLES = new Set(['OWNER', 'BRANCH_MANAGER']);
 /** C4b (final-fix brief) — mirror ของ roles บน App.tsx: `/expenses/:id` และ `/other-income/:id`
  * ไม่ได้เปิดให้ทุก role ที่เห็นหน้าเคสนี้ — SALES เข้าทั้งสองไม่ได้, BRANCH_MANAGER เข้า expenses
  * ได้แต่ other-income ไม่ได้ ⇒ เอกสารที่ role เปิดไม่ได้ต้องโชว์เป็นข้อความ (เลขที่เอกสารเฉยๆ)
  * ไม่ใช่ลิงก์ที่กดแล้วชน 403 */
 const EXPENSE_DETAIL_ROLES = new Set(['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']);
 const OTHER_INCOME_DETAIL_ROLES = new Set(['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']);
-/** ยกเลิกได้เฉพาะสถานะที่ยังไม่ได้ส่งไปศูนย์ (server: repairTicket.status IN_PROGRESS ปฏิเสธเสมอ) */
-const CANCELLABLE_STAGES = new Set<AfterSalesStage>(['RECEIVED', 'READY_FOR_PICKUP']);
 
-const STEP_ORDER: AfterSalesStage[] = ['RECEIVED', 'IN_REPAIR', 'READY_FOR_PICKUP', 'CLOSED'];
-/** kind ของ timeline ที่ใช้หา hint (วันเวลา+ชื่อ) ของแต่ละขั้นใน StepBar — เอาแถวล่าสุดที่ตรงกัน */
-const STEP_STAGE_KINDS: Record<AfterSalesStage, string[]> = {
-  RECEIVED: ['RECEIVED'],
-  IN_REPAIR: ['REPAIR_IN_PROGRESS', 'REPAIR_SENT'],
-  READY_FOR_PICKUP: ['REPAIR_READY_FOR_PICKUP', 'REPAIR_DONE'],
-  CLOSED: ['REPAIR_CLOSED', 'CLOSED'],
-  AWAITING_APPROVAL: [],
-  CANCELLED: [],
+/** Task 11 — kind ของ timeline ที่ใช้หา hint (วันเวลา+ชื่อ) ต่อ "ตำแหน่ง" ของ StepBar (0..3)
+ * แยกตาม outcome เพราะ SAME_MODEL_EXCHANGE/PRICED_EXCHANGE ไม่มี stage IN_REPAIR จริง (deriveStage
+ * ข้ามจาก RECEIVED ไป AWAITING_APPROVAL ตรงๆ — ดู after-sales-stage.util.ts OPEN_EXCHANGE_STAGE) */
+const STEP_KINDS_BY_OUTCOME: Record<string, [string[], string[], string[], string[]]> = {
+  REPAIR: [
+    ['RECEIVED'],
+    ['REPAIR_IN_PROGRESS', 'REPAIR_SENT'],
+    ['REPAIR_READY_FOR_PICKUP', 'REPAIR_DONE'],
+    ['REPAIR_CLOSED', 'CLOSED'],
+  ],
+  SAME_MODEL_EXCHANGE: [['RECEIVED'], ['OUTCOME_SET'], ['APPROVED'], ['DELIVERED', 'CLOSED']],
+  CASH_SAME_MODEL_EXCHANGE: [['RECEIVED'], ['OUTCOME_SET'], ['APPROVED'], ['DELIVERED', 'CLOSED']],
+  PRICED_EXCHANGE: [
+    ['RECEIVED'],
+    ['EXCHANGE_REQUESTED'],
+    ['EXCHANGE_APPROVED', 'APPROVED'],
+    ['CLOSED'],
+  ],
 };
 
-type DialogKind = 'send' | 'mark-repaired' | 'send-back' | 'cancel' | 'return' | null;
+type DialogKind = CaseDialogId | null;
 
 function findStepHint(timeline: CaseDetail['timeline'], kinds: string[]): string | undefined {
   for (let i = timeline.length - 1; i >= 0; i -= 1) {
@@ -78,13 +100,6 @@ function headerTone(stage: AfterSalesStage): string {
   }
   if (stage === 'CLOSED') return 'border-primary/20 bg-primary/5';
   return 'border-border bg-card';
-}
-
-function primaryLabelOf(stage: AfterSalesStage): string | null {
-  if (stage === 'RECEIVED') return 'ส่งซ่อม';
-  if (stage === 'IN_REPAIR') return 'บันทึกซ่อมเสร็จ';
-  if (stage === 'READY_FOR_PICKUP') return 'ส่งมอบคืนลูกค้า';
-  return null;
 }
 
 function StageChip({ data }: { data: CaseDetail }) {
@@ -124,6 +139,7 @@ export default function AfterSalesCasePage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<DialogKind>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const query = useQuery<CaseDetail>({
     queryKey: afterSalesKeys.case(id),
@@ -146,16 +162,51 @@ export default function AfterSalesCasePage() {
   });
 
   const canAct = !!user && STAFF_ROLES.has(user.role);
-  const canCancel = !!user && CANCEL_ROLES.has(user.role);
 
-  const primaryLabel = data ? primaryLabelOf(data.stage) : null;
-  const showPrimary = !!primaryLabel && canAct;
+  const action = data && user ? primaryAction(data, user.role) : null;
+  const primaryDialog = action && 'dialog' in action ? action.dialog : null;
+  // I4 — ปุ่มหลักแบบลิงก์ (สัญญาใหม่ยัง DRAFT → เปิดใช้ที่หน้าสัญญา) ทั้ง SAME_MODEL และ PRICED
+  const primaryHref = action && 'href' in action ? action.href : null;
+  const primaryLabel = action && 'label' in action ? action.label : null;
+  const waitingText = action && 'waitingText' in action ? action.waitingText : null;
+  const showPrimaryButton = !!primaryDialog || !!primaryHref;
   const onPrimaryClick = () => {
-    if (!data) return;
-    if (data.stage === 'RECEIVED') setDialog('send');
-    else if (data.stage === 'IN_REPAIR') setDialog('mark-repaired');
-    else if (data.stage === 'READY_FOR_PICKUP') setDialog('return');
+    if (primaryDialog) setDialog(primaryDialog);
   };
+  const secondary = data && user ? secondaryActions(data, user.role) : [];
+  /** ปุ่มเขียวปุ่มเดียวของหน้า — ใช้ทั้งหัวเคส (md ขึ้นไป) และแถบล่างมือถือ (ต่ำกว่า md) */
+  const renderPrimary = (className: string) =>
+    primaryHref ? (
+      <Button asChild variant="primary" size="lg" className={className}>
+        <Link to={primaryHref}>{primaryLabel}</Link>
+      </Button>
+    ) : (
+      <Button variant="primary" size="lg" className={className} onClick={onPrimaryClick}>
+        {primaryLabel}
+      </Button>
+    );
+
+  // Ruling P-B — เปิด dialog ที่ ?action=confirm|approve ชี้มาตอนโหลดครั้งแรก (เฉพาะเมื่อเคส
+  // อยู่ใน stage ที่ตรงกันและ role ทำได้จริง — ใช้ primaryAction ตัวเดียวกับปุ่มหลัก) แล้วลบพารามิเตอร์
+  // ทิ้งทันทีกัน dialog เปิดซ้ำตอน refetch/re-render ครั้งถัดไป
+  useEffect(() => {
+    if (!data || !user) return;
+    const wanted = searchParams.get('action');
+    if (!wanted) return;
+    const act = primaryAction(data, user.role);
+    if (act && 'dialog' in act) {
+      if (wanted === 'confirm' && act.dialog === 'exchange-confirm') setDialog('exchange-confirm');
+      if (wanted === 'approve' && act.dialog === 'approve') setDialog('approve');
+    }
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('action');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [data, user, searchParams, setSearchParams]);
 
   return (
     <div className="space-y-4">
@@ -182,7 +233,6 @@ export default function AfterSalesCasePage() {
               const summaryLine = [data.customer.name, deviceLine, centerLine]
                 .filter(Boolean)
                 .join(' · ');
-              const showCancel = canCancel && CANCELLABLE_STAGES.has(data.stage);
 
               return (
                 <div className={`space-y-3 rounded-xl border p-4 sm:p-5 ${headerTone(data.stage)}`}>
@@ -214,37 +264,39 @@ export default function AfterSalesCasePage() {
                     </div>
 
                     <div className="flex flex-col items-stretch gap-2 lg:items-end">
-                      {showPrimary && (
-                        <Button variant="primary" size="lg" onClick={onPrimaryClick}>
-                          {primaryLabel}
-                        </Button>
+                      {/* M8 — ต่ำกว่า md ปุ่มหลักอยู่ที่แถบล่าง (mobile-bar) ปุ่มเดียว ไม่ซ้ำที่หัวเคส */}
+                      {showPrimaryButton && renderPrimary('hidden md:inline-flex')}
+                      {waitingText && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-3 py-1.5 text-sm font-semibold leading-snug text-warning-strong">
+                          <Clock aria-hidden className="h-4 w-4 shrink-0" />
+                          {waitingText}
+                        </span>
                       )}
                       <div className="flex flex-wrap justify-end gap-2">
-                        {/* R21 (fix round 1): ปุ่มรอง "ซ่อมเสร็จแล้ว" สำหรับซ่อมในร้านถูกถอดออก —
-                            backend ไม่มีเส้นทางนั้น (markRepaired รับเฉพาะ IN_PROGRESS, send()
-                            บังคับ repairSupplierId เสมอ) RECEIVED เหลือปุ่มหลัก "ส่งซ่อม" ทางเดียว */}
-                        {data.stage === 'READY_FOR_PICKUP' && canAct && (
-                          <Button
-                            variant="outline"
-                            size="md"
-                            onClick={() => setDialog('send-back')}
-                          >
-                            ส่งซ่อมต่อ
-                          </Button>
+                        {secondary.map((item, index) =>
+                          item.kind === 'link' ? (
+                            <Link
+                              key={`${item.kind}-${index}`}
+                              to={item.to}
+                              className="inline-flex h-10 items-center rounded-lg border border-border bg-card px-3.5 text-sm font-semibold leading-snug text-primary hover:underline"
+                            >
+                              {item.label}
+                            </Link>
+                          ) : (
+                            <Button
+                              key={`${item.kind}-${index}`}
+                              variant="outline"
+                              size="md"
+                              className={item.destructive ? 'text-destructive' : undefined}
+                              onClick={() => setDialog(item.dialog)}
+                            >
+                              {item.label}
+                            </Button>
+                          ),
                         )}
                         <Button variant="outline" size="md" disabled title="เร็ว ๆ นี้">
                           ใบรับฝากเครื่อง
                         </Button>
-                        {showCancel && (
-                          <Button
-                            variant="outline"
-                            size="md"
-                            className="text-destructive"
-                            onClick={() => setDialog('cancel')}
-                          >
-                            ยกเลิกเคส
-                          </Button>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -253,8 +305,12 @@ export default function AfterSalesCasePage() {
             })()}
 
             {(() => {
-              const stepIndex = STEP_ORDER.indexOf(data.stage);
-              const steps: StepBarStep[] = STEP_ORDER.map((stage, index) => ({
+              const outcomeForSteps = data.outcome ?? 'REPAIR';
+              const titles = STEP_TITLES_BY_OUTCOME[outcomeForSteps];
+              const kindSets =
+                STEP_KINDS_BY_OUTCOME[outcomeForSteps] ?? STEP_KINDS_BY_OUTCOME.REPAIR;
+              const stepIndex = stageIndex(data.stage);
+              const steps: StepBarStep[] = titles.map((title, index) => ({
                 tone:
                   stepIndex === -1
                     ? 'idle'
@@ -263,8 +319,8 @@ export default function AfterSalesCasePage() {
                       : index === stepIndex
                         ? 'now'
                         : 'idle',
-                title: STAGE_LABEL[stage],
-                hint: findStepHint(data.timeline, STEP_STAGE_KINDS[stage]),
+                title,
+                hint: findStepHint(data.timeline, kindSets[index]),
               }));
               return <StepBar ariaLabel="ขั้นตอนเคสหลังการขาย" steps={steps} />;
             })()}
@@ -302,6 +358,8 @@ export default function AfterSalesCasePage() {
                     {dayTimeOf(data.receivedAt)} โดย {data.receivedBy.name}
                   </p>
                 </Card>
+
+                <ExchangeCard data={data} />
 
                 <Card title="สิทธิ์ ณ วันแจ้ง">
                   <span
@@ -440,14 +498,12 @@ export default function AfterSalesCasePage() {
               </div>
             </div>
 
-            {showPrimary && (
+            {showPrimaryButton && (
               <div
                 data-testid="mobile-bar"
-                className="sticky bottom-0 -mx-4 border-t border-border bg-card px-4 py-3 md:hidden"
+                className="sticky bottom-14 z-20 -mx-4 border-t border-border bg-card px-4 py-3 md:hidden"
               >
-                <Button variant="primary" size="lg" className="w-full" onClick={onPrimaryClick}>
-                  {primaryLabel}
-                </Button>
+                {renderPrimary('w-full')}
               </div>
             )}
 
@@ -480,6 +536,47 @@ export default function AfterSalesCasePage() {
               confirmLabel="ยืนยันส่งมอบคืน"
               loading={returnMutation.isPending}
               onConfirm={() => returnMutation.mutate()}
+            />
+
+            <ConfirmExchangeDialog
+              caseId={data.id}
+              open={dialog === 'exchange-confirm'}
+              onOpenChange={(next) => setDialog(next ? 'exchange-confirm' : null)}
+              data={data}
+            />
+            <DeliverExchangeConfirm
+              caseId={data.id}
+              open={dialog === 'exchange-deliver'}
+              onOpenChange={(next) => setDialog(next ? 'exchange-deliver' : null)}
+            />
+            <RejectExchangeDialog
+              caseId={data.id}
+              open={dialog === 'exchange-reject'}
+              onOpenChange={(next) => setDialog(next ? 'exchange-reject' : null)}
+              kind="SAME_MODEL"
+            />
+            <SwitchToRepairDialog
+              caseId={data.id}
+              open={dialog === 'switch-to-repair'}
+              onOpenChange={(next) => setDialog(next ? 'switch-to-repair' : null)}
+              defaultPayer={data.repairTicket?.payer ?? 'SHOP'}
+            />
+            <ApprovePricedDialog
+              caseId={data.id}
+              open={dialog === 'approve'}
+              onOpenChange={(next) => setDialog(next ? 'approve' : null)}
+              mode={data.exchange?.mode === 'MEMO' ? 'MEMO' : 'PRICED'}
+            />
+            <RejectExchangeDialog
+              caseId={data.id}
+              open={dialog === 'reject-priced'}
+              onOpenChange={(next) => setDialog(next ? 'reject-priced' : null)}
+              kind="PRICED"
+            />
+            <CancelSwapDialog
+              caseId={data.id}
+              open={dialog === 'cancel-swap'}
+              onOpenChange={(next) => setDialog(next ? 'cancel-swap' : null)}
             />
           </>
         )}

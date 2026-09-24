@@ -26,6 +26,6 @@ import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchang
     ExchangeEclReversalTemplate,
     ExchangeCancelReversalTemplate,
   ],
-  exports: [ContractExchangeService],
+  exports: [ContractExchangeService, ExchangeCancelService],
 })
 export class ContractExchangeModule {}

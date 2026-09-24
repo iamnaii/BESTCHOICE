@@ -25,6 +25,9 @@ export const PAGE_TITLE_MAP: Record<string, string> = {
   '/receipts': 'ใบเสร็จ',
   '/audit-logs': 'Audit Logs',
   '/notifications': 'แจ้งเตือน',
+  // M7 — หลังการขาย: prefix ครอบหน้าเคส (/after-sales/:id — ไม่งั้นโชว์ UUID) · หน้าแจ้งใหม่ exact match
+  '/after-sales': 'หลังการขาย',
+  '/after-sales/new': 'แจ้งปัญหาเครื่อง',
 };
 
 export function resolvePageTitle(pathname: string): string {

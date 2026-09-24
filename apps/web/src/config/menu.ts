@@ -56,8 +56,6 @@ import {
   Store,
   // P2-SP2 / P4 — document config menu
   ReceiptText,
-  // P2-SP2 — exchange requests
-  ArrowLeftRight,
   Mail,
   // Unified contact party-master — สมุดผู้ติดต่อ
   ArrowLeft,
@@ -180,8 +178,6 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
-        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
       ],
     },
     {
@@ -241,8 +237,6 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: NAV_LABELS.payments, path: '/payments', icon: HandCoins },
         { label: 'จัดการอุปกรณ์', path: '/mdm', icon: Smartphone },
         { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
-        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
       ],
     },
     {
@@ -366,7 +360,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
-        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
       ],
     },
@@ -695,7 +688,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
-        { label: 'คำขอเปลี่ยนเครื่อง', path: '/insurance/exchange-requests', icon: ArrowLeftRight },
         // คำสั่งเจ้าของ 2026-08-29: ยึดคืนอยู่ zone ไฟแนนซ์ที่เดียว (owner-fin-revenue)
         // — กลับคำสั่งเดิม 2026-08-08 ที่ให้ duplicate ไว้ทั้งสอง zone.
         // OWNER ยังเข้าถึงได้ปกติ: resolveZoneForPath เจอ /repossessions ใน zone fin

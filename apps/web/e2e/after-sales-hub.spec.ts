@@ -89,7 +89,8 @@ test.describe('After-sales hub — แจ้งปัญหาเครื่อ
 
     // 3) บันทึกและเปิดเคส → หน้าเคส stage รับเรื่องแล้ว
     await page.getByRole('button', { name: 'บันทึกและเปิดเคส' }).click();
-    await expect(page).toHaveURL(/\/after-sales\/[0-9a-f-]{36}$/, { timeout: 10_000 });
+    // CI ต่อ `?zone=shop` ท้าย URL (โซนหน้าร้าน) — จับเฉพาะ path ไม่ยึดท้ายสตริง
+    await expect(page).toHaveURL(/\/after-sales\/[0-9a-f-]{36}(\?|$)/, { timeout: 10_000 });
     await expect(page.getByText('รับเรื่องแล้ว').first()).toBeVisible({ timeout: 10_000 });
 
     // 4) "บันทึกซ่อมเสร็จ (ซ่อมที่ร้าน)" → ค่าซ่อมจริง 500 ผู้จ่ายลูกค้า → ยืนยัน

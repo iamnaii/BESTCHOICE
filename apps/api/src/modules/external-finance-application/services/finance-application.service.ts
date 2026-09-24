@@ -24,7 +24,7 @@ export const applicationInclude = {
   // phone ถอดผ่าน CustomerPiiService.decryptCustomerFields (ต้องมี phoneEncrypted ให้มันอ่าน) —
   // name/occupation/birthDate เป็น plaintext ในสคีมานี้ (ไม่มีคอลัมน์ nameEncrypted/occupationEncrypted)
   customer: { select: { id: true, name: true, phone: true, phoneEncrypted: true, occupation: true, birthDate: true } },
-  product: { select: { id: true, name: true, brand: true, model: true, storage: true, imeiSerial: true, serialNumber: true, category: true, batteryHealth: true, hasBox: true, accessoriesIncluded: true, status: true } },
+  product: { select: { id: true, name: true, brand: true, model: true, storage: true, color: true, imeiSerial: true, serialNumber: true, category: true, batteryHealth: true, hasBox: true, accessoriesIncluded: true, status: true } },
   sentBy: { select: { id: true, name: true } },
 } satisfies Prisma.ExternalFinanceApplicationInclude;
 

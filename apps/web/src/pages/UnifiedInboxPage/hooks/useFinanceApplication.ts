@@ -68,9 +68,11 @@ export function useFinanceApplication(roomId: string | null): FinanceApplication
       const data: FinanceApplication = await run(
         async () => (await api.post(`/staff-chat/rooms/${roomId}/finance-applications`)).data,
       );
-      // Seed the cache with the just-created draft immediately — onSettled's invalidate
-      // above already kicked off a refetch, but this write happens after it settles so it
-      // wins the race and the caller sees the new draft without waiting on a second round trip.
+      // Deliberate, narrow exception — only for start(): the room list has no draft to
+      // show yet, so without this the caller sees a `null → null → draft` flash while
+      // onSettled's invalidate above refetches. Seeding directly from the POST response
+      // (which we already have in hand) skips that flash. Every other action here relies
+      // on onSettled's invalidate alone — do not copy this setQueryData pattern to them.
       qc.setQueryData(gfinQueryKey(roomId), (old: RoomFinanceData | undefined) => ({
         current: data,
         history: old?.history ?? [],

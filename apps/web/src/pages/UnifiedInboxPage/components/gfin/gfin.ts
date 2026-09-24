@@ -4,6 +4,8 @@ import {
   FINANCE_REQUIRED_SLOTS,
   FINANCE_PRIMARY_SLOTS,
   type FinanceDocSlot,
+  PRECHECK_FIELD_LABELS,
+  type PrecheckField,
 } from '@installment/shared';
 
 export const GFIN_MESSAGE_MIME = 'application/x-bestchoice-gfin-message';
@@ -39,8 +41,9 @@ export interface FinanceApplication {
   shareExpiresAt: string | null; shareRevokedAt: string | null; shareViewCount: number; shareLastViewedAt: string | null;
   lastPartnerEventAt: string | null; closedAt: string | null; files: FinanceFile[]; events: FinanceEvent[]; createdAt: string;
 }
-export type PrecheckField = 'customerName' | 'occupation' | 'model' | 'hand' | 'imei' | 'phone' | 'age';
-export const FIELD_LABELS: Record<PrecheckField, string> = { customerName: 'ชื่อลูกค้า', occupation: 'อาชีพ', model: 'รุ่น', hand: 'มือ 1/2', imei: 'IMEI', phone: 'เบอร์โทร', age: 'อายุ (วันเกิด)' };
+/** ป้ายฟิลด์เช็ค — มาจากผัง `@installment/shared` เดียวกับข้อความ precheck (finance-precheck-message.ts) — ห้ามประกาศซ้ำที่นี่ */
+export type { PrecheckField };
+export const FIELD_LABELS = PRECHECK_FIELD_LABELS;
 export interface FinancePreview { text: string; values: Record<string, unknown>; missingFields: PrecheckField[]; missingRequiredSlots: FinanceSlot[]; warnings: string[]; canSend: boolean }
 
 export function isGfinPickable(message: { type?: string | null; mediaUrl?: string | null; externalMessageId?: string | null }): boolean {

@@ -39,6 +39,24 @@ import {
 } from '../payments/services/payment-approval-request.util';
 import { d, dAdd, dSub, dRound } from '../../utils/decimal.util';
 
+/**
+ * ปิดสัญญาด้วยสลิปที่ตรวจแล้ว (คำสั่งเจ้าของ 2026-09-24: "ยอดตรงกับสลิป ปิดยอดได้เลยไม่ต้องอนุมัติ")
+ * — ทางเข้าที่สองของ earlyPayoff() คู่กับคิวอนุมัติ. ผู้เรียก (EarlyPayoffSlipService) ตรวจ 5 ข้อ
+ * และเซ็นตั๋วไว้แล้ว; ใน tx ยังตรวจซ้ำว่ายอดปิดสดยังตรง + ลายนิ้วมือสลิปยังไม่ถูกใช้ (unique)
+ */
+export interface SlipMatchAuthorization {
+  /** key ในที่เก็บไฟล์ (เก็บลง PaymentEvidence.imageUrl เหมือนบอท) */
+  imageKey: string;
+  /** ลายนิ้วมือสลิป — สูตรเดียวกับบอท (slip-checks.slipFingerprint) */
+  hash: string;
+  /** ยอดที่อ่านได้จากสลิป — ต้องเท่ายอดปิดสด ±0.01 */
+  amount: number;
+  refNo: string | null;
+  bankName: string | null;
+  date: string | null;
+  confidence: number;
+}
+
 @Injectable()
 export class ContractPaymentService {
   private readonly logger = new Logger(ContractPaymentService.name);
@@ -334,8 +352,10 @@ export class ContractPaymentService {
     userId: string,
     dto: EarlyPayoffDto,
     approvalContext?: PaymentApprovalContext,
+    slipMatch?: SlipMatchAuthorization,
   ) {
-    if (!approvalContext) throw new ForbiddenException('กรุณาส่งคำขอปิดยอดผ่านหน้ารออนุมัติ');
+    if (!approvalContext && !slipMatch)
+      throw new ForbiddenException('กรุณาส่งคำขอปิดยอดผ่านหน้ารออนุมัติ หรือแนบสลิปที่ยอดตรง');
     // Resolve cash dimension once: dto > 11-1201 (KBank). Owner rule 2026-07-08:
     // direct FINANCE receipt is KBank-only — cash collected at a branch goes
     // through collectedByShop → 11-2107 instead.
@@ -371,12 +391,63 @@ export class ContractPaymentService {
 
     await this.prisma.$transaction(
       async (tx) => {
-        const approval = await consumePaymentApproval(tx, approvalContext, 'EARLY_PAYOFF', id);
-        if (approval.requestedById !== userId)
-          throw new ForbiddenException('ผู้ขออนุมัติไม่ตรงกับผู้ทำรายการ');
-        quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode, tx);
-        if (canonical(quote) !== canonical(approval.reviewSummary)) {
-          throw new ConflictException('ยอดปิดสัญญาเปลี่ยนแล้ว กรุณาส่งขออนุมัติใหม่');
+        if (approvalContext) {
+          const approval = await consumePaymentApproval(tx, approvalContext, 'EARLY_PAYOFF', id);
+          if (approval.requestedById !== userId)
+            throw new ForbiddenException('ผู้ขออนุมัติไม่ตรงกับผู้ทำรายการ');
+          quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode, tx);
+          if (canonical(quote) !== canonical(approval.reviewSummary)) {
+            throw new ConflictException('ยอดปิดสัญญาเปลี่ยนแล้ว กรุณาส่งขออนุมัติใหม่');
+          }
+        } else {
+          // ทางสลิปตรง — ตรวจซ้ำในทรานแซกชันเดียวกับ JE: ยอดปิดสดยังตรงกับสลิป และสลิปยังไม่ถูกใช้
+          // (SlipFingerprint.hash unique — ชนกับสลิปที่ลูกค้าเคยส่งบอทหรือปิดยอดไปแล้ว → 409)
+          const match = slipMatch!;
+          quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode, tx);
+          // เทียบเป็นสตางค์ กันเศษ float (11106.01 − 11106 = 0.0100000000002)
+          if (Math.round(Math.abs(quote.totalPayoff - match.amount) * 100) > 1) {
+            throw new ConflictException(
+              'ยอดปิดสัญญาเปลี่ยนแล้ว ไม่ตรงกับสลิป กรุณาแนบสลิปใหม่หรือส่งขออนุมัติ',
+            );
+          }
+          try {
+            await tx.slipFingerprint.create({ data: { hash: match.hash, contractId: id } });
+          } catch (err) {
+            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+              throw new ConflictException('สลิปนี้ถูกใช้บันทึกรายการอื่นไปแล้ว');
+            }
+            throw err;
+          }
+          await tx.paymentEvidence.create({
+            data: {
+              contractId: id,
+              imageUrl: match.imageKey,
+              amount: match.amount,
+              status: 'APPROVED',
+              reviewedById: userId,
+              reviewedAt: new Date(),
+              reviewNote: 'EARLY_PAYOFF_SLIP_MATCH',
+            },
+          });
+          // audit ใน tx (atomic กับ JE) — แถวนี้บอกว่า "ปิดโดยไม่ผ่านคิวอนุมัติเพราะสลิปตรง" ใครกด ยอดเท่าไร
+          await tx.auditLog.create({
+            data: {
+              userId,
+              action: 'EARLY_PAYOFF_SLIP_MATCHED',
+              entity: 'contract',
+              entityId: id,
+              newValue: {
+                totalPayoff: quote.totalPayoff.toFixed(2),
+                slipAmount: match.amount.toFixed(2),
+                refNo: match.refNo,
+                bankName: match.bankName,
+                slipDate: match.date,
+                confidence: match.confidence,
+                imageKey: match.imageKey,
+                hash: match.hash,
+              },
+            },
+          });
         }
 
         const freshContract = await tx.contract.findUnique({

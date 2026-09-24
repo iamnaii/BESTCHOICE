@@ -527,6 +527,32 @@ additive `NOT NULL DEFAULT 0`, ไม่ rewrite ตาราง)
    คืนเข้าถังรวมทั้งก้อนโดยตั้งใจ เพราะถังพักเป็น forward-only จึงไม่มีทางมีเงินพักอยู่ในนั้น (I-2).
 3. **ปิดสัญญาก่อนกำหนด — JP4 + JP5 พร้อม relief leg** (ดูหัวข้อถัดไป).
 
+### ปิดสัญญาก่อนกำหนดด้วยสลิป — ไม่ผ่านคิวอนุมัติเมื่อยอดตรง (คำสั่งเจ้าของ 2026-09-24)
+
+Mockup: artifact `69ezDjY8uoFrqcBfPfrLEQ` V4 (6 กระดาน) · โค้ด: `contracts/early-payoff-slip/` (`slip-checks.ts` กติกา 5 ข้อ
+แบบฟังก์ชันบริสุทธิ์ · `early-payoff-slip.service.ts` อัปโหลด→อ่าน→ตรวจ→ตั๋ว→ยืนยัน) · `ContractPaymentService.earlyPayoff`
+รับ `slipMatch` เป็นทางเข้าที่สองคู่กับ `approvalContext` · UI `ContractEarlyPayoff.tsx` (สวิตช์ "โอนเข้าบัญชีบริษัท · แนบสลิป |
+เก็บที่หน้าร้าน", แถบ 3 ขั้น, การ์ดสลิป 4 สถานะ, กล่องยืนยัน, จอสำเร็จ).
+
+- **เครื่องยนต์อ่านสลิปวันนี้ = OCR ของบอท (`VisionService` Claude Haiku, กินเครดิต Anthropic)** — เจ้าของเลือก "ทำเลย ใช้ OCR
+  เดิมก่อน" 2026-09-24; อ่านรูปอย่างเดียว ปลอมได้ ⇒ ยังมีกล่องยืนยัน + ติ๊ก "ตรวจแล้วว่าสลิปเป็นของสัญญานี้" · สลับเป็น SCB แบบ OBI
+  (ต้องสมัคร SCB Developer ชื่อเบสท์ช้อยส์ + รับเข้าบัญชี SCB) หรือบริการกลาง (SlipOK ฯลฯ) ได้โดยเปลี่ยนแค่ตัวที่คืน `SlipReading`.
+- **5 ข้อต้องผ่านครบถึงปิดเลย** (`evaluateSlipChecks`): อ่านออก + ความมั่นใจ ≥ 0.9 (เกณฑ์เดียวกับบอท) · ยอด = `computePayoffQuote.totalPayoff`
+  ±0.01 (เทียบเป็นสตางค์) · บัญชีปลายทาง = บัญชีบริษัท (`FinanceConfigService.isCompanyBankAccount` — อ่านไม่ได้ = ไม่ผ่าน) ·
+  ลายนิ้วมือสลิป (`slipFingerprint` สูตรเดียวกับ `SlipProcessingService.computeSlipHash`) ยังไม่มีใน `SlipFingerprint` ·
+  วันที่ในสลิปไม่เป็นอนาคต (อ่านไม่ได้ = ใช้วันนี้). ไม่ผ่านข้อใด/OCR ไม่พร้อม → หน้าจอพาไป "ส่งขออนุมัติ (แนบสลิปนี้)" — `slipUrl`
+  ติดไปกับ payload ให้ผู้อนุมัติเปิดดู (`PaymentApprovalSummary`). "เก็บที่หน้าร้าน" ต้องขออนุมัติเสมอ.
+- **ตั๋ว (ticket)**: HMAC-SHA256 ด้วย `JWT_SECRET` ของผลตรวจ (สัญญา · ผู้กด · key รูป · hash · ยอด · ส่วนลด · วันที่) อายุ 15 นาที —
+  ไม่อ่าน OCR ซ้ำตอนยืนยัน (ผลไม่ deterministic) และไม่มีตารางเก็บผลอ่านที่ยังไม่ผูกใบเสร็จ. ตอนยืนยันใน tx เดียวกับ JE:
+  ยอดปิดสดต้องยังตรง (409 ถ้าขยับ) · `tx.slipFingerprint.create` (unique → P2002 = 409 "สลิปนี้ถูกใช้") · `PaymentEvidence`
+  (`APPROVED`, `reviewNote: EARLY_PAYOFF_SLIP_MATCH`, `imageUrl` = key) · AuditLog `EARLY_PAYOFF_SLIP_MATCHED` ผ่าน `tx.auditLog.create`.
+  `Payment.evidenceUrl` = URL สลิป · `gatewayRef` = เลขอ้างอิงจากสลิป · `paidDate`/JE = วันที่ในสลิป · บัญชีรับ 11-1201 เท่านั้น.
+- Endpoints: `POST /contracts/:id/early-payoff/slip` (multipart `slip` + `discountPct`, OWNER/BM/FM) → ผลตรวจ+ตั๋ว ·
+  `POST /contracts/:id/early-payoff/slip-confirm` `{ ticket, notes? }` → JP4 ปกติ + ใบเสร็จ EARLY_PAYOFF + journey `EARLY_PAYOFF`.
+  `POST /contracts/:id/early-payoff` เดิมยังปฏิเสธเมื่อไม่มีทั้งคำขออนุมัติและสลิป.
+- ที่ยังเปิด: LIFF ลูกค้าไม่มีทางนี้ · ไม่มีการแนบสลิปใบที่ 2 (โอนเพิ่มให้ครบ) — ใช้ "เปลี่ยนสลิป" แทน · ไม่ลบรูปสลิปที่ตรวจไม่ผ่านออกจาก
+  storage (เก็บเป็นหลักฐานคำขอ).
+
 ### JP4 / JP5 — relief leg `Dr 21-1103` (C-3, 2026-08-17)
 
 `computePayoffQuote` หักถังพักออกจากยอดค้างของลูกค้า (บรรทัด `rescheduleAdvanceApplied` แยกจาก

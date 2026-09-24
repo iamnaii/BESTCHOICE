@@ -28,6 +28,7 @@ function build() {
     {} as never,
     {} as never,
     journeyEntries as unknown as JourneyEntryWriter,
+    {} as never, // EarlyPayoffSlipService — ไม่ใช้ใน spec นี้
   );
   return { controller, contractsService, workflowService, journeyEntries };
 }

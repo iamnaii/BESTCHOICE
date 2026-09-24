@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { EarlyPayoffSlipService } from './early-payoff-slip/early-payoff-slip.service';
 
 describe('POST /contracts/quote boundary', () => {
   let app: INestApplication;
@@ -29,7 +30,7 @@ describe('POST /contracts/quote boundary', () => {
   beforeAll(async () => {
     const module = await Test.createTestingModule({ controllers: [ContractsController], providers: [
       { provide: PrismaService, useValue: {} }, RolesGuard, BranchGuard, { provide: ContractsService, useValue: { quote, findAll } },
-      ...[ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractJournalQueryService, JourneyEntryWriter]
+      ...[ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractJournalQueryService, JourneyEntryWriter, EarlyPayoffSlipService]
         .map(provide => ({ provide, useValue: {} })),
     ] }).overrideGuard(JwtAuthGuard).useValue({ canActivate: (context: any) => {
       context.switchToHttp().getRequest().user = actor; return true;

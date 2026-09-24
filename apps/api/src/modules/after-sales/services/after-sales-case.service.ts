@@ -18,7 +18,7 @@ import {
 import { ContractExchangeService } from '../../contract-exchange/contract-exchange.service';
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
 import { AfterSalesDocNumberService } from './after-sales-doc-number.service';
-import { AfterSalesLookupService } from './after-sales-lookup.service';
+import { AfterSalesLookupService, LookupResult } from './after-sales-lookup.service';
 import { reconcileStage } from './after-sales-stage-reconcile';
 import { CreateCaseDto } from '../dto/create-case.dto';
 import { assertEvidenceImage, evidenceImageExtension } from '../../../utils/upload-image.util';
@@ -56,6 +56,50 @@ export class AfterSalesCaseService {
     private readonly contractExchange: ContractExchangeService,
     private readonly defect: DefectExchangeService,
   ) {}
+
+  // R29 (fix round 1) — ฟิลด์ที่ REPAIR กับกิ่งเปลี่ยนเครื่องเหมือนกันทุกประการ (~15 ฟิลด์)
+  // เคยก็อปสองชุดโดยไม่มีอะไรบังคับให้ตรงกัน — รวมเป็นจุดเดียว ต่างกันแค่ที่มาของ device*
+  // (REPAIR อ่านจาก repair ticket ที่ผ่าน createInTx แล้ว ส่วนเปลี่ยนเครื่องอ่านจาก look/dto ตรงๆ)
+  private buildBaseCaseData(params: {
+    id: string;
+    caseNumber: string;
+    dto: CreateCaseDto;
+    customerId: string;
+    look: LookupResult;
+    user: ReqUser;
+    deviceBrand: string | null | undefined;
+    deviceModel: string | null | undefined;
+    deviceImei: string | null | undefined;
+    deviceSerial: string | null | undefined;
+    photoKeys: string[];
+    purchasePhotoKeys: string[];
+  }) {
+    const { id, caseNumber, dto, customerId, look, user, photoKeys, purchasePhotoKeys } = params;
+    return {
+      id,
+      caseNumber,
+      branchId: dto.branchId,
+      customerId,
+      source: look.source,
+      contractId: look.contract?.id ?? null,
+      saleId: look.sale?.id ?? null,
+      productId: look.product?.id ?? null,
+      deviceBrand: params.deviceBrand,
+      deviceModel: params.deviceModel,
+      deviceImei: params.deviceImei,
+      deviceSerial: params.deviceSerial,
+      symptom: dto.symptom,
+      accessories: dto.accessories ?? {},
+      unlockConfirmed: dto.unlockConfirmed,
+      photoKeys,
+      purchasePhotoKeys,
+      warrantySnapshot: {
+        ...look.warranty,
+        within7Days: look.warranty.daysRemainingIn7Day > 0,
+      },
+      receivedById: user.id,
+    };
+  }
 
   async createCase(dto: CreateCaseDto, files: Express.Multer.File[], user: ReqUser) {
     // R16 (fix round 1, Critical) — BranchGuard อ่าน request.body?.branchId แต่ guards รันก่อน
@@ -113,7 +157,7 @@ export class AfterSalesCaseService {
         );
       }
       replacementProduct = await this.prisma.product.findUnique({
-        where: { id: dto.replacementProductId },
+        where: { id: dto.replacementProductId, deletedAt: null },
         select: { brand: true, model: true, storage: true, imeiSerial: true },
       });
     }
@@ -228,31 +272,23 @@ export class AfterSalesCaseService {
           const { ticket } = await this.repair.createInTx(repairDto, user, tx);
           const c = await tx.afterSalesCase.create({
             data: {
-              id,
-              caseNumber,
-              branchId: dto.branchId,
-              customerId,
-              source: look.source,
-              contractId: look.contract?.id ?? null,
-              saleId: look.sale?.id ?? null,
-              productId: look.product?.id ?? null,
-              deviceBrand: ticket.deviceBrand,
-              deviceModel: ticket.deviceModel,
-              deviceImei: ticket.deviceImei,
-              deviceSerial: ticket.deviceSerial,
-              symptom: dto.symptom,
-              accessories: dto.accessories ?? {},
-              unlockConfirmed: dto.unlockConfirmed,
-              photoKeys,
-              purchasePhotoKeys,
-              warrantySnapshot: {
-                ...look.warranty,
-                within7Days: look.warranty.daysRemainingIn7Day > 0,
-              },
+              ...this.buildBaseCaseData({
+                id,
+                caseNumber,
+                dto,
+                customerId,
+                look,
+                user,
+                deviceBrand: ticket.deviceBrand,
+                deviceModel: ticket.deviceModel,
+                deviceImei: ticket.deviceImei,
+                deviceSerial: ticket.deviceSerial,
+                photoKeys,
+                purchasePhotoKeys,
+              }),
               outcome: 'REPAIR',
               repairTicketId: ticket.id,
               stage: 'RECEIVED',
-              receivedById: user.id,
               events: {
                 create: [
                   receivedEvent,
@@ -293,32 +329,24 @@ export class AfterSalesCaseService {
           : [receivedEvent];
         const c = await tx.afterSalesCase.create({
           data: {
-            id,
-            caseNumber,
-            branchId: dto.branchId,
-            customerId,
-            source: look.source,
-            contractId: look.contract?.id ?? null,
-            saleId: look.sale?.id ?? null,
-            productId: look.product?.id ?? null,
-            deviceBrand: look.product?.brand ?? dto.deviceBrand,
-            deviceModel: look.product?.model ?? dto.deviceModel,
-            deviceImei: imei,
-            deviceSerial: dto.deviceSerial,
-            symptom: dto.symptom,
-            accessories: dto.accessories ?? {},
-            unlockConfirmed: dto.unlockConfirmed,
-            photoKeys,
-            purchasePhotoKeys,
-            warrantySnapshot: {
-              ...look.warranty,
-              within7Days: look.warranty.daysRemainingIn7Day > 0,
-            },
+            ...this.buildBaseCaseData({
+              id,
+              caseNumber,
+              dto,
+              customerId,
+              look,
+              user,
+              deviceBrand: look.product?.brand ?? dto.deviceBrand,
+              deviceModel: look.product?.model ?? dto.deviceModel,
+              deviceImei: imei,
+              deviceSerial: dto.deviceSerial,
+              photoKeys,
+              purchasePhotoKeys,
+            }),
             outcome: dto.outcome,
             repairTicketId: null,
             replacementProductId: dto.replacementProductId,
             stage: 'AWAITING_APPROVAL',
-            receivedById: user.id,
             events: { create: exchangeEvents },
           },
           select: { id: true, caseNumber: true },
@@ -343,8 +371,16 @@ export class AfterSalesCaseService {
     // $transaction ของตัวเองและมี preview/ราคากลางภายใน ไม่แตะ engine ตามข้อจำกัด · เคสที่ถูกยกเลิก
     // ยังอยู่เป็นประวัติ (IMEI เปิดใหม่ได้เพราะ stage CANCELLED) รูปที่อัปโหลดไปแล้วไม่ถูกลบ
     if (isPriced) {
+      // R30 (fix round 1, Important — ruling P-G) — เฉพาะ submit() เท่านั้นที่อยู่ใน try/catch
+      // ของ compensation นี้: ถ้า submit() เองล้มเหลว คำขอเปลี่ยนเครื่องไม่เคยถูกสร้างขึ้นจริง
+      // จึงยกเลิกเคสเป็น CANCELLED ได้อย่างปลอดภัย. แต่ถ้า submit() สำเร็จแล้ว (คำขอถูกสร้างจริง
+      // ในอีก $transaction หนึ่ง) การ update ที่ตามมาเป็นเพียงการ "เชื่อมโยง" exchangeRequestId
+      // กลับมาไว้บนเคส — ถ้า update นี้พังทีหลัง ต้องปล่อยให้ error หลุดออกไปตามจริง (เคสค้างที่
+      // AWAITING_APPROVAL) ไม่ใช่ไปยกเลิกเคสเป็น CANCELLED เพราะคำขอที่สร้างไปแล้วจะกลายเป็น
+      // คำขอกำพร้า (ไม่มีเคสไหนอ้างถึง) ในขณะที่ข้อความบอกผู้ใช้ว่า "ยื่นคำขอไม่สำเร็จ" ซึ่งไม่จริง
+      let req: { id: string; mode: string; approvalTier: string | null };
       try {
-        const req = await this.contractExchange.submit(
+        req = await this.contractExchange.submit(
           {
             oldContractId: look.contract!.id,
             oldProductId: look.product!.id,
@@ -357,20 +393,6 @@ export class AfterSalesCaseService {
           },
           user,
         );
-        await this.prisma.afterSalesCase.update({
-          where: { id: result.id },
-          data: {
-            exchangeRequestId: req.id,
-            events: {
-              create: {
-                kind: 'OUTCOME_SET',
-                actorId: user.id,
-                note: `เปลี่ยนแบบมีราคา · ${req.mode} · tier ${req.approvalTier ?? '-'}`,
-              },
-            },
-          },
-        });
-        result = { ...result, exchangeRequestId: req.id };
       } catch (err) {
         const reason = `ยื่นคำขอไม่สำเร็จ: ${
           err instanceof HttpException
@@ -388,6 +410,22 @@ export class AfterSalesCaseService {
         });
         throw err;
       }
+
+      // เชื่อมโยง exchangeRequestId กลับมาไว้บนเคส — อยู่นอก try/catch ด้านบนโดยตั้งใจ (ดูคอมเมนต์)
+      await this.prisma.afterSalesCase.update({
+        where: { id: result.id },
+        data: {
+          exchangeRequestId: req.id,
+          events: {
+            create: {
+              kind: 'OUTCOME_SET',
+              actorId: user.id,
+              note: `เปลี่ยนแบบมีราคา · ${req.mode} · tier ${req.approvalTier ?? '-'}`,
+            },
+          },
+        },
+      });
+      result = { ...result, exchangeRequestId: req.id };
     }
 
     // R13 — audit.log อยู่นอก try/catch: ถ้ามันเองพังหลัง tx commit แล้ว ต้องไม่ไปลบรูปของ

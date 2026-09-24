@@ -582,6 +582,41 @@ describe('AfterSalesCaseService.createCase', () => {
       expect(audit.log).not.toHaveBeenCalled();
     });
 
+    // (d) fix round 1, Important — submit สำเร็จ (คำขอเปลี่ยนเครื่องถูกสร้างจริงแล้ว) แต่ update
+    // เชื่อมโยง exchangeRequestId พังทีหลัง: ต้อง "ปล่อยผ่านตามจริง" ไม่ใช่ยกเลิกเป็น CANCELLED
+    // (ไม่งั้นคำขอที่สร้างไปแล้วกลายเป็นคำขอกำพร้า + IMEI เปิดใหม่ได้ทั้งที่มีคำขอค้างอยู่จริง)
+    it('(d) fix round 1: submit สำเร็จ แต่ update เชื่อมโยง exchangeRequestId throw → error หลุดตรงๆ ไม่ถูกเปลี่ยนเป็น CANCELLED (กันคำขอกำพร้า)', async () => {
+      const dto = {
+        ...BASE_DTO,
+        outcome: 'PRICED_EXCHANGE' as const,
+        replacementProductId: 'p-2',
+        buybackPrice: '5000',
+        deviceCondition: 'B' as const,
+        newTotalMonths: 10,
+      };
+      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
+      tx.afterSalesCase.create.mockResolvedValue({ id: 'as-6', caseNumber: 'AS-20260924-0006' });
+      contractExchange.submit.mockResolvedValue({
+        id: 'req-2',
+        mode: 'PRICED',
+        approvalTier: 'REVIEW',
+      });
+      prisma.afterSalesCase.update.mockRejectedValueOnce(new Error('DB ล่มตอนเชื่อมโยง'));
+
+      await expect(svc.createCase(dto as never, [mockFile()], USER)).rejects.toThrow(
+        'DB ล่มตอนเชื่อมโยง',
+      );
+
+      // update ถูกเรียกครั้งเดียว (เชื่อมโยง exchangeRequestId) — ไม่มีการเรียกซ้ำเพื่อยกเลิกเป็น
+      // CANCELLED (คำขอเปลี่ยนเครื่อง req-2 ยังอยู่จริง การยกเลิกเคสจะทำให้มันกลายเป็นคำขอกำพร้า)
+      expect(prisma.afterSalesCase.update).toHaveBeenCalledTimes(1);
+      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
+        where: { id: 'as-6' },
+        data: expect.objectContaining({ exchangeRequestId: 'req-2' }),
+      });
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
     // (e) outcome นอก enum → 400 จาก DTO
     describe('CreateCaseDto.outcome', () => {
       const validPayload = {

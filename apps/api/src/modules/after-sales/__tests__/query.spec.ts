@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { AfterSalesQueryService, LIST_FETCH_CAP } from '../services/after-sales-query.service';
 
 const BRANCH_A = 'branch-a';
@@ -21,6 +22,9 @@ function buildRepairTicket(overrides: Record<string, unknown> = {}) {
 }
 
 // เคส (a): สาขา A — ใช้ทั้งใน list() และ summary()
+// Task 7 — เติม approvedAt/productId/replacementProductId ให้ builder เดียว (ไม่ใช่ต่อเทสต์) ตามที่
+// task-7-brief บอกไว้: R25 (d) ต้องมี approvedAt ให้ decorate() ส่งต่อ stageSince ได้ และ
+// productId/replacementProductId ต้องมีให้ attachExchange() ใช้เมื่อ override เป็นเคสเปลี่ยนเครื่อง
 function buildCaseA(overrides: Record<string, unknown> = {}) {
   return {
     id: 'as-a',
@@ -34,6 +38,10 @@ function buildCaseA(overrides: Record<string, unknown> = {}) {
     deviceImei: '111111111111111',
     branchId: BRANCH_A,
     replacementContractId: null,
+    productId: 'prod-a-old',
+    replacementProductId: null,
+    approvedAt: null,
+    exchangeRequest: null,
     customer: { id: 'cust-a', name: 'ลูกค้า A', phone: '0810000000' },
     branch: { id: BRANCH_A, name: 'สาขา A' },
     receivedBy: { id: 'u-a', name: 'พนักงาน A' },
@@ -72,6 +80,14 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
         findMany: jest.fn().mockResolvedValue([]),
       },
       user: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      // Task 7 — attachExchange() batched lookups; ต้อง "ไม่ถูกเรียก" เมื่อไม่มีเคสเปลี่ยนเครื่อง
+      // ในหน้านั้น (แถวใน (a)-(g) เป็น outcome REPAIR ล้วน — mock ไว้กันพังถ้ามีการเรียกผิดที่)
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      contract: {
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
@@ -396,9 +412,21 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
 
     it('แท็บ DONE หน้า 2 ตัดตามลำดับ DB เดิม (ไม่ re-sort ก่อน slice)', async () => {
       const rows = [
-        buildCaseA({ id: 'as-1', stage: 'CLOSED', repairTicket: buildRepairTicket({ status: 'CLOSED' }) }),
-        buildCaseA({ id: 'as-2', stage: 'CLOSED', repairTicket: buildRepairTicket({ status: 'CLOSED' }) }),
-        buildCaseA({ id: 'as-3', stage: 'CLOSED', repairTicket: buildRepairTicket({ status: 'CLOSED' }) }),
+        buildCaseA({
+          id: 'as-1',
+          stage: 'CLOSED',
+          repairTicket: buildRepairTicket({ status: 'CLOSED' }),
+        }),
+        buildCaseA({
+          id: 'as-2',
+          stage: 'CLOSED',
+          repairTicket: buildRepairTicket({ status: 'CLOSED' }),
+        }),
+        buildCaseA({
+          id: 'as-3',
+          stage: 'CLOSED',
+          repairTicket: buildRepairTicket({ status: 'CLOSED' }),
+        }),
       ];
       prisma.afterSalesCase.findMany.mockResolvedValue(rows);
       prisma.afterSalesCase.count.mockResolvedValue(3);
@@ -406,6 +434,349 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
       const result = await svc.list({ tab: 'DONE', page: 2, limit: 2 } as never, owner);
 
       expect(result.data.map((r) => r.id)).toEqual(['as-3']);
+    });
+  });
+
+  describe('(h) Task 7 — exchange sub-object: SAME_MODEL แถวรออนุมัติ', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+
+    it('list: exchange.kind=SAME_MODEL, approverRole=BRANCH_MANAGER, newProduct จาก replacementProductId batched', async () => {
+      const row = buildCaseA({
+        id: 'as-same',
+        outcome: 'SAME_MODEL_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        productId: 'prod-old',
+        replacementProductId: 'prod-new',
+        replacementContractId: null,
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([row]);
+      prisma.afterSalesCase.count.mockResolvedValue(1);
+      prisma.product.findMany.mockResolvedValue([
+        { id: 'prod-old', brand: 'Apple', model: 'iPhone 13', storage: '128GB', imeiSerial: '111' },
+        { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB', imeiSerial: '222' },
+      ]);
+
+      const result = await svc.list({ tab: 'AWAITING_APPROVAL' } as never, owner);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].exchange).toEqual({
+        kind: 'SAME_MODEL',
+        mode: null,
+        approvalTier: null,
+        requestStatus: null,
+        buybackPrice: null,
+        ncvSnapshot: null,
+        approverRole: 'BRANCH_MANAGER',
+        oldProduct: { brand: 'Apple', model: 'iPhone 13', storage: '128GB', imeiSerial: '111' },
+        newProduct: {
+          id: 'prod-new',
+          brand: 'Apple',
+          model: 'iPhone 13',
+          storage: '128GB',
+          imeiSerial: '222',
+        },
+        replacementContract: null,
+        requestedBy: { id: 'u-a', name: 'พนักงาน A' },
+      });
+      expect(prisma.product.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.product.findMany).toHaveBeenCalledWith({
+        where: { id: { in: expect.arrayContaining(['prod-old', 'prod-new']) }, deletedAt: null },
+        select: { id: true, brand: true, model: true, storage: true, imeiSerial: true },
+      });
+      // ยังไม่มีสัญญาทดแทน (รออนุมัติ) — ห้ามยิง contract.findMany
+      expect(prisma.contract.findMany).not.toHaveBeenCalled();
+    });
+
+    it('list: แถว SAME_MODEL READY_FOR_PICKUP มี replacementContract จาก contract.findMany แบบ batched (ไม่ผ่าน exchangeRequest)', async () => {
+      const row = buildCaseA({
+        id: 'as-same-ready',
+        outcome: 'SAME_MODEL_EXCHANGE',
+        stage: 'READY_FOR_PICKUP',
+        productId: 'prod-old',
+        replacementProductId: 'prod-new',
+        replacementContractId: 'contract-sm-1',
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([row]);
+      prisma.afterSalesCase.count.mockResolvedValue(1);
+      prisma.product.findMany.mockResolvedValue([
+        { id: 'prod-old', brand: 'Apple', model: 'iPhone 13', storage: '128GB', imeiSerial: '111' },
+        { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB', imeiSerial: '222' },
+      ]);
+      prisma.contract.findMany.mockResolvedValue([
+        { id: 'contract-sm-1', contractNumber: 'CT-9001', status: 'DRAFT' },
+      ]);
+
+      const result = await svc.list({ tab: 'READY' } as never, owner);
+
+      expect(result.data[0].exchange?.replacementContract).toEqual({
+        id: 'contract-sm-1',
+        contractNumber: 'CT-9001',
+        status: 'DRAFT',
+      });
+      expect(prisma.contract.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.contract.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['contract-sm-1'] }, deletedAt: null },
+        select: { id: true, contractNumber: true, status: true },
+      });
+    });
+  });
+
+  describe('(i) Task 7 — exchange sub-object: PRICED ESCALATE', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+
+    it('list: approverRole=OWNER (ESCALATE), mode/buybackPrice/ncvSnapshot string 2dp, replacementContract จาก exchangeRequest.newContract (ไม่ query contract.findMany)', async () => {
+      const row = buildCaseA({
+        id: 'as-priced',
+        outcome: 'PRICED_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        productId: 'prod-old2',
+        replacementProductId: 'prod-new2',
+        replacementContractId: null,
+        exchangeRequest: {
+          status: 'PENDING',
+          mode: 'PRICED',
+          approvalTier: 'ESCALATE',
+          buybackPrice: new Prisma.Decimal('8000'),
+          ncvSnapshot: new Prisma.Decimal('9500.5'),
+          memoAppliedAt: null,
+          rejectionReason: null,
+          cancelReason: null,
+          canceledAt: null,
+          approvedAt: null,
+          createdAt: new Date('2026-09-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-09-01T00:00:00.000Z'),
+          newContract: null,
+        },
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([row]);
+      prisma.afterSalesCase.count.mockResolvedValue(1);
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'prod-old2',
+          brand: 'Apple',
+          model: 'iPhone 14',
+          storage: '256GB',
+          imeiSerial: '333',
+        },
+        {
+          id: 'prod-new2',
+          brand: 'Apple',
+          model: 'iPhone 15',
+          storage: '256GB',
+          imeiSerial: '444',
+        },
+      ]);
+
+      const result = await svc.list({ tab: 'AWAITING_APPROVAL' } as never, owner);
+
+      expect(result.data[0].exchange).toMatchObject({
+        kind: 'PRICED',
+        mode: 'PRICED',
+        approvalTier: 'ESCALATE',
+        requestStatus: 'PENDING',
+        buybackPrice: '8000.00',
+        ncvSnapshot: '9500.50',
+        approverRole: 'OWNER',
+        replacementContract: null,
+      });
+      expect(prisma.contract.findMany).not.toHaveBeenCalled();
+    });
+
+    it('list: PRICED ที่ไม่ใช่ ESCALATE (REVIEW) → approverRole=BRANCH_MANAGER', async () => {
+      const row = buildCaseA({
+        id: 'as-priced-review',
+        outcome: 'PRICED_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        productId: 'prod-old2',
+        replacementProductId: 'prod-new2',
+        replacementContractId: null,
+        exchangeRequest: {
+          status: 'PENDING',
+          mode: 'PRICED',
+          approvalTier: 'REVIEW',
+          buybackPrice: null,
+          ncvSnapshot: null,
+          memoAppliedAt: null,
+          rejectionReason: null,
+          cancelReason: null,
+          canceledAt: null,
+          approvedAt: null,
+          createdAt: new Date('2026-09-01T00:00:00.000Z'),
+          updatedAt: new Date('2026-09-01T00:00:00.000Z'),
+          newContract: null,
+        },
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([row]);
+      prisma.afterSalesCase.count.mockResolvedValue(1);
+      prisma.product.findMany.mockResolvedValue([]);
+
+      const result = await svc.list({ tab: 'AWAITING_APPROVAL' } as never, owner);
+
+      expect(result.data[0].exchange).toMatchObject({
+        approvalTier: 'REVIEW',
+        approverRole: 'BRANCH_MANAGER',
+        buybackPrice: null,
+        ncvSnapshot: null,
+      });
+    });
+  });
+
+  describe('(j) Task 7 — summary: openExchange/exchanges', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+
+    it('openExchange นับเฉพาะเคสเปิด outcome เปลี่ยนเครื่อง (ไม่รวม REPAIR); exchanges มาจาก count() ที่ closedAt เดือนนี้', async () => {
+      const openRepair = buildCaseA({ id: 'as-1', outcome: 'REPAIR' });
+      const openSameModel = buildCaseA({
+        id: 'as-2',
+        outcome: 'SAME_MODEL_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        replacementContractId: null,
+      });
+      const openPriced = buildCaseA({
+        id: 'as-3',
+        outcome: 'PRICED_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        exchangeRequest: {
+          status: 'PENDING',
+          mode: 'PRICED',
+          approvalTier: 'REVIEW',
+          buybackPrice: null,
+          ncvSnapshot: null,
+          memoAppliedAt: null,
+          rejectionReason: null,
+          cancelReason: null,
+          canceledAt: null,
+          approvedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          newContract: null,
+        },
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([openRepair, openSameModel, openPriced]);
+      prisma.repairTicket.findMany.mockResolvedValue([]);
+      prisma.afterSalesCase.count.mockResolvedValue(4);
+
+      const result = await svc.summary(owner);
+
+      expect(result.openExchange).toBe(2);
+      expect(result.exchanges).toBe(4);
+      const countArgs = prisma.afterSalesCase.count.mock.calls[0][0];
+      expect(countArgs.where.outcome).toEqual({ in: ['SAME_MODEL_EXCHANGE', 'PRICED_EXCHANGE'] });
+      expect(countArgs.where.closedAt.gte).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('(k) R25 (a) — total ใต้ dto.stale = จำนวนหลังกรอง ไม่ใช่ DB count', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+    const DAY_MS = 86400000;
+
+    it('stale=true → total = แถวที่ผ่านตัวกรอง stale จริง (truncated ยังอิง DB count เดิม)', async () => {
+      const staleRow = buildCaseA({
+        id: 'as-stale',
+        repairTicket: buildRepairTicket({
+          status: 'IN_PROGRESS',
+          sentToRepairAt: new Date(Date.now() - 20 * DAY_MS),
+        }),
+      });
+      const freshRow = buildCaseA({
+        id: 'as-fresh',
+        repairTicket: buildRepairTicket({
+          status: 'IN_PROGRESS',
+          sentToRepairAt: new Date(Date.now() - 1 * DAY_MS),
+        }),
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([staleRow, freshRow]);
+      // DB count ของทั้งแท็บ (ไม่กรอง stale) — ต้อง "ไม่" ใช่ค่านี้เป็น total ที่คืนออกไป
+      prisma.afterSalesCase.count.mockResolvedValue(50);
+
+      const result = await svc.list({ stale: true } as never, owner);
+
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].id).toBe('as-stale');
+      expect(result.total).toBe(1);
+      expect(result.truncated).toBe(false); // ยังอิง DB count (50) ไม่ใช่ total ใหม่ (50 ≤ 500)
+    });
+  });
+
+  describe('(l) Task 7 — getCase: timeline ของคำขอเปลี่ยนเครื่องมีราคา', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+
+    it('มี EXCHANGE_REQUESTED + EXCHANGE_APPROVED และเรียงตามเวลาร่วมกับ event เดิม', async () => {
+      const requestedAt = new Date('2026-09-01T00:00:00.000Z');
+      const approvedAt = new Date('2026-09-02T00:00:00.000Z');
+      prisma.afterSalesCase.findFirst.mockResolvedValue({
+        ...buildCaseA({
+          outcome: 'PRICED_EXCHANGE',
+          stage: 'READY_FOR_PICKUP',
+          approvedAt,
+          productId: 'prod-old3',
+          replacementProductId: 'prod-new3',
+          replacementContractId: 'contract-new-1',
+        }),
+        customer: { ...buildCaseA().customer, lineIdShop: null },
+        repairTicket: null,
+        exchangeRequest: {
+          status: 'APPROVED',
+          mode: 'PRICED',
+          approvalTier: 'AUTO',
+          buybackPrice: new Prisma.Decimal('5000.00'),
+          ncvSnapshot: new Prisma.Decimal('6000.00'),
+          memoAppliedAt: null,
+          rejectionReason: null,
+          cancelReason: null,
+          canceledAt: null,
+          approvedAt,
+          createdAt: requestedAt,
+          updatedAt: approvedAt,
+          // status DRAFT กันไม่ให้ reconcileStage เห็นว่า derived = CLOSED (newContractStatus !== DRAFT)
+          // ทั้งที่ stored stage เป็น READY_FOR_PICKUP — เทสต์นี้ตรวจ timeline ไม่ใช่ reconcile drift
+          newContract: { id: 'contract-new-1', contractNumber: 'CT-0001', status: 'DRAFT' },
+        },
+        events: [
+          {
+            id: 'ev-1',
+            kind: 'RECEIVED',
+            note: null,
+            actorId: null,
+            createdAt: new Date('2026-08-31T00:00:00.000Z'),
+          },
+        ],
+        photoKeys: [],
+        purchasePhotoKeys: [],
+      });
+      prisma.product.findMany.mockResolvedValue([
+        {
+          id: 'prod-old3',
+          brand: 'Apple',
+          model: 'iPhone 14',
+          storage: '256GB',
+          imeiSerial: '333',
+        },
+        {
+          id: 'prod-new3',
+          brand: 'Apple',
+          model: 'iPhone 15',
+          storage: '256GB',
+          imeiSerial: '444',
+        },
+      ]);
+
+      const result = await svc.getCase('as-a', owner);
+
+      const kinds = result.timeline.map((t: { kind: string }) => t.kind);
+      expect(kinds).toEqual(
+        expect.arrayContaining(['RECEIVED', 'EXCHANGE_REQUESTED', 'EXCHANGE_APPROVED']),
+      );
+      const times = result.timeline.map((t: { at: Date }) => t.at.getTime());
+      expect(times).toEqual([...times].sort((a, b) => a - b));
+      expect(result.exchange).toMatchObject({
+        kind: 'PRICED',
+        approverRole: 'BRANCH_MANAGER',
+        buybackPrice: '5000.00',
+        ncvSnapshot: '6000.00',
+        replacementContract: { id: 'contract-new-1', contractNumber: 'CT-0001', status: 'DRAFT' },
+      });
+      expect(prisma.contract.findMany).not.toHaveBeenCalled();
     });
   });
 });

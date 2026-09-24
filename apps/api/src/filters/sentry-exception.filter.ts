@@ -1,6 +1,7 @@
 import { Catch, ArgumentsHost, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import * as Sentry from '@sentry/nestjs';
+import { redactShareToken } from '../utils/redact-share-token.util';
 
 // GFIN share-link routes embed a 256-bit bearer token directly in the URL path
 // (`/api/g/<43-char-token>/...`) — the token IS the credential, so it must never
@@ -9,13 +10,12 @@ import * as Sentry from '@sentry/nestjs';
 // backstop: ANY unhandled 5xx on ANY route gets its URL redacted before it's
 // logged/reported, so a future bug elsewhere can't leak a share token either
 // (fix round 1 CRITICAL finding 1c).
-const SHARE_TOKEN_URL_PATTERN = /\/g\/[A-Za-z0-9_-]{43}(?=\/|$|\?)/g;
-
-/** Exported for a focused unit test — see sentry-exception.filter.spec.ts */
-export function redactShareToken(url: string): string {
-  if (typeof url !== 'string') return url;
-  return url.replace(SHARE_TOKEN_URL_PATTERN, '/g/[redacted]');
-}
+// fix round 2 finding 1(a): the redaction fn itself moved to a shared util so
+// `sentry.ts` (loaded via `require()` before Nest boots — see main.ts) can reuse
+// the EXACT same pattern for `beforeSend`/`beforeSendTransaction`, which is where
+// @sentry/nestjs's own `requestDataIntegration` sneaks the raw URL back in.
+/** Re-exported so this file's existing import path (used by call sites + its spec) still works. */
+export { redactShareToken };
 
 /**
  * Global exception filter that:

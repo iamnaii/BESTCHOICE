@@ -1,13 +1,46 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, INestApplication, ValidationPipe } from '@nestjs/common';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { Readable } from 'stream';
+import * as http from 'http';
+import type { AddressInfo } from 'net';
 import archiver from 'archiver';
 import request from 'supertest';
+import * as Sentry from '@sentry/nestjs';
 import { FinanceSharePublicController } from '../finance-share-public.controller';
 import { FinanceShareService } from '../services/finance-share.service';
 import { CsrfGuard } from '../../../guards/csrf.guard';
+
+jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
+
+/**
+ * A `@Catch()` filter that records every exception that reaches Nest's own exception-handling
+ * layer instead of the app's real global filter (which isn't wired into this isolated test
+ * module). Used by the two tests below (fix round 2 finding 6) to PROVE — not just assume from
+ * the response shape — that a premature client disconnect / a mid-archive failure never
+ * propagates past the controller's own catch blocks. It still answers a legitimate HttpException
+ * (e.g. the ValidationPipe's 400 on the invalid-action test elsewhere in this file) with that
+ * exception's own status — a "plain 500" for every exception regardless of type would make the
+ * pre-existing validation test fail as a side effect of registering this filter, which would
+ * hide the real signal (a NON-HttpException/unexpected fault reaching here) behind test noise.
+ */
+const recordedExceptions: unknown[] = [];
+@Catch()
+class RecordingFilter implements ExceptionFilter {
+  catch(exception: unknown, host: ArgumentsHost) {
+    recordedExceptions.push(exception);
+    const res = host.switchToHttp().getResponse();
+    if (res.headersSent) return;
+    if (exception instanceof HttpException) {
+      const status = exception.getStatus();
+      const body = exception.getResponse();
+      res.status(status).json(typeof body === 'string' ? { message: body } : body);
+      return;
+    }
+    res.status(500).json({ message: 'recorded-by-test-filter' });
+  }
+}
 
 /**
  * HTTP-layer spec (fix round 1 Important 6) — everything above is unit-tested against the
@@ -16,9 +49,15 @@ import { CsrfGuard } from '../../../guards/csrf.guard';
  * it catches things a method-call test cannot: header wiring, the 410 gone page, HEAD not
  * counting as a view, a stream that dies mid-flight not producing a raw 500/hang, and the
  * @SkipCsrf() bypass actually working end-to-end.
+ *
+ * fix round 2 finding 6: the app also listens on a real TCP port (not just supertest's
+ * per-request ephemeral listener) so the "real client disconnect" tests can issue their own
+ * raw `http.request()` and call `req.destroy()` mid-response — proving what actually happens
+ * on the wire, not just what our mocked source stream does to itself.
  */
 describe('FinanceSharePublicController (HTTP)', () => {
   let app: INestApplication;
+  let port: number;
   const rawToken = 'a'.repeat(43);
 
   const liveApp = () => ({
@@ -48,6 +87,9 @@ describe('FinanceSharePublicController (HTTP)', () => {
         // real global CsrfGuard registered as APP_GUARD — proves @SkipCsrf() actually bypasses
         // it on POST /reply instead of just trusting the decorator exists (fix round 1 Important 6)
         { provide: APP_GUARD, useClass: CsrfGuard },
+        // fix round 2 finding 6 — records anything that reaches Nest's exception layer instead
+        // of asserting on it indirectly through the HTTP response.
+        { provide: APP_FILTER, useClass: RecordingFilter },
       ],
     }).compile();
     app = mod.createNestApplication();
@@ -55,6 +97,8 @@ describe('FinanceSharePublicController (HTTP)', () => {
     // same validation behavior prod has (whitelist+transform)
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, transformOptions: { enableImplicitConversion: true } }));
     await app.init();
+    await app.listen(0);
+    port = (app.getHttpServer().address() as AddressInfo).port;
   });
 
   afterAll(async () => {
@@ -65,7 +109,44 @@ describe('FinanceSharePublicController (HTTP)', () => {
     jest.clearAllMocks();
     share.recordView.mockResolvedValue(undefined);
     share.groups.mockReturnValue([]);
+    recordedExceptions.length = 0;
+    (Sentry.captureException as jest.Mock).mockClear();
   });
+
+  /** Issues a raw request against the real listening port and calls `req.destroy()` the instant the first response chunk arrives — a genuine client-initiated abort, not a self-destroying mock stream. */
+  function abortAfterFirstChunk(path: string): Promise<void> {
+    return new Promise((resolve) => {
+      const req = http.request({ host: '127.0.0.1', port, path, method: 'GET' }, (res) => {
+        res.once('data', () => req.destroy());
+        res.on('close', () => resolve());
+        res.on('error', () => resolve());
+      });
+      req.on('error', () => resolve());
+      req.end();
+    });
+  }
+
+  /** Issues a raw request and reports whether it saw any body bytes and whether it ended CLEANLY (a proper 'end', not an abrupt close/error/reset). */
+  function rawGet(path: string): Promise<{ sawData: boolean; endedCleanly: boolean; statusCode?: number }> {
+    return new Promise((resolve) => {
+      let sawData = false;
+      let settled = false;
+      const settle = (endedCleanly: boolean, statusCode?: number) => {
+        if (settled) return;
+        settled = true;
+        resolve({ sawData, endedCleanly, statusCode });
+      };
+      const req = http.request({ host: '127.0.0.1', port, path, method: 'GET' }, (res) => {
+        res.on('data', () => { sawData = true; });
+        res.on('end', () => settle(true, res.statusCode));
+        res.on('aborted', () => settle(false, res.statusCode));
+        res.on('error', () => settle(false, res.statusCode));
+        res.on('close', () => settle(false, res.statusCode));
+      });
+      req.on('error', () => settle(false));
+      req.end();
+    });
+  }
 
   it('GET a live token → 200 text/html with every required header + CSP nonce, and records the view once', async () => {
     share.resolve.mockResolvedValue({ state: 'OK', app: liveApp() });
@@ -110,40 +191,91 @@ describe('FinanceSharePublicController (HTTP)', () => {
     expect(res.headers['content-type']).toBe('image/jpeg');
   });
 
-  it('a premature close mid-file-stream does not crash the server or leave the request hanging (CRITICAL fix)', async () => {
-    const brokenStream = new Readable({
+  // fix round 2 finding 6: this used to only prove "the server stays up afterwards" — it never
+  // asserted that the premature-close error stayed OUT of Nest's exception layer and out of
+  // Sentry. It also used a mock stream that destroyed ITSELF with an arbitrary Error rather than
+  // a genuine client-initiated abort, so it would have passed even against pre-fix code that
+  // forwarded the error somewhere unsafe, as long as the server didn't crash outright.
+  it('a real client-side abort mid-file-stream never reaches any exception filter or Sentry (Important 6 fix)', async () => {
+    let pushed = false;
+    const stream = new Readable({
       read() {
-        // simulates the client aborting mid-download / a storage read error
-        this.destroy(new Error('ERR_STREAM_PREMATURE_CLOSE simulated'));
+        // a single large chunk, then go quiet — simulates a slow/large download so the client
+        // has time to receive the first chunk and abort before the stream would ever finish
+        if (!pushed) {
+          pushed = true;
+          this.push(Buffer.alloc(5 * 1024 * 1024, 'x'));
+        }
       },
     });
     share.fileStream.mockResolvedValue({
-      file: { id: 'f1', mimeType: 'image/jpeg', size: 10, originalName: 'บัตร.jpg' },
-      stream: brokenStream,
+      file: { id: 'f1', mimeType: 'image/jpeg', size: 5 * 1024 * 1024, originalName: 'a.jpg' },
+      stream,
       appId: 'app-1',
     });
-    // Node's pipeline() destroys the response stream itself the instant the source errors —
-    // for a genuine premature close there is no HTTP response left to send, so the socket may
-    // legitimately reset (supertest surfaces that as a rejected request, not a 500 status).
-    // What the fix actually guarantees is: no unhandled rejection reaches SentryExceptionFilter
-    // (which would log the raw token — see the filter spec) and the server keeps working
-    // afterwards — proven below by a normal follow-up request succeeding.
-    await request(app.getHttpServer()).get(`/g/${rawToken}/files/f1`).catch(() => undefined);
+
+    await abortAfterFirstChunk(`/g/${rawToken}/files/f1`);
+    // give the server's pipeline() a tick to detect the premature close and run the controller's catch block
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(recordedExceptions).toEqual([]);
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+
+    // server must still be healthy afterwards
     const okStream = Readable.from([Buffer.from('ok')]);
     share.fileStream.mockResolvedValue({ file: { id: 'f2', mimeType: 'image/jpeg', size: 2, originalName: 'b.jpg' }, stream: okStream, appId: 'app-1' });
     await request(app.getHttpServer()).get(`/g/${rawToken}/files/f2`).expect(200);
-  });
+  }, 10_000);
 
-  it('a zip read failure settles the response (does not hang) and does not surface as a 500 (Important 2 fix)', async () => {
+  it('a zip load failure before any bytes flow settles as a plain 410 with the zip headers removed, not a hang or a raw 500 (Important 2 fix)', async () => {
     const archive = archiver('zip', { zlib: { level: 6 } });
+    const err = new Error('storage read failed before any entry was appended');
     share.zipStream.mockResolvedValue({
       filename: 'BC-260924-001.zip',
       archive,
-      load: jest.fn().mockRejectedValue(new Error('storage read failed')),
+      load: jest.fn().mockRejectedValue(err),
       appId: 'app-1',
     });
     const res = await request(app.getHttpServer()).get(`/g/${rawToken}/zip`);
-    expect(res.status).not.toBe(500);
+    expect(res.status).toBe(410);
+    expect(res.headers['content-type'] ?? '').not.toContain('zip');
+    expect(res.headers['content-disposition']).toBeUndefined();
+    // never reaches Nest's own exception layer (would produce the recorded 500 body instead)...
+    expect(recordedExceptions).toEqual([]);
+    // ...but a genuine fault (not a client disconnect) IS captured directly, so it stays visible
+    // (fix round 2 finding 1 visibility ruling — silently swallowing this at DEBUG was the gap).
+    expect(Sentry.captureException).toHaveBeenCalledWith(err);
+  }, 10_000);
+
+  // fix round 2 finding 6: the previous version of this spec only covered a failure BEFORE any
+  // bytes were sent. The mid-archive case — where headers/bytes are already flowing when the
+  // failure happens — is exactly the scenario finding 2 was about (a clean-looking 200 with a
+  // truncated zip) and had zero coverage.
+  it('a mid-archive storage failure after bytes have started flowing aborts the transfer instead of a clean 200, and never surfaces via Nest\'s exception layer (Important 2 + 6 fix)', async () => {
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    const calls: string[] = [];
+    const err = new Error('storage read failed for entry 2');
+    const load = jest.fn().mockImplementation(async (isAborted?: () => boolean) => {
+      calls.push('entry-1');
+      archive.append(Buffer.alloc(2 * 1024 * 1024, 'x'), { name: '01.jpg' });
+      // let archiver actually flush real compressed bytes down the socket before failing
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      if (isAborted?.()) {
+        calls.push('aborted-before-entry-2');
+        return;
+      }
+      calls.push('entry-2');
+      throw err;
+    });
+    share.zipStream.mockResolvedValue({ filename: 'BC-260924-001.zip', archive, load, appId: 'app-1' });
+
+    const result = await rawGet(`/g/${rawToken}/zip`);
+
+    expect(result.sawData).toBe(true); // the first entry's bytes DID reach the client...
+    expect(result.endedCleanly).toBe(false); // ...but the transfer was aborted, not completed as a clean 200
+    expect(calls).toEqual(['entry-1', 'entry-2']);
+    expect(recordedExceptions).toEqual([]); // never reaches Nest's own exception layer
+    expect(Sentry.captureException).toHaveBeenCalledWith(err); // but the genuine fault IS captured
   }, 10_000);
 
   it('POST reply without X-Requested-With still passes CSRF (real CsrfGuard + @SkipCsrf()) and returns 201 with the mocked status', async () => {

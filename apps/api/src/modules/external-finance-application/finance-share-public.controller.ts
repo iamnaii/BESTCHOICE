@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpException, Logger, NotFoundException, Param, Post, Req, Res, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
+import * as Sentry from '@sentry/nestjs';
 import { createHash, randomBytes } from 'crypto';
 import type { Request, Response } from 'express';
 import { pipeline } from 'stream/promises';
@@ -13,6 +14,20 @@ import { FinanceShareReplyDto } from './dto/finance-share-reply.dto';
 const GONE_MSG = 'ไม่พบเอกสาร หรือลิงก์หมดอายุแล้ว';
 
 /**
+ * A client closing the tab / navigating away mid-stream (or the controller's own
+ * `res.destroy()` on a mid-archive failure — fix round 2 finding 2) is EXPECTED
+ * traffic on `no-store` routes that refetch constantly — never a fault to alarm
+ * on. Node surfaces it via one of these error codes on the stream/pipeline
+ * rejection. Anything else reaching the catch block is a genuine, unexpected
+ * fault and must stay visible (Sentry + WARN — fix round 2 finding 1 visibility
+ * ruling), not silently swallowed at DEBUG.
+ */
+function isExpectedStreamAbort(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  return code === 'ERR_STREAM_PREMATURE_CLOSE' || code === 'ECONNRESET' || code === 'EPIPE';
+}
+
+/**
  * หน้าลิงก์ชุดเช็คเครดิตสำหรับเจ้าหน้าที่ GFIN — public (ไม่มี JwtAuthGuard) ตาม spec §6/§12:
  * - เข้าถึงด้วยโทเคน 256 บิตอย่างเดียว (ค้นด้วย sha256 hash) · หมดอายุ 7 วัน · ยกเลิกได้
  * - ทุก route throttle ต่อ IP · POST reply ใช้ @SkipCsrf() เพราะไม่มี session — โทเคนในพาธคือหลักฐานสิทธิ์
@@ -23,6 +38,22 @@ const GONE_MSG = 'ไม่พบเอกสาร หรือลิงก์�
  *   มีโทเคนดิบติดอยู่ (`/api/g/<token>/...`) ⇒ filter จะ log + ส่ง Sentry พร้อมโทเคน ทุก handler
  *   จึงจับ error ที่ไม่ใช่ HttpException เองแล้วตอบหน้า/สถานะ GONE แทน (ตาข่ายชั้นสองคือการ redact
  *   โทเคนใน SentryExceptionFilter เอง — ดู filters/sentry-exception.filter.ts)
+ * - security fix round 2 (CRITICAL finding 1): ตาข่ายชั้นสองยังไม่พอ — `@sentry/nestjs`'s
+ *   `requestDataIntegration` แปะ URL ดิบลง `event.request.url` เองจาก request context โดยไม่สนใจว่า
+ *   filter ทำอะไรกับ `extra.url` ⇒ แก้ที่ `sentry.ts`'s `beforeSend`/`beforeSendTransaction` แทน (ตาข่าย
+ *   ชั้นสาม ครอบทั้ง error event และ APM transaction event ที่ tracesSampleRate สุ่มส่ง). ผลคือ handler
+ *   ในไฟล์นี้ "ปลอดภัยที่จะปล่อยผ่านได้แล้ว" สำหรับ HttpException ปกติ (เช่น 503 ตอน salt หาย) — ไม่ต้อง
+ *   กันเองอีกชั้นสำหรับกรณีนั้น. ที่ยังต้องกันเอง (genuine fault ที่ไม่ใช่ HttpException — premature
+ *   close/DB สะดุด) คือให้ `Sentry.captureException()` + log WARN (ไม่ใช่ DEBUG) แล้วค่อยตอบ GONE —
+ *   เดิมกลืน error เงียบทำให้ fault จริงมองไม่เห็นเลยแม้จะปลอดภัยจากโทเคนรั่วแล้วก็ตาม
+ *   (`isExpectedStreamAbort()` แยก client ปิดเอง/เราเอง destroy connection ออกจาก fault จริง)
+ * - security fix round 2 (IMPORTANT finding 1b): `file()`/`zip()` เคยปล่อย HttpException จาก
+ *   storage backend (เช่น GCS `BadRequestException('ไม่พบไฟล์: <storageKey>')`) ไหลตรงไปเป็น 400 JSON —
+ *   ข้อความมี storageKey ซึ่งมี applicationId ติดอยู่ ⇒ ย้ายไปแปลงเป็น GONE_MSG ที่ตัว service เอง
+ *   (`fileStream()`) แล้ว, controller จึงไม่ต้องแยกเคสนี้อีก
+ * - security fix round 2 (IMPORTANT finding 2): mid-archive failure เดิมจบด้วย `res.end()` (headers
+ *   ส่งไปแล้ว) = client เห็น 200 "จบสวย" ทั้งที่ zip ขาด แยกไม่ออกจาก success จริง — เปลี่ยนเป็น
+ *   `res.destroy()` (connection ขาดเห็นชัด) เฉพาะกรณี headers ส่งไปแล้ว
  * ดู `.claude/rules/security.md` รายการ Intentionally Public Endpoints (`finance-share-public`)
  */
 @Controller('g')
@@ -54,10 +85,16 @@ export class FinanceSharePublicController {
     res.setHeader('Content-Security-Policy', `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
   }
 
-  /** จบ response แบบไม่ให้ error ไหลออกไปที่ global filter — ใช้ทั้งตอนยังไม่ส่ง header และส่งไปแล้ว */
+  /**
+   * จบ response แบบไม่ให้ error ไหลออกไปที่ global filter — ใช้ทั้งตอนยังไม่ส่ง header และส่งไปแล้ว.
+   * fix round 2 finding 2: ตอน header ถูกส่งไปแล้ว (สตรีมไฟล์/zip พังกลางทาง) เดิมเรียก `res.end()`
+   * ซึ่งปิด response แบบ "สมบูรณ์" — ฝั่ง client (โดยเฉพาะ chunked transfer ของ zip) เห็นเป็น 200
+   * จบสวยทั้งที่เนื้อหาขาด แยกไม่ออกจาก success จริง ต้องใช้ `res.destroy()` (ตัดการเชื่อมต่อดิบ)
+   * แทนเพื่อให้ client เห็นเป็น connection ขาด/ไม่สมบูรณ์อย่างชัดเจน.
+   */
   private endSafely(res: Response, status: number) {
     try {
-      if (res.headersSent) { if (!res.writableEnded) res.end(); return; }
+      if (res.headersSent) { if (!res.destroyed) res.destroy(); return; }
       if (!res.destroyed) res.status(status).end();
     } catch { /* response ปิดไปแล้ว — ไม่มีอะไรต้องทำ */ }
   }
@@ -88,6 +125,12 @@ export class FinanceSharePublicController {
       }));
     } catch (err) {
       if (err instanceof HttpException) throw err;
+      // fix round 2 finding 1 (visibility ruling): a genuine, non-HttpException
+      // fault here (DB hiccup, etc.) must stay visible — Sentry + WARN — before
+      // falling back to the uniform GONE page. The URL is safe to reach Sentry
+      // now (sentry.ts's beforeSend scrubs it), so there's no reason to hide the
+      // fault itself anymore.
+      Sentry.captureException(err);
       this.logger.warn(`[finance-share] unexpected error serving page: ${(err as Error)?.message ?? err}`);
       if (!res.headersSent) { this.htmlHeaders(res, nonce); return res.status(410).send(buildGonePage(nonce)); }
       return this.endSafely(res, 410);
@@ -109,12 +152,22 @@ export class FinanceSharePublicController {
       await pipeline(stream, res);
     } catch (err) {
       // HttpException ปกติ (เช่น token ไม่พบ) ที่เกิดก่อนส่ง header ใดๆ — ปล่อยให้ Nest ตอบ 404
-      // JSON ตามปกติ (ปลอดภัย ไม่มีโทเคนในข้อความ)
+      // JSON ตามปกติ (ปลอดภัย ไม่มีโทเคนในข้อความ — fix round 2 finding 1b: `fileStream()` เอง
+      // แปล storage-layer HttpException เป็น GONE_MSG แล้ว จึงไม่มีทางที่ err ตรงนี้จะมีข้อความ
+      // ไม่ปลอดภัยหลุดออกไปอีก)
       if (err instanceof HttpException && !res.headersSent) throw err;
       // ที่เหลือทั้งหมด: premature close ตอนลูกค้าปิด lightbox/เปลี่ยนหน้า (no-store บังคับ
       // refetch ทุกครั้ง) หรือ error ที่ไม่คาดคิดระหว่างเตรียม/สตรีมไฟล์ — ต้องไม่ปล่อยให้ error
-      // ไหลไปที่ SentryExceptionFilter (CRITICAL finding: จะ log request.url ที่มีโทเคนดิบติดอยู่)
-      this.logger.debug(`[finance-share] file stream ended early app=${appId}: ${(err as Error)?.message ?? err}`);
+      // ไหลไปที่ SentryExceptionFilter โดยตรง (ตาข่ายชั้นสาม — sentry.ts scrub — ทำให้แม้หลุดไปก็
+      // ปลอดภัยแล้ว แต่ยังจับเองที่นี่เพื่อตอบ GONE ที่หน้าตาเดียวกับทุกกรณี ไม่ใช่ raw 500/JSON)
+      if (isExpectedStreamAbort(err)) {
+        this.logger.debug(`[finance-share] file stream aborted app=${appId ?? 'unresolved'}: ${(err as Error)?.message ?? err}`);
+      } else {
+        // fix round 2 finding 1 (visibility ruling): genuine fault, not a client
+        // disconnect — must reach Sentry + WARN, not be silently swallowed at DEBUG.
+        Sentry.captureException(err);
+        this.logger.warn(`[finance-share] file stream failed app=${appId ?? 'unresolved'}: ${(err as Error)?.message ?? err}`);
+      }
       this.endSafely(res, 410);
     }
   }
@@ -130,30 +183,57 @@ export class FinanceSharePublicController {
       res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}`);
       res.setHeader('Cache-Control', 'private, no-store');
       let settled = false;
-      // ปิดทางค้าง (fix round 1 Important 2): ถ้า header ถูกส่งไปแล้วบางส่วนตอน error เกิด ต้อง
-      // destroy การเชื่อมต่อ (rewrite status ไม่ได้อีกแล้ว) — ถ้ายังไม่ส่งอะไรเลยตอบ 410 ธรรมดาได้
-      const failSafely = (err: unknown) => {
-        if (settled) return;
-        settled = true;
-        this.logger.warn(`[finance-share] zip stream failed app=${appId}: ${(err as Error)?.message ?? err}`);
-        try { if (!result.archive.destroyed) result.archive.abort(); } catch { /* ปิดไปแล้ว */ }
+      let aborted = false;
+      const isAborted = () => aborted;
+      // fix round 2 finding 2: a mid-archive failure while headers are already
+      // sent must NOT look like a clean 200 (that's what `endSafely`'s
+      // `res.destroy()` branch is for — see its own doc comment), and a 410 sent
+      // BEFORE any bytes flowed must not carry zip-specific headers a moment
+      // ago set in anticipation of success — remove them first.
+      const respondGone = () => {
+        if (res.headersSent) return;
+        res.removeHeader('Content-Type');
+        res.removeHeader('Content-Disposition');
+        res.removeHeader('Cache-Control');
         this.endSafely(res, 410);
       };
-      result.archive.on('error', failSafely);
-      res.on('close', () => failSafely(new Error('client disconnected')));
+      // `expected=true` = client disconnected (no fault of ours, no Sentry noise);
+      // `expected=false` = the archive/load pipeline itself failed (storage error,
+      // etc.) — a genuine fault that must stay visible (fix round 2 finding 1
+      // visibility ruling).
+      const failSafely = (err: unknown, expected: boolean) => {
+        if (settled) return;
+        settled = true;
+        aborted = true;
+        if (expected) {
+          this.logger.debug(`[finance-share] zip stream aborted app=${appId}: ${(err as Error)?.message ?? err}`);
+        } else {
+          Sentry.captureException(err);
+          this.logger.warn(`[finance-share] zip stream failed app=${appId}: ${(err as Error)?.message ?? err}`);
+        }
+        try { if (!result.archive.destroyed) result.archive.abort(); } catch { /* ปิดไปแล้ว */ }
+        if (res.headersSent) { if (!res.destroyed) res.destroy(); } else { respondGone(); }
+      };
+      result.archive.on('error', (err) => failSafely(err, false));
+      res.on('close', () => failSafely(new Error('client disconnected'), true));
       result.archive.pipe(res);
       try {
-        await result.load();
+        // `isAborted` lets the service's `load()` stop reading further entries
+        // (and destroy one it just obtained) the instant the client disconnects
+        // mid-stream — fix round 2 finding 2 (a previous disconnect used to leave
+        // every remaining entry's storage stream fetched-but-never-consumed).
+        await result.load(isAborted);
         settled = true;
       } catch (err) {
-        failSafely(err);
+        failSafely(err, false);
       }
     } catch (err) {
       // เกิดก่อนตั้ง header ใดๆ (เช่น zipStream() เอง throw แบบไม่คาดคิด) — โทเคนไม่หลุดเพราะยังไม่
       // เขียนอะไรออกไปเลย ปล่อย HttpException ปกติ (NotFoundException) ไหลตามทางเดิม
       if (err instanceof HttpException) throw err;
-      this.logger.warn(`[finance-share] unexpected error preparing zip app=${appId}: ${(err as Error)?.message ?? err}`);
-      this.endSafely(res, 410);
+      Sentry.captureException(err);
+      this.logger.warn(`[finance-share] unexpected error preparing zip app=${appId ?? 'unresolved'}: ${(err as Error)?.message ?? err}`);
+      if (!res.headersSent) res.status(410).end();
     }
   }
 
@@ -164,7 +244,10 @@ export class FinanceSharePublicController {
     try {
       return await this.share.reply(token, dto, this.ipHash(req));
     } catch (err) {
+      // HttpException (รวม 503 ตอน PII_HASH_SALT หาย — fix round 2 finding 1c) ไหลตามทางปกติ:
+      // ปลอดภัยแล้วเพราะ sentry.ts's beforeSend scrub โทเคนออกจาก event.request.url ก่อนถึง Sentry
       if (err instanceof HttpException) throw err;
+      Sentry.captureException(err);
       this.logger.warn(`[finance-share] unexpected error handling reply: ${(err as Error)?.message ?? err}`);
       throw new NotFoundException(GONE_MSG);
     }

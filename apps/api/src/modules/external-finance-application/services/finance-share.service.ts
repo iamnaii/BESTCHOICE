@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import archiver from 'archiver';
+import type { Readable } from 'stream';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
@@ -67,7 +68,24 @@ export class FinanceShareService {
     const app = await this.resolveOrThrow(rawToken);
     const file = app.files.find((f) => f.id === fileId && f.storageKey);
     if (!file?.storageKey) throw new NotFoundException(GONE_MSG);
-    return { file, stream: await this.storage.getStream(file.storageKey), appId: app.id };
+    let stream: Readable;
+    try {
+      stream = await this.storage.getStream(file.storageKey);
+    } catch (err) {
+      // fix round 2 finding 1(b): the storage backend's own HttpException (e.g. GCS
+      // BadRequestException('ไม่พบไฟล์: <storageKey>')) embeds the storage key —
+      // which itself embeds the application id. The DB row saying "this file
+      // should exist" but the blob being gone from the backend is a genuine data
+      // integrity fault, not a routine "token doesn't apply" case — but the public
+      // caller must see the exact same uniform GONE response either way, never
+      // the backend's message. The controller logs/Sentry-captures the ORIGINAL
+      // err via the same code path it uses for any other unexpected fault; this
+      // is just the message replacement so nothing storage-specific ever reaches
+      // the response.
+      this.logger.warn(`[finance-share] storage read failed file=${file.id} app=${app.id}: ${(err as Error)?.message ?? err}`);
+      throw new NotFoundException(GONE_MSG);
+    }
+    return { file, stream, appId: app.id };
   }
 
   /** รายการ entry ของ zip แยกออกมาให้เทสต์ได้โดยไม่ต้องอ่าน storage */
@@ -87,8 +105,25 @@ export class FinanceShareService {
       });
     }
     const archive = archiver('zip', { zlib: { level: 6 } });
-    const load = async () => {
-      for (const entry of entries) archive.append(await this.storage.getStream(entry.storageKey), { name: entry.name });
+    // fix round 2 finding 2: `load()` used to keep calling `storage.getStream` for
+    // every remaining entry even after the client disconnected (the controller had
+    // no way to say "stop") — wasted storage reads plus streams obtained but never
+    // consumed/destroyed. `isAborted` is a closure the controller passes in, backed
+    // by a flag it flips from `res.on('close')`/the archive error handler; checked
+    // BEFORE every `getStream` call (never start a read that's already pointless)
+    // and AGAIN right after (the abort can land while the read was in flight —
+    // in that race the just-obtained stream is destroyed instead of appended).
+    const load = async (isAborted: () => boolean = () => false) => {
+      for (const entry of entries) {
+        if (isAborted()) return;
+        const stream = await this.storage.getStream(entry.storageKey);
+        if (isAborted()) {
+          stream.destroy();
+          return;
+        }
+        archive.append(stream, { name: entry.name });
+      }
+      if (isAborted()) return;
       await archive.finalize();
     };
     return { filename: `${app.number}.zip`, archive, entries, load, appId: app.id };

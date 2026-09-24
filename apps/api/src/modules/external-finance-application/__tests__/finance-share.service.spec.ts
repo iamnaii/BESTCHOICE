@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { FinanceShareService } from '../services/finance-share.service';
 import { hashShareToken } from '../finance-share-token.util';
 
@@ -112,5 +112,48 @@ describe('FinanceShareService.fileStream / zipStream', () => {
     const zip = await service.zipStream(raw);
     expect(zip.filename).toBe('BC-260924-001.zip');
     expect(zip.entries).toEqual([{ name: '01-บัตรประชาชน.jpg', storageKey: 'k1' }]);
+  });
+  // fix round 2 finding 1(b): the DB row saying "this file should exist" but the storage
+  // backend not having it (e.g. GCS `BadRequestException('ไม่พบไฟล์: <storageKey>')`) is a real
+  // data-integrity fault, but the public caller must see the exact same GONE response as an
+  // unknown/expired token — never the backend's message, which embeds the storage key (and
+  // therefore the application id).
+  it('maps a storage-layer read failure to the uniform GONE message — never forwards the storage backend error (fix round 2 finding 1b)', async () => {
+    const storageThatFails = { getStream: jest.fn().mockRejectedValue(new BadRequestException('ไม่พบไฟล์: external-finance/app-1/uuid.jpg')) } as any;
+    const service = new FinanceShareService(makePrisma(app()), storageThatFails, notify);
+    await expect(service.fileStream(raw, 'f1')).rejects.toThrow(NotFoundException);
+    await expect(service.fileStream(raw, 'f1')).rejects.toMatchObject({ message: 'ไม่พบเอกสาร หรือลิงก์หมดอายุแล้ว' });
+  });
+  // fix round 2 finding 2: a client disconnect used to leave `load()` fetching every remaining
+  // entry's storage stream regardless (wasted reads + streams obtained but never consumed/
+  // destroyed). `load()` now takes an `isAborted` check consulted before AND after each
+  // `storage.getStream` call (the abort can land while that read is in flight).
+  it('zipStream().load() stops calling storage.getStream for further entries once aborted mid-way, and destroys a stream obtained after the abort landed (fix round 2 Important 2)', async () => {
+    const calls: string[] = [];
+    let resolveFirst!: (v: unknown) => void;
+    const firstStreamPromise = new Promise((resolve) => { resolveFirst = resolve; });
+    const getStream = jest.fn().mockImplementation(async (key: string) => {
+      calls.push(key);
+      if (key === 'k1') return firstStreamPromise;
+      return { pipe: jest.fn(), destroy: jest.fn() };
+    });
+    const twoFileApp = app({
+      files: [
+        { id: 'f1', slot: 'ID_CARD', mimeType: 'image/jpeg', size: 1, originalName: 'a.jpg', storageKey: 'k1', sortOrder: 0 },
+        { id: 'f2', slot: 'ID_CARD', mimeType: 'image/jpeg', size: 1, originalName: 'b.jpg', storageKey: 'k2', sortOrder: 1 },
+      ],
+    });
+    const service = new FinanceShareService(makePrisma(twoFileApp), { getStream } as any, notify);
+    const zip = await service.zipStream(raw);
+    let aborted = false;
+    const loadPromise = zip.load(() => aborted);
+    // entry 1's getStream() is in flight (unresolved) at this point — flip the abort flag
+    // before it settles, to prove the post-settle re-check (not just the pre-call check) works.
+    aborted = true;
+    const fakeStream = { destroy: jest.fn() };
+    resolveFirst(fakeStream);
+    await loadPromise;
+    expect(calls).toEqual(['k1']); // entry 2 (k2) is never fetched
+    expect(fakeStream.destroy).toHaveBeenCalledTimes(1); // obtained-after-abort stream is destroyed, never appended
   });
 });

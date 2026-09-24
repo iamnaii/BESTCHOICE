@@ -4,6 +4,7 @@
  * (PII_HASH_SALT ต้อง ≥32 ตัว — pii.encryptCustomerFields() ปฏิเสธ salt สั้นกว่านั้น)
  * สร้างห้อง/ผู้ใช้/ลูกค้า/สินค้าของตัวเองแล้วลบทิ้งใน afterAll (ลูกก่อนแม่)
  */
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaClient, ChatChannel } from '@prisma/client';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -11,6 +12,8 @@ import { tmpdir } from 'os';
 import { FinanceApplicationService } from '../services/finance-application.service';
 import { FinanceApplicationNumberService } from '../services/finance-application-number.service';
 import { FinanceApplicationFilesService } from '../services/finance-application-files.service';
+import { FinanceShareService } from '../services/finance-share.service';
+import { FinanceApplicationNotifyService } from '../services/finance-application-notify.service';
 import { StorageService } from '../../storage/storage.service';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
 
@@ -192,5 +195,31 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
     // ยืนยันว่าเบอร์ที่ถูก encryptCustomerFields ไว้ถูกถอดรหัสจริงตอน buildValues() —
     // ไม่ใช่แค่อ่าน legacy plaintext column (fix round 1 Important 1)
     expect(sent.messageText).toContain('093 758 1095');
+  });
+
+  it('resolves the live link, counts one view per ipHash, and a partner APPROVED reply closes the application', async () => {
+    const share = new FinanceShareService(prisma as any, storage, new FinanceApplicationNotifyService());
+    const token = sent.shareUrl.split('/').pop()!;
+    const r = await share.resolve(token);
+    expect(r.state).toBe('OK');
+    await share.recordView(sendAppId, 'ip-a', 'jest');
+    await share.recordView(sendAppId, 'ip-a', 'jest');
+    const row1 = await prisma.externalFinanceApplication.findUnique({ where: { id: sendAppId } });
+    expect(row1?.shareViewCount).toBe(1);
+    const reply = await share.reply(token, { action: 'APPROVED', name: 'คุณเอ', note: 'ผ่านครับ' }, 'ip-a');
+    expect(reply.status).toBe('APPROVED');
+    const row2 = await prisma.externalFinanceApplication.findUnique({ where: { id: sendAppId }, include: { events: true } });
+    expect(row2?.resultSource).toBe('PARTNER_LINK');
+    expect(row2?.closedAt).not.toBeNull();
+    expect(row2?.events.map((e) => e.kind)).toEqual(expect.arrayContaining(['SENT', 'LINK_VIEWED', 'PARTNER_APPROVED']));
+    await expect(share.reply(token, { action: 'REJECTED', name: 'คุณเอ' }, 'ip-a')).rejects.toThrow(ConflictException);
+  });
+
+  it('an expired link is GONE and records no view', async () => {
+    await prisma.externalFinanceApplication.update({ where: { id: sendAppId }, data: { shareExpiresAt: new Date(Date.now() - 1000) } });
+    const share = new FinanceShareService(prisma as any, storage, new FinanceApplicationNotifyService());
+    const token = sent.shareUrl.split('/').pop()!;
+    expect(await share.resolve(token)).toEqual({ state: 'GONE', reason: 'EXPIRED' });
+    await expect(share.fileStream(token, 'any')).rejects.toThrow(NotFoundException);
   });
 });

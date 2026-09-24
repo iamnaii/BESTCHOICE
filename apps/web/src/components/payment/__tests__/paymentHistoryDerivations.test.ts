@@ -5,6 +5,8 @@ import {
   jesForReceipt,
   receiptLabelsForJes,
   caseForReceipt,
+  paidRowsWithoutReceipt,
+  type PaidPaymentRow,
   type ReceiptAmountRow,
   type JeRef,
   type JeForLabel,
@@ -295,5 +297,60 @@ describe('caseForReceipt', () => {
 
   it('falls back to NORMAL when the receipt has no linked installment', () => {
     expect(caseForReceipt(caseRcpt({ amount: '9999' }), undefined).label).toBe('ตรงดิว');
+  });
+});
+
+describe('paidRowsWithoutReceipt — งวด PAID ที่ไม่มีใบเสร็จ (ยกยอดมา / seed)', () => {
+  const pay = (over: Partial<PaidPaymentRow>): PaidPaymentRow => ({
+    id: 'pay-1',
+    installmentNo: 1,
+    status: 'PAID',
+    amountPaid: '4199.00',
+    paidDate: '2026-04-26T10:00:00.000Z',
+    dueDate: '2026-04-26T00:00:00.000Z',
+    paymentMethod: 'CASH',
+    ...over,
+  });
+
+  it('งวด PAID ที่ไม่มีใบเสร็จผูกอยู่ → หนึ่งแถวรูปเดียวกับใบเสร็จ ติดธง noReceipt', () => {
+    const rows = paidRowsWithoutReceipt([pay({})], []);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: 'no-receipt:pay-1',
+      receiptNumber: '',
+      receiptType: 'INSTALLMENT',
+      amount: '4199.00',
+      installmentNo: 1,
+      paymentId: 'pay-1',
+      paymentStatus: 'PAID',
+      isVoided: false,
+      paidDate: '2026-04-26T10:00:00.000Z',
+      paymentCase: 'NO_RECEIPT',
+      noReceipt: true,
+    });
+  });
+
+  it('งวดที่มีใบเสร็จแล้ว (แม้ถูก void) และงวดที่ยังไม่ PAID ไม่ถูกเติม', () => {
+    const rows = paidRowsWithoutReceipt(
+      [
+        pay({ id: 'pay-1' }),
+        pay({ id: 'pay-2', installmentNo: 2 }),
+        pay({ id: 'pay-3', installmentNo: 3, status: 'PENDING', amountPaid: '0' }),
+        pay({ id: 'pay-4', installmentNo: 4, status: 'PARTIALLY_PAID', amountPaid: '1000' }),
+      ],
+      [{ paymentId: 'pay-1' }, { paymentId: null }],
+    );
+    expect(rows.map((r) => r.paymentId)).toEqual(['pay-2']);
+  });
+
+  it('ไม่มี paidDate (seed) → ใช้ dueDate เป็นวันที่ชำระ', () => {
+    const [row] = paidRowsWithoutReceipt([pay({ paidDate: null })], []);
+    expect(row.paidDate).toBe('2026-04-26T00:00:00.000Z');
+  });
+
+  it('caseForReceipt ป้าย "ชำระแล้ว (ยกมา)" และ computeCumulativePaid นับรวมแถวนี้', () => {
+    const [row] = paidRowsWithoutReceipt([pay({})], []);
+    expect(caseForReceipt(row, undefined)).toEqual({ label: 'ชำระแล้ว (ยกมา)', tone: 'info' });
+    expect(computeCumulativePaid([rec({ amount: '4299' }), row])).toBe(8498);
   });
 });

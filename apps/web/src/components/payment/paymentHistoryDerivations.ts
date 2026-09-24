@@ -35,6 +35,66 @@ export function computeCumulativePaid(receipts: ReceiptAmountRow[]): number {
     .reduce((s, r) => s + Number(r.amount), 0);
 }
 
+export interface PaidPaymentRow {
+  id: string;
+  installmentNo: number;
+  status: string;
+  amountPaid: string;
+  paidDate: string | null;
+  dueDate: string;
+  paymentMethod: string | null;
+}
+
+export interface ReceiptLinkRow {
+  paymentId: string | null;
+}
+
+/**
+ * แถวประวัติของงวดที่ถูกบันทึกเป็น PAID โดยไม่มีใบเสร็จในระบบ — สัญญาที่ยกยอดมาจากระบบเก่า
+ * และสัญญาทดสอบที่ seed งวดจ่ายแล้วไว้ล่วงหน้า (seed-test-contracts.cli: "data-only, no JE, no receipt").
+ * หน้าประวัติเรียงจากใบเสร็จ งวดพวกนี้จึงไม่เคยปรากฏทั้งที่การ์ด "งวดที่ชำระแล้ว" นับรวม
+ * (เจ้าของ 2026-09-24: "ประวัติชำระอื่นๆ หายไป"). รูปร่างเดียวกับแถวใบเสร็จ + `noReceipt: true`.
+ */
+export interface NoReceiptHistoryRow {
+  id: string;
+  receiptNumber: string;
+  receiptType: 'INSTALLMENT';
+  amount: string;
+  installmentNo: number;
+  paymentId: string;
+  paymentMethod: string | null;
+  paymentStatus: 'PAID';
+  isVoided: false;
+  paidDate: string;
+  issuedByName: null;
+  paymentCase: 'NO_RECEIPT';
+  noReceipt: true;
+}
+
+export function paidRowsWithoutReceipt(
+  payments: PaidPaymentRow[],
+  receipts: ReceiptLinkRow[],
+): NoReceiptHistoryRow[] {
+  const withReceipt = new Set(receipts.map((r) => r.paymentId).filter(Boolean));
+  return payments
+    .filter((p) => p.status === 'PAID' && !withReceipt.has(p.id))
+    .map((p) => ({
+      id: `no-receipt:${p.id}`,
+      receiptNumber: '',
+      receiptType: 'INSTALLMENT' as const,
+      amount: p.amountPaid,
+      installmentNo: p.installmentNo,
+      paymentId: p.id,
+      paymentMethod: p.paymentMethod,
+      paymentStatus: 'PAID' as const,
+      isVoided: false as const,
+      paidDate: p.paidDate ?? p.dueDate,
+      issuedByName: null,
+      paymentCase: 'NO_RECEIPT' as const,
+      noReceipt: true as const,
+    }));
+}
+
 /**
  * Sum the same per-receipt fee values shown in the table. Rescheduling resets
  * Payment.lateFee, so that mutable amount cannot represent past collections.
@@ -178,6 +238,8 @@ const PAYMENT_CASE_LABELS: Record<string, { label: string; tone: CaseTone }> = {
   OVERPAY_ADVANCE: { label: 'ชำระล่วงหน้า', tone: 'primary' },
   OVERPAY: { label: 'ชำระเกิน', tone: 'primary' },
   UNDERPAY: { label: 'ชำระขาด', tone: 'warning' },
+  /** งวด PAID ที่ไม่มีใบเสร็จ — ยกยอดมา/ทดสอบ (paidRowsWithoutReceipt) */
+  NO_RECEIPT: { label: 'ชำระแล้ว (ยกมา)', tone: 'info' },
 };
 
 /**

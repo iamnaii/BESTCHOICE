@@ -14,11 +14,12 @@ import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
 import { useAuth } from '@/contexts/AuthContext';
 import ReceiptVoidDialog from '@/components/payment/ReceiptVoidDialog';
 import { JeBlock, type ContractJe } from './JeBlock';
-import { computeReceiptFeeDisplay } from './computeReceiptFeeDisplay';
+import { computeReceiptFeeDisplay, type FeeInfo } from './computeReceiptFeeDisplay';
 import {
   computeCumulativePaid,
   computeFeeTotals,
   jesForReceipt as selectJesForReceipt,
+  paidRowsWithoutReceipt,
   receiptLabelsForJes,
   caseForReceipt,
   type CaseTone,
@@ -33,6 +34,7 @@ interface PaymentItem {
   dueDate: string;
   amountDue: string;
   amountPaid: string;
+  paidDate: string | null;
   lateFee: string;
   lateFeeWaived: boolean;
   waivedAmount: string | null;
@@ -96,6 +98,8 @@ interface ReceiptItem {
   paymentCase?: string | null;
   installmentAllocations?: ReceiptInstallmentAllocation[] | null;
 }
+/** แถวในตาราง = ใบเสร็จจริง หรืองวด PAID ที่ไม่มีใบเสร็จ (`noReceipt`) — ดู paidRowsWithoutReceipt */
+type HistoryRow = ReceiptItem & { noReceipt?: boolean };
 
 const VOID_REQUEST_ROLES = ['OWNER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'];
 // Receipt types the backend refuses to void (ReceiptVoidService guards,
@@ -219,19 +223,23 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
   // payment in the total). Fees use the same receipt history as the table,
   // including fees already collected before a reschedule resets Payment.lateFee.
   const paidCount = payments.filter((p) => p.status === 'PAID').length;
-  const cumulativePaid = computeCumulativePaid(receipts);
-  const { totalLateFee, totalWaived } = computeFeeTotals(receiptFees.values());
 
-  // One row per receipt (incl. voided), oldest installment first.
-  const rows = useMemo(
+  // One row per receipt (incl. voided) + one row per PAID installment that has
+  // no receipt at all (ยกยอดมา/seed — เจ้าของ 2026-09-24 "ประวัติชำระอื่นๆ หายไป"),
+  // oldest installment first.
+  const rows = useMemo<HistoryRow[]>(
     () =>
-      [...receipts].sort(
+      [...receipts, ...paidRowsWithoutReceipt(payments, receipts)].sort(
         (a, b) =>
           (a.installmentNo ?? 0) - (b.installmentNo ?? 0) ||
           new Date(a.paidDate).getTime() - new Date(b.paidDate).getTime(),
       ),
-    [receipts],
+    [receipts, payments],
   );
+  // ยอดสะสมนับแถวไม่มีใบเสร็จด้วย (เงินที่บันทึกว่ารับแล้ว) — ไม่งั้นการ์ด "งวดที่ชำระแล้ว 5/6"
+  // จะขัดกับยอดสะสมที่เห็นแค่ใบเสร็จใบเดียว
+  const cumulativePaid = computeCumulativePaid(rows);
+  const { totalLateFee, totalWaived } = computeFeeTotals(receiptFees.values());
 
   return (
     <>
@@ -386,17 +394,30 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                         {rows.map((r) => {
                           const p = r.paymentId ? paymentById.get(r.paymentId) : undefined;
                           const c = caseFor(r, p);
-                          const { lateFee, waived, unavailable } = receiptFees.get(r.id) ?? {
-                            lateFee: 0,
-                            waived: 0,
-                          };
+                          const { lateFee, waived, unavailable }: FeeInfo =
+                            receiptFees.get(r.id) ??
+                            (r.noReceipt && r.paymentId ? feeByPaymentId.get(r.paymentId) : undefined) ?? {
+                              lateFee: 0,
+                              waived: 0,
+                            };
                           const recorder = p?.recordedBy?.name ?? r.issuedByName ?? '–';
                           return (
                             <tr
                               key={r.id}
                               className={`border-t border-border ${r.isVoided ? 'opacity-50 line-through' : ''}`}
                             >
-                              <Td className="font-mono text-xs">{r.receiptNumber}</Td>
+                              <Td className="font-mono text-xs">
+                                {r.noReceipt ? (
+                                  <span
+                                    className="font-sans text-muted-foreground"
+                                    title="งวดนี้ถูกบันทึกเป็นชำระแล้วโดยไม่มีใบเสร็จในระบบ (ยกยอดมาจากระบบเก่า / ข้อมูลทดสอบ)"
+                                  >
+                                    ไม่มีใบเสร็จ
+                                  </span>
+                                ) : (
+                                  r.receiptNumber
+                                )}
+                              </Td>
                               {/* ดิวชำระ = dueDate ของงวด — ใบเสร็จที่ไม่ผูกงวด (ดาวน์/ปิดยอด/CN) ไม่มีดิว */}
                               <Td>{p ? formatDateShort(p.dueDate) : '–'}</Td>
                               <Td>{formatDateShort(r.paidDate)}</Td>
@@ -475,13 +496,17 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                                   <button
                                     onClick={() => setJeTarget(r)}
                                     title="ดูบันทึกบัญชี (JE)"
-                                    aria-label={`ดูบันทึกบัญชีของใบเสร็จ ${r.receiptNumber}`}
+                                    aria-label={
+                                      r.noReceipt
+                                        ? `ดูบันทึกบัญชีของงวด ${r.installmentNo}`
+                                        : `ดูบันทึกบัญชีของใบเสร็จ ${r.receiptNumber}`
+                                    }
                                     aria-haspopup="dialog"
                                     className="p-1.5 rounded border border-border text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                                   >
                                     <BookOpen className="size-3.5" />
                                   </button>
-                                  {!r.isVoided && (
+                                  {!r.isVoided && !r.noReceipt && (
                                     <>
                                       <DocumentDownloadButton path={`/receipts/${r.id}/pdf`} filename={`${r.receiptNumber}.pdf`}
                                         title="ใบเสร็จ (PDF)"

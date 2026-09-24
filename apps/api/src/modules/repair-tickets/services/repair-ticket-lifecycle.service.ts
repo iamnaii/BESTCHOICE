@@ -206,8 +206,14 @@ export class RepairTicketLifecycleService {
 
       const repairedAt = dto.repairedAt ? new Date(dto.repairedAt) : new Date();
 
+      // Fix round 1 (P-E) — TOCTOU กับ update() (แก้ repairSupplierId ได้ตอน OPEN):
+      // ปักการันตี "OPEN ไม่มีศูนย์" ไว้ใน CAS เอง ไม่ใช่แค่ตอน pre-read — ถ้ามีศูนย์ถูกผูก
+      // เข้ามาแทรกระหว่างนั้น where นี้จะไม่ match แล้วตกไปที่ ConflictException ด้านล่าง
+      // แทนที่จะเปลี่ยนเป็น READY_FOR_PICKUP ด้วยศูนย์ซ่อมที่ไม่เคยผ่าน "ส่งซ่อม"
       const updated = await tx.repairTicket.updateMany({
-        where: { id, status: fromStatus, deletedAt: null },
+        where: inShop
+          ? { id, status: 'OPEN', repairSupplierId: null, deletedAt: null }
+          : { id, status: fromStatus, deletedAt: null },
         data: {
           status: 'READY_FOR_PICKUP',
           repairedAt,

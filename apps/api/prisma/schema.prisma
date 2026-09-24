@@ -122,6 +122,8 @@ enum AfterSalesEventKind {
   CLOSED
   CANCELLED
   NOTE
+  APPROVED
+  REJECTED
 }
 
 // P1 Collections UI — Saved Filter Presets (Task 3)
@@ -7736,7 +7738,8 @@ model AfterSalesCase {
   warrantySnapshot Json           @map("warranty_snapshot")                  // {status,within7Days,daysRemainingIn7Day,shopWarrantyEnd,manufacturerWarrantyEnd,checkedAt}
   outcome       AfterSalesOutcome?
   repairTicketId String?          @unique @map("repair_ticket_id")
-  exchangeRequestId String?       @unique @map("exchange_request_id")
+  exchangeRequestId String?                 @unique @map("exchange_request_id")
+  exchangeRequest   ContractExchangeRequest? @relation("AfterSalesCaseExchangeRequest", fields: [exchangeRequestId], references: [id])
   replacementContractId String?   @map("replacement_contract_id")
   replacementSaleId String?       @map("replacement_sale_id")
   replacementProductId String?    @map("replacement_product_id")
@@ -8339,6 +8342,8 @@ model ContractExchangeRequest {
 
   newContractId String?   @unique @map("new_contract_id")
   newContract   Contract? @relation("ExchangeRequestsToNewContract", fields: [newContractId], references: [id])
+  // หลังการขาย — เคสหลังการขายที่ผูกคำขอเปลี่ยนเครื่องนี้ (1:1, FK อยู่ฝั่ง AfterSalesCase)
+  afterSalesCase AfterSalesCase? @relation("AfterSalesCaseExchangeRequest")
   je1aId        String?   @map("je_1a_id")
   je2Id         String?   @map("je_2_id")
   je3Id         String?   @map("je_3_id")

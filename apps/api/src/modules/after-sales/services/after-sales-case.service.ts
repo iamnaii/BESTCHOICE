@@ -105,6 +105,13 @@ export class AfterSalesCaseService {
     if (!hasCrossBranchAccess(user) && dto.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถเข้าถึงสาขาอื่นได้');
     }
+    // DTO ไม่บังคับ UUID แล้ว (seed ใช้ `branch-001`) — ตรวจว่าสาขามีจริงแทน ให้ role ข้ามสาขาที่ส่ง
+    // รหัสมั่วได้ 400 ภาษาไทย แทน FK error ตอนสร้างแถว
+    const branch = await this.prisma.branch.findFirst({
+      where: { id: dto.branchId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!branch) throw new BadRequestException('ไม่พบสาขา');
     if (!files?.length) throw new BadRequestException('ต้องมีรูปตอนรับฝากอย่างน้อย 1 รูป');
     if (files.length > MAX_INTAKE_PHOTOS) {
       throw new BadRequestException(`รูปตอนรับฝากได้ไม่เกิน ${MAX_INTAKE_PHOTOS} รูป`);

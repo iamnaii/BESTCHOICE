@@ -112,6 +112,9 @@ export class CreateCaseDto {
   @IsString()
   conditionNote?: string; // PRICED_EXCHANGE — ส่งต่อให้ ContractExchangeService.submit
 
-  @IsUUID()
+  // ไม่บังคับรูปแบบ UUID — seed/E2E ใช้รหัสสาขาแบบ literal (`branch-001`) แบบเดียวกับ
+  // contract.dto.ts; service ตรวจว่าสาขามีจริงหลังเช็ค scope (R16) แทน
+  @IsString()
+  @MinLength(1, { message: 'กรุณาระบุสาขา' })
   branchId!: string;
 }

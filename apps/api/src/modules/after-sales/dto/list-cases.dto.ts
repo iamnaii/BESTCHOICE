@@ -16,7 +16,7 @@ export class ListCasesDto {
   tab?: (typeof TABS)[number]; // default ACTIVE — service เป็นคนใส่ค่าเริ่มต้น
 
   @IsOptional()
-  @IsUUID()
+  @IsString() // รหัสสาขาไม่จำเป็นต้องเป็น UUID (seed ใช้ `branch-001`)
   branchId?: string;
 
   @IsOptional()

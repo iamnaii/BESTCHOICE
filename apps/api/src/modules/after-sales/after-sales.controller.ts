@@ -13,7 +13,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -21,6 +21,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AfterSalesService } from './after-sales.service';
+import { IntakePhotosInterceptor } from './intake-photos.interceptor';
 import { LookupDto } from './dto/lookup.dto';
 import { CreateCaseDto } from './dto/create-case.dto';
 import { ListCasesDto } from './dto/list-cases.dto';
@@ -66,9 +67,8 @@ export class AfterSalesController {
 
   @Post()
   @Roles(...STAFF)
-  @UseInterceptors(
-    FilesInterceptor('photos', 6, { limits: { fileSize: EVIDENCE_IMAGE_MAX_BYTES } }),
-  )
+  // IntakePhotosInterceptor = FilesInterceptor('photos', 6, 5MB) + แปล error ของ Multer เป็นไทย
+  @UseInterceptors(IntakePhotosInterceptor)
   create(
     @Body() dto: CreateCaseDto,
     @UploadedFiles() photos: Express.Multer.File[],

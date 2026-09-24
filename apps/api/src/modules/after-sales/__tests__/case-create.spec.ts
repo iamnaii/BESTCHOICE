@@ -124,6 +124,7 @@ describe('AfterSalesCaseService.createCase', () => {
     };
     prisma = {
       $transaction: jest.fn().mockImplementation((cb: any) => cb(tx)),
+      branch: { findFirst: jest.fn().mockResolvedValue({ id: 'b-1' }) },
       product: { findUnique: jest.fn().mockResolvedValue(REPLACEMENT_PRODUCT) },
       afterSalesCase: {
         update: jest.fn().mockResolvedValue(undefined),
@@ -370,6 +371,23 @@ describe('AfterSalesCaseService.createCase', () => {
       ForbiddenException,
     );
 
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(lookupSvc.lookup).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  // (h) branchId ไม่บังคับ UUID แล้ว (seed ใช้ `branch-001`) — role ข้ามสาขาส่งรหัสสาขาที่ไม่มีจริง
+  // ต้องได้ 400 "ไม่พบสาขา" ก่อนแตะ storage/lookup/tx (ไม่ใช่ FK error ตอนสร้างแถว)
+  it('OWNER ส่ง branchId ที่ไม่มีจริง → BadRequestException "ไม่พบสาขา" ไม่แตะ storage/lookup/tx', async () => {
+    prisma.branch.findFirst.mockResolvedValue(null);
+    const owner = { id: 'u-o', role: 'OWNER', branchId: null };
+    const dto = { ...BASE_DTO, branchId: 'branch-ghost' };
+
+    await expect(svc.createCase(dto as never, [mockFile()], owner)).rejects.toThrow('ไม่พบสาขา');
+    expect(prisma.branch.findFirst).toHaveBeenCalledWith({
+      where: { id: 'branch-ghost', deletedAt: null },
+      select: { id: true },
+    });
     expect(storage.upload).not.toHaveBeenCalled();
     expect(lookupSvc.lookup).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -709,7 +727,7 @@ describe('AfterSalesCaseService.createCase', () => {
         symptom: 'จอแตกและเปิดไม่ติด',
         accessories: {},
         unlockConfirmed: true,
-        branchId: '11111111-1111-1111-1111-111111111111',
+        branchId: 'branch-002', // seed ใช้รหัสสาขาแบบ literal — ไม่ต้องเป็น UUID
       };
 
       it('รับ REPAIR / SAME_MODEL_EXCHANGE / PRICED_EXCHANGE', async () => {

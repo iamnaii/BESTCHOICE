@@ -71,7 +71,10 @@ describe('AfterSalesCaseService.createCase — real assertEvidenceImage validato
 
   beforeEach(() => {
     jest.clearAllMocks();
-    prisma = { $transaction: jest.fn() };
+    prisma = {
+      $transaction: jest.fn(),
+      branch: { findFirst: jest.fn().mockResolvedValue({ id: 'b-1' }) },
+    };
     storage = {
       upload: jest.fn().mockImplementation((key: string) => Promise.resolve(key)),
       delete: jest.fn().mockResolvedValue(undefined),

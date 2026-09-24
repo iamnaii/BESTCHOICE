@@ -18,6 +18,6 @@ export class ReplacementProductsDto {
   sameModel!: boolean;
 
   @IsOptional()
-  @IsUUID()
+  @IsString() // รหัสสาขาไม่จำเป็นต้องเป็น UUID (seed ใช้ `branch-001`)
   branchId?: string;
 }

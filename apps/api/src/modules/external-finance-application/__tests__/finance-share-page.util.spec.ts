@@ -51,4 +51,28 @@ describe('buildFinanceSharePage', () => {
     expect(html).toContain('GFIN : BESTCHOICE');
     expect(html).not.toContain('BC-');
   });
+
+  // fix round 1 Important 4 — CSP is `style-src 'nonce-...'` with no 'unsafe-inline';
+  // nonces only cover <style>/<script> elements, never a `style="..."` attribute, so any
+  // inline style attribute is silently dropped by the browser. Every style must live in
+  // the nonced <style> block as a class/ID selector instead.
+  it('never emits an inline style="" attribute anywhere (CSP has no unsafe-inline for style-src)', () => {
+    for (const status of ['SENT', 'ACKNOWLEDGED', 'MORE_INFO', 'APPROVED', 'CANCELLED'] as const) {
+      const html = buildFinanceSharePage({ ...base, status });
+      expect(html).not.toMatch(/\sstyle="/);
+    }
+    expect(buildGonePage('abc')).not.toMatch(/\sstyle="/);
+  });
+
+  // fix round 1 Minor 7 — PARTNER_ACK is only allowed from SENT (finance-application-status.util.ts);
+  // showing the ACK button on MORE_INFO/ACKNOWLEDGED would always 409 on click.
+  it('shows the ACK button only when status is SENT — MORE_INFO keeps the other 3 choices without it', () => {
+    const moreInfo = buildFinanceSharePage({ ...base, status: 'MORE_INFO' });
+    expect(moreInfo).not.toContain('data-reply="ACK"');
+    for (const a of ['MORE_INFO', 'APPROVED', 'REJECTED']) expect(moreInfo).toContain(`data-reply="${a}"`);
+    const acknowledged = buildFinanceSharePage({ ...base, status: 'ACKNOWLEDGED' });
+    expect(acknowledged).not.toContain('data-reply="ACK"');
+    const sent = buildFinanceSharePage({ ...base, status: 'SENT' });
+    expect(sent).toContain('data-reply="ACK"');
+  });
 });

@@ -13,10 +13,15 @@ const app = (over: Record<string, unknown> = {}) => ({
 });
 function makePrisma(row: any) {
   const update = jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...row, ...data }));
+  // updateMany เดียวกันทั้ง top-level และภายใน $transaction (ปิด closure ตัวเดียว) — CAS ของ
+  // reply() ใช้ updateMany({where:{id,status,deletedAt:null}}) แทน update() ธรรมดา (fix round 1
+  // Important 3); ค่าเริ่มต้น count:1 = "แถวยังเป็นสถานะที่อ่านไว้" ส่วนเทส TOCTOU override เป็น 0
+  const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+  const eventCreate = jest.fn().mockResolvedValue({});
   return {
-    externalFinanceApplication: { findFirst: jest.fn().mockResolvedValue(row), update },
-    externalFinanceApplicationEvent: { create: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue(null) },
-    $transaction: (fn: any) => fn({ externalFinanceApplication: { findFirst: jest.fn().mockResolvedValue(row), update }, externalFinanceApplicationEvent: { create: jest.fn().mockResolvedValue({}) } }),
+    externalFinanceApplication: { findFirst: jest.fn().mockResolvedValue(row), update, updateMany },
+    externalFinanceApplicationEvent: { create: eventCreate, findFirst: jest.fn().mockResolvedValue(null) },
+    $transaction: (fn: any) => fn({ externalFinanceApplication: { findFirst: jest.fn().mockResolvedValue(row), update, updateMany }, externalFinanceApplicationEvent: { create: eventCreate } }),
   } as any;
 }
 const storage = { getStream: jest.fn().mockResolvedValue({ pipe: jest.fn() }) } as any;
@@ -58,27 +63,41 @@ describe('FinanceShareService.reply', () => {
     const service = new FinanceShareService(prisma, storage, notify);
     const result = await service.reply(raw, { action: 'APPROVED', name: 'คุณเอ', note: 'ok' }, 'iphash');
     expect(result.status).toBe('APPROVED');
-    const data = prisma.externalFinanceApplication.update.mock.calls[0][0].data;
-    expect(data).toMatchObject({ status: 'APPROVED', resultSource: 'PARTNER_LINK' });
-    expect(data.closedAt).toBeInstanceOf(Date);
+    const call = prisma.externalFinanceApplication.updateMany.mock.calls[0][0];
+    expect(call.where).toMatchObject({ id: 'app-1', status: 'SENT' });
+    expect(call.data).toMatchObject({ status: 'APPROVED', resultSource: 'PARTNER_LINK' });
+    expect(call.data.closedAt).toBeInstanceOf(Date);
     expect(notify.partnerReplied).toHaveBeenCalledWith('app-1');
   });
   it('ACK moves SENT → ACKNOWLEDGED and stores the replier name; a second ACK only logs an event', async () => {
     const prisma = makePrisma(app());
     const service = new FinanceShareService(prisma, storage, notify);
     await service.reply(raw, { action: 'ACK', name: 'คุณเอ' }, 'h');
-    expect(prisma.externalFinanceApplication.update.mock.calls[0][0].data.status).toBe('ACKNOWLEDGED');
+    expect(prisma.externalFinanceApplication.updateMany.mock.calls[0][0].data.status).toBe('ACKNOWLEDGED');
     const acked = makePrisma(app({ status: 'ACKNOWLEDGED' }));
     await new FinanceShareService(acked, storage, notify).reply(raw, { action: 'ACK', name: 'คุณเอ' }, 'h');
-    expect(acked.externalFinanceApplication.update.mock.calls[0][0].data.status).toBe('ACKNOWLEDGED');
+    expect(acked.externalFinanceApplication.updateMany.mock.calls[0][0].data.status).toBe('ACKNOWLEDGED');
   });
   it('rejects a reply on a closed application with 409 and does not change anything', async () => {
     const prisma = makePrisma(app({ status: 'APPROVED' }));
     await expect(new FinanceShareService(prisma, storage, notify).reply(raw, { action: 'REJECTED', name: 'x' }, 'iphash')).rejects.toThrow(ConflictException);
-    expect(prisma.externalFinanceApplication.update).not.toHaveBeenCalled();
+    expect(prisma.externalFinanceApplication.updateMany).not.toHaveBeenCalled();
   });
   it('reply on an expired link is 404-equivalent (GONE) — same message as unknown token', async () => {
     await expect(new FinanceShareService(makePrisma(app({ shareExpiresAt: past })), storage, notify).reply(raw, { action: 'APPROVED', name: 'x' }, 'h')).rejects.toThrow(NotFoundException);
+  });
+  // fix round 1 Important 3 — TOCTOU: the row's status was read outside the transaction; a
+  // concurrent writer (STAFF_* result / CANCEL / a second partner reply) can change it before
+  // our update lands. The CAS (updateMany matched on id+status) must reject with 409 instead of
+  // blindly overwriting whatever the concurrent writer landed on.
+  it('rejects with 409 when the row changed status between resolve and write (TOCTOU CAS) and logs no event', async () => {
+    const prisma = makePrisma(app());
+    prisma.externalFinanceApplication.updateMany.mockResolvedValueOnce({ count: 0 });
+    const service = new FinanceShareService(prisma, storage, notify);
+    const notifyCallsBefore = notify.partnerReplied.mock.calls.length; // `notify` is a module-level shared mock across this describe block
+    await expect(service.reply(raw, { action: 'APPROVED', name: 'คุณเอ' }, 'iphash')).rejects.toThrow(ConflictException);
+    expect(prisma.externalFinanceApplicationEvent.create).not.toHaveBeenCalled();
+    expect(notify.partnerReplied.mock.calls.length).toBe(notifyCallsBefore);
   });
 });
 

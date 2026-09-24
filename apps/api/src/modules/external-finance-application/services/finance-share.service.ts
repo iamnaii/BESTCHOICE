@@ -67,7 +67,7 @@ export class FinanceShareService {
     const app = await this.resolveOrThrow(rawToken);
     const file = app.files.find((f) => f.id === fileId && f.storageKey);
     if (!file?.storageKey) throw new NotFoundException(GONE_MSG);
-    return { file, stream: await this.storage.getStream(file.storageKey) };
+    return { file, stream: await this.storage.getStream(file.storageKey), appId: app.id };
   }
 
   /** รายการ entry ของ zip แยกออกมาให้เทสต์ได้โดยไม่ต้องอ่าน storage */
@@ -91,7 +91,7 @@ export class FinanceShareService {
       for (const entry of entries) archive.append(await this.storage.getStream(entry.storageKey), { name: entry.name });
       await archive.finalize();
     };
-    return { filename: `${app.number}.zip`, archive, entries, load };
+    return { filename: `${app.number}.zip`, archive, entries, load, appId: app.id };
   }
 
   async reply(rawToken: string, dto: FinanceShareReplyDto, ipHash: string) {
@@ -101,15 +101,19 @@ export class FinanceShareService {
     // "รับเรื่องแล้ว" ซ้ำบนใบที่รับแล้ว = จดเหตุการณ์อย่างเดียว ไม่ 409 (กดซ้ำจากมือถือเป็นเรื่องปกติ)
     const nextStatus = event === 'PARTNER_ACK' && app.status === 'ACKNOWLEDGED' ? app.status : applyTransition(app.status, event);
     const closes = nextStatus === 'APPROVED' || nextStatus === 'REJECTED';
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const row = await tx.externalFinanceApplication.update({
-        where: { id: app.id },
+    await this.prisma.$transaction(async (tx) => {
+      // TOCTOU fix (fix round 1 Important 3): `app.status` was read outside this transaction —
+      // a concurrent STAFF_* result, CANCEL, or a second partner reply could have changed the
+      // row's status in between. CAS on (id, status) so a stale write never silently overwrites
+      // whatever the concurrent writer landed (e.g. CANCELLED → APPROVED).
+      const updated = await tx.externalFinanceApplication.updateMany({
+        where: { id: app.id, status: app.status, deletedAt: null },
         data: { status: nextStatus, ...(closes || nextStatus === 'MORE_INFO' ? { resultSource: 'PARTNER_LINK' } : {}), lastPartnerEventAt: new Date(), closedAt: closes ? new Date() : null },
       });
+      if (updated.count === 0) throw new ConflictException('ใบยื่นเปลี่ยนสถานะไปแล้ว กรุณาโหลดหน้าใหม่');
       await tx.externalFinanceApplicationEvent.create({ data: { applicationId: app.id, kind: event, actorType: 'PARTNER', actorName: dto.name.trim().slice(0, 80), note: dto.note?.trim() || null, meta: { ipHash } } });
-      return row;
     });
     try { await this.notify.partnerReplied(app.id); } catch (err) { this.logger.warn(`notify partnerReplied failed app=${app.id}: ${(err as Error).message}`); }
-    return { status: updated.status };
+    return { status: nextStatus };
   }
 }

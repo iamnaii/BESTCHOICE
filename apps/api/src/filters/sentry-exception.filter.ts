@@ -2,6 +2,21 @@ import { Catch, ArgumentsHost, HttpException, HttpStatus, Logger } from '@nestjs
 import { BaseExceptionFilter } from '@nestjs/core';
 import * as Sentry from '@sentry/nestjs';
 
+// GFIN share-link routes embed a 256-bit bearer token directly in the URL path
+// (`/api/g/<43-char-token>/...`) — the token IS the credential, so it must never
+// reach a log line or Sentry event verbatim. The controller (finance-share-public.controller.ts)
+// already catches its own expected errors before they get here, but this is the
+// backstop: ANY unhandled 5xx on ANY route gets its URL redacted before it's
+// logged/reported, so a future bug elsewhere can't leak a share token either
+// (fix round 1 CRITICAL finding 1c).
+const SHARE_TOKEN_URL_PATTERN = /\/g\/[A-Za-z0-9_-]{43}(?=\/|$|\?)/g;
+
+/** Exported for a focused unit test — see sentry-exception.filter.spec.ts */
+export function redactShareToken(url: string): string {
+  if (typeof url !== 'string') return url;
+  return url.replace(SHARE_TOKEN_URL_PATTERN, '/g/[redacted]');
+}
+
 /**
  * Global exception filter that:
  * 1. Reports unhandled exceptions to Sentry
@@ -51,16 +66,17 @@ export class SentryExceptionFilter extends BaseExceptionFilter {
 
     // Only report 5xx errors to Sentry (not 4xx client errors)
     if (status >= 500) {
+      const safeUrl = redactShareToken(request.url);
       Sentry.captureException(exception, {
         extra: {
-          url: request.url,
+          url: safeUrl,
           method: request.method,
           userId: request.user?.id,
           userRole: request.user?.role,
         },
       });
       this.logger.error(
-        `${request.method} ${request.url} → ${status}`,
+        `${request.method} ${safeUrl} → ${status}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }

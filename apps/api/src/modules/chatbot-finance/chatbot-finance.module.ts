@@ -86,6 +86,7 @@ import { ListPromotionsTool } from '../sales-bot/tools/list-promotions.tool';
     CalculateInstallmentTool,
     ListPromotionsTool,
   ],
-  exports: [LineFinanceClientService, ChatRoomService, VerificationService, WebhookDedupService, FinanceDomainHandler, FinanceAiService],
+  // VisionService + FinanceConfigService: ปิดสัญญาด้วยสลิป (ContractsModule → EarlyPayoffSlipService, 2026-09-24)
+  exports: [LineFinanceClientService, ChatRoomService, VerificationService, WebhookDedupService, FinanceDomainHandler, FinanceAiService, VisionService, FinanceConfigService],
 })
 export class ChatbotFinanceModule {}

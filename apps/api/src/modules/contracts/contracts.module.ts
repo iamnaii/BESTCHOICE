@@ -21,6 +21,8 @@ import { ContractExchangeModule } from '../contract-exchange/contract-exchange.m
 import { TestModeModule } from '../test-mode/test-mode.module';
 import { ReceiptsModule } from '../receipts/receipts.module';
 import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
+import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
+import { EarlyPayoffSlipService } from './early-payoff-slip/early-payoff-slip.service';
 
 @Module({
   imports: [
@@ -45,9 +47,11 @@ import { CustomerJourneyModule } from '../customer-journey/customer-journey.modu
     // การเดินทางของลูกค้า: ContractsController เขียน CONTRACT_ACTIVATED และ ContractWorkflowService
     // เขียน CONTRACT_REVIEWED ผ่าน JourneyEntryWriter — CustomerJourneyModule ไม่ import โมดูลโดเมน จึงไม่มีวงจร
     CustomerJourneyModule,
+    // ปิดสัญญาด้วยสลิป (2026-09-24): OCR + บัญชีบริษัทจากโมดูลบอทการเงิน — โมดูลนั้นไม่ import ContractsModule จึงไม่มีวงจร
+    ChatbotFinanceModule,
   ],
   controllers: [ContractsController, ContractDocumentsController, DocumentsController],
-  providers: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService, ContractFileAccessGuard, GhostSaleCron],
+  providers: [ContractsService, ContractWorkflowService, ContractPaymentService, EarlyPayoffSlipService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService, ContractFileAccessGuard, GhostSaleCron],
   exports: [ContractsService, ContractWorkflowService, ContractPaymentService, ContractDocumentService, ContractSnapshotService, ContractDocumentsService, DocumentsService],
 })
 export class ContractsModule {}

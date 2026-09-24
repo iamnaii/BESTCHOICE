@@ -1,12 +1,31 @@
 import { Throttle } from '@nestjs/throttler';
 import { ContractsListQueryDto } from './dto/contracts-list-query.dto';
 import { ContractQuoteDto } from './dto/contract-quote.dto';
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
+  UseGuards,
+  Req,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  FileTypeValidator,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
 import { ApiTags, ApiBearerAuth , ApiOperation} from '@nestjs/swagger';
 import { ContractsService } from './contracts.service';
 import { ContractWorkflowService } from './contract-workflow.service';
 import { ContractPaymentService } from './contract-payment.service';
+import { EarlyPayoffSlipService } from './early-payoff-slip/early-payoff-slip.service';
+import { EarlyPayoffSlipConfirmDto, EarlyPayoffSlipVerifyDto } from './dto/early-payoff-slip.dto';
 import { ContractDocumentService } from './contract-document.service';
 import { ContractSnapshotService } from './contract-snapshot.service';
 import { ContractJournalQueryService } from '../journal/contract-journal-query.service';
@@ -35,6 +54,8 @@ export class ContractsController {
     private snapshotService: ContractSnapshotService,
     private contractJournalQuery: ContractJournalQueryService,
     private journeyEntries: JourneyEntryWriter,
+    // ท้ายสุด — contracts.controller.journey.spec new ด้วยมือ 7 ตัว (ปิดสัญญาด้วยสลิป 2026-09-24)
+    private earlyPayoffSlip: EarlyPayoffSlipService,
   ) {}
 
   @Get('export')
@@ -230,6 +251,46 @@ export class ContractsController {
     // Enforce branch-level access before early payoff
     await this.contractsService.findOne(id, user);
     return this.paymentService.earlyPayoff(id, user.id, dto);
+  }
+
+  /**
+   * ปิดสัญญาด้วยสลิป ขั้นที่ 1 (2026-09-24): อัปโหลดสลิป → อ่าน (OCR) → ตรวจ 5 ข้อกับยอดปิดสด
+   * ผ่านครบ = ได้ตั๋ว (15 นาที) ไปกดยืนยันขั้นที่ 2 โดยไม่ต้องเข้าคิวอนุมัติ · ไม่ผ่าน = ส่งขออนุมัติตามเดิม
+   * (แนบ slipUrl ไปกับคำขอได้). role เท่าเส้นทาง early-payoff เดิม.
+   */
+  @Post(':id/early-payoff/slip')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  @UseInterceptors(FileInterceptor('slip'))
+  async earlyPayoffSlipVerify(
+    @Param('id') id: string,
+    @Body() body: EarlyPayoffSlipVerifyDto,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024, message: 'ไฟล์สลิปมีขนาดเกิน 5MB' }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp)$/ }),
+        ],
+        fileIsRequired: true,
+        errorHttpStatusCode: 400,
+      }),
+    )
+    file: Express.Multer.File,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    await this.contractsService.findOne(id, user);
+    return this.earlyPayoffSlip.verify(id, file, body.discountPct, user.id);
+  }
+
+  /** ปิดสัญญาด้วยสลิป ขั้นที่ 2: ยืนยันด้วยตั๋วจากขั้นที่ 1 → JP4 + ใบเสร็จ + ปลดล็อกเครื่อง (ไม่ผ่านคิวอนุมัติ) */
+  @Post(':id/early-payoff/slip-confirm')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER')
+  async earlyPayoffSlipConfirm(
+    @Param('id') id: string,
+    @Body() dto: EarlyPayoffSlipConfirmDto,
+    @CurrentUser() user: { id: string; role: string; branchId: string | null },
+  ) {
+    await this.contractsService.findOne(id, user);
+    return this.earlyPayoffSlip.confirm(id, user.id, dto);
   }
 
   /**

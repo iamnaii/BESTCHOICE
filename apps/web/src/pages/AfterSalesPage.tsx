@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -9,8 +10,10 @@ import { useDebounce } from '@/hooks/useDebounce';
 import IntakeBox from './after-sales/IntakeBox';
 import SummaryStrip from './after-sales/SummaryStrip';
 import CaseTable from './after-sales/CaseTable';
+import ApprovalTable, { type ApprovalAction } from './after-sales/ApprovalTable';
+import { ApprovePricedDialog, RejectExchangeDialog } from './after-sales/ExchangeActionDialogs';
 import Pager from './after-sales/Pager';
-import { afterSalesKeys, type ListResponse } from './after-sales/after-sales';
+import { afterSalesKeys, type CaseRow, type ListResponse } from './after-sales/after-sales';
 
 /** mirror ของ LIST_FETCH_CAP ฝั่ง API (after-sales-query.service.ts) — B3 final-fix brief:
  * Y = ceil(min(total, 500)/limit) เมื่อ truncated */
@@ -42,14 +45,57 @@ interface Filters {
 }
 const INITIAL_FILTERS: Filters = { tab: 'ACTIVE', q: '', staleOnly: false, branchId: '', page: 1 };
 
+/** Task 12 (moved from Task 13) — ?tab= ที่มากับ URL ตั้งต้นแท็บของหน้าได้ (จาก redirect ของ
+ * /insurance/exchange-requests เดิม) แต่ต้องเป็นแท็บที่ role นี้เห็นจริง — ไม่งั้น SALES ตาม
+ * ลิงก์เก่ามาจะได้แท็บ "รออนุมัติ" ที่เขาไม่มีสิทธิ์เห็น */
+function initialTabFrom(tabParam: string | null, role: string | undefined): Tab {
+  if (!tabParam || !(TABS as string[]).includes(tabParam)) return INITIAL_FILTERS.tab;
+  if (tabParam === 'AWAITING_APPROVAL' && role === 'SALES') return INITIAL_FILTERS.tab;
+  return tabParam as Tab;
+}
+
 export default function AfterSalesPage() {
   useDocumentTitle('หลังการขาย');
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const crossBranch = !!user && CROSS_BRANCH_ROLES.has(user.role);
 
   const [search, setSearch] = useState('');
   const debouncedQ = useDebounce(search, 300);
-  const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
+  // R25 (c) + Task 12 — useState initializer เดียว (ไม่ใช่ effect) กัน request ซ้ำสองครั้งตอนโหลด
+  // ครั้งแรกที่มี ?tab= (อ่านค่าตอน mount ครั้งเดียว ไม่ตามการเปลี่ยนของ searchParams ทีหลัง)
+  const [filters, setFilters] = useState<Filters>(() => ({
+    ...INITIAL_FILTERS,
+    tab: initialTabFrom(searchParams.get('tab'), user?.role),
+  }));
+  const [approveDialog, setApproveDialog] = useState<{
+    id: string;
+    mode: 'MEMO' | 'PRICED';
+  } | null>(null);
+  const [rejectDialog, setRejectDialog] = useState<{
+    id: string;
+    kind: 'SAME_MODEL' | 'PRICED';
+  } | null>(null);
+
+  function handleRowAction(row: CaseRow, action: ApprovalAction) {
+    if (action === 'confirm') {
+      navigate(`/after-sales/${row.id}?action=confirm`);
+      return;
+    }
+    if (action === 'open') {
+      navigate(`/after-sales/${row.id}`);
+      return;
+    }
+    if (action === 'approve') {
+      setApproveDialog({ id: row.id, mode: row.exchange?.mode === 'MEMO' ? 'MEMO' : 'PRICED' });
+      return;
+    }
+    setRejectDialog({
+      id: row.id,
+      kind: row.exchange?.kind === 'SAME_MODEL' ? 'SAME_MODEL' : 'PRICED',
+    });
+  }
   // R25 (b) — totalPages "ยืนยันแล้ว" จากข้อมูลจริงล่าสุดที่ fetch สำเร็จ ใช้เป็นเพดาน clamp ของเพจ
   // ปัจจุบัน (กันหน้าที่เคยอยู่ค้างเกินจริงหลังตัวกรอง/ข้อมูลเปลี่ยนจนจำนวนหน้าลดลง เช่นแท็บอื่นมีของ
   // น้อยกว่า) — อัปเดตทีหลังผ่าน effect ด้านล่าง ไม่ใช่คำนวณสดในเรนเดอร์เดียวกับ query เพราะ query เอง
@@ -198,7 +244,15 @@ export default function AfterSalesPage() {
       >
         {query.data && (
           <div className="space-y-2">
-            <CaseTable rows={query.data.data} />
+            {filters.tab === 'AWAITING_APPROVAL' ? (
+              <ApprovalTable
+                rows={query.data.data}
+                role={user?.role ?? ''}
+                onAction={handleRowAction}
+              />
+            ) : (
+              <CaseTable rows={query.data.data} />
+            )}
             <Pager
               page={safePage}
               totalPages={totalPages}
@@ -218,6 +272,27 @@ export default function AfterSalesPage() {
       <p className="text-xs leading-snug text-muted-foreground">
         ป้ายค้างนาน: ส่งซ่อมเกิน 14 วัน · รอรับเกิน 7 วัน · รออนุมัติเกิน 2 วัน
       </p>
+
+      {approveDialog && (
+        <ApprovePricedDialog
+          caseId={approveDialog.id}
+          open
+          onOpenChange={(next) => {
+            if (!next) setApproveDialog(null);
+          }}
+          mode={approveDialog.mode}
+        />
+      )}
+      {rejectDialog && (
+        <RejectExchangeDialog
+          caseId={rejectDialog.id}
+          open
+          onOpenChange={(next) => {
+            if (!next) setRejectDialog(null);
+          }}
+          kind={rejectDialog.kind}
+        />
+      )}
     </div>
   );
 }

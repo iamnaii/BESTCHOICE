@@ -15,7 +15,7 @@ import {
 const auth = vi.hoisted(() => ({
   user: { id: 'u1', role: 'OWNER', branchId: null as string | null },
 }));
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), navigate: vi.fn() }));
 
 vi.mock('@/lib/api', () => ({
   default: { get: mocks.get, post: mocks.post },
@@ -23,6 +23,12 @@ vi.mock('@/lib/api', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: auth.user }) }));
+// Task 12 (o) — ปุ่ม "ยืนยันเปลี่ยนเครื่อง"/"เปิดเคส" ในแท็บรออนุมัติ navigate ออกจากหน้านี้
+// (ไม่เปิด dialog ในตัว) — mock useNavigate ตาม pattern ของ CrmPipelinePage.test.tsx
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual<typeof import('react-router')>('react-router');
+  return { ...actual, useNavigate: () => mocks.navigate };
+});
 
 const BRANCHES = [{ id: 'branch-1', name: 'ลาดพร้าว' }];
 
@@ -113,10 +119,10 @@ function mockGet(overrides: { list?: ListResponse; lookup?: LookupResult } = {})
   });
 }
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ['/after-sales']) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const utils = render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={initialEntries}>
       <QueryClientProvider client={client}>
         <AfterSalesPage />
       </QueryClientProvider>
@@ -405,5 +411,156 @@ describe('AfterSalesPage — B2/B3 final-fix: pager + ข้อความ trun
     );
     const afterSalesCalls = mocks.get.mock.calls.filter(([url]) => url === '/after-sales');
     expect(afterSalesCalls).toHaveLength(1);
+  });
+});
+
+describe('AfterSalesPage — Task 12: แท็บรออนุมัติ (ApprovalTable) + ชิป "รอ ผจก." + ?tab=', () => {
+  function memoApprovalRow(over: Partial<CaseRow> = {}): CaseRow {
+    return caseRow({
+      id: 'case-memo',
+      caseNumber: 'AS-20260920-0010',
+      outcome: 'PRICED_EXCHANGE',
+      stage: 'AWAITING_APPROVAL',
+      exchange: {
+        kind: 'PRICED',
+        mode: 'MEMO',
+        approvalTier: 'AUTO',
+        requestStatus: 'PENDING',
+        buybackPrice: null,
+        ncvSnapshot: null,
+        approverRole: 'BRANCH_MANAGER',
+        oldProduct: {
+          brand: 'Apple',
+          model: 'iPhone 13',
+          storage: '128GB',
+          imeiSerial: 'IMEI-OLD',
+        },
+        newProduct: {
+          id: 'p2',
+          brand: 'Apple',
+          model: 'iPhone 13',
+          storage: '128GB',
+          imeiSerial: 'IMEI-NEW',
+        },
+        replacementContract: null,
+        requestedBy: { id: 'user-1', name: 'ธนา' },
+      },
+      ...over,
+    });
+  }
+
+  function sameModelApprovalRow(over: Partial<CaseRow> = {}): CaseRow {
+    return caseRow({
+      id: 'case-swap',
+      caseNumber: 'AS-20260920-0011',
+      outcome: 'SAME_MODEL_EXCHANGE',
+      stage: 'AWAITING_APPROVAL',
+      exchange: {
+        kind: 'SAME_MODEL',
+        mode: null,
+        approvalTier: null,
+        requestStatus: null,
+        buybackPrice: null,
+        ncvSnapshot: null,
+        approverRole: 'BRANCH_MANAGER',
+        oldProduct: { brand: 'Samsung', model: 'A55', storage: '128GB', imeiSerial: 'IMEI-OLD-2' },
+        newProduct: {
+          id: 'p3',
+          brand: 'Samsung',
+          model: 'A55',
+          storage: '128GB',
+          imeiSerial: 'IMEI-NEW-2',
+        },
+        replacementContract: null,
+        requestedBy: { id: 'user-2', name: 'นิภา' },
+      },
+      ...over,
+    });
+  }
+
+  it('(o) แท็บรออนุมัติ render ApprovalTable ไม่ใช่ CaseTable; กด "อนุมัติ" แถว MEMO → dialog checkbox → POST /approve; กด "ยืนยันเปลี่ยนเครื่อง" → navigate ?action=confirm', async () => {
+    auth.user = { id: 'u1', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
+    mockGet({
+      list: listResponse({ data: [memoApprovalRow(), sameModelApprovalRow()], summary: summary() }),
+    });
+    mocks.post.mockResolvedValue({ data: {} });
+    renderPage();
+
+    await userEvent.click(await screen.findByRole('tab', { name: 'รออนุมัติ' }));
+
+    // ApprovalTable มีหัวคอลัมน์เฉพาะของมัน (CaseTable ไม่มี "ใครอนุมัติได้"/มี "ขั้นตอนตอนนี้")
+    expect(await screen.findByText('ใครอนุมัติได้')).toBeInTheDocument();
+    expect(screen.queryByText('ขั้นตอนตอนนี้')).not.toBeInTheDocument();
+
+    const table = screen.getByRole('table');
+    const memoRow = within(table).getByText('AS-20260920-0010').closest('tr');
+    if (!memoRow) throw new Error('memo row not found');
+    await userEvent.click(within(memoRow).getByRole('button', { name: 'อนุมัติ' }));
+
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'เซ็น ADDENDUM แล้ว' }));
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'สลับ MDM แล้ว' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'อนุมัติ' }));
+
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith('/after-sales/case-memo/approve', {
+        memoAddendumSigned: true,
+        memoMdmSwapped: true,
+      }),
+    );
+
+    const swapRow = within(table).getByText('AS-20260920-0011').closest('tr');
+    if (!swapRow) throw new Error('swap row not found');
+    await userEvent.click(within(swapRow).getByRole('button', { name: 'ยืนยันเปลี่ยนเครื่อง' }));
+    expect(mocks.navigate).toHaveBeenCalledWith('/after-sales/case-swap?action=confirm');
+  });
+
+  it('(p) SALES ในแท็บกำลังทำเห็นชิป "รอ ผจก." บนแถว SAME_MODEL ที่กำลังรออนุมัติ', async () => {
+    auth.user = { id: 'u2', role: 'SALES', branchId: 'branch-1' };
+    mockGet({
+      list: listResponse({
+        data: [sameModelApprovalRow()],
+        summary: summary({ repairCostShop: null, repairCostCustomer: null }),
+      }),
+    });
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    expect(screen.queryByRole('tab', { name: 'รออนุมัติ' })).not.toBeInTheDocument();
+    // desktop table + มือถือ card เรนเดอร์ทั้งคู่ในเครื่องมือทดสอบ (ซ่อนกันด้วย CSS ไม่ใช่ DOM)
+    expect((await screen.findAllByText('รอ ผจก.')).length).toBeGreaterThan(0);
+  });
+
+  it('?tab=AWAITING_APPROVAL ตอนโหลดครั้งแรก (role เห็นแท็บนี้) → ตั้งต้นแท็บรออนุมัติด้วย request เดียว (ไม่มี request ซ้ำ)', async () => {
+    auth.user = { id: 'u3', role: 'OWNER', branchId: null };
+    mockGet({ list: listResponse({ data: [memoApprovalRow()], summary: summary() }) });
+    renderPage(['/after-sales?tab=AWAITING_APPROVAL']);
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    expect(screen.getByRole('tab', { name: 'รออนุมัติ' })).toHaveAttribute('aria-selected', 'true');
+
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith(
+        '/after-sales',
+        expect.objectContaining({ params: expect.objectContaining({ tab: 'AWAITING_APPROVAL' }) }),
+      ),
+    );
+    const afterSalesCalls = mocks.get.mock.calls.filter(([url]) => url === '/after-sales');
+    expect(afterSalesCalls).toHaveLength(1);
+  });
+
+  it('?tab=AWAITING_APPROVAL แต่ role SALES ไม่เห็นแท็บนี้ → ตกกลับเป็น "กำลังทำ" (ACTIVE)', async () => {
+    auth.user = { id: 'u4', role: 'SALES', branchId: 'branch-1' };
+    mockGet({ list: listResponse() });
+    renderPage(['/after-sales?tab=AWAITING_APPROVAL']);
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    expect(screen.getByRole('tab', { name: 'กำลังทำ' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith(
+        '/after-sales',
+        expect.objectContaining({ params: expect.objectContaining({ tab: 'ACTIVE' }) }),
+      ),
+    );
   });
 });

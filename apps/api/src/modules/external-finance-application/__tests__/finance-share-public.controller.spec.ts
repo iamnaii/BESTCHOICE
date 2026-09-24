@@ -227,13 +227,32 @@ describe('FinanceSharePublicController (HTTP)', () => {
     await request(app.getHttpServer()).get(`/g/${rawToken}/files/f2`).expect(200);
   }, 10_000);
 
+  // fix round 3 finding 2 minor (ii): the OLD `isExpectedStreamAbort` classified purely by
+  // error CODE — an unrelated fault that happens to carry the same code a real client
+  // disconnect produces (e.g. a storage/DB blip surfaced as `ECONNRESET`) would have been
+  // silently swallowed at DEBUG even though the client never went anywhere and headers were
+  // never even sent. It must now check the response/request objects themselves too.
+  it('an error carrying a stream-abort error code, with no evidence the client actually disconnected, is treated as a genuine server fault — not silently swallowed (Minor ii fix)', async () => {
+    const err = new Error('unrelated fault that happens to carry ECONNRESET') as NodeJS.ErrnoException;
+    err.code = 'ECONNRESET';
+    share.fileStream.mockRejectedValue(err);
+
+    const res = await request(app.getHttpServer()).get(`/g/${rawToken}/files/f1`);
+
+    expect(res.status).toBe(410); // still the uniform GONE response, never a raw 500
+    expect(recordedExceptions).toEqual([]); // never reaches Nest's own exception layer
+    expect(Sentry.captureException).toHaveBeenCalledWith(err); // but the genuine fault IS captured
+  });
+
   it('a zip load failure before any bytes flow settles as a plain 410 with the zip headers removed, not a hang or a raw 500 (Important 2 fix)', async () => {
     const archive = archiver('zip', { zlib: { level: 6 } });
     const err = new Error('storage read failed before any entry was appended');
+    const abort = jest.fn();
     share.zipStream.mockResolvedValue({
       filename: 'BC-260924-001.zip',
       archive,
       load: jest.fn().mockRejectedValue(err),
+      abort,
       appId: 'app-1',
     });
     const res = await request(app.getHttpServer()).get(`/g/${rawToken}/zip`);
@@ -245,6 +264,9 @@ describe('FinanceSharePublicController (HTTP)', () => {
     // ...but a genuine fault (not a client disconnect) IS captured directly, so it stays visible
     // (fix round 2 finding 1 visibility ruling — silently swallowing this at DEBUG was the gap).
     expect(Sentry.captureException).toHaveBeenCalledWith(err);
+    // fix round 3 finding 2: the controller must call the service's abort() (not just
+    // archive.abort() on its own) so appended-but-unconsumed streams get destroyed too.
+    expect(abort).toHaveBeenCalledTimes(1);
   }, 10_000);
 
   // fix round 2 finding 6: the previous version of this spec only covered a failure BEFORE any
@@ -255,19 +277,16 @@ describe('FinanceSharePublicController (HTTP)', () => {
     const archive = archiver('zip', { zlib: { level: 6 } });
     const calls: string[] = [];
     const err = new Error('storage read failed for entry 2');
-    const load = jest.fn().mockImplementation(async (isAborted?: () => boolean) => {
+    const abort = jest.fn();
+    const load = jest.fn().mockImplementation(async () => {
       calls.push('entry-1');
       archive.append(Buffer.alloc(2 * 1024 * 1024, 'x'), { name: '01.jpg' });
       // let archiver actually flush real compressed bytes down the socket before failing
       await new Promise((resolve) => setTimeout(resolve, 150));
-      if (isAborted?.()) {
-        calls.push('aborted-before-entry-2');
-        return;
-      }
       calls.push('entry-2');
       throw err;
     });
-    share.zipStream.mockResolvedValue({ filename: 'BC-260924-001.zip', archive, load, appId: 'app-1' });
+    share.zipStream.mockResolvedValue({ filename: 'BC-260924-001.zip', archive, load, abort, appId: 'app-1' });
 
     const result = await rawGet(`/g/${rawToken}/zip`);
 
@@ -276,6 +295,9 @@ describe('FinanceSharePublicController (HTTP)', () => {
     expect(calls).toEqual(['entry-1', 'entry-2']);
     expect(recordedExceptions).toEqual([]); // never reaches Nest's own exception layer
     expect(Sentry.captureException).toHaveBeenCalledWith(err); // but the genuine fault IS captured
+    // fix round 3 finding 2: the service's abort() (which destroys appended streams and
+    // unblocks an in-flight finalize()) must be called, not just archive.abort() directly.
+    expect(abort).toHaveBeenCalledTimes(1);
   }, 10_000);
 
   it('POST reply without X-Requested-With still passes CSRF (real CsrfGuard + @SkipCsrf()) and returns 201 with the mocked status', async () => {

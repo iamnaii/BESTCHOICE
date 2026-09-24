@@ -1,5 +1,6 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import archiver from 'archiver';
+import * as Sentry from '@sentry/nestjs';
 import type { Readable } from 'stream';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -72,16 +73,25 @@ export class FinanceShareService {
     try {
       stream = await this.storage.getStream(file.storageKey);
     } catch (err) {
-      // fix round 2 finding 1(b): the storage backend's own HttpException (e.g. GCS
+      // fix round 2 finding 1(b): the storage backend's own error (e.g. GCS
       // BadRequestException('ไม่พบไฟล์: <storageKey>')) embeds the storage key —
       // which itself embeds the application id. The DB row saying "this file
       // should exist" but the blob being gone from the backend is a genuine data
-      // integrity fault, not a routine "token doesn't apply" case — but the public
-      // caller must see the exact same uniform GONE response either way, never
-      // the backend's message. The controller logs/Sentry-captures the ORIGINAL
-      // err via the same code path it uses for any other unexpected fault; this
-      // is just the message replacement so nothing storage-specific ever reaches
-      // the response.
+      // integrity fault, not a routine "token doesn't apply" case — but the
+      // public caller must see the exact same uniform GONE response either way,
+      // never the backend's message.
+      //
+      // fix round 3 minor (i): this rethrow means `file()`'s catch block in the
+      // controller NEVER sees the original `err` — only this
+      // `NotFoundException(GONE_MSG)` — so visibility for a genuine fault has to
+      // happen HERE, not deferred to the controller (a previous version of this
+      // comment claimed the controller "logs/Sentry-captures the ORIGINAL err via
+      // the same code path" — that was false; it never gets the chance to). An
+      // `HttpException` here (e.g. the routine "backend says this object doesn't
+      // exist" case above) is common enough not to need Sentry noise on top of
+      // the WARN log; anything else (network fault, permission error, etc.) is
+      // unexpected and must stay visible.
+      if (!(err instanceof HttpException)) Sentry.captureException(err);
       this.logger.warn(`[finance-share] storage read failed file=${file.id} app=${app.id}: ${(err as Error)?.message ?? err}`);
       throw new NotFoundException(GONE_MSG);
     }
@@ -105,28 +115,47 @@ export class FinanceShareService {
       });
     }
     const archive = archiver('zip', { zlib: { level: 6 } });
-    // fix round 2 finding 2: `load()` used to keep calling `storage.getStream` for
-    // every remaining entry even after the client disconnected (the controller had
-    // no way to say "stop") — wasted storage reads plus streams obtained but never
-    // consumed/destroyed. `isAborted` is a closure the controller passes in, backed
-    // by a flag it flips from `res.on('close')`/the archive error handler; checked
-    // BEFORE every `getStream` call (never start a read that's already pointless)
-    // and AGAIN right after (the abort can land while the read was in flight —
-    // in that race the just-obtained stream is destroyed instead of appended).
-    const load = async (isAborted: () => boolean = () => false) => {
+    // fix round 2 finding 2 + fix round 3 finding 2: `load()` used to keep calling
+    // `storage.getStream` for every remaining entry even after the client
+    // disconnected — wasted storage reads plus streams obtained but never
+    // consumed/destroyed (probe: 1 of 2 fs streams left open). `archive.abort()`
+    // alone only stops archiver's own queue; it does NOT destroy streams already
+    // `append()`ed to it, so this tracks every appended stream itself and destroys
+    // them on abort. And when the abort lands AFTER `load()` already called
+    // `archive.finalize()` (single-file applications, or any abort during the last
+    // entry), that finalize() promise never resolves on its own — probe observed
+    // `controller.zip()` stuck PENDING (3s) with the source stream still open. `abort()`
+    // is now owned by the service (not an external `isAborted` checker the caller
+    // had to poll) so it can both destroy the appended streams AND race the
+    // in-flight `finalize()` against an "aborted" promise so `load()` always settles.
+    const appended: Readable[] = [];
+    let aborted = false;
+    let resolveAbortedPromise: () => void;
+    const abortedPromise = new Promise<void>((resolve) => { resolveAbortedPromise = resolve; });
+    const abort = () => {
+      if (aborted) return;
+      aborted = true;
+      try { if (!archive.destroyed) archive.abort(); } catch { /* ปิดไปแล้ว */ }
+      for (const stream of appended) {
+        try { if (!stream.destroyed) stream.destroy(); } catch { /* ปิดไปแล้ว */ }
+      }
+      resolveAbortedPromise();
+    };
+    const load = async () => {
       for (const entry of entries) {
-        if (isAborted()) return;
+        if (aborted) return;
         const stream = await this.storage.getStream(entry.storageKey);
-        if (isAborted()) {
+        if (aborted) {
           stream.destroy();
           return;
         }
+        appended.push(stream);
         archive.append(stream, { name: entry.name });
       }
-      if (isAborted()) return;
-      await archive.finalize();
+      if (aborted) return;
+      await Promise.race([archive.finalize(), abortedPromise]);
     };
-    return { filename: `${app.number}.zip`, archive, entries, load, appId: app.id };
+    return { filename: `${app.number}.zip`, archive, entries, load, abort, appId: app.id };
   }
 
   async reply(rawToken: string, dto: FinanceShareReplyDto, ipHash: string) {

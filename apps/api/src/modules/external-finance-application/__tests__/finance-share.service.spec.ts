@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { Readable } from 'stream';
 import { FinanceShareService } from '../services/finance-share.service';
 import { hashShareToken } from '../finance-share-token.util';
 
@@ -124,11 +125,13 @@ describe('FinanceShareService.fileStream / zipStream', () => {
     await expect(service.fileStream(raw, 'f1')).rejects.toThrow(NotFoundException);
     await expect(service.fileStream(raw, 'f1')).rejects.toMatchObject({ message: 'ไม่พบเอกสาร หรือลิงก์หมดอายุแล้ว' });
   });
-  // fix round 2 finding 2: a client disconnect used to leave `load()` fetching every remaining
-  // entry's storage stream regardless (wasted reads + streams obtained but never consumed/
-  // destroyed). `load()` now takes an `isAborted` check consulted before AND after each
+  // fix round 2 finding 2 + fix round 3 finding 2: a client disconnect used to leave `load()`
+  // fetching every remaining entry's storage stream regardless (wasted reads + streams
+  // obtained but never consumed/destroyed). `abort()` is now owned by the service's result
+  // object (not an external `isAborted` checker the caller had to poll) — the controller calls
+  // it directly; `load()` consults its own internal `aborted` flag before AND after each
   // `storage.getStream` call (the abort can land while that read is in flight).
-  it('zipStream().load() stops calling storage.getStream for further entries once aborted mid-way, and destroys a stream obtained after the abort landed (fix round 2 Important 2)', async () => {
+  it('zipStream().load() stops calling storage.getStream for further entries once abort() is called mid-way, and destroys a stream obtained after the abort landed (fix round 3 finding 2)', async () => {
     const calls: string[] = [];
     let resolveFirst!: (v: unknown) => void;
     const firstStreamPromise = new Promise((resolve) => { resolveFirst = resolve; });
@@ -145,15 +148,31 @@ describe('FinanceShareService.fileStream / zipStream', () => {
     });
     const service = new FinanceShareService(makePrisma(twoFileApp), { getStream } as any, notify);
     const zip = await service.zipStream(raw);
-    let aborted = false;
-    const loadPromise = zip.load(() => aborted);
-    // entry 1's getStream() is in flight (unresolved) at this point — flip the abort flag
-    // before it settles, to prove the post-settle re-check (not just the pre-call check) works.
-    aborted = true;
+    const loadPromise = zip.load();
+    // entry 1's getStream() is in flight (unresolved) at this point — call abort() (what the
+    // controller does on a client disconnect / archive error) before it settles, to prove the
+    // post-settle re-check (not just the pre-call check) works.
+    zip.abort();
     const fakeStream = { destroy: jest.fn() };
     resolveFirst(fakeStream);
     await loadPromise;
     expect(calls).toEqual(['k1']); // entry 2 (k2) is never fetched
     expect(fakeStream.destroy).toHaveBeenCalledTimes(1); // obtained-after-abort stream is destroyed, never appended
   });
+  // fix round 3 finding 2: `archive.abort()` alone only stops archiver's own queue — it does
+  // NOT destroy streams already `append()`ed, and if the abort lands AFTER `load()` already
+  // called `archive.finalize()`, that finalize() promise never resolves on its own (probe:
+  // controller.zip() stuck PENDING for 3s). This archive is deliberately never piped anywhere,
+  // so nothing drains its output — `finalize()` alone would hang forever, mirroring the probe's
+  // observation exactly. `abort()` must still unblock `load()` promptly.
+  it('abort() unblocks load() even when it lands after finalize() already started with no consumer draining the archive (fix round 3 finding 2)', async () => {
+    const getStream = jest.fn().mockResolvedValue(Readable.from([Buffer.from('x'.repeat(4096))]));
+    const service = new FinanceShareService(makePrisma(app()), { getStream } as any, notify); // app() has exactly 1 file
+    const zip = await service.zipStream(raw);
+    const loadPromise = zip.load();
+    // give load() time to get past the (single) entry and into archive.finalize()
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    zip.abort();
+    await expect(loadPromise).resolves.toBeUndefined();
+  }, 2_000);
 });

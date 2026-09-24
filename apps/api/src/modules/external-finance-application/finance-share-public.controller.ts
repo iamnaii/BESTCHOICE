@@ -21,10 +21,19 @@ const GONE_MSG = 'ไม่พบเอกสาร หรือลิงก์�
  * rejection. Anything else reaching the catch block is a genuine, unexpected
  * fault and must stay visible (Sentry + WARN — fix round 2 finding 1 visibility
  * ruling), not silently swallowed at DEBUG.
+ *
+ * fix round 3 finding 2 minor (ii): the error CODE alone cannot tell "the client
+ * actually went away" apart from "the SOURCE stream (storage backend) threw the
+ * exact same code while the client is still there, waiting" — e.g. a GCS read
+ * hiccupping with ECONNRESET is a genuine server-side fault even though its
+ * error code is identical to what a real client disconnect produces. Only the
+ * response/request objects themselves can distinguish the two.
  */
-function isExpectedStreamAbort(err: unknown): boolean {
+function isExpectedStreamAbort(err: unknown, res: Response, req: Request): boolean {
   const code = (err as NodeJS.ErrnoException)?.code;
-  return code === 'ERR_STREAM_PREMATURE_CLOSE' || code === 'ECONNRESET' || code === 'EPIPE';
+  const isRecognizedAbortCode = code === 'ERR_STREAM_PREMATURE_CLOSE' || code === 'ECONNRESET' || code === 'EPIPE';
+  if (!isRecognizedAbortCode) return false;
+  return res.destroyed || res.writableEnded || req.aborted === true;
 }
 
 /**
@@ -54,6 +63,16 @@ function isExpectedStreamAbort(err: unknown): boolean {
  * - security fix round 2 (IMPORTANT finding 2): mid-archive failure เดิมจบด้วย `res.end()` (headers
  *   ส่งไปแล้ว) = client เห็น 200 "จบสวย" ทั้งที่ zip ขาด แยกไม่ออกจาก success จริง — เปลี่ยนเป็น
  *   `res.destroy()` (connection ขาดเห็นชัด) เฉพาะกรณี headers ส่งไปแล้ว
+ * - security fix round 3 (CRITICAL finding 1): ตาข่ายชั้นสามยังพลาด — โทเคนหลุดผ่าน
+ *   `contexts.trace.data.*`/`spans[].data.*` (OpenTelemetry root-span/span attributes) และ
+ *   `event.transaction` เอง (ก่อน Express router resolve เป็น route param) — แก้ที่ `sentry.ts`
+ *   ด้วย deep recursive scrub (`scrubShareTokensDeep`) ครอบทั้ง event แทนการไล่ทีละ field, บวก
+ *   `beforeSendTransaction` ทิ้ง transaction event ของ share route ไปเลย (ไม่มีประโยชน์ทาง APM
+ *   สำหรับ route สาธารณะนี้) และ regex ไม่สนตัวพิมพ์เล็ก/ใหญ่ (Express routing ไม่สนตัวพิมพ์)
+ * - security fix round 3 (IMPORTANT finding 2): `archive.abort()` ไม่ destroy stream ที่ append
+ *   ไปแล้ว และถ้า abort เกิดหลัง `archive.finalize()` เริ่มแล้ว promise นั้นไม่ resolve เอง —
+ *   `zipStream()` เปลี่ยนมาคืน `abort()` ที่ track stream ที่ append ไปเอง + race `finalize()`
+ *   กับ "aborted" promise ให้ `load()` settle เสมอ
  * ดู `.claude/rules/security.md` รายการ Intentionally Public Endpoints (`finance-share-public`)
  */
 @Controller('g')
@@ -139,7 +158,7 @@ export class FinanceSharePublicController {
 
   @Get(':token/files/:fileId')
   @Throttle({ short: { limit: 120, ttl: 60_000 } })
-  async file(@Param('token') token: string, @Param('fileId') fileId: string, @Res() res: Response) {
+  async file(@Param('token') token: string, @Param('fileId') fileId: string, @Req() req: Request, @Res() res: Response) {
     let appId: string | undefined;
     try {
       const { file, stream, appId: id } = await this.share.fileStream(token, fileId);
@@ -160,7 +179,7 @@ export class FinanceSharePublicController {
       // refetch ทุกครั้ง) หรือ error ที่ไม่คาดคิดระหว่างเตรียม/สตรีมไฟล์ — ต้องไม่ปล่อยให้ error
       // ไหลไปที่ SentryExceptionFilter โดยตรง (ตาข่ายชั้นสาม — sentry.ts scrub — ทำให้แม้หลุดไปก็
       // ปลอดภัยแล้ว แต่ยังจับเองที่นี่เพื่อตอบ GONE ที่หน้าตาเดียวกับทุกกรณี ไม่ใช่ raw 500/JSON)
-      if (isExpectedStreamAbort(err)) {
+      if (isExpectedStreamAbort(err, res, req)) {
         this.logger.debug(`[finance-share] file stream aborted app=${appId ?? 'unresolved'}: ${(err as Error)?.message ?? err}`);
       } else {
         // fix round 2 finding 1 (visibility ruling): genuine fault, not a client
@@ -183,8 +202,6 @@ export class FinanceSharePublicController {
       res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}`);
       res.setHeader('Cache-Control', 'private, no-store');
       let settled = false;
-      let aborted = false;
-      const isAborted = () => aborted;
       // fix round 2 finding 2: a mid-archive failure while headers are already
       // sent must NOT look like a clean 200 (that's what `endSafely`'s
       // `res.destroy()` branch is for — see its own doc comment), and a 410 sent
@@ -204,25 +221,26 @@ export class FinanceSharePublicController {
       const failSafely = (err: unknown, expected: boolean) => {
         if (settled) return;
         settled = true;
-        aborted = true;
         if (expected) {
           this.logger.debug(`[finance-share] zip stream aborted app=${appId}: ${(err as Error)?.message ?? err}`);
         } else {
           Sentry.captureException(err);
           this.logger.warn(`[finance-share] zip stream failed app=${appId}: ${(err as Error)?.message ?? err}`);
         }
-        try { if (!result.archive.destroyed) result.archive.abort(); } catch { /* ปิดไปแล้ว */ }
+        // fix round 3 finding 2: `abort()` now lives on the service's result
+        // object — besides calling `archive.abort()`, it destroys every stream
+        // already appended to the archive (`archive.abort()` alone never did
+        // that — probe found 1 of 2 storage streams left open) and unblocks an
+        // in-flight `finalize()` so `load()`'s awaited promise always settles
+        // instead of hanging (probe observed the handler stuck PENDING for 3s).
+        result.abort();
         if (res.headersSent) { if (!res.destroyed) res.destroy(); } else { respondGone(); }
       };
       result.archive.on('error', (err) => failSafely(err, false));
       res.on('close', () => failSafely(new Error('client disconnected'), true));
       result.archive.pipe(res);
       try {
-        // `isAborted` lets the service's `load()` stop reading further entries
-        // (and destroy one it just obtained) the instant the client disconnects
-        // mid-stream — fix round 2 finding 2 (a previous disconnect used to leave
-        // every remaining entry's storage stream fetched-but-never-consumed).
-        await result.load(isAborted);
+        await result.load();
         settled = true;
       } catch (err) {
         failSafely(err, false);

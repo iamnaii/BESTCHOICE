@@ -126,6 +126,10 @@ describe('PaymentsService', () => {
       journalEntry: {
         findMany: jest.fn().mockResolvedValue([]),
       },
+      // getContractPayments → resolveClosure (2026-09-24) อ่านแถวยึดก่อนตัดสินว่าสัญญาปิดหรือยัง
+      repossession: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       // recordPayment auto-cancels active partial-payment QRs to prevent double-pay
       partialPaymentLink: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),

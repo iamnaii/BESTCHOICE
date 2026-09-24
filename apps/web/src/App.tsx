@@ -77,18 +77,9 @@ const SettingsItemRoute = lazy(() =>
 const GeneralSettingsPage = lazy(() => import('@/pages/SettingsPage/GeneralSettingsPage'));
 const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 // SP5 — SHOP-side additions
-// SP1 hotfix #2: /defect-exchange restored as a real route to DefectExchangePage.
-// SP1's new IMEI wizard handles REPAIR only — exchange flow needs its own home.
-// The previous "redirect to wizard" caused an INFINITE LOOP after SP1 hotfix C1
-// added wizard's intent=exchange → /defect-exchange redirect handler. Both
-// agreed on the same destination, but there was no actual page to render.
-const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
-const CreateInsuranceWizardPage = lazy(() => import('@/pages/insurance/CreateInsuranceWizardPage'));
 const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));
-const ExchangeRequestForm = lazy(() => import('@/pages/insurance/ExchangeRequestForm'));
-const ExchangeRequestsPage = lazy(() => import('@/pages/insurance/ExchangeRequestsPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
@@ -712,8 +703,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* /defect-exchange* → unified /insurance/new?intent=exchange (SP5 Phase 2 C.2) */}
-          <Route path="/defect-exchange" element={<DefectExchangePage />} />
           {/* SP5 — SHOP-side additions */}
           {/* P2-SP4 — การจอง / มัดจำ */}
           <Route
@@ -726,20 +715,27 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* หลังการขายย้ายไป /after-sales แล้ว (after-sales hub PR 1) — คง path เดิมไว้กันลิงก์เก่าตาย
-              ไม่มี ProtectedRoute ครอบ (เหมือน redirect เดิมของ /insurance/warranty-check) เพราะปลายทาง
-              /after-sales มี ProtectedRoute ของตัวเองอยู่แล้ว */}
+          {/* หน้าเก่าของ /insurance* + /defect-exchange ถูกถอดออกแล้ว (after-sales hub PR 2, Task 13)
+              — เหลือแค่ redirect กันลิงก์เก่าตาย ไม่มี ProtectedRoute ครอบ เพราะปลายทาง /after-sales
+              มี ProtectedRoute ของตัวเองอยู่แล้ว */}
           <Route path="/insurance" element={<Navigate to="/after-sales" replace />} />
+          <Route path="/insurance/new" element={<Navigate to="/after-sales/new" replace />} />
           <Route
-            path="/insurance/new"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
-                <CreateInsuranceWizardPage />
-              </ProtectedRoute>
-            }
+            path="/insurance/warranty-check"
+            element={<Navigate to="/after-sales?check=1" replace />}
           />
-          {/* หน้าเช็คประกันถูกยุบเป็นแท็บใน /after-sales — คง path เดิมไว้กันลิงก์เก่าตาย */}
-          <Route path="/insurance/warranty-check" element={<Navigate to="/after-sales?check=1" replace />} />
+          <Route
+            path="/insurance/exchange-request/new"
+            element={<Navigate to="/after-sales/new" replace />}
+          />
+          <Route
+            path="/insurance/exchange-requests"
+            element={<Navigate to="/after-sales?tab=AWAITING_APPROVAL" replace />}
+          />
+          <Route path="/defect-exchange" element={<Navigate to="/after-sales" replace />} />
+          {/* /insurance/:id (ใบซ่อมเดิม) ยังเป็นหน้าจริง — TicketRedirect เด้งไป /after-sales/:id
+              เมื่อมีเคสหลังการขายผูกใบซ่อมนี้แล้ว ไม่งั้น fallback ไปหน้าใบซ่อมเดิม (คงไว้ ≥2 deploy
+              ตามสเปคข้อ 11) */}
           <Route
             path="/insurance/:id"
             element={
@@ -747,22 +743,6 @@ function App() {
                 roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT']}
               >
                 <TicketRedirect fallback={<RepairTicketDetailPage />} />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/insurance/exchange-request/new"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
-                <ExchangeRequestForm />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/insurance/exchange-requests"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER']}>
-                <ExchangeRequestsPage />
               </ProtectedRoute>
             }
           />
@@ -1395,7 +1375,10 @@ function App() {
           {/* SP1 placeholder routes — to be replaced by SP2-SP6 implementations.
               Role gating mirrors the menu visibility in spec §3 / §6 so that
               users cannot direct-URL-jump into pages they aren't supposed to see. */}
-          {/* /insurance + /insurance/new + /insurance/:id are now real pages — see SP5 routes above */}
+          {/* /insurance, /insurance/new, /insurance/warranty-check, /insurance/exchange-request/new,
+              /insurance/exchange-requests, /defect-exchange → redirect to /after-sales* (after-sales
+              hub PR 2, Task 13); /insurance/:id is still a real page (TicketRedirect fallback) —
+              see SP5 routes above */}
           {/* /finance/vat, /finance/wht, /finance/e-tax — handled by P4-SP2 routes above */}
           {/* /finance/cash-flow — handled by SP2 CashFlowPage route above (line ~763) */}
           {/* /finance/equity-statement — handled by SP2 EquityStatementPage route above (line ~773) */}

@@ -64,14 +64,14 @@ export function tierApproverText(tier: ExchangeApprovalTier): string {
 }
 
 /** ดอกเบี้ยเดินทางเป็นเศษส่วนดิบเสมอ (0.08 = 8%/เดือน) แต่ UI แสดง/แก้เป็น % (8.00) — ย้ายมาจาก
- * ExchangeRequestForm.tsx (Task 13 จะลบไฟล์นั้น) แปลง pct -> rate ให้ preview query + submit payload */
+ * หน้า /insurance/exchange-request/new เดิม (ถูกลบแล้ว Task 13) แปลง pct -> rate ให้ preview query + submit payload */
 export function pctToRate(pct: string): string | undefined {
   const n = parseFloat(pct);
   return Number.isFinite(n) ? (n / 100).toString() : undefined;
 }
 
 /** ฟอร์มเปลี่ยนแบบมีราคา — ราคารับซื้อ/สภาพ/งวด/ดอกเบี้ย + preview tier/NCV/blockers สด (ย้าย
- * previewQ จาก ExchangeRequestForm.tsx เปลี่ยน URL เป็น imei + replacementProductId) */
+ * previewQ จากหน้า /insurance/exchange-request/new เดิม เปลี่ยน URL เป็น imei + replacementProductId) */
 export default function PricedExchangeFields({
   imei,
   replacementProductId,

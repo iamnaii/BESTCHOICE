@@ -11,6 +11,7 @@ import { AfterSalesLookupService } from './services/after-sales-lookup.service';
 import { AfterSalesCaseService } from './services/after-sales-case.service';
 import { AfterSalesQueryService } from './services/after-sales-query.service';
 import { AfterSalesRepairService } from './services/after-sales-repair.service';
+import { AfterSalesExchangeService } from './services/after-sales-exchange.service';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { AfterSalesRepairService } from './services/after-sales-repair.service';
     AfterSalesCaseService,
     AfterSalesQueryService,
     AfterSalesRepairService,
+    AfterSalesExchangeService,
   ],
   exports: [AfterSalesService],
 })

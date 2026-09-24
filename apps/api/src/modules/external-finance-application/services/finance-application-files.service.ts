@@ -6,6 +6,7 @@ import { StorageService } from '../../storage/storage.service';
 import { LineOaService } from '../../line-oa/line-oa.service';
 import { LineFinanceClientService } from '../../chatbot-finance/services/line-finance-client.service';
 import { detectFile, fetchProviderMedia, readLimited, EXPIRED_MEDIA_MSG } from '../../credit-check/services/media-fetch.util';
+import { hashLockKey } from '../../../utils/advisory-lock.util';
 import { FinanceApplicationService } from './finance-application.service';
 import { FinanceActor, MAX_FILES, STORAGE_PREFIX } from '../constants';
 import { isClosed } from '../finance-application-status.util';
@@ -102,6 +103,8 @@ export class FinanceApplicationFilesService {
     try {
       await this.storage.upload(key, bytes, type.mimeType);
       const saved = await this.prisma.$transaction(async (tx) => {
+        // ล็อกระดับใบยื่นก่อนเช็คซ้ำ/MAX_FILES — กัน fromMessage สองคำขอพร้อมกันสร้างแถวซ้ำ (review fix รอบ 1)
+        await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${hashLockKey(`finance-app-files:${applicationId}`)})`);
         const files = await tx.externalFinanceApplicationFile.findMany({ where: { applicationId, deletedAt: null } });
         const duplicate = meta.sourceMessageId && files.find((f) => f.sourceMessageId === meta.sourceMessageId);
         if (duplicate) return { file: duplicate, created: false };

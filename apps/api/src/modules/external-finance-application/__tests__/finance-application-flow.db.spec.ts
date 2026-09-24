@@ -93,4 +93,40 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
     const rows = await prisma.externalFinanceApplicationFile.findMany({ where: { applicationId: app.id, deletedAt: null } });
     expect(rows).toHaveLength(1);
   });
+
+  it('does not create two rows when two fromMessage calls race on the same chat message (review fix round 1)', async () => {
+    const actor = { id: userId, role: 'OWNER' };
+    const raceTag = `gfin-files-race-${Date.now()}`;
+    const room = await prisma.chatRoom.create({
+      data: { channel: ChatChannel.FACEBOOK, externalUserId: raceTag, displayName: raceTag },
+    });
+    try {
+      const message = await prisma.chatMessage.create({
+        data: { roomId: room.id, role: 'STAFF', type: 'IMAGE', text: null, mediaUrl: `staff-chat/${room.id}/race.jpg`, mediaType: 'image/jpeg' },
+      });
+      await fs.mkdir(path.dirname(path.join(localDir, `staff-chat/${room.id}/race.jpg`)), { recursive: true });
+      await fs.writeFile(path.join(localDir, `staff-chat/${room.id}/race.jpg`), JPEG_BYTES);
+      const app = await service.createDraft(room.id, actor);
+      const [a, b] = await Promise.all([
+        files.fromMessage(app.id, { messageId: message.id, slot: 'INCOME' }, actor),
+        files.fromMessage(app.id, { messageId: message.id, slot: 'INCOME' }, actor),
+      ]);
+      expect(a.id).toBe(b.id);
+      const rows = await prisma.externalFinanceApplicationFile.findMany({
+        where: { applicationId: app.id, sourceMessageId: message.id, deletedAt: null },
+      });
+      expect(rows).toHaveLength(1);
+      // ไม่มีไฟล์กำพร้าในที่เก็บ local — เหลือแค่ไฟล์ของแถวที่รอด (อีกอัปโหลดถูกลบใน finally ของ attach())
+      const appDir = path.join(localDir, 'external-finance', app.id);
+      const filesOnDisk = await fs.readdir(appDir).catch(() => [] as string[]);
+      expect(filesOnDisk).toHaveLength(1);
+      expect(path.join('external-finance', app.id, filesOnDisk[0])).toBe(rows[0].storageKey);
+    } finally {
+      await prisma.externalFinanceApplicationFile.deleteMany({ where: { application: { roomId: room.id } } });
+      await prisma.externalFinanceApplicationEvent.deleteMany({ where: { application: { roomId: room.id } } });
+      await prisma.externalFinanceApplication.deleteMany({ where: { roomId: room.id } });
+      await prisma.chatMessage.deleteMany({ where: { roomId: room.id } });
+      await prisma.chatRoom.delete({ where: { id: room.id } });
+    }
+  });
 });

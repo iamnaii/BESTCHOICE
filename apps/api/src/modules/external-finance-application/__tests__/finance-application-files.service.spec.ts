@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { FinanceApplicationFilesService } from '../services/finance-application-files.service';
 import * as media from '../../credit-check/services/media-fetch.util';
+import { hashLockKey } from '../../../utils/advisory-lock.util';
 
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00]);
 const actor = { id: 'u1', role: 'OWNER' };
@@ -13,6 +14,7 @@ function build(overrides: Record<string, unknown> = {}) {
     productPhoto: { findUnique: jest.fn() },
     product: { findFirst: jest.fn() },
     $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
+    $executeRawUnsafe: jest.fn(),
     ...overrides,
   };
   const storage = { configured: true, upload: jest.fn().mockResolvedValue('k'), delete: jest.fn().mockResolvedValue(undefined), getStream: jest.fn() };
@@ -67,6 +69,18 @@ describe('FinanceApplicationFilesService.fromMessage', () => {
     const { service } = build();
     (service as any).applications.get.mockResolvedValue({ ...draft, status: 'APPROVED' });
     await expect(service.fromMessage('app-1', { messageId: 'm1', slot: 'INCOME' }, actor)).rejects.toThrow(BadRequestException);
+  });
+  it('takes an application-scoped advisory lock before checking for a duplicate/MAX_FILES (race fix)', async () => {
+    const { service, prisma } = build();
+    prisma.chatMessage.findFirst.mockResolvedValue({ id: 'm1', roomId: 'room-1', type: 'IMAGE', mediaUrl: 'https://scontent.xx.fbcdn.net/a.jpg', externalMessageId: null });
+    jest.spyOn(media, 'fetchProviderMedia').mockResolvedValue({ bytes: JPEG, contentType: 'image/jpeg' });
+    await service.fromMessage('app-1', { messageId: 'm1', slot: 'INCOME' }, actor);
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      `SELECT pg_advisory_xact_lock(${hashLockKey('finance-app-files:app-1')})`,
+    );
+    const lockOrder = prisma.$executeRawUnsafe.mock.invocationCallOrder[0];
+    const findManyOrder = prisma.externalFinanceApplicationFile.findMany.mock.invocationCallOrder[0];
+    expect(lockOrder).toBeLessThan(findManyOrder);
   });
 });
 

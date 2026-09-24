@@ -236,6 +236,26 @@ describe('ApprovalTable — คอลัมน์ (mockup C)', () => {
   });
 });
 
+describe('ApprovalTable — แถว PRICED ที่ผูกคำขอไม่สำเร็จ (residual sweep)', () => {
+  it('requestStatus null → ไม่มี "อนุมัติ"/"ปฏิเสธ" ทุก role แต่ยังมี "เปิดเคส"', () => {
+    const stuck = pricedRow({
+      exchange: { ...pricedRow().exchange!, requestStatus: null, approvalTier: null },
+    });
+    for (const role of ['OWNER', 'BRANCH_MANAGER']) {
+      const { unmount } = render(
+        <MemoryRouter>
+          <ApprovalTable rows={[stuck]} role={role} onAction={vi.fn()} />
+        </MemoryRouter>,
+      );
+      const row = rowByCase('AS-20260924-0001');
+      expect(row.queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
+      expect(row.queryByRole('button', { name: 'ปฏิเสธ' })).not.toBeInTheDocument();
+      expect(row.getByRole('button', { name: 'เปิดเคส' })).toBeInTheDocument();
+      unmount();
+    }
+  });
+});
+
 describe('ApprovalTable — ว่าง', () => {
   it('ไม่มีแถว → ข้อความ "ไม่มีรายการรออนุมัติ"', () => {
     renderTable('OWNER', []);

@@ -441,6 +441,9 @@ export function primaryAction(data: CaseDetail, role: string): PrimaryAction | n
 
   if (outcome === 'PRICED_EXCHANGE' && stage === 'AWAITING_APPROVAL') {
     // P-M.2 (fix round 1): เหมือนกัน — role ใดก็ตามที่ไม่ใช่ผู้อนุมัติของ tier นี้เห็นข้อความรอ
+    // residual sweep — เคสที่ผูกคำขอไม่สำเร็จ (ไม่มีคำขอให้อนุมัติ) ไม่มีปุ่ม/ข้อความรอ — ทางออกเดียวคือ
+    // "ยกเลิกเคส" (ปุ่มรอง, MGR)
+    if (!data.exchange?.requestStatus) return null;
     const approverRole = data.exchange?.approverRole ?? 'OWNER';
     if (role === 'OWNER') return { label: 'อนุมัติ', dialog: 'approve' };
     if (role === 'BRANCH_MANAGER' && approverRole === 'BRANCH_MANAGER') {
@@ -533,7 +536,9 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
     } else if (
       stage === 'READY_FOR_PICKUP' &&
       data.replacementContractId &&
-      data.exchange?.replacementContract
+      data.exchange?.replacementContract &&
+      // residual sweep — สัญญายัง DRAFT ปุ่มหลักเป็นลิงก์ไปหน้าเดียวกันอยู่แล้ว ไม่ซ้ำลิงก์รอง
+      data.exchange.replacementContract.status !== 'DRAFT'
     ) {
       out.push({
         kind: 'link',

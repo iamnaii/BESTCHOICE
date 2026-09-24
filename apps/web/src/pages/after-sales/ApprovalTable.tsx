@@ -123,7 +123,8 @@ function ActionsCell({
           </Button>
         </>
       )}
-      {ex?.kind === 'PRICED' && isMgr && (
+      {/* residual sweep — แถวที่ผูกคำขอไม่สำเร็จ (requestStatus null) ไม่มีอนุมัติ/ปฏิเสธ เหลือแค่ "เปิดเคส" */}
+      {ex?.kind === 'PRICED' && ex.requestStatus != null && isMgr && (
         <>
           <Button
             variant="outline"

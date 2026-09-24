@@ -531,7 +531,7 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
     expect(secondaryActions(d, 'FINANCE_MANAGER')).toEqual([]);
   });
 
-  it('SAME_MODEL_EXCHANGE READY_FOR_PICKUP → รอง: ลิงก์ "สัญญาใหม่ <no>"', () => {
+  it('SAME_MODEL_EXCHANGE READY_FOR_PICKUP สัญญาใหม่ DRAFT → ไม่มีลิงก์รอง (ปุ่มหลักเป็นลิงก์ไปหน้าเดียวกันแล้ว) · ACTIVE → รอง: ลิงก์ "สัญญาใหม่ <no>"', () => {
     const d = detail({
       outcome: 'SAME_MODEL_EXCHANGE',
       stage: 'READY_FOR_PICKUP',
@@ -550,7 +550,15 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
         requestedBy: null,
       },
     });
-    expect(secondaryActions(d, 'OWNER')).toEqual([
+    expect(secondaryActions(d, 'OWNER')).toEqual([]);
+    const active = {
+      ...d,
+      exchange: {
+        ...d.exchange!,
+        replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'ACTIVE' },
+      },
+    };
+    expect(secondaryActions(active, 'OWNER')).toEqual([
       { kind: 'link', label: 'สัญญาใหม่ CT-2026-0099', to: '/contracts/ct-2' },
     ]);
   });
@@ -594,6 +602,8 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
       ]);
     }
     expect(secondaryActions(d, 'SALES')).toEqual([]);
+    // residual sweep — ไม่มีคำขอให้อนุมัติ → ไม่มีปุ่มหลัก/ข้อความรอเลย (ไม่มีปุ่มตาย)
+    for (const role of ALL_ROLES) expect(primaryAction(d, role)).toBeNull();
   });
 
   it('I3: PRICED_EXCHANGE CLOSED + คำขอ APPROVED (swap ลงผลแล้ว) → MGR ได้ "ยกเลิก swap" (destructive) · SALES ไม่มี · คำขอ CANCELED แล้วไม่มี', () => {

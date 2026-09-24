@@ -43,4 +43,27 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
     expect(listed.current?.id).toBe(first.id);
     expect(listed.history).toHaveLength(0);
   });
+
+  it('does not create two open applications when two requests race for the same room (fix round 1)', async () => {
+    const actor = { id: userId, role: 'OWNER' };
+    const raceTag = `gfin-race-${Date.now()}`;
+    const room = await prisma.chatRoom.create({
+      data: { channel: ChatChannel.FACEBOOK, externalUserId: raceTag, displayName: raceTag },
+    });
+    try {
+      const [a, b] = await Promise.all([
+        service.createDraft(room.id, actor),
+        service.createDraft(room.id, actor),
+      ]);
+      expect(a.id).toBe(b.id);
+      const count = await prisma.externalFinanceApplication.count({
+        where: { roomId: room.id, deletedAt: null },
+      });
+      expect(count).toBe(1);
+    } finally {
+      await prisma.externalFinanceApplicationEvent.deleteMany({ where: { application: { roomId: room.id } } });
+      await prisma.externalFinanceApplication.deleteMany({ where: { roomId: room.id } });
+      await prisma.chatRoom.delete({ where: { id: room.id } });
+    }
+  });
 });

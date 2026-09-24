@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ExternalFinanceActorType, ExternalFinanceEventKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { hashLockKey } from '../../../utils/advisory-lock.util';
 import { FinanceApplicationNumberService } from './finance-application-number.service';
 import { FinanceActor, GFIN_COMPANY_NAME } from '../constants';
 import { isClosed } from '../finance-application-status.util';
@@ -54,6 +55,8 @@ export class FinanceApplicationService {
   async createDraft(roomId: string, actor: FinanceActor) {
     const room = await this.access(this.prisma, roomId, actor);
     return this.prisma.$transaction(async (tx) => {
+      // ล็อกระดับห้องก่อนเช็คใบเปิด — กัน createDraft พร้อมกันสองคำขอสร้างซ้ำ (finding รอบ 1)
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${hashLockKey(`finance-app-room:${roomId}`)})`);
       const open = await tx.externalFinanceApplication.findFirst({
         where: { roomId, deletedAt: null, status: { in: [...OPEN_STATUSES] } },
         include: applicationInclude,

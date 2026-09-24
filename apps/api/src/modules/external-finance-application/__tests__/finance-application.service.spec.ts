@@ -1,5 +1,6 @@
 import { ForbiddenException, ConflictException } from '@nestjs/common';
 import { FinanceApplicationService } from '../services/finance-application.service';
+import { hashLockKey } from '../../../utils/advisory-lock.util';
 
 const room = { id: 'room-1', assignedToId: 'sales-2', customerId: null, deletedAt: null, channel: 'FACEBOOK' };
 function makePrisma(overrides: Record<string, unknown> = {}) {
@@ -33,6 +34,17 @@ describe('FinanceApplicationService.createDraft', () => {
       data: expect.objectContaining({ number: 'BC-260924-001', financeCompanyId: 'gfin-1', roomId: 'room-1', createdById: 'u-owner', status: 'DRAFT' }),
     }));
     expect(prisma.externalFinanceApplicationEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: 'CREATED', actorType: 'STAFF' }) }));
+  });
+  it('takes a room-scoped advisory lock before checking for an existing open application (race fix)', async () => {
+    const prisma = makePrisma();
+    const service = new FinanceApplicationService(prisma, numbers);
+    await service.createDraft('room-1', owner);
+    expect(prisma.$executeRawUnsafe).toHaveBeenCalledWith(
+      `SELECT pg_advisory_xact_lock(${hashLockKey('finance-app-room:room-1')})`,
+    );
+    const lockOrder = prisma.$executeRawUnsafe.mock.invocationCallOrder[0];
+    const findFirstOrder = prisma.externalFinanceApplication.findFirst.mock.invocationCallOrder[0];
+    expect(lockOrder).toBeLessThan(findFirstOrder);
   });
   it('returns the existing open application instead of creating a second one', async () => {
     const existing = { id: 'app-0', status: 'SENT', roomId: 'room-1', files: [], events: [] };

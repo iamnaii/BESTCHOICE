@@ -28,6 +28,13 @@ const PAYER: Record<WarrantyStatus, OutcomeOption['payerDefault']> = {
   WALK_IN: 'CUSTOMER',
 };
 
+/** ค่าเริ่มต้นผู้จ่ายจากสถานะประกัน — ตัวเดียวกับที่ REPAIR branch ของ computeOutcomes() ใช้
+ * (`payerDefault` ด้านบน). Export ไว้ให้ `AfterSalesExchangeService.switchToRepair` ใช้ตอน
+ * `dto.payer` ไม่ได้ระบุมา แทนที่จะก็อป map นี้ซ้ำ */
+export function payerDefaultFor(status: WarrantyStatus): 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM' {
+  return PAYER[status] as 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM';
+}
+
 export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
   const within7 = i.warrantyStatus === 'IN_7DAY_DEFECT' && i.daysRemainingIn7Day > 0;
   const managerUp = MANAGER_UP.has(i.viewerRole);

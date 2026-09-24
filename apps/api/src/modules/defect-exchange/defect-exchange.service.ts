@@ -151,9 +151,9 @@ export class DefectExchangeService {
       async (tx) => {
         // === bypass-window guards (must run before eligibility check) ===
         if (dto.bypassWindowCheck) {
-          if (!dto.originRepairTicketId) {
+          if (!dto.originRepairTicketId && !dto.originAfterSalesCaseId) {
             throw new BadRequestException(
-              'bypassWindowCheck ต้องระบุ originRepairTicketId',
+              'bypassWindowCheck ต้องระบุ originRepairTicketId หรือ originAfterSalesCaseId',
             );
           }
           if (!['OWNER', 'BRANCH_MANAGER'].includes(reqUser.role)) {
@@ -161,16 +161,35 @@ export class DefectExchangeService {
               'สิทธิ์ไม่พอ — bypass ทำได้เฉพาะ OWNER/BRANCH_MANAGER',
             );
           }
-          const ticket = await tx.repairTicket.findUnique({
-            where: { id: dto.originRepairTicketId, deletedAt: null },
-          });
-          if (!ticket) {
-            throw new NotFoundException('ไม่พบ repair ticket');
-          }
-          if (!['OPEN', 'IN_PROGRESS', 'READY_FOR_PICKUP'].includes(ticket.status)) {
-            throw new BadRequestException(
-              'repair ticket อยู่ในสถานะ terminal — ไม่สามารถ replace ได้',
-            );
+          if (dto.originRepairTicketId) {
+            const ticket = await tx.repairTicket.findUnique({
+              where: { id: dto.originRepairTicketId, deletedAt: null },
+            });
+            if (!ticket) {
+              throw new NotFoundException('ไม่พบ repair ticket');
+            }
+            if (!['OPEN', 'IN_PROGRESS', 'READY_FOR_PICKUP'].includes(ticket.status)) {
+              throw new BadRequestException(
+                'repair ticket อยู่ในสถานะ terminal — ไม่สามารถ replace ได้',
+              );
+            }
+          } else {
+            const asCase = await tx.afterSalesCase.findFirst({
+              where: { id: dto.originAfterSalesCaseId, deletedAt: null },
+              select: { contractId: true, outcome: true, cancelledAt: true },
+            });
+            if (!asCase) {
+              throw new NotFoundException('ไม่พบเคสหลังการขาย');
+            }
+            if (
+              asCase.contractId !== dto.oldContractId ||
+              asCase.cancelledAt ||
+              !['SAME_MODEL_EXCHANGE', 'REPAIR'].includes(asCase.outcome ?? '')
+            ) {
+              throw new BadRequestException(
+                'เคสหลังการขายไม่ตรงกับสัญญา หรือไม่ใช่เคสเปลี่ยนรุ่นเดิม',
+              );
+            }
           }
         } else {
           // === normal 7-day eligibility check ===
@@ -355,6 +374,17 @@ export class DefectExchangeService {
               entity: 'defect_exchange',
               entityId: newContract.id,
               newValue: { originRepairTicketId: dto.originRepairTicketId },
+              ipAddress: '',
+            },
+          });
+        } else if (dto.bypassWindowCheck && dto.originAfterSalesCaseId) {
+          await tx.auditLog.create({
+            data: {
+              userId: reqUser.id,
+              action: 'DEFECT_EXCHANGE_WINDOW_BYPASSED',
+              entity: 'defect_exchange',
+              entityId: newContract.id,
+              newValue: { originAfterSalesCaseId: dto.originAfterSalesCaseId },
               ipAddress: '',
             },
           });

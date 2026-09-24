@@ -1,7 +1,7 @@
 import DocumentDownloadButton from '@/components/DocumentDownloadButton';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BookOpen, FileText, X } from 'lucide-react';
+import { BookOpen, FileText, Lock, X } from 'lucide-react';
 import api from '@/lib/api';
 import {
   Dialog,
@@ -51,7 +51,29 @@ interface ContractInfo {
   advanceBalance: string;
   /** พักงวดสุดท้าย — ค่าธรรมเนียมปรับดิว (6a/6b) parked for the LAST installment only. */
   rescheduleAdvanceBalance: string;
+  status?: string;
+  /** เหตุการณ์ปิดสัญญา (API resolveClosure) — null/undefined = สัญญายังเดินอยู่ */
+  closure?: ContractClosure | null;
 }
+/** คืนเครื่อง/ยึดคืน (JP5) ไม่ออกใบเสร็จ ⇒ หน้าประวัติที่เรียงจากใบเสร็จต้องได้แถวนี้จาก API (เจ้าของ 2026-09-24) */
+interface ContractClosure {
+  kind: 'DEVICE_RETURN' | 'EARLY_PAYOFF' | 'COMPLETED' | 'CANCELED';
+  at: string;
+  amount: string | null;
+  appraisalPrice: string | null;
+  docNumber: string | null;
+  receiptNumber: string | null;
+  entryNumber: string | null;
+  byName: string | null;
+}
+const CLOSURE_LABEL: Record<ContractClosure['kind'], string> = {
+  DEVICE_RETURN: 'คืนเครื่อง / ยึดคืน',
+  EARLY_PAYOFF: 'ปิดยอดก่อนกำหนด',
+  COMPLETED: 'ผ่อนครบ',
+  CANCELED: 'ยกเลิกสัญญา',
+};
+/** JE ที่ปิดสัญญา: JP5 (flow repossession) / JP4 (flow early-payoff) — ชุดเดียวกับที่ API คัดมาให้หน้านี้ */
+const CLOSURE_JE_FLOWS = new Set(['repossession', 'early-payoff']);
 interface PaymentsResponse {
   data: PaymentItem[];
   contract?: ContractInfo;
@@ -147,14 +169,21 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
   // below the fold). Component stays mounted between opens — clear when
   // switching contracts.
   const [jeTarget, setJeTarget] = useState<ReceiptItem | null>(null);
+  // แถว "ปิดสัญญาแล้ว" เปิดกล่อง JE เดียวกัน แต่เลือก JE ด้วย flow (ไม่มีใบเสร็จให้จับคู่)
+  const [closureJeOpen, setClosureJeOpen] = useState(false);
   useEffect(() => {
     setJeTarget(null);
+    setClosureJeOpen(false);
   }, [contractId]);
 
   // Receipt → posted-JE selection (early-payoff by flow, CN → reversal mirrors,
   // else by shared paymentId). Extracted to paymentHistoryDerivations for unit test.
   const jesForReceipt = (r: ReceiptItem): ContractJe[] => selectJesForReceipt(r, journalEntries);
-  const jeTargetJes = jeTarget ? jesForReceipt(jeTarget) : [];
+  const closureJes = useMemo(
+    () => journalEntries.filter((j) => !!j.flow && CLOSURE_JE_FLOWS.has(j.flow)),
+    [journalEntries],
+  );
+  const jeTargetJes = jeTarget ? jesForReceipt(jeTarget) : closureJeOpen ? closureJes : [];
   // ป้าย "JE ใบนี้เป็นของใบเสร็จใบไหน" — เฉพาะงวดแบ่งชำระ (>1 ใบ) ที่จับคู่ได้ครบ
   const jeReceiptLabels = useMemo(
     () => receiptLabelsForJes(journalEntries, receipts, jeTarget?.paymentId ?? null),
@@ -163,6 +192,7 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
 
   const payments = pResp?.data ?? [];
   const contract = pResp?.contract;
+  const closure = contract?.closure ?? null;
   const paymentById = useMemo(() => new Map(payments.map((p) => [p.id, p])), [payments]);
 
   // Per-receipt fee fields come from the linked JE. Cumulative installment fees
@@ -263,6 +293,69 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
                     />
                   )}
                 </div>
+
+                {/* ─── แถวปิดสัญญา (เจ้าของ 2026-09-24) — คืนเครื่อง/ยึดคืน ไม่มีใบเสร็จ จึงต้องมีแถวนี้ ─── */}
+                {closure && (
+                  <div
+                    role="status"
+                    data-testid="contract-closure"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3"
+                  >
+                    <div className="flex items-start gap-3 min-w-0">
+                      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        <Lock className="size-4" aria-hidden="true" />
+                      </span>
+                      <div className="min-w-0 leading-snug">
+                        <div className="text-sm font-semibold text-foreground">
+                          ปิดสัญญาแล้ว — {CLOSURE_LABEL[closure.kind]}
+                          <span className="ml-2 font-normal text-muted-foreground">
+                            {formatDateShort(closure.at)}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                          {closure.amount != null && (
+                            <span>
+                              {closure.kind === 'DEVICE_RETURN' ? 'ยอดปิดสัญญา' : 'ยอดปิด'}{' '}
+                              <span className="font-medium text-foreground tabular-nums">
+                                {money(closure.amount)} ฿
+                              </span>
+                            </span>
+                          )}
+                          {closure.appraisalPrice != null && (
+                            <span>
+                              ราคาประเมิน{' '}
+                              <span className="font-medium text-foreground tabular-nums">
+                                {money(closure.appraisalPrice)} ฿
+                              </span>
+                            </span>
+                          )}
+                          {closure.docNumber && (
+                            <span>
+                              ใบรับเครื่องคืน <span className="font-mono">{closure.docNumber}</span>
+                            </span>
+                          )}
+                          {closure.receiptNumber && (
+                            <span>
+                              ใบเสร็จ <span className="font-mono">{closure.receiptNumber}</span>
+                            </span>
+                          )}
+                          {closure.byName && <span>โดย {closure.byName}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    {closure.entryNumber && (
+                      <button
+                        type="button"
+                        onClick={() => setClosureJeOpen(true)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-input px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
+                        aria-label={`ดูบันทึกบัญชีของการปิดสัญญา ${closure.entryNumber}`}
+                      >
+                        <FileText className="size-3.5" aria-hidden="true" />
+                        บันทึกบัญชี <span className="font-mono">{closure.entryNumber}</span>
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* ─── Receipt-level table ─── */}
                 {rows.length === 0 ? (
@@ -438,7 +531,15 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
           Stacks over the history dialog (same pattern as ReceiptVoidDialog).
           Width adapts: one JE stays compact, several JEs go side-by-side so
           everything is visible at once. */}
-      <Dialog open={!!jeTarget} onOpenChange={(open) => !open && setJeTarget(null)}>
+      <Dialog
+        open={!!jeTarget || closureJeOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setJeTarget(null);
+            setClosureJeOpen(false);
+          }
+        }}
+      >
         <DialogContent
           className={`${jeTargetJes.length > 1 ? 'sm:max-w-[min(96vw,90rem)]' : 'sm:max-w-2xl'} max-h-[94vh] flex flex-col p-0 gap-0`}
         >
@@ -448,12 +549,21 @@ export default function PaymentHistorySheet({ contractId, onClose, onVoided }: P
               {jeTarget && (
                 <span className="text-primary font-mono">— {jeTarget.receiptNumber}</span>
               )}
+              {!jeTarget && closureJeOpen && closure && (
+                <span className="text-primary">— ปิดสัญญา ({CLOSURE_LABEL[closure.kind]})</span>
+              )}
             </DialogTitle>
             {jeTarget && (
               <div className="text-xs text-muted-foreground leading-snug mt-0.5">
                 งวด {jeTarget.installmentNo ?? '–'}
                 {contract ? `/${contract.totalMonths}` : ''} · {formatDateShort(jeTarget.paidDate)}{' '}
                 · {money(jeTarget.amount)} ฿
+              </div>
+            )}
+            {!jeTarget && closureJeOpen && closure && (
+              <div className="text-xs text-muted-foreground leading-snug mt-0.5">
+                {formatDateShort(closure.at)}
+                {closure.amount != null ? ` · ยอดปิด ${money(closure.amount)} ฿` : ''}
               </div>
             )}
           </DialogHeader>

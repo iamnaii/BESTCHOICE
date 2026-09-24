@@ -29,6 +29,7 @@ const VIEWS: Record<
   CONTRACT_ACTIVATED: { group: 'sale', stage: 'PURCHASED', title: 'เริ่มผ่อนสัญญา' },
   CONTRACT_REVIEWED: { group: 'sale', stage: 'CREDIT', title: 'ผู้จัดการตรวจสัญญา' },
   DEVICE_RETURNED: { group: 'sale', stage: null, title: 'คืนเครื่อง' },
+  EARLY_PAYOFF: { group: 'sale', stage: null, title: 'ปิดยอดก่อนกำหนด' },
   CREDIT_AI_SCORED: { group: 'credit', stage: 'CREDIT', title: 'AI ประเมินเครดิตแล้ว' },
   BOT_HANDOFF: { group: 'chat', stage: null, title: 'บอทส่งต่อพนักงาน' },
   CONTACT_ADDED: { group: 'chat', stage: 'IDENTIFIED', title: 'ได้เบอร์/เลขบัตรลูกค้าแล้ว' },

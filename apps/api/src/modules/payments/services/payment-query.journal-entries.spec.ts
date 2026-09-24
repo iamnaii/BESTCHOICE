@@ -69,9 +69,9 @@ describe('PaymentQueryService.getContractJournalEntries', () => {
     const where = prisma.journalEntry.findMany.mock.calls[0][0].where;
     expect(where.status).toBe('POSTED');
     expect(where.deletedAt).toBeNull();
-    // 5 OR branches: receipt / 2B / credit-allocation / overpayment-credit tags
-    // + early-payoff flow, each ANDed with metadata.contractId.
-    expect(where.OR).toHaveLength(5);
+    // 6 OR branches: receipt / 2B / credit-allocation / overpayment-credit tags
+    // + early-payoff (JP4) + repossession (JP5) flows, each ANDed with metadata.contractId.
+    expect(where.OR).toHaveLength(6);
     for (const branch of where.OR) {
       expect(branch.AND[0]).toEqual({
         metadata: { path: ['contractId'], equals: 'c-1' },
@@ -87,6 +87,7 @@ describe('PaymentQueryService.getContractJournalEntries', () => {
       'tag:credit-allocation',
       'tag:overpayment-credit',
       'flow:early-payoff',
+      'flow:repossession',
     ]);
     // No rows → no reversal query (only ONE findMany call).
     expect(prisma.journalEntry.findMany).toHaveBeenCalledTimes(1);

@@ -8,6 +8,7 @@ import {
   forwardRef,
   ForbiddenException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PaymentMethod, Prisma } from '@prisma/client';
@@ -25,6 +26,8 @@ import { computeEarlyPayoffJE } from '../journal/compute-early-payoff-je';
 import { computeInstallmentBreakdown } from '../journal/compute-installment-breakdown';
 import { reconstructPriorCleared } from '../journal/reconstruct-prior';
 import { computePayoffQuote } from './compute-payoff-quote';
+import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
+import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay } from '../../utils/date.util';
@@ -50,6 +53,8 @@ export class ContractPaymentService {
     private receiptsService: ReceiptsService,
     // C1 (2026-07-30): releases any leftover 11-2102 ECL allowance on early payoff.
     private eclStageReverseTemplate: EclStageReverseTemplate,
+    // การเดินทางของลูกค้า (2026-09-24): เขียน EARLY_PAYOFF หลัง commit — optional เพื่อให้ spec ที่ new ด้วยมือ 10 ไฟล์ไม่ต้องส่ง
+    @Optional() private journeyEntries?: JourneyEntryWriter,
   ) {}
 
   /**
@@ -627,8 +632,9 @@ export class ContractPaymentService {
     // Issue the EARLY_PAYOFF receipt (post-commit; generateReceipt has its own tx +
     // sequence lock). Mirrors the normal recordPayment path — a receipt failure must
     // NOT roll back the committed payoff, so it's logged and swallowed.
+    let receiptNumber: string | null = null;
     try {
-      await this.receiptsService.generateReceipt(
+      const receipt = await this.receiptsService.generateReceipt(
         id,
         null,
         'EARLY_PAYOFF',
@@ -639,10 +645,44 @@ export class ContractPaymentService {
         userId,
         paidDate, // D4 backdating — ใบเสร็จลงวันที่รับเงินจริง (ตรงกับ Payment/JE)
       );
+      receiptNumber = receipt?.receiptNumber ?? null;
     } catch (err) {
       this.logger.error(
         `Failed to generate EARLY_PAYOFF receipt for contract ${id}: ${err instanceof Error ? err.message : err}`,
       );
+    }
+
+    // การเดินทางของลูกค้า (เจ้าของ 2026-09-24 "ไม่มีประวัติว่าลูกค้าปิดยอด"): เขียนหลัง tx commit
+    // เหมือน CONTRACT_ACTIVATED — recordAfterCommit ไม่โยน และห้ามทำให้ปิดยอดที่สำเร็จแล้วล้มเหลว
+    // data = เลขสัญญา/เลขใบเสร็จ/ยอดปิดเท่านั้น (PDPA — ไม่คัดลอกข้อมูลลูกค้า)
+    if (this.journeyEntries) {
+      try {
+        const closed = await this.prisma.contract.findUnique({
+          where: { id },
+          select: { customerId: true, contractNumber: true },
+        });
+        if (closed) {
+          await this.journeyEntries.recordAfterCommit({
+            customerId: closed.customerId,
+            kind: 'EARLY_PAYOFF',
+            occurredAt: paidDate,
+            actorType: 'STAFF',
+            actorUserId: userId,
+            refType: 'contract',
+            refId: id,
+            data: {
+              contractNumber: closed.contractNumber,
+              receiptNumber,
+              totalPayoff: quote.totalPayoff,
+            },
+            dedupeKey: journeyDedupeKey('EARLY_PAYOFF', id),
+          });
+        }
+      } catch (err) {
+        this.logger.error(
+          `Failed to record EARLY_PAYOFF journey entry for contract ${id}: ${err instanceof Error ? err.message : err}`,
+        );
+      }
     }
 
     return { ...quote, status: 'EARLY_PAYOFF', paidDate };

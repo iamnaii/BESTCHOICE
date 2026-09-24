@@ -50,11 +50,112 @@ const UNPAID_PAYMENT_STATUSES = ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'];
 /** No status, or an unpaid one, = the queue proper. status=PAID = the ชำระครบ history tab. */
 const isUnpaidListing = (status?: string) => !status || UNPAID_PAYMENT_STATUSES.includes(status);
 
+/** เหตุการณ์ปิดสัญญา — ดู resolveClosure */
+export interface ContractClosure {
+  kind: 'DEVICE_RETURN' | 'EARLY_PAYOFF' | 'COMPLETED' | 'CANCELED';
+  at: Date;
+  /** ยอดปิดสัญญาที่ลูกค้าจ่าย/ควรจ่าย (ยึดคืน = closingAmount · ปิดยอด = ยอดใบเสร็จ) */
+  amount: string | null;
+  /** ราคาประเมินที่หน้าร้านรับเครื่อง (ยึดคืนเท่านั้น) */
+  appraisalPrice: string | null;
+  /** เลขใบรับเครื่องคืน DR-… (ยึดคืน) */
+  docNumber: string | null;
+  /** เลขใบเสร็จ EARLY_PAYOFF (ปิดยอด) */
+  receiptNumber: string | null;
+  /** JE ที่ปิดสัญญา (JP4 / JP5) — เปิดในกล่องบันทึกบัญชีของหน้าประวัติ */
+  entryNumber: string | null;
+  byName: string | null;
+}
+
 @Injectable()
 export class PaymentQueryService {
   constructor(private prisma: PrismaService) {}
 
   // ─── Get payments for a contract ──────────────────────
+  /**
+   * เหตุการณ์ปิดสัญญาสำหรับหน้า "ประวัติการชำระ" (เจ้าของ 2026-09-24: "ไม่มีประวัติว่าลูกค้าปิดยอด / คืนเครื่อง")
+   * หน้านั้นเรียงจากใบเสร็จ — คืนเครื่อง/ยึดคืน (JP5) ไม่ออกใบเสร็จ จึงต้องอ่านจากแถวยึด + ใบรับเครื่องคืน;
+   * ปิดยอดก่อนกำหนดอ่านจากใบเสร็จ EARLY_PAYOFF; ผ่อนครบ/ยกเลิก = สถานะสัญญา. null = สัญญายังเดินอยู่
+   */
+  private async resolveClosure(contract: {
+    id: string;
+    status: string;
+    updatedAt: Date;
+  }): Promise<ContractClosure | null> {
+    const byContract = { path: ['contractId'], equals: contract.id };
+    const entryNumberOf = async (flow: string) =>
+      (
+        await this.prisma.journalEntry.findFirst({
+          where: {
+            status: 'POSTED',
+            deletedAt: null,
+            AND: [{ metadata: byContract }, { metadata: { path: ['flow'], equals: flow } }],
+          },
+          orderBy: { postedAt: 'desc' },
+          select: { entryNumber: true },
+        })
+      )?.entryNumber ?? null;
+    const userName = async (id: string | null | undefined) =>
+      id
+        ? ((await this.prisma.user.findUnique({ where: { id }, select: { name: true } }))?.name ??
+          null)
+        : null;
+    const empty = {
+      amount: null,
+      appraisalPrice: null,
+      docNumber: null,
+      receiptNumber: null,
+      entryNumber: null,
+      byName: null,
+    };
+
+    // แถวยึด = ยืนยันรับเครื่องคืนแล้ว (JP5 ลงบัญชี) — มาก่อนสถานะ เพราะสัญญาเป็น CLOSED_BAD_DEBT ทั้งจากยึดและตัดหนี้สูญ
+    const repossession = await this.prisma.repossession.findFirst({
+      where: { contractId: contract.id, deletedAt: null },
+      select: {
+        repossessedDate: true,
+        closingAmount: true,
+        appraisalPrice: true,
+        appraisedBy: { select: { name: true } },
+        deviceReturn: { select: { docNumber: true, confirmedAt: true, confirmedById: true } },
+      },
+    });
+    if (repossession) {
+      return {
+        ...empty,
+        kind: 'DEVICE_RETURN',
+        at: repossession.deviceReturn?.confirmedAt ?? repossession.repossessedDate,
+        amount: repossession.closingAmount?.toString() ?? null,
+        appraisalPrice: repossession.appraisalPrice.toString(),
+        docNumber: repossession.deviceReturn?.docNumber ?? null,
+        entryNumber: await entryNumberOf('repossession'),
+        byName:
+          (await userName(repossession.deviceReturn?.confirmedById)) ??
+          repossession.appraisedBy?.name ??
+          null,
+      };
+    }
+    if (contract.status === 'EARLY_PAYOFF') {
+      const receipt = await this.prisma.receipt.findFirst({
+        where: { contractId: contract.id, receiptType: 'EARLY_PAYOFF', isVoided: false, deletedAt: null },
+        orderBy: { paidDate: 'desc' },
+        select: { receiptNumber: true, amount: true, paidDate: true, issuedById: true },
+      });
+      return {
+        ...empty,
+        kind: 'EARLY_PAYOFF',
+        at: receipt?.paidDate ?? contract.updatedAt,
+        amount: receipt?.amount.toString() ?? null,
+        receiptNumber: receipt?.receiptNumber ?? null,
+        entryNumber: await entryNumberOf('early-payoff'),
+        byName: await userName(receipt?.issuedById),
+      };
+    }
+    if (contract.status === 'COMPLETED') return { ...empty, kind: 'COMPLETED', at: contract.updatedAt };
+    if (contract.status === 'CANCELED') return { ...empty, kind: 'CANCELED', at: contract.updatedAt };
+    return null;
+  }
+
   async getContractPayments(contractId: string, page = 1, limit = 50) {
     const contract = await this.prisma.contract.findUnique({
       where: { id: contractId },
@@ -100,6 +201,8 @@ export class PaymentQueryService {
         totalMonths: contract.totalMonths,
         advanceBalance: contract.advanceBalance,
         rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
+        status: contract.status,
+        closure: await this.resolveClosure(contract),
       },
     };
   }
@@ -161,6 +264,13 @@ export class PaymentQueryService {
             AND: [
               { metadata: byContract },
               { metadata: { path: ['flow'], equals: 'early-payoff' } },
+            ],
+          },
+          // คืนเครื่อง/ยึดคืน (JP5) — แถว "ปิดสัญญาแล้ว" ของหน้าประวัติเปิดดูบันทึกบัญชีจากที่นี่ (2026-09-24)
+          {
+            AND: [
+              { metadata: byContract },
+              { metadata: { path: ['flow'], equals: 'repossession' } },
             ],
           },
         ],

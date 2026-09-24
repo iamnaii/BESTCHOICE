@@ -59,7 +59,8 @@ const TIER_TILE: Record<ExchangeApprovalTier, string> = {
 /** ผู้อนุมัติตาม tier — REVIEW/ESCALATE มีป้ายเฉพาะ (คำสั่งเจ้าของ), AUTO ใช้ TIER_LABEL เดิม */
 export function tierApproverText(tier: ExchangeApprovalTier): string {
   if (tier === 'REVIEW') return 'ผจก.สาขาอนุมัติ';
-  if (tier === 'ESCALATE') return APPROVER_LABEL.OWNER;
+  // T10-2 — ป้ายเต็มประโยคคู่กับ REVIEW ('ผจก.สาขาอนุมัติ')
+  if (tier === 'ESCALATE') return `${APPROVER_LABEL.OWNER}อนุมัติ`;
   return TIER_LABEL.AUTO;
 }
 

@@ -249,7 +249,7 @@ export default function AfterSalesNewPage() {
       return;
     }
     if (pricedBlocked) {
-      toast.error('มีรายการค้างที่ต้องแก้ก่อนเปลี่ยนเครื่อง — ดูเหตุผลใต้ฟอร์ม');
+      toast.error('มีรายการค้างที่ต้องแก้ก่อนเปลี่ยนเครื่อง — ดูเหตุผลด้านบน');
       return;
     }
 

@@ -155,7 +155,7 @@ describe('ApprovalTable — role matrix (task-12-brief Step 1)', () => {
 
     const row3 = rowByCase('AS-20260924-0003');
     expect(row3.getByRole('button', { name: 'อนุมัติ' })).toBeDisabled();
-    expect(row3.getByText('รอเจ้าของ · แจ้งแล้วในระบบ')).toBeInTheDocument();
+    expect(row3.getByText('รอเจ้าของอนุมัติ')).toBeInTheDocument();
   });
 
   it('OWNER: ทุกปุ่ม enabled ทุกแถว', () => {
@@ -171,7 +171,7 @@ describe('ApprovalTable — role matrix (task-12-brief Step 1)', () => {
     const row3 = rowByCase('AS-20260924-0003');
     expect(row3.getByRole('button', { name: 'อนุมัติ' })).not.toBeDisabled();
     expect(row3.getByRole('button', { name: 'ปฏิเสธ' })).not.toBeDisabled();
-    expect(row3.queryByText('รอเจ้าของ · แจ้งแล้วในระบบ')).not.toBeInTheDocument();
+    expect(row3.queryByText('รอเจ้าของอนุมัติ')).not.toBeInTheDocument();
   });
 
   it('FINANCE_MANAGER: ไม่มีปุ่มดำเนินการ (อนุมัติ/ปฏิเสธ/ยืนยันเปลี่ยนเครื่อง) เหลือแค่ "เปิดเคส" ทุกแถว', () => {
@@ -210,11 +210,13 @@ describe('ApprovalTable — คอลัมน์ (mockup C)', () => {
     expect(row1.getByText('ธนา')).toBeInTheDocument();
     // 8000/10000 = 80%
     expect(row1.getByText('รับซื้อ 8,000.00 · 80% ของยอดคงเหลือ')).toBeInTheDocument();
-    expect(row1.getByText('ผจก.สาขา')).toBeInTheDocument();
+    // T12-1 — แถว PRICED ต่อท้าย tier · แถว SAME_MODEL ป้ายเปล่า
+    expect(row1.getByText('ผจก.สาขา (REVIEW)')).toBeInTheDocument();
+    expect(rowByCase('AS-20260924-0002').getByText('ผจก.สาขา')).toBeInTheDocument();
 
     const row3 = rowByCase('AS-20260924-0003');
     expect(row3.getByText('สัญญาใหม่ CT-20260924-0009')).toBeInTheDocument();
-    expect(row3.getByText('เจ้าของเท่านั้น')).toBeInTheDocument();
+    expect(row3.getByText('เจ้าของเท่านั้น (ESCALATE)')).toBeInTheDocument();
     expect(row3.getByText(/ยังไม่เลือก/)).toBeInTheDocument();
   });
 

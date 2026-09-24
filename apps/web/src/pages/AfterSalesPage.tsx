@@ -48,10 +48,15 @@ const INITIAL_FILTERS: Filters = { tab: 'ACTIVE', q: '', staleOnly: false, branc
 /** Task 12 (moved from Task 13) — ?tab= ที่มากับ URL ตั้งต้นแท็บของหน้าได้ (จาก redirect ของ
  * /insurance/exchange-requests เดิม) แต่ต้องเป็นแท็บที่ role นี้เห็นจริง — ไม่งั้น SALES ตาม
  * ลิงก์เก่ามาจะได้แท็บ "รออนุมัติ" ที่เขาไม่มีสิทธิ์เห็น */
+/** T12-2 — กติกาเดียวว่าแท็บไหน role ไหนเห็น (แท็บ "รออนุมัติ" ซ่อนสำหรับ SALES — spec Task 9) —
+ * ใช้ร่วมกันทั้งแท็บตั้งต้นจาก ?tab= และแถบแท็บที่แสดง */
+function isTabVisible(tab: Tab, role: string | undefined): boolean {
+  return tab !== 'AWAITING_APPROVAL' || role !== 'SALES';
+}
+
 function initialTabFrom(tabParam: string | null, role: string | undefined): Tab {
   if (!tabParam || !(TABS as string[]).includes(tabParam)) return INITIAL_FILTERS.tab;
-  if (tabParam === 'AWAITING_APPROVAL' && role === 'SALES') return INITIAL_FILTERS.tab;
-  return tabParam as Tab;
+  return isTabVisible(tabParam as Tab, role) ? (tabParam as Tab) : INITIAL_FILTERS.tab;
 }
 
 export default function AfterSalesPage() {
@@ -115,8 +120,7 @@ export default function AfterSalesPage() {
     staleTime: 60_000,
   });
 
-  // แท็บ "รออนุมัติ" ซ่อมสำหรับ SALES (spec Task 9)
-  const visibleTabs = TABS.filter((t) => t !== 'AWAITING_APPROVAL' || user?.role !== 'SALES');
+  const visibleTabs = TABS.filter((t) => isTabVisible(t, user?.role));
 
   // R25 (b) — Pager clamp: หน้าที่ขอจริง (`filters.page`) อาจเกินจำนวนหน้าจริงหลังตัวกรอง/ข้อมูล
   // เปลี่ยน — ใช้ safePage ทั้งใน query (คีย์ + params ที่ยิงจริง) และใน <Pager> ผู้เรียกเป็นคน clamp

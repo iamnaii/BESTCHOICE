@@ -84,6 +84,8 @@ function caseDetail(over: Partial<CaseDetail> = {}): CaseDetail {
     saleId: null,
     replacementProductId: null,
     replacementContractId: null,
+    repairTicketId: null,
+    exchangeRequestId: null,
     exchange: null,
   };
   return { ...base, ...over };
@@ -122,7 +124,8 @@ function primaryButtonsOutsideMobileBar(name: string | RegExp) {
  * ที่คาดหวัง (1 เมื่อมีปุ่มหลัก, 0 เมื่อไม่มี — role ไม่พอ/CLOSED/CANCELLED ฯลฯ) กันไม่ให้มีปุ่มเขียว
  * มากกว่าหนึ่งปุ่มบนหน้าเดียวกันโดยไม่ตั้งใจ */
 function countGreenPrimaryButtons(container: HTMLElement) {
-  return Array.from(container.querySelectorAll('button.bg-primary')).filter(
+  // I4 — ปุ่มหลักแบบลิงก์ (`<a>` ผ่าน Button asChild) นับเป็นปุ่มเขียวด้วย
+  return Array.from(container.querySelectorAll('button.bg-primary, a.bg-primary')).filter(
     (btn) => !btn.closest('[data-testid="mobile-bar"]'),
   ).length;
 }
@@ -475,7 +478,7 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     expect(countGreenPrimaryButtons(container)).toBe(0);
   });
 
-  it('(l) SAME_MODEL_EXCHANGE READY_FOR_PICKUP + replacementContractId (สัญญาใหม่ยัง DRAFT) → ปุ่ม "ส่งมอบเครื่องใหม่" กด → API 400 → toast.error ข้อความ API', async () => {
+  it('(l) I4: SAME_MODEL_EXCHANGE READY_FOR_PICKUP สัญญาใหม่ยัง DRAFT + BM → ปุ่มหลักเดียวเป็นลิงก์ "เปิดใช้สัญญาใหม่ … ที่หน้าสัญญา" ไม่มีปุ่ม "ส่งมอบเครื่องใหม่"', async () => {
     const detail = caseDetail({
       outcome: 'SAME_MODEL_EXCHANGE',
       stage: 'READY_FOR_PICKUP',
@@ -486,19 +489,64 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
       }),
     });
     mockGet(detail);
-    mocks.post.mockRejectedValue(
-      new Error('ต้องเปิดใช้สัญญาใหม่ CT-2026-0099 ที่หน้าสัญญาก่อนส่งมอบ'),
-    );
+    auth.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
+    const { container } = renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    const primaryLinks = screen
+      .getAllByRole('link', { name: 'เปิดใช้สัญญาใหม่ CT-2026-0099 ที่หน้าสัญญา' })
+      .filter((a) => !a.closest('[data-testid="mobile-bar"]'));
+    expect(primaryLinks).toHaveLength(1);
+    expect(primaryLinks[0]).toHaveAttribute('href', '/contracts/ct-2');
+    expect(primaryLinks[0]).toHaveClass('bg-primary');
+    expect(screen.queryByRole('button', { name: 'ส่งมอบเครื่องใหม่' })).not.toBeInTheDocument();
+    expect(countGreenPrimaryButtons(container)).toBe(1);
+    // แถบล่างมือถือมีลิงก์เดียวกันเป็นปุ่มเขียวของมัน
+    const bar = screen.getByTestId('mobile-bar');
+    expect(
+      within(bar).getByRole('link', { name: /เปิดใช้สัญญาใหม่ CT-2026-0099/ }),
+    ).toHaveAttribute('href', '/contracts/ct-2');
+  });
+
+  it('(l2) I4: สัญญาใหม่ยัง DRAFT + SALES → ข้อความ "รอเปิดใช้สัญญาใหม่ …" ไม่มีปุ่มเขียว ไม่มีแถบล่าง', async () => {
+    const detail = caseDetail({
+      outcome: 'SAME_MODEL_EXCHANGE',
+      stage: 'READY_FOR_PICKUP',
+      repairTicket: null,
+      replacementContractId: 'ct-2',
+      exchange: sameModelExchange({
+        replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'DRAFT' },
+      }),
+    });
+    mockGet(detail);
+    auth.user = { id: 'u-sales', role: 'SALES', branchId: 'branch-1' };
+    const { container } = renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(screen.getByText('รอเปิดใช้สัญญาใหม่ CT-2026-0099')).toBeInTheDocument();
+    expect(countGreenPrimaryButtons(container)).toBe(0);
+    expect(screen.queryByTestId('mobile-bar')).not.toBeInTheDocument();
+  });
+
+  it('(l3) I4: สัญญาใหม่เปิดใช้แล้ว (ACTIVE) → ปุ่มหลัก "ส่งมอบเครื่องใหม่" → ยืนยัน → POST exchange/deliver', async () => {
+    const detail = caseDetail({
+      outcome: 'SAME_MODEL_EXCHANGE',
+      stage: 'READY_FOR_PICKUP',
+      repairTicket: null,
+      replacementContractId: 'ct-2',
+      exchange: sameModelExchange({
+        replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'ACTIVE' },
+      }),
+    });
+    mockGet(detail);
+    mocks.post.mockResolvedValue({ data: { id: detail.id, stage: 'CLOSED' } });
     const { container } = renderPage(detail.id);
 
     await screen.findByRole('heading', { name: detail.caseNumber });
     const primaryButtons = primaryButtonsOutsideMobileBar('ส่งมอบเครื่องใหม่');
     expect(primaryButtons).toHaveLength(1);
     expect(countGreenPrimaryButtons(container)).toBe(1);
-    expect(screen.getByRole('link', { name: /สัญญาใหม่ CT-2026-0099/ })).toHaveAttribute(
-      'href',
-      '/contracts/ct-2',
-    );
+    expect(screen.queryByRole('link', { name: /เปิดใช้สัญญาใหม่/ })).not.toBeInTheDocument();
 
     await userEvent.click(primaryButtons[0]);
     const confirmButton = await screen.findByRole('button', { name: 'ยืนยันส่งมอบ' });
@@ -507,9 +555,46 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     await waitFor(() =>
       expect(mocks.post).toHaveBeenCalledWith(`/after-sales/${detail.id}/exchange/deliver`, {}),
     );
-    expect(toast.error).toHaveBeenCalledWith(
-      'ต้องเปิดใช้สัญญาใหม่ CT-2026-0099 ที่หน้าสัญญาก่อนส่งมอบ',
-    );
+  });
+
+  it('(l4) I4: PRICED_EXCHANGE READY_FOR_PICKUP สัญญาใหม่ DRAFT + OWNER → ลิงก์ปุ่มหลักทางเดียวกับ SAME_MODEL', async () => {
+    const detail = caseDetail({
+      outcome: 'PRICED_EXCHANGE',
+      stage: 'READY_FOR_PICKUP',
+      repairTicket: null,
+      exchangeRequestId: 'req-1',
+      exchange: pricedExchange({
+        requestStatus: 'APPROVED',
+        replacementContract: { id: 'ct-9', contractNumber: 'CT-2026-0100', status: 'DRAFT' },
+      }),
+    });
+    mockGet(detail);
+    const { container } = renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    const links = screen
+      .getAllByRole('link', { name: 'เปิดใช้สัญญาใหม่ CT-2026-0100 ที่หน้าสัญญา' })
+      .filter((a) => !a.closest('[data-testid="mobile-bar"]'));
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', '/contracts/ct-9');
+    expect(countGreenPrimaryButtons(container)).toBe(1);
+  });
+
+  it('M8: ปุ่มหลักที่หัวเคสซ่อนต่ำกว่า md (hidden md:inline-flex) — มือถือเห็นปุ่มเขียวเดียวที่แถบล่าง', async () => {
+    const detail = caseDetail({
+      stage: 'READY_FOR_PICKUP',
+      repairTicket: { ...caseDetail().repairTicket!, status: 'READY_FOR_PICKUP' },
+    });
+    mockGet(detail);
+    renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    const [header] = primaryButtonsOutsideMobileBar('ส่งมอบคืนลูกค้า');
+    expect(header).toHaveClass('hidden');
+    expect(header).toHaveClass('md:inline-flex');
+    const bar = screen.getByTestId('mobile-bar');
+    expect(bar).toHaveClass('md:hidden');
+    expect(within(bar).getAllByRole('button', { name: 'ส่งมอบคืนลูกค้า' })).toHaveLength(1);
   });
 
   it('(m) PRICED_EXCHANGE AWAITING_APPROVAL tier ESCALATE → BM ไม่มีปุ่ม มี "รอ เจ้าของเท่านั้น อนุมัติ"; OWNER มีปุ่ม "อนุมัติ"', async () => {
@@ -741,6 +826,7 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
       outcome: 'PRICED_EXCHANGE',
       stage: 'AWAITING_APPROVAL',
       repairTicket: null,
+      exchangeRequestId: 'req-1',
       exchange: pricedExchange(),
     });
     mockGet(detail);
@@ -766,12 +852,14 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     );
   });
 
-  it('CancelSwapDialog: "ยกเลิกคำขอ" → กรอกเหตุผล → ยืนยัน → POST cancel-swap', async () => {
+  it('I3 CancelSwapDialog: เคส PRICED CLOSED (MEMO ลงผลแล้ว คำขอ APPROVED) + BM → ปุ่มรอง "ยกเลิก swap" → กรอกเหตุผล → ยืนยัน → POST cancel-swap', async () => {
     const detail = caseDetail({
       outcome: 'PRICED_EXCHANGE',
-      stage: 'AWAITING_APPROVAL',
+      stage: 'CLOSED',
       repairTicket: null,
-      exchange: pricedExchange({ approvalTier: 'REVIEW', approverRole: 'BRANCH_MANAGER' }),
+      exchangeRequestId: 'req-1',
+      closedAt: '2026-09-20T00:00:00.000Z',
+      exchange: pricedExchange({ mode: 'MEMO', requestStatus: 'APPROVED' }),
     });
     mockGet(detail);
     mocks.post.mockResolvedValue({ data: { id: detail.id, stage: 'CANCELLED' } });
@@ -779,8 +867,9 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     const { container } = renderPage(detail.id);
 
     await screen.findByRole('heading', { name: detail.caseNumber });
-    expect(countGreenPrimaryButtons(container)).toBe(1);
-    await userEvent.click(screen.getByRole('button', { name: 'ยกเลิกคำขอ' }));
+    expect(countGreenPrimaryButtons(container)).toBe(0);
+    expect(screen.queryByRole('button', { name: 'ยกเลิกคำขอ' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'ยกเลิก swap' }));
 
     const dialog = await screen.findByRole('dialog');
     const confirmButton = within(dialog).getByRole('button', { name: 'ยืนยันยกเลิก' });

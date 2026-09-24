@@ -171,6 +171,10 @@ export interface CaseDetail extends CaseRow {
    * เขียนตอนยืนยัน) และเดินทางมาถึง response จริงผ่าน `{...row}` ของ `decorate()`/`getCase()`
    * (`include` ไม่ตัดสกาลาร์ทิ้ง) แม้ Task 9 จะไม่ได้ประกาศไว้ในทีแรก — เพิ่มที่นี่ให้ตรงกับ API จริง */
   replacementContractId: string | null;
+  /** final fix wave — สกาลาร์จริงบนโมเดล (เดินทางมาถึง response ผ่าน `{...row}` เหมือน
+   * replacementContractId) ใช้ตัดสินว่าเคสเปลี่ยนเครื่องมีอะไรฝั่ง engine หรือยัง (M1/I2) */
+  repairTicketId: string | null;
+  exchangeRequestId: string | null;
   repairTicket:
     | (CaseRow['repairTicket'] & {
         externalClaimNo: string | null;
@@ -326,7 +330,12 @@ export type CaseDialogId =
   | 'reject-priced'
   | 'cancel-swap';
 
-export type PrimaryAction = { label: string; dialog: CaseDialogId } | { waitingText: string };
+/** I4 (final fix wave) — ปุ่มหลักมีสามรูปแบบ: เปิด dialog · ลิงก์ไปหน้าอื่น (ขั้นถัดไปอยู่นอกหน้านี้ เช่น
+ * เปิดใช้สัญญาใหม่ที่หน้าสัญญา) · ข้อความรอ (role ทำขั้นนี้ไม่ได้) */
+export type PrimaryAction =
+  | { label: string; dialog: CaseDialogId }
+  | { label: string; href: string }
+  | { waitingText: string };
 
 export type SecondaryAction =
   | { kind: 'dialog'; label: string; dialog: CaseDialogId; destructive?: boolean }
@@ -334,13 +343,47 @@ export type SecondaryAction =
 
 const STAFF_SET = new Set(['OWNER', 'BRANCH_MANAGER', 'SALES']);
 const MGR_SET = new Set(['OWNER', 'BRANCH_MANAGER']);
+/** role ที่เปิดใช้สัญญา (DRAFT → ACTIVE) ที่หน้าสัญญาได้ */
+const CONTRACT_ACTIVATOR_SET = new Set(['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']);
+
+/**
+ * I4 — สัญญาใหม่ของทางออกเปลี่ยนเครื่องที่ READY_FOR_PICKUP: SAME_MODEL (รวมที่มาจากใบซ่อม — outcome
+ * กลายเป็น SAME_MODEL หลังยืนยัน) อ่านจาก `replacementContractId` + `exchange.replacementContract`
+ * ส่วน PRICED อ่านจาก `exchange.replacementContract` (คำขอ → newContract; เคสไม่ได้เก็บ
+ * replacementContractId เอง). ใช้ทางเดียวกันทั้งสอง outcome
+ */
+function readyReplacementContract(
+  data: CaseDetail,
+): { id: string; contractNumber: string; status: string } | null {
+  if (data.stage !== 'READY_FOR_PICKUP') return null;
+  if (data.outcome === 'SAME_MODEL_EXCHANGE' && data.replacementContractId) {
+    return data.exchange?.replacementContract ?? null;
+  }
+  if (data.outcome === 'PRICED_EXCHANGE') return data.exchange?.replacementContract ?? null;
+  return null;
+}
+
+/** I4 — สัญญาใหม่ยัง DRAFT: ขั้นที่ทำได้จริงถัดไปคือเปิดใช้ที่หน้าสัญญา (ส่งมอบก่อนไม่ได้ — API 400) */
+function activateContractStep(
+  contract: { id: string; contractNumber: string },
+  role: string,
+): PrimaryAction {
+  if (CONTRACT_ACTIVATOR_SET.has(role)) {
+    return {
+      label: `เปิดใช้สัญญาใหม่ ${contract.contractNumber} ที่หน้าสัญญา`,
+      href: `/contracts/${contract.id}`,
+    };
+  }
+  return { waitingText: `รอเปิดใช้สัญญาใหม่ ${contract.contractNumber}` };
+}
 
 /**
  * Task 11 — ปุ่มหลักปุ่มเดียวตาม outcome × stage × role (ตารางในบรีฟ) แทน `primaryLabelOf` เดิม.
- * คืน `{label,dialog}` (มีปุ่มกดได้) หรือ `{waitingText}` (role ไม่พอ — โชว์ข้อความแทนปุ่ม) หรือ
- * `null` (ไม่มีปุ่ม/ข้อความเลย — CLOSED/CANCELLED ทุกทาง, role อ่านอย่างเดียวอย่าง FM/ACCOUNTANT,
- * และแถว PRICED READY_FOR_PICKUP ที่ใช้ลิงก์ "ไปสัญญาใหม่" แทนปุ่ม — ลิงก์นั้นเรนเดอร์ตรงในหน้า
- * ไม่ผ่านฟังก์ชันนี้ เพราะ contract คืนค่าไม่มีรูปแบบ "ลิงก์").
+ * คืน `{label,dialog}` (ปุ่มเปิด dialog) · `{label,href}` (ลิงก์ปุ่มหลัก — I4: สัญญาใหม่ยัง DRAFT →
+ * "เปิดใช้สัญญาใหม่ … ที่หน้าสัญญา" สำหรับ OWNER/BM/FM ทั้ง SAME_MODEL และ PRICED) · `{waitingText}`
+ * (role ทำขั้นนี้ไม่ได้ — โชว์ข้อความรอแทนปุ่ม: แถวรออนุมัติทุก role ที่ไม่ใช่ผู้อนุมัติ รวม FM/ACCOUNTANT
+ * และแถวรอเปิดใช้สัญญาใหม่ทุก role ที่เปิดใช้สัญญาไม่ได้) · หรือ `null` (ไม่มีปุ่ม/ข้อความ — CLOSED/
+ * CANCELLED ทุกทาง และแถวงานซ่อม/ส่งมอบที่ role อ่านอย่างเดียวอย่าง FM/ACCOUNTANT ทำไม่ได้).
  */
 export function primaryAction(data: CaseDetail, role: string): PrimaryAction | null {
   const { outcome, stage } = data;
@@ -355,8 +398,19 @@ export function primaryAction(data: CaseDetail, role: string): PrimaryAction | n
     stage === 'READY_FOR_PICKUP' &&
     data.replacementContractId
   ) {
+    const contract = readyReplacementContract(data);
+    // I4 — สัญญาใหม่ยัง DRAFT → เปิดใช้ที่หน้าสัญญาก่อน (ส่งมอบจะ 400); ยกเลิกแล้ว → ไม่มีปุ่ม
+    if (contract?.status === 'DRAFT') return activateContractStep(contract, role);
+    if (contract?.status === 'CANCELED') return null;
     if (!STAFF_SET.has(role)) return null;
     return { label: 'ส่งมอบเครื่องใหม่', dialog: 'exchange-deliver' };
+  }
+
+  // I4 — PRICED READY_FOR_PICKUP: ทางเดียวกับ SAME_MODEL (สัญญาใหม่ของคำขอยัง DRAFT → ลิงก์เปิดใช้)
+  if (outcome === 'PRICED_EXCHANGE' && stage === 'READY_FOR_PICKUP') {
+    const contract = readyReplacementContract(data);
+    if (contract?.status === 'DRAFT') return activateContractStep(contract, role);
+    return null;
   }
 
   if (outcome === 'REPAIR') {
@@ -395,8 +449,7 @@ export function primaryAction(data: CaseDetail, role: string): PrimaryAction | n
     return { waitingText: `รอ ${APPROVER_LABEL[approverRole]} อนุมัติ` };
   }
 
-  // CASH_SAME_MODEL_EXCHANGE (ยังไม่เปิดใช้ — engine ปฏิเสธเมื่อไม่มี contractId) และ
-  // PRICED_EXCHANGE READY_FOR_PICKUP (ไม่มีปุ่ม — ดู jsdoc ด้านบน) ตกมาที่นี่
+  // CASH_SAME_MODEL_EXCHANGE (ยังไม่เปิดใช้ — engine ปฏิเสธเมื่อไม่มี contractId) ตกมาที่นี่
   return null;
 }
 
@@ -412,7 +465,28 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
   const isOwner = role === 'OWNER';
   const { outcome, stage } = data;
 
+  // I3 — ยกเลิก swap ที่ลงผลแล้ว (MEMO applied / สัญญาใหม่เปิดใช้แล้ว → เคส CLOSED) ตามสิทธิ์เดิม —
+  // เฉพาะคำขอที่ยัง APPROVED (engine ยกเลิกได้เฉพาะ APPROVED และตัดสินเรื่องการชำระเงินเอง)
+  if (
+    stage === 'CLOSED' &&
+    outcome === 'PRICED_EXCHANGE' &&
+    data.exchange?.requestStatus === 'APPROVED' &&
+    isMgr
+  ) {
+    out.push({ kind: 'dialog', label: 'ยกเลิก swap', dialog: 'cancel-swap', destructive: true });
+    return out;
+  }
+
   if (stage === 'CLOSED' || stage === 'CANCELLED') return out;
+
+  // M1/M2 (partial) — เคสเปลี่ยนเครื่องที่ยังไม่มีอะไรฝั่ง engine (ไม่มีใบซ่อม/สัญญาใหม่/คำขอผูก) API
+  // ยกเลิกเคสได้ (MGR). หน้าจอโชว์ "ยกเลิกเคส" เฉพาะแถวที่ไม่มีทางออกอื่น — PRICED ที่ผูกคำขอไม่สำเร็จ
+  // (SAME_MODEL รอยืนยันมี "ปฏิเสธ (ใส่เหตุผล)" ซึ่งปิดเคสแบบเดียวกันอยู่แล้ว ไม่ซ้ำปุ่มทำลายสองปุ่ม)
+  const bareExchange =
+    (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'PRICED_EXCHANGE') &&
+    !data.repairTicketId &&
+    !data.replacementContractId &&
+    !data.exchangeRequestId;
 
   if (outcome === 'REPAIR') {
     if (stage === 'RECEIVED') {
@@ -472,9 +546,13 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
 
   if (outcome === 'PRICED_EXCHANGE') {
     if (stage === 'AWAITING_APPROVAL') {
-      if (isOwner)
+      // I2 — ไม่มี "ยกเลิกคำขอ" ตอนรออนุมัติ: engine ยกเลิกได้เฉพาะคำขอ APPROVED (PENDING → 400 เสมอ)
+      // คำขอที่ยังรออนุมัติมีทางออกเดียวคือเจ้าของ "ปฏิเสธ"
+      if (isOwner && data.exchangeRequestId)
         out.push({ kind: 'dialog', label: 'ปฏิเสธ', dialog: 'reject-priced', destructive: true });
-      if (isMgr) out.push({ kind: 'dialog', label: 'ยกเลิกคำขอ', dialog: 'cancel-swap' });
+      // M1 — เคสที่ผูกคำขอไม่สำเร็จ (ไม่มีคำขอให้ปฏิเสธ) ยกเลิกเคสได้แทน
+      if (isMgr && bareExchange)
+        out.push({ kind: 'dialog', label: 'ยกเลิกเคส', dialog: 'cancel', destructive: true });
     } else if (stage === 'READY_FOR_PICKUP') {
       if (isMgr) out.push({ kind: 'dialog', label: 'ยกเลิกคำขอ', dialog: 'cancel-swap' });
     }

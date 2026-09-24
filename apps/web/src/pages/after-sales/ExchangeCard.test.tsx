@@ -62,6 +62,8 @@ function detail(over: Partial<CaseDetail> = {}): CaseDetail {
     saleId: null,
     replacementProductId: null,
     replacementContractId: null,
+    repairTicketId: null,
+    exchangeRequestId: null,
   };
   return { ...base, ...over };
 }

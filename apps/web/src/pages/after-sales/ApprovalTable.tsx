@@ -68,12 +68,17 @@ function TypePriceCell({ ex }: { ex: CaseExchangeInfo | null }) {
   );
 }
 
-function ApproverChip({ approverRole }: { approverRole: ExchangeApproverRole }) {
+/** T12-1 — แถว PRICED ต่อท้ายด้วย tier ของคำขอ เช่น "ผจก.สาขา (REVIEW)" / "เจ้าของเท่านั้น (ESCALATE)"
+ * ส่วนแถว SAME_MODEL (ไม่มี tier) คงป้ายเปล่า */
+function ApproverChip({ ex }: { ex: CaseExchangeInfo | null }) {
+  const approverRole: ExchangeApproverRole = ex?.approverRole ?? 'OWNER';
+  const tier = ex?.kind === 'PRICED' && ex.approvalTier ? ` (${TIER_LABEL[ex.approvalTier]})` : '';
   if (approverRole === 'OWNER') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-destructive">
         <ShieldAlert aria-hidden className="h-3.5 w-3.5 shrink-0" />
         {APPROVER_LABEL.OWNER}
+        {tier}
       </span>
     );
   }
@@ -81,6 +86,7 @@ function ApproverChip({ approverRole }: { approverRole: ExchangeApproverRole }) 
     <span className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-warning-strong">
       <UserCheck aria-hidden className="h-3.5 w-3.5 shrink-0" />
       {APPROVER_LABEL.BRANCH_MANAGER}
+      {tier}
     </span>
   );
 }
@@ -128,9 +134,7 @@ function ActionsCell({
             อนุมัติ
           </Button>
           {!canApprove && (
-            <span className="text-xs leading-snug text-warning-strong">
-              รอเจ้าของ · แจ้งแล้วในระบบ
-            </span>
+            <span className="text-xs leading-snug text-warning-strong">รอเจ้าของอนุมัติ</span>
           )}
           {isOwner && (
             <Button
@@ -211,7 +215,7 @@ export default function ApprovalTable({ rows, role, onAction }: ApprovalTablePro
                     <TypePriceCell ex={ex} />
                   </td>
                   <td className="px-3 py-2.5">
-                    <ApproverChip approverRole={ex?.approverRole ?? 'OWNER'} />
+                    <ApproverChip ex={ex} />
                   </td>
                   <td className="px-3 py-2.5">
                     <ActionsCell row={row} role={role} onAction={onAction} />
@@ -238,7 +242,7 @@ export default function ApprovalTable({ rows, role, onAction }: ApprovalTablePro
                 >
                   {row.caseNumber}
                 </Link>
-                <ApproverChip approverRole={ex?.approverRole ?? 'OWNER'} />
+                <ApproverChip ex={ex} />
               </div>
               <div className="leading-snug">
                 {row.customer.name} · {row.customer.phone ?? '—'}

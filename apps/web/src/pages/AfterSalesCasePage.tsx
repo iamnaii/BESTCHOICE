@@ -165,22 +165,26 @@ export default function AfterSalesCasePage() {
 
   const action = data && user ? primaryAction(data, user.role) : null;
   const primaryDialog = action && 'dialog' in action ? action.dialog : null;
+  // I4 — ปุ่มหลักแบบลิงก์ (สัญญาใหม่ยัง DRAFT → เปิดใช้ที่หน้าสัญญา) ทั้ง SAME_MODEL และ PRICED
+  const primaryHref = action && 'href' in action ? action.href : null;
   const primaryLabel = action && 'label' in action ? action.label : null;
   const waitingText = action && 'waitingText' in action ? action.waitingText : null;
-  const showPrimaryButton = !!primaryDialog;
+  const showPrimaryButton = !!primaryDialog || !!primaryHref;
   const onPrimaryClick = () => {
     if (primaryDialog) setDialog(primaryDialog);
   };
   const secondary = data && user ? secondaryActions(data, user.role) : [];
-  // Task 11 row "PRICED_EXCHANGE READY_FOR_PICKUP" ไม่มีปุ่มหลัก (primaryAction คืน null เสมอ) —
-  // แทนที่ด้วยลิงก์ไปหน้าสัญญาใหม่ตรงตำแหน่งปุ่มหลัก
-  const priceReadyContract =
-    data?.outcome === 'PRICED_EXCHANGE' &&
-    data.stage === 'READY_FOR_PICKUP' &&
-    data.replacementContractId &&
-    data.exchange?.replacementContract
-      ? data.exchange.replacementContract
-      : null;
+  /** ปุ่มเขียวปุ่มเดียวของหน้า — ใช้ทั้งหัวเคส (md ขึ้นไป) และแถบล่างมือถือ (ต่ำกว่า md) */
+  const renderPrimary = (className: string) =>
+    primaryHref ? (
+      <Button asChild variant="primary" size="lg" className={className}>
+        <Link to={primaryHref}>{primaryLabel}</Link>
+      </Button>
+    ) : (
+      <Button variant="primary" size="lg" className={className} onClick={onPrimaryClick}>
+        {primaryLabel}
+      </Button>
+    );
 
   // Ruling P-B — เปิด dialog ที่ ?action=confirm|approve ชี้มาตอนโหลดครั้งแรก (เฉพาะเมื่อเคส
   // อยู่ใน stage ที่ตรงกันและ role ทำได้จริง — ใช้ primaryAction ตัวเดียวกับปุ่มหลัก) แล้วลบพารามิเตอร์
@@ -260,24 +264,13 @@ export default function AfterSalesCasePage() {
                     </div>
 
                     <div className="flex flex-col items-stretch gap-2 lg:items-end">
-                      {showPrimaryButton && (
-                        <Button variant="primary" size="lg" onClick={onPrimaryClick}>
-                          {primaryLabel}
-                        </Button>
-                      )}
+                      {/* M8 — ต่ำกว่า md ปุ่มหลักอยู่ที่แถบล่าง (mobile-bar) ปุ่มเดียว ไม่ซ้ำที่หัวเคส */}
+                      {showPrimaryButton && renderPrimary('hidden md:inline-flex')}
                       {waitingText && (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-3 py-1.5 text-sm font-semibold leading-snug text-warning-strong">
                           <Clock aria-hidden className="h-4 w-4 shrink-0" />
                           {waitingText}
                         </span>
-                      )}
-                      {priceReadyContract && (
-                        <Link
-                          to={`/contracts/${priceReadyContract.id}`}
-                          className="text-sm font-semibold leading-snug text-primary hover:underline"
-                        >
-                          ไปสัญญาใหม่ {priceReadyContract.contractNumber} — เปิดใช้ที่หน้าสัญญา
-                        </Link>
                       )}
                       <div className="flex flex-wrap justify-end gap-2">
                         {secondary.map((item, index) =>
@@ -510,9 +503,7 @@ export default function AfterSalesCasePage() {
                 data-testid="mobile-bar"
                 className="sticky bottom-0 -mx-4 border-t border-border bg-card px-4 py-3 md:hidden"
               >
-                <Button variant="primary" size="lg" className="w-full" onClick={onPrimaryClick}>
-                  {primaryLabel}
-                </Button>
+                {renderPrimary('w-full')}
               </div>
             )}
 

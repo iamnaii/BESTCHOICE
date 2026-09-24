@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import PricedExchangeFields, { type PricedForm } from './PricedExchangeFields';
+import PricedExchangeFields, { tierApproverText, type PricedForm } from './PricedExchangeFields';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/lib/api', () => ({ default: { get: mocks.get } }));
@@ -116,5 +116,11 @@ describe('PricedExchangeFields — ฟอร์มเปลี่ยนแบบ
     expect(screen.queryByLabelText('สภาพเครื่อง')).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/จำนวนงวดสัญญาใหม่/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/อัตราดอกเบี้ย/)).not.toBeInTheDocument();
+  });
+
+  it('T10-2: ป้ายผู้อนุมัติตาม tier — ESCALATE = "เจ้าของเท่านั้นอนุมัติ" (คู่กับ REVIEW "ผจก.สาขาอนุมัติ")', () => {
+    expect(tierApproverText('ESCALATE')).toBe('เจ้าของเท่านั้นอนุมัติ');
+    expect(tierApproverText('REVIEW')).toBe('ผจก.สาขาอนุมัติ');
+    expect(tierApproverText('AUTO')).toBe('อัตโนมัติ');
   });
 });

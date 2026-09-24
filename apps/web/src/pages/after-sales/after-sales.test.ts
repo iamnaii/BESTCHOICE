@@ -63,6 +63,8 @@ function detail(over: Partial<CaseDetail> = {}): CaseDetail {
     saleId: null,
     replacementProductId: null,
     replacementContractId: null,
+    repairTicketId: null,
+    exchangeRequestId: null,
   };
   return { ...base, ...over };
 }
@@ -260,7 +262,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
     expect(primaryAction(d, 'OWNER')).toBeNull();
   });
 
-  it('SAME_MODEL_EXCHANGE READY_FOR_PICKUP + replacementContractId → STAFF ได้ "ส่งมอบเครื่องใหม่"', () => {
+  it('I4: SAME_MODEL_EXCHANGE READY_FOR_PICKUP สัญญาใหม่ยัง DRAFT → OWNER/BM/FM ได้ลิงก์ "เปิดใช้สัญญาใหม่ … ที่หน้าสัญญา" · SALES/ACCOUNTANT ได้ข้อความรอ · ไม่มี "ส่งมอบเครื่องใหม่"', () => {
     const d = detail({
       outcome: 'SAME_MODEL_EXCHANGE',
       stage: 'READY_FOR_PICKUP',
@@ -279,6 +281,37 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
         requestedBy: null,
       },
     });
+    for (const role of ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']) {
+      expect(primaryAction(d, role)).toEqual({
+        label: 'เปิดใช้สัญญาใหม่ CT-2026-0099 ที่หน้าสัญญา',
+        href: '/contracts/ct-2',
+      });
+    }
+    for (const role of ['SALES', 'ACCOUNTANT']) {
+      expect(primaryAction(d, role)).toEqual({ waitingText: 'รอเปิดใช้สัญญาใหม่ CT-2026-0099' });
+    }
+  });
+
+  it('I4: SAME_MODEL_EXCHANGE READY_FOR_PICKUP สัญญาใหม่เปิดใช้แล้ว (ACTIVE) → STAFF ได้ "ส่งมอบเครื่องใหม่" · FM ไม่มี · สัญญาถูกยกเลิก (CANCELED) → ไม่มีปุ่ม', () => {
+    const exchange = {
+      kind: 'SAME_MODEL' as const,
+      mode: null,
+      approvalTier: null,
+      requestStatus: null,
+      buybackPrice: null,
+      ncvSnapshot: null,
+      approverRole: 'BRANCH_MANAGER' as const,
+      oldProduct: null,
+      newProduct: null,
+      replacementContract: { id: 'ct-2', contractNumber: 'CT-2026-0099', status: 'ACTIVE' },
+      requestedBy: null,
+    };
+    const d = detail({
+      outcome: 'SAME_MODEL_EXCHANGE',
+      stage: 'READY_FOR_PICKUP',
+      replacementContractId: 'ct-2',
+      exchange,
+    });
     for (const role of ['OWNER', 'BRANCH_MANAGER', 'SALES']) {
       expect(primaryAction(d, role)).toEqual({
         label: 'ส่งมอบเครื่องใหม่',
@@ -286,9 +319,19 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
       });
     }
     expect(primaryAction(d, 'FINANCE_MANAGER')).toBeNull();
+    const canceled = detail({
+      outcome: 'SAME_MODEL_EXCHANGE',
+      stage: 'READY_FOR_PICKUP',
+      replacementContractId: 'ct-2',
+      exchange: {
+        ...exchange,
+        replacementContract: { ...exchange.replacementContract, status: 'CANCELED' },
+      },
+    });
+    for (const role of ALL_ROLES) expect(primaryAction(canceled, role)).toBeNull();
   });
 
-  it('SAME_MODEL_EXCHANGE AWAITING_APPROVAL → MGR ได้ "ยืนยันเปลี่ยนเครื่อง"; SALES ได้ข้อความรอ; FM/ACCOUNTANT ไม่มีอะไร', () => {
+  it('SAME_MODEL_EXCHANGE AWAITING_APPROVAL → MGR ได้ "ยืนยันเปลี่ยนเครื่อง"; SALES/FM/ACCOUNTANT ได้ข้อความรอ', () => {
     const d = detail({ outcome: 'SAME_MODEL_EXCHANGE', stage: 'AWAITING_APPROVAL' });
     expect(primaryAction(d, 'OWNER')).toEqual({
       label: 'ยืนยันเปลี่ยนเครื่อง',
@@ -304,7 +347,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
     }
   });
 
-  it('PRICED_EXCHANGE AWAITING_APPROVAL tier REVIEW (approverRole=BRANCH_MANAGER) → OWNER และ BM ได้ "อนุมัติ" ทั้งคู่; SALES ได้ข้อความรอ', () => {
+  it('PRICED_EXCHANGE AWAITING_APPROVAL tier REVIEW (approverRole=BRANCH_MANAGER) → OWNER และ BM ได้ "อนุมัติ" ทั้งคู่; SALES/FM/ACCOUNTANT ได้ข้อความรอ', () => {
     const d = detail({
       outcome: 'PRICED_EXCHANGE',
       stage: 'AWAITING_APPROVAL',
@@ -355,7 +398,7 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
     expect(primaryAction(d, 'OWNER')).toEqual({ label: 'อนุมัติ', dialog: 'approve' });
   });
 
-  it('PRICED_EXCHANGE READY_FOR_PICKUP → ไม่มีปุ่มหลัก (ทุก role) — หน้าเพจแสดงลิงก์ "ไปสัญญาใหม่" แทน', () => {
+  it('I4: PRICED_EXCHANGE READY_FOR_PICKUP สัญญาใหม่ DRAFT → ทางเดียวกับ SAME_MODEL: OWNER/BM/FM ได้ลิงก์ปุ่มหลัก · SALES/ACCOUNTANT ได้ข้อความรอ', () => {
     const d = detail({
       outcome: 'PRICED_EXCHANGE',
       stage: 'READY_FOR_PICKUP',
@@ -374,7 +417,20 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
         requestedBy: null,
       },
     });
-    for (const role of ALL_ROLES) expect(primaryAction(d, role)).toBeNull();
+    for (const role of ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']) {
+      expect(primaryAction(d, role)).toEqual({
+        label: 'เปิดใช้สัญญาใหม่ CT-2026-0100 ที่หน้าสัญญา',
+        href: '/contracts/ct-3',
+      });
+    }
+    for (const role of ['SALES', 'ACCOUNTANT']) {
+      expect(primaryAction(d, role)).toEqual({ waitingText: 'รอเปิดใช้สัญญาใหม่ CT-2026-0100' });
+    }
+    // เคสไม่ได้เก็บ replacementContractId เองสำหรับ PRICED (อ่านจากคำขอ) — ยังได้ลิงก์เหมือนกัน
+    expect(primaryAction({ ...d, replacementContractId: null }, 'OWNER')).toEqual({
+      label: 'เปิดใช้สัญญาใหม่ CT-2026-0100 ที่หน้าสัญญา',
+      href: '/contracts/ct-3',
+    });
   });
 
   it('ทุกทาง — CLOSED/CANCELLED ไม่มีปุ่มหลักไม่ว่า role ไหน', () => {
@@ -499,10 +555,11 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
     ]);
   });
 
-  it('PRICED_EXCHANGE AWAITING_APPROVAL → รอง: "ปฏิเสธ" (OWNER เท่านั้น) · "ยกเลิกคำขอ" (MGR)', () => {
+  it('I2: PRICED_EXCHANGE AWAITING_APPROVAL → รอง: "ปฏิเสธ" (OWNER เท่านั้น) · ไม่มี "ยกเลิกคำขอ" (engine ยกเลิกได้เฉพาะคำขอที่อนุมัติแล้ว)', () => {
     const d = detail({
       outcome: 'PRICED_EXCHANGE',
       stage: 'AWAITING_APPROVAL',
+      exchangeRequestId: 'req-1',
       exchange: {
         kind: 'PRICED',
         mode: 'PRICED',
@@ -519,12 +576,68 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
     });
     expect(secondaryActions(d, 'OWNER')).toEqual([
       { kind: 'dialog', label: 'ปฏิเสธ', dialog: 'reject-priced', destructive: true },
-      { kind: 'dialog', label: 'ยกเลิกคำขอ', dialog: 'cancel-swap' },
     ]);
-    expect(secondaryActions(d, 'BRANCH_MANAGER')).toEqual([
-      { kind: 'dialog', label: 'ยกเลิกคำขอ', dialog: 'cancel-swap' },
-    ]);
+    expect(secondaryActions(d, 'BRANCH_MANAGER')).toEqual([]);
     expect(secondaryActions(d, 'SALES')).toEqual([]);
+    for (const role of ALL_ROLES) {
+      expect(
+        secondaryActions(d, role).some((a) => 'dialog' in a && a.dialog === 'cancel-swap'),
+      ).toBe(false);
+    }
+  });
+
+  it('M1: PRICED_EXCHANGE AWAITING_APPROVAL ที่ผูกคำขอไม่สำเร็จ (ไม่มี exchangeRequestId) → MGR ได้ "ยกเลิกเคส" · OWNER ไม่มี "ปฏิเสธ" (ไม่มีคำขอให้ปฏิเสธ)', () => {
+    const d = detail({ outcome: 'PRICED_EXCHANGE', stage: 'AWAITING_APPROVAL' });
+    for (const role of ['OWNER', 'BRANCH_MANAGER']) {
+      expect(secondaryActions(d, role)).toEqual([
+        { kind: 'dialog', label: 'ยกเลิกเคส', dialog: 'cancel', destructive: true },
+      ]);
+    }
+    expect(secondaryActions(d, 'SALES')).toEqual([]);
+  });
+
+  it('I3: PRICED_EXCHANGE CLOSED + คำขอ APPROVED (swap ลงผลแล้ว) → MGR ได้ "ยกเลิก swap" (destructive) · SALES ไม่มี · คำขอ CANCELED แล้วไม่มี', () => {
+    const exchange = {
+      kind: 'PRICED' as const,
+      mode: 'MEMO' as const,
+      approvalTier: 'AUTO' as const,
+      requestStatus: 'APPROVED' as const,
+      buybackPrice: null,
+      ncvSnapshot: null,
+      approverRole: 'BRANCH_MANAGER' as const,
+      oldProduct: null,
+      newProduct: null,
+      replacementContract: null,
+      requestedBy: null,
+    };
+    const d = detail({
+      outcome: 'PRICED_EXCHANGE',
+      stage: 'CLOSED',
+      exchangeRequestId: 'req-1',
+      exchange,
+    });
+    for (const role of ['OWNER', 'BRANCH_MANAGER']) {
+      expect(secondaryActions(d, role)).toEqual([
+        { kind: 'dialog', label: 'ยกเลิก swap', dialog: 'cancel-swap', destructive: true },
+      ]);
+    }
+    for (const role of ['SALES', 'FINANCE_MANAGER', 'ACCOUNTANT']) {
+      expect(secondaryActions(d, role)).toEqual([]);
+    }
+    const canceled = detail({
+      outcome: 'PRICED_EXCHANGE',
+      stage: 'CANCELLED',
+      exchangeRequestId: 'req-1',
+      exchange: { ...exchange, requestStatus: 'CANCELED' },
+    });
+    expect(secondaryActions(canceled, 'OWNER')).toEqual([]);
+    // CLOSED แต่ไม่ใช่ PRICED (ส่งมอบรุ่นเดิมแล้ว) → ไม่มี
+    expect(
+      secondaryActions(
+        detail({ outcome: 'SAME_MODEL_EXCHANGE', stage: 'CLOSED', exchange }),
+        'OWNER',
+      ),
+    ).toEqual([]);
   });
 
   it('PRICED_EXCHANGE READY_FOR_PICKUP → รอง: "ยกเลิกคำขอ" (MGR) เท่านั้น', () => {

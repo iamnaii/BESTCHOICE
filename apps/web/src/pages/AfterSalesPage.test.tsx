@@ -4,7 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AfterSalesPage from './AfterSalesPage';
-import type { CaseRow, ListResponse, LookupResult, Summary } from './after-sales/after-sales';
+import {
+  afterSalesKeys,
+  type CaseRow,
+  type ListResponse,
+  type LookupResult,
+  type Summary,
+} from './after-sales/after-sales';
 
 const auth = vi.hoisted(() => ({
   user: { id: 'u1', role: 'OWNER', branchId: null as string | null },
@@ -46,6 +52,7 @@ function caseRow(over: Partial<CaseRow> = {}): CaseRow {
       sentToRepairAt: '2026-09-08T03:00:00.000Z',
       repairedAt: null,
     },
+    exchange: null,
     ...over,
   };
 }
@@ -108,13 +115,14 @@ function mockGet(overrides: { list?: ListResponse; lookup?: LookupResult } = {})
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const utils = render(
     <MemoryRouter>
       <QueryClientProvider client={client}>
         <AfterSalesPage />
       </QueryClientProvider>
     </MemoryRouter>,
   );
+  return { ...utils, client };
 }
 
 const foundResult = (over: Partial<LookupResult> = {}): LookupResult => ({
@@ -167,7 +175,7 @@ describe('AfterSalesPage — หน้าหลัก หลังการข�
     expect(await screen.findByText('7')).toBeInTheDocument(); // เคสเปิดอยู่
 
     const table = await screen.findByRole('table');
-    expect(within(table).getByText('ส่งศูนย์ 16 วัน (เกิน 14)')).toBeInTheDocument();
+    expect(within(table).getByText('ส่งศูนย์ 16 วัน (เกณฑ์ 14 วัน)')).toBeInTheDocument();
 
     expect(document.body.textContent).not.toMatch(/รับเครื่อง(?!ไป)/);
   });
@@ -347,5 +355,55 @@ describe('AfterSalesPage — B2/B3 final-fix: pager + ข้อความ trun
     expect(
       screen.getByText('แสดงได้สูงสุด 500 เคสล่าสุดในแท็บนี้ — ใช้ช่องค้นหาเพื่อหาเคสที่เหลือ'),
     ).toBeInTheDocument();
+  });
+
+  // (m) R25 (b) — Pager clamp: ผู้เรียก (AfterSalesPage) ต้อง clamp เอง ไม่ใช่ปล่อยให้ Pager
+  // แสดงเลขหน้าที่เกินจริงเมื่อข้อมูลหด (ตัวกรอง/ข้อมูลเปลี่ยนจนเหลือหน้าน้อยกว่าหน้าที่เคยอยู่)
+  it('(m) อยู่หน้า 3 (total 120 → 3 หน้า) แล้ว refetch ได้ total 60 (เหลือ 2 หน้า) → แสดง "หน้า 2 / 2" ไม่ใช่ 3/2', async () => {
+    mockGet({ list: pagedListResponse({ page: 3 }) });
+    const { client } = renderPage();
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    await screen.findByText('หน้า 1 / 3 · ทั้งหมด 120 เคส');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'หน้าถัดไป' }));
+    await screen.findByText('หน้า 2 / 3 · ทั้งหมด 120 เคส');
+
+    await userEvent.click(await screen.findByRole('button', { name: 'หน้าถัดไป' }));
+    await screen.findByText('หน้า 3 / 3 · ทั้งหมด 120 เคส');
+
+    // ข้อมูลจริงหดเหลือ 60 (เช่นเคสถูกปิดไปหลายใบ) โดยไม่มีใครกดเปลี่ยนตัวกรอง — บังคับ refetch ตรงๆ
+    mockGet({ list: pagedListResponse({ total: 60 }) });
+    await client.refetchQueries({ queryKey: afterSalesKeys.all });
+
+    expect(await screen.findByText('หน้า 2 / 2 · ทั้งหมด 60 เคส')).toBeInTheDocument();
+  });
+
+  // (n) R25 (c) — reset ครั้งเดียว: สลับแท็บต้องยิง request เดียว (page:1 มาพร้อมกันใน setFilters
+  // เดียวกัน) ไม่ใช่สองครั้ง (ครั้งแรกด้วยเพจเก่า + ครั้งที่สองหลัง useEffect รีเซ็ตเพจแบบเดิม)
+  it('(n) เปลี่ยนแท็บ → มี request เดียวไปที่ /after-sales และ page เป็น 1 (ไม่มี request ซ้ำจากการรีเซ็ตเพจ)', async () => {
+    mockGet({ list: pagedListResponse() });
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    await userEvent.click(await screen.findByRole('button', { name: 'หน้าถัดไป' }));
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith(
+        '/after-sales',
+        expect.objectContaining({ params: expect.objectContaining({ page: 2 }) }),
+      ),
+    );
+
+    mocks.get.mockClear();
+    await userEvent.click(screen.getByRole('tab', { name: 'เสร็จแล้ว' }));
+
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith(
+        '/after-sales',
+        expect.objectContaining({ params: expect.objectContaining({ page: 1, tab: 'DONE' }) }),
+      ),
+    );
+    const afterSalesCalls = mocks.get.mock.calls.filter(([url]) => url === '/after-sales');
+    expect(afterSalesCalls).toHaveLength(1);
   });
 });

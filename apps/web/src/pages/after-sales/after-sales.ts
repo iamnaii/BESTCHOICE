@@ -65,6 +65,36 @@ export interface LookupResult {
   openCase: { id: string; caseNumber: string; stage: AfterSalesStage } | null;
   outcomes: OutcomeOption[];
 }
+export type ExchangeKind = 'SAME_MODEL' | 'PRICED';
+export type ExchangeApproverRole = 'BRANCH_MANAGER' | 'OWNER';
+export type ExchangeApprovalTier = 'AUTO' | 'REVIEW' | 'ESCALATE';
+
+/** Task 7 (query.service) shape — เหมือนกันทั้ง list (`CaseRow`) และเคสเดี่ยว (`CaseDetail`) */
+export interface CaseExchangeInfo {
+  kind: ExchangeKind;
+  mode: 'MEMO' | 'PRICED' | null;
+  approvalTier: ExchangeApprovalTier | null;
+  requestStatus: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELED' | null;
+  buybackPrice: string | null;
+  ncvSnapshot: string | null;
+  approverRole: ExchangeApproverRole;
+  oldProduct: {
+    brand: string;
+    model: string;
+    storage: string | null;
+    imeiSerial: string | null;
+  } | null;
+  newProduct: {
+    id: string;
+    brand: string;
+    model: string;
+    storage: string | null;
+    imeiSerial: string | null;
+  } | null;
+  replacementContract: { id: string; contractNumber: string; status: string } | null;
+  requestedBy: { id: string; name: string } | null;
+}
+
 export interface CaseRow {
   id: string;
   caseNumber: string;
@@ -90,6 +120,7 @@ export interface CaseRow {
     sentToRepairAt: string | null;
     repairedAt: string | null;
   } | null;
+  exchange: CaseExchangeInfo | null;
 }
 export interface Summary {
   open: number;
@@ -135,6 +166,7 @@ export interface CaseDetail extends CaseRow {
   closedAt: string | null;
   contractId: string | null;
   saleId: string | null;
+  replacementProductId: string | null;
   repairTicket:
     | (CaseRow['repairTicket'] & {
         externalClaimNo: string | null;
@@ -187,6 +219,45 @@ export const PAYER_LABEL: Record<Payer, string> = {
   CUSTOMER: 'ลูกค้าจ่าย',
   SUPPLIER_CLAIM: 'เคลมศูนย์',
 };
+export const EXCHANGE_KIND_LABEL: Record<ExchangeKind, string> = {
+  SAME_MODEL: 'รุ่นเดิม · 7 วัน',
+  PRICED: 'มีราคา',
+};
+export const APPROVER_LABEL: Record<ExchangeApproverRole, string> = {
+  BRANCH_MANAGER: 'ผจก.สาขา',
+  OWNER: 'เจ้าของเท่านั้น',
+};
+export const TIER_LABEL: Record<ExchangeApprovalTier, string> = {
+  AUTO: 'อัตโนมัติ',
+  REVIEW: 'REVIEW',
+  ESCALATE: 'ESCALATE',
+};
+/** หัวข้อ StepBar 4 ขั้นต่อ outcome (Task 11 ใช้ประกอบ StepBar — ห้ามมีเลขนำหน้า/คำว่า "รับเครื่อง") */
+export const STEP_TITLES_BY_OUTCOME: Record<AfterSalesOutcome, [string, string, string, string]> = {
+  REPAIR: ['รับเรื่องแล้ว', 'กำลังซ่อม', 'รอลูกค้ารับ', 'ปิดเคส'],
+  SAME_MODEL_EXCHANGE: ['รับเรื่องแล้ว', 'รอ ผจก. ยืนยัน', 'ส่งมอบเครื่องใหม่', 'ปิดเคส'],
+  CASH_SAME_MODEL_EXCHANGE: ['รับเรื่องแล้ว', 'รอ ผจก. ยืนยัน', 'ส่งมอบเครื่องใหม่', 'ปิดเคส'],
+  PRICED_EXCHANGE: ['รับเรื่องแล้ว', 'รออนุมัติ', 'สัญญาใหม่', 'ปิดเคส'],
+};
+/** ตำแหน่งขั้นบน StepBar (0..3) — เหมือนกันทุก outcome เพราะ index อ้างอิงตำแหน่งไม่ใช่ป้าย
+ * (ป้ายต่างกันตาม STEP_TITLES_BY_OUTCOME) · CANCELLED = ไม่มีขั้นไหน "now"/"done" เลย (idle ทั้งหมด
+ * — ตรงกับที่ AfterSalesCasePage ใช้ stepIndex===-1 ตัดสิน tone อยู่แล้ว) */
+export function stageIndex(stage: AfterSalesStage): number {
+  switch (stage) {
+    case 'RECEIVED':
+      return 0;
+    case 'IN_REPAIR':
+    case 'AWAITING_APPROVAL':
+      return 1;
+    case 'READY_FOR_PICKUP':
+      return 2;
+    case 'CLOSED':
+      return 3;
+    case 'CANCELLED':
+    default:
+      return -1;
+  }
+}
 export type WarrantyStatus =
   | 'IN_7DAY_DEFECT'
   | 'IN_SHOP_WARRANTY'
@@ -233,11 +304,15 @@ export function staleLabel(stage: AfterSalesStage, days: number): string | null 
   // ที่ได้ตรงนี้คือ `Math.floor(ms/86400000)` — เมื่อ API บอกว่า stale จริง `floor(ms/day)`
   // จะ >= d เสมอ (ไม่ใช่ > d เท่านั้น — เคส 14.5 วันจริง floor เหลือ 14 พอดี) ใช้ `>=` ให้
   // boundary ตรงกับ semantics ของ API แทนที่จะพลาดขอบวันสุดท้ายก่อนขึ้นวันถัดไป
-  return s && days >= s[0] ? `${s[1]} ${days} วัน (เกิน ${s[0]})` : null;
+  // R25 (e) — เลิกคำว่า "เกิน" ที่ขอบ (อ่านเหมือนเลยเส้นตายไปแล้วเสมอ แม้ค่าเพิ่งแตะเกณฑ์พอดี)
+  return s && days >= s[0] ? `${s[1]} ${days} วัน (เกณฑ์ ${s[0]} วัน)` : null;
 }
 export const afterSalesKeys = {
   all: ['after-sales'] as const,
   list: (p: Record<string, unknown>) => ['after-sales', 'list', p] as const,
   case: (id: string) => ['after-sales', 'case', id] as const,
   lookup: (imei: string) => ['after-sales', 'lookup', imei] as const,
+  preview: (p: Record<string, unknown>) => ['after-sales', 'preview', p] as const,
+  replacementProducts: (p: Record<string, unknown>) =>
+    ['after-sales', 'replacement-products', p] as const,
 };

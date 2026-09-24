@@ -29,23 +29,38 @@ const TAB_LABEL: Record<Tab, string> = {
   DONE: 'เสร็จแล้ว',
 };
 
+/** R25 (c) — ตัวกรองทั้งหมดของหน้านี้อยู่ในสถานะเดียว: ทุก setter ของตัวกรองตั้ง `page: 1` มาพร้อมกัน
+ * ในการอัปเดตครั้งเดียว (ไม่ใช่ setTab แล้วค่อย setPage แยกกันผ่าน useEffect เหมือนเดิม — แบบเดิมยิง
+ * request ซ้ำสองครั้งเมื่อสลับแท็บขณะไม่ได้อยู่หน้า 1: ครั้งแรกด้วยแท็บใหม่+เพจเก่า ครั้งที่สองหลัง
+ * effect รีเซ็ตเพจ) */
+interface Filters {
+  tab: Tab;
+  q: string;
+  staleOnly: boolean;
+  branchId: string;
+  page: number;
+}
+const INITIAL_FILTERS: Filters = { tab: 'ACTIVE', q: '', staleOnly: false, branchId: '', page: 1 };
+
 export default function AfterSalesPage() {
   useDocumentTitle('หลังการขาย');
   const { user } = useAuth();
   const crossBranch = !!user && CROSS_BRANCH_ROLES.has(user.role);
 
-  const [branchId, setBranchId] = useState('');
-  const [tab, setTab] = useState<Tab>('ACTIVE');
   const [search, setSearch] = useState('');
-  const q = useDebounce(search, 300);
-  const [staleOnly, setStaleOnly] = useState(false);
-  const [page, setPage] = useState(1);
+  const debouncedQ = useDebounce(search, 300);
+  const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
+  // R25 (b) — totalPages "ยืนยันแล้ว" จากข้อมูลจริงล่าสุดที่ fetch สำเร็จ ใช้เป็นเพดาน clamp ของเพจ
+  // ปัจจุบัน (กันหน้าที่เคยอยู่ค้างเกินจริงหลังตัวกรอง/ข้อมูลเปลี่ยนจนจำนวนหน้าลดลง เช่นแท็บอื่นมีของ
+  // น้อยกว่า) — อัปเดตทีหลังผ่าน effect ด้านล่าง ไม่ใช่คำนวณสดในเรนเดอร์เดียวกับ query เพราะ query เอง
+  // ต้องใช้ค่านี้ตั้งแต่ก่อนรู้ผล fetch รอบถัดไป
+  const [totalPages, setTotalPages] = useState(1);
 
-  // B2 (final-fix brief) — เปลี่ยนแท็บหรือคำค้นแล้วต้องกลับไปหน้า 1 เสมอ ไม่งั้นหน้าที่เคยอยู่
-  // (เช่นหน้า 5) อาจไม่มีอยู่จริงในแท็บ/คำค้นใหม่
+  // R25 (c) — คำค้น (หลัง debounce) เปลี่ยนก็ต้องกลับไปหน้า 1 เหมือนตัวกรองอื่น ในการอัปเดตครั้งเดียว
+  // (setFilters ครั้งเดียวตั้งทั้ง q และ page — ไม่ใช่สอง state แยกกัน ซึ่งจะยิง request ซ้ำ)
   useEffect(() => {
-    setPage(1);
-  }, [tab, q, staleOnly, branchId]);
+    setFilters((f) => (f.q === debouncedQ ? f : { ...f, q: debouncedQ, page: 1 }));
+  }, [debouncedQ]);
 
   const branches = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -57,18 +72,29 @@ export default function AfterSalesPage() {
   // แท็บ "รออนุมัติ" ซ่อมสำหรับ SALES (spec Task 9)
   const visibleTabs = TABS.filter((t) => t !== 'AWAITING_APPROVAL' || user?.role !== 'SALES');
 
+  // R25 (b) — Pager clamp: หน้าที่ขอจริง (`filters.page`) อาจเกินจำนวนหน้าจริงหลังตัวกรอง/ข้อมูล
+  // เปลี่ยน — ใช้ safePage ทั้งใน query (คีย์ + params ที่ยิงจริง) และใน <Pager> ผู้เรียกเป็นคน clamp
+  // เอง (Pager.tsx ยังเป็น dumb component เหมือนเดิม)
+  const safePage = Math.min(filters.page, totalPages);
+
   const query = useQuery<ListResponse>({
-    queryKey: afterSalesKeys.list({ tab, q, stale: staleOnly, branchId, page }),
+    queryKey: afterSalesKeys.list({
+      tab: filters.tab,
+      q: filters.q,
+      stale: filters.staleOnly,
+      branchId: filters.branchId,
+      page: safePage,
+    }),
     queryFn: async () =>
       (
         await api.get('/after-sales', {
           params: {
-            tab,
-            q: q || undefined,
-            stale: staleOnly || undefined,
+            tab: filters.tab,
+            q: filters.q || undefined,
+            stale: filters.staleOnly || undefined,
             summary: 1,
-            branchId: branchId || undefined,
-            page,
+            branchId: filters.branchId || undefined,
+            page: safePage,
           },
         })
       ).data,
@@ -81,7 +107,13 @@ export default function AfterSalesPage() {
   const total = query.data?.total ?? 0;
   const limit = query.data?.limit ?? 50;
   const truncated = query.data?.truncated ?? false;
-  const totalPages = Math.max(1, Math.ceil((truncated ? Math.min(total, LIST_FETCH_CAP) : total) / limit));
+
+  useEffect(() => {
+    if (!query.data) return;
+    const cap = truncated ? Math.min(total, LIST_FETCH_CAP) : total;
+    const next = Math.max(1, Math.ceil(cap / limit));
+    setTotalPages((prev) => (prev === next ? prev : next));
+  }, [query.data, total, limit, truncated]);
 
   return (
     <div className="space-y-4">
@@ -93,8 +125,8 @@ export default function AfterSalesPage() {
             <select
               id="after-sales-branch"
               aria-label="สาขา"
-              value={branchId}
-              onChange={(e) => setBranchId(e.target.value)}
+              value={filters.branchId}
+              onChange={(e) => setFilters((f) => ({ ...f, branchId: e.target.value, page: 1 }))}
               className="h-11 min-w-0 rounded-lg border border-input bg-background px-3 text-sm sm:w-48"
             >
               <option value="">ทุกสาขา</option>
@@ -124,10 +156,10 @@ export default function AfterSalesPage() {
               key={t}
               type="button"
               role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
+              aria-selected={filters.tab === t}
+              onClick={() => setFilters((f) => ({ ...f, tab: t, page: 1 }))}
               className={`min-h-11 rounded-full border px-3.5 text-sm leading-snug ${
-                tab === t
+                filters.tab === t
                   ? 'border-primary bg-primary/10 font-semibold text-primary'
                   : 'border-border bg-card text-foreground hover:bg-accent'
               }`}
@@ -138,10 +170,10 @@ export default function AfterSalesPage() {
         </div>
         <button
           type="button"
-          aria-pressed={staleOnly}
-          onClick={() => setStaleOnly((v) => !v)}
+          aria-pressed={filters.staleOnly}
+          onClick={() => setFilters((f) => ({ ...f, staleOnly: !f.staleOnly, page: 1 }))}
           className={`min-h-11 rounded-full border px-3.5 text-sm leading-snug ${
-            staleOnly
+            filters.staleOnly
               ? 'border-warning bg-warning/10 font-semibold text-warning-strong'
               : 'border-border bg-card text-foreground hover:bg-accent'
           }`}
@@ -168,11 +200,11 @@ export default function AfterSalesPage() {
           <div className="space-y-2">
             <CaseTable rows={query.data.data} />
             <Pager
-              page={page}
+              page={safePage}
               totalPages={totalPages}
               total={total}
-              onPrev={() => setPage((p) => Math.max(1, p - 1))}
-              onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onPrev={() => setFilters((f) => ({ ...f, page: Math.max(1, f.page - 1) }))}
+              onNext={() => setFilters((f) => ({ ...f, page: Math.min(totalPages, f.page + 1) }))}
             />
             {truncated && (
               <p className="text-xs leading-snug text-muted-foreground">

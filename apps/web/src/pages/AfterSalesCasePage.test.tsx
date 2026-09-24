@@ -82,6 +82,8 @@ function caseDetail(over: Partial<CaseDetail> = {}): CaseDetail {
     closedAt: null,
     contractId: 'contract-1',
     saleId: null,
+    replacementProductId: null,
+    exchange: null,
   };
   return { ...base, ...over };
 }
@@ -131,7 +133,7 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
 
     expect(await screen.findByRole('heading', { name: detail.caseNumber })).toBeInTheDocument();
 
-    const staleChip = screen.getByText('ส่งศูนย์ 16 วัน (เกิน 14)');
+    const staleChip = screen.getByText('ส่งศูนย์ 16 วัน (เกณฑ์ 14 วัน)');
     expect(staleChip).toBeInTheDocument();
     // chip ต้องมีไอคอน (svg) อยู่ในกล่องเดียวกัน ไม่ใช่แค่สีพื้น
     expect(staleChip.closest('span')?.querySelector('svg')).toBeInTheDocument();

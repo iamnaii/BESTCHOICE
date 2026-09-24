@@ -163,6 +163,18 @@ let caseId: string;
 let repairTicketId: string;
 let expenseDocumentId: string | null = null;
 
+// A1 final-fix brief — เคสแยกต่างหาก (IMEI คนละตัว) สำหรับพิสูจน์ reconcileStage: ปิดใบซ่อม
+// ตรงผ่าน RepairTicketsService (ไม่ผ่าน AfterSalesRepairService proxy) เพื่อจำลองใบซ่อมที่ถูก
+// แก้นอก proxy จริง — case.stage ต้องดริฟท์ค้างที่ READY_FOR_PICKUP ขณะที่ ticket.status เป็น CLOSED
+const IMEI2 = `${PREFIX}${RUN}-DRIFT`;
+let customerId2: string;
+let productId2: string;
+let saleId2: string;
+let caseId2: string;
+let repairTicketId2: string;
+let caseId3: string; // เคสใหม่ของ IMEI2 ที่เปิดได้สำเร็จหลัง reconcile (ไม่ 409)
+let repairTicketId3: string;
+
 let branchCreatedFresh = false;
 
 const OWNER = () => ({ id: adminId, role: 'OWNER', branchId: null as string | null });
@@ -255,6 +267,32 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
       }
       if (customerId) {
         await prisma.customer.deleteMany({ where: { id: customerId } });
+      }
+      // A1 final-fix brief — เคสดริฟท์ (IMEI2) + เคสใหม่ที่เปิดซ้ำได้สำเร็จ (caseId3) ลูกก่อนแม่
+      if (caseId3) {
+        await prisma.afterSalesEvent.deleteMany({ where: { caseId: caseId3 } });
+        await prisma.afterSalesCase.deleteMany({ where: { id: caseId3 } });
+      }
+      if (repairTicketId3) {
+        await prisma.repairStatusLog.deleteMany({ where: { ticketId: repairTicketId3 } });
+        await prisma.repairTicket.deleteMany({ where: { id: repairTicketId3 } });
+      }
+      if (caseId2) {
+        await prisma.afterSalesEvent.deleteMany({ where: { caseId: caseId2 } });
+        await prisma.afterSalesCase.deleteMany({ where: { id: caseId2 } });
+      }
+      if (repairTicketId2) {
+        await prisma.repairStatusLog.deleteMany({ where: { ticketId: repairTicketId2 } });
+        await prisma.repairTicket.deleteMany({ where: { id: repairTicketId2 } });
+      }
+      if (saleId2) {
+        await prisma.sale.deleteMany({ where: { id: saleId2 } });
+      }
+      if (productId2) {
+        await prisma.product.deleteMany({ where: { id: productId2 } });
+      }
+      if (customerId2) {
+        await prisma.customer.deleteMany({ where: { id: customerId2 } });
       }
       if (supplierId) {
         await prisma.supplier.deleteMany({ where: { id: supplierId } });
@@ -440,5 +478,127 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
 
     const after = await prisma.afterSalesCase.count({ where: { deviceImei: IMEI } });
     expect(after).toBe(before);
+  });
+
+  // -------------------------------------------------------------------------
+  // 9-12) A1 (final-fix brief) — reconcileStage self-heals a stage that drifted because the
+  // repair ticket was closed OUTSIDE the after-sales proxy (`repairTickets.returnToCustomer`
+  // called directly, not through `svc.returnToCustomer`/`repairSvc.returnToCustomer` — so
+  // `AfterSalesRepairService.sync()` never runs and `AfterSalesCase.stage` never gets written).
+  // -------------------------------------------------------------------------
+  it('9) seed เคสที่สอง (IMEI แยก) แล้วเดินจน READY_FOR_PICKUP ผ่าน proxy ปกติ (stage ยัง sync ตรงกับ ticket)', async () => {
+    const customer = await prisma.customer.create({
+      data: { name: `${PREFIX}Customer2 ${RUN}`, phone: `097${RUN_NUM}`.slice(0, 12) },
+    });
+    customerId2 = customer.id;
+
+    const product = await prisma.product.create({
+      data: {
+        name: `${PREFIX}Phone2 ${RUN}`,
+        brand: `${PREFIX}Brand`,
+        model: `${PREFIX}Model2-${RUN}`,
+        storage: '256GB',
+        imeiSerial: IMEI2,
+        category: 'PHONE_USED',
+        costPrice: new Prisma.Decimal('3000.00'),
+        branchId,
+        status: 'SOLD_CASH',
+      },
+    });
+    productId2 = product.id;
+
+    const threeDaysAgo = new Date(Date.now() - 3 * 86400_000);
+    const ninetyDaysAhead = new Date(Date.now() + 90 * 86400_000);
+    const sale = await prisma.sale.create({
+      data: {
+        saleNumber: `${PREFIX}${RUN}-D`,
+        saleType: 'CASH',
+        customerId: customerId2,
+        productId: productId2,
+        branchId,
+        salespersonId: adminId,
+        sellingPrice: new Prisma.Decimal('3671.00'),
+        netAmount: new Prisma.Decimal('3671.00'),
+        createdAt: threeDaysAgo,
+        shopWarrantyEndDate: ninetyDaysAhead,
+      },
+    });
+    saleId2 = sale.id;
+
+    const created = await svc.createCase(
+      {
+        imei: IMEI2,
+        symptom: 'จอมีเส้นแนวตั้ง — ทดสอบ reconcileStage (A1 final-fix)',
+        accessories: { box: false, charger: false, case: false },
+        unlockConfirmed: true,
+        outcome: 'REPAIR' as const,
+        branchId,
+      } as never,
+      [fakeJpeg('drift-intake.jpg')],
+      OWNER(),
+    );
+    caseId2 = created.id;
+    repairTicketId2 = created.repairTicketId!;
+
+    let r = await svc.send(caseId2, { repairSupplierId: supplierId } as never, OWNER());
+    expect(r.stage).toBe('IN_REPAIR');
+
+    // payer SUPPLIER_CLAIM + actualCost 0 — ไม่สร้างเอกสารบัญชี ให้ทดสอบเรื่อง reconcile ล้วนๆ
+    r = await svc.markRepaired(
+      caseId2,
+      { actualCost: 0, payer: 'SUPPLIER_CLAIM' } as never,
+      OWNER(),
+    );
+    expect(r.stage).toBe('READY_FOR_PICKUP');
+  });
+
+  it('10) bypass proxy: ปิดใบซ่อมตรงผ่าน RepairTicketsService.returnToCustomer → ticket.status=CLOSED แต่ case.stage ยังค้าง READY_FOR_PICKUP (ดริฟท์จริง)', async () => {
+    await repairTickets.returnToCustomer(repairTicketId2, {} as never, OWNER());
+
+    const ticket = await prisma.repairTicket.findUniqueOrThrow({
+      where: { id: repairTicketId2 },
+    });
+    expect(ticket.status).toBe('CLOSED');
+
+    const caseRow = await prisma.afterSalesCase.findUniqueOrThrow({ where: { id: caseId2 } });
+    expect(caseRow.stage).toBe('READY_FOR_PICKUP'); // sync() ไม่เคยรัน — นี่คือดริฟท์ที่ A1 แก้
+    expect(caseRow.closedAt).toBeNull();
+  });
+
+  it('11) list({tab:READY}) reconcile แล้วเคสนี้หลุดจากแท็บ READY + DB ถูกเขียนกลับเป็น CLOSED จริง', async () => {
+    const readyResult = await svc.list({ tab: 'READY' } as never, OWNER());
+    expect(readyResult.data.some((d) => d.id === caseId2)).toBe(false);
+
+    const caseRow = await prisma.afterSalesCase.findUniqueOrThrow({ where: { id: caseId2 } });
+    expect(caseRow.stage).toBe('CLOSED');
+    expect(caseRow.closedAt).not.toBeNull();
+  });
+
+  it('12) list({tab:DONE}) เจอเคสนี้แล้ว + getCase คืน stage=CLOSED (ทั้งคู่พิสูจน์ตามที่ brief ระบุ)', async () => {
+    const doneResult = await svc.list({ tab: 'DONE' } as never, OWNER());
+    expect(doneResult.data.some((d) => d.id === caseId2)).toBe(true);
+
+    const detail = await svc.getCase(caseId2, OWNER());
+    expect(detail.stage).toBe('CLOSED');
+  });
+
+  it('13) เปิดเคสใหม่สำหรับ IMEI เดียวกัน (IMEI2) สำเร็จ — ไม่ 409 เพราะเคสเก่า derived ปิดแล้วจริง', async () => {
+    const result = await svc.createCase(
+      {
+        imei: IMEI2,
+        symptom: 'ลูกค้าเอาเครื่องเดิมมาอีกครั้ง — ทดสอบว่าไม่ถูกบล็อกถาวร (A1 final-fix)',
+        accessories: { box: false, charger: false, case: false },
+        unlockConfirmed: true,
+        outcome: 'REPAIR' as const,
+        branchId,
+      } as never,
+      [fakeJpeg('reopen-intake.jpg')],
+      OWNER(),
+    );
+    caseId3 = result.id;
+    repairTicketId3 = result.repairTicketId!;
+
+    expect(result.caseNumber).toMatch(/^AS-\d{8}-\d{4}$/);
+    expect(repairTicketId3).toBeTruthy();
   });
 });

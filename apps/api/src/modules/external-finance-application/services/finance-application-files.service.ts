@@ -5,6 +5,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { LineOaService } from '../../line-oa/line-oa.service';
 import { LineFinanceClientService } from '../../chatbot-finance/services/line-finance-client.service';
+import { OcrService } from '../../ocr/ocr.service';
 import { detectFile, fetchProviderMedia, readLimited, EXPIRED_MEDIA_MSG } from '../../credit-check/services/media-fetch.util';
 import { hashLockKey } from '../../../utils/advisory-lock.util';
 import { FinanceApplicationService } from './finance-application.service';
@@ -25,6 +26,7 @@ export class FinanceApplicationFilesService {
     private applications: FinanceApplicationService,
     private lineOa: LineOaService,
     private lineFinance: LineFinanceClientService,
+    private ocr: OcrService,
   ) {}
 
   private async openApplication(id: string, actor: FinanceActor) {
@@ -61,6 +63,16 @@ export class FinanceApplicationFilesService {
     if (!message) throw new NotFoundException('ไม่พบไฟล์ในห้องแชทนี้');
     const media = await this.loadMessageBytes(message, app.room.channel);
     return this.attach(app.id, media.bytes, actor, { slot: dto.slot, source: 'CHAT_MESSAGE', sourceMessageId: message.id });
+  }
+
+  /** อ่านบัตรจากรูปในแชทโดยไม่แนบเข้าใบยื่น — ให้ปุ่ม "สร้างลูกค้าจากรูปบัตร" ในแท็บ GFIN (spec §5.2 ขั้น 1) */
+  async ocrIdCardFromMessage(roomId: string, messageId: string, actor: FinanceActor) {
+    const room = await this.applications.access(this.prisma, roomId, actor);
+    const message = await this.prisma.chatMessage.findFirst({ where: { id: messageId, roomId, deletedAt: null } });
+    if (!message) throw new NotFoundException('ไม่พบข้อความนี้ในห้อง');
+    const media = await this.loadMessageBytes(message, room.channel);
+    if (!media.contentType.startsWith('image/')) throw new BadRequestException('อ่านบัตรได้เฉพาะรูปภาพ — ไฟล์ PDF ให้กรอกเอง');
+    return this.ocr.extractIdCard(`data:${media.contentType};base64,${media.bytes.toString('base64')}`, actor.id);
   }
 
   async upload(applicationId: string, slot: ExternalFinanceDocSlot, file: Express.Multer.File | undefined, actor: FinanceActor) {

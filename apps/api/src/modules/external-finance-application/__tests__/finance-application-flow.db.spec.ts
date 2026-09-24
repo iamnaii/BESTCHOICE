@@ -28,6 +28,8 @@ let localDir = '';
 let storage: StorageService;
 let files: FinanceApplicationFilesService;
 const config = { get: (key: string) => process.env[key] } as any;
+// Task 7 — FinanceApplicationNotifyService now needs a real NotificationsService dependency; stub it (not under test here)
+const notifications = { send: jest.fn().mockResolvedValue({ id: 'n', status: 'SENT' }) } as any;
 
 // Task 6 (share link / staff result / cancel) ต่อเทสต์บนใบเดียวกันนี้ — hoisted แทน const ในตัว it
 let sendRoomId = '';
@@ -49,7 +51,7 @@ beforeAll(async () => {
   localDir = await fs.mkdtemp(path.join(tmpdir(), 'gfin-files-'));
   const env: Record<string, string> = { STORAGE_LOCAL_DIR: localDir, NODE_ENV: 'test' };
   storage = new StorageService({ get: (key: string) => env[key] } as any);
-  files = new FinanceApplicationFilesService(prisma as any, storage, service, {} as any, {} as any);
+  files = new FinanceApplicationFilesService(prisma as any, storage, service, {} as any, {} as any, {} as any);
 });
 
 afterAll(async () => {
@@ -198,7 +200,7 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
   });
 
   it('resolves the live link, counts one view per ipHash, and a partner APPROVED reply closes the application', async () => {
-    const share = new FinanceShareService(prisma as any, storage, new FinanceApplicationNotifyService());
+    const share = new FinanceShareService(prisma as any, storage, new FinanceApplicationNotifyService(prisma as any, notifications));
     const token = sent.shareUrl.split('/').pop()!;
     const r = await share.resolve(token);
     expect(r.state).toBe('OK');
@@ -217,7 +219,7 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
 
   it('an expired link is GONE and records no view', async () => {
     await prisma.externalFinanceApplication.update({ where: { id: sendAppId }, data: { shareExpiresAt: new Date(Date.now() - 1000) } });
-    const share = new FinanceShareService(prisma as any, storage, new FinanceApplicationNotifyService());
+    const share = new FinanceShareService(prisma as any, storage, new FinanceApplicationNotifyService(prisma as any, notifications));
     const token = sent.shareUrl.split('/').pop()!;
     expect(await share.resolve(token)).toEqual({ state: 'GONE', reason: 'EXPIRED' });
     await expect(share.fileStream(token, 'any')).rejects.toThrow(NotFoundException);

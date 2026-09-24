@@ -7,7 +7,7 @@ const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00]);
 const actor = { id: 'u1', role: 'OWNER' };
 const draft = { id: 'app-1', roomId: 'room-1', status: 'DRAFT', productId: 'p-1', files: [] as any[], room: { channel: 'FACEBOOK' } };
 
-function build(overrides: Record<string, unknown> = {}) {
+function build(overrides: Record<string, unknown> = {}, ocrOverrides: Record<string, unknown> = {}) {
   const prisma: any = {
     chatMessage: { findFirst: jest.fn() },
     externalFinanceApplicationFile: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockImplementation(({ data }) => ({ id: 'f-1', ...data })), findFirst: jest.fn(), update: jest.fn() },
@@ -18,11 +18,12 @@ function build(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
   const storage = { configured: true, upload: jest.fn().mockResolvedValue('k'), delete: jest.fn().mockResolvedValue(undefined), getStream: jest.fn() };
-  const applications = { get: jest.fn().mockResolvedValue(draft), access: jest.fn().mockResolvedValue({}), addEvent: jest.fn() };
+  const applications = { get: jest.fn().mockResolvedValue(draft), access: jest.fn().mockResolvedValue({ channel: 'FACEBOOK' }), addEvent: jest.fn() };
   const lineOa = { downloadContent: jest.fn() };
   const lineFinance = { getMessageContent: jest.fn() };
-  const service = new FinanceApplicationFilesService(prisma, storage as any, applications as any, lineOa as any, lineFinance as any);
-  return { service, prisma, storage, applications, lineOa, lineFinance };
+  const ocr = { extractIdCard: jest.fn(), ...ocrOverrides };
+  const service = new FinanceApplicationFilesService(prisma, storage as any, applications as any, lineOa as any, lineFinance as any, ocr as any);
+  return { service, prisma, storage, applications, lineOa, lineFinance, ocr };
 }
 
 describe('FinanceApplicationFilesService.fromMessage', () => {
@@ -99,5 +100,34 @@ describe('FinanceApplicationFilesService.fromProduct', () => {
     const { service, prisma } = build();
     prisma.product.findFirst.mockResolvedValue({ id: 'p-1', category: 'PHONE_NEW' });
     await expect(service.fromProduct('app-1', actor)).rejects.toThrow('ถ่ายเพิ่ม');
+  });
+});
+
+describe('FinanceApplicationFilesService.ocrIdCardFromMessage', () => {
+  it('loads the chat image and hands a data URL to OcrService.extractIdCard', async () => {
+    const { service, prisma, storage, ocr } = build(
+      {},
+      { extractIdCard: jest.fn().mockResolvedValue({ nationalId: '1234567890123', fullName: 'สมหญิง ใจดี', confidence: 0.95 }) },
+    );
+    prisma.chatMessage.findFirst.mockResolvedValue({ id: 'm1', roomId: 'room-1', type: 'IMAGE', mediaUrl: 'https://scontent.xx.fbcdn.net/a.jpg', externalMessageId: null });
+    jest.spyOn(media, 'fetchProviderMedia').mockResolvedValue({ bytes: JPEG, contentType: 'image/jpeg' });
+    const result = await service.ocrIdCardFromMessage('room-1', 'm1', actor);
+    expect(result.nationalId).toBe('1234567890123');
+    expect(ocr.extractIdCard).toHaveBeenCalledWith(expect.stringMatching(/^data:image\/jpeg;base64,/), actor.id);
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it('rejects a PDF with a Thai message', async () => {
+    const { service, prisma, ocr } = build();
+    prisma.chatMessage.findFirst.mockResolvedValue({ id: 'm2', roomId: 'room-1', type: 'FILE', mediaUrl: 'https://scontent.xx.fbcdn.net/a.pdf', externalMessageId: null });
+    jest.spyOn(media, 'fetchProviderMedia').mockResolvedValue({ bytes: Buffer.from('%PDF-1.4'), contentType: 'application/pdf' });
+    await expect(service.ocrIdCardFromMessage('room-1', 'm2', actor)).rejects.toThrow('อ่านบัตรได้เฉพาะรูปภาพ');
+    expect(ocr.extractIdCard).not.toHaveBeenCalled();
+  });
+
+  it('404s when the message is not found in the room', async () => {
+    const { service, prisma } = build();
+    prisma.chatMessage.findFirst.mockResolvedValue(null);
+    await expect(service.ocrIdCardFromMessage('room-1', 'm3', actor)).rejects.toThrow(NotFoundException);
   });
 });

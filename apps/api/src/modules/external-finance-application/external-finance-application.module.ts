@@ -7,6 +7,7 @@ import { FinanceApplicationFilesService } from './services/finance-application-f
 import { FinanceApplicationNumberService } from './services/finance-application-number.service';
 import { FinanceShareService } from './services/finance-share.service';
 import { FinanceApplicationNotifyService } from './services/finance-application-notify.service';
+import { FinanceApplicationPurgeCron } from './crons/finance-application-purge.cron';
 import { LineOaModule } from '../line-oa/line-oa.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
 import { OcrModule } from '../ocr/ocr.module';
@@ -22,6 +23,7 @@ import { CustomerPiiModule } from '../customers/customer-pii.module';
     FinanceApplicationNumberService,
     FinanceShareService,
     FinanceApplicationNotifyService,
+    FinanceApplicationPurgeCron,
   ],
   exports: [FinanceApplicationService],
 })

@@ -8,3 +8,6 @@ export class FileFromMessageDto {
 export class FileUploadFieldsDto {
   @IsEnum(ExternalFinanceDocSlot, { message: 'กรุณาเลือกช่องเอกสาร' }) slot: ExternalFinanceDocSlot;
 }
+export class OcrFromMessageDto {
+  @IsUUID('4', { message: 'messageId ไม่ถูกต้อง' }) messageId!: string;
+}

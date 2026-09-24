@@ -75,6 +75,21 @@ export const PII_TABLE_ALLOWLIST = {
     'channel', 'outcome', 'lost_reason', 'heard_from', 'dedupe_key',
     'created_at', 'deleted_at', 'deleted_by_id',
   ],
+  // ── ใบยื่นไฟแนนซ์นอก (migration 20261010000000_external_finance_application) — ตั้งใจไม่ให้:
+  //    summary / message_text / message_override (ข้อความ 12 ข้อ = ชื่อ อาชีพ IMEI เบอร์ อายุ) · occupation_override ·
+  //    share_token_hash / share_token_enc (ลิงก์สาธารณะ) · line_request_id
+  external_finance_applications: [
+    'id', 'number', 'finance_company_id', 'room_id', 'customer_id', 'product_id', 'branch_id', 'status', 'result_source',
+    'sent_at', 'sent_by_id', 'sent_via', 'share_expires_at', 'share_revoked_at', 'share_view_count', 'share_last_viewed_at',
+    'last_partner_event_at', 'closed_at', 'files_purged_at', 'created_by_id', 'created_at', 'updated_at', 'deleted_at',
+  ],
+  //    ไม่ให้ original_name (ชื่อไฟล์ที่ลูกค้าตั้งอาจมีชื่อจริง) · storage_key (พาธไฟล์เอกสาร)
+  external_finance_application_files: [
+    'id', 'application_id', 'slot', 'mime_type', 'size', 'source', 'source_message_id', 'source_angle', 'sort_order',
+    'sent_at', 'created_by_id', 'created_at', 'updated_at', 'deleted_at',
+  ],
+  //    ไม่ให้ actor_name / note (ข้อความอิสระจาก GFIN) / meta (ipHash + user agent)
+  external_finance_application_events: ['id', 'application_id', 'kind', 'actor_type', 'actor_user_id', 'created_at'],
 }
 
 /**

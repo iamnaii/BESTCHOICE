@@ -17,12 +17,8 @@ const MIGRATION_PATH = path.join(
 describe('after-sales exchange link migration (PR2 Task 1)', () => {
   it('migration.sql เพิ่มค่า enum AfterSalesEventKind.APPROVED และ REJECTED แบบ IF NOT EXISTS', () => {
     const sql = fs.readFileSync(MIGRATION_PATH, 'utf8');
-    expect(sql).toContain(
-      `ALTER TYPE "AfterSalesEventKind" ADD VALUE IF NOT EXISTS 'APPROVED'`,
-    );
-    expect(sql).toContain(
-      `ALTER TYPE "AfterSalesEventKind" ADD VALUE IF NOT EXISTS 'REJECTED'`,
-    );
+    expect(sql).toContain(`ALTER TYPE "AfterSalesEventKind" ADD VALUE IF NOT EXISTS 'APPROVED'`);
+    expect(sql).toContain(`ALTER TYPE "AfterSalesEventKind" ADD VALUE IF NOT EXISTS 'REJECTED'`);
   });
 
   it('migration.sql ไม่ใช้ "AfterSalesEventKind" (รวมค่าใหม่ APPROVED/REJECTED ของมัน) นอกบรรทัด ALTER TYPE — กันชน PostgreSQL restriction ที่ห้ามอ้างอิงค่า enum ใหม่ในทรานแซกชันเดียวกันที่เพิ่งเพิ่มมัน', () => {
@@ -100,4 +96,34 @@ describe('after-sales exchange link migration (PR2 Task 1)', () => {
     }
     expect(result.status).toBe(0);
   }, 30000);
+});
+
+// Final fix wave I5 — engine reject() เขียน approved_at ⇒ ล้าง approved_at/approved_by_id ของเคส
+// ที่ผูกคำขอ REJECTED (migration ใหม่แบบ additive — ห้ามแก้ 20261009000000 ที่ลง prod แล้ว)
+describe('after-sales exchange link approved_at fix migration (I5)', () => {
+  const FIX_PATH = path.join(
+    API_ROOT,
+    'prisma/migrations/20261009100000_after_sales_exchange_link_approved_at_fix/migration.sql',
+  );
+
+  it('ล้าง approved_at + approved_by_id เฉพาะเคสที่ผูกคำขอ REJECTED และยังมีค่าอยู่ (idempotent)', () => {
+    const sql = fs.readFileSync(FIX_PATH, 'utf8');
+    const code = sql
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('--'))
+      .join(' ')
+      .replace(/\s+/g, ' ');
+    expect(code).toMatch(
+      /UPDATE "after_sales_cases" c SET "approved_at" = NULL, "approved_by_id" = NULL/,
+    );
+    expect(code).toContain('FROM "contract_exchange_requests" r');
+    expect(code).toContain('c."exchange_request_id" = r."id"');
+    expect(code).toContain(`r."status" = 'REJECTED'`);
+    expect(code).toContain('c."approved_at" IS NOT NULL');
+  });
+
+  it('ไม่แตะ migration เดิม 20261009000000 (ยังไม่มีคำสั่ง UPDATE ของ fix นี้)', () => {
+    const sql = fs.readFileSync(MIGRATION_PATH, 'utf8');
+    expect(sql).not.toContain('"approved_at" = NULL');
+  });
 });

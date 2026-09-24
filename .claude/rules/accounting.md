@@ -340,6 +340,10 @@ kind='DEVICE_RETURN'`) + `BatchDetailSheet` badge "ค่าเครื่อ�
 `repossession` (JP5) ให้ปุ่มบันทึกบัญชีของแถวนั้น · journey ของลูกค้าเพิ่มชนิด `EARLY_PAYOFF` (เขียนหลัง commit ใน
 `ContractPaymentService.earlyPayoff` — `JourneyEntryWriter` เป็น `@Optional()` พารามิเตอร์ท้ายสุด เพราะ spec 10 ไฟล์ `new` service
 ด้วยมือ) คู่กับ `DEVICE_RETURNED` ที่มีอยู่แล้ว · งวดที่เหลือหลัง JP5 ยังเป็น `PENDING` ตามเดิม (ไม่ได้แตะ).
+**งวด PAID ที่ไม่มีใบเสร็จ** (ยกยอดมา / seed `seed-test-contracts.cli` "data-only, no JE, no receipt") เคยหายจากตารางทั้งที่การ์ด
+"งวดที่ชำระแล้ว" นับรวม (เจ้าของ 2026-09-24 "ประวัติชำระอื่นๆ หายไป") ⇒ `paidRowsWithoutReceipt` (`paymentHistoryDerivations.ts`) เติมแถว
+`noReceipt` ป้าย "ไม่มีใบเสร็จ / ชำระแล้ว (ยกมา)" ไม่มีปุ่มดาวน์โหลด/ยกเลิก และยอดสะสมนับรวม · ปุ่ม "ประวัติการชำระ" บนหน้าสัญญาเปิดทุกสถานะ
+ที่ไม่ใช่ `DRAFT` (เดิม whitelist 5 สถานะตั้งแต่ 2026-07-02 ทำให้สัญญา `CLOSED_BAD_DEBT` เข้าประวัติไม่ได้).
 
 **ที่ยังเปิดอยู่:** ยึดเครื่องเดิมซ้ำ (`Repossession.productId @unique`) · ส่วนลดยอดปิดของ JP5 ลงบัญชีหรือไม่ (รอผู้สอบ —
 `docs/accounting/cpa-followup-2026-09-05.txt`; ยังต้องติดตามคำตอบผู้สอบ). ร่างบันทึกอธิบายวิธีใหม่ (Task 16 จะจัดทำ,

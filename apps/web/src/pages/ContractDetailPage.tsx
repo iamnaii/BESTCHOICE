@@ -335,7 +335,9 @@ const deleteMutation = useMutation({
               </button>
             )}
 
-            {['ACTIVE', 'OVERDUE', 'DEFAULT', 'COMPLETED', 'EARLY_PAYOFF'].includes(contract.status) && (
+            {/* ประวัติการชำระ — ทุกสถานะที่เคยเปิดใช้ รวมสัญญาที่ปิดแล้ว (คืนเครื่อง/ยกเลิก/บอกเลิก)
+                ไม่งั้นแถว "ปิดสัญญาแล้ว" ในหน้าประวัติเข้าถึงไม่ได้ (เจ้าของ 2026-09-24) — เกณฑ์เดียวกับปุ่มบันทึกบัญชี */}
+            {contract.status !== 'DRAFT' && (
               <button
                 onClick={() => setHistoryContractId(contract.id)}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-sm border border-input bg-background text-foreground rounded-lg hover:bg-accent hover:text-accent-foreground shadow-sm"

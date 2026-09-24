@@ -81,6 +81,63 @@ describe('AfterSalesRepairService', () => {
     expect(result).toEqual({ id: 'case-1', stage: 'IN_REPAIR' });
   });
 
+  // R21 — markRepaired บนเคส stage RECEIVED (ticket OPEN ไม่มีศูนย์) = ซ่อมที่ร้าน
+  // → sync เป็น READY_FOR_PICKUP ตามปกติ แต่ event REPAIR_DONE ใช้คำ "ซ่อมที่ร้านเสร็จ"
+  it('markRepaired บนเคส stage RECEIVED (ticket OPEN ไม่มีศูนย์) → sync READY_FOR_PICKUP + event REPAIR_DONE note "ซ่อมที่ร้านเสร็จ"', async () => {
+    query.getCase.mockResolvedValue({
+      id: 'case-1',
+      stage: 'RECEIVED',
+      repairTicket: { id: 'rt-1', status: 'OPEN', repairSupplier: null },
+    });
+    prisma.repairTicket.findFirst.mockResolvedValue({
+      status: 'READY_FOR_PICKUP',
+      deletedAt: null,
+    });
+    prisma.afterSalesCase.update.mockResolvedValue({ id: 'case-1', stage: 'READY_FOR_PICKUP' });
+
+    const dto = { actualCost: 500, payer: 'SHOP' };
+    const result = await svc.markRepaired('case-1', dto as never, USER);
+
+    expect(repair.markRepaired).toHaveBeenCalledWith('rt-1', dto, USER);
+    expect(prisma.afterSalesCase.update).toHaveBeenCalledTimes(1);
+    const updateArg = prisma.afterSalesCase.update.mock.calls[0][0];
+    expect(updateArg.data.stage).toBe('READY_FOR_PICKUP');
+    expect(updateArg.data.events.create).toEqual(
+      expect.objectContaining({
+        kind: 'REPAIR_DONE',
+        actorId: USER.id,
+        note: 'ซ่อมที่ร้านเสร็จ · ค่าซ่อมจริง 500 · ผู้จ่าย SHOP',
+      }),
+    );
+    expect(result).toEqual({ id: 'case-1', stage: 'READY_FOR_PICKUP' });
+  });
+
+  // Regression guard — เคสที่มีศูนย์ซ่อมยังใช้คำ "ซ่อมเสร็จ" เหมือนเดิม ไม่ถูกกิ่งใหม่แตะ
+  it('markRepaired บนเคสที่มีศูนย์ซ่อม → event REPAIR_DONE note ยังเป็น "ซ่อมเสร็จ" เหมือนเดิม', async () => {
+    query.getCase.mockResolvedValue({
+      id: 'case-2',
+      stage: 'IN_REPAIR',
+      repairTicket: {
+        id: 'rt-2',
+        status: 'IN_PROGRESS',
+        repairSupplier: { id: 'sup-1', name: 'ศูนย์ A' },
+      },
+    });
+    prisma.repairTicket.findFirst.mockResolvedValue({
+      status: 'READY_FOR_PICKUP',
+      deletedAt: null,
+    });
+    prisma.afterSalesCase.update.mockResolvedValue({ id: 'case-2', stage: 'READY_FOR_PICKUP' });
+
+    const dto = { actualCost: 1500, payer: 'SHOP' };
+    await svc.markRepaired('case-2', dto as never, USER);
+
+    const updateArg = prisma.afterSalesCase.update.mock.calls[0][0];
+    expect(updateArg.data.events.create).toEqual(
+      expect.objectContaining({ note: 'ซ่อมเสร็จ · ค่าซ่อมจริง 1500 · ผู้จ่าย SHOP' }),
+    );
+  });
+
   // (b) returnToCustomer → stage='CLOSED', closedAt ตั้ง, event DELIVERED+CLOSED
   it('(b) returnToCustomer เรียก repair.returnToCustomer แล้ว sync สองครั้ง (DELIVERED แล้ว CLOSED) ปิดด้วย closedAt', async () => {
     query.getCase.mockResolvedValue({

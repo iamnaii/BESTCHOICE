@@ -208,7 +208,7 @@ export class AfterSalesCaseService {
                 {
                   kind: 'OUTCOME_SET',
                   actorId: user.id,
-                  note: `ซ่อม · ผู้จ่าย ${ticket.payer}${ticket.repairSupplierId ? ' · ส่งศูนย์' : ' · ยังไม่เลือกศูนย์ซ่อม'}`,
+                  note: `ซ่อม · ผู้จ่าย ${ticket.payer}${ticket.repairSupplierId ? ' · ส่งศูนย์' : ' · ซ่อมที่ร้าน'}`,
                 },
               ],
             },

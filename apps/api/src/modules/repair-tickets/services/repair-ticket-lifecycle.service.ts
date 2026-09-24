@@ -185,13 +185,29 @@ export class RepairTicketLifecycleService {
     });
   }
 
-  /** IN_PROGRESS → READY_FOR_PICKUP: repair center has fixed the device */
+  /**
+   * IN_PROGRESS → READY_FOR_PICKUP: repair center has fixed the device.
+   * R21 — ซ่อมที่ร้าน: เมื่อ ticket ยังเป็น OPEN และไม่มีศูนย์ซ่อม (`repairSupplierId` ว่าง)
+   * ถือว่าซ่อมเองที่ร้านโดยไม่ต้องผ่าน "ส่งซ่อม" ก่อน — CAS จึงยอมรับทั้ง OPEN (ไม่มีศูนย์)
+   * และ IN_PROGRESS (เส้นทางเดิม). OPEN ที่มีศูนย์ซ่อมแล้วต้องบันทึกส่งซ่อมก่อนเท่านั้น.
+   */
   async markRepaired(id: string, dto: MarkRepairedDto, user: ReqUser) {
     return this.prisma.$transaction(async (tx) => {
+      const cur = await tx.repairTicket.findFirst({
+        where: { id, deletedAt: null },
+        select: { status: true, repairSupplierId: true },
+      });
+      if (!cur) throw new NotFoundException('ไม่พบใบซ่อม');
+      if (cur.status === 'OPEN' && cur.repairSupplierId) {
+        throw new ConflictException('ต้องบันทึกส่งซ่อมก่อน (เครื่องมีศูนย์ซ่อม)');
+      }
+      const inShop = cur.status === 'OPEN' && !cur.repairSupplierId;
+      const fromStatus = inShop ? 'OPEN' : 'IN_PROGRESS';
+
       const repairedAt = dto.repairedAt ? new Date(dto.repairedAt) : new Date();
 
       const updated = await tx.repairTicket.updateMany({
-        where: { id, status: 'IN_PROGRESS', deletedAt: null },
+        where: { id, status: fromStatus, deletedAt: null },
         data: {
           status: 'READY_FOR_PICKUP',
           repairedAt,
@@ -200,14 +216,19 @@ export class RepairTicketLifecycleService {
         },
       });
       if (updated.count === 0)
-        throw new ConflictException('สถานะถูกเปลี่ยนไปแล้ว (ต้องเป็น IN_PROGRESS)');
+        throw new ConflictException(
+          inShop
+            ? 'สถานะถูกเปลี่ยนไปแล้ว (ต้องเป็น OPEN)'
+            : 'สถานะถูกเปลี่ยนไปแล้ว (ต้องเป็น IN_PROGRESS)',
+        );
 
       await tx.repairStatusLog.create({
         data: {
           ticketId: id,
-          fromStatus: 'IN_PROGRESS',
+          fromStatus,
           toStatus: 'READY_FOR_PICKUP',
           changedById: user.id,
+          ...(inShop ? { note: 'ซ่อมที่ร้าน — ซ่อมเสร็จ' } : {}),
         },
       });
 
@@ -368,6 +389,7 @@ export class RepairTicketLifecycleService {
       // 3. Auto-create draft doc based on payer
       let expenseDocumentId: string | null = null;
       let otherIncomeId: string | null = null;
+      let notesUpdate: string | undefined;
 
       // W10: Prisma.Decimal(0) is truthy — use .gt(0) to avoid creating $0 drafts.
       if (
@@ -405,6 +427,20 @@ export class RepairTicketLifecycleService {
         );
         expenseDocumentId = doc.id;
       } else if (
+        // R21 — ซ่อมที่ร้าน: payer=SHOP แต่ไม่มีศูนย์ซ่อมให้ผูกเอกสารรายจ่ายอัตโนมัติ
+        // (ต้นทุนอะไหล่/ค่าแรงบันทึกทางอื่น) — ไม่สร้าง ExpenseDocument แต่ต่อท้ายหมายเหตุไว้แทน
+        ticket.payer === 'SHOP' &&
+        ticket.actualCost &&
+        new Prisma.Decimal(ticket.actualCost).gt(0) &&
+        !ticket.repairSupplierId
+      ) {
+        notesUpdate = [
+          ticket.notes,
+          'ซ่อมที่ร้าน — ไม่มีเอกสารรายจ่ายอัตโนมัติ (ต้นทุนอะไหล่บันทึกทางอื่น)',
+        ]
+          .filter(Boolean)
+          .join('\n');
+      } else if (
         ticket.payer === 'CUSTOMER' &&
         ticket.actualCost &&
         new Prisma.Decimal(ticket.actualCost).gt(0)
@@ -433,13 +469,14 @@ export class RepairTicketLifecycleService {
       }
       // payer === 'SUPPLIER_CLAIM' → no doc; supplier bills externally
 
-      // 4. Link doc FKs back to ticket (only when a doc was created)
-      if (expenseDocumentId !== null || otherIncomeId !== null) {
+      // 4. Link doc FKs back to ticket (only when a doc was created or notes need updating)
+      if (expenseDocumentId !== null || otherIncomeId !== null || notesUpdate !== undefined) {
         await tx.repairTicket.update({
           where: { id },
           data: {
             expenseDocumentId: expenseDocumentId ?? null,
             otherIncomeId: otherIncomeId ?? null,
+            ...(notesUpdate !== undefined ? { notes: notesUpdate } : {}),
           },
         });
       }

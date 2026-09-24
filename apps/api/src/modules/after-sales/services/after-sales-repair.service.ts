@@ -94,13 +94,15 @@ export class AfterSalesRepairService {
   }
 
   async markRepaired(caseId: string, dto: MarkRepairedDto, user: ReqUser) {
-    const { ticketId } = await this.ticketOf(caseId, user);
+    const { c, ticketId } = await this.ticketOf(caseId, user);
     await this.repair.markRepaired(ticketId, dto, user);
+    // R21 — ไม่มีศูนย์ซ่อม (ซ่อมที่ร้าน) ใช้คำในไทม์ไลน์ต่างจากส่งซ่อมศูนย์ภายนอก
+    const label = c.repairTicket!.repairSupplier ? 'ซ่อมเสร็จ' : 'ซ่อมที่ร้านเสร็จ';
     return this.sync(
       caseId,
       user,
       'REPAIR_DONE',
-      `ซ่อมเสร็จ · ค่าซ่อมจริง ${dto.actualCost} · ผู้จ่าย ${dto.payer}`,
+      `${label} · ค่าซ่อมจริง ${dto.actualCost} · ผู้จ่าย ${dto.payer}`,
     );
   }
 

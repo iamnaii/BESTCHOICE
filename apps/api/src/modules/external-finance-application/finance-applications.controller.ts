@@ -22,7 +22,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FinanceApplicationService } from './services/finance-application.service';
 import { FinanceApplicationFilesService } from './services/finance-application-files.service';
-import { UpdateFinanceApplicationDto } from './dto/finance-application.dto';
+import { SendFinanceApplicationDto, StaffResultDto, UpdateFinanceApplicationDto } from './dto/finance-application.dto';
 import { FileFromMessageDto, FileUploadFieldsDto } from './dto/finance-application-files.dto';
 import { FinanceActor, FINANCE_APP_ROLES } from './constants';
 
@@ -43,6 +43,48 @@ export class FinanceApplicationsController {
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFinanceApplicationDto, @Req() req: { user: FinanceActor }) {
     return this.applications.update(id, dto, req.user);
+  }
+
+  @Get(':id/message-preview')
+  preview(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
+    return this.applications.preview(id, req.user);
+  }
+
+  @Post(':id/send')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
+  send(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SendFinanceApplicationDto, @Req() req: { user: FinanceActor }) {
+    return this.applications.send(id, dto, req.user);
+  }
+
+  @Post(':id/resend')
+  @Throttle({ short: { limit: 10, ttl: 60000 } })
+  resend(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
+    return this.applications.resend(id, req.user);
+  }
+
+  @Get(':id/share-link')
+  shareLink(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
+    return this.applications.getShareLink(id, req.user);
+  }
+
+  @Post(':id/share/extend')
+  extend(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
+    return this.applications.extendShare(id, req.user);
+  }
+
+  @Post(':id/share/revoke')
+  revoke(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
+    return this.applications.revokeShare(id, req.user);
+  }
+
+  @Post(':id/result')
+  result(@Param('id', ParseUUIDPipe) id: string, @Body() dto: StaffResultDto, @Req() req: { user: FinanceActor }) {
+    return this.applications.staffResult(id, dto, req.user);
+  }
+
+  @Post(':id/cancel')
+  cancel(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
+    return this.applications.cancel(id, req.user);
   }
 
   @Post(':id/files/from-message')

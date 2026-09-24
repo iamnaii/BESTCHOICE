@@ -68,7 +68,8 @@
 | messageText | Text nullable | ข้อความ 12 ข้อฉบับที่ส่งจริง (รวมบรรทัดลิงก์) |
 | occupationOverride | String nullable | กรณีพนักงานพิมพ์อาชีพในใบยื่นโดยไม่แก้บันทึกลูกค้า (ค่าเริ่มต้น: บันทึกลง Customer.occupation ด้วย) |
 | sentAt · sentById · sentVia enum {BOT, COPY} · lineRequestId | | ครั้งแรกที่ส่ง |
-| shareTokenHash | String @unique | sha256 ของโทเคน 32 ไบต์ (base64url) · **ไม่เก็บโทเคนดิบ** |
+| shareTokenHash | String @unique | sha256 ของโทเคน 32 ไบต์ (base64url) · หน้าลิงก์ (`/api/g/:token`) ค้นด้วย hash นี้เท่านั้น |
+| shareTokenEnc | String nullable | **โทเคนดิบเก็บเข้ารหัส `encryptPII` (คีย์ `PII_ENCRYPTION_KEY`)** เพื่อให้พนักงานเปิด/ส่งลิงก์เดิมได้ (ปุ่มดูลิงก์/ต่ออายุ) — ถอดรหัสเฉพาะฝั่งพนักงานที่ยืนยันตัวตนแล้ว ไม่มีที่ไหนถอดแล้วส่งกลับให้ฝั่งสาธารณะ |
 | shareExpiresAt · shareRevokedAt · shareViewCount Int · shareLastViewedAt | | |
 | lastPartnerEventAt | DateTime nullable | ใช้ทำจุดบนแท็บ |
 | closedAt · filesPurgedAt | | ปิด = APPROVED/REJECTED/CANCELLED |
@@ -245,7 +246,7 @@ DRAFT ──send──▶ SENT ──PARTNER_ACK──▶ ACKNOWLEDGED
 
 ## 12. ความปลอดภัยและข้อมูลส่วนบุคคล
 
-- โทเคน 32 ไบต์สุ่ม (base64url 43 ตัว) เก็บเฉพาะ sha256 · เทียบแบบ constant-time · URL ไม่มีเลขใบยื่นหรือรหัสลูกค้า
+- โทเคน 32 ไบต์สุ่ม (base64url 43 ตัว) · หน้าลิงก์สาธารณะค้นด้วย `shareTokenHash` (sha256) เท่านั้น — **โทเคนดิบเก็บเข้ารหัส `encryptPII` ใน `shareTokenEnc` เพื่อให้พนักงานเปิด/ส่งลิงก์เดิมได้** (ปุ่ม "ดูลิงก์" / "ต่ออายุลิงก์"), ไม่มีเส้นทางใดถอด `shareTokenEnc` แล้วคืนให้ฝั่งสาธารณะ · URL ไม่มีเลขใบยื่นหรือรหัสลูกค้า
 - ทุก response ของ `/g/*`: `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer`, `Content-Security-Policy` เฉพาะ self + fonts.googleapis/gstatic · ไม่มี URL ของ bucket หลุดออกไป (สตรีมผ่าน API เท่านั้น)
 - OG preview ไม่มีชื่อ รูป หรือข้อมูลลูกค้า (D9 + บอร์ด 8)
 - throttle: หน้า 60/นาที · ไฟล์ 120/นาที · zip 5/นาที · reply 10/นาที ต่อโทเคน+IP (ใช้ `ThrottlerModule` ที่มีใน `app.module.ts:175`)

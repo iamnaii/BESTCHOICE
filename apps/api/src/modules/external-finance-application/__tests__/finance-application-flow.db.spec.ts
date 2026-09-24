@@ -10,6 +10,7 @@ import { FinanceApplicationService } from '../services/finance-application.servi
 import { FinanceApplicationNumberService } from '../services/finance-application-number.service';
 import { FinanceApplicationFilesService } from '../services/finance-application-files.service';
 import { StorageService } from '../../storage/storage.service';
+import { CustomerPiiService } from '../../customers/customer-pii.service';
 
 const prisma = new PrismaClient();
 const tag = `gfin-flow-${Date.now()}`;
@@ -20,6 +21,14 @@ let service: FinanceApplicationService;
 let localDir = '';
 let storage: StorageService;
 let files: FinanceApplicationFilesService;
+const config = { get: (key: string) => process.env[key] } as any;
+
+// Task 6 (share link / staff result / cancel) ต่อเทสต์บนใบเดียวกันนี้ — hoisted แทน const ในตัว it
+let sendRoomId = '';
+let sendCustomerId = '';
+let sendProductId = '';
+let sendAppId = '';
+let sent: Awaited<ReturnType<FinanceApplicationService['send']>>;
 
 beforeAll(async () => {
   const dbName = new URL(process.env.DATABASE_URL ?? 'postgresql://unset/unset').pathname.slice(1);
@@ -29,7 +38,8 @@ beforeAll(async () => {
   userId = user.id;
   const room = await prisma.chatRoom.create({ data: { channel: ChatChannel.FACEBOOK, externalUserId: tag, displayName: tag } });
   roomId = room.id;
-  service = new FinanceApplicationService(prisma as any, new FinanceApplicationNumberService());
+  const pii = new CustomerPiiService(prisma as any);
+  service = new FinanceApplicationService(prisma as any, new FinanceApplicationNumberService(), pii, config);
   localDir = await fs.mkdtemp(path.join(tmpdir(), 'gfin-files-'));
   const env: Record<string, string> = { STORAGE_LOCAL_DIR: localDir, NODE_ENV: 'test' };
   storage = new StorageService({ get: (key: string) => env[key] } as any);
@@ -42,6 +52,14 @@ afterAll(async () => {
   await prisma.externalFinanceApplication.deleteMany({ where: { roomId } });
   await prisma.chatMessage.deleteMany({ where: { roomId } });
   await prisma.chatRoom.delete({ where: { id: roomId } });
+  if (sendAppId) {
+    await prisma.externalFinanceApplicationEvent.deleteMany({ where: { applicationId: sendAppId } });
+    await prisma.externalFinanceApplicationFile.deleteMany({ where: { applicationId: sendAppId } });
+    await prisma.externalFinanceApplication.delete({ where: { id: sendAppId } });
+  }
+  if (sendRoomId) await prisma.chatRoom.delete({ where: { id: sendRoomId } });
+  if (sendProductId) await prisma.product.delete({ where: { id: sendProductId } });
+  if (sendCustomerId) await prisma.customer.delete({ where: { id: sendCustomerId } });
   await prisma.$disconnect();
   await fs.rm(localDir, { recursive: true, force: true });
 });
@@ -128,5 +146,37 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
       await prisma.chatMessage.deleteMany({ where: { roomId: room.id } });
       await prisma.chatRoom.delete({ where: { id: room.id } });
     }
+  });
+
+  it('send(COPY) persists a hash + encrypted token, and getShareLink returns the same url', async () => {
+    const actor = { id: userId, role: 'OWNER' };
+    const branch = await prisma.branch.findFirst({ where: { deletedAt: null }, select: { id: true } });
+    if (!branch) throw new Error('ต้องมีสาขาในฐานทดสอบ (seed ก่อน)');
+    const customer = await prisma.customer.create({
+      data: { name: `ทดสอบระบบ ${tag}`, phone: '0937581095', occupation: 'พนักงานบริษัท', birthDate: new Date('1997-12-27') },
+    });
+    sendCustomerId = customer.id;
+    const product = await prisma.product.create({
+      data: {
+        name: 'iPhone 13 Pro Max', brand: 'Apple', model: '13 Pro Max', storage: '256GB', category: 'PHONE_USED',
+        imeiSerial: `${tag}-imei`, costPrice: 10000, branchId: branch.id, status: 'IN_STOCK',
+      },
+    });
+    sendProductId = product.id;
+    const room = await prisma.chatRoom.create({ data: { channel: ChatChannel.FACEBOOK, externalUserId: `${tag}-send`, displayName: `${tag}-send` } });
+    sendRoomId = room.id;
+    const app = await service.createDraft(room.id, actor);
+    sendAppId = app.id;
+    await service.update(app.id, { customerId: customer.id, productId: product.id }, actor);
+    for (const slot of ['ID_SELFIE', 'ID_CARD', 'INCOME'] as const) {
+      await files.upload(app.id, slot, { buffer: JPEG_BYTES, mimetype: 'image/jpeg', originalname: 'a.jpg' } as any, actor);
+    }
+    sent = await service.send(app.id, { via: 'COPY' }, actor);
+    const link = await service.getShareLink(app.id, actor);
+    expect(link.url).toBe(sent.shareUrl);
+    const row = await prisma.externalFinanceApplication.findUnique({ where: { id: app.id } });
+    expect(row?.shareTokenHash).toHaveLength(64);
+    expect(row?.shareTokenEnc).not.toContain(sent.shareUrl.split('/').pop());
+    expect(row?.status).toBe('SENT');
   });
 });

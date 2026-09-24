@@ -379,20 +379,20 @@ export function primaryAction(data: CaseDetail, role: string): PrimaryAction | n
   }
 
   if (outcome === 'SAME_MODEL_EXCHANGE' && stage === 'AWAITING_APPROVAL') {
+    // P-M.2 (fix round 1): ทุก role ที่ไม่ใช่ MGR ต้องเห็นข้อความรอ (ไม่ใช่แค่ SALES) —
+    // FM/ACCOUNTANT อ่านอย่างเดียวก็ยังต้องเห็นสถานะรออนุมัติของแท็บรออนุมัติได้
     if (MGR_SET.has(role)) return { label: 'ยืนยันเปลี่ยนเครื่อง', dialog: 'exchange-confirm' };
-    if (role === 'SALES') return { waitingText: `รอ ${APPROVER_LABEL.BRANCH_MANAGER} ยืนยัน` };
-    return null;
+    return { waitingText: `รอ ${APPROVER_LABEL.BRANCH_MANAGER} ยืนยัน` };
   }
 
   if (outcome === 'PRICED_EXCHANGE' && stage === 'AWAITING_APPROVAL') {
+    // P-M.2 (fix round 1): เหมือนกัน — role ใดก็ตามที่ไม่ใช่ผู้อนุมัติของ tier นี้เห็นข้อความรอ
     const approverRole = data.exchange?.approverRole ?? 'OWNER';
     if (role === 'OWNER') return { label: 'อนุมัติ', dialog: 'approve' };
-    if (role === 'BRANCH_MANAGER') {
-      if (approverRole === 'BRANCH_MANAGER') return { label: 'อนุมัติ', dialog: 'approve' };
-      return { waitingText: `รอ ${APPROVER_LABEL[approverRole]} อนุมัติ` };
+    if (role === 'BRANCH_MANAGER' && approverRole === 'BRANCH_MANAGER') {
+      return { label: 'อนุมัติ', dialog: 'approve' };
     }
-    if (role === 'SALES') return { waitingText: `รอ ${APPROVER_LABEL[approverRole]} อนุมัติ` };
-    return null;
+    return { waitingText: `รอ ${APPROVER_LABEL[approverRole]} อนุมัติ` };
   }
 
   // CASH_SAME_MODEL_EXCHANGE (ยังไม่เปิดใช้ — engine ปฏิเสธเมื่อไม่มี contractId) และ

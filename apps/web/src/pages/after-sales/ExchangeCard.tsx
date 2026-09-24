@@ -12,14 +12,12 @@ export default function ExchangeCard({ data }: { data: CaseDetail }) {
   const old = ex.oldProduct;
   const next = ex.newProduct;
 
-  // "วันที่ N" ของกรอบ 7 วัน — ประมาณจาก daysRemainingIn7Day (เหลือกี่วันจาก 7) เมื่อยังอยู่ในกรอบ
-  // เท่านั้น ไม่ใช่ตัวเลขที่ backend ส่งมาตรงๆ — เป็นค่าประมาณเพื่อการแสดงผล ไม่ใช่ตัวตัดสินสิทธิ์
-  const dayOfWindow =
-    ex.kind === 'SAME_MODEL' &&
-    data.warrantySnapshot.status === 'IN_7DAY_DEFECT' &&
-    Number.isFinite(data.warrantySnapshot.daysRemainingIn7Day)
-      ? Math.min(7, Math.max(1, 8 - data.warrantySnapshot.daysRemainingIn7Day))
-      : null;
+  // P-M.1 (fix round 1) — เลิกประมาณ "วันที่ N" เอง ใช้สแนปช็อตตอนแจ้งปัญหาที่ API ส่งมาตรงๆ
+  // (`warrantySnapshot.daysRemainingIn7Day`) แทน: ยังเหลือ (> 0) = อยู่ในกรอบ; หมด/ไม่มีค่า =
+  // พ้นกรอบแล้ว (ครอบคลุมเคส REPAIR-origin ที่ยืนยันผ่าน bypass นอกกรอบ 7 วันด้วย — เดิม badge
+  // เก่าอ้าง "อยู่ในกรอบ" ทุกเคส SAME_MODEL โดยไม่เช็คว่าจริงไหม)
+  const daysRemaining = data.warrantySnapshot.daysRemainingIn7Day;
+  const stillInWindow = Number.isFinite(daysRemaining) && daysRemaining > 0;
 
   return (
     <section className="space-y-3 rounded-xl border border-border bg-card p-4 sm:p-5">
@@ -48,9 +46,15 @@ export default function ExchangeCard({ data }: { data: CaseDetail }) {
       <div className="flex flex-wrap gap-2">
         {ex.kind === 'SAME_MODEL' && (
           <>
-            <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-primary">
-              อยู่ในกรอบ 7 วัน{dayOfWindow ? ` · วันที่ ${dayOfWindow}` : ''}
-            </span>
+            {stillInWindow ? (
+              <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-primary">
+                อยู่ในกรอบ 7 วัน · เหลือ {daysRemaining} วัน
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-warning-strong">
+                พ้นกรอบ 7 วัน — ผจก. ยืนยันได้
+              </span>
+            )}
             <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-primary">
               รุ่น+ความจุตรงกัน
             </span>

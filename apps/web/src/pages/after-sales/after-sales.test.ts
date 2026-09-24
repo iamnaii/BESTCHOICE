@@ -298,9 +298,10 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
       label: 'ยืนยันเปลี่ยนเครื่อง',
       dialog: 'exchange-confirm',
     });
-    expect(primaryAction(d, 'SALES')).toEqual({ waitingText: 'รอ ผจก.สาขา ยืนยัน' });
-    expect(primaryAction(d, 'FINANCE_MANAGER')).toBeNull();
-    expect(primaryAction(d, 'ACCOUNTANT')).toBeNull();
+    // P-M.2 (fix round 1): ทุก role ที่ไม่ใช่ MGR เห็นข้อความรอ — ไม่ใช่แค่ SALES
+    for (const role of ['SALES', 'FINANCE_MANAGER', 'ACCOUNTANT']) {
+      expect(primaryAction(d, role)).toEqual({ waitingText: 'รอ ผจก.สาขา ยืนยัน' });
+    }
   });
 
   it('PRICED_EXCHANGE AWAITING_APPROVAL tier REVIEW (approverRole=BRANCH_MANAGER) → OWNER และ BM ได้ "อนุมัติ" ทั้งคู่; SALES ได้ข้อความรอ', () => {
@@ -323,7 +324,10 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
     });
     expect(primaryAction(d, 'OWNER')).toEqual({ label: 'อนุมัติ', dialog: 'approve' });
     expect(primaryAction(d, 'BRANCH_MANAGER')).toEqual({ label: 'อนุมัติ', dialog: 'approve' });
-    expect(primaryAction(d, 'SALES')).toEqual({ waitingText: 'รอ ผจก.สาขา อนุมัติ' });
+    // P-M.2 (fix round 1): SALES/FM/ACCOUNTANT ล้วนเห็นข้อความรอ ไม่ใช่แค่ SALES
+    for (const role of ['SALES', 'FINANCE_MANAGER', 'ACCOUNTANT']) {
+      expect(primaryAction(d, role)).toEqual({ waitingText: 'รอ ผจก.สาขา อนุมัติ' });
+    }
   });
 
   it('PRICED_EXCHANGE AWAITING_APPROVAL tier ESCALATE (approverRole=OWNER) → BM ไม่มีปุ่ม มี "รอ เจ้าของเท่านั้น อนุมัติ"; OWNER ได้ "อนุมัติ"', () => {
@@ -344,11 +348,11 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
         requestedBy: null,
       },
     });
-    expect(primaryAction(d, 'BRANCH_MANAGER')).toEqual({
-      waitingText: 'รอ เจ้าของเท่านั้น อนุมัติ',
-    });
+    // P-M.2 (fix round 1): BM/SALES/FM/ACCOUNTANT ทั้งหมดไม่ใช่ OWNER → เห็นข้อความรอเดียวกัน
+    for (const role of ['BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT']) {
+      expect(primaryAction(d, role)).toEqual({ waitingText: 'รอ เจ้าของเท่านั้น อนุมัติ' });
+    }
     expect(primaryAction(d, 'OWNER')).toEqual({ label: 'อนุมัติ', dialog: 'approve' });
-    expect(primaryAction(d, 'SALES')).toEqual({ waitingText: 'รอ เจ้าของเท่านั้น อนุมัติ' });
   });
 
   it('PRICED_EXCHANGE READY_FOR_PICKUP → ไม่มีปุ่มหลัก (ทุก role) — หน้าเพจแสดงลิงก์ "ไปสัญญาใหม่" แทน', () => {

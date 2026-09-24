@@ -550,11 +550,13 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     });
     mockGet(detail);
     mocks.post.mockResolvedValue({ data: { id: detail.id } });
-    renderPage(detail.id);
+    const { container } = renderPage(detail.id);
 
     await screen.findByRole('heading', { name: detail.caseNumber });
-    const [primaryButton] = primaryButtonsOutsideMobileBar('อนุมัติ');
-    await userEvent.click(primaryButton);
+    const primaryButtons = primaryButtonsOutsideMobileBar('อนุมัติ');
+    expect(primaryButtons).toHaveLength(1);
+    expect(countGreenPrimaryButtons(container)).toBe(1);
+    await userEvent.click(primaryButtons[0]);
 
     const dialog = await screen.findByRole('dialog');
     const confirmButton = within(dialog).getByRole('button', { name: 'อนุมัติ' });
@@ -619,9 +621,12 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     });
     mocks.post.mockResolvedValue({ data: { id: detail.id, stage: 'READY_FOR_PICKUP' } });
     auth.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
-    renderPage(detail.id);
+    const { container } = renderPage(detail.id);
 
     await screen.findByRole('heading', { name: detail.caseNumber });
+    // REPAIR/IN_REPAIR → ปุ่มหลักคือ "บันทึกซ่อมเสร็จ" (เขียวหนึ่งปุ่มพอดี) ส่วน
+    // "ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม" เป็นปุ่มรอง (outline) — ยืนยันว่ายังมีปุ่มเขียวแค่ 1 ปุ่ม
+    expect(countGreenPrimaryButtons(container)).toBe(1);
     const secondaryButton = screen.getByRole('button', { name: 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม' });
     await userEvent.click(secondaryButton);
 
@@ -653,13 +658,145 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
       exchange: sameModelExchange(),
     });
     mockGet(detail);
-    renderPage(detail.id);
+    const { container } = renderPage(detail.id);
 
     await screen.findByRole('heading', { name: detail.caseNumber });
     for (const title of ['รับเรื่องแล้ว', 'รอ ผจก. ยืนยัน', 'ส่งมอบเครื่องใหม่', 'ปิดเคส']) {
       const el = screen.getByText(title);
       expect(el.textContent).toBe(title);
     }
+    // OWNER (default auth.user) → primary "ยืนยันเปลี่ยนเครื่อง" ปุ่มเขียวเดียว
+    expect(countGreenPrimaryButtons(container)).toBe(1);
+  });
+
+  // fix round 1 (finding 4) — submit-flow ครบทั้ง 3 dialog ที่เหลือ (เดิมมีแค่ presence-test
+  // ใน (k)/(m)) ยืนยัน POST path + body ตรงเป๊ะ พร้อม one-green-button assertion ทุกเทสต์
+
+  it('SwitchToRepairDialog: "เปลี่ยนเป็น \'ซ่อม\' แทน" → กรอกค่าซ่อม + เลือกศูนย์ซ่อม → ยืนยัน → POST switch-to-repair', async () => {
+    const detail = caseDetail({
+      outcome: 'SAME_MODEL_EXCHANGE',
+      stage: 'AWAITING_APPROVAL',
+      repairTicket: null,
+      exchange: sameModelExchange(),
+    });
+    mockGet(detail);
+    mocks.post.mockResolvedValue({ data: { id: detail.id, outcome: 'REPAIR' } });
+    auth.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
+    const { container } = renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(countGreenPrimaryButtons(container)).toBe(1);
+    await userEvent.click(screen.getByRole('button', { name: "เปลี่ยนเป็น 'ซ่อม' แทน" }));
+
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(/ค่าซ่อมประมาณ/), '500');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'เลือกศูนย์ซ่อม (ทดสอบ)' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'ยืนยัน' }));
+
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(`/after-sales/${detail.id}/switch-to-repair`, {
+        payer: 'SHOP',
+        estimatedCost: 500,
+        repairSupplierId: 'sup-1',
+      }),
+    );
+    expect(toast.success).toHaveBeenCalled();
+  });
+
+  it('RejectExchangeDialog (kind SAME_MODEL): "ปฏิเสธ (ใส่เหตุผล)" → กรอกเหตุผล ≥10 ตัวอักษร → ยืนยัน → POST exchange/reject', async () => {
+    const detail = caseDetail({
+      outcome: 'SAME_MODEL_EXCHANGE',
+      stage: 'AWAITING_APPROVAL',
+      repairTicket: null,
+      exchange: sameModelExchange(),
+    });
+    mockGet(detail);
+    mocks.post.mockResolvedValue({ data: { id: detail.id, stage: 'CANCELLED' } });
+    auth.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
+    const { container } = renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(countGreenPrimaryButtons(container)).toBe(1);
+    await userEvent.click(screen.getByRole('button', { name: 'ปฏิเสธ (ใส่เหตุผล)' }));
+
+    const dialog = await screen.findByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', { name: 'ยืนยันปฏิเสธ' });
+    expect(confirmButton).toBeDisabled();
+    await userEvent.type(
+      within(dialog).getByLabelText(/เหตุผลที่ปฏิเสธ/),
+      'เครื่องทดแทนหมดสต๊อกแล้ว',
+    );
+    expect(confirmButton).not.toBeDisabled();
+    await userEvent.click(confirmButton);
+
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(`/after-sales/${detail.id}/exchange/reject`, {
+        reason: 'เครื่องทดแทนหมดสต๊อกแล้ว',
+      }),
+    );
+  });
+
+  it('RejectExchangeDialog (kind PRICED): "ปฏิเสธ" (OWNER เท่านั้น) → กรอกเหตุผล → ยืนยัน → POST /reject', async () => {
+    const detail = caseDetail({
+      outcome: 'PRICED_EXCHANGE',
+      stage: 'AWAITING_APPROVAL',
+      repairTicket: null,
+      exchange: pricedExchange(),
+    });
+    mockGet(detail);
+    mocks.post.mockResolvedValue({ data: { id: detail.id, stage: 'CANCELLED' } });
+    auth.user = { id: 'u-owner', role: 'OWNER', branchId: null };
+    const { container } = renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(countGreenPrimaryButtons(container)).toBe(1);
+    await userEvent.click(screen.getByRole('button', { name: 'ปฏิเสธ' }));
+
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(
+      within(dialog).getByLabelText(/เหตุผลที่ปฏิเสธ/),
+      'ราคารับซื้อต่ำกว่าเกณฑ์ที่ยอมรับได้',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'ยืนยันปฏิเสธ' }));
+
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(`/after-sales/${detail.id}/reject`, {
+        reason: 'ราคารับซื้อต่ำกว่าเกณฑ์ที่ยอมรับได้',
+      }),
+    );
+  });
+
+  it('CancelSwapDialog: "ยกเลิกคำขอ" → กรอกเหตุผล → ยืนยัน → POST cancel-swap', async () => {
+    const detail = caseDetail({
+      outcome: 'PRICED_EXCHANGE',
+      stage: 'AWAITING_APPROVAL',
+      repairTicket: null,
+      exchange: pricedExchange({ approvalTier: 'REVIEW', approverRole: 'BRANCH_MANAGER' }),
+    });
+    mockGet(detail);
+    mocks.post.mockResolvedValue({ data: { id: detail.id, stage: 'CANCELLED' } });
+    auth.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
+    const { container } = renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(countGreenPrimaryButtons(container)).toBe(1);
+    await userEvent.click(screen.getByRole('button', { name: 'ยกเลิกคำขอ' }));
+
+    const dialog = await screen.findByRole('dialog');
+    const confirmButton = within(dialog).getByRole('button', { name: 'ยืนยันยกเลิก' });
+    expect(confirmButton).toBeDisabled();
+    await userEvent.type(
+      within(dialog).getByLabelText(/เหตุผลที่ยกเลิก/),
+      'ลูกค้าเปลี่ยนใจไม่เอาเครื่องทดแทนแล้ว',
+    );
+    expect(confirmButton).not.toBeDisabled();
+    await userEvent.click(confirmButton);
+
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(`/after-sales/${detail.id}/cancel-swap`, {
+        reason: 'ลูกค้าเปลี่ยนใจไม่เอาเครื่องทดแทนแล้ว',
+      }),
+    );
   });
 
   it('P-B: URL ?action=confirm เปิด ConfirmExchangeDialog อัตโนมัติเมื่อเคสอยู่ AWAITING_APPROVAL และ role ยืนยันได้ (ลิงก์จากแท็บรออนุมัติ)', async () => {

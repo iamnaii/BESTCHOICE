@@ -63,6 +63,12 @@ export function slotCounts(files: FinanceFile[]): Record<FinanceSlot, number> {
   for (const f of files) counts[f.slot] += 1;
   return counts;
 }
+/** id ของข้อความในแชทที่ "อยู่ในใบยื่นแล้ว" ตามสายตาปุ่ม GFIN บนฟองแชท (spec §6.4) —
+ * ไฟล์ที่ถูกส่งออกไปแล้ว (`sentAt`) ไม่นับ เพราะ `pickSlotForMessage` (index.tsx) ก็หยิบซ้ำ
+ * ไม่ได้เหมือนกัน (ต้องเลือกช่องใหม่แทน) — ปุ่มกับตรรกะ "หยิบซ้ำ = เอาออก" ต้องเห็นตรงกันเสมอ */
+export function pickableAttachedIds(files: FinanceFile[]): string[] {
+  return files.flatMap((f) => (!f.sentAt && f.sourceMessageId ? [f.sourceMessageId] : []));
+}
 /** จุดเหลืองบนแท็บ (spec §6.1): มีเหตุการณ์จาก GFIN ที่ใหม่กว่าครั้งล่าสุดที่ผู้ใช้เปิดแท็บ (`seenAt` จาก localStorage) */
 export function needsAttention(app: FinanceApplication | null, seenAt: string | null = null): boolean {
   if (!app || !app.lastPartnerEventAt) return false;

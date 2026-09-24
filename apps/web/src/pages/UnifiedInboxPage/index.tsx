@@ -24,7 +24,7 @@ import { resolveUploadFeedback } from './components/upload-feedback';
 import { useRoomCredit } from './hooks/useRoomCredit';
 import { useFinanceApplication } from './hooks/useFinanceApplication';
 import GfinSlotPicker from './components/gfin/GfinSlotPicker';
-import { slotCounts, type FinanceSlot } from './components/gfin/gfin';
+import { slotCounts, pickableAttachedIds, type FinanceSlot } from './components/gfin/gfin';
 
 // Sound notification
 
@@ -75,6 +75,9 @@ export default function UnifiedInboxPage() {
     setGfinFocus({ roomId: slotPick.roomId, tick: Date.now() });
     if (window.innerWidth < 1280) setCustomerPanelOpen(true);
   };
+  // สลับห้องระหว่างที่ picker ยังเปิดค้างอยู่ (เช่น กด GFIN แล้วไม่ทันเลือกช่องก่อนสลับห้อง)
+  // ต้องเคลียร์คำขอเดิมทิ้ง ไม่งั้นกลับมาห้องเดิมทีหลัง picker จะโผล่ถามช่องของข้อความเก่าอีกครั้ง
+  useEffect(() => { setSlotPick(null); }, [activeRoomId]);
   const [roomViewers, setRoomViewers] = useState<{ userId: string; userName: string }[]>([]);
   // เจ้าของเคาะ 2026-09-05: ช่องทางเลือกทีละอัน · เมนูผู้ดูแลแทนเมนูบอท · view 'expired' = มุมมอง "ตอบไม่ทัน"
   const [filters, setFilters] = useState<InboxFilters>({ tab: 'waiting', channel: null, who: 'all', view: 'queue' });
@@ -693,7 +696,7 @@ export default function UnifiedInboxPage() {
           creditMessageIds={credit.files.flatMap(file => file.sourceMessageId ? [file.sourceMessageId] : [])}
           creditBusy={credit.busy}
           onGfinMessage={pickSlotForMessage}
-          gfinMessageIds={gfin.current?.files.flatMap(f => f.sourceMessageId ? [f.sourceMessageId] : []) ?? []}
+          gfinMessageIds={pickableAttachedIds(gfin.current?.files ?? [])}
           gfinBusy={gfin.busy}
           isUploadingFile={uploadFileMutation.isPending}
           otherViewers={otherViewers}

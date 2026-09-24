@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isGfinPickable, gfinStep, slotCounts, needsAttention, SLOT_ORDER, REQUIRED_SLOTS } from './gfin';
+import { isGfinPickable, gfinStep, slotCounts, needsAttention, pickableAttachedIds, SLOT_ORDER, REQUIRED_SLOTS } from './gfin';
 // readSeen/markSeen เป็น wrapper ของ localStorage ที่ try/catch — ไม่ต้องเทสต์แยก
 
 const app = (over: Partial<import('./gfin').FinanceApplication> = {}): import('./gfin').FinanceApplication => ({
@@ -44,5 +44,17 @@ describe('slotCounts / needsAttention / constants', () => {
     expect(needsAttention(app())).toBe(false);
     expect(needsAttention(null)).toBe(false);
     expect(REQUIRED_SLOTS).toEqual(['ID_SELFIE', 'ID_CARD', 'INCOME']);
+  });
+});
+describe('pickableAttachedIds', () => {
+  it('returns the source message ids of files not yet sent — a sent file no longer counts as "attached" on the chat bubble', () => {
+    const file = (over: Partial<import('./gfin').FinanceFile>) => ({ id: 'f', slot: 'ID_CARD' as const, mimeType: 'image/jpeg', size: 1, originalName: null, source: 'CHAT_MESSAGE' as const, sourceMessageId: 'm1', sourceAngle: null, sortOrder: 0, sentAt: null, createdAt: '', ...over });
+    expect(pickableAttachedIds([file({ sourceMessageId: 'm1', sentAt: null })])).toEqual(['m1']);
+    expect(pickableAttachedIds([file({ sourceMessageId: 'm1', sentAt: '2026-09-24T12:00:00Z' })])).toEqual([]);
+    expect(pickableAttachedIds([file({ sourceMessageId: null })])).toEqual([]);
+    expect(pickableAttachedIds([
+      file({ id: 'f1', sourceMessageId: 'm1', sentAt: null }),
+      file({ id: 'f2', sourceMessageId: 'm2', sentAt: '2026-09-24T12:00:00Z' }),
+    ])).toEqual(['m1']);
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,11 @@ export default function GfinSlotPicker({ open, onOpenChange, counts, onPick, tit
 }) {
   const [slot, setSlot] = useState<FinanceSlot | null>(null);
   const [showAll, setShowAll] = useState(false);
+  /* component นี้ mount ครั้งเดียวตลอดอายุหน้า (เปิด/ปิดด้วย prop `open` ไม่ใช่ unmount) —
+     ต้องรีเซ็ตทุกครั้งที่ *เปิด* ไม่ใช่แค่ตอนปิด ไม่งั้นข้อความ/ไฟล์ก่อนหน้าที่เคยเลือกไว้
+     (เช่น "บัตรประชาชน") จะยังติดค้าง + ปุ่มยืนยันเปิดใช้งานทันทีในการเปิดครั้งถัดไป
+     ทั้งที่ยังไม่ได้เลือกช่องของไฟล์ใหม่เลย — เสี่ยงยื่นไฟล์ผิดช่องแบบเงียบ ๆ */
+  useEffect(() => { if (open) { setSlot(null); setShowAll(false); } }, [open]);
   const slots = showAll ? SLOT_ORDER : SLOT_ORDER.filter((s) => PRIMARY_SLOTS.includes(s) || counts[s] > 0);
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { setSlot(null); setShowAll(false); } onOpenChange(o); }}>

@@ -128,8 +128,19 @@ export class AfterSalesCaseService {
             stage: true,
             outcome: true,
             cancelledAt: true,
+            closedAt: true,
             replacementContractId: true,
-            repairTicket: { select: { status: true, deletedAt: true } },
+            repairTicket: { select: { status: true, deletedAt: true, returnedToCustomerAt: true } },
+            exchangeRequest: {
+              select: {
+                status: true,
+                mode: true,
+                memoAppliedAt: true,
+                rejectionReason: true,
+                cancelReason: true,
+                newContract: { select: { status: true } },
+              },
+            },
           },
         });
         const reconciledCandidates = await Promise.all(

@@ -46,8 +46,9 @@ export class AfterSalesRepairService {
 
   /**
    * เขียน stage กลับ + event หลังใบซ่อมเปลี่ยนสถานะ (นอก tx ของใบซ่อม — ใบซ่อมคือความจริง
-   * เคสตามหลัง). `replacementContractId: null` เพราะ proxy นี้คุมเฉพาะ flow REPAIR (R7 ของ
-   * SAME_MODEL_EXCHANGE เป็นคนละ service).
+   * เคสตามหลัง). `replacementContractId: null` / `closedAt: null` / `exchange: null` เพราะ
+   * proxy นี้คุมเฉพาะ flow REPAIR (R7 ของ SAME_MODEL_EXCHANGE/PRICED_EXCHANGE เป็นคนละ service —
+   * PR 2 เพิ่มกิ่งของทางออกเหล่านั้นใน deriveStage แต่ proxy ซ่อมนี้ไม่ต้องรู้จักมัน).
    */
   private async sync(
     caseId: string,
@@ -63,9 +64,11 @@ export class AfterSalesRepairService {
     const stage = deriveStage({
       outcome: 'REPAIR',
       cancelledAt: null,
+      closedAt: null,
       repairStatus: t?.status ?? null,
       repairDeleted: !!t?.deletedAt,
       replacementContractId: null,
+      exchange: null,
     });
     return this.prisma.afterSalesCase.update({
       where: { id: caseId },

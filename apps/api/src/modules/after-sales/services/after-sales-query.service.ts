@@ -1,5 +1,12 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AfterSalesOutcome, AfterSalesStage, Prisma, RepairStatus } from '@prisma/client';
+import type {
+  AfterSalesOutcome,
+  AfterSalesStage,
+  ExchangeMode,
+  ExchangeRequestStatus,
+  Prisma,
+  RepairStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { deriveStage, isStale, stageSince } from '../utils/after-sales-stage.util';
@@ -19,6 +26,17 @@ const TAB_STAGES = {
  * ไม่งั้นเคสค้างนานที่ `receivedAt` ช้ากว่าจะไม่มีวันโผล่มาก่อนถ้าจำนวนในแท็บเกิน limit */
 export const LIST_FETCH_CAP = 500;
 
+// PR 2 — deriveStage รุ่นสอง อ่าน exchangeRequest ของ PRICED_EXCHANGE ด้วย field ชุดนี้ (ตรงกับ
+// StageInput['exchange'] + ReconcilableCase['exchangeRequest'] ทุกที่ที่ query แถวนี้)
+const EXCHANGE_REQUEST_SELECT = {
+  status: true,
+  mode: true,
+  memoAppliedAt: true,
+  rejectionReason: true,
+  cancelReason: true,
+  newContract: { select: { status: true } },
+} satisfies Prisma.ContractExchangeRequestSelect;
+
 const ROW_SELECT = {
   id: true,
   caseNumber: true,
@@ -30,6 +48,7 @@ const ROW_SELECT = {
   deviceModel: true,
   deviceImei: true,
   branchId: true,
+  closedAt: true, // PR 2: ทางออกเปลี่ยนเครื่องปิดด้วยการส่งมอบ — deriveStage/reconcileStage ต้องใช้ค่านี้
   replacementContractId: true, // R7: กิ่ง SAME_MODEL_EXCHANGE ของ deriveStage ต้องใช้ค่านี้
   customer: { select: { id: true, name: true, phone: true } },
   branch: { select: { id: true, name: true } },
@@ -46,8 +65,10 @@ const ROW_SELECT = {
       repairedAt: true,
       repairSupplierId: true,
       deletedAt: true,
+      returnedToCustomerAt: true, // R25 (d): reconcileStage ใช้เป็น closedAt แทน new Date()
     },
   },
+  exchangeRequest: { select: EXCHANGE_REQUEST_SELECT },
 } satisfies Prisma.AfterSalesCaseSelect;
 
 /** row ที่ decorate() ต้องการอย่างน้อย — list/summary/getCase ต่างเลือกคอลัมน์เพิ่มกันคนละแบบ
@@ -56,6 +77,7 @@ interface DecorateInput {
   stage: AfterSalesStage;
   outcome: AfterSalesOutcome | null;
   cancelledAt?: Date | null;
+  closedAt?: Date | null;
   receivedAt: Date;
   replacementContractId?: string | null;
   repairTicket: {
@@ -63,6 +85,12 @@ interface DecorateInput {
     deletedAt: Date | null;
     sentToRepairAt: Date | null;
     repairedAt: Date | null;
+  } | null;
+  exchangeRequest?: {
+    status: ExchangeRequestStatus;
+    mode: ExchangeMode;
+    memoAppliedAt: Date | null;
+    newContract: { status: string } | null;
   } | null;
 }
 
@@ -83,9 +111,18 @@ export class AfterSalesQueryService {
     const stage = deriveStage({
       outcome: row.outcome,
       cancelledAt: row.cancelledAt ?? null,
+      closedAt: row.closedAt ?? null,
       repairStatus: row.repairTicket?.status ?? null,
       repairDeleted: !!row.repairTicket?.deletedAt,
       replacementContractId: row.replacementContractId ?? null,
+      exchange: row.exchangeRequest
+        ? {
+            status: row.exchangeRequest.status,
+            mode: row.exchangeRequest.mode,
+            memoAppliedAt: row.exchangeRequest.memoAppliedAt,
+            newContractStatus: row.exchangeRequest.newContract?.status ?? null,
+          }
+        : null,
     });
     const since = stageSince(stage, row.repairTicket, row.receivedAt);
     return {
@@ -146,9 +183,15 @@ export class AfterSalesQueryService {
     ]);
     // A1 (final-fix brief) — stored `stage` เขียนแยกจากใบซ่อมจริง (sync() อาจไม่เคยรันถ้าใบซ่อม
     // ถูกแก้นอก proxy) ⇒ reconcile ผู้สมัคร (≤ LIST_FETCH_CAP แถว จึงทำได้ในราคาถูก) แล้วทิ้งแถวที่
-    // derived stage ไม่ตรงแท็บนี้อีกต่อไป. ทิศตรงข้าม (แถวเก็บ CLOSED แต่ derived เปิดอยู่) ไม่มีทาง
-    // เกิดผ่าน writer ชุดนี้ (การปิดเป็นทางเดียว) จึงไม่ต้องมองหา — residual ที่เหลือคือแถวที่เพิ่งดริฟท์
-    // และยังไม่มีใครอ่านมันเลยสักครั้ง (list/getCase/summary/lookup ทุกตัว reconcile ก่อนใช้).
+    // derived stage ไม่ตรงแท็บนี้อีกต่อไป. ทิศตรงข้าม (แถวเก็บ CLOSED/CANCELLED แต่ derived เปิดอยู่)
+    // ไม่มีทางเกิดผ่าน writer ชุดนี้ (การปิด/ยกเลิกเป็นทางเดียว) จึงไม่ต้องมองหา — แต่ PR 2 เพิ่มดริฟท์
+    // อีกแบบที่เกิดได้จริง (R25 (d) ของ re-review): "เปิดอยู่→เปิดอยู่คนละ stage" เช่นเคส
+    // PRICED_EXCHANGE ที่เก็บ AWAITING_APPROVAL แต่คำขอถูกอนุมัติ/ลงผลนอก proxy จน derived กลายเป็น
+    // READY_FOR_PICKUP/CLOSED แล้ว — query นี้กรองด้วย stored stage ก่อน (`where.stage` ด้านบน) จึงยัง
+    // ไม่ถูกดึงเข้าแท็บที่ถูกต้องในรอบที่มันดริฟท์ (มองไม่เห็นจากแท็บปลายทางชั่วคราว) แต่จะถูกแก้ทันทีที่
+    // มีใครอ่านมันจากทางที่ไม่กรอง stage ก่อน (getCase/lookup) หรือจากแท็บที่ stored stage เดิมยังอยู่ —
+    // residual ที่เหลือคือแถวที่เพิ่งดริฟท์และยังไม่มีใครอ่านมันเลยสักครั้ง (list/getCase/summary/lookup
+    // ทุกตัว reconcile ก่อนใช้).
     const reconciled = await Promise.all(rows.map((r) => reconcileStage(this.prisma, r)));
     const tabStages = TAB_STAGES[tab] as readonly AfterSalesStage[];
     const inTab = reconciled.filter((r) => tabStages.includes(r.stage));
@@ -235,6 +278,7 @@ export class AfterSalesQueryService {
             contract: { select: { id: true, contractNumber: true } },
           },
         },
+        exchangeRequest: { select: EXCHANGE_REQUEST_SELECT },
         events: { orderBy: { createdAt: 'asc' } },
       },
     });

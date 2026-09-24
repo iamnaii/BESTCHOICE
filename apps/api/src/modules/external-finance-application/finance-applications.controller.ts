@@ -1,16 +1,39 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Req,
+  Res,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
+import { Response } from 'express';
+import { pipeline } from 'stream/promises';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FinanceApplicationService } from './services/finance-application.service';
+import { FinanceApplicationFilesService } from './services/finance-application-files.service';
 import { UpdateFinanceApplicationDto } from './dto/finance-application.dto';
-import { FinanceActor } from './constants';
+import { FileFromMessageDto, FileUploadFieldsDto } from './dto/finance-application-files.dto';
+import { FinanceActor, FINANCE_APP_ROLES } from './constants';
 
 @Controller('finance-applications')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+@Roles(...FINANCE_APP_ROLES)
 export class FinanceApplicationsController {
-  constructor(private applications: FinanceApplicationService) {}
+  constructor(
+    private applications: FinanceApplicationService,
+    private files: FinanceApplicationFilesService,
+  ) {}
 
   @Get(':id')
   get(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
@@ -20,5 +43,38 @@ export class FinanceApplicationsController {
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFinanceApplicationDto, @Req() req: { user: FinanceActor }) {
     return this.applications.update(id, dto, req.user);
+  }
+
+  @Post(':id/files/from-message')
+  @Throttle({ short: { limit: 30, ttl: 60000 } })
+  fromMessage(@Param('id', ParseUUIDPipe) id: string, @Body() dto: FileFromMessageDto, @Req() req: { user: FinanceActor }) {
+    return this.files.fromMessage(id, dto, req.user);
+  }
+
+  @Post(':id/files')
+  @Throttle({ short: { limit: 30, ttl: 60000 } })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
+  upload(@Param('id', ParseUUIDPipe) id: string, @Body() fields: FileUploadFieldsDto, @UploadedFile() file: Express.Multer.File, @Req() req: { user: FinanceActor }) {
+    return this.files.upload(id, fields.slot, file, req.user);
+  }
+
+  @Post(':id/files/from-product')
+  fromProduct(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
+    return this.files.fromProduct(id, req.user);
+  }
+
+  @Delete(':id/files/:fileId')
+  remove(@Param('id', ParseUUIDPipe) id: string, @Param('fileId', ParseUUIDPipe) fileId: string, @Req() req: { user: FinanceActor }) {
+    return this.files.remove(id, fileId, req.user);
+  }
+
+  @Get(':id/files/:fileId')
+  async download(@Param('id', ParseUUIDPipe) id: string, @Param('fileId', ParseUUIDPipe) fileId: string, @Req() req: { user: FinanceActor }, @Res() res: Response) {
+    const { file, stream } = await this.files.download(id, fileId, req.user);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalName ?? `${file.slot}.${file.mimeType.split('/')[1]}`)}"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    await pipeline(stream, res);
   }
 }

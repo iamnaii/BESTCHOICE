@@ -9,76 +9,15 @@ import {
 } from '@nestjs/common';
 import { Prisma, RoomCreditFile } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { Readable } from 'stream';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { OcrService } from '../../ocr/ocr.service';
-import { validateFileBase64 } from '../../ocr/services/ocr-parsing.util';
 import { creditFileUrl, linkRoomCreditHistory, lockCreditRoom } from './room-credit-history';
+import { detectFile, readLimited, fetchProviderMedia } from './media-fetch.util';
 
 export type CreditRoomActor = { id: string; role: string };
-const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 10;
 const ANALYSIS_LEASE_MS = 5 * 60 * 1000;
-const EXPIRED =
-  'ไฟล์หมดอายุหรือดาวน์โหลดจากแชทไม่ได้ กรุณาขอให้ลูกค้าส่งไฟล์ใหม่ หรือเลือกไฟล์จากเครื่อง';
-
-function detectFile(bytes: Buffer, _contentType?: string) {
-  if (!bytes.length || bytes.length > MAX_BYTES)
-    throw new BadRequestException('ไฟล์ต้องมีข้อมูลและขนาดไม่เกิน 10MB');
-  if (bytes.subarray(0, 5).toString('ascii') === '%PDF-') {
-    validateFileBase64(`data:application/pdf;base64,${bytes.toString('base64')}`);
-    return { mimeType: 'application/pdf', ext: 'pdf' };
-  }
-  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
-    return { mimeType: 'image/jpeg', ext: 'jpg' };
-  if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])))
-    return { mimeType: 'image/png', ext: 'png' };
-  if (/^GIF8[79]a$/.test(bytes.subarray(0, 6).toString('ascii')))
-    return { mimeType: 'image/gif', ext: 'gif' };
-  if (
-    bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
-    bytes.subarray(8, 12).toString('ascii') === 'WEBP'
-  )
-    return { mimeType: 'image/webp', ext: 'webp' };
-  throw new BadRequestException(
-    'รองรับ PDF, JPEG, PNG, GIF และ WebP เท่านั้น หากเป็น HEIC กรุณาแปลงเป็น JPEG ก่อน',
-  );
-}
-
-/** Only provider media hosts stored by our message adapters; validate every redirect too. */
-function mediaUrl(raw: string): URL {
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new BadRequestException(EXPIRED);
-  }
-  if (
-    url.protocol !== 'https:' ||
-    url.username ||
-    url.password ||
-    (url.port && url.port !== '443') ||
-    !['fbcdn.net', 'fbsbx.com', 'line-scdn.net'].some(
-      (host) => url.hostname === host || url.hostname.endsWith(`.${host}`),
-    )
-  ) {
-    throw new BadRequestException('ไม่สามารถนำเข้าไฟล์จากแหล่งนี้ได้ กรุณาเลือกไฟล์จากเครื่อง');
-  }
-  return url;
-}
-
-async function readLimited(stream: AsyncIterable<Uint8Array | string>, limit = MAX_BYTES) {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of stream) {
-    const bytes = Buffer.from(chunk);
-    size += bytes.length;
-    if (size > limit) throw new BadRequestException('ไฟล์มีขนาดเกิน 10MB');
-    chunks.push(bytes);
-  }
-  return Buffer.concat(chunks);
-}
 
 @Injectable()
 export class RoomCreditService {
@@ -135,36 +74,6 @@ export class RoomCreditService {
     return { files: files.map((file) => this.presentFile(file)), analysis: current };
   }
 
-  private async fetchMedia(raw: string) {
-    let url = mediaUrl(raw);
-    try {
-      const signal = AbortSignal.timeout(20000);
-      for (let redirects = 0; redirects <= 3; redirects++) {
-        const response = await fetch(url, { redirect: 'manual', signal });
-        if (response.status >= 300 && response.status < 400) {
-          await response.body?.cancel();
-          url = mediaUrl(new URL(response.headers.get('location') || '', url).href);
-          continue;
-        }
-        if (!response.ok) {
-          await response.body?.cancel();
-          throw new BadRequestException(EXPIRED);
-        }
-        if (Number(response.headers.get('content-length')) > MAX_BYTES) {
-          await response.body?.cancel();
-          throw new BadRequestException('ไฟล์มีขนาดเกิน 10MB');
-        }
-        if (!response.body) throw new BadRequestException(EXPIRED);
-        const bytes = await readLimited(Readable.fromWeb(response.body as never));
-        return { bytes, contentType: response.headers.get('content-type') || '' };
-      }
-      throw new BadRequestException(EXPIRED);
-    } catch (error) {
-      if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException(EXPIRED);
-    }
-  }
-
   async attachMessage(roomId: string, messageId: string, actor: CreditRoomActor) {
     await this.access(this.prisma, roomId, actor);
     const message = await this.prisma.chatMessage.findFirst({
@@ -177,7 +86,7 @@ export class RoomCreditService {
           bytes: await readLimited(await this.storage.getStream(message.mediaUrl)),
           contentType: message.mediaType || '',
         }
-      : await this.fetchMedia(message.mediaUrl);
+      : await fetchProviderMedia(message.mediaUrl);
     return this.attach(roomId, media.bytes, actor, messageId, media.contentType);
   }
 

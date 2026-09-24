@@ -237,8 +237,8 @@ test.describe('FINANCE_MANAGER role — finance access', () => {
   // เวอร์ชันเดิมชื่อ 'FINANCE_MANAGER with only FINANCE grant cannot open SHOP stock' ตรึง
   // ROLE_ACCESS_MAP เก่าที่ให้ FM = ['FINANCE'] อย่างเดียว ทั้งที่ FINANCE_MANAGER_CONFIG ใน
   // apps/web/src/config/menu.ts มี section โซน shop จริงสองก้อน (fm-shop-ops: contracts /
-  // payments / mdm / stickers / stock / shop-accounting / bookings / insurance /
-  // exchange-requests / products และ fm-online-shop) พร้อม bottomNav ของ shop
+  // payments / mdm / stickers / stock / shop-accounting / bookings / after-sales /
+  // products และ fm-online-shop) พร้อม bottomNav ของ shop
   // ⇒ map เก่าลบ pill 'ร้าน' ของ FM ทิ้งทั้งโซนทั้งที่เมนูมีอยู่ ค่าใหม่คือ ['SHOP','FINANCE']
   // (packages/shared/src/company-access.ts) เทสต์นี้จึงกลายเป็นด่านกันการย้อนกลับไปค่าเก่า
   test('FINANCE_MANAGER ได้ทั้งสองบริษัท จึงเปิด SHOP stock ได้และเห็น pill สองอัน', async ({ page }) => {

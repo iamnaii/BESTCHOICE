@@ -60,7 +60,11 @@ describe('AfterSalesExchangeService', () => {
     // (a)
     it('confirm ในกรอบ (elig.eligible) → execute ถูกเรียกโดยไม่มี bypass, เคสอัปเดตครบ, audit หลัง execute+update', async () => {
       query.getCase.mockResolvedValue(buildCase());
-      defect.checkEligibility.mockResolvedValue({ eligible: true, reasons: [] });
+      defect.checkEligibility.mockResolvedValue({
+        eligible: true,
+        reasons: [],
+        newProduct: { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
+      });
       defect.execute.mockResolvedValue({
         newContract: { id: 'ct-new', contractNumber: 'CT-NEW-0001' },
       });
@@ -101,7 +105,7 @@ describe('AfterSalesExchangeService', () => {
           action: 'AFTER_SALES_EXCHANGE_CONFIRMED',
           entity: 'after_sales_case',
           entityId: 'as-1',
-          newValue: { newContractId: 'ct-new', bypass: false },
+          newValue: { newContractId: 'ct-new', bypass: false, fromRepair: false },
         }),
       );
       // ลำดับ: execute → update → audit
@@ -125,6 +129,7 @@ describe('AfterSalesExchangeService', () => {
       defect.checkEligibility.mockResolvedValue({
         eligible: false,
         reasons: ['พ้นกำหนด 7 วันแล้ว'],
+        newProduct: { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
       });
       defect.execute.mockResolvedValue({
         newContract: { id: 'ct-new', contractNumber: 'CT-NEW-0002' },
@@ -142,14 +147,38 @@ describe('AfterSalesExchangeService', () => {
       const updateData = prisma.afterSalesCase.update.mock.calls[0][0].data;
       expect(updateData.events.create.note).toContain('ข้ามกรอบ 7 วัน');
       expect(audit.log).toHaveBeenCalledWith(
-        expect.objectContaining({ newValue: { newContractId: 'ct-new', bypass: true } }),
+        expect.objectContaining({
+          newValue: { newContractId: 'ct-new', bypass: true, fromRepair: false },
+        }),
       );
+    });
+
+    // (new — Review Focus P-H.2) นอกกรอบ + เครื่องทดแทนไม่พร้อมขาย → 400 ด้วยเหตุผลเครื่องทดแทน
+    // เอง (bypassWindowCheck ทำให้ engine ข้าม checkEligibility จึงต้องบังคับที่นี่ก่อนเรียก execute)
+    it('นอกกรอบ 7 วัน + เครื่องทดแทนไม่พร้อมขาย (productReasons) → 400 ด้วยเหตุผลเครื่องทดแทน, execute ไม่ถูกเรียก, ไม่ update/audit', async () => {
+      query.getCase.mockResolvedValue(buildCase());
+      defect.checkEligibility.mockResolvedValue({
+        eligible: false,
+        reasons: ['พ้นกำหนด 7 วันแล้ว (รับเครื่องเมื่อ 2026-01-01)', 'สินค้าใหม่ไม่พร้อมจำหน่าย'],
+      });
+
+      await expect(svc.confirmSameModel('as-1', {} as never, MGR)).rejects.toThrow(
+        new BadRequestException('สินค้าใหม่ไม่พร้อมจำหน่าย'),
+      );
+
+      expect(defect.execute).not.toHaveBeenCalled();
+      expect(prisma.afterSalesCase.update).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
     });
 
     // (c) — Review Focus 2
     it('เครื่องทดแทนไม่ IN_STOCK แล้ว (defect.execute โยน BadRequestException) → error ส่งต่อเดิม, เคสไม่ถูกอัปเดต, ไม่ audit', async () => {
       query.getCase.mockResolvedValue(buildCase());
-      defect.checkEligibility.mockResolvedValue({ eligible: true, reasons: [] });
+      defect.checkEligibility.mockResolvedValue({
+        eligible: true,
+        reasons: [],
+        newProduct: { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
+      });
       defect.execute.mockRejectedValue(
         new BadRequestException('ไม่เข้าเกณฑ์: สินค้าใหม่ไม่พร้อมจำหน่าย'),
       );
@@ -162,8 +191,10 @@ describe('AfterSalesExchangeService', () => {
       expect(audit.log).not.toHaveBeenCalled();
     });
 
-    // (d)
-    it('confirm บนเคส REPAIR (ซ่อมไม่ได้) + dto.replacementProductId → newProductId มาจาก dto, originRepairTicketId มาจาก repairTicket.id', async () => {
+    // (d) — P-H.1: เคส REPAIR ที่ยืนยันขณะยัง "ในกรอบ 7 วัน" (elig.eligible=true) ก็ยังต้อง
+    // bypassWindowCheck=true เสมอ (fromRepair บังคับ bypass) เพื่อให้ engine เดินกิ่ง markReplaced —
+    // แต่ข้อความห้ามพูดว่า "ข้ามกรอบ 7 วัน" เพราะไม่ได้ข้ามกรอบจริง (แค่มาจากใบซ่อม)
+    it('confirm บนเคส REPAIR (ซ่อมไม่ได้) ในกรอบ (elig.eligible=true) + dto.replacementProductId → execute ได้ bypassWindowCheck=true + originRepairTicketId จาก repairTicket.id, note มี "จากใบซ่อม" แต่ไม่มี "ข้ามกรอบ 7 วัน"', async () => {
       query.getCase.mockResolvedValue(
         buildCase({
           outcome: 'REPAIR',
@@ -172,7 +203,11 @@ describe('AfterSalesExchangeService', () => {
           repairTicket: { id: 'rt-1', status: 'IN_PROGRESS' },
         }),
       );
-      defect.checkEligibility.mockResolvedValue({ eligible: true, reasons: [] });
+      defect.checkEligibility.mockResolvedValue({
+        eligible: true,
+        reasons: [],
+        newProduct: { id: 'prod-repl', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
+      });
       defect.execute.mockResolvedValue({
         newContract: { id: 'ct-new', contractNumber: 'CT-NEW-0003' },
       });
@@ -183,6 +218,7 @@ describe('AfterSalesExchangeService', () => {
       expect(defect.execute).toHaveBeenCalledWith(
         expect.objectContaining({
           newProductId: 'prod-repl',
+          bypassWindowCheck: true,
           originRepairTicketId: 'rt-1',
           originAfterSalesCaseId: 'as-1',
         }),
@@ -190,6 +226,12 @@ describe('AfterSalesExchangeService', () => {
       );
       const note = prisma.afterSalesCase.update.mock.calls[0][0].data.events.create.note;
       expect(note).toContain('จากใบซ่อม (ซ่อมไม่ได้)');
+      expect(note).not.toContain('ข้ามกรอบ 7 วัน');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: { newContractId: 'ct-new', bypass: false, fromRepair: true },
+        }),
+      );
     });
 
     // (e) — Review Focus 1
@@ -242,8 +284,11 @@ describe('AfterSalesExchangeService', () => {
           closedAt: expect.any(Date),
           events: {
             create: [
-              expect.objectContaining({ kind: 'DELIVERED' }),
-              expect.objectContaining({ kind: 'CLOSED' }),
+              expect.objectContaining({
+                kind: 'DELIVERED',
+                note: 'ส่งมอบเครื่องใหม่ · สัญญา CT-NEW-0004',
+              }),
+              expect.objectContaining({ kind: 'CLOSED', note: 'ปิดเคส' }),
             ],
           },
         }),
@@ -354,7 +399,12 @@ describe('AfterSalesExchangeService', () => {
           repairTicketId: 'rt-9',
           replacementProductId: null,
           stage: 'RECEIVED',
-          events: { create: expect.objectContaining({ kind: 'OUTCOME_SET' }) },
+          events: {
+            create: expect.objectContaining({
+              kind: 'OUTCOME_SET',
+              note: 'เปลี่ยนเป็น "ซ่อม" แทน · ผู้จ่าย CUSTOMER',
+            }),
+          },
         }),
       });
       expect(result).toEqual({

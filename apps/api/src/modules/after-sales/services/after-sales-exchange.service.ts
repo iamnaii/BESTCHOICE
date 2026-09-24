@@ -15,6 +15,7 @@ import {
   RepairPayerInput,
 } from '../../repair-tickets/dto/create-repair-ticket.dto';
 import { AfterSalesQueryService } from './after-sales-query.service';
+import { NEW_PRODUCT_REASON_RE } from './after-sales-case.service';
 import { payerDefaultFor } from '../utils/after-sales-outcomes.util';
 import { ExchangeConfirmDto } from '../dto/exchange-confirm.dto';
 import { ExchangeRejectDto } from '../dto/exchange-reject.dto';
@@ -70,7 +71,25 @@ export class AfterSalesExchangeService {
     if (!newProductId) throw new BadRequestException('ต้องเลือกเครื่องทดแทนจากสต๊อก');
 
     const elig = await this.defect.checkEligibility(c.contractId, newProductId);
-    const bypass = !elig.eligible;
+    // P-H.2: bypassWindowCheck ทำให้ engine ข้าม checkEligibility ทั้งก้อน (เช็คแค่ว่าสินค้ามีแถวจริง
+    // — ไม่ตรวจ IN_STOCK หรือรุ่น/ความจุ) ⇒ ทุกเส้นทาง bypass (นอกกรอบ 7 วัน และ fromRepair ที่บังคับ
+    // bypass เสมอตาม P-H.1 ด้านล่าง) ต้องบังคับเหตุผลเกี่ยวกับ "เครื่องใหม่" เองที่นี่ก่อนเสมอ —
+    // สูตรเดียวกับที่ Task 4 ใช้ใน createCase (NEW_PRODUCT_REASON_RE)
+    const productReasons = elig.reasons.filter((r) => NEW_PRODUCT_REASON_RE.test(r));
+    if (!elig.newProduct || productReasons.length) {
+      throw new BadRequestException(
+        productReasons[0] ?? 'เครื่องทดแทนไม่ตรงรุ่น/ความจุ หรือไม่พร้อมขาย',
+      );
+    }
+
+    // P-H.1: "นอกกรอบ 7 วัน" (outOfWindow) กับ "มาจากใบซ่อม" (fromRepair) เป็นคนละแนวคิด —
+    // เคส REPAIR ที่ยืนยันขณะยังอยู่ในกรอบ (elig.eligible = true) ก็ยังต้อง bypassWindowCheck=true
+    // เพราะ defect-exchange.service.ts เช็ค repair-ticket status + เรียก markReplaced เฉพาะกิ่ง
+    // `if (dto.bypassWindowCheck && dto.originRepairTicketId)` เท่านั้น — ถ้าไม่ bypass ใบซ่อมจะไม่ถูก
+    // ปิด/ผูกสัญญาใหม่เลย (แม้ execute() จะสำเร็จ). ข้อความ "ข้ามกรอบ 7 วัน" ต้องขึ้นเฉพาะตอน
+    // outOfWindow จริง ๆ ไม่ใช่ทุกครั้งที่ fromRepair (ซึ่งอาจยังอยู่ในกรอบ 7 วัน).
+    const outOfWindow = !elig.eligible;
+    const bypass = outOfWindow || fromRepair;
     const res = await this.defect.execute(
       {
         oldContractId: c.contractId,
@@ -78,7 +97,7 @@ export class AfterSalesExchangeService {
         defectReason: c.symptom,
         notes: dto.note,
         bypassWindowCheck: bypass || undefined,
-        originRepairTicketId: c.repairTicket?.id,
+        originRepairTicketId: fromRepair ? c.repairTicket?.id : undefined,
         originAfterSalesCaseId: c.id,
       },
       user,
@@ -99,7 +118,7 @@ export class AfterSalesExchangeService {
             kind: 'APPROVED',
             actorId: user.id,
             note: `ยืนยันเปลี่ยนเครื่อง · สัญญาใหม่ ${newContract.contractNumber}${
-              bypass ? ' · ข้ามกรอบ 7 วัน' : ''
+              outOfWindow ? ' · ข้ามกรอบ 7 วัน' : ''
             }${fromRepair ? ' · จากใบซ่อม (ซ่อมไม่ได้)' : ''}`,
           },
         },
@@ -111,7 +130,7 @@ export class AfterSalesExchangeService {
       action: 'AFTER_SALES_EXCHANGE_CONFIRMED',
       entity: 'after_sales_case',
       entityId: caseId,
-      newValue: { newContractId: newContract.id, bypass },
+      newValue: { newContractId: newContract.id, bypass: outOfWindow, fromRepair },
     });
 
     return {

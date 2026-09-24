@@ -33,7 +33,7 @@ export const MAX_INTAKE_PHOTOS = 6;
 // R28 (Task 4) — regex ที่จับเฉพาะเหตุผลเกี่ยวกับ "เครื่องใหม่" (ไม่พร้อมขาย / รุ่น-ความจุไม่ตรง)
 // จาก DefectExchangeService.checkEligibility ห้ามจับเหตุผลเรื่องกรอบ 7 วัน/สถานะสัญญา —
 // สองอย่างนั้นเป็นของที่ผจก.สาขาตัดสินตอนยืนยัน ไม่ใช่ตอนยื่นเรื่อง (ดู task-4-brief.md)
-const NEW_PRODUCT_REASON_RE = /สินค้าใหม่ไม่พร้อมจำหน่าย|รุ่น\/ความจุ ไม่ตรงกับของเดิม/;
+export const NEW_PRODUCT_REASON_RE = /สินค้าใหม่ไม่พร้อมจำหน่าย|รุ่น\/ความจุ ไม่ตรงกับของเดิม/;
 
 export interface CreateCaseResult {
   id: string;

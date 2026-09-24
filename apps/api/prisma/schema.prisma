@@ -307,6 +307,71 @@ enum DeviceReturnStatus {
   CANCELED
 }
 
+// ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4)
+enum ExternalFinanceApplicationStatus {
+  DRAFT
+  SENT
+  ACKNOWLEDGED
+  MORE_INFO
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ExternalFinanceDocSlot {
+  ID_SELFIE
+  ID_CARD
+  INCOME
+  FB_PROFILE
+  FB_FRIENDS
+  FB_ACTIVITY
+  LINE_PROFILE
+  DEVICE_SCREEN
+  DEVICE_PHOTO
+  GUARANTOR_ID
+  ADDRESS_BILL
+  PHONE_OPENING
+  OTHER
+}
+
+enum ExternalFinanceFileSource {
+  CHAT_MESSAGE
+  UPLOAD
+  PRODUCT_PHOTO
+}
+
+enum ExternalFinanceEventKind {
+  CREATED
+  SENT
+  RESENT
+  LINK_VIEWED
+  LINK_EXTENDED
+  LINK_REVOKED
+  PARTNER_ACK
+  PARTNER_MORE_INFO
+  PARTNER_APPROVED
+  PARTNER_REJECTED
+  STAFF_RESULT
+  CANCELLED
+  FILES_PURGED
+}
+
+enum ExternalFinanceActorType {
+  STAFF
+  PARTNER
+  SYSTEM
+}
+
+enum ExternalFinanceSendVia {
+  BOT
+  COPY
+}
+
+enum ExternalFinanceResultSource {
+  PARTNER_LINK
+  STAFF
+}
+
 enum SignerType {
   CUSTOMER
   COMPANY // ผู้ขาย/ผู้ให้เช่าซื้อ (พนักงาน)
@@ -681,6 +746,9 @@ model Branch {
   // หลังการขาย — เคสหลังการขาย (after-sales hub)
   afterSalesCases AfterSalesCase[] @relation("BranchAfterSalesCases")
 
+  // ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4)
+  financeApplications ExternalFinanceApplication[] @relation("BranchFinanceApplications")
+
   @@index([companyId])
   @@map("branches")
 }
@@ -918,6 +986,10 @@ model User {
   // หลังการขาย — พนักงานที่รับเคสหลังการขาย
   afterSalesCasesReceived AfterSalesCase[] @relation("AfterSalesCaseReceivedBy")
 
+  // ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4)
+  financeApplicationsCreated ExternalFinanceApplication[] @relation("FinanceApplicationCreatedBy")
+  financeApplicationsSent    ExternalFinanceApplication[] @relation("FinanceApplicationSentBy")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -1127,6 +1199,9 @@ model Customer {
 
   // หลังการขาย — เคสหลังการขายของลูกค้ารายนี้
   afterSalesCases AfterSalesCase[] @relation("CustomerAfterSalesCases")
+
+  // ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4)
+  financeApplications ExternalFinanceApplication[] @relation("CustomerFinanceApplications")
 
   @@index([phone])
   @@index([name])
@@ -1906,6 +1981,9 @@ model Product {
 
   // P2-SP4 — การจอง / มัดจำ
   bookingItems BookingItem[] @relation("ProductBookingItems")
+
+  // ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4)
+  financeApplications ExternalFinanceApplication[] @relation("ProductFinanceApplications")
 
   @@index([branchId])
   @@index([status])
@@ -5615,6 +5693,9 @@ model ChatRoom {
   creditFiles RoomCreditFile[]
   creditAnalyses RoomCreditAnalysis[]
 
+  // ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4)
+  financeApplications ExternalFinanceApplication[]
+
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
@@ -5724,6 +5805,9 @@ model ChatMessage {
 
   createdAt DateTime  @default(now()) @map("created_at")
   deletedAt DateTime? @map("deleted_at")
+
+  // ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4) — รูป/ไฟล์ที่ถูกดึงเข้าแพ็กเช็คเครดิต
+  financeApplicationFiles ExternalFinanceApplicationFile[] @relation("FinanceApplicationSourceMessage")
 
   @@unique([roomId, clientMessageId])
   @@index([roomId, createdAt])
@@ -8119,8 +8203,104 @@ model ExternalFinanceCompany {
   contactId String?  @map("contact_id")
   contact   Contact? @relation(fields: [contactId], references: [id])
 
+  // ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4)
+  applications ExternalFinanceApplication[]
+
   @@index([contactId])
   @@map("external_finance_companies")
+}
+
+// ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4)
+model ExternalFinanceApplication {
+  id                 String                           @id @default(uuid())
+  number             String                           @unique // BC-YYMMDD-NNN
+  financeCompanyId   String                           @map("finance_company_id")
+  roomId             String                           @map("room_id")
+  customerId         String?                          @map("customer_id")
+  productId          String?                          @map("product_id")
+  branchId           String?                          @map("branch_id")
+  status             ExternalFinanceApplicationStatus @default(DRAFT)
+  resultSource       ExternalFinanceResultSource?     @map("result_source")
+  summary            Json?                                                     // snapshot 7 ช่อง + fileCount ณ ตอนส่ง
+  messageText        String?                          @map("message_text") @db.Text      // ฉบับที่ส่งจริง (รวมบรรทัดลิงก์)
+  messageOverride    String?                          @map("message_override") @db.Text  // พนักงานแก้ถ้อยคำเฉพาะใบนี้ (ไม่รวมบรรทัดลิงก์)
+  occupationOverride String?                          @map("occupation_override")
+  sentAt             DateTime?                        @map("sent_at")
+  sentById           String?                          @map("sent_by_id")
+  sentVia            ExternalFinanceSendVia?          @map("sent_via")
+  lineRequestId      String?                          @map("line_request_id")
+  shareTokenHash     String?                          @unique @map("share_token_hash")
+  shareTokenEnc      String?                          @map("share_token_enc")      // โทเคนดิบเข้ารหัสด้วย encryptPII — ให้พนักงานเปิดลิงก์เดิมได้ (หน้าลิงก์ค้นด้วย hash เท่านั้น)
+  shareExpiresAt     DateTime?                        @map("share_expires_at")
+  shareRevokedAt     DateTime?                        @map("share_revoked_at")
+  shareViewCount     Int                              @default(0) @map("share_view_count")
+  shareLastViewedAt  DateTime?                        @map("share_last_viewed_at")
+  lastPartnerEventAt DateTime?                        @map("last_partner_event_at")
+  closedAt           DateTime?                        @map("closed_at")
+  filesPurgedAt      DateTime?                        @map("files_purged_at")
+  createdById        String                           @map("created_by_id")
+  createdAt          DateTime                         @default(now()) @map("created_at")
+  updatedAt          DateTime                         @updatedAt @map("updated_at")
+  deletedAt          DateTime?                        @map("deleted_at")
+
+  financeCompany ExternalFinanceCompany           @relation(fields: [financeCompanyId], references: [id])
+  room           ChatRoom                         @relation(fields: [roomId], references: [id])
+  customer       Customer?                        @relation("CustomerFinanceApplications", fields: [customerId], references: [id])
+  product        Product?                         @relation("ProductFinanceApplications", fields: [productId], references: [id])
+  branch         Branch?                          @relation("BranchFinanceApplications", fields: [branchId], references: [id])
+  createdBy      User                             @relation("FinanceApplicationCreatedBy", fields: [createdById], references: [id])
+  sentBy         User?                            @relation("FinanceApplicationSentBy", fields: [sentById], references: [id])
+  files          ExternalFinanceApplicationFile[]
+  events         ExternalFinanceApplicationEvent[]
+
+  @@index([roomId, status, deletedAt])
+  @@index([customerId, deletedAt])
+  @@index([status, closedAt, filesPurgedAt])
+  @@map("external_finance_applications")
+}
+
+model ExternalFinanceApplicationFile {
+  id              String                     @id @default(uuid())
+  applicationId   String                     @map("application_id")
+  slot            ExternalFinanceDocSlot
+  storageKey      String?                    @map("storage_key") // null หลังลบตาม D6
+  mimeType        String                     @map("mime_type")
+  size            Int
+  originalName    String?                    @map("original_name")
+  source          ExternalFinanceFileSource
+  sourceMessageId String?                    @map("source_message_id")
+  sourceAngle     String?                    @map("source_angle")
+  sortOrder       Int                        @default(0) @map("sort_order")
+  sentAt          DateTime?                  @map("sent_at")
+  createdById     String                     @map("created_by_id")
+  createdAt       DateTime                   @default(now()) @map("created_at")
+  updatedAt       DateTime                   @updatedAt @map("updated_at")
+  deletedAt       DateTime?                  @map("deleted_at")
+
+  application   ExternalFinanceApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  sourceMessage ChatMessage?               @relation("FinanceApplicationSourceMessage", fields: [sourceMessageId], references: [id])
+
+  @@index([applicationId, deletedAt])
+  @@index([sourceMessageId])
+  @@map("external_finance_application_files")
+}
+
+/// Append-only timeline — updatedAt/deletedAt intentionally omitted (เหมือน AfterSalesEvent)
+model ExternalFinanceApplicationEvent {
+  id            String                     @id @default(uuid())
+  applicationId String                     @map("application_id")
+  kind          ExternalFinanceEventKind
+  actorType     ExternalFinanceActorType   @map("actor_type")
+  actorUserId   String?                    @map("actor_user_id")
+  actorName     String?                    @map("actor_name")
+  note          String?                    @db.Text
+  meta          Json?
+  createdAt     DateTime                   @default(now()) @map("created_at")
+
+  application ExternalFinanceApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, createdAt])
+  @@map("external_finance_application_events")
 }
 
 /// SP7.4 — Track commission accrual + receipt per external finance sale.

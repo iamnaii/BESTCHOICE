@@ -88,6 +88,7 @@ export class ChatRoomService {
   /** บันทึกข้อความ + อัปเดต room stats */
   async saveMessage(params: {
     roomId: string;
+    externalMessageId?: string;
     role: MessageRole;
     type?: MessageType;
     text?: string;
@@ -104,6 +105,7 @@ export class ChatRoomService {
     const msg = await this.prisma.chatMessage.create({
       data: {
         roomId: params.roomId,
+        externalMessageId: params.externalMessageId,
         role: params.role,
         type: params.type ?? MessageType.TEXT,
         text: params.text,

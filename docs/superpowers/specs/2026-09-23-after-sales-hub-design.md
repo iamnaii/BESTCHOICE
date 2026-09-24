@@ -165,7 +165,7 @@ model AfterSalesEvent {  // timeline ของเคสเอง (เหตุ�
 | ยังไม่เลือกทางออก | RECEIVED |
 | REPAIR: OPEN | RECEIVED · IN_PROGRESS → IN_REPAIR · READY_FOR_PICKUP → READY_FOR_PICKUP · CLOSED → CLOSED · REPLACED → (ไปตาม outcome ใหม่) · CANCELLED → CANCELLED |
 | SAME_MODEL_EXCHANGE / CASH_SAME_MODEL_EXCHANGE: รอ ผจก. | AWAITING_APPROVAL · ยืนยันแล้ว รอส่งมอบ → READY_FOR_PICKUP · ส่งมอบแล้ว → CLOSED |
-| PRICED_EXCHANGE: PENDING | AWAITING_APPROVAL · APPROVED (MEMO ลงผล / PRICED สัญญาใหม่ยังไม่เปิดใช้) → READY_FOR_PICKUP · สัญญาใหม่เปิดใช้ / MEMO applied → CLOSED · REJECTED/CANCELED → CANCELLED (เคสกลับมา RECEIVED ให้เลือกทางออกอื่นได้ ถ้าเจ้าของต้องการ — ค่าเริ่มต้น: เคส CANCELLED พร้อมเหตุผล) |
+| PRICED_EXCHANGE: PENDING | AWAITING_APPROVAL · APPROVED (PRICED สัญญาใหม่ยังไม่เปิดใช้) → READY_FOR_PICKUP · MEMO ลงผลแล้ว → CLOSED · สัญญาใหม่เปิดใช้ → CLOSED · REJECTED/CANCELED → CANCELLED (เคสกลับมา RECEIVED ให้เลือกทางออกอื่นได้ ถ้าเจ้าของต้องการ — ค่าเริ่มต้น: เคส CANCELLED พร้อมเหตุผล) |
 
 - migration: สร้างตาราง + backfill เคสให้ `repair_tickets` และ `contract_exchange_requests` ที่มีอยู่ (ทุกแถว รวมข้อมูลทดสอบ) เพื่อให้รายการเดิมไม่หายจากหน้าใหม่
 

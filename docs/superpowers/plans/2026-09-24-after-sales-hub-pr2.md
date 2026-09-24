@@ -548,11 +548,12 @@ exchange: null | {
 | REPAIR | RECEIVED มีศูนย์ | "ส่งซ่อม" | — | เหมือนแถวบน (ไม่มีปุ่มซ่อมที่ร้าน) |
 | REPAIR | IN_REPAIR | "บันทึกซ่อมเสร็จ" | — | "ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม" (MGR) |
 | REPAIR | READY_FOR_PICKUP (ticket ≠ REPLACED) | "ส่งมอบคืนลูกค้า" | — | "ส่งซ่อมต่อ" · ยกเลิกเคส (MGR) |
-| REPAIR/SAME_MODEL | READY_FOR_PICKUP (มี replacementContractId) | "ส่งมอบเครื่องใหม่" | — | ลิงก์ "สัญญาใหม่ <no>" (`/contracts/:id`) |
+| REPAIR/SAME_MODEL | READY_FOR_PICKUP (มี replacementContractId) | สัญญาใหม่ DRAFT: OWNER/BM/FM ลิงก์ปุ่มหลัก "เปิดใช้สัญญาใหม่ <no> ที่หน้าสัญญา" · ไม่ DRAFT: "ส่งมอบเครื่องใหม่" (final fix I4) | DRAFT: "รอเปิดใช้สัญญาใหม่ <no>" | ลิงก์ "สัญญาใหม่ <no>" (`/contracts/:id`) |
 | SAME_MODEL | AWAITING_APPROVAL | MGR: "ยืนยันเปลี่ยนเครื่อง" | SALES: ข้อความ "รอ ผจก.สาขา ยืนยัน" (ไม่มีปุ่ม) | "ปฏิเสธ (ใส่เหตุผล)" (MGR) · "เปลี่ยนเป็น 'ซ่อม' แทน" (STAFF) |
-| PRICED | AWAITING_APPROVAL | อนุมัติได้ (BM เมื่อ approverRole=BRANCH_MANAGER · OWNER เสมอ): "อนุมัติ" | อื่น: "รอ <APPROVER_LABEL> อนุมัติ" | "ปฏิเสธ" (OWNER) · "ยกเลิกคำขอ" (MGR) |
-| PRICED | READY_FOR_PICKUP | ไม่มีปุ่ม (ลิงก์ "ไปสัญญาใหม่ <no> — เปิดใช้ที่หน้าสัญญา") | — | "ยกเลิกคำขอ" (MGR) |
-| ทุกทาง | CLOSED / CANCELLED | ไม่มี | — | — |
+| PRICED | AWAITING_APPROVAL | อนุมัติได้ (BM เมื่อ approverRole=BRANCH_MANAGER · OWNER เสมอ): "อนุมัติ" | อื่น: "รอ <APPROVER_LABEL> อนุมัติ" | "ปฏิเสธ" (OWNER) — ไม่มี "ยกเลิกคำขอ" เพราะ engine ยกเลิกได้เฉพาะคำขอ APPROVED (final fix I2) · ไม่มีคำขอผูก: "ยกเลิกเคส" (MGR, M1) |
+| PRICED | READY_FOR_PICKUP | สัญญาใหม่ DRAFT: ลิงก์ปุ่มหลัก "เปิดใช้สัญญาใหม่ <no> ที่หน้าสัญญา" (OWNER/BM/FM — ทางเดียวกับ SAME_MODEL, final fix I4) | "รอเปิดใช้สัญญาใหม่ <no>" | "ยกเลิกคำขอ" (MGR) |
+| PRICED | CLOSED + คำขอ APPROVED | ไม่มี | — | "ยกเลิก swap" (MGR, final fix I3) |
+| ทุกทาง | CLOSED / CANCELLED (นอกจากแถวบน) | ไม่มี | — | — |
 
 - [ ] **Step 1: เทสต์** — (j) SAME_MODEL AWAITING BM → ปุ่มหลักเดียว "ยืนยันเปลี่ยนเครื่อง"; dialog ติ๊ก 2 ข้อบังคับแล้วยืนยัน → POST `/after-sales/<id>/exchange/confirm` (k) SALES เห็นข้อความ "รอ ผจก.สาขา ยืนยัน" ไม่มีปุ่มหลัก และมี "เปลี่ยนเป็น 'ซ่อม' แทน" (l) READY_FOR_PICKUP + replacementContractId + สัญญาใหม่ DRAFT → ปุ่ม "ส่งมอบเครื่องใหม่" + API 400 → toast error ข้อความ API (m) PRICED ESCALATE + BM → ไม่มีปุ่มอนุมัติ มี "รอ เจ้าของเท่านั้น อนุมัติ"; OWNER → "อนุมัติ" (n) PRICED MEMO + OWNER อนุมัติ → dialog 2 checkbox ปิดปุ่มจนติ๊กครบ → POST `/approve` body `{memoAddendumSigned:true, memoMdmSwapped:true}` (o) REPAIR RECEIVED ไม่มีศูนย์ → ปุ่มหลัก "บันทึกซ่อมเสร็จ (ซ่อมที่ร้าน)" + รอง "ส่งซ่อม" (p) REPAIR IN_REPAIR BM สัญญาผ่อน → ปุ่มรอง "ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม" เปิด picker แล้ว confirm ส่ง `replacementProductId` (q) StepBar หัวข้อของ SAME_MODEL = 'รับเรื่องแล้ว/รอ ผจก. ยืนยัน/ส่งมอบเครื่องใหม่/ปิดเคส' ไม่มีเลขซ้ำ · ทุกเทสต์: ปุ่มสีเขียว (`bg-primary`) นับได้ 1 นอก `data-testid="mobile-bar"`
 

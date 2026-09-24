@@ -229,7 +229,11 @@ const STALE_DAYS: Partial<Record<AfterSalesStage, [number, string]>> = {
 };
 export function staleLabel(stage: AfterSalesStage, days: number): string | null {
   const s = STALE_DAYS[stage];
-  return s && days > s[0] ? `${s[1]} ${days} วัน (เกิน ${s[0]})` : null;
+  // C3 (final-fix brief) — API `isStale` เทียบเป็นมิลลิวินาที (`ms > d*86400000`) แต่ `days`
+  // ที่ได้ตรงนี้คือ `Math.floor(ms/86400000)` — เมื่อ API บอกว่า stale จริง `floor(ms/day)`
+  // จะ >= d เสมอ (ไม่ใช่ > d เท่านั้น — เคส 14.5 วันจริง floor เหลือ 14 พอดี) ใช้ `>=` ให้
+  // boundary ตรงกับ semantics ของ API แทนที่จะพลาดขอบวันสุดท้ายก่อนขึ้นวันถัดไป
+  return s && days >= s[0] ? `${s[1]} ${days} วัน (เกิน ${s[0]})` : null;
 }
 export const afterSalesKeys = {
   all: ['after-sales'] as const,

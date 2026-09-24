@@ -40,6 +40,12 @@ import {
 const STAFF_ROLES = new Set(['OWNER', 'BRANCH_MANAGER', 'SALES']);
 /** ยกเลิกเคสได้เฉพาะ BM/OWNER */
 const CANCEL_ROLES = new Set(['OWNER', 'BRANCH_MANAGER']);
+/** C4b (final-fix brief) — mirror ของ roles บน App.tsx: `/expenses/:id` และ `/other-income/:id`
+ * ไม่ได้เปิดให้ทุก role ที่เห็นหน้าเคสนี้ — SALES เข้าทั้งสองไม่ได้, BRANCH_MANAGER เข้า expenses
+ * ได้แต่ other-income ไม่ได้ ⇒ เอกสารที่ role เปิดไม่ได้ต้องโชว์เป็นข้อความ (เลขที่เอกสารเฉยๆ)
+ * ไม่ใช่ลิงก์ที่กดแล้วชน 403 */
+const EXPENSE_DETAIL_ROLES = new Set(['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']);
+const OTHER_INCOME_DETAIL_ROLES = new Set(['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']);
 /** ยกเลิกได้เฉพาะสถานะที่ยังไม่ได้ส่งไปศูนย์ (server: repairTicket.status IN_PROGRESS ปฏิเสธเสมอ) */
 const CANCELLABLE_STAGES = new Set<AfterSalesStage>(['RECEIVED', 'READY_FOR_PICKUP']);
 
@@ -306,9 +312,13 @@ export default function AfterSalesCasePage() {
                     {WARRANTY_LABEL[data.warrantySnapshot.status] ?? data.warrantySnapshot.status}
                   </span>
                   <div className="space-y-0.5 text-sm leading-snug text-foreground">
-                    {data.warrantySnapshot.status === 'IN_7DAY_DEFECT' && (
-                      <p>เหลืออีก {data.warrantySnapshot.daysRemainingIn7Day} วัน</p>
-                    )}
+                    {/* C5 (final-fix brief) — warrantySnapshot ของแถวที่ backfill มา
+                        (`{status, checkedAt, backfilled}`) ไม่มี daysRemainingIn7Day เลย —
+                        โชว์ประโยคนี้เฉพาะเมื่อเป็นตัวเลขจริงเท่านั้น กัน "เหลืออีก undefined วัน" */}
+                    {data.warrantySnapshot.status === 'IN_7DAY_DEFECT' &&
+                      Number.isFinite(data.warrantySnapshot.daysRemainingIn7Day) && (
+                        <p>เหลืออีก {data.warrantySnapshot.daysRemainingIn7Day} วัน</p>
+                      )}
                     {data.warrantySnapshot.shopWarrantyEndDate && (
                       <p>ประกันร้านถึง {dayOf(data.warrantySnapshot.shopWarrantyEndDate)}</p>
                     )}
@@ -378,19 +388,31 @@ export default function AfterSalesCasePage() {
                         <dd className="text-right">{PAYER_LABEL[data.repairTicket.payer]}</dd>
                       </dl>
                       {data.repairTicket.expenseDocument ? (
-                        <Link
-                          to={`/expenses/${data.repairTicket.expenseDocument.id}`}
-                          className="text-sm text-primary underline-offset-2 hover:underline"
-                        >
-                          {data.repairTicket.expenseDocument.number}
-                        </Link>
+                        user && EXPENSE_DETAIL_ROLES.has(user.role) ? (
+                          <Link
+                            to={`/expenses/${data.repairTicket.expenseDocument.id}`}
+                            className="text-sm text-primary underline-offset-2 hover:underline"
+                          >
+                            {data.repairTicket.expenseDocument.number}
+                          </Link>
+                        ) : (
+                          <p className="text-sm leading-snug text-foreground">
+                            {data.repairTicket.expenseDocument.number}
+                          </p>
+                        )
                       ) : data.repairTicket.otherIncome ? (
-                        <Link
-                          to={`/other-income/${data.repairTicket.otherIncome.id}`}
-                          className="text-sm text-primary underline-offset-2 hover:underline"
-                        >
-                          {data.repairTicket.otherIncome.docNumber}
-                        </Link>
+                        user && OTHER_INCOME_DETAIL_ROLES.has(user.role) ? (
+                          <Link
+                            to={`/other-income/${data.repairTicket.otherIncome.id}`}
+                            className="text-sm text-primary underline-offset-2 hover:underline"
+                          >
+                            {data.repairTicket.otherIncome.docNumber}
+                          </Link>
+                        ) : (
+                          <p className="text-sm leading-snug text-foreground">
+                            {data.repairTicket.otherIncome.docNumber}
+                          </p>
+                        )
                       ) : (
                         <p className="text-xs leading-snug text-muted-foreground">
                           จะสร้างตอนส่งมอบ

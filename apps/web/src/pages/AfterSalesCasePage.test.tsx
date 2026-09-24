@@ -286,4 +286,81 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
       }),
     );
   });
+
+  // C4b (final-fix brief) — เอกสารค่าใช้จ่าย/รายได้อื่นต้องเป็นลิงก์เฉพาะ role ที่เปิด
+  // /expenses/:id หรือ /other-income/:id ได้จริง (mirror ของ roles บน App.tsx)
+  it('(g) เอกสารค่าใช้จ่าย (expenseDocument): BRANCH_MANAGER (เข้า /expenses/:id ได้) → ลิงก์; SALES (เข้าไม่ได้) → ข้อความล้วน', async () => {
+    const detail = caseDetail({
+      stage: 'CLOSED',
+      stale: false,
+      daysInStage: 0,
+      repairTicket: {
+        ...caseDetail().repairTicket!,
+        status: 'CLOSED',
+        expenseDocument: { id: 'ex-2', number: 'EX-20260908-0002' },
+      },
+    });
+    mockGet(detail);
+
+    auth.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
+    const bmRender = renderPage(detail.id);
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(screen.getByRole('link', { name: 'EX-20260908-0002' })).toHaveAttribute(
+      'href',
+      '/expenses/ex-2',
+    );
+    bmRender.unmount();
+
+    auth.user = { id: 'u-sales', role: 'SALES', branchId: 'branch-1' };
+    renderPage(detail.id);
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(screen.queryByRole('link', { name: 'EX-20260908-0002' })).not.toBeInTheDocument();
+    expect(screen.getByText('EX-20260908-0002')).toBeInTheDocument();
+  });
+
+  it('(h) เอกสารรายได้อื่น (otherIncome): FINANCE_MANAGER (เข้า /other-income/:id ได้) → ลิงก์; BRANCH_MANAGER (เข้าไม่ได้) → ข้อความล้วน', async () => {
+    const detail = caseDetail({
+      stage: 'CLOSED',
+      stale: false,
+      daysInStage: 0,
+      repairTicket: {
+        ...caseDetail().repairTicket!,
+        status: 'CLOSED',
+        expenseDocument: null,
+        otherIncome: { id: 'oi-1', docNumber: 'OI-20260908-0001' },
+      },
+    });
+    mockGet(detail);
+
+    auth.user = { id: 'u-fm', role: 'FINANCE_MANAGER', branchId: null };
+    const fmRender = renderPage(detail.id);
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(screen.getByRole('link', { name: 'OI-20260908-0001' })).toHaveAttribute(
+      'href',
+      '/other-income/oi-1',
+    );
+    fmRender.unmount();
+
+    auth.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
+    renderPage(detail.id);
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(screen.queryByRole('link', { name: 'OI-20260908-0001' })).not.toBeInTheDocument();
+    expect(screen.getByText('OI-20260908-0001')).toBeInTheDocument();
+  });
+
+  // C5 (final-fix brief) — warrantySnapshot ของแถวที่ backfill มา (`{status, checkedAt,
+  // backfilled}`) ไม่มี daysRemainingIn7Day → ต้องไม่โชว์ "เหลืออีก undefined วัน"
+  it('(i) warrantySnapshot รูปแบบ backfilled (ไม่มี daysRemainingIn7Day) → ไม่โชว์ประโยค "เหลืออีก...วัน"', async () => {
+    const detail = caseDetail({
+      warrantySnapshot: {
+        status: 'IN_7DAY_DEFECT',
+        checkedAt: '2026-09-01T00:00:00.000Z',
+      } as never,
+    });
+    mockGet(detail);
+    renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(screen.queryByText(/เหลืออีก/)).not.toBeInTheDocument();
+  });
 });

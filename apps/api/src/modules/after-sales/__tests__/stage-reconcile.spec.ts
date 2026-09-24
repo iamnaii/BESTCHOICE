@@ -242,4 +242,35 @@ describe('reconcileStage — A1 final-fix brief (self-heal drifted AfterSalesCas
     expect(arg.data.closedAt).toBeUndefined(); // ค่าเดิมของ row มีอยู่แล้ว ไม่ต้องเขียนทับ
     expect(result.closedAt).toBe(existingClosedAt);
   });
+
+  it('I3: เคส PRICED ที่เก็บ CLOSED (MEMO ลงผลแล้ว) แต่คำขอถูกยกเลิก swap → CANCELLED + ตั้ง cancelledAt/cancelReason จากคำขอ ไม่แตะ closedAt', async () => {
+    const closedAt = new Date('2026-09-20T00:00:00.000Z');
+    const row = buildRow({
+      stage: 'CLOSED',
+      outcome: 'PRICED_EXCHANGE',
+      closedAt,
+      repairTicket: null,
+      exchangeRequest: {
+        status: 'CANCELED',
+        mode: 'MEMO',
+        memoAppliedAt: closedAt,
+        rejectionReason: null,
+        cancelReason: 'ลูกค้าคืนเครื่องใหม่',
+        newContract: null,
+      },
+    });
+
+    const result = await reconcileStage(client, row as ReconcilableCase);
+
+    expect(client.afterSalesCase.updateMany).toHaveBeenCalledWith({
+      where: { id: 'as-1', stage: 'CLOSED' },
+      data: {
+        stage: 'CANCELLED',
+        cancelledAt: expect.any(Date),
+        cancelReason: 'ลูกค้าคืนเครื่องใหม่',
+      },
+    });
+    expect(result.stage).toBe('CANCELLED');
+    expect(result.closedAt).toBe(closedAt);
+  });
 });

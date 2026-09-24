@@ -55,6 +55,27 @@ export interface ReconcilableCase {
 
 type ReconcileClient = Prisma.TransactionClient | PrismaService;
 
+/** select ที่ตรงกับ `ReconcilableCase` เป๊ะ — ใช้ร่วมกันทุกที่ที่โหลดแถวมาเพื่อ reconcile อย่างเดียว */
+export const RECONCILE_SELECT = {
+  id: true,
+  stage: true,
+  outcome: true,
+  cancelledAt: true,
+  closedAt: true,
+  replacementContractId: true,
+  repairTicket: { select: { status: true, deletedAt: true, returnedToCustomerAt: true } },
+  exchangeRequest: {
+    select: {
+      status: true,
+      mode: true,
+      memoAppliedAt: true,
+      rejectionReason: true,
+      cancelReason: true,
+      newContract: { select: { status: true } },
+    },
+  },
+} satisfies Prisma.AfterSalesCaseSelect;
+
 const DEFAULT_EXCHANGE_CANCEL_REASON = 'คำขอเปลี่ยนเครื่องถูกยกเลิก';
 
 export async function reconcileStage<T extends ReconcilableCase>(

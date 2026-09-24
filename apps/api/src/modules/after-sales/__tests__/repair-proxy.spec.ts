@@ -28,6 +28,7 @@ describe('AfterSalesRepairService', () => {
       repairTicket: { findFirst: jest.fn() },
       afterSalesCase: {
         update: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUniqueOrThrow: jest.fn(),
       },
     };
@@ -218,6 +219,76 @@ describe('AfterSalesRepairService', () => {
   });
 
   // (d) addPhoto รูปที่ 7 → 400 และไม่ upload
+  // M1/M2 (partial) — เคสเปลี่ยนเครื่องที่ไม่มีอะไรฝั่ง engine เลย ต้องยกเลิกได้ (ไม่งั้นบล็อก IMEI ตลอดไป)
+  describe('cancelCase — เคสเปลี่ยนเครื่องที่ไม่มีอะไรฝั่ง engine', () => {
+    const MGR = { id: 'u-mgr', role: 'BRANCH_MANAGER', branchId: 'b-1' };
+    const dto = { reason: 'ลูกค้าไม่มาต่อ ยกเลิกเรื่อง' };
+    const exchangeCase = (o: Record<string, unknown> = {}) => ({
+      id: 'case-9',
+      stage: 'AWAITING_APPROVAL',
+      outcome: 'PRICED_EXCHANGE',
+      repairTicket: null,
+      repairTicketId: null,
+      replacementContractId: null,
+      exchangeRequestId: null,
+      ...o,
+    });
+
+    it.each(['PRICED_EXCHANGE', 'SAME_MODEL_EXCHANGE'])(
+      '%s ไม่มีใบซ่อม/สัญญาใหม่/คำขอ → CAS ยกเลิก + event CANCELLED ไม่แตะ repair.cancel',
+      async (outcome) => {
+        query.getCase.mockResolvedValue(exchangeCase({ outcome }));
+        prisma.afterSalesCase.update.mockResolvedValue({ id: 'case-9', stage: 'CANCELLED' });
+
+        const result = await svc.cancelCase('case-9', dto as never, MGR);
+
+        expect(prisma.afterSalesCase.updateMany).toHaveBeenCalledWith({
+          where: {
+            id: 'case-9',
+            deletedAt: null,
+            outcome,
+            repairTicketId: null,
+            replacementContractId: null,
+            exchangeRequestId: null,
+            approvedAt: null,
+            cancelledAt: null,
+            stage: { notIn: ['CLOSED', 'CANCELLED'] },
+          },
+          data: { stage: 'CANCELLED', cancelledAt: expect.any(Date), cancelReason: dto.reason },
+        });
+        expect(prisma.afterSalesCase.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'case-9' },
+            data: {
+              events: { create: { kind: 'CANCELLED', actorId: MGR.id, note: dto.reason } },
+            },
+          }),
+        );
+        expect(repair.cancel).not.toHaveBeenCalled();
+        expect(result).toEqual({ id: 'case-9', stage: 'CANCELLED' });
+      },
+    );
+
+    it.each([
+      ['มีคำขอผูกอยู่', { exchangeRequestId: 'req-1' }],
+      ['มีสัญญาใหม่แล้ว', { outcome: 'SAME_MODEL_EXCHANGE', replacementContractId: 'ct-new' }],
+    ])('%s → 400 ไม่เขียนอะไร', async (_l, o) => {
+      query.getCase.mockResolvedValue(exchangeCase(o));
+      await expect(svc.cancelCase('case-9', dto as never, MGR)).rejects.toThrow(BadRequestException);
+      expect(prisma.afterSalesCase.updateMany).not.toHaveBeenCalled();
+      expect(prisma.afterSalesCase.update).not.toHaveBeenCalled();
+    });
+
+    it('CAS แพ้ (มีคนยืนยัน/ผูกคำขอไปพร้อมกัน) → 409', async () => {
+      query.getCase.mockResolvedValue(exchangeCase());
+      prisma.afterSalesCase.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(svc.cancelCase('case-9', dto as never, MGR)).rejects.toThrow(
+        'เคสนี้ถูกดำเนินการไปแล้ว',
+      );
+      expect(prisma.afterSalesCase.update).not.toHaveBeenCalled();
+    });
+  });
+
   it('(d) addPhoto เมื่อมีรูปครบ MAX_INTAKE_PHOTOS แล้ว → BadRequestException และไม่ upload/ไม่ update', async () => {
     query.getCase.mockResolvedValue({ id: 'case-1', stage: 'RECEIVED' });
     prisma.afterSalesCase.findUniqueOrThrow.mockResolvedValue({

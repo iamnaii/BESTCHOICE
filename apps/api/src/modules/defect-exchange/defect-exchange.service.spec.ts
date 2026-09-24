@@ -461,7 +461,12 @@ describe('DefectExchangeService', () => {
       expect(result.newContract).toBeDefined();
       expect(repairTickets.markReplaced).not.toHaveBeenCalled();
       expect(tx.afterSalesCase.findFirst).toHaveBeenCalledWith({
-        where: { id: 'as-case-1', deletedAt: null },
+        where: {
+          id: 'as-case-1',
+          deletedAt: null,
+          stage: { notIn: ['CLOSED', 'CANCELLED'] },
+          replacementContractId: null,
+        },
         select: { contractId: true, outcome: true, cancelledAt: true },
       });
       expect(tx.auditLog.create).toHaveBeenCalledWith(
@@ -484,6 +489,16 @@ describe('DefectExchangeService', () => {
       );
       expect(prisma.__tx.afterSalesCase.findFirst).not.toHaveBeenCalled();
       expect(prisma.__tx.repairTicket.findUnique).not.toHaveBeenCalled();
+    });
+    it('(c) M5: เคสต้นทางปิด/ยกเลิกแล้ว หรือยืนยันไปแล้ว (findFirst ที่กรอง stage/replacementContractId ไม่เจอ) → NotFoundException ไม่เขียนอะไร', async () => {
+      const tx = prisma.__tx;
+      tx.afterSalesCase.findFirst.mockResolvedValue(null);
+      await expect(service.execute(caseBypassDto, MGR)).rejects.toThrow(
+        new NotFoundException('ไม่พบเคสหลังการขายที่ยังเปิดอยู่'),
+      );
+      expect(tx.contract.update).not.toHaveBeenCalled();
+      expect(tx.contract.create).not.toHaveBeenCalled();
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
     });
   });
 

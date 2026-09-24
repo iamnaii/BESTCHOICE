@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { Prisma, WarrantyStatus } from '@prisma/client';
+import type { AfterSalesStage, Prisma, WarrantyStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
@@ -19,9 +19,8 @@ import { ContractExchangeService } from '../../contract-exchange/contract-exchan
 import { ExchangeCancelService } from '../../contract-exchange/contract-exchange-cancel.service';
 import { AfterSalesQueryService } from './after-sales-query.service';
 import { AfterSalesLookupService } from './after-sales-lookup.service';
-import { NEW_PRODUCT_REASON_RE } from './after-sales-case.service';
-import { reconcileStage, ReconcilableCase } from './after-sales-stage-reconcile';
-import { payerDefaultFor } from '../utils/after-sales-outcomes.util';
+import { reconcileStage, ReconcilableCase, RECONCILE_SELECT } from './after-sales-stage-reconcile';
+import { payerDefaultFor, WINDOW_REASON_RE } from '../utils/after-sales-outcomes.util';
 import { ExchangeConfirmDto } from '../dto/exchange-confirm.dto';
 import { ExchangeRejectDto } from '../dto/exchange-reject.dto';
 import { SwitchToRepairDto } from '../dto/switch-to-repair.dto';
@@ -29,6 +28,20 @@ import { ApproveExchangeRequestDto } from '../dto/exchange-approve.dto';
 import { ReplacementProductsDto } from '../dto/replacement-products.dto';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
+
+/** M4 — stage ของเคส REPAIR ที่ยืนยันเปลี่ยนรุ่นเดิม (ซ่อมไม่ได้) ได้ — ตรงกับ markReplaced ของ engine */
+const REPAIR_CONFIRM_STAGES: AfterSalesStage[] = ['RECEIVED', 'IN_REPAIR', 'READY_FOR_PICKUP'];
+
+/** M4 — CAS ร่วมของ rejectSameModel/switchToRepair: ยังรออนุมัติจริง ยังไม่มีใครจอง/ยืนยัน/ยกเลิก */
+const SAME_MODEL_PENDING_CAS = (id: string): Prisma.AfterSalesCaseWhereInput => ({
+  id,
+  deletedAt: null,
+  outcome: 'SAME_MODEL_EXCHANGE',
+  stage: 'AWAITING_APPROVAL',
+  replacementContractId: null,
+  approvedAt: null,
+  cancelledAt: null,
+});
 
 /** Task 6 — `preview()` เป็น proxy บาง ๆ เหนือ `ContractExchangeService.buildPreview`; ไม่มี DTO
  * ของตัวเอง (ตาม Interfaces ของบรีฟ) เพราะ Task 8 (controller) เป็นผู้ประกอบ query object นี้เอง */
@@ -40,27 +53,6 @@ interface PreviewQuery {
   newTotalMonths?: number;
   newInterestRate?: string;
 }
-
-/** select ที่ตรงกับ `ReconcilableCase` เป๊ะ — ประกาศครั้งเดียวใช้ซ้ำใน `reconcile()` */
-const RECONCILE_SELECT = {
-  id: true,
-  stage: true,
-  outcome: true,
-  cancelledAt: true,
-  closedAt: true,
-  replacementContractId: true,
-  repairTicket: { select: { status: true, deletedAt: true, returnedToCustomerAt: true } },
-  exchangeRequest: {
-    select: {
-      status: true,
-      mode: true,
-      memoAppliedAt: true,
-      rejectionReason: true,
-      cancelReason: true,
-      newContract: { select: { status: true } },
-    },
-  },
-} satisfies Prisma.AfterSalesCaseSelect;
 
 /**
  * ก้อนที่ `AfterSalesQueryService.getCase()` คืนมา — ไม่มี interface กลางที่ export ไว้ (return type
@@ -112,14 +104,19 @@ export class AfterSalesExchangeService {
    * `exchangeRequestId` แบบ narrow แล้ว (ผ่านด่าน `!c.exchangeRequestId` มาแล้วจึงไม่เป็น null)
    * ให้ผู้เรียกส่งต่อ engine ได้ตรง ๆ โดยไม่ต้อง non-null assert ซ้ำ
    */
-  private assertPricedCase(c: ExchangeCase): string {
+  private assertPricedCase(c: ExchangeCase, opts: { allowClosedApproved?: boolean } = {}): string {
     if (c.outcome !== 'PRICED_EXCHANGE') {
       throw new BadRequestException('เคสนี้ไม่ใช่ทางออกเปลี่ยนเครื่องแบบมีราคา');
     }
     if (!c.exchangeRequestId) {
       throw new BadRequestException('เคสนี้ไม่มีคำขอเปลี่ยนเครื่อง');
     }
-    if (['CLOSED', 'CANCELLED'].includes(c.stage)) {
+    // I3 — ยกเลิก swap ที่ลงผลแล้ว (MEMO applied / สัญญาใหม่เปิดใช้แล้ว → เคส CLOSED) ยังต้องทำได้
+    // ตามสิทธิ์เดิมของหน้าคำขอเปลี่ยนเครื่องเก่า — เฉพาะเมื่อคำขอยัง APPROVED (engine ตัดสินต่อว่ามีการ
+    // ชำระเงินแล้วหรือยัง) · เคส CANCELLED ปฏิเสธเสมอ
+    const closedButCancellable =
+      opts.allowClosedApproved && c.stage === 'CLOSED' && c.exchangeRequest?.status === 'APPROVED';
+    if (['CLOSED', 'CANCELLED'].includes(c.stage) && !closedButCancellable) {
       throw new BadRequestException('เคสนี้จบแล้ว');
     }
     return c.exchangeRequestId;
@@ -132,8 +129,8 @@ export class AfterSalesExchangeService {
    * ก่อนจะเขียน event/approvedBy ต่อ
    */
   private async reconcile(caseId: string): Promise<ReconcilableCase> {
-    const row = await this.prisma.afterSalesCase.findUniqueOrThrow({
-      where: { id: caseId },
+    const row = await this.prisma.afterSalesCase.findFirstOrThrow({
+      where: { id: caseId, deletedAt: null },
       select: RECONCILE_SELECT,
     });
     return reconcileStage(this.prisma, row);
@@ -160,37 +157,63 @@ export class AfterSalesExchangeService {
     if (!newProductId) throw new BadRequestException('ต้องเลือกเครื่องทดแทนจากสต๊อก');
 
     const elig = await this.defect.checkEligibility(c.contractId, newProductId);
-    // P-H.2: bypassWindowCheck ทำให้ engine ข้าม checkEligibility ทั้งก้อน (เช็คแค่ว่าสินค้ามีแถวจริง
-    // — ไม่ตรวจ IN_STOCK หรือรุ่น/ความจุ) ⇒ ทุกเส้นทาง bypass (นอกกรอบ 7 วัน และ fromRepair ที่บังคับ
-    // bypass เสมอตาม P-H.1 ด้านล่าง) ต้องบังคับเหตุผลเกี่ยวกับ "เครื่องใหม่" เองที่นี่ก่อนเสมอ —
-    // สูตรเดียวกับที่ Task 4 ใช้ใน createCase (NEW_PRODUCT_REASON_RE)
-    const productReasons = elig.reasons.filter((r) => NEW_PRODUCT_REASON_RE.test(r));
-    if (!elig.newProduct || productReasons.length) {
-      throw new BadRequestException(
-        productReasons[0] ?? 'เครื่องทดแทนไม่ตรงรุ่น/ความจุ หรือไม่พร้อมขาย',
-      );
+    // I1 (final fix wave) — bypassWindowCheck ทำให้ engine ข้าม checkEligibility ทั้งก้อน (ทั้งกติกา
+    // PHONE_USED · สถานะสัญญา · เครดิตเทิร์น · เครื่องใหม่) แต่ ผจก. ข้ามได้ "เฉพาะกรอบ 7 วัน"
+    // (spec §4.3) ⇒ ทุกเหตุผลที่ไม่ใช่กรอบ 7 วันต้องบล็อกที่นี่ก่อนเสมอ ทั้งเคสปกติและ fromRepair
+    const blocking = elig.reasons.filter((r) => !WINDOW_REASON_RE.test(r));
+    if (!elig.newProduct || blocking.length) {
+      throw new BadRequestException(blocking[0] ?? 'เครื่องทดแทนไม่ตรงรุ่น/ความจุ หรือไม่พร้อมขาย');
     }
 
     // P-H.1: "นอกกรอบ 7 วัน" (outOfWindow) กับ "มาจากใบซ่อม" (fromRepair) เป็นคนละแนวคิด —
-    // เคส REPAIR ที่ยืนยันขณะยังอยู่ในกรอบ (elig.eligible = true) ก็ยังต้อง bypassWindowCheck=true
+    // เคส REPAIR ที่ยืนยันขณะยังอยู่ในกรอบก็ยังต้อง bypassWindowCheck=true
     // เพราะ defect-exchange.service.ts เช็ค repair-ticket status + เรียก markReplaced เฉพาะกิ่ง
     // `if (dto.bypassWindowCheck && dto.originRepairTicketId)` เท่านั้น — ถ้าไม่ bypass ใบซ่อมจะไม่ถูก
     // ปิด/ผูกสัญญาใหม่เลย (แม้ execute() จะสำเร็จ). ข้อความ "ข้ามกรอบ 7 วัน" ต้องขึ้นเฉพาะตอน
-    // outOfWindow จริง ๆ ไม่ใช่ทุกครั้งที่ fromRepair (ซึ่งอาจยังอยู่ในกรอบ 7 วัน).
-    const outOfWindow = !elig.eligible;
+    // outOfWindow จริง ๆ (มีเหตุผลกรอบ 7 วัน — I1: ไม่ใช่ `!elig.eligible` ซึ่งจริงกับทุกเหตุผล)
+    const outOfWindow = elig.reasons.some((r) => WINDOW_REASON_RE.test(r));
     const bypass = outOfWindow || fromRepair;
-    const res = await this.defect.execute(
-      {
-        oldContractId: c.contractId,
-        newProductId,
-        defectReason: c.symptom,
-        notes: dto.note,
-        bypassWindowCheck: bypass || undefined,
-        originRepairTicketId: fromRepair ? c.repairTicket?.id : undefined,
-        originAfterSalesCaseId: c.id,
+
+    // M4 (ปิด ruling P-I) — จองเคสก่อนเรียก engine: CAS บนแถวเคส (stage ที่ยืนยันได้ + ยังไม่มีสัญญาใหม่
+    // + ยังไม่ยกเลิก + ยังไม่มีใครจอง) — สองคน/สองแท็บกดพร้อมกัน คนที่สองได้ 409 แทนการ execute ซ้ำ
+    const claimedAt = new Date();
+    const claim = await this.prisma.afterSalesCase.updateMany({
+      where: {
+        id: caseId,
+        deletedAt: null,
+        stage: { in: fromRepair ? REPAIR_CONFIRM_STAGES : ['AWAITING_APPROVAL'] },
+        replacementContractId: null,
+        cancelledAt: null,
+        approvedAt: null,
       },
-      user,
-    );
+      data: { approvedAt: claimedAt, approvedById: user.id },
+    });
+    if (!claim.count) throw new ConflictException('เคสนี้ถูกดำเนินการไปแล้ว');
+
+    let res: Awaited<ReturnType<DefectExchangeService['execute']>>;
+    try {
+      res = await this.defect.execute(
+        {
+          oldContractId: c.contractId,
+          newProductId,
+          defectReason: c.symptom,
+          notes: dto.note,
+          bypassWindowCheck: bypass || undefined,
+          originRepairTicketId: fromRepair ? c.repairTicket?.id : undefined,
+          originAfterSalesCaseId: c.id,
+        },
+        user,
+      );
+    } catch (err) {
+      // engine ล้ม (rollback ทั้งก้อนแล้ว) → ปล่อยการจองคืน ให้ยืนยันใหม่ได้
+      await this.prisma.afterSalesCase
+        .updateMany({
+          where: { id: caseId, approvedAt: claimedAt, replacementContractId: null },
+          data: { approvedAt: null, approvedById: null },
+        })
+        .catch(() => undefined);
+      throw err;
+    }
     const newContract = res.newContract;
 
     await this.prisma.afterSalesCase.update({
@@ -200,7 +223,7 @@ export class AfterSalesExchangeService {
         replacementProductId: newProductId,
         replacementContractId: newContract.id,
         approvedById: user.id,
-        approvedAt: new Date(),
+        approvedAt: claimedAt,
         stage: 'READY_FOR_PICKUP',
         events: {
           create: {
@@ -245,7 +268,7 @@ export class AfterSalesExchangeService {
     }
 
     const newContract = await this.prisma.contract.findUnique({
-      where: { id: c.replacementContractId },
+      where: { id: c.replacementContractId, deletedAt: null },
       select: { status: true, contractNumber: true },
     });
     if (!newContract) throw new NotFoundException('ไม่พบสัญญาใหม่');
@@ -295,10 +318,18 @@ export class AfterSalesExchangeService {
       throw new BadRequestException('เคสนี้ไม่ได้อยู่ระหว่างรออนุมัติ');
     }
 
+    // M4 — CAS: ปฏิเสธได้เฉพาะเคสที่ยังรออนุมัติจริงและยังไม่มีใครจองยืนยัน (แข่งกับ confirm/switch)
+    const cancelledAt = new Date();
+    const claim = await this.prisma.afterSalesCase.updateMany({
+      where: SAME_MODEL_PENDING_CAS(caseId),
+      data: { cancelledAt, cancelReason: dto.reason, stage: 'CANCELLED' },
+    });
+    if (!claim.count) throw new ConflictException('เคสนี้ถูกดำเนินการไปแล้ว');
+
     const updated = await this.prisma.afterSalesCase.update({
       where: { id: caseId },
       data: {
-        cancelledAt: new Date(),
+        cancelledAt,
         cancelReason: dto.reason,
         stage: 'CANCELLED',
         events: { create: { kind: 'REJECTED', actorId: user.id, note: dto.reason } },
@@ -349,6 +380,12 @@ export class AfterSalesExchangeService {
     };
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      // M4 — CAS ก่อนเปิดใบซ่อม: แพ้การแข่งกับ confirm/reject → 409 (rollback ทั้ง tx ไม่มีใบซ่อมค้าง)
+      const claim = await tx.afterSalesCase.updateMany({
+        where: SAME_MODEL_PENDING_CAS(caseId),
+        data: { outcome: 'REPAIR', stage: 'RECEIVED' },
+      });
+      if (!claim.count) throw new ConflictException('เคสนี้ถูกดำเนินการไปแล้ว');
       const { ticket } = await this.repair.createInTx(repairDto, user, tx);
       return tx.afterSalesCase.update({
         where: { id: caseId },
@@ -400,7 +437,7 @@ export class AfterSalesExchangeService {
       // read the contract number defensively (fall back to the raw id) rather than assume.
       const newContract = res.newContractId
         ? await this.prisma.contract.findUnique({
-            where: { id: res.newContractId },
+            where: { id: res.newContractId, deletedAt: null },
             select: { contractNumber: true },
           })
         : null;
@@ -462,7 +499,7 @@ export class AfterSalesExchangeService {
   async cancelSwap(caseId: string, dto: ExchangeRejectDto, user: ReqUser) {
     this.assertMgr(user);
     const c: ExchangeCase = await this.query.getCase(caseId, user);
-    const requestId = this.assertPricedCase(c);
+    const requestId = this.assertPricedCase(c, { allowClosedApproved: true });
 
     await this.exchangeCancel.cancel(requestId, dto.reason, user);
 
@@ -522,14 +559,14 @@ export class AfterSalesExchangeService {
    * branchId ติดตัว = คืนว่าง แทนที่จะรั่วข้ามสาขา) — role ข้ามสาขาใช้ `q.branchId` เมื่อส่งมา
    */
   async replacementProducts(q: ReplacementProductsDto, user: ReqUser) {
-    const found = await this.lookup.lookup({ imei: q.imei }, user);
-
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
       status: 'IN_STOCK',
     };
 
     if (q.sameModel) {
+      // T6-2 — ค้นเครื่องเดิมเฉพาะตอนต้องกรองรุ่นเดิม (sameModel=false ไม่ใช้ผลนี้เลย)
+      const found = await this.lookup.lookup({ imei: q.imei }, user);
       if (!found.product) throw new BadRequestException('ไม่พบเครื่องเดิมจากเลข IMEI นี้');
       where.brand = found.product.brand;
       where.model = found.product.model;

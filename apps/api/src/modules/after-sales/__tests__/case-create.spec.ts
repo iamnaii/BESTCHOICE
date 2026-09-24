@@ -125,7 +125,12 @@ describe('AfterSalesCaseService.createCase', () => {
     prisma = {
       $transaction: jest.fn().mockImplementation((cb: any) => cb(tx)),
       product: { findUnique: jest.fn().mockResolvedValue(REPLACEMENT_PRODUCT) },
-      afterSalesCase: { update: jest.fn().mockResolvedValue(undefined) },
+      afterSalesCase: {
+        update: jest.fn().mockResolvedValue(undefined),
+        // M13 — หลังผูก exchangeRequestId: โหลดแถวมา reconcile (null = ข้ามขั้นนี้ใน test เก่า)
+        findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
     };
     storage = {
       upload: jest.fn().mockImplementation((key: string) => Promise.resolve(key)),
@@ -483,6 +488,33 @@ describe('AfterSalesCaseService.createCase', () => {
       expect(tx.afterSalesCase.create).toHaveBeenCalled();
     });
 
+    // I1 (final fix wave) — ผจก. ข้ามได้เฉพาะกรอบ 7 วัน: เหตุผลอื่นของ engine ต้องบล็อกเสมอ
+    it.each([
+      ['PHONE_NEW (เปลี่ยนเครื่องได้เฉพาะมือสอง)', 'เปลี่ยนเครื่องได้เฉพาะมือสอง (PHONE_USED)'],
+      ['สัญญาไม่ ACTIVE', 'สัญญาต้องอยู่ในสถานะ ACTIVE เท่านั้น'],
+    ])(
+      'I1: SAME_MODEL + เหตุผล %s (แม้มีกรอบ 7 วันร่วมด้วย) โดย BM → 400 ด้วยเหตุผลนั้น ไม่อัปโหลด/ไม่สร้างเคส',
+      async (_label, reason) => {
+        const dto = {
+          ...BASE_DTO,
+          outcome: 'SAME_MODEL_EXCHANGE' as const,
+          replacementProductId: 'p-2',
+        };
+        lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('SAME_MODEL_EXCHANGE'));
+        defect.checkEligibility.mockResolvedValue({
+          eligible: false,
+          reasons: ['พ้นกำหนด 7 วันแล้ว (รับเครื่องเมื่อ 2026-09-01)', reason],
+          newProduct: { id: 'p-2', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
+        });
+        const bmUser = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'b-1' };
+        await expect(svc.createCase(dto as never, [mockFile()], bmUser)).rejects.toThrow(
+          new BadRequestException(reason),
+        );
+        expect(storage.upload).not.toHaveBeenCalled();
+        expect(tx.afterSalesCase.create).not.toHaveBeenCalled();
+      },
+    );
+
     // (d) PRICED_EXCHANGE — submit สำเร็จ
     it('(d) PRICED_EXCHANGE: tx สร้างเคส AWAITING_APPROVAL แล้ว submit สำเร็จ → update exchangeRequestId + event OUTCOME_SET', async () => {
       const dto = {
@@ -540,6 +572,59 @@ describe('AfterSalesCaseService.createCase', () => {
         exchangeRequestId: 'req-1',
         stage: 'AWAITING_APPROVAL',
       });
+    });
+
+    // M13 — AUTO tier: submit() อนุมัติคำขอให้ทันที → คืน stage ที่ reconcile แล้ว + event APPROVED
+    it('M13: PRICED AUTO tier (คำขอ APPROVED แล้ว) → reconcile → READY_FOR_PICKUP, เขียน approvedAt/APPROVED event, audit มี exchangeRequestId', async () => {
+      const dto = {
+        ...BASE_DTO,
+        outcome: 'PRICED_EXCHANGE' as const,
+        replacementProductId: 'p-2',
+        buybackPrice: '5000',
+        deviceCondition: 'A' as const,
+        newTotalMonths: 10,
+      };
+      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
+      tx.afterSalesCase.create.mockResolvedValue({ id: 'as-9', caseNumber: 'AS-20260924-0009' });
+      contractExchange.submit.mockResolvedValue({ id: 'req-9', mode: 'PRICED', approvalTier: 'AUTO' });
+      prisma.afterSalesCase.findFirst.mockResolvedValue({
+        id: 'as-9',
+        stage: 'AWAITING_APPROVAL',
+        outcome: 'PRICED_EXCHANGE',
+        cancelledAt: null,
+        closedAt: null,
+        replacementContractId: null,
+        repairTicket: null,
+        exchangeRequest: {
+          status: 'APPROVED',
+          mode: 'PRICED',
+          memoAppliedAt: null,
+          rejectionReason: null,
+          cancelReason: null,
+          newContract: { status: 'DRAFT' },
+        },
+      });
+
+      const result = await svc.createCase(dto as never, [mockFile()], USER);
+
+      expect(prisma.afterSalesCase.updateMany).toHaveBeenCalledWith({
+        where: { id: 'as-9', stage: 'AWAITING_APPROVAL' },
+        data: { stage: 'READY_FOR_PICKUP' },
+      });
+      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
+        where: { id: 'as-9' },
+        data: expect.objectContaining({
+          approvedAt: expect.any(Date),
+          approvedById: USER.id,
+          events: { create: expect.objectContaining({ kind: 'APPROVED', actorId: USER.id }) },
+        }),
+      });
+      expect(result.stage).toBe('READY_FOR_PICKUP');
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: expect.objectContaining({ exchangeRequestId: 'req-9' }),
+        }),
+      );
     });
 
     // (d) PRICED_EXCHANGE — submit throw → compensation

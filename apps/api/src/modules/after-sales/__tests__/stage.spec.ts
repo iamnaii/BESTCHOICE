@@ -278,6 +278,28 @@ describe('deriveStage', () => {
   });
 });
 
+describe('deriveStage — I3 ยกเลิก swap หลังลงผล (เคสเคย CLOSED)', () => {
+  it.each(['MEMO', 'PRICED'] as const)(
+    '%s: คำขอ CANCELED แม้ closedAt ตั้งอยู่แล้ว (เคยปิด) → CANCELLED',
+    (mode) => {
+      expect(
+        deriveStage({
+          outcome: 'PRICED_EXCHANGE',
+          cancelledAt: null,
+          closedAt: new Date('2026-09-20T00:00:00Z'),
+          repairStatus: null,
+          exchange: {
+            status: 'CANCELED',
+            mode,
+            memoAppliedAt: mode === 'MEMO' ? new Date('2026-09-20T00:00:00Z') : null,
+            newContractStatus: mode === 'PRICED' ? 'CANCELED' : null,
+          },
+        }),
+      ).toBe('CANCELLED');
+    },
+  );
+});
+
 describe('stageSince', () => {
   const receivedAt = new Date('2026-01-01T00:00:00.000Z');
 

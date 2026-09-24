@@ -19,7 +19,8 @@ import { ContractExchangeService } from '../../contract-exchange/contract-exchan
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
 import { AfterSalesDocNumberService } from './after-sales-doc-number.service';
 import { AfterSalesLookupService, LookupResult } from './after-sales-lookup.service';
-import { reconcileStage } from './after-sales-stage-reconcile';
+import { reconcileStage, RECONCILE_SELECT } from './after-sales-stage-reconcile';
+import { WINDOW_REASON_RE } from '../utils/after-sales-outcomes.util';
 import { CreateCaseDto } from '../dto/create-case.dto';
 import { assertEvidenceImage, evidenceImageExtension } from '../../../utils/upload-image.util';
 import { hashLockKey } from '../../../utils/advisory-lock.util';
@@ -29,11 +30,6 @@ type ReqUser = { id: string; role: string; branchId?: string | null };
 
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 export const MAX_INTAKE_PHOTOS = 6;
-
-// R28 (Task 4) — regex ที่จับเฉพาะเหตุผลเกี่ยวกับ "เครื่องใหม่" (ไม่พร้อมขาย / รุ่น-ความจุไม่ตรง)
-// จาก DefectExchangeService.checkEligibility ห้ามจับเหตุผลเรื่องกรอบ 7 วัน/สถานะสัญญา —
-// สองอย่างนั้นเป็นของที่ผจก.สาขาตัดสินตอนยืนยัน ไม่ใช่ตอนยื่นเรื่อง (ดู task-4-brief.md)
-export const NEW_PRODUCT_REASON_RE = /สินค้าใหม่ไม่พร้อมจำหน่าย|รุ่น\/ความจุ ไม่ตรงกับของเดิม/;
 
 export interface CreateCaseResult {
   id: string;
@@ -147,13 +143,13 @@ export class AfterSalesCaseService {
     } | null = null;
     if (isSameModel) {
       const elig = await this.defect.checkEligibility(look.contract!.id, dto.replacementProductId);
-      // อ่านข้อความจริงใน defect-exchange.service.ts checkEligibility ก่อนแล้ว — จับเฉพาะเหตุผล
-      // เกี่ยวกับ "เครื่องใหม่" (ไม่พร้อมขาย/รุ่น-ความจุไม่ตรง) ไม่ใช่กรอบ 7 วัน/สถานะสัญญา ซึ่งเป็น
-      // สิ่งที่ผจก.สาขาตัดสินตอนยืนยัน ไม่ใช่ตอนยื่นเรื่อง
-      const productReasons = elig.reasons.filter((r) => NEW_PRODUCT_REASON_RE.test(r));
-      if (!elig.newProduct || productReasons.length) {
+      // I1 — กติกาเปลี่ยนรุ่นเดิมของ engine คงเดิมทุกข้อ (spec §4.3): ผจก. ข้ามได้ "เฉพาะกรอบ 7 วัน"
+      // (ตัดสินตอนยืนยัน) — เหตุผลอื่นทุกข้อ (PHONE_USED · สถานะสัญญา · เครดิตเทิร์น · เครื่องใหม่
+      // ไม่พร้อมขาย · รุ่น/ความจุไม่ตรง) บล็อกตั้งแต่ตอนแจ้ง
+      const blocking = elig.reasons.filter((r) => !WINDOW_REASON_RE.test(r));
+      if (!elig.newProduct || blocking.length) {
         throw new BadRequestException(
-          productReasons[0] ?? 'เครื่องทดแทนไม่ตรงรุ่น/ความจุ หรือไม่พร้อมขาย',
+          blocking[0] ?? 'เครื่องทดแทนไม่ตรงรุ่น/ความจุ หรือไม่พร้อมขาย',
         );
       }
       replacementProduct = await this.prisma.product.findUnique({
@@ -214,26 +210,7 @@ export class AfterSalesCaseService {
         // แม้เคสเก่าจะปิดไปแล้วจริง ๆ
         const candidates = await tx.afterSalesCase.findMany({
           where: { deviceImei: imei, deletedAt: null, stage: { notIn: ['CLOSED', 'CANCELLED'] } },
-          select: {
-            id: true,
-            caseNumber: true,
-            stage: true,
-            outcome: true,
-            cancelledAt: true,
-            closedAt: true,
-            replacementContractId: true,
-            repairTicket: { select: { status: true, deletedAt: true, returnedToCustomerAt: true } },
-            exchangeRequest: {
-              select: {
-                status: true,
-                mode: true,
-                memoAppliedAt: true,
-                rejectionReason: true,
-                cancelReason: true,
-                newContract: { select: { status: true } },
-              },
-            },
-          },
+          select: { ...RECONCILE_SELECT, caseNumber: true },
         });
         const reconciledCandidates = await Promise.all(
           candidates.map((c) => reconcileStage(tx, c)),
@@ -426,6 +403,34 @@ export class AfterSalesCaseService {
         },
       });
       result = { ...result, exchangeRequestId: req.id };
+
+      // M13 — tier AUTO: submit() อนุมัติคำขอให้ในตัว ⇒ ตอนนี้คำขออาจ APPROVED แล้ว — reconcile ทันที
+      // (คืน stage จริงให้ผู้เรียก ไม่ใช่ AWAITING_APPROVAL ที่เพิ่งเขียน) และบันทึกผู้อนุมัติ/event
+      // APPROVED ให้ไทม์ไลน์ตรงกับที่เกิดขึ้นจริง (ผู้ยื่นคือผู้ที่ทำให้อนุมัติอัตโนมัติ)
+      const linked = await this.prisma.afterSalesCase.findFirst({
+        where: { id: result.id, deletedAt: null },
+        select: RECONCILE_SELECT,
+      });
+      if (linked) {
+        const reconciled = await reconcileStage(this.prisma, linked);
+        if (linked.exchangeRequest?.status === 'APPROVED') {
+          await this.prisma.afterSalesCase.update({
+            where: { id: result.id },
+            data: {
+              approvedAt: new Date(),
+              approvedById: user.id,
+              events: {
+                create: {
+                  kind: 'APPROVED',
+                  actorId: user.id,
+                  note: `อนุมัติอัตโนมัติ (AUTO) · ${linked.exchangeRequest.mode}`,
+                },
+              },
+            },
+          });
+        }
+        result = { ...result, stage: reconciled.stage };
+      }
     }
 
     // R13 — audit.log อยู่นอก try/catch: ถ้ามันเองพังหลัง tx commit แล้ว ต้องไม่ไปลบรูปของ
@@ -439,6 +444,7 @@ export class AfterSalesCaseService {
         caseNumber: result.caseNumber,
         outcome: dto.outcome,
         repairTicketId: result.repairTicketId,
+        exchangeRequestId: result.exchangeRequestId,
       },
     });
     return result;

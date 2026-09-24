@@ -174,12 +174,18 @@ export class DefectExchangeService {
               );
             }
           } else {
+            // M5 — เคสต้องยังเปิดอยู่และยังไม่เคยยืนยันเปลี่ยนเครื่อง (ไม่งั้นเคสที่ปิดแล้วใช้เป็น "ตั๋วข้ามกรอบ" ได้)
             const asCase = await tx.afterSalesCase.findFirst({
-              where: { id: dto.originAfterSalesCaseId, deletedAt: null },
+              where: {
+                id: dto.originAfterSalesCaseId,
+                deletedAt: null,
+                stage: { notIn: ['CLOSED', 'CANCELLED'] },
+                replacementContractId: null,
+              },
               select: { contractId: true, outcome: true, cancelledAt: true },
             });
             if (!asCase) {
-              throw new NotFoundException('ไม่พบเคสหลังการขาย');
+              throw new NotFoundException('ไม่พบเคสหลังการขายที่ยังเปิดอยู่');
             }
             if (
               asCase.contractId !== dto.oldContractId ||

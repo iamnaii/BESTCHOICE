@@ -314,7 +314,7 @@ export class AfterSalesQueryService {
       stage: { in: [...TAB_STAGES[tab]] },
     };
     if (dto.q) {
-      where.OR = [
+      const or: Prisma.AfterSalesCaseWhereInput[] = [
         { caseNumber: { contains: dto.q, mode: 'insensitive' } },
         { deviceImei: { contains: dto.q } },
         { customer: { name: { contains: dto.q, mode: 'insensitive' } } },
@@ -323,6 +323,15 @@ export class AfterSalesQueryService {
           repairTicket: { contract: { contractNumber: { contains: dto.q, mode: 'insensitive' } } },
         },
       ];
+      // M9 — เคสเปลี่ยนเครื่องไม่มีใบซ่อม: ค้นเลขสัญญาผ่าน `contractId` ของเคสเอง (ไม่มี relation
+      // contract บน AfterSalesCase — ruling P-K) ด้วย query เพิ่มหนึ่งครั้ง
+      const contracts = await this.prisma.contract.findMany({
+        where: { contractNumber: { contains: dto.q, mode: 'insensitive' }, deletedAt: null },
+        select: { id: true },
+        take: LIST_FETCH_CAP,
+      });
+      if (contracts.length) or.push({ contractId: { in: contracts.map((c) => c.id) } });
+      where.OR = or;
     }
     const page = dto.page ?? 1;
     const limit = dto.limit ?? 50;
@@ -512,6 +521,16 @@ export class AfterSalesQueryService {
     // Task 7 — เหตุการณ์ของคำขอเปลี่ยนเครื่องมีราคา (PRICED_EXCHANGE เท่านั้น — SAME_MODEL ไม่มี
     // ContractExchangeRequest ผูกอยู่) รวมเข้าไทม์ไลน์เดียวกันแล้ว sort ตามเวลาจริง ไม่ใช่ต่อท้าย
     const req = reconciled.exchangeRequest;
+    // M6 — ถ้าการกระทำมาทาง hub (proxy) เคสมี event ของตัวเองอยู่แล้ว (APPROVED/REJECTED/CANCELLED)
+    // ภายใน ±60 วิ ของเวลาในคำขอ → ไม่สังเคราะห์ EXCHANGE_* ซ้ำ (สังเคราะห์เฉพาะที่มาจาก endpoint เก่า)
+    const hasOwnEvent = (kind: string, at: Date) =>
+      reconciled.events.some(
+        (e) => e.kind === kind && Math.abs(e.createdAt.getTime() - at.getTime()) <= 60_000,
+      );
+    // I5 — engine `reject()` เขียน approvedAt ด้วย ⇒ approvedAt ไม่ได้แปลว่า "เคยอนุมัติ" เสมอ:
+    // นับเป็นอนุมัติเฉพาะคำขอ APPROVED หรือ CANCELED ที่เคยอนุมัติมาก่อน (ยกเลิก swap หลังอนุมัติ)
+    const wasApproved =
+      !!req?.approvedAt && (req.status === 'APPROVED' || req.status === 'CANCELED');
     const exchangeEvents = req
       ? [
           {
@@ -520,7 +539,7 @@ export class AfterSalesQueryService {
             note: `ยื่นคำขอ ${req.mode}`,
             actorName: undefined as string | undefined,
           },
-          ...(req.approvedAt
+          ...(wasApproved && req.approvedAt && !hasOwnEvent('APPROVED', req.approvedAt)
             ? [
                 {
                   at: req.approvedAt,
@@ -530,7 +549,7 @@ export class AfterSalesQueryService {
                 },
               ]
             : []),
-          ...(req.canceledAt
+          ...(req.canceledAt && !hasOwnEvent('CANCELLED', req.canceledAt)
             ? [
                 {
                   at: req.canceledAt,
@@ -540,7 +559,7 @@ export class AfterSalesQueryService {
                 },
               ]
             : []),
-          ...(req.status === 'REJECTED'
+          ...(req.status === 'REJECTED' && !hasOwnEvent('REJECTED', req.updatedAt)
             ? [
                 {
                   at: req.updatedAt,

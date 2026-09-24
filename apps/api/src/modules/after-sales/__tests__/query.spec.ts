@@ -732,7 +732,15 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
           // ทั้งที่ stored stage เป็น READY_FOR_PICKUP — เทสต์นี้ตรวจ timeline ไม่ใช่ reconcile drift
           newContract: { id: 'contract-new-1', contractNumber: 'CT-0001', status: 'DRAFT' },
         },
+        // T7-4 — event ของเคสมาไม่เรียงเวลา (ตัวหลังสุดอยู่ก่อน) เพื่อพิสูจน์ว่า getCase sort จริง
         events: [
+          {
+            id: 'ev-2',
+            kind: 'PHOTO_ADDED',
+            note: null,
+            actorId: null,
+            createdAt: new Date('2026-09-03T00:00:00.000Z'),
+          },
           {
             id: 'ev-1',
             kind: 'RECEIVED',
@@ -764,11 +772,8 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
       const result = await svc.getCase('as-a', owner);
 
       const kinds = result.timeline.map((t: { kind: string }) => t.kind);
-      expect(kinds).toEqual(
-        expect.arrayContaining(['RECEIVED', 'EXCHANGE_REQUESTED', 'EXCHANGE_APPROVED']),
-      );
-      const times = result.timeline.map((t: { at: Date }) => t.at.getTime());
-      expect(times).toEqual([...times].sort((a, b) => a - b));
+      // T7-4 — ลำดับตายตัว: event ของเคส + event สังเคราะห์ของคำขอ สลับกันตามเวลาจริง
+      expect(kinds).toEqual(['RECEIVED', 'EXCHANGE_REQUESTED', 'EXCHANGE_APPROVED', 'PHOTO_ADDED']);
       expect(result.exchange).toMatchObject({
         kind: 'PRICED',
         approverRole: 'BRANCH_MANAGER',
@@ -776,6 +781,197 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
         ncvSnapshot: '6000.00',
         replacementContract: { id: 'contract-new-1', contractNumber: 'CT-0001', status: 'DRAFT' },
       });
+      expect(prisma.contract.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('(m) final fix wave — timeline I5/M6, ค้นเลขสัญญา M9, batching T7-1/T7-5, stageSince T7-2', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+    const requestedAt = new Date('2026-09-01T00:00:00.000Z');
+    const decidedAt = new Date('2026-09-02T00:00:00.000Z');
+
+    function pricedCaseRow(
+      request: Record<string, unknown>,
+      events: Array<{ kind: string; createdAt: Date }> = [],
+      stage = 'CANCELLED',
+    ) {
+      return {
+        ...buildCaseA({
+          outcome: 'PRICED_EXCHANGE',
+          stage,
+          cancelledAt: stage === 'CANCELLED' ? decidedAt : null,
+          productId: null,
+          replacementProductId: null,
+        }),
+        customer: { ...buildCaseA().customer, lineIdShop: null },
+        repairTicket: null,
+        exchangeRequest: {
+          status: 'REJECTED',
+          mode: 'PRICED',
+          approvalTier: 'REVIEW',
+          buybackPrice: null,
+          ncvSnapshot: null,
+          memoAppliedAt: null,
+          rejectionReason: null,
+          cancelReason: null,
+          canceledAt: null,
+          approvedAt: null,
+          createdAt: requestedAt,
+          updatedAt: decidedAt,
+          newContract: null,
+          ...request,
+        },
+        events: events.map((e, i) => ({ id: `ev-${i}`, note: null, actorId: null, ...e })),
+        photoKeys: [],
+        purchasePhotoKeys: [],
+      };
+    }
+    const kindsOf = (r: { timeline: Array<{ kind: string }> }) => r.timeline.map((t) => t.kind);
+
+    it('I5/T7-3: คำขอ REJECTED (engine เขียน approvedAt ตอนปฏิเสธ) → มี EXCHANGE_REJECTED แต่ไม่มี EXCHANGE_APPROVED', async () => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        pricedCaseRow({
+          status: 'REJECTED',
+          approvedAt: decidedAt,
+          rejectionReason: 'ราคาไม่ผ่าน',
+        }),
+      );
+      const result = await svc.getCase('as-a', owner);
+      expect(kindsOf(result)).toEqual(['EXCHANGE_REQUESTED', 'EXCHANGE_REJECTED']);
+      expect(result.timeline[1]).toMatchObject({ note: 'ราคาไม่ผ่าน' });
+    });
+
+    it('T7-3: คำขอ CANCELED หลังอนุมัติ → EXCHANGE_APPROVED + EXCHANGE_CANCELED (ผ่าน endpoint เก่า ไม่มี event ของเคส)', async () => {
+      const canceledAt = new Date('2026-09-05T00:00:00.000Z');
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        pricedCaseRow({
+          status: 'CANCELED',
+          approvedAt: decidedAt,
+          canceledAt,
+          cancelReason: 'ลูกค้าคืนเครื่อง',
+        }),
+      );
+      const result = await svc.getCase('as-a', owner);
+      expect(kindsOf(result)).toEqual([
+        'EXCHANGE_REQUESTED',
+        'EXCHANGE_APPROVED',
+        'EXCHANGE_CANCELED',
+      ]);
+    });
+
+    it('M6: การกระทำผ่าน hub (มี event APPROVED/CANCELLED/REJECTED ของเคสเองภายใน 60 วิ) → ไม่สังเคราะห์ EXCHANGE_* ซ้ำ', async () => {
+      const canceledAt = new Date('2026-09-05T00:00:00.000Z');
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        pricedCaseRow({ status: 'CANCELED', approvedAt: decidedAt, canceledAt }, [
+          { kind: 'APPROVED', createdAt: new Date(decidedAt.getTime() + 2_000) },
+          { kind: 'CANCELLED', createdAt: new Date(canceledAt.getTime() + 1_500) },
+        ]),
+      );
+      const result = await svc.getCase('as-a', owner);
+      expect(kindsOf(result)).toEqual(['EXCHANGE_REQUESTED', 'APPROVED', 'CANCELLED']);
+
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        pricedCaseRow({ status: 'REJECTED', approvedAt: decidedAt }, [
+          { kind: 'REJECTED', createdAt: new Date(decidedAt.getTime() + 3_000) },
+        ]),
+      );
+      const rejected = await svc.getCase('as-a', owner);
+      expect(kindsOf(rejected)).toEqual(['EXCHANGE_REQUESTED', 'REJECTED']);
+    });
+
+    it('M6: event ของเคสห่างเกิน 60 วิ (คนละครั้ง) → ยังสังเคราะห์ EXCHANGE_APPROVED', async () => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        pricedCaseRow(
+          { status: 'APPROVED', approvedAt: decidedAt },
+          [{ kind: 'APPROVED', createdAt: new Date(decidedAt.getTime() + 120_000) }],
+          'READY_FOR_PICKUP',
+        ),
+      );
+      const result = await svc.getCase('as-a', owner);
+      expect(kindsOf(result)).toEqual(['EXCHANGE_REQUESTED', 'EXCHANGE_APPROVED', 'APPROVED']);
+    });
+
+    it('M9: list q → หาเลขสัญญาด้วย contract.findMany (deletedAt: null) แล้วเพิ่ม contractId in [...] ใน OR', async () => {
+      prisma.contract.findMany.mockResolvedValueOnce([{ id: 'ct-1' }, { id: 'ct-2' }]);
+      await svc.list({ q: 'CT-2026' } as never, owner);
+
+      expect(prisma.contract.findMany).toHaveBeenCalledWith({
+        where: { contractNumber: { contains: 'CT-2026', mode: 'insensitive' }, deletedAt: null },
+        select: { id: true },
+        take: LIST_FETCH_CAP,
+      });
+      const where = prisma.afterSalesCase.findMany.mock.calls[0][0].where;
+      expect(where.OR).toEqual(expect.arrayContaining([{ contractId: { in: ['ct-1', 'ct-2'] } }]));
+    });
+
+    it('M9: ไม่เจอสัญญาที่ตรง → ไม่เพิ่มเงื่อนไข contractId', async () => {
+      await svc.list({ q: 'zzz' } as never, owner);
+      const where = prisma.afterSalesCase.findMany.mock.calls[0][0].where;
+      expect(where.OR.some((c: Record<string, unknown>) => 'contractId' in c)).toBe(false);
+    });
+
+    it('T7-1: หลายแถวเปลี่ยนเครื่อง (SAME_MODEL 2 แถวมีสัญญาใหม่) → product.findMany และ contract.findMany ครั้งเดียวต่อหน้า', async () => {
+      const rows = ['1', '2', '3'].map((n) =>
+        buildCaseA({
+          id: `as-${n}`,
+          outcome: 'SAME_MODEL_EXCHANGE',
+          stage: 'READY_FOR_PICKUP',
+          productId: `old-${n}`,
+          replacementProductId: `new-${n}`,
+          replacementContractId: `ct-${n}`,
+          repairTicket: null,
+        }),
+      );
+      prisma.afterSalesCase.findMany.mockResolvedValue(rows);
+      prisma.afterSalesCase.count.mockResolvedValue(3);
+      prisma.contract.findMany.mockResolvedValue(
+        rows.map((r) => ({
+          id: r.replacementContractId,
+          contractNumber: `N-${r.id}`,
+          status: 'DRAFT',
+        })),
+      );
+
+      const result = await svc.list({ tab: 'READY' } as never, owner);
+
+      expect(result.data).toHaveLength(3);
+      expect(prisma.product.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.contract.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.contract.findMany.mock.calls[0][0].where.id.in).toEqual([
+        'ct-1',
+        'ct-2',
+        'ct-3',
+      ]);
+    });
+
+    it('T7-2: READY_FOR_PICKUP ของทางออกเปลี่ยนเครื่อง → stageSince/daysInStage/stale นับจาก approvedAt ไม่ใช่ receivedAt', async () => {
+      const approvedAt = new Date(Date.now() - 9 * 86400000); // เกินเพดาน 7 วันของ READY_FOR_PICKUP
+      const row = buildCaseA({
+        id: 'as-ready',
+        outcome: 'SAME_MODEL_EXCHANGE',
+        stage: 'READY_FOR_PICKUP',
+        receivedAt: new Date(Date.now() - 30 * 86400000),
+        approvedAt,
+        replacementContractId: 'ct-r',
+        repairTicket: null,
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([row]);
+      prisma.afterSalesCase.count.mockResolvedValue(1);
+
+      const result = await svc.list({ tab: 'READY' } as never, owner);
+
+      expect(result.data[0].stageSince).toEqual(approvedAt);
+      expect(result.data[0].daysInStage).toBe(9);
+      expect(result.data[0].stale).toBe(true);
+    });
+
+    it('T7-5: หน้าที่มีแต่เคสซ่อม → ไม่ยิง product.findMany/contract.findMany เลย', async () => {
+      prisma.afterSalesCase.findMany.mockResolvedValue([buildCaseA(), buildCaseB()]);
+      prisma.afterSalesCase.count.mockResolvedValue(2);
+
+      await svc.list({} as never, owner);
+
+      expect(prisma.product.findMany).not.toHaveBeenCalled();
       expect(prisma.contract.findMany).not.toHaveBeenCalled();
     });
   });

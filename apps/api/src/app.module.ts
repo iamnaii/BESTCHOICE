@@ -138,6 +138,8 @@ import { CollectionsSessionModule } from './modules/collections-session/collecti
 import { BackupModule } from './modules/backup/backup.module';
 // SP7.4 — External Finance Companies + Commission (SHOP-side GFIN/Krungsri)
 import { ExternalFinanceModule } from './modules/external-finance/external-finance.module';
+// ยื่น GFIN — แพ็กเช็คจากห้องแชท (spec 2026-09-24)
+import { ExternalFinanceApplicationModule } from './modules/external-finance-application/external-finance-application.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
 // Employee Master (PR-A) — EmployeeProfile (1:1 User) + CRUD + PII-safe pickable
 import { EmployeesModule } from './modules/employees/employees.module';
@@ -397,6 +399,8 @@ import { AppCacheModule } from './cache/cache.module';
     BackupModule,
     // SP7.4 — External Finance Companies + Commission (SHOP-side GFIN/Krungsri)
     ExternalFinanceModule,
+    // ยื่น GFIN — แพ็กเช็คจากห้องแชท (spec 2026-09-24)
+    ExternalFinanceApplicationModule,
     ContactsModule,
     // Employee Master (PR-A) — EmployeeProfile (1:1 User) + CRUD + PII-safe pickable
     EmployeesModule,

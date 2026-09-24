@@ -21,7 +21,15 @@ export default function GfinStepCustomer({ room, customerId, gfin, onNext }: { r
   const [createOpen, setCreateOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const idCardFile = app.files.find(f => f.slot === 'ID_CARD' && f.sourceMessageId);
-  const link = useLinkRoomCustomer(room.id, { onSuccess: async (newCustomerId) => { await gfin.update({ customerId: newCustomerId }); toast.success('ผูกลูกค้ากับห้องแล้ว'); } });
+  const link = useLinkRoomCustomer(room.id, {
+    onSuccess: async (newCustomerId) => { await gfin.update({ customerId: newCustomerId }); toast.success('ผูกลูกค้ากับห้องแล้ว'); },
+    // สร้างลูกค้าสำเร็จแล้ว แต่ผูกห้องไม่สำเร็จ (network/409/etc.) — ลูกค้ามีอยู่จริงในระบบแล้ว
+    // ต้องไม่ปล่อยให้เงียบ (RoomDossier.tsx มี handler แบบเดียวกันสำหรับ linkCreated)
+    onError: (err, customerId) => toast.error('สร้างลูกค้าแล้ว แต่ผูกกับแชทไม่สำเร็จ', {
+      description: getErrorMessage(err),
+      action: { label: 'ลองผูกอีกครั้ง', onClick: () => link.mutate(customerId) },
+    }),
+  });
   const missing = gfin.preview?.missingFields ?? [];
   const [draft, setDraft] = useState({ occupation: app.customer?.occupation ?? '', phone: app.customer?.phone ?? '', birthDate: app.customer?.birthDate?.slice(0, 10) ?? '' });
   const saveField = useMutation({

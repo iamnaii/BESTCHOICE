@@ -5,8 +5,18 @@ import { MemoryRouter } from 'react-router';
 const get = vi.fn(); const patch = vi.fn();
 vi.mock('@/lib/api', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/lib/api')>()), default: { get: (...a: unknown[]) => get(...a), patch: (...a: unknown[]) => patch(...a), post: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock('@/components/customer/CustomerCreateDialog', () => ({ __esModule: true, default: (p: { open: boolean; initialValues?: { firstName?: string } }) => (p.open ? <div data-testid="create-dialog">{p.initialValues?.firstName}</div> : null) }));
+vi.mock('@/components/customer/CustomerCreateDialog', () => ({
+  __esModule: true,
+  default: (p: { open: boolean; initialValues?: { firstName?: string }; onCreated?: (customer: { id: string; name: string }) => void }) =>
+    (p.open ? (
+      <div data-testid="create-dialog">
+        {p.initialValues?.firstName}
+        <button type="button" onClick={() => p.onCreated?.({ id: 'c-new', name: 'ทดสอบ' })}>ทำให้สร้างลูกค้าสำเร็จ (จำลอง)</button>
+      </div>
+    ) : null),
+}));
 vi.mock('../LinkCustomerDialog', () => ({ __esModule: true, default: (p: { open: boolean }) => (p.open ? <div data-testid="link-dialog" /> : null) }));
+import { toast } from 'sonner';
 import GfinTab from './GfinTab';
 import type { FinanceApplicationModel } from '../../hooks/useFinanceApplication';
 
@@ -71,5 +81,17 @@ describe('GfinTab', () => {
     expect(screen.getByText(/เปิดดู 2 ครั้ง/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'เพิ่มรูปแล้วส่งเพิ่ม' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ผ่าน (แจ้งผ่านลิงก์)' })).toBeInTheDocument();
+  });
+  it('customer created but room-link PATCH fails: shows a retry toast instead of failing silently', async () => {
+    patch.mockRejectedValue(new Error('network down'));
+    const gfin = model({ current: app({}), step: 1 });
+    renderTab(gfin);
+    fireEvent.click(screen.getByRole('button', { name: 'สร้างลูกค้าและผูกห้อง' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ทำให้สร้างลูกค้าสำเร็จ (จำลอง)' }));
+    await waitFor(() => expect(patch).toHaveBeenCalledWith('/staff-chat/rooms/r1/customer', { customerId: 'c-new' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      'สร้างลูกค้าแล้ว แต่ผูกกับแชทไม่สำเร็จ',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'ลองผูกอีกครั้ง' }) }),
+    ));
   });
 });

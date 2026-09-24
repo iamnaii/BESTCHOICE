@@ -150,7 +150,13 @@ const caseSvc = new AfterSalesCaseService(
   defectExchangeFake,
 );
 const querySvc = new AfterSalesQueryService(prisma as never);
-const repairSvc = new AfterSalesRepairService(prisma as never, storage, repairTickets, querySvc);
+const repairSvc = new AfterSalesRepairService(
+  prisma as never,
+  storage,
+  repairTickets,
+  querySvc,
+  audit,
+);
 // AfterSalesExchangeService ปลอม (Task 8, PR 2) — ไฟล์นี้ทดสอบเฉพาะ outcome=REPAIR (PR 1 scope)
 // จึงไม่มีเคสไหนเรียก route เปลี่ยนเครื่องผ่าน facade เลย; ผ่าน `as never` แทนการ wiring ของจริง
 // (เทียบ contractExchangeFake/defectExchangeFake ด้านบน — pattern เดียวกัน)

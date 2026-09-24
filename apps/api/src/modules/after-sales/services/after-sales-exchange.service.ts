@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import type { AfterSalesStage, Prisma, WarrantyStatus } from '@prisma/client';
@@ -67,6 +68,8 @@ type ExchangeCase = Awaited<ReturnType<AfterSalesQueryService['getCase']>>;
 
 @Injectable()
 export class AfterSalesExchangeService {
+  private readonly logger = new Logger(AfterSalesExchangeService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly query: AfterSalesQueryService,
@@ -211,7 +214,15 @@ export class AfterSalesExchangeService {
           where: { id: caseId, approvedAt: claimedAt, replacementContractId: null },
           data: { approvedAt: null, approvedById: null },
         })
-        .catch(() => undefined);
+        .catch((releaseErr: unknown) => {
+          // ไม่กลืนเงียบ — เคสจะค้างสถานะ "จองแล้ว" (ทางออก: ยกเลิกเคส M1 ซึ่งไม่ล็อก approvedAt)
+          this.logger.error(
+            `ปล่อยการจองยืนยันเปลี่ยนเครื่องไม่สำเร็จ caseId=${caseId}: ${
+              releaseErr instanceof Error ? releaseErr.message : String(releaseErr)
+            }`,
+            releaseErr instanceof Error ? releaseErr.stack : undefined,
+          );
+        });
       throw err;
     }
     const newContract = res.newContract;
@@ -319,21 +330,18 @@ export class AfterSalesExchangeService {
     }
 
     // M4 — CAS: ปฏิเสธได้เฉพาะเคสที่ยังรออนุมัติจริงและยังไม่มีใครจองยืนยัน (แข่งกับ confirm/switch)
+    // residual sweep — CAS + event REJECTED ในทรานแซกชันเดียว (audit หลัง commit)
     const cancelledAt = new Date();
-    const claim = await this.prisma.afterSalesCase.updateMany({
-      where: SAME_MODEL_PENDING_CAS(caseId),
-      data: { cancelledAt, cancelReason: dto.reason, stage: 'CANCELLED' },
-    });
-    if (!claim.count) throw new ConflictException('เคสนี้ถูกดำเนินการไปแล้ว');
-
-    const updated = await this.prisma.afterSalesCase.update({
-      where: { id: caseId },
-      data: {
-        cancelledAt,
-        cancelReason: dto.reason,
-        stage: 'CANCELLED',
-        events: { create: { kind: 'REJECTED', actorId: user.id, note: dto.reason } },
-      },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.afterSalesCase.updateMany({
+        where: SAME_MODEL_PENDING_CAS(caseId),
+        data: { cancelledAt, cancelReason: dto.reason, stage: 'CANCELLED' },
+      });
+      if (!claim.count) throw new ConflictException('เคสนี้ถูกดำเนินการไปแล้ว');
+      return tx.afterSalesCase.update({
+        where: { id: caseId },
+        data: { events: { create: { kind: 'REJECTED', actorId: user.id, note: dto.reason } } },
+      });
     });
 
     await this.audit.log({

@@ -345,6 +345,28 @@ describe('AfterSalesExchangeService', () => {
       });
     });
 
+    it('residual sweep: ปล่อยการจองคืนไม่สำเร็จ → logger.error พร้อม caseId (ไม่กลืนเงียบ) แล้วยังส่ง error เดิมของ engine', async () => {
+      query.getCase.mockResolvedValue(buildCase());
+      defect.checkEligibility.mockResolvedValue({
+        eligible: true,
+        reasons: [],
+        newProduct: { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
+      });
+      defect.execute.mockRejectedValue(new BadRequestException('engine ล้ม'));
+      prisma.afterSalesCase.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockRejectedValueOnce(new Error('DB หลุดตอนปล่อยจอง'));
+      const logSpy = jest
+        .spyOn((svc as unknown as { logger: { error: jest.Mock } }).logger, 'error')
+        .mockImplementation(() => undefined);
+
+      await expect(svc.confirmSameModel('as-1', {} as never, MGR)).rejects.toThrow('engine ล้ม');
+
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      expect(logSpy.mock.calls[0][0]).toContain('caseId=as-1');
+      expect(logSpy.mock.calls[0][0]).toContain('DB หลุดตอนปล่อยจอง');
+    });
+
     // (e) — Review Focus 1
     it('SALES เรียก confirmSameModel → ForbiddenException ก่อนแตะ query.getCase', async () => {
       await expect(svc.confirmSameModel('as-1', {} as never, SALES)).rejects.toThrow(
@@ -424,9 +446,21 @@ describe('AfterSalesExchangeService', () => {
 
   describe('rejectSameModel', () => {
     // (g)
-    it('MGR ปฏิเสธเคส AWAITING_APPROVAL SAME_MODEL → cancelledAt/cancelReason/stage CANCELLED + event REJECTED, audit หลัง update', async () => {
+    // residual sweep — CAS + event REJECTED อยู่ใน $transaction เดียว (tx client) · audit หลัง commit
+    function rejectTx(count = 1) {
+      const tx = {
+        afterSalesCase: {
+          updateMany: jest.fn().mockResolvedValue({ count }),
+          update: jest.fn().mockResolvedValue({ id: 'as-1', stage: 'CANCELLED' }),
+        },
+      };
+      prisma.$transaction.mockImplementation((cb: any) => cb(tx));
+      return tx;
+    }
+
+    it('MGR ปฏิเสธเคส AWAITING_APPROVAL SAME_MODEL → ใน tx: CAS เขียน cancelledAt/cancelReason/stage CANCELLED + event REJECTED, audit หลัง tx', async () => {
       query.getCase.mockResolvedValue(buildCase({ stage: 'AWAITING_APPROVAL' }));
-      prisma.afterSalesCase.update.mockResolvedValue({ id: 'as-1', stage: 'CANCELLED' });
+      const tx = rejectTx();
 
       const result = await svc.rejectSameModel(
         'as-1',
@@ -434,32 +468,42 @@ describe('AfterSalesExchangeService', () => {
         MGR,
       );
 
-      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
-        where: { id: 'as-1' },
-        data: expect.objectContaining({
+      expect(tx.afterSalesCase.updateMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({ id: 'as-1', stage: 'AWAITING_APPROVAL' }),
+        data: {
           cancelledAt: expect.any(Date),
           cancelReason: 'ลูกค้าไม่สะดวกรอ',
           stage: 'CANCELLED',
+        },
+      });
+      expect(tx.afterSalesCase.update).toHaveBeenCalledWith({
+        where: { id: 'as-1' },
+        data: {
           events: {
             create: expect.objectContaining({ kind: 'REJECTED', note: 'ลูกค้าไม่สะดวกรอ' }),
           },
-        }),
+        },
       });
+      expect(prisma.afterSalesCase.update).not.toHaveBeenCalled();
+      expect(prisma.afterSalesCase.updateMany).not.toHaveBeenCalled();
       expect(result).toEqual({ id: 'as-1', stage: 'CANCELLED' });
       expect(audit.log).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'AFTER_SALES_EXCHANGE_REJECTED', entityId: 'as-1' }),
       );
+      expect(tx.afterSalesCase.update.mock.invocationCallOrder[0]).toBeLessThan(
+        audit.log.mock.invocationCallOrder[0],
+      );
     });
 
-    it('M4: CAS แพ้ (มีคนยืนยัน/เปลี่ยนเป็นซ่อมไปก่อน) → 409, ไม่เขียน event/audit', async () => {
+    it('M4: CAS แพ้ (มีคนยืนยัน/เปลี่ยนเป็นซ่อมไปก่อน) → 409 ใน tx, ไม่เขียน event/audit', async () => {
       query.getCase.mockResolvedValue(buildCase({ stage: 'AWAITING_APPROVAL' }));
-      prisma.afterSalesCase.updateMany.mockResolvedValueOnce({ count: 0 });
+      const tx = rejectTx(0);
 
       await expect(
         svc.rejectSameModel('as-1', { reason: 'x'.repeat(10) } as never, MGR),
       ).rejects.toThrow(new ConflictException('เคสนี้ถูกดำเนินการไปแล้ว'));
 
-      expect(prisma.afterSalesCase.updateMany).toHaveBeenCalledWith({
+      expect(tx.afterSalesCase.updateMany).toHaveBeenCalledWith({
         where: expect.objectContaining({
           id: 'as-1',
           stage: 'AWAITING_APPROVAL',
@@ -468,7 +512,7 @@ describe('AfterSalesExchangeService', () => {
         }),
         data: expect.objectContaining({ stage: 'CANCELLED' }),
       });
-      expect(prisma.afterSalesCase.update).not.toHaveBeenCalled();
+      expect(tx.afterSalesCase.update).not.toHaveBeenCalled();
       expect(audit.log).not.toHaveBeenCalled();
     });
 
@@ -591,7 +635,11 @@ describe('AfterSalesExchangeService', () => {
         new ConflictException('เคสนี้ถูกดำเนินการไปแล้ว'),
       );
       expect(tx.afterSalesCase.updateMany).toHaveBeenCalledWith({
-        where: expect.objectContaining({ id: 'as-1', stage: 'AWAITING_APPROVAL', approvedAt: null }),
+        where: expect.objectContaining({
+          id: 'as-1',
+          stage: 'AWAITING_APPROVAL',
+          approvedAt: null,
+        }),
         data: { outcome: 'REPAIR', stage: 'RECEIVED' },
       });
       expect(repair.createInTx).not.toHaveBeenCalled();

@@ -431,7 +431,13 @@ export class AfterSalesQueryService {
       // exchanges — เคสที่ outcome เปลี่ยนเครื่อง "ปิดจบ" ในเดือนนี้ (BKK) นับจาก closedAt ตรง ๆ
       // ไม่ต้อง reconcile/decorate ก่อน เพราะเป็นแค่ยอดนับ ไม่ใช่รายการที่ต้องแสดงสถานะปัจจุบัน
       this.prisma.afterSalesCase.count({
-        where: { ...scope, outcome: { in: [...EXCHANGE_OUTCOMES] }, closedAt: { gte: monthStart } },
+        // residual sweep — swap ที่ถูกยกเลิกหลังปิด (closedAt ยังอยู่) ไม่นับ
+        where: {
+          ...scope,
+          outcome: { in: [...EXCHANGE_OUTCOMES] },
+          closedAt: { gte: monthStart },
+          cancelledAt: null,
+        },
       }),
     ]);
     // A1 (final-fix brief) — เช่นเดียวกับ list(): reconcile ก่อนตัดสินว่า "เปิดอยู่" จริงไหม

@@ -19,6 +19,7 @@ describe('AfterSalesRepairService', () => {
   let storage: any;
   let repair: any;
   let query: any;
+  let audit: any;
   let svc: AfterSalesRepairService;
 
   beforeEach(() => {
@@ -45,12 +46,16 @@ describe('AfterSalesRepairService', () => {
       cancel: jest.fn().mockResolvedValue(undefined),
     };
     query = { getCase: jest.fn() };
+    audit = { log: jest.fn().mockResolvedValue(undefined) };
+    // residual sweep — bare exchange cancel ใช้ $transaction (tx = prisma ตัวเดียวกันใน unit test)
+    prisma.$transaction = jest.fn().mockImplementation((cb: any) => cb(prisma));
 
     svc = new AfterSalesRepairService(
       prisma as never,
       storage as never,
       repair as never,
       query as never,
+      audit as never,
     );
   });
 
@@ -215,6 +220,7 @@ describe('AfterSalesRepairService', () => {
       );
       expect(repair.cancel).not.toHaveBeenCalled();
       expect(prisma.afterSalesCase.update).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
     });
   });
 
@@ -250,7 +256,6 @@ describe('AfterSalesRepairService', () => {
             repairTicketId: null,
             replacementContractId: null,
             exchangeRequestId: null,
-            approvedAt: null,
             cancelledAt: null,
             stage: { notIn: ['CLOSED', 'CANCELLED'] },
           },
@@ -266,15 +271,51 @@ describe('AfterSalesRepairService', () => {
         );
         expect(repair.cancel).not.toHaveBeenCalled();
         expect(result).toEqual({ id: 'case-9', stage: 'CANCELLED' });
+        // residual sweep — CAS ไม่ล็อก approvedAt · audit หลัง tx
+        expect(prisma.afterSalesCase.updateMany.mock.calls[0][0].where).not.toHaveProperty(
+          'approvedAt',
+        );
+        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+        expect(audit.log).toHaveBeenCalledWith({
+          userId: MGR.id,
+          action: 'AFTER_SALES_CASE_CANCELLED',
+          entity: 'after_sales_case',
+          entityId: 'case-9',
+          newValue: { outcome, reason: dto.reason },
+        });
+        expect(prisma.afterSalesCase.update.mock.invocationCallOrder[0]).toBeLessThan(
+          audit.log.mock.invocationCallOrder[0],
+        );
       },
     );
+
+    it('residual sweep: เคสจองค้าง (approvedAt ตั้งอยู่ ไม่มีสัญญาใหม่/คำขอ — confirm ล้มแล้วปล่อยจองไม่สำเร็จ) → ยกเลิกได้', async () => {
+      query.getCase.mockResolvedValue(
+        exchangeCase({
+          outcome: 'SAME_MODEL_EXCHANGE',
+          approvedAt: new Date('2026-09-24T01:00:00Z'),
+          approvedById: 'u-other',
+        }),
+      );
+      prisma.afterSalesCase.update.mockResolvedValue({ id: 'case-9', stage: 'CANCELLED' });
+
+      const result = await svc.cancelCase('case-9', dto as never, MGR);
+
+      expect(result).toEqual({ id: 'case-9', stage: 'CANCELLED' });
+      expect(prisma.afterSalesCase.updateMany.mock.calls[0][0].where).not.toHaveProperty(
+        'approvedAt',
+      );
+      expect(audit.log).toHaveBeenCalledTimes(1);
+    });
 
     it.each([
       ['มีคำขอผูกอยู่', { exchangeRequestId: 'req-1' }],
       ['มีสัญญาใหม่แล้ว', { outcome: 'SAME_MODEL_EXCHANGE', replacementContractId: 'ct-new' }],
     ])('%s → 400 ไม่เขียนอะไร', async (_l, o) => {
       query.getCase.mockResolvedValue(exchangeCase(o));
-      await expect(svc.cancelCase('case-9', dto as never, MGR)).rejects.toThrow(BadRequestException);
+      await expect(svc.cancelCase('case-9', dto as never, MGR)).rejects.toThrow(
+        BadRequestException,
+      );
       expect(prisma.afterSalesCase.updateMany).not.toHaveBeenCalled();
       expect(prisma.afterSalesCase.update).not.toHaveBeenCalled();
     });

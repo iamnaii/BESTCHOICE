@@ -663,6 +663,8 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
       const countArgs = prisma.afterSalesCase.count.mock.calls[0][0];
       expect(countArgs.where.outcome).toEqual({ in: ['SAME_MODEL_EXCHANGE', 'PRICED_EXCHANGE'] });
       expect(countArgs.where.closedAt.gte).toBeInstanceOf(Date);
+      // residual sweep — swap ที่ถูกยกเลิกหลังปิด (closedAt ยังอยู่ แต่ cancelledAt ตั้งแล้ว) ไม่นับ
+      expect(countArgs.where.cancelledAt).toBeNull();
     });
   });
 

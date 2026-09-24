@@ -163,7 +163,13 @@ const caseSvc = new AfterSalesCaseService(
   defect,
 );
 const querySvc = new AfterSalesQueryService(prisma as never);
-const repairSvc = new AfterSalesRepairService(prisma as never, storage, repairTickets, querySvc);
+const repairSvc = new AfterSalesRepairService(
+  prisma as never,
+  storage,
+  repairTickets,
+  querySvc,
+  audit,
+);
 const exchangeSvc = new AfterSalesExchangeService(
   prisma as never,
   querySvc,
@@ -916,7 +922,9 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
     expect(caseRow.outcome).toBe('SAME_MODEL_EXCHANGE');
     expect(caseRow.stage).toBe('READY_FOR_PICKUP');
     expect(caseRow.replacementContractId).toBe(result.replacementContractId);
-    const oldContract = await prisma.contract.findUniqueOrThrow({ where: { id: fx.oldContractId } });
+    const oldContract = await prisma.contract.findUniqueOrThrow({
+      where: { id: fx.oldContractId },
+    });
     expect(oldContract.status).toBe('DEFECT_EXCHANGED');
 
     // getCase (reconcile) ยังได้ READY_FOR_PICKUP — ใบซ่อม REPLACED + สัญญาใหม่ DRAFT
@@ -959,7 +967,9 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
     createdContractIds.push(result.replacementContractId as string);
     expect(result.stage).toBe('READY_FOR_PICKUP');
 
-    const oldContract = await prisma.contract.findUniqueOrThrow({ where: { id: fx.oldContractId } });
+    const oldContract = await prisma.contract.findUniqueOrThrow({
+      where: { id: fx.oldContractId },
+    });
     expect(oldContract.status).toBe('DEFECT_EXCHANGED');
     const approvedEvent = await prisma.afterSalesEvent.findFirstOrThrow({
       where: { caseId: created.id, kind: 'APPROVED' },

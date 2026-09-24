@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { RepairTicketsModule } from '../repair-tickets/repair-tickets.module';
 import { DefectExchangeModule } from '../defect-exchange/defect-exchange.module';
+import { ContractExchangeModule } from '../contract-exchange/contract-exchange.module';
 import { QualityControlModule } from '../quality-control/quality-control.module'; // exports ProductPhotosService แล้ว
 import { AfterSalesController } from './after-sales.controller';
 import { AfterSalesService } from './after-sales.service';
@@ -12,7 +13,13 @@ import { AfterSalesQueryService } from './services/after-sales-query.service';
 import { AfterSalesRepairService } from './services/after-sales-repair.service';
 
 @Module({
-  imports: [AuditModule, RepairTicketsModule, DefectExchangeModule, QualityControlModule],
+  imports: [
+    AuditModule,
+    RepairTicketsModule,
+    DefectExchangeModule,
+    ContractExchangeModule,
+    QualityControlModule,
+  ],
   controllers: [AfterSalesController],
   providers: [
     AfterSalesService,

@@ -74,14 +74,14 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
     sameModel = {
       outcome: 'SAME_MODEL_EXCHANGE',
       enabled: true,
-      implemented: false,
+      implemented: true,
       note: 'ผจก.สาขา ต้องยืนยัน',
     };
   } else if (managerUp) {
     sameModel = {
       outcome: 'SAME_MODEL_EXCHANGE',
       enabled: true,
-      implemented: false,
+      implemented: true,
       note: 'ข้ามกรอบ 7 วัน — ผจก. ต้องยืนยัน',
     };
   } else {
@@ -112,7 +112,7 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
     priced = {
       outcome: 'PRICED_EXCHANGE',
       enabled: true,
-      implemented: false,
+      implemented: true,
       note: 'มีขั้นอนุมัติตามราคารับซื้อ',
     };
   } else if (i.warrantyStatus === 'OUT_OF_WARRANTY') {

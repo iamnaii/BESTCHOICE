@@ -152,7 +152,11 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
     expect(o[0]).toMatchObject({ outcome: 'REPAIR', enabled: true, payerDefault: 'CUSTOMER' });
   });
 
-  it('ทุกทางออกที่ไม่ใช่ REPAIR ยัง implemented=false ใน PR 1', () => {
-    expect(computeOutcomes(base).map((x) => x.implemented)).toEqual([true, false, false]);
+  it('SAME_MODEL_EXCHANGE และ PRICED_EXCHANGE implemented=true · CASH_SAME_MODEL_EXCHANGE ยัง false', () => {
+    // ผ่อน ≤7 วัน: ทั้งสามทางออกเปิดอยู่ (จาก `base`) — PR 2 เปิดใช้งานสองทางออกเปลี่ยนเครื่องแล้ว
+    expect(computeOutcomes(base).map((x) => x.implemented)).toEqual([true, true, true]);
+    // ขายสด — เปลี่ยนรุ่นเดิม(ขายสด) ยังรอกติกาบัญชี (สเปกข้อ 10) ไม่เกี่ยวกับ PR 2 นี้
+    const cash = computeOutcomes({ ...base, source: 'CASH_SALE', contractStatus: undefined });
+    expect(pick(cash, 'CASH_SAME_MODEL_EXCHANGE').implemented).toBe(false);
   });
 });

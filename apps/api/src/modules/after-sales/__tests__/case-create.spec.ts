@@ -1,5 +1,8 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { AfterSalesCaseService, MAX_INTAKE_PHOTOS } from '../services/after-sales-case.service';
+import { CreateCaseDto } from '../dto/create-case.dto';
 
 jest.mock('../../../utils/upload-image.util', () => ({
   ...jest.requireActual('../../../utils/upload-image.util'),
@@ -41,6 +44,13 @@ const ALL_ANGLES_PRESENT = {
   bottom: 'data:image/jpeg;base64,AAAA',
 };
 
+const REPLACEMENT_PRODUCT = {
+  brand: 'Apple',
+  model: 'iPhone 13',
+  storage: '128GB',
+  imeiSerial: '359999999999999',
+};
+
 function buildLookupResult(overrides: Record<string, unknown> = {}) {
   return {
     found: true,
@@ -70,6 +80,19 @@ function buildLookupResult(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildExchangeLookup(
+  outcome: 'SAME_MODEL_EXCHANGE' | 'PRICED_EXCHANGE',
+  overrides: Record<string, unknown> = {},
+) {
+  return buildLookupResult({
+    outcomes: [
+      { outcome: 'REPAIR', enabled: true, implemented: true, payerDefault: 'SHOP' },
+      { outcome, enabled: true, implemented: true },
+    ],
+    ...overrides,
+  });
+}
+
 describe('AfterSalesCaseService.createCase', () => {
   let prisma: any;
   let tx: any;
@@ -78,6 +101,8 @@ describe('AfterSalesCaseService.createCase', () => {
   let repair: any;
   let docNumber: any;
   let lookupSvc: any;
+  let contractExchange: any;
+  let defect: any;
   let svc: AfterSalesCaseService;
 
   beforeEach(() => {
@@ -97,7 +122,11 @@ describe('AfterSalesCaseService.createCase', () => {
         }),
       },
     };
-    prisma = { $transaction: jest.fn().mockImplementation((cb: any) => cb(tx)) };
+    prisma = {
+      $transaction: jest.fn().mockImplementation((cb: any) => cb(tx)),
+      product: { findUnique: jest.fn().mockResolvedValue(REPLACEMENT_PRODUCT) },
+      afterSalesCase: { update: jest.fn().mockResolvedValue(undefined) },
+    };
     storage = {
       upload: jest.fn().mockImplementation((key: string) => Promise.resolve(key)),
       delete: jest.fn().mockResolvedValue(undefined),
@@ -118,6 +147,8 @@ describe('AfterSalesCaseService.createCase', () => {
     };
     docNumber = { nextCaseNumber: jest.fn().mockResolvedValue('AS-20260924-0001') };
     lookupSvc = { lookup: jest.fn().mockResolvedValue(buildLookupResult()) };
+    contractExchange = { submit: jest.fn() };
+    defect = { checkEligibility: jest.fn() };
 
     svc = new AfterSalesCaseService(
       prisma as never,
@@ -126,6 +157,8 @@ describe('AfterSalesCaseService.createCase', () => {
       repair as never,
       docNumber as never,
       lookupSvc as never,
+      contractExchange as never,
+      defect as never,
     );
   });
 
@@ -135,7 +168,14 @@ describe('AfterSalesCaseService.createCase', () => {
 
     const result = await svc.createCase(BASE_DTO as never, files, USER);
 
-    expect(result).toEqual({ id: 'as-1', caseNumber: 'AS-20260924-0001', repairTicketId: 'rt-1' });
+    expect(result).toEqual({
+      id: 'as-1',
+      caseNumber: 'AS-20260924-0001',
+      repairTicketId: 'rt-1',
+      outcome: 'REPAIR',
+      exchangeRequestId: null,
+      stage: 'RECEIVED',
+    });
 
     // repair.createInTx เรียกด้วย customerId ของลูกค้าที่ lookup เจอ + สัญญา/สินค้า/IMEI ที่ค้นเจอ
     expect(repair.createInTx).toHaveBeenCalledWith(
@@ -298,7 +338,14 @@ describe('AfterSalesCaseService.createCase', () => {
 
     const result = await svc.createCase(BASE_DTO as never, files, USER);
 
-    expect(result).toEqual({ id: 'as-1', caseNumber: 'AS-20260924-0001', repairTicketId: 'rt-1' });
+    expect(result).toEqual({
+      id: 'as-1',
+      caseNumber: 'AS-20260924-0001',
+      repairTicketId: 'rt-1',
+      outcome: 'REPAIR',
+      exchangeRequestId: null,
+      stage: 'RECEIVED',
+    });
     // แถวเก่าต้องถูกเขียนกลับเป็น CLOSED ระหว่างทาง (CAS ผ่าน reconcileStage)
     expect(tx.afterSalesCase.updateMany).toHaveBeenCalledWith({
       where: { id: 'as-drift', stage: 'READY_FOR_PICKUP' },
@@ -321,5 +368,247 @@ describe('AfterSalesCaseService.createCase', () => {
     expect(storage.upload).not.toHaveBeenCalled();
     expect(lookupSvc.lookup).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  describe('ทางออกเปลี่ยนเครื่อง (PR 2)', () => {
+    // (a) SAME_MODEL_EXCHANGE + replacementProductId ของเครื่อง IN_STOCK รุ่น/ความจุตรง
+    it('(a) SAME_MODEL_EXCHANGE + replacementProductId ตรงรุ่น/ความจุ+IN_STOCK → สร้างเคส stage AWAITING_APPROVAL ไม่เรียก repair.createInTx', async () => {
+      const dto = {
+        ...BASE_DTO,
+        outcome: 'SAME_MODEL_EXCHANGE' as const,
+        replacementProductId: 'p-2',
+      };
+      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('SAME_MODEL_EXCHANGE'));
+      defect.checkEligibility.mockResolvedValue({
+        eligible: true,
+        reasons: [],
+        newProduct: {
+          id: 'p-2',
+          brand: 'Apple',
+          model: 'iPhone 13',
+          storage: '128GB',
+          category: 'PHONE_NEW',
+          status: 'IN_STOCK',
+        },
+      });
+      tx.afterSalesCase.create.mockResolvedValue({ id: 'as-2', caseNumber: 'AS-20260924-0002' });
+
+      const result = await svc.createCase(dto as never, [mockFile()], USER);
+
+      expect(result).toEqual({
+        id: 'as-2',
+        caseNumber: 'AS-20260924-0002',
+        repairTicketId: null,
+        outcome: 'SAME_MODEL_EXCHANGE',
+        exchangeRequestId: null,
+        stage: 'AWAITING_APPROVAL',
+      });
+      expect(defect.checkEligibility).toHaveBeenCalledWith('ct-1', 'p-2');
+      expect(repair.createInTx).not.toHaveBeenCalled();
+
+      const createArg = tx.afterSalesCase.create.mock.calls[0][0];
+      expect(createArg.data).toMatchObject({
+        outcome: 'SAME_MODEL_EXCHANGE',
+        repairTicketId: null,
+        replacementProductId: 'p-2',
+        stage: 'AWAITING_APPROVAL',
+      });
+      expect(createArg.data.events.create).toEqual([
+        expect.objectContaining({ kind: 'RECEIVED' }),
+        expect.objectContaining({
+          kind: 'OUTCOME_SET',
+          note: 'เปลี่ยนรุ่นเดิม · รอ ผจก.สาขา ยืนยัน · เครื่องทดแทน Apple iPhone 13 128GB IMEI 359999999999999',
+        }),
+      ]);
+      expect(audit.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          newValue: expect.objectContaining({ outcome: 'SAME_MODEL_EXCHANGE' }),
+        }),
+      );
+    });
+
+    // (b) SAME_MODEL_EXCHANGE ไม่ส่ง replacementProductId
+    it('(b) SAME_MODEL_EXCHANGE ไม่ส่ง replacementProductId → 400 ก่อนอัปโหลดรูป', async () => {
+      const dto = { ...BASE_DTO, outcome: 'SAME_MODEL_EXCHANGE' as const };
+      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('SAME_MODEL_EXCHANGE'));
+
+      await expect(svc.createCase(dto as never, [mockFile()], USER)).rejects.toThrow(
+        new BadRequestException('ต้องเลือกเครื่องทดแทนจากสต๊อก'),
+      );
+      expect(storage.upload).not.toHaveBeenCalled();
+      expect(defect.checkEligibility).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    // (c) เครื่องทดแทนไม่ IN_STOCK/รุ่นไม่ตรง → 400 เสมอ (ไม่ว่า role ไหน) ·
+    // BM/OWNER ที่ข้ามกรอบ 7 วัน (เหตุผลเป็นเรื่องกรอบเวลา ไม่ใช่ตัวเครื่อง) → สร้างได้
+    it('(c) เครื่องทดแทนไม่ IN_STOCK/รุ่นไม่ตรง → 400 พร้อม reasons[0]; เหตุผลเรื่องกรอบ 7 วัน (ไม่ใช่ตัวเครื่อง) → สร้างได้ (bypass ตัดสินตอนยืนยัน)', async () => {
+      const dto = {
+        ...BASE_DTO,
+        outcome: 'SAME_MODEL_EXCHANGE' as const,
+        replacementProductId: 'p-2',
+      };
+      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('SAME_MODEL_EXCHANGE'));
+
+      // เครื่องทดแทนไม่พร้อมขาย — บล็อกเสมอไม่ว่า role ไหน
+      defect.checkEligibility.mockResolvedValue({
+        eligible: false,
+        reasons: ['สินค้าใหม่ไม่พร้อมจำหน่าย'],
+        newProduct: null,
+      });
+      await expect(svc.createCase(dto as never, [mockFile()], USER)).rejects.toThrow(
+        new BadRequestException('สินค้าใหม่ไม่พร้อมจำหน่าย'),
+      );
+      expect(storage.upload).not.toHaveBeenCalled();
+
+      // BM ข้ามกรอบ 7 วัน — เหตุผลที่ checkEligibility คืนมาเป็นเรื่องกรอบเวลา (contract-level)
+      // ไม่ใช่เรื่องตัวเครื่องทดแทน ⇒ regex ไม่จับ ⇒ ไม่บล็อกตรงนี้ (ผจก.ตัดสินตอนยืนยันแทน)
+      const bmUser = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'b-1' };
+      defect.checkEligibility.mockResolvedValue({
+        eligible: false,
+        reasons: ['พ้นกำหนด 7 วันแล้ว (รับเครื่องเมื่อ 2026-09-01)'],
+        newProduct: {
+          id: 'p-2',
+          brand: 'Apple',
+          model: 'iPhone 13',
+          storage: '128GB',
+          category: 'PHONE_NEW',
+          status: 'IN_STOCK',
+        },
+      });
+      tx.afterSalesCase.create.mockResolvedValue({ id: 'as-3', caseNumber: 'AS-20260924-0003' });
+
+      const result = await svc.createCase(dto as never, [mockFile()], bmUser);
+      expect(result.id).toBe('as-3');
+      expect(tx.afterSalesCase.create).toHaveBeenCalled();
+    });
+
+    // (d) PRICED_EXCHANGE — submit สำเร็จ
+    it('(d) PRICED_EXCHANGE: tx สร้างเคส AWAITING_APPROVAL แล้ว submit สำเร็จ → update exchangeRequestId + event OUTCOME_SET', async () => {
+      const dto = {
+        ...BASE_DTO,
+        outcome: 'PRICED_EXCHANGE' as const,
+        replacementProductId: 'p-2',
+        buybackPrice: '5000',
+        deviceCondition: 'B' as const,
+        newTotalMonths: 10,
+        newInterestRate: '0.02',
+      };
+      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
+      tx.afterSalesCase.create.mockResolvedValue({ id: 'as-4', caseNumber: 'AS-20260924-0004' });
+      contractExchange.submit.mockResolvedValue({
+        id: 'req-1',
+        mode: 'PRICED',
+        approvalTier: 'REVIEW',
+      });
+
+      const result = await svc.createCase(dto as never, [mockFile()], USER);
+
+      expect(defect.checkEligibility).not.toHaveBeenCalled();
+      expect(repair.createInTx).not.toHaveBeenCalled();
+      expect(contractExchange.submit).toHaveBeenCalledWith(
+        {
+          oldContractId: 'ct-1',
+          oldProductId: 'p-1',
+          newProductId: 'p-2',
+          conditionNote: dto.symptom, // conditionNote ไม่ได้ส่งมา → fallback เป็นอาการที่แจ้ง
+          buybackPrice: '5000',
+          deviceCondition: 'B',
+          newTotalMonths: 10,
+          newInterestRate: '0.02',
+        },
+        USER,
+      );
+      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
+        where: { id: 'as-4' },
+        data: {
+          exchangeRequestId: 'req-1',
+          events: {
+            create: {
+              kind: 'OUTCOME_SET',
+              actorId: USER.id,
+              note: 'เปลี่ยนแบบมีราคา · PRICED · tier REVIEW',
+            },
+          },
+        },
+      });
+      expect(result).toEqual({
+        id: 'as-4',
+        caseNumber: 'AS-20260924-0004',
+        repairTicketId: null,
+        outcome: 'PRICED_EXCHANGE',
+        exchangeRequestId: 'req-1',
+        stage: 'AWAITING_APPROVAL',
+      });
+    });
+
+    // (d) PRICED_EXCHANGE — submit throw → compensation
+    it('(d) PRICED_EXCHANGE: submit throw → เคสถูกอัปเดตเป็น CANCELLED พร้อมเหตุผล + rethrow · รูปที่อัปโหลดไม่ถูกลบ', async () => {
+      const dto = {
+        ...BASE_DTO,
+        outcome: 'PRICED_EXCHANGE' as const,
+        replacementProductId: 'p-2',
+        buybackPrice: '5000',
+        deviceCondition: 'B' as const,
+        newTotalMonths: 10,
+      };
+      lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
+      tx.afterSalesCase.create.mockResolvedValue({ id: 'as-5', caseNumber: 'AS-20260924-0005' });
+      contractExchange.submit.mockRejectedValue(
+        new BadRequestException('เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)'),
+      );
+
+      await expect(svc.createCase(dto as never, [mockFile()], USER)).rejects.toThrow(
+        'เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)',
+      );
+
+      expect(prisma.afterSalesCase.update).toHaveBeenCalledWith({
+        where: { id: 'as-5' },
+        data: {
+          stage: 'CANCELLED',
+          cancelledAt: expect.any(Date),
+          cancelReason: 'ยื่นคำขอไม่สำเร็จ: เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)',
+          events: {
+            create: {
+              kind: 'CANCELLED',
+              actorId: USER.id,
+              note: 'ยื่นคำขอไม่สำเร็จ: เครื่องใหม่ต้องอยู่ในสต็อก (IN_STOCK)',
+            },
+          },
+        },
+      });
+      // รูปที่อัปโหลดไว้ต้องไม่ถูกลบ — เคสยังอยู่เป็นประวัติ (คนละ catch กับ tx)
+      expect(storage.delete).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    // (e) outcome นอก enum → 400 จาก DTO
+    describe('CreateCaseDto.outcome', () => {
+      const validPayload = {
+        imei: '359123456789012',
+        symptom: 'จอแตกและเปิดไม่ติด',
+        accessories: {},
+        unlockConfirmed: true,
+        branchId: '11111111-1111-1111-1111-111111111111',
+      };
+
+      it('รับ REPAIR / SAME_MODEL_EXCHANGE / PRICED_EXCHANGE', async () => {
+        for (const outcome of ['REPAIR', 'SAME_MODEL_EXCHANGE', 'PRICED_EXCHANGE']) {
+          const errors = await validate(
+            plainToInstance(CreateCaseDto, { ...validPayload, outcome }),
+          );
+          expect(errors.filter((e) => e.property === 'outcome')).toEqual([]);
+        }
+      });
+
+      it('ปฏิเสธ outcome นอก enum (เช่น CASH_SAME_MODEL_EXCHANGE) ด้วยข้อความ "ทางออกไม่ถูกต้อง"', async () => {
+        const errors = await validate(
+          plainToInstance(CreateCaseDto, { ...validPayload, outcome: 'CASH_SAME_MODEL_EXCHANGE' }),
+        );
+        const outcomeError = errors.find((e) => e.property === 'outcome');
+        expect(outcomeError).toBeDefined();
+        expect(Object.values(outcomeError!.constraints ?? {})).toContain('ทางออกไม่ถูกต้อง');
+      });
+    });
   });
 });

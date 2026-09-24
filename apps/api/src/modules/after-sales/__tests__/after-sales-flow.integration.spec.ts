@@ -110,6 +110,13 @@ const productPhotosFake = {
 const defectExchangeFake = {
   checkEligibility: async () => ({ eligible: false, reasons: ['เกินกรอบ 7 วัน'] }),
 } as never;
+// ContractExchangeService ปลอม (Task 4, PR 2) — ไฟล์นี้ทดสอบเฉพาะ outcome=REPAIR (PR 1 scope)
+// จึงไม่มีเคสไหนเรียก submit() จริง แต่ต้องมีเพื่อให้ตรง constructor shape ของ AfterSalesCaseService
+const contractExchangeFake = {
+  submit: async () => {
+    throw new Error('contractExchangeFake.submit ไม่ถูกเรียกในสเปคนี้ (ทดสอบเฉพาะ REPAIR)');
+  },
+} as never;
 
 const lookupSvc = new AfterSalesLookupService(
   prisma as never,
@@ -139,6 +146,8 @@ const caseSvc = new AfterSalesCaseService(
   repairTickets,
   afterSalesDocNumber,
   lookupSvc,
+  contractExchangeFake,
+  defectExchangeFake,
 );
 const querySvc = new AfterSalesQueryService(prisma as never);
 const repairSvc = new AfterSalesRepairService(prisma as never, storage, repairTickets, querySvc);

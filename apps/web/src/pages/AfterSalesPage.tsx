@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -9,7 +9,12 @@ import { useDebounce } from '@/hooks/useDebounce';
 import IntakeBox from './after-sales/IntakeBox';
 import SummaryStrip from './after-sales/SummaryStrip';
 import CaseTable from './after-sales/CaseTable';
+import Pager from './after-sales/Pager';
 import { afterSalesKeys, type ListResponse } from './after-sales/after-sales';
+
+/** mirror ของ LIST_FETCH_CAP ฝั่ง API (after-sales-query.service.ts) — B3 final-fix brief:
+ * Y = ceil(min(total, 500)/limit) เมื่อ truncated */
+const LIST_FETCH_CAP = 500;
 
 /** mirror ของ CROSS_BRANCH_ROLES ฝั่ง API (branch-access.util.ts) — role อื่นล็อกสาขาตัวเอง
  * (pattern เดียวกับ TradeInPage/components/AcceptModal.tsx และ LettersPage) */
@@ -34,6 +39,13 @@ export default function AfterSalesPage() {
   const [search, setSearch] = useState('');
   const q = useDebounce(search, 300);
   const [staleOnly, setStaleOnly] = useState(false);
+  const [page, setPage] = useState(1);
+
+  // B2 (final-fix brief) — เปลี่ยนแท็บหรือคำค้นแล้วต้องกลับไปหน้า 1 เสมอ ไม่งั้นหน้าที่เคยอยู่
+  // (เช่นหน้า 5) อาจไม่มีอยู่จริงในแท็บ/คำค้นใหม่
+  useEffect(() => {
+    setPage(1);
+  }, [tab, q, staleOnly, branchId]);
 
   const branches = useQuery<{ id: string; name: string }[]>({
     queryKey: ['branches'],
@@ -46,7 +58,7 @@ export default function AfterSalesPage() {
   const visibleTabs = TABS.filter((t) => t !== 'AWAITING_APPROVAL' || user?.role !== 'SALES');
 
   const query = useQuery<ListResponse>({
-    queryKey: afterSalesKeys.list({ tab, q, stale: staleOnly, branchId }),
+    queryKey: afterSalesKeys.list({ tab, q, stale: staleOnly, branchId, page }),
     queryFn: async () =>
       (
         await api.get('/after-sales', {
@@ -56,6 +68,7 @@ export default function AfterSalesPage() {
             stale: staleOnly || undefined,
             summary: 1,
             branchId: branchId || undefined,
+            page,
           },
         })
       ).data,
@@ -63,6 +76,12 @@ export default function AfterSalesPage() {
     staleTime: 0,
     refetchOnMount: 'always',
   });
+
+  // B2/B3 (final-fix brief) — Y = ceil(min(total, 500)/limit) เมื่อ truncated มิฉะนั้น ceil(total/limit)
+  const total = query.data?.total ?? 0;
+  const limit = query.data?.limit ?? 50;
+  const truncated = query.data?.truncated ?? false;
+  const totalPages = Math.max(1, Math.ceil((truncated ? Math.min(total, LIST_FETCH_CAP) : total) / limit));
 
   return (
     <div className="space-y-4">
@@ -148,9 +167,16 @@ export default function AfterSalesPage() {
         {query.data && (
           <div className="space-y-2">
             <CaseTable rows={query.data.data} />
-            {query.data.truncated && (
+            <Pager
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              onPrev={() => setPage((p) => Math.max(1, p - 1))}
+              onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+            />
+            {truncated && (
               <p className="text-xs leading-snug text-muted-foreground">
-                แสดง 500 เคสแรก — ค้นหาหรือกรองให้แคบลง
+                แสดงได้สูงสุด 500 เคสล่าสุดในแท็บนี้ — ใช้ช่องค้นหาเพื่อหาเคสที่เหลือ
               </p>
             )}
           </div>

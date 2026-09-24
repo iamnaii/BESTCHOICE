@@ -257,4 +257,95 @@ describe('AfterSalesPage — หน้าหลัก หลังการข�
     expect(screen.queryByText(/ค่าซ่อม/)).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'รออนุมัติ' })).toBeInTheDocument();
   });
+
+  // C4a (final-fix brief) — ปุ่ม "แจ้งปัญหาเครื่อง" ต้องซ่อนสำหรับ role ที่เปิด /after-sales/new
+  // ไม่ได้ (App.tsx: OWNER/BRANCH_MANAGER/SALES เท่านั้น) — เช็คประกันยังใช้ได้ทุก role
+  it('C4a: FINANCE_MANAGER (เปิด /after-sales/new ไม่ได้) → ไม่เห็นปุ่ม "แจ้งปัญหาเครื่อง" แต่ยังเห็น "เช็คประกัน"', async () => {
+    auth.user = { id: 'u4', role: 'FINANCE_MANAGER', branchId: null };
+    mockGet({
+      list: listResponse({ summary: summary({ repairCostShop: 1500, repairCostCustomer: 800 }) }),
+    });
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    expect(screen.getByRole('button', { name: 'เช็คประกัน' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'แจ้งปัญหาเครื่อง' })).not.toBeInTheDocument();
+  });
+
+  it('C4a: SALES (เปิด /after-sales/new ได้) → ยังเห็นปุ่ม "แจ้งปัญหาเครื่อง"', async () => {
+    auth.user = { id: 'u5', role: 'SALES', branchId: 'branch-1' };
+    mockGet({
+      list: listResponse({ summary: summary({ repairCostShop: null, repairCostCustomer: null }) }),
+    });
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    expect(screen.getByRole('link', { name: 'แจ้งปัญหาเครื่อง' })).toBeInTheDocument();
+  });
+});
+
+describe('AfterSalesPage — B2/B3 final-fix: pager + ข้อความ truncated', () => {
+  function pagedListResponse(over: Partial<ListResponse> = {}): ListResponse {
+    return listResponse({ total: 120, page: 1, limit: 50, truncated: false, ...over });
+  }
+
+  it('B2: แสดง "หน้า 1 / 3 · ทั้งหมด 120 เคส" และปุ่ม "ก่อนหน้า" ถูก disable ที่หน้าแรก', async () => {
+    mockGet({ list: pagedListResponse() });
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    expect(await screen.findByText('หน้า 1 / 3 · ทั้งหมด 120 เคส')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'หน้าก่อนหน้า' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'หน้าถัดไป' })).not.toBeDisabled();
+  });
+
+  it('B2: กด "ถัดไป" → ส่ง page=2 ไปที่ API', async () => {
+    mockGet({ list: pagedListResponse() });
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    await userEvent.click(await screen.findByRole('button', { name: 'หน้าถัดไป' }));
+
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith(
+        '/after-sales',
+        expect.objectContaining({ params: expect.objectContaining({ page: 2 }) }),
+      ),
+    );
+  });
+
+  it('B2: สลับแท็บ → page รีเซ็ตกลับเป็น 1 (แม้เพิ่งอยู่หน้า 2)', async () => {
+    mockGet({ list: pagedListResponse() });
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    await userEvent.click(await screen.findByRole('button', { name: 'หน้าถัดไป' }));
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith(
+        '/after-sales',
+        expect.objectContaining({ params: expect.objectContaining({ page: 2 }) }),
+      ),
+    );
+
+    mocks.get.mockClear();
+    await userEvent.click(screen.getByRole('tab', { name: 'เสร็จแล้ว' }));
+
+    await waitFor(() =>
+      expect(mocks.get).toHaveBeenCalledWith(
+        '/after-sales',
+        expect.objectContaining({ params: expect.objectContaining({ page: 1, tab: 'DONE' }) }),
+      ),
+    );
+  });
+
+  it('B3: total เกิน 500 (truncated) → Y = ceil(500/limit) และข้อความ truncated บอกความจริง', async () => {
+    mockGet({ list: pagedListResponse({ total: 600, truncated: true }) });
+    renderPage();
+
+    await screen.findByRole('heading', { name: 'หลังการขาย' });
+    expect(await screen.findByText('หน้า 1 / 10 · ทั้งหมด 600 เคส')).toBeInTheDocument();
+    expect(
+      screen.getByText('แสดงได้สูงสุด 500 เคสล่าสุดในแท็บนี้ — ใช้ช่องค้นหาเพื่อหาเคสที่เหลือ'),
+    ).toBeInTheDocument();
+  });
 });

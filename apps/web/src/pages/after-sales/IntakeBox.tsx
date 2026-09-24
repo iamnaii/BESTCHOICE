@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import api from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   OUTCOME_LABEL,
   SOURCE_LABEL,
@@ -12,6 +13,11 @@ import {
   dayOf,
   type LookupResult,
 } from './after-sales';
+
+/** mirror ของ roles ที่เปิด /after-sales/new ใน App.tsx (C4a, final-fix brief) — ปุ่ม
+ * "แจ้งปัญหาเครื่อง" ต้องซ่อนสำหรับ role ที่เปิดหน้านั้นไม่ได้ (FINANCE_MANAGER/ACCOUNTANT) —
+ * เช็คประกันไม่มีข้อจำกัดนี้เพราะไม่ได้ไปหน้าใหม่ */
+const NEW_CASE_ROLES = new Set(['OWNER', 'BRANCH_MANAGER', 'SALES']);
 
 interface IntakeBoxProps {
   /**
@@ -26,6 +32,8 @@ interface IntakeBoxProps {
 const PURCHASE_PHOTO_KEYS = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 
 export default function IntakeBox({ onOpenCase }: IntakeBoxProps) {
+  const { user } = useAuth();
+  const canOpenNewCase = !!user && NEW_CASE_ROLES.has(user.role);
   const [searchParams] = useSearchParams();
   const [imei, setImei] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -82,26 +90,29 @@ export default function IntakeBox({ onOpenCase }: IntakeBoxProps) {
           >
             เช็คประกัน
           </Button>
-          {onOpenCase ? (
-            <Button
-              type="button"
-              variant={resultShown ? 'outline' : 'primary'}
-              size="lg"
-              className="h-14 flex-1 sm:flex-none"
-              onClick={() => onOpenCase(trimmed)}
-            >
-              แจ้งปัญหาเครื่อง
-            </Button>
-          ) : (
-            <Button
-              asChild
-              variant={resultShown ? 'outline' : 'primary'}
-              size="lg"
-              className="h-14 flex-1 sm:flex-none"
-            >
-              <Link to={`/after-sales/new?imei=${encodedImei}`}>แจ้งปัญหาเครื่อง</Link>
-            </Button>
-          )}
+          {/* C4a (final-fix brief) — ปุ่มนี้พาไป /after-sales/new เสมอ (ยังไม่มีเคสให้ดู) —
+              ซ่อนทั้งหมดสำหรับ role ที่เปิดหน้านั้นไม่ได้ */}
+          {canOpenNewCase &&
+            (onOpenCase ? (
+              <Button
+                type="button"
+                variant={resultShown ? 'outline' : 'primary'}
+                size="lg"
+                className="h-14 flex-1 sm:flex-none"
+                onClick={() => onOpenCase(trimmed)}
+              >
+                แจ้งปัญหาเครื่อง
+              </Button>
+            ) : (
+              <Button
+                asChild
+                variant={resultShown ? 'outline' : 'primary'}
+                size="lg"
+                className="h-14 flex-1 sm:flex-none"
+              >
+                <Link to={`/after-sales/new?imei=${encodedImei}`}>แจ้งปัญหาเครื่อง</Link>
+              </Button>
+            ))}
         </div>
       </form>
 
@@ -188,20 +199,23 @@ export default function IntakeBox({ onOpenCase }: IntakeBoxProps) {
               )}
 
               <div className="flex flex-wrap gap-2 pt-1">
-                {onOpenCase ? (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="lg"
-                    onClick={() => onOpenCase(trimmed)}
-                  >
-                    {continueLabel}
-                  </Button>
-                ) : (
-                  <Button asChild variant="primary" size="lg">
-                    <Link to={continueHref}>{continueLabel}</Link>
-                  </Button>
-                )}
+                {/* C4a — ถ้ามีเคสเปิดอยู่แล้ว ปุ่มนี้แค่พาไปดูเคส (/after-sales/:id ทุก role ที่เห็น
+                    หน้านี้เปิดได้) จึงไม่ต้องซ่อม; ซ่อนเฉพาะตอนจะพาไป /after-sales/new จริงๆ */}
+                {(canOpenNewCase || !!result.openCase) &&
+                  (onOpenCase ? (
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="lg"
+                      onClick={() => onOpenCase(trimmed)}
+                    >
+                      {continueLabel}
+                    </Button>
+                  ) : (
+                    <Button asChild variant="primary" size="lg">
+                      <Link to={continueHref}>{continueLabel}</Link>
+                    </Button>
+                  ))}
                 <Button type="button" variant="outline" size="lg" onClick={() => lookup.reset()}>
                   แค่เช็ค พอแล้ว
                 </Button>

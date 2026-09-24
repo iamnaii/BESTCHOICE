@@ -3,7 +3,14 @@ import { FinanceApplicationService } from '../services/finance-application.servi
 import { hashLockKey } from '../../../utils/advisory-lock.util';
 
 const room = { id: 'room-1', assignedToId: 'sales-2', customerId: null, deletedAt: null, channel: 'FACEBOOK' };
-const pii = { decryptCustomerFields: (c: any) => c } as any;
+// spy (ไม่ใช่ identity) — พิสูจน์ว่า service ส่ง phoneEncrypted เข้า decryptCustomerFields จริง
+// (fix round 1: ถ้า applicationInclude.customer.select ลืม phoneEncrypted จุดนี้จะไม่มี key ให้ decrypt)
+const pii = {
+  decryptCustomerFields: jest.fn((c: any) => ({
+    ...c,
+    phone: c?.phoneEncrypted ? String(c.phoneEncrypted).replace(/^enc:/, '') : (c?.phone ?? null),
+  })),
+} as any;
 const config = {
   get: (key: string) =>
     key === 'SHARE_PAGE_BASE_URL' ? 'https://bestchoicephone.app' : key === 'PII_ENCRYPTION_KEY' ? 'a'.repeat(64) : undefined,
@@ -75,7 +82,7 @@ describe('FinanceApplicationService.update', () => {
 
 const ready = {
   id: 'app-1', roomId: 'room-1', status: 'DRAFT', number: 'BC-260924-001', occupationOverride: null, messageOverride: null, room,
-  customer: { id: 'c1', name: 'สมหญิง ใจดี', phone: '0937581095', occupation: 'พนักงานบริษัท', birthDate: new Date('1997-12-27') },
+  customer: { id: 'c1', name: 'สมหญิง ใจดี', phone: '0937581095', phoneEncrypted: 'enc:0937581095', occupation: 'พนักงานบริษัท', birthDate: new Date('1997-12-27') },
   product: { id: 'p1', name: 'iPhone 13 Pro Max', brand: 'Apple', model: '13 Pro Max', storage: '256GB', imeiSerial: '355908667841899', category: 'PHONE_USED', status: 'IN_STOCK' },
   files: [{ slot: 'ID_SELFIE', sentAt: null }, { slot: 'ID_CARD', sentAt: null }, { slot: 'INCOME', sentAt: null }],
   events: [],
@@ -91,6 +98,9 @@ describe('FinanceApplicationService.preview / send', () => {
     expect(preview.text).toContain('4.มือ1/2 : 2');
     expect(preview.text).toContain('12.มีสายชาร์จหรือไม่? : -');
     expect(preview.text).toContain('{{link}}'.length ? 'เอกสารทั้งหมด 3 ไฟล์:' : '');
+    expect(preview.text).toContain('093 758 1095'); // เบอร์ถอดรหัสจริงผ่าน pii.decryptCustomerFields (ไม่ใช่ plaintext เฉยๆ)
+    // fix round 1 (Important 1): ถ้า applicationInclude.customer.select ลืม phoneEncrypted จะไม่มี key นี้ให้ผ่าน — เทสนี้จับได้
+    expect(pii.decryptCustomerFields).toHaveBeenCalledWith(expect.objectContaining({ phoneEncrypted: expect.anything() }));
   });
   it('blocks send when occupation or a required slot is missing, naming both', async () => {
     const app = { ...ready, customer: { ...ready.customer, occupation: null }, files: ready.files.filter((f) => f.slot !== 'INCOME') };

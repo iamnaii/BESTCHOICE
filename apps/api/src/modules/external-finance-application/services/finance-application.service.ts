@@ -216,8 +216,8 @@ export class FinanceApplicationService {
   }
 
   async send(id: string, dto: SendFinanceApplicationDto, actor: FinanceActor) {
+    const app = await this.get(id, actor); // access() ก่อนเสมอ — กัน SALES ข้ามห้องโผล่ผ่านทาง via:'BOT' (review fix round 1)
     if (dto.via === 'BOT') throw new NotImplementedException('ส่งด้วยบอทจะเปิดใน PR 2 — ใช้ "คัดลอกข้อความ + ลิงก์" ไปก่อน');
-    const app = await this.get(id, actor);
     const values = await this.buildValues(app, await this.staffName(actor), null);
     const r = this.readiness(app, values);
     if (!r.canSend) throw new BadRequestException(`ยังส่งไม่ได้: ${r.blockers.join(' · ')}`);

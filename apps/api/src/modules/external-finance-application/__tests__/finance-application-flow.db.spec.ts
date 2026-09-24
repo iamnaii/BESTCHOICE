@@ -1,5 +1,7 @@
 /**
- * รัน: DATABASE_URL=<ฐานทดสอบ> npx jest src/modules/external-finance-application/__tests__/finance-application-flow.db.spec.ts --runInBand
+ * รัน: DATABASE_URL=<ฐานทดสอบ> PII_ENCRYPTION_KEY=<hex64> PII_HASH_SALT=<salt ≥32 ตัว>
+ *   npx jest src/modules/external-finance-application/__tests__/finance-application-flow.db.spec.ts --runInBand
+ * (PII_HASH_SALT ต้อง ≥32 ตัว — pii.encryptCustomerFields() ปฏิเสธ salt สั้นกว่านั้น)
  * สร้างห้อง/ผู้ใช้/ลูกค้า/สินค้าของตัวเองแล้วลบทิ้งใน afterAll (ลูกก่อนแม่)
  */
 import { PrismaClient, ChatChannel } from '@prisma/client';
@@ -18,6 +20,7 @@ const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00]);
 let roomId = '';
 let userId = '';
 let service: FinanceApplicationService;
+let pii: CustomerPiiService;
 let localDir = '';
 let storage: StorageService;
 let files: FinanceApplicationFilesService;
@@ -38,7 +41,7 @@ beforeAll(async () => {
   userId = user.id;
   const room = await prisma.chatRoom.create({ data: { channel: ChatChannel.FACEBOOK, externalUserId: tag, displayName: tag } });
   roomId = room.id;
-  const pii = new CustomerPiiService(prisma as any);
+  pii = new CustomerPiiService(prisma as any);
   service = new FinanceApplicationService(prisma as any, new FinanceApplicationNumberService(), pii, config);
   localDir = await fs.mkdtemp(path.join(tmpdir(), 'gfin-files-'));
   const env: Record<string, string> = { STORAGE_LOCAL_DIR: localDir, NODE_ENV: 'test' };
@@ -152,8 +155,16 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
     const actor = { id: userId, role: 'OWNER' };
     const branch = await prisma.branch.findFirst({ where: { deletedAt: null }, select: { id: true } });
     if (!branch) throw new Error('ต้องมีสาขาในฐานทดสอบ (seed ก่อน)');
+    // เขียนเบอร์ผ่าน encryptCustomerFields ให้เหมือน CustomerWriteService.create จริง (dual-write
+    // plaintext + phoneEncrypted/phoneHash) — พิสูจน์ว่า buildValues() ถอดรหัส phoneEncrypted จริง
+    // ไม่ใช่แค่อ่าน legacy plaintext column เฉยๆ (fix round 1 Important 1)
+    const rawPhone = '0937581095';
+    const { phoneEncrypted, phoneHash } = pii.encryptCustomerFields({ phone: rawPhone });
     const customer = await prisma.customer.create({
-      data: { name: `ทดสอบระบบ ${tag}`, phone: '0937581095', occupation: 'พนักงานบริษัท', birthDate: new Date('1997-12-27') },
+      data: {
+        name: `ทดสอบระบบ ${tag}`, phone: rawPhone, occupation: 'พนักงานบริษัท', birthDate: new Date('1997-12-27'),
+        phoneEncrypted, phoneHash,
+      },
     });
     sendCustomerId = customer.id;
     const product = await prisma.product.create({
@@ -178,5 +189,8 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
     expect(row?.shareTokenHash).toHaveLength(64);
     expect(row?.shareTokenEnc).not.toContain(sent.shareUrl.split('/').pop());
     expect(row?.status).toBe('SENT');
+    // ยืนยันว่าเบอร์ที่ถูก encryptCustomerFields ไว้ถูกถอดรหัสจริงตอน buildValues() —
+    // ไม่ใช่แค่อ่าน legacy plaintext column (fix round 1 Important 1)
+    expect(sent.messageText).toContain('093 758 1095');
   });
 });

@@ -15,6 +15,7 @@ import {
 } from '../../repair-tickets/dto/create-repair-ticket.dto';
 import { AfterSalesDocNumberService } from './after-sales-doc-number.service';
 import { AfterSalesLookupService } from './after-sales-lookup.service';
+import { reconcileStage } from './after-sales-stage-reconcile';
 import { CreateCaseDto } from '../dto/create-case.dto';
 import { assertEvidenceImage, evidenceImageExtension } from '../../../utils/upload-image.util';
 import { hashLockKey } from '../../../utils/advisory-lock.util';
@@ -115,12 +116,32 @@ export class AfterSalesCaseService {
         await tx.$executeRawUnsafe(
           `SELECT pg_advisory_xact_lock(${hashLockKey(`as-imei:${imei}`)})`,
         );
-        const dup = await tx.afterSalesCase.findFirst({
+        // A1 (final-fix brief) — โหลดผู้สมัคร stored-open ของ IMEI นี้พร้อมใบซ่อม แล้ว reconcile
+        // ทีละแถวก่อนตัดสิน "ยังเปิดอยู่จริงไหม" — stage ที่เก็บไว้อาจดริฟท์จากใบซ่อมจริง (sync()
+        // ของ proxy ไม่เคยรัน เพราะใบซ่อมถูกแก้นอก proxy) ไม่งั้น IMEI นี้จะถูกบล็อก 409 ตลอดไป
+        // แม้เคสเก่าจะปิดไปแล้วจริง ๆ
+        const candidates = await tx.afterSalesCase.findMany({
           where: { deviceImei: imei, deletedAt: null, stage: { notIn: ['CLOSED', 'CANCELLED'] } },
-          select: { caseNumber: true },
+          select: {
+            id: true,
+            caseNumber: true,
+            stage: true,
+            outcome: true,
+            cancelledAt: true,
+            replacementContractId: true,
+            repairTicket: { select: { status: true, deletedAt: true } },
+          },
         });
-        if (dup)
-          throw new ConflictException(`เครื่องนี้มีเคสที่ยังไม่ปิดอยู่แล้ว: ${dup.caseNumber}`);
+        const reconciledCandidates = await Promise.all(
+          candidates.map((c) => reconcileStage(tx, c)),
+        );
+        const stillOpen = reconciledCandidates.find(
+          (c) => !['CLOSED', 'CANCELLED'].includes(c.stage),
+        );
+        if (stillOpen)
+          throw new ConflictException(
+            `เครื่องนี้มีเคสที่ยังไม่ปิดอยู่แล้ว: ${stillOpen.caseNumber}`,
+          );
 
         const caseNumber = await this.docNumber.nextCaseNumber(tx);
         const repairDto: CreateRepairTicketDto = {

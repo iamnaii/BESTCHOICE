@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RepairTicketsService } from '../../repair-tickets/repair-tickets.service';
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
 import { ProductPhotosService } from '../../quality-control/product-photos.service';
 import { computeOutcomes, OutcomeOption } from '../utils/after-sales-outcomes.util';
+import { reconcileStage } from './after-sales-stage-reconcile';
 import { LookupDto } from '../dto/lookup.dto';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
@@ -56,7 +57,10 @@ export class AfterSalesLookupService {
   ) {}
 
   async lookup(dto: LookupDto, user: ReqUser): Promise<LookupResult> {
-    if (!dto.imei) throw new NotFoundException('ค้นด้วยลูกค้า: เลือกเครื่องก่อน (productId)'); // PR 1: ค้นด้วย IMEI; ค้นด้วยลูกค้าใช้ ContactCombobox แล้วให้พนักงานกรอก IMEI
+    // C7 (final-fix brief) — ข้อความเดิม "เลือกเครื่องก่อน (productId)" ชี้ไปหน้าจอค้นด้วยลูกค้า
+    // ที่ PR 1 ไม่มี UI รองรับจริง (มีแค่ query param `productId` ใน DTO เผื่ออนาคต) — เปลี่ยนเป็น
+    // ข้อความที่ตรงกับสิ่งที่ผู้ใช้ทำได้จริงวันนี้ (ค้นด้วย IMEI เท่านั้น)
+    if (!dto.imei) throw new NotFoundException('ไม่พบเครื่องจากเลข IMEI นี้ — ตรวจเลข IMEI แล้วลองใหม่');
     const r = await this.repair.lookupByImei(dto.imei, user);
     const checkedAt = new Date().toISOString();
     if (!r.found) {
@@ -102,21 +106,45 @@ export class AfterSalesLookupService {
         defectReasons = e.reasons;
       } catch (err) {
         defectEligible = false;
+        // C8 (final-fix brief) — whitelist เฉพาะ HttpException (ข้อความที่ตั้งใจสื่อสารกับผู้ใช้
+        // อยู่แล้ว) ส่วน error อื่นทั้งหมด (Prisma/JS ดิบ) ต้องไม่หลุดไปถึง UI — ใช้เหตุผลกลาง
         defectReasons = [
-          err instanceof Error && err.message ? err.message : 'ตรวจสิทธิ์เปลี่ยนรุ่นเดิมไม่ได้',
+          err instanceof HttpException ? err.message : 'ตรวจสิทธิ์เปลี่ยนเครื่องไม่สำเร็จ',
         ];
       }
     }
     const photos = await this.photos.getPhotos(r.product.id);
-    const openCase = await this.prisma.afterSalesCase.findFirst({
+    // A1 (final-fix brief) — reconcile ก่อนตัดสิน "มีเคสเปิดค้างไหม": stored stage อาจดริฟท์จาก
+    // ใบซ่อมจริง (sync() ของ proxy ไม่เคยรัน) ⇒ ไม่ reconcile จุดนี้ = createCase บล็อก IMEI นี้
+    // ตลอดไปด้วย 409 ทั้งที่เคสเก่าปิดไปแล้วจริง ๆ
+    const openCaseRaw = await this.prisma.afterSalesCase.findFirst({
       where: {
         deviceImei: r.product.imeiSerial ?? dto.imei,
         deletedAt: null,
         stage: { notIn: ['CLOSED', 'CANCELLED'] },
       },
-      select: { id: true, caseNumber: true, stage: true },
+      select: {
+        id: true,
+        caseNumber: true,
+        stage: true,
+        outcome: true,
+        cancelledAt: true,
+        replacementContractId: true,
+        repairTicket: { select: { status: true, deletedAt: true } },
+      },
       orderBy: { receivedAt: 'desc' },
     });
+    const openCaseReconciled = openCaseRaw
+      ? await reconcileStage(this.prisma, openCaseRaw)
+      : null;
+    const openCase =
+      openCaseReconciled && !['CLOSED', 'CANCELLED'].includes(openCaseReconciled.stage)
+        ? {
+            id: openCaseReconciled.id,
+            caseNumber: openCaseReconciled.caseNumber,
+            stage: openCaseReconciled.stage,
+          }
+        : null;
     const warrantyStatus = source === 'WALK_IN' ? 'WALK_IN' : r.warrantyStatus;
     return {
       found: true,

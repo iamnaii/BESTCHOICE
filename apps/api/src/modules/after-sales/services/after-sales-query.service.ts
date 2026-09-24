@@ -3,6 +3,7 @@ import type { AfterSalesOutcome, AfterSalesStage, Prisma, RepairStatus } from '@
 import { PrismaService } from '../../../prisma/prisma.service';
 import { hasCrossBranchAccess } from '../../auth/branch-access.util';
 import { deriveStage, isStale, stageSince } from '../utils/after-sales-stage.util';
+import { reconcileStage } from './after-sales-stage-reconcile';
 import { ListCasesDto } from '../dto/list-cases.dto';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
@@ -97,10 +98,12 @@ export class AfterSalesQueryService {
   }
 
   async list(dto: ListCasesDto, user: ReqUser) {
+    const tab = dto.tab ?? 'ACTIVE';
+    const isDoneTab = tab === 'DONE';
     const where: Prisma.AfterSalesCaseWhereInput = {
       deletedAt: null,
       ...this.branchWhere(user, dto.branchId),
-      stage: { in: [...TAB_STAGES[dto.tab ?? 'ACTIVE']] },
+      stage: { in: [...TAB_STAGES[tab]] },
     };
     if (dto.q) {
       where.OR = [
@@ -118,25 +121,45 @@ export class AfterSalesQueryService {
     // R15 (fix round 1 — Important finding): ต้อง sort ทั้งก้อนก่อน paginate ไม่ใช่ query
     // ทีละหน้าจาก DB แล้วค่อย sort เฉพาะหน้านั้น — ไม่งั้นเคสค้างนาน (stale) ที่ receivedAt
     // ช้ากว่าจะไปตกหน้า 2+ และไม่มีวันขึ้นก่อนเคสไม่ค้างของหน้า 1 เมื่อจำนวนในแท็บเกิน limit.
-    // ดึงแบบไม่มี skip + เพดาน LIST_FETCH_CAP แถว (เรียง receivedAt asc ไว้ก่อน — ลำดับใน
-    // ก้อนที่ดึงมาไม่สำคัญเพราะจะ sort ใหม่ทั้งหมดอยู่ดี), decorate ครบ, กรอง stale (ถ้าขอ),
+    // ดึงแบบไม่มี skip + เพดาน LIST_FETCH_CAP แถว, decorate ครบ, กรอง stale (ถ้าขอ),
     // sort จริง (ค้างนานก่อน แล้วค่อย stageSince เก่าสุดก่อน) แล้วค่อย slice หน้าที่ต้องการ.
     // `total` ยังเป็นยอดจริงของทั้งแท็บจาก DB count (ไม่กรอง stale) — ไม่ใช่ยอดหลัง cap.
+    //
+    // B1 (final-fix brief, 2026-09-24) — แท็บ "เสร็จแล้ว" (DONE) ต้องใหม่สุดก่อนตั้งแต่ระดับ DB
+    // เพื่อให้ LIST_FETCH_CAP เก็บแถวใหม่สุดไว้เสมอ (ไม่ใช่แถวเก่าสุด) แท็บอื่นยังคง receivedAt
+    // asc เหมือนเดิม — ลำดับในก้อนที่ดึงมาไม่สำคัญเพราะจะถูก sort ใหม่ทั้งหมดตาม stale/stageSince
+    const orderBy: Prisma.AfterSalesCaseOrderByWithRelationInput[] = isDoneTab
+      ? [
+          { closedAt: { sort: 'desc', nulls: 'last' } },
+          { cancelledAt: { sort: 'desc', nulls: 'last' } },
+          { receivedAt: 'desc' },
+        ]
+      : [{ receivedAt: 'asc' }];
     const [rows, total] = await Promise.all([
       this.prisma.afterSalesCase.findMany({
         where,
         select: { ...ROW_SELECT, cancelledAt: true },
-        orderBy: { receivedAt: 'asc' },
+        orderBy,
         take: LIST_FETCH_CAP,
       }),
       this.prisma.afterSalesCase.count({ where }),
     ]);
-    let decorated = rows.map((r) => this.decorate(r));
+    // A1 (final-fix brief) — stored `stage` เขียนแยกจากใบซ่อมจริง (sync() อาจไม่เคยรันถ้าใบซ่อม
+    // ถูกแก้นอก proxy) ⇒ reconcile ผู้สมัคร (≤ LIST_FETCH_CAP แถว จึงทำได้ในราคาถูก) แล้วทิ้งแถวที่
+    // derived stage ไม่ตรงแท็บนี้อีกต่อไป. ทิศตรงข้าม (แถวเก็บ CLOSED แต่ derived เปิดอยู่) ไม่มีทาง
+    // เกิดผ่าน writer ชุดนี้ (การปิดเป็นทางเดียว) จึงไม่ต้องมองหา — residual ที่เหลือคือแถวที่เพิ่งดริฟท์
+    // และยังไม่มีใครอ่านมันเลยสักครั้ง (list/getCase/summary/lookup ทุกตัว reconcile ก่อนใช้).
+    const reconciled = await Promise.all(rows.map((r) => reconcileStage(this.prisma, r)));
+    const tabStages = TAB_STAGES[tab] as readonly AfterSalesStage[];
+    const inTab = reconciled.filter((r) => tabStages.includes(r.stage));
+    let decorated = inTab.map((r) => this.decorate(r));
     if (dto.stale) decorated = decorated.filter((r) => r.stale);
-    decorated.sort(
-      (a, b) =>
-        Number(b.stale) - Number(a.stale) || a.stageSince.getTime() - b.stageSince.getTime(),
-    ); // ค้างนานก่อน
+    if (!isDoneTab) {
+      decorated.sort(
+        (a, b) =>
+          Number(b.stale) - Number(a.stale) || a.stageSince.getTime() - b.stageSince.getTime(),
+      ); // ค้างนานก่อน — แท็บ DONE คงลำดับจาก DB (ใหม่สุดก่อน) ไม่ re-sort ทับ (B1)
+    }
     const data = decorated.slice((page - 1) * limit, page * limit);
     return {
       data,
@@ -151,10 +174,14 @@ export class AfterSalesQueryService {
   /** แถบตัวเลขเจ้าของ (spec ข้อ 9) — PR 1 คิดจากใบซ่อมของเคส; awaitingApproval/exchanges = 0 จน PR 2 */
   async summary(user: ReqUser, branchId?: string) {
     const scope = { deletedAt: null, ...this.branchWhere(user, branchId) };
-    const open = await this.prisma.afterSalesCase.findMany({
+    const openRaw = await this.prisma.afterSalesCase.findMany({
       where: { ...scope, stage: { notIn: ['CLOSED', 'CANCELLED'] } },
       select: { ...ROW_SELECT, cancelledAt: true },
     });
+    // A1 (final-fix brief) — เช่นเดียวกับ list(): reconcile ก่อนตัดสินว่า "เปิดอยู่" จริงไหม
+    // ไม่งั้นเคสที่ใบซ่อมถูกปิดนอก proxy จะค้างอยู่ในตัวเลข "เปิดอยู่" ตลอดไป
+    const reconciledOpen = await Promise.all(openRaw.map((r) => reconcileStage(this.prisma, r)));
+    const open = reconciledOpen.filter((r) => !['CLOSED', 'CANCELLED'].includes(r.stage));
     const rows = open.map((r) => this.decorate(r));
     const monthStart = new Date(
       new Date().toLocaleString('en-CA', { timeZone: 'Asia/Bangkok' }).slice(0, 7) +
@@ -215,22 +242,41 @@ export class AfterSalesQueryService {
     if (!hasCrossBranchAccess(user) && row.branchId !== user.branchId) {
       throw new ForbiddenException('ไม่สามารถเข้าถึงสาขาอื่นได้');
     }
-    // เจ้าของ LINE ฝั่งร้าน = `customer.lineIdShop` เท่านั้น — ไม่มีโมเดล "LINE link" แยกสำหรับ
-    // ฝั่งร้าน: `CustomerLineLink` (delegate `customerLineLink`) มีอยู่จริงในสคีมา แต่เป็นของ
-    // chatbot-finance/inbox หลายช่องทาง (SHOP/FINANCE/STAFF ผ่าน room-manager) — ไม่ใช่ตัวเดียวกับ
-    // ที่ `sale-warranty-notifier.service.ts` (การ์ดประกันฝั่งร้านหลังขาย) ใช้ส่งข้อความ และ
-    // `broadcast-audience.spec.ts` ปักไว้ตรง ๆ ว่า "ตัวตนฝั่งร้านอยู่ที่ customer.lineIdShop —
-    // ห้ามแตะ customerLineLink อีก" (เคยเป็นบั๊กที่ถูกแก้แล้ว) ⇒ ใช้ฟิลด์นี้ตรง ๆ ไม่ query เพิ่ม
-    const lineLinked = !!row.customer.lineIdShop;
-    const d = this.decorate(row);
+    // A1 (final-fix brief) — reconcile ก่อน decorate เสมอ: sync() ของ proxy อาจไม่เคยรัน
+    // (ใบซ่อมถูกแก้นอก proxy) ⇒ stored stage ค้างผิดไม่มีวันหาย ถ้าไม่มีใคร reconcile ตอนอ่าน
+    const reconciled = await reconcileStage(this.prisma, row);
+    // C1 (final-fix brief, PII) — เจ้าของ LINE ฝั่งร้าน = `customer.lineIdShop` เท่านั้น — ไม่มีโมเดล
+    // "LINE link" แยกสำหรับฝั่งร้าน (ดูหมายเหตุ broadcast-audience.spec.ts) แต่ `lineIdShop` เป็น LINE
+    // userId ดิบ (PII) ห้ามหลุดไปถึง browser — ส่งแค่ boolean `lineLinked` แล้วตัด lineIdShop ออกจาก
+    // ก้อน customer ที่ส่งกลับ
+    const lineLinked = !!reconciled.customer.lineIdShop;
+    const customer = {
+      id: reconciled.customer.id,
+      name: reconciled.customer.name,
+      phone: reconciled.customer.phone,
+    };
+    const d = this.decorate({ ...reconciled, customer });
+    // C2 (final-fix brief) — AfterSalesEvent เก็บแค่ actorId (ไม่มี relation ไป User ใน schema)
+    // ต้อง resolve ชื่อเองด้วย query เดียวต่อ id ที่ไม่ซ้ำกัน แล้วแปะ actorName ให้ทุกแถวในไทม์ไลน์
+    // (ทั้งฝั่ง event ของเคส และฝั่ง statusLog ของใบซ่อมซึ่งมี actorName อยู่แล้วผ่าน changedBy)
+    const actorIds = [
+      ...new Set(reconciled.events.map((e) => e.actorId).filter((x): x is string => !!x)),
+    ];
+    const actors = actorIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const actorNameById = new Map(actors.map((a) => [a.id, a.name] as const));
     const timeline = [
-      ...row.events.map((e) => ({
+      ...reconciled.events.map((e) => ({
         at: e.createdAt,
         kind: e.kind,
         note: e.note,
-        actorId: e.actorId,
+        actorName: e.actorId ? actorNameById.get(e.actorId) : undefined,
       })),
-      ...(row.repairTicket?.statusLogs ?? [])
+      ...(reconciled.repairTicket?.statusLogs ?? [])
         .filter((l) => !(l.fromStatus === 'OPEN' && l.toStatus === 'OPEN'))
         .map((l) => ({
           at: l.createdAt,
@@ -243,8 +289,8 @@ export class AfterSalesQueryService {
       ...d,
       lineLinked,
       timeline,
-      photoCount: row.photoKeys.length,
-      purchasePhotoAngles: row.purchasePhotoKeys.map(
+      photoCount: reconciled.photoKeys.length,
+      purchasePhotoAngles: reconciled.purchasePhotoKeys.map(
         (k) => /purchase-([a-z]+)\./.exec(k)?.[1] ?? '',
       ),
       photoKeys: undefined,

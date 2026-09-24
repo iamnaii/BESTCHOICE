@@ -66,8 +66,12 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         findFirst: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       repairTicket: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      user: {
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
@@ -202,6 +206,206 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
       const result = await svc.list({} as never, owner);
 
       expect(result.truncated).toBe(true);
+    });
+  });
+
+  describe('(d) A1 final-fix — reconcileStage self-heals ก่อนกรอง/นับ', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+
+    it('list: แถวเก็บ stage=IN_REPAIR แต่ใบซ่อมถูกปิดนอก proxy (CLOSED) → CAS updateMany แล้วหลุดจากแท็บ ACTIVE', async () => {
+      const drifted = buildCaseA({
+        stage: 'IN_REPAIR',
+        repairTicket: buildRepairTicket({ status: 'CLOSED' }),
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([drifted]);
+      prisma.afterSalesCase.count.mockResolvedValue(1);
+
+      const result = await svc.list({ tab: 'ACTIVE' } as never, owner);
+
+      expect(prisma.afterSalesCase.updateMany).toHaveBeenCalledWith({
+        where: { id: 'as-a', stage: 'IN_REPAIR' },
+        data: { stage: 'CLOSED', closedAt: expect.any(Date) },
+      });
+      // derived เป็น CLOSED ⇒ ไม่ตรงแท็บ ACTIVE อีกต่อไป — ต้องหลุด ไม่ใช่โชว์ค้าง
+      expect(result.data).toHaveLength(0);
+    });
+
+    it('summary: แถวเปิดที่ใบซ่อมถูกปิดนอก proxy ไม่ถูกนับเป็น open/openRepair หลัง reconcile', async () => {
+      const drifted = buildCaseA({
+        stage: 'IN_REPAIR',
+        repairTicket: buildRepairTicket({ status: 'CLOSED' }),
+      });
+      prisma.afterSalesCase.findMany.mockResolvedValue([drifted]);
+
+      const result = await svc.summary(owner);
+
+      expect(prisma.afterSalesCase.updateMany).toHaveBeenCalledTimes(1);
+      expect(result.open).toBe(0);
+      expect(result.openRepair).toBe(0);
+    });
+
+    it('getCase: stage เก็บไว้ READY_FOR_PICKUP แต่ใบซ่อม CLOSED → คืน stage=CLOSED และเขียนกลับ DB', async () => {
+      const owner2 = { id: 'u-owner', role: 'OWNER', branchId: null };
+      prisma.afterSalesCase.findFirst.mockResolvedValue({
+        ...buildCaseA(),
+        stage: 'READY_FOR_PICKUP',
+        repairTicket: {
+          ...buildRepairTicket({ status: 'CLOSED' }),
+          statusLogs: [],
+          expenseDocument: null,
+          otherIncome: null,
+          contract: null,
+        },
+        customer: { ...buildCaseA().customer, lineIdShop: null },
+        events: [],
+        photoKeys: [],
+        purchasePhotoKeys: [],
+      });
+
+      const result = await svc.getCase('as-a', owner2);
+
+      expect(result.stage).toBe('CLOSED');
+      expect(prisma.afterSalesCase.updateMany).toHaveBeenCalledWith({
+        where: { id: 'as-a', stage: 'READY_FOR_PICKUP' },
+        data: { stage: 'CLOSED', closedAt: expect.any(Date) },
+      });
+    });
+  });
+
+  describe('(e) C1 final-fix — PII: getCase ต้องไม่ส่ง lineIdShop ดิบออกไป', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+
+    it('customer.lineIdShop ไม่โผล่ในผลลัพธ์ — มีแค่ lineLinked boolean', async () => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue({
+        ...buildCaseA(),
+        customer: { id: 'cust-a', name: 'ลูกค้า A', phone: '0810000000', lineIdShop: 'U1234abcd' },
+        repairTicket: {
+          ...buildRepairTicket(),
+          statusLogs: [],
+          expenseDocument: null,
+          otherIncome: null,
+          contract: null,
+        },
+        events: [],
+        photoKeys: [],
+        purchasePhotoKeys: [],
+      });
+
+      const result = await svc.getCase('as-a', owner);
+
+      expect(result.lineLinked).toBe(true);
+      expect(result.customer).not.toHaveProperty('lineIdShop');
+      expect(result.customer).toEqual({ id: 'cust-a', name: 'ลูกค้า A', phone: '0810000000' });
+    });
+  });
+
+  describe('(f) C2 final-fix — timeline ต้องมี actorName ต่อ event', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+
+    it('resolve actorName จาก user.findMany ด้วย id ที่ไม่ซ้ำกัน', async () => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue({
+        ...buildCaseA(),
+        customer: { ...buildCaseA().customer, lineIdShop: null },
+        repairTicket: {
+          ...buildRepairTicket(),
+          statusLogs: [],
+          expenseDocument: null,
+          otherIncome: null,
+          contract: null,
+        },
+        events: [
+          {
+            id: 'ev-1',
+            kind: 'RECEIVED',
+            note: null,
+            actorId: 'user-9',
+            createdAt: new Date('2026-09-01T00:00:00.000Z'),
+          },
+          {
+            id: 'ev-2',
+            kind: 'OUTCOME_SET',
+            note: 'เลือกทางออก',
+            actorId: 'user-9',
+            createdAt: new Date('2026-09-01T00:05:00.000Z'),
+          },
+        ],
+        photoKeys: [],
+        purchasePhotoKeys: [],
+      });
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-9', name: 'พนักงาน ทดสอบ' }]);
+
+      const result = await svc.getCase('as-a', owner);
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['user-9'] } },
+        select: { id: true, name: true },
+      });
+      expect(result.timeline[0]).toMatchObject({ kind: 'RECEIVED', actorName: 'พนักงาน ทดสอบ' });
+      expect(result.timeline[1]).toMatchObject({ kind: 'OUTCOME_SET', actorName: 'พนักงาน ทดสอบ' });
+    });
+  });
+
+  describe('(g) B1 final-fix — แท็บ DONE เรียงใหม่สุดก่อนที่ DB โดยไม่ re-sort ซ้ำ', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+
+    it('list({tab:DONE}) สั่ง orderBy closedAt desc nulls last · cancelledAt desc nulls last · receivedAt desc', async () => {
+      prisma.afterSalesCase.findMany.mockResolvedValue([]);
+      prisma.afterSalesCase.count.mockResolvedValue(0);
+
+      await svc.list({ tab: 'DONE' } as never, owner);
+
+      const findManyArgs = prisma.afterSalesCase.findMany.mock.calls[0][0];
+      expect(findManyArgs.orderBy).toEqual([
+        { closedAt: { sort: 'desc', nulls: 'last' } },
+        { cancelledAt: { sort: 'desc', nulls: 'last' } },
+        { receivedAt: 'desc' },
+      ]);
+    });
+
+    it('list({tab:ACTIVE}) ยังคง orderBy receivedAt asc (พฤติกรรมเดิม)', async () => {
+      prisma.afterSalesCase.findMany.mockResolvedValue([]);
+      prisma.afterSalesCase.count.mockResolvedValue(0);
+
+      await svc.list({ tab: 'ACTIVE' } as never, owner);
+
+      const findManyArgs = prisma.afterSalesCase.findMany.mock.calls[0][0];
+      expect(findManyArgs.orderBy).toEqual([{ receivedAt: 'asc' }]);
+    });
+
+    it('แท็บ DONE คงลำดับที่ DB ส่งมา (ใหม่สุดก่อน) ไม่ re-sort ตาม stale/stageSince', async () => {
+      const closedNewest = buildCaseA({
+        id: 'as-newest',
+        stage: 'CLOSED',
+        repairTicket: buildRepairTicket({ status: 'CLOSED' }),
+        receivedAt: new Date('2026-09-01T00:00:00.000Z'),
+      });
+      const closedOldest = buildCaseA({
+        id: 'as-oldest',
+        stage: 'CLOSED',
+        repairTicket: buildRepairTicket({ status: 'CLOSED' }),
+        receivedAt: new Date('2026-08-01T00:00:00.000Z'),
+      });
+      // DB คืนมาตามลำดับ orderBy (newest ก่อน) — service ต้องไม่พลิกลำดับนี้
+      prisma.afterSalesCase.findMany.mockResolvedValue([closedNewest, closedOldest]);
+      prisma.afterSalesCase.count.mockResolvedValue(2);
+
+      const result = await svc.list({ tab: 'DONE', page: 1, limit: 50 } as never, owner);
+
+      expect(result.data.map((r) => r.id)).toEqual(['as-newest', 'as-oldest']);
+    });
+
+    it('แท็บ DONE หน้า 2 ตัดตามลำดับ DB เดิม (ไม่ re-sort ก่อน slice)', async () => {
+      const rows = [
+        buildCaseA({ id: 'as-1', stage: 'CLOSED', repairTicket: buildRepairTicket({ status: 'CLOSED' }) }),
+        buildCaseA({ id: 'as-2', stage: 'CLOSED', repairTicket: buildRepairTicket({ status: 'CLOSED' }) }),
+        buildCaseA({ id: 'as-3', stage: 'CLOSED', repairTicket: buildRepairTicket({ status: 'CLOSED' }) }),
+      ];
+      prisma.afterSalesCase.findMany.mockResolvedValue(rows);
+      prisma.afterSalesCase.count.mockResolvedValue(3);
+
+      const result = await svc.list({ tab: 'DONE', page: 2, limit: 2 } as never, owner);
+
+      expect(result.data.map((r) => r.id)).toEqual(['as-3']);
     });
   });
 });

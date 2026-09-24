@@ -88,6 +88,8 @@ describe('AfterSalesCaseService.createCase', () => {
       $executeRawUnsafe: jest.fn().mockResolvedValue(undefined),
       afterSalesCase: {
         findFirst: jest.fn().mockResolvedValue(null), // R12: re-check ใน tx ก่อนสร้าง — ไม่มีเคสซ้ำโดย default
+        findMany: jest.fn().mockResolvedValue([]), // A1: ผู้สมัคร stored-open ของ IMEI นี้ — ว่างโดย default
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }), // A1: reconcileStage CAS write
         create: jest.fn().mockResolvedValue({
           id: 'as-1',
           caseNumber: 'AS-20260924-0001',
@@ -238,8 +240,18 @@ describe('AfterSalesCaseService.createCase', () => {
     const files = [mockFile({ originalname: 'front.jpg' }), mockFile({ originalname: 'back.jpg' })];
     // pre-tx lookup (fast path) ไม่เจอเคสเปิดค้าง — ผ่านด่านแรกไปอัปโหลดรูป
     lookupSvc.lookup.mockResolvedValue(buildLookupResult({ openCase: null }));
-    // แต่พอเข้า tx (หลัง advisory lock) มีอีกคำขอคอมมิตเคสไปก่อนแล้ว
-    tx.afterSalesCase.findFirst.mockResolvedValue({ caseNumber: 'AS-20260924-0009' });
+    // แต่พอเข้า tx (หลัง advisory lock) มีอีกคำขอคอมมิตเคสไปก่อนแล้ว (ยังไม่ปิด — reconcile แล้วยังเปิดอยู่จริง)
+    tx.afterSalesCase.findMany.mockResolvedValue([
+      {
+        id: 'as-9',
+        caseNumber: 'AS-20260924-0009',
+        stage: 'IN_REPAIR',
+        outcome: 'REPAIR',
+        cancelledAt: null,
+        replacementContractId: null,
+        repairTicket: { status: 'IN_PROGRESS', deletedAt: null },
+      },
+    ]);
 
     let err: unknown;
     try {
@@ -265,6 +277,35 @@ describe('AfterSalesCaseService.createCase', () => {
     const deletedKeys = storage.delete.mock.calls.map((c: any) => c[0]).sort();
     expect(deletedKeys).toEqual(uploadedKeys);
     expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  // (h) A1 (final-fix brief) — ผู้สมัคร stored-open มีอยู่จริงแต่ derived stage ปิดแล้ว (ใบซ่อมถูกปิด
+  // นอก proxy) → reconcile ทำให้ไม่ถือว่า "เปิดอยู่" อีกต่อไป ⇒ สร้างเคสใหม่ได้ ไม่ 409
+  it('A1: ผู้สมัคร stored-open ของ IMEI เดียวกัน แต่ derived stage ปิดแล้ว (ใบซ่อมถูกปิดนอก proxy) → สร้างเคสใหม่สำเร็จ ไม่ ConflictException', async () => {
+    const files = [mockFile({ originalname: 'front.jpg' })];
+    lookupSvc.lookup.mockResolvedValue(buildLookupResult({ openCase: null }));
+    tx.afterSalesCase.findMany.mockResolvedValue([
+      {
+        id: 'as-drift',
+        caseNumber: 'AS-20260101-0099',
+        stage: 'READY_FOR_PICKUP', // เก็บไว้ว่ายังเปิด
+        outcome: 'REPAIR',
+        cancelledAt: null,
+        replacementContractId: null,
+        repairTicket: { status: 'CLOSED', deletedAt: null }, // แต่ใบซ่อมจริงถูกปิดนอก proxy แล้ว
+      },
+    ]);
+
+    const result = await svc.createCase(BASE_DTO as never, files, USER);
+
+    expect(result).toEqual({ id: 'as-1', caseNumber: 'AS-20260924-0001', repairTicketId: 'rt-1' });
+    // แถวเก่าต้องถูกเขียนกลับเป็น CLOSED ระหว่างทาง (CAS ผ่าน reconcileStage)
+    expect(tx.afterSalesCase.updateMany).toHaveBeenCalledWith({
+      where: { id: 'as-drift', stage: 'READY_FOR_PICKUP' },
+      data: { stage: 'CLOSED', closedAt: expect.any(Date) },
+    });
+    expect(docNumber.nextCaseNumber).toHaveBeenCalled();
+    expect(tx.afterSalesCase.create).toHaveBeenCalled();
   });
 
   // (g) R16 — fix round 1 Critical: BranchGuard มองไม่เห็น branchId ใน multipart body (guards รัน

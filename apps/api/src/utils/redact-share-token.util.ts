@@ -66,7 +66,9 @@ export function redactShareToken(url: string): string {
  *     (`prepareEvent`'s `normalizeEvent` already converted `extra`/`contexts`/
  *     `user`/breadcrumb + span `data` into plain objects);
  *   - skips the top-level `sdkProcessingMetadata` key entirely (SDK-internal,
- *     never sent, holds the live scopes);
+ *     holds the live scopes). NOT "never sent" — its `dynamicSamplingContext`
+ *     becomes the envelope HEADER `trace` (fix round 5): that one field is
+ *     handled separately by `redactDynamicSamplingContext` below;
  *   - for an `Error` instance (only reachable when normalization did not run),
  *     redacts its own string properties (incl. `message`/`stack`, which the
  *     SDK's normalizer would serialize) that are writable data properties, and
@@ -138,6 +140,30 @@ function scrubErrorOwnProperties(err: Error, seen: WeakSet<object>, depth: numbe
 }
 
 /**
+ * fix round 5 finding 1: `@sentry/core`'s `createEventEnvelopeHeaders`
+ * (utils/envelope.js) copies `event.sdkProcessingMetadata.dynamicSamplingContext`
+ * VERBATIM into the envelope header as `trace` — and its `transaction` is the
+ * isolation scope's transaction name, which for a share-route request is
+ * `POST /api/g/<raw token>/reply` whenever it was captured before Express's router
+ * parameterized it. The deep walk never enters `sdkProcessingMetadata`, so this
+ * redacts that one field on a NEW DSC object (the SDK caches/shares the DSC —
+ * frozen on the root span — so it is never mutated) inside a NEW shallow copy of
+ * `sdkProcessingMetadata` (every other entry, e.g. the live `capturedSpanScope`,
+ * is carried over by reference, untouched).
+ */
+export function redactDynamicSamplingContext<T>(event: T): T {
+  const e = event as unknown as Record<string, any>;
+  const meta = e.sdkProcessingMetadata;
+  if (!meta || typeof meta !== 'object') return event;
+  const dsc = meta.dynamicSamplingContext;
+  if (!dsc || typeof dsc !== 'object') return event;
+  const copy: Record<string, unknown> = { ...dsc };
+  if (typeof copy.transaction === 'string') copy.transaction = redactShareToken(copy.transaction);
+  e.sdkProcessingMetadata = { ...meta, dynamicSamplingContext: copy };
+  return event;
+}
+
+/**
  * fix round 4 finding 1: last-resort scrub for when `scrubShareTokensDeep`
  * throws inside `beforeSend` (throwing getter, non-writable property, ...).
  * `beforeSend` must still return an event rather than throw — a throwing hook
@@ -155,6 +181,7 @@ export function shallowScrubShareTokens<T>(event: T): T {
     if (holder && typeof holder[key] === 'string') holder[key] = redactShareToken(holder[key]);
   };
   guard(() => redactField(e, 'transaction'));
+  guard(() => { redactDynamicSamplingContext(e); }); // fix round 5 — envelope header `trace`
   guard(() => redactField(e, 'message'));
   guard(() => redactField(e.request, 'url'));
   guard(() => redactField(e.extra, 'url'));

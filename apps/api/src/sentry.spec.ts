@@ -31,6 +31,15 @@
  * both hooks fail closed instead of throwing. (The real-SDK end-to-end probe is in
  * the task-6 report — fix round 4.)
  *
+ * fix round 5 finding 1: `sdkProcessingMetadata` is NOT "never sent" — the SDK
+ * copies its `dynamicSamplingContext` verbatim into the envelope HEADER `trace`
+ * (`@sentry/core` utils/envelope.js `createEventEnvelopeHeaders`), and its
+ * `transaction` carried `POST /api/g/<raw token>/reply` on share-route error
+ * envelopes. The tests below now treat the DSC as sent (redacted on a new copy,
+ * the shared original never mutated) while the rest of `sdkProcessingMetadata`
+ * (the live `capturedSpanScope`) stays untouched; and sampled transactions get
+ * the same request-body PII redaction as error events (round 5 Important 2).
+ *
  * `Sentry.init()` only runs when `SENTRY_DSN` is set, and reads it at module
  * top-level — so each test sets the env var, resets the module registry, and
  * re-requires both `@sentry/nestjs` (to read the mock instance matching the
@@ -236,7 +245,7 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
       return { _client: { _options: { dsn: 'https://fake@sentry.example/1' }, _promiseBuffer: promiseBuffer }, _level: 'info' };
     }
 
-    function buildTransactionEvent(route: string) {
+    function buildTransactionEvent(route: string, dscTransaction: string = route) {
       return {
         type: 'transaction' as const,
         transaction: route,
@@ -246,19 +255,27 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
         sdkProcessingMetadata: {
           capturedSpanScope: buildCapturedSpanScope(),
           normalizedRequest: { url: `https://api.example/api/customers/1?ref=${TOKEN}` },
+          // becomes the envelope HEADER `trace` (fix round 5) — frozen like a DSC the SDK caches on the root span
+          dynamicSamplingContext: Object.freeze({ trace_id: 't', public_key: 'pk', sample_rate: '1', sampled: 'true', transaction: dscTransaction }),
         },
       };
     }
 
     it('(a) a NON-share transaction carrying a getter-only property deep inside sdkProcessingMetadata is returned (not null, no throw) and sdkProcessingMetadata is left untouched', () => {
       const config = loadSentryInitConfig();
-      const event = buildTransactionEvent('GET /api/customers/:id');
+      // defensive (fix round 5): a token-shaped value in the DSC transaction of a transaction we still send is redacted
+      const event = buildTransactionEvent('GET /api/customers/:id', `GET /api/customers/1?ref=${TOKEN}`);
       const scope = event.sdkProcessingMetadata.capturedSpanScope;
+      const sharedDsc = event.sdkProcessingMetadata.dynamicSamplingContext;
       let result: any;
       expect(() => { result = config.beforeSendTransaction(event); }).not.toThrow();
       expect(result).not.toBeNull();
       expect(result.transaction).toBe('GET /api/customers/:id');
-      // sdkProcessingMetadata: same objects, same strings — never walked
+      // the DSC (→ envelope header `trace`) is a NEW redacted copy; the shared original is not mutated
+      expect(result.sdkProcessingMetadata.dynamicSamplingContext).toEqual({ ...sharedDsc, transaction: 'GET /api/customers/1?ref=[redacted]' });
+      expect(result.sdkProcessingMetadata.dynamicSamplingContext).not.toBe(sharedDsc);
+      expect(sharedDsc.transaction).toBe(`GET /api/customers/1?ref=${TOKEN}`);
+      // the rest of sdkProcessingMetadata: same objects, same strings — never walked
       expect(result.sdkProcessingMetadata.capturedSpanScope).toBe(scope);
       expect(result.sdkProcessingMetadata.normalizedRequest.url).toBe(`https://api.example/api/customers/1?ref=${TOKEN}`);
       expect((scope._client._promiseBuffer as Record<string, unknown>).$).toBe(`GET /api/g/${TOKEN}`);
@@ -313,13 +330,20 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
         breadcrumbs: [{ category: 'http', data: { url: `/api/g/${TOKEN}/files/f1` } }],
         extra: { url: `/api/g/${TOKEN}/reply`, cause: err },
         exception: { values: [{ type: 'Error', value: `boom /api/g/${TOKEN}`, stacktrace: { frames: [{ filename: '/app/dist/x.js', vars: { token: TOKEN } }] } }] },
-        sdkProcessingMetadata: { capturedSpanScope: buildCapturedSpanScope() },
+        sdkProcessingMetadata: {
+          capturedSpanScope: buildCapturedSpanScope(),
+          dynamicSamplingContext: Object.freeze({ trace_id: 't', public_key: 'pk', sampled: 'true', transaction: `POST /api/g/${TOKEN}/reply` }),
+        },
       };
       let result: any;
       expect(() => { result = config.beforeSend(event); }).not.toThrow();
       expect(result).not.toBeNull();
-      const { sdkProcessingMetadata: _internal, ...sent } = result; // the SDK never sends sdkProcessingMetadata
-      expect(JSON.stringify(sent)).not.toContain(TOKEN);
+      // what the SDK sends = the event item (minus sdkProcessingMetadata) + the envelope header
+      // `trace` = sdkProcessingMetadata.dynamicSamplingContext (fix round 5 — NOT "never sent")
+      const { sdkProcessingMetadata: meta, ...item } = result;
+      expect(JSON.stringify(item)).not.toContain(TOKEN);
+      expect(JSON.stringify(meta.dynamicSamplingContext)).not.toContain(TOKEN);
+      expect(meta.dynamicSamplingContext.transaction).toBe('POST /api/g/[redacted]/reply');
       expect(err.message).toBe('storage read failed for /api/g/[redacted]/files/f1'); // what the SDK normalizer would serialize
       expect(err.stack).not.toContain(TOKEN);
       expect(result.transaction).toBe('POST /api/g/[redacted]/reply');
@@ -339,6 +363,7 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
       // everything redacted below is the fallback's work, not the deep walk's
       const event: any = {
         contexts: { poison },
+        sdkProcessingMetadata: { dynamicSamplingContext: { trace_id: 't', transaction: `GET /api/g/${TOKEN}` } },
         transaction: `GET /api/g/${TOKEN}`,
         message: `failed /api/g/${TOKEN}/zip`,
         request: { url: `https://api.example/api/g/${TOKEN}/reply` },
@@ -354,6 +379,49 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
       expect(result.request.url).toBe('https://api.example/api/g/[redacted]/reply');
       expect(result.extra.url).toBe('/api/g/[redacted]/reply');
       expect(result.breadcrumbs[0].data.url).toBe('/api/g/[redacted]/files/f1');
+      expect(result.sdkProcessingMetadata.dynamicSamplingContext.transaction).toBe('GET /api/g/[redacted]'); // fix round 5
+    });
+
+    it('(e) fix round 5 — a DSC carrying the token (envelope header `trace`) comes out redacted on a new copy, while the rest of sdkProcessingMetadata (live capturedSpanScope with a getter-only prop) is untouched', () => {
+      const config = loadSentryInitConfig();
+      const scope = buildCapturedSpanScope();
+      const sharedDsc = Object.freeze({ trace_id: 'abc', public_key: 'pk', sample_rate: '0.2', sampled: 'true', environment: 'production', transaction: `POST /api/g/${TOKEN}/reply` });
+      const event: any = {
+        transaction: 'POST /api/g/:token/reply',
+        request: { url: `https://api.example/api/g/${TOKEN}/reply` },
+        sdkProcessingMetadata: { capturedSpanScope: scope, dynamicSamplingContext: sharedDsc },
+      };
+      let result: any;
+      expect(() => { result = config.beforeSend(event); }).not.toThrow();
+      expect(result.sdkProcessingMetadata.dynamicSamplingContext).toEqual({ ...sharedDsc, transaction: 'POST /api/g/[redacted]/reply' });
+      expect(sharedDsc.transaction).toBe(`POST /api/g/${TOKEN}/reply`); // the shared/cached original is never mutated
+      expect(result.sdkProcessingMetadata.capturedSpanScope).toBe(scope);
+      expect((scope._client._promiseBuffer as Record<string, unknown>).$).toBe(`GET /api/g/${TOKEN}`);
+      expect(result.request.url).toBe('https://api.example/api/g/[redacted]/reply');
+    });
+
+    it('fix round 5 (Important 1) — no trace headers (sentry-trace / baggage) are propagated to ANY outgoing request', () => {
+      const config = loadSentryInitConfig();
+      // `baggage` carried sentry-transaction=GET%20%2Fapi%2Fg%2F<raw token> to the storage backend and LINE;
+      // [] (not undefined — undefined means "propagate everywhere") = propagate to none
+      expect(config.tracePropagationTargets).toEqual([]);
+    });
+
+    it('fix round 5 (Important 2) — beforeSendTransaction redacts request-body PII on the transactions it still sends', () => {
+      const config = loadSentryInitConfig();
+      const post = (data: unknown) => ({
+        type: 'transaction' as const,
+        transaction: 'POST /api/customers',
+        request: { url: 'https://api.example/api/customers', method: 'POST', data },
+        contexts: { trace: { trace_id: 't', span_id: 's', data: { url: '/api/customers' } } },
+      });
+      const fromString = config.beforeSendTransaction(post('{"firstName":"สมหญิง","phone":"0812345678","nationalId":"1101700203451"}'));
+      expect(fromString).not.toBeNull();
+      expect(JSON.parse(fromString.request.data)).toEqual({ firstName: 'สมหญิง', phone: '[REDACTED]', nationalId: '[REDACTED]' });
+      const fromObject = config.beforeSendTransaction(post({ phone: '0812345678', password: 'x', note: 'ok' }));
+      expect(fromObject.request.data).toEqual({ phone: '[REDACTED]', password: '[REDACTED]', note: 'ok' });
+      const form = config.beforeSendTransaction(post('nationalId=1101700203451&note=ok'));
+      expect(form.request.data).toBe('[REDACTED]');
     });
 
     it('beforeSend handles the REAL request.data shape (the raw body STRING) without throwing and still redacts PII', () => {

@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/nestjs';
-import { scrubShareTokensDeep, shallowScrubShareTokens } from './utils/redact-share-token.util';
+import { redactDynamicSamplingContext, scrubShareTokensDeep, shallowScrubShareTokens } from './utils/redact-share-token.util';
 
 const dsn = process.env.SENTRY_DSN;
 
@@ -95,9 +95,13 @@ const beforeSend: BeforeSendHook = (event) => {
     try { if (event.request) event.request.data = '[REDACTED]'; } catch { /* nothing more we can do */ }
   }
   try {
+    // fix round 5 finding 1: the DSC is sent as the envelope header `trace` — the deep
+    // walk skips `sdkProcessingMetadata`, so its `transaction` is redacted here
+    redactDynamicSamplingContext(event);
     return scrubShareTokensDeep(event);
   } catch {
     // keep the error visible — a shallow scrub of the fields the token is known to reach
+    // (the fallback redacts the DSC too)
     return shallowScrubShareTokens(event);
   }
 };
@@ -111,10 +115,16 @@ const beforeSend: BeforeSendHook = (event) => {
  * fix round 4 finding 1: the share-route check runs first, on the raw event;
  * any throw → `null` (fail closed — never let the SDK turn this into an
  * unscrubbed internal error event).
+ * fix round 5: request-body PII is redacted before the share-route decision, and
+ * the DSC (envelope header `trace`) is redacted on every transaction still sent.
  */
 const beforeSendTransaction: BeforeSendTransactionHook = (event) => {
   try {
+    // fix round 5 (Important 2): sampled transactions carry the captured request body
+    // too (`POST /api/customers` shipped phone + nationalId) — same redaction as errors
+    redactSensitiveRequestData(event);
     if (isShareRouteTransaction(event)) return null;
+    redactDynamicSamplingContext(event); // fix round 5 finding 1 — defensive, envelope header `trace`
     return scrubShareTokensDeep(event);
   } catch {
     return null;
@@ -130,5 +140,12 @@ if (dsn) {
     // `/api/g/<token>/...`) reach Sentry in ANY field an integration might put it in.
     beforeSend,
     beforeSendTransaction,
+    // fix round 5 (Important 1): the SDK attaches `sentry-trace` + `baggage` to every
+    // OUTGOING HTTP request by default, and `baggage` carries
+    // `sentry-transaction=GET%20%2Fapi%2Fg%2F<raw token>` while serving a share-route
+    // request — so the token reached the storage backend (`getStream`) and LINE. This
+    // API calls no Sentry-instrumented downstream service, so propagate to none.
+    // Continuing an INBOUND trace (the web app's `sentry-trace`) is unaffected.
+    tracePropagationTargets: [],
   });
 }

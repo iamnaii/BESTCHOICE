@@ -6,6 +6,12 @@ import { dayTimeOf, type TimelineItem } from './after-sales';
  * RepairStatusLog ที่ map เป็น `REPAIR_<toStatus>` — เฉพาะที่ brief ระบุชื่อไทยไว้เท่านั้น
  * ที่เหลือ (REPAIR_SENT ดิบ, REPAIR_DONE, DELIVERED, NOTE, REPAIR_CANCELLED, REPAIR_REPLACED)
  * ตกไปที่ fallback = คืน kind ดิบ (PR 3 จะเพิ่ม LINE_SENT/LINE_SKIPPED_NO_LINK ตัวเอง)
+ *
+ * Task 11 — 6 kind ใหม่ของ PR 2 (เปลี่ยนเครื่อง): APPROVED/REJECTED เป็นแถวจริงจาก
+ * AfterSalesEvent (confirmSameModel/approvePriced เขียน APPROVED, rejectSameModel/rejectPriced
+ * เขียน REJECTED) ส่วน EXCHANGE_REQUESTED/EXCHANGE_APPROVED/EXCHANGE_REJECTED/EXCHANGE_CANCELED
+ * เป็นแถว synthesize ที่ query service (Task 7) แปลงจาก ContractExchangeRequest.createdAt/
+ * approvedAt/rejectionReason/canceledAt ตอนอ่าน — ไม่ใช่ AfterSalesEventKind enum จริง
  */
 const KIND_LABEL: Record<string, string> = {
   RECEIVED: 'รับเรื่อง',
@@ -17,6 +23,12 @@ const KIND_LABEL: Record<string, string> = {
   PHOTO_ADDED: 'เพิ่มรูป',
   CANCELLED: 'ยกเลิก',
   CLOSED: 'ปิดเคส',
+  APPROVED: 'ยืนยัน/อนุมัติ',
+  REJECTED: 'ปฏิเสธ',
+  EXCHANGE_REQUESTED: 'ยื่นคำขอ',
+  EXCHANGE_APPROVED: 'อนุมัติคำขอ',
+  EXCHANGE_REJECTED: 'ปฏิเสธคำขอ',
+  EXCHANGE_CANCELED: 'ยกเลิกคำขอ',
 };
 
 function labelOf(kind: string): string {

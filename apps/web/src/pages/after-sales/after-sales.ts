@@ -167,6 +167,10 @@ export interface CaseDetail extends CaseRow {
   contractId: string | null;
   saleId: string | null;
   replacementProductId: string | null;
+  /** Task 11 — `AfterSalesCase.replacementContractId` เป็นสกาลาร์จริงบนโมเดล (confirmSameModel
+   * เขียนตอนยืนยัน) และเดินทางมาถึง response จริงผ่าน `{...row}` ของ `decorate()`/`getCase()`
+   * (`include` ไม่ตัดสกาลาร์ทิ้ง) แม้ Task 9 จะไม่ได้ประกาศไว้ในทีแรก — เพิ่มที่นี่ให้ตรงกับ API จริง */
+  replacementContractId: string | null;
   repairTicket:
     | (CaseRow['repairTicket'] & {
         externalClaimNo: string | null;
@@ -307,6 +311,179 @@ export function staleLabel(stage: AfterSalesStage, days: number): string | null 
   // R25 (e) — เลิกคำว่า "เกิน" ที่ขอบ (อ่านเหมือนเลยเส้นตายไปแล้วเสมอ แม้ค่าเพิ่งแตะเกณฑ์พอดี)
   return s && days >= s[0] ? `${s[1]} ${days} วัน (เกณฑ์ ${s[0]} วัน)` : null;
 }
+/** Task 11 — dialog vocabulary ที่ page/ExchangeActionDialogs ใช้ร่วมกัน (แหล่งเดียว ห้ามมีสำเนา) */
+export type CaseDialogId =
+  | 'send'
+  | 'mark-repaired'
+  | 'send-back'
+  | 'cancel'
+  | 'return'
+  | 'exchange-confirm'
+  | 'exchange-deliver'
+  | 'exchange-reject'
+  | 'switch-to-repair'
+  | 'approve'
+  | 'reject-priced'
+  | 'cancel-swap';
+
+export type PrimaryAction = { label: string; dialog: CaseDialogId } | { waitingText: string };
+
+export type SecondaryAction =
+  | { kind: 'dialog'; label: string; dialog: CaseDialogId; destructive?: boolean }
+  | { kind: 'link'; label: string; to: string };
+
+const STAFF_SET = new Set(['OWNER', 'BRANCH_MANAGER', 'SALES']);
+const MGR_SET = new Set(['OWNER', 'BRANCH_MANAGER']);
+
+/**
+ * Task 11 — ปุ่มหลักปุ่มเดียวตาม outcome × stage × role (ตารางในบรีฟ) แทน `primaryLabelOf` เดิม.
+ * คืน `{label,dialog}` (มีปุ่มกดได้) หรือ `{waitingText}` (role ไม่พอ — โชว์ข้อความแทนปุ่ม) หรือ
+ * `null` (ไม่มีปุ่ม/ข้อความเลย — CLOSED/CANCELLED ทุกทาง, role อ่านอย่างเดียวอย่าง FM/ACCOUNTANT,
+ * และแถว PRICED READY_FOR_PICKUP ที่ใช้ลิงก์ "ไปสัญญาใหม่" แทนปุ่ม — ลิงก์นั้นเรนเดอร์ตรงในหน้า
+ * ไม่ผ่านฟังก์ชันนี้ เพราะ contract คืนค่าไม่มีรูปแบบ "ลิงก์").
+ */
+export function primaryAction(data: CaseDetail, role: string): PrimaryAction | null {
+  const { outcome, stage } = data;
+
+  if (stage === 'CLOSED' || stage === 'CANCELLED') return null;
+
+  // แถว "REPAIR/SAME_MODEL | READY_FOR_PICKUP (มี replacementContractId)" — ส่งมอบเครื่องใหม่
+  // มาก่อนกิ่ง REPAIR ปกติเสมอ (ใบซ่อมที่ถูกแทนที่ — repairTicket.status 'REPLACED' — ไม่ใช่ REPAIR
+  // อีกต่อไปในทางปฏิบัติ เพราะ confirmSameModel เซ็ต outcome เป็น SAME_MODEL_EXCHANGE คู่กันเสมอ)
+  if (
+    outcome === 'SAME_MODEL_EXCHANGE' &&
+    stage === 'READY_FOR_PICKUP' &&
+    data.replacementContractId
+  ) {
+    if (!STAFF_SET.has(role)) return null;
+    return { label: 'ส่งมอบเครื่องใหม่', dialog: 'exchange-deliver' };
+  }
+
+  if (outcome === 'REPAIR') {
+    if (stage === 'RECEIVED') {
+      if (!STAFF_SET.has(role)) return null;
+      const hasCenter = !!data.repairTicket?.repairSupplier;
+      return hasCenter
+        ? { label: 'ส่งซ่อม', dialog: 'send' }
+        : { label: 'บันทึกซ่อมเสร็จ (ซ่อมที่ร้าน)', dialog: 'mark-repaired' };
+    }
+    if (stage === 'IN_REPAIR') {
+      if (!STAFF_SET.has(role)) return null;
+      return { label: 'บันทึกซ่อมเสร็จ', dialog: 'mark-repaired' };
+    }
+    if (stage === 'READY_FOR_PICKUP' && data.repairTicket?.status !== 'REPLACED') {
+      if (!STAFF_SET.has(role)) return null;
+      return { label: 'ส่งมอบคืนลูกค้า', dialog: 'return' };
+    }
+    return null;
+  }
+
+  if (outcome === 'SAME_MODEL_EXCHANGE' && stage === 'AWAITING_APPROVAL') {
+    if (MGR_SET.has(role)) return { label: 'ยืนยันเปลี่ยนเครื่อง', dialog: 'exchange-confirm' };
+    if (role === 'SALES') return { waitingText: `รอ ${APPROVER_LABEL.BRANCH_MANAGER} ยืนยัน` };
+    return null;
+  }
+
+  if (outcome === 'PRICED_EXCHANGE' && stage === 'AWAITING_APPROVAL') {
+    const approverRole = data.exchange?.approverRole ?? 'OWNER';
+    if (role === 'OWNER') return { label: 'อนุมัติ', dialog: 'approve' };
+    if (role === 'BRANCH_MANAGER') {
+      if (approverRole === 'BRANCH_MANAGER') return { label: 'อนุมัติ', dialog: 'approve' };
+      return { waitingText: `รอ ${APPROVER_LABEL[approverRole]} อนุมัติ` };
+    }
+    if (role === 'SALES') return { waitingText: `รอ ${APPROVER_LABEL[approverRole]} อนุมัติ` };
+    return null;
+  }
+
+  // CASH_SAME_MODEL_EXCHANGE (ยังไม่เปิดใช้ — engine ปฏิเสธเมื่อไม่มี contractId) และ
+  // PRICED_EXCHANGE READY_FOR_PICKUP (ไม่มีปุ่ม — ดู jsdoc ด้านบน) ตกมาที่นี่
+  return null;
+}
+
+/**
+ * Task 11 — ปุ่มรองตามตารางเดียวกับ `primaryAction`. คืนอาร์เรย์ว่างเมื่อไม่มีปุ่มรอง (CLOSED/
+ * CANCELLED ทุกทาง หรือ role ไม่มีสิทธิ์ทำอะไรเลยในแถวนั้น) — ไม่รวมปุ่ม static ที่ไม่ขึ้นกับ
+ * outcome/stage อย่าง "ใบรับฝากเครื่อง" (หน้าเพจ render เอง).
+ */
+export function secondaryActions(data: CaseDetail, role: string): SecondaryAction[] {
+  const out: SecondaryAction[] = [];
+  const isStaff = STAFF_SET.has(role);
+  const isMgr = MGR_SET.has(role);
+  const isOwner = role === 'OWNER';
+  const { outcome, stage } = data;
+
+  if (stage === 'CLOSED' || stage === 'CANCELLED') return out;
+
+  if (outcome === 'REPAIR') {
+    if (stage === 'RECEIVED') {
+      const hasCenter = !!data.repairTicket?.repairSupplier;
+      if (!hasCenter && isStaff) out.push({ kind: 'dialog', label: 'ส่งซ่อม', dialog: 'send' });
+      if (isMgr && data.contractId) {
+        out.push({
+          kind: 'dialog',
+          label: 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
+          dialog: 'exchange-confirm',
+        });
+      }
+      if (isMgr)
+        out.push({ kind: 'dialog', label: 'ยกเลิกเคส', dialog: 'cancel', destructive: true });
+    } else if (stage === 'IN_REPAIR') {
+      if (isMgr && data.contractId) {
+        out.push({
+          kind: 'dialog',
+          label: 'ซ่อมไม่ได้ → เปลี่ยนรุ่นเดิม',
+          dialog: 'exchange-confirm',
+        });
+      }
+    } else if (stage === 'READY_FOR_PICKUP' && data.repairTicket?.status !== 'REPLACED') {
+      if (isStaff) out.push({ kind: 'dialog', label: 'ส่งซ่อมต่อ', dialog: 'send-back' });
+      if (isMgr)
+        out.push({ kind: 'dialog', label: 'ยกเลิกเคส', dialog: 'cancel', destructive: true });
+    }
+    return out;
+  }
+
+  if (outcome === 'SAME_MODEL_EXCHANGE') {
+    if (stage === 'AWAITING_APPROVAL') {
+      if (isMgr) {
+        out.push({
+          kind: 'dialog',
+          label: 'ปฏิเสธ (ใส่เหตุผล)',
+          dialog: 'exchange-reject',
+          destructive: true,
+        });
+      }
+      if (isStaff) {
+        out.push({ kind: 'dialog', label: "เปลี่ยนเป็น 'ซ่อม' แทน", dialog: 'switch-to-repair' });
+      }
+    } else if (
+      stage === 'READY_FOR_PICKUP' &&
+      data.replacementContractId &&
+      data.exchange?.replacementContract
+    ) {
+      out.push({
+        kind: 'link',
+        label: `สัญญาใหม่ ${data.exchange.replacementContract.contractNumber}`,
+        to: `/contracts/${data.exchange.replacementContract.id}`,
+      });
+    }
+    return out;
+  }
+
+  if (outcome === 'PRICED_EXCHANGE') {
+    if (stage === 'AWAITING_APPROVAL') {
+      if (isOwner)
+        out.push({ kind: 'dialog', label: 'ปฏิเสธ', dialog: 'reject-priced', destructive: true });
+      if (isMgr) out.push({ kind: 'dialog', label: 'ยกเลิกคำขอ', dialog: 'cancel-swap' });
+    } else if (stage === 'READY_FOR_PICKUP') {
+      if (isMgr) out.push({ kind: 'dialog', label: 'ยกเลิกคำขอ', dialog: 'cancel-swap' });
+    }
+    return out;
+  }
+
+  return out;
+}
+
 export const afterSalesKeys = {
   all: ['after-sales'] as const,
   list: (p: Record<string, unknown>) => ['after-sales', 'list', p] as const,

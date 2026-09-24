@@ -45,34 +45,130 @@ export function redactShareToken(url: string): string {
  * fix round 3 finding 1(a): the field-by-field scrub in `beforeSend`/
  * `beforeSendTransaction` (touching only `request.url`/`extra.url`/breadcrumb
  * `data.url`) missed the token wherever else the SDK happens to put it —
- * confirmed by the re-reviewer's probe against a REAL `sentry.ts` with a DSN:
- * `contexts.trace.data.url` / `.data["http.url"]` / `.data["http.target"]`
- * (root span attributes from `@sentry/node-core`'s `httpServerSpansIntegration`,
- * copied over by `@sentry/opentelemetry`) and `spans[].data["http.url"|"url.full"]`
- * (the default `nestIntegration`) all carried the raw token on transaction
- * events, and `event.transaction` itself starts as the raw
- * `GET /api/g/<token>` before Express's router layer resolves it to a
- * parameterized route — so an error captured in middleware ships the raw
- * transaction name too.
+ * `contexts.trace.data.url` / `.data["http.url"]` / `.data["http.target"]`,
+ * `spans[].data["http.url"|"url.full"]`, and `event.transaction` itself
+ * (the raw `GET /api/g/<token>` before Express's router resolves it). So this
+ * walks the event tree and applies `redactShareToken` to every string it finds,
+ * mutating in place.
  *
- * Rather than chase each field individually (and inevitably miss the next
- * one some other integration adds), this walks the WHOLE event tree and
- * applies `redactShareToken` to every string it finds, mutating in place.
- * `seen` guards against reference cycles; `maxDepth` bounds pathological
- * nesting (Sentry events are shallow in practice — this is a safety cap, not
- * a expected-case limit).
+ * fix round 4 finding 1 (CRITICAL): round 3's walk wrote back EVERY key of EVERY
+ * object it visited — including live SDK objects. Every real transaction event
+ * carries `sdkProcessingMetadata.capturedSpanScope` (a live `Scope`); the walk
+ * reached `capturedSpanScope._client._promiseBuffer.$` (getter, no setter) and
+ * the write threw `Cannot set property $ of #<Object> which has only a getter`
+ * — on EVERY transaction on EVERY route. The SDK then dropped the transaction
+ * (all APM lost) and captured an internal error event instead, which it never
+ * passes through `beforeSend` — so that event shipped `transaction:
+ * "POST /api/g/<raw token>/reply"` unscrubbed. The walk now:
+ *   - enters ONLY arrays and plain objects (prototype `Object.prototype` or
+ *     `null`) — never a `Scope`/`Client`/`Date`/`Map`/class instance. Every
+ *     field the SDK actually serializes is plain by the time the hooks run
+ *     (`prepareEvent`'s `normalizeEvent` already converted `extra`/`contexts`/
+ *     `user`/breadcrumb + span `data` into plain objects);
+ *   - skips the top-level `sdkProcessingMetadata` key entirely (SDK-internal,
+ *     never sent, holds the live scopes);
+ *   - for an `Error` instance (only reachable when normalization did not run),
+ *     redacts its own string properties (incl. `message`/`stack`, which the
+ *     SDK's normalizer would serialize) that are writable data properties, and
+ *     walks its own plain-object/array/`Error` values — never its getters;
+ *   - writes back ONLY when a string actually changed.
+ * A throwing getter or a non-writable property holding the token still throws
+ * out of here — the callers in `sentry.ts` catch that and fail closed.
  */
-export function scrubShareTokensDeep<T>(value: T, seen: WeakSet<object> = new WeakSet(), depth = 0): T {
-  if (depth > 12) return value;
+const MAX_SCRUB_DEPTH = 12;
+const SKIPPED_TOP_LEVEL_KEYS = new Set(['sdkProcessingMetadata']);
+
+function isPlainObject(value: object): boolean {
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+export function scrubShareTokensDeep<T>(value: T): T {
   if (typeof value === 'string') return redactShareToken(value) as unknown as T;
-  if (value === null || typeof value !== 'object') return value;
-  const obj = value as unknown as Record<string | number, unknown>;
-  if (seen.has(obj)) return value;
-  seen.add(obj);
-  if (Array.isArray(obj)) {
-    for (let i = 0; i < obj.length; i++) obj[i] = scrubShareTokensDeep(obj[i], seen, depth + 1);
-    return value;
-  }
-  for (const key of Object.keys(obj)) obj[key] = scrubShareTokensDeep(obj[key], seen, depth + 1);
+  if (value !== null && typeof value === 'object') scrubContainer(value as unknown as object, new WeakSet(), 0);
   return value;
+}
+
+function scrubContainer(obj: object, seen: WeakSet<object>, depth: number): void {
+  if (depth > MAX_SCRUB_DEPTH || seen.has(obj)) return;
+  if (Array.isArray(obj)) {
+    seen.add(obj);
+    for (let i = 0; i < obj.length; i++) scrubSlot(obj as unknown as Record<number, unknown>, i, seen, depth);
+    return;
+  }
+  if (isPlainObject(obj)) {
+    seen.add(obj);
+    const record = obj as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      if (depth === 0 && SKIPPED_TOP_LEVEL_KEYS.has(key)) continue;
+      scrubSlot(record, key, seen, depth);
+    }
+    return;
+  }
+  if (obj instanceof Error) {
+    seen.add(obj);
+    scrubErrorOwnProperties(obj, seen, depth);
+  }
+  // anything else (Scope, Client, Date, Map, Buffer, other class instances): never touched
+}
+
+function scrubSlot(container: Record<string | number, unknown>, key: string | number, seen: WeakSet<object>, depth: number): void {
+  const current = container[key];
+  if (typeof current === 'string') {
+    const redacted = redactShareToken(current);
+    if (redacted !== current) container[key] = redacted;
+    return;
+  }
+  if (current !== null && typeof current === 'object') scrubContainer(current, seen, depth + 1);
+}
+
+function scrubErrorOwnProperties(err: Error, seen: WeakSet<object>, depth: number): void {
+  const record = err as unknown as Record<string, unknown>;
+  for (const key of Object.getOwnPropertyNames(err)) {
+    const desc = Object.getOwnPropertyDescriptor(err, key);
+    if (!desc || !('value' in desc)) continue; // accessor — never invoke getters on an Error
+    const current = desc.value;
+    if (typeof current === 'string') {
+      const redacted = redactShareToken(current);
+      if (redacted !== current && desc.writable) record[key] = redacted;
+    } else if (current !== null && typeof current === 'object') {
+      scrubContainer(current, seen, depth + 1);
+    }
+  }
+}
+
+/**
+ * fix round 4 finding 1: last-resort scrub for when `scrubShareTokensDeep`
+ * throws inside `beforeSend` (throwing getter, non-writable property, ...).
+ * `beforeSend` must still return an event rather than throw — a throwing hook
+ * makes the SDK drop the event and capture an internal error event that skips
+ * `beforeSend` entirely. Touches only the fields the token is known to reach on
+ * an error event, each one guarded on its own so one bad field cannot stop the
+ * rest from being scrubbed.
+ */
+export function shallowScrubShareTokens<T>(event: T): T {
+  const e = event as unknown as Record<string, any>;
+  const guard = (fn: () => void) => {
+    try { fn(); } catch { /* keep going — scrub whatever else we can */ }
+  };
+  const redactField = (holder: Record<string, any> | undefined, key: string) => {
+    if (holder && typeof holder[key] === 'string') holder[key] = redactShareToken(holder[key]);
+  };
+  guard(() => redactField(e, 'transaction'));
+  guard(() => redactField(e, 'message'));
+  guard(() => redactField(e.request, 'url'));
+  guard(() => redactField(e.extra, 'url'));
+  guard(() => {
+    const data = e.contexts?.trace?.data;
+    for (const key of ['url', 'http.url', 'http.target']) guard(() => redactField(data, key));
+  });
+  guard(() => {
+    if (!Array.isArray(e.exception?.values)) return;
+    for (const value of e.exception.values) guard(() => redactField(value, 'value'));
+  });
+  guard(() => {
+    if (!Array.isArray(e.breadcrumbs)) return;
+    for (const crumb of e.breadcrumbs) guard(() => redactField(crumb?.data, 'url'));
+  });
+  return event;
 }

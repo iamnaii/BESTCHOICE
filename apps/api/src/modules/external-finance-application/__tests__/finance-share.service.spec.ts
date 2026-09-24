@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { Readable } from 'stream';
+import { randomBytes } from 'crypto';
+import { PassThrough, Readable } from 'stream';
 import { FinanceShareService } from '../services/finance-share.service';
 import { hashShareToken } from '../finance-share-token.util';
 
@@ -159,20 +160,46 @@ describe('FinanceShareService.fileStream / zipStream', () => {
     expect(calls).toEqual(['k1']); // entry 2 (k2) is never fetched
     expect(fakeStream.destroy).toHaveBeenCalledTimes(1); // obtained-after-abort stream is destroyed, never appended
   });
-  // fix round 3 finding 2: `archive.abort()` alone only stops archiver's own queue — it does
-  // NOT destroy streams already `append()`ed, and if the abort lands AFTER `load()` already
-  // called `archive.finalize()`, that finalize() promise never resolves on its own (probe:
-  // controller.zip() stuck PENDING for 3s). This archive is deliberately never piped anywhere,
-  // so nothing drains its output — `finalize()` alone would hang forever, mirroring the probe's
-  // observation exactly. `abort()` must still unblock `load()` promptly.
-  it('abort() unblocks load() even when it lands after finalize() already started with no consumer draining the archive (fix round 3 finding 2)', async () => {
-    const getStream = jest.fn().mockResolvedValue(Readable.from([Buffer.from('x'.repeat(4096))]));
+  // fix round 3 finding 2 + fix round 4 minor: when the abort lands AFTER `load()` already
+  // called `archive.finalize()` and nothing is draining the archive's output, finalize() never
+  // settles on its own (probe: controller.zip() stuck PENDING) — abort() must unblock load().
+  // Round 3's version of this test used a 4 KB entry, which compresses to well under archiver's
+  // 1 MB highWaterMark, so load() resolved ON ITS OWN within the 100 ms wait and the test proved
+  // nothing. Here the entry is 4 MB of incompressible bytes in 64 KB chunks: the archive output
+  // backs up past the highWaterMark with no consumer, so finalize() provably cannot complete —
+  // the test first asserts load() is STILL pending, then that abort() settles it promptly.
+  it('with no consumer draining the archive, load() stays pending until abort() is called, then settles promptly (fix round 4 minor)', async () => {
+    const chunks = Array.from({ length: 64 }, () => randomBytes(64 * 1024));
+    const source = Readable.from(chunks);
+    const getStream = jest.fn().mockResolvedValue(source);
     const service = new FinanceShareService(makePrisma(app()), { getStream } as any, notify); // app() has exactly 1 file
     const zip = await service.zipStream(raw);
-    const loadPromise = zip.load();
-    // give load() time to get past the (single) entry and into archive.finalize()
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    let settled = false;
+    const loadPromise = zip.load().then(() => { settled = true; });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(settled).toBe(false); // finalize() is stuck — nothing reads the archive output
+    const abortedAt = Date.now();
     zip.abort();
-    await expect(loadPromise).resolves.toBeUndefined();
-  }, 2_000);
+    await loadPromise;
+    expect(Date.now() - abortedAt).toBeLessThan(200);
+    expect(source.destroyed).toBe(true);
+  }, 5_000);
+  // fix round 4 minor: `abort()` must destroy streams that were ALREADY appended to the archive
+  // (`archive.abort()` alone never does — probe: 1 of 2 storage streams left open). The source
+  // here never ends on its own, so the only thing that can destroy it is abort().
+  it('abort() destroys a storage stream that was appended to the archive BEFORE the abort (fix round 4 minor)', async () => {
+    const source = new PassThrough();
+    source.write(Buffer.from('partial image bytes'));
+    const getStream = jest.fn().mockResolvedValue(source);
+    const service = new FinanceShareService(makePrisma(app()), { getStream } as any, notify);
+    const zip = await service.zipStream(raw);
+    const loadPromise = zip.load();
+    for (let i = 0; i < 50 && getStream.mock.calls.length === 0; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+    await new Promise((resolve) => setTimeout(resolve, 20)); // appended; load() now waits on finalize()
+    expect(getStream).toHaveBeenCalledTimes(1);
+    expect(source.destroyed).toBe(false);
+    zip.abort();
+    await loadPromise;
+    expect(source.destroyed).toBe(true);
+  }, 5_000);
 });

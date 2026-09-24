@@ -73,6 +73,10 @@ function isExpectedStreamAbort(err: unknown, res: Response, req: Request): boole
  *   ไปแล้ว และถ้า abort เกิดหลัง `archive.finalize()` เริ่มแล้ว promise นั้นไม่ resolve เอง —
  *   `zipStream()` เปลี่ยนมาคืน `abort()` ที่ track stream ที่ append ไปเอง + race `finalize()`
  *   กับ "aborted" promise ให้ `load()` settle เสมอ
+ * - security fix round 4: `beforeSendTransaction` ของรอบ 3 throw กับทุก transaction จริง (เดินเข้า live
+ *   Scope ใน `sdkProcessingMetadata`) — แก้ที่ `sentry.ts`/`redact-share-token.util.ts` (เดินเฉพาะ plain
+ *   object/array, ข้าม `sdkProcessingMetadata`, hook ทั้งสอง fail closed) · `zip()` ฟัง `close` ก่อน
+ *   `await zipStream()` — ลูกค้าที่ปิดไปตอนค้น DB จะไม่ทำให้เปิด stream จาก storage แม้แต่ไฟล์เดียว
  * ดู `.claude/rules/security.md` รายการ Intentionally Public Endpoints (`finance-share-public`)
  */
 @Controller('g')
@@ -195,9 +199,27 @@ export class FinanceSharePublicController {
   @Throttle({ short: { limit: 5, ttl: 60_000 } })
   async zip(@Param('token') token: string, @Res() res: Response) {
     let appId: string | undefined;
+    // fix round 4 finding 2: listen for the client leaving BEFORE the DB lookup. `close`
+    // fires once — a listener added only after `await zipStream()` misses a client that
+    // left during the lookup, and `load()` then opened every entry's storage stream for
+    // nobody (probe: 300 ms lookup, client gone at 50 ms → 4/4 streams opened, 0
+    // destroyed, handler still pending after 4 s). `onClientGone` is wired to the real
+    // abort path once the archive exists.
+    let clientGone = false;
+    let onClientGone: (() => void) | undefined;
+    res.on('close', () => {
+      clientGone = true;
+      onClientGone?.();
+    });
     try {
       const result = await this.share.zipStream(token);
       appId = result.appId;
+      if (clientGone || res.destroyed) {
+        // left during the lookup — release the archive, never call load() (no storage reads)
+        result.abort();
+        this.logger.debug(`[finance-share] zip client left before streaming app=${appId}`);
+        return;
+      }
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(result.filename)}`);
       res.setHeader('Cache-Control', 'private, no-store');
@@ -237,7 +259,7 @@ export class FinanceSharePublicController {
         if (res.headersSent) { if (!res.destroyed) res.destroy(); } else { respondGone(); }
       };
       result.archive.on('error', (err) => failSafely(err, false));
-      res.on('close', () => failSafely(new Error('client disconnected'), true));
+      onClientGone = () => failSafely(new Error('client disconnected'), true);
       result.archive.pipe(res);
       try {
         await result.load();

@@ -300,6 +300,39 @@ describe('FinanceSharePublicController (HTTP)', () => {
     expect(abort).toHaveBeenCalledTimes(1);
   }, 10_000);
 
+  // fix round 4 finding 2: `res.on('close')` used to be registered only AFTER `await
+  // zipStream()` — a client that left during that DB lookup had already fired `close`, so
+  // abort() never ran and load() opened every entry's storage stream for nobody (probe: 300 ms
+  // lookup, client gone at 50 ms → 4/4 streams opened, 0 destroyed, handler pending after 4 s).
+  it('a client that disconnects DURING the lookup never causes a storage read — load() is never called, abort() is (fix round 4 finding 2)', async () => {
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    const load = jest.fn().mockResolvedValue(undefined);
+    let abortCalled!: () => void;
+    const abortedSignal = new Promise<void>((resolve) => { abortCalled = resolve; });
+    const abort = jest.fn(() => abortCalled());
+    let finishLookup!: (value: unknown) => void;
+    share.zipStream.mockImplementationOnce(() => new Promise((resolve) => { finishLookup = resolve; }));
+
+    // the client connects, the handler starts the (still pending) lookup, then the client leaves
+    const clientReq = http.request({ host: '127.0.0.1', port, path: `/g/${rawToken}/zip`, method: 'GET' });
+    clientReq.on('error', () => undefined);
+    clientReq.end();
+    for (let i = 0; i < 100 && share.zipStream.mock.calls.length === 0; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(share.zipStream).toHaveBeenCalledTimes(1);
+    clientReq.destroy();
+    await new Promise((r) => setTimeout(r, 100)); // let the server observe the disconnect
+
+    // only now does the lookup come back
+    finishLookup({ filename: 'BC-260924-001.zip', archive, load, abort, appId: 'app-1' });
+    await Promise.race([abortedSignal, new Promise((r) => setTimeout(r, 2_000))]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(abort).toHaveBeenCalledTimes(1);
+    expect(load).not.toHaveBeenCalled(); // load() is what opens the storage streams
+    expect(recordedExceptions).toEqual([]);
+    expect(Sentry.captureException).not.toHaveBeenCalled(); // a client leaving is not a fault
+  }, 10_000);
+
   it('POST reply without X-Requested-With still passes CSRF (real CsrfGuard + @SkipCsrf()) and returns 201 with the mocked status', async () => {
     share.reply.mockResolvedValue({ status: 'ACKNOWLEDGED' });
     const res = await request(app.getHttpServer())

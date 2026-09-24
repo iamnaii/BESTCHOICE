@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/nestjs';
-import { scrubShareTokensDeep } from './utils/redact-share-token.util';
+import { scrubShareTokensDeep, shallowScrubShareTokens } from './utils/redact-share-token.util';
 
 const dsn = process.env.SENTRY_DSN;
 
@@ -39,40 +39,96 @@ function isShareRouteTransaction(event: Sentry.Event): boolean {
   );
 }
 
+type SentryInitOptions = NonNullable<Parameters<typeof Sentry.init>[0]>;
+type BeforeSendHook = NonNullable<SentryInitOptions['beforeSend']>;
+type BeforeSendTransactionHook = NonNullable<SentryInitOptions['beforeSendTransaction']>;
+
+const SENSITIVE_REQUEST_KEYS = ['nationalId', 'password', 'phone', 'signatureImage'];
+
+/**
+ * Don't send PII (Thai national IDs, phone numbers, ...) in the captured request body.
+ *
+ * fix round 4 finding 1: on a REAL event `request.data` is the raw body STRING
+ * (`@sentry/node-core`'s `captureRequestBody` → `normalizedRequest.data`), not an
+ * object — the old `key in data` threw `TypeError` on it, so `beforeSend` threw on
+ * every captured 5xx that had a body; the SDK then shipped an internal error event
+ * (which skips `beforeSend`) whose message quoted the raw body, PII included
+ * (probe-confirmed). A JSON body gets the listed keys redacted; any other string
+ * that mentions one of them (form-encoded, or JSON truncated by the SDK's body-size
+ * cap so it no longer parses) is replaced whole.
+ */
+function redactSensitiveRequestData(event: Sentry.Event): void {
+  const request = event.request;
+  if (!request || request.data == null) return;
+  if (typeof request.data === 'string') {
+    const body = request.data;
+    let parsed: unknown;
+    try { parsed = JSON.parse(body); } catch { parsed = undefined; }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const obj = parsed as Record<string, unknown>;
+      const hits = SENSITIVE_REQUEST_KEYS.filter((key) => key in obj);
+      for (const key of hits) obj[key] = '[REDACTED]';
+      if (hits.length) request.data = JSON.stringify(obj);
+    } else if (SENSITIVE_REQUEST_KEYS.some((key) => body.includes(key))) {
+      request.data = '[REDACTED]';
+    }
+    return;
+  }
+  if (typeof request.data === 'object') {
+    const data = request.data as Record<string, unknown>;
+    for (const key of SENSITIVE_REQUEST_KEYS) if (key in data) data[key] = '[REDACTED]';
+  }
+}
+
+/**
+ * fix round 4 finding 1 (CRITICAL): both hooks must fail CLOSED and never throw.
+ * A throwing hook makes the SDK drop the event and capture an internal error
+ * event in its place — and the SDK never runs `beforeSend` on internal events
+ * (`@sentry/core` client.js `isInternalException`), so that replacement ships
+ * unscrubbed (round 3's deep scrub threw on every real transaction; the probe
+ * saw `transaction: "POST /api/g/<raw token>/reply"` go out that way).
+ */
+const beforeSend: BeforeSendHook = (event) => {
+  try {
+    redactSensitiveRequestData(event);
+  } catch {
+    try { if (event.request) event.request.data = '[REDACTED]'; } catch { /* nothing more we can do */ }
+  }
+  try {
+    return scrubShareTokensDeep(event);
+  } catch {
+    // keep the error visible — a shallow scrub of the fields the token is known to reach
+    return shallowScrubShareTokens(event);
+  }
+};
+
+/**
+ * fix round 2/3 finding 1: `tracesSampleRate` samples ~20% of routine
+ * `/api/g/<token>` requests as APM transactions in production, and the token
+ * rides along on `transaction`, `request.url`, `contexts.trace.data.*` and
+ * `spans[].data.*` — share-route transactions are dropped outright (no APM value
+ * for a public share-link hit), every other transaction is deep-scrubbed.
+ * fix round 4 finding 1: the share-route check runs first, on the raw event;
+ * any throw → `null` (fail closed — never let the SDK turn this into an
+ * unscrubbed internal error event).
+ */
+const beforeSendTransaction: BeforeSendTransactionHook = (event) => {
+  try {
+    if (isShareRouteTransaction(event)) return null;
+    return scrubShareTokensDeep(event);
+  } catch {
+    return null;
+  }
+};
+
 if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.NODE_ENV || 'development',
     tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.2 : 1.0,
-    // Don't send PII (Thai national IDs, phone numbers) to Sentry, and never let the
-    // GFIN public share-link token (embedded in the URL path, `/api/g/<token>/...`)
-    // reach Sentry in ANY field an integration might put it in.
-    beforeSend(event) {
-      if (event.request?.data) {
-        const data = event.request.data as Record<string, unknown>;
-        const sensitiveKeys = ['nationalId', 'password', 'phone', 'signatureImage'];
-        for (const key of sensitiveKeys) {
-          if (key in data) data[key] = '[REDACTED]';
-        }
-      }
-      // fix round 3 finding 1(a): field-by-field scrubbing (request.url / extra.url /
-      // breadcrumb data.url only) missed event.transaction and the OpenTelemetry span
-      // attributes an error event can also carry — deep-scrub the WHOLE event instead.
-      return scrubShareTokensDeep(event);
-    },
-    // fix round 2 finding 1(a) + fix round 3 finding 1(a)/(b): `tracesSampleRate`
-    // samples ~20% of routine `/api/g/<token>` requests as APM transactions in
-    // production. A field-by-field scrub still leaked the token via
-    // `contexts.trace.data.url`/`.data["http.url"]`/`.data["http.target"]` (root span
-    // attributes `@sentry/node-core`'s `httpServerSpansIntegration` sets, copied over
-    // by `@sentry/opentelemetry`) and `spans[].data["http.url"|"url.full"]` (the
-    // default `nestIntegration`) — deep-scrub first, then drop the transaction
-    // entirely for share routes (there's no APM value in tracing a public share-link
-    // hit, and dropping it removes this whole leak class rather than chasing fields).
-    beforeSendTransaction(event) {
-      const scrubbed = scrubShareTokensDeep(event);
-      if (isShareRouteTransaction(scrubbed)) return null;
-      return scrubbed;
-    },
+    // Never let PII or the GFIN public share-link token (embedded in the URL path,
+    // `/api/g/<token>/...`) reach Sentry in ANY field an integration might put it in.
+    beforeSend,
+    beforeSendTransaction,
   });
 }

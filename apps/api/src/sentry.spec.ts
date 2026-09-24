@@ -19,6 +19,18 @@
  * token anywhere in the returned error event (not just in the fields the
  * previous, narrower test happened to check).
  *
+ * fix round 4 finding 1 (CRITICAL): round 3's deep scrub wrote back every key of
+ * every object it visited, including live SDK objects — every REAL transaction
+ * carries `sdkProcessingMetadata.capturedSpanScope` (a live Scope) whose
+ * `_client._promiseBuffer.$` is getter-only, so `beforeSendTransaction` threw on
+ * every transaction on every route (all APM lost + one unscrubbed internal error
+ * event per sampled request). The hand-built events above never carried
+ * `sdkProcessingMetadata`, so nothing here exercised that path. The
+ * "fix round 4" block below builds events with that shape, with non-plain
+ * objects, with `Error` instances and with injected scrub failures, and asserts
+ * both hooks fail closed instead of throwing. (The real-SDK end-to-end probe is in
+ * the task-6 report — fix round 4.)
+ *
  * `Sentry.init()` only runs when `SENTRY_DSN` is set, and reads it at module
  * top-level — so each test sets the env var, resets the module registry, and
  * re-requires both `@sentry/nestjs` (to read the mock instance matching the
@@ -209,5 +221,153 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
     };
     const result = config.beforeSendTransaction(event);
     expect(result).toBeNull();
+  });
+
+  describe('fix round 4 finding 1 — hooks never throw on real SDK event shapes and fail closed', () => {
+    /**
+     * Mirrors the real chain the re-reviewer hit: `sdkProcessingMetadata.capturedSpanScope`
+     * → `_client` → `_promiseBuffer` → `$` (getter, no setter). The getter returns a
+     * token-bearing STRING on purpose: if the walk entered `sdkProcessingMetadata` at all
+     * it would try to write the redacted value back and throw.
+     */
+    function buildCapturedSpanScope() {
+      const promiseBuffer: Record<string, unknown> = { _buffer: [] };
+      Object.defineProperty(promiseBuffer, '$', { get: () => `GET /api/g/${TOKEN}`, enumerable: true });
+      return { _client: { _options: { dsn: 'https://fake@sentry.example/1' }, _promiseBuffer: promiseBuffer }, _level: 'info' };
+    }
+
+    function buildTransactionEvent(route: string) {
+      return {
+        type: 'transaction' as const,
+        transaction: route,
+        request: { url: `https://api.example${route.replace(/^GET /, '')}` },
+        contexts: { trace: { trace_id: 't', span_id: 's', data: { url: route.replace(/^GET /, '') } } },
+        spans: [{ span_id: 's1', trace_id: 't', start_timestamp: 0, data: { 'url.full': `https://api.example/api/customers/1?ref=${TOKEN}` } }],
+        sdkProcessingMetadata: {
+          capturedSpanScope: buildCapturedSpanScope(),
+          normalizedRequest: { url: `https://api.example/api/customers/1?ref=${TOKEN}` },
+        },
+      };
+    }
+
+    it('(a) a NON-share transaction carrying a getter-only property deep inside sdkProcessingMetadata is returned (not null, no throw) and sdkProcessingMetadata is left untouched', () => {
+      const config = loadSentryInitConfig();
+      const event = buildTransactionEvent('GET /api/customers/:id');
+      const scope = event.sdkProcessingMetadata.capturedSpanScope;
+      let result: any;
+      expect(() => { result = config.beforeSendTransaction(event); }).not.toThrow();
+      expect(result).not.toBeNull();
+      expect(result.transaction).toBe('GET /api/customers/:id');
+      // sdkProcessingMetadata: same objects, same strings — never walked
+      expect(result.sdkProcessingMetadata.capturedSpanScope).toBe(scope);
+      expect(result.sdkProcessingMetadata.normalizedRequest.url).toBe(`https://api.example/api/customers/1?ref=${TOKEN}`);
+      expect((scope._client._promiseBuffer as Record<string, unknown>).$).toBe(`GET /api/g/${TOKEN}`);
+      // everything the SDK actually sends is still scrubbed
+      expect(result.spans[0].data['url.full']).toBe('https://api.example/api/customers/1?ref=[redacted]');
+    });
+
+    it('(a2) a non-plain object (live SDK class instance) anywhere in the event is never walked or written to', () => {
+      const config = loadSentryInitConfig();
+      class FakeClient {
+        readonly note = `/api/g/${TOKEN}`;
+        get $() { return `/api/g/${TOKEN}`; }
+      }
+      const client = new FakeClient();
+      Object.defineProperty(client, 'own$', { get: () => `/api/g/${TOKEN}`, enumerable: true });
+      const event: any = { ...buildTransactionEvent('GET /api/customers/:id'), extra: { client } };
+      let result: any;
+      expect(() => { result = config.beforeSendTransaction(event); }).not.toThrow();
+      expect(result).not.toBeNull();
+      expect(result.extra.client).toBe(client);
+      expect(client.note).toBe(`/api/g/${TOKEN}`); // untouched — not a plain object
+    });
+
+    it('(b) the same real-SDK shape on a SHARE route → null (dropped), no throw', () => {
+      const config = loadSentryInitConfig();
+      let result: any = 'not-called';
+      expect(() => { result = config.beforeSendTransaction(buildTransactionEvent(`GET /api/g/${TOKEN}/reply`)); }).not.toThrow();
+      expect(result).toBeNull();
+      const parameterized = buildTransactionEvent('GET /api/g/:token/zip');
+      expect(config.beforeSendTransaction(parameterized)).toBeNull();
+    });
+
+    it('(b2) a scrub failure inside beforeSendTransaction on a NON-share route fails closed → null, never throws', () => {
+      const config = loadSentryInitConfig();
+      const event: any = buildTransactionEvent('GET /api/customers/:id');
+      const poison = {};
+      Object.defineProperty(poison, 'boom', { get() { throw new Error('getter exploded'); }, enumerable: true });
+      event.contexts.poison = poison;
+      let result: any = 'not-called';
+      expect(() => { result = config.beforeSendTransaction(event); }).not.toThrow();
+      expect(result).toBeNull();
+    });
+
+    it('(c) an error event with an Error instance under extra + the token in transaction / contexts.trace.data / breadcrumb / request.url / frame vars → no token anywhere, no throw', () => {
+      const config = loadSentryInitConfig();
+      const err = new Error(`storage read failed for /api/g/${TOKEN}/files/f1`);
+      (err as Error & { url?: string }).url = `/api/g/${TOKEN}/zip`;
+      const event: any = {
+        transaction: `POST /api/g/${TOKEN}/reply`,
+        request: { url: `https://api.example/api/g/${TOKEN}/reply`, data: '{"action":"ACK","name":"คุณเอ"}' },
+        contexts: { trace: { trace_id: 't', span_id: 's', data: { url: `/api/g/${TOKEN}/reply`, 'http.target': `/api/g/${TOKEN}/reply` } } },
+        breadcrumbs: [{ category: 'http', data: { url: `/api/g/${TOKEN}/files/f1` } }],
+        extra: { url: `/api/g/${TOKEN}/reply`, cause: err },
+        exception: { values: [{ type: 'Error', value: `boom /api/g/${TOKEN}`, stacktrace: { frames: [{ filename: '/app/dist/x.js', vars: { token: TOKEN } }] } }] },
+        sdkProcessingMetadata: { capturedSpanScope: buildCapturedSpanScope() },
+      };
+      let result: any;
+      expect(() => { result = config.beforeSend(event); }).not.toThrow();
+      expect(result).not.toBeNull();
+      const { sdkProcessingMetadata: _internal, ...sent } = result; // the SDK never sends sdkProcessingMetadata
+      expect(JSON.stringify(sent)).not.toContain(TOKEN);
+      expect(err.message).toBe('storage read failed for /api/g/[redacted]/files/f1'); // what the SDK normalizer would serialize
+      expect(err.stack).not.toContain(TOKEN);
+      expect(result.transaction).toBe('POST /api/g/[redacted]/reply');
+      expect(result.contexts.trace.data['http.target']).toBe('/api/g/[redacted]/reply');
+      expect(result.exception.values[0].stacktrace.frames[0].vars.token).toBe('[redacted]');
+    });
+
+    it('(d) a scrub failure injected via a throwing getter in beforeSend → the shallow fallback still redacts transaction / request.url / extra.url / message / breadcrumb url and returns the event', () => {
+      // spy on the fallback through the same module instance sentry.ts will import
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const util = require('./utils/redact-share-token.util');
+      const fallback = jest.spyOn(util, 'shallowScrubShareTokens');
+      const config = loadSentryInitConfig();
+      const poison = {};
+      Object.defineProperty(poison, 'boom', { get() { throw new Error('getter exploded'); }, enumerable: true });
+      // `contexts` first so the deep walk throws BEFORE it reaches any other field —
+      // everything redacted below is the fallback's work, not the deep walk's
+      const event: any = {
+        contexts: { poison },
+        transaction: `GET /api/g/${TOKEN}`,
+        message: `failed /api/g/${TOKEN}/zip`,
+        request: { url: `https://api.example/api/g/${TOKEN}/reply` },
+        extra: { url: `/api/g/${TOKEN}/reply` },
+        breadcrumbs: [{ category: 'http', data: { url: `/api/g/${TOKEN}/files/f1` } }],
+      };
+      let result: any;
+      expect(() => { result = config.beforeSend(event); }).not.toThrow();
+      expect(fallback).toHaveBeenCalledTimes(1);
+      expect(result).toBe(event);
+      expect(result.transaction).toBe('GET /api/g/[redacted]');
+      expect(result.message).toBe('failed /api/g/[redacted]/zip');
+      expect(result.request.url).toBe('https://api.example/api/g/[redacted]/reply');
+      expect(result.extra.url).toBe('/api/g/[redacted]/reply');
+      expect(result.breadcrumbs[0].data.url).toBe('/api/g/[redacted]/files/f1');
+    });
+
+    it('beforeSend handles the REAL request.data shape (the raw body STRING) without throwing and still redacts PII', () => {
+      const config = loadSentryInitConfig();
+      const json = config.beforeSend({ request: { data: '{"phone":"0812345678","nationalId":"1101700203451","note":"ok"}' } });
+      expect(JSON.parse(json.request.data)).toEqual({ phone: '[REDACTED]', nationalId: '[REDACTED]', note: 'ok' });
+      // form-encoded / truncated-JSON body that mentions a sensitive key → replaced whole
+      const form = config.beforeSend({ request: { data: 'phone=0812345678&note=ok' } });
+      expect(form.request.data).toBe('[REDACTED]');
+      const truncated = config.beforeSend({ request: { data: '{"nationalId":"1101700203451","note":"aaaa...' } });
+      expect(truncated.request.data).toBe('[REDACTED]');
+      // unrelated body untouched
+      const plain = config.beforeSend({ request: { data: '{"action":"ACK"}' } });
+      expect(plain.request.data).toBe('{"action":"ACK"}');
+    });
   });
 });

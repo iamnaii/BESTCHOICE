@@ -17,6 +17,11 @@ const HOOK_DATA: Record<JourneySystemEntryKind, Record<string, unknown>> = {
     returnKind: 'VOLUNTARY',
     returnReason: 'UNAFFORDABLE',
   },
+  EARLY_PAYOFF: {
+    contractNumber: 'BCP2609-00042',
+    receiptNumber: 'RT-202609-00042',
+    totalPayoff: 18135.85,
+  },
   CREDIT_CHECK_OPENED_BY: { via: 'CUSTOMER' },
   CREDIT_AI_SCORED: { score: 95, status: 'APPROVED' },
   BOT_HANDOFF: { priority: 'normal', reasonCode: 'LOW_CONFIDENCE' },
@@ -27,6 +32,23 @@ const HOOK_DATA: Record<JourneySystemEntryKind, Record<string, unknown>> = {
 };
 
 describe('JOURNEY_DATA_SCHEMAS', () => {
+  it('EARLY_PAYOFF: รับเลขสัญญา/เลขใบเสร็จ/ยอดปิดเท่านั้น — ช่องทาง หมายเหตุ เบอร์ ถูกตัดทิ้ง; เลขใบเสร็จผิดรูป → ไม่ผ่าน; ใบเสร็จ null ได้', () => {
+    const data = HOOK_DATA.EARLY_PAYOFF;
+    const ok = sanitizeJourneyData('EARLY_PAYOFF', {
+      ...data,
+      paymentMethod: 'BANK_TRANSFER',
+      notes: 'โอนจากบัญชีญาติ 081-234-5678',
+    });
+    expect(ok).toEqual({ ok: true, data });
+    expect(sanitizeJourneyData('EARLY_PAYOFF', { ...data, receiptNumber: null })).toEqual({
+      ok: true,
+      data: { ...data, receiptNumber: null },
+    });
+    expect(sanitizeJourneyData('EARLY_PAYOFF', { ...data, receiptNumber: 'ใบเสร็จ 1' }).ok).toBe(false);
+    expect(sanitizeJourneyData('EARLY_PAYOFF', { ...data, totalPayoff: -1 }).ok).toBe(false);
+    expect(journeyDedupeKey('EARLY_PAYOFF', 'ct-1')).toBe('EARLY_PAYOFF:ct-1');
+  });
+
   it('DEVICE_RETURNED: รับเฉพาะเลขใบ/เลขสัญญา/รหัสปิด — ราคาประเมิน เกรด หมายเหตุ เบอร์ ถูกตัดทิ้ง; รหัสนอกรายการ → ไม่ผ่าน', () => {
     const data = {
       docNumber: 'DR-20260920-0001',

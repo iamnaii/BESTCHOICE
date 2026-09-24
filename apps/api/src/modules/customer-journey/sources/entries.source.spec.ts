@@ -11,6 +11,20 @@ jest.mock('../journey-data-schemas', () => ({
           : { success: false },
     },
     CREDIT_AI_SCORED: { safeParse: () => ({ success: false }) },
+    // stub whitelist ของ EARLY_PAYOFF (zod จริงทดสอบใน journey-data-schemas.spec) — ตัดคีย์นอกรายการทิ้งเหมือนของจริง
+    EARLY_PAYOFF: {
+      safeParse: (v: { contractNumber?: unknown; receiptNumber?: unknown; totalPayoff?: unknown }) =>
+        typeof v?.contractNumber === 'string' && typeof v?.totalPayoff === 'number'
+          ? {
+              success: true,
+              data: {
+                contractNumber: v.contractNumber,
+                receiptNumber: v.receiptNumber ?? null,
+                totalPayoff: v.totalPayoff,
+              },
+            }
+          : { success: false },
+    },
   },
 }));
 
@@ -112,6 +126,48 @@ function db() {
 }
 
 describe('entriesSource', () => {
+  it('EARLY_PAYOFF แสดงใน sale พร้อมลิงก์สัญญาและ metadata เลขใบเสร็จ/ยอดปิดที่ผ่าน whitelist', async () => {
+    const prisma = db();
+    prisma.customerJourneyEntry.findMany.mockResolvedValue([
+      entry({
+        id: 'payoff',
+        kind: 'EARLY_PAYOFF',
+        occurredAt: at('2026-09-24T03:00:00.000Z'),
+        refType: 'contract',
+        refId: 'k1',
+        actorUser: { id: 'u1', name: 'แนน' },
+        data: {
+          contractNumber: 'BCP2609-00042',
+          receiptNumber: 'RT-202609-00042',
+          totalPayoff: 18135.85,
+          paymentMethod: 'BANK_TRANSFER',
+        },
+      }),
+    ]);
+    const events = await entriesSource(
+      prisma as unknown as PrismaService,
+      ['c1'],
+      { limit: 30 },
+      { id: 'o1', role: 'OWNER' },
+    );
+    expect(byId(events, 'entry-payoff')).toEqual({
+      id: 'entry-payoff',
+      type: 'EARLY_PAYOFF',
+      group: 'sale',
+      stage: null,
+      timestamp: '2026-09-24T03:00:00.000Z',
+      title: 'ปิดยอดก่อนกำหนด',
+      actor: { type: 'STAFF', id: 'u1', name: 'แนน' },
+      reliability: 'exact',
+      origin: 'SYSTEM_ENTRY',
+      href: '/contracts/k1',
+      metadata: {
+        contractNumber: 'BCP2609-00042',
+        receiptNumber: 'RT-202609-00042',
+        totalPayoff: 18135.85,
+      },
+    });
+  });
   it('DEVICE_RETURNED แสดงใน sale พร้อมผู้ยืนยัน/สัญญา และป้าย RETURNED_DEVICE ภาษาไทย', async () => {
     const prisma = db();
     prisma.customerJourneyEntry.findMany.mockResolvedValue([
@@ -223,6 +279,7 @@ describe('entriesSource', () => {
         'CONTRACT_ACTIVATED',
         'CONTRACT_REVIEWED',
         'DEVICE_RETURNED',
+        'EARLY_PAYOFF',
         'CREDIT_AI_SCORED',
         'BOT_HANDOFF',
         'CONTACT_ADDED',

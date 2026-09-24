@@ -63,6 +63,15 @@ export const JOURNEY_DATA_SCHEMAS: Readonly<Record<JourneyEntryKind, z.ZodTypeAn
     returnKind: z.enum(DEVICE_RETURN_KINDS),
     returnReason: z.enum(DEVICE_RETURN_REASONS),
   }),
+  /** ปิดสัญญาก่อนกำหนด (JP4, 2026-09-24) — เลขใบเสร็จ RT-YYYYMM-NNNNN (null = ออกใบไม่สำเร็จ) + ยอดปิด; ห้ามข้อความอิสระ/ส่วนลด/ช่องทาง */
+  EARLY_PAYOFF: z.object({
+    contractNumber,
+    receiptNumber: z
+      .string()
+      .regex(/^[A-Z]{2}-\d{6}-\d{5}$/)
+      .nullable(),
+    totalPayoff: z.number().min(0).max(10_000_000),
+  }),
   CREDIT_CHECK_OPENED_BY: z.object({ via: z.enum(CREDIT_CHECK_OPENED_VIA) }),
   CREDIT_AI_SCORED: z.object({
     score: z.number().int().min(0).max(100).nullable(),

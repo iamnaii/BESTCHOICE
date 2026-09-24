@@ -32,12 +32,14 @@ export const STAGE_LABELS: Record<JourneyStage, string> = {
  * ชนิดแถวของ customer_journey_entries.kind แยกตาม origin
  * SYSTEM = ช่วงเวลาที่ตารางต้นทางเขียนทับจนหาย (เขียนหลัง commit ด้วย dedupe_key) · MANUAL = บันทึกมือ (เฟส 3)
  * DEVICE_RETURNED (2026-09-20) = FINANCE ยืนยันใบรับเครื่องคืน — เขียนที่ DeviceReturnsService.confirm, data = เลขใบ/เลขสัญญา/รหัสปิดเท่านั้น
+ * EARLY_PAYOFF (2026-09-24) = ปิดสัญญาก่อนกำหนดสำเร็จ (JP4) — เขียนที่ ContractPaymentService.earlyPayoff หลัง commit, data = เลขสัญญา/เลขใบเสร็จ/ยอดปิดเท่านั้น
  */
 export const JOURNEY_ENTRY_KINDS = {
   SYSTEM: [
     'CONTRACT_ACTIVATED',
     'CONTRACT_REVIEWED',
     'DEVICE_RETURNED',
+    'EARLY_PAYOFF',
     'CREDIT_CHECK_OPENED_BY',
     'CREDIT_AI_SCORED',
     'BOT_HANDOFF',

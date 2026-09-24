@@ -333,6 +333,14 @@ SHOP_COLLECT) ล้าง 11-2107 โดยเลนส์ DEVICE_RETURN ไม
 kind='DEVICE_RETURN'`) + `BatchDetailSheet` badge "ค่าเครื่องคืน" · tag AUTO `RETURNED_DEVICE` "เคยคืนเครื่อง" (ห้ามติด/
 ถอดมือ — กฎที่ `evaluateAutoTags`) · journey kind `DEVICE_RETURNED` ป้าย "คืนเครื่อง" (`entries.source.ts` VIEWS).
 
+**ประวัติการชำระ (2026-09-24, เจ้าของ: "ไม่มีประวัติว่าลูกค้าปิดยอด / คืนเครื่อง"):** `PaymentHistorySheet` เรียงจากใบเสร็จ
+แต่ JP5 ไม่ออกใบเสร็จ (ใบลดหนี้ออกเฉพาะเมื่อมีงวดค้างที่ accrue แล้ว) ⇒ `GET /payments/contract/:id` ส่ง `contract.closure`
+(`PaymentQueryService.resolveClosure`: แถวยึด + ใบรับเครื่องคืน → `DEVICE_RETURN` · ใบเสร็จ `EARLY_PAYOFF` → `EARLY_PAYOFF` ·
+สถานะ `COMPLETED`/`CANCELED`) ให้หน้านั้นวาดแถว "ปิดสัญญาแล้ว" เหนือตาราง และ `getContractJournalEntries` รวม flow
+`repossession` (JP5) ให้ปุ่มบันทึกบัญชีของแถวนั้น · journey ของลูกค้าเพิ่มชนิด `EARLY_PAYOFF` (เขียนหลัง commit ใน
+`ContractPaymentService.earlyPayoff` — `JourneyEntryWriter` เป็น `@Optional()` พารามิเตอร์ท้ายสุด เพราะ spec 10 ไฟล์ `new` service
+ด้วยมือ) คู่กับ `DEVICE_RETURNED` ที่มีอยู่แล้ว · งวดที่เหลือหลัง JP5 ยังเป็น `PENDING` ตามเดิม (ไม่ได้แตะ).
+
 **ที่ยังเปิดอยู่:** ยึดเครื่องเดิมซ้ำ (`Repossession.productId @unique`) · ส่วนลดยอดปิดของ JP5 ลงบัญชีหรือไม่ (รอผู้สอบ —
 `docs/accounting/cpa-followup-2026-09-05.txt`; ยังต้องติดตามคำตอบผู้สอบ). ร่างบันทึกอธิบายวิธีใหม่ (Task 16 จะจัดทำ,
 ยังไม่ได้ส่ง): `docs/accounting/cpa-followup-2026-09-20-device-return.txt` · ไลน์เป็นข้อความธรรมดา (Flex ทีหลังผ่านแม่แบบเดียวกัน) ·

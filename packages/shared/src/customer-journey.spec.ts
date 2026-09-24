@@ -33,11 +33,12 @@ describe('customer-journey — สัญญาร่วม API/เว็บ', ()
     }
   });
 
-  it('ชนิดแถว SYSTEM 10 · MANUAL 4 ไม่ซ้ำกัน และยาวไม่เกิน kind VARCHAR(40)', () => {
+  it('ชนิดแถว SYSTEM 11 · MANUAL 4 ไม่ซ้ำกัน และยาวไม่เกิน kind VARCHAR(40)', () => {
     expect(JOURNEY_ENTRY_KINDS.SYSTEM).toEqual([
       'CONTRACT_ACTIVATED',
       'CONTRACT_REVIEWED',
       'DEVICE_RETURNED',
+      'EARLY_PAYOFF',
       'CREDIT_CHECK_OPENED_BY',
       'CREDIT_AI_SCORED',
       'BOT_HANDOFF',

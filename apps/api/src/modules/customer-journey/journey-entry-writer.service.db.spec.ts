@@ -29,6 +29,11 @@ const HOOK_DATA: Record<JourneySystemEntryKind, Record<string, unknown>> = {
     returnKind: 'REPOSSESSION',
     returnReason: 'AFTER_TERMINATION',
   },
+  EARLY_PAYOFF: {
+    contractNumber: 'BCP2609-00042',
+    receiptNumber: 'RT-202609-00042',
+    totalPayoff: 18135.85,
+  },
   CREDIT_CHECK_OPENED_BY: { via: 'CUSTOMER' },
   CREDIT_AI_SCORED: { score: null, status: 'MANUAL_REVIEW' },
   BOT_HANDOFF: { priority: 'normal', reasonCode: 'LOW_CONFIDENCE' },

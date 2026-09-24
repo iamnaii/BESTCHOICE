@@ -3,8 +3,9 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { PaymentFlexPreview, parsePaymentFlex } from './PaymentFlexPreview';
 import FlexBubblePreview from './FlexBubblePreview';
-import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Check, CheckCheck, Lock, FileText, ImageOff, Download, Copy, ShieldCheck, AlertCircle, Landmark } from 'lucide-react';
 import { CREDIT_MESSAGE_MIME } from './credit-statement';
+import { GFIN_MESSAGE_MIME, isGfinPickable } from './gfin/gfin';
 import { linkifyText } from '@/lib/linkify';
 import { toast } from 'sonner';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
@@ -53,6 +54,9 @@ interface MessageBubbleProps {
   onCreditMessage?: (messageId: string) => void;
   creditAttached?: boolean;
   creditBusy?: boolean;
+  onGfinMessage?: (messageId: string) => void;
+  gfinAttached?: boolean;
+  gfinBusy?: boolean;
   message: {
     id: string;
     role: string;
@@ -64,6 +68,9 @@ interface MessageBubbleProps {
     intent?: string | null;
     createdAt: string;
     readAt?: string | null;
+    /** id ของข้อความบนช่องทางต้นทาง (เช่น LINE) — ห้อง LINE เก่าบางข้อความไม่มี `mediaUrl`
+     * เก็บไว้ในระบบเราแต่ยังหยิบเข้าใบยื่น GFIN ได้ผ่าน id นี้ (`isGfinPickable`) */
+    externalMessageId?: string | null;
     /**
      * เวลาที่ส่งออกถึงช่องทางสำเร็จ (`markOutboundSent` — message-router.service.ts:972)
      * null + มี `staff` = เรากดส่งแล้วไม่ถึงลูกค้า · null + ไม่มี `staff` = echo จากแอป Facebook
@@ -133,10 +140,11 @@ function AiAutoIndicator({ intent, role }: { intent?: string | null; role: strin
   );
 }
 
-function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessage, creditAttached, creditBusy }: MessageBubbleProps) {
+function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessage, creditAttached, creditBusy, onGfinMessage, gfinAttached, gfinBusy }: MessageBubbleProps) {
   const [failedMediaUrl, setFailedMediaUrl] = useState<string | null>(null);
   const mediaBroken = !!message.mediaUrl && failedMediaUrl === message.mediaUrl;
   const canCredit = !!onCreditMessage && !!message.mediaUrl && (message.type === 'IMAGE' || message.type === 'FILE');
+  const canGfin = !!onGfinMessage && isGfinPickable(message);
   const isCustomer = message.role === 'CUSTOMER';
   const isBot = message.role === 'BOT';
   const isStaff = message.role === 'STAFF';
@@ -347,12 +355,13 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
 
         {/* Bubble */}
         <div
-          draggable={canCredit && !mediaBroken && !creditBusy}
+          draggable={(canCredit || canGfin) && !mediaBroken && !creditBusy && !gfinBusy}
           onDragStart={event => {
-            if (!canCredit || mediaBroken || creditBusy) { event.preventDefault(); return; }
+            if ((!canCredit && !canGfin) || mediaBroken || creditBusy || gfinBusy) { event.preventDefault(); return; }
             event.stopPropagation();
             event.dataTransfer.clearData();
-            event.dataTransfer.setData(CREDIT_MESSAGE_MIME, message.id);
+            if (canCredit) event.dataTransfer.setData(CREDIT_MESSAGE_MIME, message.id);
+            if (canGfin) event.dataTransfer.setData(GFIN_MESSAGE_MIME, message.id);
             event.dataTransfer.effectAllowed = 'copy';
           }}
           className={cn(
@@ -389,6 +398,15 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
             onClick={event => { event.stopPropagation(); onCreditMessage?.(message.id); }}
             className={cn('absolute flex min-h-11 min-w-11 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 disabled:cursor-not-allowed', canCopy ? 'top-8' : 'top-1', isCustomer ? '-right-12' : '-left-12', creditAttached ? 'text-primary opacity-100' : 'opacity-0')}>
             {creditAttached ? <Check className="size-4" /> : <ShieldCheck className="size-4" />}
+          </button>}
+          {canGfin && <button type="button"
+            aria-label={gfinAttached ? 'เอาออกจากใบยื่น GFIN' : 'ใส่ในใบยื่น GFIN'}
+            title={mediaBroken ? 'ไฟล์อาจหมดอายุ กรุณาขอไฟล์ใหม่' : gfinAttached ? 'อยู่ในใบยื่นแล้ว · กดเพื่อเอาออก' : 'ใส่ในใบยื่น GFIN · ลูกค้าไม่เห็น'}
+            disabled={mediaBroken || gfinBusy}
+            onClick={event => { event.stopPropagation(); onGfinMessage?.(message.id); }}
+            className={cn('absolute flex min-h-11 min-w-11 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100 focus-visible:opacity-100 disabled:cursor-not-allowed',
+              canCredit ? (canCopy ? 'top-20' : 'top-13') : (canCopy ? 'top-8' : 'top-1'), isCustomer ? '-right-12' : '-left-12', gfinAttached ? 'text-primary opacity-100' : 'opacity-0')}>
+            {gfinAttached ? <Check className="size-4" /> : <Landmark className="size-4" />}
           </button>}
           {message.mediaUrl &&
             ((message.type === 'FILE' ||

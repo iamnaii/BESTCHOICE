@@ -22,6 +22,9 @@ import type { InboxTab } from './components/ChannelFilter';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { resolveUploadFeedback } from './components/upload-feedback';
 import { useRoomCredit } from './hooks/useRoomCredit';
+import { useFinanceApplication } from './hooks/useFinanceApplication';
+import GfinSlotPicker from './components/gfin/GfinSlotPicker';
+import { slotCounts, type FinanceSlot } from './components/gfin/gfin';
 
 // Sound notification
 
@@ -53,6 +56,25 @@ export default function UnifiedInboxPage() {
     }
     toast.success('แนบไฟล์เพื่อตรวจเครดิตแล้ว', window.innerWidth < 1280 ? { action: { label: 'เปิดแผง', onClick: open } } : undefined);
   });
+  const gfin = useFinanceApplication(activeRoomId);
+  const [slotPick, setSlotPick] = useState<{ roomId: string; messageId: string } | null>(null);
+  const [gfinFocus, setGfinFocus] = useState<{ roomId: string; tick: number } | null>(null);
+  /* กดปุ่ม GFIN ข้างรูป / ลากมาวาง: ยังไม่มีใบยื่น → สร้างร่างก่อนแล้วค่อยถามช่อง (mockup PickSlot)
+     หยิบซ้ำ = เอาออก (spec §6.4 — เหมือนตรวจเครดิต) เฉพาะไฟล์ที่ยังไม่ถูกส่ง; ส่งแล้วต้องเลือกช่องใหม่แทน */
+  const pickSlotForMessage = async (messageId: string) => {
+    if (!activeRoomId) return;
+    const attached = gfin.current?.files.find(f => f.sourceMessageId === messageId && !f.sentAt);
+    if (attached) { await gfin.removeFile(attached.id); return; }
+    if (!gfin.current) { try { await gfin.start(); } catch { return; } }
+    setSlotPick({ roomId: activeRoomId, messageId });
+  };
+  const onSlotPicked = async (slot: FinanceSlot) => {
+    if (!slotPick) return;
+    setSlotPick(null);
+    await gfin.attachMessage(slotPick.messageId, slot);
+    setGfinFocus({ roomId: slotPick.roomId, tick: Date.now() });
+    if (window.innerWidth < 1280) setCustomerPanelOpen(true);
+  };
   const [roomViewers, setRoomViewers] = useState<{ userId: string; userName: string }[]>([]);
   // เจ้าของเคาะ 2026-09-05: ช่องทางเลือกทีละอัน · เมนูผู้ดูแลแทนเมนูบอท · view 'expired' = มุมมอง "ตอบไม่ทัน"
   const [filters, setFilters] = useState<InboxFilters>({ tab: 'waiting', channel: null, who: 'all', view: 'queue' });
@@ -670,6 +692,9 @@ export default function UnifiedInboxPage() {
           onCreditMessage={credit.toggleMessage}
           creditMessageIds={credit.files.flatMap(file => file.sourceMessageId ? [file.sourceMessageId] : [])}
           creditBusy={credit.busy}
+          onGfinMessage={pickSlotForMessage}
+          gfinMessageIds={gfin.current?.files.flatMap(f => f.sourceMessageId ? [f.sourceMessageId] : []) ?? []}
+          gfinBusy={gfin.busy}
           isUploadingFile={uploadFileMutation.isPending}
           otherViewers={otherViewers}
           roomMuted={isMuted(activeRoomId ?? undefined)}
@@ -689,6 +714,9 @@ export default function UnifiedInboxPage() {
         <RoomDossier
           credit={credit}
           creditFocus={creditFocus}
+          gfin={gfin}
+          gfinFocus={gfinFocus}
+          onPickSlot={pickSlotForMessage}
           room={sessionQuery.data}
           customerId={customerId}
           activeRoomId={activeRoomId}
@@ -703,6 +731,9 @@ export default function UnifiedInboxPage() {
           <RoomDossier
             credit={credit}
             creditFocus={creditFocus}
+            gfin={gfin}
+            gfinFocus={gfinFocus}
+            onPickSlot={pickSlotForMessage}
             room={sessionQuery.data}
             customerId={customerId}
             activeRoomId={activeRoomId}
@@ -714,6 +745,12 @@ export default function UnifiedInboxPage() {
         </SheetContent>
       </Sheet>
       </div>
+      <GfinSlotPicker
+        open={!!slotPick && slotPick.roomId === activeRoomId}
+        onOpenChange={(o) => !o && setSlotPick(null)}
+        counts={slotCounts(gfin.current?.files ?? [])}
+        onPick={onSlotPicked}
+      />
     </div>
   );
 }

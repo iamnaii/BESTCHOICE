@@ -94,6 +94,9 @@ interface ChatPanelProps {
   onCreditMessage?: (messageId: string) => void;
   creditMessageIds?: string[];
   creditBusy?: boolean;
+  onGfinMessage?: (messageId: string) => void;
+  gfinMessageIds?: string[];
+  gfinBusy?: boolean;
   session: any;
   messages: any[];
   isLoadingMessages: boolean;
@@ -141,6 +144,9 @@ export default function ChatPanel({
   onCreditMessage,
   creditMessageIds = [],
   creditBusy,
+  onGfinMessage,
+  gfinMessageIds = [],
+  gfinBusy,
   session,
   messages,
   isLoadingMessages,
@@ -878,6 +884,9 @@ export default function ChatPanel({
                       onCreditMessage={onCreditMessage}
                       creditAttached={creditMessageIds.includes(item.data.id)}
                       creditBusy={creditBusy}
+                      onGfinMessage={onGfinMessage}
+                      gfinAttached={gfinMessageIds.includes(item.data.id)}
+                      gfinBusy={gfinBusy}
                       message={item.data}
                       customerAvatar={avatarUrl || undefined}
                       customerInitial={displayName[0]}

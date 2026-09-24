@@ -196,6 +196,7 @@ function buildTransitionModule() {
     supplier: { findUnique: jest.fn() },
     contract: { findUnique: jest.fn() },
     repairTicket: {
+      findFirst: jest.fn(),
       findUnique: jest.fn(),
       updateMany: jest.fn(),
     },
@@ -315,6 +316,11 @@ describe('RepairTicketsService.markRepaired', () => {
 
   beforeEach(async () => {
     ({ prisma, audit } = buildTransitionModule());
+    // ค่าเริ่มต้น: ticket ที่ถูกส่งศูนย์แล้ว (IN_PROGRESS) — เส้นทางเดิมก่อน R21
+    prisma.repairTicket.findFirst.mockResolvedValue({
+      status: 'IN_PROGRESS',
+      repairSupplierId: 'sup-1',
+    });
     svc = await buildSvc(prisma, audit, { nextTicketNumber: jest.fn() });
   });
 
@@ -371,6 +377,210 @@ describe('RepairTicketsService.markRepaired', () => {
 
     const callArgs = prisma.repairTicket.updateMany.mock.calls[0][0];
     expect(callArgs.data.payer).toBe('SUPPLIER_CLAIM');
+  });
+});
+
+// ─── markRepaired — ซ่อมที่ร้าน (R21) ───────────────────────────────────────
+// ticket ที่ยังไม่เคยถูกส่งศูนย์ (OPEN) และไม่มี repairSupplierId เลือกไว้ = ซ่อมเองที่ร้าน
+// → markRepaired ยอมรับ CAS จาก OPEN ตรง ๆ (ไม่ต้องผ่าน "ส่งซ่อม" ก่อน)
+
+describe('markRepaired — ซ่อมที่ร้าน (R21)', () => {
+  let svc: RepairTicketsService;
+  let prisma: any;
+  let audit: any;
+  let expenseDocs: any;
+  let otherIncome: any;
+
+  /** Helper: build a ticket stub for returnToCustomer tests. */
+  function stubTicket(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 't-1',
+      branchId: 'br-1',
+      customerId: 'c-1',
+      payer: 'SHOP',
+      repairSupplierId: null,
+      actualCost: new Prisma.Decimal(800),
+      notes: 'บันทึกเดิม',
+      defectDescription: 'จอเสีย',
+      customer: { id: 'c-1', name: 'นาย ก' },
+      product: null,
+      contract: null,
+      ...overrides,
+    };
+  }
+
+  beforeEach(async () => {
+    ({ prisma, audit } = buildTransitionModule());
+    prisma.repairTicket.update = jest.fn().mockResolvedValue({ id: 't-1' });
+    prisma.systemConfig = { findFirst: jest.fn().mockResolvedValue(null) };
+    prisma.supplier = { findUnique: jest.fn().mockResolvedValue({ id: 'sup-1', name: 'ศูนย์ A' }) };
+    expenseDocs = { createDraftForRepair: jest.fn().mockResolvedValue({ id: 'ed-1' }) };
+    otherIncome = { createDraftForRepair: jest.fn().mockResolvedValue({ id: 'oi-1' }) };
+    svc = await buildSvc(
+      prisma,
+      audit,
+      { nextTicketNumber: jest.fn() },
+      expenseDocs,
+      otherIncome,
+      {},
+    );
+  });
+
+  // (a) ticket OPEN + repairSupplierId=null → update สำเร็จ status READY_FOR_PICKUP,
+  //     log note มีคำ 'ซ่อมที่ร้าน'
+  it('(a) OPEN + ไม่มีศูนย์ซ่อม → CAS จาก OPEN สำเร็จ, READY_FOR_PICKUP, log note มี "ซ่อมที่ร้าน"', async () => {
+    prisma.repairTicket.findFirst.mockResolvedValue({ status: 'OPEN', repairSupplierId: null });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1', status: 'READY_FOR_PICKUP' });
+
+    await svc.markRepaired('t-1', { actualCost: 500, payer: 'SHOP' } as any, OWNER);
+
+    // Fix round 1 (P-E) — CAS ต้องปักการันตี repairSupplierId: null ไว้เอง ไม่ใช่พึ่งแค่
+    // pre-read status: 'OPEN' — กัน TOCTOU กับ update() ที่แก้ repairSupplierId ได้ตอน OPEN
+    expect(prisma.repairTicket.updateMany).toHaveBeenCalledWith({
+      where: { id: 't-1', status: 'OPEN', repairSupplierId: null, deletedAt: null },
+      data: expect.objectContaining({ status: 'READY_FOR_PICKUP' }),
+    });
+    expect(prisma.repairStatusLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        fromStatus: 'OPEN',
+        toStatus: 'READY_FOR_PICKUP',
+        note: expect.stringContaining('ซ่อมที่ร้าน'),
+      }),
+    });
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'REPAIR_TICKET_MARKED_REPAIRED' }),
+    );
+  });
+
+  // Fix round 1 (P-E) — TOCTOU: pre-read บอก OPEN/ไม่มีศูนย์ แต่ updateMany คืน count=0
+  // (จำลอง update() แทรกเข้ามาผูกศูนย์ซ่อมระหว่างนั้น) → ต้อง ConflictException เดิม
+  // ไม่ใช่ปล่อยผ่านไปเป็น READY_FOR_PICKUP พร้อมศูนย์ซ่อมที่ไม่เคยผ่าน "ส่งซ่อม"
+  it('(a2) TOCTOU: OPEN + ไม่มีศูนย์ตอน pre-read แต่ CAS ชน (มีคนผูกศูนย์แทรก) → ConflictException, ไม่มี status log', async () => {
+    prisma.repairTicket.findFirst.mockResolvedValue({ status: 'OPEN', repairSupplierId: null });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      svc.markRepaired('t-1', { actualCost: 500, payer: 'SHOP' } as any, OWNER),
+    ).rejects.toThrow(new ConflictException('สถานะถูกเปลี่ยนไปแล้ว (ต้องเป็น OPEN)'));
+    expect(prisma.repairTicket.updateMany).toHaveBeenCalledWith({
+      where: { id: 't-1', status: 'OPEN', repairSupplierId: null, deletedAt: null },
+      data: expect.objectContaining({ status: 'READY_FOR_PICKUP' }),
+    });
+    expect(prisma.repairStatusLog.create).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
+  });
+
+  // (b) ticket OPEN + มี repairSupplierId → ConflictException ข้อความชี้ทางที่ทำได้จริง
+  it('(b) OPEN + มีศูนย์ซ่อม → ConflictException "ต้องบันทึกส่งซ่อมก่อน (เครื่องมีศูนย์ซ่อม)"', async () => {
+    prisma.repairTicket.findFirst.mockResolvedValue({ status: 'OPEN', repairSupplierId: 'sup-1' });
+
+    await expect(
+      svc.markRepaired('t-1', { actualCost: 500, payer: 'SHOP' } as any, OWNER),
+    ).rejects.toThrow(new ConflictException('ต้องบันทึกส่งซ่อมก่อน (เครื่องมีศูนย์ซ่อม)'));
+    expect(prisma.repairTicket.updateMany).not.toHaveBeenCalled();
+  });
+
+  // (c) IN_PROGRESS ยังทำงานเหมือนเดิม (เส้นทางส่งศูนย์ตามปกติ ไม่ถูกแตะ)
+  it('(c) IN_PROGRESS ยังทำงานเหมือนเดิม (CAS จาก IN_PROGRESS, ไม่มี note พิเศษ)', async () => {
+    prisma.repairTicket.findFirst.mockResolvedValue({
+      status: 'IN_PROGRESS',
+      repairSupplierId: 'sup-1',
+    });
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue({ id: 't-1', status: 'READY_FOR_PICKUP' });
+
+    await svc.markRepaired('t-1', { actualCost: 1500, payer: 'SHOP' } as any, OWNER);
+
+    expect(prisma.repairTicket.updateMany).toHaveBeenCalledWith({
+      where: { id: 't-1', status: 'IN_PROGRESS', deletedAt: null },
+      data: expect.objectContaining({ status: 'READY_FOR_PICKUP' }),
+    });
+    const logArgs = prisma.repairStatusLog.create.mock.calls[0][0];
+    expect(logArgs.data).toEqual(
+      expect.objectContaining({ fromStatus: 'IN_PROGRESS', toStatus: 'READY_FOR_PICKUP' }),
+    );
+    expect(logArgs.data.note).toBeUndefined();
+  });
+
+  // Fix round 1, minor 1 — findFirst คืน null (ใบซ่อมไม่มีอยู่จริง/ถูกลบไปแล้ว)
+  // → NotFoundException ก่อนแตะ CAS เลย
+  it('(f) findFirst คืน null → NotFoundException("ไม่พบใบซ่อม"), ไม่เรียก updateMany', async () => {
+    prisma.repairTicket.findFirst.mockResolvedValue(null);
+
+    await expect(
+      svc.markRepaired('t-missing', { actualCost: 500, payer: 'SHOP' } as any, OWNER),
+    ).rejects.toThrow(new NotFoundException('ไม่พบใบซ่อม'));
+    expect(prisma.repairTicket.updateMany).not.toHaveBeenCalled();
+  });
+
+  // (d) returnToCustomer, payer=SHOP cost=800 ไม่มีศูนย์ → ไม่เรียก expenseDocs.createDraftForRepair
+  //     และ notes ต่อท้ายข้อความ 'ซ่อมที่ร้าน — ไม่มีเอกสารรายจ่ายอัตโนมัติ (ต้นทุนอะไหล่บันทึกทางอื่น)'
+  it('(d) returnToCustomer payer=SHOP cost=800 ไม่มีศูนย์ → ไม่สร้าง ExpenseDocument, ต่อท้าย notes', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue(
+      stubTicket({ payer: 'SHOP', actualCost: new Prisma.Decimal(800), repairSupplierId: null }),
+    );
+
+    await svc.returnToCustomer('t-1', {} as any, OWNER);
+
+    expect(expenseDocs.createDraftForRepair).not.toHaveBeenCalled();
+    expect(prisma.repairTicket.update).toHaveBeenCalledWith({
+      where: { id: 't-1' },
+      data: expect.objectContaining({
+        expenseDocumentId: null,
+        otherIncomeId: null,
+        notes: 'บันทึกเดิม\nซ่อมที่ร้าน — ไม่มีเอกสารรายจ่ายอัตโนมัติ (ต้นทุนอะไหล่บันทึกทางอื่น)',
+      }),
+    });
+  });
+
+  // (e) payer=CUSTOMER ไม่มีศูนย์ → ยังสร้าง OtherIncome เหมือนเดิม (ไม่ถูกกิ่งใหม่แตะ)
+  it('(e) returnToCustomer payer=CUSTOMER ไม่มีศูนย์ → ยังสร้าง OtherIncome ตามเดิม', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue(
+      stubTicket({
+        id: 't-2',
+        payer: 'CUSTOMER',
+        repairSupplierId: null,
+        actualCost: new Prisma.Decimal(500),
+      }),
+    );
+
+    await svc.returnToCustomer('t-2', {} as any, OWNER);
+
+    expect(otherIncome.createDraftForRepair).toHaveBeenCalledWith(
+      expect.objectContaining({
+        counterpartyName: 'นาย ก',
+        customerId: 'c-1',
+        amount: new Prisma.Decimal(500),
+      }),
+      expect.anything(),
+    );
+    expect(prisma.repairTicket.update).toHaveBeenCalledWith({
+      where: { id: 't-2' },
+      data: { expenseDocumentId: null, otherIncomeId: 'oi-1' },
+    });
+  });
+
+  // Fix round 1, minor 2 — ซ่อมที่ร้าน + payer SHOP + actualCost = 0 → W10 (Decimal(0) ไม่ gt(0))
+  // กันกิ่งใหม่ไว้: ไม่สร้างเอกสารใดๆ และไม่แตะ notes เลย (ไม่ใช่แค่ไม่สร้าง ExpenseDocument)
+  it('(g) returnToCustomer payer=SHOP ไม่มีศูนย์ + actualCost=0 → ไม่มีเอกสาร ไม่แตะ notes เลย', async () => {
+    prisma.repairTicket.updateMany.mockResolvedValue({ count: 1 });
+    prisma.repairTicket.findUnique.mockResolvedValue(
+      stubTicket({
+        id: 't-3',
+        payer: 'SHOP',
+        repairSupplierId: null,
+        actualCost: new Prisma.Decimal(0),
+      }),
+    );
+
+    await svc.returnToCustomer('t-3', {} as any, OWNER);
+
+    expect(expenseDocs.createDraftForRepair).not.toHaveBeenCalled();
+    expect(otherIncome.createDraftForRepair).not.toHaveBeenCalled();
+    expect(prisma.repairTicket.update).not.toHaveBeenCalled();
   });
 });
 

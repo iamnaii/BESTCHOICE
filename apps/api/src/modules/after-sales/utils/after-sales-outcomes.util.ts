@@ -20,6 +20,19 @@ export interface OutcomeOption {
 }
 
 const MANAGER_UP = new Set(['BRANCH_MANAGER', 'OWNER']);
+
+/**
+ * I1 (final fix wave) — เหตุผล "พ้นกรอบ 7 วัน" ของ `DefectExchangeService.checkEligibility`
+ * (ข้อความจริง: `พ้นกำหนด 7 วันแล้ว (รับเครื่องเมื่อ …)`). เป็นเหตุผลเดียวที่ ผจก.สาขา/เจ้าของ
+ * "ข้าม" ได้ — เหตุผลอื่นทุกข้อ (PHONE_USED, สถานะสัญญา ACTIVE, เครดิตเทิร์น, เครื่องใหม่ไม่พร้อมขาย,
+ * รุ่น/ความจุไม่ตรง) ต้องบล็อกเสมอ แม้ engine จะข้าม checkEligibility ทั้งก้อนตอน bypassWindowCheck.
+ * ใช้ร่วมกันทั้ง computeOutcomes, AfterSalesCaseService.createCase และ AfterSalesExchangeService.confirmSameModel
+ */
+export const WINDOW_REASON_RE = /พ้นกำหนด 7 วัน/;
+
+/** M15 — ข้อความ engine มี "(รับเครื่องเมื่อ …)" ซึ่งห้ามขึ้นจอ (กติกาถ้อยคำ) → แปลงเป็นข้อความ UI */
+export const WINDOW_REASON_UI = 'พ้นกรอบ 7 วัน — ผจก. ยืนยันได้';
+const toUiReason = (r: string) => (WINDOW_REASON_RE.test(r) ? WINDOW_REASON_UI : r);
 const PAYER: Record<WarrantyStatus, OutcomeOption['payerDefault']> = {
   IN_7DAY_DEFECT: 'SHOP',
   IN_SHOP_WARRANTY: 'SHOP',
@@ -27,6 +40,13 @@ const PAYER: Record<WarrantyStatus, OutcomeOption['payerDefault']> = {
   OUT_OF_WARRANTY: 'CUSTOMER',
   WALK_IN: 'CUSTOMER',
 };
+
+/** ค่าเริ่มต้นผู้จ่ายจากสถานะประกัน — ตัวเดียวกับที่ REPAIR branch ของ computeOutcomes() ใช้
+ * (`payerDefault` ด้านบน). Export ไว้ให้ `AfterSalesExchangeService.switchToRepair` ใช้ตอน
+ * `dto.payer` ไม่ได้ระบุมา แทนที่จะก็อป map นี้ซ้ำ */
+export function payerDefaultFor(status: WarrantyStatus): 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM' {
+  return PAYER[status] as 'SHOP' | 'CUSTOMER' | 'SUPPLIER_CLAIM';
+}
 
 export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
   const within7 = i.warrantyStatus === 'IN_7DAY_DEFECT' && i.daysRemainingIn7Day > 0;
@@ -74,14 +94,19 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
     sameModel = {
       outcome: 'SAME_MODEL_EXCHANGE',
       enabled: true,
-      implemented: false,
+      implemented: true,
       note: 'ผจก.สาขา ต้องยืนยัน',
     };
-  } else if (managerUp) {
+  } else if (
+    managerUp &&
+    i.defectReasons.length === 1 &&
+    WINDOW_REASON_RE.test(i.defectReasons[0])
+  ) {
+    // I1 — ผจก./เจ้าของ ข้ามได้ "เฉพาะกรอบ 7 วัน" เมื่อมันเป็นเหตุผลเดียวที่ไม่ผ่าน
     sameModel = {
       outcome: 'SAME_MODEL_EXCHANGE',
       enabled: true,
-      implemented: false,
+      implemented: true,
       note: 'ข้ามกรอบ 7 วัน — ผจก. ต้องยืนยัน',
     };
   } else {
@@ -89,7 +114,12 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
       outcome: 'SAME_MODEL_EXCHANGE',
       enabled: false,
       implemented: false,
-      reason: i.defectReasons[0] ?? 'ไม่เข้าเงื่อนไขเปลี่ยนรุ่นเดิม',
+      // I1/M15 — เหตุผลแรกที่ไม่ใช่กรอบ 7 วันสำคัญกว่า (ผจก. ก็ข้ามไม่ได้) · กรอบ 7 วันแปลงเป็นข้อความ UI
+      reason: toUiReason(
+        i.defectReasons.find((r) => !WINDOW_REASON_RE.test(r)) ??
+          i.defectReasons[0] ??
+          'ไม่เข้าเงื่อนไขเปลี่ยนรุ่นเดิม',
+      ),
     };
   }
 
@@ -112,7 +142,7 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
     priced = {
       outcome: 'PRICED_EXCHANGE',
       enabled: true,
-      implemented: false,
+      implemented: true,
       note: 'มีขั้นอนุมัติตามราคารับซื้อ',
     };
   } else if (i.warrantyStatus === 'OUT_OF_WARRANTY') {

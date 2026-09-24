@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { CreateCaseDto } from '../dto/create-case.dto';
 
 /** C6 (final-fix brief) — `accessories` มาเป็น JSON string จาก multipart/form-data เสมอ
@@ -26,5 +27,23 @@ describe('CreateCaseDto — accessories malformed JSON (C6)', () => {
   it('accessories เป็น object อยู่แล้ว (ไม่ใช่ string) → ผ่านตรงๆ ไม่พยายาม parse', () => {
     const dto = plainToInstance(CreateCaseDto, { accessories: { box: true } });
     expect(dto.accessories).toEqual({ box: true });
+  });
+});
+
+/** branchId ไม่บังคับ UUID — seed/E2E ใช้รหัสสาขา literal (`branch-002`) แบบ contract.dto.ts */
+describe('CreateCaseDto — branchId', () => {
+  const branchErrors = async (branchId: unknown) =>
+    (await validate(plainToInstance(CreateCaseDto, { branchId }))).find(
+      (e) => e.property === 'branchId',
+    );
+
+  it('รับรหัสสาขาแบบ literal (branch-002) และ UUID', async () => {
+    expect(await branchErrors('branch-002')).toBeUndefined();
+    expect(await branchErrors('11111111-1111-1111-1111-111111111111')).toBeUndefined();
+  });
+
+  it('สตริงว่าง → "กรุณาระบุสาขา"', async () => {
+    const err = await branchErrors('');
+    expect(Object.values(err?.constraints ?? {})).toContain('กรุณาระบุสาขา');
   });
 });

@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { Clock } from 'lucide-react';
 import {
   OUTCOME_LABEL,
   PAYER_LABEL,
@@ -46,6 +47,22 @@ function StageChip({ row }: { row: CaseRow }) {
     >
       <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
       {label}
+    </span>
+  );
+}
+
+/** Task 12 — ชิป "รอ ผจก." บนแถวเปลี่ยนรุ่นเดิม (SAME_MODEL) ที่กำลังรออนุมัติ · โชว์ในแท็บ
+ * "กำลังทำ" ให้ทุก role เห็นว่าเคสนี้รออนุมัติจากผจก.สาขาโดยเฉพาะ (ต่างจาก PRICED ที่ tier
+ * อาจต้องเจ้าของ) — ไอคอน + ข้อความเสมอ (ห้ามบอกสถานะด้วยสีอย่างเดียว, frontend.md) */
+function showAwaitingMgrChip(row: CaseRow): boolean {
+  return row.exchange?.kind === 'SAME_MODEL' && row.stage === 'AWAITING_APPROVAL';
+}
+
+function AwaitingMgrChip() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-warning-strong">
+      <Clock aria-hidden className="h-3.5 w-3.5 shrink-0" />
+      รอ ผจก.
     </span>
   );
 }
@@ -104,7 +121,10 @@ export default function CaseTable({ rows }: CaseTableProps) {
                 </td>
                 <td className="px-3 py-2.5">{outcomeLine(row)}</td>
                 <td className="px-3 py-2.5">
-                  <StageChip row={row} />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <StageChip row={row} />
+                    {showAwaitingMgrChip(row) && <AwaitingMgrChip />}
+                  </div>
                 </td>
                 <td className="px-3 py-2.5">
                   <div>{dayOf(row.receivedAt)}</div>
@@ -126,7 +146,10 @@ export default function CaseTable({ rows }: CaseTableProps) {
           >
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-primary">{row.caseNumber}</span>
-              <StageChip row={row} />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <StageChip row={row} />
+                {showAwaitingMgrChip(row) && <AwaitingMgrChip />}
+              </div>
             </div>
             <div className="mt-1.5 leading-snug">
               {row.customer.name} · {deviceLine(row)}

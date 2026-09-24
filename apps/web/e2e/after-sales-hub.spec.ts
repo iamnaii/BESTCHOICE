@@ -40,30 +40,12 @@
  * apps/api/src/utils/upload-image.util.ts) — รูปแบบเดียวกับ `fakeJpeg()` ใน
  * after-sales-flow.integration.spec.ts (ฝั่ง API, jest/vitest ไม่ใช่ Playwright).
  *
- * ─── ทำไม test.fixme() ───────────────────────────────────────────────────────
- * ระหว่างเขียนเทสนี้พบบั๊กที่มีอยู่ก่อนแล้ว (ไม่เกี่ยวกับ Task 13) ที่บล็อกขั้น "บันทึกและเปิดเคส"
- * เสมอบน DB ที่ seed ด้วย prisma/seed.ts (รวมถึง DB ของ CI นี้):
- *   `CreateCaseDto.branchId` (apps/api/src/modules/after-sales/dto/create-case.dto.ts)
- *   ประกาศ `@IsUUID()` แต่ `Branch.id` ทุกแถวใน seed.ts เป็นสตริงอ่านง่าย ('branch-002' ฯลฯ)
- *   ไม่ใช่ UUID จริง — พิสูจน์ตรงด้วย `require('class-validator').isUUID('branch-002')`
- *   ได้ `false`. AfterSalesNewPage.tsx ส่ง `branchId: user.branchId` เสมอ (ไม่มีทาง
- *   เลี่ยง — /branches ก็คืนสาขาชุดเดียวกันที่ id ไม่ใช่ UUID) ⇒ ValidationPipe (global,
- *   whitelist+transform ใน app.setup.ts) ตอบ 400 "branchId must be a UUID string"
- *   ก่อนถึง service เสมอ ไม่ว่าจะเป็น role ไหนก็ตาม. Sibling DTO
- *   `contracts/dto/contract.dto.ts` ใช้ `@IsString() branchId` (ไม่ใช่ IsUUID) และเทสหน่วย
- *   ของโมดูลนี้เอง (`case-create.spec.ts`) ก็ใช้ branchId ที่ไม่ใช่ UUID ('b-1'/'br-A'/'br-B')
- *   อยู่แล้ว — สนับสนุนว่า `@IsUUID()` ที่นี่เป็นข้อผิดพลาดที่หลุดมาไม่ใช่การตัดสินใจ.
- *   แก้ไม่ได้ในรอบนี้: ไฟล์ที่ต้องแก้อยู่ใน apps/api ซึ่งอยู่นอกขอบเขตไฟล์ของ Task 13
- *   (ถอดหน้าเก่า/เมนู/E2E ฝั่ง apps/web เท่านั้น) และเมื่อลองแก้ (@IsUUID → @IsString ใน
- *   create-case.dto.ts) เครื่องมือของ Claude Code เองปฏิเสธคำสั่งด้วยเหตุผล
- *   "[Security Weaken]" — ต้องให้เจ้าของ/ผู้ทำ Task ฝั่ง API ตัดสินใจเองแยกต่างหาก
- *   (ไฟล์ที่เกี่ยวข้อง: apps/api/src/modules/after-sales/dto/create-case.dto.ts,
- *   apps/api/prisma/seed.ts).
- *
- * เทสด้านล่างเขียนไว้ครบตามพฤติกรรมที่ตั้งใจ (ยืนยัน selector/ข้อความทุกจุดกับ source จริงแล้ว)
- * พร้อมรันทันทีที่บั๊กข้างบนถูกแก้ — `test.fixme()` ทำให้ CI ไม่แดงในระหว่างนี้ (skip ไม่ใช่ fail)
- * แทนที่จะปล่อยให้เป็น false-red ที่ไม่เกี่ยวกับการเปลี่ยนแปลงของ Task 13 เลย. ลบบรรทัด
- * `test.fixme(...)` ทิ้งทันทีที่ branchId ไม่ใช่ UUID ใช้งานได้แล้ว.
+ * ─── branchId ของสาขาใน seed ───────────────────────────────────────────────
+ * seed.ts ใช้ Branch.id แบบ literal ('branch-002' ฯลฯ) ไม่ใช่ UUID — เดิม `CreateCaseDto.branchId`
+ * ประกาศ `@IsUUID()` ทำให้ POST /after-sales ตอบ 400 เสมอบน DB ที่ seed และเทสนี้ถูกพักด้วย
+ * `test.fixme()`. ผ่อน validator แล้ว (เจ้าของเคาะ 2026-09-24): DTO เป็น `@IsString() @MinLength(1)`
+ * แบบเดียวกับ contracts/dto/contract.dto.ts และ service ตรวจว่าสาขามีจริงหลังเช็ค scope (R16)
+ * ⇒ รหัสสาขาไม่มีจริงได้ 400 "ไม่พบสาขา" — เทสนี้จึงรันจริงใน CI แล้ว
  */
 import { test, expect } from '@playwright/test';
 import { loginAsRole } from './helpers/auth';
@@ -82,14 +64,6 @@ test.describe('After-sales hub — แจ้งปัญหาเครื่อ
   test('SALES เปิดเคสซ่อม ค่าซ่อมจริง 500 ผู้จ่ายลูกค้า จนปิดเคสพร้อมเอกสาร OI-', async ({
     page,
   }) => {
-    // ดูหมายเหตุ test.fixme() ด้านบนไฟล์ — บล็อกอยู่ที่ CreateCaseDto.branchId @IsUUID()
-    // vs seed Branch.id ที่ไม่ใช่ UUID (บั๊กเดิม ไม่เกี่ยวกับ Task 13)
-    test.fixme(
-      true,
-      'CreateCaseDto.branchId ต้องเป็น UUID แต่ seed Branch.id (เช่น "branch-002") ไม่ใช่ ' +
-        '⇒ POST /after-sales ตอบ 400 เสมอ — ดูหมายเหตุยาวหัวไฟล์ก่อนลบบรรทัดนี้',
-    );
-
     await loginAsRole(page, 'SALES');
 
     // 1) /after-sales → กรอก IMEI → "แจ้งปัญหาเครื่อง" (ลิงก์ตรงไป /after-sales/new?imei=)

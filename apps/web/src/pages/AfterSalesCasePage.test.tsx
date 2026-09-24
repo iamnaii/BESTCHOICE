@@ -594,6 +594,9 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     expect(header).toHaveClass('md:inline-flex');
     const bar = screen.getByTestId('mobile-bar');
     expect(bar).toHaveClass('md:hidden');
+    // P-AA — ลอยเหนือ MobileBottomNav (fixed bottom-0 z-30 สูง 56px) ไม่งั้นปุ่มหลักมือถือถูกเมนูล่างทับ
+    expect(bar.className).toContain('bottom-14');
+    expect(bar.className).toContain('z-20');
     expect(within(bar).getAllByRole('button', { name: 'ส่งมอบคืนลูกค้า' })).toHaveLength(1);
   });
 

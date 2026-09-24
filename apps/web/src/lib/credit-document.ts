@@ -2,7 +2,8 @@ import api, { getErrorMessage } from '@/lib/api';
 import { toast } from 'sonner';
 
 export const isRoomCreditDocument = (url: string) =>
-  /^\/staff-chat\/rooms\/[^/]+\/credit-check\/files\/[^/?#]+$/.test(url);
+  /^\/staff-chat\/rooms\/[^/]+\/credit-check\/files\/[^/?#]+$/.test(url) ||
+  /^\/finance-applications\/[^/]+\/files\/[^/?#]+$/.test(url);
 
 /** Open protected media with the in-memory bearer token, not a public/signed URL. */
 export async function openCreditDocument(url: string): Promise<void> {

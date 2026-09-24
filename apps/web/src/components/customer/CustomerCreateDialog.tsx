@@ -105,6 +105,8 @@ export interface CustomerCreateDialogProps {
   onOpenChange: (open: boolean) => void;
   /** ค่าตั้งต้นของช่องในฟอร์ม (เช่น ชื่อจากห้องแชท) — แก้ต่อได้ */
   initialValues?: Partial<CustomerFormData>;
+  /** ที่อยู่ตามบัตรตั้งต้น (จาก OCR รูปบัตรในแชท — แท็บ GFIN) */
+  initialAddressIdCard?: AddressData;
   /** แถบบริบทใต้หัว เช่น "บันทึกแล้วจะผูกกับห้องแชท …" */
   context?: ReactNode;
   submitLabel?: string;
@@ -136,7 +138,7 @@ export default function CustomerCreateDialog({ open, onOpenChange, ...formProps 
 
 type FormProps = Omit<CustomerCreateDialogProps, 'open' | 'onOpenChange'> & { onClose: () => void };
 
-function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, context, submitLabel = 'บันทึก', onCreated, onFilled, onUseExisting, onClose }: FormProps) {
+function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, initialAddressIdCard, context, submitLabel = 'บันทึก', onCreated, onFilled, onUseExisting, onClose }: FormProps) {
   const isFill = mode === 'fill';
   const form = useForm<CustomerFormData>({
     /* R43: `prospectFillSchema.lastName` ว่างได้ (ชื่อในแชทคำเดียว) — สคีมาใช้ `z.string().catch('')`
@@ -146,7 +148,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, co
   });
   // Extra fields not in customerSchema (managed as separate state)
   const [formExtra, setFormExtra] = useState({ facebookFriends: '', googleMapLink: '', addressCurrentType: '' });
-  const [addressIdCard, setAddressIdCard] = useState<AddressData>(emptyAddress);
+  const [addressIdCard, setAddressIdCard] = useState<AddressData>(initialAddressIdCard ?? emptyAddress);
   const [addressCurrent, setAddressCurrent] = useState<AddressData>(emptyAddress);
   const [sameAddress, setSameAddress] = useState(false);
   const [addressWork, setAddressWork] = useState<AddressData>(emptyAddress);

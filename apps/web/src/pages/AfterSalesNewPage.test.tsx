@@ -51,21 +51,104 @@ const foundResult: LookupResult = {
     bottom: null,
   },
   openCase: null,
+  // Task 10 — API (Tasks 1-8 บนสาขานี้) คืน implemented: true ให้ทั้งสองทางออกเปลี่ยนเครื่องแล้ว
+  // เมื่อสัญญาอยู่ในกรอบ 7 วัน (คงเดิมเฉพาะ CASH — ดู cashSaleResult ด้านล่าง)
   outcomes: [
     { outcome: 'REPAIR', enabled: true, implemented: true, payerDefault: 'SHOP' },
     {
       outcome: 'SAME_MODEL_EXCHANGE',
       enabled: true,
-      implemented: false,
-      note: 'เปลี่ยนรุ่นเดิมให้ลูกค้าทันที',
+      implemented: true,
+      note: 'ผจก.สาขา ต้องยืนยัน',
     },
     {
       outcome: 'PRICED_EXCHANGE',
-      enabled: false,
-      implemented: false,
-      reason: 'ต้องผ่อนมาแล้วอย่างน้อย 3 งวด',
+      enabled: true,
+      implemented: true,
+      note: 'มีขั้นอนุมัติตามราคารับซื้อ',
     },
   ],
+};
+
+// (a)/(b) — สัญญาที่ยืนยันเปลี่ยนรุ่นเดิมได้แต่ "นอกกรอบ 7 วัน" (managerUp branch ของ
+// computeOutcomes) เพื่อทดสอบข้อความ "ข้ามกรอบ 7 วัน" แยกจาก foundResult (ในกรอบ)
+const outOfWindowResult: LookupResult = {
+  ...foundResult,
+  outcomes: [
+    foundResult.outcomes[0],
+    {
+      outcome: 'SAME_MODEL_EXCHANGE',
+      enabled: true,
+      implemented: true,
+      note: 'ข้ามกรอบ 7 วัน — ผจก. ต้องยืนยัน',
+    },
+    foundResult.outcomes[2],
+  ],
+};
+
+// (e) — เครื่องมาจากการขายสด: "เปลี่ยนรุ่นเดิม (ขายสด)" enabled=false/implemented=false เสมอ
+// ในรอบนี้ (ไม่เปลี่ยนจาก PR 1) พร้อม reason จาก API
+const cashSaleResult: LookupResult = {
+  ...foundResult,
+  source: 'CASH_SALE',
+  contract: null,
+  sale: { id: 'sale-1', saleType: 'CASH' },
+  outcomes: [
+    { outcome: 'REPAIR', enabled: true, implemented: true, payerDefault: 'CUSTOMER' },
+    {
+      outcome: 'CASH_SAME_MODEL_EXCHANGE',
+      enabled: false,
+      implemented: false,
+      reason: 'เกินกรอบ 7 วันแล้ว',
+    },
+  ],
+};
+
+const twoReplacementProducts = [
+  {
+    id: 'rp-1',
+    brand: 'Apple',
+    model: 'iPhone 13',
+    storage: '128GB',
+    color: 'ดำ',
+    imeiSerial: '111222333',
+    cashPrice: '15000.00',
+    branchId: 'branch-1',
+  },
+  {
+    id: 'rp-2',
+    brand: 'Apple',
+    model: 'iPhone 13',
+    storage: '128GB',
+    color: 'ขาว',
+    imeiSerial: '444555666',
+    cashPrice: '15500.00',
+    branchId: 'branch-1',
+  },
+];
+
+const pricedReplacementProducts = [
+  {
+    id: 'rp-9',
+    brand: 'Samsung',
+    model: 'Galaxy S23',
+    storage: '256GB',
+    color: null,
+    imeiSerial: '999888777',
+    cashPrice: '20000.00',
+    branchId: 'branch-1',
+  },
+];
+
+const previewReview = {
+  mode: 'PRICED' as const,
+  tier: 'REVIEW' as const,
+  ncv: '9000.00',
+  marketMin: '8000.00',
+  expectedPl: '500.00',
+  blockers: { overdueBlocked: false, advanceBlocked: false },
+  hasUnpaidLateFee: false,
+  plan: null,
 };
 
 const notFoundResult: LookupResult = {
@@ -88,10 +171,21 @@ const notFoundResult: LookupResult = {
   outcomes: [{ outcome: 'REPAIR', enabled: true, implemented: true, payerDefault: 'CUSTOMER' }],
 };
 
-function mockGet(lookup: LookupResult) {
+interface MockExtras {
+  replacementProducts?: unknown;
+  preview?: unknown;
+}
+
+function mockGet(lookup: LookupResult, extra?: MockExtras) {
   mocks.get.mockImplementation(async (url: string) => {
     if (url === '/after-sales/lookup') return { data: lookup };
     if (url === '/branches') return { data: [{ id: 'branch-1', name: 'ลาดพร้าว' }] };
+    if (url === '/after-sales/replacement-products' && extra?.replacementProducts !== undefined) {
+      return { data: extra.replacementProducts };
+    }
+    if (url === '/after-sales/exchange/preview' && extra?.preview !== undefined) {
+      return { data: extra.preview };
+    }
     throw new Error(`unexpected GET ${url}`);
   });
 }
@@ -209,5 +303,193 @@ describe('AfterSalesNewPage — แจ้งปัญหาเครื่อง
     const link = screen.getByRole('link', { name: 'เปิดดูเคสนี้' });
     expect(link).toHaveAttribute('href', '/after-sales/as-9');
     expect(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' })).toBeDisabled();
+  });
+
+  it('(a) เปลี่ยนรุ่นเดิม (ในกรอบ 7 วัน): เลือกเครื่องทดแทน → สรุปมีข้อความ "รอ ผจก.สาขา ยืนยัน" + submit multipart มี replacementProductId ไม่มี payer/repairSupplierId', async () => {
+    mockGet(foundResult, { replacementProducts: twoReplacementProducts });
+    mocks.post.mockResolvedValue({
+      data: { id: 'case-10', caseNumber: 'AS-20260924-0002', repairTicketId: null },
+    });
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+
+    await userEvent.type(screen.getByLabelText(/อาการที่ลูกค้าแจ้ง/), 'จอแตกทั้งแผ่น');
+    const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' });
+    await userEvent.upload(screen.getByLabelText(/ถ่ายเพิ่ม/), file);
+
+    await userEvent.click(screen.getByRole('button', { name: /^เปลี่ยนรุ่นเดิม/ }));
+
+    // sameModel=true ต้องถูกส่งไปเป็น '1' ตามสเปกอินเทอร์เฟซของ picker
+    await waitFor(() => {
+      const call = mocks.get.mock.calls.find(
+        ([url]) => url === '/after-sales/replacement-products',
+      );
+      expect(call?.[1]?.params).toEqual({ imei: IMEI, sameModel: '1' });
+    });
+
+    const cards = await screen.findAllByRole('button', { name: /Apple iPhone 13/ });
+    expect(cards).toHaveLength(2);
+    // "ข้ามกรอบ 7 วัน" ไม่ควรโผล่ในเคสนี้ (สัญญาอยู่ในกรอบ — option.note = 'ผจก.สาขา ต้องยืนยัน')
+    expect(screen.queryByText(/ข้ามกรอบ 7 วัน/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText('ผจก.สาขา ต้องยืนยันก่อนเปลี่ยน · ราคาเท่าเดิม ไม่มีเงินเปลี่ยนมือ'),
+    ).toBeInTheDocument();
+    await userEvent.click(cards[0]);
+
+    expect(
+      screen.getByText(/ทางออก "เปลี่ยนรุ่นเดิม" · รอ ผจก\.สาขา ยืนยัน · เครื่องทดแทน/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    const [, form] = mocks.post.mock.calls[0];
+    const data = form as FormData;
+    expect(data.get('outcome')).toBe('SAME_MODEL_EXCHANGE');
+    expect(data.get('replacementProductId')).toBe('rp-1');
+    expect(data.has('payer')).toBe(false);
+    expect(data.has('repairSupplierId')).toBe(false);
+  });
+
+  it('(a2) เปลี่ยนรุ่นเดิมนอกกรอบ 7 วัน: กล่องข้อความเพิ่ม "ข้ามกรอบ 7 วัน — ต้องให้ ผจก. ยืนยัน"', async () => {
+    mockGet(outOfWindowResult, { replacementProducts: twoReplacementProducts });
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+
+    await userEvent.click(screen.getByRole('button', { name: /^เปลี่ยนรุ่นเดิม/ }));
+
+    expect(await screen.findByText('ข้ามกรอบ 7 วัน — ต้องให้ ผจก. ยืนยัน')).toBeInTheDocument();
+  });
+
+  it('(b) เปลี่ยนรุ่นเดิมแต่ยังไม่เลือกเครื่องทดแทน → ปุ่มบันทึกปิด + ข้อความใต้ปุ่ม', async () => {
+    mockGet(foundResult, { replacementProducts: twoReplacementProducts });
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+
+    await userEvent.click(screen.getByRole('button', { name: /^เปลี่ยนรุ่นเดิม/ }));
+    await screen.findAllByRole('button', { name: /Apple iPhone 13/ });
+
+    expect(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' })).toBeDisabled();
+    expect(screen.getByText('ต้องเลือกเครื่องทดแทนก่อนบันทึก')).toBeInTheDocument();
+  });
+
+  it('(c) เปลี่ยนแบบมีราคา: เลือกเครื่องทดแทน (sameModel=0) + กรอกฟอร์ม → ป้าย "ผจก.สาขาอนุมัติ" (tier REVIEW) + submit มีฟิลด์ราคาครบ (rate = pct/100)', async () => {
+    mockGet(foundResult, {
+      replacementProducts: pricedReplacementProducts,
+      preview: previewReview,
+    });
+    mocks.post.mockResolvedValue({
+      data: { id: 'case-11', caseNumber: 'AS-20260924-0003', repairTicketId: null },
+    });
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+
+    await userEvent.type(screen.getByLabelText(/อาการที่ลูกค้าแจ้ง/), 'จอแตกทั้งแผ่น');
+    const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' });
+    await userEvent.upload(screen.getByLabelText(/ถ่ายเพิ่ม/), file);
+
+    await userEvent.click(screen.getByRole('button', { name: /^เปลี่ยนแบบมีราคา/ }));
+
+    const card = await screen.findByRole('button', { name: /Samsung Galaxy S23/ });
+    await waitFor(() => {
+      const call = mocks.get.mock.calls.find(
+        ([url]) => url === '/after-sales/replacement-products',
+      );
+      expect(call?.[1]?.params).toEqual({ imei: IMEI, sameModel: '0' });
+    });
+    await userEvent.click(card);
+
+    await userEvent.type(screen.getByLabelText(/ราคารับซื้อเครื่องเดิม/), '9500');
+    await userEvent.clear(screen.getByLabelText(/จำนวนงวดสัญญาใหม่/));
+    await userEvent.type(screen.getByLabelText(/จำนวนงวดสัญญาใหม่/), '10');
+    await userEvent.type(screen.getByLabelText(/อัตราดอกเบี้ย/), '8');
+
+    expect(await screen.findByText('ผจก.สาขาอนุมัติ')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    const [, form] = mocks.post.mock.calls[0];
+    const data = form as FormData;
+    expect(data.get('outcome')).toBe('PRICED_EXCHANGE');
+    expect(data.get('replacementProductId')).toBe('rp-9');
+    expect(data.get('buybackPrice')).toBe('9500');
+    expect(data.get('deviceCondition')).toBe('B');
+    expect(data.get('newTotalMonths')).toBe('10');
+    expect(data.get('newInterestRate')).toBe('0.08');
+  });
+
+  it('(d) preview บอก overdueBlocked → ปุ่มบันทึกปิด + ข้อความเหตุผล', async () => {
+    mockGet(foundResult, {
+      replacementProducts: pricedReplacementProducts,
+      preview: { ...previewReview, blockers: { overdueBlocked: true, advanceBlocked: false } },
+    });
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+
+    await userEvent.click(screen.getByRole('button', { name: /^เปลี่ยนแบบมีราคา/ }));
+    const card = await screen.findByRole('button', { name: /Samsung Galaxy S23/ });
+    await userEvent.click(card);
+
+    expect(await screen.findByText(/มีงวดค้างชำระ/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' })).toBeDisabled();
+    expect(
+      screen.getByText('มีรายการค้างที่ต้องแก้ก่อนเปลี่ยนเครื่อง — ดูเหตุผลด้านบน'),
+    ).toBeInTheDocument();
+  });
+
+  it('(c2) เปลี่ยนแบบมีราคา + mode MEMO (รุ่นเดิม+ราคาเดิม): submit ไม่มี buybackPrice/deviceCondition/newTotalMonths/newInterestRate', async () => {
+    mockGet(foundResult, {
+      replacementProducts: pricedReplacementProducts,
+      preview: {
+        mode: 'MEMO',
+        tier: null,
+        ncv: '9000.00',
+        marketMin: null,
+        expectedPl: null,
+        blockers: { overdueBlocked: false, advanceBlocked: false },
+        hasUnpaidLateFee: false,
+        plan: null,
+      },
+    });
+    mocks.post.mockResolvedValue({
+      data: { id: 'case-12', caseNumber: 'AS-20260924-0004', repairTicketId: null },
+    });
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+
+    await userEvent.type(screen.getByLabelText(/อาการที่ลูกค้าแจ้ง/), 'จอแตกทั้งแผ่น');
+    const file = new File(['x'], 'a.jpg', { type: 'image/jpeg' });
+    await userEvent.upload(screen.getByLabelText(/ถ่ายเพิ่ม/), file);
+
+    await userEvent.click(screen.getByRole('button', { name: /^เปลี่ยนแบบมีราคา/ }));
+    const card = await screen.findByRole('button', { name: /Samsung Galaxy S23/ });
+    await userEvent.click(card);
+
+    expect(await screen.findByText('ราคาเท่าเดิม (MEMO)')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/ราคารับซื้อเครื่องเดิม/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    const [, form] = mocks.post.mock.calls[0];
+    const data = form as FormData;
+    expect(data.get('outcome')).toBe('PRICED_EXCHANGE');
+    expect(data.get('replacementProductId')).toBe('rp-9');
+    expect(data.has('buybackPrice')).toBe(false);
+    expect(data.has('deviceCondition')).toBe(false);
+    expect(data.has('newTotalMonths')).toBe(false);
+    expect(data.has('newInterestRate')).toBe(false);
+  });
+
+  it('(e) เครื่องมาจากขายสด: ปุ่ม "เปลี่ยนรุ่นเดิม (ขายสด)" ปิดพร้อม reason จาก API (ไม่เปลี่ยนจาก PR 1)', async () => {
+    mockGet(cashSaleResult);
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+
+    const button = screen.getByRole('button', { name: /เปลี่ยนรุ่นเดิม/ });
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent('เกินกรอบ 7 วันแล้ว');
   });
 });

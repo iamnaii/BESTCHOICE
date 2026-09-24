@@ -15,6 +15,15 @@ import StepBar from './after-sales/StepBar';
 import OutcomePicker from './after-sales/OutcomePicker';
 import IntakePhotos from './after-sales/IntakePhotos';
 import PurchasePhotoStrip from './after-sales/PurchasePhotoStrip';
+import ReplacementProductPicker, {
+  type ReplacementProduct,
+} from './after-sales/ReplacementProductPicker';
+import PricedExchangeFields, {
+  pctToRate,
+  tierApproverText,
+  type ExchangePreview,
+  type PricedForm,
+} from './after-sales/PricedExchangeFields';
 import {
   afterSalesKeys,
   dayOf,
@@ -78,6 +87,16 @@ export default function AfterSalesNewPage() {
   const [estimatedCost, setEstimatedCost] = useState('');
   const [repairSupplier, setRepairSupplier] = useState<{ id: string; name: string } | null>(null);
   const [branchId, setBranchId] = useState(user?.branchId ?? '');
+  const [replacementProductId, setReplacementProductId] = useState<string | null>(null);
+  const [replacementProducts, setReplacementProducts] = useState<ReplacementProduct[]>([]);
+  const [pricedForm, setPricedForm] = useState<PricedForm>({
+    buybackPrice: '',
+    deviceCondition: 'B',
+    newTotalMonths: '12',
+    newInterestRatePct: '',
+    conditionNote: '',
+  });
+  const [pricedPreview, setPricedPreview] = useState<ExchangePreview | null>(null);
 
   // mirror ของ CROSS_BRANCH_ROLES ฝั่ง API — ใช้ตัดสินว่าต้องเลือกสาขาเองหรือไม่ (route นี้อนุญาต
   // เฉพาะ OWNER/BRANCH_MANAGER/SALES แต่ user.branchId เป็นตัวชี้ขาดจริง — ให้ตรงกับ AfterSalesPage)
@@ -106,6 +125,13 @@ export default function AfterSalesNewPage() {
     )?.payerDefault;
     if (defaultPayer) setPayer(defaultPayer);
   }, [lookup.data]);
+
+  // สลับทางออก → ล้างสถานะเครื่องทดแทน/preview เดิม กันสรุปก่อนบันทึกค้างข้อมูลของทางออกก่อนหน้า
+  useEffect(() => {
+    setReplacementProductId(null);
+    setReplacementProducts([]);
+    setPricedPreview(null);
+  }, [outcome]);
 
   const create = useMutation({
     mutationFn: async (form: FormData) =>
@@ -154,7 +180,15 @@ export default function AfterSalesNewPage() {
 
   const found = lookup.data?.found ?? false;
   const walkIn = !!lookup.data && !found;
-  const canSubmit = !create.isPending && !lookup.data?.openCase;
+  const sameModelOption = lookup.data?.outcomes.find((o) => o.outcome === 'SAME_MODEL_EXCHANGE');
+  const outOfWindow = !!sameModelOption?.note?.includes('ข้ามกรอบ 7 วัน');
+  const needsReplacement =
+    (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'PRICED_EXCHANGE') && !replacementProductId;
+  const pricedBlocked =
+    outcome === 'PRICED_EXCHANGE' &&
+    !!(pricedPreview?.blockers.overdueBlocked || pricedPreview?.blockers.advanceBlocked);
+  const canSubmit =
+    !create.isPending && !lookup.data?.openCase && !needsReplacement && !pricedBlocked;
 
   const buildSummary = () => {
     const parts: string[] = [];
@@ -165,7 +199,24 @@ export default function AfterSalesNewPage() {
       : [deviceBrand, deviceModel].filter(Boolean).join(' ');
     if (deviceName) parts.push(`เครื่อง ${deviceName}`);
     parts.push(`รูป ${photos.length} รูป`);
-    if (outcome) parts.push(`ทางออก ${OUTCOME_LABEL[outcome]}`);
+
+    const replacement = replacementProducts.find((p) => p.id === replacementProductId);
+    const replacementText = replacement
+      ? `${[replacement.brand, replacement.model, replacement.storage].filter(Boolean).join(' ')} IMEI ${replacement.imeiSerial ?? '—'}`
+      : 'ยังไม่เลือก';
+
+    if (outcome === 'SAME_MODEL_EXCHANGE') {
+      parts.push(
+        `ทางออก "${OUTCOME_LABEL.SAME_MODEL_EXCHANGE}" · รอ ผจก.สาขา ยืนยัน · เครื่องทดแทน ${replacementText}`,
+      );
+    } else if (outcome === 'PRICED_EXCHANGE') {
+      const tierText = pricedPreview?.tier ? ` · ${tierApproverText(pricedPreview.tier)}` : '';
+      parts.push(
+        `ทางออก "${OUTCOME_LABEL.PRICED_EXCHANGE}" · เครื่องทดแทน ${replacementText}${tierText}`,
+      );
+    } else if (outcome) {
+      parts.push(`ทางออก ${OUTCOME_LABEL[outcome]}`);
+    }
     return parts.join(' · ') || 'กรอกข้อมูลด้านบนก่อนบันทึก';
   };
 
@@ -190,6 +241,17 @@ export default function AfterSalesNewPage() {
       toast.error('ต้องเลือกทางออกก่อนบันทึก');
       return;
     }
+    if (
+      (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'PRICED_EXCHANGE') &&
+      !replacementProductId
+    ) {
+      toast.error('ต้องเลือกเครื่องทดแทนก่อนบันทึก');
+      return;
+    }
+    if (pricedBlocked) {
+      toast.error('มีรายการค้างที่ต้องแก้ก่อนเปลี่ยนเครื่อง — ดูเหตุผลใต้ฟอร์ม');
+      return;
+    }
 
     const form = new FormData();
     form.append('imei', imei);
@@ -212,6 +274,22 @@ export default function AfterSalesNewPage() {
       if (payer) form.append('payer', payer);
       if (estimatedCost.trim()) form.append('estimatedCost', estimatedCost.trim());
       if (repairSupplier) form.append('repairSupplierId', repairSupplier.id);
+    }
+    if (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'PRICED_EXCHANGE') {
+      form.append('replacementProductId', replacementProductId!);
+    }
+    if (outcome === 'PRICED_EXCHANGE') {
+      if (pricedPreview?.mode !== 'MEMO') {
+        if (pricedForm.buybackPrice.trim())
+          form.append('buybackPrice', pricedForm.buybackPrice.trim());
+        if (pricedForm.deviceCondition) form.append('deviceCondition', pricedForm.deviceCondition);
+        if (pricedForm.newTotalMonths.trim())
+          form.append('newTotalMonths', pricedForm.newTotalMonths.trim());
+        const rate = pctToRate(pricedForm.newInterestRatePct);
+        if (rate !== undefined) form.append('newInterestRate', rate);
+      }
+      if (pricedForm.conditionNote.trim())
+        form.append('conditionNote', pricedForm.conditionNote.trim());
     }
     form.append('branchId', branchId);
     photos.forEach((file) => form.append('photos', file));
@@ -527,7 +605,7 @@ export default function AfterSalesNewPage() {
                   </div>
                   <div className="space-y-1">
                     <span className="block text-xs leading-snug text-muted-foreground">
-                      ศูนย์ซ่อม (เลือกทีหลังได้ตอนส่งซ่อม)
+                      ศูนย์ซ่อม (ไม่เลือก = ซ่อมที่ร้าน)
                     </span>
                     <RepairCenterCombobox
                       value={repairSupplier?.id ?? ''}
@@ -535,6 +613,41 @@ export default function AfterSalesNewPage() {
                       onSelect={(s) => setRepairSupplier(s)}
                     />
                   </div>
+                </div>
+              )}
+
+              {outcome === 'SAME_MODEL_EXCHANGE' && (
+                <div className="space-y-3">
+                  <ReplacementProductPicker
+                    imei={imei}
+                    sameModel
+                    value={replacementProductId}
+                    onChange={setReplacementProductId}
+                    onProductsChange={setReplacementProducts}
+                  />
+                  <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm leading-snug text-warning-strong">
+                    <p>ผจก.สาขา ต้องยืนยันก่อนเปลี่ยน · ราคาเท่าเดิม ไม่มีเงินเปลี่ยนมือ</p>
+                    {outOfWindow && <p>ข้ามกรอบ 7 วัน — ต้องให้ ผจก. ยืนยัน</p>}
+                  </div>
+                </div>
+              )}
+
+              {outcome === 'PRICED_EXCHANGE' && (
+                <div className="space-y-3">
+                  <ReplacementProductPicker
+                    imei={imei}
+                    sameModel={false}
+                    value={replacementProductId}
+                    onChange={setReplacementProductId}
+                    onProductsChange={setReplacementProducts}
+                  />
+                  <PricedExchangeFields
+                    imei={imei}
+                    replacementProductId={replacementProductId}
+                    value={pricedForm}
+                    onChange={setPricedForm}
+                    onPreviewChange={setPricedPreview}
+                  />
                 </div>
               )}
 
@@ -570,13 +683,25 @@ export default function AfterSalesNewPage() {
                 </div>
                 <div className="text-sm leading-snug text-foreground">{buildSummary()}</div>
               </div>
-              <div className="flex gap-2.5">
-                <Button variant="outline" size="lg" onClick={() => navigate('/after-sales')}>
-                  ยกเลิก
-                </Button>
-                <Button variant="primary" size="lg" disabled={!canSubmit} onClick={handleSubmit}>
-                  {create.isPending ? 'กำลังบันทึก…' : 'บันทึกและเปิดเคส'}
-                </Button>
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="flex gap-2.5">
+                  <Button variant="outline" size="lg" onClick={() => navigate('/after-sales')}>
+                    ยกเลิก
+                  </Button>
+                  <Button variant="primary" size="lg" disabled={!canSubmit} onClick={handleSubmit}>
+                    {create.isPending ? 'กำลังบันทึก…' : 'บันทึกและเปิดเคส'}
+                  </Button>
+                </div>
+                {needsReplacement && (
+                  <p className="text-xs leading-snug text-destructive">
+                    ต้องเลือกเครื่องทดแทนก่อนบันทึก
+                  </p>
+                )}
+                {pricedBlocked && (
+                  <p className="text-xs leading-snug text-destructive">
+                    มีรายการค้างที่ต้องแก้ก่อนเปลี่ยนเครื่อง — ดูเหตุผลด้านบน
+                  </p>
+                )}
               </div>
             </div>
           </>

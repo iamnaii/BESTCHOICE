@@ -130,4 +130,18 @@ describe('FinanceApplicationFilesService.ocrIdCardFromMessage', () => {
     prisma.chatMessage.findFirst.mockResolvedValue(null);
     await expect(service.ocrIdCardFromMessage('room-1', 'm3', actor)).rejects.toThrow(NotFoundException);
   });
+
+  it('accepts a LINE finance image (no mediaUrl, provider gives no contentType) by sniffing magic bytes instead of trusting contentType', async () => {
+    const { service, prisma, applications, lineFinance, ocr } = build(
+      {},
+      { extractIdCard: jest.fn().mockResolvedValue({ nationalId: '1234567890123', fullName: 'สมหญิง ใจดี', confidence: 0.95 }) },
+    );
+    applications.access.mockResolvedValue({ channel: 'LINE_FINANCE' });
+    prisma.chatMessage.findFirst.mockResolvedValue({ id: 'm4', roomId: 'room-1', type: 'IMAGE', mediaUrl: null, externalMessageId: 'L1' });
+    lineFinance.getMessageContent.mockResolvedValue(JPEG);
+    const result = await service.ocrIdCardFromMessage('room-1', 'm4', actor);
+    expect(lineFinance.getMessageContent).toHaveBeenCalledWith('L1');
+    expect(ocr.extractIdCard).toHaveBeenCalledWith(expect.stringMatching(/^data:image\/jpeg;base64,/), actor.id);
+    expect(result.nationalId).toBe('1234567890123');
+  });
 });

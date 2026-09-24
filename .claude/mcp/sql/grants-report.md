@@ -3,7 +3,7 @@
 > สร้างอัตโนมัติ ห้ามแก้ด้วยมือ · แก้ที่ `policy.mjs` แล้ว `npm run grants` ใหม่
 
 - ตารางทั้งหมด **220** · ให้สิทธิ์บางคอลัมน์ **217** · ไม่ให้เลยทั้งใบ **3**
-- คอลัมน์ทั้งหมด **3302** · ให้ **2662** · ไม่ให้ **640**
+- คอลัมน์ทั้งหมด **3302** · ให้ **2637** · ไม่ให้ **665**
 
 🔒 = ตารางที่ถือ PII (ให้เฉพาะที่อยู่ใน allowlist) · ⛔ = ห้ามทั้งใบ
 
@@ -50,6 +50,12 @@
 
 - **ให้**: `id` `contract_number` `customer_id` `product_id` `status` `created_at` `updated_at` `deleted_at`
 - **ไม่ให้**: `branch_id` `salesperson_id` `plan_type` `selling_price` `down_payment` `interest_rate` `total_months` `interest_total` `financed_amount` `monthly_payment` `parent_contract_id` `notes` `workflow_status` `reviewed_by_id` `reviewed_at` `review_notes` `payment_due_day` `interest_config_id` `pdpa_consent_id` `contract_hash` `has_ownership_clause` `has_repossession_clause` `has_early_payoff_clause` `has_no_transfer_clause` `has_acknowledgement` `retention_status` `retention_expiry` `legal_hold_reason` `customer_snapshot` `credit_balance` `dunning_stage` `dunning_escalated_at` `dunning_last_action_at` `store_commission` `vat_amount` `vat_pct` `legacy_contract_code` `assigned_to_id` `collection_notes` `last_contact_date` `mdm_locked_at` `shop_warranty_start_date` `shop_warranty_end_date` `no_answer_count` `needs_skip_tracing` `device_locked` `device_locked_at` `wallpaper_changed` `wallpaper_changed_at` `device_received_at` `pending_dunning_stage` `pending_dunning_since` `block_auto_escalation` `assigned_at` `kept_promise_count` `advance_balance` `trade_in_credit_snapshot` `exchanged_from_contract_id` `exchanged_at` `reschedule_advance_balance` `down_payment_method` `down_payment_received_at` `down_payment_reference` `product_disclosure` `bundle_product_ids`
+
+### 🔒 `credit_approvals`
+ให้ 12 · ไม่ให้ 12
+
+- **ให้**: `id` `credit_check_id` `customer_id` `approved_by_id` `policy_version` `used_by_contract_id` `used_at` `used_first_payment_due` `superseded_at` `created_at` `updated_at` `deleted_at`
+- **ไม่ให้**: `verified_monthly_income` `living_expenses` `external_monthly_debt` `internal_monthly_debt` `remaining_income` `maximum_monthly_payment` `approved_monthly_payment` `salary_pay_day` `evidence_notes` `source_financial_hash` `customer_financial_hash` `commitments`
 
 ### 🔒 `credit_checks`
 ให้ 5 · ไม่ให้ 29
@@ -153,32 +159,34 @@
 |---|---:|---:|---|
 | `suppliers` | 11 | 11 | `name` `contact_name` `phone` `phone_secondary` `line_id` `address` `tax_id` `notes` `nickname` `title_name` `contact_phone` |
 | `company_info` | 16 | 8 | `tax_id` `address` `phone` `director_name` `director_national_id` `director_address` `bank_account_name` `bank_account_number` |
+| `other_incomes` | 32 | 8 | `counterparty_name` `counterparty_tax_id` `counterparty_address` `counterparty_phone` `customer_note` `reverse_note` `approve_note` `reject_note` |
 | `receipts` | 30 | 7 | `payer_name` `receiver_name` `file_hash` `payer_address` `payer_tax_id` `item_description` `public_token` |
 | `expense_documents` | 25 | 6 | `vendor_name` `vendor_tax_id` `description` `receipt_image_url` `reference` `note` |
 | `external_finance_companies` | 10 | 6 | `name` `contact_phone` `bank_account_info` `notes` `email` `tax_id` |
 | `finance_company_contacts` | 9 | 5 | `name` `phone` `email` `line_id` `notes` |
 | `fixed_assets` | 59 | 5 | `name` `description` `supplier_name` `supplier_tax_id` `note` |
 | `online_installment_applications` | 17 | 5 | `full_name` `phone` `national_id` `line_user_id` `notes` |
+| `purchase_orders` | 24 | 5 | `notes` `payment_notes` `attachments` `bank_account_snapshot` `bank_name_snapshot` |
 | `signatures` | 12 | 5 | `signature_image` `ip_address` `signature_svg` `signer_name` `contract_hash` |
+| `contract_exchange_requests` | 38 | 4 | `condition_note` `condition_photos` `base_price_snapshot` `ncv_snapshot` |
 | `invite_tokens` | 10 | 4 | `token` `email` `otp_hash` `phone` |
 | `kyc_verifications` | 15 | 4 | `otp_hash` `otp_phone` `id_card_image_url` `ip_address` |
-| `other_incomes` | 36 | 4 | `counterparty_name` `counterparty_tax_id` `counterparty_address` `counterparty_phone` |
-| `purchase_orders` | 25 | 4 | `notes` `attachments` `bank_account_snapshot` `bank_name_snapshot` |
+| `products` | 40 | 4 | `name` `photos` `online_description` `cosmetic_notes` |
 | `after_sales_cases` | 32 | 3 | `photo_keys` `purchase_photo_keys` `warranty_snapshot` |
 | `bank_accounts` | 9 | 3 | `account_name` `account_number` `notes` |
 | `canned_response_bubbles` | 15 | 3 | `text` `media_url` `address` |
-| `contract_exchange_requests` | 39 | 3 | `condition_photos` `base_price_snapshot` `ncv_snapshot` |
-| `credit_approvals` | 21 | 3 | `salary_pay_day` `source_financial_hash` `customer_financial_hash` |
 | `document_audit_logs` | 6 | 3 | `document_id` `ip_address` `user_agent` |
 | `journal_entries` | 13 | 3 | `description` `reference_type` `reference_id` |
 | `legal_cases` | 8 | 3 | `lawyer_name` `lawyer_phone` `notes` |
 | `login_audit_logs` | 7 | 3 | `email_tried` `ip_address` `user_agent` |
+| `payment_evidences` | 10 | 3 | `line_user_id` `image_url` `review_note` |
 | `payroll_lines` | 8 | 3 | `employee_name` `employee_tax_id` `base_salary` |
-| `products` | 41 | 3 | `name` `photos` `online_description` |
 | `repair_tickets` | 28 | 3 | `defect_description` `expense_document_id` `notes` |
 | `shareholders` | 8 | 3 | `name` `tax_id` `note` |
 | `accounting_periods` | 19 | 2 | `report_snapshot` `notes` |
+| `branch_receiving_items` | 9 | 2 | `condition_notes` `photos` |
 | `branches` | 10 | 2 | `name` `phone` |
+| `call_logs` | 35 | 2 | `notes` `settlement_notes` |
 | `canned_response_quick_replies` | 9 | 2 | `payload` `message` |
 | `canned_responses` | 12 | 2 | `content` `media_url` |
 | `chart_of_accounts` | 11 | 2 | `name` `notes` |
@@ -187,6 +195,7 @@
 | `commission_rules` | 10 | 2 | `name` `description` |
 | `contract_documents` | 15 | 2 | `notes` `file_hash` |
 | `credit_note_details` | 2 | 2 | `document_id` `original_document_id` |
+| `daily_assignments` | 20 | 2 | `skipNote` `notes` |
 | `equity_shareholder_lines` | 9 | 2 | `document_id` `shareholder_name` |
 | `expense_adjustments` | 7 | 2 | `document_id` `note` |
 | `expense_lines` | 17 | 2 | `description` `supplier_name` |
@@ -198,7 +207,6 @@
 | `notification_templates` | 15 | 2 | `name` `description` |
 | `other_income_items` | 15 | 2 | `account_name` `description` |
 | `payment_approval_requests` | 15 | 2 | `payload` `snapshot` |
-| `payment_evidences` | 11 | 2 | `line_user_id` `image_url` |
 | `payments` | 31 | 2 | `notes` `tolerance_journal_line_id` |
 | `payroll_custom_deduction` | 5 | 2 | `payroll_line_id` `name` |
 | `payroll_custom_income` | 6 | 2 | `payroll_line_id` `name` |
@@ -207,10 +215,12 @@
 | `repossessions` | 24 | 2 | `photos` `notes` |
 | `sales` | 28 | 2 | `notes` `trade_in_credit_snapshot` |
 | `sales_commissions` | 23 | 2 | `notes` `snapshot_salesperson_id` |
+| `shop_cash_closes` | 27 | 2 | `receive_note` `deposit_reference` |
 | `shop_cash_deposits` | 10 | 2 | `reference` `note` |
 | `sms_templates` | 9 | 2 | `name` `body` |
 | `sso_config` | 8 | 2 | `salary_ceiling` `note` |
 | `stock_adjustments` | 11 | 2 | `notes` `photos` |
+| `stock_transfers` | 15 | 2 | `notes` `tracking_note` |
 | `supplier_payment_methods` | 9 | 2 | `bank_account_name` `bank_account_number` |
 | `template_categories` | 4 | 2 | `name` `description` |
 | `todos` | 15 | 2 | `description` `attachments` |
@@ -223,10 +233,8 @@
 | `bad_debt_write_off_audit_logs` | 10 | 1 | `notes` |
 | `booking_items` | 7 | 1 | `description` |
 | `bookings` | 21 | 1 | `notes` |
-| `branch_receiving_items` | 10 | 1 | `photos` |
 | `branch_receivings` | 7 | 1 | `notes` |
 | `broadcast_messages` | 15 | 1 | `content` |
-| `call_logs` | 36 | 1 | `notes` |
 | `chat_notes` | 8 | 1 | `content` |
 | `chat_side_messages` | 5 | 1 | `text` |
 | `chat_snoozes` | 6 | 1 | `note` |
@@ -236,7 +244,7 @@
 | `crm_notes` | 4 | 1 | `content` |
 | `customer_access_tokens` | 6 | 1 | `token` |
 | `customer_line_links` | 8 | 1 | `line_user_id` |
-| `daily_assignments` | 21 | 1 | `notes` |
+| `data_audit_logs` | 11 | 1 | `acknowledge_notes` |
 | `device_returns` | 30 | 1 | `notes` |
 | `dunning_rules` | 15 | 1 | `name` |
 | `e_documents` | 8 | 1 | `file_hash` |
@@ -267,15 +275,15 @@
 | `promise_slots` | 11 | 1 | `notes` |
 | `quote_items` | 7 | 1 | `description` |
 | `quotes` | 19 | 1 | `notes` |
+| `refunds` | 20 | 1 | `bank_reversal_notes` |
 | `repair_status_logs` | 6 | 1 | `note` |
 | `reviews` | 14 | 1 | `comment` |
 | `room_credit_files` | 9 | 1 | `name` |
 | `settlement_lines` | 5 | 1 | `cleared_document_id` |
-| `shop_cash_closes` | 28 | 1 | `deposit_reference` |
 | `shop_tenders` | 16 | 1 | `reference` |
 | `sticker_templates` | 9 | 1 | `name` |
+| `stock_count_items` | 9 | 1 | `condition_notes` |
 | `stock_counts` | 10 | 1 | `notes` |
-| `stock_transfers` | 16 | 1 | `notes` |
 | `tax_reports` | 19 | 1 | `notes` |
 | `todo_comments` | 4 | 1 | `content` |
 | `trade_in_valuations` | 9 | 1 | `note` |

@@ -71,8 +71,10 @@ export class FinanceApplicationFilesService {
     const message = await this.prisma.chatMessage.findFirst({ where: { id: messageId, roomId, deletedAt: null } });
     if (!message) throw new NotFoundException('ไม่พบข้อความนี้ในห้อง');
     const media = await this.loadMessageBytes(message, room.channel);
-    if (!media.contentType.startsWith('image/')) throw new BadRequestException('อ่านบัตรได้เฉพาะรูปภาพ — ไฟล์ PDF ให้กรอกเอง');
-    return this.ocr.extractIdCard(`data:${media.contentType};base64,${media.bytes.toString('base64')}`, actor.id);
+    // เชื่อ magic bytes ไม่ใช่ contentType — ข้อความ LINE (externalMessageId) ไม่มี contentType ติดมา (loadMessageBytes คืน '')
+    const kind = detectFile(media.bytes);
+    if (!kind.mimeType.startsWith('image/')) throw new BadRequestException('อ่านบัตรได้เฉพาะรูปภาพ — ไฟล์ PDF ให้กรอกเอง');
+    return this.ocr.extractIdCard(`data:${kind.mimeType};base64,${media.bytes.toString('base64')}`, actor.id);
   }
 
   async upload(applicationId: string, slot: ExternalFinanceDocSlot, file: Express.Multer.File | undefined, actor: FinanceActor) {

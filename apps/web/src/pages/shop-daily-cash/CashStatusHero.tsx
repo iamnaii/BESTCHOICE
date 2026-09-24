@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { AlertTriangle, Banknote, Check, CheckCircle2, Clock, Lock, Minus, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, Banknote, CheckCircle2, Clock, Lock, Minus, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EvidenceImageLink } from './EvidenceImage';
 import { BIG_BUTTON, CloseCompact, CloseSteps, CONFIRMERS, counterNames, ReadinessChecklist } from './CashCloseSteps';
 import { pickHero, type HeroKind } from './cash-hero';
+import StepBar, { type StepBarStep as StepView } from '../after-sales/StepBar';
 import {
   baht, dayTimeOf, DESTINATION_LABEL, thaiShortDate, timeOf, toSatang, varianceLabel, varianceTone,
   type CashClose, type CashCloseStatusResponse, type CashHolding,
@@ -13,10 +14,10 @@ import {
  * กล่องสถานะเดียว (mockup CnXmYLkT กระดาน 15–16): บอก 3 อย่างเสมอ — ตอนนี้เงินสดอยู่ไหน · รอใคร · ต้องกดอะไร
  * พื้นเหลือง = ถึงตาผู้เปิดดู (ปุ่มใหญ่ปุ่มเดียว) · พื้นขาว = รอคนอื่น (ไม่มีปุ่ม) · พื้นเขียว = เงินถึงบริษัทแล้ว
  * ทุกสถานะมีไอคอน + ข้อความ ไม่บอกด้วยสีอย่างเดียว. กติกาเดิมไม่เปลี่ยน — เลือกเรื่องหลักที่ `pickHero`
+ * แถบขั้นตอน 3 ช่อง = `StepBar` กลาง (`pages/after-sales/StepBar.tsx`, R3 2026-09-23) — วงกลมมีเลขที่เดียว
+ * หัวข้อห้ามมีเลขนำหน้าซ้ำ
  */
 type Tone = 'act' | 'wait' | 'done';
-type StepTone = 'done' | 'now' | 'idle';
-interface StepView { tone: StepTone; title: string; hint?: string }
 
 const FRAME: Record<Tone, string> = {
   act: 'border-warning/40 bg-warning/10',
@@ -30,32 +31,8 @@ const KIND_ICON: Record<HeroKind, LucideIcon> = {
   NO_CASH: Minus, EMPTY_DAY: Minus, NOT_READY: AlertTriangle,
 };
 
-const STEP_DOT: Record<StepTone, string> = {
-  done: 'bg-primary text-primary-foreground',
-  now: 'border-2 border-warning bg-warning/10 text-foreground',
-  idle: 'border-2 border-dashed border-border text-muted-foreground',
-};
-
 const PROOF_HINT = 'ฝากธนาคาร = แนบสลิป + เลขอ้างอิง';
 const NOT_SENDER_HINT = 'ผู้รับต้องไม่ใช่คนที่ส่งยอด';
-
-function HeroSteps({ steps }: { steps: StepView[] }) {
-  return (
-    <ol aria-label="ขั้นตอนการปิดยอด" className="grid grid-cols-1 gap-y-2.5 rounded-lg border border-border/70 bg-card px-1.5 py-3 sm:grid-cols-3">
-      {steps.map((step, index) => (
-        <li key={step.title} className={`flex items-start gap-2.5 px-3 leading-snug ${index > 0 ? 'sm:border-l sm:border-border/70' : ''}`}>
-          <span aria-hidden className={`inline-flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full text-xs font-bold ${STEP_DOT[step.tone]}`}>
-            {step.tone === 'done' ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : index + 1}
-          </span>
-          <span className="flex min-w-0 flex-col text-[13px]">
-            <span className={`font-semibold ${step.tone === 'idle' ? 'text-muted-foreground' : 'text-foreground'}`}>{step.title}</span>
-            {step.hint && <span className="text-muted-foreground">{step.hint}</span>}
-          </span>
-        </li>
-      ))}
-    </ol>
-  );
-}
 
 const sentLine = (close: CashClose) =>
   `ยอดที่ ${close.countedBy.name} ส่ง ${dayTimeOf(close.countedAt)}${close.attemptNo > 1 ? ` (ครั้งที่ ${close.attemptNo})` : ''} · นับได้ ${baht(close.countedAmount)}`;
@@ -93,9 +70,9 @@ export default function CashStatusHero({ status, date, isToday, onSend, onConfir
   const Icon = KIND_ICON[kind];
   const zone = `เงินสดหน้าร้าน${isToday ? 'วันนี้' : `วันที่ ${thaiShortDate(date)}`} · ${status.branchName}`;
   const isSender = !!close && close.countedBy.id === permissions.viewerId;
-  const sentStep: StepView | null = close ? { tone: 'done', title: '1 ส่งยอดแล้ว', hint: `${close.countedBy.name} · ${timeOf(close.countedAt)}` } : null;
+  const sentStep: StepView | null = close ? { tone: 'done', title: 'ส่งยอดแล้ว', hint: `${close.countedBy.name} · ${timeOf(close.countedAt)}` } : null;
   const receivedStep: StepView | null = close?.confirmedAt
-    ? { tone: 'done', title: '2 รับเงินแล้ว', hint: `${close.confirmedBy?.name ?? '-'} · ${timeOf(close.confirmedAt)}` } : null;
+    ? { tone: 'done', title: 'รับเงินแล้ว', hint: `${close.confirmedBy?.name ?? '-'} · ${timeOf(close.confirmedAt)}` } : null;
 
   let head = '';
   let amount: number | null = null;
@@ -108,7 +85,7 @@ export default function CashStatusHero({ status, date, isToday, onSend, onConfir
     amount = round.expectedAmount;
     body = <div className="text-[13px] text-foreground">ต้องมีในลิ้นชักตอนนี้ — นับเงินจริงแล้วกดส่งยอด</div>;
     action = <Button variant="primary" size="lg" className={`${BIG_BUTTON} w-full sm:w-auto`} onClick={onSend}>ส่งยอดรายวัน</Button>;
-    steps = [{ tone: 'now', title: '1 ส่งยอด — ถึงตาคุณ', hint: 'นับเงินจริงในลิ้นชักแล้วกดส่งยอด' }, { tone: 'idle', title: '2 ยืนยันรับเงิน', hint: NOT_SENDER_HINT }, { tone: 'idle', title: '3 เงินถึงบริษัท', hint: PROOF_HINT }];
+    steps = [{ tone: 'now', title: 'ส่งยอด — ถึงตาคุณ', hint: 'นับเงินจริงในลิ้นชักแล้วกดส่งยอด' }, { tone: 'idle', title: 'ยืนยันรับเงิน', hint: NOT_SENDER_HINT }, { tone: 'idle', title: 'เงินถึงบริษัท', hint: PROOF_HINT }];
   } else if (kind === 'WAIT_SEND') {
     head = 'รอพนักงานส่งยอด';
     amount = round.expectedAmount;
@@ -118,7 +95,7 @@ export default function CashStatusHero({ status, date, isToday, onSend, onConfir
         <div className="text-[13px] text-muted-foreground">ผู้ส่งยอดของสาขานี้: {counterNames(readiness) || 'ยังไม่มี'}</div>
       </>
     );
-    steps = [{ tone: 'now', title: '1 ส่งยอด — รอพนักงาน' }, { tone: 'idle', title: permissions.canConfirm ? '2 ยืนยันรับเงิน — ขั้นของคุณ' : '2 ยืนยันรับเงิน', hint: NOT_SENDER_HINT }, { tone: 'idle', title: '3 เงินถึงบริษัท', hint: PROOF_HINT }];
+    steps = [{ tone: 'now', title: 'ส่งยอด — รอพนักงาน' }, { tone: 'idle', title: permissions.canConfirm ? 'ยืนยันรับเงิน — ขั้นของคุณ' : 'ยืนยันรับเงิน', hint: NOT_SENDER_HINT }, { tone: 'idle', title: 'เงินถึงบริษัท', hint: PROOF_HINT }];
   } else if ((kind === 'CONFIRM' || kind === 'WAIT_CONFIRM') && close) {
     head = kind === 'CONFIRM' ? 'รอคุณยืนยันรับเงิน' : 'ส่งยอดแล้ว รอยืนยันรับเงิน';
     amount = close.sendAmount;
@@ -139,7 +116,7 @@ export default function CashStatusHero({ status, date, isToday, onSend, onConfir
         <span className="text-center text-xs text-muted-foreground">นับผิด? ตีกลับได้ในหน้าต่างถัดไป</span>
       </div>
     );
-    steps = [sentStep!, kind === 'CONFIRM' ? { tone: 'now', title: '2 ยืนยันรับเงิน — ถึงตาคุณ', hint: NOT_SENDER_HINT } : { tone: 'now', title: '2 รอยืนยันรับเงิน', hint: NOT_SENDER_HINT }, { tone: 'idle', title: '3 เงินถึงบริษัท', hint: PROOF_HINT }];
+    steps = [sentStep!, kind === 'CONFIRM' ? { tone: 'now', title: 'ยืนยันรับเงิน — ถึงตาคุณ', hint: NOT_SENDER_HINT } : { tone: 'now', title: 'รอยืนยันรับเงิน', hint: NOT_SENDER_HINT }, { tone: 'idle', title: 'เงินถึงบริษัท', hint: PROOF_HINT }];
   } else if (kind === 'DEPOSIT' && close) {
     head = 'เงินยังอยู่ที่ตู้เซฟสาขา';
     amount = close.receivedAmount ?? 0;
@@ -150,7 +127,7 @@ export default function CashStatusHero({ status, date, isToday, onSend, onConfir
       </>
     );
     action = safeHolding?.canDeposit && <Button variant="primary" size="lg" className={`${BIG_BUTTON} w-full sm:w-auto`} onClick={() => onDeposit(safeHolding)}>บันทึกนำฝาก</Button>;
-    steps = [sentStep!, receivedStep ?? { tone: 'done', title: '2 รับเงินแล้ว' }, { tone: 'now', title: '3 เงินถึงบริษัท — รอนำฝาก', hint: 'ตอนนี้อยู่ในตู้เซฟสาขา' }];
+    steps = [sentStep!, receivedStep ?? { tone: 'done', title: 'รับเงินแล้ว' }, { tone: 'now', title: 'เงินถึงบริษัท — รอนำฝาก', hint: 'ตอนนี้อยู่ในตู้เซฟสาขา' }];
   } else if (kind === 'DONE' && close) {
     head = 'เงินถึงบริษัทครบแล้ว';
     amount = close.receivedAmount ?? 0;
@@ -165,7 +142,7 @@ export default function CashStatusHero({ status, date, isToday, onSend, onConfir
         {toSatang(close.varianceAmount) !== 0 && <VarianceLine close={close} prefix="ส่วนต่างตอนนับ " />}
       </>
     );
-    steps = [sentStep!, receivedStep ?? { tone: 'done', title: '2 รับเงินแล้ว' }, { tone: 'done', title: '3 ถึงบริษัทแล้ว', hint: close.destination ? DESTINATION_LABEL[close.destination] : undefined }];
+    steps = [sentStep!, receivedStep ?? { tone: 'done', title: 'รับเงินแล้ว' }, { tone: 'done', title: 'ถึงบริษัทแล้ว', hint: close.destination ? DESTINATION_LABEL[close.destination] : undefined }];
   } else if (kind === 'NO_CASH') {
     head = 'ยังไม่มีเงินสดในรอบนี้';
     amount = round.expectedAmount;
@@ -175,7 +152,7 @@ export default function CashStatusHero({ status, date, isToday, onSend, onConfir
         <div className="text-[13px] text-muted-foreground">{permissions.canCount ? 'ยังไม่ต้องส่งยอด — รับเงินสดเมื่อไรปุ่มส่งยอดจะขึ้นเอง' : 'ยังไม่ต้องส่งยอด'}</div>
       </>
     );
-    steps = [{ tone: 'idle', title: '1 ส่งยอด' }, { tone: 'idle', title: '2 ยืนยันรับเงิน' }, { tone: 'idle', title: '3 เงินถึงบริษัท' }];
+    steps = [{ tone: 'idle', title: 'ส่งยอด' }, { tone: 'idle', title: 'ยืนยันรับเงิน' }, { tone: 'idle', title: 'เงินถึงบริษัท' }];
   } else if (kind === 'EMPTY_DAY') {
     head = 'วันที่เลือกไม่มีการส่งยอด';
     body = <div className="text-[13px] text-muted-foreground">การส่งยอดรายวันของรอบใหม่ทำได้เฉพาะวันนี้</div>;
@@ -213,7 +190,7 @@ export default function CashStatusHero({ status, date, isToday, onSend, onConfir
         </div>
       )}
 
-      {steps.length > 0 && <HeroSteps steps={steps} />}
+      {steps.length > 0 && <StepBar steps={steps} ariaLabel="ขั้นตอนการปิดยอด" />}
 
       {equation && (
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[13px] leading-snug text-muted-foreground tabular-nums">

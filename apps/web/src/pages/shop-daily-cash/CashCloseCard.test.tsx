@@ -68,7 +68,7 @@ describe('CashCloseCard — กล่องสถานะเดียว: ป�
     expect(screen.getByText('ต้องมีในลิ้นชัก 12,710.00')).toBeInTheDocument();
     const steps = within(screen.getByRole('list', { name: 'ขั้นตอนการปิดยอด' }));
     expect(steps.getAllByRole('listitem')).toHaveLength(3);
-    for (const title of ['1 ส่งยอด — ถึงตาคุณ', '2 ยืนยันรับเงิน', '3 เงินถึงบริษัท']) expect(steps.getByText(title)).toBeInTheDocument();
+    for (const title of ['ส่งยอด — ถึงตาคุณ', 'ยืนยันรับเงิน', 'เงินถึงบริษัท']) expect(steps.getByText(title)).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /ส่งยอดรายวัน|ยืนยันรับเงิน|บันทึกนำฝาก/ })).toHaveLength(1); // ปุ่มหลักปุ่มเดียว
     await userEvent.click(screen.getByRole('button', { name: 'ส่งยอดรายวัน' }));
     const dialog = await screen.findByRole('dialog');
@@ -115,8 +115,8 @@ describe('CashCloseCard — กล่องสถานะเดียว: ป�
     expect(screen.getByText('12,710.00 ฿')).toBeInTheDocument();
     expect(screen.getByText('ผู้ส่งยอดของสาขานี้: วิภา (ผู้จัดการสาขา) · ธนา (พนักงานขาย)')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'ส่งยอดรายวัน' })).not.toBeInTheDocument();
-    expect(screen.getByText('1 ส่งยอด — รอพนักงาน')).toBeInTheDocument();
-    expect(screen.getByText('2 ยืนยันรับเงิน — ขั้นของคุณ')).toBeInTheDocument();
+    expect(screen.getByText('ส่งยอด — รอพนักงาน')).toBeInTheDocument();
+    expect(screen.getByText('ยืนยันรับเงิน — ขั้นของคุณ')).toBeInTheDocument();
   });
 
   it('ยังไม่มีเงินสดในรอบนี้: ไม่ขึ้นว่า "รอพนักงาน" ให้ตามคนผิด', async () => {
@@ -141,7 +141,7 @@ describe('CashCloseCard — กล่องสถานะเดียว: ป�
     mocks.post.mockResolvedValue({ data: close({ status: 'CONFIRMED' }) });
     renderCard(status({ awaitingConfirm: [close()], closes: [close()], permissions: owner }));
     expect(await screen.findByRole('heading', { name: 'รอคุณยืนยันรับเงิน' })).toBeInTheDocument();
-    expect(screen.getByText('2 ยืนยันรับเงิน — ถึงตาคุณ')).toBeInTheDocument();
+    expect(screen.getByText('ยืนยันรับเงิน — ถึงตาคุณ')).toBeInTheDocument();
     expect(screen.getByText('เงินขาด 200.00 — “ทอนเงินลูกค้าผิด 200”')).toBeInTheDocument();
     expect(screen.getByText('ต้องมีในลิ้นชักตอนส่งยอด 12,710.00')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเงิน' }));
@@ -204,7 +204,7 @@ describe('CashCloseCard — กล่องสถานะเดียว: ป�
       confirmedAt: '2026-09-20T13:52:00.000Z', confirmedBy: { id: 'u-owner', name: 'เอกนรินทร์' } })] }));
     expect(await screen.findByRole('heading', { name: 'เงินถึงบริษัทครบแล้ว' })).toBeInTheDocument();
     expect(screen.getByText('10,500.00 ฿')).toBeInTheDocument();
-    expect(screen.getByText('3 ถึงบริษัทแล้ว')).toBeInTheDocument();
+    expect(screen.getByText('ถึงบริษัทแล้ว')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /ส่งยอดรายวัน|ยืนยันรับเงิน|บันทึกนำฝาก/ })).not.toBeInTheDocument();
     expect(screen.getByText(/อ้างอิงสลิป 2026092120521187/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'ดูสลิป' })).toBeInTheDocument();
@@ -223,7 +223,7 @@ describe('CashCloseCard — กล่องสถานะเดียว: ป�
       outstanding: 10500, closeCount: 1, oldestConfirmedAt: '2026-09-20T13:52:00.000Z', openCloses: [{ id: 'safe', confirmedAt: '2026-09-20T13:52:00.000Z', outstanding: 10500 }], canDeposit: true };
     const view = renderCard(status({ permissions: owner, round: afterSend, holdings: [holding], closes: [safe] }));
     expect(await screen.findByRole('heading', { name: 'เงินยังอยู่ที่ตู้เซฟสาขา' })).toBeInTheDocument();
-    expect(screen.getByText('3 เงินถึงบริษัท — รอนำฝาก')).toBeInTheDocument();
+    expect(screen.getByText('เงินถึงบริษัท — รอนำฝาก')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'บันทึกนำฝาก' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByLabelText(/ยอดที่นำฝากครั้งนี้/)).toHaveValue('10,500.00');

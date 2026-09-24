@@ -1,6 +1,6 @@
 import { IsString, IsUUID, IsOptional, MinLength, IsEnum, IsNumber, Min } from 'class-validator';
 
-enum RepairPayerInput {
+export enum RepairPayerInput {
   SHOP = 'SHOP',
   CUSTOMER = 'CUSTOMER',
   SUPPLIER_CLAIM = 'SUPPLIER_CLAIM',

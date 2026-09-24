@@ -46,78 +46,89 @@ export class RepairTicketLifecycleService {
     private readonly docNumber: RepairTicketDocNumberService,
   ) {}
 
-  async create(dto: CreateRepairTicketDto, user: ReqUser) {
-    return this.prisma.$transaction(async (tx) => {
-      // Validate contract exists when contractId is provided
-      const contract = dto.contractId
-        ? await tx.contract.findUnique({
-            where: { id: dto.contractId, deletedAt: null },
-            select: { id: true, deviceReceivedAt: true, shopWarrantyEndDate: true },
-          })
-        : null;
-      if (dto.contractId && !contract) throw new NotFoundException('ไม่พบสัญญา');
+  /**
+   * เขียนใบซ่อมภายใน tx ที่ผู้เรียกเปิดไว้ — ไม่เรียก audit
+   * (กติกา database.md: ห้าม audit.log ใน $transaction).
+   * เรียกได้ทั้งจาก `create()` เอง (เปิด tx ให้) และจาก `AfterSalesCaseService`
+   * ที่เปิดเคสหลังการขายในธุรกรรมเดียวกับใบซ่อม.
+   */
+  async createInTx(dto: CreateRepairTicketDto, user: ReqUser, tx: Prisma.TransactionClient) {
+    // Validate contract exists when contractId is provided
+    const contract = dto.contractId
+      ? await tx.contract.findUnique({
+          where: { id: dto.contractId, deletedAt: null },
+          select: { id: true, deviceReceivedAt: true, shopWarrantyEndDate: true },
+        })
+      : null;
+    if (dto.contractId && !contract) throw new NotFoundException('ไม่พบสัญญา');
 
-      // Validate product exists when productId is provided
-      const product = dto.productId
-        ? await tx.product.findUnique({
-            where: { id: dto.productId, deletedAt: null },
-            select: { id: true, warrantyExpireDate: true },
-          })
-        : null;
-      if (dto.productId && !product) throw new NotFoundException('ไม่พบสินค้า');
+    // Validate product exists when productId is provided
+    const product = dto.productId
+      ? await tx.product.findUnique({
+          where: { id: dto.productId, deletedAt: null },
+          select: { id: true, warrantyExpireDate: true },
+        })
+      : null;
+    if (dto.productId && !product) throw new NotFoundException('ไม่พบสินค้า');
 
-      // Auto-detect warranty status and default payer
-      const warrantyStatus = detectWarrantyStatus({ contract, product });
-      const payer = dto.payer ?? defaultPayer(warrantyStatus);
+    // Auto-detect warranty status and default payer
+    const warrantyStatus = detectWarrantyStatus({ contract, product });
+    const payer = dto.payer ?? defaultPayer(warrantyStatus);
 
-      // Generate ticket number (advisory-locked per BKK-day, RT-YYYYMMDD-NNNN)
-      const ticketNumber = await this.docNumber.nextTicketNumber(tx as Prisma.TransactionClient);
+    // Generate ticket number (advisory-locked per BKK-day, RT-YYYYMMDD-NNNN)
+    const ticketNumber = await this.docNumber.nextTicketNumber(tx);
 
-      const ticket = await tx.repairTicket.create({
-        data: {
-          ticketNumber,
-          status: 'OPEN',
-          customerId: dto.customerId,
-          contractId: dto.contractId ?? null,
-          productId: dto.productId ?? null,
-          deviceBrand: dto.deviceBrand ?? null,
-          deviceModel: dto.deviceModel ?? null,
-          deviceImei: dto.deviceImei ?? null,
-          deviceSerial: dto.deviceSerial ?? null,
-          defectDescription: dto.defectDescription,
-          warrantyStatus,
-          repairSupplierId: dto.repairSupplierId ?? null,
-          estimatedCost:
-            dto.estimatedCost != null ? new Prisma.Decimal(dto.estimatedCost) : null,
-          payer,
-          notes: dto.notes ?? null,
-          branchId: dto.branchId,
-          createdById: user.id,
-        },
-      });
-
-      // Initial status log entry
-      await tx.repairStatusLog.create({
-        data: {
-          ticketId: ticket.id,
-          fromStatus: 'OPEN',
-          toStatus: 'OPEN',
-          changedById: user.id,
-          note: 'รับเครื่องเข้า',
-        },
-      });
-
-      // Audit trail
-      await this.audit.log({
-        userId: user.id,
-        action: 'REPAIR_TICKET_CREATED',
-        entity: 'repair_ticket',
-        entityId: ticket.id,
-        newValue: { ticketNumber, warrantyStatus, payer },
-      });
-
-      return ticket;
+    const ticket = await tx.repairTicket.create({
+      data: {
+        ticketNumber,
+        status: 'OPEN',
+        warrantyStatus,
+        payer,
+        branchId: dto.branchId,
+        createdById: user.id,
+        customerId: dto.customerId,
+        contractId: dto.contractId ?? null,
+        productId: dto.productId ?? null,
+        deviceBrand: dto.deviceBrand ?? null,
+        deviceModel: dto.deviceModel ?? null,
+        deviceImei: dto.deviceImei ?? null,
+        deviceSerial: dto.deviceSerial ?? null,
+        defectDescription: dto.defectDescription,
+        repairSupplierId: dto.repairSupplierId ?? null,
+        estimatedCost: dto.estimatedCost != null ? new Prisma.Decimal(dto.estimatedCost) : null,
+        notes: dto.notes ?? null,
+      },
     });
+
+    // Initial status log entry
+    await tx.repairStatusLog.create({
+      data: {
+        ticketId: ticket.id,
+        fromStatus: 'OPEN',
+        toStatus: 'OPEN',
+        changedById: user.id,
+        note: 'รับเครื่องเข้า',
+      },
+    });
+
+    return { ticket, warrantyStatus, payer };
+  }
+
+  async create(dto: CreateRepairTicketDto, user: ReqUser) {
+    const { ticket, warrantyStatus, payer } = await this.prisma.$transaction((tx) =>
+      this.createInTx(dto, user, tx),
+    );
+
+    // Audit trail — after the transaction resolves (database.md: ห้าม audit.log ใน $transaction)
+    await this.audit.log({
+      userId: user.id,
+      action: 'REPAIR_TICKET_CREATED',
+      entity: 'repair_ticket',
+      entityId: ticket.id,
+      newValue: { ticketNumber: ticket.ticketNumber, warrantyStatus, payer },
+    });
+
+    return ticket;
   }
 
   // ─── State Machine Transitions ────────────────────────────────────────────
@@ -345,7 +356,9 @@ export class RepairTicketLifecycleService {
         include: {
           customer: { select: { id: true, name: true } },
           product: { select: { brand: true, model: true, storage: true } },
-          contract: { select: { product: { select: { brand: true, model: true, storage: true } } } },
+          contract: {
+            select: { product: { select: { brand: true, model: true, storage: true } } },
+          },
         },
       });
       if (!ticket) throw new NotFoundException('ไม่พบ ticket');

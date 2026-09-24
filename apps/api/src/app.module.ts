@@ -29,6 +29,7 @@ import { FilterPresetsModule } from './modules/filter-presets/filter-presets.mod
 import { DefectExchangeModule } from './modules/defect-exchange/defect-exchange.module';
 import { ContractExchangeModule } from './modules/contract-exchange/contract-exchange.module';
 import { RepairTicketsModule } from './modules/repair-tickets/repair-tickets.module';
+import { AfterSalesModule } from './modules/after-sales/after-sales.module';
 import { RepossessionsModule } from './modules/repossessions/repossessions.module';
 import { DeviceReturnsModule } from './modules/device-returns/device-returns.module';
 import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
@@ -163,10 +164,10 @@ import { AppCacheModule } from './cache/cache.module';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [
-        resolve(__dirname, '..', '..', '..', '..', '.env'),  // monorepo root (from dist/src/)
-        resolve(__dirname, '..', '..', '..', '.env'),         // monorepo root (from dist/)
-        resolve(__dirname, '..', '..', '.env'),               // apps/api/.env (from dist/src/)
-        resolve(__dirname, '..', '.env'),                     // apps/api/.env (from dist/)
+        resolve(__dirname, '..', '..', '..', '..', '.env'), // monorepo root (from dist/src/)
+        resolve(__dirname, '..', '..', '..', '.env'), // monorepo root (from dist/)
+        resolve(__dirname, '..', '..', '.env'), // apps/api/.env (from dist/src/)
+        resolve(__dirname, '..', '.env'), // apps/api/.env (from dist/)
         '.env',
       ],
     }),
@@ -220,6 +221,7 @@ import { AppCacheModule } from './cache/cache.module';
     ContractExchangeModule,
     // SP5 Phase 2 — Insurance / Repair Ticket
     RepairTicketsModule,
+    AfterSalesModule,
     RepossessionsModule,
     DeviceReturnsModule,
     PurchaseOrdersModule,

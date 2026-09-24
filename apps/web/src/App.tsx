@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import MainLayout from '@/components/layout/MainLayout';
+import TicketRedirect from '@/pages/after-sales/TicketRedirect';
 
 // Redirect to a non-router URL (used for static HTML pages served from /public).
 function ExternalRedirect({ to }: { to: string }) {
@@ -84,7 +85,6 @@ const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 const DefectExchangePage = lazy(() => import('@/pages/DefectExchangePage'));
 // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
-const InsurancePage = lazy(() => import('@/pages/InsurancePage'));
 const CreateInsuranceWizardPage = lazy(() => import('@/pages/insurance/CreateInsuranceWizardPage'));
 const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));
 const ExchangeRequestForm = lazy(() => import('@/pages/insurance/ExchangeRequestForm'));
@@ -95,6 +95,9 @@ const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
 const POSPage = lazy(() => import('@/pages/POSPage'));
 const SalesHistoryPage = lazy(() => import('@/pages/SalesHistoryPage'));
 const ShopDailyCashPage = lazy(() => import('@/pages/ShopDailyCashPage'));
+const AfterSalesPage = lazy(() => import('@/pages/AfterSalesPage'));
+const AfterSalesNewPage = lazy(() => import('@/pages/AfterSalesNewPage'));
+const AfterSalesCasePage = lazy(() => import('@/pages/AfterSalesCasePage'));
 const ImportedSalesPage = lazy(() => import('@/pages/ImportedSalesPage'));
 // PricingTemplatesPage moved to settings-registry (P2b products migration)
 const SuppliersPage = lazy(() => import('@/pages/SuppliersPage'));
@@ -503,6 +506,9 @@ function App() {
           <Route path="/pos" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><POSPage /></ProtectedRoute>} />
           <Route path="/sales" element={<SalesHistoryPage />} />
           <Route path="/shop/daily-cash" element={<ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'BRANCH_MANAGER', 'SALES']}><ShopDailyCashPage /></ProtectedRoute>} />
+          <Route path="/after-sales" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}><AfterSalesPage /></ProtectedRoute>} />
+          <Route path="/after-sales/new" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}><AfterSalesNewPage /></ProtectedRoute>} />
+          <Route path="/after-sales/:id" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}><AfterSalesCasePage /></ProtectedRoute>} />
           <Route path="/imported-sales" element={<ImportedSalesPage />} />
           <Route path="/todos" element={<TodosPage />} />
           {/* เส้นทางเดียว (roomId เป็น optional segment) — สองเส้นทางแยกทำให้หน้าถูก mount ใหม่ทุกครั้งที่เปิดห้อง:
@@ -720,14 +726,10 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/insurance"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES']}>
-                <InsurancePage />
-              </ProtectedRoute>
-            }
-          />
+          {/* หลังการขายย้ายไป /after-sales แล้ว (after-sales hub PR 1) — คง path เดิมไว้กันลิงก์เก่าตาย
+              ไม่มี ProtectedRoute ครอบ (เหมือน redirect เดิมของ /insurance/warranty-check) เพราะปลายทาง
+              /after-sales มี ProtectedRoute ของตัวเองอยู่แล้ว */}
+          <Route path="/insurance" element={<Navigate to="/after-sales" replace />} />
           <Route
             path="/insurance/new"
             element={
@@ -736,15 +738,15 @@ function App() {
               </ProtectedRoute>
             }
           />
-          {/* หน้าเช็คประกันถูกยุบเป็นแท็บใน /insurance — คง path เดิมไว้กันลิงก์เก่าตาย */}
-          <Route path="/insurance/warranty-check" element={<Navigate to="/insurance?tab=warranty" replace />} />
+          {/* หน้าเช็คประกันถูกยุบเป็นแท็บใน /after-sales — คง path เดิมไว้กันลิงก์เก่าตาย */}
+          <Route path="/insurance/warranty-check" element={<Navigate to="/after-sales?check=1" replace />} />
           <Route
             path="/insurance/:id"
             element={
               <ProtectedRoute
                 roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT']}
               >
-                <RepairTicketDetailPage />
+                <TicketRedirect fallback={<RepairTicketDetailPage />} />
               </ProtectedRoute>
             }
           />

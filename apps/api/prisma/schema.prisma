@@ -85,6 +85,45 @@ enum ExchangeApprovalTier {
   ESCALATE // < 70% NCV — OWNER เท่านั้น
 }
 
+// หลังการขาย — เคสเดียว ทางออกหลายแบบ (spec 2026-09-23 ข้อ 5)
+enum AfterSalesSource {
+  INSTALLMENT_CONTRACT
+  CASH_SALE
+  WALK_IN
+}
+
+enum AfterSalesOutcome {
+  REPAIR
+  SAME_MODEL_EXCHANGE
+  PRICED_EXCHANGE
+  CASH_SAME_MODEL_EXCHANGE
+}
+
+enum AfterSalesStage {
+  RECEIVED
+  IN_REPAIR
+  AWAITING_APPROVAL
+  READY_FOR_PICKUP
+  CLOSED
+  CANCELLED
+}
+
+enum AfterSalesEventKind {
+  RECEIVED
+  OUTCOME_SET
+  REPAIR_SENT
+  REPAIR_DONE
+  REPAIR_SENT_BACK
+  DELIVERED
+  PHOTO_ADDED
+  LINE_SENT
+  LINE_SKIPPED_NO_LINK
+  PRINTED
+  CLOSED
+  CANCELLED
+  NOTE
+}
+
 // P1 Collections UI — Saved Filter Presets (Task 3)
 enum FilterPresetScope {
   PRIVATE
@@ -639,6 +678,9 @@ model Branch {
   shopCashCloses ShopCashClose[]
   shopCashDeposits ShopCashDeposit[]
 
+  // หลังการขาย — เคสหลังการขาย (after-sales hub)
+  afterSalesCases AfterSalesCase[] @relation("BranchAfterSalesCases")
+
   @@index([companyId])
   @@map("branches")
 }
@@ -873,6 +915,9 @@ model User {
   shopCashClosesSentBack  ShopCashClose[] @relation("ShopCashCloseSentBack")
   shopCashDeposits        ShopCashDeposit[] @relation("ShopCashDepositor")
 
+  // หลังการขาย — พนักงานที่รับเคสหลังการขาย
+  afterSalesCasesReceived AfterSalesCase[] @relation("AfterSalesCaseReceivedBy")
+
   @@index([branchId])
   @@index([yeastarExtension])
   @@map("users")
@@ -1079,6 +1124,9 @@ model Customer {
   absorbed       Customer[]             @relation("CustomerMergedInto")
   journeyEntries CustomerJourneyEntry[]
   journeyState   CustomerJourneyState?
+
+  // หลังการขาย — เคสหลังการขายของลูกค้ารายนี้
+  afterSalesCases AfterSalesCase[] @relation("CustomerAfterSalesCases")
 
   @@index([phone])
   @@index([name])
@@ -7637,6 +7685,9 @@ model RepairTicket {
   replacementContract Contract?         @relation("ReplacementContractRepairs", fields: [replacementContractId], references: [id])
   statusLogs          RepairStatusLog[]
 
+  // หลังการขาย — เคสหลังการขายที่ผูกใบซ่อมนี้ (1:1, FK อยู่ฝั่ง AfterSalesCase)
+  afterSalesCase AfterSalesCase? @relation("AfterSalesCaseRepairTicket")
+
   @@index([customerId, deletedAt])
   @@index([branchId, status, deletedAt])
   @@index([status])
@@ -7662,6 +7713,67 @@ model RepairStatusLog {
 
   @@index([ticketId, createdAt])
   @@map("repair_status_logs")
+}
+
+model AfterSalesCase {
+  id            String            @id @default(uuid())
+  caseNumber    String            @unique @map("case_number") // AS-YYYYMMDD-NNNN
+  branchId      String            @map("branch_id")
+  customerId    String            @map("customer_id")
+  source        AfterSalesSource
+  contractId    String?           @map("contract_id")
+  saleId        String?           @map("sale_id")
+  productId     String?           @map("product_id")
+  deviceBrand   String?           @map("device_brand")
+  deviceModel   String?           @map("device_model")
+  deviceImei    String?           @map("device_imei")
+  deviceSerial  String?           @map("device_serial")
+  symptom       String            @db.Text
+  accessories   Json              @default("{}") // {box,charger,case,other}
+  unlockConfirmed Boolean         @default(false) @map("unlock_confirmed")
+  photoKeys     String[]          @default([]) @map("photo_keys")            // รูปตอนรับฝาก ≥1 ≤6 (StorageService key)
+  purchasePhotoKeys String[]      @default([]) @map("purchase_photo_keys")   // สำเนา ProductPhoto 6 มุม ณ วันแจ้ง
+  warrantySnapshot Json           @map("warranty_snapshot")                  // {status,within7Days,daysRemainingIn7Day,shopWarrantyEnd,manufacturerWarrantyEnd,checkedAt}
+  outcome       AfterSalesOutcome?
+  repairTicketId String?          @unique @map("repair_ticket_id")
+  exchangeRequestId String?       @unique @map("exchange_request_id")
+  replacementContractId String?   @map("replacement_contract_id")
+  replacementSaleId String?       @map("replacement_sale_id")
+  replacementProductId String?    @map("replacement_product_id")
+  stage         AfterSalesStage   @default(RECEIVED) // เขียนโดย service จาก deriveStage เท่านั้น
+  receivedById  String            @map("received_by_id")
+  receivedAt    DateTime          @default(now()) @map("received_at")
+  approvedById  String?           @map("approved_by_id")
+  approvedAt    DateTime?         @map("approved_at")
+  closedAt      DateTime?         @map("closed_at")
+  cancelledAt   DateTime?         @map("cancelled_at")
+  cancelReason  String?           @map("cancel_reason")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  deletedAt     DateTime?         @map("deleted_at")
+  branch        Branch            @relation("BranchAfterSalesCases", fields: [branchId], references: [id])
+  customer      Customer          @relation("CustomerAfterSalesCases", fields: [customerId], references: [id])
+  receivedBy    User              @relation("AfterSalesCaseReceivedBy", fields: [receivedById], references: [id])
+  repairTicket  RepairTicket?     @relation("AfterSalesCaseRepairTicket", fields: [repairTicketId], references: [id])
+  events        AfterSalesEvent[]
+  @@index([branchId, stage, deletedAt])
+  @@index([customerId, deletedAt])
+  @@index([deviceImei])
+  @@index([receivedAt])
+  @@map("after_sales_cases")
+}
+
+/// Append-only event log — updatedAt/deletedAt intentionally omitted (mirrors RepairStatusLog)
+model AfterSalesEvent {
+  id        String             @id @default(uuid())
+  caseId    String             @map("case_id")
+  kind      AfterSalesEventKind
+  note      String?            @db.Text
+  actorId   String?            @map("actor_id")
+  createdAt DateTime           @default(now()) @map("created_at")
+  case      AfterSalesCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  @@index([caseId, createdAt])
+  @@map("after_sales_events")
 }
 
 /// P2-SP4 — การจอง / มัดจำ (Booking).

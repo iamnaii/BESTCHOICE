@@ -66,7 +66,7 @@ export default function GfinStatusCard({ app, gfin, history, onAddMore, showFile
             <Button size="sm" variant="outline" onClick={openLink} disabled={!linkAlive || gfin.busy}><ExternalLink className="mr-1 size-3.5" />เปิดหน้าลิงก์</Button>
             <Button size="sm" variant="outline" onClick={copyText} disabled={!textToCopy} title={resendText ? 'คัดลอกข้อความ "ส่งเพิ่ม" ล่าสุด' : undefined}><Copy className="mr-1 size-3.5" />คัดลอกข้อความอีกครั้ง</Button>
             {/* ลิงก์ที่ยกเลิกแล้วตายถาวร — กดอีกทีได้ลิงก์ใหม่ (API หมุนโทเคน — I2) */}
-            {open && <Button size="sm" variant="ghost" onClick={() => quietly(gfin.extend())} disabled={gfin.busy}>{app.shareRevokedAt ? 'ออกลิงก์ใหม่' : 'ต่ออายุ'}</Button>}
+            {open && <Button size="sm" variant="ghost" onClick={() => quietly(gfin.extend().then((r) => { if (r.rotated) setLastResend(null); }))} disabled={gfin.busy}>{app.shareRevokedAt ? 'ออกลิงก์ใหม่' : 'ต่ออายุ'}</Button>}
             {linkAlive && <Button size="sm" variant="ghost" className="text-destructive" onClick={() => quietly(gfin.revoke())} disabled={gfin.busy}>ยกเลิกลิงก์</Button>}
           </div>
         </div>

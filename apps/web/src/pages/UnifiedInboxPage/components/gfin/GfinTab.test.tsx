@@ -187,6 +187,24 @@ describe('GfinTab', () => {
     await waitFor(() => expect(revoked.extend).toHaveBeenCalled());
     open.mockRestore();
   });
+  it('after "ออกลิงก์ใหม่" rotates the link, "คัดลอกข้อความอีกครั้ง" copies the fresh message, not the stale resend text', async () => {
+    const writeText = vi.fn().mockRejectedValueOnce(new Error('denied')).mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const gfin = model({
+      current: app({ status: 'MORE_INFO', customerId: 'c1', productId: 'p1', messageText: 'FRESH TEXT', sentAt: '2026-09-24T12:04:00Z', shareExpiresAt: '2099-10-01T12:04:00Z', files: [{ id: 'f9', slot: 'DEVICE_SCREEN', sourceMessageId: null, mimeType: 'image/jpeg', size: 1, originalName: 'screen.jpg', source: 'UPLOAD', sourceAngle: null, sortOrder: 0, sentAt: null, createdAt: '' }] }),
+      resend: vi.fn().mockResolvedValue({ application: {}, messageText: 'RESEND TEXT WITH OLD LINK', shareUrl: 'https://x/api/g/old', rotated: false }),
+      extend: vi.fn().mockResolvedValue({ expiresAt: '', url: 'https://x/api/g/new', rotated: true }),
+      step: 4,
+    });
+    renderTab(gfin, 'c1');
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มรูปแล้วส่งเพิ่ม' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งเพิ่ม (1 ไฟล์ใหม่)' }));
+    await waitFor(() => expect(gfin.resend).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'ต่ออายุ' }));
+    await waitFor(() => expect(gfin.extend).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /คัดลอกข้อความอีกครั้ง/ }));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith('FRESH TEXT'));
+  });
   it('minor 3: "แก้ข้อความ" starts from the current preview text without the system link line', () => {
     const gfin = model({ current: app({ customerId: 'c1', productId: 'p1' }), preview: { text: '1.ชื่อลูกค้า : สมหญิง ใจดี\nส่งโดย ป๊อป · BESTCHOICE\nเอกสารทั้งหมด 3 ไฟล์: {{link}}', values: {}, missingFields: [], missingRequiredSlots: [], warnings: [], canSend: true }, step: 4 });
     renderTab(gfin, 'c1');

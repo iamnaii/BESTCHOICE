@@ -103,6 +103,7 @@ describe('AfterSalesCaseService.createCase', () => {
   let lookupSvc: any;
   let contractExchange: any;
   let defect: any;
+  let line: any;
   let svc: AfterSalesCaseService;
 
   beforeEach(() => {
@@ -155,6 +156,7 @@ describe('AfterSalesCaseService.createCase', () => {
     lookupSvc = { lookup: jest.fn().mockResolvedValue(buildLookupResult()) };
     contractExchange = { submit: jest.fn() };
     defect = { checkEligibility: jest.fn() };
+    line = { notifyMoment: jest.fn().mockResolvedValue({ status: 'SENT' }) };
 
     svc = new AfterSalesCaseService(
       prisma as never,
@@ -165,6 +167,7 @@ describe('AfterSalesCaseService.createCase', () => {
       lookupSvc as never,
       contractExchange as never,
       defect as never,
+      line as never,
     );
   });
 
@@ -220,6 +223,12 @@ describe('AfterSalesCaseService.createCase', () => {
         entity: 'after_sales_case',
         entityId: 'as-1',
       }),
+    );
+
+    // Task 3 (a) — notifyMoment(id,'RECEIVED', actorId) ถูกเรียกหลัง audit.log (ลำดับ invocation)
+    expect(line.notifyMoment).toHaveBeenCalledWith('as-1', 'RECEIVED', 'u-1');
+    expect(audit.log.mock.invocationCallOrder[0]).toBeLessThan(
+      line.notifyMoment.mock.invocationCallOrder[0],
     );
   });
 
@@ -590,6 +599,9 @@ describe('AfterSalesCaseService.createCase', () => {
         exchangeRequestId: 'req-1',
         stage: 'AWAITING_APPROVAL',
       });
+      // Task 3 — PRICED ที่ submit สำเร็จ (link/compensation ผ่าน) ก็ยังไปถึง audit.log ปกติ ⇒
+      // ยังส่ง RECEIVED (ต่างจาก (b) ที่ submit ล้ม)
+      expect(line.notifyMoment).toHaveBeenCalledWith('as-4', 'RECEIVED', USER.id);
     });
 
     // M13 — AUTO tier: submit() อนุมัติคำขอให้ทันที → คืน stage ที่ reconcile แล้ว + event APPROVED
@@ -604,7 +616,11 @@ describe('AfterSalesCaseService.createCase', () => {
       };
       lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
       tx.afterSalesCase.create.mockResolvedValue({ id: 'as-9', caseNumber: 'AS-20260924-0009' });
-      contractExchange.submit.mockResolvedValue({ id: 'req-9', mode: 'PRICED', approvalTier: 'AUTO' });
+      contractExchange.submit.mockResolvedValue({
+        id: 'req-9',
+        mode: 'PRICED',
+        approvalTier: 'AUTO',
+      });
       prisma.afterSalesCase.findFirst.mockResolvedValue({
         id: 'as-9',
         stage: 'AWAITING_APPROVAL',
@@ -683,6 +699,8 @@ describe('AfterSalesCaseService.createCase', () => {
       // รูปที่อัปโหลดไว้ต้องไม่ถูกลบ — เคสยังอยู่เป็นประวัติ (คนละ catch กับ tx)
       expect(storage.delete).not.toHaveBeenCalled();
       expect(audit.log).not.toHaveBeenCalled();
+      // Task 3 (b) — submit ล้ม → throw ก่อนถึง audit.log/notifyMoment เสมอ ไม่ส่ง LINE
+      expect(line.notifyMoment).not.toHaveBeenCalled();
     });
 
     // (d) fix round 1, Important — submit สำเร็จ (คำขอเปลี่ยนเครื่องถูกสร้างจริงแล้ว) แต่ update

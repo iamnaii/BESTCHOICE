@@ -67,6 +67,7 @@ describe('AfterSalesCaseService.createCase — real assertEvidenceImage validato
   let lookupSvc: any;
   let contractExchange: any;
   let defect: any;
+  let line: any;
   let svc: AfterSalesCaseService;
 
   beforeEach(() => {
@@ -85,6 +86,7 @@ describe('AfterSalesCaseService.createCase — real assertEvidenceImage validato
     lookupSvc = { lookup: jest.fn().mockResolvedValue(buildLookupResult()) };
     contractExchange = { submit: jest.fn() };
     defect = { checkEligibility: jest.fn() };
+    line = { notifyMoment: jest.fn().mockResolvedValue({ status: 'SENT' }) };
 
     svc = new AfterSalesCaseService(
       prisma as never,
@@ -95,6 +97,7 @@ describe('AfterSalesCaseService.createCase — real assertEvidenceImage validato
       lookupSvc as never,
       contractExchange as never,
       defect as never,
+      line as never,
     );
   });
 

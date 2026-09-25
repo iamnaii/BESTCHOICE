@@ -19,6 +19,7 @@ import { ContractExchangeService } from '../../contract-exchange/contract-exchan
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
 import { AfterSalesDocNumberService } from './after-sales-doc-number.service';
 import { AfterSalesLookupService, LookupResult } from './after-sales-lookup.service';
+import { AfterSalesLineService } from './after-sales-line.service';
 import { reconcileStage, RECONCILE_SELECT } from './after-sales-stage-reconcile';
 import { WINDOW_REASON_RE } from '../utils/after-sales-outcomes.util';
 import { CreateCaseDto } from '../dto/create-case.dto';
@@ -51,6 +52,7 @@ export class AfterSalesCaseService {
     private readonly lookupSvc: AfterSalesLookupService,
     private readonly contractExchange: ContractExchangeService,
     private readonly defect: DefectExchangeService,
+    private readonly line: AfterSalesLineService,
   ) {}
 
   // R29 (fix round 1) — ฟิลด์ที่ REPAIR กับกิ่งเปลี่ยนเครื่องเหมือนกันทุกประการ (~15 ฟิลด์)
@@ -454,6 +456,13 @@ export class AfterSalesCaseService {
         exchangeRequestId: result.exchangeRequestId,
       },
     });
+
+    // Task 3 — จังหวะ 1 (RECEIVED): หลัง commit + audit เสมอ — ทุก outcome รวม PRICED_EXCHANGE
+    // (ถึงจุดนี้ได้ก็ต่อเมื่อ submit()/compensation สำเร็จแล้วเท่านั้น — เคสที่ถูก CANCELLED เพราะ
+    // submit ล้มจะ throw ก่อนถึงบรรทัดนี้เสมอ จึงไม่ส่ง). fire-and-forget: LINE ล้มต้องไม่ทำให้
+    // การบันทึกล้ม (Global Constraints) — `.catch` เป็นเข็มขัดคู่กับ notifyMoment เองที่ไม่ throw.
+    void this.line.notifyMoment(result.id, 'RECEIVED', user.id).catch(() => undefined);
+
     return result;
   }
 }

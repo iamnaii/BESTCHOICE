@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -11,6 +11,8 @@ import { ExpenseDocumentsService } from '../../expense-documents/expense-documen
 import { ExpenseDocumentCreateService } from '../../expense-documents/services/expense-document-create.service';
 import { LineAggregatorService } from '../../expense-documents/services/line-aggregator.service';
 import { DocNumberService as ExpenseDocNumberService } from '../../expense-documents/services/doc-number.service';
+import { OtherIncomeLifecycleService } from '../../other-income/services/other-income-lifecycle.service';
+import { DocNumberService as OtherIncomeDocNumberService } from '../../other-income/services/doc-number.service';
 import { SettingsService } from '../../settings/settings.service';
 import { SettingsFlagsService } from '../../settings/services/settings-flags.service';
 
@@ -18,6 +20,7 @@ import { AfterSalesLookupService } from '../services/after-sales-lookup.service'
 import { AfterSalesCaseService } from '../services/after-sales-case.service';
 import { AfterSalesQueryService } from '../services/after-sales-query.service';
 import { AfterSalesRepairService } from '../services/after-sales-repair.service';
+import { AfterSalesLineService } from '../services/after-sales-line.service';
 import { AfterSalesDocNumberService } from '../services/after-sales-doc-number.service';
 import { AfterSalesService } from '../after-sales.service';
 
@@ -81,13 +84,32 @@ const expenseDocs = new ExpenseDocumentsService(
 );
 
 const repairTicketDocNumber = new RepairTicketDocNumberService(prisma as never);
-// otherIncome / settings ไม่ถูกเรียกในเส้นทาง payer=SHOP ที่เทสต์นี้ใช้ (facade docblock:
-// "settings is injected but unused — kept for signature stability")
+// otherIncome — Task 3 เคส ค ต้องการ payer=CUSTOMER จริง (returnToCustomer สร้าง OtherIncome
+// DRAFT) ⇒ ต่อ OtherIncomeLifecycleService ของจริงเฉพาะเท่าที่ createDraftForRepair ใช้ (docNumber
+// + เขียนตรง — ไม่แตะ validation/autoJournal/template/journalOverride/config เลย) แล้วห่อเป็น
+// fake ที่มีแค่เมธอดเดียวแทนการสร้าง facade เต็ม (เหมือน pattern productPhotosFake/storage ด้านล่าง)
+const otherIncomeDocNumber = new OtherIncomeDocNumberService(prisma as never);
+const otherIncomeLifecycle = new OtherIncomeLifecycleService(
+  prisma as never,
+  otherIncomeDocNumber,
+  null as never,
+  null as never,
+  null as never,
+  null as never,
+  null as never,
+  null as never,
+);
+const otherIncomeFake = {
+  createDraftForRepair: (dto: never, tx: never) =>
+    otherIncomeLifecycle.createDraftForRepair(dto, tx),
+} as never;
+// settings ไม่ถูกเรียกในเส้นทางที่เทสต์นี้ใช้ (facade docblock: "settings is injected but
+// unused — kept for signature stability")
 const repairTickets = new RepairTicketsService(
   prisma as never,
   audit,
   expenseDocs,
-  null as never,
+  otherIncomeFake,
   null as never,
   repairTicketDocNumber,
 );
@@ -126,6 +148,16 @@ const lookupSvc = new AfterSalesLookupService(
 );
 const afterSalesDocNumber = new AfterSalesDocNumberService(prisma as never);
 
+// AfterSalesLineService (Task 3) — ของจริง ต่อกับ NotificationsService/IntegrationConfigService
+// ปลอมตามที่ task-3-brief.md Step 3 กำหนดเป๊ะ (ไม่ใช้ mock ของ notifyMoment เอง — ต้องพิสูจน์ว่า
+// service จริงเขียน AfterSalesEvent + เรียก sendFromTemplate ด้วยข้อมูลที่ถูกต้องบน DB จริง)
+const notificationsFakeImpl = {
+  sendFromTemplate: vi.fn().mockResolvedValue({ id: 'n1', status: 'SENT' }),
+};
+const notificationsFake = notificationsFakeImpl as never;
+const integrationConfigFake = { getValue: async () => 'liff-test' } as never;
+const line = new AfterSalesLineService(prisma as never, notificationsFake, integrationConfigFake);
+
 // StorageService ปลอมในหน่วยความจำ (Map) — ตามที่ brief กำหนดเป๊ะ
 const files = new Map<string, Buffer>();
 const storage = {
@@ -148,6 +180,7 @@ const caseSvc = new AfterSalesCaseService(
   lookupSvc,
   contractExchangeFake,
   defectExchangeFake,
+  line,
 );
 const querySvc = new AfterSalesQueryService(prisma as never);
 const repairSvc = new AfterSalesRepairService(
@@ -156,6 +189,7 @@ const repairSvc = new AfterSalesRepairService(
   repairTickets,
   querySvc,
   audit,
+  line,
 );
 // AfterSalesExchangeService ปลอม (Task 8, PR 2) — ไฟล์นี้ทดสอบเฉพาะ outcome=REPAIR (PR 1 scope)
 // จึงไม่มีเคสไหนเรียก route เปลี่ยนเครื่องผ่าน facade เลย; ผ่าน `as never` แทนการ wiring ของจริง
@@ -420,7 +454,11 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
     expect(files.size).toBe(2);
 
     const events = await prisma.afterSalesEvent.findMany({ where: { caseId } });
-    expect(events).toHaveLength(2);
+    // Task 3 — createCase ยิง notifyMoment('RECEIVED') แบบ fire-and-forget หลัง audit.log เสมอ
+    // (ลูกค้า fixture นี้ไม่มี lineIdShop ⇒ จะเขียนแถว LINE_SKIPPED_NO_LINK เพิ่มเข้ามาแบบ async
+    // นอกทรานแซกชันสร้างเคส — เวลาที่แถวนั้นมาถึงไม่แน่นอน race กับ assertion นี้ตรงๆ) จึงกรองเฉพาะ
+    // 2 event ของทรานแซกชันสร้างเคส (RECEIVED + OUTCOME_SET) แทนนับทั้งหมด
+    expect(events.filter((e) => e.kind === 'RECEIVED' || e.kind === 'OUTCOME_SET')).toHaveLength(2);
   });
 
   // -------------------------------------------------------------------------
@@ -619,5 +657,269 @@ describe('after-sales flow — DB จริง (Task 7, PR1)', () => {
 
     expect(result.caseNumber).toMatch(/^AS-\d{8}-\d{4}$/);
     expect(repairTicketId3).toBeTruthy();
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Task 3 (PR 3) — 3 จังหวะ LINE ลูกค้า บน DB จริง (เคส ก-ค ของ task-3-brief.md Step 3)
+//
+// `AfterSalesLineService` ของจริง (`line`, ประกาศไว้ในหัวไฟล์ข้างบน) ต่อกับ
+// NotificationsService/IntegrationConfigService ปลอมตามบรีฟเป๊ะ — ไม่ mock notifyMoment เอง
+// เพื่อพิสูจน์ทั้งสาย: อ่านเคส+ลูกค้าจาก DB จริง → เขียน AfterSalesEvent จริง → เรียก
+// sendFromTemplate ด้วยข้อมูลจริง. ทุกเคสเรียก `await line.notifyMoment(...)` ตรง ๆ ต่อจาก
+// action ปกติ (ตามที่บรีฟสั่ง "ไม่แข่งกับ fire-and-forget") — ตัว fire-and-forget ในคอมันของ
+// caseSvc/repairSvc เองก็ยิงคู่ขนานไปด้วย (ไม่มีอะไรกันมัน) จึงอาจเห็น LINE_SENT/sendFromTemplate
+// มากกว่า 1 ครั้งต่อเคส — assertion ด้านล่างใช้ toHaveBeenCalledWith (นับได้ว่าเคยถูกเรียกแบบนั้น
+// ไม่ใช่ toHaveBeenCalledTimes) และกรอง events/calls ด้วย caseId ที่ตรงกันเท่านั้น เพื่อไม่ปนกัน.
+// -----------------------------------------------------------------------------
+describe('after-sales — LINE 3 จังหวะ (Task 3, PR3, เคส ก-ค)', () => {
+  const LINE_PREFIX = 'AFTERSALESLINETEST-';
+  const lineImeiA = `${LINE_PREFIX}${RUN}-A`; // (ก) มี lineIdShop
+  const lineImeiB = `${LINE_PREFIX}${RUN}-B`; // (ข) ไม่มี lineIdShop
+  const lineImeiC = `${LINE_PREFIX}${RUN}-C`; // (ค) markRepaired → returnToCustomer
+
+  // สาขาของตัวเอง ไม่ยืมของ describe บนสุด — describe นั้น `afterAll` อาจลบ branch ของมันทิ้ง
+  // (`branchCreatedFresh`) ก่อนที่ describe นี้จะเริ่มรัน (vitest รัน describe ตามลำดับในไฟล์ —
+  // afterAll ของ describe ก่อนหน้าจบก่อน beforeAll/it ของ describe นี้เริ่มเสมอ)
+  let lineBranchId: string;
+  let lineBranchCreatedFresh = false;
+
+  let custA: string, prodA: string, saleA: string, caseA: string, ticketA: string | null;
+  let custB: string, prodB: string, saleB: string, caseB: string, ticketB: string | null;
+  let custC: string, prodC: string, saleC: string, caseC: string, ticketC: string | null;
+  let otherIncomeIdC: string | null = null;
+
+  beforeAll(async () => {
+    const branchName = '__after_sales_line_test_branch__';
+    const existing = await prisma.branch.findFirst({
+      where: { name: branchName, deletedAt: null },
+    });
+    if (existing) {
+      lineBranchId = existing.id;
+    } else {
+      const shop = await prisma.companyInfo.findFirstOrThrow({
+        where: { companyCode: 'SHOP', deletedAt: null },
+      });
+      const created = await prisma.branch.create({
+        data: { name: branchName, companyId: shop.id },
+      });
+      lineBranchId = created.id;
+      lineBranchCreatedFresh = true;
+    }
+  });
+
+  async function seedCashSaleFixture(opts: { imei: string; tag: string; lineIdShop?: string }) {
+    const customer = await prisma.customer.create({
+      data: {
+        name: `${LINE_PREFIX}Customer-${opts.tag}-${RUN}`,
+        phone: `096${RUN_NUM}`.slice(0, 9) + opts.tag,
+        ...(opts.lineIdShop ? { lineIdShop: opts.lineIdShop } : {}),
+      },
+    });
+    const product = await prisma.product.create({
+      data: {
+        name: `${LINE_PREFIX}Phone-${opts.tag}`,
+        brand: `${LINE_PREFIX}Brand`,
+        model: `${LINE_PREFIX}Model-${opts.tag}`,
+        storage: '128GB',
+        imeiSerial: opts.imei,
+        category: 'PHONE_USED',
+        costPrice: new Prisma.Decimal('3000.00'),
+        branchId: lineBranchId,
+        status: 'SOLD_CASH',
+      },
+    });
+    const threeDaysAgo = new Date(Date.now() - 3 * 86400_000);
+    const ninetyDaysAhead = new Date(Date.now() + 90 * 86400_000);
+    const sale = await prisma.sale.create({
+      data: {
+        saleNumber: `${LINE_PREFIX}${RUN}-${opts.tag}`,
+        saleType: 'CASH',
+        customerId: customer.id,
+        productId: product.id,
+        branchId: lineBranchId,
+        salespersonId: adminId,
+        sellingPrice: new Prisma.Decimal('3671.00'),
+        netAmount: new Prisma.Decimal('3671.00'),
+        createdAt: threeDaysAgo,
+        shopWarrantyEndDate: ninetyDaysAhead,
+      },
+    });
+    return { customerId: customer.id, productId: product.id, saleId: sale.id };
+  }
+
+  afterAll(async () => {
+    const caseIds = [caseA, caseB, caseC].filter(Boolean) as string[];
+    const ticketIds = [ticketA, ticketB, ticketC].filter(Boolean) as string[];
+    const productIds = [prodA, prodB, prodC].filter(Boolean) as string[];
+    const customerIds = [custA, custB, custC].filter(Boolean) as string[];
+    const saleIds = [saleA, saleB, saleC].filter(Boolean) as string[];
+
+    if (caseIds.length) {
+      await prisma.afterSalesEvent.deleteMany({ where: { caseId: { in: caseIds } } });
+      await prisma.afterSalesCase.deleteMany({ where: { id: { in: caseIds } } });
+    }
+    if (ticketIds.length) {
+      await prisma.repairStatusLog.deleteMany({ where: { ticketId: { in: ticketIds } } });
+      await prisma.repairTicket.deleteMany({ where: { id: { in: ticketIds } } });
+    }
+    if (otherIncomeIdC) {
+      // ticketC (payer=CUSTOMER) → returnToCustomer สร้าง OtherIncome DRAFT จริง — ลบหลัง
+      // repairTicket (ซึ่งอ้าง otherIncomeId) ถูกลบไปแล้วข้างบน
+      await prisma.otherIncomeItem.deleteMany({ where: { otherIncomeId: otherIncomeIdC } });
+      await prisma.otherIncome.deleteMany({ where: { id: otherIncomeIdC } });
+    }
+    if (saleIds.length) await prisma.sale.deleteMany({ where: { id: { in: saleIds } } });
+    if (productIds.length) await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+    if (customerIds.length)
+      await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
+    if (lineBranchCreatedFresh && lineBranchId) {
+      try {
+        await prisma.branch.delete({ where: { id: lineBranchId } });
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2003') {
+          throw error;
+        }
+      }
+    }
+  });
+
+  // (ก) ลูกค้าตั้ง lineIdShop → createCase REPAIR → notifyMoment(RECEIVED) → LINE_SENT +
+  // sendFromTemplate ด้วย caseNumber/branchName/liffLine ขึ้นต้น "ดูสถานะเคส: https://liff.line.me/liff-test/"
+  it('ก) ลูกค้าตั้ง lineIdShop → createCase REPAIR → notifyMoment(RECEIVED) → LINE_SENT + sendFromTemplate ด้วย data ที่ถูกต้อง + lookup().lineLinked=true', async () => {
+    const fx = await seedCashSaleFixture({ imei: lineImeiA, tag: 'A', lineIdShop: `Utest${RUN}A` });
+    custA = fx.customerId;
+    prodA = fx.productId;
+    saleA = fx.saleId;
+
+    const result = await caseSvc.createCase(
+      {
+        imei: lineImeiA,
+        symptom: 'ทดสอบ LINE จังหวะที่ 1 (Task 3 เคส ก)',
+        accessories: { box: false, charger: false, case: false },
+        unlockConfirmed: true,
+        outcome: 'REPAIR' as const,
+        branchId: lineBranchId,
+      } as never,
+      [fakeJpeg('line-a-intake.jpg')],
+      OWNER(),
+    );
+    caseA = result.id;
+    ticketA = result.repairTicketId;
+
+    // เรียกตรง ๆ อีกครั้ง (ไม่แข่งกับ fire-and-forget ของ createCase เอง) ให้มีจังหวะ await แน่นอน
+    const notifyResult = await line.notifyMoment(caseA, 'RECEIVED', adminId);
+    expect(notifyResult.status).toBe('SENT');
+
+    const events = await prisma.afterSalesEvent.findMany({
+      where: { caseId: caseA, kind: 'LINE_SENT' },
+    });
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    expect(events.some((e) => (e.note ?? '').startsWith('[AFTER_SALES_RECEIVED]'))).toBe(true);
+
+    const call = notificationsFakeImpl.sendFromTemplate.mock.calls.find(
+      (c: unknown[]) => (c[3] as { relatedId?: string })?.relatedId === caseA,
+    );
+    expect(call).toBeTruthy();
+    const [eventType, data] = call as [string, Record<string, string>];
+    expect(eventType).toBe('AFTER_SALES_RECEIVED');
+    expect(data.caseNumber).toBe(result.caseNumber);
+    expect(data.branchName).toBeTruthy();
+    expect(data.liffLine).toMatch(/^ดูสถานะเคส: https:\/\/liff\.line\.me\/liff-test\//);
+
+    // Step 2 ปิดวง — lookup ของสัญญาเดียวกันต้องรายงาน lineLinked=true
+    const found = await lookupSvc.lookup({ imei: lineImeiA }, OWNER());
+    expect(found.lineLinked).toBe(true);
+    expect(found).not.toHaveProperty('customer.lineIdShop');
+  });
+
+  // (ข) ลูกค้าไม่มี lineIdShop → LINE_SKIPPED_NO_LINK, sendFromTemplate ไม่ถูกเรียก,
+  // lookup().lineLinked === false
+  it('ข) ลูกค้าไม่มี lineIdShop → LINE_SKIPPED_NO_LINK + sendFromTemplate ไม่ถูกเรียก + lookup().lineLinked=false', async () => {
+    const fx = await seedCashSaleFixture({ imei: lineImeiB, tag: 'B' }); // ไม่ตั้ง lineIdShop
+    custB = fx.customerId;
+    prodB = fx.productId;
+    saleB = fx.saleId;
+
+    const result = await caseSvc.createCase(
+      {
+        imei: lineImeiB,
+        symptom: 'ทดสอบ LINE จังหวะที่ 1 — ไม่มี lineIdShop (Task 3 เคส ข)',
+        accessories: { box: false, charger: false, case: false },
+        unlockConfirmed: true,
+        outcome: 'REPAIR' as const,
+        branchId: lineBranchId,
+      } as never,
+      [fakeJpeg('line-b-intake.jpg')],
+      OWNER(),
+    );
+    caseB = result.id;
+    ticketB = result.repairTicketId;
+
+    const notifyResult = await line.notifyMoment(caseB, 'RECEIVED', adminId);
+    expect(notifyResult.status).toBe('NO_LINK');
+
+    const events = await prisma.afterSalesEvent.findMany({
+      where: { caseId: caseB, kind: 'LINE_SKIPPED_NO_LINK' },
+    });
+    expect(events.length).toBeGreaterThanOrEqual(1);
+
+    const called = notificationsFakeImpl.sendFromTemplate.mock.calls.some(
+      (c: unknown[]) => (c[3] as { relatedId?: string })?.relatedId === caseB,
+    );
+    expect(called).toBe(false);
+
+    const found = await lookupSvc.lookup({ imei: lineImeiB }, OWNER());
+    expect(found.lineLinked).toBe(false);
+  });
+
+  // (ค) markRepaired (ซ่อมที่ร้าน ผู้จ่ายลูกค้า 500) → READY costLine ตรง · returnToCustomer →
+  // CLOSED warrantyLines มี "ประกันร้าน ถึง"
+  it('ค) markRepaired ซ่อมที่ร้าน ผู้จ่ายลูกค้า 500 → READY costLine="ค่าซ่อม 500 บาท ชำระที่สาขา" · returnToCustomer → CLOSED warrantyLines มี "ประกันร้าน ถึง"', async () => {
+    const fx = await seedCashSaleFixture({ imei: lineImeiC, tag: 'C', lineIdShop: `Utest${RUN}C` });
+    custC = fx.customerId;
+    prodC = fx.productId;
+    saleC = fx.saleId;
+
+    const created = await caseSvc.createCase(
+      {
+        imei: lineImeiC,
+        symptom: 'ทดสอบ LINE จังหวะที่ 2/3 (Task 3 เคส ค)',
+        accessories: { box: false, charger: false, case: false },
+        unlockConfirmed: true,
+        outcome: 'REPAIR' as const,
+        branchId: lineBranchId,
+      } as never,
+      [fakeJpeg('line-c-intake.jpg')],
+      OWNER(),
+    );
+    caseC = created.id;
+    ticketC = created.repairTicketId;
+
+    // ซ่อมที่ร้าน (ไม่ผ่าน send() — repairSupplierId เป็น null ตั้งแต่สร้าง) ผู้จ่ายลูกค้า 500
+    await repairSvc.markRepaired(caseC, { actualCost: 500, payer: 'CUSTOMER' } as never, OWNER());
+
+    await line.notifyMoment(caseC, 'READY', adminId);
+    const readyCall = notificationsFakeImpl.sendFromTemplate.mock.calls.find(
+      (c: unknown[]) =>
+        (c[3] as { relatedId?: string })?.relatedId === caseC && c[0] === 'AFTER_SALES_READY',
+    );
+    expect(readyCall).toBeTruthy();
+    const readyData = readyCall![1] as Record<string, string>;
+    expect(readyData.costLine).toBe('ค่าซ่อม 500 บาท ชำระที่สาขา');
+
+    await repairSvc.returnToCustomer(caseC, {} as never, OWNER());
+    // R17 pattern — จับ otherIncomeId ไว้ทันที (payer=CUSTOMER → returnToCustomer สร้าง OtherIncome
+    // DRAFT จริง) เพื่อให้ afterAll ลบได้ ไม่งั้น customer.deleteMany ชน FK ทีหลัง
+    const ticketRowC = await prisma.repairTicket.findUniqueOrThrow({ where: { id: ticketC! } });
+    otherIncomeIdC = ticketRowC.otherIncomeId;
+    await line.notifyMoment(caseC, 'CLOSED', adminId);
+    const closedCall = notificationsFakeImpl.sendFromTemplate.mock.calls.find(
+      (c: unknown[]) =>
+        (c[3] as { relatedId?: string })?.relatedId === caseC && c[0] === 'AFTER_SALES_CLOSED',
+    );
+    expect(closedCall).toBeTruthy();
+    const closedData = closedCall![1] as Record<string, string>;
+    expect(closedData.warrantyLines).toContain('ประกันร้าน ถึง');
   });
 });

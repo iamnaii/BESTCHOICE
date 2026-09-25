@@ -63,8 +63,9 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
   });
 
   function loadSentryInitConfig() {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     require('./sentry');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Sentry = require('@sentry/nestjs');
     expect(Sentry.init).toHaveBeenCalledTimes(1);
     return Sentry.init.mock.calls[0][0];
@@ -73,8 +74,9 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
   it('does not call Sentry.init at all when SENTRY_DSN is unset (unrelated to the scrub, sanity check on the harness)', () => {
     delete process.env.SENTRY_DSN;
     jest.resetModules();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     require('./sentry');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const Sentry = require('@sentry/nestjs');
     expect(Sentry.init).not.toHaveBeenCalled();
   });
@@ -353,7 +355,7 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
 
     it('(d) a scrub failure injected via a throwing getter in beforeSend → the shallow fallback still redacts transaction / request.url / extra.url / message / breadcrumb url and returns the event', () => {
       // spy on the fallback through the same module instance sentry.ts will import
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const util = require('./utils/redact-share-token.util');
       const fallback = jest.spyOn(util, 'shallowScrubShareTokens');
       const config = loadSentryInitConfig();

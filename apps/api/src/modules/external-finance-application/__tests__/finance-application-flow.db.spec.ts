@@ -1,7 +1,9 @@
 /**
- * รัน: DATABASE_URL=<ฐานทดสอบ> PII_ENCRYPTION_KEY=<hex64> PII_HASH_SALT=<salt ≥32 ตัว>
+ * รัน: DATABASE_URL=<ฐานทดสอบ>
  *   npx jest src/modules/external-finance-application/__tests__/finance-application-flow.db.spec.ts --runInBand
- * (PII_HASH_SALT ต้อง ≥32 ตัว — pii.encryptCustomerFields() ปฏิเสธ salt สั้นกว่านั้น)
+ * PII_ENCRYPTION_KEY / PII_HASH_SALT: spec ตั้งเองใน beforeAll แล้วคืนค่าเดิมใน afterAll (pattern เดียวกับ
+ * skip-tracing.service.db.spec.ts) — CI job "Test API" ส่งแค่ DATABASE_URL + JWT_SECRET จึงพึ่ง env ภายนอกไม่ได้
+ * (salt ต้อง ≥32 ตัว — pii.encryptCustomerFields() ปฏิเสธ salt สั้นกว่านั้น)
  * สร้างห้อง/ผู้ใช้/ลูกค้า/สินค้าของตัวเองแล้วลบทิ้งใน afterAll (ลูกก่อนแม่)
  */
 import { ConflictException, NotFoundException } from '@nestjs/common';
@@ -19,6 +21,9 @@ import { CustomerPiiService } from '../../customers/customer-pii.service';
 import { CustomerWriteService } from '../../customers/services/customer-write.service';
 import { hashPII } from '../../../utils/pii.util';
 
+const PII_KEY = 'd'.repeat(64);
+const PII_SALT = 'gfin-flow-db-spec-salt-0123456789abcdef';
+const savedEnv = { key: process.env.PII_ENCRYPTION_KEY, salt: process.env.PII_HASH_SALT };
 const prisma = new PrismaClient();
 const tag = `gfin-flow-${Date.now()}`;
 const JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00]);
@@ -44,6 +49,8 @@ const extraCustomerIds: string[] = [];
 const extraRoomIds: string[] = [];
 
 beforeAll(async () => {
+  process.env.PII_ENCRYPTION_KEY = PII_KEY;
+  process.env.PII_HASH_SALT = PII_SALT;
   const dbName = new URL(process.env.DATABASE_URL ?? 'postgresql://unset/unset').pathname.slice(1);
   if (!/^test_db$|_test$/.test(dbName)) throw new Error(`สเปคนี้ลบแถวจริง — ต้องรันกับฐานทดสอบ แต่ได้ "${dbName}"`);
   const user = await prisma.user.findFirst({ where: { role: 'OWNER', deletedAt: null }, select: { id: true } });
@@ -75,6 +82,10 @@ afterAll(async () => {
   if (extraCustomerIds.length) await prisma.customer.deleteMany({ where: { id: { in: extraCustomerIds } } });
   await prisma.$disconnect();
   await fs.rm(localDir, { recursive: true, force: true });
+  if (savedEnv.key === undefined) delete process.env.PII_ENCRYPTION_KEY;
+  else process.env.PII_ENCRYPTION_KEY = savedEnv.key;
+  if (savedEnv.salt === undefined) delete process.env.PII_HASH_SALT;
+  else process.env.PII_HASH_SALT = savedEnv.salt;
 });
 
 describe('ใบยื่น GFIN บน DB จริง', () => {

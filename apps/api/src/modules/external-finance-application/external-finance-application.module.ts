@@ -13,9 +13,12 @@ import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module'
 import { OcrModule } from '../ocr/ocr.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { CustomerPiiModule } from '../customers/customer-pii.module';
+import { CustomersModule } from '../customers/customers.module';
 
 @Module({
-  imports: [LineOaModule, forwardRef(() => ChatbotFinanceModule), OcrModule, NotificationsModule, CustomerPiiModule],
+  // CustomersModule — CustomersService.update สำหรับ PATCH :id/customer-fields (กติกาเขียนเบอร์ชุดเดียวกับหน้าลูกค้า)
+  //   ไม่มีโมดูลไหน import โมดูลนี้กลับ (มีแค่ app.module) จึงไม่มีวงจร
+  imports: [LineOaModule, forwardRef(() => ChatbotFinanceModule), OcrModule, NotificationsModule, CustomerPiiModule, CustomersModule],
   controllers: [RoomFinanceApplicationsController, FinanceApplicationsController, FinanceSharePublicController],
   providers: [
     FinanceApplicationService,

@@ -13,6 +13,7 @@ function build(overrides: Record<string, unknown> = {}, ocrOverrides: Record<str
     externalFinanceApplicationFile: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockImplementation(({ data }) => ({ id: 'f-1', ...data })), findFirst: jest.fn(), update: jest.fn() },
     productPhoto: { findUnique: jest.fn() },
     product: { findFirst: jest.fn() },
+    externalFinanceApplication: { count: jest.fn().mockResolvedValue(1) },
     $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
     $executeRawUnsafe: jest.fn(),
     ...overrides,
@@ -42,6 +43,41 @@ describe('FinanceApplicationFilesService.fromMessage', () => {
     lineFinance.getMessageContent.mockResolvedValue(JPEG);
     await service.fromMessage('app-1', { messageId: 'm2', slot: 'ID_CARD' }, actor);
     expect(lineFinance.getMessageContent).toHaveBeenCalledWith('LINE-1');
+  });
+  // minor 4 — ส่ง id ไป LINE API ตามช่องทางของห้องเท่านั้น
+  it('downloads a LINE shop image through the shop OA (not the finance OA)', async () => {
+    const { service, prisma, lineOa, lineFinance } = build();
+    (service as any).applications.get.mockResolvedValue({ ...draft, room: { channel: 'LINE_SHOP' } });
+    prisma.chatMessage.findFirst.mockResolvedValue({ id: 'm5', roomId: 'room-1', type: 'IMAGE', mediaUrl: null, externalMessageId: 'LS-1' });
+    lineOa.downloadContent.mockResolvedValue(JPEG);
+    await service.fromMessage('app-1', { messageId: 'm5', slot: 'ID_CARD' }, actor);
+    expect(lineOa.downloadContent).toHaveBeenCalledWith('LS-1', 'line-shop');
+    expect(lineFinance.getMessageContent).not.toHaveBeenCalled();
+  });
+  it('never sends a Facebook message id to the LINE API — 404 with the upload hint', async () => {
+    const { service, prisma, lineOa, lineFinance } = build();
+    prisma.chatMessage.findFirst.mockResolvedValue({ id: 'm6', roomId: 'room-1', type: 'IMAGE', mediaUrl: null, externalMessageId: 'm_fb_mid' });
+    await expect(service.fromMessage('app-1', { messageId: 'm6', slot: 'ID_CARD' }, actor)).rejects.toThrow('อัปโหลด');
+    expect(lineOa.downloadContent).not.toHaveBeenCalled();
+    expect(lineFinance.getMessageContent).not.toHaveBeenCalled();
+  });
+  it('a line:// media reference is fetched from LINE by message id (never by the fake URL)', async () => {
+    const { service, prisma, lineFinance } = build();
+    const fetchSpy = jest.spyOn(media, 'fetchProviderMedia');
+    fetchSpy.mockClear();
+    (service as any).applications.get.mockResolvedValue({ ...draft, room: { channel: 'LINE_FINANCE' } });
+    prisma.chatMessage.findFirst.mockResolvedValue({ id: 'm7', roomId: 'room-1', type: 'IMAGE', mediaUrl: 'line://content/LF-7', externalMessageId: 'LF-7' });
+    lineFinance.getMessageContent.mockResolvedValue(JPEG);
+    await service.fromMessage('app-1', { messageId: 'm7', slot: 'ID_CARD' }, actor);
+    expect(lineFinance.getMessageContent).toHaveBeenCalledWith('LF-7');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+  it('a line:// media reference without a message id → 404 with the upload hint', async () => {
+    const { service, prisma, lineFinance } = build();
+    (service as any).applications.get.mockResolvedValue({ ...draft, room: { channel: 'LINE_FINANCE' } });
+    prisma.chatMessage.findFirst.mockResolvedValue({ id: 'm8', roomId: 'room-1', type: 'IMAGE', mediaUrl: 'line://content/x', externalMessageId: null });
+    await expect(service.fromMessage('app-1', { messageId: 'm8', slot: 'ID_CARD' }, actor)).rejects.toThrow(NotFoundException);
+    expect(lineFinance.getMessageContent).not.toHaveBeenCalled();
   });
   it('404s with an upload hint for a legacy LINE image that has neither mediaUrl nor message id', async () => {
     const { service, prisma } = build();
@@ -95,6 +131,43 @@ describe('FinanceApplicationFilesService.fromProduct', () => {
     expect(files).toHaveLength(6);
     expect(storage.upload).toHaveBeenCalledTimes(6);
     expect(files.map((f: any) => f.sourceAngle)).toEqual(['front', 'back', 'left', 'right', 'top', 'bottom']);
+  });
+  // I3 — กันมุมซ้ำตัวจริงอยู่ใต้ล็อกของใบยื่น: คำขอที่สองที่ผ่านตัวกรองนอกล็อกมาได้ ต้องไม่สร้างแถวซ้ำ
+  it('an angle that another request already attached (seen only inside the lock) is not duplicated; the extra upload is removed', async () => {
+    const { service, prisma, storage } = build();
+    prisma.product.findFirst.mockResolvedValue({ id: 'p-1', category: 'PHONE_USED' });
+    const dataUrl = `data:image/jpeg;base64,${JPEG.toString('base64')}`;
+    prisma.productPhoto.findUnique.mockResolvedValue({ isCompleted: true, front: dataUrl, back: dataUrl, left: dataUrl, right: dataUrl, top: dataUrl, bottom: dataUrl });
+    const angles = ['front', 'back', 'left', 'right', 'top', 'bottom'];
+    prisma.externalFinanceApplicationFile.findMany
+      .mockResolvedValueOnce([]) // ตัวกรองนอกล็อก — ยังไม่เห็นอะไร
+      .mockResolvedValue(angles.map((a, i) => ({ id: `f-${i}`, source: 'PRODUCT_PHOTO', sourceAngle: a, slot: 'DEVICE_PHOTO', sentAt: null }))); // ใต้ล็อก — อีกคำขอแนบครบแล้ว
+    const files = await service.fromProduct('app-1', actor);
+    expect(files).toHaveLength(0);
+    expect(prisma.externalFinanceApplicationFile.create).not.toHaveBeenCalled();
+    expect(storage.delete).toHaveBeenCalledTimes(6);
+  });
+  it('stock photos already SENT (e.g. of the previous device before a MORE_INFO device change) do not block the new device\'s angles', async () => {
+    const { service, prisma } = build();
+    prisma.product.findFirst.mockResolvedValue({ id: 'p-1', category: 'PHONE_USED' });
+    const dataUrl = `data:image/jpeg;base64,${JPEG.toString('base64')}`;
+    prisma.productPhoto.findUnique.mockResolvedValue({ isCompleted: true, front: dataUrl, back: dataUrl, left: dataUrl, right: dataUrl, top: dataUrl, bottom: dataUrl });
+    const sentOld = ['front', 'back', 'left', 'right', 'top', 'bottom'].map((a, i) => ({ id: `old-${i}`, source: 'PRODUCT_PHOTO', sourceAngle: a, slot: 'DEVICE_PHOTO', sentAt: new Date() }));
+    prisma.externalFinanceApplicationFile.findMany.mockImplementation(({ where }: any) => Promise.resolve(where.sentAt === null ? [] : sentOld));
+    const files = await service.fromProduct('app-1', actor);
+    expect(files).toHaveLength(6);
+    expect(prisma.externalFinanceApplicationFile.create).toHaveBeenCalledTimes(6);
+  });
+  it('409 when the application switched to another device while the stock photos were being copied', async () => {
+    const { service, prisma, storage } = build();
+    prisma.product.findFirst.mockResolvedValue({ id: 'p-1', category: 'PHONE_USED' });
+    const dataUrl = `data:image/jpeg;base64,${JPEG.toString('base64')}`;
+    prisma.productPhoto.findUnique.mockResolvedValue({ isCompleted: true, front: dataUrl, back: dataUrl, left: dataUrl, right: dataUrl, top: dataUrl, bottom: dataUrl });
+    prisma.externalFinanceApplication.count.mockResolvedValue(0);
+    await expect(service.fromProduct('app-1', actor)).rejects.toThrow('เครื่องในใบยื่นเปลี่ยนไป');
+    expect(prisma.externalFinanceApplication.count).toHaveBeenCalledWith({ where: { id: 'app-1', productId: 'p-1', deletedAt: null } });
+    expect(prisma.externalFinanceApplicationFile.create).not.toHaveBeenCalled();
+    expect(storage.delete).toHaveBeenCalled();
   });
   it('400s for a new phone or an incomplete photo set', async () => {
     const { service, prisma } = build();

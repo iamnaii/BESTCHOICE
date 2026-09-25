@@ -37,6 +37,23 @@ function isExpectedStreamAbort(err: unknown, res: Response, req: Request): boole
 }
 
 /**
+ * minor 7 — บอทดึงตัวอย่างลิงก์ของแอปแชท (ไม่ใช่คนเปิด) · ตัวเล็ก/ใหญ่มีผลโดยตั้งใจ: `LINE` ตัวใหญ่ล้วนต้องไม่ชน
+ * เบราว์เซอร์ในแอป LINE (`… Line/13.x`) ซึ่งคือทางที่เจ้าหน้าที่ GFIN เปิดลิงก์จริงจากกลุ่มไลน์ — บอทพรีวิวของ LINE
+ * ส่ง `facebookexternalhit/1.1;line-poker/1.0` จึงถูกจับด้วย facebookexternalhit อยู่แล้ว
+ */
+const LINK_PREVIEW_UA_RE = /facebookexternalhit|Facebot|LINE|Twitterbot|Slackbot|WhatsApp|TelegramBot|Discordbot/;
+
+/**
+ * นับเป็น "GFIN เปิดดู" หรือไม่ — ไม่นับ HEAD (fix round 1 Minor 8) · ปุ่ม "เปิดหน้าลิงก์" ของพนักงาน
+ * (เว็บเปิด `url?src=staff`) · บอทพรีวิวลิงก์ข้างบน
+ */
+export function countsAsPartnerView(req: Pick<Request, 'method' | 'query' | 'headers'>): boolean {
+  if (req.method === 'HEAD') return false;
+  if (req.query?.src === 'staff') return false;
+  return !LINK_PREVIEW_UA_RE.test(req.headers['user-agent'] ?? '');
+}
+
+/**
  * หน้าลิงก์ชุดเช็คเครดิตสำหรับเจ้าหน้าที่ GFIN — public (ไม่มี JwtAuthGuard) ตาม spec §6/§12:
  * - เข้าถึงด้วยโทเคน 256 บิตอย่างเดียว (ค้นด้วย sha256 hash) · หมดอายุ 7 วัน · ยกเลิกได้
  * - ทุก route throttle ต่อ IP · POST reply ใช้ @SkipCsrf() เพราะไม่มี session — โทเคนในพาธคือหลักฐานสิทธิ์
@@ -130,9 +147,9 @@ export class FinanceSharePublicController {
       const r = await this.share.resolve(token);
       this.htmlHeaders(res, nonce);
       if (r.state !== 'OK') return res.status(410).send(buildGonePage(nonce));
-      // link-preview crawlers (LINE/Facebook) ยิง HEAD มาดึงลิงก์ก่อนคนเปิดจริง — ต้องไม่นับเป็นการเปิด
-      // (fix round 1 Minor 8); recordView เองก็ห้ามทำให้หน้าเปิดไม่ได้ไม่ว่าจะพังด้วยเหตุใด
-      if (req.method !== 'HEAD') {
+      // link-preview crawlers (LINE/Facebook) ยิง HEAD/GET มาดึงลิงก์ก่อนคนเปิดจริง + พนักงานเปิดเองจากการ์ดสถานะ
+      // — ต้องไม่นับเป็นการเปิดของ GFIN (fix round 1 Minor 8 + minor 7); recordView เองก็ห้ามทำให้หน้าเปิดไม่ได้
+      if (countsAsPartnerView(req)) {
         try {
           await this.share.recordView(r.app.id, this.ipHash(req), req.headers['user-agent']);
         } catch (err) {

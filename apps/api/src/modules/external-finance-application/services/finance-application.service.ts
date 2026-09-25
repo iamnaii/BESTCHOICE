@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, NotImplementedException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, NotImplementedException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ExternalFinanceActorType, ExternalFinanceDocSlot, ExternalFinanceEventKind, Prisma } from '@prisma/client';
 import {
@@ -9,14 +9,20 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { hashLockKey } from '../../../utils/advisory-lock.util';
 import { encryptPII, decryptPII } from '../../../utils/crypto.util';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
+import { CustomersService } from '../../customers/customers.service';
+import { isChatPlaceholder, PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospects/chat-placeholder';
+import { StorageService } from '../../storage/storage.service';
 import { FinanceApplicationNumberService } from './finance-application-number.service';
 import { FinanceActor, GFIN_COMPANY_NAME, REQUIRED_SLOTS, SHARE_TTL_DAYS, SLOT_LABELS } from '../constants';
 import { applyTransition, isClosed } from '../finance-application-status.util';
-import { SendFinanceApplicationDto, StaffResultDto, UpdateFinanceApplicationDto } from '../dto/finance-application.dto';
+import { SendFinanceApplicationDto, StaffResultDto, UpdateFinanceApplicationDto, UpdateFinanceCustomerFieldsDto } from '../dto/finance-application.dto';
 import { newShareToken } from '../finance-share-token.util';
 
 const OPEN_STATUSES = ['DRAFT', 'SENT', 'ACKNOWLEDGED', 'MORE_INFO'] as const;
 const EDITABLE_STATUSES = ['DRAFT', 'MORE_INFO'] as const;
+/** CAS ของการเปลี่ยนสถานะฝั่งพนักงานแพ้คำขออื่นที่เปลี่ยนสถานะไปก่อน (minor 9 — แบบเดียวกับ FinanceShareService.reply) */
+const STALE_STATUS_MSG = 'ใบยื่นเปลี่ยนสถานะไปแล้ว กรุณาโหลดใหม่แล้วลองอีกครั้ง';
+const DAY_MS = 86400000;
 
 export const applicationInclude = {
   files: { where: { deletedAt: null }, orderBy: [{ slot: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }] },
@@ -27,6 +33,30 @@ export const applicationInclude = {
   product: { select: { id: true, name: true, brand: true, model: true, storage: true, color: true, imeiSerial: true, serialNumber: true, category: true, batteryHealth: true, hasBox: true, accessoriesIncluded: true, status: true } },
   sentBy: { select: { id: true, name: true } },
 } satisfies Prisma.ExternalFinanceApplicationInclude;
+
+/** แถวใบยื่นที่โหลดครบ (รวมห้อง) — ใช้ภายใน service เท่านั้น เพราะยังมีคอลัมน์ลิงก์สาธารณะอยู่ */
+type LoadedApplication = Prisma.ExternalFinanceApplicationGetPayload<{ include: typeof applicationInclude & { room: true } }>;
+
+type ShareSecrets = { shareTokenHash: string | null; shareTokenEnc: string | null };
+/**
+ * ตัด hash/โทเคนเข้ารหัสของลิงก์สาธารณะออกก่อนคืนให้เว็บทุกครั้ง (minor 8) — URL ของลิงก์ขอผ่าน
+ * `GET :id/share-link` เท่านั้น
+ */
+export function toApplicationView<T extends ShareSecrets>(row: T): Omit<T, keyof ShareSecrets> {
+  const view: Record<string, unknown> = { ...row };
+  delete view.shareTokenHash;
+  delete view.shareTokenEnc;
+  return view as Omit<T, keyof ShareSecrets>;
+}
+
+/** วันเกิดจากช่องวันที่ของเว็บ (YYYY-MM-DD) — ต้องเป็นอดีตและไม่เก่าเกินจริง */
+function parseBirthDate(raw: string): Date {
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) throw new BadRequestException('วันเกิดไม่ถูกต้อง');
+  if (date.getTime() > Date.now()) throw new BadRequestException('วันเกิดต้องไม่เป็นวันในอนาคต');
+  if (date.getUTCFullYear() < 1900) throw new BadRequestException('วันเกิดไม่ถูกต้อง');
+  return date;
+}
 
 export interface PreviewResult {
   text: string;
@@ -39,11 +69,14 @@ export interface PreviewResult {
 
 @Injectable()
 export class FinanceApplicationService {
+  private readonly logger = new Logger(FinanceApplicationService.name);
   constructor(
     private prisma: PrismaService,
     private numbers: FinanceApplicationNumberService,
     private pii: CustomerPiiService,
     private config: ConfigService,
+    private storage: StorageService,
+    private customers: CustomersService,
   ) {}
 
   /** กติกาเดียวกับตรวจเครดิต (room-credit.service.ts:92-98): SALES เข้าได้เฉพาะห้องว่างหรือห้องตัวเอง */
@@ -73,43 +106,73 @@ export class FinanceApplicationService {
     return company.id;
   }
 
+  /**
+   * ลูกค้าของห้องที่ใช้ตั้งต้นใบยื่นได้ — "ผู้สนใจอัตโนมัติจากแชท" (placeholder) ไม่นับ (C1):
+   * เกือบทุกห้องถูกผูก placeholder อัตโนมัติ (`ChatProspectService.ensureForRoom`) ชื่อ = ชื่อโปรไฟล์แชท
+   * ไม่มีเบอร์/เลขบัตร — ถ้าคัดลอกมาใบยื่นจะข้ามขั้นอ่านบัตร/สร้างลูกค้าไปเลย
+   */
+  private async realCustomerId(customerId: string | null): Promise<string | null> {
+    if (!customerId) return null;
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: customerId, deletedAt: null },
+      select: { id: true, ...PLACEHOLDER_FIELDS_SELECT },
+    });
+    return customer && !isChatPlaceholder(customer) ? customer.id : null;
+  }
+
   async createDraft(roomId: string, actor: FinanceActor) {
     const room = await this.access(this.prisma, roomId, actor);
-    return this.prisma.$transaction(async (tx) => {
+    const seedCustomerId = await this.realCustomerId(room.customerId ?? null);
+    const app = await this.prisma.$transaction(async (tx) => {
       // ล็อกระดับห้องก่อนเช็คใบเปิด — กัน createDraft พร้อมกันสองคำขอสร้างซ้ำ (finding รอบ 1)
       await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${hashLockKey(`finance-app-room:${roomId}`)})`);
+      // เฉพาะใบที่ยังเปิด — ใบปิดแล้วที่เป็น "ใบล่าสุด" ของห้อง (listForRoom) ต้องไม่กันการเริ่มใบใหม่ (I1)
       const open = await tx.externalFinanceApplication.findFirst({
         where: { roomId, deletedAt: null, status: { in: [...OPEN_STATUSES] } },
         include: applicationInclude,
       });
       if (open) return open;
       const number = await this.numbers.next(tx);
-      const app = await tx.externalFinanceApplication.create({
+      const created = await tx.externalFinanceApplication.create({
         data: {
           number, roomId, status: 'DRAFT', createdById: actor.id, branchId: actor.branchId ?? null,
-          customerId: room.customerId ?? null, financeCompanyId: await this.gfinCompanyId(tx),
+          customerId: seedCustomerId, financeCompanyId: await this.gfinCompanyId(tx),
         },
         include: applicationInclude,
       });
-      await this.addEvent(tx, app.id, 'CREATED', 'STAFF', { actorUserId: actor.id });
-      return app;
+      await this.addEvent(tx, created.id, 'CREATED', 'STAFF', { actorUserId: actor.id });
+      return created;
     });
+    return toApplicationView(app);
   }
 
-  /** ใบเปิดของห้อง + ประวัติ: ห้องผูกลูกค้า → ทุกใบของลูกค้า (ทุกห้อง) ไม่งั้นเฉพาะห้องนี้ (spec §5.1) */
+  /**
+   * ใบปัจจุบันของห้อง + ประวัติ: ห้องผูกลูกค้า → ทุกใบของลูกค้า (ทุกห้อง) ไม่งั้นเฉพาะห้องนี้ (spec §5.1)
+   * `current` = ใบที่ยังเปิดของห้องนี้ ไม่มีก็ใบล่าสุดของห้องนี้ (ปิดแล้วก็ได้ — I1: การ์ดสถานะปิด /
+   * "เมื่อผ่านแล้ว" / "เริ่มใบยื่นใหม่" / จุดเหลืองของผล GFIN ต้องยังเห็น) · SALES: ประวัติข้ามห้องไม่รวม
+   * ใบของห้องที่คนอื่นดูแล (กติกาเดียวกับ access())
+   */
   async listForRoom(roomId: string, actor: FinanceActor) {
     const room = await this.access(this.prisma, roomId, actor);
-    const where: Prisma.ExternalFinanceApplicationWhereInput = room.customerId
-      ? { deletedAt: null, OR: [{ roomId }, { customerId: room.customerId }] }
-      : { deletedAt: null, roomId };
+    const scope: Prisma.ExternalFinanceApplicationWhereInput = room.customerId
+      ? { OR: [{ roomId }, { customerId: room.customerId }] }
+      : { roomId };
+    const salesScope: Prisma.ExternalFinanceApplicationWhereInput = actor.role === 'SALES'
+      ? { room: { OR: [{ assignedToId: null }, { assignedToId: actor.id }] } }
+      : {};
     const rows = await this.prisma.externalFinanceApplication.findMany({
-      where, include: applicationInclude, orderBy: { createdAt: 'desc' },
+      where: { deletedAt: null, AND: [scope, salesScope] }, include: applicationInclude, orderBy: { createdAt: 'desc' },
     });
-    const current = rows.find((r) => r.roomId === roomId && !isClosed(r.status)) ?? null;
-    return { current, history: rows.filter((r) => r.id !== current?.id) };
+    const own = rows.filter((r) => r.roomId === roomId);
+    const current = own.find((r) => !isClosed(r.status)) ?? own[0] ?? null;
+    return {
+      current: current ? toApplicationView(current) : null,
+      history: rows.filter((r) => r.id !== current?.id).map(toApplicationView),
+    };
   }
 
-  async get(id: string, actor: FinanceActor) {
+  /** โหลดใบยื่นเต็มแถว (มีคอลัมน์ลิงก์) + ตรวจสิทธิ์ห้อง — ใช้ภายในเท่านั้น ห้ามคืนตรงให้ controller */
+  private async load(id: string, actor: FinanceActor): Promise<LoadedApplication> {
     const app = await this.prisma.externalFinanceApplication.findFirst({
       where: { id, deletedAt: null }, include: { ...applicationInclude, room: true },
     });
@@ -118,8 +181,16 @@ export class FinanceApplicationService {
     return app;
   }
 
+  async get(id: string, actor: FinanceActor) {
+    return toApplicationView(await this.load(id, actor));
+  }
+
+  private async reloadView(db: Prisma.TransactionClient | PrismaService, id: string) {
+    return toApplicationView(await db.externalFinanceApplication.findUniqueOrThrow({ where: { id }, include: applicationInclude }));
+  }
+
   async update(id: string, dto: UpdateFinanceApplicationDto, actor: FinanceActor) {
-    const app = await this.get(id, actor);
+    const app = await this.load(id, actor);
     if (!EDITABLE_STATUSES.includes(app.status as (typeof EDITABLE_STATUSES)[number]))
       throw new ConflictException('แก้ได้เฉพาะใบยื่นที่ยังเป็นร่างหรือ GFIN ขอเอกสารเพิ่ม');
     if (dto.productId) {
@@ -132,21 +203,93 @@ export class FinanceApplicationService {
       const customer = await this.prisma.customer.findFirst({ where: { id: dto.customerId, deletedAt: null }, select: { id: true } });
       if (!customer) throw new NotFoundException('ไม่พบลูกค้า');
     }
-    return this.prisma.externalFinanceApplication.update({
-      where: { id },
-      data: {
-        ...(dto.productId !== undefined ? { productId: dto.productId } : {}),
-        ...(dto.customerId !== undefined ? { customerId: dto.customerId } : {}),
-        ...(dto.occupationOverride !== undefined ? { occupationOverride: dto.occupationOverride || null } : {}),
-        ...(dto.messageOverride !== undefined ? { messageOverride: dto.messageOverride || null } : {}),
-      },
-      include: applicationInclude,
+    const productChanged = dto.productId !== undefined && (dto.productId || null) !== app.productId;
+    const { view, staleKeys } = await this.prisma.$transaction(async (tx) => {
+      let staleKeys: string[] = [];
+      if (productChanged) {
+        // เปลี่ยนเครื่อง = รูป 6 มุมจากสต๊อกของเครื่องเดิมที่ยังไม่ส่ง ต้องไม่ติดไปกับใบ (I3) — ไฟล์ที่ส่งแล้วคงไว้เป็นหลักฐาน
+        // ล็อกเดียวกับ attach() ของไฟล์ → fromProduct ของเครื่องเดิมที่วิ่งค้างอยู่แนบรูปเข้ามาหลังเราล้างไม่ได้
+        await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${hashLockKey(`finance-app-files:${id}`)})`);
+        const stale = await tx.externalFinanceApplicationFile.findMany({
+          where: { applicationId: id, deletedAt: null, sentAt: null, source: 'PRODUCT_PHOTO' },
+          select: { id: true, storageKey: true },
+        });
+        if (stale.length) {
+          await tx.externalFinanceApplicationFile.updateMany({ where: { id: { in: stale.map((f) => f.id) } }, data: { deletedAt: new Date() } });
+        }
+        staleKeys = stale.flatMap((f) => (f.storageKey ? [f.storageKey] : []));
+      }
+      const cas = await tx.externalFinanceApplication.updateMany({
+        where: { id, deletedAt: null, status: { in: [...EDITABLE_STATUSES] } },
+        data: {
+          ...(dto.productId !== undefined ? { productId: dto.productId || null } : {}),
+          ...(dto.customerId !== undefined ? { customerId: dto.customerId || null } : {}),
+          ...(dto.occupationOverride !== undefined ? { occupationOverride: dto.occupationOverride || null } : {}),
+          ...(dto.messageOverride !== undefined ? { messageOverride: dto.messageOverride || null } : {}),
+        },
+      });
+      if (cas.count === 0) throw new ConflictException(STALE_STATUS_MSG);
+      return { view: await this.reloadView(tx, id), staleKeys };
     });
+    await this.deleteStoredObjects(staleKeys, id);
+    return view;
+  }
+
+  /** ลบไฟล์ใน storage หลัง commit — best effort (แถวถูก soft-delete ไปแล้ว ไฟล์ค้างไม่ทำให้ส่งผิด แค่เปลืองที่) */
+  private async deleteStoredObjects(keys: string[], applicationId: string) {
+    for (const key of keys) {
+      try {
+        await this.storage.delete(key);
+      } catch (err) {
+        this.logger.warn(`[finance-app] could not delete stale product photo app=${applicationId} key=${key}: ${(err as Error)?.message ?? err}`);
+      }
+    }
+  }
+
+  /**
+   * เติมเบอร์/วันเกิดของลูกค้าที่ผูกกับใบยื่น (ขั้นที่ 1) — ทางเฉพาะของฟีเจอร์นี้ เพราะ `PATCH /customers/:id`
+   * เปิดแค่ OWNER/BRANCH_MANAGER (C1) · กติกาเขียนเบอร์ทั้งหมด (normalize · ล็อกเบอร์หลัก · 409 เบอร์ซ้ำ ·
+   * เข้ารหัส/hash · บันทึกการเดินทาง) ใช้ของ `CustomerWriteService.update` ตัวเดียวกับหน้าลูกค้า
+   * ขอบเขตแคบโดยตั้งใจ: ผ่านกติกาห้องของ `load()` · เฉพาะใบร่าง/ขอเพิ่ม · เฉพาะลูกค้าจริง (ไม่ใช่ผู้สนใจอัตโนมัติ —
+   * ทางนั้นคือ "เพิ่มเบอร์/ข้อมูล" ของ fill-contact) · เติมได้เฉพาะช่องที่ยังว่าง (แก้ค่าที่มีอยู่ = หน้ารายละเอียดลูกค้า)
+   */
+  async updateCustomerFields(id: string, dto: UpdateFinanceCustomerFieldsDto, actor: FinanceActor) {
+    const app = await this.load(id, actor);
+    if (!EDITABLE_STATUSES.includes(app.status as (typeof EDITABLE_STATUSES)[number]))
+      throw new ConflictException('แก้ข้อมูลลูกค้าได้เฉพาะใบยื่นที่ยังเป็นร่างหรือ GFIN ขอเอกสารเพิ่ม');
+    if (dto.phone === undefined && dto.birthDate === undefined) throw new BadRequestException('กรุณาระบุเบอร์โทรหรือวันเกิด');
+    if (!app.customerId) throw new BadRequestException('ใบยื่นนี้ยังไม่ผูกลูกค้า — ผูกลูกค้าในขั้นที่ 1 ก่อน');
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: app.customerId, deletedAt: null },
+      select: { id: true, birthDate: true, phoneEncrypted: true, ...PLACEHOLDER_FIELDS_SELECT },
+    });
+    if (!customer) throw new NotFoundException('ไม่พบลูกค้าของใบยื่นนี้');
+    if (isChatPlaceholder(customer)) {
+      throw new ConflictException('ลูกค้าของใบยื่นนี้ยังเป็นผู้สนใจอัตโนมัติจากแชท — กด "เพิ่มเบอร์/ข้อมูลลูกค้า" ในขั้นที่ 1 ของแท็บ GFIN ก่อน');
+    }
+    const current = this.pii.decryptCustomerFields(customer as Record<string, unknown>) as { phone?: string | null };
+    if (dto.phone !== undefined && current?.phone?.trim()) {
+      throw new ConflictException('ลูกค้าคนนี้มีเบอร์โทรแล้ว — ให้เจ้าของหรือผู้จัดการสาขาแก้ที่หน้ารายละเอียดลูกค้า');
+    }
+    if (dto.birthDate !== undefined && customer.birthDate) {
+      throw new ConflictException('ลูกค้าคนนี้มีวันเกิดแล้ว — ให้เจ้าของหรือผู้จัดการสาขาแก้ที่หน้ารายละเอียดลูกค้า');
+    }
+    const birthDate = dto.birthDate !== undefined ? parseBirthDate(dto.birthDate) : undefined;
+    await this.customers.update(
+      customer.id,
+      { ...(dto.phone !== undefined ? { phone: dto.phone } : {}), ...(birthDate ? { birthDate: birthDate.toISOString() } : {}) },
+      { id: actor.id, role: actor.role },
+    );
+    return this.get(id, actor);
   }
 
   private baseUrl(): string {
     const base = this.config.get<string>('SHARE_PAGE_BASE_URL') || this.config.get<string>('PAYMENT_LINK_BASE_URL') || 'https://bestchoicephone.app';
     return base.replace(/\/+$/, '');
+  }
+
+  private shareUrl(rawToken: string): string {
+    return `${this.baseUrl()}/api/g/${rawToken}`;
   }
 
   private piiKey(): string {
@@ -163,7 +306,7 @@ export class FinanceApplicationService {
   }
 
   /** ค่า 7 ช่อง + จำนวนไฟล์ — ถอดรหัส PII ของลูกค้าผ่าน CustomerPiiService (ห้ามอ่านคอลัมน์ plaintext ตรง ๆ) */
-  private async buildValues(app: Awaited<ReturnType<FinanceApplicationService['get']>>, staffName: string | null, link: string | null): Promise<PrecheckValues> {
+  private async buildValues(app: LoadedApplication, staffName: string | null, link: string | null): Promise<PrecheckValues> {
     const customer = app.customer ? (this.pii.decryptCustomerFields(app.customer as Record<string, unknown>) as typeof app.customer) : null;
     return {
       customerName: customer?.name ?? null,
@@ -191,7 +334,7 @@ export class FinanceApplicationService {
     return buildPrecheckMessage(DEFAULT_PRECHECK_TEMPLATE, values);
   }
 
-  private readiness(app: Awaited<ReturnType<FinanceApplicationService['get']>>, values: PrecheckValues) {
+  private readiness(app: LoadedApplication, values: PrecheckValues) {
     const missingFields = precheckMissingFields(values);
     const present = new Set(app.files.map((f) => f.slot));
     const missingRequiredSlots = REQUIRED_SLOTS.filter((slot) => !present.has(slot));
@@ -209,14 +352,14 @@ export class FinanceApplicationService {
   }
 
   async preview(id: string, actor: FinanceActor): Promise<PreviewResult> {
-    const app = await this.get(id, actor);
+    const app = await this.load(id, actor);
     const values = await this.buildValues(app, await this.staffName(actor), null);
     const r = this.readiness(app, values);
     return { text: this.renderText(app, values), values, missingFields: r.missingFields, missingRequiredSlots: r.missingRequiredSlots, warnings: r.warnings, canSend: r.canSend };
   }
 
   async send(id: string, dto: SendFinanceApplicationDto, actor: FinanceActor) {
-    const app = await this.get(id, actor); // access() ก่อนเสมอ — กัน SALES ข้ามห้องโผล่ผ่านทาง via:'BOT' (review fix round 1)
+    const app = await this.load(id, actor); // access() ก่อนเสมอ — กัน SALES ข้ามห้องโผล่ผ่านทาง via:'BOT' (review fix round 1)
     if (dto.via === 'BOT') throw new NotImplementedException('ส่งด้วยบอทจะเปิดใน PR 2 — ใช้ "คัดลอกข้อความ + ลิงก์" ไปก่อน');
     const values = await this.buildValues(app, await this.staffName(actor), null);
     const r = this.readiness(app, values);
@@ -224,67 +367,97 @@ export class FinanceApplicationService {
     const nextStatus = applyTransition(app.status, 'SEND');
     const token = newShareToken();
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + SHARE_TTL_DAYS * 86400000);
-    const shareUrl = `${this.baseUrl()}/api/g/${token.raw}`;
+    const expiresAt = new Date(now.getTime() + SHARE_TTL_DAYS * DAY_MS);
+    const shareUrl = this.shareUrl(token.raw);
     const messageText = this.renderText(app, { ...values, link: shareUrl });
     const summary = { customerName: values.customerName, occupation: values.occupation, model: values.model, hand: values.hand, imei: values.imei, phone: values.phone, age: values.age, fileCount: values.fileCount };
     const application = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.externalFinanceApplication.update({
-        where: { id: app.id },
+      // CAS บนสถานะที่อ่านมา (minor 9) — กดส่งซ้ำ/ยกเลิกพร้อมกันต้องได้ 409 ไม่ใช่ออกโทเคนทับกัน
+      const cas = await tx.externalFinanceApplication.updateMany({
+        where: { id: app.id, status: app.status, deletedAt: null },
         data: {
           status: nextStatus, sentAt: now, sentById: actor.id, sentVia: dto.via, messageText, summary,
           shareTokenHash: token.hash, shareTokenEnc: encryptPII(token.raw, this.piiKey()), shareExpiresAt: expiresAt, shareRevokedAt: null,
         },
-        include: applicationInclude,
       });
+      if (cas.count === 0) throw new ConflictException(STALE_STATUS_MSG);
       await tx.externalFinanceApplicationFile.updateMany({ where: { applicationId: app.id, deletedAt: null, sentAt: null }, data: { sentAt: now } });
       await this.addEvent(tx, app.id, 'SENT', 'STAFF', { actorUserId: actor.id, meta: { via: dto.via, fileCount: values.fileCount } });
-      return updated;
+      return this.reloadView(tx, app.id);
     });
     return { application, messageText, shareUrl };
   }
 
   async getShareLink(id: string, actor: FinanceActor) {
-    const app = await this.get(id, actor);
+    const app = await this.load(id, actor);
     if (!app.shareTokenEnc) throw new NotFoundException('ใบยื่นนี้ยังไม่ได้ส่ง จึงยังไม่มีลิงก์');
-    return { url: `${this.baseUrl()}/api/g/${decryptPII(app.shareTokenEnc, this.piiKey())}`, expiresAt: app.shareExpiresAt, revokedAt: app.shareRevokedAt };
+    return { url: this.shareUrl(decryptPII(app.shareTokenEnc, this.piiKey())), expiresAt: app.shareExpiresAt, revokedAt: app.shareRevokedAt };
   }
 
-  /** ส่งเพิ่มเฉพาะไฟล์ที่ยังไม่เคยส่ง — ลิงก์เดิม ต่ออายุเป็น 7 วันนับจากวันนี้ (spec §5.1) */
+  /**
+   * ลิงก์ที่ถูกยกเลิกต้องตายถาวร (I2): ต่ออายุ/ส่งเพิ่มหลังยกเลิก = ออกโทเคนใหม่ (hash + ตัวเข้ารหัสใหม่)
+   * ไม่ใช่ปลด `shareRevokedAt` ของโทเคนเดิม · แทนพาธลิงก์ใน `messageText` ที่ส่งไปแล้วด้วยของใหม่ ให้ปุ่ม
+   * "คัดลอกข้อความอีกครั้ง" และข้อความบนหน้าลิงก์ได้ลิงก์ที่ใช้ได้จริง
+   */
+  private rotateShare(app: LoadedApplication) {
+    const token = newShareToken();
+    const oldRaw = app.shareTokenEnc ? decryptPII(app.shareTokenEnc, this.piiKey()) : null;
+    const messageText = app.messageText && oldRaw
+      ? app.messageText.split(`/api/g/${oldRaw}`).join(`/api/g/${token.raw}`)
+      : app.messageText;
+    return {
+      url: this.shareUrl(token.raw),
+      data: { shareTokenHash: token.hash, shareTokenEnc: encryptPII(token.raw, this.piiKey()), shareRevokedAt: null, messageText },
+    };
+  }
+
+  /** ส่งเพิ่มเฉพาะไฟล์ที่ยังไม่เคยส่ง — ลิงก์เดิม ต่ออายุเป็น 7 วันนับจากวันนี้ (spec §5.1) · ลิงก์ถูกยกเลิกไว้ = ออกลิงก์ใหม่ (I2) */
   async resend(id: string, actor: FinanceActor) {
-    const app = await this.get(id, actor);
+    const app = await this.load(id, actor);
     const nextStatus = applyTransition(app.status, 'RESEND');
     const pending = app.files.filter((f) => !f.sentAt);
     if (!pending.length) throw new BadRequestException('ไม่มีไฟล์ใหม่ให้ส่งเพิ่ม');
-    const { url } = await this.getShareLink(id, actor);
+    if (!app.shareTokenEnc) throw new NotFoundException('ใบยื่นนี้ยังไม่ได้ส่ง จึงยังไม่มีลิงก์');
+    const rotation = app.shareRevokedAt ? this.rotateShare(app) : null;
+    const url = rotation?.url ?? this.shareUrl(decryptPII(app.shareTokenEnc, this.piiKey()));
     const now = new Date();
-    const messageText = `ส่งเอกสารเพิ่ม ${pending.length} ไฟล์ (ใบยื่น ${app.number}) ลิงก์เดิม: ${url}`;
+    const messageText = rotation
+      ? `ส่งเอกสารเพิ่ม ${pending.length} ไฟล์ (ใบยื่น ${app.number}) ลิงก์ใหม่ (ลิงก์เดิมถูกยกเลิกแล้ว): ${url}`
+      : `ส่งเอกสารเพิ่ม ${pending.length} ไฟล์ (ใบยื่น ${app.number}) ลิงก์เดิม: ${url}`;
     const application = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.externalFinanceApplication.update({
-        where: { id: app.id },
-        data: { status: nextStatus, shareExpiresAt: new Date(now.getTime() + SHARE_TTL_DAYS * 86400000), shareRevokedAt: null },
-        include: applicationInclude,
+      const cas = await tx.externalFinanceApplication.updateMany({
+        where: { id: app.id, status: app.status, shareTokenHash: app.shareTokenHash, deletedAt: null },
+        data: { status: nextStatus, shareExpiresAt: new Date(now.getTime() + SHARE_TTL_DAYS * DAY_MS), ...(rotation?.data ?? {}) },
       });
+      if (cas.count === 0) throw new ConflictException(STALE_STATUS_MSG);
       await tx.externalFinanceApplicationFile.updateMany({ where: { applicationId: app.id, deletedAt: null, sentAt: null }, data: { sentAt: now } });
-      await this.addEvent(tx, app.id, 'RESENT', 'STAFF', { actorUserId: actor.id, meta: { fileCount: pending.length } });
-      return updated;
+      await this.addEvent(tx, app.id, 'RESENT', 'STAFF', { actorUserId: actor.id, meta: { fileCount: pending.length, ...(rotation ? { rotated: true } : {}) } });
+      return this.reloadView(tx, app.id);
     });
-    return { application, messageText, shareUrl: url };
+    return { application, messageText, shareUrl: url, rotated: !!rotation };
   }
 
+  /** ต่ออายุ 7 วัน — เฉพาะใบที่ยังเปิด (ใบยกเลิก/ปิดแล้วห้ามเปิดลิงก์กลับ) · ลิงก์ถูกยกเลิกไว้ = ออกลิงก์ใหม่ (I2) */
   async extendShare(id: string, actor: FinanceActor) {
-    const app = await this.get(id, actor);
-    if (!app.shareTokenHash) throw new NotFoundException('ยังไม่มีลิงก์');
-    const expiresAt = new Date(Date.now() + SHARE_TTL_DAYS * 86400000);
+    const app = await this.load(id, actor);
+    if (!app.shareTokenHash || !app.shareTokenEnc) throw new NotFoundException('ยังไม่มีลิงก์');
+    if (isClosed(app.status)) throw new ConflictException('ใบยื่นปิดแล้ว ต่ออายุลิงก์ไม่ได้ — ถ้าต้องยื่นอีกครั้ง กด "เริ่มใบยื่นใหม่"');
+    const expiresAt = new Date(Date.now() + SHARE_TTL_DAYS * DAY_MS);
+    const rotation = app.shareRevokedAt ? this.rotateShare(app) : null;
     await this.prisma.$transaction(async (tx) => {
-      await tx.externalFinanceApplication.update({ where: { id: app.id }, data: { shareExpiresAt: expiresAt, shareRevokedAt: null } });
-      await this.addEvent(tx, app.id, 'LINK_EXTENDED', 'STAFF', { actorUserId: actor.id, meta: { expiresAt: expiresAt.toISOString() } });
+      const cas = await tx.externalFinanceApplication.updateMany({
+        where: { id: app.id, shareTokenHash: app.shareTokenHash, deletedAt: null, status: { in: [...OPEN_STATUSES] } },
+        data: { shareExpiresAt: expiresAt, ...(rotation?.data ?? {}) },
+      });
+      if (cas.count === 0) throw new ConflictException(STALE_STATUS_MSG);
+      await this.addEvent(tx, app.id, 'LINK_EXTENDED', 'STAFF', { actorUserId: actor.id, meta: { expiresAt: expiresAt.toISOString(), ...(rotation ? { rotated: true } : {}) } });
     });
-    return { expiresAt };
+    const url = rotation?.url ?? this.shareUrl(decryptPII(app.shareTokenEnc, this.piiKey()));
+    return { expiresAt, url, rotated: !!rotation };
   }
 
   async revokeShare(id: string, actor: FinanceActor) {
-    const app = await this.get(id, actor);
+    const app = await this.load(id, actor);
     if (!app.shareTokenHash) throw new NotFoundException('ยังไม่มีลิงก์');
     await this.prisma.$transaction(async (tx) => {
       await tx.externalFinanceApplication.update({ where: { id: app.id }, data: { shareRevokedAt: new Date() } });
@@ -294,32 +467,32 @@ export class FinanceApplicationService {
   }
 
   async staffResult(id: string, dto: StaffResultDto, actor: FinanceActor) {
-    const app = await this.get(id, actor);
+    const app = await this.load(id, actor);
     const event = dto.result === 'APPROVED' ? 'STAFF_APPROVED' : dto.result === 'REJECTED' ? 'STAFF_REJECTED' : 'STAFF_MORE_INFO';
     const nextStatus = applyTransition(app.status, event);
     const closes = nextStatus === 'APPROVED' || nextStatus === 'REJECTED';
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.externalFinanceApplication.update({
-        where: { id: app.id },
+      const cas = await tx.externalFinanceApplication.updateMany({
+        where: { id: app.id, status: app.status, deletedAt: null },
         data: { status: nextStatus, resultSource: 'STAFF', closedAt: closes ? new Date() : null },
-        include: applicationInclude,
       });
+      if (cas.count === 0) throw new ConflictException(STALE_STATUS_MSG);
       await this.addEvent(tx, app.id, 'STAFF_RESULT', 'STAFF', { actorUserId: actor.id, note: dto.note ?? null, meta: { result: dto.result } });
-      return updated;
+      return this.reloadView(tx, app.id);
     });
   }
 
   async cancel(id: string, actor: FinanceActor) {
-    const app = await this.get(id, actor);
+    const app = await this.load(id, actor);
     const nextStatus = applyTransition(app.status, 'CANCEL');
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.externalFinanceApplication.update({
-        where: { id: app.id },
+      const cas = await tx.externalFinanceApplication.updateMany({
+        where: { id: app.id, status: app.status, deletedAt: null },
         data: { status: nextStatus, closedAt: new Date(), shareRevokedAt: app.shareTokenHash ? new Date() : null },
-        include: applicationInclude,
       });
+      if (cas.count === 0) throw new ConflictException(STALE_STATUS_MSG);
       await this.addEvent(tx, app.id, 'CANCELLED', 'STAFF', { actorUserId: actor.id });
-      return updated;
+      return this.reloadView(tx, app.id);
     });
   }
 }

@@ -10,7 +10,7 @@ import { FinanceActor, FINANCE_APP_ROLES } from './constants';
 
 @Controller('staff-chat/rooms/:roomId/finance-applications')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+@Roles(...FINANCE_APP_ROLES)
 export class RoomFinanceApplicationsController {
   constructor(
     private applications: FinanceApplicationService,
@@ -18,11 +18,13 @@ export class RoomFinanceApplicationsController {
   ) {}
 
   @Get()
+  @Roles(...FINANCE_APP_ROLES)
   list(@Param('roomId', ParseUUIDPipe) roomId: string, @Req() req: { user: FinanceActor }) {
     return this.applications.listForRoom(roomId, req.user);
   }
 
   @Post()
+  @Roles(...FINANCE_APP_ROLES)
   create(@Param('roomId', ParseUUIDPipe) roomId: string, @Req() req: { user: FinanceActor }) {
     return this.applications.createDraft(roomId, req.user);
   }

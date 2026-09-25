@@ -35,6 +35,7 @@ describe('CustomerMergeService.absorbPlaceholder (real DB)', () => {
   const stamp = Date.now();
   const customerIds: string[] = [];
   const roomIds: string[] = [];
+  const financeAppIds: string[] = [];
   let staff: MergeActor;
 
   beforeAll(async () => {
@@ -43,6 +44,8 @@ describe('CustomerMergeService.absorbPlaceholder (real DB)', () => {
   });
 
   afterAll(async () => {
+    // ใบยื่น GFIN อ้างห้อง/ลูกค้า/ผู้ใช้ (FK) — ลบก่อนแม่
+    await prisma.externalFinanceApplication.deleteMany({ where: { id: { in: financeAppIds } } });
     await clearJourney(prisma, customerIds);
     await prisma.chatAutoTrigger.deleteMany({ where: { customerId: { in: customerIds } } });
     await prisma.customerTag.deleteMany({ where: { customerId: { in: customerIds } } });
@@ -117,6 +120,26 @@ describe('CustomerMergeService.absorbPlaceholder (real DB)', () => {
     expect(after.facebookUserId).toBe(`psid-carry-${stamp}`);
     expect(after.facebookName).toBe('ชื่อจากเฟซ');
     expect((await prisma.chatRoom.findUniqueOrThrow({ where: { id: room.id } })).customerId).toBe(target.id);
+  });
+
+  // final review C1 — ใบยื่น GFIN ที่ผูก placeholder ต้องตามไปคนจริง (ไม่งั้นชี้แถวที่ถูก soft-delete)
+  it('ย้ายใบยื่นไฟแนนซ์นอก (external_finance_applications.customer_id) จาก placeholder ไปปลายทางในทรานแซกชันเดียวกัน', async () => {
+    const target = await prisma.customer.create({ data: { name: 'merge spec gfin target', phone: `05${String(stamp).slice(-8)}` } });
+    customerIds.push(target.id);
+    const { placeholder, room } = await createPlaceholder('gfin');
+    const company = await prisma.externalFinanceCompany.upsert({ where: { name: 'GFIN' }, create: { name: 'GFIN', isActive: true }, update: {} });
+    const app = await prisma.externalFinanceApplication.create({
+      data: {
+        number: `BC-MRG-${String(stamp).slice(-6)}`, roomId: room.id, customerId: placeholder.id,
+        financeCompanyId: company.id, createdById: staff.id, status: 'DRAFT',
+      },
+    });
+    financeAppIds.push(app.id);
+
+    await service.absorbPlaceholder(placeholder.id, target.id, staff);
+
+    expect((await prisma.externalFinanceApplication.findUniqueOrThrow({ where: { id: app.id } })).customerId).toBe(target.id);
+    expect(await prisma.externalFinanceApplication.count({ where: { customerId: placeholder.id } })).toBe(0);
   });
 
   it('placeholder มีการผูก LINE → 409 บอกชื่อรายการ และห้องยังอยู่กับ placeholder', async () => {

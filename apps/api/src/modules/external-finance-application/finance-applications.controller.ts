@@ -22,7 +22,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FinanceApplicationService } from './services/finance-application.service';
 import { FinanceApplicationFilesService } from './services/finance-application-files.service';
-import { SendFinanceApplicationDto, StaffResultDto, UpdateFinanceApplicationDto } from './dto/finance-application.dto';
+import { SendFinanceApplicationDto, StaffResultDto, UpdateFinanceApplicationDto, UpdateFinanceCustomerFieldsDto } from './dto/finance-application.dto';
 import { FileFromMessageDto, FileUploadFieldsDto } from './dto/finance-application-files.dto';
 import { FinanceActor, FINANCE_APP_ROLES } from './constants';
 
@@ -36,64 +36,83 @@ export class FinanceApplicationsController {
   ) {}
 
   @Get(':id')
+  @Roles(...FINANCE_APP_ROLES)
   get(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
     return this.applications.get(id, req.user);
   }
 
   @Patch(':id')
+  @Roles(...FINANCE_APP_ROLES)
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFinanceApplicationDto, @Req() req: { user: FinanceActor }) {
     return this.applications.update(id, dto, req.user);
   }
 
+  /** เติมเบอร์/วันเกิดของลูกค้าที่ผูกกับใบยื่น — ทางเฉพาะของฟีเจอร์ (PATCH /customers/:id เปิดแค่ OWNER/BM) (C1) */
+  @Patch(':id/customer-fields')
+  @Roles(...FINANCE_APP_ROLES)
+  customerFields(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateFinanceCustomerFieldsDto, @Req() req: { user: FinanceActor }) {
+    return this.applications.updateCustomerFields(id, dto, req.user);
+  }
+
   @Get(':id/message-preview')
+  @Roles(...FINANCE_APP_ROLES)
   preview(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
     return this.applications.preview(id, req.user);
   }
 
   @Post(':id/send')
+  @Roles(...FINANCE_APP_ROLES)
   @Throttle({ short: { limit: 10, ttl: 60000 } })
   send(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SendFinanceApplicationDto, @Req() req: { user: FinanceActor }) {
     return this.applications.send(id, dto, req.user);
   }
 
   @Post(':id/resend')
+  @Roles(...FINANCE_APP_ROLES)
   @Throttle({ short: { limit: 10, ttl: 60000 } })
   resend(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
     return this.applications.resend(id, req.user);
   }
 
   @Get(':id/share-link')
+  @Roles(...FINANCE_APP_ROLES)
   shareLink(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
     return this.applications.getShareLink(id, req.user);
   }
 
   @Post(':id/share/extend')
+  @Roles(...FINANCE_APP_ROLES)
   extend(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
     return this.applications.extendShare(id, req.user);
   }
 
   @Post(':id/share/revoke')
+  @Roles(...FINANCE_APP_ROLES)
   revoke(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
     return this.applications.revokeShare(id, req.user);
   }
 
   @Post(':id/result')
+  @Roles(...FINANCE_APP_ROLES)
   result(@Param('id', ParseUUIDPipe) id: string, @Body() dto: StaffResultDto, @Req() req: { user: FinanceActor }) {
     return this.applications.staffResult(id, dto, req.user);
   }
 
   @Post(':id/cancel')
+  @Roles(...FINANCE_APP_ROLES)
   cancel(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
     return this.applications.cancel(id, req.user);
   }
 
   @Post(':id/files/from-message')
+  @Roles(...FINANCE_APP_ROLES)
   @Throttle({ short: { limit: 30, ttl: 60000 } })
   fromMessage(@Param('id', ParseUUIDPipe) id: string, @Body() dto: FileFromMessageDto, @Req() req: { user: FinanceActor }) {
     return this.files.fromMessage(id, dto, req.user);
   }
 
   @Post(':id/files')
+  @Roles(...FINANCE_APP_ROLES)
   @Throttle({ short: { limit: 30, ttl: 60000 } })
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024, files: 1 } }))
   upload(@Param('id', ParseUUIDPipe) id: string, @Body() fields: FileUploadFieldsDto, @UploadedFile() file: Express.Multer.File, @Req() req: { user: FinanceActor }) {
@@ -101,20 +120,24 @@ export class FinanceApplicationsController {
   }
 
   @Post(':id/files/from-product')
+  @Roles(...FINANCE_APP_ROLES)
   fromProduct(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
     return this.files.fromProduct(id, req.user);
   }
 
   @Delete(':id/files/:fileId')
+  @Roles(...FINANCE_APP_ROLES)
   remove(@Param('id', ParseUUIDPipe) id: string, @Param('fileId', ParseUUIDPipe) fileId: string, @Req() req: { user: FinanceActor }) {
     return this.files.remove(id, fileId, req.user);
   }
 
   @Get(':id/files/:fileId')
+  @Roles(...FINANCE_APP_ROLES)
   async download(@Param('id', ParseUUIDPipe) id: string, @Param('fileId', ParseUUIDPipe) fileId: string, @Req() req: { user: FinanceActor }, @Res() res: Response) {
     const { file, stream } = await this.files.download(id, fileId, req.user);
     res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.originalName ?? `${file.slot}.${file.mimeType.split('/')[1]}`)}"`);
+    // RFC 5987 — ชื่อไฟล์ไทยต้องมาในรูป filename*=UTF-8''<encoded> (รูปเดียวกับหน้าลิงก์สาธารณะ) ไม่ใช่ filename="%E0…"
+    res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(file.originalName ?? `${file.slot}.${file.mimeType.split('/')[1]}`)}`);
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     await pipeline(stream, res);

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ExternalFinanceDocSlot, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -16,6 +16,17 @@ import { FileFromMessageDto } from '../dto/finance-application-files.dto';
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 const DATA_URL_RE = /^data:image\/(jpeg|png|webp|gif);base64,(.+)$/;
 const NO_SOURCE_MSG = 'ไฟล์นี้ระบบไม่ได้เก็บไว้ (ส่งมาก่อนอัปเดต) กรุณาบันทึกรูปจากแชทแล้วอัปโหลดแทน';
+
+type AttachMeta = {
+  slot: ExternalFinanceDocSlot;
+  source: 'CHAT_MESSAGE' | 'UPLOAD' | 'PRODUCT_PHOTO';
+  sourceMessageId?: string;
+  sourceAngle?: string;
+  originalName?: string;
+  sortOrder?: number;
+  /** รูปจากสต๊อก: ใบต้องยังชี้เครื่องนี้ตอนบันทึก (ตรวจใต้ล็อก — I3) */
+  expectProductId?: string;
+};
 
 @Injectable()
 export class FinanceApplicationFilesService {
@@ -35,23 +46,27 @@ export class FinanceApplicationFilesService {
     return app;
   }
 
-  /** ดึงไบต์ของข้อความในห้อง: คีย์ staff-chat/ → storage · URL ผู้ให้บริการ → fetch · LINE ไม่มี URL → ดึงด้วย message id */
+  /**
+   * ดึงไบต์ของข้อความในห้อง: คีย์ staff-chat/ → storage · URL ผู้ให้บริการ (https) → fetch ·
+   * ไม่มี URL หรือเป็นอ้างอิง `line://` → ดึงจาก LINE ด้วย message id **ตามช่องทางของห้องเท่านั้น** (minor 4):
+   * LINE_FINANCE → OA ไฟแนนซ์ · LINE_SHOP → OA ร้าน · ช่องทางอื่นที่มีแค่ id (เช่น Facebook) = ห้ามส่ง id ไป LINE API → 404 ให้อัปโหลดแทน
+   */
   private async loadMessageBytes(message: { mediaUrl: string | null; mediaType: string | null; externalMessageId: string | null }, channel: string) {
     if (message.mediaUrl?.startsWith('staff-chat/'))
       return { bytes: await readLimited(await this.storage.getStream(message.mediaUrl)), contentType: message.mediaType || '' };
-    if (message.mediaUrl) return fetchProviderMedia(message.mediaUrl);
-    if (message.externalMessageId) {
-      try {
-        const bytes = channel === 'LINE_FINANCE'
-          ? await this.lineFinance.getMessageContent(message.externalMessageId)
-          : await this.lineOa.downloadContent(message.externalMessageId, 'line-shop');
-        return { bytes, contentType: '' };
-      } catch (error) {
-        this.logger.warn(`LINE content download failed for ${message.externalMessageId}: ${(error as Error).message}`);
-        throw new BadRequestException(EXPIRED_MEDIA_MSG);
-      }
+    if (message.mediaUrl && !message.mediaUrl.startsWith('line://')) return fetchProviderMedia(message.mediaUrl);
+    const lineDownload: Record<string, (id: string) => Promise<Buffer>> = {
+      LINE_FINANCE: (id) => this.lineFinance.getMessageContent(id),
+      LINE_SHOP: (id) => this.lineOa.downloadContent(id, 'line-shop'),
+    };
+    const download = lineDownload[channel];
+    if (!message.externalMessageId || !download) throw new NotFoundException(NO_SOURCE_MSG);
+    try {
+      return { bytes: await download(message.externalMessageId), contentType: '' };
+    } catch (error) {
+      this.logger.warn(`LINE content download failed for ${message.externalMessageId}: ${(error as Error).message}`);
+      throw new BadRequestException(EXPIRED_MEDIA_MSG);
     }
-    throw new NotFoundException(NO_SOURCE_MSG);
   }
 
   async fromMessage(applicationId: string, dto: FileFromMessageDto, actor: FinanceActor) {
@@ -83,23 +98,29 @@ export class FinanceApplicationFilesService {
     return this.attach(app.id, file.buffer, actor, { slot, source: 'UPLOAD', originalName: file.originalname });
   }
 
-  /** รูป 6 มุมจากสต๊อก (ProductPhoto เก็บ data URL) — เฉพาะมือสองที่ถ่ายครบ (product-photos.service.ts:44-47) */
+  /**
+   * รูป 6 มุมจากสต๊อก (ProductPhoto เก็บ data URL) — เฉพาะมือสองที่ถ่ายครบ (product-photos.service.ts:44-47)
+   * การกันมุมซ้ำตัวจริงอยู่ใน attach() ใต้ล็อกของใบยื่น (I3 — เดิมกรองนอกล็อก สองคำขอพร้อมกันผ่านได้ทั้งคู่)
+   * พร้อมตรวจว่าใบยังชี้เครื่องเดิม (เปลี่ยนเครื่องระหว่างดึง = 409) · ตัวกรองนอกล็อกข้างล่างเหลือไว้แค่ไม่ให้อัปโหลดเปล่า ๆ
+   */
   async fromProduct(applicationId: string, actor: FinanceActor) {
     const app = await this.openApplication(applicationId, actor);
     if (!app.productId) throw new BadRequestException('เลือกเครื่องก่อน');
-    const product = await this.prisma.product.findFirst({ where: { id: app.productId, deletedAt: null }, select: { id: true, category: true } });
+    const productId = app.productId;
+    const product = await this.prisma.product.findFirst({ where: { id: productId, deletedAt: null }, select: { id: true, category: true } });
     const photos = product?.category === 'PHONE_USED'
       ? await this.prisma.productPhoto.findUnique({ where: { productId: product.id } })
       : null;
     const complete = !!photos && photos.isCompleted && ANGLES.every((a) => !!photos[a]);
     if (!complete) throw new BadRequestException('เครื่องนี้ไม่มีรูป 6 มุมครบในสต๊อก กรุณาถ่ายเพิ่มในช่อง "รูปเครื่อง 6 มุม"');
-    const existing = await this.prisma.externalFinanceApplicationFile.findMany({ where: { applicationId: app.id, deletedAt: null, source: 'PRODUCT_PHOTO' } });
+    const existing = await this.prisma.externalFinanceApplicationFile.findMany({ where: { applicationId: app.id, deletedAt: null, sentAt: null, source: 'PRODUCT_PHOTO' } });
     const results: Awaited<ReturnType<typeof this.attach>>[] = [];
     for (const [index, angle] of ANGLES.entries()) {
       if (existing.some((f) => f.sourceAngle === angle)) continue;
       const match = DATA_URL_RE.exec(photos![angle] as string);
       if (!match) throw new BadRequestException(`รูปมุม ${angle} ไม่อยู่ในรูปแบบที่รองรับ`);
-      results.push(await this.attach(app.id, Buffer.from(match[2], 'base64'), actor, { slot: 'DEVICE_PHOTO', source: 'PRODUCT_PHOTO', sourceAngle: angle, sortOrder: index }));
+      const saved = await this.store(app.id, Buffer.from(match[2], 'base64'), actor, { slot: 'DEVICE_PHOTO', source: 'PRODUCT_PHOTO', sourceAngle: angle, sortOrder: index, expectProductId: productId });
+      if (saved.created) results.push(saved.file);
     }
     return results;
   }
@@ -108,8 +129,13 @@ export class FinanceApplicationFilesService {
     applicationId: string,
     bytes: Buffer,
     actor: FinanceActor,
-    meta: { slot: ExternalFinanceDocSlot; source: 'CHAT_MESSAGE' | 'UPLOAD' | 'PRODUCT_PHOTO'; sourceMessageId?: string; sourceAngle?: string; originalName?: string; sortOrder?: number },
+    meta: AttachMeta,
   ) {
+    return (await this.store(applicationId, bytes, actor, meta)).file;
+  }
+
+  /** อัปโหลดแล้วบันทึกแถวใต้ล็อกของใบยื่น — `created: false` = มีแถวเดิมอยู่แล้ว (ข้อความเดิม / มุมเดิมจากสต๊อก) ไฟล์ที่เพิ่งอัปถูกลบทิ้ง */
+  private async store(applicationId: string, bytes: Buffer, actor: FinanceActor, meta: AttachMeta) {
     const type = detectFile(bytes);
     if (!this.storage.configured) throw new ServiceUnavailableException('ยังไม่ได้ตั้งค่าที่เก็บไฟล์');
     const key = `${STORAGE_PREFIX}/${applicationId}/${randomUUID()}.${type.ext}`;
@@ -118,9 +144,18 @@ export class FinanceApplicationFilesService {
       await this.storage.upload(key, bytes, type.mimeType);
       const saved = await this.prisma.$transaction(async (tx) => {
         // ล็อกระดับใบยื่นก่อนเช็คซ้ำ/MAX_FILES — กัน fromMessage สองคำขอพร้อมกันสร้างแถวซ้ำ (review fix รอบ 1)
+        // (ล็อกเดียวกับ FinanceApplicationService.update ตอนเปลี่ยนเครื่องล้างรูปสต๊อก)
         await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${hashLockKey(`finance-app-files:${applicationId}`)})`);
+        if (meta.expectProductId !== undefined) {
+          const sameProduct = await tx.externalFinanceApplication.count({ where: { id: applicationId, productId: meta.expectProductId, deletedAt: null } });
+          if (!sameProduct) throw new ConflictException('เครื่องในใบยื่นเปลี่ยนไประหว่างดึงรูป — กด "ดึงจากสต๊อก" ในขั้นรูปอีกครั้ง');
+        }
         const files = await tx.externalFinanceApplicationFile.findMany({ where: { applicationId, deletedAt: null } });
-        const duplicate = meta.sourceMessageId && files.find((f) => f.sourceMessageId === meta.sourceMessageId);
+        const duplicate =
+          (meta.sourceMessageId && files.find((f) => f.sourceMessageId === meta.sourceMessageId)) ||
+          // มุมซ้ำนับเฉพาะรูปสต๊อกที่ยังไม่ส่ง: รูปที่ส่งไปแล้ว (หลักฐานของการส่งครั้งก่อน) อาจเป็นของเครื่องเดิมก่อนเปลี่ยน
+          // (ขอเพิ่ม → เปลี่ยนเครื่อง) — ถ้านับด้วย รูปของเครื่องใหม่จะแนบไม่ได้เลย
+          (meta.source === 'PRODUCT_PHOTO' && meta.sourceAngle && files.find((f) => f.source === 'PRODUCT_PHOTO' && !f.sentAt && f.sourceAngle === meta.sourceAngle));
         if (duplicate) return { file: duplicate, created: false };
         if (files.length >= MAX_FILES) throw new BadRequestException(`แนบได้สูงสุด ${MAX_FILES} ไฟล์ต่อใบยื่น`);
         const file = await tx.externalFinanceApplicationFile.create({
@@ -134,7 +169,7 @@ export class FinanceApplicationFilesService {
         return { file, created: true };
       });
       retained = saved.created;
-      return saved.file;
+      return saved;
     } finally {
       if (!retained) {
         try { await this.storage.delete(key); } catch { this.logger.warn(`Could not remove unreferenced finance attachment ${key}`); }

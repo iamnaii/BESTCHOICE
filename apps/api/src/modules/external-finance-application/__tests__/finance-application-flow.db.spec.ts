@@ -16,6 +16,8 @@ import { FinanceShareService } from '../services/finance-share.service';
 import { FinanceApplicationNotifyService } from '../services/finance-application-notify.service';
 import { StorageService } from '../../storage/storage.service';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
+import { CustomerWriteService } from '../../customers/services/customer-write.service';
+import { hashPII } from '../../../utils/pii.util';
 
 const prisma = new PrismaClient();
 const tag = `gfin-flow-${Date.now()}`;
@@ -37,6 +39,9 @@ let sendCustomerId = '';
 let sendProductId = '';
 let sendAppId = '';
 let sent: Awaited<ReturnType<FinanceApplicationService['send']>>;
+// final-fix wave — ลูกค้า/ห้องเพิ่มของเทสต์ C1 (ลบใน afterAll)
+const extraCustomerIds: string[] = [];
+const extraRoomIds: string[] = [];
 
 beforeAll(async () => {
   const dbName = new URL(process.env.DATABASE_URL ?? 'postgresql://unset/unset').pathname.slice(1);
@@ -47,27 +52,27 @@ beforeAll(async () => {
   const room = await prisma.chatRoom.create({ data: { channel: ChatChannel.FACEBOOK, externalUserId: tag, displayName: tag } });
   roomId = room.id;
   pii = new CustomerPiiService(prisma as any);
-  service = new FinanceApplicationService(prisma as any, new FinanceApplicationNumberService(), pii, config);
   localDir = await fs.mkdtemp(path.join(tmpdir(), 'gfin-files-'));
   const env: Record<string, string> = { STORAGE_LOCAL_DIR: localDir, NODE_ENV: 'test' };
   storage = new StorageService({ get: (key: string) => env[key] } as any);
+  // C1 — PATCH :id/customer-fields ใช้ CustomerWriteService.update ของจริง (normalize · ล็อกเบอร์ · dual-write เข้ารหัส/hash)
+  // query.findOne ใช้แค่ "มีแถวไหม + เบอร์เดิม" ในเมธอดนี้ → อ่านแถวดิบแทน service อ่านเต็ม (ไม่ใช่สิ่งที่ทดสอบ)
+  const write = new CustomerWriteService(prisma as any, {} as any, { findOne: (id: string) => prisma.customer.findUniqueOrThrow({ where: { id } }) } as any, pii);
+  const customers = { update: (id: string, dto: any, actor: any) => write.update(id, dto, actor) };
+  service = new FinanceApplicationService(prisma as any, new FinanceApplicationNumberService(), pii, config, storage, customers as any);
   files = new FinanceApplicationFilesService(prisma as any, storage, service, {} as any, {} as any, {} as any);
 });
 
 afterAll(async () => {
-  await prisma.externalFinanceApplicationEvent.deleteMany({ where: { application: { roomId } } });
-  await prisma.externalFinanceApplicationFile.deleteMany({ where: { application: { roomId } } });
-  await prisma.externalFinanceApplication.deleteMany({ where: { roomId } });
-  await prisma.chatMessage.deleteMany({ where: { roomId } });
-  await prisma.chatRoom.delete({ where: { id: roomId } });
-  if (sendAppId) {
-    await prisma.externalFinanceApplicationEvent.deleteMany({ where: { applicationId: sendAppId } });
-    await prisma.externalFinanceApplicationFile.deleteMany({ where: { applicationId: sendAppId } });
-    await prisma.externalFinanceApplication.delete({ where: { id: sendAppId } });
-  }
-  if (sendRoomId) await prisma.chatRoom.delete({ where: { id: sendRoomId } });
+  const rooms = [roomId, sendRoomId, ...extraRoomIds].filter(Boolean);
+  await prisma.externalFinanceApplicationEvent.deleteMany({ where: { application: { roomId: { in: rooms } } } });
+  await prisma.externalFinanceApplicationFile.deleteMany({ where: { application: { roomId: { in: rooms } } } });
+  await prisma.externalFinanceApplication.deleteMany({ where: { roomId: { in: rooms } } });
+  await prisma.chatMessage.deleteMany({ where: { roomId: { in: rooms } } });
+  await prisma.chatRoom.deleteMany({ where: { id: { in: rooms } } });
   if (sendProductId) await prisma.product.delete({ where: { id: sendProductId } });
   if (sendCustomerId) await prisma.customer.delete({ where: { id: sendCustomerId } });
+  if (extraCustomerIds.length) await prisma.customer.deleteMany({ where: { id: { in: extraCustomerIds } } });
   await prisma.$disconnect();
   await fs.rm(localDir, { recursive: true, force: true });
 });
@@ -223,5 +228,90 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
     const token = sent.shareUrl.split('/').pop()!;
     expect(await share.resolve(token)).toEqual({ state: 'GONE', reason: 'EXPIRED' });
     await expect(share.fileStream(token, 'any')).rejects.toThrow(NotFoundException);
+  });
+
+  // final review I1 — ใบที่ปิดแล้วยังเป็น "ใบปัจจุบัน" ของห้องจนกว่าจะเริ่มใบใหม่ (การ์ดสถานะปิด · "เริ่มใบยื่นใหม่")
+  it('I1: the approved application stays current; starting a new draft is not blocked by it and moves it to history', async () => {
+    const actor = { id: userId, role: 'OWNER' };
+    const before = await service.listForRoom(sendRoomId, actor);
+    expect(before.current?.id).toBe(sendAppId);
+    expect(before.current?.status).toBe('APPROVED');
+    expect(before.current).not.toHaveProperty('shareTokenHash');
+    expect(before.current).not.toHaveProperty('shareTokenEnc');
+    expect(before.history).toHaveLength(0);
+    const next = await service.createDraft(sendRoomId, actor);
+    expect(next.id).not.toBe(sendAppId);
+    const after = await service.listForRoom(sendRoomId, actor);
+    expect(after.current?.id).toBe(next.id);
+    expect(after.history.map((h) => h.id)).toEqual([sendAppId]);
+  });
+
+  // final review I2 — ลิงก์ที่ยกเลิกแล้วต้องตายถาวร: ต่ออายุหลังยกเลิก = โทเคนใหม่ ไม่ใช่ปลดโทเคนเดิม
+  it('I2: after revoke, extend issues a new token — the revoked token never resolves again, the stored text carries the new link', async () => {
+    const actor = { id: userId, role: 'OWNER' };
+    const share = new FinanceShareService(prisma as any, storage, new FinanceApplicationNotifyService(prisma as any, notifications));
+    const listed = await service.listForRoom(sendRoomId, actor);
+    const draftId = listed.current!.id;
+    await service.update(draftId, { customerId: sendCustomerId, productId: sendProductId }, actor);
+    for (const slot of ['ID_SELFIE', 'ID_CARD', 'INCOME'] as const) {
+      await files.upload(draftId, slot, { buffer: JPEG_BYTES, mimetype: 'image/jpeg', originalname: 'a.jpg' } as any, actor);
+    }
+    const second = await service.send(draftId, { via: 'COPY' }, actor);
+    const oldToken = second.shareUrl.split('/').pop()!;
+    await service.revokeShare(draftId, actor);
+    expect(await share.resolve(oldToken)).toEqual({ state: 'GONE', reason: 'REVOKED' });
+
+    const extended = await service.extendShare(draftId, actor);
+    expect(extended.rotated).toBe(true);
+    const newToken = extended.url.split('/').pop()!;
+    expect(newToken).not.toBe(oldToken);
+    expect(await share.resolve(oldToken)).toEqual({ state: 'GONE', reason: 'NOT_FOUND' });
+    expect((await share.resolve(newToken)).state).toBe('OK');
+    const row = await prisma.externalFinanceApplication.findUniqueOrThrow({ where: { id: draftId } });
+    expect(row.messageText).toContain(`/api/g/${newToken}`);
+    expect(row.messageText).not.toContain(oldToken);
+    expect((await service.getShareLink(draftId, actor)).url).toBe(extended.url);
+
+    // ใบที่ยกเลิกแล้วห้ามเปิดลิงก์กลับ
+    await service.cancel(draftId, actor);
+    await expect(service.extendShare(draftId, actor)).rejects.toThrow(ConflictException);
+    expect(await share.resolve(newToken)).toEqual({ state: 'GONE', reason: 'REVOKED' });
+  });
+
+  // final review C1 — ห้องที่ผูก "ผู้สนใจอัตโนมัติจากแชท" ต้องไม่ถูกนับเป็นลูกค้าของใบยื่น
+  it('C1: a draft for a room linked to a chat placeholder starts with no customer', async () => {
+    const actor = { id: userId, role: 'OWNER' };
+    const placeholder = await prisma.customer.create({ data: { name: `Facebook ${tag}`, phone: null, nationalId: null, acquisitionSource: 'CHAT_FACEBOOK' } });
+    extraCustomerIds.push(placeholder.id);
+    const room = await prisma.chatRoom.create({ data: { channel: ChatChannel.FACEBOOK, externalUserId: `${tag}-ph`, displayName: `${tag}-ph`, customerId: placeholder.id } });
+    extraRoomIds.push(room.id);
+    const draft = await service.createDraft(room.id, actor);
+    expect(draft.customerId).toBeNull();
+  });
+
+  // final review C1 — เติมเบอร์/วันเกิดผ่านทางของฟีเจอร์ ใช้กติกาเขียนเบอร์ของ CustomerWriteService (เข้ารหัส/hash ครบ)
+  it('C1: PATCH customer-fields writes the phone through the customer write rules (normalised, encrypted + hashed) and fills the birth date', async () => {
+    const actor = { id: userId, role: 'OWNER' };
+    const customer = await prisma.customer.create({ data: { name: `ทดสอบระบบ เติมเบอร์ ${tag}`, occupation: 'ค้าขาย' } });
+    extraCustomerIds.push(customer.id);
+    const room = await prisma.chatRoom.create({ data: { channel: ChatChannel.FACEBOOK, externalUserId: `${tag}-cf`, displayName: `${tag}-cf`, customerId: customer.id } });
+    extraRoomIds.push(room.id);
+    const draft = await service.createDraft(room.id, actor);
+    expect(draft.customerId).toBe(customer.id); // ลูกค้าจริง (ไม่ใช่ placeholder) ถูกตั้งต้นให้
+    const phone = `08${String(Date.now()).slice(-8)}`;
+    const view = await service.updateCustomerFields(draft.id, { phone, birthDate: '1990-05-01' }, actor);
+    expect(view).not.toHaveProperty('shareTokenHash');
+    const row = await prisma.customer.findUniqueOrThrow({ where: { id: customer.id } });
+    expect(row.phone).toBe(phone);
+    expect(row.phoneEncrypted).toBeTruthy();
+    expect(row.phoneEncrypted).not.toContain(phone);
+    expect(pii.decryptCustomerFields({ phone: null, phoneEncrypted: row.phoneEncrypted } as any)?.phone).toBe(phone);
+    expect(row.phoneHash).toBe(hashPII(phone, process.env.PII_HASH_SALT!));
+    expect(row.birthDate?.toISOString()).toBe('1990-05-01T00:00:00.000Z');
+    // เติมได้เฉพาะช่องว่าง — เบอร์ที่มีแล้วแก้ทางนี้ไม่ได้
+    await expect(service.updateCustomerFields(draft.id, { phone: `09${String(Date.now()).slice(-8)}` }, actor)).rejects.toThrow(ConflictException);
+    const preview = await service.preview(draft.id, actor);
+    expect(preview.missingFields).not.toContain('phone');
+    expect(preview.missingFields).not.toContain('age');
   });
 });

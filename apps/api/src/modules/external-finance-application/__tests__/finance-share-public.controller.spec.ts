@@ -178,6 +178,35 @@ describe('FinanceSharePublicController (HTTP)', () => {
     expect(share.recordView).not.toHaveBeenCalled();
   });
 
+  // minor 7 — การเปิดที่ไม่ใช่ GFIN ต้องไม่ขึ้นเป็น "GFIN เปิดดู"
+  it('staff "เปิดหน้าลิงก์" (?src=staff) renders the page but is not counted as a view', async () => {
+    share.resolve.mockResolvedValue({ state: 'OK', app: liveApp() });
+    await request(app.getHttpServer()).get(`/g/${rawToken}?src=staff`).expect(200);
+    expect(share.recordView).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['facebookexternalhit/1.1;line-poker/1.0'],
+    ['facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)'],
+    ['Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)'],
+    ['TelegramBot (like TwitterBot)'],
+    ['WhatsApp/2.23.20.0'],
+    ['Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)'],
+  ])('link-preview crawler GET (%s) is not counted as a view', async (ua) => {
+    share.resolve.mockResolvedValue({ state: 'OK', app: liveApp() });
+    await request(app.getHttpServer()).get(`/g/${rawToken}`).set('User-Agent', ua).expect(200);
+    expect(share.recordView).not.toHaveBeenCalled();
+  });
+
+  it('the LINE in-app browser (how GFIN staff actually open the link) IS counted — "LINE" match is case-sensitive', async () => {
+    share.resolve.mockResolvedValue({ state: 'OK', app: liveApp() });
+    await request(app.getHttpServer())
+      .get(`/g/${rawToken}`)
+      .set('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Safari Line/14.9.0')
+      .expect(200);
+    expect(share.recordView).toHaveBeenCalledTimes(1);
+  });
+
   it('GET a file streams the body with inline disposition and private, no-store', async () => {
     const stream = Readable.from([Buffer.from('jpeg-bytes')]);
     share.fileStream.mockResolvedValue({

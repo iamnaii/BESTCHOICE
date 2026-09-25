@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isGfinPickable, gfinStep, slotCounts, needsAttention, pickableAttachedIds, SLOT_ORDER, REQUIRED_SLOTS } from './gfin';
+import { isGfinPickable, gfinStep, slotCounts, needsAttention, pickableAttachedIds, statusBadgeLabel, editableMessageText, staffViewUrl, SLOT_ORDER, REQUIRED_SLOTS } from './gfin';
 // readSeen/markSeen เป็น wrapper ของ localStorage ที่ try/catch — ไม่ต้องเทสต์แยก
 
 const app = (over: Partial<import('./gfin').FinanceApplication> = {}): import('./gfin').FinanceApplication => ({
@@ -56,5 +56,23 @@ describe('pickableAttachedIds', () => {
       file({ id: 'f1', sourceMessageId: 'm1', sentAt: null }),
       file({ id: 'f2', sourceMessageId: 'm2', sentAt: '2026-09-24T12:00:00Z' }),
     ])).toEqual(['m1']);
+  });
+});
+
+describe('statusBadgeLabel / editableMessageText / staffViewUrl (final fix wave)', () => {
+  it('suffixes "(แจ้งผ่านลิงก์)" only for results GFIN gave on the link page', () => {
+    expect(statusBadgeLabel(app({ status: 'APPROVED', resultSource: 'PARTNER_LINK' }))).toBe('ผ่าน (แจ้งผ่านลิงก์)');
+    expect(statusBadgeLabel(app({ status: 'REJECTED', resultSource: 'PARTNER_LINK' }))).toBe('ไม่ผ่าน (แจ้งผ่านลิงก์)');
+    expect(statusBadgeLabel(app({ status: 'APPROVED', resultSource: 'STAFF' }))).toBe('ผ่าน');
+    // ส่งเพิ่มหลัง GFIN ขอเพิ่มผ่านลิงก์ — resultSource ค้าง PARTNER_LINK แต่สถานะไม่ใช่ผลแล้ว
+    expect(statusBadgeLabel(app({ status: 'SENT', resultSource: 'PARTNER_LINK' }))).toBe('ส่งแล้ว รอ GFIN');
+  });
+  it('drops only the trailing system link line from the preview text', () => {
+    expect(editableMessageText('1.ชื่อ : ก\nส่งโดย ข\nเอกสารทั้งหมด 3 ไฟล์: {{link}}')).toBe('1.ชื่อ : ก\nส่งโดย ข');
+    expect(editableMessageText('ข้อความอิสระ')).toBe('ข้อความอิสระ');
+  });
+  it('marks the staff link open with src=staff', () => {
+    expect(staffViewUrl('https://x/api/g/t')).toBe('https://x/api/g/t?src=staff');
+    expect(staffViewUrl('https://x/api/g/t?a=1')).toBe('https://x/api/g/t?a=1&src=staff');
   });
 });

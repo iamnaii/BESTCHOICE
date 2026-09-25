@@ -84,6 +84,21 @@ describe('GFIN pick button', () => {
     expect(setData).toHaveBeenCalledWith('application/x-bestchoice-gfin-message', 'm1');
     expect(setData).toHaveBeenCalledWith('application/x-bestchoice-credit-message', 'm1');
   });
+  // minor 11 — ไฟล์จาก LINE ไฟแนนซ์ที่ webhook เก็บแค่ message id เคยเป็นฟองว่าง
+  it('a FILE without mediaUrl shows a "[ไฟล์]" label (not an empty bubble) and keeps the GFIN pick button', () => {
+    const onGfin = vi.fn();
+    const { rerender } = render(<MessageBubble message={{ ...base, type: 'FILE', mediaUrl: null, text: null, externalMessageId: 'LF-9' }} onGfinMessage={onGfin} />);
+    expect(screen.getByText('[ไฟล์]')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ใส่ในใบยื่น GFIN' }));
+    expect(onGfin).toHaveBeenCalledWith('m1');
+    rerender(<MessageBubble message={{ ...base, type: 'FILE', mediaUrl: null, text: 'statement.pdf', externalMessageId: 'LF-9' }} onGfinMessage={onGfin} />);
+    expect(screen.getByText('[ไฟล์] statement.pdf')).toBeInTheDocument();
+  });
+  it('a FILE with a mediaUrl still renders the download tile, not the "[ไฟล์]" label', () => {
+    render(<MessageBubble message={{ ...base, type: 'FILE', mediaUrl: 'https://scontent.xx.fbcdn.net/a.pdf', text: 'a.pdf' }} />);
+    expect(screen.queryByText(/\[ไฟล์\]/)).toBeNull();
+    expect(screen.getByText('a.pdf').closest('a')).toHaveAttribute('href', 'https://scontent.xx.fbcdn.net/a.pdf');
+  });
   it('marks an attached message and offers removal on the second click', () => {
     const onGfin = vi.fn();
     render(<MessageBubble message={base} onGfinMessage={onGfin} gfinAttached />);

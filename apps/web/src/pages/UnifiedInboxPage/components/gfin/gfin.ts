@@ -29,6 +29,22 @@ export const STATUS_LABEL: Record<FinanceStatus, string> = {
   APPROVED: 'ผ่าน', REJECTED: 'ไม่ผ่าน', CANCELLED: 'ยกเลิก',
 };
 export const OPEN_STATUSES: FinanceStatus[] = ['DRAFT', 'SENT', 'ACKNOWLEDGED', 'MORE_INFO'];
+/** ส่งแล้ว รอ GFIN ตอบ — ช่วงเดียวที่ต้องโพลรายการ */
+export const PARTNER_WAIT_STATUSES: FinanceStatus[] = ['SENT', 'ACKNOWLEDGED', 'MORE_INFO'];
+const RESULT_STATUSES: FinanceStatus[] = ['APPROVED', 'REJECTED', 'MORE_INFO'];
+/** ป้ายสถานะบนการ์ด — ผลที่ GFIN กดเองบนหน้าลิงก์ต่อท้าย "(แจ้งผ่านลิงก์)" · ผลที่ร้านบันทึกเองจากไลน์ไม่มีคำนี้ */
+export function statusBadgeLabel(app: Pick<FinanceApplication, 'status' | 'resultSource'>): string {
+  const label = STATUS_LABEL[app.status];
+  return app.resultSource === 'PARTNER_LINK' && RESULT_STATUSES.includes(app.status) ? `${label} (แจ้งผ่านลิงก์)` : label;
+}
+/** ถ้อยคำตั้งต้นของช่อง "แก้ข้อความ" — ตัดบรรทัด "เอกสารทั้งหมด N ไฟล์: ลิงก์" ท้ายสุดออก เพราะระบบต่อท้ายให้เองเสมอ (ติดไปด้วย = สองบรรทัด) */
+export function editableMessageText(text: string): string {
+  return text.replace(/\n?เอกสารทั้งหมด \d+ ไฟล์: \S*\s*$/, '').trimEnd();
+}
+/** ปุ่ม "เปิดหน้าลิงก์" ของพนักงาน — `src=staff` ให้ API ไม่นับเป็น "GFIN เปิดดู" */
+export const staffViewUrl = (url: string) => `${url}${url.includes('?') ? '&' : '?'}src=staff`;
+/** ปุ่มในแท็บเรียก action ของ hook ที่ toast ข้อผิดพลาดเองแล้ว — กลืน rejection ไม่ให้เป็น unhandled */
+export const quietly = (promise: Promise<unknown>): void => { promise.catch(() => undefined); };
 
 export interface FinanceFile { id: string; slot: FinanceSlot; mimeType: string; size: number; originalName: string | null; source: 'CHAT_MESSAGE' | 'UPLOAD' | 'PRODUCT_PHOTO'; sourceMessageId: string | null; sourceAngle: string | null; sortOrder: number; sentAt: string | null; createdAt: string }
 export interface FinanceEvent { id: string; kind: FinanceEventKind; actorType: 'STAFF' | 'PARTNER' | 'SYSTEM'; actorUserId: string | null; actorName: string | null; note: string | null; meta: Record<string, unknown> | null; createdAt: string }

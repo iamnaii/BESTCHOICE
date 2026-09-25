@@ -24,7 +24,7 @@ import { resolveUploadFeedback } from './components/upload-feedback';
 import { useRoomCredit } from './hooks/useRoomCredit';
 import { useFinanceApplication } from './hooks/useFinanceApplication';
 import GfinSlotPicker from './components/gfin/GfinSlotPicker';
-import { slotCounts, pickableAttachedIds, type FinanceSlot } from './components/gfin/gfin';
+import { slotCounts, pickableAttachedIds, OPEN_STATUSES, type FinanceSlot } from './components/gfin/gfin';
 
 // Sound notification
 
@@ -61,17 +61,19 @@ export default function UnifiedInboxPage() {
   const [gfinFocus, setGfinFocus] = useState<{ roomId: string; tick: number } | null>(null);
   /* กดปุ่ม GFIN ข้างรูป / ลากมาวาง: ยังไม่มีใบยื่น → สร้างร่างก่อนแล้วค่อยถามช่อง (mockup PickSlot)
      หยิบซ้ำ = เอาออก (spec §6.4 — เหมือนตรวจเครดิต) เฉพาะไฟล์ที่ยังไม่ถูกส่ง; ส่งแล้วต้องเลือกช่องใหม่แทน */
+  /* ใบปัจจุบันอาจเป็นใบที่ปิดแล้ว (ใบล่าสุดของห้อง — I1) — หยิบรูปต้องลงใบที่ยังเปิดเท่านั้น ไม่งั้นเริ่มใบใหม่ */
+  const openGfin = gfin.current && OPEN_STATUSES.includes(gfin.current.status) ? gfin.current : null;
   const pickSlotForMessage = async (messageId: string) => {
     if (!activeRoomId) return;
-    const attached = gfin.current?.files.find(f => f.sourceMessageId === messageId && !f.sentAt);
-    if (attached) { await gfin.removeFile(attached.id); return; }
-    if (!gfin.current) { try { await gfin.start(); } catch { return; } }
+    const attached = openGfin?.files.find(f => f.sourceMessageId === messageId && !f.sentAt);
+    if (attached) { try { await gfin.removeFile(attached.id); } catch { /* toast จาก hook */ } return; }
+    if (!openGfin) { try { await gfin.start(); } catch { return; } }
     setSlotPick({ roomId: activeRoomId, messageId });
   };
   const onSlotPicked = async (slot: FinanceSlot) => {
     if (!slotPick) return;
     setSlotPick(null);
-    await gfin.attachMessage(slotPick.messageId, slot);
+    try { await gfin.attachMessage(slotPick.messageId, slot); } catch { return; /* toast จาก hook */ }
     setGfinFocus({ roomId: slotPick.roomId, tick: Date.now() });
     if (window.innerWidth < 1280) setCustomerPanelOpen(true);
   };
@@ -696,7 +698,7 @@ export default function UnifiedInboxPage() {
           creditMessageIds={credit.files.flatMap(file => file.sourceMessageId ? [file.sourceMessageId] : [])}
           creditBusy={credit.busy}
           onGfinMessage={pickSlotForMessage}
-          gfinMessageIds={pickableAttachedIds(gfin.current?.files ?? [])}
+          gfinMessageIds={pickableAttachedIds(openGfin?.files ?? [])}
           gfinBusy={gfin.busy}
           isUploadingFile={uploadFileMutation.isPending}
           otherViewers={otherViewers}
@@ -751,7 +753,7 @@ export default function UnifiedInboxPage() {
       <GfinSlotPicker
         open={!!slotPick && slotPick.roomId === activeRoomId}
         onOpenChange={(o) => !o && setSlotPick(null)}
-        counts={slotCounts(gfin.current?.files ?? [])}
+        counts={slotCounts(openGfin?.files ?? [])}
         onPick={onSlotPicked}
       />
     </div>

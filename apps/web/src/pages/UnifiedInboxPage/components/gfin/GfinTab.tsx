@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Group } from '../RoomDossier';
 import type { DossierRoom } from '../RoomDossier';
 import type { FinanceApplicationModel } from '../../hooks/useFinanceApplication';
-import { GFIN_LINE_GROUP, STATUS_LABEL } from './gfin';
+import { GFIN_LINE_GROUP, STATUS_LABEL, quietly } from './gfin';
 import GfinStepCustomer from './GfinStepCustomer';
 import GfinStepProduct from './GfinStepProduct';
 import GfinStepFiles from './GfinStepFiles';
@@ -32,7 +32,7 @@ export default function GfinTab({ room, customerId, gfin, onPickSlotForMessage }
       <Group label="ใบยื่นใหม่">
         <p className="m-0 text-sm font-semibold leading-snug">รวมชุดเช็คแล้วส่งเข้ากลุ่มไลน์ GFIN ในคลิกเดียว</p>
         <p className="m-0 mt-1 text-xs leading-snug text-muted-foreground">ข้อความ 12 ข้อ + ลิงก์เอกสารทั้งชุด · ลูกค้าไม่เห็น</p>
-        <Button className="mt-2.5 w-full" disabled={gfin.busy} onClick={() => gfin.start()}>เริ่มใบยื่น</Button>
+        <Button className="mt-2.5 w-full" disabled={gfin.busy} onClick={() => quietly(gfin.start())}>เริ่มใบยื่น</Button>
       </Group>
       <Group label="ประวัติใบยื่น" count={gfin.history.length}>
         {gfin.history.length === 0
@@ -47,7 +47,7 @@ export default function GfinTab({ room, customerId, gfin, onPickSlotForMessage }
 
   return (
     <div className="flex flex-col gap-2.5 p-2.5">
-      <Group label="ใบยื่น (ร่าง)" right={<button type="button" className="text-destructive" onClick={() => gfin.cancel()} disabled={gfin.busy}>ยกเลิกใบยื่น</button>}>
+      <Group label="ใบยื่น (ร่าง)" right={<button type="button" className="text-destructive" onClick={() => quietly(gfin.cancel())} disabled={gfin.busy}>ยกเลิกใบยื่น</button>}>
         <p className="m-0 text-xs text-muted-foreground">ขั้น {active}/4</p>
         <ol className="m-0 mt-2 grid list-none grid-cols-4 gap-1 p-0" aria-label="ขั้นตอน">
           {STEP_LABEL.map((label, i) => { const n = (i + 1) as 1 | 2 | 3 | 4; const done = n < gfin.step; const on = n === active;

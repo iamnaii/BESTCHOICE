@@ -425,6 +425,15 @@ function MessageBubble({ message, customerAvatar, customerInitial, onCreditMessa
               <ChatImage key={message.mediaUrl} src={message.mediaUrl} onLoadError={() => setFailedMediaUrl(message.mediaUrl!)} />
             ))}
 
+          {/* FILE ที่ระบบไม่ได้เก็บไฟล์ไว้ (webhook LINE ไฟแนนซ์บันทึกแค่ message id — ไม่มี mediaUrl) — เดิมเป็นฟองว่าง
+              ปุ่ม GFIN ข้างบนยังหยิบได้ผ่าน externalMessageId (minor 11) */}
+          {!message.mediaUrl && message.type === 'FILE' && (
+            <span className="mb-1 flex items-center gap-2 rounded-lg border border-border bg-background/60 px-3 py-2 text-xs">
+              <FileText className="size-4 shrink-0 text-muted-foreground" />
+              <span className="max-w-44 truncate">{message.text ? `[ไฟล์] ${message.text}` : '[ไฟล์]'}</span>
+            </span>
+          )}
+
           {/* Text — skip when the message is a FILE/non-image so the filename
               from message.text isn't duplicated below the file tile above. */}
           {/* linkify is safe here: only the final fallback branch reaches this — gif/

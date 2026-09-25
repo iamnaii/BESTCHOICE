@@ -3,7 +3,7 @@
 > สร้างอัตโนมัติ ห้ามแก้ด้วยมือ · แก้ที่ `policy.mjs` แล้ว `npm run grants` ใหม่
 
 - ตารางทั้งหมด **220** · ให้สิทธิ์บางคอลัมน์ **217** · ไม่ให้เลยทั้งใบ **3**
-- คอลัมน์ทั้งหมด **3302** · ให้ **2637** · ไม่ให้ **665**
+- คอลัมน์ทั้งหมด **3302** · ให้ **2632** · ไม่ให้ **670**
 
 🔒 = ตารางที่ถือ PII (ให้เฉพาะที่อยู่ใน allowlist) · ⛔ = ห้ามทั้งใบ
 
@@ -129,6 +129,30 @@
 - **ให้**: `id` `user_id` `expires_at` `revoked_at` `created_at`
 - **ไม่ให้**: `token` `updated_at` `deleted_at` `is_revoked`
 
+### 🔒 `room_credit_analyses`
+ให้ 8 · ไม่ให้ 2
+
+- **ให้**: `id` `room_id` `file_ids` `status` `credit_check_id` `created_at` `updated_at` `deleted_at`
+- **ไม่ให้**: `result` `error`
+
+### 🔒 `room_credit_files`
+ให้ 8 · ไม่ให้ 2
+
+- **ให้**: `id` `room_id` `mime_type` `size` `source_message_id` `created_at` `updated_at` `deleted_at`
+- **ไม่ให้**: `key` `name`
+
+### 🔒 `shop_cash_closes`
+ให้ 26 · ไม่ให้ 3
+
+- **ให้**: `id` `branch_id` `status` `attempt_no` `period_start` `float_amount` `cash_in` `cash_out` `expected_amount` `counted_amount` `variance_amount` `variance_reason` `send_amount` `counted_by_id` `counted_at` `received_amount` `receive_variance` `destination` `confirmed_by_id` `confirmed_at` `sent_back_by_id` `sent_back_at` `sent_back_reason` `created_at` `updated_at` `journal_entry_id`
+- **ไม่ให้**: `receive_note` `deposit_slip_key` `deposit_reference`
+
+### 🔒 `shop_cash_deposits`
+ให้ 9 · ไม่ให้ 3
+
+- **ให้**: `id` `branch_id` `source` `amount` `deposited_by_id` `deposited_at` `journal_entry_id` `created_at` `updated_at`
+- **ไม่ให้**: `reference` `slip_key` `note`
+
 ### 🔒 `staff_chat_activities`
 ให้ 4 · ไม่ให้ 1
 
@@ -215,8 +239,6 @@
 | `repossessions` | 24 | 2 | `photos` `notes` |
 | `sales` | 28 | 2 | `notes` `trade_in_credit_snapshot` |
 | `sales_commissions` | 23 | 2 | `notes` `snapshot_salesperson_id` |
-| `shop_cash_closes` | 27 | 2 | `receive_note` `deposit_reference` |
-| `shop_cash_deposits` | 10 | 2 | `reference` `note` |
 | `sms_templates` | 9 | 2 | `name` `body` |
 | `sso_config` | 8 | 2 | `salary_ceiling` `note` |
 | `stock_adjustments` | 11 | 2 | `notes` `photos` |
@@ -278,7 +300,6 @@
 | `refunds` | 20 | 1 | `bank_reversal_notes` |
 | `repair_status_logs` | 6 | 1 | `note` |
 | `reviews` | 14 | 1 | `comment` |
-| `room_credit_files` | 9 | 1 | `name` |
 | `settlement_lines` | 5 | 1 | `cleared_document_id` |
 | `shop_tenders` | 16 | 1 | `reference` |
 | `sticker_templates` | 9 | 1 | `name` |

@@ -100,6 +100,25 @@ export const PII_TABLE_ALLOWLIST = {
   ],
   //    ไม่ให้ actor_name / note (ข้อความอิสระจาก GFIN) / meta (ipHash + user agent)
   external_finance_application_events: ['id', 'application_id', 'kind', 'actor_type', 'actor_user_id', 'created_at'],
+  // ── ตรวจเครดิตจากห้องแชท (GFIN final review I4, 2026-09-25) — เดิมไม่อยู่ในลิสต์ จึงถูกตัดสินด้วยด่านชื่ออย่างเดียว
+  //    แล้วหลุด: `result` (jsonb ผลวิเคราะห์ statement ธนาคาร — ชื่อบัญชี ยอดเงินเข้าออก รายได้ของลูกค้าคนเดียว) ·
+  //    `error` (ข้อความจาก AI/parser อาจยกเนื้อหา statement มา) · `key` ของไฟล์ (พาธเอกสารลูกค้าใน storage)
+  //    ให้เฉพาะ id / ความเชื่อมโยง / สถานะ / เวลา
+  room_credit_analyses: ['id', 'room_id', 'file_ids', 'status', 'credit_check_id', 'created_at', 'updated_at', 'deleted_at'],
+  //    ไม่ให้ key (พาธเอกสารลูกค้า) · name (ชื่อไฟล์ — ชนด่าน /name/ อยู่แล้ว)
+  room_credit_files: ['id', 'room_id', 'mime_type', 'size', 'source_message_id', 'created_at', 'updated_at', 'deleted_at'],
+  // ── นับเงินปิดยอด/นำฝากของสาขา — ตั้งใจไม่ให้พาธรูปสลิปใน storage: `deposit_slip_key` / `slip_key`
+  //    (receive_note / note / deposit_reference / reference ชนด่านชื่ออยู่แล้ว) · คอลัมน์อื่นคงชุดเดิมที่เคยได้
+  //    variance_reason / sent_back_reason คงไว้ตามเดิม — เรื่อง *_reason ทั้งระบบรอเจ้าของตัดสิน (ledger GFIN Task 7)
+  shop_cash_closes: [
+    'id', 'branch_id', 'status', 'attempt_no', 'period_start', 'float_amount', 'cash_in', 'cash_out',
+    'expected_amount', 'counted_amount', 'variance_amount', 'variance_reason', 'send_amount', 'counted_by_id', 'counted_at',
+    'received_amount', 'receive_variance', 'destination', 'confirmed_by_id', 'confirmed_at',
+    'sent_back_by_id', 'sent_back_at', 'sent_back_reason', 'created_at', 'updated_at', 'journal_entry_id',
+  ],
+  shop_cash_deposits: [
+    'id', 'branch_id', 'source', 'amount', 'deposited_by_id', 'deposited_at', 'journal_entry_id', 'created_at', 'updated_at',
+  ],
 }
 
 /**

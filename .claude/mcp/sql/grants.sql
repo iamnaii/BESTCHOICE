@@ -541,10 +541,10 @@ REVOKE ALL ON public."reviews" FROM mcp_ro;
 GRANT SELECT ("id", "product_id", "customer_id", "rating", "title", "verified", "verified_source", "status", "hidden_reason", "moderated_by_id", "moderated_at", "created_at", "updated_at", "deleted_at") ON public."reviews" TO mcp_ro;
 
 REVOKE ALL ON public."room_credit_analyses" FROM mcp_ro;
-GRANT SELECT ("id", "room_id", "file_ids", "status", "result", "error", "credit_check_id", "created_at", "updated_at", "deleted_at") ON public."room_credit_analyses" TO mcp_ro;
+GRANT SELECT ("id", "room_id", "file_ids", "status", "credit_check_id", "created_at", "updated_at", "deleted_at") ON public."room_credit_analyses" TO mcp_ro;
 
 REVOKE ALL ON public."room_credit_files" FROM mcp_ro;
-GRANT SELECT ("id", "room_id", "key", "mime_type", "size", "source_message_id", "created_at", "updated_at", "deleted_at") ON public."room_credit_files" TO mcp_ro;
+GRANT SELECT ("id", "room_id", "mime_type", "size", "source_message_id", "created_at", "updated_at", "deleted_at") ON public."room_credit_files" TO mcp_ro;
 
 REVOKE ALL ON public."sale_cost_snapshots" FROM mcp_ro;
 GRANT SELECT ("sale_id", "main_product_cost", "recorded_at") ON public."sale_cost_snapshots" TO mcp_ro;
@@ -568,10 +568,10 @@ REVOKE ALL ON public."shareholders" FROM mcp_ro;
 GRANT SELECT ("id", "shares", "share_pct", "type", "is_active", "created_at", "updated_at", "deleted_at") ON public."shareholders" TO mcp_ro;
 
 REVOKE ALL ON public."shop_cash_closes" FROM mcp_ro;
-GRANT SELECT ("id", "branch_id", "status", "attempt_no", "period_start", "float_amount", "cash_in", "cash_out", "expected_amount", "counted_amount", "variance_amount", "variance_reason", "send_amount", "counted_by_id", "counted_at", "received_amount", "receive_variance", "destination", "confirmed_by_id", "confirmed_at", "sent_back_by_id", "sent_back_at", "sent_back_reason", "created_at", "updated_at", "journal_entry_id", "deposit_slip_key") ON public."shop_cash_closes" TO mcp_ro;
+GRANT SELECT ("id", "branch_id", "status", "attempt_no", "period_start", "float_amount", "cash_in", "cash_out", "expected_amount", "counted_amount", "variance_amount", "variance_reason", "send_amount", "counted_by_id", "counted_at", "received_amount", "receive_variance", "destination", "confirmed_by_id", "confirmed_at", "sent_back_by_id", "sent_back_at", "sent_back_reason", "created_at", "updated_at", "journal_entry_id") ON public."shop_cash_closes" TO mcp_ro;
 
 REVOKE ALL ON public."shop_cash_deposits" FROM mcp_ro;
-GRANT SELECT ("id", "branch_id", "source", "amount", "slip_key", "deposited_by_id", "deposited_at", "journal_entry_id", "created_at", "updated_at") ON public."shop_cash_deposits" TO mcp_ro;
+GRANT SELECT ("id", "branch_id", "source", "amount", "deposited_by_id", "deposited_at", "journal_entry_id", "created_at", "updated_at") ON public."shop_cash_deposits" TO mcp_ro;
 
 REVOKE ALL ON public."shop_tenders" FROM mcp_ro;
 GRANT SELECT ("id", "direction", "kind", "branch_id", "method", "amount", "actor_id", "occurred_at", "seq", "seq_total", "sale_id", "contract_id", "booking_id", "trade_in_id", "reverses_tender_id", "created_at") ON public."shop_tenders" TO mcp_ro;

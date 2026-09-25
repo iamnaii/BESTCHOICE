@@ -33,13 +33,17 @@ function makeCase(over: Record<string, unknown> = {}) {
     },
     replacementProductId: null as string | null,
     replacementContractId: null as string | null,
-    approvedAt: null,
+    stage: 'IN_REPAIR' as const, // ค่าเริ่มต้นไม่ใช่ READY_FOR_PICKUP — เทสต์ readyAt ตั้งเองรายเคส
+    receivedAt: new Date('2026-09-20T03:00:00.000Z'),
+    approvedAt: null as Date | null,
     customer: { id: 'cust-1', lineIdShop: SHOP_LINE_ID as string | null },
     branch: { name: 'ลาดพร้าว' },
     repairTicket: {
       payer: 'SHOP' as const,
       estimatedCost: null as Prisma.Decimal | null,
       actualCost: null as Prisma.Decimal | null,
+      sentToRepairAt: null as Date | null,
+      repairedAt: null as Date | null,
     },
     ...over,
   };
@@ -436,7 +440,7 @@ describe('AfterSalesLineService', () => {
         select: { brand: true, model: true, storage: true, imeiSerial: true },
       });
       expect(prisma.contract.findFirst).toHaveBeenCalledWith({
-        where: { id: 'contract-new-1' },
+        where: { id: 'contract-new-1', deletedAt: null },
         select: { shopWarrantyEndDate: true },
       });
       const row = buildSpy.mock.calls[0][0];
@@ -559,6 +563,116 @@ describe('AfterSalesLineService', () => {
 
       const row = buildSpy.mock.calls[0][0];
       expect(row.deviceStorage).toBeUndefined();
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // readyAt / readySince (fix round 1, finding 1) — buildLineData derives readySince from
+  // row.readyAt, and the seeded AFTER_SALES_PICKUP_REMINDER template opens with
+  // "…รอรับที่ {branchName} ตั้งแต่ {readySince}" — a case not in READY_FOR_PICKUP or a case
+  // whose readyAt the mapper never populates renders "ตั้งแต่ " with nothing after it.
+  // ---------------------------------------------------------------------
+  describe('readyAt (PICKUP_REMINDER)', () => {
+    it('(readyAt i) READY_FOR_PICKUP REPAIR case with repairTicket.repairedAt set — readySince is the Thai short date of repairedAt via stageSince', async () => {
+      const repairedAt = new Date('2026-09-18T04:00:00.000Z');
+      const c = makeCase({
+        stage: 'READY_FOR_PICKUP',
+        repairTicket: {
+          payer: 'SHOP' as const,
+          estimatedCost: null,
+          actualCost: null,
+          sentToRepairAt: new Date('2026-09-10T00:00:00.000Z'),
+          repairedAt,
+        },
+      });
+      prisma.afterSalesCase.findFirst.mockResolvedValue(c);
+
+      await service.notifyMoment('case-1', 'PICKUP_REMINDER', 'actor-1');
+
+      // ground truth: คำนวณ readySince ผ่าน buildLineData จริงจาก readyAt ที่ตั้งมือ (ไม่พึ่ง mapper
+      // ของ service) แล้วเทียบกับ data.readySince ที่ notifyMoment ส่งจริง — ถ้า mapper ไม่ตั้ง
+      // readyAt เลย ค่าสองฝั่งจะต่างกันและเทสต์จะพัง ไม่ใช่แค่ echo ค่ากลับมาเทียบตัวเอง
+      const expectedRow: LineCaseRow = {
+        caseNumber: c.caseNumber,
+        outcome: c.outcome,
+        symptom: c.symptom,
+        deviceBrand: c.deviceBrand,
+        deviceModel: c.deviceModel,
+        deviceImei: c.deviceImei,
+        branch: { name: c.branch.name },
+        warrantySnapshot: {
+          status: c.warrantySnapshot.status,
+          shopWarrantyEndDate: c.warrantySnapshot.shopWarrantyEndDate,
+          manufacturerWarrantyEndDate: c.warrantySnapshot.manufacturerWarrantyEndDate,
+        },
+        repairTicket: { payer: 'SHOP', estimatedCost: null, actualCost: null },
+        replacement: null,
+        readyAt: repairedAt,
+      };
+      const expected = buildLineData(expectedRow, 'PICKUP_REMINDER', '');
+
+      const actualData = notifications.sendFromTemplate.mock.calls[0][1];
+      expect(actualData.readySince).toBe(expected.readySince);
+      expect(actualData.readySince).not.toBe('');
+    });
+
+    it('(readyAt ii) READY_FOR_PICKUP exchange case with no repair ticket falls back to approvedAt via stageSince', async () => {
+      const approvedAt = new Date('2026-09-19T02:00:00.000Z');
+      const c = makeCase({
+        outcome: 'SAME_MODEL_EXCHANGE' as const,
+        stage: 'READY_FOR_PICKUP',
+        approvedAt,
+        repairTicket: null,
+      });
+      prisma.afterSalesCase.findFirst.mockResolvedValue(c);
+
+      await service.notifyMoment('case-1', 'PICKUP_REMINDER', 'actor-1');
+
+      const expectedRow: LineCaseRow = {
+        caseNumber: c.caseNumber,
+        outcome: c.outcome,
+        symptom: c.symptom,
+        deviceBrand: c.deviceBrand,
+        deviceModel: c.deviceModel,
+        deviceImei: c.deviceImei,
+        branch: { name: c.branch.name },
+        warrantySnapshot: {
+          status: c.warrantySnapshot.status,
+          shopWarrantyEndDate: c.warrantySnapshot.shopWarrantyEndDate,
+          manufacturerWarrantyEndDate: c.warrantySnapshot.manufacturerWarrantyEndDate,
+        },
+        repairTicket: null,
+        replacement: null,
+        readyAt: approvedAt,
+      };
+      const expected = buildLineData(expectedRow, 'PICKUP_REMINDER', '');
+
+      const actualData = notifications.sendFromTemplate.mock.calls[0][1];
+      expect(actualData.readySince).toBe(expected.readySince);
+      expect(actualData.readySince).not.toBe('');
+    });
+
+    it('(readyAt iii) a case not in READY_FOR_PICKUP has readyAt null and an empty readySince', async () => {
+      const buildSpy = jest.spyOn(lineCopyUtil, 'buildLineData');
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        makeCase({
+          stage: 'IN_REPAIR',
+          repairTicket: {
+            payer: 'SHOP' as const,
+            estimatedCost: null,
+            actualCost: null,
+            sentToRepairAt: new Date('2026-09-10T00:00:00.000Z'),
+            repairedAt: new Date('2026-09-18T04:00:00.000Z'), // มีค่าแต่สถานะยังไม่ถึง — ต้องไม่ถูกใช้
+          },
+        }),
+      );
+
+      await service.notifyMoment('case-1', 'PICKUP_REMINDER', 'actor-1');
+
+      const row = buildSpy.mock.calls[0][0];
+      expect(row.readyAt).toBeNull();
+      const actualData = notifications.sendFromTemplate.mock.calls[0][1];
+      expect(actualData.readySince).toBe('');
     });
   });
 

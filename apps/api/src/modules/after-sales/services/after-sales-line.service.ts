@@ -15,6 +15,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { IntegrationConfigService } from '../../integrations/integration-config.service';
 import { readBoolFlag } from '../../../utils/config.util';
+import { stageSince } from '../utils/after-sales-stage.util';
 import {
   AFTER_SALES_LINE_EVENT_TYPE,
   AfterSalesLineMoment,
@@ -52,9 +53,20 @@ const CASE_FOR_LINE_SELECT = {
   warrantySnapshot: true,
   replacementProductId: true,
   replacementContractId: true,
+  stage: true,
+  receivedAt: true,
+  approvedAt: true,
   customer: { select: { id: true, lineIdShop: true } },
   branch: { select: { name: true } },
-  repairTicket: { select: { payer: true, estimatedCost: true, actualCost: true } },
+  repairTicket: {
+    select: {
+      payer: true,
+      estimatedCost: true,
+      actualCost: true,
+      sentToRepairAt: true,
+      repairedAt: true,
+    },
+  },
 } satisfies Prisma.AfterSalesCaseSelect;
 
 type CaseForLine = Prisma.AfterSalesCaseGetPayload<{ select: typeof CASE_FOR_LINE_SELECT }>;
@@ -132,7 +144,13 @@ export class AfterSalesLineService {
         liffId ?? null,
         moment === 'CLOSED' ? 'ประกันของฉัน' : 'ดูสถานะเคส',
       );
-      const data = buildLineData(this.toLineCaseRow(c, replacement), moment, liffLine);
+      // readyAt: stageSince ของ READY_FOR_PICKUP เท่านั้น — ใช้ตัวช่วยเดียวกับหน้าเคส
+      // (after-sales-stage.util.ts) ไม่คิดกติกา "since" ใหม่ซ้ำที่นี่
+      const readyAt =
+        c.stage === 'READY_FOR_PICKUP'
+          ? stageSince('READY_FOR_PICKUP', c.repairTicket, c.receivedAt, c.approvedAt)
+          : null;
+      const data = buildLineData(this.toLineCaseRow(c, replacement, readyAt), moment, liffLine);
 
       const res = await this.notifications.sendFromTemplate(eventType, data, to, {
         customerId: c.customer.id,
@@ -190,7 +208,7 @@ export class AfterSalesLineService {
     let shopWarrantyEndDate: string | null = null;
     if (c.replacementContractId) {
       const contract = await this.prisma.contract.findFirst({
-        where: { id: c.replacementContractId },
+        where: { id: c.replacementContractId, deletedAt: null },
         select: { shopWarrantyEndDate: true },
       });
       shopWarrantyEndDate = contract?.shopWarrantyEndDate
@@ -220,8 +238,15 @@ export class AfterSalesLineService {
    *   malformed/missing → ทั้งก้อนเป็น null.
    * - `repairTicket.estimatedCost`/`actualCost` เป็น Prisma.Decimal → string ผ่าน `.toString()`.
    * - `deviceStorage` ไม่มีคอลัมน์บน `AfterSalesCase` → เว้นว่างไว้ (undefined).
+   * - `readyAt` คำนวณโดยผู้เรียก (`stageSince('READY_FOR_PICKUP', ...)` เฉพาะเมื่อ
+   *   `c.stage === 'READY_FOR_PICKUP'`) แล้วส่งเข้ามาตรง ๆ — mapper นี้แค่วางค่าที่ได้รับ
+   *   ไม่คำนวณเอง เพราะ `stageSince` เป็นกติกาเดียวกับหน้าเคส ห้ามมีสำเนาที่สอง
    */
-  private toLineCaseRow(c: CaseForLine, replacement: ReplacementInfo | null): LineCaseRow {
+  private toLineCaseRow(
+    c: CaseForLine,
+    replacement: ReplacementInfo | null,
+    readyAt: Date | null,
+  ): LineCaseRow {
     return {
       caseNumber: c.caseNumber,
       outcome: c.outcome,
@@ -241,6 +266,7 @@ export class AfterSalesLineService {
           }
         : null,
       replacement,
+      readyAt,
     };
   }
 

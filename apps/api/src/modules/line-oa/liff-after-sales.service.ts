@@ -71,11 +71,20 @@ export interface LiffAfterSalesResponse {
 
 type OutcomeGroup = 'REPAIR' | 'EXCHANGE' | 'PRICED';
 
-function outcomeGroup(outcome: CaseOutcome): OutcomeGroup {
+/**
+ * Ruling PF-8 (fix round 1) — `deriveStage()` (`after-sales-stage.util.ts:47-51`) routes a
+ * `REPAIR` case whose repair ticket has been marked `REPLACED` (defect-exchange `markReplaced`)
+ * through `OPEN_EXCHANGE_STAGE` — the exact same AWAITING_APPROVAL → READY_FOR_PICKUP → CLOSED
+ * path SAME_MODEL_EXCHANGE uses — even though `outcome` itself stays `'REPAIR'` on the row. The
+ * title group must follow that same signal, or the customer sees a contradictory pairing like
+ * stageLabel 'รอผู้จัดการยืนยัน' next to a step titled 'กำลังซ่อม'.
+ */
+function outcomeGroup(outcome: CaseOutcome, repairTicket: CaseTicket | null): OutcomeGroup {
   if (outcome === 'PRICED_EXCHANGE') return 'PRICED';
   if (outcome === 'SAME_MODEL_EXCHANGE' || outcome === 'CASH_SAME_MODEL_EXCHANGE')
     return 'EXCHANGE';
-  return 'REPAIR'; // REPAIR หรือ null — brief: "outcome null → treat like REPAIR titles"
+  if (outcome === 'REPAIR' && repairTicket?.status === 'REPLACED') return 'EXCHANGE';
+  return 'REPAIR'; // REPAIR (ticket ไม่ใช่ REPLACED) หรือ null — brief: "outcome null → treat like REPAIR titles"
 }
 
 /** ขั้นของลูกค้า (ต่างจากหน้าพนักงาน — ห้ามคำว่า "รับเครื่อง" เปล่า ๆ) ต่อกลุ่มทางออก */
@@ -139,9 +148,10 @@ function buildSteps(
   receivedAt: Date,
   approvedAt: Date | null,
   closedAt: Date | null,
+  updatedAt: Date,
   repairTicket: CaseTicket | null,
 ): LiffAfterSalesCase['steps'] {
-  const titles = STEP_TITLES[outcomeGroup(outcome)];
+  const titles = STEP_TITLES[outcomeGroup(outcome, repairTicket)];
 
   // CANCELLED — brief: "all steps idle except step 0 done" (ต่างจากหน้าพนักงานที่ปล่อย idle
   // ทั้งหมด — ยึดตามบรีฟของงานนี้ เพราะเป็นหน้าจอลูกค้าคนละบริบท)
@@ -150,11 +160,12 @@ function buildSteps(
   }
 
   const pos = stagePosition(stage);
-  // stageSince() ไม่รู้จัก CLOSED (fallback เป็น receivedAt) — ใช้ closedAt จริงเมื่อมี ให้ตรง
-  // กับวันที่ปิดเคสจริงแทนวันที่รับเรื่อง
+  // stageSince() ไม่รู้จัก CLOSED (fallback เป็น receivedAt) — ใช้ closedAt จริงเมื่อมี ไม่งั้น
+  // fallback เป็น updatedAt (fix round 1 Minor — ใกล้เวลาปิดจริงกว่า receivedAt สำหรับแถวเก่า
+  // ที่ไม่เคยมี closedAt เขียนไว้) ให้ตรงกับวันที่ปิดเคสจริงแทนวันที่รับเรื่อง
   const since =
-    stage === 'CLOSED' && closedAt
-      ? closedAt
+    stage === 'CLOSED'
+      ? (closedAt ?? updatedAt)
       : stageSince(
           stage,
           repairTicket
@@ -220,6 +231,7 @@ function toLiffCase(row: CaseForLiff): LiffAfterSalesCase {
       row.receivedAt,
       row.approvedAt,
       row.closedAt,
+      row.updatedAt,
       row.repairTicket,
     ),
     updatedAt: row.updatedAt.toISOString(),

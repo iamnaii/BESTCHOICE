@@ -1,4 +1,5 @@
 import { LiffAfterSalesService } from './liff-after-sales.service';
+import { thaiShortYearDate } from '../after-sales/utils/after-sales-line-copy.util';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildTicket(overrides: Record<string, any> = {}) {
@@ -201,6 +202,96 @@ describe('LiffAfterSalesService', () => {
     expect(c.stageLabel).toBe('ยกเลิก');
     expect(c.steps.map((s) => s.state)).toEqual(['done', 'idle', 'idle', 'idle']);
     expect(c.steps.every((s) => s.state !== 'now')).toBe(true);
+  });
+
+  it('(b) regression: plain REPAIR/IN_REPAIR (ticket not REPLACED) still yields the REPAIR step list', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+    prisma.afterSalesCase.findMany.mockResolvedValue([
+      buildCase({
+        outcome: 'REPAIR',
+        stage: 'IN_REPAIR',
+        repairTicket: buildTicket({ status: 'IN_PROGRESS' }),
+      }),
+    ]);
+
+    const result = await service.getMyCases('U_line1');
+
+    expect(result.cases[0].steps.map((s) => s.title)).toEqual([
+      'รับเรื่องแล้ว',
+      'กำลังซ่อม',
+      'รอรับเครื่อง',
+      'ปิดเคส',
+    ]);
+  });
+
+  // ─── PF-8 (fix round 1, Important) — REPAIR outcome whose repair ticket was REPLACED must
+  // follow the exchange step list/position, matching the signal deriveStage() itself uses ───
+
+  it('PF-8 (i): REPAIR + ticket REPLACED, reconciled AWAITING_APPROVAL → exchange step list, no "กำลังซ่อม"', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+    prisma.afterSalesCase.findMany.mockResolvedValue([
+      buildCase({
+        outcome: 'REPAIR',
+        stage: 'AWAITING_APPROVAL',
+        replacementContractId: null,
+        repairTicket: buildTicket({ status: 'REPLACED' }),
+      }),
+    ]);
+
+    const result = await service.getMyCases('U_line1');
+    const c = result.cases[0];
+
+    expect(c.stageLabel).toBe('รอผู้จัดการยืนยัน');
+    expect(c.steps.map((s) => s.title)).toEqual([
+      'รับเรื่องแล้ว',
+      'รอผู้จัดการยืนยัน',
+      'รอรับเครื่องใหม่',
+      'ปิดเคส',
+    ]);
+    expect(c.steps[1].state).toBe('now');
+    expect(c.steps.some((s) => s.title === 'กำลังซ่อม')).toBe(false);
+  });
+
+  it('PF-8 (ii): REPAIR + ticket REPLACED, READY_FOR_PICKUP (new contract set) → "รอรับเครื่องใหม่" is now, stageLabel รอรับเครื่อง', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+    prisma.afterSalesCase.findMany.mockResolvedValue([
+      buildCase({
+        outcome: 'REPAIR',
+        stage: 'READY_FOR_PICKUP',
+        replacementContractId: 'contract-xyz',
+        repairTicket: buildTicket({ status: 'REPLACED' }),
+      }),
+    ]);
+
+    const result = await service.getMyCases('U_line1');
+    const c = result.cases[0];
+
+    expect(c.stageLabel).toBe('รอรับเครื่อง');
+    expect(c.steps[2].title).toBe('รอรับเครื่องใหม่');
+    expect(c.steps[2].state).toBe('now');
+  });
+
+  // ─── Minor (fix round 1) — CLOSED hint falls back to updatedAt, not stageSince()'s receivedAt
+  // default, when closedAt is null (legacy rows that never had closedAt written) ───
+
+  it('Minor: CLOSED case with closedAt=null uses updatedAt for the "now" step hint', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+    const updatedAt = new Date('2026-09-15T03:00:00.000Z');
+    prisma.afterSalesCase.findMany.mockResolvedValue([
+      buildCase({
+        outcome: 'REPAIR',
+        stage: 'CLOSED',
+        closedAt: null,
+        updatedAt,
+        repairTicket: buildTicket({ status: 'CLOSED', returnedToCustomerAt: null }),
+      }),
+    ]);
+
+    const result = await service.getMyCases('U_line1');
+    const c = result.cases[0];
+
+    expect(c.steps[3].state).toBe('now');
+    expect(c.steps[3].hint).toBe(`ปิดเคส ${thaiShortYearDate(updatedAt)}`);
   });
 
   it('(b) deviceName falls back to "เครื่องของคุณ" when brand/model are both null', async () => {

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Clock } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatDateTime } from '@/utils/formatters';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -44,6 +45,7 @@ import {
   STALE_ICON,
   staleLabel,
   STEP_TITLES_BY_OUTCOME,
+  stripLineTag,
   WARRANTY_LABEL,
   WARRANTY_TILE,
   type AfterSalesStage,
@@ -485,14 +487,25 @@ export default function AfterSalesCasePage() {
                 </Card>
 
                 <Card title="LINE ลูกค้า">
-                  {data.lineLinked ? (
-                    <p className="text-sm leading-snug text-foreground">
-                      พร้อมส่ง (เปิดใช้รอบถัดไป)
-                    </p>
-                  ) : (
+                  {!data.lineLinked ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-2.5 py-1 text-xs font-semibold leading-snug text-warning-strong">
                       ยังไม่ผูก LINE — โทรแจ้ง
                     </span>
+                  ) : data.lineEvents.length === 0 ? (
+                    <p className="text-sm leading-snug text-foreground">
+                      ผูก LINE แล้ว — ยังไม่มีข้อความส่ง
+                    </p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {data.lineEvents.slice(0, 3).map((e, i) => (
+                        <li
+                          key={`${e.kind}-${e.at}-${i}`}
+                          className="text-sm leading-snug text-foreground"
+                        >
+                          {stripLineTag(e.note)} · {formatDateTime(e.at)}
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </Card>
               </div>

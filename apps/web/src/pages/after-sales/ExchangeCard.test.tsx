@@ -55,6 +55,7 @@ function detail(over: Partial<CaseDetail> = {}): CaseDetail {
     photoCount: 6,
     purchasePhotoAngles: [],
     lineLinked: false,
+    lineEvents: [],
     timeline: [],
     cancelReason: null,
     closedAt: null,

@@ -24,6 +24,8 @@ const IMEI = '356812345674412';
 const foundResult: LookupResult = {
   found: true,
   source: 'INSTALLMENT_CONTRACT',
+  // Task 8 — ลูกค้าคนนี้ผูก LINE ไว้แล้ว (เคสทั่วไปในเทสต์ชุดนี้)
+  lineLinked: true,
   product: {
     id: 'p1',
     brand: 'Apple',
@@ -154,6 +156,8 @@ const previewReview = {
 const notFoundResult: LookupResult = {
   found: false,
   source: 'WALK_IN',
+  // Task 8 — walk-in ไม่มีลูกค้าให้ผูก LINE เลย
+  lineLinked: false,
   product: null,
   customer: null,
   contract: null,
@@ -227,6 +231,24 @@ describe('AfterSalesNewPage — แจ้งปัญหาเครื่อง
 
     expect(screen.getByText('สรุปก่อนบันทึก')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' })).toBeInTheDocument();
+  });
+
+  it('Task 8: พบเครื่อง + ลูกค้าผูก LINE (lineLinked=true) → สรุปก่อนบันทึกมี "จะส่ง LINE แจ้งลูกค้าเมื่อบันทึก"', async () => {
+    mockGet(foundResult);
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+
+    expect(screen.getByText(/จะส่ง LINE แจ้งลูกค้าเมื่อบันทึก/)).toBeInTheDocument();
+    expect(screen.queryByText(/ลูกค้าไม่ผูก LINE/)).not.toBeInTheDocument();
+  });
+
+  it('Task 8: walk-in ไม่มีลูกค้า (lineLinked=false) → สรุปก่อนบันทึกมี "ลูกค้าไม่ผูก LINE — โทรแจ้งเอง"', async () => {
+    mockGet(notFoundResult);
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('สรุปก่อนบันทึก');
+
+    expect(screen.getByText(/ลูกค้าไม่ผูก LINE — โทรแจ้งเอง/)).toBeInTheDocument();
+    expect(screen.queryByText(/จะส่ง LINE แจ้งลูกค้าเมื่อบันทึก/)).not.toBeInTheDocument();
   });
 
   it('กดบันทึกโดยไม่มีรูป → toast error "ต้องมีรูปตอนรับฝากอย่างน้อย 1 รูป" และไม่เรียก API', async () => {

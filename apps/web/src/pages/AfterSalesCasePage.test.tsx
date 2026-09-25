@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import AfterSalesCasePage from './AfterSalesCasePage';
 import type { CaseDetail } from './after-sales/after-sales';
+import { formatDateTime } from '@/utils/formatters';
 
 const auth = vi.hoisted(() => ({
   user: { id: 'u1', role: 'OWNER', branchId: null as string | null },
@@ -72,6 +73,7 @@ function caseDetail(over: Partial<CaseDetail> = {}): CaseDetail {
     photoCount: 3,
     purchasePhotoAngles: ['front', 'back'],
     lineLinked: false,
+    lineEvents: [],
     timeline: [
       { at: '2026-09-01T02:00:00.000Z', kind: 'RECEIVED', note: null },
       { at: '2026-09-01T02:05:00.000Z', kind: 'OUTCOME_SET', note: 'เลือกทางออก: ซ่อม' },
@@ -927,5 +929,73 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     renderPage(detail.id, '?action=approve');
     await screen.findByRole('heading', { name: detail.caseNumber });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('Task 8 — การ์ด "LINE ลูกค้า" ของจริง (3 สถานะ)', () => {
+  it('lineLinked=false → ชิปเดิม "ยังไม่ผูก LINE — โทรแจ้ง" (ไม่ขึ้นกับ lineEvents)', async () => {
+    const detail = caseDetail({ lineLinked: false, lineEvents: [] });
+    mockGet(detail);
+    renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(screen.getByText('ยังไม่ผูก LINE — โทรแจ้ง')).toBeInTheDocument();
+  });
+
+  it('lineLinked=true และ lineEvents ว่าง → "ผูก LINE แล้ว — ยังไม่มีข้อความส่ง"', async () => {
+    const detail = caseDetail({ lineLinked: true, lineEvents: [] });
+    mockGet(detail);
+    renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(screen.getByText('ผูก LINE แล้ว — ยังไม่มีข้อความส่ง')).toBeInTheDocument();
+    expect(screen.queryByText('ยังไม่ผูก LINE — โทรแจ้ง')).not.toBeInTheDocument();
+  });
+
+  it('lineLinked=true และมี lineEvents → แสดง ≤3 บรรทัด "<ป้ายจังหวะ> · <สถานะ> · <เวลาไทย>" (ตัด tag ออก)', async () => {
+    const detail = caseDetail({
+      lineLinked: true,
+      lineEvents: [
+        {
+          at: '2026-09-10T03:00:00.000Z',
+          kind: 'NOTE',
+          note: '[AFTER_SALES_CLOSED] ปิดเคส · ส่งไม่สำเร็จ (429)',
+        },
+        {
+          at: '2026-09-08T03:00:01.000Z',
+          kind: 'LINE_SENT',
+          note: '[AFTER_SALES_READY] มารับได้แล้ว · ส่งแล้ว',
+        },
+        {
+          at: '2026-09-01T02:05:00.000Z',
+          kind: 'LINE_SENT',
+          note: '[AFTER_SALES_RECEIVED] รับเรื่องแล้ว · ส่งแล้ว',
+        },
+        {
+          at: '2026-09-01T02:00:00.000Z',
+          kind: 'LINE_SKIPPED_NO_LINK',
+          note: '[AFTER_SALES_RECEIVED] รับเรื่องแล้ว · ไม่ได้ส่ง — ลูกค้ายังไม่ผูก LINE',
+        },
+      ],
+    });
+    mockGet(detail);
+    renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+
+    // ≤3 บรรทัด — แถวที่ 4 (เก่าสุด) ต้องไม่โผล่บนการ์ด
+    expect(
+      screen.getByText(`ปิดเคส · ส่งไม่สำเร็จ (429) · ${formatDateTime('2026-09-10T03:00:00.000Z')}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`มารับได้แล้ว · ส่งแล้ว · ${formatDateTime('2026-09-08T03:00:01.000Z')}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`รับเรื่องแล้ว · ส่งแล้ว · ${formatDateTime('2026-09-01T02:05:00.000Z')}`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ไม่ได้ส่ง — ลูกค้ายังไม่ผูก LINE/)).not.toBeInTheDocument();
+    // tag ดิบต้องไม่หลุดออกมาที่หน้าจอ
+    expect(screen.queryByText(/\[AFTER_SALES_/)).not.toBeInTheDocument();
+    expect(screen.queryByText('ผูก LINE แล้ว — ยังไม่มีข้อความส่ง')).not.toBeInTheDocument();
   });
 });

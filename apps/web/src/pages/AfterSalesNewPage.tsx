@@ -199,6 +199,11 @@ export default function AfterSalesNewPage() {
       : [deviceBrand, deviceModel].filter(Boolean).join(' ');
     if (deviceName) parts.push(`เครื่อง ${deviceName}`);
     parts.push(`รูป ${photos.length} รูป`);
+    // Task 8 — บอกล่วงหน้าว่าบันทึกแล้วจะมีการส่ง LINE แจ้งลูกค้าหรือไม่ (walk-in ที่ไม่มี
+    // ลูกค้าให้ผูก LINE ก็ตกไปที่ข้อความหลังเช่นกัน เพราะ lookup.data?.lineLinked เป็น false)
+    parts.push(
+      lookup.data?.lineLinked ? 'จะส่ง LINE แจ้งลูกค้าเมื่อบันทึก' : 'ลูกค้าไม่ผูก LINE — โทรแจ้งเอง',
+    );
 
     const replacement = replacementProducts.find((p) => p.id === replacementProductId);
     const replacementText = replacement

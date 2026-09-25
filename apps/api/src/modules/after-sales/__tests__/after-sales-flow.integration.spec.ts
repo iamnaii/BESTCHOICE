@@ -871,6 +871,15 @@ describe('after-sales — LINE 3 จังหวะ (Task 3, PR3, เคส ก-
 
     const found = await lookupSvc.lookup({ imei: lineImeiB }, OWNER());
     expect(found.lineLinked).toBe(false);
+
+    // Task 8 carry — getCase() ของเคสนี้ (ลูกค้าไม่ผูก LINE) ต้องรายงาน lineLinked=false,
+    // timeline มีแถว LINE_SKIPPED_NO_LINK, และ lineEvents (Task 8 ใหม่) เห็นแถวเดียวกันนั้น
+    // โดย note ยังขึ้นต้นด้วย tag ของจังหวะ RECEIVED
+    const c = await querySvc.getCase(caseB, OWNER());
+    expect(c.lineLinked).toBe(false);
+    expect(c.timeline.some((t) => t.kind === 'LINE_SKIPPED_NO_LINK')).toBe(true);
+    expect(c.lineEvents[0]).toMatchObject({ kind: 'LINE_SKIPPED_NO_LINK' });
+    expect((c.lineEvents[0].note as string).startsWith('[AFTER_SALES_RECEIVED]')).toBe(true);
   });
 
   // (ค) markRepaired (ซ่อมที่ร้าน ผู้จ่ายลูกค้า 500) → READY costLine ตรง · returnToCustomer →

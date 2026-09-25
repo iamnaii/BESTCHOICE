@@ -1,11 +1,13 @@
-import { dayTimeOf, type TimelineItem } from './after-sales';
+import { dayTimeOf, stripLineTag, type TimelineItem } from './after-sales';
 
 /**
  * ป้ายชนิดเหตุการณ์ (Step 4) — ผสมทั้ง AfterSalesEvent (RECEIVED/OUTCOME_SET/REPAIR_SENT/
  * REPAIR_DONE/REPAIR_SENT_BACK/DELIVERED/PHOTO_ADDED/CANCELLED/CLOSED/NOTE/LINE_*) และ
  * RepairStatusLog ที่ map เป็น `REPAIR_<toStatus>` — เฉพาะที่ brief ระบุชื่อไทยไว้เท่านั้น
- * ที่เหลือ (REPAIR_SENT ดิบ, REPAIR_DONE, DELIVERED, NOTE, REPAIR_CANCELLED, REPAIR_REPLACED)
- * ตกไปที่ fallback = คืน kind ดิบ (PR 3 จะเพิ่ม LINE_SENT/LINE_SKIPPED_NO_LINK ตัวเอง)
+ * ที่เหลือ (REPAIR_SENT ดิบ, REPAIR_DONE, DELIVERED, NOTE ธรรมดา, REPAIR_CANCELLED,
+ * REPAIR_REPLACED) ตกไปที่ fallback = คืน kind ดิบ
+ *
+ * Task 8 — LINE_SENT/LINE_SKIPPED_NO_LINK เป็นแถวจริงจาก AfterSalesEvent (Task 2/3 เขียน)
  *
  * Task 11 — 6 kind ใหม่ของ PR 2 (เปลี่ยนเครื่อง): APPROVED/REJECTED เป็นแถวจริงจาก
  * AfterSalesEvent (confirmSameModel/approvePriced เขียน APPROVED, rejectSameModel/rejectPriced
@@ -29,11 +31,20 @@ const KIND_LABEL: Record<string, string> = {
   EXCHANGE_APPROVED: 'อนุมัติคำขอ',
   EXCHANGE_REJECTED: 'ปฏิเสธคำขอ',
   EXCHANGE_CANCELED: 'ยกเลิกคำขอ',
+  LINE_SENT: 'ส่ง LINE',
+  LINE_SKIPPED_NO_LINK: 'ไม่ได้ส่ง LINE (ไม่ผูก)',
 };
 
-function labelOf(kind: string): string {
-  if (kind.startsWith('LINE_')) return 'LINE';
-  return KIND_LABEL[kind] ?? kind;
+/** Task 8 — event ที่ DISABLED/FAILED/BLOCKED ถูกเขียนเป็น kind 'NOTE' เหมือนบันทึกทั่วไป
+ * (ดู after-sales-line.service.ts) แยกจากบันทึกทั่วไปด้วย note tag เดียวกับ getCase().lineEvents
+ * (`[AFTER_SALES_*]`) เท่านั้น */
+function isLineNote(note: string | null): boolean {
+  return !!note && note.startsWith('[AFTER_SALES_');
+}
+
+function labelOf(item: Pick<TimelineItem, 'kind' | 'note'>): string {
+  if (item.kind === 'NOTE' && isLineNote(item.note)) return 'LINE';
+  return KIND_LABEL[item.kind] ?? item.kind;
 }
 
 interface CaseTimelineProps {
@@ -69,13 +80,17 @@ export default function CaseTimeline({ timeline, stale, daysInStage }: CaseTimel
           />
           <div className="min-w-0 flex-1 text-sm leading-snug">
             <div className="flex flex-wrap items-baseline gap-x-2">
-              <span className="font-semibold text-foreground">{labelOf(item.kind)}</span>
+              <span className="font-semibold text-foreground">{labelOf(item)}</span>
               <span className="text-xs text-muted-foreground">{dayTimeOf(item.at)}</span>
               {item.actorName && (
                 <span className="text-xs text-muted-foreground">· {item.actorName}</span>
               )}
             </div>
-            {item.note && <p className="text-muted-foreground">{item.note}</p>}
+            {item.note && (
+              <p className="text-muted-foreground">
+                {isLineNote(item.note) ? stripLineTag(item.note) : item.note}
+              </p>
+            )}
           </div>
         </li>
       ))}

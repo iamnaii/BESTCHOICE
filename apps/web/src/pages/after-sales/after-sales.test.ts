@@ -17,6 +17,7 @@ import {
   afterSalesKeys,
   primaryAction,
   secondaryActions,
+  stripLineTag,
   type AfterSalesOutcome,
   type CaseDetail,
 } from './after-sales';
@@ -56,6 +57,7 @@ function detail(over: Partial<CaseDetail> = {}): CaseDetail {
     photoCount: 6,
     purchasePhotoAngles: [],
     lineLinked: false,
+    lineEvents: [],
     timeline: [],
     cancelReason: null,
     closedAt: null,
@@ -195,6 +197,18 @@ describe('after-sales maps', () => {
       'replacement-products',
       { contractId: 'c1' },
     ]);
+  });
+});
+
+describe('Task 8: stripLineTag — ตัด tag [XXX] นำหน้า note ของ AfterSalesEvent LINE', () => {
+  it('ตัด tag ออก เหลือ "<ป้ายจังหวะ> · <สถานะ>"', () => {
+    expect(stripLineTag('[AFTER_SALES_READY] มารับได้แล้ว · ส่งแล้ว')).toBe(
+      'มารับได้แล้ว · ส่งแล้ว',
+    );
+  });
+
+  it('note ที่ไม่มี tag นำหน้า — คืนค่าเดิมเฉยๆ', () => {
+    expect(stripLineTag('บันทึกทั่วไป')).toBe('บันทึกทั่วไป');
   });
 });
 

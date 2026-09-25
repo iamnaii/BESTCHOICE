@@ -977,4 +977,96 @@ describe('AfterSalesQueryService — branch scoping + summary money gate', () =>
       expect(prisma.contract.findMany).not.toHaveBeenCalled();
     });
   });
+
+  describe('(n) Task 8 — getCase().lineEvents', () => {
+    const owner = { id: 'u-owner', role: 'OWNER', branchId: null };
+
+    it('กรองเฉพาะ event ที่ note ขึ้นต้น [AFTER_SALES_ (ไม่รวมบันทึกทั่วไป) เรียงใหม่สุดก่อน', async () => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue({
+        ...buildCaseA(),
+        customer: { ...buildCaseA().customer, lineIdShop: null },
+        repairTicket: {
+          ...buildRepairTicket(),
+          statusLogs: [],
+          expenseDocument: null,
+          otherIncome: null,
+          contract: null,
+        },
+        events: [
+          {
+            id: 'ev-1',
+            kind: 'LINE_SENT',
+            note: '[AFTER_SALES_READY] มารับได้แล้ว · ส่งแล้ว',
+            actorId: null,
+            createdAt: new Date('2026-09-01T00:00:00.000Z'),
+          },
+          {
+            id: 'ev-2',
+            kind: 'NOTE',
+            note: 'บันทึกทั่วไป',
+            actorId: null,
+            createdAt: new Date('2026-09-01T00:05:00.000Z'),
+          },
+          {
+            id: 'ev-3',
+            kind: 'NOTE',
+            note: '[AFTER_SALES_CLOSED] ปิดเคส · ส่งไม่สำเร็จ (429)',
+            actorId: null,
+            createdAt: new Date('2026-09-01T00:10:00.000Z'),
+          },
+        ],
+        photoKeys: [],
+        purchasePhotoKeys: [],
+      });
+
+      const result = await svc.getCase('as-a', owner);
+
+      expect(result.lineEvents).toHaveLength(2);
+      // ใหม่สุดก่อน (ev-3 createdAt ทีหลัง ev-1) — บันทึกทั่วไป (ev-2) ไม่ปนเข้ามา
+      expect(result.lineEvents[0]).toMatchObject({
+        kind: 'NOTE',
+        note: '[AFTER_SALES_CLOSED] ปิดเคส · ส่งไม่สำเร็จ (429)',
+        at: '2026-09-01T00:10:00.000Z',
+      });
+      expect(result.lineEvents[1]).toMatchObject({
+        kind: 'LINE_SENT',
+        note: '[AFTER_SALES_READY] มารับได้แล้ว · ส่งแล้ว',
+        at: '2026-09-01T00:00:00.000Z',
+      });
+      expect(result.lineEvents.some((e: { note: string }) => e.note === 'บันทึกทั่วไป')).toBe(
+        false,
+      );
+    });
+
+    it('จำกัดสูงสุด 5 แถว แม้มี event LINE ที่ note ขึ้นต้น [AFTER_SALES_ มากกว่านั้น', async () => {
+      const events = Array.from({ length: 7 }, (_, i) => ({
+        id: `ev-${i}`,
+        kind: 'LINE_SENT',
+        note: `[AFTER_SALES_READY] มารับได้แล้ว · ส่งแล้ว (${i})`,
+        actorId: null,
+        createdAt: new Date(2026, 8, 1, 0, i, 0),
+      }));
+      prisma.afterSalesCase.findFirst.mockResolvedValue({
+        ...buildCaseA(),
+        customer: { ...buildCaseA().customer, lineIdShop: null },
+        repairTicket: {
+          ...buildRepairTicket(),
+          statusLogs: [],
+          expenseDocument: null,
+          otherIncome: null,
+          contract: null,
+        },
+        events,
+        photoKeys: [],
+        purchasePhotoKeys: [],
+      });
+
+      const result = await svc.getCase('as-a', owner);
+
+      expect(result.lineEvents).toHaveLength(5);
+      // ใหม่สุดก่อน — index 6 (สร้างล่าสุด) มาก่อน index 2 (ตัวที่ 5 จากท้าย)
+      expect(result.lineEvents[0].note).toContain('(6)');
+      expect(result.lineEvents[4].note).toContain('(2)');
+    });
+  });
 });

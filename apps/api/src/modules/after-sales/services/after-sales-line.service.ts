@@ -1,0 +1,280 @@
+// PR 3 Task 2 — AfterSalesLineService: ที่เดียวที่ส่ง LINE ของเคสหลังการขาย
+//
+// notifyMoment(caseId, moment, actorId) ส่ง LINE ให้ลูกค้า 1 จังหวะ (RECEIVED/READY/CLOSED/
+// PICKUP_REMINDER) แล้วบันทึกผลเป็น AfterSalesEvent เสมอ — ไม่ throw ไม่ว่ากรณีใด เพื่อให้
+// ผู้เรียก (Task 3 case/repair/exchange services, Task 4 cron) เรียกแบบ `void` หลัง commit ได้
+// โดยไม่ต้อง try/catch ของตัวเอง. hasLineEvent ให้ cron ใช้กัน dedup การส่งซ้ำ.
+//
+// PII: `customer.lineIdShop` อยู่ในเมธอดนี้เท่านั้น — ห้ามหลุดไปที่ template `data`, event `note`,
+// หรือ logger call ใด ๆ (test (e) ปักไว้).
+
+import { Injectable, Logger } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
+import { PrismaService } from '../../../prisma/prisma.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { IntegrationConfigService } from '../../integrations/integration-config.service';
+import { readBoolFlag } from '../../../utils/config.util';
+import {
+  AFTER_SALES_LINE_EVENT_TYPE,
+  AfterSalesLineMoment,
+  buildLiffLine,
+  buildLineData,
+  lineEventNote,
+  lineEventTag,
+  LineCaseRow,
+} from '../utils/after-sales-line-copy.util';
+
+type NotifyResult = {
+  status: 'SENT' | 'NO_LINK' | 'DISABLED' | 'FAILED' | 'BLOCKED' | 'SKIPPED_DUP';
+};
+
+/** สถานะจาก NotificationsService.sendFromTemplate ที่นับว่า "อยู่ระหว่างส่ง/ส่งแล้ว" ไม่ใช่ถูกบล็อก */
+const IN_FLIGHT_STATUSES = new Set(['SENT', 'PENDING', 'RETRY_PENDING', 'DELAYED']);
+
+interface ReplacementInfo {
+  brand: string;
+  model: string;
+  storage: string | null;
+  imeiSerial: string | null;
+  shopWarrantyEndDate: string | null;
+}
+
+/** select ที่ `notifyMoment` โหลดเคสมาด้วย — `satisfies` กันไม่ให้ select กับ type ที่ใช้จริงเพี้ยนกัน */
+const CASE_FOR_LINE_SELECT = {
+  id: true,
+  caseNumber: true,
+  outcome: true,
+  symptom: true,
+  deviceBrand: true,
+  deviceModel: true,
+  deviceImei: true,
+  warrantySnapshot: true,
+  replacementProductId: true,
+  replacementContractId: true,
+  customer: { select: { id: true, lineIdShop: true } },
+  branch: { select: { name: true } },
+  repairTicket: { select: { payer: true, estimatedCost: true, actualCost: true } },
+} satisfies Prisma.AfterSalesCaseSelect;
+
+type CaseForLine = Prisma.AfterSalesCaseGetPayload<{ select: typeof CASE_FOR_LINE_SELECT }>;
+
+@Injectable()
+export class AfterSalesLineService {
+  private readonly logger = new Logger(AfterSalesLineService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    private readonly integrationConfig: IntegrationConfigService,
+  ) {}
+
+  /** ใช้โดย cron (Task 4) กัน dedup — ถามว่าเคสนี้เคยส่ง LINE ของ eventType นี้สำเร็จหรือยัง */
+  async hasLineEvent(caseId: string, eventType: string): Promise<boolean> {
+    const hit = await this.prisma.afterSalesEvent.findFirst({
+      where: { caseId, kind: 'LINE_SENT', note: { startsWith: lineEventTag(eventType) } },
+      select: { id: true },
+    });
+    return !!hit;
+  }
+
+  /** ห้าม throw — ผู้เรียกใช้ `void` หลัง commit */
+  async notifyMoment(
+    caseId: string,
+    moment: AfterSalesLineMoment,
+    actorId: string | null,
+  ): Promise<NotifyResult> {
+    const eventType = AFTER_SALES_LINE_EVENT_TYPE[moment];
+    try {
+      const c = await this.prisma.afterSalesCase.findFirst({
+        where: { id: caseId, deletedAt: null },
+        select: CASE_FOR_LINE_SELECT,
+      });
+
+      if (!c) {
+        Sentry.captureMessage('after-sales line: case not found', {
+          level: 'warning',
+          tags: { subsystem: 'after-sales-line' },
+          extra: { caseId, moment },
+        });
+        return { status: 'FAILED' };
+      }
+
+      const enabled = await readBoolFlag(this.prisma, 'after_sales_line_enabled', true);
+      if (!enabled) {
+        // `await` here (not a bare `return this.record(...)`) is load-bearing: a bare return
+        // hands back the un-awaited promise, so a later rejection (e.g. the DB write itself
+        // fails) would skip this function's own `catch` below and reject `notifyMoment`'s
+        // promise straight through to the caller — breaking the "never throws" contract.
+        return await this.record(
+          caseId,
+          'NOTE',
+          lineEventNote(eventType, 'DISABLED'),
+          actorId,
+          'DISABLED',
+        );
+      }
+
+      const to = c.customer.lineIdShop; // PII — อยู่ในเมธอดนี้เท่านั้น ห้ามหลุดเข้า data/note/log
+      if (!to) {
+        return await this.record(
+          caseId,
+          'LINE_SKIPPED_NO_LINK',
+          lineEventNote(eventType, 'NO_LINK'),
+          actorId,
+          'NO_LINK',
+        );
+      }
+
+      const replacement = await this.loadReplacement(c);
+      const liffId = await this.integrationConfig.getValue('line-shop', 'liffId').catch(() => null);
+      const liffLine = buildLiffLine(
+        liffId ?? null,
+        moment === 'CLOSED' ? 'ประกันของฉัน' : 'ดูสถานะเคส',
+      );
+      const data = buildLineData(this.toLineCaseRow(c, replacement), moment, liffLine);
+
+      const res = await this.notifications.sendFromTemplate(eventType, data, to, {
+        customerId: c.customer.id,
+        relatedId: caseId,
+      });
+
+      if (IN_FLIGHT_STATUSES.has(res.status)) {
+        return await this.record(
+          caseId,
+          'LINE_SENT',
+          lineEventNote(eventType, 'SENT'),
+          actorId,
+          'SENT',
+        );
+      }
+      return await this.record(
+        caseId,
+        'NOTE',
+        lineEventNote(eventType, 'BLOCKED', res.blockReason ?? res.status),
+        actorId,
+        'BLOCKED',
+      );
+    } catch (err) {
+      Sentry.captureException(err, { tags: { subsystem: 'after-sales-line', moment } });
+      this.logger.warn(
+        `LINE ${eventType} ของเคส ${caseId} ส่งไม่สำเร็จ: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      await this.record(
+        caseId,
+        'NOTE',
+        lineEventNote(
+          eventType,
+          'FAILED',
+          err instanceof Error ? err.message.slice(0, 80) : undefined,
+        ),
+        actorId,
+        'FAILED',
+      ).catch(() => undefined);
+      return { status: 'FAILED' };
+    }
+  }
+
+  /** product ทดแทน + shopWarrantyEndDate ของสัญญาใหม่ (ถ้ามี) — ไม่มี replacementProductId = ไม่มีการแลกเปลี่ยน */
+  private async loadReplacement(c: {
+    replacementProductId: string | null;
+    replacementContractId: string | null;
+  }): Promise<ReplacementInfo | null> {
+    if (!c.replacementProductId) return null;
+    const product = await this.prisma.product.findFirst({
+      where: { id: c.replacementProductId, deletedAt: null },
+      select: { brand: true, model: true, storage: true, imeiSerial: true },
+    });
+    if (!product) return null; // ถูกลบ/ไม่พบ — ไม่รู้จักเครื่องทดแทนแล้ว
+
+    let shopWarrantyEndDate: string | null = null;
+    if (c.replacementContractId) {
+      const contract = await this.prisma.contract.findFirst({
+        where: { id: c.replacementContractId },
+        select: { shopWarrantyEndDate: true },
+      });
+      shopWarrantyEndDate = contract?.shopWarrantyEndDate
+        ? contract.shopWarrantyEndDate.toISOString()
+        : null;
+    }
+
+    return {
+      brand: product.brand,
+      model: product.model,
+      storage: product.storage,
+      imeiSerial: product.imeiSerial,
+      shopWarrantyEndDate,
+    };
+  }
+
+  /**
+   * แปลงแถว `AfterSalesCase` (+ replacement ที่โหลดแยก) ให้เข้ากับ `LineCaseRow` (Task 1) — mapper
+   * นี้เป็น private ของ service นี้ตาม Ruling PF-1 (LineCaseRow คือ contract, ไม่ใช่ mapper).
+   *
+   * กับดักที่ต้องแปลง:
+   * - `warrantySnapshot` เป็น Json ของ DB คนละคีย์กับ `LineCaseRow.warrantySnapshot` —
+   *   map `shopWarrantyEnd → shopWarrantyEndDate`, `manufacturerWarrantyEnd → manufacturerWarrantyEndDate`.
+   *   (`AfterSalesCaseService.buildCreateData` เขียนคีย์เป็น `shopWarrantyEndDate` ตรงชื่ออยู่แล้ว
+   *   ผ่าน spread ของ `AfterSalesLookupService`'s `warranty` object — รองรับทั้งสองชื่อคีย์กัน
+   *   ข้อมูลเก่า/สคีมาที่ยังไม่ sync กับโค้ดจริง) — snapshot ที่ไม่มี `status` เป็น string ถือว่า
+   *   malformed/missing → ทั้งก้อนเป็น null.
+   * - `repairTicket.estimatedCost`/`actualCost` เป็น Prisma.Decimal → string ผ่าน `.toString()`.
+   * - `deviceStorage` ไม่มีคอลัมน์บน `AfterSalesCase` → เว้นว่างไว้ (undefined).
+   */
+  private toLineCaseRow(c: CaseForLine, replacement: ReplacementInfo | null): LineCaseRow {
+    return {
+      caseNumber: c.caseNumber,
+      outcome: c.outcome,
+      symptom: c.symptom,
+      deviceBrand: c.deviceBrand,
+      deviceModel: c.deviceModel,
+      deviceImei: c.deviceImei,
+      branch: { name: c.branch.name },
+      warrantySnapshot: this.mapWarrantySnapshot(c.warrantySnapshot),
+      repairTicket: c.repairTicket
+        ? {
+            payer: c.repairTicket.payer,
+            estimatedCost: c.repairTicket.estimatedCost
+              ? c.repairTicket.estimatedCost.toString()
+              : null,
+            actualCost: c.repairTicket.actualCost ? c.repairTicket.actualCost.toString() : null,
+          }
+        : null,
+      replacement,
+    };
+  }
+
+  private mapWarrantySnapshot(json: Prisma.JsonValue): LineCaseRow['warrantySnapshot'] {
+    if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
+    const obj = json as Record<string, unknown>;
+    const status = obj.status;
+    if (typeof status !== 'string') return null; // malformed/missing → ทั้งก้อนเป็น null
+    return {
+      status,
+      shopWarrantyEndDate: this.firstStringField(obj, ['shopWarrantyEndDate', 'shopWarrantyEnd']),
+      manufacturerWarrantyEndDate: this.firstStringField(obj, [
+        'manufacturerWarrantyEndDate',
+        'manufacturerWarrantyEnd',
+      ]),
+    };
+  }
+
+  private firstStringField(obj: Record<string, unknown>, keys: string[]): string | null {
+    for (const key of keys) {
+      const value = obj[key];
+      if (typeof value === 'string') return value;
+    }
+    return null;
+  }
+
+  private async record(
+    caseId: string,
+    kind: 'LINE_SENT' | 'LINE_SKIPPED_NO_LINK' | 'NOTE',
+    note: string,
+    actorId: string | null,
+    status: NotifyResult['status'],
+  ): Promise<NotifyResult> {
+    await this.prisma.afterSalesEvent.create({ data: { caseId, kind, note, actorId } });
+    return { status };
+  }
+}

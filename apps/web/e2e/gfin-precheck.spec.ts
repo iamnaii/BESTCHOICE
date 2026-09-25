@@ -27,9 +27,10 @@ test.describe('GFIN pre-check tab', () => {
 
   test.afterAll(async () => {
     if (fixtureRoomId) {
-      // Applications created during the test are cancelled (soft-deleted) by the flow
-      // itself, but their event rows + the still-FK-referenced application rows must go
-      // before the room can be deleted (external_finance_applications.room_id → chat_rooms).
+      // Applications created during the test are cancelled by the flow itself (status
+      // CANCELLED — not a soft delete; the row stays), so their event rows + the
+      // still-FK-referenced application rows must go before the room can be deleted
+      // (external_finance_applications.room_id → chat_rooms).
       const apps = await prisma.externalFinanceApplication.findMany({
         where: { roomId: fixtureRoomId },
         select: { id: true },

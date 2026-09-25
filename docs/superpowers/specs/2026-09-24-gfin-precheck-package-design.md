@@ -1,7 +1,7 @@
 # ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท ส่งเข้ากลุ่มไลน์เป็นข้อความ + ลิงก์
 
 - วันที่: 2026-09-24
-- สถานะ: **design เคาะโดยเจ้าของ** (mockup v6 + คำตอบ 5 ข้อ 2026-09-24) — รอเจ้าของทบทวนสเปกนี้ → writing-plans → PR 1
+- สถานะ: **เจ้าของอนุมัติสเปก 2026-09-24** (mockup v6 + คำตอบ 5 ข้อ) · **PR 1 ทำแล้ว** บน `feat/gfin-precheck` (รวม fix wave จาก final review 2026-09-25 — ดูหัวข้อ "สถานะ" ท้ายไฟล์) · PR 2 ยังไม่เริ่ม
 - อ้างอิงโค้ด: **origin/main `147273006`** ณ 2026-09-24
 - mockup: artifact "Mockup ยื่น GFIN แผงขวาแชท" https://claude.ai/artifact/U3DMgJ3SWb8whpiiuLYPsa (15 บอร์ด)
 - เกี่ยวข้อง: `apps/api/src/modules/gfin-config/` (เรท/ราคา GFIN — ไม่แตะ) · `apps/api/src/modules/credit-check/services/room-credit.service.ts` (หยิบไฟล์จากแชท — ใช้เป็นแม่แบบ) · `apps/api/src/modules/chatbot-finance/` (webhook OA ไฟแนนซ์) · `apps/api/src/modules/storage/` · `apps/web/src/pages/UnifiedInboxPage/components/RoomDossier.tsx` (แผงขวา) · `.claude/CLAUDE.md` ข้อ "GFIN integration — รอ business flow" (สเปกนี้คือ business flow รอบแรก)
@@ -115,7 +115,7 @@
 
 ### 4.3 migration
 
-ไฟล์เดียวต่อ PR ตามแบบ repo (`20261009000000_external_finance_application` สำหรับ PR 1) · ไม่มี backfill
+ไฟล์เดียวต่อ PR ตามแบบ repo (`20261010000000_external_finance_application` สำหรับ PR 1 — เลื่อนจาก `20261009…` ที่ตั้งไว้ตอนร่าง เพราะ after-sales hub PR 2 ใช้ช่วง `2026100900000x` ไปแล้ว) · ไม่มี backfill
 
 ## 5. API
 
@@ -125,10 +125,11 @@
 
 | Method · path | ทำอะไร |
 |---|---|
-| `POST /staff-chat/rooms/:roomId/finance-applications` | สร้าง DRAFT (ถ้ามี DRAFT ค้างในห้อง คืนใบเดิม) · บันทึก event CREATED |
-| `GET /staff-chat/rooms/:roomId/finance-applications` | ใบปัจจุบัน (สถานะยังไม่ปิด) + ประวัติ: ถ้าห้องผูกลูกค้าแล้วดึงทุกใบของ `customerId` นั้น (ทุกห้อง) ถ้ายังไม่ผูกดึงเฉพาะของห้องนี้ |
+| `POST /staff-chat/rooms/:roomId/finance-applications` | สร้าง DRAFT (ถ้ามีใบที่ยังไม่ปิดในห้อง คืนใบเดิม — ใบปิดแล้วไม่กัน) · ตั้ง `customerId` จากห้องเฉพาะลูกค้าจริง (**ผู้สนใจอัตโนมัติจากแชท = ไม่ตั้ง**) · บันทึก event CREATED |
+| `GET /staff-chat/rooms/:roomId/finance-applications` | ใบปัจจุบัน = ใบที่ยังไม่ปิดของห้อง **ไม่มีก็ใบล่าสุดของห้อง (ปิดแล้วก็ได้ — การ์ดสถานะปิด / "เมื่อผ่านแล้ว" / "เริ่มใบยื่นใหม่" ต้องยังเห็น)** + ประวัติ: ถ้าห้องผูกลูกค้าแล้วดึงทุกใบของ `customerId` นั้น (ทุกห้อง) ถ้ายังไม่ผูกดึงเฉพาะของห้องนี้ · SALES: ประวัติข้ามห้องไม่รวมใบของห้องที่คนอื่นดูแล · response ไม่มี `shareTokenHash`/`shareTokenEnc` (ทุก endpoint) |
 | `GET /finance-applications/:id` | รายละเอียด + ไฟล์ + ไทม์ไลน์ + ข้อมูลลิงก์ |
-| `PATCH /finance-applications/:id` | ตั้ง `productId`, `customerId`, `occupationOverride` (DRAFT/MORE_INFO เท่านั้น) |
+| `PATCH /finance-applications/:id` | ตั้ง `productId`, `customerId`, `occupationOverride` (DRAFT/MORE_INFO เท่านั้น) · เปลี่ยนเครื่อง = ลบรูป 6 มุมจากสต๊อกที่ยังไม่ส่งของเครื่องเดิมในทรานแซกชันเดียวกัน |
+| `PATCH /finance-applications/:id/customer-fields` `{phone?, birthDate?}` | เติมเบอร์/วันเกิดของลูกค้าที่ผูกกับใบ (DRAFT/MORE_INFO · ลูกค้าจริงเท่านั้น · เฉพาะช่องที่ยังว่าง) ผ่าน `CustomersService.update` (normalize · ล็อกเบอร์ · 409 เบอร์ซ้ำ · เข้ารหัส/hash) — เพราะ `PATCH /customers/:id` เปิดแค่ OWNER/BRANCH_MANAGER |
 | `POST /finance-applications/:id/files/from-message` `{messageId, slot}` | หยิบจากแชท: <br>• ข้อความมี `mediaUrl` เป็นคีย์ `staff-chat/` → อ่านจาก storage <br>• `mediaUrl` เป็น URL → `fetchMedia` (allowlist fbcdn/fbsbx/line-scdn ตาม room-credit.service.ts:57-67) <br>• ห้อง LINE ไม่มี `mediaUrl` แต่มี `externalMessageId` → `LineApiClientService.downloadContent(id, 'line-finance' หรือ 'line-shop' ตาม channel)` <br>คัดลอกเก็บที่ `external-finance/…` ทันที · ล้มเหลว → 400 "ไฟล์หมดอายุ ขอลูกค้าส่งใหม่" |
 | `POST /finance-applications/:id/files` (multipart `file`, `slot`) | อัปโหลดจากคอม/มือถือ (`FileInterceptor` 10 MB) |
 | `POST /finance-applications/:id/files/from-product` | คัดลอกรูป 6 มุมจาก `ProductPhoto` (base64 ใน DB) → storage ตามแบบ `promotePhoto` (`products-online-listing.service.ts:63-100`) · ใช้ได้เมื่อ `category = PHONE_USED` และ `isCompleted` · slot DEVICE_PHOTO |
@@ -136,8 +137,8 @@
 | `GET /finance-applications/:id/files/:fileId` | สตรีมไฟล์ (JWT) `Cache-Control: private, no-store` |
 | `GET /finance-applications/:id/message-preview` | ข้อความ 12 ข้อที่จะส่ง + รายการช่องที่ขาด |
 | `POST /finance-applications/:id/send` `{via: 'BOT' \| 'COPY'}` | ตรวจความพร้อม (§8) → ออกโทเคนลิงก์ (7 วัน) → สร้าง `messageText` → ถ้า BOT push เข้ากลุ่ม (PR 2) → สถานะ SENT · event SENT · คืน `{messageText, shareUrl}` · ถ้า push ล้มเหลว **ไม่เปลี่ยนสถานะ** คืน 502 พร้อมข้อความและให้ใช้ COPY |
-| `POST /finance-applications/:id/resend` | ส่งเพิ่มเฉพาะไฟล์ที่ `sentAt` ว่าง: ข้อความสั้น "ส่งเอกสารเพิ่ม N ไฟล์ ลิงก์เดิม <link>" · ต่ออายุลิงก์ให้ครบ 7 วันนับจากวันนี้ · สถานะ MORE_INFO → SENT · event RESENT |
-| `POST /finance-applications/:id/share/extend` · `/share/revoke` | +7 วัน / ยกเลิกทันที (event) |
+| `POST /finance-applications/:id/resend` | ส่งเพิ่มเฉพาะไฟล์ที่ `sentAt` ว่าง: ข้อความสั้น "ส่งเอกสารเพิ่ม N ไฟล์ ลิงก์เดิม <link>" · ต่ออายุลิงก์ให้ครบ 7 วันนับจากวันนี้ · สถานะ MORE_INFO → SENT · event RESENT · **ลิงก์ถูกยกเลิกไว้ = ออกโทเคนใหม่** ("ลิงก์ใหม่ (ลิงก์เดิมถูกยกเลิกแล้ว)", meta `rotated: true`) |
+| `POST /finance-applications/:id/share/extend` · `/share/revoke` | +7 วัน / ยกเลิกทันที (event) · extend เฉพาะใบที่ยังไม่ปิด (409) · extend หลังยกเลิก = **ออกโทเคนใหม่** (hash + ciphertext ใหม่ แทนพาธลิงก์ใน `messageText`) คืน `{expiresAt, url, rotated}` — โทเคนที่ถูกยกเลิกไม่กลับมาใช้ได้อีก |
 | `POST /finance-applications/:id/result` `{result: APPROVED \| REJECTED \| MORE_INFO, note?}` | พนักงานบันทึกผลเอง (`resultSource = STAFF`) ทับผลจากลิงก์ได้ |
 | `POST /finance-applications/:id/cancel` | ยกเลิกใบ (ทุกสถานะที่ยังไม่ปิด) · ลิงก์ถูกยกเลิกด้วย |
 | `POST /ocr/id-card/from-message` `{roomId, messageId}` | ดึงรูปจากแชท (กติกาเดียวกับ from-message) แล้วเรียก `extractIdCard` เดิม คืน `OcrIdCardResult` · ฝั่งเว็บเอาไปเปิด `CustomerCreateDialog` ที่เติมค่าแล้ว → `POST /customers` → `POST /staff-chat/rooms/:id/link-customer` (ของเดิม `staff-chat.controller.ts:283`) |
@@ -146,7 +147,7 @@
 
 | Method · path | ทำอะไร |
 |---|---|
-| `GET /g/:token` | คืน **HTML ที่ API เรนเดอร์เอง** (ไม่ใช่ SPA) ตามบอร์ด 11/14 · มี OG tags ทั่วไป ("ชุดเช็คเครดิต · BESTCHOICE" + วันหมดอายุ **ไม่มีชื่อ/รูปลูกค้า**) · `X-Robots-Tag: noindex` · `Cache-Control: no-store` · `Referrer-Policy: no-referrer` · CSP อนุญาตเฉพาะ self · โทเคนไม่ถูกต้อง/หมดอายุ/ยกเลิก → 410 หน้า "ลิงก์นี้ใช้ไม่ได้แล้ว" (บอร์ด 13) ไม่มีข้อมูลใด ๆ · การเปิดสำเร็จบันทึก event LINK_VIEWED (เว้นซ้ำภายใน 5 นาทีต่อ ipHash) และเพิ่ม `shareViewCount` |
+| `GET /g/:token` | คืน **HTML ที่ API เรนเดอร์เอง** (ไม่ใช่ SPA) ตามบอร์ด 11/14 · มี OG tags ทั่วไป ("ชุดเช็คเครดิต · BESTCHOICE" + วันหมดอายุ **ไม่มีชื่อ/รูปลูกค้า**) · `X-Robots-Tag: noindex` · `Cache-Control: no-store` · `Referrer-Policy: no-referrer` · CSP อนุญาตเฉพาะ self · โทเคนไม่ถูกต้อง/หมดอายุ/ยกเลิก → 410 หน้า "ลิงก์นี้ใช้ไม่ได้แล้ว" (บอร์ด 13) ไม่มีข้อมูลใด ๆ · การเปิดสำเร็จบันทึก event LINK_VIEWED (เว้นซ้ำภายใน 5 นาทีต่อ ipHash) และเพิ่ม `shareViewCount` — **ไม่นับ** HEAD · ปุ่ม "เปิดหน้าลิงก์" ของพนักงาน (`?src=staff`) · บอทพรีวิวลิงก์ (facebookexternalhit/Facebot/LINE/Twitterbot/Slackbot/WhatsApp/TelegramBot/Discordbot — ตัวพิมพ์มีผล: เบราว์เซอร์ในแอป LINE `Line/x` ยังนับ) |
 | `GET /g/:token/files/:fileId` | สตรีมไฟล์ผ่าน API (ไม่แจก URL ของ bucket) · `Content-Disposition: inline` · PDF เปิดในเบราว์เซอร์ |
 | `GET /g/:token/zip` | zip ทั้งชุด (ไลบรารีใหม่ `archiver`) ชื่อไฟล์ `01-ลูกค้าถือบัตร.jpg` … · สตรีม ไม่สร้างไฟล์ชั่วคราว · throttle 5 ครั้ง/นาที |
 | `POST /g/:token/reply` `{action: ACK \| MORE_INFO \| APPROVED \| REJECTED, name (≤80, required), note (≤500)}` | บันทึก event PARTNER_* + เปลี่ยนสถานะ (§9) + `lastPartnerEventAt` + แจ้งเตือนคนส่ง · throttle 10 ครั้ง/นาที · โทเคนต้องยังใช้ได้และใบยังไม่ปิด (ปิดแล้วรับ ACK/MORE_INFO ไม่ได้ คืน 409 พร้อมข้อความ) |
@@ -163,13 +164,13 @@ URL จริงคือ `https://bestchoicephone.app/api/g/<token>` — อย
 - แสดงในโหมด drawer บนจอแคบเหมือนแท็บอื่น (บอร์ด 10)
 
 ### 6.2 ใบยื่น 4 ขั้น (บอร์ด 2–5)
-1. **ลูกค้า** — ห้องผูกลูกค้าแล้วและมีชื่อ อาชีพ วันเกิด เบอร์ครบ → ข้ามอัตโนมัติ · ห้องยังไม่ผูก → หยิบรูปบัตรจากแชท (ปุ่มบนบับเบิลหรือลาก) → `POST /ocr/id-card/from-message` → เปิด `CustomerCreateDialog` เดิมพร้อมค่าที่อ่านได้ → สร้างและผูกห้อง · รูปบัตรใบนั้นเข้าช่อง ID_CARD ให้เอง · ช่องที่บัตรไม่มี: อาชีพ (required) และเบอร์ — บันทึกลง Customer
+1. **ลูกค้า** — ห้องผูกลูกค้าแล้วและมีชื่อ อาชีพ วันเกิด เบอร์ครบ → ข้ามอัตโนมัติ · **ห้องที่ผูกแค่ผู้สนใจอัตโนมัติจากแชท = ยังไม่ผูก** (ปุ่ม "เพิ่มเบอร์/ข้อมูลลูกค้า" = โหมด fill ของ `CustomerCreateDialog` อัปเกรดคนเดิม ไม่สร้างซ้ำ) · ช่องที่ขาดของลูกค้าที่ผูกแล้ว: อาชีพ → `occupationOverride` ของใบ · เบอร์/วันเกิด → `PATCH …/customer-fields` · ห้องยังไม่ผูก → หยิบรูปบัตรจากแชท (ปุ่มบนบับเบิลหรือลาก) → `POST /ocr/id-card/from-message` → เปิด `CustomerCreateDialog` เดิมพร้อมค่าที่อ่านได้ → สร้างและผูกห้อง · รูปบัตรใบนั้นเข้าช่อง ID_CARD ให้เอง · ช่องที่บัตรไม่มี: อาชีพ (required) และเบอร์ — บันทึกลง Customer
 2. **เครื่อง** — ค้นสต๊อกด้วย IMEI ท้าย 4 ตัวหรือชื่อรุ่น (API ค้นสินค้าเดิม จำกัดสถานะพร้อมขาย/จอง) → แสดง IMEI ซีเรียล แบต (QC) รูป 6 มุม · ไม่มีคำถามให้ตอบ (D4)
 3. **รูป** — ช่อง 9 ประเภทหลัก + 3 ช่อง "ถ้ามี" · แต่ละช่องเติมได้ 3 ทาง: หยิบจากแชท (ปุ่ม GFIN บนบับเบิล / ลากมาวางแล้วเลือกช่อง บอร์ด 4b) · อัปโหลด (มือถือใช้ `<input capture="environment">`) · DEVICE_PHOTO จากสต๊อกอัตโนมัติเมื่อครบ 6 ใบ ไม่ครบ = ช่องถ่ายเพิ่ม · แสดง "ครบ n/9 · ไฟล์รวม" · PDF รับได้
 4. **ข้อความ** — preview ข้อความ 12 ข้อ (§7) + คำเตือนช่องที่ขาด + ปุ่ม **ส่งเช็ค GFIN** (PR 1 = COPY: คัดลอกข้อความ+ลิงก์ลงคลิปบอร์ดแล้วบันทึกว่าส่งแล้ว · PR 2 = BOT) + ปุ่ม "คัดลอกข้อความ + ลิงก์" (ทางถอยเสมอ) · กล่องยืนยันก่อนส่ง (บอร์ด 6) มีเช็กบ็อกซ์ "ตรวจแล้วว่าไฟล์ทุกใบเป็นของลูกค้าคนนี้"
 
 ### 6.3 หลังส่ง (บอร์ด 7)
-- การ์ดสรุป + ป้ายสถานะ · กล่องลิงก์: เปิดดูกี่ครั้ง ล่าสุดเมื่อไร หมดอายุเมื่อไร ปุ่ม ต่ออายุ / ยกเลิก / เปิดหน้าลิงก์ · ไทม์ไลน์จาก events · ปุ่ม "เพิ่มรูปแล้วส่งเพิ่ม" (เปิดขั้นรูปเฉพาะเพิ่ม แล้ว resend) · ปุ่มบันทึกผลเอง ผ่าน/ไม่ผ่าน/ขอเพิ่ม · ขั้นต่อไปเมื่อผ่าน: ลิงก์ไปฟอร์มเว็บ GFIN (เปิดแท็บใหม่ `client.gfinn.xyz/shop/loans/request`) และลิงก์ไป POS
+- การ์ดสรุป + ป้ายสถานะ · กล่องลิงก์: เปิดดูกี่ครั้ง ล่าสุดเมื่อไร หมดอายุเมื่อไร ปุ่ม ต่ออายุ / ยกเลิก / เปิดหน้าลิงก์ · ไทม์ไลน์จาก events · ปุ่ม "เพิ่มรูปแล้วส่งเพิ่ม" (เปิดขั้นรูปเฉพาะเพิ่ม แล้ว resend) · ปุ่มบันทึกผลเอง ผ่าน/ไม่ผ่าน/ขอเพิ่ม (ป้ายสถานะต่อท้าย "(แจ้งผ่านลิงก์)" เฉพาะผลที่ GFIN กดเองบนหน้าลิงก์) · ขั้นต่อไปเมื่อผ่าน: ลิงก์ไปฟอร์มเว็บ GFIN (เปิดแท็บใหม่ `client.gfinn.xyz/shop/loans/request`) และลิงก์ไป POS
 
 ### 6.4 บับเบิลในแชท (`MessageBubble`)
 - ปุ่ม "ใส่ในใบยื่น GFIN" (ไอคอน file-check) แสดงเมื่อห้องมีใบยื่น DRAFT/MORE_INFO และข้อความเป็น IMAGE/FILE ที่ `mediaUrl` หรือ `externalMessageId` มีค่า (ขยายจากเงื่อนไข `canCredit` ที่ `MessageBubble.tsx:139` ซึ่งดูแค่ `mediaUrl`) · กดแล้วเปิด popover เลือกช่อง (บอร์ด 4b) · ลากใช้ MIME ใหม่ `application/x-bestchoice-gfin-message` ไปวางที่แผงขวา → popover เดียวกัน
@@ -223,7 +224,8 @@ DRAFT ──send──▶ SENT ──PARTNER_ACK──▶ ACKNOWLEDGED
 
 - ACKNOWLEDGED ไปต่อได้เหมือน SENT · ปิดแล้วรับคำตอบจากลิงก์ไม่ได้ (409) แต่พนักงานแก้ผลได้จนกว่าจะทำใบขาย
 - ห้องหนึ่งมีใบยื่นที่ยังไม่ปิดได้ครั้งละ 1 ใบ · ลูกค้าคนเดียวยื่นหลายครั้งได้ (ประวัติ)
-- ลิงก์: หมดอายุ 7 วันนับจากส่ง · resend/extend ต่ออายุเป็น 7 วันนับจากตอนนั้น · revoke/cancel ทำให้ 410 ทันที · ปิดใบแล้วลิงก์ยังใช้ได้จนหมดอายุ (GFIN อาจกลับมาดู)
+- ลิงก์: หมดอายุ 7 วันนับจากส่ง · resend/extend ต่ออายุเป็น 7 วันนับจากตอนนั้น · revoke/cancel ทำให้ 410 ทันที และโทเคนนั้นตายถาวร (resend/extend หลังยกเลิก = โทเคนใหม่) · ใบปิดแล้วต่ออายุไม่ได้ · ปิดใบแล้วลิงก์ยังใช้ได้จนหมดอายุ (GFIN อาจกลับมาดู)
+- เปลี่ยนสถานะฝั่งพนักงาน (send/resend/result/cancel) เป็น compare-and-set บนสถานะที่อ่านมา — แพ้คำขออื่น = 409
 - ลบไฟล์ (D6): cron รายวัน (โมดูล retention ที่มีอยู่) หา `closedAt < now - 90d AND filesPurgedAt IS NULL` → ลบ object ใน bucket, `storageKey = null`, `filesPurgedAt = now`, event FILES_PURGED · แถวและข้อความ 12 ข้อคงอยู่
 - ไม่แตะสต๊อก ไม่จองเครื่อง (สินค้าอาจถูกขายให้คนอื่นระหว่างรอ — แสดงคำเตือนในใบยื่นถ้าสถานะสินค้าเปลี่ยนไปจากตอนส่ง)
 
@@ -301,4 +303,5 @@ DRAFT ──send──▶ SENT ──PARTNER_ACK──▶ ACKNOWLEDGED
 - เลื่อนไป PR 2: บอท OA ไฟแนนซ์ส่งเข้ากลุ่ม (`via: BOT` ตอบ 501) · เลือกกลุ่มไลน์ในตั้งค่า · webhook join/leave กลุ่ม · เติมฟอร์มเว็บ GFIN
 - เบี่ยงจากสเปกที่ตัดสินตอนเขียนแผน (PR 1): §4.1 เก็บโทเคนดิบเข้ารหัส `shareTokenEnc` (ให้เปิด/ส่งลิงก์เดิมได้) · §5.1 OCR จากรูปในแชทอยู่ที่ `POST /staff-chat/rooms/:roomId/finance-applications/ocr-id-card` (ไม่ใช่ `/ocr/id-card/from-message`) · §13 ไม่มี push ผ่าน `events.gateway` — แท็บ refetch ทุก 15 วิ + Todo/IN_APP · §14 e2e เป็น smoke (สร้างร่าง/ยกเลิก/410) ส่วน flow เต็มทดสอบมือ · §12 "จุดเหลืองเมื่อใหม่กว่าที่เคยเปิด" เก็บเวลาเปิดใน localStorage ต่อเครื่อง
 - เบี่ยงเพิ่มเติมระหว่างดำเนินงาน (Task 1-10): advisory lock ระดับห้อง/ระดับใบยื่น (room-scoped/application-scoped) คุม `createDraft`/`attach` กันสร้างซ้อนกัน · ป้ายชื่อช่อง (slot labels) + ป้ายชื่อฟิลด์ (field labels) อยู่ใน `packages/shared` จุดเดียว (API และเว็บใช้ร่วมกัน — source of truth เดียว) · ตอบกลับ (`reply`) บังคับต้องมี `name` เสมอ · Sentry hooks สครับโทเคนแชร์แบบลึก (deep-scrub) และตัด transaction ของ `/api/g/*` ทิ้ง พร้อม `tracePropagationTargets: []` · cron ล้างไฟล์เก่าคงค่า `storageKey` ไว้สำหรับไฟล์ที่ลบไม่สำเร็จแล้วลองใหม่รอบถัดไป (ไม่ทิ้งข้อมูลกู้คืนไม่ได้) · MCP policy: pattern ของ note/comment/remark ยังไม่ยึด anchor (unanchored) + allowlist ตาราง `credit_approvals`
+- **final review fix wave (2026-09-25)**: ผู้สนใจอัตโนมัติจากแชทไม่นับเป็นลูกค้าของใบ (สร้างร่าง + ขั้นที่ 1) · `PATCH …/customer-fields` · รวมผู้สนใจเข้าลูกค้าจริงย้าย `external_finance_applications.customer_id` ด้วย (`CustomerMergeService.absorbPlaceholder`) · ใบปัจจุบัน = ใบล่าสุดเมื่อไม่มีใบเปิด · ต่ออายุ/ส่งเพิ่มหลังยกเลิกลิงก์ = โทเคนใหม่ · เปลี่ยนเครื่องล้างรูปสต๊อกที่ยังไม่ส่ง (+ กันมุมซ้ำใต้ล็อก) · MCP ไม่ให้ `room_credit_analyses.result/error`, `room_credit_files.key`, `shop_cash_closes.deposit_slip_key`, `shop_cash_deposits.slip_key` · ไม่นับการเปิดของพนักงาน/บอทพรีวิว · CAS สถานะ · `@Roles` ทุก method · รายละเอียด `.superpowers/sdd/2026-09-24-gfin-precheck-pr1/final-fix-report.md`
 - Task 11 (bump version · e2e smoke · ตรวจทั้งชุด): merge `origin/main` (after-sales hub PR 2, web 26.9.53) เข้า `feat/gfin-precheck` แบบ merge commit (`b9bddc7d8`) — 0 conflict, `prisma validate`/`generate` ผ่าน, migration ทั้งสองฝั่งเรียงถูกลำดับ · bump web → `26.9.54` · เพิ่ม `apps/web/e2e/gfin-precheck.spec.ts` — สร้างห้องแชทของตัวเอง (`beforeAll` เรียก `PrismaClient` ตรง ๆ สร้างห้อง `channel: FACEBOOK` ติดชื่อ `E2E-GFIN-<timestamp>`, ลบทิ้งใน `afterAll` รวมใบยื่น/อีเวนต์ที่สร้างระหว่างเทสต์) แทนการอ่านห้องที่มีอยู่ — CI seed (`apps/api/prisma/seed.ts`) ไม่เคยสร้าง `ChatRoom` เลย จึงต้องพกฟิกซ์เจอร์มาเอง (`DATABASE_URL` มีอยู่แล้วที่ระดับ job ใน `e2e-tests.yml` ไม่ต้องแก้ workflow) · แก้อีก 2 จุดจากบรีฟต้นฉบับให้รันผ่านจริง: `page.request.get` ต้องส่ง header เอง (`page.setExtraHTTPHeaders` ไม่ไหลไปที่ `page.request` ซึ่งเป็นคนละ channel — ใช้ `getAuthHeaders()` ตามธรรมเนียมสเปกอื่น) และถอด `await` ที่เกินจำเป็นบน `page.viewportSize()` (sync alaready) — รันผ่าน chromium ซ้ำหลายรอบ ห้องฟิกซ์เจอร์ถูกลบสะอาดทุกครั้ง (firefox/webkit ไม่มี browser binary ติดตั้งในเครื่องนี้ — CI จริงก็ติดตั้งแค่ chromium `--with-deps chromium` เหมือนกัน ไม่ใช่ gap ของงานนี้) · ตรวจทั้งชุด: type-check 0 error, API jest suite ทั้งหมดเขียว (ตัวเลขที่รันจริง+เวลาอยู่ใน task-11-report.md), web vitest เขียวทั้งหมด + lint 0 error (507 warning เดิม), packages/shared vitest เขียวทั้งหมด

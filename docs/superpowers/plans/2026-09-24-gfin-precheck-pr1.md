@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Branch `feat/gfin-precheck` (rebase บน origin/main `e90cae267` แล้ว มี spec 1 commit) · migration ใหม่ชื่อ `20261009000000_external_finance_application` (ล่าสุดคือ `20261008000000_after_sales_cases`)
+- Branch `feat/gfin-precheck` (rebase บน origin/main `e90cae267` แล้ว มี spec 1 commit) · migration ใหม่ชื่อ `20261010000000_external_finance_application` (แผนเดิมเขียน `20261009000000` — ช่วงนั้นถูก after-sales hub PR 2 ใช้ไปแล้ว)
 - Prisma: UUID id · `createdAt/updatedAt/deletedAt` ทุก model (ยกเว้น event log แบบ append-only ต้องมี `///` comment) · ห้าม hard delete · ทุก query กรอง `deletedAt: null` · enum PascalCase ค่าตัว SCREAMING_SNAKE · migration SQL เขียนมือแบบ additive · prod ใช้ `prisma migrate deploy` เท่านั้น (`.claude/rules/database.md`)
 - ห้าม `await this.audit.log(...)` ใน `$transaction` (โมดูลนี้ไม่เขียน AuditLog เอง — มีตาราง event ของตัวเอง; `AuditInterceptor` global จดทุก mutating route ให้อยู่แล้ว)
 - ทุก controller พนักงาน: `@UseGuards(JwtAuthGuard, RolesGuard)` ระดับ class + `@Roles(...)` ทุก method · roles ของฟีเจอร์นี้ = `'OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'` · SALES เข้าถึงเฉพาะห้องที่ `assignedToId` ว่างหรือเป็นตัวเอง (กติกา `access()` ของ `room-credit.service.ts:92-98`) · controller สาธารณะ (`g/*`) ไม่มี guard แต่ต้องมี `@Throttle` ทุก route และต้องเพิ่มในรายการ "Intentionally Public Endpoints" ของ `.claude/rules/security.md`
@@ -22,7 +22,7 @@
 - เลขใบยื่น `BC-YYMMDD-NNN` (วันตาม Asia/Bangkok, ลำดับต่อวัน, advisory lock `hashLockKey('finance-app:<yymmdd>')` จาก `src/utils/advisory-lock.util.ts`)
 - ลิงก์: โทเคน 32 ไบต์ `base64url` · หน้าลิงก์ค้นด้วย **sha256 hex** (`shareTokenHash`) เท่านั้น · โทเคนดิบเก็บเข้ารหัส `encryptPII(token, PII_ENCRYPTION_KEY)` ใน `shareTokenEnc` (ให้ปุ่ม "เปิดหน้าลิงก์"/ส่งเพิ่ม ใช้ลิงก์เดิมได้ — เบี่ยงจาก spec §12 ที่เขียนว่า "ไม่เก็บโทเคนดิบ" → บันทึกลง spec ใน Task 5) · อายุ 7 วัน (`SHARE_TTL_DAYS = 7`) · URL จริง `${SHARE_PAGE_BASE_URL}/api/g/<token>` — env ใหม่ `SHARE_PAGE_BASE_URL=https://bestchoicephone.app` (fallback `PAYMENT_LINK_BASE_URL`) เพิ่มใน `.env.example` และ deploy workflow (Task 7)
 - ไฟล์: ≤ 10 MB · JPEG/PNG/GIF/WebP/PDF ตรวจจาก magic bytes (`detectFile`) · key `external-finance/<applicationId>/<uuid>.<ext>` · ≤ 40 ไฟล์ต่อใบ (`MAX_FILES = 40`)
-- ทุก deploy ต้อง bump `version` ใน `apps/web/package.json` (ตอนนี้ `26.9.52` → PR นี้ `26.9.53`)
+- ทุก deploy ต้อง bump `version` ใน `apps/web/package.json` (PR นี้ `26.9.54` — แผนเดิมเขียน `26.9.53` แต่เลขนั้นถูก #1636 after-sales hub PR 2 ใช้ไปก่อน)
 - MCP: หลัง migration ต้องเติมตารางใหม่ใน `.claude/mcp/sql/policy.mjs` (allowlist ระดับคอลัมน์) แล้ว `npm run grants` ใน `.claude/mcp` — ห้ามให้คอลัมน์ `share_token_hash`, `share_token_enc`, `summary`, `message_text`, `occupation_override`, `original_name`, `actor_name`, `note`, `meta`
 
 ## Review Focus

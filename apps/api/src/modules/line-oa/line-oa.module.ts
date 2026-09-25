@@ -7,6 +7,7 @@ import { LiffApiController } from './liff-api.controller';
 import { LiffWarrantyController } from './liff-warranty.controller';
 import { LineLinkInviteController } from './link-invite.controller';
 import { LiffWarrantyService } from './liff-warranty.service';
+import { LiffAfterSalesService } from './liff-after-sales.service';
 import { LineLoginController } from './line-login.controller';
 import { BroadcastController } from './broadcast.controller';
 import { LineOaService } from './line-oa.service';
@@ -53,11 +54,22 @@ import { CustomerJourneyModule } from '../customer-journey/customer-journey.modu
     // (CustomerJourneyModule ไม่ import โมดูลแชทหรือ LINE กลับมา จึงไม่มีวงจร)
     CustomerJourneyModule,
   ],
-  controllers: [LineOaController, LineOaChatbotController, LineOaPaymentController, LineOaCampaignController, LiffApiController, LiffWarrantyController, LineLinkInviteController, LineLoginController, BroadcastController],
+  controllers: [
+    LineOaController,
+    LineOaChatbotController,
+    LineOaPaymentController,
+    LineOaCampaignController,
+    LiffApiController,
+    LiffWarrantyController,
+    LineLinkInviteController,
+    LineLoginController,
+    BroadcastController,
+  ],
   providers: [
     LineOaService,
     LiffApiService,
     LiffWarrantyService,
+    LiffAfterSalesService,
     LineWebhookGuard,
     LiffTokenGuard,
     PromptPayQrService,
@@ -72,6 +84,15 @@ import { CustomerJourneyModule } from '../customer-journey/customer-journey.modu
     BroadcastService,
     BroadcastCron,
   ],
-  exports: [LineOaService, LiffApiService, PromptPayQrService, PaymentLinkService, RichMenuService, ShopDomainHandler, FlexTemplatesService, QuickReplyService],
+  exports: [
+    LineOaService,
+    LiffApiService,
+    PromptPayQrService,
+    PaymentLinkService,
+    RichMenuService,
+    ShopDomainHandler,
+    FlexTemplatesService,
+    QuickReplyService,
+  ],
 })
 export class LineOaModule {}

@@ -15,6 +15,7 @@ import { AfterSalesQueryService } from './services/after-sales-query.service';
 import { AfterSalesRepairService } from './services/after-sales-repair.service';
 import { AfterSalesExchangeService } from './services/after-sales-exchange.service';
 import { AfterSalesLineService } from './services/after-sales-line.service';
+import { AfterSalesLineCron } from './crons/after-sales-line.cron';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { AfterSalesLineService } from './services/after-sales-line.service';
     AfterSalesRepairService,
     AfterSalesExchangeService,
     AfterSalesLineService,
+    AfterSalesLineCron,
   ],
   exports: [AfterSalesService, AfterSalesLineService],
 })

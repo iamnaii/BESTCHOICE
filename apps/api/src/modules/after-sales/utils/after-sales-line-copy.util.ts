@@ -104,8 +104,12 @@ const THAI_MONTHS_SHORT = [
  * ซึ่งยาวเกินไปสำหรับข้อความ LINE ที่ต้องการรูปสั้น — สเปกจากกระดาน mockup ต้องการ
  * "17 พ.ย. 69" (ปี พ.ศ. 2 หลัก) จึงเขียน formatter เฉพาะของไฟล์นี้แทนการเรียกใช้ตัวนั้น
  * (BKK timezone เดียวกัน, เดือนย่อไทยเดียวกัน, ต่างแค่ปีตัดเหลือ 2 หลัก)
+ *
+ * Exported (PR 3 Task 5, additive-only — no behavior change) so `warranty-line-notifier.service.ts`
+ * can reuse the same short-year formatter for `${expireDate}` instead of writing a third Thai-date
+ * formatter (`formatThaiDateText` in `thai-date.util.ts` is the full-year one, unsuitable here).
  */
-function thaiShortYearDate(value: string | Date | null | undefined): string | null {
+export function thaiShortYearDate(value: string | Date | null | undefined): string | null {
   if (!value) return null;
   const d = value instanceof Date ? value : new Date(value);
   if (isNaN(d.getTime())) return null;

@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import * as Sentry from '@sentry/nestjs';
 import { WarrantyService } from './warranty.service';
-import { PrismaService } from '../../prisma/prisma.service';
+import {
+  WarrantyLineNotifierService,
+  WarrantyNotifyResult,
+} from './warranty-line-notifier.service';
 
 @Injectable()
 export class WarrantyCron {
@@ -10,25 +13,31 @@ export class WarrantyCron {
 
   constructor(
     private warrantyService: WarrantyService,
-    private prisma: PrismaService,
+    private notifier: WarrantyLineNotifierService,
   ) {}
 
   @Cron('0 9 * * *', { timeZone: 'Asia/Bangkok' })
   async checkExpiringWarranties(): Promise<void> {
-    this.logger.log('Checking expiring warranties...');
-
     try {
       const expiring = await this.warrantyService.getExpiringWarranties(7);
-
+      const tally: Record<WarrantyNotifyResult, number> = {
+        SENT: 0,
+        NO_LINK: 0,
+        DUP: 0,
+        BLOCKED: 0,
+        FAILED: 0,
+      };
       for (const item of expiring) {
-        const typeLabel = item.type === 'manufacturer' ? 'ประกันศูนย์' : 'ประกันร้าน';
-        this.logger.log(
-          `${typeLabel} ของ ${item.productName} (${item.customerName}) หมดในอีก ${item.daysRemaining} วัน`,
-        );
-        // LINE notification can be added later when LINE OA is configured
+        try {
+          tally[await this.notifier.notifyExpiring(item)]++;
+        } catch (e) {
+          tally.FAILED++;
+          Sentry.captureException(e, {
+            tags: { kind: 'cron-job', cron: 'warranty-check', step: 'notify' },
+          });
+        }
       }
-
-      this.logger.log(`Found ${expiring.length} expiring warranties`);
+      this.logger.log(`Expiring warranties ${expiring.length}: ${JSON.stringify(tally)}`);
     } catch (error) {
       this.logger.error('Warranty check failed', error);
       Sentry.captureException(error, { tags: { kind: 'cron-job', cron: 'warranty-check' } });

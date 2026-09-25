@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
 import { SCHEDULE_CRON_OPTIONS } from '@nestjs/schedule/dist/schedule.constants';
 import * as Sentry from '@sentry/nestjs';
 
@@ -106,6 +107,9 @@ describe('WarrantyCron', () => {
   });
 
   it('getExpiringWarranties throw → จับที่ชั้นนอก + Sentry คนละ tag ไม่ throw ออกไป', async () => {
+    // เก็บ output ให้ pristine — logger.error ของ catch ชั้นนอกพิมพ์ error ตัวนี้ออก console จริง
+    // เหมือน after-sales-line.cron.spec.ts ทำกับเคสเดียวกัน
+    const errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const boom = new Error('query boom');
     warrantyService.getExpiringWarranties.mockRejectedValue(boom);
 
@@ -115,5 +119,6 @@ describe('WarrantyCron', () => {
     expect(Sentry.captureException).toHaveBeenCalledWith(boom, {
       tags: { kind: 'cron-job', cron: 'warranty-check' },
     });
+    expect(errorLog).toHaveBeenCalledWith('Warranty check failed', boom);
   });
 });

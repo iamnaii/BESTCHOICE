@@ -210,6 +210,69 @@ describe('RoomDossier — แผงขวา 3 แท็บ (โครง OBI)',
   });
 });
 
+vi.mock('./gfin/GfinTab', () => ({ __esModule: true, default: (p: { gfin?: { current?: { number?: string } | null } }) => <div data-testid="gfin-tab">{p.gfin?.current?.number ?? 'none'}</div> }));
+
+describe('RoomDossier — แท็บ GFIN (Task 9)', () => {
+  beforeEach(() => {
+    apiGet.mockReset();
+    apiGet.mockResolvedValue({ data: [] });
+    apiPatch.mockReset();
+    apiPatch.mockResolvedValue({ data: {} });
+    apiPost.mockReset();
+    apiPost.mockResolvedValue({ data: {} });
+    authRole.role = 'SALES';
+  });
+
+  const gfinModel = (current: unknown) => ({
+    roomId: 'r-1', current, history: [], preview: null, step: 1, loading: false, busy: false,
+    start: vi.fn(), update: vi.fn(), attachMessage: vi.fn(), upload: vi.fn(), fromProduct: vi.fn(),
+    removeFile: vi.fn(), send: vi.fn(), resend: vi.fn(), shareLink: vi.fn(), extend: vi.fn(),
+    revoke: vi.fn(), result: vi.fn(), cancel: vi.fn(), ocrIdCard: vi.fn(),
+  });
+
+  it('renders a 4th tab "GFIN" with an attention dot for an unseen GFIN event; opening the tab clears the dot', async () => {
+    localStorage.clear();
+    wrap(
+      <RoomDossier
+        room={ROOM}
+        customerId={null}
+        gfin={gfinModel({ id: 'a', number: 'BC-1', status: 'MORE_INFO', lastPartnerEventAt: '2026-09-24T12:14:00Z', resultSource: null, files: [], events: [] }) as never}
+      />,
+    );
+    const tab = screen.getByRole('tab', { name: /GFIN/ });
+    expect(within(tab).getByLabelText('มีความเคลื่อนไหวจาก GFIN')).toBeInTheDocument();
+    fireEvent.click(tab);
+    expect(screen.getByTestId('gfin-tab')).toHaveTextContent('BC-1');
+    await waitFor(() => expect(within(tab).queryByLabelText('มีความเคลื่อนไหวจาก GFIN')).toBeNull());
+    expect(localStorage.getItem('gfin-seen:a')).toBe('2026-09-24T12:14:00Z');
+  });
+
+  it('dropping a chat message while the GFIN tab is open asks for a slot instead of attaching to credit', () => {
+    const onPickSlot = vi.fn();
+    const creditModel = { files: [], toggleMessage: vi.fn(), upload: vi.fn(), busy: false } as never;
+    wrap(
+      <RoomDossier
+        room={ROOM}
+        customerId={null}
+        credit={creditModel}
+        gfin={gfinModel(null) as never}
+        onPickSlot={onPickSlot}
+      />,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: /GFIN/ }));
+    const aside = screen.getByRole('complementary', { name: 'ข้อมูลลูกค้า' });
+    fireEvent.drop(aside, {
+      dataTransfer: {
+        types: ['application/x-bestchoice-gfin-message', 'application/x-bestchoice-credit-message'],
+        getData: (t: string) => (t.endsWith('gfin-message') || t.endsWith('credit-message') ? 'm1' : ''),
+        files: [],
+      },
+    });
+    expect(onPickSlot).toHaveBeenCalledWith('m1');
+    expect((creditModel as { toggleMessage: ReturnType<typeof vi.fn> }).toggleMessage).not.toHaveBeenCalled();
+  });
+});
+
 const PROSPECT_ROOM = {
   ...ROOM,
   displayName: 'สมชาย ใจดี',

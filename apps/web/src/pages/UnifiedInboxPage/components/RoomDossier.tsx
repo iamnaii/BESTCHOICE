@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import RoomCreditCard, { CreditFilePicker } from './RoomCreditCard';
 import { CREDIT_MESSAGE_MIME } from './credit-statement';
 import type { RoomCreditModel } from '../hooks/useRoomCredit';
+import GfinTab from './gfin/GfinTab';
+import { GFIN_MESSAGE_MIME, needsAttention, readSeen, markSeen } from './gfin/gfin';
+import type { FinanceApplicationModel } from '../hooks/useFinanceApplication';
 import { Link, useNavigate } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -80,7 +83,7 @@ export interface DossierRoom {
   } | null;
 }
 
-type TabKey = 'customer' | 'money' | 'device';
+type TabKey = 'customer' | 'money' | 'device' | 'gfin';
 
 const channelLabel: Record<string, string> = {
   FACEBOOK: 'Facebook',
@@ -486,13 +489,16 @@ interface LookupDevice {
 interface RoomDossierProps {
   credit?: RoomCreditModel;
   creditFocus?: { roomId: string; tick: number } | null;
+  gfin?: FinanceApplicationModel;
+  gfinFocus?: { roomId: string; tick: number } | null;
+  onPickSlot?: (messageId: string) => void;
   room: DossierRoom | null | undefined;
   customerId: string | null;
   activeRoomId?: string | null;
   onSelectRoom?: (roomId: string) => void;
 }
 
-export default function RoomDossier({ room, customerId, activeRoomId, onSelectRoom, credit, creditFocus }: RoomDossierProps) {
+export default function RoomDossier({ room, customerId, activeRoomId, onSelectRoom, credit, creditFocus, gfin, gfinFocus, onPickSlot }: RoomDossierProps) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('customer');
   const creditRef = useRef<HTMLDivElement>(null);
@@ -512,7 +518,18 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
     const clear = window.setTimeout(() => setCreditFlash(false), 1500);
     return () => { window.clearTimeout(timer); window.clearTimeout(clear); };
   }, [creditFocus, room?.id]);
-  const acceptsCredit = (event: React.DragEvent) => !!credit && Array.from(event.dataTransfer.types).some(type => type === 'Files' || type === CREDIT_MESSAGE_MIME);
+  // gfinFocus → เปิดแท็บ GFIN (เหมือน creditFocus แต่ไม่ต้อง scroll — เนื้อหาแท็บเป็นสกอร์ลของตัวเอง)
+  useEffect(() => { if (gfinFocus && gfinFocus.roomId === room?.id) setTab('gfin'); }, [gfinFocus, room?.id]);
+  const gfinApp = gfin?.current ?? null;
+  const [seenTick, setSeenTick] = useState(0);
+  const gfinDot = needsAttention(gfinApp, gfinApp ? readSeen(gfinApp.id) : null);
+  // เปิดแท็บ GFIN → ทำเครื่องหมายว่าเห็นแล้ว (spec §6.1) — seenTick บังคับ re-render เพื่ออ่าน localStorage ใหม่หลัง markSeen
+  useEffect(() => { if (tab === 'gfin' && gfinApp) { markSeen(gfinApp); setSeenTick(t => t + 1); } }, [tab, gfinApp?.id, gfinApp?.lastPartnerEventAt]);
+  const acceptsDrop = (event: React.DragEvent) => {
+    const types = Array.from(event.dataTransfer.types);
+    if (tab === 'gfin') return !!gfin && types.some(type => type === 'Files' || type === GFIN_MESSAGE_MIME);
+    return !!credit && types.some(type => type === 'Files' || type === CREDIT_MESSAGE_MIME);
+  };
   /* หลังรวม: ผลวิเคราะห์ที่ย้ายไปอยู่กับคนที่รอด (mockup บอร์ด 5) — state ของห้องที่กดรวม ไม่ persist
      มาจากสองทาง: ปุ่มรวม (absorb-into) และ "ผูกกับลูกค้าเดิม" (PATCH rooms/:id/customer คืน `absorbed`)
      `roomId` จับตอนกด ไม่ใช่ตอนสำเร็จ: สลับห้องระหว่างรอ response ต้องไม่ไปโผล่ในห้องอื่น */
@@ -603,10 +620,11 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
       ? [room.customer?.phone ? `โทร ${room.customer.phone}` : null, room.createdAt ? `เริ่มคุย ${fmtDate(room.createdAt)}` : null].filter(Boolean).join(' · ')
       : 'ยังไม่ได้ผูกกับลูกค้าในระบบ';
 
-  const tabs: { key: TabKey; label: string; count?: number }[] = [
+  const tabs: { key: TabKey; label: string; count?: number; dot?: boolean }[] = [
     { key: 'customer', label: 'ข้อมูลลูกค้า' },
     { key: 'money', label: 'สัญญา/ชำระ', count: linked ? contracts.length || undefined : undefined },
     { key: 'device', label: 'ประกัน', count: linked ? devicesCount || undefined : undefined },
+    { key: 'gfin', label: 'GFIN', dot: gfinDot },
   ];
 
   /* เปิดฟอร์มสร้างลูกค้าเป็น popup ทับห้อง (ของเดิม navigate ไป /customers?new=1 แล้วเด้งกลับ /inbox = หลุดห้อง)
@@ -646,19 +664,26 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
 
   return (
     <aside className="relative flex h-full w-80 shrink-0 flex-col border-l border-border bg-card" aria-label="ข้อมูลลูกค้า"
-      onDragEnter={event => { if (!acceptsCredit(event)) return; event.preventDefault(); creditDragDepth.current++; setCreditDragging(true); }}
-      onDragOver={event => { if (!acceptsCredit(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = credit?.busy ? 'none' : 'copy'; }}
-      onDragLeave={event => { if (!acceptsCredit(event)) return; event.preventDefault(); if (--creditDragDepth.current <= 0) { creditDragDepth.current = 0; setCreditDragging(false); } }}
+      onDragEnter={event => { if (!acceptsDrop(event)) return; event.preventDefault(); creditDragDepth.current++; setCreditDragging(true); }}
+      onDragOver={event => { if (!acceptsDrop(event)) return; event.preventDefault(); event.dataTransfer.dropEffect = (tab === 'gfin' ? gfin?.busy : credit?.busy) ? 'none' : 'copy'; }}
+      onDragLeave={event => { if (!acceptsDrop(event)) return; event.preventDefault(); if (--creditDragDepth.current <= 0) { creditDragDepth.current = 0; setCreditDragging(false); } }}
       onDrop={event => {
-        if (!acceptsCredit(event)) return;
+        if (!acceptsDrop(event)) return;
         event.preventDefault(); event.stopPropagation(); creditDragDepth.current = 0; setCreditDragging(false);
+        if (tab === 'gfin') {
+          if (gfin?.busy) return;
+          const gfinMessageId = event.dataTransfer.getData(GFIN_MESSAGE_MIME);
+          if (gfinMessageId) onPickSlot?.(gfinMessageId);
+          else window.dispatchEvent(new CustomEvent('gfin-drop-files', { detail: Array.from(event.dataTransfer.files) }));
+          return;
+        }
         if (credit?.busy) return;
         setTab('customer');
         const messageId = event.dataTransfer.getData(CREDIT_MESSAGE_MIME);
         if (messageId) { if (!credit?.files.some(file => file.sourceMessageId === messageId)) credit?.toggleMessage(messageId); }
         else credit?.upload(Array.from(event.dataTransfer.files));
       }}>
-      {creditDragging && <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center border-2 border-dashed border-primary bg-primary/10"><div className="rounded-xl border border-primary bg-card px-4 py-5 text-center text-primary shadow-sm"><p className="font-semibold leading-snug">วางที่นี่ = ให้ AI ตรวจเครดิต</p><p className="mt-1 text-xs leading-snug">ลูกค้าไม่เห็น</p>{credit?.busy && <p className="mt-2 text-xs">กำลังทำงาน กรุณารอก่อนแนบไฟล์</p>}</div></div>}
+      {creditDragging && <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center border-2 border-dashed border-primary bg-primary/10"><div className="rounded-xl border border-primary bg-card px-4 py-5 text-center text-primary shadow-sm"><p className="font-semibold leading-snug">{tab === 'gfin' ? 'วางที่นี่ = ใส่ในใบยื่น GFIN' : 'วางที่นี่ = ให้ AI ตรวจเครดิต'}</p><p className="mt-1 text-xs leading-snug">ลูกค้าไม่เห็น</p>{(tab === 'gfin' ? gfin?.busy : credit?.busy) && <p className="mt-2 text-xs">กำลังทำงาน กรุณารอก่อนแนบไฟล์</p>}</div></div>}
       {/* หัว */}
       <div className="flex shrink-0 flex-col gap-2.5 border-b border-border px-3.5 pb-3 pt-3.5">
         <div className="flex items-start gap-2.5">
@@ -688,7 +713,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
       </div>
 
       {/* แท็บเม็ดยา */}
-      <div role="tablist" className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-border px-3 pb-2 pt-2.5">
+      <div role="tablist" data-gfin-seen-tick={seenTick} className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-border px-3 pb-2 pt-2.5">
         {tabs.map((t) => {
           const on = tab === t.key;
           return (
@@ -705,6 +730,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
               )}
             >
               {t.label}
+              {t.dot && <span aria-label="มีความเคลื่อนไหวจาก GFIN" className="size-2 rounded-full bg-warning" />}
               {t.count != null && <span className={cn('font-semibold', on ? 'opacity-90' : 'text-muted-foreground')}>{t.count}</span>}
             </button>
           );
@@ -850,6 +876,8 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
             )}
           </div>
         )}
+
+        {tab === 'gfin' && <GfinTab room={room} customerId={customerId} gfin={gfin} onPickSlotForMessage={onPickSlot} />}
       </div>
 
       <LinkCustomerDialog open={linkOpen} onOpenChange={setLinkOpen} roomId={room.id} mergesProspect={placeholder} onLinked={onRoomLinked} />

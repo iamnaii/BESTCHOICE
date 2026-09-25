@@ -33,3 +33,8 @@ it('opens protected room documents through the authenticated API, never a raw st
     false,
   );
 });
+
+it('recognizes finance-application file URLs (GFIN precheck package) as protected room documents', () => {
+  expect(isRoomCreditDocument('/finance-applications/app1/files/f1')).toBe(true);
+  expect(isRoomCreditDocument('https://evil.test/finance-applications/app1/files/f1')).toBe(false);
+});

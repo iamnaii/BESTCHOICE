@@ -30,3 +30,6 @@ export * from './document-style';
 export * from './document-layout';
 
 export * from './document-spacing';
+
+export * from './finance-precheck-message';
+export * from './finance-doc-slots';

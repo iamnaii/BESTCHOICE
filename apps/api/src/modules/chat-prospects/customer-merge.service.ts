@@ -45,7 +45,8 @@ function earliest(a: Date | null, b: Date | null): Date | null {
  * รวม "ผู้สนใจอัตโนมัติจากแชท" เข้าลูกค้าตัวจริง — ทางเดียว ไม่ใช่ merge ลูกค้าทั่วไป
  * (docs/superpowers/specs/2026-09-13-chat-prospects-design.md §3.3)
  * ย้ายเฉพาะ: ห้องแชท · CreditCheck ที่ import จากห้อง (updateMany ตรง — linkRoomCreditHistory ย้ายเฉพาะ
- * ผลที่ยังไม่ import) · แท็ก · crmLeads · adsAttributions · chatAutoTriggers · บันทึกการเดินทาง (customer_journey_entries)
+ * ผลที่ยังไม่ import) · แท็ก · crmLeads · adsAttributions · ใบยื่นไฟแนนซ์นอก (external_finance_applications) ·
+ * chatAutoTriggers · บันทึกการเดินทาง (customer_journey_entries)
  * แล้ว soft-delete placeholder คู่ merged_into_id — ทุกทางรวม (ผูกห้อง / absorb-into / รวมห้องแชท / OTP / LIFF /
  * พิมพ์เบอร์ใน LINE) มาที่เมธอดนี้ จึงแก้การเดินทางที่เดียวครอบทุกทาง
  */
@@ -178,6 +179,9 @@ export class CustomerMergeService {
 
       await tx.crmLead.updateMany({ where: { customerId: placeholderId }, data: { customerId: targetId } });
       await tx.adsAttribution.updateMany({ where: { customerId: placeholderId }, data: { customerId: targetId } });
+      // ใบยื่นไฟแนนซ์นอก (GFIN) ที่ผูก placeholder ไว้ต้องตามไปคนจริง — ไม่งั้นใบค้างชี้แถวที่ถูกลบ
+      // ข้อความ 12 ข้อออกด้วยชื่อ/เบอร์ของ placeholder และประวัติใบยื่นของลูกค้าหาย (final review C1)
+      await tx.externalFinanceApplication.updateMany({ where: { customerId: placeholderId }, data: { customerId: targetId } });
 
       // การเดินทางของลูกค้า — ล็อกสองฝั่งแล้วข้างบน
       // (1) บันทึกของ placeholder ย้ายตามเจ้าของ · originCustomerId คงเดิม · dedupeKey ผูกกับเอกสาร ไม่ผูกลูกค้า จึงไม่ชน unique

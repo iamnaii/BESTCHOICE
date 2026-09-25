@@ -4,9 +4,11 @@ import {
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { SentryExceptionFilter } from './sentry-exception.filter';
+import * as Sentry from '@sentry/nestjs';
+import { redactShareToken, SentryExceptionFilter } from './sentry-exception.filter';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
 
@@ -16,10 +18,10 @@ jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
  * so the web could never name the failing rule. 5xx bodies stay minimal.
  */
 describe('SentryExceptionFilter — response shape', () => {
-  const run = (exception: unknown, nodeEnv?: string) => {
+  const run = (exception: unknown, nodeEnv?: string, url = '/api/x') => {
     const json = jest.fn<void, [Record<string, unknown>]>();
     const status = jest.fn<{ json: typeof json }, [number]>(() => ({ json }));
-    const host = { switchToHttp: () => ({ getResponse: () => ({ status }), getRequest: () => ({ url: '/api/x', method: 'POST', user: undefined }) }) } as unknown as ArgumentsHost;
+    const host = { switchToHttp: () => ({ getResponse: () => ({ status }), getRequest: () => ({ url, method: 'POST', user: undefined }) }) } as unknown as ArgumentsHost;
     const previous = process.env.NODE_ENV;
     if (nodeEnv !== undefined) process.env.NODE_ENV = nodeEnv;
     try {
@@ -98,5 +100,49 @@ describe('SentryExceptionFilter — response shape', () => {
     expect(body).not.toHaveProperty('existingCustomer');
     expect(body).not.toHaveProperty('field');
     expect(body).not.toHaveProperty('errors');
+  });
+
+  /**
+   * fix round 1 CRITICAL finding 1c — GFIN share-link routes embed a 256-bit token
+   * directly in the URL path (`/api/g/<token>/...`); any unhandled 5xx there (e.g. a
+   * premature-close on the file/zip stream, or a DB blip) must never let that raw token
+   * reach a log line or a Sentry event. This is the backstop layer — redaction happens
+   * here regardless of which route/handler threw.
+   */
+  describe('redactShareToken (backstop for the GFIN public share-link routes)', () => {
+    const token = 'a'.repeat(43);
+
+    it('replaces the raw token in a /g/:token path with a fixed placeholder', () => {
+      expect(redactShareToken(`/api/g/${token}`)).toBe('/api/g/[redacted]');
+      expect(redactShareToken(`/api/g/${token}/files/f1`)).toBe('/api/g/[redacted]/files/f1');
+      expect(redactShareToken(`/api/g/${token}/zip`)).toBe('/api/g/[redacted]/zip');
+      expect(redactShareToken(`/api/g/${token}/reply?x=1`)).toBe('/api/g/[redacted]/reply?x=1');
+    });
+
+    it('leaves unrelated URLs untouched', () => {
+      expect(redactShareToken('/api/customers/123')).toBe('/api/customers/123');
+    });
+
+    it('redacts the token from both the Sentry extra.url and the logged line on a 5xx from a GFIN route', () => {
+      const errorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      try {
+        const { status } = run(new Error('boom'), 'production', `/api/g/${token}/files/f1`);
+        expect(status).toBe(500);
+        const captured = (Sentry.captureException as jest.Mock).mock.calls.at(-1);
+        expect(captured?.[1].extra.url).toBe('/api/g/[redacted]/files/f1');
+        expect(captured?.[1].extra.url).not.toContain(token);
+        const loggedLine = errorSpy.mock.calls.at(-1)?.[0] as string;
+        expect(loggedLine).not.toContain(token);
+        expect(loggedLine).toContain('/api/g/[redacted]/files/f1');
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+
+    it('does not redact (and does not report) a 4xx from a GFIN route — status stays under 500', () => {
+      const { status, body } = run(new NotFoundException('ไม่พบเอกสาร หรือลิงก์หมดอายุแล้ว'), undefined, `/api/g/${token}`);
+      expect(status).toBe(404);
+      expect(body.message).toBe('ไม่พบเอกสาร หรือลิงก์หมดอายุแล้ว');
+    });
   });
 });

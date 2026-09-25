@@ -5,6 +5,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import {
   LineFinanceWebhookEvent,
   LineMessageEvent,
+  LineMessageContent,
   LineFollowEvent,
   LinePostbackEvent,
 } from '../dto/line-webhook.dto';
@@ -184,6 +185,15 @@ export class ChatbotFinanceService {
     return `[${message.type}]`;
   }
 
+  /** รูป/ไฟล์จาก LINE เก็บ message id ไว้ให้ดึงไฟล์ทีหลัง (ยื่น GFIN) — ข้อความอื่นไม่เปลี่ยน */
+  private inboundMediaFields(
+    message: LineMessageContent,
+  ): { type?: MessageType; text: string; externalMessageId?: string } {
+    if (message.type === 'image') return { type: 'IMAGE', text: '[image]', externalMessageId: message.id };
+    if (message.type === 'file') return { type: 'FILE', text: '[file]', externalMessageId: message.id };
+    return { text: this.inboundMessageToText(message) };
+  }
+
   // ─── message ─────────────────────────────────────────────
 
   private async handleMessage(event: LineMessageEvent): Promise<void> {
@@ -203,7 +213,7 @@ export class ChatbotFinanceService {
       await this.sessions.saveMessage({
         roomId: session.id,
         role: MessageRole.CUSTOMER,
-        text: this.inboundMessageToText(event.message),
+        ...this.inboundMediaFields(event.message),
       });
       await this.replyVerifyFlexAndSave(
         session.id,
@@ -228,7 +238,7 @@ export class ChatbotFinanceService {
       await this.sessions.saveMessage({
         roomId: session.id,
         role: MessageRole.CUSTOMER,
-        text: this.inboundMessageToText(event.message),
+        ...this.inboundMediaFields(event.message),
       });
       return;
     }
@@ -268,7 +278,7 @@ export class ChatbotFinanceService {
       await this.sessions.saveMessage({
         roomId: session.id,
         role: MessageRole.CUSTOMER,
-        text: this.inboundMessageToText(event.message),
+        ...this.inboundMediaFields(event.message),
       });
       await this.replyAndSave(session.id, event.replyToken, msg);
       return;
@@ -356,6 +366,7 @@ export class ChatbotFinanceService {
       role: MessageRole.CUSTOMER,
       type: 'IMAGE',
       text: '[image]',
+      externalMessageId: event.message.id,
     });
 
     // ดาวน์โหลด media จาก LINE

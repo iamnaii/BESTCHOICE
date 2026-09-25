@@ -25,8 +25,8 @@ export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]);
 }
 
-/** JSON ที่ฝังใน <script> — กัน `</script>` breakout ด้วยการ escape `<` */
-function escapeJsonForScript(value: unknown): string {
+/** JSON ที่ฝังใน <script> — กัน `</script>` breakout ด้วยการ escape `<` (exported — reused by finance-share-page.util.ts) */
+export function escapeJsonForScript(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 

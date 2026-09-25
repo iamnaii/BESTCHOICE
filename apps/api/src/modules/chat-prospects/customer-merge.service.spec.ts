@@ -50,6 +50,7 @@ function makeTx(overrides: { placeholder?: any; target?: any; counts?: Partial<t
     },
     crmLead: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     adsAttribution: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    externalFinanceApplication: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     chatAutoTrigger: {
       findMany: jest.fn(({ where }: any) => Promise.resolve(where.customerId === 'p1' ? [{ id: 'tr-1', referenceKey: 'k1' }, { id: 'tr-2', referenceKey: 'k2' }] : [{ referenceKey: 'k2' }])),
       update: jest.fn().mockResolvedValue({}),
@@ -102,6 +103,8 @@ describe('CustomerMergeService.absorbPlaceholder', () => {
     expect(tx.chatAutoTrigger.delete).toHaveBeenCalledWith({ where: { id: 'tr-2' } });
     expect(tx.crmLead.updateMany).toHaveBeenCalledWith({ where: { customerId: 'p1' }, data: { customerId: 't1' } });
     expect(tx.adsAttribution.updateMany).toHaveBeenCalledWith({ where: { customerId: 'p1' }, data: { customerId: 't1' } });
+    // final review C1 — ใบยื่น GFIN ที่ผูก placeholder ตามไปคนจริงในทรานแซกชันเดียวกัน
+    expect(tx.externalFinanceApplication.updateMany).toHaveBeenCalledWith({ where: { customerId: 'p1' }, data: { customerId: 't1' } });
     expect(tx.customerScore.deleteMany).toHaveBeenCalledWith({ where: { customerId: 'p1' } });
     // สถานะเครดิต: ปลายทาง NONE, placeholder ผ่าน pre-check → คัดลอก · ที่มา CHAT_* ยกไปด้วย (R24) ในใบเดียว
     expect(tx.customer.update).toHaveBeenCalledWith({

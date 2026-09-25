@@ -52,6 +52,16 @@ export const PII_TABLE_ALLOWLIST = {
   ],
   trade_ins: ['id', 'status', 'created_at', 'updated_at', 'deleted_at'],
   credit_checks: ['id', 'status', 'created_at', 'updated_at', 'deleted_at'],
+  // ── การอนุมัติสินเชื่อ (CreditApproval) — ตั้งใจไม่ให้: verified_monthly_income / living_expenses /
+  //    external_monthly_debt / internal_monthly_debt / remaining_income / maximum_monthly_payment /
+  //    approved_monthly_payment (ตัวเลขการเงินผูกกับลูกค้าคนเดียว) · salary_pay_day (ชนแพทเทิร์น /^salary/i อยู่แล้ว) ·
+  //    evidence_notes (ข้อความอิสระอ้างหลักฐานรายได้/รายจ่าย ≥20 ตัวอักษร) · source_financial_hash / customer_financial_hash
+  //    (ชนแพทเทิร์น /_hash$/i อยู่แล้ว) · commitments (jsonb — รายการภาระผ่อนของลูกค้าคนนี้ ผูกเลขที่สัญญา+ยอดผ่อน)
+  credit_approvals: [
+    'id', 'credit_check_id', 'customer_id', 'approved_by_id', 'policy_version',
+    'used_by_contract_id', 'used_at', 'used_first_payment_due', 'superseded_at',
+    'created_at', 'updated_at', 'deleted_at',
+  ],
   employees: ['id', 'status', 'created_at', 'updated_at', 'deleted_at'],
   employee_profiles: ['id', 'created_at', 'updated_at', 'deleted_at'],
   users: ['id', 'role', 'branch_id', 'acp_admin', 'is_active', 'created_at', 'updated_at', 'deleted_at'],
@@ -74,6 +84,40 @@ export const PII_TABLE_ALLOWLIST = {
     'actor_type', 'actor_user_id', 'room_id', 'ref_type', 'ref_id', 'data',
     'channel', 'outcome', 'lost_reason', 'heard_from', 'dedupe_key',
     'created_at', 'deleted_at', 'deleted_by_id',
+  ],
+  // ── ใบยื่นไฟแนนซ์นอก (migration 20261010000000_external_finance_application) — ตั้งใจไม่ให้:
+  //    summary / message_text / message_override (ข้อความ 12 ข้อ = ชื่อ อาชีพ IMEI เบอร์ อายุ) · occupation_override ·
+  //    share_token_hash / share_token_enc (ลิงก์สาธารณะ) · line_request_id
+  external_finance_applications: [
+    'id', 'number', 'finance_company_id', 'room_id', 'customer_id', 'product_id', 'branch_id', 'status', 'result_source',
+    'sent_at', 'sent_by_id', 'sent_via', 'share_expires_at', 'share_revoked_at', 'share_view_count', 'share_last_viewed_at',
+    'last_partner_event_at', 'closed_at', 'files_purged_at', 'created_by_id', 'created_at', 'updated_at', 'deleted_at',
+  ],
+  //    ไม่ให้ original_name (ชื่อไฟล์ที่ลูกค้าตั้งอาจมีชื่อจริง) · storage_key (พาธไฟล์เอกสาร)
+  external_finance_application_files: [
+    'id', 'application_id', 'slot', 'mime_type', 'size', 'source', 'source_message_id', 'source_angle', 'sort_order',
+    'sent_at', 'created_by_id', 'created_at', 'updated_at', 'deleted_at',
+  ],
+  //    ไม่ให้ actor_name / note (ข้อความอิสระจาก GFIN) / meta (ipHash + user agent)
+  external_finance_application_events: ['id', 'application_id', 'kind', 'actor_type', 'actor_user_id', 'created_at'],
+  // ── ตรวจเครดิตจากห้องแชท (GFIN final review I4, 2026-09-25) — เดิมไม่อยู่ในลิสต์ จึงถูกตัดสินด้วยด่านชื่ออย่างเดียว
+  //    แล้วหลุด: `result` (jsonb ผลวิเคราะห์ statement ธนาคาร — ชื่อบัญชี ยอดเงินเข้าออก รายได้ของลูกค้าคนเดียว) ·
+  //    `error` (ข้อความจาก AI/parser อาจยกเนื้อหา statement มา) · `key` ของไฟล์ (พาธเอกสารลูกค้าใน storage)
+  //    ให้เฉพาะ id / ความเชื่อมโยง / สถานะ / เวลา
+  room_credit_analyses: ['id', 'room_id', 'file_ids', 'status', 'credit_check_id', 'created_at', 'updated_at', 'deleted_at'],
+  //    ไม่ให้ key (พาธเอกสารลูกค้า) · name (ชื่อไฟล์ — ชนด่าน /name/ อยู่แล้ว)
+  room_credit_files: ['id', 'room_id', 'mime_type', 'size', 'source_message_id', 'created_at', 'updated_at', 'deleted_at'],
+  // ── นับเงินปิดยอด/นำฝากของสาขา — ตั้งใจไม่ให้พาธรูปสลิปใน storage: `deposit_slip_key` / `slip_key`
+  //    (receive_note / note / deposit_reference / reference ชนด่านชื่ออยู่แล้ว) · คอลัมน์อื่นคงชุดเดิมที่เคยได้
+  //    variance_reason / sent_back_reason คงไว้ตามเดิม — เรื่อง *_reason ทั้งระบบรอเจ้าของตัดสิน (ledger GFIN Task 7)
+  shop_cash_closes: [
+    'id', 'branch_id', 'status', 'attempt_no', 'period_start', 'float_amount', 'cash_in', 'cash_out',
+    'expected_amount', 'counted_amount', 'variance_amount', 'variance_reason', 'send_amount', 'counted_by_id', 'counted_at',
+    'received_amount', 'receive_variance', 'destination', 'confirmed_by_id', 'confirmed_at',
+    'sent_back_by_id', 'sent_back_at', 'sent_back_reason', 'created_at', 'updated_at', 'journal_entry_id',
+  ],
+  shop_cash_deposits: [
+    'id', 'branch_id', 'source', 'amount', 'deposited_by_id', 'deposited_at', 'journal_entry_id', 'created_at', 'updated_at',
   ],
 }
 
@@ -126,7 +170,15 @@ export const DENIED_COLUMN_PATTERNS = [
   //    (ดู NAME_LIKE_ALWAYS_ALLOW) — denylist ที่ยึดหัวท้ายคือตะแกรงที่ชื่อมี prefix ลอดได้เสมอ
   /name/i, /tax_id/i, /recipient/i, /nickname/i,
   /picture/i, /avatar/i, /photo/i, /image/i, /media_url/i, /signature/i, /document/i, /attachment/i,
-  /^text$/i, /^content$/i, /^body$/i, /^message$/i, /^note/i, /^comment/i, /^remark/i, /description/i,
+  // 🚨 fix round 1 (Task 7 review, 2026-09-25): เดิม /^note/i /^comment/i /^remark/i ยึดหัวคำ — บทเรียน
+  //    เดียวกับ /^name$/i ข้างบน (2026-09-04) — คอลัมน์ที่มีคำนี้เป็นส่วนหนึ่งของชื่อ (ไม่ใช่ prefix) หลุดหมด:
+  //    `credit_approvals.evidence_notes` (ข้อความอิสระอ้างหลักฐานรายได้/รายจ่ายของลูกค้าคนเดียว) และ
+  //    `shop_cash_closes.receive_note` เคยถูก grant จริงก่อน fix นี้ (พบระหว่างรีวิว `npm run grants`
+  //    ที่กวาดสคีมาทั้งฐาน) ตอนนี้กลับด้าน: บล็อกทุกคอลัมน์ที่มีคำเหล่านี้เป็น substring — ยังไม่พบคอลัมน์ไหน
+  //    ที่ต้องการ exception กลับมา (สแกน grants-report.md ทุกคอลัมน์ลงท้าย note/notes/remark/comment/reason
+  //    แล้ว — ดู PR ของ fix round 1 สำหรับรายชื่อที่ตรวจ) — ถ้าเจอในอนาคตให้เพิ่มชื่อเป๊ะในลิสต์ยกเว้นแบบ
+  //    NAME_LIKE_ALWAYS_ALLOW ห้ามคลาย pattern กลับเป็น anchored
+  /^text$/i, /^content$/i, /^body$/i, /^message$/i, /note/i, /comment/i, /remark/i, /description/i,
   /password/i, /secret/i, /token/i, /api_key/i, /credential/i, /_hash$/i, /encrypted/i,
   /account_no/i, /account_number/i, /bank_account/i, /card_number/i,
   /ip_address/i, /user_agent/i, /snapshot/i, /payload/i, /old_value/i, /new_value/i,

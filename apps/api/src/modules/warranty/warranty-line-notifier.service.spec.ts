@@ -109,7 +109,7 @@ describe('WarrantyLineNotifierService.notifyExpiring', () => {
     expect(options.relatedId).toBe('warranty:CONTRACT:contract-9:manufacturer');
   });
 
-  it('แม่แบบปิด (BLOCKED/TEMPLATE_INACTIVE) → คืน BLOCKED ไม่ยิง Sentry', async () => {
+  it('แม่แบบปิด (BLOCKED/TEMPLATE_INACTIVE) → คืน BLOCKED ไม่ยิง Sentry ทั้งสองแบบ', async () => {
     notifications.sendFromTemplate.mockResolvedValue({
       id: null,
       status: 'BLOCKED',
@@ -120,6 +120,37 @@ describe('WarrantyLineNotifierService.notifyExpiring', () => {
 
     expect(result).toBe('BLOCKED');
     expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  // fix round 1, Important — sendFromTemplate can RESOLVE (not throw) with status:'FAILED'
+  // once its internal retry loop exhausts (LINE push failed 3x, stale/blocked recipient).
+  // Folding this into 'BLOCKED' meant no layer ever alerted on it. Must surface via
+  // Sentry.captureMessage (not captureException — nothing threw) with no PII.
+  it('sendFromTemplate resolves {status:FAILED} (retry exhausted, no throw) → FAILED + Sentry.captureMessage, ไม่ใช่ captureException', async () => {
+    notifications.sendFromTemplate.mockResolvedValue({
+      id: 'n1',
+      status: 'FAILED',
+      errorMsg: 'Notification failed after 3 retries',
+    });
+
+    const result = await service.notifyExpiring(makeItem());
+
+    expect(result).toBe('FAILED');
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      'warranty line: dispatcher returned FAILED',
+      {
+        level: 'warning',
+        tags: { subsystem: 'warranty-line' },
+        extra: { relatedId: 'warranty:SALE:sale-1:shop', blockReason: null },
+      },
+    );
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    // ห้ามมี PII (lineIdShop / ชื่อลูกค้า) หลุดเข้า Sentry call ใดๆ
+    expect(JSON.stringify((Sentry.captureMessage as jest.Mock).mock.calls[0])).not.toContain(
+      'U-shop-1',
+    );
   });
 
   it('sendFromTemplate throw → FAILED + Sentry, ไม่ throw ออกไป', async () => {
@@ -132,6 +163,7 @@ describe('WarrantyLineNotifierService.notifyExpiring', () => {
     expect(Sentry.captureException).toHaveBeenCalledWith(boom, {
       tags: { subsystem: 'warranty-line' },
     });
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
   it('probe (notificationLog.findFirst) throw → FAILED + Sentry, ไม่ throw ออกไป และไม่ส่งจริง', async () => {
@@ -145,6 +177,7 @@ describe('WarrantyLineNotifierService.notifyExpiring', () => {
     expect(Sentry.captureException).toHaveBeenCalledWith(boom, {
       tags: { subsystem: 'warranty-line' },
     });
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
   it('getValue liffId throw → กลืนเอง (catch(() => null)) ยังส่งต่อได้โดย liffLine ว่าง', async () => {

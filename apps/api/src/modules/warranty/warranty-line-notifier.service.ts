@@ -67,6 +67,20 @@ export class WarrantyLineNotifierService {
       );
 
       if ((IN_FLIGHT_STATUSES as readonly string[]).includes(res.status)) return 'SENT';
+
+      if (res.status === 'FAILED') {
+        // sendFromTemplate can RESOLVE (not throw) with status:'FAILED' once its internal
+        // retry loop exhausts (LINE push failed 3x, stale/blocked recipient — see
+        // notification-dispatch.service.ts). No other layer alerts on this path, so it must
+        // be surfaced here — never silently folded into BLOCKED (no PII in the message/extra).
+        Sentry.captureMessage('warranty line: dispatcher returned FAILED', {
+          level: 'warning',
+          tags: { subsystem: 'warranty-line' },
+          extra: { relatedId, blockReason: res.blockReason ?? null },
+        });
+        return 'FAILED';
+      }
+
       // BLOCKED (เช่น TEMPLATE_INACTIVE) หรือสถานะอื่นที่ dispatcher เพิ่งเพิ่ม — ไม่ใช่ความผิดพลาด
       // ของระบบ ไม่ยิง Sentry (ตรงตามสัญญา: แม่แบบปิดคือของที่ตั้งใจปิดไว้)
       return 'BLOCKED';

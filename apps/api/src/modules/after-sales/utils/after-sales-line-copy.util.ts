@@ -145,8 +145,11 @@ export function buildLineData(
   const w = row.warrantySnapshot?.status;
 
   // RECEIVED — สิทธิ์ที่ลูกค้าจะได้ + สิ่งที่ต้องรอ
+  // CASH_SAME_MODEL_EXCHANGE เข้ากิ่งเดียวกับ SAME_MODEL_EXCHANGE เสมอ — สอดคล้องกับ
+  // isExchange และทุกฟิลด์อื่น (nextLine/readyLine/costLine/deviceLine/warrantyLines/
+  // readyKind) ที่จัดสองตัวนี้เป็นกลุ่มเดียวกันอยู่แล้ว (fix round 1, finding 1)
   const entitlementLine =
-    row.outcome === 'SAME_MODEL_EXCHANGE'
+    row.outcome === 'SAME_MODEL_EXCHANGE' || row.outcome === 'CASH_SAME_MODEL_EXCHANGE'
       ? 'เปลี่ยนรุ่นเดิม รอผู้จัดการยืนยัน'
       : row.outcome === 'PRICED_EXCHANGE'
         ? 'เปลี่ยนแบบมีราคา รออนุมัติ'
@@ -179,18 +182,22 @@ export function buildLineData(
         : `ค่าซ่อม ${actual ?? est ?? '—'} บาท ชำระที่สาขา`;
 
   // CLOSED — เครื่องที่ส่งมอบจริง (ซ่อมคืนเครื่องเดิม vs เปลี่ยนเครื่องใหม่) + ประกันคงเหลือ
-  const deviceLine = isExchange
+  // เข้ากิ่ง "เครื่องใหม่" เฉพาะเมื่อมีข้อมูล replacement จริงเท่านั้น — isExchange อย่างเดียว
+  // ไม่พอ: ถ้าไม่มีข้อมูล replacement (เคสที่ type อนุญาตแต่ไม่ควรเกิดจริง) ต้องบรรยายสิ่งที่
+  // รู้จริง (deviceName เดิม + ประกันตาม snapshot) ไม่ใช่อ้างว่าเป็นเครื่องใหม่ที่ไม่รู้ยี่ห้อ/
+  // รุ่นของมัน (fix round 1, finding 2)
+  const hasReplacement = isExchange && !!row.replacement;
+
+  const deviceLine = hasReplacement
     ? (() => {
-        const r = row.replacement;
-        const newName = r
-          ? [r.brand, r.model, r.storage].filter(Boolean).join(' ') || deviceName
-          : deviceName;
-        const imeiTail = r?.imeiSerial ? r.imeiSerial.slice(0, 4) : null;
+        const r = row.replacement!;
+        const newName = [r.brand, r.model, r.storage].filter(Boolean).join(' ') || deviceName;
+        const imeiTail = r.imeiSerial ? r.imeiSerial.slice(0, 4) : null;
         return imeiTail ? `เครื่องใหม่ ${newName} · IMEI ${imeiTail}…` : `เครื่องใหม่ ${newName}`;
       })()
     : deviceName;
 
-  const warrantyLines = isExchange
+  const warrantyLines = hasReplacement
     ? (() => {
         const lines = ['ประกันนับใหม่จากวันส่งมอบ'];
         const shopEnd = thaiShortYearDate(row.replacement?.shopWarrantyEndDate ?? null);

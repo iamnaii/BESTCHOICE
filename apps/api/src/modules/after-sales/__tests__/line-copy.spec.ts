@@ -153,6 +153,15 @@ describe('buildLineData — RECEIVED', () => {
     expect(data.entitlementLine).toBe('เปลี่ยนแบบมีราคา รออนุมัติ');
     expect(data.nextLine).toBe('เมื่อพร้อมรับเครื่อง ทางร้านจะแจ้งทาง LINE นี้ทันที');
   });
+
+  // fix round 1, finding 1 — CASH_SAME_MODEL_EXCHANGE ต้องเข้ากิ่งเดียวกับ SAME_MODEL_EXCHANGE
+  // เป๊ะ (สอดคล้องกับ isExchange และทุกฟิลด์อื่น) ปักไว้ก่อน PR 5 เปิดใช้ outcome นี้จริง
+  it('CASH_SAME_MODEL_EXCHANGE — เข้ากิ่งเดียวกับ SAME_MODEL_EXCHANGE', () => {
+    const row: LineCaseRow = { ...baseRow, outcome: 'CASH_SAME_MODEL_EXCHANGE' };
+    const data = buildLineData(row, 'RECEIVED', '');
+    expect(data.entitlementLine).toBe('เปลี่ยนรุ่นเดิม รอผู้จัดการยืนยัน');
+    expect(data.nextLine).toBe('เมื่อพร้อมรับเครื่อง ทางร้านจะแจ้งทาง LINE นี้ทันที');
+  });
 });
 
 // (d)
@@ -244,6 +253,41 @@ describe('buildLineData — CLOSED', () => {
     const data = buildLineData(row, 'CLOSED', '');
     expect(data.deviceLine).toBe('เครื่องใหม่ iPhone 13 128GB · IMEI 3568…');
     expect(data.warrantyLines.startsWith('ประกันนับใหม่จากวันส่งมอบ')).toBe(true);
+  });
+
+  // fix round 1, finding 2 — ถ้าเป็น outcome แลกเปลี่ยนแต่ไม่มีข้อมูล replacement เลย (เคสที่
+  // type อนุญาตแต่ไม่ควรเกิดจริง) ต้องบรรยายสิ่งที่รู้จริงเท่านั้น: deviceLine = deviceName
+  // เดิม (ไม่มีคำว่า "เครื่องใหม่" นำหน้าเพราะไม่รู้ยี่ห้อ/รุ่นเครื่องใหม่จริงๆ) และ
+  // warrantyLines ใช้สูตร snapshot-based เดียวกับ REPAIR — ห้ามอ้างว่า "ประกันนับใหม่จาก
+  // วันส่งมอบ" ทั้งที่ไม่มีข้อมูลรองรับ
+  it('SAME_MODEL_EXCHANGE ไม่มี replacement เลย → deviceLine/warrantyLines เหมือน REPAIR', () => {
+    const row: LineCaseRow = {
+      ...baseRow,
+      outcome: 'SAME_MODEL_EXCHANGE',
+      replacement: null,
+      warrantySnapshot: {
+        status: 'IN_SHOP_WARRANTY',
+        shopWarrantyEndDate: '2026-11-17T00:00:00.000Z',
+        manufacturerWarrantyEndDate: '2027-03-01T00:00:00.000Z',
+      },
+    };
+    const data = buildLineData(row, 'CLOSED', '');
+    expect(data.deviceLine).toBe('iPhone 13 128GB');
+    expect(data.deviceLine.startsWith('เครื่องใหม่')).toBe(false);
+    expect(data.warrantyLines).toBe('ประกันร้าน ถึง 17 พ.ย. 69\nประกันศูนย์ ถึง 1 มี.ค. 70');
+    expect(data.warrantyLines.startsWith('ประกันนับใหม่จากวันส่งมอบ')).toBe(false);
+  });
+
+  it('PRICED_EXCHANGE ไม่มี replacement และไม่มีวันหมดประกันเลย → warrantyLines = "—"', () => {
+    const row: LineCaseRow = {
+      ...baseRow,
+      outcome: 'PRICED_EXCHANGE',
+      replacement: null,
+      warrantySnapshot: null,
+    };
+    const data = buildLineData(row, 'CLOSED', '');
+    expect(data.deviceLine).toBe('iPhone 13 128GB');
+    expect(data.warrantyLines).toBe('—');
   });
 });
 

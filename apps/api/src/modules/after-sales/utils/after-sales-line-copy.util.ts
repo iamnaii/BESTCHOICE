@@ -78,6 +78,10 @@ export interface LineCaseRow {
   stage?: string | null;
 }
 
+/** ค่าใช้จ่ายของทางออกเปลี่ยนแบบมีราคา — ใช้ร่วมกันทั้งข้อความ LINE (costLine) และหน้า LIFF "เคสของฉัน"
+ * (liff-after-sales.service.ts) ให้ลูกค้าเห็นถ้อยคำเรื่องเงินเดียวกันทุกช่องทาง (final fix I-4) */
+export const PRICED_EXCHANGE_COST_LINE = 'ตามราคาที่ตกลง ชำระตอนทำสัญญาใหม่ที่สาขา';
+
 const baht = (v: string | null | undefined): string | null =>
   v ? Number(v).toLocaleString('th-TH', { maximumFractionDigits: 0 }) : null;
 
@@ -181,7 +185,7 @@ export function buildLineData(
 
   const costLine = isExchange
     ? row.outcome === 'PRICED_EXCHANGE'
-      ? 'ตามราคาที่ตกลง ชำระตอนทำสัญญาใหม่ที่สาขา'
+      ? PRICED_EXCHANGE_COST_LINE
       : 'ไม่มี'
     : payer === 'SHOP'
       ? 'ไม่มี (ในประกันร้าน)'

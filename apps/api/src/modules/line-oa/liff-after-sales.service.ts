@@ -18,7 +18,10 @@ import {
   reconcileStage,
 } from '../after-sales/services/after-sales-stage-reconcile';
 import { stageSince } from '../after-sales/utils/after-sales-stage.util';
-import { thaiShortYearDate } from '../after-sales/utils/after-sales-line-copy.util';
+import {
+  PRICED_EXCHANGE_COST_LINE,
+  thaiShortYearDate,
+} from '../after-sales/utils/after-sales-line-copy.util';
 
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -196,13 +199,17 @@ const baht = (v: Prisma.Decimal | null | undefined): string | null =>
   v == null ? null : Number(v.toString()).toLocaleString('th-TH', { maximumFractionDigits: 0 });
 
 /** ถ้อยคำค่าใช้จ่ายฝั่งลูกค้า — ตามบรีฟเป๊ะ:
+ * - PRICED_EXCHANGE → ถ้อยคำเดียวกับ costLine ของข้อความ LINE (`PRICED_EXCHANGE_COST_LINE`) —
+ *   จ่ายผ่านสัญญาใหม่ ไม่ใช่ "ไม่มี" (final fix I-4)
  * - ไม่มีใบซ่อม + ทางออกซ่อม (REPAIR/null) → "ไม่มี (ในประกันร้าน)"
- * - ไม่มีใบซ่อม + ทางออกเปลี่ยนเครื่อง → "ไม่มี (เปลี่ยนเครื่องตามประกัน)"
+ * - ไม่มีใบซ่อม + ทางออกเปลี่ยนเครื่องรุ่นเดิม → "ไม่มี (เปลี่ยนเครื่องตามประกัน)"
  * - payer SHOP → "ไม่มี (ในประกันร้าน)" · SUPPLIER_CLAIM → "ไม่มี (เคลมศูนย์)" (สอดคล้องกับ
  *   ถ้อยคำ LINE เดิมใน after-sales-line-copy.util.ts)
  * - payer CUSTOMER: actualCost ก่อน (ชำระที่สาขาแล้ว/รู้ยอดจริง) ไม่งั้นใช้ estimatedCost (ประมาณ)
+ *   ไม่มีทั้งคู่ → "แจ้งราคาก่อนซ่อม" (ลูกค้าเป็นผู้จ่าย ห้ามบอกว่า "ไม่มี" — final fix I-4)
  */
 function computeCostLine(outcome: CaseOutcome, repairTicket: CaseTicket | null): string {
+  if (outcome === 'PRICED_EXCHANGE') return PRICED_EXCHANGE_COST_LINE;
   if (!repairTicket) {
     return isExchangeOutcome(outcome) ? 'ไม่มี (เปลี่ยนเครื่องตามประกัน)' : 'ไม่มี (ในประกันร้าน)';
   }
@@ -213,7 +220,7 @@ function computeCostLine(outcome: CaseOutcome, repairTicket: CaseTicket | null):
   if (actual) return `ค่าซ่อม ${actual} บาท ชำระที่สาขา`;
   const estimated = baht(repairTicket.estimatedCost);
   if (estimated) return `ค่าซ่อมประมาณ ${estimated} บาท`;
-  return 'ไม่มี (ในประกันร้าน)';
+  return 'แจ้งราคาก่อนซ่อม';
 }
 
 function toLiffCase(row: CaseForLiff): LiffAfterSalesCase {

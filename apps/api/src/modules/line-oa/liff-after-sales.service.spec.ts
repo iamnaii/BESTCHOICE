@@ -171,6 +171,45 @@ describe('LiffAfterSalesService', () => {
     ]);
   });
 
+  // final fix I-4 — ถ้อยคำเรื่องเงินต้องไม่ขัดกับข้อความ LINE ของเคสเดียวกัน
+  it('I-4: PRICED_EXCHANGE → costLine "ตามราคาที่ตกลง ชำระตอนทำสัญญาใหม่ที่สาขา" (ไม่ใช่ "ไม่มี")', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+    prisma.afterSalesCase.findMany.mockResolvedValue([
+      buildCase({ outcome: 'PRICED_EXCHANGE', stage: 'AWAITING_APPROVAL', repairTicket: null }),
+    ]);
+
+    const result = await service.getMyCases('U_line1');
+
+    expect(result.cases[0].costLine).toBe('ตามราคาที่ตกลง ชำระตอนทำสัญญาใหม่ที่สาขา');
+  });
+
+  it.each(['SAME_MODEL_EXCHANGE', 'CASH_SAME_MODEL_EXCHANGE'])(
+    'I-4: %s ไม่มีใบซ่อม → costLine "ไม่มี (เปลี่ยนเครื่องตามประกัน)" (คงเดิม)',
+    async (outcome) => {
+      prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+      prisma.afterSalesCase.findMany.mockResolvedValue([
+        buildCase({ outcome, stage: 'AWAITING_APPROVAL', repairTicket: null }),
+      ]);
+
+      const result = await service.getMyCases('U_line1');
+
+      expect(result.cases[0].costLine).toBe('ไม่มี (เปลี่ยนเครื่องตามประกัน)');
+    },
+  );
+
+  it('I-4: payer CUSTOMER ไม่มีทั้งค่าซ่อมจริงและค่าซ่อมประมาณ → costLine "แจ้งราคาก่อนซ่อม" (ไม่ใช่ "ไม่มี (ในประกันร้าน)")', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+    prisma.afterSalesCase.findMany.mockResolvedValue([
+      buildCase({
+        repairTicket: buildTicket({ payer: 'CUSTOMER', estimatedCost: null, actualCost: null }),
+      }),
+    ]);
+
+    const result = await service.getMyCases('U_line1');
+
+    expect(result.cases[0].costLine).toBe('แจ้งราคาก่อนซ่อม');
+  });
+
   it('(b) PRICED_EXCHANGE uses its own step titles + stageLabel', async () => {
     prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
     prisma.afterSalesCase.findMany.mockResolvedValue([

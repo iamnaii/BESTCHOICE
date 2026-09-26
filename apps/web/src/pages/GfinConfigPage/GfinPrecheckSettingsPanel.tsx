@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle2, Send } from 'lucide-react';
-import { PRECHECK_TEMPLATE_ERROR_LABEL, PRECHECK_TEMPLATE_PLACEHOLDERS, validatePrecheckTemplate } from '@installment/shared';
+import { formatPrecheckTemplateErrors, PRECHECK_TEMPLATE_PLACEHOLDERS, validatePrecheckTemplate } from '@installment/shared';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -30,13 +30,14 @@ export function GfinPrecheckSettingsPanel() {
     queryKey: GFIN_PRECHECK_SETTINGS_QUERY_KEY,
     queryFn: async () => (await api.get<GfinPrecheckSettingsApi>('/gfin-precheck-settings')).data,
   });
-  const [groupId, setGroupId] = useState<string | null>(null);
-  const [template, setTemplate] = useState('');
-  useEffect(() => { if (data) { setGroupId(data.company.lineGroupId); setTemplate(data.company.precheckTemplate ?? ''); } }, [data]);
+  // ค่าที่พิมพ์/เลือกค้างไว้ (edits) ทับค่าจาก API ทีละช่อง จนกดบันทึก — เหมือน GfinSettingsPanel
+  // (ห้ามใช้ useEffect sync จาก data: refetch พื้นหลัง เช่น reconnect/invalidate จากที่อื่น
+  // จะมาเขียนทับข้อความที่ผู้ใช้พิมพ์ค้างไว้โดยไม่ได้กดบันทึกทันที)
+  const [edits, setEdits] = useState<{ groupId?: string | null; template?: string }>({});
 
   const save = useMutation({
     mutationFn: (payload: { lineGroupId: string | null; precheckTemplate: string | null }) => api.put('/gfin-precheck-settings', payload),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: GFIN_PRECHECK_SETTINGS_QUERY_KEY }); qc.invalidateQueries({ queryKey: ['room-gfin'] }); toast.success('บันทึกกลุ่มไลน์และแม่แบบแล้ว'); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: GFIN_PRECHECK_SETTINGS_QUERY_KEY }); qc.invalidateQueries({ queryKey: ['room-gfin'] }); setEdits({}); toast.success('บันทึกกลุ่มไลน์และแม่แบบแล้ว'); },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
   const test = useMutation({
@@ -48,12 +49,15 @@ export function GfinPrecheckSettingsPanel() {
   if (isLoading) return <div className="p-4 text-muted-foreground leading-snug">กำลังโหลด...</div>;
   if (error || !data) return <div className="p-4 text-destructive leading-snug">เกิดข้อผิดพลาด — โปรดลองรีเฟรช</div>;
 
+  const groupId = edits.groupId !== undefined ? edits.groupId : data.company.lineGroupId;
+  const template = edits.template ?? (data.company.precheckTemplate ?? '');
+
   const handleSave = () => {
     const t = template.trim();
     if (t) {
       const v = validatePrecheckTemplate(t);
       if (v.errors.length) {
-        toast.error(v.errors.map((e) => (e === 'UNKNOWN_PLACEHOLDER' ? `${PRECHECK_TEMPLATE_ERROR_LABEL[e]}: ${v.unknown.map((u) => `{{${u}}}`).join(', ')}` : PRECHECK_TEMPLATE_ERROR_LABEL[e])).join(' · '));
+        toast.error(formatPrecheckTemplateErrors(v));
         return;
       }
     }
@@ -76,7 +80,7 @@ export function GfinPrecheckSettingsPanel() {
         {data.groups.length === 0
           ? <p className="m-0 rounded-lg border border-border bg-muted/40 p-3 text-sm leading-snug">ยังไม่มีกลุ่มที่บอทเคยเข้า — ทำข้อ 1–2 ก่อน แล้วรีเฟรชหน้านี้</p>
           : (
-            <RadioGroup value={groupId ?? ''} onValueChange={(v) => setGroupId(v || null)} disabled={!canEdit} aria-label="กลุ่มไลน์ปลายทาง">
+            <RadioGroup value={groupId ?? ''} onValueChange={(v) => setEdits((prev) => ({ ...prev, groupId: v || null }))} disabled={!canEdit} aria-label="กลุ่มไลน์ปลายทาง">
               {data.groups.map((g) => {
                 const label = g.groupName ?? g.groupId;
                 return (
@@ -104,8 +108,8 @@ export function GfinPrecheckSettingsPanel() {
         <h2 className="text-base font-semibold leading-snug">ข้อความ 12 ข้อ (แม่แบบ)</h2>
         <p className="m-0 text-sm leading-snug text-muted-foreground">ว่าง = ใช้ถ้อยคำมาตรฐานของระบบ · ตัวแปรที่ใช้ได้: {PRECHECK_TEMPLATE_PLACEHOLDERS.map((p) => `{{${p}}}`).join(' ')} · ต้องมี {'{{link}}'} เสมอ</p>
         <label htmlFor="gfin-precheck-template" className="text-sm font-medium leading-snug">แม่แบบข้อความ 12 ข้อ</label>
-        <Textarea id="gfin-precheck-template" rows={16} className="font-sans text-sm leading-snug" value={template} placeholder={data.defaultTemplate} disabled={!canEdit} onChange={(e) => setTemplate(e.target.value)} />
-        {canEdit && <Button variant="ghost" size="sm" onClick={() => setTemplate(data.defaultTemplate)}>ใช้ค่าเริ่มต้น</Button>}
+        <Textarea id="gfin-precheck-template" rows={16} className="font-sans text-sm leading-snug" value={template} placeholder={data.defaultTemplate} disabled={!canEdit} onChange={(e) => setEdits((prev) => ({ ...prev, template: e.target.value }))} />
+        {canEdit && <Button variant="ghost" size="sm" onClick={() => setEdits((prev) => ({ ...prev, template: data.defaultTemplate }))}>ใช้ค่าเริ่มต้น</Button>}
       </section>
     </div>
   );

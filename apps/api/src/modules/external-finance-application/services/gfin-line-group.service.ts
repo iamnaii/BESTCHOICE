@@ -1,6 +1,6 @@
 import { BadGatewayException, BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { DEFAULT_PRECHECK_TEMPLATE, PRECHECK_TEMPLATE_ERROR_LABEL, validatePrecheckTemplate } from '@installment/shared';
+import { DEFAULT_PRECHECK_TEMPLATE, formatPrecheckTemplateErrors, validatePrecheckTemplate } from '@installment/shared';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LineFinanceClientService, LineFinanceNotConfiguredError } from '../../chatbot-finance/services/line-finance-client.service';
 import { LineGroupMembershipService } from '../../chatbot-finance/services/line-group-membership.service';
@@ -91,7 +91,7 @@ export class GfinLineGroupService {
       else {
         const v = validatePrecheckTemplate(t);
         if (v.errors.length) {
-          throw new BadRequestException(v.errors.map((e) => (e === 'UNKNOWN_PLACEHOLDER' ? `${PRECHECK_TEMPLATE_ERROR_LABEL[e]}: ${v.unknown.map((u) => `{{${u}}}`).join(', ')}` : PRECHECK_TEMPLATE_ERROR_LABEL[e])).join(' · '));
+          throw new BadRequestException(formatPrecheckTemplateErrors(v));
         }
         data.precheckTemplate = t;
       }

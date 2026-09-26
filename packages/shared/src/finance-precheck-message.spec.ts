@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_PRECHECK_TEMPLATE, buildPrecheckMessage, precheckMissingFields,
   computeAgeYears, formatThaiMobile, renderHand,
-  validatePrecheckTemplate, PRECHECK_TEMPLATE_MAX_LENGTH,
+  validatePrecheckTemplate, PRECHECK_TEMPLATE_MAX_LENGTH, formatPrecheckTemplateErrors,
 } from './finance-precheck-message';
 
 const values = {
@@ -77,5 +77,17 @@ describe('validatePrecheckTemplate', () => {
   it('empty and too long', () => {
     expect(validatePrecheckTemplate('   ').errors).toEqual(expect.arrayContaining(['EMPTY', 'MISSING_LINK']));
     expect(validatePrecheckTemplate('{{link}}' + 'x'.repeat(PRECHECK_TEMPLATE_MAX_LENGTH)).errors).toContain('TOO_LONG');
+  });
+});
+
+describe('formatPrecheckTemplateErrors', () => {
+  it('joins labels with " · " and appends the unknown placeholder names for UNKNOWN_PLACEHOLDER', () => {
+    const msg = formatPrecheckTemplateErrors(validatePrecheckTemplate('{{cusomerName}}'));
+    expect(msg).toContain('ต้องมี {{link}} เพื่อวางลิงก์ชุดเอกสาร'); // MISSING_LINK label
+    expect(msg).toContain('มีตัวแปรที่ระบบไม่รู้จัก: {{cusomerName}}'); // UNKNOWN_PLACEHOLDER + names
+    expect(msg).toBe(msg.split(' · ').join(' · ')); // joined by ' · '
+  });
+  it('no errors → empty string', () => {
+    expect(formatPrecheckTemplateErrors(validatePrecheckTemplate(DEFAULT_PRECHECK_TEMPLATE))).toBe('');
   });
 });

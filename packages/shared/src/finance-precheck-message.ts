@@ -113,3 +113,10 @@ export function validatePrecheckTemplate(template: string): { errors: PrecheckTe
   if (unknown.length) errors.push('UNKNOWN_PLACEHOLDER');
   return { errors, unknown };
 }
+
+/** ข้อความผิดของแม่แบบ — ใช้ร่วม API (400) และหน้าตั้งค่า (toast) ให้ถ้อยคำตรงกันเสมอ */
+export function formatPrecheckTemplateErrors(result: { errors: PrecheckTemplateError[]; unknown: string[] }): string {
+  return result.errors
+    .map((e) => (e === 'UNKNOWN_PLACEHOLDER' ? `${PRECHECK_TEMPLATE_ERROR_LABEL[e]}: ${result.unknown.map((u) => `{{${u}}}`).join(', ')}` : PRECHECK_TEMPLATE_ERROR_LABEL[e]))
+    .join(' · ');
+}

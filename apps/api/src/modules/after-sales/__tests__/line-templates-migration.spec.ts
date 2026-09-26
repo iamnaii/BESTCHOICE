@@ -192,6 +192,27 @@ describe('line templates migration (PR 3 Task 1)', () => {
     },
   );
 
+  // final fix I-6 — name/description ของแม่แบบขึ้นหน้าพนักงาน (/notifications) ⇒ ห้ามคำว่า "รับเครื่อง"
+  // (ยกเว้น "รับเครื่องไป") · ข้อความถึงลูกค้า (message_template) คงถ้อยคำที่เจ้าของอนุมัติไว้
+  it.each(EVENT_TYPES)(
+    '%s: name/description ไม่มีคำว่า "รับเครื่อง" (หน้าพนักงาน)',
+    (eventType) => {
+      const row = rowFor(sql, eventType);
+      const name = row.match(new RegExp(`'${eventType}',\\s*'([^']*)'`))?.[1];
+      const description = row.match(/'([^']*)',\s*(?:true|false),\s*now\(\),\s*now\(\)\)/)?.[1];
+      expect(name).toBeDefined();
+      expect(description).toBeDefined();
+      expect(name).not.toMatch(/รับเครื่อง(?!ไป)/);
+      expect(description).not.toMatch(/รับเครื่อง(?!ไป)/);
+    },
+  );
+
+  it('AFTER_SALES_PICKUP_REMINDER: name = "หลังการขาย · เตือนให้มารับ"', () => {
+    expect(rowFor(sql, 'AFTER_SALES_PICKUP_REMINDER')).toContain(
+      "'AFTER_SALES_PICKUP_REMINDER', 'หลังการขาย · เตือนให้มารับ',",
+    );
+  });
+
   it('migration ไม่ใช้คอลัมน์ deprecated (subject/flex_template) ที่ไม่มีข้อมูลจริง', () => {
     expect(sql).not.toMatch(/\bflex_template\b/);
     expect(sql).not.toMatch(/\bsubject\b/);

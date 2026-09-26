@@ -19,7 +19,8 @@ const MOMENT_LABEL: Record<string, string> = {
   AFTER_SALES_RECEIVED: 'รับเรื่องแล้ว',
   AFTER_SALES_READY: 'มารับได้แล้ว',
   AFTER_SALES_CLOSED: 'ปิดเคส',
-  AFTER_SALES_PICKUP_REMINDER: 'เตือนรับเครื่อง 7 วัน',
+  // final fix I-6 — ป้ายนี้ขึ้นหน้าพนักงาน (event note) ห้ามคำว่า "รับเครื่อง" + ไม่ผูกเลขวัน (ตั้งค่าได้)
+  AFTER_SALES_PICKUP_REMINDER: 'เตือนให้มารับ',
   WARRANTY_EXPIRING_7D: 'ประกันใกล้หมด',
 };
 

@@ -54,8 +54,17 @@ describe('lineEventNote', () => {
 
   it('DISABLED', () => {
     expect(lineEventNote('AFTER_SALES_PICKUP_REMINDER', 'DISABLED')).toBe(
-      '[AFTER_SALES_PICKUP_REMINDER] เตือนรับเครื่อง 7 วัน · ไม่ได้ส่ง — ปิดการส่ง LINE (after_sales_line_enabled)',
+      '[AFTER_SALES_PICKUP_REMINDER] เตือนให้มารับ · ไม่ได้ส่ง — ปิดการส่ง LINE (after_sales_line_enabled)',
     );
+  });
+
+  // final fix I-6 — note ของ event ขึ้นหน้าพนักงาน (การ์ด LINE + timeline) ⇒ ห้ามคำว่า "รับเครื่อง"
+  // และไม่ผูกเลข 7 วันไว้ในป้าย (after_sales_pickup_reminder_days ตั้งค่าได้)
+  it('PICKUP_REMINDER: ป้ายจังหวะบนหน้าพนักงานไม่มีคำว่า "รับเครื่อง" และไม่มีเลขวัน', () => {
+    const note = lineEventNote('AFTER_SALES_PICKUP_REMINDER', 'SENT');
+    expect(note).toBe('[AFTER_SALES_PICKUP_REMINDER] เตือนให้มารับ · ส่งแล้ว');
+    expect(note).not.toMatch(/รับเครื่อง/);
+    expect(note).not.toMatch(/7 วัน/);
   });
 
   it('BLOCKED มี detail', () => {

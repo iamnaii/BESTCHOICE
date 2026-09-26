@@ -985,7 +985,9 @@ describe('Task 8 — การ์ด "LINE ลูกค้า" ของจร�
 
     // ≤3 บรรทัด — แถวที่ 4 (เก่าสุด) ต้องไม่โผล่บนการ์ด
     expect(
-      screen.getByText(`ปิดเคส · ส่งไม่สำเร็จ (429) · ${formatDateTime('2026-09-10T03:00:00.000Z')}`),
+      screen.getByText(
+        `ปิดเคส · ส่งไม่สำเร็จ (429) · ${formatDateTime('2026-09-10T03:00:00.000Z')}`,
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(`มารับได้แล้ว · ส่งแล้ว · ${formatDateTime('2026-09-08T03:00:01.000Z')}`),
@@ -997,5 +999,29 @@ describe('Task 8 — การ์ด "LINE ลูกค้า" ของจร�
     // tag ดิบต้องไม่หลุดออกมาที่หน้าจอ
     expect(screen.queryByText(/\[AFTER_SALES_/)).not.toBeInTheDocument();
     expect(screen.queryByText('ผูก LINE แล้ว — ยังไม่มีข้อความส่ง')).not.toBeInTheDocument();
+  });
+
+  // final fix I-6 — เหตุการณ์เตือนให้มารับขึ้นการ์ด LINE บนหน้าพนักงาน: ห้ามคำว่า "รับเครื่อง"
+  // (ยกเว้น "รับเครื่องไป") ทั้งหน้า
+  it('PICKUP_REMINDER บนการ์ด LINE → "เตือนให้มารับ · ส่งแล้ว" และทั้งหน้าไม่มีคำว่า "รับเครื่อง"', async () => {
+    const detail = caseDetail({
+      lineLinked: true,
+      stage: 'READY_FOR_PICKUP',
+      lineEvents: [
+        {
+          at: '2026-09-15T03:00:00.000Z',
+          kind: 'LINE_SENT',
+          note: '[AFTER_SALES_PICKUP_REMINDER] เตือนให้มารับ · ส่งแล้ว',
+        },
+      ],
+    });
+    mockGet(detail);
+    const { container } = renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(
+      screen.getByText(`เตือนให้มารับ · ส่งแล้ว · ${formatDateTime('2026-09-15T03:00:00.000Z')}`),
+    ).toBeInTheDocument();
+    expect(container.textContent ?? '').not.toMatch(/รับเครื่อง(?!ไป)/);
   });
 });

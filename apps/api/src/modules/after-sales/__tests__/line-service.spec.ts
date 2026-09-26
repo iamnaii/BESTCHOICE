@@ -205,6 +205,41 @@ describe('AfterSalesLineService', () => {
   });
 
   // ---------------------------------------------------------------------
+  // (d2) final fix I-2 — dispatcher RESOLVE ด้วย FAILED (ส่ง 3 ครั้งไม่ผ่าน แล้วตั้ง RETRY_PENDING
+  // ไว้ในคิว retry แล้ว) คือความล้มเหลว ไม่ใช่การบล็อก: NOTE ข้อความ "ระบบจะลองส่งซ้ำอัตโนมัติ" +
+  // Sentry.captureMessage (warning) ไม่มี PII · ต่างจาก BLOCKED ที่ตั้งใจปิด (ไม่ยิง Sentry)
+  // ---------------------------------------------------------------------
+  it('(d2) records NOTE/FAILED "ระบบจะลองส่งซ้ำอัตโนมัติ" + Sentry.captureMessage (no PII) when the dispatcher resolves FAILED', async () => {
+    prisma.afterSalesCase.findFirst.mockResolvedValue(makeCase());
+    notifications.sendFromTemplate.mockResolvedValueOnce({ id: 'log-9', status: 'FAILED' });
+
+    const result = await service.notifyMoment('case-1', 'READY', 'actor-1');
+
+    expect(result).toEqual({ status: 'FAILED' });
+    expect(prisma.afterSalesEvent.create).toHaveBeenCalledWith({
+      data: {
+        caseId: 'case-1',
+        kind: 'NOTE',
+        note: '[AFTER_SALES_READY] มารับได้แล้ว · ส่งไม่สำเร็จ (ระบบจะลองส่งซ้ำอัตโนมัติ)',
+        actorId: 'actor-1',
+      },
+    });
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      'after-sales line: dispatcher returned FAILED',
+      {
+        level: 'warning',
+        tags: { subsystem: 'after-sales-line', moment: 'READY' },
+        extra: { caseId: 'case-1', notificationId: 'log-9' },
+      },
+    );
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    const sentryArgs = JSON.stringify((Sentry.captureMessage as jest.Mock).mock.calls);
+    expect(sentryArgs).not.toContain(SHOP_LINE_ID);
+    expect(sentryArgs).not.toContain('cust-1');
+  });
+
+  // ---------------------------------------------------------------------
   // (e) PII — lineIdShop ไม่รั่วไปที่ data / note / logger call ใด ๆ
   // ---------------------------------------------------------------------
   it('(e) never leaks lineIdShop into the template data, any event note, or any logger call', async () => {

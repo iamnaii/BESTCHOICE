@@ -172,6 +172,25 @@ export class AfterSalesLineService {
           'SENT',
         );
       }
+      if (res.status === 'FAILED') {
+        // final fix I-2 — dispatcher RESOLVE (ไม่ throw) ด้วย FAILED หลังส่ง 3 ครั้งไม่ผ่าน และตั้ง
+        // log เป็น RETRY_PENDING ไว้ในคิว retry แล้ว (notification-dispatch.service.ts send() →
+        // markForRetry) — เป็นความล้มเหลว ไม่ใช่การบล็อก: บอกพนักงานตามจริงว่าระบบจะลองส่งซ้ำเอง
+        // + แจ้ง Sentry (ไม่มี PII — ห้าม lineIdShop/ชื่อลูกค้า) แบบเดียวกับ warranty-line-notifier
+        Sentry.captureMessage('after-sales line: dispatcher returned FAILED', {
+          level: 'warning',
+          tags: { subsystem: 'after-sales-line', moment },
+          extra: { caseId, notificationId: res.id ?? null },
+        });
+        return await this.record(
+          caseId,
+          'NOTE',
+          lineEventNote(eventType, 'FAILED', 'ระบบจะลองส่งซ้ำอัตโนมัติ'),
+          actorId,
+          'FAILED',
+        );
+      }
+      // BLOCKED (TEMPLATE_INACTIVE / compliance) — ตั้งใจปิด ไม่ยิง Sentry
       return await this.record(
         caseId,
         'NOTE',

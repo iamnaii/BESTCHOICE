@@ -154,6 +154,26 @@ describe('buildLineData — RECEIVED', () => {
     expect(data.nextLine).toBe('เมื่อพร้อมรับเครื่อง ทางร้านจะแจ้งทาง LINE นี้ทันที');
   });
 
+  // final fix I-3 — tier AUTO อนุมัติในตัวตอนยื่น: ตอนส่ง RECEIVED เคสอยู่ READY_FOR_PICKUP/CLOSED แล้ว
+  // ห้ามบอกลูกค้าว่า "รออนุมัติ"
+  it.each(['READY_FOR_PICKUP', 'CLOSED'])(
+    'PRICED_EXCHANGE stage %s (อนุมัติแล้ว) → "เปลี่ยนแบบมีราคา อนุมัติแล้ว"',
+    (stage) => {
+      const row: LineCaseRow = { ...baseRow, outcome: 'PRICED_EXCHANGE', stage };
+      expect(buildLineData(row, 'RECEIVED', '').entitlementLine).toBe(
+        'เปลี่ยนแบบมีราคา อนุมัติแล้ว',
+      );
+    },
+  );
+
+  it.each(['AWAITING_APPROVAL', null])(
+    'PRICED_EXCHANGE stage %s (ยังไม่อนุมัติ) → "เปลี่ยนแบบมีราคา รออนุมัติ"',
+    (stage) => {
+      const row: LineCaseRow = { ...baseRow, outcome: 'PRICED_EXCHANGE', stage };
+      expect(buildLineData(row, 'RECEIVED', '').entitlementLine).toBe('เปลี่ยนแบบมีราคา รออนุมัติ');
+    },
+  );
+
   // fix round 1, finding 1 — CASH_SAME_MODEL_EXCHANGE ต้องเข้ากิ่งเดียวกับ SAME_MODEL_EXCHANGE
   // เป๊ะ (สอดคล้องกับ isExchange และทุกฟิลด์อื่น) ปักไว้ก่อน PR 5 เปิดใช้ outcome นี้จริง
   it('CASH_SAME_MODEL_EXCHANGE — เข้ากิ่งเดียวกับ SAME_MODEL_EXCHANGE', () => {

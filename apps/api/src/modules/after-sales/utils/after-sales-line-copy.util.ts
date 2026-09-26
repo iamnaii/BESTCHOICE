@@ -74,6 +74,8 @@ export interface LineCaseRow {
     shopWarrantyEndDate: string | null;
   } | null;
   readyAt?: Date | null; // stageSince ของ READY_FOR_PICKUP — ใช้ในเตือน 7 วัน
+  /** stage ของเคส ณ ตอนส่ง — PRICED ที่อนุมัติอัตโนมัติ (tier AUTO) ส่ง RECEIVED ตอนอนุมัติแล้ว (final fix I-3) */
+  stage?: string | null;
 }
 
 const baht = (v: string | null | undefined): string | null =>
@@ -156,7 +158,9 @@ export function buildLineData(
     row.outcome === 'SAME_MODEL_EXCHANGE' || row.outcome === 'CASH_SAME_MODEL_EXCHANGE'
       ? 'เปลี่ยนรุ่นเดิม รอผู้จัดการยืนยัน'
       : row.outcome === 'PRICED_EXCHANGE'
-        ? 'เปลี่ยนแบบมีราคา รออนุมัติ'
+        ? row.stage === 'READY_FOR_PICKUP' || row.stage === 'CLOSED'
+          ? 'เปลี่ยนแบบมีราคา อนุมัติแล้ว'
+          : 'เปลี่ยนแบบมีราคา รออนุมัติ'
         : payer === 'SUPPLIER_CLAIM'
           ? 'อยู่ในประกันศูนย์ ส่งเคลมศูนย์ ไม่มีค่าใช้จ่าย'
           : payer === 'CUSTOMER'

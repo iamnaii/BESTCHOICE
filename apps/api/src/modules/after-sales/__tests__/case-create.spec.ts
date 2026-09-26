@@ -661,6 +661,106 @@ describe('AfterSalesCaseService.createCase', () => {
       );
     });
 
+    // final fix I-3 — tier AUTO: submit() อนุมัติในตัว ⇒ createCase ได้เคสที่ READY_FOR_PICKUP (PRICED)
+    // หรือ CLOSED (MEMO) แล้ว — ส่ง RECEIVED ก่อน แล้วค่อยต่อจังหวะที่ทันไปแล้ว (เรียงลำดับด้วย .then)
+    describe('final fix I-3: LINE หลังสร้างเคส PRICED ที่อนุมัติอัตโนมัติ', () => {
+      const flush = () => new Promise((resolve) => setImmediate(resolve));
+      const PRICED_DTO = {
+        ...BASE_DTO,
+        outcome: 'PRICED_EXCHANGE' as const,
+        replacementProductId: 'p-2',
+        buybackPrice: '5000',
+        deviceCondition: 'A' as const,
+        newTotalMonths: 10,
+      };
+
+      function linkedRow(exchangeRequest: Record<string, unknown>) {
+        return {
+          id: 'as-9',
+          stage: 'AWAITING_APPROVAL',
+          outcome: 'PRICED_EXCHANGE',
+          cancelledAt: null,
+          closedAt: null,
+          replacementContractId: null,
+          repairTicket: null,
+          exchangeRequest: {
+            rejectionReason: null,
+            cancelReason: null,
+            newContract: null,
+            memoAppliedAt: null,
+            ...exchangeRequest,
+          },
+        };
+      }
+
+      function arrange(tier: string, exchangeRequest: Record<string, unknown>) {
+        lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
+        tx.afterSalesCase.create.mockResolvedValue({ id: 'as-9', caseNumber: 'AS-20260924-0009' });
+        contractExchange.submit.mockResolvedValue({
+          id: 'req-9',
+          mode: exchangeRequest.mode,
+          approvalTier: tier,
+        });
+        prisma.afterSalesCase.findFirst.mockResolvedValue(linkedRow(exchangeRequest));
+      }
+
+      it('AUTO PRICED → reconcile READY_FOR_PICKUP → notifyMoment RECEIVED แล้วตามด้วย READY (ตามลำดับ)', async () => {
+        arrange('AUTO', { status: 'APPROVED', mode: 'PRICED', newContract: { status: 'DRAFT' } });
+
+        const result = await svc.createCase(PRICED_DTO as never, [mockFile()], USER);
+        await flush();
+
+        expect(result.stage).toBe('READY_FOR_PICKUP');
+        expect(line.notifyMoment.mock.calls).toEqual([
+          ['as-9', 'RECEIVED', USER.id],
+          ['as-9', 'READY', USER.id],
+        ]);
+        expect(audit.log.mock.invocationCallOrder[0]).toBeLessThan(
+          line.notifyMoment.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('AUTO MEMO → reconcile CLOSED → notifyMoment RECEIVED แล้วตามด้วย CLOSED (ตามลำดับ)', async () => {
+        arrange('AUTO', {
+          status: 'APPROVED',
+          mode: 'MEMO',
+          memoAppliedAt: new Date('2026-09-24T03:00:00.000Z'),
+        });
+
+        const result = await svc.createCase(PRICED_DTO as never, [mockFile()], USER);
+        await flush();
+
+        expect(result.stage).toBe('CLOSED');
+        expect(line.notifyMoment.mock.calls).toEqual([
+          ['as-9', 'RECEIVED', USER.id],
+          ['as-9', 'CLOSED', USER.id],
+        ]);
+      });
+
+      it('ไม่ใช่ AUTO (คำขอยัง PENDING → AWAITING_APPROVAL) → ส่งแค่ RECEIVED', async () => {
+        arrange('REVIEW', { status: 'PENDING', mode: 'PRICED' });
+
+        const result = await svc.createCase(PRICED_DTO as never, [mockFile()], USER);
+        await flush();
+
+        expect(result.stage).toBe('AWAITING_APPROVAL');
+        expect(line.notifyMoment.mock.calls).toEqual([['as-9', 'RECEIVED', USER.id]]);
+      });
+
+      it('RECEIVED reject → ไม่ส่งจังหวะถัดไป และ createCase ยัง resolve ปกติ', async () => {
+        arrange('AUTO', { status: 'APPROVED', mode: 'PRICED', newContract: { status: 'DRAFT' } });
+        line.notifyMoment.mockRejectedValueOnce(new Error('LINE ล่ม'));
+
+        await expect(svc.createCase(PRICED_DTO as never, [mockFile()], USER)).resolves.toEqual(
+          expect.objectContaining({ id: 'as-9', stage: 'READY_FOR_PICKUP' }),
+        );
+        await flush();
+
+        expect(line.notifyMoment).toHaveBeenCalledTimes(1);
+        expect(line.notifyMoment).toHaveBeenCalledWith('as-9', 'RECEIVED', USER.id);
+      });
+    });
+
     // (d) PRICED_EXCHANGE — submit throw → compensation
     it('(d) PRICED_EXCHANGE: submit throw → เคสถูกอัปเดตเป็น CANCELLED พร้อมเหตุผล + rethrow · รูปที่อัปโหลดไม่ถูกลบ', async () => {
       const dto = {

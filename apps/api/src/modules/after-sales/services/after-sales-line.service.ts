@@ -292,6 +292,7 @@ export class AfterSalesLineService {
         : null,
       replacement,
       readyAt,
+      stage: c.stage,
     };
   }
 

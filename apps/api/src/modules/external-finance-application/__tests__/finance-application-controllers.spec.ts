@@ -1,7 +1,8 @@
 import { ROLES_KEY } from '../../auth/decorators/roles.decorator';
 import { FinanceApplicationsController } from '../finance-applications.controller';
 import { RoomFinanceApplicationsController } from '../room-finance-applications.controller';
-import { FINANCE_APP_ROLES } from '../constants';
+import { GfinPrecheckSettingsController } from '../gfin-precheck-settings.controller';
+import { FINANCE_APP_ROLES, GFIN_SETTINGS_ROLES } from '../constants';
 
 /**
  * minor 10 — `.claude/rules/security.md`: ทุก method ของ controller พนักงานต้องมี `@Roles(...)` ของตัวเอง
@@ -18,6 +19,18 @@ describe('GFIN staff controllers — method-level @Roles on every route', () => 
     for (const method of methods) {
       const handler = (controller.prototype as unknown as Record<string, unknown>)[method];
       expect({ method, roles: Reflect.getMetadata(ROLES_KEY, handler as object) }).toEqual({ method, roles: [...FINANCE_APP_ROLES] });
+    }
+  });
+});
+
+describe('GfinPrecheckSettingsController — OWNER/FINANCE_MANAGER on class and every route (spec §11)', () => {
+  it('has method-level @Roles equal to GFIN_SETTINGS_ROLES', () => {
+    expect(Reflect.getMetadata(ROLES_KEY, GfinPrecheckSettingsController)).toEqual([...GFIN_SETTINGS_ROLES]);
+    const methods = Object.getOwnPropertyNames(GfinPrecheckSettingsController.prototype).filter((m) => m !== 'constructor');
+    expect(methods.sort()).toEqual(['get', 'testMessage', 'update']);
+    for (const method of methods) {
+      const handler = (GfinPrecheckSettingsController.prototype as unknown as Record<string, unknown>)[method];
+      expect({ method, roles: Reflect.getMetadata(ROLES_KEY, handler as object) }).toEqual({ method, roles: [...GFIN_SETTINGS_ROLES] });
     }
   });
 });

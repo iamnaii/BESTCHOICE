@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, NotImplementedException, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ExternalFinanceActorType, ExternalFinanceDocSlot, ExternalFinanceEventKind, Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import {
   DEFAULT_PRECHECK_TEMPLATE, buildPrecheckMessage, precheckMissingFields, computeAgeYears, renderHand,
   PRECHECK_FIELD_LABELS, type PrecheckField, type PrecheckValues,
@@ -13,9 +14,10 @@ import { CustomersService } from '../../customers/customers.service';
 import { isChatPlaceholder, PLACEHOLDER_FIELDS_SELECT } from '../../chat-prospects/chat-placeholder';
 import { StorageService } from '../../storage/storage.service';
 import { FinanceApplicationNumberService } from './finance-application-number.service';
+import { GfinLineGroupService } from './gfin-line-group.service';
 import { FinanceActor, GFIN_COMPANY_NAME, REQUIRED_SLOTS, SHARE_TTL_DAYS, SLOT_LABELS } from '../constants';
 import { applyTransition, isClosed } from '../finance-application-status.util';
-import { SendFinanceApplicationDto, StaffResultDto, UpdateFinanceApplicationDto, UpdateFinanceCustomerFieldsDto } from '../dto/finance-application.dto';
+import { ResendFinanceApplicationDto, SendFinanceApplicationDto, StaffResultDto, UpdateFinanceApplicationDto, UpdateFinanceCustomerFieldsDto } from '../dto/finance-application.dto';
 import { newShareToken } from '../finance-share-token.util';
 
 const OPEN_STATUSES = ['DRAFT', 'SENT', 'ACKNOWLEDGED', 'MORE_INFO'] as const;
@@ -31,6 +33,7 @@ export const applicationInclude = {
   // name/occupation/birthDate เป็น plaintext ในสคีมานี้ (ไม่มีคอลัมน์ nameEncrypted/occupationEncrypted)
   customer: { select: { id: true, name: true, phone: true, phoneEncrypted: true, occupation: true, birthDate: true } },
   product: { select: { id: true, name: true, brand: true, model: true, storage: true, color: true, imeiSerial: true, serialNumber: true, category: true, batteryHealth: true, hasBox: true, accessoriesIncluded: true, status: true } },
+  financeCompany: { select: { id: true, name: true, lineGroupId: true, precheckTemplate: true } },
   sentBy: { select: { id: true, name: true } },
 } satisfies Prisma.ExternalFinanceApplicationInclude;
 
@@ -77,6 +80,7 @@ export class FinanceApplicationService {
     private config: ConfigService,
     private storage: StorageService,
     private customers: CustomersService,
+    private lineGroup: GfinLineGroupService,
   ) {}
 
   /** กติกาเดียวกับตรวจเครดิต (room-credit.service.ts:92-98): SALES เข้าได้เฉพาะห้องว่างหรือห้องตัวเอง */
@@ -160,14 +164,26 @@ export class FinanceApplicationService {
     const salesScope: Prisma.ExternalFinanceApplicationWhereInput = actor.role === 'SALES'
       ? { room: { OR: [{ assignedToId: null }, { assignedToId: actor.id }] } }
       : {};
-    const rows = await this.prisma.externalFinanceApplication.findMany({
-      where: { deletedAt: null, AND: [scope, salesScope] }, include: applicationInclude, orderBy: { createdAt: 'desc' },
+    // F2 (final-fix wave): status() reads the company + decrypts the LINE token + reads the membership —
+    // any throw there must not take down the whole GFIN tab (current/history), just the lineGroup slice.
+    // Started before the findMany await so it runs concurrently, not sequentially.
+    const lineGroupPromise = this.lineGroup.status().catch((err) => {
+      this.logger.warn(`[gfin] line group status failed: ${err instanceof Error ? err.message : err}`);
+      return { groupId: null, groupName: null, botInGroup: false, tokenConfigured: false, ready: false, reason: 'NOT_LINKED' as const };
     });
+    const [rows, lineGroup] = await Promise.all([
+      this.prisma.externalFinanceApplication.findMany({
+        where: { deletedAt: null, AND: [scope, salesScope] }, include: applicationInclude, orderBy: { createdAt: 'desc' },
+      }),
+      lineGroupPromise,
+    ]);
     const own = rows.filter((r) => r.roomId === roomId);
     const current = own.find((r) => !isClosed(r.status)) ?? own[0] ?? null;
     return {
       current: current ? toApplicationView(current) : null,
       history: rows.filter((r) => r.id !== current?.id).map(toApplicationView),
+      // PR 2 (spec §6.1 "กลุ่มไลน์ปลายทาง"): แท็บโชว์ชื่อกลุ่ม + พร้อมส่ง/บอทไม่อยู่ในกลุ่ม
+      lineGroup,
     };
   }
 
@@ -328,10 +344,11 @@ export class FinanceApplicationService {
     return user?.name ?? null;
   }
 
-  private renderText(app: { messageOverride: string | null }, values: PrecheckValues): string {
+  private renderText(app: { messageOverride: string | null; financeCompany?: { precheckTemplate: string | null } | null }, values: PrecheckValues): string {
     const linkLine = `เอกสารทั้งหมด ${values.fileCount} ไฟล์: ${values.link ?? '{{link}}'}`;
     if (app.messageOverride?.trim()) return `${app.messageOverride.trim()}\n${linkLine}`;
-    return buildPrecheckMessage(DEFAULT_PRECHECK_TEMPLATE, values);
+    // PR 2 (spec §4.2): แม่แบบของบริษัทที่ตั้งในหน้าตั้งค่า — ว่าง = แม่แบบในโค้ด §7
+    return buildPrecheckMessage(app.financeCompany?.precheckTemplate?.trim() || DEFAULT_PRECHECK_TEMPLATE, values);
   }
 
   private readiness(app: LoadedApplication, values: PrecheckValues) {
@@ -360,7 +377,8 @@ export class FinanceApplicationService {
 
   async send(id: string, dto: SendFinanceApplicationDto, actor: FinanceActor) {
     const app = await this.load(id, actor); // access() ก่อนเสมอ — กัน SALES ข้ามห้องโผล่ผ่านทาง via:'BOT' (review fix round 1)
-    if (dto.via === 'BOT') throw new NotImplementedException('ส่งด้วยบอทจะเปิดใน PR 2 — ใช้ "คัดลอกข้อความ + ลิงก์" ไปก่อน');
+    // PR 2: ตรวจกลุ่มปลายทางก่อนแตะอะไร — ไม่พร้อม = 400 ชี้ทางแก้ (ใบยัง DRAFT ไม่มีโทเคน)
+    const target = dto.via === 'BOT' ? await this.lineGroup.requireSendTarget() : null;
     const values = await this.buildValues(app, await this.staffName(actor), null);
     const r = this.readiness(app, values);
     if (!r.canSend) throw new BadRequestException(`ยังส่งไม่ได้: ${r.blockers.join(' · ')}`);
@@ -371,21 +389,41 @@ export class FinanceApplicationService {
     const shareUrl = this.shareUrl(token.raw);
     const messageText = this.renderText(app, { ...values, link: shareUrl });
     const summary = { customerName: values.customerName, occupation: values.occupation, model: values.model, hand: values.hand, imei: values.imei, phone: values.phone, age: values.age, fileCount: values.fileCount };
-    const application = await this.prisma.$transaction(async (tx) => {
-      // CAS บนสถานะที่อ่านมา (minor 9) — กดส่งซ้ำ/ยกเลิกพร้อมกันต้องได้ 409 ไม่ใช่ออกโทเคนทับกัน
-      const cas = await tx.externalFinanceApplication.updateMany({
-        where: { id: app.id, status: app.status, deletedAt: null },
-        data: {
-          status: nextStatus, sentAt: now, sentById: actor.id, sentVia: dto.via, messageText, summary,
-          shareTokenHash: token.hash, shareTokenEnc: encryptPII(token.raw, this.piiKey()), shareExpiresAt: expiresAt, shareRevokedAt: null,
-        },
-      });
-      if (cas.count === 0) throw new ConflictException(STALE_STATUS_MSG);
-      await tx.externalFinanceApplicationFile.updateMany({ where: { applicationId: app.id, deletedAt: null, sentAt: null }, data: { sentAt: now } });
-      await this.addEvent(tx, app.id, 'SENT', 'STAFF', { actorUserId: actor.id, meta: { via: dto.via, fileCount: values.fileCount } });
-      return this.reloadView(tx, app.id);
-    });
-    return { application, messageText, shareUrl };
+    const pushedRef: { value: { requestId: string | null } | null } = { value: null };
+    try {
+      const application = await this.prisma.$transaction(async (tx) => {
+        // CAS บนสถานะที่อ่านมา (minor 9) — กดส่งซ้ำ/ยกเลิกพร้อมกันต้องได้ 409 ไม่ใช่ออกโทเคนทับกัน
+        const cas = await tx.externalFinanceApplication.updateMany({
+          where: { id: app.id, status: app.status, deletedAt: null },
+          data: {
+            status: nextStatus, sentAt: now, sentById: actor.id, sentVia: dto.via, messageText, summary,
+            shareTokenHash: token.hash, shareTokenEnc: encryptPII(token.raw, this.piiKey()), shareExpiresAt: expiresAt, shareRevokedAt: null,
+          },
+        });
+        if (cas.count === 0) throw new ConflictException(STALE_STATUS_MSG);
+        await tx.externalFinanceApplicationFile.updateMany({ where: { applicationId: app.id, deletedAt: null, sentAt: null }, data: { sentAt: now } });
+        if (target) {
+          // push ใน tx (spec §5.1 "push ล้มเหลว ไม่เปลี่ยนสถานะ"): LINE โยน → rollback ทั้งก้อน = สถานะ/โทเคน/ไฟล์ไม่ขยับ
+          // row lock ค้างไม่เกิน timeout ของ LINE client (10s) — ปริมาณต่ำ (ไม่กี่ใบ/วัน) ยอมรับได้ · precedent: PaySolutions gateway+DB ใน $transaction
+          pushedRef.value = await this.lineGroup.pushText(target.groupId, messageText);
+          await tx.externalFinanceApplication.update({ where: { id: app.id }, data: { lineRequestId: pushedRef.value.requestId } });
+        }
+        await this.addEvent(tx, app.id, 'SENT', 'STAFF', {
+          actorUserId: actor.id,
+          meta: { via: dto.via, fileCount: values.fileCount, ...(pushedRef.value ? { lineRequestId: pushedRef.value.requestId, groupName: target?.groupName ?? null } : {}) },
+        });
+        return this.reloadView(tx, app.id);
+      }, { timeout: 20_000 });
+      return { application, messageText, shareUrl, pushed: !!pushedRef.value, groupName: target?.groupName ?? null };
+    } catch (err) {
+      if (pushedRef.value) {
+        // push ถึง GFIN แล้วแต่ commit ล้ม — GFIN ถือลิงก์ที่ตอบ 410 · ต้องมีคนตามแก้ (Review Focus 6)
+        Sentry.captureMessage('[gfin] LINE push succeeded but the send transaction failed — partner holds a link that now resolves to 410', {
+          level: 'error', tags: { subsystem: 'gfin' }, extra: { applicationId: app.id, requestId: pushedRef.value.requestId },
+        });
+      }
+      throw err;
+    }
   }
 
   async getShareLink(id: string, actor: FinanceActor) {
@@ -411,9 +449,11 @@ export class FinanceApplicationService {
     };
   }
 
-  /** ส่งเพิ่มเฉพาะไฟล์ที่ยังไม่เคยส่ง — ลิงก์เดิม ต่ออายุเป็น 7 วันนับจากวันนี้ (spec §5.1) · ลิงก์ถูกยกเลิกไว้ = ออกลิงก์ใหม่ (I2) */
-  async resend(id: string, actor: FinanceActor) {
+  /** ส่งเพิ่มเฉพาะไฟล์ที่ยังไม่เคยส่ง — ลิงก์เดิม ต่ออายุ 7 วัน (spec §5.1) · ลิงก์ถูกยกเลิกไว้ = ออกลิงก์ใหม่ (I2) · PR 2: via BOT = push ข้อความสั้นเข้ากลุ่ม */
+  async resend(id: string, dto: ResendFinanceApplicationDto, actor: FinanceActor) {
     const app = await this.load(id, actor);
+    const via = dto.via ?? 'COPY';
+    const target = via === 'BOT' ? await this.lineGroup.requireSendTarget() : null;
     const nextStatus = applyTransition(app.status, 'RESEND');
     const pending = app.files.filter((f) => !f.sentAt);
     if (!pending.length) throw new BadRequestException('ไม่มีไฟล์ใหม่ให้ส่งเพิ่ม');
@@ -424,17 +464,32 @@ export class FinanceApplicationService {
     const messageText = rotation
       ? `ส่งเอกสารเพิ่ม ${pending.length} ไฟล์ (ใบยื่น ${app.number}) ลิงก์ใหม่ (ลิงก์เดิมถูกยกเลิกแล้ว): ${url}`
       : `ส่งเอกสารเพิ่ม ${pending.length} ไฟล์ (ใบยื่น ${app.number}) ลิงก์เดิม: ${url}`;
-    const application = await this.prisma.$transaction(async (tx) => {
-      const cas = await tx.externalFinanceApplication.updateMany({
-        where: { id: app.id, status: app.status, shareTokenHash: app.shareTokenHash, deletedAt: null },
-        data: { status: nextStatus, shareExpiresAt: new Date(now.getTime() + SHARE_TTL_DAYS * DAY_MS), ...(rotation?.data ?? {}) },
-      });
-      if (cas.count === 0) throw new ConflictException(STALE_STATUS_MSG);
-      await tx.externalFinanceApplicationFile.updateMany({ where: { applicationId: app.id, deletedAt: null, sentAt: null }, data: { sentAt: now } });
-      await this.addEvent(tx, app.id, 'RESENT', 'STAFF', { actorUserId: actor.id, meta: { fileCount: pending.length, ...(rotation ? { rotated: true } : {}) } });
-      return this.reloadView(tx, app.id);
-    });
-    return { application, messageText, shareUrl: url, rotated: !!rotation };
+    const pushedRef: { value: { requestId: string | null } | null } = { value: null };
+    try {
+      const application = await this.prisma.$transaction(async (tx) => {
+        const cas = await tx.externalFinanceApplication.updateMany({
+          where: { id: app.id, status: app.status, shareTokenHash: app.shareTokenHash, deletedAt: null },
+          data: { status: nextStatus, shareExpiresAt: new Date(now.getTime() + SHARE_TTL_DAYS * DAY_MS), ...(rotation?.data ?? {}) },
+        });
+        if (cas.count === 0) throw new ConflictException(STALE_STATUS_MSG);
+        await tx.externalFinanceApplicationFile.updateMany({ where: { applicationId: app.id, deletedAt: null, sentAt: null }, data: { sentAt: now } });
+        if (target) {
+          pushedRef.value = await this.lineGroup.pushText(target.groupId, messageText);
+          await tx.externalFinanceApplication.update({ where: { id: app.id }, data: { lineRequestId: pushedRef.value.requestId } });
+        }
+        await this.addEvent(tx, app.id, 'RESENT', 'STAFF', {
+          actorUserId: actor.id,
+          meta: { via, fileCount: pending.length, ...(rotation ? { rotated: true } : {}), ...(pushedRef.value ? { lineRequestId: pushedRef.value.requestId, groupName: target?.groupName ?? null } : {}) },
+        });
+        return this.reloadView(tx, app.id);
+      }, { timeout: 20_000 });
+      return { application, messageText, shareUrl: url, rotated: !!rotation, pushed: !!pushedRef.value, groupName: target?.groupName ?? null };
+    } catch (err) {
+      if (pushedRef.value) {
+        Sentry.captureMessage('[gfin] LINE push succeeded but the resend transaction failed', { level: 'error', tags: { subsystem: 'gfin' }, extra: { applicationId: app.id, requestId: pushedRef.value.requestId } });
+      }
+      throw err;
+    }
   }
 
   /** ต่ออายุ 7 วัน — เฉพาะใบที่ยังเปิด (ใบยกเลิก/ปิดแล้วห้ามเปิดลิงก์กลับ) · ลิงก์ถูกยกเลิกไว้ = ออกลิงก์ใหม่ (I2) */

@@ -12,7 +12,9 @@ export type LineFinanceWebhookEvent =
   | LineMessageEvent
   | LineFollowEvent
   | LineUnfollowEvent
-  | LinePostbackEvent;
+  | LinePostbackEvent
+  | LineJoinEvent
+  | LineLeaveEvent;
 
 export interface LineEventBase {
   type: string;
@@ -58,4 +60,15 @@ export interface LinePostbackEvent extends LineEventBase {
   type: 'postback';
   replyToken: string;
   postback: { data: string; params?: Record<string, string> };
+}
+
+/** บอทถูกเชิญเข้ากลุ่ม/ห้องแชทหลายคน — https://developers.line.biz/en/reference/messaging-api/#join-event */
+export interface LineJoinEvent extends LineEventBase {
+  type: 'join';
+  replyToken: string;
+}
+
+/** บอทถูกนำออกจากกลุ่ม (หรือกลุ่มถูกยุบ) — ไม่มี replyToken */
+export interface LineLeaveEvent extends LineEventBase {
+  type: 'leave';
 }

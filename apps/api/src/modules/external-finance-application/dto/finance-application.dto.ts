@@ -31,3 +31,8 @@ export class StaffResultDto {
 export class SendFinanceApplicationDto {
   @IsIn(['COPY', 'BOT'], { message: 'วิธีส่งไม่ถูกต้อง' }) via: 'COPY' | 'BOT';
 }
+
+/** PR 2: ส่งเพิ่มด้วยบอทได้ · ไม่ส่ง body = COPY (เว็บก่อน PR 2 ไม่ส่ง body) */
+export class ResendFinanceApplicationDto {
+  @IsOptional() @IsIn(['COPY', 'BOT'], { message: 'วิธีส่งไม่ถูกต้อง' }) via?: 'COPY' | 'BOT';
+}

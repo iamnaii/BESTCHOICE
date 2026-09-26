@@ -19,3 +19,8 @@ export const SLOT_ORDER: ExternalFinanceDocSlot[] = FINANCE_SLOT_ORDER;
 export const REQUIRED_SLOTS: ExternalFinanceDocSlot[] = FINANCE_REQUIRED_SLOTS;
 
 export type FinanceActor = { id: string; role: string; branchId?: string | null; name?: string | null };
+
+/** LINE Messaging API: text message สูงสุด 5,000 ตัวอักษร (spec §10) */
+export const LINE_TEXT_MAX = 5000;
+/** ตั้งค่ากลุ่มไลน์/แม่แบบ/ส่งข้อความทดสอบ (spec §11) */
+export const GFIN_SETTINGS_ROLES = ['OWNER', 'FINANCE_MANAGER'] as const;

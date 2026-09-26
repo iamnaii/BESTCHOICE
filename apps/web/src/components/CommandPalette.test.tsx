@@ -147,11 +147,12 @@ describe('CommandPalette — settings registry integration', () => {
     expect(gfinEntry).toBeInTheDocument();
   });
 
-  it('hides "การเงิน & สินเชื่อ › GFIN" from FINANCE_MANAGER (OWNER-only)', async () => {
+  it('shows "การเงิน & สินเชื่อ › GFIN" to FINANCE_MANAGER (PR2 T6 — แท็บ "กลุ่มไลน์ & ข้อความ")', async () => {
     await renderPaletteOpen(makeFinanceManager());
 
-    // finance › gfin has roles: ['OWNER'] — FM must not see it
-    expect(screen.queryByText('การเงิน & สินเชื่อ › GFIN')).not.toBeInTheDocument();
+    // finance › gfin roles widened to ['OWNER', 'FINANCE_MANAGER'] — FM must see it now
+    const gfinEntry = screen.getByText('การเงิน & สินเชื่อ › GFIN');
+    expect(gfinEntry).toBeInTheDocument();
   });
 
   it('dedupes /branches — "สาขา" appears exactly once (no registry collision)', async () => {

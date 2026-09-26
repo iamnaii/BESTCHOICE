@@ -139,7 +139,7 @@ export const settingsRegistry: SettingsCategory[] = [
     items: [
       { id: 'interest', label: 'ดอกเบี้ย', roles: ['OWNER'], kind: 'route', component: InterestConfigPage, path: '/settings/finance/interest' },
       { id: 'late-fee', label: 'ค่าปรับ & เงื่อนไขผ่อน', roles: ['OWNER'], kind: 'inline', component: LateFeeSettingsCard, keywords: ['ค่าปรับ', 'late fee', 'เบี้ยปรับ', 'ปรับล่าช้า', 'ขั้นบันได', 'bracket', 'งวด', 'overdue', 'ติดตามหนี้', 'ปิดก่อนกำหนด'] },
-      { id: 'gfin', label: 'GFIN', roles: ['OWNER'], kind: 'route', component: GfinConfigPage, path: '/settings/finance/gfin' },
+      { id: 'gfin', label: 'GFIN', roles: ['OWNER', 'FINANCE_MANAGER'], kind: 'route', component: GfinConfigPage, path: '/settings/finance/gfin', keywords: ['gfin', 'กลุ่มไลน์', 'ชุดเช็ค', 'แม่แบบ', 'บอท'] },
       { id: 'payment-methods', label: 'ช่องทางชำระเงิน', roles: ['OWNER', 'FINANCE_MANAGER'], kind: 'route', component: PaymentMethodSettingsPage, path: '/settings/finance/payment-methods' },
     ],
   },

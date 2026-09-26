@@ -12,6 +12,10 @@ import { gotoWithRetry, hasErrorBoundary } from './helpers/navigation';
 // used — no workflow change needed.
 const prisma = new PrismaClient();
 let fixtureRoomId: string | undefined;
+// CI serves the built web statically (`serve -s apps/web/dist -l 5173` in e2e-tests.yml — SPA fallback,
+// no /api proxy) while the API listens on :3000, so a relative `/api/...` request returns index.html
+// there (it only worked locally through Vite's dev proxy). Call the API directly like the other specs.
+const API_URL = process.env.API_DIRECT_URL || 'http://localhost:3000';
 
 test.describe('GFIN pre-check tab', () => {
   test.beforeAll(async () => {
@@ -60,13 +64,13 @@ test.describe('GFIN pre-check tab', () => {
     // page.request is a separate APIRequestContext channel that never sees headers set via
     // page.setExtraHTTPHeaders() (loginViaAPI) — pass getAuthHeaders() explicitly, same
     // convention used by every other spec that calls page.request.* after logging in.
-    const apps = await page.request.get(`/api/staff-chat/rooms/${roomId}/finance-applications`, { headers: getAuthHeaders() });
+    const apps = await page.request.get(`${API_URL}/api/staff-chat/rooms/${roomId}/finance-applications`, { headers: getAuthHeaders() });
     const body = await apps.json();
     expect((body.data ?? body).current.number).toMatch(/^BC-\d{6}-\d{3}$/);
     await page.getByRole('button', { name: 'ยกเลิกใบยื่น' }).click();
     await expect(page.getByRole('button', { name: 'เริ่มใบยื่น' })).toBeVisible({ timeout: 15000 });
 
-    const gone = await request.get('/api/g/' + 'A'.repeat(43));
+    const gone = await request.get(`${API_URL}/api/g/${'A'.repeat(43)}`);
     expect(gone.status()).toBe(410);
     expect(await gone.text()).toContain('ลิงก์นี้หมดอายุหรือถูกยกเลิกแล้ว');
     expect(await gone.text()).not.toContain('BC-');

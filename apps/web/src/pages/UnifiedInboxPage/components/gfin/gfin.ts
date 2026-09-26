@@ -13,6 +13,18 @@ export const GFIN_ACCEPT = '.pdf,.jpg,.jpeg,.png,.gif,.webp';
 export const GFIN_LINE_GROUP = 'GFIN : BESTCHOICE (67301219)';
 export const GFIN_WEB_FORM_URL = 'https://client.gfinn.xyz/shop/loans/request';
 
+/** สถานะกลุ่มไลน์ปลายทาง — ชุดเดียวกับ GfinLineGroupStatus ฝั่ง API (gfin-line-group.service.ts) */
+export type GfinLineGroupReason = 'NOT_LINKED' | 'BOT_LEFT' | 'NO_TOKEN';
+export interface GfinLineGroupStatus { groupId: string | null; groupName: string | null; botInGroup: boolean; tokenConfigured: boolean; ready: boolean; reason: GfinLineGroupReason | null }
+/** ข้อความชี้ทางแก้ — ปลายทางมีจริง: ตั้งค่า › การเงิน › GFIN › แท็บ "กลุ่มไลน์ & ข้อความ" (OWNER/ผจก.การเงิน) · ตั้งค่า › เชื่อมต่อ */
+export const LINE_GROUP_REASON_LABEL: Record<GfinLineGroupReason, string> = {
+  NOT_LINKED: 'ยังไม่ได้ผูกกลุ่มไลน์ — เจ้าของ/ผจก.การเงินตั้งได้ที่ ตั้งค่า › การเงิน › GFIN',
+  BOT_LEFT: 'บอทไม่อยู่ในกลุ่มแล้ว — เชิญ OA ไฟแนนซ์กลับเข้ากลุ่ม แล้วเลือกกลุ่มใหม่ในตั้งค่า',
+  NO_TOKEN: 'ยังไม่ได้ตั้ง token LINE FINANCE — เจ้าของตั้งได้ที่ ตั้งค่า › เชื่อมต่อ',
+};
+/** ชื่อกลุ่มที่โชว์ — จากระบบก่อน ไม่มีค่อยถอยไปชื่อที่ทีมใช้อยู่วันนี้ */
+export const lineGroupLabel = (s: GfinLineGroupStatus | null | undefined): string => s?.groupName ?? GFIN_LINE_GROUP;
+
 /** ชนิดช่องเอกสาร — re-export ของ `FinanceDocSlot` จาก @installment/shared (Task 2) เพื่อไม่ให้ Tasks 9–10 ต้องแก้ import */
 export type FinanceSlot = FinanceDocSlot;
 export type FinanceStatus = 'DRAFT' | 'SENT' | 'ACKNOWLEDGED' | 'MORE_INFO' | 'APPROVED' | 'REJECTED' | 'CANCELLED';

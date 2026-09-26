@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_PRECHECK_TEMPLATE, buildPrecheckMessage, precheckMissingFields,
   computeAgeYears, formatThaiMobile, renderHand,
+  validatePrecheckTemplate, PRECHECK_TEMPLATE_MAX_LENGTH, formatPrecheckTemplateErrors,
 } from './finance-precheck-message';
 
 const values = {
@@ -58,5 +59,35 @@ describe('helpers', () => {
     expect(renderHand('PHONE_NEW')).toBe('1');
     expect(renderHand('TABLET')).toBe('1');
     expect(renderHand(null)).toBe('1');
+  });
+});
+
+describe('validatePrecheckTemplate', () => {
+  it('default template passes', () => {
+    expect(validatePrecheckTemplate(DEFAULT_PRECHECK_TEMPLATE)).toEqual({ errors: [], unknown: [] });
+  });
+  it('missing {{link}} is an error (spec §17)', () => {
+    expect(validatePrecheckTemplate('เช็ค {{customerName}}').errors).toContain('MISSING_LINK');
+  });
+  it('unknown placeholders are listed once each', () => {
+    const r = validatePrecheckTemplate('{{cusomerName}} {{cusomerName}} {{phone}} {{link}}');
+    expect(r.errors).toEqual(['UNKNOWN_PLACEHOLDER']);
+    expect(r.unknown).toEqual(['cusomerName']);
+  });
+  it('empty and too long', () => {
+    expect(validatePrecheckTemplate('   ').errors).toEqual(expect.arrayContaining(['EMPTY', 'MISSING_LINK']));
+    expect(validatePrecheckTemplate('{{link}}' + 'x'.repeat(PRECHECK_TEMPLATE_MAX_LENGTH)).errors).toContain('TOO_LONG');
+  });
+});
+
+describe('formatPrecheckTemplateErrors', () => {
+  it('joins labels with " · " and appends the unknown placeholder names for UNKNOWN_PLACEHOLDER', () => {
+    const msg = formatPrecheckTemplateErrors(validatePrecheckTemplate('{{cusomerName}}'));
+    expect(msg).toContain('ต้องมี {{link}} เพื่อวางลิงก์ชุดเอกสาร'); // MISSING_LINK label
+    expect(msg).toContain('มีตัวแปรที่ระบบไม่รู้จัก: {{cusomerName}}'); // UNKNOWN_PLACEHOLDER + names
+    expect(msg).toBe(msg.split(' · ').join(' · ')); // joined by ' · '
+  });
+  it('no errors → empty string', () => {
+    expect(formatPrecheckTemplateErrors(validatePrecheckTemplate(DEFAULT_PRECHECK_TEMPLATE))).toBe('');
   });
 });

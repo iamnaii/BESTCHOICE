@@ -94,7 +94,7 @@ describe('AfterSalesLineCron', () => {
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     line = {
-      hasLineEvent: jest.fn().mockResolvedValue(false),
+      hasLineAttempt: jest.fn().mockResolvedValue(false),
       notifyMoment: jest.fn().mockResolvedValue({ status: 'SENT' }),
     };
     const mod: TestingModule = await Test.createTestingModule({
@@ -164,7 +164,7 @@ describe('AfterSalesLineCron', () => {
       repairYoung,
       alreadyNotified,
     ]);
-    line.hasLineEvent.mockImplementation(async (caseId: string) => caseId === 'case-dup');
+    line.hasLineAttempt.mockImplementation(async (caseId: string) => caseId === 'case-dup');
 
     const result = await cron.tick(NOW);
 
@@ -179,7 +179,7 @@ describe('AfterSalesLineCron', () => {
     expect(line.notifyMoment).toHaveBeenCalledTimes(2);
     expect(line.notifyMoment).toHaveBeenCalledWith('case-repair-8d', 'PICKUP_REMINDER', null);
     expect(line.notifyMoment).toHaveBeenCalledWith('case-same-8d', 'PICKUP_REMINDER', null);
-    expect(line.hasLineEvent).toHaveBeenCalledWith('case-dup', 'AFTER_SALES_PICKUP_REMINDER');
+    expect(line.hasLineAttempt).toHaveBeenCalledWith('case-dup', 'AFTER_SALES_PICKUP_REMINDER');
     expect(result).toEqual({ reminded: 2, closedNotified: 0, skipped: 2, failed: 0 });
   });
 
@@ -204,7 +204,7 @@ describe('AfterSalesLineCron', () => {
       where: { id: 'case-drifted', stage: 'READY_FOR_PICKUP' },
       data: { stage: 'CLOSED', closedAt: new Date(NOW.getTime() - DAY) },
     });
-    expect(line.hasLineEvent).not.toHaveBeenCalled();
+    expect(line.hasLineAttempt).not.toHaveBeenCalled();
     expect(line.notifyMoment).not.toHaveBeenCalled();
     expect(result).toEqual({ reminded: 0, closedNotified: 0, skipped: 1, failed: 0 });
   });
@@ -212,12 +212,12 @@ describe('AfterSalesLineCron', () => {
   // (c) — moment 3 for a PRICED_EXCHANGE case closed by the contract engine on activation:
   // sends once, skips a case that already has [AFTER_SALES_CLOSED], and the 3-day window is
   // enforced by the query itself (closedAt >= now - 3d).
-  it('notifies CLOSED for a PRICED_EXCHANGE case within the 3-day window, dedup by hasLineEvent', async () => {
+  it('notifies CLOSED for a PRICED_EXCHANGE case within the 3-day window, dedup by hasLineAttempt', async () => {
     const freshClosed = closedRow({ id: 'closed-fresh', closedAt: new Date(NOW.getTime() - DAY) });
     const dupClosed = closedRow({ id: 'closed-dup', closedAt: new Date(NOW.getTime() - 2 * DAY) });
     const oldClosed = closedRow({ id: 'closed-old', closedAt: new Date(NOW.getTime() - 4 * DAY) });
     prisma.afterSalesCase.findMany = makeFindMany([freshClosed, dupClosed, oldClosed]);
-    line.hasLineEvent.mockImplementation(async (caseId: string) => caseId === 'closed-dup');
+    line.hasLineAttempt.mockImplementation(async (caseId: string) => caseId === 'closed-dup');
 
     const result = await cron.tick(NOW);
 
@@ -234,7 +234,7 @@ describe('AfterSalesLineCron', () => {
       },
       select: { id: true },
     });
-    expect(line.hasLineEvent).toHaveBeenCalledWith('closed-fresh', 'AFTER_SALES_CLOSED');
+    expect(line.hasLineAttempt).toHaveBeenCalledWith('closed-fresh', 'AFTER_SALES_CLOSED');
     expect(line.notifyMoment).toHaveBeenCalledTimes(1);
     expect(line.notifyMoment).toHaveBeenCalledWith('closed-fresh', 'CLOSED', null);
     expect(line.notifyMoment).not.toHaveBeenCalledWith('closed-dup', 'CLOSED', null);
@@ -254,7 +254,7 @@ describe('AfterSalesLineCron', () => {
     const result = await cron.tick(NOW);
 
     expect(prisma.afterSalesCase.findMany).not.toHaveBeenCalled();
-    expect(line.hasLineEvent).not.toHaveBeenCalled();
+    expect(line.hasLineAttempt).not.toHaveBeenCalled();
     expect(line.notifyMoment).not.toHaveBeenCalled();
     expect(result).toEqual({ reminded: 0, closedNotified: 0, skipped: 0, failed: 0 });
   });
@@ -321,5 +321,130 @@ describe('AfterSalesLineCron', () => {
       }),
     );
     expect(errorLog).toHaveBeenCalledWith('after-sales line cron failed', expect.any(String));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// final fix I-1 — dedup นับ "ทุกความพยายามที่ถูกบันทึก" ไม่ใช่เฉพาะ LINE_SENT: ใช้ AfterSalesLineService
+// ของจริงบน prisma ปลอมในหน่วยความจำ (events array — create push / findFirst กรองตาม where จริง)
+// แล้วเดิน cron สองรอบ (สองวันติดกัน) — รอบสองต้องไม่เขียนแถวซ้ำ/ไม่ส่งซ้ำ
+// ---------------------------------------------------------------------------
+describe('AfterSalesLineCron + AfterSalesLineService จริง — dedup สองรอบ (final fix I-1)', () => {
+  const CASE_ID = 'case-real-1';
+
+  /** แถว CASE_FOR_LINE_SELECT ที่ notifyMoment โหลด — READY_FOR_PICKUP ซ่อมเสร็จมาแล้ว 8 วัน */
+  function lineCase(lineIdShop: string | null): Row {
+    return {
+      id: CASE_ID,
+      caseNumber: 'AS-20260901-0001',
+      outcome: 'REPAIR',
+      symptom: 'จอแตก',
+      deviceBrand: 'Apple',
+      deviceModel: 'iPhone 13',
+      deviceImei: '356938035643809',
+      warrantySnapshot: null,
+      replacementProductId: null,
+      replacementContractId: null,
+      stage: 'READY_FOR_PICKUP',
+      receivedAt: new Date(NOW.getTime() - 12 * DAY),
+      approvedAt: null,
+      customer: { id: 'cust-1', lineIdShop },
+      branch: { name: 'ลาดพร้าว' },
+      repairTicket: {
+        payer: 'SHOP',
+        estimatedCost: null,
+        actualCost: null,
+        sentToRepairAt: new Date(NOW.getTime() - 10 * DAY),
+        repairedAt: new Date(NOW.getTime() - 8 * DAY),
+      },
+      exchangeRequest: null,
+    };
+  }
+
+  /** where ของ afterSalesEvent.findFirst — equality ทุก key ยกเว้น note ที่เป็น { startsWith } */
+  function eventMatches(e: Row, where: Row): boolean {
+    for (const [key, cond] of Object.entries(where)) {
+      if (key === 'note') {
+        if (!String(e.note).startsWith((cond as { startsWith: string }).startsWith)) return false;
+        continue;
+      }
+      if (e[key] !== cond) return false;
+    }
+    return true;
+  }
+
+  function setup(lineIdShop: string | null) {
+    const events: Row[] = [];
+    const readyRowReal = readyRow({
+      id: CASE_ID,
+      receivedAt: new Date(NOW.getTime() - 12 * DAY),
+      repairTicket: {
+        status: 'READY_FOR_PICKUP',
+        deletedAt: null,
+        returnedToCustomerAt: null,
+        sentToRepairAt: new Date(NOW.getTime() - 10 * DAY),
+        repairedAt: new Date(NOW.getTime() - 8 * DAY),
+      },
+    });
+    const prisma = {
+      systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
+      afterSalesCase: {
+        findMany: makeFindMany([readyRowReal]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findFirst: jest.fn(async () => lineCase(lineIdShop)),
+      },
+      afterSalesEvent: {
+        create: jest.fn(async ({ data }: { data: Row }) => {
+          events.push({ ...data });
+          return data;
+        }),
+        findFirst: jest.fn(async ({ where }: { where: Row }) =>
+          events.some((e) => eventMatches(e, where)) ? { id: 'evt-hit' } : null,
+        ),
+      },
+      product: { findFirst: jest.fn() },
+      contract: { findFirst: jest.fn() },
+    };
+    const notifications = { sendFromTemplate: jest.fn() };
+    const integrationConfig = { getValue: jest.fn().mockResolvedValue(undefined) };
+    const realLine = new AfterSalesLineService(
+      prisma as never,
+      notifications as never,
+      integrationConfig as never,
+    );
+    const realCron = new AfterSalesLineCron(prisma as never, realLine);
+    return { events, notifications, realCron };
+  }
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('ลูกค้าไม่ผูก LINE: รอบ 1 เขียน LINE_SKIPPED_NO_LINK หนึ่งแถว · รอบ 2 ยังคงหนึ่งแถว (ไม่งอกทุกวัน)', async () => {
+    const { events, notifications, realCron } = setup(null);
+
+    const first = await realCron.tick(NOW);
+    const noLinkAfterFirst = events.filter((e) => e.kind === 'LINE_SKIPPED_NO_LINK');
+    expect(noLinkAfterFirst).toHaveLength(1);
+    expect(noLinkAfterFirst[0].note).toMatch(/^\[AFTER_SALES_PICKUP_REMINDER\]/);
+    expect(first).toEqual({ reminded: 0, closedNotified: 0, skipped: 1, failed: 0 });
+
+    const second = await realCron.tick(new Date(NOW.getTime() + DAY));
+    expect(events.filter((e) => e.kind === 'LINE_SKIPPED_NO_LINK')).toHaveLength(1);
+    expect(events).toHaveLength(1);
+    expect(second).toEqual({ reminded: 0, closedNotified: 0, skipped: 1, failed: 0 });
+    expect(notifications.sendFromTemplate).not.toHaveBeenCalled();
+  });
+
+  it('ลูกค้าผูก LINE แต่ dispatcher คืน FAILED: รอบ 2 ไม่เรียก sendFromTemplate ซ้ำ (คิว retry ของ dispatcher ส่งซ้ำเอง)', async () => {
+    const { events, notifications, realCron } = setup('Ushop-real-1');
+    notifications.sendFromTemplate.mockResolvedValue({ id: 'n1', status: 'FAILED' });
+
+    await realCron.tick(NOW);
+    expect(notifications.sendFromTemplate).toHaveBeenCalledTimes(1);
+    expect(events).toHaveLength(1);
+
+    const second = await realCron.tick(new Date(NOW.getTime() + DAY));
+    expect(notifications.sendFromTemplate).toHaveBeenCalledTimes(1);
+    expect(events).toHaveLength(1);
+    expect(second).toEqual({ reminded: 0, closedNotified: 0, skipped: 1, failed: 0 });
   });
 });

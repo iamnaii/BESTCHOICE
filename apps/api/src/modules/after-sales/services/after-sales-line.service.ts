@@ -3,7 +3,7 @@
 // notifyMoment(caseId, moment, actorId) ส่ง LINE ให้ลูกค้า 1 จังหวะ (RECEIVED/READY/CLOSED/
 // PICKUP_REMINDER) แล้วบันทึกผลเป็น AfterSalesEvent เสมอ — ไม่ throw ไม่ว่ากรณีใด เพื่อให้
 // ผู้เรียก (Task 3 case/repair/exchange services, Task 4 cron) เรียกแบบ `void` หลัง commit ได้
-// โดยไม่ต้อง try/catch ของตัวเอง. hasLineEvent ให้ cron ใช้กัน dedup การส่งซ้ำ.
+// โดยไม่ต้อง try/catch ของตัวเอง. hasLineAttempt ให้ cron ใช้กันส่งซ้ำ (หนึ่งความพยายามต่อจังหวะ).
 //
 // PII: `customer.lineIdShop` อยู่ในเมธอดนี้เท่านั้น — ห้ามหลุดไปที่ template `data`, event `note`,
 // หรือ logger call ใด ๆ (test (e) ปักไว้).
@@ -81,10 +81,16 @@ export class AfterSalesLineService {
     private readonly integrationConfig: IntegrationConfigService,
   ) {}
 
-  /** ใช้โดย cron (Task 4) กัน dedup — ถามว่าเคสนี้เคยส่ง LINE ของ eventType นี้สำเร็จหรือยัง */
-  async hasLineEvent(caseId: string, eventType: string): Promise<boolean> {
+  /**
+   * ใช้โดย cron (Task 4) กันส่งซ้ำ — cron ส่งแต่ละจังหวะของตัวเองได้ไม่เกินหนึ่งครั้งต่อเคส.
+   * ความพยายามที่ไม่ผูก LINE / ส่งไม่สำเร็จ / ถูกบล็อก / ปิดสวิตช์ ก็นับเป็นความพยายามแล้ว: ตรวจแถว
+   * AfterSalesEvent ที่ note ขึ้นต้นด้วย tag ของ eventType ไม่ว่า kind ใด (LINE_SENT /
+   * LINE_SKIPPED_NO_LINK / NOTE) — การส่งซ้ำหลังล้มเป็นหน้าที่ของคิว retry ของ dispatcher ไม่ใช่ cron
+   * (final fix I-1: เดิมนับเฉพาะ LINE_SENT ⇒ เคสไม่ผูก LINE งอกแถวทุกวัน และ FAILED ส่งซ้ำวันถัดไป)
+   */
+  async hasLineAttempt(caseId: string, eventType: string): Promise<boolean> {
     const hit = await this.prisma.afterSalesEvent.findFirst({
-      where: { caseId, kind: 'LINE_SENT', note: { startsWith: lineEventTag(eventType) } },
+      where: { caseId, note: { startsWith: lineEventTag(eventType) } },
       select: { id: true },
     });
     return !!hit;

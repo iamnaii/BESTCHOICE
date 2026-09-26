@@ -3,7 +3,7 @@
 // จุดนั้นไม่มี after-sales hook เลย (ต่างจาก RECEIVED/READY/CLOSED ของ REPAIR/MEMO ที่ Task 3
 // เรียก `notifyMoment` ตรงจาก request handler ได้) จึงต้องมี cron มาจับแทน.
 //
-// ทั้งสองงานคุยกับ `AfterSalesLineService` เท่านั้น (`notifyMoment` / `hasLineEvent`) — cron นี้
+// ทั้งสองงานคุยกับ `AfterSalesLineService` เท่านั้น (`notifyMoment` / `hasLineAttempt`) — cron นี้
 // ไม่รู้จัก repair-ticket/contract-exchange internals ใด ๆ และไม่คิดกติกา "since"/"reconcile" ใหม่
 // ซ้ำ (ใช้ `reconcileStage`/`RECONCILE_SELECT` จาก Task 2 (list/summary ใช้ตัวเดียวกัน) และ
 // `stageSince` จาก Task 1/2). ไม่ throw ออกจาก tick — per-row try/catch + outer try/catch ตาม
@@ -103,7 +103,7 @@ export class AfterSalesLineCron {
             out.skipped++;
             continue;
           }
-          if (await this.line.hasLineEvent(row.id, AFTER_SALES_LINE_EVENT_TYPE.PICKUP_REMINDER)) {
+          if (await this.line.hasLineAttempt(row.id, AFTER_SALES_LINE_EVENT_TYPE.PICKUP_REMINDER)) {
             out.skipped++;
             continue;
           }
@@ -134,7 +134,7 @@ export class AfterSalesLineCron {
       });
       for (const c of closed) {
         try {
-          if (await this.line.hasLineEvent(c.id, AFTER_SALES_LINE_EVENT_TYPE.CLOSED)) {
+          if (await this.line.hasLineAttempt(c.id, AFTER_SALES_LINE_EVENT_TYPE.CLOSED)) {
             out.skipped++;
             continue;
           }

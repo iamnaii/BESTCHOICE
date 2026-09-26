@@ -305,17 +305,17 @@ describe('AfterSalesLineService', () => {
   });
 
   // ---------------------------------------------------------------------
-  // (h) hasLineEvent — probe ผ่าน note startsWith tag
+  // (h) hasLineAttempt — probe ผ่าน note startsWith tag ไม่ว่า kind ใด (final fix I-1): ความพยายาม
+  // ที่ไม่ผูก/ล้ม/ถูกบล็อก/ปิดสวิตช์ ก็นับเป็นความพยายามแล้ว — cron ส่งแต่ละจังหวะได้ครั้งเดียวต่อเคส
   // ---------------------------------------------------------------------
-  it('(h) hasLineEvent probes afterSalesEvent by kind LINE_SENT + note startsWith the event tag, and returns true on a hit', async () => {
+  it('(h) hasLineAttempt probes afterSalesEvent by note startsWith the event tag (any kind), and returns true on a hit', async () => {
     prisma.afterSalesEvent.findFirst.mockResolvedValue({ id: 'evt-1' });
 
-    const result = await service.hasLineEvent('case-1', 'AFTER_SALES_PICKUP_REMINDER');
+    const result = await service.hasLineAttempt('case-1', 'AFTER_SALES_PICKUP_REMINDER');
 
     expect(prisma.afterSalesEvent.findFirst).toHaveBeenCalledWith({
       where: {
         caseId: 'case-1',
-        kind: 'LINE_SENT',
         note: { startsWith: '[AFTER_SALES_PICKUP_REMINDER]' },
       },
       select: { id: true },
@@ -323,9 +323,9 @@ describe('AfterSalesLineService', () => {
     expect(result).toBe(true);
   });
 
-  it('(h) hasLineEvent returns false when no matching event exists', async () => {
+  it('(h) hasLineAttempt returns false when no matching event exists', async () => {
     prisma.afterSalesEvent.findFirst.mockResolvedValue(null);
-    const result = await service.hasLineEvent('case-1', 'AFTER_SALES_PICKUP_REMINDER');
+    const result = await service.hasLineAttempt('case-1', 'AFTER_SALES_PICKUP_REMINDER');
     expect(result).toBe(false);
   });
 

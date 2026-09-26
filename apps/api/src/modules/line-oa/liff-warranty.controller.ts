@@ -5,6 +5,7 @@ import { Throttle } from '@nestjs/throttler';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { LiffTokenGuard } from './guards/liff-token.guard';
 import { LiffWarrantyService, LiffWarrantyResponse } from './liff-warranty.service';
+import { LiffAfterSalesService, LiffAfterSalesResponse } from './liff-after-sales.service';
 
 interface LiffRequest {
   liffUserId: string;
@@ -31,16 +32,29 @@ interface LiffRequest {
 @SkipCsrf()
 @UseGuards(LiffTokenGuard)
 export class LiffWarrantyController {
-  constructor(private readonly warrantyService: LiffWarrantyService) {}
+  constructor(
+    private readonly warrantyService: LiffWarrantyService,
+    private readonly afterSalesService: LiffAfterSalesService,
+  ) {}
 
   @Get('liff/my-warranties')
   @Throttle({ short: { ttl: 60000, limit: 20 } })
   @ApiOperation({
-    summary:
-      'ประกันของลูกค้า (ช่อง SHOP) — รวมเครื่องจากใบขาย (ขายสด/ไฟแนนซ์นอก) และสัญญาผ่อน',
+    summary: 'ประกันของลูกค้า (ช่อง SHOP) — รวมเครื่องจากใบขาย (ขายสด/ไฟแนนซ์นอก) และสัญญาผ่อน',
   })
   async getMyWarranties(@Req() req: Request): Promise<LiffWarrantyResponse> {
     const lineUserId = (req as unknown as LiffRequest).liffUserId;
     return this.warrantyService.getMyWarranties(lineUserId);
+  }
+
+  @Get('liff/my-after-sales-cases')
+  @Throttle({ short: { ttl: 60000, limit: 20 } })
+  @ApiOperation({
+    summary: 'เคสหลังการขายของลูกค้า (ช่อง SHOP) — เคสเปิดอยู่ + เคสปิดภายใน 14 วัน',
+  })
+  // ไม่ใส่ @LiffChannel(SHOP) ด้วยเหตุผลเดียวกับ my-warranties ด้านบน — CustomerLineLink
+  // ยังไม่มีแถวช่อง SHOP เลยสักแถว ความปลอดภัยมาจากการ lookup ด้วย customer.lineIdShop เอง
+  async getMyAfterSalesCases(@Req() req: Request): Promise<LiffAfterSalesResponse> {
+    return this.afterSalesService.getMyCases((req as unknown as LiffRequest).liffUserId);
   }
 }

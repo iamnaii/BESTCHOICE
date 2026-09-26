@@ -134,6 +134,7 @@ function renderPage(initialEntries: string[] = ['/after-sales']) {
 const foundResult = (over: Partial<LookupResult> = {}): LookupResult => ({
   found: true,
   source: 'INSTALLMENT_CONTRACT',
+  lineLinked: false,
   product: {
     id: 'p1',
     brand: 'Apple',

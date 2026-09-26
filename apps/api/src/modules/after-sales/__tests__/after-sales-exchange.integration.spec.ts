@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Readable } from 'stream';
@@ -33,6 +33,7 @@ import { AfterSalesCaseService } from '../services/after-sales-case.service';
 import { AfterSalesQueryService } from '../services/after-sales-query.service';
 import { AfterSalesRepairService } from '../services/after-sales-repair.service';
 import { AfterSalesExchangeService } from '../services/after-sales-exchange.service';
+import { AfterSalesLineService } from '../services/after-sales-line.service';
 import { AfterSalesDocNumberService } from '../services/after-sales-doc-number.service';
 import { AfterSalesService } from '../after-sales.service';
 
@@ -139,6 +140,16 @@ const lookupSvc = new AfterSalesLookupService(
 );
 const afterSalesDocNumber = new AfterSalesDocNumberService(prisma as never);
 
+// AfterSalesLineService (Task 3, PR3) — ของจริง ต่อกับ NotificationsService/IntegrationConfigService
+// ปลอมตามที่ task-3-brief.md Step 3 กำหนดเป๊ะ (ดู after-sales-flow.integration.spec.ts สำหรับ
+// เหตุผลเดียวกัน)
+const notificationsFakeImpl = {
+  sendFromTemplate: vi.fn().mockResolvedValue({ id: 'n1', status: 'SENT' }),
+};
+const notificationsFake = notificationsFakeImpl as never;
+const integrationConfigFake = { getValue: async () => 'liff-test' } as never;
+const line = new AfterSalesLineService(prisma as never, notificationsFake, integrationConfigFake);
+
 // StorageService ปลอมในหน่วยความจำ (Map) — เหมือน after-sales-flow.integration.spec.ts
 const files = new Map<string, Buffer>();
 const storage = {
@@ -161,6 +172,7 @@ const caseSvc = new AfterSalesCaseService(
   lookupSvc,
   contractExchange,
   defect,
+  line,
 );
 const querySvc = new AfterSalesQueryService(prisma as never);
 const repairSvc = new AfterSalesRepairService(
@@ -169,6 +181,7 @@ const repairSvc = new AfterSalesRepairService(
   repairTickets,
   querySvc,
   audit,
+  line,
 );
 const exchangeSvc = new AfterSalesExchangeService(
   prisma as never,
@@ -179,6 +192,7 @@ const exchangeSvc = new AfterSalesExchangeService(
   contractExchange,
   exchangeCancel,
   lookupSvc,
+  line,
 );
 
 // Facade จริง (Task 8) — เรียกผ่านนี้เพื่อพิสูจน์การ delegate ของ facade เองด้วย เหมือนที่
@@ -975,5 +989,55 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
       where: { caseId: created.id, kind: 'APPROVED' },
     });
     expect(approvedEvent.note ?? '').toContain('ข้ามกรอบ 7 วัน');
+  });
+
+  // -------------------------------------------------------------------------
+  // เคส 12 (Task 3, PR3, ruling ง) — confirmSameModel → READY: notifyMoment เรียกตรงๆ (ไม่แข่งกับ
+  // fire-and-forget ของ exchangeSvc เอง) → sendFromTemplate ได้ data.readyLine ของกิ่งเปลี่ยนเครื่อง
+  // -------------------------------------------------------------------------
+  it('12) Task 3 ง: confirmSameModel → READY_FOR_PICKUP → notifyMoment(READY) → sendFromTemplate data.readyLine = "เปลี่ยนเครื่องใหม่ให้แล้ว มารับได้เลย"', async () => {
+    const fx = await seedInstallmentFixture({ tag: 'LINE12', daysAgoReceived: 2 });
+    // ลูกค้าต้องผูก LINE ไว้ก่อน ไม่งั้น notifyMoment จะเป็น NO_LINK ไม่เรียก sendFromTemplate เลย
+    await prisma.customer.update({
+      where: { id: fx.customerId },
+      data: { lineIdShop: `Utest${RUN}12` },
+    });
+    const np = await seedReplacementProduct('LINE12', {
+      brand: fx.brand,
+      model: fx.model,
+      storage: fx.storage,
+    });
+    await seedStatementReview(prisma, fx.customerId);
+
+    const created = await svc.createCase(
+      {
+        imei: fx.imei,
+        symptom: 'ทดสอบ LINE จังหวะที่ 2 — เปลี่ยนรุ่นเดิม (Task 3 เคส 12)',
+        accessories: { box: false, charger: false, case: false },
+        unlockConfirmed: true,
+        outcome: 'SAME_MODEL_EXCHANGE',
+        replacementProductId: np.id,
+        branchId,
+      } as never,
+      [fakeJpeg('line12-intake.jpg')],
+      SALES_USER(),
+    );
+    createdCaseIds.push(created.id);
+
+    const result = await exchangeSvc.confirmSameModel(created.id, {} as never, BM_USER());
+    createdContractIds.push(result.replacementContractId as string);
+    expect(result.stage).toBe('READY_FOR_PICKUP');
+
+    // เรียกตรง ๆ อีกครั้งให้มีจังหวะ await แน่นอน (ไม่แข่งกับ fire-and-forget ของ confirmSameModel เอง)
+    const notifyResult = await line.notifyMoment(created.id, 'READY', adminId);
+    expect(notifyResult.status).toBe('SENT');
+
+    const call = notificationsFakeImpl.sendFromTemplate.mock.calls.find(
+      (c: unknown[]) =>
+        (c[3] as { relatedId?: string })?.relatedId === created.id && c[0] === 'AFTER_SALES_READY',
+    );
+    expect(call).toBeTruthy();
+    const data = call![1] as Record<string, string>;
+    expect(data.readyLine).toBe('เปลี่ยนเครื่องใหม่ให้แล้ว มารับได้เลย');
   });
 });

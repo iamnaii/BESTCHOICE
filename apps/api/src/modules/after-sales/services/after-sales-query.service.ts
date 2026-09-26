@@ -594,10 +594,26 @@ export class AfterSalesQueryService {
         })),
       ...exchangeEvents,
     ].sort((a, b) => a.at.getTime() - b.at.getTime());
+    // Task 8 — เหตุการณ์ LINE ของเคสนี้สำหรับการ์ด "LINE ลูกค้า" บนเว็บพนักงาน: ทุกแถวที่
+    // after-sales-line.service.ts เขียน (ส่งจริง/ข้ามเพราะไม่ผูก LINE/ปิดการส่ง/ส่งไม่สำเร็จ/ถูก
+    // บล็อก) มี note ขึ้นต้นด้วย tag `[AFTER_SALES_*]` เสมอ (`lineEventTag()` ใน
+    // after-sales-line-copy.util.ts) — กรองด้วย prefix ของ note ไม่ใช่ whitelist ของ kind เพราะ
+    // event ที่ DISABLED/FAILED/BLOCKED ถูกเขียนเป็น kind 'NOTE' เหมือนบันทึกทั่วไปทุกประการ
+    // (ต่างกันแค่ note). เรียงใหม่สุดก่อน จำกัด 5 แถวพอสำหรับการ์ด (การ์ดเองแสดงแค่ ≤3 บรรทัด)
+    const lineEvents = reconciled.events
+      .filter((e) => e.note?.startsWith('[AFTER_SALES_'))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, 5)
+      .map((e) => ({
+        at: e.createdAt.toISOString(),
+        kind: e.kind as string,
+        note: e.note as string,
+      }));
     return {
       ...d,
       exchange,
       lineLinked,
+      lineEvents,
       timeline,
       photoCount: reconciled.photoKeys.length,
       purchasePhotoAngles: reconciled.purchasePhotoKeys.map(

@@ -986,7 +986,7 @@ export default function ChatPanel({
 
       {/* Input */}
       {!isResolved && (
-        <div className="border-t border-border/60 px-3 pt-2 pb-3 bg-card">
+        <div className="group/composer border-t border-border/60 px-3 pt-2 pb-3 bg-card">
           {/* แท็บโหมดเกาะขอบบนของการ์ด (แบบที่เจ้าของโอเค 2026-09-06): ตอบลูกค้า | โน้ตภายใน */}
           {onAddNote && (
             <div className="ml-3 flex items-end gap-0.5" role="radiogroup" aria-label="โหมดช่องพิมพ์">
@@ -997,7 +997,7 @@ export default function ChatPanel({
                 onClick={() => { setComposerMode('chat'); inputRef.current?.focus(); }}
                 className={cn(
                   'relative z-10 -mb-px inline-flex h-7 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-[12px] font-semibold transition-colors',
-                  !isNoteMode ? 'border-border bg-card text-primary' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
+                  !isNoteMode ? 'border-border bg-card text-primary group-focus-within/composer:border-primary/60' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
                 )}
               >
                 <MessageSquare className="size-3.5" /> ตอบลูกค้า
@@ -1024,6 +1024,7 @@ export default function ChatPanel({
                 : 'border-border bg-card focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/20',
             )}
           >
+            {/* ring-offset-0: กัน *:focus-visible ใน index.css วาดขอบสีพื้นหลัง 3px เป็นกล่องซ้อนในการ์ด */}
             <textarea
               ref={inputRef}
               value={inputText}
@@ -1042,7 +1043,7 @@ export default function ChatPanel({
               placeholder={isNoteMode ? 'พิมพ์โน้ตภายใน…' : `พิมพ์ข้อความถึง ${displayName}…`}
               aria-label={isNoteMode ? 'พิมพ์โน้ตภายใน' : 'พิมพ์ข้อความ'}
               rows={2}
-              className="block w-full resize-none overflow-y-auto bg-transparent px-3.5 pt-2.5 pb-1 text-sm leading-relaxed border-0 focus:outline-none focus:ring-0 max-h-32 placeholder:text-muted-foreground/60"
+              className="block w-full resize-none overflow-y-auto bg-transparent px-3.5 pt-2.5 pb-1 text-sm leading-relaxed border-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 max-h-32 placeholder:text-muted-foreground/60"
             />
             <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5 pt-0.5">
               {isNoteMode ? (

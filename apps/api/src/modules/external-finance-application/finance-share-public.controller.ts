@@ -159,8 +159,16 @@ export class FinanceSharePublicController {
       }
       const base = `/api/g/${encodeURIComponent(token)}`;
       const groups = this.share.groups(r.app, (fileId) => `${base}/files/${fileId}`);
-      // PR 2: ชื่อกลุ่มไลน์จริงที่ผูกไว้ — ค่าคงที่เดิมเป็น fallback (ยังไม่ได้ผูกกลุ่ม)
-      const lineGroupName = (await this.lineGroup.status()).groupName ?? LINE_GROUP_NAME;
+      // PR 2: ชื่อกลุ่มไลน์จริงที่ผูกไว้ — ค่าคงที่เดิมเป็น fallback (ยังไม่ได้ผูกกลุ่ม/lookup ล้ม)
+      // fix round 1: แยก try/catch ของตัวเอง เหมือน recordView ข้างบน — นี่เป็นแค่ส่วนตกแต่งท้ายหน้า
+      // ต้องไม่ทำให้ใบยื่นจริงเห็นเป็นหน้า 410 (status() อ่าน company + isConfigured() (decrypt token) +
+      // membership row — ล้มได้จากหลายจุดที่ไม่เกี่ยวกับความถูกต้องของลิงก์นี้เลย)
+      let lineGroupName = LINE_GROUP_NAME;
+      try {
+        lineGroupName = (await this.lineGroup.status()).groupName ?? LINE_GROUP_NAME;
+      } catch (err) {
+        this.logger.warn(`[finance-share] group name lookup failed: ${(err as Error)?.message ?? err}`);
+      }
       return res.status(200).send(buildFinanceSharePage({
         nonce, number: r.app.number, status: r.app.status, expiresAt: r.app.shareExpiresAt!,
         messageText: r.app.messageText ?? '', groups, zipUrl: `${base}/zip`, replyUrl: `${base}/reply`,

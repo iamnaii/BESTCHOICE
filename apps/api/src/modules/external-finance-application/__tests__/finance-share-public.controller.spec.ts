@@ -11,6 +11,7 @@ import * as Sentry from '@sentry/nestjs';
 import { FinanceSharePublicController } from '../finance-share-public.controller';
 import { FinanceShareService } from '../services/finance-share.service';
 import { GfinLineGroupService } from '../services/gfin-line-group.service';
+import { LINE_GROUP_NAME } from '../services/finance-share-page.util';
 import { CsrfGuard } from '../../../guards/csrf.guard';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
@@ -78,6 +79,8 @@ describe('FinanceSharePublicController (HTTP)', () => {
     reply: jest.fn(),
   };
   const config = { get: jest.fn((key: string) => (key === 'PII_HASH_SALT' ? 'test-salt-0123456789abcdef0123456789abcdef' : undefined)) };
+  // PR 2 T4 fix round 1 — re-mockable per test (default: ไม่ได้ผูกกลุ่มจริงในสเปคนี้ → ค่าคงที่ LINE_GROUP_NAME เป็น fallback)
+  const lineGroup = { status: jest.fn().mockResolvedValue({ groupName: null }) };
 
   beforeAll(async () => {
     const mod = await Test.createTestingModule({
@@ -85,8 +88,7 @@ describe('FinanceSharePublicController (HTTP)', () => {
       providers: [
         { provide: FinanceShareService, useValue: share },
         { provide: ConfigService, useValue: config },
-        // PR 2 T4 — ยังไม่ได้ผูกกลุ่มจริงในสเปคนี้ → ค่าคงที่ LINE_GROUP_NAME เดิมยังเป็น fallback
-        { provide: GfinLineGroupService, useValue: { status: jest.fn().mockResolvedValue({ groupName: null }) } },
+        { provide: GfinLineGroupService, useValue: lineGroup },
         // real global CsrfGuard registered as APP_GUARD — proves @SkipCsrf() actually bypasses
         // it on POST /reply instead of just trusting the decorator exists (fix round 1 Important 6)
         { provide: APP_GUARD, useClass: CsrfGuard },
@@ -112,6 +114,7 @@ describe('FinanceSharePublicController (HTTP)', () => {
     jest.clearAllMocks();
     share.recordView.mockResolvedValue(undefined);
     share.groups.mockReturnValue([]);
+    lineGroup.status.mockResolvedValue({ groupName: null });
     recordedExceptions.length = 0;
     (Sentry.captureException as jest.Mock).mockClear();
   });
@@ -165,6 +168,26 @@ describe('FinanceSharePublicController (HTTP)', () => {
     expect(share.recordView.mock.calls[0][0]).toBe('app-1');
     expect(typeof share.recordView.mock.calls[0][1]).toBe('string');
     expect(share.recordView.mock.calls[0][1]).toHaveLength(32); // ipHash — sha256(...).slice(0, 32)
+  });
+
+  // fix round 1 (Important, plan-mandated) — real group name shows up in the footer when bound
+  it('a bound line group shows its real name in the footer', async () => {
+    share.resolve.mockResolvedValue({ state: 'OK', app: liveApp() });
+    lineGroup.status.mockResolvedValue({ groupName: 'GFIN กลุ่มจริง' });
+    const res = await request(app.getHttpServer()).get(`/g/${rawToken}`).expect(200);
+    expect(res.text).toContain('GFIN กลุ่มจริง');
+  });
+
+  // fix round 1 (Important, plan-mandated) — the group-name lookup is a cosmetic footer detail;
+  // it must never turn a VALID application into the 410 gone page (recordView is isolated the
+  // same way — see its own try/catch above), and it must not alarm Sentry for what is, at worst,
+  // a stale footer.
+  it('a failing group-name lookup does not turn a live application into the 410 page — falls back to the constant, no Sentry noise', async () => {
+    share.resolve.mockResolvedValue({ state: 'OK', app: liveApp() });
+    lineGroup.status.mockRejectedValue(new Error('decrypt failed'));
+    const res = await request(app.getHttpServer()).get(`/g/${rawToken}`).expect(200);
+    expect(res.text).toContain(LINE_GROUP_NAME);
+    expect(Sentry.captureException).not.toHaveBeenCalled();
   });
 
   it('GET an unknown/expired/revoked token → 410 gone page, and recordView is never called', async () => {

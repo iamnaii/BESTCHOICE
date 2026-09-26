@@ -88,3 +88,28 @@ export function formatThaiMobile(raw: string | null | undefined): string {
 export function renderHand(category: string | null | undefined): '1' | '2' {
   return category === 'PHONE_USED' ? '2' : '1';
 }
+
+/** ตัวแปรที่แม่แบบใช้ได้ — ต้องตรงกับคีย์ใน buildPrecheckMessage ทุกตัว */
+export const PRECHECK_TEMPLATE_PLACEHOLDERS = ['customerName', 'occupation', 'model', 'hand', 'imei', 'phone', 'age', 'staffName', 'fileCount', 'link'] as const;
+/** LINE รับข้อความ 5,000 ตัวอักษร — กันที่ 4,000 เผื่อค่าจริงที่ยาวกว่าตัวแปร (ชื่อรุ่นเต็ม ลิงก์ 80+ ตัว) */
+export const PRECHECK_TEMPLATE_MAX_LENGTH = 4000;
+export type PrecheckTemplateError = 'EMPTY' | 'TOO_LONG' | 'MISSING_LINK' | 'UNKNOWN_PLACEHOLDER';
+export const PRECHECK_TEMPLATE_ERROR_LABEL: Record<PrecheckTemplateError, string> = {
+  EMPTY: 'แม่แบบว่าง',
+  TOO_LONG: `แม่แบบยาวเกิน ${PRECHECK_TEMPLATE_MAX_LENGTH} ตัวอักษร`,
+  MISSING_LINK: 'ต้องมี {{link}} เพื่อวางลิงก์ชุดเอกสาร',
+  UNKNOWN_PLACEHOLDER: 'มีตัวแปรที่ระบบไม่รู้จัก',
+};
+
+/** ตรวจแม่แบบก่อนบันทึก (spec §17 "แม่แบบถูกแก้จนไม่มี {{link}}") — errors ว่าง = ผ่าน · unknown = ชื่อตัวแปรที่ผิด (ไม่ซ้ำ) */
+export function validatePrecheckTemplate(template: string): { errors: PrecheckTemplateError[]; unknown: string[] } {
+  const t = template.trim();
+  const errors: PrecheckTemplateError[] = [];
+  if (!t) errors.push('EMPTY');
+  if (t.length > PRECHECK_TEMPLATE_MAX_LENGTH) errors.push('TOO_LONG');
+  if (!/\{\{link\}\}/.test(t)) errors.push('MISSING_LINK');
+  const known: readonly string[] = PRECHECK_TEMPLATE_PLACEHOLDERS;
+  const unknown = [...new Set([...t.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).filter((k) => !known.includes(k)))];
+  if (unknown.length) errors.push('UNKNOWN_PLACEHOLDER');
+  return { errors, unknown };
+}

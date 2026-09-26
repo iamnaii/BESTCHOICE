@@ -527,4 +527,28 @@ describe('listForRoom (PR 2)', () => {
     const r = await makeService(makePrisma()).listForRoom('room-1', owner);
     expect(r.lineGroup).toEqual(expect.objectContaining({ ready: true, groupName: 'GFIN : BESTCHOICE' }));
   });
+  // F2 (final-fix wave) — status() reads the company/token/membership and can throw; that must never
+  // take down the whole GFIN tab (current/history) — only the lineGroup slice degrades.
+  it('F2: lineGroup.status() rejecting does not fail the whole tab — current/history stay intact, lineGroup degrades to NOT_LINKED', async () => {
+    const prisma = makePrisma();
+    const row = (over: Record<string, unknown>) => ({ roomId: 'room-1', files: [], events: [], shareTokenHash: 'h', shareTokenEnc: 'e', ...over });
+    prisma.externalFinanceApplication.findMany.mockResolvedValue([row({ id: 'a1', status: 'DRAFT', createdAt: new Date('2026-09-25') })]);
+    const lineGroup = makeLineGroup({ status: jest.fn().mockRejectedValue(new Error('company query boom')) });
+    const result = await makeService(prisma, makeStorage(), makeCustomers(), lineGroup).listForRoom('room-1', owner);
+    expect(result.current?.id).toBe('a1');
+    expect(result.history).toEqual([]);
+    expect(result.lineGroup).toEqual({ groupId: null, groupName: null, botInGroup: false, tokenConfigured: false, ready: false, reason: 'NOT_LINKED' });
+  });
+});
+
+describe('FinanceApplicationService.send/resend via BOT — cross-room guard (F4, final-fix wave)', () => {
+  it('SALES on a room assigned to someone else → 403 on both send(BOT) and resend(BOT); the line group is never touched', async () => {
+    const prisma = makePrisma({ externalFinanceApplication: { ...makePrisma().externalFinanceApplication, findFirst: jest.fn().mockResolvedValue(readyApp()) } });
+    const lineGroup = makeLineGroup();
+    const service = makeService(prisma, makeStorage(), makeCustomers(), lineGroup);
+    await expect(service.send('app-1', { via: 'BOT' }, sales)).rejects.toThrow(ForbiddenException);
+    await expect(service.resend('app-1', { via: 'BOT' }, sales)).rejects.toThrow(ForbiddenException);
+    expect(lineGroup.requireSendTarget).not.toHaveBeenCalled();
+    expect(lineGroup.pushText).not.toHaveBeenCalled();
+  });
 });

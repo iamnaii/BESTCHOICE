@@ -75,6 +75,7 @@ describe('ChatbotFinanceService', () => {
     groups = {
       onJoin: jest.fn().mockResolvedValue(undefined),
       onLeave: jest.fn().mockResolvedValue(undefined),
+      ensureKnown: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -377,6 +378,26 @@ describe('ChatbotFinanceService', () => {
       expect(groups.onJoin).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
       await service.handleEvent(makeTextEvent('สวัสดี'));
       expect(sessions.saveMessage).not.toHaveBeenCalled();
+    });
+    // F3 (final-fix wave) — กลุ่มที่เชิญ OA เข้าไว้ก่อน PR 2 ขึ้น ไม่เคยได้ event join ซ้ำ (LINE ไม่ resend join
+    // เมื่อบอทเป็นสมาชิกอยู่แล้ว) → ต้องจดสมาชิกภาพจากข้อความกลุ่มอื่นแทน ก่อน kill switch เหมือน join/leave
+    it('ข้อความจากกลุ่ม (ไม่ใช่ join/leave) → ensureKnown(FINANCE, groupId) แล้วยังไม่ตอบ (handleMessage ทิ้งข้อความกลุ่มตามเดิม)', async () => {
+      const groupTextEvent = { ...makeTextEvent('สวัสดี'), source: { type: 'group' as const, groupId: 'Cgroup1', userId: 'U1' } };
+      await service.handleEvent(groupTextEvent as any);
+      expect(groups.ensureKnown).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
+      expect(sessions.saveMessage).not.toHaveBeenCalled();
+      expect(lineClient.replyMessage).not.toHaveBeenCalled();
+    });
+    it('ข้อความจากผู้ใช้ 1:1 → ไม่เรียก ensureKnown', async () => {
+      await service.handleEvent(makeTextEvent('สวัสดี'));
+      expect(groups.ensureKnown).not.toHaveBeenCalled();
+    });
+    it('LINE_FINANCE_BOT_DISABLED=true → ยังเรียก ensureKnown สำหรับข้อความกลุ่ม (kill switch หยุดเฉพาะการตอบ)', async () => {
+      const config = (service as any).configService as { get: jest.Mock };
+      config.get.mockImplementation((k: string) => (k === 'LINE_FINANCE_BOT_DISABLED' ? 'true' : undefined));
+      const groupTextEvent = { ...makeTextEvent('สวัสดี'), source: { type: 'group' as const, groupId: 'Cgroup1', userId: 'U1' } };
+      await service.handleEvent(groupTextEvent as any);
+      expect(groups.ensureKnown).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
     });
   });
 });

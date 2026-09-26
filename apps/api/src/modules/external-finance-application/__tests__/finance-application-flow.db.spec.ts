@@ -6,7 +6,7 @@
  * (salt ต้อง ≥32 ตัว — pii.encryptCustomerFields() ปฏิเสธ salt สั้นกว่านั้น)
  * สร้างห้อง/ผู้ใช้/ลูกค้า/สินค้าของตัวเองแล้วลบทิ้งใน afterAll (ลูกก่อนแม่)
  */
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadGatewayException, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaClient, ChatChannel } from '@prisma/client';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -366,5 +366,48 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
     const preview = await service.preview(draft.id, actor);
     expect(preview.missingFields).not.toContain('phone');
     expect(preview.missingFields).not.toContain('age');
+  });
+
+  // final-fix wave F9 — Review Focus 2 ("LINE ตอบ 429/500/timeout ตอนส่ง") พิสูจน์ด้วย $transaction จริงบน
+  // Postgres แทนการ mock: push สำเร็จ requireSendTarget แต่ pushText ล้ม (502) ต้อง roll back ทั้งก้อนจริง ๆ
+  // ไม่ใช่แค่ mock prisma.$transaction ที่รันฟังก์ชันตรง ๆ โดยไม่มี rollback semantics ให้พิสูจน์
+  it('F9: LINE push failing inside send(BOT) rolls back the whole $transaction on real Postgres — status/token/files/event all untouched', async () => {
+    const actor = { id: userId, role: 'OWNER' };
+    const branch = await prisma.branch.findFirst({ where: { deletedAt: null }, select: { id: true } });
+    if (!branch) throw new Error('ต้องมีสาขาในฐานทดสอบ (seed ก่อน)');
+    const customer = await prisma.customer.create({
+      data: { name: `ทดสอบระบบ F9 ${tag}`, occupation: 'ค้าขาย', phone: `08${String(Date.now()).slice(-8)}`, birthDate: new Date('1990-01-01') },
+    });
+    extraCustomerIds.push(customer.id);
+    const product = await prisma.product.create({
+      data: {
+        name: 'iPhone 15', brand: 'Apple', model: '15', storage: '128GB', category: 'PHONE_USED',
+        imeiSerial: `${tag}-f9-imei`, costPrice: 9000, branchId: branch.id, status: 'IN_STOCK',
+      },
+    });
+    extraProductIds.push(product.id);
+    const room = await prisma.chatRoom.create({ data: { channel: ChatChannel.FACEBOOK, externalUserId: `${tag}-f9`, displayName: `${tag}-f9` } });
+    extraRoomIds.push(room.id);
+    const draft = await service.createDraft(room.id, actor);
+    await service.update(draft.id, { customerId: customer.id, productId: product.id }, actor);
+    for (const slot of ['ID_SELFIE', 'ID_CARD', 'INCOME'] as const) {
+      await files.upload(draft.id, slot, { buffer: JPEG_BYTES, mimetype: 'image/jpeg', originalname: 'a.jpg' } as any, actor);
+    }
+    // เป้าหมายพร้อม (requireSendTarget สำเร็จ) แต่ LINE ล่มตอน push จริง (502) — คนละ stub จาก lineGroupStub
+    // ของ beforeAll (ตัวนั้น throw ตั้งแต่ requireSendTarget เพื่อกันสเปคอื่นเผลอยิงบอทจริง)
+    const lineGroupStubDown = {
+      status: async () => ({ groupId: null, groupName: null, botInGroup: false, tokenConfigured: false, ready: false, reason: 'NOT_LINKED' }),
+      requireSendTarget: async () => ({ groupId: 'Cx', groupName: 'x' }),
+      pushText: async () => { throw new BadGatewayException('LINE down'); },
+    } as any;
+    const serviceDown = new FinanceApplicationService(prisma as any, new FinanceApplicationNumberService(), pii, config, storage, { update: jest.fn() } as any, lineGroupStubDown);
+    await expect(serviceDown.send(draft.id, { via: 'BOT' }, actor)).rejects.toThrow(BadGatewayException);
+    const row = await prisma.externalFinanceApplication.findUniqueOrThrow({ where: { id: draft.id }, include: { files: true, events: true } });
+    expect(row.status).toBe('DRAFT');
+    expect(row.shareTokenHash).toBeNull();
+    expect(row.sentAt).toBeNull();
+    expect(row.lineRequestId).toBeNull();
+    expect(row.files.every((f) => f.sentAt === null)).toBe(true);
+    expect(row.events.some((e) => e.kind === 'SENT')).toBe(false);
   });
 });

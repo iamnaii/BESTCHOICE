@@ -139,6 +139,14 @@ export class ChatbotFinanceService {
         : this.groups.onLeave('FINANCE', event.source.groupId);
     }
 
+    // final-fix F3: กลุ่มที่เชิญ OA เข้าไว้ก่อน PR 2 ขึ้น ไม่มีทางได้ event `join` เลย (LINE ไม่ resend join
+    // เมื่อบอทเป็นสมาชิกกลุ่มอยู่แล้ว) — จดสมาชิกภาพจากข้อความกลุ่มอื่นใดก็ได้แทน (bookkeeping ไม่ใช่การตอบ)
+    // ก่อน kill switch เหมือนกัน · หนึ่ง indexed lookup ต่อ event (ดู ensureKnown) · ตัวข้อความยังถูกทิ้งตามเดิม
+    // โดย handleMessage (group !== user)
+    if (event.source.type === 'group' && event.source.groupId) {
+      await this.groups.ensureKnown('FINANCE', event.source.groupId);
+    }
+
     // Owner-controlled kill switch — drop all events without reply when paused
     if (this.configService.get<string>('LINE_FINANCE_BOT_DISABLED') === 'true') {
       return;

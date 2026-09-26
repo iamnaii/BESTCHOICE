@@ -36,7 +36,7 @@ export function GfinPrecheckSettingsPanel() {
   const [edits, setEdits] = useState<{ groupId?: string | null; template?: string }>({});
 
   const save = useMutation({
-    mutationFn: (payload: { lineGroupId: string | null; precheckTemplate: string | null }) => api.put('/gfin-precheck-settings', payload),
+    mutationFn: (payload: { lineGroupId?: string | null; precheckTemplate?: string | null }) => api.put('/gfin-precheck-settings', payload),
     onSuccess: () => { qc.invalidateQueries({ queryKey: GFIN_PRECHECK_SETTINGS_QUERY_KEY }); qc.invalidateQueries({ queryKey: ['room-gfin'] }); setEdits({}); toast.success('บันทึกกลุ่มไลน์และแม่แบบแล้ว'); },
     onError: (e) => toast.error(getErrorMessage(e)),
   });
@@ -51,19 +51,34 @@ export function GfinPrecheckSettingsPanel() {
 
   const groupId = edits.groupId !== undefined ? edits.groupId : data.company.lineGroupId;
   const template = edits.template ?? (data.company.precheckTemplate ?? '');
+  // F5 (final-fix wave) — ส่งเฉพาะช่องที่ถูกแก้จริง ไม่ใช่ทั้งสองช่องเสมอ: เดิม save ทับ lineGroupId ทุกครั้ง
+  // แม้ผู้ใช้แค่แก้แม่แบบ ⇒ ถ้ากลุ่มที่ผูกอยู่มี leftAt (บอทออกไปแล้ว) การ save แม่แบบล้วน ๆ จะ 400
+  // "บอทออกจากกลุ่มนี้แล้ว" ทั้งที่ไม่ได้ตั้งใจแตะกลุ่มเลย
+  const hasEdits = edits.groupId !== undefined || edits.template !== undefined;
 
   const handleSave = () => {
-    const t = template.trim();
-    if (t) {
-      const v = validatePrecheckTemplate(t);
-      if (v.errors.length) {
-        toast.error(formatPrecheckTemplateErrors(v));
-        return;
+    if (!hasEdits) return;
+    const payload: { lineGroupId?: string | null; precheckTemplate?: string | null } = {};
+    if (edits.groupId !== undefined) payload.lineGroupId = edits.groupId;
+    if (edits.template !== undefined) {
+      const t = edits.template.trim();
+      if (t) {
+        const v = validatePrecheckTemplate(t);
+        if (v.errors.length) {
+          toast.error(formatPrecheckTemplateErrors(v));
+          return;
+        }
       }
+      payload.precheckTemplate = t || null;
     }
-    save.mutate({ lineGroupId: groupId, precheckTemplate: t || null });
+    save.mutate(payload);
   };
   const status = data.status;
+  // F6 (final-fix wave) — เลือกกลุ่มอื่นแล้วยังไม่กดบันทึก: "ส่งข้อความทดสอบ" ต้องปิดไว้ก่อน ไม่งั้นข้อความทดสอบ
+  // จะส่งเข้ากลุ่มที่จอแสดงไว้ (เลือกใหม่ ยังไม่บันทึก) แทนกลุ่มที่ผูกจริงในระบบ (status อ่านจาก API เดิม)
+  const unsavedGroupChoice = edits.groupId !== undefined;
+  const testDisabled = test.isPending || !status.ready || unsavedGroupChoice;
+  const testTitle = unsavedGroupChoice ? 'บันทึกกลุ่มที่เลือกก่อน' : (!status.ready ? 'บันทึกกลุ่มที่บอทอยู่ก่อน' : undefined);
 
   return (
     <div className="space-y-6">
@@ -78,7 +93,7 @@ export function GfinPrecheckSettingsPanel() {
           <li>เลือกกลุ่มด้านล่าง กด &quot;บันทึก&quot; แล้ว &quot;ส่งข้อความทดสอบ&quot; ให้เจ้าหน้าที่ GFIN เห็นก่อนใช้จริง</li>
         </ol>
         {data.groups.length === 0
-          ? <p className="m-0 rounded-lg border border-border bg-muted/40 p-3 text-sm leading-snug">ยังไม่มีกลุ่มที่บอทเคยเข้า — ทำข้อ 1–2 ก่อน แล้วรีเฟรชหน้านี้</p>
+          ? <p className="m-0 rounded-lg border border-border bg-muted/40 p-3 text-sm leading-snug">ยังไม่มีกลุ่มที่บอทเคยเข้า — ทำข้อ 1–2 ก่อน · ถ้าเชิญ OA ไว้ในกลุ่มแล้วก่อนอัปเดตนี้ ให้ใครก็ได้ในกลุ่มพิมพ์ข้อความ 1 ครั้ง (หรือนำ OA ออกแล้วเชิญใหม่) แล้วรีเฟรชหน้านี้</p>
           : (
             <RadioGroup value={groupId ?? ''} onValueChange={(v) => setEdits((prev) => ({ ...prev, groupId: v || null }))} disabled={!canEdit} aria-label="กลุ่มไลน์ปลายทาง">
               {data.groups.map((g) => {
@@ -98,8 +113,8 @@ export function GfinPrecheckSettingsPanel() {
           )}
         {canEdit && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={handleSave} disabled={save.isPending}>บันทึก</Button>
-            <Button variant="outline" onClick={() => test.mutate()} disabled={test.isPending || !status.ready} title={!status.ready ? 'บันทึกกลุ่มที่บอทอยู่ก่อน' : undefined}><Send className="mr-1 size-4" aria-hidden />ส่งข้อความทดสอบ</Button>
+            <Button variant="primary" onClick={handleSave} disabled={save.isPending || !hasEdits}>บันทึก</Button>
+            <Button variant="outline" onClick={() => test.mutate()} disabled={testDisabled} title={testTitle}><Send className="mr-1 size-4" aria-hidden />ส่งข้อความทดสอบ</Button>
           </div>
         )}
       </section>
@@ -109,7 +124,9 @@ export function GfinPrecheckSettingsPanel() {
         <p className="m-0 text-sm leading-snug text-muted-foreground">ว่าง = ใช้ถ้อยคำมาตรฐานของระบบ · ตัวแปรที่ใช้ได้: {PRECHECK_TEMPLATE_PLACEHOLDERS.map((p) => `{{${p}}}`).join(' ')} · ต้องมี {'{{link}}'} เสมอ</p>
         <label htmlFor="gfin-precheck-template" className="text-sm font-medium leading-snug">แม่แบบข้อความ 12 ข้อ</label>
         <Textarea id="gfin-precheck-template" rows={16} className="font-sans text-sm leading-snug" value={template} placeholder={data.defaultTemplate} disabled={!canEdit} onChange={(e) => setEdits((prev) => ({ ...prev, template: e.target.value }))} />
-        {canEdit && <Button variant="ghost" size="sm" onClick={() => setEdits((prev) => ({ ...prev, template: data.defaultTemplate }))}>ใช้ค่าเริ่มต้น</Button>}
+        {/* F8 (final-fix wave) — ล้างเป็นค่าว่าง (placeholder โชว์แม่แบบเริ่มต้นแทน) ไม่ใช่ copy ข้อความไปเก็บ
+            ⇒ save ส่ง precheckTemplate: null (กลับไปใช้ค่าเริ่มต้นในโค้ด) ตามการแก้ค่าเริ่มต้นในอนาคตอัตโนมัติ */}
+        {canEdit && <Button variant="ghost" size="sm" onClick={() => setEdits((prev) => ({ ...prev, template: '' }))}>ใช้ค่าเริ่มต้น</Button>}
       </section>
     </div>
   );

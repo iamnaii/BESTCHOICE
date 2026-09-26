@@ -40,8 +40,10 @@ export default function GfinStatusCard({ app, gfin, history, onAddMore, showFile
     try { const { url } = await gfin.shareLink(); window.open(staffViewUrl(url), '_blank', 'noopener,noreferrer'); }
     catch { /* toast จาก hook */ }
   };
-  const resend = async () => {
-    const via = gfin.lineGroup?.ready ? 'BOT' : 'COPY';
+  /* F1 (final-fix wave, spec §3): ปุ่มคัดลอกต้องเป็นทางถอยที่กดได้จริงเสมอแม้กลุ่มพร้อม — เดิมเลือก via
+   * จาก lineGroup.ready ครั้งเดียวตอนกด ทำให้ตอนบอทตอบ 429/5xx/timeout ไม่มีทางคัดลอกได้เลยนอกจากกด
+   * "คัดลอกข้อความอีกครั้ง" ที่คัดลอกข้อความเดิมซ้ำและไม่นับเป็นส่งเพิ่ม — แยกเป็นสอง action ชัดเจนแทน */
+  const resendVia = async (via: 'BOT' | 'COPY') => {
     let r: Awaited<ReturnType<FinanceApplicationModel['resend']>>;
     try { r = await gfin.resend(via); } catch { return; /* toast จาก hook */ }
     setLastResend({ appId: app.id, text: r.messageText });
@@ -79,7 +81,14 @@ export default function GfinStatusCard({ app, gfin, history, onAddMore, showFile
       {open && (
         <Group label="ขั้นต่อไป">
           {latestPartner?.note && <p className="m-0 mb-1.5 rounded-md bg-warning/10 p-2 text-xs leading-snug text-warning-strong">GFIN: "{latestPartner.note}"</p>}
-          {showFilesStep ? (<><GfinStepFiles gfin={gfin} dropFiles={dropFiles} onDropFilesHandled={onDropFilesHandled} /><div className="mt-1.5 grid grid-cols-2 gap-1.5"><Button size="sm" variant="outline" onClick={onCloseFiles}>ปิด</Button><Button size="sm" disabled={pendingFiles === 0 || gfin.busy} title={gfin.lineGroup?.ready ? 'บอทส่งเข้ากลุ่มให้' : 'บอทไม่พร้อม — จะคัดลอกข้อความให้วางเอง'} onClick={resend}>ส่งเพิ่ม ({pendingFiles} ไฟล์ใหม่)</Button></div></>)
+          {showFilesStep ? (<><GfinStepFiles gfin={gfin} dropFiles={dropFiles} onDropFilesHandled={onDropFilesHandled} /><div className="mt-1.5 grid grid-cols-2 gap-1.5">
+            <Button size="sm" variant="outline" onClick={onCloseFiles}>ปิด</Button>
+            {gfin.lineGroup?.ready
+              ? <Button size="sm" disabled={pendingFiles === 0 || gfin.busy} title="บอทส่งเข้ากลุ่มให้" onClick={() => resendVia('BOT')}>ส่งเพิ่มด้วยบอท ({pendingFiles} ไฟล์ใหม่)</Button>
+              : <Button size="sm" disabled={pendingFiles === 0 || gfin.busy} title="บอทไม่พร้อม — จะคัดลอกข้อความให้วางเอง" onClick={() => resendVia('COPY')}>ส่งเพิ่ม ({pendingFiles} ไฟล์ใหม่)</Button>}
+            {/* ทางถอยที่กดได้เสมอเมื่อกลุ่มพร้อม — บอทตอบ 429/5xx/timeout ก็ยังส่งเพิ่มแบบคัดลอกได้ (F1) */}
+            {gfin.lineGroup?.ready && <Button size="sm" variant="outline" className="col-span-2" disabled={pendingFiles === 0 || gfin.busy} onClick={() => resendVia('COPY')}>ส่งเพิ่มแบบคัดลอก</Button>}
+          </div></>)
             : <Button size="sm" className="w-full" onClick={onAddMore}>เพิ่มรูปแล้วส่งเพิ่ม</Button>}
           <p className="m-0 mt-2 text-xs font-semibold leading-snug">GFIN ตอบในไลน์แทน? บันทึกผลเอง</p>
           <input aria-label="หมายเหตุผล" className="mt-1 w-full rounded-md border border-border px-2 py-1 text-xs" placeholder="หมายเหตุ (ถ้ามี)" value={note} onChange={e => setNote(e.target.value)} />

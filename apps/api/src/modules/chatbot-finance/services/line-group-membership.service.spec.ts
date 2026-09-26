@@ -79,6 +79,32 @@ describe('LineGroupMembershipService.onLeave', () => {
   });
 });
 
+describe('LineGroupMembershipService.ensureKnown (final-fix F3)', () => {
+  it('no row at all (bot invited before this webhook shipped — LINE never resends join) → same as a real join', async () => {
+    const { prisma, service } = make();
+    await service.ensureKnown('FINANCE', 'C1');
+    expect(prisma.lineGroupMembership.findFirst).toHaveBeenCalledWith({ where: { channel: 'FINANCE', groupId: 'C1' } });
+    expect(prisma.lineGroupMembership.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { channel_groupId: { channel: 'FINANCE', groupId: 'C1' } },
+    }));
+  });
+  it('an existing row — even with leftAt set — is never resurrected (only a real `join` clears leftAt)', async () => {
+    const { prisma, service } = make({ row: { id: 'm1', groupId: 'C1', leftAt: new Date() } });
+    await service.ensureKnown('FINANCE', 'C1');
+    expect(prisma.lineGroupMembership.upsert).not.toHaveBeenCalled();
+  });
+  it('an existing row still in the group (leftAt null) is also left untouched — no needless re-upsert', async () => {
+    const { prisma, service } = make({ row: { id: 'm2', groupId: 'C1', leftAt: null } });
+    await service.ensureKnown('FINANCE', 'C1');
+    expect(prisma.lineGroupMembership.upsert).not.toHaveBeenCalled();
+  });
+  it('DB errors are swallowed — called on every group event before the kill switch, must never throw', async () => {
+    const { prisma, service } = make();
+    prisma.lineGroupMembership.findFirst.mockRejectedValue(new Error('db down'));
+    await expect(service.ensureKnown('FINANCE', 'C1')).resolves.toBeUndefined();
+  });
+});
+
 describe('LineGroupMembershipService.list', () => {
   it('orders groups the bot is still in first, then most recently joined', async () => {
     const { prisma, service } = make();

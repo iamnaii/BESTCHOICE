@@ -15,7 +15,7 @@ export interface GfinLineGroupStatus {
 export const GFIN_LINE_GROUP_REASON_LABEL: Record<GfinLineGroupReason, string> = {
   NOT_LINKED: 'ยังไม่ได้ผูกกลุ่มไลน์ GFIN — ตั้งค่า › การเงิน › GFIN › กลุ่มไลน์ & ข้อความ',
   BOT_LEFT: 'บอท OA ไฟแนนซ์ไม่อยู่ในกลุ่มแล้ว — เชิญ OA กลับเข้ากลุ่ม แล้วเลือกกลุ่มอีกครั้งในตั้งค่า',
-  NO_TOKEN: 'ยังไม่ได้ตั้ง Channel Access Token ของ LINE FINANCE — ตั้งค่า › เชื่อมต่อ',
+  NO_TOKEN: 'ยังไม่ได้ตั้ง Channel Access Token ของ LINE FINANCE — เจ้าของตั้งได้ที่ ตั้งค่า › เชื่อมต่อ',
 };
 const COPY_HINT = 'ระหว่างนี้ใช้ "คัดลอกข้อความ + ลิงก์" ได้ตามเดิม';
 
@@ -58,7 +58,10 @@ export class GfinLineGroupService {
       return await this.lineFinance.pushMessageStrict(groupId, [{ type: 'text', text }]);
     } catch (err) {
       if (err instanceof LineFinanceNotConfiguredError) throw new BadRequestException(`${GFIN_LINE_GROUP_REASON_LABEL.NO_TOKEN} · ${COPY_HINT}`);
-      throw new BadGatewayException(`ส่งเข้ากลุ่มไลน์ไม่สำเร็จ — ลองใหม่อีกครั้ง หรือใช้ "คัดลอกข้อความ + ลิงก์" ไปก่อน`);
+      // F1 (final-fix wave): ข้อความนี้ต้องจริงทั้งสองหน้าจอที่เรียก pushText — ทั้งตอนกลุ่มดูพร้อม (ready) แต่ LINE
+      // ล้ม (429/5xx/timeout) และตอนไม่พร้อม — ปุ่มที่มีจริงบนการ์ดสถานะคือ "ส่งเพิ่มแบบคัดลอก"/"คัดลอกข้อความ + ลิงก์"
+      // ไม่ใช่ "คัดลอกข้อความ + ลิงก์" เท่านั้น (เดิมชี้ปุ่มที่ไม่มีอยู่จริงเมื่อกลุ่มพร้อม — coding-standards.md)
+      throw new BadGatewayException('ส่งเข้ากลุ่มไลน์ไม่สำเร็จ — ลองใหม่อีกครั้ง หรือใช้ปุ่มแบบคัดลอกแล้ววางในกลุ่มเอง');
     }
   }
 

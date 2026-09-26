@@ -164,16 +164,26 @@ export class FinanceApplicationService {
     const salesScope: Prisma.ExternalFinanceApplicationWhereInput = actor.role === 'SALES'
       ? { room: { OR: [{ assignedToId: null }, { assignedToId: actor.id }] } }
       : {};
-    const rows = await this.prisma.externalFinanceApplication.findMany({
-      where: { deletedAt: null, AND: [scope, salesScope] }, include: applicationInclude, orderBy: { createdAt: 'desc' },
+    // F2 (final-fix wave): status() reads the company + decrypts the LINE token + reads the membership —
+    // any throw there must not take down the whole GFIN tab (current/history), just the lineGroup slice.
+    // Started before the findMany await so it runs concurrently, not sequentially.
+    const lineGroupPromise = this.lineGroup.status().catch((err) => {
+      this.logger.warn(`[gfin] line group status failed: ${err instanceof Error ? err.message : err}`);
+      return { groupId: null, groupName: null, botInGroup: false, tokenConfigured: false, ready: false, reason: 'NOT_LINKED' as const };
     });
+    const [rows, lineGroup] = await Promise.all([
+      this.prisma.externalFinanceApplication.findMany({
+        where: { deletedAt: null, AND: [scope, salesScope] }, include: applicationInclude, orderBy: { createdAt: 'desc' },
+      }),
+      lineGroupPromise,
+    ]);
     const own = rows.filter((r) => r.roomId === roomId);
     const current = own.find((r) => !isClosed(r.status)) ?? own[0] ?? null;
     return {
       current: current ? toApplicationView(current) : null,
       history: rows.filter((r) => r.id !== current?.id).map(toApplicationView),
       // PR 2 (spec §6.1 "กลุ่มไลน์ปลายทาง"): แท็บโชว์ชื่อกลุ่ม + พร้อมส่ง/บอทไม่อยู่ในกลุ่ม
-      lineGroup: await this.lineGroup.status(),
+      lineGroup,
     };
   }
 

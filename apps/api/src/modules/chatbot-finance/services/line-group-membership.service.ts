@@ -47,6 +47,23 @@ export class LineGroupMembershipService {
     if (linked) await this.notifyBotLeft(linked.name, row.groupName ?? groupId);
   }
 
+  /**
+   * เผื่อกลุ่มที่เชิญ OA เข้าไว้ก่อนโค้ดนี้ขึ้น (spec §16 ข้อ 2, final-fix F3) — LINE ไม่ resend `join`
+   * เมื่อบอทเป็นสมาชิกกลุ่มอยู่แล้ว จึงต้องเรียกจากข้อความกลุ่มใดก็ได้ (ไม่ใช่ join/leave) ก่อน kill switch เสมอ
+   * ไม่เคยมีแถวเลย (ทุกสถานะ — ใช้ key เดียวกับ upsert ของ onJoin ไม่กรอง deletedAt) → เข้าทางเดียวกับถูกเชิญจริง (onJoin)
+   * มีแถวอยู่แล้วไม่ว่าสถานะไหน (รวม leftAt ที่ตั้งไว้) → ไม่แตะ — ห้ามชุบกลุ่มที่บอทออกไปแล้วจริงด้วยข้อความเก่าที่ค้างมา
+   * (มีแค่ `join` จริงเท่านั้นที่ล้าง leftAt ได้) · ห้าม throw — เหมือน onJoin/onLeave
+   */
+  async ensureKnown(channel: LineChannelType, groupId: string): Promise<void> {
+    try {
+      const row = await this.prisma.lineGroupMembership.findFirst({ where: { channel, groupId } });
+      if (row) return;
+      await this.onJoin(channel, groupId);
+    } catch (err) {
+      this.logger.warn(`[LINE ${channel}] ensureKnown failed for group ${groupId.slice(0, 8)}…: ${(err as Error)?.message ?? err}`);
+    }
+  }
+
   /** กลุ่มที่บอทเคยเข้าใน channel นั้น — ยังอยู่ก่อน แล้วเรียงเข้าล่าสุดก่อน (เรียงใน JS: Prisma nulls-ordering ไม่คุ้มเปิดใช้เพื่อลิสต์สั้น ๆ) */
   async list(channel: LineChannelType): Promise<LineGroupMembership[]> {
     const rows = await this.prisma.lineGroupMembership.findMany({ where: { channel, deletedAt: null } });

@@ -20,7 +20,7 @@ export interface GfinLineGroupStatus { groupId: string | null; groupName: string
 export const LINE_GROUP_REASON_LABEL: Record<GfinLineGroupReason, string> = {
   NOT_LINKED: 'ยังไม่ได้ผูกกลุ่มไลน์ — เจ้าของ/ผจก.การเงินตั้งได้ที่ ตั้งค่า › การเงิน › GFIN',
   BOT_LEFT: 'บอทไม่อยู่ในกลุ่มแล้ว — เชิญ OA ไฟแนนซ์กลับเข้ากลุ่ม แล้วเลือกกลุ่มใหม่ในตั้งค่า',
-  NO_TOKEN: 'ยังไม่ได้ตั้ง token LINE FINANCE — ตั้งค่า › เชื่อมต่อ',
+  NO_TOKEN: 'ยังไม่ได้ตั้ง token LINE FINANCE — เจ้าของตั้งได้ที่ ตั้งค่า › เชื่อมต่อ',
 };
 /** ชื่อกลุ่มที่โชว์ — จากระบบก่อน ไม่มีค่อยถอยไปชื่อที่ทีมใช้อยู่วันนี้ */
 export const lineGroupLabel = (s: GfinLineGroupStatus | null | undefined): string => s?.groupName ?? GFIN_LINE_GROUP;

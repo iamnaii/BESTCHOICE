@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -42,12 +42,50 @@ describe('GfinPrecheckSettingsPanel', () => {
     expect(await screen.findByText(/เชิญ OA ไฟแนนซ์เข้ากลุ่ม/)).toBeInTheDocument();
     expect(screen.queryByRole('radio')).toBeNull();
   });
-  it('save PUTs lineGroupId + template; empty template → null', async () => {
+  // F5 (final-fix wave) — save ต้องส่งเฉพาะช่องที่ถูกแก้จริง ๆ ไม่ใช่ทั้งสองช่องเสมอ (เดิมส่ง lineGroupId
+  // ทับซ้ำทุกครั้งแม้ผู้ใช้ไม่ได้แตะกลุ่มเลย → กลุ่มที่บอทออกไปแล้ว (leftAt ตั้งไว้) ทำ save พังด้วยข้อความ
+  // "บอทออกจากกลุ่มนี้แล้ว" ทั้งที่แค่แก้แม่แบบข้อความ)
+  it('F5: selecting a different group and saving sends lineGroupId alone (the field actually edited)', async () => {
+    // เดิม (Radix) คลิกซ้ำที่ radio ที่เลือกอยู่แล้วไม่ยิง onValueChange — ต้องเลือก "อีก" กลุ่มจึงนับเป็นการแก้จริง
+    apiGet.mockResolvedValue({
+      data: { ...settings, groups: [...settings.groups, { groupId: 'C2', groupName: 'กลุ่มสำรอง', pictureUrl: null, memberCount: 2, joinedAt: '2026-09-10T09:00:00Z', leftAt: null }] },
+    });
     render(<Wrapper><GfinPrecheckSettingsPanel /></Wrapper>);
     await screen.findByRole('radio', { name: /GFIN : BESTCHOICE/ });
+    await userEvent.click(screen.getByRole('radio', { name: /กลุ่มสำรอง/ }));
     await userEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
-    await waitFor(() => expect(apiPut).toHaveBeenCalledWith('/gfin-precheck-settings', { lineGroupId: 'C1', precheckTemplate: null }));
+    await waitFor(() => expect(apiPut).toHaveBeenCalledWith('/gfin-precheck-settings', { lineGroupId: 'C2' }));
     expect(toast.success).toHaveBeenCalled();
+  });
+  it('F5: template-only edit sends precheckTemplate alone, without lineGroupId', async () => {
+    render(<Wrapper><GfinPrecheckSettingsPanel /></Wrapper>);
+    const ta = await screen.findByLabelText('แม่แบบข้อความ 12 ข้อ');
+    fireEvent.change(ta, { target: { value: 'เพิ่มเติม {{link}}' } });
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    await waitFor(() => expect(apiPut).toHaveBeenCalledWith('/gfin-precheck-settings', { precheckTemplate: 'เพิ่มเติม {{link}}' }));
+    const payload = apiPut.mock.calls[0][1];
+    expect(payload).not.toHaveProperty('lineGroupId');
+  });
+  it('F5: no edits at all → "บันทึก" is disabled (no request, no toast)', async () => {
+    render(<Wrapper><GfinPrecheckSettingsPanel /></Wrapper>);
+    await screen.findByRole('radio', { name: /GFIN : BESTCHOICE/ });
+    expect(screen.getByRole('button', { name: 'บันทึก' })).toBeDisabled();
+    expect(apiPut).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+  // F6 (final-fix wave) — เลือกกลุ่มอื่นแล้วยังไม่กดบันทึก ปุ่ม "ส่งข้อความทดสอบ" ต้องปิดไว้ก่อน ไม่งั้นข้อความ
+  // ทดสอบจะไปเข้ากลุ่มที่จอแสดงไว้ (เลือกใหม่) แทนกลุ่มที่บันทึกจริง (ยังเป็นกลุ่มเดิม)
+  it('F6: selecting another (unsaved) enabled group disables "ส่งข้อความทดสอบ" until saved', async () => {
+    apiGet.mockResolvedValue({
+      data: { ...settings, groups: [...settings.groups, { groupId: 'C2', groupName: 'กลุ่มสำรอง', pictureUrl: null, memberCount: 2, joinedAt: '2026-09-10T09:00:00Z', leftAt: null }] },
+    });
+    render(<Wrapper><GfinPrecheckSettingsPanel /></Wrapper>);
+    await screen.findByRole('radio', { name: /GFIN : BESTCHOICE/ });
+    const testButton = screen.getByRole('button', { name: 'ส่งข้อความทดสอบ' });
+    expect(testButton).toBeEnabled();
+    await userEvent.click(screen.getByRole('radio', { name: /กลุ่มสำรอง/ }));
+    expect(testButton).toBeDisabled();
+    expect(testButton).toHaveAttribute('title', 'บันทึกกลุ่มที่เลือกก่อน');
   });
   it('template without {{link}} is blocked client-side with the shared error label', async () => {
     render(<Wrapper><GfinPrecheckSettingsPanel /></Wrapper>);
@@ -58,13 +96,19 @@ describe('GfinPrecheckSettingsPanel', () => {
     expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('{{link}}'));
     expect(apiPut).not.toHaveBeenCalled();
   });
-  it('"ใช้ค่าเริ่มต้น" fills the textarea with the default template', async () => {
+  // F8 (final-fix wave) — "ใช้ค่าเริ่มต้น" ต้องล้างช่องเป็นค่าว่าง (แสดงแม่แบบเริ่มต้นเป็น placeholder) ไม่ใช่
+  // copy ข้อความเริ่มต้นไปเก็บใน DB — ไม่งั้นถ้าแม่แบบเริ่มต้นในโค้ดถูกแก้ทีหลัง บริษัทที่เคยกดปุ่มนี้จะค้าง
+  // สำเนาเก่าอยู่ ไม่ได้ตามแม่แบบใหม่โดยอัตโนมัติ
+  it('F8: "ใช้ค่าเริ่มต้น" ล้างช่องเป็นค่าว่าง (placeholder = แม่แบบเริ่มต้น) และบันทึกส่ง precheckTemplate: null', async () => {
     apiGet.mockResolvedValue({ data: { ...settings, company: { lineGroupId: 'C1', precheckTemplate: 'เก่า {{link}}' } } });
     render(<Wrapper><GfinPrecheckSettingsPanel /></Wrapper>);
     const ta = await screen.findByLabelText('แม่แบบข้อความ 12 ข้อ');
     expect(ta).toHaveValue('เก่า {{link}}');
     await userEvent.click(screen.getByRole('button', { name: 'ใช้ค่าเริ่มต้น' }));
-    expect(ta).toHaveValue(DEFAULT_TEMPLATE);
+    expect(ta).toHaveValue('');
+    expect(ta).toHaveAttribute('placeholder', DEFAULT_TEMPLATE);
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึก' }));
+    await waitFor(() => expect(apiPut).toHaveBeenCalledWith('/gfin-precheck-settings', { precheckTemplate: null }));
   });
   it('"ส่งข้อความทดสอบ" POSTs and toasts the group name', async () => {
     render(<Wrapper><GfinPrecheckSettingsPanel /></Wrapper>);

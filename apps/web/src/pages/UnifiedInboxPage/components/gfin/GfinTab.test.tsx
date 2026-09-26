@@ -267,8 +267,48 @@ describe('GfinTab — กลุ่มไลน์ปลายทาง + ส่�
     renderTab(gfin, 'c1');
     expect(screen.getByText(/ส่งด้วยบอท/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'เพิ่มรูปแล้วส่งเพิ่ม' }));
-    fireEvent.click(screen.getByRole('button', { name: /ส่งเพิ่ม \(1 ไฟล์ใหม่\)/ }));
+    // F1 (final-fix wave) — เมื่อกลุ่มพร้อม ปุ่มหลักเปลี่ยนป้ายเป็น "ส่งเพิ่มด้วยบอท" (คู่กับปุ่มรอง "ส่งเพิ่มแบบคัดลอก")
+    fireEvent.click(screen.getByRole('button', { name: /ส่งเพิ่มด้วยบอท \(1 ไฟล์ใหม่\)/ }));
     await waitFor(() => expect(gfin.resend).toHaveBeenCalledWith('BOT'));
     expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('ส่งเพิ่มเข้ากลุ่ม'));
+  });
+  // F1 (final-fix wave) — spec §3: ปุ่มคัดลอกต้องเป็นทางถอยเสมอแม้กลุ่มพร้อม (บอทอาจตอบ 429/5xx/timeout ทุกครั้ง
+  // ที่กด "ส่งเพิ่มด้วยบอท" ไม่มีทางคัดลอกได้เลย ก่อนหน้านี้)
+  it('F1: กลุ่มพร้อม → เห็นทั้งสองปุ่ม กด "ส่งเพิ่มแบบคัดลอก" เรียก resend("COPY") และคัดลอกคลิปบอร์ด', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const gfin = model({
+      current: app({ status: 'MORE_INFO', sentAt: '2026-09-25T10:00:00Z', messageText: 'OLD', files: [{ id: 'f1', slot: 'INCOME', sourceMessageId: null, mimeType: 'image/jpeg', size: 1, originalName: null, source: 'UPLOAD', sourceAngle: null, sortOrder: 0, sentAt: null, createdAt: '' }] }),
+      resend: vi.fn().mockResolvedValue({ application: {}, messageText: 'COPY TEXT', shareUrl: 'https://x/api/g/t', pushed: false }),
+      lineGroup: readyGroup,
+    });
+    renderTab(gfin, 'c1');
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มรูปแล้วส่งเพิ่ม' }));
+    expect(screen.getByRole('button', { name: /ส่งเพิ่มด้วยบอท \(1 ไฟล์ใหม่\)/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งเพิ่มแบบคัดลอก' }));
+    await waitFor(() => expect(gfin.resend).toHaveBeenCalledWith('COPY'));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('COPY TEXT'));
+  });
+  it('F1: กลุ่มพร้อม → resend("BOT") ล้ม ไม่มี success toast และ "ส่งเพิ่มแบบคัดลอก" ยังกดได้และทำงานต่อ', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const resend = vi.fn()
+      .mockRejectedValueOnce(new Error('LINE down'))
+      .mockResolvedValue({ application: {}, messageText: 'COPY AFTER FAIL', shareUrl: 'https://x/api/g/t', pushed: false });
+    const gfin = model({
+      current: app({ status: 'MORE_INFO', sentAt: '2026-09-25T10:00:00Z', messageText: 'OLD', files: [{ id: 'f1', slot: 'INCOME', sourceMessageId: null, mimeType: 'image/jpeg', size: 1, originalName: null, source: 'UPLOAD', sourceAngle: null, sortOrder: 0, sentAt: null, createdAt: '' }] }),
+      resend,
+      lineGroup: readyGroup,
+    });
+    renderTab(gfin, 'c1');
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มรูปแล้วส่งเพิ่ม' }));
+    fireEvent.click(screen.getByRole('button', { name: /ส่งเพิ่มด้วยบอท \(1 ไฟล์ใหม่\)/ }));
+    await waitFor(() => expect(resend).toHaveBeenCalledWith('BOT'));
+    expect(toast.success).not.toHaveBeenCalled();
+    const copyButton = screen.getByRole('button', { name: 'ส่งเพิ่มแบบคัดลอก' });
+    expect(copyButton).toBeEnabled();
+    fireEvent.click(copyButton);
+    await waitFor(() => expect(resend).toHaveBeenCalledWith('COPY'));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('COPY AFTER FAIL'));
   });
 });

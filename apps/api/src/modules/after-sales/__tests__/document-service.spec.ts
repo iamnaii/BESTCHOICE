@@ -7,6 +7,7 @@ import { Readable } from 'stream';
 import { AfterSalesDocumentService } from '../services/after-sales-document.service';
 import { HANDOVER_NOT_READY_MSG } from '../documents/after-sales-doc-compose';
 import { PRICED_EXCHANGE_COST_LINE } from '../utils/after-sales-line-copy.util';
+import { SWITCHED_TO_REPAIR_NOTE } from '../utils/after-sales-outcomes.util';
 
 const CASE_ID = '11111111-1111-4111-8111-111111111111';
 const user = { id: 'u-1', role: 'SALES', branchId: 'br-1' };
@@ -55,6 +56,7 @@ function caseDetail(over: Record<string, unknown> = {}) {
     },
     exchange: null,
     lineLinked: true,
+    timeline: [],
     ...over,
   };
 }
@@ -404,5 +406,35 @@ describe('AfterSalesDocumentService.render', () => {
       expect(t.html()).toContain(text);
     expect(t.html()).not.toContain('สัญญาใหม่');
     expect(t.html()).not.toContain(PRICED_EXCHANGE_COST_LINE);
+  });
+  it('(m) ใบรับฝากพิมพ์ซ้ำ = ทางออกตอนรับฝาก: เปลี่ยนใจเป็นซ่อมทีหลัง → ยังพิมพ์ "เปลี่ยนรุ่นเดิม" ไม่มีผู้จ่ายค่าซ่อม', async () => {
+    const t = setup(
+      caseDetail({
+        outcome: 'REPAIR',
+        repairTicket: { ...caseDetail().repairTicket, payer: 'CUSTOMER', status: 'OPEN' },
+        timeline: [
+          { at: new Date(), kind: 'RECEIVED', note: null },
+          { at: new Date(), kind: 'OUTCOME_SET', note: 'เปลี่ยนรุ่นเดิม · รอ ผจก.สาขา ยืนยัน' },
+          {
+            at: new Date(),
+            kind: 'OUTCOME_SET',
+            note: `${SWITCHED_TO_REPAIR_NOTE} · ผู้จ่าย CUSTOMER`,
+          },
+        ],
+      }),
+    );
+    await t.svc.render(CASE_ID, 'RECEIPT', user);
+    expect(t.html()).toContain('<span>ทางออก</span><span><strong>เปลี่ยนรุ่นเดิม</strong></span>');
+    expect(t.html()).not.toContain('ผู้จ่ายค่าซ่อม');
+  });
+
+  it('(n) ใบรับฝากพิมพ์ซ้ำ = ทางออกตอนรับฝาก: ซ่อมไม่ได้แล้วเปลี่ยนรุ่นเดิม (ใบซ่อม REPLACED) → ยังพิมพ์ "ซ่อม" + ผู้จ่าย', async () => {
+    const t = setup(
+      sameModelCase({ repairTicket: { ...caseDetail().repairTicket, status: 'REPLACED' } }),
+    );
+    t.prisma.contract.findUnique.mockImplementation(contractByIdMock);
+    await t.svc.render(CASE_ID, 'RECEIPT', user);
+    expect(t.html()).toContain('<span>ทางออก</span><span><strong>ซ่อม</strong></span>');
+    expect(t.html()).toContain('<span>ผู้จ่ายค่าซ่อม</span><span>ร้าน</span>');
   });
 });

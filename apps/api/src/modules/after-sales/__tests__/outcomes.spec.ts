@@ -1,4 +1,8 @@
-import { computeOutcomes } from '../utils/after-sales-outcomes.util';
+import {
+  computeOutcomes,
+  dropOffOutcome,
+  SWITCHED_TO_REPAIR_NOTE,
+} from '../utils/after-sales-outcomes.util';
 
 const base = {
   source: 'INSTALLMENT_CONTRACT' as const,
@@ -219,5 +223,44 @@ describe('computeOutcomes — ตารางทางออก (spec 4.3)', () 
       });
       expect(JSON.stringify(o)).not.toContain('รับเครื่อง');
     });
+  });
+});
+
+describe('dropOffOutcome — ทางออกที่ตกลงตอนรับฝาก (ใบรับฝากพิมพ์ซ้ำ)', () => {
+  const switched = `${SWITCHED_TO_REPAIR_NOTE} · ผู้จ่าย SHOP`;
+
+  it('ไม่เคยเปลี่ยน → ทางออกปัจจุบัน', () => {
+    expect(
+      dropOffOutcome({ outcome: 'REPAIR', repairTicketStatus: 'OPEN', outcomeNotes: [] }),
+    ).toBe('REPAIR');
+    expect(
+      dropOffOutcome({ outcome: null, repairTicketStatus: null, outcomeNotes: [] }),
+    ).toBeNull();
+  });
+
+  it('เปลี่ยนรุ่นเดิม → เปลี่ยนใจเป็นซ่อม → รับฝากเป็นเปลี่ยนรุ่นเดิม', () => {
+    expect(
+      dropOffOutcome({ outcome: 'REPAIR', repairTicketStatus: 'OPEN', outcomeNotes: [switched] }),
+    ).toBe('SAME_MODEL_EXCHANGE');
+  });
+
+  it('ซ่อม → ซ่อมไม่ได้ เปลี่ยนรุ่นเดิม (ใบซ่อม REPLACED) → รับฝากเป็นซ่อม', () => {
+    expect(
+      dropOffOutcome({
+        outcome: 'SAME_MODEL_EXCHANGE',
+        repairTicketStatus: 'REPLACED',
+        outcomeNotes: ['ซ่อม · ผู้จ่าย SHOP · ซ่อมที่ร้าน'],
+      }),
+    ).toBe('REPAIR');
+  });
+
+  it('เปลี่ยนรุ่นเดิม → เป็นซ่อม → ซ่อมไม่ได้ กลับมาเปลี่ยนรุ่นเดิม → รับฝากเป็นเปลี่ยนรุ่นเดิม', () => {
+    expect(
+      dropOffOutcome({
+        outcome: 'SAME_MODEL_EXCHANGE',
+        repairTicketStatus: 'REPLACED',
+        outcomeNotes: ['เปลี่ยนรุ่นเดิม · รอ ผจก.สาขา ยืนยัน', switched],
+      }),
+    ).toBe('SAME_MODEL_EXCHANGE');
   });
 });

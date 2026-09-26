@@ -10,6 +10,7 @@ import { HandoffService } from './handoff.service';
 import { SlipProcessingService } from './slip-processing.service';
 import { FeedbackService } from './feedback.service';
 import { QuickReplyPostbackRouterService } from '../../staff-chat/services/quick-reply-postback-router.service';
+import { LineGroupMembershipService } from './line-group-membership.service';
 
 describe('ChatbotFinanceService', () => {
   let service: ChatbotFinanceService;
@@ -27,6 +28,8 @@ describe('ChatbotFinanceService', () => {
   let slipProcessing: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let groups: any;
 
   const session = { id: 'sess-1', customerId: null };
   const linkedStatus = { linked: true, customerId: 'c1', customerName: 'สมชาย' };
@@ -69,6 +72,10 @@ describe('ChatbotFinanceService', () => {
     slipProcessing = {
       processSlip: jest.fn().mockResolvedValue({ ok: true, reply: 'รับสลิปแล้วค่ะ', matched: true }),
     };
+    groups = {
+      onJoin: jest.fn().mockResolvedValue(undefined),
+      onLeave: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -92,6 +99,7 @@ describe('ChatbotFinanceService', () => {
           provide: QuickReplyPostbackRouterService,
           useValue: { route: jest.fn().mockResolvedValue({ handled: false }) },
         },
+        { provide: LineGroupMembershipService, useValue: groups },
       ],
     }).compile();
 
@@ -337,6 +345,38 @@ describe('ChatbotFinanceService', () => {
       });
       await service.handleEvent(makeTextEvent('มีอะไรบ้าง'));
       expect(lineClient.replyMessage.mock.calls.at(-1)![1]).toHaveLength(3); // 1 text + 2 image
+    });
+  });
+
+  const makeGroupEvent = (type: 'join' | 'leave', sourceType: 'group' | 'room' = 'group') => ({
+    type, mode: 'active', timestamp: Date.now(), webhookEventId: `evt-${type}`, deliveryContext: { isRedelivery: false },
+    source: sourceType === 'group' ? { type: 'group' as const, groupId: 'Cgroup1', userId: 'U1' } : { type: 'room' as const, roomId: 'R1' },
+    ...(type === 'join' ? { replyToken: 'rt-join' } : {}),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  }) as any;
+
+  describe('เข้า/ออกกลุ่ม (ยื่น GFIN PR 2)', () => {
+    it('join จากกลุ่ม → LineGroupMembershipService.onJoin(FINANCE, groupId) และไม่ตอบข้อความ', async () => {
+      await service.handleEvent(makeGroupEvent('join'));
+      expect(groups.onJoin).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
+      expect(lineClient.replyText).not.toHaveBeenCalled();
+      expect(lineClient.replyMessage).not.toHaveBeenCalled();
+    });
+    it('leave จากกลุ่ม → onLeave', async () => {
+      await service.handleEvent(makeGroupEvent('leave'));
+      expect(groups.onLeave).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
+    });
+    it('join จากห้องแชทหลายคน (room) → ไม่จด', async () => {
+      await service.handleEvent(makeGroupEvent('join', 'room'));
+      expect(groups.onJoin).not.toHaveBeenCalled();
+    });
+    it('LINE_FINANCE_BOT_DISABLED=true → ยังจด join (kill switch หยุดเฉพาะการตอบ)', async () => {
+      const config = (service as any).configService as { get: jest.Mock };
+      config.get.mockImplementation((k: string) => (k === 'LINE_FINANCE_BOT_DISABLED' ? 'true' : undefined));
+      await service.handleEvent(makeGroupEvent('join'));
+      expect(groups.onJoin).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
+      await service.handleEvent(makeTextEvent('สวัสดี'));
+      expect(sessions.saveMessage).not.toHaveBeenCalled();
     });
   });
 });

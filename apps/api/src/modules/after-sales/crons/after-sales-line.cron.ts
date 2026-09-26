@@ -25,7 +25,7 @@ const DAY_MS = 86_400_000;
 /** จังหวะ 3 กันย้อนส่งของเก่าหลัง deploy — เฉพาะเคสที่ engine ปิดให้ภายใน N วันที่ผ่านมา */
 const CLOSED_WINDOW_DAYS = 3;
 
-/** เพดานอายุของการเตือนให้มารับ — รอบแรกหลัง deploy ต้องไม่เตือนเคสที่ค้างนานมาก (น่าจะส่งมอบไปแล้วแต่ไม่ได้บันทึก) */
+/** เพดานอายุขั้นต่ำของการเตือนให้มารับ (ใช้ max(นี้, days + 7) — หน้าต่างเตือนอย่างน้อย 1 สัปดาห์หลังเกณฑ์): ไม่เตือนเคสที่ค้างนานมาก */
 const PICKUP_REMINDER_MAX_AGE_DAYS = 30;
 
 /**
@@ -103,7 +103,8 @@ export class AfterSalesLineCron {
             row.approvedAt,
           );
           const age = now.getTime() - since.getTime();
-          if (age < days * DAY_MS || age > PICKUP_REMINDER_MAX_AGE_DAYS * DAY_MS) {
+          const maxAgeDays = Math.max(PICKUP_REMINDER_MAX_AGE_DAYS, days + 7);
+          if (age < days * DAY_MS || age > maxAgeDays * DAY_MS) {
             out.skipped++;
             continue;
           }

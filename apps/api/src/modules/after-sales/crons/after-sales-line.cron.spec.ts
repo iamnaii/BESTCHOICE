@@ -267,6 +267,38 @@ describe('AfterSalesLineCron', () => {
     expect(result).toEqual({ reminded: 0, closedNotified: 0, skipped: 1, failed: 0 });
   });
 
+  // final fix M-5 add-on — เพดาน = max(30, days + 7): ตั้งวันเตือนเกิน 30 (เช่น 45) ต้องยังเตือนได้
+  // ภายในหนึ่งสัปดาห์หลังถึงเกณฑ์ (ready 50 วัน → เตือน) แต่เกินเพดาน 52 วัน (ready 53 วัน) → skipped
+  it('after_sales_pickup_reminder_days = 45: ready 50 days → reminded; ready 53 days → skipped (ceiling = days + 7)', async () => {
+    prisma.systemConfig.findFirst.mockImplementation(
+      async ({ where }: { where: { key: string } }) =>
+        where.key === 'after_sales_pickup_reminder_days' ? { value: '45' } : null,
+    );
+    const readyDaysAgo = (id: string, days: number) =>
+      readyRow({
+        id,
+        receivedAt: new Date(NOW.getTime() - (days + 5) * DAY),
+        repairTicket: {
+          status: 'READY_FOR_PICKUP',
+          deletedAt: null,
+          returnedToCustomerAt: null,
+          sentToRepairAt: new Date(NOW.getTime() - (days + 2) * DAY),
+          repairedAt: new Date(NOW.getTime() - days * DAY),
+        },
+      });
+    prisma.afterSalesCase.findMany = makeFindMany([
+      readyDaysAgo('case-50d', 50),
+      readyDaysAgo('case-53d', 53),
+    ]);
+
+    const result = await cron.tick(NOW);
+
+    expect(line.notifyMoment).toHaveBeenCalledTimes(1);
+    expect(line.notifyMoment).toHaveBeenCalledWith('case-50d', 'PICKUP_REMINDER', null);
+    expect(line.notifyMoment).not.toHaveBeenCalledWith('case-53d', 'PICKUP_REMINDER', null);
+    expect(result).toEqual({ reminded: 1, closedNotified: 0, skipped: 1, failed: 0 });
+  });
+
   // (d) — kill switch OFF: zeroed counters, no case query, no LINE calls at all.
   it('does nothing when after_sales_line_enabled is OFF', async () => {
     prisma.systemConfig.findFirst.mockImplementation(

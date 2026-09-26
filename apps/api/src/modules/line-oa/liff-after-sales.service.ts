@@ -201,6 +201,7 @@ const baht = (v: Prisma.Decimal | null | undefined): string | null =>
   v == null ? null : Number(v.toString()).toLocaleString('th-TH', { maximumFractionDigits: 2 });
 
 /** ถ้อยคำค่าใช้จ่ายฝั่งลูกค้า — ตามบรีฟเป๊ะ:
+ * - เคสยกเลิก (stage CANCELLED) → "ไม่มี (ยกเลิกแล้ว)" เสมอ
  * - PRICED_EXCHANGE → ถ้อยคำเดียวกับ costLine ของข้อความ LINE (`PRICED_EXCHANGE_COST_LINE`) —
  *   จ่ายผ่านสัญญาใหม่ ไม่ใช่ "ไม่มี" (final fix I-4)
  * - ไม่มีใบซ่อม + ทางออกซ่อม (REPAIR/null) → "ไม่มี (ในประกันร้าน)"
@@ -210,7 +211,14 @@ const baht = (v: Prisma.Decimal | null | undefined): string | null =>
  * - payer CUSTOMER: actualCost ก่อน (ชำระที่สาขาแล้ว/รู้ยอดจริง) ไม่งั้นใช้ estimatedCost (ประมาณ)
  *   ไม่มีทั้งคู่ → "แจ้งราคาก่อนซ่อม" (ลูกค้าเป็นผู้จ่าย ห้ามบอกว่า "ไม่มี" — final fix I-4)
  */
-function computeCostLine(outcome: CaseOutcome, repairTicket: CaseTicket | null): string {
+function computeCostLine(
+  stage: CaseStage,
+  outcome: CaseOutcome,
+  repairTicket: CaseTicket | null,
+): string {
+  // เคสที่ยกเลิกแล้วไม่มีค่าใช้จ่ายใดค้าง — ห้ามโชว์ "ชำระตอนทำสัญญาใหม่"/"ค่าซ่อมประมาณ …" ข้างป้าย "ยกเลิก"
+  // (final re-review N-1: M-3 ทำให้เคสยกเลิกโผล่ 14 วัน)
+  if (stage === 'CANCELLED') return 'ไม่มี (ยกเลิกแล้ว)';
   if (outcome === 'PRICED_EXCHANGE') return PRICED_EXCHANGE_COST_LINE;
   if (!repairTicket) {
     return isExchangeOutcome(outcome) ? 'ไม่มี (เปลี่ยนเครื่องตามประกัน)' : 'ไม่มี (ในประกันร้าน)';
@@ -244,7 +252,7 @@ function toLiffCase(row: CaseForLiff): LiffAfterSalesCase {
       row.repairTicket,
     ),
     updatedAt: row.updatedAt.toISOString(),
-    costLine: computeCostLine(row.outcome, row.repairTicket),
+    costLine: computeCostLine(row.stage, row.outcome, row.repairTicket),
   };
 }
 

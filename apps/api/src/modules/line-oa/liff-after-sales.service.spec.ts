@@ -233,6 +233,29 @@ describe('LiffAfterSalesService', () => {
     expect(result.cases[0].costLine).toBe('แจ้งราคาก่อนซ่อม');
   });
 
+  // final re-review N-1 — เคสยกเลิกโผล่ 14 วัน (M-3) ต้องไม่บอกลูกค้าว่ายังมีค่าใช้จ่ายค้าง
+  it.each([
+    ['PRICED_EXCHANGE', null],
+    ['REPAIR', 'CUSTOMER'],
+  ] as const)('N-1: %s ที่ยกเลิกแล้ว → costLine "ไม่มี (ยกเลิกแล้ว)"', async (outcome, payer) => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+    prisma.afterSalesCase.findMany.mockResolvedValue([
+      buildCase({
+        outcome,
+        stage: 'CANCELLED',
+        cancelledAt: new Date(),
+        repairTicket: payer
+          ? buildTicket({ payer, estimatedCost: { toString: () => '900.00' }, actualCost: null })
+          : null,
+      }),
+    ]);
+
+    const result = await service.getMyCases('U_line1');
+
+    expect(result.cases[0].stageLabel).toBe('ยกเลิก');
+    expect(result.cases[0].costLine).toBe('ไม่มี (ยกเลิกแล้ว)');
+  });
+
   it('(b) PRICED_EXCHANGE uses its own step titles + stageLabel', async () => {
     prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
     prisma.afterSalesCase.findMany.mockResolvedValue([

@@ -24,7 +24,7 @@ VALUES
   (gen_random_uuid(), 'AFTER_SALES_PICKUP_REMINDER', 'หลังการขาย · เตือนให้มารับ', 'TRANSACTIONAL', 'line-shop', 'LINE', 'text',
    E'เครื่องของคุณ${readyKind}รอรับที่ ${branchName} ตั้งแต่ ${readySince}\nเคส ${caseNumber} · ${deviceName}\nรับได้ทุกวัน 10:00–20:00 นำบัตรประชาชนหรือใบรับฝากเครื่องมาด้วย\n${liffLine}',
    '{"readyKind":"ซ่อมเสร็จ","branchName":"สาขาลพบุรี","readySince":"10 ก.ย. 69","caseNumber":"AS-20260907-0004","deviceName":"iPhone 13 128GB","liffLine":"ดูสถานะเคส: https://liff.line.me/xxxx/liff/warranty"}'::jsonb,
-   'cron 10:00 ส่ง 1 ครั้งเมื่อครบ 7 วันยังไม่มารับ', true, now(), now()),
+   'cron 10:00 ส่ง 1 ครั้งเมื่อครบจำนวนวันที่ตั้งไว้ (after_sales_pickup_reminder_days ค่าเริ่มต้น 7) แล้วยังไม่มารับ', true, now(), now()),
 
   (gen_random_uuid(), 'WARRANTY_EXPIRING_7D', 'ประกันใกล้หมด 7 วัน', 'REMINDER', 'line-shop', 'LINE', 'text',
    E'ประกัน${warrantyType}ของ ${deviceName} จะหมดในอีก ${daysRemaining} วัน (${expireDate})\nถ้ามีอาการผิดปกติ นำเครื่องมาเช็คที่สาขาก่อนหมดประกันได้เลย\n${liffLine}',

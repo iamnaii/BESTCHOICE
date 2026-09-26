@@ -226,6 +226,20 @@ describe('buildLineData — READY', () => {
     expect(buildLineData(row, 'READY', '').costLine).toBe('ค่าซ่อม 1,500.5 บาท ชำระที่สาขา');
   });
 
+  // ยังไม่มีตัวเลขค่าซ่อม — ห้ามพิมพ์ "ค่าซ่อม — บาท" ถึงลูกค้า (final re-review OOS-2)
+  it('REPAIR + payer CUSTOMER ยังไม่มีตัวเลข → costLine "สอบถามค่าซ่อมที่สาขา"', () => {
+    const row: LineCaseRow = {
+      ...baseRow,
+      outcome: 'REPAIR',
+      repairTicket: { payer: 'CUSTOMER', estimatedCost: null, actualCost: null },
+    };
+    const data = buildLineData(row, 'READY', '');
+    expect(data.costLine).toBe('สอบถามค่าซ่อมที่สาขา');
+    expect(buildLineData(row, 'RECEIVED', '').entitlementLine).toBe(
+      'ทางร้านจะแจ้งค่าซ่อมให้ยืนยันก่อนซ่อมทุกครั้ง',
+    );
+  });
+
   it('SAME_MODEL_EXCHANGE', () => {
     const row: LineCaseRow = { ...baseRow, outcome: 'SAME_MODEL_EXCHANGE' };
     const data = buildLineData(row, 'READY', '');

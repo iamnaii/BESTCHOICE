@@ -18,6 +18,7 @@ import {
   primaryAction,
   secondaryActions,
   stripLineTag,
+  canPrintHandover,
   type AfterSalesOutcome,
   type CaseDetail,
 } from './after-sales';
@@ -681,5 +682,31 @@ describe('Task 11: secondaryActions — ปุ่มรองตาม outcome �
       const d = detail({ outcome: 'REPAIR', stage });
       expect(secondaryActions(d, 'OWNER')).toEqual([]);
     }
+  });
+});
+
+describe('canPrintHandover — mirror ของ handoverBlockReason ฝั่ง API', () => {
+  const rt = { id: 'rt-1' } as unknown as NonNullable<CaseDetail['repairTicket']>;
+  it('(a) พิมพ์ได้เฉพาะ READY_FOR_PICKUP / CLOSED ที่มีทางออก', () => {
+    expect(
+      canPrintHandover({ outcome: 'REPAIR', stage: 'READY_FOR_PICKUP', repairTicket: rt }),
+    ).toBe(true);
+    expect(
+      canPrintHandover({ outcome: 'SAME_MODEL_EXCHANGE', stage: 'CLOSED', repairTicket: null }),
+    ).toBe(true);
+    for (const stage of ['RECEIVED', 'IN_REPAIR', 'AWAITING_APPROVAL', 'CANCELLED'] as const)
+      expect(canPrintHandover({ outcome: 'REPAIR', stage, repairTicket: rt })).toBe(false);
+    expect(canPrintHandover({ outcome: null, stage: 'CLOSED', repairTicket: null })).toBe(false);
+  });
+  it('(b) ซ่อมที่ไม่มีใบซ่อม → ไม่ได้', () => {
+    expect(canPrintHandover({ outcome: 'REPAIR', stage: 'CLOSED', repairTicket: null })).toBe(
+      false,
+    );
+  });
+  it('(c) เปลี่ยนรุ่นเดิมขายสด → ไม่โชว์ปุ่ม (API ยังไม่รองรับใบส่งมอบของขายสด)', () => {
+    for (const stage of ['READY_FOR_PICKUP', 'CLOSED'] as const)
+      expect(
+        canPrintHandover({ outcome: 'CASH_SAME_MODEL_EXCHANGE', stage, repairTicket: null }),
+      ).toBe(false);
   });
 });

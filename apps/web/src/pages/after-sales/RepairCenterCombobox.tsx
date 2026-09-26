@@ -22,8 +22,7 @@ interface Props {
 
 export function RepairCenterCombobox({ value, displayName, onSelect, invalid }: Props) {
   const mark = useMutation({
-    mutationFn: (supplierId: string) =>
-      api.patch(`/suppliers/${supplierId}/repair-center`),
+    mutationFn: (supplierId: string) => api.patch(`/suppliers/${supplierId}/repair-center`),
   });
 
   const handleSelect = async ({ childId, name }: ContactPickResult) => {

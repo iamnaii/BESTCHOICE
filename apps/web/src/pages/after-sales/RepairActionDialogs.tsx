@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { RepairCenterCombobox } from '@/pages/insurance/components/RepairCenterCombobox';
+import { RepairCenterCombobox } from '@/pages/after-sales/RepairCenterCombobox';
 import { afterSalesKeys, PAYER_LABEL, type Payer } from './after-sales';
 
 /**

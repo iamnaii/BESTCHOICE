@@ -22,11 +22,33 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: auth.user }) 
 // mock ทั้ง component (ไม่ใช่แค่ ContactCombobox ข้างใน) — พฤติกรรมค้นหา/debounce ของ
 // combobox จริงไม่ใช่สิ่งที่ Task 11 ทดสอบ; แค่ต้องเรียก onSelect ด้วย payload ที่ถูกต้อง
 // (ตรวจจาก RepairCenterCombobox.tsx: onSelect({ id: childId, name }) — R22 fix round 1)
-vi.mock('@/pages/insurance/components/RepairCenterCombobox', () => ({
+vi.mock('@/pages/after-sales/RepairCenterCombobox', () => ({
   RepairCenterCombobox: ({ onSelect }: { onSelect: (s: { id: string; name: string }) => void }) => (
     <button type="button" onClick={() => onSelect({ id: 'sup-1', name: 'iCare' })}>
       เลือกศูนย์ซ่อม (ทดสอบ)
     </button>
+  ),
+}));
+
+vi.mock('@/components/PdfPreview', () => ({
+  default: ({
+    title,
+    path,
+    filename,
+    onClose,
+  }: {
+    title: string;
+    path: string;
+    filename: string;
+    onClose: () => void;
+  }) => (
+    <div role="dialog" aria-label={title}>
+      <span data-testid="pdf-path">{path}</span>
+      <span data-testid="pdf-filename">{filename}</span>
+      <button type="button" onClick={onClose}>
+        ปิดตัวอย่าง
+      </button>
+    </div>
   ),
 }));
 
@@ -1023,5 +1045,51 @@ describe('Task 8 — การ์ด "LINE ลูกค้า" ของจร�
       screen.getByText(`เตือนให้มารับ · ส่งแล้ว · ${formatDateTime('2026-09-15T03:00:00.000Z')}`),
     ).toBeInTheDocument();
     expect(container.textContent ?? '').not.toMatch(/รับเครื่อง(?!ไป)/);
+  });
+});
+
+describe('AfterSalesCasePage — พิมพ์ใบรับฝากเครื่อง / ใบส่งมอบ (PR 4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auth.user = { id: 'u1', role: 'SALES', branchId: 'branch-1' };
+  });
+
+  it('เคสกำลังซ่อม: มีปุ่มพิมพ์ใบรับฝาก ไม่มีปุ่มใบส่งมอบ · กดแล้วเปิดตัวอย่าง path ถูก', async () => {
+    mockGet(caseDetail());
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'พิมพ์ใบรับฝากเครื่อง' }));
+    expect(screen.queryByRole('button', { name: 'พิมพ์ใบส่งมอบ' })).not.toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'ใบรับฝากเครื่อง' });
+    expect(within(dialog).getByTestId('pdf-path')).toHaveTextContent(
+      '/after-sales/case-1/receipt.pdf',
+    );
+    expect(within(dialog).getByTestId('pdf-filename')).toHaveTextContent(
+      'AS-20260908-0001-ใบรับฝากเครื่อง.pdf',
+    );
+  });
+
+  it('เคสรอลูกค้ารับ: ปุ่มพิมพ์ใบส่งมอบเปิด handover.pdf', async () => {
+    mockGet(caseDetail({ stage: 'READY_FOR_PICKUP' }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'พิมพ์ใบส่งมอบ' }));
+    expect(screen.getByTestId('pdf-path')).toHaveTextContent('/after-sales/case-1/handover.pdf');
+  });
+
+  it('?print=receipt เปิดตัวอย่างใบรับฝากเองตอนโหลด', async () => {
+    mockGet(caseDetail());
+    renderPage('case-1', '?print=receipt');
+    expect(await screen.findByRole('dialog', { name: 'ใบรับฝากเครื่อง' })).toBeInTheDocument();
+  });
+
+  it('ปิดตัวอย่าง → โหลดเคสใหม่ (ไทม์ไลน์เห็น "พิมพ์เอกสาร")', async () => {
+    mockGet(caseDetail());
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'พิมพ์ใบรับฝากเครื่อง' }));
+    const detailCalls = () =>
+      mocks.get.mock.calls.filter(([url]) => url === '/after-sales/case-1').length;
+    const before = detailCalls();
+    await userEvent.click(screen.getByRole('button', { name: 'ปิดตัวอย่าง' }));
+    await waitFor(() => expect(detailCalls()).toBeGreaterThan(before));
+    expect(screen.queryByRole('dialog', { name: 'ใบรับฝากเครื่อง' })).not.toBeInTheDocument();
   });
 });

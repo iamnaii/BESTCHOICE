@@ -10,7 +10,11 @@ import type { TimelineItem } from './after-sales';
 describe('CaseTimeline — label ของเหตุการณ์ LINE (Task 8)', () => {
   it('LINE_SENT → ป้าย "ส่ง LINE"', () => {
     const timeline: TimelineItem[] = [
-      { at: '2026-09-01T00:00:00.000Z', kind: 'LINE_SENT', note: '[AFTER_SALES_READY] มารับได้แล้ว · ส่งแล้ว' },
+      {
+        at: '2026-09-01T00:00:00.000Z',
+        kind: 'LINE_SENT',
+        note: '[AFTER_SALES_READY] มารับได้แล้ว · ส่งแล้ว',
+      },
     ];
     render(<CaseTimeline timeline={timeline} stale={false} daysInStage={0} />);
     expect(screen.getByText('ส่ง LINE')).toBeInTheDocument();
@@ -52,5 +56,19 @@ describe('CaseTimeline — label ของเหตุการณ์ LINE (Task
     expect(screen.queryByText('LINE')).not.toBeInTheDocument();
     expect(screen.getByText('NOTE')).toBeInTheDocument();
     expect(screen.getByText('บันทึกทั่วไป')).toBeInTheDocument();
+  });
+
+  it('PRINTED → ป้าย "พิมพ์เอกสาร" + ชื่อเอกสาร', () => {
+    const timeline: TimelineItem[] = [
+      {
+        at: '2026-09-07T03:14:00.000Z',
+        kind: 'PRINTED',
+        note: 'ใบรับฝากเครื่อง',
+        actorName: 'สุดา',
+      },
+    ];
+    render(<CaseTimeline timeline={timeline} stale={false} daysInStage={0} />);
+    expect(screen.getByText('พิมพ์เอกสาร')).toBeInTheDocument();
+    expect(screen.getByText('ใบรับฝากเครื่อง')).toBeInTheDocument();
   });
 });

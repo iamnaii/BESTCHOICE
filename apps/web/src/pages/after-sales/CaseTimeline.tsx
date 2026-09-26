@@ -33,6 +33,7 @@ const KIND_LABEL: Record<string, string> = {
   EXCHANGE_CANCELED: 'ยกเลิกคำขอ',
   LINE_SENT: 'ส่ง LINE',
   LINE_SKIPPED_NO_LINK: 'ไม่ได้ส่ง LINE (ไม่ผูก)',
+  PRINTED: 'พิมพ์เอกสาร',
 };
 
 /** Task 8 — event ที่ DISABLED/FAILED/BLOCKED ถูกเขียนเป็น kind 'NOTE' เหมือนบันทึกทั่วไป

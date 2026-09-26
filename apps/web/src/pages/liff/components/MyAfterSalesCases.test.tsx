@@ -56,7 +56,9 @@ describe('MyAfterSalesCases', () => {
 
     renderWithClient('U123');
 
-    await waitFor(() => expect(liffApi.get).toHaveBeenCalledWith('/line-oa/liff/my-after-sales-cases'));
+    await waitFor(() =>
+      expect(liffApi.get).toHaveBeenCalledWith('/line-oa/liff/my-after-sales-cases'),
+    );
 
     expect(await screen.findByText('เคสของฉัน')).toBeInTheDocument();
     expect(screen.getByText('AS-20260925-0001')).toBeInTheDocument();
@@ -123,5 +125,36 @@ describe('MyAfterSalesCases', () => {
     expect(text).toContain('รอรับเครื่องใหม่');
     expect(text).not.toContain('ใบรับเครื่อง');
     expect(text).not.toContain('รับเครื่องคืน');
+  });
+
+  // final fix M-2 — PRICED อนุมัติแล้ว ป้าย "รอทำสัญญาใหม่" คือสถานะที่ลูกค้าต้องมาสาขา → ชิปสีหลัก
+  // (เหมือน "รอรับเครื่อง") ไม่ใช่สีเทาของป้ายที่ไม่รู้จัก
+  it('ป้าย "รอทำสัญญาใหม่" (PRICED อนุมัติแล้ว) ใช้ชิปสีหลักเหมือน "รอรับเครื่อง"', async () => {
+    mockResponse({
+      linked: true,
+      cases: [
+        {
+          caseNumber: 'AS-20260925-0003',
+          outcome: 'PRICED_EXCHANGE',
+          stageLabel: 'รอทำสัญญาใหม่',
+          deviceName: 'iPhone 15',
+          branchName: 'สาขาลาดพร้าว',
+          steps: [
+            { title: 'รับเรื่องแล้ว', state: 'done', hint: null },
+            { title: 'รออนุมัติ', state: 'done', hint: null },
+            { title: 'ทำสัญญาใหม่', state: 'now', hint: 'พร้อมรับ 24 ก.ย. 69' },
+            { title: 'ปิดเคส', state: 'idle', hint: null },
+          ],
+          updatedAt: '2026-09-25T03:00:00.000Z',
+          costLine: 'ตามราคาที่ตกลง ชำระตอนทำสัญญาใหม่ที่สาขา',
+        },
+      ],
+    });
+
+    renderWithClient('U123');
+
+    const chip = await screen.findByText('รอทำสัญญาใหม่');
+    expect(chip).toHaveClass('bg-primary/10', 'text-primary');
+    expect(chip).not.toHaveClass('bg-muted');
   });
 });

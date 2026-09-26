@@ -216,6 +216,16 @@ describe('buildLineData — READY', () => {
     expect(data.costLine).toBe('ไม่มี (ในประกันร้าน)');
   });
 
+  // final fix M-9 — ยอดมีเศษสตางค์ต้องไม่ถูกปัดเป็นบาทเต็ม (เดิม 1,500.50 → "1,501")
+  it('REPAIR + payer CUSTOMER actualCost 1500.5 → "1,500.5" ไม่ปัดเป็น 1,501', () => {
+    const row: LineCaseRow = {
+      ...baseRow,
+      outcome: 'REPAIR',
+      repairTicket: { payer: 'CUSTOMER', estimatedCost: null, actualCost: '1500.5' },
+    };
+    expect(buildLineData(row, 'READY', '').costLine).toBe('ค่าซ่อม 1,500.5 บาท ชำระที่สาขา');
+  });
+
   it('SAME_MODEL_EXCHANGE', () => {
     const row: LineCaseRow = { ...baseRow, outcome: 'SAME_MODEL_EXCHANGE' };
     const data = buildLineData(row, 'READY', '');
@@ -380,14 +390,16 @@ describe('buildLineData — PICKUP_REMINDER', () => {
     expect(data.readyKind).toBe('พร้อมส่งมอบ');
   });
 
-  it('PRICED_EXCHANGE → readyKind = พร้อมส่งมอบ', () => {
+  // final fix M-2 — PRICED ที่อนุมัติแล้วรอลูกค้ามาทำสัญญาใหม่ ไม่ใช่ "พร้อมส่งมอบ" เครื่องเดิม
+  // (เดิมคาด 'พร้อมส่งมอบ')
+  it('PRICED_EXCHANGE → readyKind = พร้อมเปลี่ยน', () => {
     const row: LineCaseRow = {
       ...baseRow,
       outcome: 'PRICED_EXCHANGE',
       readyAt: new Date('2026-11-17T03:00:00.000Z'),
     };
     const data = buildLineData(row, 'PICKUP_REMINDER', '');
-    expect(data.readyKind).toBe('พร้อมส่งมอบ');
+    expect(data.readyKind).toBe('พร้อมเปลี่ยน');
   });
 });
 

@@ -74,7 +74,7 @@ export interface LineCaseRow {
     imeiSerial: string | null;
     shopWarrantyEndDate: string | null;
   } | null;
-  readyAt?: Date | null; // stageSince ของ READY_FOR_PICKUP — ใช้ในเตือน 7 วัน
+  readyAt: Date | null; // stageSince ของ READY_FOR_PICKUP — ใช้ในเตือนให้มารับ (ผู้ผลิตเดียวตั้งค่าเสมอ)
   /** stage ของเคส ณ ตอนส่ง — PRICED ที่อนุมัติอัตโนมัติ (tier AUTO) ส่ง RECEIVED ตอนอนุมัติแล้ว (final fix I-3) */
   stage?: string | null;
 }
@@ -83,8 +83,9 @@ export interface LineCaseRow {
  * (liff-after-sales.service.ts) ให้ลูกค้าเห็นถ้อยคำเรื่องเงินเดียวกันทุกช่องทาง (final fix I-4) */
 export const PRICED_EXCHANGE_COST_LINE = 'ตามราคาที่ตกลง ชำระตอนทำสัญญาใหม่ที่สาขา';
 
+// final fix M-9 — เก็บเศษสตางค์ (1500.5 → "1,500.5") ไม่ปัดเป็นบาทเต็ม
 const baht = (v: string | null | undefined): string | null =>
-  v ? Number(v).toLocaleString('th-TH', { maximumFractionDigits: 0 }) : null;
+  v ? Number(v).toLocaleString('th-TH', { maximumFractionDigits: 2 }) : null;
 
 /** ตัด symptom ที่ 120 ตัวอักษร กันข้อความ LINE ยาวเกินไป */
 function trim120(s: string): string {
@@ -227,8 +228,10 @@ export function buildLineData(
         return lines.length ? lines.join('\n') : '—';
       })();
 
-  // PICKUP_REMINDER — เตือนครบ 7 วันยังไม่มารับ
-  const readyKind = isExchange ? 'พร้อมส่งมอบ' : 'ซ่อมเสร็จ';
+  // PICKUP_REMINDER — เตือนเมื่อครบ N วันยังไม่มารับ
+  // final fix M-2 — PRICED ที่อนุมัติแล้วรอลูกค้ามาทำสัญญาใหม่ (เปลี่ยนเครื่อง) ไม่ใช่ "พร้อมส่งมอบ"
+  const readyKind =
+    row.outcome === 'PRICED_EXCHANGE' ? 'พร้อมเปลี่ยน' : isExchange ? 'พร้อมส่งมอบ' : 'ซ่อมเสร็จ';
   const readySince = thaiShortYearDate(row.readyAt ?? null) ?? '';
 
   return {

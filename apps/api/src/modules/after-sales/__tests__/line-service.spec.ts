@@ -121,6 +121,8 @@ describe('AfterSalesLineService', () => {
       },
       repairTicket: { payer: 'SHOP', estimatedCost: null, actualCost: null },
       replacement: null,
+      readyAt: null,
+      stage: c.stage,
     };
     expect(data).toEqual(buildLineData(expectedRow, 'RECEIVED', ''));
 

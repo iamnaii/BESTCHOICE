@@ -25,6 +25,9 @@ const DAY_MS = 86_400_000;
 /** จังหวะ 3 กันย้อนส่งของเก่าหลัง deploy — เฉพาะเคสที่ engine ปิดให้ภายใน N วันที่ผ่านมา */
 const CLOSED_WINDOW_DAYS = 3;
 
+/** เพดานอายุของการเตือนให้มารับ — รอบแรกหลัง deploy ต้องไม่เตือนเคสที่ค้างนานมาก (น่าจะส่งมอบไปแล้วแต่ไม่ได้บันทึก) */
+const PICKUP_REMINDER_MAX_AGE_DAYS = 30;
+
 /**
  * Ruling PF-2 — `ROW_SELECT` ของ `after-sales-query.service.ts` เป็น private และคงไว้เป็น
  * private ต่อไป. select ของคิว "เตือนรับเครื่อง" ต่อ `RECONCILE_SELECT` ที่ export จาก
@@ -99,7 +102,8 @@ export class AfterSalesLineCron {
             row.receivedAt,
             row.approvedAt,
           );
-          if (now.getTime() - since.getTime() < days * DAY_MS) {
+          const age = now.getTime() - since.getTime();
+          if (age < days * DAY_MS || age > PICKUP_REMINDER_MAX_AGE_DAYS * DAY_MS) {
             out.skipped++;
             continue;
           }

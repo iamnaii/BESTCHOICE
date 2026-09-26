@@ -118,6 +118,9 @@ describe('LiffAfterSalesService', () => {
     const cutoffMs = call.where.OR[1].closedAt.gte.getTime();
     const expectedCutoffMs = Date.now() - 14 * 24 * 60 * 60 * 1000;
     expect(Math.abs(cutoffMs - expectedCutoffMs)).toBeLessThan(5000);
+    // final fix M-3 — เคสที่ยกเลิกโชว์ 14 วันเหมือนเคสที่ปิด (cutoff ตัวเดียวกัน)
+    expect(call.where.OR).toHaveLength(3);
+    expect(call.where.OR[2]).toEqual({ cancelledAt: { gte: call.where.OR[1].closedAt.gte } });
     expect(call.orderBy).toEqual({ receivedAt: 'desc' });
     expect(call.take).toBe(10);
   });
@@ -139,6 +142,26 @@ describe('LiffAfterSalesService', () => {
     const result = await service.getMyCases('U_line1');
 
     expect(result.cases[0].costLine).toBe('ค่าซ่อม 1,500 บาท ชำระที่สาขา');
+  });
+
+  // final fix M-9 — เศษสตางค์ไม่ถูกปัด (เดิม 1,500.50 → "1,501")
+  it('M-9: costLine keeps satang — actualCost 1500.5 → "ค่าซ่อม 1,500.5 บาท ชำระที่สาขา"', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+    prisma.afterSalesCase.findMany.mockResolvedValue([
+      buildCase({
+        stage: 'READY_FOR_PICKUP',
+        repairTicket: buildTicket({
+          status: 'READY_FOR_PICKUP',
+          payer: 'CUSTOMER',
+          actualCost: { toString: () => '1500.5' },
+          repairedAt: new Date('2026-09-22T00:00:00.000Z'),
+        }),
+      }),
+    ]);
+
+    const result = await service.getMyCases('U_line1');
+
+    expect(result.cases[0].costLine).toBe('ค่าซ่อม 1,500.5 บาท ชำระที่สาขา');
   });
 
   it('(b) costLine "ไม่มี (ในประกันร้าน)" when payer is SHOP', async () => {
@@ -227,6 +250,34 @@ describe('LiffAfterSalesService', () => {
       'ปิดเคส',
     ]);
     expect(c.steps[1].state).toBe('now');
+  });
+
+  // final fix M-2 — PRICED ที่อนุมัติแล้ว (READY_FOR_PICKUP) ขั้นปัจจุบันคือ "ทำสัญญาใหม่" ⇒ ป้ายต้องไม่ใช่
+  // "รอรับเครื่อง" (ขัดกับขั้น — คลาสเดียวกับ PF-8)
+  it('M-2: PRICED_EXCHANGE READY_FOR_PICKUP → stageLabel "รอทำสัญญาใหม่" (ขั้นปัจจุบัน "ทำสัญญาใหม่")', async () => {
+    prisma.customer.findFirst.mockResolvedValue({ id: 'cust-1' });
+    prisma.afterSalesCase.findMany.mockResolvedValue([
+      buildCase({
+        outcome: 'PRICED_EXCHANGE',
+        stage: 'READY_FOR_PICKUP',
+        approvedAt: new Date('2026-09-22T00:00:00.000Z'),
+        repairTicket: null,
+        exchangeRequest: {
+          status: 'APPROVED',
+          mode: 'PRICED',
+          memoAppliedAt: null,
+          rejectionReason: null,
+          cancelReason: null,
+          newContract: { status: 'DRAFT' },
+        },
+      }),
+    ]);
+
+    const result = await service.getMyCases('U_line1');
+
+    const c = result.cases[0];
+    expect(c.stageLabel).toBe('รอทำสัญญาใหม่');
+    expect(c.steps[2]).toEqual(expect.objectContaining({ title: 'ทำสัญญาใหม่', state: 'now' }));
   });
 
   it('(b) CANCELLED case: stageLabel ยกเลิก, step 0 done, rest idle, no "now"', async () => {

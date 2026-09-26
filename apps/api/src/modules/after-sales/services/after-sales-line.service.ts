@@ -27,7 +27,7 @@ import {
 } from '../utils/after-sales-line-copy.util';
 
 type NotifyResult = {
-  status: 'SENT' | 'NO_LINK' | 'DISABLED' | 'FAILED' | 'BLOCKED' | 'SKIPPED_DUP';
+  status: 'SENT' | 'NO_LINK' | 'DISABLED' | 'FAILED' | 'BLOCKED';
 };
 
 /** สถานะจาก NotificationsService.sendFromTemplate ที่นับว่า "อยู่ระหว่างส่ง/ส่งแล้ว" ไม่ใช่ถูกบล็อก */

@@ -19,6 +19,14 @@ export class WarrantyCron {
   @Cron('0 9 * * *', { timeZone: 'Asia/Bangkok' })
   async checkExpiringWarranties(): Promise<void> {
     try {
+      // final fix M-7 — แม่แบบปิดอยู่ (รอเจ้าของเคาะข้อความ) → log บรรทัดเดียวแล้วจบ ไม่ query ประกัน
+      // ไม่เรียก dispatcher (ไม่งั้นทุก item ได้ BLOCKED + Sentry "template inactive" ทุกวัน)
+      if (!(await this.notifier.isTemplateActive())) {
+        this.logger.log(
+          'Warranty expiring LINE skipped: template WARRANTY_EXPIRING_7D is inactive',
+        );
+        return;
+      }
       const expiring = await this.warrantyService.getExpiringWarranties(7);
       const tally: Record<WarrantyNotifyResult, number> = {
         SENT: 0,

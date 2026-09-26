@@ -36,6 +36,18 @@ export class WarrantyLineNotifierService {
     private readonly integrationConfig: IntegrationConfigService,
   ) {}
 
+  /**
+   * final fix M-7 — แม่แบบ WARRANTY_EXPIRING_7D เปิดใช้อยู่ไหม (cron ถามก่อนไล่ส่ง): ปิดอยู่ = ไม่ต้อง query
+   * ประกัน/เรียก dispatcher ทีละ item ซึ่งแต่ละครั้งยิง Sentry "template inactive" ทุกวัน
+   */
+  async isTemplateActive(): Promise<boolean> {
+    const tpl = await this.prisma.notificationTemplate.findFirst({
+      where: { eventType: WARRANTY_EXPIRING_EVENT_TYPE, isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    return !!tpl;
+  }
+
   async notifyExpiring(item: ExpiringWarrantyItem): Promise<WarrantyNotifyResult> {
     // PII: lineIdShop อยู่แค่ที่นี่ — ห้าม log ตัวแปรนี้หรือใส่มันลง data/relatedId
     if (!item.lineIdShop) return 'NO_LINK';

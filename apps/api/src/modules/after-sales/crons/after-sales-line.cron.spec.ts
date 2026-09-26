@@ -244,6 +244,29 @@ describe('AfterSalesLineCron', () => {
     expect(result).toEqual({ reminded: 0, closedNotified: 1, skipped: 1, failed: 0 });
   });
 
+  // final fix M-5 — เพดานอายุ 30 วัน: รอบแรกหลัง deploy ต้องไม่เตือนเคสที่ค้างนานมาก (น่าจะส่งมอบ
+  // ไปแล้วแต่ไม่ได้บันทึก) — นับเป็น skipped ไม่ถามประวัติ ไม่ส่ง
+  it('does not remind a READY_FOR_PICKUP case older than PICKUP_REMINDER_MAX_AGE_DAYS (31 days → skipped)', async () => {
+    const stale = readyRow({
+      id: 'case-31d',
+      receivedAt: new Date(NOW.getTime() - 40 * DAY),
+      repairTicket: {
+        status: 'READY_FOR_PICKUP',
+        deletedAt: null,
+        returnedToCustomerAt: null,
+        sentToRepairAt: new Date(NOW.getTime() - 35 * DAY),
+        repairedAt: new Date(NOW.getTime() - 31 * DAY),
+      },
+    });
+    prisma.afterSalesCase.findMany = makeFindMany([stale]);
+
+    const result = await cron.tick(NOW);
+
+    expect(line.hasLineAttempt).not.toHaveBeenCalled();
+    expect(line.notifyMoment).not.toHaveBeenCalled();
+    expect(result).toEqual({ reminded: 0, closedNotified: 0, skipped: 1, failed: 0 });
+  });
+
   // (d) — kill switch OFF: zeroed counters, no case query, no LINE calls at all.
   it('does nothing when after_sales_line_enabled is OFF', async () => {
     prisma.systemConfig.findFirst.mockImplementation(

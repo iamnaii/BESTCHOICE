@@ -29,8 +29,14 @@ export interface LiffAfterSalesResponse {
 }
 
 // ตาม frontend.md: ชิปสีต้องมีข้อความเสมอ (ห้ามสื่อความหมายด้วยสีอย่างเดียว) และใช้ token เท่านั้น
-const WARNING_STAGE_LABELS = new Set(['กำลังซ่อม', 'รอผู้จัดการยืนยัน', 'รออนุมัติ', 'รับเรื่องแล้ว']);
-const PRIMARY_STAGE_LABELS = new Set(['รอรับเครื่อง']);
+const WARNING_STAGE_LABELS = new Set([
+  'กำลังซ่อม',
+  'รอผู้จัดการยืนยัน',
+  'รออนุมัติ',
+  'รับเรื่องแล้ว',
+]);
+// 'รอทำสัญญาใหม่' = PRICED อนุมัติแล้ว ลูกค้าต้องมาสาขา (คู่กับ 'รอรับเครื่อง' — final fix M-2)
+const PRIMARY_STAGE_LABELS = new Set(['รอรับเครื่อง', 'รอทำสัญญาใหม่']);
 
 function stageChipClass(label: string): string {
   if (WARNING_STAGE_LABELS.has(label)) return 'bg-warning/10 text-warning-strong';

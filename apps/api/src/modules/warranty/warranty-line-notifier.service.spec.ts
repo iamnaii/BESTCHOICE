@@ -38,6 +38,7 @@ describe('WarrantyLineNotifierService.notifyExpiring', () => {
     jest.clearAllMocks();
     prisma = {
       notificationLog: { findFirst: jest.fn().mockResolvedValue(null) },
+      notificationTemplate: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     notifications = {
       sendFromTemplate: jest.fn().mockResolvedValue({ id: 'log-1', status: 'SENT' }),
@@ -56,6 +57,24 @@ describe('WarrantyLineNotifierService.notifyExpiring', () => {
   });
 
   afterEach(() => jest.restoreAllMocks());
+
+  // final fix M-7 — cron ถามก่อนว่าแม่แบบเปิดอยู่ไหม (ปิดอยู่ = ไม่ต้องไล่ส่งทีละ item ให้ Sentry เตือนทุกวัน)
+  describe('isTemplateActive', () => {
+    it('หาแม่แบบ WARRANTY_EXPIRING_7D ที่ isActive + ยังไม่ถูกลบ → true เมื่อเจอ', async () => {
+      prisma.notificationTemplate.findFirst.mockResolvedValue({ id: 'tpl-1' });
+
+      await expect(service.isTemplateActive()).resolves.toBe(true);
+      expect(prisma.notificationTemplate.findFirst).toHaveBeenCalledWith({
+        where: { eventType: 'WARRANTY_EXPIRING_7D', isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+    });
+
+    it('ไม่เจอ (ปิดอยู่/ไม่มีแถว) → false', async () => {
+      prisma.notificationTemplate.findFirst.mockResolvedValue(null);
+      await expect(service.isTemplateActive()).resolves.toBe(false);
+    });
+  });
 
   it('ไม่มี lineIdShop → NO_LINK ทันที ไม่ตรวจ dedup ไม่ส่ง', async () => {
     const result = await service.notifyExpiring(makeItem({ lineIdShop: null }));

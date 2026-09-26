@@ -4,7 +4,7 @@
 // token กับ LINE จริงแล้วเซ็ต req.liffUserId — ดู liff-warranty.controller.ts) ไม่ใช่ตาราง
 // `CustomerLineLink` (ไม่มีแถวช่อง SHOP เลยสักแถว — เหตุผลเดียวกับ LiffWarrantyService).
 //
-// คืนเฉพาะเคสที่เปิดอยู่ + เคสที่ปิดภายใน 14 วัน (ใหม่สุดก่อน, สูงสุด 10 แถว) ด้วยถ้อยคำฝั่งลูกค้า
+// คืนเฉพาะเคสที่เปิดอยู่ + เคสที่ปิด/ยกเลิกภายใน 14 วัน (ใหม่สุดก่อน, สูงสุด 10 แถว) ด้วยถ้อยคำฝั่งลูกค้า
 // ล้วน — ห้ามมี id ภายใน/IMEI เต็ม/ชื่อพนักงานหลุดออกไป (มี "poison field" ในเทสต์ (c) ปักไว้).
 //
 // stage ที่เก็บไว้บนแถวอาจดริฟท์จากความจริง (ดู after-sales-stage-reconcile.ts) — reconcile ก่อน
@@ -116,7 +116,7 @@ function stagePosition(stage: CaseStage): number {
   }
 }
 
-/** ป้ายมุมขวา — ค่าคงที่ 7 แบบตามบรีฟเป๊ะ (AWAITING_APPROVAL แยกป้ายตามทางออก) */
+/** ป้ายมุมขวา — ค่าคงที่ 8 แบบ (AWAITING_APPROVAL และ READY_FOR_PICKUP แยกป้ายตามทางออก) */
 function stageLabel(stage: CaseStage, outcome: CaseOutcome): string {
   switch (stage) {
     case 'RECEIVED':
@@ -126,7 +126,8 @@ function stageLabel(stage: CaseStage, outcome: CaseOutcome): string {
     case 'AWAITING_APPROVAL':
       return outcome === 'PRICED_EXCHANGE' ? 'รออนุมัติ' : 'รอผู้จัดการยืนยัน';
     case 'READY_FOR_PICKUP':
-      return 'รอรับเครื่อง';
+      // final fix M-2 — PRICED อนุมัติแล้ว ขั้นปัจจุบันคือ "ทำสัญญาใหม่" ⇒ ป้ายต้องไม่ขัดกับขั้น
+      return outcome === 'PRICED_EXCHANGE' ? 'รอทำสัญญาใหม่' : 'รอรับเครื่อง';
     case 'CLOSED':
       return 'ปิดเคส';
     case 'CANCELLED':
@@ -195,8 +196,9 @@ function isExchangeOutcome(outcome: CaseOutcome): boolean {
   );
 }
 
+// final fix M-9 — เก็บเศษสตางค์ (1500.5 → "1,500.5") เหมือน baht() ของข้อความ LINE
 const baht = (v: Prisma.Decimal | null | undefined): string | null =>
-  v == null ? null : Number(v.toString()).toLocaleString('th-TH', { maximumFractionDigits: 0 });
+  v == null ? null : Number(v.toString()).toLocaleString('th-TH', { maximumFractionDigits: 2 });
 
 /** ถ้อยคำค่าใช้จ่ายฝั่งลูกค้า — ตามบรีฟเป๊ะ:
  * - PRICED_EXCHANGE → ถ้อยคำเดียวกับ costLine ของข้อความ LINE (`PRICED_EXCHANGE_COST_LINE`) —
@@ -264,7 +266,12 @@ export class LiffAfterSalesService {
       where: {
         customerId: customer.id,
         deletedAt: null,
-        OR: [{ stage: { notIn: ['CLOSED', 'CANCELLED'] } }, { closedAt: { gte: closedSince } }],
+        // final fix M-3 — เคสที่ยกเลิกโชว์ 14 วันเหมือนเคสที่ปิด (เดิมหลุดทันทีเพราะ stored CANCELLED)
+        OR: [
+          { stage: { notIn: ['CLOSED', 'CANCELLED'] } },
+          { closedAt: { gte: closedSince } },
+          { cancelledAt: { gte: closedSince } },
+        ],
       },
       select: SELECT,
       orderBy: { receivedAt: 'desc' },

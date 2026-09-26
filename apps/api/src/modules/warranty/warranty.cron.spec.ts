@@ -36,7 +36,10 @@ describe('WarrantyCron', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     warrantyService = { getExpiringWarranties: jest.fn().mockResolvedValue([]) };
-    notifier = { notifyExpiring: jest.fn() };
+    notifier = {
+      notifyExpiring: jest.fn(),
+      isTemplateActive: jest.fn().mockResolvedValue(true),
+    };
 
     // ไม่ provide PrismaService เลย — ถ้า constructor ยังต้องการมัน การ compile() นี้จะ throw
     // (Nest หา dependency ไม่เจอ) ทุกเทสต์ในไฟล์นี้จึงล้มทั้งหมด: พิสูจน์ว่าถอด PrismaService
@@ -84,6 +87,33 @@ describe('WarrantyCron', () => {
     expect(warrantyService.getExpiringWarranties).toHaveBeenCalledWith(7);
     expect(notifier.notifyExpiring).toHaveBeenCalledTimes(5);
     expect(Sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  // final fix M-7 — แม่แบบปิดอยู่ (รอเจ้าของเคาะข้อความ) → log บรรทัดเดียวแล้วจบ ไม่ query ประกัน ไม่เรียก
+  // dispatcher (เดิมทุก item ได้ BLOCKED + Sentry "template inactive" ทุกวัน)
+  it('แม่แบบปิดอยู่ → log บรรทัดเดียว ไม่เรียก getExpiringWarranties/notifier', async () => {
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    notifier.isTemplateActive.mockResolvedValue(false);
+
+    await cron.checkExpiringWarranties();
+
+    expect(notifier.isTemplateActive).toHaveBeenCalledTimes(1);
+    expect(warrantyService.getExpiringWarranties).not.toHaveBeenCalled();
+    expect(notifier.notifyExpiring).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy.mock.calls[0][0]).toContain('WARRANTY_EXPIRING_7D');
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it('แม่แบบเปิดอยู่ → ถามก่อนแล้วทำงานเหมือนเดิม (query + notify ทุก item)', async () => {
+    warrantyService.getExpiringWarranties.mockResolvedValue([item({ sourceId: 's1' })]);
+    notifier.notifyExpiring.mockResolvedValue('SENT');
+
+    await cron.checkExpiringWarranties();
+
+    expect(notifier.isTemplateActive).toHaveBeenCalledTimes(1);
+    expect(warrantyService.getExpiringWarranties).toHaveBeenCalledWith(7);
+    expect(notifier.notifyExpiring).toHaveBeenCalledTimes(1);
   });
 
   it('item ที่ notifier throw ไม่หยุด loop — นับเป็น FAILED + Sentry step:notify แล้วไปต่อ item ถัดไป', async () => {

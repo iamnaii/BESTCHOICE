@@ -2,8 +2,8 @@
 
 > สร้างอัตโนมัติ ห้ามแก้ด้วยมือ · แก้ที่ `policy.mjs` แล้ว `npm run grants` ใหม่
 
-- ตารางทั้งหมด **220** · ให้สิทธิ์บางคอลัมน์ **217** · ไม่ให้เลยทั้งใบ **3**
-- คอลัมน์ทั้งหมด **3302** · ให้ **2632** · ไม่ให้ **670**
+- ตารางทั้งหมด **221** · ให้สิทธิ์บางคอลัมน์ **218** · ไม่ให้เลยทั้งใบ **3**
+- คอลัมน์ทั้งหมด **3315** · ให้ **2643** · ไม่ให้ **672**
 
 🔒 = ตารางที่ถือ PII (ให้เฉพาะที่อยู่ใน allowlist) · ⛔ = ห้ามทั้งใบ
 
@@ -186,7 +186,7 @@
 | `other_incomes` | 32 | 8 | `counterparty_name` `counterparty_tax_id` `counterparty_address` `counterparty_phone` `customer_note` `reverse_note` `approve_note` `reject_note` |
 | `receipts` | 30 | 7 | `payer_name` `receiver_name` `file_hash` `payer_address` `payer_tax_id` `item_description` `public_token` |
 | `expense_documents` | 25 | 6 | `vendor_name` `vendor_tax_id` `description` `receipt_image_url` `reference` `note` |
-| `external_finance_companies` | 10 | 6 | `name` `contact_phone` `bank_account_info` `notes` `email` `tax_id` |
+| `external_finance_companies` | 12 | 6 | `name` `contact_phone` `bank_account_info` `notes` `email` `tax_id` |
 | `finance_company_contacts` | 9 | 5 | `name` `phone` `email` `line_id` `notes` |
 | `fixed_assets` | 59 | 5 | `name` `description` `supplier_name` `supplier_tax_id` `note` |
 | `online_installment_applications` | 17 | 5 | `full_name` `phone` `national_id` `line_user_id` `notes` |
@@ -227,6 +227,7 @@
 | `fee_waiver_approvals` | 4 | 2 | `ip_address` `user_agent` |
 | `inspections` | 12 | 2 | `photos` `notes` |
 | `journal_post_audit_logs` | 5 | 2 | `ip_address` `user_agent` |
+| `line_group_memberships` | 9 | 2 | `group_name` `picture_url` |
 | `notification_logs` | 19 | 2 | `recipient` `message` |
 | `notification_templates` | 15 | 2 | `name` `description` |
 | `other_income_items` | 15 | 2 | `account_name` `description` |

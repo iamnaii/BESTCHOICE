@@ -100,6 +100,9 @@ export const PII_TABLE_ALLOWLIST = {
   ],
   //    ไม่ให้ actor_name / note (ข้อความอิสระจาก GFIN) / meta (ipHash + user agent)
   external_finance_application_events: ['id', 'application_id', 'kind', 'actor_type', 'actor_user_id', 'created_at'],
+  // ── กลุ่มไลน์ของบอท (PR 2 migration 20261011000000_line_group_membership) — ไม่เข้า allowlist โดยตั้งใจ:
+  //    กฎชื่อคอลัมน์กัน group_name (/name/i) และ picture_url (/picture/i) ให้เอง · group_id/member_count/joined_at/left_at
+  //    และ external_finance_companies.line_group_id / precheck_template ไม่ใช่ข้อมูลส่วนบุคคล ปล่อยตามกฎ
   // ── ตรวจเครดิตจากห้องแชท (GFIN final review I4, 2026-09-25) — เดิมไม่อยู่ในลิสต์ จึงถูกตัดสินด้วยด่านชื่ออย่างเดียว
   //    แล้วหลุด: `result` (jsonb ผลวิเคราะห์ statement ธนาคาร — ชื่อบัญชี ยอดเงินเข้าออก รายได้ของลูกค้าคนเดียว) ·
   //    `error` (ข้อความจาก AI/parser อาจยกเนื้อหา statement มา) · `key` ของไฟล์ (พาธเอกสารลูกค้าใน storage)

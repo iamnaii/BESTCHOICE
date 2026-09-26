@@ -286,7 +286,7 @@ REVOKE ALL ON public."external_finance_commissions" FROM mcp_ro;
 GRANT SELECT ("id", "external_finance_company_id", "customer_id", "financed_amount", "commission_rate", "commission_amount", "received_at", "bank_slip_url", "journal_entry_id", "status", "created_at", "updated_at", "deleted_at") ON public."external_finance_commissions" TO mcp_ro;
 
 REVOKE ALL ON public."external_finance_companies" FROM mcp_ro;
-GRANT SELECT ("id", "contact_person", "default_commission_rate", "is_active", "created_at", "updated_at", "deleted_at", "credit_term_days", "line_oa_id", "contact_id") ON public."external_finance_companies" TO mcp_ro;
+GRANT SELECT ("id", "contact_person", "default_commission_rate", "is_active", "created_at", "updated_at", "deleted_at", "credit_term_days", "line_oa_id", "contact_id", "line_group_id", "precheck_template") ON public."external_finance_companies" TO mcp_ro;
 
 REVOKE ALL ON public."fee_waiver_approvals" FROM mcp_ro;
 GRANT SELECT ("id", "waiver_payment_id", "approver_id", "approved_at") ON public."fee_waiver_approvals" TO mcp_ro;
@@ -383,6 +383,9 @@ GRANT SELECT ("id", "legal_case_id", "kind", "filename", "s3_url", "uploaded_at"
 
 REVOKE ALL ON public."legal_cases" FROM mcp_ro;
 GRANT SELECT ("id", "contract_id", "case_number", "court", "hearing_date", "created_at", "updated_at", "deleted_at") ON public."legal_cases" TO mcp_ro;
+
+REVOKE ALL ON public."line_group_memberships" FROM mcp_ro;
+GRANT SELECT ("id", "channel", "group_id", "member_count", "joined_at", "left_at", "created_at", "updated_at", "deleted_at") ON public."line_group_memberships" TO mcp_ro;
 
 REVOKE ALL ON public."login_audit_logs" FROM mcp_ro;
 GRANT SELECT ("id", "user_id", "success", "failure_kind", "created_at", "device_fingerprint", "is_new_device") ON public."login_audit_logs" TO mcp_ro;

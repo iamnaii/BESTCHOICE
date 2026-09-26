@@ -25,6 +25,7 @@ import { LineFinanceWebhookGuard } from './guards/line-finance-webhook.guard';
 import { WebhookDedupService } from './services/webhook-dedup.service';
 import { FinanceDomainHandler } from './finance-domain.handler';
 import { SlipSlaCron } from './crons/slip-sla.cron';
+import { LineGroupMembershipService } from './services/line-group-membership.service';
 import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
@@ -85,8 +86,10 @@ import { ListPromotionsTool } from '../sales-bot/tools/list-promotions.tool';
     SearchProductsTool,
     CalculateInstallmentTool,
     ListPromotionsTool,
+    LineGroupMembershipService,
   ],
   // VisionService + FinanceConfigService: ปิดสัญญาด้วยสลิป (ContractsModule → EarlyPayoffSlipService, 2026-09-24)
-  exports: [LineFinanceClientService, ChatRoomService, VerificationService, WebhookDedupService, FinanceDomainHandler, FinanceAiService, VisionService, FinanceConfigService],
+  // ยื่น GFIN PR 2 — สถานะกลุ่มปลายทาง (ExternalFinanceApplicationModule)
+  exports: [LineFinanceClientService, ChatRoomService, VerificationService, WebhookDedupService, FinanceDomainHandler, FinanceAiService, VisionService, FinanceConfigService, LineGroupMembershipService],
 })
 export class ChatbotFinanceModule {}

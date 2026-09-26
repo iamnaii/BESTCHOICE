@@ -32,10 +32,12 @@ import type { DossierRoom } from '../RoomDossier';
 const room = { id: 'r1', channel: 'FACEBOOK', displayName: 'Somying J.', customer: null } as any;
 const placeholderRoom: DossierRoom = { ...room, customer: { id: 'p-1', name: 'Somying J.', phone: null, chatPlaceholder: true } };
 const model = (over: Partial<FinanceApplicationModel> = {}): FinanceApplicationModel => ({
-  roomId: 'r1', current: null, history: [], preview: null, step: 1, loading: false, busy: false,
+  roomId: 'r1', current: null, history: [], preview: null, lineGroup: null, step: 1, loading: false, busy: false,
   start: vi.fn().mockResolvedValue({}), update: vi.fn().mockResolvedValue(undefined), attachMessage: vi.fn(), upload: vi.fn(), fromProduct: vi.fn(), removeFile: vi.fn(),
   customerFields: vi.fn().mockResolvedValue(undefined),
-  send: vi.fn().mockResolvedValue({ application: {}, messageText: 'TEXT', shareUrl: 'https://x/api/g/t' }), resend: vi.fn(), shareLink: vi.fn(), extend: vi.fn().mockResolvedValue({ expiresAt: '', url: '', rotated: false }), revoke: vi.fn().mockResolvedValue(undefined), result: vi.fn().mockResolvedValue(undefined), cancel: vi.fn().mockResolvedValue(undefined),
+  send: vi.fn().mockResolvedValue({ application: {}, messageText: 'TEXT', shareUrl: 'https://x/api/g/t' }),
+  resend: vi.fn().mockResolvedValue({ application: {}, messageText: 'MORE', shareUrl: 'https://x/api/g/t', pushed: false }),
+  shareLink: vi.fn(), extend: vi.fn().mockResolvedValue({ expiresAt: '', url: '', rotated: false }), revoke: vi.fn().mockResolvedValue(undefined), result: vi.fn().mockResolvedValue(undefined), cancel: vi.fn().mockResolvedValue(undefined),
   ocrIdCard: vi.fn().mockResolvedValue({ nationalId: '1234567890123', nationalIdValid: true, prefix: 'น.ส.', firstName: 'สมหญิง', lastName: 'ใจดี', fullName: null, birthDate: '1997-12-27', address: null, addressStructured: null, confidence: 0.95 }),
   ...over,
 });
@@ -222,5 +224,91 @@ describe('GfinTab', () => {
       'สร้างลูกค้าแล้ว แต่ผูกกับแชทไม่สำเร็จ',
       expect.objectContaining({ action: expect.objectContaining({ label: 'ลองผูกอีกครั้ง' }) }),
     ));
+  });
+});
+
+const readyGroup = { groupId: 'C1', groupName: 'GFIN : BESTCHOICE (67301219)', botInGroup: true, tokenConfigured: true, ready: true, reason: null } as const;
+const leftGroup = { ...readyGroup, botInGroup: false, ready: false, reason: 'BOT_LEFT' as const };
+
+describe('GfinTab — กลุ่มไลน์ปลายทาง + ส่งด้วยบอท (PR 2)', () => {
+  it('empty state: ยังไม่ผูกกลุ่ม → แสดงเหตุผล + ทางถอยคัดลอก', () => {
+    renderTab(model({ lineGroup: { groupId: null, groupName: null, botInGroup: false, tokenConfigured: true, ready: false, reason: 'NOT_LINKED' } }));
+    expect(screen.getByText(/ยังไม่ได้ผูกกลุ่มไลน์/)).toBeInTheDocument();
+    expect(screen.getByText(/คัดลอกข้อความ \+ ลิงก์/)).toBeInTheDocument();
+  });
+  it('empty state: พร้อม → ชื่อกลุ่ม + "พร้อมส่งด้วยบอท"', () => {
+    renderTab(model({ lineGroup: readyGroup }));
+    expect(screen.getByText(/GFIN : BESTCHOICE \(67301219\) · พร้อมส่งด้วยบอท/)).toBeInTheDocument();
+  });
+  it('ขั้น 4: บอทไม่อยู่ในกลุ่ม → ปุ่ม "ส่งเช็ค GFIN" ปิด พร้อม title เหตุผล · ปุ่มคัดลอกยังกดได้', () => {
+    const gfin = model({ current: app({ customerId: 'c1', productId: 'p1' }), preview: { text: 'TXT', values: {}, missingFields: [], missingRequiredSlots: [], warnings: [], canSend: true }, step: 4, lineGroup: leftGroup });
+    renderTab(gfin, 'c1');
+    const bot = screen.getByRole('button', { name: 'ส่งเช็ค GFIN' });
+    expect(bot).toBeDisabled();
+    expect(bot).toHaveAttribute('title', expect.stringContaining('บอทไม่อยู่ในกลุ่มแล้ว'));
+    expect(screen.getByRole('button', { name: 'คัดลอกข้อความ + ลิงก์' })).toBeEnabled();
+  });
+  it('ขั้น 4: พร้อม → กด "ส่งเช็ค GFIN" → กล่องยืนยันบอทที่ต้องติ๊ก → send("BOT") + toast ชื่อกลุ่ม', async () => {
+    const gfin = model({ current: app({ customerId: 'c1', productId: 'p1', files: [] }), preview: { text: 'TXT', values: {}, missingFields: [], missingRequiredSlots: [], warnings: [], canSend: true }, step: 4, lineGroup: readyGroup });
+    (gfin.send as ReturnType<typeof vi.fn>).mockResolvedValue({ application: {}, messageText: 'TXT', shareUrl: 'https://x/api/g/t', pushed: true, groupName: 'GFIN : BESTCHOICE (67301219)' });
+    renderTab(gfin, 'c1');
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งเช็ค GFIN' }));
+    expect(screen.getByText(/ส่งเข้ากลุ่ม "GFIN : BESTCHOICE \(67301219\)" ด้วยบอท\?/)).toBeInTheDocument();
+    const go = screen.getByRole('button', { name: 'ส่งเข้ากลุ่มเลย' });
+    expect(go).toBeDisabled();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(go);
+    await waitFor(() => expect(gfin.send).toHaveBeenCalledWith('BOT'));
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('ส่งเข้ากลุ่ม "GFIN : BESTCHOICE (67301219)" แล้ว'));
+  });
+  it('การ์ดสถานะ: ส่งเพิ่มเมื่อกลุ่มพร้อม → resend("BOT") ไม่แตะคลิปบอร์ด · แสดง "ส่งด้วยบอท"', async () => {
+    const gfin = model({ current: app({ status: 'MORE_INFO', sentVia: 'BOT', sentAt: '2026-09-25T10:00:00Z', messageText: 'OLD', files: [{ id: 'f1', slot: 'INCOME', sourceMessageId: null, mimeType: 'image/jpeg', size: 1, originalName: null, source: 'UPLOAD', sourceAngle: null, sortOrder: 0, sentAt: null, createdAt: '' }] }), lineGroup: readyGroup });
+    (gfin.resend as ReturnType<typeof vi.fn>).mockResolvedValue({ application: {}, messageText: 'MORE', shareUrl: 'https://x/api/g/t', pushed: true, groupName: 'GFIN : BESTCHOICE (67301219)' });
+    renderTab(gfin, 'c1');
+    expect(screen.getByText(/ส่งด้วยบอท/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มรูปแล้วส่งเพิ่ม' }));
+    // F1 (final-fix wave) — เมื่อกลุ่มพร้อม ปุ่มหลักเปลี่ยนป้ายเป็น "ส่งเพิ่มด้วยบอท" (คู่กับปุ่มรอง "ส่งเพิ่มแบบคัดลอก")
+    fireEvent.click(screen.getByRole('button', { name: /ส่งเพิ่มด้วยบอท \(1 ไฟล์ใหม่\)/ }));
+    await waitFor(() => expect(gfin.resend).toHaveBeenCalledWith('BOT'));
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('ส่งเพิ่มเข้ากลุ่ม'));
+  });
+  // F1 (final-fix wave) — spec §3: ปุ่มคัดลอกต้องเป็นทางถอยเสมอแม้กลุ่มพร้อม (บอทอาจตอบ 429/5xx/timeout ทุกครั้ง
+  // ที่กด "ส่งเพิ่มด้วยบอท" ไม่มีทางคัดลอกได้เลย ก่อนหน้านี้)
+  it('F1: กลุ่มพร้อม → เห็นทั้งสองปุ่ม กด "ส่งเพิ่มแบบคัดลอก" เรียก resend("COPY") และคัดลอกคลิปบอร์ด', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const gfin = model({
+      current: app({ status: 'MORE_INFO', sentAt: '2026-09-25T10:00:00Z', messageText: 'OLD', files: [{ id: 'f1', slot: 'INCOME', sourceMessageId: null, mimeType: 'image/jpeg', size: 1, originalName: null, source: 'UPLOAD', sourceAngle: null, sortOrder: 0, sentAt: null, createdAt: '' }] }),
+      resend: vi.fn().mockResolvedValue({ application: {}, messageText: 'COPY TEXT', shareUrl: 'https://x/api/g/t', pushed: false }),
+      lineGroup: readyGroup,
+    });
+    renderTab(gfin, 'c1');
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มรูปแล้วส่งเพิ่ม' }));
+    expect(screen.getByRole('button', { name: /ส่งเพิ่มด้วยบอท \(1 ไฟล์ใหม่\)/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'ส่งเพิ่มแบบคัดลอก' }));
+    await waitFor(() => expect(gfin.resend).toHaveBeenCalledWith('COPY'));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('COPY TEXT'));
+  });
+  it('F1: กลุ่มพร้อม → resend("BOT") ล้ม ไม่มี success toast และ "ส่งเพิ่มแบบคัดลอก" ยังกดได้และทำงานต่อ', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const resend = vi.fn()
+      .mockRejectedValueOnce(new Error('LINE down'))
+      .mockResolvedValue({ application: {}, messageText: 'COPY AFTER FAIL', shareUrl: 'https://x/api/g/t', pushed: false });
+    const gfin = model({
+      current: app({ status: 'MORE_INFO', sentAt: '2026-09-25T10:00:00Z', messageText: 'OLD', files: [{ id: 'f1', slot: 'INCOME', sourceMessageId: null, mimeType: 'image/jpeg', size: 1, originalName: null, source: 'UPLOAD', sourceAngle: null, sortOrder: 0, sentAt: null, createdAt: '' }] }),
+      resend,
+      lineGroup: readyGroup,
+    });
+    renderTab(gfin, 'c1');
+    fireEvent.click(screen.getByRole('button', { name: 'เพิ่มรูปแล้วส่งเพิ่ม' }));
+    fireEvent.click(screen.getByRole('button', { name: /ส่งเพิ่มด้วยบอท \(1 ไฟล์ใหม่\)/ }));
+    await waitFor(() => expect(resend).toHaveBeenCalledWith('BOT'));
+    expect(toast.success).not.toHaveBeenCalled();
+    const copyButton = screen.getByRole('button', { name: 'ส่งเพิ่มแบบคัดลอก' });
+    expect(copyButton).toBeEnabled();
+    fireEvent.click(copyButton);
+    await waitFor(() => expect(resend).toHaveBeenCalledWith('COPY'));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('COPY AFTER FAIL'));
   });
 });

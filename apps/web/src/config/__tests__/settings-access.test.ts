@@ -32,6 +32,15 @@ describe('settings-access', () => {
     expect(fmItems).not.toContain('vat'); // OWNER-only
   });
 
+  it('FINANCE_MANAGER เห็น item gfin ใน finance (PR2 T6 — แท็บ "กลุ่มไลน์ & ข้อความ")', () => {
+    const finance = categoryById('finance')!;
+    const fmItems = visibleItems(finance, 'FINANCE_MANAGER').map((i) => i.id);
+    expect(fmItems).toContain('gfin');
+    expect(findItem('finance', 'gfin')?.item.roles).toEqual(expect.arrayContaining(['OWNER', 'FINANCE_MANAGER']));
+    // ACCOUNTANT ยังเข้าไม่ได้ — ไม่ได้อยู่ในคำสั่งเจ้าของ
+    expect(visibleItems(finance, 'ACCOUNTANT').map((i) => i.id)).not.toContain('gfin');
+  });
+
   it('firstVisibleCategoryId คืนหมวดแรกที่ role เห็น', () => {
     expect(firstVisibleCategoryId('OWNER')).toBe('company');
     expect(firstVisibleCategoryId('FINANCE_MANAGER')).toBe('accounting'); // company ไม่มี item ที่ FM เห็นแล้ว

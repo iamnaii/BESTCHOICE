@@ -8209,6 +8209,10 @@ model ExternalFinanceCompany {
   // ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4)
   applications ExternalFinanceApplication[]
 
+  // ยื่น GFIN PR 2 (spec §4.2) — กลุ่มไลน์ปลายทางของบอท + แม่แบบข้อความ 12 ข้อ (null = DEFAULT_PRECHECK_TEMPLATE ในโค้ด)
+  lineGroupId      String? @map("line_group_id")
+  precheckTemplate String? @map("precheck_template") @db.Text
+
   @@index([contactId])
   @@map("external_finance_companies")
 }
@@ -8304,6 +8308,25 @@ model ExternalFinanceApplicationEvent {
 
   @@index([applicationId, createdAt])
   @@map("external_finance_application_events")
+}
+
+/// สมาชิกภาพของบอท OA ในกลุ่มไลน์ — จดจาก webhook join/leave (ยื่น GFIN PR 2, spec §4.1) · แถวเดียวต่อ (channel, groupId)
+model LineGroupMembership {
+  id          String          @id @default(uuid())
+  channel     LineChannelType
+  groupId     String          @map("group_id")
+  groupName   String?         @map("group_name")     // จาก GET /v2/bot/group/{id}/summary — ดึงไม่ได้ = null
+  pictureUrl  String?         @map("picture_url")
+  memberCount Int?            @map("member_count")
+  joinedAt    DateTime        @map("joined_at")      // เข้าครั้งล่าสุด (เข้าใหม่หลังถูกเตะ = อัปเดต)
+  leftAt      DateTime?       @map("left_at")        // null = บอทยังอยู่ในกลุ่ม
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  deletedAt   DateTime?       @map("deleted_at")
+
+  @@unique([channel, groupId])
+  @@index([channel, leftAt])
+  @@map("line_group_memberships")
 }
 
 /// SP7.4 — Track commission accrual + receipt per external finance sale.

@@ -19,6 +19,7 @@ import { HandoffService } from './handoff.service';
 import { SlipProcessingService } from './slip-processing.service';
 import { FeedbackService } from './feedback.service';
 import { QuickReplyPostbackRouterService } from '../../staff-chat/services/quick-reply-postback-router.service';
+import { LineGroupMembershipService } from './line-group-membership.service';
 import { INTENTS } from '../constants/intents';
 import { buildBrowserUrl } from '../../../utils/line-login.util';
 import { formatStickerToken } from '../../chat-engine/utils/sticker-token.util';
@@ -55,6 +56,7 @@ export class ChatbotFinanceService {
     // constructor-level @Inject(forwardRef(...)) on the same provider is
     // redundant for Nest's DI graph.
     private postbackRouter: QuickReplyPostbackRouterService,
+    private groups: LineGroupMembershipService,
   ) {}
 
   /** Flex card สำหรับ prompt ยืนยันตัวตน — ปุ่มเปิด LINE Login OAuth */
@@ -130,6 +132,21 @@ export class ChatbotFinanceService {
   }
 
   async handleEvent(event: LineFinanceWebhookEvent): Promise<void> {
+    // ยื่น GFIN PR 2 (spec §10): เข้า/ออกกลุ่ม = งานบัญชีสมาชิกภาพ ไม่ใช่การตอบ → จดก่อน kill switch เสมอ · 'room' (แชทหลายคน) ไม่นับ
+    if ((event.type === 'join' || event.type === 'leave') && event.source.type === 'group' && event.source.groupId) {
+      return event.type === 'join'
+        ? this.groups.onJoin('FINANCE', event.source.groupId)
+        : this.groups.onLeave('FINANCE', event.source.groupId);
+    }
+
+    // final-fix F3: กลุ่มที่เชิญ OA เข้าไว้ก่อน PR 2 ขึ้น ไม่มีทางได้ event `join` เลย (LINE ไม่ resend join
+    // เมื่อบอทเป็นสมาชิกกลุ่มอยู่แล้ว) — จดสมาชิกภาพจากข้อความกลุ่มอื่นใดก็ได้แทน (bookkeeping ไม่ใช่การตอบ)
+    // ก่อน kill switch เหมือนกัน · หนึ่ง indexed lookup ต่อ event (ดู ensureKnown) · ตัวข้อความยังถูกทิ้งตามเดิม
+    // โดย handleMessage (group !== user)
+    if (event.source.type === 'group' && event.source.groupId) {
+      await this.groups.ensureKnown('FINANCE', event.source.groupId);
+    }
+
     // Owner-controlled kill switch — drop all events without reply when paused
     if (this.configService.get<string>('LINE_FINANCE_BOT_DISABLED') === 'true') {
       return;

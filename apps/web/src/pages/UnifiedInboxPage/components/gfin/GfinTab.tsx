@@ -3,12 +3,13 @@ import { Button } from '@/components/ui/button';
 import { Group } from '../RoomDossier';
 import type { DossierRoom } from '../RoomDossier';
 import type { FinanceApplicationModel } from '../../hooks/useFinanceApplication';
-import { GFIN_LINE_GROUP, STATUS_LABEL, quietly } from './gfin';
+import { STATUS_LABEL, quietly } from './gfin';
 import GfinStepCustomer from './GfinStepCustomer';
 import GfinStepProduct from './GfinStepProduct';
 import GfinStepFiles from './GfinStepFiles';
 import GfinStepMessage from './GfinStepMessage';
 import GfinStatusCard from './GfinStatusCard';
+import GfinLineGroupLine from './GfinLineGroupLine';
 import { formatThaiDateShort } from '@/lib/date';
 
 export interface GfinTabProps { room: DossierRoom; customerId: string | null; gfin?: FinanceApplicationModel; onPickSlotForMessage?: (messageId: string) => void }
@@ -39,7 +40,7 @@ export default function GfinTab({ room, customerId, gfin, onPickSlotForMessage }
           ? <p className="m-0 text-xs leading-relaxed text-muted-foreground">ลูกค้าคนนี้ยังไม่เคยยื่น GFIN · ใบที่ส่งแล้วจะเรียงที่นี่พร้อมผล</p>
           : <ul className="m-0 list-none p-0 text-xs">{gfin.history.map(h => <li key={h.id} className="flex justify-between py-1"><span>{h.number} · {formatThaiDateShort(h.createdAt)}</span><span className="font-semibold">{STATUS_LABEL[h.status]}</span></li>)}</ul>}
       </Group>
-      <Group label="กลุ่มไลน์ปลายทาง"><p className="m-0 text-xs leading-snug">{GFIN_LINE_GROUP}</p><p className="m-0 text-xs leading-snug text-muted-foreground">ส่งด้วยบอทจะเปิดในเฟสถัดไป · ตอนนี้คัดลอกข้อความ + ลิงก์ไปวางในกลุ่ม</p></Group>
+      <Group label="กลุ่มไลน์ปลายทาง"><GfinLineGroupLine status={gfin.lineGroup} /></Group>
     </div>
   );
 

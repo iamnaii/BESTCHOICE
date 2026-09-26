@@ -46,6 +46,14 @@ export interface LineQuickReply {
   items: LineQuickReplyItem[];
 }
 
+/** โยนเมื่อไม่มี Channel Access Token ของ OA ไฟแนนซ์ — ทางเข้มงวด (ยื่น GFIN) ต้องรู้ ไม่ใช่ข้ามเงียบแบบ callApi */
+export class LineFinanceNotConfiguredError extends Error {
+  constructor() {
+    super('LINE Finance access token not configured');
+    this.name = 'LineFinanceNotConfiguredError';
+  }
+}
+
 /**
  * LINE Messaging API client สำหรับ Finance OA โดยเฉพาะ
  * ใช้ token แยกจาก Shop OA — config key: line-finance / channelToken
@@ -135,6 +143,38 @@ export class LineFinanceClientService {
     }
   }
 
+  /** push แบบเข้มงวด (ยื่น GFIN PR 2): ไม่มี token = โยน · LINE error = โยน · คืน x-line-request-id ไว้เก็บเป็นหลักฐานการส่ง */
+  async pushMessageStrict(to: string, messages: LineMessage[]): Promise<{ requestId: string | null }> {
+    const token = await this.getAccessToken();
+    if (!token) throw new LineFinanceNotConfiguredError();
+    const res = await this.postJson(token, `${this.apiBase}/message/push`, { to, messages });
+    this.logger.log(`[LINE Finance] push(strict) → ${to.slice(0, 8)}…`);
+    return { requestId: res.headers.get('x-line-request-id') };
+  }
+
+  /** ชื่อ/รูปกลุ่ม — https://developers.line.biz/en/reference/messaging-api/#get-group-summary · ดึงไม่ได้ = null (ไม่บล็อก webhook) */
+  async getGroupSummary(groupId: string): Promise<{ groupId: string; groupName: string; pictureUrl?: string } | null> {
+    return this.getJson(`${this.apiBase}/group/${groupId}/summary`, 'group summary');
+  }
+
+  async getGroupMemberCount(groupId: string): Promise<number | null> {
+    const r = await this.getJson<{ count: number }>(`${this.apiBase}/group/${groupId}/members/count`, 'group member count');
+    return typeof r?.count === 'number' ? r.count : null;
+  }
+
+  private async getJson<T>(url: string, what: string): Promise<T | null> {
+    const token = await this.getAccessToken();
+    if (!token) return null;
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) { this.logger.warn(`[LINE Finance] ${what} API ${res.status}`); return null; }
+      return (await res.json()) as T;
+    } catch (err) {
+      this.logger.warn(`[LINE Finance] ${what} fetch failed: ${err instanceof Error ? err.message : err}`);
+      return null;
+    }
+  }
+
   /** ดาวน์โหลด media (รูป/เสียง) จาก LINE Content API */
   async getMessageContent(messageId: string): Promise<Buffer> {
     const token = await this.getAccessToken();
@@ -156,13 +196,15 @@ export class LineFinanceClientService {
       this.logger.warn('[LINE Finance] access token not configured — skipping send');
       return;
     }
+    await this.postJson(token, url, body);
+  }
+
+  /** POST JSON → คืน Response เมื่อสำเร็จ · ไม่สำเร็จ = log + Sentry + throw (semantics เดิมของ callApi) */
+  private async postJson(token: string, url: string, body: unknown): Promise<Response> {
     try {
       const res = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(10000),
       });
@@ -176,6 +218,7 @@ export class LineFinanceClientService {
         });
         throw err;
       }
+      return res;
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') {
         this.logger.error(`[LINE Finance] API timeout after 10s: ${url}`);

@@ -53,6 +53,10 @@ const CASE_FOR_LINE_SELECT = {
   warrantySnapshot: true,
   replacementProductId: true,
   replacementContractId: true,
+  // final fix I-5 — PRICED_EXCHANGE: เครื่อง/สัญญาที่คุ้มครองเครื่องทดแทนอยู่บนคำขอ ไม่ใช่บนเคส
+  exchangeRequest: {
+    select: { mode: true, oldContractId: true, newContractId: true, newProductId: true },
+  },
   stage: true,
   receivedAt: true,
   approvedAt: true,
@@ -218,22 +222,35 @@ export class AfterSalesLineService {
     }
   }
 
-  /** product ทดแทน + shopWarrantyEndDate ของสัญญาใหม่ (ถ้ามี) — ไม่มี replacementProductId = ไม่มีการแลกเปลี่ยน */
-  private async loadReplacement(c: {
-    replacementProductId: string | null;
-    replacementContractId: string | null;
-  }): Promise<ReplacementInfo | null> {
-    if (!c.replacementProductId) return null;
+  /**
+   * product ทดแทน + shopWarrantyEndDate ของ "สัญญาที่คุ้มครองเครื่องนั้นอยู่จริง" (final fix I-5) —
+   * ไม่มีเครื่องทดแทน = ไม่มีการแลกเปลี่ยน (คืน null):
+   * - เครื่อง = `replacementProductId` ?? `exchangeRequest.newProductId` (PRICED ไม่เคยตั้ง
+   *   replacementProductId บนเคส)
+   * - สัญญา: SAME_MODEL / CASH_SAME_MODEL (และ REPAIR ที่เปลี่ยนรุ่นเดิม) → `replacementContractId` ·
+   *   PRICED_EXCHANGE → MEMO ย้ายเครื่องบนสัญญาเดิม (วันประกันไม่ได้เริ่มใหม่) = `oldContractId`,
+   *   PRICED = สัญญาใหม่ `newContractId`
+   */
+  private async loadReplacement(c: CaseForLine): Promise<ReplacementInfo | null> {
+    const productId = c.replacementProductId ?? c.exchangeRequest?.newProductId ?? null;
+    if (!productId) return null;
     const product = await this.prisma.product.findFirst({
-      where: { id: c.replacementProductId, deletedAt: null },
+      where: { id: productId, deletedAt: null },
       select: { brand: true, model: true, storage: true, imeiSerial: true },
     });
     if (!product) return null; // ถูกลบ/ไม่พบ — ไม่รู้จักเครื่องทดแทนแล้ว
 
+    const coveringContractId =
+      c.outcome === 'PRICED_EXCHANGE' && c.exchangeRequest
+        ? c.exchangeRequest.mode === 'MEMO'
+          ? c.exchangeRequest.oldContractId
+          : c.exchangeRequest.newContractId
+        : c.replacementContractId;
+
     let shopWarrantyEndDate: string | null = null;
-    if (c.replacementContractId) {
+    if (coveringContractId) {
       const contract = await this.prisma.contract.findFirst({
-        where: { id: c.replacementContractId, deletedAt: null },
+        where: { id: coveringContractId, deletedAt: null },
         select: { shopWarrantyEndDate: true },
       });
       shopWarrantyEndDate = contract?.shopWarrantyEndDate

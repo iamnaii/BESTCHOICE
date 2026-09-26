@@ -33,6 +33,12 @@ function makeCase(over: Record<string, unknown> = {}) {
     },
     replacementProductId: null as string | null,
     replacementContractId: null as string | null,
+    exchangeRequest: null as {
+      mode: 'MEMO' | 'PRICED';
+      oldContractId: string;
+      newContractId: string | null;
+      newProductId: string;
+    } | null,
     stage: 'IN_REPAIR' as const, // ค่าเริ่มต้นไม่ใช่ READY_FOR_PICKUP — เทสต์ readyAt ตั้งเองรายเคส
     receivedAt: new Date('2026-09-20T03:00:00.000Z'),
     approvedAt: null as Date | null,
@@ -598,6 +604,119 @@ describe('AfterSalesLineService', () => {
 
       const row = buildSpy.mock.calls[0][0];
       expect(row.deviceStorage).toBeUndefined();
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // final fix I-5 — CLOSED บอกวันหมดประกันร้านจากสัญญาที่คุ้มครองเครื่องทดแทนจริง (deletedAt: null):
+  // SAME_MODEL → replacementContractId · PRICED/MEMO → exchangeRequest.oldContractId (ย้ายเครื่องบน
+  // สัญญาเดิม ประกันไม่นับใหม่) · PRICED/PRICED → exchangeRequest.newContractId · เครื่อง =
+  // replacementProductId ?? exchangeRequest.newProductId · ไม่มีข้ออ้าง "นับใหม่" อีก
+  // ---------------------------------------------------------------------
+  describe('final fix I-5: ประกันของเครื่องทดแทนมาจากสัญญาที่คุ้มครองจริง', () => {
+    const PRODUCT = {
+      brand: 'Apple',
+      model: 'iPhone 15',
+      storage: '256GB',
+      imeiSerial: '111122223333444',
+    };
+    const WARRANTY_END = new Date('2026-11-17T00:00:00.000Z'); // → "17 พ.ย. 69"
+
+    it('select ของเคสโหลด exchangeRequest { mode, oldContractId, newContractId, newProductId }', async () => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue(makeCase());
+      await service.notifyMoment('case-1', 'CLOSED', 'actor-1');
+      expect(prisma.afterSalesCase.findFirst).toHaveBeenCalledWith({
+        where: { id: 'case-1', deletedAt: null },
+        select: expect.objectContaining({
+          exchangeRequest: {
+            select: { mode: true, oldContractId: true, newContractId: true, newProductId: true },
+          },
+        }),
+      });
+    });
+
+    it('PRICED_EXCHANGE MEMO → เครื่องจาก newProductId + วันที่จากสัญญาเดิม (oldContractId) → "ประกันร้าน ถึง 17 พ.ย. 69"', async () => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        makeCase({
+          outcome: 'PRICED_EXCHANGE',
+          stage: 'CLOSED',
+          repairTicket: null,
+          exchangeRequest: {
+            mode: 'MEMO',
+            oldContractId: 'ct-old',
+            newContractId: null,
+            newProductId: 'prod-new',
+          },
+        }),
+      );
+      prisma.product.findFirst.mockResolvedValue(PRODUCT);
+      prisma.contract.findFirst.mockResolvedValue({ shopWarrantyEndDate: WARRANTY_END });
+
+      await service.notifyMoment('case-1', 'CLOSED', 'actor-1');
+
+      expect(prisma.product.findFirst).toHaveBeenCalledWith({
+        where: { id: 'prod-new', deletedAt: null },
+        select: { brand: true, model: true, storage: true, imeiSerial: true },
+      });
+      expect(prisma.contract.findFirst).toHaveBeenCalledWith({
+        where: { id: 'ct-old', deletedAt: null },
+        select: { shopWarrantyEndDate: true },
+      });
+      const data = notifications.sendFromTemplate.mock.calls[0][1];
+      expect(data.warrantyLines).toBe('ประกันร้าน ถึง 17 พ.ย. 69');
+      expect(data.warrantyLines).not.toContain('นับใหม่');
+      expect(data.deviceLine).toBe('เครื่องใหม่ Apple iPhone 15 256GB · IMEI 1111…');
+    });
+
+    it('PRICED_EXCHANGE PRICED → วันที่จากสัญญาใหม่ (newContractId)', async () => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        makeCase({
+          outcome: 'PRICED_EXCHANGE',
+          stage: 'CLOSED',
+          repairTicket: null,
+          exchangeRequest: {
+            mode: 'PRICED',
+            oldContractId: 'ct-old',
+            newContractId: 'ct-new',
+            newProductId: 'prod-new',
+          },
+        }),
+      );
+      prisma.product.findFirst.mockResolvedValue(PRODUCT);
+      prisma.contract.findFirst.mockResolvedValue({ shopWarrantyEndDate: WARRANTY_END });
+
+      await service.notifyMoment('case-1', 'CLOSED', 'actor-1');
+
+      expect(prisma.contract.findFirst).toHaveBeenCalledTimes(1);
+      expect(prisma.contract.findFirst).toHaveBeenCalledWith({
+        where: { id: 'ct-new', deletedAt: null },
+        select: { shopWarrantyEndDate: true },
+      });
+      const data = notifications.sendFromTemplate.mock.calls[0][1];
+      expect(data.warrantyLines).toBe('ประกันร้าน ถึง 17 พ.ย. 69');
+    });
+
+    it('SAME_MODEL_EXCHANGE → วันที่จาก replacementContractId', async () => {
+      prisma.afterSalesCase.findFirst.mockResolvedValue(
+        makeCase({
+          outcome: 'SAME_MODEL_EXCHANGE',
+          stage: 'CLOSED',
+          replacementProductId: 'prod-rep',
+          replacementContractId: 'ct-rep',
+        }),
+      );
+      prisma.product.findFirst.mockResolvedValue(PRODUCT);
+      prisma.contract.findFirst.mockResolvedValue({ shopWarrantyEndDate: WARRANTY_END });
+
+      await service.notifyMoment('case-1', 'CLOSED', 'actor-1');
+
+      expect(prisma.contract.findFirst).toHaveBeenCalledWith({
+        where: { id: 'ct-rep', deletedAt: null },
+        select: { shopWarrantyEndDate: true },
+      });
+      const data = notifications.sendFromTemplate.mock.calls[0][1];
+      expect(data.warrantyLines).toBe('ประกันร้าน ถึง 17 พ.ย. 69');
+      expect(data.warrantyLines).not.toContain('นับใหม่');
     });
   });
 

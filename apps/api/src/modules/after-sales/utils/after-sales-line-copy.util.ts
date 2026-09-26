@@ -209,12 +209,13 @@ export function buildLineData(
       })()
     : deviceName;
 
+  // final fix I-5 — บอกเฉพาะข้อเท็จจริงที่ระบบมี: วันหมดประกันร้านของสัญญาที่คุ้มครองเครื่องทดแทนจริง
+  // (service เลือกสัญญา — MEMO = สัญญาเดิม) ไม่มีข้ออ้าง "ประกันนับใหม่" (MEMO ไม่ได้เริ่มประกันใหม่) ·
+  // ไม่มีวันที่ = ไม่มีบรรทัด → '—'
   const warrantyLines = hasReplacement
     ? (() => {
-        const lines = ['ประกันนับใหม่จากวันส่งมอบ'];
         const shopEnd = thaiShortYearDate(row.replacement?.shopWarrantyEndDate ?? null);
-        if (shopEnd) lines.push(`ประกันร้าน ถึง ${shopEnd}`);
-        return lines.join('\n');
+        return shopEnd ? `ประกันร้าน ถึง ${shopEnd}` : '—';
       })()
     : (() => {
         const lines: string[] = [];

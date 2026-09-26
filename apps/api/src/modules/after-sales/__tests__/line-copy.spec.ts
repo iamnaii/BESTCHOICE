@@ -272,7 +272,44 @@ describe('buildLineData — CLOSED', () => {
     };
     const data = buildLineData(row, 'CLOSED', '');
     expect(data.deviceLine).toBe('เครื่องใหม่ iPhone 13 128GB · IMEI 3568…');
-    expect(data.warrantyLines.startsWith('ประกันนับใหม่จากวันส่งมอบ')).toBe(true);
+    // final fix I-5 — ไม่มีวันหมดประกันของสัญญาที่คุ้มครอง ⇒ ไม่มีบรรทัดประกัน ('—') และไม่มีข้ออ้าง
+    // "ประกันนับใหม่" (เดิมคาดว่าขึ้นต้นด้วย 'ประกันนับใหม่จากวันส่งมอบ')
+    expect(data.warrantyLines).toBe('—');
+    expect(data.warrantyLines).not.toContain('นับใหม่');
+  });
+
+  // final fix I-5 — บรรทัดประกันของเคสที่มีเครื่องทดแทน = ข้อเท็จจริงเท่านั้น: วันหมดประกันร้านของ
+  // สัญญาที่คุ้มครองเครื่องนั้นจริง (service เลือกสัญญา — MEMO = สัญญาเดิม) ไม่มี "นับใหม่"
+  it('PRICED_EXCHANGE (MEMO) มีเครื่องทดแทน + วันหมดประกันของสัญญาเดิม → "ประกันร้าน ถึง <วันที่>" ไม่มี "นับใหม่"', () => {
+    const row: LineCaseRow = {
+      ...baseRow,
+      outcome: 'PRICED_EXCHANGE',
+      replacement: {
+        brand: 'iPhone',
+        model: '13',
+        storage: '128GB',
+        imeiSerial: '356812345678901',
+        shopWarrantyEndDate: '2026-11-17T00:00:00.000Z',
+      },
+    };
+    const data = buildLineData(row, 'CLOSED', '');
+    expect(data.warrantyLines).toBe('ประกันร้าน ถึง 17 พ.ย. 69');
+    expect(data.warrantyLines).not.toContain('นับใหม่');
+  });
+
+  it('SAME_MODEL_EXCHANGE มีเครื่องทดแทน + วันหมดประกันของสัญญาใหม่ → "ประกันร้าน ถึง <วันที่>" บรรทัดเดียว', () => {
+    const row: LineCaseRow = {
+      ...baseRow,
+      outcome: 'SAME_MODEL_EXCHANGE',
+      replacement: {
+        brand: 'iPhone',
+        model: '13',
+        storage: '128GB',
+        imeiSerial: null,
+        shopWarrantyEndDate: '2027-01-15T00:00:00.000Z',
+      },
+    };
+    expect(buildLineData(row, 'CLOSED', '').warrantyLines).toBe('ประกันร้าน ถึง 15 ม.ค. 70');
   });
 
   // fix round 1, finding 2 — ถ้าเป็น outcome แลกเปลี่ยนแต่ไม่มีข้อมูล replacement เลย (เคสที่

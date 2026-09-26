@@ -92,9 +92,24 @@ export interface GfinCalcInput {
   mapping: GfinModelMappingRow;
   overpriceRule: GfinOverpriceRuleRow | null;
   rateFactor: GfinRateFactorRow;
+  /**
+   * ที่มาเครื่อง — GFIN ให้ OVER เต็มเฉพาะเครื่องไทย เครื่องนอกได้ครึ่งเดียว (เจ้าของยืนยัน 2026-09-26)
+   * null = ยังไม่ระบุไทย/นอก → คิดแบบเครื่องนอกไว้ก่อน: ราคาส่งครึ่ง OVER เป็นยอดที่ GFIN รับแน่นอน
+   * (เครื่องไทยส่งต่ำกว่าเพดานได้ แต่เครื่องนอกส่ง OVER เต็มไม่ได้) — ค่างวดจึงต่ำกว่าแบบ OVER เต็มเล็กน้อย
+   * ไม่ส่งมาเลย (undefined) = OVER เต็มตามพฤติกรรมเดิม สำหรับผู้เรียกที่ไม่รู้ที่มาเครื่อง
+   */
+  deviceOrigin?: GfinDeviceOrigin | null;
 }
 
+export type GfinDeviceOrigin = 'THAI' | 'IMPORTED';
+
 export interface GfinCalcOutput {
+  /** OVER ตามกฎในตาราง (ก่อนปรับตามที่มาเครื่อง) */
+  allowanceFull: Decimal;
+  /** สัดส่วน OVER ที่ใช้จริง — 1 = เต็ม · 0.5 = เครื่องนอก/ยังไม่ระบุ */
+  allowanceFactor: Decimal;
+  /** OVER ที่บวกเข้าราคาส่งจริง = allowanceFull × allowanceFactor */
+  allowanceApplied: Decimal;
   gfinSubmitPrice: Decimal;
   /** ส่วนต่างราคาส่งสูงสุด − ราคาผ่อนที่ต้องการ → เอามาลดดาวน์ให้ลูกค้า (กติกาของร้าน) */
   downDiscount: Decimal;

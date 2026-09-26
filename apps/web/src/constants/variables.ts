@@ -74,6 +74,8 @@ export const AVAILABLE_VARIABLES: VariableDefinition[] = [
   { key: 'PHONE.IMEI', label: 'IMEI', type: 'text', sampleValue: '359222218331707' },
   { key: 'PHONE.SERIAL', label: 'Serial Number', type: 'text', sampleValue: 'H4X1K9WNMF' },
   { key: 'PHONE.BATTERY_HEALTH', label: 'สุขภาพแบตเตอรี่', type: 'text', sampleValue: '89%' },
+  { key: 'PHONE.DEVICE_ORIGIN', label: 'เครื่องไทย/เครื่องนอก', type: 'text', sampleValue: 'เครื่องไทย' },
+  { key: 'PHONE.PARTS_HISTORY', label: 'ประวัติอะไหล่', type: 'text', sampleValue: 'ประวัติอะไหล่: เปลี่ยนแบตใหม่ (ไม่ใช่แบตแท้ Apple)' },
   { key: 'PHONE.WARRANTY_EXPIRE', label: 'วันหมดประกัน', type: 'date', sampleValue: '2027-03-03' },
 
   // === Branch / Staff ===

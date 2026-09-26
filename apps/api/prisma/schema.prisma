@@ -1863,6 +1863,18 @@ enum DeviceOrigin {
   IMPORTED
 }
 
+/// ประวัติอะไหล่/การซ่อมของเครื่อง — แจ้งลูกค้าในข้อมูลเครื่อง ใบขาย และสัญญา
+enum PartsHistory {
+  /// ของเดิมทั้งหมด ไม่เคยซ่อม
+  ORIGINAL
+  /// เคยเปลี่ยนอะไหล่แท้ หรือจอแท้ศูนย์
+  GENUINE_REPLACED
+  /// เปลี่ยนแบตใหม่ (ไม่ใช่แบตแท้ Apple)
+  BATTERY_NON_GENUINE
+  /// หน้าจอ กล้อง หรืออะไหล่อื่นไม่แท้
+  NON_GENUINE_PARTS
+}
+
 enum PricingDeviceOrigin {
   UNSPECIFIED
   THAI
@@ -1952,6 +1964,11 @@ model Product {
   deviceOrigin      DeviceOrigin?        @map("device_origin")
   /// Customer-facing warranty provider, coverage and exclusions for this unit.
   warrantyTerms     String?              @map("warranty_terms") @db.Text
+  /// ประวัติอะไหล่/การซ่อมที่แจ้งลูกค้า (ดูจาก "ประวัติชิ้นส่วนและบริการ" บนตัวเครื่อง) · null = ยังไม่ระบุ
+  /// บันทึกและแจ้งลูกค้าเท่านั้น ไม่มีผลกับการคำนวณค่างวด (เจ้าของสั่ง 2026-09-26)
+  partsHistory      PartsHistory?        @map("parts_history")
+  /// รายละเอียดเพิ่มที่แจ้งลูกค้า เช่น "เปลี่ยนแบต 26 ก.ย. 2569"
+  partsHistoryNote  String?              @map("parts_history_note")
   conditionGrade    String?              @map("condition_grade") // A, B, C for used phones
   gallery           String[]             @default([]) // catalog photo URLs
   gallery360        String[]             @default([]) // 360° frame URLs (24-36 frames)

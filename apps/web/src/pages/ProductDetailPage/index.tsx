@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import type { PartsHistoryValue } from '@installment/shared';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useParams, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -85,6 +86,8 @@ interface Product {
   onlineDescription: string | null;
   deviceOrigin?: 'THAI' | 'IMPORTED' | null;
   warrantyTerms?: string | null;
+  partsHistory?: PartsHistoryValue | null;
+  partsHistoryNote?: string | null;
   conditionGrade: string | null;
   cashPrice: string | null;
   installmentPrice: string | null;
@@ -132,6 +135,7 @@ export default function ProductDetailPage() {
     status: '', batteryHealth: '', warrantyExpired: false,
     warrantyExpireDate: '', hasBox: false, accessoryType: '', accessoryBrand: '',
     conditionGrade: '', shopWarrantyDays: '', accessoriesIncluded: '', cosmeticNotes: '',
+    deviceOrigin: '', partsHistory: '', partsHistoryNote: '',
   });
 
   // Transfer modal state
@@ -321,6 +325,9 @@ export default function ProductDetailPage() {
       shopWarrantyDays: product.shopWarrantyDays != null ? String(product.shopWarrantyDays) : '',
       accessoriesIncluded: (product.accessoriesIncluded ?? []).join(', '),
       cosmeticNotes: product.cosmeticNotes || '',
+      deviceOrigin: product.deviceOrigin ?? '',
+      partsHistory: product.partsHistory ?? '',
+      partsHistoryNote: product.partsHistoryNote ?? '',
     });
     setIsEditModalOpen(true);
   };

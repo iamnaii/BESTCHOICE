@@ -362,3 +362,111 @@ describe('findGfinRateFactor / findGfinMapping TABLET / formatRateLine / gfinDow
     expect(gfinDownPctOptions(30, 40, 5)).toEqual([30, 35, 40]);
   });
 });
+
+describe('calcGfinInstallment — OVER ตามที่มาเครื่อง (เจ้าของยืนยัน 2026-09-26)', () => {
+  // ตัวเลขจริงจากลิสต์พนักงาน 26 ก.ย. (เครื่องไทย) และตารางโปรในบอท (เครื่องนอก): 16 Pro 128 มือ 2
+  const mapping16Pro128: GfinModelMappingRow = {
+    id: 'm16p',
+    gfinSeries: 'iPhone 16',
+    gfinVariant: 'Pro',
+    storage: '128GB',
+    condition: 'HAND_2',
+    maxPrice: new Decimal('28000'),
+    modelMatchPattern: 'iPhone 16 Pro',
+    isActive: true,
+  };
+  const over16h2: GfinOverpriceRuleRow = {
+    id: 'r16',
+    label: 'iPhone 16, 17 มือ 2',
+    seriesPattern: 'iPhone 16|iPhone 16e|iPhone 17|iPhone 17e|iPhone Air',
+    condition: 'HAND_2',
+    allowance: new Decimal('2000'),
+    maxMonths: 15,
+    isActive: true,
+  };
+  const factor15: GfinRateFactorRow = {
+    months: 15,
+    shopCommissionPct: 15,
+    factor: new Decimal('0.1467'),
+    feePerInstallment: new Decimal('100'),
+    isActive: true,
+  };
+  const base = {
+    product: { brand: 'Apple', model: 'iPhone 16 Pro', storage: '128GB', category: 'PHONE_USED' } as ProductForGfin,
+    months: 15,
+    downPct: new Decimal('0.25'),
+    mapping: mapping16Pro128,
+    overpriceRule: over16h2,
+    rateFactor: factor15,
+  };
+
+  it('เครื่องไทย: OVER เต็ม 2,000 → ราคาส่ง 30,000 · ฟรีดาวน์ที่ราคาผ่อน 22,500 · 3,401 × 15', () => {
+    const o = calcGfinInstallment({ ...base, installmentPrice: new Decimal('22500'), deviceOrigin: 'THAI' });
+    expect(o.allowanceFull.toFixed(0)).toBe('2000');
+    expect(o.allowanceApplied.toFixed(0)).toBe('2000');
+    expect(o.gfinSubmitPrice.toFixed(0)).toBe('30000');
+    expect(o.downAmountActual.toFixed(0)).toBe('0');
+    expect(o.monthlyPayment.toFixed(0)).toBe('3401');
+  });
+
+  it('เครื่องนอก: OVER ครึ่งเดียว 1,000 → ราคาส่ง 29,000 · ฟรีดาวน์ที่ราคาผ่อน 21,750 · 3,291 × 15', () => {
+    const o = calcGfinInstallment({ ...base, installmentPrice: new Decimal('21750'), deviceOrigin: 'IMPORTED' });
+    expect(o.allowanceFactor.toString()).toBe('0.5');
+    expect(o.allowanceApplied.toFixed(0)).toBe('1000');
+    expect(o.gfinSubmitPrice.toFixed(0)).toBe('29000');
+    expect(o.downAmountActual.toFixed(0)).toBe('0');
+    expect(o.monthlyPayment.toFixed(0)).toBe('3291');
+  });
+
+  it('ยังไม่ระบุไทย/นอก (null) คิดแบบเครื่องนอก · ไม่ส่งมาเลยคงพฤติกรรมเดิม (OVER เต็ม)', () => {
+    const unknown = calcGfinInstallment({ ...base, installmentPrice: new Decimal('21750'), deviceOrigin: null });
+    expect(unknown.gfinSubmitPrice.toFixed(0)).toBe('29000');
+    const legacy = calcGfinInstallment({ ...base, installmentPrice: new Decimal('22500') });
+    expect(legacy.gfinSubmitPrice.toFixed(0)).toBe('30000');
+    expect(legacy.allowanceFactor.toString()).toBe('1');
+  });
+
+  it('ไม่มีกฎ OVER: ที่มาเครื่องไม่เปลี่ยนราคาส่ง', () => {
+    const o = calcGfinInstallment({ ...base, overpriceRule: null, installmentPrice: new Decimal('21000'), deviceOrigin: 'IMPORTED' });
+    expect(o.allowanceApplied.toFixed(0)).toBe('0');
+    expect(o.gfinSubmitPrice.toFixed(0)).toBe('28000');
+  });
+});
+
+describe('findGfinOverpriceRule — กฎที่เจาะจงกว่าชนะ ไม่ขึ้นกับลำดับแถว', () => {
+  const mapping15PM: GfinModelMappingRow = {
+    id: 'm15pm',
+    gfinSeries: 'iPhone 15 Pro Max',
+    gfinVariant: null,
+    storage: '256GB',
+    condition: 'HAND_2',
+    maxPrice: new Decimal('29000'),
+    modelMatchPattern: 'iPhone 15 Pro Max',
+    isActive: true,
+  };
+  const broad: GfinOverpriceRuleRow = {
+    id: 'broad',
+    label: 'iPhone 14, 15 มือ 2',
+    seriesPattern: 'iPhone 14|iPhone 15|iPhone 15 Pro|iPhone 15 Pro Max',
+    condition: 'HAND_2',
+    allowance: new Decimal('2000'),
+    maxMonths: 12,
+    isActive: true,
+  };
+  const specific: GfinOverpriceRuleRow = {
+    ...broad,
+    id: 'specific',
+    label: 'iPhone 15 Pro Max มือ 2',
+    seriesPattern: 'iPhone 15 Pro Max',
+    maxMonths: 15,
+  };
+
+  it('เลือกกฎ 15 Pro Max ของตัวเองทั้งสองลำดับ', () => {
+    expect(findGfinOverpriceRule(mapping15PM, [broad, specific])?.id).toBe('specific');
+    expect(findGfinOverpriceRule(mapping15PM, [specific, broad])?.id).toBe('specific');
+  });
+
+  it('รุ่นอื่นในกฎรวมยังได้กฎรวม', () => {
+    expect(findGfinOverpriceRule({ ...mapping15PM, gfinSeries: 'iPhone 15 Pro' }, [specific, broad])?.id).toBe('broad');
+  });
+});

@@ -89,8 +89,10 @@ export function calcGfinInstallment(input: GfinCalcInput): GfinCalcOutput {
   const contractFee = input.contractFee ?? new Decimal(100);
   const shopCommissionPct = input.shopCommissionPct ?? new Decimal(rateFactor.shopCommissionPct);
 
-  const allowance = overpriceRule?.allowance ?? new Decimal(0);
-  const gfinSubmitPrice = round2(mapping.maxPrice.add(allowance));
+  const allowanceFull = overpriceRule?.allowance ?? new Decimal(0);
+  const allowanceFactor = gfinAllowanceFactor(input.deviceOrigin);
+  const allowanceApplied = round2(allowanceFull.mul(allowanceFactor));
+  const gfinSubmitPrice = round2(mapping.maxPrice.add(allowanceApplied));
   const priceAboveSubmit = installmentPrice.gt(gfinSubmitPrice);
   const downDiscount = round2(Decimal.max(gfinSubmitPrice.sub(installmentPrice), 0));
 
@@ -122,6 +124,9 @@ export function calcGfinInstallment(input: GfinCalcInput): GfinCalcOutput {
   const shopTotalReceived = round2(downAmountActual.add(netTransferToShop));
 
   return {
+    allowanceFull,
+    allowanceFactor,
+    allowanceApplied,
     gfinSubmitPrice,
     downDiscount,
     downPct: resolvedDownPct,
@@ -140,6 +145,16 @@ export function calcGfinInstallment(input: GfinCalcInput): GfinCalcOutput {
     isValid: errors.length === 0,
     errors,
   };
+}
+
+/**
+ * สัดส่วน OVER ตามที่มาเครื่อง: เครื่องไทยได้เต็ม · เครื่องนอกได้ครึ่งเดียว (เจ้าของยืนยัน 2026-09-26
+ * ตรวจกับค่างวดที่พนักงานและตารางโปรใช้จริงครบ 21 ตัวเลข) · ยังไม่ระบุ (null) คิดแบบเครื่องนอก
+ * · ไม่ส่งมา (undefined) = เต็มตามพฤติกรรมเดิม
+ */
+export function gfinAllowanceFactor(deviceOrigin: 'THAI' | 'IMPORTED' | null | undefined): Decimal {
+  if (deviceOrigin === undefined || deviceOrigin === 'THAI') return new Decimal(1);
+  return new Decimal('0.5');
 }
 
 /** เรทของ GFIN ต่อคู่ (จำนวนงวด, %คอมมิชชั่น) — เฉพาะแถวที่เปิดใช้งาน */
@@ -187,12 +202,19 @@ export function findGfinOverpriceRule(
   mapping: GfinModelMappingRow,
   rules: GfinOverpriceRuleRow[],
 ): GfinOverpriceRuleRow | null {
+  // หลายกฎครอบซีรีส์เดียวกันได้ (เช่นแยก "iPhone 15 Pro Max" ออกมาเป็นกฎของตัวเอง แต่ยังไม่ได้ลบจากกฎรวม)
+  // → เลือกกฎที่ระบุซีรีส์น้อยที่สุด (เจาะจงที่สุด) แทนการหยิบตัวแรกตามลำดับแถวจากฐาน ซึ่งไม่แน่นอน
+  let best: GfinOverpriceRuleRow | null = null;
+  let bestSize = Number.POSITIVE_INFINITY;
   for (const rule of rules) {
     if (!rule.isActive) continue;
     if (rule.condition !== mapping.condition) continue;
     const seriesList = rule.seriesPattern.split('|').map(s => s.trim());
     if (!seriesList.includes(mapping.gfinSeries)) continue;
-    return rule;
+    if (seriesList.length < bestSize) {
+      best = rule;
+      bestSize = seriesList.length;
+    }
   }
-  return null;
+  return best;
 }

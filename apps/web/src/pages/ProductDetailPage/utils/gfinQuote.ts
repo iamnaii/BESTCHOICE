@@ -5,6 +5,7 @@ import {
   findGfinOverpriceRule,
   findGfinRateFactor,
   type GfinCalcOutput,
+  type GfinDeviceOrigin,
   type GfinModelMappingRow,
   type GfinOverpriceRuleRow,
   type GfinRateFactorRow,
@@ -55,7 +56,17 @@ export interface GfinTables {
 }
 
 export interface GfinQuoteInput {
-  product: { brand: string; model: string; storage: string | null; category: string };
+  product: {
+    brand: string;
+    model: string;
+    storage: string | null;
+    category: string;
+    /**
+     * ที่มาเครื่อง — GFIN ให้ OVER เต็มเฉพาะเครื่องไทย · เครื่องนอก/ยังไม่ระบุ (null) ได้ครึ่งเดียว
+     * ไม่ส่งมา (undefined) = OVER เต็มตามเดิม — หน้าจอที่มีข้อมูลเครื่องต้องส่งค่าจริงเสมอ
+     */
+    deviceOrigin?: GfinDeviceOrigin | null;
+  };
   installmentPrice: number;
   months: number;
   /** % ดาวน์ที่แจ้ง GFIN เช่น 25 */
@@ -155,6 +166,7 @@ export function buildGfinQuote(tables: GfinTables, input: GfinQuoteInput): GfinQ
       contractFee,
       mapping: mappingRow,
       overpriceRule: ruleRow,
+      deviceOrigin: input.product.deviceOrigin,
       rateFactor,
     });
 

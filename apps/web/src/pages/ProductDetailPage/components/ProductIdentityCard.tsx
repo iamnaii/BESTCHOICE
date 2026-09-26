@@ -1,5 +1,6 @@
 import { DeviceDisclosureSummary, type DeviceDisclosureInfo } from '@/components/product/DeviceDisclosureSummary';
 import { useQuery } from '@tanstack/react-query';
+import { PARTS_HISTORY_SHORT_LABEL } from '@installment/shared';
 import { ChevronRight, Copy, ImageIcon, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
 import api from '@/lib/api';
@@ -130,6 +131,7 @@ export default function ProductIdentityCard({
   // หมวดสินค้าอยู่ที่ป้ายหัวการ์ดแล้ว — ชิปเก็บเฉพาะสเปก/สภาพ
   if (isUsed && product.conditionGrade) chips.push(`เกรด ${product.conditionGrade}`);
   if (isUsed && product.batteryHealth != null) chips.push(`แบต ${product.batteryHealth}%`);
+  if (!isAccessory && product.partsHistory) chips.push(PARTS_HISTORY_SHORT_LABEL[product.partsHistory]);
   if (days != null) chips.push(`ประกันร้าน ${days} วัน`);
 
   const warrantyText = product.warrantyExpired

@@ -71,6 +71,41 @@ describe('buildGfinQuote', () => {
     expect(q.monthsOptions[0].monthly).toBe(3718);
   });
 
+  it('เครื่องนอก → OVER ครึ่งเดียว (ราคาส่ง 23,500) ทั้งค่างวดที่เลือกและตัวเลือกงวด · เครื่องไทย/ไม่ส่งมา = เต็ม', () => {
+    const imported = buildGfinQuote(tables, {
+      product: { ...iphone15, deviceOrigin: 'IMPORTED' },
+      installmentPrice: 19900,
+      months: 12,
+      downPct: 25,
+      commissionPct: 15,
+    });
+    expect(imported.available).toBe(true);
+    if (!imported.available) return;
+    expect(imported.result.allowanceApplied.toNumber()).toBe(500);
+    expect(imported.result.gfinSubmitPrice.toNumber()).toBe(23500);
+    expect(imported.result.downAmountActual.toNumber()).toBe(2275);
+    expect(imported.result.monthlyPayment.toNumber()).toBe(3260);
+    expect(imported.monthsOptions.find((o) => o.months === 12)?.monthly).toBe(3260);
+
+    const unknown = buildGfinQuote(tables, {
+      product: { ...iphone15, deviceOrigin: null },
+      installmentPrice: 19900,
+      months: 12,
+      downPct: 25,
+      commissionPct: 15,
+    });
+    expect(unknown.available && unknown.result.gfinSubmitPrice.toNumber()).toBe(23500);
+
+    const thai = buildGfinQuote(tables, {
+      product: { ...iphone15, deviceOrigin: 'THAI' },
+      installmentPrice: 19900,
+      months: 12,
+      downPct: 25,
+      commissionPct: 15,
+    });
+    expect(thai.available && thai.result.monthlyPayment.toNumber()).toBe(3327);
+  });
+
   it('คอม 5% ใช้เรทคนละชุด: ceil(18000 × 0.16) + 100 = 2,980', () => {
     const q = buildGfinQuote(tables, {
       product: iphone15,

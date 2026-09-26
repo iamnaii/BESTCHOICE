@@ -12,7 +12,7 @@ import {
 const API_ROOT = path.join(__dirname, '../../../../');
 const MIGRATION_PATH = path.join(
   API_ROOT,
-  'prisma/migrations/20261010100000_seed_after_sales_line_templates/migration.sql',
+  'prisma/migrations/20261011100000_seed_after_sales_line_templates/migration.sql',
 );
 
 function readSql(): string {

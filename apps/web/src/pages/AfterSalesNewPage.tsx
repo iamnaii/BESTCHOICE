@@ -37,6 +37,9 @@ import {
   type Payer,
 } from './after-sales/after-sales';
 
+/** เพดาน IMEI / เลขเครื่อง — ตรงกับ IMEI_MAX ใน apps/api/.../dto/create-case.dto.ts */
+const IMEI_MAX = 32;
+
 const inputClass =
   'h-11 w-full rounded-lg border border-input bg-background px-3.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/70';
 const areaClass =
@@ -162,6 +165,7 @@ export default function AfterSalesNewPage() {
           <input
             aria-label="เลข IMEI หรือเลขเครื่อง"
             value={imeiInput}
+            maxLength={IMEI_MAX}
             onChange={(e) => setImeiInput(e.target.value)}
             placeholder="กรอกเลข IMEI 15 หลัก"
             className={`${inputClass} h-14 flex-1 text-lg`}
@@ -191,6 +195,8 @@ export default function AfterSalesNewPage() {
     !!(pricedPreview?.blockers.overdueBlocked || pricedPreview?.blockers.advanceBlocked);
   const canSubmit =
     !create.isPending && !lookup.data?.openCase && !needsReplacement && !pricedBlocked;
+  // บอกสถานะที่ปุ่มที่ถูกกดเท่านั้น — อีกปุ่มคงชื่อเดิม (ถูกปิดไว้)
+  const savingWithPrint = create.isPending && !!create.variables?.printAfter;
 
   const buildSummary = () => {
     const parts: string[] = [];
@@ -417,6 +423,7 @@ export default function AfterSalesNewPage() {
                       <input
                         id="as-serial"
                         value={deviceSerial}
+                        maxLength={IMEI_MAX}
                         onChange={(e) => setDeviceSerial(e.target.value)}
                         className={inputClass}
                       />
@@ -694,7 +701,14 @@ export default function AfterSalesNewPage() {
               </div>
               <div className="flex flex-col items-end gap-1.5">
                 <div className="flex flex-wrap justify-end gap-2.5">
-                  <Button variant="outline" size="lg" onClick={() => navigate('/after-sales')}>
+                  {/* ยกเลิก = ปุ่มข้อความ ไม่มีกรอบ ให้แยกจากปุ่มบันทึกสองปุ่มชัด ๆ */}
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    className="text-muted-foreground"
+                    disabled={create.isPending}
+                    onClick={() => navigate('/after-sales')}
+                  >
                     ยกเลิก
                   </Button>
                   <Button
@@ -703,7 +717,7 @@ export default function AfterSalesNewPage() {
                     disabled={!canSubmit}
                     onClick={() => handleSubmit(true)}
                   >
-                    บันทึก + พิมพ์ใบรับฝาก
+                    {savingWithPrint ? 'กำลังบันทึก…' : 'บันทึก + พิมพ์ใบรับฝาก'}
                   </Button>
                   <Button
                     variant="primary"
@@ -711,7 +725,7 @@ export default function AfterSalesNewPage() {
                     disabled={!canSubmit}
                     onClick={() => handleSubmit(false)}
                   >
-                    {create.isPending ? 'กำลังบันทึก…' : 'บันทึกและเปิดเคส'}
+                    {create.isPending && !savingWithPrint ? 'กำลังบันทึก…' : 'บันทึกและเปิดเคส'}
                   </Button>
                 </div>
                 {needsReplacement && (

@@ -13,6 +13,7 @@ import {
   type DocPayer,
   type DocSource,
 } from '../documents/after-sales-doc-compose';
+import { dropOffOutcome } from '../utils/after-sales-outcomes.util';
 
 type ReqUser = { id: string; role: string; branchId?: string | null };
 type CaseDetail = Awaited<ReturnType<AfterSalesQueryService['getCase']>>;
@@ -172,7 +173,15 @@ export class AfterSalesDocumentService {
           w.within7Days === true ||
           (typeof w.daysRemainingIn7Day === 'number' && w.daysRemainingIn7Day > 0),
       },
-      outcome: c.outcome,
+      // ใบรับฝากพิมพ์ซ้ำ = ทางออกที่ลูกค้าเซ็นไว้ตอนรับฝาก · ใบส่งมอบ = ทางออกปัจจุบัน
+      outcome:
+        kind === 'RECEIPT'
+          ? dropOffOutcome({
+              outcome: c.outcome,
+              repairTicketStatus: t?.status ?? null,
+              outcomeNotes: c.timeline.filter((e) => e.kind === 'OUTCOME_SET').map((e) => e.note),
+            })
+          : c.outcome,
       stage: c.stage,
       closedAt: c.closedAt,
       repair: t

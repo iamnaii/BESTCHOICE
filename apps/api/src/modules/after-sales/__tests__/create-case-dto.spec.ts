@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { CreateCaseDto } from '../dto/create-case.dto';
+import { LookupDto } from '../dto/lookup.dto';
 
 /** C6 (final-fix brief) — `accessories` มาเป็น JSON string จาก multipart/form-data เสมอ
  * (ไม่มีทางส่ง object ตรงๆ ผ่าน FormData) — ถ้า client ส่งสตริงที่ไม่ใช่ JSON ที่ถูกต้อง
@@ -45,5 +46,34 @@ describe('CreateCaseDto — branchId', () => {
   it('สตริงว่าง → "กรุณาระบุสาขา"', async () => {
     const err = await branchErrors('');
     expect(Object.values(err?.constraints ?? {})).toContain('กรุณาระบุสาขา');
+  });
+});
+
+/** IMEI/เลขเครื่องพิมพ์ลงใบรับฝากในคอลัมน์ห้ามตัดบรรทัด — ยาวเกินทำให้ตารางล้นหน้า
+ * จำกัด 32 ตัว (พอสำหรับ IMEI สองซิม 15+1+15) ทั้งตอนค้นหาและตอนเปิดเคส */
+describe('CreateCaseDto — ความยาว IMEI / เลขเครื่อง', () => {
+  const errorsOf = async (field: 'imei' | 'deviceSerial', value: string) =>
+    (await validate(plainToInstance(CreateCaseDto, { [field]: value }))).find(
+      (e) => e.property === field,
+    );
+
+  it('IMEI 32 ตัวผ่าน · 33 ตัว → ข้อความไทย', async () => {
+    expect(await errorsOf('imei', '1'.repeat(32))).toBeUndefined();
+    const err = await errorsOf('imei', '1'.repeat(33));
+    expect(Object.values(err?.constraints ?? {})).toContain('IMEI ยาวเกิน 32 ตัวอักษร');
+  });
+
+  it('เลขเครื่อง 32 ตัวผ่าน · 33 ตัว → ข้อความไทย', async () => {
+    expect(await errorsOf('deviceSerial', 'A'.repeat(32))).toBeUndefined();
+    const err = await errorsOf('deviceSerial', 'A'.repeat(33));
+    expect(Object.values(err?.constraints ?? {})).toContain('เลขเครื่องยาวเกิน 32 ตัวอักษร');
+  });
+});
+
+describe('LookupDto — ความยาว IMEI', () => {
+  it('IMEI 33 ตัว → ข้อความไทย', async () => {
+    const errs = await validate(plainToInstance(LookupDto, { imei: '1'.repeat(33) }));
+    const err = errs.find((e) => e.property === 'imei');
+    expect(Object.values(err?.constraints ?? {})).toContain('IMEI ยาวเกิน 32 ตัวอักษร');
   });
 });

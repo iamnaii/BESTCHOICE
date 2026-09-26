@@ -326,6 +326,35 @@ describe('AfterSalesNewPage — แจ้งปัญหาเครื่อง
     expect(await screen.findByTestId('case-search')).toHaveTextContent('?print=receipt');
   });
 
+  it('ระหว่างบันทึกจากปุ่มรอง: ปุ่มที่กดขึ้น "กำลังบันทึก…" ปุ่มหลักคงชื่อเดิมแต่ปิด · ยกเลิกปิดระหว่างบันทึก', async () => {
+    mockGet(foundResult);
+    mocks.post.mockReturnValue(new Promise(() => {})); // ค้างไว้ให้เห็นสถานะระหว่างบันทึก
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+    await userEvent.type(screen.getByLabelText(/อาการที่ลูกค้าแจ้ง/), 'จอแตกมุมขวาบน');
+    await userEvent.upload(
+      screen.getByLabelText(/ถ่ายเพิ่ม/),
+      new File(['x'], 'a.jpg', { type: 'image/jpeg' }),
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: /ปิด Find My/ }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึก + พิมพ์ใบรับฝาก' }));
+
+    expect(await screen.findByRole('button', { name: 'กำลังบันทึก…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'ยกเลิก' })).toBeDisabled();
+  });
+
+  it('ช่อง IMEI (หน้าค้นหา) และเลขเครื่อง (walk-in) รับได้ไม่เกิน 32 ตัว — ตรงกับเพดานฝั่ง API', async () => {
+    const search = renderPage('/after-sales/new');
+    expect(screen.getByLabelText('เลข IMEI หรือเลขเครื่อง')).toHaveAttribute('maxLength', '32');
+    search.unmount();
+
+    mockGet(notFoundResult);
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    expect(await screen.findByLabelText('เลขเครื่อง')).toHaveAttribute('maxLength', '32');
+  });
+
   it('lookup ไม่พบเครื่อง (walk-in): เห็น ContactCombobox + ช่องยี่ห้อ/รุ่น + ปุ่มทางออกมีแค่ "ซ่อม" (ลูกค้าจ่าย)', async () => {
     mockGet(notFoundResult);
     renderPage(`/after-sales/new?imei=${IMEI}`);

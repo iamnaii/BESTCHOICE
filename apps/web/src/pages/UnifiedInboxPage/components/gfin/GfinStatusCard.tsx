@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Group } from '../RoomDossier';
 import type { FinanceApplicationModel } from '../../hooks/useFinanceApplication';
 import GfinStepFiles from './GfinStepFiles';
-import { GFIN_WEB_FORM_URL, OPEN_STATUSES, STATUS_LABEL, productLabel, imeiTail, slotCounts, PRIMARY_SLOTS, quietly, staffViewUrl, statusBadgeLabel, type FinanceApplication, type FinanceEvent } from './gfin';
+import { GFIN_WEB_FORM_URL, OPEN_STATUSES, STATUS_LABEL, productLabel, imeiTail, slotCounts, PRIMARY_SLOTS, quietly, staffViewUrl, statusBadgeLabel, lineGroupLabel, type FinanceApplication, type FinanceEvent } from './gfin';
 import { formatThaiDateShort, formatThaiDateTime, formatThaiTime } from '@/lib/date';
 
 const EVENT_LABEL: Record<FinanceEvent['kind'], string> = {
@@ -41,10 +41,12 @@ export default function GfinStatusCard({ app, gfin, history, onAddMore, showFile
     catch { /* toast จาก hook */ }
   };
   const resend = async () => {
+    const via = gfin.lineGroup?.ready ? 'BOT' : 'COPY';
     let r: Awaited<ReturnType<FinanceApplicationModel['resend']>>;
-    try { r = await gfin.resend(); } catch { return; /* toast จาก hook */ }
+    try { r = await gfin.resend(via); } catch { return; /* toast จาก hook */ }
     setLastResend({ appId: app.id, text: r.messageText });
     onCloseFiles();
+    if (r.pushed) { toast.success(`ส่งเพิ่มเข้ากลุ่ม "${r.groupName ?? lineGroupLabel(gfin.lineGroup)}" แล้ว${r.rotated ? ' (ลิงก์ใหม่ — ลิงก์เดิมถูกยกเลิกไว้)' : ''}`); return; }
     try {
       await navigator.clipboard.writeText(r.messageText);
       toast.success(r.rotated ? 'ส่งเพิ่มด้วยลิงก์ใหม่ (ลิงก์เดิมถูกยกเลิกไว้) — คัดลอกข้อความแล้ว วางในกลุ่มไลน์ได้เลย' : 'คัดลอกข้อความ "ส่งเพิ่ม" แล้ว วางในกลุ่มไลน์ได้เลย');
@@ -57,7 +59,7 @@ export default function GfinStatusCard({ app, gfin, history, onAddMore, showFile
     <div className="flex flex-col gap-2.5 p-2.5">
       <Group label={`ใบยื่น ${app.number}`} right={<span className={`rounded-full px-2 py-0.5 text-[11px] ${badgeClass(app.status)}`}>{statusBadgeLabel(app)}</span>}>
         <p className="m-0 text-xs leading-snug">{productLabel(app.product)} · {app.product?.category === 'PHONE_USED' ? 'มือ 2' : 'มือ 1'} · {imeiTail(app.product?.imeiSerial)}</p>
-        <p className="m-0 text-xs leading-snug text-muted-foreground">ข้อความ 12 ข้อ + ลิงก์ · {app.files.length} ไฟล์ · {filledSlots} ช่อง</p>
+        <p className="m-0 text-xs leading-snug text-muted-foreground">ข้อความ 12 ข้อ + ลิงก์ · {app.files.length} ไฟล์ · {filledSlots} ช่อง{app.sentVia ? ` · ${app.sentVia === 'BOT' ? 'ส่งด้วยบอท' : 'ส่งแบบคัดลอก'}` : ''}</p>
         {app.product && !['IN_STOCK', 'RESERVED'].includes(app.product.status) && <p className="m-0 mt-1 text-xs leading-snug text-warning-strong">สถานะเครื่องเปลี่ยนไปจากตอนส่ง ({app.product.status}) — ตรวจสต๊อกก่อนทำใบขาย</p>}
         <div className="mt-2 rounded-lg border border-border p-2 text-xs leading-snug">
           <p className="m-0 font-semibold">ลิงก์ชุดเอกสาร · เปิดดู {app.shareViewCount} ครั้ง</p>
@@ -77,7 +79,7 @@ export default function GfinStatusCard({ app, gfin, history, onAddMore, showFile
       {open && (
         <Group label="ขั้นต่อไป">
           {latestPartner?.note && <p className="m-0 mb-1.5 rounded-md bg-warning/10 p-2 text-xs leading-snug text-warning-strong">GFIN: "{latestPartner.note}"</p>}
-          {showFilesStep ? (<><GfinStepFiles gfin={gfin} dropFiles={dropFiles} onDropFilesHandled={onDropFilesHandled} /><div className="mt-1.5 grid grid-cols-2 gap-1.5"><Button size="sm" variant="outline" onClick={onCloseFiles}>ปิด</Button><Button size="sm" disabled={pendingFiles === 0 || gfin.busy} onClick={resend}>ส่งเพิ่ม ({pendingFiles} ไฟล์ใหม่)</Button></div></>)
+          {showFilesStep ? (<><GfinStepFiles gfin={gfin} dropFiles={dropFiles} onDropFilesHandled={onDropFilesHandled} /><div className="mt-1.5 grid grid-cols-2 gap-1.5"><Button size="sm" variant="outline" onClick={onCloseFiles}>ปิด</Button><Button size="sm" disabled={pendingFiles === 0 || gfin.busy} title={gfin.lineGroup?.ready ? 'บอทส่งเข้ากลุ่มให้' : 'บอทไม่พร้อม — จะคัดลอกข้อความให้วางเอง'} onClick={resend}>ส่งเพิ่ม ({pendingFiles} ไฟล์ใหม่)</Button></div></>)
             : <Button size="sm" className="w-full" onClick={onAddMore}>เพิ่มรูปแล้วส่งเพิ่ม</Button>}
           <p className="m-0 mt-2 text-xs font-semibold leading-snug">GFIN ตอบในไลน์แทน? บันทึกผลเอง</p>
           <input aria-label="หมายเหตุผล" className="mt-1 w-full rounded-md border border-border px-2 py-1 text-xs" placeholder="หมายเหตุ (ถ้ามี)" value={note} onChange={e => setNote(e.target.value)} />

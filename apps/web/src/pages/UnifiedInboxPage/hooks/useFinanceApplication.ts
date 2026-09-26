@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { gfinStep, SLOT_LABELS, PARTNER_WAIT_STATUSES, type FinanceApplication, type FinancePreview, type FinanceSlot } from '../components/gfin/gfin';
+import { gfinStep, SLOT_LABELS, PARTNER_WAIT_STATUSES, type FinanceApplication, type FinancePreview, type FinanceSlot, type GfinLineGroupStatus } from '../components/gfin/gfin';
 
-interface RoomFinanceData { current: FinanceApplication | null; history: FinanceApplication[] }
-/** `rotated` = ลิงก์เดิมถูกยกเลิกไว้ ระบบออกลิงก์ใหม่ให้ (ส่งเพิ่ม/ต่ออายุหลังยกเลิก — ลิงก์เดิมใช้ไม่ได้อีก) */
-export interface SendResult { application: FinanceApplication; messageText: string; shareUrl: string; rotated?: boolean }
+interface RoomFinanceData { current: FinanceApplication | null; history: FinanceApplication[]; lineGroup: GfinLineGroupStatus | null }
+/** `rotated` = ลิงก์เดิมถูกยกเลิกไว้ ระบบออกลิงก์ใหม่ให้ (ส่งเพิ่ม/ต่ออายุหลังยกเลิก — ลิงก์เดิมใช้ไม่ได้อีก) · `pushed` = บอทส่งเข้ากลุ่มแล้ว (via BOT) · `groupName` = กลุ่มที่ส่ง */
+export interface SendResult { application: FinanceApplication; messageText: string; shareUrl: string; rotated?: boolean; pushed?: boolean; groupName?: string | null }
 export interface ExtendResult { expiresAt: string; url: string; rotated: boolean }
 export interface OcrIdCard { nationalId: string | null; nationalIdValid: boolean; prefix: string | null; firstName: string | null; lastName: string | null; fullName: string | null; birthDate: string | null; address: string | null; addressStructured: Record<string, string> | null; confidence: number }
 
@@ -14,6 +14,7 @@ export interface FinanceApplicationModel {
   current: FinanceApplication | null;
   history: FinanceApplication[];
   preview: FinancePreview | null;
+  lineGroup: GfinLineGroupStatus | null;
   step: 1 | 2 | 3 | 4;
   loading: boolean;
   busy: boolean;
@@ -26,7 +27,7 @@ export interface FinanceApplicationModel {
   fromProduct(): Promise<void>;
   removeFile(fileId: string): Promise<void>;
   send(via: 'COPY' | 'BOT'): Promise<SendResult>;
-  resend(): Promise<SendResult>;
+  resend(via?: 'COPY' | 'BOT'): Promise<SendResult>;
   shareLink(): Promise<{ url: string; expiresAt: string | null; revokedAt: string | null }>;
   extend(): Promise<ExtendResult>;
   revoke(): Promise<void>;
@@ -67,6 +68,7 @@ export function useFinanceApplication(roomId: string | null): FinanceApplication
   const base = () => `/finance-applications/${need()}`;
   return {
     roomId, current, history: query.data?.history ?? [], preview: previewQuery.data ?? null,
+    lineGroup: query.data?.lineGroup ?? null,
     step: gfinStep(current, previewQuery.data ?? null),
     loading: query.isLoading, busy: mutation.isPending,
     start: async () => {
@@ -105,7 +107,7 @@ export function useFinanceApplication(roomId: string | null): FinanceApplication
     fromProduct: () => run(async () => { const r = await api.post(`${base()}/files/from-product`); toast.success(`ดึงรูป ${r.data?.length ?? 6} มุมจากสต๊อกแล้ว`); }),
     removeFile: (fileId) => run(async () => { await api.delete(`${base()}/files/${fileId}`); }),
     send: (via) => run(async () => (await api.post(`${base()}/send`, { via })).data),
-    resend: () => run(async () => (await api.post(`${base()}/resend`)).data),
+    resend: (via = 'COPY') => run(async () => (await api.post(`${base()}/resend`, { via })).data),
     shareLink: () => run(async () => (await api.get(`${base()}/share-link`)).data),
     extend: () => run(async () => {
       const r: ExtendResult = (await api.post(`${base()}/share/extend`)).data;

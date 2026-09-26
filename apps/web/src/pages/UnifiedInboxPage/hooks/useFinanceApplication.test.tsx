@@ -54,3 +54,24 @@ it('send(COPY) returns the message text so the caller can copy it, and marks bus
   expect(post).toHaveBeenCalledWith('/finance-applications/a1/send', { via: 'COPY' });
   expect(result.current.busy).toBe(false);
 });
+
+it('reflects lineGroup from the room-finance-applications response (PR 2)', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const lineGroup = { groupId: 'C1', groupName: 'GFIN : BESTCHOICE (67301219)', botInGroup: true, tokenConfigured: true, ready: true, reason: null };
+  get.mockResolvedValue({ data: { current: draft, history: [], lineGroup } });
+  const { result } = renderHook(() => useFinanceApplication('A'), { wrapper: wrap(qc) });
+  await waitFor(() => expect(result.current.current?.id).toBe('a1'));
+  expect(result.current.lineGroup).toEqual(lineGroup);
+});
+
+it('resend(via) posts the via flag on the room — default COPY, explicit BOT (PR 2)', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  get.mockResolvedValue({ data: { current: { ...draft, customerId: 'c', productId: 'p' }, history: [], lineGroup: null } });
+  post.mockResolvedValue({ data: { application: { ...draft, status: 'SENT' }, messageText: 'MORE', shareUrl: 'https://x/api/g/t' } });
+  const { result } = renderHook(() => useFinanceApplication('A'), { wrapper: wrap(qc) });
+  await waitFor(() => expect(result.current.current?.id).toBe('a1'));
+  await act(async () => { await result.current.resend(); });
+  expect(post).toHaveBeenCalledWith('/finance-applications/a1/resend', { via: 'COPY' });
+  await act(async () => { await result.current.resend('BOT'); });
+  expect(post).toHaveBeenCalledWith('/finance-applications/a1/resend', { via: 'BOT' });
+});

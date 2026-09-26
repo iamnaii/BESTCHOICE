@@ -22,7 +22,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FinanceApplicationService } from './services/finance-application.service';
 import { FinanceApplicationFilesService } from './services/finance-application-files.service';
-import { SendFinanceApplicationDto, StaffResultDto, UpdateFinanceApplicationDto, UpdateFinanceCustomerFieldsDto } from './dto/finance-application.dto';
+import { ResendFinanceApplicationDto, SendFinanceApplicationDto, StaffResultDto, UpdateFinanceApplicationDto, UpdateFinanceCustomerFieldsDto } from './dto/finance-application.dto';
 import { FileFromMessageDto, FileUploadFieldsDto } from './dto/finance-application-files.dto';
 import { FinanceActor, FINANCE_APP_ROLES } from './constants';
 
@@ -70,8 +70,8 @@ export class FinanceApplicationsController {
   @Post(':id/resend')
   @Roles(...FINANCE_APP_ROLES)
   @Throttle({ short: { limit: 10, ttl: 60000 } })
-  resend(@Param('id', ParseUUIDPipe) id: string, @Req() req: { user: FinanceActor }) {
-    return this.applications.resend(id, req.user);
+  resend(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ResendFinanceApplicationDto, @Req() req: { user: FinanceActor }) {
+    return this.applications.resend(id, dto, req.user);
   }
 
   @Get(':id/share-link')

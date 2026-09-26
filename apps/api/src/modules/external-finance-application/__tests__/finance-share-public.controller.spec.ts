@@ -10,6 +10,7 @@ import request from 'supertest';
 import * as Sentry from '@sentry/nestjs';
 import { FinanceSharePublicController } from '../finance-share-public.controller';
 import { FinanceShareService } from '../services/finance-share.service';
+import { GfinLineGroupService } from '../services/gfin-line-group.service';
 import { CsrfGuard } from '../../../guards/csrf.guard';
 
 jest.mock('@sentry/nestjs', () => ({ captureException: jest.fn() }));
@@ -84,6 +85,8 @@ describe('FinanceSharePublicController (HTTP)', () => {
       providers: [
         { provide: FinanceShareService, useValue: share },
         { provide: ConfigService, useValue: config },
+        // PR 2 T4 — ยังไม่ได้ผูกกลุ่มจริงในสเปคนี้ → ค่าคงที่ LINE_GROUP_NAME เดิมยังเป็น fallback
+        { provide: GfinLineGroupService, useValue: { status: jest.fn().mockResolvedValue({ groupName: null }) } },
         // real global CsrfGuard registered as APP_GUARD — proves @SkipCsrf() actually bypasses
         // it on POST /reply instead of just trusting the decorator exists (fix round 1 Important 6)
         { provide: APP_GUARD, useClass: CsrfGuard },

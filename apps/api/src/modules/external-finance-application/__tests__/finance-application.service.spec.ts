@@ -1,8 +1,12 @@
-import { BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
+import * as Sentry from '@sentry/nestjs';
 import { FinanceApplicationService } from '../services/finance-application.service';
 import { hashLockKey } from '../../../utils/advisory-lock.util';
 import { decryptPII, encryptPII } from '../../../utils/crypto.util';
 import { hashShareToken } from '../finance-share-token.util';
+
+// Ruling P3 — @sentry/nestjs ถูก mock เป็น namespace ใหม่ในสเปคนี้ (มี captureMessage สำหรับ RF6)
+jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
 
 const KEY = 'a'.repeat(64);
 const room = { id: 'room-1', assignedToId: 'sales-2', customerId: null, deletedAt: null, channel: 'FACEBOOK' };
@@ -44,8 +48,14 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
 const numbers = { next: jest.fn().mockResolvedValue('BC-260924-001') } as any;
 const makeStorage = () => ({ delete: jest.fn().mockResolvedValue(undefined) });
 const makeCustomers = () => ({ update: jest.fn().mockResolvedValue({ id: 'c1' }) });
-function makeService(prisma: any, storage = makeStorage(), customers = makeCustomers()) {
-  return new FinanceApplicationService(prisma, numbers, pii, config, storage as any, customers as any);
+const makeLineGroup = (over: Partial<{ requireSendTarget: jest.Mock; pushText: jest.Mock; status: jest.Mock }> = {}) => ({
+  requireSendTarget: jest.fn().mockResolvedValue({ groupId: 'Cgfin', groupName: 'GFIN : BESTCHOICE' }),
+  pushText: jest.fn().mockResolvedValue({ requestId: 'req-77' }),
+  status: jest.fn().mockResolvedValue({ groupId: 'Cgfin', groupName: 'GFIN : BESTCHOICE', botInGroup: true, tokenConfigured: true, ready: true, reason: null }),
+  ...over,
+});
+function makeService(prisma: any, storage = makeStorage(), customers = makeCustomers(), lineGroup = makeLineGroup()) {
+  return new FinanceApplicationService(prisma, numbers, pii, config, storage as any, customers as any, lineGroup as any);
 }
 const owner = { id: 'u-owner', role: 'OWNER' };
 const sales = { id: 'sales-1', role: 'SALES' };
@@ -263,12 +273,16 @@ describe('FinanceApplicationService.updateCustomerFields (C1)', () => {
 
 const ready = {
   id: 'app-1', roomId: 'room-1', status: 'DRAFT', number: 'BC-260924-001', occupationOverride: null, messageOverride: null, messageText: null, room,
-  shareTokenHash: null, shareTokenEnc: null, shareRevokedAt: null, shareExpiresAt: null,
+  shareTokenHash: null, shareTokenEnc: null, shareRevokedAt: null, shareExpiresAt: null, financeCompany: null,
   customer: { id: 'c1', name: 'สมหญิง ใจดี', phone: '0937581095', phoneEncrypted: 'enc:0937581095', occupation: 'พนักงานบริษัท', birthDate: new Date('1997-12-27') },
   product: { id: 'p1', name: 'iPhone 13 Pro Max', brand: 'Apple', model: '13 Pro Max', storage: '256GB', imeiSerial: '355908667841899', category: 'PHONE_USED', status: 'IN_STOCK' },
   files: [{ slot: 'ID_SELFIE', sentAt: null }, { slot: 'ID_CARD', sentAt: null }, { slot: 'INCOME', sentAt: null }],
   events: [],
 };
+/** ใบ DRAFT ที่พร้อมส่ง (ลูกค้า+เครื่อง+ไฟล์บังคับครบ) — PR 2 T4 (ดู task brief) */
+function readyApp(over: Record<string, unknown> = {}) {
+  return { ...ready, financeCompany: null, messageOverride: null, ...over };
+}
 
 describe('FinanceApplicationService.preview / send', () => {
   it('previews the 12-item text with the model name from stock and lists nothing missing', async () => {
@@ -326,11 +340,6 @@ describe('FinanceApplicationService.preview / send', () => {
     });
     await expect(makeService(prisma).send('app-1', { via: 'COPY' }, owner)).rejects.toThrow(ConflictException);
     expect(prisma.externalFinanceApplicationEvent.create).not.toHaveBeenCalled();
-  });
-  it('send via BOT is not available in PR 1', async () => {
-    const prisma = makePrisma({ externalFinanceApplication: { findFirst: jest.fn().mockResolvedValue(ready) } });
-    const service = makeService(prisma);
-    await expect(service.send('app-1', { via: 'BOT' }, owner)).rejects.toThrow('PR 2');
   });
   it('staffResult APPROVED closes the application and stamps resultSource STAFF; cancel revokes the link — both CAS on the status read', async () => {
     const sent = { ...ready, status: 'SENT', shareTokenHash: 'h', shareTokenEnc: 'e', shareExpiresAt: new Date(Date.now() + 86400000) };
@@ -413,7 +422,7 @@ describe('FinanceApplicationService share link — revoked links stay dead (I2)'
   });
   it('resend on a revoked link rotates the token and the resend text carries the new link', async () => {
     const { prisma, updateMany, service } = build(sentApp({ shareRevokedAt: new Date() }));
-    const result = await service.resend('app-1', owner);
+    const result = await service.resend('app-1', {}, owner);
     expect(result.rotated).toBe(true);
     const newRaw = result.shareUrl.split('/').pop()!;
     expect(newRaw).not.toBe(OLD_RAW);
@@ -422,13 +431,13 @@ describe('FinanceApplicationService share link — revoked links stay dead (I2)'
     expect(where).toEqual({ id: 'app-1', status: 'MORE_INFO', shareTokenHash: hashShareToken(OLD_RAW), deletedAt: null });
     expect(data).toMatchObject({ status: 'SENT', shareTokenHash: hashShareToken(newRaw), shareRevokedAt: null });
     expect(prisma.externalFinanceApplicationEvent.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ kind: 'RESENT', meta: { fileCount: 1, rotated: true } }),
+      data: expect.objectContaining({ kind: 'RESENT', meta: { via: 'COPY', fileCount: 1, rotated: true } }),
     });
     expectNoShareSecrets(result.application);
   });
   it('resend on a live link reuses the link ("ลิงก์เดิม") and does not touch the token', async () => {
     const { updateMany, service } = build(sentApp());
-    const result = await service.resend('app-1', owner);
+    const result = await service.resend('app-1', {}, owner);
     expect(result).toMatchObject({ rotated: false, shareUrl: oldUrl });
     expect(result.messageText).toContain(`ลิงก์เดิม: ${oldUrl}`);
     expect(updateMany.mock.calls[0][0].data).not.toHaveProperty('shareTokenHash');
@@ -436,6 +445,86 @@ describe('FinanceApplicationService share link — revoked links stay dead (I2)'
   it('resend → 409 when the status changed concurrently (CAS)', async () => {
     const { updateMany, service } = build(sentApp());
     updateMany.mockResolvedValue({ count: 0 });
-    await expect(service.resend('app-1', owner)).rejects.toThrow(ConflictException);
+    await expect(service.resend('app-1', {}, owner)).rejects.toThrow(ConflictException);
+  });
+});
+
+describe('FinanceApplicationService.send via BOT (PR 2)', () => {
+  it('pushes the rendered text (with the share link) to the linked group inside the transaction and records lineRequestId + event meta', async () => {
+    const prisma = makePrisma({ externalFinanceApplication: { ...makePrisma().externalFinanceApplication, findFirst: jest.fn().mockResolvedValue(readyApp()) } });
+    const lineGroup = makeLineGroup();
+    const service = makeService(prisma, makeStorage(), makeCustomers(), lineGroup);
+    const r = await service.send('app-1', { via: 'BOT' }, owner);
+    expect(lineGroup.requireSendTarget).toHaveBeenCalled();
+    expect(lineGroup.pushText).toHaveBeenCalledWith('Cgfin', expect.stringMatching(/เอกสารทั้งหมด \d+ ไฟล์: https:\/\/bestchoicephone\.app\/api\/g\/[A-Za-z0-9_-]{43}/));
+    expect(prisma.externalFinanceApplication.update).toHaveBeenCalledWith({ where: { id: 'app-1' }, data: { lineRequestId: 'req-77' } });
+    expect(prisma.externalFinanceApplicationEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: 'SENT', meta: expect.objectContaining({ via: 'BOT', lineRequestId: 'req-77', groupName: 'GFIN : BESTCHOICE' }) }) }));
+    expect(r).toEqual(expect.objectContaining({ pushed: true, groupName: 'GFIN : BESTCHOICE' }));
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 20000 });
+  });
+  it('group not ready → 400 from requireSendTarget BEFORE any status/token write', async () => {
+    const prisma = makePrisma({ externalFinanceApplication: { ...makePrisma().externalFinanceApplication, findFirst: jest.fn().mockResolvedValue(readyApp()) } });
+    const lineGroup = makeLineGroup({ requireSendTarget: jest.fn().mockRejectedValue(new BadRequestException('ยังไม่ได้ผูกกลุ่ม')) });
+    await expect(makeService(prisma, makeStorage(), makeCustomers(), lineGroup).send('app-1', { via: 'BOT' }, owner)).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.externalFinanceApplication.updateMany).not.toHaveBeenCalled();
+  });
+  it('LINE failure (502 from pushText) propagates and the transaction body throws → no SENT event, no lineRequestId', async () => {
+    const prisma = makePrisma({ externalFinanceApplication: { ...makePrisma().externalFinanceApplication, findFirst: jest.fn().mockResolvedValue(readyApp()) } });
+    const lineGroup = makeLineGroup({ pushText: jest.fn().mockRejectedValue(new BadGatewayException('LINE ล่ม')) });
+    await expect(makeService(prisma, makeStorage(), makeCustomers(), lineGroup).send('app-1', { via: 'BOT' }, owner)).rejects.toBeInstanceOf(BadGatewayException);
+    expect(prisma.externalFinanceApplicationEvent.create).not.toHaveBeenCalled();
+    expect(prisma.externalFinanceApplication.update).not.toHaveBeenCalled();
+  });
+  it('push succeeded but the commit failed → Sentry error with applicationId + requestId, error still propagates (Review Focus 6)', async () => {
+    const prisma = makePrisma({ externalFinanceApplication: { ...makePrisma().externalFinanceApplication, findFirst: jest.fn().mockResolvedValue(readyApp()) } });
+    prisma.externalFinanceApplicationEvent.create.mockRejectedValue(new Error('db gone'));
+    const capture = jest.spyOn(Sentry, 'captureMessage').mockImplementation(() => 'evt');
+    const lineGroup = makeLineGroup();
+    await expect(makeService(prisma, makeStorage(), makeCustomers(), lineGroup).send('app-1', { via: 'BOT' }, owner)).rejects.toThrow('db gone');
+    expect(lineGroup.pushText).toHaveBeenCalled();
+    expect(capture).toHaveBeenCalledWith(expect.stringContaining('push succeeded'), expect.objectContaining({ level: 'error', extra: expect.objectContaining({ applicationId: 'app-1', requestId: 'req-77' }) }));
+    capture.mockRestore();
+  });
+  it('COPY still never touches the line group', async () => {
+    const prisma = makePrisma({ externalFinanceApplication: { ...makePrisma().externalFinanceApplication, findFirst: jest.fn().mockResolvedValue(readyApp()) } });
+    const lineGroup = makeLineGroup();
+    await makeService(prisma, makeStorage(), makeCustomers(), lineGroup).send('app-1', { via: 'COPY' }, owner);
+    expect(lineGroup.requireSendTarget).not.toHaveBeenCalled();
+    expect(lineGroup.pushText).not.toHaveBeenCalled();
+  });
+  it('renders the company template when set (messageOverride still wins)', async () => {
+    const app = readyApp({ financeCompany: { id: 'gfin-1', name: 'GFIN', lineGroupId: 'Cgfin', precheckTemplate: 'เช็คด่วน {{customerName}} · {{link}}' } });
+    const prisma = makePrisma({ externalFinanceApplication: { ...makePrisma().externalFinanceApplication, findFirst: jest.fn().mockResolvedValue(app) } });
+    const r = await makeService(prisma).send('app-1', { via: 'COPY' }, owner);
+    expect(r.messageText).toMatch(/^เช็คด่วน .+ · https:\/\/bestchoicephone\.app\/api\/g\//);
+    const overridden = readyApp({ messageOverride: 'ถ้อยคำเฉพาะใบ', financeCompany: app.financeCompany });
+    prisma.externalFinanceApplication.findFirst.mockResolvedValue(overridden);
+    expect((await makeService(prisma).send('app-1', { via: 'COPY' }, owner)).messageText).toMatch(/^ถ้อยคำเฉพาะใบ\nเอกสารทั้งหมด/);
+  });
+});
+
+describe('FinanceApplicationService.resend via BOT (PR 2)', () => {
+  it('pushes the short "ส่งเอกสารเพิ่ม" text and stamps lineRequestId', async () => {
+    const app = readyApp({ status: 'MORE_INFO', shareTokenHash: hashShareToken('tok'), shareTokenEnc: encryptPII('tok', KEY), messageText: 'old', files: [{ id: 'f1', sentAt: null, slot: 'ID_CARD' }] });
+    const prisma = makePrisma({ externalFinanceApplication: { ...makePrisma().externalFinanceApplication, findFirst: jest.fn().mockResolvedValue(app) } });
+    const lineGroup = makeLineGroup();
+    const r = await makeService(prisma, makeStorage(), makeCustomers(), lineGroup).resend('app-1', { via: 'BOT' }, owner);
+    expect(lineGroup.pushText).toHaveBeenCalledWith('Cgfin', expect.stringMatching(/^ส่งเอกสารเพิ่ม 1 ไฟล์/));
+    expect(r.pushed).toBe(true);
+    expect(prisma.externalFinanceApplicationEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: 'RESENT', meta: expect.objectContaining({ via: 'BOT', lineRequestId: 'req-77' }) }) }));
+  });
+  it('resend without body defaults to COPY (web before PR 2 sends no body)', async () => {
+    const app = readyApp({ status: 'MORE_INFO', shareTokenHash: hashShareToken('tok'), shareTokenEnc: encryptPII('tok', KEY), files: [{ id: 'f1', sentAt: null, slot: 'ID_CARD' }] });
+    const prisma = makePrisma({ externalFinanceApplication: { ...makePrisma().externalFinanceApplication, findFirst: jest.fn().mockResolvedValue(app) } });
+    const lineGroup = makeLineGroup();
+    await makeService(prisma, makeStorage(), makeCustomers(), lineGroup).resend('app-1', {}, owner);
+    expect(lineGroup.pushText).not.toHaveBeenCalled();
+  });
+});
+
+describe('listForRoom (PR 2)', () => {
+  it('includes lineGroup status for the tab', async () => {
+    const r = await makeService(makePrisma()).listForRoom('room-1', owner);
+    expect(r.lineGroup).toEqual(expect.objectContaining({ ready: true, groupName: 'GFIN : BESTCHOICE' }));
   });
 });

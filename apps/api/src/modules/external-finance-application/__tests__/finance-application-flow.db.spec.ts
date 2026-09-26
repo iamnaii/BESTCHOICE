@@ -20,6 +20,7 @@ import { StorageService } from '../../storage/storage.service';
 import { CustomerPiiService } from '../../customers/customer-pii.service';
 import { CustomerWriteService } from '../../customers/services/customer-write.service';
 import { hashPII } from '../../../utils/pii.util';
+import { GFIN_COMPANY_NAME } from '../constants';
 
 const PII_KEY = 'd'.repeat(64);
 const PII_SALT = 'gfin-flow-db-spec-salt-0123456789abcdef';
@@ -47,6 +48,8 @@ let sent: Awaited<ReturnType<FinanceApplicationService['send']>>;
 // final-fix wave — ลูกค้า/ห้องเพิ่มของเทสต์ C1 (ลบใน afterAll)
 const extraCustomerIds: string[] = [];
 const extraRoomIds: string[] = [];
+// PR 2 T4 — สินค้าเพิ่มของเทสต์แม่แบบบริษัท (ลบใน afterAll หลังใบยื่น/ห้องถูกลบไปแล้ว)
+const extraProductIds: string[] = [];
 
 beforeAll(async () => {
   process.env.PII_ENCRYPTION_KEY = PII_KEY;
@@ -66,7 +69,12 @@ beforeAll(async () => {
   // query.findOne ใช้แค่ "มีแถวไหม + เบอร์เดิม" ในเมธอดนี้ → อ่านแถวดิบแทน service อ่านเต็ม (ไม่ใช่สิ่งที่ทดสอบ)
   const write = new CustomerWriteService(prisma as any, {} as any, { findOne: (id: string) => prisma.customer.findUniqueOrThrow({ where: { id } }) } as any, pii);
   const customers = { update: (id: string, dto: any, actor: any) => write.update(id, dto, actor) };
-  service = new FinanceApplicationService(prisma as any, new FinanceApplicationNumberService(), pii, config, storage, customers as any);
+  // PR 2 T4 — DB spec ไม่ต้องใช้บอทจริง: status() คืนไม่พร้อมเสมอ, requireSendTarget() throw ถ้าถูกเรียก (ไม่ควรถูกเรียกในสเปคนี้ — ทุกเทสต์ที่นี่ยังส่ง COPY)
+  const lineGroupStub = {
+    status: async () => ({ groupId: null, groupName: null, botInGroup: false, tokenConfigured: false, ready: false, reason: 'NOT_LINKED' }),
+    requireSendTarget: async () => { throw new Error('not in db spec'); },
+  } as any;
+  service = new FinanceApplicationService(prisma as any, new FinanceApplicationNumberService(), pii, config, storage, customers as any, lineGroupStub);
   files = new FinanceApplicationFilesService(prisma as any, storage, service, {} as any, {} as any, {} as any);
 });
 
@@ -78,6 +86,7 @@ afterAll(async () => {
   await prisma.chatMessage.deleteMany({ where: { roomId: { in: rooms } } });
   await prisma.chatRoom.deleteMany({ where: { id: { in: rooms } } });
   if (sendProductId) await prisma.product.delete({ where: { id: sendProductId } });
+  if (extraProductIds.length) await prisma.product.deleteMany({ where: { id: { in: extraProductIds } } });
   if (sendCustomerId) await prisma.customer.delete({ where: { id: sendCustomerId } });
   if (extraCustomerIds.length) await prisma.customer.deleteMany({ where: { id: { in: extraCustomerIds } } });
   await prisma.$disconnect();
@@ -213,6 +222,39 @@ describe('ใบยื่น GFIN บน DB จริง', () => {
     // ยืนยันว่าเบอร์ที่ถูก encryptCustomerFields ไว้ถูกถอดรหัสจริงตอน buildValues() —
     // ไม่ใช่แค่อ่าน legacy plaintext column (fix round 1 Important 1)
     expect(sent.messageText).toContain('093 758 1095');
+  });
+
+  // PR 2 T4 — แม่แบบของบริษัท (precheckTemplate) เรนเดอร์แทนแม่แบบในโค้ดเมื่อตั้งไว้ · แถว GFIN ใช้ร่วมกับเทสต์อื่น จึงคืนค่าเดิมใน finally
+  it('renders the company template when precheckTemplate is set on the shared GFIN row', async () => {
+    const actor = { id: userId, role: 'OWNER' };
+    const branch = await prisma.branch.findFirst({ where: { deletedAt: null }, select: { id: true } });
+    if (!branch) throw new Error('ต้องมีสาขาในฐานทดสอบ (seed ก่อน)');
+    const company = await prisma.externalFinanceCompany.findFirstOrThrow({ where: { name: GFIN_COMPANY_NAME } });
+    await prisma.externalFinanceCompany.update({ where: { id: company.id }, data: { precheckTemplate: 'เช็คด่วน {{customerName}} {{link}}' } });
+    try {
+      const customer = await prisma.customer.create({
+        data: { name: `ทดสอบระบบ เทมเพลต ${tag}`, occupation: 'ค้าขาย', phone: `08${String(Date.now()).slice(-8)}`, birthDate: new Date('1990-01-01') },
+      });
+      extraCustomerIds.push(customer.id);
+      const product = await prisma.product.create({
+        data: {
+          name: 'iPhone 14', brand: 'Apple', model: '14', storage: '128GB', category: 'PHONE_USED',
+          imeiSerial: `${tag}-tmpl-imei`, costPrice: 8000, branchId: branch.id, status: 'IN_STOCK',
+        },
+      });
+      extraProductIds.push(product.id);
+      const room = await prisma.chatRoom.create({ data: { channel: ChatChannel.FACEBOOK, externalUserId: `${tag}-tmpl`, displayName: `${tag}-tmpl` } });
+      extraRoomIds.push(room.id);
+      const app = await service.createDraft(room.id, actor);
+      await service.update(app.id, { customerId: customer.id, productId: product.id }, actor);
+      for (const slot of ['ID_SELFIE', 'ID_CARD', 'INCOME'] as const) {
+        await files.upload(app.id, slot, { buffer: JPEG_BYTES, mimetype: 'image/jpeg', originalname: 'a.jpg' } as any, actor);
+      }
+      const result = await service.send(app.id, { via: 'COPY' }, actor);
+      expect(result.messageText).toMatch(/^เช็คด่วน/);
+    } finally {
+      await prisma.externalFinanceCompany.update({ where: { id: company.id }, data: { precheckTemplate: null } });
+    }
   });
 
   it('resolves the live link, counts one view per ipHash, and a partner APPROVED reply closes the application', async () => {

@@ -10,7 +10,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { ContactCombobox, type ContactPickResult } from '@/components/contacts/ContactCombobox';
-import { RepairCenterCombobox } from '@/pages/insurance/components/RepairCenterCombobox';
+import { RepairCenterCombobox } from '@/pages/after-sales/RepairCenterCombobox';
 import StepBar from './after-sales/StepBar';
 import OutcomePicker from './after-sales/OutcomePicker';
 import IntakePhotos from './after-sales/IntakePhotos';
@@ -134,13 +134,15 @@ export default function AfterSalesNewPage() {
   }, [outcome]);
 
   const create = useMutation({
-    mutationFn: async (form: FormData) =>
+    mutationFn: async ({ form }: { form: FormData; printAfter: boolean }) =>
       (await api.post('/after-sales', form, { headers: { 'Content-Type': 'multipart/form-data' } }))
         .data as { id: string; caseNumber: string; repairTicketId: string },
-    onSuccess: (data) => {
+    onSuccess: (data, vars) => {
       toast.success(`เปิดเคส ${data.caseNumber}`);
       queryClient.invalidateQueries({ queryKey: afterSalesKeys.all });
-      navigate(`/after-sales/${data.id}`);
+      navigate(
+        vars.printAfter ? `/after-sales/${data.id}?print=receipt` : `/after-sales/${data.id}`,
+      );
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -202,7 +204,9 @@ export default function AfterSalesNewPage() {
     // Task 8 — บอกล่วงหน้าว่าบันทึกแล้วจะมีการส่ง LINE แจ้งลูกค้าหรือไม่ (walk-in ที่ไม่มี
     // ลูกค้าให้ผูก LINE ก็ตกไปที่ข้อความหลังเช่นกัน เพราะ lookup.data?.lineLinked เป็น false)
     parts.push(
-      lookup.data?.lineLinked ? 'จะส่ง LINE แจ้งลูกค้าเมื่อบันทึก' : 'ลูกค้าไม่ผูก LINE — โทรแจ้งเอง',
+      lookup.data?.lineLinked
+        ? 'จะส่ง LINE แจ้งลูกค้าเมื่อบันทึก'
+        : 'ลูกค้าไม่ผูก LINE — โทรแจ้งเอง',
     );
 
     const replacement = replacementProducts.find((p) => p.id === replacementProductId);
@@ -225,7 +229,7 @@ export default function AfterSalesNewPage() {
     return parts.join(' · ') || 'กรอกข้อมูลด้านบนก่อนบันทึก';
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = (printAfter: boolean) => {
     if (photos.length === 0) {
       toast.error('ต้องมีรูปตอนรับฝากอย่างน้อย 1 รูป');
       return;
@@ -299,7 +303,7 @@ export default function AfterSalesNewPage() {
     form.append('branchId', branchId);
     photos.forEach((file) => form.append('photos', file));
 
-    create.mutate(form);
+    create.mutate({ form, printAfter });
   };
 
   return (
@@ -689,11 +693,24 @@ export default function AfterSalesNewPage() {
                 <div className="text-sm leading-snug text-foreground">{buildSummary()}</div>
               </div>
               <div className="flex flex-col items-end gap-1.5">
-                <div className="flex gap-2.5">
+                <div className="flex flex-wrap justify-end gap-2.5">
                   <Button variant="outline" size="lg" onClick={() => navigate('/after-sales')}>
                     ยกเลิก
                   </Button>
-                  <Button variant="primary" size="lg" disabled={!canSubmit} onClick={handleSubmit}>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    disabled={!canSubmit}
+                    onClick={() => handleSubmit(true)}
+                  >
+                    บันทึก + พิมพ์ใบรับฝาก
+                  </Button>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    disabled={!canSubmit}
+                    onClick={() => handleSubmit(false)}
+                  >
                     {create.isPending ? 'กำลังบันทึก…' : 'บันทึกและเปิดเคส'}
                   </Button>
                 </div>

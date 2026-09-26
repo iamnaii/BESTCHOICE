@@ -16,6 +16,8 @@ import { AfterSalesRepairService } from './services/after-sales-repair.service';
 import { AfterSalesExchangeService } from './services/after-sales-exchange.service';
 import { AfterSalesLineService } from './services/after-sales-line.service';
 import { AfterSalesLineCron } from './crons/after-sales-line.cron';
+import { AfterSalesDocumentService } from './services/after-sales-document.service';
+import { AfterSalesPdfRenderer } from './documents/after-sales-pdf.renderer';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { AfterSalesLineCron } from './crons/after-sales-line.cron';
     AfterSalesExchangeService,
     AfterSalesLineService,
     AfterSalesLineCron,
+    AfterSalesDocumentService,
+    AfterSalesPdfRenderer,
   ],
   exports: [AfterSalesService, AfterSalesLineService],
 })

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import AfterSalesNewPage from './AfterSalesNewPage';
@@ -194,6 +194,16 @@ function mockGet(lookup: LookupResult, extra?: MockExtras) {
   });
 }
 
+function CaseProbe() {
+  const location = useLocation();
+  return (
+    <>
+      <div>CASE PAGE</div>
+      <div data-testid="case-search">{location.search}</div>
+    </>
+  );
+}
+
 function renderPage(initialPath: string) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -203,7 +213,7 @@ function renderPage(initialPath: string) {
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
           <Route path="/after-sales/new" element={<AfterSalesNewPage />} />
-          <Route path="/after-sales/:id" element={<div>CASE PAGE</div>} />
+          <Route path="/after-sales/:id" element={<CaseProbe />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -292,6 +302,28 @@ describe('AfterSalesNewPage — แจ้งปัญหาเครื่อง
 
     expect(toast.success).toHaveBeenCalled();
     expect(await screen.findByText('CASE PAGE')).toBeInTheDocument();
+    expect(screen.getByTestId('case-search')).toBeEmptyDOMElement();
+  });
+
+  it('ปุ่มรอง "บันทึก + พิมพ์ใบรับฝาก" → POST เดียวกัน แล้วไปหน้าเคสพร้อม ?print=receipt · ปุ่มหลักไปแบบไม่มีพารามิเตอร์', async () => {
+    mockGet(foundResult);
+    mocks.post.mockResolvedValue({
+      data: { id: 'case-9', caseNumber: 'AS-20260924-0001', repairTicketId: 'rt-1' },
+    });
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+    await userEvent.type(screen.getByLabelText(/อาการที่ลูกค้าแจ้ง/), 'จอแตกมุมขวาบน');
+    await userEvent.upload(
+      screen.getByLabelText(/ถ่ายเพิ่ม/),
+      new File(['x'], 'a.jpg', { type: 'image/jpeg' }),
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: /ปิด Find My/ }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึก + พิมพ์ใบรับฝาก' }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    expect(mocks.post.mock.calls[0][0]).toBe('/after-sales');
+    expect(await screen.findByTestId('case-search')).toHaveTextContent('?print=receipt');
   });
 
   it('lookup ไม่พบเครื่อง (walk-in): เห็น ContactCombobox + ช่องยี่ห้อ/รุ่น + ปุ่มทางออกมีแค่ "ซ่อม" (ลูกค้าจ่าย)', async () => {

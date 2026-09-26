@@ -79,7 +79,6 @@ const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 // SP5 — SHOP-side additions
 // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
-const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
@@ -733,16 +732,15 @@ function App() {
             element={<Navigate to="/after-sales?tab=AWAITING_APPROVAL" replace />}
           />
           <Route path="/defect-exchange" element={<Navigate to="/after-sales" replace />} />
-          {/* /insurance/:id (ใบซ่อมเดิม) ยังเป็นหน้าจริง — TicketRedirect เด้งไป /after-sales/:id
-              เมื่อมีเคสหลังการขายผูกใบซ่อมนี้แล้ว ไม่งั้น fallback ไปหน้าใบซ่อมเดิม (คงไว้ ≥2 deploy
-              ตามสเปคข้อ 11) */}
+          {/* /insurance/:id (ลิงก์ใบซ่อมเก่า) → เคสหลังการขายที่ผูกใบซ่อมนั้น — หน้าใบซ่อมเดิมถูกถอดใน
+              PR 4 (ใบซ่อมทุกใบมีเคสผูกแล้ว + พ้นกำหนด ≥2 รุ่น deploy ของสเปกข้อ 11) */}
           <Route
             path="/insurance/:id"
             element={
               <ProtectedRoute
                 roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT']}
               >
-                <TicketRedirect fallback={<RepairTicketDetailPage />} />
+                <TicketRedirect />
               </ProtectedRoute>
             }
           />
@@ -1377,8 +1375,8 @@ function App() {
               users cannot direct-URL-jump into pages they aren't supposed to see. */}
           {/* /insurance, /insurance/new, /insurance/warranty-check, /insurance/exchange-request/new,
               /insurance/exchange-requests, /defect-exchange → redirect to /after-sales* (after-sales
-              hub PR 2, Task 13); /insurance/:id is still a real page (TicketRedirect fallback) —
-              see SP5 routes above */}
+              hub PR 2, Task 13); /insurance/:id redirects to the linked after-sales case (old
+              repair-ticket page removed in PR 4) — see SP5 routes above */}
           {/* /finance/vat, /finance/wht, /finance/e-tax — handled by P4-SP2 routes above */}
           {/* /finance/cash-flow — handled by SP2 CashFlowPage route above (line ~763) */}
           {/* /finance/equity-statement — handled by SP2 EquityStatementPage route above (line ~773) */}

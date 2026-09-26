@@ -4,7 +4,13 @@ import { AlertTriangle, Copy, Phone, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 import { Group } from './RoomDossier';
+
+// บทบาทที่เปิดปุ่ม "แจ้งปัญหาเครื่อง" — ต้องตรงกับ roles ของ route /after-sales/new (App.tsx)
+// และ @Roles(...STAFF) ของ POST /after-sales (after-sales.controller.ts) กันเปิดหน้าแล้วชน
+// ProtectedRoute "ไม่มีสิทธิ์เข้าถึง" (เช่น FINANCE_MANAGER เข้า /inbox ได้แต่เข้า /after-sales/new ไม่ได้)
+const AFTER_SALES_STAFF_ROLES = ['OWNER', 'BRANCH_MANAGER', 'SALES'];
 
 /**
  * การ์ดในแท็บ "สัญญา/ชำระ" และ "ประกัน" ของแผงขวา — ออกแบบตาม mockup ที่เจ้าของเคาะ 2026-09-06:
@@ -200,6 +206,8 @@ export function CallLogList({ logs, onCall }: { logs: SummaryCallLog[]; onCall?:
 /** ─── ประกัน: การ์ดต่อเครื่อง (ประกันศูนย์จาก Product.warrantyExpireDate · ประกันร้านจาก shopWarrantyEndDate) ─── */
 export function DeviceWarrantyCard({ contract }: { contract: SummaryContract }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canReportIssue = AFTER_SALES_STAFF_ROLES.includes(user?.role ?? '');
   const imei = contract.serialNumber || contract.product?.serialNumber || null;
   const mfrEnd = contract.product?.warrantyExpireDate ?? null;
   const shopEnd = contract.shopWarrantyEndDate ?? null;
@@ -276,7 +284,9 @@ export function DeviceWarrantyCard({ contract }: { contract: SummaryContract }) 
         </div>
       </div>
       <div className="mt-2.5 flex gap-1.5">
-        <Button size="sm" className="flex-1" onClick={() => navigate(`/repair-tickets?new=1&imei=${encodeURIComponent(imei ?? '')}`)}><Wrench className="mr-1 size-3.5" /> เปิดใบซ่อม / เคลม</Button>
+        {canReportIssue && (
+          <Button size="sm" className="flex-1" onClick={() => navigate(imei ? `/after-sales/new?imei=${encodeURIComponent(imei)}` : '/after-sales/new')}><Wrench className="mr-1 size-3.5" aria-hidden /> แจ้งปัญหาเครื่อง</Button>
+        )}
         <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/contracts/${contract.id}`)}>ดูสัญญา ›</Button>
       </div>
     </div>

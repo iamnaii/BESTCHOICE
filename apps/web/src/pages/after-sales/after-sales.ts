@@ -584,6 +584,25 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
   return out;
 }
 
+/** PR 4 — เอกสารพิมพ์ของเคส (ตรงกับ API `GET /after-sales/:id/receipt.pdf` | `/handover.pdf`) */
+export type CaseDocKind = 'receipt' | 'handover';
+
+export const CASE_DOC_LABEL: Record<CaseDocKind, string> = {
+  receipt: 'ใบรับฝากเครื่อง',
+  handover: 'ใบส่งมอบ',
+};
+
+/** mirror ของ `handoverBlockReason` ฝั่ง API (after-sales-doc-compose.ts) — ปุ่มโชว์เฉพาะตอนพิมพ์ได้จริง */
+export function canPrintHandover(
+  data: Pick<CaseDetail, 'outcome' | 'stage' | 'repairTicket'>,
+): boolean {
+  if (!data.outcome) return false;
+  // ขายสด (PR 5) — API ยังไม่มีถ้อยคำใบส่งมอบของขายสด (HANDOVER_CASH_UNSUPPORTED_MSG)
+  if (data.outcome === 'CASH_SAME_MODEL_EXCHANGE') return false;
+  if (data.stage !== 'READY_FOR_PICKUP' && data.stage !== 'CLOSED') return false;
+  return data.outcome !== 'REPAIR' || !!data.repairTicket;
+}
+
 export const afterSalesKeys = {
   all: ['after-sales'] as const,
   list: (p: Record<string, unknown>) => ['after-sales', 'list', p] as const,

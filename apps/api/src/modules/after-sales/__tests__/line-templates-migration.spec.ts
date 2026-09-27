@@ -6,7 +6,9 @@ import {
   type LineCaseRow,
 } from '../utils/after-sales-line-copy.util';
 
-// PR 3 Task 1 — migration seed ของแม่แบบ LINE 5 แถว
+// PR 3 Task 1 — migration seed ของแม่แบบ LINE 5 แถว (ไฟล์ที่ลง prod แล้ว — แก้ไม่ได้)
+// WARRANTY_EXPIRING_7D ถูก soft delete ภายหลังโดย 20261012100000_remove_warranty_expiring_template
+// (เจ้าของสั่งถอด 2026-09-27) — เทสต์ของแถวนั้นในไฟล์นี้ยังปักเนื้อหาไฟล์ seed เดิมเท่านั้น
 // แบบเดียวกับ exchange-link-migration.spec.ts (PR 2 Task 1): อ่านไฟล์ SQL เป็นข้อความแล้ว assert
 
 const API_ROOT = path.join(__dirname, '../../../../');

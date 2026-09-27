@@ -124,6 +124,29 @@ describe('ProductIdentityCard', () => {
     expect(apiGet).toHaveBeenCalledWith('/products/p1/photos');
   });
 
+  it('ประวัติอะไหล่: ชิปสั้นบนการ์ด + ข้อความเต็มที่ลูกค้าเห็น (ไม่ระบุ = ไม่แสดง)', () => {
+    apiGet.mockResolvedValue({ data: { productId: 'p1', photos: {} } });
+    const { rerender } = render(
+      <Wrapper>
+        <ProductIdentityCard
+          product={{ ...base, category: 'PHONE_USED', deviceOrigin: 'THAI', partsHistory: 'BATTERY_NON_GENUINE', partsHistoryNote: 'เปลี่ยนแบต 26 ก.ย. 2569' }}
+          onGoPhotos={vi.fn()}
+        />
+      </Wrapper>,
+    );
+    expect(screen.getByText('เปลี่ยนแบต (ไม่ใช่แบตแท้)')).toBeInTheDocument();
+    expect(
+      screen.getByText('ประวัติอะไหล่: เปลี่ยนแบตใหม่ (ไม่ใช่แบตแท้ Apple) · เปลี่ยนแบต 26 ก.ย. 2569'),
+    ).toBeInTheDocument();
+
+    rerender(
+      <Wrapper>
+        <ProductIdentityCard product={{ ...base, partsHistory: null }} onGoPhotos={vi.fn()} />
+      </Wrapper>,
+    );
+    expect(screen.queryByText(/ประวัติอะไหล่/)).toBeNull();
+  });
+
   it('อุปกรณ์เสริม: ใช้ชุดฟิลด์ของ ACCESSORY (ประเภทอุปกรณ์ · สำหรับยี่ห้อ/รุ่น · ยี่ห้ออุปกรณ์)', () => {
     render(
       <Wrapper>

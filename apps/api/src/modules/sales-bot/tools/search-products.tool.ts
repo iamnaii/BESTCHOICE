@@ -6,6 +6,7 @@ import { SHOP_PHONE_CATEGORIES, DEMO_NAME_PREFIX } from '../../../utils/product-
 import { shopBaseUrl } from '../../../utils/shop-base-url.util';
 import { readBoolFlag, readStringFlag } from '../../../utils/config.util';
 import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from '../../warranty/shop-warranty-policy';
+import { partsHistoryLabel } from '../../../utils/product-disclosure.util';
 
 export const SEARCH_PRODUCTS_TOOL = {
   name: 'search_products',
@@ -17,6 +18,7 @@ export const SEARCH_PRODUCTS_TOOL = {
     'groups[].reservedCount = จำนวนเครื่องติดจองทั้งกลุ่ม (นับรวมแม้บางเครื่องจะไม่ได้อยู่ใน units[] เพราะแสดงได้จำกัด) — ใช้บอกจำนวนติดจองได้แม้ units[] จะไม่ครบทุกเครื่อง. ' +
     'priceMissingCount > 0 แปลว่ามีเครื่องตรงรุ่นแต่ยังไม่ได้ตั้งราคา — อย่าเดาราคาเอง ให้ใช้ get_installment_rates ตอบเรทกลางแทน. ' +
     'deviceOrigin ระบุเครื่องไทย THAI หรือเครื่องนอก IMPORTED; null = ยังไม่ระบุ ห้ามเดาเอง. warrantyTerms เป็นเงื่อนไขประกันรายเครื่อง. ' +
+    'partsHistory = ประวัติอะไหล่/การซ่อมของเครื่อง (null = ยังไม่ได้บันทึก ห้ามเดาว่าเป็นของเดิม) — ถ้ามี ต้องแจ้งลูกค้าตามข้อความนี้ตรง ๆ. ' +
     'ห้าม quote ตัวเลขใด ๆ ที่ไม่ได้มาจากผลลัพธ์นี้.',
   input_schema: {
     type: 'object',
@@ -44,6 +46,8 @@ export const RESERVED_NOTE = 'ติดจองชั่วคราว';
 export interface SearchProductUnit {
   deviceOrigin?: string | null;
   warrantyTerms?: string | null;
+  /** ประวัติอะไหล่เป็นข้อความที่ลูกค้าอ่านได้ (เช่น "เปลี่ยนแบตใหม่ (ไม่ใช่แบตแท้ Apple) · …") — null = ยังไม่ได้บันทึก */
+  partsHistory?: string | null;
   id: string;
   priceThb: number;
   installmentPriceThb: number | null;
@@ -181,6 +185,8 @@ export class SearchProductsTool {
         shopWarrantyDays: true,
         deviceOrigin: true,
         warrantyTerms: true,
+        partsHistory: true,
+        partsHistoryNote: true,
         accessoriesIncluded: true,
         cosmeticNotes: true,
         gallery: true,
@@ -233,6 +239,7 @@ export class SearchProductsTool {
         shopWarrantyDays: resolveShopWarrantyDays(r, warrantyDefault) ?? 0,
         deviceOrigin: r.deviceOrigin ?? null,
         warrantyTerms: r.warrantyTerms ?? null,
+        partsHistory: partsHistoryLabel(r.partsHistory, r.partsHistoryNote) || null,
         accessories: Array.isArray(r.accessoriesIncluded)
           ? (r.accessoriesIncluded as unknown[]).map((a) => String(a))
           : null,

@@ -14,6 +14,7 @@ export {
   findGfinMapping,
   findGfinOverpriceRule,
   findGfinRateFactor,
+  gfinAllowanceFactor,
 } from './installment-calc';
 export type * from './installment-calc.types';
 export * from './gfin-customer-summary';
@@ -33,3 +34,4 @@ export * from './document-spacing';
 
 export * from './finance-precheck-message';
 export * from './finance-doc-slots';
+export * from './parts-history';

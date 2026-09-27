@@ -2,7 +2,7 @@ import { DOCUMENT_STYLE, documentTypographyCss } from '@installment/shared';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { creditSnapshot, cashDownPayment } from '../../trade-in/services/trade-in-credit.service';
 import { Injectable, Logger } from '@nestjs/common';
-import { disclosureText, readProductDisclosure } from '../../../utils/product-disclosure.util';
+import { disclosureText, partsHistoryText, readProductDisclosure } from '../../../utils/product-disclosure.util';
 import { Prisma } from '@prisma/client';
 import { formatDateShort, formatDateMedium, formatDateLong, getThaiDateParts } from '../../../utils/thai-date.util';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -427,6 +427,7 @@ ${(() => {
       'CONTRACT.WARRANTY_DAYS': disclosure ? String(disclosure.shopWarrantyDays) : cfg('contract_warranty_days', '30'),
       'PHONE.DEVICE_ORIGIN': esc(disclosure?.deviceOrigin === 'THAI' ? 'เครื่องไทย' : disclosure?.deviceOrigin === 'IMPORTED' ? 'เครื่องนอก' : 'ยังไม่ระบุ'),
       'PHONE.WARRANTY_TERMS': esc(disclosure?.warrantyTerms || '-'),
+      'PHONE.PARTS_HISTORY': esc(partsHistoryText(disclosure?.partsHistory, disclosure?.partsHistoryNote) || '-'),
       'CONTRACT.EARLY_DISCOUNT': cfg('contract_early_discount', '50'),
       'CONTRACT.MIN_MONTHS_EARLY': cfg('contract_min_months_early', '6'),
       'CONTRACT.NOTES': esc(contract.notes || ''),

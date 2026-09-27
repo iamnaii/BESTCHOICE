@@ -103,7 +103,13 @@ export class InstallmentPreviewService {
   }
 
   private async previewGfin(
-    product: { brand: string | null; model: string; storage: string | null; category: string },
+    product: {
+      brand: string | null;
+      model: string;
+      storage: string | null;
+      category: string;
+      deviceOrigin: 'THAI' | 'IMPORTED' | null;
+    },
     installmentPrice: Decimal,
     dto: InstallmentPreviewDto,
   ): Promise<PreviewResult> {
@@ -192,6 +198,8 @@ export class InstallmentPreviewService {
       contractFee: new Decimal(settings.contractFee),
       mapping,
       overpriceRule: rule,
+      // GFIN ให้ OVER เต็มเฉพาะเครื่องไทย — เครื่องนอก/ยังไม่ระบุได้ครึ่งเดียว
+      deviceOrigin: product.deviceOrigin,
       rateFactor: {
         months: factor.months,
         shopCommissionPct: factor.shopCommissionPct,

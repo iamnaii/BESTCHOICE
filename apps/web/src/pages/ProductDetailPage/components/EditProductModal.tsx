@@ -1,5 +1,6 @@
 import Modal from '@/components/ui/Modal';
 import UsedDeviceDetailsFields from '@/components/product/UsedDeviceDetailsFields';
+import { DeviceOriginField, PartsHistoryField } from '@/components/product/DeviceDisclosureFields';
 import { ColorSelector, StorageSelector } from '@/components/product/VariantSelector';
 import { categoryOptions } from '@/lib/constants';
 import { productStatusMap } from '@/lib/status-badges';
@@ -25,6 +26,9 @@ interface EditForm {
   shopWarrantyDays: string;
   accessoriesIncluded: string;
   cosmeticNotes: string;
+  deviceOrigin: string;
+  partsHistory: string;
+  partsHistoryNote: string;
 }
 
 interface EditProductModalProps {
@@ -229,6 +233,21 @@ export default function EditProductModal({
 
         <div className="border-t pt-3 space-y-3">
           <div className="text-xs font-semibold text-muted-foreground">ข้อมูลสำหรับตอบลูกค้า</div>
+          {editForm.category !== 'ACCESSORY' && (
+            <DeviceOriginField
+              value={editForm.deviceOrigin}
+              onChange={(deviceOrigin) => setEditForm({ ...editForm, deviceOrigin })}
+            />
+          )}
+          {/* ประวัติอะไหล่มีความหมายกับเครื่องมือสอง (มือถือมือ 2 / iPad) — เครื่องใหม่ไม่ต้องกรอก */}
+          {(editForm.category === 'PHONE_USED' || editForm.category === 'TABLET') && (
+            <PartsHistoryField
+              value={editForm.partsHistory}
+              note={editForm.partsHistoryNote}
+              onChange={(partsHistory) => setEditForm({ ...editForm, partsHistory })}
+              onNoteChange={(partsHistoryNote) => setEditForm({ ...editForm, partsHistoryNote })}
+            />
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-foreground mb-1">เกรดเครื่อง</label>

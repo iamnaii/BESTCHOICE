@@ -12,7 +12,7 @@ import {
   Min,
   MaxLength,
 } from 'class-validator';
-import { DeviceOrigin } from '@prisma/client';
+import { DeviceOrigin, PartsHistory } from '@prisma/client';
 import { Type } from 'class-transformer';
 
 export class CreatePriceDto {
@@ -33,6 +33,14 @@ export class CreateProductDto {
 
   @IsOptional() @IsString() @MaxLength(2000)
   warrantyTerms?: string | null;
+
+  /** ประวัติอะไหล่/การซ่อมที่แจ้งลูกค้า · null = ยังไม่ระบุ · ไม่มีผลกับการคำนวณค่างวด */
+  @IsOptional() @IsEnum(PartsHistory)
+  partsHistory?: PartsHistory | null;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  partsHistoryNote?: string | null;
+
   @IsString()
   name: string;
 

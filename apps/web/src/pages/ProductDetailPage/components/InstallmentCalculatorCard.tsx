@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { deviceOriginLabel } from '@/components/product/DeviceDisclosureSummary';
 import type { CalcState, CalcStatePatch, FinanceSide } from '../hooks/useInstallmentCalcState';
 import type { GfinSettingsApi } from '../utils/gfinQuote';
 import type { ProductForQuotes, ResolvedQuotes } from '../utils/resolveQuotes';
@@ -10,7 +11,7 @@ import { FinanceSwitch } from './calc/FinanceSwitch';
 import { CompareRow, NoticeBox, formatBaht, formatTHB } from './calc/CalcRows';
 
 interface Props {
-  product: ProductForQuotes & { id: string };
+  product: ProductForQuotes & { id: string; batteryHealth?: number | null };
   state: CalcState;
   /** ค่าที่คำนวณแล้วจาก resolveQuotes (หน้าเป็นคนคำนวณ เพื่อให้สรุปส่งลูกค้าใช้ชุดเดียวกัน) */
   quotes: ResolvedQuotes;
@@ -24,6 +25,8 @@ interface Props {
 }
 
 const CONTRACT_ROLES = new Set(['OWNER', 'BRANCH_MANAGER', 'SALES']);
+/** GFIN ไม่รับเครื่องแบตต่ำกว่านี้ — ร้านเปลี่ยนแบตก่อนขายเสมอ (เตือนอย่างเดียว ไม่บล็อก) */
+export const GFIN_MIN_BATTERY_HEALTH = 80;
 
 /**
  * เครื่องคำนวณค่างวดการ์ดเดียว สลับ BESTCHOICE | GFIN (แทน BcCalculatorCard + GfinCalculatorCard)
@@ -104,6 +107,7 @@ export function InstallmentCalculatorCard({
           gfin={{ ...gfin, months: gfin.months, quote: q }}
           settings={gfinSettings}
           installmentPrice={installmentPrice}
+          deviceOrigin={product.deviceOrigin}
           isManager={!isSales}
           commissionOptions={commissionOptions}
           onMonthsChange={(months) =>
@@ -182,6 +186,29 @@ export function InstallmentCalculatorCard({
         </span>
       </CardHeader>
       <CardContent className="space-y-4">
+        {product.category !== 'ACCESSORY' && (
+          <div className="flex flex-wrap items-center gap-1.5 text-[13px] leading-snug">
+            <span className="text-muted-foreground">
+              {product.brand} {product.model}
+              {product.storage ? ` ${product.storage}` : ''} ·{' '}
+              {product.category === 'PHONE_USED' ? 'มือ 2' : product.category === 'TABLET' ? 'iPad' : 'มือ 1'}
+            </span>
+            <span className="inline-flex h-6 items-center rounded-md bg-muted/70 px-2 text-xs font-medium">
+              {deviceOriginLabel(product.deviceOrigin)}
+            </span>
+            {product.batteryHealth != null && (
+              <span className="inline-flex h-6 items-center rounded-md bg-muted/70 px-2 text-xs font-medium">
+                แบต {product.batteryHealth}%
+              </span>
+            )}
+          </div>
+        )}
+        {product.batteryHealth != null && product.batteryHealth < GFIN_MIN_BATTERY_HEALTH && (
+          <NoticeBox tone="warning">
+            <span className="font-semibold">แบต {product.batteryHealth}% · เปลี่ยนแบตก่อนขาย</span> — GFIN
+            ไม่รับเครื่องแบตต่ำกว่า {GFIN_MIN_BATTERY_HEALTH}% · เปลี่ยนแบตแล้วแก้ % แบตในข้อมูลเครื่อง แถบนี้จะหายเอง
+          </NoticeBox>
+        )}
         <FinanceSwitch value={fin} onChange={setFin} gfinDisabled={!gfinAvailable} />
         {body}
       </CardContent>

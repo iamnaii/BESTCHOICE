@@ -12,6 +12,7 @@ export interface StickerProductData {
   status: string;
   color: string | null;
   storage: string | null;
+  deviceOrigin?: 'THAI' | 'IMPORTED' | null;
   batteryHealth: number | null;
   hasBox: boolean | null;
   /** YYYY-MM-DD เฉพาะประกันศูนย์ที่ยังไม่หมด */

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, Lock } from 'lucide-react';
-import { gfinDownPctOptions } from '@installment/shared';
+import { gfinDownPctOptions, type GfinDeviceOrigin } from '@installment/shared';
+import { deviceOriginLabel } from '@/components/product/DeviceDisclosureSummary';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -31,6 +32,8 @@ interface Props {
   gfin: ResolvedGfin & { months: number; quote: AvailableQuote };
   settings: GfinSettingsApi;
   installmentPrice: number;
+  /** ที่มาเครื่อง — ใช้บอกเหตุผลของ OVER เต็ม/ครึ่งเดียวบนการ์ดราคาส่ง */
+  deviceOrigin: GfinDeviceOrigin | null | undefined;
   /** เจ้าของ/ผู้จัดการ/บัญชี เห็นช่อง % คอมมิชชั่น + แผงเฉพาะร้านค้า · SALES ไม่เห็น */
   isManager: boolean;
   commissionOptions: number[];
@@ -39,6 +42,54 @@ interface Props {
   onCommissionChange: (pct: number) => void;
   /** บรรทัดเทียบ BESTCHOICE งวดเดียวกัน */
   compare: ReactNode;
+}
+
+/**
+ * การ์ดราคาส่ง GFIN = ราคาตามตาราง + OVER — เครื่องไทยได้ OVER เต็ม · เครื่องนอก/ยังไม่ระบุได้ครึ่งเดียว
+ * (เจ้าของยืนยัน 2026-09-26) ให้พนักงานเห็นว่าทำไมค่างวดเครื่องนอกสูงกว่าเครื่องไทยรุ่นเดียวกัน
+ */
+export function SubmitPriceCard({
+  conditionLabel,
+  maxPrice,
+  allowanceFull,
+  allowanceApplied,
+  halved,
+  deviceOrigin,
+  submit,
+}: {
+  conditionLabel: string;
+  maxPrice: number;
+  allowanceFull: number;
+  allowanceApplied: number;
+  halved: boolean;
+  deviceOrigin: GfinDeviceOrigin | null | undefined;
+  submit: number;
+}) {
+  const originText = deviceOrigin === undefined ? null : deviceOriginLabel(deviceOrigin);
+  const overLabel =
+    allowanceFull <= 0
+      ? 'OVER (รุ่นนี้ไม่มี)'
+      : `OVER ${formatBaht(allowanceFull)}${halved ? ' × 50%' : ''}${originText ? ` · ${originText}` : ''}`;
+  return (
+    <div className="space-y-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3.5 py-3">
+      <div className="flex items-center justify-between gap-3 text-xs leading-snug">
+        <span className="font-semibold text-primary">ราคาส่ง GFIN</span>
+        {allowanceFull > 0 && (
+          <span className="text-info">{halved ? 'OVER ครึ่งเดียว' : 'OVER เต็ม'}</span>
+        )}
+      </div>
+      <DetailRow label={`ราคา${conditionLabel} ตามตาราง GFIN`} value={formatBaht(maxPrice)} />
+      <DetailRow label={overLabel} value={`+${formatBaht(allowanceApplied)}`} />
+      <div className="h-px bg-primary/20" />
+      <DetailRow label="ราคาส่ง GFIN" value={`${formatBaht(submit)} ฿`} bold />
+      {halved && deviceOrigin == null && allowanceFull > 0 && (
+        <HintLine>
+          ยังไม่ระบุเครื่องไทย/เครื่องนอก — คิด OVER ครึ่งเดียวไว้ก่อน (ราคาส่งที่ GFIN รับแน่นอน) · ถ้าเป็นเครื่องไทย
+          ให้ผู้จัดการกด "แก้ไขข้อมูล" แล้วเลือกเครื่องไทย ราคาส่งจะได้ OVER เต็ม
+        </HintLine>
+      )}
+    </div>
+  );
 }
 
 function clampPct(pct: number, min: number, max: number): number {
@@ -54,6 +105,7 @@ export function GfinPanel({
   gfin,
   settings,
   installmentPrice,
+  deviceOrigin,
   isManager,
   commissionOptions,
   onMonthsChange,
@@ -75,10 +127,21 @@ export function GfinPanel({
   downOptions.sort((a, b) => a - b);
 
   const conditionLabel = quote.mapping.condition === 'HAND_1' ? 'มือ 1' : 'มือ 2';
-  const allowance = quote.rule ? Number(quote.rule.allowance) : 0;
+  const allowanceFull = r.allowanceFull.toNumber();
+  const allowanceApplied = r.allowanceApplied.toNumber();
 
   return (
     <div className="space-y-4">
+      <SubmitPriceCard
+        conditionLabel={conditionLabel}
+        maxPrice={Number(quote.mapping.maxPrice)}
+        allowanceFull={allowanceFull}
+        allowanceApplied={allowanceApplied}
+        halved={r.allowanceFactor.lt(1)}
+        deviceOrigin={deviceOrigin}
+        submit={submit}
+      />
+
       <div className="space-y-1.5">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
@@ -210,7 +273,7 @@ export function GfinPanel({
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-2 space-y-1.5">
           <DetailRow
-            label={`ราคาส่ง GFIN (${conditionLabel} ${formatBaht(Number(quote.mapping.maxPrice))} + OVER ${formatBaht(allowance)})`}
+            label={`ราคาส่ง GFIN (${conditionLabel} ${formatBaht(Number(quote.mapping.maxPrice))} + OVER ${formatBaht(allowanceApplied)})`}
             value={formatTHB(submit)}
           />
           <DetailRow

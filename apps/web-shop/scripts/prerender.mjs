@@ -13,7 +13,7 @@
  *   route ถัดไปเรนเดอร์จาก snapshot ที่เปื้อนแล้ว (meta/analytics ของหน้าแรกติดไปด้วย)
  * - shell สะอาด (index.html ที่ vite build ออกมา) ถูกเก็บเป็น dist/spa-shell.html
  *   และ firebase.json ชี้ rewrite ** ไปที่นั่น — route ที่ไม่ได้ prerender
- *   (/products/:id, /cart, ...) จึงได้ shell เปล่าแบบเดิมเป๊ะ ไม่ใช่หน้าแรกเต็ม ๆ
+ *   (/products/:id, /account, ...) จึงได้ shell เปล่าแบบเดิมเป๊ะ ไม่ใช่หน้าแรกเต็ม ๆ
  *   ที่ canonical ชี้ผิดหน้า
  * - คำขอออกนอกเครื่องทุกตัวถูกคุม: /api/* GET forward ไป PRERENDER_API_BASE
  *   (default = prod, ล้ม = 503 ให้หน้าโชว์ empty state), endpoint ตั้งค่า analytics

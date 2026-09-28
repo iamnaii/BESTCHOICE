@@ -54,6 +54,25 @@ describe('ShopAccountingPage', () => {
     expect(screen.getByRole('button', { name: /งบกำไรขาดทุน \(SHOP\)/ })).toBeInTheDocument();
   });
 
+  it('ป้ายเตือนบอกช่องว่างที่เหลือจริง — ไม่บอกว่าการขายยังไม่ลงบัญชี', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        asOfDate: new Date().toISOString(),
+        sections: [],
+        grandDrTotal: 0,
+        grandCrTotal: 0,
+        isBalanced: true,
+      },
+    });
+    renderPage();
+    expect(
+      await screen.findByText('ยอดสินค้าคงเหลือและเจ้าหนี้ผู้จัดจำหน่ายในงบนี้ยังไม่ครบ'),
+    ).toBeInTheDocument();
+    // การขาย/สัญญาผ่อน/เทิร์น/จอง ลงบัญชีอัตโนมัติแล้ว — ข้อความเดิมที่บอกว่ายังไม่เชื่อมต้องไม่เหลือ
+    expect(screen.queryByText(/ยังไม่เชื่อมกับการขายจริง/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ยังไม่ถูกบันทึกอัตโนมัติจากการขาย/)).not.toBeInTheDocument();
+  });
+
   it('shows isBalanced badge + grand totals when trial balance loads', async () => {
     apiGet.mockResolvedValue({
       data: {

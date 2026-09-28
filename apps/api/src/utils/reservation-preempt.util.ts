@@ -5,6 +5,10 @@ import { Prisma } from '@prisma/client';
  * transaction เดียวกับที่เปลี่ยนสถานะเครื่อง ไม่งั้นจะเกิดช่องว่างที่ลูกค้าเว็บยังจ่ายเงิน
  * เข้ามาบนเครื่องที่ขายไปแล้ว (หรือถ้า caller rollback แล้ว hold ถูกตัดทิ้งฟรี)
  *
+ * หมายเหตุ 2026-09-28: โมดูล shop-reservation (`ShopReservationService` + cron แจ้งลูกค้า/
+ * ปิดการจองหมดอายุ ที่เอกสารนี้อ้างถึง) ถูกถอดแล้ว เว็บลูกค้าสร้างการจองใหม่ไม่ได้อีก
+ * util นี้คงไว้เพราะตาราง `product_reservations` ยังอยู่ — ไม่มีแถว ACTIVE ก็ไม่มีผลอะไร
+ *
  * เหตุที่เป็น util ไม่ใช่ service: `ShopReservationService` ผูกกับ `this.prisma` จึงเข้า
  * tx ของ caller ไม่ได้ และการ inject service ข้าม module (sales/contracts → shop-reservation)
  * จะลาก dependency graph ของโมดูลเงินไปผูกกับโมดูลร้านค้าโดยไม่จำเป็น

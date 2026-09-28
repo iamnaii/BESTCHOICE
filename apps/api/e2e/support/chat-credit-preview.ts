@@ -26,7 +26,6 @@ import { InterestConfigService } from '../../src/modules/interest-config/interes
 import { PromotionsService } from '../../src/modules/promotions/promotions.service';
 import { GfinConfigService } from '../../src/modules/gfin-config/gfin-config.service';
 import { AuditService } from '../../src/modules/audit/audit.service';
-import { ShopReservationService } from '../../src/modules/shop-reservation/shop-reservation.service';
 import { randomUUID } from 'node:crypto';
 import { json } from 'express';
 import { ContractLifecycleService } from '../../src/modules/contracts/services/contract-lifecycle.service';
@@ -140,7 +139,6 @@ const poQuery = new PoQueryService(db);
 const interestConfigs = new InterestConfigService(db);
 const promotions = new PromotionsService(db);
 const gfin = new GfinConfigService(db, new AuditService(db));
-const holds = new ShopReservationService(db, {} as never, new AuditService(db));
 const lifecycle = new ContractLifecycleService(db, contractQuery,
   { execute: async () => ({}) } as never, { execute: async () => ({}) } as never,
   { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never);
@@ -281,9 +279,6 @@ class PreviewController {
   @Get('purchase-orders/qc-pending') qcPending(@Query() query: Record<string, string>) {
     return poQuery.getQCPending({ branchId: query.branchId, poId: query.poId,
       page: Number(query.page) || 1, limit: Number(query.limit) || 50 });
-  }
-  @Get('admin/product-holds') productHolds(@Query('productId') productId: string) {
-    return holds.listAdminHolds({ productId, status: 'ACTIVE' });
   }
   @Get('promotions/active') promotions() { return promotions.findActivePromotions(); }
   @Get('interest-configs/resolved') resolvedInterest(@Query('category') category: string) { return interestConfigs.resolveConfig(category); }
@@ -569,7 +564,7 @@ async function main() {
     )
       return res.json({ data: [], total: 0 });
     if (
-      /^\/api\/(trade-ins|contacts|admin\/product-holds|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
+      /^\/api\/(trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,

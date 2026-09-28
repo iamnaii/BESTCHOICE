@@ -71,7 +71,7 @@ export const FINISHED_CONTRACT_STATUSES: readonly ContractStatus[] = [
  *
  * ที่ยัง "ถือเครื่อง" จึงเหลือ PENDING_BANK_REVIEW / PAID / PACKING / SHIPPED
  * (PAID = เงินเข้าแล้วแต่ fulfilment ค้าง — เคสเดียวกับที่ `shop-reservation.service.ts`
- * ใช้บล็อกการจองซ้ำ)
+ * เคยใช้บล็อกการจองซ้ำ ก่อนโมดูลนั้นถูกถอด 2026-09-28)
  */
 export const RELEASED_ONLINE_ORDER_STATUSES: readonly OnlineOrderStatus[] = [
   OnlineOrderStatus.DRAFT,
@@ -268,7 +268,8 @@ export async function assertProductNotHeld(
     );
   }
 
-  // การจองหน้าเว็บไม่เปลี่ยน product.status (shop-reservation.service.ts) — สถานะจึงมองไม่เห็น
+  // การจองหน้าเว็บไม่เปลี่ยน product.status — สถานะจึงมองไม่เห็น
+  // (โมดูล shop-reservation ถูกถอด 2026-09-28 ไม่มีการจองใหม่ แต่ตารางยังอยู่ จึงยังตรวจไว้)
   const reservation = await client.productReservation.findFirst({
     where: { productId: product.id, status: 'ACTIVE', expiresAt: { gt: new Date() } },
     select: { expiresAt: true },

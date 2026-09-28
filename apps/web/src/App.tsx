@@ -219,11 +219,6 @@ const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
 const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
 // LineGreetingPage moved to settings-registry (P2b comms migration)
-const OnlineOrdersPage = lazy(() => import('@/pages/OnlineOrdersPage'));
-const ProductHoldsPage = lazy(() => import('@/pages/ProductHoldsPage'));
-const InstallmentApplicationsPage = lazy(() => import('@/pages/InstallmentApplicationsPage'));
-const SavingPlansAdminPage = lazy(() => import('@/pages/SavingPlansAdminPage'));
-const ReviewsModerationPage = lazy(() => import('@/pages/ReviewsModerationPage'));
 const UserProfilePage = lazy(() => import('@/pages/UserProfilePage'));
 const OtherIncomeListPage = lazy(() => import('@/pages/other-income/OtherIncomeListPage'));
 const OtherIncomeEntryPage = lazy(() => import('@/pages/other-income/OtherIncomeEntryPage'));
@@ -1030,46 +1025,6 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES']}>
                 <TradeInPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/online-orders"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
-                <OnlineOrdersPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/product-holds"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
-                <ProductHoldsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/installment-applications"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
-                <InstallmentApplicationsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/saving-plans"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
-                <SavingPlansAdminPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/reviews"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
-                <ReviewsModerationPage />
               </ProtectedRoute>
             }
           />

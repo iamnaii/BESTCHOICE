@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 // PaySolutions sandbox credentials land. The module + controller are wired and
 // covered by API jest suites; these smoke tests exist to unblock the full user
 // journey later.
-test.describe.skip('Phase 3: apply + trade-in + saving plan — enable after seed fixtures', () => {
+test.describe.skip('Phase 3: apply — enable after seed fixtures', () => {
   test('installment apply submits successfully', async ({ page }) => {
     await page.goto('http://localhost:5174/apply/<product-id>');
     await page.getByLabel('ชื่อ-นามสกุล').fill('บีม ทดสอบ');
@@ -15,12 +15,5 @@ test.describe.skip('Phase 3: apply + trade-in + saving plan — enable after see
   });
 
   // trade-in submit flow was folded into /sell (unified instant-quote wizard) — see sell.spec instead.
-
-  test('saving plan create + pay intent flow', async ({ page }) => {
-    await page.goto('http://localhost:5174/saving-plan/create');
-    await page.getByLabel(/รุ่น/).fill('iPhone 13');
-    await page.getByLabel(/เป้าหมาย/).fill('9000');
-    await page.getByRole('button', { name: /สร้างแผน/ }).click();
-    await expect(page).toHaveURL(/\/saving-plan\/[0-9a-f-]+/);
-  });
+  // saving plan (ออมดาวน์) ถูกถอดออกทั้งเว็บลูกค้าและแอดมิน 2026-09-28 (คำสั่งเจ้าของ) — ไม่มี route ให้ทดสอบแล้ว
 });

@@ -41,10 +41,6 @@ import {
   Send,
   LayoutGrid,
   CheckSquare,
-  ShoppingBag,
-  ClipboardCheck,
-  PiggyBank,
-  Star,
   Tag,
   TrendingDown,
   BookOpen,
@@ -66,8 +62,7 @@ import {
 export type MenuBadgeKey =
   | 'chat-unread'
   | 'asset-draft-count'
-  | 'qc-pending-count'
-  | 'online-orders-pending';
+  | 'qc-pending-count';
 
 /** Logical zone — sidebar splits navigation into these contexts */
 export type Zone = 'shop' | 'fin' | 'settings';
@@ -275,19 +270,6 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
       ],
     },
-    {
-      key: 'bm-online-shop',
-      label: 'ร้านค้าออนไลน์',
-      icon: ShoppingBag,
-      zone: 'shop',
-      items: [
-        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
-        { label: 'การจองจากเว็บ', path: '/product-holds', icon: Lock },
-        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
-        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
-        { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
-      ],
-    },
     // P3-SP5 W5 — BM does NOT have access to /shop/accounting (the API
     // endpoint excludes BRANCH_MANAGER because the report is cross-branch
     // by design, and BM is NOT in CROSS_BRANCH_ROLES). The menu entry
@@ -474,18 +456,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       ],
     },
     assetMenuSection,
-    {
-      key: 'fm-online-shop',
-      label: 'ร้านค้าออนไลน์',
-      icon: ShoppingBag,
-      zone: 'shop',
-      items: [
-        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
-        { label: 'การจองจากเว็บ', path: '/product-holds', icon: Lock },
-        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
-        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
-      ],
-    },
   ],
   bottomNav: [
     { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
@@ -795,22 +765,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],
     },
-    {
       // ตั้งค่าเอกสาร section ลบออก (2026-06-24) — เป็น config ย้ายไปอยู่ที่เดียวใน
       // settings › บัญชี & ภาษี › เลขที่/รูปแบบเอกสาร (/settings/document-config,
       // หน้ามีแท็บราย doc type ในตัว). ไม่ซ้ำใน fin zone อีก.
-      key: 'owner-online-shop',
-      label: 'ร้านค้าออนไลน์',
-      icon: ShoppingBag,
-      zone: 'shop',
-      items: [
-        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
-        { label: 'การจองจากเว็บ', path: '/product-holds', icon: Lock },
-        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
-        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
-        { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
-      ],
-    },
     // P3-SP5 W6 — SHOP-side accounting reports
     // Standardized label + Store icon across 4 role configs (OWNER/FM/ACC).
     // BM excluded per W5.

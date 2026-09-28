@@ -5,7 +5,6 @@ import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 const PAYMENT_FLOWS = ['payment', 'split-payment', 'early-payoff', 'reschedule'];
-const REVERSAL_FLOWS = ['defect-exchange', 'receipt-void'];
 
 /**
  * Template — Defect Exchange Reversal.
@@ -83,9 +82,12 @@ export class DefectExchangeReversalTemplate {
         );
         continue;
       }
-      if (REVERSAL_FLOWS.includes(flow) && meta['tag'] === 'REVERSAL') {
+      // ข้ามรายการกลับรายการทุก flow (receipt-void / refund-reversal / defect-exchange /
+      // exchange-cancel …) — ตั้งแต่ 2026-09-28 รายการเหล่านี้ผูก contractId จึงถูกกวาดเจอ;
+      // mirror ซ้ำ = ลงรายการเดิมกลับเข้ามาใหม่โดยไม่มีเงินจริง
+      if (meta['tag'] === 'REVERSAL') {
         this.logger.log(
-          `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is itself a reversal JE, skipping`,
+          `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is itself a reversal JE (flow '${flow}'), skipping`,
         );
         continue;
       }

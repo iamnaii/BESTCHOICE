@@ -1921,5 +1921,54 @@ describe('BadDebtService', () => {
         new Date('2026-08-27T17:00:00.000Z'), // ต้นวันไทยของ 28 ส.ค.
       );
     });
+
+    it('(ช) reverseStageOnPayment ก็ใช้เส้นตัดต้นวันไทยเดียวกันตอนเรียก streak floor (ไม่ใช่ now ดิบ)', async () => {
+      jest.useFakeTimers().setSystemTime(AFTERNOON_ON_DUE_DAY); // 27 ส.ค. 14:00 เวลาไทย
+      prisma.systemConfig.findUnique.mockImplementation(({ where: { key } }: any) =>
+        Promise.resolve(
+          key === 'consecutive_missed_bucket_map' ? { key, value: '{"2":"31-60"}' } : null,
+        ),
+      );
+      prisma.contract.findUnique.mockResolvedValue({
+        id: 'ct-1',
+        status: 'ACTIVE',
+        ...STD_CONTRACT_FIELDS,
+      });
+      prisma.badDebtProvision.findFirst.mockResolvedValue({
+        id: 'prov-1',
+        contractId: 'ct-1',
+        agingBucket: '31-60',
+        daysOverdue: 31,
+        outstandingAmount: new Prisma.Decimal('1515.83'),
+        provisionRate: new Prisma.Decimal('0.15'),
+        provisionAmount: new Prisma.Decimal('227.37'),
+        status: 'ACTIVE',
+      });
+      // งวดค้างจริงหนึ่งงวด ครบกำหนดเมื่อวาน (ต่างจาก dueToday() ที่ครบกำหนด "วันนี้" ซึ่งจะทำให้
+      // eclRows ว่างเปล่าและตัดออกทาง fullReverseProvision — เส้นทางนั้นไม่เรียก getStreaks เลย)
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          id: 'pay-ct-1-1',
+          contractId: 'ct-1',
+          installmentNo: 1,
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal(0),
+          lateFee: new Prisma.Decimal(0),
+          lateFeeWaived: false,
+          status: 'PENDING',
+          dueDate: new Date('2026-08-25T17:00:00.000Z'), // ครบกำหนด 26 ส.ค. — เกินกำหนดแล้ว 1 วัน
+        },
+      ]);
+      // GL 11-2102 ว่าง — ไม่มีอะไรให้ปลด (reverseAmount = 0) จึงไม่ต้องโพสต์ JE ปลดจริง
+      prisma.journalLine.findMany.mockResolvedValue([]);
+
+      await service.reverseStageOnPayment('ct-1');
+
+      expect(consecutiveMissedMock.getStreaks).toHaveBeenCalledWith(
+        { contractIds: ['ct-1'] },
+        new Date('2026-08-26T17:00:00.000Z'), // ต้นวันไทยของ 27 ส.ค. — ไม่ใช่ now ดิบ (14:00)
+        expect.anything(),
+      );
+    });
   });
 });

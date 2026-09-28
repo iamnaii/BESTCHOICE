@@ -220,9 +220,15 @@ export class PaymentQueryService {
    *   - tag 'overpayment-credit' — auto-allocate overpay leg (Dr cash / Cr 21-5101);
    *     shares paymentId with the receipt JE so the row's JEs tie to cash received
    *   - flow 'early-payoff'     — JP4 (its receipt has paymentId = null)
-   * Receipt-void REVERSAL JEs carry NO contractId/paymentId — they are fetched
-   * in a second pass via metadata.originalEntryId pointing at the entries above,
-   * so a voided receipt's ledger effect (original + mirror) is fully visible.
+   * Since 2026-09-28, reversal entries of flows 'receipt-void' / 'refund-reversal'
+   * carry `contractId` (copied from the original entry's metadata — see
+   * .claude/rules/accounting.md "รายการกลับรายการผูกกับสัญญา"). They still never
+   * show up in the first pass above, because that pass filters by tag/flow and a
+   * reversal's own tag is always 'REVERSAL'. The second pass (below) — lookup by
+   * metadata.originalEntryId, pointing at the entries found above — is still how
+   * every reversal is actually found, including reversals whose original entry
+   * never had a contractId to copy, so a voided receipt's ledger effect
+   * (original + mirror) is fully visible either way.
    * Frontend matches rows → JEs by `paymentId` (flow for EARLY_PAYOFF,
    * originalEntryId for CREDIT_NOTE rows).
    * Money is emitted as .toFixed(2) STRINGS (never Number()).
@@ -279,9 +285,13 @@ export class PaymentQueryService {
       orderBy: { postedAt: 'asc' },
     });
 
-    // Second pass: receipt-void reversal JEs (tag 'REVERSAL', flow 'receipt-void')
-    // stamp ONLY { originalEntryId, originalEntryNumber } — no contractId — so
-    // they are only reachable through the ids of the entries found above.
+    // Second pass: receipt-void / refund-reversal JEs (tag 'REVERSAL'). Since
+    // 2026-09-28 they also carry `contractId` (copied from the original — see
+    // .claude/rules/accounting.md), but that never puts them in the first-pass
+    // query above (its filter is on tag/flow, and a reversal's tag is always
+    // 'REVERSAL'). This lookup by metadata.originalEntryId, pointing at the
+    // entries found above, is still how they're actually found — including
+    // reversals of originals that had no contractId to copy.
     const reversals = entries.length
       ? await this.prisma.journalEntry.findMany({
           where: {

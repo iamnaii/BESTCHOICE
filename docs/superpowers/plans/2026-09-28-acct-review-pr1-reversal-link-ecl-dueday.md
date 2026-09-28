@@ -1232,7 +1232,26 @@ ORDER BY entry_number;
 
 Expected: JE-202609-00042 และ JE-202609-00043 มี `contract_id` = `0b018f77-5825-42ef-b55b-52ea3f9476da`
 
+- [ ] ตรวจรายการกลับรายการที่อาจเกิดขึ้น**ระหว่าง**ขั้นตอน migration กับขั้นตอน deploy API
+      (ต้องได้ **0 แถว**):
+
+```sql
+SELECT rev.entry_number
+FROM journal_entries rev
+JOIN journal_entries orig ON rev.metadata->>'originalEntryId' = orig.id
+WHERE rev.deleted_at IS NULL
+  AND rev.metadata->>'tag' = 'REVERSAL'
+  AND rev.metadata->>'flow' IN ('receipt-void', 'refund-reversal')
+  AND NOT (rev.metadata ? 'contractId')
+  AND jsonb_typeof(orig.metadata->'contractId') = 'string';
+```
+
+  ถ้าได้แถว: ขออนุมัติเจ้าของก่อนรัน UPDATE ของ migration ซ้ำด้วยมือ (idempotent — รันซ้ำได้ ไม่กระทบแถวอื่น)
+
 - [ ] เช้าวันถัดไป ตรวจว่ารอบค่าเผื่อฯ 00:30 รันปกติ (ไม่มี error ใน Sentry subsystem `bad-debt`)
+  - หมายเหตุ: **prod ไม่มีสัญญาเปิดอยู่วันนี้** ⇒ รอบนี้จะว่างเปล่าและ**ไม่พิสูจน์อะไรเลย**เกี่ยวกับ
+    เส้นตัดใหม่ — หลักฐานจริงของเส้นตัด "พ้นวันครบกำหนดแล้ว" บน prod คือ**สัญญาใหม่ใบแรกที่มีงวดครบ
+    กำหนด**: วันครบกำหนดต้องยังไม่มีแถวค่าเผื่อฯ ของงวดนั้น แล้ววันถัดไปต้องมีแถวช่วง `1-30`
 
 ## เทสเดิมที่แตะ
 

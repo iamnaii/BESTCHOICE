@@ -151,6 +151,51 @@ describe('computeInstallmentOutstanding (DUE vs ACCRUED engine)', () => {
     });
   });
 
+  it('DUE: นับเป็นวันปฏิทินไทย แม้ dueDate ไม่ใช่เที่ยงคืนไทยพอดี — daysOverdue = 1 (ตัด 24 ชม.ตรง ๆ จะได้ 0)', async () => {
+    const client = mockClient();
+    const result = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'DUE',
+      asOf: new Date('2026-08-26T17:30:00.000Z'), // 27 ส.ค. 2569 00:30 เวลาไทย
+      preloaded: {
+        payments: [
+          {
+            installmentNo: 1,
+            status: 'PENDING',
+            amountDue: '1515.83',
+            amountPaid: '0',
+            dueDate: new Date('2026-08-26T10:00:00.000Z'), // 26 ส.ค. 17:00 เวลาไทย — ไม่ใช่เที่ยงคืนไทย
+          },
+        ],
+      },
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].daysOverdue).toBe(1);
+  });
+
+  it('ACCRUED: นับเป็นวันปฏิทินไทย แม้ dueDate ไม่ใช่เที่ยงคืนไทยพอดี — daysOverdue = 1 (ตัด 24 ชม.ตรง ๆ จะได้ 0)', async () => {
+    const client = mockClient();
+    const result = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'ACCRUED',
+      asOf: new Date('2026-08-26T17:30:00.000Z'), // 27 ส.ค. 2569 00:30 เวลาไทย
+      preloaded: {
+        installments: [{ installmentNo: 1, accrualJournalEntryId: 'je-1' }],
+        payments: [
+          {
+            installmentNo: 1,
+            status: 'PENDING',
+            amountDue: '1515.83',
+            amountPaid: '0',
+            dueDate: new Date('2026-08-26T10:00:00.000Z'), // 26 ส.ค. 17:00 เวลาไทย — ไม่ใช่เที่ยงคืนไทย
+          },
+        ],
+      },
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].daysOverdue).toBe(1);
+  });
+
   it('ACCRUED: งวดที่ตั้งหนี้แล้วและครบกำหนดวันนี้ยังถูกคืน (ใบลดหนี้ต้องเห็นครบ) — daysOverdue = 0', async () => {
     const client = mockClient();
     const result = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
@@ -362,9 +407,8 @@ describe('computeInstallmentOutstanding (DUE vs ACCRUED engine)', () => {
 
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].dueDate).toEqual(instDueDate);
-    expect(result.rows[0].daysOverdue).toBe(
-      Math.floor((ASOF.getTime() - instDueDate.getTime()) / (24 * 60 * 60 * 1000)),
-    );
+    // Bangkok calendar days from 1 Jun to 1 Aug 2026 = 30 (June) + 31 (July) = 61.
+    expect(result.rows[0].daysOverdue).toBe(61);
   });
 
   it('rows expose installmentTotal + vatPerInst for both selections', async () => {

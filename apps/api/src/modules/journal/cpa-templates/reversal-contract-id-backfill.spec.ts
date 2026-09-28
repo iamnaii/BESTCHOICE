@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { Prisma, PrismaClient } from '@prisma/client';
@@ -64,7 +64,11 @@ describe('migration 20261013000000 — เติม contractId ให้รา�
     };
 
     // (1) ใบรับชำระปกติ + รายการกลับรายการแบบเก่า (ไม่มี contractId) → ต้องถูกเติม
-    const orig1 = await post('orig1', { tag: 'receipt', contractId: `ct-A-${RUN}`, paymentId: 'p-1' });
+    const orig1 = await post('orig1', {
+      tag: 'receipt',
+      contractId: `ct-A-${RUN}`,
+      paymentId: 'p-1',
+    });
     await post('rev1', { tag: 'REVERSAL', flow: 'receipt-void', originalEntryId: orig1 }, true);
     // (2) คืนเงิน → ต้องถูกเติมเหมือนกัน
     const orig2 = await post('orig2', { tag: 'receipt', contractId: 'ct-B' });
@@ -84,14 +88,18 @@ describe('migration 20261013000000 — เติม contractId ให้รา�
     await post('rev5', { tag: 'REVERSAL', flow: 'some-other-flow', originalEntryId: orig5 }, true);
   });
 
+  afterAll(async () => {
+    // ลบเฉพาะแถวที่ spec นี้สร้างเอง (ตาม id ที่เก็บไว้ใน `ids`) — ล้างบรรทัดก่อน แล้วค่อยลบใบ
+    // (journal_lines.journal_entry_id เป็น onDelete: Restrict)
+    const entryIds = Object.values(ids);
+    await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: entryIds } } });
+    await prisma.journalEntry.deleteMany({ where: { id: { in: entryIds } } });
+  });
+
   it('เติมเฉพาะแถวที่เข้าเงื่อนไข และคงคีย์เดิมไว้ครบ', async () => {
     await prisma.$executeRawUnsafe(SQL);
 
-    // brief's toEqual comparison assumes createAndPost writes metadata verbatim
-    // (no extra keys of its own). Confirmed by reading journal-auto.service.ts —
-    // `metadata: input.metadata ?? Prisma.JsonNull` — so comparing against the
-    // literal metadata objects posted above (plus the migration's one added key)
-    // is safe and matches the row's pre-migration shape exactly.
+    // createAndPost เก็บ metadata ตามที่ส่งเข้าไปเป๊ะ ๆ (journal-auto.service.ts)
     expect(await metaOf(ids.rev1)).toEqual({
       tag: 'REVERSAL',
       flow: 'receipt-void',
@@ -111,7 +119,9 @@ describe('migration 20261013000000 — เติม contractId ให้รา�
   });
 
   it('รันซ้ำได้ ไม่เปลี่ยนแถวใดอีก', async () => {
-    // รอบแรกเติมทุกแถวที่เข้าเงื่อนไขในฐานไปแล้ว (รวมแถวของ spec อื่น) รอบสองจึงต้องเป็น 0
+    // รันเดี่ยวได้เอง — ไม่พึ่งว่าเทสก่อนหน้ารันมาแล้วหรือไม่: รอบแรกเติมทุกแถวที่เข้าเงื่อนไข
+    // ในฐาน (ผลลัพธ์ไม่สนใจ) แล้วรอบสองต้องเป็น 0 เสมอ
+    await prisma.$executeRawUnsafe(SQL);
     const changed = await prisma.$executeRawUnsafe(SQL);
     expect(changed).toBe(0);
   });

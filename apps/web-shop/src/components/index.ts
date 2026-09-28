@@ -49,9 +49,3 @@ export { StatefulList } from './states/StatefulList';
 export { Reveal } from './motion/Reveal';
 export { StaggerChildren } from './motion/StaggerChildren';
 export { useMotionPrefs } from './motion/useMotionPrefs';
-
-// Reviews
-export { default as ReviewStars } from './reviews/ReviewStars';
-export { default as ReviewCard } from './reviews/ReviewCard';
-export { default as ReviewsSection } from './reviews/ReviewsSection';
-export { default as CreateReviewForm } from './reviews/CreateReviewForm';

@@ -24,7 +24,6 @@ import {
   HomeHero,
   StatefulList,
   ProductCard,
-  ReviewCard,
   Card,
   CardBody,
   Button,
@@ -34,7 +33,6 @@ import {
 import { api } from '@/lib/api';
 import { copy, shopInfo, lineOaMessageUrl } from '@/lib/copy';
 import { usePageMeta } from '@/hooks/usePageMeta';
-import type { Review } from '@/types/review';
 
 interface CatalogResponse {
   data: ProductGroup[];
@@ -90,15 +88,6 @@ export default function HomePage() {
   const { data, isLoading, isError, refetch } = useQuery<CatalogResponse>({
     queryKey: ['shop', 'home', 'featured'],
     queryFn: () => api.get('/api/shop/products?limit=8&sort=popular').then((r) => r.data),
-  });
-
-  // Real verified-purchase reviews — section hides entirely when none exist.
-  // (Replaced the old hardcoded fake testimonials: fake "ซื้อจริง" badges are
-  // a trust + misleading-advertising liability.)
-  const { data: reviews } = useQuery<Review[]>({
-    queryKey: ['shop', 'recent-reviews'],
-    queryFn: () => api.get('/api/shop/reviews/recent?limit=6').then((r) => r.data),
-    staleTime: 5 * 60 * 1000,
   });
 
   return (
@@ -300,22 +289,6 @@ export default function HomePage() {
           </Card>
         </Container>
       </Section>
-
-      {reviews && reviews.length > 0 && (
-        <Section padding="md">
-          <Container>
-            <SectionHeader
-              title={copy.home.testimonialsTitle}
-              description="เสียงจริงจากลูกค้าที่ซื้อเครื่องและผ่อนกับเรา"
-            />
-            <StaggerChildren className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {reviews.slice(0, 6).map((r) => (
-                <ReviewCard key={r.id} review={r} />
-              ))}
-            </StaggerChildren>
-          </Container>
-        </Section>
-      )}
     </ShopLayout>
   );
 }

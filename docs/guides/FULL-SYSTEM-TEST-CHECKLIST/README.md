@@ -86,18 +86,18 @@ CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cl
 | `suppliers-po` | ซัพพลายเออร์ + ใบสั่งซื้อ | 4 | Supplier.name ขึ้นต้น "ทดสอบระบบ" · PurchaseOrder.poNumber ขึ้นต้น "TEST-PO-" (⚠️ ทั้งสองตารางเป็น KEEP — factory reset ไม่ล้างให้) |
 | `stock-ops` | งานสต็อก (โอนย้าย · นับ · ปรับปรุง · แจ้งเตือน) | 8 | StockCount.countNumber ขึ้นต้น "TEST-COUNT-" · StockTransfer/StockAdjustment.notes ขึ้นต้นด้วย "[ทดสอบระบบ]" · ReorderPoint/StockAlert.model = "TEST-รุ่นแจ้งเตือน" (ค่าตรงตัว) |
 | `bookings` | ใบจอง | 1 | Booking.bookingNumber ขึ้นต้น "TEST-BK-" |
-| `online-orders` | ออเดอร์ออนไลน์ + การจองเครื่อง | 3 | OnlineOrder.orderNumber ขึ้นต้น "TEST-ORD-" · ProductReservation.sessionId ขึ้นต้น "TEST-SESSION-" |
-| `applications` | ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต | 2 | OnlineInstallmentApplication.applicationNumber ขึ้นต้น "TEST-APP-" · CreditCheck.reviewNotes = "[ทดสอบระบบ] ใบตรวจเครดิตรอตรวจ — สร้างโดยชุดข้อมูลทดสอบ" |
+| `online-orders` | ออเดอร์ออนไลน์ + การจองเครื่อง (ถอดแล้ว — ล้างอย่างเดียว) | 0 | OnlineOrder.orderNumber ขึ้นต้น "TEST-ORD-" · ProductReservation.sessionId ขึ้นต้น "TEST-SESSION-" |
+| `applications` | ตรวจเครดิต (+ ล้างใบสมัครผ่อนออนไลน์ที่ถอดแล้ว) | 1 | CreditCheck.reviewNotes = "[ทดสอบระบบ] ใบตรวจเครดิตรอตรวจ — สร้างโดยชุดข้อมูลทดสอบ" · OnlineInstallmentApplication.applicationNumber ขึ้นต้น "TEST-APP-" (ล้างอย่างเดียว) |
 | `inspections` | ใบตรวจสภาพเครื่อง | 2 | Inspection.notes ขึ้นต้นด้วย "[ทดสอบระบบ]" |
 | `repair` | ใบซ่อม / ประกัน | 5 | RepairTicket.ticketNumber ขึ้นต้น "TEST-RT-" |
 | `device-swap` | คำขอเปลี่ยนเครื่อง | 3 | ContractExchangeRequest.conditionNote ขึ้นต้นด้วย "[ทดสอบระบบ]" |
 | `commissions` | ค่าคอมมิชชั่น | 1 | SalesCommission.period และ CommissionPayout.period ขึ้นต้น "TEST-" (เช่น TEST-2026-08 — period เป็น String อิสระ จึงแยกจากงวดจ่ายจริงเด็ดขาด และ generatePayouts ของจริงรับเฉพาะ YYYY-MM จึงมองไม่เห็นงวดทดสอบ) |
 | `external-finance` | บริษัทไฟแนนซ์ภายนอก | 2 | ExternalFinanceCompany.name ขึ้นต้น "ทดสอบระบบ" |
-| `saving-plans` | แผนออมเครื่อง | 1 | SavingPlan.planNumber ขึ้นต้น "TEST-SP-" (SavingPlanPayment ไม่มี marker — ตามจาก FK savingPlanId และไม่มี deletedAt จึงลบถาวร) |
+| `saving-plans` | แผนออมเครื่อง (ถอดแล้ว — ล้างอย่างเดียว) | 0 | SavingPlan.planNumber ขึ้นต้น "TEST-SP-" (SavingPlanPayment ไม่มี marker — ตามจาก FK savingPlanId และไม่มี deletedAt จึงลบถาวร) |
 | `trade-in` | รับซื้อเครื่องมือสอง | 1 | TradeIn.notes ขึ้นต้นด้วย "[ทดสอบระบบ]" (เครื่องที่เกิดจากการกดรับซื้อระหว่างเทสได้ imeiSerial "TEST-" — กวาดโดยโดเมน contracts) · แถว seed เป็น flow EXCHANGE โดยเจตนา: การกดรับซื้อ flow BUYBACK โพสต์ JE "shop-trade-in:<id>" ที่ไม่มี marker/metadata ให้ cleanup กวาดถึง — รายการทดสอบที่เป็น BUYBACK ต้องให้ฝ่ายบัญชีกลับรายการ JE เองก่อนรัน cleanup |
 | `todos` | กระดานงาน (Todo) | 1 | Todo.title ขึ้นต้นด้วย "[ทดสอบระบบ]" |
 
-## 3. route → โดเมนที่ทำให้มีข้อมูล (81 route)
+## 3. route → โดเมนที่ทำให้มีข้อมูล (76 route)
 
 | route | โดเมน |
 |---|---|
@@ -162,11 +162,7 @@ CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cl
 | `/stock/workflow` | งานสต็อก (โอนย้าย · นับ · ปรับปรุง · แจ้งเตือน) (`stock-ops`) |
 | `/inventory` | งานสต็อก (โอนย้าย · นับ · ปรับปรุง · แจ้งเตือน) (`stock-ops`) |
 | `/bookings` | ใบจอง (`bookings`) |
-| `/online-orders` | ออเดอร์ออนไลน์ + การจองเครื่อง (`online-orders`) |
-| `/product-holds` | ออเดอร์ออนไลน์ + การจองเครื่อง (`online-orders`) |
-| `/slip-review` | ออเดอร์ออนไลน์ + การจองเครื่อง (`online-orders`) |
-| `/installment-applications` | ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต (`applications`) |
-| `/credit-checks` | ใบสมัครผ่อนออนไลน์ + ตรวจเครดิต (`applications`) |
+| `/credit-checks` | ตรวจเครดิต (+ ล้างใบสมัครผ่อนออนไลน์ที่ถอดแล้ว) (`applications`) |
 | `/inspections` | ใบตรวจสภาพเครื่อง (`inspections`) |
 | `/inspections/:id` | ใบตรวจสภาพเครื่อง (`inspections`) |
 | `/insurance` | ใบซ่อม / ประกัน (`repair`) |
@@ -179,11 +175,10 @@ CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cl
 | `/commissions` | ค่าคอมมิชชั่น (`commissions`) |
 | `/external-finance-companies/:id` | บริษัทไฟแนนซ์ภายนอก (`external-finance`) |
 | `/finance-receivable` | บริษัทไฟแนนซ์ภายนอก (`external-finance`) |
-| `/saving-plans` | แผนออมเครื่อง (`saving-plans`) |
 | `/trade-in` | รับซื้อเครื่องมือสอง (`trade-in`) |
 | `/todos` | กระดานงาน (Todo) (`todos`) |
 
-## 4. route ที่ไม่มีโดเมน seed ครอบ (99 route)
+## 4. route ที่ไม่มีโดเมน seed ครอบ (102 route)
 
 รายการนี้คือคำประกาศตรง ๆ ว่าแพ็กนี้ **ไม่ได้** seed อะไรบ้าง — ให้อ่านว่า "ไม่ครอบโดยตั้งใจ"
 ไม่ใช่ "ลืม" ส่วนใหญ่เป็นสามกลุ่ม:
@@ -198,11 +193,12 @@ CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cl
 - `/accounting/intercompany`
 - `/accounting/periods`
 - `/accounting/tax-disallowed-summary`
-- `/ads`
+- `/after-sales`
+- `/after-sales/:id`
+- `/after-sales/new`
 - `/analytics`
 - `/audit-logs`
 - `/branches`
-- `/broadcast`
 - `/canned-responses`
 - `/chat`
 - `/chat-analytics`
@@ -218,8 +214,8 @@ CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cl
 - `/contract-templates`
 - `/contracts/:id/sign`
 - `/contracts/create`
-- `/crm`
 - `/customer-access/:token`
+- `/customer-intake`
 - `/customers`
 - `/customers/:id`
 - `/depreciation`
@@ -244,7 +240,7 @@ CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cl
 - `/forgot-password`
 - `/history`
 - `/imported-sales`
-- `/inbox`
+- `/inbox/:roomId?`
 - `/landing`
 - `/liff`
 - `/liff/*`
@@ -258,6 +254,7 @@ CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cl
 - `/liff/profile`
 - `/liff/receipts`
 - `/liff/register`
+- `/liff/warranty`
 - `/login`
 - `/mdm`
 - `/migration`
@@ -279,9 +276,10 @@ CONFIRM_CLEANUP=YES_I_AM_SURE EXPECTED_DB_NAME=<db> npm --prefix apps/api run cl
 - `/register`
 - `/reports`
 - `/reset-password`
-- `/reviews`
 - `/sales`
 - `/shop/accounting`
+- `/shop/daily-cash`
+- `/slip-review`
 - `/stickers`
 - `/stock/branch-receiving`
 - `/system-status`

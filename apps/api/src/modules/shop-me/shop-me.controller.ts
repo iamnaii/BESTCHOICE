@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { ShippingAddressDto } from '../shop-checkout/dto/place-order.dto';
+import { ShippingAddressDto } from './dto/shipping-address.dto';
 
 const MAX_SHIPPING_ADDRESSES = 20;
 

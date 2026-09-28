@@ -5,21 +5,15 @@ import { ScrollToTop } from './components/ScrollToTop';
 import HomePage from './pages/HomePage';
 import CatalogPage from './pages/CatalogPage';
 import ProductDetailPage from './pages/ProductDetailPage';
-import CartPage from './pages/CartPage';
-import CheckoutPage from './pages/CheckoutPage';
 import HowItWorksPage from './pages/HowItWorksPage';
 import ShippingPage from './pages/ShippingPage';
 import ReturnsPage from './pages/ReturnsPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
-import OrderSuccessPage from './pages/OrderSuccessPage';
 import OrdersPage from './pages/OrdersPage';
 import OrderDetailPage from './pages/OrderDetailPage';
 import AccountPage from './pages/account/AccountPage';
 import AddressBookPage from './pages/account/AddressBookPage';
-import InstallmentApplyPage from './pages/apply/InstallmentApplyPage';
-import ApplySuccessPage from './pages/apply/ApplySuccessPage';
-import ApplyStatusPage from './pages/apply/ApplyStatusPage';
 import PromotionsPage from './pages/PromotionsPage';
 import InstallmentTermsPage from './pages/InstallmentTermsPage';
 import SellLandingPage from './pages/sell/SellLandingPage';
@@ -60,23 +54,17 @@ export default function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/products" element={<CatalogPage />} />
         <Route path="/products/:id" element={<ProductDetailPage />} />
-        <Route path="/cart" element={<CartPage />} />
-        <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/how-it-works" element={<HowItWorksPage />} />
         <Route path="/shipping" element={<ShippingPage />} />
         <Route path="/returns" element={<ReturnsPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/contact" element={<ContactPage />} />
-        <Route path="/checkout/success/:orderNumber" element={<OrderSuccessPage />} />
         <Route path="/orders" element={<OrdersPage />} />
         <Route path="/orders/:orderNumber" element={<OrderDetailPage />} />
         <Route path="/account" element={<AccountPage />} />
         <Route path="/account/addresses" element={<AddressBookPage />} />
         <Route path="/promotions" element={<PromotionsPage />} />
         <Route path="/installment-terms" element={<InstallmentTermsPage />} />
-        <Route path="/apply/status" element={<ApplyStatusPage />} />
-        <Route path="/apply/:productId" element={<InstallmentApplyPage />} />
-        <Route path="/apply/success/:applicationNumber" element={<ApplySuccessPage />} />
         <Route path="/sell" element={<SellLandingPage />} />
         <Route path="/sell/quote" element={<SellQuotePage />} />
         <Route path="/sell/:id" element={<SellStatusPage />} />
@@ -88,6 +76,18 @@ export default function App() {
         <Route path="/trade-in" element={<RedirectPreserveSearch to="/sell" />} />
         <Route path="/trade-in/submit" element={<RedirectPreserveSearch to="/sell/quote" />} />
         <Route path="/trade-in/:id" element={<RedirectWithId base="/sell" />} />
+        {/* ร้านขายผ่านแชท/โทรเท่านั้น (คำสั่งเจ้าของ 2026-08-31) — ตะกร้า ชำระเงิน สมัครผ่อน และ
+            ออมดาวน์ ถูกถอดแล้ว ลิงก์เก่าพาไปหน้าที่ยังใช้ได้แทนหน้า "ไม่พบหน้านี้"
+            `/apply/status` กับ `/apply/success/*` ต้องประกาศแยก ไม่งั้นจะตกไปที่ `/apply/:id`
+            แล้วกลายเป็น /products/status */}
+        <Route path="/cart" element={<RedirectPreserveSearch to="/products" />} />
+        <Route path="/checkout/*" element={<RedirectPreserveSearch to="/products" />} />
+        <Route path="/apply" element={<RedirectPreserveSearch to="/how-it-works" />} />
+        <Route path="/apply/status" element={<RedirectPreserveSearch to="/how-it-works" />} />
+        <Route path="/apply/success/*" element={<RedirectPreserveSearch to="/how-it-works" />} />
+        <Route path="/apply/:id" element={<RedirectWithId base="/products" />} />
+        <Route path="/saving-plan/*" element={<RedirectPreserveSearch to="/how-it-works" />} />
+        <Route path="/account/saving-plans" element={<RedirectPreserveSearch to="/account" />} />
         {/* Landing เจาะคำค้นท้องถิ่น (SEO/AI) — เพิ่ม route ที่นี่ต้องอัป sitemap.xml,
             prerender ROUTES และ llms.txt คู่กันเสมอ */}
         <Route path="/ผ่อนไอโฟนลพบุรี" element={<InstallmentLopburiPage />} />

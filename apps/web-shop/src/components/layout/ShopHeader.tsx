@@ -126,9 +126,8 @@ export default function ShopHeader() {
         >
           <Search className="w-5 h-5" />
         </button>
-        {/* ไอคอนตะกร้าถูกถอด 2026-08-31: ร้านปิดจ๊อบผ่านแชท/โทร ไม่มีปุ่มไหนใส่ของ
-            ลงตะกร้าได้อีก (ผู้เรียก cartStore.setItem เหลือศูนย์) — ลิงก์นี้จึงพาไป
-            หน้าตะกร้าว่างเสมอ route /cart ยังอยู่สำหรับลิงก์เก่าที่ค้างในมือลูกค้า */}
+        {/* ไอคอนตะกร้าถูกถอด 2026-08-31: ร้านปิดจ๊อบผ่านแชท/โทร · หน้าตะกร้า/ชำระเงินถูกถอด
+            2026-09-28 ลิงก์เก่า /cart เด้งไป /products (ดู App.tsx) */}
         <Link to="/account" aria-label="บัญชี" className={cn(iconBtn, 'hidden sm:inline-flex')}>
           <User className="w-5 h-5" />
         </Link>

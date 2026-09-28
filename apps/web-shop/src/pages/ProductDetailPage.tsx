@@ -16,7 +16,6 @@ import {
 import { useTrackEvent } from '@/hooks/useTrackEvent';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import ShopLayout from '@/components/layout/ShopLayout';
-import ReviewsSection from '@/components/reviews/ReviewsSection';
 import { InstallmentCalculatorCard } from '@/components/InstallmentCalculatorCard';
 import type { ProductUnit } from '@/types/product';
 import { Breadcrumb } from '@/components/catalog/Breadcrumb';
@@ -86,7 +85,7 @@ export default function ProductDetailPage() {
     queryFn: () => api.get(`/api/shop/products/${id}`).then((r) => r.data as ProductDetail),
     enabled: !!id,
     // B0: 404 (readiness-filtered/sold-out) is a real, permanent outcome — never retry
-    // it (matches ApplyStatusPage.tsx's notFound pattern). Transient errors (429 from
+    // it. Transient errors (429 from
     // ShopBotDefenseGuard, 5xx, network hiccup) get 2 retries with backoff before the
     // generic error branch below offers a manual "ลองใหม่".
     retry: (failureCount, err) => (err as AxiosError)?.response?.status !== 404 && failureCount < 2,
@@ -461,12 +460,6 @@ export default function ProductDetailPage() {
       <Section padding="sm">
         <Container>
           <TrustStrip />
-        </Container>
-      </Section>
-
-      <Section padding="md">
-        <Container>
-          <ReviewsSection productId={id!} />
         </Container>
       </Section>
 

@@ -24,7 +24,6 @@ import { QuickReplyService } from './quick-reply.service';
 import { ShopDomainHandler } from './shop-domain.handler';
 import { FlexTemplatesService } from './flex-templates.service';
 import { BroadcastService } from './broadcast.service';
-import { BroadcastCron } from './broadcast.cron';
 import { ContractsModule } from '../contracts/contracts.module';
 import { PDPAModule } from '../pdpa/pdpa.module';
 import { ChatbotFinanceModule } from '../chatbot-finance/chatbot-finance.module';
@@ -82,7 +81,6 @@ import { CustomerJourneyModule } from '../customer-journey/customer-journey.modu
     ShopDomainHandler,
     FlexTemplatesService,
     BroadcastService,
-    BroadcastCron,
   ],
   exports: [
     LineOaService,

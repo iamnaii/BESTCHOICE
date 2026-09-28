@@ -1,130 +1,59 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BroadcastService } from './broadcast.service';
-import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { IntegrationConfigService } from '../integrations/integration-config.service';
 
-describe('BroadcastService approval workflow (P2Q15=A)', () => {
-  let service: BroadcastService;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let prisma: any;
+/**
+ * ระบบ Broadcast ถูกถอด 2026-09-28 เหลือเฉพาะตัวอัปโหลดรูปที่ตัวแก้ข้อความสำเร็จรูปใช้
+ * เทสต์นี้ปักพฤติกรรมเดิมของ uploadImage ไว้: key ที่เก็บ และ URL สาธารณะทั้ง 3 แบบ
+ */
+describe('BroadcastService.uploadImage', () => {
+  const NOW = 1_790_000_000_000;
+  let upload: jest.Mock;
 
-  const pendingRecord = (overrides: Record<string, unknown> = {}) => ({
-    id: 'br-1',
-    messages: [{ type: 'text', content: 'hi' }],
-    audience: 'ALL',
-    audienceCount: 100,
-    status: 'PENDING_APPROVAL',
-    scheduledAt: null,
-    createdById: 'u-creator',
-    approvedById: null,
-    approvedAt: null,
-    ...overrides,
+  function make(env: Record<string, string | undefined>) {
+    upload = jest.fn().mockResolvedValue(undefined);
+    const config = { get: (key: string) => env[key] } as unknown as ConfigService;
+    const storage = { upload } as unknown as StorageService;
+    return new BroadcastService(config, storage);
+  }
+
+  beforeEach(() => {
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
-  beforeEach(async () => {
-    prisma = {
-      broadcastMessage: {
-        findUnique: jest.fn().mockResolvedValue(pendingRecord()),
-        update: jest.fn((args) => Promise.resolve({ ...pendingRecord(), ...args.data })),
-        create: jest.fn((args) => Promise.resolve({ id: 'br-1', ...args.data })),
-      },
-      customer: { count: jest.fn().mockResolvedValue(0) },
-      customerLineLink: { count: jest.fn().mockResolvedValue(0) },
-    };
+  it('เก็บไฟล์ใต้ broadcast/images/<เวลา>-<ชื่อไฟล์>', async () => {
+    const service = make({ GCS_BUCKET: 'bucket-a' });
+    const file = Buffer.from('x');
 
-    const mod: TestingModule = await Test.createTestingModule({
-      providers: [
-        BroadcastService,
-        { provide: PrismaService, useValue: prisma },
-        { provide: ConfigService, useValue: { get: jest.fn() } },
-        { provide: StorageService, useValue: { upload: jest.fn() } },
-        { provide: IntegrationConfigService, useValue: { getValue: jest.fn() } },
-      ],
-    }).compile();
-    service = mod.get(BroadcastService);
+    await service.uploadImage(file, 'promo.png');
 
-    // Stub the send dispatcher so we don't hit LINE
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (service as any).dispatchLineMessages = jest.fn().mockResolvedValue({
-      success: true,
-      message: 'sent',
+    expect(upload).toHaveBeenCalledWith(`broadcast/images/${NOW}-promo.png`, file, 'image/jpeg');
+  });
+
+  it('มี S3_ENDPOINT → URL ชี้ S3 (bucket เริ่มต้น bestchoice-documents)', async () => {
+    const service = make({ S3_ENDPOINT: 'https://s3.example.test', GCS_BUCKET: 'bucket-a' });
+
+    await expect(service.uploadImage(Buffer.from('x'), 'a.jpg')).resolves.toEqual({
+      url: `https://s3.example.test/bestchoice-documents/broadcast/images/${NOW}-a.jpg`,
     });
   });
 
-  it('sendBroadcast saves as PENDING_APPROVAL (no immediate dispatch)', async () => {
-    const result = await service.sendBroadcast({
-      messages: [{ type: 'text', content: 'hi' }],
-      audience: 'ALL',
-      createdById: 'u-creator',
+  it('ไม่มี S3 แต่มี GCS_BUCKET → URL ชี้ Google Cloud Storage', async () => {
+    const service = make({ GCS_BUCKET: 'bucket-a' });
+
+    await expect(service.uploadImage(Buffer.from('x'), 'a.jpg')).resolves.toEqual({
+      url: `https://storage.googleapis.com/bucket-a/broadcast/images/${NOW}-a.jpg`,
     });
-    expect(result.success).toBe(true);
-    expect(result.message).toMatch(/รอผู้อนุมัติ/);
-    const createArgs = prisma.broadcastMessage.create.mock.calls[0][0];
-    expect(createArgs.data.status).toBe('PENDING_APPROVAL');
   });
 
-  it('approveBroadcast rejects self-approval by creator', async () => {
-    await expect(
-      service.approveBroadcast('br-1', 'u-creator'),
-    ).rejects.toThrow(ForbiddenException);
-  });
+  it('ไม่มีทั้งคู่ → เสิร์ฟผ่าน API โดย encode key', async () => {
+    const service = make({ APP_URL: 'https://app.example.test' });
 
-  it('approveBroadcast rejects records already in SENT state', async () => {
-    prisma.broadcastMessage.findUnique.mockResolvedValue(pendingRecord({ status: 'SENT' }));
-    await expect(
-      service.approveBroadcast('br-1', 'u-approver'),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  it('approveBroadcast throws NotFound for missing id', async () => {
-    prisma.broadcastMessage.findUnique.mockResolvedValue(null);
-    await expect(
-      service.approveBroadcast('missing', 'u-approver'),
-    ).rejects.toThrow(NotFoundException);
-  });
-
-  it('approveBroadcast marks SCHEDULED when scheduledAt in future', async () => {
-    const future = new Date(Date.now() + 60 * 60 * 1000);
-    prisma.broadcastMessage.findUnique.mockResolvedValue(
-      pendingRecord({ scheduledAt: future }),
-    );
-
-    await service.approveBroadcast('br-1', 'u-approver');
-
-    const updateArgs = prisma.broadcastMessage.update.mock.calls[0][0];
-    expect(updateArgs.data.status).toBe('SCHEDULED');
-    expect(updateArgs.data.approvedById).toBe('u-approver');
-    expect(updateArgs.data.approvedAt).toBeInstanceOf(Date);
-  });
-
-  it('approveBroadcast dispatches immediately when not scheduled', async () => {
-    await service.approveBroadcast('br-1', 'u-approver');
-    const updateArgs = prisma.broadcastMessage.update.mock.calls[0][0];
-    expect(updateArgs.data.status).toBe('SENT');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((service as any).dispatchLineMessages).toHaveBeenCalled();
-  });
-
-  it('rejectBroadcast requires reason ≥ 5 chars', async () => {
-    await expect(
-      service.rejectBroadcast('br-1', 'u-approver', 'bad'),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  it('rejectBroadcast blocks self-rejection by creator', async () => {
-    await expect(
-      service.rejectBroadcast('br-1', 'u-creator', 'looks fishy'),
-    ).rejects.toThrow(ForbiddenException);
-  });
-
-  it('rejectBroadcast updates status REJECTED with reason', async () => {
-    await service.rejectBroadcast('br-1', 'u-approver', 'message copy looks phishy');
-    const updateArgs = prisma.broadcastMessage.update.mock.calls[0][0];
-    expect(updateArgs.data.status).toBe('REJECTED');
-    expect(updateArgs.data.rejectedReason).toBe('message copy looks phishy');
-    expect(updateArgs.data.rejectedById).toBe('u-approver');
+    await expect(service.uploadImage(Buffer.from('x'), 'a.jpg')).resolves.toEqual({
+      url: `https://app.example.test/api/files/${encodeURIComponent(`broadcast/images/${NOW}-a.jpg`)}`,
+    });
   });
 });

@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { MapPin, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
 import ShopLayout from '@/components/layout/ShopLayout';
-import AddressForm from '@/components/checkout/AddressForm';
+import AddressForm from '@/components/account/AddressForm';
 import {
   Button,
   Card,

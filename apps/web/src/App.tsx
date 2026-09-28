@@ -166,8 +166,6 @@ const BankAccountsPage = lazy(() => import('@/pages/BankAccountsPage'));
 // D1.1.1.4 — AccountRolesPage moved to settings-registry (kind:'route') — lazy import removed
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const UnifiedInboxPage = lazy(() => import('@/pages/UnifiedInboxPage'));
-const CrmPipelinePage = lazy(() => import('@/pages/CrmPipelinePage'));
-const AdsTrackingPage = lazy(() => import('@/pages/AdsTrackingPage'));
 // ChannelSettingsPage moved to settings-registry (P2b comms migration)
 const ChatbotFinanceAnalyticsPage = lazy(() => import('@/pages/ChatbotFinanceAnalyticsPage'));
 const ChatbotFinanceSessionsPage = lazy(() => import('@/pages/ChatbotFinanceSessionsPage'));
@@ -216,7 +214,6 @@ const EReceiptAutoPage = lazy(() => import('@/pages/finance/EReceiptAutoPage'));
 const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
 // IntegrationHubPage + MdmTestPage moved to settings-registry (kind:'route') — lazy imports removed
 const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
-const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
 // LineGreetingPage moved to settings-registry (P2b comms migration)
 const UserProfilePage = lazy(() => import('@/pages/UserProfilePage'));
@@ -499,8 +496,6 @@ function App() {
           {/* เส้นทางเดียว (roomId เป็น optional segment) — สองเส้นทางแยกทำให้หน้าถูก mount ใหม่ทุกครั้งที่เปิดห้อง:
               ตัวกรอง/มุมมอง/ฟองส่งไม่สำเร็จหาย และ socket ต่อใหม่ทุกคลิก */}
           <Route path="/inbox/:roomId?" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><UnifiedInboxPage /></ProtectedRoute>} />
-          <Route path="/crm" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><CrmPipelinePage /></ProtectedRoute>} />
-          <Route path="/ads" element={<ProtectedRoute roles={['OWNER']}><AdsTrackingPage /></ProtectedRoute>} />
           {/* P2b — channels moved to /settings/comms/channels */}
           <Route path="/settings/channels" element={<Navigate to="/settings/comms/channels" replace />} />
           <Route path="/settings/payment-methods" element={<Navigate to="/settings/finance/payment-methods" replace />} />
@@ -1217,14 +1212,6 @@ function App() {
             element={
               <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER']}>
                 <MdmDashboardPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/broadcast"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <BroadcastPage />
               </ProtectedRoute>
             }
           />

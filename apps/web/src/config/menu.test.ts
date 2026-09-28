@@ -28,7 +28,9 @@ describe('getSidebarForRole — empty ZONE_CONFIG fallback', () => {
 describe('getSidebarForRole — populated ZONE_CONFIG', () => {
   it('OWNER + shop returns sections all tagged shop', () => {
     const sections = getSidebarForRole('OWNER', 'shop');
-    expect(sections.length).toBeGreaterThan(3);
+    // รายชื่อกลุ่มที่แน่นอนปักไว้ที่เทสต์ "exact expected keys" ด้านล่าง — ตรงนี้เช็คแค่ว่าไม่ว่าง
+    // (เดิมเป็น > 3 ซึ่งผูกกับจำนวนกลุ่มสมัยยังมี "ร้านค้าออนไลน์" + "การตลาด" ที่ถอดออก 2026-09-28)
+    expect(sections.length).toBeGreaterThan(0);
     expect(sections.every((s) => s.zone === 'shop')).toBe(true);
   });
 
@@ -80,7 +82,6 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
       'owner-inventory',
       'owner-sales',
       'owner-shop-accounting',
-      'owner-marketing',
     ]);
   });
 

@@ -13,7 +13,6 @@ import {
   HandCoins,
   Warehouse,
   Coins,
-  Kanban,
   Home,
   TrendingUp,
   Truck,
@@ -31,14 +30,12 @@ import {
   Landmark,
   CalendarDays,
   Plug,
-  Target,
   Settings,
   BadgePercent,
   ScrollText,
   Bell,
   MessageSquareMore,
   MoreHorizontal,
-  Send,
   LayoutGrid,
   CheckSquare,
   Tag,
@@ -184,7 +181,6 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
@@ -266,7 +262,6 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         // คำสั่งเจ้าของ 2026-08-08: หน้าร้าน (BM) ต้องเห็นเมนูยึดคืน — API/route/branch
         // scoping รองรับ BM อยู่แล้ว (#1397: เห็นเฉพาะสาขาตัวเอง) ขาดแค่รายการเมนู
         { label: 'รับเครื่องคืน / ยึดคืน', path: '/repossessions', icon: Lock },
-        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
       ],
     },
@@ -353,8 +348,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'รับเครื่องคืน / ยึดคืน', path: '/repossessions', icon: Lock },
-        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
       ],
     },
     /* ── โซนบัญชีของ ผจก.การเงิน — ยกผังเดียวกับ OWNER (fin zone) มาใช้ ────────
@@ -778,18 +771,6 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
-      ],
-    },
-    {
-      key: 'owner-marketing',
-      label: 'การตลาด',
-      icon: Target,
-      zone: 'shop',
-      items: [
-        { label: 'Ads & ROI', path: '/ads', icon: Target },
-        { label: 'Broadcast', path: '/broadcast', icon: Send },
-        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
       ],
     },
     {

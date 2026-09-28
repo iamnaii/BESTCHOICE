@@ -4,6 +4,7 @@ import {
   computeInstallmentBreakdown,
   type InstallmentBreakdownInput,
 } from './compute-installment-breakdown';
+import { bangkokDayDiff, bangkokStartOfDay } from '../../utils/date.util';
 
 type DecimalInput = Decimal | string | number;
 
@@ -96,8 +97,6 @@ export interface CnBreakdownOpts {
   payments?: CnPaymentInput[];
 }
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-
 /**
  * FEE-FIRST net-out (I1, final-review) — the single copy of the fee-netted
  * outstanding formula. `Payment.amountPaid` is GROSS cash including any late
@@ -169,7 +168,7 @@ export interface InstallmentOutstandingRow {
   dueDate: Date | null;
   /** Fee-netted outstanding for this installment — see `feeNettedOutstanding`. */
   outstanding: Decimal;
-  /** floor((asOf − dueDate) / 1 day) — null when `dueDate` is null. */
+  /** จำนวนวันปฏิทินไทยจาก dueDate ถึง asOf — null when `dueDate` is null. */
   daysOverdue: number | null;
   installmentTotal: Decimal;
   vatPerInst: Decimal;
@@ -213,7 +212,7 @@ export interface InstallmentOutstandingResult {
  *   fully outstanding (`outstanding = installmentTotal`). This is the
  *   pre-existing CN definition — unchanged.
  * - **DUE** (ECL): iterates `Payment` rows directly —
- *   `status != 'PAID' AND dueDate < asOf` (same universe
+ *   `status != 'PAID' AND dueDate < ต้นวันไทยของ asOf` (same universe
  *   `calculateProvisions` has always queried: PENDING/PARTIALLY_PAID/OVERDUE).
  *   Deliberately does NOT require accrual to have run — resilience to the
  *   2A cron missing a day (spec §2.1 rationale: ECL must not go blind just
@@ -245,6 +244,9 @@ export async function computeInstallmentOutstanding(
   } as InstallmentBreakdownInput);
   const { vatPerInst, installmentTotal } = breakdown;
   const asOf = opts.asOf ?? new Date();
+  // คำตัดสินฝ่ายบัญชี 2026-09-28: งวดนับเป็นเกินกำหนดเมื่อ "พ้นวันครบกำหนดแล้ว" เท่านั้น —
+  // เส้นตัด = ต้นวันไทยของ asOf. งวดที่ครบกำหนดวันนี้ยังไม่เข้าฐานค่าเผื่อฯ (ลูกค้าจ่ายได้ทั้งวัน)
+  const pastDueCutoff = bangkokStartOfDay(asOf);
 
   if (opts.selection === 'ACCRUED') {
     const allInstallments: CnInstallmentInput[] =
@@ -311,9 +313,9 @@ export async function computeInstallmentOutstanding(
         : inst.dueDate
           ? new Date(inst.dueDate)
           : null;
-      const daysOverdue = dueDate
-        ? Math.floor((asOf.getTime() - dueDate.getTime()) / MS_PER_DAY)
-        : null;
+      // วันปฏิทินไทย — ไม่มีตัวกรองวันที่ในสาขานี้โดยตั้งใจ (ใบลดหนี้ต้องเห็นงวดที่ตั้งหนี้แล้ว
+      // ทุกงวด); ผู้เรียกฝั่งค่าเผื่อฯ กรองงวดที่ยังไม่พ้นวันครบกำหนดเองใน BadDebtService.eclRows
+      const daysOverdue = dueDate ? bangkokDayDiff(dueDate, asOf) : null;
 
       rows.push({
         installmentNo: inst.installmentNo,
@@ -328,15 +330,15 @@ export async function computeInstallmentOutstanding(
   }
 
   // selection === 'DUE' — Payment-row-driven, does NOT require accrual (see
-  // jsdoc above). status != 'PAID' + dueDate < asOf, same universe
-  // `calculateProvisions` has always scanned.
+  // jsdoc above). status != 'PAID' + dueDate < ต้นวันไทยของ asOf (พ้นวันครบกำหนดแล้ว),
+  // same universe `calculateProvisions` scans.
   const allPayments: CnPaymentInput[] =
     opts.preloaded?.payments ??
     (await client.payment.findMany({
       where: {
         contractId: contract.id,
         status: { in: DUE_STATUSES },
-        dueDate: { lt: asOf },
+        dueDate: { lt: pastDueCutoff },
         // I1 (final-review 2026-07-26): a soft-deleted Payment row must never
         // count toward the ECL DUE base.
         deletedAt: null,
@@ -361,12 +363,12 @@ export async function computeInstallmentOutstanding(
     if (payment.deletedAt) continue; // I1 — defensive, mirrors the ACCRUED path's filter
     if (!payment.dueDate) continue; // defensive — real Payment rows always have dueDate
     const dueDate = new Date(payment.dueDate);
-    if (!(dueDate.getTime() < asOf.getTime())) continue;
+    if (!(dueDate.getTime() < pastDueCutoff.getTime())) continue;
 
     const outstanding = feeNettedOutstanding(payment, installmentTotal);
     if (outstanding.lte(0)) continue;
 
-    const daysOverdue = Math.floor((asOf.getTime() - dueDate.getTime()) / MS_PER_DAY);
+    const daysOverdue = bangkokDayDiff(dueDate, asOf);
     rows.push({
       installmentNo: payment.installmentNo,
       dueDate,

@@ -9,7 +9,6 @@ export const NAV_LABELS = {
   contracts: 'สัญญาผ่อนชำระ',
   payments: 'รับชำระค่างวด',
   stock: 'คลังสินค้า',
-  crm: 'ติดตามลูกค้า',
   chat: 'แชทลูกค้า',
 } as const;
 

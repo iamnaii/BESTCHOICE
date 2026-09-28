@@ -58,7 +58,6 @@ const pages: NavEntry[] = [
   { label: NAV_LABELS.home, path: '/', icon: Home, keywords: 'dashboard home' },
   { label: NAV_LABELS.sales, path: '/pos', icon: ShoppingCart, keywords: 'pos sale ขาย' },
   { label: 'ประวัติการขาย', path: '/sales', icon: Receipt, keywords: 'sales history' },
-  { label: NAV_LABELS.crm, path: '/crm', icon: Users, keywords: 'crm pipeline ติดตามลูกค้า', roles: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
   { label: 'ลูกค้า', path: '/customers', icon: Users, keywords: 'customer ลูกค้า' },
   { label: 'รายชื่อผู้ติดต่อ', path: '/contacts', icon: BookUser, keywords: 'contacts ผู้ติดต่อ ผู้ขาย supplier ไฟแนนซ์ สมุดผู้ติดต่อ', roles: ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'] },
   { label: 'รับซื้อมือสอง / เทิร์น', path: '/trade-in', icon: Smartphone, keywords: 'trade-in buyback sell รับซื้อ เทิร์น มือสอง', roles: ['OWNER', 'BRANCH_MANAGER', 'SALES'] },

@@ -12,7 +12,6 @@ export const PAGE_TITLE_MAP: Record<string, string> = {
   '/payments': NAV_LABELS.payments,
   '/stock': NAV_LABELS.stock,
   '/products': NAV_LABELS.stock,
-  '/crm': NAV_LABELS.crm,
   '/inbox': NAV_LABELS.chat,
   '/credit-checks': 'ตรวจเครดิต',
   '/shop/daily-cash': 'สรุปเงินรายวัน',

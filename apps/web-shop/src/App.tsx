@@ -25,10 +25,6 @@ import InstallmentTermsPage from './pages/InstallmentTermsPage';
 import SellLandingPage from './pages/sell/SellLandingPage';
 import SellQuotePage from './pages/sell/SellQuotePage';
 import SellStatusPage from './pages/sell/SellStatusPage';
-import SavingPlanLandingPage from './pages/saving-plan/SavingPlanLandingPage';
-import SavingPlanCreatePage from './pages/saving-plan/SavingPlanCreatePage';
-import SavingPlanDetailPage from './pages/saving-plan/SavingPlanDetailPage';
-import SavingPlansPage from './pages/account/SavingPlansPage';
 import LoginPage from './pages/auth/LoginPage';
 import LineCallbackPage from './pages/auth/LineCallbackPage';
 import InstallmentLopburiPage from './pages/landing/InstallmentLopburiPage';
@@ -92,10 +88,6 @@ export default function App() {
         <Route path="/trade-in" element={<RedirectPreserveSearch to="/sell" />} />
         <Route path="/trade-in/submit" element={<RedirectPreserveSearch to="/sell/quote" />} />
         <Route path="/trade-in/:id" element={<RedirectWithId base="/sell" />} />
-        <Route path="/saving-plan" element={<SavingPlanLandingPage />} />
-        <Route path="/saving-plan/create" element={<SavingPlanCreatePage />} />
-        <Route path="/saving-plan/:id" element={<SavingPlanDetailPage />} />
-        <Route path="/account/saving-plans" element={<SavingPlansPage />} />
         {/* Landing เจาะคำค้นท้องถิ่น (SEO/AI) — เพิ่ม route ที่นี่ต้องอัป sitemap.xml,
             prerender ROUTES และ llms.txt คู่กันเสมอ */}
         <Route path="/ผ่อนไอโฟนลพบุรี" element={<InstallmentLopburiPage />} />

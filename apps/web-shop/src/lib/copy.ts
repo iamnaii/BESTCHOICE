@@ -245,12 +245,6 @@ export const copy = {
     exchangeCreditNote: 'เครดิตเทิร์นใช้เป็นส่วนลดซื้อเครื่องในร้าน ไม่จ่ายเป็นเงินสด',
   },
 
-  savingPlan: {
-    pageTitle: 'ออมดาวน์',
-    description: 'เก็บเงินดาวน์ทีละน้อย เริ่ม ฿500/เดือน',
-    createCta: 'สร้างแผน',
-  },
-
   review: {
     verifiedBadge: 'ซื้อจริง',
     writeCta: 'เขียนรีวิว',
@@ -386,7 +380,7 @@ export const copy = {
 
   login: {
     pageTitle: 'เข้าสู่ระบบ',
-    intro: 'ใช้บัญชี LINE ที่ผูกกับร้านเพื่อดูออเดอร์ แผนออมดาวน์ และทำรายการต่อ',
+    intro: 'ใช้บัญชี LINE ที่ผูกกับร้านเพื่อดูออเดอร์และทำรายการต่อ',
     lineCta: 'เข้าสู่ระบบด้วย LINE',
     disabledTitle: 'การเข้าสู่ระบบยังไม่เปิดใช้งาน',
     disabledDescription:

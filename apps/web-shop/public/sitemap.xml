@@ -51,11 +51,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://www.bestchoicephone.com/saving-plan</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
     <loc>https://www.bestchoicephone.com/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>

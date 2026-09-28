@@ -79,7 +79,6 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(keys).toEqual([
       'owner-inventory',
       'owner-sales',
-      'owner-online-shop',
       'owner-shop-accounting',
       'owner-marketing',
     ]);

@@ -102,9 +102,6 @@ import { SalesBotModule } from './modules/sales-bot/sales-bot.module';
 import { ChatAiDraftModule } from './modules/chat-ai-draft/chat-ai-draft.module';
 import { AiSettingsModule } from './modules/ai-settings/ai-settings.module';
 import { CsatModule } from './modules/csat/csat.module';
-import { AdsTrackingModule } from './modules/ads-tracking/ads-tracking.module';
-import { CrmModule } from './modules/crm/crm.module';
-import { BroadcastModule } from './modules/broadcast/broadcast.module';
 import { HealthModule } from './modules/health/health.module';
 import { PeakModule } from './modules/peak/peak.module';
 import { MdmModule } from './modules/mdm/mdm.module';
@@ -333,11 +330,8 @@ import { AppCacheModule } from './cache/cache.module';
     // CSAT — customer satisfaction survey after chat resolution
     CsatModule,
     // Ads Attribution — campaign tracking + ROI
-    AdsTrackingModule,
     // CRM Pipeline — lead tracking + customer scoring
-    CrmModule,
     // Broadcast — mass messaging to customers across chat channels
-    BroadcastModule,
     // Health check — liveness probe for Cloud Run / load balancers
     HealthModule,
     // External integrations (scaffold — activate when credentials are available)

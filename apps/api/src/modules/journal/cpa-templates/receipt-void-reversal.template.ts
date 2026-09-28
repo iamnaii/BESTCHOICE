@@ -98,6 +98,12 @@ export class ReceiptVoidReversalTemplate {
           flow,
           originalEntryId: originalJournalEntryId,
           originalEntryNumber: originalJe.entryNumber,
+          // ผูกกับสัญญา (ฝ่ายบัญชี 2026-09-28) — glContractBalance รวมยอดตาม metadata.contractId
+          // ถ้าไม่มี ยอดของใบที่ยกเลิกแล้วจะยังถูกนับว่าจ่ายอยู่. copy เฉพาะคีย์นี้เท่านั้น:
+          // paymentId/installmentScheduleId/tag/idempotencyKey จะทำให้ผู้อ่านรายอื่นเข้าใจว่าเป็นใบรับชำระ
+          ...(typeof existingMeta['contractId'] === 'string'
+            ? { contractId: existingMeta['contractId'] }
+            : {}),
         },
         lines: reversedLines,
       },

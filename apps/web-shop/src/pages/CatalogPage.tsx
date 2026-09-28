@@ -307,7 +307,7 @@ export default function CatalogPage() {
                 type="button"
                 onClick={() => updateFilters({ ...filters, deviceOrigin: undefined })}
                 aria-label={`ล้างตัวกรอง${deviceOriginLabel(filters.deviceOrigin)}`}
-                className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800"
+                className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 font-head text-sm text-emerald-800"
               >
                 {deviceOriginLabel(filters.deviceOrigin)}
                 <X className="size-3.5" aria-hidden />
@@ -369,7 +369,7 @@ export default function CatalogPage() {
                 <DialogTrigger asChild>
                   <button
                     type="button"
-                    className="lg:hidden inline-flex items-center gap-1.5 px-4 py-1.5 text-[13px] rounded-full bg-card text-foreground ring-1 ring-inset ring-border leading-snug"
+                    className="lg:hidden inline-flex items-center gap-1.5 px-4 py-1.5 font-head text-[13px] rounded-full bg-card text-foreground ring-1 ring-inset ring-border leading-snug"
                   >
                     <SlidersHorizontal className="size-3.5" aria-hidden />
                     ตัวกรอง
@@ -393,7 +393,7 @@ export default function CatalogPage() {
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 font-head text-[13px] rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
                 >
                   ค้นหา: “{filters.search}”
                   <X className="size-3.5" aria-label="ล้างคำค้นหา" />
@@ -411,7 +411,7 @@ export default function CatalogPage() {
                   aria-haspopup="listbox"
                   aria-expanded={sortOpen}
                   onClick={() => setSortOpen((o) => !o)}
-                  className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] rounded-full bg-card text-foreground ring-1 ring-inset ring-border hover:ring-foreground/25 transition-shadow leading-snug"
+                  className="flex items-center gap-1.5 px-4 py-1.5 font-head text-[13px] rounded-full bg-card text-foreground ring-1 ring-inset ring-border hover:ring-foreground/25 transition-shadow leading-snug"
                 >
                   <span className="text-muted-foreground">เรียง:</span>
                   <span>{activeSortLabel}</span>
@@ -445,7 +445,7 @@ export default function CatalogPage() {
                                 sortBtnRef.current?.focus();
                               }}
                               className={cn(
-                                'block w-full text-left px-3.5 py-2 text-[13px] leading-snug',
+                                'block w-full text-left px-3.5 py-2 font-head text-[13px] leading-snug',
                                 selected
                                   ? 'text-emerald-700 font-medium bg-emerald-50'
                                   : 'text-foreground hover:bg-muted',

@@ -1063,6 +1063,15 @@ Currently only inventory transfer uses paired wrapping; the existing FINANCE tem
 > sale)" below. The remaining genuinely-unwired templates in this list are
 > `ShopDownPaymentTemplate` / `ShopDownPaymentReversalTemplate` / `ShopTradeInTemplate` /
 > `ShopExpenseTemplate` (not re-verified 2026-08-23 — verify callers before relying on this).
+>
+> **Stale note #3 (2026-09-28 — ตรวจซ้ำแล้ว):** template ทั้งสี่ตัวข้างบน **มี production caller
+> ครบแล้ว** (`contract-workflow.service.ts` / `contract-lifecycle.service.ts` /
+> `trade-in-lifecycle.service.ts` / `expense-document-lifecycle.service.ts`) ⇒ ไม่เหลือ template
+> ในรายการนี้ที่ยังไม่ถูกต่อ. **ที่ยังไม่ลงบัญชีจริง** คือเส้นทางที่ไม่มี template เลย:
+> รับสินค้าเข้าจากใบสั่งซื้อ (`po-receiving.service.ts`) และการปรับสต๊อก
+> (`stock-adjustments.service.ts`) — ไม่มีโค้ดไหน `Dr S11-2001` ตอนรับของ ⇒ ขายแล้วบัญชีสินค้าคงเหลือ
+> เครื่องใหม่ติดลบ (รายได้/ต้นทุนขายถูก · สินค้าคงเหลือ/เจ้าหนี้ผู้จัดจำหน่ายผิด). ป้ายเตือนบนหน้า
+> `/shop/accounting` เขียนตามข้อเท็จจริงนี้. รายการบัญชีตอนรับของ **ต้องให้ฝ่ายบัญชีเคาะก่อน — ห้ามเดา**.
 
 All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent via `metadata.flow + metadata.idempotencyKey` (DB-level partial unique index since P3-SP5 DEEP fix W8 — `journal_entries_idempotency_idx`).
 

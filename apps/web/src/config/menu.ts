@@ -640,7 +640,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
-        { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
+        // 'สรุปเงินรายวัน' ย้ายไปกลุ่ม 'owner-shop-accounting' (คำสั่งเจ้าของ 2026-09-28)
         // คำสั่งเจ้าของ 2026-09-28: รวมเข้ากลุ่ม "ขาย" (เดิมเป็นกลุ่ม 'owner-aftersales' ที่มีรายการเดียว)
         // — ตำแหน่งเดียวกับเมนูผู้จัดการสาขา (bm-sales)
         { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
@@ -771,6 +771,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
+        // คำสั่งเจ้าของ 2026-09-28: ย้ายมาจากกลุ่ม "ขาย" — ตำแหน่งเดียวกับเมนูฝ่ายบัญชี (acc-shop-accounting)
+        { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
       ],
     },
     {

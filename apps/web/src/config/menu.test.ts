@@ -90,6 +90,14 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(sales?.items.map((i) => i.path)).toContain('/after-sales');
   });
 
+  it('OWNER "สรุปเงินรายวัน" อยู่ในกลุ่ม "บัญชีหน้าร้าน (SHOP)" ไม่อยู่ในกลุ่ม "ขาย" (คำสั่งเจ้าของ 2026-09-28)', () => {
+    const sections = getSidebarForRole('OWNER', 'shop');
+    const accounting = sections.find((s) => s.key === 'owner-shop-accounting');
+    const sales = sections.find((s) => s.key === 'owner-sales');
+    expect(accounting?.items.map((i) => i.path)).toEqual(['/shop/accounting', '/shop/daily-cash']);
+    expect(sales?.items.map((i) => i.path)).not.toContain('/shop/daily-cash');
+  });
+
   it('OWNER fin sections include all FIN-zone keys (regression guard)', () => {
     const keys = getSidebarForRole('OWNER', 'fin').map((s) => s.key);
     // Union of all FIN zone sections (SP5 + P4 SP1-5)

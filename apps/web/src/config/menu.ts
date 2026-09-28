@@ -34,7 +34,6 @@ import {
   Target,
   Settings,
   BadgePercent,
-  Shield,
   ScrollText,
   Bell,
   MessageSquareMore,
@@ -679,14 +678,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
         { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
-      ],
-    },
-    {
-      key: 'owner-aftersales',
-      label: 'หลังการขาย',
-      icon: Shield,
-      zone: 'shop',
-      items: [
+        // คำสั่งเจ้าของ 2026-09-28: รวมเข้ากลุ่ม "ขาย" (เดิมเป็นกลุ่ม 'owner-aftersales' ที่มีรายการเดียว)
+        // — ตำแหน่งเดียวกับเมนูผู้จัดการสาขา (bm-sales)
         { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
         // คำสั่งเจ้าของ 2026-08-29: ยึดคืนอยู่ zone ไฟแนนซ์ที่เดียว (owner-fin-revenue)
         // — กลับคำสั่งเดิม 2026-08-08 ที่ให้ duplicate ไว้ทั้งสอง zone.

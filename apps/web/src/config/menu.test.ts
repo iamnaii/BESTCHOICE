@@ -79,11 +79,15 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(keys).toEqual([
       'owner-inventory',
       'owner-sales',
-      'owner-aftersales',
       'owner-online-shop',
       'owner-shop-accounting',
       'owner-marketing',
     ]);
+  });
+
+  it('OWNER "หลังการขาย" อยู่ในกลุ่ม "ขาย" ไม่แยกกลุ่ม (คำสั่งเจ้าของ 2026-09-28)', () => {
+    const sales = getSidebarForRole('OWNER', 'shop').find((s) => s.key === 'owner-sales');
+    expect(sales?.items.map((i) => i.path)).toContain('/after-sales');
   });
 
   it('OWNER fin sections include all FIN-zone keys (regression guard)', () => {

@@ -829,6 +829,20 @@ amount: <ยอดของใบนั้น>, voidedReceiptId: <ใบนั�
 > (ออกใบลดหนี้ย้อนหลังคือการออกเอกสารภาษีใหม่ ต้องให้ CPA เคาะ). เคสที่รู้ตัวแล้ว 1 เคส:
 > TEST-20260809-004 งวด 4 ขาดใบลดหนี้ของ RT-202608-00006 (1,771฿) — เป็นสัญญาทดสอบ.
 
+### รายการกลับรายการผูกกับสัญญา (คำตัดสินฝ่ายบัญชี 2026-09-28)
+
+`ReceiptVoidReversalTemplate` (ผู้เรียก 2 ราย: ยกเลิกใบเสร็จ flow `receipt-void`, คืนเงิน flow
+`refund-reversal`) copy **`contractId` อย่างเดียว** จากรายการเดิมลงรายการกลับรายการ — เพื่อให้
+`glContractBalance` (JP5 / ตัดหนี้สูญ / ด่านเปลี่ยนเครื่อง / ด่านถังพักของ JP4) หักยอดของใบที่ยกเลิกแล้ว.
+
+- **ห้าม copy** `paymentId`, `installmentScheduleId`, `tag`, `flow`, `idempotencyKey`, `deltaApplied`,
+  `principalCleared`, `lateFeePortion`, `genericConsume`, `parkConsume` — ผู้อ่านใบรับชำระ
+  (`reconstructPriorCleared`, `loadLateFeePaidByPaymentIds`, void/refund matcher) จะเข้าใจผิดว่าเป็นใบรับชำระ
+- ผู้กวาดรายการตามสัญญา**ต้องข้ามทุกรายการที่ `tag === 'REVERSAL'`** —
+  `DefectExchangeReversalTemplate` เคยข้ามเฉพาะ 2 flow และจะ mirror `refund-reversal` ซ้ำ (แก้แล้วรอบเดียวกัน)
+- แถวเดิมเติมด้วย migration `20261013000000_backfill_reversal_contract_id`
+- ผลที่เห็นได้: หลังยกเลิกใบเสร็จ ด่านเปลี่ยนเครื่องเห็น 11-2103 ค้างและบล็อก "มีงวดค้างชำระ" (ถูกต้อง)
+
 ## สรุปรายวัน = เงินสดที่รับจริง (receipt-based, 2026-08-18)
 
 `GET /payments/daily-summary` อ่านจาก **`Receipt`** ไม่ใช่ `Payment` — หนึ่งแถว = หนึ่งใบเสร็จ,
@@ -2395,7 +2409,7 @@ Rates configurable via SystemConfig **`bad_debt_provision_rates`** (JSON `{bucke
 ### Method — per-installment engine
 
 - **Engine**: `computeInstallmentOutstanding(client, contract, { selection, asOf, preloaded })` in `compute-cn-breakdown.ts` — single source of truth for "how much is still owed on installment `i`, and how old is it", feeding BOTH ECL (`selection: 'DUE'`) and the CN pro-rate util (`selection: 'ACCRUED'`, via `computeCnBreakdown`). Two deliberately different universes:
-  - **DUE** (ECL): iterates `Payment` rows directly — `status != 'PAID' AND dueDate < asOf`. Does NOT require accrual to have run (resilience: the ECL base must not go blind just because the 2A cron missed a day).
+  - **DUE** (ECL): iterates `Payment` rows directly — `status != 'PAID' AND dueDate < bangkokStartOfDay(asOf)` (คำตัดสินฝ่ายบัญชี 2026-09-28 — งวดนับเป็นเกินกำหนดเมื่อ**พ้นวันครบกำหนดแล้ว**; งวดที่ครบกำหนดวันนี้ยังไม่เข้าฐาน). Does NOT require accrual to have run (resilience: the ECL base must not go blind just because the 2A cron missed a day).
   - **ACCRUED** (CN, unchanged definition): iterates `InstallmentSchedule` rows with `accrualJournalEntryId != null`; unpaid = no `Payment` row with `status = 'PAID'`.
 - **Exhaustive DUE status allow-list** — `DUE_STATUS_MAP` in `compute-cn-breakdown.ts` is typed `satisfies Record<PaymentStatus, boolean>` (PENDING/PARTIALLY_PAID/OVERDUE = `true`, PAID = `false`). This is NOT `status !== 'PAID'` — a 5th `PaymentStatus` value added later (e.g. CANCELLED/REFUNDED) fails compilation instead of silently flowing into the ECL base as "still due", forcing a deliberate yes/no decision at the call site.
 - **Fee-netted outstanding** — both DUE and ACCRUED share the exact same `feeNettedOutstanding` formula (FEE-FIRST, PR #1313 convention) — never re-derived independently:
@@ -2406,7 +2420,7 @@ Rates configurable via SystemConfig **`bad_debt_provision_rates`** (JSON `{bucke
   outstanding  = clamp(amountDue − baseCash, 0, installmentTotal)
   ```
 - **Per-row rounding, then sum** — each installment's provision = `outstanding × rate(bucket)`, rounded `ROUND_HALF_UP` to 2dp, THEN summed across installments (never round-after-sum). `computePerInstallmentProvision` in `bad-debt.service.ts` is the ONE shared aggregator used by BOTH `calculateProvisions` (daily cron) and `reverseStageOnPayment` (real-time payment hook) — the two can never independently drift on what "the current provision for this contract" means.
-- **daysOverdue** = `floor((asOf − Payment.dueDate) / 1 day)` per installment (DUE selection); informational-only for ACCRUED (CN never reads it).
+- **daysOverdue** = `bangkokDayDiff(Payment.dueDate, asOf)` (จำนวนวันปฏิทินไทย — รอบ 00:30 ของวันถัดจากวันครบกำหนด = 1 วัน) per installment (DUE selection); informational-only for ACCRUED (CN never reads it).
 - **Persisted row shape** (`BadDebtProvision`): `agingBucket` = bucket of the OLDEST outstanding installment — display/sort convention only, does NOT mean the whole balance provisions at that rate. `bucketBreakdown Json?` (new column, migration `20260982000000_add_bucket_breakdown_to_bad_debt_provisions`) persists the TRUE per-bucket split: `{ "<bucket>": { count, base, provision } }` (count = installment count in that bucket, base/provision as 2dp strings). `provisionRate` persisted = blended (`provision / base`, 4dp) for backward-compat with any UI/report expecting one rate per contract.
 
 ### Streak floor — DORMANT by default (semantics CHANGED 2026-07-26)
@@ -2416,7 +2430,7 @@ Rates configurable via SystemConfig **`bad_debt_provision_rates`** (JSON `{bucke
 - Missing row → no floor. The `ConsecutiveMissedService.getStreaks` query is skipped entirely (not just ignored — never called).
 - `{}` (empty object, after JSON.parse) → no floor.
 - Corrupt JSON → `Sentry.captureException` + no floor (v3 behavior was: Sentry + fall back to code defaults; v4 is: Sentry + apply literally nothing).
-- Explicit non-empty row, e.g. `{"2": "31-60", "3": "61-90"}` → for a contract with N consecutive missed/overdue installments (`ConsecutiveMissedService.getStreaks` — max run of `PENDING/OVERDUE/PARTIALLY_PAID` with `dueDate < now`), floor bucket = the entry whose threshold is the LARGEST `<= N`. ONE floor bucket per contract (streak is a contract-level metric) is compared against EACH installment's own aging bucket independently — `effectiveBucket` picks whichever of (aging, floor) carries the HIGHER provision rate; the floor can only escalate a row, never downgrade it.
+- Explicit non-empty row, e.g. `{"2": "31-60", "3": "61-90"}` → for a contract with N consecutive missed/overdue installments (`ConsecutiveMissedService.getStreaks` — max run of `PENDING/OVERDUE/PARTIALLY_PAID` with `dueDate < now`) — ฝั่งค่าเผื่อฯ ส่ง `bangkokStartOfDay(now)` เป็น `asOf` ตั้งแต่ 2026-09-28; ผู้เรียกฝั่งเปลี่ยนสถานะ DEFAULT ยังส่ง `now` ตามเดิม, floor bucket = the entry whose threshold is the LARGEST `<= N`. ONE floor bucket per contract (streak is a contract-level metric) is compared against EACH installment's own aging bucket independently — `effectiveBucket` picks whichever of (aging, floor) carries the HIGHER provision rate; the floor can only escalate a row, never downgrade it.
 
 If the CPA later reinstates the floor as the operational default, that is a 1-row SystemConfig `INSERT` — no code change required.
 
@@ -2441,7 +2455,7 @@ The universe differs by contract status (C1 final-review fix, 2026-07-26 — see
 
 **Late fee is excluded from the base** either way — it isn't a GL asset (only recognized as `42-1103` income when actually collected), so folding it in would overstate exposure.
 
-Stage-reverse on payment (`BadDebtService.reverseStageOnPayment`, invoked from the payment-receipt flow) applies the same DUE/ACCRUED split per contract status, and only considers installments with `dueDate < now` — future-dated installments never enter the aging/base recompute, so pre-paying ahead of schedule can't manufacture a stage-drop.
+Stage-reverse on payment (`BadDebtService.reverseStageOnPayment`, invoked from the payment-receipt flow) applies the same DUE/ACCRUED split per contract status, and only considers installments with `dueDate < bangkokStartOfDay(now)` — both paths go through `BadDebtService.eclRows` (TERMINATED/ACCRUED rows are date-filtered there because the engine's ACCRUED branch is shared with the CN util and must stay unfiltered) — future-dated installments never enter the aging/base recompute, so pre-paying ahead of schedule can't manufacture a stage-drop.
 
 ### TERMINATED contracts — ACCRUED-gated (C1 final-review fix, 2026-07-26)
 
@@ -2470,6 +2484,8 @@ Floor-enabled (`consecutive_missed_bucket_map = {"2": "31-60"}`, streak = 2 cons
 | Scenario | Without floor | With floor | Why |
 |---|---|---|---|
 | {60d, 30d}, streak 2 | 257.69 | **454.74** | BOTH installments floored to 31-60 (15%): 2 × HALF_UP(1,515.83 × 0.15) = 2 × 227.37 = 454.74. The 30d installment's own aging bucket (1-30, 2%) loses to the floor (31-60, 15%) per-installment — higher rate wins. |
+
+- **วันครบกำหนดเอง (2026-09-28):** งวดครบกำหนด 27 ส.ค. · รอบ 27 ส.ค. 00:30 → ไม่มีค่าเผื่อ · รอบ 28 ส.ค. 00:30 → เกิน 1 วัน ช่วง `1-30` = 30.32 (`bad-debt.service.spec.ts` "คำตัดสินฝ่ายบัญชี 2026-09-28")
 
 CN (ใบลดหนี้) goldens are UNCHANGED by this redesign — the ACCRUED selection was already shaped this way before 2026-07-26 (it just now runs through the shared `computeInstallmentOutstanding` engine instead of its own copy of the logic). See "เอกสารใบลดหนี้" below for those numbers.
 

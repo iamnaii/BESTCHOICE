@@ -2,10 +2,10 @@ import { STOCK_SORT_KEYS } from '@installment/shared';
 import type { TableSort } from '@/components/ui/DataTable';
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useLatestSearchParams } from '@/hooks/useLatestSearchParams';
 import api, { getErrorMessage } from '@/lib/api';
 import { statusLabels, categoryLabels } from '@/lib/constants';
 import { getPositiveDisplayPrices } from '@/utils/getDisplayPrices';
@@ -26,7 +26,8 @@ export interface StockViewCounts {
 export function useStockProducts() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
+  // เขียน URL ผ่าน `updateParams` เท่านั้น — เขียนติดกันก่อน render แล้วไม่ทับกัน (ดู useLatestSearchParams)
+  const [searchParams, updateParams] = useLatestSearchParams();
   const isManager = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
 
   const filterBranch = searchParams.get('branchId') ?? '';
@@ -35,15 +36,15 @@ export function useStockProducts() {
   const filterStatus = view === 'all' ? (searchParams.get('status') ?? '') : '';
   const setView = useCallback(
     (v: StockView) => {
-      const next = new URLSearchParams(searchParams);
-      if (v === 'all') next.set('view', 'all');
-      else next.delete('view');
-      // สลับมุมมองแล้วล้างตัวกรองสถานะเสมอ — ไม่งั้นกลับมาโหมด "ทั้งหมด" จะกรองค้างโดยมองไม่เห็น
-      next.delete('status');
-      next.delete('page');
-      setSearchParams(next, { replace: true });
+      updateParams((next) => {
+        if (v === 'all') next.set('view', 'all');
+        else next.delete('view');
+        // สลับมุมมองแล้วล้างตัวกรองสถานะเสมอ — ไม่งั้นกลับมาโหมด "ทั้งหมด" จะกรองค้างโดยมองไม่เห็น
+        next.delete('status');
+        next.delete('page');
+      });
     },
-    [searchParams, setSearchParams],
+    [updateParams],
   );
   const filterCategory = searchParams.get('category') ?? '';
   const accessoryGroupId = searchParams.get('accessoryGroupId') ?? '';
@@ -56,114 +57,116 @@ export function useStockProducts() {
   const sortDirection = sort?.direction;
   const setSort = useCallback(
     (value: TableSort | null) => {
-      const next = new URLSearchParams(searchParams);
-      next.delete('page');
-      if (value) {
-        next.set('sortBy', value.key);
-        next.set('sortDirection', value.direction);
-      } else {
-        next.delete('sortBy');
-        next.delete('sortDirection');
-      }
-      setSearchParams(next, { replace: true });
+      updateParams((next) => {
+        next.delete('page');
+        if (value) {
+          next.set('sortBy', value.key);
+          next.set('sortDirection', value.direction);
+        } else {
+          next.delete('sortBy');
+          next.delete('sortDirection');
+        }
+      });
     },
-    [searchParams, setSearchParams],
+    [updateParams],
   );
   const setAccessoryGroupId = useCallback(
     (id: string) => {
-      const next = new URLSearchParams(searchParams);
-      if (id) next.set('accessoryGroupId', id);
-      else next.delete('accessoryGroupId');
-      next.delete('page');
-      setSearchParams(next, { replace: true });
+      updateParams((next) => {
+        if (id) next.set('accessoryGroupId', id);
+        else next.delete('accessoryGroupId');
+        next.delete('page');
+      });
     },
-    [searchParams, setSearchParams],
+    [updateParams],
   );
   const filterDeviceOrigin = searchParams.get('deviceOrigin') ?? '';
   const setFilterDeviceOrigin = (value: string) => {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set('deviceOrigin', value); else next.delete('deviceOrigin');
-    next.delete('page'); setSearchParams(next, { replace: true });
+    updateParams((next) => {
+      if (value) next.set('deviceOrigin', value);
+      else next.delete('deviceOrigin');
+      next.delete('page');
+    });
   };
 
   const setFilterBranch = useCallback(
     (v: string) => {
-      const next = new URLSearchParams(searchParams);
-      next.delete('accessoryGroupId');
-      if (v) next.set('branchId', v);
-      else next.delete('branchId');
-      next.delete('page');
-      setSearchParams(next, { replace: true });
+      updateParams((next) => {
+        next.delete('accessoryGroupId');
+        if (v) next.set('branchId', v);
+        else next.delete('branchId');
+        next.delete('page');
+      });
     },
-    [searchParams, setSearchParams],
+    [updateParams],
   );
 
   const setFilterStatus = useCallback(
     (v: string) => {
-      const next = new URLSearchParams(searchParams);
-      if (v) next.set('status', v);
-      else next.delete('status');
-      next.delete('page');
-      setSearchParams(next, { replace: true });
+      updateParams((next) => {
+        if (v) next.set('status', v);
+        else next.delete('status');
+        next.delete('page');
+      });
     },
-    [searchParams, setSearchParams],
+    [updateParams],
   );
 
   const setFilterCategory = useCallback(
     (v: string) => {
-      const next = new URLSearchParams(searchParams);
-      next.delete('accessoryGroupId');
-      next.delete('sortBy');
-      next.delete('sortDirection');
-      if (v) next.set('category', v);
-      else next.delete('category');
-      next.delete('page');
-      setSearchParams(next, { replace: true });
+      updateParams((next) => {
+        next.delete('accessoryGroupId');
+        next.delete('sortBy');
+        next.delete('sortDirection');
+        if (v) next.set('category', v);
+        else next.delete('category');
+        next.delete('page');
+      });
     },
-    [searchParams, setSearchParams],
+    [updateParams],
   );
 
   const [search, setSearch] = useState(searchParams.get('q') ?? '');
   const debouncedSearch = useDebounce(search);
 
   const clearFilters = useCallback(() => {
-    const next = new URLSearchParams(searchParams);
-    [
-      'q',
-      'status',
-      'category',
-      'branchId',
-      'page',
-      'accessoryGroupId',
-      'deviceOrigin',
-      'sortBy',
-      'sortDirection',
-    ].forEach((key) => next.delete(key));
     setSearch('');
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+    updateParams((next) => {
+      [
+        'q',
+        'status',
+        'category',
+        'branchId',
+        'page',
+        'accessoryGroupId',
+        'deviceOrigin',
+        'sortBy',
+        'sortDirection',
+      ].forEach((key) => next.delete(key));
+    });
+  }, [updateParams]);
 
   const page = Number(searchParams.get('page') ?? '1');
   const setPage = useCallback(
     (v: number) => {
-      const next = new URLSearchParams(searchParams);
-      if (v > 1) next.set('page', String(v));
-      else next.delete('page');
-      setSearchParams(next, { replace: true });
+      updateParams((next) => {
+        if (v > 1) next.set('page', String(v));
+        else next.delete('page');
+      });
     },
-    [searchParams, setSearchParams],
+    [updateParams],
   );
 
   // Sync debounced search to URL `q` param
   useEffect(() => {
     const current = searchParams.get('q') ?? '';
     if (current === debouncedSearch) return;
-    const next = new URLSearchParams(searchParams);
-    if (debouncedSearch) next.set('q', debouncedSearch);
-    else next.delete('q');
-    next.delete('page');
-    setSearchParams(next, { replace: true });
-  }, [debouncedSearch, searchParams, setSearchParams]);
+    updateParams((next) => {
+      if (debouncedSearch) next.set('q', debouncedSearch);
+      else next.delete('q');
+      next.delete('page');
+    });
+  }, [debouncedSearch, searchParams, updateParams]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 

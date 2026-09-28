@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router';
 import {
@@ -29,9 +29,13 @@ import type {
  * `pages/StockPage/hooks/useStockProducts.ts` และคัดลอกกติกามาทั้งชุด:
  *
  * - อ่านตรงจาก `searchParams` ไม่มี `useState` เงา (ยกเว้นช่องค้นหาที่ debounce)
- * - เขียนด้วยการ copy `prev` ลง `URLSearchParams` ใหม่ → `delete` เมื่อเป็นค่าเริ่มต้น →
- *   `next.delete('page')` → `{ replace: true }` เสมอ
+ * - เขียนด้วยการ copy **`latestParams`** (ไม่ใช่ `prev` ของ react-router) ลง `URLSearchParams`
+ *   ใหม่ → `delete` เมื่อเป็นค่าเริ่มต้น → `next.delete('page')` → `{ replace: true }` เสมอ
  *   (ส่ง object literal เข้า `setSearchParams` จะล้าง `?zone=` ของ LayoutContext ทิ้ง)
+ * - 🔴 `setSearchParams(prev => …)` **ไม่ได้ต่อคิวแบบ setState** — `prev` คือค่าจาก render ล่าสุด
+ *   เขียนสองครั้งก่อนจอ render ทัน (เลือกตัวกรองแล้วกดเรียง/เปลี่ยนหน้าทันที) ครั้งที่สองจะทับ
+ *   ครั้งแรกทิ้ง ⇒ ตัวกรองหายเงียบ ๆ และ Excel ที่ส่งออกไม่ตรงกับที่กรอง จึงต้องตั้งต้นจาก
+ *   `latestParams` ที่จำค่าที่เพิ่งเขียนไว้ (ปักที่ `__tests__/useCustomersQuery.rapidWrites.test.tsx`)
  * - ตัวกรองของอีกแท็บอ่านเป็น `''` ตอนที่ไม่ได้อยู่แท็บนั้น — ไม่ใช่แค่ซ่อน control
  *   ไม่งั้นลิงก์เก่าที่พก `?precheck=` จะกรองรายการลูกค้าอยู่โดยมองไม่เห็น
  * - `setView` ลบคีย์ของอีกแท็บ + `sortBy`/`sortDirection`/`page`
@@ -127,6 +131,13 @@ export interface UseCustomersQueryResult {
 
 export function useCustomersQuery(): UseCustomersQueryResult {
   const [searchParams, setSearchParams] = useSearchParams();
+  // ค่า URL ล่าสุดที่ "ตั้งใจให้เป็น" — เดินนำหน้า `searchParams` ในช่วงที่เขียนไปแล้วแต่จอยัง
+  // ไม่ render · ซิงก์กลับเมื่อ URL จริงเปลี่ยน (รวมที่ตัวเขียนอื่นแก้ เช่น `?zone=` ของ layout)
+  // `searchParams` เปลี่ยนตัวตนเฉพาะตอน `location.search` เปลี่ยน ⇒ render อื่นไม่ดึงค่าถอยหลัง
+  const latestParams = useRef(searchParams);
+  useLayoutEffect(() => {
+    latestParams.current = searchParams;
+  }, [searchParams]);
   const { user } = useAuth();
   const canFilterBranch = BRANCH_FILTER_ROLES.includes(user?.role ?? '');
 
@@ -180,15 +191,11 @@ export function useCustomersQuery(): UseCustomersQueryResult {
 
   const write = useCallback(
     (mutate: (next: URLSearchParams) => void) => {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          mutate(next);
-          next.delete('page');
-          return next;
-        },
-        { replace: true },
-      );
+      const next = new URLSearchParams(latestParams.current);
+      mutate(next);
+      next.delete('page');
+      latestParams.current = next;
+      setSearchParams(next, { replace: true });
     },
     [setSearchParams],
   );
@@ -250,15 +257,11 @@ export function useCustomersQuery(): UseCustomersQueryResult {
 
   const setPage = useCallback(
     (value: number) => {
-      setSearchParams(
-        (prev) => {
-          const next = new URLSearchParams(prev);
-          if (value > 1) next.set('page', String(value));
-          else next.delete('page');
-          return next;
-        },
-        { replace: true },
-      );
+      const next = new URLSearchParams(latestParams.current);
+      if (value > 1) next.set('page', String(value));
+      else next.delete('page');
+      latestParams.current = next;
+      setSearchParams(next, { replace: true });
     },
     [setSearchParams],
   );

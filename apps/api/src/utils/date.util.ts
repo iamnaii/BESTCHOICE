@@ -41,6 +41,17 @@ export function bangkokStartOfDay(now: Date = new Date()): Date {
 }
 
 /**
+ * จำนวนวันปฏิทินไทยจาก `from` ถึง `to` (0 = วันเดียวกัน, ติดลบ = `to` อยู่ก่อน) — ไม่ขึ้นกับ
+ * TZ ของเครื่องและไม่ขึ้นกับเวลาในวัน. ใช้กับ "เกินกำหนดกี่วัน" ของค่าเผื่อหนี้สงสัยจะสูญ
+ * (คำตัดสินฝ่ายบัญชี 2026-09-28) เพราะ dueDate บางแถวไม่ได้เก็บที่เที่ยงคืนไทย.
+ */
+export function bangkokDayDiff(from: Date, to: Date): number {
+  return Math.round(
+    (bangkokStartOfDay(to).getTime() - bangkokStartOfDay(from).getTime()) / 86_400_000,
+  );
+}
+
+/**
  * True when `date` falls on a FUTURE Asia/Bangkok calendar day relative to
  * `now`. Use for "no future receipt dates" guards: a date-only string parses
  * to UTC midnight, which is numerically AHEAD of "now" during a BKK evening,

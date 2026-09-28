@@ -5,7 +5,6 @@ import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 const PAYMENT_FLOWS = ['payment', 'split-payment', 'early-payoff', 'reschedule'];
-const REVERSAL_FLOWS = ['defect-exchange', 'receipt-void'];
 
 /**
  * Template — Defect Exchange Reversal.
@@ -16,8 +15,10 @@ const REVERSAL_FLOWS = ['defect-exchange', 'receipt-void'];
  *
  * Strategy: find all POSTED JEs tagged with contractId (via metadata), skip any
  * already-reversed JEs, skip payment-side JEs (2B/early-payoff — business rules
- * state no payments exist within the 7-day window, but we guard defensively).
- * For each eligible JE, post a mirror JE with Dr/Cr swapped.
+ * state no payments exist within the 7-day window, but we guard defensively),
+ * and skip every entry with `tag === 'REVERSAL'` (any flow — receipt-void,
+ * refund-reversal, defect-exchange, exchange-cancel, …). For each remaining
+ * eligible JE, post a mirror JE with Dr/Cr swapped.
  */
 @Injectable()
 export class DefectExchangeReversalTemplate {
@@ -75,7 +76,10 @@ export class DefectExchangeReversalTemplate {
         continue;
       }
 
-      // Skip payment-side JEs and reversal JEs themselves (defensive guard)
+      // Skip payment-side JEs (still a defensive guard — business rules say no
+      // payments exist within the 7-day window). Reversal JEs are handled by the
+      // dedicated tag check below, which is load-bearing, not defensive — see
+      // that check's own comment.
       const flow = (meta['flow'] as string | undefined) ?? '';
       if (PAYMENT_FLOWS.includes(flow)) {
         this.logger.warn(
@@ -83,9 +87,12 @@ export class DefectExchangeReversalTemplate {
         );
         continue;
       }
-      if (REVERSAL_FLOWS.includes(flow) && meta['tag'] === 'REVERSAL') {
+      // ข้ามรายการกลับรายการทุก flow (receipt-void / refund-reversal / defect-exchange /
+      // exchange-cancel …) — ตั้งแต่ 2026-09-28 รายการเหล่านี้ผูก contractId จึงถูกกวาดเจอ;
+      // mirror ซ้ำ = ลงรายการเดิมกลับเข้ามาใหม่โดยไม่มีเงินจริง
+      if (meta['tag'] === 'REVERSAL') {
         this.logger.log(
-          `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is itself a reversal JE, skipping`,
+          `[A.5a] DefectExchangeReversal — JE ${je.entryNumber} is itself a reversal JE (flow '${flow}'), skipping`,
         );
         continue;
       }

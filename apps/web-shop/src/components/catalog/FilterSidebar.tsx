@@ -104,7 +104,10 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
   }
 
   const body = (
-    <div className={cn('space-y-5', bare ? 'pt-1' : 'px-4 pb-5 pt-4')}>
+    // font-head on the wrapper: labels, selects and buttons otherwise inherit
+    // the body face (Sarabun) and the panel reads as a different UI from the
+    // Prompt chips and cards beside it.
+    <div className={cn('font-head space-y-5', bare ? 'pt-1' : 'px-4 pb-5 pt-4')}>
       {/* "ดาวน์เท่าไหร่ ผ่อนเดือนละเท่าไหร่" is the first question in a Thai
           phone shop, so it sits above the filters. */}
       {plan && <PlanBlock plan={plan} />}

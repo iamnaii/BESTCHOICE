@@ -187,8 +187,8 @@ export interface InstallmentOutstandingPreloaded {
 
 export interface ComputeInstallmentOutstandingOpts {
   selection: InstallmentOutstandingSelection;
-  /** Reference "now" for DUE's `dueDate < asOf` filter + both paths'
-   *  `daysOverdue`. Defaults to `new Date()`. */
+  /** Reference "now" for DUE's `dueDate < ต้นวันไทยของ asOf` filter + both
+   *  paths' `daysOverdue`. Defaults to `new Date()`. */
   asOf?: Date;
   preloaded?: InstallmentOutstandingPreloaded;
 }

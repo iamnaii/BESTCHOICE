@@ -311,6 +311,14 @@ export class PaySolutionsWebhookService {
             return { alreadyClaimed: true as const };
           }
 
+          // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะของสัญญา "ก่อนรับเงิน" — อ่านในธุรกรรมนี้ หลังได้สิทธิ์ลิงก์
+          // และก่อนแก้อะไร. การอ่านนอกธุรกรรม (contractForJe) ไม่เห็นการบอกเลิก/รับเครื่องคืนที่ commit
+          // แทรกเข้ามาระหว่างนั้น
+          const contractBeforeReceipt = await tx.contract.findUnique({
+            where: { id: paymentLink.contractId! },
+            select: { status: true },
+          });
+
           const unpaidPayments = await tx.payment.findMany({
             where: {
               contractId: paymentLink.contractId!,
@@ -467,6 +475,9 @@ export class PaySolutionsWebhookService {
                       : undefined,
                     isFinalReceipt: snapshot.isFinalReceipt,
                     paymentId: snapshot.id,
+                    // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะที่อ่านไว้ก่อนธุรกรรมนี้เปลี่ยนเป็น
+                    // EARLY_PAYOFF / COMPLETED
+                    contractStatusBeforeReceipt: contractBeforeReceipt?.status,
                     // PR-843/I2 Phase 5b — the QR webhook always clears the FULL owed
                     // amount per installment (payThis = min(remaining, owed), never a
                     // deliberate customer underpayment), so any ≤1฿ residual on the

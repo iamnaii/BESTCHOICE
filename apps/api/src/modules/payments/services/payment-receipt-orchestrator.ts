@@ -613,6 +613,8 @@ export class PaymentReceiptOrchestrator {
                 lateFee: lateFee.gt(0) ? lateFee : undefined,
                 lateFeeWaived: waiverAmount.gt(0) ? waiverAmount : undefined,
                 postedAt: effectivePaidDate,
+                // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะที่อ่านไว้ก่อน checkContractCompletion
+                contractStatusBeforeReceipt: contract.status,
                 // PR-843/I2 Phase 5b — auto-approve a ≤1฿ underpay-close ONLY when the
                 // payer covered the full billed obligation (cash + consumed advance ≥
                 // remaining = amountDue+lateFee−prevPaid). In that case any ≤1฿ residual
@@ -1018,6 +1020,8 @@ export class PaymentReceiptOrchestrator {
                   lateFee: lateFeeOwed.gt(0) ? lateFeeOwed : undefined,
                   isFinalReceipt: isPaidInFull,
                   paymentId: updated.id,
+                  // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะที่อ่านไว้ก่อน checkContractCompletion
+                  contractStatusBeforeReceipt: contract.status,
                   // PR-843/I2 Phase 5b — autoAllocate always clears the FULL owed
                   // amountDue per installment (payAmount = min(remaining, amountDue),
                   // never a deliberate customer underpayment), so any ≤1฿ residual on
@@ -1306,6 +1310,8 @@ export class PaymentReceiptOrchestrator {
                   lateFee: lateFeeOwed.gt(0) ? lateFeeOwed : undefined,
                   isFinalReceipt: isPaidInFull,
                   paymentId: updated.id,
+                  // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะที่อ่านไว้ก่อน checkContractCompletion
+                  contractStatusBeforeReceipt: contract.status,
                   // PR-843/I2 Phase 5b — applyCreditBalance always clears the FULL owed
                   // amountDue per installment (payAmount = min(remaining, amountDue)), so
                   // any ≤1฿ residual on the last installment is a system rounding artifact

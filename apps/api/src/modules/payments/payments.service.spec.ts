@@ -494,6 +494,8 @@ describe('PaymentsService', () => {
       const callArgs = templateMock.execute.mock.calls[0][0];
       expect(callArgs.isFinalReceipt).toBe(true);
       expect(callArgs.autoApproveSystemRounding).toBe(true);
+      // ตั้งลูกหนี้งวด ณ วันรับเงิน (R1): ส่งสถานะสัญญาที่อ่านไว้ก่อนแก้อะไรในธุรกรรม
+      expect(callArgs.contractStatusBeforeReceipt).toBe('ACTIVE');
     });
 
     it('a genuine 0.50 baht customer shortfall requires actual tolerance approval and causes no unapproved write', async () => {
@@ -613,6 +615,9 @@ describe('PaymentsService', () => {
       expect(call2.isFinalReceipt).toBe(false);
       expect(call2.paymentId).toBe('p-2');
       expect(call2.autoApproveSystemRounding).toBe(true);
+      // ตั้งลูกหนี้งวด ณ วันรับเงิน (R1): ทุกงวดได้สถานะก่อนรับเงินตัวเดียวกัน
+      expect(call1.contractStatusBeforeReceipt).toBe('ACTIVE');
+      expect(call2.contractStatusBeforeReceipt).toBe('ACTIVE');
     });
 
     it('PR-843/I2 Phase 3 3c: forwards lateFeeOwed to the primitive (honouring lateFeeWaived→0)', async () => {

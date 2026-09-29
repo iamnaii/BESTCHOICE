@@ -1,10 +1,13 @@
-import { Injectable, BadRequestException, Optional } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger, Optional } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { randomUUID } from 'crypto';
-import { Prisma } from '@prisma/client';
+import { ContractStatus, Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AccountRoleService } from '../account-role.service';
+import { decideAccrueAtReceipt } from '../accrue-at-receipt-decision';
+import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
 import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
 import { splitReceipt, SplitReceiptResult } from '../split-receipt';
 import { buildReceiptLines } from '../build-receipt-lines';
@@ -60,6 +63,13 @@ export interface PaymentReceiptPrimitiveInput {
    * receipt's ledger entry is dated to the payment date, not "now".
    */
   postedAt?: Date;
+  /**
+   * สถานะของสัญญา "ก่อน" การรับเงินครั้งนี้ — ผู้เรียกส่งค่าที่อ่านไว้ก่อนแก้อะไรในธุรกรรมของตัวเอง.
+   * จำเป็นเพราะเส้นทางรับชำระเปลี่ยนสถานะสัญญาเป็น COMPLETED / EARLY_PAYOFF ในธุรกรรมเดียวกัน
+   * **ก่อน**เรียก template: ถ้า template อ่านสถานะเอง งวดที่การรับเงินครั้งนี้ปิดสัญญาจะไม่ถูกตั้งลูกหนี้งวด.
+   * ไม่ส่ง = ใช้สถานะปัจจุบันของสัญญา (เครื่องมือ backfill, spec).
+   */
+  contractStatusBeforeReceipt?: ContractStatus;
 }
 
 /**
@@ -80,11 +90,19 @@ export interface PaymentReceiptPrimitiveInput {
  */
 @Injectable()
 export class PaymentReceiptTemplate {
+  private readonly logger = new Logger(PaymentReceiptTemplate.name);
+  private readonly accrual: InstallmentAccrual2ATemplate;
+
   constructor(
     private readonly journal: JournalAutoService,
     private readonly prisma: PrismaService,
     @Optional() private readonly roles?: AccountRoleService,
-  ) {}
+    // ตั้งลูกหนี้งวด ณ วันรับเงิน (D2, 2026-09-28). Nest ฉีดตัวที่ JournalModule ให้; จุดที่ `new` เอง
+    // (สเปค / CLI) ไม่ต้องส่ง — สร้างจาก journal + prisma ชุดเดียวกัน จึงไม่มีทาง "ลืมต่อ" จนข้าม 2A
+    @Optional() accrual?: InstallmentAccrual2ATemplate,
+  ) {
+    this.accrual = accrual ?? new InstallmentAccrual2ATemplate(journal, prisma);
+  }
 
   /**
    * D1.1.6.3 (ported from PaymentReceipt2BTemplate, PR-843/I2 Phase 3 3a) —
@@ -115,7 +133,100 @@ export class PaymentReceiptTemplate {
     input: PaymentReceiptPrimitiveInput,
     outerTx?: Prisma.TransactionClient,
   ): Promise<{ entryNo: string; split: SplitReceiptResult }> {
-    const readClient: Prisma.TransactionClient | PrismaService = outerTx ?? this.prisma;
+    if (outerTx) return this.executeInTx(input, outerTx);
+    // ไม่มีธุรกรรมของผู้เรียก (สเปค/เครื่องมือ) — ห่อเองเพื่อให้รายการตั้งลูกหนี้งวด (2A) กับใบรับชำระ
+    // เป็นหน่วยเดียวกัน: ใบรับชำระไม่ผ่าน = 2A ไม่ค้าง. เส้นทางจริงทุกเส้นส่ง outerTx มาเองอยู่แล้ว.
+    return this.prisma.$transaction((tx) => this.executeInTx(input, tx), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  }
+
+  /**
+   * ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตัดสินฝ่ายบัญชี D2, 2026-09-28) — เรียกหลังด่านของ template และ
+   * splitReceipt ผ่านแล้ว ก่อนลงใบรับชำระ. วันที่รับเงิน = postedAt ของใบรับชำระ (ไม่ส่ง = ตอนนี้).
+   *
+   * ตั้งเฉพาะเมื่อใบนี้ทำให้งวดชำระครบ และสัญญาอยู่ในสถานะที่รอบกลางคืนดูแล — กติกาอยู่ที่
+   * decideAccrueAtReceipt ตัวเดียว (คำตัดสินผู้คุมงาน R1, R9, R12). สองกรณีที่ไม่ตั้งคงพฤติกรรมเดิม
+   * ทุกประการ (ลงใบรับชำระ ไม่ลง 2A) แล้วส่งสัญญาณเตือนคนละข้อความให้นับแยกกันได้:
+   *   - สัญญาที่ถูกบอกเลิก/ปิดไปก่อนแล้ว — ยังไม่มีกติกาบัญชี
+   *   - ใบรับชำระบางส่วนของงวดที่ยังไม่มี 2A — คงพฤติกรรมเดิม (ฝ่ายบัญชีตอบ 29/09/2569 ให้ตั้งเท่ายอด
+   *     ที่รับ — แยกเป็นงานถัดไป); รอบกลางคืนตั้งลูกหนี้งวดให้ในวันครบกำหนดตามเดิม
+   *
+   * ไม่จับ error ของฐานข้อมูล: ชนกับรอบกลางคืน/ใบรับชำระอีกใบ (P2002 จาก unique index ของ reference
+   * หรือ P2034) ต้องผ่านออกไปตามเดิม — webhook ของ PaySolutions อาศัยคำตอบ 5xx เพื่อให้ส่งซ้ำ.
+   */
+  private async accrueBeforeReceiptIfSettled(
+    inst: {
+      id: string;
+      installmentNo: number;
+      dueDate: Date;
+      accrualJournalEntryId: string | null;
+    },
+    contract: { id: string; contractNumber: string; status: ContractStatus },
+    input: PaymentReceiptPrimitiveInput,
+    split: SplitReceiptResult,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
+    const statusAtReceipt = input.contractStatusBeforeReceipt ?? contract.status;
+    const isFinalReceipt = input.isFinalReceipt ?? false;
+    const decision = decideAccrueAtReceipt({
+      alreadyAccrued: !!inst.accrualJournalEntryId,
+      contractStatusBeforeReceipt: statusAtReceipt,
+      isFinalReceipt,
+      principalRemainingAfter: split.principalRemainingAfter,
+    });
+    if (decision === 'ALREADY_ACCRUED') return;
+    if (decision === 'ACCRUE') {
+      await this.accrual.accrueAtReceipt(inst.id, input.postedAt ?? new Date(), tx);
+      return;
+    }
+
+    const extra = {
+      contractId: contract.id,
+      contractNumber: contract.contractNumber,
+      contractStatus: statusAtReceipt,
+      installmentScheduleId: inst.id,
+      installmentNo: inst.installmentNo,
+      dueDate: inst.dueDate.toISOString(),
+      paymentId: input.paymentId ?? null,
+      isFinalReceipt,
+      principalRemainingAfter: split.principalRemainingAfter.toFixed(2),
+    };
+    if (decision === 'CONTRACT_NOT_SERVED') {
+      this.logger.warn(
+        `[accrue-at-receipt] skipped — contract ${contract.contractNumber} was ${statusAtReceipt} before this receipt; ` +
+          `receipt posts without a 2A accrual (installmentScheduleId=${inst.id})`,
+      );
+      Sentry.captureMessage(
+        '[accrue-at-receipt] receipt on a contract the accrual does not serve — 2A not posted',
+        {
+          level: 'warning',
+          tags: { module: 'journal', action: 'accrue-at-receipt-skipped-status' },
+          extra,
+        },
+      );
+      return;
+    }
+    this.logger.warn(
+      `[accrue-at-receipt] skipped — partial receipt on installment #${inst.installmentNo} of contract ` +
+        `${contract.contractNumber} which has no 2A accrual yet; receipt posts as before ` +
+        `(installmentScheduleId=${inst.id}, remaining=${extra.principalRemainingAfter}, isFinalReceipt=${isFinalReceipt})`,
+    );
+    Sentry.captureMessage(
+      '[accrue-at-receipt] partial receipt on an installment with no accrual yet — 2A not posted',
+      {
+        level: 'warning',
+        tags: { module: 'journal', action: 'accrue-at-receipt-skipped-partial' },
+        extra,
+      },
+    );
+  }
+
+  private async executeInTx(
+    input: PaymentReceiptPrimitiveInput,
+    outerTx: Prisma.TransactionClient,
+  ): Promise<{ entryNo: string; split: SplitReceiptResult }> {
+    const readClient: Prisma.TransactionClient = outerTx;
 
     const inst = await readClient.installmentSchedule.findUniqueOrThrow({
       where: { id: input.installmentScheduleId },
@@ -236,6 +347,10 @@ export class PaymentReceiptTemplate {
         `ไม่มีรายการบัญชีที่ต้องบันทึก — งวดนี้ถูกชำระครบแล้ว (installmentScheduleId: ${input.installmentScheduleId})`,
       );
     }
+
+    // ตั้งลูกหนี้งวด ณ วันรับเงิน — ตรงนี้เท่านั้น: ทุกด่านข้างบนผ่านแล้ว (ใบที่ถูกปฏิเสธไม่ทิ้ง 2A ไว้) และ
+    // `split` คือผลที่ใบรับชำระจะลงจริง. 2A ถูกลงก่อนใบรับชำระ ในธุรกรรมเดียวกัน.
+    await this.accrueBeforeReceiptIfSettled(inst, c, input, split, outerTx);
 
     // companyId intentionally omitted: every line here is a FINANCE account
     // (11-2103 / 42-1103 / 53-1503 / 52-1104 / 21-1103 / deposit), so createAndPost's

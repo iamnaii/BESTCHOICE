@@ -150,6 +150,8 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
     stillUnpaid: number;
     claimCount?: number;
     contractProductId?: string | null;
+    /** สถานะสัญญาที่ webhook อ่านในธุรกรรม (หลังได้สิทธิ์ลิงก์ ก่อนแก้แถวงวด) — ค่าเริ่มต้น ACTIVE */
+    contractStatusInTx?: string;
     instSchedResolver?: (
       installmentNo: number,
     ) => { id: string; vat60dayJournalEntryId: string | null } | null;
@@ -174,6 +176,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
         count: jest.fn().mockResolvedValue(opts.stillUnpaid),
       },
       contract: {
+        findUnique: jest.fn().mockResolvedValue({ status: opts.contractStatusInTx ?? 'ACTIVE' }),
         update: jest
           .fn()
           .mockResolvedValue({ productId: opts.contractProductId ?? null }),
@@ -874,6 +877,64 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       // owed uses lateFee 0 (waived) → delta 1000, and lateFee is NOT passed.
       expect(jeInput.delta.toString()).toBe('1000');
       expect(jeInput.lateFee).toBeUndefined();
+    });
+
+    it('อ่านสถานะสัญญาในธุรกรรม (หลังได้สิทธิ์ลิงก์ ก่อนแก้แถวงวด) แล้วส่งให้ template ทุกงวด แม้ธุรกรรมเดียวกันเปลี่ยนสัญญาเป็น EARLY_PAYOFF ไปแล้ว', async () => {
+      // QR ปิด 3 งวดในครั้งเดียว: webhook เปลี่ยนสถานะสัญญาก่อนลงใบรับชำระ — template ต้องได้สถานะ
+      // "ก่อนรับเงิน" (ACTIVE) จึงจะตั้งลูกหนี้งวดให้งวดที่จ่ายล่วงหน้า (คำตัดสิน R1 + R12 ข้อ M1)
+      const unpaid = [makeRow(1), makeRow(2), makeRow(3)];
+      const tx = buildTx({ unpaid, stillUnpaid: 0 });
+      buildPrisma({ link: makeLink({ amount: new Prisma.Decimal(3000) }), tx });
+      await buildService();
+
+      await service.handlePaymentCallback({
+        refno,
+        result_code: '00',
+        order_no: 'o-1',
+        transaction_id: 'tx-1',
+        total: '3000',
+      });
+
+      expect(tx.contract.findUnique).toHaveBeenCalledTimes(1);
+      expect(tx.contract.findUnique).toHaveBeenCalledWith({
+        where: { id: contractId },
+        select: { status: true },
+      });
+      const readOrder = tx.contract.findUnique.mock.invocationCallOrder[0];
+      expect(readOrder).toBeGreaterThan(tx.paymentLink.updateMany.mock.invocationCallOrder[0]);
+      expect(readOrder).toBeLessThan(tx.payment.update.mock.invocationCallOrder[0]);
+      expect(tx.contract.update.mock.calls[0][0].data.status).toBe('EARLY_PAYOFF');
+      expect(template.execute).toHaveBeenCalledTimes(3);
+      for (const call of template.execute.mock.calls) {
+        expect(call[0].contractStatusBeforeReceipt).toBe('ACTIVE');
+      }
+      // การอ่านนอกธุรกรรม (ใช้ประกอบรายการบัญชี) ไม่ถูกเปลี่ยน
+      expect(prisma.contract.findUnique.mock.calls[0][0].select).toEqual({
+        id: true,
+        contractNumber: true,
+        branchId: true,
+      });
+    });
+
+    it('สัญญาถูกบอกเลิกไปก่อนเงินเข้า → template ได้สถานะ TERMINATED จากการอ่านในธุรกรรม', async () => {
+      const tx = buildTx({
+        unpaid: [makeRow(1)],
+        stillUnpaid: 1,
+        contractStatusInTx: 'TERMINATED',
+      });
+      buildPrisma({ link: makeLink(), tx });
+      await buildService();
+
+      await service.handlePaymentCallback({
+        refno,
+        result_code: '00',
+        order_no: 'o-1',
+        transaction_id: 'tx-1',
+        total: '1000',
+      });
+
+      expect(template.execute).toHaveBeenCalledTimes(1);
+      expect(template.execute.mock.calls[0][0].contractStatusBeforeReceipt).toBe('TERMINATED');
     });
 
     it('vat60dayJournalEntryId set → vat60Reversal.execute(installmentScheduleId, tx) fires after the receipt', async () => {

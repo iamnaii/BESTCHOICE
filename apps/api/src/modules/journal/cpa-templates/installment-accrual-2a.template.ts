@@ -1,11 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
+import {
+  buildAccrual2ALines,
+  resolveAccrualPeriodCheckDate,
+  resolveAccrualPostingDate,
+} from '../build-accrual-2a-lines';
 import { feeNettedOutstanding } from '../compute-cn-breakdown';
+import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import {
   ADVANCE_CONSUME_ON_ACCRUAL_FLOW,
   RESCHEDULE_PARK_CONSUME_FLOW,
@@ -59,6 +64,18 @@ import {
  *
  * Idempotent: returns null if accrualJournalEntryId is already set on the installment.
  */
+/** `metadata.trigger` ของรายการ 2A ที่ลง ณ วันรับเงิน (คำตัดสินฝ่ายบัญชี D2, 2026-09-28). */
+export const ACCRUAL_TRIGGER_RECEIPT = 'receipt';
+
+type AccrualInstallment = Prisma.InstallmentScheduleGetPayload<Record<string, never>>;
+type AccrualContract = Prisma.ContractGetPayload<Record<string, never>>;
+
+export interface AccrueAtReceiptResult {
+  entryNo: string;
+  /** วันที่ลงรายการ 2A = min(วันครบกำหนด, วันที่รับเงิน). */
+  postedAt: Date;
+}
+
 @Injectable()
 export class InstallmentAccrual2ATemplate {
   constructor(
@@ -72,7 +89,8 @@ export class InstallmentAccrual2ATemplate {
   ): Promise<{ entryNo: string } | null> {
     // Fast idempotency check outside the transaction (avoids opening a tx for
     // already-accrued installments — the common case on repeated cron ticks).
-    const instCheck = await this.prisma.installmentSchedule.findUniqueOrThrow({
+    // อ่านผ่านธุรกรรมของผู้เรียกเมื่อมี — client หลักมองไม่เห็นแถวตารางงวดที่เพิ่งสร้างและยังไม่ commit
+    const instCheck = await (outerTx ?? this.prisma).installmentSchedule.findUniqueOrThrow({
       where: { id: installmentScheduleId },
       select: { accrualJournalEntryId: true },
     });
@@ -98,6 +116,130 @@ export class InstallmentAccrual2ATemplate {
     });
   }
 
+  /**
+   * ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตัดสินฝ่ายบัญชี D2, 2026-09-28) — เรียกจาก
+   * PaymentReceiptTemplate ภายในธุรกรรมของการรับชำระเท่านั้น.
+   *
+   * "แกนอย่างเดียว": ลงรายการ 2A + ประทับ accrualJournalEntryId เท่านั้น — ไม่หักเงินรับล่วงหน้า
+   * (ทั้งถังรวมและถังพักงวดสุดท้าย) และไม่แตะแถว Payment เพราะเส้นทางรับชำระเป็นผู้จัดการสองอย่างนั้น.
+   * ตรวจซ้ำ (idempotency) ด้วย `tx` ที่ส่งเข้ามา จึงเห็นตารางงวดที่เพิ่งสร้างในธุรกรรมเดียวกัน
+   * (ensureInstallmentSchedules).
+   *
+   * ไม่ตรวจสถานะสัญญา: เส้นทางรับชำระเปลี่ยนสถานะสัญญาเป็น COMPLETED / EARLY_PAYOFF ก่อนเรียกมาถึงที่นี่
+   * ผู้เรียก (PaymentReceiptTemplate) เป็นผู้ตัดสินจากสถานะก่อนรับเงิน.
+   * ไม่จับ error ของฐานข้อมูล (P2002 / P2034): ปล่อยให้ธุรกรรมของผู้เรียกล้มตามเดิม.
+   *
+   * คืน null เมื่องวดถูกตั้งลูกหนี้ไปแล้ว.
+   */
+  async accrueAtReceipt(
+    installmentScheduleId: string,
+    receiptDate: Date,
+    tx: Prisma.TransactionClient,
+  ): Promise<AccrueAtReceiptResult | null> {
+    const inst = await tx.installmentSchedule.findUniqueOrThrow({
+      where: { id: installmentScheduleId },
+    });
+    if (inst.accrualJournalEntryId) return null;
+
+    const c = await tx.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
+    const postedAt = resolveAccrualPostingDate(inst.dueDate, receiptDate);
+    await this.assertAccrualPeriodOpen(
+      tx,
+      inst.installmentNo,
+      resolveAccrualPeriodCheckDate(inst.dueDate, receiptDate),
+    );
+
+    const core = await this.postCore(inst, c, tx, {
+      postedAt,
+      extraMetadata: {
+        trigger: ACCRUAL_TRIGGER_RECEIPT,
+        receiptDate: receiptDate.toISOString(),
+      },
+    });
+    return { entryNo: core.entryNo, postedAt };
+  }
+
+  /** บรรทัดรายการ 2A จากตัวสร้างกลาง (ใช้ร่วมกับ preview) — ห้ามคำนวณยอดเองในไฟล์นี้. */
+  private buildLines(inst: AccrualInstallment, c: AccrualContract) {
+    return buildAccrual2ALines({
+      financedAmount: c.financedAmount.toString(),
+      storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
+      interestTotal: c.interestTotal.toString(),
+      vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
+      totalMonths: c.totalMonths,
+      installmentNo: inst.installmentNo,
+    });
+  }
+
+  /** ลงรายการ 2A + ประทับ accrualJournalEntryId (ธุรกรรมเดียวกัน). */
+  private async postCore(
+    inst: AccrualInstallment,
+    c: AccrualContract,
+    tx: Prisma.TransactionClient,
+    opts: { postedAt: Date; extraMetadata?: Record<string, string> },
+  ): Promise<{ entryNo: string; installmentTotal: Decimal }> {
+    const built = this.buildLines(inst, c);
+
+    const result = await this.journal.createAndPost(
+      {
+        description: `Accrual งวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
+        reference: inst.id,
+        metadata: {
+          tag: '2A',
+          contractId: c.id,
+          installmentScheduleId: inst.id,
+          ...(opts.extraMetadata ?? {}),
+        },
+        postedAt: opts.postedAt,
+        lines: built.lines,
+      },
+      tx,
+    );
+
+    // Mark installment as accrued (idempotency)
+    await tx.installmentSchedule.update({
+      where: { id: inst.id },
+      data: { accrualJournalEntryId: result.entryNumber },
+    });
+
+    return { entryNo: result.entryNumber, installmentTotal: built.installmentTotal };
+  }
+
+  /**
+   * งวดบัญชี FINANCE ของรายการ 2A ต้องยังเปิด — ถ้าปิดแล้ว ปฏิเสธการรับชำระทั้งรายการ (ธุรกรรมของ
+   * ผู้เรียก roll back). `periodCheckDate` คือ Date ที่ใช้ตัดสินงวด (resolveAccrualPeriodCheckDate).
+   *
+   * ข้อความบอก**เฉพาะเดือนที่ปิด** อ่านจาก `periodCheckDate` ด้วย getter ชุดเดียวกับ validatePeriodOpen
+   * (เวลาของเครื่อง) จึงเป็นเดือนเดียวกับที่ถูกตรวจเสมอ. ไม่ใส่วันที่ลงรายการ: วันที่นั้นแสดงตามเวลาไทย
+   * แต่เดือนของงวดบัญชีตัดสินตามเวลาของเครื่อง — งวดที่ครบกำหนดวันที่ 1 จะอ่านขัดกันเองถ้าใส่ทั้งสองอย่าง.
+   * ให้ติดต่อฝ่ายบัญชี — ไม่ชี้เมนู (การเปิดงวดเป็นสิทธิ์ของเจ้าของกิจการ) และไม่รับปากว่าเปิดได้เสมอ
+   * (งวดที่ส่งเข้าโปรแกรมบัญชีภายนอกแล้วเปิดไม่ได้).
+   */
+  private async assertAccrualPeriodOpen(
+    tx: Prisma.TransactionClient,
+    installmentNo: number,
+    periodCheckDate: Date,
+  ): Promise<void> {
+    const finance = await tx.companyInfo.findFirst({
+      where: { companyCode: 'FINANCE', deletedAt: null },
+      select: { id: true },
+    });
+    try {
+      await validatePeriodOpen(tx, periodCheckDate, finance?.id);
+    } catch (e) {
+      if (e instanceof BadRequestException) {
+        const closedMonth =
+          `${String(periodCheckDate.getMonth() + 1).padStart(2, '0')}/` +
+          `${periodCheckDate.getFullYear() + 543}`;
+        throw new BadRequestException(
+          `ไม่สามารถรับชำระงวด #${installmentNo} ได้ — ระบบต้องตั้งลูกหนี้งวดนี้ในงวดบัญชีเดือน ${closedMonth} ซึ่งปิดแล้ว ` +
+            'กรุณาติดต่อฝ่ายบัญชีเพื่อขอเปิดงวดบัญชีเดือนดังกล่าว เมื่อเปิดงวดแล้วจึงบันทึกรับชำระอีกครั้ง',
+        );
+      }
+      throw e;
+    }
+  }
+
   private async run(
     installmentScheduleId: string,
     tx: Prisma.TransactionClient,
@@ -112,97 +254,11 @@ export class InstallmentAccrual2ATemplate {
 
     const c = await tx.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
-    // Per-installment amounts via the shared single source of truth — same
-    // rounding the 2B receipt / early-payoff use (ROUND_DOWN principal,
-    // ROUND_HALF_UP interest+VAT). Straight-line per CPA Policy A (post-#783).
-    const base = computeInstallmentBreakdown({
-      financedAmount: c.financedAmount.toString(),
-      storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
-      interestTotal: c.interestTotal.toString(),
-      vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
-      totalMonths: c.totalMonths,
-    });
-    let installmentExclVat = base.installmentExclVat; // 1,416.66
-    let interestPerInst = base.interestPerInst; //       500.00
-    let vatPerInst = base.vatPerInst; //                  99.17
-
-    // Final-period residual adjustment (Wave 1 / Task 6 — Audit P0 TFRS 15 C-1).
-    // ROUND_DOWN/ROUND_HALF_UP per-installment rounding can leak residuals
-    // (e.g. 1416.66 × 12 = 16,999.92 vs target 17,000.00). On the LAST
-    // installment we absorb whatever remains so 11-2101 / 11-2105 / 41-1101
-    // hit exactly 0 after the cycle completes.
-    if (inst.installmentNo === c.totalMonths) {
-      const priorPeriods = new Decimal(c.totalMonths - 1);
-      installmentExclVat = base.grossExclVat.minus(installmentExclVat.times(priorPeriods));
-      vatPerInst = base.vat.minus(vatPerInst.times(priorPeriods));
-      interestPerInst = new Decimal(c.interestTotal.toString()).minus(
-        interestPerInst.times(priorPeriods),
-      );
-    }
-
-    const installmentTotal = installmentExclVat.plus(vatPerInst); // 1,515.83
-
+    // รอบกลางคืน: ลงวันครบกำหนด (พฤติกรรมเดิม) — บรรทัดรายการมาจากตัวสร้างกลางตัวเดียวกับ
+    // 2A ณ วันรับเงินและ preview
+    const core = await this.postCore(inst, c, tx, { postedAt: inst.dueDate });
+    const installmentTotal = core.installmentTotal;
     const zero = new Decimal(0);
-
-    const result = await this.journal.createAndPost(
-      {
-        description: `Accrual งวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
-        reference: inst.id,
-        metadata: { tag: '2A', contractId: c.id, installmentScheduleId: inst.id },
-        postedAt: inst.dueDate,
-        lines: [
-          {
-            accountCode: '11-2103',
-            dr: installmentTotal,
-            cr: zero,
-            description: 'ลูกหนี้ค้างชำระ (Accrual)',
-          },
-          {
-            accountCode: '21-2102',
-            dr: vatPerInst,
-            cr: zero,
-            description: 'ล้าง ภาษีขายรอเรียกเก็บ',
-          },
-          {
-            accountCode: '11-2106',
-            dr: interestPerInst,
-            cr: zero,
-            description: 'ล้าง รายได้รอตัดบัญชี-ดอกเบี้ย',
-          },
-          {
-            accountCode: '11-2101',
-            dr: zero,
-            cr: installmentExclVat,
-            description: 'ลูกหนี้ Gross (ลด excl.VAT)',
-          },
-          {
-            accountCode: '11-2105',
-            dr: zero,
-            cr: vatPerInst,
-            description: 'ลูกหนี้ภาษีขายรอฯ (ล้าง)',
-          },
-          {
-            accountCode: '41-1101',
-            dr: zero,
-            cr: interestPerInst,
-            description: 'รายได้ดอกเบี้ย (รับรู้)',
-          },
-          {
-            accountCode: '21-2101',
-            dr: zero,
-            cr: vatPerInst,
-            description: 'ภาษีขาย ภ.พ.30',
-          },
-        ],
-      },
-      tx,
-    );
-
-    // Mark installment as accrued (idempotency)
-    await tx.installmentSchedule.update({
-      where: { id: inst.id },
-      data: { accrualJournalEntryId: result.entryNumber },
-    });
 
     // CPA Policy A — Auto-consume advance balance on accrual.
     //
@@ -467,6 +523,6 @@ export class InstallmentAccrual2ATemplate {
       }
     }
 
-    return { entryNo: result.entryNumber };
+    return { entryNo: core.entryNo };
   }
 }

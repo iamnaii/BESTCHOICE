@@ -11,7 +11,7 @@
  * payment-preview-blocks.util.spec.ts.)
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { AccountingPeriodStatus, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedStandard17k12m } from '../../journal/__tests__/scenario-helpers';
@@ -20,8 +20,12 @@ import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contra
 import { InstallmentAccrual2ATemplate } from '../../journal/cpa-templates/installment-accrual-2a.template';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import { PaymentJournalPreviewService } from './payment-journal-preview.service';
+import type { PrismaService } from '../../../prisma/prisma.service';
 
 const prisma = new PrismaClient();
+
+/** แถวงวดบัญชีของ FINANCE ที่เทสในไฟล์นี้เปิด พร้อมสถานะเดิม — afterAll คืนค่าใน finally */
+const reopenedFinancePeriods: { id: string; status: AccountingPeriodStatus }[] = [];
 
 async function ensureFinanceCompany(): Promise<void> {
   const existing = await prisma.companyInfo.findFirst({ where: { companyCode: 'FINANCE' } });
@@ -84,19 +88,37 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
   });
 
   afterAll(async () => {
-    // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
-    // them first or this deleteMany trips P2003 when an asset spec ran earlier.
-    await prisma.journalPostAuditLog.deleteMany({});
-    await prisma.journalLine.deleteMany({});
-    await prisma.journalEntry.deleteMany({});
-    await prisma.payment.deleteMany({});
-    await prisma.installmentSchedule.deleteMany({});
-    // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
-    // contract written off via the real writeOffBadDebt() has a permanent
-    // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
-    const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({ select: { contractId: true } });
-    await prisma.contract.deleteMany({ where: { id: { notIn: woPoisoned.map((p) => p.contractId) } } });
-    await prisma.$disconnect();
+    try {
+      // JournalPostAuditLog rows (asset flows) FK-reference journal_entries — clear
+      // them first or this deleteMany trips P2003 when an asset spec ran earlier.
+      await prisma.journalPostAuditLog.deleteMany({});
+      await prisma.journalLine.deleteMany({});
+      await prisma.journalEntry.deleteMany({});
+      await prisma.payment.deleteMany({});
+      await prisma.installmentSchedule.deleteMany({});
+      // T1-C7 guard: see cn-issue-on-writeoff.spec.ts (Phase 3 Task 3) — a
+      // contract written off via the real writeOffBadDebt() has a permanent
+      // (immutable) badDebtWriteOffAuditLog row FK-referencing it.
+      const woPoisoned = await prisma.badDebtWriteOffAuditLog.findMany({
+        select: { contractId: true },
+      });
+      await prisma.contract.deleteMany({
+        where: { id: { notIn: woPoisoned.map((p) => p.contractId) } },
+      });
+    } finally {
+      try {
+        // คืนสถานะเดิมของงวดบัญชี FINANCE ที่เทสเปิด (แตะเฉพาะแถวที่จำไว้)
+        const rows = reopenedFinancePeriods.splice(0);
+        for (const status of new Set(rows.map((r) => r.status))) {
+          await prisma.accountingPeriod.updateMany({
+            where: { id: { in: rows.filter((r) => r.status === status).map((r) => r.id) } },
+            data: { status },
+          });
+        }
+      } finally {
+        await prisma.$disconnect();
+      }
+    }
   });
 
   it('2B_ONLY: returns a posted 2A context block (=2,115.00) and a balanced live 2B block', async () => {
@@ -196,17 +218,27 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
    * รายการ 2A ที่ลงจริงเมื่อรับชำระ ทั้งบรรทัดและวันที่ (มาจากฟังก์ชันเดียวกันทั้งสองฝั่ง).
    */
   it('งวดยังไม่ตั้งลูกหนี้งวด: 2A และ 2B ใน preview ตรงกับที่ลงจริงทุกบรรทัด และวันที่ลง 2A ตรงกัน', async () => {
-    const journal = new JournalAutoService(prisma as any);
+    const journal = new JournalAutoService(prisma as PrismaService);
     const paidDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD แบบที่หน้าจอส่ง
-    // เทสเตรียมงวดบัญชีที่ตัวเองใช้เอง: เปิดงวดของเดือนที่จะลงรายการ (เดือนตามเวลาของเครื่อง
-    // แบบเดียวกับ validatePeriodOpen) — ไม่พึ่งว่าตารางงวดบัญชีของฐานทดสอบว่าง
+    // เทสเตรียมงวดบัญชีที่ตัวเองใช้เอง: เปิดงวดของ FINANCE (บริษัทที่ 2A ตรวจงวด) เดือนที่จะลงรายการ
+    // (เดือนตามเวลาของเครื่อง แบบเดียวกับ validatePeriodOpen) — ไม่พึ่งว่าตารางงวดบัญชีของฐานทดสอบว่าง.
+    // แตะเฉพาะงวดของ FINANCE และจำสถานะเดิมไว้ให้ afterAll คืนค่า
     const postingDay = new Date(paidDate);
-    await prisma.accountingPeriod.updateMany({
+    const finance = await prisma.companyInfo.findFirstOrThrow({
+      where: { companyCode: 'FINANCE' },
+    });
+    const closedPeriods = await prisma.accountingPeriod.findMany({
       where: {
+        companyId: finance.id,
         status: { in: ['CLOSED', 'SYNCED'] },
         year: postingDay.getFullYear(),
         month: postingDay.getMonth() + 1,
       },
+      select: { id: true, status: true },
+    });
+    reopenedFinancePeriods.push(...closedPeriods);
+    await prisma.accountingPeriod.updateMany({
+      where: { id: { in: closedPeriods.map((period) => period.id) } },
       data: { status: 'OPEN' },
     });
     const sched7 = await prisma.installmentSchedule.findUniqueOrThrow({
@@ -237,7 +269,7 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
     expect(preview.accrual2A!.lines.every((l) => l.block === '2A' && l.posted === false)).toBe(true);
     expect(preview.subtotals['2A']).toEqual({ debit: '2115.00', credit: '2115.00', balanced: true });
 
-    const posted = await new PaymentReceiptTemplate(journal, prisma as any).execute({
+    const posted = await new PaymentReceiptTemplate(journal, prisma as PrismaService).execute({
       installmentScheduleId: sched7.id,
       delta: new Decimal('1515.83'),
       debitAccountCode: '11-1201',

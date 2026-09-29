@@ -125,6 +125,14 @@ describe('decideAccrueAtReceipt', () => {
     ).toBe('CONTRACT_NOT_SERVED');
   });
 
+  it('สัญญาร่าง (DRAFT — ยังไม่เปิดใช้ ไม่มี 1A): ใบปิดงวดที่ล้างลูกหนี้ในบัญชีครบ → ไม่ตั้ง', () => {
+    const split = remainingAfter({ delta: LEDGER, isFinalReceipt: true });
+    expect(split.principalRemainingAfter.toFixed(2)).toBe('0.00');
+    expect(
+      decide({ delta: LEDGER, isFinalReceipt: true }, { contractStatusBeforeReceipt: 'DRAFT' }),
+    ).toBe('CONTRACT_NOT_SERVED');
+  });
+
   it.each<ContractStatus>(['ACTIVE', 'OVERDUE', 'DEFAULT'])(
     'สถานะก่อนรับเงินเป็น %s และใบทำให้งวดครบ → ตั้ง',
     (status) => {

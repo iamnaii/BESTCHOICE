@@ -20,7 +20,7 @@
  */
 import { voidReceiptWithApproval } from '../../../../e2e/helpers/payment-approval';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { PrismaClient } from '@prisma/client';
+import { AccountingPeriodStatus, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedStandard17k12m } from '../../journal/__tests__/scenario-helpers';
@@ -98,9 +98,13 @@ async function ensureSystemAdminUser(): Promise<void> {
   }
 }
 
+/** แถวงวดบัญชีของ FINANCE ที่ ensureFinancePeriodsOpen เปิด พร้อมสถานะเดิม — restoreFinancePeriods คืนค่า */
+const reopenedFinancePeriods: { id: string; status: AccountingPeriodStatus }[] = [];
+
 /**
  * เทสไม่พึ่งว่าตารางงวดบัญชีสะอาด: เปิดงวดของ FINANCE ทุกเดือนที่เทสไฟล์นี้ลงรายการ
  * (ย้อนหลัง 10 วัน ถึงพรุ่งนี้). ไม่สร้างแถวใหม่ — ไม่มีแถว = งวดเปิดอยู่แล้ว.
+ * แตะเฉพาะงวดของ FINANCE และจำแถวที่เปิดกับสถานะเดิมไว้ — afterAll คืนค่าใน finally.
  * ปี/เดือนอ่านจากเวลาของเครื่อง แบบเดียวกับ validatePeriodOpen.
  */
 async function ensureFinancePeriodsOpen(): Promise<void> {
@@ -112,14 +116,31 @@ async function ensureFinancePeriodsOpen(): Promise<void> {
     const month = day.getMonth() + 1;
     months.set(`${year}-${month}`, { year, month });
   }
-  await prisma.accountingPeriod.updateMany({
+  const closed = await prisma.accountingPeriod.findMany({
     where: {
       companyId: finance.id,
       status: { in: ['CLOSED', 'SYNCED'] },
       OR: [...months.values()],
     },
+    select: { id: true, status: true },
+  });
+  if (closed.length === 0) return;
+  reopenedFinancePeriods.push(...closed);
+  await prisma.accountingPeriod.updateMany({
+    where: { id: { in: closed.map((p) => p.id) } },
     data: { status: 'OPEN' },
   });
+}
+
+/** คืนสถานะเดิมของงวดที่ ensureFinancePeriodsOpen เปิดไว้ (แตะเฉพาะแถวที่จำไว้) */
+async function restoreFinancePeriods(): Promise<void> {
+  const rows = reopenedFinancePeriods.splice(0);
+  for (const status of new Set(rows.map((r) => r.status))) {
+    await prisma.accountingPeriod.updateMany({
+      where: { id: { in: rows.filter((r) => r.status === status).map((r) => r.id) } },
+      data: { status },
+    });
+  }
 }
 
 /** 7 บรรทัดของรายการกลับรายการตั้งลูกหนี้งวด งวดปกติ — กระจกของ ACCRUAL_2A_SORTED */
@@ -411,8 +432,15 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
   });
 
   afterAll(async () => {
-    await cleanLedger();
-    await prisma.$disconnect();
+    try {
+      await cleanLedger();
+    } finally {
+      try {
+        await restoreFinancePeriods();
+      } finally {
+        await prisma.$disconnect();
+      }
+    }
   });
 
   describe('ใบรับชำระที่ทำให้งวดชำระครบ', () => {

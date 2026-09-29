@@ -447,6 +447,34 @@ describe('ReceiptVoidReversalTemplate.voidAccrualPostedAtReceipt', () => {
       );
     });
 
+    it('รายการที่ลิงก์ชี้เป็น 2A ที่ลง ณ วันรับเงินของงวดอื่น → ACCRUAL_NOT_FOUND + สัญญาณเตือน ไม่กลับรายการของงวดอื่น', async () => {
+      // POSTED · tag 2A · trigger receipt · มีบรรทัด — ต่างเพียง installmentScheduleId เป็นของงวดอื่น
+      const b = build({
+        accrual: {
+          ...accrualEntry(postedLines(NORMAL)),
+          metadata: { ...ACCRUAL_META, installmentScheduleId: 'inst-4' },
+        },
+      });
+
+      await expect(
+        b.tpl.voidAccrualPostedAtReceipt('inst-3', b.tx as never, VOID_25_SEP),
+      ).resolves.toEqual({ reversed: false, reason: 'ACCRUAL_NOT_FOUND' });
+
+      expectNothingWritten(b);
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        '[receipt-accrual-void] accrual link does not resolve to a reversible 2A entry — not reversed',
+        expect.objectContaining({
+          level: 'warning',
+          tags: expect.objectContaining({ action: 'receipt-accrual-void-skipped' }),
+          extra: expect.objectContaining({
+            reason: 'ACCRUAL_NOT_FOUND',
+            installmentScheduleId: 'inst-3',
+            accrualJournalEntryId: 'JE-202609-00077',
+          }),
+        }),
+      );
+    });
+
     it('รายการตั้งลูกหนี้งวดถูกกลับไปแล้ว → ALREADY_REVERSED + สัญญาณเตือน ไม่ลงซ้ำ', async () => {
       const b = build({
         accrual: {

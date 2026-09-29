@@ -317,6 +317,54 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
     expect(fullQr.accrualMode).toBe('CONSOLIDATED_PAYING_AHEAD');
   });
 
+  // R17 ด้านกลับ: ประโยคของโหมด QR ใช้เฉพาะงวดที่ยังไม่ตั้งลูกหนี้งวดของสัญญาที่รอบกลางคืนดูแล —
+  // งวดที่ตั้งลูกหนี้งวดแล้ว และสัญญาในสถานะที่ไม่ตั้งลูกหนี้งวด ได้ผล preview เดิม (ไม่มีบล็อก 2A ที่จะลง)
+  const R17_SENTENCE = 'การชำระผ่าน QR ไม่หักเครดิตคงเหลือของลูกค้า';
+  /** คำขอเดียวกับเทส R17 ข้างบน: เลือก QR · ลูกค้ามีเครดิต 500.00 · ยอด QR ที่หักเครดิตออกแล้ว 1,015.83 */
+  const QR_CREDIT_REDUCED_REQUEST = {
+    contractId: 'c1',
+    installmentNo: 1,
+    amountReceived: 1015.83,
+    depositAccountCode: '11-1201',
+    case: 'NORMAL',
+    consumeAdvance: true,
+    method: 'QR',
+  };
+
+  it('R17 ด้านกลับ — งวดที่ตั้งลูกหนี้งวดแล้ว: QR ยอดที่หักเครดิตออกแล้วได้ preview ปกติ (2B_ONLY) ไม่มีประโยคของ R17', async () => {
+    const futureDue = new Date(Date.now() + 30 * 86_400_000);
+    const svc = buildService('JE-202606-00001', futureDue, 'ACTIVE', '500');
+
+    const out = await svc.previewJournal(QR_CREDIT_REDUCED_REQUEST as never).catch((e: Error) => e);
+
+    expect(out).not.toBeInstanceOf(BadRequestException);
+    expect(out).not.toBeInstanceOf(Error);
+    expect(JSON.stringify(out)).not.toContain(R17_SENTENCE);
+    const preview = out as Awaited<ReturnType<PaymentJournalPreviewService['previewJournal']>>;
+    expect(preview.accrualMode).toBe('2B_ONLY');
+    expect(preview.accrualPostedAt).toBeUndefined();
+    expect(triples(preview.lines as Line[])).toEqual([
+      ['11-1201', '1015.83', '0.00'],
+      ['21-1103', '500.00', '0.00'],
+      ['11-2103', '0.00', '1515.83'],
+    ]);
+  });
+
+  it('R17 ด้านกลับ — สัญญาที่ถูกบอกเลิกแล้ว (TERMINATED): QR ยอดที่หักเครดิตออกแล้วไม่ได้ประโยคของ R17', async () => {
+    const futureDue = new Date(Date.now() + 30 * 86_400_000);
+    const svc = buildService(null, futureDue, 'TERMINATED', '500');
+
+    const out = await svc.previewJournal(QR_CREDIT_REDUCED_REQUEST as never).catch((e: Error) => e);
+
+    expect(out).not.toBeInstanceOf(BadRequestException);
+    expect(out).not.toBeInstanceOf(Error);
+    expect(JSON.stringify(out)).not.toContain(R17_SENTENCE);
+    const preview = out as Awaited<ReturnType<PaymentJournalPreviewService['previewJournal']>>;
+    expect(preview.accrualMode).toBe('2B_ONLY');
+    expect(preview.accrual2A).toBeUndefined();
+    expect(preview.accrualPostedAt).toBeUndefined();
+  });
+
   it('accrued installment: unchanged — live lines credit 11-2103 and accrualMode=2B_ONLY', async () => {
     const svc = buildService('JE-202606-00001');
 

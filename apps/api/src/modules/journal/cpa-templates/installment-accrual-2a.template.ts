@@ -17,8 +17,22 @@ import {
 } from '../reconstruct-prior';
 // EIR utility removed — CPA Policy A revert (#783) reverted to straight-line allocation.
 
+/** `metadata.trigger` ของรายการ 2A ที่ลง ณ วันรับเงิน (คำตัดสินฝ่ายบัญชี D2, 2026-09-28). */
+export const ACCRUAL_TRIGGER_RECEIPT = 'receipt';
+
+type AccrualInstallment = Prisma.InstallmentScheduleGetPayload<Record<string, never>>;
+type AccrualContract = Prisma.ContractGetPayload<Record<string, never>>;
+
+export interface AccrueAtReceiptResult {
+  entryNo: string;
+  /** วันที่ลงรายการ 2A = min(วันครบกำหนด, วันที่รับเงิน). */
+  postedAt: Date;
+}
+
 /**
- * Template 2A — Installment Accrual (fires on each installment due date).
+ * Template 2A — Installment Accrual. The nightly job (InstallmentAccrualCron → `execute`) accrues
+ * each installment on its due date; `accrueAtReceipt` accrues at the receipt that settles an
+ * un-accrued installment (คำตัดสินฝ่ายบัญชี D2, 2026-09-28).
  *
  * Spec §6.2 — recognizes each installment as it comes due:
  *
@@ -64,18 +78,6 @@ import {
  *
  * Idempotent: returns null if accrualJournalEntryId is already set on the installment.
  */
-/** `metadata.trigger` ของรายการ 2A ที่ลง ณ วันรับเงิน (คำตัดสินฝ่ายบัญชี D2, 2026-09-28). */
-export const ACCRUAL_TRIGGER_RECEIPT = 'receipt';
-
-type AccrualInstallment = Prisma.InstallmentScheduleGetPayload<Record<string, never>>;
-type AccrualContract = Prisma.ContractGetPayload<Record<string, never>>;
-
-export interface AccrueAtReceiptResult {
-  entryNo: string;
-  /** วันที่ลงรายการ 2A = min(วันครบกำหนด, วันที่รับเงิน). */
-  postedAt: Date;
-}
-
 @Injectable()
 export class InstallmentAccrual2ATemplate {
   constructor(

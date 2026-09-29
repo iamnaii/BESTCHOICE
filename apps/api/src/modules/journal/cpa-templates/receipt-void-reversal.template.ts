@@ -75,8 +75,9 @@ export class ReceiptVoidReversalTemplate {
    * ใบเสร็จ หลังงวดไม่เหลือการรับชำระที่มีผล (คำตอบฝ่ายบัญชี 29/09/2569 ข้อ 4 ทางเลือก 1).
    *
    * กลับเมื่อครบทุกข้อ: งวดมีลิงก์ไปรายการตั้งลูกหนี้งวด · ยังไม่ถึงวันครบกำหนด ณ วันที่ยกเลิก (ปฏิทินไทย —
-   * วันครบกำหนดเอง = ถึงแล้ว นิยามเดียวกับที่รอบกลางคืนใช้เลือกงวด) · รายการนั้นเป็น 2A สถานะ POSTED
-   * ที่ลง ณ วันรับเงิน (`trigger`) มีบรรทัด และยังไม่ถูกกลับ. รายการที่รอบกลางคืนลงไม่ถูกกลับที่นี่.
+   * วันครบกำหนดเอง = ถึงแล้ว นิยามเดียวกับที่รอบกลางคืนใช้เลือกงวด) · รายการนั้นเป็น 2A ของงวดนี้
+   * (`installmentScheduleId`) สถานะ POSTED ที่ลง ณ วันรับเงิน (`trigger`) มีบรรทัด และยังไม่ถูกกลับ.
+   * รายการที่รอบกลางคืนลงไม่ถูกกลับที่นี่.
    *
    * รายการกลับ = กระจกของบรรทัดที่ลงไว้จริง (mirrorPostedLines — แบบเดียวกับ voidReceipt ข้างล่าง)
    * เรียงตามรูปที่เสนอฝ่ายบัญชี. ยอดมาจากสมุดบัญชี จึงหักล้างรายการเดิมได้พอดีเสมอ และการยกเลิกใบเสร็จ
@@ -89,18 +90,19 @@ export class ReceiptVoidReversalTemplate {
    * รายการเดิมคงสถานะ POSTED และคง reference เดิม — การตั้งลูกหนี้งวดใหม่ของงวดนี้ใช้ reference ใหม่
    * (InstallmentAccrual2ATemplate.resolveAccrualReference).
    * ไม่จับ error ของฐานข้อมูล: ล้มแล้วการยกเลิกใบเสร็จล้มทั้งรายการ.
+   * `asOf` ใช้ตัดสินเพียงว่า "ถึงวันครบกำหนดแล้วหรือยัง" — รายการกลับไม่ส่ง postedAt จึงลงวันที่ปัจจุบันเสมอ เหมือนรายการกลับใบรับชำระ.
    */
   async voidAccrualPostedAtReceipt(
     installmentScheduleId: string,
     tx: Prisma.TransactionClient,
-    voidDate: Date = new Date(),
+    asOf: Date = new Date(),
   ): Promise<AccrualVoidResult> {
     const inst = await tx.installmentSchedule.findUniqueOrThrow({
       where: { id: installmentScheduleId },
       include: { contract: true },
     });
     if (!inst.accrualJournalEntryId) return { reversed: false, reason: 'NOT_ACCRUED' };
-    if (isDueDateReached(inst.dueDate, voidDate)) {
+    if (isDueDateReached(inst.dueDate, asOf)) {
       return { reversed: false, reason: 'DUE_DATE_REACHED' };
     }
 
@@ -136,6 +138,7 @@ export class ReceiptVoidReversalTemplate {
       !accrual ||
       accrual.status !== 'POSTED' ||
       meta['tag'] !== '2A' ||
+      meta['installmentScheduleId'] !== inst.id ||
       accrual.lines.length === 0
     ) {
       return skip('ACCRUAL_NOT_FOUND');

@@ -9,7 +9,7 @@ import {
  * ณ วันรับเงินใช้ร่วมกัน (คำตัดสินผู้คุมงาน R1, 2026-09-29).
  */
 describe('สถานะสัญญาที่รอบตั้งลูกหนี้งวดไม่ดูแล', () => {
-  it('รายการตรงกับที่รอบกลางคืนใช้อยู่เดิมทุกตัว (6 สถานะ ลำดับเดิม)', () => {
+  it('8 สถานะ: 6 สถานะเดิมของรอบกลางคืน (ลำดับเดิม) + DRAFT (ยังไม่เปิดใช้ ไม่มี 1A) + CANCELED (ยกเลิกสัญญาแล้ว)', () => {
     expect([...ACCRUAL_EXCLUDED_CONTRACT_STATUSES]).toEqual([
       'TERMINATED',
       'CLOSED_BAD_DEBT',
@@ -17,6 +17,8 @@ describe('สถานะสัญญาที่รอบตั้งลูก�
       'EARLY_PAYOFF',
       'EXCHANGED',
       'DEFECT_EXCHANGED',
+      'DRAFT',
+      'CANCELED',
     ]);
   });
 
@@ -31,6 +33,8 @@ describe('สถานะสัญญาที่รอบตั้งลูก�
     'EARLY_PAYOFF',
     'EXCHANGED',
     'DEFECT_EXCHANGED',
+    'DRAFT',
+    'CANCELED',
   ])('%s = สถานะที่ไม่ดูแล', (status) => {
     expect(isAccrualExcludedStatus(status)).toBe(true);
   });

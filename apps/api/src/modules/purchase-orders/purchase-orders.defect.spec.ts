@@ -10,7 +10,8 @@ describe('goodsReceiving — persists structured defectReason on REJECT', () => 
       purchaseOrder: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'po-1', status: 'APPROVED', deletedAt: null, supplierId: 's1',
-          items: [{ id: 'poi-1', category: 'PHONE_NEW', brand: 'A', model: 'B' }],
+          // quantity / unitPrice / receivedQty เป็นคอลัมน์ NOT NULL ของ POItem — การรับของใช้คิดต้นทุนต่อหน่วย
+          items: [{ id: 'poi-1', category: 'PHONE_NEW', brand: 'A', model: 'B', quantity: 1, unitPrice: 1000, receivedQty: 0 }],
         }),
         update: jest.fn().mockResolvedValue({}),
       },

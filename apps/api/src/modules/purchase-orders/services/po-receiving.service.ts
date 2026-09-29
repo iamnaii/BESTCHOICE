@@ -3,8 +3,14 @@ import { Prisma, ProductCategory, POPaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GoodsReceivingDto, DirectReceiveDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
-import { SUPPLIER_TERMS_SELECT, computePoAmounts, resolvePaymentTerms } from './po-amounts.util';
-import { PoCostBasis, poCostRemainder, poUnitCost } from './po-unit-cost.util';
+import {
+  SUPPLIER_TERMS_SELECT,
+  assertPoNetNotNegative,
+  computePoAmounts,
+  resolvePaymentTerms,
+} from './po-amounts.util';
+import { poLineCosts, poUnitCostAt } from './po-unit-cost.util';
+import { d } from '../../../utils/decimal.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import {
   ShopGoodsReceivingTemplate,
@@ -48,6 +54,16 @@ export class PoReceivingService {
   // one module-scope like other plain classes in this codebase do.
   private readonly logger = new Logger('PoReceiving');
 
+  /**
+   * Prisma ตัด interactive transaction ที่ 5 วินาทีเป็นค่าเริ่มต้น และ P2028 ไม่อยู่ในรายการ retry —
+   * ใบรับของใบใหญ่ (อุปกรณ์เสริมหนึ่งแถวต่อชิ้น) + รายการบัญชี จึงตั้งเวลาเองเหมือน
+   * stock-transfer / contract-lifecycle
+   */
+  private static readonly RECEIVE_TX_OPTIONS = {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    timeout: 30_000,
+  } as const;
+
   constructor(
     private prisma: PrismaService,
     private journal: PoReceivingJournalDeps,
@@ -67,7 +83,7 @@ export class PoReceivingService {
       try {
         return await this.prisma.$transaction(
           async (tx) => this.runReceiveInTx(tx, id, dto, userId),
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+          PoReceivingService.RECEIVE_TX_OPTIONS,
         );
       } catch (e) {
         const code = (e as { code?: string })?.code;
@@ -101,19 +117,9 @@ export class PoReceivingService {
     }
 
     // ต้นทุนต่อหน่วย = ส่วนแบ่งของยอดสุทธิที่ต้องจ่ายผู้จัดจำหน่าย (รวม VAT หลังส่วนลดท้ายบิล)
-    // — คำตอบฝ่ายบัญชี 2026-09-29 ข้อ ข2 + ข5. ยอดสุทธิติดลบ (ส่วนลดมากกว่าราคาสินค้า) คำนวณ
-    // ต้นทุนไม่ได้ และยอดใบสั่งซื้อแก้ไม่ได้หลังสร้าง ⇒ ทางออกเดียวคือยกเลิกแล้วสร้างใหม่
-    const costBasis: PoCostBasis = {
-      totalAmount: po.totalAmount ?? 0,
-      netAmount: po.netAmount ?? 0,
-      items: po.items.filter((i) => !i.deletedAt),
-    };
-    if (new Prisma.Decimal(costBasis.netAmount).lt(0)) {
-      throw new BadRequestException(
-        `ใบสั่งซื้อ ${po.poNumber} มียอดสุทธิติดลบ (ส่วนลดมากกว่าราคาสินค้า) จึงคำนวณต้นทุนต่อเครื่องไม่ได้ — ` +
-          'กรุณากดปุ่ม "ยกเลิก PO" ในหน้ารายละเอียดใบสั่งซื้อ แล้วสร้างใบใหม่ด้วยส่วนลดที่ถูกต้อง',
-      );
-    }
+    // — คำตอบฝ่ายบัญชี 2026-09-29 ข้อ ข2 + ข5
+    const costLines = po.items.filter((i) => !i.deletedAt);
+    const lineCosts = poLineCosts({ netAmount: this.resolveNetAmount(po, costLines), lines: costLines });
 
     // Find main warehouse branch
     let mainWarehouse = await tx.branch.findFirst({
@@ -206,7 +212,7 @@ export class PoReceivingService {
     // was reading SystemConfig 50 times inside this same Serializable tx.
     const installmentSemantics = await resolveInstallmentSemantics(tx, this.logger);
 
-    const unitCosts = this.resolveUnitCosts(costBasis, po.items, dto.items, countByPoItem, freshByPoItem);
+    const unitCosts = this.resolveUnitCosts(lineCosts, po.items, dto.items, freshByPoItem);
     const journalUnits: ShopGoodsReceivingUnit[] = [];
 
     // Process each item
@@ -415,48 +421,67 @@ export class PoReceivingService {
   }
 
   /**
+   * ยอดสุทธิที่ใช้ปันต้นทุน = มูลค่าของรายการ − ส่วนลดก่อน VAT + VAT − ส่วนลดหลัง VAT (สูตรเดียวกับ
+   * computePoAmounts) คิดจาก "องค์ประกอบ" ที่เก็บไว้ ไม่ใช่เชื่อคอลัมน์ `netAmount` ตรง ๆ:
+   * คอลัมน์นั้นเพิ่มทีหลังด้วยค่าเริ่มต้น 0 และแถวที่สร้างข้าม service (seed / ข้อมูลเก่า) ไม่ได้ตั้งค่า —
+   * ถ้าเชื่อ 0 ต้นทุนของทุกเครื่องจะเป็นศูนย์และไม่มีรายการบัญชีโดยไม่มีใครรู้ (ผลตรวจทาน 2026-09-29).
+   * แถวปกติสองค่าตรงกันเสมอ (ยอดของใบสั่งซื้อแก้ไม่ได้หลังสร้าง); ไม่ตรง = เตือนใน log แล้วใช้ค่าที่คิดได้
+   *
+   * ยอดสุทธิติดลบสร้างไม่ได้แล้ว (assertPoNetNotNegative) — ด่านนี้เหลือไว้สำหรับแถวเก่า
+   */
+  private resolveNetAmount(
+    po: {
+      poNumber: string;
+      netAmount?: Prisma.Decimal | null;
+      discount?: Prisma.Decimal | null;
+      vatAmount?: Prisma.Decimal | null;
+      discountAfterVat?: Prisma.Decimal | null;
+    },
+    lines: { quantity: number; unitPrice: Prisma.Decimal }[],
+  ): Prisma.Decimal {
+    const itemsValue = lines.reduce((sum, line) => sum.add(d(line.unitPrice).mul(line.quantity)), new Prisma.Decimal(0));
+    const net = itemsValue.sub(d(po.discount)).add(d(po.vatAmount)).sub(d(po.discountAfterVat));
+    if (net.lt(0)) {
+      throw new BadRequestException(
+        `ใบสั่งซื้อ ${po.poNumber} มียอดสุทธิติดลบ (ส่วนลดมากกว่ามูลค่าสินค้า) จึงคำนวณต้นทุนต่อเครื่องไม่ได้ — ` +
+          'ถ้าใบนี้ยังไม่เคยรับของ ให้กดปุ่ม "ยกเลิก PO" ในหน้ารายละเอียดใบสั่งซื้อแล้วสร้างใบใหม่ด้วยส่วนลดที่ถูกต้อง ' +
+          'ถ้ารับของไปบางส่วนแล้ว กรุณาแจ้งผู้ดูแลระบบ',
+      );
+    }
+    if (d(po.netAmount).sub(net).abs().gt('0.01')) {
+      this.logger.warn(
+        `[receiving] ${po.poNumber}: netAmount ที่เก็บไว้ ${d(po.netAmount).toFixed(2)} ไม่ตรงกับยอดที่คิดจากองค์ประกอบ ` +
+          `${net.toFixed(2)} — ใช้ยอดที่คิดจากองค์ประกอบปันต้นทุน`,
+      );
+    }
+    return net;
+  }
+
+  /**
    * ต้นทุนของแต่ละหน่วยที่ตรวจผ่านในใบรับของนี้ (key = ลำดับใน dto.items).
    *
-   * เศษสตางค์จากการปัดรายหน่วยลงครั้งเดียว ในการรับครั้งที่ทำให้ใบสั่งซื้อครบทุกรายการ —
-   * ที่หน่วยซึ่งต้นทุนสูงสุดของครั้งนั้น (เท่ากัน = หน่วยท้ายสุด) เพื่อไม่ให้เศษไปกองที่
-   * อุปกรณ์เสริมราคาไม่กี่บาทจนต้นทุนเพี้ยนหรือติดลบ. ใบสั่งซื้อที่รับไม่ครบ = ยังไม่ลงเศษ
-   * (เจ้าหนี้ที่ตั้ง = Σ ต้นทุนของหน่วยที่รับจริง)
+   * หน่วยที่ตรวจผ่านเป็นลำดับที่ k ของรายการ (นับต่อจากที่รับไปแล้วในใบก่อนหน้า) ได้ต้นทุนของ
+   * หน่วยที่ k จาก po-unit-cost.util — ไม่ขึ้นกับว่ารับกี่ครั้งหรือรับรายการไหนก่อน.
+   * หน่วยที่ตรวจไม่ผ่านไม่กินลำดับ (receivedQty นับเฉพาะหน่วยที่ผ่าน)
    */
   private resolveUnitCosts(
-    basis: PoCostBasis,
-    poItems: { id: string; quantity: number; receivedQty: number; unitPrice: Prisma.Decimal }[],
+    lineCosts: Map<string, Prisma.Decimal>,
+    poItems: { id: string; quantity: number; receivedQty: number }[],
     dtoItems: GoodsReceivingDto['items'],
-    countByPoItem: Record<string, number>,
     freshByPoItem: Map<string, { receivedQty: number }>,
   ): Map<number, Prisma.Decimal> {
     const costs = new Map<number, Prisma.Decimal>();
+    const passedInBatch = new Map<string, number>();
     for (const [index, item] of dtoItems.entries()) {
       if (item.status !== 'PASS') continue;
       const poItem = poItems.find((i) => i.id === item.poItemId);
-      if (!poItem) throw new NotFoundException(`ไม่พบรายการ PO: ${item.poItemId}`);
-      costs.set(index, poUnitCost(basis, poItem.unitPrice));
-    }
-    if (costs.size === 0) return costs;
-
-    const completesPo = poItems.every((poItem) => {
+      const lineCost = lineCosts.get(item.poItemId);
+      if (!poItem || !lineCost) throw new NotFoundException(`ไม่พบรายการ PO: ${item.poItemId}`);
       const receivedBefore = freshByPoItem.get(poItem.id)?.receivedQty ?? poItem.receivedQty;
-      return receivedBefore + (countByPoItem[poItem.id] ?? 0) >= poItem.quantity;
-    });
-    if (!completesPo) return costs;
-
-    const remainder = poCostRemainder(basis);
-    if (remainder.isZero()) return costs;
-
-    let target = -1;
-    for (const [index, cost] of costs) {
-      if (target === -1 || cost.gte(costs.get(target)!)) target = index;
+      const seen = passedInBatch.get(poItem.id) ?? 0;
+      passedInBatch.set(poItem.id, seen + 1);
+      costs.set(index, poUnitCostAt(lineCost, poItem.quantity, receivedBefore + seen + 1));
     }
-    const adjusted = costs.get(target)!.add(remainder);
-    if (adjusted.lt(0)) {
-      // เศษเป็นหลักสตางค์ ส่วนหน่วยที่เลือกคือหน่วยที่แพงที่สุด — เกิดได้เฉพาะข้อมูลใบสั่งซื้อผิดปกติ
-      throw new BadRequestException('ยอดของใบสั่งซื้อไม่สอดคล้องกับราคาต่อหน่วย จึงคำนวณต้นทุนไม่ได้ กรุณาแจ้งผู้ดูแลระบบ');
-    }
-    costs.set(target, adjusted);
     return costs;
   }
 
@@ -505,7 +530,7 @@ export class PoReceivingService {
    * approval gate (audited), then run the existing receiving pipeline.
    * Net: GoodsReceiving.poId is never null; GR history / AP / progress / the
    * T5-C16 ceiling check all work unchanged. The receiving journal entry is posted
- * by the shared pipeline (runReceiveInTx) — the payment fields here still post nothing.
+   * by the shared pipeline (runReceiveInTx) — the payment fields here still post nothing.
    */
   async directReceive(dto: DirectReceiveDto, userId: string) {
     // Up-front guard: every line must carry a positive costPrice (COGS reads it).
@@ -540,6 +565,7 @@ export class PoReceivingService {
               discount: dto.discount,
               discountAfterVat: dto.discountAfterVat,
             });
+            assertPoNetNotNegative(amounts);
             const terms = resolvePaymentTerms(supplier, dto.paymentMethod, orderDate);
             const po = await tx.purchaseOrder.create({
               data: {
@@ -631,7 +657,7 @@ export class PoReceivingService {
 
             return { poNumber: po.poNumber, ...gr };
           },
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+          PoReceivingService.RECEIVE_TX_OPTIONS,
         );
       } catch (e) {
         const code = (e as { code?: string })?.code;

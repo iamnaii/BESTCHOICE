@@ -758,13 +758,20 @@ export class ProductsService {
    * searchable by name or by the old Tooltify code the importer left in `accessoryType`.
    * Returns the raw fields a PO line copies (accessoryType / accessoryBrand / model) so the
    * received units get the same name (see buildProductName), plus stock + last cost.
+   *
+   * `lastCost` เติมลงช่องราคาต่อหน่วยของใบสั่งซื้อใบถัดไป ซึ่งเป็นราคา **ก่อน VAT ก่อนส่วนลด**
+   * (computePoAmounts บวก VAT ให้ทีหลัง) — จึงอ่านจากราคาในใบสั่งซื้อของชิ้นล่าสุด ไม่ใช่ `cost_price`
+   * ที่ตั้งแต่ 2026-09-29 เป็นต้นทุนรวม VAT หลังส่วนลด (ไม่งั้น VAT ทบเข้าไปทุกรอบที่สั่งซ้ำ).
+   * ชิ้นที่ไม่ได้มาจากใบรับของ (นำเข้า/เพิ่มด้วยมือ) ใช้ `cost_price` ตามเดิม
    */
   async findAccessorySkus(search: string, limit = 20): Promise<AccessorySku[]> {
     const term = `%${(search ?? '').trim()}%`;
     const rows = await this.prisma.$queryRaw<AccessorySkuRow[]>(Prisma.sql`
       SELECT p.name, p.accessory_type, p.accessory_brand, p.model,
              COUNT(*) FILTER (WHERE p.status = 'IN_STOCK') AS in_stock,
-             (SELECT p2.cost_price FROM products p2
+             (SELECT COALESCE(pi.unit_price, p2.cost_price) FROM products p2
+                LEFT JOIN goods_receiving_items gri ON gri.product_id = p2.id AND gri.deleted_at IS NULL
+                LEFT JOIN po_items pi ON pi.id = gri.po_item_id
                 WHERE p2.name = p.name AND p2.category = 'ACCESSORY' AND p2.deleted_at IS NULL
                 ORDER BY p2.created_at DESC LIMIT 1) AS last_cost
       FROM products p

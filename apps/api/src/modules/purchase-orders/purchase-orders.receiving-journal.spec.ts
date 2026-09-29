@@ -10,7 +10,8 @@ import { poJournalTestProviders, TEST_JOURNAL_ENTRY_NO, TEST_SHOP_COMPANY_ID } f
  *
  *  - ต้นทุนของเครื่อง (`Product.costPrice`) = ราคารวม VAT หลังแบ่งส่วนลดท้ายบิลตามสัดส่วนราคา
  *  - หนึ่งใบรับของ = หนึ่งรายการ Dr สินค้าคงคลัง / Cr เจ้าหนี้ผู้จัดจำหน่าย ใน transaction เดียวกัน
- *  - เศษสตางค์จากการปัดลงหน่วยเดียวในการรับครั้งที่ทำให้ใบสั่งซื้อครบ
+ *  - ปันแบบปัดสะสม: หน่วยลำดับที่ k ของรายการได้ต้นทุนตัวเดิมเสมอ ไม่ว่าจะรับกี่ครั้ง —
+ *    ต้นทุนรวมทั้งใบ = ยอดสุทธิพอดี ไม่มีเศษให้ลงทีหลัง
  */
 describe('PurchaseOrdersService — รับสินค้าเข้าลงบัญชี', () => {
   type PoItem = {
@@ -21,9 +22,19 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
     unitPrice: string;
   };
 
-  const makeTx = (po: { totalAmount: string; netAmount: string; items: PoItem[] }) => {
+  type PoAmounts = {
+    totalAmount: string;
+    netAmount: string;
+    discount?: string;
+    vatAmount?: string;
+    discountAfterVat?: string;
+    items: PoItem[];
+  };
+
+  const makeTx = (po: PoAmounts) => {
     const created = { product: [] as Record<string, unknown>[], gr: [] as unknown[], gri: [] as Record<string, unknown>[] };
-    const poItems = po.items.map((i) => ({
+    const poItems = po.items.map((i, index) => ({
+      createdAt: new Date(Date.UTC(2026, 8, 1, 0, 0, index)),
       brand: 'Apple',
       model: 'iPhone 16',
       color: null,
@@ -42,6 +53,9 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
       supplierId: 'sup-1',
       supplier: { id: 'sup-1', name: 'ACME' },
       totalAmount: new Prisma.Decimal(po.totalAmount),
+      discount: new Prisma.Decimal(po.discount ?? 0),
+      vatAmount: new Prisma.Decimal(po.vatAmount ?? 0),
+      discountAfterVat: new Prisma.Decimal(po.discountAfterVat ?? 0),
       netAmount: new Prisma.Decimal(po.netAmount),
       items: poItems.map((i) => ({ ...i })),
     });
@@ -110,7 +124,7 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
     const module: TestingModule = await Test.createTestingModule({
       providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...journal.providers],
     }).compile();
-    return { service: module.get<PurchaseOrdersService>(PurchaseOrdersService), journal };
+    return { service: module.get<PurchaseOrdersService>(PurchaseOrdersService), journal, prisma };
   };
 
   const pass = (poItemId: string, imeiSerial?: string) => ({ poItemId, imeiSerial, status: 'PASS' });
@@ -129,6 +143,7 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
     // 2 × 10,000 + VAT 1,400 = 21,400 · รับครั้งนี้ 1 เครื่อง
     const { tx, created } = makeTx({
       totalAmount: '20000',
+      vatAmount: '1400',
       netAmount: '21400',
       items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 2, receivedQty: 0, unitPrice: '10000' }],
     });
@@ -159,6 +174,8 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
     // มือถือ 10,000 + อุปกรณ์ 5,000 = 15,000 − 300 = 14,700 + VAT 1,029 = 15,729
     const { tx, created } = makeTx({
       totalAmount: '15000',
+      discount: '300',
+      vatAmount: '1029',
       netAmount: '15729',
       items: [
         { id: 'poi-phone', category: 'PHONE_NEW', quantity: 1, receivedQty: 0, unitPrice: '10000' },
@@ -203,6 +220,7 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
   it('หน่วยที่ตรวจไม่ผ่านไม่มีต้นทุนและไม่เข้ารายการบัญชี', async () => {
     const { tx, created } = makeTx({
       totalAmount: '20000',
+      vatAmount: '1400',
       netAmount: '21400',
       items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 2, receivedQty: 0, unitPrice: '10000' }],
     });
@@ -226,6 +244,7 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
   it('รับแล้วตรวจไม่ผ่านทั้งใบ → ไม่เรียกตัวลงบัญชี และ journalEntryNo เป็น null', async () => {
     const { tx } = makeTx({
       totalAmount: '10000',
+      vatAmount: '700',
       netAmount: '10700',
       items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 1, receivedQty: 0, unitPrice: '10000' }],
     });
@@ -241,31 +260,32 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
     expect(result.journalEntryNo).toBeNull();
   });
 
-  describe('เศษสตางค์จากการปัด', () => {
-    // 3 × 3,333.33 = 9,999.99 − ส่วนลด 0.01 = 9,999.98 → ต้นทุนต่อหน่วย 3,333.33 เศษ −0.01
-    const po = (receivedQty: number) => ({
+  describe('เศษสตางค์ — ปันแบบปัดสะสม', () => {
+    // 3 × 3,333.33 = 9,999.99 − ส่วนลด 0.01 = 9,999.98 → หน่วยที่ 1–3 = 3,333.33 / 3,333.32 / 3,333.33
+    const po = (receivedQty: number): PoAmounts => ({
       totalAmount: '9999.99',
+      discount: '0.01',
       netAmount: '9999.98',
       items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 3, receivedQty, unitPrice: '3333.33' }],
     });
 
-    it('การรับที่ยังไม่ครบใบสั่งซื้อ ไม่แตะเศษ', async () => {
+    it('รับสองเครื่องแรก ได้ต้นทุนของหน่วยที่ 1 และ 2', async () => {
       const { tx, created } = makeTx(po(0));
       const { service } = await build(tx);
       await service.goodsReceiving('po-1', { items: [pass('poi-1', 'IMEI-1'), pass('poi-1', 'IMEI-2')] } as never, 'user-1');
-      expect(costs(created.product)).toEqual(['3333.33', '3333.33']);
+      expect(costs(created.product)).toEqual(['3333.33', '3333.32']);
     });
 
-    it('การรับครั้งที่ทำให้ครบ ลงเศษที่หน่วยเดียว → ต้นทุนรวมทั้งใบ = ยอดสุทธิพอดี', async () => {
+    it('รับเครื่องสุดท้ายทีหลัง ได้ต้นทุนของหน่วยที่ 3 → รวมทั้งใบ = ยอดสุทธิพอดี', async () => {
       const { tx, created } = makeTx(po(2));
       const { service, journal } = await build(tx);
       const result = await service.goodsReceiving('po-1', { items: [pass('poi-1', 'IMEI-3')] } as never, 'user-1');
-      expect(costs(created.product)).toEqual(['3333.32']);
-      expect(postedUnits(journal)).toEqual([['S11-2001', 'S21-1101', '3333.32']]);
+      expect(costs(created.product)).toEqual(['3333.33']);
+      expect(postedUnits(journal)).toEqual([['S11-2001', 'S21-1101', '3333.33']]);
       expect(result.status).toBe('FULLY_RECEIVED');
     });
 
-    it('รับครบในครั้งเดียว: เศษลงหน่วยที่ต้นทุนสูงสุด (เท่ากัน = หน่วยท้ายสุด)', async () => {
+    it('รับครบในครั้งเดียว ได้ต้นทุนชุดเดียวกับรับสองครั้ง', async () => {
       const { tx, created } = makeTx(po(0));
       const { service } = await build(tx);
       await service.goodsReceiving(
@@ -273,14 +293,32 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
         { items: [pass('poi-1', 'IMEI-1'), pass('poi-1', 'IMEI-2'), pass('poi-1', 'IMEI-3')] } as never,
         'user-1',
       );
-      expect(costs(created.product)).toEqual(['3333.33', '3333.33', '3333.32']);
+      expect(costs(created.product)).toEqual(['3333.33', '3333.32', '3333.33']);
     });
 
-    it('ใบผสม: เศษลงเครื่องที่แพงที่สุด ไม่ใช่อุปกรณ์เสริมราคาถูก', async () => {
-      // เครื่อง 10,000 + อุปกรณ์ 3 × 0.15 = 10,000.45 · ยอดสุทธิหลังส่วนลด 9,000.41
-      // ต้นทุนต่อหน่วย: เครื่อง 9,000.00 · อุปกรณ์ 0.14 → รวม 9,000.42 เศษ −0.01
+    it('หน่วยที่ตรวจไม่ผ่านไม่กินลำดับหน่วย', async () => {
+      const { tx, created } = makeTx(po(0));
+      const { service } = await build(tx);
+      await service.goodsReceiving(
+        'po-1',
+        {
+          items: [
+            pass('poi-1', 'IMEI-1'),
+            { poItemId: 'poi-1', imeiSerial: 'IMEI-X', status: 'REJECT', rejectReason: 'จอแตก', defectReason: 'SCREEN' },
+            pass('poi-1', 'IMEI-2'),
+          ],
+        } as never,
+        'user-1',
+      );
+      expect(costs(created.product)).toEqual(['3333.33', '3333.32']);
+    });
+
+    it('ใบผสม: เศษของรายการราคาถูกอยู่ในรายการของมันเอง ไม่ไหลไปรายการอื่น', async () => {
+      // เครื่อง 10,000 + อุปกรณ์ 3 × 0.15 = 10,000.45 · ส่วนลด 1,000.04 → ยอดสุทธิ 9,000.41
+      // รายการเครื่อง 9,000.00 · รายการอุปกรณ์ 0.41 → 0.14 / 0.13 / 0.14
       const { tx, created } = makeTx({
         totalAmount: '10000.45',
+        discount: '1000.04',
         netAmount: '9000.41',
         items: [
           { id: 'poi-phone', category: 'PHONE_NEW', quantity: 1, receivedQty: 0, unitPrice: '10000' },
@@ -290,20 +328,92 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
       const { service, journal } = await build(tx);
       await service.goodsReceiving(
         'po-1',
-        { items: [pass('poi-phone', 'IMEI-1'), pass('poi-acc'), pass('poi-acc'), pass('poi-acc')] } as never,
+        { items: [pass('poi-acc'), pass('poi-phone', 'IMEI-1'), pass('poi-acc'), pass('poi-acc')] } as never,
         'user-1',
       );
-      expect(costs(created.product)).toEqual(['8999.99', '0.14', '0.14', '0.14']);
+      expect(costs(created.product)).toEqual(['0.14', '9000.00', '0.13', '0.14']);
       expect(postedUnits(journal)).toEqual([
-        ['S11-2001', 'S21-1101', '8999.99'],
         ['S11-2003', 'S21-1102', '0.14'],
-        ['S11-2003', 'S21-1102', '0.14'],
+        ['S11-2001', 'S21-1101', '9000.00'],
+        ['S11-2003', 'S21-1102', '0.13'],
         ['S11-2003', 'S21-1102', '0.14'],
       ]);
     });
+
+    it('หน่วยราคาถูกจำนวนมาก + ส่วนลด: รับได้ ไม่มีต้นทุนติดลบ', async () => {
+      // 1,000 × 1.00 − ส่วนลด 4.99 = 995.01 · รับ 3 ชิ้นสุดท้าย (หน่วยที่ 998–1000)
+      const { tx, created } = makeTx({
+        totalAmount: '1000',
+        discount: '4.99',
+        netAmount: '995.01',
+        items: [{ id: 'poi-1', category: 'ACCESSORY', quantity: 1000, receivedQty: 997, unitPrice: '1' }],
+      });
+      const { service } = await build(tx);
+      const result = await service.goodsReceiving(
+        'po-1',
+        { items: [pass('poi-1'), pass('poi-1'), pass('poi-1')] } as never,
+        'user-1',
+      );
+      // หน่วยที่ 998 = 993.02 − 992.02 · 999 = 994.01 − 993.02 · 1000 = 995.01 − 994.01
+      expect(costs(created.product)).toEqual(['1.00', '0.99', '1.00']);
+      expect(result.status).toBe('FULLY_RECEIVED');
+    });
+
+    it('ของแถมราคาศูนย์รับเป็นชิ้นสุดท้าย: ต้นทุนศูนย์ ใบสั่งซื้อครบได้ ไม่มีรายการบัญชีของครั้งนั้น', async () => {
+      // 3 × 3,333.33 + ของแถม 1 ชิ้น · ส่วนลด 100 → 9,899.99 · มือถือรับครบไปแล้ว
+      const { tx, created } = makeTx({
+        totalAmount: '9999.99',
+        discount: '100',
+        netAmount: '9899.99',
+        items: [
+          { id: 'poi-phone', category: 'PHONE_NEW', quantity: 3, receivedQty: 3, unitPrice: '3333.33' },
+          { id: 'poi-gift', category: 'ACCESSORY', quantity: 1, receivedQty: 0, unitPrice: '0' },
+        ],
+      });
+      const { service, journal } = await build(tx);
+      // ตัวลงบัญชีตัวจริงคืน null เมื่อยอดรวมของใบเป็นศูนย์ (ไม่โพสต์ใบเปล่า)
+      journal.goodsReceivingTemplate.execute.mockResolvedValueOnce(null);
+      const result = await service.goodsReceiving('po-1', { items: [pass('poi-gift')] } as never, 'user-1');
+      expect(costs(created.product)).toEqual(['0.00']);
+      expect(postedUnits(journal)).toEqual([['S11-2003', 'S21-1102', '0.00']]);
+      expect(result.status).toBe('FULLY_RECEIVED');
+      expect(result.journalEntryNo).toBeNull();
+    });
   });
 
-  it('ใบสั่งซื้อที่ไม่มียอดรวม (ข้อมูลเก่า) → ต้นทุน = ราคาต่อหน่วย', async () => {
+  it('ยอดสุทธิที่เก็บไว้ไม่ตรงกับองค์ประกอบ (แถวเก่า/แถวที่ seed ตรง netAmount = 0) → ใช้ยอดที่คิดจากองค์ประกอบ', async () => {
+    // 5 × 12,000 ไม่มี VAT ไม่มีส่วนลด แต่ netAmount ในฐาน = 0 (ค่า default ของคอลัมน์)
+    const { tx, created } = makeTx({
+      totalAmount: '60000',
+      netAmount: '0',
+      items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 5, receivedQty: 1, unitPrice: '12000' }],
+    });
+    const { service, journal } = await build(tx);
+
+    await service.goodsReceiving('po-1', { items: [pass('poi-1', 'IMEI-1')] } as never, 'user-1');
+
+    expect(costs(created.product)).toEqual(['12000.00']);
+    expect(postedUnits(journal)).toEqual([['S11-2001', 'S21-1101', '12000.00']]);
+  });
+
+  it('ทั้งสอง transaction ของการรับของตั้ง timeout 30 วินาที (ค่าเริ่มต้น 5 วินาทีไม่พอสำหรับใบใหญ่)', async () => {
+    const { tx } = makeTx({
+      totalAmount: '10000',
+      vatAmount: '700',
+      netAmount: '10700',
+      items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 1, receivedQty: 0, unitPrice: '10000' }],
+    });
+    const { service, prisma } = await build(tx);
+
+    await service.goodsReceiving('po-1', { items: [pass('poi-1', 'IMEI-1')] } as never, 'user-1');
+
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({ isolationLevel: 'Serializable', timeout: 30_000 }),
+    );
+  });
+
+  it('ใบสั่งซื้อที่ไม่มียอดเก็บไว้เลย (ข้อมูลเก่า) → ต้นทุน = ราคาต่อหน่วย', async () => {
     const { tx, created } = makeTx({
       totalAmount: '0',
       netAmount: '0',
@@ -317,6 +427,7 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
   it('ยอดสุทธิติดลบ → ปฏิเสธด้วยข้อความไทย ก่อนสร้างใบรับของ', async () => {
     const { tx, created } = makeTx({
       totalAmount: '1000',
+      discount: '1050',
       netAmount: '-50',
       items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 1, receivedQty: 0, unitPrice: '1000' }],
     });
@@ -326,6 +437,8 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
 
     await expect(attempt).rejects.toThrow(BadRequestException);
     await expect(attempt).rejects.toThrow(/PO-2026-09-001.*ยอดสุทธิติดลบ/);
+    // ข้อความต้องบอกทางที่ทำได้จริงทั้งสองกรณี: ยังไม่เคยรับของ (ยกเลิกได้) กับรับไปบางส่วนแล้ว (ปุ่มยกเลิกถูกซ่อน)
+    await expect(attempt).rejects.toThrow(/ยังไม่เคยรับของ.*ยกเลิก PO.*รับของไปบางส่วนแล้ว/s);
     expect(created.gr).toHaveLength(0);
     expect(created.product).toHaveLength(0);
     expect(journal.goodsReceivingTemplate.execute).not.toHaveBeenCalled();
@@ -334,6 +447,7 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
   it('ตรวจงวดบัญชีของ SHOP ด้วยวันที่ลงบัญชีก่อนโพสต์', async () => {
     const { tx } = makeTx({
       totalAmount: '10000',
+      vatAmount: '700',
       netAmount: '10700',
       items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 1, receivedQty: 0, unitPrice: '10000' }],
     });
@@ -358,6 +472,7 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
   it('งวดบัญชีปิดและพ้นช่วงผ่อนผัน → การรับของไม่เกิด', async () => {
     const { tx } = makeTx({
       totalAmount: '10000',
+      vatAmount: '700',
       netAmount: '10700',
       items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 1, receivedQty: 0, unitPrice: '10000' }],
     });
@@ -377,6 +492,7 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
   it('รับเข้าตรง (ไม่มีใบสั่งซื้อล่วงหน้า) ลงบัญชีด้วยทางเดียวกัน', async () => {
     const { tx, created } = makeTx({
       totalAmount: '30000',
+      vatAmount: '2100',
       netAmount: '32100',
       items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 1, receivedQty: 0, unitPrice: '30000' }],
     });

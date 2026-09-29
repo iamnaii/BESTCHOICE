@@ -9,6 +9,8 @@
  *   2. ใบสั่งซื้อที่รับสองครั้งได้ JE สองใบ `reference` ไม่ชน partial unique index
  *   3. ต้นทุนของทุกเครื่องในใบสั่งซื้อรวมกัน = ยอดสุทธิที่ต้องจ่าย = เจ้าหนี้ที่ตั้ง (เศษสตางค์ลงครั้งเดียว)
  *   4. ขายเครื่องด้วย `Product.costPrice` แล้วบัญชีสินค้าคงคลังของใบสั่งซื้อนั้นกลับเป็นศูนย์พอดี
+ *   5. รายการบัญชีพัง = การรับของไม่เกิด (ไม่เหลือใบรับของ/สินค้า/จำนวนที่รับ)
+ *   6. ราคาที่เติมให้ตอนสั่งอุปกรณ์เสริมซ้ำ = ราคาซื้อก่อน VAT ไม่ใช่ต้นทุนรวม VAT (ไม่งั้น VAT ทบทุกรอบ)
  *
  * Runner: vitest (jest ignore `*.integration.spec.ts`). ต้องมี DB จริง:
  *   cd apps/api && npx vitest run --no-file-parallelism \
@@ -29,6 +31,7 @@ import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
+import { ProductsService } from '../../products/products.service';
 
 const prisma = new PrismaClient();
 
@@ -38,6 +41,7 @@ const shopAccountResolver = new ShopAccountResolver(prisma as never);
 const goodsReceivingTemplate = new ShopGoodsReceivingTemplate(journal, prisma as never, companyResolver);
 const cashSaleTemplate = new ShopCashSaleTemplate(journal, prisma as never, companyResolver);
 const service = new PurchaseOrdersService(prisma as never, goodsReceivingTemplate, shopAccountResolver, companyResolver);
+const productsService = new ProductsService(prisma as never);
 
 const PREFIX = 'POJETEST-';
 const RUN = Date.now().toString(36).toUpperCase();
@@ -204,8 +208,9 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     expect(first.passed).toBe(3);
     expect(first.journalEntryNo).toMatch(/^JE-/);
 
-    // ต้นทุนต่อหน่วย: 11,609.84 × 3,333.33 ÷ 10,900.49 = 3,550.25 · 11,609.84 × 450.25 ÷ 10,900.49 = 479.55
-    expect(first.products.map((p) => dec(p.costPrice.toString()).toFixed(2)).sort()).toEqual(['3550.25', '3550.25', '479.55'].sort());
+    // ปันแบบปัดสะสม: รายการมือถือ = round(11,609.84 × 9,999.99 ÷ 10,900.49) = 10,650.74 · รายการเคส = ที่เหลือ 959.10
+    // มือถือหน่วยที่ 1–3 = 3,550.25 / 3,550.24 / 3,550.25 · เคสหน่วยที่ 1–2 = 479.55 / 479.55
+    expect(first.products.map((p) => dec(p.costPrice.toString()).toFixed(2)).sort()).toEqual(['3550.25', '3550.24', '479.55'].sort());
 
     let entries = await receivingEntries(po.id);
     expect(entries).toHaveLength(1);
@@ -214,9 +219,9 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     expect(entries[0].companyId).toBe(shopCompanyId);
     expect(entries[0].referenceId).toBe(`gr:${first.receivingId}`);
     expect(netByAccount(entries)).toEqual({
-      'S11-2001': '7100.50',
+      'S11-2001': '7100.49',
       'S11-2003': '479.55',
-      'S21-1101': '-7100.50',
+      'S21-1101': '-7100.49',
       'S21-1102': '-479.55',
     });
     const gr = await prisma.goodsReceiving.findUniqueOrThrow({ where: { id: first.receivingId } });
@@ -239,8 +244,8 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     expect(entries).toHaveLength(2);
     expect(new Set(entries.map((e) => e.referenceId)).size).toBe(2);
 
-    // Σ ต้นทุนรายหน่วยก่อนลงเศษ = 3 × 3,550.25 + 2 × 479.55 = 11,609.85 → เศษ −0.01 ลงมือถือเครื่องสุดท้าย
-    // (หน่วยที่ต้นทุนสูงสุดของการรับครั้งนั้น — ไม่ใช่เคสที่อยู่ลำดับแรกของใบ)
+    // ปัดรายหน่วยตรง ๆ จะได้ 3 × 3,550.25 + 2 × 479.55 = 11,609.85 (เกิน 0.01) — วิธีปัดสะสมให้มือถือหน่วยที่ 2
+    // เป็น 3,550.24 ตั้งแต่การรับครั้งแรก จึงไม่มีเศษเหลือให้ลงตอนรับครบ
     const products = await prisma.product.findMany({ where: { poId: po.id, deletedAt: null } });
     expect(products).toHaveLength(5);
     const costs = products.map((p) => dec(p.costPrice.toString()));
@@ -352,6 +357,90 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
 
     expect(result.journalEntryNo).toBeNull();
     expect(await receivingEntries(po.id)).toHaveLength(0);
+  }, 60_000);
+
+  it('ใบที่มีหน่วยราคาถูกจำนวนมากและของแถมราคาศูนย์ รับครบได้ (วิธีลงเศษหน่วยเดียวเคยทำให้ต้นทุนติดลบ)', async () => {
+    const supplier = await seedSupplier('CHEAP', false);
+    // 40 × 1.00 + ของแถม 1 ชิ้น ราคา 0 · ส่วนลด 4.99 → 35.01
+    const po = await createOrderedPo(
+      supplier.id,
+      [
+        { category: 'ACCESSORY', model: `${PREFIX}Film`, quantity: 40, unitPrice: 1 },
+        { category: 'ACCESSORY', model: `${PREFIX}Gift`, quantity: 1, unitPrice: 0 },
+      ],
+      { discount: 4.99 },
+    );
+    expect(dec(po.netAmount.toString()).toFixed(2)).toBe('35.01');
+    const film = poItemOf(po, `${PREFIX}Film`);
+    const gift = poItemOf(po, `${PREFIX}Gift`);
+
+    const first = await service.goodsReceiving(
+      po.id,
+      { items: Array.from({ length: 40 }, () => ({ poItemId: film.id, status: 'PASS' })) } as never,
+      adminId,
+    );
+    expect(first.status).toBe('PARTIALLY_RECEIVED');
+
+    // ของแถมมาทีหลังเป็นชิ้นสุดท้ายของใบ — ต้นทุนศูนย์ ไม่มีรายการบัญชีของครั้งนี้ และใบสั่งซื้อครบ
+    const second = await service.goodsReceiving(po.id, { items: [{ poItemId: gift.id, status: 'PASS' }] } as never, adminId);
+    expect(second.status).toBe('FULLY_RECEIVED');
+    expect(second.journalEntryNo).toBeNull();
+
+    const products = await prisma.product.findMany({ where: { poId: po.id, deletedAt: null } });
+    const costs = products.map((p) => dec(p.costPrice.toString()));
+    expect(costs.every((c) => c.gte(0))).toBe(true);
+    expect(sum(costs).toFixed(2)).toBe('35.01');
+    expect(netByAccount(await receivingEntries(po.id))).toEqual({ 'S11-2003': '35.01', 'S21-1102': '-35.01' });
+  }, 120_000);
+
+  it('รายการบัญชีพัง → การรับของทั้งใบไม่เกิด', async () => {
+    const supplier = await seedSupplier('ATOMIC', true);
+    const po = await createOrderedPo(supplier.id, [
+      { category: 'PHONE_NEW', model: `${PREFIX}Atomic`, quantity: 2, unitPrice: 10000 },
+    ]);
+    const failingTemplate = {
+      execute: async () => {
+        throw new Error('journal posting failed (จำลอง)');
+      },
+    };
+    const failingService = new PurchaseOrdersService(
+      prisma as never,
+      failingTemplate as never,
+      shopAccountResolver,
+      companyResolver,
+    );
+
+    await expect(
+      failingService.goodsReceiving(
+        po.id,
+        { items: [{ poItemId: poItemOf(po, `${PREFIX}Atomic`).id, imeiSerial: nextImei(), status: 'PASS' }] } as never,
+        adminId,
+      ),
+    ).rejects.toThrow(/journal posting failed/);
+
+    expect(await prisma.goodsReceiving.count({ where: { poId: po.id } })).toBe(0);
+    expect(await prisma.product.count({ where: { poId: po.id } })).toBe(0);
+    const after = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: po.id }, include: { items: true } });
+    expect(after.status).toBe('ORDERED');
+    expect(after.items.map((i) => i.receivedQty)).toEqual([0]);
+  }, 60_000);
+
+  it('สั่งอุปกรณ์เสริมตัวเดิมซ้ำ: ราคาที่เติมให้ = ราคาซื้อก่อน VAT ของใบล่าสุด ไม่ใช่ต้นทุนรวม VAT', async () => {
+    const supplier = await seedSupplier('REORDER', true);
+    const po = await createOrderedPo(supplier.id, [
+      { category: 'ACCESSORY', model: `${PREFIX}Charger ${RUN}`, quantity: 1, unitPrice: 500 },
+    ]);
+    const result = await service.goodsReceiving(
+      po.id,
+      { items: [{ poItemId: poItemOf(po, `${PREFIX}Charger ${RUN}`).id, status: 'PASS' }] } as never,
+      adminId,
+    );
+    expect(dec(result.products[0].costPrice.toString()).toFixed(2)).toBe('535.00');
+
+    const skus = await productsService.findAccessorySkus(`${PREFIX}Charger ${RUN}`);
+
+    expect(skus).toHaveLength(1);
+    expect(skus[0].lastCost).toBe(500);
   }, 60_000);
 
   it('โพสต์ซ้ำด้วยใบรับของเดิม → ได้รายการเดิม ไม่เกิดใบที่สอง', async () => {

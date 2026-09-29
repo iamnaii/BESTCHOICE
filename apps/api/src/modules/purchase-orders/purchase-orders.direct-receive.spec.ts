@@ -201,6 +201,22 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
     await expect(service.directReceive(dto as never, 'user-1')).rejects.toThrow(BadRequestException);
   });
 
+  // ผลตรวจทาน 2026-09-29: รับเข้าตรงสร้างใบสั่งซื้อใน transaction เดียวกับการรับของ — ถ้าปล่อยให้ด่านตอนรับของ
+  // เป็นคนปฏิเสธ ข้อความจะอ้างเลขใบสั่งซื้อที่ถูก roll back ไปแล้วและชี้ปุ่ม "ยกเลิก PO" ที่ไม่มีให้กด
+  it('ปฏิเสธส่วนลดที่มากกว่ามูลค่าสินค้าก่อนสร้างใบสั่งซื้อ พร้อมบอกให้แก้ส่วนลด', async () => {
+    const { tx, created } = makeTx();
+    const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+    const service = await build(prisma);
+    const dto = { ...baseDto(), discount: 40000 };
+
+    const attempt = service.directReceive(dto as never, 'user-1');
+
+    await expect(attempt).rejects.toThrow(BadRequestException);
+    await expect(attempt).rejects.toThrow(/ส่วนลด.*มากกว่ามูลค่าสินค้า.*กรุณาแก้ส่วนลด/);
+    expect(created.po).toHaveLength(0);
+    expect(created.product).toHaveLength(0);
+  });
+
   it('rejects when the supplier does not exist', async () => {
     const { tx } = makeTx();
     tx.supplier.findUnique = jest.fn().mockResolvedValue(null);

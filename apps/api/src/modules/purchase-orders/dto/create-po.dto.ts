@@ -301,7 +301,8 @@ export class DirectReceiveItemDto {
   // One DTO item = one physical unit.
   @IsNumber() @Min(1) quantity: number;
 
-  // costPrice (booked as POItem.unitPrice; copied into Product.costPrice by goodsReceiving). MANDATORY for COGS.
+  // ราคาซื้อต่อหน่วยก่อน VAT ก่อนส่วนลด (booked as POItem.unitPrice). goodsReceiving turns it into Product.costPrice =
+  // the unit's share of the PO net amount (VAT-inclusive, after discounts — po-unit-cost.util). MANDATORY for COGS.
   @IsNumber() @Min(0.01, { message: 'กรุณาระบุราคาทุน (costPrice) มากกว่า 0' }) unitPrice: number;
 
   // Per-unit receiving fields (mirror GoodsReceivingItemDto)

@@ -21,7 +21,7 @@ import { startWeb, WebRuntime } from './support/web';
  * disposable database — purchase orders (OWNER → ORDERED, BRANCH_MANAGER →
  * DRAFT → OWNER approve), goods receiving with PASS/REJECT units, partial and
  * full receipt, the ceiling / duplicate-IMEI / empty-batch refusals, the
- * products that receiving creates (and the journal it must NOT create), the
+ * products that receiving creates (and the SHOP journal entry each receiving posts), the
  * ใบรับของ (goods receipt) printed from the real admin web app with Chromium
  * print media, and the trade-in side: quick-buy (BUYBACK, CASH / TRANSFER) with
  * the real ShopTradeIn journal and the puppeteer ใบสำคัญจ่ายเงิน (ORIGINAL then
@@ -53,7 +53,7 @@ const scenario = (record: Omit<ScenarioRecord, 'documents' | 'guards' | 'rendere
 type PoItem = { id: string; brand: string | null; model: string | null; quantity: number; receivedQty: number; unitPrice: string };
 type Po = { id: string; poNumber: string; status: string; supplierId: string; items: PoItem[] };
 type Receiving = { id: string; grNumber: string; poId: string; notes: string | null; createdAt: string; po: { id: string; poNumber: string; supplier: { id: string; name: string } }; receivedBy: { id: string; name: string }; items: Array<{ id: string; status: 'PASS' | 'REJECT'; imeiSerial: string | null; serialNumber: string | null; rejectReason: string | null; defectReason: string | null; poItem: { id: string; brand: string; model: string; storage: string | null; color: string | null; category: string | null } | null; product: { id: string; status: string; branchId: string | null; imeiSerial: string | null } | null }> };
-type ReceiveResult = { receivingId: string; grNumber: string; poId: string; status: string; passed: number; rejected: number; products: Array<{ id: string; status: string; costPrice: string; branchId: string; category: string; imeiSerial: string | null }>; mainWarehouse: string };
+type ReceiveResult = { receivingId: string; grNumber: string; poId: string; status: string; passed: number; rejected: number; journalEntryNo: string | null; products: Array<{ id: string; status: string; costPrice: string; branchId: string; category: string; imeiSerial: string | null }>; mainWarehouse: string };
 
 describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, real receiving, real trade-in journal, real renderers', () => {
   let h: DocumentsHarness;
@@ -191,7 +191,7 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
     await h.close();
   });
 
-  it('purchase orders and goods receiving: OWNER PO is ORDERED at once, BM PO waits for OWNER approval; PASS units become IN_STOCK products in the main warehouse at PO cost, REJECT units do not; partial then full receipt; ceiling, duplicate-IMEI and empty-batch refusals; no journal entry', async () => {
+  it('purchase orders and goods receiving: OWNER PO is ORDERED at once, BM PO waits for OWNER approval; PASS units become IN_STOCK products in the main warehouse at VAT-inclusive cost, REJECT units do not; partial then full receipt; ceiling, duplicate-IMEI and empty-batch refusals; one SHOP journal entry per receiving', async () => {
     const routes: string[] = [];
     const items: PoItemSpec[] = [
       { brand: BRAND, model: 'iPhone 15', color: 'Black', storage: '128GB', category: 'PHONE_NEW', quantity: 3, unitPrice: 25000 },
@@ -253,11 +253,12 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
       expect(product.branchId).toBe(world.branches.a.id);
     }
 
-    // Products in the database: cost = PO unit price, category from the PO line, supplier/PO links, IMEIs as received; the rejected IMEI never became a product.
+    // Products in the database: cost = the unit's share of the PO net amount (VAT supplier, no discount ⇒ unit price + 7%;
+    // accountant ruling 2026-09-29 ข2), category from the PO line, supplier/PO links, IMEIs as received; the rejected IMEI never became a product.
     const products = await h.prisma.product.findMany({ where: { poId: ownerPo.id, deletedAt: null }, orderBy: { createdAt: 'asc' } });
     expect(products).toHaveLength(expectation.passed);
     const costs = products.map((product) => `${product.category}:${Number(product.costPrice).toFixed(2)}`).sort();
-    expect(costs).toEqual(['ACCESSORY:500.00', 'ACCESSORY:500.00', 'PHONE_NEW:25000.00', 'PHONE_NEW:25000.00', 'PHONE_NEW:8000.00'].sort());
+    expect(costs).toEqual(['ACCESSORY:535.00', 'ACCESSORY:535.00', 'PHONE_NEW:26750.00', 'PHONE_NEW:26750.00', 'PHONE_NEW:8560.00'].sort());
     expect(products.every((product) => product.supplierId === supplier.id && product.branchId === world.branches.a.id && product.status === 'IN_STOCK')).toBe(true);
     expect(products.map((product) => product.imeiSerial).filter(Boolean).sort()).toEqual([...passImeis, galaxyImei].sort());
     expect(await h.prisma.product.count({ where: { imeiSerial: rejectedImei, deletedAt: null } })).toBe(0);
@@ -329,15 +330,21 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
     const rows = Array.isArray(listed) ? listed : listed?.data ?? listed?.receivings ?? [];
     expect(rows.map((row: { grNumber: string }) => row.grNumber).sort()).toEqual([firstReceiving.grNumber, secondReceiving.grNumber].sort());
 
-    // Receiving is JE-free (stock enters at cost, AP is the PO itself) and moves no stock documents.
-    expect(await journalTouching([ownerPo.id, ownerPo.poNumber, firstReceiving.grNumber, secondReceiving.grNumber, firstReceiving.receivingId])).toBe(0);
+    // One SHOP journal entry per receiving (accountant ruling 2026-09-29 ข1): Dr inventory / Cr supplier payable at the
+    // units' VAT-inclusive cost — the two receivings together book the PO net amount (92,000 + VAT 6,440 = 98,440). No stock documents move.
+    expect(await journalTouching([ownerPo.id, ownerPo.poNumber, firstReceiving.grNumber, secondReceiving.grNumber, firstReceiving.receivingId])).toBe(2);
+    const receivingJournal = await h.prisma.journalEntry.findMany({ where: { referenceId: { in: [`gr:${firstReceiving.receivingId}`, `gr:${secondReceiving.receivingId}`] } }, include: { lines: true }, orderBy: { createdAt: 'asc' } });
+    expect(receivingJournal.map((entry) => [entry.entryNumber, entry.status, entry.companyId])).toEqual([[firstReceiving.journalEntryNo, 'POSTED', shopCompany.id], [secondReceiving.journalEntryNo, 'POSTED', shopCompany.id]]);
+    const receivingNet: Record<string, number> = {};
+    for (const line of receivingJournal.flatMap((entry) => entry.lines)) receivingNet[line.accountCode] = Math.round(((receivingNet[line.accountCode] ?? 0) + Number(line.debit ?? 0) - Number(line.credit ?? 0)) * 100) / 100;
+    expect(receivingNet).toEqual({ 'S11-2001': 97370, 'S11-2003': 1070, 'S21-1101': -97370, 'S21-1102': -1070 });
     expect(await h.prisma.stockAdjustment.count({ where: { productId: { in: products.map((product) => product.id) } } })).toBe(0);
     expect(h.external.calls).toHaveLength(0);
 
     saveArtifact(DOMAIN, 'goods-receiving-first.json', JSON.stringify({ result: firstReceiving, document: doc }, null, 2));
     saveArtifact(DOMAIN, 'purchase-order-final.json', JSON.stringify(po, null, 2));
     recordScenario(DOMAIN, scenario({
-      id: `${DOMAIN}/po-and-goods-receiving`, title: 'OWNER PO → ORDERED; BM PO → DRAFT → OWNER approve; receiving PASS/REJECT partial then full; ceiling / duplicate IMEI / empty batch / DRAFT and FULLY_RECEIVED refusals; products at PO cost in the main warehouse; no journal entry',
+      id: `${DOMAIN}/po-and-goods-receiving`, title: 'OWNER PO → ORDERED; BM PO → DRAFT → OWNER approve; receiving PASS/REJECT partial then full; ceiling / duplicate IMEI / empty batch / DRAFT and FULLY_RECEIVED refusals; products at VAT-inclusive cost in the main warehouse; one SHOP journal entry per receiving',
       routes: [...new Set(routes)], renderer: 'none', artifacts: ['goods-receiving-first.json', 'purchase-order-final.json'],
       notes: `PO ${ownerPo.poNumber} · GR ${firstReceiving.grNumber} (5 PASS / 1 REJECT) + ${secondReceiving.grNumber} (2 PASS) · 7 products IN_STOCK at branch ${world.branches.a.name} · BM PO ${bmPo.poNumber} DRAFT→ORDERED by OWNER · GR/PO numbers are count-based per month (not asserted as a sequence)`,
       unverified: ['direct-receive (auto-PO) path', 'QC center / PHOTO_PENDING for PHONE_USED lines', 'PO payment / accounts payable views'],
@@ -681,7 +688,9 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
     expect(await h.prisma.product.count({ where: { poId: { in: [ownerPo.id, longPo.id] }, deletedAt: null } })).toBe(beforeProducts);
     expect(await h.prisma.goodsReceiving.count({ where: { poId: { in: [ownerPo.id, longPo.id] } } })).toBe(beforeReceivings);
     expect(await journalTouching([ownerPo.id, longPo.id, firstReceiving.grNumber, longReceiving.grNumber])).toBe(beforeJournal);
-    expect(beforeJournal).toBe(0);
+    // needles ที่ตรง: เลขที่ใบรับของสองใบ (อยู่ในคำอธิบายของรายการรับสินค้าเข้า) — หนึ่งรายการต่อใบรับของ;
+    // การเปิดหน้าพิมพ์ซ้ำไม่เขียนอะไร (บรรทัดบนเทียบก่อน-หลังแล้ว)
+    expect(beforeJournal).toBe(2);
     expect((await readPo(longPo.id)).status).toBe('FULLY_RECEIVED');
 
     recordScenario(DOMAIN, scenario({

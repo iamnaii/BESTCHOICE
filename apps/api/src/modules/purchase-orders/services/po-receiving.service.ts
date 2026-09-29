@@ -4,6 +4,14 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { GoodsReceivingDto, DirectReceiveDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
 import { SUPPLIER_TERMS_SELECT, computePoAmounts, resolvePaymentTerms } from './po-amounts.util';
+import { PoCostBasis, poCostRemainder, poUnitCost } from './po-unit-cost.util';
+import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import {
+  ShopGoodsReceivingTemplate,
+  ShopGoodsReceivingUnit,
+} from '../../journal/cpa-templates/shop-goods-receiving.template';
+import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
 import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
@@ -13,9 +21,17 @@ import {
   resolveInstallmentSemantics,
 } from '../../../utils/product-price-autofill.util';
 
+/** Journal dependencies handed in by the PurchaseOrdersService facade (Nest-managed). */
+export interface PoReceivingJournalDeps {
+  goodsReceivingTemplate: ShopGoodsReceivingTemplate;
+  shopAccountResolver: ShopAccountResolver;
+  companyResolver: CompanyResolverService;
+}
+
 /**
  * Inventory-mutating goods-receiving flows. Owns the 2 write transactions:
- *  - goodsReceiving() — Serializable $transaction (per-unit IMEI/photo flow)
+ *  - goodsReceiving() — Serializable $transaction (per-unit IMEI/photo flow) +
+ *                       รายการบัญชีรับสินค้าเข้าฝั่ง SHOP ใน tx เดียวกัน (2026-09-29)
  *  - rejectQC()       — $transaction (ตัดเครื่องที่ยังรอถ่ายรูปออกจากคลัง)
  *
  * Each $transaction callback lives WHOLE inside a single method — the tx client
@@ -32,7 +48,10 @@ export class PoReceivingService {
   // one module-scope like other plain classes in this codebase do.
   private readonly logger = new Logger('PoReceiving');
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private journal: PoReceivingJournalDeps,
+  ) {}
 
   /**
    * New goods receiving flow with IMEI/Serial/photos/pass-reject per unit
@@ -79,6 +98,21 @@ export class PoReceivingService {
     if (!po || po.deletedAt) throw new NotFoundException('ไม่พบใบสั่งซื้อ');
     if (!['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
       throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้ (ต้อง APPROVED, ORDERED หรือ PARTIALLY_RECEIVED)');
+    }
+
+    // ต้นทุนต่อหน่วย = ส่วนแบ่งของยอดสุทธิที่ต้องจ่ายผู้จัดจำหน่าย (รวม VAT หลังส่วนลดท้ายบิล)
+    // — คำตอบฝ่ายบัญชี 2026-09-29 ข้อ ข2 + ข5. ยอดสุทธิติดลบ (ส่วนลดมากกว่าราคาสินค้า) คำนวณ
+    // ต้นทุนไม่ได้ และยอดใบสั่งซื้อแก้ไม่ได้หลังสร้าง ⇒ ทางออกเดียวคือยกเลิกแล้วสร้างใหม่
+    const costBasis: PoCostBasis = {
+      totalAmount: po.totalAmount ?? 0,
+      netAmount: po.netAmount ?? 0,
+      items: po.items.filter((i) => !i.deletedAt),
+    };
+    if (new Prisma.Decimal(costBasis.netAmount).lt(0)) {
+      throw new BadRequestException(
+        `ใบสั่งซื้อ ${po.poNumber} มียอดสุทธิติดลบ (ส่วนลดมากกว่าราคาสินค้า) จึงคำนวณต้นทุนต่อเครื่องไม่ได้ — ` +
+          'กรุณากดปุ่ม "ยกเลิก PO" ในหน้ารายละเอียดใบสั่งซื้อ แล้วสร้างใบใหม่ด้วยส่วนลดที่ถูกต้อง',
+      );
     }
 
     // Find main warehouse branch
@@ -172,8 +206,11 @@ export class PoReceivingService {
     // was reading SystemConfig 50 times inside this same Serializable tx.
     const installmentSemantics = await resolveInstallmentSemantics(tx, this.logger);
 
+    const unitCosts = this.resolveUnitCosts(costBasis, po.items, dto.items, countByPoItem, freshByPoItem);
+    const journalUnits: ShopGoodsReceivingUnit[] = [];
+
     // Process each item
-    for (const item of dto.items) {
+    for (const [index, item] of dto.items.entries()) {
       const poItem = po.items.find((i) => i.id === item.poItemId);
       if (!poItem) throw new NotFoundException(`ไม่พบรายการ PO: ${item.poItemId}`);
 
@@ -205,7 +242,7 @@ export class PoReceivingService {
             color: poItem.color || null,
             storage: poItem.storage || null,
             category: productCategory,
-            costPrice: Number(poItem.unitPrice),
+            costPrice: unitCosts.get(index)!,
             supplierId: po.supplierId,
             poId: po.id,
             branchId: mainWarehouse!.id,
@@ -307,6 +344,11 @@ export class PoReceivingService {
         });
 
         passedProducts.push(product);
+        journalUnits.push({
+          inventoryAccountCode: this.journal.shopAccountResolver.resolveProductAccounts(productCategory).inventoryAccountCode,
+          payableAccountCode: this.journal.shopAccountResolver.resolveSupplierPayableAccount(productCategory),
+          cost: unitCosts.get(index)!,
+        });
       } else {
         // Create receiving item for rejected items (no product created)
         const rejectedItem = await tx.goodsReceivingItem.create({
@@ -350,6 +392,15 @@ export class PoReceivingService {
       data: { status: newStatus },
     });
 
+    const journalEntryNo = await this.postReceivingJournal(tx, {
+      receivingId: receiving.id,
+      grNumber,
+      poId: id,
+      poNumber: po.poNumber,
+      units: journalUnits,
+      postedAt: this.receivingPostingDate(receiving),
+    });
+
     return {
       receivingId: receiving.id,
       grNumber,
@@ -359,7 +410,89 @@ export class PoReceivingService {
       rejected: rejectedItems.length,
       products: passedProducts,
       mainWarehouse: mainWarehouse!.name,
+      journalEntryNo,
     };
+  }
+
+  /**
+   * ต้นทุนของแต่ละหน่วยที่ตรวจผ่านในใบรับของนี้ (key = ลำดับใน dto.items).
+   *
+   * เศษสตางค์จากการปัดรายหน่วยลงครั้งเดียว ในการรับครั้งที่ทำให้ใบสั่งซื้อครบทุกรายการ —
+   * ที่หน่วยซึ่งต้นทุนสูงสุดของครั้งนั้น (เท่ากัน = หน่วยท้ายสุด) เพื่อไม่ให้เศษไปกองที่
+   * อุปกรณ์เสริมราคาไม่กี่บาทจนต้นทุนเพี้ยนหรือติดลบ. ใบสั่งซื้อที่รับไม่ครบ = ยังไม่ลงเศษ
+   * (เจ้าหนี้ที่ตั้ง = Σ ต้นทุนของหน่วยที่รับจริง)
+   */
+  private resolveUnitCosts(
+    basis: PoCostBasis,
+    poItems: { id: string; quantity: number; receivedQty: number; unitPrice: Prisma.Decimal }[],
+    dtoItems: GoodsReceivingDto['items'],
+    countByPoItem: Record<string, number>,
+    freshByPoItem: Map<string, { receivedQty: number }>,
+  ): Map<number, Prisma.Decimal> {
+    const costs = new Map<number, Prisma.Decimal>();
+    for (const [index, item] of dtoItems.entries()) {
+      if (item.status !== 'PASS') continue;
+      const poItem = poItems.find((i) => i.id === item.poItemId);
+      if (!poItem) throw new NotFoundException(`ไม่พบรายการ PO: ${item.poItemId}`);
+      costs.set(index, poUnitCost(basis, poItem.unitPrice));
+    }
+    if (costs.size === 0) return costs;
+
+    const completesPo = poItems.every((poItem) => {
+      const receivedBefore = freshByPoItem.get(poItem.id)?.receivedQty ?? poItem.receivedQty;
+      return receivedBefore + (countByPoItem[poItem.id] ?? 0) >= poItem.quantity;
+    });
+    if (!completesPo) return costs;
+
+    const remainder = poCostRemainder(basis);
+    if (remainder.isZero()) return costs;
+
+    let target = -1;
+    for (const [index, cost] of costs) {
+      if (target === -1 || cost.gte(costs.get(target)!)) target = index;
+    }
+    const adjusted = costs.get(target)!.add(remainder);
+    if (adjusted.lt(0)) {
+      // เศษเป็นหลักสตางค์ ส่วนหน่วยที่เลือกคือหน่วยที่แพงที่สุด — เกิดได้เฉพาะข้อมูลใบสั่งซื้อผิดปกติ
+      throw new BadRequestException('ยอดของใบสั่งซื้อไม่สอดคล้องกับราคาต่อหน่วย จึงคำนวณต้นทุนไม่ได้ กรุณาแจ้งผู้ดูแลระบบ');
+    }
+    costs.set(target, adjusted);
+    return costs;
+  }
+
+  /**
+   * วันที่ลงบัญชีของใบรับของ — จุดเดียวที่ตัดสิน. วันนี้ = เวลาที่รับของเข้าคลัง.
+   * ฝ่ายบัญชีตอบข้อ ข3 (2026-09-29) ว่าให้ใช้วันที่ในใบส่งของ/ใบกำกับภาษีของผู้จัดจำหน่าย
+   * ซึ่งใบรับของยังไม่มีช่องเก็บ และเจ้าของยังไม่ตัดสิน — เมื่อเพิ่มช่องแล้วแก้ที่นี่ที่เดียว
+   */
+  private receivingPostingDate(receiving: { createdAt?: Date | null }): Date {
+    return receiving.createdAt ?? new Date();
+  }
+
+  /**
+   * Dr สินค้าคงคลัง / Cr เจ้าหนี้ผู้จัดจำหน่าย — โพสต์ใน tx เดียวกับการรับของ (รายการบัญชีพัง =
+   * การรับของไม่เกิด). `createAndPost` ไม่ตรวจงวดบัญชีเอง จึงตรวจที่นี่ด้วยบริษัท SHOP.
+   * ไม่มีหน่วยที่ตรวจผ่าน = ไม่มีรายการ (คืน null)
+   */
+  private async postReceivingJournal(
+    tx: Prisma.TransactionClient,
+    input: {
+      receivingId: string;
+      grNumber: string;
+      poId: string;
+      poNumber: string;
+      units: ShopGoodsReceivingUnit[];
+      postedAt: Date;
+    },
+  ): Promise<string | null> {
+    if (input.units.length === 0) return null;
+    const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(tx);
+    await validatePeriodOpen(tx, input.postedAt, shopCompanyId);
+    const posted = await this.journal.goodsReceivingTemplate.execute(
+      { idempotencyKey: `shop-goods-receiving:${input.receivingId}`, ...input },
+      tx,
+    );
+    return posted?.entryNo ?? null;
   }
 
   /**
@@ -371,7 +504,8 @@ export class PoReceivingService {
    * APPROVED -> ORDERED in ONE Serializable $transaction, bypassing the OWNER
    * approval gate (audited), then run the existing receiving pipeline.
    * Net: GoodsReceiving.poId is never null; GR history / AP / progress / the
-   * T5-C16 ceiling check all work unchanged. JE-FREE — no accounting touch.
+   * T5-C16 ceiling check all work unchanged. The receiving journal entry is posted
+ * by the shared pipeline (runReceiveInTx) — the payment fields here still post nothing.
    */
   async directReceive(dto: DirectReceiveDto, userId: string) {
     // Up-front guard: every line must carry a positive costPrice (COGS reads it).

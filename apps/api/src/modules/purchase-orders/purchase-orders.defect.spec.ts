@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 describe('goodsReceiving — persists structured defectReason on REJECT', () => {
   it('writes defectReason onto the rejected GoodsReceivingItem', async () => {
@@ -23,7 +24,7 @@ describe('goodsReceiving — persists structured defectReason on REJECT', () => 
     const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     const service = module.get<PurchaseOrdersService>(PurchaseOrdersService);
 

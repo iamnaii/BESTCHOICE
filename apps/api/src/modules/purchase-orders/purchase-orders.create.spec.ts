@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 /**
  * Characterization (golden) spec for PurchaseOrdersService.create() money math.
@@ -72,6 +73,7 @@ describe('PurchaseOrdersService.create() — VAT/net/discount math (characteriza
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PurchaseOrdersService,
+        ...poJournalTestProviders().providers,
         { provide: PrismaService, useValue: prisma },
       ],
     }).compile();

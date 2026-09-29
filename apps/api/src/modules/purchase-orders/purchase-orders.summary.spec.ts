@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 describe('PurchaseOrdersService.getSummary', () => {
   it('returns compute-on-read counts incl. overdue (ORDERED & expectedDate < now)', async () => {
@@ -18,7 +19,7 @@ describe('PurchaseOrdersService.getSummary', () => {
       product: { count: jest.fn().mockResolvedValue(6) }, // waitingQc
     };
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     const service = module.get<PurchaseOrdersService>(PurchaseOrdersService);
 
@@ -53,7 +54,7 @@ describe('PurchaseOrdersService.getAccountsPayable', () => {
     const findMany = jest.fn().mockResolvedValue([]);
     const prisma: any = { purchaseOrder: { findMany } };
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     const service = module.get<PurchaseOrdersService>(PurchaseOrdersService);
 

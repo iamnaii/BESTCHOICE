@@ -2,12 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 /**
  * B3 supplier-direct receive = auto-PO. ONE $transaction:
  *  create PO (isDirectReceive, unitPrice=costPrice) -> set APPROVED/ORDERED
  *  (approval-bypass + AuditLog) -> run goodsReceiving() to make GR + products.
- * No JE; poId never null.
+ * poId never null. รายการบัญชีรับสินค้าเข้าโพสต์โดย pipeline รับของตัวเดียวกัน (2026-09-29).
  */
 describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -65,7 +66,7 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
 
   const build = async (prisma: any) => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     return module.get<PurchaseOrdersService>(PurchaseOrdersService);
   };
@@ -93,8 +94,10 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
     expect(created.poUpdate.some((u: any) => u.status === 'ORDERED' && u.orderedAt instanceof Date)).toBe(true);
     // approval-bypass audit row
     expect(created.audit[0]).toEqual(expect.objectContaining({ userId: 'user-1', action: 'PO_DIRECT_RECEIVE_APPROVAL_BYPASS', entity: 'purchase_order', entityId: 'po-new' }));
-    // product created with costPrice from unitPrice
-    expect(created.product[0]).toEqual(expect.objectContaining({ costPrice: 30000, imeiSerial: 'IMEI-1' }));
+    // product created with costPrice from unitPrice (ผู้จัดจำหน่ายไม่จด VAT ไม่มีส่วนลด → ต้นทุน = ราคาต่อหน่วย;
+    // เคสรวม VAT/ส่วนลดอยู่ที่ purchase-orders.receiving-journal.spec.ts)
+    expect(created.product[0]).toEqual(expect.objectContaining({ imeiSerial: 'IMEI-1' }));
+    expect((created.product[0] as { costPrice: { toFixed(dp: number): string } }).costPrice.toFixed(2)).toBe('30000.00');
     // B0 §2.1: sellingPrice writes cashPrice via the column write-through path —
     // label is 'ราคาเงินสด' (CASH_LABEL), not the old hardcoded 'ราคาขาย'
     expect(created.price[0]).toEqual(expect.objectContaining({ label: 'ราคาเงินสด' }));

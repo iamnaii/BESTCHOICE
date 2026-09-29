@@ -66,4 +66,27 @@ describe('buildPreviewBlocks', () => {
     expect(res.accrual2A).toBeUndefined();
     expect(res.subtotals['2A']).toBeUndefined();
   });
+
+  it('accrualPosted:false — บล็อก 2A ที่ยังไม่ลง (จะลงพร้อมการรับชำระ) ติดป้าย posted:false', () => {
+    const res = buildPreviewBlocks({
+      accrualPosted: false,
+      accrualLines: [
+        { accountCode: '11-2103', accountName: 'ลูกหนี้ค้างชำระ', debit: '1515.83', credit: '0.00', description: 'Accrual' },
+        { accountCode: '21-2102', accountName: 'ล้างภาษีขายรอเรียกเก็บ', debit: '99.17', credit: '0.00', description: '' },
+        { accountCode: '11-2106', accountName: 'รายได้รอตัดบัญชี', debit: '500.00', credit: '0.00', description: '' },
+        { accountCode: '11-2101', accountName: 'ลูกหนี้ Gross', debit: '0.00', credit: '1416.66', description: '' },
+        { accountCode: '11-2105', accountName: 'ลูกหนี้ภาษีขายรอ', debit: '0.00', credit: '99.17', description: '' },
+        { accountCode: '41-1101', accountName: 'รายได้ดอกเบี้ย', debit: '0.00', credit: '500.00', description: '' },
+        { accountCode: '21-2101', accountName: 'ภาษีขาย ภพ.30', debit: '0.00', credit: '99.17', description: '' },
+      ],
+      liveLines: [
+        { accountCode: '11-1201', accountName: 'KBank', debit: '1000.00', credit: '0.00', description: 'รับเงิน' },
+        { accountCode: '11-2103', accountName: 'ลูกหนี้ค้างชำระ', debit: '0.00', credit: '1000.00', description: 'ล้าง' },
+      ],
+    });
+    expect(res.accrual2A!.lines).toHaveLength(7);
+    expect(res.accrual2A!.lines.every((l) => l.block === '2A' && l.posted === false)).toBe(true);
+    expect(res.subtotals['2A']).toEqual({ debit: '2115.00', credit: '2115.00', balanced: true });
+    expect(res.lines.every((l) => l.block === '2B' && l.posted === false)).toBe(true);
+  });
 });

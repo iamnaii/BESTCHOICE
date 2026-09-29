@@ -1087,15 +1087,16 @@ describe('PaymentsService', () => {
       expect(result.isBalanced).toBe(true);
       expect(parseFloat(result.totalDebit)).toBeCloseTo(parseFloat(result.totalCredit), 2);
 
-      // Preview mirrors PaymentReceiptTemplate: ALWAYS Cr 11-2103 (the nightly 2A
-      // cron backfills the accrual) — the old consolidated 2A+2B legs never post.
+      // บล็อกใบรับชำระ (2B) เครดิต 11-2103 เสมอ — ขาของ 2A อยู่ในบล็อก `accrual2A` แยกต่างหาก
+      // (2A ลงเป็นอีกรายการหนึ่งในการบันทึกเดียวกัน — D2 2026-09-28)
       const accruedClear = result.lines.find((l) => l.accountCode === '11-2103');
       expect(accruedClear).toBeDefined();
       expect(parseFloat(accruedClear!.credit)).toBeGreaterThan(0);
       expect(result.lines.find((l) => l.accountCode === '11-2106')).toBeUndefined();
       expect(result.lines.find((l) => l.accountCode === '41-1101')).toBeUndefined();
-      // ป้ายสถานะยังบอกว่า 2A ยังไม่รัน (cron จะ backfill)
       expect(result.accrualMode).not.toBe('2B_ONLY');
+      expect(result.accrual2A!.lines.every((l) => l.block === '2A' && l.posted === false)).toBe(true);
+      expect(result.subtotals['2A']).toEqual({ debit: '2846.49', credit: '2846.49', balanced: true });
 
       // Must include cash Dr line
       const cashLine = result.lines.find((l) => l.accountCode === '11-1101');
@@ -1289,18 +1290,26 @@ describe('PaymentsService', () => {
       expect(result.accrualMode).toBe('CONSOLIDATED_BACKFILL');
     });
 
-    it('blocks PARTIAL when installment is not yet accrued', async () => {
+    it('blocks PARTIAL when installment is not yet accrued — message names actions that exist (R2 2026-09-29)', async () => {
       prisma.installmentSchedule.findUnique.mockResolvedValue(mockInstallmentNotAccrued);
 
-      await expect(
-        service.previewJournal({
+      const err = await service
+        .previewJournal({
           contractId: 'contract-preview',
           installmentNo: 2,
           amountReceived: 1000,
           depositAccountCode: '11-1101',
           case: 'PARTIAL',
-        }),
-      ).rejects.toThrow(/ยังไม่ได้ทำ accrual/);
+        })
+        .catch((e: Error) => e);
+
+      expect(err).toBeInstanceOf(BadRequestException);
+      // งวดของ fixture ครบกำหนด 26 ธ.ค. 2568 (ผ่านมาแล้ว) และยังไม่ตั้งลูกหนี้งวด
+      expect((err as Error).message).toBe(
+        'งวดนี้ถึงวันครบกำหนดแล้ว (26/12/2568) แต่ระบบยังไม่ได้ตั้งลูกหนี้งวด — ' +
+          'หน้านี้จึงยังบันทึกรับชำระบางส่วนไม่ได้ กรุณารับชำระเต็มงวด หรือติดต่อฝ่ายบัญชีให้ตรวจสอบงวดนี้ก่อนรับชำระบางส่วน',
+      );
+      expect((err as Error).message).not.toContain('00:01');
     });
 
     // ปรับดิว collect-first (2026-07-02): the RESCHEDULE preview no longer needs

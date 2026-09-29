@@ -225,6 +225,8 @@ export class PaymentsController {
       daysToShift: dto.daysToShift,
       splitMode: dto.splitMode,
       consumeAdvance: dto.consumeAdvance,
+      paidDate: dto.paidDate,
+      method: dto.method,
     });
   }
 

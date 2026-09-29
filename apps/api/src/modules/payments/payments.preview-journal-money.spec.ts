@@ -437,10 +437,9 @@ describe('PaymentsService.previewJournal (characterization)', () => {
 
   // ───────────────────────────────────────────────────────────────────────────
   // Gap 3 — non-accrued installment: preview mirrors the save (QA #1347 follow-up)
-  // The old CONSOLIDATED 2A+2B line-breakdown predates PR-843/I2; the save now
-  // ALWAYS credits 11-2103 and the nightly 2A cron backfills the accrual, so
-  // the preview emits the same single receivable-clearing line. Only the
-  // accrualMode chip still distinguishes PAYING_AHEAD / BACKFILL / 2B_ONLY.
+  // The old CONSOLIDATED 2A+2B line-breakdown predates PR-843/I2; the receipt (2B)
+  // block ALWAYS credits 11-2103. ตั้งแต่ D2 (2026-09-28) งวดที่ยังไม่มี 2A ถูกตั้งลูกหนี้งวดใน
+  // การบันทึกเดียวกัน — ขาของ 2A แสดงในบล็อก `accrual2A` (posted:false) แยกจากบล็อกใบรับชำระ.
   // ───────────────────────────────────────────────────────────────────────────
   describe('non-accrued installment (preview mirrors the save)', () => {
     it('explicit vatAmount: live lines = Dr cash / Cr 11-2103 (no consolidated legs), mode PAYING_AHEAD', async () => {
@@ -464,12 +463,16 @@ describe('PaymentsService.previewJournal (characterization)', () => {
 
       expect(lineFor(out.lines, '11-1101')?.debit).toBe('2202.41');
       expect(lineFor(out.lines, '11-2103')?.credit).toBe('2202.41');
-      // Consolidated legs never post since PR-843/I2 — must not be previewed
+      // ขาของ 2A ต้องไม่ปนในบล็อกใบรับชำระ
       for (const code of ['21-2102', '11-2105', '21-2101', '11-2106', '41-1101', '11-2101']) {
         expect(lineFor(out.lines, code)).toBeUndefined();
       }
       expect(out.accrualMode).toBe('CONSOLIDATED_PAYING_AHEAD');
       expect(out.isBalanced).toBe(true);
+      // บล็อก 2A ที่จะลงพร้อมกัน: Dr 11-2103 เต็มงวด = ยอดที่ใบรับชำระจะล้าง
+      expect(lineFor(out.accrual2A!.lines, '11-2103')?.debit).toBe('2202.41');
+      expect(out.accrual2A!.lines.every((l) => l.posted === false)).toBe(true);
+      expect(out.accrual2A!.subtotal.balanced).toBe(true);
     });
 
     it('vatAmount=null fallback contract: same mirror — Cr 11-2103 = monthlyPayment', async () => {

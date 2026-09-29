@@ -591,6 +591,8 @@ export class PaymentsService {
     daysToShift?: number;
     splitMode?: string;
     consumeAdvance?: boolean;
+    paidDate?: string;
+    method?: string;
   }) {
     return this.services().preview.previewJournal(input);
   }

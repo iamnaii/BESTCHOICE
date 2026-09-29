@@ -21,7 +21,10 @@ interface BlockSubtotal {
 
 export interface JePreview {
   lines: JePreviewLine[];
-  /** Already-posted 2A accrual context (present only in 2B_ONLY mode). */
+  /**
+   * รายการตั้งลูกหนี้งวด (2A) ของงวดนี้ — บรรทัดที่ `posted: true` ลงไปแล้ว (แสดงเป็นบริบท),
+   * `posted: false` = ยังไม่ลง จะลงพร้อมการรับชำระนี้.
+   */
   accrual2A?: { lines: JePreviewLine[]; subtotal: BlockSubtotal };
   /** Per-block Dr/Cr subtotals + balance flag. */
   subtotals?: { '2A'?: BlockSubtotal; '2B': BlockSubtotal };
@@ -31,6 +34,8 @@ export interface JePreview {
   rescheduleFeeDisplay?: string;
   accrualMode?: '2B_ONLY' | 'CONSOLIDATED_PAYING_AHEAD' | 'CONSOLIDATED_BACKFILL';
   dueDate?: string;
+  /** วันที่ที่รายการ 2A จะถูกลง (ISO) — มีเฉพาะเมื่องวดนี้ยังไม่ตั้งลูกหนี้งวด */
+  accrualPostedAt?: string;
 }
 
 // ─── JE Preview panel (always visible) ────────────────────────────────────────
@@ -39,11 +44,14 @@ export interface JePreview {
 function JeBlock({
   title,
   posted,
+  pendingLabel,
   lines,
   subtotal,
 }: {
   title: string;
   posted?: boolean;
+  /** ป้ายของรายการที่ยังไม่ลง แต่จะลงพร้อมการรับชำระนี้ (2A ณ วันรับเงิน) — ไม่ส่ง = ไม่แสดงป้าย */
+  pendingLabel?: string;
   lines: JePreviewLine[];
   subtotal?: BlockSubtotal;
 }) {
@@ -59,6 +67,11 @@ function JeBlock({
         {posted && (
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-medium leading-snug">
             โพสต์แล้ว
+          </span>
+        )}
+        {pendingLabel && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-medium leading-snug">
+            {pendingLabel}
           </span>
         )}
       </div>
@@ -121,17 +134,17 @@ export function JePreviewPanel({
   preview,
   isLoading,
   errorMessage,
+  viaGateway = false,
 }: {
   preview: JePreview | undefined;
   isLoading: boolean;
   errorMessage?: string;
+  /** เลือกชำระผ่าน QR — รายการลงเมื่อผู้ให้บริการยืนยันว่าเงินเข้า ไม่ใช่ตอนกดปุ่มบนหน้านี้ */
+  viaGateway?: boolean;
 }) {
   const has2A = !!preview?.accrual2A && preview.accrual2A.lines.length > 0;
-  const consolidated =
-    !!preview &&
-    !has2A &&
-    (preview.accrualMode === 'CONSOLIDATED_PAYING_AHEAD' ||
-      preview.accrualMode === 'CONSOLIDATED_BACKFILL');
+  // 2A ที่ยังไม่ลง = ทุกบรรทัดของบล็อก posted:false (server ส่งมาเมื่องวดยังไม่ตั้งลูกหนี้งวด)
+  const accrualPending = has2A && preview!.accrual2A!.lines.every((l) => l.posted === false);
   // 2B subtotal: prefer the server's per-block value; fall back to overall totals.
   const sub2B: BlockSubtotal | undefined = preview
     ? (preview.subtotals?.['2B'] ?? {
@@ -140,11 +153,8 @@ export function JePreviewPanel({
         balanced: preview.isBalanced,
       })
     : undefined;
-  const label2B = has2A
-    ? '2B — รับเงิน + อนุโลม'
-    : consolidated
-      ? '2A + 2B — โพสต์รวมตอนนี้'
-      : '2B — รับเงิน';
+  // หัวบล็อกแบบเดียวทุกกรณี — บรรทัดอนุโลมค่าปรับ (ถ้ามี) เห็นได้ในบล็อกเองอยู่แล้ว
+  const label2B = '2B — รับชำระ';
 
   return (
     <div className="rounded-xl border border-border bg-card p-3">
@@ -164,7 +174,12 @@ export function JePreviewPanel({
       </div>
 
       {preview?.accrualMode && (
-        <AccrualModeChip mode={preview.accrualMode} dueDate={preview.dueDate} />
+        <AccrualModeChip
+          mode={preview.accrualMode}
+          dueDate={preview.dueDate}
+          accrualPostedAt={preview.accrualPostedAt}
+          viaGateway={viaGateway}
+        />
       )}
 
       {errorMessage && !isLoading && (
@@ -194,16 +209,25 @@ export function JePreviewPanel({
         <div className="space-y-2">
           {has2A && (
             <JeBlock
-              title="2A — ถึงกำหนดงวด (ACCRUAL)"
-              posted
+              title={
+                accrualPending ? '2A — ตั้งลูกหนี้งวด (ACCRUAL)' : '2A — ถึงกำหนดงวด (ACCRUAL)'
+              }
+              posted={!accrualPending}
+              pendingLabel={
+                accrualPending
+                  ? viaGateway
+                    ? 'ลงเมื่อเงินเข้า'
+                    : 'ลงพร้อมการรับชำระนี้'
+                  : undefined
+              }
               lines={preview.accrual2A!.lines}
               subtotal={preview.subtotals?.['2A'] ?? preview.accrual2A!.subtotal}
             />
           )}
           <JeBlock title={label2B} lines={preview.lines} subtotal={sub2B} />
-          {consolidated && (
+          {accrualPending && (
             <p className="text-[11px] text-muted-foreground leading-snug">
-              * งวดนี้ยังไม่ได้ตั้งค้าง (accrual) — ระบบจะโพสต์ 2A + 2B รวมกันตอนบันทึก
+              {`* งวดนี้ยังไม่ได้ตั้งลูกหนี้งวด — ${viaGateway ? 'เมื่อเงินเข้า' : 'เมื่อบันทึก'} ระบบจะลงรายการ 2A และ 2B เป็น 2 รายการ ในคราวเดียวกัน`}
             </p>
           )}
         </div>

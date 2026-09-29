@@ -567,8 +567,24 @@ export function RecordPaymentWizard({
       lateFeeWaived: waiverDec.toNumber(),
       case: apiCase,
       consumeAdvance,
+      // วันที่รับเงิน — server ใช้หาวันที่ลงรายการตั้งลูกหนี้งวด (2A) ให้ตรงกับตอนบันทึก
+      // (ช่องวันที่ว่าง = ไม่ส่ง ให้ server ใช้ "ตอนนี้" เหมือนตอนบันทึก)
+      paidDate: paidDate || undefined,
+      // ช่องทางที่เลือก — server ใช้เลือกข้อความของด่านจ่ายบางส่วนให้ตรงกับสิ่งที่หน้านี้ทำได้
+      // (เลือก QR: การส่ง QR ยอดบางส่วนยังทำได้ ข้อความจึงต้องไม่บอกว่ารับบางส่วนไม่ได้)
+      method,
     }),
-    [receivedNum, depositAccountCode, currentLateFee, waiverDec, apiCase, payment, consumeAdvance],
+    [
+      receivedNum,
+      depositAccountCode,
+      currentLateFee,
+      waiverDec,
+      apiCase,
+      payment,
+      consumeAdvance,
+      paidDate,
+      method,
+    ],
   );
   const debouncedParams = useDebounce(previewParams, 300);
 
@@ -1363,6 +1379,7 @@ export function RecordPaymentWizard({
                   preview={preview}
                   isLoading={previewLoading}
                   errorMessage={previewErrorMessage}
+                  viaGateway={isQrMode}
                 />
               </div>
             </div>

@@ -40,6 +40,10 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
     accrualJournalEntryId?: string | null;
     dueDate?: Date;
     periodStatus?: string | null;
+    /** รายการที่ถือ `reference` = id ของแถวตารางงวดอยู่ (null = ยังไม่เคยมี 2A ของงวดนี้) */
+    referenceHolder?: { metadata: Record<string, unknown> } | null;
+    /** รายการ 2A ที่ตั้งใหม่หลังการกลับรายการครั้งก่อน ๆ — ตัวที่ n ถือ `<id>:re-accrual:<n>` */
+    reAccruals?: { metadata: Record<string, unknown> }[];
   }) {
     const inst = {
       id: 'inst-3',
@@ -68,6 +72,16 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
       },
       systemConfig: { findUnique: jest.fn().mockResolvedValue({ value: '0' }) },
       payment: { findFirst: jest.fn(), update: jest.fn() },
+      journalEntry: {
+        // ตอบตาม reference ที่ถูกถามตรงตัว — แบบเดียวกับการอ่านด้วยค่าเท่ากันบน unique index
+        findFirst: jest.fn(({ where }: { where: { referenceId: unknown } }) => {
+          if (where.referenceId === 'inst-3') return Promise.resolve(opts.referenceHolder ?? null);
+          const match = /^inst-3:re-accrual:(\d+)$/.exec(String(where.referenceId));
+          return Promise.resolve(match ? (opts.reAccruals?.[Number(match[1]) - 1] ?? null) : null);
+        }),
+        // ห้ามค้นแบบกวาด (ขึ้นต้นด้วย …) ในธุรกรรมของการรับชำระ — ต้องไม่ถูกเรียกเลย
+        findMany: jest.fn(),
+      },
     };
     // client หลัก "มองไม่เห็น" ตารางงวด (จำลองแถวที่เพิ่งสร้างในธุรกรรมและยังไม่ commit)
     const rootPrisma = {
@@ -239,4 +253,91 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
       });
     },
   );
+
+  describe('reference ของรายการ 2A — งวดที่เคยถูกกลับรายการตั้งลูกหนี้งวด (ยกเลิกใบเสร็จ)', () => {
+    const REVERSED = { metadata: { tag: '2A', reversed: true } };
+    const ACTIVE = { metadata: { tag: '2A' } };
+    const referenceOf = (createAndPost: jest.Mock) =>
+      (createAndPost.mock.calls[0][0] as CapturedJe).reference;
+    /** reference ที่ถูกถามตามลำดับ — ทุกครั้งต้องเป็นค่าเท่ากันตรงตัว ของรายการ AUTO ที่ยังไม่ถูกลบ */
+    const probedReferences = (findFirst: jest.Mock) =>
+      findFirst.mock.calls.map(([arg]) => {
+        const { where, select } = arg as {
+          where: Record<string, unknown>;
+          select: Record<string, unknown>;
+        };
+        expect(where).toEqual({
+          referenceType: 'AUTO',
+          referenceId: expect.any(String),
+          deletedAt: null,
+        });
+        expect(select).toEqual({ metadata: true });
+        return where.referenceId;
+      });
+
+    it('งวดที่ไม่เคยมี 2A → reference เดิม (id ของแถวตารางงวด) อ่านรายการครั้งเดียว', async () => {
+      const { tmpl, tx, createAndPost } = build({});
+
+      await tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never);
+
+      expect(referenceOf(createAndPost)).toBe('inst-3');
+      expect(probedReferences(tx.journalEntry.findFirst)).toEqual(['inst-3']);
+      expect(tx.journalEntry.findMany).not.toHaveBeenCalled();
+    });
+
+    it('มีรายการที่ยังมีผลถือ reference เดิมอยู่ → ใช้ reference เดิม ให้ฐานข้อมูลเป็นผู้กันลงซ้ำ', async () => {
+      const { tmpl, tx, createAndPost } = build({ referenceHolder: ACTIVE });
+
+      await tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never);
+
+      expect(referenceOf(createAndPost)).toBe('inst-3');
+      expect(probedReferences(tx.journalEntry.findFirst)).toEqual(['inst-3']);
+      expect(tx.journalEntry.findMany).not.toHaveBeenCalled();
+    });
+
+    it('2A เดิมของงวดถูกกลับรายการแล้ว → 2A ใบใหม่ใช้ <id>:re-accrual:1 — ถาม reference ตรงตัวทีละค่า ไม่ค้นแบบกวาด', async () => {
+      const { tmpl, tx, createAndPost } = build({ referenceHolder: REVERSED });
+
+      await tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never);
+
+      expect(referenceOf(createAndPost)).toBe('inst-3:re-accrual:1');
+      expect(probedReferences(tx.journalEntry.findFirst)).toEqual([
+        'inst-3',
+        'inst-3:re-accrual:1',
+      ]);
+      expect(tx.journalEntry.findMany).not.toHaveBeenCalled();
+    });
+
+    it('ถูกกลับมาแล้วสองครั้ง (ใบเดิม + ใบที่ตั้งใหม่ครั้งที่ 1) → <id>:re-accrual:2', async () => {
+      const { tmpl, tx, createAndPost } = build({
+        referenceHolder: REVERSED,
+        reAccruals: [REVERSED],
+      });
+
+      await tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never);
+
+      expect(referenceOf(createAndPost)).toBe('inst-3:re-accrual:2');
+      expect(probedReferences(tx.journalEntry.findFirst)).toEqual([
+        'inst-3',
+        'inst-3:re-accrual:1',
+        'inst-3:re-accrual:2',
+      ]);
+      expect(tx.journalEntry.findMany).not.toHaveBeenCalled();
+    });
+
+    it('ใบที่ตั้งใหม่ครั้งที่ 1 ยังมีผลอยู่ → ได้ reference ของใบนั้น (ไม่ข้ามไปเลขถัดไป) ให้ฐานข้อมูลเป็นผู้กันลงซ้ำ', async () => {
+      const { tmpl, tx, createAndPost } = build({
+        referenceHolder: REVERSED,
+        reAccruals: [ACTIVE],
+      });
+
+      await tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never);
+
+      expect(referenceOf(createAndPost)).toBe('inst-3:re-accrual:1');
+      expect(probedReferences(tx.journalEntry.findFirst)).toEqual([
+        'inst-3',
+        'inst-3:re-accrual:1',
+      ]);
+    });
+  });
 });

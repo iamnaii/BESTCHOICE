@@ -46,6 +46,8 @@ describe('InstallmentAccrual2ATemplate.execute (golden · mock-based)', () => {
         update: jest.fn().mockResolvedValue({}),
       },
       contract: { findUniqueOrThrow: jest.fn().mockResolvedValue(contract) },
+      // ยังไม่เคยมีรายการ 2A ของงวดนี้ → reference เดิม (id ของแถวตารางงวด)
+      journalEntry: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     prismaStub.$transaction = jest.fn().mockImplementation(
       (cb: (tx: unknown) => Promise<unknown>) => cb(prismaStub),

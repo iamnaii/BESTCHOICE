@@ -1,7 +1,9 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import {
   buildAccrual2ALines,
+  buildAccrual2AReversalLines,
   isDueDateReached,
+  sortAccrual2AReversalLines,
   resolveAccrualPeriodCheckDate,
   resolveAccrualPostingDate,
 } from './build-accrual-2a-lines';
@@ -64,6 +66,96 @@ describe('buildAccrual2ALines', () => {
       'รายได้ดอกเบี้ย (รับรู้)',
       'ภาษีขาย ภ.พ.30',
     ]);
+  });
+});
+
+describe('buildAccrual2AReversalLines', () => {
+  it('งวดปกติ: กระจกของ 2A — บัญชีและยอดเดิม สลับฝั่ง เรียงตามรูปที่เสนอฝ่ายบัญชี', () => {
+    const out = buildAccrual2AReversalLines({ ...CONTRACT_17K_12M, installmentNo: 3 });
+
+    expect(out.lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)])).toEqual([
+      ['11-2101', '1416.66', '0.00'],
+      ['11-2105', '99.17', '0.00'],
+      ['21-2101', '99.17', '0.00'],
+      ['41-1101', '500.00', '0.00'],
+      ['11-2103', '0.00', '1515.83'],
+      ['21-2102', '0.00', '99.17'],
+      ['11-2106', '0.00', '500.00'],
+    ]);
+    expect(out.installmentTotal.toFixed(2)).toBe('1515.83');
+    expect(sum(out.lines.map((l) => l.dr)).toFixed(2)).toBe('2115.00');
+    expect(sum(out.lines.map((l) => l.cr)).toFixed(2)).toBe('2115.00');
+  });
+
+  it('งวดสุดท้าย: ใช้ยอดที่รับเศษปัด (1,515.87 / 99.13 / 1,416.74)', () => {
+    const out = buildAccrual2AReversalLines({ ...CONTRACT_17K_12M, installmentNo: 12 });
+
+    expect(out.lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)])).toEqual([
+      ['11-2101', '1416.74', '0.00'],
+      ['11-2105', '99.13', '0.00'],
+      ['21-2101', '99.13', '0.00'],
+      ['41-1101', '500.00', '0.00'],
+      ['11-2103', '0.00', '1515.87'],
+      ['21-2102', '0.00', '99.13'],
+      ['11-2106', '0.00', '500.00'],
+    ]);
+  });
+
+  it('ทุกบรรทัดของ 2A มีคู่กลับครบ (ไม่มีสำเนายอดชุดที่สอง) และคำอธิบายขึ้นต้นด้วย [กลับรายการ]', () => {
+    for (const installmentNo of [1, 7, 12]) {
+      const forward = buildAccrual2ALines({ ...CONTRACT_17K_12M, installmentNo });
+      const reverse = buildAccrual2AReversalLines({ ...CONTRACT_17K_12M, installmentNo });
+      const key = (accountCode: string, dr: Decimal, cr: Decimal) =>
+        `${accountCode}:${dr.toFixed(2)}:${cr.toFixed(2)}`;
+
+      expect(reverse.lines.map((l) => key(l.accountCode, l.cr, l.dr)).sort()).toEqual(
+        forward.lines.map((l) => key(l.accountCode, l.dr, l.cr)).sort(),
+      );
+      for (const line of reverse.lines) {
+        const original = forward.lines.find((l) => l.accountCode === line.accountCode)!;
+        expect(line.description).toBe(`[กลับรายการ] ${original.description}`);
+      }
+    }
+  });
+});
+
+describe('sortAccrual2AReversalLines', () => {
+  const codes = (lines: { accountCode: string }[]) => lines.map((l) => l.accountCode);
+
+  it('เรียงตามรูปที่เสนอฝ่ายบัญชี ไม่ว่าบรรทัดจะเข้ามาลำดับใด และไม่แก้ array ที่ส่งเข้ามา', () => {
+    const posted = buildAccrual2ALines({ ...CONTRACT_17K_12M, installmentNo: 3 }).lines;
+    const before = codes(posted);
+
+    expect(codes(sortAccrual2AReversalLines(posted))).toEqual([
+      '11-2101',
+      '11-2105',
+      '21-2101',
+      '41-1101',
+      '11-2103',
+      '21-2102',
+      '11-2106',
+    ]);
+    expect(codes(sortAccrual2AReversalLines([...posted].reverse()))).toEqual([
+      '11-2101',
+      '11-2105',
+      '21-2101',
+      '41-1101',
+      '11-2103',
+      '21-2102',
+      '11-2106',
+    ]);
+    expect(codes(posted)).toEqual(before);
+  });
+
+  it('บัญชีที่ไม่อยู่ในรูป (ไม่ควรมี) ไม่ถูกทิ้ง — ต่อท้ายตามลำดับเดิม', () => {
+    const sorted = sortAccrual2AReversalLines([
+      { accountCode: '99-0002' },
+      { accountCode: '11-2106' },
+      { accountCode: '99-0001' },
+      { accountCode: '11-2101' },
+    ]);
+
+    expect(codes(sorted)).toEqual(['11-2101', '11-2106', '99-0002', '99-0001']);
   });
 });
 

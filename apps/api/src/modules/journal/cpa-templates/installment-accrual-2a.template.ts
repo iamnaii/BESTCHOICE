@@ -183,7 +183,7 @@ export class InstallmentAccrual2ATemplate {
     const result = await this.journal.createAndPost(
       {
         description: `Accrual งวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
-        reference: inst.id,
+        reference: await this.resolveAccrualReference(tx, inst.id),
         metadata: {
           tag: '2A',
           contractId: c.id,
@@ -203,6 +203,41 @@ export class InstallmentAccrual2ATemplate {
     });
 
     return { entryNo: result.entryNumber, installmentTotal: built.installmentTotal };
+  }
+
+  /**
+   * `reference` ของรายการ 2A ที่กำลังจะลง.
+   *
+   * ปกติ = id ของแถวตารางงวด (เหมือนเดิมทุกตัวอักษร) — unique index `journal_entries_ref_unique`
+   * จึงกันการตั้งลูกหนี้งวดเดียวกันสองครั้งในระดับฐานข้อมูล. เมื่อรายการ 2A ของงวดถูกกลับรายการตอน
+   * ยกเลิกใบเสร็จ (ReceiptVoidReversalTemplate.voidAccrualPostedAtReceipt) รายการเดิมคง POSTED
+   * และยังถือ reference เดิมอยู่ — รายการที่ตั้งใหม่จึงใช้ `<id>:re-accrual:<n>` โดย n = เลขแรก (เริ่มที่ 1)
+   * ที่ยังไม่มีรายการถืออยู่ หรือรายการที่ถืออยู่ยังมีผล (ไม่ถูกกลับ). กรณีหลังได้ reference ของรายการที่ยัง
+   * มีผลนั้นเอง ให้ unique index เป็นผู้กันการตั้งซ้ำ — ไม่ข้ามไปเลขถัดไป. สองธุรกรรมที่ตั้งใหม่พร้อมกัน
+   * ได้ reference เดียวกัน ฝ่ายหลังจึงยังชน unique index เหมือนเดิม.
+   *
+   * อ่านด้วยค่าเท่ากันบน (referenceType, referenceId) ทีละค่าเท่านั้น — ใช้ unique index ตรง ๆ.
+   * ห้ามค้นแบบ "ขึ้นต้นด้วย": อาจกลายเป็นการกวาดทั้งตาราง journal_entries ในธุรกรรม Serializable
+   * ของการรับชำระ/รอบกลางคืน. จำนวนรอบ = จำนวนครั้งที่รายการตั้งลูกหนี้งวดของงวดนี้เคยถูกกลับ + 1.
+   */
+  private async resolveAccrualReference(
+    tx: Prisma.TransactionClient,
+    installmentScheduleId: string,
+  ): Promise<string> {
+    const isReversed = (entry: { metadata: Prisma.JsonValue } | null): boolean =>
+      (entry?.metadata as Record<string, unknown> | null)?.reversed === true;
+    const holderOf = (referenceId: string) =>
+      tx.journalEntry.findFirst({
+        where: { referenceType: 'AUTO', referenceId, deletedAt: null },
+        select: { metadata: true },
+      });
+
+    if (!isReversed(await holderOf(installmentScheduleId))) return installmentScheduleId;
+
+    for (let n = 1; ; n += 1) {
+      const reference = `${installmentScheduleId}:re-accrual:${n}`;
+      if (!isReversed(await holderOf(reference))) return reference;
+    }
   }
 
   /**

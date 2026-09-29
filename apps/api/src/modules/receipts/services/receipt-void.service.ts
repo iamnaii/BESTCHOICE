@@ -7,7 +7,10 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
-import { ReceiptVoidReversalTemplate } from '../../journal/cpa-templates/receipt-void-reversal.template';
+import {
+  ReceiptVoidReversalTemplate,
+  type AccrualVoidResult,
+} from '../../journal/cpa-templates/receipt-void-reversal.template';
 import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
 import { ReceiptNumberService } from './receipt-number.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
@@ -245,6 +248,11 @@ export class ReceiptVoidService {
          */
         let parkAdj = new Prisma.Decimal(0);
         let creditAdj = new Prisma.Decimal(0);
+        /**
+         * ตั้งลูกหนี้งวด ณ วันรับเงิน: ผลของการกลับรายการตั้งลูกหนี้งวด — null เมื่อการยกเลิกครั้งนี้
+         * ไม่ได้ทำให้งวดหมดการรับชำระที่มีผล หรือสัญญาไม่มีแถวตารางงวด.
+         */
+        let accrualReversal: AccrualVoidResult | null = null;
 
         if (receipt.paymentId) {
           // FINAL-REVIEW BLOCKER 2 — restrict the reversal to TRUE receivable-clearing
@@ -506,6 +514,15 @@ export class ReceiptVoidService {
                 paidDate: null,
               },
             });
+            // ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตอบฝ่ายบัญชี 29/09/2569): งวดไม่เหลือการรับชำระที่มีผลแล้ว —
+            // ถ้ารายการตั้งลูกหนี้งวดถูกลง ณ วันรับเงินและยังไม่ถึงวันครบกำหนด ให้กลับรายการนั้นด้วย
+            // (เงื่อนไขอยู่ใน template ที่เดียว). ไม่จับ error: ล้มแล้วการยกเลิกล้มทั้งรายการ
+            if (fullyReverted && schedule) {
+              accrualReversal = await this.receiptVoidReversalTemplate.voidAccrualPostedAtReceipt(
+                schedule.id,
+                tx,
+              );
+            }
             const siblingWhere = {
               paymentId: payment.id,
               id: { not: receipt.id },
@@ -616,6 +633,8 @@ export class ReceiptVoidService {
               // money, which went back to `rescheduleAdvanceBalance`, NOT to the
               // FIFO `advanceBalance`.
               rescheduleAdvanceRestored: parkAdj.isZero() ? null : parkAdj.toString(),
+              // ตั้งลูกหนี้งวด ณ วันรับเงิน: กลับรายการตั้งลูกหนี้งวดหรือไม่ เลขที่รายการ หรือเหตุที่ไม่กลับ
+              accrualReversal,
             },
           },
         });

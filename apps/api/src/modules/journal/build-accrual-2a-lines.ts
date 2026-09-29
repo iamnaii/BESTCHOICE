@@ -91,6 +91,51 @@ export function buildAccrual2ALines(input: Accrual2ALinesInput): Accrual2ALinesR
   };
 }
 
+/** ลำดับบรรทัดของรายการกลับรายการตั้งลูกหนี้งวด — ตามรูปที่เสนอฝ่ายบัญชี (ฝั่ง Dr ก่อน). */
+const ACCRUAL_2A_REVERSAL_ORDER = [
+  '11-2101',
+  '11-2105',
+  '21-2101',
+  '41-1101',
+  '11-2103',
+  '21-2102',
+  '11-2106',
+];
+
+/**
+ * เรียงบรรทัดของรายการกลับรายการตั้งลูกหนี้งวดตามรูปที่เสนอฝ่ายบัญชี:
+ *   Dr 11-2101 / Dr 11-2105 / Dr 21-2101 / Dr 41-1101 — Cr 11-2103 / Cr 21-2102 / Cr 11-2106
+ * บัญชีที่ไม่อยู่ในรูป (ไม่ควรมี) ไม่ถูกทิ้ง — ต่อท้ายตามลำดับเดิม. ไม่แก้ array ที่ส่งเข้ามา.
+ */
+export function sortAccrual2AReversalLines<T extends { accountCode: string }>(lines: T[]): T[] {
+  const rank = (accountCode: string) => {
+    const index = ACCRUAL_2A_REVERSAL_ORDER.indexOf(accountCode);
+    return index === -1 ? ACCRUAL_2A_REVERSAL_ORDER.length : index;
+  };
+  return [...lines].sort((a, b) => rank(a.accountCode) - rank(b.accountCode));
+}
+
+/**
+ * กระจกของ buildAccrual2ALines ตามที่ตัวสร้างคำนวณจากสัญญา — บัญชีและยอดมาจากตัวสร้างตัวเดียวกัน
+ * สลับฝั่งทุกบรรทัด ไม่มีตัวเลขชุดที่สอง.
+ *
+ * ใช้**ตรวจทาน**รายการกลับรายการตั้งลูกหนี้งวดเท่านั้น (คำตัดสินผู้คุมงาน R13): รายการที่ลงจริงตอน
+ * ยกเลิกใบเสร็จเป็นกระจกของบรรทัดที่ลงไว้ในสมุดบัญชี (ReceiptVoidReversalTemplate
+ * .voidAccrualPostedAtReceipt) — ห้ามใช้ผลของฟังก์ชันนี้หยุดการยกเลิกใบเสร็จ.
+ */
+export function buildAccrual2AReversalLines(input: Accrual2ALinesInput): Accrual2ALinesResult {
+  const built = buildAccrual2ALines(input);
+  const lines = sortAccrual2AReversalLines(
+    built.lines.map((l) => ({
+      accountCode: l.accountCode,
+      dr: l.cr,
+      cr: l.dr,
+      description: `[กลับรายการ] ${l.description}`,
+    })),
+  );
+  return { ...built, lines };
+}
+
 /**
  * วันที่ลงรายการ 2A = min(วันครบกำหนด, วันที่รับเงิน) (คำตัดสินฝ่ายบัญชี D2 + Q3, 2026-09-28):
  *   - รับเงินก่อนครบกำหนด → ลงวันที่รับเงิน (จุดความรับผิด VAT = วันรับเงิน)

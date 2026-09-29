@@ -18,7 +18,8 @@
  *   1A      : Dr 11-2101 17,000 · Dr 11-2105 1,190 / Cr 21-1101 10,000 · Cr 21-1102 1,000 ·
  *             Cr 11-2106 6,000 · Cr 21-2102 1,190
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { voidReceiptWithApproval } from '../../../../e2e/helpers/payment-approval';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
@@ -28,7 +29,10 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from '../../journal/cpa-templates/installment-accrual-2a.template';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
-import { ReceiptVoidReversalTemplate } from '../../journal/cpa-templates/receipt-void-reversal.template';
+import {
+  RECEIPT_ACCRUAL_VOID_FLOW,
+  ReceiptVoidReversalTemplate,
+} from '../../journal/cpa-templates/receipt-void-reversal.template';
 import { InstallmentAccrualCron } from '../../journal/cron/installment-accrual.cron';
 import { ReceiptsService } from '../../receipts/receipts.service';
 import { bangkokStartOfDay } from '../../../utils/date.util';
@@ -118,6 +122,34 @@ async function ensureFinancePeriodsOpen(): Promise<void> {
   });
 }
 
+/** 7 บรรทัดของรายการกลับรายการตั้งลูกหนี้งวด งวดปกติ — กระจกของ ACCRUAL_2A_SORTED */
+const ACCRUAL_2A_REVERSAL_SORTED = [
+  '11-2101:1416.66:0.00',
+  '11-2103:0.00:1515.83',
+  '11-2105:99.17:0.00',
+  '11-2106:0.00:500.00',
+  '21-2101:99.17:0.00',
+  '21-2102:0.00:99.17',
+  '41-1101:500.00:0.00',
+];
+
+/** การยกเลิกใบเสร็จต้องมีผู้อนุมัติที่ไม่ใช่ผู้ขอ และมีสิทธิ์ยกเลิก */
+async function ensureApprover(): Promise<string> {
+  const email = 'test-accrual-void-approver@bestchoice-test.internal';
+  const existing = await prisma.user.findFirst({ where: { email } });
+  if (existing) return existing.id;
+  const created = await prisma.user.create({
+    data: {
+      email,
+      password: 'hashed_placeholder',
+      name: 'Accrual Void Approver',
+      role: 'ACCOUNTANT',
+      isActive: true,
+    },
+  });
+  return created.id;
+}
+
 async function cleanLedger(): Promise<void> {
   await prisma.receipt.deleteMany({});
   await prisma.journalPostAuditLog.deleteMany({});
@@ -139,6 +171,7 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
   let receiptsService: ReceiptsService;
   let orchestrator: PaymentReceiptOrchestrator;
   let recordedById: string;
+  let approverId: string;
 
   /** วันครบกำหนดในอนาคต 60 วันจากตอนรันเทส = งวดยังไม่ถึงกำหนด */
   const futureDue = () => new Date(Date.now() + 60 * DAY_MS);
@@ -339,6 +372,7 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
     await ensureFinanceCompany();
     await ensureSystemAdminUser();
     await ensureFinancePeriodsOpen();
+    approverId = await ensureApprover();
 
     journal = new JournalAutoService(prisma as never);
     const receiptTemplate = new PaymentReceiptTemplate(journal, prisma as never);
@@ -828,6 +862,324 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       // งวด 1 สุทธิ 0 · งวด 2: Dr 1,515.83 (2A) − Cr 1,000 (ใบรับชำระ) − Cr 1,515.83 (หักเงินรับล่วงหน้า)
       expect(await balance(c.id, '11-2103', 'dr')).toBe('-1000.00');
       expect(await balance(c.id, '21-1103', 'cr')).toBe('484.17');
+    });
+  });
+
+  describe('ยกเลิกใบเสร็จของงวดที่ตั้งลูกหนี้ ณ วันรับเงิน', () => {
+    /** ใบเสร็จล่าสุดที่ยังมีผลของงวด (ไม่รวมใบลดหนี้) */
+    const receiptIdOf = async (contractId: string, installmentNo: number) => {
+      const row = await paymentOf(contractId, installmentNo);
+      const receipt = await prisma.receipt.findFirstOrThrow({
+        where: {
+          paymentId: row.id,
+          receiptType: { not: 'CREDIT_NOTE' },
+          isVoided: false,
+          deletedAt: null,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return receipt.id;
+    };
+
+    const voidReceipt = (receiptId: string, reason: string) =>
+      voidReceiptWithApproval(
+        prisma,
+        receiptsService,
+        receiptId,
+        reason,
+        recordedById,
+        approverId,
+        'OWNER',
+      );
+
+    /** รายการกลับรายการตั้งลูกหนี้งวดที่ชี้ไปยังรายการ 2A ที่ระบุ */
+    const accrualReversalsOf = (accrualEntryId: string) =>
+      prisma.journalEntry.findMany({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: RECEIPT_ACCRUAL_VOID_FLOW } } as never,
+            { metadata: { path: ['originalEntryId'], equals: accrualEntryId } } as never,
+          ],
+        },
+        include: { lines: true },
+      });
+
+    const voidAudit = async (receiptId: string) => {
+      const row = await prisma.auditLog.findFirstOrThrow({
+        where: { action: 'RECEIPT_VOID', entity: 'receipt', entityId: receiptId },
+        orderBy: { createdAt: 'desc' },
+      });
+      return row.newValue as Record<string, unknown>;
+    };
+
+    const isReversed = (entry: { metadata: unknown }) =>
+      (entry.metadata as Record<string, unknown>).reversed === true;
+
+    /**
+     * จำลองว่า "วันนี้" คือ `at` และงวดบัญชี FINANCE ของเดือนนั้นปิดแล้วโดยไม่มีวันผ่อนผัน แล้วคืนค่าเดิม.
+     * ปลอมเฉพาะ Date (แบบเดียวกับ interco-device-return.integration.spec.ts) — ตัวจับเวลาของ
+     * Prisma ไม่ถูกแตะ
+     */
+    const withFinancePeriodClosed = async (at: Date, run: () => Promise<void>) => {
+      const finance = await prisma.companyInfo.findFirstOrThrow({
+        where: { companyCode: 'FINANCE' },
+      });
+      const key = { companyId: finance.id, year: at.getFullYear(), month: at.getMonth() + 1 };
+      const period = await prisma.accountingPeriod.findUnique({
+        where: { companyId_year_month: key },
+      });
+      const grace = await prisma.systemConfig.findUnique({ where: { key: 'period_grace_days' } });
+      try {
+        if (period) {
+          await prisma.accountingPeriod.update({
+            where: { id: period.id },
+            data: { status: 'CLOSED' },
+          });
+        } else {
+          await prisma.accountingPeriod.create({ data: { ...key, status: 'CLOSED' } });
+        }
+        await prisma.systemConfig.upsert({
+          where: { key: 'period_grace_days' },
+          update: { value: '0' },
+          create: { key: 'period_grace_days', value: '0' },
+        });
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(at);
+        await run();
+      } finally {
+        vi.useRealTimers();
+        if (period) {
+          await prisma.accountingPeriod.update({
+            where: { id: period.id },
+            data: { status: period.status },
+          });
+        } else {
+          await prisma.accountingPeriod.deleteMany({ where: key });
+        }
+        if (grace) {
+          await prisma.systemConfig.update({
+            where: { key: 'period_grace_days' },
+            data: { value: grace.value },
+          });
+        } else {
+          await prisma.systemConfig.deleteMany({ where: { key: 'period_grace_days' } });
+        }
+      }
+    };
+
+    it('ยกเลิกก่อนวันครบกำหนด → กลับใบรับชำระและกลับ 2A ทุกบัญชีของงวดกลับไปเท่าก่อนรับเงิน · ถึงวันครบกำหนดรอบกลางคืนตั้งลูกหนี้งวดครั้งเดียว', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await record(c.id, 1, 1515.83, 'AAR-VOID-1');
+      const sched = await scheduleOf(c.id, 1);
+      const [accrual] = await accrualEntries(sched.id);
+      const receiptId = await receiptIdOf(c.id, 1);
+
+      const res = await voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จของงวดที่รับเงินก่อนครบกำหนด');
+      expect(res.paymentReverted?.toStatus).toBe('PENDING');
+
+      const reversals = await accrualReversalsOf(accrual.id);
+      expect(reversals).toHaveLength(1);
+      expect(reversals[0].status).toBe('POSTED');
+      expect(reversals[0].referenceId).toBe(`${accrual.id}:accrual-void`);
+      expect(sortedLines(reversals[0])).toEqual(ACCRUAL_2A_REVERSAL_SORTED);
+      expect(reversals[0].metadata).toEqual({
+        tag: 'REVERSAL',
+        flow: 'receipt-accrual-void',
+        idempotencyKey: `receipt-accrual-void:${accrual.id}`,
+        originalEntryId: accrual.id,
+        originalEntryNumber: accrual.entryNumber,
+        contractId: c.id,
+      });
+
+      const original = await prisma.journalEntry.findUniqueOrThrow({ where: { id: accrual.id } });
+      expect(original.status).toBe('POSTED');
+      expect(original.referenceId).toBe(sched.id); // reference เดิมไม่ถูกแก้
+      const originalMeta = original.metadata as Record<string, unknown>;
+      expect(originalMeta.reversed).toBe(true);
+      expect(originalMeta.reversedByEntryNumber).toBe(reversals[0].entryNumber);
+      expect((await scheduleOf(c.id, 1)).accrualJournalEntryId).toBeNull();
+
+      // ทุกบัญชีของงวดเท่ากับก่อนรับเงิน (เหลือเฉพาะรายการเปิดสัญญา)
+      await expectNothingAccrued(c.id);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+      expect(await balance(c.id, '11-1101', 'dr')).toBe('0.00');
+      expect(await paidOf(c.id, 1)).toEqual({ amountPaid: '0.00', status: 'PENDING' });
+      expect((await voidAudit(receiptId)).accrualReversal).toEqual({
+        reversed: true,
+        entryNo: reversals[0].entryNumber,
+        accrualEntryNumber: accrual.entryNumber,
+      });
+
+      // ถึงวันครบกำหนด: รอบกลางคืนตั้งลูกหนี้งวดใหม่ — รันสองรอบต้องได้ใบเดียว
+      const due = await setDueDaysAgo(c.id, 1, 0);
+      await runNightly();
+      await runNightly();
+
+      const all = await accrualEntries(sched.id);
+      expect(all).toHaveLength(2); // ใบเดิมที่ถูกกลับ + ใบที่ตั้งใหม่
+      const active = all.filter((e) => !isReversed(e));
+      expect(active).toHaveLength(1);
+      expect(active[0].referenceId).toBe(`${sched.id}:re-accrual:1`);
+      expect(active[0].postedAt!.getTime()).toBe(due.getTime());
+      expect((active[0].metadata as Record<string, unknown>).trigger).toBeUndefined();
+      expect(sortedLines(active[0])).toEqual(ACCRUAL_2A_SORTED);
+      expect((await scheduleOf(c.id, 1)).accrualJournalEntryId).toBe(active[0].entryNumber);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('1515.83');
+      expect(await balance(c.id, '41-1101', 'cr')).toBe('500.00');
+      expect(await balance(c.id, '21-2101', 'cr')).toBe('99.17');
+    });
+
+    it('ยกเลิกแล้วรับชำระครบอีกครั้งก่อนครบกำหนด → ตั้งลูกหนี้งวดใหม่ ณ วันรับเงินครั้งใหม่ และยกเลิกได้อีกรอบ', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await record(c.id, 1, 1515.83, 'AAR-VOID-2A');
+      const sched = await scheduleOf(c.id, 1);
+      await voidReceipt(await receiptIdOf(c.id, 1), 'ทดสอบยกเลิกใบเสร็จรอบที่หนึ่ง');
+
+      const paidDate = new Date();
+      const again = await record(c.id, 1, 1515.83, 'AAR-VOID-2B', { paidDate });
+      expect(again.status).toBe('PAID');
+
+      let all = await accrualEntries(sched.id);
+      let active = all.filter((e) => !isReversed(e));
+      expect(all).toHaveLength(2);
+      expect(active).toHaveLength(1);
+      expect(active[0].referenceId).toBe(`${sched.id}:re-accrual:1`);
+      expect(active[0].postedAt!.getTime()).toBe(paidDate.getTime());
+      expect((active[0].metadata as Record<string, unknown>).trigger).toBe('receipt');
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+      expect(await balance(c.id, '41-1101', 'cr')).toBe('500.00');
+
+      await voidReceipt(await receiptIdOf(c.id, 1), 'ทดสอบยกเลิกใบเสร็จรอบที่สอง');
+
+      all = await accrualEntries(sched.id);
+      active = all.filter((e) => !isReversed(e));
+      expect(all).toHaveLength(2);
+      expect(active).toHaveLength(0);
+      expect(await accrualReversalsOf(all[1].id)).toHaveLength(1);
+      expect((await scheduleOf(c.id, 1)).accrualJournalEntryId).toBeNull();
+      await expectNothingAccrued(c.id);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+    });
+
+    it('ยกเลิกในวันครบกำหนด → กลับเฉพาะใบรับชำระ รายการตั้งลูกหนี้งวดคงอยู่', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await record(c.id, 1, 1515.83, 'AAR-VOID-3');
+      const sched = await scheduleOf(c.id, 1);
+      const [accrual] = await accrualEntries(sched.id);
+      const receiptId = await receiptIdOf(c.id, 1);
+      await setDueDaysAgo(c.id, 1, 0); // เวลาผ่านไปจนถึงวันครบกำหนด
+
+      await voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จในวันครบกำหนด');
+
+      expect(await accrualReversalsOf(accrual.id)).toHaveLength(0);
+      const kept = await prisma.journalEntry.findUniqueOrThrow({ where: { id: accrual.id } });
+      expect(isReversed(kept)).toBe(false);
+      expect((await scheduleOf(c.id, 1)).accrualJournalEntryId).toBe(accrual.entryNumber);
+      expect((await voidAudit(receiptId)).accrualReversal).toEqual({
+        reversed: false,
+        reason: 'DUE_DATE_REACHED',
+      });
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('1515.83'); // ลูกหนี้งวดกลับมาค้าง
+      expect(await balance(c.id, '41-1101', 'cr')).toBe('500.00');
+      expect(await balance(c.id, '21-2101', 'cr')).toBe('99.17');
+      expect((await paidOf(c.id, 1)).amountPaid).toBe('0.00');
+    });
+
+    it('งวดที่รอบกลางคืนตั้งลูกหนี้ → ยกเลิกใบเสร็จไม่กลับรายการตั้งลูกหนี้งวด แม้วันครบกำหนดถูกเลื่อนไปอนาคตภายหลัง', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await prisma.payment.updateMany({
+        where: { contractId: c.id },
+        data: { lateFeeWaived: true },
+      });
+      await setDueDaysAgo(c.id, 1, 0);
+      await runNightly();
+      const sched = await scheduleOf(c.id, 1);
+      const [accrual] = await accrualEntries(sched.id);
+      expect((accrual.metadata as Record<string, unknown>).trigger).toBeUndefined();
+
+      await record(c.id, 1, 1515.83, 'AAR-VOID-4');
+      const receiptId = await receiptIdOf(c.id, 1);
+      // วันครบกำหนดถูกเลื่อนไปอนาคต (เช่น ปรับดิว) หลังรอบกลางคืนตั้งลูกหนี้งวดไปแล้ว
+      const future = futureDue();
+      await prisma.installmentSchedule.update({
+        where: { id: sched.id },
+        data: { dueDate: future },
+      });
+      await prisma.payment.updateMany({
+        where: { contractId: c.id, installmentNo: 1 },
+        data: { dueDate: future },
+      });
+
+      await voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จของงวดที่รอบกลางคืนตั้งลูกหนี้');
+
+      expect(await accrualReversalsOf(accrual.id)).toHaveLength(0);
+      expect((await scheduleOf(c.id, 1)).accrualJournalEntryId).toBe(accrual.entryNumber);
+      expect((await voidAudit(receiptId)).accrualReversal).toEqual({
+        reversed: false,
+        reason: 'NOT_POSTED_AT_RECEIPT',
+      });
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('1515.83');
+      expect(await balance(c.id, '41-1101', 'cr')).toBe('500.00');
+    });
+
+    it('ยกเลิกซ้ำ → ใบเสร็จที่ยกเลิกแล้วถูกปฏิเสธ และการกลับรายการตั้งลูกหนี้งวดรอบที่สองของรายการเดิมไม่ลงอะไรเพิ่ม', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await record(c.id, 1, 1515.83, 'AAR-VOID-5');
+      const sched = await scheduleOf(c.id, 1);
+      const [accrual] = await accrualEntries(sched.id);
+      const receiptId = await receiptIdOf(c.id, 1);
+      await voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จครั้งแรก');
+      const entriesAfterFirst = await entryCount(c.id);
+
+      // (1) ยกเลิกใบเดิมซ้ำผ่านคิวอนุมัติ — ถูกปฏิเสธที่ด่าน "ใบเสร็จถูกยกเลิกไปแล้ว" ก่อนถึงการกลับรายการ
+      await expect(voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จซ้ำ')).rejects.toThrow();
+      expect(await entryCount(c.id)).toBe(entriesAfterFirst);
+
+      // (2) ให้การกลับรายการตั้งลูกหนี้งวดทำงานรอบที่สองกับรายการเดิมจริง ๆ: ชี้ลิงก์ของงวดกลับไปที่รายการ
+      // 2A ที่ถูกกลับไปแล้ว (สภาพที่การลองซ้ำจะพบ) แล้วเรียกในธุรกรรมแบบเดียวกับการยกเลิกใบเสร็จ
+      const template = new ReceiptVoidReversalTemplate(journal, prisma as never);
+      const second = await prisma.$transaction(async (tx) => {
+        await tx.installmentSchedule.update({
+          where: { id: sched.id },
+          data: { accrualJournalEntryId: accrual.entryNumber },
+        });
+        return template.voidAccrualPostedAtReceipt(sched.id, tx);
+      });
+
+      expect(second).toEqual({ reversed: false, reason: 'ALREADY_REVERSED' });
+      expect(await accrualReversalsOf(accrual.id)).toHaveLength(1);
+      expect(await entryCount(c.id)).toBe(entriesAfterFirst);
+      const original = await prisma.journalEntry.findUniqueOrThrow({ where: { id: accrual.id } });
+      expect((original.metadata as Record<string, unknown>).reversedByEntryNumber).toBe(
+        (await accrualReversalsOf(accrual.id))[0].entryNumber,
+      );
+      await expectNothingAccrued(c.id);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+    });
+
+    it('งวดบัญชีของวันที่ยกเลิกปิดแล้ว → การยกเลิกถูกปฏิเสธเหมือนที่เป็นอยู่ ไม่มีรายการใดเปลี่ยน', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await record(c.id, 1, 1515.83, 'AAR-VOID-6');
+      const sched = await scheduleOf(c.id, 1);
+      const receiptId = await receiptIdOf(c.id, 1);
+      const entriesBefore = await entryCount(c.id);
+
+      // validatePeriodOpen ปฏิเสธเมื่อ "ตอนนี้" เลยวันสุดท้ายของเดือนที่ปิด + วันผ่อนผัน:
+      // จำลองว่าวันนี้คือวันสุดท้ายของเดือนนี้ 12:00 (เวลาของเครื่อง) และไม่มีวันผ่อนผัน
+      const today = new Date();
+      const voidAt = new Date(today.getFullYear(), today.getMonth() + 1, 0, 12, 0, 0);
+      await withFinancePeriodClosed(voidAt, async () => {
+        await expect(
+          voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จเมื่องวดบัญชีปิดแล้ว'),
+        ).rejects.toThrow('ไม่สามารถบันทึกรายการในงวดที่ปิดแล้ว');
+      });
+
+      const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } });
+      expect(receipt.isVoided).toBe(false);
+      expect((await scheduleOf(c.id, 1)).accrualJournalEntryId).toBe(sched.accrualJournalEntryId);
+      expect(await entryCount(c.id)).toBe(entriesBefore);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+      expect(await paidOf(c.id, 1)).toEqual({ amountPaid: '1515.83', status: 'PAID' });
     });
   });
 });

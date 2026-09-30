@@ -1,7 +1,7 @@
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatNumberDecimal } from '@/utils/formatters';
-import { AccrualModeChip } from './AccrualModeChip';
+import { AccrualModeChip, type AccrualPortion } from './AccrualModeChip';
 
 interface JePreviewLine {
   accountCode: string;
@@ -34,8 +34,14 @@ export interface JePreview {
   rescheduleFeeDisplay?: string;
   accrualMode?: '2B_ONLY' | 'CONSOLIDATED_PAYING_AHEAD' | 'CONSOLIDATED_BACKFILL';
   dueDate?: string;
-  /** วันที่ที่รายการ 2A จะถูกลง (ISO) — มีเฉพาะเมื่องวดนี้ยังไม่ตั้งลูกหนี้งวด */
+  /** วันที่ที่รายการ 2A จะถูกลง (ISO) — มีเฉพาะเมื่อมีรายการ 2A ที่จะลงพร้อมการรับชำระนี้ */
   accrualPostedAt?: string;
+  /** รายการ 2A ที่จะลง: ทั้งงวด / เท่ายอดที่รับ / ส่วนที่เหลือของงวด (ก1) */
+  accrualPortion?: AccrualPortion;
+  /** ยอด Dr 11-2103 ของรายการ 2A ที่จะลง */
+  accrualAmount?: string;
+  /** ยอดที่ตั้งลูกหนี้งวดไปแล้วก่อนรายการนี้ */
+  accruedBefore?: string;
 }
 
 // ─── JE Preview panel (always visible) ────────────────────────────────────────
@@ -155,6 +161,20 @@ export function JePreviewPanel({
     : undefined;
   // หัวบล็อกแบบเดียวทุกกรณี — บรรทัดอนุโลมค่าปรับ (ถ้ามี) เห็นได้ในบล็อกเองอยู่แล้ว
   const label2B = '2B — รับชำระ';
+  const portion: AccrualPortion = preview?.accrualPortion ?? 'FULL';
+  const pendingTitle =
+    portion === 'PARTIAL'
+      ? '2A — ตั้งลูกหนี้งวดเท่ายอดที่รับ (ACCRUAL)'
+      : portion === 'REMAINDER'
+        ? '2A — ตั้งลูกหนี้งวดส่วนที่เหลือ (ACCRUAL)'
+        : '2A — ตั้งลูกหนี้งวด (ACCRUAL)';
+  const when = viaGateway ? 'เมื่อเงินเข้า' : 'เมื่อบันทึก';
+  const pendingNote =
+    portion === 'PARTIAL'
+      ? `* รายการ 2A นี้ตั้งลูกหนี้งวดเฉพาะยอดที่รับ — ${when} ระบบจะลงรายการ 2A และ 2B เป็น 2 รายการ ในคราวเดียวกัน`
+      : portion === 'REMAINDER'
+        ? `* งวดนี้ตั้งลูกหนี้งวดไปแล้วบางส่วน — ${when} ระบบจะลงรายการ 2A ส่วนที่เหลือ และ 2B เป็น 2 รายการ ในคราวเดียวกัน`
+        : `* งวดนี้ยังไม่ได้ตั้งลูกหนี้งวด — ${when} ระบบจะลงรายการ 2A และ 2B เป็น 2 รายการ ในคราวเดียวกัน`;
 
   return (
     <div className="rounded-xl border border-border bg-card p-3">
@@ -179,6 +199,9 @@ export function JePreviewPanel({
           dueDate={preview.dueDate}
           accrualPostedAt={preview.accrualPostedAt}
           viaGateway={viaGateway}
+          portion={preview.accrualPortion}
+          accrualAmount={preview.accrualAmount}
+          accruedBefore={preview.accruedBefore}
         />
       )}
 
@@ -209,9 +232,7 @@ export function JePreviewPanel({
         <div className="space-y-2">
           {has2A && (
             <JeBlock
-              title={
-                accrualPending ? '2A — ตั้งลูกหนี้งวด (ACCRUAL)' : '2A — ถึงกำหนดงวด (ACCRUAL)'
-              }
+              title={accrualPending ? pendingTitle : '2A — ถึงกำหนดงวด (ACCRUAL)'}
               posted={!accrualPending}
               pendingLabel={
                 accrualPending
@@ -226,9 +247,7 @@ export function JePreviewPanel({
           )}
           <JeBlock title={label2B} lines={preview.lines} subtotal={sub2B} />
           {accrualPending && (
-            <p className="text-[11px] text-muted-foreground leading-snug">
-              {`* งวดนี้ยังไม่ได้ตั้งลูกหนี้งวด — ${viaGateway ? 'เมื่อเงินเข้า' : 'เมื่อบันทึก'} ระบบจะลงรายการ 2A และ 2B เป็น 2 รายการ ในคราวเดียวกัน`}
-            </p>
+            <p className="text-[11px] text-muted-foreground leading-snug">{pendingNote}</p>
           )}
         </div>
       )}

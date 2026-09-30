@@ -163,4 +163,59 @@ describe('JePreviewPanel — รายการตั้งลูกหนี้
     expect(screen.queryByText(/ระบบจะลงรายการ 2A และ 2B/)).not.toBeInTheDocument();
     expect(screen.queryByText(/ลูกค้าจ่ายล่วงหน้า/)).not.toBeInTheDocument();
   });
+  it('ก1 ใบบางส่วน → หัวบล็อก "ตั้งลูกหนี้งวดเท่ายอดที่รับ" · หมายเหตุว่ารายการ 2A ตั้งเฉพาะยอดที่รับ · ป้ายบอกยอด', () => {
+    render(
+      <JePreviewPanel
+        isLoading={false}
+        preview={basePreview({
+          accrual2A: {
+            lines: accrualLines(false),
+            subtotal: { debit: '1395.27', credit: '1395.27', balanced: true },
+          },
+          accrualMode: 'CONSOLIDATED_PAYING_AHEAD',
+          accrualPostedAt: '2026-09-29T00:00:00.000Z',
+          accrualPortion: 'PARTIAL',
+          accrualAmount: '1000.00',
+          accruedBefore: '0.00',
+        })}
+      />,
+    );
+
+    expect(screen.getByText('2A — ตั้งลูกหนี้งวดเท่ายอดที่รับ (ACCRUAL)')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '* รายการ 2A นี้ตั้งลูกหนี้งวดเฉพาะยอดที่รับ — เมื่อบันทึก ระบบจะลงรายการ 2A และ 2B เป็น 2 รายการ ในคราวเดียวกัน',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/เท่ายอดที่รับ 1,000.00 บาท/)).toBeInTheDocument();
+    expect(screen.queryByText(/งวดนี้ยังไม่ได้ตั้งลูกหนี้งวด/)).not.toBeInTheDocument();
+  });
+
+  it('ก1 ใบที่ทำให้ครบหลังตั้งบางส่วน → หัวบล็อก "ตั้งลูกหนี้งวดส่วนที่เหลือ" · หมายเหตุว่าตั้งไปแล้วบางส่วน', () => {
+    render(
+      <JePreviewPanel
+        isLoading={false}
+        viaGateway
+        preview={basePreview({
+          accrual2A: {
+            lines: accrualLines(false),
+            subtotal: { debit: '719.73', credit: '719.73', balanced: true },
+          },
+          accrualMode: 'CONSOLIDATED_PAYING_AHEAD',
+          accrualPostedAt: '2026-09-29T00:00:00.000Z',
+          accrualPortion: 'REMAINDER',
+          accrualAmount: '515.83',
+          accruedBefore: '1000.00',
+        })}
+      />,
+    );
+
+    expect(screen.getByText('2A — ตั้งลูกหนี้งวดส่วนที่เหลือ (ACCRUAL)')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '* งวดนี้ตั้งลูกหนี้งวดไปแล้วบางส่วน — เมื่อเงินเข้า ระบบจะลงรายการ 2A ส่วนที่เหลือ และ 2B เป็น 2 รายการ ในคราวเดียวกัน',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('ลงเมื่อเงินเข้า')).toBeInTheDocument();
+  });
 });

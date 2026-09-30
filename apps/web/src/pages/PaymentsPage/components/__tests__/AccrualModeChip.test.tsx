@@ -145,6 +145,25 @@ describe('AccrualModeChip', () => {
       expect(container.textContent).not.toContain('29/09/2569');
     });
 
+    it('QR ส่วนที่เหลือ (ใบที่ทำให้ครบหลังตั้งบางส่วน) → ไม่สัญญาวันที่บนหน้าจอ และบอกยอดส่วนที่เหลือ', () => {
+      const { container } = render(
+        <AccrualModeChip
+          mode="CONSOLIDATED_PAYING_AHEAD"
+          dueDate={DUE}
+          accrualPostedAt={RECEIPT}
+          viaGateway
+          portion="REMAINDER"
+          accrualAmount="515.83"
+        />,
+      );
+      expect(screen.getByText(/ระบบจะตั้งลูกหนี้งวด/).textContent).toBe(
+        'เมื่อลูกค้าจ่ายผ่าน QR ระบบจะตั้งลูกหนี้งวด (2A) ส่วนที่เหลือของงวด 515.83 บาท ลงวันที่เงินเข้าจริง ' +
+          '(ถ้าเงินเข้าหลังวันครบกำหนด จะลงวันครบกำหนด) แล้วลงรับชำระ (2B) ในคราวเดียวกัน — ' +
+          'วันที่อาจไม่ตรงกับวันที่ที่เลือกบนหน้านี้',
+      );
+      expect(container.textContent).not.toContain('29/09/2569');
+    });
+
     it('ไม่ส่ง portion (server รุ่นก่อน) → ข้อความทั้งงวดเดิมทุกตัวอักษร', () => {
       render(
         <AccrualModeChip

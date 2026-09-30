@@ -259,6 +259,45 @@ describe('ตั้งลูกหนี้งวดเท่ายอดที�
   const accruedAfter = (a: AccruedSoFar) => [a.amount, a.vat, a.interest].map((v) => v.toFixed(2));
   const expectBalanced = (lines: { dr: Decimal; cr: Decimal }[]) =>
     expect(sum(lines.map((l) => l.dr)).toFixed(2)).toBe(sum(lines.map((l) => l.cr)).toFixed(2));
+  /** ทุกบรรทัดของส่วนบางส่วน/ส่วนที่เหลือต้องไม่ติดลบ (fix round 1 F1 — เพดาน/พื้นต้องกันบัญชีติดลบ) */
+  const expectNonNegative = (lines: { dr: Decimal; cr: Decimal }[]) => {
+    for (const l of lines) {
+      expect(l.dr.gte(0)).toBe(true);
+      expect(l.cr.gte(0)).toBe(true);
+    }
+  };
+  /** ผลรวมของทุกส่วน (บางส่วน + ส่วนที่เหลือ) ต้องเท่ายอดเต็มงวดทีละบัญชีพอดี (fix round 1 F1) */
+  const expectSumsToFull = (
+    parts: { lines: { accountCode: string; dr: Decimal; cr: Decimal }[] }[],
+    full: { lines: { accountCode: string; dr: Decimal; cr: Decimal }[] },
+  ) => {
+    for (const fullLine of full.lines) {
+      const forAccount = (side: 'dr' | 'cr') =>
+        sum(
+          parts.flatMap((p) =>
+            p.lines.filter((l) => l.accountCode === fullLine.accountCode).map((l) => l[side]),
+          ),
+        );
+      expect(forAccount('dr').toFixed(2)).toBe(fullLine.dr.toFixed(2));
+      expect(forAccount('cr').toFixed(2)).toBe(fullLine.cr.toFixed(2));
+    }
+  };
+  /** สัญญาไม่มี VAT เลย (vatAmount = 0) — พิสูจน์ว่าเพดานภาษีขายกดถึง 0 ได้จริง ไม่ใช่แค่ลดยอด (fix round 1 F1) */
+  const CONTRACT_4500_3M_NO_VAT = {
+    financedAmount: '4500',
+    storeCommission: '450',
+    interestTotal: '0',
+    vatAmount: '0',
+    totalMonths: 3,
+  };
+  /** สัญญา 8,000/6 งวด ไม่ระบุ VAT (คำนวณเอง 7%) — พิสูจน์เพดานดอกเบี้ย (fix round 1 F1) */
+  const CONTRACT_8K_6M = {
+    financedAmount: '8000',
+    storeCommission: '800',
+    interestTotal: '3000',
+    vatAmount: null,
+    totalMonths: 6,
+  };
 
   it('ฐานของตัวอย่าง: งวดละ 6,078.67 = 5,681.00 + 397.67 · ดอกเบี้ย 2,392.00', () => {
     const full = buildAccrual2ALines({ ...CONTRACT_ACCOUNTANT, installmentNo: 3 });
@@ -499,5 +538,84 @@ describe('ตั้งลูกหนี้งวดเท่ายอดที�
       totalMonths: 12,
       installmentNo: 4,
     });
+  });
+
+  it('เพดานภาษีขาย (fix round 1 F1): รับ 1,515.86 ก่อนงวดสุดท้ายเต็ม 1,515.87 → VAT ต้องกดจาก 99.17 (สูตรตรง) เหลือ 99.13', () => {
+    const input = { ...CONTRACT_17K_12M, installmentNo: 12 };
+    const part = buildPartialAccrual2ALines(input, NOTHING_ACCRUED, dec('1515.86'));
+    expect(
+      [part.portion.total, part.portion.vat, part.portion.exclVat, part.portion.interest].map((v) =>
+        v.toFixed(2),
+      ),
+    ).toEqual(['1515.86', '99.13', '1416.73', '500.00']);
+
+    const rest = buildRemainderAccrual2ALines(input, part.accruedAfter);
+    expect(
+      [rest.portion.total, rest.portion.vat, rest.portion.exclVat, rest.portion.interest].map((v) =>
+        v.toFixed(2),
+      ),
+    ).toEqual(['0.01', '0.00', '0.01', '0.00']);
+
+    expectNonNegative(part.lines);
+    expectNonNegative(rest.lines);
+    expectSumsToFull([part, rest], buildAccrual2ALines(input));
+  });
+
+  it('เพดานภาษีขายบนสัญญาไม่มี VAT (fix round 1 F1): รับ 492.50 → VAT ต้องเป็น 0.00 เสมอ ไม่ใช่ 32.22 ตามสูตรตรง', () => {
+    const input = { ...CONTRACT_4500_3M_NO_VAT, installmentNo: 2 };
+    const part = buildPartialAccrual2ALines(input, NOTHING_ACCRUED, dec('492.50'));
+    expect(
+      [part.portion.vat, part.portion.exclVat, part.portion.interest].map((v) => v.toFixed(2)),
+    ).toEqual(['0.00', '492.50', '0.00']);
+
+    expectNonNegative(part.lines);
+    const rest = buildRemainderAccrual2ALines(input, part.accruedAfter);
+    expectNonNegative(rest.lines);
+    expectSumsToFull([part, rest], buildAccrual2ALines(input));
+  });
+
+  it('พื้นมูลค่า ex-VAT (fix round 1 F1): รับ 0.07 สามครั้งแล้ว 1,515.61 → ภาษีขายถูกดันขึ้นเป็น 99.16 กันมูลค่าติดลบ', () => {
+    const input = { ...CONTRACT_17K_12M, installmentNo: 3 };
+    const a = buildPartialAccrual2ALines(input, NOTHING_ACCRUED, dec('0.07'));
+    const b = buildPartialAccrual2ALines(input, a.accruedAfter, dec('0.07'));
+    const c = buildPartialAccrual2ALines(input, b.accruedAfter, dec('0.07'));
+    const d = buildPartialAccrual2ALines(input, c.accruedAfter, dec('1515.61'));
+
+    expect(
+      [d.portion.total, d.portion.vat, d.portion.exclVat, d.portion.interest].map((v) =>
+        v.toFixed(2),
+      ),
+    ).toEqual(['1515.61', '99.16', '1416.45', '499.93']);
+
+    const rest = buildRemainderAccrual2ALines(input, d.accruedAfter);
+    expect(
+      [rest.portion.total, rest.portion.vat, rest.portion.exclVat, rest.portion.interest].map((v) =>
+        v.toFixed(2),
+      ),
+    ).toEqual(['0.01', '0.01', '0.00', '0.01']);
+
+    for (const p of [a, b, c, d]) expectNonNegative(p.lines);
+    expectNonNegative(rest.lines);
+    expectSumsToFull([a, b, c, d, rest], buildAccrual2ALines(input));
+  });
+
+  it('เพดานดอกเบี้ย (fix round 1 F1): รับ 0.16 / 2,103.97 / 0.19 → ครั้งที่สามดอกเบี้ยถูกกดจาก 0.05 (สูตรตรง) เหลือ 0.04', () => {
+    const input = { ...CONTRACT_8K_6M, installmentNo: 1 };
+    const a = buildPartialAccrual2ALines(input, NOTHING_ACCRUED, dec('0.16'));
+    const b = buildPartialAccrual2ALines(input, a.accruedAfter, dec('2103.97'));
+    const c = buildPartialAccrual2ALines(input, b.accruedAfter, dec('0.19'));
+
+    expect(c.portion.interest.toFixed(2)).toBe('0.04');
+
+    const rest = buildRemainderAccrual2ALines(input, c.accruedAfter);
+    expect(
+      [rest.portion.total, rest.portion.vat, rest.portion.exclVat, rest.portion.interest].map((v) =>
+        v.toFixed(2),
+      ),
+    ).toEqual(['0.01', '0.01', '0.00', '0.00']);
+
+    for (const p of [a, b, c]) expectNonNegative(p.lines);
+    expectNonNegative(rest.lines);
+    expectSumsToFull([a, b, c, rest], buildAccrual2ALines(input));
   });
 });

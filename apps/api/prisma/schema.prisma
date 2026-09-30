@@ -1629,6 +1629,13 @@ model InstallmentSchedule {
   rescheduledFromDate    DateTime? @map("rescheduled_from_date")
   rescheduleCount        Int       @default(0) @map("reschedule_count")
   accrualJournalEntryId  String?   @map("accrual_journal_entry_id")
+  /// ยอดที่ตั้งลูกหนี้งวด (2A) ไปแล้วของงวด — Σ Dr 11-2103 / ภาษีขาย / ดอกเบี้ย ของรายการ 2A ที่ยังมีผล
+  /// (คำตอบฝ่ายบัญชี ก1 — ตั้งเท่ายอดที่รับก่อนวันครบกำหนด). เขียนในธุรกรรมเดียวกับทุกรายการ 2A และคืนเป็น 0
+  /// เมื่อกลับรายการตอนยกเลิกใบเสร็จ. มีความหมายเฉพาะเมื่อ accrualJournalEntryId ว่าง — แถวที่ตั้งครบก่อน
+  /// มีคอลัมน์นี้เก็บ 0 (อ่านลิงก์ก่อนเสมอ)
+  accruedAmount          Decimal   @default(0) @map("accrued_amount") @db.Decimal(12, 2)
+  accruedVat             Decimal   @default(0) @map("accrued_vat") @db.Decimal(12, 2)
+  accruedInterest        Decimal   @default(0) @map("accrued_interest") @db.Decimal(12, 2)
   vat60dayJournalEntryId String?   @map("vat_60day_journal_entry_id")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")

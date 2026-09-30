@@ -36,6 +36,10 @@ const methodLabels: Record<string, string> = {
   BANK_TRANSFER: 'โอนเงิน',
   QR_EWALLET: 'QR/E-Wallet',
   PROMPTPAY: 'พร้อมเพย์',
+  // PR3: ใบของเงินที่เข้าทางลิงก์ชำระและการใช้เครดิตชำระส่งข้อความนี้ด้วย (คำตอบเจ้าของ ถ4) — ข้อความเดียวกับใบเสร็จ PDF
+  CARD: 'บัตร (EDC)',
+  ONLINE_GATEWAY: 'ชำระออนไลน์',
+  CREDIT_BALANCE: 'ใช้ยอดเครดิตในสัญญา',
 };
 
 export function buildReceiptMessage(data: ReceiptData): FlexMessagePayload {

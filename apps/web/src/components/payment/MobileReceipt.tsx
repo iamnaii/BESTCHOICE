@@ -1,12 +1,14 @@
 import type { Receipt } from '@/types/receipt';
 import { formatDateMedium } from '@/utils/formatters';
 import { QRCodeSVG } from 'qrcode.react';
+import { RECEIPT_METHOD_LABELS } from '@/lib/receipt-labels';
 
 interface MobileReceiptProps {
   receipt: Receipt;
 }
 
 const typeLabels: Record<string, string> = {
+  INSTALLMENT: 'ใบเสร็จรับเงิน',
   PAYMENT: 'ใบเสร็จรับเงิน',
   DOWN_PAYMENT: 'ใบเสร็จเงินดาวน์',
   EARLY_PAYOFF: 'ใบเสร็จปิดยอด',
@@ -14,11 +16,7 @@ const typeLabels: Record<string, string> = {
   RESCHEDULE_FEE: 'ใบเสร็จปรับดิว',
 };
 
-const methodLabels: Record<string, string> = {
-  CASH: 'เงินสด',
-  BANK_TRANSFER: 'โอนเงิน',
-  QR_EWALLET: 'QR/E-Wallet',
-};
+const methodLabels = RECEIPT_METHOD_LABELS;
 
 export default function MobileReceipt({ receipt }: MobileReceiptProps) {
   const thaiDate = formatDateMedium(receipt.paidDate);

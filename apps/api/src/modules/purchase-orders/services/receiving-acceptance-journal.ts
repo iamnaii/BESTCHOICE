@@ -1,4 +1,4 @@
-import { BadRequestException, Logger } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { Prisma, ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
@@ -16,6 +16,14 @@ export function receivingPostingDate(receiving: { createdAt?: Date | null }): Da
   return receiving.createdAt ?? new Date();
 }
 
+/**
+ * หมวดของรายการในใบสั่งซื้อ — ตัวตัดสินบัญชีเจ้าหนี้ (S21-1101 / S21-1102) ทั้งตอนรับของและตอนผ่านเข้าคลัง.
+ * เจ้าหนี้ผูกกับสิ่งที่สั่งซื้อจากผู้จัดจำหน่าย ไม่ขยับตามการแก้หมวดสินค้าทีหลัง
+ */
+export function receivingCategory(poItemCategory: string | null | undefined): ProductCategory {
+  return (poItemCategory as ProductCategory) || 'PHONE_NEW';
+}
+
 export interface ReceivingAcceptanceDeps {
   template: ShopGoodsReceivingTemplate;
   accounts: ShopAccountResolver;
@@ -26,7 +34,7 @@ export interface AcceptedUnitJournal {
   entryNo: string;
   journalEntryId: string;
   postedAt: Date;
-  /** งวดของวันที่ใบรับของปิดไปแล้ว จึงลงวันที่รับเข้าคลังแทน */
+  /** งวดของวันที่ใบรับของปิดไปแล้ว จึงลงวันที่รับเข้าคลังแทน (stamp ลง metadata ของรายการด้วย) */
   postedOnAcceptanceDate: boolean;
 }
 
@@ -42,7 +50,12 @@ export interface AcceptedUnitJournal {
  * เครื่องที่ถูกกด "ไม่รับเข้าคลัง" ไม่เคยผ่านที่นี่ จึงไม่มีรายการบัญชีเลย
  *
  * ยอด = `receivedCost` ที่ปันไว้ตอนรับของ (ไม่ใช่ `Product.costPrice` ปัจจุบัน ซึ่งแก้มือได้) —
- * เจ้าหนี้ต้องเท่ากับที่ใบสั่งซื้อตั้งไว้.
+ * เจ้าหนี้ต้องเท่ากับที่ใบสั่งซื้อตั้งไว้. บัญชีเจ้าหนี้ตามหมวดของรายการในใบสั่งซื้อ (`receivingCategory`)
+ * ส่วนบัญชีสินค้าตามหมวดปัจจุบันของเครื่อง — ตอนขาย ต้นทุนขายเครดิตบัญชีสินค้าตามหมวดปัจจุบัน
+ *
+ * ผู้เรียกต้องเปลี่ยนเครื่องเป็น `IN_STOCK` ใน tx นี้ก่อนเรียก — หลังล็อกแถวแล้วตรวจซ้ำว่าเครื่องยัง
+ * `IN_STOCK` และไม่ถูกลบ: กด "ไม่รับเข้าคลัง" ชนกับกดยืนยันรูป แล้วการตีกลับ commit ก่อน ผู้เรียกจะ update
+ * สถานะทับเครื่องที่ถูกลบไปแล้ว — ปฏิเสธทั้งรายการแทนการลงสินค้าที่ไม่ได้รับเข้าคลัง
  *
  * สร้างด้วย `new ReceivingAcceptanceJournal(prisma)` ภายใน service ที่ต้องใช้ (แบบเดียวกับ
  * `ShopTenderRecorder`) — ไม่เพิ่ม dependency ให้ constructor ของ service เดิมที่มีผู้สร้างเองหลายสิบที่
@@ -79,12 +92,17 @@ export class ReceivingAcceptanceJournal {
         journalEntryId: true,
         receivedCost: true,
         receiving: { select: { id: true, grNumber: true, createdAt: true, po: { select: { id: true, poNumber: true } } } },
-        product: { select: { category: true } },
+        poItem: { select: { category: true } },
+        product: { select: { category: true, status: true, deletedAt: true } },
       },
     });
     if (!locked || locked.journalEntryId || locked.receivedCost === null || !locked.product) return null;
+    if (locked.product.deletedAt || locked.product.status !== 'IN_STOCK') {
+      throw new ConflictException(
+        'เครื่องนี้เพิ่งถูกตีกลับจากคิวรอถ่ายรูปหรือถูกเปลี่ยนสถานะระหว่างทำรายการ — กรุณารีเฟรชหน้าจอแล้วตรวจสถานะเครื่องอีกครั้ง',
+      );
+    }
 
-    const category = locked.product.category as ProductCategory;
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
     const { postedAt, postedOnAcceptanceDate } = await this.resolvePostingDate(
       tx,
@@ -103,13 +121,18 @@ export class ReceivingAcceptanceJournal {
         units: [
           {
             productId,
-            inventoryAccountCode: this.deps.accounts.resolveProductAccounts(category).inventoryAccountCode,
-            payableAccountCode: this.deps.accounts.resolveSupplierPayableAccount(category),
+            inventoryAccountCode: this.deps.accounts.resolveProductAccounts(
+              locked.product.category as ProductCategory,
+            ).inventoryAccountCode,
+            payableAccountCode: this.deps.accounts.resolveSupplierPayableAccount(
+              receivingCategory(locked.poItem.category),
+            ),
             cost: locked.receivedCost,
           },
         ],
         acceptedProductId: productId,
         postedAt,
+        postedOnAcceptanceDate,
       },
       tx,
     );

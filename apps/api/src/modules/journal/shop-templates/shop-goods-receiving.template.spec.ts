@@ -110,6 +110,7 @@ describe('ShopGoodsReceivingTemplate (unit)', () => {
         idempotencyKey: 'shop-goods-receiving-unit:p-7',
         units: [{ productId: 'p-7', inventoryAccountCode: 'S11-2002', payableAccountCode: 'S21-1101', cost: D('8000') }],
         acceptedProductId: 'p-7',
+        postedOnAcceptanceDate: true,
       }),
     );
 
@@ -127,6 +128,8 @@ describe('ShopGoodsReceivingTemplate (unit)', () => {
       idempotencyKey: 'shop-goods-receiving-unit:p-7',
       productIds: ['p-7'],
       acceptedProductId: 'p-7',
+      // งวดของวันที่ใบรับของปิดแล้ว จึงลงวันที่รับเข้าคลังแทน — ฝ่ายบัญชีต้องเห็นจากรายการเอง
+      postedOnAcceptanceDate: true,
       totalCost: '8000.00',
     });
     expect(posted.lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)])).toEqual([

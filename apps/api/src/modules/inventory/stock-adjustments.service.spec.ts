@@ -367,13 +367,19 @@ describe('StockAdjustmentsService.create — FOUND ต้องไม่ปล�
 
   it('FOUND บนเครื่องที่หายไปจริง (LOST) → ยังทำได้ตามเดิม', async () => {
     setStatus('LOST');
+    // tx แยกตัวจาก prisma — พิสูจน์ว่าการลงบัญชีวิ่งใน tx เดียวกับการเปลี่ยนสถานะ ไม่ใช่บน client หลัก
+    const tx = { ...prisma };
+    prisma.$transaction.mockImplementation((cb: (t: unknown) => Promise<unknown>) => cb(tx));
 
     await expect(service.create(foundDto, 'adjuster-1')).resolves.toBeDefined();
     expect(prisma.product.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'IN_STOCK' }) }),
     );
     // เข้าคลังทางนี้ก็ต้องลงบัญชีรับสินค้าของเครื่องจากใบสั่งซื้อที่ยังไม่เคยลง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
-    expect(bookIfPending).toHaveBeenCalledWith(prisma, foundDto.productId);
+    expect(bookIfPending).toHaveBeenCalledTimes(1);
+    // toHaveBeenCalledWith เทียบแบบลึก (tx ที่ copy มาเท่ากับ prisma) — ต้องเทียบตัวตน
+    expect(bookIfPending.mock.calls[0][0]).toBe(tx);
+    expect(bookIfPending.mock.calls[0][1]).toBe(foundDto.productId);
   });
 });
 

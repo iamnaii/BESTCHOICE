@@ -1199,13 +1199,29 @@ Integration: `purchase-orders/__tests__/po-receiving-journal.integration.spec.ts
 **คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8 — "ปรับโปรแกรมลงสินค้าเข้าคลังและเจ้าหนี้ โดยไม่ลงสินค้าที่ไม่รับเข้าคลัง":**
 ลงบัญชีเฉพาะหน่วยที่ **รับเข้าคลังจริง** (`IN_STOCK`) — หน่วยที่เข้าคลังทันทีตอนรับของ (มือถือใหม่ · อุปกรณ์เสริม ·
 แท็บเล็ต · มือสองที่ถ่ายรูปครบ 6 มุมและมีราคาในใบรับของ) ลงในรายการของใบรับของ; มือสองที่ต้องเข้าคิวรอถ่ายรูป
-(`PHOTO_PENDING`) **ยังไม่ลง** แล้วลงทีละหน่วยตอนผ่านเข้าคลังผ่าน `ReceivingAcceptanceJournal.bookIfPending` ซึ่ง
-**ทุกประตูเข้า `IN_STOCK`** เรียกใน tx เดียวกับการเปลี่ยนสถานะ (`ProductPhotosService.completePhotos` ·
-`ProductsService.update` (PATCH) · `ProductsService.returnToStock` · stock adjustment `FOUND`) — เครื่องที่ถูกกด
-"ไม่รับเข้าคลัง" (`rejectQC`) จึงไม่มีรายการบัญชีเลย. แถว `GoodsReceivingItem` เก็บ `receivedCost` (ต้นทุนที่ปันไว้ตอน
-รับของ — ยอดที่ลง ไม่ใช่ `Product.costPrice` ปัจจุบันซึ่งแก้มือได้) และ `journalEntryId` (null = ยังไม่ลง) —
-migration `20261016000000_goods_receiving_item_journal`. ประตูใหม่ที่พาเครื่องเข้า `IN_STOCK` **ต้องเรียก
-`bookIfPending`** ไม่งั้นเครื่องจากใบสั่งซื้อจะอยู่ในคลังโดยไม่มีสินค้าคงคลัง/เจ้าหนี้ในบัญชี
+(`PHOTO_PENDING`) **ยังไม่ลง** แล้วลงทีละหน่วยตอนผ่านเข้าคลังผ่าน `ReceivingAcceptanceJournal.bookIfPending` —
+เครื่องที่ถูกกด "ไม่รับเข้าคลัง" (`rejectQC`) จึงไม่มีรายการบัญชีเลย. แถว `GoodsReceivingItem` เก็บ `receivedCost`
+(ต้นทุนที่ปันไว้ตอนรับของ — ยอดที่ลง ไม่ใช่ `Product.costPrice` ปัจจุบันซึ่งแก้มือได้) และ `journalEntryId` (null = ยังไม่ลง) —
+migration `20261016000000_goods_receiving_item_journal`.
+
+**กติกาที่ต้องรักษา (invariant):** เครื่องจากใบสั่งซื้อออกจากสถานะก่อนเข้าคลัง (`PHOTO_PENDING` / `INSPECTION` /
+`REFURBISHED` / ของหาย-ของเสีย) มาเป็น `IN_STOCK` ได้ทาง **4 ประตู** เท่านั้น และทั้ง 4 เรียก `bookIfPending` ใน tx
+เดียวกับการเปลี่ยนสถานะ: `ProductPhotosService.completePhotos` · `ProductsService.update` (PATCH) ·
+`ProductsService.returnToStock` · stock adjustment `FOUND`. ที่อื่นที่เขียน `status: 'IN_STOCK'` **ไม่ต้องเรียก** เพราะเป็น
+เส้นทาง **คืนสภาพ** ของเครื่องที่เคยเป็น `IN_STOCK` มาก่อน (ขาย/จอง/โอน/จัดชุดของแถมต้องเริ่มจาก `IN_STOCK` ⇒ เครื่องผ่าน
+ประตูมาแล้ว ลงบัญชีไปแล้ว): ยกเลิกสัญญา (`contract-cancellation.service.ts`) · ยกเลิกเปลี่ยนเครื่อง
+(`contract-exchange-cancel.service.ts`) · ยกเลิกใบขาย (`sale-void.service.ts`) · ปลดจอง (`stock-reservation.service.ts`,
+`contract-lifecycle.service.ts`) · ปลดของแถม (`contract-bundle.util.ts`) — บวกงานนำเข้าข้อมูล/CLI ทดสอบ (`tooltify-stock-parser`,
+`seed-test-contracts`, `test-pack`) ที่ไม่มีใบรับของ. รายชื่อครบอยู่ที่หัวไฟล์ `products/product-enter-stock.util.ts`.
+**ประตูใหม่ที่พาเครื่องจากสถานะก่อนเข้าคลังมา `IN_STOCK` ต้องเรียก `bookIfPending`** ไม่งั้นเครื่องจากใบสั่งซื้อจะอยู่ในคลัง
+โดยไม่มีสินค้าคงคลัง/เจ้าหนี้ในบัญชี
+
+**กดพร้อมกัน (ผลตรวจทานอิสระ 2026-09-30):** `bookIfPending` ล็อกแถวใบรับของแล้วตรวจซ้ำว่าเครื่องยัง `IN_STOCK` และไม่ถูกลบ —
+ไม่ใช่ = 409 ทั้งรายการย้อนกลับ (การตีกลับ commit ก่อนแล้วผู้เรียก update สถานะทับเครื่องที่ถูกลบ) · `rejectQC` ลบด้วย
+`updateMany` ที่มีเงื่อนไข `status: PHOTO_PENDING, deletedAt: null` และจำนวนต้องครบ — ไม่ครบ = 409 (อีกฝั่งยืนยันรูปเข้าคลัง
+ไปก่อน). ไม่ใช้ `SELECT … FOR UPDATE` ใน `rejectQC` เพราะประตูเข้าคลังล็อกแถวสินค้าก่อนแถวใบรับของ — ล็อกกลับลำดับ = deadlock
+· บัญชีเจ้าหนี้ของหน่วยที่ลงตอนผ่านเข้าคลังตามหมวดของรายการในใบสั่งซื้อ (`receivingCategory` — ตัวเดียวกับตอนรับของ) ส่วน
+บัญชีสินค้าตามหมวดปัจจุบันของเครื่อง · ลงวันที่รับเข้าคลังแทนวันที่ใบรับของ (งวดปิดแล้ว) stamp `metadata.postedOnAcceptanceDate`
 
 **คำตัดสินเจ้าของ 2026-09-29 + คำตอบฝ่ายบัญชี 2026-09-29 (ข้อ ข1 ข2 ข5) — ปิดประเด็น:**
 

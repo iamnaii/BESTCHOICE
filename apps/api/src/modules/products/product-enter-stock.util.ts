@@ -28,6 +28,14 @@ import { CASH_LABEL, INSTALLMENT_LABEL } from '../../utils/product-price-sync.ut
  *   ไม่ใช่การพาเครื่องใหม่เข้าคลัง
  * - **นำเข้าข้อมูลเก่า** `tooltify-stock-parser.ts` (ใช้โดย `import-tooltify-stock.cli`)
  *   — งาน migration ที่อ่านราคามาจากชีตในแถวเดียวกัน ไม่ใช่ประตูที่คนกดในระบบ
+ * - **ยกเลิกใบขาย** (`sale-void.service.ts`) · **ปลดของแถม** (`contract-bundle.util.ts`) — คืนสภาพ
+ *   เครื่องที่เคยเป็น `IN_STOCK` ก่อนขาย/จัดชุด (เหตุผลเดียวกับปลดจอง)
+ *
+ * **ลงบัญชีรับสินค้า (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8):** ประตู 1–3 ข้างบน + stock adjustment `FOUND`
+ * เรียก `ReceivingAcceptanceJournal.bookIfPending` ใน tx เดียวกับการเปลี่ยนสถานะ — เครื่องจากใบสั่งซื้อ
+ * ที่ยังไม่ลงบัญชี (รอถ่ายรูปตอนรับของ) ลงตอนนี้. ประตูที่เหลือในรายการยกเว้นเป็นการคืนสภาพเครื่องที่เคย
+ * `IN_STOCK` (ผ่านประตูและลงบัญชีมาแล้ว) หรือไม่มีใบรับของ จึงไม่ต้องเรียก. ประตูใหม่ที่พาเครื่องจาก
+ * สถานะก่อนเข้าคลังมา `IN_STOCK` ต้องเรียกด้วย (`.claude/rules/accounting.md` "รับสินค้าเข้าจากใบสั่งซื้อ")
  */
 
 export const ENTER_STOCK_AUDIT_ACTION = 'PRODUCT_RETURNED_TO_STOCK';

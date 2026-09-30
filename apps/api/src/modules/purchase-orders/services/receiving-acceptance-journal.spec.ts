@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ReceivingAcceptanceJournal } from './receiving-acceptance-journal';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
@@ -21,7 +22,9 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     journalEntryId: null,
     receivedCost: D('4199.66'),
     receiving: { id: 'gr-1', grNumber: 'GR-2026-09-001', createdAt: receivedAt, po: { id: 'po-1', poNumber: 'PO-2026-09-001' } },
-    product: { category: 'PHONE_USED' },
+    poItem: { category: 'PHONE_USED' },
+    // ผู้เรียกเปลี่ยนเครื่องเป็น IN_STOCK ใน tx เดียวกันก่อนเรียก
+    product: { category: 'PHONE_USED', status: 'IN_STOCK', deletedAt: null },
     ...over,
   });
 
@@ -69,10 +72,15 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
         units: [{ productId: 'prod-2', inventoryAccountCode: 'S11-2002', payableAccountCode: 'S21-1101', cost: D('4199.66') }],
         acceptedProductId: 'prod-2',
         postedAt: receivedAt,
+        postedOnAcceptanceDate: false,
       },
       tx,
     );
-    expect(tx.$queryRaw).toHaveBeenCalled(); // ล็อกแถวก่อนตัดสิน กันกดซ้ำพร้อมกัน
+    // ล็อกแถวก่อนอ่านค่าที่ใช้ตัดสิน — อ่านก่อนล็อก = ผู้มาทีหลังเห็นค่าเก่าแล้วลงซ้ำ
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.goodsReceivingItem.findUnique.mock.invocationCallOrder[0],
+    );
     expect(tx.goodsReceivingItem.update).toHaveBeenCalledWith({ where: { id: 'gri-1' }, data: { journalEntryId: 'je-100' } });
     expect(result).toEqual({ entryNo: 'JE-202609-00100', journalEntryId: 'je-100', postedAt: receivedAt, postedOnAcceptanceDate: false });
   });
@@ -83,6 +91,7 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     const result = await journal.bookIfPending(tx, 'prod-2', acceptedAt);
 
     expect(template.execute.mock.calls[0][0].postedAt).toBe(acceptedAt);
+    expect(template.execute.mock.calls[0][0].postedOnAcceptanceDate).toBe(true); // ฝ่ายบัญชีเห็นใน metadata
     expect(result).toMatchObject({ postedAt: acceptedAt, postedOnAcceptanceDate: true });
   });
 
@@ -112,6 +121,34 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     template.execute.mockResolvedValueOnce(null);
 
     await expect(journal.bookIfPending(tx, 'prod-2', acceptedAt)).resolves.toBeNull();
+    expect(tx.goodsReceivingItem.update).not.toHaveBeenCalled();
+  });
+
+  it('บัญชีเจ้าหนี้ตามหมวดในใบสั่งซื้อ · บัญชีสินค้าตามหมวดปัจจุบันของเครื่อง (แก้หมวดระหว่างรอถ่ายรูป)', async () => {
+    const { tx, template, journal } = build({
+      locked: receivingRow({
+        poItem: { category: 'ACCESSORY' },
+        product: { category: 'PHONE_USED', status: 'IN_STOCK', deletedAt: null },
+      }),
+    });
+
+    await journal.bookIfPending(tx, 'prod-2', acceptedAt);
+
+    expect(template.execute.mock.calls[0][0].units).toEqual([
+      { productId: 'prod-2', inventoryAccountCode: 'S11-2002', payableAccountCode: 'S21-1102', cost: D('4199.66') },
+    ]);
+  });
+
+  // ผลตรวจทานอิสระ 2026-09-30: กด "ไม่รับเข้าคลัง" ชนกับกดยืนยันรูป — การตีกลับ commit ก่อน แล้วผู้เรียก
+  // update สถานะทับเครื่องที่ถูกลบไปแล้ว ⇒ ต้องปฏิเสธทั้งรายการ ไม่ลงสินค้าที่ไม่ได้รับเข้าคลัง
+  it.each([
+    ['ถูกตีกลับ (ลบ) ไปแล้ว', { category: 'PHONE_USED', status: 'IN_STOCK', deletedAt: new Date() }],
+    ['สถานะไม่ใช่ IN_STOCK', { category: 'PHONE_USED', status: 'PHOTO_PENDING', deletedAt: null }],
+  ])('เครื่อง%s หลังล็อกแถว → ปฏิเสธ ไม่ลงบัญชี', async (_label, product) => {
+    const { tx, template, journal } = build({ locked: receivingRow({ product }) });
+
+    await expect(journal.bookIfPending(tx, 'prod-2', acceptedAt)).rejects.toThrow(ConflictException);
+    expect(template.execute).not.toHaveBeenCalled();
     expect(tx.goodsReceivingItem.update).not.toHaveBeenCalled();
   });
 });

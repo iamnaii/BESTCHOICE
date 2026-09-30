@@ -36,6 +36,7 @@ import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale
 import { ProductsService } from '../../products/products.service';
 import { ProductPhotosService } from '../../quality-control/product-photos.service';
 import { ReceivingAcceptanceJournal } from '../services/receiving-acceptance-journal';
+import { StockAdjustmentsService } from '../../inventory/stock-adjustments.service';
 
 const prisma = new PrismaClient();
 
@@ -47,6 +48,7 @@ const cashSaleTemplate = new ShopCashSaleTemplate(journal, prisma as never, comp
 const service = new PurchaseOrdersService(prisma as never, goodsReceivingTemplate, shopAccountResolver, companyResolver);
 const productsService = new ProductsService(prisma as never);
 const productPhotosService = new ProductPhotosService(prisma as never);
+const stockAdjustmentsService = new StockAdjustmentsService(prisma as never);
 const FULL_ANGLES = { front: 'f.jpg', back: 'b.jpg', left: 'l.jpg', right: 'r.jpg', top: 't.jpg', bottom: 'u.jpg' };
 
 const PREFIX = 'POJETEST-';
@@ -57,6 +59,7 @@ const createdPoIds: string[] = [];
 const createdSupplierIds: string[] = [];
 const createdBranchIds: string[] = [];
 const syntheticSaleIds: string[] = [];
+const createdUserIds: string[] = [];
 
 let adminId: string;
 let shopCompanyId: string;
@@ -166,6 +169,7 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
 
     const products = await prisma.product.findMany({ where: { poId: { in: createdPoIds } }, select: { id: true } });
     const productIds = products.map((p) => p.id);
+    await prisma.stockAdjustment.deleteMany({ where: { productId: { in: productIds } } });
     await prisma.goodsReceivingItem.deleteMany({ where: { receiving: { poId: { in: createdPoIds } } } });
     await prisma.goodsReceiving.deleteMany({ where: { poId: { in: createdPoIds } } });
     await prisma.productPrice.deleteMany({ where: { productId: { in: productIds } } });
@@ -176,6 +180,7 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     await prisma.purchaseOrder.deleteMany({ where: { id: { in: createdPoIds } } });
     await prisma.supplier.deleteMany({ where: { id: { in: createdSupplierIds } } });
     await prisma.branch.deleteMany({ where: { id: { in: createdBranchIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
 
     expect(await prisma.purchaseOrder.count({ where: { id: { in: createdPoIds } } })).toBe(0);
     await prisma.$disconnect();
@@ -549,7 +554,8 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     expect(entries.every((e) => e.companyId === shopCompanyId && e.status === 'POSTED')).toBe(true);
     expect(entries.some((e) => (e.metadata as { productIds?: string[] }).productIds?.includes(rejected.id))).toBe(false);
 
-    // ยืนยันซ้ำ / เรียกซ้ำ ไม่เกิดรายการที่สอง
+    // ยืนยันรูปซ้ำ (เครื่องอยู่ในคลังแล้ว ไม่ผ่านประตูเข้าคลังอีก จึงไม่เรียกตัวลงบัญชีเลย) และเรียกตัวลงบัญชีตรง ๆ ซ้ำ
+    // (มีรายการผูกแถวอยู่แล้ว → คืน null) — ทั้งสองทางไม่เกิดรายการที่สอง
     await productPhotosService.completePhotos(waitingPhotos.id, adminId);
     await expect(new ReceivingAcceptanceJournal(prisma as never).bookIfPending(prisma as never, waitingPhotos.id)).resolves.toBeNull();
     expect(await receivingEntries(po.id)).toHaveLength(3);
@@ -573,4 +579,61 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     await productsService.update(unit.id, { status: 'IN_STOCK', cashPrice: 4500 } as never, adminId);
     expect(await receivingEntries(po.id)).toHaveLength(0);
   }, 60_000);
+
+  it('ข้อ 8 — ประตูเข้าคลังที่เหลือ (นำเข้าคลังพร้อมขาย / พบของ) ลงบัญชีเหมือนกัน · ตีกลับชนยืนยันรูป = ไม่ลงเครื่องที่ถูกตีกลับ', async () => {
+    const supplier = await seedSupplier('Q8GATES', false);
+    const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}Q8G`, quantity: 3, unitPrice: 3000 }]);
+    const item = poItemOf(po, `${PREFIX}Q8G`);
+    const received = await service.goodsReceiving(
+      po.id,
+      { items: [1, 2, 3].map(() => ({ poItemId: item.id, imeiSerial: nextImei(), status: 'PASS' })) } as never,
+      adminId,
+    );
+    expect(received.journalEntryNo).toBeNull();
+    const [viaReturn, viaFound, raced] = received.products;
+    const cost = (await prisma.goodsReceivingItem.findUnique({ where: { productId: viaReturn.id } }))!.receivedCost!.toFixed(2);
+
+    // (ก) รอถ่ายรูป → ซ่อม/รอตรวจ (REFURBISHED) → ปุ่ม "นำเข้าคลังพร้อมขาย"
+    await productsService.update(viaReturn.id, { status: 'REFURBISHED' } as never, adminId);
+    await productsService.returnToStock(viaReturn.id, adminId, { cashPrice: 5900, installmentPrice: 6900 });
+
+    // (ข) รอถ่ายรูป → รอตรวจ (INSPECTION) → แจ้งหาย → พบของ (ต้องมีผู้อนุมัติคนละคน)
+    let approver = await prisma.user.findFirst({ where: { email: `${PREFIX.toLowerCase()}bm@bestchoice.test` } });
+    if (!approver) {
+      approver = await prisma.user.create({
+        data: { email: `${PREFIX.toLowerCase()}bm@bestchoice.test`, password: 'x', name: 'ผจก.ทดสอบ', role: 'BRANCH_MANAGER' },
+      });
+      createdUserIds.push(approver.id);
+    }
+    await productsService.update(viaFound.id, { status: 'INSPECTION' } as never, adminId);
+    await stockAdjustmentsService.create({ productId: viaFound.id, reason: 'LOST', approverId: approver.id } as never, adminId);
+    expect(await receivingEntries(po.id)).toHaveLength(1); // หายไม่ลงอะไร
+    await stockAdjustmentsService.create({ productId: viaFound.id, reason: 'FOUND', approverId: approver.id } as never, adminId);
+    const found = (await prisma.product.findUnique({ where: { id: viaFound.id } }))!;
+    expect([found.status, found.deletedAt]).toEqual(['IN_STOCK', null]);
+
+    // (ค) กด "ไม่รับเข้าคลัง" commit ไปก่อน แล้วคำขอยืนยันรูปที่อ่านค่าไว้ก่อนหน้า (ยังเห็นว่ารอถ่ายรูป)
+    // มาเขียนสถานะทับ — จำลองลำดับเดียวกับที่ `completePhotos` ทำใน tx ของมัน
+    await service.rejectQC([raced.id], 'ตรวจแล้วไม่ผ่าน ส่งคืนผู้จัดจำหน่าย');
+    const booking = new ReceivingAcceptanceJournal(prisma as never);
+    await expect(
+      prisma.$transaction(async (tx) => {
+        await tx.product.update({ where: { id: raced.id }, data: { status: 'IN_STOCK', stockInDate: new Date() } });
+        return booking.bookIfPending(tx as never, raced.id);
+      }),
+    ).rejects.toThrow(/รีเฟรชหน้าจอ/);
+    const afterRace = (await prisma.product.findUnique({ where: { id: raced.id } }))!;
+    expect(afterRace.status).toBe('PHOTO_PENDING'); // ทั้ง tx ย้อนกลับ
+    expect(afterRace.deletedAt).not.toBeNull();
+    expect((await prisma.goodsReceivingItem.findUnique({ where: { productId: raced.id } }))!.journalEntryId).toBeNull();
+
+    // สองเครื่องที่เข้าคลังจริง = สองรายการ ยอดตามต้นทุนที่ปันไว้ · เครื่องที่ถูกตีกลับไม่อยู่ในบัญชี
+    const entries = await receivingEntries(po.id);
+    expect(entries.map((e) => (e.metadata as { acceptedProductId?: string }).acceptedProductId).sort()).toEqual(
+      [viaReturn.id, viaFound.id].sort(),
+    );
+    const total = dec(cost).times(2).toFixed(2);
+    expect(netByAccount(entries)).toEqual({ 'S11-2002': total, 'S21-1101': dec(total).neg().toFixed(2) });
+    expect(entries.every((e) => (e.metadata as { postedOnAcceptanceDate?: boolean }).postedOnAcceptanceDate === false)).toBe(true);
+  }, 120_000);
 });

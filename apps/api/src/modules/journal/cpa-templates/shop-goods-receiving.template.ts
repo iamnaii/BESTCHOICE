@@ -47,6 +47,8 @@ export interface ShopGoodsReceivingInput {
   units: ShopGoodsReceivingUnit[];
   /** ลงหน่วยเดียวตอนผ่านเข้าคลังหลังรับของ (เครื่องที่รอถ่ายรูป) — ต้องมีหน่วยเดียวและเป็นตัวนี้ */
   acceptedProductId?: string;
+  /** หน่วยที่ลงตอนผ่านเข้าคลัง: งวดของวันที่ใบรับของปิดแล้ว จึงลงวันที่รับเข้าคลังแทน — stamp ให้ฝ่ายบัญชีเห็น */
+  postedOnAcceptanceDate?: boolean;
   postedAt?: Date;
 }
 
@@ -173,7 +175,9 @@ export class ShopGoodsReceivingTemplate {
             unitCount: input.units.length,
             totalCost: total.toFixed(2),
             productIds: input.units.map((unit) => unit.productId),
-            ...(accepted ? { acceptedProductId: accepted } : {}),
+            ...(accepted
+              ? { acceptedProductId: accepted, postedOnAcceptanceDate: input.postedOnAcceptanceDate === true }
+              : {}),
           },
           postedAt: input.postedAt ?? new Date(),
           companyId: shopCompanyId,

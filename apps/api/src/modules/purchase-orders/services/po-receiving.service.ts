@@ -1,5 +1,5 @@
-import { NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { Prisma, ProductCategory, POPaymentStatus } from '@prisma/client';
+import { NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { Prisma, POPaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GoodsReceivingDto, DirectReceiveDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
@@ -10,7 +10,7 @@ import {
   resolvePaymentTerms,
 } from './po-amounts.util';
 import { poLineCosts, poUnitCostAt } from './po-unit-cost.util';
-import { receivingPostingDate } from './receiving-acceptance-journal';
+import { receivingCategory, receivingPostingDate } from './receiving-acceptance-journal';
 import { d } from '../../../utils/decimal.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import {
@@ -227,7 +227,7 @@ export class PoReceivingService {
 
       if (item.status === 'PASS') {
         // Build product name from PO item details
-        const productCategory = (poItem.category as ProductCategory) || 'PHONE_NEW';
+        const productCategory = receivingCategory(poItem.category);
         const productName = buildProductName(poItem, productCategory);
 
         // Create product for passed items
@@ -718,10 +718,17 @@ export class PoReceivingService {
         );
       }
 
-      await tx.product.updateMany({
-        where: { id: { in: productIds } },
+      // ลบเฉพาะเครื่องที่ยังอยู่ในคิวรอถ่ายรูปจริง ณ ตอนเขียน — กดพร้อมกับยืนยันรูป/เปลี่ยนสถานะเข้าคลัง
+      // แล้วอีกฝั่ง commit ก่อน (ค่าที่อ่านข้างบนเก่าไปแล้ว) ต้องไม่ลบเครื่องที่เพิ่งเข้าคลังและลงบัญชีไปแล้ว
+      const removed = await tx.product.updateMany({
+        where: { id: { in: productIds }, status: 'PHOTO_PENDING', deletedAt: null },
         data: { deletedAt: new Date() },
       });
+      if (removed.count !== products.length) {
+        throw new ConflictException(
+          'สินค้าบางชิ้นเพิ่งถูกยืนยันรูปหรือเปลี่ยนสถานะระหว่างทำรายการ — กรุณารีเฟรชหน้าจอแล้วเลือกใหม่',
+        );
+      }
 
       return {
         rejected: productIds.length,

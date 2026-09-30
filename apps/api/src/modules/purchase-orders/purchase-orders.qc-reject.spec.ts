@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { poJournalTestProviders } from './po-journal.test-helpers';
@@ -41,7 +41,8 @@ describe('PurchaseOrdersService.rejectQC', () => {
     expect(res.rejected).toBe(2);
     expect(tx.product.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: { in: ['p1', 'p2'] } },
+        // เงื่อนไขสถานะอยู่ในคำสั่งเขียนเอง — ค่าที่อ่านไว้ก่อนหน้าอาจเก่าไปแล้วเมื่ออีกคำขอ commit ก่อน
+        where: { id: { in: ['p1', 'p2'] }, status: 'PHOTO_PENDING', deletedAt: null },
         data: expect.objectContaining({ deletedAt: expect.any(Date) }),
       }),
     );
@@ -81,5 +82,21 @@ describe('PurchaseOrdersService.rejectQC', () => {
       expect.objectContaining({ where: expect.objectContaining({ productId: { in: ['p1', 'p2'] }, journalEntryId: { not: null } }) }),
     );
     expect(tx.product.updateMany).not.toHaveBeenCalled();
+  });
+
+  // ผลตรวจทานอิสระ 2026-09-30: กด "ไม่รับเข้าคลัง" พร้อมกับกดยืนยันรูปครบ — ฝั่งยืนยันรูป commit ก่อน
+  // (เครื่องเข้าคลัง + ลงบัญชีแล้ว) แต่ฝั่งนี้อ่านค่าเก่าไว้ว่ายังรอถ่ายรูป ⇒ คำสั่งลบต้องไม่โดนเครื่องนั้น
+  it('เครื่องเพิ่งถูกยืนยันรูปเข้าคลังระหว่างทำรายการ (ลบได้ไม่ครบ) → ปฏิเสธทั้งชุด ให้รีเฟรช', async () => {
+    const tx = buildTx([
+      { id: 'p1', status: 'PHOTO_PENDING', name: 'iPhone' },
+      { id: 'p2', status: 'PHOTO_PENDING', name: 'iPhone 2' },
+    ]);
+    tx.product.updateMany.mockResolvedValueOnce({ count: 1 });
+    prisma = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+    service = await build();
+
+    const error = await service.rejectQC(['p1', 'p2'], 'จอแตก').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as Error).message).toMatch(/รีเฟรชหน้าจอ/);
   });
 });

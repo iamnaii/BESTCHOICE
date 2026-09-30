@@ -131,11 +131,32 @@
   --shadow-xl:  0 8px 26px 0 rgb(14 33 28 / 0.09), 0 8px 16px -8px rgb(14 33 28 / 0.06);
   --shadow-2xl: 0 24px 60px 0 rgb(14 33 28 / 0.14);
 
-  /* Type — Sarabun carries body copy (looped, easiest Thai reading face);
-     Prompt carries headings/buttons/prices via --font-head + .font-display.
-     Both load from the single <link> in index.html. */
-  --font-sans: 'Sarabun', 'IBM Plex Sans Thai', 'Noto Sans Thai', sans-serif;
-  --font-head: 'Prompt', 'IBM Plex Sans Thai', 'Noto Sans Thai', sans-serif;
+  /* One family throughout the storefront, including controls and portals.
+     Keep font-head as an alias for existing components, not a second face. */
+  --font-sans: 'Prompt', 'Noto Sans Thai', sans-serif;
+  --font-head: var(--font-sans);
+
+  /* Thai needs room for stacked vowels/tone marks. Sizes use rem so the
+     hierarchy follows the reader's browser text-size preference. */
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.6;
+  --text-base: 1rem;
+  --text-base--line-height: 1.7;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.6;
+  --text-xl: 1.25rem;
+  --text-xl--line-height: 1.5;
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: 1.4;
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: 1.4;
+  --text-4xl: 2.25rem;
+  --text-4xl--line-height: 1.35;
+  --text-5xl: 3rem;
+  --text-5xl--line-height: 1.35;
+  --leading-snug: 1.5;
 
   /* Motion durations */
   --duration-fast:   150ms;

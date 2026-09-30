@@ -13,7 +13,7 @@ export function SectionHeader({ title, description, cta, align = 'left', classNa
   return (
     <div
       className={cn(
-        'mb-6 md:mb-8 flex gap-4',
+        'mb-6 md:mb-8 flex flex-wrap gap-4',
         align === 'center' ? 'flex-col items-center text-center' : 'items-end justify-between',
         className,
       )}
@@ -21,7 +21,7 @@ export function SectionHeader({ title, description, cta, align = 'left', classNa
       <div className="space-y-1">
         <h2 className="text-2xl md:text-3xl font-bold leading-snug">{title}</h2>
         {description && (
-          <p className="text-sm md:text-base text-muted-foreground leading-snug">{description}</p>
+          <p className="text-base text-muted-foreground leading-relaxed">{description}</p>
         )}
       </div>
       {cta && (

@@ -5,11 +5,12 @@ import { Slot } from '@radix-ui/react-slot';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'cursor-pointer group whitespace-nowrap focus-visible:outline-hidden inline-flex items-center justify-center has-data-[arrow=true]:justify-between whitespace-nowrap font-head text-sm font-semibold ring-offset-background transition-[color,box-shadow] disabled:pointer-events-none disabled:opacity-60 [&_svg]:shrink-0',
+  'cursor-pointer group whitespace-nowrap focus-visible:outline-hidden inline-flex items-center justify-center has-data-[arrow=true]:justify-between whitespace-nowrap font-head text-sm leading-snug font-semibold ring-offset-background transition-[color,box-shadow] disabled:pointer-events-none disabled:opacity-60 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        primary: 'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-sm',
+        primary:
+          'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 shadow-sm',
         // The one warm attention variant — chat/reserve CTAs only
         // (isolation effect: it converts because it is rare on the page).
         cta: 'bg-cta text-cta-foreground hover:bg-orange-600 active:bg-orange-700 shadow-sm',
@@ -23,8 +24,10 @@ const buttonVariants = cva(
         mono: 'bg-muted text-foreground border border-border hover:bg-accent',
         destructive:
           'bg-destructive text-destructive-foreground hover:bg-destructive/90 data-[state=open]:bg-destructive/90',
-        secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/90 data-[state=open]:bg-secondary/90',
-        outline: 'bg-background text-accent-foreground border border-input hover:bg-accent data-[state=open]:bg-accent',
+        secondary:
+          'bg-secondary text-secondary-foreground hover:bg-secondary/90 data-[state=open]:bg-secondary/90',
+        outline:
+          'bg-background text-accent-foreground border border-input hover:bg-accent data-[state=open]:bg-accent',
         dashed:
           'text-accent-foreground border border-input border-dashed bg-background hover:bg-accent hover:text-accent-foreground data-[state=open]:text-accent-foreground',
         ghost:
@@ -47,9 +50,9 @@ const buttonVariants = cva(
       },
       size: {
         lg: 'h-12 rounded-xl px-6 text-base gap-2 [&_svg:not([class*=size-])]:size-4.5',
-        md: 'h-8.5 rounded-xl px-3 gap-1.5 text-[0.8125rem] leading-(--text-sm--line-height) [&_svg:not([class*=size-])]:size-4',
-        sm: 'h-7 rounded-md px-2.5 gap-[5px] text-xs [&_svg:not([class*=size-])]:size-3.5',
-        icon: 'size-8.5 rounded-md [&_svg:not([class*=size-])]:size-4 shrink-0',
+        md: 'h-11 rounded-xl px-4 gap-1.5 text-sm [&_svg:not([class*=size-])]:size-4',
+        sm: 'h-9 rounded-md px-3 gap-[5px] text-sm [&_svg:not([class*=size-])]:size-3.5',
+        icon: 'size-11 rounded-md [&_svg:not([class*=size-])]:size-4 shrink-0',
       },
       autoHeight: {
         true: '',
@@ -119,12 +122,12 @@ const buttonVariants = cva(
       {
         size: 'md',
         autoHeight: true,
-        className: 'h-auto min-h-8.5',
+        className: 'h-auto min-h-11',
       },
       {
         size: 'sm',
         autoHeight: true,
-        className: 'h-auto min-h-7',
+        className: 'h-auto min-h-9',
       },
       {
         size: 'lg',
@@ -137,7 +140,7 @@ const buttonVariants = cva(
       {
         variant: 'cta',
         size: 'lg',
-        className: 'text-[19px] font-bold',
+        className: 'text-[1.1875rem] font-bold',
       },
       {
         variant: 'primary',
@@ -298,12 +301,14 @@ const buttonVariants = cva(
       {
         variant: 'primary',
         appearance: 'ghost',
-        className: 'bg-transparent text-primary/90 hover:bg-primary/5 data-[state=open]:bg-primary/5',
+        className:
+          'bg-transparent text-primary/90 hover:bg-primary/5 data-[state=open]:bg-primary/5',
       },
       {
         variant: 'destructive',
         appearance: 'ghost',
-        className: 'bg-transparent text-destructive/90 hover:bg-destructive/5 data-[state=open]:bg-destructive/5',
+        className:
+          'bg-transparent text-destructive/90 hover:bg-destructive/5 data-[state=open]:bg-destructive/5',
       },
       {
         variant: 'ghost',
@@ -313,21 +318,21 @@ const buttonVariants = cva(
       {
         size: 'sm',
         mode: 'icon',
-        className: 'w-7 h-7 p-0 [&_svg:not([class*=size-])]:size-3.5',
+        className: 'w-9 h-9 p-0 [&_svg:not([class*=size-])]:size-3.5',
       },
       {
         size: 'md',
         mode: 'icon',
-        className: 'w-8.5 h-8.5 p-0 [&_svg:not([class*=size-])]:size-4',
+        className: 'w-11 h-11 p-0 [&_svg:not([class*=size-])]:size-4',
       },
       {
         size: 'icon',
-        className: 'w-8.5 h-8.5 p-0 [&_svg:not([class*=size-])]:size-4',
+        className: 'w-11 h-11 p-0 [&_svg:not([class*=size-])]:size-4',
       },
       {
         size: 'lg',
         mode: 'icon',
-        className: 'w-10 h-10 p-0 [&_svg:not([class*=size-])]:size-4',
+        className: 'w-12 h-12 p-0 [&_svg:not([class*=size-])]:size-4',
       },
       {
         mode: 'input',

@@ -112,6 +112,25 @@ describe('getDailySummary — receipt-based (เงินสดที่รั�
     expect((prisma.receipt.groupBy as jest.Mock)).toHaveBeenCalled();
   });
 
+  it('PR3: ใบใช้เครดิตชำระ (CREDIT_BALANCE) ยังเป็นรายการ แต่ยอดรวม / แยกตามวิธี / ค่าปรับรวม นับเฉพาะเงินรับเข้า', async () => {
+    const { service, prisma, receiptFindMany } = setup([
+      rcpt({ receiptNumber: 'RT-202610-00001', amount: D(1515.83), paymentMethod: 'ONLINE_GATEWAY' }),
+      rcpt({ receiptNumber: 'RT-202610-00002', amount: D(2000), paymentMethod: 'CREDIT_BALANCE' }),
+    ]);
+
+    const summary = await service.getDailySummary('2026-10-02');
+
+    // รายการและจำนวนรายการแสดงครบทุกใบ (ไม่มีเงื่อนไขช่องทาง)
+    expect(summary.data).toHaveLength(2);
+    expect(receiptFindMany.mock.calls[0][0].where.OR).toBeUndefined();
+    expect((prisma.receipt.count as jest.Mock).mock.calls[0][0].where.OR).toBeUndefined();
+    // ยอดเงิน: ใบใช้เครดิตไม่ใช่เงินที่รับวันนั้น · ช่องทางว่าง (ใบเก่า) ยังนับ — OR คู่กับ null (NOT ของ SQL ตัด null ทิ้ง)
+    const moneyIn = [{ paymentMethod: null }, { paymentMethod: { not: 'CREDIT_BALANCE' } }];
+    expect((prisma.receipt.aggregate as jest.Mock).mock.calls[0][0].where.OR).toEqual(moneyIn);
+    expect((prisma.receipt.groupBy as jest.Mock).mock.calls[0][0].where.OR).toEqual(moneyIn);
+    expect(receiptFindMany.mock.calls[1][0].where.OR).toEqual(moneyIn); // งวดที่นับค่าปรับ
+  });
+
   it('scopes to a branch through the contract relation', async () => {
     const { service, receiptFindMany } = setup([]);
 

@@ -152,6 +152,24 @@ describe('Payoff parity (ถังพักงวดสุดท้าย): JP4 
     },
   );
 
+  // PR6 — คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5 (30/09/2569) "แบบ (ก)": JP5 ลงส่วนลดยอดปิดที่ 52-1106 ด้วยยอดเดียวกับบนจอ —
+  // ต้องเท่า discountAmount ของใบเสนอปิดยอดก่อนกำหนดเสมอ (computePayoffQuote ตัวเดียว · ถังพักหักก่อนคิดส่วนลด)
+  it.each([50, 30])(
+    'PR6: ส่วนลด %i%% + ถังพัก 354 — ส่วนลดที่ JP5 ลง 52-1106 = discountAmount ของใบเสนอปิดยอดก่อนกำหนด',
+    async (discountPct) => {
+      const contract = makeContract('354');
+      const { ep, repo, previewJe } = makeServices(contract);
+
+      const epQuote = await ep.getEarlyPayoffQuote(contract.id, discountPct);
+      const repoPreview = await repo.previewCalculation(contract.id, { discountPct });
+
+      const jp5Input = previewJe.mock.calls[0][0] as { discount?: Prisma.Decimal };
+      expect(epQuote.discountAmount).toBeGreaterThan(0);
+      expect(jp5Input.discount!.toFixed(2)).toBe(epQuote.discountAmount.toFixed(2));
+      expect(repoPreview.calculation.discountAmount).toBe(epQuote.discountAmount);
+    },
+  );
+
   it('ไม่มีถังพัก → ทั้งสองเส้นทางไม่ส่ง parkRelief และไม่มีขา 21-1103 (พฤติกรรมเดิมทุกประการ)', async () => {
     const contract = makeContract('0');
     const { ep, repo, previewJe } = makeServices(contract);

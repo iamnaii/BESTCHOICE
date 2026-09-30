@@ -36,6 +36,8 @@ import {
 } from '../interco-settlement/interco-typed-balance';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
+import { CONTRACT_ADVANCE_COLUMNS_CLEARED } from '../journal/contract-close-advances';
+import { DeferredWarning, warningsOf } from '../journal/deferred-warning';
 import { Decimal } from '@prisma/client/runtime/library';
 import { validatePeriodOpen } from '../../utils/period-lock.util';
 import { isFutureBkkDay, bkkYearMonth } from '../../utils/date.util';
@@ -103,6 +105,8 @@ export interface RepossessionCreateResult {
   outstandingBalance: Prisma.Decimal;
   totalPaid: Prisma.Decimal;
   creditNote?: { outcome: string; receiptId?: string };
+  /** สัญญาณเตือนของ JP5 (คอลัมน์เงินของลูกค้าไม่ตรงบัญชี) — ผู้เรียกส่งหลังธุรกรรม commit (emitDeferredWarnings) */
+  warnings: readonly DeferredWarning[];
 }
 
 /** ราคากลางแนะนำจากตารางรับซื้อมือสอง — รูปเดียวกับใบรับเครื่องคืน (table-base.util.ts) */
@@ -461,6 +465,9 @@ export class RepossessionsService {
           // 2026-08-16 §จุดหัก 3). ต้องส่งทั้ง preview และ createInTx ไม่งั้น
           // preview ≠ posted
           parkRelief: parkReliefPreview.gt(0) ? parkReliefPreview : undefined,
+          // ส่วนลดยอดปิดตัวเดียวกับบนจอ (quote) → Dr 52-1106 (คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5 · 30/09/2569
+          // แบบ (ก)) — ส่งทั้ง preview และ createInTx เช่นเดียวกัน
+          discount: quote.discountAmount > 0 ? d(quote.discountAmount) : undefined,
         });
       } catch (err) {
         this.logger.warn(
@@ -592,9 +599,11 @@ export class RepossessionsService {
    *
    * โพสต์ใน tx: แถว Repossession → สัญญา CLOSED_BAD_DEBT → JP5 (ขา Dr 11-2107 typed DEVICE_RETURN
    * เสมอ — ไม่มีขาเงินสด/โหมดโอนสดอีกต่อไป) → ขาคู่ SHOP (Dr S11-2002 / Cr S21-1104 DEVICE_RETURN)
-   * → ปลดถังพัก → flip ECL rows → ใบลดหนี้ → เครื่อง REPOSSESSED + กรรมสิทธิ์ SHOP + มือสอง +
-   * branchId = สาขาที่รับ → audit REPOSSESSION (tx.auditLog.create — atomic กับสถานะ; หลุด Merkle
-   * chain โดยตั้งใจเหมือนเดิม).
+   * → คอลัมน์เงินของลูกค้าทั้งสาม = 0 + audit ถังพัก (PR6 — JP5 หักเงินของลูกค้าทุกประเภทตามบัญชีแล้ว) → flip
+   * ECL rows → ใบลดหนี้ → เครื่อง REPOSSESSED + กรรมสิทธิ์ SHOP + มือสอง + branchId = สาขาที่รับ → audit
+   * REPOSSESSION (tx.auditLog.create — atomic กับสถานะ; หลุด Merkle chain โดยตั้งใจเหมือนเดิม · PR6: มี
+   * `closeAdvances` = คอลัมน์ก่อนตั้งเป็นศูนย์คู่กับยอดที่ JP5 หักตามบัญชี). สัญญาณเตือนของ JP5 คืนใน `warnings`
+   * ให้ผู้เรียกส่งหลัง commit.
    */
   async createInTx(
     tx: Prisma.TransactionClient,
@@ -771,6 +780,8 @@ export class RepossessionsService {
 
     // JP5 ใน tx เดียวกับสถานะ (ปพพ.ม.392 — เลิกสัญญาต้องกลับสู่ฐานะเดิม; JE fail = rollback ทั้งชุด)
     let creditNote: { outcome: string; receiptId?: string } | undefined;
+    let warnings: readonly DeferredWarning[] = [];
+    let closeAdvances: Record<string, string> | undefined;
     if (outstandingBalance.greaterThan(0)) {
       const repoValue = new Decimal(String(input.appraisalPrice));
       // ใบรับเครื่องคืน (2026-09-20): ขา Dr เป็นลูกหนี้-หน้าร้าน 11-2107 typed DEVICE_RETURN เสมอ —
@@ -787,6 +798,8 @@ export class RepossessionsService {
           postedAt: input.paymentDate,
           customerRefund: customerRefund.gt(0) ? customerRefund : undefined,
           parkRelief: parkRelief.gt(0) ? parkRelief : undefined,
+          // ส่วนลดยอดปิดตัวเดียวกับที่เก็บในแถวยึด (quote) → Dr 52-1106 (คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5 แบบ (ก))
+          discount: discountAmount.gt(0) ? discountAmount : undefined,
         },
         tx,
       );
@@ -809,13 +822,29 @@ export class RepossessionsService {
         );
       }
 
-      // ปลดถังพักให้ตรงกับขา Dr 21-1103 ที่ JP5 ลงจริง (template clamp ด้วย GL — อ่านค่าที่ลงจริงกลับมา)
+      // PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6 (29/09/2569): JP5 หักเงินของลูกค้าที่ค้างทุกประเภท (21-1103 ทุกถัง +
+      // 21-5101) ตามยอดในบัญชีแล้ว → คอลัมน์เงินของลูกค้าทั้งสามของสัญญาเป็นศูนย์ในธุรกรรมเดียวกัน. คอลัมน์ที่ไม่ตรง
+      // บัญชีเป็นสัญญาณเตือนของ template — คืนให้ผู้เรียกส่งหลัง commit
+      await tx.contract.update({
+        where: { id: input.contractId },
+        data: CONTRACT_ADVANCE_COLUMNS_CLEARED,
+      });
+      warnings = warningsOf(jp5Result);
+      // หลักฐานถาวร (ผลตรวจแผน PR6 M-4 — สัญญาณเตือน Sentry เก็บไม่นาน): คอลัมน์ก่อนตั้งเป็นศูนย์ (ค่าที่อ่านต้นธุรกรรม —
+      // ชุดเดียวกับ beforeParkBalance ของ audit ถังพัก) คู่กับยอดที่ JP5 หักตามบัญชี → เขียนใน audit REPOSSESSION ข้างล่าง.
+      // สองฝั่งไม่เท่ากัน = ส่วนที่คอลัมน์ทิ้งไป
+      closeAdvances = {
+        advanceBalanceBefore: d(contract.advanceBalance).toFixed(2),
+        rescheduleAdvanceBalanceBefore: d(contract.rescheduleAdvanceBalance).toFixed(2),
+        creditBalanceBefore: d(contract.creditBalance).toFixed(2),
+        ledger21_1103Cleared: d(jp5Result.parkRelief).add(d(jp5Result.advanceRelief)).toFixed(2),
+        ledger21_5101Cleared: d(jp5Result.creditRelief).toFixed(2),
+      };
+      // audit ถังพักคงรูปเดิม: ยอดที่บรรทัดเงินพักลงจริง (template clamp ด้วย GL) + ยอดถังก่อน/หลัง (หลัง = 0 เสมอ —
+      // ส่วนที่ยอดปิดไม่ได้ดูดซับถูกหักด้วยบรรทัดเงินรับล่วงหน้าที่เหลือของ JE เดียวกัน)
       const postedParkRelief = d(jp5Result.parkRelief);
-      if (postedParkRelief.gt(0)) {
-        await tx.contract.update({
-          where: { id: input.contractId },
-          data: { rescheduleAdvanceBalance: { decrement: postedParkRelief } },
-        });
+      const beforeParkBalance = d(contract.rescheduleAdvanceBalance ?? 0);
+      if (postedParkRelief.gt(0) || beforeParkBalance.gt(0)) {
         await tx.auditLog.create({
           data: {
             userId: actorUserId,
@@ -824,11 +853,8 @@ export class RepossessionsService {
             entityId: input.contractId,
             newValue: {
               parkRelief: postedParkRelief.toFixed(2),
-              beforeParkBalance: d(contract.rescheduleAdvanceBalance ?? 0).toFixed(2),
-              afterParkBalance: dSub(
-                d(contract.rescheduleAdvanceBalance ?? 0),
-                postedParkRelief,
-              ).toFixed(2),
+              beforeParkBalance: beforeParkBalance.toFixed(2),
+              afterParkBalance: '0.00',
               repossessionId: repossession.id,
               source: 'REPOSSESSION_PARK_RELIEF',
             },
@@ -893,6 +919,7 @@ export class RepossessionsService {
           totalPaid: totalPaid.toFixed(2),
           deviceReturnId: input.deviceReturnId,
           receivingBranchId: input.receivingBranchId,
+          ...(closeAdvances ? { closeAdvances } : {}),
         },
         ipAddress: '',
       },
@@ -902,7 +929,7 @@ export class RepossessionsService {
       `Repossession created for contract ${contract.contractNumber} (device return ${input.deviceReturnId})`,
     );
 
-    return { repossession, outstandingBalance, totalPaid, creditNote };
+    return { repossession, outstandingBalance, totalPaid, creditNote, warnings };
   }
 
   /**

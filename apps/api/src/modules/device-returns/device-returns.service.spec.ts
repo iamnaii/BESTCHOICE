@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 
 jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
 
@@ -987,6 +988,60 @@ describe('DeviceReturnsService', () => {
       const result = await service.confirm('dr-1', {}, FM as never);
       expect(cnDelivery.deliver).not.toHaveBeenCalled();
       expect(result.creditNote).toEqual({ outcome: 'SKIPPED_NO_ACCRUED' });
+    });
+
+    // PR6 — JP5 หักเงินของลูกค้าที่ค้างตามยอดในบัญชี; คอลัมน์ที่ไม่ตรงบัญชีเป็นสัญญาณเตือนที่ createInTx คืนมา
+    const closeWarning = {
+      message: '[contract-close] advance/credit columns differ from the ledger cleared at close',
+      tags: { module: 'journal', action: 'close-advance-ledger-mismatch', flow: 'repossession' },
+      extra: { contractId: 'contract-1', ledger21_5101: '0.00', creditBalance: '2000.00' },
+    };
+
+    it('PR6: สัญญาณเตือนของ JP5 ส่งหลังธุรกรรม commit ระดับ warning และไม่อยู่ในผลลัพธ์', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(pending());
+      prisma.deviceReturn.findUnique.mockResolvedValue(pending());
+      prisma.deviceReturn.findUniqueOrThrow.mockResolvedValue(
+        makeReturnRow({ status: 'CONFIRMED' }),
+      );
+      repossessions.createInTx.mockResolvedValueOnce({
+        repossession: { id: 'repo-1' },
+        outstandingBalance: decimal(2100),
+        totalPaid: decimal(1000),
+        creditNote: { outcome: 'SKIPPED_NO_ACCRUED' },
+        warnings: [closeWarning],
+      });
+      let committed = false;
+      let sentAfterCommit: boolean | null = null;
+      prisma.$transaction.mockImplementationOnce(async (fn: (tx: unknown) => Promise<unknown>) => {
+        const r = await fn(prisma);
+        committed = true;
+        return r;
+      });
+      (Sentry.captureMessage as jest.Mock).mockClear();
+      (Sentry.captureMessage as jest.Mock).mockImplementationOnce(() => {
+        sentAfterCommit = committed;
+      });
+
+      const result = await service.confirm('dr-1', {}, FM as never);
+
+      expect(sentAfterCommit).toBe(true);
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(closeWarning.message, {
+        level: 'warning',
+        tags: closeWarning.tags,
+        extra: closeWarning.extra,
+      });
+      expect(result).not.toHaveProperty('warnings');
+    });
+
+    it('PR6: createInTx โยน (ธุรกรรมล้ม) → ไม่ส่งสัญญาณเตือนของงานที่ไม่ได้เกิดขึ้น', async () => {
+      prisma.deviceReturn.findFirst.mockResolvedValue(pending());
+      prisma.deviceReturn.findUnique.mockResolvedValue(pending());
+      repossessions.createInTx.mockRejectedValueOnce(new BadRequestException('JE fail'));
+      (Sentry.captureMessage as jest.Mock).mockClear();
+
+      await expect(service.confirm('dr-1', {}, FM as never)).rejects.toThrow('JE fail');
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
   });
 

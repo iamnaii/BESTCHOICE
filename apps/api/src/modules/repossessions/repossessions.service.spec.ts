@@ -684,6 +684,21 @@ describe('RepossessionsService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
+    it('PR6: preview ส่งส่วนลดยอดปิดตัวเดียวกับบนจอเข้า JP5 (preview = รายการที่จะลง) · ส่วนลด 0% ไม่ส่ง', async () => {
+      prisma.contract.findUnique.mockResolvedValue(makeContract());
+
+      const result = await service.previewCalculation('contract-1', { appraisalPrice: 6000 });
+
+      expect(jp5.previewJe.mock.calls[0][0].discount.toFixed(2)).toBe(
+        result.calculation.discountAmount.toFixed(2),
+      );
+      expect(result.calculation.discountAmount).toBe(59.58);
+
+      jp5.previewJe.mockClear();
+      await service.previewCalculation('contract-1', { appraisalPrice: 6000, discountPct: 0 });
+      expect(jp5.previewJe.mock.calls[0][0].discount).toBeUndefined();
+    });
+
     it('journalPreview = null เมื่อ previewJe ล้มเหลว — ไม่ล้มทั้ง response', async () => {
       prisma.contract.findUnique.mockResolvedValue(makeContract());
       jp5.previewJe.mockRejectedValueOnce(new Error('boom'));
@@ -843,14 +858,16 @@ describe('RepossessionsService', () => {
         )
         .map(([input]: [Record<string, unknown>]) => input);
 
-    it('consumes only the park relief actually posted by JP5 in the caller transaction', async () => {
+    // PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6: JP5 หักเงินของลูกค้าที่ค้างทุกประเภทตามยอดในบัญชี (บรรทัดเงินพัก 200 +
+    // บรรทัดเงินรับล่วงหน้าที่เหลือ) → ถังพักเป็น 0 ทั้งก้อน (เดิม: ตัดคอลัมน์เท่าที่บรรทัดเงินพักลง → เหลือ 300)
+    it('บรรทัดเงินพักของ JP5 ลง 200 จากถัง 500 → คอลัมน์เงินของลูกค้าทั้งสามเป็น 0 ในธุรกรรมของผู้เรียก · audit ถังพักหลัง = 0', async () => {
       arm({ status: 'TERMINATED', rescheduleAdvanceBalance: decimal(500) });
       jp5.execute.mockResolvedValueOnce({ entryNo: 'JE-PARK', parkRelief: decimal(200) });
       await run();
       expect(jp5.execute.mock.calls[0][0].parkRelief.toFixed(2)).toBe('500.00');
       expect(prisma.contract.update).toHaveBeenCalledWith({
         where: { id: 'contract-1' },
-        data: { rescheduleAdvanceBalance: { decrement: decimal(200) } },
+        data: { advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 },
       });
       expect(prisma.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -859,12 +876,98 @@ describe('RepossessionsService', () => {
             newValue: expect.objectContaining({
               parkRelief: '200.00',
               beforeParkBalance: '500.00',
-              afterParkBalance: '300.00',
+              afterParkBalance: '0.00',
             }),
           }),
         }),
       );
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('PR6: เงินรับล่วงหน้าถังรวม + เครดิต (ไม่มีถังพัก) → คอลัมน์ทั้งสามเป็น 0 หลัง JP5 · ไม่มี audit ถังพัก · คืนสัญญาณเตือนของ JP5 ให้ผู้เรียก', async () => {
+      arm({ status: 'TERMINATED', advanceBalance: decimal(500), creditBalance: decimal(300) });
+      const warning = {
+        message: '[contract-close] advance/credit columns differ from the ledger cleared at close',
+        tags: { module: 'journal', action: 'close-advance-ledger-mismatch', flow: 'repossession' },
+        extra: { contractId: 'contract-1' },
+      };
+      jp5.execute.mockResolvedValueOnce({
+        entryNo: 'JE-JP5',
+        parkRelief: decimal(0),
+        advanceRelief: decimal(500),
+        creditRelief: decimal(300),
+        warnings: [warning],
+      });
+
+      const result = await run();
+
+      expect(prisma.contract.update).toHaveBeenCalledWith({
+        where: { id: 'contract-1' },
+        data: { advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 },
+      });
+      const clearIdx = prisma.contract.update.mock.calls.findIndex(
+        ([a]: [{ data: Record<string, unknown> }]) => 'creditBalance' in a.data,
+      );
+      expect(prisma.contract.update.mock.invocationCallOrder[clearIdx]).toBeGreaterThan(
+        jp5.execute.mock.invocationCallOrder[0],
+      );
+      expect(prisma.auditLog.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ action: 'RESCHEDULE_ADVANCE_CONSUMED' }),
+        }),
+      );
+      expect(result.warnings).toEqual([warning]);
+    });
+
+    // ผลตรวจแผน PR6 M-4: คอลัมน์ที่ไม่ตรงบัญชีถูกตั้งเป็นศูนย์ → ต้องมีหลักฐานถาวร (สัญญาณเตือน Sentry เก็บไม่นาน)
+    it('PR6: audit REPOSSESSION เก็บคอลัมน์เงินของลูกค้าก่อนตั้งเป็นศูนย์ คู่กับยอดที่ JP5 หักตามบัญชี (คอลัมน์ 800 · บัญชี 450 + 0)', async () => {
+      arm({
+        status: 'TERMINATED',
+        rescheduleAdvanceBalance: decimal(200),
+        advanceBalance: decimal(300),
+        creditBalance: decimal(300),
+      });
+      jp5.execute.mockResolvedValueOnce({
+        entryNo: 'JE-JP5',
+        parkRelief: decimal(200),
+        advanceRelief: decimal(250),
+        creditRelief: decimal(0),
+      });
+
+      await run();
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: 'REPOSSESSION',
+            newValue: expect.objectContaining({
+              closeAdvances: {
+                advanceBalanceBefore: '300.00',
+                rescheduleAdvanceBalanceBefore: '200.00',
+                creditBalanceBefore: '300.00',
+                ledger21_1103Cleared: '450.00',
+                ledger21_5101Cleared: '0.00',
+              },
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('PR6: ส่งส่วนลดยอดปิดตัวเดียวกับที่เก็บในแถวยึด (quote) เข้า JP5 → Dr 52-1106 (คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5)', async () => {
+      arm({ status: 'DEFAULT' });
+      await run();
+      const data = prisma.repossession.create.mock.calls[0][0].data;
+      const jp5Input = jp5.execute.mock.calls[0][0];
+      // ยอดค้าง 2,000 → ส่วนลด 50% = 59.58 (ตัวเลขเดียวกับเทส profitLoss ข้างล่าง)
+      expect(jp5Input.discount.toFixed(2)).toBe('59.58');
+      expect(jp5Input.discount.toFixed(2)).toBe(new Prisma.Decimal(data.discountAmount).toFixed(2));
+    });
+
+    it('PR6: ส่วนลด 0% → ไม่ส่งส่วนลดเข้า JP5 (ไม่มีบรรทัด 52-1106)', async () => {
+      arm({ status: 'DEFAULT' });
+      await run({ discountPct: 0 });
+      expect(jp5.execute.mock.calls[0][0].discount).toBeUndefined();
     });
 
     it('throws BadRequestException for invalid condition grade', async () => {

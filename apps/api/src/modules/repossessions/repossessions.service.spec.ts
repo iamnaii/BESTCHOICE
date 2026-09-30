@@ -846,10 +846,21 @@ describe('RepossessionsService', () => {
     ) => {
       prisma.contract.findUnique.mockResolvedValue(makeContract(contractOverrides));
       prisma.repossession.create.mockResolvedValue(makeRepossession());
-      prisma.contract.update.mockResolvedValue({});
+      // Prisma คืนแถวที่ update แล้ว (UPDATE … RETURNING — อ่านหลังได้ row lock) · ไม่มีรายการอื่นคั่น = ค่าเท่าที่อ่านต้นฟังก์ชัน
+      prisma.contract.update.mockImplementation(
+        async ({ data }: { data: Record<string, unknown> }) => ({
+          ...makeContract(contractOverrides),
+          ...data,
+        }),
+      );
       prisma.product.update.mockResolvedValue({});
       prisma.auditLog.create.mockResolvedValue({});
     };
+    /** newValue ของ audit ตาม action (undefined = ไม่ได้เขียน) */
+    const auditValue = (action: string) =>
+      prisma.auditLog.create.mock.calls
+        .map(([a]: [{ data: { action: string; newValue: Record<string, unknown> } }]) => a.data)
+        .find((data: { action: string }) => data.action === action)?.newValue;
     const shopIntakeCalls = () =>
       journalAuto.createAndPost.mock.calls
         .filter(
@@ -952,6 +963,74 @@ describe('RepossessionsService', () => {
           }),
         }),
       );
+    });
+
+    // ผลตรวจสุดท้าย PR6 M1: ค่า "ก่อนล้าง" ของ audit มาจากแถวที่ล็อกแล้ว (แถวที่ update สถานะ CLOSED_BAD_DEBT คืนมา) ไม่ใช่ค่าที่
+    // อ่านก่อนล็อก — รายการเงินของสัญญาเดียวกันที่ commit คั่นสองจุดนั้นทำให้ค่าก่อนล็อกเก่า และ audit จะแสดงยอดไม่ตรงบัญชีที่ไม่มีจริง
+    it('PR6 M1: มีรายการเงินของสัญญา commit คั่นระหว่างอ่านต้นฟังก์ชันกับล็อก → audit ใช้คอลัมน์จากแถวที่ล็อกแล้ว (0 · 354 · 450) ไม่ใช่ค่าก่อนล็อก (300 · 200 · 300)', async () => {
+      // อ่านต้นฟังก์ชัน (ก่อนล็อก): ถังรวม 300 · ถังพัก 200 · เครดิต 300
+      arm({
+        status: 'TERMINATED',
+        advanceBalance: decimal(300),
+        rescheduleAdvanceBalance: decimal(200),
+        creditBalance: decimal(300),
+      });
+      // แถวที่ update สถานะคืนมา (อ่านหลังได้ row lock) เห็นค่าที่ commit คั่น: ถังรวม 0 · ถังพัก 354 · เครดิต 450
+      const locked = {
+        ...makeContract({ status: 'CLOSED_BAD_DEBT' }),
+        advanceBalance: decimal(0),
+        rescheduleAdvanceBalance: decimal(354),
+        creditBalance: decimal(450),
+      };
+      prisma.contract.update.mockImplementation(
+        async ({ data }: { data: Record<string, unknown> }) => ({ ...locked, ...data }),
+      );
+      // JP5 อ่านบัญชีหลังล็อก: 21-1103 354 (บรรทัดเงินพัก 200 + ส่วนที่เหลือ 154) · 21-5101 450
+      jp5.execute.mockResolvedValueOnce({
+        entryNo: 'JE-JP5',
+        parkRelief: decimal(200),
+        advanceRelief: decimal(154),
+        creditRelief: decimal(450),
+      });
+
+      await run();
+
+      // สองฝั่งเท่ากัน = ไม่มียอดที่คอลัมน์ทิ้งไป (ค่าก่อนล็อกจะแสดง 300 + 200 เทียบ 354 และ 300 เทียบ 450 ที่ไม่มีจริง)
+      expect(auditValue('REPOSSESSION')?.closeAdvances).toEqual({
+        advanceBalanceBefore: '0.00',
+        rescheduleAdvanceBalanceBefore: '354.00',
+        creditBalanceBefore: '450.00',
+        ledger21_1103Cleared: '354.00',
+        ledger21_5101Cleared: '450.00',
+      });
+      expect(auditValue('RESCHEDULE_ADVANCE_CONSUMED')).toMatchObject({
+        parkRelief: '200.00',
+        beforeParkBalance: '354.00',
+        afterParkBalance: '0.00',
+      });
+      // ไม่มีการอ่านสัญญาเพิ่ม — ใช้แถวที่ update คืนมา
+      expect(prisma.contract.findUnique).toHaveBeenCalledTimes(1);
+    });
+
+    // ผลตรวจ Task 6 m2: เขียน audit ถังพักเมื่อถังพักก่อนยึด > 0 แม้บรรทัดเงินพักของ JP5 ลง 0 (กิ่ง `|| beforeParkBalance.gt(0)`)
+    it('PR6: ถังพักในสัญญา 354 แต่ JP5 ลงบรรทัดเงินพัก 0 (ไม่มียอดในบัญชีหนุน) → ยังเขียน audit ถังพัก: ลง 0.00 · ก่อน 354.00 · หลัง 0.00', async () => {
+      arm({ status: 'TERMINATED', rescheduleAdvanceBalance: decimal(354) });
+      jp5.execute.mockResolvedValueOnce({
+        entryNo: 'JE-JP5',
+        parkRelief: decimal(0),
+        advanceRelief: decimal(0),
+        creditRelief: decimal(0),
+      });
+
+      await run();
+
+      expect(auditValue('RESCHEDULE_ADVANCE_CONSUMED')).toEqual({
+        parkRelief: '0.00',
+        beforeParkBalance: '354.00',
+        afterParkBalance: '0.00',
+        repossessionId: 'repo-1',
+        source: 'REPOSSESSION_PARK_RELIEF',
+      });
     });
 
     it('PR6: ส่งส่วนลดยอดปิดตัวเดียวกับที่เก็บในแถวยึด (quote) เข้า JP5 → Dr 52-1106 (คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5)', async () => {

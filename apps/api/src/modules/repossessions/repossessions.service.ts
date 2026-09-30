@@ -773,7 +773,9 @@ export class RepossessionsService {
       },
     });
 
-    await tx.contract.update({
+    // แถวที่คืนมา (UPDATE … RETURNING) อ่านหลังได้ row lock ของสัญญา — audit ข้างล่างใช้คอลัมน์เงินของลูกค้าจากแถวนี้
+    // (ค่า "ก่อนล้าง") แทน `contract` ที่อ่านก่อนล็อก ซึ่งเก่าได้ถ้ารายการเงินของสัญญาเดียวกัน commit คั่น (ผลตรวจสุดท้าย PR6 M1)
+    const lockedContract = await tx.contract.update({
       where: { id: input.contractId },
       data: { status: 'CLOSED_BAD_DEBT' },
     });
@@ -830,20 +832,20 @@ export class RepossessionsService {
         data: CONTRACT_ADVANCE_COLUMNS_CLEARED,
       });
       warnings = warningsOf(jp5Result);
-      // หลักฐานถาวร (ผลตรวจแผน PR6 M-4 — สัญญาณเตือน Sentry เก็บไม่นาน): คอลัมน์ก่อนตั้งเป็นศูนย์ (ค่าที่อ่านต้นธุรกรรม —
-      // ชุดเดียวกับ beforeParkBalance ของ audit ถังพัก) คู่กับยอดที่ JP5 หักตามบัญชี → เขียนใน audit REPOSSESSION ข้างล่าง.
-      // สองฝั่งไม่เท่ากัน = ส่วนที่คอลัมน์ทิ้งไป
+      // หลักฐานถาวร (ผลตรวจแผน PR6 M-4 — สัญญาณเตือน Sentry เก็บไม่นาน): คอลัมน์ก่อนตั้งเป็นศูนย์ (แถวที่ล็อกแล้ว
+      // `lockedContract` — ชุดเดียวกับ beforeParkBalance ของ audit ถังพัก และค่าที่ JP5 เทียบกับบัญชี) คู่กับยอดที่ JP5 หักตาม
+      // บัญชี → เขียนใน audit REPOSSESSION ข้างล่าง. สองฝั่งไม่เท่ากัน = ส่วนที่คอลัมน์ทิ้งไป
       closeAdvances = {
-        advanceBalanceBefore: d(contract.advanceBalance).toFixed(2),
-        rescheduleAdvanceBalanceBefore: d(contract.rescheduleAdvanceBalance).toFixed(2),
-        creditBalanceBefore: d(contract.creditBalance).toFixed(2),
+        advanceBalanceBefore: d(lockedContract.advanceBalance).toFixed(2),
+        rescheduleAdvanceBalanceBefore: d(lockedContract.rescheduleAdvanceBalance).toFixed(2),
+        creditBalanceBefore: d(lockedContract.creditBalance).toFixed(2),
         ledger21_1103Cleared: d(jp5Result.parkRelief).add(d(jp5Result.advanceRelief)).toFixed(2),
         ledger21_5101Cleared: d(jp5Result.creditRelief).toFixed(2),
       };
       // audit ถังพักคงรูปเดิม: ยอดที่บรรทัดเงินพักลงจริง (template clamp ด้วย GL) + ยอดถังก่อน/หลัง (หลัง = 0 เสมอ —
       // ส่วนที่ยอดปิดไม่ได้ดูดซับถูกหักด้วยบรรทัดเงินรับล่วงหน้าที่เหลือของ JE เดียวกัน)
       const postedParkRelief = d(jp5Result.parkRelief);
-      const beforeParkBalance = d(contract.rescheduleAdvanceBalance ?? 0);
+      const beforeParkBalance = d(lockedContract.rescheduleAdvanceBalance ?? 0);
       if (postedParkRelief.gt(0) || beforeParkBalance.gt(0)) {
         await tx.auditLog.create({
           data: {

@@ -482,6 +482,30 @@ describe('RepossessionJP5Template', () => {
       expect(res.parkRelief.toFixed(2), 'clamp ที่ยอด GL จริง').toBe('354.00');
       const b = await jp5LinesFor(c.id);
       expect(b.lines.find((l) => l.code === '21-1103')!.dr.toFixed(2)).toBe('354.00');
+
+      // PR6 (ผลตรวจ Task 4 m2(a)) — ถังพักมากกว่ายอดในบัญชี: บรรทัดเงินพักหักยอดในบัญชีหมดแล้ว ไม่มีส่วนที่เหลือ →
+      // advanceRelief 0 (ผลและ metadata) · 21-1103 บรรทัดเดียว · 21-1103 ของสัญญาหลังลงเป็น 0.00 (ไม่ติดลบ)
+      expect(res.advanceRelief.toFixed(2)).toBe('0.00');
+      expect((b.entry.metadata as Record<string, unknown>).advanceRelief).toBeUndefined();
+      expect(b.lines.filter((l) => l.code === '21-1103').map((l) => l.dr.toFixed(2))).toEqual([
+        '354.00',
+      ]);
+      const rows = await prisma.journalLine.findMany({
+        where: {
+          accountCode: '21-1103',
+          journalEntry: {
+            metadata: { path: ['contractId'], equals: c.id },
+            status: 'POSTED',
+            deletedAt: null,
+          },
+        },
+        select: { debit: true, credit: true },
+      });
+      const bal = rows.reduce(
+        (s, l) => s.plus(l.credit.toString()).minus(l.debit.toString()),
+        new Decimal(0),
+      );
+      expect(bal.toFixed(2), '21-1103 ของสัญญาหลังยึด').toBe('0.00');
     });
 
     // PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6 (29/09/2569): เงินรับล่วงหน้าที่ค้างในบัญชีทุกถังถูกหักตอนยึดเสมอ

@@ -250,6 +250,60 @@ describe('BadDebtWriteOffTemplate — หักเงินของลูกค
     });
   });
 
+  // ขอบการปฏิเสธจริง (ผลตรวจสุดท้าย PR6 I-1): ปฏิเสธเมื่อเงินของลูกค้า (21-1103 + 21-5101 ตามบัญชี) มากกว่าลูกหนี้คงเหลือตามบัญชี
+  // (รวม VAT) หักภาษีในใบลดหนี้ ม.82/5 ของงวดที่ตั้งลูกหนี้แล้วแต่ยังไม่จ่าย — ไม่ใช่ "มากกว่าหนี้". ใบลดหนี้ไม่ลดตามเงินที่หัก (ถ2ง)
+  // จึงปฏิเสธได้แม้เงินของลูกค้าน้อยกว่าหนี้: งวดค้าง 1,515.83 − ภาษีในใบลดหนี้ 99.17 = 1,416.66
+  it('ขอบการปฏิเสธ = ลูกหนี้รวม VAT − ภาษีในใบลดหนี้: งวดตั้งลูกหนี้แล้วค้าง 1,515.83 (ใบลดหนี้ 99.17) · เงินของลูกค้า 1,450.00 (น้อยกว่าหนี้) → ปฏิเสธ loss −33.34 ไม่ลงรายการ · 1,416.66 → ลงได้ หนี้สูญ 0', async () => {
+    const accrued = [
+      {
+        installmentNo: 1,
+        accrualJournalEntryId: 'je-2a-1',
+        dueDate: new Date(Date.UTC(2026, 8, 1)),
+      },
+    ];
+    // เงินของลูกค้านับรวมทั้งสองบัญชี: 21-1103 1,000.00 + 21-5101 450.00 = 1,450.00
+    const refused = build({
+      gl: {
+        '11-2103': { dr: '1515.83' },
+        '21-1103': { cr: '1000.00' },
+        '21-5101': { cr: '450.00' },
+      },
+      columns: { advanceBalance: '1000.00', creditBalance: '450.00' },
+    });
+    refused.client.installmentSchedule.findMany.mockResolvedValue(accrued);
+    await expect(
+      refused.template.execute({ contractId: 'contract-1' }, refused.client as never),
+    ).rejects.toThrow(/negative loss plug \(-33\.34\)/);
+    expect(refused.createAndPost).not.toHaveBeenCalled();
+
+    // ขอบพอดี: 21-1103 1,000.00 + 21-5101 416.66 = 1,416.66 → หนี้สูญ 0 (ไม่มีบรรทัด 51-1102) · ใบลดหนี้ 99.17 เต็มจำนวน
+    const edge = build({
+      gl: {
+        '11-2103': { dr: '1515.83' },
+        '21-1103': { cr: '1000.00' },
+        '21-5101': { cr: '416.66' },
+      },
+      columns: { advanceBalance: '1000.00', creditBalance: '416.66' },
+    });
+    edge.client.installmentSchedule.findMany.mockResolvedValue(accrued);
+    const result = await edge.template.execute({ contractId: 'contract-1' }, edge.client as never);
+
+    expect(tuples(edge.posted().lines)).toEqual([
+      '21-2101 99.17 0.00',
+      '11-2103 0.00 1515.83',
+      '21-1103 1000.00 0.00',
+      '21-5101 416.66 0.00',
+    ]);
+    expect(edge.posted().metadata).toMatchObject({
+      writeOffExpense: '0.00',
+      creditNoteIssued: true,
+      creditNoteVatAmount: '99.17',
+      advanceRelief: '1000.00',
+      creditRelief: '416.66',
+    });
+    expect(result.entryNo).toBe('JE-WO-1');
+  });
+
   it('รายการตัดหนี้สูญของสัญญานี้มีอยู่แล้ว → คืนเลขเดิม ยอดหัก 0 ไม่มีสัญญาณเตือน ไม่ลงซ้ำ', async () => {
     const { template, client, createAndPost } = build({
       gl: { ...STANDARD_1A, '21-1103': { cr: '500.00' } },

@@ -27,7 +27,12 @@ function line(
   accountCode: string,
   debit: string,
   credit: string,
-  entry: { referenceType?: string | null; metadata?: Prisma.JsonValue | null } = {},
+  entry: {
+    referenceType?: string | null;
+    metadata?: Prisma.JsonValue | null;
+    /** F1 (fix round 1): true = จำลองรายการที่มีบรรทัดพี่น้องบน 21-3201 — ไม่ส่ง/undefined = ไม่ใช่ (ค่าเดิม) */
+    isVatSettlement?: boolean;
+  } = {},
 ): Pp30OutputVatLine {
   seq += 1;
   return {
@@ -41,6 +46,7 @@ function line(
       referenceType: entry.referenceType === undefined ? 'AUTO' : entry.referenceType,
       description: `รายการที่ ${seq}`,
       metadata: entry.metadata === undefined ? null : entry.metadata,
+      ...(entry.isVatSettlement === undefined ? {} : { isVatSettlement: entry.isVatSettlement }),
     },
   };
 }
@@ -293,6 +299,54 @@ describe('summarizePp30OutputVat', () => {
     });
     expectReconciles(s);
   });
+
+  it('F1: รายการปิดภาษี (VAT close) ที่แตะ 21-3201 ไม่กระทบยอดใดๆ — Dr 21-2101 500 / Cr 11-4101 Y / Cr 21-3201 (500−Y) ไม่ถูกนับทั้งบรรทัด', () => {
+    const s = summarizePp30OutputVat([
+      line('21-2101', '0', '99.17', { metadata: META_2A }),
+      line('21-2101', '500.00', '0', { isVatSettlement: true }),
+    ]);
+
+    expect(toPp30OutputVatJson(s)).toMatchObject({
+      settledGross: '99.17',
+      reductionReversal: '0.00',
+      reductionCreditNote: '0.00',
+      reductionOther: '0.00',
+      reductionTotal: '0.00',
+      settledNet: '99.17',
+      totalOutputVat: '99.17',
+    });
+    expect(s.reductionLines).toEqual([]);
+    expectReconciles(s);
+  });
+
+  it('F1: รายการกลับของรายการปิดภาษี (เครดิต 21-2101 500 · tag REVERSAL · แตะ 21-3201) ไม่ถูกนับเข้า settledGross เช่นกัน', () => {
+    const s = summarizePp30OutputVat([
+      line('21-2101', '0', '99.17', { metadata: META_2A }),
+      line('21-2101', '0', '500.00', { metadata: { tag: 'REVERSAL' }, isVatSettlement: true }),
+    ]);
+
+    expect(s.settledGross.toFixed(2)).toBe('99.17'); // ไม่รวม 500 ของรายการกลับรายการปิดภาษี
+    expect(toPp30OutputVatJson(s)).toMatchObject({
+      settledGross: '99.17',
+      reductionTotal: '0.00',
+      settledNet: '99.17',
+      totalOutputVat: '99.17',
+    });
+    expect(s.reductionLines).toEqual([]);
+    expectReconciles(s);
+  });
+
+  it('F1: จ่ายภาษีตรงไม่ผ่าน 21-3201 (Dr 21-2101 / Cr ธนาคาร) ยังนับเป็น "อื่น ๆ" ตามเดิม (ข้อจำกัดที่รู้ตัว)', () => {
+    const s = summarizePp30OutputVat([
+      line('21-2101', '0', '99.17', { metadata: META_2A }),
+      line('21-2101', '50.00', '0'), // Dr 21-2101 / Cr ธนาคาร ตรง ๆ ไม่มีบรรทัด 21-3201 ในรายการเดียวกัน
+    ]);
+
+    expect(s.reductions.other.toFixed(2)).toBe('50.00');
+    expect(s.reductionLines.map((r) => r.kind)).toEqual(['OTHER']);
+    expect(s.settledNet.toFixed(2)).toBe('49.17');
+    expectReconciles(s);
+  });
 });
 
 describe('PP30_INCLUDES_MANDATORY_60DAY', () => {
@@ -443,10 +497,19 @@ describe('computePp30OutputVat — query ของเดือน', () => {
             referenceType: true,
             description: true,
             metadata: true,
+            lines: {
+              where: { accountCode: '21-3201', deletedAt: null },
+              select: { id: true },
+              take: 1,
+            },
           },
         },
       },
-      orderBy: { journalEntry: { entryDate: 'asc' } },
+      orderBy: [
+        { journalEntry: { entryDate: 'asc' } },
+        { journalEntry: { entryNumber: 'asc' } },
+        { id: 'asc' },
+      ],
     });
     expect(findMany).toHaveBeenCalledWith(expectedArgs('21-2101'));
     expect(findMany).toHaveBeenCalledWith(expectedArgs('21-2103'));

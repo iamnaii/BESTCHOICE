@@ -18,12 +18,23 @@ import { bangkokMidnight } from '../../utils/date.util';
  *   - เดือน: `entryDate` (วันที่ของรายการ) ภายในเดือนตามปฏิทินไทย [วันที่ 1 00:00 น., วันที่ 1 ของเดือนถัดไป 00:00 น.)
  *     ไม่ขึ้นกับเขตเวลาของโปรเซส — รายการกลับรายการ/ใบลดหนี้ลดภาษีขายของเดือนที่ลงรายการ ไม่แก้เดือนเดิม
  *   - เดบิตของ 21-2101 แยกที่มา (ดู `classifyOutputVatReduction`) · เดบิตที่ระบุที่มาไม่ได้อยู่ในกลุ่ม "อื่น ๆ" ไม่ถูกทิ้ง
+ *   - รายการปิด/ชำระภาษีขายที่ผ่านบัญชี 21-3201 (เจ้าหนี้สรรพากร ภ.พ.30 รอชำระ) — ทั้งเดบิตและเครดิตของ 21-2101
+ *     ในรายการเดียวกัน **ไม่นับในการคำนวณเลย** (ไม่เข้า settledGross/reductions/reductionLines) เพราะเป็นรายการปิดยอด
+ *     ไม่ใช่รายการลดภาษีขายจริง (`journalEntry.isVatSettlement` — fix round 1, 2026-09-30). การชำระภาษีที่ไม่ผ่าน
+ *     21-3201 ตรง ๆ (เช่น Dr 21-2101 / Cr ธนาคาร) ยังนับเป็น "อื่น ๆ" ตามเดิม (ข้อจำกัดที่รู้ตัว)
  *   - ยอดติดลบได้ (เดือนที่มีแต่รายการกลับรายการ) — แสดงตามจริง ไม่ปัดเป็นศูนย์
  *   - ภาษีซื้อไม่อยู่ในไฟล์นี้ (ผู้เรียกแต่ละตัวคงกติกาภาษีซื้อเดิม)
  */
 
 export const PP30_SETTLED_VAT_ACCOUNT = '21-2101';
 export const PP30_MANDATORY_60DAY_VAT_ACCOUNT = '21-2103';
+
+/**
+ * เจ้าหนี้สรรพากร ภ.พ.30 รอชำระ — ใช้ตรวจว่ารายการ 21-2101 หนึ่งบรรทัดเป็นส่วนหนึ่งของรายการปิด/ชำระภาษีขาย
+ * (หรือการกลับรายการของมัน) หรือไม่ (`journalEntry.isVatSettlement`, F1 fix round 1). ไม่ export เพราะใช้เฉพาะ
+ * ในไฟล์นี้ตอนโหลดบรรทัด — ผู้เรียกภายนอกไม่ต้องรู้จักบัญชีนี้ อ่านผลลัพธ์ผ่าน flag บน `Pp30OutputVatLine` แทน
+ */
+const PP30_VAT_SETTLEMENT_ACCOUNT = '21-3201';
 
 /**
  * รวมภาษีขาย 60 วัน (21-2103) ในยอดภาษีขายของ ภ.พ.30 หรือไม่ — คำตัดสินผู้คุมงาน 2026-09-30: **ไม่รวม จนกว่าฝ่ายบัญชีจะตอบ**
@@ -49,6 +60,13 @@ export interface Pp30OutputVatLine {
     referenceType: string | null;
     description: string;
     metadata: Prisma.JsonValue | null;
+    /**
+     * true = รายการนี้มีบรรทัดพี่น้องบนบัญชี 21-3201 (เจ้าหนี้สรรพากร ภ.พ.30 รอชำระ) ที่ยังไม่ถูกลบ — เป็นรายการ
+     * ปิด/ชำระภาษีขาย (หรือการกลับรายการของมัน) ซึ่ง `summarizePp30OutputVat` ต้องข้าม 21-2101 ของรายการนี้ทั้งบรรทัด
+     * (F1, fix round 1 2026-09-30). undefined/false = ไม่ใช่ — ค่าเริ่มต้นนี้ทำให้ mock ของ Task ก่อนหน้าที่ยังไม่ส่ง
+     * ฟิลด์นี้มาทำงานได้เหมือนเดิม
+     */
+    isVatSettlement?: boolean;
   };
 }
 
@@ -178,6 +196,8 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
       continue;
     }
     if (line.accountCode !== PP30_SETTLED_VAT_ACCOUNT) continue;
+    // F1: รายการปิด/ชำระภาษีขายที่ผ่าน 21-3201 (หรือการกลับรายการของมัน) — ไม่นับทั้งบรรทัด
+    if (line.journalEntry.isVatSettlement) continue;
     settledGross = settledGross.plus(credit);
     if (debit.isZero()) continue;
     const kind = classifyOutputVatReduction(line.journalEntry);
@@ -257,14 +277,36 @@ export async function resolvePp30CompanyId(
   return finance.id;
 }
 
+/**
+ * แปลงแถวดิบจาก Prisma (มี `journalEntry.lines` เป็น nested select ที่กรองเฉพาะบรรทัด 21-3201 ที่ยังไม่ถูกลบ
+ * take 1 — ใช้ตรวจ F1) เป็น `Pp30OutputVatLine` — คำนวณ `isVatSettlement` จากความยาวของ `lines` แล้วตัดฟิลด์ดิบทิ้ง
+ * `lines` เป็น optional ในพารามิเตอร์โดยตั้งใจ (กว้างกว่าที่ query จริงคืนเสมอ) เพื่อให้ทนทานถ้าไม่มีค่าส่งมา
+ * (ไม่ตั้งค่า = ไม่ใช่รายการปิดภาษี) แทนที่จะพัง
+ */
+function toPp30OutputVatLine(row: {
+  accountCode: string;
+  debit: Prisma.Decimal;
+  credit: Prisma.Decimal;
+  journalEntry: Pp30OutputVatLine['journalEntry'] & { lines?: { id: string }[] };
+}): Pp30OutputVatLine {
+  const { lines, ...journalEntry } = row.journalEntry;
+  const isVatSettlement = (lines?.length ?? 0) > 0;
+  return {
+    accountCode: row.accountCode,
+    debit: row.debit,
+    credit: row.credit,
+    journalEntry: isVatSettlement ? { ...journalEntry, isVatSettlement: true } : journalEntry,
+  };
+}
+
 /** บรรทัด 21-2101 และ 21-2103 ของเดือน (สอง query แยกบัญชี — ไม่กรองเฉพาะเครดิต) */
 export async function loadPp30OutputVatLines(
   client: Pp30Client,
   companyId: string,
   range: Pp30MonthRange,
 ): Promise<Pp30OutputVatLine[]> {
-  const byAccount = (accountCode: string) =>
-    client.journalLine.findMany({
+  const byAccount = async (accountCode: string): Promise<Pp30OutputVatLine[]> => {
+    const rows = await client.journalLine.findMany({
       where: {
         accountCode,
         deletedAt: null,
@@ -287,11 +329,24 @@ export async function loadPp30OutputVatLines(
             referenceType: true,
             description: true,
             metadata: true,
+            // F1: ตรวจว่ารายการนี้เป็นรายการปิด/ชำระภาษีขาย (ผ่าน 21-3201) หรือไม่ — take 1 พอ ไม่ต้องนับทั้งหมด
+            lines: {
+              where: { accountCode: PP30_VAT_SETTLEMENT_ACCOUNT, deletedAt: null },
+              select: { id: true },
+              take: 1,
+            },
           },
         },
       },
-      orderBy: { journalEntry: { entryDate: 'asc' } },
+      // F2: entryDate อย่างเดียวไม่พอ — JE อัตโนมัติในทรานแซกชันเดียวกันประทับเวลาเดียวกัน ลำดับจึงไม่แน่นอน
+      orderBy: [
+        { journalEntry: { entryDate: 'asc' } },
+        { journalEntry: { entryNumber: 'asc' } },
+        { id: 'asc' },
+      ],
     });
+    return rows.map(toPp30OutputVatLine);
+  };
   const [settled, mandatory60Day] = await Promise.all([
     byAccount(PP30_SETTLED_VAT_ACCOUNT),
     byAccount(PP30_MANDATORY_60DAY_VAT_ACCOUNT),

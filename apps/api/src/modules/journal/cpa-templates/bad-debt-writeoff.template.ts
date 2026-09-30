@@ -6,10 +6,25 @@ import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { computeCnBreakdown } from '../compute-cn-breakdown';
 import { glContractBalance } from '../gl-contract-balance';
+import { readContractCloseAdvances } from '../contract-close-advances';
+import { DeferredWarning, emitDeferredWarnings } from '../deferred-warning';
 
 export interface BadDebtWriteOffInput {
   contractId: string;
   writeOffReason?: string;
+}
+
+export interface BadDebtWriteOffResult {
+  entryNo: string;
+  /** Dr 21-1103 ที่ลงในรายการนี้ (เงินรับล่วงหน้าทุกถังตามยอดในบัญชี) — 0 เมื่อไม่มี / รายการมีอยู่แล้ว */
+  advanceRelief: Decimal;
+  /** Dr 21-5101 ที่ลงในรายการนี้ (เงินเกินของลูกค้าตามยอดในบัญชี) — 0 เมื่อไม่มี / รายการมีอยู่แล้ว */
+  creditRelief: Decimal;
+  /**
+   * สัญญาณเตือน (คอลัมน์เงินของลูกค้าไม่ตรงกับยอดในบัญชี) — ผู้เรียกที่ส่งธุรกรรมของตัวเองต้องเรียก
+   * `emitDeferredWarnings` หลังธุรกรรม commit · ไม่ส่งธุรกรรม = template ส่งให้แล้วและคืนรายการว่าง
+   */
+  warnings: DeferredWarning[];
 }
 
 /**
@@ -31,6 +46,8 @@ export interface BadDebtWriteOffInput {
  *   Dr 21-2102  glBalance(21-2102, cr side)                 ← ล้างภาษีขายรอเรียกเก็บคงเหลือ
  *   Dr 11-2102  provisionConsumed                           ← ใช้ค่าเผื่อก่อน (เดิม)
  *   Dr 11-2102  releasedProvision (when provision > loss)   ← คืนค่าเผื่อส่วนเกิน (Task 6, symmetric to JP5)
+ *   Dr 21-1103  glBalance(21-1103, cr side)                 ← หักเงินรับล่วงหน้าทุกถัง (PR6 — ฝ่ายบัญชี เล่ม 1 ข้อ 6)
+ *   Dr 21-5101  glBalance(21-5101, cr side)                 ← หักเงินเกินของลูกค้า (PR6 — ข้อเดียวกัน)
  *   Dr 51-1102  plug (loss ส่วนเกินค่าเผื่อ)                    ← ส่วนที่เหลือให้ JE balance
  *     Cr 11-2103  glBalance(11-2103)                        ← ล้างลูกหนี้ค้าง (accrued)
  *     Cr 11-2101  glBalance(11-2101)                        ← ล้างลูกหนี้ Gross (deferred)
@@ -60,9 +77,16 @@ export class BadDebtWriteOffTemplate {
   async execute(
     input: BadDebtWriteOffInput,
     tx?: Prisma.TransactionClient,
-  ): Promise<{ entryNo: string }> {
+  ): Promise<BadDebtWriteOffResult> {
     const { contractId, writeOffReason } = input;
     const client = tx ?? this.prisma;
+    // รายการของสัญญานี้มีอยู่แล้ว (เรียกซ้ำ / แพ้ race) — ไม่มีอะไรลงใหม่ในการเรียกครั้งนี้
+    const existingResult = (entryNo: string): BadDebtWriteOffResult => ({
+      entryNo,
+      advanceRelief: new Decimal(0),
+      creditRelief: new Decimal(0),
+      warnings: [],
+    });
 
     // Idempotency check
     const existingWo = await client.journalEntry.findFirst({
@@ -78,12 +102,18 @@ export class BadDebtWriteOffTemplate {
       this.logger.log(
         `[A.5a] BadDebtWriteOff idempotency — JE ${existingWo.entryNumber} already exists for contract ${contractId}, skipping`,
       );
-      return { entryNo: existingWo.entryNumber };
+      return existingResult(existingWo.entryNumber);
     }
 
     const contract = await client.contract.findUniqueOrThrow({
       where: { id: contractId },
-      select: { id: true, contractNumber: true },
+      select: {
+        id: true,
+        contractNumber: true,
+        advanceBalance: true,
+        rescheduleAdvanceBalance: true,
+        creditBalance: true,
+      },
     });
 
     // ---- GL balances (เก็บกวาดจริงถึงศูนย์ รวมเศษ rounding งวดสุดท้าย) ----
@@ -216,7 +246,20 @@ export class BadDebtWriteOffTemplate {
       });
     }
 
+    // คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6 (29/09/2569) ทางเลือก (1) "หักทุกประเภท ทั้งสองกรณี": เงินของลูกค้าที่สัญญายังถือไว้
+    // — เงินรับล่วงหน้า 21-1103 ทุกถัง (ถังพักค่าปรับดิว + ถังรวม) และเงินเกิน 21-5101 — หักลูกหนี้ก่อนคำนวณหนี้สูญ ตามยอด
+    // ในบัญชี (คอลัมน์ไม่ตรงบัญชี = สัญญาณเตือน). วางก่อน plug → หนี้สูญ 51-1102 ลดเท่ายอดที่หักพอดี (ไม่มีสูตรที่สอง).
+    // บรรทัดไม่มีคำอธิบาย — จอ/สมุดรายวันแสดงชื่อบัญชีจากผังบัญชี (ไม่มีข้อความใหม่บนจอ)
+    const advances = await readContractCloseAdvances(client, contract, 'write-off');
+    if (advances.advance.gt(0)) {
+      lines.push({ accountCode: '21-1103', dr: advances.advance, cr: zero });
+    }
+    if (advances.credit.gt(0)) {
+      lines.push({ accountCode: '21-5101', dr: advances.credit, cr: zero });
+    }
+
     // loss = ΣCr − ΣDr(ที่มีอยู่) → consume ค่าเผื่อก่อน แล้ว plug 51-1102
+    // (PR6: เงินของลูกค้าที่หักข้างบนมากกว่าหนี้คงเหลือ → loss ติดลบ → ปฏิเสธด้วยข้อความเดิมด้านล่าง ไม่ลงรายการ)
     const sumDr = lines.reduce((s, l) => s.plus(l.dr), new Decimal(0));
     const sumCr = lines.reduce((s, l) => s.plus(l.cr), new Decimal(0));
     let loss = sumCr.minus(sumDr);
@@ -296,13 +339,25 @@ export class BadDebtWriteOffTemplate {
             creditNoteIssued,
             creditNoteVatAmount: cnVat.toFixed(2),
             writeOffReason: writeOffReason ?? null,
+            // PR6 — stamp เฉพาะเมื่อมีจริง เพื่อไม่ให้ metadata ของสัญญาทั่วไปเปลี่ยนรูป
+            ...(advances.advance.gt(0) ? { advanceRelief: advances.advance.toFixed(2) } : {}),
+            ...(advances.credit.gt(0) ? { creditRelief: advances.credit.toFixed(2) } : {}),
           },
           lines,
         },
         tx,
       );
 
-      return { entryNo: result.entryNumber };
+      const posted: BadDebtWriteOffResult = {
+        entryNo: result.entryNumber,
+        advanceRelief: advances.advance,
+        creditRelief: advances.credit,
+        warnings: advances.warnings,
+      };
+      if (tx) return posted;
+      // ไม่มีธุรกรรมของผู้เรียก — รายการ commit แล้วเมื่อ createAndPost คืนค่า
+      emitDeferredWarnings(posted.warnings);
+      return { ...posted, warnings: [] };
     } catch (err) {
       // A concurrent run can race past the findFirst probe above and lose
       // the unique-index race. Translate the P2002 into the same
@@ -322,7 +377,7 @@ export class BadDebtWriteOffTemplate {
           this.logger.log(
             `[A.5a] BadDebtWriteOff race — JE ${race.entryNumber} already exists for idempotencyKey ${idempotencyKey} (P2002), returning existing`,
           );
-          return { entryNo: race.entryNumber };
+          return existingResult(race.entryNumber);
         }
       }
       throw err;

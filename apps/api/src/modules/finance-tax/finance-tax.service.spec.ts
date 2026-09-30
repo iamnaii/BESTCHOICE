@@ -14,7 +14,11 @@ import { PrismaService } from '../../prisma/prisma.service';
  * Schema reality:
  *   - JournalLine: debit (Decimal), credit (Decimal), accountCode, description
  *   - JournalEntry: entryNumber (→ documentNumber), referenceType (→ sourceType), referenceId (→ sourceId)
- *   - Number(field) used for Decimal conversion — never aggregate Decimals directly
+ *   - getVatMonthly (Task 2) aggregates with `Prisma.Decimal` — vatOutput comes from `computePp30OutputVat`
+ *     (single ภ.พ.30 calculator, `pp30-output-vat.ts`) and vatDeferred/vatInput/netVat are accumulated with
+ *     Decimal `.plus()`/`.minus()`, never `Number()` — all four return as 2-dp strings (`.toFixed(2)`).
+ *     Only the per-line `debit`/`credit` inside `lines` are `Number()`, for display in the line table —
+ *     never summed. getWhtMonthly (Task 3) still aggregates with `Number()` — untouched by this task.
  */
 describe('FinanceTaxService', () => {
   let service: FinanceTaxService;

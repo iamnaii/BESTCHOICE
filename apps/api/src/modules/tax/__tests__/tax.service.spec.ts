@@ -593,6 +593,58 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
       mandatory60DayIncluded: false,
     });
   });
+
+  // ── 2026-09-30 fix round 1 (F1): vatOutputBySource ต้องกรองรายการปิดภาษี (isVatSettlement)
+  // เหมือน summarizePp30OutputVat — ไม่งั้นผลรวมแยกตาม referenceType ไม่เท่า totalVatSettled ──
+
+  it('F1: a VAT-settlement entry (21-2101 line whose JE also touches 21-3201) is excluded from vatOutputBySource too — Σ by-source === totalVatSettled', async () => {
+    const sale = {
+      accountCode: '21-2101',
+      debit: Dec('0'),
+      credit: Dec('700'),
+      journalEntry: {
+        id: 'je-sale',
+        entryNumber: 'JE-202605-00020',
+        entryDate: new Date('2026-05-10T05:00:00.000Z'),
+        referenceType: 'PAYMENT',
+        description: 'ขาย',
+        metadata: null,
+        // ไม่มี `lines` — ผ่านตัวแปลงจริงของ loader แล้ว isVatSettlement จะเป็น undefined (ไม่ใช่รายการปิดภาษี)
+      },
+    };
+    const settlement = {
+      accountCode: '21-2101',
+      debit: Dec('700'),
+      credit: Dec('0'),
+      journalEntry: {
+        id: 'je-close',
+        entryNumber: 'JE-202605-00021',
+        entryDate: new Date('2026-05-31T05:00:00.000Z'),
+        referenceType: 'MANUAL',
+        description: 'ปิดภาษีขายประจำเดือน',
+        metadata: null,
+        // มีบรรทัดพี่น้องบน 21-3201 — ผ่านตัวแปลงจริงของ loader (toPp30OutputVatLine) แล้วได้ isVatSettlement: true
+        lines: [{ id: 'jl-3201' }],
+      },
+    };
+    mockJournalByCode({ '21-2101': [sale, settlement] });
+
+    const result = await service.previewPP30('co-1', 2026, 5);
+
+    // ตัวคำนวณ (summarizePp30OutputVat) ข้ามรายการปิดภาษีทั้งบรรทัด — settledNet = 700 (แค่ยอดขาย)
+    expect(result.totalVatSettled.toFixed(2)).toBe('700.00');
+    expect(result.totalVatOutput.toFixed(2)).toBe('700.00');
+
+    // ก่อนแก้ F1: by-source รวม PAYMENT 700 + MANUAL -700 = 0.00 ≠ totalVatSettled
+    const bySourceSum = Object.values(result.vatOutputBySource).reduce(
+      (s, v) => s.add(v),
+      new Prisma.Decimal(0),
+    );
+    expect(bySourceSum.toFixed(2)).toBe(result.totalVatSettled.toFixed(2));
+    expect(result.vatOutputBySource.PAYMENT.toFixed(2)).toBe('700.00');
+    // รายการปิดภาษีไม่ควรสร้างคีย์ MANUAL เลย (ไม่ใช่แค่ค่าเป็นศูนย์ — ต้องไม่ถูกนับเข้าเลนส์นี้)
+    expect(result.vatOutputBySource.MANUAL).toBeUndefined();
+  });
 });
 
 // ────────────────────────────────────────────────────────────

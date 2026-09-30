@@ -177,6 +177,19 @@ export function classifyOutputVatReduction(entry: {
   return 'OTHER';
 }
 
+/**
+ * นับบรรทัด 21-2101 นี้เป็นภาษีขายที่ตั้งไว้ (settled) ในการคำนวณของ ภ.พ.30 หรือไม่ — true เมื่อเป็น
+ * บัญชี 21-2101 **และ** ไม่ใช่ส่วนหนึ่งของรายการปิด/ชำระภาษีขาย (`journalEntry.isVatSettlement`).
+ * แหล่งเดียวของเงื่อนไขนี้ — ทั้ง `summarizePp30OutputVat` และผู้เรียกภายนอกที่ต้องแบ่งยอดต่อบรรทัด
+ * (เช่น `vatOutputBySource` ใน `TaxPreviewService.previewPP30`) ต้องเรียกฟังก์ชันนี้แทนการเช็ค
+ * `accountCode === PP30_SETTLED_VAT_ACCOUNT` ตรง ๆ — ผู้เรียกที่ลืมเช็ค `isVatSettlement` จะรวมยอด
+ * ของรายการปิดภาษีเข้าไปด้วย ทำให้ผลรวมย่อย (เช่นแยกตาม referenceType) ไม่เท่ายอดรวม
+ * `totalVatSettled` (F1, fix round 1 2026-09-30).
+ */
+export function countsAsPp30SettledVat(line: Pp30OutputVatLine): boolean {
+  return line.accountCode === PP30_SETTLED_VAT_ACCOUNT && !line.journalEntry.isVatSettlement;
+}
+
 /** สรุปภาษีขายจากบรรทัดของเดือน — รับเฉพาะ 21-2101 และ 21-2103 บรรทัดบัญชีอื่นถูกข้าม */
 export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVatSummary {
   let settledGross = ZERO;
@@ -195,9 +208,8 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
       m60Debit = m60Debit.plus(debit);
       continue;
     }
-    if (line.accountCode !== PP30_SETTLED_VAT_ACCOUNT) continue;
     // F1: รายการปิด/ชำระภาษีขายที่ผ่าน 21-3201 (หรือการกลับรายการของมัน) — ไม่นับทั้งบรรทัด
-    if (line.journalEntry.isVatSettlement) continue;
+    if (!countsAsPp30SettledVat(line)) continue;
     settledGross = settledGross.plus(credit);
     if (debit.isZero()) continue;
     const kind = classifyOutputVatReduction(line.journalEntry);

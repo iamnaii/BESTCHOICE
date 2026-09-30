@@ -4,8 +4,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityScope, ensureTaxTypeAllowedForEntity } from '../tax-entity.util';
 import {
   PP30_MANDATORY_60DAY_VAT_ACCOUNT,
-  PP30_SETTLED_VAT_ACCOUNT,
   computePp30OutputVat,
+  countsAsPp30SettledVat,
   toPp30OutputVatJson,
 } from '../pp30-output-vat';
 
@@ -53,10 +53,13 @@ export class TaxPreviewService {
     const zero = new Prisma.Decimal(0);
 
     // 21-2101 สุทธิ (เครดิต − เดบิต) แยกตาม referenceType — รวมกันเท่ากับ totalVatSettled
-    // (เดิมนับเฉพาะเครดิต จึงรวมกันไม่เท่ายอดเมื่อเดือนมีรายการกลับรายการ/ใบลดหนี้)
+    // (เดิมนับเฉพาะเครดิต จึงรวมกันไม่เท่ายอดเมื่อเดือนมีรายการกลับรายการ/ใบลดหนี้ · F1 fix round 1
+    // 2026-09-30: ต้องกรองด้วย countsAsPp30SettledVat ตัวเดียวกับ summarizePp30OutputVat — ไม่งั้น
+    // รายการปิด/ชำระภาษีขาย isVatSettlement จะรั่วเข้ามาแยกยอดคนละ referenceType ทำให้ผลรวมไม่เท่า
+    // totalVatSettled อีกครั้ง)
     const outputBySource = new Map<string, Prisma.Decimal>();
     for (const line of output.lines) {
-      if (line.accountCode !== PP30_SETTLED_VAT_ACCOUNT) continue;
+      if (!countsAsPp30SettledVat(line)) continue;
       const net = (line.credit ?? zero).sub(line.debit ?? zero);
       if (net.isZero()) continue;
       const refType = line.journalEntry.referenceType ?? 'OTHER';

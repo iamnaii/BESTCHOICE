@@ -484,7 +484,9 @@ describe('RepossessionJP5Template', () => {
       expect(b.lines.find((l) => l.code === '21-1103')!.dr.toFixed(2)).toBe('354.00');
     });
 
-    it('parkRelief 0 / ไม่ส่ง → ไม่มีขา 21-1103 และ metadata ไม่มี parkRelief (JE เดิมไม่ขยับ)', async () => {
+    // PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6 (29/09/2569): เงินรับล่วงหน้าที่ค้างในบัญชีทุกถังถูกหักตอนยึดเสมอ
+    // (เดิม: parkRelief 0 = ไม่มีขา 21-1103 และเงิน 354 ค้างในบัญชีหลังยึด)
+    it('parkRelief 0 / ไม่ส่ง → ไม่มีบรรทัดเงินพักปรับดิว แต่เงินรับล่วงหน้า 354 ที่ค้างในบัญชีถูกหักด้วยบรรทัดเงินรับล่วงหน้าที่เหลือ', async () => {
       const journal = await setup();
       const c = await seedStandard17k12m(prisma);
       await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
@@ -498,9 +500,89 @@ describe('RepossessionJP5Template', () => {
       });
 
       expect(res.parkRelief.toFixed(2)).toBe('0.00');
+      expect(res.advanceRelief.toFixed(2)).toBe('354.00');
       const b = await jp5LinesFor(c.id);
-      expect(b.lines.find((l) => l.code === '21-1103')).toBeUndefined();
-      expect((b.entry.metadata as Record<string, unknown>).parkRelief).toBeUndefined();
+      expect(b.lines.filter((l) => l.code === '21-1103').map((l) => l.dr.toFixed(2))).toEqual([
+        '354.00',
+      ]);
+      const meta = b.entry.metadata as Record<string, unknown>;
+      expect(meta.parkRelief).toBeUndefined();
+      expect(meta.advanceRelief).toBe('354.00');
+    });
+
+    it('PR6: เงินรับล่วงหน้าถังรวม 500 + เงินเกินของลูกค้า 300 → Dr 21-1103 500 · Dr 21-5101 300 · ขาดทุนลด 800.00 เป๊ะ · 21-1103 / 21-5101 ของสัญญาเหลือ 0', async () => {
+      const journal = await setup();
+      const tmpl = new RepossessionJP5Template(journal, prisma as never);
+      const activation = new ContractActivation1ATemplate(journal, prisma as never);
+
+      // A) ไม่มีเงินของลูกค้าค้าง — baseline (1A อย่างเดียว: ขาดทุน 18,190.00 − 7,000.00 = 11,190.00)
+      const plain = await seedStandard17k12m(prisma);
+      await activation.execute(plain.id);
+      await tmpl.execute({
+        contractId: plain.id,
+        depositAccountCode: '11-1101',
+        repossessionValue: new Decimal('7000.00'),
+      });
+      const lossA = (await jp5LinesFor(plain.id)).lines.find((l) => l.code === '51-1102')!.dr;
+      expect(lossA.toFixed(2)).toBe('11190.00');
+
+      // B) ถังรวม 500 (Cr 21-1103) + เงินเกิน 300 (Cr 21-5101) — คอลัมน์ตรงกับบัญชี
+      const withMoney = await seedStandard17k12m(prisma);
+      await activation.execute(withMoney.id);
+      await prisma.contract.update({
+        where: { id: withMoney.id },
+        data: { advanceBalance: new Decimal('500.00'), creditBalance: new Decimal('300.00') },
+      });
+      for (const [accountCode, amount] of [
+        ['21-1103', '500.00'],
+        ['21-5101', '300.00'],
+      ] as const) {
+        await journal.createAndPost({
+          description: `เงินของลูกค้า ${accountCode} (spec PR6)`,
+          reference: `${withMoney.id}:pr6-${accountCode}`,
+          metadata: { tag: 'spec', flow: 'pr6-customer-money', contractId: withMoney.id },
+          lines: [
+            { accountCode: '11-1101', dr: new Decimal(amount), cr: new Decimal(0) },
+            { accountCode, dr: new Decimal(0), cr: new Decimal(amount) },
+          ],
+        });
+      }
+      const res = await tmpl.execute({
+        contractId: withMoney.id,
+        depositAccountCode: '11-1101',
+        repossessionValue: new Decimal('7000.00'),
+      });
+      const b = await jp5LinesFor(withMoney.id);
+
+      expect(b.lines.find((l) => l.code === '21-1103')!.dr.toFixed(2)).toBe('500.00');
+      expect(b.lines.find((l) => l.code === '21-5101')!.dr.toFixed(2)).toBe('300.00');
+      const lossB = b.lines.find((l) => l.code === '51-1102')!.dr;
+      expect(lossB.toFixed(2)).toBe('10390.00');
+      expect(lossA.minus(lossB).toFixed(2)).toBe('800.00');
+      expect(res.advanceRelief.toFixed(2)).toBe('500.00');
+      expect(res.creditRelief.toFixed(2)).toBe('300.00');
+      const dr = b.lines.reduce((s, l) => s.plus(l.dr), new Decimal(0));
+      const cr = b.lines.reduce((s, l) => s.plus(l.cr), new Decimal(0));
+      expect(dr.toFixed(2)).toBe(cr.toFixed(2));
+
+      for (const accountCode of ['21-1103', '21-5101']) {
+        const rows = await prisma.journalLine.findMany({
+          where: {
+            accountCode,
+            journalEntry: {
+              metadata: { path: ['contractId'], equals: withMoney.id },
+              status: 'POSTED',
+              deletedAt: null,
+            },
+          },
+          select: { debit: true, credit: true },
+        });
+        const bal = rows.reduce(
+          (s, l) => s.plus(l.credit.toString()).minus(l.debit.toString()),
+          new Decimal(0),
+        );
+        expect(bal.toFixed(2), `${accountCode} ของสัญญานี้ต้องถูกล้างหมด`).toBe('0.00');
+      }
     });
   });
 

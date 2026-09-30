@@ -6,6 +6,8 @@ import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { computeCnBreakdown } from '../compute-cn-breakdown';
 import { glContractBalance } from '../gl-contract-balance';
+import { readContractCloseAdvances } from '../contract-close-advances';
+import { DeferredWarning, emitDeferredWarnings } from '../deferred-warning';
 
 export interface RepossessionInput {
   contractId: string;
@@ -42,6 +44,22 @@ export interface RepossessionInput {
    * (21-1107) ไม่มีสูตรใหม่.
    */
   parkRelief?: Decimal;
+}
+
+/** ผลของ `RepossessionJP5Template.execute` — ยอดที่ลงจริงของบรรทัดเงินของลูกค้า + สัญญาณเตือน (PR6) */
+export interface RepossessionJP5Result {
+  entryNo: string;
+  /** Dr 21-1103 บรรทัดเงินพักปรับดิวที่ลงจริง (หลัง clamp ด้วยยอดในบัญชี) */
+  parkRelief: Decimal;
+  /** Dr 21-1103 บรรทัดเงินรับล่วงหน้าที่เหลือ (ถังรวม + ส่วนเกินของถังพัก) ที่ลงจริง */
+  advanceRelief: Decimal;
+  /** Dr 21-5101 เงินเกินของลูกค้าที่ลงจริง */
+  creditRelief: Decimal;
+  /**
+   * สัญญาณเตือน (คอลัมน์เงินของลูกค้าไม่ตรงกับยอดในบัญชี) — ผู้เรียกที่ส่งธุรกรรมของตัวเองต้องเรียก
+   * `emitDeferredWarnings` หลังธุรกรรม commit · ไม่ส่งธุรกรรม = template ส่งให้แล้วและคืนรายการว่าง
+   */
+  warnings: DeferredWarning[];
 }
 
 /**
@@ -121,6 +139,12 @@ export interface RepossessionInput {
  *
  * ใบรับเครื่องคืน (2026-09-20): production เรียกด้วย depositAccountCode '11-2107' +
  * shopReceivableType 'DEVICE_RETURN' เสมอ — ไม่มีขาเงินสดวันยึดอีกต่อไป; ค่าเครื่องหักในรอบจ่าย INTER-CO.
+ *
+ * เงินของลูกค้าที่สัญญายังถือไว้ (PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6, 29/09/2569 ทางเลือก (1)) วางก่อน plug ทั้งหมด:
+ *   Dr 21-1103  parkRelief                        ← ถังพักค่าปรับดิวที่ยอดปิดดูดซับ (คำสั่งเจ้าของ 2026-08-16 — เดิม)
+ *   Dr 21-1103  glBalance(21-1103) − parkRelief   ← เงินรับล่วงหน้าที่เหลือทุกถัง (ถังรวม + ส่วนเกินของถังพัก)
+ *   Dr 21-5101  glBalance(21-5101)                ← เงินเกินของลูกค้า
+ * ⇒ 21-1103 / 21-5101 ของสัญญาเป็นศูนย์หลังยึด · ผู้เรียกตั้งคอลัมน์ของสัญญาเป็นศูนย์ในธุรกรรมเดียวกัน
  */
 /** UI-shaped dry-run of the JP5 JE — same shape as JP4's journalPreview. */
 export interface RepossessionJePreview {
@@ -305,6 +329,10 @@ export class RepossessionJP5Template {
       });
     }
 
+    // คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6 (29/09/2569) ทางเลือก (1) "หักทุกประเภท ทั้งสองกรณี": เงินของลูกค้าที่สัญญา
+    // ยังถือไว้ — 21-1103 ทุกถัง + 21-5101 — ตามยอดในบัญชี (คอลัมน์ไม่ตรงบัญชี = สัญญาณเตือน)
+    const advances = await readContractCloseAdvances(client, c, 'repossession');
+
     // คำสั่งเจ้าของ 2026-08-16 (§จุดหัก 3): ถังพักงวดสุดท้าย — ยอดปิดสัญญาหักให้
     // ลูกค้าไปแล้ว จึงต้องปลดหนี้ 21-1103 จริงในบัญชีด้วย ไม่งั้นเครดิตผีค้างอยู่
     // บนสัญญาที่ยึดไปแล้ว (บั๊ก C-3). วางก่อน plug → ขาดทุนลด/กำไรเพิ่มอัตโนมัติ
@@ -313,8 +341,7 @@ export class RepossessionJP5Template {
     const parkReliefIn = input.parkRelief ?? zero;
     let parkRelief = zero;
     if (parkReliefIn.gt(0)) {
-      const bal21_1103 = await glBal('21-1103', 'cr');
-      parkRelief = Decimal.max(0, Decimal.min(parkReliefIn, bal21_1103));
+      parkRelief = Decimal.max(0, Decimal.min(parkReliefIn, advances.advance));
     }
     if (parkRelief.gt(0)) {
       lines.push({
@@ -323,6 +350,18 @@ export class RepossessionJP5Template {
         cr: zero,
         description: `หักเงินพักปรับดิว ${parkRelief.toFixed(2)} ฿ (ยึดคืน)`,
       });
+    }
+
+    // PR6 (ข้อ 6 ข้างบน): เงินรับล่วงหน้าที่เหลือหลังบรรทัดเงินพัก (ถังรวม + ส่วนของถังพักที่ยอดปิดไม่ได้ดูดซับ) และ
+    // เงินเกินของลูกค้าทั้งหมด — วางก่อน plug เหมือนบรรทัดเงินพัก → ขาดทุนลด / กำไรเพิ่มเท่ายอดที่หักพอดี.
+    // บรรทัดไม่มีคำอธิบาย — จอ (การ์ดรายการ JP5) แสดงชื่อบัญชีจากผังบัญชี ไม่มีข้อความใหม่บนจอ
+    const advanceRelief = advances.advance.minus(parkRelief);
+    if (advanceRelief.gt(0)) {
+      lines.push({ accountCode: '21-1103', dr: advanceRelief, cr: zero });
+    }
+    const creditRelief = advances.credit;
+    if (creditRelief.gt(0)) {
+      lines.push({ accountCode: '21-5101', dr: creditRelief, cr: zero });
     }
 
     // ---- Loss/gain from the balance equation (not a separately re-derived formula) ----
@@ -419,6 +458,9 @@ export class RepossessionJP5Template {
       // even in the negative-provisionBalance GL-anomaly case above.
       releasedProvision: Decimal.max(0, release),
       parkRelief,
+      advanceRelief,
+      creditRelief,
+      warnings: advances.warnings,
       lines,
     };
   }
@@ -426,7 +468,7 @@ export class RepossessionJP5Template {
   async execute(
     input: RepossessionInput,
     tx?: Prisma.TransactionClient,
-  ): Promise<{ entryNo: string; parkRelief: Decimal }> {
+  ): Promise<RepossessionJP5Result> {
     const client = tx ?? this.prisma;
     const built = await this.buildJe(input, client);
 
@@ -456,6 +498,9 @@ export class RepossessionJP5Template {
           // ถังพักงวดสุดท้ายที่ปลดหนี้ไปกับ JE นี้ (คำสั่งเจ้าของ 2026-08-16) —
           // stamp เฉพาะเมื่อมีจริง เพื่อไม่ให้ metadata ของสัญญาทั่วไปเปลี่ยนรูป
           ...(built.parkRelief.gt(0) ? { parkRelief: built.parkRelief.toFixed(2) } : {}),
+          // PR6 — เงินรับล่วงหน้าที่เหลือ / เงินเกินของลูกค้าที่หัก: stamp เฉพาะเมื่อมีจริง (เหตุผลเดียวกับ parkRelief)
+          ...(built.advanceRelief.gt(0) ? { advanceRelief: built.advanceRelief.toFixed(2) } : {}),
+          ...(built.creditRelief.gt(0) ? { creditRelief: built.creditRelief.toFixed(2) } : {}),
           ...(input.shopReceivableType
             ? {
                 shopReceivable: input.depositAccountCode,
@@ -471,9 +516,19 @@ export class RepossessionJP5Template {
       tx,
     );
 
-    // parkRelief = ยอดที่ลงขา Dr 21-1103 จริง (หลัง clamp ด้วย GL) — caller ต้อง
-    // ใช้ค่านี้ตัดคอลัมน์ rescheduleAdvanceBalance ไม่ใช่ค่าที่ส่งเข้ามา
-    return { entryNo: result.entryNumber, parkRelief: built.parkRelief };
+    // parkRelief = ยอดที่ลงขา Dr 21-1103 จริง (หลัง clamp ด้วย GL) — caller ใช้บันทึก audit ของถังพัก
+    // (ไม่ใช่ค่าที่ส่งเข้ามา). PR6: caller ตั้งคอลัมน์เงินของลูกค้าทั้งสามเป็นศูนย์ (JE นี้หักครบตามยอดในบัญชี)
+    const posted: RepossessionJP5Result = {
+      entryNo: result.entryNumber,
+      parkRelief: built.parkRelief,
+      advanceRelief: built.advanceRelief,
+      creditRelief: built.creditRelief,
+      warnings: built.warnings,
+    };
+    if (tx) return posted;
+    // ไม่มีธุรกรรมของผู้เรียก — รายการ commit แล้วเมื่อ createAndPost คืนค่า
+    emitDeferredWarnings(posted.warnings);
+    return { ...posted, warnings: [] };
   }
 
   /**

@@ -440,4 +440,46 @@ describe('ใบกำกับภาษีตามบัญชี — ทุ�
       });
     });
   });
+
+  describe('กระจายเงินอัตโนมัติ / ใช้เครดิตชำระ (X5 · ใบที่เคยไม่มี)', () => {
+    it('กระจายเงิน 3,500 → งวด 1–2 เต็ม + งวด 3 บางส่วน 468.34 → ใบเสร็จ 3 ใบหลัง commit: สถานะ PAID/PAID/PARTIAL · ผูกรายการของงวด · VAT 99.17/99.17/30.64 = ภาษีขายของ 2A', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2, 3] });
+
+      await orchestrator.autoAllocatePayment(c.id, 3500, 'CASH', recordedById);
+
+      const receipts = await installmentReceipts(c.id);
+      expect(receipts.map((r) => [r.installmentNo, r.paymentStatus, taxOf(r).amount])).toEqual([
+        [1, 'PAID', '1515.83'],
+        [2, 'PAID', '1515.83'],
+        [3, 'PARTIAL', '468.34'],
+      ]);
+      expect(receipts.map((r) => taxOf(r).vatAmount)).toEqual(['99.17', '99.17', '30.64']);
+      for (const r of receipts) {
+        expect(r.sourceJournalEntryId).not.toBeNull();
+        expect(await accrualVatOfReceiptEntry(r.sourceJournalEntryId!)).toBe(taxOf(r).vatAmount);
+      }
+    });
+
+    it('ใช้เครดิต 2,000 ชำระ → ใบเสร็จ 2 ใบ ช่องทาง CREDIT_BALANCE · VAT 99.17 และ 31.67 · ผูกรายการ Dr 21-5101', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await prisma.contract.update({ where: { id: c.id }, data: { creditBalance: D('2000') } });
+
+      await orchestrator.applyCreditBalance(c.id, recordedById);
+
+      const receipts = await installmentReceipts(c.id);
+      expect(receipts.map((r) => [r.installmentNo, r.paymentMethod, taxOf(r).amount])).toEqual([
+        [1, 'CREDIT_BALANCE', '1515.83'],
+        [2, 'CREDIT_BALANCE', '484.17'],
+      ]);
+      expect(receipts.map((r) => taxOf(r).vatAmount)).toEqual(['99.17', '31.67']);
+      for (const r of receipts) {
+        const je = await prisma.journalEntry.findUniqueOrThrow({
+          where: { id: r.sourceJournalEntryId! },
+          include: { lines: true },
+        });
+        expect(je.lines.some((l) => l.accountCode === '21-5101' && l.debit.gt(0))).toBe(true);
+        expect(await accrualVatOfReceiptEntry(r.sourceJournalEntryId!)).toBe(taxOf(r).vatAmount);
+      }
+    });
+  });
 });

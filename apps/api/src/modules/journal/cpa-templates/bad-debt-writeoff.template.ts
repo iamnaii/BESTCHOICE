@@ -259,7 +259,8 @@ export class BadDebtWriteOffTemplate {
     }
 
     // loss = ΣCr − ΣDr(ที่มีอยู่) → consume ค่าเผื่อก่อน แล้ว plug 51-1102
-    // (PR6: เงินของลูกค้าที่หักข้างบนมากกว่าหนี้คงเหลือ → loss ติดลบ → ปฏิเสธด้วยข้อความเดิมด้านล่าง ไม่ลงรายการ)
+    // (PR6: loss ติดลบ = เงินของลูกค้าที่หักข้างบนมากกว่าลูกหนี้รวม VAT หักภาษีในใบลดหนี้ ม.82/5 — เกิดได้แม้เงินของลูกค้า
+    // น้อยกว่าหนี้ เพราะใบลดหนี้ไม่ลดตามเงินที่หัก → ปฏิเสธด้วยข้อความเดิมด้านล่าง ไม่ลงรายการ)
     const sumDr = lines.reduce((s, l) => s.plus(l.dr), new Decimal(0));
     const sumCr = lines.reduce((s, l) => s.plus(l.cr), new Decimal(0));
     let loss = sumCr.minus(sumDr);

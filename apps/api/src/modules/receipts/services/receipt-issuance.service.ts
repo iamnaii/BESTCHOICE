@@ -4,6 +4,11 @@ import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 import { LineOaService } from '../../line-oa/line-oa.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
+import {
+  parseReceiptTax,
+  receiptTaxColumns,
+  type ReceiptTaxBreakdown,
+} from '../../journal/receipt-tax-breakdown';
 import { ReceiptNumberService } from './receipt-number.service';
 import { getReceiptDocumentBalance, persistReceiptDocumentBalance } from './receipt-document-balance';
 import { CreditNoteDeliveryService } from './credit-note-delivery.service';
@@ -121,6 +126,9 @@ export class ReceiptIssuanceService {
       // Link the exact JE returned by the payment transaction. Never guess by
       // latest entry: a concurrent receipt may have posted for this payment.
       let sourceJournalEntryId: string | undefined;
+      // ใบกำกับภาษีตามบัญชี (PR3): ค่าที่ใบนี้ต้องพิมพ์ มาจากรายการบัญชีที่ผูกเท่านั้น — ไม่ผูก / รายการเก่า / ใบที่ไม่ใช่
+      // ใบค่างวด (ใบปิดยอดก่อนกำหนด — PR5 · ใบปรับดิว — PR4) = null → PDF ใช้ตรรกะเดิม
+      let tax: ReceiptTaxBreakdown | null = null;
       if (sourceJournalEntryNumber) {
         const source = await tx.journalEntry.findUnique({
           where: { entryNumber: sourceJournalEntryNumber },
@@ -136,10 +144,35 @@ export class ReceiptIssuanceService {
           throw new BadRequestException('ไม่พบรายการบัญชีรับชำระที่ตรงกับใบเสร็จ');
         }
         sourceJournalEntryId = source.id;
+        if (INSTALLMENT_TYPES.includes(receiptType)) {
+          const stamped = parseReceiptTax(meta.receiptTax);
+          if (stamped && stamped.amount === new Prisma.Decimal(amount).toFixed(2)) {
+            tax = stamped;
+          } else if (stamped) {
+            this.logger.warn(
+              `[Receipt] amount ${new Prisma.Decimal(amount).toFixed(2)} differs from journal ${sourceJournalEntryNumber} receiptTax.amount ${stamped.amount} — tax columns left empty`,
+            );
+          }
+        }
       }
 
       // Generate receipt number inside transaction (uses FOR UPDATE lock)
       const receiptNumber = await this.numbers.generateReceiptNumber(tx);
+
+      // หนึ่งใบต่อรายการบัญชีรับชำระหนึ่งรายการ (PR3): เรียกซ้ำ (webhook ส่งซ้ำ / ลองใหม่ / ออกซ้ำด้วยมือ) ได้ใบเดิมคืน
+      // ไม่ออกเลขใหม่. ตรวจหลังได้ล็อกเลขที่ใบเสร็จ (ธุรกรรมของเดือนเดียวกันต่อคิวกัน) · ชั้นสุดท้ายคือ unique index
+      // receipts_source_journal_entry_key
+      if (sourceJournalEntryId) {
+        const existing = await tx.receipt.findFirst({
+          where: { sourceJournalEntryId, deletedAt: null },
+        });
+        if (existing) {
+          this.logger.warn(
+            `[Receipt] ${existing.receiptNumber} already issued for journal ${sourceJournalEntryNumber} — returning it`,
+          );
+          return existing;
+        }
+      }
 
       // Generate receipt content hash
       const receiptContent = JSON.stringify({
@@ -172,6 +205,7 @@ export class ReceiptIssuanceService {
           fileHash,
           issuedById,
           ...(sourceJournalEntryId ? { sourceJournalEntryId } : {}),
+          ...(tax ? receiptTaxColumns(tax) : {}),
         },
       });
 

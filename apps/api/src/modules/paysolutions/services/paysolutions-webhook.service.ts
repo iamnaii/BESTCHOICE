@@ -687,6 +687,11 @@ export class PaySolutionsWebhookService {
               paymentId: snapshot.id,
               installmentNo: snapshot.installmentNo,
               journalEntryNumber: snapshot.entryNo ?? null,
+              paymentMethod: PaymentMethod.ONLINE_GATEWAY,
+              amount: snapshot.payThis.toFixed(2),
+              transactionRef: transaction_id || refno,
+              issuedById: systemUserId,
+              paidDate: result.paidAt.toISOString(),
             });
           }
         }

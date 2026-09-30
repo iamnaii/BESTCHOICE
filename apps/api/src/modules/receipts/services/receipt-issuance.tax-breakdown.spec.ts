@@ -1,3 +1,4 @@
+import { BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ReceiptIssuanceService } from './receipt-issuance.service';
 
@@ -277,5 +278,101 @@ describe('ReceiptIssuanceService — ใบกำกับภาษีตาม�
 
     expect(created).toHaveLength(1);
     expect(lineOa.sendPaymentReceipt).not.toHaveBeenCalled();
+  });
+
+  // final review I1: ยกเลิกใบเสร็จ / คืนเงินกลับรายการรับชำระแล้ว (รายการเดิมคง POSTED · ประทับ metadata.reversed) — ออกใบซ้ำด้วย
+  // เลขที่รายการนั้นต้องไม่ได้ใบกำกับภาษีที่มีผลให้เงินที่บัญชีกลับไปแล้ว
+  it('รายการบัญชีรับชำระถูกกลับรายการแล้ว → ปฏิเสธก่อนออกเลขที่ใบ · ไม่สร้างใบ · ไม่ส่งข้อความ LINE', async () => {
+    const { svc, tx, created, numbers, lineOa } = buildService({
+      source: receiptSource({
+        receiptTax: RECEIPT_TAX,
+        reversed: true,
+        reversedByEntryNumber: 'JE-202610-00009',
+      }),
+      lineLinked: true,
+    });
+
+    const issued = svc.generateReceipt(
+      'c1',
+      'p1',
+      'INSTALLMENT',
+      6079,
+      3,
+      'CASH',
+      null,
+      'u1',
+      undefined,
+      'JE-1',
+    );
+
+    await expect(issued).rejects.toBeInstanceOf(BadRequestException);
+    await expect(issued).rejects.toThrow('รายการบัญชีรับชำระนี้ถูกกลับรายการแล้ว — ออกใบเสร็จไม่ได้');
+    expect(numbers.generateReceiptNumber).not.toHaveBeenCalled();
+    expect(tx.receipt.create).not.toHaveBeenCalled();
+    expect(created).toHaveLength(0);
+    expect(tx.customer.findFirst).not.toHaveBeenCalled();
+    expect(lineOa.sendPaymentReceipt).not.toHaveBeenCalled();
+  });
+
+  // final review M1: ทุกรายการที่ PaymentReceiptTemplate ลงตั้งแต่ PR3 มี receiptTax — รายการรับชำระที่ไม่มี (หรือค่าใช้ไม่ได้)
+  // ยังออกใบ (พิมพ์แบบเดิม) แต่ต้องมีร่องรอยพร้อมเลขที่ใบและเลขที่รายการ ไม่เงียบ
+  it.each([
+    ['ไม่มี receiptTax', {}],
+    ['receiptTax ผลรวมไม่เท่ายอดรับ', { receiptTax: { ...RECEIPT_TAX, vatAmount: '397.68' } }],
+  ])(
+    'รายการรับชำระ (tag receipt) %s → log เตือนพร้อมเลขที่ใบและเลขที่รายการ · ยังออกใบโดยไม่เก็บค่า',
+    async (_label, extraMeta) => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        const { svc, created } = buildService({ source: receiptSource(extraMeta) });
+
+        await svc.generateReceipt(
+          'c1',
+          'p1',
+          'INSTALLMENT',
+          6079,
+          3,
+          'CASH',
+          null,
+          'u1',
+          undefined,
+          'JE-1',
+        );
+
+        expect(created).toHaveLength(1);
+        expect(created[0].sourceJournalEntryId).toBe('je-r');
+        for (const k of TAX_COLUMNS) expect(created[0][k]).toBeUndefined();
+        const messages = warn.mock.calls.map(([m]) => String(m));
+        expect(
+          messages.filter((m) => m.includes('RT-202610-00001') && m.includes('JE-1')),
+        ).toHaveLength(1);
+      } finally {
+        warn.mockRestore();
+      }
+    },
+  );
+
+  it('รายการรับชำระที่มี receiptTax ครบ → ไม่มี log เตือนเรื่องค่าที่ประทับ', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      const { svc } = buildService({ source: receiptSource() });
+
+      await svc.generateReceipt(
+        'c1',
+        'p1',
+        'INSTALLMENT',
+        6079,
+        3,
+        'CASH',
+        null,
+        'u1',
+        undefined,
+        'JE-1',
+      );
+
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

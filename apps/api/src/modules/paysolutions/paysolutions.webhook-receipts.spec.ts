@@ -242,6 +242,9 @@ describe('PaySolutionsService.handlePaymentCallback — ใบเสร็จข
     await expect(service.handlePaymentCallback(callback())).resolves.toBeUndefined();
     expect(receipts.generateReceipt).toHaveBeenCalledTimes(3);
     expect(notify).toHaveBeenCalledTimes(1);
+    // final review I3(c): แจ้งเตือนมีทุกค่าที่ต้องใช้ออกใบซ้ำ — วันที่ = วันที่เดียวกับที่ส่งให้ generateReceipt (paidAt ของธุรกรรม)
+    const paidAt = receipts.generateReceipt.mock.calls[0][8] as Date;
+    expect(paidAt).toBeInstanceOf(Date);
     expect(Sentry.captureException).toHaveBeenCalledWith(failure, {
       level: 'error',
       tags: {
@@ -255,6 +258,11 @@ describe('PaySolutionsService.handlePaymentCallback — ใบเสร็จข
         paymentId: 'pay-1',
         installmentNo: 1,
         journalEntryNumber: 'JE-W-1',
+        paymentMethod: 'ONLINE_GATEWAY',
+        amount: '1000.00',
+        transactionRef: 'tx-1',
+        issuedById: 'owner-1',
+        paidDate: paidAt.toISOString(),
       },
     });
   });

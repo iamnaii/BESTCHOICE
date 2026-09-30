@@ -10,6 +10,17 @@ export interface ReceiptIssueFailure {
   installmentNo: number;
   /** เลขที่รายการรับชำระของงวด — ใช้ออกใบซ้ำ (generateReceipt คืนใบเดิมถ้ารายการนี้มีใบแล้ว) */
   journalEntryNumber: string | null;
+  // ค่าที่เหลือของการออกใบซ้ำ (final review I3(c)) — อาร์กิวเมนต์เดียวกับที่ทางนั้นส่งให้ generateReceipt
+  /** ช่องทางของใบ — ช่องทางของการกระจายเงินอยู่ที่นี่และที่ payments.payment_method เท่านั้น */
+  paymentMethod: string;
+  /** ยอดของใบ (สตริง 2 ตำแหน่ง) — ต้องเท่า metadata.receiptTax.amount ของรายการพอดี ไม่งั้นใบไม่เก็บค่าและพิมพ์แบบเดิม */
+  amount: string;
+  /** เลขอ้างอิงธุรกรรม — ลิงก์ชำระ: transaction_id หรือ refno · กระจายเงิน / ใช้เครดิต: null */
+  transactionRef: string | null;
+  /** ผู้ออกใบ — ผู้บันทึกรับเงิน (กระจายเงิน / ใช้เครดิต) · ผู้ใช้ OWNER ของระบบ (ลิงก์ชำระ) */
+  issuedById: string;
+  /** วันที่รับเงินที่ใบต้องลง (ISO) */
+  paidDate: string;
 }
 
 /**

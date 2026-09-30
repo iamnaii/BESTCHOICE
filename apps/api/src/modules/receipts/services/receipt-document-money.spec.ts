@@ -83,6 +83,26 @@ describe('legacyReceiptDocumentMoney — ตรรกะเดิมของ PD
     expect(m.advanceRows).toEqual([]);
   });
 
+  it('งวดสุดท้าย (งวด 12 ของสัญญา 17,000) ยอด 1,515.87 เท่าค่างวดพอดี → ตัวเลขของบัญชี 1,416.74 / 99.13 (ไม่ใช่ ×100/107 = 1,416.70 / 99.17)', () => {
+    // ปักแขน "ยอดเท่าค่างวดพอดี → ตัวเลขของบัญชี" ของตรรกะเดิม — ใบเก่าของงวดสุดท้ายต้องพิมพ์ซ้ำได้ตัวเลขเดิม (final review T7-2)
+    const m = legacyReceiptDocumentMoney(
+      view({
+        amount: D('1515.87'),
+        installmentNo: 12,
+        installmentAllocations: [{ installmentNo: 12, amount: '1515.87', kind: 'INSTALLMENT' }],
+        contract: CONTRACT_17K,
+      }),
+    );
+
+    expect([f(m.exclVat), f(m.vatPart)]).toEqual(['1416.74', '99.13']);
+    expect([f(m.installmentPortion), f(m.installmentExclVat), f(m.installmentVat)]).toEqual([
+      '1515.87',
+      '1416.74',
+      '99.13',
+    ]);
+    expect(m.advanceRows).toEqual([]);
+  });
+
   it('เงินรับล่วงหน้าทั่วไป (ไม่รู้งวดเป้าหมาย) → แถว "เงินรับล่วงหน้าในสัญญา" หนึ่งแถว', () => {
     const m = legacyReceiptDocumentMoney(
       view({ installmentAllocations: null, receiptAdvanceAmount: '1044.00' }),

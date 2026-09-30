@@ -170,6 +170,25 @@ describe('PaymentReceiptTemplate — ใบกำกับภาษีตาม�
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
+  it('ใบบางส่วน 1,000 ตั้ง 2A ของตัวเองแล้ว → ใบที่ทำให้ครบ 515.83 ได้ 2A ส่วนที่เหลือ VAT 33.75 = VAT ของใบ 33.75 → ไม่มีสัญญาณเตือน', async () => {
+    // ใบก่อนหน้า 1,000 ตั้ง 2A บางส่วน VAT 65.42 (ก1) → 2A ของใบนี้คือส่วนที่เหลือ 99.17 − 65.42 = 33.75 เท่ากับที่ใบพิมพ์ —
+    // เคสปกติของใบรับบางส่วนก่อนวันครบกำหนด ห้ามเตือน (final review T3-1)
+    const { tpl, tx, createAndPost } = build({
+      prior: ['1000'],
+      accrual: { kind: 'REMAINDER', amount: '515.83', vat: '33.75', completes: true },
+    });
+
+    const out = await tpl.execute(
+      { ...base, delta: dec('515.83'), isFinalReceipt: true },
+      tx as never,
+    );
+
+    expect((stamped(createAndPost) as Record<string, string>).vatAmount).toBe('33.75');
+    expect(out.receiptTax.vatAmount).toBe('33.75');
+    expect(out.warnings).toEqual([]);
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
   it('หักเงินรับล่วงหน้า 500 ในใบเดียวกัน → แถวค่างวด VAT 99.17 (= 2A) · แถวหัก −500.00 / −32.71 · ไม่มีสัญญาณเตือน', async () => {
     const { tpl, tx, createAndPost } = build({});
 

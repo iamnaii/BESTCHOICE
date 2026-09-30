@@ -477,6 +477,7 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
 
       expect(out!.kind).toBe('REMAINDER');
       expect(out!.completes).toBe(true);
+      expect(out!.vat.toFixed(2)).toBe('33.75'); // PR3: ส่วนที่เหลือ 99.17 − 65.42 = VAT ที่ใบที่ทำให้ครบพิมพ์
       const je = createAndPost.mock.calls[0][0] as CapturedJe & { description: string };
       expect(je.reference).toBe('inst-3');
       expect(je.description).toBe('Accrual งวด #3 (ส่วนที่เหลือ 515.83) — สัญญา CT-0001');

@@ -2,7 +2,7 @@ import {
   consumePaymentApproval,
   type PaymentApprovalContext,
 } from '../../payments/services/payment-approval-request.util';
-import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
 import { Prisma, type Receipt } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -95,6 +95,8 @@ const UNPAY_BLOCKED_CONTRACT_STATUSES = [
  * design note that kept voided payments PAID.
  */
 export class ReceiptVoidService {
+  private readonly logger = new Logger(ReceiptVoidService.name);
+
   constructor(
     private prisma: PrismaService,
     private receiptVoidReversalTemplate: ReceiptVoidReversalTemplate,
@@ -133,14 +135,54 @@ export class ReceiptVoidService {
         try {
           const view = await this.query.getReceipt(row.id);
           out.set(row.id, documentMoneyColumns(legacyReceiptDocumentMoney(view)));
-        } catch {
-          // ตรรกะเดิมพิมพ์ใบนี้ไม่ได้ — ใบลดหนี้ของใบนี้คงรูปเดิม
+        } catch (err) {
+          // ตรรกะเดิมพิมพ์ใบนี้ไม่ได้ / อ่านใบนี้ไม่ได้ — ใบลดหนี้ของใบนี้คงรูปเดิม
+          this.reportCreditNoteFallback(err, row.receiptNumber);
         }
       }
-    } catch {
+    } catch (err) {
       // อ่านไม่ได้ — ใบลดหนี้ทุกใบคงรูปเดิม
+      this.reportCreditNotePreReadFailure(err, id);
     }
     return out;
+  }
+
+  /**
+   * ใบลดหนี้ของใบเก่าใบหนึ่งถอยไปเป็นยอดอย่างเดียว — ห้ามเงียบ (final review I2): log เตือนพร้อมเลขที่ใบเสมอ ·
+   * ข้อความ "ตรรกะเดิมพิมพ์ใบนี้ไม่ได้" ของ legacyReceiptDocumentMoney เป็น BadRequestException = คาดไว้ (log อย่างเดียว) ·
+   * อย่างอื่น (อ่านใบไม่ได้ / ฐานข้อมูล) ส่ง Sentry ด้วย. ใช้ captureException เท่านั้น (เทสของ PR2ข นับ captureMessage
+   * ของการยกเลิก) · ไม่ throw ไม่ว่ากรณีใด — การยกเลิกห้ามล้มเพราะเอกสาร
+   */
+  private reportCreditNoteFallback(err: unknown, receiptNumber: string): void {
+    try {
+      this.logger.warn(
+        `[ReceiptVoid] ${receiptNumber}: credit note falls back to amount only — legacy document money unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      if (!(err instanceof BadRequestException)) {
+        Sentry.captureException(err, {
+          level: 'warning',
+          tags: { subsystem: 'receipt-void-credit-note' },
+          extra: { receiptNumber },
+        });
+      }
+    } catch {
+      // การแจ้งเตือนห้ามทำให้การยกเลิกล้ม
+    }
+  }
+
+  /** อ่านใบเป้าหมาย/ใบพี่น้องก่อนยกเลิกไม่ได้ทั้งชุด — ใบลดหนี้ของใบเก่าทุกใบเป็นยอดอย่างเดียว (final review I2) */
+  private reportCreditNotePreReadFailure(err: unknown, receiptId: string): void {
+    try {
+      this.logger.error(
+        `[ReceiptVoid] receipt ${receiptId}: legacy credit-note pre-read failed — every unstored credit note of this void falls back to amount only: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      Sentry.captureException(err, {
+        level: 'error',
+        tags: { subsystem: 'receipt-void-credit-note' },
+      });
+    } catch {
+      // การแจ้งเตือนห้ามทำให้การยกเลิกล้ม
+    }
   }
 
   /**

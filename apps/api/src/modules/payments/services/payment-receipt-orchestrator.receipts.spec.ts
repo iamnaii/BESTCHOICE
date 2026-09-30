@@ -154,12 +154,15 @@ describe('PaymentReceiptOrchestrator — ใบเสร็จหลังธุ
     const failure = new Error('ออกใบไม่ได้');
     receiptsService.generateReceipt.mockRejectedValueOnce(failure);
     (Sentry.captureException as jest.Mock).mockClear();
+    const before = Date.now();
 
     const out = await orchestrator.autoAllocatePayment('ct-1', 2000, 'CASH', 'u-1');
 
+    const after = Date.now();
     expect(out.totalAllocated).toBe(2000);
     expect(receiptsService.generateReceipt).toHaveBeenCalledTimes(2);
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    // final review I3(c): แจ้งเตือนมีทุกค่าที่ต้องใช้ออกใบซ้ำ — ช่องทางของการกระจายเงินอยู่ที่นี่และ payments.payment_method เท่านั้น
     expect(Sentry.captureException).toHaveBeenCalledWith(failure, {
       level: 'error',
       tags: { module: 'receipts', action: 'post-commit-receipt-failed', path: 'auto-allocate' },
@@ -169,8 +172,18 @@ describe('PaymentReceiptOrchestrator — ใบเสร็จหลังธุ
         paymentId: 'p-1',
         installmentNo: 1,
         journalEntryNumber: 'JE-R-1',
+        paymentMethod: 'CASH',
+        amount: '1515.83',
+        transactionRef: null,
+        issuedById: 'u-1',
+        paidDate: expect.any(String),
       },
     });
+    // ทางนี้ไม่ส่งวันที่ให้ generateReceipt (ใบลงวันที่ตอนออก = หลัง commit ทันที) — แจ้งเตือนใช้เวลาเดียวกันนั้น
+    const { paidDate } = (Sentry.captureException as jest.Mock).mock.calls[0][1].extra;
+    expect(new Date(paidDate).toISOString()).toBe(paidDate);
+    expect(Date.parse(paidDate)).toBeGreaterThanOrEqual(before);
+    expect(Date.parse(paidDate)).toBeLessThanOrEqual(after);
   });
 
   it('ใช้เครดิต 2,000 ชำระ → ใบเสร็จช่องทาง "ใช้ยอดเครดิตในสัญญา" ต่องวด หลังธุรกรรม พร้อมเลขที่รายการ · เรียกแบบเดียวกับหน้ารับชำระ (ข้อความ LINE ตามกติกาเดิม)', async () => {

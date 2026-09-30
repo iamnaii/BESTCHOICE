@@ -37,6 +37,10 @@ import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-
 import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
 import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-reverse.template';
 import { PaySolutionsService } from '../../paysolutions/paysolutions.service';
+import {
+  documentMoneyColumns,
+  receiptDocumentMoney,
+} from '../../receipts/services/receipt-document-money';
 import type { PaymentCase } from '../dto/payment.dto';
 import { PaymentReceiptOrchestrator } from './payment-receipt-orchestrator';
 
@@ -607,6 +611,261 @@ describe('ใบกำกับภาษีตามบัญชี — ทุ�
         where: { contractId: c.id, receiptType: 'CREDIT_NOTE', voidedReceiptId: r.id },
       });
       expect(taxOf(cn)).toEqual(taxOf(r));
+    });
+  });
+
+  describe('final review — ออกใบซ้ำ · ค่าประทับของรายการ · ใบลดหนี้ของใบเก่า', () => {
+    const noop = async () => {};
+    /** orchestrator ชุดเดียวกับ beforeAll แต่เลือกตัวออกใบเองได้ (จำลองใบที่ออกไม่สำเร็จหลังธุรกรรมเงิน commit) */
+    const orchestratorWith = (receipts: unknown) =>
+      new PaymentReceiptOrchestrator(
+        prisma as never,
+        receipts as never,
+        { logPaymentEvent: noop, log: noop } as never,
+        journal,
+        { transferOwnership: noop } as never,
+        { reverseStageOnPayment: noop } as never,
+        receiptTemplate,
+        { execute: noop } as never,
+        {
+          awardLoyaltyPoints: noop,
+          sendPaymentSuccessLine: noop,
+          runMdmAutoUnlock: noop,
+          checkPromiseAfterPayment: noop,
+        },
+      );
+    const failingReceipts = {
+      generateReceipt: async () => {
+        throw new Error('ออกใบเสร็จไม่สำเร็จ (ทดสอบ)');
+      },
+    };
+
+    /** ตัวตรวจ "เงินที่ยังไม่มีใบเสร็จ" — SQL ชุดเดียวกับคู่มือออกใบเสร็จซ้ำ (.claude/rules/accounting.md — final review I3(g)) */
+    const receiptlessMoney = () =>
+      prisma.$queryRawUnsafe<
+        { entry_number: string; contract_id: string; payment_id: string; receipt_amount: string }[]
+      >(`
+        SELECT je.entry_number, je.posted_at,
+               je.metadata->>'contractId' AS contract_id, je.metadata->>'paymentId' AS payment_id,
+               je.metadata->'receiptTax'->>'amount' AS receipt_amount
+        FROM journal_entries je
+        WHERE je.status = 'POSTED' AND je.deleted_at IS NULL
+          AND je.metadata->>'tag' = 'receipt'
+          AND COALESCE(je.metadata->>'reversed', 'false') <> 'true'
+          AND je.metadata ? 'receiptTax'
+          AND NOT EXISTS (SELECT 1 FROM receipts r
+                          WHERE r.source_journal_entry_id = je.id AND r.deleted_at IS NULL)
+        ORDER BY je.posted_at`);
+
+    /** ตัวเลข 7 ช่องที่เอกสารพิมพ์ (ตัวพิมพ์เดียวกับ PDF — ใบเก็บค่า: ค่าที่เก็บ · ใบเก่า: ตรรกะเดิม) */
+    const printedColumns = async (receiptId: string) =>
+      taxOf({
+        amount: '0',
+        ...documentMoneyColumns(receiptDocumentMoney(await receiptsService.getReceipt(receiptId))),
+      });
+
+    it('I1: ใบที่สองของงวดออกไม่สำเร็จหลัง commit แล้วใบแรกถูกยกเลิก (กลับรายการทั้งงวด) → ออกใบซ้ำด้วยเลขที่รายการของใบที่สองถูกปฏิเสธ · ไม่มีใบใหม่', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await recordPartialQr(c.id, 1, 700, 'RTX-REV-1');
+      // ใบที่สอง: เงินและรายการบัญชีลงครบ แต่ออกใบไม่สำเร็จหลัง commit (หน้ารับชำระเขียน log อย่างเดียว)
+      await orchestratorWith(failingReceipts).recordPayment(
+        c.id,
+        1,
+        815.83,
+        'CASH',
+        recordedById,
+        undefined,
+        undefined,
+        'RTX-REV-2',
+        '11-1101',
+      );
+      const [first, ...others] = await installmentReceipts(c.id);
+      expect(others).toHaveLength(0);
+      // ตัวตรวจของคู่มือเจอรายการที่ไม่มีใบพอดีหนึ่งรายการ
+      const orphans = (await receiptlessMoney()).filter((row) => row.contract_id === c.id);
+      expect(orphans.map((row) => row.receipt_amount)).toEqual(['815.83']);
+      const orphanJe = await prisma.journalEntry.findUniqueOrThrow({
+        where: { entryNumber: orphans[0].entry_number },
+      });
+
+      // ยกเลิกใบแรก = ยกเลิกการชำระทั้งงวด → รายการรับชำระทั้งสองรายการถูกกลับ (รายการเดิมคง POSTED)
+      await voidReceiptWithApproval(
+        prisma,
+        receiptsService,
+        first.id,
+        'ทดสอบออกใบซ้ำหลังกลับรายการ',
+        recordedById,
+        approverId,
+      );
+      const reversedJe = await prisma.journalEntry.findUniqueOrThrow({ where: { id: orphanJe.id } });
+      expect(reversedJe.status).toBe('POSTED');
+      expect((reversedJe.metadata as Record<string, unknown>).reversed).toBe(true);
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: 1 },
+      });
+      expect(payment.status).toBe('PENDING');
+      expect(new Decimal(payment.amountPaid.toString()).toFixed(2)).toBe('0.00');
+      // รายการที่กลับแล้วไม่ใช่ "เงินที่ยังไม่มีใบ"
+      expect((await receiptlessMoney()).filter((row) => row.contract_id === c.id)).toEqual([]);
+      const receiptsBefore = await prisma.receipt.count({ where: { contractId: c.id } });
+
+      await expect(
+        receiptsService.generateReceipt(
+          c.id,
+          payment.id,
+          'INSTALLMENT',
+          815.83,
+          1,
+          'CASH',
+          null,
+          recordedById,
+          undefined,
+          orphanJe.entryNumber,
+        ),
+      ).rejects.toThrow('รายการบัญชีรับชำระนี้ถูกกลับรายการแล้ว — ออกใบเสร็จไม่ได้');
+
+      expect(await prisma.receipt.count({ where: { contractId: c.id } })).toBe(receiptsBefore);
+      expect(await prisma.receipt.count({ where: { sourceJournalEntryId: orphanJe.id } })).toBe(0);
+    });
+
+    it('M1: หักเงินรับล่วงหน้าในใบเดียวกัน (G6) ผ่าน recordPayment จริง → ประทับ genericConsume/parkConsume แล้วรายการยังมี receiptTax · ใบเก็บครบ 7 ช่องเท่าค่าประทับ', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+
+      // งวด 1 รับ 2,015.83 → เกินค่างวด 500 พักเป็นเงินรับล่วงหน้า (Cr 21-1103)
+      await record(c.id, 1, 2015.83, 'RTX-G6-1');
+      // งวด 2 รับเงินสด 1,015.83 + หักเงินรับล่วงหน้า 500 ในใบเดียวกัน
+      await record(c.id, 2, 1015.83, 'RTX-G6-2');
+
+      const [first, second] = await installmentReceipts(c.id);
+      expect(taxOf(first)).toEqual({
+        amount: '2015.83',
+        amountBeforeVat: '1883.95',
+        vatAmount: '131.88',
+        roundingAmount: '0.00',
+        lateFeeAmount: '0.00',
+        lateFeeWaivedAmount: '0.00',
+        advanceAmount: '500.00',
+        advanceVatAmount: '32.71',
+      });
+      expect(taxOf(second)).toEqual({
+        amount: '1015.83',
+        amountBeforeVat: '949.37',
+        vatAmount: '66.46',
+        roundingAmount: '0.00',
+        lateFeeAmount: '0.00',
+        lateFeeWaivedAmount: '0.00',
+        advanceAmount: '-500.00',
+        advanceVatAmount: '-32.71',
+      });
+      for (const r of [first, second]) {
+        const je = await prisma.journalEntry.findUniqueOrThrow({
+          where: { id: r.sourceJournalEntryId! },
+        });
+        expect((je.metadata as Record<string, unknown>).receiptTax).toEqual({
+          version: 1,
+          ...taxOf(r),
+        });
+      }
+      // ใบที่หักเงินรับล่วงหน้าผ่านการเขียน metadata ซ้ำของ orchestrator (ประทับถังเงินให้การยกเลิกคืนถูกถัง)
+      const consumeJe = await prisma.journalEntry.findUniqueOrThrow({
+        where: { id: second.sourceJournalEntryId! },
+      });
+      expect((consumeJe.metadata as Record<string, unknown>).genericConsume).toBe('500.00');
+      expect((consumeJe.metadata as Record<string, unknown>).parkConsume).toBe('0.00');
+      // ภาษีของเอกสารทั้งสองใบรวมกัน = ภาษีขายของ 2A ทั้งสองงวด
+      const accrualVat = new Decimal(await accrualVatOfReceiptEntry(first.sourceJournalEntryId!)).plus(
+        await accrualVatOfReceiptEntry(second.sourceJournalEntryId!),
+      );
+      expect(accrualVat.toFixed(2)).toBe('198.34');
+      expect(D(taxOf(first).vatAmount!).plus(taxOf(second).vatAmount!).toFixed(2)).toBe('198.34');
+    });
+
+    it('ยกเลิกใบเก่า (ออกแบบไม่ผูกรายการ 8 อาร์กิวเมนต์) ที่มีใบพี่น้องเก็บค่า → ใบลดหนี้ทั้งสองใบเก็บ 7 ช่องเท่าที่ใบเดิมพิมพ์', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      // ใบแรก 700 (QR): เงินและรายการบัญชีลง แต่ออกใบไม่สำเร็จ → ออกใบด้วยทางเดิม (ไม่ส่งเลขที่รายการ = ไม่ผูก ไม่เก็บค่า)
+      await orchestratorWith(failingReceipts).recordPayment(
+        c.id,
+        1,
+        700,
+        'ONLINE_GATEWAY',
+        recordedById,
+        undefined,
+        'ชำระผ่าน Pay Solutions (RTX-LEG-1)',
+        'RTX-LEG-1',
+        '11-1201',
+        undefined,
+        'PARTIAL',
+        true,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false,
+        0,
+      );
+      const payment = await prisma.payment.findFirstOrThrow({
+        where: { contractId: c.id, installmentNo: 1 },
+      });
+      const legacy = await receiptsService.generateReceipt(
+        c.id,
+        payment.id,
+        'INSTALLMENT',
+        700,
+        1,
+        'ONLINE_GATEWAY',
+        'RTX-LEG-1',
+        recordedById,
+      );
+      expect(legacy.sourceJournalEntryId).toBeNull();
+      // ใบที่สอง 815.83 ออกตามปกติ — ผูกรายการ เก็บค่า
+      await record(c.id, 1, 815.83, 'RTX-LEG-2');
+      const [legacyRow, stored] = await installmentReceipts(c.id);
+      expect(legacyRow.id).toBe(legacy.id);
+      expect(taxOf(legacyRow).vatAmount).toBeNull();
+      expect(stored.sourceJournalEntryId).not.toBeNull();
+
+      // ตัวเลขที่ใบเดิมแต่ละใบพิมพ์ ก่อนยกเลิก
+      const printedLegacy = await printedColumns(legacyRow.id);
+      const printedStored = await printedColumns(stored.id);
+      expect(printedLegacy).toEqual({
+        amount: '0.00',
+        amountBeforeVat: '654.21',
+        vatAmount: '45.79',
+        roundingAmount: '0.00',
+        lateFeeAmount: '0.00',
+        lateFeeWaivedAmount: '0.00',
+        advanceAmount: '0.00',
+        advanceVatAmount: '0.00',
+      });
+      expect(printedStored).toEqual({
+        amount: '0.00',
+        amountBeforeVat: '762.45',
+        vatAmount: '53.38',
+        roundingAmount: '0.00',
+        lateFeeAmount: '0.00',
+        lateFeeWaivedAmount: '0.00',
+        advanceAmount: '0.00',
+        advanceVatAmount: '0.00',
+      });
+
+      await voidReceiptWithApproval(
+        prisma,
+        receiptsService,
+        legacyRow.id,
+        'ทดสอบใบลดหนี้ของใบเก่าและใบพี่น้อง',
+        recordedById,
+        approverId,
+      );
+
+      const creditNoteOf = (voidedReceiptId: string) =>
+        prisma.receipt.findFirstOrThrow({
+          where: { contractId: c.id, receiptType: 'CREDIT_NOTE', voidedReceiptId },
+        });
+      const cnLegacy = await creditNoteOf(legacyRow.id);
+      const cnStored = await creditNoteOf(stored.id);
+      expect(taxOf(cnLegacy)).toEqual({ ...printedLegacy, amount: '700.00' });
+      expect(taxOf(cnStored)).toEqual({ ...printedStored, amount: '815.83' });
+      expect(taxOf(cnStored)).toEqual(taxOf(stored));
     });
   });
 });

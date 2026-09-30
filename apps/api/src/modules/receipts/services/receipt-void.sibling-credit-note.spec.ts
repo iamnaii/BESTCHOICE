@@ -1,5 +1,6 @@
 import { consumePaymentApproval } from '../../payments/services/payment-approval-request.util';
 jest.mock('../../payments/services/payment-approval-request.util', () => ({ ...jest.requireActual('../../payments/services/payment-approval-request.util'), consumePaymentApproval: jest.fn() }));
+jest.mock('@sentry/nestjs', () => ({ captureMessage: jest.fn(), captureException: jest.fn() }));
 /**
  * Voiding one receipt of a MULTI-RECEIPT installment must issue a ใบลดหนี้
  * (credit note) for EVERY receipt it voids — not only the one the user clicked.
@@ -16,7 +17,9 @@ jest.mock('../../payments/services/payment-approval-request.util', () => ({ ...j
  * Jest unit spec (mocked prisma) — the DB-level flow lives in
  * park-void-restore.integration.spec.ts, which jest ignores by config.
  */
+import { BadRequestException, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReceiptVoidReversalTemplate } from '../../journal/cpa-templates/receipt-void-reversal.template';
 import { ReceiptNumberService } from './receipt-number.service';
@@ -57,6 +60,8 @@ function setup(
     /** ตัวอ่านใบแบบเดียวกับ PDF (PR3) — ไม่ส่ง = ใบลดหนี้ของใบเก่าคงรูปเดิม */
     query?: { getReceipt: jest.Mock };
     events?: string[];
+    /** การอ่านใบเป้าหมายก่อนเปิดธุรกรรมล้มทั้งชุด (final review I2 — outer catch) */
+    preReadFailure?: Error;
   } = {},
 ) {
   const siblingRows = [
@@ -116,7 +121,9 @@ function setup(
   const prisma = {
     // PR3: อ่านใบเป้าหมาย + ใบพี่น้องก่อนเปิดธุรกรรม (เฉพาะเมื่อมีตัวอ่านใบ)
     receipt: {
-      findUnique: jest.fn().mockResolvedValue(target),
+      findUnique: opts.preReadFailure
+        ? jest.fn().mockRejectedValue(opts.preReadFailure)
+        : jest.fn().mockResolvedValue(target),
       findMany: jest.fn().mockResolvedValue([target, ...siblingRows]),
     },
     user: {
@@ -291,6 +298,97 @@ describe('ReceiptVoidService — credit note per voided receipt', () => {
       [null, null, null, null, null, null, null],
       [null, null, null, null, null, null, null],
     ]);
+  });
+
+  // ── final review I2: อ่านใบเก่าก่อนยกเลิกไม่ได้ → ใบลดหนี้ยอดอย่างเดียว (การยกเลิกไม่ล้ม) แต่ต้องมีร่องรอยเสมอ ──────────
+  // เดิม catch {} ทั้งสองชั้น — error ที่ไม่คาด (อ่านใบ / ฐานข้อมูล) ให้ใบลดหนี้ VAT ผิดรูปแบบ Q5 โดยไม่มีใครรู้
+  describe('I2: การอ่านใบเก่าก่อนยกเลิกล้ม → log + Sentry (captureException เท่านั้น) · การยกเลิกไม่ล้ม', () => {
+    const APPROVAL = { requestId: 'void-request', actorId: 'approver-1' };
+    let warn: jest.SpyInstance;
+    let error: jest.SpyInstance;
+
+    beforeEach(() => {
+      (Sentry.captureException as jest.Mock).mockClear();
+      (Sentry.captureMessage as jest.Mock).mockClear();
+      warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    });
+    afterEach(() => {
+      warn.mockRestore();
+      error.mockRestore();
+    });
+
+    it('ตรรกะเดิมพิมพ์ใบเก่าไม่ได้ (BadRequestException — ข้อความที่คาดไว้) → log เตือนพร้อมเลขที่ใบทุกใบ · ไม่ส่ง Sentry', async () => {
+      const unprintable = new BadRequestException(
+        'ไม่สามารถแยกค่างวดและเงินรับล่วงหน้าของใบเสร็จนี้จากประวัติได้ กรุณาตรวจสอบก่อนพิมพ์',
+      );
+      const query = { getReceipt: jest.fn().mockRejectedValue(unprintable) };
+      const { service, receiptCreate } = setup({ query });
+
+      await expect(
+        service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', APPROVAL),
+      ).resolves.toBeDefined();
+
+      expect(creditNotesFrom(receiptCreate as jest.Mock)).toHaveLength(2);
+      const warned = warn.mock.calls.map(([m]) => String(m));
+      for (const receiptNumber of ['RT-202608-00007', 'RT-202608-00006']) {
+        expect(
+          warned.filter((m) => m.includes(receiptNumber) && m.includes(unprintable.message)),
+        ).toHaveLength(1);
+      }
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it('error อื่นตอนอ่านใบ (ไม่ใช่ BadRequestException) → log เตือน + Sentry.captureException ระดับ warning ต่อใบ พร้อมเลขที่ใบ', async () => {
+      const failure = new Error('connection terminated unexpectedly');
+      const query = { getReceipt: jest.fn().mockRejectedValue(failure) };
+      const { service, receiptCreate } = setup({ query });
+
+      await expect(
+        service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', APPROVAL),
+      ).resolves.toBeDefined();
+
+      expect(creditNotesFrom(receiptCreate as jest.Mock)).toHaveLength(2);
+      expect(warn.mock.calls.filter(([m]) => String(m).includes(failure.message))).toHaveLength(2);
+      expect(Sentry.captureException).toHaveBeenCalledTimes(2);
+      for (const receiptNumber of ['RT-202608-00007', 'RT-202608-00006']) {
+        expect(Sentry.captureException).toHaveBeenCalledWith(failure, {
+          level: 'warning',
+          tags: { subsystem: 'receipt-void-credit-note' },
+          extra: { receiptNumber },
+        });
+      }
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it('อ่านใบเป้าหมาย/ใบพี่น้องไม่ได้ทั้งชุด → log error + Sentry.captureException ระดับ error · ใบลดหนี้ทุกใบยอดอย่างเดียว', async () => {
+      const failure = new Error('connection reset by peer');
+      const query = { getReceipt: jest.fn() };
+      const { service, receiptCreate } = setup({ query, preReadFailure: failure });
+
+      await expect(
+        service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', APPROVAL),
+      ).resolves.toBeDefined();
+
+      expect(query.getReceipt).not.toHaveBeenCalled();
+      const cns = creditNotesFrom(receiptCreate as jest.Mock);
+      expect(cns.map((c) => money(c))).toEqual([
+        [null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null],
+      ]);
+      expect(
+        error.mock.calls.filter(
+          ([m]) => String(m).includes(TARGET_ID) && String(m).includes(failure.message),
+        ),
+      ).toHaveLength(1);
+      expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureException).toHaveBeenCalledWith(failure, {
+        level: 'error',
+        tags: { subsystem: 'receipt-void-credit-note' },
+      });
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
   });
 
   it('single-receipt installment still issues exactly one credit note', async () => {

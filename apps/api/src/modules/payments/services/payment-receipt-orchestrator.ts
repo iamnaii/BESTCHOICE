@@ -1216,6 +1216,9 @@ export class PaymentReceiptOrchestrator {
     recordedById: string,
     path: 'auto-allocate' | 'apply-credit',
   ): Promise<void> {
+    // ทางนี้ไม่ส่งวันที่ให้ generateReceipt — ใบลงวันที่ตอนออก (หลังธุรกรรมเงิน commit ทันที) · แจ้งเตือนของใบที่ออกไม่สำเร็จ
+    // ใช้เวลาเดียวกันนั้นเป็นวันที่รับเงินสำหรับออกใบซ้ำ
+    const paidDate = new Date();
     for (const item of items) {
       try {
         await this.receiptsService.generateReceipt(
@@ -1241,6 +1244,11 @@ export class PaymentReceiptOrchestrator {
           paymentId: item.paymentId,
           installmentNo: item.installmentNo,
           journalEntryNumber: item.entryNo ?? null,
+          paymentMethod,
+          amount: dRound(item.amount).toFixed(2),
+          transactionRef: null,
+          issuedById: recordedById,
+          paidDate: paidDate.toISOString(),
         });
       }
     }

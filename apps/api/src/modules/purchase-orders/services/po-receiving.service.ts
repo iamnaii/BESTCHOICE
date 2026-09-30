@@ -705,19 +705,6 @@ export class PoReceivingService {
         );
       }
 
-      // เครื่องที่ลงบัญชีรับเข้าคลังไปแล้ว (เคยอยู่ในคลังแล้วถูกเปลี่ยนสถานะกลับมารอถ่ายรูป) ตีกลับจากคิวนี้
-      // ไม่ได้ — ลบทิ้งจะเหลือสินค้าคงคลังและเจ้าหนี้ค้างในบัญชีโดยไม่มีเครื่อง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
-      const booked = await tx.goodsReceivingItem.findMany({
-        where: { productId: { in: productIds }, journalEntryId: { not: null }, deletedAt: null },
-        select: { productId: true },
-      });
-      if (booked.length > 0) {
-        const names = products.filter((p) => booked.some((b) => b.productId === p.id)).map((p) => p.name);
-        throw new BadRequestException(
-          `สินค้าต่อไปนี้ลงบัญชีรับเข้าคลังแล้ว จึงตีกลับจากคิวรอถ่ายรูปไม่ได้ — กรุณาแจ้งฝ่ายบัญชี: ${names.join(', ')}`,
-        );
-      }
-
       // ลบเฉพาะเครื่องที่ยังอยู่ในคิวรอถ่ายรูปจริง ณ ตอนเขียน — กดพร้อมกับยืนยันรูป/เปลี่ยนสถานะเข้าคลัง
       // แล้วอีกฝั่ง commit ก่อน (ค่าที่อ่านข้างบนเก่าไปแล้ว) ต้องไม่ลบเครื่องที่เพิ่งเข้าคลังและลงบัญชีไปแล้ว
       const removed = await tx.product.updateMany({
@@ -727,6 +714,22 @@ export class PoReceivingService {
       if (removed.count !== products.length) {
         throw new ConflictException(
           'สินค้าบางชิ้นเพิ่งถูกยืนยันรูปหรือเปลี่ยนสถานะระหว่างทำรายการ — กรุณารีเฟรชหน้าจอแล้วเลือกใหม่',
+        );
+      }
+
+      // เครื่องที่ลงบัญชีรับเข้าคลังไปแล้ว (เคยอยู่ในคลังแล้วถูกเปลี่ยนสถานะกลับมารอถ่ายรูป) ตีกลับจากคิวนี้
+      // ไม่ได้ — ลบทิ้งจะเหลือสินค้าคงคลังและเจ้าหนี้ค้างในบัญชีโดยไม่มีเครื่อง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8).
+      // ตรวจ **หลัง** คำสั่งลบ: ตอนนี้ถือล็อกแถวสินค้าแล้ว และทุกประตูเข้าคลังเขียนแถวสินค้าก่อนลงบัญชี ⇒ การลงบัญชี
+      // ของเครื่องเหล่านี้ commit ไปแล้ว (อ่านเห็น) หรือต้องรอเรา — ตรวจก่อนลบจะพลาดเคส ยืนยันรูปเข้าคลังแล้วมีคน
+      // เปลี่ยนกลับเป็นรอถ่ายรูป ในช่วงระหว่างที่อ่านกับที่ลบ (ผลตรวจทานอิสระรอบ 3). พบ = โยน ทั้ง tx ย้อนกลับ
+      const booked = await tx.goodsReceivingItem.findMany({
+        where: { productId: { in: productIds }, journalEntryId: { not: null }, deletedAt: null },
+        select: { productId: true },
+      });
+      if (booked.length > 0) {
+        const names = products.filter((p) => booked.some((b) => b.productId === p.id)).map((p) => p.name);
+        throw new BadRequestException(
+          `สินค้าต่อไปนี้ลงบัญชีรับเข้าคลังแล้ว จึงตีกลับจากคิวรอถ่ายรูปไม่ได้ — กรุณาแจ้งฝ่ายบัญชี: ${names.join(', ')}`,
         );
       }
 

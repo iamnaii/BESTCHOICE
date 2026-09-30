@@ -81,7 +81,10 @@ describe('PurchaseOrdersService.rejectQC', () => {
     expect(tx.goodsReceivingItem.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ productId: { in: ['p1', 'p2'] }, journalEntryId: { not: null } }) }),
     );
-    expect(tx.product.updateMany).not.toHaveBeenCalled();
+    // ตรวจหลังคำสั่งลบ (ถือล็อกแถวสินค้าแล้ว) — การลบถูกย้อนกลับเพราะโยนใน tx เดียวกัน (ผลตรวจทานอิสระรอบ 3)
+    expect(tx.goodsReceivingItem.findMany.mock.invocationCallOrder[0]).toBeGreaterThan(
+      tx.product.updateMany.mock.invocationCallOrder[0],
+    );
   });
 
   // ผลตรวจทานอิสระ 2026-09-30: กด "ไม่รับเข้าคลัง" พร้อมกับกดยืนยันรูปครบ — ฝั่งยืนยันรูป commit ก่อน

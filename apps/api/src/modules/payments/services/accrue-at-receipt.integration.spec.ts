@@ -8,6 +8,8 @@
  *     ตั้งแต่วันครบกำหนด → ไม่ลง 2A (รอบกลางคืนตั้งส่วนที่เหลือ)
  *   - รอบกลางคืนไม่ลง 2A ซ้ำ ตั้งเฉพาะส่วนที่เหลือ และหักเงินรับล่วงหน้าไม่เกินยอดที่ยังค้างบนแถวงวด
  *   - ยกเลิกใบเสร็จก่อนวันครบกำหนด → กลับ 2A ที่ลง ณ วันรับเงินทุกใบของงวด
+ *   - หน้าปรับดิวแบบชำระทั้งก้อน (6b) ของงวดที่ตั้งไปแล้วบางส่วน → preview แสดง 2A ส่วนที่เหลือ = ที่ลงจริง
+ *   - สัญญาณเตือนของใบรับชำระ (สัญญาที่รอบตั้งลูกหนี้งวดไม่ดูแล) ส่งหลังธุรกรรม commit เท่านั้น — ธุรกรรมล้ม = ไม่ส่ง
  *
  * Runner: vitest (jest ข้ามไฟล์ `*.integration.spec.ts`). CI เก็บไฟล์นี้ผ่าน `PAYMENTS_FILES`
  * (`src/modules/payments/services/*.integration.spec.ts` ใน deploy-gcp.yml) — ไม่ต้องแก้ workflow.
@@ -25,6 +27,7 @@ import {
   voidReceiptWithApproval,
 } from '../../../../e2e/helpers/payment-approval';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import * as Sentry from '@sentry/nestjs';
 import { AccountingPeriodStatus, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
@@ -50,8 +53,17 @@ import { ReceiptsService } from '../../receipts/receipts.service';
 import { bangkokStartOfDay } from '../../../utils/date.util';
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 import type { PaymentCase } from '../dto/payment.dto';
+import type { DeferredWarning } from '../../journal/deferred-warning';
 import { PaymentJournalPreviewService } from './payment-journal-preview.service';
 import { PaymentReceiptOrchestrator } from './payment-receipt-orchestrator';
+
+// สัญญาณเตือนของใบรับชำระส่งหลังธุรกรรม commit (PR2ข B11 — emitDeferredWarnings ของผู้เรียก) — แทนเฉพาะ
+// captureMessage/captureException ด้วย vi.fn เพื่อนับการส่ง ส่วนอื่นของ @sentry/nestjs เป็นของจริง
+// (ไม่มี DSN = ไม่ส่งอะไรออกไปอยู่แล้ว). เทสอื่นในไฟล์ไม่อ่าน Sentry
+vi.mock('@sentry/nestjs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@sentry/nestjs')>();
+  return { ...actual, captureMessage: vi.fn(), captureException: vi.fn() };
+});
 
 const prisma = new PrismaClient();
 const D = (n: string) => new Decimal(n);
@@ -424,6 +436,16 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
     expect(await balance(contractId, '41-1101', 'cr')).toBe('0.00');
     expect(await balance(contractId, '21-2101', 'cr')).toBe('0.00');
   };
+
+  /** การส่งสัญญาณเตือน "รับเงินเข้าสัญญาที่รอบตั้งลูกหนี้งวดไม่ดูแล" เข้า Sentry (captureMessage = vi.fn) */
+  const skippedStatusWarnings = () =>
+    vi
+      .mocked(Sentry.captureMessage)
+      .mock.calls.filter(
+        (call) =>
+          (call[1] as { tags?: Record<string, string> } | undefined)?.tags?.action ===
+          'accrue-at-receipt-skipped-status',
+      );
 
   beforeAll(async () => {
     await cleanLedger();
@@ -1092,6 +1114,65 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(await balance(c.id, '21-2101', 'cr')).toBe('1190.00'); // 65.42 + 1,124.58
       expect(await balance(c.id, '41-1101', 'cr')).toBe('6000.00'); // 329.85 + 5,670.15
     });
+
+    it('ปรับดิวแบบชำระทั้งก้อน (6b) ของงวดที่รับบางส่วน 1,000 ก่อนครบกำหนด → preview ที่หน้าปรับดิวขอ (case OVERPAY_ADVANCE) แสดง 2A ส่วนที่เหลือ 515.83 ไม่ใช่ทั้งงวด — ตรงกับที่ลงจริงตอนยืนยันทุกบรรทัด', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await recordPartialQr(c.id, 1, 1000, 'AAR-6B-1');
+      const sched = await scheduleOf(c.id, 1);
+      expect(await accruedOf(c.id, 1)).toEqual(['1000.00', '65.42', '329.85']);
+
+      // หน้าปรับดิว (RescheduleOverlay — ชำระทั้งก้อน) ขอ preview ด้วยยอดเรียกเก็บ = ค่างวดที่ค้าง 515.83
+      // + ค่าธรรมเนียมปรับดิว 354.00 และ case 'OVERPAY_ADVANCE'
+      const collect = 869.83;
+      const preview = await new PaymentJournalPreviewService(
+        prisma as never,
+        undefined,
+      ).previewJournal({
+        contractId: c.id,
+        installmentNo: 1,
+        amountReceived: collect,
+        depositAccountCode: '11-1101',
+        lateFee: 0,
+        case: 'OVERPAY_ADVANCE',
+      });
+      // กล่อง "รายการบัญชี (ลงทันทีตอนยืนยัน)" แสดงบล็อก 2A เมื่อทุกบรรทัดยังไม่ลง (posted: false)
+      const pending = preview.accrual2A!.lines;
+      expect(pending.every((l) => l.block === '2A' && l.posted === false)).toBe(true);
+      const pendingSorted = pending.map((l) => `${l.accountCode}:${l.debit}:${l.credit}`).sort();
+      expect(pendingSorted).toEqual(REST_515_SORTED);
+      expect(pendingSorted).not.toEqual(ACCRUAL_2A_SORTED);
+      expect(preview.accrualMode).toBe('CONSOLIDATED_PAYING_AHEAD');
+      expect(preview.accrualPortion).toBe('REMAINDER');
+      expect(preview.accrualAmount).toBe('515.83');
+      expect(preview.accruedBefore).toBe('1000.00');
+
+      // ยืนยัน: ขั้นที่ 1 ของ 6b ลงเงินผ่าน recordPayment โดยไม่ส่ง case (payments.controller.ts) — ค่าธรรมเนียม
+      // ที่เกินค่างวดพักเป็นเงินรับล่วงหน้า 21-1103
+      const paid = await record(c.id, 1, collect, 'AAR-6B-2');
+      expect(paid.status).toBe('PAID');
+      const accruals = await accrualEntries(sched.id);
+      expect(accruals).toHaveLength(2);
+      const [partial, remainder] = accruals;
+      expect(partial.referenceId).toBe(`${sched.id}:receipt-accrual:1`);
+      expect(remainder.referenceId).toBe(sched.id);
+      expect(remainder.entryNumber).toBe((await scheduleOf(c.id, 1)).accrualJournalEntryId);
+      expect((remainder.metadata as Record<string, unknown>).portion).toBe('remainder');
+      // preview === ที่ลงจริง: บล็อก 2A และบล็อกใบรับชำระ
+      expect(sortedLines(remainder)).toEqual(pendingSorted);
+      const completing = (await flowEntries(c.id, 'payment-receipt')).find(
+        (e) => (e.metadata as Record<string, unknown>).accrualEntryNumber === remainder.entryNumber,
+      );
+      expect(sortedLines(completing!)).toEqual(
+        preview.lines.map((l) => `${l.accountCode}:${l.debit}:${l.credit}`).sort(),
+      );
+      expect(sortedLines(completing!)).toEqual([
+        '11-1101:869.83:0.00',
+        '11-2103:0.00:515.83',
+        '21-1103:0.00:354.00',
+      ]);
+      expect(await accruedOf(c.id, 1)).toEqual(['1515.83', '99.17', '500.00']);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+    });
   });
 
   describe('สถานะสัญญา', () => {
@@ -1144,12 +1225,13 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(await balance(c.id, '41-1101', 'cr')).toBe('500.00');
     });
 
-    it('สัญญาบอกเลิกแล้ว (TERMINATED) แต่มีการใช้เครดิตคงเหลือชำระงวด → พฤติกรรมเดิม: มีใบรับชำระ ไม่ตั้งลูกหนี้งวด', async () => {
+    it('สัญญาบอกเลิกแล้ว (TERMINATED) แต่มีการใช้เครดิตคงเหลือชำระงวด → พฤติกรรมเดิม: มีใบรับชำระ ไม่ตั้งลูกหนี้งวด · ส่งสัญญาณเตือนครั้งเดียวหลังธุรกรรม commit', async () => {
       const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
       await prisma.contract.update({
         where: { id: c.id },
         data: { status: 'TERMINATED', creditBalance: D('1515.83') },
       });
+      vi.mocked(Sentry.captureMessage).mockClear();
 
       const res = await orchestrator.applyCreditBalance(c.id, recordedById);
       expect(res.allocatedPayments.map((p) => p.status)).toEqual(['PAID']);
@@ -1161,6 +1243,83 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       // ใบรับชำระลงตามเดิม: Dr 21-5101 1,515.83 / Cr 11-2103 1,515.83 — ไม่มี 2A มารองรับ
       expect(await balance(c.id, '11-2103', 'dr')).toBe('-1515.83');
       await expectNothingAccrued(c.id);
+      // ร่องรอยเดียวของเงินที่รับเข้าสัญญาที่ไม่ตั้งลูกหนี้งวด: template คืนสัญญาณเตือนให้ applyCreditBalance ส่ง
+      // หลัง $transaction คืนค่า (emitDeferredWarnings) — ครั้งเดียว ระดับ warning
+      expect(skippedStatusWarnings()).toEqual([
+        [
+          '[accrue-at-receipt] receipt on a contract the accrual does not serve — 2A not posted',
+          {
+            level: 'warning',
+            tags: { module: 'journal', action: 'accrue-at-receipt-skipped-status' },
+            extra: expect.objectContaining({
+              contractId: c.id,
+              contractStatus: 'TERMINATED',
+              installmentScheduleId: sched.id,
+              installmentNo: 1,
+              isFinalReceipt: true,
+            }),
+          },
+        ],
+      ]);
+    });
+
+    it('สัญญาบอกเลิกแล้ว ใช้เครดิตคงเหลือชำระงวด แต่ธุรกรรมล้มหลัง template คืนสัญญาณเตือนแล้ว → ไม่มีอะไรลง และไม่ส่งสัญญาณเตือน', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await prisma.contract.update({
+        where: { id: c.id },
+        data: { status: 'TERMINATED', creditBalance: D('1515.83') },
+      });
+      // งวดที่มีรายการภาษีขาย 60 วัน → applyCreditBalance กลับรายการนั้นในธุรกรรมเดียวกัน หลังลงใบรับชำระและเก็บ
+      // สัญญาณเตือนของใบนั้นแล้ว — ตัวกลับรายการที่ล้มทำให้ทั้งธุรกรรม roll back
+      await prisma.installmentSchedule.update({
+        where: { contractId_installmentNo: { contractId: c.id, installmentNo: 1 } },
+        data: { vat60dayJournalEntryId: 'JE-VAT60-TEST' },
+      });
+      const realTemplate = new PaymentReceiptTemplate(journal, prisma as never);
+      const produced: DeferredWarning[] = [];
+      const noop = async () => {};
+      const failing = new PaymentReceiptOrchestrator(
+        prisma as never,
+        receiptsService,
+        { logPaymentEvent: noop, log: noop } as never,
+        journal,
+        { transferOwnership: noop } as never,
+        { reverseStageOnPayment: noop } as never,
+        {
+          // template ตัวจริง — จดสัญญาณเตือนที่คืนให้ผู้เรียก
+          execute: async (...args: Parameters<PaymentReceiptTemplate['execute']>) => {
+            const out = await realTemplate.execute(...args);
+            produced.push(...out.warnings);
+            return out;
+          },
+        } as never,
+        {
+          execute: async () => {
+            throw new Error('ทดสอบ: กลับรายการภาษีขาย 60 วันไม่ผ่าน');
+          },
+        } as never,
+        {
+          awardLoyaltyPoints: noop,
+          sendPaymentSuccessLine: noop,
+          runMdmAutoUnlock: noop,
+          checkPromiseAfterPayment: noop,
+        },
+      );
+      const entriesBefore = await entryCount(c.id);
+      vi.mocked(Sentry.captureMessage).mockClear();
+
+      await expect(failing.applyCreditBalance(c.id, recordedById)).rejects.toThrow(
+        'ทดสอบ: กลับรายการภาษีขาย 60 วันไม่ผ่าน',
+      );
+
+      // สัญญาณเตือนเกิดแล้วในธุรกรรม แต่ธุรกรรมไม่ commit จึงไม่ถูกส่ง
+      expect(produced.map((w) => w.tags.action)).toEqual(['accrue-at-receipt-skipped-status']);
+      expect(skippedStatusWarnings()).toHaveLength(0);
+      // ไม่มีอะไรลง: ไม่มีใบรับชำระ · แถวงวดยังไม่ชำระ · เครดิตคงเดิม
+      expect(await entryCount(c.id)).toBe(entriesBefore);
+      expect(await paidOf(c.id, 1)).toEqual({ amountPaid: '0.00', status: 'PENDING' });
+      const after = await prisma.contract.findUniqueOrThrow({ where: { id: c.id } });
+      expect(new Decimal(after.creditBalance.toString()).toFixed(2)).toBe('1515.83');
     });
   });
 

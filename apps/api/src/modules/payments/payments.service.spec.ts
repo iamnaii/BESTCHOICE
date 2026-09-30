@@ -28,6 +28,9 @@ import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../accounting/bad-debt.service';
 import * as Sentry from '@sentry/node';
+import * as SentryNestjs from '@sentry/nestjs';
+import { Prisma } from '@prisma/client';
+import type { DeferredWarning } from '../journal/deferred-warning';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -665,6 +668,201 @@ describe('PaymentsService', () => {
       await service.autoAllocatePayment('contract-1', 3000, 'CASH', 'user-1');
 
       expect(vat60.execute).toHaveBeenCalledWith('inst-1', expect.anything());
+    });
+  });
+
+  // ตั้งลูกหนี้งวด ณ วันรับเงิน (PR2ข B11): PaymentReceiptTemplate ไม่เรียก Sentry จากในธุรกรรมของผู้เรียก —
+  // คืน `warnings` ให้ recordPayment / autoAllocatePayment ส่ง (emitDeferredWarnings) หลัง $transaction
+  // คืนค่าแล้วเท่านั้น. `accrue-at-receipt-skipped-status` เป็นร่องรอยเดียวของเงินที่รับเข้าสัญญาที่รอบตั้งลูกหนี้งวด
+  // ไม่ดูแล (บอกเลิก/ปิดแล้ว — ยังไม่มี 2A) · ธุรกรรมที่ commit ไม่ผ่านต้องไม่ทิ้งสัญญาณของงานที่ไม่ได้เกิดขึ้นจริง
+  describe('สัญญาณเตือนของใบรับชำระ — ส่งหลังธุรกรรม commit เท่านั้น', () => {
+    const SKIPPED_STATUS = 'accrue-at-receipt-skipped-status';
+    const skippedStatus = (installmentScheduleId: string): DeferredWarning => ({
+      message:
+        '[accrue-at-receipt] receipt on a contract the accrual does not serve — 2A not posted',
+      tags: { module: 'journal', action: SKIPPED_STATUS },
+      extra: { contractId: 'contract-1', contractStatus: 'TERMINATED', installmentScheduleId },
+    });
+    const receiptWith = (warning: DeferredWarning) => ({
+      entryNo: 'JE-MOCK',
+      split: { principalRemainingAfter: 0 },
+      warnings: [warning],
+    });
+    const captureMessage = SentryNestjs.captureMessage as jest.Mock;
+    /** การเรียก captureMessage ที่เป็นสัญญาณนี้ พร้อมลำดับการเรียก (invocationCallOrder) */
+    const skippedStatusCalls = () =>
+      captureMessage.mock.calls.flatMap((call, i) =>
+        call[1]?.tags?.action === SKIPPED_STATUS
+          ? [{ args: call, order: captureMessage.mock.invocationCallOrder[i] }]
+          : [],
+      );
+    /** ธุรกรรมที่ commit ได้ — `committed` ถูกเรียกเมื่อ callback คืนค่าแล้ว (= จุด commit) */
+    const commitMarker = () => {
+      const committed = jest.fn();
+      prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+        const result = await cb(prisma);
+        committed();
+        return result;
+      });
+      return committed;
+    };
+    /** callback ทำงานครบ (template คืนสัญญาณเตือนแล้ว) แต่ commit ไม่ผ่าน — P2034 ของ Serializable */
+    const failAtCommit = () => {
+      const conflict = new Prisma.PrismaClientKnownRequestError(
+        'Transaction failed due to a write conflict or a deadlock. Please retry your transaction',
+        { code: 'P2034', clientVersion: 'test' },
+      );
+      prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+        await cb(prisma);
+        throw conflict;
+      });
+      return conflict;
+    };
+    /** recordPayment เต็มงวด 3,000 ของงวดที่มีแถวตารางงวด — template ถูกเรียกหนึ่งครั้ง */
+    const arrangeFullPayment = () => {
+      prisma.payment.findFirst.mockResolvedValue({
+        ...mockPayment,
+        amountDue: 3000,
+        amountPaid: 0,
+        lateFee: 0,
+        lateFeeWaived: false,
+        status: 'PENDING',
+      });
+      prisma.payment.update.mockResolvedValue({
+        ...mockPayment,
+        amountDue: 3000,
+        amountPaid: 3000,
+        status: 'PAID',
+        paidDate: new Date(),
+      });
+      prisma.installmentSchedule.findUnique.mockResolvedValue({
+        id: 'inst-1',
+        vat60dayJournalEntryId: null,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).paymentReceiptTemplate;
+      template.execute.mockResolvedValue(receiptWith(skippedStatus('inst-1')));
+      return template;
+    };
+    /**
+     * สองงวด งวดละ 3,000 ที่ 6,000 ปิดได้ครบ (เงินจัดสรรอัตโนมัติ / เครดิตคงเหลือ) — template ถูกเรียกงวดละครั้ง
+     * แต่ละครั้งคืนสัญญาณเตือนของงวดนั้น
+     */
+    const arrangeTwoInstallments = (contract: Record<string, unknown> = {}) => {
+      const payments = [1, 2].map((installmentNo) => ({
+        ...mockPayment,
+        id: `p-${installmentNo}`,
+        installmentNo,
+        amountDue: 3000,
+        amountPaid: 0,
+        lateFee: 0,
+        lateFeeWaived: false,
+        status: 'PENDING',
+      }));
+      prisma.contract.findUnique.mockResolvedValue({ ...mockContract, ...contract, payments });
+      for (const p of payments) {
+        prisma.payment.update.mockResolvedValueOnce({
+          ...p,
+          amountPaid: 3000,
+          status: 'PAID',
+          paidDate: new Date(),
+          depositAccountCode: '11-1101',
+        });
+      }
+      prisma.installmentSchedule.findUnique
+        .mockResolvedValueOnce({ id: 'inst-1', vat60dayJournalEntryId: null })
+        .mockResolvedValueOnce({ id: 'inst-2', vat60dayJournalEntryId: null });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const template = (service as any).paymentReceiptTemplate;
+      template.execute
+        .mockResolvedValueOnce(receiptWith(skippedStatus('inst-1')))
+        .mockResolvedValueOnce(receiptWith(skippedStatus('inst-2')));
+      return template;
+    };
+
+    /** ส่งสัญญาณเตือนของแต่ละงวดตามลำดับ งวดละครั้ง — template ทำงานก่อนจุด commit ทุกครั้ง และส่งหลังจุด commit */
+    const expectEmittedAfterCommit = (
+      template: { execute: jest.Mock },
+      committed: jest.Mock,
+      installmentScheduleIds: string[],
+    ) => {
+      const calls = skippedStatusCalls();
+      expect(calls.map((c) => c.args)).toEqual(
+        installmentScheduleIds.map((id) => {
+          const warning = skippedStatus(id);
+          return [warning.message, { level: 'warning', tags: warning.tags, extra: warning.extra }];
+        }),
+      );
+      const commitOrder = committed.mock.invocationCallOrder[0];
+      expect(template.execute).toHaveBeenCalledTimes(installmentScheduleIds.length);
+      expect(Math.max(...template.execute.mock.invocationCallOrder)).toBeLessThan(commitOrder);
+      expect(Math.min(...calls.map((c) => c.order))).toBeGreaterThan(commitOrder);
+    };
+
+    beforeEach(() => captureMessage.mockClear());
+
+    it('recordPayment: ส่งสัญญาณเตือนที่ template คืนมาครั้งเดียว หลังธุรกรรม commit', async () => {
+      const template = arrangeFullPayment();
+      const committed = commitMarker();
+
+      await service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg');
+
+      // template ทำงานในธุรกรรม → ธุรกรรม commit → จึงส่ง
+      expectEmittedAfterCommit(template, committed, ['inst-1']);
+    });
+
+    it('recordPayment: commit ไม่ผ่าน (P2034) หลัง template คืนสัญญาณเตือนแล้ว → ไม่ส่ง', async () => {
+      const template = arrangeFullPayment();
+      const conflict = failAtCommit();
+
+      await expect(
+        service.recordPayment('contract-1', 1, 3000, 'CASH', 'user-1', 'http://slip.jpg'),
+      ).rejects.toBe(conflict);
+
+      expect(template.execute).toHaveBeenCalledTimes(1); // สัญญาณเตือนเกิดแล้วในธุรกรรม
+      expect(skippedStatusCalls()).toHaveLength(0);
+    });
+
+    it('autoAllocatePayment: ส่งสัญญาณเตือนของทุกงวดตามลำดับ งวดละครั้ง หลังธุรกรรม commit', async () => {
+      const template = arrangeTwoInstallments();
+      const committed = commitMarker();
+
+      await service.autoAllocatePayment('contract-1', 6000, 'CASH', 'user-1');
+
+      expectEmittedAfterCommit(template, committed, ['inst-1', 'inst-2']);
+    });
+
+    it('autoAllocatePayment: commit ไม่ผ่าน (P2034) หลัง template คืนสัญญาณเตือนทั้งสองงวดแล้ว → ไม่ส่ง', async () => {
+      const template = arrangeTwoInstallments();
+      const conflict = failAtCommit();
+
+      await expect(service.autoAllocatePayment('contract-1', 6000, 'CASH', 'user-1')).rejects.toBe(
+        conflict,
+      );
+
+      expect(template.execute).toHaveBeenCalledTimes(2);
+      expect(skippedStatusCalls()).toHaveLength(0);
+    });
+
+    // เทสต่อฐานจริง (accrue-at-receipt.integration.spec.ts) ปักการส่งหลัง commit ของ applyCreditBalance และ
+    // ธุรกรรมที่ล้มในลูปงวด — คู่นี้ปักกรณี commit ไม่ผ่านหลัง callback ทำงานครบ (ฐานจริงจำลองไม่ได้)
+    it('applyCreditBalance: ส่งสัญญาณเตือนของทุกงวดตามลำดับ งวดละครั้ง หลังธุรกรรม commit', async () => {
+      const template = arrangeTwoInstallments({ creditBalance: 6000 });
+      const committed = commitMarker();
+
+      await service.applyCreditBalance('contract-1', 'user-1');
+
+      expectEmittedAfterCommit(template, committed, ['inst-1', 'inst-2']);
+    });
+
+    it('applyCreditBalance: commit ไม่ผ่าน (P2034) หลัง template คืนสัญญาณเตือนทั้งสองงวดแล้ว → ไม่ส่ง', async () => {
+      const template = arrangeTwoInstallments({ creditBalance: 6000 });
+      const conflict = failAtCommit();
+
+      await expect(service.applyCreditBalance('contract-1', 'user-1')).rejects.toBe(conflict);
+
+      expect(template.execute).toHaveBeenCalledTimes(2);
+      expect(skippedStatusCalls()).toHaveLength(0);
     });
   });
 

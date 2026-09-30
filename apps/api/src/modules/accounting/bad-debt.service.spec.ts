@@ -1111,6 +1111,7 @@ describe('BadDebtService', () => {
       it('สัญญาณเตือนจาก template (คอลัมน์ไม่ตรงบัญชี) ส่งหลังธุรกรรม commit ระดับ warning และไม่อยู่ในผลลัพธ์', async () => {
         writeOffTemplate().mockResolvedValueOnce({ entryNo: 'JE-MOCK', warnings: [warning] });
         let committed = false;
+        let sentAfterCommit: boolean | null = null;
         prisma.$transaction.mockImplementationOnce(
           async (fn: (tx: unknown) => Promise<unknown>) => {
             const r = await fn(prisma);
@@ -1119,11 +1120,12 @@ describe('BadDebtService', () => {
           },
         );
         (Sentry.captureMessage as jest.Mock).mockImplementationOnce(() => {
-          expect(committed).toBe(true);
+          sentAfterCommit = committed;
         });
 
         const result = await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
 
+        expect(sentAfterCommit).toBe(true);
         expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
         expect(Sentry.captureMessage).toHaveBeenCalledWith(warning.message, {
           level: 'warning',

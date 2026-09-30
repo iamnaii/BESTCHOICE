@@ -11,6 +11,7 @@ import {
   ReceiptVoidReversalTemplate,
   type AccrualVoidResult,
 } from '../../journal/cpa-templates/receipt-void-reversal.template';
+import { emitDeferredWarnings, type DeferredWarning } from '../../journal/deferred-warning';
 import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
 import { ReceiptNumberService } from './receipt-number.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
@@ -123,7 +124,9 @@ export class ReceiptVoidService {
 
     // CR-7: Validate void date is not in a closed (FINANCE) accounting period.
     await validatePeriodOpen(this.prisma, new Date(), await this.resolveFinanceCompanyId());
-    return this.prisma.$transaction(
+    /** สัญญาณเตือนของการกลับรายการตั้งลูกหนี้งวด — ส่งหลังธุรกรรม commit เท่านั้น */
+    let accrualWarnings: readonly DeferredWarning[] = [];
+    const voided = await this.prisma.$transaction(
       async (tx) => {
         const receipt = await tx.receipt.findUnique({ where: { id } });
         if (!receipt || receipt.deletedAt) throw new NotFoundException('ไม่พบใบเสร็จ');
@@ -515,13 +518,16 @@ export class ReceiptVoidService {
               },
             });
             // ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตอบฝ่ายบัญชี 29/09/2569): งวดไม่เหลือการรับชำระที่มีผลแล้ว —
-            // ถ้ารายการตั้งลูกหนี้งวดถูกลง ณ วันรับเงินและยังไม่ถึงวันครบกำหนด ให้กลับรายการนั้นด้วย
-            // (เงื่อนไขอยู่ใน template ที่เดียว). ไม่จับ error: ล้มแล้วการยกเลิกล้มทั้งรายการ
+            // ถ้ารายการตั้งลูกหนี้งวดถูกลง ณ วันรับเงิน (ทุกใบ: บางส่วน + ใบที่ทำให้ครบ — ก1) และยังไม่ถึง
+            // วันครบกำหนด ให้กลับรายการเหล่านั้นด้วย (เงื่อนไขข้อ 2–3 อยู่ใน template). ไม่จับ error:
+            // ล้มแล้วการยกเลิกล้มทั้งรายการ. สัญญาณเตือนของ template ส่งหลัง commit
             if (fullyReverted && schedule) {
-              accrualReversal = await this.receiptVoidReversalTemplate.voidAccrualPostedAtReceipt(
+              const accrualVoid = await this.receiptVoidReversalTemplate.voidAccrualPostedAtReceipt(
                 schedule.id,
                 tx,
               );
+              accrualReversal = accrualVoid.result;
+              accrualWarnings = accrualVoid.warnings;
             }
             const siblingWhere = {
               paymentId: payment.id,
@@ -643,5 +649,7 @@ export class ReceiptVoidService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+    emitDeferredWarnings(accrualWarnings);
+    return voided;
   }
 }

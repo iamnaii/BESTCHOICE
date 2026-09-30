@@ -1253,9 +1253,10 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(await paidOf(c.id, 1)).toEqual({ amountPaid: '0.00', status: 'PENDING' });
       expect((await voidAudit(receiptId)).accrualReversal).toEqual({
         reversed: true,
-        entryNo: reversals[0].entryNumber,
-        accrualEntryNumber: accrual.entryNumber,
+        entryNos: [reversals[0].entryNumber],
+        accrualEntryNumbers: [accrual.entryNumber],
       });
+      expect(await accruedOf(c.id, 1)).toEqual(['0.00', '0.00', '0.00']);
 
       // ถึงวันครบกำหนด: รอบกลางคืนตั้งลูกหนี้งวดใหม่ — รันสองรอบต้องได้ใบเดียว
       const due = await setDueDaysAgo(c.id, 1, 0);
@@ -1393,13 +1394,183 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
         return template.voidAccrualPostedAtReceipt(sched.id, tx);
       });
 
-      expect(second).toEqual({ reversed: false, reason: 'ALREADY_REVERSED' });
+      expect(second.result).toEqual({ reversed: false, reason: 'ALREADY_REVERSED' });
+      expect(second.warnings).toHaveLength(1); // ส่งหลัง commit โดยผู้เรียก — ที่นี่ไม่ถูกส่ง
       expect(await accrualReversalsOf(accrual.id)).toHaveLength(1);
       expect(await entryCount(c.id)).toBe(entriesAfterFirst);
       const original = await prisma.journalEntry.findUniqueOrThrow({ where: { id: accrual.id } });
       expect((original.metadata as Record<string, unknown>).reversedByEntryNumber).toBe(
         (await accrualReversalsOf(accrual.id))[0].entryNumber,
       );
+      await expectNothingAccrued(c.id);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+    });
+
+    it('ก1: รับบางส่วน 1,000 แล้วรับ 515.83 ก่อนครบกำหนด → ยกเลิกใบเสร็จ = กลับ 2A ทั้งสองใบ ทุกบัญชีกลับไปเท่าก่อนรับเงิน · ถึงวันครบกำหนดรอบกลางคืนตั้งทั้งงวดใหม่', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await recordPartialQr(c.id, 1, 1000, 'AAR-VOIDP-1');
+      await record(c.id, 1, 515.83, 'AAR-VOIDP-2');
+      const sched = await scheduleOf(c.id, 1);
+      const [partial, remainder] = await accrualEntries(sched.id);
+      const receiptId = await receiptIdOf(c.id, 1);
+
+      const res = await voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จของงวดที่ตั้งลูกหนี้สองรายการ');
+      expect(res.paymentReverted?.toStatus).toBe('PENDING');
+
+      const partialReversals = await accrualReversalsOf(partial.id);
+      const remainderReversals = await accrualReversalsOf(remainder.id);
+      expect(partialReversals).toHaveLength(1);
+      expect(remainderReversals).toHaveLength(1);
+      expect(sortedLines(partialReversals[0])).toEqual([
+        '11-2101:934.58:0.00',
+        '11-2103:0.00:1000.00',
+        '11-2105:65.42:0.00',
+        '11-2106:0.00:329.85',
+        '21-2101:65.42:0.00',
+        '21-2102:0.00:65.42',
+        '41-1101:329.85:0.00',
+      ]);
+      expect((await voidAudit(receiptId)).accrualReversal).toEqual({
+        reversed: true,
+        entryNos: [partialReversals[0].entryNumber, remainderReversals[0].entryNumber],
+        accrualEntryNumbers: [partial.entryNumber, remainder.entryNumber],
+      });
+      const after = await scheduleOf(c.id, 1);
+      expect(after.accrualJournalEntryId).toBeNull();
+      expect(await accruedOf(c.id, 1)).toEqual(['0.00', '0.00', '0.00']);
+      await expectNothingAccrued(c.id);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+
+      // ถึงวันครบกำหนด: ตั้งทั้งงวดใหม่ — `<id>` ถูกใบเดิม (กลับแล้ว) ถือ จึงได้ re-accrual:1
+      await setDueDaysAgo(c.id, 1, 0);
+      await runNightly();
+      const live = await liveAccrualEntries(sched.id);
+      expect(live).toHaveLength(1);
+      expect(live[0].referenceId).toBe(`${sched.id}:re-accrual:1`);
+      expect(sortedLines(live[0])).toEqual(ACCRUAL_2A_SORTED);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('1515.83');
+    });
+
+    it('ก1: ยกเลิกใบบางส่วนก่อนครบกำหนด แล้วรับบางส่วนใหม่ → ใบใหม่ได้ reference `<id>:receipt-accrual:2`', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await recordPartialQr(c.id, 1, 1000, 'AAR-VOIDP-3');
+      const sched = await scheduleOf(c.id, 1);
+      await voidReceipt(await receiptIdOf(c.id, 1), 'ทดสอบยกเลิกใบเสร็จบางส่วน');
+      expect(await accruedOf(c.id, 1)).toEqual(['0.00', '0.00', '0.00']);
+
+      await recordPartialQr(c.id, 1, 600, 'AAR-VOIDP-4');
+
+      const live = await liveAccrualEntries(sched.id);
+      expect(live).toHaveLength(1);
+      expect(live[0].referenceId).toBe(`${sched.id}:receipt-accrual:2`);
+      expect(await accruedOf(c.id, 1)).toEqual(['600.00', '39.25', '197.91']);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+    });
+
+    it('ก1: รับบางส่วนก่อนครบกำหนด ยกเลิกหลังวันครบกำหนด (รอบกลางคืนตั้งส่วนที่เหลือแล้ว) → ไม่กลับ 2A ใดเลย', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await prisma.payment.updateMany({
+        where: { contractId: c.id },
+        data: { lateFeeWaived: true },
+      });
+      await recordPartialQr(c.id, 1, 1000, 'AAR-VOIDP-5');
+      const sched = await scheduleOf(c.id, 1);
+      await setDueDaysAgo(c.id, 1, 1);
+      await runNightly();
+      const before = await accrualEntries(sched.id);
+      expect(before).toHaveLength(2);
+      const receiptId = await receiptIdOf(c.id, 1);
+
+      await voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จหลังวันครบกำหนด');
+
+      for (const e of before) expect(await accrualReversalsOf(e.id)).toHaveLength(0);
+      expect((await voidAudit(receiptId)).accrualReversal).toEqual({
+        reversed: false,
+        reason: 'DUE_DATE_REACHED',
+      });
+      expect(await accruedOf(c.id, 1)).toEqual(['1515.83', '99.17', '500.00']);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('1515.83'); // ลูกหนี้งวดกลับมาค้างเต็มงวด
+      expect(await balance(c.id, '41-1101', 'cr')).toBe('500.00');
+    });
+
+    it('ก1: ใบบางส่วนที่ถูกกลับไปแล้วจากการยกเลิกครั้งก่อน → ยกเลิกครั้งถัดไปไม่กลับใบนั้นซ้ำ และยังกลับใบที่ยังมีผล', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await recordPartialQr(c.id, 1, 1000, 'AAR-VOIDP-6');
+      const sched = await scheduleOf(c.id, 1);
+      await voidReceipt(await receiptIdOf(c.id, 1), 'ทดสอบยกเลิกใบเสร็จบางส่วนรอบที่หนึ่ง');
+      await recordPartialQr(c.id, 1, 600, 'AAR-VOIDP-7');
+      const [first, second] = await accrualEntries(sched.id);
+      expect(first.referenceId).toBe(`${sched.id}:receipt-accrual:1`);
+      expect(isReversed(first)).toBe(true);
+      expect(second.referenceId).toBe(`${sched.id}:receipt-accrual:2`);
+      expect(isReversed(second)).toBe(false);
+      const firstReversals = await accrualReversalsOf(first.id);
+      expect(firstReversals).toHaveLength(1);
+      const receiptId = await receiptIdOf(c.id, 1);
+
+      const res = await voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จบางส่วนรอบที่สอง');
+      expect(res.paymentReverted?.toStatus).toBe('PENDING');
+
+      // ใบแรก (ประวัติ) ไม่ถูกกลับซ้ำ — ยังมีรายการกลับใบเดิมใบเดียว · ใบที่สองถูกกลับหนึ่งใบ
+      expect((await accrualReversalsOf(first.id)).map((e) => e.id)).toEqual(
+        firstReversals.map((e) => e.id),
+      );
+      const secondReversals = await accrualReversalsOf(second.id);
+      expect(secondReversals).toHaveLength(1);
+      expect(sortedLines(secondReversals[0])).toEqual([
+        '11-2101:560.75:0.00',
+        '11-2103:0.00:600.00',
+        '11-2105:39.25:0.00',
+        '11-2106:0.00:197.91',
+        '21-2101:39.25:0.00',
+        '21-2102:0.00:39.25',
+        '41-1101:197.91:0.00',
+      ]);
+      expect(await flowEntries(c.id, RECEIPT_ACCRUAL_VOID_FLOW)).toHaveLength(2);
+      expect((await voidAudit(receiptId)).accrualReversal).toEqual({
+        reversed: true,
+        entryNos: [secondReversals[0].entryNumber],
+        accrualEntryNumbers: [second.entryNumber],
+      });
+      expect(await liveAccrualEntries(sched.id)).toHaveLength(0);
+      expect(await accruedOf(c.id, 1)).toEqual(['0.00', '0.00', '0.00']);
+      await expectNothingAccrued(c.id);
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+    });
+
+    it('ก1: ใบบางส่วนหลายใบ (500 / 600) + ใบที่ทำให้ครบ 415.83 → ยกเลิกก่อนครบกำหนดกลับครบทุกใบตามลำดับที่ลง', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await recordPartialQr(c.id, 1, 500, 'AAR-VOIDP-8');
+      await recordPartialQr(c.id, 1, 600, 'AAR-VOIDP-9');
+      await recordPartialQr(c.id, 1, 415.83, 'AAR-VOIDP-10');
+      const sched = await scheduleOf(c.id, 1);
+      const accruals = await accrualEntries(sched.id);
+      expect(accruals.map((e) => e.referenceId)).toEqual([
+        `${sched.id}:receipt-accrual:1`,
+        `${sched.id}:receipt-accrual:2`,
+        sched.id,
+      ]);
+      const receiptId = await receiptIdOf(c.id, 1);
+
+      const res = await voidReceipt(receiptId, 'ทดสอบยกเลิกใบเสร็จของงวดที่ตั้งลูกหนี้สามรายการ');
+      expect(res.paymentReverted?.toStatus).toBe('PENDING');
+
+      const perAccrual = await Promise.all(accruals.map((e) => accrualReversalsOf(e.id)));
+      expect(perAccrual.map((found) => found.length)).toEqual([1, 1, 1]);
+      const reversals = perAccrual.map((found) => found[0]);
+      expect(reversals.map((r) => sortedLines(r).find((l) => l.startsWith('11-2103:')))).toEqual([
+        '11-2103:0.00:500.00',
+        '11-2103:0.00:600.00',
+        '11-2103:0.00:415.83',
+      ]);
+      expect((await voidAudit(receiptId)).accrualReversal).toEqual({
+        reversed: true,
+        entryNos: reversals.map((r) => r.entryNumber),
+        accrualEntryNumbers: accruals.map((e) => e.entryNumber),
+      });
+      expect(await liveAccrualEntries(sched.id)).toHaveLength(0);
+      expect((await scheduleOf(c.id, 1)).accrualJournalEntryId).toBeNull();
+      expect(await accruedOf(c.id, 1)).toEqual(['0.00', '0.00', '0.00']);
       await expectNothingAccrued(c.id);
       expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
     });

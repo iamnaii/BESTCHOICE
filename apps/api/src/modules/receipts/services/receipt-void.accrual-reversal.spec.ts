@@ -1,9 +1,15 @@
 import { consumePaymentApproval } from '../../payments/services/payment-approval-request.util';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReceiptVoidReversalTemplate } from '../../journal/cpa-templates/receipt-void-reversal.template';
 import { ReceiptNumberService } from './receipt-number.service';
 import { ReceiptVoidService } from './receipt-void.service';
+
+jest.mock('@sentry/nestjs', () => ({
+  captureMessage: jest.fn(),
+  captureException: jest.fn(),
+}));
 
 jest.mock('../../payments/services/payment-approval-request.util', () => ({
   ...jest.requireActual('../../payments/services/payment-approval-request.util'),
@@ -118,9 +124,12 @@ function setup(
     jest.fn().mockImplementation(() => {
       calls.push('accrual-void');
       return Promise.resolve({
-        reversed: true,
-        entryNo: 'JE-202609-00091',
-        accrualEntryNumber: 'JE-202609-00077',
+        result: {
+          reversed: true,
+          entryNos: ['JE-202609-00091'],
+          accrualEntryNumbers: ['JE-202609-00077'],
+        },
+        warnings: [],
       });
     });
   const reversal = {
@@ -155,14 +164,17 @@ describe('ReceiptVoidService — กลับรายการตั้งล�
     expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
     expect(auditNewValue().accrualReversal).toEqual({
       reversed: true,
-      entryNo: 'JE-202609-00091',
-      accrualEntryNumber: 'JE-202609-00077',
+      entryNos: ['JE-202609-00091'],
+      accrualEntryNumbers: ['JE-202609-00077'],
     });
   });
 
   it('template ตอบว่าไม่กลับ (เช่น ถึงวันครบกำหนดแล้ว) → การยกเลิกสำเร็จตามเดิม และบันทึกเหตุผล', async () => {
     const { run, tx, auditNewValue } = setup({
-      accrualVoid: jest.fn().mockResolvedValue({ reversed: false, reason: 'DUE_DATE_REACHED' }),
+      accrualVoid: jest.fn().mockResolvedValue({
+        result: { reversed: false, reason: 'DUE_DATE_REACHED' },
+        warnings: [],
+      }),
     });
 
     const out = await run();
@@ -223,6 +235,39 @@ describe('ReceiptVoidService — กลับรายการตั้งล�
     await expect(run()).rejects.toBe(failure);
 
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('สัญญาณเตือนจาก template ถูกส่งหลังธุรกรรมของการยกเลิกคืนค่า (หลังเขียน audit) — ธุรกรรมล้ม = ไม่ส่ง', async () => {
+    const warning = {
+      message:
+        '[receipt-accrual-void] posted 2A lines differ from the builder — reversal mirrors the posted lines',
+      tags: { module: 'journal', action: 'receipt-accrual-void-crosscheck' },
+      extra: { installmentScheduleId: SCHEDULE_ID },
+    };
+    const withWarning = () =>
+      jest.fn().mockResolvedValue({
+        result: { reversed: true, entryNos: ['JE-1'], accrualEntryNumbers: ['JE-0'] },
+        warnings: [warning],
+      });
+    (Sentry.captureMessage as jest.Mock).mockClear();
+
+    const ok = setup({ accrualVoid: withWarning() });
+    await ok.run();
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(warning.message, {
+      level: 'warning',
+      tags: warning.tags,
+      extra: warning.extra,
+    });
+    expect(ok.tx.auditLog.create.mock.invocationCallOrder[0]).toBeLessThan(
+      (Sentry.captureMessage as jest.Mock).mock.invocationCallOrder[0],
+    );
+
+    (Sentry.captureMessage as jest.Mock).mockClear();
+    const failing = setup({ accrualVoid: withWarning() });
+    failing.tx.auditLog.create.mockRejectedValueOnce(new Error('audit write failed'));
+    await expect(failing.run()).rejects.toThrow('audit write failed');
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
   it('ค่าที่คืนให้ผู้เรียกเป็นรูปเดิม', async () => {

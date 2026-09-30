@@ -10,6 +10,7 @@ import {
   resolvePaymentTerms,
 } from './po-amounts.util';
 import { poLineCosts, poUnitCostAt } from './po-unit-cost.util';
+import { receivingPostingDate } from './receiving-acceptance-journal';
 import { d } from '../../../utils/decimal.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import {
@@ -213,7 +214,11 @@ export class PoReceivingService {
     const installmentSemantics = await resolveInstallmentSemantics(tx, this.logger);
 
     const unitCosts = this.resolveUnitCosts(lineCosts, po.items, dto.items, freshByPoItem);
+    // ลงบัญชีตอนรับของเฉพาะหน่วยที่เข้าคลังทันที — หน่วยที่รอถ่ายรูปลงตอนผ่านเข้าคลัง
+    // (ReceivingAcceptanceJournal) ตามคำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8
     const journalUnits: ShopGoodsReceivingUnit[] = [];
+    const bookedReceivingItemIds: string[] = [];
+    let unitsAwaitingStockEntry = 0;
 
     // Process each item
     for (const [index, item] of dto.items.entries()) {
@@ -332,7 +337,7 @@ export class PoReceivingService {
         }
 
         // Create receiving item linked to product
-        await tx.goodsReceivingItem.create({
+        const receivingItem = await tx.goodsReceivingItem.create({
           data: {
             receivingId: receiving.id,
             poItemId: item.poItemId,
@@ -341,6 +346,7 @@ export class PoReceivingService {
             photos: item.photos || [],
             status: 'PASS',
             productId: product.id,
+            receivedCost: unitCosts.get(index)!,
             batteryHealth: item.batteryHealth ?? null,
             warrantyExpired: item.warrantyExpired ?? null,
             warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
@@ -350,11 +356,17 @@ export class PoReceivingService {
         });
 
         passedProducts.push(product);
-        journalUnits.push({
-          inventoryAccountCode: this.journal.shopAccountResolver.resolveProductAccounts(productCategory).inventoryAccountCode,
-          payableAccountCode: this.journal.shopAccountResolver.resolveSupplierPayableAccount(productCategory),
-          cost: unitCosts.get(index)!,
-        });
+        if (initialStatus === 'IN_STOCK') {
+          journalUnits.push({
+            productId: product.id,
+            inventoryAccountCode: this.journal.shopAccountResolver.resolveProductAccounts(productCategory).inventoryAccountCode,
+            payableAccountCode: this.journal.shopAccountResolver.resolveSupplierPayableAccount(productCategory),
+            cost: unitCosts.get(index)!,
+          });
+          bookedReceivingItemIds.push(receivingItem.id);
+        } else {
+          unitsAwaitingStockEntry += 1;
+        }
       } else {
         // Create receiving item for rejected items (no product created)
         const rejectedItem = await tx.goodsReceivingItem.create({
@@ -398,14 +410,20 @@ export class PoReceivingService {
       data: { status: newStatus },
     });
 
-    const journalEntryNo = await this.postReceivingJournal(tx, {
+    const posted = await this.postReceivingJournal(tx, {
       receivingId: receiving.id,
       grNumber,
       poId: id,
       poNumber: po.poNumber,
       units: journalUnits,
-      postedAt: this.receivingPostingDate(receiving),
+      postedAt: receivingPostingDate(receiving),
     });
+    if (posted && bookedReceivingItemIds.length > 0) {
+      await tx.goodsReceivingItem.updateMany({
+        where: { id: { in: bookedReceivingItemIds } },
+        data: { journalEntryId: posted.journalEntryId },
+      });
+    }
 
     return {
       receivingId: receiving.id,
@@ -416,7 +434,9 @@ export class PoReceivingService {
       rejected: rejectedItems.length,
       products: passedProducts,
       mainWarehouse: mainWarehouse!.name,
-      journalEntryNo,
+      journalEntryNo: posted?.entryNo ?? null,
+      /** หน่วยที่รอถ่ายรูป — ลงบัญชีรับเข้าคลังตอนผ่านเข้าคลัง ไม่ใช่ตอนนี้ */
+      unitsAwaitingStockEntry,
     };
   }
 
@@ -486,18 +506,9 @@ export class PoReceivingService {
   }
 
   /**
-   * วันที่ลงบัญชีของใบรับของ — จุดเดียวที่ตัดสิน. วันนี้ = เวลาที่รับของเข้าคลัง.
-   * ฝ่ายบัญชีตอบข้อ ข3 (2026-09-29) ให้ใช้วันที่ในใบส่งของ/ใบกำกับภาษีของผู้จัดจำหน่าย และเจ้าของ
-   * เคาะตามนั้นแล้ว (2026-09-29) แต่ใบรับของยังไม่มีช่องเก็บวันที่เอกสาร — เมื่อเพิ่มช่องแล้วแก้ที่นี่ที่เดียว
-   */
-  private receivingPostingDate(receiving: { createdAt?: Date | null }): Date {
-    return receiving.createdAt ?? new Date();
-  }
-
-  /**
    * Dr สินค้าคงคลัง / Cr เจ้าหนี้ผู้จัดจำหน่าย — โพสต์ใน tx เดียวกับการรับของ (รายการบัญชีพัง =
    * การรับของไม่เกิด). `createAndPost` ไม่ตรวจงวดบัญชีเอง จึงตรวจที่นี่ด้วยบริษัท SHOP.
-   * ไม่มีหน่วยที่ตรวจผ่าน = ไม่มีรายการ (คืน null)
+   * ไม่มีหน่วยที่เข้าคลังทันที = ไม่มีรายการ (คืน null)
    */
   private async postReceivingJournal(
     tx: Prisma.TransactionClient,
@@ -509,15 +520,14 @@ export class PoReceivingService {
       units: ShopGoodsReceivingUnit[];
       postedAt: Date;
     },
-  ): Promise<string | null> {
+  ): Promise<{ entryNo: string; journalEntryId: string } | null> {
     if (input.units.length === 0) return null;
     const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(tx);
     await validatePeriodOpen(tx, input.postedAt, shopCompanyId);
-    const posted = await this.journal.goodsReceivingTemplate.execute(
+    return this.journal.goodsReceivingTemplate.execute(
       { idempotencyKey: `shop-goods-receiving:${input.receivingId}`, ...input },
       tx,
     );
-    return posted?.entryNo ?? null;
   }
 
   /**
@@ -669,7 +679,8 @@ export class PoReceivingService {
 
   /**
    * "ไม่รับเข้าคลัง" จากคิวรอถ่ายรูป (PHOTO_PENDING): soft-delete เครื่องที่ตรวจแล้วไม่ผ่าน
-   * พร้อมเหตุผล — ไม่แตะ JE/บัญชี. ขั้น QC_PENDING ถูกยกเลิก 2026-09-07 (ไม่มี flow ไหน
+   * พร้อมเหตุผล — ไม่แตะ JE/บัญชี: เครื่องจากใบสั่งซื้อที่ยังรอถ่ายรูปยังไม่เคยลงบัญชีรับของ
+   * (ลงตอนผ่านเข้าคลัง — ReceivingAcceptanceJournal) จึงไม่มีอะไรต้องกลับรายการ. ขั้น QC_PENDING ถูกยกเลิก 2026-09-07 (ไม่มี flow ไหน
    * สร้างมันตั้งแต่ 2026-03-06 และปุ่มยืนยันเป็นช่องอ้อมด่านราคา) จึงรับเฉพาะ PHOTO_PENDING
    */
   async rejectQC(productIds: string[], reason: string) {
@@ -691,6 +702,19 @@ export class PoReceivingService {
       if (invalid.length > 0) {
         throw new BadRequestException(
           `สินค้าต่อไปนี้ไม่ได้อยู่ในคิวรอถ่ายรูป: ${invalid.map((p) => p.name).join(', ')}`,
+        );
+      }
+
+      // เครื่องที่ลงบัญชีรับเข้าคลังไปแล้ว (เคยอยู่ในคลังแล้วถูกเปลี่ยนสถานะกลับมารอถ่ายรูป) ตีกลับจากคิวนี้
+      // ไม่ได้ — ลบทิ้งจะเหลือสินค้าคงคลังและเจ้าหนี้ค้างในบัญชีโดยไม่มีเครื่อง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
+      const booked = await tx.goodsReceivingItem.findMany({
+        where: { productId: { in: productIds }, journalEntryId: { not: null }, deletedAt: null },
+        select: { productId: true },
+      });
+      if (booked.length > 0) {
+        const names = products.filter((p) => booked.some((b) => b.productId === p.id)).map((p) => p.name);
+        throw new BadRequestException(
+          `สินค้าต่อไปนี้ลงบัญชีรับเข้าคลังแล้ว จึงตีกลับจากคิวรอถ่ายรูปไม่ได้ — กรุณาแจ้งฝ่ายบัญชี: ${names.join(', ')}`,
         );
       }
 

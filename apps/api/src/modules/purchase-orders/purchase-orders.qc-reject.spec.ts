@@ -9,11 +9,14 @@ describe('PurchaseOrdersService.rejectQC', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
 
-  const buildTx = (products: { id: string; status: string; name: string }[]) => {
+  const buildTx = (products: { id: string; status: string; name: string }[], bookedProductIds: string[] = []) => {
     const tx = {
       product: {
         findMany: jest.fn().mockResolvedValue(products),
         updateMany: jest.fn().mockResolvedValue({ count: products.length }),
+      },
+      goodsReceivingItem: {
+        findMany: jest.fn().mockResolvedValue(bookedProductIds.map((productId) => ({ productId }))),
       },
     };
     return tx;
@@ -58,5 +61,25 @@ describe('PurchaseOrdersService.rejectQC', () => {
       await expect(service.rejectQC(['p1'], 'late')).rejects.toThrow(/รอถ่ายรูป/);
       expect(tx.product.updateMany).not.toHaveBeenCalled();
     }
+  });
+
+  // คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8: เครื่องที่รอถ่ายรูปยังไม่ลงบัญชี จึงตีกลับได้โดยไม่แตะบัญชี —
+  // แต่เครื่องที่ลงบัญชีรับเข้าคลังไปแล้ว (เคยอยู่ในคลังแล้วถูกเปลี่ยนกลับมารอถ่ายรูป) ลบทิ้งไม่ได้
+  it('ปฏิเสธเครื่องที่ลงบัญชีรับเข้าคลังแล้ว — ลบทิ้งจะเหลือสินค้าคงคลังและเจ้าหนี้ค้างโดยไม่มีเครื่อง', async () => {
+    const tx = buildTx(
+      [
+        { id: 'p1', status: 'PHOTO_PENDING', name: 'iPhone รอถ่ายรูป' },
+        { id: 'p2', status: 'PHOTO_PENDING', name: 'iPhone เคยเข้าคลัง' },
+      ],
+      ['p2'],
+    );
+    prisma = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+    service = await build();
+
+    await expect(service.rejectQC(['p1', 'p2'], 'จอแตก')).rejects.toThrow(/ลงบัญชีรับเข้าคลังแล้ว.*iPhone เคยเข้าคลัง/);
+    expect(tx.goodsReceivingItem.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ productId: { in: ['p1', 'p2'] }, journalEntryId: { not: null } }) }),
+    );
+    expect(tx.product.updateMany).not.toHaveBeenCalled();
   });
 });

@@ -14,8 +14,10 @@ import { CompanyResolverService } from '../company-resolver.service';
  *      Cr S21-1101 เจ้าหนี้ - ซัพพลายเออร์มือถือ (มือถือ แท็บเล็ต)
  *      Cr S21-1102 เจ้าหนี้ - อุปกรณ์เสริม
  *
- * หนึ่งใบรับของ (GoodsReceiving) = หนึ่งรายการบัญชี — ใบสั่งซื้อที่รับหลายครั้งลงตามจำนวน
- * ที่รับจริงแต่ละครั้ง. ต้นทุนของแต่ละหน่วยเป็นราคารวม VAT หลังแบ่งส่วนลดท้ายบิลแล้ว
+ * หนึ่งใบรับของ (GoodsReceiving) = หนึ่งรายการบัญชี ของหน่วยที่เข้าคลังได้ทันที — ใบสั่งซื้อที่รับ
+ * หลายครั้งลงตามจำนวนที่รับจริงแต่ละครั้ง. หน่วยที่ต้องรอถ่ายรูป (ยังไม่รับเข้าคลัง) ลงทีละหน่วย
+ * ตอนผ่านเข้าคลัง (`acceptedProductId`) — คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8 "ลงสินค้าเข้าคลังและ
+ * เจ้าหนี้ โดยไม่ลงสินค้าที่ไม่รับเข้าคลัง". ต้นทุนของแต่ละหน่วยเป็นราคารวม VAT หลังแบ่งส่วนลดท้ายบิลแล้ว
  * (ผู้เรียกคำนวณจาก `po-unit-cost.util` และเขียนค่าเดียวกันลง `Product.costPrice` —
  * ตอนขาย ต้นทุนขายเครดิตบัญชีสินค้าด้วย `costPrice` ตัวนั้น บัญชีจึงกลับเป็นศูนย์พอดี)
  *
@@ -26,6 +28,7 @@ import { CompanyResolverService } from '../company-resolver.service';
  * สองตัวนั้น รายการรับของต้องอยู่นอกการกวาด
  */
 export interface ShopGoodsReceivingUnit {
+  productId: string;
   /** S11-2001 (ใหม่/แท็บเล็ต) · S11-2002 (มือสอง) · S11-2003 (อุปกรณ์เสริม) */
   inventoryAccountCode: string;
   /** S21-1101 (มือถือ) · S21-1102 (อุปกรณ์เสริม) */
@@ -34,14 +37,16 @@ export interface ShopGoodsReceivingUnit {
 }
 
 export interface ShopGoodsReceivingInput {
-  /** `shop-goods-receiving:<receivingId>` */
+  /** `shop-goods-receiving:<receivingId>` · หน่วยที่ลงตอนผ่านเข้าคลัง `shop-goods-receiving-unit:<productId>` */
   idempotencyKey: string;
   receivingId: string;
   grNumber: string;
   poId: string;
   poNumber: string;
-  /** หน่วยที่ตรวจผ่านและเข้าคลังในใบรับของนี้ — หน่วยที่ตรวจไม่ผ่านไม่อยู่ในรายการ */
+  /** หน่วยที่ตรวจผ่านและเข้าคลังในใบรับของนี้ — หน่วยที่ตรวจไม่ผ่านหรือยังรอถ่ายรูปไม่อยู่ในรายการ */
   units: ShopGoodsReceivingUnit[];
+  /** ลงหน่วยเดียวตอนผ่านเข้าคลังหลังรับของ (เครื่องที่รอถ่ายรูป) — ต้องมีหน่วยเดียวและเป็นตัวนี้ */
+  acceptedProductId?: string;
   postedAt?: Date;
 }
 
@@ -74,6 +79,14 @@ export class ShopGoodsReceivingTemplate {
     outerTx?: Prisma.TransactionClient,
   ): Promise<{ entryNo: string; journalEntryId: string } | null> {
     const zero = new Decimal(0);
+    if (
+      input.acceptedProductId !== undefined &&
+      (input.units.length !== 1 || input.units[0].productId !== input.acceptedProductId)
+    ) {
+      throw new BadRequestException(
+        'ShopGoodsReceiving: acceptedProductId requires exactly one unit for that product',
+      );
+    }
     const inventoryTotals = new Map<string, Decimal>();
     const payableTotals = new Map<string, Decimal>();
     let total = zero;
@@ -141,10 +154,13 @@ export class ShopGoodsReceivingTemplate {
       }
 
       const shopCompanyId = await this.companyResolver.getShopCompanyId(tx);
+      const accepted = input.acceptedProductId;
       const result = await this.journal.createAndPost(
         {
-          description: `รับสินค้าเข้า ${input.grNumber} ใบสั่งซื้อ ${input.poNumber} (SHOP)`,
-          reference: `gr:${input.receivingId}`,
+          description: accepted
+            ? `รับสินค้าเข้าคลังหลังตรวจรับ ${input.grNumber} ใบสั่งซื้อ ${input.poNumber} (SHOP)`
+            : `รับสินค้าเข้า ${input.grNumber} ใบสั่งซื้อ ${input.poNumber} (SHOP)`,
+          reference: accepted ? `gr:${input.receivingId}:${accepted}` : `gr:${input.receivingId}`,
           metadata: {
             tag: 'SHOP_GOODS_RECEIVING',
             flow: FLOW,
@@ -156,6 +172,8 @@ export class ShopGoodsReceivingTemplate {
             companyCode: 'SHOP',
             unitCount: input.units.length,
             totalCost: total.toFixed(2),
+            productIds: input.units.map((unit) => unit.productId),
+            ...(accepted ? { acceptedProductId: accepted } : {}),
           },
           postedAt: input.postedAt ?? new Date(),
           companyId: shopCompanyId,

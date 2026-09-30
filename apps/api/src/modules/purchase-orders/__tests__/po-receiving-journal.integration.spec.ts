@@ -11,6 +11,8 @@
  *   4. ขายเครื่องด้วย `Product.costPrice` แล้วบัญชีสินค้าคงคลังของใบสั่งซื้อนั้นกลับเป็นศูนย์พอดี
  *   5. รายการบัญชีพัง = การรับของไม่เกิด (ไม่เหลือใบรับของ/สินค้า/จำนวนที่รับ)
  *   6. ราคาที่เติมให้ตอนสั่งอุปกรณ์เสริมซ้ำ = ราคาซื้อก่อน VAT ไม่ใช่ต้นทุนรวม VAT (ไม่งั้น VAT ทบทุกรอบ)
+ *   7. (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8) มือสองที่ต้องรอถ่ายรูปไม่ลงบัญชีตอนรับของ — ลงตอนผ่านเข้าคลัง
+ *      (ยืนยันรูปครบ / PATCH เป็นพร้อมขาย) ด้วยต้นทุนที่ปันไว้ · เครื่องที่ถูกกด "ไม่รับเข้าคลัง" ไม่มีรายการเลย
  *
  * Runner: vitest (jest ignore `*.integration.spec.ts`). ต้องมี DB จริง:
  *   cd apps/api && npx vitest run --no-file-parallelism \
@@ -32,6 +34,8 @@ import { ShopAccountResolver } from '../../journal/shop-account-resolver.service
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ProductsService } from '../../products/products.service';
+import { ProductPhotosService } from '../../quality-control/product-photos.service';
+import { ReceivingAcceptanceJournal } from '../services/receiving-acceptance-journal';
 
 const prisma = new PrismaClient();
 
@@ -42,6 +46,8 @@ const goodsReceivingTemplate = new ShopGoodsReceivingTemplate(journal, prisma as
 const cashSaleTemplate = new ShopCashSaleTemplate(journal, prisma as never, companyResolver);
 const service = new PurchaseOrdersService(prisma as never, goodsReceivingTemplate, shopAccountResolver, companyResolver);
 const productsService = new ProductsService(prisma as never);
+const productPhotosService = new ProductPhotosService(prisma as never);
+const FULL_ANGLES = { front: 'f.jpg', back: 'b.jpg', left: 'l.jpg', right: 'r.jpg', top: 't.jpg', bottom: 'u.jpg' };
 
 const PREFIX = 'POJETEST-';
 const RUN = Date.now().toString(36).toUpperCase();
@@ -296,10 +302,21 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
 
     const result = await service.goodsReceiving(
       po.id,
-      { items: [{ poItemId: poItemOf(po, `${PREFIX}Used`).id, imeiSerial: nextImei(), status: 'PASS' }] } as never,
+      {
+        items: [
+          {
+            poItemId: poItemOf(po, `${PREFIX}Used`).id,
+            imeiSerial: nextImei(),
+            status: 'PASS',
+            anglePhotos: FULL_ANGLES, // ถ่ายครบ 6 มุม + มีราคา = เข้าคลังทันที จึงลงบัญชีตอนรับของ
+            sellingPrice: 5900,
+          },
+        ],
+      } as never,
       adminId,
     );
 
+    expect(result.products[0].status).toBe('IN_STOCK');
     expect(dec(result.products[0].costPrice.toString()).toFixed(2)).toBe('4200.00');
     expect(netByAccount(await receivingEntries(po.id))).toEqual({ 'S11-2002': '4200.00', 'S21-1101': '-4200.00' });
   }, 60_000);
@@ -460,10 +477,100 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
       grNumber: result.grNumber,
       poId: po.id,
       poNumber: po.poNumber,
-      units: [{ inventoryAccountCode: 'S11-2003', payableAccountCode: 'S21-1102', cost: dec(120) }],
+      units: [{ productId: result.products[0].id, inventoryAccountCode: 'S11-2003', payableAccountCode: 'S21-1102', cost: dec(120) }],
     });
 
     expect(again?.entryNo).toBe(result.journalEntryNo);
     expect(await receivingEntries(po.id)).toHaveLength(1);
+  }, 60_000);
+  // คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8: "ปรับโปรแกรมลงสินค้าเข้าคลังและเจ้าหนี้ โดยไม่ลงสินค้าที่ไม่รับเข้าคลัง"
+  it('ข้อ 8 — มือสองรอถ่ายรูปลงบัญชีตอนผ่านเข้าคลังด้วยต้นทุนที่ปันไว้ · เครื่องที่ไม่รับเข้าคลังไม่มีรายการ', async () => {
+    const supplier = await seedSupplier('Q8', false);
+    // ส่วนลด 1.00 บน 4 × 4,200 → ยอดสุทธิ 16,799 → ต้นทุนรายหน่วย 4,199.75 ×4 (ปัดสะสม) ≠ ราคาต่อหน่วย
+    const po = await createOrderedPo(
+      supplier.id,
+      [{ category: 'PHONE_USED', model: `${PREFIX}Q8`, quantity: 4, unitPrice: 4200 }],
+      { discount: 1 },
+    );
+    const line = poItemOf(po, `${PREFIX}Q8`).id;
+
+    const received = await service.goodsReceiving(
+      po.id,
+      {
+        items: [
+          { poItemId: line, imeiSerial: nextImei(), status: 'PASS', anglePhotos: FULL_ANGLES, sellingPrice: 5900 }, // เข้าคลังทันที
+          { poItemId: line, imeiSerial: nextImei(), status: 'PASS', anglePhotos: FULL_ANGLES }, // รูปครบ ไม่มีราคา → รอ
+          { poItemId: line, imeiSerial: nextImei(), status: 'PASS' }, // ไม่มีรูป → รอ (จะถูกตีกลับ)
+          { poItemId: line, imeiSerial: nextImei(), status: 'PASS' }, // ไม่มีรูป → รอ (เข้าคลังทาง PATCH)
+        ],
+      } as never,
+      adminId,
+    );
+    const [inStock, waitingPhotos, rejected, viaPatch] = received.products;
+    expect(received.products.map((p) => p.status)).toEqual(['IN_STOCK', 'PHOTO_PENDING', 'PHOTO_PENDING', 'PHOTO_PENDING']);
+    expect(received.unitsAwaitingStockEntry).toBe(3);
+    const costs = received.products.map((p) => dec(p.costPrice.toString()).toFixed(2));
+    expect(sum(costs.map(dec)).toFixed(2)).toBe('16799.00');
+
+    // ตอนรับของ: ลงเฉพาะเครื่องที่เข้าคลังทันที
+    expect(netByAccount(await receivingEntries(po.id))).toEqual({ 'S11-2002': costs[0], 'S21-1101': dec(costs[0]).neg().toFixed(2) });
+    const items = await prisma.goodsReceivingItem.findMany({
+      where: { receivingId: received.receivingId },
+      orderBy: { createdAt: 'asc' },
+      select: { productId: true, receivedCost: true, journalEntryId: true },
+    });
+    const byProduct = new Map(items.map((i) => [i.productId, i]));
+    expect(received.products.map((p) => byProduct.get(p.id)!.receivedCost!.toFixed(2))).toEqual(costs);
+    expect(byProduct.get(inStock.id)!.journalEntryId).not.toBeNull();
+    expect([waitingPhotos, rejected, viaPatch].map((p) => byProduct.get(p.id)!.journalEntryId)).toEqual([null, null, null]);
+
+    // (ก) ตั้งราคาแล้วยืนยันรูปครบ → เข้าคลัง → ลงหน่วยนั้นด้วยต้นทุนที่ปันไว้ (ไม่ใช่ 4,200)
+    await productsService.update(waitingPhotos.id, { cashPrice: 5900 } as never, adminId);
+    const completed = await productPhotosService.completePhotos(waitingPhotos.id, adminId);
+    expect(completed.enteredStock).toBe(true);
+    const accepted = (await receivingEntries(po.id)).find((e) => e.referenceId === `gr:${received.receivingId}:${waitingPhotos.id}`);
+    expect(accepted).toBeDefined();
+    expect(accepted!.description).toContain('รับสินค้าเข้าคลังหลังตรวจรับ');
+    expect(netByAccount([accepted!])).toEqual({ 'S11-2002': costs[1], 'S21-1101': dec(costs[1]).neg().toFixed(2) });
+    expect((await prisma.goodsReceivingItem.findUnique({ where: { productId: waitingPhotos.id } }))!.journalEntryId).toBe(accepted!.id);
+
+    // (ข) กด "ไม่รับเข้าคลัง" → เครื่องหายจากสต๊อก ไม่มีรายการบัญชีใด ๆ ของเครื่องนี้
+    await service.rejectQC([rejected.id], 'ตรวจแล้วไม่ผ่าน ส่งคืนผู้จัดจำหน่าย');
+    expect((await prisma.product.findUnique({ where: { id: rejected.id } }))!.deletedAt).not.toBeNull();
+
+    // (ค) เข้าคลังทาง PATCH (ผู้จัดการตั้งราคา + เปลี่ยนสถานะ) → ลงบัญชีเหมือนกัน
+    await productsService.update(viaPatch.id, { status: 'IN_STOCK', cashPrice: 5900 } as never, adminId);
+
+    // ยอดรวม: เฉพาะ 3 เครื่องที่รับเข้าคลังจริง — เครื่องที่ตีกลับไม่อยู่ในสินค้าคงคลังและเจ้าหนี้
+    const accepted3 = dec(costs[0]).plus(costs[1]).plus(costs[3]).toFixed(2);
+    const entries = await receivingEntries(po.id);
+    expect(entries).toHaveLength(3);
+    expect(netByAccount(entries)).toEqual({ 'S11-2002': accepted3, 'S21-1101': dec(accepted3).neg().toFixed(2) });
+    expect(entries.every((e) => e.companyId === shopCompanyId && e.status === 'POSTED')).toBe(true);
+    expect(entries.some((e) => (e.metadata as { productIds?: string[] }).productIds?.includes(rejected.id))).toBe(false);
+
+    // ยืนยันซ้ำ / เรียกซ้ำ ไม่เกิดรายการที่สอง
+    await productPhotosService.completePhotos(waitingPhotos.id, adminId);
+    await expect(new ReceivingAcceptanceJournal(prisma as never).bookIfPending(prisma as never, waitingPhotos.id)).resolves.toBeNull();
+    expect(await receivingEntries(po.id)).toHaveLength(3);
+  }, 120_000);
+
+  it('ข้อ 8 — เครื่องที่ไม่ได้มาจากใบรับของ / รับก่อนมีระบบนี้ ไม่ถูกลงบัญชีตอนเข้าคลัง', async () => {
+    const supplier = await seedSupplier('Q8LEGACY', false);
+    const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}Q8L`, quantity: 1, unitPrice: 3000 }]);
+    const received = await service.goodsReceiving(
+      po.id,
+      { items: [{ poItemId: poItemOf(po, `${PREFIX}Q8L`).id, imeiSerial: nextImei(), status: 'PASS' }] } as never,
+      adminId,
+    );
+    const unit = received.products[0];
+    // แถวรับของยุคก่อนระบบลงบัญชีรับของไม่มีต้นทุนที่ปันไว้ (จำลองด้วยการล้างค่า)
+    await prisma.goodsReceivingItem.update({ where: { productId: unit.id }, data: { receivedCost: null } });
+
+    const booking = new ReceivingAcceptanceJournal(prisma as never);
+    await expect(booking.bookIfPending(prisma as never, unit.id)).resolves.toBeNull();
+    await expect(booking.bookIfPending(prisma as never, '00000000-0000-4000-8000-000000000000')).resolves.toBeNull();
+    await productsService.update(unit.id, { status: 'IN_STOCK', cashPrice: 4500 } as never, adminId);
+    expect(await receivingEntries(po.id)).toHaveLength(0);
   }, 60_000);
 });

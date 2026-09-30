@@ -38,7 +38,7 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
       supplier: { findUnique: jest.fn().mockResolvedValue({ id: 'sup-1', deletedAt: null }) },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'wh', name: 'คลังกลาง' }) },
       goodsReceiving: { create: jest.fn().mockResolvedValue({ id: 'gr1' }), count: jest.fn().mockResolvedValue(0) },
-      goodsReceivingItem: { create: jest.fn().mockImplementation(({ data }) => { created.gri.push(data); return Promise.resolve({ id: 'gri1', ...data }); }) },
+      goodsReceivingItem: { create: jest.fn().mockImplementation(({ data }) => { created.gri.push(data); return Promise.resolve({ id: 'gri1', ...data }); }), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       pOItem: {
         findMany: jest.fn().mockImplementation(({ where: { id: { in: ids } } }) =>
           Promise.resolve(poItems.filter((i) => ids.includes(i.id)).map((i) => ({ ...i })))),

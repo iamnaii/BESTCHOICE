@@ -17,7 +17,7 @@ describe('goodsReceiving — persists structured defectReason on REJECT', () => 
       },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'wh', name: 'คลังกลาง' }) },
       goodsReceiving: { create: jest.fn().mockResolvedValue({ id: 'gr1' }), count: jest.fn().mockResolvedValue(0) },
-      goodsReceivingItem: { create: jest.fn().mockImplementation(({ data }) => { created.push(data); return Promise.resolve({ id: 'gri1', ...data }); }) },
+      goodsReceivingItem: { create: jest.fn().mockImplementation(({ data }) => { created.push(data); return Promise.resolve({ id: 'gri1', ...data }); }), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       pOItem: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
       product: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       productPrice: { create: jest.fn() },

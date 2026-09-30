@@ -8,6 +8,15 @@ import {
 import { Prisma } from '@prisma/client';
 import { StockAdjustmentsService } from './stock-adjustments.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receiving-acceptance-journal';
+
+// ขั้นลงบัญชีรับสินค้าตอนเครื่องเข้าคลัง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8) ทดสอบกับฐานจริงที่
+// po-receiving-journal.integration.spec.ts — ที่นี่ตรวจแค่ว่าทางเข้าคลังเรียกมัน
+let bookIfPending: jest.SpyInstance;
+beforeEach(() => {
+  bookIfPending = jest.spyOn(ReceivingAcceptanceJournal.prototype, 'bookIfPending').mockResolvedValue(null);
+});
+afterEach(() => bookIfPending.mockRestore());
 
 /**
  * T5-C3 — 4-eyes on every stock adjustment. The adjuster (userId) and the
@@ -363,6 +372,8 @@ describe('StockAdjustmentsService.create — FOUND ต้องไม่ปล�
     expect(prisma.product.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'IN_STOCK' }) }),
     );
+    // เข้าคลังทางนี้ก็ต้องลงบัญชีรับสินค้าของเครื่องจากใบสั่งซื้อที่ยังไม่เคยลง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
+    expect(bookIfPending).toHaveBeenCalledWith(prisma, foundDto.productId);
   });
 });
 
@@ -478,6 +489,7 @@ describe('StockAdjustmentsService.create — FOUND allow-list (Phase 5 fix round
     expect(data.deletedAt).toBeNull();
     expect(data.status).toBeUndefined(); // ไม่แตะสถานะ = คงเป็น REFURBISHED ตามเดิม
     expect(data.stockInDate).toBeUndefined();
+    expect(bookIfPending).not.toHaveBeenCalled(); // กู้แถวคืนเฉย ๆ ไม่ได้เข้าคลัง
   });
 
   it('SOLD_INSTALLMENT ที่ถูก soft-delete → กู้แถวคืนโดยไม่แตะสถานะ (ไม่ปลุกเข้าคลัง)', async () => {

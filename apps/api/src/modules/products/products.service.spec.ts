@@ -3,6 +3,15 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Prisma } from '@prisma/client';
 import { ProductsService } from './products.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receiving-acceptance-journal';
+
+// ขั้นลงบัญชีรับสินค้าตอนเครื่องเข้าคลัง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8) ทดสอบกับฐานจริงที่
+// po-receiving-journal.integration.spec.ts — ที่นี่ตรวจแค่ว่าทางเข้าคลังเรียกมัน
+let bookIfPending: jest.SpyInstance;
+beforeEach(() => {
+  bookIfPending = jest.spyOn(ReceivingAcceptanceJournal.prototype, 'bookIfPending').mockResolvedValue(null);
+});
+afterEach(() => bookIfPending.mockRestore());
 
 describe('ProductsService.transferOwnership', () => {
   let service: ProductsService;
@@ -537,6 +546,8 @@ describe('ProductsService.returnToStock — นำเข้าคลังพร
     expect(data.priceAutofilledAt).toBeNull();
     // write-through ไปแถว prices[] เหมือนเส้นทางแก้ราคาปกติ
     expect(tx.productPrice.findMany).toHaveBeenCalled();
+    // ทุกทางเข้าคลังเรียกขั้นลงบัญชีรับสินค้า (ไม่มีอะไรให้ลง = คืน null เอง) — คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8
+    expect(bookIfPending).toHaveBeenCalledWith(tx, 'p-1');
   });
 
   it('AuditLog PRODUCT_RETURNED_TO_STOCK บันทึกราคาเก่า→ใหม่ (ตรวจย้อนได้ว่าใครตั้งราคาเท่าไร)', async () => {
@@ -756,6 +767,7 @@ describe('ProductsService.update — ด่านปลายทาง IN_STOCK 
         }),
       }),
     });
+    expect(bookIfPending).toHaveBeenCalledWith(tx, 'p-1');
   });
 
   it('ราคาที่อยู่ในแถว prices[] ที่ถูกลบไปแล้ว ไม่นับเป็น "มีราคา" (minor fix round 1)', async () => {
@@ -800,6 +812,7 @@ describe('ProductsService.update — ด่านปลายทาง IN_STOCK 
       service.update('p-1', { status: 'IN_STOCK', name: 'ชื่อใหม่' }, 'user-9'),
     ).resolves.toBeDefined();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(bookIfPending).not.toHaveBeenCalled(); // อยู่ในคลังอยู่แล้ว ไม่ได้ "เข้าคลัง"
   });
 });
 

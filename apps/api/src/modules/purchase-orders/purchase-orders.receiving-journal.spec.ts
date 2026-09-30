@@ -79,6 +79,7 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
           created.gri.push(data);
           return Promise.resolve({ id: `gri-${created.gri.length}`, ...data });
         }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       pOItem: {
         findMany: jest.fn().mockImplementation(({ where: { id: { in: ids } } }) =>
@@ -198,7 +199,9 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
     expect(result.status).toBe('FULLY_RECEIVED');
   });
 
-  it('มือถือมือสองและแท็บเล็ต: สินค้าแยกบัญชี เจ้าหนี้บัญชีมือถือ', async () => {
+  const fullAngles = { front: 'f', back: 'b', left: 'l', right: 'r', top: 't', bottom: 'u' };
+
+  it('มือถือมือสองและแท็บเล็ต: สินค้าแยกบัญชี เจ้าหนี้บัญชีมือถือ (มือสองถ่ายรูปครบ + มีราคา = เข้าคลังทันที)', async () => {
     const { tx } = makeTx({
       totalAmount: '9000',
       netAmount: '9000',
@@ -209,12 +212,70 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
     });
     const { service, journal } = await build(tx);
 
-    await service.goodsReceiving('po-1', { items: [pass('poi-used', 'IMEI-U'), pass('poi-tab', 'IMEI-T')] } as never, 'user-1');
+    await service.goodsReceiving(
+      'po-1',
+      {
+        items: [
+          { ...pass('poi-used', 'IMEI-U'), anglePhotos: fullAngles, sellingPrice: 5900 },
+          pass('poi-tab', 'IMEI-T'),
+        ],
+      } as never,
+      'user-1',
+    );
 
     expect(postedUnits(journal)).toEqual([
       ['S11-2002', 'S21-1101', '4000.00'],
       ['S11-2001', 'S21-1101', '5000.00'],
     ]);
+  });
+
+  // คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8: "ลงสินค้าเข้าคลังและเจ้าหนี้ โดยไม่ลงสินค้าที่ไม่รับเข้าคลัง"
+  it('ข้อ 8 — มือสองที่ต้องรอถ่ายรูปยังไม่รับเข้าคลัง: ไม่ลงบัญชีตอนรับของ แต่เก็บต้นทุนไว้ลงตอนผ่านเข้าคลัง', async () => {
+    const { tx, created } = makeTx({
+      totalAmount: '9000',
+      netAmount: '9000',
+      items: [
+        { id: 'poi-used', category: 'PHONE_USED', quantity: 1, receivedQty: 0, unitPrice: '4000' },
+        { id: 'poi-tab', category: 'TABLET', quantity: 1, receivedQty: 0, unitPrice: '5000' },
+      ],
+    });
+    const { service, journal } = await build(tx);
+
+    const result = await service.goodsReceiving(
+      'po-1',
+      { items: [pass('poi-used', 'IMEI-U'), pass('poi-tab', 'IMEI-T')] } as never,
+      'user-1',
+    );
+
+    expect(created.product.map((p) => p.status)).toEqual(['PHOTO_PENDING', 'IN_STOCK']);
+    expect(postedUnits(journal)).toEqual([['S11-2001', 'S21-1101', '5000.00']]);
+    // ต้นทุนของทุกหน่วยเก็บไว้ที่แถวใบรับของ — หน่วยที่รอถ่ายรูปใช้ยอดนี้ตอนผ่านเข้าคลัง
+    expect(created.gri.map((g) => (g.receivedCost as Prisma.Decimal).toFixed(2))).toEqual(['4000.00', '5000.00']);
+    // ผูกรายการบัญชีเฉพาะแถวที่ลงแล้ว (แท็บเล็ต = แถวที่ 2)
+    expect(tx.goodsReceivingItem.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['gri-2'] } },
+      data: { journalEntryId: 'je-test-1' },
+    });
+    expect(result).toMatchObject({ journalEntryNo: TEST_JOURNAL_ENTRY_NO, unitsAwaitingStockEntry: 1 });
+  });
+
+  it('ข้อ 8 — ทุกหน่วยรอถ่ายรูป: ไม่เรียกตัวลงบัญชี ใบรับของไม่มีรายการ', async () => {
+    const { tx } = makeTx({
+      totalAmount: '8000',
+      netAmount: '8000',
+      items: [{ id: 'poi-used', category: 'PHONE_USED', quantity: 2, receivedQty: 0, unitPrice: '4000' }],
+    });
+    const { service, journal } = await build(tx);
+
+    const result = await service.goodsReceiving(
+      'po-1',
+      { items: [pass('poi-used', 'IMEI-U1'), pass('poi-used', 'IMEI-U2')] } as never,
+      'user-1',
+    );
+
+    expect(journal.goodsReceivingTemplate.execute).not.toHaveBeenCalled();
+    expect(tx.goodsReceivingItem.updateMany).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ journalEntryNo: null, unitsAwaitingStockEntry: 2 });
   });
 
   it('หน่วยที่ตรวจไม่ผ่านไม่มีต้นทุนและไม่เข้ารายการบัญชี', async () => {

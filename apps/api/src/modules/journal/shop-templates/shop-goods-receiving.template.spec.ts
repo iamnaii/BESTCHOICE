@@ -28,7 +28,7 @@ describe('ShopGoodsReceivingTemplate (unit)', () => {
     grNumber: 'GR-2026-09-001',
     poId: 'po-1',
     poNumber: 'PO-2026-09-001',
-    units: [{ inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1101', cost: D('10700') }],
+    units: [{ productId: 'p-1', inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1101', cost: D('10700') }],
     ...over,
   });
 
@@ -53,11 +53,11 @@ describe('ShopGoodsReceivingTemplate (unit)', () => {
     await template.execute(
       input({
         units: [
-          { inventoryAccountCode: 'S11-2003', payableAccountCode: 'S21-1102', cost: D('535') },
-          { inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1101', cost: D('26750') },
-          { inventoryAccountCode: 'S11-2002', payableAccountCode: 'S21-1101', cost: D('8000') },
-          { inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1101', cost: D('26750') },
-          { inventoryAccountCode: 'S11-2003', payableAccountCode: 'S21-1102', cost: D('535') },
+          { productId: 'p-2', inventoryAccountCode: 'S11-2003', payableAccountCode: 'S21-1102', cost: D('535') },
+          { productId: 'p-3', inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1101', cost: D('26750') },
+          { productId: 'p-4', inventoryAccountCode: 'S11-2002', payableAccountCode: 'S21-1101', cost: D('8000') },
+          { productId: 'p-5', inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1101', cost: D('26750') },
+          { productId: 'p-6', inventoryAccountCode: 'S11-2003', payableAccountCode: 'S21-1102', cost: D('535') },
         ],
       }),
     );
@@ -99,7 +99,50 @@ describe('ShopGoodsReceivingTemplate (unit)', () => {
       companyCode: 'SHOP',
       unitCount: 1,
       totalCost: '10700.00',
+      productIds: ['p-1'],
     });
+  });
+
+  it('ข้อ 8 — ลงหน่วยเดียวตอนผ่านเข้าคลัง: reference/คำอธิบายแยกจากรายการของใบรับของ + ระบุหน่วย', async () => {
+    const { template, journal } = build();
+    const result = await template.execute(
+      input({
+        idempotencyKey: 'shop-goods-receiving-unit:p-7',
+        units: [{ productId: 'p-7', inventoryAccountCode: 'S11-2002', payableAccountCode: 'S21-1101', cost: D('8000') }],
+        acceptedProductId: 'p-7',
+      }),
+    );
+
+    const posted = journal.state.lastInput! as unknown as {
+      description: string;
+      reference: string;
+      metadata: Record<string, unknown>;
+      lines: { accountCode: string; dr: Prisma.Decimal; cr: Prisma.Decimal }[];
+    };
+    expect(result).not.toBeNull();
+    expect(posted.reference).toBe('gr:gr-1:p-7');
+    expect(posted.description).toBe('รับสินค้าเข้าคลังหลังตรวจรับ GR-2026-09-001 ใบสั่งซื้อ PO-2026-09-001 (SHOP)');
+    expect(posted.metadata).toMatchObject({
+      flow: 'shop-goods-receiving',
+      idempotencyKey: 'shop-goods-receiving-unit:p-7',
+      productIds: ['p-7'],
+      acceptedProductId: 'p-7',
+      totalCost: '8000.00',
+    });
+    expect(posted.lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)])).toEqual([
+      ['S11-2002', '8000.00', '0.00'],
+      ['S21-1101', '0.00', '8000.00'],
+    ]);
+  });
+
+  it('ข้อ 8 — ลงตอนผ่านเข้าคลังต้องมีหน่วยเดียวและเป็นหน่วยที่ระบุ', async () => {
+    const { template, journal } = build();
+    const unit = (productId: string) => ({ productId, inventoryAccountCode: 'S11-2002', payableAccountCode: 'S21-1101', cost: D('8000') });
+    await expect(template.execute(input({ units: [unit('p-8')], acceptedProductId: 'p-7' }))).rejects.toThrow(/acceptedProductId/);
+    await expect(
+      template.execute(input({ units: [unit('p-7'), unit('p-8')], acceptedProductId: 'p-7' })),
+    ).rejects.toThrow(/acceptedProductId/);
+    expect(journal.state.callCount).toBe(0);
   });
 
   it('หน่วยที่ต้นทุนศูนย์ไม่สร้างบรรทัด · ทั้งใบเป็นศูนย์ = ไม่โพสต์ คืน null', async () => {
@@ -107,8 +150,8 @@ describe('ShopGoodsReceivingTemplate (unit)', () => {
     await template.execute(
       input({
         units: [
-          { inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1101', cost: D('10700') },
-          { inventoryAccountCode: 'S11-2003', payableAccountCode: 'S21-1102', cost: D('0') },
+          { productId: 'p-7', inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1101', cost: D('10700') },
+          { productId: 'p-8', inventoryAccountCode: 'S11-2003', payableAccountCode: 'S21-1102', cost: D('0') },
         ],
       }),
     );
@@ -116,7 +159,7 @@ describe('ShopGoodsReceivingTemplate (unit)', () => {
 
     const empty = build();
     const result = await empty.template.execute(
-      input({ units: [{ inventoryAccountCode: 'S11-2003', payableAccountCode: 'S21-1102', cost: D('0') }] }),
+      input({ units: [{ productId: 'p-9', inventoryAccountCode: 'S11-2003', payableAccountCode: 'S21-1102', cost: D('0') }] }),
     );
     expect(result).toBeNull();
     expect(empty.journal.state.callCount).toBe(0);
@@ -131,27 +174,27 @@ describe('ShopGoodsReceivingTemplate (unit)', () => {
   it('ปฏิเสธบัญชีสินค้าที่ไม่ใช่สินค้าคงคลังของร้าน', async () => {
     const { template } = build();
     await expect(
-      template.execute(input({ units: [{ inventoryAccountCode: '11-3101', payableAccountCode: 'S21-1101', cost: D('100') }] })),
+      template.execute(input({ units: [{ productId: 'p-10', inventoryAccountCode: '11-3101', payableAccountCode: 'S21-1101', cost: D('100') }] })),
     ).rejects.toThrow(/inventoryAccountCode/);
     await expect(
-      template.execute(input({ units: [{ inventoryAccountCode: 'S11-2004', payableAccountCode: 'S21-1101', cost: D('100') }] })),
+      template.execute(input({ units: [{ productId: 'p-11', inventoryAccountCode: 'S11-2004', payableAccountCode: 'S21-1101', cost: D('100') }] })),
     ).rejects.toThrow(/inventoryAccountCode/);
   });
 
   it('ปฏิเสธบัญชีเจ้าหนี้ที่ไม่ใช่เจ้าหนี้ผู้จัดจำหน่าย (รวมบัญชีที่เลนส์ระหว่างกิจการอ่าน)', async () => {
     const { template } = build();
     await expect(
-      template.execute(input({ units: [{ inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1104', cost: D('100') }] })),
+      template.execute(input({ units: [{ productId: 'p-12', inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1104', cost: D('100') }] })),
     ).rejects.toThrow(/payableAccountCode/);
     await expect(
-      template.execute(input({ units: [{ inventoryAccountCode: 'S11-2001', payableAccountCode: '21-1101', cost: D('100') }] })),
+      template.execute(input({ units: [{ productId: 'p-13', inventoryAccountCode: 'S11-2001', payableAccountCode: '21-1101', cost: D('100') }] })),
     ).rejects.toThrow(/payableAccountCode/);
   });
 
   it('ปฏิเสธต้นทุนติดลบ', async () => {
     const { template, journal } = build();
     await expect(
-      template.execute(input({ units: [{ inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1101', cost: D('-1') }] })),
+      template.execute(input({ units: [{ productId: 'p-14', inventoryAccountCode: 'S11-2001', payableAccountCode: 'S21-1101', cost: D('-1') }] })),
     ).rejects.toThrow(/cost/);
     expect(journal.state.callCount).toBe(0);
   });

@@ -20,6 +20,7 @@ import {
   unconfirmedLeftoverPrices,
   unconfirmedPriceMessage,
 } from './product-enter-stock.util';
+import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receiving-acceptance-journal';
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
 import { isAccessoryProductCode } from '../../utils/accessory-type.util';
@@ -385,6 +386,11 @@ export class ProductsService {
         });
       }
 
+      // เครื่องจากใบสั่งซื้อที่ยังไม่ลงบัญชีรับของ (รอถ่ายรูป) → ลงตอนเข้าคลัง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
+      if (entersStock) {
+        await new ReceivingAcceptanceJournal(this.prisma).bookIfPending(tx, id);
+      }
+
       // audit ชุดเดียวกับปุ่ม (action เดียวกัน) — `actorUserId` มาจาก controller เสมอ;
       // ผู้เรียกภายในที่ไม่มีตัวตนผู้ใช้จะข้ามการเขียน audit แต่ยังได้ stockInDate
       if (entersStock && actorUserId) {
@@ -504,6 +510,7 @@ export class ProductsService {
         cashPrice: cashDecimal,
         installmentPrice: installmentDecimal,
       });
+      await new ReceivingAcceptanceJournal(this.prisma).bookIfPending(tx, id);
 
       await tx.auditLog.create({
         data: enterStockAuditData({

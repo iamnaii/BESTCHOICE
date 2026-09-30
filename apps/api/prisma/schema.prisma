@@ -2157,6 +2157,12 @@ model GoodsReceivingItem {
   hasBox             Boolean?            @map("has_box")
   checklistResults   Json?               @map("checklist_results")
   productId          String?             @unique @map("product_id")
+  /// ต้นทุนของหน่วยนี้ที่ปันได้ตอนรับของ (ราคารวม VAT หลังส่วนลดท้ายบิล) = ยอดที่ลงบัญชีรับเข้าคลัง ·
+  /// null = รับก่อนระบบลงบัญชีรับของ (ไม่ลงย้อนหลัง)
+  receivedCost       Decimal?            @map("received_cost") @db.Decimal(12, 2)
+  /// รายการบัญชีรับเข้าคลังของหน่วยนี้ · null = ยังไม่ลง — เครื่องที่รอถ่ายรูปลงตอนผ่านเข้าคลัง
+  /// (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8: ลงเฉพาะสินค้าที่รับเข้าคลังจริง)
+  journalEntryId     String?             @map("journal_entry_id")
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
   deletedAt          DateTime?           @map("deleted_at")

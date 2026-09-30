@@ -139,9 +139,12 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
       postedAt: RECEIPT_29_SEP,
       kind: 'FULL',
       amount: expect.any(Decimal),
+      vat: expect.any(Decimal),
       completes: true,
     });
     expect(out!.amount.toFixed(2)).toBe('1515.83');
+    // PR3: ภาษีขายของรายการนี้ — ใบกำกับภาษีของใบรับชำระที่ลงพร้อมกันต้องเท่าค่านี้
+    expect(out!.vat.toFixed(2)).toBe('99.17');
     expect(createAndPost).toHaveBeenCalledTimes(1);
     const [je, passedTx] = createAndPost.mock.calls[0] as [CapturedJe, unknown];
     expect(passedTx).toBe(tx);
@@ -403,8 +406,10 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
         postedAt: RECEIPT_29_SEP,
         kind: 'PARTIAL',
         amount: expect.any(Decimal),
+        vat: expect.any(Decimal),
         completes: false,
       });
+      expect(out!.vat.toFixed(2)).toBe('65.42'); // PR3: HALF_UP(1,000 × 7/107)
       const je = createAndPost.mock.calls[0][0] as CapturedJe & { description: string };
       expect(je.reference).toBe('inst-3:receipt-accrual:1');
       expect(je.postedAt).toBe(RECEIPT_29_SEP);

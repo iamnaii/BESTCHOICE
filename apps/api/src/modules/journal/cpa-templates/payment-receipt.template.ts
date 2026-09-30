@@ -16,6 +16,7 @@ import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
 import { splitReceipt, SplitReceiptResult } from '../split-receipt';
 import { buildReceiptLines } from '../build-receipt-lines';
 import { reconstructPriorCleared } from '../reconstruct-prior';
+import { computeInstallmentReceiptTax, ReceiptTaxBreakdown } from '../receipt-tax-breakdown';
 
 const TOLERANCE = new Decimal('1.00');
 
@@ -86,6 +87,11 @@ export interface PaymentReceiptResult {
    * หลังธุรกรรมนั้น commit. เมื่อ template ห่อธุรกรรมเอง template ส่งให้แล้วและคืนรายการว่าง.
    */
   warnings: DeferredWarning[];
+  /**
+   * ใบกำกับภาษีตามบัญชี (PR3) — ค่าที่ใบเสร็จของรายการนี้ต้องพิมพ์ (ประทับลง metadata.receiptTax ด้วย;
+   * generateReceipt อ่านจากรายการบัญชีที่ผูก ผู้เรียกไม่ต้องส่งต่อเอง)
+   */
+  receiptTax: ReceiptTaxBreakdown;
 }
 
 /**
@@ -257,17 +263,13 @@ export class PaymentReceiptTemplate {
     });
     const c = inst.contract;
 
-    const { installmentTotal } = computeInstallmentBreakdown(
-      accrual2AInputOf(c, inst.installmentNo),
-    );
+    const basis = computeInstallmentBreakdown(accrual2AInputOf(c, inst.installmentNo));
+    const { installmentTotal } = basis;
 
     // Shared with the wizard's PARTIAL preview (reconstruct-prior.ts) so the
     // preview's allocation can't drift from what this template posts.
-    const { priorPrincipalCleared, priorLateFeeBooked } = await reconstructPriorCleared(
-      readClient,
-      inst.id,
-      installmentTotal,
-    );
+    const { priorPrincipalCleared, priorLateFeeBooked, priorClearings } =
+      await reconstructPriorCleared(readClient, inst.id, installmentTotal);
 
     const delta = input.delta;
     const lateFeeGross = input.lateFee ?? new Decimal(0);
@@ -371,6 +373,41 @@ export class PaymentReceiptTemplate {
     // เท่ายอดที่รับ).
     const { accrual, warnings } = await this.accrueBeforeReceipt(inst, c, input, split, outerTx);
 
+    // ใบกำกับภาษีตามบัญชี (PR3 — D3–D5): ค่าที่ใบเสร็จของรายการนี้ต้องพิมพ์ — กติกาเดียวกับ 2A (7/107 · ใบที่ทำให้
+    // ยอดสะสมของงวดครบรับส่วนที่เหลือ) เล่นซ้ำจากรายการก่อนหน้าของงวดที่ยังมีผล ในธุรกรรมนี้ (ลำดับแน่นอน)
+    const tax = computeInstallmentReceiptTax({
+      basis,
+      priorClearings,
+      delta,
+      split,
+      lateFeeWaived,
+      advanceConsume,
+      advanceCredit,
+    });
+    // ตรวจทาน (ไม่ใช่ด่าน): ภาษีของแถวค่างวดต้องเท่าภาษีขายของ 2A ที่ลงพร้อมกัน — ต่างกันได้เมื่องวดมีใบรับบางส่วน
+    // ที่ไม่ได้ตั้ง 2A ของตัวเอง: ใบก่อน PR2ข · หรือใบตั้งแต่วันครบกำหนดในวันที่รอบกลางคืนไม่ได้ตั้งลูกหนี้งวด (ใบที่ทำให้
+    // ครบจึงได้ 2A ทั้งงวด). ต่าง = สัญญาณเตือนหลัง commit ห้ามหยุดการรับชำระ
+    const taxWarnings: DeferredWarning[] =
+      accrual?.vat && !accrual.vat.eq(tax.installmentVat)
+        ? [
+            {
+              message: '[receipt-tax] receipt VAT differs from the 2A output VAT posted with it',
+              tags: { module: 'journal', action: 'receipt-vat-accrual-mismatch' },
+              extra: {
+                contractId: c.id,
+                contractNumber: c.contractNumber,
+                installmentScheduleId: inst.id,
+                installmentNo: inst.installmentNo,
+                paymentId: input.paymentId ?? null,
+                accrualEntryNumber: accrual.entryNo,
+                accrualVat: accrual.vat.toFixed(2),
+                receiptInstallmentVat: tax.installmentVat.toFixed(2),
+                principalCleared: split.principalCleared.toFixed(2),
+              },
+            },
+          ]
+        : [];
+
     // companyId intentionally omitted: every line here is a FINANCE account
     // (11-2103 / 42-1103 / 53-1503 / 52-1104 / 21-1103 / deposit), so createAndPost's
     // FINANCE default is correct — matches PaymentReceipt2B(Split)Template. (Review I-2)
@@ -403,12 +440,20 @@ export class PaymentReceiptTemplate {
           lateFeeWaived: lateFeeWaived.toString(),
           // เลขที่รายการ 2A ที่ใบนี้ทำให้ลง (ก1) — ให้เอกสาร/รายงานภาษีขายต่อใบเสร็จอ่านยอดจากสมุดบัญชีได้
           ...(accrual ? { accrualEntryNumber: accrual.entryNo } : {}),
+          // ใบกำกับภาษีตามบัญชี (PR3): ค่าที่ใบเสร็จของรายการนี้ต้องพิมพ์ — generateReceipt คัดลอกลงแถว Receipt
+          receiptTax: { ...tax.breakdown },
         },
         lines,
       },
       outerTx,
     );
 
-    return { entryNo: result.entryNumber, split, accrual, warnings };
+    return {
+      entryNo: result.entryNumber,
+      split,
+      accrual,
+      warnings: [...warnings, ...taxWarnings],
+      receiptTax: tax.breakdown,
+    };
   }
 }

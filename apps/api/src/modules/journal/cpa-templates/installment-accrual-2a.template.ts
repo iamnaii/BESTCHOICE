@@ -78,6 +78,8 @@ export interface AccrueAtReceiptResult {
   kind: Accrual2AKind;
   /** ยอด Dr 11-2103 ของรายการนี้ */
   amount: Decimal;
+  /** ภาษีขาย (Cr 21-2101) ของรายการนี้ — ใบกำกับภาษีตามบัญชี (PR3) ใช้ตรวจทาน VAT ของใบรับชำระที่ลงพร้อมกัน */
+  vat: Decimal;
   /** รายการนี้ทำให้งวดตั้งลูกหนี้ครบ (ประทับ accrualJournalEntryId แล้ว) */
   completes: boolean;
 }
@@ -216,6 +218,7 @@ export class InstallmentAccrual2ATemplate {
       postedAt,
       kind: part.kind,
       amount: part.portion.total,
+      vat: part.portion.vat,
       completes: part.completes,
     };
   }

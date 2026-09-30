@@ -252,4 +252,110 @@ describe('RepossessionJP5Template — หักเงินของลูกค
       description: '',
     });
   });
+
+  /**
+   * ส่วนลดยอดปิด — คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5 (30/09/2569) "แบบ (ก) ลงส่วนลดแยกที่ 52-1106". ตัวอย่างของคำถาม:
+   * บนจอ ยอดค้าง 8 งวด 12,126.64 · ส่วนลด 50% = 1,999.99 · ยอดปิด 10,126.65 · ขาดทุน 3,126.65 — ในบัญชี 12,126.68
+   * (งวดสุดท้ายรับเศษ 0.04) ⇒ แบบ (ก): 52-1106 1,999.99 · 51-1102 3,126.69 · ทั้งสองฝั่ง 16,920.00
+   */
+  describe('ส่วนลดยอดปิด 52-1106 (แบบ ก)', () => {
+    it('ตัวอย่างฝ่ายบัญชี: รายการตามตารางแบบ (ก) ทุกบรรทัด — 52-1106 1,999.99 · 51-1102 3,126.69 · รวม 16,920.00', async () => {
+      const { template, client, posted } = build({ gl: EIGHT_REMAINING });
+
+      await template.execute({ ...base, discount: dec('1999.99') }, client as never);
+
+      expect(tuples(posted().lines)).toEqual([
+        '11-2107 7000.00 0.00',
+        '11-2106 4000.00 0.00',
+        '21-2102 793.32 0.00',
+        '11-2101 0.00 11333.36',
+        '11-2105 0.00 793.32',
+        '21-2101 0.00 793.32',
+        '41-1101 0.00 4000.00',
+        '52-1106 1999.99 0.00',
+        '51-1102 3126.69 0.00',
+      ]);
+      expect(sum(posted().lines, 'dr')).toBe('16920.00');
+      expect(sum(posted().lines, 'cr')).toBe('16920.00');
+      expect(posted().lines.find((l) => l.accountCode === '52-1106')?.description).toBeUndefined();
+      expect(posted().metadata).toMatchObject({ discount: '1999.99' });
+    });
+
+    it('ไม่ส่งส่วนลด (รายการแบบ (ข) เดิม) → ไม่มี 52-1106 · 51-1102 5,126.68', async () => {
+      const { template, client, posted } = build({ gl: EIGHT_REMAINING });
+
+      await template.execute(base, client as never);
+
+      expect(posted().lines.find((l) => l.accountCode === '52-1106')).toBeUndefined();
+      expect(
+        posted()
+          .lines.find((l) => l.accountCode === '51-1102')
+          ?.dr.toFixed(2),
+      ).toBe('5126.68');
+      expect(posted().metadata).not.toHaveProperty('discount');
+    });
+
+    it('ส่วนลด 0 → ไม่มีบรรทัด 52-1106', async () => {
+      const { template, client, posted } = build({ gl: EIGHT_REMAINING });
+
+      await template.execute({ ...base, discount: dec('0') }, client as never);
+
+      expect(posted().lines.find((l) => l.accountCode === '52-1106')).toBeUndefined();
+    });
+
+    it('ส่วนลดมากกว่าขาดทุนก่อนส่วนลด (ราคาประเมิน 11,000) → กำไร 41-1102 = 1,999.99 − 1,126.68 = 873.31 · ผลรวมกำไรขาดทุนเท่าเดิม', async () => {
+      const { template, client, posted } = build({ gl: EIGHT_REMAINING });
+
+      await template.execute(
+        { ...base, repossessionValue: dec('11000.00'), discount: dec('1999.99') },
+        client as never,
+      );
+
+      const lines = posted().lines;
+      expect(lines.find((l) => l.accountCode === '52-1106')?.dr.toFixed(2)).toBe('1999.99');
+      expect(lines.find((l) => l.accountCode === '41-1102')?.cr.toFixed(2)).toBe('873.31');
+      expect(lines.find((l) => l.accountCode === '51-1102')).toBeUndefined();
+      // −52-1106 + 41-1102 = −1,126.68 = ผลเดิมเมื่อไม่แยกส่วนลด (12,126.68 − 11,000.00)
+      expect(dec('873.31').minus(dec('1999.99')).toFixed(2)).toBe('-1126.68');
+      expect(sum(lines, 'dr')).toBe(sum(lines, 'cr'));
+    });
+
+    it('ค่าเผื่อหนี้สงสัยจะสูญ 4,000 ใช้กับขาดทุน 51-1102 หลังส่วนลดเท่านั้น → ใช้ 3,126.69 คืน 873.31', async () => {
+      const { template, client, posted } = build({
+        gl: { ...EIGHT_REMAINING, '11-2102': { cr: '4000.00' } },
+      });
+
+      await template.execute({ ...base, discount: dec('1999.99') }, client as never);
+
+      expect(
+        tuples(
+          posted().lines.filter((l) =>
+            ['52-1106', '11-2102', '51-1103', '51-1102'].includes(l.accountCode),
+          ),
+        ),
+      ).toEqual([
+        '52-1106 1999.99 0.00',
+        '11-2102 3126.69 0.00',
+        '11-2102 873.31 0.00',
+        '51-1103 0.00 873.31',
+      ]);
+      expect(posted().metadata).toMatchObject({ releasedProvision: '873.31', discount: '1999.99' });
+    });
+
+    it('ส่วนลด + เงินรับล่วงหน้า + เงินเกิน พร้อมกัน → หักทั้งหมดก่อน plug: 12,126.68 − 7,000 − 500 − 300 − 1,999.99 = 2,326.69', async () => {
+      const { template, client, posted } = build({
+        gl: { ...EIGHT_REMAINING, '21-1103': { cr: '500.00' }, '21-5101': { cr: '300.00' } },
+        columns: { advanceBalance: '500.00', creditBalance: '300.00' },
+      });
+
+      await template.execute({ ...base, discount: dec('1999.99') }, client as never);
+
+      expect(
+        posted()
+          .lines.find((l) => l.accountCode === '51-1102')
+          ?.dr.toFixed(2),
+      ).toBe('2326.69');
+      expect(sum(posted().lines, 'dr')).toBe(sum(posted().lines, 'cr'));
+    });
+  });
 });

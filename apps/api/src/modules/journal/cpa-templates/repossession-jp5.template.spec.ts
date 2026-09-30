@@ -586,6 +586,49 @@ describe('RepossessionJP5Template', () => {
     });
   });
 
+  /**
+   * PR6 — คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5 (30/09/2569) "แบบ (ก) ลงส่วนลดแยกที่ 52-1106": ส่วนลดยอดปิดตัวเดียวกับหน้าจอ
+   * ลงเป็น Dr 52-1106 ก่อน plug → ขาดทุน 51-1102 ลดเท่าส่วนลดพอดี ขาอื่นไม่ขยับ. สัญญา 1A อย่างเดียว — ขาดทุนเดิม 11,190.00
+   */
+  it('PR6: ส่วนลดยอดปิด 1,999.99 → Dr 52-1106 1,999.99 · ขาดทุน 11,190.00 − 1,999.99 = 9,190.01 · ขาอื่นเท่าเดิม', async () => {
+    const journal = await setup();
+    const c = await seedStandard17k12m(prisma);
+    await new ContractActivation1ATemplate(journal, prisma as never).execute(c.id);
+
+    await new RepossessionJP5Template(journal, prisma as never).execute({
+      contractId: c.id,
+      depositAccountCode: '11-1101',
+      repossessionValue: new Decimal('7000.00'),
+      discount: new Decimal('1999.99'),
+    });
+
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        AND: [
+          { metadata: { path: ['contractId'], equals: c.id } } as never,
+          { metadata: { path: ['flow'], equals: 'repossession' } } as never,
+        ],
+      },
+      include: { lines: true },
+    });
+    expect(entries).toHaveLength(1);
+    const tuples = entries[0].lines
+      .map((l) => `${l.accountCode} ${l.debit.toFixed(2)} ${l.credit.toFixed(2)}`)
+      .sort();
+    expect(tuples).toEqual([
+      '11-1101 7000.00 0.00',
+      '11-2101 0.00 17000.00',
+      '11-2105 0.00 1190.00',
+      '11-2106 6000.00 0.00',
+      '21-2101 0.00 1190.00',
+      '21-2102 1190.00 0.00',
+      '41-1101 0.00 6000.00',
+      '51-1102 9190.01 0.00',
+      '52-1106 1999.99 0.00',
+    ]);
+    expect((entries[0].metadata as Record<string, unknown>).discount).toBe('1999.99');
+  });
+
   it('throws when no unpaid installments remain', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);

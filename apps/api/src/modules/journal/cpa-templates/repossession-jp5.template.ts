@@ -44,6 +44,13 @@ export interface RepossessionInput {
    * (21-1107) ไม่มีสูตรใหม่.
    */
   parkRelief?: Decimal;
+  /**
+   * ส่วนลดยอดปิดที่หน้าจอยึดคืนแสดง — คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5 (30/09/2569) "แบบ (ก) ลงส่วนลดแยกที่
+   * 52-1106". ต้องเป็น `computePayoffQuote(...).discountAmount` ตัวเดียวกับหน้าจอ (ผู้เรียกส่งมา — ห้ามคิดสูตรใหม่
+   * ใน template). วางเป็น `Dr 52-1106` ก่อน plug → ขาดทุน 51-1102 ลด (หรือกำไร 41-1102 เพิ่ม) เท่าส่วนลดพอดี ·
+   * ภาษีขายไม่เปลี่ยน · ไม่ส่ง / 0 = ไม่มีบรรทัด 52-1106 (รายการแบบเดิม).
+   */
+  discount?: Decimal;
 }
 
 /** ผลของ `RepossessionJP5Template.execute` — ยอดที่ลงจริงของบรรทัดเงินของลูกค้า + สัญญาณเตือน (PR6) */
@@ -145,6 +152,10 @@ export interface RepossessionJP5Result {
  *   Dr 21-1103  glBalance(21-1103) − parkRelief   ← เงินรับล่วงหน้าที่เหลือทุกถัง (ถังรวม + ส่วนเกินของถังพัก)
  *   Dr 21-5101  glBalance(21-5101)                ← เงินเกินของลูกค้า
  * ⇒ 21-1103 / 21-5101 ของสัญญาเป็นศูนย์หลังยึด · ผู้เรียกตั้งคอลัมน์ของสัญญาเป็นศูนย์ในธุรกรรมเดียวกัน
+ *
+ * ส่วนลดยอดปิด (PR6 — คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5, 30/09/2569 แบบ (ก)) วางก่อน plug เช่นกัน:
+ *   Dr 52-1106  input.discount                    ← ส่วนลดตัวเดียวกับหน้าจอ (computePayoffQuote)
+ * ⇒ 51-1102 = ยอดในบัญชีที่ล้าง − ราคาประเมิน − เงินของลูกค้าที่หัก − ส่วนลด (ค่าเผื่อฯ หักกับยอดนี้เท่านั้น)
  */
 /** UI-shaped dry-run of the JP5 JE — same shape as JP4's journalPreview. */
 export interface RepossessionJePreview {
@@ -364,6 +375,14 @@ export class RepossessionJP5Template {
       lines.push({ accountCode: '21-5101', dr: creditRelief, cr: zero });
     }
 
+    // คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5 (30/09/2569) "แบบ (ก) ลงส่วนลดแยกที่ 52-1106": ส่วนลดยอดปิดตัวเดียวกับหน้าจอ
+    // (ผู้เรียกส่ง computePayoffQuote().discountAmount) → Dr 52-1106 ก่อน plug · ภาษีขายไม่เปลี่ยน · ค่าเผื่อฯ ข้างล่าง
+    // หักกับขาดทุน 51-1102 ที่เหลือเท่านั้น · บรรทัดไม่มีคำอธิบาย (จอแสดงชื่อบัญชี)
+    const discount = input.discount && input.discount.gt(0) ? input.discount : zero;
+    if (discount.gt(0)) {
+      lines.push({ accountCode: '52-1106', dr: discount, cr: zero });
+    }
+
     // ---- Loss/gain from the balance equation (not a separately re-derived formula) ----
     // Every line above already sweeps its account to the GL balance; whatever
     // is left over to balance the JE IS the loss (Cr > Dr) or gain (Dr > Cr).
@@ -460,6 +479,7 @@ export class RepossessionJP5Template {
       parkRelief,
       advanceRelief,
       creditRelief,
+      discount,
       warnings: advances.warnings,
       lines,
     };
@@ -501,6 +521,8 @@ export class RepossessionJP5Template {
           // PR6 — เงินรับล่วงหน้าที่เหลือ / เงินเกินของลูกค้าที่หัก: stamp เฉพาะเมื่อมีจริง (เหตุผลเดียวกับ parkRelief)
           ...(built.advanceRelief.gt(0) ? { advanceRelief: built.advanceRelief.toFixed(2) } : {}),
           ...(built.creditRelief.gt(0) ? { creditRelief: built.creditRelief.toFixed(2) } : {}),
+          // PR6 — ส่วนลดยอดปิดที่ลง 52-1106 (แบบ (ก)): stamp เฉพาะเมื่อมีจริง
+          ...(built.discount.gt(0) ? { discount: built.discount.toFixed(2) } : {}),
           ...(input.shopReceivableType
             ? {
                 shopReceivable: input.depositAccountCode,

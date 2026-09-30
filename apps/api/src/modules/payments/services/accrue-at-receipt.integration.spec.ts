@@ -1000,6 +1000,10 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
         '21-2102:1124.62:0.00',
         '41-1101:0.00:5670.15',
       ]);
+      // preview ที่พนักงานเห็นก่อนกดอนุมัติ (journalPreview) === รายการที่ลงจริง — สองฝั่งได้ accruedUnpaid ก้อนเดียวกัน
+      expect(
+        quote.journalPreview.lines.map((l) => `${l.accountCode}:${l.debit}:${l.credit}`).sort(),
+      ).toEqual(sortedLines(jp4));
       // ดอกเบี้ยรับรู้รวมทั้งสัญญา = 329.85 (2A บางส่วน) + 5,670.15 (JP4) = 6,000.00 — ไม่ซ้ำ
       expect(await balance(c.id, '41-1101', 'cr')).toBe('6000.00');
       expect(await balance(c.id, '11-2106', 'cr')).toBe('0.00');
@@ -1037,6 +1041,10 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
         '41-1101:0.00:5670.15',
         '52-1106:2835.08:0.00',
       ]);
+      // preview ที่พนักงานเห็นก่อนกดอนุมัติ (journalPreview) === รายการที่ลงจริง — สองฝั่งได้ accruedUnpaid ก้อนเดียวกัน
+      expect(
+        quote.journalPreview.lines.map((l) => `${l.accountCode}:${l.debit}:${l.credit}`).sort(),
+      ).toEqual(sortedLines(jp4));
       const jeCash = new Decimal(
         jp4.lines.find((l) => l.accountCode === '11-1201')!.debit.toString(),
       );

@@ -869,7 +869,7 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(await paidOf(c.id, 1)).toEqual({ amountPaid: '1000.00', status: 'PARTIALLY_PAID' });
     });
 
-    it('พฤติกรรมเดิมที่งานนี้ไม่เปลี่ยน (แก้ในงานตั้งตามสัดส่วนยอดที่รับ): รับบางส่วน 1,000 ขณะลูกค้ามีเงินรับล่วงหน้า 2,000 → รอบกลางคืนหักเงินรับล่วงหน้าเต็มงวด 1,515.83 ลูกหนี้งวดติดลบ 1,000', async () => {
+    it('รับบางส่วน 1,000 ขณะลูกค้ามีเงินรับล่วงหน้า 2,000 → รอบกลางคืนหักเงินรับล่วงหน้าเท่าที่ยังค้างบนแถวงวด 515.83 (เดิมหักเต็มงวดเกินไป 1,000)', async () => {
       const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2, 3] });
       await record(c.id, 1, 3515.83, 'AAR-NIGHT-3'); // จ่ายเกิน 2,000
       expect(await advanceOf(c.id)).toEqual({ generic: '2000.00', park: '0.00' });
@@ -884,12 +884,42 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(await accrualEntries(sched.id)).toHaveLength(1);
       const consumes = await flowEntries(c.id, 'advance-consume-on-accrual');
       expect(consumes).toHaveLength(1);
-      expect(sortedLines(consumes[0])).toEqual(['11-2103:0.00:1515.83', '21-1103:1515.83:0.00']);
-      expect(await advanceOf(c.id)).toEqual({ generic: '484.17', park: '0.00' });
-      expect(await paidOf(c.id, 2)).toEqual({ amountPaid: '2515.83', status: 'PAID' });
-      // งวด 1 สุทธิ 0 · งวด 2: Dr 1,515.83 (2A) − Cr 1,000 (ใบรับชำระ) − Cr 1,515.83 (หักเงินรับล่วงหน้า)
-      expect(await balance(c.id, '11-2103', 'dr')).toBe('-1000.00');
-      expect(await balance(c.id, '21-1103', 'cr')).toBe('484.17');
+      expect(sortedLines(consumes[0])).toEqual(['11-2103:0.00:515.83', '21-1103:515.83:0.00']);
+      expect(await advanceOf(c.id)).toEqual({ generic: '1484.17', park: '0.00' });
+      expect(await paidOf(c.id, 2)).toEqual({ amountPaid: '1515.83', status: 'PAID' });
+      // งวด 1 สุทธิ 0 · งวด 2: Dr 1,515.83 (2A) − Cr 1,000 (ใบรับชำระ) − Cr 515.83 (หักเงินรับล่วงหน้า)
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+      expect(await balance(c.id, '21-1103', 'cr')).toBe('1484.17');
+    });
+
+    it('ยอดเรียกเก็บ 1,516.00 · QR 1,000 ก่อนครบกำหนด · ลูกค้ามีเงินรับล่วงหน้า 2,000 → รอบกลางคืนหักเงินรับล่วงหน้า 515.83 (ยอดที่ยังค้างในบัญชี ไม่ใช่ 516.00 ของยอดเรียกเก็บ) · 11-2103 = 0 · แถวงวดค้าง 0.17', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2, 3] });
+      await prisma.payment.updateMany({
+        where: { contractId: c.id, installmentNo: 2 },
+        data: { amountDue: D('1516.00') },
+      });
+      await record(c.id, 1, 3515.83, 'AAR-NIGHT-5'); // จ่ายเกิน 2,000 → เงินรับล่วงหน้า
+      expect(await advanceOf(c.id)).toEqual({ generic: '2000.00', park: '0.00' });
+      await recordPartialQr(c.id, 2, 1000, 'AAR-NIGHT-6');
+      const sched = await scheduleOf(c.id, 2);
+      await setDueDaysAgo(c.id, 2, 0);
+
+      await runNightly();
+
+      const consumes = await flowEntries(c.id, 'advance-consume-on-accrual');
+      expect(consumes).toHaveLength(1);
+      expect(sortedLines(consumes[0])).toEqual(['11-2103:0.00:515.83', '21-1103:515.83:0.00']);
+      expect(await advanceOf(c.id)).toEqual({ generic: '1484.17', park: '0.00' });
+      // 1,000 + 515.83 < ยอดเรียกเก็บ 1,516.00 → แถวงวดยังค้าง 0.17 (เศษของยอดเรียกเก็บ ไม่ใช่ลูกหนี้ในบัญชี)
+      expect(await paidOf(c.id, 2)).toEqual({ amountPaid: '1515.83', status: 'PARTIALLY_PAID' });
+      // 2A ของงวด 2 ทุกใบรวม = ยอดของงวดในบัญชีพอดี (ก่อน Task 4: ใบเดียวจากรอบกลางคืน · ตั้งแต่ Task 4: ใบบางส่วน + ส่วนที่เหลือ)
+      const accrued2103 = (await accrualEntries(sched.id))
+        .flatMap((e) => e.lines)
+        .filter((l) => l.accountCode === '11-2103')
+        .reduce((sum, l) => sum.plus(new Decimal(l.debit.toString())), new Decimal(0));
+      expect(accrued2103.toFixed(2)).toBe('1515.83');
+      expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+      expect(await balance(c.id, '21-1103', 'cr')).toBe('1484.17');
     });
   });
 

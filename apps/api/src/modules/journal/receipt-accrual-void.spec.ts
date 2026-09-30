@@ -176,7 +176,7 @@ describe('ReceiptVoidReversalTemplate.voidAccrualPostedAtReceipt', () => {
     });
     expect(b.tx.installmentSchedule.update).toHaveBeenCalledWith({
       where: { id: 'inst-3' },
-      data: { accrualJournalEntryId: null },
+      data: { accrualJournalEntryId: null, accruedAmount: 0, accruedVat: 0, accruedInterest: 0 },
     });
   };
 

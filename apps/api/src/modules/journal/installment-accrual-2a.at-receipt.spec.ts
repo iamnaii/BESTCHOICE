@@ -1,6 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import {
+  ACCRUAL_PORTION_PARTIAL,
+  ACCRUAL_PORTION_REMAINDER,
   ACCRUAL_TRIGGER_RECEIPT,
   InstallmentAccrual2ATemplate,
 } from './cpa-templates/installment-accrual-2a.template';
@@ -44,6 +47,10 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
     referenceHolder?: { metadata: Record<string, unknown> } | null;
     /** รายการ 2A ที่ตั้งใหม่หลังการกลับรายการครั้งก่อน ๆ — ตัวที่ n ถือ `<id>:re-accrual:<n>` */
     reAccruals?: { metadata: Record<string, unknown> }[];
+    /** รายการ 2A บางส่วนที่มีอยู่แล้ว — ตัวที่ k ถือ `<id>:receipt-accrual:<k>` */
+    receiptAccruals?: { metadata: Record<string, unknown> }[];
+    /** ยอดที่ตั้งไปแล้วของงวด (คอลัมน์ accrued*) — ไม่ส่ง = 0 (ค่าเริ่มต้นของคอลัมน์) */
+    accrued?: { amount: string; vat: string; interest: string };
   }) {
     const inst = {
       id: 'inst-3',
@@ -51,6 +58,9 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
       contractId: contract.id,
       dueDate: opts.dueDate ?? DUE_12_OCT,
       accrualJournalEntryId: opts.accrualJournalEntryId ?? null,
+      accruedAmount: dec(opts.accrued?.amount ?? '0'),
+      accruedVat: dec(opts.accrued?.vat ?? '0'),
+      accruedInterest: dec(opts.accrued?.interest ?? '0'),
     };
     const createAndPost = jest
       .fn()
@@ -77,7 +87,11 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
         findFirst: jest.fn(({ where }: { where: { referenceId: unknown } }) => {
           if (where.referenceId === 'inst-3') return Promise.resolve(opts.referenceHolder ?? null);
           const match = /^inst-3:re-accrual:(\d+)$/.exec(String(where.referenceId));
-          return Promise.resolve(match ? (opts.reAccruals?.[Number(match[1]) - 1] ?? null) : null);
+          if (match) return Promise.resolve(opts.reAccruals?.[Number(match[1]) - 1] ?? null);
+          const part = /^inst-3:receipt-accrual:(\d+)$/.exec(String(where.referenceId));
+          return Promise.resolve(
+            part ? (opts.receiptAccruals?.[Number(part[1]) - 1] ?? null) : null,
+          );
         }),
         // ห้ามค้นแบบกวาด (ขึ้นต้นด้วย …) ในธุรกรรมของการรับชำระ — ต้องไม่ถูกเรียกเลย
         findMany: jest.fn(),
@@ -93,12 +107,41 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
     return { tmpl, tx, rootPrisma, createAndPost };
   }
 
+  const figures = (je: CapturedJe) =>
+    je.lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)]);
+  /** อาร์กิวเมนต์ของการเขียนแถวตารางงวด — ยอด Decimal เป็นสตริง 2 ตำแหน่งเพื่อเทียบ */
+  const scheduleUpdate = (
+    update: jest.Mock,
+  ): { where: Record<string, unknown>; data: Record<string, unknown> } => {
+    const { where, data } = update.mock.calls[0][0] as {
+      where: { id: string; accrualJournalEntryId: null; accruedAmount: Decimal };
+      data: Record<string, unknown>;
+    };
+    const money = (v: unknown) => (v as Decimal).toFixed(2);
+    return {
+      where: { ...where, accruedAmount: money(where.accruedAmount) },
+      data: {
+        ...data,
+        accruedAmount: money(data.accruedAmount),
+        accruedVat: money(data.accruedVat),
+        accruedInterest: money(data.accruedInterest),
+      },
+    };
+  };
+
   it('รับเงินก่อนครบกำหนด → ลง 2A เต็มงวด ลงวันที่รับเงิน พร้อม trigger/receiptDate', async () => {
     const { tmpl, tx, createAndPost } = build({});
 
     const out = await tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never);
 
-    expect(out).toEqual({ entryNo: 'JE-202609-00077', postedAt: RECEIPT_29_SEP });
+    expect(out).toEqual({
+      entryNo: 'JE-202609-00077',
+      postedAt: RECEIPT_29_SEP,
+      kind: 'FULL',
+      amount: expect.any(Decimal),
+      completes: true,
+    });
+    expect(out!.amount.toFixed(2)).toBe('1515.83');
     expect(createAndPost).toHaveBeenCalledTimes(1);
     const [je, passedTx] = createAndPost.mock.calls[0] as [CapturedJe, unknown];
     expect(passedTx).toBe(tx);
@@ -120,9 +163,15 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
       ['41-1101', '0.00', '500.00'],
       ['21-2101', '0.00', '99.17'],
     ]);
-    expect(tx.installmentSchedule.update).toHaveBeenCalledWith({
-      where: { id: 'inst-3' },
-      data: { accrualJournalEntryId: 'JE-202609-00077' },
+    // ยอดสะสม = ทั้งงวด + ลิงก์ (ตั้งครบ) — compare-and-set กับยอดที่อ่านมา (0)
+    expect(scheduleUpdate(tx.installmentSchedule.update)).toEqual({
+      where: { id: 'inst-3', accrualJournalEntryId: null, accruedAmount: '0.00' },
+      data: {
+        accruedAmount: '1515.83',
+        accruedVat: '99.17',
+        accruedInterest: '500.00',
+        accrualJournalEntryId: 'JE-202609-00077',
+      },
     });
   });
 
@@ -338,6 +387,167 @@ describe('InstallmentAccrual2ATemplate.accrueAtReceipt', () => {
         'inst-3',
         'inst-3:re-accrual:1',
       ]);
+    });
+  });
+  describe('ตั้งเท่ายอดที่รับ (คำตอบฝ่ายบัญชี ก1 "แบบ ข" 29/09/2569)', () => {
+    const ACTIVE_PART = { metadata: { tag: '2A', portion: 'partial' } };
+    const REVERSED_PART = { metadata: { tag: '2A', portion: 'partial', reversed: true } };
+
+    it('รับบางส่วน 1,000 ก่อนครบกำหนด → 2A เท่ายอดที่รับ ลงวันที่รับเงิน reference `<id>:receipt-accrual:1` ยังไม่ประทับลิงก์', async () => {
+      const { tmpl, tx, createAndPost } = build({});
+
+      const out = await tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never, dec('1000'));
+
+      expect(out).toEqual({
+        entryNo: 'JE-202609-00077',
+        postedAt: RECEIPT_29_SEP,
+        kind: 'PARTIAL',
+        amount: expect.any(Decimal),
+        completes: false,
+      });
+      const je = createAndPost.mock.calls[0][0] as CapturedJe & { description: string };
+      expect(je.reference).toBe('inst-3:receipt-accrual:1');
+      expect(je.postedAt).toBe(RECEIPT_29_SEP);
+      expect(je.description).toBe('Accrual งวด #3 (ตั้งเท่ายอดที่รับ 1000.00) — สัญญา CT-0001');
+      expect(je.metadata).toEqual({
+        tag: '2A',
+        contractId: 'contract-1',
+        installmentScheduleId: 'inst-3',
+        portion: ACCRUAL_PORTION_PARTIAL,
+        trigger: ACCRUAL_TRIGGER_RECEIPT,
+        receiptDate: '2026-09-29T03:00:00.000Z',
+      });
+      expect(figures(je)).toEqual([
+        ['11-2103', '1000.00', '0.00'],
+        ['21-2102', '65.42', '0.00'],
+        ['11-2106', '329.85', '0.00'],
+        ['11-2101', '0.00', '934.58'],
+        ['11-2105', '0.00', '65.42'],
+        ['41-1101', '0.00', '329.85'],
+        ['21-2101', '0.00', '65.42'],
+      ]);
+      expect(scheduleUpdate(tx.installmentSchedule.update)).toEqual({
+        where: { id: 'inst-3', accrualJournalEntryId: null, accruedAmount: '0.00' },
+        data: { accruedAmount: '1000.00', accruedVat: '65.42', accruedInterest: '329.85' },
+      });
+      // หา reference ด้วยค่าเท่ากันตรงตัว — ไม่ถาม reference ของรายการที่ทำให้ครบ ไม่ค้นแบบกวาด
+      expect(tx.journalEntry.findFirst.mock.calls.map(([a]) => a.where.referenceId)).toEqual([
+        'inst-3:receipt-accrual:1',
+      ]);
+      expect(tx.journalEntry.findMany).not.toHaveBeenCalled();
+    });
+
+    it('มีรายการบางส่วนอยู่แล้ว 1 ใบ (และ 1 ใบที่ถูกกลับไปแล้ว) → ใบใหม่ได้ k ถัดจากทุกใบที่ถือ reference อยู่', async () => {
+      const { tmpl, tx, createAndPost } = build({
+        receiptAccruals: [REVERSED_PART, ACTIVE_PART],
+        accrued: { amount: '500.00', vat: '32.71', interest: '164.93' },
+      });
+
+      await tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never, dec('600'));
+
+      const je = createAndPost.mock.calls[0][0] as CapturedJe;
+      expect(je.reference).toBe('inst-3:receipt-accrual:3');
+      expect(figures(je)).toEqual([
+        ['11-2103', '600.00', '0.00'],
+        ['21-2102', '39.25', '0.00'],
+        ['11-2106', '197.91', '0.00'],
+        ['11-2101', '0.00', '560.75'],
+        ['11-2105', '0.00', '39.25'],
+        ['41-1101', '0.00', '197.91'],
+        ['21-2101', '0.00', '39.25'],
+      ]);
+      expect(scheduleUpdate(tx.installmentSchedule.update)).toEqual({
+        where: { id: 'inst-3', accrualJournalEntryId: null, accruedAmount: '500.00' },
+        data: { accruedAmount: '1100.00', accruedVat: '71.96', accruedInterest: '362.84' },
+      });
+    });
+
+    it('ใบที่ทำให้งวดชำระครบหลังรับบางส่วน 1,000 → ส่วนที่เหลือ 515.83 · reference เดิม `<id>` · ประทับลิงก์', async () => {
+      const { tmpl, tx, createAndPost } = build({
+        receiptAccruals: [ACTIVE_PART],
+        accrued: { amount: '1000.00', vat: '65.42', interest: '329.85' },
+      });
+
+      const out = await tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never);
+
+      expect(out!.kind).toBe('REMAINDER');
+      expect(out!.completes).toBe(true);
+      const je = createAndPost.mock.calls[0][0] as CapturedJe & { description: string };
+      expect(je.reference).toBe('inst-3');
+      expect(je.description).toBe('Accrual งวด #3 (ส่วนที่เหลือ 515.83) — สัญญา CT-0001');
+      expect(je.metadata!.portion).toBe(ACCRUAL_PORTION_REMAINDER);
+      expect(figures(je)).toEqual([
+        ['11-2103', '515.83', '0.00'],
+        ['21-2102', '33.75', '0.00'],
+        ['11-2106', '170.15', '0.00'],
+        ['11-2101', '0.00', '482.08'],
+        ['11-2105', '0.00', '33.75'],
+        ['41-1101', '0.00', '170.15'],
+        ['21-2101', '0.00', '33.75'],
+      ]);
+      expect(scheduleUpdate(tx.installmentSchedule.update)).toEqual({
+        where: { id: 'inst-3', accrualJournalEntryId: null, accruedAmount: '1000.00' },
+        data: {
+          accruedAmount: '1515.83',
+          accruedVat: '99.17',
+          accruedInterest: '500.00',
+          accrualJournalEntryId: 'JE-202609-00077',
+        },
+      });
+    });
+
+    it('ยอดที่รับถึงส่วนที่เหลือของงวด (ใบบางส่วนของยอดเรียกเก็บ 1,516) → ตั้งทั้งงวด reference เดิม ประทับลิงก์ ไม่มีคีย์ portion', async () => {
+      const { tmpl, tx, createAndPost } = build({});
+
+      const out = await tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never, dec('1515.83'));
+
+      expect(out!.kind).toBe('FULL');
+      expect(out!.completes).toBe(true);
+      const je = createAndPost.mock.calls[0][0] as CapturedJe;
+      expect(je.reference).toBe('inst-3');
+      expect(je.metadata).not.toHaveProperty('portion');
+      expect(scheduleUpdate(tx.installmentSchedule.update).data.accrualJournalEntryId).toBe(
+        'JE-202609-00077',
+      );
+    });
+
+    it('ยอดที่รับเป็น 0 → คืน null ไม่ลงรายการ ไม่เขียนแถว', async () => {
+      const { tmpl, tx, createAndPost } = build({});
+
+      await expect(
+        tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never, dec('0')),
+      ).resolves.toBeNull();
+      expect(createAndPost).not.toHaveBeenCalled();
+      expect(tx.installmentSchedule.update).not.toHaveBeenCalled();
+    });
+
+    it('แถวงวดถูกรายการอื่นเขียนแทรก (compare-and-set ไม่พบแถว → P2025) → error ผ่านออกไป ธุรกรรมของผู้เรียกล้ม', async () => {
+      const { tmpl, tx } = build({});
+      const notFound = new Prisma.PrismaClientKnownRequestError('Record to update not found', {
+        code: 'P2025',
+        clientVersion: 'test',
+      });
+      tx.installmentSchedule.update.mockRejectedValueOnce(notFound);
+
+      await expect(
+        tmpl.accrueAtReceipt('inst-3', RECEIPT_29_SEP, tx as never, dec('1000')),
+      ).rejects.toBe(notFound);
+    });
+
+    it('งวดบัญชีของวันที่รับเงินปิด → ปฏิเสธด้วยข้อความเดิม ไม่ลงรายการบางส่วน', async () => {
+      // รับเงิน 20 ส.ค. 2569 (ก่อนครบกำหนด 12 ต.ค.) → 2A บางส่วนลงวันที่รับเงิน ซึ่งงวด ส.ค. ปิดแล้ว
+      // (period_grace_days = 0 และวันนี้เลย 31 ส.ค. แล้ว)
+      const { tmpl, tx, createAndPost } = build({ periodStatus: 'CLOSED' });
+      const receiptAug = new Date('2026-08-20T03:00:00.000Z');
+
+      await expect(
+        tmpl.accrueAtReceipt('inst-3', receiptAug, tx as never, dec('1000')),
+      ).rejects.toThrow(
+        'ไม่สามารถรับชำระงวด #3 ได้ — ระบบต้องตั้งลูกหนี้งวดนี้ในงวดบัญชีเดือน 08/2569 ซึ่งปิดแล้ว ' +
+          'กรุณาติดต่อฝ่ายบัญชีเพื่อขอเปิดงวดบัญชีเดือนดังกล่าว เมื่อเปิดงวดแล้วจึงบันทึกรับชำระอีกครั้ง',
+      );
+      expect(createAndPost).not.toHaveBeenCalled();
+      expect(tx.installmentSchedule.update).not.toHaveBeenCalled();
     });
   });
 });

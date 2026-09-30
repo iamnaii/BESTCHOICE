@@ -177,9 +177,11 @@ export class ReceiptVoidReversalTemplate {
         },
       },
     });
+    // ล้างลิงก์ + ยอดสะสมของงวด (accrued*) พร้อมกัน — รายการ 2A เขียนยอดสะสมทุกครั้ง (PR2ข) และรอบกลางคืน
+    // ตั้ง "ยอดของงวด − ยอดสะสม": ถ้าล้างแค่ลิงก์ ส่วนที่เหลือจะเป็น 0 และงวดจะไม่ถูกตั้งลูกหนี้อีกเลย
     await tx.installmentSchedule.update({
       where: { id: inst.id },
-      data: { accrualJournalEntryId: null },
+      data: { accrualJournalEntryId: null, accruedAmount: 0, accruedVat: 0, accruedInterest: 0 },
     });
 
     this.logger.log(

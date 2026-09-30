@@ -5,7 +5,12 @@ import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
-  buildAccrual2ALines,
+  Accrual2AKind,
+  Accrual2APartResult,
+  accrual2AInputOf,
+  accruedSoFarOf,
+  buildPartialAccrual2ALines,
+  buildRemainderAccrual2ALines,
   resolveAccrualPeriodCheckDate,
   resolveAccrualPostingDate,
 } from '../build-accrual-2a-lines';
@@ -14,11 +19,53 @@ import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import {
   ADVANCE_CONSUME_ON_ACCRUAL_FLOW,
   RESCHEDULE_PARK_CONSUME_FLOW,
+  reconstructPriorCleared,
 } from '../reconstruct-prior';
 // EIR utility removed — CPA Policy A revert (#783) reverted to straight-line allocation.
 
 /** `metadata.trigger` ของรายการ 2A ที่ลง ณ วันรับเงิน (คำตัดสินฝ่ายบัญชี D2, 2026-09-28). */
 export const ACCRUAL_TRIGGER_RECEIPT = 'receipt';
+
+/**
+ * `metadata.portion` ของรายการ 2A ที่ตั้งเพียงบางส่วนของงวด / ส่วนที่เหลือของงวดที่เคยตั้งบางส่วน
+ * (คำตอบฝ่ายบัญชี ก1 29/09/2569). รายการที่ตั้งทั้งงวดในรายการเดียวไม่มีคีย์นี้ (เหมือนเดิมทุกตัวอักษร).
+ */
+export const ACCRUAL_PORTION_PARTIAL = 'partial';
+export const ACCRUAL_PORTION_REMAINDER = 'remainder';
+
+/**
+ * `reference` ของรายการ 2A บางส่วนลำดับที่ k (เริ่มที่ 1) ของงวด. รายการที่ทำให้งวดตั้งครบใช้ reference
+ * เดิม (`<id>` / `<id>:re-accrual:<n>` — resolveAccrualReference) เสมอ.
+ */
+export function receiptAccrualReference(installmentScheduleId: string, k: number): string {
+  return `${installmentScheduleId}:receipt-accrual:${k}`;
+}
+
+type EntryWithLines = Prisma.JournalEntryGetPayload<{ include: { lines: true } }>;
+
+/**
+ * รายการ 2A บางส่วนทุกใบของงวด (ทั้งที่ยังมีผลและที่ถูกกลับแล้ว) ตามลำดับ k — อ่านด้วยค่าเท่ากันบน
+ * (referenceType, referenceId) ทีละค่า หยุดที่ k แรกที่ไม่มีรายการถือ. ห้ามค้นแบบ "ขึ้นต้นด้วย" ในธุรกรรม
+ * Serializable ของการรับชำระ/การยกเลิกใบเสร็จ. ใช้โดยการกลับรายการตอนยกเลิกใบเสร็จ.
+ */
+export async function findReceiptAccrualEntries(
+  client: Pick<Prisma.TransactionClient, 'journalEntry'>,
+  installmentScheduleId: string,
+): Promise<EntryWithLines[]> {
+  const entries: EntryWithLines[] = [];
+  for (let k = 1; ; k += 1) {
+    const entry = await client.journalEntry.findFirst({
+      where: {
+        referenceType: 'AUTO',
+        referenceId: receiptAccrualReference(installmentScheduleId, k),
+        deletedAt: null,
+      },
+      include: { lines: true },
+    });
+    if (!entry) return entries;
+    entries.push(entry);
+  }
+}
 
 type AccrualInstallment = Prisma.InstallmentScheduleGetPayload<Record<string, never>>;
 type AccrualContract = Prisma.ContractGetPayload<Record<string, never>>;
@@ -27,6 +74,12 @@ export interface AccrueAtReceiptResult {
   entryNo: string;
   /** วันที่ลงรายการ 2A = min(วันครบกำหนด, วันที่รับเงิน). */
   postedAt: Date;
+  /** FULL = ทั้งงวดในรายการเดียว · PARTIAL = เท่ายอดที่รับ · REMAINDER = ส่วนที่เหลือของงวด */
+  kind: Accrual2AKind;
+  /** ยอด Dr 11-2103 ของรายการนี้ */
+  amount: Decimal;
+  /** รายการนี้ทำให้งวดตั้งลูกหนี้ครบ (ประทับ accrualJournalEntryId แล้ว) */
+  completes: boolean;
 }
 
 /**
@@ -44,25 +97,16 @@ export interface AccrueAtReceiptResult {
  *     Cr 41-1101 รายได้ดอกเบี้ย (รับรู้)   (interestPerInst)
  *     Cr 21-2101 ภาษีขาย ภ.พ.30           (vatPerInst)
  *
- * Interest recognition: EIR (Effective Interest Method) per TFRS 15 §60-65.
- *   - Period 1: highest interest (= openingPrincipal × monthlyEIR)
- *   - Period N: lowest interest (snap to clear residual)
- *   - Total interest = interestTotal (matches contract)
- *
- * Updated from straight-line allocation (Wave 4 / Option B / Phase 2 EIR migration).
+ * ตั้งตามสัดส่วนยอดที่รับ (คำตอบฝ่ายบัญชี ก1 "แบบ ข" 29/09/2569): ใบรับชำระบางส่วนก่อนวันครบกำหนดตั้ง 2A
+ * เท่ายอดที่รับ (buildPartialAccrual2ALines) — ส่วนที่เหลือตั้งโดยใบที่ทำให้งวดชำระครบ หรือโดยรอบกลางคืน
+ * ณ วันครบกำหนด (buildRemainderAccrual2ALines). ยอดที่ตั้งไปแล้วเก็บใน InstallmentSchedule.accruedAmount /
+ * accruedVat / accruedInterest (เขียนในธุรกรรมเดียวกับทุกรายการ 2A); accrualJournalEntryId = รายการที่ทำให้
+ * งวด "ตั้งครบ" — ความหมายเดิมของผู้อ่านทุกราย.
  *
  * Rounding modes:
  *   installmentExclVat = grossExclVat / totalMonths → ROUND_DOWN  (17000/12 = 1416.66)
  *   vatPerInst         = vatTotal / totalMonths     → ROUND_HALF_UP (1190/12 = 99.17)
  *   interestPerInst    = interest / totalMonths     → ROUND_HALF_UP straight-line (CPA Policy A · #783)
- *
- * Recognition policy:
- *   - TFRS 15 §35(b): performance obligation satisfied "over time" — financing
- *     service is consumed by the customer through each due date, so revenue is
- *     recognised per period (this template, fired daily by accrual cron).
- *   - VAT recognition: deferred VAT (21-2102 booked at contract activation) is
- *     reclassified to settled VAT (21-2101) per period — matches TFRS 15
- *     pattern of recognising tax liability when service is performed.
  *
  * Recognition policy (Wave 4 / Task 2 — Info comments):
  *   - TFRS 15 §35(b): performance obligation satisfied "over time" — financing
@@ -76,7 +120,7 @@ export interface AccrueAtReceiptResult {
  *     reclassified to settled VAT (21-2101) per period — matches TFRS 15
  *     pattern of recognising tax liability when service is performed.
  *
- * Idempotent: returns null if accrualJournalEntryId is already set on the installment.
+ * Idempotent: returns null if accrualJournalEntryId is already set on the installment (= งวดตั้งครบแล้ว).
  */
 @Injectable()
 export class InstallmentAccrual2ATemplate {
@@ -119,8 +163,12 @@ export class InstallmentAccrual2ATemplate {
   }
 
   /**
-   * ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตัดสินฝ่ายบัญชี D2, 2026-09-28) — เรียกจาก
+   * ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตัดสินฝ่ายบัญชี D2, 2026-09-28 + ก1, 2026-09-29) — เรียกจาก
    * PaymentReceiptTemplate ภายในธุรกรรมของการรับชำระเท่านั้น.
+   *
+   * `amountReceived` ไม่ส่ง = ใบที่ทำให้งวดชำระครบ → ตั้งส่วนที่เหลือของงวด (ยังไม่เคยตั้ง = ทั้งงวด).
+   * ส่ง = ใบบางส่วนก่อนวันครบกำหนด → ตั้งเท่ายอดนี้ (split.principalCleared) ตามสูตร ก1; ยอดที่ถึงส่วนที่เหลือ
+   * ของงวด = ตั้งส่วนที่เหลือทั้งหมดและงวดตั้งครบ.
    *
    * "แกนอย่างเดียว": ลงรายการ 2A + ประทับ accrualJournalEntryId เท่านั้น — ไม่หักเงินรับล่วงหน้า
    * (ทั้งถังรวมและถังพักงวดสุดท้าย) และไม่แตะแถว Payment เพราะเส้นทางรับชำระเป็นผู้จัดการสองอย่างนั้น.
@@ -129,14 +177,15 @@ export class InstallmentAccrual2ATemplate {
    *
    * ไม่ตรวจสถานะสัญญา: เส้นทางรับชำระเปลี่ยนสถานะสัญญาเป็น COMPLETED / EARLY_PAYOFF ก่อนเรียกมาถึงที่นี่
    * ผู้เรียก (PaymentReceiptTemplate) เป็นผู้ตัดสินจากสถานะก่อนรับเงิน.
-   * ไม่จับ error ของฐานข้อมูล (P2002 / P2034): ปล่อยให้ธุรกรรมของผู้เรียกล้มตามเดิม.
+   * ไม่จับ error ของฐานข้อมูล (P2002 / P2025 / P2034): ปล่อยให้ธุรกรรมของผู้เรียกล้มตามเดิม.
    *
-   * คืน null เมื่องวดถูกตั้งลูกหนี้ไปแล้ว.
+   * คืน null เมื่องวดถูกตั้งลูกหนี้ครบไปแล้ว หรือไม่มียอดให้ตั้ง (ยอดที่รับ ≤ 0).
    */
   async accrueAtReceipt(
     installmentScheduleId: string,
     receiptDate: Date,
     tx: Prisma.TransactionClient,
+    amountReceived?: Decimal,
   ): Promise<AccrueAtReceiptResult | null> {
     const inst = await tx.installmentSchedule.findUniqueOrThrow({
       where: { id: installmentScheduleId },
@@ -144,6 +193,9 @@ export class InstallmentAccrual2ATemplate {
     if (inst.accrualJournalEntryId) return null;
 
     const c = await tx.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
+    const part = this.buildPart(inst, c, amountReceived);
+    if (!part.portion.total.gt(0)) return null;
+
     const postedAt = resolveAccrualPostingDate(inst.dueDate, receiptDate);
     await this.assertAccrualPeriodOpen(
       tx,
@@ -151,64 +203,126 @@ export class InstallmentAccrual2ATemplate {
       resolveAccrualPeriodCheckDate(inst.dueDate, receiptDate),
     );
 
-    const core = await this.postCore(inst, c, tx, {
+    const posted = await this.postPart(inst, c, part, tx, {
       postedAt,
       extraMetadata: {
         trigger: ACCRUAL_TRIGGER_RECEIPT,
         receiptDate: receiptDate.toISOString(),
       },
     });
-    return { entryNo: core.entryNo, postedAt };
+    return {
+      entryNo: posted.entryNo,
+      postedAt,
+      kind: part.kind,
+      amount: part.portion.total,
+      completes: part.completes,
+    };
   }
 
-  /** บรรทัดรายการ 2A จากตัวสร้างกลาง (ใช้ร่วมกับ preview) — ห้ามคำนวณยอดเองในไฟล์นี้. */
-  private buildLines(inst: AccrualInstallment, c: AccrualContract) {
-    return buildAccrual2ALines({
-      financedAmount: c.financedAmount.toString(),
-      storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
-      interestTotal: c.interestTotal.toString(),
-      vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
-      totalMonths: c.totalMonths,
-      installmentNo: inst.installmentNo,
-    });
-  }
-
-  /** ลงรายการ 2A + ประทับ accrualJournalEntryId (ธุรกรรมเดียวกัน). */
-  private async postCore(
+  /**
+   * ส่วนของงวดที่รายการนี้จะตั้ง — จากตัวสร้างกลาง (ใช้ร่วมกับ preview และการตรวจทานตอนกลับรายการ)
+   * ห้ามคำนวณยอดเองในไฟล์นี้. `amountReceived` ไม่ส่ง = ส่วนที่เหลือของงวด.
+   */
+  private buildPart(
     inst: AccrualInstallment,
     c: AccrualContract,
+    amountReceived?: Decimal,
+  ): Accrual2APartResult {
+    const input = accrual2AInputOf(c, inst.installmentNo);
+    const accrued = accruedSoFarOf(inst);
+    return amountReceived === undefined
+      ? buildRemainderAccrual2ALines(input, accrued)
+      : buildPartialAccrual2ALines(input, accrued, amountReceived);
+  }
+
+  /**
+   * ลงรายการ 2A + เขียนยอดสะสม (accruedAmount/Vat/Interest) + ประทับ accrualJournalEntryId เมื่อรายการนี้
+   * ทำให้งวดตั้งครบ — ในธุรกรรมเดียวกัน.
+   *
+   * การเขียนแถวตารางงวดเป็น compare-and-set: ต้องยังไม่มีลิงก์ และ accruedAmount ต้องยังเท่ากับยอดที่
+   * รายการนี้ใช้คำนวณ — ถ้ามีรายการ 2A ของงวดเดียวกันลงแทรกเข้ามา (ใบรับชำระอีกใบ / รอบกลางคืน)
+   * การเขียนไม่พบแถว (P2025) และธุรกรรมล้มทั้งรายการ. ชั้นแรกคือ Serializable ของผู้เรียก และ unique index
+   * ของ reference (`<id>:receipt-accrual:<k>` ตัวเดียวกันสำหรับสองใบที่แทรกกัน).
+   */
+  private async postPart(
+    inst: AccrualInstallment,
+    c: AccrualContract,
+    part: Accrual2APartResult,
     tx: Prisma.TransactionClient,
     opts: { postedAt: Date; extraMetadata?: Record<string, string> },
-  ): Promise<{ entryNo: string; installmentTotal: Decimal }> {
-    const built = this.buildLines(inst, c);
+  ): Promise<{ entryNo: string }> {
+    const amountLabel = part.portion.total.toFixed(2);
+    const description =
+      part.kind === 'FULL'
+        ? `Accrual งวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`
+        : part.kind === 'PARTIAL'
+          ? `Accrual งวด #${inst.installmentNo} (ตั้งเท่ายอดที่รับ ${amountLabel}) — สัญญา ${c.contractNumber}`
+          : `Accrual งวด #${inst.installmentNo} (ส่วนที่เหลือ ${amountLabel}) — สัญญา ${c.contractNumber}`;
+    const portion =
+      part.kind === 'PARTIAL'
+        ? { portion: ACCRUAL_PORTION_PARTIAL }
+        : part.kind === 'REMAINDER'
+          ? { portion: ACCRUAL_PORTION_REMAINDER }
+          : {};
 
     const result = await this.journal.createAndPost(
       {
-        description: `Accrual งวด #${inst.installmentNo} — สัญญา ${c.contractNumber}`,
-        reference: await this.resolveAccrualReference(tx, inst.id),
+        description,
+        reference: part.completes
+          ? await this.resolveAccrualReference(tx, inst.id)
+          : await this.nextReceiptAccrualReference(tx, inst.id),
         metadata: {
           tag: '2A',
           contractId: c.id,
           installmentScheduleId: inst.id,
+          ...portion,
           ...(opts.extraMetadata ?? {}),
         },
         postedAt: opts.postedAt,
-        lines: built.lines,
+        lines: part.lines,
       },
       tx,
     );
 
-    // Mark installment as accrued (idempotency)
     await tx.installmentSchedule.update({
-      where: { id: inst.id },
-      data: { accrualJournalEntryId: result.entryNumber },
+      where: {
+        id: inst.id,
+        accrualJournalEntryId: null,
+        accruedAmount: accruedSoFarOf(inst).amount,
+      },
+      data: {
+        accruedAmount: part.accruedAfter.amount,
+        accruedVat: part.accruedAfter.vat,
+        accruedInterest: part.accruedAfter.interest,
+        ...(part.completes ? { accrualJournalEntryId: result.entryNumber } : {}),
+      },
     });
 
-    return { entryNo: result.entryNumber, installmentTotal: built.installmentTotal };
+    return { entryNo: result.entryNumber };
   }
 
   /**
-   * `reference` ของรายการ 2A ที่กำลังจะลง.
+   * `reference` ของรายการ 2A บางส่วนที่กำลังจะลง = `<id>:receipt-accrual:<k>` โดย k = เลขแรก (เริ่มที่ 1)
+   * ที่ยังไม่มีรายการถือ — รายการที่ถูกกลับแล้วยังถือ reference ของตัวเอง จึงถูกข้าม. สองใบที่ลงพร้อมกันได้ k
+   * เดียวกัน ฝ่ายหลังชน unique index. อ่านด้วยค่าเท่ากันทีละค่า (ไม่ค้นแบบ "ขึ้นต้นด้วย").
+   */
+  private async nextReceiptAccrualReference(
+    tx: Prisma.TransactionClient,
+    installmentScheduleId: string,
+  ): Promise<string> {
+    for (let k = 1; ; k += 1) {
+      const reference = receiptAccrualReference(installmentScheduleId, k);
+      const holder = await tx.journalEntry.findFirst({
+        where: { referenceType: 'AUTO', referenceId: reference, deletedAt: null },
+        select: { metadata: true },
+      });
+      if (!holder) return reference;
+    }
+  }
+
+  /**
+   * `reference` ของรายการ 2A ที่ทำให้งวดตั้งครบ (ทั้งงวดในรายการเดียว / ส่วนที่เหลือ) — รายการบางส่วนใช้
+   * nextReceiptAccrualReference.
    *
    * ปกติ = id ของแถวตารางงวด (เหมือนเดิมทุกตัวอักษร) — unique index `journal_entries_ref_unique`
    * จึงกันการตั้งลูกหนี้งวดเดียวกันสองครั้งในระดับฐานข้อมูล. เมื่อรายการ 2A ของงวดถูกกลับรายการตอน
@@ -247,8 +361,9 @@ export class InstallmentAccrual2ATemplate {
    * ผู้เรียก roll back). `periodCheckDate` คือ Date ที่ใช้ตัดสินงวด (resolveAccrualPeriodCheckDate).
    *
    * ข้อความบอก**เฉพาะเดือนที่ปิด** อ่านจาก `periodCheckDate` ด้วย getter ชุดเดียวกับ validatePeriodOpen
-   * (เวลาของเครื่อง) จึงเป็นเดือนเดียวกับที่ถูกตรวจเสมอ. ไม่ใส่วันที่ลงรายการ: วันที่นั้นแสดงตามเวลาไทย
-   * แต่เดือนของงวดบัญชีตัดสินตามเวลาของเครื่อง — งวดที่ครบกำหนดวันที่ 1 จะอ่านขัดกันเองถ้าใส่ทั้งสองอย่าง.
+   * (เวลาของโปรเซส) จึงเป็นเดือนเดียวกับที่ถูกตรวจเสมอ. ไม่ใส่วันที่ลงรายการ: บน prod โปรเซสรันด้วย
+   * TZ=Asia/Bangkok สองค่าจึงตรงกัน แต่ในโปรเซสที่รันเป็น UTC (เช่น jest บน CI) งวดที่ครบกำหนดวันที่ 1 จะถูก
+   * ตรวจกับเดือนก่อน — ถ้าใส่ทั้งวันที่ (เวลาไทย) และเดือน ข้อความจะอ่านขัดกันเอง.
    * ให้ติดต่อฝ่ายบัญชี — ไม่ชี้เมนู (การเปิดงวดเป็นสิทธิ์ของเจ้าของกิจการ) และไม่รับปากว่าเปิดได้เสมอ
    * (งวดที่ส่งเข้าโปรแกรมบัญชีภายนอกแล้วเปิดไม่ได้).
    */
@@ -291,10 +406,12 @@ export class InstallmentAccrual2ATemplate {
 
     const c = await tx.contract.findUniqueOrThrow({ where: { id: inst.contractId } });
 
-    // รอบกลางคืน: ลงวันครบกำหนด (พฤติกรรมเดิม) — บรรทัดรายการมาจากตัวสร้างกลางตัวเดียวกับ
-    // 2A ณ วันรับเงินและ preview
-    const core = await this.postCore(inst, c, tx, { postedAt: inst.dueDate });
-    const installmentTotal = core.installmentTotal;
+    // รอบกลางคืน: ลงวันครบกำหนด — ส่วนที่เหลือของงวด (งวดที่ยังไม่เคยตั้ง = ทั้งงวด เหมือนเดิมทุกตัวอักษร;
+    // งวดที่ใบรับชำระบางส่วนก่อนวันครบกำหนดตั้งไปแล้ว = ยอดของงวด − ยอดที่ตั้งไปแล้ว ทีละบัญชี)
+    const part = this.buildPart(inst, c);
+    if (!part.portion.total.gt(0)) return null;
+    const core = await this.postPart(inst, c, part, tx, { postedAt: inst.dueDate });
+    const installmentTotal = part.installmentTotal;
     const zero = new Decimal(0);
 
     // CPA Policy A — Auto-consume advance balance on accrual.
@@ -310,15 +427,61 @@ export class InstallmentAccrual2ATemplate {
     // payment touch.
     //
     // JE: Dr 21-1103 (consume advance) / Cr 11-2103 (clear receivable)
-    //   for amount = min(advanceBalance, installmentTotal).
+    //   for amount = min(advanceBalance, เพดานสองชั้นข้างล่าง).
+    //
+    // เพดาน (PR2ข — เดิมหักได้ถึง installmentTotal → งวดที่รับบางส่วนก่อนวันครบกำหนดถูกหักเงินรับล่วงหน้าเกิน,
+    // 11-2103 ติดลบ และ amountPaid เกินยอดเรียกเก็บ — ข้อบกพร่องที่ PR2 ปักไว้ใน accrue-at-receipt.integration.spec.ts):
+    //   (ก) ยอดที่ยังค้างบนแถว Payment ของงวด — feeNettedOutstanding (สูตร FEE-FIRST ที่ ECL/CN ใช้) ·
+    //       ไม่มีแถว Payment = ค้างเต็มงวด
+    //   (ข) ยอดลูกหนี้ของงวดที่ยังไม่ถูกล้างในสมุดบัญชี = installmentTotal − priorPrincipalCleared
+    //       (reconstructPriorCleared ตัวเดียวกับที่ PaymentReceiptTemplate อ่านในธุรกรรมของมัน) — แถว Payment
+    //       วัดจากยอดเรียกเก็บซึ่งอาจปัดเป็นเลขกลมสูงกว่ายอดในบัญชี (เช่น 1,516.00 กับ 1,515.83) จึงใช้เป็นเพดาน
+    //       เดียวไม่ได้ (คำตัดสินผู้คุมงาน 2026-09-30)
     //
     // Atomicity: posted in the same tx as the accrual JE + schedule update,
     // so a JE-post failure rolls everything back — no partially-consumed
     // advance with the receivable still showing.
     const advanceBalance = new Decimal(c.advanceBalance.toString());
     let genericConsumed = zero;
-    if (advanceBalance.gt(0)) {
-      const consume = Decimal.min(advanceBalance, installmentTotal);
+    const paymentForGeneric = advanceBalance.gt(0)
+      ? await tx.payment.findFirst({
+          where: {
+            contractId: c.id,
+            installmentNo: inst.installmentNo,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            amountDue: true,
+            amountPaid: true,
+            lateFee: true,
+            lateFeeWaived: true,
+          },
+        })
+      : null;
+    // (ข) อ่านครั้งเดียวเมื่อต้องใช้ (มีเงินรับล่วงหน้า หรือถังพักของงวดสุดท้าย) — ใช้ทั้งถังรวมและถังพัก
+    let ledgerOutstanding: Decimal | null = null;
+    const ledgerCap = async (): Promise<Decimal> => {
+      if (ledgerOutstanding === null) {
+        const { priorPrincipalCleared } = await reconstructPriorCleared(
+          tx,
+          inst.id,
+          installmentTotal,
+        );
+        ledgerOutstanding = Decimal.max(zero, installmentTotal.minus(priorPrincipalCleared));
+      }
+      return ledgerOutstanding;
+    };
+    const genericCap = advanceBalance.gt(0)
+      ? Decimal.min(
+          paymentForGeneric
+            ? feeNettedOutstanding(paymentForGeneric, installmentTotal)
+            : installmentTotal,
+          await ledgerCap(),
+        )
+      : zero;
+    if (advanceBalance.gt(0) && genericCap.gt(0)) {
+      const consume = Decimal.min(advanceBalance, genericCap);
       genericConsumed = consume;
 
       await this.journal.createAndPost(
@@ -364,14 +527,8 @@ export class InstallmentAccrual2ATemplate {
       // Reflect the consume on the existing Payment row (if one was
       // pre-created when the advance was first received). Fully covered
       // installments flip to PAID; partial covers stay PARTIALLY_PAID.
-      const payment = await tx.payment.findFirst({
-        where: {
-          contractId: c.id,
-          installmentNo: inst.installmentNo,
-          deletedAt: null,
-        },
-        select: { id: true, amountDue: true, amountPaid: true },
-      });
+      // แถวเดียวกับที่อ่านไว้ทำเพดานข้างบน (ยังไม่มีอะไรในธุรกรรมนี้แก้แถวนั้น)
+      const payment = paymentForGeneric;
       if (payment) {
         const newAmountPaid = new Decimal(payment.amountPaid.toString()).plus(consume);
         const due = new Decimal((payment.amountDue ?? installmentTotal).toString());
@@ -466,16 +623,20 @@ export class InstallmentAccrual2ATemplate {
       // places. (Repair round 2, 2026-08-17: was a verbatim local copy.)
       // No Payment row at all → installment never touched → fully outstanding
       // (same convention as computeInstallmentOutstanding's ACCRUED branch).
-      // NOTE: the GENERIC block above deliberately keeps its pre-existing
-      // (uncapped) behaviour — out of scope here.
+      // PR2ข: ชั้นที่สาม = ยอดลูกหนี้ของงวดที่ยังไม่ถูกล้างในสมุดบัญชี หักส่วนที่ถังรวมเพิ่งล้างข้างบน
+      // (เพดาน (ข) ของถังรวม — ยอดเรียกเก็บปัดเลขกลมต้องไม่ทำให้ถังพักล้างเกินยอดในบัญชีเช่นกัน)
       const rowOutstanding = paymentForPark
         ? feeNettedOutstanding(paymentForPark, installmentTotal)
         : installmentTotal;
-      const parkCap = Decimal.min(remainingAfterGeneric, rowOutstanding);
+      const parkCap = Decimal.min(
+        remainingAfterGeneric,
+        rowOutstanding,
+        (await ledgerCap()).minus(genericConsumed),
+      );
 
       // `parkBalance > 0` and `remainingAfterGeneric > 0` are already guaranteed by
-      // the outer guard; only the row-outstanding half of the cap can still zero it
-      // out (last installment already settled early — จุดหัก 2).
+      // the outer guard; only the row-outstanding / ledger parts of the cap can still
+      // zero it out (last installment already settled early — จุดหัก 2).
       if (parkCap.gt(0)) {
         const parkConsume = Decimal.min(parkBalance, parkCap);
 

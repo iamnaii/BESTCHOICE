@@ -106,11 +106,11 @@ Key codes referenced by JE templates:
 | Code | Name |
 |------|------|
 | 51-1101 | ค่าใช้จ่าย VAT ลูกหนี้ไม่ชำระ |
-| 51-1102 | หนี้สูญ/ขาดทุนจากยึดเครื่อง (also: write-off loss plug) |
+| 51-1102 | หนี้สูญ/ขาดทุนจากยึดเครื่อง (also: write-off loss plug) — หลังหักเงินของลูกค้าที่ค้าง 21-1103/21-5101 และส่วนลด 52-1106 ของ JP5 (PR6 — หัวข้อ "ยึดเครื่อง (JP5) / ตัดหนี้สูญ — หักเงินของลูกค้าที่ค้าง…") |
 | 51-1103 | ค่าเผื่อหนี้สงสัยจะสูญ (เพิ่มในปี) — ECL provision expense, contra to 11-2102 |
 | 51-1105 | VAT กลับรายการ |
 | 52-1104 | ส่วนลดเศษสตางค์ (≤1฿ rounding tolerance) |
-| 52-1106 | ส่วนลดดอกเบี้ย-ปิดยอด (Early payoff discount) |
+| 52-1106 | ส่วนลดดอกเบี้ย-ปิดยอด (Early payoff discount) · ส่วนลดยอดปิดตอนยึดเครื่อง (JP5 — ฝ่ายบัญชีเลือก "แบบ (ก)" 30/09/2569 · PR6) |
 | 53-1503 | กำไร/ขาดทุนจากการปัดเศษ |
 
 ---
@@ -127,7 +127,7 @@ All templates are verified against CPA CSV golden fixtures in `__tests__/fixture
 | `PaymentReceipt2BTemplate` | Payment received (single) | Dr cash / Cr 11-2101 + 11-2103 + 21-2101 cleared from 21-2102 |
 | `PaymentReceipt2BSplitTemplate` | Partial payment | As above with pro-rata split |
 | `EarlyPayoffJP4Template` | Early payoff | Includes Dr 52-1106 (discount) + reverse remaining 11-2106 |
-| `RepossessionJP5Template` | ยืนยันใบรับเครื่องคืน (`DeviceReturnsService.confirm` → `RepossessionsService.createInTx`; `create()` + `POST /repossessions` ถูกลบ 2026-09-20) | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102; `Dr <deposit>` = **ราคาประเมิน** (ราคาเดียว 2026-09-05) ลง **`11-2107` เสมอ stamp `shopReceivableType: 'DEVICE_RETURN'` + `deviceReturnId`** (2026-09-20 — ไม่มีโหมดโอนสด/`collectedByShop` อีก). optional `input.customerRefund` → Cr 21-1107 ยังอยู่ใน template แต่ **caller ไม่ส่งอีกแล้ว** (คำตัดสินเจ้าของ 2026-09-05 supersede 2026-08-08 ข้อ 2) |
+| `RepossessionJP5Template` | ยืนยันใบรับเครื่องคืน (`DeviceReturnsService.confirm` → `RepossessionsService.createInTx`; `create()` + `POST /repossessions` ถูกลบ 2026-09-20) | Loss branch: Dr 51-1102; Gain branch: Cr 41-1102; `Dr <deposit>` = **ราคาประเมิน** (ราคาเดียว 2026-09-05) ลง **`11-2107` เสมอ stamp `shopReceivableType: 'DEVICE_RETURN'` + `deviceReturnId`** (2026-09-20 — ไม่มีโหมดโอนสด/`collectedByShop` อีก). optional `input.customerRefund` → Cr 21-1107 ยังอยู่ใน template แต่ **caller ไม่ส่งอีกแล้ว** (คำตัดสินเจ้าของ 2026-09-05 supersede 2026-08-08 ข้อ 2) · PR6: `Dr 21-1103` / `Dr 21-5101` เงินของลูกค้าที่ค้างทุกประเภท + `Dr 52-1106` ส่วนลดยอดปิด (`input.discount`) ก่อน plug |
 | `RefundPayoutTemplate` | Manual — `POST /repossessions/:id/refund-payment` — **legacy เท่านั้น (2026-09-05)**: ใช้ได้เฉพาะแถวยึดที่เคยติ๊กคืนเงินก่อนนโยบายใหม่ (prod ไม่มี) | Dr 21-1107 / Cr depositAccountCode — clears the 21-1107 balance JP5 parked |
 | `RefundWaiveTemplate` | Manual — `POST /repossessions/:id/refund-waive` — **legacy เท่านั้น (2026-09-05)** | Dr 21-1107 / Cr 41-1102 — ล้างยอด 21-1107 คงเหลือทั้งหมดเข้ารายได้จากการยึดสินค้า |
 | `RescheduleJP6Template` | Reschedule (6a/6b variants) | Reclassify overdue to 21-1103 advance |
@@ -234,9 +234,9 @@ JE ตอนขาย = `ShopCashSaleTemplate` / `ShopInventoryTransferTemplate`
 "รับโอนหน้าร้าน" โชว์เฉพาะแถวที่ยังมียอด และเติมยอดนั้นให้ · และคืน `deviceReturnOutstanding` (11-2107 DEVICE_RETURN
 net ของ POSTED deductions) → ป้าย "รอหักในรอบจ่าย" บนแถว (ล้างผ่านรอบจ่าย INTER-CO/รับเงินสด ไม่ใช่ปุ่มรับโอน).
 
-**ที่ยังเปิดอยู่ (ไม่เกี่ยวกับเงินคืน):** เลข "บนจอ" กับ "ในสมุด" ยังต่างกันเท่า**ส่วนลดยอดปิด**
-(JP5 ไม่ book ส่วนลดแยกเหมือน JP4 `52-1106`) — คำถาม CPA 2026-08-08 ข้อ 1 ยังไม่ได้คำตอบ
-(ถามซ้ำแล้ว: `docs/accounting/cpa-followup-2026-09-05.txt`) · ขาคู่ SHOP ของ **JP4** ปิดยอดหน้าร้านรับแทน
+**~~เลข "บนจอ" กับ "ในสมุด" ต่างกันเท่าส่วนลดยอดปิด~~ — ปิดแล้ว (PR6):** ฝ่ายบัญชีตอบ 30/09/2569 "แบบ (ก) ลงส่วนลดแยกที่
+52-1106" ⇒ JP5 ลง `Dr 52-1106` = ส่วนลดตัวเดียวกับบนจอ และขาดทุน 51-1102 ลดเท่ากัน (หัวข้อ "ยึดเครื่อง (JP5) / ตัดหนี้สูญ —
+หักเงินของลูกค้าที่ค้าง…" ข้างล่าง) · **ที่ยังเปิดอยู่ (ไม่เกี่ยวกับเงินคืน):** ขาคู่ SHOP ของ **JP4** ปิดยอดหน้าร้านรับแทน
 (`Dr <เงินสด SHOP ต่อสาขา> / Cr S21-1104`) ยังไม่ต่อ — รอตัดสินบัญชีเงินสด SHOP ต่อสาขา.
 
 ### ใบรับเครื่องคืน (DeviceReturn) — สาขาบันทึก FINANCE ยืนยัน ค่าเครื่องหักในรอบจ่าย (2026-09-20)
@@ -267,21 +267,22 @@ Spec: `docs/superpowers/specs/2026-09-20-device-return-intake-design.md` · Plan
 
 ```
 FINANCE — RepossessionJP5Template (deposit '11-2107', typeStamp DEVICE_RETURN)
-  Dr 11-2107 ลูกหนี้-หน้าร้าน [ราคาประเมิน] + ขาล้าง 11-2101/11-2103/11-2105/11-2106/21-2102 + plug 41-1102/51-1102 ตามเดิม
+  Dr 11-2107 ลูกหนี้-หน้าร้าน [ราคาประเมิน] + ขาล้าง 11-2101/11-2103/11-2105/11-2106/21-2102
+  + (PR6) Dr 21-1103 / Dr 21-5101 เงินของลูกค้าที่ค้าง + Dr 52-1106 ส่วนลดยอดปิด (ก่อน plug) + plug 41-1102/51-1102 ตามเดิม
 SHOP — ShopCollectShopLegs.postRepossessionIntake (สาขา Cr S11-1202 ถูกลบ)
   Dr S11-2002 สินค้าคงคลัง-มือถือมือสอง [ราคาประเมิน]
      Cr S21-1104 เจ้าหนี้ FINANCE            [ราคาประเมิน]   ← stamp DEVICE_RETURN + contractId + productId + deviceReturnId
 ```
 flow `shop-repossession-intake` เดิม. ราคาประเมิน 0 → JP5 ลง แต่ไม่มีใบรับเข้าสต็อก SHOP และไม่มีแถวหักในรอบจ่าย.
 `SHOP_COLLECT_REPOSSESSION` audit ไม่เขียนอีก (แทนด้วย `DEVICE_RETURN_CONFIRMED` + metadata บน JE); audit `REPOSSESSION`
-เดิมยังเขียนใน `createInTx`.
+เดิมยังเขียนใน `createInTx` (PR6: + `closeAdvances` — คอลัมน์เงินของลูกค้าก่อนตั้งเป็นศูนย์คู่กับยอดที่ JP5 หักตามบัญชี).
 
 **ตัวเลขทอง (CSV กรณีที่ 5: 17,000/12 งวด, งวด 1–4 accrued และชำระแล้ว, งวด 5–12 ยังไม่ accrued,
-ราคาประเมิน 7,000; fixture จริง `device-returns/__tests__/device-return-flow.integration.spec.ts`, ส่วนคู่ JE
-สังเคราะห์/รอบจ่ายอยู่ที่ `interco-settlement/__tests__/interco-device-return.integration.spec.ts`):**
-FINANCE `Dr 11-2107 7,000.00 · Dr 11-2106 4,000.00 · Dr 21-2102 793.32 ·
-Dr 51-1102 5,126.68 / Cr 11-2101 11,333.36 · Cr 11-2105 793.32 · Cr 21-2101 793.32 · Cr 41-1101 4,000.00` (Σ 16,920.00)
-· SHOP `Dr S11-2002 7,000.00 / Cr S21-1104 7,000.00`.
+ราคาประเมิน 7,000, ยืนยันใบด้วย `{}` ⇒ ส่วนลดยอดปิดค่าเริ่มต้น 50%; fixture จริง `device-returns/__tests__/device-return-flow.integration.spec.ts`,
+ส่วนคู่ JE สังเคราะห์/รอบจ่ายอยู่ที่ `interco-settlement/__tests__/interco-device-return.integration.spec.ts` — รายการจำลองรูปก่อน PR6):**
+FINANCE (PR6 — ตาราง "แบบ (ก)" ของฝ่ายบัญชี) `Dr 11-2107 7,000.00 · Dr 11-2106 4,000.00 · Dr 21-2102 793.32 ·
+Dr 52-1106 1,999.99 · Dr 51-1102 3,126.69 / Cr 11-2101 11,333.36 · Cr 11-2105 793.32 · Cr 21-2101 793.32 · Cr 41-1101 4,000.00`
+(Σ 16,920.00 · ก่อน PR6: ไม่มี 52-1106 และ 51-1102 5,126.68) · SHOP `Dr S11-2002 7,000.00 / Cr S21-1104 7,000.00`.
 
 **ประเภท `DEVICE_RETURN` ครบทุกเลนส์** — ประกาศครั้งเดียว `SHOP_RECEIVABLE_TYPES` (`shop-receivable-type.util.ts`) และ
 SQL ทุกตัวสร้าง IN-list จาก `Prisma.join`; **ไม่มี `FLOW_MAP` fallback** (แถวยึดเก่า flow เดียวกันที่ไม่มี stamp คือโหมด
@@ -345,10 +346,44 @@ kind='DEVICE_RETURN'`) + `BatchDetailSheet` badge "ค่าเครื่อ�
 `noReceipt` ป้าย "ไม่มีใบเสร็จ / ชำระแล้ว (ยกมา)" ไม่มีปุ่มดาวน์โหลด/ยกเลิก และยอดสะสมนับรวม · ปุ่ม "ประวัติการชำระ" บนหน้าสัญญาเปิดทุกสถานะ
 ที่ไม่ใช่ `DRAFT` (เดิม whitelist 5 สถานะตั้งแต่ 2026-07-02 ทำให้สัญญา `CLOSED_BAD_DEBT` เข้าประวัติไม่ได้).
 
-**ที่ยังเปิดอยู่:** ยึดเครื่องเดิมซ้ำ (`Repossession.productId @unique`) · ส่วนลดยอดปิดของ JP5 ลงบัญชีหรือไม่ (รอผู้สอบ —
-`docs/accounting/cpa-followup-2026-09-05.txt`; ยังต้องติดตามคำตอบผู้สอบ). ร่างบันทึกอธิบายวิธีใหม่ (Task 16 จะจัดทำ,
+**ที่ยังเปิดอยู่:** ยึดเครื่องเดิมซ้ำ (`Repossession.productId @unique`) · ~~ส่วนลดยอดปิดของ JP5 ลงบัญชีหรือไม่~~ (ตอบแล้ว
+30/09/2569 "แบบ (ก)" — PR6). ร่างบันทึกอธิบายวิธีใหม่ (Task 16 จะจัดทำ,
 ยังไม่ได้ส่ง): `docs/accounting/cpa-followup-2026-09-20-device-return.txt` · ไลน์เป็นข้อความธรรมดา (Flex ทีหลังผ่านแม่แบบเดียวกัน) ·
 MDM ปลดอัตโนมัติตอนรับคืน · ขาคู่ SHOP ของ JP4 ปิดยอดหน้าร้านรับแทน (ยังไม่ต่อ — ข้างบน).
+
+## ยึดเครื่อง (JP5) / ตัดหนี้สูญ — หักเงินของลูกค้าที่ค้างทุกประเภท + ส่วนลดยอดปิด 52-1106 (PR6)
+
+คำตอบฝ่ายบัญชี: **เล่ม 1 ข้อ 6 (29/09/2569) ทางเลือก (1) "หักทุกประเภท ทั้งสองกรณี"** — นำเงินรับล่วงหน้าที่ค้างทุกประเภท
+(21-1103 ทั้งถังพักค่าปรับดิว `rescheduleAdvanceBalance` และถังรวม `advanceBalance`) และเงินเกินของลูกค้า (21-5101 —
+`creditBalance`) มาหักลูกหนี้ก่อนคำนวณหนี้สูญ / ผลจากการยึดเครื่อง ทั้งตัดหนี้สูญและยึดคืน · **ฉบับรวม ข้อ 5 (30/09/2569)
+"แบบ (ก) ลงส่วนลดแยกที่ 52-1106"** — JP5 ลงส่วนลดยอดปิดที่หน้าจอแสดงเป็นบรรทัดของตัวเอง และลดขาดทุน 51-1102 เท่ากัน.
+
+| เรื่อง | กติกา |
+|---|---|
+| ยอดที่หัก | **ยอดในสมุดบัญชี**ของสัญญา (`glContractBalance` ด้าน Cr − Dr) ของ 21-1103 และ 21-5101 — `readContractCloseAdvances` (`journal/contract-close-advances.ts`) ตัวเดียวใช้ร่วมกันทั้งสองรายการ · ยอดติดลบ = ไม่มีให้หัก |
+| JP5 | บรรทัดเงินพักปรับดิวเดิม (`parkRelief` = ส่วนที่ยอดปิดดูดซับ) + `Dr 21-1103` = ยอด 21-1103 ในบัญชี − parkRelief (ถังรวม + ส่วนของถังพักที่ยอดปิดไม่ได้ดูดซับ) + `Dr 21-5101` = ยอด 21-5101 ในบัญชี + `Dr 52-1106` = `computePayoffQuote().discountAmount` ตัวเดียวกับบนจอ (ผู้เรียกส่ง `discount` ทั้ง `previewCalculation` และ `createInTx` ⇒ preview === posted) — ทุกบรรทัดวางก่อน plug · ฐานส่วนลด = กำไรของงวดค้าง**ทั้งหมด** (ตัวเลขเดียวกับตัวอย่างข้อ 5 ที่ฝ่ายบัญชีเลือกแบบ (ก)) ⇒ มีงวดที่ตั้งลูกหนี้แล้วค้างอยู่ ส่วนลดรวมดอกเบี้ยที่ 2A รับรู้ไปแล้วด้วย — ต่างจากฐาน 52-1106 ของ JP4 ตามคำตอบข้อ 5.2 (ดอกเบี้ยของงวดที่ยังไม่ถึงกำหนดเท่านั้น: 4 งวดตั้งแล้ว + 4 งวดยังไม่ถึง → 1,999.99 เทียบ 1,000.00) · ต่างเฉพาะการจัดประเภท · ฐานของ JP4 (5.2 เทียบ 5.3 "52-1106 = ส่วนลดที่ให้จริง") ยังเปิด — PR5 |
+| ตัดหนี้สูญ | `Dr 21-1103` (ทุกถัง) + `Dr 21-5101` ก่อน plug · เงินของลูกค้ามากกว่าหนี้คงเหลือ ⇒ loss ติดลบ ⇒ **ปฏิเสธ** (`throw new Error` เดิมของ template — `negative loss plug`) ทั้งธุรกรรม rollback: ไม่มี JE / ใบลดหนี้ / เปลี่ยนสถานะ · **ผู้เรียกเห็น HTTP 500** ข้อความกลาง "เกิดข้อผิดพลาดภายในระบบ กรุณาลองใหม่อีกครั้ง" (`SentryExceptionFilter` บน production) + Sentry ระดับ **error** — ข้อความของ template ("GL state ผิดปกติ ต้องตรวจก่อน") อยู่ใน log / Sentry เท่านั้นและชี้สาเหตุผิด (สาเหตุจริง = เงินของลูกค้าเกินหนี้) · **ห้ามลองใหม่** (ผลเดิมทุกครั้ง) → ได้เครื่องคืน = ยึดเครื่อง (JP5 — ส่วนเกินเป็นกำไร 41-1102) · ไม่ได้เครื่อง = พักสัญญาไว้จนฝ่ายบัญชีตัดสินวิธีลง (ไม่มีบัญชีกำไรแบบ JP5 และไม่มีทางคืนเงิน / เครดิตในระบบ) |
+| คำอธิบายบรรทัด | บรรทัดใหม่ไม่มีคำอธิบาย — การ์ดรายการ JP5 / สมุดรายวันแสดงชื่อบัญชีจากผังบัญชี (ไม่มีข้อความใหม่บนจอ) · บรรทัดเงินพักปรับดิวคงคำอธิบายเดิม |
+| ค่าเผื่อหนี้สงสัยจะสูญ | ใช้หักกับขาดทุน 51-1102 ที่เหลือ**หลัง**หักเงินของลูกค้าและส่วนลดเท่านั้น — ส่วนที่เหลือคืนเป็น 51-1103 ตามเดิม ⇒ กำไรขาดทุนรวมเท่าเดิม ต่างเฉพาะการจัดประเภท |
+| ภาษีขาย / ใบลดหนี้ ม.82/5 | ขาภาษีขายไม่เปลี่ยน (ตารางแบบ (ก) — 21-2101 เต็มจำนวน) · ใบลดหนี้ (`computeCnBreakdown`) คิดจากยอดค้างของงวดที่ตั้งลูกหนี้แล้วตามเดิม **ไม่ลดตามเงินของลูกค้าที่หัก** — ถูกต้องสำหรับถังพัก (ออกแบบให้หักงวดสุดท้ายซึ่งยังไม่ตั้งลูกหนี้) · **ข้อจำกัดที่รู้:** เงินรับล่วงหน้าถังรวม / เครดิต 21-5101 ที่ค้างคู่กับงวดที่ตั้งลูกหนี้แล้วแต่ยังไม่จ่าย (ไม่บ่อย — รอบกลางคืน 2A ปกติหักถังรวมเข้างวดแล้ว) — ตามหลัก pro-rate ของ CPA 26/07/2569 ส่วนที่ถือว่าได้รับเงินแล้วควรลดภาษีในใบลดหนี้ แต่ PR6 ไม่ลด (แจ้งฝ่ายบัญชีเพื่อทราบ) |
+| คอลัมน์ของสัญญา | `advanceBalance` / `rescheduleAdvanceBalance` / `creditBalance` = 0 ในธุรกรรมเดียวกับรายการ (`CONTRACT_ADVANCE_COLUMNS_CLEARED` — `RepossessionsService.createInTx` · `BadDebtService.writeOffBadDebt`) · audit `RESCHEDULE_ADVANCE_CONSUMED` ของ JP5 คงรูปเดิม แต่ `afterParkBalance` = 0 เสมอ |
+| คอลัมน์ไม่ตรงบัญชี | Σ คอลัมน์ ≠ ยอดในบัญชี ⇒ Sentry ระดับ warning `action: 'close-advance-ledger-mismatch'` (`flow`: `repossession` / `write-off` · extra มียอดทั้งสองฝั่ง) **หลัง commit เท่านั้น** (`DeferredWarning` — `DeviceReturnsService.confirm` / `writeOffBadDebt`) · เคสที่รู้: เครดิตจากเปลี่ยนเครื่องเสีย (`creditBalance` ไม่มี 21-5101 หนุน) — หักตามบัญชี (0) แล้วเตือน · **หลักฐานถาวร:** JP5 เขียน `closeAdvances` ใน audit `REPOSSESSION` ทุกครั้ง (`advanceBalanceBefore` / `rescheduleAdvanceBalanceBefore` / `creditBalanceBefore` = คอลัมน์ที่อ่านต้นธุรกรรม · `ledger21_1103Cleared` / `ledger21_5101Cleared` = ยอดที่หักตามบัญชี) · ตัดหนี้สูญ: ยอดที่หักอยู่ใน JE metadata แต่คอลัมน์ก่อนตั้งเป็นศูนย์**ยังไม่มีหลักฐานถาวร** — `BadDebtWriteOffAuditLog` ไม่มีช่อง JSON (งานต่อ: migration เพิ่มคอลัมน์ หรือเขียนแถว `AuditLog`) |
+| metadata | JP5: `advanceRelief` / `creditRelief` / `discount` (stamp เมื่อ > 0 — `parkRelief` เดิมคงอยู่) · ตัดหนี้สูญ: `advanceRelief` (21-1103 ทุกถัง) / `creditRelief` |
+| ตัวอย่างของฝ่ายบัญชี | ข้อ 5: 12 × 1,515.83 จ่าย 4 งวด ราคาประเมิน 7,000 ส่วนลด 50% → Dr 11-2107 7,000.00 · 11-2106 4,000.00 · 21-2102 793.32 · **52-1106 1,999.99** · **51-1102 3,126.69** / Cr 11-2101 11,333.36 · 11-2105 793.32 · 21-2101 793.32 · 41-1101 4,000.00 (16,920.00) — บนจอขาดทุน 3,126.65 (ต่าง 0.04 = เศษงวดสุดท้าย) · ข้อ 6: ลูกหนี้ 6 งวดรวม VAT 36,472.02 หักเงินรับล่วงหน้า 1,419.00 → หนี้สูญ 35,053.02 (ปักด้วย jest `repossession-jp5.close-advances.spec.ts` · `repossession-discount-line.spec.ts` · `bad-debt-writeoff.close-advances.spec.ts`) |
+
+**ไม่เปลี่ยนใน PR6:** สูตรยอดปิดบนจอ `computePayoffQuote` (ใช้ร่วมกับปิดยอดก่อนกำหนด — **ยังไม่หักเงินรับล่วงหน้าถังรวม**
+`advanceBalance` · สูตรเป็นของ JP4 ด้วย จึงอยู่ใน PR5) · JP4 (PR5 ตามคำตอบข้อ 5.3/5.4) · เงินที่เข้ามาหลังสัญญาปิด (คำถามฉบับรวม
+ข้อ 6 ยังเปิด) · ฐานค่าเผื่อหนี้สงสัยจะสูญ (ECL) · ด่านอนุมัติตัดหนี้สูญตามยอด (`assertWriteOffTierPermitted` ยังใช้ยอดค้างตามงวด
+ก่อนหักเงินของลูกค้า) · forward-only — สัญญาที่ยึด/ตัดหนี้สูญไปแล้วไม่ถูกแก้ย้อนหลัง
+
+**"ส่วนต่างราคาประเมินเทียบยอดปิด" บนจอ ≠ "กำไร/ขาดทุนจากรายการยึดคืน" (41-1102 − 51-1102) เป็นเรื่องปกติ — ไม่ใช่บั๊ก ห้าม "แก้" ให้เท่ากัน.**
+เหตุที่ทำให้ต่าง (ไม่ใช่รายการครบถ้วน): (1) เศษสตางค์ของงวดสุดท้าย (ตัวอย่างข้อ 5: 0.04) · (2) ค่าปรับค้าง — จอบวกเข้ายอดปิด บัญชีรับรู้ค่าปรับ
+เมื่อรับเงิน · (3) เงินรับล่วงหน้าถังรวม — บัญชีหัก จอไม่หัก (PR5) · (4) **ค่าเผื่อหนี้สงสัยจะสูญที่ใช้** — 51-1102 เป็นยอดหลังใช้ 11-2102
+(งวดค้างของสัญญา TERMINATED ตั้งค่าเผื่อ 75–100%) ส่วนจอไม่เกี่ยวกับค่าเผื่อ · (5) **ภาษีขายของงวดที่ตั้งลูกหนี้แล้วแต่ยังไม่จ่าย** — บัญชีได้คืนผ่าน
+ใบลดหนี้ ม.82/5 (`Dr 21-2101`) ส่วนยอดปิดบนจอรวม VAT · (6) ส่วนเกินของถังพักที่ยอดปิดดูดซับไม่หมด — บัญชีหักทั้งหมด จอหักเท่าที่ดูดซับ ·
+(7) คอลัมน์ไม่ตรงบัญชี (เช่น เครดิตจากเปลี่ยนเครื่องเสีย) — บัญชีหักตามบัญชี จอใช้คอลัมน์. ตัวอย่าง (คำนวณมือ): สัญญาตัวอย่างข้อ 5
+แต่งวด 5–8 ตั้งลูกหนี้แล้วยังไม่จ่าย + ค่าเผื่อ 75% ของงวดเหล่านั้น (4,547.49) → ขาดทุนก่อนค่าเผื่อ ≈ 12,126.68 − 396.68 (ใบลดหนี้) − 7,000.00
+− 1,999.99 = 2,730.01 → ค่าเผื่อครอบทั้งหมด ⇒ 51-1102 = **0.00** ขณะที่จอยังแสดงส่วนต่าง **−3,126.65**
 
 ---
 
@@ -581,9 +616,9 @@ Dr 21-1103   = parkRelief          ← บรรทัดใหม่ (ไม่
 |---|---|
 | `parkRelief` คือเท่าไร | **ยอดถังพักเต็มจำนวน** clamp ไม่เกินยอดค้างหลังหักยอดชำระล่วงหน้า: `rescheduleAdvanceApplied = min(park, totalRemaining − advancePayment)` (ตั้งแต่ 2026-08-26; ก่อนหน้านั้นเป็น "ส่วนที่ยอดปิดดูดซับจริง" ซึ่งเหลือเศษค้าง 165.42 — ประวัติในกล่องล่าง) |
 | ถังพักหักตรงไหนใน quote | **หักออกจากยอดค้างก่อนคิด ex-VAT/ต้นทุน/กำไร/ส่วนลด** (คำสั่งเจ้าของ 2026-09-23 — ดูกล่อง "🔁 เจ้าของสั่งเปลี่ยน" ด้านล่าง) และ**ต้นทุนยอดค้างลดตามสัดส่วนงวดที่เงินพักครอบ** (`งวดคงเหลือ − park ÷ ค่างวด`) — ค่าปรับดิว = เงินจ่ายงวดล่วงหน้า (CPA CSV 6a/6b) จึงลดต้นทุนเหมือนงวด PAID · เครดิตทั่วไป (`advancePayment`) ยังลดเฉพาะยอดค้าง **ไม่ลดต้นทุน** เหมือนเดิม (ไม่อยู่ในคำสั่ง — ถ้าจะให้สอดคล้องต้องถามเจ้าของแยก) |
-| Clamp | JP4: `parkRelief ≤ totalCash` (ขาเงินสดติดลบไม่ได้) · JP5: clamp ด้วยยอด GL 21-1103 จริงของสัญญานั้น (`glContractBalance`) แล้ว `execute()` คืนยอดที่โพสต์จริงให้ caller ใช้ decrement คอลัมน์ · เคสสุดขั้วถังพัก ≥ ยอดค้างทั้งก้อน: quote ใช้ถังเท่ายอดค้าง (ส่วนลด 0 เพราะไม่มีฐาน) แต่ JE ปลดได้แค่ `totalCash` ของมัน (ฐานตามงวด − ส่วนลดดอกเบี้ย) ⇒ ส่วนต่างค้างในถัง = alarm I-5 |
+| Clamp | JP4: `parkRelief ≤ totalCash` (ขาเงินสดติดลบไม่ได้) · JP5: clamp ด้วยยอด GL 21-1103 จริงของสัญญานั้น (`glContractBalance`) แล้ว `execute()` คืนยอดที่โพสต์จริง (`parkRelief`) — PR6: caller ใช้ลง audit `RESCHEDULE_ADVANCE_CONSUMED` เท่านั้น คอลัมน์ตั้งเป็น 0 ทั้งสาม (ไม่ decrement) · เคสสุดขั้วถังพัก ≥ ยอดค้างทั้งก้อน: quote ใช้ถังเท่ายอดค้าง (ส่วนลด 0 เพราะไม่มีฐาน) แต่ JE ปลดได้แค่ `totalCash` ของมัน (ฐานตามงวด − ส่วนลดดอกเบี้ย) ⇒ ส่วนต่างค้างในถัง = alarm I-5 · **PR6: JP5 ไม่มีส่วนค้างอีก** — ส่วนของถังพักที่ยอดปิดไม่ได้ดูดซับถูกหักด้วยบรรทัด `Dr 21-1103` เงินรับล่วงหน้าที่เหลือ (หัวข้อ "ยึดเครื่อง (JP5) / ตัดหนี้สูญ — หักเงินของลูกค้าที่ค้าง…") |
 | JP5 วางบรรทัดตรงไหน | push `Dr 21-1103` **ก่อน** คำนวณ plug ขาดทุน/กำไร → plug ดูดซับเอง (pattern เดียวกับ `customerRefund`/21-1107 ไม่มีสูตรที่สอง) |
-| Decrement คอลัมน์ | อยู่ใน `$transaction` เดียวกับ JE เสมอ + AuditLog (ดูตารางล่าง) · preview (`getEarlyPayoffQuote`, `previewCalculation`) ใช้ `parkRelief` ตัวเดียวกัน ⇒ preview === posted |
+| Decrement คอลัมน์ | อยู่ใน `$transaction` เดียวกับ JE เสมอ + AuditLog (ดูตารางล่าง) · preview (`getEarlyPayoffQuote`, `previewCalculation`) ใช้ `parkRelief` ตัวเดียวกัน ⇒ preview === posted · **PR6: JP5 ตั้งคอลัมน์เงินของลูกค้าทั้งสามเป็น 0** (ไม่ใช่ decrement) |
 | Parity | `computePayoffQuote` ยังเป็นแหล่งเดียวของทั้งสองเส้นทาง — `payoff-parity-park.spec.ts` ปักว่า JP5 `closingAmount` === JP4 `totalPayoff` และ `parkRelief` ที่ทั้งสองใช้เป็นตัวเดียวกัน |
 
 > **🔁 เจ้าของสั่งเปลี่ยน 2026-09-23 — ค่าปรับดิวที่พักไว้ "ต้องนำไปหักก่อน" (แทนสูตรผู้สอบ 2026-08-26 ด้านล่าง)**
@@ -662,7 +697,7 @@ stamp และ void ของมันคืนเข้าถังรวม�
 | Action | Entity | เขียนที่ | `newValue.source` |
 |---|---|---|---|
 | `RESCHEDULE_ADVANCE_PARKED` | `contract` | `reschedule-collect.service.ts` (6a เครดิตเข้าถัง / 6b phase-2 sweep) | `RESCHEDULE_COLLECT_6A_FEE`, `RESCHEDULE_COLLECT_6B_FEE_SWEEP` |
-| `RESCHEDULE_ADVANCE_CONSUMED` | `contract` | `payment-receipt-orchestrator.ts` (จ่ายงวดสุดท้าย), `contract-payment.service.ts` (JP4), `repossessions.service.ts` (JP5) | `RECORD_PAYMENT_LAST_INSTALLMENT_PARK_CONSUME`, `EARLY_PAYOFF_PARK_RELIEF`, `REPOSSESSION_PARK_RELIEF` |
+| `RESCHEDULE_ADVANCE_CONSUMED` | `contract` | `payment-receipt-orchestrator.ts` (จ่ายงวดสุดท้าย), `contract-payment.service.ts` (JP4), `repossessions.service.ts` (JP5 — PR6: เขียนเมื่อถังพักก่อนยึด > 0 หรือบรรทัดเงินพัก > 0 · `afterParkBalance` = 0 เสมอ) | `RECORD_PAYMENT_LAST_INSTALLMENT_PARK_CONSUME`, `EARLY_PAYOFF_PARK_RELIEF`, `REPOSSESSION_PARK_RELIEF` |
 | `RESCHEDULE_ADVANCE_UNPARKED` | `contract` | `receipt-void.service.ts` (void ใบเสร็จ 6b ที่เคยถูก sweep) | `RECEIPT_VOID_6B_FEE_UNPARK` |
 
 **`RESCHEDULE_ADVANCE_UNPARKED` = คู่ตรงข้ามของ `PARKED` และเป็น "สถานะ" ของการ sweep (R-2).**

@@ -1,5 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/library';
-import { computeEarlyPayoffJE } from './compute-early-payoff-je';
+import { computeEarlyPayoffJE, sumAccruedUnpaid } from './compute-early-payoff-je';
 
 /**
  * Golden / characterization test for the SINGLE source-of-truth early-payoff JE
@@ -362,5 +362,83 @@ describe('computeEarlyPayoffJE (single-source early-payoff JE math)', () => {
     expect(asDecimal.discount.toFixed(2)).toBe('450.00');
     expect(asNumber.discount.toFixed(2)).toBe('450.00');
     expect(asString.discount.toFixed(2)).toBe('450.00');
+  });
+  // ── ก1 (29/09/2569): งวดที่ยังไม่ชำระแต่ใบรับชำระบางส่วนตั้งลูกหนี้งวดไปแล้วบางส่วน ─────────────────
+  // ส่วนที่ตั้งแล้วถูกล้างจาก 11-2101/11-2105/21-2102/11-2106 และรับรู้เป็น 41-1101/21-2101 ไปแล้ว —
+  // JP4 ล้างเฉพาะส่วนที่เหลือ (ถ้าล้างเต็มงวด = รับรู้ดอกเบี้ย/ภาษีขายของส่วนนั้นซ้ำ)
+  describe('ก1 — งวดที่ตั้งลูกหนี้งวดไปแล้วบางส่วน (accruedUnpaid)', () => {
+    const base = {
+      depositAccountCode: '11-1101',
+      financedAmount: '10000',
+      storeCommission: '1000',
+      interestTotal: '6000',
+      vatAmount: '1190',
+      totalMonths: 12,
+      unpaidCount: 6,
+      interestDiscountPercent: '50',
+    };
+
+    it('งวด 7 รับบางส่วน 1,000 ก่อนครบกำหนด (2A 1,000 / VAT 65.42 / ดอกเบี้ย 329.85) → ล้างเฉพาะส่วนที่เหลือ', () => {
+      const r = computeEarlyPayoffJE({
+        ...base,
+        accruedUnpaid: { amount: '1000.00', vat: '65.42', interest: '329.85' },
+      });
+      // gross 8,499.96 − (1,000 − 65.42) = 7,565.38 · ดอกเบี้ย 3,000 − 329.85 = 2,670.15 · VAT 595.02 − 65.42 = 529.60
+      expect(r.remainingGross.toFixed(2)).toBe('7565.38');
+      expect(r.remainingDeferredInterest.toFixed(2)).toBe('2670.15');
+      expect(r.remainingDeferredVat.toFixed(2)).toBe('529.60');
+      // ส่วนลด 50% ของดอกเบี้ยที่ยังไม่รับรู้ = 1,335.075 → 1,335.08
+      expect(r.discount.toFixed(2)).toBe('1335.08');
+      // 7,565.38 − 1,335.08 + 529.60
+      expect(r.settlement.toFixed(2)).toBe('6759.90');
+      expect(drOf(r, '11-1101')).toBe('6759.90');
+      expect(drOf(r, '11-2106')).toBe('2670.15');
+      expect(drOf(r, '21-2102')).toBe('529.60');
+      expect(drOf(r, '52-1106')).toBe('1335.08');
+      expect(crOf(r, '11-2101')).toBe('7565.38');
+      expect(crOf(r, '11-2105')).toBe('529.60');
+      expect(crOf(r, '41-1101')).toBe('2670.15');
+      expect(crOf(r, '21-2101')).toBe('529.60');
+      expect(totals(r)).toEqual({ dr: '11294.73', cr: '11294.73' });
+      // JP4 ไม่มีขา 11-2103 (ส่วนที่ตั้งแล้วถูกใบรับชำระล้างไปแล้ว)
+      expect(r.lines.find((l) => l.accountCode === '11-2103')).toBeUndefined();
+    });
+
+    it('ไม่ส่ง / ส่งศูนย์ → golden เดิมทุกบาท (7,594.98)', () => {
+      expect(drOf(computeEarlyPayoffJE(base), '11-1101')).toBe('7594.98');
+      expect(
+        drOf(
+          computeEarlyPayoffJE({ ...base, accruedUnpaid: { amount: '0', vat: '0', interest: '0' } }),
+          '11-1101',
+        ),
+      ).toBe('7594.98');
+    });
+
+    it('sumAccruedUnpaid: รวมเฉพาะงวดที่ยังตั้งไม่ครบ (ลิงก์ว่าง) — งวดที่ตั้งครบแล้วไม่นับ (งานของ PR5)', () => {
+      const d = (v: string) => new Decimal(v);
+      const share = sumAccruedUnpaid([
+        { accrualJournalEntryId: null, accruedAmount: d('1000'), accruedVat: d('65.42'), accruedInterest: d('329.85') },
+        { accrualJournalEntryId: null, accruedAmount: d('500'), accruedVat: d('32.71'), accruedInterest: d('164.93') },
+        { accrualJournalEntryId: 'JE-202609-00001', accruedAmount: d('1515.83'), accruedVat: d('99.17'), accruedInterest: d('500') },
+        { accrualJournalEntryId: null, accruedAmount: d('0'), accruedVat: d('0'), accruedInterest: d('0') },
+      ]);
+      expect([share.amount, share.vat, share.interest].map((v) => v.toFixed(2))).toEqual([
+        '1500.00',
+        '98.13',
+        '494.78',
+      ]);
+    });
+
+    it('sumAccruedUnpaid: แถวที่ไม่ได้เลือกลิงก์หรือคอลัมน์ยอดสะสมมา → throw ไม่นับเป็นศูนย์หรือยังไม่เคยตั้ง', () => {
+      const d = (v: string) => new Decimal(v);
+      expect(() =>
+        sumAccruedUnpaid([
+          { accruedAmount: d('1515.83'), accruedVat: d('99.17'), accruedInterest: d('500') },
+        ] as never),
+      ).toThrow('accrualJournalEntryId is missing');
+      expect(() => sumAccruedUnpaid([{ accrualJournalEntryId: null }] as never)).toThrow(
+        'accruedAmount is missing',
+      );
+    });
   });
 });

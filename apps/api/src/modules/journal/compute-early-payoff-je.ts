@@ -1,5 +1,11 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { computeInstallmentBreakdown } from './compute-installment-breakdown';
+import {
+  AccruedColumns,
+  AccruedSoFar,
+  NOTHING_ACCRUED,
+  accruedSoFarOf,
+} from './build-accrual-2a-lines';
 
 /**
  * Single source of truth for the Early-Payoff (JP4) journal-entry money math.
@@ -70,6 +76,43 @@ export interface ComputeEarlyPayoffJeInput {
    * Omitted/null/0 → ไม่มีบรรทัด 21-1103 เลย (golden เดิมไม่ขยับแม้แต่ไบต์เดียว).
    */
   parkRelief?: DecimalInput | null;
+  /**
+   * ยอดที่ตั้งลูกหนี้งวด (2A) ไปแล้วของงวดที่ยังไม่ชำระ **และยังตั้งไม่ครบ** (accrualJournalEntryId ว่าง —
+   * ใบรับชำระบางส่วนก่อนวันครบกำหนดตั้งไว้ตามคำตอบฝ่ายบัญชี ก1) = Σ accruedAmount / accruedVat /
+   * accruedInterest ของงวดเหล่านั้น (caller ใช้ sumAccruedUnpaid). ส่วนนั้นถูกล้างจาก 11-2101 / 11-2105 /
+   * 21-2102 / 11-2106 และรับรู้เป็น 41-1101 / 21-2101 ไปแล้ว — JP4 จึงล้างเฉพาะส่วนที่เหลือ ไม่งั้นรับรู้ซ้ำ.
+   * งวดที่ตั้งครบแล้วแต่ยังไม่ชำระ (ลิงก์มีค่า) ไม่อยู่ในยอดนี้ — ปัญหานับงวดของกรณีนั้นเป็นงานของ PR5.
+   * Omitted/null → 0 (golden เดิมไม่ขยับแม้แต่ไบต์เดียว).
+   */
+  accruedUnpaid?: { amount: DecimalInput; vat: DecimalInput; interest: DecimalInput } | null;
+}
+
+/**
+ * Σ ยอดที่ตั้งลูกหนี้งวดไปแล้วของงวดที่ยังไม่ชำระและยังตั้งไม่ครบ — ส่งเป็น `accruedUnpaid`.
+ * `unpaidRows` = แถวตารางงวดของงวดที่ยังไม่ชำระ; แถวที่มีลิงก์ (ตั้งครบแล้ว) ถูกข้าม.
+ * ทุกช่องบังคับ (คำตัดสินผู้คุมงาน 2026-09-30): ลิงก์ที่ไม่ได้เลือกมาจะทำให้งวดที่ตั้งครบแล้วถูกนับซ้ำ และคอลัมน์
+ * ที่ไม่ได้เลือกมาจะถูกอ่านเป็น "ยังไม่เคยตั้ง" — ทั้งสองกรณี throw แทนการเดา.
+ */
+export function sumAccruedUnpaid(
+  unpaidRows: ReadonlyArray<AccruedColumns & { accrualJournalEntryId: string | null }>,
+): AccruedSoFar {
+  let sum: AccruedSoFar = NOTHING_ACCRUED;
+  for (const row of unpaidRows) {
+    if (row.accrualJournalEntryId === undefined) {
+      throw new Error(
+        'sumAccruedUnpaid: accrualJournalEntryId is missing — select it together with ' +
+          'accruedAmount, accruedVat and accruedInterest',
+      );
+    }
+    if (row.accrualJournalEntryId) continue; // ตั้งครบแล้ว — นับตามงวดแบบเดิม (งานของ PR5)
+    const accrued = accruedSoFarOf(row);
+    sum = {
+      amount: sum.amount.plus(accrued.amount),
+      vat: sum.vat.plus(accrued.vat),
+      interest: sum.interest.plus(accrued.interest),
+    };
+  }
+  return sum;
 }
 
 /** One canonical JE line — money only (accountCode + dr + cr). Descriptions are
@@ -122,10 +165,16 @@ export function computeEarlyPayoffJE(
     totalMonths: input.totalMonths,
   });
 
-  // Remaining balances for the unpaid installments.
-  const remainingGross = installmentExclVat.times(unpaidD);
-  const remainingDeferredInterest = interestPerInst.times(unpaidD);
-  const remainingDeferredVat = vatPerInst.times(unpaidD);
+  // Remaining balances for the unpaid installments — minus what partial 2As already settled
+  // (accruedUnpaid: ex-VAT = amount − vat, VAT, interest).
+  const accrued = {
+    amount: new Decimal(input.accruedUnpaid?.amount ?? 0),
+    vat: new Decimal(input.accruedUnpaid?.vat ?? 0),
+    interest: new Decimal(input.accruedUnpaid?.interest ?? 0),
+  };
+  const remainingGross = installmentExclVat.times(unpaidD).minus(accrued.amount.minus(accrued.vat));
+  const remainingDeferredInterest = interestPerInst.times(unpaidD).minus(accrued.interest);
+  const remainingDeferredVat = vatPerInst.times(unpaidD).minus(accrued.vat);
 
   // Discount on interest only (percentage 0..100 → divide by 100).
   const discount = remainingDeferredInterest

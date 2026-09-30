@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
-import { computeEarlyPayoffJE } from '../compute-early-payoff-je';
+import { computeEarlyPayoffJE, sumAccruedUnpaid } from '../compute-early-payoff-je';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 
@@ -157,6 +157,8 @@ export class EarlyPayoffJP4Template {
         new Decimal(input.parkRelief ?? 0),
         new Decimal(c.rescheduleAdvanceBalance ?? 0),
       ),
+      // งวดที่ยังไม่ชำระซึ่งใบรับชำระบางส่วนตั้งลูกหนี้งวดไปแล้วบางส่วน (ก1) — ล้างเฉพาะส่วนที่เหลือ
+      accruedUnpaid: sumAccruedUnpaid(unpaidInsts),
     });
 
     // Wrap JE post + Payment.create loop in a single atomic transaction.

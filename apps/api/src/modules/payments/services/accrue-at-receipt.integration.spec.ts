@@ -20,7 +20,10 @@
  *   1A      : Dr 11-2101 17,000 · Dr 11-2105 1,190 / Cr 21-1101 10,000 · Cr 21-1102 1,000 ·
  *             Cr 11-2106 6,000 · Cr 21-2102 1,190
  */
-import { voidReceiptWithApproval } from '../../../../e2e/helpers/payment-approval';
+import {
+  earlyPayoffWithApproval,
+  voidReceiptWithApproval,
+} from '../../../../e2e/helpers/payment-approval';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { AccountingPeriodStatus, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -36,6 +39,13 @@ import {
   ReceiptVoidReversalTemplate,
 } from '../../journal/cpa-templates/receipt-void-reversal.template';
 import { InstallmentAccrualCron } from '../../journal/cron/installment-accrual.cron';
+import { RepossessionJP5Template } from '../../journal/cpa-templates/repossession-jp5.template';
+import { EarlyPayoffJP4Template } from '../../journal/cpa-templates/early-payoff-jp4.template';
+import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
+import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
+import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-reverse.template';
+import { ContractPaymentService } from '../../contracts/contract-payment.service';
+import { ProductsService } from '../../products/products.service';
 import { ReceiptsService } from '../../receipts/receipts.service';
 import { bangkokStartOfDay } from '../../../utils/date.util';
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
@@ -938,6 +948,140 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       ]);
       expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
       expect(await balance(c.id, '41-1101', 'cr')).toBe('263.88');
+    });
+
+    /** ContractPaymentService ของจริง — ต่อสายแบบเดียวกับ shop-collect-payoff.integration.spec.ts */
+    const earlyPayoffService = () => {
+      const journalForJp4 = new JournalAutoService(prisma as never);
+      return new ContractPaymentService(
+        prisma as never,
+        new ProductsService(prisma as never),
+        journalForJp4,
+        new EarlyPayoffJP4Template(
+          journalForJp4,
+          prisma as never,
+          new Vat60dayReversalTemplate(journalForJp4, prisma as never),
+        ),
+        new ShopCollectSettlementTemplate(journalForJp4, prisma as never),
+        { generateReceipt: async () => undefined } as never,
+        new EclStageReverseTemplate(journalForJp4, prisma as never),
+      );
+    };
+    /** ผู้ขอ = ผู้อนุมัติ = OWNER (แบบเดียวกับ shop-collect-payoff.integration.spec.ts) */
+    const ownerIdOf = async () =>
+      (await prisma.user.findFirstOrThrow({ where: { email: 'admin@bestchoice.com' } })).id;
+
+    it('ปิดยอดก่อนกำหนด (JP4) หลังงวด 1 รับบางส่วน 1,000 → JP4 ล้างเฉพาะส่วนที่ยังไม่ได้ตั้ง: ดอกเบี้ย/ภาษีขายไม่ถูกรับรู้ซ้ำ', async () => {
+      const c = await seedContract({
+        dueDate: futureDue(),
+        paymentRows: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      });
+      await recordPartialQr(c.id, 1, 1000, 'AAR-JP4-1');
+      expect(await accruedOf(c.id, 1)).toEqual(['1000.00', '65.42', '329.85']);
+
+      const contractPayments = earlyPayoffService();
+      const quote = await contractPayments.getEarlyPayoffQuote(c.id, 0, '11-1201');
+      expect(quote.accruedUnpaid).toEqual({ amount: '1000.00', vat: '65.42', interest: '329.85' });
+
+      await earlyPayoffWithApproval(prisma, contractPayments, c.id, await ownerIdOf(), {
+        paymentMethod: 'BANK_TRANSFER',
+        discountPct: 0,
+        depositAccountCode: '11-1201',
+      } as never);
+
+      const [jp4] = await flowEntries(c.id, 'early-payoff');
+      // 12 งวดค้าง: gross 16,999.92 − 934.58 · ดอกเบี้ย 6,000 − 329.85 · VAT 1,190.04 − 65.42 (ฐานนับงวดของ JP4)
+      expect(sortedLines(jp4)).toEqual([
+        '11-1201:17189.96:0.00',
+        '11-2101:0.00:16065.34',
+        '11-2105:0.00:1124.62',
+        '11-2106:5670.15:0.00',
+        '21-2101:0.00:1124.62',
+        '21-2102:1124.62:0.00',
+        '41-1101:0.00:5670.15',
+      ]);
+      // ดอกเบี้ยรับรู้รวมทั้งสัญญา = 329.85 (2A บางส่วน) + 5,670.15 (JP4) = 6,000.00 — ไม่ซ้ำ
+      expect(await balance(c.id, '41-1101', 'cr')).toBe('6000.00');
+      expect(await balance(c.id, '11-2106', 'cr')).toBe('0.00');
+    });
+
+    it('ปิดยอดก่อนกำหนด (JP4) ส่วนลด 50% หลังงวด 1 รับบางส่วน 1,000 → เงินสดในรายการ 14,354.88 / ส่วนลด 2,835.08 ขณะที่ลูกค้าจ่าย 14,657.33 (ส่วนลด 2,532.75) — ส่วนต่าง 302.45 (302.33 = เรื่องคำตอบข้อ 5.3 ที่ PR5 แก้ + 0.12 จากค่างวดของสัญญาทดสอบ) (ฐานของ PR5)', async () => {
+      const c = await seedContract({
+        dueDate: futureDue(),
+        paymentRows: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      });
+      await recordPartialQr(c.id, 1, 1000, 'AAR-JP4-2');
+
+      const contractPayments = earlyPayoffService();
+      // ยอดที่ลูกค้าจ่าย (computePayoffQuote — ค่างวดของสัญญาทดสอบ 1,515.84): (18,190.08 − 1,000) − ส่วนลด 2,532.75
+      const quote = await contractPayments.getEarlyPayoffQuote(c.id, 50, '11-1201');
+      expect(quote.totalPayoff).toBe(14657.33);
+      expect(quote.discountAmount).toBe(2532.75);
+
+      await earlyPayoffWithApproval(prisma, contractPayments, c.id, await ownerIdOf(), {
+        paymentMethod: 'BANK_TRANSFER',
+        discountPct: 50,
+        depositAccountCode: '11-1201',
+      } as never);
+
+      const [jp4] = await flowEntries(c.id, 'early-payoff');
+      // ส่วนลด 52-1106 = HALF_UP(5,670.15 × 50%) — คิดจากดอกเบี้ยที่ยังไม่รับรู้ (คำตอบข้อ 5.2)
+      // เงินสด = 16,065.34 − 2,835.08 + 1,124.62 (สูตรของรายการ ไม่ใช่เงินที่รับจริง — คำตอบข้อ 5.3 / PR5)
+      expect(sortedLines(jp4)).toEqual([
+        '11-1201:14354.88:0.00',
+        '11-2101:0.00:16065.34',
+        '11-2105:0.00:1124.62',
+        '11-2106:5670.15:0.00',
+        '21-2101:0.00:1124.62',
+        '21-2102:1124.62:0.00',
+        '41-1101:0.00:5670.15',
+        '52-1106:2835.08:0.00',
+      ]);
+      const jeCash = new Decimal(
+        jp4.lines.find((l) => l.accountCode === '11-1201')!.debit.toString(),
+      );
+      // 302.45 = ส่วนลด 2,835.08 − 2,532.75 (= 302.33 — เรื่องคำตอบข้อ 5.3) + 0.12 จากค่างวดของสัญญาทดสอบ 1,515.84
+      // (quote ก่อนส่วนลด 17,190.08 เทียบรายการ 17,189.96 — ที่ส่วนลด 0% ก็ต่าง 0.12)
+      expect(new Decimal(quote.totalPayoff).minus(jeCash).toFixed(2)).toBe('302.45');
+      expect(await balance(c.id, '41-1101', 'cr')).toBe('6000.00');
+    });
+
+    it('ยึดเครื่อง (JP5) หลังงวด 1 รับบางส่วน 1,000 → ขาล้างตามยอดในบัญชี · งวดที่ตั้งบางส่วนนับเป็นงวดที่ยังไม่ตั้ง ไม่มีใบลดหนี้ VAT (ส่วนที่ตั้งแล้วรับเงินแล้ว)', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await recordPartialQr(c.id, 1, 1000, 'AAR-JP5-1');
+
+      await new RepossessionJP5Template(journal, prisma as never).execute({
+        contractId: c.id,
+        depositAccountCode: '11-1101',
+        repossessionValue: D('5000.00'),
+      });
+
+      const [jp5] = await flowEntries(c.id, 'repossession');
+      expect(sortedLines(jp5)).toEqual([
+        '11-1101:5000.00:0.00',
+        '11-2101:0.00:16065.42',
+        '11-2105:0.00:1124.58',
+        '11-2106:5670.15:0.00',
+        '21-2101:0.00:1124.58', // ภาษีขายส่วนที่ยังไม่ตั้ง (รวมส่วนที่เหลือของงวด 1) ถึงกำหนด ม.82/3
+        '21-2102:1124.58:0.00',
+        '41-1101:0.00:5670.15',
+        '51-1102:12190.00:0.00', // 17,000 + 1,190 − 1,000 (รับแล้ว) − 5,000 (ราคาเครื่อง)
+      ]);
+      const meta = jp5.metadata as Record<string, unknown>;
+      expect(meta.accruedInstallments).toBe(0);
+      expect(meta.deferredInstallments).toBe(12);
+      // ทุกบัญชีของสัญญาเป็นศูนย์ · ภาษีขาย/ดอกเบี้ยรวม = ของทั้งสัญญาพอดี
+      for (const [code, side] of [
+        ['11-2101', 'dr'],
+        ['11-2103', 'dr'],
+        ['11-2105', 'dr'],
+        ['11-2106', 'cr'],
+        ['21-2102', 'cr'],
+      ] as const) {
+        expect(await balance(c.id, code, side)).toBe('0.00');
+      }
+      expect(await balance(c.id, '21-2101', 'cr')).toBe('1190.00'); // 65.42 + 1,124.58
+      expect(await balance(c.id, '41-1101', 'cr')).toBe('6000.00'); // 329.85 + 5,670.15
     });
   });
 

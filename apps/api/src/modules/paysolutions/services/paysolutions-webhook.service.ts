@@ -10,6 +10,11 @@ import { buildEarlyPayoffSuccessFlex } from '../../line-oa/flex-messages/early-p
 import { ProductsService } from '../../products/products.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
+import {
+  emitDeferredWarnings,
+  warningsOf,
+  type DeferredWarning,
+} from '../../journal/deferred-warning';
 import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../../accounting/bad-debt.service';
 import { formatDateLong } from '../../../utils/thai-date.util';
@@ -301,6 +306,8 @@ export class PaySolutionsWebhookService {
       // ledger entries. Idempotency is preserved by the paymentLink.updateMany
       // gate above (only one tx wins) and by the existing UNIQUE constraint
       // on transactionRef.
+      /** สัญญาณเตือนของใบรับชำระ (ตั้งลูกหนี้งวด ณ วันรับเงิน) — ส่งหลังธุรกรรม commit เท่านั้น */
+      const receiptWarnings: DeferredWarning[] = [];
       const result = await this.prisma.$transaction(
         async (tx) => {
           const claim = await tx.paymentLink.updateMany({
@@ -465,7 +472,7 @@ export class PaySolutionsWebhookService {
                 select: { id: true, vat60dayJournalEntryId: true },
               });
               if (instSchedPs) {
-                await this.paymentReceiptTemplate.execute(
+                const posted = await this.paymentReceiptTemplate.execute(
                   {
                     installmentScheduleId: instSchedPs.id,
                     delta: new Decimal(snapshot.payThis.toString()),
@@ -488,6 +495,7 @@ export class PaySolutionsWebhookService {
                   },
                   tx,
                 );
+                receiptWarnings.push(...warningsOf(posted));
                 if (instSchedPs.vat60dayJournalEntryId) {
                   await this.vat60Reversal.execute(instSchedPs.id, tx);
                 }
@@ -624,6 +632,7 @@ export class PaySolutionsWebhookService {
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
+      emitDeferredWarnings(receiptWarnings);
 
       if (result.alreadyClaimed) {
         this.logger.log(

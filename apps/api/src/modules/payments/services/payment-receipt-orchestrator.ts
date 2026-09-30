@@ -15,6 +15,11 @@ import { JE_ADVANCE_SPLIT_META } from '../../receipts/services/receipt-void.serv
 import { AuditService } from '../../audit/audit.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
+import {
+  emitDeferredWarnings,
+  warningsOf,
+  type DeferredWarning,
+} from '../../journal/deferred-warning';
 import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
 import { ProductsService } from '../../products/products.service';
 import { BadDebtService } from '../../accounting/bad-debt.service';
@@ -182,6 +187,8 @@ export class PaymentReceiptOrchestrator {
     let capturedDueDate: Date | null = null;
     let capturedCustomerId: string | null = null;
     let postedReceiptEntryNo: string | undefined;
+    /** สัญญาณเตือนของใบรับชำระ (ตั้งลูกหนี้งวด ณ วันรับเงิน) — ส่งหลังธุรกรรม commit เท่านั้น */
+    let receiptWarnings: readonly DeferredWarning[] = [];
 
     // Use serializable transaction to prevent concurrent duplicate payments
     const updated = await this.prisma.$transaction(
@@ -631,6 +638,7 @@ export class PaymentReceiptOrchestrator {
             );
 
             postedReceiptEntryNo = receiptPosted.entryNo;
+            receiptWarnings = warningsOf(receiptPosted);
 
             // I-2 (review 2026-08-16): the receipt JE folds the generic advance
             // bucket and the last-installment park bucket into ONE `Dr 21-1103`
@@ -720,6 +728,8 @@ export class PaymentReceiptOrchestrator {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+
+    emitDeferredWarnings(receiptWarnings);
 
     // Structured log for financial audit / observability
     this.structuredLogger.log('payment.recorded', {
@@ -888,6 +898,9 @@ export class PaymentReceiptOrchestrator {
       recordedById,
     );
 
+    /** สัญญาณเตือนของใบรับชำระทุกงวด — ส่งหลังธุรกรรม commit เท่านั้น */
+    const receiptWarnings: DeferredWarning[] = [];
+
     // Wrap entire allocation in a serializable transaction to prevent double-payment
     const allocationResult = await this.prisma.$transaction(
       async (tx) => {
@@ -1008,7 +1021,7 @@ export class PaymentReceiptOrchestrator {
               select: { id: true, vat60dayJournalEntryId: true },
             });
             if (instSched) {
-              await this.paymentReceiptTemplate.execute(
+              const posted = await this.paymentReceiptTemplate.execute(
                 {
                   installmentScheduleId: instSched.id,
                   delta: new Prisma.Decimal(payAmount.toString()),
@@ -1032,6 +1045,7 @@ export class PaymentReceiptOrchestrator {
                 },
                 tx,
               );
+              receiptWarnings.push(...warningsOf(posted));
 
               // VAT-60-day reversal (MANDATORY parity with the old 2B). The legacy
               // 2B template triggered Vat60dayReversalTemplate internally when the
@@ -1167,6 +1181,8 @@ export class PaymentReceiptOrchestrator {
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
 
+    emitDeferredWarnings(receiptWarnings);
+
     // Promise-to-pay kept-detection — runs AFTER the payment tx commits.
     this.host.checkPromiseAfterPayment(contractId).catch((err) => {
       this.logger.error('Promise-kept hook failed (non-blocking)', err);
@@ -1182,8 +1198,10 @@ export class PaymentReceiptOrchestrator {
     // before the tx so the per-installment JE calls below use them.
     const financeCompanyId = await resolveFinanceCompanyId(this.prisma);
     const shopCompanyId = await resolveShopCompanyId(this.prisma);
+    /** สัญญาณเตือนของใบรับชำระทุกงวด — ส่งหลังธุรกรรม commit เท่านั้น */
+    const receiptWarnings: DeferredWarning[] = [];
 
-    return this.prisma.$transaction(
+    const applied = await this.prisma.$transaction(
       async (tx) => {
         const contract = await tx.contract.findUnique({
           where: { id: contractId },
@@ -1302,7 +1320,7 @@ export class PaymentReceiptOrchestrator {
               select: { id: true, vat60dayJournalEntryId: true },
             });
             if (instSched) {
-              await this.paymentReceiptTemplate.execute(
+              const posted = await this.paymentReceiptTemplate.execute(
                 {
                   installmentScheduleId: instSched.id,
                   delta: new Prisma.Decimal(payAmount.toString()),
@@ -1320,6 +1338,7 @@ export class PaymentReceiptOrchestrator {
                 },
                 tx,
               );
+              receiptWarnings.push(...warningsOf(posted));
 
               // VAT-60-day reversal (MANDATORY parity with the old 2B/receipt path).
               // When the installment carries a 60-day mandatory VAT JE, the primitive
@@ -1366,5 +1385,7 @@ export class PaymentReceiptOrchestrator {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+    emitDeferredWarnings(receiptWarnings);
+    return applied;
   }
 }

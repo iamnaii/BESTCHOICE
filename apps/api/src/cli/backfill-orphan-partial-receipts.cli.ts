@@ -60,6 +60,11 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { JournalAutoService } from '../modules/journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../modules/journal/cpa-templates/payment-receipt.template';
+import {
+  emitDeferredWarnings,
+  warningsOf,
+  type DeferredWarning,
+} from '../modules/journal/deferred-warning';
 
 const REQUIRED_CONSENT = 'YES_I_AM_SURE';
 
@@ -178,6 +183,8 @@ export async function backfillOrphanPartialReceipts(
       continue;
     }
 
+    // สัญญาณเตือนของใบรับชำระ — ส่งหลังธุรกรรม commit เท่านั้น
+    let receiptWarnings: readonly DeferredWarning[] = [];
     try {
       await (prisma as any).$transaction(async (tx: any) => {
         // Idempotency re-check inside tx: if a receipt JE was posted after our
@@ -213,7 +220,7 @@ export async function backfillOrphanPartialReceipts(
           return;
         }
 
-        await template.execute(
+        const posted = await template.execute(
           {
             installmentScheduleId: instSched.id,
             // Book the already-received cash as the principal clearing.
@@ -226,6 +233,7 @@ export async function backfillOrphanPartialReceipts(
           },
           tx,
         );
+        receiptWarnings = warningsOf(posted);
 
         // Audit trail — one row per backfilled payment
         await tx.auditLog.create({
@@ -251,6 +259,7 @@ export async function backfillOrphanPartialReceipts(
             ` amountPaid=฿${amountPaid.toFixed(2)}`,
         );
       });
+      emitDeferredWarnings(receiptWarnings);
     } catch (err) {
       result.failed += 1;
       console.error(

@@ -17,8 +17,6 @@ jest.mock('@sentry/nestjs', () => ({
 describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวดก่อนลงใบรับชำระ', () => {
   const dec = (v: string | number) => new Decimal(v);
   const RECEIPT_DATE = new Date('2026-09-29T03:00:00.000Z');
-  const PARTIAL_MESSAGE =
-    '[accrue-at-receipt] partial receipt on an installment with no accrual yet — 2A not posted';
   const STATUS_MESSAGE =
     '[accrue-at-receipt] receipt on a contract the accrual does not serve — 2A not posted';
 
@@ -32,7 +30,10 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
     vatAmount: dec('1190'),
   };
 
-  type CapturedJe = { lines: { accountCode: string; dr: Decimal; cr: Decimal }[] };
+  type CapturedJe = {
+    metadata: Record<string, unknown>;
+    lines: { accountCode: string; dr: Decimal; cr: Decimal }[];
+  };
 
   function build(opts: {
     accrualJournalEntryId: string | null;
@@ -41,13 +42,15 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
     accrueImpl?: jest.Mock;
     /** ยอด Cr 11-2103 ของใบรับชำระก่อนหน้าของงวดนี้ (reconstructPriorCleared อ่านจาก journalEntry.findMany) */
     priorReceipts?: string[];
+    /** วันครบกำหนดของงวด — ค่าตั้งต้น 12 ต.ค. 2569 (หลัง RECEIPT_DATE) */
+    dueDate?: Date;
   }) {
     const calls: string[] = [];
     const inst = {
       id: 'inst-3',
       installmentNo: 3,
       contractId: contract.id,
-      dueDate: new Date('2026-10-11T17:00:00.000Z'),
+      dueDate: opts.dueDate ?? new Date('2026-10-11T17:00:00.000Z'),
       accrualJournalEntryId: opts.accrualJournalEntryId,
       contract: { ...contract, status: opts.contractStatus ?? 'ACTIVE' },
     };
@@ -69,10 +72,18 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
     });
     const accrueAtReceipt =
       opts.accrueImpl ??
-      jest.fn().mockImplementation(async () => {
-        calls.push('accrual');
-        return { entryNo: 'JE-202609-00077', postedAt: RECEIPT_DATE };
-      });
+      jest
+        .fn()
+        .mockImplementation(async (_id: string, _date: Date, _tx: unknown, amount?: Decimal) => {
+          calls.push('accrual');
+          return {
+            entryNo: 'JE-202609-00077',
+            postedAt: RECEIPT_DATE,
+            kind: amount === undefined ? 'FULL' : 'PARTIAL',
+            amount: amount ?? dec('1515.83'),
+            completes: amount === undefined,
+          };
+        });
     const rootPrisma = {
       $transaction: jest.fn().mockImplementation((cb: (t: unknown) => Promise<unknown>) => cb(tx)),
     };
@@ -115,7 +126,13 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
       expect(calls).toEqual(['accrual', 'receipt']);
       expect(out.entryNo).toBe('JE-202609-00078');
       expect(out.split.principalCleared.toFixed(2)).toBe('1515.83');
+      expect(out.accrual?.entryNo).toBe('JE-202609-00077');
+      expect(out.warnings).toEqual([]);
       expect(createAndPost.mock.calls[0][1]).toBe(tx);
+      // ใบรับชำระจดเลขที่รายการ 2A ที่ตัวเองทำให้ลง (ให้รายงานภาษีขายต่อใบเสร็จอ่านจากสมุดบัญชีได้)
+      expect((createAndPost.mock.calls[0][0] as CapturedJe).metadata.accrualEntryNumber).toBe(
+        'JE-202609-00077',
+      );
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
 
@@ -201,15 +218,19 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
       ]);
     });
 
-    it('งวดตั้งลูกหนี้แล้ว (รอบกลางคืน หรือใบรับชำระใบก่อน) → ไม่ตั้งซ้ำ', async () => {
-      const { tpl, tx, accrueAtReceipt, calls } = build({
+    it('งวดตั้งลูกหนี้แล้ว (รอบกลางคืน หรือใบรับชำระใบก่อน) → ไม่ตั้งซ้ำ และใบรับชำระไม่มีเลขที่ 2A', async () => {
+      const { tpl, tx, accrueAtReceipt, createAndPost, calls } = build({
         accrualJournalEntryId: 'JE-202609-00001',
       });
 
-      await tpl.execute({ ...fullReceipt, postedAt: RECEIPT_DATE }, tx as never);
+      const out = await tpl.execute({ ...fullReceipt, postedAt: RECEIPT_DATE }, tx as never);
 
       expect(accrueAtReceipt).not.toHaveBeenCalled();
       expect(calls).toEqual(['receipt']);
+      expect(out.accrual).toBeNull();
+      expect((createAndPost.mock.calls[0][0] as CapturedJe).metadata).not.toHaveProperty(
+        'accrualEntryNumber',
+      );
     });
 
     it('ไม่มีธุรกรรมของผู้เรียก → ห่อ Serializable เอง ให้ 2A กับใบรับชำระอยู่ในธุรกรรมเดียวกัน', async () => {
@@ -228,8 +249,8 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
     });
   });
 
-  describe('ใบที่ยังไม่ทำให้งวดชำระครบ — พฤติกรรมเดิม + สัญญาณเตือน', () => {
-    it('รับบางส่วน 1,000.00 ของงวดที่ยังไม่ตั้งลูกหนี้ → ไม่ตั้ง ลงใบรับชำระเหมือนเดิม และส่งสัญญาณเตือนของตัวเอง', async () => {
+  describe('ใบบางส่วน — ก่อนวันครบกำหนดตั้งเท่ายอดที่รับ (คำตอบฝ่ายบัญชี ก1 29/09/2569)', () => {
+    it('รับบางส่วน 1,000.00 ก่อนครบกำหนด → ตั้ง 2A เท่ายอดที่ใบนี้ล้างลูกหนี้ ก่อนลงใบรับชำระ ไม่มีสัญญาณเตือน', async () => {
       const { tpl, tx, accrueAtReceipt, createAndPost, calls } = build({
         accrualJournalEntryId: null,
       });
@@ -239,65 +260,94 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
         tx as never,
       );
 
-      expect(accrueAtReceipt).not.toHaveBeenCalled();
-      expect(calls).toEqual(['receipt']);
+      expect(accrueAtReceipt).toHaveBeenCalledTimes(1);
+      const [id, date, passedTx, amount] = accrueAtReceipt.mock.calls[0] as [
+        string,
+        Date,
+        unknown,
+        Decimal,
+      ];
+      expect([id, date, passedTx]).toEqual(['inst-3', RECEIPT_DATE, tx]);
+      expect(amount.toFixed(2)).toBe('1000.00'); // = split.principalCleared
+      expect(calls).toEqual(['accrual', 'receipt']);
       expect(receiptLines(createAndPost)).toEqual([
         ['11-1101', '1000.00', '0.00'],
         ['11-2103', '0.00', '1000.00'],
       ]);
       expect(out.split.principalRemainingAfter.toFixed(2)).toBe('515.83');
-      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
-      expect(Sentry.captureMessage).toHaveBeenCalledWith(
-        PARTIAL_MESSAGE,
-        expect.objectContaining({
-          level: 'warning',
-          tags: expect.objectContaining({ action: 'accrue-at-receipt-skipped-partial' }),
-          extra: expect.objectContaining({
-            contractId: 'contract-1',
-            installmentScheduleId: 'inst-3',
-            paymentId: 'pay-3',
-            isFinalReceipt: false,
-            principalRemainingAfter: '515.83',
-          }),
-        }),
-      );
+      expect(out.accrual?.kind).toBe('PARTIAL');
+      expect(out.warnings).toEqual([]);
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
 
-    it('รับครบยอดในบัญชีแต่ผู้เรียกไม่ได้บอกว่าเป็นใบปิดงวด (แถวงวดยังค้างเศษของยอดเรียกเก็บ) → ไม่ตั้ง', async () => {
-      const { tpl, tx, accrueAtReceipt, calls } = build({ accrualJournalEntryId: null });
+    it('รับครบยอดในบัญชีแบบบางส่วน (แถวงวดยังค้างเศษของยอดเรียกเก็บ) → ตั้งเท่ายอดที่รับ = 1,515.83', async () => {
+      const { tpl, tx, accrueAtReceipt } = build({ accrualJournalEntryId: null });
 
-      const out = await tpl.execute({ ...fullReceipt, isFinalReceipt: false }, tx as never);
+      const out = await tpl.execute(
+        { ...fullReceipt, isFinalReceipt: false, postedAt: RECEIPT_DATE },
+        tx as never,
+      );
 
       expect(out.split.principalRemainingAfter.toFixed(2)).toBe('0.00');
-      expect(accrueAtReceipt).not.toHaveBeenCalled();
-      expect(calls).toEqual(['receipt']);
-      expect(Sentry.captureMessage).toHaveBeenCalledWith(
-        PARTIAL_MESSAGE,
-        expect.objectContaining({
-          extra: expect.objectContaining({
-            isFinalReceipt: false,
-            principalRemainingAfter: '0.00',
-          }),
-        }),
-      );
+      expect((accrueAtReceipt.mock.calls[0][3] as Decimal).toFixed(2)).toBe('1515.83');
     });
 
-    it('ไม่ส่ง isFinalReceipt (เครื่องมือ) → ถือเป็นใบบางส่วน', async () => {
-      const { tpl, tx, accrueAtReceipt } = build({ accrualJournalEntryId: null });
+    it('ไม่ส่ง isFinalReceipt และไม่ส่ง postedAt (เครื่องมือ backfill) → ใบบางส่วน วันที่รับเงิน = ตอนนี้ → ตั้งเท่ายอดที่รับเมื่อยังไม่ถึงวันครบกำหนด', async () => {
+      const { tpl, tx, accrueAtReceipt } = build({
+        accrualJournalEntryId: null,
+        dueDate: new Date(Date.now() + 60 * 86_400_000),
+      });
 
       await tpl.execute(
         { installmentScheduleId: 'inst-3', delta: dec('700'), debitAccountCode: '11-1202' },
         tx as never,
       );
 
-      expect(accrueAtReceipt).not.toHaveBeenCalled();
-      expect(Sentry.captureMessage).toHaveBeenCalledWith(PARTIAL_MESSAGE, expect.anything());
+      expect(accrueAtReceipt).toHaveBeenCalledTimes(1);
+      expect((accrueAtReceipt.mock.calls[0][3] as Decimal).toFixed(2)).toBe('700.00');
     });
 
-    it('รับบางส่วนของงวดที่ตั้งลูกหนี้ไปแล้ว → ไม่มีสัญญาณเตือน (ไม่ใช่กรณีที่รอคำตอบ)', async () => {
+    it('ใบบางส่วนตั้งแต่วันครบกำหนด (รอบกลางคืนยังไม่ได้ตั้ง) → ไม่ลง 2A ลงใบรับชำระตามเดิม ไม่มีสัญญาณเตือน', async () => {
+      const { tpl, tx, accrueAtReceipt, calls } = build({ accrualJournalEntryId: null });
+      const onDueDate = new Date('2026-10-12T03:00:00.000Z'); // 12 ต.ค. 2569 10:00 เวลาไทย = วันครบกำหนด
+
+      const out = await tpl.execute(
+        { ...fullReceipt, delta: dec('1000'), isFinalReceipt: false, postedAt: onDueDate },
+        tx as never,
+      );
+
+      expect(accrueAtReceipt).not.toHaveBeenCalled();
+      expect(calls).toEqual(['receipt']);
+      expect(out.accrual).toBeNull();
+      expect(out.warnings).toEqual([]);
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it('ใบบางส่วนที่ไม่ได้ล้างลูกหนี้ของงวดเลย (ลูกหนี้ถูกล้างครบแล้วโดยใบก่อน) → ไม่ลง 2A', async () => {
+      const { tpl, tx, accrueAtReceipt, createAndPost } = build({
+        accrualJournalEntryId: null,
+        priorReceipts: ['1515.83'],
+      });
+
+      await tpl.execute(
+        { ...fullReceipt, delta: dec('0.10'), isFinalReceipt: false, postedAt: RECEIPT_DATE },
+        tx as never,
+      );
+
+      expect(accrueAtReceipt).not.toHaveBeenCalled();
+      expect(receiptLines(createAndPost)).toEqual([
+        ['11-1101', '0.10', '0.00'],
+        ['53-1503', '0.00', '0.10'],
+      ]);
+    });
+
+    it('รับบางส่วนของงวดที่ตั้งลูกหนี้ไปแล้ว → ไม่เรียก ไม่มีสัญญาณเตือน', async () => {
       const { tpl, tx, accrueAtReceipt } = build({ accrualJournalEntryId: 'JE-202609-00001' });
 
-      await tpl.execute({ ...fullReceipt, delta: dec('1000'), isFinalReceipt: false }, tx as never);
+      await tpl.execute(
+        { ...fullReceipt, delta: dec('1000'), isFinalReceipt: false, postedAt: RECEIPT_DATE },
+        tx as never,
+      );
 
       expect(accrueAtReceipt).not.toHaveBeenCalled();
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
@@ -377,19 +427,38 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
       expect(accrueAtReceipt).not.toHaveBeenCalled();
       expect(createAndPost).toHaveBeenCalledTimes(1);
       expect(out.split.principalCleared.toFixed(2)).toBe('1515.83');
-      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
-      expect(Sentry.captureMessage).toHaveBeenCalledWith(
-        STATUS_MESSAGE,
-        expect.objectContaining({
-          level: 'warning',
-          tags: expect.objectContaining({ action: 'accrue-at-receipt-skipped-status' }),
+      // ผู้เรียกส่งธุรกรรมของตัวเองมา → สัญญาณเตือนถูกคืนให้ผู้เรียกส่งหลัง commit ไม่ส่งจากในธุรกรรม
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      expect(out.warnings).toEqual([
+        {
+          message: STATUS_MESSAGE,
+          tags: { module: 'journal', action: 'accrue-at-receipt-skipped-status' },
           extra: expect.objectContaining({
             contractId: 'contract-1',
             contractStatus: 'TERMINATED',
             installmentScheduleId: 'inst-3',
           }),
-        }),
+        },
+      ]);
+    });
+
+    it('template ห่อธุรกรรมเอง → ส่งสัญญาณเตือนหลังธุรกรรมคืนค่า และคืนรายการว่าง · ธุรกรรมล้ม = ไม่ส่ง', async () => {
+      const ok = build({ accrualJournalEntryId: null, contractStatus: 'TERMINATED' });
+      const out = await ok.tpl.execute({ ...fullReceipt, postedAt: RECEIPT_DATE });
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        STATUS_MESSAGE,
+        expect.objectContaining({ level: 'warning' }),
       );
+      expect(out.warnings).toEqual([]);
+
+      jest.clearAllMocks();
+      const failing = build({ accrualJournalEntryId: null, contractStatus: 'TERMINATED' });
+      failing.createAndPost.mockRejectedValueOnce(new Error('insert failed'));
+      await expect(failing.tpl.execute({ ...fullReceipt, postedAt: RECEIPT_DATE })).rejects.toThrow(
+        'insert failed',
+      );
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
 
     it('ผู้เรียกบอกว่าก่อนรับเงินเป็น ACTIVE แม้แถวสัญญาเป็น COMPLETED แล้ว (การรับเงินครั้งนี้ปิดสัญญา) → ยังตั้งลูกหนี้งวด', async () => {
@@ -414,11 +483,11 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
         contractStatus: 'CLOSED_BAD_DEBT',
       });
 
-      await tpl.execute({ ...fullReceipt, postedAt: RECEIPT_DATE }, tx as never);
+      const out = await tpl.execute({ ...fullReceipt, postedAt: RECEIPT_DATE }, tx as never);
 
       expect(accrueAtReceipt).not.toHaveBeenCalled();
       expect(calls).toEqual(['receipt']);
-      expect(Sentry.captureMessage).toHaveBeenCalledWith(STATUS_MESSAGE, expect.anything());
+      expect(out.warnings.map((w) => w.message)).toEqual([STATUS_MESSAGE]);
     });
 
     it('งวดตั้งลูกหนี้ไปแล้วของสัญญาที่บอกเลิก → ไม่มีอะไรต้องตั้ง จึงไม่ส่งสัญญาณเตือน', async () => {
@@ -427,12 +496,13 @@ describe('PaymentReceiptTemplate — ตั้งลูกหนี้งวด�
         contractStatus: 'TERMINATED',
       });
 
-      await tpl.execute(
+      const out = await tpl.execute(
         { ...fullReceipt, postedAt: RECEIPT_DATE, contractStatusBeforeReceipt: 'TERMINATED' },
         tx as never,
       );
 
       expect(accrueAtReceipt).not.toHaveBeenCalled();
+      expect(out.warnings).toEqual([]);
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
   });

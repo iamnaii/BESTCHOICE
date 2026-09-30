@@ -2,12 +2,16 @@ import { Injectable, BadRequestException, Logger, Optional } from '@nestjs/commo
 import { Decimal } from '@prisma/client/runtime/library';
 import { randomUUID } from 'crypto';
 import { ContractStatus, Prisma } from '@prisma/client';
-import * as Sentry from '@sentry/nestjs';
 import { JournalAutoService } from '../journal-auto.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AccountRoleService } from '../account-role.service';
 import { decideAccrueAtReceipt } from '../accrue-at-receipt-decision';
-import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
+import { accrual2AInputOf, isDueDateReached } from '../build-accrual-2a-lines';
+import { DeferredWarning, emitDeferredWarnings } from '../deferred-warning';
+import {
+  AccrueAtReceiptResult,
+  InstallmentAccrual2ATemplate,
+} from './installment-accrual-2a.template';
 import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
 import { splitReceipt, SplitReceiptResult } from '../split-receipt';
 import { buildReceiptLines } from '../build-receipt-lines';
@@ -72,6 +76,18 @@ export interface PaymentReceiptPrimitiveInput {
   contractStatusBeforeReceipt?: ContractStatus;
 }
 
+export interface PaymentReceiptResult {
+  entryNo: string;
+  split: SplitReceiptResult;
+  /** รายการตั้งลูกหนี้งวด (2A) ที่ลงก่อนใบรับชำระนี้ในธุรกรรมเดียวกัน — null = ไม่ได้ลง */
+  accrual: AccrueAtReceiptResult | null;
+  /**
+   * สัญญาณเตือนที่ยังไม่ได้ส่ง — ผู้เรียกที่ส่งธุรกรรมของตัวเองเข้ามาต้องเรียก `emitDeferredWarnings`
+   * หลังธุรกรรมนั้น commit. เมื่อ template ห่อธุรกรรมเอง template ส่งให้แล้วและคืนรายการว่าง.
+   */
+  warnings: DeferredWarning[];
+}
+
 /**
  * PaymentReceiptTemplate — the single "post a receipt for delta X" primitive
  * (PR-843 / I2). Generalises the applyCreditBalance custom-delta JE + the
@@ -132,30 +148,35 @@ export class PaymentReceiptTemplate {
   async execute(
     input: PaymentReceiptPrimitiveInput,
     outerTx?: Prisma.TransactionClient,
-  ): Promise<{ entryNo: string; split: SplitReceiptResult }> {
+  ): Promise<PaymentReceiptResult> {
     if (outerTx) return this.executeInTx(input, outerTx);
     // ไม่มีธุรกรรมของผู้เรียก (สเปค/เครื่องมือ) — ห่อเองเพื่อให้รายการตั้งลูกหนี้งวด (2A) กับใบรับชำระ
     // เป็นหน่วยเดียวกัน: ใบรับชำระไม่ผ่าน = 2A ไม่ค้าง. เส้นทางจริงทุกเส้นส่ง outerTx มาเองอยู่แล้ว.
-    return this.prisma.$transaction((tx) => this.executeInTx(input, tx), {
+    const result = await this.prisma.$transaction((tx) => this.executeInTx(input, tx), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
+    emitDeferredWarnings(result.warnings);
+    return { ...result, warnings: [] };
   }
 
   /**
-   * ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตัดสินฝ่ายบัญชี D2, 2026-09-28) — เรียกหลังด่านของ template และ
-   * splitReceipt ผ่านแล้ว ก่อนลงใบรับชำระ. วันที่รับเงิน = postedAt ของใบรับชำระ (ไม่ส่ง = ตอนนี้).
+   * ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตัดสินฝ่ายบัญชี D2, 2026-09-28 + ก1 "แบบ ข", 2026-09-29) — เรียกหลังด่าน
+   * ของ template และ splitReceipt ผ่านแล้ว ก่อนลงใบรับชำระ. วันที่รับเงิน = postedAt ของใบรับชำระ
+   * (ไม่ส่ง = ตอนนี้).
    *
-   * ตั้งเฉพาะเมื่อใบนี้ทำให้งวดชำระครบ และสัญญาอยู่ในสถานะที่รอบกลางคืนดูแล — กติกาอยู่ที่
-   * decideAccrueAtReceipt ตัวเดียว (คำตัดสินผู้คุมงาน R1, R9, R12). สองกรณีที่ไม่ตั้งคงพฤติกรรมเดิม
-   * ทุกประการ (ลงใบรับชำระ ไม่ลง 2A) แล้วส่งสัญญาณเตือนคนละข้อความให้นับแยกกันได้:
-   *   - สัญญาที่ถูกบอกเลิก/ปิดไปก่อนแล้ว — ยังไม่มีกติกาบัญชี
-   *   - ใบรับชำระบางส่วนของงวดที่ยังไม่มี 2A — คงพฤติกรรมเดิม (ฝ่ายบัญชีตอบ 29/09/2569 ให้ตั้งเท่ายอด
-   *     ที่รับ — แยกเป็นงานถัดไป); รอบกลางคืนตั้งลูกหนี้งวดให้ในวันครบกำหนดตามเดิม
+   * กติกาอยู่ที่ decideAccrueAtReceipt ตัวเดียว (ใช้ร่วมกับ preview):
+   *   - ใบที่ทำให้งวดชำระครบ → ตั้งส่วนที่เหลือของงวด (ยังไม่เคยตั้ง = ทั้งงวด)
+   *   - ใบบางส่วนก่อนวันครบกำหนด → ตั้งเท่ายอดที่ใบนี้ล้างลูกหนี้ของงวด (split.principalCleared — ไม่รวม
+   *     ค่าปรับ 42-1103 เศษปัด 53-1503 และเงินรับล่วงหน้าที่พักเข้า 21-1103)
+   *   - ใบบางส่วนตั้งแต่วันครบกำหนด / ใบที่ไม่ได้ล้างลูกหนี้ของงวด → ไม่ลง (รอบกลางคืนตั้งส่วนที่เหลือ)
+   *   - สัญญาในสถานะที่รอบกลางคืนไม่ดูแล (ACCRUAL_EXCLUDED_CONTRACT_STATUSES — บอกเลิก/ตัดหนี้สูญ/ปิด/
+   *     เปลี่ยนเครื่อง/ร่าง/ยกเลิก) → ไม่ลง ลงใบรับชำระตามเดิม + สัญญาณเตือนที่ส่ง**หลังธุรกรรม commit**
    *
-   * ไม่จับ error ของฐานข้อมูล: ชนกับรอบกลางคืน/ใบรับชำระอีกใบ (P2002 จาก unique index ของ reference
-   * หรือ P2034) ต้องผ่านออกไปตามเดิม — webhook ของ PaySolutions อาศัยคำตอบ 5xx เพื่อให้ส่งซ้ำ.
+   * ไม่จับ error ของฐานข้อมูล: ชนกับรอบกลางคืน/ใบรับชำระอีกใบ (P2002 จาก unique index ของ reference,
+   * P2025 จากการเขียนยอดสะสมแบบ compare-and-set หรือ P2034) ต้องผ่านออกไปตามเดิม — webhook ของ
+   * PaySolutions อาศัยคำตอบ 5xx เพื่อให้ส่งซ้ำ.
    */
-  private async accrueBeforeReceiptIfSettled(
+  private async accrueBeforeReceipt(
     inst: {
       id: string;
       installmentNo: number;
@@ -166,66 +187,68 @@ export class PaymentReceiptTemplate {
     input: PaymentReceiptPrimitiveInput,
     split: SplitReceiptResult,
     tx: Prisma.TransactionClient,
-  ): Promise<void> {
+  ): Promise<{ accrual: AccrueAtReceiptResult | null; warnings: DeferredWarning[] }> {
     const statusAtReceipt = input.contractStatusBeforeReceipt ?? contract.status;
     const isFinalReceipt = input.isFinalReceipt ?? false;
+    const receiptDate = input.postedAt ?? new Date();
     const decision = decideAccrueAtReceipt({
       alreadyAccrued: !!inst.accrualJournalEntryId,
       contractStatusBeforeReceipt: statusAtReceipt,
       isFinalReceipt,
       principalRemainingAfter: split.principalRemainingAfter,
+      principalCleared: split.principalCleared,
+      dueDateReached: isDueDateReached(inst.dueDate, receiptDate),
     });
-    if (decision === 'ALREADY_ACCRUED') return;
     if (decision === 'ACCRUE') {
-      await this.accrual.accrueAtReceipt(inst.id, input.postedAt ?? new Date(), tx);
-      return;
+      return {
+        accrual: await this.accrual.accrueAtReceipt(inst.id, receiptDate, tx),
+        warnings: [],
+      };
     }
+    if (decision === 'ACCRUE_RECEIVED') {
+      return {
+        accrual: await this.accrual.accrueAtReceipt(
+          inst.id,
+          receiptDate,
+          tx,
+          split.principalCleared,
+        ),
+        warnings: [],
+      };
+    }
+    if (decision !== 'CONTRACT_NOT_SERVED') return { accrual: null, warnings: [] };
 
-    const extra = {
-      contractId: contract.id,
-      contractNumber: contract.contractNumber,
-      contractStatus: statusAtReceipt,
-      installmentScheduleId: inst.id,
-      installmentNo: inst.installmentNo,
-      dueDate: inst.dueDate.toISOString(),
-      paymentId: input.paymentId ?? null,
-      isFinalReceipt,
-      principalRemainingAfter: split.principalRemainingAfter.toFixed(2),
-    };
-    if (decision === 'CONTRACT_NOT_SERVED') {
-      this.logger.warn(
-        `[accrue-at-receipt] skipped — contract ${contract.contractNumber} was ${statusAtReceipt} before this receipt; ` +
-          `receipt posts without a 2A accrual (installmentScheduleId=${inst.id})`,
-      );
-      Sentry.captureMessage(
-        '[accrue-at-receipt] receipt on a contract the accrual does not serve — 2A not posted',
-        {
-          level: 'warning',
-          tags: { module: 'journal', action: 'accrue-at-receipt-skipped-status' },
-          extra,
-        },
-      );
-      return;
-    }
     this.logger.warn(
-      `[accrue-at-receipt] skipped — partial receipt on installment #${inst.installmentNo} of contract ` +
-        `${contract.contractNumber} which has no 2A accrual yet; receipt posts as before ` +
-        `(installmentScheduleId=${inst.id}, remaining=${extra.principalRemainingAfter}, isFinalReceipt=${isFinalReceipt})`,
+      `[accrue-at-receipt] skipped — contract ${contract.contractNumber} was ${statusAtReceipt} before this receipt; ` +
+        `receipt posts without a 2A accrual (installmentScheduleId=${inst.id})`,
     );
-    Sentry.captureMessage(
-      '[accrue-at-receipt] partial receipt on an installment with no accrual yet — 2A not posted',
-      {
-        level: 'warning',
-        tags: { module: 'journal', action: 'accrue-at-receipt-skipped-partial' },
-        extra,
-      },
-    );
+    return {
+      accrual: null,
+      warnings: [
+        {
+          message:
+            '[accrue-at-receipt] receipt on a contract the accrual does not serve — 2A not posted',
+          tags: { module: 'journal', action: 'accrue-at-receipt-skipped-status' },
+          extra: {
+            contractId: contract.id,
+            contractNumber: contract.contractNumber,
+            contractStatus: statusAtReceipt,
+            installmentScheduleId: inst.id,
+            installmentNo: inst.installmentNo,
+            dueDate: inst.dueDate.toISOString(),
+            paymentId: input.paymentId ?? null,
+            isFinalReceipt,
+            principalRemainingAfter: split.principalRemainingAfter.toFixed(2),
+          },
+        },
+      ],
+    };
   }
 
   private async executeInTx(
     input: PaymentReceiptPrimitiveInput,
     outerTx: Prisma.TransactionClient,
-  ): Promise<{ entryNo: string; split: SplitReceiptResult }> {
+  ): Promise<PaymentReceiptResult> {
     const readClient: Prisma.TransactionClient = outerTx;
 
     const inst = await readClient.installmentSchedule.findUniqueOrThrow({
@@ -234,14 +257,9 @@ export class PaymentReceiptTemplate {
     });
     const c = inst.contract;
 
-    const { installmentTotal } = computeInstallmentBreakdown({
-      financedAmount: c.financedAmount.toString(),
-      storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
-      interestTotal: c.interestTotal.toString(),
-      vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
-      totalMonths: c.totalMonths,
-      installmentNo: inst.installmentNo,
-    });
+    const { installmentTotal } = computeInstallmentBreakdown(
+      accrual2AInputOf(c, inst.installmentNo),
+    );
 
     // Shared with the wizard's PARTIAL preview (reconstruct-prior.ts) so the
     // preview's allocation can't drift from what this template posts.
@@ -349,8 +367,9 @@ export class PaymentReceiptTemplate {
     }
 
     // ตั้งลูกหนี้งวด ณ วันรับเงิน — ตรงนี้เท่านั้น: ทุกด่านข้างบนผ่านแล้ว (ใบที่ถูกปฏิเสธไม่ทิ้ง 2A ไว้) และ
-    // `split` คือผลที่ใบรับชำระจะลงจริง. 2A ถูกลงก่อนใบรับชำระ ในธุรกรรมเดียวกัน.
-    await this.accrueBeforeReceiptIfSettled(inst, c, input, split, outerTx);
+    // `split` คือผลที่ใบรับชำระจะลงจริง. 2A ถูกลงก่อนใบรับชำระ ในธุรกรรมเดียวกัน (ทั้งงวด / ส่วนที่เหลือ /
+    // เท่ายอดที่รับ).
+    const { accrual, warnings } = await this.accrueBeforeReceipt(inst, c, input, split, outerTx);
 
     // companyId intentionally omitted: every line here is a FINANCE account
     // (11-2103 / 42-1103 / 53-1503 / 52-1104 / 21-1103 / deposit), so createAndPost's
@@ -382,12 +401,14 @@ export class PaymentReceiptTemplate {
           principalCleared: split.principalCleared.toString(),
           lateFeePortion: split.lateFeePortion.toString(),
           lateFeeWaived: lateFeeWaived.toString(),
+          // เลขที่รายการ 2A ที่ใบนี้ทำให้ลง (ก1) — ให้เอกสาร/รายงานภาษีขายต่อใบเสร็จอ่านยอดจากสมุดบัญชีได้
+          ...(accrual ? { accrualEntryNumber: accrual.entryNo } : {}),
         },
         lines,
       },
       outerTx,
     );
 
-    return { entryNo: result.entryNumber, split };
+    return { entryNo: result.entryNumber, split, accrual, warnings };
   }
 }

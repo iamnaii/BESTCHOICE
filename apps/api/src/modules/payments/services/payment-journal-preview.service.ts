@@ -436,6 +436,11 @@ export class PaymentJournalPreviewService {
       contractStatusBeforeReceipt: c.status,
       isFinalReceipt: settlesInstallment,
       principalRemainingAfter: split.principalRemainingAfter,
+      principalCleared: split.principalCleared,
+      dueDateReached: isDueDateReached(
+        inst.dueDate,
+        input.paidDate ? new Date(input.paidDate) : new Date(),
+      ),
     });
     const isConsolidated = accrualDecision === 'ACCRUE'; // 2A จะลงพร้อมการรับชำระนี้
     // QR ที่หน้าจอหักเครดิตออกให้แล้ว (R14 + R17): เงินที่เข้าจะถูกบันทึกเป็นการรับบางส่วนโดยไม่หักเครดิต —
@@ -448,7 +453,7 @@ export class PaymentJournalPreviewService {
     if (
       viaQr &&
       !settlesInstallment &&
-      accrualDecision === 'PARTIAL_RECEIPT' &&
+      (accrualDecision === 'PARTIAL_RECEIPT' || accrualDecision === 'ACCRUE_RECEIVED') &&
       previewTotalConsume.gt(zero)
     ) {
       // ยอดเงินในข้อความ: ทศนิยม 2 ตำแหน่ง คั่นหลักพันด้วยจุลภาค (แบบเดียวกับยอดในแผงรายการบัญชีและบน

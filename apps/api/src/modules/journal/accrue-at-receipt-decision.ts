@@ -4,19 +4,24 @@ import { isAccrualExcludedStatus } from './accrual-contract-status';
 
 /**
  * ผลการตัดสินว่าใบรับชำระใบหนึ่งต้องตั้งลูกหนี้งวด (2A) ก่อนลงใบรับชำระหรือไม่:
- *   ACCRUE              — ตั้งลูกหนี้งวด ณ วันรับเงิน
- *   ALREADY_ACCRUED     — งวดมีรายการ 2A แล้ว ไม่ต้องทำอะไร
- *   CONTRACT_NOT_SERVED — สถานะสัญญาก่อนรับเงินเป็นสถานะที่รอบกลางคืนไม่ดูแล (พฤติกรรมเดิม + สัญญาณเตือน)
- *   PARTIAL_RECEIPT     — ใบนี้ยังไม่ทำให้งวดชำระครบ (พฤติกรรมเดิม + สัญญาณเตือน)
+ *   ACCRUE              — ใบนี้ทำให้งวดชำระครบ → ตั้งส่วนที่เหลือของงวด (งวดที่ยังไม่เคยตั้ง = ทั้งงวด)
+ *   ACCRUE_RECEIVED     — ใบบางส่วนก่อนวันครบกำหนด → ตั้งเท่ายอดที่ใบนี้ล้างลูกหนี้ของงวด
+ *                         (คำตอบฝ่ายบัญชี ก1 "แบบ ข" 29/09/2569)
+ *   ALREADY_ACCRUED     — งวดตั้งลูกหนี้ครบแล้ว ไม่ต้องทำอะไร
+ *   CONTRACT_NOT_SERVED — สถานะสัญญาก่อนรับเงินอยู่ใน ACCRUAL_EXCLUDED_CONTRACT_STATUSES
+ *                         (พฤติกรรมเดิม + สัญญาณเตือน)
+ *   PARTIAL_RECEIPT     — ใบบางส่วนที่ไม่ลง 2A: ถึงวันครบกำหนดแล้ว ณ วันรับเงิน (รอบกลางคืนตั้งส่วนที่เหลือ)
+ *                         หรือใบนี้ไม่ได้ล้างลูกหนี้ของงวดเลย
  */
 export type AccrueAtReceiptDecision =
   | 'ACCRUE'
+  | 'ACCRUE_RECEIVED'
   | 'ALREADY_ACCRUED'
   | 'CONTRACT_NOT_SERVED'
   | 'PARTIAL_RECEIPT';
 
 export interface AccrueAtReceiptFacts {
-  /** งวดมี accrualJournalEntryId แล้ว */
+  /** งวดตั้งลูกหนี้ครบแล้ว (accrualJournalEntryId มีค่า) */
   alreadyAccrued: boolean;
   /** สถานะของสัญญาก่อนการรับเงินครั้งนี้ (ไม่ใช่สถานะหลังเส้นทางรับชำระปิดสัญญา) */
   contractStatusBeforeReceipt: ContractStatus;
@@ -24,23 +29,29 @@ export interface AccrueAtReceiptFacts {
   isFinalReceipt: boolean;
   /** splitReceipt().principalRemainingAfter — ยอดลูกหนี้ของงวดที่ยังเหลือในบัญชีหลังใบนี้ */
   principalRemainingAfter: Decimal;
+  /** splitReceipt().principalCleared — ยอดที่ใบนี้เครดิต 11-2103 ของงวด */
+  principalCleared: Decimal;
+  /** วันครบกำหนดถึงแล้ว ณ วันที่รับเงิน (isDueDateReached — วันครบกำหนดเอง = ถึงแล้ว) */
+  dueDateReached: boolean;
 }
 
 /**
- * กติกาเดียวของ "ตั้งลูกหนี้งวด ณ วันรับเงิน" (คำตัดสินฝ่ายบัญชี D2 + คำตัดสินผู้คุมงาน R1, R9, R12) —
- * ใช้ร่วมกันโดย PaymentReceiptTemplate (ลงจริง) และ PaymentJournalPreviewService (แสดงก่อนบันทึก).
+ * กติกาเดียวของ "ตั้งลูกหนี้งวด ณ วันรับเงิน" (คำตัดสินฝ่ายบัญชี D2 + ก1 · คำตัดสินผู้คุมงาน R1, R9, R12,
+ * B1) — ใช้ร่วมกันโดย PaymentReceiptTemplate (ลงจริง) และ PaymentJournalPreviewService (แสดงก่อนบันทึก).
  *
- * ตั้งเฉพาะเมื่อใบนี้ทำให้งวดชำระครบ: ลูกหนี้ของงวดในบัญชีเป็นศูนย์หลังใบนี้ **และ** ใบนี้ทำให้แถวงวด
- * เป็น PAID. ต้องจริงทั้งสองข้อ — ใบที่ล้างลูกหนี้ในบัญชีครบแต่แถวงวดยังค้างเศษของยอดเรียกเก็บ
- * (เรียกเก็บ 6,079.00 บัญชี 6,078.67 รับ 6,078.67 แบบบางส่วน) ถือเป็นการรับบางส่วน.
- * ห้ามตัดสินจาก Payment.status, ยอดเรียกเก็บ, delta หรือ principalCleared.
- *
- * การรับบางส่วนของงวดที่ยังไม่มี 2A คงพฤติกรรมเดิม — ฝ่ายบัญชีตอบ 29/09/2569 ให้ตั้งลูกหนี้งวด
- * เท่ายอดที่รับ ส่วนที่เหลือตั้ง ณ วันครบกำหนด ซึ่งเจ้าของสั่งแยกเป็นงานถัดไป.
+ * ลำดับการตัดสิน (ข้อแรกที่เป็นจริงชนะ):
+ *   1. งวดตั้งครบแล้ว → ALREADY_ACCRUED
+ *   2. สถานะก่อนรับเงินเป็นสถานะที่รอบกลางคืนไม่ดูแล → CONTRACT_NOT_SERVED
+ *   3. ใบนี้ทำให้งวดชำระครบ (ลูกหนี้ของงวดในบัญชีเป็นศูนย์หลังใบนี้ **และ** ใบนี้ทำให้แถวงวดเป็น PAID)
+ *      → ACCRUE ไม่ว่าจะถึงวันครบกำหนดแล้วหรือยัง (วันที่ลงตัดสินที่ resolveAccrualPostingDate)
+ *   4. ถึงวันครบกำหนดแล้ว ณ วันรับเงิน หรือใบนี้ไม่ได้ล้างลูกหนี้ของงวด → PARTIAL_RECEIPT
+ *   5. นอกนั้น → ACCRUE_RECEIVED (ยอด = principalCleared)
+ * ห้ามตัดสินจาก Payment.status, ยอดเรียกเก็บ หรือ delta.
  */
 export function decideAccrueAtReceipt(facts: AccrueAtReceiptFacts): AccrueAtReceiptDecision {
   if (facts.alreadyAccrued) return 'ALREADY_ACCRUED';
   if (isAccrualExcludedStatus(facts.contractStatusBeforeReceipt)) return 'CONTRACT_NOT_SERVED';
-  if (!facts.isFinalReceipt || !facts.principalRemainingAfter.isZero()) return 'PARTIAL_RECEIPT';
-  return 'ACCRUE';
+  if (facts.isFinalReceipt && facts.principalRemainingAfter.isZero()) return 'ACCRUE';
+  if (facts.dueDateReached || facts.principalCleared.lte(0)) return 'PARTIAL_RECEIPT';
+  return 'ACCRUE_RECEIVED';
 }

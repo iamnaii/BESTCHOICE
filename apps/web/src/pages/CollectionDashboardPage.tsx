@@ -155,7 +155,7 @@ export default function CollectionDashboardPage() {
       >
         <>
           {/* ─── 4 KPI Cards ─── */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
+          <div className="finance-card-grid grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
             {/* KPI: Collection Rate เดือนนี้ */}
             <Card className="overflow-hidden">
               <CardContent className="p-5 relative">
@@ -279,7 +279,7 @@ export default function CollectionDashboardPage() {
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               Aging Buckets — สัดส่วนหนี้ค้างตามอายุ
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="finance-card-grid grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {(data?.agingBuckets ?? []).map((bucket, idx) => {
                 const colors = AGING_COLORS[idx % AGING_COLORS.length];
                 const barWidth = totalOverdue > 0 ? (bucket.amount / maxBucketAmount) * 100 : 0;

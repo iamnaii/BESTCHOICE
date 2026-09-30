@@ -43,7 +43,7 @@ export default function ImportedSalesPage() {
       </div>
 
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="finance-card-grid grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { l: 'จำนวนบิล/รายการ', v: summary.totals.count.toLocaleString('th-TH') },
             { l: 'ยอดขายรวม', v: `฿${baht(summary.totals.sales)}` },

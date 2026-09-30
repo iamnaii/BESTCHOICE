@@ -8,7 +8,7 @@ const workflowLabels: Record<string, { label: string; className: string }> = {
 export default function WorkflowStatusBadge({ status }: { status: string }) {
   const s = workflowLabels[status] || { label: status, className: 'bg-muted text-foreground' };
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>
+    <span className={`admin-status-badge px-2 py-0.5 rounded-full text-xs font-medium ${s.className}`}>
       {s.label}
     </span>
   );

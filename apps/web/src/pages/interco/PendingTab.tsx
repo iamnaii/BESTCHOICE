@@ -119,7 +119,7 @@ export function PendingTab({
   return (
     <div className="space-y-4 pt-4">
       {reconcile && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="finance-card-grid grid grid-cols-2 lg:grid-cols-4 gap-3">
           <StatTile label="ยอดคิวรวม" value={reconcile.pendingTotal} />
           <StatTile label="GL FINANCE (21-1101+21-1102)" value={reconcile.glFinanceTotal} />
           <StatTile label="GL SHOP (S11-3001+S11-3002)" value={reconcile.glShopTotal} />

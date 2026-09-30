@@ -20,8 +20,9 @@ import DataTable from '@/components/ui/DataTable';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { getStatusBadgeProps, saleTypeMap, contractStatusMap } from '@/lib/status-badges';
-import { Download, RotateCcw, Ban } from 'lucide-react';
+import { Download, RotateCcw, Ban, Info } from 'lucide-react';
 import { formatDateShort, formatDateTime } from '@/utils/formatters';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -612,12 +613,25 @@ export default function SalesHistoryPage() {
               <div className="flex h-full">
                 <div className="w-1 shrink-0 rounded-r-full bg-warning" />
                 <CardContent className="p-5 flex-1">
-                  <div className="text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">กำไรรวม</div>
+                  <div className="mb-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button" aria-label="วิธีคำนวณกำไรรวม" className="inline-flex min-h-8 items-center gap-1.5 -my-1 rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                          กำไรรวม <Info className="size-3.5" aria-hidden="true" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="max-w-[calc(100vw-2rem)] text-sm" aria-label="วิธีคำนวณกำไรรวม">
+                        <p className="font-medium">วิธีคำนวณกำไรรวม</p>
+                        <p className="mt-2 text-muted-foreground">ยอดสุทธิ − ต้นทุนเครื่อง ณ วันขาย</p>
+                        <p className="mt-1 text-muted-foreground">คำนวณเฉพาะรายการที่มีต้นทุน ไม่รวมของแถมและค่าธรรมเนียม</p>
+                        {!!summary.missingCostCount && <p className="mt-2 text-muted-foreground">ไม่รวม {summary.missingCostCount.toLocaleString()} รายการที่ไม่มีต้นทุน ณ วันขาย</p>}
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                   <div className={`text-xl font-bold tabular-nums ${summary.totalProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
                     {summary.totalProfit >= 0 ? '+' : ''}{summary.totalProfit.toLocaleString()} <span className="text-sm font-normal">฿</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">ยอดสุทธิ − ต้นทุนเครื่อง ณ วันขาย (เฉพาะรายการที่มีต้นทุน ไม่รวมของแถมและค่าธรรมเนียม)</p>
-                  {!!summary.missingCostCount && <p className="text-xs text-muted-foreground mt-1">ไม่รวม {summary.missingCostCount.toLocaleString()} รายการที่ไม่มีต้นทุน ณ วันขาย</p>}
+                  {!!summary.missingCostCount && <p className="text-xs text-muted-foreground mt-2">ไม่รวม {summary.missingCostCount.toLocaleString()} รายการที่ขาดต้นทุน</p>}
                 </CardContent>
               </div>
             </Card>

@@ -50,7 +50,7 @@ export default function DashboardFinanceOverview() {
       <h2 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">
         ภาพรวมติดตามหนี้
       </h2>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 lg:gap-5">
+      <div className="finance-card-grid grid grid-cols-2 md:grid-cols-5 gap-4 lg:gap-5">
         <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-destructive">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">

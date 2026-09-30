@@ -396,7 +396,7 @@ export default function CommissionsPage() {
       {activeTab === 'commissions' && (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
+          <div className="finance-card-grid grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
             <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
               <CardContent className="p-5">
                 <div className="flex items-center gap-2 mb-2">
@@ -484,7 +484,7 @@ export default function CommissionsPage() {
       {activeTab === 'payouts' && (
         <>
           {/* Payout Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
+          <div className="finance-card-grid grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-5 mb-6">
             <Card className="hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
               <CardContent className="p-5">
                 <div className="flex items-center gap-2 mb-2">

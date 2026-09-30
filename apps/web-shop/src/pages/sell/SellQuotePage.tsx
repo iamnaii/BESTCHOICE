@@ -237,7 +237,7 @@ function SellQuoteForm({ model, storage, onModelChange, onStorageChange, models,
                 <Label htmlFor="bb-model">รุ่น</Label>
                 <select
                   id="bb-model"
-                  className="w-full h-10 rounded-xl border border-border bg-background px-3 text-sm leading-snug"
+                  className="w-full h-11 rounded-xl border border-border bg-background px-3 text-base md:text-sm leading-snug"
                   value={model}
                   onChange={(e) => onModelChange(e.target.value)}
                   disabled={submitMutation.isPending}
@@ -252,7 +252,7 @@ function SellQuoteForm({ model, storage, onModelChange, onStorageChange, models,
                 <Label htmlFor="bb-storage">ความจุ</Label>
                 <select
                   id="bb-storage"
-                  className="w-full h-10 rounded-xl border border-border bg-background px-3 text-sm leading-snug"
+                  className="w-full h-11 rounded-xl border border-border bg-background px-3 text-base md:text-sm leading-snug"
                   value={storage}
                   onChange={(e) => onStorageChange(e.target.value)}
                   disabled={!model || submitMutation.isPending}

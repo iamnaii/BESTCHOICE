@@ -90,7 +90,7 @@ export function HomeHero() {
             </h1>
             <p
               data-hero-copy
-              className="text-base md:text-lg text-muted-foreground max-w-md leading-snug"
+              className="text-base md:text-lg text-muted-foreground max-w-md leading-relaxed"
             >
               {copy.home.heroDescription}
             </p>
@@ -116,7 +116,7 @@ export function HomeHero() {
               {HERO_CHIPS.map((chip) => (
                 <span
                   key={chip}
-                  className="rounded-full bg-card border border-border px-3 py-1 font-head text-[13px] font-medium text-accent-foreground leading-snug"
+                  className="rounded-full bg-card border border-border px-3 py-1 font-head text-sm font-medium text-accent-foreground leading-snug"
                 >
                   {chip}
                 </span>

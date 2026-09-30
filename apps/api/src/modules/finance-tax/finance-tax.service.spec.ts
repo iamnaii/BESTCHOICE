@@ -21,13 +21,19 @@ describe('FinanceTaxService', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
 
-  /** Helper: build a JournalLine mock with nested journalEntry */
+  /**
+   * Helper: build a JournalLine mock with nested journalEntry.
+   * `hasSettlementLine` (fix round 1, F1, 2026-09-30) simulates the nested `journalEntry.lines`
+   * select finding a non-deleted 21-3201 row — marks this line's entry as a VAT-settlement entry.
+   * Defaults to false so every existing call site (getWhtMonthly etc.) is unaffected.
+   */
   function makeLine(
     accountCode: string,
     debit: string,
     credit: string,
     entryNumber = 'JE-202605-0001',
     postedAt: Date = new Date('2026-05-15T10:00:00Z'),
+    hasSettlementLine = false,
   ) {
     return {
       accountCode,
@@ -38,6 +44,7 @@ describe('FinanceTaxService', () => {
         entryNumber,
         postedAt,
         description: 'test entry description',
+        ...(hasSettlementLine ? { lines: [{ id: `settlement-${accountCode}` }] } : {}),
       },
     };
   }
@@ -232,6 +239,49 @@ describe('FinanceTaxService', () => {
       expect(tableCall().where.journalEntry).not.toHaveProperty('companyId');
       expect(tableCall().where.accountCode).toEqual({
         in: ['21-2101', '21-2103', '21-2102', '11-4101', '11-2104'],
+      });
+    });
+
+    // ── 2026-09-30 fix round 1 (controller F1): รายการปิด/ชำระภาษีขาย (แตะ 21-3201)
+    // อยู่นอกยอด ภ.พ.30 ของเดือนทั้งใบ — ไม่ใช่แค่ 21-2101 ที่ตัวคำนวณกันออกอยู่แล้ว ──
+
+    it('รายการปิด/ชำระภาษีขาย (มีบรรทัดแตะ 21-3201) ไม่กระทบภาษีซื้อ (11-4101) และไม่โชว์ในตารางรายการ — เหลือ 69.17', async () => {
+      mockVatLines({
+        output: [makeOutputLine('21-2101', '0', '99.17')], // ภาษีขายของเดือน (ไม่ใช่รายการปิด)
+        table: [
+          // รายการปิด/ชำระภาษีขาย: Dr 21-2101 99.17 / Cr 11-4101 30.00 / Cr 21-3201 69.17 (ไม่อยู่ในตาราง)
+          // — ทั้งสองบรรทัดที่ตารางนี้ query ถึง (21-2101 + 11-4101) อยู่ในรายการเดียวกันที่แตะ 21-3201
+          makeLine(
+            '21-2101',
+            '99.17',
+            '0',
+            'JE-202605-9001',
+            new Date('2026-05-28T10:00:00Z'),
+            true,
+          ),
+          makeLine(
+            '11-4101',
+            '0',
+            '30.00',
+            'JE-202605-9001',
+            new Date('2026-05-28T10:00:00Z'),
+            true,
+          ),
+          // ซื้อของเดือนตามปกติ — ไม่แตะ 21-3201
+          makeLine('11-4101', '30.00', '0', 'JE-202605-9002'),
+        ],
+      });
+
+      const result = await service.getVatMonthly(2026, 5);
+
+      expect(result.vatOutput).toBe('99.17');
+      expect(result.vatInput).toBe('30.00'); // ไม่ใช่ 0.00 — เครดิต 11-4101 ของรายการปิดไม่ถูกนับ
+      expect(result.netVat).toBe('69.17');
+      expect(result.lineCount).toBe(1);
+      expect(result.lines).toHaveLength(1);
+      expect(result.lines[0]).toMatchObject({
+        accountCode: '11-4101',
+        documentNumber: 'JE-202605-9002',
       });
     });
 

@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   computePp30OutputVat,
+  isVatSettlementEntry,
+  PP30_VAT_SETTLEMENT_ACCOUNT,
   pp30MonthRange,
   resolvePp30CompanyId,
   toPp30OutputVatJson,
@@ -73,6 +75,13 @@ export class FinanceTaxService {
    * — ตัวเดียวกับ `TaxPreviewService.previewPP30`. หน้าเมนูไม่ส่ง `companyId` ⇒ ภาษีขายเป็นของบริษัท FINANCE.
    * ภาษีซื้อ / ภาษีขายรอเรียกเก็บ / ตารางรายการ: บัญชี สถานะ และเครื่องหมายเดิม ไม่กรองบริษัทเมื่อไม่ส่ง `companyId` (กติกาเดิม)
    * — เปลี่ยนเฉพาะการบวกเป็น Decimal และขอบเดือนเป็นปฏิทินไทย (เท่าเดิมบน prod ที่รัน TZ=Asia/Bangkok).
+   *
+   * รายการปิด/ชำระภาษีขาย (มีบรรทัดที่ยังไม่ถูกลบบนบัญชี 21-3201 — ตรวจด้วย `isVatSettlementEntry` ตัวเดียวกับ
+   * ตัวคำนวณ) อยู่นอกยอด ภ.พ.30 ของเดือนทั้งใบ ไม่ใช่แค่ 21-2101: ภาษีซื้อ (`vatInput`) ต้องข้ามบรรทัด 11-4101
+   * ของรายการปิดด้วย (ไม่งั้นเครดิตภาษีซื้อที่ถูก "ใช้" ตอนปิดยอดจะไปหักล้างภาษีซื้อใหม่ของเดือนเดียวกัน) และ
+   * ตารางรายการ (`lines`/`lineCount`) ไม่แสดงบรรทัดใดของรายการปิดเลย (Task 3 fix round 1, controller F1,
+   * 2026-09-30 — narrow relaxation ของ V4 ที่กระทบเฉพาะรายการที่แตะ 21-3201 เท่านั้น; `getInputVatLineItems`
+   * ของ `TaxPreviewService` ไม่ถูกแตะ).
    * Maps entryNumber → documentNumber per SP1 convention.
    */
   async getVatMonthly(year: number, month: number, companyId?: string) {
@@ -106,7 +115,7 @@ export class FinanceTaxService {
       ...VAT_INPUT_BEHALF_ACCOUNTS,
     ];
 
-    const lines = await this.prisma.journalLine.findMany({
+    const rawLines = await this.prisma.journalLine.findMany({
       where: {
         deletedAt: null,
         accountCode: { in: allVatAccountCodes },
@@ -118,6 +127,12 @@ export class FinanceTaxService {
             entryNumber: true,
             postedAt: true,
             description: true,
+            // Task 3 fix round 1 (F1): ตรวจว่ารายการนี้เป็นรายการปิด/ชำระภาษีขายหรือไม่ — take 1 พอ (เหมือนตัวคำนวณ)
+            lines: {
+              where: { accountCode: PP30_VAT_SETTLEMENT_ACCOUNT, deletedAt: null },
+              select: { id: true },
+              take: 1,
+            },
           },
         },
       },
@@ -126,6 +141,9 @@ export class FinanceTaxService {
         { accountCode: 'asc' },
       ],
     });
+
+    // รายการปิด/ชำระภาษีขายอยู่นอกยอด ภ.พ.30 ของเดือนทั้งใบ — ทั้งภาษีซื้อและตารางรายการ (fix round 1, F1)
+    const lines = rawLines.filter((l) => !isVatSettlementEntry(l.journalEntry));
 
     // ภาษีขายรอเรียกเก็บ (21-2102) และภาษีซื้อ (11-4101) — Decimal (เดิม Number + Math.round)
     let vatDeferred = new Prisma.Decimal(0); // 21-2102: credit - debit (liability account)

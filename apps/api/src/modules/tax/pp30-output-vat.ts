@@ -31,10 +31,12 @@ export const PP30_MANDATORY_60DAY_VAT_ACCOUNT = '21-2103';
 
 /**
  * เจ้าหนี้สรรพากร ภ.พ.30 รอชำระ — ใช้ตรวจว่ารายการ 21-2101 หนึ่งบรรทัดเป็นส่วนหนึ่งของรายการปิด/ชำระภาษีขาย
- * (หรือการกลับรายการของมัน) หรือไม่ (`journalEntry.isVatSettlement`, F1 fix round 1). ไม่ export เพราะใช้เฉพาะ
- * ในไฟล์นี้ตอนโหลดบรรทัด — ผู้เรียกภายนอกไม่ต้องรู้จักบัญชีนี้ อ่านผลลัพธ์ผ่าน flag บน `Pp30OutputVatLine` แทน
+ * (หรือการกลับรายการของมัน) หรือไม่ (`journalEntry.isVatSettlement`, F1 fix round 1).
+ * Export ตั้งแต่ fix round 1 ของ Task 3 (2026-09-30 — ตัวควบคุมพบว่า `FinanceTaxService.getVatMonthly` ต้อง
+ * select บัญชีนี้เข้า nested `lines` ของ query ตัวเอง (คนละ query กับตัวคำนวณ ภ.พ.30) เพื่อตรวจรายการปิดภาษี
+ * ในผลลัพธ์ของมันเอง — ใช้ค่าคงที่นี้แทนพิมพ์ `'21-3201'` เป็น literal ที่สอง (ห้ามมี literal ที่สอง).
  */
-const PP30_VAT_SETTLEMENT_ACCOUNT = '21-3201';
+export const PP30_VAT_SETTLEMENT_ACCOUNT = '21-3201';
 
 /**
  * รวมภาษีขาย 60 วัน (21-2103) ในยอดภาษีขายของ ภ.พ.30 หรือไม่ — คำตัดสินผู้คุมงาน 2026-09-30: **ไม่รวม จนกว่าฝ่ายบัญชีจะตอบ**
@@ -290,10 +292,22 @@ export async function resolvePp30CompanyId(
 }
 
 /**
+ * true = รายการนี้มีบรรทัดที่ยังไม่ถูกลบบนบัญชี 21-3201 (เจ้าหนี้สรรพากร ภ.พ.30 รอชำระ) อย่างน้อยหนึ่งบรรทัด
+ * ⇒ เป็นรายการปิด/ชำระภาษีขาย (หรือการกลับรายการของมัน) — อยู่นอกยอด ภ.พ.30 ของเดือนทั้งใบ (Task 3 fix round 1,
+ * controller F1, 2026-09-30). แหล่งเดียวของการตรวจนี้ — ทั้ง `toPp30OutputVatLine` (ตัวคำนวณ) และผู้เรียกภายนอก
+ * ที่ query ชุดของตัวเอง (เช่น `FinanceTaxService.getVatMonthly` ที่ต้องกันรายการปิดภาษีออกจากภาษีซื้อ/ตารางรายการ)
+ * ต้องเรียกฟังก์ชันนี้แทนเช็ค `lines.length` ตรง ๆ. รับ `lines` เป็น optional โดยตั้งใจ (mock ของเทสต์ก่อนหน้าที่
+ * ไม่ส่งฟิลด์นี้มา = ไม่ใช่รายการปิด แทนที่จะพัง).
+ */
+export function isVatSettlementEntry(entry: { lines?: { id: string }[] }): boolean {
+  return (entry.lines?.length ?? 0) > 0;
+}
+
+/**
  * แปลงแถวดิบจาก Prisma (มี `journalEntry.lines` เป็น nested select ที่กรองเฉพาะบรรทัด 21-3201 ที่ยังไม่ถูกลบ
- * take 1 — ใช้ตรวจ F1) เป็น `Pp30OutputVatLine` — คำนวณ `isVatSettlement` จากความยาวของ `lines` แล้วตัดฟิลด์ดิบทิ้ง
- * `lines` เป็น optional ในพารามิเตอร์โดยตั้งใจ (กว้างกว่าที่ query จริงคืนเสมอ) เพื่อให้ทนทานถ้าไม่มีค่าส่งมา
- * (ไม่ตั้งค่า = ไม่ใช่รายการปิดภาษี) แทนที่จะพัง
+ * take 1 — ใช้ตรวจ F1) เป็น `Pp30OutputVatLine` — คำนวณ `isVatSettlement` ผ่าน `isVatSettlementEntry` แล้วตัด
+ * ฟิลด์ดิบทิ้ง `lines` เป็น optional ในพารามิเตอร์โดยตั้งใจ (กว้างกว่าที่ query จริงคืนเสมอ) เพื่อให้ทนทานถ้า
+ * ไม่มีค่าส่งมา (ไม่ตั้งค่า = ไม่ใช่รายการปิดภาษี) แทนที่จะพัง
  */
 function toPp30OutputVatLine(row: {
   accountCode: string;
@@ -302,7 +316,7 @@ function toPp30OutputVatLine(row: {
   journalEntry: Pp30OutputVatLine['journalEntry'] & { lines?: { id: string }[] };
 }): Pp30OutputVatLine {
   const { lines, ...journalEntry } = row.journalEntry;
-  const isVatSettlement = (lines?.length ?? 0) > 0;
+  const isVatSettlement = isVatSettlementEntry({ lines });
   return {
     accountCode: row.accountCode,
     debit: row.debit,

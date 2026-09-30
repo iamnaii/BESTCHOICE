@@ -16,8 +16,16 @@ import {
  *   B) ContractPaymentService.getEarlyPayoffQuote() — the UI/LIFF JE preview
  *   C) ContractPaymentService.earlyPayoff()         — the inline ledger posting
  *
- * All three now call this pure function, so `preview === posted` is guaranteed
- * by construction. Verified against the CPA golden fixtures
+ * All three now call this pure function, so `preview === posted` follows from
+ * construction ONLY when every caller passes the same `accruedUnpaid` (PR2ข) —
+ * it is not automatic from calling the shared function alone: a caller that
+ * omits it (or recomputes it differently) would silently reintroduce the drift
+ * this function exists to prevent. `ContractPaymentService.earlyPayoff()` closes
+ * this by reusing `quote.accruedUnpaid` from the SAME quote the UI/LIFF preview
+ * built, rather than recomputing `sumAccruedUnpaid` a second time — pinned by
+ * tests G10/G10b in `payments/services/accrue-at-receipt.integration.spec.ts`
+ * ("ปิดยอดก่อนกำหนด (JP4) …" — asserts `quote.journalPreview.lines === jp4.lines`).
+ * Verified against the CPA golden fixtures
  * (apps/api/.../fixtures/cpa-cases/case-4-early-payoff.csv) — see the golden
  * spec compute-early-payoff-je.spec.ts and the DB-backed template golden
  * early-payoff-jp4.template.spec.ts.

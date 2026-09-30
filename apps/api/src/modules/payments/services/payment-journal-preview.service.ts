@@ -45,8 +45,10 @@ export interface PreviewJournalResult {
   isBalanced: boolean;
   rescheduleFeeDisplay?: string;
   /**
-   * 2B_ONLY: ไม่มีรายการ 2A ที่จะลงพร้อมการรับชำระนี้ — งวดนี้ตั้งลูกหนี้งวดไปแล้ว · สถานะสัญญาเป็นสถานะ
-   *   ที่รอบกลางคืนไม่ดูแล · หรือใบบางส่วนตั้งแต่วันครบกำหนด — การบันทึกลงเฉพาะใบรับชำระ.
+   * 2B_ONLY: ไม่มีรายการ 2A ที่จะลงพร้อมการรับชำระนี้ — งวดนี้ตั้งลูกหนี้งวดไปแล้ว หรือสถานะสัญญาเป็นสถานะ
+   *   ที่รอบกลางคืนไม่ดูแล (สาขาใบที่ทำให้งวดครบ / QR ที่ยอดครบ `remaining`). **ใบบางส่วนตั้งแต่วันครบกำหนด
+   *   ไม่ได้ค่านี้** — `previewPartialReceipt` ละ `accrualMode` (และ `dueDate`/`accrualPostedAt`/`extra`) ทิ้ง
+   *   ทั้งช่องเมื่อไม่มี 2A ที่จะลง (`partialPending` เป็น null) จึง `undefined` ไม่ใช่ `'2B_ONLY'`.
    * CONSOLIDATED_PAYING_AHEAD: รายการ 2A จะลงวันที่รับเงิน (รับก่อนวันครบกำหนด) แล้วลงใบรับชำระ
    *   (2 รายการ ธุรกรรมเดียวกัน).
    * CONSOLIDATED_BACKFILL: รายการ 2A จะลงวันครบกำหนด (รับในหรือหลังวันครบกำหนด — รอบกลางคืนตกหล่น)
@@ -482,8 +484,12 @@ export class PaymentJournalPreviewService {
       ? buildRemainderAccrual2ALines(accrual2AInputOf(c, inst.installmentNo), accruedBefore)
       : null;
     // Accrual-mode classification for the UI chip — ตามวันที่ที่ 2A จะถูกลงจริง:
-    //   2B_ONLY       — ไม่มี 2A ที่จะลงพร้อมการรับชำระนี้ (ลงไปแล้ว · สัญญาที่ไม่ตั้งลูกหนี้งวด ·
-    //                   QR ที่ยอดยังไม่ครบยอดที่ต้องชำระของงวด)
+    //   2B_ONLY       — ไม่มี 2A ที่จะลงพร้อมการรับชำระนี้ (ลงไปแล้ว · สัญญาที่ไม่ตั้งลูกหนี้งวด). กรณี QR
+    //                   ที่ยอดยังไม่ครบยอดที่ต้องชำระของงวดถึงจุดนี้ได้เฉพาะทางแคบ: มีเครดิตให้หัก
+    //                   (`previewTotalConsume` > 0) และ `accrualDecision` ไม่ใช่ PARTIAL_RECEIPT/
+    //                   ACCRUE_RECEIVED — อีกสองทางที่เหลือ (ไม่มีเครดิตให้หัก → `previewPartialReceipt`
+    //                   ที่ตัดช่อง `accrualMode` ทิ้งทั้งช่อง ไม่ใช่ '2B_ONLY'; มีเครดิตแต่ยังไม่ครบ → ขว้าง
+    //                   BadRequestException ข้างบน R17) ไม่เคยมาถึงบรรทัดนี้
     //   PAYING_AHEAD  — 2A จะลงวันที่รับเงิน (รับก่อนวันครบกำหนด)
     //   BACKFILL      — 2A จะลงวันครบกำหนด (รับในหรือหลังวันครบกำหนด)
     const pendingFields = pendingAccrualFields(
@@ -519,10 +525,11 @@ export class PaymentJournalPreviewService {
     // BOTH the accrual JE (by entryNumber == stamped accrualJournalEntryId) AND any
     // advance-consume-on-accrual JE (Dr 21-1103 / Cr 11-2103, referenceId-tagged by
     // InstallmentAccrual2ATemplate) so the 2A block truthfully reflects the real
-    // 11-2103 state. ก1: งวดที่ตั้งครบด้วยหลายรายการ (ใบบางส่วน `<id>:receipt-accrual:<k>` + ใบที่ทำให้ครบ)
-    // แสดงครบทุกใบที่ยังมีผล — ค้นแบบ "ขึ้นต้นด้วย" ได้ที่นี่เพราะ preview อ่านอย่างเดียวนอกธุรกรรม. `status:'POSTED'` excludes a VOIDED accrual (void keeps
+    // 11-2103 state. `status:'POSTED'` excludes a VOIDED accrual (void keeps
     // deletedAt null in this codebase — see shop-collect void regression test).
     // The mockup case has no consume JE → 2A = the clean 2,115.00 accrual.
+    // ก1: งวดที่ตั้งครบด้วยหลายรายการ (ใบบางส่วน `<id>:receipt-accrual:<k>` + ใบที่ทำให้ครบ) แสดงครบทุกใบที่ยังมีผล
+    // — ค้นแบบ "ขึ้นต้นด้วย" ได้ที่นี่เพราะ preview อ่านอย่างเดียวนอกธุรกรรม.
     let accrualLineRows: {
       accountCode: string;
       debit: Prisma.Decimal;
@@ -549,6 +556,9 @@ export class PaymentJournalPreviewService {
         include: { lines: { where: { deletedAt: null } } },
         orderBy: { createdAt: 'asc' },
       });
+      // Reversed partial 2As (receipt-accrual-void) stay `status:'POSTED'` per accounting.md
+      // ("รายการ 2A เดิม | คง POSTED · ประทับ reversed: true") — the DB filter above can't drop
+      // them, so this in-memory pass on `metadata.reversed` is the only thing excluding them.
       accrualLineRows = accrualEntries
         .filter((e) => (e.metadata as Record<string, unknown> | null)?.reversed !== true)
         .flatMap((e) => e.lines);

@@ -327,9 +327,11 @@ function mirrorAccrual2ALines(lines: Accrual2ALine[]): Accrual2ALine[] {
  * กระจกของ buildAccrual2ALines ตามที่ตัวสร้างคำนวณจากสัญญา — บัญชีและยอดมาจากตัวสร้างตัวเดียวกัน
  * สลับฝั่งทุกบรรทัด ไม่มีตัวเลขชุดที่สอง.
  *
- * ใช้**ตรวจทาน**รายการกลับรายการตั้งลูกหนี้งวดเท่านั้น (คำตัดสินผู้คุมงาน R13): รายการที่ลงจริงตอน
- * ยกเลิกใบเสร็จเป็นกระจกของบรรทัดที่ลงไว้ในสมุดบัญชี (ReceiptVoidReversalTemplate
- * .voidAccrualPostedAtReceipt) — ห้ามใช้ผลของฟังก์ชันนี้หยุดการยกเลิกใบเสร็จ.
+ * **ไม่มีผู้เรียกใน production code อีกแล้ว (PR2ข).** เดิมใช้ตรวจทานรายการกลับรายการตั้งลูกหนี้งวด
+ * ทั้งงวดเป็นก้อนเดียว (คำตัดสินผู้คุมงาน R13) — ตอนนี้ `ReceiptVoidReversalTemplate
+ * .voidAccrualPostedAtReceipt` เล่นซ้ำทีละใบ 2A ที่เคยลง (ทั้งใบบางส่วนและใบที่ทำให้ครบ) ด้วย
+ * `buildPartialAccrual2ALines` + `mirrorAccrual2APart` แทน (ดู accounting.md หัวข้อ "ตรวจทาน") —
+ * ฟังก์ชันนี้เหลือแค่ในเทสของตัวเอง (`build-accrual-2a-lines.spec.ts`). คงไว้โดยตั้งใจ ไม่ลบ.
  */
 export function buildAccrual2AReversalLines(input: Accrual2ALinesInput): Accrual2ALinesResult {
   const built = buildAccrual2ALines(input);

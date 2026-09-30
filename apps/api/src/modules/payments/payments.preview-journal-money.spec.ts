@@ -119,6 +119,10 @@ type ContractStub = {
 
 type InstallmentStub = {
   accrualJournalEntryId: string | null;
+  /** ยอดตั้งลูกหนี้งวดสะสมจากใบรับชำระบางส่วน — previewJournal อ่านเสมอ (ไม่อ่านคอลัมน์ที่ขาดเป็น 0) */
+  accruedAmount: string;
+  accruedVat: string;
+  accruedInterest: string;
   dueDate: Date;
   contract: ContractStub;
   /** Needed to test the park-bucket "last installment" gate (== contract.totalMonths). */
@@ -159,6 +163,9 @@ describe('PaymentsService.previewJournal (characterization)', () => {
   const baseInstallment = (overrides: Partial<InstallmentStub> = {}): InstallmentStub => ({
     // accrualJournalEntryId set → 2B-ONLY path (single Cr 11-2103 clear).
     accrualJournalEntryId: 'je-accrual-1',
+    accruedAmount: '0',
+    accruedVat: '0',
+    accruedInterest: '0',
     dueDate: new Date('2027-01-15'),
     installmentNo: 1,
     contract: baseContract(),

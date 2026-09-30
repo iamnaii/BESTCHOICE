@@ -298,6 +298,91 @@ describe('payment-journal-preview — 2A/2B blocks (integration)', () => {
     ).toEqual(preview.lines.map((l) => key(l.accountCode, l.debit, l.credit)).sort());
   });
 
+  /**
+   * ก1 (คำตอบฝ่ายบัญชี 29/09/2569): รับบางส่วนก่อนวันครบกำหนด — บรรทัด 2A เท่ายอดที่รับที่ preview แสดง
+   * ต้องเท่ากับรายการที่ลงจริงทั้งบรรทัดและวันที่ · ใบที่ทำให้งวดครบ: 2A ส่วนที่เหลือเท่ากันเช่นกัน
+   */
+  it('ก1: รับบางส่วน 1,000 แล้วรับส่วนที่เหลือ 515.83 ก่อนครบกำหนด — 2A ใน preview ตรงกับที่ลงจริงทั้งสองครั้ง', async () => {
+    const journal = new JournalAutoService(prisma as PrismaService);
+    const paidDate = new Date().toISOString().slice(0, 10);
+    // งวดบัญชี FINANCE ของเดือนที่จะลงรายการต้องเปิด — แบบเดียวกับเทสข้างบน (จำสถานะเดิมให้ afterAll คืนค่า)
+    const postingDay = new Date(paidDate);
+    const finance = await prisma.companyInfo.findFirstOrThrow({ where: { companyCode: 'FINANCE' } });
+    const closedPeriods = await prisma.accountingPeriod.findMany({
+      where: {
+        companyId: finance.id,
+        status: { in: ['CLOSED', 'SYNCED'] },
+        year: postingDay.getFullYear(),
+        month: postingDay.getMonth() + 1,
+      },
+      select: { id: true, status: true },
+    });
+    reopenedFinancePeriods.push(...closedPeriods);
+    await prisma.accountingPeriod.updateMany({
+      where: { id: { in: closedPeriods.map((period) => period.id) } },
+      data: { status: 'OPEN' },
+    });
+    const sched8 = await prisma.installmentSchedule.findUniqueOrThrow({
+      where: { contractId_installmentNo: { contractId, installmentNo: 8 } },
+    });
+    const futureDue = new Date(Date.now() + 120 * 86_400_000);
+    await prisma.installmentSchedule.update({ where: { id: sched8.id }, data: { dueDate: futureDue } });
+    await prisma.payment.create({
+      data: {
+        contractId, installmentNo: 8, dueDate: futureDue,
+        amountDue: new Decimal('1515.83'), amountPaid: new Decimal(0),
+      },
+    });
+    const key = (code: string, debit: string, credit: string) =>
+      `${code}:${new Decimal(debit).toFixed(2)}:${new Decimal(credit).toFixed(2)}`;
+    const entryLines = async (entryNumber: string) =>
+      (
+        await prisma.journalEntry.findUniqueOrThrow({ where: { entryNumber }, include: { lines: true } })
+      ).lines
+        .map((l) => key(l.accountCode, l.debit.toString(), l.credit.toString()))
+        .sort();
+    const previewLines = (lines: { accountCode: string; debit: string; credit: string }[]) =>
+      lines.map((l) => key(l.accountCode, l.debit, l.credit)).sort();
+    const receipt = new PaymentReceiptTemplate(journal, prisma as PrismaService);
+
+    // (1) ใบบางส่วน 1,000
+    const partialPreview = await svc.previewJournal({
+      contractId, installmentNo: 8, amountReceived: 1000, depositAccountCode: '11-1201',
+      lateFee: 0, case: 'PARTIAL', paidDate,
+    });
+    expect(partialPreview.accrualPortion).toBe('PARTIAL');
+    expect(partialPreview.subtotals['2A']).toEqual({ debit: '1395.27', credit: '1395.27', balanced: true });
+    const first = await receipt.execute({
+      installmentScheduleId: sched8.id, delta: new Decimal('1000'), debitAccountCode: '11-1201',
+      isFinalReceipt: false, postedAt: new Date(paidDate),
+    });
+    expect(await entryLines(first.accrual!.entryNo)).toEqual(previewLines(partialPreview.accrual2A!.lines));
+    expect(first.accrual!.postedAt.toISOString()).toBe(partialPreview.accrualPostedAt);
+    expect(await entryLines(first.entryNo)).toEqual(previewLines(partialPreview.lines));
+    // template ไม่แตะแถว Payment — จำลองสิ่งที่เส้นทางรับชำระเขียนให้ preview ครั้งถัดไปอ่านยอดที่ชำระแล้ว
+    await prisma.payment.updateMany({
+      where: { contractId, installmentNo: 8 },
+      data: { amountPaid: new Decimal(1000), status: 'PARTIALLY_PAID' },
+    });
+
+    // (2) ใบที่ทำให้งวดครบ 515.83
+    const settlePreview = await svc.previewJournal({
+      contractId, installmentNo: 8, amountReceived: 515.83, depositAccountCode: '11-1201',
+      lateFee: 0, case: 'NORMAL', paidDate,
+    });
+    expect(settlePreview.accrualPortion).toBe('REMAINDER');
+    expect(settlePreview.accruedBefore).toBe('1000.00');
+    const second = await receipt.execute({
+      installmentScheduleId: sched8.id, delta: new Decimal('515.83'), debitAccountCode: '11-1201',
+      isFinalReceipt: true, postedAt: new Date(paidDate),
+    });
+    expect(await entryLines(second.accrual!.entryNo)).toEqual(previewLines(settlePreview.accrual2A!.lines));
+    expect(await entryLines(second.entryNo)).toEqual(previewLines(settlePreview.lines));
+    const after = await prisma.installmentSchedule.findUniqueOrThrow({ where: { id: sched8.id } });
+    expect(after.accrualJournalEntryId).toBe(second.accrual!.entryNo);
+    expect(after.accruedAmount.toFixed(2)).toBe('1515.83');
+  });
+
   // Critical #1 (code-review): a VOIDED accrual (status=VOIDED, deletedAt still null)
   // must NOT be shown as posted 2A context. Run last — it mutates shared state.
   it('excludes a VOIDED accrual from the 2A context (status:POSTED filter)', async () => {

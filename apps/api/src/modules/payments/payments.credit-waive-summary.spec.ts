@@ -519,6 +519,9 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
         installmentNo: 3,
         // 2A already accrued → PARTIAL is allowed (no BadRequest guard).
         accrualJournalEntryId: 'je-2a-1',
+        accruedAmount: '0',
+        accruedVat: '0',
+        accruedInterest: '0',
         dueDate: new Date('2026-06-01'),
         contract: mkContractRow(),
       });
@@ -553,6 +556,9 @@ describe('PaymentsService — credit / waive / daily-summary / partial-preview (
         contractId: 'pv-contract-1',
         installmentNo: 4,
         accrualJournalEntryId: null,
+        accruedAmount: '0',
+        accruedVat: '0',
+        accruedInterest: '0',
         dueDate: new Date('2026-06-01'),
         contract: mkContractRow(),
       });

@@ -1,6 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
 import { bangkokStartOfDay } from '../../../utils/date.util';
 import { formatDateShort } from '../../../utils/thai-date.util';
+import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import { PaymentJournalPreviewService } from './payment-journal-preview.service';
 
 /**
@@ -24,6 +26,26 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
     ['41-1101', '0.00', '500.00'],
     ['21-2101', '0.00', '99.17'],
   ];
+  /** ก1: 2A เท่ายอดที่รับ 1,000 ของงวด 1,515.83 (VAT 65.42 · มูลค่า 934.58 · ดอกเบี้ย 329.85) */
+  const ACCRUAL_2A_PART_1000 = [
+    ['11-2103', '1000.00', '0.00'],
+    ['21-2102', '65.42', '0.00'],
+    ['11-2106', '329.85', '0.00'],
+    ['11-2101', '0.00', '934.58'],
+    ['11-2105', '0.00', '65.42'],
+    ['41-1101', '0.00', '329.85'],
+    ['21-2101', '0.00', '65.42'],
+  ];
+  /** ก1: ส่วนที่เหลือ 515.83 หลังตั้งไปแล้ว 1,000 */
+  const ACCRUAL_2A_REST_515 = [
+    ['11-2103', '515.83', '0.00'],
+    ['21-2102', '33.75', '0.00'],
+    ['11-2106', '170.15', '0.00'],
+    ['11-2101', '0.00', '482.08'],
+    ['11-2105', '0.00', '33.75'],
+    ['41-1101', '0.00', '170.15'],
+    ['21-2101', '0.00', '33.75'],
+  ];
   type Line = { accountCode: string; debit: string; credit: string; block: string; posted: boolean };
   const triples = (lines: Line[]) => lines.map((l) => [l.accountCode, l.debit, l.credit]);
 
@@ -32,6 +54,14 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
     dueDate: Date = new Date('2026-06-08'), // past due → BACKFILL classification
     status: string = 'ACTIVE',
     advanceBalance: string = '0', // เครดิตคงเหลือของลูกค้า (เงินรับล่วงหน้า)
+    extra: {
+      /** ยอดที่ตั้งลูกหนี้งวดไปแล้วของงวด (คอลัมน์ accrued*) */
+      accrued?: { amount: string; vat: string; interest: string };
+      /** ยอดที่ชำระแล้วบนแถวงวด */
+      amountPaid?: string;
+      /** ยอด Cr 11-2103 ของใบรับชำระก่อนหน้า (reconstructPriorCleared) */
+      priorReceipts?: string[];
+    } = {},
   ) {
     const contract = {
       id: 'c1',
@@ -52,11 +82,26 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
           installmentNo: 1,
           accrualJournalEntryId,
           dueDate,
+          // คอลัมน์ยอดสะสมมีทุกแถวจริง (ค่าเริ่มต้น 0) — accruedSoFarOf ไม่อ่านช่องที่หายเป็น 0
+          accruedAmount: extra.accrued?.amount ?? '0',
+          accruedVat: extra.accrued?.vat ?? '0',
+          accruedInterest: extra.accrued?.interest ?? '0',
           contract,
         }),
       },
-      payment: { findFirst: jest.fn().mockResolvedValue({ amountDue: '1515.83', amountPaid: '0' }) },
-      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
+      payment: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ amountDue: '1515.83', amountPaid: extra.amountPaid ?? '0' }),
+      },
+      journalEntry: {
+        findMany: jest.fn().mockResolvedValue(
+          (extra.priorReceipts ?? []).map((credit) => ({
+            metadata: { tag: 'receipt', installmentScheduleId: 'inst-1' },
+            lines: [{ accountCode: '11-2103', debit: '0', credit }],
+          })),
+        ),
+      },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
     } as never;
     return new PaymentJournalPreviewService(prisma, undefined);
@@ -106,25 +151,105 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
     expect(triples(preview.accrual2A!.lines as Line[])).toEqual(ACCRUAL_2A_LINES);
   });
 
-  it('จ่ายบางส่วนของงวดที่ยังไม่ถึงกำหนด: ยังถูกปฏิเสธ — ข้อความบอกให้รับเต็มงวดหรือรอถึงวันครบกำหนด', async () => {
+  it('จ่ายบางส่วน 1,000 ของงวดที่ยังไม่ถึงกำหนด (ก1): ไม่มีด่านแล้ว — แสดง 2A เท่ายอดที่รับ ลงวันที่รับเงิน', async () => {
     const futureDue = new Date(Date.now() + 30 * 86_400_000);
     const svc = buildService(null, futureDue);
+    const paidDate = new Date().toISOString().slice(0, 10);
 
-    const err = await svc
-      .previewJournal({
-        contractId: 'c1',
-        installmentNo: 1,
-        amountReceived: 1000,
-        depositAccountCode: '11-1101',
-        case: 'PARTIAL',
-      } as never)
-      .catch((e: Error) => e);
+    const preview = await svc.previewJournal({
+      contractId: 'c1',
+      installmentNo: 1,
+      amountReceived: 1000,
+      depositAccountCode: '11-1101',
+      case: 'PARTIAL',
+      paidDate,
+    } as never);
 
-    expect(err).toBeInstanceOf(BadRequestException);
-    expect((err as Error).message).toBe(
-      `งวดนี้ยังไม่ถึงวันครบกำหนด (${formatDateShort(futureDue)}) ระบบจึงยังไม่ได้ตั้งลูกหนี้งวด — ` +
-        'หน้านี้จึงยังบันทึกรับชำระบางส่วนไม่ได้ กรุณารับชำระเต็มงวด หรือรอให้ถึงวันครบกำหนดแล้วจึงรับชำระบางส่วน',
-    );
+    expect(triples(preview.lines as Line[])).toEqual([
+      ['11-1101', '1000.00', '0.00'],
+      ['11-2103', '0.00', '1000.00'],
+    ]);
+    expect(triples(preview.accrual2A!.lines as Line[])).toEqual(ACCRUAL_2A_PART_1000);
+    expect((preview.accrual2A!.lines as Line[]).every((l) => l.block === '2A' && !l.posted)).toBe(true);
+    expect(preview.subtotals['2A']).toEqual({ debit: '1395.27', credit: '1395.27', balanced: true });
+    expect(preview.accrualMode).toBe('CONSOLIDATED_PAYING_AHEAD');
+    expect(preview.accrualPostedAt).toBe(new Date(paidDate).toISOString());
+    expect(preview.accrualPortion).toBe('PARTIAL');
+    expect(preview.accrualAmount).toBe('1000.00');
+    expect(preview.accruedBefore).toBe('0.00');
+    expect(preview.isBalanced).toBe(true);
+  });
+
+  it('ก1: ใบที่ทำให้งวดชำระครบหลังตั้งไปแล้ว 1,000 → แสดง 2A ส่วนที่เหลือ 515.83', async () => {
+    const futureDue = new Date(Date.now() + 30 * 86_400_000);
+    const svc = buildService(null, futureDue, 'ACTIVE', '0', {
+      accrued: { amount: '1000.00', vat: '65.42', interest: '329.85' },
+      amountPaid: '1000.00',
+      priorReceipts: ['1000.00'],
+    });
+
+    const preview = await svc.previewJournal({
+      contractId: 'c1',
+      installmentNo: 1,
+      amountReceived: 515.83,
+      depositAccountCode: '11-1101',
+    } as never);
+
+    expect(triples(preview.lines as Line[])).toEqual([
+      ['11-1101', '515.83', '0.00'],
+      ['11-2103', '0.00', '515.83'],
+    ]);
+    expect(triples(preview.accrual2A!.lines as Line[])).toEqual(ACCRUAL_2A_REST_515);
+    expect(preview.accrualPortion).toBe('REMAINDER');
+    expect(preview.accrualAmount).toBe('515.83');
+    expect(preview.accruedBefore).toBe('1000.00');
+  });
+
+  it('ก1: รับบางส่วนครั้งที่สอง (ตั้งไปแล้ว 500) → แสดง 2A เท่ายอดที่รับ 600 ตามยอดสะสม', async () => {
+    const futureDue = new Date(Date.now() + 30 * 86_400_000);
+    const svc = buildService(null, futureDue, 'ACTIVE', '0', {
+      accrued: { amount: '500.00', vat: '32.71', interest: '164.93' },
+      amountPaid: '500.00',
+      priorReceipts: ['500.00'],
+    });
+
+    const preview = await svc.previewJournal({
+      contractId: 'c1',
+      installmentNo: 1,
+      amountReceived: 600,
+      depositAccountCode: '11-1101',
+      case: 'PARTIAL',
+    } as never);
+
+    expect(triples(preview.accrual2A!.lines as Line[])).toEqual([
+      ['11-2103', '600.00', '0.00'],
+      ['21-2102', '39.25', '0.00'],
+      ['11-2106', '197.91', '0.00'],
+      ['11-2101', '0.00', '560.75'],
+      ['11-2105', '0.00', '39.25'],
+      ['41-1101', '0.00', '197.91'],
+      ['21-2101', '0.00', '39.25'],
+    ]);
+    expect(preview.accrualPortion).toBe('PARTIAL');
+    expect(preview.accruedBefore).toBe('500.00');
+  });
+
+  it('จ่ายบางส่วนย้อนวันที่ (paidDate ก่อนวันครบกำหนด) ขณะวันนี้ถึงวันครบกำหนดแล้ว → ตัดสินตามวันที่รับเงินแบบเดียวกับการบันทึก: ไม่มีด่าน แสดง 2A บางส่วน', async () => {
+    const dueToday = bangkokStartOfDay(new Date());
+    const svc = buildService(null, dueToday);
+    const twoDaysBefore = new Date(dueToday.getTime() - 2 * 86_400_000).toISOString().slice(0, 10);
+
+    const preview = await svc.previewJournal({
+      contractId: 'c1',
+      installmentNo: 1,
+      amountReceived: 1000,
+      depositAccountCode: '11-1101',
+      case: 'PARTIAL',
+      paidDate: twoDaysBefore,
+    } as never);
+
+    expect(triples(preview.accrual2A!.lines as Line[])).toEqual(ACCRUAL_2A_PART_1000);
+    expect(preview.accrualMode).toBe('CONSOLIDATED_PAYING_AHEAD');
   });
 
   it('จ่ายบางส่วนของงวดที่ถึงกำหนดแล้วแต่ยังไม่ตั้งลูกหนี้: ยังถูกปฏิเสธ — ข้อความบอกให้รับเต็มงวดหรือติดต่อฝ่ายบัญชี', async () => {
@@ -219,28 +344,27 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
     expect((err as Error).message).not.toContain('เลยกำหนด');
   });
 
-  it('เลือกชำระผ่าน QR แล้วกรอกยอดบางส่วนของงวดที่ยังไม่ถึงวันครบกำหนด: ข้อความของโหมด QR — ไม่บอกว่ารับบางส่วนไม่ได้', async () => {
+  it('เลือกชำระผ่าน QR แล้วกรอกยอดบางส่วนของงวดที่ยังไม่ถึงวันครบกำหนด (ก1): แสดง 2A เท่ายอดที่รับ — วันที่ลง = ตอนนี้ (เงินเข้าจริงอย่างเร็ว)', async () => {
     const futureDue = new Date(Date.now() + 30 * 86_400_000);
     const svc = buildService(null, futureDue);
+    const before = Date.now();
 
-    const err = await svc
-      .previewJournal({
-        contractId: 'c1',
-        installmentNo: 1,
-        amountReceived: 1000,
-        depositAccountCode: '11-1201',
-        case: 'PARTIAL',
-        method: 'QR',
-      } as never)
-      .catch((e: Error) => e);
+    const preview = await svc.previewJournal({
+      contractId: 'c1',
+      installmentNo: 1,
+      amountReceived: 1000,
+      depositAccountCode: '11-1201',
+      case: 'PARTIAL',
+      method: 'QR',
+      // วันที่บนหน้าจอไม่ใช่วันที่เงินเข้า — ไม่ถูกใช้ในโหมด QR
+      paidDate: '2026-01-01',
+    } as never);
 
-    expect(err).toBeInstanceOf(BadRequestException);
-    expect((err as Error).message).toBe(
-      `งวดนี้ยังไม่ถึงวันครบกำหนด (${formatDateShort(futureDue)}) ระบบจึงยังไม่ได้ตั้งลูกหนี้งวด — ` +
-        'แผงนี้จึงยังแสดงรายการบัญชีของยอดบางส่วนไม่ได้ การส่ง QR ยอดนี้ยังทำได้ตามเดิม',
-    );
-    expect((err as Error).message).not.toContain('บันทึกรับชำระบางส่วนไม่ได้');
-    expect((err as Error).message).not.toContain('กรุณารับชำระเต็มงวด');
+    expect(triples(preview.accrual2A!.lines as Line[])).toEqual(ACCRUAL_2A_PART_1000);
+    expect(preview.accrualPortion).toBe('PARTIAL');
+    const postedAt = new Date(preview.accrualPostedAt!).getTime();
+    expect(postedAt).toBeGreaterThanOrEqual(before);
+    expect(postedAt).toBeLessThanOrEqual(Date.now());
   });
 
   it('เลือกชำระผ่าน QR แล้วกรอกยอดบางส่วนของงวดที่ถึงวันครบกำหนดแล้วแต่ยังไม่ตั้งลูกหนี้: ข้อความของโหมด QR', async () => {
@@ -288,7 +412,7 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
     expect(viaQr).toBeInstanceOf(BadRequestException);
     expect((viaQr as Error).message).toBe(
       'การชำระผ่าน QR ไม่หักเครดิตคงเหลือของลูกค้า — ยอด QR 1,015.83 บาท จึงยังไม่ครบยอดที่ต้องชำระของงวดนี้ (1,515.83 บาท) ' +
-        'เมื่อเงินเข้า ระบบจะบันทึกเป็นการรับชำระบางส่วน และยังไม่ตั้งลูกหนี้งวด (2A) ' +
+        'เมื่อเงินเข้า ระบบจะบันทึกเป็นการรับชำระบางส่วน และตั้งลูกหนี้งวด (2A) เท่ายอดที่รับ ' +
         'หากต้องการให้งวดนี้ชำระครบเมื่อเงินเข้า ให้นำเครื่องหมายถูกออกจากกล่อง "มีเครดิตคงเหลือ" เพื่อส่ง QR เต็มยอด',
     );
 
@@ -315,6 +439,28 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
       ['11-2103', '0.00', '1515.83'],
     ]);
     expect(fullQr.accrualMode).toBe('CONSOLIDATED_PAYING_AHEAD');
+  });
+
+  it('R17 เมื่อถึงวันครบกำหนดแล้ว (รอบกลางคืนตกหล่น): ประโยคเดิม "ยังไม่ตั้งลูกหนี้งวด (2A)" — ใบบางส่วนตั้งแต่วันครบกำหนดไม่ลง 2A', async () => {
+    const svc = buildService(null, new Date('2026-06-08'), 'ACTIVE', '500');
+
+    const err = await svc
+      .previewJournal({
+        contractId: 'c1',
+        installmentNo: 1,
+        amountReceived: 1015.83,
+        depositAccountCode: '11-1201',
+        case: 'NORMAL',
+        consumeAdvance: true,
+        method: 'QR',
+        lateFee: 0,
+      } as never)
+      .catch((e: Error) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as Error).message).toContain(
+      'เมื่อเงินเข้า ระบบจะบันทึกเป็นการรับชำระบางส่วน และยังไม่ตั้งลูกหนี้งวด (2A) ',
+    );
   });
 
   // R17 ด้านกลับ: ประโยคของโหมด QR ใช้เฉพาะงวดที่ยังไม่ตั้งลูกหนี้งวดของสัญญาที่รอบกลางคืนดูแล —
@@ -382,5 +528,148 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
     // ตั้งลูกหนี้ไปแล้ว → ไม่มีวันที่ "จะลง 2A" และไม่มีบล็อก 2A ที่ยังไม่ลง
     expect(preview.accrualPostedAt).toBeUndefined();
     expect(preview.accrual2A).toBeUndefined(); // journalEntry.findMany mock คืน [] = ไม่มีบริบท 2A
+  });
+
+  it('งวดที่ถึงวันครบกำหนดแล้วและตั้งไปแล้วบางส่วน (รอบกลางคืนตกหล่น): ด่านรับบางส่วนใช้ถ้อยคำ "ยังตั้งลูกหนี้งวดไม่ครบ" ตรงกับป้ายของแผง', async () => {
+    const svc = buildService(null, new Date('2026-06-08'), 'ACTIVE', '0', {
+      accrued: { amount: '1000.00', vat: '65.42', interest: '329.85' },
+      amountPaid: '1000',
+      priorReceipts: ['1000'],
+    });
+
+    const err = await svc
+      .previewJournal({
+        contractId: 'c1',
+        installmentNo: 1,
+        amountReceived: 300,
+        depositAccountCode: '11-1101',
+        case: 'PARTIAL',
+      } as never)
+      .catch((e: Error) => e);
+
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect((err as Error).message).toBe(
+      'งวดนี้ถึงวันครบกำหนดแล้ว (08/06/2569) แต่ระบบยังตั้งลูกหนี้งวดไม่ครบ — ' +
+        'หน้านี้จึงยังบันทึกรับชำระบางส่วนไม่ได้ กรุณารับชำระเต็มงวด หรือติดต่อฝ่ายบัญชีให้ตรวจสอบงวดนี้ก่อนรับชำระบางส่วน',
+    );
+  });
+
+  describe("QR ที่ยอดยังไม่ครบยอดที่ต้องชำระ และไม่มีเครดิต — preview === สิ่งที่ recordPayment(…, 'PARTIAL', …) ลง (คำตัดสินผู้คุมงาน 2026-09-30 ข้อ 3)", () => {
+    /**
+     * ลงใบรับชำระจริง (PaymentReceiptTemplate + InstallmentAccrual2ATemplate ตัวจริง) บน mock ของงวดเดียวกับ
+     * buildService — isFinalReceipt: false แบบที่ recordPayment ส่งเมื่อ case 'PARTIAL' (เส้นทางยืนยันของ QR)
+     * คืนบรรทัดของรายการ 2A และใบรับชำระตามลำดับที่ลง
+     */
+    async function postPartialReceipt(amount: string, dueDate: Date) {
+      const contract = {
+        id: 'c1',
+        contractNumber: 'CT-0001',
+        status: 'ACTIVE',
+        totalMonths: 12,
+        financedAmount: new Decimal('10000'),
+        storeCommission: new Decimal('1000'),
+        interestTotal: new Decimal('6000'),
+        vatAmount: new Decimal('1190'),
+        advanceBalance: new Decimal('0'),
+        rescheduleAdvanceBalance: new Decimal('0'),
+      };
+      const inst = {
+        id: 'inst-1',
+        contractId: 'c1',
+        installmentNo: 1,
+        dueDate,
+        accrualJournalEntryId: null,
+        accruedAmount: new Decimal('0'),
+        accruedVat: new Decimal('0'),
+        accruedInterest: new Decimal('0'),
+        contract,
+      };
+      const createAndPost = jest
+        .fn()
+        .mockResolvedValueOnce({ id: 'je-2a', entryNumber: 'JE-202610-00001' })
+        .mockResolvedValueOnce({ id: 'je-receipt', entryNumber: 'JE-202610-00002' });
+      const tx = {
+        installmentSchedule: {
+          findUniqueOrThrow: jest.fn().mockResolvedValue(inst),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        contract: { findUniqueOrThrow: jest.fn().mockResolvedValue(contract) },
+        journalEntry: {
+          findMany: jest.fn().mockResolvedValue([]), // ไม่มีใบรับชำระก่อนหน้า
+          findFirst: jest.fn().mockResolvedValue(null), // reference ว่างทุกค่า
+        },
+        systemConfig: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
+        companyInfo: { findFirst: jest.fn().mockResolvedValue({ id: 'finance-co' }) },
+        accountingPeriod: { findUnique: jest.fn().mockResolvedValue(null) },
+      };
+      await new PaymentReceiptTemplate({ createAndPost } as never, {} as never).execute(
+        {
+          installmentScheduleId: 'inst-1',
+          delta: new Decimal(amount),
+          debitAccountCode: '11-1201',
+          isFinalReceipt: false,
+          postedAt: new Date(),
+          contractStatusBeforeReceipt: 'ACTIVE',
+        },
+        tx as never,
+      );
+      expect(createAndPost).toHaveBeenCalledTimes(2);
+      const linesOf = (call: number) =>
+        (
+          createAndPost.mock.calls[call][0] as {
+            lines: { accountCode: string; dr: Decimal; cr: Decimal }[];
+          }
+        ).lines.map((l) => [l.accountCode, l.dr.toFixed(2), l.cr.toFixed(2)]);
+      return { accrual2A: linesOf(0), receipt: linesOf(1) };
+    }
+
+    it('QR 1,515.33 (ขาด 0.50 — หน้าจอส่ง case UNDERPAY) ของงวดที่ยังไม่ถึงกำหนด → บล็อก 2A และบล็อกรับชำระตรงกับที่ลงจริงทุกบรรทัด · ไม่มี 52-1104', async () => {
+      const futureDue = new Date(Date.now() + 20 * 86_400_000);
+      const preview = await buildService(null, futureDue).previewJournal({
+        contractId: 'c1',
+        installmentNo: 1,
+        amountReceived: 1515.33,
+        depositAccountCode: '11-1201',
+        case: 'UNDERPAY',
+        method: 'QR',
+      } as never);
+      const posted = await postPartialReceipt('1515.33', futureDue);
+
+      expect(posted.receipt).toEqual([
+        ['11-1201', '1515.33', '0.00'],
+        ['11-2103', '0.00', '1515.33'],
+      ]);
+      // VAT HALF_UP(1,515.33 × 7 ÷ 107 = 99.1337…) · ดอกเบี้ย HALF_UP(500 × 1,416.20 ÷ 1,416.66 = 499.8376…)
+      expect(posted.accrual2A).toEqual([
+        ['11-2103', '1515.33', '0.00'],
+        ['21-2102', '99.13', '0.00'],
+        ['11-2106', '499.84', '0.00'],
+        ['11-2101', '0.00', '1416.20'],
+        ['11-2105', '0.00', '99.13'],
+        ['41-1101', '0.00', '499.84'],
+        ['21-2101', '0.00', '99.13'],
+      ]);
+      expect(triples(preview.lines as Line[])).toEqual(posted.receipt);
+      expect(triples(preview.accrual2A!.lines as Line[])).toEqual(posted.accrual2A);
+      expect(preview.accrualPortion).toBe('PARTIAL');
+      expect(preview.lines.some((l) => l.accountCode === '52-1104')).toBe(false);
+
+      // เท่ากับ preview ของ case 'PARTIAL' ยอดเดียวกันทุกบรรทัด
+      const asPartial = await buildService(null, futureDue).previewJournal({
+        contractId: 'c1',
+        installmentNo: 1,
+        amountReceived: 1515.33,
+        depositAccountCode: '11-1201',
+        case: 'PARTIAL',
+        method: 'QR',
+      } as never);
+      expect(triples(asPartial.lines as Line[])).toEqual(triples(preview.lines as Line[]));
+      expect(triples(asPartial.accrual2A!.lines as Line[])).toEqual(
+        triples(preview.accrual2A!.lines as Line[]),
+      );
+    });
   });
 });

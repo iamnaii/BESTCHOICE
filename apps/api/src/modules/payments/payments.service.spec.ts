@@ -1035,6 +1035,9 @@ describe('PaymentsService', () => {
       installmentNo: 2,
       dueDate: new Date('2025-12-26'),
       accrualJournalEntryId: null, // NOT yet accrued — consolidated path
+      accruedAmount: '0',
+      accruedVat: '0',
+      accruedInterest: '0',
       contract: mockContractFull,
     };
 

@@ -2,6 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityScope, ensureTaxTypeAllowedForEntity } from '../tax-entity.util';
+import {
+  PP30_MANDATORY_60DAY_VAT_ACCOUNT,
+  PP30_SETTLED_VAT_ACCOUNT,
+  computePp30OutputVat,
+  toPp30OutputVatJson,
+} from '../pp30-output-vat';
 
 /**
  * TaxPreviewService — read-only VAT/WHT preview computations.
@@ -16,112 +22,45 @@ export class TaxPreviewService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * ภ.พ.30 Preview — VAT output (ภาษีขาย) vs VAT input (ภาษีซื้อ)
+   * ภ.พ.30 Preview — ภาษีขาย (Output VAT) เทียบภาษีซื้อ (Input VAT)
    *
-   * Critical #2 fix: Output VAT is sourced from JournalLine Cr to 21-2101
-   * (settled VAT — ภ.พ.30) + 21-2103 (60-day mandatory VAT) within the
-   * period. The previous implementation summed `Payment.vatAmount` only —
-   * which silently undercounted VAT from:
-   *   - 21-2103 mandatory 60-day overdue VAT (Vat60dayMandatoryTemplate)
-   *   - 2A accrual (Dr 11-2105 / Cr 21-2102 — until cleared to 21-2101)
-   *   - JP4 early payoff (reverses 21-2106 and clears VAT to 21-2101)
-   *   - JP5 repossession output VAT
-   *   - OtherIncomeTemplate (42-1105 disposal gain VAT, etc.)
-   *   - Asset disposal VAT (Cr 21-2101)
+   * ภาษีขายมาจากตัวคำนวณเดียวของระบบ `computePp30OutputVat` (`../pp30-output-vat.ts`) — ตัวเดียวกับหน้า
+   * `/finance/vat`: Σ(เครดิต − เดบิต) ของ 21-2101 · POSTED · `companyId` ที่ส่งมา · เดือนตามวันที่ของรายการ
+   * (`entryDate`) ปฏิทินไทย. รายการกลับรายการและใบลดหนี้ ม.82/5 จึงลดภาษีขายของเดือนที่ลงรายการ (ก่อน 2026-09-30
+   * นับเฉพาะเครดิตตาม `postedAt` ⇒ ใบลดหนี้ไม่ลดยอด และรายการกลับรายการไม่ถูกหัก).
    *
-   * Journal-based totals are the single source of truth. Payment-level
-   * vatOutputLineItems is kept as a UI breakdown for source detail only;
-   * the totals reported to RD are computed from journal lines.
+   * ภาษีขาย 60 วัน (21-2103): **ไม่รวมใน `totalVatOutput` / `netVat` แล้ว** (คำตัดสินผู้คุมงาน 2026-09-30 — กลับคำตัดสิน
+   * "Critical #2" เดิมที่รวม 21-2103 ระหว่างรอฝ่ายบัญชีวินิจฉัย เพราะงวดที่ตั้งลูกหนี้งวดแล้วมีภาษีทั้งใน 21-2101 และ 21-2103)
+   * — รายงานแยกใน `totalVatMandatory60Day` / `outputVatBreakdown.mandatory60Day*` / `lineItems.mandatoryVat60Day`
+   * (`PP30_INCLUDES_MANDATORY_60DAY`).
+   *
+   * ภาษีซื้อ / ยอดขาย / บรรทัดขาย-ซื้อ — กติกาเดิมทุกประการ (`postedAt` ในเดือนตามเวลาของโปรเซส).
+   * ผู้ใช้ผลลัพธ์: `GET /tax/pp30-preview` · `GET /tax/export-xlsx?form=PP30` · `POST /tax/generate` (TaxReport) ·
+   * snapshot ปิดงวดรายเดือน (`MonthlyCloseService.generateReportSnapshots`).
    */
   async previewPP30(companyId: string, year: number, month: number, entityScope?: EntityScope) {
     // SP7.5: PP30 is FINANCE-only (SHOP is not VAT-registered)
     if (entityScope) {
       ensureTaxTypeAllowedForEntity(entityScope, 'PP30');
     }
+    // ตรวจปี/เดือนก่อน query อื่น (ค่าผิดรูป = 400 "ปี/เดือนไม่ถูกต้อง")
+    const output = await computePp30OutputVat(this.prisma, { companyId, year, month });
     const { startDate, endDate } = this.getDateRange(year, month);
 
     // Get branches belonging to this company
     const branchIds = await this.getBranchIds(companyId);
 
-    // ── Output VAT side — JOURNAL-BASED (Critical #2) ────────────────────
-    // Settled output VAT: Cr 21-2101 (the account ภ.พ.30 actually filed on)
-    const settledOutputLines = await this.prisma.journalLine.findMany({
-      where: {
-        accountCode: '21-2101',
-        credit: { gt: 0 },
-        deletedAt: null,
-        journalEntry: {
-          deletedAt: null,
-          status: 'POSTED',
-          companyId,
-          postedAt: { gte: startDate, lte: endDate },
-        },
-      },
-      include: {
-        journalEntry: {
-          select: {
-            id: true,
-            entryNumber: true,
-            entryDate: true,
-            postedAt: true,
-            referenceType: true,
-            referenceId: true,
-            description: true,
-          },
-        },
-      },
-      orderBy: { journalEntry: { postedAt: 'asc' } },
-    });
+    const zero = new Prisma.Decimal(0);
 
-    // Mandatory 60-day overdue VAT — ม.78/2 (Vat60dayMandatoryTemplate)
-    // Recognized separately so accountant can see the split between
-    // "VAT we received cash on" vs "VAT we owe by law on overdue receivables"
-    const mandatoryVat60DayLines = await this.prisma.journalLine.findMany({
-      where: {
-        accountCode: '21-2103',
-        credit: { gt: 0 },
-        deletedAt: null,
-        journalEntry: {
-          deletedAt: null,
-          status: 'POSTED',
-          companyId,
-          postedAt: { gte: startDate, lte: endDate },
-        },
-      },
-      include: {
-        journalEntry: {
-          select: {
-            id: true,
-            entryNumber: true,
-            entryDate: true,
-            postedAt: true,
-            referenceType: true,
-            description: true,
-          },
-        },
-      },
-      orderBy: { journalEntry: { postedAt: 'asc' } },
-    });
-
-    const totalVatSettled = settledOutputLines.reduce(
-      (s, l) => s.add(l.credit ?? new Prisma.Decimal(0)),
-      new Prisma.Decimal(0),
-    );
-    const totalVatMandatory60Day = mandatoryVat60DayLines.reduce(
-      (s, l) => s.add(l.credit ?? new Prisma.Decimal(0)),
-      new Prisma.Decimal(0),
-    );
-    // ภ.พ.30 reports BOTH — settled (paid this month) + mandatory (60-day overdue).
-    // Both are output VAT owed to RD for the period.
-    const totalVatOutput = totalVatSettled.add(totalVatMandatory60Day);
-
-    // Aggregate by referenceType so the UI / report can break down the source
-    // (PAYMENT, OTHER_INCOME, REPOSSESSION, etc.)
+    // 21-2101 สุทธิ (เครดิต − เดบิต) แยกตาม referenceType — รวมกันเท่ากับ totalVatSettled
+    // (เดิมนับเฉพาะเครดิต จึงรวมกันไม่เท่ายอดเมื่อเดือนมีรายการกลับรายการ/ใบลดหนี้)
     const outputBySource = new Map<string, Prisma.Decimal>();
-    for (const line of settledOutputLines) {
+    for (const line of output.lines) {
+      if (line.accountCode !== PP30_SETTLED_VAT_ACCOUNT) continue;
+      const net = (line.credit ?? zero).sub(line.debit ?? zero);
+      if (net.isZero()) continue;
       const refType = line.journalEntry.referenceType ?? 'OTHER';
-      const current = outputBySource.get(refType) ?? new Prisma.Decimal(0);
-      outputBySource.set(refType, current.add(line.credit ?? new Prisma.Decimal(0)));
+      outputBySource.set(refType, (outputBySource.get(refType) ?? zero).add(net));
     }
 
     // Source detail for the UI: Payment.vatAmount within period (backward
@@ -152,14 +91,16 @@ export class TaxPreviewService {
         })
       : [];
 
-    const totalSales = payments.reduce((sum, p) => sum.add(p.amountPaid), new Prisma.Decimal(0));
+    const totalSales = payments.reduce((sum, p) => sum.add(p.amountPaid), zero);
 
     // ── Input VAT side — UNCHANGED (already journal-based; verified correct) ─
     const expenses = await this.getInputVatLineItems(branchIds, startDate, endDate);
 
-    const totalPurchases = expenses.reduce((s, e) => s.add(e.totalAmount), new Prisma.Decimal(0));
-    const totalVatInput = expenses.reduce((s, e) => s.add(e.vatAmount), new Prisma.Decimal(0));
+    const totalPurchases = expenses.reduce((s, e) => s.add(e.totalAmount), zero);
+    const totalVatInput = expenses.reduce((s, e) => s.add(e.vatAmount), zero);
 
+    // ภาษีขายของ ภ.พ.30 = 21-2101 สุทธิ (ภาษีขาย 60 วันไม่รวม — PP30_INCLUDES_MANDATORY_60DAY)
+    const totalVatOutput = output.totalOutputVat;
     const netVat = totalVatOutput.sub(totalVatInput);
 
     const salesLineItems = payments.map((p) => ({
@@ -182,26 +123,35 @@ export class TaxPreviewService {
       vatAmount: e.vatAmount,
     }));
 
-    // Mandatory 60-day VAT — separate breakdown so accountant can see what
-    // portion of total VAT output came from the 21-2103 cron (no cash received)
-    const mandatoryVat60DayItems = mandatoryVat60DayLines.map((line) => ({
-      date: line.journalEntry.postedAt ?? line.journalEntry.entryDate,
-      entryNumber: line.journalEntry.entryNumber,
-      description: line.journalEntry.description,
-      referenceType: line.journalEntry.referenceType,
-      vatAmount: line.credit,
+    // ภาษีขาย 60 วัน (21-2103) รายบรรทัด (ข้อมูลประกอบ) — vatAmount = เครดิต − เดบิต (บรรทัดกลับรายการเป็นค่าติดลบ)
+    const mandatoryVat60DayItems = output.lines
+      .filter((line) => line.accountCode === PP30_MANDATORY_60DAY_VAT_ACCOUNT)
+      .map((line) => ({
+        date: line.journalEntry.entryDate,
+        entryNumber: line.journalEntry.entryNumber,
+        description: line.journalEntry.description,
+        referenceType: line.journalEntry.referenceType,
+        vatAmount: (line.credit ?? zero).sub(line.debit ?? zero),
+      }));
+
+    // เดบิต 21-2101 ที่ลดภาษีขายของเดือน พร้อมที่มา (กลับรายการ / ใบลดหนี้ / อื่น ๆ)
+    const outputVatReductionItems = output.reductionLines.map((r) => ({
+      date: r.entryDate,
+      entryNumber: r.entryNumber,
+      description: r.description,
+      kind: r.kind,
+      vatAmount: r.amount,
     }));
 
     return {
       totalSales,
-      // ── Output VAT (journal-sourced) ───────────────────────────────────
+      // ── Output VAT (single computation — pp30-output-vat.ts) ────────────
       totalVatOutput,
-      totalVatSettled, // Cr 21-2101 — paid output VAT
-      totalVatMandatory60Day, // Cr 21-2103 — 60-day overdue mandatory VAT
-      vatOutputBySource: Object.fromEntries(
-        Array.from(outputBySource.entries()).map(([k, v]) => [k, v]),
-      ),
-      // ── Input VAT (already journal-sourced) ────────────────────────────
+      totalVatSettled: output.settledNet, // 21-2101 สุทธิ (เครดิต − เดบิต)
+      totalVatMandatory60Day: output.mandatory60Day.net, // 21-2103 สุทธิ — ข้อมูลประกอบ ไม่รวมใน totalVatOutput
+      outputVatBreakdown: toPp30OutputVatJson(output),
+      vatOutputBySource: Object.fromEntries(outputBySource),
+      // ── Input VAT (unchanged) ──────────────────────────────────────────
       totalPurchases,
       totalVatInput,
       netVat,
@@ -209,6 +159,7 @@ export class TaxPreviewService {
         sales: salesLineItems,
         purchases: purchaseLineItems,
         mandatoryVat60Day: mandatoryVat60DayItems,
+        outputVatReductions: outputVatReductionItems,
       },
     };
   }

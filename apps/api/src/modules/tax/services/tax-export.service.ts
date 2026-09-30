@@ -80,6 +80,21 @@ export class TaxExportService {
       summary3.getCell('description').value = 'ภาษีที่ต้องชำระ (Net VAT)';
       summary3.getCell('vat').value = Number(data.netVat);
       summary3.font = { bold: true };
+      // ภาษีขาย 60 วัน (21-2103) — ข้อมูลประกอบแยก ไม่รวมในยอดข้างบนจนกว่าฝ่ายบัญชีจะตอบ
+      // (PP30_INCLUDES_MANDATORY_60DAY ใน ../pp30-output-vat.ts — เปลี่ยนค่าแล้วต้องแก้ข้อความสามแถวนี้)
+      const m60 = data.outputVatBreakdown;
+      const m60Rows: [string, string][] = [
+        ['ภาษีขาย 60 วัน (21-2103) — ตั้งในเดือน', m60.mandatory60DayCredit],
+        ['ภาษีขาย 60 วัน (21-2103) — กลับรายการ', m60.mandatory60DayDebit],
+        [
+          'ภาษีขาย 60 วัน (21-2103) — สุทธิ (ยังไม่รวมในยอดข้างบน รอฝ่ายบัญชีวินิจฉัย)',
+          m60.mandatory60DayNet,
+        ],
+      ];
+      for (const [label, amount] of m60Rows) {
+        const row = sheet.addRow({ category: 'ข้อมูลประกอบ', description: label });
+        row.getCell('vat').value = Number(amount);
+      }
     } else if (form === 'PND1') {
       const data = await this.preview.previewPND1(companyId, year, month);
       const sheet = workbook.addWorksheet(`PND1-${periodLabel}`);

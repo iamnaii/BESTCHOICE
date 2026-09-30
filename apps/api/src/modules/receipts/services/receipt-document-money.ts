@@ -31,6 +31,12 @@ export interface ReceiptMoneyView {
     kind: 'INSTALLMENT' | 'RESCHEDULE_ADVANCE';
   }> | null;
   receiptAdvanceAmount?: string | null;
+  /** ค่าที่เก็บ ณ ตอนออกใบ (PR3) — ครบทั้ง 7 ช่อง (รวม amountBeforeVat / vatAmount) = พิมพ์จากค่าที่เก็บ */
+  roundingAmount?: DecimalLike;
+  lateFeeAmount?: DecimalLike;
+  lateFeeWaivedAmount?: DecimalLike;
+  advanceAmount?: DecimalLike;
+  advanceVatAmount?: DecimalLike;
   contract?: {
     financedAmount?: DecimalLike;
     storeCommission?: DecimalLike;
@@ -263,5 +269,92 @@ export function legacyReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
     vatPart,
     advanceOnly,
     displayedInstallmentNo: advanceOnly ? advanceAllocations[0]?.installmentNo : view.installmentNo,
+  };
+}
+
+/** ใบนี้เก็บค่าที่ต้องพิมพ์ ณ ตอนออกใบครบทุกช่องหรือไม่ (ใบที่ออกตั้งแต่ PR3 + ใบลดหนี้ที่คัดลอกจากใบเหล่านั้น) */
+export function hasStoredReceiptTax(view: ReceiptMoneyView): boolean {
+  return [
+    view.amountBeforeVat,
+    view.vatAmount,
+    view.roundingAmount,
+    view.lateFeeAmount,
+    view.lateFeeWaivedAmount,
+    view.advanceAmount,
+    view.advanceVatAmount,
+  ].every((v) => v != null);
+}
+
+/**
+ * ใบกำกับภาษีตามบัญชี (PR3 — D3–D5): ทุกแถวมาจากค่าที่เก็บ ณ ตอนออกใบ ไม่คำนวณใหม่ตอนพิมพ์.
+ *   แถวค่างวด       = ยอดรับ − ค่าปรับ − ปัดเศษ − เงินรับล่วงหน้า · VAT = vatAmount − advanceVatAmount
+ *   แถวเงินรับล่วงหน้า = advanceAmount (+ พักไว้ / − หักเข้างวด) · VAT = advanceVatAmount
+ *   แถวค่าปรับ       = lateFeeAmount + lateFeeWaivedAmount · แถวอนุโลม = lateFeeWaivedAmount
+ *   แถวปัดเศษ        = roundingAmount (นอกฐานภาษี)
+ * งวดเป้าหมายของเงินพักค่าปรับดิว (ป้ายของแถวเท่านั้น) อ่านจากประวัติการจัดสรรเหมือนเดิม
+ */
+export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocumentMoney {
+  const total = toDec(view.amount);
+  const fee = toDec(view.lateFeeAmount);
+  const waived = toDec(view.lateFeeWaivedAmount);
+  const rounding = toDec(view.roundingAmount);
+  const advance = toDec(view.advanceAmount);
+  const advanceVat = toDec(view.advanceVatAmount);
+  const vat = toDec(view.vatAmount);
+  const receiptType = view.receiptType ?? 'PAYMENT';
+  const installmentPortion = total.minus(fee).minus(rounding).minus(advance);
+  const installmentVat = vat.minus(advanceVat);
+  const rescheduleTarget = view.installmentAllocations?.find(
+    (a) => a.kind === 'RESCHEDULE_ADVANCE',
+  )?.installmentNo;
+  const advanceRows: DocumentAdvanceRow[] = advance.isZero()
+    ? []
+    : [
+        {
+          kind: advance.isNegative() ? 'DEDUCTION' : rescheduleTarget ? 'RESCHEDULE' : 'GENERIC',
+          ...(advance.isNegative() || !rescheduleTarget ? {} : { installmentNo: rescheduleTarget }),
+          amount: advance,
+          vat: advanceVat,
+          beforeVat: advance.minus(advanceVat),
+        },
+      ];
+  return {
+    vatBearing: !['DOWN_PAYMENT', 'RESCHEDULE_FEE'].includes(receiptType),
+    installmentPortion,
+    installmentExclVat: installmentPortion.minus(installmentVat),
+    installmentVat,
+    advanceRows,
+    advancePortion: advance,
+    feeCharged: fee.plus(waived),
+    feeWaived: waived,
+    feePortion: fee,
+    rounding,
+    exclVat: toDec(view.amountBeforeVat),
+    vatPart: vat,
+    advanceOnly: false,
+    displayedInstallmentNo: view.installmentNo,
+  };
+}
+
+/** ตัวเลขบนเอกสาร: ใบที่เก็บค่าแล้วพิมพ์ค่าที่เก็บ · ใบอื่นใช้ตรรกะเดิม (forward-only) */
+export function receiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocumentMoney {
+  return hasStoredReceiptTax(view)
+    ? storedReceiptDocumentMoney(view)
+    : legacyReceiptDocumentMoney(view);
+}
+
+/**
+ * ค่าที่ใบลดหนี้เก็บ (ม.86/10 · คำถาม Q5): ตัวเลขทุกบรรทัดของเอกสารใบที่ถูกยกเลิก — ใบลดหนี้จึงพิมพ์แถวเดียวกับ
+ * ใบเดิมด้วยตัวพิมพ์ตัวเดียวกัน
+ */
+export function documentMoneyColumns(m: ReceiptDocumentMoney) {
+  return {
+    amountBeforeVat: m.exclVat,
+    vatAmount: m.vatPart,
+    roundingAmount: m.rounding,
+    lateFeeAmount: m.feePortion,
+    lateFeeWaivedAmount: m.feeWaived,
+    advanceAmount: m.advancePortion,
+    advanceVatAmount: m.advanceRows.reduce((sum, row) => sum.plus(row.vat), ZERO),
   };
 }

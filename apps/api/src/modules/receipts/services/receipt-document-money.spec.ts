@@ -1,5 +1,11 @@
 import { Prisma } from '@prisma/client';
-import { legacyReceiptDocumentMoney, ReceiptMoneyView } from './receipt-document-money';
+import {
+  documentMoneyColumns,
+  hasStoredReceiptTax,
+  legacyReceiptDocumentMoney,
+  receiptDocumentMoney,
+  ReceiptMoneyView,
+} from './receipt-document-money';
 
 /**
  * ตัวเลขบนเอกสารใบเสร็จ — ตรรกะเดิม (ใบที่ไม่มีค่าที่เก็บ ณ ตอนออกใบ) ย้ายออกจาก receipt-pdf.service.ts ทุกตัวอักษร
@@ -111,5 +117,116 @@ describe('legacyReceiptDocumentMoney — ตรรกะเดิมของ PD
     expect(() => legacyReceiptDocumentMoney(view({ installmentAllocations: null }))).toThrow(
       'ไม่สามารถแยกค่างวดและเงินรับล่วงหน้าของใบเสร็จนี้จากประวัติได้',
     );
+  });
+});
+
+describe('receiptDocumentMoney — ใบที่เก็บค่า ณ ตอนออกใบ (PR3)', () => {
+  const storedView = (o: Partial<ReceiptMoneyView> = {}): ReceiptMoneyView =>
+    view({
+      amount: D('2000'),
+      amountBeforeVat: D('1869.16'),
+      vatAmount: D('130.84'),
+      roundingAmount: D('0'),
+      lateFeeAmount: D('0'),
+      lateFeeWaivedAmount: D('0'),
+      advanceAmount: D('484.17'),
+      advanceVatAmount: D('31.67'),
+      installmentNo: 1,
+      installmentAllocations: null, // ค่าที่เก็บไม่ต้องพึ่งประวัติ — ไม่ปฏิเสธแม้ประวัติแยกไม่ได้
+      ...o,
+    });
+
+  it('เก็บครบ 7 ช่อง → พิมพ์ค่าที่เก็บ: แถวค่างวด 1,515.83 (99.17) + แถวเงินรับล่วงหน้า 484.17 (31.67)', () => {
+    const m = receiptDocumentMoney(storedView());
+
+    expect(hasStoredReceiptTax(storedView())).toBe(true);
+    expect([f(m.installmentPortion), f(m.installmentExclVat), f(m.installmentVat)]).toEqual([
+      '1515.83',
+      '1416.66',
+      '99.17',
+    ]);
+    expect(m.advanceRows.map((r) => [r.kind, f(r.amount), f(r.beforeVat), f(r.vat)])).toEqual([
+      ['GENERIC', '484.17', '452.50', '31.67'],
+    ]);
+    expect([f(m.exclVat), f(m.vatPart), f(m.rounding)]).toEqual(['1869.16', '130.84', '0.00']);
+  });
+
+  it('เงินพักค่าปรับดิว (ประวัติบอกงวดเป้าหมาย) → ป้ายแถวเป็นงวดเป้าหมาย ตัวเลขยังมาจากค่าที่เก็บ', () => {
+    const m = receiptDocumentMoney(
+      storedView({
+        installmentAllocations: [
+          { installmentNo: 1, amount: '1515.83', kind: 'INSTALLMENT' },
+          { installmentNo: 12, amount: '484.17', kind: 'RESCHEDULE_ADVANCE' },
+        ],
+      }),
+    );
+
+    expect(m.advanceRows.map((r) => [r.kind, r.installmentNo, f(r.vat)])).toEqual([
+      ['RESCHEDULE', 12, '31.67'],
+    ]);
+  });
+
+  it('หักเงินรับล่วงหน้า → แถว DEDUCTION ติดลบ · แถวค่างวดเต็มยอดที่ล้าง', () => {
+    const m = receiptDocumentMoney(
+      storedView({
+        amount: D('1015.83'),
+        amountBeforeVat: D('949.37'),
+        vatAmount: D('66.46'),
+        advanceAmount: D('-500'),
+        advanceVatAmount: D('-32.71'),
+      }),
+    );
+
+    expect(f(m.installmentPortion)).toBe('1515.83');
+    expect(f(m.installmentVat)).toBe('99.17');
+    expect(m.advanceRows.map((r) => [r.kind, f(r.amount), f(r.beforeVat), f(r.vat)])).toEqual([
+      ['DEDUCTION', '-500.00', '-467.29', '-32.71'],
+    ]);
+  });
+
+  it('เก็บไม่ครบ (ใบลดหนี้อัตโนมัติที่มีแค่ amountBeforeVat/vatAmount) → ตรรกะเดิม', () => {
+    const cn = view({
+      receiptType: 'CREDIT_NOTE',
+      amount: D('4547.49'),
+      amountBeforeVat: D('4249.98'),
+      vatAmount: D('297.51'),
+      installmentAllocations: null,
+    });
+
+    expect(hasStoredReceiptTax(cn)).toBe(false);
+    const m = receiptDocumentMoney(cn);
+    expect([f(m.exclVat), f(m.vatPart)]).toEqual(['4249.98', '297.51']);
+  });
+});
+
+describe('documentMoneyColumns — ค่าที่ใบลดหนี้คัดลอก (Q5)', () => {
+  it('ใบเก่า 3,050 (ตรรกะเดิม) → 2,803.74 / 196.26 / ค่าปรับ 50 · ผลรวมเท่ายอดใบ', () => {
+    const cols = documentMoneyColumns(
+      legacyReceiptDocumentMoney(
+        view({
+          amount: D('3050'),
+          installmentNo: 2,
+          lateFeeCollected: '50.00',
+          installmentAllocations: [{ installmentNo: 2, amount: '3000.00', kind: 'INSTALLMENT' }],
+        }),
+      ),
+    );
+
+    expect(Object.fromEntries(Object.entries(cols).map(([k, v]) => [k, f(v)]))).toEqual({
+      amountBeforeVat: '2803.74',
+      vatAmount: '196.26',
+      roundingAmount: '0.00',
+      lateFeeAmount: '50.00',
+      lateFeeWaivedAmount: '0.00',
+      advanceAmount: '0.00',
+      advanceVatAmount: '0.00',
+    });
+  });
+
+  it('ใบเก่า 5,516 (มีเงินพักค่าปรับดิว) → รวมแถวเงินพัก 1,044 (VAT 68.30) ในค่าที่คัดลอก', () => {
+    const cols = documentMoneyColumns(legacyReceiptDocumentMoney(view()));
+
+    expect([f(cols.amountBeforeVat), f(cols.vatAmount)]).toEqual(['5155.14', '360.86']);
+    expect([f(cols.advanceAmount), f(cols.advanceVatAmount)]).toEqual(['1044.00', '68.30']);
   });
 });

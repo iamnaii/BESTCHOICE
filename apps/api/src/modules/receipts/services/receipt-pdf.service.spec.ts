@@ -299,4 +299,103 @@ describe('ReceiptPdfService — Credit Note rendering (Phase 3 Task 4)', () => {
     expect(capturedHtml).not.toContain('เงินรับล่วงหน้างวดที่');
   });
 
+  // ── ใบกำกับภาษีตามบัญชี (PR3 — D3–D5 · Q4–Q5): ใบที่เก็บค่า ณ ตอนออกใบ พิมพ์ค่าที่เก็บ ─────────────
+  const stored = (overrides: Record<string, unknown> = {}) => baseReceipt({
+    receiptType: 'INSTALLMENT', installmentNo: 3, paymentId: 'p3', paymentStatus: 'PAID',
+    amount: new Decimal('6079'), amountBeforeVat: new Decimal('5681.00'), vatAmount: new Decimal('397.67'),
+    roundingAmount: new Decimal('0.33'), lateFeeAmount: new Decimal('0'), lateFeeWaivedAmount: new Decimal('0'),
+    advanceAmount: new Decimal('0'), advanceVatAmount: new Decimal('0'),
+    lateFeeCollected: '0.00', lateFeeWaivedThisReceipt: '0.00', hasReceiptFeeHistory: true,
+    installmentAllocations: [{ installmentNo: 3, amount: '6079.00', kind: 'INSTALLMENT' }],
+    documentRemainingBalance: '54708.03', documentRemainingMonths: 9,
+    ...overrides,
+  });
+
+  it('PR3: ใบ 6,079 ที่เก็บค่าแล้ว → มูลค่า 5,681.00 · VAT 397.67 · แถวและบรรทัดสรุป "ปัดเศษ (ไม่อยู่ในฐานภาษี)" 0.33 (ไม่คิด ×100/107 = 5,681.31 / 397.69)', async () => {
+    query.getReceipt.mockResolvedValue(stored());
+    await service.generatePDF('stored-6079');
+    expect(capturedHtml).toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
+    expect(capturedHtml).toContain('<strong>6,078.67</strong>');
+    expect(capturedHtml).toContain('5,681.00');
+    expect(capturedHtml).toContain('397.67');
+    expect(capturedHtml).toContain('<div class="item-name">ปัดเศษ (ไม่อยู่ในฐานภาษี)</div>');
+    expect(capturedHtml).toContain('รับเกินค่างวดไม่ถึง 1 บาท');
+    expect(capturedHtml).toContain('<span class="k">ปัดเศษ (ไม่อยู่ในฐานภาษี)</span><span class="v">0.33</span>');
+    expect(capturedHtml).toContain('6,079.00');
+    expect(capturedHtml).not.toContain('5,681.31');
+    expect(capturedHtml).not.toContain('397.69');
+  });
+
+  it('PR3 (Q4): จ่ายขาด 0.67 → VAT เต็ม 397.67 + ปัดเศษ −0.67', async () => {
+    query.getReceipt.mockResolvedValue(stored({ amount: new Decimal('6078'), roundingAmount: new Decimal('-0.67') }));
+    await service.generatePDF('stored-underpay');
+    expect(capturedHtml).toContain('397.67');
+    expect(capturedHtml).toContain('ส่วนลดเศษสตางค์ของค่างวด (ไม่เกิน 1 บาท)');
+    expect(capturedHtml).toContain('<span class="k">ปัดเศษ (ไม่อยู่ในฐานภาษี)</span><span class="v">−0.67</span>');
+    expect(capturedHtml).toContain('6,078.00');
+  });
+
+  it('PR3: หักเงินรับล่วงหน้า 500 → แถวค่างวด 1,515.83 (VAT 99.17) + แถว "หักเงินรับล่วงหน้า" −500.00 (VAT −32.71) · สรุป 949.37 / 66.46', async () => {
+    query.getReceipt.mockResolvedValue(stored({
+      amount: new Decimal('1015.83'), amountBeforeVat: new Decimal('949.37'), vatAmount: new Decimal('66.46'),
+      roundingAmount: new Decimal('0'), advanceAmount: new Decimal('-500'), advanceVatAmount: new Decimal('-32.71'),
+      installmentAllocations: [{ installmentNo: 3, amount: '1015.83', kind: 'INSTALLMENT' }],
+    }));
+    await service.generatePDF('stored-deduction');
+    expect(capturedHtml).toContain('<strong>1,515.83</strong>');
+    expect(capturedHtml).toContain('99.17');
+    expect(capturedHtml).toContain('<div class="item-name">หักเงินรับล่วงหน้า</div>');
+    // บรรทัดรองเป็นกลาง — ไม่อ้างว่าเคยออกเอกสารภาษี (เงินบางแหล่งไม่เคยมีใบกำกับภาษี — ถ3)
+    expect(capturedHtml).toContain('<div class="item-meta">เงินที่ชำระไว้ก่อนแล้ว</div>');
+    expect(capturedHtml).not.toContain('ออกเอกสารพร้อมภาษี');
+    expect(capturedHtml).toContain('<strong>−500.00</strong>');
+    expect(capturedHtml).toContain('−32.71');
+    expect(capturedHtml).toContain('949.37');
+    expect(capturedHtml).toContain('66.46');
+    expect(capturedHtml).not.toContain('ปัดเศษ (ไม่อยู่ในฐานภาษี)');
+  });
+
+  it('PR3 (Q5): ใบลดหนี้ที่คัดลอกค่าของใบ 3,050 → แถวค่างวด 3,000 (VAT 196.26) + แถวค่าปรับ 50 เหมือนใบเดิม (เดิมพิมพ์ 199.53)', async () => {
+    query.getReceipt.mockResolvedValue(baseReceipt({
+      receiptType: 'CREDIT_NOTE', installmentNo: 2, paymentId: 'p2', voidedReceiptId: 'r-3050',
+      voidedRef: { receiptNumber: 'RT-202610-00001', paidDate: new Date('2026-10-01T00:00:00.000Z') },
+      amount: new Decimal('3050'), amountBeforeVat: new Decimal('2803.74'), vatAmount: new Decimal('196.26'),
+      roundingAmount: new Decimal('0'), lateFeeAmount: new Decimal('50'), lateFeeWaivedAmount: new Decimal('0'),
+      advanceAmount: new Decimal('0'), advanceVatAmount: new Decimal('0'),
+    }));
+    await service.generatePDF('cn-3050');
+    expect(capturedHtml).toContain('ใบลดหนี้');
+    expect(capturedHtml).toContain('ลดหนี้ — ยกเลิกใบเสร็จ');
+    expect(capturedHtml).toContain('<strong>3,000.00</strong>');
+    expect(capturedHtml).toContain('196.26');
+    expect(capturedHtml).toContain('ค่าปรับชำระล่าช้า');
+    expect(capturedHtml).toContain('<strong>50.00</strong>');
+    expect(capturedHtml).not.toContain('199.53');
+  });
+
+  it('PR3: ใบเสร็จปิดยอดก่อนกำหนด (ไม่เก็บค่า — ย้ายไป PR5) → พิมพ์แบบเดิม 16,205.57 / 1,134.39 · ไม่มีแถวปัดเศษ', async () => {
+    query.getReceipt.mockResolvedValue(baseReceipt({
+      receiptType: 'EARLY_PAYOFF', installmentNo: null, paymentId: null,
+      amount: new Decimal('17339.96'), amountBeforeVat: null, vatAmount: null,
+    }));
+    await service.generatePDF('payoff-unchanged');
+    expect(capturedHtml).toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
+    expect(capturedHtml).toContain('ปิดยอดสัญญาก่อนกำหนด');
+    expect(capturedHtml).toContain('16,205.57');
+    expect(capturedHtml).toContain('1,134.39');
+    expect(capturedHtml).not.toContain('ปัดเศษ (ไม่อยู่ในฐานภาษี)');
+  });
+
+  it('PR3: ใบที่รับเฉพาะเศษ 0.17 (ไม่ได้ล้างลูกหนี้ของงวด) → ไม่มีแถวค่างวด 0.00 · มีแต่แถวปัดเศษ · ไม่ใช่ใบกำกับภาษี', async () => {
+    query.getReceipt.mockResolvedValue(stored({
+      amount: new Decimal('0.17'), amountBeforeVat: new Decimal('0'), vatAmount: new Decimal('0'),
+      roundingAmount: new Decimal('0.17'),
+      installmentAllocations: [{ installmentNo: 3, amount: '0.17', kind: 'INSTALLMENT' }],
+    }));
+    await service.generatePDF('stored-residue');
+    expect(capturedHtml).not.toContain('ใบเสร็จรับเงิน / ใบกำกับภาษี');
+    expect(capturedHtml).not.toContain('ค่างวดเช่าซื้อ งวดที่ 3/12');
+    expect(capturedHtml).toContain('<div class="item-name">ปัดเศษ (ไม่อยู่ในฐานภาษี)</div>');
+  });
+
 });

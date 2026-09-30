@@ -7,7 +7,7 @@ import * as QRCode from 'qrcode';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { DOCUMENT_A4_CSS, documentTypographyCss, TRANSACTION_PAGE_CSS } from '@installment/shared';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
-import { legacyReceiptDocumentMoney } from './receipt-document-money';
+import { DocumentAdvanceRow, receiptDocumentMoney } from './receipt-document-money';
 import { ReceiptQueryService } from './receipt-query.service';
 
 // Embedded BESTCHOICE logo. Single source of truth for the receipt header.
@@ -200,7 +200,8 @@ export class ReceiptPdfService {
 
     const receiptType = receipt.receiptType ?? 'PAYMENT';
     const isCreditNote = receiptType === 'CREDIT_NOTE';
-    // ตัวเลขทุกแถวของเอกสาร — receipt-document-money.ts (ใบกำกับภาษีตามบัญชี PR3)
+    // ตัวเลขทุกแถวของเอกสาร — receipt-document-money.ts: ใบที่เก็บค่า ณ ตอนออกใบ (PR3) พิมพ์ค่าที่เก็บ ·
+    // ใบเก่าใช้ตรรกะเดิม
     const {
       vatBearing,
       installmentPortion,
@@ -211,11 +212,40 @@ export class ReceiptPdfService {
       feeCharged,
       feeWaived,
       feePortion,
+      rounding,
       exclVat,
       vatPart,
       advanceOnly,
       displayedInstallmentNo,
-    } = legacyReceiptDocumentMoney(receipt);
+    } = receiptDocumentMoney(receipt);
+    /** ยอดติดลบพิมพ์ด้วยเครื่องหมายลบแบบเดียวกับแถวอนุโลมค่าปรับ */
+    const signed = (v: Prisma.Decimal) => (v.isNegative() ? `−${fmt(v.abs())}` : fmt(v));
+    const advanceRowHtml = (row: DocumentAdvanceRow) =>
+      row.kind === 'RESCHEDULE'
+        ? `
+      <tr class="alt">
+        <td><div class="item-name">เงินรับล่วงหน้างวดที่ ${row.installmentNo}/${receipt.contract?.totalMonths} — ปรับดิว</div>
+          <div class="item-meta">พักไว้หักค่างวดสุดท้าย</div></td>
+        <td class="right">${fmt(row.beforeVat)}</td>
+        <td class="right">${row.vat.gt(0) ? fmt(row.vat) : '<span class="vat-exempt">–</span>'}</td>
+        <td class="right"><strong>${fmt(row.amount)}</strong></td>
+      </tr>`
+        : row.kind === 'GENERIC'
+          ? `
+      <tr class="alt">
+        <td><div class="item-name">เงินรับล่วงหน้าในสัญญา</div></td>
+        <td class="right">${fmt(row.beforeVat)}</td>
+        <td class="right">${row.vat.gt(0) ? fmt(row.vat) : '<span class="vat-exempt">–</span>'}</td>
+        <td class="right"><strong>${fmt(row.amount)}</strong></td>
+      </tr>`
+          : `
+      <tr class="alt">
+        <td><div class="item-name">หักเงินรับล่วงหน้า</div>
+          <div class="item-meta">เงินที่ชำระไว้ก่อนแล้ว</div></td>
+        <td class="right">${signed(row.beforeVat)}</td>
+        <td class="right">${row.vat.isZero() ? '<span class="vat-exempt">–</span>' : signed(row.vat)}</td>
+        <td class="right"><strong>${signed(row.amount)}</strong></td>
+      </tr>`;
 
     const docTitle = isCreditNote
       ? 'ใบลดหนี้'
@@ -436,7 +466,7 @@ ${PAPER_SPACING_CSS}
       </tr>
     </thead>
     <tbody>
-      ${installmentPortion.gt(0) || (feePortion.lte(0) && advancePortion.lte(0)) ? `
+      ${installmentPortion.gt(0) || (feePortion.lte(0) && advancePortion.lte(0) && rounding.isZero()) ? `
       <tr>
         <td>
           <div class="item-name">${itemLabel}</div>
@@ -446,20 +476,7 @@ ${PAPER_SPACING_CSS}
         <td class="right">${vatBearing && installmentVat.gt(0) ? fmt(installmentVat) : '<span class="vat-exempt">ยกเว้น</span>'}</td>
         <td class="right"><strong>${fmt(installmentPortion)}</strong></td>
       </tr>` : ''}
-      ${advanceRows.map((allocation) => allocation.kind === 'RESCHEDULE' ? `
-      <tr class="alt">
-        <td><div class="item-name">เงินรับล่วงหน้างวดที่ ${allocation.installmentNo}/${receipt.contract?.totalMonths} — ปรับดิว</div>
-          <div class="item-meta">พักไว้หักค่างวดสุดท้าย</div></td>
-        <td class="right">${fmt(allocation.beforeVat)}</td>
-        <td class="right">${allocation.vat.gt(0) ? fmt(allocation.vat) : '<span class="vat-exempt">–</span>'}</td>
-        <td class="right"><strong>${fmt(allocation.amount)}</strong></td>
-      </tr>` : `
-      <tr class="alt">
-        <td><div class="item-name">เงินรับล่วงหน้าในสัญญา</div></td>
-        <td class="right">${fmt(allocation.beforeVat)}</td>
-        <td class="right">${allocation.vat.gt(0) ? fmt(allocation.vat) : '<span class="vat-exempt">–</span>'}</td>
-        <td class="right"><strong>${fmt(allocation.amount)}</strong></td>
-      </tr>`).join('')}
+      ${advanceRows.map(advanceRowHtml).join('')}
       ${feeCharged.gt(0) ? `
       <tr class="alt">
         <td>
@@ -480,6 +497,16 @@ ${PAPER_SPACING_CSS}
         <td class="right"><span class="vat-exempt">–</span></td>
         <td class="right discount"><strong>−${fmt(feeWaived)}</strong></td>
       </tr>` : ''}
+      ${!rounding.isZero() ? `
+      <tr class="alt">
+        <td>
+          <div class="item-name">ปัดเศษ (ไม่อยู่ในฐานภาษี)</div>
+          <div class="item-meta">${rounding.gt(0) ? 'รับเกินค่างวดไม่ถึง 1 บาท' : 'ส่วนลดเศษสตางค์ของค่างวด (ไม่เกิน 1 บาท)'}</div>
+        </td>
+        <td class="right">${signed(rounding)}</td>
+        <td class="right"><span class="vat-exempt">–</span></td>
+        <td class="right"><strong>${signed(rounding)}</strong></td>
+      </tr>` : ''}
     </tbody>
   </table>
 
@@ -498,7 +525,9 @@ ${PAPER_SPACING_CSS}
       ${vatBearing && vatPart.gt(0) ? `
         <div class="row"><span class="k">มูลค่าสินค้า/บริการก่อนภาษี</span><span class="v">${fmt(exclVat)}</span></div>
         <div class="row"><span class="k">ภาษีมูลค่าเพิ่ม 7%</span><span class="v">${fmt(vatPart)}</span></div>
-        ${feePortion.gt(0) ? `<div class="row sub"><span class="k">ค่าปรับ (ยกเว้นภาษี)</span><span class="v">${fmt(feePortion)}</span></div>` : `<div class="row sub" style="padding:0"></div>`}
+        ${feePortion.gt(0) ? `<div class="row${rounding.isZero() ? ' sub' : ''}"><span class="k">ค่าปรับ (ยกเว้นภาษี)</span><span class="v">${fmt(feePortion)}</span></div>` : ''}
+        ${!rounding.isZero() ? `<div class="row sub"><span class="k">ปัดเศษ (ไม่อยู่ในฐานภาษี)</span><span class="v">${signed(rounding)}</span></div>` : ''}
+        ${feePortion.lte(0) && rounding.isZero() ? `<div class="row sub" style="padding:0"></div>` : ''}
       ` : ''}
       <div class="grand">
         <span class="k">${isCreditNote ? 'ยอดลดหนี้ทั้งสิ้น' : 'จำนวนเงินรับชำระทั้งสิ้น'}</span>

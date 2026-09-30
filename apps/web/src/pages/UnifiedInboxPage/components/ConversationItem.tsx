@@ -222,7 +222,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
           )}>
             {lastMessage?.role === 'STAFF' && <span className="text-primary font-medium">คุณ: </span>}
             {lastMessage?.role === 'BOT' && <span className="text-muted-foreground font-medium">Bot: </span>}
-            {lastMessage ? formatMessagePreview(lastMessage.text) : <span className="italic text-muted-foreground/70">ยังไม่มีข้อความ</span>}
+            {lastMessage ? formatMessagePreview(lastMessage.text) : <span className="italic text-muted-foreground">ยังไม่มีข้อความ</span>}
           </p>
           {hasUnread && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold leading-snug flex-shrink-0">
@@ -305,7 +305,7 @@ function ConversationItem({ session, isActive, onSelect, onPin, aiSettings }: Co
               );
             })()}
             {session.assignedTo && (
-              <span className="text-[11px] text-muted-foreground/80 ml-auto truncate max-w-[80px]">
+              <span className="text-[11px] text-muted-foreground ml-auto truncate max-w-[80px]">
                 {session.assignedTo.name}
               </span>
             )}

@@ -16,6 +16,7 @@ import ErrorBoundary from '@/components/ErrorBoundary';
 import App from './App';
 import DocumentStyles from '@/components/DocumentStyles';
 import './index.css';
+import './styles/admin-typography.css';
 
 // Initialize Sentry (only if DSN is configured)
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
@@ -111,7 +112,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <AuthProvider>
               <App />
               <DocumentStyles />
-              <Toaster position="top-right" richColors closeButton />
+              <Toaster position="top-right" richColors closeButton style={{ fontFamily: 'var(--font-sans)' }} />
             </AuthProvider>
           </BrowserRouter>
         </QueryClientProvider>

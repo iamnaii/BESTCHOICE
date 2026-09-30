@@ -313,12 +313,12 @@ export default function FinancePortfolioPage() {
       />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="finance-portfolio-summary finance-card-grid grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {summaryCards.map((card) => (
           <Card key={card.label} className="overflow-hidden">
             <div className={`h-1 w-full ${card.stripe}`} />
             <CardContent className="p-4">
-              <div className="flex items-start justify-between gap-2">
+              <div className="finance-summary-content flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs text-muted-foreground truncate">{card.label}</p>
                   <p className={`mt-1 text-lg font-bold ${card.color}`}>
@@ -343,7 +343,7 @@ export default function FinancePortfolioPage() {
         <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
           การวิเคราะห์อายุหนี้ (Aging)
         </h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="finance-card-grid grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {agingCards.map((card) => (
             <div
               key={card.label}
@@ -423,6 +423,7 @@ export default function FinancePortfolioPage() {
             {data && (
               <>
                 <DataTable
+                  className="finance-portfolio-table"
                   columns={columns}
                   data={data.data}
                   onRowClick={(row) => navigate(`/contracts/${row.id}`)}

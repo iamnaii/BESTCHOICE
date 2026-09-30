@@ -632,7 +632,7 @@ export default function RepossessionsPage() {
 
       {/* Profit/Loss Summary */}
       {profitLoss?.summary && (
-        <div className="grid grid-cols-1 sm:grid-cols-5 gap-5 lg:gap-7.5 mb-6">
+        <div className="finance-card-grid grid grid-cols-1 sm:grid-cols-5 gap-5 lg:gap-7.5 mb-6">
           <Card className="shadow-card hover:shadow-card-hover transition-all border-l-[3px] border-l-primary">
             <CardContent className="p-4">
               <div className="text-sm text-muted-foreground">เครื่องที่ขายแล้ว</div>

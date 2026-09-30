@@ -255,7 +255,7 @@ export default function ContractsPage() {
       label: 'สถานะ',
       render: (c: Contract) => {
         const cfg = getStatusBadgeProps(c.status, contractStatusMap);
-        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+        return <Badge className="admin-status-badge" variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
       },
     },
     {
@@ -547,7 +547,7 @@ export default function ContractsPage() {
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-mono text-primary font-medium">{c.contractNumber}</span>
-                      <Badge variant={getStatusBadgeProps(c.status, contractStatusMap).variant} appearance={getStatusBadgeProps(c.status, contractStatusMap).appearance} size="xs">
+                      <Badge className="admin-status-badge" variant={getStatusBadgeProps(c.status, contractStatusMap).variant} appearance={getStatusBadgeProps(c.status, contractStatusMap).appearance} size="xs">
                         {getStatusBadgeProps(c.status, contractStatusMap).label}
                       </Badge>
                     </div>

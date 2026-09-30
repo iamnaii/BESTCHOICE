@@ -1,4 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
+import SummaryCardHelp from '@/components/ui/SummaryCardHelp';
 import type { PendingSummary } from '../types';
 
 interface PaymentKpiCardsProps {
@@ -45,6 +46,7 @@ export default function PaymentKpiCards({ summary, loading, collectedLabel }: Pa
       label: 'ค่าปรับล่าช้า (รอเก็บ)',
       value: `${baht(s.outstandingLateFee)} ฿`,
       foot: <>→ <code className="font-mono text-[11px]">Cr.42-1103</code></>,
+      help: true,
       accent: 'bg-orange',
       valueClass: 'text-orange',
     },
@@ -52,6 +54,7 @@ export default function PaymentKpiCards({ summary, loading, collectedLabel }: Pa
       label: 'ค่าปรับที่ไม่เรียกเก็บ (อนุโลม)',
       value: `${baht(s.waivedLateFee)} ฿`,
       foot: <>→ <code className="font-mono text-[11px]">Dr.52-1105</code> ส่วนลด</>,
+      help: true,
       accent: 'bg-warning',
       valueClass: 'text-warning-strong',
     },
@@ -59,6 +62,7 @@ export default function PaymentKpiCards({ summary, loading, collectedLabel }: Pa
       label: 'ค้าง ≥ 60 วัน',
       value: s.overdue60Count.toLocaleString('th-TH'),
       foot: <>trigger <code className="font-mono text-[11px]">21-2103</code> VAT</>,
+      help: true,
       accent: 'bg-warning',
       valueClass: 'text-warning-strong',
     },
@@ -73,7 +77,7 @@ export default function PaymentKpiCards({ summary, loading, collectedLabel }: Pa
 
   return (
     <div
-      className={`grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-5 ${loading && !summary ? 'animate-pulse' : ''}`}
+      className={`finance-card-grid grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-5 ${loading && !summary ? 'animate-pulse' : ''}`}
     >
       {cards.map((c) => (
         <Card
@@ -85,7 +89,9 @@ export default function PaymentKpiCards({ summary, loading, collectedLabel }: Pa
             <div className="pl-2">
               <div className="text-xs font-medium text-muted-foreground mb-2 leading-snug">{c.label}</div>
               <div className={`text-2xl font-bold tabular-nums leading-snug ${c.valueClass}`}>{c.value}</div>
-              <div className="text-[11px] text-muted-foreground mt-1.5 leading-snug">{c.foot}</div>
+              <div className="text-[11px] text-muted-foreground mt-1.5 leading-snug">
+                {c.help ? <SummaryCardHelp label="การลงบัญชี" title={c.label}>{c.foot}</SummaryCardHelp> : c.foot}
+              </div>
             </div>
           </CardContent>
         </Card>

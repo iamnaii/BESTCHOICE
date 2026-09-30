@@ -203,7 +203,7 @@ export default function PaymentSummary({
       ) : summary ? (
         <div>
           {/* Summary KPI Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="finance-card-grid grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden">
               <CardContent className="p-5 relative">
                 <div className="absolute inset-y-0 left-0 w-1 bg-primary rounded-l-xl" />

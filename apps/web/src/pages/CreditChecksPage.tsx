@@ -204,7 +204,7 @@ export default function CreditChecksPage() {
         const meta = STATUS_META[c.status] ?? { label: c.status, variant: 'secondary' as const };
         return (
           <div className="space-y-2">
-            <Badge variant={meta.variant} appearance="light" size="sm">{meta.label}</Badge>
+            <Badge className="admin-status-badge" variant={meta.variant} appearance="light" size="sm">{meta.label}</Badge>
             {c.approvals?.[0] && <div className="text-xs space-y-1">
               <p className="font-medium">อนุมัติค่างวดไม่เกิน {Number(c.approvals[0].approvedMonthlyPayment).toLocaleString('th-TH')} บาท/เดือน</p>
               <p>ชำระ{c.approvals[0].salaryPayDay === 31 ? 'ทุกสิ้นเดือน' : `วันที่ ${c.approvals[0].salaryPayDay} ของเดือน`}</p>

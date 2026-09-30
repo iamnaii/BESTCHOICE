@@ -6,16 +6,19 @@ import {
   PP30_MANDATORY_60DAY_VAT_ACCOUNT,
   computePp30OutputVat,
   countsAsPp30SettledVat,
+  countsInPp30Computation,
   toPp30OutputVatJson,
 } from '../pp30-output-vat';
 
 /**
  * TaxPreviewService — read-only VAT/WHT preview computations.
  *
- * Holds the journal-aggregation math for ภ.พ.30 (VAT output/input) and the
- * ภ.ง.ด.1/3/53 WHT previews. Decomposed VERBATIM from the original TaxService
- * facade (behavior-preserving). TaxReportService + TaxExportService inject this
- * service to read preview snapshots/export data.
+ * ภาษีขาย (Output VAT) ของ ภ.พ.30 ไม่ได้คำนวณอยู่ในไฟล์นี้อีกต่อไป (F3, 2026-09-30) — `previewPP30` เรียก
+ * `computePp30OutputVat` (`../pp30-output-vat.ts`) ซึ่งเป็นตัวคำนวณเดียวของระบบ (ดู `.claude/rules/accounting.md`
+ * หัวข้อ ภ.พ.30) แล้วประกอบผลลัพธ์เข้ากับภาษีซื้อ/ยอดขายที่ยังคำนวณอยู่ที่นี่. ภาษีซื้อ (Input VAT) และ ภ.ง.ด.1/3/53
+ * WHT previews ยัง decomposed VERBATIM จาก TaxService facade เดิม (behavior-preserving) เหมือนก่อน — คำว่า
+ * "VERBATIM / behavior-preserving" นี้ใช้ไม่ได้กับส่วนภาษีขายอีกต่อไปเท่านั้น. TaxReportService + TaxExportService
+ * inject this service to read preview snapshots/export data.
  */
 @Injectable()
 export class TaxPreviewService {
@@ -127,8 +130,13 @@ export class TaxPreviewService {
     }));
 
     // ภาษีขาย 60 วัน (21-2103) รายบรรทัด (ข้อมูลประกอบ) — vatAmount = เครดิต − เดบิต (บรรทัดกลับรายการเป็นค่าติดลบ)
+    // F1 fix round 2 (2026-09-30): ต้องกรองด้วย countsInPp30Computation เหมือน summarizePp30OutputVat — ไม่งั้น
+    // รายการปิด/ชำระภาษีขาย (isVatSettlement) จะรั่วเข้ามาในรายการข้อมูลประกอบนี้ (round 1 กันไว้เฉพาะฝั่ง 21-2101)
     const mandatoryVat60DayItems = output.lines
-      .filter((line) => line.accountCode === PP30_MANDATORY_60DAY_VAT_ACCOUNT)
+      .filter(
+        (line) =>
+          line.accountCode === PP30_MANDATORY_60DAY_VAT_ACCOUNT && countsInPp30Computation(line),
+      )
       .map((line) => ({
         date: line.journalEntry.entryDate,
         entryNumber: line.journalEntry.entryNumber,

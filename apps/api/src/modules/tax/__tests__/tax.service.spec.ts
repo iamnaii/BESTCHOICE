@@ -645,6 +645,55 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
     // รายการปิดภาษีไม่ควรสร้างคีย์ MANUAL เลย (ไม่ใช่แค่ค่าเป็นศูนย์ — ต้องไม่ถูกนับเข้าเลนส์นี้)
     expect(result.vatOutputBySource.MANUAL).toBeUndefined();
   });
+
+  // ── 2026-09-30 fix round 2 (F1): เกทเดียวกันต้องกันฝั่ง 21-2103 ด้วย ไม่ใช่แค่ 21-2101 —
+  // ทั้ง totalVatMandatory60Day/outputVatBreakdown (summarizePp30OutputVat) และ lineItems.mandatoryVat60Day
+  // (mandatoryVat60DayItems filter ใน previewPP30 เอง) ──
+
+  it('F1 (round 2): a VAT-settlement entry — its 21-2103 line (JE also touches 21-3201) is excluded from totalVatMandatory60Day/outputVatBreakdown AND lineItems.mandatoryVat60Day too — not just 21-2101', async () => {
+    const mandatory = {
+      accountCode: '21-2103',
+      debit: Dec('0'),
+      credit: Dec('21'),
+      journalEntry: {
+        id: 'je-60d-2',
+        entryNumber: 'JE-202605-0099',
+        entryDate: new Date('2026-05-25T05:00:00.000Z'),
+        referenceType: 'VAT_60DAY',
+        description: '60-day mandatory VAT',
+        metadata: null,
+        // ไม่มี `lines` — ไม่ใช่รายการปิดภาษี
+      },
+    };
+    const settlement60Day = {
+      accountCode: '21-2103',
+      debit: Dec('21'),
+      credit: Dec('0'),
+      journalEntry: {
+        id: 'je-close-60d',
+        entryNumber: 'JE-202605-00022',
+        entryDate: new Date('2026-05-31T05:00:00.000Z'),
+        referenceType: 'MANUAL',
+        description: 'ปิดภาษีขายประจำเดือน (แตะ 21-2103 ด้วย)',
+        metadata: null,
+        // มีบรรทัดพี่น้องบน 21-3201 — ผ่านตัวแปลงจริงของ loader แล้วได้ isVatSettlement: true
+        lines: [{ id: 'jl-3201-2' }],
+      },
+    };
+    mockJournalByCode({ '21-2103': [mandatory, settlement60Day] });
+
+    const result = await service.previewPP30('co-1', 2026, 5);
+
+    // ก่อนแก้ round 2: เดบิต 21 ของรายการปิดภาษีรั่วเข้า mandatory60Day (net กลายเป็น 0 ที่ควรเป็น 21)
+    expect(result.totalVatMandatory60Day.toFixed(2)).toBe('21.00');
+    expect(result.outputVatBreakdown.mandatory60DayDebit).toBe('0.00');
+    expect(result.outputVatBreakdown.mandatory60DayNet).toBe('21.00');
+
+    // lineItems.mandatoryVat60Day (tax-preview.service.ts filter) ต้องกรองรายการปิดภาษีออกเช่นกัน
+    expect(result.lineItems.mandatoryVat60Day).toHaveLength(1);
+    expect(result.lineItems.mandatoryVat60Day[0].entryNumber).toBe('JE-202605-0099');
+    expect(result.lineItems.mandatoryVat60Day[0].vatAmount.toFixed(2)).toBe('21.00');
+  });
 });
 
 // ────────────────────────────────────────────────────────────

@@ -16,7 +16,10 @@ import { bangkokMidnight } from '../../utils/date.util';
  *     (`PP30_INCLUDES_MANDATORY_60DAY`)
  *   - รายการ: สถานะ POSTED · รายการและบรรทัดไม่ถูกลบ · `companyId` ที่ผู้เรียกส่ง
  *   - เดือน: `entryDate` (วันที่ของรายการ) ภายในเดือนตามปฏิทินไทย [วันที่ 1 00:00 น., วันที่ 1 ของเดือนถัดไป 00:00 น.)
- *     ไม่ขึ้นกับเขตเวลาของโปรเซส — รายการกลับรายการ/ใบลดหนี้ลดภาษีขายของเดือนที่ลงรายการ ไม่แก้เดือนเดิม
+ *     ไม่ขึ้นกับเขตเวลาของโปรเซส — รายการกลับรายการ/ใบลดหนี้ลดภาษีขายของเดือนที่ลงรายการ ไม่แก้เดือนเดิม (ใช้ได้กับรายการกลับ
+ *     รายการแบบกระจกของระบบเท่านั้น — ยกเลิกรายการบัญชีด้วยมือผ่าน `JournalService.void` **ไม่ใช่กระจก**: มันเปลี่ยนสถานะ
+ *     รายการเดิมเป็น VOIDED ตรง ๆ ⇒ ภาษีขายของเดือนเดิมถูกแก้ย้อนหลังจริง และเดือนที่ยกเลิกถูกหักอีกครั้ง — ช่องว่างที่รู้ตัว
+ *     แล้ว ยังไม่แก้ในรอบนี้ ดู `.claude/rules/accounting.md` หัวข้อ ภ.พ.30 ส่วน "ยังเปิดอยู่")
  *   - เดบิตของ 21-2101 แยกที่มา (ดู `classifyOutputVatReduction`) · เดบิตที่ระบุที่มาไม่ได้อยู่ในกลุ่ม "อื่น ๆ" ไม่ถูกทิ้ง
  *   - รายการปิด/ชำระภาษีขายที่ผ่านบัญชี 21-3201 (เจ้าหนี้สรรพากร ภ.พ.30 รอชำระ) — ทั้งเดบิตและเครดิตของ 21-2101
  *     ในรายการเดียวกัน **ไม่นับในการคำนวณเลย** (ไม่เข้า settledGross/reductions/reductionLines) เพราะเป็นรายการปิดยอด
@@ -43,7 +46,11 @@ export const PP30_VAT_SETTLEMENT_ACCOUNT = '21-3201';
  * (กลับคำตัดสิน "Critical #2" เดิมที่รวม 21-2103). เหตุ: 2A ตั้งภาษีขายของทุกงวดเข้า 21-2101 ณ วันครบกำหนดแล้ว แต่รอบ 60 วัน
  * (`vat-60day.cron.ts`) ตั้ง 21-2103 ซ้ำโดยไม่ดูว่างวดตั้งลูกหนี้งวดแล้วหรือสัญญาปิดไปแล้ว. false = 21-2103 เป็นข้อมูลประกอบแยก
  * (ตั้ง / กลับ / สุทธิ) ไม่อยู่ใน `totalOutputVat` · เปลี่ยนค่าต้องแก้ข้อความ "ยังไม่รวม" บนหน้า /finance/vat และในไฟล์ Excel
- * ภ.พ.30 (`tax-export.service.ts`) พร้อมกัน
+ * ภ.พ.30 (`tax-export.service.ts`) พร้อมกัน — checklist ตอนเปลี่ยนค่า เพิ่มอีก 2 ข้อ (F3, 2026-09-30, คอมเมนต์เตือน
+ * ล่วงหน้าเท่านั้น ยังไม่แก้ UI ในรอบนี้): (1) กล่อง "ที่มาของภาษีขายเดือนนี้" บนหน้า `/finance/vat` ต้องมีแถวภาษีขาย
+ * 60 วันรวมอยู่ในยอดหลักด้วย ไม่ใช่แค่กล่องข้อมูลประกอบแยกอย่างวันนี้ (2) หัวข้อย่อย "ภาษีขาย 60 วัน (21-2103) —
+ * ข้อมูลประกอบ ยังไม่รวม…" ที่ `VatPage.tsx` (`OutputVatBreakdownCard`, ~:148) ต้องอ่านจาก `mandatory60DayIncluded`
+ * แทนข้อความตายตัว
  */
 export const PP30_INCLUDES_MANDATORY_60DAY = false; // รอฝ่ายบัญชีตอบ
 
@@ -151,7 +158,10 @@ function asObject(value: Prisma.JsonValue | null | undefined): Record<string, un
  * ที่มาของเดบิต 21-2101 หนึ่งบรรทัด (ตัดสินจากรายการที่บรรทัดนั้นอยู่):
  *   - `metadata.tag === 'REVERSAL'` — รายการกลับรายการแบบกระจกทุกชนิด (ยกเลิกใบเสร็จ/ตั้งลูกหนี้งวด · ยกเลิกสัญญา ·
  *     ยกเลิกเปลี่ยนเครื่อง · เปลี่ยนเครื่องตำหนิ · ยกเลิกจำหน่ายสินทรัพย์ · ยกเลิกรายการบัญชีด้วยมือที่รายการกลับมี metadata (งานแยกถัดไป))
- *   - `referenceType === 'REVERSAL'` — ยกเลิกรายการบัญชีด้วยมือที่รายการกลับไม่มี metadata (แบบเดิมของ `JournalService.void`)
+ *   - `referenceType === 'REVERSAL'` — ยกเลิกรายการบัญชีด้วยมือที่รายการกลับไม่มี metadata (แบบเดิมของ `JournalService.void` —
+ *     **ไม่ใช่รายการกลับแบบกระจกเหมือนบรรทัดบน**: `JournalService.void` เปลี่ยนสถานะรายการเดิมเป็น VOIDED ตรง ๆ แทนที่จะสร้าง
+ *     รายการกลับใหม่ ⇒ ภาษีขายของเดือนเดิมถูกแก้ย้อนหลังจริง และเดือนที่ยกเลิกถูกหักอีกครั้ง — ช่องว่างที่รู้ตัวแล้ว ยังไม่แก้
+ *     ในรอบนี้ ดู `.claude/rules/accounting.md` หัวข้อ ภ.พ.30 ส่วน "ยังเปิดอยู่")
  *   - เอกสารรายได้อื่นแบบกลับรายการ (`-R`): `metadata.source === 'OTHER_INCOME'` และ `otherIncomeId` ลงท้าย `:reversal`
  *   - ใบลดหนี้ ม.82/5: ยึดคืน (`tag 'JP5'` + `flow 'repossession'`) · ตัดหนี้สูญ (`tag 'BAD-DEBT'` + `flow 'write-off'`)
  *   - นอกนั้น = OTHER
@@ -180,16 +190,27 @@ export function classifyOutputVatReduction(entry: {
 }
 
 /**
+ * นับบรรทัดนี้ในการคำนวณของ ภ.พ.30 เลยหรือไม่ (ไม่สนใจว่าเป็นบัญชี 21-2101 หรือ 21-2103) — true เมื่อ
+ * **ไม่ใช่**ส่วนหนึ่งของรายการปิด/ชำระภาษีขาย (`journalEntry.isVatSettlement`). แหล่งเดียวของเงื่อนไข
+ * "isVatSettlement" — ทั้ง `summarizePp30OutputVat` (ก่อนแยกบัญชี 21-2101/21-2103) และ `countsAsPp30SettledVat`
+ * (ด้านล่าง) เรียกฟังก์ชันนี้แทนเช็ค `journalEntry.isVatSettlement` ตรง ๆ คนละจุด (F1, fix round 2 2026-09-30 —
+ * round 1 เช็คเงื่อนไขนี้ประกบกับ accountCode === 21-2101 ไว้ในที่เดียว (`countsAsPp30SettledVat`) เท่านั้น
+ * ทำให้ฝั่ง 21-2103 ของรายการปิดภาษียังไม่ถูกกัน — ดู `summarizePp30OutputVat` ที่เรียกฟังก์ชันนี้ก่อนแยกบัญชี).
+ */
+export function countsInPp30Computation(line: Pp30OutputVatLine): boolean {
+  return !line.journalEntry.isVatSettlement;
+}
+
+/**
  * นับบรรทัด 21-2101 นี้เป็นภาษีขายที่ตั้งไว้ (settled) ในการคำนวณของ ภ.พ.30 หรือไม่ — true เมื่อเป็น
- * บัญชี 21-2101 **และ** ไม่ใช่ส่วนหนึ่งของรายการปิด/ชำระภาษีขาย (`journalEntry.isVatSettlement`).
- * แหล่งเดียวของเงื่อนไขนี้ — ทั้ง `summarizePp30OutputVat` และผู้เรียกภายนอกที่ต้องแบ่งยอดต่อบรรทัด
- * (เช่น `vatOutputBySource` ใน `TaxPreviewService.previewPP30`) ต้องเรียกฟังก์ชันนี้แทนการเช็ค
- * `accountCode === PP30_SETTLED_VAT_ACCOUNT` ตรง ๆ — ผู้เรียกที่ลืมเช็ค `isVatSettlement` จะรวมยอด
- * ของรายการปิดภาษีเข้าไปด้วย ทำให้ผลรวมย่อย (เช่นแยกตาม referenceType) ไม่เท่ายอดรวม
- * `totalVatSettled` (F1, fix round 1 2026-09-30).
+ * บัญชี 21-2101 **และ** นับในการคำนวณของ ภ.พ.30 เลย (`countsInPp30Computation`). แหล่งเดียวของเงื่อนไขนี้ —
+ * ผู้เรียกภายนอกที่ต้องแบ่งยอดต่อบรรทัดของบัญชี 21-2101 โดยเฉพาะ (เช่น `vatOutputBySource` ใน
+ * `TaxPreviewService.previewPP30`) ต้องเรียกฟังก์ชันนี้แทนการเช็ค `accountCode === PP30_SETTLED_VAT_ACCOUNT`
+ * ตรง ๆ — ผู้เรียกที่ลืมเช็ค `isVatSettlement` จะรวมยอดของรายการปิดภาษีเข้าไปด้วย ทำให้ผลรวมย่อย (เช่นแยกตาม
+ * referenceType) ไม่เท่ายอดรวม `totalVatSettled` (F1, fix round 1 2026-09-30).
  */
 export function countsAsPp30SettledVat(line: Pp30OutputVatLine): boolean {
-  return line.accountCode === PP30_SETTLED_VAT_ACCOUNT && !line.journalEntry.isVatSettlement;
+  return line.accountCode === PP30_SETTLED_VAT_ACCOUNT && countsInPp30Computation(line);
 }
 
 /** สรุปภาษีขายจากบรรทัดของเดือน — รับเฉพาะ 21-2101 และ 21-2103 บรรทัดบัญชีอื่นถูกข้าม */
@@ -203,6 +224,10 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
   const reductionLines: Pp30ReductionLine[] = [];
 
   for (const line of lines) {
+    // F1 (fix round 2, 2026-09-30): รายการปิด/ชำระภาษีขายที่ผ่าน 21-3201 (หรือการกลับรายการของมัน) — ไม่นับทั้งบรรทัด
+    // ไม่ว่าบรรทัดนั้นจะอยู่บัญชี 21-2101 หรือ 21-2103 — เช็คก่อนแยกบัญชีเสมอ (round 1 เช็คเฉพาะฝั่ง 21-2101 ผ่าน
+    // countsAsPp30SettledVat ซึ่งรวม accountCode check ไว้ด้วย ทำให้ฝั่ง 21-2103 ของรายการปิดยังรั่วเข้า mandatory60Day)
+    if (!countsInPp30Computation(line)) continue;
     const credit = dec(line.credit);
     const debit = dec(line.debit);
     if (line.accountCode === PP30_MANDATORY_60DAY_VAT_ACCOUNT) {
@@ -210,8 +235,7 @@ export function summarizePp30OutputVat(lines: Pp30OutputVatLine[]): Pp30OutputVa
       m60Debit = m60Debit.plus(debit);
       continue;
     }
-    // F1: รายการปิด/ชำระภาษีขายที่ผ่าน 21-3201 (หรือการกลับรายการของมัน) — ไม่นับทั้งบรรทัด
-    if (!countsAsPp30SettledVat(line)) continue;
+    if (!countsAsPp30SettledVat(line)) continue; // บัญชีอื่นที่ไม่ใช่ 21-2101/21-2103 ถูกข้าม
     settledGross = settledGross.plus(credit);
     if (debit.isZero()) continue;
     const kind = classifyOutputVatReduction(line.journalEntry);

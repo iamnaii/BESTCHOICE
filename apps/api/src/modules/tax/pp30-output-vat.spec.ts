@@ -347,6 +347,42 @@ describe('summarizePp30OutputVat', () => {
     expect(s.settledNet.toFixed(2)).toBe('49.17');
     expectReconciles(s);
   });
+
+  it('F1 (fix round 2): รายการปิด/ชำระภาษีขายที่แตะทั้ง 21-2101 และ 21-2103 พร้อมกัน (Dr 21-2101 99.17 + Dr 21-2103 99.17 / Cr 21-3201) ไม่กระทบตัวเลขใดๆ เลย — เดิมฝั่ง 21-2103 ยังรั่วเข้า mandatory60Day (round 1 กันเฉพาะฝั่ง 21-2101)', () => {
+    const baseLines = [
+      line('21-2101', '0', '99.17', { metadata: META_2A }),
+      line('21-2103', '0', '99.17', { metadata: META_VAT60 }),
+      line('21-2103', '99.17', '0', { metadata: META_VAT60_REV }),
+    ];
+    const baseline = summarizePp30OutputVat(baseLines);
+    const withSettlement = summarizePp30OutputVat([
+      ...baseLines,
+      // รายการปิด/ชำระภาษีขาย: Dr 21-2101 99.17 + Dr 21-2103 99.17 / Cr 21-3201 198.34 (Cr 21-3201 ไม่ได้อยู่ในอินพุตของ
+      // summarizePp30OutputVat เพราะตัวคำนวณอ่านเฉพาะ 21-2101/21-2103 — isVatSettlement: true จำลองสิ่งที่
+      // toPp30OutputVatLine จะคำนวณให้จริงเมื่อรายการมีบรรทัดพี่น้องบน 21-3201)
+      line('21-2101', '99.17', '0', { isVatSettlement: true }),
+      line('21-2103', '99.17', '0', { isVatSettlement: true }),
+    ]);
+
+    // "ทุกตัวเลข 60 วันไม่เปลี่ยน" ตามที่ F1 ต้องการ — เทียบทั้งก้อนกับ baseline ที่ไม่มีรายการปิดภาษีเลย
+    expect(toPp30OutputVatJson(withSettlement)).toEqual(toPp30OutputVatJson(baseline));
+    expect(withSettlement.reductionLines).toEqual(baseline.reductionLines);
+
+    expect(toPp30OutputVatJson(withSettlement)).toEqual({
+      settledGross: '99.17',
+      reductionReversal: '0.00',
+      reductionCreditNote: '0.00',
+      reductionOther: '0.00',
+      reductionTotal: '0.00',
+      settledNet: '99.17',
+      mandatory60DayCredit: '99.17',
+      mandatory60DayDebit: '99.17', // เฉพาะ VAT60_REV — ไม่รวมเดบิต 99.17 ของรายการปิดภาษี (เดิมได้ 198.34)
+      mandatory60DayNet: '0.00',
+      mandatory60DayIncluded: false,
+      totalOutputVat: '99.17',
+    });
+    expectReconciles(withSettlement);
+  });
 });
 
 describe('PP30_INCLUDES_MANDATORY_60DAY', () => {

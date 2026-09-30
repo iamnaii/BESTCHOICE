@@ -170,7 +170,8 @@ export class InstallmentAccrual2ATemplate {
    * ส่ง = ใบบางส่วนก่อนวันครบกำหนด → ตั้งเท่ายอดนี้ (split.principalCleared) ตามสูตร ก1; ยอดที่ถึงส่วนที่เหลือ
    * ของงวด = ตั้งส่วนที่เหลือทั้งหมดและงวดตั้งครบ.
    *
-   * "แกนอย่างเดียว": ลงรายการ 2A + ประทับ accrualJournalEntryId เท่านั้น — ไม่หักเงินรับล่วงหน้า
+   * "แกนอย่างเดียว": ลงรายการ 2A + เขียนยอดสะสมของงวด (accruedAmount/Vat/Interest) และประทับ
+   * accrualJournalEntryId เฉพาะเมื่อรายการนี้ทำให้งวดตั้งครบ (postPart) — ไม่หักเงินรับล่วงหน้า
    * (ทั้งถังรวมและถังพักงวดสุดท้าย) และไม่แตะแถว Payment เพราะเส้นทางรับชำระเป็นผู้จัดการสองอย่างนั้น.
    * ตรวจซ้ำ (idempotency) ด้วย `tx` ที่ส่งเข้ามา จึงเห็นตารางงวดที่เพิ่งสร้างในธุรกรรมเดียวกัน
    * (ensureInstallmentSchedules).
@@ -314,7 +315,7 @@ export class InstallmentAccrual2ATemplate {
       const reference = receiptAccrualReference(installmentScheduleId, k);
       const holder = await tx.journalEntry.findFirst({
         where: { referenceType: 'AUTO', referenceId: reference, deletedAt: null },
-        select: { metadata: true },
+        select: { id: true }, // ถามแค่ว่ามีรายการถือ reference นี้หรือไม่
       });
       if (!holder) return reference;
     }
@@ -418,13 +419,14 @@ export class InstallmentAccrual2ATemplate {
     //
     // If the contract has an advance parked in 21-1103 (from a payment
     // posted before this installment's due date — see PaymentReceipt2B
-    // `advanceCredit` flow), immediately clear up to installmentTotal
-    // inside the same tx. Otherwise the trial balance shows both the
-    // freshly-accrued 11-2103 receivable AND the advance liability
-    // sitting alongside each other until the next 2B receipt fires —
-    // which only happens if the customer pays again. Auto-clearing here
-    // keeps the books accurate without requiring a redundant manual
-    // payment touch.
+    // `advanceCredit` flow), immediately clear the part of this installment
+    // that is still outstanding — capped by the two-layer ceiling below, not
+    // the full installmentTotal — inside the same tx. Otherwise the trial
+    // balance shows both the freshly-accrued 11-2103 receivable AND the
+    // advance liability sitting alongside each other until the next 2B
+    // receipt fires — which only happens if the customer pays again.
+    // Auto-clearing here keeps the books accurate without requiring a
+    // redundant manual payment touch.
     //
     // JE: Dr 21-1103 (consume advance) / Cr 11-2103 (clear receivable)
     //   for amount = min(advanceBalance, เพดานสองชั้นข้างล่าง).

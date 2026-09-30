@@ -11,6 +11,7 @@ import { ProductsModule } from '../products/products.module';
 import { JournalModule } from '../journal/journal.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { AccountingModule } from '../accounting/accounting.module';
+import { ReceiptsModule } from '../receipts/receipts.module';
 
 // No forwardRef needed for AccountingModule: its own import chain (JournalModule,
 // TaxModule, PeakModule, ConsecutiveMissedModule, ReceiptsModule — see
@@ -26,6 +27,8 @@ import { AccountingModule } from '../accounting/accounting.module';
     JournalModule,
     AccountingModule,
     forwardRef(() => PaymentsModule),
+    // PR3: ใบเสร็จของเงินที่เข้าทางลิงก์ชำระ — PaySolutionsService รับ ReceiptsService แบบ forwardRef
+    forwardRef(() => ReceiptsModule),
   ],
   controllers: [PaySolutionsController],
   providers: [PaySolutionsService, LiffTokenGuard, PartialPaymentExpireCron],

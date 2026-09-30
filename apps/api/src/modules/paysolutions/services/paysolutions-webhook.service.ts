@@ -17,6 +17,8 @@ import {
 } from '../../journal/deferred-warning';
 import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../../accounting/bad-debt.service';
+import type { ReceiptsService } from '../../receipts/receipts.service';
+import { reportReceiptIssueFailure } from '../../receipts/services/receipt-issue-alert';
 import { formatDateLong } from '../../../utils/thai-date.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
@@ -81,6 +83,10 @@ export class PaySolutionsWebhookService {
     private vat60Reversal: Vat60dayReversalTemplate,
     private badDebtService: BadDebtService,
     private host: PaySolutionsWebhookHost,
+    /**
+     * ใบเสร็จของงวดที่เงินลิงก์ชำระจ่าย (PR3 — คำสั่งเจ้าของ 2026-09-30). ไม่ส่ง = ไม่ออกใบ (ค่าเริ่มต้นของ spec เดิม)
+     */
+    private receipts?: Pick<ReceiptsService, 'generateReceipt'>,
   ) {}
 
   /**
@@ -351,6 +357,8 @@ export class PaySolutionsWebhookService {
             payThis: Prisma.Decimal;
             isFinalReceipt: boolean;
             lateFee: Prisma.Decimal;
+            /** เลขที่รายการรับชำระของงวดนี้ — ใบเสร็จผูกรายการนี้หลัง commit (PR3) */
+            entryNo?: string;
           }> = [];
           for (const payment of unpaidPayments) {
             if (remaining.lte(0)) break;
@@ -496,6 +504,7 @@ export class PaySolutionsWebhookService {
                   tx,
                 );
                 receiptWarnings.push(...warningsOf(posted));
+                snapshot.entryNo = posted?.entryNo;
                 if (instSchedPs.vat60dayJournalEntryId) {
                   await this.vat60Reversal.execute(instSchedPs.id, tx);
                 }
@@ -628,6 +637,7 @@ export class PaySolutionsWebhookService {
             fullyPaidCount,
             totalUnpaidAtStart: unpaidPayments.length,
             touchedSnapshots,
+            paidAt: now,
           };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -644,6 +654,43 @@ export class PaySolutionsWebhookService {
       this.logger.log(
         `Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}, contractStatus=${result.contractStatus ?? 'ACTIVE'}, fullyPaid=${result.fullyPaidCount}/${result.totalUnpaidAtStart}`,
       );
+
+      // ใบเสร็จของทุกงวดที่เงินนี้จ่าย (PR3 — คำสั่งเจ้าของ 2026-09-30: เดิมทางนี้ลงบัญชีแต่ไม่มีใบเสร็จ) — ออกหลัง
+      // ธุรกรรม commit ผูกรายการรับชำระของงวดนั้น (VAT ของใบ = ภาษีขายของ 2A ที่ลงพร้อมกัน). webhook ที่ส่งซ้ำจบที่ด่าน
+      // ลิงก์ USED / alreadyClaimed ข้างบนก่อนถึงตรงนี้ และ generateReceipt คืนใบเดิมถ้ารายการนี้มีใบแล้ว.
+      // ใบใดออกไม่สำเร็จห้ามทำให้ webhook ล้ม (เงินเข้าและลงบัญชีแล้ว) — แจ้ง Sentry พร้อมเลขที่รายการสำหรับออกใบซ้ำ
+      // (ผู้ให้บริการส่งซ้ำก็ไม่ถึงตรงนี้อีก). เรียกแบบเดียวกับหน้ารับชำระ → ข้อความใบเสร็จทาง LINE ตามกติกาเดิมต่องวด
+      // (OA ของ SHOP) นอกเหนือจากข้อความ "ชำระสำเร็จ" ข้างล่าง (OA ของ FINANCE) — คำตอบเจ้าของ ถ4 2026-09-30
+      if (this.receipts && contractForJe && systemUserId) {
+        for (const snapshot of result.touchedSnapshots) {
+          if (!snapshot.payThis.gt(0)) continue;
+          try {
+            await this.receipts.generateReceipt(
+              paymentLink.contractId,
+              snapshot.id,
+              'INSTALLMENT',
+              snapshot.payThis.toNumber(),
+              snapshot.installmentNo,
+              PaymentMethod.ONLINE_GATEWAY,
+              transaction_id || refno,
+              systemUserId,
+              result.paidAt,
+              snapshot.entryNo,
+            );
+          } catch (err) {
+            this.logger.error(
+              `Failed to generate receipt for payment ${snapshot.id} (refno=${refno}): ${err instanceof Error ? err.message : err}`,
+            );
+            reportReceiptIssueFailure(err, {
+              path: 'paysolutions-webhook',
+              contractId: paymentLink.contractId,
+              paymentId: snapshot.id,
+              installmentNo: snapshot.installmentNo,
+              journalEntryNumber: snapshot.entryNo ?? null,
+            });
+          }
+        }
+      }
 
       // C2 fix: the JE post that used to be HERE (outside the $transaction)
       // was moved inside the tx above so a JE failure rolls back the

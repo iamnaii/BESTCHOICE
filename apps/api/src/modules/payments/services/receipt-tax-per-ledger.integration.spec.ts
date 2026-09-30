@@ -33,6 +33,7 @@ import { EarlyPayoffJP4Template } from '../../journal/cpa-templates/early-payoff
 import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
 import { ShopCollectSettlementTemplate } from '../../journal/cpa-templates/shop-collect-settlement.template';
 import { EclStageReverseTemplate } from '../../journal/cpa-templates/ecl-stage-reverse.template';
+import { PaySolutionsService } from '../../paysolutions/paysolutions.service';
 import type { PaymentCase } from '../dto/payment.dto';
 import { PaymentReceiptOrchestrator } from './payment-receipt-orchestrator';
 
@@ -479,6 +480,59 @@ describe('ใบกำกับภาษีตามบัญชี — ทุ�
         });
         expect(je.lines.some((l) => l.accountCode === '21-5101' && l.debit.gt(0))).toBe(true);
         expect(await accrualVatOfReceiptEntry(r.sourceJournalEntryId!)).toBe(taxOf(r).vatAmount);
+      }
+    });
+  });
+
+  describe('เงินเข้าทางลิงก์ชำระ (webhook PaySolutions)', () => {
+    it('เงิน 3,031.66 จ่ายงวด 1–2 → ใบเสร็จ 2 ใบ ONLINE_GATEWAY ผูกรายการของแต่ละงวด · VAT 99.17 = ภาษีขายของ 2A · webhook ส่งซ้ำไม่ได้ใบเพิ่ม', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2, 3] });
+      const noop = async () => {};
+      const paysolutions = new PaySolutionsService(
+        prisma as never,
+        { get: (_k: string, def?: string) => def ?? '' } as never,
+        { sendFlexMessage: noop } as never,
+        { getValue: async () => '' } as never,
+        {} as never,
+        { transferOwnership: noop } as never,
+        journal,
+        receiptTemplate,
+        { execute: noop } as never,
+        {} as never,
+        { reverseStageOnPayment: noop } as never,
+        receiptsService,
+      );
+      const link = await prisma.paymentLink.create({
+        data: {
+          token: `rtx-webhook-${Date.now()}`,
+          contractId: c.id,
+          amount: D('3031.66'),
+          status: 'ACTIVE',
+          expiresAt: new Date(Date.now() + DAY_MS),
+        },
+      });
+      const payload = {
+        refno: link.token,
+        result_code: '00',
+        order_no: 'rtx-o-1',
+        transaction_id: 'rtx-tx-1',
+        total: '3031.66',
+      };
+
+      await paysolutions.handlePaymentCallback(payload);
+      await paysolutions.handlePaymentCallback(payload); // ผู้ให้บริการส่งซ้ำ
+
+      const receipts = await installmentReceipts(c.id);
+      expect(
+        receipts.map((r) => [r.installmentNo, r.paymentMethod, r.transactionRef, taxOf(r).amount]),
+      ).toEqual([
+        [1, 'ONLINE_GATEWAY', 'rtx-tx-1', '1515.83'],
+        [2, 'ONLINE_GATEWAY', 'rtx-tx-1', '1515.83'],
+      ]);
+      for (const r of receipts) {
+        expect(taxOf(r).vatAmount).toBe('99.17');
+        expect(r.sourceJournalEntryId).not.toBeNull();
+        expect(await accrualVatOfReceiptEntry(r.sourceJournalEntryId!)).toBe('99.17');
       }
     });
   });

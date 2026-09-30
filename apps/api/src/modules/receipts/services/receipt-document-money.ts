@@ -37,6 +37,11 @@ export interface ReceiptMoneyView {
   lateFeeWaivedAmount?: DecimalLike;
   advanceAmount?: DecimalLike;
   advanceVatAmount?: DecimalLike;
+  /**
+   * ใบลดหนี้ตอนยกเลิกใบเสร็จ (PR3): งวดเป้าหมายของเงินพักค่าปรับดิวของใบที่ถูกยกเลิก — ประวัติการจัดสรรของใบลดหนี้เอง
+   * ไม่มี (ReceiptQueryService.getReceipt หาให้ผ่าน voidedReceiptId) ใช้เฉพาะป้ายของแถวเงินรับล่วงหน้าในทางที่เก็บค่า
+   */
+  advanceTargetInstallmentNo?: number | null;
   contract?: {
     financedAmount?: DecimalLike;
     storeCommission?: DecimalLike;
@@ -291,7 +296,8 @@ export function hasStoredReceiptTax(view: ReceiptMoneyView): boolean {
  *   แถวเงินรับล่วงหน้า = advanceAmount (+ พักไว้ / − หักเข้างวด) · VAT = advanceVatAmount
  *   แถวค่าปรับ       = lateFeeAmount + lateFeeWaivedAmount · แถวอนุโลม = lateFeeWaivedAmount
  *   แถวปัดเศษ        = roundingAmount (นอกฐานภาษี)
- * งวดเป้าหมายของเงินพักค่าปรับดิว (ป้ายของแถวเท่านั้น) อ่านจากประวัติการจัดสรรเหมือนเดิม
+ * งวดเป้าหมายของเงินพักค่าปรับดิว (ป้ายของแถวเท่านั้น) อ่านจากประวัติการจัดสรรเหมือนเดิม · ใบลดหนี้ไม่มีประวัติของตัวเอง
+ * จึงใช้งวดเป้าหมายของใบที่ถูกยกเลิก (advanceTargetInstallmentNo) — ป้ายของใบลดหนี้เท่าใบเดิม
  */
 export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocumentMoney {
   const total = toDec(view.amount);
@@ -304,9 +310,10 @@ export function storedReceiptDocumentMoney(view: ReceiptMoneyView): ReceiptDocum
   const receiptType = view.receiptType ?? 'PAYMENT';
   const installmentPortion = total.minus(fee).minus(rounding).minus(advance);
   const installmentVat = vat.minus(advanceVat);
-  const rescheduleTarget = view.installmentAllocations?.find(
-    (a) => a.kind === 'RESCHEDULE_ADVANCE',
-  )?.installmentNo;
+  const rescheduleTarget =
+    view.installmentAllocations?.find((a) => a.kind === 'RESCHEDULE_ADVANCE')?.installmentNo ??
+    view.advanceTargetInstallmentNo ??
+    undefined;
   const advanceRows: DocumentAdvanceRow[] = advance.isZero()
     ? []
     : [

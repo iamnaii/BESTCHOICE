@@ -49,7 +49,16 @@ function makeReceipt(over: Record<string, unknown> = {}) {
   };
 }
 
-function setup() {
+function setup(
+  opts: {
+    /** ช่องเพิ่มของใบเป้าหมาย / ใบพี่น้อง (เช่น ค่าที่เก็บ ณ ตอนออกใบของ PR3) */
+    target?: Record<string, unknown>;
+    sibling?: Record<string, unknown>;
+    /** ตัวอ่านใบแบบเดียวกับ PDF (PR3) — ไม่ส่ง = ใบลดหนี้ของใบเก่าคงรูปเดิม */
+    query?: { getReceipt: jest.Mock };
+    events?: string[];
+  } = {},
+) {
   const siblingRows = [
     {
       id: SIBLING_ID,
@@ -63,14 +72,16 @@ function setup() {
       installmentNo: 4,
       paymentMethod: 'CASH',
       paidDate: new Date('2026-08-16T00:00:00.000Z'),
+      ...opts.sibling,
     },
   ];
+  const target = makeReceipt(opts.target);
 
   const receiptCreate = jest.fn(({ data }: any) => Promise.resolve({ ...data, id: `cn-${data.receiptNumber}` }));
 
   const tx = {
     receipt: {
-      findUnique: jest.fn().mockResolvedValue(makeReceipt()),
+      findUnique: jest.fn().mockResolvedValue(target),
       findMany: jest.fn().mockResolvedValue(siblingRows),
       create: receiptCreate,
       update: jest.fn().mockResolvedValue({}),
@@ -103,6 +114,11 @@ function setup() {
   };
 
   const prisma = {
+    // PR3: อ่านใบเป้าหมาย + ใบพี่น้องก่อนเปิดธุรกรรม (เฉพาะเมื่อมีตัวอ่านใบ)
+    receipt: {
+      findUnique: jest.fn().mockResolvedValue(target),
+      findMany: jest.fn().mockResolvedValue([target, ...siblingRows]),
+    },
     user: {
       findUnique: jest
         .fn()
@@ -112,7 +128,10 @@ function setup() {
     // documented no-op without a companyId.
     companyInfo: { findFirst: jest.fn().mockResolvedValue(null) },
     systemConfig: { findUnique: jest.fn().mockResolvedValue(null) },
-    $transaction: jest.fn((cb: any) => cb(tx)),
+    $transaction: jest.fn((cb: any) => {
+      opts.events?.push('transaction');
+      return cb(tx);
+    }),
   } as unknown as PrismaService;
 
   let seq = 13;
@@ -123,7 +142,7 @@ function setup() {
   } as unknown as ReceiptNumberService;
 
   const reversal = { voidReceipt: jest.fn() } as unknown as ReceiptVoidReversalTemplate;
-  const service = new ReceiptVoidService(prisma, reversal, numbers);
+  const service = new ReceiptVoidService(prisma, reversal, numbers, opts.query as never);
   return { service, tx, receiptCreate };
 }
 
@@ -185,6 +204,93 @@ describe('ReceiptVoidService — credit note per voided receipt', () => {
     const audit = (tx.auditLog.create as jest.Mock).mock.calls[0][0].data;
     expect(audit.action).toBe('RECEIPT_VOID');
     expect(audit.newValue.siblingCreditNoteNumbers).toHaveLength(1);
+  });
+
+  // ── PR3 (ม.86/10 · คำถาม Q5): ใบลดหนี้แสดงตัวเลขทุกบรรทัดเท่าใบที่ยกเลิก ─────────────────────────
+  const STORED_2000 = {
+    amountBeforeVat: dec(1869.16),
+    vatAmount: dec(130.84),
+    roundingAmount: dec(0),
+    lateFeeAmount: dec(0),
+    lateFeeWaivedAmount: dec(0),
+    advanceAmount: dec(0),
+    advanceVatAmount: dec(0),
+  };
+  const STORED_1771 = {
+    amountBeforeVat: dec(1605.14),
+    vatAmount: dec(115.86),
+    roundingAmount: dec(0),
+    lateFeeAmount: dec(50),
+    lateFeeWaivedAmount: dec(0),
+    advanceAmount: dec(0),
+    advanceVatAmount: dec(0),
+  };
+  const money = (cn: Record<string, unknown>) =>
+    [
+      'amountBeforeVat',
+      'vatAmount',
+      'roundingAmount',
+      'lateFeeAmount',
+      'lateFeeWaivedAmount',
+      'advanceAmount',
+      'advanceVatAmount',
+    ].map((k) => (cn[k] == null ? null : new Prisma.Decimal(String(cn[k])).toFixed(2)));
+
+  it('PR3: ใบที่เก็บค่าแล้ว → ใบลดหนี้ของใบเป้าหมายและใบพี่น้องคัดลอกค่าทั้ง 7 ช่องตรงตัว', async () => {
+    const { service, receiptCreate } = setup({ target: STORED_2000, sibling: STORED_1771 });
+
+    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', { requestId: 'void-request', actorId: 'approver-1' });
+
+    const bySource = new Map(
+      creditNotesFrom(receiptCreate as jest.Mock).map((c) => [c.voidedReceiptId, c]),
+    );
+    expect(money(bySource.get(TARGET_ID))).toEqual(['1869.16', '130.84', '0.00', '0.00', '0.00', '0.00', '0.00']);
+    expect(money(bySource.get(SIBLING_ID))).toEqual(['1605.14', '115.86', '0.00', '50.00', '0.00', '0.00', '0.00']);
+  });
+
+  it('PR3: ใบเก่า (ไม่มีค่าที่เก็บ) → อ่านใบก่อนเปิดธุรกรรม แล้วใบลดหนี้เก็บตัวเลขที่ใบเดิมพิมพ์ (ตรรกะเดิมของ PDF)', async () => {
+    const events: string[] = [];
+    const legacyView = (amount: number) => ({
+      receiptType: 'INSTALLMENT',
+      amount: dec(amount),
+      installmentNo: 4,
+      lateFeeCollected: '0.00',
+      lateFeeWaivedThisReceipt: '0.00',
+      hasReceiptFeeHistory: true,
+      installmentAllocations: [{ installmentNo: 4, amount: dec(amount).toFixed(2), kind: 'INSTALLMENT' }],
+      contract: null,
+    });
+    const query = {
+      getReceipt: jest.fn(async (id: string) => {
+        events.push(`read ${id}`);
+        return legacyView(id === TARGET_ID ? 2000 : 1771);
+      }),
+    };
+    const { service, receiptCreate } = setup({ query, events });
+
+    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', { requestId: 'void-request', actorId: 'approver-1' });
+
+    expect(events).toEqual([`read ${TARGET_ID}`, `read ${SIBLING_ID}`, 'transaction']);
+    const bySource = new Map(
+      creditNotesFrom(receiptCreate as jest.Mock).map((c) => [c.voidedReceiptId, c]),
+    );
+    // ตรรกะเดิม: ยอดไม่เท่าค่างวด → ×100/107
+    expect(money(bySource.get(TARGET_ID))).toEqual(['1869.16', '130.84', '0.00', '0.00', '0.00', '0.00', '0.00']);
+    expect(money(bySource.get(SIBLING_ID))).toEqual(['1655.14', '115.86', '0.00', '0.00', '0.00', '0.00', '0.00']);
+  });
+
+  it('PR3: ตรรกะเดิมพิมพ์ใบเก่าไม่ได้ → ใบลดหนี้คงรูปเดิม (ยอดอย่างเดียว) และการยกเลิกไม่ล้ม', async () => {
+    const query = { getReceipt: jest.fn().mockRejectedValue(new Error('ประวัติไม่พอ')) };
+    const { service, receiptCreate } = setup({ query });
+
+    await service.voidReceipt(TARGET_ID, 'คีย์ยอดผิด', 'maker-1', 'approver-1', 'OWNER', { requestId: 'void-request', actorId: 'approver-1' });
+
+    const cns = creditNotesFrom(receiptCreate as jest.Mock);
+    expect(cns).toHaveLength(2);
+    expect(cns.map((c) => money(c))).toEqual([
+      [null, null, null, null, null, null, null],
+      [null, null, null, null, null, null, null],
+    ]);
   });
 
   it('single-receipt installment still issues exactly one credit note', async () => {

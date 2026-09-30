@@ -26,7 +26,10 @@ import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contra
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import { ReceiptVoidReversalTemplate } from '../../journal/cpa-templates/receipt-void-reversal.template';
 import { ReceiptsService } from '../../receipts/receipts.service';
-import { earlyPayoffWithApproval } from '../../../../e2e/helpers/payment-approval';
+import {
+  earlyPayoffWithApproval,
+  voidReceiptWithApproval,
+} from '../../../../e2e/helpers/payment-approval';
 import { ContractPaymentService } from '../../contracts/contract-payment.service';
 import { ProductsService } from '../../products/products.service';
 import { EarlyPayoffJP4Template } from '../../journal/cpa-templates/early-payoff-jp4.template';
@@ -114,6 +117,23 @@ async function restoreFinancePeriods(): Promise<void> {
   }
 }
 
+/** การยกเลิกใบเสร็จต้องมีผู้อนุมัติที่ไม่ใช่ผู้ขอ และมีสิทธิ์ยกเลิก */
+async function ensureApprover(): Promise<string> {
+  const email = 'test-receipt-tax-approver@bestchoice-test.internal';
+  const existing = await prisma.user.findFirst({ where: { email } });
+  if (existing) return existing.id;
+  const created = await prisma.user.create({
+    data: {
+      email,
+      password: 'hashed_placeholder',
+      name: 'Receipt Tax Approver',
+      role: 'ACCOUNTANT',
+      isActive: true,
+    },
+  });
+  return created.id;
+}
+
 async function cleanLedger(): Promise<void> {
   await prisma.receipt.deleteMany({});
   await prisma.journalPostAuditLog.deleteMany({});
@@ -137,6 +157,7 @@ describe('ใบกำกับภาษีตามบัญชี — ทุ�
   let receiptsService: ReceiptsService;
   let orchestrator: PaymentReceiptOrchestrator;
   let recordedById: string;
+  let approverId: string;
 
   /** วันครบกำหนดในอนาคต 60 วัน = งวดยังไม่ถึงกำหนด */
   const futureDue = () => new Date(Date.now() + 60 * DAY_MS);
@@ -258,6 +279,7 @@ describe('ใบกำกับภาษีตามบัญชี — ทุ�
     await ensureFinanceCompany();
     await ensureSystemAdminUser();
     await ensureFinancePeriodsOpen();
+    approverId = await ensureApprover();
 
     journal = new JournalAutoService(prisma as never);
     receiptTemplate = new PaymentReceiptTemplate(journal, prisma as never);
@@ -534,6 +556,57 @@ describe('ใบกำกับภาษีตามบัญชี — ทุ�
         expect(r.sourceJournalEntryId).not.toBeNull();
         expect(await accrualVatOfReceiptEntry(r.sourceJournalEntryId!)).toBe('99.17');
       }
+    });
+  });
+
+  describe('ยกเลิกใบเสร็จ → ใบลดหนี้คัดลอกทุกบรรทัด (Q5)', () => {
+    it('ใบ 1,565.83 (ค่างวด 1,515.83 + ค่าปรับที่พนักงานเพิ่ม 50) → ใบลดหนี้ มูลค่า 1,416.66 · VAT 99.17 · ค่าปรับ 50 เท่าใบเดิม', async () => {
+      const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
+      await orchestrator.recordPayment(
+        c.id,
+        1,
+        1565.83,
+        'CASH',
+        recordedById,
+        undefined, // evidenceUrl
+        undefined, // notes
+        'RTX-VOID-1',
+        '11-1101',
+        undefined, // toleranceApproverId
+        undefined, // paymentCase
+        undefined, // consumeAdvance
+        undefined, // paidDate
+        undefined, // lateFeeWaiverAmount
+        undefined, // lateFeeWaiverReasonCode
+        undefined, // waiverApproverId
+        true, // enforceSequence
+        50, // additionalLateFee
+      );
+      const [r] = await installmentReceipts(c.id);
+      expect(taxOf(r)).toEqual({
+        amount: '1565.83',
+        amountBeforeVat: '1416.66',
+        vatAmount: '99.17',
+        roundingAmount: '0.00',
+        lateFeeAmount: '50.00',
+        lateFeeWaivedAmount: '0.00',
+        advanceAmount: '0.00',
+        advanceVatAmount: '0.00',
+      });
+
+      await voidReceiptWithApproval(
+        prisma,
+        receiptsService,
+        r.id,
+        'ทดสอบใบลดหนี้คัดลอกทุกบรรทัด',
+        recordedById,
+        approverId,
+      );
+
+      const cn = await prisma.receipt.findFirstOrThrow({
+        where: { contractId: c.id, receiptType: 'CREDIT_NOTE', voidedReceiptId: r.id },
+      });
+      expect(taxOf(cn)).toEqual(taxOf(r));
     });
   });
 });

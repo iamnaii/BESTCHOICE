@@ -229,4 +229,21 @@ describe('documentMoneyColumns — ค่าที่ใบลดหนี้ค
     expect([f(cols.amountBeforeVat), f(cols.vatAmount)]).toEqual(['5155.14', '360.86']);
     expect([f(cols.advanceAmount), f(cols.advanceVatAmount)]).toEqual(['1044.00', '68.30']);
   });
+
+  it('ใบลดหนี้ของใบ 5,516 (ค่าที่คัดลอก + งวดเป้าหมายจากใบที่ถูกยกเลิก) → แถวเงินพักป้าย "งวดที่ 10 — ปรับดิว" เท่าใบเดิม ไม่ใช่ "เงินรับล่วงหน้าในสัญญา"', () => {
+    const original = legacyReceiptDocumentMoney(view());
+    const creditNote = view({
+      receiptType: 'CREDIT_NOTE',
+      installmentAllocations: null, // ใบลดหนี้ไม่มีประวัติการจัดสรรของตัวเอง
+      advanceTargetInstallmentNo: 10, // ReceiptQueryService.getReceipt หาจากใบที่ถูกยกเลิก
+      ...documentMoneyColumns(original),
+    });
+
+    const m = receiptDocumentMoney(creditNote);
+    const rows = (x: typeof m) =>
+      x.advanceRows.map((r) => [r.kind, r.installmentNo, f(r.amount), f(r.vat)]);
+    expect(rows(m)).toEqual(rows(original));
+    expect(rows(m)).toEqual([['RESCHEDULE', 10, '1044.00', '68.30']]);
+    expect([f(m.exclVat), f(m.vatPart)]).toEqual(['5155.14', '360.86']);
+  });
 });

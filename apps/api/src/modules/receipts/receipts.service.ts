@@ -59,8 +59,14 @@ export class ReceiptsService {
       this.numbers,
       this.cnDeliveryService,
     );
-    this.void = new ReceiptVoidService(this.prisma, this.receiptVoidReversalTemplate, this.numbers);
     this.query = new ReceiptQueryService(this.prisma);
+    // PR3: ใบลดหนี้ของใบเก่าเก็บตัวเลขที่ใบเดิมพิมพ์ — อ่านใบผ่านตัวอ่านเดียวกับ PDF
+    this.void = new ReceiptVoidService(
+      this.prisma,
+      this.receiptVoidReversalTemplate,
+      this.numbers,
+      this.query,
+    );
     this.pdf = new ReceiptPdfService(this.query);
     this.cnIssue = this.creditNoteDocumentService
       ? new CreditNoteIssueService(this.prisma, this.creditNoteDocumentService, this.cnDeliveryService)

@@ -557,10 +557,11 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
   describe("QR ที่ยอดยังไม่ครบยอดที่ต้องชำระ และไม่มีเครดิต — preview === สิ่งที่ recordPayment(…, 'PARTIAL', …) ลง (คำตัดสินผู้คุมงาน 2026-09-30 ข้อ 3)", () => {
     /**
      * ลงใบรับชำระจริง (PaymentReceiptTemplate + InstallmentAccrual2ATemplate ตัวจริง) บน mock ของงวดเดียวกับ
-     * buildService — isFinalReceipt: false แบบที่ recordPayment ส่งเมื่อ case 'PARTIAL' (เส้นทางยืนยันของ QR)
+     * buildService — isFinalReceipt: false แบบที่ recordPayment ส่งเมื่อ case 'PARTIAL' (พนักงานรับบางส่วน และ
+     * เส้นทางยืนยันของ QR) · `lateFee` = ค่าปรับของงวดที่ recordPayment ส่งให้ template (ไม่ส่ง = ไม่มีค่าปรับ)
      * คืนบรรทัดของรายการ 2A และใบรับชำระตามลำดับที่ลง
      */
-    async function postPartialReceipt(amount: string, dueDate: Date) {
+    async function postPartialReceipt(amount: string, dueDate: Date, lateFee?: string) {
       const contract = {
         id: 'c1',
         contractNumber: 'CT-0001',
@@ -609,6 +610,7 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
         {
           installmentScheduleId: 'inst-1',
           delta: new Decimal(amount),
+          ...(lateFee ? { lateFee: new Decimal(lateFee) } : {}),
           debitAccountCode: '11-1201',
           isFinalReceipt: false,
           postedAt: new Date(),
@@ -670,6 +672,42 @@ describe('PaymentJournalPreviewService — preview mirrors the save (QA #1347 fo
       expect(triples(asPartial.accrual2A!.lines as Line[])).toEqual(
         triples(preview.accrual2A!.lines as Line[]),
       );
+    });
+
+    // case 'PARTIAL' ของพนักงานลงผ่าน recordPayment(…, 'PARTIAL', …) ทางเดียวกับที่ postPartialReceipt จำลอง
+    it('รับบางส่วน 1,000 พร้อมค่าปรับ 100 ของงวดที่ยังไม่ถึงกำหนด (case PARTIAL) → หักค่าปรับก่อน: Cr 42-1103 100 / Cr 11-2103 900 · 2A เท่ายอดที่ล้างลูกหนี้ 900 — ตรงกับที่ลงจริงทุกบรรทัด', async () => {
+      const futureDue = new Date(Date.now() + 20 * 86_400_000);
+      const paidDate = new Date().toISOString().slice(0, 10);
+      const preview = await buildService(null, futureDue).previewJournal({
+        contractId: 'c1',
+        installmentNo: 1,
+        amountReceived: 1000,
+        lateFee: 100,
+        depositAccountCode: '11-1201',
+        case: 'PARTIAL',
+        paidDate,
+      } as never);
+      const posted = await postPartialReceipt('1000', futureDue, '100');
+
+      expect(triples(preview.lines as Line[])).toEqual([
+        ['11-1201', '1000.00', '0.00'],
+        ['11-2103', '0.00', '900.00'],
+        ['42-1103', '0.00', '100.00'],
+      ]);
+      // VAT HALF_UP(900 × 7 ÷ 107 = 58.8785…) · มูลค่า 841.12 · ดอกเบี้ย HALF_UP(500 × 841.12 ÷ 1,416.66 = 296.8672…)
+      expect(triples(preview.accrual2A!.lines as Line[])).toEqual([
+        ['11-2103', '900.00', '0.00'],
+        ['21-2102', '58.88', '0.00'],
+        ['11-2106', '296.87', '0.00'],
+        ['11-2101', '0.00', '841.12'],
+        ['11-2105', '0.00', '58.88'],
+        ['41-1101', '0.00', '296.87'],
+        ['21-2101', '0.00', '58.88'],
+      ]);
+      expect(preview.accrualPortion).toBe('PARTIAL');
+      expect(preview.accrualAmount).toBe('900.00');
+      expect(triples(preview.lines as Line[])).toEqual(posted.receipt);
+      expect(triples(preview.accrual2A!.lines as Line[])).toEqual(posted.accrual2A);
     });
   });
 });

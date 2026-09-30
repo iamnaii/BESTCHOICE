@@ -50,6 +50,7 @@ import { ReceiptsService } from '../../receipts/receipts.service';
 import { bangkokStartOfDay } from '../../../utils/date.util';
 import { isRetryablePrismaWriteError } from '../../../utils/transaction-retry.util';
 import type { PaymentCase } from '../dto/payment.dto';
+import { PaymentJournalPreviewService } from './payment-journal-preview.service';
 import { PaymentReceiptOrchestrator } from './payment-receipt-orchestrator';
 
 const prisma = new PrismaClient();
@@ -1603,7 +1604,7 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(await balance(c.id, '11-2103', 'dr')).toBe('1515.83');
     });
 
-    it('ก1: ยกเลิกใบบางส่วนก่อนครบกำหนด แล้วรับบางส่วนใหม่ → ใบใหม่ได้ reference `<id>:receipt-accrual:2`', async () => {
+    it('ก1: ยกเลิกใบบางส่วนก่อนครบกำหนด แล้วรับบางส่วนใหม่ → ใบใหม่ได้ reference `<id>:receipt-accrual:2` · ถึงวันครบกำหนดรอบกลางคืนตั้งส่วนที่เหลือ 915.83 → preview ของการรับส่วนที่เหลือแสดงรายการ 2A ที่ลงแล้วทุกใบที่ยังมีผล (600 + 915.83) ไม่รวมใบ 1,000 ที่ถูกกลับ', async () => {
       const c = await seedContract({ dueDate: futureDue(), paymentRows: [1, 2] });
       await recordPartialQr(c.id, 1, 1000, 'AAR-VOIDP-3');
       const sched = await scheduleOf(c.id, 1);
@@ -1617,6 +1618,41 @@ describe('ตั้งลูกหนี้งวด ณ วันรับเ�
       expect(live[0].referenceId).toBe(`${sched.id}:receipt-accrual:2`);
       expect(await accruedOf(c.id, 1)).toEqual(['600.00', '39.25', '197.91']);
       expect(await balance(c.id, '11-2103', 'dr')).toBe('0.00');
+
+      // ถึงวันครบกำหนด: รอบกลางคืนตั้งส่วนที่เหลือ 915.83 (1,515.83 − 600) และประทับลิงก์
+      await setDueDaysAgo(c.id, 1, 0);
+      await runNightly();
+      const [partial600, remainder] = await liveAccrualEntries(sched.id);
+      expect(partial600.entryNumber).toBe(live[0].entryNumber);
+      expect(remainder.referenceId).toBe(sched.id);
+      expect((await scheduleOf(c.id, 1)).accrualJournalEntryId).toBe(remainder.entryNumber);
+      expect(await accruedOf(c.id, 1)).toEqual(['1515.83', '99.17', '500.00']);
+
+      // preview ของการรับส่วนที่เหลือ 915.83 (งวดตั้งครบแล้ว → 2B_ONLY) แสดงรายการ 2A ที่ลงแล้วของงวดครบทุกใบที่ยังมีผล:
+      // ใบบางส่วน 600 (`<id>:receipt-accrual:2`) + ส่วนที่เหลือ 915.83 (ลิงก์) · ใบบางส่วน 1,000 (`<id>:receipt-accrual:1`)
+      // ที่ถูกกลับตอนยกเลิกใบเสร็จต้องไม่แสดง
+      const preview = await new PaymentJournalPreviewService(
+        prisma as never,
+        undefined,
+      ).previewJournal({
+        contractId: c.id,
+        installmentNo: 1,
+        amountReceived: 915.83,
+        depositAccountCode: '11-1201',
+        lateFee: 0,
+        case: 'NORMAL',
+      });
+      expect(preview.accrualMode).toBe('2B_ONLY');
+      expect(preview.accrual2A!.lines).toHaveLength(14);
+      expect(preview.accrual2A!.lines.every((l) => l.block === '2A' && l.posted)).toBe(true);
+      expect(
+        preview.accrual2A!.lines.filter((l) => l.accountCode === '11-2103').map((l) => l.debit),
+      ).toEqual(['600.00', '915.83']);
+      expect(preview.subtotals['2A']).toEqual({
+        debit: '2115.00',
+        credit: '2115.00',
+        balanced: true,
+      });
     });
 
     it('ก1: รับบางส่วนก่อนครบกำหนด ยกเลิกหลังวันครบกำหนด (รอบกลางคืนตั้งส่วนที่เหลือแล้ว) → ไม่กลับ 2A ใดเลย', async () => {

@@ -21,6 +21,12 @@ export const SUPPLIER_DOC_TYPES: SupplierDocType[] = ['TAX_INVOICE', 'DELIVERY_N
 
 export const SUPPLIER_DOC_NUMBER_MAX = 64;
 
+/** วันที่ในเอกสารย้อนหลังได้ไม่เกินกี่วัน — ค่าเดียวกับ API `SUPPLIER_DOC_MAX_AGE_DAYS` (กันปีพิมพ์ผิด) */
+export const SUPPLIER_DOC_MAX_AGE_DAYS = 365;
+
+/** ช่องชื่อ "หมายเหตุใบรับ" (รับตามใบสั่งซื้อ) / "หมายเหตุ" (รับเข้าตรง) — ข้อความจึงพูดถึง "ช่องหมายเหตุ" (ตรงกับ API) */
+export const NO_DOCUMENT_REASON_MSG = 'กรุณาเขียนเหตุผลที่ไม่มีเอกสารในช่องหมายเหตุ เช่น ร้านไม่ออกบิล';
+
 export interface SupplierDocForm {
   type: SupplierDocType;
   number: string;
@@ -44,6 +50,12 @@ export function defaultSupplierDoc(supplierHasVat: boolean): SupplierDocForm {
   return { type: supplierHasVat ? 'TAX_INVOICE' : 'DELIVERY_NOTE', number: '', date: '' };
 }
 
+/** วันแรกที่วันที่ในเอกสารเลือกได้ (YYYY-MM-DD) = วันนี้ − 365 วัน */
+export function earliestSupplierDocIso(today: string = bangkokTodayIso()): string {
+  const [y, m, d] = today.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - SUPPLIER_DOC_MAX_AGE_DAYS)).toISOString().slice(0, 10);
+}
+
 /** วันที่ YYYY-MM-DD → 28/09/2569 (ไม่ผ่าน Date ของเครื่อง จึงไม่ขยับวันตามเขตเวลา) */
 export function formatIsoDate(iso: string): string {
   const [y, m, d] = iso.split('-');
@@ -61,7 +73,7 @@ export function formatIsoMonth(iso: string): string {
 /** ตรวจตอนกดยืนยัน — กติกาเดียวกับ API (`normalizeSupplierDoc`) */
 export function supplierDocErrors(doc: SupplierDocForm, notes: string, today: string = bangkokTodayIso()): SupplierDocErrors {
   if (doc.type === 'NONE') {
-    return notes.trim() ? {} : { notes: 'กรุณาเขียนเหตุผลที่ไม่มีเอกสาร เช่น ร้านไม่ออกบิล' };
+    return notes.trim() ? {} : { notes: NO_DOCUMENT_REASON_MSG };
   }
   const errors: SupplierDocErrors = {};
   const number = doc.number.trim();
@@ -69,6 +81,9 @@ export function supplierDocErrors(doc: SupplierDocForm, notes: string, today: st
   else if (number.length > SUPPLIER_DOC_NUMBER_MAX) errors.number = `เลขที่เอกสารยาวเกิน ${SUPPLIER_DOC_NUMBER_MAX} ตัวอักษร`;
   if (!doc.date) errors.date = 'กรุณาเลือกวันที่ในเอกสาร';
   else if (doc.date > today) errors.date = `วันที่ในเอกสารต้องไม่เกินวันนี้ (${formatIsoDate(today)})`;
+  else if (doc.date < earliestSupplierDocIso(today)) {
+    errors.date = `วันที่ในเอกสารเก่าเกิน ${SUPPLIER_DOC_MAX_AGE_DAYS} วัน (ก่อน ${formatIsoDate(earliestSupplierDocIso(today))}) — ตรวจปีที่กรอกอีกครั้ง`;
+  }
   return errors;
 }
 

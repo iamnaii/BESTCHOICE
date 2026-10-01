@@ -8,6 +8,7 @@ import {
   SUPPLIER_DOC_NUMBER_MAX,
   SUPPLIER_DOC_TYPES,
   bangkokTodayIso,
+  earliestSupplierDocIso,
   formatIsoDate,
   formatIsoMonth,
   type SupplierDocErrors,
@@ -129,6 +130,7 @@ export function SupplierDocSection({ doc, setDoc, supplierHasVat, check, errors,
                 id="supplier-doc-date"
                 type="date"
                 value={doc.date}
+                min={earliestSupplierDocIso(today)}
                 max={today}
                 onChange={(e) => setDoc({ ...doc, date: e.target.value })}
                 aria-invalid={Boolean(errors.date)}
@@ -141,7 +143,7 @@ export function SupplierDocSection({ doc, setDoc, supplierHasVat, check, errors,
         </>
       ) : (
         <p className={cn(hintCls, 'mt-3')}>
-          ระบบลงบัญชีรับสินค้าด้วย วันที่รับของ ({formatIsoDate(today)}) · กรุณาเขียนเหตุผลที่ไม่มีเอกสารในหมายเหตุใบรับ
+          ระบบลงบัญชีรับสินค้าด้วย วันที่รับของ ({formatIsoDate(today)}) · กรุณาเขียนเหตุผลที่ไม่มีเอกสารในช่องหมายเหตุ
         </p>
       )}
 

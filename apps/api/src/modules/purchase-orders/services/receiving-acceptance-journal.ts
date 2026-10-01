@@ -6,21 +6,14 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
-import { supplierDocMetadata, supplierDocRef } from './supplier-doc.util';
+import { isDocDatePeriodClosed, supplierDocMetadata, supplierDocRef } from './supplier-doc.util';
+import { formatDateShort } from '../../../utils/thai-date.util';
 
 /**
- * วันที่ลงบัญชีรับสินค้าที่ "ควรเป็น" ของใบรับของ — จุดเดียวที่ตัดสิน ใช้ทั้งหน่วยที่ลงตอนรับของและหน่วยที่ลงตอนผ่านเข้าคลัง.
- * = วันที่ในเอกสารของผู้จัดจำหน่าย (คำตอบฝ่ายบัญชีข้อ ข3 2026-09-29 · แบบหน้าจอที่เจ้าของเคาะ 2026-10-01) ·
- * ไม่มีเอกสาร / ใบรับของก่อนมีช่องนี้ = วันที่รับของ. งวดของวันนั้นปิดแล้ว ผู้เรียกข้ามไปวันถัดไปใน
- * `receivingPostingCandidates` (แบบ ข — รับได้ ลงวันที่รับของแทน)
- */
-export function receivingPostingDate(receiving: { createdAt?: Date | null; supplierDocDate?: Date | null }): Date {
-  return receiving.supplierDocDate ?? receiving.createdAt ?? new Date();
-}
-
-/**
- * ลำดับวันที่ที่ลองลงบัญชี — วันแรกที่งวดยังเปิดชนะ: วันที่ในเอกสาร → วันที่รับของ.
- * (หน่วยที่ผ่านเข้าคลังทีหลังต่อท้ายด้วยวันที่รับเข้าคลังเอง)
+ * วันที่ลงบัญชีรับสินค้าของใบรับของ — จุดเดียวที่ตัดสิน ใช้ทั้งรายการตอนรับของและหน่วยที่ลงตอนผ่านเข้าคลัง.
+ * ลำดับที่ลอง (วันแรกที่ใช้ได้ชนะ): **วันที่ในเอกสารของผู้จัดจำหน่าย** (คำตอบฝ่ายบัญชีข้อ ข3 2026-09-29 · แบบหน้าจอที่เจ้าของเคาะ
+ * 2026-10-01) → **วันที่รับของ** (แบบ ข: งวดของวันที่ในเอกสารปิดแล้ว — ตัดสินด้วย `isDocDatePeriodClosed` ไม่มีช่วงผ่อนผัน).
+ * ไม่มีเอกสาร / ใบรับของก่อนมีช่องนี้ = วันที่รับของอย่างเดียว. หน่วยที่ผ่านเข้าคลังทีหลังต่อท้ายด้วยวันที่รับเข้าคลังเอง
  */
 export function receivingPostingCandidates(receiving: { createdAt: Date; supplierDocDate?: Date | null }): Date[] {
   return receiving.supplierDocDate ? [receiving.supplierDocDate, receiving.createdAt] : [receiving.createdAt];
@@ -110,6 +103,7 @@ export class ReceivingAcceptanceJournal {
             id: true,
             grNumber: true,
             createdAt: true,
+            receivedById: true,
             supplierDocType: true,
             supplierDocNumber: true,
             supplierDocDate: true,
@@ -130,7 +124,7 @@ export class ReceivingAcceptanceJournal {
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
     const lotCandidates = receivingPostingCandidates(locked.receiving);
     const candidates = [...lotCandidates, acceptedAt];
-    const chosen = await this.firstOpenDate(tx, candidates, shopCompanyId);
+    const chosen = await this.firstOpenDate(tx, candidates, shopCompanyId, lotCandidates.length === 2);
     const postedAt = candidates[chosen];
     const postedOnAcceptanceDate = chosen === candidates.length - 1;
     // มีวันที่ในเอกสาร (สองวันแรก = เอกสาร · รับของ) แล้วงวดของวันในเอกสารปิด = ลงวันที่รับของแบบเดียวกับใบรับของ
@@ -180,6 +174,7 @@ export class ReceivingAcceptanceJournal {
         `[receiving-acceptance] ${locked.receiving.grNumber} product=${productId}: งวดบัญชีของวันที่ใบรับของปิดแล้ว ` +
           `— ลงวันที่${postedOnAcceptanceDate ? 'รับเข้าคลัง' : 'รับของ'} ${postedAt.toISOString()} แทน (${posted.entryNo})`,
       );
+      await this.notifyAccounting(tx, locked.receiving, posted.entryNo, postedAt, postedOnAcceptanceDate);
     }
     return { ...posted, postedAt, postedOnAcceptanceDate, postedOnReceiveDate };
   }
@@ -189,8 +184,18 @@ export class ReceivingAcceptanceJournal {
    * เครื่องรอถ่ายรูปข้ามเดือนหลังปิดงวด ไม่ถูกปฏิเสธการเข้าคลังเพราะงวดบัญชี (พนักงานถ่ายรูปเปิดงวดเองไม่ได้).
    * วันสุดท้าย (วันรับเข้าคลัง) ปิดด้วย = ปฏิเสธตามปกติ
    */
-  private async firstOpenDate(tx: Prisma.TransactionClient, candidates: Date[], shopCompanyId: string): Promise<number> {
+  private async firstOpenDate(
+    tx: Prisma.TransactionClient,
+    candidates: Date[],
+    shopCompanyId: string,
+    firstIsDocDate: boolean,
+  ): Promise<number> {
     for (const [index, date] of candidates.entries()) {
+      if (index === 0 && firstIsDocDate) {
+        // วันที่ในเอกสาร: ตัวตัดสินเดียวกับตอนรับของ (สถานะงวด ไม่มีช่วงผ่อนผัน)
+        if (!(await isDocDatePeriodClosed(tx, date, shopCompanyId))) return index;
+        continue;
+      }
       if (index === candidates.length - 1) {
         await validatePeriodOpen(tx, date, shopCompanyId);
         return index;
@@ -204,4 +209,45 @@ export class ReceivingAcceptanceJournal {
     }
     throw new Error('receiving posting date candidates must not be empty');
   }
+
+  /**
+   * แจ้งฝ่ายบัญชีเมื่อหน่วยลงบัญชีไม่ตรงวันที่ของใบรับของ (งวดปิดระหว่างที่เครื่องรอถ่ายรูป) — งานในหน้า "งานของทีม" (`/todos`)
+   * ใบเดียวต่อใบรับของ: มีงานแท็กเดียวกันของใบรับของนี้ที่ยังไม่เสร็จอยู่แล้ว (รวมงานตอนรับของ) = ไม่สร้างซ้ำ.
+   * สร้างใน tx เดียวกับรายการบัญชี (มาด้วยกัน/ไม่มาทั้งคู่) — ผู้สร้าง = ผู้รับของ (ประตูเข้าคลังบางทางไม่มีผู้กดส่งมา)
+   */
+  private async notifyAccounting(
+    tx: Prisma.TransactionClient,
+    receiving: { grNumber: string; receivedById: string; po: { poNumber: string } },
+    entryNo: string,
+    postedAt: Date,
+    onAcceptanceDate: boolean,
+  ): Promise<void> {
+    const open = await tx.todo.findFirst({
+      where: {
+        tags: { has: RECEIVING_PERIOD_TODO_TAG },
+        title: { contains: receiving.grNumber },
+        status: { not: 'DONE' },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (open) return;
+    const which = onAcceptanceDate ? 'รับเข้าคลัง' : 'รับของ';
+    await tx.todo.create({
+      data: {
+        title: `รับสินค้า ${receiving.grNumber} เครื่องที่เข้าคลังทีหลังลงบัญชีวันที่${which}แทน (งวดของวันที่ใบรับของปิดแล้ว)`,
+        description:
+          `เครื่องจากใบรับของนี้ผ่านเข้าคลังหลังฝ่ายบัญชีปิดงวดของวันที่ใบรับของ — ระบบลงรายการ ${entryNo} ` +
+          `วันที่${which} ${formatDateShort(postedAt)} แทน · ใบสั่งซื้อ ${receiving.po.poNumber}\n` +
+          'เครื่องอื่นของใบรับของเดียวกันที่เข้าคลังทีหลังจะลงแบบเดียวกัน (ไม่สร้างงานซ้ำจนกว่างานนี้เสร็จ) — ' +
+          'ตรวจว่าต้องปรับปรุงรายการหรือไม่ ระบบไม่ลงรายการปรับปรุงให้อัตโนมัติ',
+        priority: 'MEDIUM',
+        tags: [RECEIVING_PERIOD_TODO_TAG],
+        createdById: receiving.receivedById,
+      },
+    });
+  }
 }
+
+/** แท็กงานแจ้งฝ่ายบัญชีเรื่องวันที่ลงบัญชีรับสินค้าไม่ตรงเอกสาร (ข3) — ใช้ทั้งตอนรับของและตอนหน่วยเข้าคลังทีหลัง */
+export const RECEIVING_PERIOD_TODO_TAG = 'goods-receiving-period';

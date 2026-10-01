@@ -41,6 +41,13 @@ describe('supplier-doc.util', () => {
     ).toThrow(BadRequestException);
   });
 
+  it('ย้อนหลังได้ไม่เกิน 365 วัน — กันปีพิมพ์ผิดไปลงเดือนที่ไม่เคยปิดงวด', () => {
+    const doc = (date: string) => ({ supplierDocType: 'TAX_INVOICE' as const, supplierDocNumber: 'IV-1', supplierDocDate: date });
+    expect(normalizeSupplierDoc(doc('2025-10-01'), now).date?.toISOString()).toBe('2025-09-30T17:00:00.000Z');
+    expect(() => normalizeSupplierDoc(doc('2025-09-30'), now)).toThrow('วันที่ในเอกสารเก่าเกิน 365 วัน (ก่อน 01/10/2568)');
+    expect(() => normalizeSupplierDoc(doc('0202-09-30'), now)).toThrow('วันที่ในเอกสารเก่าเกิน 365 วัน');
+  });
+
   it('ไม่มีเอกสาร: ต้องมีเหตุผลในหมายเหตุ · ไม่เก็บเลขที่/วันที่แม้ส่งมา', () => {
     expect(() => normalizeSupplierDoc({ supplierDocType: 'NONE', notes: '  ' }, now)).toThrow('กรุณาเขียนเหตุผลที่ไม่มีเอกสาร');
     expect(normalizeSupplierDoc({ supplierDocType: 'NONE', supplierDocNumber: 'X', supplierDocDate: '2026-09-01', notes: 'ร้านไม่ออกบิล' }, now)).toEqual({

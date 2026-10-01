@@ -26,15 +26,15 @@ const film: ItemForm = { ...blank, category: 'ACCESSORY', accessoryType: 'F1601'
 const supplier: SupplierOption = { id: 's1', name: 'ขนิษฐา คล้ายมณี', contactName: null, hasVat: false, paymentMethods: [{ paymentMethod: 'CASH', isDefault: true }] };
 
 type Mut = { isPending: boolean; mutate: ReturnType<typeof vi.fn> };
-function Harness({ initialItems, createMutation, directReceiveMutation, onClose = vi.fn() }: { initialItems: ItemForm[]; createMutation: Mut; directReceiveMutation: Mut; onClose?: () => void }) {
+function Harness({ initialItems, createMutation, directReceiveMutation, onClose = vi.fn(), isOpen = true }: { initialItems: ItemForm[]; createMutation: Mut; directReceiveMutation: Mut; onClose?: () => void; isOpen?: boolean }) {
   const poForm = usePOForm({ createMutation: createMutation as never, suppliers: [supplier] });
-  const wizard = useCreatePoWizard({ isOpen: true, form: poForm.form, setForm: poForm.setForm, items: poForm.items, setItems: poForm.setItems, selectedSupplier: poForm.selectedSupplier });
+  const wizard = useCreatePoWizard({ isOpen, form: poForm.form, setForm: poForm.setForm, items: poForm.items, setItems: poForm.setItems, selectedSupplier: poForm.selectedSupplier });
   const { setItems } = poForm;
   useEffect(() => { setItems(initialItems); }, [initialItems, setItems]);
   const totals = computePoTotals({ items: poForm.items, discount: poForm.form.discount, discountAfterVat: poForm.form.discountAfterVat, supplierHasVat: poForm.supplierHasVat });
   return (
     <PurchaseModal
-      isOpen
+      isOpen={isOpen}
       onClose={onClose}
       form={poForm.form}
       setForm={poForm.setForm}
@@ -78,6 +78,21 @@ function renderModal(initialItems: ItemForm[] = [phone, film]) {
   );
   return { createMutation, directReceiveMutation };
 }
+/** ปิดแล้วเปิดใหม่ในหน้าเดิม (คอมโพเนนต์ไม่ถูก unmount) — เหมือนกดปิดแล้วกด "ซื้อสินค้า" อีกครั้ง */
+function renderReopenable(initialItems: ItemForm[]) {
+  localStorage.clear();
+  const createMutation: Mut = { isPending: false, mutate: vi.fn() };
+  const directReceiveMutation: Mut = { isPending: false, mutate: vi.fn() };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const ui = (isOpen: boolean) => (
+    <QueryClientProvider client={client}>
+      <Harness initialItems={initialItems} createMutation={createMutation} directReceiveMutation={directReceiveMutation} isOpen={isOpen} />
+    </QueryClientProvider>
+  );
+  const { rerender } = render(ui(true));
+  return { reopen: () => { rerender(ui(false)); rerender(ui(true)); } };
+}
+
 const dialog = () => screen.getByRole('dialog', { name: 'ซื้อสินค้า' });
 const stepLabels = () => within(dialog()).getAllByRole('listitem').map((li) => li.textContent?.trim());
 const pickSupplier = () => fireEvent.click(screen.getByRole('combobox', { name: 'ผู้ขาย' }));
@@ -164,6 +179,30 @@ describe('PurchaseModal — one entry "ซื้อสินค้า" for both 
     }));
     expect(createMutation.mutate).not.toHaveBeenCalled();
     expect(document.querySelector('button[type="submit"]')).toBeNull();
+  });
+
+  it('ข3: ปิดแล้วเปิดใหม่ ช่องเอกสารกลับเป็นค่าเริ่มต้น — ไม่หยิบเลขที่ของบิลก่อนไปใช้ซ้ำ', () => {
+    const { reopen } = renderReopenable([film]);
+    const toSummary = () => {
+      pickSupplier();
+      fireEvent.click(screen.getByRole('radio', { name: /ของถึงแล้ว/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'ถัดไป: ตรวจรับ 1 ชิ้น' }));
+      fireEvent.change(screen.getByLabelText(/^ราคาเงินสด/), { target: { value: '150' } });
+      fireEvent.click(screen.getByRole('button', { name: 'ถัดไป: สรุป + จ่ายเงิน' }));
+    };
+    toSummary();
+    fireEvent.click(screen.getByRole('radio', { name: 'บิลเงินสด' }));
+    fireEvent.change(screen.getByLabelText('เลขที่เอกสาร'), { target: { value: 'CB-เก่า' } });
+    fireEvent.change(screen.getByLabelText('วันที่ในเอกสาร'), { target: { value: '2026-09-05' } });
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเข้าตรง 1 ชิ้น' }));
+
+    reopen();
+    toSummary();
+    expect(screen.getByRole('radio', { name: 'ใบส่งของ / ใบแจ้งหนี้' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByLabelText('เลขที่เอกสาร')).toHaveValue('');
+    expect(screen.getByLabelText('วันที่ในเอกสาร')).toHaveValue('');
+    // ข้อความ error จากรอบก่อนต้องไม่ค้าง
+    expect(screen.queryByText('กรุณากรอกเลขที่เอกสาร')).toBeNull();
   });
 
   it('receive mode: ตรวจรับ refuses to move on while a phone is still undecided', () => {

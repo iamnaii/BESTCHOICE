@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
-import { SupplierDocType } from '@prisma/client';
-import { bangkokDateString, bangkokMidnight, isFutureBkkDay } from '../../../utils/date.util';
+import { Prisma, SupplierDocType } from '@prisma/client';
+import { bangkokCalendarParts, bangkokDateString, bangkokMidnight, isFutureBkkDay } from '../../../utils/date.util';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 
@@ -19,6 +19,15 @@ export const SUPPLIER_DOC_LABEL: Record<SupplierDocType, string> = {
 };
 
 export const SUPPLIER_DOC_NUMBER_MAX = 64;
+
+/**
+ * วันที่ในเอกสารย้อนหลังได้ไม่เกินกี่วัน — กันปีพิมพ์ผิด (เช่น 2016 / 0202) ไปลงบัญชีเดือนที่ไม่เคยปิดงวดแบบเงียบ ๆ
+ * (งวดบัญชีมีแถวเฉพาะเดือนที่ปิดแล้ว เดือนที่ไม่มีแถวถือว่าเปิด). ค่าเดียวกับฝั่งเว็บ `SUPPLIER_DOC_MAX_AGE_DAYS`
+ */
+export const SUPPLIER_DOC_MAX_AGE_DAYS = 365;
+
+/** ข้อความเมื่อไม่มีเอกสารแต่ไม่มีเหตุผล — ช่องชื่อ "หมายเหตุใบรับ" (รับตามใบสั่งซื้อ) / "หมายเหตุ" (รับเข้าตรง) จึงพูดถึง "ช่องหมายเหตุ" */
+export const NO_DOCUMENT_REASON_MSG = 'กรุณาเขียนเหตุผลที่ไม่มีเอกสารในช่องหมายเหตุ เช่น ร้านไม่ออกบิล';
 
 export interface SupplierDocInput {
   supplierDocType?: SupplierDocType | null;
@@ -63,9 +72,7 @@ export function normalizeSupplierDoc(input: SupplierDocInput, now: Date = new Da
   if (!(type in SUPPLIER_DOC_LABEL)) throw new BadRequestException('ประเภทเอกสารของผู้จัดจำหน่ายไม่ถูกต้อง');
 
   if (type === 'NONE') {
-    if (!input.notes?.trim()) {
-      throw new BadRequestException('กรุณาเขียนเหตุผลที่ไม่มีเอกสารในหมายเหตุใบรับ เช่น ร้านไม่ออกบิล');
-    }
+    if (!input.notes?.trim()) throw new BadRequestException(NO_DOCUMENT_REASON_MSG);
     return { type, number: null, date: null };
   }
 
@@ -78,6 +85,13 @@ export function normalizeSupplierDoc(input: SupplierDocInput, now: Date = new Da
   const date = parseSupplierDocDate(input.supplierDocDate);
   if (isFutureBkkDay(date, now)) {
     throw new BadRequestException(`วันที่ในเอกสารต้องไม่เกินวันนี้ (${formatDateShort(now)})`);
+  }
+  const { year, month, day } = bangkokCalendarParts(now);
+  const earliest = bangkokMidnight(year, month, day - SUPPLIER_DOC_MAX_AGE_DAYS);
+  if (date < earliest) {
+    throw new BadRequestException(
+      `วันที่ในเอกสารเก่าเกิน ${SUPPLIER_DOC_MAX_AGE_DAYS} วัน (ก่อน ${formatDateShort(earliest)}) — ตรวจปีที่กรอกอีกครั้ง`,
+    );
   }
   return { type, number, date };
 }
@@ -95,6 +109,22 @@ export function supplierDocMetadata(doc: SupplierDoc): Record<string, string | n
     supplierDocNumber: doc.number,
     supplierDocDate: doc.date ? bangkokDateString(doc.date) : null,
   };
+}
+
+/**
+ * งวดของวันที่ในเอกสารปิดแล้วหรือยัง (ข3 แบบ ข) — ตัดสินจาก **สถานะงวด** (CLOSED / SYNCED) ตรง ๆ ไม่มีช่วงผ่อนผัน:
+ * ช่วงผ่อนผันของ `validatePeriodOpen` มีไว้ให้รายการของเดือนนั้นลงตามหลังได้ ไม่ใช่ให้ใบรับของที่ลงย้อนวันกลับเข้าเดือน
+ * ที่ฝ่ายบัญชีปิดแล้ว (ก่อน ข3 การรับของลงวันนี้เสมอ จึงไม่เคยเข้าเดือนที่ปิดผ่านช่องนี้). เดือนของวันที่ = ปฏิทินไทย.
+ * `validatePeriodOpen` ไม่ผ่านก็นับว่าปิดด้วย (ตาข่าย) — ใช้ตัวเดียวกันทั้งตอนลงบัญชี ตอนหน่วยเข้าคลังทีหลัง และตัวตรวจบนจอ
+ */
+export async function isDocDatePeriodClosed(client: Prisma.TransactionClient, date: Date, companyId: string): Promise<boolean> {
+  const { year, month } = bangkokCalendarParts(date);
+  const period = await client.accountingPeriod.findUnique({
+    where: { companyId_year_month: { companyId, year, month: month + 1 } },
+    select: { status: true },
+  });
+  if (period?.status === 'CLOSED' || period?.status === 'SYNCED') return true;
+  return !(await isPeriodOpenFor(client, date, companyId));
 }
 
 /** งวดบัญชีของวันนั้นยังรับรายการได้ไหม — ตัวตัดสินเดียวกับตอนลงบัญชี (`validatePeriodOpen` รวมช่วงผ่อนผัน) */

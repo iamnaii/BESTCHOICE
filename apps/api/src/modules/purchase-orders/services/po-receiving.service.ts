@@ -11,10 +11,10 @@ import {
   resolvePaymentTerms,
 } from './po-amounts.util';
 import { poLineCosts, poUnitCostAt } from './po-unit-cost.util';
-import { receivingCategory, receivingPostingCandidates } from './receiving-acceptance-journal';
+import { RECEIVING_PERIOD_TODO_TAG, receivingCategory, receivingPostingCandidates } from './receiving-acceptance-journal';
 import {
   SupplierDoc,
-  isPeriodOpenFor,
+  isDocDatePeriodClosed,
   normalizeDocNumber,
   normalizeSupplierDoc,
   parseSupplierDocDate,
@@ -99,8 +99,8 @@ export class PoReceivingService {
           async (tx) => this.runReceiveInTx(tx, id, dto, userId, doc),
           PoReceivingService.RECEIVE_TX_OPTIONS,
         );
-        await this.alertIfDocPeriodClosed(result, userId);
-        return result;
+        // ห้าม throw (จับเองทั้งหมด) — การรับของ commit แล้ว ห้ามตกไปที่ retry ด้านล่างแล้วรับซ้ำ
+        return { ...result, accountingNotified: await this.alertIfDocPeriodClosed(result, userId) };
       } catch (e) {
         const code = (e as { code?: string })?.code;
         if ((code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;
@@ -429,12 +429,12 @@ export class PoReceivingService {
       data: { status: newStatus },
     });
 
-    // วันที่ลงบัญชี (ข3): วันที่ในเอกสาร → งวดของวันนั้นปิดแล้ว = วันที่รับของแทน (แบบ ข). เช็คแม้ไม่มีหน่วยให้ลงตอนนี้ —
-    // หน่วยที่รอถ่ายรูปจะลงวันที่รับของเหมือนกัน (`receivingPostingCandidates`) จึงต้องแจ้งฝ่ายบัญชีตั้งแต่ตอนรับ
+    // วันที่ลงบัญชี (ข3): วันที่ในเอกสาร → งวดของวันนั้นปิดแล้ว (ตามสถานะงวด ไม่มีช่วงผ่อนผัน) = วันที่รับของแทน (แบบ ข).
+    // เช็คแม้ไม่มีหน่วยให้ลงตอนนี้ — หน่วยที่รอถ่ายรูปจะลงวันที่รับของเหมือนกัน (`receivingPostingCandidates`)
     const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(tx);
     const [preferredDate, receiveDate] = receivingPostingCandidates(receiving);
-    const supplierDocPeriodClosed = doc.date !== null && !(await isPeriodOpenFor(tx, preferredDate, shopCompanyId));
-    const journalPostedAt = supplierDocPeriodClosed ? receiveDate : preferredDate;
+    const docPeriodClosed = doc.date !== null && (await isDocDatePeriodClosed(tx, preferredDate, shopCompanyId));
+    const journalPostedAt = docPeriodClosed ? receiveDate : preferredDate;
     const posted = await this.postReceivingJournal(tx, {
       receivingId: receiving.id,
       grNumber,
@@ -443,9 +443,11 @@ export class PoReceivingService {
       units: journalUnits,
       postedAt: journalPostedAt,
       shopCompanyId,
-      postedOnReceiveDate: supplierDocPeriodClosed,
+      postedOnReceiveDate: docPeriodClosed,
       doc,
     });
+    // แจ้งเฉพาะเมื่อมีรายการที่ลง (หรือจะลงตอนเข้าคลัง) ด้วยวันอื่นจริง — ตรวจไม่ผ่านทั้งใบ / ของแถมต้นทุนศูนย์ = ไม่มีอะไรต้องบอก
+    const supplierDocPeriodClosed = docPeriodClosed && (posted !== null || unitsAwaitingStockEntry > 0);
     if (posted && bookedReceivingItemIds.length > 0) {
       await tx.goodsReceivingItem.updateMany({
         where: { id: { in: bookedReceivingItemIds } },
@@ -469,7 +471,10 @@ export class PoReceivingService {
       supplierDocType: doc.type,
       supplierDocNumber: doc.number,
       supplierDocDate: doc.date,
-      /** งวดของวันที่ในเอกสารปิดแล้ว — ลงบัญชีวันที่รับของแทน (หน้าจอบอกผู้ใช้ + แจ้งฝ่ายบัญชีหลัง commit) */
+      /**
+       * งวดของวันที่ในเอกสารปิดแล้ว และมีรายการที่ลง (หรือจะลงตอนเข้าคลัง) ด้วยวันที่รับของแทน — หน้าจอบอกผู้ใช้ +
+       * แจ้งฝ่ายบัญชีหลัง commit (`accountingNotified` บอกว่าสร้างงานแจ้งสำเร็จไหม)
+       */
       supplierDocPeriodClosed,
       /** วันที่ของรายการบัญชีรับสินค้า (null = ไม่มีรายการตอนนี้) */
       journalPostedAt: posted ? journalPostedAt : null,
@@ -591,14 +596,15 @@ export class PoReceivingService {
       poId: string;
       receivedAt: Date;
       journalEntryNo: string | null;
+      unitsAwaitingStockEntry: number;
       supplierDocPeriodClosed: boolean;
       supplierDocType: SupplierDoc['type'];
       supplierDocNumber: string | null;
       supplierDocDate: Date | null;
     },
     userId: string,
-  ): Promise<void> {
-    if (!result.supplierDocPeriodClosed || !result.supplierDocDate) return;
+  ): Promise<boolean> {
+    if (!result.supplierDocPeriodClosed || !result.supplierDocDate) return false;
     try {
       const docDate = result.supplierDocDate;
       const month = `${formatMonthName(docDate)} ${bangkokCalendarParts(docDate).year + 543}`;
@@ -611,22 +617,26 @@ export class PoReceivingService {
           description:
             `${ref} ลงวันที่ ${formatDateShort(docDate)} อยู่ในงวดบัญชีที่ปิดแล้ว — ระบบลงบัญชีรับสินค้าด้วยวันที่รับของ ` +
             `${formatDateShort(result.receivedAt)} แทน และเก็บวันที่ในเอกสารไว้ตามจริง\n` +
-            `ใบสั่งซื้อ ${po?.poNumber ?? '-'} · ` +
-            (result.journalEntryNo
-              ? `รายการบัญชี ${result.journalEntryNo}`
-              : 'ยังไม่มีรายการบัญชี (เครื่องรอถ่ายรูป — ลงวันที่รับของตอนผ่านเข้าคลัง)') +
+            `ใบสั่งซื้อ ${po?.poNumber ?? '-'}` +
+            (result.journalEntryNo ? ` · รายการบัญชี ${result.journalEntryNo}` : '') +
+            (result.unitsAwaitingStockEntry > 0
+              ? ` · เครื่องรอถ่ายรูป ${result.unitsAwaitingStockEntry} เครื่องลงบัญชีตอนผ่านเข้าคลัง ` +
+                '(วันที่รับของ หรือวันที่รับเข้าคลังถ้างวดของวันที่รับของปิดแล้วด้วย)'
+              : '') +
             '\nตรวจว่าต้องปรับปรุงรายการหรือไม่ — ระบบไม่ลงรายการปรับปรุงให้อัตโนมัติ',
           priority: 'MEDIUM',
-          tags: ['goods-receiving-period'],
+          tags: [RECEIVING_PERIOD_TODO_TAG],
           createdById: userId,
         },
       });
+      return true;
     } catch (error) {
       this.logger.error(
         `สร้างงานแจ้งฝ่ายบัญชีไม่สำเร็จ (${result.grNumber} งวดของวันที่ในเอกสารปิดแล้ว)`,
         error instanceof Error ? error.stack : String(error),
       );
       Sentry.captureException(error, { tags: { subsystem: 'goods-receiving-period' }, extra: { grNumber: result.grNumber } });
+      return false;
     }
   }
 
@@ -653,7 +663,7 @@ export class PoReceivingService {
     let periodClosed = false;
     if (input.docDate?.trim()) {
       const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(this.prisma as never);
-      periodClosed = !(await isPeriodOpenFor(this.prisma, parseSupplierDocDate(input.docDate), shopCompanyId));
+      periodClosed = await isDocDatePeriodClosed(this.prisma as Prisma.TransactionClient, parseSupplierDocDate(input.docDate), shopCompanyId);
     }
     return { duplicates, periodClosed };
   }
@@ -798,8 +808,8 @@ export class PoReceivingService {
           },
           PoReceivingService.RECEIVE_TX_OPTIONS,
         );
-        await this.alertIfDocPeriodClosed(result, userId);
-        return result;
+        // ห้าม throw (จับเองทั้งหมด) — การรับของ commit แล้ว ห้ามตกไปที่ retry ด้านล่างแล้วรับซ้ำ
+        return { ...result, accountingNotified: await this.alertIfDocPeriodClosed(result, userId) };
       } catch (e) {
         const code = (e as { code?: string })?.code;
         if ((code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;

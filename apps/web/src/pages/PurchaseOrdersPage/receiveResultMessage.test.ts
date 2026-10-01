@@ -77,7 +77,21 @@ describe('buildReceiveResultMessage', () => {
         mainWarehouse: 'คลังกลาง',
         products: [p('IN_STOCK')],
         supplierDocPeriodClosed: true,
+        accountingNotified: true,
       }),
     ).toBe('รับ+ตรวจสำเร็จ: ผ่าน 1 ชิ้น → เข้าคลัง คลังกลาง พร้อมขาย · งวดของวันที่ในเอกสารปิดแล้ว ลงบัญชีวันที่รับของแทน (แจ้งฝ่ายบัญชีแล้ว)');
+  });
+
+  it('ข3 แบบ ข — สร้างงานแจ้งฝ่ายบัญชีไม่สำเร็จ: ไม่อ้างว่าแจ้งแล้ว บอกให้แจ้งเอง', () => {
+    expect(
+      buildReceiveResultMessage({
+        passed: 1,
+        rejected: 0,
+        mainWarehouse: 'คลังกลาง',
+        products: [p('IN_STOCK')],
+        supplierDocPeriodClosed: true,
+        accountingNotified: false,
+      }),
+    ).toBe('รับ+ตรวจสำเร็จ: ผ่าน 1 ชิ้น → เข้าคลัง คลังกลาง พร้อมขาย · งวดของวันที่ในเอกสารปิดแล้ว ลงบัญชีวันที่รับของแทน (ระบบแจ้งฝ่ายบัญชีไม่สำเร็จ — กรุณาแจ้งฝ่ายบัญชีเอง)');
   });
 });

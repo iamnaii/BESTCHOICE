@@ -21,7 +21,7 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     id: 'gri-1',
     journalEntryId: null,
     receivedCost: D('4199.66'),
-    receiving: { id: 'gr-1', grNumber: 'GR-2026-09-001', createdAt: receivedAt, po: { id: 'po-1', poNumber: 'PO-2026-09-001' } },
+    receiving: { id: 'gr-1', grNumber: 'GR-2026-09-001', createdAt: receivedAt, receivedById: 'user-1', po: { id: 'po-1', poNumber: 'PO-2026-09-001' } },
     poItem: { category: 'PHONE_USED' },
     // ผู้เรียกเปลี่ยนเครื่องเป็น IN_STOCK ใน tx เดียวกันก่อนเรียก
     product: { category: 'PHONE_USED', status: 'IN_STOCK', deletedAt: null },
@@ -46,6 +46,7 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
         ),
       },
       systemConfig: { findUnique: jest.fn().mockResolvedValue({ value: '0' }) },
+      todo: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({}) },
     };
     const template = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-202609-00100', journalEntryId: 'je-100' }) };
     const companies = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co') };
@@ -102,6 +103,7 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
           id: 'gr-1',
           grNumber: 'GR-2026-09-001',
           createdAt: receivedAt,
+          receivedById: 'user-1',
           supplierDocType: 'TAX_INVOICE',
           supplierDocNumber: 'IV-0123',
           supplierDocDate: docDate,
@@ -132,6 +134,23 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
 
       expect(template.execute.mock.calls[0][0].postedAt).toBe(receivedAt);
       expect(result).toMatchObject({ postedAt: receivedAt, postedOnReceiveDate: true, postedOnAcceptanceDate: false });
+      expect(tx.todo.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('มีงานแจ้งฝ่ายบัญชีของใบรับของนี้ค้างอยู่แล้ว → ไม่สร้างซ้ำ', async () => {
+      const { tx, journal } = build({ locked: withDoc(), closed: ['2026-6'] });
+      tx.todo.findFirst.mockResolvedValue({ id: 'todo-1' });
+
+      await journal.bookIfPending(tx, 'prod-2', acceptedAt);
+
+      expect(tx.todo.create).not.toHaveBeenCalled();
+    });
+
+    it('ลงวันที่ในเอกสารได้ตามปกติ → ไม่มีงานแจ้งฝ่ายบัญชี', async () => {
+      const { tx, journal } = build({ locked: withDoc() });
+      await journal.bookIfPending(tx, 'prod-2', acceptedAt);
+      expect(tx.todo.findFirst).not.toHaveBeenCalled();
+      expect(tx.todo.create).not.toHaveBeenCalled();
     });
 
     it('งวดของวันในเอกสารและวันรับของปิดทั้งคู่ → ลงวันที่รับเข้าคลัง', async () => {
@@ -152,6 +171,10 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     expect(template.execute.mock.calls[0][0].postedAt).toBe(acceptedAt);
     expect(template.execute.mock.calls[0][0].postedOnAcceptanceDate).toBe(true); // ฝ่ายบัญชีเห็นใน metadata
     expect(result).toMatchObject({ postedAt: acceptedAt, postedOnAcceptanceDate: true });
+    // แจ้งฝ่ายบัญชีในธุรกรรมเดียวกัน — ผู้สร้าง = ผู้รับของ
+    expect(tx.todo.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ tags: ['goods-receiving-period'], createdById: 'user-1', title: expect.stringContaining('GR-2026-09-001') }),
+    });
   });
 
   it('งวดของวันรับเข้าคลังก็ปิด → ปฏิเสธด้วยข้อความงวดบัญชีตามปกติ (ไม่ลงเงียบ ๆ)', async () => {

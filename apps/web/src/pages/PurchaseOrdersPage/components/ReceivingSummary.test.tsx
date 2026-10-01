@@ -83,12 +83,12 @@ describe('ReceivingSummary — เอกสารจากผู้จัดจ�
     fireEvent.click(screen.getByRole('radio', { name: 'ไม่มีเอกสาร' }));
     expect(screen.queryByLabelText('เลขที่เอกสาร')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('วันที่ในเอกสาร')).not.toBeInTheDocument();
-    expect(screen.getByText(`ระบบลงบัญชีรับสินค้าด้วย วันที่รับของ (${today}) · กรุณาเขียนเหตุผลที่ไม่มีเอกสารในหมายเหตุใบรับ`)).toBeInTheDocument();
+    expect(screen.getByText(`ระบบลงบัญชีรับสินค้าด้วย วันที่รับของ (${today}) · กรุณาเขียนเหตุผลที่ไม่มีเอกสารในช่องหมายเหตุ`)).toBeInTheDocument();
     expect(screen.getByTestId('receiving-summary')).toHaveTextContent(`ลงบัญชีวันที่${today} (วันที่รับของ)`);
 
     fireEvent.click(confirmButton());
     expect(onConfirm).not.toHaveBeenCalled();
-    expect(screen.getByText('กรุณาเขียนเหตุผลที่ไม่มีเอกสาร เช่น ร้านไม่ออกบิล')).toBeInTheDocument();
+    expect(screen.getByText('กรุณาเขียนเหตุผลที่ไม่มีเอกสารในช่องหมายเหตุ เช่น ร้านไม่ออกบิล')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('หมายเหตุใบรับ *'), { target: { value: 'ร้านไม่ออกบิล' } });
     fireEvent.click(confirmButton());

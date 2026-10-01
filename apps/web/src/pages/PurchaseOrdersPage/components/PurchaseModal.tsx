@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { UseMutationResult } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ChevronLeft, ClipboardCheck, FileText, Info, Package, type LucideIcon } from 'lucide-react';
@@ -128,6 +128,12 @@ export function PurchaseModal(props: PurchaseModalProps) {
     supplierDocState && supplierDocState.supplierId === form.supplierId ? supplierDocState.doc : defaultSupplierDoc(supplierHasVat);
   const setSupplierDoc = (doc: SupplierDocForm) => setSupplierDocState({ supplierId: form.supplierId, doc });
   const docCheck = useSupplierDocCheck(wizard.mode === 'receive' ? form.supplierId || undefined : undefined, supplierDoc);
+  // หน้าต่างนี้ mount ค้างไว้ตลอด — เปิดใหม่ = เริ่มเอกสารใหม่ (ไม่ให้เลขที่/วันที่ของรอบก่อนติดไปลงบัญชีรอบนี้)
+  useEffect(() => {
+    if (!isOpen) return;
+    setSupplierDocState(null);
+    setShowDocErrors(false);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -186,9 +192,10 @@ export function PurchaseModal(props: PurchaseModalProps) {
   };
 
   const submitReceive = () => {
-    if (hasSupplierDocErrors(supplierDocErrors(supplierDoc, form.notes))) {
+    const docErrors = supplierDocErrors(supplierDoc, form.notes);
+    if (hasSupplierDocErrors(docErrors)) {
       setShowDocErrors(true);
-      toast.error('กรุณากรอกเอกสารจากผู้จัดจำหน่ายให้ครบ');
+      toast.error(docErrors.notes ?? 'กรุณากรอกเอกสารจากผู้จัดจำหน่ายให้ครบ');
       return;
     }
     if (isPaidStatus(form.paymentStatus)) {

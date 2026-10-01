@@ -37,8 +37,13 @@ describe('supplier-doc.util', () => {
       date: 'วันที่ในเอกสารต้องไม่เกินวันนี้ (01/10/2569)',
     });
     expect(supplierDocErrors({ type: 'CASH_BILL', number: 'CB-1', date: '2026-10-01' }, '', '2026-10-01')).toEqual({});
+    // ย้อนหลังได้ไม่เกิน 365 วัน (ตรงกับ API) — กันปีพิมพ์ผิด
+    expect(supplierDocErrors({ type: 'CASH_BILL', number: 'CB-1', date: '2025-10-01' }, '', '2026-10-01')).toEqual({});
+    expect(supplierDocErrors({ type: 'CASH_BILL', number: 'CB-1', date: '2025-09-30' }, '', '2026-10-01')).toEqual({
+      date: 'วันที่ในเอกสารเก่าเกิน 365 วัน (ก่อน 01/10/2568) — ตรวจปีที่กรอกอีกครั้ง',
+    });
     expect(supplierDocErrors({ type: 'NONE', number: '', date: '' }, '  ', '2026-10-01')).toEqual({
-      notes: 'กรุณาเขียนเหตุผลที่ไม่มีเอกสาร เช่น ร้านไม่ออกบิล',
+      notes: 'กรุณาเขียนเหตุผลที่ไม่มีเอกสารในช่องหมายเหตุ เช่น ร้านไม่ออกบิล',
     });
     expect(supplierDocErrors({ type: 'NONE', number: '', date: '' }, 'ร้านไม่ออกบิล', '2026-10-01')).toEqual({});
   });

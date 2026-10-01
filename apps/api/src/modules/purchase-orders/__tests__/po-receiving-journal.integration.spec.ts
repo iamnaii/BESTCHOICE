@@ -948,13 +948,13 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     k3GrNumbers.push(result.grNumber);
     // คืนวันที่จริงตอนจบ — ตัวออกเลขใบรับของนับใบของเดือนนี้ตาม createdAt ใบที่ถูกย้อนวันทำให้เลขของเคสถัดไปซ้ำ
     const { createdAt: realCreatedAt } = await prisma.goodsReceiving.findUniqueOrThrow({ where: { id: result.receivingId } });
-    await prisma.goodsReceiving.update({ where: { id: result.receivingId }, data: { createdAt: new Date(receivedOn.stored) } });
-
-    // ฝ่ายบัญชีปิดทั้งเดือนของวันที่ในเอกสารและเดือนของวันที่รับของ · ช่วงผ่อนผันยาวมาก (validatePeriodOpen ยอมให้ลงทั้งสองเดือน)
-    const docPeriod = await closeShopPeriod(doc.year, doc.month);
-    const receivePeriod = await closeShopPeriod(receivedOn.year, receivedOn.month);
-    const grace = await setGraceDays(36500);
+    const restores: { restore: () => Promise<void> }[] = [];
     try {
+      await prisma.goodsReceiving.update({ where: { id: result.receivingId }, data: { createdAt: new Date(receivedOn.stored) } });
+      // ฝ่ายบัญชีปิดทั้งเดือนของวันที่ในเอกสารและเดือนของวันที่รับของ · ช่วงผ่อนผันยาวมาก (validatePeriodOpen ยอมให้ลงทั้งสองเดือน)
+      restores.push(await closeShopPeriod(doc.year, doc.month));
+      restores.push(await closeShopPeriod(receivedOn.year, receivedOn.month));
+      restores.push(await setGraceDays(36500));
       const pending = result.products[1];
       const before = Date.now();
       await productsService.update(pending.id, { status: 'IN_STOCK', cashPrice: 5900 } as never, adminId);
@@ -966,12 +966,11 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
         where: { tags: { hasEvery: ['goods-receiving-period', `gr:${result.grNumber}:acceptance`] } },
       });
       expect(todos).toHaveLength(1);
-      expect(todos[0].title).toContain(`ลงบัญชีวันที่รับเข้าคลังแทน (งวด${receivedOn.monthLabel}ปิดแล้ว)`);
-      expect(todos[0].description).toContain(receivedOn.thai);
+      // ปิดสองเดือน = บอกทั้งสองเดือน (เดือนของเอกสารคือที่ที่เครื่องควรลง)
+      expect(todos[0].title).toContain(`ลงบัญชีวันที่รับเข้าคลังแทน (งวด${doc.monthLabel} และ ${receivedOn.monthLabel}ปิดแล้ว)`);
+      expect(todos[0].description).toContain(`วันที่ในเอกสาร (${doc.thai}) และวันที่รับของ (${receivedOn.thai})`);
     } finally {
-      await grace.restore();
-      await receivePeriod.restore();
-      await docPeriod.restore();
+      for (const r of restores.reverse()) await r.restore();
       await prisma.goodsReceiving.update({ where: { id: result.receivingId }, data: { createdAt: realCreatedAt } });
     }
   }, 120_000);

@@ -175,7 +175,10 @@ export class ReceivingAcceptanceJournal {
         `[receiving-acceptance] ${locked.receiving.grNumber} product=${productId}: งวดบัญชีของวันที่ใบรับของปิดแล้ว ` +
           `— ลงวันที่${postedOnAcceptanceDate ? 'รับเข้าคลัง' : 'รับของ'} ${postedAt.toISOString()} แทน (${posted.entryNo})`,
       );
-      await this.notifyAccounting(tx, locked.receiving, posted.entryNo, postedAt, candidates[chosen - 1], postedOnAcceptanceDate);
+      // ทุกวันที่ที่ถูกข้าม (เอกสาร · รับของ) — ปิดสองเดือนต้องบอกทั้งสองเดือน ไม่ใช่แค่เดือนล่าสุด
+      const labels = lotCandidates.length === 2 ? ['วันที่ในเอกสาร', 'วันที่รับของ'] : ['วันที่รับของ'];
+      const skipped = candidates.slice(0, chosen).map((date, i) => ({ label: labels[i], date }));
+      await this.notifyAccounting(tx, locked.receiving, posted.entryNo, postedAt, skipped, postedOnAcceptanceDate);
     }
     return { ...posted, postedAt, postedOnAcceptanceDate, postedOnReceiveDate };
   }
@@ -185,7 +188,8 @@ export class ReceivingAcceptanceJournal {
    * เครื่องรอถ่ายรูปข้ามเดือนหลังปิดงวด ไม่ถูกปฏิเสธการเข้าคลังเพราะงวดบัญชี (พนักงานถ่ายรูปเปิดงวดเองไม่ได้).
    * ทุกวันก่อนวันสุดท้ายคือการลงย้อนหลัง ⇒ ตัดสินด้วย `isPeriodClosedForBackdating` (สถานะงวด ไม่มีช่วงผ่อนผัน — ไม่งั้น
    * เครื่องที่เข้าคลังต้นเดือนจะลงวันที่รับของกลับเข้าเดือนที่ฝ่ายบัญชีเพิ่งปิด). วันสุดท้าย (วันรับเข้าคลัง = วันนี้) ใช้
-   * `validatePeriodOpen` ตามกติกาทั้งระบบ — ปิดด้วย = ปฏิเสธ
+   * `validatePeriodOpen` ตามกติกาทั้งระบบ — เดือนปัจจุบันลงได้ตลอดช่วงผ่อนผัน จึงแทบไม่ถูกปฏิเสธ (ฝ่ายบัญชีปิดเดือนปัจจุบัน
+   * ก่อนสิ้นเดือน = ลงในเดือนนั้นพร้อม stamp `postedOnAcceptanceDate` + งานแจ้ง) · ปิดและพ้นช่วงผ่อนผันแล้ว = ปฏิเสธ
    */
   private async firstOpenDate(tx: Prisma.TransactionClient, candidates: Date[], shopCompanyId: string): Promise<number> {
     const last = candidates.length - 1;
@@ -210,7 +214,7 @@ export class ReceivingAcceptanceJournal {
     receiving: { grNumber: string; receivedById: string; po: { poNumber: string } },
     entryNo: string,
     postedAt: Date,
-    skippedDate: Date,
+    skipped: { label: string; date: Date }[],
     onAcceptanceDate: boolean,
   ): Promise<void> {
     const key = receivingPeriodTodoKey(receiving.grNumber, onAcceptanceDate ? 'acceptance' : 'receive');
@@ -220,13 +224,14 @@ export class ReceivingAcceptanceJournal {
     });
     if (open) return;
     const which = onAcceptanceDate ? 'รับเข้าคลัง' : 'รับของ';
-    const skipped = onAcceptanceDate ? 'วันที่รับของ' : 'วันที่ในเอกสาร';
-    const month = `${formatMonthName(skippedDate)} ${bangkokCalendarParts(skippedDate).year + 543}`;
+    const monthOf = (d: Date) => `${formatMonthName(d)} ${bangkokCalendarParts(d).year + 543}`;
+    const months = [...new Set(skipped.map((s) => monthOf(s.date)))].join(' และ ');
+    const skippedText = skipped.map((s) => `${s.label} (${formatDateShort(s.date)})`).join(' และ');
     await tx.todo.create({
       data: {
-        title: `รับสินค้า ${receiving.grNumber} เครื่องที่เข้าคลังทีหลังลงบัญชีวันที่${which}แทน (งวด${month}ปิดแล้ว)`,
+        title: `รับสินค้า ${receiving.grNumber} เครื่องที่เข้าคลังทีหลังลงบัญชีวันที่${which}แทน (งวด${months}ปิดแล้ว)`,
         description:
-          `เครื่องจากใบรับของนี้ผ่านเข้าคลังหลังฝ่ายบัญชีปิดงวดของ${skipped} (${formatDateShort(skippedDate)}) — ระบบลงรายการ ` +
+          `เครื่องจากใบรับของนี้ผ่านเข้าคลังหลังฝ่ายบัญชีปิดงวดของ${skippedText} — ระบบลงรายการ ` +
           `${entryNo} วันที่${which} ${formatDateShort(postedAt)} แทน · ใบสั่งซื้อ ${receiving.po.poNumber}\n` +
           `เครื่องอื่นของใบรับของเดียวกันที่ลงวันที่${which}แทนเหมือนกันจะไม่สร้างงานซ้ำจนกว่างานนี้เสร็จ — ` +
           'ตรวจว่าต้องปรับปรุงรายการหรือไม่ ระบบไม่ลงรายการปรับปรุงให้อัตโนมัติ',

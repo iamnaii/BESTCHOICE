@@ -1,3 +1,4 @@
+import type { SupplierDocType } from './supplier-doc.util';
 import type { AnglePhotos } from '@/constants/photo-angles';
 
 export interface POItem {
@@ -34,6 +35,10 @@ export interface GoodsReceivingRecord {
   grNumber: string;
   createdAt: string;
   notes: string | null;
+  /** ข3 — เอกสารจากผู้จัดจำหน่าย (null = ใบรับของก่อนมีช่องนี้) */
+  supplierDocType?: SupplierDocType | null;
+  supplierDocNumber?: string | null;
+  supplierDocDate?: string | null;
   receivedBy: { id: string; name: string };
   items: GoodsReceivingItem[];
 }

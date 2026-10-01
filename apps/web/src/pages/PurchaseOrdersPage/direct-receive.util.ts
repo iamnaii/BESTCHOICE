@@ -4,6 +4,7 @@ import { itemLabel } from './po-catalog.util';
 import type { DirectReceiveInput } from './hooks/usePurchaseOrdersData';
 import { isPaidStatus } from './components/wizard/PaymentSection';
 import { emptyAnglePhotos } from '@/constants/photo-angles';
+import { supplierDocPayload, type SupplierDocForm } from './supplier-doc.util';
 
 /** One table row → `quantity` units for the ตรวจรับ step (label = the same name the wizard shows). */
 export function lineToUnits(item: ItemForm): ReceivingUnitForm[] {
@@ -48,11 +49,13 @@ export function buildDirectReceivePayload({
   units,
   attachments,
   today,
+  supplierDoc,
 }: {
   form: PoFormState;
   units: ReceivingUnitForm[];
   attachments: string[];
   today: string;
+  supplierDoc: SupplierDocForm;
 }): DirectReceiveInput {
   const paid = isPaidStatus(form.paymentStatus);
   return {
@@ -60,6 +63,7 @@ export function buildDirectReceivePayload({
     orderDate: today,
     notes: form.notes,
     items: units,
+    ...supplierDocPayload(supplierDoc),
     discount: form.discount ? Number(form.discount) : undefined,
     discountAfterVat: form.discountAfterVat ? Number(form.discountAfterVat) : undefined,
     ...(paid

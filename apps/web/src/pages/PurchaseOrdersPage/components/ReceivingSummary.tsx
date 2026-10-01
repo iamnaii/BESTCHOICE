@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowLeft, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatNumber } from '@/utils/formatters';
@@ -15,6 +16,14 @@ import {
   type ReceivingScreen,
 } from '../receiving-flow.util';
 import { fieldCls } from './UnitInspectScreen';
+import { SupplierDocSection, useSupplierDocCheck } from './SupplierDocSection';
+import {
+  defaultSupplierDoc,
+  hasSupplierDocErrors,
+  postingDateLine,
+  supplierDocErrors,
+  type SupplierDocForm,
+} from '../supplier-doc.util';
 
 export interface ReceivingSummaryProps {
   units: ReceivingUnitForm[];
@@ -28,6 +37,14 @@ export interface ReceivingSummaryProps {
   onConfirm: () => void;
   confirming?: boolean;
   confirmLabel?: string;
+  /**
+   * ข3 — เอกสารจากผู้จัดจำหน่าย (รับตามใบสั่งซื้อ). ไม่ส่ง = ไม่มีส่วนนี้ (รับเข้าตรงกรอกในขั้นสรุปของวิซาร์ดแทน).
+   * ส่งมา = ปุ่มยืนยันตรวจช่องเอกสาร (+ เหตุผลในหมายเหตุเมื่อไม่มีเอกสาร) ก่อนเรียก onConfirm
+   */
+  supplierDoc?: SupplierDocForm;
+  setSupplierDoc?: (doc: SupplierDocForm) => void;
+  supplierHasVat?: boolean;
+  supplierId?: string;
 }
 
 const thCls = 'px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider text-muted-foreground whitespace-nowrap';
@@ -83,9 +100,37 @@ function Result({ units, screen }: { units: ReceivingUnitForm[]; screen: Receivi
  * ราคาผ่อน · ผลตรวจ, one row per device (an accessory line stays one counted row). Tap a row to
  * jump back to that screen. Owner picked this flat table over a grouped one (2026-09-07).
  */
-export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEditScreen, onBack, onConfirm, confirming, confirmLabel }: ReceivingSummaryProps) {
+export function ReceivingSummary({
+  units,
+  screens,
+  mode,
+  notes,
+  setNotes,
+  onEditScreen,
+  onBack,
+  onConfirm,
+  confirming,
+  confirmLabel,
+  supplierDoc,
+  setSupplierDoc,
+  supplierHasVat = false,
+  supplierId,
+}: ReceivingSummaryProps) {
   const t = tally(units);
   const pt = photoTally(units);
+  const [showDocErrors, setShowDocErrors] = useState(false);
+  const docCheck = useSupplierDocCheck(supplierDoc ? supplierId : undefined, supplierDoc ?? defaultSupplierDoc(false));
+  const docErrors = supplierDoc && showDocErrors ? supplierDocErrors(supplierDoc, notes ?? '') : {};
+  const noDocument = supplierDoc?.type === 'NONE';
+  const postingLine = supplierDoc ? postingDateLine(supplierDoc, docCheck?.periodClosed === true) : null;
+
+  const confirm = () => {
+    if (supplierDoc && hasSupplierDocErrors(supplierDocErrors(supplierDoc, notes ?? ''))) {
+      setShowDocErrors(true);
+      return;
+    }
+    onConfirm();
+  };
   return (
     <div className="flex flex-col" data-testid="receiving-summary">
       <div className="mx-4 mt-4 rounded-[14px] border border-border/50 bg-card p-4 shadow-sm sm:mx-6 sm:p-5">
@@ -190,20 +235,33 @@ export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEdit
           </table>
         </div>
 
+        {supplierDoc && setSupplierDoc && (
+          <SupplierDocSection
+            className="mt-4"
+            doc={supplierDoc}
+            setDoc={setSupplierDoc}
+            supplierHasVat={supplierHasVat}
+            check={docCheck}
+            errors={docErrors}
+          />
+        )}
+
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_300px]">
           {setNotes ? (
             <div>
               <label htmlFor="receiving-notes" className="mb-1.5 block text-[13px] text-muted-foreground">
-                หมายเหตุใบรับ
+                หมายเหตุใบรับ{noDocument ? ' *' : ''}
               </label>
               <textarea
                 id="receiving-notes"
                 value={notes ?? ''}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
-                placeholder="เช่น กล่องบุบ 1 กล่อง แจ้งผู้ขายแล้ว"
-                className={cn(fieldCls, 'min-h-14 py-2.5')}
+                placeholder={noDocument ? 'กรุณาเขียนเหตุผลที่ไม่มีเอกสาร เช่น ร้านไม่ออกบิล' : 'เช่น กล่องบุบ 1 กล่อง แจ้งผู้ขายแล้ว'}
+                aria-invalid={Boolean(docErrors.notes)}
+                className={cn(fieldCls, 'min-h-14 py-2.5', docErrors.notes && 'border-destructive')}
               />
+              {docErrors.notes && <p className="mt-1 text-xs leading-snug text-destructive">{docErrors.notes}</p>}
             </div>
           ) : (
             <div />
@@ -229,6 +287,12 @@ export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEdit
                 <span className="font-semibold">{t.rejected > 0 ? `${t.rejected} ชิ้น (เครื่องที่ไม่ผ่าน)` : 'ไม่มี'}</span>
               </div>
             )}
+            {supplierDoc && (
+              <div className="flex justify-between gap-3 border-t border-border pt-1.5">
+                <span className="text-muted-foreground">ลงบัญชีวันที่</span>
+                <span className="text-right font-semibold">{postingLine ?? 'รอกรอกวันที่ในเอกสาร'}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -239,7 +303,7 @@ export function ReceivingSummary({ units, screens, mode, notes, setNotes, onEdit
         </button>
         <button
           type="button"
-          onClick={onConfirm}
+          onClick={confirm}
           disabled={confirming}
           className="inline-flex min-h-12 items-center justify-center gap-2 rounded-[10px] bg-primary px-5 text-[15px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
         >

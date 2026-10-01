@@ -234,6 +234,12 @@ helper เดียวกัน (`apps/api/src/modules/products/product-enter-st
 | `ProductsService.update` — PATCH เปลี่ยนสถานะด้วยมือ | บังคับ **มีราคา** (`assertSellableOnEnterStock`) | `PATCH` |
 | `ProductPhotosService.completePhotos` — ยืนยันรูป 6 มุม | **soft gate** (ดูล่าง) | `PHOTO_COMPLETE` |
 
+**สามประตูนี้ + stock adjustment `FOUND` เรียก `ReceivingAcceptanceJournal.bookIfPending` ใน tx เดียวกับการเปลี่ยนสถานะ**
+— เครื่องจากใบสั่งซื้อที่ยังรอถ่ายรูปลงบัญชีรับสินค้าตอนนี้ (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8). ที่อื่นที่เขียน `IN_STOCK`
+(ยกเลิกสัญญา/ใบขาย/เปลี่ยนเครื่อง · ปลดจอง · ปลดของแถม) เป็นการคืนสภาพเครื่องที่เคยเข้าคลังมาแล้ว จึงไม่ต้องเรียก.
+ประตูใหม่ที่พาเครื่องจากสถานะก่อนเข้าคลังมา `IN_STOCK` ต้องเรียกด้วย — กติกาเต็ม + กติกากดพร้อมกันใน
+`.claude/rules/accounting.md` หัวข้อ "รับสินค้าเข้าจากใบสั่งซื้อ".
+
 ทุกประตูเขียน AuditLog รูปเดียวกัน (`ENTER_STOCK_AUDIT_ACTION = 'PRODUCT_RETURNED_TO_STOCK'`,
 `enterStockAuditData()`) ที่บันทึกราคาเก่า→ใหม่เสมอ ⇒ ตรวจย้อนได้ว่าเครื่องไหนเข้าคลังโดย
 ไม่มีการยืนยันราคา (`newValue.via !== 'BUTTON'` และราคาใน `newValue` เท่ากับ `oldValue`).

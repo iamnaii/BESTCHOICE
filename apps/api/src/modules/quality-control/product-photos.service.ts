@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { enterStockAuditData, hasSellingPrice } from '../products/product-enter-stock.util';
+import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receiving-acceptance-journal';
 
 const ANGLES = ['front', 'back', 'left', 'right', 'top', 'bottom'] as const;
 type Angle = typeof ANGLES[number];
@@ -226,6 +227,9 @@ export class ProductPhotosService {
           where: { id: productId },
           data: { status: 'IN_STOCK', stockInDate: new Date() },
         });
+        // เครื่องจากใบสั่งซื้อที่รอถ่ายรูป = รับเข้าคลังตอนนี้ → ลงบัญชีรับสินค้าใน tx เดียวกัน
+        // (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8) · เครื่องรับซื้อ/ยึดคืน = ไม่มีอะไรให้ลง
+        await new ReceivingAcceptanceJournal(this.prisma).bookIfPending(tx, productId);
         // `userId` optional เพื่อไม่พังผู้เรียกภายใน — `AuditLog.userId` เป็น FK required
         if (userId) {
           await tx.auditLog.create({

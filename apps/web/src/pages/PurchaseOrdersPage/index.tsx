@@ -311,6 +311,8 @@ export default function PurchaseOrdersPage() {
         setReceivingUnits={data.setReceivingUnits}
         receivingNotes={data.receivingNotes}
         setReceivingNotes={data.setReceivingNotes}
+        receivingSupplierDoc={data.receivingSupplierDoc}
+        setReceivingSupplierDoc={data.setReceivingSupplierDoc}
         goodsReceivingMutation={data.goodsReceivingMutation}
         handleGoodsReceiving={data.handleGoodsReceiving}
         confirmClose={(proceed) =>

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 describe('PurchaseOrdersService.order — APPROVED → ORDERED', () => {
   let service: PurchaseOrdersService;
@@ -20,7 +21,7 @@ describe('PurchaseOrdersService.order — APPROVED → ORDERED', () => {
 
   const build = async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     return module.get<PurchaseOrdersService>(PurchaseOrdersService);
   };

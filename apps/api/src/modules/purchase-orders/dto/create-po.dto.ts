@@ -1,6 +1,7 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean, ArrayMinSize, Min, IsEnum, ArrayNotEmpty, IsNotEmpty, IsInt, MaxLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsArray, ValidateNested, IsIn, IsBoolean, ArrayMinSize, Min, IsEnum, ArrayNotEmpty, IsNotEmpty, IsInt, MaxLength, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
-import { DefectReason, DeviceOrigin } from '@prisma/client';
+import { DefectReason, DeviceOrigin, SupplierDocType } from '@prisma/client';
+import { SUPPLIER_DOC_NUMBER_MAX } from '../services/supplier-doc.util';
 
 export class POItemDto {
   @IsString()
@@ -282,6 +283,18 @@ export class GoodsReceivingDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  // ข3 — เอกสารจากผู้จัดจำหน่าย (แบบหน้าจอที่เจ้าของเคาะ 2026-10-01). ประเภทบังคับที่ HTTP (IsEnum ไม่มี IsOptional) —
+  // type เป็น optional เฉพาะฝั่ง TypeScript ให้ผู้เรียกภายใน (seed/เทส) ที่ไม่มีเอกสารใช้ต่อได้. เลขที่/วันที่บังคับตามประเภท
+  // ตรวจใน service (`normalizeSupplierDoc`) — ไม่มีเอกสาร = ต้องเขียนเหตุผลในหมายเหตุใบรับ
+  @IsEnum(SupplierDocType, { message: 'กรุณาเลือกประเภทเอกสารของผู้จัดจำหน่าย' })
+  supplierDocType?: SupplierDocType;
+
+  @IsOptional() @IsString() @MaxLength(SUPPLIER_DOC_NUMBER_MAX, { message: `เลขที่เอกสารยาวเกิน ${SUPPLIER_DOC_NUMBER_MAX} ตัวอักษร` })
+  supplierDocNumber?: string;
+
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'วันที่ในเอกสารไม่ถูกต้อง' })
+  supplierDocDate?: string;
 }
 
 export class DirectReceiveItemDto {
@@ -301,7 +314,8 @@ export class DirectReceiveItemDto {
   // One DTO item = one physical unit.
   @IsNumber() @Min(1) quantity: number;
 
-  // costPrice (booked as POItem.unitPrice; copied into Product.costPrice by goodsReceiving). MANDATORY for COGS.
+  // ราคาซื้อต่อหน่วยก่อน VAT ก่อนส่วนลด (booked as POItem.unitPrice). goodsReceiving turns it into Product.costPrice =
+  // the unit's share of the PO net amount (VAT-inclusive, after discounts — po-unit-cost.util). MANDATORY for COGS.
   @IsNumber() @Min(0.01, { message: 'กรุณาระบุราคาทุน (costPrice) มากกว่า 0' }) unitPrice: number;
 
   // Per-unit receiving fields (mirror GoodsReceivingItemDto)
@@ -332,6 +346,18 @@ export class DirectReceiveDto {
   @IsArray() @ArrayMinSize(1) @ValidateNested({ each: true }) @Type(() => DirectReceiveItemDto)
   items: DirectReceiveItemDto[];
 
+  // ข3 — เอกสารจากผู้จัดจำหน่าย (แบบหน้าจอที่เจ้าของเคาะ 2026-10-01). ประเภทบังคับที่ HTTP (IsEnum ไม่มี IsOptional) —
+  // type เป็น optional เฉพาะฝั่ง TypeScript ให้ผู้เรียกภายใน (seed/เทส) ที่ไม่มีเอกสารใช้ต่อได้. เลขที่/วันที่บังคับตามประเภท
+  // ตรวจใน service (`normalizeSupplierDoc`) — ไม่มีเอกสาร = ต้องเขียนเหตุผลในหมายเหตุใบรับ
+  @IsEnum(SupplierDocType, { message: 'กรุณาเลือกประเภทเอกสารของผู้จัดจำหน่าย' })
+  supplierDocType?: SupplierDocType;
+
+  @IsOptional() @IsString() @MaxLength(SUPPLIER_DOC_NUMBER_MAX, { message: `เลขที่เอกสารยาวเกิน ${SUPPLIER_DOC_NUMBER_MAX} ตัวอักษร` })
+  supplierDocNumber?: string;
+
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'วันที่ในเอกสารไม่ถูกต้อง' })
+  supplierDocDate?: string;
+
   // Same money / payment fields as CreatePODto (2026-09-06): the auto-PO books VAT and
   // discounts like a normal PO, and a purchase paid on the spot is recorded as paid.
   @IsNumber() @IsOptional() @Min(0) discount?: number;
@@ -352,4 +378,11 @@ export class RejectQCDto {
   @IsString()
   @IsNotEmpty({ message: 'กรุณาระบุเหตุผลที่ไม่ผ่าน QC' })
   reason!: string;
+}
+
+/** ข3 — `GET /purchase-orders/receiving-doc-check` */
+export class ReceivingDocCheckQueryDto {
+  @IsString() supplierId: string;
+  @IsOptional() @IsString() @MaxLength(SUPPLIER_DOC_NUMBER_MAX) docNumber?: string;
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'วันที่ในเอกสารไม่ถูกต้อง' }) docDate?: string;
 }

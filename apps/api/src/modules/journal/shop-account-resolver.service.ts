@@ -36,6 +36,23 @@ export class ShopAccountResolver {
     }
   }
 
+  /**
+   * Supplier payable credited when purchased goods are received (คำตอบฝ่ายบัญชี
+   * 2026-09-29 ข้อ ข1): phones of every kind + tablets → S21-1101, accessories → S21-1102.
+   */
+  resolveSupplierPayableAccount(category: ProductCategory): string {
+    switch (category) {
+      case 'ACCESSORY':
+        return 'S21-1102';
+      case 'PHONE_NEW':
+      case 'PHONE_USED':
+      case 'TABLET':
+        return 'S21-1101';
+      default:
+        throw new BadRequestException(`ShopAccountResolver: unknown ProductCategory "${category as string}"`);
+    }
+  }
+
   /** Fail-closed: a branch must have shopCashAccountCode set before SHOP cash JEs can post. */
   async resolveBranchCashAccount(branchId: string, tx?: Prisma.TransactionClient): Promise<string> {
     const client = (tx ?? this.prisma) as Prisma.TransactionClient;

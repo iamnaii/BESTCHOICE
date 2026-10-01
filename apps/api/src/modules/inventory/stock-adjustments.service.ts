@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, ProductStatus, StockAdjustmentReason } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receiving-acceptance-journal';
 import { CreateStockAdjustmentDto } from './dto/create-stock-adjustment.dto';
 
 // T2-C11 — stock adjustments whose product cost exceeds this threshold must
@@ -250,6 +251,10 @@ export class StockAdjustmentsService {
             );
           }
           throw err;
+        }
+        // เครื่องจากใบสั่งซื้อที่ยังไม่เคยลงบัญชีรับของ (รอถ่ายรูปแล้วถูกย้ายไปสถานะของหาย/ของเสีย) → ลงตอนเข้าคลัง
+        if (entersStock) {
+          await new ReceivingAcceptanceJournal(this.prisma).bookIfPending(tx, dto.productId);
         }
       } else if (['DAMAGED', 'LOST', 'WRITE_OFF'].includes(dto.reason)) {
         // DAMAGED, LOST, WRITE_OFF → update status and soft delete

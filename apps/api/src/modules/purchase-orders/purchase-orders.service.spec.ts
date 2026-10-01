@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 /**
  * T5-C16: PO goods-receive race condition — now defended on goodsReceiving()
@@ -25,7 +26,7 @@ describe('PurchaseOrdersService — T5-C16 goodsReceiving race condition', () =>
       },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'wh', name: 'คลังกลาง' }) },
       goodsReceiving: { create: jest.fn().mockResolvedValue({ id: 'gr1' }), count: jest.fn().mockResolvedValue(0) },
-      goodsReceivingItem: { create: jest.fn().mockResolvedValue({ id: 'gri1' }) },
+      goodsReceivingItem: { create: jest.fn().mockResolvedValue({ id: 'gri1' }), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       product: {
         create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: `prod-${Math.random()}`, ...data })),
         findMany: jest.fn().mockResolvedValue([]), // no existing IMEI conflicts
@@ -52,7 +53,7 @@ describe('PurchaseOrdersService — T5-C16 goodsReceiving race condition', () =>
     prisma = { $transaction: jest.fn().mockImplementation(async (fn: any) => (typeof fn === 'function' ? fn(tx) : Promise.all(fn))) };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     service = module.get<PurchaseOrdersService>(PurchaseOrdersService);
   });
@@ -78,7 +79,7 @@ describe('goodsReceiving — IMEI duplicate guard', () => {
       purchaseOrder: { findUnique: jest.fn().mockResolvedValue({ id: 'po-1', status: 'APPROVED', deletedAt: null, supplierId: 's1', items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 5, receivedQty: 0, brand: 'A', model: 'B' }] }), update: jest.fn() },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'wh', name: 'คลังกลาง' }) },
       goodsReceiving: { create: jest.fn().mockResolvedValue({ id: 'gr1' }), count: jest.fn().mockResolvedValue(0) },
-      goodsReceivingItem: { create: jest.fn() },
+      goodsReceivingItem: { create: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       pOItem: { findMany: jest.fn().mockResolvedValue([{ id: 'poi-1', quantity: 5, receivedQty: 0, brand: 'A', model: 'B' }]), update: jest.fn() },
       product: { create: jest.fn(), findMany: jest.fn().mockResolvedValue([{ imeiSerial: 'DUP1', name: 'iPhone', deletedAt: null }]), update: jest.fn().mockResolvedValue({}) },
       productPrice: {
@@ -91,7 +92,7 @@ describe('goodsReceiving — IMEI duplicate guard', () => {
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
-    const module: TestingModule = await Test.createTestingModule({ providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }] }).compile();
+    const module: TestingModule = await Test.createTestingModule({ providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers] }).compile();
     const service = module.get<PurchaseOrdersService>(PurchaseOrdersService);
 
     await expect(service.goodsReceiving('po-1', { items: [{ poItemId: 'poi-1', status: 'PASS', imeiSerial: 'DUP1' }] } as never, 'user-1')).rejects.toThrow(/IMEI ซ้ำ/);

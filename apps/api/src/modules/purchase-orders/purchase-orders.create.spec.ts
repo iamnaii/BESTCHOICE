@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 /**
  * Characterization (golden) spec for PurchaseOrdersService.create() money math.
@@ -72,6 +73,7 @@ describe('PurchaseOrdersService.create() — VAT/net/discount math (characteriza
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PurchaseOrdersService,
+        ...poJournalTestProviders().providers,
         { provide: PrismaService, useValue: prisma },
       ],
     }).compile();
@@ -104,6 +106,38 @@ describe('PurchaseOrdersService.create() — VAT/net/discount math (characteriza
         'user-1',
       ),
     ).rejects.toThrow(NotFoundException);
+  });
+
+  // ผลตรวจทาน 2026-09-29: ยอดสุทธิติดลบคำนวณต้นทุนต่อเครื่องไม่ได้ และยอดใบสั่งซื้อแก้ไม่ได้หลังสร้าง
+  // ⇒ ต้องปฏิเสธตั้งแต่ตอนสร้าง พร้อมบอกให้แก้ส่วนลด (ไม่ใช่ปล่อยให้ไปตายตอนรับของ)
+  it('ปฏิเสธใบสั่งซื้อที่ส่วนลดมากกว่ามูลค่าสินค้า (ยอดสุทธิติดลบ) — ไม่สร้างอะไรเลย', async () => {
+    await makeService({ deletedAt: null, hasVat: false, paymentMethods: [] });
+    const attempt = service.create(
+      {
+        supplierId: 'sup-1',
+        orderDate: '2026-06-01',
+        items: [{ quantity: 1, unitPrice: 1000 }],
+        discount: 1500,
+      } as never,
+      'user-1',
+    );
+    await expect(attempt).rejects.toThrow(BadRequestException);
+    await expect(attempt).rejects.toThrow(/ส่วนลด.*มากกว่ามูลค่าสินค้า.*กรุณาแก้ส่วนลด/);
+    expect(prisma.purchaseOrder.create).not.toHaveBeenCalled();
+  });
+
+  it('ส่วนลดเท่ามูลค่าสินค้าพอดี (ยอดสุทธิ 0) ยังสร้างได้', async () => {
+    await makeService({ deletedAt: null, hasVat: false, paymentMethods: [] });
+    await service.create(
+      {
+        supplierId: 'sup-1',
+        orderDate: '2026-06-01',
+        items: [{ quantity: 1, unitPrice: 1000 }],
+        discount: 1000,
+      } as never,
+      'user-1',
+    );
+    expect(lastCreateArg.data.netAmount.toFixed(2)).toBe('0.00');
   });
 
   describe('supplier.hasVat = true', () => {

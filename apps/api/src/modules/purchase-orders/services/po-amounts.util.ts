@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { d, dAdd, dSub, dSum } from '../../../utils/decimal.util';
 
@@ -38,6 +39,20 @@ export function computePoAmounts(
     : d(0);
   const netAmount = dSub(dAdd(subtotalAfterDiscount, vatAmount), discountAfterVat);
   return { totalAmount, discount, discountAfterVat, vatAmount, netAmount };
+}
+
+/**
+ * ยอดสุทธิติดลบ = ส่วนลดรวมมากกว่ามูลค่าสินค้า — ต้นทุนต่อเครื่องคิดจากยอดสุทธิ (po-unit-cost.util)
+ * จึงคำนวณไม่ได้ และยอดของใบสั่งซื้อแก้ไม่ได้หลังสร้าง ⇒ ปฏิเสธตั้งแต่ตอนสร้าง ทั้ง create() และ
+ * directReceive(). ยอดสุทธิ 0 (ส่วนลดเต็มมูลค่า / ของแถมทั้งใบ) ยังผ่าน
+ */
+export function assertPoNetNotNegative(amounts: PoAmounts): void {
+  if (amounts.netAmount.lt(0)) {
+    throw new BadRequestException(
+      `ส่วนลดรวม ${dAdd(amounts.discount, amounts.discountAfterVat).toFixed(2)} บาท มากกว่ามูลค่าสินค้า ` +
+        `(ยอดสุทธิติดลบ ${amounts.netAmount.toFixed(2)} บาท) กรุณาแก้ส่วนลดให้ไม่เกินมูลค่าสินค้า`,
+    );
+  }
 }
 
 /** Prisma `select` for the supplier fields the terms resolver needs (default method first). */

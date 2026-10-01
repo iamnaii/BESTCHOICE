@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
 import { RepossessionsService } from './repossessions.service';
+import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
 
 /**
  * Payoff parity เมื่อมี "ถังพักงวดสุดท้าย" (`Contract.rescheduleAdvanceBalance`)
@@ -94,6 +95,10 @@ describe('Payoff parity (ถังพักงวดสุดท้าย): JP4 
           ),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      // PR5: preview ของ JP4 อ่านยอดในบัญชี — ถังพักมี 21-1103 หนุนเท่าคอลัมน์ (ขา Dr 21-1103 = ยอดที่ยอดปิดหักให้)
+      journalLine: {
+        findMany: jest.fn(ledgerLines({ '21-1103': contract.rescheduleAdvanceBalance.toString() })),
+      },
     };
 
     // จับ input ที่ RepossessionsService ส่งเข้า JP5 — ยอด parkRelief ที่ส่งคือ

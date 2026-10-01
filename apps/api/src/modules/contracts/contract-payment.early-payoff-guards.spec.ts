@@ -3,6 +3,7 @@ jest.mock('../payments/services/payment-approval-request.util', () => ({ ...jest
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService } from './contract-payment.service';
 import { EarlyPayoffDto } from './dto/contract.dto';
+import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
 
 /**
  * Characterization (golden) test — Wave 3 MED gap-fill.
@@ -31,6 +32,9 @@ import { EarlyPayoffDto } from './dto/contract.dto';
  * Pure mock-based unit test — the service is constructed directly with plain
  * positional mock deps (same style as the sibling early-payoff specs). No real
  * DB. Money is Prisma.Decimal where the code does Decimal ops.
+ *
+ * PR5: รายการ JP4 (preview และที่ลงจริง) อ่านยอดในบัญชีของสัญญา — fixture มียอดหลัง 6 งวดที่ตั้งลูกหนี้งวด + รับเงินครบ
+ * (11-2101 10,800.00 · 11-2105 756.00 · 11-2106 900.00 · 21-2102 756.00) ไม่มี 11-2102 (ไม่มีค่าเผื่อให้คืน).
  */
 // คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
 // (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
@@ -40,6 +44,12 @@ const notAccrued = {
   accruedVat: '0',
   accruedInterest: '0',
 };
+const ledgerAfterSixPaid = ledgerLines({
+  '11-2101': '10800.00',
+  '11-2105': '756.00',
+  '11-2106': '900.00',
+  '21-2102': '756.00',
+});
 
 describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
@@ -166,9 +176,9 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
         ),
         update: jest.fn().mockResolvedValue({}),
       },
-      // releaseEclOnPayoff (C1) — glContractBalance reads journalLine; no prior
+      // JP4 (PR5) + releaseEclOnPayoff (C1) read journalLine via glContractBalance; no prior
       // 11-2102 lines in this fixture → bal 0 → EclStageReverseTemplate skipped.
-      journalLine: { findMany: jest.fn().mockResolvedValue([]) },
+      journalLine: { findMany: jest.fn(ledgerAfterSixPaid) },
       badDebtProvision: {
         findFirst: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -179,6 +189,7 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       installmentSchedule: { findMany: jest.fn().mockResolvedValue(schedules) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      journalLine: { findMany: jest.fn(ledgerAfterSixPaid) },
       companyInfo: {
         findFirst: jest.fn().mockImplementation((args: { where: { companyCode: string } }) => {
           if (args.where.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService } from './contract-payment.service';
+import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
 
 /**
  * Characterization (golden) test for ContractPaymentService.getEarlyPayoffQuote —
@@ -28,6 +29,10 @@ import { ContractPaymentService } from './contract-payment.service';
  *   creditBalance    = 0, vatPct = 0.07
  *   6 installments PAID → 6 remaining
  *   discountPct      = default (50% → fraction 0.5)
+ *
+ * PR5 — รายการ JP4 ล้างตามยอดในบัญชีของสัญญา (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4): ยอดหลังรายการเปิดสัญญาและ 6 งวด
+ * ที่ตั้งลูกหนี้งวด + รับเงินครบ = 11-2101 10,800.00 · 11-2105 756.00 · 11-2106 900.00 · 21-2102 756.00 · เงินสด =
+ * ยอดที่ลูกค้าจ่าย · 52-1106 = ลูกหนี้ตามบัญชี − เงินสด (สัญญานี้ไม่มีเศษงวดสุดท้าย ⇒ เท่าส่วนลดของสูตรยอดปิดพอดี)
  */
 // คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
 // (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
@@ -36,6 +41,12 @@ const notAccrued = {
   accruedAmount: '0',
   accruedVat: '0',
   accruedInterest: '0',
+};
+const ledgerAfterSixPaid = {
+  '11-2101': '10800.00',
+  '11-2105': '756.00',
+  '11-2106': '900.00',
+  '21-2102': '756.00',
 };
 
 describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () => {
@@ -88,6 +99,7 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
     contract: { findUnique: jest.Mock };
     installmentSchedule: { findMany: jest.Mock };
     chartOfAccount: { findMany: jest.Mock };
+    journalLine: { findMany: jest.Mock };
   };
   let service: ContractPaymentService;
 
@@ -96,6 +108,7 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       installmentSchedule: { findMany: jest.fn().mockResolvedValue(installmentSchedules) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      journalLine: { findMany: jest.fn(ledgerLines(ledgerAfterSixPaid)) },
     };
 
     service = new ContractPaymentService(
@@ -121,8 +134,7 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
   it('reverses the full remaining deferred interest (unearned interest reversal)', async () => {
     const quote = await service.getEarlyPayoffQuote(contract.id);
 
-    // 6 of 12 installments remain. interestPerInst = 1800/12 = 150.00.
-    // Remaining deferred interest reversed = 150.00 × 6 = 900.00.
+    // 6 of 12 installments remain → ยอด 11-2106 ในบัญชี 1,800 − 6 × 150 = 900.00 ล้างทั้งก้อน.
     const interestLine = quote.journalPreview.lines.find((l) => l.accountCode === '11-2106');
     expect(interestLine?.debit).toBe('900.00');
   });
@@ -130,10 +142,9 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
   it('computes the early-payoff discount from the FRACTION form of discountPct (0..1, not 0..100)', async () => {
     const quote = await service.getEarlyPayoffQuote(contract.id);
 
-    // discount = remainingDeferredInterest (900.00) × 0.5 (fraction) = 450.00.
-    // SUSPECTED BUG GUARD: if the JE preview ever read the returned percentage
-    // form (50) instead of the fraction (0.5), this would be 45000.00 — a 100×
-    // overstatement. Pin 450.00 to lock the unit.
+    // PR5: 52-1106 = ลูกหนี้ตามบัญชี 11,556.00 − เงินที่ลูกค้าจ่าย 11,106.00 = 450.00 = ส่วนลดของสูตรยอดปิด
+    // (กำไร 900 × 0.5). SUSPECTED BUG GUARD: if the quote ever read the percentage form (50) as a fraction the
+    // payoff would collapse and 52-1106 would no longer be 450.00. Pin 450.00 to lock the unit.
     const discountLine = quote.journalPreview.lines.find((l) => l.accountCode === '52-1106');
     expect(discountLine?.debit).toBe('450.00');
     expect(quote.discountAmount).toBe(450); // gross-profit path agrees (900 × 0.5)
@@ -145,19 +156,14 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
     expect(quote.discountPct).toBe(50);
   });
 
-  it('computes the final settlement (cash payoff line) = remainingGross − discount + remainingVat', async () => {
+  it('PR5: เงินสดในรายการ = ยอดที่ลูกค้าจ่าย (totalPayoff 11,106.00 — คำตอบข้อ 5.3)', async () => {
     const quote = await service.getEarlyPayoffQuote(contract.id);
 
-    // remainingGross (excl VAT) = 1800.00 × 6 = 10800.00
-    // remainingDeferredVat       = (1512/12 = 126.00) × 6 = 756.00
-    // settlement = 10800.00 − 450.00 + 756.00 = 11106.00
+    // Top-level payoff = remainingBalance 11,556 − discount 450 (no late fees)
     // Default deposit = 11-1201 KBank (owner rule 2026-07-08: direct FINANCE
     // receipt is KBank-only)
     const cashLine = quote.journalPreview.lines.find((l) => l.accountCode === '11-1201');
     expect(cashLine?.debit).toBe('11106.00');
-
-    // Top-level payoff (remainingBalance 11556 − discount 450, no late fees)
-    // must agree with the JE cash settlement exactly.
     expect(quote.totalPayoff).toBe(11106);
   });
 
@@ -171,11 +177,10 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
   it('scales the discount with an explicit discountPct override (30% → 270.00) and reflows the settlement', async () => {
     const quote = await service.getEarlyPayoffQuote(contract.id, 30);
 
-    // discount = 900.00 × 0.30 = 270.00 (fraction 0.30, not 30).
+    // ส่วนลดของสูตรยอดปิด = 900.00 × 0.30 = 270.00 → ลูกค้าจ่าย 11,286.00 → 52-1106 = 11,556.00 − 11,286.00
     const discountLine = quote.journalPreview.lines.find((l) => l.accountCode === '52-1106');
     expect(discountLine?.debit).toBe('270.00');
 
-    // settlement = 10800.00 − 270.00 + 756.00 = 11286.00
     const cashLine = quote.journalPreview.lines.find((l) => l.accountCode === '11-1201');
     expect(cashLine?.debit).toBe('11286.00');
     expect(quote.discountPct).toBe(30);

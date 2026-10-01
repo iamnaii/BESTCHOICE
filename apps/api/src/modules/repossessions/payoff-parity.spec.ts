@@ -108,6 +108,8 @@ describe('Payoff parity: repossession closingAmount === early-payoff totalPayoff
           ),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      // PR5: preview ของ JP4 อ่านยอดในบัญชี — สเปคนี้เทียบยอดปิดของสองเส้นทางเท่านั้น (ไม่ดูบรรทัดรายการ)
+      journalLine: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const ep = new ContractPaymentService(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

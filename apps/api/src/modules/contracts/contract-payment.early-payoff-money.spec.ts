@@ -3,6 +3,7 @@ jest.mock('../payments/services/payment-approval-request.util', () => ({ ...jest
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService } from './contract-payment.service';
 import { EarlyPayoffDto } from './dto/contract.dto';
+import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
 
 /**
  * Characterization (golden) test for ContractPaymentService EARLY-PAYOFF *money*
@@ -36,6 +37,9 @@ import { EarlyPayoffDto } from './dto/contract.dto';
  * code touches Decimal (d()/dAdd()/dSub()/.toDecimalPlaces()); read path and
  * write path use INDEPENDENT prisma mocks so the FIFO rows can be shaped
  * separately from the quote rows.
+ *
+ * PR5: รายการ JP4 อ่านยอดในบัญชีของสัญญา (`journalLine.findMany` ผ่าน `glContractBalance`) — fixture ให้ยอดตามที่
+ * แต่ละเทสต้องใช้ (`ledgerLines`) · บัญชีที่ไม่ระบุ = 0.
  */
 // คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
 // (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
@@ -58,11 +62,15 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       ...notAccrued,
     }));
 
-    const buildQuoteService = (contract: Record<string, unknown>) => {
+    const buildQuoteService = (
+      contract: Record<string, unknown>,
+      ledger: Record<string, string> = {},
+    ) => {
       const prisma = {
         contract: { findUnique: jest.fn().mockResolvedValue(contract) },
         installmentSchedule: { findMany: jest.fn().mockResolvedValue(installmentSchedules) },
         chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+        journalLine: { findMany: jest.fn(ledgerLines(ledger)) },
       };
       const service = new ContractPaymentService(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -205,7 +213,8 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         ],
       };
 
-      const service = buildQuoteService(lateFeeContract);
+      // ยอดในบัญชีของ 6 งวดที่เหลือ (ไม่มี VAT / ดอกเบี้ย) = 6,000.00 → ไม่มีส่วนลด
+      const service = buildQuoteService(lateFeeContract, { '11-2101': '6000.00' });
       const quote = await service.getEarlyPayoffQuote(lateFeeContract.id);
 
       expect(quote.remainingMonths).toBe(6);
@@ -219,10 +228,12 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       expect(quote.totalPayoff).toBe(6200);
 
       // JE preview: ค่าปรับต้องมีขา Cr 42-1103 ทั้งก้อน (waived 300 ไม่รวม) และ
-      // Dr เงินสด grossed up — ยังคง balanced (owner 2026-07-20: เดิมค่าปรับ
+      // Dr เงินสด = เงินที่รับรวมค่าปรับ 6,200.00 — ยังคง balanced (owner 2026-07-20: เดิมค่าปรับ
       // ถูกเก็บแต่ไม่มีขา JE เลย)
       const feeLine = quote.journalPreview.lines.find((l) => l.accountCode === '42-1103');
       expect(feeLine?.credit).toBe('200.00');
+      const cashLine = quote.journalPreview.lines.find((l) => l.accountCode === '11-1201');
+      expect(cashLine?.debit).toBe('6200.00');
       expect(quote.journalPreview.isBalanced).toBe(true);
     });
 
@@ -396,6 +407,14 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       ...notAccrued,
     }));
 
+    // PR5: ยอดในบัญชีหลัง 6 งวดที่ตั้งลูกหนี้งวด + รับเงินครบ (ตัวเดียวกับ exec spec)
+    const ledgerAfterSixPaid = ledgerLines({
+      '11-2101': '10800.00',
+      '11-2105': '756.00',
+      '11-2106': '900.00',
+      '21-2102': '756.00',
+    });
+
     const freshContract = {
       status: 'ACTIVE',
       contractNumber: 'CT-EP-FIFO-001',
@@ -477,6 +496,7 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       contract: { findUnique: jest.Mock };
       installmentSchedule: { findMany: jest.Mock };
       chartOfAccount: { findMany: jest.Mock };
+      journalLine: { findMany: jest.Mock };
       companyInfo: { findFirst: jest.Mock };
       systemConfig: { findUnique: jest.Mock };
       $transaction: jest.Mock;
@@ -491,7 +511,7 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
       // computeUnbookedLateFees (netting ค่าปรับก่อนลง JE) — fixture นี้มีค่าปรับ
       installmentSchedule: { findMany: jest.Mock };
       journalEntry: { findMany: jest.Mock };
-      // releaseEclOnPayoff (C1) — glContractBalance reads journalLine; no prior
+      // JP4 (PR5) + releaseEclOnPayoff (C1) — glContractBalance reads journalLine; no prior
       // 11-2102 lines in this fixture → bal 0 → EclStageReverseTemplate skipped.
       journalLine: { findMany: jest.Mock };
       badDebtProvision: { findFirst: jest.Mock; updateMany: jest.Mock };
@@ -530,9 +550,9 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         // ไม่มี schedule id / JE เดิม → netted = ค่าปรับดิบ (ไม่มีอะไรให้หัก)
         installmentSchedule: { findMany: jest.fn().mockResolvedValue([]) },
         journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
-        // releaseEclOnPayoff (C1): no prior 11-2102 lines → bal 0 → skip reverse,
-        // rows still flip REVERSED (none exist in this fixture — no-op update).
-        journalLine: { findMany: jest.fn().mockResolvedValue([]) },
+        // JP4 (PR5) อ่านยอดลูกหนี้ของสัญญา · releaseEclOnPayoff (C1): no prior 11-2102 lines → bal 0 →
+        // skip reverse, rows still flip REVERSED (none exist in this fixture — no-op update).
+        journalLine: { findMany: jest.fn(ledgerAfterSixPaid) },
         badDebtProvision: {
           findFirst: jest.fn().mockResolvedValue(null),
           updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -543,6 +563,7 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
         contract: { findUnique: jest.fn().mockResolvedValue(quoteContract) },
         installmentSchedule: { findMany: jest.fn().mockResolvedValue(installmentSchedules) },
         chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+        journalLine: { findMany: jest.fn(ledgerAfterSixPaid) },
         companyInfo: {
           findFirst: jest.fn().mockImplementation((args: { where: { companyCode: string } }) => {
             if (args.where.companyCode === 'FINANCE') return Promise.resolve({ id: 'co-FINANCE' });

@@ -2,6 +2,7 @@ import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService, type SlipMatchAuthorization } from './contract-payment.service';
 import { EarlyPayoffDto } from './dto/contract.dto';
+import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
 
 /**
  * ปิดสัญญาก่อนกำหนด "ทางสลิปตรง" (คำสั่งเจ้าของ 2026-09-24) — earlyPayoff() รับ slipMatch แทนคำขออนุมัติ:
@@ -9,14 +10,6 @@ import { EarlyPayoffDto } from './dto/contract.dto';
  * (3) เขียน PaymentEvidence + AuditLog EARLY_PAYOFF_SLIP_MATCHED. fixture เดียวกับ early-payoff-park.spec
  * (ยอดปิดไม่มีถังพัก = 11,106.00)
  */
-// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
-// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
-const notAccrued = {
-  accrualJournalEntryId: null,
-  accruedAmount: '0',
-  accruedVat: '0',
-  accruedInterest: '0',
-};
 
 describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่านคิวอนุมัติ)', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
@@ -71,6 +64,13 @@ describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่า�
 
   const build = (park: string, fingerprintTaken = false): Harness => {
     const contract = makeQuoteContract(park);
+    const ledger = ledgerLines({
+      '11-2101': '10800.00',
+      '11-2105': '756.00',
+      '11-2106': '900.00',
+      '21-2102': '756.00',
+      '21-1103': park,
+    });
     const contractUpdates: Array<Record<string, unknown>> = [];
     const auditRows: Array<Record<string, unknown>> = [];
     const fingerprints: Array<Record<string, unknown>> = [];
@@ -149,23 +149,11 @@ describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่า�
           return Promise.resolve({ id: 'ev-1', ...data });
         }),
       },
-      // R-3 (re-review 2026-08-18): JP4 now clamps `parkRelief` by the LIVE GL
+      // R-3 (re-review 2026-08-18): JP4 clamps `parkRelief` by the LIVE GL
       // balance of 21-1103 for this contract — the same policy JP5 already used —
       // so the ledger has to BACK the column here or the relief clamps to zero.
-      // That is exactly right: the 6a/6b fee JE credited 21-1103 by the parked
-      // amount, so a contract whose column says `park` has a matching Cr balance.
-      // Scoped by accountCode so other journalLine reads on this path stay empty.
-      journalLine: {
-        findMany: jest
-          .fn()
-          .mockImplementation((args: { where?: { accountCode?: string } }) =>
-            Promise.resolve(
-              args?.where?.accountCode === '21-1103'
-                ? [{ debit: dec('0'), credit: dec(park) }]
-                : [],
-            ),
-          ),
-      },
+      // PR5: JP4 ล้างลูกหนี้ตามยอดในบัญชี — ยอดหลัง 6 งวดที่ตั้งลูกหนี้งวด + รับครบ (fixture เดียวกับ park spec)
+      journalLine: { findMany: jest.fn(ledger) },
       badDebtProvision: {
         findFirst: jest.fn().mockResolvedValue(null),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -173,9 +161,7 @@ describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่า�
       installmentSchedule: {
         findMany: jest
           .fn()
-          .mockResolvedValue(
-            Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1, ...notAccrued })),
-          ),
+          .mockResolvedValue(Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }))),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
     };
@@ -185,11 +171,11 @@ describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่า�
       installmentSchedule: {
         findMany: jest
           .fn()
-          .mockResolvedValue(
-            Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1, ...notAccrued })),
-          ),
+          .mockResolvedValue(Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }))),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      // preview นอก tx (ยอดปิดก่อนเปิดธุรกรรม) อ่านยอดในบัญชีชุดเดียวกัน
+      journalLine: { findMany: jest.fn(ledger) },
       companyInfo: {
         findFirst: jest
           .fn()

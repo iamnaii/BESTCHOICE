@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
 import { RepossessionsService } from './repossessions.service';
+import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
 
 /**
  * Payoff parity เมื่อมี "ถังพักงวดสุดท้าย" (`Contract.rescheduleAdvanceBalance`)
@@ -13,14 +14,6 @@ import { RepossessionsService } from './repossessions.service';
  * spec เดิม `payoff-parity.spec.ts` ยังยืนอยู่โดยไม่ถูกแก้ — ไฟล์นี้เพิ่มมิติถังพัก
  * ล้วน ๆ ไม่ทับเคสเดิม
  */
-// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
-// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
-const notAccrued = {
-  accrualJournalEntryId: null,
-  accruedAmount: '0',
-  accruedVat: '0',
-  accruedInterest: '0',
-};
 
 describe('Payoff parity (ถังพักงวดสุดท้าย): JP4 quote === JP5 preview + ยอดปลดหนี้ 21-1103 ก้อนเดียวกัน', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
@@ -89,11 +82,13 @@ describe('Payoff parity (ถังพักงวดสุดท้าย): JP4 
       installmentSchedule: {
         findMany: jest
           .fn()
-          .mockResolvedValue(
-            Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1, ...notAccrued })),
-          ),
+          .mockResolvedValue(Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }))),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      // PR5: preview ของ JP4 อ่านยอดในบัญชี — ถังพักมี 21-1103 หนุนเท่าคอลัมน์ (ขา Dr 21-1103 = ยอดที่ยอดปิดหักให้)
+      journalLine: {
+        findMany: jest.fn(ledgerLines({ '21-1103': contract.rescheduleAdvanceBalance.toString() })),
+      },
     };
 
     // จับ input ที่ RepossessionsService ส่งเข้า JP5 — ยอด parkRelief ที่ส่งคือ

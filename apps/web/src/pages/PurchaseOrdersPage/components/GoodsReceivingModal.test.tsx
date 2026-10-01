@@ -1,13 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useState } from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GoodsReceivingModal, receivingIsDirty } from './GoodsReceivingModal';
 import type { PurchaseOrder, ReceivingUnitForm } from '../types';
 import { defaultChecklist } from '../constants';
 import { emptyAnglePhotos } from '@/constants/photo-angles';
+import { formatDateShort } from '@/utils/formatters';
+import { defaultSupplierDoc, type SupplierDocForm } from '../supplier-doc.util';
 
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }));
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }));
+// ตัวตรวจเลขซ้ำ/งวดปิดของช่องเอกสาร (ข3) — ไม่มีอะไรซ้ำ งวดเปิด
+vi.mock('@/lib/api', () => ({ default: { get: vi.fn().mockResolvedValue({ data: { duplicates: [], periodClosed: false } }) } }));
 
 const po = {
   id: 'po-1',
@@ -52,9 +57,20 @@ const initialUnits = (): ReceivingUnitForm[] => [
   seed({ poItemId: 'line-3', label: 'เคส Spigen สำหรับ iPhone 17 Pro #2', category: 'ACCESSORY', accessoryType: 'เคส', accessoryBrand: 'Spigen', model: 'iPhone 17 Pro', color: '', storage: '', status: 'PASS', sellingPrice: '', installmentPrice: '', costPrice: '350' }),
 ];
 
-function Harness({ onClose = vi.fn(), confirmClose, handle = vi.fn(), units: start = initialUnits() }: { onClose?: () => void; confirmClose?: (proceed: () => void) => void; handle?: () => void; units?: ReceivingUnitForm[] }) {
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+function Harness(props: Parameters<typeof HarnessInner>[0]) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <HarnessInner {...props} />
+    </QueryClientProvider>
+  );
+}
+
+function HarnessInner({ onClose = vi.fn(), confirmClose, handle = vi.fn(), units: start = initialUnits() }: { onClose?: () => void; confirmClose?: (proceed: () => void) => void; handle?: () => void; units?: ReceivingUnitForm[] }) {
   const [units, setUnits] = useState<ReceivingUnitForm[]>(start);
   const [notes, setNotes] = useState('');
+  const [doc, setDoc] = useState<SupplierDocForm>(defaultSupplierDoc(false));
   return (
     <GoodsReceivingModal
       isOpen
@@ -64,6 +80,8 @@ function Harness({ onClose = vi.fn(), confirmClose, handle = vi.fn(), units: sta
       setReceivingUnits={setUnits}
       receivingNotes={notes}
       setReceivingNotes={setNotes}
+      receivingSupplierDoc={doc}
+      setReceivingSupplierDoc={setDoc}
       goodsReceivingMutation={{ isPending: false } as never}
       handleGoodsReceiving={handle}
       confirmClose={confirmClose}
@@ -193,6 +211,15 @@ describe('GoodsReceivingModal — one device per screen', () => {
     expect(summary).toHaveTextContent(/เข้าคลังพร้อมขาย\s*4 ชิ้น/);
     expect(summary).toHaveTextContent(/รอถ่ายรูป 6 มุมก่อนขึ้นขาย\s*1 ชิ้น/);
     fireEvent.change(within(summary).getByLabelText('หมายเหตุใบรับ'), { target: { value: 'กล่องบุบ 1 กล่อง' } });
+    // ข3: ผู้จัดจำหน่ายไม่จด VAT → เลือกใบส่งของ / ใบแจ้งหนี้ไว้ให้ · ยังไม่กรอกเลขที่/วันที่ = กดยืนยันไม่ผ่าน
+    expect(within(summary).getByRole('radio', { name: 'ใบส่งของ / ใบแจ้งหนี้' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(within(summary).getByRole('button', { name: 'ยืนยันรับสินค้า 5 ชิ้น' }));
+    expect(handle).not.toHaveBeenCalled();
+    expect(summary).toHaveTextContent('กรุณากรอกเลขที่เอกสาร');
+    expect(summary).toHaveTextContent('กรุณาเลือกวันที่ในเอกสาร');
+    fireEvent.change(within(summary).getByLabelText('เลขที่เอกสาร'), { target: { value: 'DN-0877' } });
+    fireEvent.change(within(summary).getByLabelText('วันที่ในเอกสาร'), { target: { value: '2026-09-28' } });
+    expect(summary).toHaveTextContent(`ลงบัญชีวันที่${formatDateShort(new Date(2026, 8, 28))} (ตามเอกสาร)`);
     fireEvent.click(within(summary).getByRole('button', { name: 'ยืนยันรับสินค้า 5 ชิ้น' }));
     expect(handle).toHaveBeenCalledTimes(1);
     // tapping a row goes back to that device

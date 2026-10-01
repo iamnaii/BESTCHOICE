@@ -1,9 +1,41 @@
-import { NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { Prisma, ProductCategory, POPaymentStatus } from '@prisma/client';
+import { NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/node';
+import { Prisma, POPaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GoodsReceivingDto, DirectReceiveDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
-import { SUPPLIER_TERMS_SELECT, computePoAmounts, resolvePaymentTerms } from './po-amounts.util';
+import {
+  SUPPLIER_TERMS_SELECT,
+  assertPoNetNotNegative,
+  computePoAmounts,
+  resolvePaymentTerms,
+} from './po-amounts.util';
+import { poLineCosts, poUnitCostAt } from './po-unit-cost.util';
+import {
+  RECEIVING_PERIOD_TODO_TAG,
+  receivingCategory,
+  receivingPeriodTodoKey,
+  receivingPostingCandidates,
+} from './receiving-acceptance-journal';
+import {
+  SupplierDoc,
+  isPeriodClosedForBackdating,
+  normalizeDocNumber,
+  normalizeSupplierDoc,
+  parseSupplierDocDate,
+  supplierDocMetadata,
+  supplierDocRef,
+} from './supplier-doc.util';
+import { bangkokCalendarParts } from '../../../utils/date.util';
+import { formatDateShort, formatMonthName } from '../../../utils/thai-date.util';
+import { d } from '../../../utils/decimal.util';
+import { validatePeriodOpen } from '../../../utils/period-lock.util';
+import {
+  ShopGoodsReceivingTemplate,
+  ShopGoodsReceivingUnit,
+} from '../../journal/cpa-templates/shop-goods-receiving.template';
+import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
+import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
 import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
@@ -13,9 +45,17 @@ import {
   resolveInstallmentSemantics,
 } from '../../../utils/product-price-autofill.util';
 
+/** Journal dependencies handed in by the PurchaseOrdersService facade (Nest-managed). */
+export interface PoReceivingJournalDeps {
+  goodsReceivingTemplate: ShopGoodsReceivingTemplate;
+  shopAccountResolver: ShopAccountResolver;
+  companyResolver: CompanyResolverService;
+}
+
 /**
  * Inventory-mutating goods-receiving flows. Owns the 2 write transactions:
- *  - goodsReceiving() — Serializable $transaction (per-unit IMEI/photo flow)
+ *  - goodsReceiving() — Serializable $transaction (per-unit IMEI/photo flow) +
+ *                       รายการบัญชีรับสินค้าเข้าฝั่ง SHOP ใน tx เดียวกัน (2026-09-29)
  *  - rejectQC()       — $transaction (ตัดเครื่องที่ยังรอถ่ายรูปออกจากคลัง)
  *
  * Each $transaction callback lives WHOLE inside a single method — the tx client
@@ -32,7 +72,20 @@ export class PoReceivingService {
   // one module-scope like other plain classes in this codebase do.
   private readonly logger = new Logger('PoReceiving');
 
-  constructor(private prisma: PrismaService) {}
+  /**
+   * Prisma ตัด interactive transaction ที่ 5 วินาทีเป็นค่าเริ่มต้น และ P2028 ไม่อยู่ในรายการ retry —
+   * ใบรับของใบใหญ่ (อุปกรณ์เสริมหนึ่งแถวต่อชิ้น) + รายการบัญชี จึงตั้งเวลาเองเหมือน
+   * stock-transfer / contract-lifecycle
+   */
+  private static readonly RECEIVE_TX_OPTIONS = {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    timeout: 30_000,
+  } as const;
+
+  constructor(
+    private prisma: PrismaService,
+    private journal: PoReceivingJournalDeps,
+  ) {}
 
   /**
    * New goods receiving flow with IMEI/Serial/photos/pass-reject per unit
@@ -43,13 +96,16 @@ export class PoReceivingService {
    * POItem rows by id inside the tx so no cached copy is trusted.
    */
   async goodsReceiving(id: string, dto: GoodsReceivingDto, userId: string) {
+    const doc = normalizeSupplierDoc(dto);
     const MAX_ATTEMPTS = 3;
     for (let attempt = 1; ; attempt++) {
       try {
-        return await this.prisma.$transaction(
-          async (tx) => this.runReceiveInTx(tx, id, dto, userId),
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        const result = await this.prisma.$transaction(
+          async (tx) => this.runReceiveInTx(tx, id, dto, userId, doc),
+          PoReceivingService.RECEIVE_TX_OPTIONS,
         );
+        // ห้าม throw (จับเองทั้งหมด) — การรับของ commit แล้ว ห้ามตกไปที่ retry ด้านล่างแล้วรับซ้ำ
+        return { ...result, accountingNotified: await this.alertIfDocPeriodClosed(result, userId) };
       } catch (e) {
         const code = (e as { code?: string })?.code;
         if ((code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;
@@ -70,6 +126,7 @@ export class PoReceivingService {
     id: string,
     dto: GoodsReceivingDto,
     userId: string,
+    doc: SupplierDoc,
   ) {
     const po = await tx.purchaseOrder.findUnique({
       where: { id },
@@ -80,6 +137,11 @@ export class PoReceivingService {
     if (!['APPROVED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(po.status)) {
       throw new BadRequestException('PO นี้ไม่อยู่ในสถานะที่สามารถรับสินค้าได้ (ต้อง APPROVED, ORDERED หรือ PARTIALLY_RECEIVED)');
     }
+
+    // ต้นทุนต่อหน่วย = ส่วนแบ่งของยอดสุทธิที่ต้องจ่ายผู้จัดจำหน่าย (รวม VAT หลังส่วนลดท้ายบิล)
+    // — คำตอบฝ่ายบัญชี 2026-09-29 ข้อ ข2 + ข5
+    const costLines = po.items.filter((i) => !i.deletedAt);
+    const lineCosts = poLineCosts({ netAmount: this.resolveNetAmount(po, costLines), lines: costLines });
 
     // Find main warehouse branch
     let mainWarehouse = await tx.branch.findFirst({
@@ -104,6 +166,9 @@ export class PoReceivingService {
         poId: id,
         receivedById: userId,
         notes: dto.notes,
+        supplierDocType: doc.type,
+        supplierDocNumber: doc.number,
+        supplierDocDate: doc.date,
       },
     });
 
@@ -172,14 +237,21 @@ export class PoReceivingService {
     // was reading SystemConfig 50 times inside this same Serializable tx.
     const installmentSemantics = await resolveInstallmentSemantics(tx, this.logger);
 
+    const unitCosts = this.resolveUnitCosts(lineCosts, po.items, dto.items, freshByPoItem);
+    // ลงบัญชีตอนรับของเฉพาะหน่วยที่เข้าคลังทันที — หน่วยที่รอถ่ายรูปลงตอนผ่านเข้าคลัง
+    // (ReceivingAcceptanceJournal) ตามคำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8
+    const journalUnits: ShopGoodsReceivingUnit[] = [];
+    const bookedReceivingItemIds: string[] = [];
+    let unitsAwaitingStockEntry = 0;
+
     // Process each item
-    for (const item of dto.items) {
+    for (const [index, item] of dto.items.entries()) {
       const poItem = po.items.find((i) => i.id === item.poItemId);
       if (!poItem) throw new NotFoundException(`ไม่พบรายการ PO: ${item.poItemId}`);
 
       if (item.status === 'PASS') {
         // Build product name from PO item details
-        const productCategory = (poItem.category as ProductCategory) || 'PHONE_NEW';
+        const productCategory = receivingCategory(poItem.category);
         const productName = buildProductName(poItem, productCategory);
 
         // Create product for passed items
@@ -205,7 +277,7 @@ export class PoReceivingService {
             color: poItem.color || null,
             storage: poItem.storage || null,
             category: productCategory,
-            costPrice: Number(poItem.unitPrice),
+            costPrice: unitCosts.get(index)!,
             supplierId: po.supplierId,
             poId: po.id,
             branchId: mainWarehouse!.id,
@@ -289,7 +361,7 @@ export class PoReceivingService {
         }
 
         // Create receiving item linked to product
-        await tx.goodsReceivingItem.create({
+        const receivingItem = await tx.goodsReceivingItem.create({
           data: {
             receivingId: receiving.id,
             poItemId: item.poItemId,
@@ -298,6 +370,7 @@ export class PoReceivingService {
             photos: item.photos || [],
             status: 'PASS',
             productId: product.id,
+            receivedCost: unitCosts.get(index)!,
             batteryHealth: item.batteryHealth ?? null,
             warrantyExpired: item.warrantyExpired ?? null,
             warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
@@ -307,6 +380,17 @@ export class PoReceivingService {
         });
 
         passedProducts.push(product);
+        if (initialStatus === 'IN_STOCK') {
+          journalUnits.push({
+            productId: product.id,
+            inventoryAccountCode: this.journal.shopAccountResolver.resolveProductAccounts(productCategory).inventoryAccountCode,
+            payableAccountCode: this.journal.shopAccountResolver.resolveSupplierPayableAccount(productCategory),
+            cost: unitCosts.get(index)!,
+          });
+          bookedReceivingItemIds.push(receivingItem.id);
+        } else {
+          unitsAwaitingStockEntry += 1;
+        }
       } else {
         // Create receiving item for rejected items (no product created)
         const rejectedItem = await tx.goodsReceivingItem.create({
@@ -350,6 +434,32 @@ export class PoReceivingService {
       data: { status: newStatus },
     });
 
+    // วันที่ลงบัญชี (ข3): วันที่ในเอกสาร → งวดของวันนั้นปิดแล้ว (ตามสถานะงวด ไม่มีช่วงผ่อนผัน) = วันที่รับของแทน (แบบ ข).
+    // เช็คแม้ไม่มีหน่วยให้ลงตอนนี้ — หน่วยที่รอถ่ายรูปจะลงวันที่รับของเหมือนกัน (`receivingPostingCandidates`)
+    const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(tx);
+    const [preferredDate, receiveDate] = receivingPostingCandidates(receiving);
+    const docPeriodClosed = doc.date !== null && (await isPeriodClosedForBackdating(tx, preferredDate, shopCompanyId));
+    const journalPostedAt = docPeriodClosed ? receiveDate : preferredDate;
+    const posted = await this.postReceivingJournal(tx, {
+      receivingId: receiving.id,
+      grNumber,
+      poId: id,
+      poNumber: po.poNumber,
+      units: journalUnits,
+      postedAt: journalPostedAt,
+      shopCompanyId,
+      postedOnReceiveDate: docPeriodClosed,
+      doc,
+    });
+    // แจ้งเฉพาะเมื่อมีรายการที่ลง (หรือจะลงตอนเข้าคลัง) ด้วยวันอื่นจริง — ตรวจไม่ผ่านทั้งใบ / ของแถมต้นทุนศูนย์ = ไม่มีอะไรต้องบอก
+    const supplierDocPeriodClosed = docPeriodClosed && (posted !== null || unitsAwaitingStockEntry > 0);
+    if (posted && bookedReceivingItemIds.length > 0) {
+      await tx.goodsReceivingItem.updateMany({
+        where: { id: { in: bookedReceivingItemIds } },
+        data: { journalEntryId: posted.journalEntryId },
+      });
+    }
+
     return {
       receivingId: receiving.id,
       grNumber,
@@ -359,7 +469,209 @@ export class PoReceivingService {
       rejected: rejectedItems.length,
       products: passedProducts,
       mainWarehouse: mainWarehouse!.name,
+      journalEntryNo: posted?.entryNo ?? null,
+      /** หน่วยที่รอถ่ายรูป — ลงบัญชีรับเข้าคลังตอนผ่านเข้าคลัง ไม่ใช่ตอนนี้ */
+      unitsAwaitingStockEntry,
+      receivedAt: receiving.createdAt,
+      supplierDocType: doc.type,
+      supplierDocNumber: doc.number,
+      supplierDocDate: doc.date,
+      /**
+       * งวดของวันที่ในเอกสารปิดแล้ว และมีรายการที่ลง (หรือจะลงตอนเข้าคลัง) ด้วยวันที่รับของแทน — หน้าจอบอกผู้ใช้ +
+       * แจ้งฝ่ายบัญชีหลัง commit (`accountingNotified` บอกว่าสร้างงานแจ้งสำเร็จไหม)
+       */
+      supplierDocPeriodClosed,
+      /** วันที่ของรายการบัญชีรับสินค้า (null = ไม่มีรายการตอนนี้) */
+      journalPostedAt: posted ? journalPostedAt : null,
     };
+  }
+
+  /**
+   * ยอดสุทธิที่ใช้ปันต้นทุน = มูลค่าของรายการ − ส่วนลดก่อน VAT + VAT − ส่วนลดหลัง VAT (สูตรเดียวกับ
+   * computePoAmounts) คิดจาก "องค์ประกอบ" ที่เก็บไว้ ไม่ใช่เชื่อคอลัมน์ `netAmount` ตรง ๆ:
+   * คอลัมน์นั้นเพิ่มทีหลังด้วยค่าเริ่มต้น 0 และแถวที่สร้างข้าม service (seed / ข้อมูลเก่า) ไม่ได้ตั้งค่า —
+   * ถ้าเชื่อ 0 ต้นทุนของทุกเครื่องจะเป็นศูนย์และไม่มีรายการบัญชีโดยไม่มีใครรู้ (ผลตรวจทาน 2026-09-29).
+   * แถวปกติสองค่าตรงกันเสมอ (ยอดของใบสั่งซื้อแก้ไม่ได้หลังสร้าง); ไม่ตรง = เตือนใน log แล้วใช้ค่าที่คิดได้
+   *
+   * ยอดสุทธิติดลบสร้างไม่ได้แล้ว (assertPoNetNotNegative) — ด่านนี้เหลือไว้สำหรับแถวเก่า
+   */
+  private resolveNetAmount(
+    po: {
+      poNumber: string;
+      netAmount?: Prisma.Decimal | null;
+      discount?: Prisma.Decimal | null;
+      vatAmount?: Prisma.Decimal | null;
+      discountAfterVat?: Prisma.Decimal | null;
+    },
+    lines: { quantity: number; unitPrice: Prisma.Decimal }[],
+  ): Prisma.Decimal {
+    const itemsValue = lines.reduce((sum, line) => sum.add(d(line.unitPrice).mul(line.quantity)), new Prisma.Decimal(0));
+    const net = itemsValue.sub(d(po.discount)).add(d(po.vatAmount)).sub(d(po.discountAfterVat));
+    if (net.lt(0)) {
+      throw new BadRequestException(
+        `ใบสั่งซื้อ ${po.poNumber} มียอดสุทธิติดลบ (ส่วนลดมากกว่ามูลค่าสินค้า) จึงคำนวณต้นทุนต่อเครื่องไม่ได้ — ` +
+          'ถ้าใบนี้ยังไม่เคยรับของ ให้กดปุ่ม "ยกเลิก PO" ในหน้ารายละเอียดใบสั่งซื้อแล้วสร้างใบใหม่ด้วยส่วนลดที่ถูกต้อง ' +
+          'ถ้ารับของไปบางส่วนแล้ว กรุณาแจ้งผู้ดูแลระบบ',
+      );
+    }
+    if (d(po.netAmount).sub(net).abs().gt('0.01')) {
+      this.logger.warn(
+        `[receiving] ${po.poNumber}: netAmount ที่เก็บไว้ ${d(po.netAmount).toFixed(2)} ไม่ตรงกับยอดที่คิดจากองค์ประกอบ ` +
+          `${net.toFixed(2)} — ใช้ยอดที่คิดจากองค์ประกอบปันต้นทุน`,
+      );
+    }
+    return net;
+  }
+
+  /**
+   * ต้นทุนของแต่ละหน่วยที่ตรวจผ่านในใบรับของนี้ (key = ลำดับใน dto.items).
+   *
+   * หน่วยที่ตรวจผ่านเป็นลำดับที่ k ของรายการ (นับต่อจากที่รับไปแล้วในใบก่อนหน้า) ได้ต้นทุนของ
+   * หน่วยที่ k จาก po-unit-cost.util — ไม่ขึ้นกับว่ารับกี่ครั้งหรือรับรายการไหนก่อน.
+   * หน่วยที่ตรวจไม่ผ่านไม่กินลำดับ (receivedQty นับเฉพาะหน่วยที่ผ่าน)
+   */
+  private resolveUnitCosts(
+    lineCosts: Map<string, Prisma.Decimal>,
+    poItems: { id: string; quantity: number; receivedQty: number }[],
+    dtoItems: GoodsReceivingDto['items'],
+    freshByPoItem: Map<string, { receivedQty: number }>,
+  ): Map<number, Prisma.Decimal> {
+    const costs = new Map<number, Prisma.Decimal>();
+    const passedInBatch = new Map<string, number>();
+    for (const [index, item] of dtoItems.entries()) {
+      if (item.status !== 'PASS') continue;
+      const poItem = poItems.find((i) => i.id === item.poItemId);
+      const lineCost = lineCosts.get(item.poItemId);
+      if (!poItem || !lineCost) throw new NotFoundException(`ไม่พบรายการ PO: ${item.poItemId}`);
+      const receivedBefore = freshByPoItem.get(poItem.id)?.receivedQty ?? poItem.receivedQty;
+      const seen = passedInBatch.get(poItem.id) ?? 0;
+      passedInBatch.set(poItem.id, seen + 1);
+      costs.set(index, poUnitCostAt(lineCost, poItem.quantity, receivedBefore + seen + 1));
+    }
+    return costs;
+  }
+
+  /**
+   * Dr สินค้าคงคลัง / Cr เจ้าหนี้ผู้จัดจำหน่าย — โพสต์ใน tx เดียวกับการรับของ (รายการบัญชีพัง =
+   * การรับของไม่เกิด). `createAndPost` ไม่ตรวจงวดบัญชีเอง จึงตรวจที่นี่ด้วยบริษัท SHOP.
+   * ไม่มีหน่วยที่เข้าคลังทันที = ไม่มีรายการ (คืน null)
+   */
+  private async postReceivingJournal(
+    tx: Prisma.TransactionClient,
+    input: {
+      receivingId: string;
+      grNumber: string;
+      poId: string;
+      poNumber: string;
+      units: ShopGoodsReceivingUnit[];
+      postedAt: Date;
+      shopCompanyId: string;
+      postedOnReceiveDate: boolean;
+      doc: SupplierDoc;
+    },
+  ): Promise<{ entryNo: string; journalEntryId: string } | null> {
+    if (input.units.length === 0) return null;
+    // วันที่รับของอยู่ในงวดที่ปิดด้วย = ปฏิเสธตามเดิม (ไม่มีวันถัดไปให้ข้าม)
+    await validatePeriodOpen(tx, input.postedAt, input.shopCompanyId);
+    return this.journal.goodsReceivingTemplate.execute(
+      {
+        idempotencyKey: `shop-goods-receiving:${input.receivingId}`,
+        receivingId: input.receivingId,
+        grNumber: input.grNumber,
+        poId: input.poId,
+        poNumber: input.poNumber,
+        units: input.units,
+        postedAt: input.postedAt,
+        postedOnReceiveDate: input.postedOnReceiveDate,
+        supplierDocRef: supplierDocRef(input.doc),
+        supplierDocMetadata: supplierDocMetadata(input.doc),
+      },
+      tx,
+    );
+  }
+
+  /**
+   * แบบ ข (เจ้าของเคาะ 2026-10-01): งวดของวันที่ในเอกสารปิดแล้ว — รับของได้ ลงบัญชีวันที่รับของแทน และ "แจ้งฝ่ายบัญชีให้ทราบ"
+   * = งานในหน้า "งานของทีม" (`/todos`) หนึ่งใบต่อใบรับของ (ช่องทางเดียวกับส่วนต่างปิดยอดเงินสด). เรียก **หลัง commit** และห้าม
+   * throw — ของรับเข้าแล้ว การเตือนพังต้องไม่ทำให้ผู้ใช้เห็นว่ารับของไม่สำเร็จ
+   */
+  private async alertIfDocPeriodClosed(
+    result: {
+      grNumber: string;
+      poId: string;
+      receivedAt: Date;
+      journalEntryNo: string | null;
+      unitsAwaitingStockEntry: number;
+      supplierDocPeriodClosed: boolean;
+      supplierDocType: SupplierDoc['type'];
+      supplierDocNumber: string | null;
+      supplierDocDate: Date | null;
+    },
+    userId: string,
+  ): Promise<boolean> {
+    if (!result.supplierDocPeriodClosed || !result.supplierDocDate) return false;
+    try {
+      const docDate = result.supplierDocDate;
+      const month = `${formatMonthName(docDate)} ${bangkokCalendarParts(docDate).year + 543}`;
+      const ref = supplierDocRef({ type: result.supplierDocType, number: result.supplierDocNumber }) ?? 'เอกสารผู้จัดจำหน่าย';
+      // ผลลัพธ์ของรับตามใบสั่งซื้อไม่มีเลขใบสั่งซื้อ (หน้าจอใช้ poNumber บอกว่าเป็นรับเข้าตรง) — อ่านเฉพาะกรณีแจ้งเตือนที่เกิดไม่บ่อย
+      const po = await this.prisma.purchaseOrder.findUnique({ where: { id: result.poId }, select: { poNumber: true } });
+      await this.prisma.todo.create({
+        data: {
+          title: `รับสินค้า ${result.grNumber} ลงบัญชีวันที่รับของแทนวันที่ในเอกสาร (งวด${month}ปิดแล้ว)`,
+          description:
+            `${ref} ลงวันที่ ${formatDateShort(docDate)} อยู่ในงวดบัญชีที่ปิดแล้ว — ระบบลงบัญชีรับสินค้าด้วยวันที่รับของ ` +
+            `${formatDateShort(result.receivedAt)} แทน และเก็บวันที่ในเอกสารไว้ตามจริง\n` +
+            `ใบสั่งซื้อ ${po?.poNumber ?? '-'}` +
+            (result.journalEntryNo ? ` · รายการบัญชี ${result.journalEntryNo}` : '') +
+            (result.unitsAwaitingStockEntry > 0
+              ? ` · เครื่องรอถ่ายรูป ${result.unitsAwaitingStockEntry} เครื่องลงบัญชีตอนผ่านเข้าคลัง ` +
+                '(วันที่รับของ หรือวันที่รับเข้าคลังถ้างวดของวันที่รับของปิดแล้วด้วย)'
+              : '') +
+            '\nตรวจว่าต้องปรับปรุงรายการหรือไม่ — ระบบไม่ลงรายการปรับปรุงให้อัตโนมัติ',
+          priority: 'MEDIUM',
+          // คีย์ "รับของ" เดียวกับงานของเครื่องรอถ่ายรูปที่ลงวันที่รับของ — งานนี้บอกเรื่องเครื่องพวกนั้นไว้แล้ว
+          tags: [RECEIVING_PERIOD_TODO_TAG, receivingPeriodTodoKey(result.grNumber, 'receive')],
+          createdById: userId,
+        },
+      });
+      return true;
+    } catch (error) {
+      this.logger.error(
+        `สร้างงานแจ้งฝ่ายบัญชีไม่สำเร็จ (${result.grNumber} งวดของวันที่ในเอกสารปิดแล้ว)`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      Sentry.captureException(error, { tags: { subsystem: 'goods-receiving-period' }, extra: { grNumber: result.grNumber } });
+      return false;
+    }
+  }
+
+  /**
+   * ตัวตรวจก่อนกดยืนยันรับของ (หน้าจอเตือน ไม่บล็อก): เลขที่เอกสารเคยใช้กับใบรับของของผู้จัดจำหน่ายรายนี้แล้วหรือยัง
+   * (ตัดช่องว่าง/ไม่สนตัวพิมพ์) และงวดของวันที่ในเอกสารปิดแล้วหรือยัง — ตัวตัดสินงวดตัวเดียวกับตอนลงบัญชี
+   */
+  async checkReceivingDoc(input: { supplierId: string; docNumber?: string; docDate?: string }) {
+    const docNumber = normalizeDocNumber(input.docNumber);
+    const duplicates = docNumber
+      ? (
+          await this.prisma.goodsReceiving.findMany({
+            where: {
+              deletedAt: null,
+              supplierDocNumber: { equals: docNumber, mode: 'insensitive' },
+              po: { supplierId: input.supplierId, deletedAt: null },
+            },
+            select: { grNumber: true, createdAt: true, po: { select: { poNumber: true } } },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+          })
+        ).map((row) => ({ grNumber: row.grNumber, receivedAt: row.createdAt, poNumber: row.po.poNumber }))
+      : [];
+    let periodClosed = false;
+    if (input.docDate?.trim()) {
+      const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(this.prisma as never);
+      periodClosed = await isPeriodClosedForBackdating(this.prisma as Prisma.TransactionClient, parseSupplierDocDate(input.docDate), shopCompanyId);
+    }
+    return { duplicates, periodClosed };
   }
 
   /**
@@ -371,9 +683,11 @@ export class PoReceivingService {
    * APPROVED -> ORDERED in ONE Serializable $transaction, bypassing the OWNER
    * approval gate (audited), then run the existing receiving pipeline.
    * Net: GoodsReceiving.poId is never null; GR history / AP / progress / the
-   * T5-C16 ceiling check all work unchanged. JE-FREE — no accounting touch.
+   * T5-C16 ceiling check all work unchanged. The receiving journal entry is posted
+   * by the shared pipeline (runReceiveInTx) — the payment fields here still post nothing.
    */
   async directReceive(dto: DirectReceiveDto, userId: string) {
+    const doc = normalizeSupplierDoc(dto);
     // Up-front guard: every line must carry a positive costPrice (COGS reads it).
     const badCost = dto.items.find((i) => !(Number(i.unitPrice) > 0));
     if (badCost) {
@@ -383,7 +697,7 @@ export class PoReceivingService {
     const MAX_ATTEMPTS = 3;
     for (let attempt = 1; ; attempt++) {
       try {
-        return await this.prisma.$transaction(
+        const result = await this.prisma.$transaction(
           async (tx) => {
             // 1) Validate supplier (+ VAT flag and payment terms, same select as create())
             const supplier = await tx.supplier.findUnique({
@@ -406,6 +720,7 @@ export class PoReceivingService {
               discount: dto.discount,
               discountAfterVat: dto.discountAfterVat,
             });
+            assertPoNetNotNegative(amounts);
             const terms = resolvePaymentTerms(supplier, dto.paymentMethod, orderDate);
             const po = await tx.purchaseOrder.create({
               data: {
@@ -493,12 +808,14 @@ export class PoReceivingService {
               anglePhotos: line.anglePhotos,
             }));
 
-            const gr = await this.runReceiveInTx(tx, po.id, { items: grItems, notes: dto.notes }, userId);
+            const gr = await this.runReceiveInTx(tx, po.id, { items: grItems, notes: dto.notes }, userId, doc);
 
             return { poNumber: po.poNumber, ...gr };
           },
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+          PoReceivingService.RECEIVE_TX_OPTIONS,
         );
+        // ห้าม throw (จับเองทั้งหมด) — การรับของ commit แล้ว ห้ามตกไปที่ retry ด้านล่างแล้วรับซ้ำ
+        return { ...result, accountingNotified: await this.alertIfDocPeriodClosed(result, userId) };
       } catch (e) {
         const code = (e as { code?: string })?.code;
         if ((code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;
@@ -509,7 +826,8 @@ export class PoReceivingService {
 
   /**
    * "ไม่รับเข้าคลัง" จากคิวรอถ่ายรูป (PHOTO_PENDING): soft-delete เครื่องที่ตรวจแล้วไม่ผ่าน
-   * พร้อมเหตุผล — ไม่แตะ JE/บัญชี. ขั้น QC_PENDING ถูกยกเลิก 2026-09-07 (ไม่มี flow ไหน
+   * พร้อมเหตุผล — ไม่แตะ JE/บัญชี: เครื่องจากใบสั่งซื้อที่ยังรอถ่ายรูปยังไม่เคยลงบัญชีรับของ
+   * (ลงตอนผ่านเข้าคลัง — ReceivingAcceptanceJournal) จึงไม่มีอะไรต้องกลับรายการ. ขั้น QC_PENDING ถูกยกเลิก 2026-09-07 (ไม่มี flow ไหน
    * สร้างมันตั้งแต่ 2026-03-06 และปุ่มยืนยันเป็นช่องอ้อมด่านราคา) จึงรับเฉพาะ PHOTO_PENDING
    */
   async rejectQC(productIds: string[], reason: string) {
@@ -534,10 +852,33 @@ export class PoReceivingService {
         );
       }
 
-      await tx.product.updateMany({
-        where: { id: { in: productIds } },
+      // ลบเฉพาะเครื่องที่ยังอยู่ในคิวรอถ่ายรูปจริง ณ ตอนเขียน — กดพร้อมกับยืนยันรูป/เปลี่ยนสถานะเข้าคลัง
+      // แล้วอีกฝั่ง commit ก่อน (ค่าที่อ่านข้างบนเก่าไปแล้ว) ต้องไม่ลบเครื่องที่เพิ่งเข้าคลังและลงบัญชีไปแล้ว
+      const removed = await tx.product.updateMany({
+        where: { id: { in: productIds }, status: 'PHOTO_PENDING', deletedAt: null },
         data: { deletedAt: new Date() },
       });
+      if (removed.count !== products.length) {
+        throw new ConflictException(
+          'สินค้าบางชิ้นเพิ่งถูกยืนยันรูปหรือเปลี่ยนสถานะระหว่างทำรายการ — กรุณารีเฟรชหน้าจอแล้วเลือกใหม่',
+        );
+      }
+
+      // เครื่องที่ลงบัญชีรับเข้าคลังไปแล้ว (เคยอยู่ในคลังแล้วถูกเปลี่ยนสถานะกลับมารอถ่ายรูป) ตีกลับจากคิวนี้
+      // ไม่ได้ — ลบทิ้งจะเหลือสินค้าคงคลังและเจ้าหนี้ค้างในบัญชีโดยไม่มีเครื่อง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8).
+      // ตรวจ **หลัง** คำสั่งลบ: ตอนนี้ถือล็อกแถวสินค้าแล้ว และทุกประตูเข้าคลังเขียนแถวสินค้าก่อนลงบัญชี ⇒ การลงบัญชี
+      // ของเครื่องเหล่านี้ commit ไปแล้ว (อ่านเห็น) หรือต้องรอเรา — ตรวจก่อนลบจะพลาดเคส ยืนยันรูปเข้าคลังแล้วมีคน
+      // เปลี่ยนกลับเป็นรอถ่ายรูป ในช่วงระหว่างที่อ่านกับที่ลบ (ผลตรวจทานอิสระรอบ 3). พบ = โยน ทั้ง tx ย้อนกลับ
+      const booked = await tx.goodsReceivingItem.findMany({
+        where: { productId: { in: productIds }, journalEntryId: { not: null }, deletedAt: null },
+        select: { productId: true },
+      });
+      if (booked.length > 0) {
+        const names = products.filter((p) => booked.some((b) => b.productId === p.id)).map((p) => p.name);
+        throw new BadRequestException(
+          `สินค้าต่อไปนี้ลงบัญชีรับเข้าคลังแล้ว จึงตีกลับจากคิวรอถ่ายรูปไม่ได้ — กรุณาแจ้งฝ่ายบัญชี: ${names.join(', ')}`,
+        );
+      }
 
       return {
         rejected: productIds.length,

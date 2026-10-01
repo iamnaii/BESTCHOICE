@@ -6,6 +6,8 @@ import type { PoTotals } from '../../poTotals';
 import { itemLabel } from '../../po-catalog.util';
 import { PaymentSection } from './PaymentSection';
 import { CardHeader, card, fieldCls, moneyInput } from './chrome';
+import { SupplierDocSection, type ReceivingDocCheck } from '../SupplierDocSection';
+import type { SupplierDocErrors, SupplierDocForm } from '../../supplier-doc.util';
 
 interface StepSummaryProps {
   form: PoFormState;
@@ -23,6 +25,13 @@ interface StepSummaryProps {
   onEditItems: () => void;
   /** รับเข้าตรง: the recap says "รับเข้าวันนี้" + ผ่าน/ไม่ผ่าน instead of สั่ง/คาดรับ. */
   receive?: { passed: number; rejected: number };
+  /** ข3 — รับเข้าตรง: เอกสารจากผู้จัดจำหน่าย (วันที่ในเอกสาร = วันที่ลงบัญชีรับสินค้า) */
+  supplierDoc?: {
+    doc: SupplierDocForm;
+    setDoc: (doc: SupplierDocForm) => void;
+    check: ReceivingDocCheck | undefined;
+    errors: SupplierDocErrors;
+  };
 }
 
 const baht = (n: number) => `${formatNumberDecimal(n, 2)} บาท`;
@@ -46,7 +55,9 @@ export function StepSummary({
   setFormAttachments,
   onEditItems,
   receive,
+  supplierDoc,
 }: StepSummaryProps) {
+  const noDocument = supplierDoc?.doc.type === 'NONE';
   const { subtotal, discountNum, subtotalAfterDiscount, vatAmount, totalWithVat, discountAfterVatNum, netAmount } = totals;
   const pieces = items.reduce((n, i) => n + (Number(i.quantity) || 0), 0);
 
@@ -192,21 +203,34 @@ export function StepSummary({
         unpaidNote={dueDatePreview ? `ซื้อเครดิต — ครบกำหนดชำระ ${formatDateShort(dueDatePreview)} บันทึกการจ่ายทีหลังได้จากปุ่ม "จ่ายเงิน" ของใบนี้` : undefined}
       />
 
+      {supplierDoc && (
+        <SupplierDocSection
+          className={card}
+          doc={supplierDoc.doc}
+          setDoc={supplierDoc.setDoc}
+          supplierHasVat={supplierHasVat}
+          check={supplierDoc.check}
+          errors={supplierDoc.errors}
+        />
+      )}
+
       {/* Notes */}
       <section className={card}>
         <CardHeader
           icon={<StickyNote className="size-4.5" />}
           tone="bg-muted text-muted-foreground"
-          title="หมายเหตุ"
-          hint="บันทึกเพิ่มเติมสำหรับใบสั่งซื้อ"
+          title={noDocument ? 'หมายเหตุ *' : 'หมายเหตุ'}
+          hint={noDocument ? 'ไม่มีเอกสารจากผู้จัดจำหน่าย — กรุณาเขียนเหตุผล เช่น ร้านไม่ออกบิล' : 'บันทึกเพิ่มเติมสำหรับใบสั่งซื้อ'}
         />
         <textarea
           aria-label="หมายเหตุ"
           value={form.notes}
           onChange={(e) => setForm({ ...form, notes: e.target.value })}
           rows={2}
-          className={cn(fieldCls, 'h-auto py-2')}
+          aria-invalid={Boolean(supplierDoc?.errors.notes)}
+          className={cn(fieldCls, 'h-auto py-2', supplierDoc?.errors.notes && 'border-destructive')}
         />
+        {supplierDoc?.errors.notes && <p className="mt-1 text-xs leading-snug text-destructive">{supplierDoc.errors.notes}</p>}
       </section>
     </div>
   );

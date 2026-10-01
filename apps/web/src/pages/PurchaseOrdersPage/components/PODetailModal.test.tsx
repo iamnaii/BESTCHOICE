@@ -3,6 +3,7 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { PODetailModal } from './PODetailModal';
 import type { PODetail, PurchaseOrder } from '../types';
+import { formatDateShort } from '@/utils/formatters';
 
 const owner = { id: 'u-owner', name: 'สุรชัย เจ้าของร้าน' };
 const manager = { id: 'u-bm', name: 'สมชาย ผจก.ลาดพร้าว' };
@@ -133,6 +134,7 @@ describe('PODetailModal (redesign A)', () => {
       goodsReceivings: [
         {
           id: 'gr1', grNumber: 'GR-2026-09-004', createdAt: '2026-09-06T14:10:00.000Z', notes: null, receivedBy: owner,
+          supplierDocType: 'TAX_INVOICE', supplierDocNumber: 'IV2609-0123', supplierDocDate: '2026-09-04T17:00:00.000Z',
           items: [{ id: 'gi1', imeiSerial: '356000000090601', serialNumber: null, photos: [], status: 'PASS', rejectReason: null, product: null }],
         },
       ],
@@ -161,6 +163,10 @@ describe('PODetailModal (redesign A)', () => {
     const titles = within(history).getAllByRole('listitem').map((li) => li.querySelector('span.font-semibold')?.textContent);
     expect(titles).toEqual(['รับสินค้า GR-2026-09-004', 'อนุมัติและสั่งซื้อ', 'สร้างใบสั่งซื้อ']);
     expect(within(history).getByText('IMEI: 356000000090601')).toBeInTheDocument();
+    // ข3: เอกสารผู้จัดจำหน่ายของใบรับของ
+    expect(
+      within(history).getByText(`เอกสารผู้จัดจำหน่าย: ใบกำกับภาษี IV2609-0123 · ลงวันที่ ${formatDateShort('2026-09-04T17:00:00.000Z')}`),
+    ).toBeInTheDocument();
     expect(within(history).getByRole('button', { name: 'พิมพ์ใบรับของ GR-2026-09-004' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'หมายเหตุ' })).toHaveTextContent('ล็อตนี้ขอเครื่องซีลใหม่เท่านั้น');
   });

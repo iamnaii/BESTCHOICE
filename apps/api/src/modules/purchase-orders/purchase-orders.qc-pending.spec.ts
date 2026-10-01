@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 /**
  * คิว "รอถ่ายรูป" (2026-09-07): PHOTO_PENDING อย่างเดียว — ขั้น QC_PENDING ถูกยกเลิก
@@ -25,7 +26,7 @@ describe('PurchaseOrdersService.getQCPending — คิวรอถ่ายร�
 
   const build = async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     return module.get<PurchaseOrdersService>(PurchaseOrdersService);
   };

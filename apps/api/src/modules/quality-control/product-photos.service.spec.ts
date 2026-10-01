@@ -1,6 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProductPhotosService } from './product-photos.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receiving-acceptance-journal';
+
+// ขั้นลงบัญชีรับสินค้าตอนเครื่องเข้าคลัง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8) ทดสอบกับฐานจริงที่
+// po-receiving-journal.integration.spec.ts — ที่นี่ตรวจแค่ว่าทางเข้าคลังเรียกมัน
+let bookIfPending: jest.SpyInstance;
+beforeEach(() => {
+  bookIfPending = jest.spyOn(ReceivingAcceptanceJournal.prototype, 'bookIfPending').mockResolvedValue(null);
+});
+afterEach(() => bookIfPending.mockRestore());
 
 /**
  * Phase 5 fix round 2 [Important 1] — `completePhotos` เป็นประตูที่สามที่พาเครื่องเข้า
@@ -86,6 +95,8 @@ describe('ProductPhotosService.completePhotos — ด่านเข้าคล
     expect(res.message).toMatch(/ผู้จัดการสาขา|เจ้าของ/);
     expect(tx.product.update).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+    // ยังไม่เข้าคลัง = ยังไม่ลงบัญชีรับสินค้า (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
+    expect(bookIfPending).not.toHaveBeenCalled();
   });
 
   it('ราคาที่ถูก soft-delete ใน prices[] ไม่นับ → ยังค้างที่ PHOTO_PENDING', async () => {
@@ -123,6 +134,8 @@ describe('ProductPhotosService.completePhotos — ด่านเข้าคล
     });
     expect(res.status).toBe('IN_STOCK');
     expect(res.enteredStock).toBe(true);
+    // เข้าคลังแล้ว → ลงบัญชีรับสินค้าของเครื่องจากใบสั่งซื้อใน tx เดียวกัน (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
+    expect(bookIfPending).toHaveBeenCalledWith(tx, 'p-1');
   });
 
   it('ราคาอยู่ในแถว prices[] อย่างเดียว (เครื่องยุคก่อนคอลัมน์) → เข้าคลังได้', async () => {
@@ -151,6 +164,7 @@ describe('ProductPhotosService.completePhotos — ด่านเข้าคล
     expect(res.enteredStock).toBe(false);
     expect(tx.product.update).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(bookIfPending).not.toHaveBeenCalled();
   });
 });
 

@@ -11,7 +11,7 @@ export function fitPaperSpacing(): () => void {
     const original = root.style.cssText;
     restore.push(() => {
       root.style.cssText = original;
-      root.classList.remove('bc-paper-relaxed');
+      root.classList.remove('bc-paper-relaxed', 'bc-paper-compact');
     });
     root.style.setProperty('width', '180mm', 'important');
     root.style.setProperty('max-width', 'none', 'important');
@@ -26,6 +26,13 @@ export function fitPaperSpacing(): () => void {
     const height = () => Math.max(...blocks.map(node => node.getBoundingClientRect().bottom + parseFloat(getComputedStyle(node).marginBottom))) - root.getBoundingClientRect().top;
     root.classList.add('bc-paper-relaxed');
     if (height() > pageHeight) root.classList.remove('bc-paper-relaxed');
+    // Natural spacing spills onto a second sheet: a document that defines `.bc-paper-compact`
+    // rules tightens its whitespace, kept only when that brings it back onto one sheet.
+    // Documents without such rules measure the same and are left unchanged.
+    if (height() > pageHeight) {
+      root.classList.add('bc-paper-compact');
+      if (height() > pageHeight) root.classList.remove('bc-paper-compact');
+    }
     // Never add margins merely to fill the page. Closing groups remain in normal flow.
   }
   return () => restore.reverse().forEach(reset => reset());

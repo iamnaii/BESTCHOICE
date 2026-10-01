@@ -400,6 +400,17 @@ export class ReceiptPdfService {
     .totals .row { padding: 2px; }
     .pay-grid { margin-top: 4px; padding: 4px 0; }
 ${PAPER_SPACING_CSS}
+    /* ใช้เฉพาะใบที่ระยะปกติล้นไปหน้า 2 (paperSpacingScript ใส่ให้เมื่อทำให้กลับมาหน้าเดียวได้) —
+       ใบงวดสุดท้ายที่มีแถวปัดเศษสองที่ + ชื่อยาว เกินพื้นที่พิมพ์ ~14 มม. แล้วกล่องปิดท้ายทั้งก้อนกระโดดไปหน้า 2
+       ลดเฉพาะช่องว่าง ไม่แตะขนาดตัวอักษรหรือเนื้อหา */
+    body.bc-paper-compact .header { padding-bottom: 4px; }
+    body.bc-paper-compact .parties { padding: 4px 0; margin-bottom: 4px; }
+    body.bc-paper-compact table.items :is(th,td) { padding: 1mm 2mm; }
+    body.bc-paper-compact .totals .row { padding: 0 2px; }
+    body.bc-paper-compact .pay-grid { margin-top: 2px; padding: 2px 0; }
+    body.bc-paper-compact .footer { margin-top: 4px; }
+    body.bc-paper-compact .qr-pane img { width: 72px; height: 72px; }
+    body.bc-paper-compact .doc-note { margin-top: 2px; padding-top: 2px; }
 </style>
 </head>
 <body data-bc-paper>

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
-import { computeEarlyPayoffJE } from '../compute-early-payoff-je';
+import { computeEarlyPayoffJE, sumAccruedUnpaid } from '../compute-early-payoff-je';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 
@@ -73,9 +73,14 @@ export interface EarlyPayoffInput {
  *   installmentExclVat = grossExclVat / totalMonths  (ROUND_DOWN)
  *   interestPerInst    = interestTotal / totalMonths  (ROUND_HALF_UP)
  *   vatPerInst         = vatTotal / totalMonths       (ROUND_HALF_UP)
- *   remainingGross     = installmentExclVat × unpaid
- *   remainingDeferredInterest = interestPerInst × unpaid
- *   remainingDeferredVat      = vatPerInst × unpaid
+ *   remainingGross     = installmentExclVat × unpaid  — MINUS `accruedUnpaid` (ex-VAT) since PR2ข:
+ *                        unpaid installments that were partially accrued at receipt (ก1) already
+ *                        cleared that much of 11-2101/11-2105/11-2106/21-2102, so JP4 must not
+ *                        re-clear it. See `computeEarlyPayoffJE` (compute-early-payoff-je.ts) —
+ *                        the actual single source of truth this template calls into; the lines
+ *                        below are its simple-case shape (accruedUnpaid = 0, the pre-PR2ข formula).
+ *   remainingDeferredInterest = interestPerInst × unpaid  — minus `accruedUnpaid.interest`
+ *   remainingDeferredVat      = vatPerInst × unpaid       — minus `accruedUnpaid.vat`
  *   discount           = remainingDeferredInterest × interestDiscountPercent / 100
  *   vatOnDiscount      = discount × 0.07  (ROUND_HALF_UP)
  *   settleVat          = remainingDeferredVat - vatOnDiscount
@@ -157,6 +162,8 @@ export class EarlyPayoffJP4Template {
         new Decimal(input.parkRelief ?? 0),
         new Decimal(c.rescheduleAdvanceBalance ?? 0),
       ),
+      // งวดที่ยังไม่ชำระซึ่งใบรับชำระบางส่วนตั้งลูกหนี้งวดไปแล้วบางส่วน (ก1) — ล้างเฉพาะส่วนที่เหลือ
+      accruedUnpaid: sumAccruedUnpaid(unpaidInsts),
     });
 
     // Wrap JE post + Payment.create loop in a single atomic transaction.

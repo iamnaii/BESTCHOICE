@@ -19,6 +19,8 @@ import {
 import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
+import { CONTRACT_ADVANCE_COLUMNS_CLEARED } from '../journal/contract-close-advances';
+import { emitDeferredWarnings, warningsOf } from '../journal/deferred-warning';
 import { glContractBalance } from '../journal/gl-contract-balance';
 import { ConsecutiveMissedService } from '../overdue/consecutive-missed.service';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
@@ -851,7 +853,7 @@ export class BadDebtService {
       );
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const { warnings, ...result } = await this.prisma.$transaction(async (tx) => {
       // Calculate outstanding amount from unpaid/partial payments (Decimal arithmetic)
       const unpaidPayments = await tx.payment.findMany({
         where: {
@@ -911,6 +913,14 @@ export class BadDebtService {
         tx,
       );
 
+      // PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6 (29/09/2569): รายการตัดหนี้สูญหักเงินของลูกค้าที่ค้างทุกประเภทแล้ว (ตามยอด
+      // ในบัญชี) → คอลัมน์เงินของลูกค้าบนสัญญาเป็นศูนย์ในธุรกรรมเดียวกัน. คอลัมน์ที่ไม่ตรงบัญชีเป็นสัญญาณเตือนใน
+      // woResult.warnings — ส่งหลัง commit ข้างล่าง
+      await tx.contract.update({
+        where: { id: contractId },
+        data: CONTRACT_ADVANCE_COLUMNS_CLEARED,
+      });
+
       // Phase 3 Task 3: auto-issue ใบลดหนี้ (CN) for accrued-unpaid
       // installments swept by the write-off JE — MUST stay inside this same
       // tx (atomic with the JE: throw here rolls back the whole write-off).
@@ -949,8 +959,17 @@ export class BadDebtService {
         },
       });
 
-      return { contractId, status: 'CLOSED_BAD_DEBT', writtenOffAt: new Date(), creditNote };
+      return {
+        contractId,
+        status: 'CLOSED_BAD_DEBT',
+        writtenOffAt: new Date(),
+        creditNote,
+        warnings: warningsOf(woResult),
+      };
     });
+
+    // PR6 — สัญญาณเตือนของรายการตัดหนี้สูญส่งหลังธุรกรรม commit เท่านั้น (ธุรกรรมที่ล้มต้องไม่ทิ้งสัญญาณ)
+    emitDeferredWarnings(warnings);
 
     // Phase 3 Task 5: LINE delivery of the auto-issued CN fires ONLY after the
     // $transaction above has committed — firing it from inside the tx would

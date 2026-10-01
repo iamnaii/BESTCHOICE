@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { InstallmentAccrual2ATemplate } from '../cpa-templates/installment-accrual-2a.template';
+import { ACCRUAL_EXCLUDED_CONTRACT_STATUSES } from '../accrual-contract-status';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import { alarmResidualParkOnCompletion } from '../../payments/services/payment-helpers';
 
@@ -83,7 +84,7 @@ export class InstallmentAccrualCron {
         accrualJournalEntryId: null,
         deletedAt: null,
         contract: {
-          status: { notIn: ['TERMINATED', 'CLOSED_BAD_DEBT', 'COMPLETED', 'EARLY_PAYOFF', 'EXCHANGED', 'DEFECT_EXCHANGED'] },
+          status: { notIn: [...ACCRUAL_EXCLUDED_CONTRACT_STATUSES] },
           deletedAt: null,
         },
       },

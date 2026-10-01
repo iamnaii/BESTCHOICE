@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { LIFF_ERRORS } from '@/constants/liff-errors';
+import { LIFF_RECEIPT_TYPE_LABELS } from '@/lib/receipt-labels';
 
 interface ReceiptItem {
   id: string;
@@ -21,13 +22,7 @@ interface ReceiptItem {
   hasFile: boolean;
 }
 
-const typeLabels: Record<string, { label: string; variant: 'success' | 'info' | 'secondary' }> = {
-  PAYMENT: { label: 'ค่างวด', variant: 'success' },
-  DOWN_PAYMENT: { label: 'เงินดาวน์', variant: 'info' },
-  EARLY_PAYOFF: { label: 'ปิดยอด', variant: 'info' },
-  CREDIT_NOTE: { label: 'ใบลดหนี้', variant: 'secondary' },
-  RESCHEDULE_FEE: { label: 'ปรับดิว', variant: 'info' },
-};
+const typeLabels = LIFF_RECEIPT_TYPE_LABELS;
 
 export default function LiffReceipts() {
   const { lineId, loading, error } = useLiffInit();

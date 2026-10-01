@@ -32,6 +32,15 @@ import { EarlyPayoffDto } from './dto/contract.dto';
  * positional mock deps (same style as the sibling early-payoff specs). No real
  * DB. Money is Prisma.Decimal where the code does Decimal ops.
  */
+// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
+// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
+const notAccrued = {
+  accrualJournalEntryId: null,
+  accruedAmount: '0',
+  accruedVat: '0',
+  accruedInterest: '0',
+};
+
 describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
 
@@ -77,6 +86,7 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
   // subtracts the PAID Payment installmentNos from.
   const allInstallmentSchedules = Array.from({ length: 12 }, (_, i) => ({
     installmentNo: i + 1,
+    ...notAccrued,
   }));
 
   type AnyMock = Record<string, unknown>;
@@ -112,7 +122,12 @@ describe('ContractPaymentService early-payoff guards (Wave 3 MED gap-fill)', () 
     periodStatus?: string;
   }) => {
     const contract = { ...baseContract, ...opts?.contractOverride };
-    const schedules = opts?.installmentSchedulesOverride ?? allInstallmentSchedules;
+    const schedules = (opts?.installmentSchedulesOverride ?? allInstallmentSchedules).map(
+      (row) => ({
+        ...notAccrued,
+        ...row,
+      }),
+    );
 
     createAndPost = jest.fn().mockResolvedValue({ id: 'je-ep-1', entryNumber: 'JE-EP-0001' });
     transferOwnership = jest.fn().mockResolvedValue(undefined);

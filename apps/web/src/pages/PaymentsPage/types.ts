@@ -1,3 +1,5 @@
+import { RECEIPT_METHOD_LABELS } from '@/lib/receipt-labels';
+
 export interface OcrPaymentSlipResult {
   amount: number | null;
   senderName: string | null;
@@ -118,11 +120,8 @@ export const paymentStatusLabels: Record<string, { label: string; className: str
   },
 };
 
-export const methodLabels: Record<string, string> = {
-  CASH: 'เงินสด',
-  BANK_TRANSFER: 'โอนเงิน',
-  QR_EWALLET: 'QR/E-Wallet',
-};
+/** ป้ายช่องทางของใบเสร็จ — ชุดเดียวกับแท็บใบเสร็จ/ใบเสร็จ PDF (PR3: ใบของลิงก์ชำระ ใช้เครดิต และบัตร ไม่เป็นรหัสดิบ) */
+export const methodLabels: Record<string, string> = RECEIPT_METHOD_LABELS;
 
 export const slipTypeLabels: Record<string, string> = {
   BANK_TRANSFER: 'โอนเงิน',

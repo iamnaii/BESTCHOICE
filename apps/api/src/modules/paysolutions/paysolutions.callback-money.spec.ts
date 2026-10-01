@@ -13,6 +13,7 @@ import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
 import { BadDebtService } from '../accounting/bad-debt.service';
+import type { DeferredWarning } from '../journal/deferred-warning';
 
 // Same Sentry-transport stub the sibling specs use — captureMessage is
 // asserted directly in the orphan test.
@@ -150,6 +151,8 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
     stillUnpaid: number;
     claimCount?: number;
     contractProductId?: string | null;
+    /** สถานะสัญญาที่ webhook อ่านในธุรกรรม (หลังได้สิทธิ์ลิงก์ ก่อนแก้แถวงวด) — ค่าเริ่มต้น ACTIVE */
+    contractStatusInTx?: string;
     instSchedResolver?: (
       installmentNo: number,
     ) => { id: string; vat60dayJournalEntryId: string | null } | null;
@@ -174,6 +177,7 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
         count: jest.fn().mockResolvedValue(opts.stillUnpaid),
       },
       contract: {
+        findUnique: jest.fn().mockResolvedValue({ status: opts.contractStatusInTx ?? 'ACTIVE' }),
         update: jest
           .fn()
           .mockResolvedValue({ productId: opts.contractProductId ?? null }),
@@ -876,6 +880,64 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
       expect(jeInput.lateFee).toBeUndefined();
     });
 
+    it('อ่านสถานะสัญญาในธุรกรรม (หลังได้สิทธิ์ลิงก์ ก่อนแก้แถวงวด) แล้วส่งให้ template ทุกงวด แม้ธุรกรรมเดียวกันเปลี่ยนสัญญาเป็น EARLY_PAYOFF ไปแล้ว', async () => {
+      // QR ปิด 3 งวดในครั้งเดียว: webhook เปลี่ยนสถานะสัญญาก่อนลงใบรับชำระ — template ต้องได้สถานะ
+      // "ก่อนรับเงิน" (ACTIVE) จึงจะตั้งลูกหนี้งวดให้งวดที่จ่ายล่วงหน้า (คำตัดสิน R1 + R12 ข้อ M1)
+      const unpaid = [makeRow(1), makeRow(2), makeRow(3)];
+      const tx = buildTx({ unpaid, stillUnpaid: 0 });
+      buildPrisma({ link: makeLink({ amount: new Prisma.Decimal(3000) }), tx });
+      await buildService();
+
+      await service.handlePaymentCallback({
+        refno,
+        result_code: '00',
+        order_no: 'o-1',
+        transaction_id: 'tx-1',
+        total: '3000',
+      });
+
+      expect(tx.contract.findUnique).toHaveBeenCalledTimes(1);
+      expect(tx.contract.findUnique).toHaveBeenCalledWith({
+        where: { id: contractId },
+        select: { status: true },
+      });
+      const readOrder = tx.contract.findUnique.mock.invocationCallOrder[0];
+      expect(readOrder).toBeGreaterThan(tx.paymentLink.updateMany.mock.invocationCallOrder[0]);
+      expect(readOrder).toBeLessThan(tx.payment.update.mock.invocationCallOrder[0]);
+      expect(tx.contract.update.mock.calls[0][0].data.status).toBe('EARLY_PAYOFF');
+      expect(template.execute).toHaveBeenCalledTimes(3);
+      for (const call of template.execute.mock.calls) {
+        expect(call[0].contractStatusBeforeReceipt).toBe('ACTIVE');
+      }
+      // การอ่านนอกธุรกรรม (ใช้ประกอบรายการบัญชี) ไม่ถูกเปลี่ยน
+      expect(prisma.contract.findUnique.mock.calls[0][0].select).toEqual({
+        id: true,
+        contractNumber: true,
+        branchId: true,
+      });
+    });
+
+    it('สัญญาถูกบอกเลิกไปก่อนเงินเข้า → template ได้สถานะ TERMINATED จากการอ่านในธุรกรรม', async () => {
+      const tx = buildTx({
+        unpaid: [makeRow(1)],
+        stillUnpaid: 1,
+        contractStatusInTx: 'TERMINATED',
+      });
+      buildPrisma({ link: makeLink(), tx });
+      await buildService();
+
+      await service.handlePaymentCallback({
+        refno,
+        result_code: '00',
+        order_no: 'o-1',
+        transaction_id: 'tx-1',
+        total: '1000',
+      });
+
+      expect(template.execute).toHaveBeenCalledTimes(1);
+      expect(template.execute.mock.calls[0][0].contractStatusBeforeReceipt).toBe('TERMINATED');
+    });
+
     it('vat60dayJournalEntryId set → vat60Reversal.execute(installmentScheduleId, tx) fires after the receipt', async () => {
       const unpaid = [makeRow(1)];
       const tx = buildTx({
@@ -964,6 +1026,101 @@ describe('PaySolutionsService.handlePaymentCallback — FIFO money + close (char
         expect.stringContaining('no OWNER user'),
         expect.objectContaining({ level: 'error' }),
       );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 7) สัญญาณเตือนของใบรับชำระ (ตั้งลูกหนี้งวด ณ วันรับเงิน — PR2ข B11)
+  // ---------------------------------------------------------------------------
+  // template คืน `warnings` แทนการเรียก Sentry จากในธุรกรรม — webhook ต้องส่ง (emitDeferredWarnings) หลัง
+  // $transaction คืนค่าแล้วเท่านั้น. commit ไม่ผ่าน = PaySolutions ได้ 5xx แล้วส่งซ้ำ: ถ้าส่งไปแล้วในธุรกรรม
+  // สัญญาณของเงินที่ยังไม่ได้บันทึกจะถูกส่งซ้ำทุกรอบที่ส่งซ้ำ
+  describe('สัญญาณเตือนของใบรับชำระ — ส่งหลังธุรกรรม commit เท่านั้น', () => {
+    const SKIPPED_STATUS = 'accrue-at-receipt-skipped-status';
+    const skippedStatus = (installmentNo: number): DeferredWarning => ({
+      message:
+        '[accrue-at-receipt] receipt on a contract the accrual does not serve — 2A not posted',
+      tags: { module: 'journal', action: SKIPPED_STATUS },
+      extra: { contractId, contractStatus: 'TERMINATED', installmentNo },
+    });
+    const skippedStatusCalls = () => {
+      const mock = (Sentry.captureMessage as jest.Mock).mock;
+      return mock.calls.flatMap((call, i) =>
+        call[1]?.tags?.action === SKIPPED_STATUS
+          ? [{ args: call, order: mock.invocationCallOrder[i] }]
+          : [],
+      );
+    };
+    /** สัญญาที่ถูกบอกเลิกแล้ว — QR 2,000 ลงสองงวด template คืนสัญญาณเตือนงวดละหนึ่ง */
+    const arrange = async () => {
+      const tx = buildTx({
+        unpaid: [makeRow(1), makeRow(2)],
+        stillUnpaid: 1,
+        contractStatusInTx: 'TERMINATED',
+      });
+      buildPrisma({ link: makeLink({ amount: new Prisma.Decimal(2000) }), tx });
+      await buildService();
+      for (const installmentNo of [1, 2]) {
+        template.execute.mockResolvedValueOnce({
+          entryNo: `JE-MOCK-${installmentNo}`,
+          split: {},
+          warnings: [skippedStatus(installmentNo)],
+        });
+      }
+      return tx;
+    };
+    const callback = () =>
+      service.handlePaymentCallback({
+        refno,
+        result_code: '00',
+        order_no: 'o-1',
+        transaction_id: 'tx-1',
+        total: '2000',
+      });
+
+    it('ส่งสัญญาณเตือนของทุกงวดตามลำดับ งวดละครั้ง หลังธุรกรรม commit', async () => {
+      const tx = await arrange();
+      const committed = jest.fn();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      prisma.$transaction.mockImplementation(async (cb: any) => {
+        const result = await cb(tx);
+        committed();
+        return result;
+      });
+
+      await callback();
+
+      const calls = skippedStatusCalls();
+      expect(calls.map((c) => c.args)).toEqual(
+        [1, 2].map((installmentNo) => {
+          const warning = skippedStatus(installmentNo);
+          return [warning.message, { level: 'warning', tags: warning.tags, extra: warning.extra }];
+        }),
+      );
+      const commitOrder = committed.mock.invocationCallOrder[0];
+      expect(template.execute).toHaveBeenCalledTimes(2);
+      expect(Math.max(...template.execute.mock.invocationCallOrder)).toBeLessThan(commitOrder);
+      expect(Math.min(...calls.map((c) => c.order))).toBeGreaterThan(commitOrder);
+    });
+
+    it('commit ไม่ผ่าน (P2034) หลัง template คืนสัญญาณเตือนแล้ว → ไม่ส่ง · error ผ่านออกไป (PaySolutions ส่งซ้ำ)', async () => {
+      const tx = await arrange();
+      const conflict = new Prisma.PrismaClientKnownRequestError(
+        'Transaction failed due to a write conflict or a deadlock. Please retry your transaction',
+        { code: 'P2034', clientVersion: 'test' },
+      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      prisma.$transaction.mockImplementation(async (cb: any) => {
+        await cb(tx);
+        throw conflict;
+      });
+
+      await expect(callback()).rejects.toBe(conflict);
+
+      expect(template.execute).toHaveBeenCalledTimes(2); // สัญญาณเตือนเกิดแล้วในธุรกรรม
+      expect(skippedStatusCalls()).toHaveLength(0);
+      expect(sendPaymentSuccessSpy).not.toHaveBeenCalled();
+      expect(sendEarlyPayoffSpy).not.toHaveBeenCalled();
     });
   });
 });

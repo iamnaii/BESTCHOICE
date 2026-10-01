@@ -170,4 +170,46 @@ describe('reconstructPriorCleared', () => {
     // 1000 + 3472 == installmentTotal → the next receipt has nothing left to clear.
     expect(r.priorPrincipalCleared.toString()).toBe('4472');
   });
+
+  it('ใบกำกับภาษีตามบัญชี (PR3): priorClearings = Cr 11-2103 ต่อรายการ เรียงตามลำดับที่ลง · ข้ามรายการที่ถูกกลับ / 2B เต็มงวดแบบเดิม / รายการที่ล้างลูกหนี้ 0', async () => {
+    const at = (iso: string) => new Date(iso);
+    const client = clientWith([
+      {
+        entryNumber: 'JE-202610-00009',
+        createdAt: at('2026-10-05T03:00:00Z'),
+        metadata: { tag: 'receipt', installmentScheduleId: 'is-1' },
+        lines: [line('11-2103', '600')],
+      },
+      {
+        entryNumber: 'JE-202610-00003',
+        createdAt: at('2026-10-01T03:00:00Z'),
+        metadata: { tag: 'receipt', installmentScheduleId: 'is-1' },
+        lines: [line('11-2103', '500'), line('42-1103', '50')],
+      },
+      {
+        entryNumber: 'JE-202610-00004',
+        createdAt: at('2026-10-02T03:00:00Z'),
+        metadata: { tag: 'receipt', installmentScheduleId: 'is-1', reversed: true },
+        lines: [line('11-2103', '999')],
+      },
+      {
+        entryNumber: 'JE-202610-00005',
+        createdAt: at('2026-10-03T03:00:00Z'),
+        metadata: { tag: '2B', installmentScheduleId: 'is-1' },
+        lines: [line('11-2103', '4472')],
+      },
+      {
+        entryNumber: 'JE-202610-00006',
+        createdAt: at('2026-10-04T03:00:00Z'),
+        metadata: { tag: 'receipt', installmentScheduleId: 'is-1' },
+        lines: [line('53-1503', '0.17')],
+      },
+    ]);
+
+    const r = await reconstructPriorCleared(client, 'is-1', INSTALLMENT_TOTAL);
+
+    expect(r.priorClearings.map((d) => d.toFixed(2))).toEqual(['500.00', '600.00']);
+    expect(r.priorPrincipalCleared.toFixed(2)).toBe('1100.00');
+    expect(r.priorLateFeeBooked.toFixed(2)).toBe('50.00');
+  });
 });

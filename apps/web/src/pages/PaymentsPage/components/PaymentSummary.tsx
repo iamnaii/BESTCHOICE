@@ -33,6 +33,13 @@ interface SummaryDay {
   total: number;
 }
 
+/**
+ * ใบเสร็จของการใช้เครดิตชำระ (PR3) ไม่ใช่เงินที่รับในวันนั้น — API ไม่นับในยอดรวม / แยกตามวิธี / ค่าปรับรวม ·
+ * ตารางและ Excel ยังแสดงเป็นรายการพร้อมป้าย "ไม่นับในยอดรับ" (Excel: ยอดรับจริง 0 + หมายเหตุบอกยอดเครดิต)
+ */
+const isCreditApplied = (paymentMethod: string | null | undefined) =>
+  paymentMethod === 'CREDIT_BALANCE';
+
 /** ใบเสร็จที่ไม่ผูกงวด (ดาวน์ / ปิดยอด / ปรับดิว) — แสดงชนิดเอกสารแทนเลขงวด. */
 const RECEIPT_TYPE_LABELS: Record<string, string> = {
   DOWN_PAYMENT: 'เงินดาวน์',
@@ -97,6 +104,7 @@ export default function PaymentSummary({
           { header: 'วิธี', key: 'method', width: 12 },
           { header: 'ผู้บันทึก', key: 'issuedBy', width: 18 },
           { header: 'สาขา', key: 'branch', width: 14 },
+          { header: 'หมายเหตุ', key: 'note', width: 36 },
         ],
         data: rows.map((r) => ({
           paidDate: new Date(r.paidDate).toLocaleDateString('th-TH'),
@@ -109,10 +117,13 @@ export default function PaymentSummary({
           installment:
             RECEIPT_TYPE_LABELS[r.receiptType] ??
             (r.installmentNo != null ? `งวดที่ ${r.installmentNo}` : '—'),
-          amount: Number(r.amount).toLocaleString(),
+          amount: isCreditApplied(r.paymentMethod) ? '0' : Number(r.amount).toLocaleString(),
           method: methodLabels[r.paymentMethod ?? ''] || r.paymentMethod || '—',
           issuedBy: r.issuedByName ?? '—',
           branch: r.contract?.branch?.name ?? '—',
+          note: isCreditApplied(r.paymentMethod)
+            ? `ใช้ยอดเครดิตในสัญญา ${Number(r.amount).toLocaleString()} ฿ — ไม่นับเป็นเงินรับ`
+            : '',
         })),
         sheetName: 'สรุปรายวัน',
         filename: `daily-summary-${summaryDate.replace(/-/g, '')}.xlsx`,
@@ -275,7 +286,14 @@ export default function PaymentSummary({
                         <td className="px-5 py-3.5 text-sm text-muted-foreground">
                           {p.installmentNo != null ? `งวดที่ ${p.installmentNo}` : RECEIPT_TYPE_LABELS[p.receiptType] || '—'}
                         </td>
-                        <td className="px-5 py-3.5 text-right text-sm font-semibold text-success tabular-nums">{Number(p.amount).toLocaleString()} ฿</td>
+                        {isCreditApplied(p.paymentMethod) ? (
+                          <td className="px-5 py-3.5 text-right text-sm tabular-nums text-muted-foreground">
+                            <div>{Number(p.amount).toLocaleString()} ฿</div>
+                            <div className="text-xs">ไม่นับในยอดรับ</div>
+                          </td>
+                        ) : (
+                          <td className="px-5 py-3.5 text-right text-sm font-semibold text-success tabular-nums">{Number(p.amount).toLocaleString()} ฿</td>
+                        )}
                         <td className="px-5 py-3.5">
                           <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
                             {methodLabels[p.paymentMethod ?? ''] || p.paymentMethod || '—'}

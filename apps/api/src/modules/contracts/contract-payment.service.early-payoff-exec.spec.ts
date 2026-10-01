@@ -52,6 +52,15 @@ import { EarlyPayoffDto } from './dto/contract.dto';
  *     inst 12    → 11106 − 9630 = 1476.00
  *   all 6 rows end status PAID.
  */
+// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
+// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
+const notAccrued = {
+  accrualJournalEntryId: null,
+  accruedAmount: '0',
+  accruedVat: '0',
+  accruedInterest: '0',
+};
+
 describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
 
@@ -93,6 +102,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
   const installmentSchedules = Array.from({ length: 12 }, (_, i) => ({
     installmentNo: i + 1,
+    ...notAccrued,
   }));
 
   // ── Fresh contract row inside the tx (the SELECT-narrowed version) ──────────

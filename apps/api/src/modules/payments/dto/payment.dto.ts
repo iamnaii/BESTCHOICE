@@ -95,6 +95,11 @@ export class PreviewJournalDto {
   @IsOptional()
   @IsBoolean()
   consumeAdvance?: boolean;
+
+  /** วันที่รับเงิน (ISO date) แบบเดียวกับตอนบันทึก — ใช้หาวันที่ลงรายการตั้งลูกหนี้งวด (2A) */
+  @IsOptional()
+  @IsDateString()
+  paidDate?: string;
 }
 
 export class RecordPaymentDto {

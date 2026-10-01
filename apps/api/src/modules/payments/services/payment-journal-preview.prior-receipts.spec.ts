@@ -12,6 +12,9 @@ describe('payment preview after an earlier receipt', () => {
           installmentNo: 2,
           dueDate: new Date('2026-08-26T10:00:00Z'),
           accrualJournalEntryId: 'JE-2A',
+          accruedAmount: '0',
+          accruedVat: '0',
+          accruedInterest: '0',
           contract: {
             totalMonths: 10,
             financedAmount: D(29900),

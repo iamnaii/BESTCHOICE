@@ -38,12 +38,31 @@ interface VatLine {
   credit: number;
 }
 
+/** ที่มาของภาษีขายเดือนนี้ — ตัวคำนวณเดียวของ ภ.พ.30 ฝั่ง API (`apps/api/src/modules/tax/pp30-output-vat.ts`) */
+interface OutputVatBreakdown {
+  settledGross: string;
+  reductionReversal: string;
+  reductionCreditNote: string;
+  reductionOther: string;
+  reductionTotal: string;
+  settledNet: string;
+  mandatory60DayCredit: string;
+  mandatory60DayDebit: string;
+  mandatory60DayNet: string;
+  /** false = ภาษีขาย 60 วันเป็นข้อมูลประกอบ ไม่รวมใน totalOutputVat (รอฝ่ายบัญชี) */
+  mandatory60DayIncluded: boolean;
+  totalOutputVat: string;
+}
+
+/** ยอดเงินเป็นสตริงทศนิยม 2 ตำแหน่ง (API คำนวณด้วย Decimal) — รายบรรทัดในตารางยังเป็นตัวเลข */
 interface VatData {
   period: { year: number; month: number };
-  vatOutput: number;
-  vatDeferred: number;
-  vatInput: number;
-  netVat: number;
+  vatOutput: string;
+  vatDeferred: string;
+  vatInput: string;
+  netVat: string;
+  /** ไม่มีเมื่อ API ยังเป็นรุ่นก่อน 2026-09-30 (เว็บอาจขึ้นก่อน API) — หน้าไม่แสดงกล่องที่มา */
+  outputVat?: OutputVatBreakdown;
   lineCount: number;
   lines: VatLine[];
 }
@@ -55,7 +74,7 @@ function SummaryCard({
   bold,
 }: {
   label: string;
-  value: number;
+  value: string;
   className?: string;
   bold?: boolean;
 }) {
@@ -68,6 +87,73 @@ function SummaryCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+type OutputVatAmountKey = Exclude<keyof OutputVatBreakdown, 'mandatory60DayIncluded'>;
+type BreakdownRow = { key: OutputVatAmountKey; label: string; total?: boolean };
+
+const OUTPUT_VAT_ROWS: BreakdownRow[] = [
+  { key: 'settledGross', label: 'ภาษีขายที่ตั้งในเดือน (เครดิต 21-2101)' },
+  { key: 'reductionReversal', label: 'หัก กลับรายการ' },
+  { key: 'reductionCreditNote', label: 'หัก ใบลดหนี้ (ม.82/5)' },
+  { key: 'reductionOther', label: 'หัก รายการอื่นที่ลดภาษีขาย' },
+  { key: 'totalOutputVat', label: 'ภาษีขายเดือนนี้ (ภ.พ.30)', total: true },
+];
+
+/** ภาษีขาย 60 วัน (21-2103) — ข้อมูลประกอบ ไม่รวมในยอดข้างบนจนกว่าฝ่ายบัญชีจะตอบ (PP30_INCLUDES_MANDATORY_60DAY ฝั่ง API) */
+const MANDATORY_60DAY_ROWS: BreakdownRow[] = [
+  { key: 'mandatory60DayCredit', label: 'ตั้งในเดือน (เครดิต 21-2103)' },
+  { key: 'mandatory60DayDebit', label: 'กลับรายการ (เดบิต 21-2103)' },
+  { key: 'mandatory60DayNet', label: 'สุทธิ' },
+];
+
+function BreakdownRows({ data, rows }: { data: OutputVatBreakdown; rows: BreakdownRow[] }) {
+  return (
+    <dl className="space-y-1.5">
+      {rows.map((row) => (
+        <div
+          key={row.key}
+          className={`flex items-baseline justify-between gap-4 text-sm leading-snug ${
+            row.total
+              ? 'border-t border-border pt-1.5 font-semibold text-foreground'
+              : 'text-muted-foreground'
+          }`}
+        >
+          <dt>{row.label}</dt>
+          <dd className="font-mono tabular-nums text-foreground">
+            {`${formatNumberDecimal(data[row.key], 2)} ฿`}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function OutputVatBreakdownCard({ data }: { data: OutputVatBreakdown }) {
+  return (
+    <section
+      aria-labelledby="output-vat-breakdown-title"
+      className="mb-6 rounded-lg border border-border bg-muted/30 p-4"
+    >
+      <h3
+        id="output-vat-breakdown-title"
+        className="text-sm font-semibold text-foreground leading-snug mb-3"
+      >
+        ที่มาของภาษีขายเดือนนี้
+      </h3>
+      <BreakdownRows data={data} rows={OUTPUT_VAT_ROWS} />
+      <div className="mt-4 border-t border-dashed border-border pt-3">
+        <h4 className="text-xs font-semibold text-muted-foreground leading-snug mb-2">
+          ภาษีขาย 60 วัน (21-2103) — ข้อมูลประกอบ ยังไม่รวมในยอดข้างบน (รอฝ่ายบัญชีวินิจฉัย)
+        </h4>
+        <BreakdownRows data={data} rows={MANDATORY_60DAY_ROWS} />
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground leading-snug">
+        รายการกลับรายการและใบลดหนี้ลดภาษีขายของเดือนที่ลงรายการ — ไม่แก้ตัวเลขของเดือนเดิม ·
+        ดูรายการทีละบรรทัดได้ในตารางด้านล่าง
+      </p>
+    </section>
   );
 }
 
@@ -130,9 +216,9 @@ export default function VatPage() {
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
                   <SummaryCard
-                    label="ภาษีขาย 21-2101"
+                    label="ภาษีขายเดือนนี้ (ภ.พ.30)"
                     value={query.data.vatOutput}
-                    className="border-emerald-500/30 bg-emerald-500/5"
+                    className="border-success/30 bg-success/5"
                   />
                   <SummaryCard
                     label="ภาษีขายรอเรียกเก็บ 21-2102"
@@ -151,6 +237,8 @@ export default function VatPage() {
                     bold
                   />
                 </div>
+
+                {query.data.outputVat && <OutputVatBreakdownCard data={query.data.outputVat} />}
 
                 <div className="flex justify-end mb-4 gap-2">
                   <Button

@@ -1059,6 +1059,94 @@ describe('BadDebtService', () => {
       expect(creditNoteService.issueForContract).toHaveBeenCalled();
     });
 
+    // PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6 (29/09/2569): รายการตัดหนี้สูญหักเงินของลูกค้าที่ค้างทุกประเภท (template) →
+    // คอลัมน์เงินของลูกค้าบนสัญญาเป็นศูนย์ในธุรกรรมเดียวกัน · สัญญาณเตือนของ template ส่งหลัง commit เท่านั้น
+    describe('PR6 — ล้างคอลัมน์เงินของลูกค้า + สัญญาณเตือนหลัง commit', () => {
+      const warning = {
+        message: '[contract-close] advance/credit columns differ from the ledger cleared at close',
+        tags: { module: 'journal', action: 'close-advance-ledger-mismatch', flow: 'write-off' },
+        extra: { contractId: 'c1', ledger21_5101: '0.00', creditBalance: '2000.00' },
+      };
+      const writeOffTemplate = () => service['badDebtWriteOffTemplate'].execute as jest.Mock;
+
+      beforeEach(() => {
+        prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
+        prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
+        (Sentry.captureMessage as jest.Mock).mockClear();
+      });
+
+      it('ตั้ง advanceBalance / rescheduleAdvanceBalance / creditBalance เป็น 0 ภายในธุรกรรมเดียวกับรายการ หลัง template ลงรายการ', async () => {
+        let inTx = false;
+        let clearedInTx: boolean | null = null;
+        prisma.$transaction.mockImplementationOnce(
+          async (fn: (tx: unknown) => Promise<unknown>) => {
+            inTx = true;
+            const r = await fn(prisma);
+            inTx = false;
+            return r;
+          },
+        );
+        prisma.contract.update.mockImplementation(
+          async (args: { data: Record<string, unknown> }) => {
+            if ('creditBalance' in args.data) clearedInTx = inTx;
+            return {};
+          },
+        );
+
+        await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
+
+        expect(prisma.contract.update).toHaveBeenCalledWith({
+          where: { id: 'c1' },
+          data: { advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 },
+        });
+        expect(clearedInTx).toBe(true);
+        const clearIdx = prisma.contract.update.mock.calls.findIndex(
+          ([a]: [{ data: Record<string, unknown> }]) => 'creditBalance' in a.data,
+        );
+        expect(prisma.contract.update.mock.invocationCallOrder[clearIdx]).toBeGreaterThan(
+          writeOffTemplate().mock.invocationCallOrder[0],
+        );
+      });
+
+      it('สัญญาณเตือนจาก template (คอลัมน์ไม่ตรงบัญชี) ส่งหลังธุรกรรม commit ระดับ warning และไม่อยู่ในผลลัพธ์', async () => {
+        writeOffTemplate().mockResolvedValueOnce({ entryNo: 'JE-MOCK', warnings: [warning] });
+        let committed = false;
+        let sentAfterCommit: boolean | null = null;
+        prisma.$transaction.mockImplementationOnce(
+          async (fn: (tx: unknown) => Promise<unknown>) => {
+            const r = await fn(prisma);
+            committed = true;
+            return r;
+          },
+        );
+        (Sentry.captureMessage as jest.Mock).mockImplementationOnce(() => {
+          sentAfterCommit = committed;
+        });
+
+        const result = await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
+
+        expect(sentAfterCommit).toBe(true);
+        expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+        expect(Sentry.captureMessage).toHaveBeenCalledWith(warning.message, {
+          level: 'warning',
+          tags: warning.tags,
+          extra: warning.extra,
+        });
+        expect(result).not.toHaveProperty('warnings');
+        expect(result.status).toBe('CLOSED_BAD_DEBT');
+      });
+
+      it('ธุรกรรมล้ม (ออกใบลดหนี้ไม่สำเร็จ) → ไม่ส่งสัญญาณเตือนของงานที่ไม่ได้เกิดขึ้น', async () => {
+        writeOffTemplate().mockResolvedValueOnce({ entryNo: 'JE-MOCK', warnings: [warning] });
+        creditNoteService.issueForContract.mockRejectedValueOnce(new Error('CN fail'));
+
+        await expect(service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order')).rejects.toThrow(
+          'CN fail',
+        );
+        expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      });
+    });
+
     // Phase 3 Task 5 — post-commit LINE delivery hook.
     describe('CreditNoteDeliveryService post-commit hook', () => {
       it('fires deliver(receiptId) AFTER the $transaction resolves, with the ISSUED receiptId', async () => {

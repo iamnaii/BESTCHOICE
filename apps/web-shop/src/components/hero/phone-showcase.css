@@ -163,7 +163,7 @@
 .phone-showcase__caption {
   padding-top: 12px;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   color: var(--color-muted-foreground);
 }

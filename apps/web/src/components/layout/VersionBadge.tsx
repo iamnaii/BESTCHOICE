@@ -46,15 +46,15 @@ export function VersionBadge({ className, variant = 'sidebar' }: VersionBadgePro
             className={cn(
               'inline-flex select-none items-center text-[11px] font-mono tabular-nums leading-none',
               variant === 'sidebar'
-                ? 'text-muted-foreground/60 hover:text-muted-foreground'
-                : 'text-muted-foreground/70',
+                ? 'text-muted-foreground hover:text-foreground'
+                : 'text-muted-foreground',
               className,
             )}
             aria-label={`เวอร์ชัน ${version}`}
           >
             v{version}
             {commit !== 'dev' && (
-              <span className="ml-1 text-muted-foreground/50">·{commit}</span>
+              <span className="ml-1 text-muted-foreground">·{commit}</span>
             )}
           </span>
         </TooltipTrigger>

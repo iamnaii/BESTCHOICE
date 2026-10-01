@@ -101,6 +101,33 @@ describe('PaymentSummary — ส่งออก Excel ตามวันที�
     expect(call.data[1].installment).toBe('ค่าปรับดิว');
   });
 
+  it('PR3: ใบใช้เครดิตชำระ → ยอดรับจริง 0 และหมายเหตุบอกยอดเครดิต (ไม่นับเป็นเงินรับ) · ใบเงินรับเข้าหมายเหตุว่าง', async () => {
+    const rows = [
+      { ...EXPORT_ROWS[0], receiptNumber: 'RT-202610-00001', amount: '1515.83', paymentMethod: 'ONLINE_GATEWAY' },
+      { ...EXPORT_ROWS[0], receiptNumber: 'RT-202610-00002', amount: '2000', paymentMethod: 'CREDIT_BALANCE' },
+    ];
+    apiGet.mockImplementation((url: string) =>
+      Promise.resolve(
+        url.startsWith('/payments/daily-summary/export')
+          ? { data: { from: '2026-10-02', to: '2026-10-02', total: 2, truncated: false, rows } }
+          : { data: { month: '2026-10', days: [] } },
+      ),
+    );
+    renderSummary('2026-10-02');
+
+    fireEvent.click(screen.getByRole('button', { name: /ส่งออก Excel/ }));
+
+    await waitFor(() => expect(exportToExcel).toHaveBeenCalledTimes(1));
+    const call = exportToExcel.mock.calls[0][0];
+    expect(call.columns.map((c: { key: string }) => c.key)).toContain('note');
+    expect(call.data[0]).toMatchObject({ amount: (1515.83).toLocaleString(), method: 'ชำระออนไลน์', note: '' });
+    expect(call.data[1]).toMatchObject({
+      amount: '0',
+      method: 'ใช้ยอดเครดิตในสัญญา',
+      note: `ใช้ยอดเครดิตในสัญญา ${(2000).toLocaleString()} ฿ — ไม่นับเป็นเงินรับ`,
+    });
+  });
+
   it('switching the left date exports THAT day', async () => {
     renderSummary('2026-08-18');
 

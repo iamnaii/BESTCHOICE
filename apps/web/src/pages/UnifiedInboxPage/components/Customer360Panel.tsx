@@ -225,8 +225,8 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
             <User className="w-7 h-7 text-muted-foreground/30" />
           </div>
         </div>
-        <p className="text-xs font-semibold text-foreground/50 leading-snug">ข้อมูลลูกค้า</p>
-        <p className="text-[11px] text-muted-foreground/50 mt-1 max-w-[180px] leading-relaxed">
+        <p className="text-xs font-semibold text-muted-foreground leading-snug">ข้อมูลลูกค้า</p>
+        <p className="text-[11px] text-muted-foreground mt-1 max-w-[180px] leading-relaxed">
           เลือกแชทเพื่อดูข้อมูลลูกค้า สัญญา และประวัติ
         </p>
       </div>

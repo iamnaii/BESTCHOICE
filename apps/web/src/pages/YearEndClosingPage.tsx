@@ -22,6 +22,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import SummaryCardHelp from '@/components/ui/SummaryCardHelp';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -320,7 +321,7 @@ export default function YearEndClosingPage() {
               )}
 
               {/* Net Income summary */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="finance-card-grid grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Card className="border-success/30">
                   <CardContent className="pt-6">
                     <p className="text-xs uppercase tracking-wider text-muted-foreground leading-snug">
@@ -374,16 +375,16 @@ export default function YearEndClosingPage() {
               {/* Step 4 preview — 33-1101 → 32-1101 sweep (incl. prior-year residue) */}
               {Number(preview.step4Amount) > 0 && (
                 <Card className="border-primary/30 bg-primary/5">
-                  <CardContent className="pt-6 flex items-center justify-between gap-3">
+                  <CardContent className="finance-closing-summary pt-6 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-medium leading-snug">
                         Step 4: ปิด 33-1101 เข้า 32-1101 (กำไรสะสม)
                       </p>
-                      <p className="text-xs text-muted-foreground leading-snug mt-1">
+                      <SummaryCardHelp label="วิธีคำนวณ" title="ยอดปิดกำไรสะสม">
                         ยอดที่จะปิด = กำไร(ขาดทุน)สุทธิปีนี้ + ยอดค้างเดิมใน 33-1101 (ถ้ามี)
-                      </p>
+                      </SummaryCardHelp>
                     </div>
-                    <p className="text-xl font-bold leading-snug">
+                    <p className="finance-card-value text-xl font-bold leading-snug">
                       {preview.step4IsProfit ? '' : '-'}
                       {fmtTHB(preview.step4Amount)}
                     </p>

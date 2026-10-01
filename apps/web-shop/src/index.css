@@ -1,36 +1,33 @@
 @import 'tailwindcss';
+@import './styles/fonts.css';
 @import './styles/tokens.css';
 @import './styles/motion.css';
 
-/* Typeface stack — bestchoice-web-style-guide.html §4.
-   Two Google faces: Prompt (loopless, geometric) for headings, buttons,
-   menus and prices; Sarabun (looped) for body copy, where the loops carry
-   long-form Thai reading. Both are loaded from the single <link> in
-   index.html, not an @import here, so they are not serialised behind this
-   stylesheet. Thai body text needs a taller line (vowel/tone marks stack
-   above and below the line): 1.75 for reading text per the guide;
-   headings run 1.3–1.4 via the base rules below. Never use leading-none
-   on Thai text. */
+/* Prompt is the single storefront face. Its wider loopless shapes use a
+   16px body and generous leading; display size/weight establish hierarchy. */
 
 @layer base {
   body {
     font-family: var(--font-sans);
-    font-size: 17px;
-    line-height: 1.75;
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
     background: var(--color-background);
     color: var(--color-foreground);
-  }
-  @media (min-width: 768px) {
-    body {
-      font-size: 18px;
-    }
   }
   h1,
   h2,
   h3,
-  h4 {
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-head);
     line-height: 1.35;
+  }
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
   }
 }
 
@@ -40,16 +37,14 @@
      line and tight tracking collides them. */
   .font-display {
     font-family: var(--font-head);
-    letter-spacing: -0.01em;
+    letter-spacing: normal;
     line-height: 1.35;
   }
-  /* Prices, counts, money — Prompt per the guide (price = Prompt 700 in
-     the deep green). 'tnum' is a no-op on faces that lack it, fine for
-     right-aligned single figures. */
+  /* Prices and counts use the same family; tabular figures align totals. */
   .num {
     font-family: var(--font-head);
     font-feature-settings: 'tnum';
-    letter-spacing: -0.01em;
+    letter-spacing: normal;
   }
   /* Latin lockup: the BESTCHOICE wordmark. Prompt carries real 700–800
      weights so no faux-bold. */

@@ -33,7 +33,11 @@ describe('paid payment listing — receipt cash versus settlement', () => {
     expect(receiptGroupBy).toHaveBeenCalledTimes(1);
     expect(receiptGroupBy).toHaveBeenCalledWith({
       by: ['paymentId'],
-      where: { paymentId: { in: ['bundle', 'last'] }, receiptType: { in: ['INSTALLMENT', 'PAYMENT'] }, isVoided: false, deletedAt: null },
+      where: {
+        paymentId: { in: ['bundle', 'last'] }, receiptType: { in: ['INSTALLMENT', 'PAYMENT'] }, isVoided: false, deletedAt: null,
+        // PR3: ใบใช้เครดิตชำระไม่ใช่เงินที่รับจริง — งวดที่ชำระด้วยเครดิตยังแสดง "ไม่ทราบ" เหมือนเดิม
+        OR: [{ paymentMethod: null }, { paymentMethod: { not: 'CREDIT_BALANCE' } }],
+      },
       _sum: { amount: true },
     });
   });

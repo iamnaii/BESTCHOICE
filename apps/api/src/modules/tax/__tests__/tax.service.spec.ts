@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
+import ExcelJS from 'exceljs';
 import { TaxService } from '../tax.service';
 import { TaxPreviewService } from '../services/tax-preview.service';
 import { TaxReportService } from '../services/tax-report.service';
@@ -217,11 +218,12 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
     prisma.expenseDocument.findMany.mockResolvedValue([]);
   });
 
-  it('sums Cr 21-2101 + Cr 21-2103 as totalVatOutput (settled + 60-day mandatory)', async () => {
+  it('sums 21-2101 as totalVatOutput · 21-2103 (60-day) reported separately and NOT included (2026-09-30 — reverses the Critical #2 inclusion until the accountant answers)', async () => {
     mockJournalByCode({
       '21-2101': [
         // PAYMENT — Cr 21-2101 from PaymentReceipt2BTemplate
         {
+          accountCode: '21-2101',
           credit: Dec('70'),
           journalEntry: {
             id: 'je-pay-1',
@@ -235,6 +237,7 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
         },
         // OTHER_INCOME — Cr 21-2101 from OtherIncomeTemplate (asset disposal VAT)
         {
+          accountCode: '21-2101',
           credit: Dec('14'),
           journalEntry: {
             id: 'je-oi-1',
@@ -248,6 +251,7 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
         },
         // REPOSSESSION — Cr 21-2101 from RepossessionJP5Template
         {
+          accountCode: '21-2101',
           credit: Dec('35'),
           journalEntry: {
             id: 'je-rep-1',
@@ -263,6 +267,7 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
       '21-2103': [
         // 60-day mandatory VAT (Vat60dayMandatoryTemplate)
         {
+          accountCode: '21-2103',
           credit: Dec('21'),
           journalEntry: {
             id: 'je-60d-1',
@@ -278,10 +283,12 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
 
     const result = await service.previewPP30('co-1', 2026, 5);
 
-    // 70 + 14 + 35 = 119 settled, 21 mandatory → total 140
+    // 70 + 14 + 35 = 119 settled = total · 21 mandatory is info only (PP30_INCLUDES_MANDATORY_60DAY = false)
     expect(result.totalVatSettled.toString()).toBe('119');
     expect(result.totalVatMandatory60Day.toString()).toBe('21');
-    expect(result.totalVatOutput.toString()).toBe('140');
+    expect(result.totalVatOutput.toString()).toBe('119');
+    expect(result.outputVatBreakdown.mandatory60DayNet).toBe('21.00');
+    expect(result.outputVatBreakdown.mandatory60DayIncluded).toBe(false);
 
     // Source breakdown by referenceType
     expect(result.vatOutputBySource.PAYMENT.toString()).toBe('70');
@@ -294,43 +301,46 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
     expect(result.lineItems.mandatoryVat60Day[0].entryNumber).toBe('JE-202605-0099');
   });
 
-  it('queries 21-2101 with Cr > 0, POSTED, companyId, period range', async () => {
+  it('queries 21-2101 through the single PP30 computation: POSTED, companyId, entryDate in the Bangkok month, debits included', async () => {
     await service.previewPP30('co-1', 2026, 5);
 
     const settledCall = prisma.journalLine.findMany.mock.calls.find(
       ([args]: [{ where: { accountCode: string } }]) => args.where.accountCode === '21-2101',
     );
     expect(settledCall).toBeDefined();
-    expect(settledCall[0]).toMatchObject({
-      where: {
-        accountCode: '21-2101',
-        credit: { gt: 0 },
+    expect(settledCall[0].where).toEqual({
+      accountCode: '21-2101',
+      deletedAt: null,
+      journalEntry: {
         deletedAt: null,
-        journalEntry: expect.objectContaining({
-          status: 'POSTED',
-          companyId: 'co-1',
-          postedAt: { gte: expect.any(Date), lte: expect.any(Date) },
-        }),
+        status: 'POSTED',
+        companyId: 'co-1',
+        entryDate: {
+          gte: new Date('2026-04-30T17:00:00.000Z'),
+          lt: new Date('2026-05-31T17:00:00.000Z'),
+        },
       },
     });
   });
 
-  it('queries 21-2103 (60-day mandatory VAT) separately from 21-2101', async () => {
+  it('queries 21-2103 (60-day mandatory VAT) separately with the same filter — debits included', async () => {
     await service.previewPP30('co-1', 2026, 5);
 
     const mandatoryCall = prisma.journalLine.findMany.mock.calls.find(
       ([args]: [{ where: { accountCode: string } }]) => args.where.accountCode === '21-2103',
     );
     expect(mandatoryCall).toBeDefined();
-    expect(mandatoryCall[0]).toMatchObject({
-      where: {
-        accountCode: '21-2103',
-        credit: { gt: 0 },
+    expect(mandatoryCall[0].where).toEqual({
+      accountCode: '21-2103',
+      deletedAt: null,
+      journalEntry: {
         deletedAt: null,
-        journalEntry: expect.objectContaining({
-          status: 'POSTED',
-          companyId: 'co-1',
-        }),
+        status: 'POSTED',
+        companyId: 'co-1',
+        entryDate: {
+          gte: new Date('2026-04-30T17:00:00.000Z'),
+          lt: new Date('2026-05-31T17:00:00.000Z'),
+        },
       },
     });
   });
@@ -343,6 +353,7 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
     mockJournalByCode({
       '21-2101': [
         {
+          accountCode: '21-2101',
           credit: Dec('500'),
           journalEntry: {
             id: 'je-rep',
@@ -356,6 +367,7 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
       ],
       '21-2103': [
         {
+          accountCode: '21-2103',
           credit: Dec('100'),
           journalEntry: {
             id: 'je-60d',
@@ -371,7 +383,8 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
 
     const result = await service.previewPP30('co-1', 2026, 5);
 
-    expect(result.totalVatOutput.toString()).toBe('600'); // 500 + 100
+    expect(result.totalVatOutput.toString()).toBe('500'); // 21-2103 100 ไม่รวม (เดิม 600 = 500 + 100)
+    expect(result.totalVatMandatory60Day.toString()).toBe('100'); // ยังจับได้ — เป็นข้อมูลประกอบ
     expect(result.totalSales.toString()).toBe('0'); // no payments
   });
 
@@ -381,6 +394,305 @@ describe('TaxService.previewPP30 — Critical #2: output VAT journal-based', () 
     expect(result.totalVatSettled.toString()).toBe('0');
     expect(result.totalVatMandatory60Day.toString()).toBe('0');
     expect(result.lineItems.mandatoryVat60Day).toHaveLength(0);
+  });
+
+  // ── 2026-09-30: ภาษีขายสุทธิ (หักรายการกลับรายการ / ใบลดหนี้) — ตัวคำนวณเดียวกับหน้า /finance/vat ──
+
+  it('nets a reversal: 2A Cr 99.17 · mirror reversal Dr 99.17 · re-accrual Cr 99.17 ⇒ 99.17 (credit-only used to report 198.34)', async () => {
+    const entry = (id: string, metadata: Record<string, unknown>) => ({
+      id,
+      entryNumber: `JE-202605-${id}`,
+      entryDate: new Date('2026-05-12T05:00:00.000Z'),
+      referenceType: 'AUTO',
+      description: `รายการ ${id}`,
+      metadata,
+    });
+    mockJournalByCode({
+      '21-2101': [
+        {
+          accountCode: '21-2101',
+          debit: Dec('0'),
+          credit: Dec('99.17'),
+          journalEntry: entry('00001', { tag: '2A' }),
+        },
+        {
+          accountCode: '21-2101',
+          debit: Dec('99.17'),
+          credit: Dec('0'),
+          journalEntry: entry('00002', { tag: 'REVERSAL', flow: 'receipt-accrual-void' }),
+        },
+        {
+          accountCode: '21-2101',
+          debit: Dec('0'),
+          credit: Dec('99.17'),
+          journalEntry: entry('00003', { tag: '2A' }),
+        },
+      ],
+    });
+
+    const result = await service.previewPP30('co-1', 2026, 5);
+
+    expect(result.totalVatOutput.toFixed(2)).toBe('99.17');
+    expect(result.totalVatSettled.toFixed(2)).toBe('99.17');
+    expect(result.netVat.toFixed(2)).toBe('99.17');
+    expect(result.outputVatBreakdown).toMatchObject({
+      settledGross: '198.34',
+      reductionReversal: '99.17',
+      reductionTotal: '99.17',
+      settledNet: '99.17',
+      totalOutputVat: '99.17',
+    });
+    expect(result.vatOutputBySource.AUTO.toFixed(2)).toBe('99.17'); // สุทธิ = totalVatSettled (เดิมนับแต่เครดิต 198.34)
+    expect(
+      result.lineItems.outputVatReductions.map((r) => [
+        r.entryNumber,
+        r.kind,
+        r.vatAmount.toFixed(2),
+      ]),
+    ).toEqual([['JE-202605-00002', 'REVERSAL', '99.17']]);
+  });
+
+  it('JP5 credit note (ม.82/5) reduces output VAT: Dr 99.17 + Cr 793.32 ⇒ 694.15', async () => {
+    const jp5 = {
+      id: 'je-jp5',
+      entryNumber: 'JE-202605-00009',
+      entryDate: new Date('2026-05-20T05:00:00.000Z'),
+      referenceType: 'AUTO',
+      description: 'ยึดคืน',
+      metadata: { tag: 'JP5', flow: 'repossession' },
+    };
+    mockJournalByCode({
+      '21-2101': [
+        { accountCode: '21-2101', debit: Dec('99.17'), credit: Dec('0'), journalEntry: jp5 },
+        { accountCode: '21-2101', debit: Dec('0'), credit: Dec('793.32'), journalEntry: jp5 },
+      ],
+    });
+
+    const result = await service.previewPP30('co-1', 2026, 5);
+
+    expect(result.totalVatOutput.toFixed(2)).toBe('694.15');
+    expect(result.outputVatBreakdown).toMatchObject({
+      settledGross: '793.32',
+      reductionCreditNote: '99.17',
+      settledNet: '694.15',
+    });
+  });
+
+  it('60-day (21-2103) is reported separately — line items are credit − debit (a reversal is negative) — and is NOT added to totalVatOutput / netVat', async () => {
+    const entry = (id: string, metadata: Record<string, unknown>) => ({
+      id,
+      entryNumber: `JE-202605-${id}`,
+      entryDate: new Date('2026-05-25T05:00:00.000Z'),
+      referenceType: 'AUTO',
+      description: `รายการ ${id}`,
+      metadata,
+    });
+    mockJournalByCode({
+      '21-2101': [
+        {
+          accountCode: '21-2101',
+          debit: Dec('0'),
+          credit: Dec('50'),
+          journalEntry: entry('00010', { tag: '2A' }),
+        },
+      ],
+      '21-2103': [
+        {
+          accountCode: '21-2103',
+          debit: Dec('0'),
+          credit: Dec('99.17'),
+          journalEntry: entry('00011', { tag: 'VAT60-MANDATORY' }),
+        },
+        {
+          accountCode: '21-2103',
+          debit: Dec('0'),
+          credit: Dec('99.17'),
+          journalEntry: entry('00012', { tag: 'VAT60-MANDATORY' }),
+        },
+        {
+          accountCode: '21-2103',
+          debit: Dec('99.17'),
+          credit: Dec('0'),
+          journalEntry: entry('00013', { tag: 'VAT60-REVERSAL' }),
+        },
+      ],
+    });
+
+    const result = await service.previewPP30('co-1', 2026, 5);
+
+    expect(result.lineItems.mandatoryVat60Day.map((i) => i.vatAmount.toFixed(2))).toEqual([
+      '99.17',
+      '99.17',
+      '-99.17',
+    ]);
+    expect(result.totalVatMandatory60Day.toFixed(2)).toBe('99.17');
+    expect(result.totalVatOutput.toFixed(2)).toBe('50.00');
+    expect(result.netVat.toFixed(2)).toBe('50.00');
+    expect(result.outputVatBreakdown).toMatchObject({
+      mandatory60DayCredit: '198.34',
+      mandatory60DayDebit: '99.17',
+      mandatory60DayNet: '99.17',
+      mandatory60DayIncluded: false,
+      totalOutputVat: '50.00',
+    });
+  });
+
+  it('invalid year/month → 400 "ปี/เดือนไม่ถูกต้อง" before any query (was a raw 500 from an Invalid Date)', async () => {
+    await expect(service.previewPP30('co-1', Number.NaN, 5)).rejects.toThrow('ปี/เดือนไม่ถูกต้อง');
+    expect(prisma.journalLine.findMany).not.toHaveBeenCalled();
+  });
+
+  it('generate(PP30) stores the net output VAT in TaxReport (same figure as the preview) · 60-day kept as info in generatedData', async () => {
+    const entry = {
+      id: 'je-1',
+      entryNumber: 'JE-1',
+      entryDate: new Date('2026-05-12T05:00:00.000Z'),
+      referenceType: 'AUTO',
+      description: '2A',
+      metadata: { tag: '2A' },
+    };
+    const reversal = { ...entry, id: 'je-2', entryNumber: 'JE-2', metadata: { tag: 'REVERSAL' } };
+    mockJournalByCode({
+      '21-2101': [
+        { accountCode: '21-2101', debit: Dec('0'), credit: Dec('99.17'), journalEntry: entry },
+        { accountCode: '21-2101', debit: Dec('99.17'), credit: Dec('0'), journalEntry: reversal },
+        {
+          accountCode: '21-2101',
+          debit: Dec('0'),
+          credit: Dec('99.17'),
+          journalEntry: { ...entry, id: 'je-3', entryNumber: 'JE-3' },
+        },
+      ],
+      '21-2103': [
+        {
+          accountCode: '21-2103',
+          debit: Dec('0'),
+          credit: Dec('21'),
+          journalEntry: {
+            ...entry,
+            id: 'je-4',
+            entryNumber: 'JE-4',
+            metadata: { tag: 'VAT60-MANDATORY' },
+          },
+        },
+      ],
+    });
+    prisma.taxReport = { upsert: jest.fn(async (args: { create: unknown }) => args.create) };
+
+    await service.generate(
+      { companyId: 'co-1', reportType: 'PP30', reportYear: 2026, reportMonth: 5 },
+      'user-1',
+    );
+
+    const created = prisma.taxReport.upsert.mock.calls[0][0].create;
+    expect(created.totalVatOutput.toFixed(2)).toBe('99.17');
+    expect(created.netVat.toFixed(2)).toBe('99.17');
+    expect(created.generatedData.outputVatBreakdown.reductionReversal).toBe('99.17');
+    expect(created.generatedData.outputVatBreakdown).toMatchObject({
+      mandatory60DayNet: '21.00',
+      mandatory60DayIncluded: false,
+    });
+  });
+
+  // ── 2026-09-30 fix round 1 (F1): vatOutputBySource ต้องกรองรายการปิดภาษี (isVatSettlement)
+  // เหมือน summarizePp30OutputVat — ไม่งั้นผลรวมแยกตาม referenceType ไม่เท่า totalVatSettled ──
+
+  it('F1: a VAT-settlement entry (21-2101 line whose JE also touches 21-3201) is excluded from vatOutputBySource too — Σ by-source === totalVatSettled', async () => {
+    const sale = {
+      accountCode: '21-2101',
+      debit: Dec('0'),
+      credit: Dec('700'),
+      journalEntry: {
+        id: 'je-sale',
+        entryNumber: 'JE-202605-00020',
+        entryDate: new Date('2026-05-10T05:00:00.000Z'),
+        referenceType: 'PAYMENT',
+        description: 'ขาย',
+        metadata: null,
+        // ไม่มี `lines` — ผ่านตัวแปลงจริงของ loader แล้ว isVatSettlement จะเป็น undefined (ไม่ใช่รายการปิดภาษี)
+      },
+    };
+    const settlement = {
+      accountCode: '21-2101',
+      debit: Dec('700'),
+      credit: Dec('0'),
+      journalEntry: {
+        id: 'je-close',
+        entryNumber: 'JE-202605-00021',
+        entryDate: new Date('2026-05-31T05:00:00.000Z'),
+        referenceType: 'MANUAL',
+        description: 'ปิดภาษีขายประจำเดือน',
+        metadata: null,
+        // มีบรรทัดพี่น้องบน 21-3201 — ผ่านตัวแปลงจริงของ loader (toPp30OutputVatLine) แล้วได้ isVatSettlement: true
+        lines: [{ id: 'jl-3201' }],
+      },
+    };
+    mockJournalByCode({ '21-2101': [sale, settlement] });
+
+    const result = await service.previewPP30('co-1', 2026, 5);
+
+    // ตัวคำนวณ (summarizePp30OutputVat) ข้ามรายการปิดภาษีทั้งบรรทัด — settledNet = 700 (แค่ยอดขาย)
+    expect(result.totalVatSettled.toFixed(2)).toBe('700.00');
+    expect(result.totalVatOutput.toFixed(2)).toBe('700.00');
+
+    // ก่อนแก้ F1: by-source รวม PAYMENT 700 + MANUAL -700 = 0.00 ≠ totalVatSettled
+    const bySourceSum = Object.values(result.vatOutputBySource).reduce(
+      (s, v) => s.add(v),
+      new Prisma.Decimal(0),
+    );
+    expect(bySourceSum.toFixed(2)).toBe(result.totalVatSettled.toFixed(2));
+    expect(result.vatOutputBySource.PAYMENT.toFixed(2)).toBe('700.00');
+    // รายการปิดภาษีไม่ควรสร้างคีย์ MANUAL เลย (ไม่ใช่แค่ค่าเป็นศูนย์ — ต้องไม่ถูกนับเข้าเลนส์นี้)
+    expect(result.vatOutputBySource.MANUAL).toBeUndefined();
+  });
+
+  // ── 2026-09-30 fix round 2 (F1): เกทเดียวกันต้องกันฝั่ง 21-2103 ด้วย ไม่ใช่แค่ 21-2101 —
+  // ทั้ง totalVatMandatory60Day/outputVatBreakdown (summarizePp30OutputVat) และ lineItems.mandatoryVat60Day
+  // (mandatoryVat60DayItems filter ใน previewPP30 เอง) ──
+
+  it('F1 (round 2): a VAT-settlement entry — its 21-2103 line (JE also touches 21-3201) is excluded from totalVatMandatory60Day/outputVatBreakdown AND lineItems.mandatoryVat60Day too — not just 21-2101', async () => {
+    const mandatory = {
+      accountCode: '21-2103',
+      debit: Dec('0'),
+      credit: Dec('21'),
+      journalEntry: {
+        id: 'je-60d-2',
+        entryNumber: 'JE-202605-0099',
+        entryDate: new Date('2026-05-25T05:00:00.000Z'),
+        referenceType: 'VAT_60DAY',
+        description: '60-day mandatory VAT',
+        metadata: null,
+        // ไม่มี `lines` — ไม่ใช่รายการปิดภาษี
+      },
+    };
+    const settlement60Day = {
+      accountCode: '21-2103',
+      debit: Dec('21'),
+      credit: Dec('0'),
+      journalEntry: {
+        id: 'je-close-60d',
+        entryNumber: 'JE-202605-00022',
+        entryDate: new Date('2026-05-31T05:00:00.000Z'),
+        referenceType: 'MANUAL',
+        description: 'ปิดภาษีขายประจำเดือน (แตะ 21-2103 ด้วย)',
+        metadata: null,
+        // มีบรรทัดพี่น้องบน 21-3201 — ผ่านตัวแปลงจริงของ loader แล้วได้ isVatSettlement: true
+        lines: [{ id: 'jl-3201-2' }],
+      },
+    };
+    mockJournalByCode({ '21-2103': [mandatory, settlement60Day] });
+
+    const result = await service.previewPP30('co-1', 2026, 5);
+
+    // ก่อนแก้ round 2: เดบิต 21 ของรายการปิดภาษีรั่วเข้า mandatory60Day (net กลายเป็น 0 ที่ควรเป็น 21)
+    expect(result.totalVatMandatory60Day.toFixed(2)).toBe('21.00');
+    expect(result.outputVatBreakdown.mandatory60DayDebit).toBe('0.00');
+    expect(result.outputVatBreakdown.mandatory60DayNet).toBe('21.00');
+
+    // lineItems.mandatoryVat60Day (tax-preview.service.ts filter) ต้องกรองรายการปิดภาษีออกเช่นกัน
+    expect(result.lineItems.mandatoryVat60Day).toHaveLength(1);
+    expect(result.lineItems.mandatoryVat60Day[0].entryNumber).toBe('JE-202605-0099');
+    expect(result.lineItems.mandatoryVat60Day[0].vatAmount.toFixed(2)).toBe('21.00');
   });
 });
 
@@ -894,6 +1206,74 @@ describe('TaxService.exportTaxFormXlsx', () => {
     // XLSX is a ZIP — first bytes are 'PK'
     expect(buffer[0]).toBe(0x50);
     expect(buffer[1]).toBe(0x4b);
+  });
+
+  it('PP30 export (2026-09-30): "ภาษีขาย (Output VAT)" = 21-2101 สุทธิ · ภาษีขาย 60 วัน (21-2103) เป็นสามแถวข้อมูลประกอบแยก ไม่รวมในยอด', async () => {
+    const entry = (id: string) => ({
+      id,
+      entryNumber: `JE-202605-${id}`,
+      entryDate: new Date('2026-05-20T05:00:00.000Z'),
+      referenceType: 'AUTO',
+      description: `รายการ ${id}`,
+      metadata: null,
+    });
+    const byCode: Record<string, unknown[]> = {
+      '21-2101': [
+        {
+          accountCode: '21-2101',
+          debit: Dec('0'),
+          credit: Dec('50'),
+          journalEntry: entry('00001'),
+        },
+      ],
+      '21-2103': [
+        {
+          accountCode: '21-2103',
+          debit: Dec('0'),
+          credit: Dec('99.17'),
+          journalEntry: entry('00002'),
+        },
+        {
+          accountCode: '21-2103',
+          debit: Dec('0'),
+          credit: Dec('99.17'),
+          journalEntry: entry('00003'),
+        },
+        {
+          accountCode: '21-2103',
+          debit: Dec('99.17'),
+          credit: Dec('0'),
+          journalEntry: entry('00004'),
+        },
+      ],
+    };
+    prisma.journalLine.findMany.mockImplementation((args: { where: { accountCode: string } }) =>
+      Promise.resolve(byCode[args.where.accountCode] ?? []),
+    );
+
+    const buffer = await service.exportTaxFormXlsx('PP30', 'co-1', 2026, 5);
+    const workbook = new ExcelJS.Workbook();
+    // ExcelJS ประกาศชนิด Buffer ของตัวเองเป็น ArrayBuffer — ตอนรันรับ Buffer ของ Node ได้
+    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+    const rows: unknown[][] = [];
+    workbook.worksheets[0].eachRow((row, rowNumber) => {
+      if (rowNumber > 1) {
+        rows.push([row.getCell(1).value, row.getCell(2).value, row.getCell(7).value]);
+      }
+    });
+
+    expect(rows).toEqual([
+      [null, 'ภาษีขาย (Output VAT)', 50],
+      [null, 'ภาษีซื้อ (Input VAT)', 0],
+      [null, 'ภาษีที่ต้องชำระ (Net VAT)', 50],
+      ['ข้อมูลประกอบ', 'ภาษีขาย 60 วัน (21-2103) — ตั้งในเดือน', 198.34],
+      ['ข้อมูลประกอบ', 'ภาษีขาย 60 วัน (21-2103) — กลับรายการ', 99.17],
+      [
+        'ข้อมูลประกอบ',
+        'ภาษีขาย 60 วัน (21-2103) — สุทธิ (ยังไม่รวมในยอดข้างบน รอฝ่ายบัญชีวินิจฉัย)',
+        99.17,
+      ],
+    ]);
   });
 
   it('PND1 export produces a valid XLSX buffer', async () => {

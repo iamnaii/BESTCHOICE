@@ -25,6 +25,8 @@ describe('ReceiptIssuanceService — paidDate stamping (QA #1347 follow-up)', ()
       payment: { findUnique: jest.fn() },
       receipt: {
         findMany: jest.fn().mockResolvedValue([]),
+        // PR3: หนึ่งใบต่อรายการบัญชี — ยังไม่มีใบของรายการนี้
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(async (args: { data: Record<string, unknown> }) => {
           created.push(args.data);
           return { id: 'r1', ...args.data };

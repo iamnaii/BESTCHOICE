@@ -50,6 +50,16 @@ const UNPAID_PAYMENT_STATUSES = ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'];
 /** No status, or an unpaid one, = the queue proper. status=PAID = the ชำระครบ history tab. */
 const isUnpaidListing = (status?: string) => !status || UNPAID_PAYMENT_STATUSES.includes(status);
 
+/**
+ * ใบเสร็จที่เป็น "เงินรับเข้า" (PR3): ใบของการใช้เครดิตชำระ (CREDIT_BALANCE) ไม่ใช่เงินที่รับในวันนั้น — เงินก้อนนั้นรับไว้
+ * ก่อนหน้า (เงินเกินที่พักเป็นเครดิตในสัญญา). ยอดเงินรับของสรุปรายวัน / แยกตามวิธี / ค่าปรับรวม และ "เงินที่รับจริง"
+ * ของรายการชำระแล้วจึงไม่นับใบนี้ · ใบยังแสดงเป็นรายการ (ป้าย "ใช้ยอดเครดิตในสัญญา"). ช่องทางว่าง (ใบเก่า) = นับ —
+ * เงื่อนไข OR คู่กับ null เพราะ NOT/<> ของ SQL ตัดแถวที่เป็น null ทิ้ง
+ */
+const MONEY_IN_RECEIPT: Prisma.ReceiptWhereInput = {
+  OR: [{ paymentMethod: null }, { paymentMethod: { not: 'CREDIT_BALANCE' } }],
+};
+
 /** เหตุการณ์ปิดสัญญา — ดู resolveClosure */
 export interface ContractClosure {
   kind: 'DEVICE_RETURN' | 'EARLY_PAYOFF' | 'COMPLETED' | 'CANCELED';
@@ -481,6 +491,7 @@ export class PaymentQueryService {
           receiptType: { in: [...INSTALLMENT_MONEY_RECEIPT_TYPES] },
           isVoided: false,
           deletedAt: null,
+          ...MONEY_IN_RECEIPT,
         },
         _sum: { amount: true },
       });
@@ -692,6 +703,8 @@ export class PaymentQueryService {
       receiptType: { not: 'CREDIT_NOTE' },
       ...(branchId ? { contract: { branchId } } : {}),
     };
+    // ยอดเงินรับ (ยอดรวม / แยกตามวิธี / ค่าปรับรวม) ไม่นับใบใช้เครดิตชำระ — รายการและจำนวนรายการยังแสดงครบ (PR3)
+    const moneyWhere: Prisma.ReceiptWhereInput = { ...where, ...MONEY_IN_RECEIPT };
 
     const [receipts, total, aggregation, methodGroups, dayPaymentRefs] = await Promise.all([
       this.prisma.receipt.findMany({
@@ -719,13 +732,21 @@ export class PaymentQueryService {
         take: limit,
       }),
       this.prisma.receipt.count({ where }),
-      this.prisma.receipt.aggregate({ where, _sum: { amount: true } }),
+      this.prisma.receipt.aggregate({ where: moneyWhere, _sum: { amount: true } }),
       // Grouped over the WHOLE day. The previous implementation accumulated
       // byMethod from the current PAGE while totalAmount came from the aggregate,
       // so the two KPI cards silently disagreed on any day past `limit` rows.
-      this.prisma.receipt.groupBy({ by: ['paymentMethod'], where, _sum: { amount: true } }),
-      // Distinct installments settled today — also whole-day, not page-scoped.
-      this.prisma.receipt.findMany({ where, select: { paymentId: true }, distinct: ['paymentId'] }),
+      this.prisma.receipt.groupBy({
+        by: ['paymentMethod'],
+        where: moneyWhere,
+        _sum: { amount: true },
+      }),
+      // Distinct installments settled today with money in — also whole-day, not page-scoped.
+      this.prisma.receipt.findMany({
+        where: moneyWhere,
+        select: { paymentId: true },
+        distinct: ['paymentId'],
+      }),
     ]);
 
     const byMethod: Record<string, number> = {};
@@ -822,7 +843,7 @@ export class PaymentQueryService {
         receiptType: { not: 'CREDIT_NOTE' },
         ...(branchId ? { contract: { branchId } } : {}),
       },
-      select: { paidDate: true, amount: true },
+      select: { paidDate: true, amount: true, paymentMethod: true },
     });
 
     const byDay = new Map<string, { count: number; total: Prisma.Decimal }>();
@@ -832,7 +853,9 @@ export class PaymentQueryService {
         d.getDate(),
       ).padStart(2, '0')}`;
       const cur = byDay.get(key) ?? { count: 0, total: new Prisma.Decimal(0) };
-      byDay.set(key, { count: cur.count + 1, total: cur.total.plus(r.amount) });
+      // จำนวนใบนับครบ · ยอดเงินไม่นับใบใช้เครดิตชำระ (PR3 — เหมือนยอดรวมของสรุปรายวัน)
+      const money = r.paymentMethod === 'CREDIT_BALANCE' ? 0 : r.amount;
+      byDay.set(key, { count: cur.count + 1, total: cur.total.plus(money) });
     }
 
     return {

@@ -91,6 +91,9 @@ function makeService(overrides: {
       overrides.accrualJournalEntryId === undefined
         ? ACCRUAL_ENTRY_NO
         : overrides.accrualJournalEntryId,
+    accruedAmount: '0',
+    accruedVat: '0',
+    accruedInterest: '0',
     contract: {
       totalMonths: overrides.totalMonths ?? 12,
       financedAmount: D(10000),

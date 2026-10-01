@@ -52,6 +52,7 @@ describe('PaymentsController', () => {
       getPendingPayments: jest.fn().mockResolvedValue([]),
       getDailySummary: jest.fn().mockResolvedValue({ totalPayments: 0 }),
       getContractJournalEntries: jest.fn().mockResolvedValue([]),
+      previewJournal: jest.fn().mockResolvedValue({ lines: [], isBalanced: true }),
       // 6b bundled two-phase helpers (owner correction 2026-07-09)
       hasInstallmentAfter: jest.fn().mockResolvedValue(true),
       getPaymentByInstallment: jest.fn().mockResolvedValue({ id: 'pay-5', status: 'OVERDUE' }),
@@ -585,6 +586,33 @@ describe('PaymentsController', () => {
     it('rejects non-numeric daysToShift', async () => {
       const errors = await validateDto({ daysToShift: 'ten', splitMode: 'SPLIT' });
       expect(errors.some((e) => e.property === 'daysToShift')).toBe(true);
+    });
+  });
+
+  describe('previewJournal — ส่งวันที่รับเงินและช่องทางที่เลือกถึง service', () => {
+    it('ส่ง paidDate และ method ต่อให้ service พร้อมค่าเดิมทุกตัว', async () => {
+      await controller.previewJournal({
+        contractId: 'contract-1',
+        installmentNo: 3,
+        amountReceived: 1000,
+        depositAccountCode: '11-1201',
+        case: 'PARTIAL',
+        method: 'QR',
+        paidDate: '2026-09-29',
+      });
+
+      expect(paymentsService.previewJournal).toHaveBeenCalledTimes(1);
+      expect(paymentsService.previewJournal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contractId: 'contract-1',
+          installmentNo: 3,
+          amountReceived: 1000,
+          depositAccountCode: '11-1201',
+          case: 'PARTIAL',
+          method: 'QR',
+          paidDate: '2026-09-29',
+        }),
+      );
     });
   });
 });

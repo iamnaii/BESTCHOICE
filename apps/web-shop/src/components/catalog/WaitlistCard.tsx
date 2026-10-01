@@ -16,10 +16,10 @@ export function WaitlistCard() {
       <p className="font-display text-2xl font-bold leading-snug text-ink-foreground">
         ฝากหา<span className="text-emerald-400">ฟรี</span>
       </p>
-      <p className="mt-1 text-[12.5px] leading-snug text-white/75 text-balance">
+      <p className="mt-1 text-sm leading-snug text-white/75 text-balance">
         ไม่เจอรุ่นที่ต้องการ? บอกไว้ได้ ของเข้าแล้วเราทักกลับ
       </p>
-      <span className="mt-3 inline-flex h-9 items-center rounded-full bg-card px-6 text-[13px] font-semibold text-foreground leading-snug">
+      <span className="mt-3 inline-flex h-9 items-center rounded-full bg-card px-6 text-sm font-semibold text-foreground leading-snug">
         แจ้งรุ่นที่ต้องการ
       </span>
     </a>

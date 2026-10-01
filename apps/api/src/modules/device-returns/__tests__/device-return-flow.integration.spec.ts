@@ -410,7 +410,8 @@ describe('ใบรับเครื่องคืน — create → confirm �
     expect(confirmed.repossessionId).toBeTruthy();
     expect(confirmed.creditNote?.outcome).toBe('SKIPPED_NO_ACCRUED'); // งวด accrual 1-4 จ่ายครบ → ไม่มี CN
 
-    // golden §6.5 — JP5 (FINANCE)
+    // golden §6.5 — JP5 (FINANCE) · PR6: ส่วนลดยอดปิด 50% (ค่าเริ่มต้นของการยืนยัน) = 1,999.99 ลง Dr 52-1106 และ
+    // 51-1102 ลดเท่ากัน — ตาราง "แบบ (ก)" ที่ฝ่ายบัญชีเลือก (ฉบับรวม ข้อ 5 · 30/09/2569) ทุกบรรทัด (เดิม 51-1102 5,126.68)
     const jp5Entries = await jeByFlow(contract.id, 'repossession');
     expect(jp5Entries).toHaveLength(1);
     const [jp5] = jp5Entries;
@@ -424,9 +425,11 @@ describe('ใบรับเครื่องคืน — create → confirm �
       ['21-2101', '0.00', '793.32'],
       ['21-2102', '793.32', '0.00'],
       ['41-1101', '0.00', '4000.00'],
-      ['51-1102', '5126.68', '0.00'],
+      ['51-1102', '3126.69', '0.00'],
+      ['52-1106', '1999.99', '0.00'],
     ]);
     const jp5Meta = jp5.metadata as Record<string, unknown>;
+    expect(jp5Meta.discount).toBe('1999.99');
     expect(jp5Meta.shopReceivableType).toBe('DEVICE_RETURN');
     expect(jp5Meta.shopReceivable).toBe('11-2107');
     expect(jp5Meta.deviceReturnId).toBe(intake.id);

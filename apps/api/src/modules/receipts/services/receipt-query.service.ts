@@ -243,7 +243,7 @@ export class ReceiptQueryService {
       : null;
 
     const [receiptWithFees] = await attachReceiptFeeBreakdowns(this.prisma, [receipt]);
-    const [[receiptWithHistory], documentBalance] = await Promise.all([
+    const [[receiptWithHistory], documentBalance, advanceTargetInstallmentNo] = await Promise.all([
       attachReceiptPaymentHistory(this.prisma, [receiptWithFees]),
       getReceiptDocumentBalance(this.prisma, receipt, {
         financedAmount: receipt.contract.financedAmount,
@@ -252,8 +252,34 @@ export class ReceiptQueryService {
         vatAmount: receipt.contract.vatAmount,
         totalMonths: receipt.contract.totalMonths,
       }),
+      receipt.receiptType === 'CREDIT_NOTE' && receipt.voidedReceiptId
+        ? this.voidedAdvanceTarget(receipt.voidedReceiptId)
+        : Promise.resolve(null),
     ]);
-    return { ...receiptWithHistory, ...documentBalance, company, issuer, payment, priorReceiptCount, voidedRef };
+    return {
+      ...receiptWithHistory,
+      ...documentBalance,
+      company,
+      issuer,
+      payment,
+      priorReceiptCount,
+      voidedRef,
+      advanceTargetInstallmentNo,
+    };
+  }
+
+  /**
+   * ใบลดหนี้ตอนยกเลิกใบเสร็จ (PR3): งวดเป้าหมายของเงินพักค่าปรับดิวในใบที่ถูกยกเลิก — ประวัติการจัดสรรของใบลดหนี้เอง
+   * ไม่มี (CREDIT_NOTE ไม่ใช่ใบรับเงิน) จึงอ่านจากใบเดิม เพื่อให้ป้ายแถวเงินรับล่วงหน้าบนใบลดหนี้เท่าใบเดิม
+   */
+  private async voidedAdvanceTarget(voidedReceiptId: string): Promise<number | null> {
+    const voided = await this.prisma.receipt.findUnique({ where: { id: voidedReceiptId } });
+    if (!voided) return null;
+    const [withHistory] = await attachReceiptPaymentHistory(this.prisma, [voided]);
+    return (
+      withHistory.installmentAllocations?.find((a) => a.kind === 'RESCHEDULE_ADVANCE')
+        ?.installmentNo ?? null
+    );
   }
 
   /**

@@ -743,20 +743,25 @@ describe('ReceiptsService', () => {
     });
 
     it('increments seq from last receipt of the same month', async () => {
-      const now = new Date();
-      const yyyymm = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const local = buildPrismaForGenerate({
-        lastReceiptNumber: `RT-${yyyymm}-00042`,
-        paymentStatus: 'PAID',
-        amountDue: '1515.83',
-        priorReceipts: [],
-      });
-      const svc = buildService(local);
+      // Receipt numbering follows Bangkok, not the CI runner's local month.
+      jest.useFakeTimers({ now: new Date('2026-09-30T17:30:00Z') });
+      try {
+        const yyyymm = '202610';
+        const local = buildPrismaForGenerate({
+          lastReceiptNumber: `RT-${yyyymm}-00042`,
+          paymentStatus: 'PAID',
+          amountDue: '1515.83',
+          priorReceipts: [],
+        });
+        const svc = buildService(local);
 
-      await svc.generateReceipt('ct-1', 'pay-1', 'INSTALLMENT', 1515.83, 1, 'CASH', null, 'u-1');
+        await svc.generateReceipt('ct-1', 'pay-1', 'INSTALLMENT', 1515.83, 1, 'CASH', null, 'u-1');
 
-      const data = local.__created.mock.calls[0][0].data;
-      expect(data.receiptNumber).toBe(`RT-${yyyymm}-00043`);
+        const data = local.__created.mock.calls[0][0].data;
+        expect(data.receiptNumber).toBe(`RT-${yyyymm}-00043`);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('partial payment: paymentStatus=PARTIAL, installmentPartialSeq counts prior receipts +1, remainingAmount = due - cumulative', async () => {

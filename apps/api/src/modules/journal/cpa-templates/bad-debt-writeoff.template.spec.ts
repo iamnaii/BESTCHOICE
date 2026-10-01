@@ -445,4 +445,110 @@ describe('BadDebtWriteOffTemplate', () => {
     expect((je!.metadata as any).creditNoteIssued).toBe(true);
     expect((je!.metadata as any).creditNoteVatAmount).toBe('232.09');
   });
+
+  /**
+   * PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6 (29/09/2569) ทางเลือก (1) "หักทุกประเภท ทั้งสองกรณี": เงินของลูกค้าที่สัญญา
+   * ยังถือไว้ (21-1103 ทุกถัง + 21-5101) หักลูกหนี้ก่อนคำนวณหนี้สูญ ตามยอดในบัญชี. สัญญา 1A อย่างเดียว (ไม่มี 2A)
+   * — หนี้สูญก่อนหัก = 18,190.00 (ดู golden "all-deferred" ข้างบน)
+   */
+  describe('PR6 — หักเงินของลูกค้าที่ค้างก่อนคำนวณหนี้สูญ', () => {
+    /** เงินของลูกค้าเข้าบัญชีของสัญญา (Dr เงินสด / Cr <บัญชี>) — รายการจำลองแบบเดียวกับ seedParkCredit ของ JP5 */
+    async function seedCustomerMoney(
+      contractId: string,
+      accountCode: '21-1103' | '21-5101',
+      amount: Decimal,
+    ): Promise<void> {
+      await journal.createAndPost({
+        description: `เงินของลูกค้า ${accountCode} (spec PR6)`,
+        reference: `${contractId}:pr6-${accountCode}`,
+        metadata: { tag: 'spec', flow: 'pr6-customer-money', contractId },
+        lines: [
+          { accountCode: '11-1101', dr: amount, cr: new Decimal(0), description: 'รับเงิน' },
+          { accountCode, dr: new Decimal(0), cr: amount, description: 'เงินของลูกค้า' },
+        ],
+      });
+    }
+
+    async function writeOffLines(contractId: string) {
+      const je = await prisma.journalEntry.findFirstOrThrow({
+        where: {
+          AND: [
+            { metadata: { path: ['flow'], equals: 'write-off' } } as never,
+            { metadata: { path: ['contractId'], equals: contractId } } as never,
+          ],
+        },
+        include: { lines: true },
+      });
+      const lines = je.lines.map((l) => ({
+        code: l.accountCode,
+        dr: new Decimal(l.debit.toString()),
+        cr: new Decimal(l.credit.toString()),
+      }));
+      return { metadata: je.metadata as Record<string, unknown>, lines };
+    }
+
+    async function glBalance(contractId: string, accountCode: string): Promise<string> {
+      const rows = await prisma.journalLine.findMany({
+        where: {
+          accountCode,
+          journalEntry: {
+            metadata: { path: ['contractId'], equals: contractId } as never,
+            status: 'POSTED',
+            deletedAt: null,
+          },
+        },
+        select: { debit: true, credit: true },
+      });
+      return rows
+        .reduce((s, l) => s.plus(l.credit.toString()).minus(l.debit.toString()), new Decimal(0))
+        .toFixed(2);
+    }
+
+    it('เงินพักค่าปรับดิว 1,419.00 (21-1103) → Dr 21-1103 1,419.00 · หนี้สูญ 18,190.00 − 1,419.00 = 16,771.00 · 21-1103 ของสัญญาเหลือ 0', async () => {
+      const c = await seedStandard17k12m(prisma);
+      await new ContractActivation1ATemplate(journal, prisma as never).execute(c.id);
+      await prisma.contract.update({
+        where: { id: c.id },
+        data: { rescheduleAdvanceBalance: new Decimal('1419.00') },
+      });
+      await seedCustomerMoney(c.id, '21-1103', new Decimal('1419.00'));
+
+      const result = await new BadDebtWriteOffTemplate(journal, prisma as never).execute({
+        contractId: c.id,
+      });
+
+      const { metadata, lines } = await writeOffLines(c.id);
+      expect(lines.find((l) => l.code === '21-1103')!.dr.toFixed(2)).toBe('1419.00');
+      expect(lines.find((l) => l.code === '51-1102')!.dr.toFixed(2)).toBe('16771.00');
+      const dr = lines.reduce((s, l) => s.plus(l.dr), new Decimal(0));
+      const cr = lines.reduce((s, l) => s.plus(l.cr), new Decimal(0));
+      expect(dr.toFixed(2)).toBe(cr.toFixed(2));
+      expect(metadata.advanceRelief).toBe('1419.00');
+      expect(metadata.writeOffExpense).toBe('16771.00');
+      expect(result.advanceRelief.toFixed(2)).toBe('1419.00');
+      expect(await glBalance(c.id, '21-1103')).toBe('0.00');
+    });
+
+    it('เงินรับล่วงหน้าถังรวม 500.00 + เงินเกินของลูกค้า 300.00 → หักทั้งสอง · หนี้สูญ 17,390.00 · 21-1103 / 21-5101 ของสัญญาเหลือ 0', async () => {
+      const c = await seedStandard17k12m(prisma);
+      await new ContractActivation1ATemplate(journal, prisma as never).execute(c.id);
+      await prisma.contract.update({
+        where: { id: c.id },
+        data: { advanceBalance: new Decimal('500.00'), creditBalance: new Decimal('300.00') },
+      });
+      await seedCustomerMoney(c.id, '21-1103', new Decimal('500.00'));
+      await seedCustomerMoney(c.id, '21-5101', new Decimal('300.00'));
+
+      await new BadDebtWriteOffTemplate(journal, prisma as never).execute({ contractId: c.id });
+
+      const { metadata, lines } = await writeOffLines(c.id);
+      expect(lines.find((l) => l.code === '21-1103')!.dr.toFixed(2)).toBe('500.00');
+      expect(lines.find((l) => l.code === '21-5101')!.dr.toFixed(2)).toBe('300.00');
+      expect(lines.find((l) => l.code === '51-1102')!.dr.toFixed(2)).toBe('17390.00');
+      expect(metadata.advanceRelief).toBe('500.00');
+      expect(metadata.creditRelief).toBe('300.00');
+      expect(await glBalance(c.id, '21-1103')).toBe('0.00');
+      expect(await glBalance(c.id, '21-5101')).toBe('0.00');
+    });
+  });
 });

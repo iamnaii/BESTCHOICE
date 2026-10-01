@@ -1,0 +1,183 @@
+/* Screen UI only. Keep the global font/size tokens and all paper CSS intact.
+ * Disable these rules for the whole screen when a document is present: merely
+ * excluding its descendants would still allow typography to inherit into paper.
+ * Portals (dialogs, sheets, menus and Sonner) share this guard with the app shell.
+ */
+@media screen {
+  body:has(.app-shell):not(:has(
+    .voucher-sheet,
+    .document-sheet,
+    .bc-document,
+    .document-landscape,
+    .document-print-dialog,
+    .template-paper,
+    .font-sarabun,
+    .mobile-receipt,
+    .sticker,
+    .print-stickers,
+    .tiptap,
+    iframe
+  )) {
+    /* One UI font stack for text, amounts, identifiers and keyboard hints.
+     * Do not change --font-mono globally: stickers and paper still use it.
+     */
+    & :is(.font-mono, pre, code, kbd, samp) {
+      font-family: var(--font-sans);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Secondary labels and counters must remain legible at compact density. */
+    & :is(.text-2xs, .text-\[7px\], .text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\], .text-\[11px\], .text-\[11\.5px\], .text-\[0\.6875rem\]) {
+      font-size: 0.75rem;
+      line-height: 1.5;
+    }
+
+    & :is(.text-xs, .text-2sm, .text-sm, .text-\[12px\], .text-\[13px\], .text-\[14px\]) {
+      line-height: 1.5;
+    }
+
+    /* Normal controls are 14px; retain small badge/secondary-text variants. */
+    & :is(button, [role='button'], [role='combobox']):is(.text-2sm, .text-\[13px\], .text-\[0\.8125rem\]) {
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+
+    & :is(input, textarea, select):is(.text-xs, .text-2sm, .text-sm, .text-\[12px\], .text-\[13px\], .text-\[0\.8125rem\]):not(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl, .text-\[18px\], .text-\[20px\], .text-\[24px\]) {
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+
+    & #main h1 {
+      font-size: 1.5rem;
+      line-height: 1.5;
+      font-weight: 600;
+    }
+
+    /* Numeric columns keep the existing alignment and font family. */
+    & :is(td, th).text-right,
+    & [data-testid='data-table'] .text-right {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Keep status pills and amount/currency pairs whole on narrow laptops.
+     * The existing table scroller handles widths below the content minimum.
+     * Screen-only so printed reports retain their original cell spacing.
+     */
+    & .finance-portfolio-table :is(th, td) {
+      padding-inline: 0.75rem;
+    }
+
+    & .finance-portfolio-table :is(th, td):nth-child(n + 4) {
+      white-space: nowrap;
+    }
+
+    /* Opt in short, finite status labels; arbitrary tags may still wrap. */
+    & .admin-status-badge {
+      display: inline-flex;
+      align-items: center;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* Size cards by usable content width, including an expanded sidebar.
+     * Give the amount its own row so the icon cannot squeeze the currency.
+     */
+    & .finance-portfolio-summary {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+    }
+
+    & .finance-summary-content {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+    }
+
+    & .finance-summary-content > .min-w-0 {
+      display: contents;
+    }
+
+    & .finance-summary-content p:first-child {
+      white-space: normal;
+      overflow: visible;
+    }
+
+    & .finance-summary-content p:last-child {
+      grid-row: 2;
+      grid-column: 1 / -1;
+      margin-top: 0;
+      overflow-wrap: anywhere;
+    }
+
+    & .finance-summary-content > :last-child {
+      grid-row: 1;
+      grid-column: 2;
+    }
+
+    /* Opt-in finance summaries: use available width, not viewport columns.
+     * Keep money complete; extreme values can scroll within their own line.
+     * These hooks are inert in print and protected document screens.
+     */
+    & .finance-card-grid {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+      align-items: stretch;
+    }
+
+    & .finance-card-grid-compact {
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+    }
+
+    & .finance-card-grid > * {
+      container-type: inline-size;
+    }
+
+    & .finance-card-grid > *,
+    & .finance-card-grid [data-slot='card-content'] {
+      min-width: 0;
+    }
+
+    & .finance-summary-tabs {
+      overflow-x: auto;
+    }
+
+    & .finance-summary-tabs > button {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    & .finance-card-grid :is(.text-lg, .text-xl, .text-2xl):is(.font-bold, .font-semibold),
+    & .finance-card-value {
+      min-width: 0;
+      max-width: 100%;
+      white-space: nowrap;
+      overflow-x: auto;
+      text-overflow: clip;
+      font-size: clamp(1.125rem, 8cqi, 1.375rem);
+      line-height: 1.4;
+      font-variant-numeric: tabular-nums;
+    }
+
+    & .finance-closing-summary {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    & [data-sonner-toast] {
+      font-family: var(--font-sans);
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 1023px) {
+      & #main h1 {
+        font-size: 1.375rem;
+      }
+
+      /* iOS keeps the viewport steady when focusing a 16px text control. */
+      & :is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='hidden']), textarea, select, [data-slot='select-trigger']):not(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl, .text-\[18px\], .text-\[20px\], .text-\[24px\]) {
+        font-size: 1rem;
+        line-height: 1.5;
+        min-height: 2.5rem;
+      }
+    }
+  }
+}

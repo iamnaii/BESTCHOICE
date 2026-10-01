@@ -34,6 +34,15 @@ import { EarlyPayoffDto } from './dto/contract.dto';
  *                 JE พอดี · ก่อนหน้านั้นถังพักลดฐานกำไรแต่ applied แค่ 188.58
  *                 เหลือเศษ 165.42 ค้างถาวร — ทั้งสองสูตรถูกแทนที่แล้ว
  */
+// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
+// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
+const notAccrued = {
+  accrualJournalEntryId: null,
+  accruedAmount: '0',
+  accruedVat: '0',
+  accruedInterest: '0',
+};
+
 describe('ContractPaymentService.earlyPayoff — ถังพักงวดสุดท้าย (Dr 21-1103, finding C-3)', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
 
@@ -168,7 +177,9 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
       installmentSchedule: {
         findMany: jest
           .fn()
-          .mockResolvedValue(Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }))),
+          .mockResolvedValue(
+            Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1, ...notAccrued })),
+          ),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
       companyInfo: {

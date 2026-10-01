@@ -47,7 +47,7 @@ export function UnitPicker({
                   : 'border-border hover:border-foreground/40',
               )}
             >
-              <span className="text-[13px] font-medium text-foreground">{unitLabel(u, isNew)}</span>
+              <span className="text-sm font-medium text-foreground">{unitLabel(u, isNew)}</span>
               <span className="num text-sm text-emerald-600 font-semibold">
                 {u.cashPrice > 0 ? `฿${u.cashPrice.toLocaleString()}` : 'สอบถามราคา'}
               </span>

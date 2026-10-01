@@ -7,7 +7,7 @@ import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
 
 /**
  * Characterization (golden) test for ContractPaymentService EARLY-PAYOFF *money*
- * branches that the pure computeEarlyPayoffJE golden does NOT exercise — i.e.
+ * branches that the pure buildEarlyPayoffJE golden does NOT exercise — i.e.
  * the SERVICE-layer arithmetic in getEarlyPayoffQuote (lines 104-150, 209-221)
  * and the earlyPayoff FIFO distribution loop (lines 286-312).
  *
@@ -41,14 +41,6 @@ import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
  * PR5: รายการ JP4 อ่านยอดในบัญชีของสัญญา (`journalLine.findMany` ผ่าน `glContractBalance`) — fixture ให้ยอดตามที่
  * แต่ละเทสต้องใช้ (`ledgerLines`) · บัญชีที่ไม่ระบุ = 0.
  */
-// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
-// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
-const notAccrued = {
-  accrualJournalEntryId: null,
-  accruedAmount: '0',
-  accruedVat: '0',
-  accruedInterest: '0',
-};
 
 describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
@@ -59,7 +51,6 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
   describe('getEarlyPayoffQuote — loss / late-fees / advance', () => {
     const installmentSchedules = Array.from({ length: 12 }, (_, i) => ({
       installmentNo: i + 1,
-      ...notAccrued,
     }));
 
     const buildQuoteService = (
@@ -404,7 +395,6 @@ describe('ContractPaymentService early-payoff money branches (Wave 3 gap-fill)',
 
     const installmentSchedules = Array.from({ length: 12 }, (_, i) => ({
       installmentNo: i + 1,
-      ...notAccrued,
     }));
 
     // PR5: ยอดในบัญชีหลัง 6 งวดที่ตั้งลูกหนี้งวด + รับเงินครบ (ตัวเดียวกับ exec spec)

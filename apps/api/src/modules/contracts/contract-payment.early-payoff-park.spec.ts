@@ -34,14 +34,6 @@ import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
  *                 ประวัติ: ก่อน PR5 เงินสดในรายการคิดจากงวด (11,106 − 354 = 10,752.00 ≠ เงินที่รับ — ACCOUNTANT
  *                 NOTE Wave-1 #11) · 2026-08-26 ผู้สอบให้หักหลังส่วนลด · ก่อนหน้านั้น applied แค่ 188.58
  */
-// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
-// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
-const notAccrued = {
-  accrualJournalEntryId: null,
-  accruedAmount: '0',
-  accruedVat: '0',
-  accruedInterest: '0',
-};
 
 describe('ContractPaymentService.earlyPayoff — ถังพักงวดสุดท้าย (Dr 21-1103, finding C-3)', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
@@ -174,9 +166,7 @@ describe('ContractPaymentService.earlyPayoff — ถังพักงวดส�
       installmentSchedule: {
         findMany: jest
           .fn()
-          .mockResolvedValue(
-            Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1, ...notAccrued })),
-          ),
+          .mockResolvedValue(Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }))),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
       // preview (getEarlyPayoffQuote) อ่านยอดในบัญชีชุดเดียวกับที่ลงจริง

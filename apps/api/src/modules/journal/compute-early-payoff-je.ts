@@ -1,131 +1,27 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
-import { computeInstallmentBreakdown } from './compute-installment-breakdown';
-import {
-  AccruedColumns,
-  AccruedSoFar,
-  NOTHING_ACCRUED,
-  accruedSoFarOf,
-} from './build-accrual-2a-lines';
 import { ContractAdvanceColumns, readContractCloseAdvances } from './contract-close-advances';
 import type { DeferredWarning } from './deferred-warning';
 import { glContractBalance } from './gl-contract-balance';
 
 /**
- * Single source of truth for the Early-Payoff (JP4) journal-entry money math.
+ * Early-Payoff (JP4) journal entry — ล้างตามยอดในบัญชีของสัญญา (PR5 · คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4, 29/09/2569).
  *
- * Previously this computation was re-implemented in three places that could
- * silently drift apart (preview showing one number, ledger posting another):
- *   A) EarlyPayoffJP4Template.execute()             — the JP4 posting template
- *   B) ContractPaymentService.getEarlyPayoffQuote() — the UI/LIFF JE preview
- *   C) ContractPaymentService.earlyPayoff()         — the inline ledger posting
+ * แหล่งเดียวของรายการ JP4 ที่ทุกผู้เรียกใช้ร่วมกัน (preview === posted ตามการสร้าง):
+ *   A) ContractPaymentService.getEarlyPayoffQuote() — preview ที่ UI/LIFF/คำขออนุมัติเห็น (`buildEarlyPayoffJournal`)
+ *   B) ContractPaymentService.earlyPayoff()         — รายการที่ลงจริง (`buildEarlyPayoffJournal` ตัวเดียวกัน)
+ *   C) EarlyPayoffJP4Template.execute()             — template ที่ไม่มีผู้เรียกใน production (`buildEarlyPayoffJE`)
  *
- * All three now call this pure function, so `preview === posted` follows from
- * construction ONLY when every caller passes the same `accruedUnpaid` (PR2ข) —
- * it is not automatic from calling the shared function alone: a caller that
- * omits it (or recomputes it differently) would silently reintroduce the drift
- * this function exists to prevent. `ContractPaymentService.earlyPayoff()` closes
- * this by reusing `quote.accruedUnpaid` from the SAME quote the UI/LIFF preview
- * built, rather than recomputing `sumAccruedUnpaid` a second time — pinned by
- * tests G10/G10b in `payments/services/accrue-at-receipt.integration.spec.ts`
- * ("ปิดยอดก่อนกำหนด (JP4) …" — asserts `quote.journalPreview.lines === jp4.lines`).
- * Verified against the CPA golden fixtures
- * (apps/api/.../fixtures/cpa-cases/case-4-early-payoff.csv) — see the golden
- * spec compute-early-payoff-je.spec.ts and the DB-backed template golden
- * early-payoff-jp4.template.spec.ts.
+ * ก่อน PR5 รายการนับ "งวดที่ยังไม่ PAID × ยอดต่องวด" (computeEarlyPayoffJE — ลบแล้ว): เงินสดในรายการไม่เท่าเงินที่รับ
+ * (ACCOUNTANT NOTE Wave-1 #11), งวดที่ตั้งลูกหนี้แล้วถูกรับรู้ดอกเบี้ย/ภาษีขายซ้ำและ 11-2103 ไม่ถูกล้าง, เศษงวดสุดท้ายค้าง ·
+ * PR2ข หักยอดที่ตั้งไปแล้วบางส่วน (`accruedUnpaid`) แทน — ไม่จำเป็นอีกเพราะยอดในบัญชีสะท้อนทุกการตั้งลูกหนี้งวดแล้ว.
  *
- * Rounding (.claude/rules/accounting.md — MUST match CPA CSV golden values):
- *   grossExclVat / totalMonths → ROUND_DOWN
- *   interest    / totalMonths → ROUND_HALF_UP
- *   vat         / totalMonths → ROUND_HALF_UP
- *   per-installment total      = sum of the above
- *
- * Policy A (CPA decision · 2026-05-09): VAT ไม่ลดตามส่วนลดดอกเบี้ย —
- *   Cr 21-2101 (VAT ภ.พ.30) = remainingDeferredVat เต็มยอด (settleVat).
- *   ไม่ออกใบลดหนี้ (Credit Note); บริษัทรับภาระ VAT ส่วนเกินจากส่วนลดเอง.
- *   Ref: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
+ * Policy A (CPA decision · 2026-05-09): VAT ไม่ลดตามส่วนลด — Cr 21-2101 = ภาษีขายรอเรียกเก็บคงเหลือเต็มจำนวน ·
+ * ไม่ออกใบลดหนี้ (Credit Note); บริษัทรับภาระ VAT ส่วนเกินจากส่วนลดเอง.
+ * Ref: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
  */
 
 type DecimalInput = Decimal | string | number;
-
-export interface ComputeEarlyPayoffJeInput {
-  /** Cash/bank account the customer pays into (Dr leg). */
-  depositAccountCode: string;
-  /** ยอดจัด (FINANCE principal base). */
-  financedAmount: DecimalInput;
-  /** Store commission. null → financedAmount × 10% (ROUND to 2dp). */
-  storeCommission: DecimalInput | null;
-  /** Total deferred interest over the whole contract. */
-  interestTotal: DecimalInput;
-  /** Total VAT over the whole contract. null → grossExclVat × 7% (ROUND to 2dp). */
-  vatAmount: DecimalInput | null;
-  /** Number of installments in the contract. */
-  totalMonths: number;
-  /** Number of unpaid installments being closed out. */
-  unpaidCount: number;
-  /** Interest discount as a PERCENTAGE 0..100 (e.g. 50 for 50%). */
-  interestDiscountPercent: DecimalInput;
-  /**
-   * ค่าปรับค้างชำระที่เก็บพร้อมยอดปิด — ต้องเป็นยอด "NETTED" แล้ว: หัก waived
-   * และหัก Cr 42-1103 ที่เคยลงผ่านใบเสร็จ partial (FEE-FIRST) ไปแล้ว
-   * (caller ใช้ ContractPaymentService.computeUnbookedLateFees ซึ่ง reconstruct
-   * จาก JE เดิม — ส่งค่าดิบจาก Payment.lateFee ตรงๆ จะ double-book รายได้).
-   * นโยบายเดียวกับใบเสร็จงวดปกติ (2B): ไม่มี VAT + ไม่ร่วมส่วนลด — Dr เงินสด
-   * เพิ่มทั้งก้อน / Cr 42-1103 ทั้งก้อน. Omitted/null → 0 (CPA case-4 เดิม).
-   */
-  unpaidLateFees?: DecimalInput | null;
-  /**
-   * ยอดปลดหนี้ถังพักงวดสุดท้าย (`Contract.rescheduleAdvanceBalance`, GL 21-1103)
-   * — ค่าธรรมเนียมปรับดิว (6a/6b) ที่ลูกค้า "จ่ายไปแล้ว" และยอดปิดสัญญาหักออก
-   * ให้แล้ว (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3).
-   *
-   * ต้องเป็นยอดที่ยอดปิดสัญญา **ดูดซับจริง** — caller ใช้
-   * `computePayoffQuote(...).rescheduleAdvanceApplied` (clamp ด้วยยอดในถังจริง
-   * ณ เวลาลงบัญชี) ส่งค่าถังเต็มจำนวนมาตรงๆ จะปลดหนี้เกินกว่าที่ลูกค้าได้ลด.
-   *
-   * ผลต่อ JE: `Dr เงินสด = totalCash − parkRelief` + `Dr 21-1103 = parkRelief`
-   * — ยอด Dr รวมเท่าเดิม ทุกขา Cr เหมือนเดิมทุกบาท JE จึงยัง balanced เสมอ.
-   * Omitted/null/0 → ไม่มีบรรทัด 21-1103 เลย (golden เดิมไม่ขยับแม้แต่ไบต์เดียว).
-   */
-  parkRelief?: DecimalInput | null;
-  /**
-   * ยอดที่ตั้งลูกหนี้งวด (2A) ไปแล้วของงวดที่ยังไม่ชำระ **และยังตั้งไม่ครบ** (accrualJournalEntryId ว่าง —
-   * ใบรับชำระบางส่วนก่อนวันครบกำหนดตั้งไว้ตามคำตอบฝ่ายบัญชี ก1) = Σ accruedAmount / accruedVat /
-   * accruedInterest ของงวดเหล่านั้น (caller ใช้ sumAccruedUnpaid). ส่วนนั้นถูกล้างจาก 11-2101 / 11-2105 /
-   * 21-2102 / 11-2106 และรับรู้เป็น 41-1101 / 21-2101 ไปแล้ว — JP4 จึงล้างเฉพาะส่วนที่เหลือ ไม่งั้นรับรู้ซ้ำ.
-   * งวดที่ตั้งครบแล้วแต่ยังไม่ชำระ (ลิงก์มีค่า) ไม่อยู่ในยอดนี้ — ปัญหานับงวดของกรณีนั้นเป็นงานของ PR5.
-   * Omitted/null → 0 (golden เดิมไม่ขยับแม้แต่ไบต์เดียว).
-   */
-  accruedUnpaid?: { amount: DecimalInput; vat: DecimalInput; interest: DecimalInput } | null;
-}
-
-/**
- * Σ ยอดที่ตั้งลูกหนี้งวดไปแล้วของงวดที่ยังไม่ชำระและยังตั้งไม่ครบ — ส่งเป็น `accruedUnpaid`.
- * `unpaidRows` = แถวตารางงวดของงวดที่ยังไม่ชำระ; แถวที่มีลิงก์ (ตั้งครบแล้ว) ถูกข้าม.
- * ทุกช่องบังคับ (คำตัดสินผู้คุมงาน 2026-09-30): ลิงก์ที่ไม่ได้เลือกมาจะทำให้งวดที่ตั้งครบแล้วถูกนับซ้ำ และคอลัมน์
- * ที่ไม่ได้เลือกมาจะถูกอ่านเป็น "ยังไม่เคยตั้ง" — ทั้งสองกรณี throw แทนการเดา.
- */
-export function sumAccruedUnpaid(
-  unpaidRows: ReadonlyArray<AccruedColumns & { accrualJournalEntryId: string | null }>,
-): AccruedSoFar {
-  let sum: AccruedSoFar = NOTHING_ACCRUED;
-  for (const row of unpaidRows) {
-    if (row.accrualJournalEntryId === undefined) {
-      throw new Error(
-        'sumAccruedUnpaid: accrualJournalEntryId is missing — select it together with ' +
-          'accruedAmount, accruedVat and accruedInterest',
-      );
-    }
-    if (row.accrualJournalEntryId) continue; // ตั้งครบแล้ว — นับตามงวดแบบเดิม (งานของ PR5)
-    const accrued = accruedSoFarOf(row);
-    sum = {
-      amount: sum.amount.plus(accrued.amount),
-      vat: sum.vat.plus(accrued.vat),
-      interest: sum.interest.plus(accrued.interest),
-    };
-  }
-  return sum;
-}
 
 /** One canonical JE line — money only (accountCode + dr + cr). Descriptions are
  * the caller's concern (UI preview vs ledger posting word them differently). */
@@ -133,133 +29,6 @@ export interface EarlyPayoffJeLine {
   accountCode: string;
   dr: Decimal;
   cr: Decimal;
-}
-
-export interface ComputeEarlyPayoffJeResult {
-  /** The canonical JE lines (52-1106 omitted when discount = 0). */
-  lines: EarlyPayoffJeLine[];
-  // Derived per-installment values (consistent with templates 2A/2B).
-  installmentExclVat: Decimal;
-  interestPerInst: Decimal;
-  vatPerInst: Decimal;
-  // Remaining balances for the unpaid installments.
-  remainingGross: Decimal;
-  remainingDeferredInterest: Decimal;
-  remainingDeferredVat: Decimal;
-  /** Interest discount (remainingDeferredInterest × pct / 100, ROUND to 2dp). */
-  discount: Decimal;
-  /** Policy A: settleVat = remainingDeferredVat (VAT not reduced by discount). */
-  settleVat: Decimal;
-  /** Interest/VAT settlement = remainingGross − discount + settleVat (excl. late fees). */
-  settlement: Decimal;
-  /** ค่าปรับค้างชำระที่เก็บพร้อมปิดยอด (0 เมื่อไม่มี). */
-  lateFees: Decimal;
-  /** ยอดปิดรวมก่อนหักถังพัก = settlement + lateFees. */
-  totalCash: Decimal;
-  /** ยอดปลดหนี้ถังพักที่ใช้จริง (clamp แล้วด้วย totalCash) — 0 เมื่อไม่มี. */
-  parkRelief: Decimal;
-  /** เงินสดที่ลูกค้าจ่ายจริง = totalCash − parkRelief — ตรงกับ Dr เงินสด/ธนาคาร. */
-  cashReceived: Decimal;
-}
-
-export function computeEarlyPayoffJE(
-  input: ComputeEarlyPayoffJeInput,
-): ComputeEarlyPayoffJeResult {
-  const unpaidD = new Decimal(input.unpaidCount);
-
-  // Per-installment amounts — shared single source of truth (same rounding the
-  // 2A accrual / 2B receipt templates use).
-  const { installmentExclVat, interestPerInst, vatPerInst } = computeInstallmentBreakdown({
-    financedAmount: input.financedAmount,
-    storeCommission: input.storeCommission,
-    interestTotal: input.interestTotal,
-    vatAmount: input.vatAmount,
-    totalMonths: input.totalMonths,
-  });
-
-  // Remaining balances for the unpaid installments — minus what partial 2As already settled
-  // (accruedUnpaid: ex-VAT = amount − vat, VAT, interest).
-  const accrued = {
-    amount: new Decimal(input.accruedUnpaid?.amount ?? 0),
-    vat: new Decimal(input.accruedUnpaid?.vat ?? 0),
-    interest: new Decimal(input.accruedUnpaid?.interest ?? 0),
-  };
-  const remainingGross = installmentExclVat.times(unpaidD).minus(accrued.amount.minus(accrued.vat));
-  const remainingDeferredInterest = interestPerInst.times(unpaidD).minus(accrued.interest);
-  const remainingDeferredVat = vatPerInst.times(unpaidD).minus(accrued.vat);
-
-  // Discount on interest only (percentage 0..100 → divide by 100).
-  const discount = remainingDeferredInterest
-    .times(new Decimal(input.interestDiscountPercent))
-    .div(100)
-    .toDecimalPlaces(2);
-
-  // Policy A — VAT ไม่ลดตามส่วนลด (full deferred VAT settles).
-  const settleVat = remainingDeferredVat;
-
-  // Settlement the customer pays (reduced by discount only — VAT full).
-  const settlement = remainingGross.minus(discount).plus(settleVat);
-
-  // ค่าปรับค้างชำระ — เก็บเต็มพร้อมยอดปิด (ไม่มี VAT, ไม่ร่วมส่วนลด — นโยบาย
-  // เดียวกับ 2B receipt ที่ Cr 42-1103 ทั้งก้อน). Dr เงินสดต้องเท่าเงินรับจริง.
-  const lateFees = new Decimal(input.unpaidLateFees ?? 0);
-  const totalCash = settlement.plus(lateFees);
-
-  const zero = new Decimal(0);
-
-  // ถังพักงวดสุดท้าย (21-1103) — ลูกค้าจ่ายเงินก้อนนี้ไปแล้ว ยอดปิดสัญญาจึงหัก
-  // ให้แล้ว: ขาเงินสดต้องลดลงเท่ากัน ไม่งั้น "Dr เงินสด" > เงินรับจริง (บั๊ก C-3).
-  // clamp ที่ totalCash — ขาเงินสดห้ามติดลบ (ส่วนเกินคงค้างใน 21-1103 ต่อไป).
-  const parkRelief = Decimal.max(0, Decimal.min(new Decimal(input.parkRelief ?? 0), totalCash));
-  const cashReceived = totalCash.minus(parkRelief);
-
-  const lines: EarlyPayoffJeLine[] = [
-    { accountCode: input.depositAccountCode, dr: cashReceived, cr: zero },
-    { accountCode: '11-2106', dr: remainingDeferredInterest, cr: zero },
-    { accountCode: '21-2102', dr: remainingDeferredVat, cr: zero },
-  ];
-
-  // Guard: only emit the discount line when there is a discount (canonical —
-  // matches the golden template + preview; a 0.00 line is a no-op).
-  if (discount.gt(0)) {
-    lines.push({ accountCode: '52-1106', dr: discount, cr: zero });
-  }
-
-  // Guard (same idiom): only emit the park-relief leg when there IS park to
-  // relieve — a 0.00 line would change every pre-existing golden for nothing.
-  if (parkRelief.gt(0)) {
-    lines.push({ accountCode: '21-1103', dr: parkRelief, cr: zero });
-  }
-
-  lines.push(
-    { accountCode: '11-2101', dr: zero, cr: remainingGross },
-    { accountCode: '11-2105', dr: zero, cr: remainingDeferredVat },
-    { accountCode: '41-1101', dr: zero, cr: remainingDeferredInterest },
-    { accountCode: '21-2101', dr: zero, cr: settleVat },
-  );
-
-  // Guard: emit the late-fee income line only when fees exist — keeps the
-  // CPA case-4 golden (no fees) byte-for-byte unchanged.
-  if (lateFees.gt(0)) {
-    lines.push({ accountCode: '42-1103', dr: zero, cr: lateFees });
-  }
-
-  return {
-    lines,
-    installmentExclVat,
-    interestPerInst,
-    vatPerInst,
-    remainingGross,
-    remainingDeferredInterest,
-    remainingDeferredVat,
-    discount,
-    settleVat,
-    settlement,
-    lateFees,
-    totalCash,
-    parkRelief,
-    cashReceived,
-  };
 }
 
 // ─── PR5 — ปิดยอดก่อนกำหนดล้างตามยอดในบัญชี (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4 · 29/09/2569) ───────────────

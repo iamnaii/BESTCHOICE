@@ -14,14 +14,6 @@ import { RepossessionsService } from './repossessions.service';
  * การส่ง creditBalance/partial/ค่าปรับ) ไม่ให้ drift จากกันในอนาคต
  * แม้จะมีคนแก้ฝั่งใดฝั่งหนึ่งโดยไม่รู้ว่าอีกฝั่งต้องตรงกัน
  */
-// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
-// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
-const notAccrued = {
-  accrualJournalEntryId: null,
-  accruedAmount: '0',
-  accruedVat: '0',
-  accruedInterest: '0',
-};
 
 describe('Payoff parity: repossession closingAmount === early-payoff totalPayoff', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
@@ -103,9 +95,7 @@ describe('Payoff parity: repossession closingAmount === early-payoff totalPayoff
       installmentSchedule: {
         findMany: jest
           .fn()
-          .mockResolvedValue(
-            Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1, ...notAccrued })),
-          ),
+          .mockResolvedValue(Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }))),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
       // PR5: preview ของ JP4 อ่านยอดในบัญชี — สเปคนี้เทียบยอดปิดของสองเส้นทางเท่านั้น (ไม่ดูบรรทัดรายการ)

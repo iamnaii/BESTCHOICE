@@ -34,14 +34,6 @@ import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
  * ที่ตั้งลูกหนี้งวด + รับเงินครบ = 11-2101 10,800.00 · 11-2105 756.00 · 11-2106 900.00 · 21-2102 756.00 · เงินสด =
  * ยอดที่ลูกค้าจ่าย · 52-1106 = ลูกหนี้ตามบัญชี − เงินสด (สัญญานี้ไม่มีเศษงวดสุดท้าย ⇒ เท่าส่วนลดของสูตรยอดปิดพอดี)
  */
-// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
-// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
-const notAccrued = {
-  accrualJournalEntryId: null,
-  accruedAmount: '0',
-  accruedVat: '0',
-  accruedInterest: '0',
-};
 const ledgerAfterSixPaid = {
   '11-2101': '10800.00',
   '11-2105': '756.00',
@@ -92,7 +84,6 @@ describe('ContractPaymentService.getEarlyPayoffQuote (early-payoff golden)', () 
   // installmentSchedule rows: 12 distinct installment numbers (1..12).
   const installmentSchedules = Array.from({ length: 12 }, (_, i) => ({
     installmentNo: i + 1,
-    ...notAccrued,
   }));
 
   let prisma: {

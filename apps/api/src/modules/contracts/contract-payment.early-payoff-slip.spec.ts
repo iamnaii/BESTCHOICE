@@ -10,14 +10,6 @@ import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
  * (3) เขียน PaymentEvidence + AuditLog EARLY_PAYOFF_SLIP_MATCHED. fixture เดียวกับ early-payoff-park.spec
  * (ยอดปิดไม่มีถังพัก = 11,106.00)
  */
-// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
-// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
-const notAccrued = {
-  accrualJournalEntryId: null,
-  accruedAmount: '0',
-  accruedVat: '0',
-  accruedInterest: '0',
-};
 
 describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่านคิวอนุมัติ)', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
@@ -169,9 +161,7 @@ describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่า�
       installmentSchedule: {
         findMany: jest
           .fn()
-          .mockResolvedValue(
-            Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1, ...notAccrued })),
-          ),
+          .mockResolvedValue(Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }))),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
     };
@@ -181,9 +171,7 @@ describe('ContractPaymentService.earlyPayoff — slipMatch (ไม่ผ่า�
       installmentSchedule: {
         findMany: jest
           .fn()
-          .mockResolvedValue(
-            Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1, ...notAccrued })),
-          ),
+          .mockResolvedValue(Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }))),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
       // preview นอก tx (ยอดปิดก่อนเปิดธุรกรรม) อ่านยอดในบัญชีชุดเดียวกัน

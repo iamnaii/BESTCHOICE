@@ -39,14 +39,6 @@ const LEDGER_AFTER_NIGHTLY_2A = {
   '11-2106': '750.00',
   '21-2102': '630.00',
 };
-// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
-// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
-const notAccrued = {
-  accrualJournalEntryId: null,
-  accruedAmount: '0',
-  accruedVat: '0',
-  accruedInterest: '0',
-};
 
 describe('ContractPaymentService — ปิดยอดก่อนกำหนดตามยอดในบัญชี (PR5)', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
@@ -103,10 +95,7 @@ describe('ContractPaymentService — ปิดยอดก่อนกำหน�
     const contract = makeContract(opts.creditBalance ?? '0');
     const ledger = ledgerLines(opts.ledger ?? LEDGER_AFTER_SIX_PAID);
     const txLedger = ledgerLines(opts.txLedger ?? opts.ledger ?? LEDGER_AFTER_SIX_PAID);
-    const schedules = Array.from({ length: 12 }, (_, i) => ({
-      installmentNo: i + 1,
-      ...notAccrued,
-    }));
+    const schedules = Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }));
     const contractUpdates: Array<Record<string, unknown>> = [];
     const auditRows: Array<Record<string, unknown>> = [];
     const events: string[] = [];

@@ -293,7 +293,7 @@ export class ContractPaymentService {
     const nameOf = (code: string) => epNameMap.get(code) ?? code;
 
     // Per-line UI descriptions (human-facing). Only the money — accountCode +
-    // debit + credit, shared via computeEarlyPayoffJE — must match the posting;
+    // debit + credit, shared via buildEarlyPayoffJournal — must match the posting;
     // the ledger words its descriptions differently and that's intentional.
     // บรรทัดที่ PR5 เพิ่ม (11-2103 · 21-5101 · 53-1503) ไม่มีคำอธิบาย — การ์ดแสดงชื่อบัญชีจากผังบัญชี
     const epDescriptions: Record<string, string> = {
@@ -557,7 +557,7 @@ export class ContractPaymentService {
           epWarnings = epJe.warnings;
 
           // Ledger-side line descriptions (the preview words them differently —
-          // only the money, shared via computeEarlyPayoffJE, must match).
+          // only the money, shared via buildEarlyPayoffJournal, must match).
           const epDescriptions: Record<string, string> = {
             [effectiveDepositCode]: dto.collectedByShop
               ? `หน้าร้านรับ ${epJe.cashReceived.toFixed(2)} ฿ ปิดยอด (ลูกหนี้-หน้าร้าน)`

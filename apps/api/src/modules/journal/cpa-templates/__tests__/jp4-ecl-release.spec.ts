@@ -133,7 +133,7 @@ function buildService(journal: JournalAutoService): ContractPaymentService {
   const vat60Reversal = new Vat60dayReversalTemplate(journal, prisma as any);
   // EarlyPayoffJP4Template is a required constructor dep but earlyPayoff()
   // never calls it directly (see contract-payment.service.ts comment ~line 378
-  // — it builds its own JE via computeEarlyPayoffJE to avoid double-creating
+  // — it builds its own JE via buildEarlyPayoffJournal to avoid double-creating
   // Payment rows). Mirrors shop-collect-*.integration.spec.ts's construction.
   const jp4 = new EarlyPayoffJP4Template(journal, prisma as any, vat60Reversal);
   const settlementTemplate = new ShopCollectSettlementTemplate(journal, prisma as any);

@@ -119,7 +119,7 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
 
   // (2b) ค่าปรับดิวที่พักไว้ — หักเต็มจำนวน clamp ไม่เกินยอดค้างที่เหลือหลังหัก
   // ยอดชำระล่วงหน้า (ยอดค้างชน 0 อยู่แล้ว ⇒ ถังพักดูดซับอะไรไม่ได้ · ส่วนเกิน
-  // คงค้างใน 21-1103 ต่อไป · JE clamp ด้วย totalCash อีกชั้น)
+  // คงค้างใน 21-1103 ต่อไป · JP4/JP5 หักเงินพักเท่าที่ยอดนี้ดูดซับ clamp ด้วยยอดในบัญชีอีกชั้น)
   const balanceBeforePark = dSub(totalRemaining, advancePayment);
   const rescheduleAdvanceApplied = Prisma.Decimal.max(
     0,

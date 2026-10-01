@@ -21,7 +21,9 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
   const db = prisma as unknown as PrismaService;
   const service = new CustomerJourneyService(db, new JourneySummaryService(db, new JourneyStateService(db)));
   const stamp = Date.now();
-  const phone = `08${String(stamp).slice(-8)}`;
+  // เบอร์ต้องไม่เป็นส่วนหนึ่งของ stamp (ชื่อกฎทวง/เลขสัญญาของสเปคมี stamp เต็ม) — '08' + 8 หลักท้าย = stamp ตั้งแต่หลักที่ 4 เมื่อ stamp เป็น ???08…
+  // (ราว 28 ชม. ทุก ~116 วัน เช่น 2026-10-01 03:26 – 2026-10-02 07:13 เวลาไทย) ⇒ เทส "เบอร์ไม่หลุด" ล้มเองทั้งที่ไม่มีอะไรรั่ว
+  const phone = `${String(stamp).slice(3, 5) === '08' ? '09' : '08'}${String(stamp).slice(-8)}`;
   const nationalId = `3${String(stamp).padStart(12, '0').slice(-12)}`;
   const address = 'บ้านเลขที่ 88/8 ซอยสเปคการเดินทาง';
   const ids = { staff: '', other: '', target: '', placeholder: '', deleted: '', open: '', assigned: '', buyer: '', branch: '', product: '', contract: '', rule: '' };

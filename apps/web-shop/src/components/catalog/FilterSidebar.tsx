@@ -69,10 +69,10 @@ function bandId(f: CatalogFilters): string {
 }
 
 const selectCls =
-  'w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-[13.5px] text-foreground leading-snug ' +
+  'w-full h-11 rounded-xl border-0 bg-muted px-3.5 text-base md:text-sm text-foreground leading-snug ' +
   'focus:outline-none focus:ring-2 focus:ring-emerald-500/50';
 
-const labelCls = 'block text-[13px] text-muted-foreground mb-2 leading-snug';
+const labelCls = 'block text-sm text-muted-foreground mb-2 leading-snug';
 
 interface Props {
   filters: CatalogFilters;
@@ -104,9 +104,6 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
   }
 
   const body = (
-    // font-head on the wrapper: labels, selects and buttons otherwise inherit
-    // the body face (Sarabun) and the panel reads as a different UI from the
-    // Prompt chips and cards beside it.
     <div className={cn('font-head space-y-5', bare ? 'pt-1' : 'px-4 pb-5 pt-4')}>
       {/* "ดาวน์เท่าไหร่ ผ่อนเดือนละเท่าไหร่" is the first question in a Thai
           phone shop, so it sits above the filters. */}
@@ -124,7 +121,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
                 aria-pressed={on}
                 onClick={() => pickType(v)}
                 className={cn(
-                  'flex flex-col items-center justify-center gap-2 rounded-2xl px-2 py-4 text-[12.5px] leading-snug transition-colors',
+                  'flex flex-col items-center justify-center gap-2 rounded-2xl px-2 py-4 text-sm leading-snug transition-colors',
                   on
                     ? 'bg-emerald-50 text-emerald-700 ring-2 ring-inset ring-emerald-500/45'
                     : 'bg-muted text-muted-foreground hover:bg-zinc-200',
@@ -149,7 +146,9 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
           id={bare ? 'mobile-filter-origin' : 'filter-origin'}
           className={selectCls}
           value={filters.deviceOrigin ?? ''}
-          onChange={(e) => onChange({ ...filters, deviceOrigin: parseDeviceOrigin(e.target.value) })}
+          onChange={(e) =>
+            onChange({ ...filters, deviceOrigin: parseDeviceOrigin(e.target.value) })
+          }
         >
           <option value="">ทั้งหมด</option>
           <option value="THAI">เครื่องไทย</option>
@@ -230,7 +229,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
               maxPrice: undefined,
             })
           }
-          className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground transition-colors leading-snug"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors leading-snug"
         >
           <X className="size-3.5" aria-hidden />
           ล้างตัวกรองทั้งหมด
@@ -247,7 +246,7 @@ export function FilterSidebar({ filters, onChange, models, plan, bare }: Props) 
         <span className="size-7 rounded-xl bg-ink grid place-items-center shrink-0">
           <SlidersHorizontal className="size-3.5 text-ink-foreground" aria-hidden />
         </span>
-        <h2 className="text-[14.5px] font-semibold text-foreground leading-snug">ตัวกรองสินค้า</h2>
+        <h2 className="text-base font-semibold text-foreground leading-snug">ตัวกรองสินค้า</h2>
       </div>
       <hr className="mt-3.5 mx-4 border-0 border-t border-border" />
       {body}
@@ -281,7 +280,7 @@ function PlanBlock({ plan }: { plan: PlanControls }) {
   return (
     <div className="rounded-2xl bg-emerald-50 p-3.5">
       <div className="flex items-center justify-between gap-2">
-        <label className="text-[13px] text-emerald-900 leading-snug" htmlFor="filter-down-num">
+        <label className="text-sm text-emerald-900 leading-snug" htmlFor="filter-down-num">
           เงินดาวน์
         </label>
         <div className="flex items-center gap-1">
@@ -302,14 +301,14 @@ function PlanBlock({ plan }: { plan: PlanControls }) {
             }}
             aria-describedby="filter-down-hint"
             className={cn(
-              'num w-16 h-8 rounded-lg bg-card px-2 text-right text-[13px] font-bold leading-snug',
+              'num w-20 h-11 rounded-lg bg-card px-2 text-right text-base font-bold leading-snug',
               'focus:outline-none focus:ring-2',
               belowMin
                 ? 'text-orange-700 ring-1 ring-orange-400 focus:ring-orange-500/50'
                 : 'text-emerald-800 focus:ring-emerald-500/50',
             )}
           />
-          <span className="num text-[13px] font-bold text-emerald-800">%</span>
+          <span className="num text-sm font-bold text-emerald-800">%</span>
         </div>
       </div>
 
@@ -323,7 +322,7 @@ function PlanBlock({ plan }: { plan: PlanControls }) {
         onChange={(e) => plan.onDownPct(Number(e.target.value))}
         className="mt-2 w-full accent-emerald-600"
       />
-      <div className="num flex justify-between text-[10.5px] text-emerald-700/70 leading-snug">
+      <div className="num flex justify-between text-xs text-emerald-700/70 leading-snug">
         <span>{plan.minDownPct}%</span>
         <span>{MAX_DOWN_PCT}%</span>
       </div>
@@ -331,7 +330,7 @@ function PlanBlock({ plan }: { plan: PlanControls }) {
       <p
         id="filter-down-hint"
         className={cn(
-          'mt-1.5 text-[11px] leading-snug',
+          'mt-1.5 text-xs leading-snug',
           belowMin ? 'text-orange-700 font-medium' : 'text-emerald-800/70',
         )}
       >
@@ -343,14 +342,14 @@ function PlanBlock({ plan }: { plan: PlanControls }) {
       {plan.monthsOptions.length > 0 && (
         <div className="mt-3">
           <label
-            className="block text-[13px] text-emerald-900 mb-2 leading-snug"
+            className="block text-sm text-emerald-900 mb-2 leading-snug"
             htmlFor="filter-months"
           >
             จำนวนงวด
           </label>
           <select
             id="filter-months"
-            className="w-full h-10 rounded-xl border-0 bg-card px-3 text-[13.5px] text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+            className="w-full h-10 rounded-xl border-0 bg-card px-3 text-base md:text-sm text-foreground leading-snug focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
             value={plan.months ?? ''}
             onChange={(e) => plan.onMonths(e.target.value ? Number(e.target.value) : null)}
           >
@@ -364,7 +363,7 @@ function PlanBlock({ plan }: { plan: PlanControls }) {
         </div>
       )}
 
-      <p className="mt-2.5 text-[11px] text-emerald-800/70 leading-snug">
+      <p className="mt-2.5 text-xs text-emerald-800/70 leading-snug">
         เลื่อนหรือพิมพ์แล้วค่างวดบนการ์ดทุกใบคำนวณใหม่ทันที
       </p>
     </div>

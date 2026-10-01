@@ -127,7 +127,7 @@ function BestchoiceFinanceTab() {
       key: 'status', label: 'สถานะ',
       render: (r: InterCompanyTransaction) => {
         const cfg = getStatusBadgeProps(r.status, interCompanyStatusMap);
-        return <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
+        return <Badge className="admin-status-badge" variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>;
       },
     },
     {
@@ -141,7 +141,7 @@ function BestchoiceFinanceTab() {
   return (
     <div>
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="finance-card-grid grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {icSummaryCards.map((card) => (
           <Card key={card.label} className="h-full overflow-hidden hover:shadow-card-hover transition-all">
             <div className="flex h-full">
@@ -359,7 +359,7 @@ export default function FinanceReceivablePage() {
         const cfg = getStatusBadgeProps(r.status, financeReceivableStatusMap);
         return (
           <div>
-            <Badge variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
+            <Badge className="admin-status-badge" variant={cfg.variant} appearance={cfg.appearance} size="sm">{cfg.label}</Badge>
             {r.note && r.status === 'DISPUTED' && <div className="text-xs text-destructive mt-0.5 truncate max-w-[100px]">{r.note}</div>}
           </div>
         );
@@ -400,7 +400,7 @@ export default function FinanceReceivablePage() {
         <TabsContent value="external">
 
       {/* Summary Cards — color stripe */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+      <div className="finance-card-grid grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
         {summaryCards.map((card) => (
           <Card key={card.label} className="rounded-xl border border-border/50 bg-card shadow-sm h-full overflow-hidden hover:shadow-card-hover transition-all">
             <div className="flex h-full">

@@ -148,7 +148,7 @@ export default function ContactPage() {
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       placeholder={copy.contact.formMessagePlaceholder}
-                      className="flex w-full bg-background border border-input shadow-sm rounded-md px-4 py-2.5 text-sm leading-snug text-foreground placeholder:text-muted-foreground/80 focus-visible:ring-ring/30 focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px]"
+                      className="flex w-full bg-background border border-input shadow-sm rounded-md px-4 py-2.5 text-base md:text-sm leading-snug text-foreground placeholder:text-muted-foreground/80 focus-visible:ring-ring/30 focus-visible:border-ring focus-visible:outline-hidden focus-visible:ring-[3px]"
                       required
                     />
                   </div>

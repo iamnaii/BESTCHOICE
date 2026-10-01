@@ -744,7 +744,7 @@ export default function PaymentsPage() {
       />
 
       {/* Tabs — Metronic segment tabs */}
-      <div className="flex gap-0 mb-5 border-b border-border/60">
+      <div className="finance-summary-tabs flex gap-0 mb-5 border-b border-border/60">
         <button
           onClick={() => setTab('pending')}
           className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-all ${tab === 'pending' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}

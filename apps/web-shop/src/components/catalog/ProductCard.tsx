@@ -128,73 +128,79 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
             <div className="text-muted-foreground text-xs">ไม่มีรูป</div>
           )}
 
-          {/* New stock gets a plain pill; only a graded second-hand device earns
+          <div className="absolute top-1.5 inset-x-1.5 md:top-2 md:inset-x-2 flex flex-wrap items-start justify-between gap-1.5">
+            {/* New stock gets a plain pill; only a graded second-hand device earns
               the letter chip, so the chip always means "this is the grade".
               Below sm the two-column grid leaves ~168px of card, so the word
               GRADE drops and the coloured letter carries it alone. */}
-          <span
-            className={cn(
-              'absolute top-1.5 left-1.5 md:top-2 md:left-2 inline-flex items-center gap-1.5 rounded-full backdrop-blur-md ring-1 ring-inset max-w-[70%]',
-              isNew
-                ? 'bg-ink text-white ring-white/55 px-2 py-1 md:px-2.5'
-                : cn(
-                    'p-0.5 sm:pr-2 ring-white/55',
-                    GRADE_STYLES[grade ?? ''] ?? 'bg-zinc-700 text-white',
-                  ),
-            )}
-            aria-label={
-              isNew ? 'เครื่องมือ 1 ของใหม่' : grade ? `สภาพเครื่องเกรด ${grade}` : 'เครื่องมือสอง'
-            }
-          >
-            {!isNew && (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full backdrop-blur-md ring-1 ring-inset max-w-full',
+                isNew
+                  ? 'bg-ink text-white ring-white/55 px-2 py-1 md:px-2.5'
+                  : cn(
+                      'p-0.5 sm:pr-2 ring-white/55',
+                      GRADE_STYLES[grade ?? ''] ?? 'bg-zinc-700 text-white',
+                    ),
+              )}
+              aria-label={
+                isNew
+                  ? 'เครื่องมือ 1 ของใหม่'
+                  : grade
+                    ? `สภาพเครื่องเกรด ${grade}`
+                    : 'เครื่องมือสอง'
+              }
+            >
+              {!isNew && (
+                <span
+                  className={cn(
+                    'size-[18px] md:size-5 rounded-full grid place-items-center font-brand text-xs font-bold leading-snug shrink-0',
+                    GRADE_CHIP[grade ?? ''] ?? 'bg-white text-zinc-700',
+                  )}
+                  aria-hidden
+                >
+                  {grade ?? '·'}
+                </span>
+              )}
               <span
                 className={cn(
-                  'size-[18px] md:size-5 rounded-full grid place-items-center font-brand text-[10px] md:text-[11px] font-extrabold leading-none shrink-0',
-                  GRADE_CHIP[grade ?? ''] ?? 'bg-white text-zinc-700',
+                  'font-brand text-xs font-bold uppercase leading-snug whitespace-nowrap',
+                  isNew ? '' : 'hidden sm:inline',
                 )}
                 aria-hidden
               >
-                {grade ?? '·'}
+                {isNew ? (
+                  <>
+                    มือ 1<span className="hidden md:inline"> · ของใหม่</span>
+                  </>
+                ) : grade ? (
+                  `GRADE ${grade}`
+                ) : (
+                  'มือ 2'
+                )}
               </span>
-            )}
-            <span
-              className={cn(
-                'font-brand text-[8.5px] md:text-[9.5px] font-extrabold uppercase tracking-[0.09em] leading-none whitespace-nowrap',
-                isNew ? '' : 'hidden sm:inline',
-              )}
-              aria-hidden
-            >
-              {isNew ? (
-                <>
-                  มือ 1<span className="hidden md:inline"> · ของใหม่</span>
-                </>
-              ) : grade ? (
-                `GRADE ${grade}`
-              ) : (
-                'มือ 2'
-              )}
             </span>
-          </span>
 
-          {tags.length > 0 && (
-            <div className="absolute top-1.5 right-1.5 md:top-2 md:right-2 flex flex-col items-end gap-1 max-w-[52%]">
-              {tags.map((t) => (
-                <span
-                  key={t.label}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-card/70 px-2 py-0.5 text-[9px] md:text-[10px] text-foreground ring-1 ring-inset ring-white/90 backdrop-blur-sm leading-snug whitespace-nowrap"
-                >
+            {tags.length > 0 && (
+              <div className="ml-auto flex min-w-0 max-w-full flex-col items-end gap-1">
+                {tags.map((t) => (
                   <span
-                    className={cn(
-                      'size-1.5 rounded-full shrink-0',
-                      t.warm ? 'bg-orange-500' : 'bg-emerald-500',
-                    )}
-                    aria-hidden
-                  />
-                  {t.label}
-                </span>
-              ))}
-            </div>
-          )}
+                    key={t.label}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-card/70 px-2 py-0.5 text-xs text-foreground ring-1 ring-inset ring-white/90 backdrop-blur-sm leading-snug max-w-full"
+                  >
+                    <span
+                      className={cn(
+                        'size-1.5 rounded-full shrink-0',
+                        t.warm ? 'bg-orange-500' : 'bg-emerald-500',
+                      )}
+                      aria-hidden
+                    />
+                    {t.label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
 
           {photos.length > 1 && (
             <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1" aria-hidden>
@@ -242,7 +248,7 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
             <Link
               to={to}
               aria-label={`ดูรูปทั้งหมด ${photos.length} รูป`}
-              className="flex-1 aspect-square rounded-xl bg-zinc-200 grid place-items-center text-[11px] font-bold text-muted-foreground hover:bg-zinc-300 transition-colors"
+              className="flex-1 aspect-square rounded-xl bg-zinc-200 grid place-items-center text-xs font-bold text-muted-foreground hover:bg-zinc-300 transition-colors"
             >
               +{overflow}
             </Link>
@@ -253,19 +259,19 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
       <div className="flex flex-col flex-1 px-1 pt-2.5">
         <Link to={to} className="block">
           <div className="flex items-baseline justify-between gap-2 min-h-[38px]">
-            <h3 className="font-display text-[14px] md:text-[15px] font-bold text-foreground leading-snug">
+            <h3 className="font-display text-base font-bold text-foreground leading-snug">
               {p.model}
             </h3>
             {/* The device number is what a customer quotes in chat ("สนใจ #4218").
                 New stock has no single device to point at, so it shows depth. */}
             {isUnit ? (
               p.displayNo && (
-                <span className="num text-[11px] md:text-xs font-bold text-muted-foreground shrink-0">
+                <span className="num text-xs font-bold text-muted-foreground shrink-0">
                   #{p.displayNo}
                 </span>
               )
             ) : (
-              <span className="num text-[11px] md:text-xs font-semibold text-muted-foreground shrink-0">
+              <span className="num text-xs font-semibold text-muted-foreground shrink-0">
                 {p.stockCount} เครื่อง
               </span>
             )}
@@ -273,11 +279,11 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
 
           {/* Spec as one quiet line — the label:value form row read as a
               spreadsheet cell and left a dead gap across the card. */}
-          <div className="mt-1 text-[11px] md:text-xs text-muted-foreground leading-snug truncate">
+          <div className="mt-1 text-xs text-muted-foreground leading-snug truncate">
             {specValue || '—'}
           </div>
           <div className="mt-2">
-            <span className="inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] text-accent-foreground leading-snug">
+            <span className="inline-flex rounded-full border border-border px-2 py-0.5 text-xs text-accent-foreground leading-snug">
               {deviceOriginLabel(p.deviceOrigin)}
             </span>
           </div>
@@ -285,7 +291,7 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
           {/* Installment figure sits where the reference puts its view count:
               it is the differentiator, and the full price stays the biggest
               number on the card. */}
-          {/* Price zone — one left-aligned block in every mode: a tiny Prompt
+          {/* Price zone — one left-aligned block in every mode: a small
               eyebrow names the number, the figure sits under it, details on a
               third line. No lone right-aligned figures, no zigzag. */}
           <div className="mt-2">
@@ -299,21 +305,21 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
                       figure uses — a yellow sticker per card turned the grid
                       into a flyer wall (yellow stays reserved for real
                       promos). The monthly rate follows as the detail line. */}
-                  <div className="font-head text-[10px] md:text-[10.5px] font-medium text-muted-foreground leading-snug">
+                  <div className="font-head text-xs font-medium text-muted-foreground leading-snug">
                     ดาวน์
                   </div>
                   {p.downAmount != null ? (
-                    <div className="num text-[19px] md:text-[21px] font-bold text-primary leading-tight whitespace-nowrap">
+                    <div className="num text-xl md:text-2xl font-bold text-primary leading-tight whitespace-nowrap">
                       ฿{p.downAmount.toLocaleString()}
                     </div>
                   ) : (
-                    <div className="num text-[19px] md:text-[21px] font-bold text-primary leading-tight whitespace-nowrap">
+                    <div className="num text-xl md:text-2xl font-bold text-primary leading-tight whitespace-nowrap">
                       ฿{p.monthlyPaymentFrom!.toLocaleString()}
-                      <span className="text-[11px] md:text-xs font-semibold text-primary/80"> /เดือน</span>
+                      <span className="text-xs font-semibold text-primary/80"> /เดือน</span>
                     </div>
                   )}
                   {p.downAmount != null && (
-                    <p className="num mt-0.5 text-[10.5px] md:text-[11.5px] text-muted-foreground leading-snug whitespace-nowrap">
+                    <p className="num mt-0.5 text-xs text-muted-foreground leading-snug">
                       ผ่อน{' '}
                       <span className="font-semibold text-primary">
                         ฿{p.monthlyPaymentFrom!.toLocaleString()}/เดือน
@@ -327,21 +333,21 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
               )
             ) : priceMode === 'cash' ? (
               <>
-                <div className="font-head text-[10px] md:text-[10.5px] font-medium text-muted-foreground leading-snug">
+                <div className="font-head text-xs font-medium text-muted-foreground leading-snug">
                   ราคาเงินสด
                 </div>
-                <div className="num text-[19px] md:text-[21px] font-bold text-primary leading-tight whitespace-nowrap">
+                <div className="num text-xl md:text-2xl font-bold text-primary leading-tight whitespace-nowrap">
                   ฿{p.minPrice.toLocaleString()}
                 </div>
               </>
             ) : (
               <>
-                <div className="num text-[17px] md:text-lg font-bold text-primary leading-tight whitespace-nowrap">
+                <div className="num text-xl md:text-2xl font-bold text-primary leading-tight whitespace-nowrap">
                   ฿{p.minPrice.toLocaleString()}
                 </div>
                 {/* A monthly figure with no down payment beside it is a
                     half-truth — always print what it was quoted on. */}
-                <p className="num mt-0.5 text-[10px] md:text-[11px] text-muted-foreground leading-snug truncate">
+                <p className="num mt-0.5 text-xs text-muted-foreground leading-snug">
                   {hasQuote ? `ผ่อน ฿${p.monthlyPaymentFrom!.toLocaleString()}/ด.` : 'ผ่อนได้'}
                   {hasQuote && p.downAmount != null
                     ? ` · ดาวน์ ฿${p.downAmount.toLocaleString()}`
@@ -358,14 +364,14 @@ export function ProductCard({ product: p, priceMode = 'combined' }: Props) {
               href={shopInfo.lineUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex h-9 items-center justify-center rounded-full bg-line-app text-white font-head text-[12.5px] font-semibold hover:bg-line-app/90 transition-colors leading-snug"
+              className="flex min-h-11 items-center justify-center px-2 py-2 text-center rounded-full bg-line-app text-white font-head text-sm font-semibold hover:bg-line-app/90 transition-colors leading-snug"
             >
               ทักแชทเช็ครอบเข้าใหม่
             </a>
           ) : (
             <Link
               to={to}
-              className="flex h-9 items-center justify-center rounded-full bg-ink text-ink-foreground font-head text-[12.5px] font-semibold hover:bg-emerald-800 transition-colors leading-snug"
+              className="flex min-h-11 items-center justify-center px-2 py-2 text-center rounded-full bg-ink text-ink-foreground font-head text-sm font-semibold hover:bg-emerald-800 transition-colors leading-snug"
             >
               {isUnit ? 'ดูเครื่องนี้' : 'เลือกเครื่อง'}
             </Link>

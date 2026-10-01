@@ -516,7 +516,7 @@ export default function ExpensesPage() {
       </div>
 
       {/* Filter tabs — 7 cards mirror screenshot */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-5">
+      <div className="finance-card-grid finance-card-grid-compact grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-5">
         {tabs.map((tab) => {
           const isActive = (tabFilter || 'all') === tab.id;
           const Icon = tab.icon;

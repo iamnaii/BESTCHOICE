@@ -96,9 +96,10 @@ describe('Validation Utilities', () => {
     });
 
     it('should handle birthday not yet occurred this year', () => {
-      const now = new Date();
-      const futureBirthday = new Date(now.getFullYear() - 20, now.getMonth() + 1, 1);
-      const age = calculateAge(futureBirthday);
+      // Bangkok is already Oct 1 while a UTC runner is still on Sep 30.
+      const now = new Date('2026-09-30T18:00:00Z');
+      const futureBirthday = new Date('2006-10-02T00:00:00+07:00');
+      const age = calculateAge(futureBirthday, now);
       expect(age).toBe(19);
     });
   });

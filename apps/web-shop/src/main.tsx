@@ -22,11 +22,11 @@ function bootstrap() {
         <AuthProvider>
           <BrowserRouter>
             <App />
-            <Toaster richColors position="top-center" />
+            <Toaster richColors position="top-center" style={{ fontFamily: 'var(--font-sans)' }} />
           </BrowserRouter>
         </AuthProvider>
       </QueryClientProvider>
-    </React.StrictMode>
+    </React.StrictMode>,
   );
 }
 

@@ -52,7 +52,7 @@ const scenario = (record: Omit<ScenarioRecord, 'documents' | 'guards' | 'rendere
 
 type PoItem = { id: string; brand: string | null; model: string | null; quantity: number; receivedQty: number; unitPrice: string };
 type Po = { id: string; poNumber: string; status: string; supplierId: string; items: PoItem[] };
-type Receiving = { id: string; grNumber: string; poId: string; notes: string | null; createdAt: string; po: { id: string; poNumber: string; supplier: { id: string; name: string } }; receivedBy: { id: string; name: string }; items: Array<{ id: string; status: 'PASS' | 'REJECT'; imeiSerial: string | null; serialNumber: string | null; rejectReason: string | null; defectReason: string | null; poItem: { id: string; brand: string; model: string; storage: string | null; color: string | null; category: string | null } | null; product: { id: string; status: string; branchId: string | null; imeiSerial: string | null } | null }> };
+type Receiving = { id: string; grNumber: string; poId: string; notes: string | null; createdAt: string; supplierDocType: string | null; supplierDocNumber: string | null; supplierDocDate: string | null; po: { id: string; poNumber: string; supplier: { id: string; name: string } }; receivedBy: { id: string; name: string }; items: Array<{ id: string; status: 'PASS' | 'REJECT'; imeiSerial: string | null; serialNumber: string | null; rejectReason: string | null; defectReason: string | null; poItem: { id: string; brand: string; model: string; storage: string | null; color: string | null; category: string | null } | null; product: { id: string; status: string; branchId: string | null; imeiSerial: string | null } | null }> };
 type ReceiveResult = { receivingId: string; grNumber: string; poId: string; status: string; passed: number; rejected: number; journalEntryNo: string | null; products: Array<{ id: string; status: string; costPrice: string; branchId: string; category: string; imeiSerial: string | null }>; mainWarehouse: string };
 
 describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, real receiving, real trade-in journal, real renderers', () => {
@@ -96,7 +96,10 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
     return data(response) as Po;
   };
   const readPo = async (id: string): Promise<Po> => { const response = await api(owner).get(`/purchase-orders/${id}`); expectStatus(response, 200, 'read PO'); return data(response); };
-  const receive = async (session: Session, poId: string, units: ReceivingUnit[], notes?: string) => api(session).post(`/purchase-orders/${poId}/goods-receiving`, { items: units, notes });
+  // ข3 (2026-10-01): ทุกใบรับของส่งเอกสารผู้จัดจำหน่าย — ใบส่งของลงวันที่วันนี้ (เลขที่ต่อใบไม่ซ้ำ)
+  let docSeq = 0;
+  const receive = async (session: Session, poId: string, units: ReceivingUnit[], notes?: string) =>
+    api(session).post(`/purchase-orders/${poId}/goods-receiving`, { items: units, notes, supplierDocType: 'DELIVERY_NOTE', supplierDocNumber: `TEST-DN-${world.prefix}-${++docSeq}`, supplierDocDate: ORDER_DATE });
   const readReceiving = async (session: Session, poId: string, receivingId: string, company?: 'SHOP' | 'FINANCE' | null) => api(session, company).get(`/purchase-orders/${poId}/goods-receivings/${receivingId}`);
   const journalTouching = (needles: string[]) => h.prisma.journalEntry.count({ where: { OR: needles.flatMap((needle) => [{ referenceId: { contains: needle } }, { description: { contains: needle } }]) } });
   const journalFor = (tradeInId: string) => h.prisma.journalEntry.findMany({ where: { referenceId: `tradein:${tradeInId}` }, include: { lines: { orderBy: { accountCode: 'asc' } } }, orderBy: { createdAt: 'asc' } });
@@ -224,6 +227,11 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
     // Empty batch is refused by the DTO before any receiving row exists.
     const empty = await receive(branchManagerA, ownerPo.id, []);
     expectStatus(empty, 400, 'empty receiving');
+    // ข3: ประเภทเอกสารผู้จัดจำหน่ายบังคับที่ DTO — ไม่ส่ง = 400 ไทย ไม่มีใบรับของเกิด
+    const noDoc = await api(branchManagerA).post(`/purchase-orders/${ownerPo.id}/goods-receiving`, { items: [{ poItemId: ownerPo.items[0].id, imeiSerial: nextImei(), status: 'PASS' }] });
+    expectStatus(noDoc, 400, 'receiving without supplier document type');
+    expect(JSON.stringify(noDoc.body)).toContain('กรุณาเลือกประเภทเอกสารของผู้จัดจำหน่าย');
+    expect(await h.prisma.goodsReceiving.count({ where: { poId: ownerPo.id } })).toBe(0);
 
     // First receiving: 2 iPhones PASS, 1 iPhone REJECT (screen), 1 Galaxy, both chargers (no IMEI).
     const rejectedImei = nextImei();
@@ -312,6 +320,9 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
     routes.push('GET /purchase-orders/:id/goods-receivings/:receivingId');
     const doc: Receiving = data(read);
     expect(doc.grNumber).toBe(firstReceiving.grNumber);
+    expect(doc.supplierDocType).toBe('DELIVERY_NOTE');
+    expect(doc.supplierDocNumber).toMatch(new RegExp(`^TEST-DN-${world.prefix}-\\d+$`));
+    expect(doc.supplierDocDate).toBeTruthy();
     expect(doc.po.poNumber).toBe(ownerPo.poNumber);
     expect(doc.po.supplier.name).toBe(supplier.name);
     expect(doc.receivedBy.id).toBe(world.users.branchManagerA.id);
@@ -624,7 +635,7 @@ describe('DOC-02 goods receipts and trade-in vouchers — real purchase orders, 
     await printButton.waitFor({ state: 'visible' });
     await waitEnabled(printButton, true, 'print button');
     const bodyText = await page.locator('body').innerText();
-    for (const needle of ['ใบรับของ', 'GOODS RECEIPT', 'เลขที่เอกสาร', firstReceiving.grNumber, 'อ้างอิงใบสั่งซื้อ', ownerPo.poNumber, 'ผู้จัดจำหน่าย', supplier.name, 'ผู้รับของ', `${BRAND} iPhone 15 Black 128GB`, `${BRAND} Galaxy A55 Navy 256GB`, 'ชุดชาร์จ', 'ผ่าน', 'ไม่ผ่าน', 'จอภาพ', 'จอแตก', 'ตรวจรับทั้งหมด 6 รายการ', 'ผ่าน 5 · ไม่ผ่าน 1', 'ผู้ตรวจสอบ', shopCompany.nameTh, 'รับรอบแรก']) {
+    for (const needle of ['ใบรับของ', 'GOODS RECEIPT', 'เลขที่เอกสาร', firstReceiving.grNumber, 'อ้างอิงใบสั่งซื้อ', ownerPo.poNumber, 'ผู้จัดจำหน่าย', supplier.name, 'ผู้รับของ', `${BRAND} iPhone 15 Black 128GB`, `${BRAND} Galaxy A55 Navy 256GB`, 'ชุดชาร์จ', 'ผ่าน', 'ไม่ผ่าน', 'จอภาพ', 'จอแตก', 'ตรวจรับทั้งหมด 6 รายการ', 'ผ่าน 5 · ไม่ผ่าน 1', 'ผู้ตรวจสอบ', shopCompany.nameTh, 'รับรอบแรก', 'อ้างอิงเอกสารผู้จัดจำหน่าย', 'ใบส่งของ / ใบแจ้งหนี้ TEST-DN-']) {
       expect(bodyText).toContain(needle);
     }
     expect(await page.getByText('ไม่ผ่าน', { exact: true }).count()).toBe(1);

@@ -17,9 +17,17 @@ export interface ReceiveResultInput {
   products?: { status?: string | null }[];
   /** มีเฉพาะเส้นทาง "รับเข้าตรง" ที่ระบบออกเลข PO ให้เอง */
   poNumber?: string;
+  /** ข3 แบบ ข — งวดของวันที่ในเอกสารผู้จัดจำหน่ายปิดแล้ว ระบบลงบัญชีวันที่รับของแทน (และแจ้งฝ่ายบัญชีแล้ว) */
+  supplierDocPeriodClosed?: boolean;
 }
 
+const PERIOD_CLOSED_NOTE = ' · งวดของวันที่ในเอกสารปิดแล้ว ลงบัญชีวันที่รับของแทน (แจ้งฝ่ายบัญชีแล้ว)';
+
 export function buildReceiveResultMessage(r: ReceiveResultInput): string {
+  return receiveMessage(r) + (r.supplierDocPeriodClosed ? PERIOD_CLOSED_NOTE : '');
+}
+
+function receiveMessage(r: ReceiveResultInput): string {
   const head = r.poNumber ? `รับเข้าตรงสำเร็จ (${r.poNumber})` : 'รับ+ตรวจสำเร็จ';
 
   const counts =

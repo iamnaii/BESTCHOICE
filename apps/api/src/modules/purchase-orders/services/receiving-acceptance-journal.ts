@@ -6,14 +6,24 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
+import { supplierDocMetadata, supplierDocRef } from './supplier-doc.util';
 
 /**
- * วันที่ลงบัญชีรับสินค้าของใบรับของ — จุดเดียวที่ตัดสิน ใช้ทั้งหน่วยที่ลงตอนรับของและหน่วยที่ลงตอนผ่านเข้าคลัง.
- * วันนี้ = เวลาที่รับของเข้าคลัง. ฝ่ายบัญชีตอบข้อ ข3 (2026-09-29) ให้ใช้วันที่ในใบส่งของ/ใบกำกับภาษีของ
- * ผู้จัดจำหน่าย และเจ้าของเคาะตามนั้นแล้ว แต่ใบรับของยังไม่มีช่องเก็บวันที่เอกสาร — เมื่อเพิ่มช่องแล้วแก้ที่นี่ที่เดียว
+ * วันที่ลงบัญชีรับสินค้าที่ "ควรเป็น" ของใบรับของ — จุดเดียวที่ตัดสิน ใช้ทั้งหน่วยที่ลงตอนรับของและหน่วยที่ลงตอนผ่านเข้าคลัง.
+ * = วันที่ในเอกสารของผู้จัดจำหน่าย (คำตอบฝ่ายบัญชีข้อ ข3 2026-09-29 · แบบหน้าจอที่เจ้าของเคาะ 2026-10-01) ·
+ * ไม่มีเอกสาร / ใบรับของก่อนมีช่องนี้ = วันที่รับของ. งวดของวันนั้นปิดแล้ว ผู้เรียกข้ามไปวันถัดไปใน
+ * `receivingPostingCandidates` (แบบ ข — รับได้ ลงวันที่รับของแทน)
  */
-export function receivingPostingDate(receiving: { createdAt?: Date | null }): Date {
-  return receiving.createdAt ?? new Date();
+export function receivingPostingDate(receiving: { createdAt?: Date | null; supplierDocDate?: Date | null }): Date {
+  return receiving.supplierDocDate ?? receiving.createdAt ?? new Date();
+}
+
+/**
+ * ลำดับวันที่ที่ลองลงบัญชี — วันแรกที่งวดยังเปิดชนะ: วันที่ในเอกสาร → วันที่รับของ.
+ * (หน่วยที่ผ่านเข้าคลังทีหลังต่อท้ายด้วยวันที่รับเข้าคลังเอง)
+ */
+export function receivingPostingCandidates(receiving: { createdAt: Date; supplierDocDate?: Date | null }): Date[] {
+  return receiving.supplierDocDate ? [receiving.supplierDocDate, receiving.createdAt] : [receiving.createdAt];
 }
 
 /**
@@ -34,8 +44,10 @@ export interface AcceptedUnitJournal {
   entryNo: string;
   journalEntryId: string;
   postedAt: Date;
-  /** งวดของวันที่ใบรับของปิดไปแล้ว จึงลงวันที่รับเข้าคลังแทน (stamp ลง metadata ของรายการด้วย) */
+  /** งวดของวันที่ใบรับของ (วันที่ในเอกสาร และวันที่รับของ) ปิดไปแล้ว จึงลงวันที่รับเข้าคลังแทน (stamp ลง metadata ด้วย) */
   postedOnAcceptanceDate: boolean;
+  /** งวดของวันที่ในเอกสารปิดแล้ว จึงลงวันที่รับของแทน — วันเดียวกับใบรับของ (แบบ ข) */
+  postedOnReceiveDate: boolean;
 }
 
 /**
@@ -93,7 +105,17 @@ export class ReceivingAcceptanceJournal {
       select: {
         journalEntryId: true,
         receivedCost: true,
-        receiving: { select: { id: true, grNumber: true, createdAt: true, po: { select: { id: true, poNumber: true } } } },
+        receiving: {
+          select: {
+            id: true,
+            grNumber: true,
+            createdAt: true,
+            supplierDocType: true,
+            supplierDocNumber: true,
+            supplierDocDate: true,
+            po: { select: { id: true, poNumber: true } },
+          },
+        },
         poItem: { select: { category: true } },
         product: { select: { category: true, status: true, deletedAt: true } },
       },
@@ -106,12 +128,18 @@ export class ReceivingAcceptanceJournal {
     }
 
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
-    const { postedAt, postedOnAcceptanceDate } = await this.resolvePostingDate(
-      tx,
-      receivingPostingDate(locked.receiving),
-      acceptedAt,
-      shopCompanyId,
-    );
+    const lotCandidates = receivingPostingCandidates(locked.receiving);
+    const candidates = [...lotCandidates, acceptedAt];
+    const chosen = await this.firstOpenDate(tx, candidates, shopCompanyId);
+    const postedAt = candidates[chosen];
+    const postedOnAcceptanceDate = chosen === candidates.length - 1;
+    // มีวันที่ในเอกสาร (สองวันแรก = เอกสาร · รับของ) แล้วงวดของวันในเอกสารปิด = ลงวันที่รับของแบบเดียวกับใบรับของ
+    const postedOnReceiveDate = lotCandidates.length === 2 && chosen === 1;
+    const supplierDoc = {
+      type: locked.receiving.supplierDocType,
+      number: locked.receiving.supplierDocNumber,
+      date: locked.receiving.supplierDocDate,
+    };
 
     const posted = await this.deps.template.execute(
       {
@@ -135,6 +163,9 @@ export class ReceivingAcceptanceJournal {
         acceptedProductId: productId,
         postedAt,
         postedOnAcceptanceDate,
+        postedOnReceiveDate,
+        supplierDocRef: supplierDocRef(supplierDoc),
+        supplierDocMetadata: supplierDocMetadata(supplierDoc),
       },
       tx,
     );
@@ -144,33 +175,33 @@ export class ReceivingAcceptanceJournal {
       where: { id: item.id },
       data: { journalEntryId: posted.journalEntryId },
     });
-    if (postedOnAcceptanceDate) {
+    if (chosen > 0) {
       this.logger.warn(
-        `[receiving-acceptance] ${locked.receiving.grNumber} product=${productId}: งวดบัญชีของวันที่รับของปิดแล้ว ` +
-          `— ลงวันที่รับเข้าคลัง ${postedAt.toISOString()} แทน (${posted.entryNo})`,
+        `[receiving-acceptance] ${locked.receiving.grNumber} product=${productId}: งวดบัญชีของวันที่ใบรับของปิดแล้ว ` +
+          `— ลงวันที่${postedOnAcceptanceDate ? 'รับเข้าคลัง' : 'รับของ'} ${postedAt.toISOString()} แทน (${posted.entryNo})`,
       );
     }
-    return { ...posted, postedAt, postedOnAcceptanceDate };
+    return { ...posted, postedAt, postedOnAcceptanceDate, postedOnReceiveDate };
   }
 
   /**
-   * วันเดียวกับรายการของใบรับของนั้น (ตอนนี้ = วันรับของ · ต่อไป = วันที่ในเอกสารผู้จัดจำหน่าย) —
-   * ถ้างวดของวันนั้นปิดไปแล้ว (เครื่องรอถ่ายรูปข้ามเดือนหลังปิดงวด) ลงวันที่รับเข้าคลังแทน
-   * ไม่ปฏิเสธการเข้าคลังเพราะงวดบัญชี (พนักงานถ่ายรูปเปิดงวดเองไม่ได้). งวดของวันรับเข้าคลังปิด = ปฏิเสธตามปกติ
+   * วันแรกในลำดับที่งวดยังเปิด: วันที่ในเอกสาร → วันที่รับของ (วันเดียวกับรายการของใบรับของ) → วันที่รับเข้าคลัง —
+   * เครื่องรอถ่ายรูปข้ามเดือนหลังปิดงวด ไม่ถูกปฏิเสธการเข้าคลังเพราะงวดบัญชี (พนักงานถ่ายรูปเปิดงวดเองไม่ได้).
+   * วันสุดท้าย (วันรับเข้าคลัง) ปิดด้วย = ปฏิเสธตามปกติ
    */
-  private async resolvePostingDate(
-    tx: Prisma.TransactionClient,
-    lotDate: Date,
-    acceptedAt: Date,
-    shopCompanyId: string,
-  ): Promise<{ postedAt: Date; postedOnAcceptanceDate: boolean }> {
-    try {
-      await validatePeriodOpen(tx, lotDate, shopCompanyId);
-      return { postedAt: lotDate, postedOnAcceptanceDate: false };
-    } catch (e) {
-      if (!(e instanceof BadRequestException)) throw e;
-      await validatePeriodOpen(tx, acceptedAt, shopCompanyId);
-      return { postedAt: acceptedAt, postedOnAcceptanceDate: true };
+  private async firstOpenDate(tx: Prisma.TransactionClient, candidates: Date[], shopCompanyId: string): Promise<number> {
+    for (const [index, date] of candidates.entries()) {
+      if (index === candidates.length - 1) {
+        await validatePeriodOpen(tx, date, shopCompanyId);
+        return index;
+      }
+      try {
+        await validatePeriodOpen(tx, date, shopCompanyId);
+        return index;
+      } catch (e) {
+        if (!(e instanceof BadRequestException)) throw e;
+      }
     }
+    throw new Error('receiving posting date candidates must not be empty');
   }
 }

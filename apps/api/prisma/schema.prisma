@@ -274,6 +274,14 @@ enum ReceivingItemStatus {
   REJECT
 }
 
+/// ประเภทเอกสารที่ผู้จัดจำหน่ายส่งมากับของ (ข3 — แบบหน้าจอที่เจ้าของเคาะ 2026-10-01)
+enum SupplierDocType {
+  TAX_INVOICE // ใบกำกับภาษี
+  DELIVERY_NOTE // ใบส่งของ / ใบแจ้งหนี้
+  CASH_BILL // บิลเงินสด
+  NONE // ไม่มีเอกสาร — ลงบัญชีวันที่รับของ และต้องเขียนเหตุผลในหมายเหตุใบรับ
+}
+
 enum TransferStatus {
   PENDING
   IN_TRANSIT // กำลังจัดส่ง
@@ -2136,6 +2144,11 @@ model GoodsReceiving {
   poId         String    @map("po_id")
   receivedById String    @map("received_by_id")
   notes        String?
+  /// เอกสารจากผู้จัดจำหน่าย (ข3) — null = ใบรับของก่อนมีช่องนี้ หรือสร้างจากเส้นทางภายในที่ไม่ส่งประเภท
+  supplierDocType   SupplierDocType? @map("supplier_doc_type")
+  supplierDocNumber String?          @map("supplier_doc_number")
+  /// วันที่ในเอกสาร เก็บเป็นเที่ยงคืนเวลาไทย — วันที่ลงบัญชีรับสินค้า (ข้ามไปวันที่รับของเมื่องวดของวันนี้ปิดแล้ว)
+  supplierDocDate   DateTime?        @map("supplier_doc_date")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
@@ -2145,6 +2158,7 @@ model GoodsReceiving {
   items      GoodsReceivingItem[]
 
   @@index([poId])
+  @@index([supplierDocNumber])
   @@map("goods_receivings")
 }
 

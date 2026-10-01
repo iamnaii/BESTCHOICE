@@ -6,6 +6,7 @@ import { useIsMobile } from '@/hooks/useIsMobile';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { PurchaseOrder, ReceivingUnitForm } from '../types';
 import { ReceivingFlow } from './ReceivingFlow';
+import type { SupplierDocForm } from '../supplier-doc.util';
 
 export interface GoodsReceivingModalProps {
   isOpen: boolean;
@@ -15,10 +16,13 @@ export interface GoodsReceivingModalProps {
   setReceivingUnits: React.Dispatch<React.SetStateAction<ReceivingUnitForm[]>>;
   receivingNotes: string;
   setReceivingNotes: (value: string) => void;
+  /** ข3 — เอกสารจากผู้จัดจำหน่าย (ตั้งค่าเริ่มต้นตอนเปิดหน้ารับสินค้า) */
+  receivingSupplierDoc: SupplierDocForm;
+  setReceivingSupplierDoc: (doc: SupplierDocForm) => void;
   goodsReceivingMutation: UseMutationResult<
     unknown,
     unknown,
-    { poId: string; items: ReceivingUnitForm[]; notes: string },
+    { poId: string; items: ReceivingUnitForm[]; notes: string; supplierDoc: SupplierDocForm },
     unknown
   >;
   /** ยืนยันรับสินค้า — validates through the shared blockers, then posts */
@@ -46,6 +50,8 @@ export function GoodsReceivingModal(props: GoodsReceivingModalProps) {
     setReceivingUnits,
     receivingNotes,
     setReceivingNotes,
+    receivingSupplierDoc,
+    setReceivingSupplierDoc,
     goodsReceivingMutation,
     handleGoodsReceiving,
     confirmClose,
@@ -93,6 +99,10 @@ export function GoodsReceivingModal(props: GoodsReceivingModalProps) {
       mode="po"
       notes={receivingNotes}
       setNotes={setReceivingNotes}
+      supplierDoc={receivingSupplierDoc}
+      setSupplierDoc={setReceivingSupplierDoc}
+      supplierHasVat={selectedPO.supplier.hasVat}
+      supplierId={selectedPO.supplier.id}
       onConfirm={() => handleGoodsReceiving()}
       confirming={goodsReceivingMutation.isPending}
       confirmLabel={`ยืนยันรับสินค้า ${total} ชิ้น`}

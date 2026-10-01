@@ -109,6 +109,10 @@ export class PurchaseOrdersService {
     return this.receiving.directReceive(dto, userId);
   }
 
+  checkReceivingDoc(input: { supplierId: string; docNumber?: string; docDate?: string }) {
+    return this.receiving.checkReceivingDoc(input);
+  }
+
   rejectQC(productIds: string[], reason: string) {
     return this.receiving.rejectQC(productIds, reason);
   }

@@ -13,6 +13,8 @@
  *   6. ราคาที่เติมให้ตอนสั่งอุปกรณ์เสริมซ้ำ = ราคาซื้อก่อน VAT ไม่ใช่ต้นทุนรวม VAT (ไม่งั้น VAT ทบทุกรอบ)
  *   7. (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8) มือสองที่ต้องรอถ่ายรูปไม่ลงบัญชีตอนรับของ — ลงตอนผ่านเข้าคลัง
  *      (ยืนยันรูปครบ / PATCH เป็นพร้อมขาย) ด้วยต้นทุนที่ปันไว้ · เครื่องที่ถูกกด "ไม่รับเข้าคลัง" ไม่มีรายการเลย
+ *   8. (ข3 — แบบหน้าจอที่เจ้าของเคาะ 2026-10-01) ลงบัญชีด้วยวันที่ในเอกสารของผู้จัดจำหน่าย · งวดของวันนั้นปิดแล้ว
+ *      = รับได้ ลงวันที่รับของแทน (ทั้งใบรับของและหน่วยที่ผ่านเข้าคลังทีหลัง) + งานแจ้งฝ่ายบัญชี
  *
  * Runner: vitest (jest ignore `*.integration.spec.ts`). ต้องมี DB จริง:
  *   cd apps/api && npx vitest run --no-file-parallelism \
@@ -37,6 +39,7 @@ import { ProductsService } from '../../products/products.service';
 import { ProductPhotosService } from '../../quality-control/product-photos.service';
 import { ReceivingAcceptanceJournal } from '../services/receiving-acceptance-journal';
 import { StockAdjustmentsService } from '../../inventory/stock-adjustments.service';
+import { bangkokDateString } from '../../../utils/date.util';
 
 const prisma = new PrismaClient();
 
@@ -59,6 +62,7 @@ const createdPoIds: string[] = [];
 const createdSupplierIds: string[] = [];
 const createdBranchIds: string[] = [];
 const syntheticSaleIds: string[] = [];
+const k3GrNumbers: string[] = [];
 const createdUserIds: string[] = [];
 
 let adminId: string;
@@ -113,6 +117,23 @@ async function receivingEntries(poId: string) {
   });
 }
 
+/** ปิดงวดบัญชีของ SHOP เดือนหนึ่งชั่วคราว — คืนค่าเดิม (หรือลบแถวที่สร้าง) ด้วย `restore()` */
+async function closeShopPeriod(year: number, month: number) {
+  const where = { companyId_year_month: { companyId: shopCompanyId, year, month } };
+  const before = await prisma.accountingPeriod.findUnique({ where });
+  await prisma.accountingPeriod.upsert({
+    where,
+    create: { companyId: shopCompanyId, year, month, status: 'CLOSED' },
+    update: { status: 'CLOSED' },
+  });
+  return {
+    restore: async () => {
+      if (before) await prisma.accountingPeriod.update({ where, data: { status: before.status } });
+      else await prisma.accountingPeriod.delete({ where });
+    },
+  };
+}
+
 /** Dr − Cr ต่อบัญชี ของ JE ชุดที่ส่งมา */
 function netByAccount(entries: { lines: { accountCode: string; debit: Decimal | null; credit: Decimal | null }[] }[]) {
   const net: Record<string, Decimal> = {};
@@ -163,6 +184,9 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
       rows.forEach((r) => jeIds.add(r.id));
     }
     const jeIdList = [...jeIds];
+    for (const grNumber of k3GrNumbers) {
+      await prisma.todo.deleteMany({ where: { tags: { has: 'goods-receiving-period' }, title: { contains: grNumber } } });
+    }
     await prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
     await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
     await prisma.journalEntry.deleteMany({ where: { id: { in: jeIdList } } });
@@ -636,4 +660,158 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     expect(netByAccount(entries)).toEqual({ 'S11-2002': total, 'S21-1101': dec(total).neg().toFixed(2) });
     expect(entries.every((e) => (e.metadata as { postedOnAcceptanceDate?: boolean }).postedOnAcceptanceDate === false)).toBe(true);
   }, 120_000);
+  it('ข3 — ลงบัญชีด้วยวันที่ในเอกสาร · เก็บประเภท/เลขที่/วันที่บนใบรับของ · ตัวตรวจเลขซ้ำ', async () => {
+    const supplier = await seedSupplier('K3DOC', true);
+    const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_NEW', model: `${PREFIX}K3`, quantity: 1, unitPrice: 10000 }]);
+    const docNumber = `IV2609-${RUN}`;
+
+    const result = await service.goodsReceiving(
+      po.id,
+      {
+        items: [{ poItemId: poItemOf(po, `${PREFIX}K3`).id, imeiSerial: nextImei(), status: 'PASS', sellingPrice: 13900 }],
+        supplierDocType: 'TAX_INVOICE',
+        supplierDocNumber: `  ${docNumber}  `,
+        supplierDocDate: '2026-09-15',
+      } as never,
+      adminId,
+    );
+    k3GrNumbers.push(result.grNumber);
+
+    // วันที่ในเอกสาร = เที่ยงคืนเวลาไทยของวันนั้น
+    const docDate = '2026-09-14T17:00:00.000Z';
+    expect(result.supplierDocPeriodClosed).toBe(false);
+    const receiving = await prisma.goodsReceiving.findUniqueOrThrow({ where: { id: result.receivingId } });
+    expect(receiving.supplierDocType).toBe('TAX_INVOICE');
+    expect(receiving.supplierDocNumber).toBe(docNumber);
+    expect(receiving.supplierDocDate?.toISOString()).toBe(docDate);
+
+    const [entry] = await receivingEntries(po.id);
+    expect(entry.postedAt?.toISOString()).toBe(docDate);
+    expect(entry.entryDate.toISOString()).toBe(docDate);
+    expect(entry.description).toContain(`ใบกำกับภาษี ${docNumber}`);
+    expect(entry.metadata).toMatchObject({
+      supplierDocType: 'TAX_INVOICE',
+      supplierDocNumber: docNumber,
+      supplierDocDate: '2026-09-15',
+      postedOnReceiveDate: false,
+    });
+
+    // เลขเดิมของผู้จัดจำหน่ายเดิม (ตัวพิมพ์/ช่องว่างต่างกัน) = ซ้ำ · ผู้จัดจำหน่ายอื่น = ไม่ซ้ำ
+    const dup = await service.checkReceivingDoc({ supplierId: supplier.id, docNumber: ` ${docNumber.toLowerCase()} `, docDate: '2026-09-15' });
+    expect(dup.duplicates.map((d) => d.grNumber)).toEqual([result.grNumber]);
+    expect(dup.periodClosed).toBe(false);
+    const other = await seedSupplier('K3OTHER', true);
+    expect((await service.checkReceivingDoc({ supplierId: other.id, docNumber })).duplicates).toEqual([]);
+  }, 60_000);
+
+  it('ข3 แบบ ข — งวดของวันที่ในเอกสารปิดแล้ว: รับได้ ลงวันที่รับของแทน (ทั้งใบรับของและหน่วยที่เข้าคลังทีหลัง) + แจ้งฝ่ายบัญชี', async () => {
+    const period = await closeShopPeriod(2025, 3);
+    try {
+      const supplier = await seedSupplier('K3CLOSED', false);
+      const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}K3C`, quantity: 2, unitPrice: 4200 }]);
+      const line = poItemOf(po, `${PREFIX}K3C`).id;
+
+      // หน้าจอเตือนก่อนกดยืนยัน — ตัวตรวจเดียวกับตอนลงบัญชี
+      expect((await service.checkReceivingDoc({ supplierId: supplier.id, docDate: '2025-03-20' })).periodClosed).toBe(true);
+
+      const result = await service.goodsReceiving(
+        po.id,
+        {
+          items: [
+            { poItemId: line, imeiSerial: nextImei(), status: 'PASS', anglePhotos: FULL_ANGLES, sellingPrice: 5900 }, // เข้าคลังทันที
+            { poItemId: line, imeiSerial: nextImei(), status: 'PASS' }, // รอถ่ายรูป
+          ],
+          supplierDocType: 'DELIVERY_NOTE',
+          supplierDocNumber: `DN-${RUN}`,
+          supplierDocDate: '2025-03-20',
+        } as never,
+        adminId,
+      );
+      k3GrNumbers.push(result.grNumber);
+      expect(result.supplierDocPeriodClosed).toBe(true);
+
+      // วันที่ในเอกสารเก็บตามจริง แต่รายการบัญชีลงวันที่รับของ
+      const receiving = await prisma.goodsReceiving.findUniqueOrThrow({ where: { id: result.receivingId } });
+      expect(receiving.supplierDocDate?.toISOString()).toBe('2025-03-19T17:00:00.000Z');
+      const [lot] = await receivingEntries(po.id);
+      expect(lot.postedAt?.getTime()).toBe(receiving.createdAt.getTime());
+      expect(lot.metadata).toMatchObject({ postedOnReceiveDate: true, supplierDocDate: '2025-03-20' });
+
+      // หน่วยที่รอถ่ายรูปเข้าคลังทีหลัง → วันเดียวกับใบรับของ (วันที่รับของ) ไม่ใช่วันที่ในเอกสาร และไม่ใช่วันที่เข้าคลัง
+      const pending = result.products[1];
+      await productsService.update(pending.id, { status: 'IN_STOCK', cashPrice: 5900 } as never, adminId);
+      const unit = (await receivingEntries(po.id)).find((e) => e.referenceId === `gr:${result.receivingId}:${pending.id}`);
+      expect(unit?.postedAt?.getTime()).toBe(receiving.createdAt.getTime());
+      expect(unit?.metadata).toMatchObject({ postedOnReceiveDate: true, postedOnAcceptanceDate: false });
+
+      // แจ้งฝ่ายบัญชี — งานหนึ่งใบ
+      const todos = await prisma.todo.findMany({
+        where: { tags: { has: 'goods-receiving-period' }, title: { contains: result.grNumber } },
+      });
+      expect(todos).toHaveLength(1);
+      expect(todos[0].description).toContain('20/03/2568');
+      expect(todos[0].description).toContain(po.poNumber);
+      expect(todos[0].description).toContain(`ใบส่งของ / ใบแจ้งหนี้ DN-${RUN}`);
+      expect(todos[0].title).toContain('งวดมีนาคม 2568');
+    } finally {
+      await period.restore();
+    }
+  }, 120_000);
+
+  it('ข3 — ตรวจช่องเอกสารก่อนรับของ · ไม่มีเอกสาร + เหตุผล = ลงวันที่รับของ ไม่เก็บเลขที่/วันที่', async () => {
+    const supplier = await seedSupplier('K3VAL', true);
+    const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_NEW', model: `${PREFIX}K3V`, quantity: 1, unitPrice: 10000 }]);
+    const items = () => [{ poItemId: poItemOf(po, `${PREFIX}K3V`).id, imeiSerial: nextImei(), status: 'PASS', sellingPrice: 13900 }];
+    const receive = (doc: Record<string, unknown>) => service.goodsReceiving(po.id, { items: items(), ...doc } as never, adminId);
+    const tomorrow = bangkokDateString(new Date(Date.now() + 24 * 60 * 60 * 1000));
+
+    await expect(receive({ supplierDocType: 'TAX_INVOICE', supplierDocDate: '2026-09-15' })).rejects.toThrow('กรุณากรอกเลขที่เอกสาร');
+    await expect(receive({ supplierDocType: 'TAX_INVOICE', supplierDocNumber: '   ', supplierDocDate: '2026-09-15' })).rejects.toThrow('กรุณากรอกเลขที่เอกสาร');
+    await expect(receive({ supplierDocType: 'CASH_BILL', supplierDocNumber: 'CB-1' })).rejects.toThrow('กรุณาเลือกวันที่ในเอกสาร');
+    await expect(receive({ supplierDocType: 'CASH_BILL', supplierDocNumber: 'CB-1', supplierDocDate: '2026-02-30' })).rejects.toThrow('วันที่ในเอกสารไม่ถูกต้อง');
+    await expect(receive({ supplierDocType: 'CASH_BILL', supplierDocNumber: 'CB-1', supplierDocDate: tomorrow })).rejects.toThrow('วันที่ในเอกสารต้องไม่เกินวันนี้');
+    await expect(receive({ supplierDocType: 'NONE' })).rejects.toThrow('กรุณาเขียนเหตุผลที่ไม่มีเอกสาร');
+    await expect(receive({ supplierDocType: 'NONE', notes: '   ' })).rejects.toThrow('กรุณาเขียนเหตุผลที่ไม่มีเอกสาร');
+    expect(await prisma.goodsReceiving.count({ where: { poId: po.id } })).toBe(0);
+
+    const result = await receive({ supplierDocType: 'NONE', supplierDocNumber: 'IGNORED', supplierDocDate: '2026-09-15', notes: 'ร้านไม่ออกบิล' });
+    k3GrNumbers.push(result.grNumber);
+    expect(result.supplierDocPeriodClosed).toBe(false);
+    const receiving = await prisma.goodsReceiving.findUniqueOrThrow({ where: { id: result.receivingId } });
+    expect(receiving).toMatchObject({ supplierDocType: 'NONE', supplierDocNumber: null, supplierDocDate: null, notes: 'ร้านไม่ออกบิล' });
+    const [entry] = await receivingEntries(po.id);
+    expect(entry.postedAt?.getTime()).toBe(receiving.createdAt.getTime());
+    expect(entry.metadata).toMatchObject({ supplierDocType: 'NONE', postedOnReceiveDate: false });
+  }, 60_000);
+
+  it('ข3 — รับเข้าตรงส่งช่องเอกสารต่อให้ใบรับของ', async () => {
+    const supplier = await seedSupplier('K3DIRECT', false);
+    const result = await service.directReceive(
+      {
+        supplierId: supplier.id,
+        orderDate: new Date().toISOString().slice(0, 10),
+        items: [
+          {
+            category: 'ACCESSORY',
+            brand: `${PREFIX}Brand`,
+            model: `${PREFIX}K3D`,
+            quantity: 1,
+            unitPrice: 300,
+            status: 'PASS',
+            sellingPrice: 590,
+          },
+        ],
+        supplierDocType: 'CASH_BILL',
+        supplierDocNumber: `CB-${RUN}`,
+        supplierDocDate: '2026-09-16',
+      } as never,
+      adminId,
+    );
+    createdPoIds.push(result.poId);
+    k3GrNumbers.push(result.grNumber);
+    const receiving = await prisma.goodsReceiving.findUniqueOrThrow({ where: { id: result.receivingId } });
+    expect(receiving).toMatchObject({ supplierDocType: 'CASH_BILL', supplierDocNumber: `CB-${RUN}` });
+    const [entry] = await receivingEntries(result.poId);
+    expect(entry.postedAt?.toISOString()).toBe('2026-09-15T17:00:00.000Z');
+  }, 60_000);
 });

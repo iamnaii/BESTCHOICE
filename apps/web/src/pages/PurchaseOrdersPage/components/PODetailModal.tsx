@@ -8,6 +8,7 @@ import { formatDateShort, formatDateMedium, formatDateTime, formatNumber, format
 import type { PurchaseOrder, PODetail, POItem } from '../types';
 import { paymentMethodLabels } from '../constants';
 import { canCancel } from '../po-list.util';
+import { supplierDocSummary } from '../supplier-doc.util';
 import {
   accessoryFor,
   accessoryTitle,
@@ -399,6 +400,9 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
                           )}
                           {ev.receiving && (
                             <div className="mt-1.5 space-y-1">
+                              {supplierDocSummary(ev.receiving) && (
+                                <div className="text-xs text-muted-foreground">เอกสารผู้จัดจำหน่าย: {supplierDocSummary(ev.receiving)}</div>
+                              )}
                               {ev.receiving.items.map((ri) => (
                                 <div key={ri.id} className="flex flex-wrap items-center gap-2 text-xs">
                                   <Badge variant={ri.status === 'PASS' ? 'success' : 'destructive'} appearance="light">{ri.status === 'PASS' ? 'PASS' : 'REJECT'}</Badge>

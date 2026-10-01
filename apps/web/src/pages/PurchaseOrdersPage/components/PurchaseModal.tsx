@@ -20,6 +20,13 @@ import { StepSummary } from './wizard/StepSummary';
 import { WizardStepper, type WizardStep } from './wizard/WizardStepper';
 import { paidAmountError, isPaidStatus } from './wizard/PaymentSection';
 import { ReceivingFlow } from './ReceivingFlow';
+import { useSupplierDocCheck } from './SupplierDocSection';
+import {
+  defaultSupplierDoc,
+  hasSupplierDocErrors,
+  supplierDocErrors,
+  type SupplierDocForm,
+} from '../supplier-doc.util';
 
 export interface PurchaseModalProps {
   isOpen: boolean;
@@ -114,6 +121,13 @@ export function PurchaseModal(props: PurchaseModalProps) {
   } = props;
   const isMobile = useIsMobile();
   const [units, setUnits] = useState<ReceivingUnitForm[]>([]);
+  // ข3 — เอกสารจากผู้จัดจำหน่ายของรับเข้าตรง: ค่าเริ่มต้นตามสถานะ VAT ของผู้ขายที่เลือก (ผูกกับผู้ขาย — เปลี่ยนผู้ขาย = เริ่มใหม่)
+  const [supplierDocState, setSupplierDocState] = useState<{ supplierId: string; doc: SupplierDocForm } | null>(null);
+  const [showDocErrors, setShowDocErrors] = useState(false);
+  const supplierDoc =
+    supplierDocState && supplierDocState.supplierId === form.supplierId ? supplierDocState.doc : defaultSupplierDoc(supplierHasVat);
+  const setSupplierDoc = (doc: SupplierDocForm) => setSupplierDocState({ supplierId: form.supplierId, doc });
+  const docCheck = useSupplierDocCheck(wizard.mode === 'receive' ? form.supplierId || undefined : undefined, supplierDoc);
 
   if (!isOpen) return null;
 
@@ -172,6 +186,11 @@ export function PurchaseModal(props: PurchaseModalProps) {
   };
 
   const submitReceive = () => {
+    if (hasSupplierDocErrors(supplierDocErrors(supplierDoc, form.notes))) {
+      setShowDocErrors(true);
+      toast.error('กรุณากรอกเอกสารจากผู้จัดจำหน่ายให้ครบ');
+      return;
+    }
     if (isPaidStatus(form.paymentStatus)) {
       const err = paidAmountError(form, totals.netAmount);
       if (err) {
@@ -179,7 +198,9 @@ export function PurchaseModal(props: PurchaseModalProps) {
         return;
       }
     }
-    directReceiveMutation.mutate(buildDirectReceivePayload({ form, units, attachments: formAttachments, today: todayIso() }));
+    directReceiveMutation.mutate(
+      buildDirectReceivePayload({ form, units, attachments: formAttachments, today: todayIso(), supplierDoc }),
+    );
   };
 
   const passed = units.filter((u) => u.status === 'PASS').length;
@@ -212,6 +233,16 @@ export function PurchaseModal(props: PurchaseModalProps) {
       setFormAttachments={setFormAttachments}
       onEditItems={() => goToStep(0)}
       receive={receive ? { passed, rejected } : undefined}
+      supplierDoc={
+        receive
+          ? {
+              doc: supplierDoc,
+              setDoc: setSupplierDoc,
+              check: docCheck,
+              errors: showDocErrors ? supplierDocErrors(supplierDoc, form.notes) : {},
+            }
+          : undefined
+      }
     />
   ) : (
     <div className="space-y-5">

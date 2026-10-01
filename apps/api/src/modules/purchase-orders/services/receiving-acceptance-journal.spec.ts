@@ -73,6 +73,9 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
         acceptedProductId: 'prod-2',
         postedAt: receivedAt,
         postedOnAcceptanceDate: false,
+        postedOnReceiveDate: false,
+        supplierDocRef: null,
+        supplierDocMetadata: {},
       },
       tx,
     );
@@ -82,7 +85,63 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
       tx.goodsReceivingItem.findUnique.mock.invocationCallOrder[0],
     );
     expect(tx.goodsReceivingItem.update).toHaveBeenCalledWith({ where: { id: 'gri-1' }, data: { journalEntryId: 'je-100' } });
-    expect(result).toEqual({ entryNo: 'JE-202609-00100', journalEntryId: 'je-100', postedAt: receivedAt, postedOnAcceptanceDate: false });
+    expect(result).toEqual({
+      entryNo: 'JE-202609-00100',
+      journalEntryId: 'je-100',
+      postedAt: receivedAt,
+      postedOnAcceptanceDate: false,
+      postedOnReceiveDate: false,
+    });
+  });
+
+  describe('ข3 — ใบรับของที่มีวันที่ในเอกสารผู้จัดจำหน่าย', () => {
+    const docDate = new Date(2026, 5, 28); // 28 มิ.ย. 2569 — ก่อนวันรับของ
+    const withDoc = () =>
+      receivingRow({
+        receiving: {
+          id: 'gr-1',
+          grNumber: 'GR-2026-09-001',
+          createdAt: receivedAt,
+          supplierDocType: 'TAX_INVOICE',
+          supplierDocNumber: 'IV-0123',
+          supplierDocDate: docDate,
+          po: { id: 'po-1', poNumber: 'PO-2026-09-001' },
+        },
+      });
+
+    it('งวดของวันในเอกสารเปิด → ลงวันที่ในเอกสาร (วันเดียวกับใบรับของ) + stamp เอกสาร', async () => {
+      const { tx, template, journal } = build({ locked: withDoc() });
+
+      const result = await journal.bookIfPending(tx, 'prod-2', acceptedAt);
+
+      const input = template.execute.mock.calls[0][0];
+      expect(input.postedAt).toBe(docDate);
+      expect(input).toMatchObject({
+        postedOnAcceptanceDate: false,
+        postedOnReceiveDate: false,
+        supplierDocRef: 'ใบกำกับภาษี IV-0123',
+        supplierDocMetadata: { supplierDocType: 'TAX_INVOICE', supplierDocNumber: 'IV-0123' },
+      });
+      expect(result).toMatchObject({ postedAt: docDate, postedOnReceiveDate: false });
+    });
+
+    it('งวดของวันในเอกสารปิด → ลงวันที่รับของ (แบบ ข เหมือนใบรับของ) ไม่ใช่วันที่รับเข้าคลัง', async () => {
+      const { tx, template, journal } = build({ locked: withDoc(), closed: ['2026-6'] });
+
+      const result = await journal.bookIfPending(tx, 'prod-2', acceptedAt);
+
+      expect(template.execute.mock.calls[0][0].postedAt).toBe(receivedAt);
+      expect(result).toMatchObject({ postedAt: receivedAt, postedOnReceiveDate: true, postedOnAcceptanceDate: false });
+    });
+
+    it('งวดของวันในเอกสารและวันรับของปิดทั้งคู่ → ลงวันที่รับเข้าคลัง', async () => {
+      const { tx, template, journal } = build({ locked: withDoc(), closed: ['2026-6', '2026-7'] });
+
+      const result = await journal.bookIfPending(tx, 'prod-2', acceptedAt);
+
+      expect(template.execute.mock.calls[0][0].postedAt).toBe(acceptedAt);
+      expect(result).toMatchObject({ postedAt: acceptedAt, postedOnReceiveDate: false, postedOnAcceptanceDate: true });
+    });
   });
 
   it('งวดบัญชีของวันรับของปิดไปแล้ว (รอถ่ายรูปข้ามเดือน) → ลงวันที่รับเข้าคลังแทน ไม่ปฏิเสธการเข้าคลัง', async () => {

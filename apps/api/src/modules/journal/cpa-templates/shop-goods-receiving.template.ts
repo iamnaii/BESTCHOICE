@@ -49,6 +49,12 @@ export interface ShopGoodsReceivingInput {
   acceptedProductId?: string;
   /** หน่วยที่ลงตอนผ่านเข้าคลัง: งวดของวันที่ใบรับของปิดแล้ว จึงลงวันที่รับเข้าคลังแทน — stamp ให้ฝ่ายบัญชีเห็น */
   postedOnAcceptanceDate?: boolean;
+  /** ข3 แบบ ข: งวดของวันที่ในเอกสารผู้จัดจำหน่ายปิดแล้ว จึงลงวันที่รับของแทน — stamp ให้ฝ่ายบัญชีเห็น */
+  postedOnReceiveDate?: boolean;
+  /** "ใบกำกับภาษี IV2610-0123" ต่อท้ายคำอธิบายรายการ · null/ไม่ส่ง = ไม่มีเลขที่เอกสาร */
+  supplierDocRef?: string | null;
+  /** `supplierDocType` / `supplierDocNumber` / `supplierDocDate` (YYYY-MM-DD) · ว่าง = ใบรับของที่ไม่มีข้อมูลเอกสาร */
+  supplierDocMetadata?: Record<string, string | null>;
   postedAt?: Date;
 }
 
@@ -159,9 +165,11 @@ export class ShopGoodsReceivingTemplate {
       const accepted = input.acceptedProductId;
       const result = await this.journal.createAndPost(
         {
-          description: accepted
-            ? `รับสินค้าเข้าคลังหลังตรวจรับ ${input.grNumber} ใบสั่งซื้อ ${input.poNumber} (SHOP)`
-            : `รับสินค้าเข้า ${input.grNumber} ใบสั่งซื้อ ${input.poNumber} (SHOP)`,
+          description:
+            (accepted
+              ? `รับสินค้าเข้าคลังหลังตรวจรับ ${input.grNumber} ใบสั่งซื้อ ${input.poNumber} (SHOP)`
+              : `รับสินค้าเข้า ${input.grNumber} ใบสั่งซื้อ ${input.poNumber} (SHOP)`) +
+            (input.supplierDocRef ? ` · ${input.supplierDocRef}` : ''),
           reference: accepted ? `gr:${input.receivingId}:${accepted}` : `gr:${input.receivingId}`,
           metadata: {
             tag: 'SHOP_GOODS_RECEIVING',
@@ -177,6 +185,9 @@ export class ShopGoodsReceivingTemplate {
             productIds: input.units.map((unit) => unit.productId),
             ...(accepted
               ? { acceptedProductId: accepted, postedOnAcceptanceDate: input.postedOnAcceptanceDate === true }
+              : {}),
+            ...(input.supplierDocMetadata && Object.keys(input.supplierDocMetadata).length > 0
+              ? { ...input.supplierDocMetadata, postedOnReceiveDate: input.postedOnReceiveDate === true }
               : {}),
           },
           postedAt: input.postedAt ?? new Date(),

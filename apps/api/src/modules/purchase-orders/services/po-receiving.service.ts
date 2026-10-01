@@ -1,4 +1,5 @@
 import { NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import * as Sentry from '@sentry/node';
 import { Prisma, POPaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GoodsReceivingDto, DirectReceiveDto } from '../dto/create-po.dto';
@@ -10,7 +11,18 @@ import {
   resolvePaymentTerms,
 } from './po-amounts.util';
 import { poLineCosts, poUnitCostAt } from './po-unit-cost.util';
-import { receivingCategory, receivingPostingDate } from './receiving-acceptance-journal';
+import { receivingCategory, receivingPostingCandidates } from './receiving-acceptance-journal';
+import {
+  SupplierDoc,
+  isPeriodOpenFor,
+  normalizeDocNumber,
+  normalizeSupplierDoc,
+  parseSupplierDocDate,
+  supplierDocMetadata,
+  supplierDocRef,
+} from './supplier-doc.util';
+import { bangkokCalendarParts } from '../../../utils/date.util';
+import { formatDateShort, formatMonthName } from '../../../utils/thai-date.util';
 import { d } from '../../../utils/decimal.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import {
@@ -79,13 +91,16 @@ export class PoReceivingService {
    * POItem rows by id inside the tx so no cached copy is trusted.
    */
   async goodsReceiving(id: string, dto: GoodsReceivingDto, userId: string) {
+    const doc = normalizeSupplierDoc(dto);
     const MAX_ATTEMPTS = 3;
     for (let attempt = 1; ; attempt++) {
       try {
-        return await this.prisma.$transaction(
-          async (tx) => this.runReceiveInTx(tx, id, dto, userId),
+        const result = await this.prisma.$transaction(
+          async (tx) => this.runReceiveInTx(tx, id, dto, userId, doc),
           PoReceivingService.RECEIVE_TX_OPTIONS,
         );
+        await this.alertIfDocPeriodClosed(result, userId);
+        return result;
       } catch (e) {
         const code = (e as { code?: string })?.code;
         if ((code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;
@@ -106,6 +121,7 @@ export class PoReceivingService {
     id: string,
     dto: GoodsReceivingDto,
     userId: string,
+    doc: SupplierDoc,
   ) {
     const po = await tx.purchaseOrder.findUnique({
       where: { id },
@@ -145,6 +161,9 @@ export class PoReceivingService {
         poId: id,
         receivedById: userId,
         notes: dto.notes,
+        supplierDocType: doc.type,
+        supplierDocNumber: doc.number,
+        supplierDocDate: doc.date,
       },
     });
 
@@ -410,13 +429,22 @@ export class PoReceivingService {
       data: { status: newStatus },
     });
 
+    // วันที่ลงบัญชี (ข3): วันที่ในเอกสาร → งวดของวันนั้นปิดแล้ว = วันที่รับของแทน (แบบ ข). เช็คแม้ไม่มีหน่วยให้ลงตอนนี้ —
+    // หน่วยที่รอถ่ายรูปจะลงวันที่รับของเหมือนกัน (`receivingPostingCandidates`) จึงต้องแจ้งฝ่ายบัญชีตั้งแต่ตอนรับ
+    const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(tx);
+    const [preferredDate, receiveDate] = receivingPostingCandidates(receiving);
+    const supplierDocPeriodClosed = doc.date !== null && !(await isPeriodOpenFor(tx, preferredDate, shopCompanyId));
+    const journalPostedAt = supplierDocPeriodClosed ? receiveDate : preferredDate;
     const posted = await this.postReceivingJournal(tx, {
       receivingId: receiving.id,
       grNumber,
       poId: id,
       poNumber: po.poNumber,
       units: journalUnits,
-      postedAt: receivingPostingDate(receiving),
+      postedAt: journalPostedAt,
+      shopCompanyId,
+      postedOnReceiveDate: supplierDocPeriodClosed,
+      doc,
     });
     if (posted && bookedReceivingItemIds.length > 0) {
       await tx.goodsReceivingItem.updateMany({
@@ -437,6 +465,14 @@ export class PoReceivingService {
       journalEntryNo: posted?.entryNo ?? null,
       /** หน่วยที่รอถ่ายรูป — ลงบัญชีรับเข้าคลังตอนผ่านเข้าคลัง ไม่ใช่ตอนนี้ */
       unitsAwaitingStockEntry,
+      receivedAt: receiving.createdAt,
+      supplierDocType: doc.type,
+      supplierDocNumber: doc.number,
+      supplierDocDate: doc.date,
+      /** งวดของวันที่ในเอกสารปิดแล้ว — ลงบัญชีวันที่รับของแทน (หน้าจอบอกผู้ใช้ + แจ้งฝ่ายบัญชีหลัง commit) */
+      supplierDocPeriodClosed,
+      /** วันที่ของรายการบัญชีรับสินค้า (null = ไม่มีรายการตอนนี้) */
+      journalPostedAt: posted ? journalPostedAt : null,
     };
   }
 
@@ -519,15 +555,107 @@ export class PoReceivingService {
       poNumber: string;
       units: ShopGoodsReceivingUnit[];
       postedAt: Date;
+      shopCompanyId: string;
+      postedOnReceiveDate: boolean;
+      doc: SupplierDoc;
     },
   ): Promise<{ entryNo: string; journalEntryId: string } | null> {
     if (input.units.length === 0) return null;
-    const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(tx);
-    await validatePeriodOpen(tx, input.postedAt, shopCompanyId);
+    // วันที่รับของอยู่ในงวดที่ปิดด้วย = ปฏิเสธตามเดิม (ไม่มีวันถัดไปให้ข้าม)
+    await validatePeriodOpen(tx, input.postedAt, input.shopCompanyId);
     return this.journal.goodsReceivingTemplate.execute(
-      { idempotencyKey: `shop-goods-receiving:${input.receivingId}`, ...input },
+      {
+        idempotencyKey: `shop-goods-receiving:${input.receivingId}`,
+        receivingId: input.receivingId,
+        grNumber: input.grNumber,
+        poId: input.poId,
+        poNumber: input.poNumber,
+        units: input.units,
+        postedAt: input.postedAt,
+        postedOnReceiveDate: input.postedOnReceiveDate,
+        supplierDocRef: supplierDocRef(input.doc),
+        supplierDocMetadata: supplierDocMetadata(input.doc),
+      },
       tx,
     );
+  }
+
+  /**
+   * แบบ ข (เจ้าของเคาะ 2026-10-01): งวดของวันที่ในเอกสารปิดแล้ว — รับของได้ ลงบัญชีวันที่รับของแทน และ "แจ้งฝ่ายบัญชีให้ทราบ"
+   * = งานในหน้า "งานของทีม" (`/todos`) หนึ่งใบต่อใบรับของ (ช่องทางเดียวกับส่วนต่างปิดยอดเงินสด). เรียก **หลัง commit** และห้าม
+   * throw — ของรับเข้าแล้ว การเตือนพังต้องไม่ทำให้ผู้ใช้เห็นว่ารับของไม่สำเร็จ
+   */
+  private async alertIfDocPeriodClosed(
+    result: {
+      grNumber: string;
+      poId: string;
+      receivedAt: Date;
+      journalEntryNo: string | null;
+      supplierDocPeriodClosed: boolean;
+      supplierDocType: SupplierDoc['type'];
+      supplierDocNumber: string | null;
+      supplierDocDate: Date | null;
+    },
+    userId: string,
+  ): Promise<void> {
+    if (!result.supplierDocPeriodClosed || !result.supplierDocDate) return;
+    try {
+      const docDate = result.supplierDocDate;
+      const month = `${formatMonthName(docDate)} ${bangkokCalendarParts(docDate).year + 543}`;
+      const ref = supplierDocRef({ type: result.supplierDocType, number: result.supplierDocNumber }) ?? 'เอกสารผู้จัดจำหน่าย';
+      // ผลลัพธ์ของรับตามใบสั่งซื้อไม่มีเลขใบสั่งซื้อ (หน้าจอใช้ poNumber บอกว่าเป็นรับเข้าตรง) — อ่านเฉพาะกรณีแจ้งเตือนที่เกิดไม่บ่อย
+      const po = await this.prisma.purchaseOrder.findUnique({ where: { id: result.poId }, select: { poNumber: true } });
+      await this.prisma.todo.create({
+        data: {
+          title: `รับสินค้า ${result.grNumber} ลงบัญชีวันที่รับของแทนวันที่ในเอกสาร (งวด${month}ปิดแล้ว)`,
+          description:
+            `${ref} ลงวันที่ ${formatDateShort(docDate)} อยู่ในงวดบัญชีที่ปิดแล้ว — ระบบลงบัญชีรับสินค้าด้วยวันที่รับของ ` +
+            `${formatDateShort(result.receivedAt)} แทน และเก็บวันที่ในเอกสารไว้ตามจริง\n` +
+            `ใบสั่งซื้อ ${po?.poNumber ?? '-'} · ` +
+            (result.journalEntryNo
+              ? `รายการบัญชี ${result.journalEntryNo}`
+              : 'ยังไม่มีรายการบัญชี (เครื่องรอถ่ายรูป — ลงวันที่รับของตอนผ่านเข้าคลัง)') +
+            '\nตรวจว่าต้องปรับปรุงรายการหรือไม่ — ระบบไม่ลงรายการปรับปรุงให้อัตโนมัติ',
+          priority: 'MEDIUM',
+          tags: ['goods-receiving-period'],
+          createdById: userId,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `สร้างงานแจ้งฝ่ายบัญชีไม่สำเร็จ (${result.grNumber} งวดของวันที่ในเอกสารปิดแล้ว)`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      Sentry.captureException(error, { tags: { subsystem: 'goods-receiving-period' }, extra: { grNumber: result.grNumber } });
+    }
+  }
+
+  /**
+   * ตัวตรวจก่อนกดยืนยันรับของ (หน้าจอเตือน ไม่บล็อก): เลขที่เอกสารเคยใช้กับใบรับของของผู้จัดจำหน่ายรายนี้แล้วหรือยัง
+   * (ตัดช่องว่าง/ไม่สนตัวพิมพ์) และงวดของวันที่ในเอกสารปิดแล้วหรือยัง — ตัวตัดสินงวดตัวเดียวกับตอนลงบัญชี
+   */
+  async checkReceivingDoc(input: { supplierId: string; docNumber?: string; docDate?: string }) {
+    const docNumber = normalizeDocNumber(input.docNumber);
+    const duplicates = docNumber
+      ? (
+          await this.prisma.goodsReceiving.findMany({
+            where: {
+              deletedAt: null,
+              supplierDocNumber: { equals: docNumber, mode: 'insensitive' },
+              po: { supplierId: input.supplierId, deletedAt: null },
+            },
+            select: { grNumber: true, createdAt: true, po: { select: { poNumber: true } } },
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+          })
+        ).map((row) => ({ grNumber: row.grNumber, receivedAt: row.createdAt, poNumber: row.po.poNumber }))
+      : [];
+    let periodClosed = false;
+    if (input.docDate?.trim()) {
+      const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(this.prisma as never);
+      periodClosed = !(await isPeriodOpenFor(this.prisma, parseSupplierDocDate(input.docDate), shopCompanyId));
+    }
+    return { duplicates, periodClosed };
   }
 
   /**
@@ -543,6 +671,7 @@ export class PoReceivingService {
    * by the shared pipeline (runReceiveInTx) — the payment fields here still post nothing.
    */
   async directReceive(dto: DirectReceiveDto, userId: string) {
+    const doc = normalizeSupplierDoc(dto);
     // Up-front guard: every line must carry a positive costPrice (COGS reads it).
     const badCost = dto.items.find((i) => !(Number(i.unitPrice) > 0));
     if (badCost) {
@@ -552,7 +681,7 @@ export class PoReceivingService {
     const MAX_ATTEMPTS = 3;
     for (let attempt = 1; ; attempt++) {
       try {
-        return await this.prisma.$transaction(
+        const result = await this.prisma.$transaction(
           async (tx) => {
             // 1) Validate supplier (+ VAT flag and payment terms, same select as create())
             const supplier = await tx.supplier.findUnique({
@@ -663,12 +792,14 @@ export class PoReceivingService {
               anglePhotos: line.anglePhotos,
             }));
 
-            const gr = await this.runReceiveInTx(tx, po.id, { items: grItems, notes: dto.notes }, userId);
+            const gr = await this.runReceiveInTx(tx, po.id, { items: grItems, notes: dto.notes }, userId, doc);
 
             return { poNumber: po.poNumber, ...gr };
           },
           PoReceivingService.RECEIVE_TX_OPTIONS,
         );
+        await this.alertIfDocPeriodClosed(result, userId);
+        return result;
       } catch (e) {
         const code = (e as { code?: string })?.code;
         if ((code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;

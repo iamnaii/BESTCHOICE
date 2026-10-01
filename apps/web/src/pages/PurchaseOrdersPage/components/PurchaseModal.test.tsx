@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useEffect } from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { PurchaseModal } from './PurchaseModal';
 import { usePOForm } from '../hooks/usePOForm';
 import { useCreatePoWizard } from '../hooks/useCreatePoWizard';
@@ -16,6 +17,8 @@ vi.mock('@/components/contacts/ContactCombobox', () => ({
 }));
 vi.mock('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }));
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }));
+// ตัวตรวจเลขซ้ำ/งวดปิดของช่องเอกสาร (ข3) — ไม่มีอะไรซ้ำ งวดเปิด
+vi.mock('@/lib/api', () => ({ default: { get: vi.fn().mockResolvedValue({ data: { duplicates: [], periodClosed: false } }) } }));
 
 const blank: ItemForm = { brand: '', category: '', model: '', color: '', storage: '', quantity: '1', unitPrice: '', accessoryType: '', accessoryBrand: '' };
 const phone: ItemForm = { ...blank, brand: 'Apple', category: 'PHONE_NEW', model: 'iPhone 17 Pro', color: 'Deep Blue', storage: '256GB', quantity: '1', unitPrice: '42900' };
@@ -68,7 +71,11 @@ function renderModal(initialItems: ItemForm[] = [phone, film]) {
   localStorage.clear();
   const createMutation: Mut = { isPending: false, mutate: vi.fn() };
   const directReceiveMutation: Mut = { isPending: false, mutate: vi.fn() };
-  render(<Harness initialItems={initialItems} createMutation={createMutation} directReceiveMutation={directReceiveMutation} />);
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <Harness initialItems={initialItems} createMutation={createMutation} directReceiveMutation={directReceiveMutation} />
+    </QueryClientProvider>,
+  );
   return { createMutation, directReceiveMutation };
 }
 const dialog = () => screen.getByRole('dialog', { name: 'ซื้อสินค้า' });
@@ -139,8 +146,16 @@ describe('PurchaseModal — one entry "ซื้อสินค้า" for both 
     expect(screen.getByRole('heading', { name: 'ซื้อสินค้า — สรุป + จ่ายเงิน' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'สรุปใบสั่งซื้อ' })).toHaveTextContent('รับเข้าวันนี้');
     fireEvent.change(screen.getByRole('combobox', { name: 'สถานะการจ่าย' }), { target: { value: 'FULLY_PAID' } });
+    // ข3: ผู้ขายไม่จด VAT → ใบส่งของ / ใบแจ้งหนี้ ไว้ให้ก่อน · ยังไม่กรอกเลขที่/วันที่ = ยืนยันไม่ได้
+    expect(screen.getByRole('radio', { name: 'ใบส่งของ / ใบแจ้งหนี้' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเข้าตรง 2 ชิ้น' }));
+    expect(directReceiveMutation.mutate).not.toHaveBeenCalled();
+    expect(screen.getByText('กรุณากรอกเลขที่เอกสาร')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('เลขที่เอกสาร'), { target: { value: 'DN-0906' } });
+    fireEvent.change(screen.getByLabelText('วันที่ในเอกสาร'), { target: { value: '2026-09-05' } });
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเข้าตรง 2 ชิ้น' }));
     expect(directReceiveMutation.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      supplierDocType: 'DELIVERY_NOTE', supplierDocNumber: 'DN-0906', supplierDocDate: '2026-09-05',
       supplierId: 's1', paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 42935,
       items: expect.arrayContaining([
         expect.objectContaining({ imeiSerial: '356000000090601', serialNumber: 'QASN0906A', status: 'PASS', sellingPrice: '45900', installmentPrice: '49900' }),

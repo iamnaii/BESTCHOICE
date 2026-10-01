@@ -11,10 +11,15 @@ import {
   resolvePaymentTerms,
 } from './po-amounts.util';
 import { poLineCosts, poUnitCostAt } from './po-unit-cost.util';
-import { RECEIVING_PERIOD_TODO_TAG, receivingCategory, receivingPostingCandidates } from './receiving-acceptance-journal';
+import {
+  RECEIVING_PERIOD_TODO_TAG,
+  receivingCategory,
+  receivingPeriodTodoKey,
+  receivingPostingCandidates,
+} from './receiving-acceptance-journal';
 import {
   SupplierDoc,
-  isDocDatePeriodClosed,
+  isPeriodClosedForBackdating,
   normalizeDocNumber,
   normalizeSupplierDoc,
   parseSupplierDocDate,
@@ -433,7 +438,7 @@ export class PoReceivingService {
     // เช็คแม้ไม่มีหน่วยให้ลงตอนนี้ — หน่วยที่รอถ่ายรูปจะลงวันที่รับของเหมือนกัน (`receivingPostingCandidates`)
     const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(tx);
     const [preferredDate, receiveDate] = receivingPostingCandidates(receiving);
-    const docPeriodClosed = doc.date !== null && (await isDocDatePeriodClosed(tx, preferredDate, shopCompanyId));
+    const docPeriodClosed = doc.date !== null && (await isPeriodClosedForBackdating(tx, preferredDate, shopCompanyId));
     const journalPostedAt = docPeriodClosed ? receiveDate : preferredDate;
     const posted = await this.postReceivingJournal(tx, {
       receivingId: receiving.id,
@@ -625,7 +630,8 @@ export class PoReceivingService {
               : '') +
             '\nตรวจว่าต้องปรับปรุงรายการหรือไม่ — ระบบไม่ลงรายการปรับปรุงให้อัตโนมัติ',
           priority: 'MEDIUM',
-          tags: [RECEIVING_PERIOD_TODO_TAG],
+          // คีย์ "รับของ" เดียวกับงานของเครื่องรอถ่ายรูปที่ลงวันที่รับของ — งานนี้บอกเรื่องเครื่องพวกนั้นไว้แล้ว
+          tags: [RECEIVING_PERIOD_TODO_TAG, receivingPeriodTodoKey(result.grNumber, 'receive')],
           createdById: userId,
         },
       });
@@ -663,7 +669,7 @@ export class PoReceivingService {
     let periodClosed = false;
     if (input.docDate?.trim()) {
       const shopCompanyId = await this.journal.companyResolver.getShopCompanyId(this.prisma as never);
-      periodClosed = await isDocDatePeriodClosed(this.prisma as Prisma.TransactionClient, parseSupplierDocDate(input.docDate), shopCompanyId);
+      periodClosed = await isPeriodClosedForBackdating(this.prisma as Prisma.TransactionClient, parseSupplierDocDate(input.docDate), shopCompanyId);
     }
     return { duplicates, periodClosed };
   }

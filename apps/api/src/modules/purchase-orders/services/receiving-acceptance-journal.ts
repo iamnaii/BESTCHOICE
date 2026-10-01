@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { ConflictException, Logger } from '@nestjs/common';
 import { Prisma, ProductCategory } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
@@ -6,13 +6,14 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
-import { isDocDatePeriodClosed, supplierDocMetadata, supplierDocRef } from './supplier-doc.util';
-import { formatDateShort } from '../../../utils/thai-date.util';
+import { isPeriodClosedForBackdating, supplierDocMetadata, supplierDocRef } from './supplier-doc.util';
+import { formatDateShort, formatMonthName } from '../../../utils/thai-date.util';
+import { bangkokCalendarParts } from '../../../utils/date.util';
 
 /**
  * วันที่ลงบัญชีรับสินค้าของใบรับของ — จุดเดียวที่ตัดสิน ใช้ทั้งรายการตอนรับของและหน่วยที่ลงตอนผ่านเข้าคลัง.
  * ลำดับที่ลอง (วันแรกที่ใช้ได้ชนะ): **วันที่ในเอกสารของผู้จัดจำหน่าย** (คำตอบฝ่ายบัญชีข้อ ข3 2026-09-29 · แบบหน้าจอที่เจ้าของเคาะ
- * 2026-10-01) → **วันที่รับของ** (แบบ ข: งวดของวันที่ในเอกสารปิดแล้ว — ตัดสินด้วย `isDocDatePeriodClosed` ไม่มีช่วงผ่อนผัน).
+ * 2026-10-01) → **วันที่รับของ** (แบบ ข: งวดของวันที่ในเอกสารปิดแล้ว — ตัดสินด้วย `isPeriodClosedForBackdating` ไม่มีช่วงผ่อนผัน).
  * ไม่มีเอกสาร / ใบรับของก่อนมีช่องนี้ = วันที่รับของอย่างเดียว. หน่วยที่ผ่านเข้าคลังทีหลังต่อท้ายด้วยวันที่รับเข้าคลังเอง
  */
 export function receivingPostingCandidates(receiving: { createdAt: Date; supplierDocDate?: Date | null }): Date[] {
@@ -124,7 +125,7 @@ export class ReceivingAcceptanceJournal {
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
     const lotCandidates = receivingPostingCandidates(locked.receiving);
     const candidates = [...lotCandidates, acceptedAt];
-    const chosen = await this.firstOpenDate(tx, candidates, shopCompanyId, lotCandidates.length === 2);
+    const chosen = await this.firstOpenDate(tx, candidates, shopCompanyId);
     const postedAt = candidates[chosen];
     const postedOnAcceptanceDate = chosen === candidates.length - 1;
     // มีวันที่ในเอกสาร (สองวันแรก = เอกสาร · รับของ) แล้วงวดของวันในเอกสารปิด = ลงวันที่รับของแบบเดียวกับใบรับของ
@@ -174,7 +175,7 @@ export class ReceivingAcceptanceJournal {
         `[receiving-acceptance] ${locked.receiving.grNumber} product=${productId}: งวดบัญชีของวันที่ใบรับของปิดแล้ว ` +
           `— ลงวันที่${postedOnAcceptanceDate ? 'รับเข้าคลัง' : 'รับของ'} ${postedAt.toISOString()} แทน (${posted.entryNo})`,
       );
-      await this.notifyAccounting(tx, locked.receiving, posted.entryNo, postedAt, postedOnAcceptanceDate);
+      await this.notifyAccounting(tx, locked.receiving, posted.entryNo, postedAt, candidates[chosen - 1], postedOnAcceptanceDate);
     }
     return { ...posted, postedAt, postedOnAcceptanceDate, postedOnReceiveDate };
   }
@@ -182,37 +183,26 @@ export class ReceivingAcceptanceJournal {
   /**
    * วันแรกในลำดับที่งวดยังเปิด: วันที่ในเอกสาร → วันที่รับของ (วันเดียวกับรายการของใบรับของ) → วันที่รับเข้าคลัง —
    * เครื่องรอถ่ายรูปข้ามเดือนหลังปิดงวด ไม่ถูกปฏิเสธการเข้าคลังเพราะงวดบัญชี (พนักงานถ่ายรูปเปิดงวดเองไม่ได้).
-   * วันสุดท้าย (วันรับเข้าคลัง) ปิดด้วย = ปฏิเสธตามปกติ
+   * ทุกวันก่อนวันสุดท้ายคือการลงย้อนหลัง ⇒ ตัดสินด้วย `isPeriodClosedForBackdating` (สถานะงวด ไม่มีช่วงผ่อนผัน — ไม่งั้น
+   * เครื่องที่เข้าคลังต้นเดือนจะลงวันที่รับของกลับเข้าเดือนที่ฝ่ายบัญชีเพิ่งปิด). วันสุดท้าย (วันรับเข้าคลัง = วันนี้) ใช้
+   * `validatePeriodOpen` ตามกติกาทั้งระบบ — ปิดด้วย = ปฏิเสธ
    */
-  private async firstOpenDate(
-    tx: Prisma.TransactionClient,
-    candidates: Date[],
-    shopCompanyId: string,
-    firstIsDocDate: boolean,
-  ): Promise<number> {
+  private async firstOpenDate(tx: Prisma.TransactionClient, candidates: Date[], shopCompanyId: string): Promise<number> {
+    const last = candidates.length - 1;
     for (const [index, date] of candidates.entries()) {
-      if (index === 0 && firstIsDocDate) {
-        // วันที่ในเอกสาร: ตัวตัดสินเดียวกับตอนรับของ (สถานะงวด ไม่มีช่วงผ่อนผัน)
-        if (!(await isDocDatePeriodClosed(tx, date, shopCompanyId))) return index;
-        continue;
-      }
-      if (index === candidates.length - 1) {
+      if (index === last) {
         await validatePeriodOpen(tx, date, shopCompanyId);
         return index;
       }
-      try {
-        await validatePeriodOpen(tx, date, shopCompanyId);
-        return index;
-      } catch (e) {
-        if (!(e instanceof BadRequestException)) throw e;
-      }
+      if (!(await isPeriodClosedForBackdating(tx, date, shopCompanyId))) return index;
     }
     throw new Error('receiving posting date candidates must not be empty');
   }
 
   /**
    * แจ้งฝ่ายบัญชีเมื่อหน่วยลงบัญชีไม่ตรงวันที่ของใบรับของ (งวดปิดระหว่างที่เครื่องรอถ่ายรูป) — งานในหน้า "งานของทีม" (`/todos`)
-   * ใบเดียวต่อใบรับของ: มีงานแท็กเดียวกันของใบรับของนี้ที่ยังไม่เสร็จอยู่แล้ว (รวมงานตอนรับของ) = ไม่สร้างซ้ำ.
+   * ใบเดียวต่อ (ใบรับของ, วันที่ที่ลงแทน) ด้วยแท็ก `receivingPeriodTodoKey` — งานตอนรับของใช้คีย์ "รับของ" เดียวกัน (มันบอกเรื่อง
+   * เครื่องรอถ่ายรูปไว้แล้ว) ส่วนเครื่องที่ตกไปลงวันที่รับเข้าคลัง (คนละเดือน คนละรายการ) ได้งานของตัวเอง.
    * สร้างใน tx เดียวกับรายการบัญชี (มาด้วยกัน/ไม่มาทั้งคู่) — ผู้สร้าง = ผู้รับของ (ประตูเข้าคลังบางทางไม่มีผู้กดส่งมา)
    */
   private async notifyAccounting(
@@ -220,29 +210,28 @@ export class ReceivingAcceptanceJournal {
     receiving: { grNumber: string; receivedById: string; po: { poNumber: string } },
     entryNo: string,
     postedAt: Date,
+    skippedDate: Date,
     onAcceptanceDate: boolean,
   ): Promise<void> {
+    const key = receivingPeriodTodoKey(receiving.grNumber, onAcceptanceDate ? 'acceptance' : 'receive');
     const open = await tx.todo.findFirst({
-      where: {
-        tags: { has: RECEIVING_PERIOD_TODO_TAG },
-        title: { contains: receiving.grNumber },
-        status: { not: 'DONE' },
-        deletedAt: null,
-      },
+      where: { tags: { hasEvery: [RECEIVING_PERIOD_TODO_TAG, key] }, status: { not: 'DONE' }, deletedAt: null },
       select: { id: true },
     });
     if (open) return;
     const which = onAcceptanceDate ? 'รับเข้าคลัง' : 'รับของ';
+    const skipped = onAcceptanceDate ? 'วันที่รับของ' : 'วันที่ในเอกสาร';
+    const month = `${formatMonthName(skippedDate)} ${bangkokCalendarParts(skippedDate).year + 543}`;
     await tx.todo.create({
       data: {
-        title: `รับสินค้า ${receiving.grNumber} เครื่องที่เข้าคลังทีหลังลงบัญชีวันที่${which}แทน (งวดของวันที่ใบรับของปิดแล้ว)`,
+        title: `รับสินค้า ${receiving.grNumber} เครื่องที่เข้าคลังทีหลังลงบัญชีวันที่${which}แทน (งวด${month}ปิดแล้ว)`,
         description:
-          `เครื่องจากใบรับของนี้ผ่านเข้าคลังหลังฝ่ายบัญชีปิดงวดของวันที่ใบรับของ — ระบบลงรายการ ${entryNo} ` +
-          `วันที่${which} ${formatDateShort(postedAt)} แทน · ใบสั่งซื้อ ${receiving.po.poNumber}\n` +
-          'เครื่องอื่นของใบรับของเดียวกันที่เข้าคลังทีหลังจะลงแบบเดียวกัน (ไม่สร้างงานซ้ำจนกว่างานนี้เสร็จ) — ' +
+          `เครื่องจากใบรับของนี้ผ่านเข้าคลังหลังฝ่ายบัญชีปิดงวดของ${skipped} (${formatDateShort(skippedDate)}) — ระบบลงรายการ ` +
+          `${entryNo} วันที่${which} ${formatDateShort(postedAt)} แทน · ใบสั่งซื้อ ${receiving.po.poNumber}\n` +
+          `เครื่องอื่นของใบรับของเดียวกันที่ลงวันที่${which}แทนเหมือนกันจะไม่สร้างงานซ้ำจนกว่างานนี้เสร็จ — ` +
           'ตรวจว่าต้องปรับปรุงรายการหรือไม่ ระบบไม่ลงรายการปรับปรุงให้อัตโนมัติ',
         priority: 'MEDIUM',
-        tags: [RECEIVING_PERIOD_TODO_TAG],
+        tags: [RECEIVING_PERIOD_TODO_TAG, key],
         createdById: receiving.receivedById,
       },
     });
@@ -251,3 +240,11 @@ export class ReceivingAcceptanceJournal {
 
 /** แท็กงานแจ้งฝ่ายบัญชีเรื่องวันที่ลงบัญชีรับสินค้าไม่ตรงเอกสาร (ข3) — ใช้ทั้งตอนรับของและตอนหน่วยเข้าคลังทีหลัง */
 export const RECEIVING_PERIOD_TODO_TAG = 'goods-receiving-period';
+
+/**
+ * แท็กกันงานซ้ำ: ใบรับของ + วันที่ที่ลงแทน (`receive` = วันที่รับของ · `acceptance` = วันที่รับเข้าคลัง).
+ * เทียบทั้งแท็ก ไม่ค้นจากชื่องาน — เลขใบรับของเติมศูนย์แค่ 3 หลัก (GR-…-100 เป็นส่วนหนึ่งของ GR-…-1000) และชื่องานแก้ได้
+ */
+export function receivingPeriodTodoKey(grNumber: string, postedOn: 'receive' | 'acceptance'): string {
+  return `gr:${grNumber}:${postedOn}`;
+}

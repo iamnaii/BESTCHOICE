@@ -783,6 +783,8 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
         where: { tags: { has: 'goods-receiving-period' }, title: { contains: result.grNumber } },
       });
       expect(todos).toHaveLength(1);
+      // งานตอนรับของถือคีย์ "รับของ" — หน่วยที่ลงวันที่รับของทีหลังจึงไม่สร้างงานซ้ำ
+      expect(todos[0].tags).toEqual(['goods-receiving-period', `gr:${result.grNumber}:receive`]);
       expect(todos[0].description).toContain(doc.thai);
       expect(todos[0].description).toContain(po.poNumber);
       expect(todos[0].description).toContain(`ใบส่งของ / ใบแจ้งหนี้ DN-${RUN}`);
@@ -918,8 +920,59 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
       });
       expect(todos).toHaveLength(1);
       expect(todos[0].createdById).toBe(adminId);
+      expect(todos[0].tags).toEqual(['goods-receiving-period', `gr:${result.grNumber}:receive`]);
     } finally {
       await period.restore();
+    }
+  }, 120_000);
+
+  it('ข3 — งวดของวันที่รับของปิดแต่ยังอยู่ในช่วงผ่อนผัน: หน่วยที่เข้าคลังทีหลังไม่ย้อนกลับเข้าเดือนที่ปิด ลงวันที่รับเข้าคลัง + งานแยก', async () => {
+    const doc = pastDoc(3, 20);
+    const receivedOn = pastDoc(2, 20); // วันที่รับของ (ย้อนแถวใบรับของให้เป็นของเดือนก่อน)
+    const supplier = await seedSupplier('K3RCV', false);
+    const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}K3R`, quantity: 2, unitPrice: 4200 }]);
+    const line = poItemOf(po, `${PREFIX}K3R`).id;
+    const result = await service.goodsReceiving(
+      po.id,
+      {
+        items: [
+          { poItemId: line, imeiSerial: nextImei(), status: 'PASS', anglePhotos: FULL_ANGLES, sellingPrice: 5900 },
+          { poItemId: line, imeiSerial: nextImei(), status: 'PASS' }, // รอถ่ายรูป
+        ],
+        supplierDocType: 'DELIVERY_NOTE',
+        supplierDocNumber: `DNR-${RUN}`,
+        supplierDocDate: doc.iso,
+      } as never,
+      adminId,
+    );
+    k3GrNumbers.push(result.grNumber);
+    // คืนวันที่จริงตอนจบ — ตัวออกเลขใบรับของนับใบของเดือนนี้ตาม createdAt ใบที่ถูกย้อนวันทำให้เลขของเคสถัดไปซ้ำ
+    const { createdAt: realCreatedAt } = await prisma.goodsReceiving.findUniqueOrThrow({ where: { id: result.receivingId } });
+    await prisma.goodsReceiving.update({ where: { id: result.receivingId }, data: { createdAt: new Date(receivedOn.stored) } });
+
+    // ฝ่ายบัญชีปิดทั้งเดือนของวันที่ในเอกสารและเดือนของวันที่รับของ · ช่วงผ่อนผันยาวมาก (validatePeriodOpen ยอมให้ลงทั้งสองเดือน)
+    const docPeriod = await closeShopPeriod(doc.year, doc.month);
+    const receivePeriod = await closeShopPeriod(receivedOn.year, receivedOn.month);
+    const grace = await setGraceDays(36500);
+    try {
+      const pending = result.products[1];
+      const before = Date.now();
+      await productsService.update(pending.id, { status: 'IN_STOCK', cashPrice: 5900 } as never, adminId);
+      const unit = (await receivingEntries(po.id)).find((e) => e.referenceId === `gr:${result.receivingId}:${pending.id}`);
+      expect(unit?.postedAt?.getTime()).toBeGreaterThanOrEqual(before - 1000); // วันที่รับเข้าคลัง (วันนี้) ไม่ใช่วันที่รับของ
+      expect(unit?.metadata).toMatchObject({ postedOnAcceptanceDate: true, postedOnReceiveDate: false });
+
+      const todos = await prisma.todo.findMany({
+        where: { tags: { hasEvery: ['goods-receiving-period', `gr:${result.grNumber}:acceptance`] } },
+      });
+      expect(todos).toHaveLength(1);
+      expect(todos[0].title).toContain(`ลงบัญชีวันที่รับเข้าคลังแทน (งวด${receivedOn.monthLabel}ปิดแล้ว)`);
+      expect(todos[0].description).toContain(receivedOn.thai);
+    } finally {
+      await grace.restore();
+      await receivePeriod.restore();
+      await docPeriod.restore();
+      await prisma.goodsReceiving.update({ where: { id: result.receivingId }, data: { createdAt: realCreatedAt } });
     }
   }, 120_000);
 

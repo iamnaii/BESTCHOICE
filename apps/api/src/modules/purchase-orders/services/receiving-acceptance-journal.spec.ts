@@ -172,9 +172,30 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     expect(template.execute.mock.calls[0][0].postedOnAcceptanceDate).toBe(true); // ฝ่ายบัญชีเห็นใน metadata
     expect(result).toMatchObject({ postedAt: acceptedAt, postedOnAcceptanceDate: true });
     // แจ้งฝ่ายบัญชีในธุรกรรมเดียวกัน — ผู้สร้าง = ผู้รับของ
+    // แท็กกันซ้ำแยกตาม (ใบรับของ, วันที่ที่ลงแทน) — ไม่ค้นจากชื่องาน · ชื่องานบอกเดือนที่ปิดจริง (เดือนของวันที่รับของ)
+    expect(tx.todo.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tags: { hasEvery: ['goods-receiving-period', 'gr:GR-2026-09-001:acceptance'] } }),
+      }),
+    );
     expect(tx.todo.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ tags: ['goods-receiving-period'], createdById: 'user-1', title: expect.stringContaining('GR-2026-09-001') }),
+      data: expect.objectContaining({
+        tags: ['goods-receiving-period', 'gr:GR-2026-09-001:acceptance'],
+        createdById: 'user-1',
+        title: 'รับสินค้า GR-2026-09-001 เครื่องที่เข้าคลังทีหลังลงบัญชีวันที่รับเข้าคลังแทน (งวดกรกฎาคม 2569ปิดแล้ว)',
+      }),
     });
+  });
+
+  it('งวดของวันรับของปิดแต่ยังอยู่ในช่วงผ่อนผัน → ไม่ลงย้อนกลับเข้าเดือนที่ปิด ลงวันที่รับเข้าคลังแทน (ผลตรวจทานรอบ 5)', async () => {
+    const { tx, template, journal } = build({ closed: ['2026-7'] });
+    // ช่วงผ่อนผันยาวมาก: validatePeriodOpen ปล่อยให้ลงเข้ากรกฎาคมที่ปิดแล้ว — วันที่ลงย้อนหลังต้องไม่ใช้ช่องนี้
+    tx.systemConfig.findUnique.mockResolvedValue({ value: '99999' });
+
+    const result = await journal.bookIfPending(tx, 'prod-2', acceptedAt);
+
+    expect(template.execute.mock.calls[0][0].postedAt).toBe(acceptedAt);
+    expect(result).toMatchObject({ postedOnAcceptanceDate: true });
   });
 
   it('งวดของวันรับเข้าคลังก็ปิด → ปฏิเสธด้วยข้อความงวดบัญชีตามปกติ (ไม่ลงเงียบ ๆ)', async () => {

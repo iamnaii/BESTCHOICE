@@ -112,12 +112,13 @@ export function supplierDocMetadata(doc: SupplierDoc): Record<string, string | n
 }
 
 /**
- * งวดของวันที่ในเอกสารปิดแล้วหรือยัง (ข3 แบบ ข) — ตัดสินจาก **สถานะงวด** (CLOSED / SYNCED) ตรง ๆ ไม่มีช่วงผ่อนผัน:
+ * งวดของวันที่ที่จะลงย้อนหลังปิดแล้วหรือยัง (ข3 แบบ ข — วันที่ในเอกสาร และวันที่รับของของหน่วยที่เข้าคลังทีหลัง) —
+ * ตัดสินจาก **สถานะงวด** (CLOSED / SYNCED) ตรง ๆ ไม่มีช่วงผ่อนผัน:
  * ช่วงผ่อนผันของ `validatePeriodOpen` มีไว้ให้รายการของเดือนนั้นลงตามหลังได้ ไม่ใช่ให้ใบรับของที่ลงย้อนวันกลับเข้าเดือน
  * ที่ฝ่ายบัญชีปิดแล้ว (ก่อน ข3 การรับของลงวันนี้เสมอ จึงไม่เคยเข้าเดือนที่ปิดผ่านช่องนี้). เดือนของวันที่ = ปฏิทินไทย.
  * `validatePeriodOpen` ไม่ผ่านก็นับว่าปิดด้วย (ตาข่าย) — ใช้ตัวเดียวกันทั้งตอนลงบัญชี ตอนหน่วยเข้าคลังทีหลัง และตัวตรวจบนจอ
  */
-export async function isDocDatePeriodClosed(client: Prisma.TransactionClient, date: Date, companyId: string): Promise<boolean> {
+export async function isPeriodClosedForBackdating(client: Prisma.TransactionClient, date: Date, companyId: string): Promise<boolean> {
   const { year, month } = bangkokCalendarParts(date);
   const period = await client.accountingPeriod.findUnique({
     where: { companyId_year_month: { companyId, year, month: month + 1 } },

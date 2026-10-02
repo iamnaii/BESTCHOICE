@@ -29,6 +29,11 @@ export interface EarlyPayoffJeLine {
   accountCode: string;
   dr: Decimal;
   cr: Decimal;
+  /**
+   * บรรทัด Dr 21-1103 ของเงินรับล่วงหน้าถังรวม (PR5ข) — บัญชีเดียวกับบรรทัดเงินพักค่าปรับดิวแต่คนละบรรทัด ·
+   * ผู้เรียกไม่ใส่คำอธิบายให้บรรทัดนี้ (การ์ดรายการแสดงชื่อบัญชีจากผังบัญชี — ไม่มีข้อความใหม่บนจอ)
+   */
+  generalAdvance?: true;
 }
 
 // ─── PR5 — ปิดยอดก่อนกำหนดล้างตามยอดในบัญชี (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4 · 29/09/2569) ───────────────
@@ -42,7 +47,8 @@ export interface EarlyPayoffJeLine {
 // 5.3 เงินสดในรายการ = เงินที่รับจริง · 52-1106 = ลูกหนี้คงเหลือตามบัญชี − เงินที่รับจริง − เงินรับล่วงหน้าที่นำมาหัก
 //     (ส่วนที่เหลือให้สมดุล — ไม่มีสูตรส่วนลดที่สอง)
 // 5.4 เงินของลูกค้าที่ยอดปิดหักให้แล้วลงฝั่งเดบิตแทนเงินสด: เงินพักค่าปรับดิว 21-1103 (`parkRelief`) และเงินเกินของลูกค้า
-//     21-5101 (`creditRelief`)
+//     21-5101 (`creditRelief`) · PR5ข (เจ้าของเคาะ 01/10/2569): เงินรับล่วงหน้าถังรวม 21-1103 (`advanceRelief` — บรรทัดของ
+//     ตัวเอง) ที่ยอดปิดหักแบบเดียวกับเงินพัก
 
 /** ยอดคงเหลือในสมุดบัญชีของสัญญา ณ วันปิดยอด — ขาที่ JP4 ล้าง (`glContractBalance`) */
 export interface EarlyPayoffLedger {
@@ -90,6 +96,8 @@ export interface BuildEarlyPayoffJeInput {
   unpaidLateFees?: DecimalInput | null;
   /** Dr 21-1103 เงินพักค่าปรับดิวที่ยอดปิดหักให้ลูกค้า — ผู้เรียก clamp ด้วยคอลัมน์และยอดในบัญชีแล้ว */
   parkRelief?: DecimalInput | null;
+  /** Dr 21-1103 (บรรทัดแยก) เงินรับล่วงหน้าถังรวมที่ยอดปิดหักให้ลูกค้า (PR5ข) — ผู้เรียก clamp ด้วยคอลัมน์และยอดในบัญชีแล้ว */
+  advanceRelief?: DecimalInput | null;
   /** Dr 21-5101 เงินเกินของลูกค้าที่ยอดปิดหักให้ — ผู้เรียก clamp ด้วยคอลัมน์และยอดในบัญชีแล้ว */
   creditRelief?: DecimalInput | null;
   /** % ส่วนลดของยอดปิด (0–100) — ใช้วัดส่วนของ 52-1106 ที่เกินฐานข้อ 5.2 เท่านั้น (ไม่กระทบบรรทัดของรายการ) */
@@ -112,8 +120,10 @@ export interface EarlyPayoffJe {
   deferredVat: Decimal;
   /** Cr 42-1103 */
   lateFees: Decimal;
-  /** Dr 21-1103 */
+  /** Dr 21-1103 (บรรทัดเงินพักค่าปรับดิว) */
   parkRelief: Decimal;
+  /** Dr 21-1103 (บรรทัดเงินรับล่วงหน้าถังรวม — PR5ข) */
+  advanceRelief: Decimal;
   /** Dr 21-5101 */
   creditRelief: Decimal;
   /** Dr 52-1106 — ส่วนลดที่ให้ลูกค้าจริง (ข้อ 5.3) */
@@ -150,6 +160,7 @@ function moneyInput(name: string, v: DecimalInput | null | undefined): Decimal {
  *   Dr 21-2102        ภาษีขายรอเรียกเก็บคงเหลือ          ┘
  *   Dr 52-1106        ส่วนลดที่ให้จริง (ส่วนที่เหลือให้สมดุล ≥ 0)
  *   Dr 21-1103        เงินพักค่าปรับดิวที่ยอดปิดหักให้
+ *   Dr 21-1103        เงินรับล่วงหน้าถังรวมที่ยอดปิดหักให้ (PR5ข — บรรทัดแยก `generalAdvance`)
  *   Dr 21-5101        เงินเกินของลูกค้า
  *     Cr 11-2103      ลูกหนี้งวดที่ตั้งแล้วค้าง (ติดลบ → Dr)
  *     Cr 11-2101      ลูกหนี้ gross คงเหลือ (ติดลบ → Dr)
@@ -159,7 +170,7 @@ function moneyInput(name: string, v: DecimalInput | null | undefined): Decimal {
  *     Cr 42-1103      ค่าปรับ
  *     Cr 53-1503      เงินที่รับเกินลูกหนี้ตามบัญชี ≤ 1.00
  *
- * ส่วนที่เหลือให้สมดุล = ลูกหนี้ตามบัญชี + ค่าปรับ − เงินที่รับ − เงินพัก − เงินเกินของลูกค้า:
+ * ส่วนที่เหลือให้สมดุล = ลูกหนี้ตามบัญชี + ค่าปรับ − เงินที่รับ − เงินพัก − ถังรวม − เงินเกินของลูกค้า:
  * ≥ 0 → 52-1106 · −1.00 ถึง < 0 → Cr 53-1503 · ต่ำกว่า −1.00 → `excessReceived` (ไม่มีบรรทัดรับ — ผู้เรียกปฏิเสธ).
  */
 export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJe {
@@ -167,6 +178,7 @@ export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJ
   const cashReceived = moneyInput('cashReceived', input.cashReceived);
   const lateFees = moneyInput('unpaidLateFees', input.unpaidLateFees);
   const parkRelief = moneyInput('parkRelief', input.parkRelief);
+  const advanceRelief = moneyInput('advanceRelief', input.advanceRelief);
   const creditRelief = moneyInput('creditRelief', input.creditRelief);
   const { ledger } = input;
   const deferredInterest = Decimal.max(zero, ledger.deferredInterest);
@@ -181,6 +193,7 @@ export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJ
     .plus(lateFees)
     .minus(cashReceived)
     .minus(parkRelief)
+    .minus(advanceRelief)
     .minus(creditRelief);
   let discount = zero;
   let roundingGain = zero;
@@ -208,6 +221,9 @@ export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJ
   debit('21-2102', deferredVat);
   debit('52-1106', discount);
   debit('21-1103', parkRelief);
+  if (advanceRelief.gt(0)) {
+    lines.push({ accountCode: '21-1103', dr: advanceRelief, cr: zero, generalAdvance: true });
+  }
   debit('21-5101', creditRelief);
   clearReceivable('11-2103', ledger.accrued);
   clearReceivable('11-2101', ledger.gross);
@@ -226,6 +242,7 @@ export function buildEarlyPayoffJE(input: BuildEarlyPayoffJeInput): EarlyPayoffJ
     deferredVat,
     lateFees,
     parkRelief,
+    advanceRelief,
     creditRelief,
     discount,
     roundingGain,
@@ -245,6 +262,8 @@ export interface EarlyPayoffJournalInput {
   unpaidLateFees: DecimalInput;
   /** เงินพักค่าปรับดิวที่ยอดปิดหักให้ลูกค้า = `computePayoffQuote(...).rescheduleAdvanceApplied` */
   parkReliefApplied: DecimalInput;
+  /** เงินรับล่วงหน้าถังรวมที่ยอดปิดหักให้ลูกค้า = `computePayoffQuote(...).advanceBalanceApplied` (PR5ข) */
+  advanceReliefApplied: DecimalInput;
   /** ส่วนลดบนหน้าจอ = `computePayoffQuote(...).discountAmount` — เทียบกับ 52-1106 เพื่อส่งสัญญาณเตือน */
   quoteDiscountAmount: DecimalInput;
   /** % ส่วนลดของยอดปิด = `computePayoffQuote(...).discountPercent` */
@@ -254,11 +273,11 @@ export interface EarlyPayoffJournalInput {
 /**
  * อ่านยอดในบัญชีแล้วสร้างรายการ JP4 — ตัวเดียวที่ preview (`getEarlyPayoffQuote`) และรายการที่ลงจริง (`earlyPayoff`) ใช้
  * ⇒ preview === posted. เงินของลูกค้าที่หัก = เท่าที่ยอดปิดหักให้และมีอยู่จริงในบัญชี (`readContractCloseAdvances` ของ PR6):
- * เงินพัก = min(ยอดที่ยอดปิดหักให้, คอลัมน์ถังพัก, ยอด 21-1103 ในบัญชี) · เงินเกินของลูกค้า = min(คอลัมน์ `creditBalance`
- * ที่ยอดปิดหักให้, ยอด 21-5101 ในบัญชี) — ยอดในบัญชีที่เกินยังเป็นเงินของลูกค้า ค้างในบัญชีนั้น · เงินรับล่วงหน้าถังรวม
- * (`advanceBalance`) ไม่ถูกหัก — ยอดปิดยังไม่หักยอดนี้ (เจ้าของสั่งทำต่อหลัง PR5) · `warnings` (ผู้เรียกส่งหลังธุรกรรม commit
- * เท่านั้น) = คอลัมน์ไม่ตรงบัญชี + 52-1106 ต่างจากส่วนลดบนหน้าจอเกิน 1.00 (ยอดในบัญชีไม่ตรงยอดค้างตามงวด / เงินของลูกค้าที่
- * ยอดปิดหักแต่ไม่มีในบัญชี ไหลเข้า 52-1106).
+ * เงินพัก = min(ยอดที่ยอดปิดหักให้, คอลัมน์ถังพัก, ยอด 21-1103 ในบัญชี) · เงินรับล่วงหน้าถังรวม (PR5ข — เจ้าของเคาะ
+ * 01/10/2569 หักแบบเดียวกับเงินพัก) = min(ยอดที่ยอดปิดหักให้, คอลัมน์ `advanceBalance`, ยอด 21-1103 ในบัญชี − เงินพักที่หัก) ·
+ * เงินเกินของลูกค้า = min(คอลัมน์ `creditBalance` ที่ยอดปิดหักให้, ยอด 21-5101 ในบัญชี) — ยอดในบัญชีที่เกินยังเป็นเงินของ
+ * ลูกค้า ค้างในบัญชีนั้น · `warnings` (ผู้เรียกส่งหลังธุรกรรม commit เท่านั้น) = คอลัมน์ไม่ตรงบัญชี + 52-1106 ต่างจาก
+ * ส่วนลดบนหน้าจอเกิน 1.00 (ยอดในบัญชีไม่ตรงยอดค้างตามงวด / เงินของลูกค้าที่ยอดปิดหักแต่ไม่มีในบัญชี ไหลเข้า 52-1106).
  */
 export async function buildEarlyPayoffJournal(
   client: Prisma.TransactionClient | PrismaClient,
@@ -274,6 +293,15 @@ export async function buildEarlyPayoffJournal(
       advances.advance,
     ),
   );
+  // ถังรวมใช้ยอด 21-1103 ในบัญชีส่วนที่เหลือหลังบรรทัดเงินพัก (บัญชีเดียวกัน — ห้ามหักซ้ำ)
+  const advanceRelief = Decimal.max(
+    0,
+    Decimal.min(
+      new Decimal(input.advanceReliefApplied ?? 0),
+      new Decimal((input.contract.advanceBalance ?? 0).toString()),
+      advances.advance.minus(parkRelief),
+    ),
+  );
   const creditRelief = Decimal.max(
     0,
     Decimal.min(new Decimal((input.contract.creditBalance ?? 0).toString()), advances.credit),
@@ -284,6 +312,7 @@ export async function buildEarlyPayoffJournal(
     ledger,
     unpaidLateFees: input.unpaidLateFees,
     parkRelief,
+    advanceRelief,
     creditRelief,
     discountPercent: input.discountPercent,
   });
@@ -303,6 +332,7 @@ export async function buildEarlyPayoffJournal(
         receivableCleared: je.receivableCleared.toFixed(2),
         cashReceived: je.cashReceived.toFixed(2),
         parkRelief: je.parkRelief.toFixed(2),
+        advanceRelief: je.advanceRelief.toFixed(2),
         creditRelief: je.creditRelief.toFixed(2),
       },
     });

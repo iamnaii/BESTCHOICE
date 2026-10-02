@@ -930,6 +930,28 @@ describe('RepossessionsService', () => {
       expect(result.warnings).toEqual([warning]);
     });
 
+    // PR5ข (เจ้าของเคาะ 01/10/2569): ยอดปิดหักเงินรับล่วงหน้าถังรวมแบบเงินพักค่าปรับดิว — สูตรเดียวกับหน้าปิดยอด
+    it('PR5ข: ถังรวม 500 → ยอดปิด / ส่วนลด / ต้นทุนที่เก็บในแถวยึดและส่วนลดที่ส่งเข้า JP5 หักถังรวมก่อนคิดส่วนลด (ยอดปิด 1,555.32 · ส่วนลด 44.68 — เดิม 2,040.42 · 59.58) · ถังรวมไม่ถูกส่งเป็นบรรทัดเงินพัก', async () => {
+      arm({ status: 'TERMINATED', advanceBalance: decimal(500) });
+      jp5.execute.mockResolvedValueOnce({
+        entryNo: 'JE-JP5',
+        parkRelief: decimal(0),
+        advanceRelief: decimal(500),
+        creditRelief: decimal(0),
+      });
+
+      await run();
+
+      const jp5Input = jp5.execute.mock.calls[0][0];
+      expect(jp5Input.parkRelief).toBeUndefined();
+      expect(jp5Input.discount.toFixed(2)).toBe('44.68');
+      const row = prisma.repossession.create.mock.calls[0][0].data;
+      // 2 งวด × 1,000 − ถังรวม 500 = 1,500 · ต้นทุน 875 × (2 − 0.5) = 1,312.50 · กำไร 1,401.87 − 1,312.50 = 89.37
+      expect(row.remainingCost.toFixed(2)).toBe('1312.50');
+      expect(row.discountAmount.toFixed(2)).toBe('44.68');
+      expect(row.closingAmount.toFixed(2)).toBe('1555.32'); // 1,500 − 44.68 + ค่าปรับ 100
+    });
+
     // ผลตรวจแผน PR6 M-4: คอลัมน์ที่ไม่ตรงบัญชีถูกตั้งเป็นศูนย์ → ต้องมีหลักฐานถาวร (สัญญาณเตือน Sentry เก็บไม่นาน)
     it('PR6: audit REPOSSESSION เก็บคอลัมน์เงินของลูกค้าก่อนตั้งเป็นศูนย์ คู่กับยอดที่ JP5 หักตามบัญชี (คอลัมน์ 800 · บัญชี 450 + 0)', async () => {
       arm({

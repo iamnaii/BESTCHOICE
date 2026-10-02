@@ -448,6 +448,51 @@ describe('RepossessionOverlay — โหมดยืนยันใบรับ�
     expect(screen.queryByText(/ออกใบลดหนี้/)).not.toBeInTheDocument();
   });
 
+  it('PR5ข: เงินที่ชำระเกินจากงวดก่อน (ถังรวม) ที่ยอดปิดหัก → แถวของตัวเองใต้ยอดชำระล่วงหน้า เหนือยอดค้าง · ตัวเลขตาม server (ตัวอย่างที่เจ้าของเคาะ)', async () => {
+    apiGet.mockImplementation((url: string) => {
+      if (url === '/device-returns/dr-1') return Promise.resolve({ data: deviceReturn() });
+      if (url.startsWith('/repossessions/preview/c-1?')) {
+        const data = preview(url);
+        // 17,000/12 ยังไม่จ่าย · เครดิต 300 + ถังรวม 500 · ส่วนลด 50% (computePayoffQuote)
+        Object.assign(data.calculation, {
+          remainingMonths: 12,
+          totalRemaining: 18189.96,
+          advancePayment: 300,
+          advanceBalanceApplied: 500,
+          outstandingBalance: 17389.96,
+          principalExVat: 16252.3,
+          remainingCost: 10697.64,
+          grossProfit: 5554.66,
+          discountAmount: 2777.33,
+          closingAmount: 14612.63,
+          profitLoss: -7612.63,
+        });
+        return Promise.resolve({ data });
+      }
+      return Promise.reject(new Error('unexpected ' + url));
+    });
+    renderOverlay();
+    await waitFor(() => expect(confirmButton()).toBeEnabled());
+    expect(screen.getByText('รวมค้างชำระ (รวม VAT)').parentElement).toHaveTextContent(
+      '18,189.96 ฿',
+    );
+    expect(screen.getByText('ยอดชำระล่วงหน้า').parentElement).toHaveTextContent('- 300.00 ฿');
+    const advanceRow = screen.getByText('หักเงินที่ชำระเกินจากงวดก่อน');
+    expect(advanceRow.parentElement).toHaveTextContent('- 500.00 ฿');
+    expect(
+      screen.getByText('ยอดชำระล่วงหน้า').compareDocumentPosition(advanceRow) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      advanceRow.compareDocumentPosition(screen.getByText('ยอดค้าง (รวม VAT)')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByText('หักเงินรับล่วงหน้าที่พักไว้')).not.toBeInTheDocument();
+    expect(screen.getByText('ยอดค้าง (รวม VAT)').parentElement).toHaveTextContent('17,389.96 ฿');
+    expect(screen.getByText('ส่วนลดลูกค้า (50%)').parentElement).toHaveTextContent('- 2,777.33 ฿');
+    expect(screen.getByText('ยอดปิดสัญญาสุทธิ').parentElement).toHaveTextContent('14,612.63 ฿');
+  });
+
   it('วันที่ลงบัญชีนอกเดือนปัจจุบัน → ปุ่มปิด', async () => {
     routeApi();
     renderOverlay();

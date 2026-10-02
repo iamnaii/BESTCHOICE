@@ -8,7 +8,8 @@ import { ContractDocumentsController } from '../../src/modules/contracts/contrac
 import { ContractFileAccessGuard } from '../../src/modules/contracts/contract-file-access.guard';
 import { seedPreviewDocuments } from './preview-documents-fixture';
 import { SettingsFlagsService } from '../../src/modules/settings/services/settings-flags.service';
-import { previewBookings, seedPreviewExternalFinanceSale, seedPreviewSales } from './preview-sales-fixture';
+import { previewBookings, previewPos, seedPreviewExternalFinanceSale, seedPreviewSales } from './preview-sales-fixture';
+import { CreateSaleDto } from '../../src/modules/sales/dto/sale.dto';
 import { SalesQueryService } from '../../src/modules/sales/services/sales-query.service';
 import { SalesListQueryDto } from '../../src/modules/sales/dto/sales-list-query.dto';
 import { ContractsListQueryDto } from '../../src/modules/contracts/dto/contracts-list-query.dto';
@@ -120,6 +121,7 @@ const credits = new CreditCheckService(db, integrations, new AiProviderService(u
 const contractQuery = new ContractQueryService(db);
 const receivables = new ReceivablesReportService(db);
 const salesQuery = new SalesQueryService(db);
+const posSales = previewPos(db);
 const bookingQuery = previewBookings(db);
 const customerQuery = new CustomerQueryService(db, new CustomerTierService(db),
   new CustomerPurchaseSummaryService(db), new CustomerChatRoomsService(db));
@@ -297,6 +299,8 @@ class PreviewController {
   @Get('sales/salespersons') salespersons() { return salesQuery.getSalespersons(actor); }
   @Get('sales/top-products') topProducts() { return salesQuery.getTopSellingProducts(actor); }
   @Get('sales') sales(@Query() query: SalesListQueryDto) { return salesQuery.findAll(query, actor); }
+  @Post('sales') createPosSale(@Body() dto: CreateSaleDto) { return posSales.create(dto, actor.id, actor.role); }
+  @Get('external-finance/companies') financeCompanies() { return db.externalFinanceCompany.findMany({ where: { isActive: true } }); }
   @Get('sales/config') config() { return loadInstallmentConfig(db); }
   @Get('sales/:id') sale(@Param('id') id: string) { return salesQuery.findOne(id, actor); }
   @Get('bookings') bookings(@Query() query: Record<string, string>) {
@@ -367,7 +371,7 @@ class PreviewController {
     return manager.linkCustomer(id, customerId, actor);
   }
   @Get('customers/search') searchCustomers(@Query('q') q = '') {
-    return db.customer.findMany({ where: { deletedAt: null, name: { contains: q } } });
+    return customerQuery.search(q);
   }
   // ต้องตรงกับ CustomersController จริง (customers.controller.ts):
   //   GET customers/:id        → findOne + ปิดบังเลขบัตรให้ SALES (อินบ็อกซ์/สร้างสัญญา/OCR ใช้)
@@ -570,7 +574,7 @@ async function main() {
         path,
       ) ||
       path === '/api/staff-chat/ai/settings' || path === '/api/reports/finance-portfolio' ||
-      path === '/api/settings/ui-flags' || path === '/api/branches' || path === '/api/companies' || path === '/api/overdue/pipeline' || path === '/api/purchase-orders/qc-pending' ||
+      path === '/api/external-finance/companies' || path === '/api/settings/ui-flags' || path === '/api/branches' || path === '/api/companies' || path === '/api/overdue/pipeline' || path === '/api/purchase-orders/qc-pending' ||
       /^\/api\/dashboard\/(kpis|monthly-trend|status-distribution|branch-comparison|monthly-revenue|top-overdue|aging-summary|watch-list|alerts|staff-performance)$/.test(path) ||
       /^\/api\/reports\/(entity-profit|comparative-pl)$/.test(path)
     )

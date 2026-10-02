@@ -19,7 +19,7 @@ import type { SaleType } from '@/lib/constants';
 import { getPositiveDisplayPrices, normalizePositive } from '@/utils/getDisplayPrices';
 
 const inputClass =
-  'w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
+  'w-full min-h-11 bg-background px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
 const selectClass = inputClass;
 
 interface SaleDetailsFormProps {
@@ -65,7 +65,7 @@ export default function SaleDetailsForm({
   return (
     <Card className="border-border/60 shadow-sm">
       <CardHeader>
-        <div className="text-sm font-semibold text-foreground">รายละเอียดการขาย</div>
+        <div className="text-sm font-semibold text-foreground">3. ราคาและรับเงิน</div>
       </CardHeader>
       <CardContent>
         <Form {...saleForm}>
@@ -99,12 +99,13 @@ export default function SaleDetailsForm({
             </div>
           )}
 
-          {selectedProduct && saleType === 'CASH' &&
+          {selectedProduct &&
+            saleType === 'CASH' &&
             normalizePositive(getPositiveDisplayPrices(selectedProduct).cash) === null && (
-            <p role="status" className="mb-3 text-sm text-warning-strong">
-              ยังไม่ได้ตั้งราคาเงินสด กรุณาตรวจราคาสินค้าก่อนบันทึก
-            </p>
-          )}
+              <p role="status" className="mb-3 text-sm text-warning-strong">
+                ยังไม่ได้ตั้งราคาเงินสด กรุณาตรวจราคาสินค้าก่อนบันทึก
+              </p>
+            )}
 
           <div className="grid grid-cols-2 gap-3">
             <FormField
@@ -112,9 +113,11 @@ export default function SaleDetailsForm({
               name="sellingPrice"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel htmlFor={sellingPriceId} className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                    ราคาขาย *
-                    <span className="ml-1 text-primary">(จากระบบ)</span>
+                  <FormLabel
+                    htmlFor={sellingPriceId}
+                    className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2"
+                  >
+                    ราคาขาย *<span className="ml-1 text-primary">(จากระบบ)</span>
                   </FormLabel>
                   <FormControl>
                     <input
@@ -183,7 +186,12 @@ export default function SaleDetailsForm({
           {/* Conditional fields by sale type */}
           {saleType === 'CASH' && (
             <div className="mt-3">
-              <TenderInput due={tenderDue} value={tenderRows} onChange={onTenderChange} dueLabel="ยอดที่ต้องรับ" />
+              <TenderInput
+                due={tenderDue}
+                value={tenderRows}
+                onChange={onTenderChange}
+                dueLabel="ยอดที่ต้องรับ"
+              />
             </div>
           )}
 
@@ -262,7 +270,12 @@ export default function SaleDetailsForm({
                   )}
                 />
               </div>
-              <TenderInput due={tenderDue} value={tenderRows} onChange={onTenderChange} dueLabel="เงินดาวน์ที่ต้องรับ" />
+              <TenderInput
+                due={tenderDue}
+                value={tenderRows}
+                onChange={onTenderChange}
+                dueLabel="เงินดาวน์ที่ต้องรับ"
+              />
               {/* Finance transfer amount highlight */}
               {transferAmount > 0 && (
                 <div className="bg-primary/10 border border-primary/20 rounded-lg p-3">
@@ -277,28 +290,32 @@ export default function SaleDetailsForm({
             </div>
           )}
 
-          {/* Notes */}
-          <FormField
-            control={saleForm.control as any}
-            name="notes"
-            render={({ field }) => (
-              <FormItem className="mt-3">
-                <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                  หมายเหตุ
-                </label>
-                <FormControl>
-                  <input
-                    type="text"
-                    {...field}
-                    value={field.value ?? ''}
-                    className={inputClass}
-                    placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          <details className="mt-4">
+            <summary className="min-h-11 cursor-pointer text-sm text-muted-foreground leading-snug">
+              เพิ่มหมายเหตุ
+            </summary>
+            <FormField
+              control={saleForm.control as any}
+              name="notes"
+              render={({ field }) => (
+                <FormItem className="mt-3">
+                  <label className="block text-2xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                    หมายเหตุ
+                  </label>
+                  <FormControl>
+                    <input
+                      type="text"
+                      {...field}
+                      value={field.value ?? ''}
+                      className={inputClass}
+                      placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </details>
         </Form>
       </CardContent>
     </Card>

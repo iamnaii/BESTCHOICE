@@ -20,7 +20,7 @@ import ProspectPhoneLine from '@/components/customer/ProspectPhoneLine';
 import type { Customer } from '../types';
 
 const inputClass =
-  'w-full px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
+  'w-full min-h-11 bg-background px-3 py-2 border border-input rounded-lg text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background';
 
 interface CustomerSearchProps {
   customerSearch: string;
@@ -111,7 +111,7 @@ export default function CustomerSearch({
   return (
     <Card className="border-border/60 shadow-sm">
       <CardHeader>
-        <div className="text-sm font-semibold text-foreground">เลือกลูกค้า</div>
+        <div className="text-sm font-semibold text-foreground">2. เลือกลูกค้า</div>
       </CardHeader>
       <CardContent>
         {selectedCustomer ? (
@@ -127,7 +127,10 @@ export default function CustomerSearch({
                 | สัญญา {selectedCustomer._count.contracts} รายการ
               </div>
             </div>
-            <button onClick={onClearCustomer} className="text-xs text-destructive hover:underline">
+            <button
+              onClick={onClearCustomer}
+              className="min-h-11 shrink-0 px-2 text-sm text-destructive hover:underline"
+            >
               เปลี่ยน
             </button>
           </div>
@@ -136,6 +139,7 @@ export default function CustomerSearch({
             <div className="relative">
               <input
                 type="text"
+                aria-label="ค้นหาลูกค้า"
                 value={customerSearch}
                 onChange={(e) => setCustomerSearch(e.target.value)}
                 placeholder="พิมพ์อย่างน้อย 2 ตัวอักษร เช่น ชื่อ, เบอร์โทร, เลขบัตร..."
@@ -188,7 +192,7 @@ export default function CustomerSearch({
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              className="inline-flex min-h-11 items-center gap-1.5 text-sm text-primary hover:underline"
             >
               <UserPlus className="size-4" />
               เพิ่มลูกค้าใหม่

@@ -250,7 +250,20 @@ export function StockListTab({
             )}
             <StockViewSwitch view={view} setView={setView} counts={viewCounts} />
           </div>
-          <DeviceOriginFilter value={filterDeviceOrigin} onChange={setFilterDeviceOrigin} />
+          <div className={isMobile ? 'min-w-0 basis-full' : 'w-40 shrink-0'}>
+            <label
+              htmlFor={`${id}-device-origin`}
+              className="mb-2 block text-xs font-medium leading-snug text-foreground/80"
+            >
+              เครื่องไทย / เครื่องนอก
+            </label>
+            <DeviceOriginFilter
+              id={`${id}-device-origin`}
+              value={filterDeviceOrigin}
+              onChange={setFilterDeviceOrigin}
+              className={cn(selectClass, 'mb-0')}
+            />
+          </div>
           <div className="min-w-0 flex-[1_1_240px]">
             <label
               htmlFor={`${id}-search`}

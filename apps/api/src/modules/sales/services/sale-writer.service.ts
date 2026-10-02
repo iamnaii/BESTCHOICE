@@ -3,6 +3,7 @@ import { ShopTenderRecorder } from '../../shop-tenders/shop-tender.recorder';
 import { firstTransferReference, normalizeTenders } from '../../shop-tenders/shop-tender.util';
 import { assertSaleProductEligible, type SaleProductActor } from './sale-product-policy';
 import { assertBundleIsAccessory } from './bundle-policy';
+import { isAccessoryCompatible, type AccessoryDevice } from '@installment/shared';
 import { TradeInCreditService } from '../../trade-in/services/trade-in-credit.service';
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
 import { captureProductDisclosure } from '../../../utils/product-disclosure.util';
@@ -143,6 +144,7 @@ export class SaleWriterService {
   private async markBundleProductsSold(
     tx: Parameters<Parameters<typeof this.prisma.$transaction>[0]>[0],
     bundleProductIds: string[],
+    mainProduct: AccessoryDevice,
     branchId: string,
     actor: SaleProductActor,
     acknowledged = false,
@@ -151,7 +153,7 @@ export class SaleWriterService {
     // Verify all bundle products are IN_STOCK
     const products = await tx.product.findMany({
       where: { id: { in: bundleProductIds }, deletedAt: null },
-      select: { id: true, status: true, name: true, branchId: true, deletedAt: true, wasPreviouslyDamaged: true, category: true },
+      select: { id: true, status: true, name: true, brand: true, model: true, branchId: true, deletedAt: true, wasPreviouslyDamaged: true, category: true },
     });
     for (const p of products) {
       assertSaleProductEligible(p, branchId, actor, acknowledged);
@@ -160,6 +162,8 @@ export class SaleWriterService {
       throw new BadRequestException('ไม่พบสินค้าของแถมบางรายการ');
     }
     assertBundleIsAccessory(products);
+    const incompatible = products.find(p => !isAccessoryCompatible(p, mainProduct));
+    if (incompatible) throw new BadRequestException(`ของแถม "${incompatible.name}" ยังไม่ได้ระบุว่ารองรับ ${mainProduct.brand} ${mainProduct.model} กรุณาตรวจข้อมูลสำหรับรุ่นก่อนขาย`);
     // Update all bundle products to SOLD_CASH
     await tx.product.updateMany({
       where: { id: { in: bundleProductIds } },
@@ -190,7 +194,7 @@ export class SaleWriterService {
       const tenders = normalizeTenders(dto.tenders, cashDue, { method: dto.paymentMethod, reference: dto.downPaymentReference });
       const primaryMethod = (tenders[0]?.method ?? dto.paymentMethod) as PaymentMethod;
       const mainProduct = await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
-      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], dto.branchId, actor, dto.previouslyDamagedAcknowledged);
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], mainProduct, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
       const saleNumber = await generateSaleNumber(tx);
       const warranty = await this.resolveSaleShopWarranty(tx, mainProduct, new Date());
 
@@ -327,7 +331,7 @@ export class SaleWriterService {
 
     return this.runSaleTransaction(async (tx) => {
       const mainProduct = await this.verifyProductInStock(tx, dto.productId, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
-      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], dto.branchId, actor, dto.previouslyDamagedAcknowledged);
+      await this.markBundleProductsSold(tx, dto.bundleProductIds || [], mainProduct, dto.branchId, actor, dto.previouslyDamagedAcknowledged);
       const saleNumber = await generateSaleNumber(tx);
       const warranty = await this.resolveSaleShopWarranty(tx, mainProduct, new Date());
 

@@ -73,6 +73,8 @@ interface RepoPreview {
     discountAmount: number;
     unpaidLateFees: number;
     rescheduleAdvanceApplied?: number;
+    /** เงินที่ลูกค้าชำระเกินจากงวดก่อน (ถังรวม) ที่ยอดปิดหัก — PR5ข (optional — API เก่าไม่ส่ง) */
+    advanceBalanceApplied?: number;
     closingAmount: number;
     marketValue: number;
     /** ที่มาของราคาประเมิน — null = ยังคำนวณไม่ได้ */
@@ -520,7 +522,8 @@ export function RepossessionOverlay({
                 {/* ค่าปรับดิวที่พักไว้หักออกจากยอดค้าง "ก่อน" คิดฐานส่วนลด (เจ้าของ 2026-09-23)
                     — outstandingBalance เป็นยอดหลังหักแล้ว จึงไล่บรรทัดหักไว้เหนือมัน */}
                 {((preview.calculation.advancePayment ?? 0) > 0 ||
-                  (preview.calculation.rescheduleAdvanceApplied ?? 0) > 0) &&
+                  (preview.calculation.rescheduleAdvanceApplied ?? 0) > 0 ||
+                  (preview.calculation.advanceBalanceApplied ?? 0) > 0) &&
                   preview.calculation.totalRemaining != null && (
                     <Row
                       label="รวมค้างชำระ (รวม VAT)"
@@ -537,6 +540,13 @@ export function RepossessionOverlay({
                   <Row
                     label="หักเงินรับล่วงหน้าที่พักไว้"
                     value={`- ${formatNumberDecimal(preview.calculation.rescheduleAdvanceApplied!)} ฿`}
+                  />
+                )}
+                {/* PR5ข (เจ้าของเคาะ 01/10/2569): ถังรวมหักแบบเดียวกับเงินพัก — ก่อนคิดฐานส่วนลด */}
+                {(preview.calculation.advanceBalanceApplied ?? 0) > 0 && (
+                  <Row
+                    label="หักเงินที่ชำระเกินจากงวดก่อน"
+                    value={`- ${formatNumberDecimal(preview.calculation.advanceBalanceApplied!)} ฿`}
                   />
                 )}
                 <Row

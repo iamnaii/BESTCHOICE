@@ -138,13 +138,13 @@ const OWNER = (): VoidSaleActor => ({ id: adminId, role: 'OWNER', branchId });
 // ของแถมต้องเป็นหมวดอุปกรณ์เสริม (markBundleProductsSold, คำตัดสินเจ้าของ 2026-09-20) — เคสที่มีของแถมส่ง category เอง
 async function seedProduct(
   tag: string,
-  opts: { costPrice?: string; cashPrice?: string; category?: 'PHONE_NEW' | 'ACCESSORY' } = {},
+  opts: { costPrice?: string; cashPrice?: string; category?: 'PHONE_NEW' | 'ACCESSORY'; model?: string } = {},
 ) {
   const product = await prisma.product.create({
     data: {
       name: `${PREFIX}Phone ${tag}`,
       brand: `${PREFIX}Brand`,
-      model: `${PREFIX}Model-${tag}`,
+      model: opts.model ?? `${PREFIX}Model-${tag}`,
       storage: '128GB',
       imeiSerial: `${PREFIX}${RUN}-${tag}`,
       category: opts.category ?? 'PHONE_NEW',
@@ -499,7 +499,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
     'F1 regression: ขายสด+ของแถมที่มีต้นทุน → สร้างสำเร็จ, JE ต่อชิ้น reference ไม่ซ้ำ, void กวาดครบทุกใบสุทธิศูนย์',
     async () => {
       const main = await seedProduct('Z1', { costPrice: '6000.00' });
-      const bundle = await seedProduct('Z2', { costPrice: '500.00', category: 'ACCESSORY' });
+      const bundle = await seedProduct('Z2', { costPrice: '500.00', category: 'ACCESSORY', model: main.model });
       const customer = await seedCustomer('Z1');
 
       const sale = await cashSale({
@@ -554,7 +554,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
     async () => {
       const s1 = await seedSalesperson('A0');
       const main = await seedProduct('A1', { costPrice: '6000.00', cashPrice: '9900.00' });
-      const bundle = await seedProduct('A2', { costPrice: '500.00', category: 'ACCESSORY' });
+      const bundle = await seedProduct('A2', { costPrice: '500.00', category: 'ACCESSORY', model: main.model });
       const customer = await seedCustomer('A1');
       const buyer2 = await seedCustomer('A2');
 
@@ -651,7 +651,7 @@ describe('ยกเลิกใบขาย — flow จริงบน DB จ�
     'เคส 2: ขายผ่านไฟแนนซ์ภายนอก (+ของแถม) → ยกเลิก → JE ถูกกลับรายการ, receivable ถูกยกเลิก, ไม่แตะค่าคอม',
     async () => {
       const main = await seedProduct('B1');
-      const bundle = await seedProduct('B2', { costPrice: '400.00', category: 'ACCESSORY' });
+      const bundle = await seedProduct('B2', { costPrice: '400.00', category: 'ACCESSORY', model: main.model });
       const customer = await seedCustomer('B1');
 
       const sale = await externalFinanceSale({

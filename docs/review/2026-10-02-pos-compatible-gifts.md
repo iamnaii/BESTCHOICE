@@ -11,6 +11,7 @@ Release: 26.10.5. Production rollout is verified separately through GitHub Actio
 Verification:
 - npm run local:check: PASS (22 checks); web 2806, shared 134, storefront 46 tests passed; API focused 38 passed.
 - Read-only reviewer: PASS, zero outstanding issues.
+- Sale-void integration: 10/10 passed on a fresh disposable PostgreSQL database, covering cash/external-finance gifts, balanced reversal entries, commission clawback and stock restoration. Positive legacy fixtures now declare the main device model.
 - 14 UI flows: light/dark × 320, 390, 768, 1024, 1280, 1440, 1920px; no horizontal overflow, quick controls >=44px, mobile bar above navigation, short-height confirmation reachable.
 - Live local API: compatible case remains visible behind 12 newer incompatible cases; multi-model film matches; unknown/Pro/charger excluded.
 - Live UI: manual search cannot bypass compatibility; changing to Pro refreshes choices and removes gifts.

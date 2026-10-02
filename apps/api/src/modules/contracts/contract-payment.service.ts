@@ -279,6 +279,8 @@ export class ContractPaymentService {
       unpaidLateFees: await this.computeUnbookedLateFees(client, contract, contract.payments),
       // ถังพักงวดสุดท้ายที่ยอดปิดหักให้ → ขา Dr 21-1103 แทนเงินสด (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3)
       parkReliefApplied: quote.rescheduleAdvanceApplied,
+      // เงินรับล่วงหน้าถังรวมที่ยอดปิดหักให้ → ขา Dr 21-1103 บรรทัดของตัวเอง (PR5ข — เจ้าของเคาะ 01/10/2569)
+      advanceReliefApplied: quote.advanceBalanceApplied,
       quoteDiscountAmount: quote.discountAmount,
       discountPercent,
     });
@@ -295,7 +297,8 @@ export class ContractPaymentService {
     // Per-line UI descriptions (human-facing). Only the money — accountCode +
     // debit + credit, shared via buildEarlyPayoffJournal — must match the posting;
     // the ledger words its descriptions differently and that's intentional.
-    // บรรทัดที่ PR5 เพิ่ม (11-2103 · 21-5101 · 53-1503) ไม่มีคำอธิบาย — การ์ดแสดงชื่อบัญชีจากผังบัญชี
+    // บรรทัดที่ PR5 เพิ่ม (11-2103 · 21-5101 · 53-1503) และบรรทัด 21-1103 ของถังรวม (PR5ข) ไม่มีคำอธิบาย — การ์ดแสดง
+    // ชื่อบัญชีจากผังบัญชี
     const epDescriptions: Record<string, string> = {
       [epDepositCode]: `รับ ${je.cashReceived.toFixed(2)} ฿ ปิดยอด`,
       '21-1103': `หักเงินพักปรับดิว ${je.parkRelief.toFixed(2)}`,
@@ -321,7 +324,7 @@ export class ContractPaymentService {
       accountName: nameOf(l.accountCode),
       debit: l.dr.toFixed(2),
       credit: l.cr.toFixed(2),
-      description: epDescriptions[l.accountCode] ?? '',
+      description: l.generalAdvance ? '' : (epDescriptions[l.accountCode] ?? ''),
     }));
 
     let jeTotalDr = new Decimal(0);
@@ -347,6 +350,8 @@ export class ContractPaymentService {
       totalPayoff: quote.totalPayoff,
       // ยอดถังพักที่ยอดปิดดูดซับจริง — earlyPayoff() ใช้ต่อเป็นขา Dr 21-1103
       rescheduleAdvanceApplied: quote.rescheduleAdvanceApplied,
+      // เงินรับล่วงหน้าถังรวมที่ยอดปิดหัก (PR5ข) — บรรทัดของตัวเองบนหน้าปิดยอด · ขา Dr 21-1103 บรรทัดที่สอง
+      advanceBalanceApplied: quote.advanceBalanceApplied,
       journalPreview: {
         lines: jeLines,
         totalDebit: jeTotalDr.toFixed(2),
@@ -542,6 +547,8 @@ export class ContractPaymentService {
             cashReceived: quote.totalPayoff,
             unpaidLateFees: epLateFees,
             parkReliefApplied: quote.rescheduleAdvanceApplied,
+            // PR5ข: เงินรับล่วงหน้าถังรวมที่ยอดปิดหักให้ — clamp ด้วยคอลัมน์ถังรวมและยอด 21-1103 ในบัญชีที่เหลือหลังเงินพัก
+            advanceReliefApplied: quote.advanceBalanceApplied,
             quoteDiscountAmount: quote.discountAmount,
             discountPercent: quote.discountPct,
           });
@@ -587,6 +594,7 @@ export class ContractPaymentService {
             receivableCleared: epJe.receivableCleared.toFixed(2),
             quoteDiscountAmount: d(quote.discountAmount).toFixed(2),
             ...(epJe.parkRelief.gt(0) ? { parkRelief: epJe.parkRelief.toFixed(2) } : {}),
+            ...(epJe.advanceRelief.gt(0) ? { advanceRelief: epJe.advanceRelief.toFixed(2) } : {}),
             ...(epJe.creditRelief.gt(0) ? { creditRelief: epJe.creditRelief.toFixed(2) } : {}),
             ...(epJe.roundingGain.gt(0) ? { roundingGain: epJe.roundingGain.toFixed(2) } : {}),
             // ส่วนของ 52-1106 ที่เกินฐานข้อ 5.2 (% ส่วนลด × ดอกเบี้ยรอตัดบัญชี) — เกิน 1.00 เท่านั้น (ไม่นับเศษสตางค์)
@@ -616,7 +624,7 @@ export class ContractPaymentService {
                 accountCode: l.accountCode,
                 dr: l.dr,
                 cr: l.cr,
-                description: epDescriptions[l.accountCode] ?? '',
+                description: l.generalAdvance ? '' : (epDescriptions[l.accountCode] ?? ''),
               })),
             },
             tx,
@@ -646,6 +654,15 @@ export class ContractPaymentService {
                   source: 'EARLY_PAYOFF_PARK_RELIEF',
                 },
               },
+            });
+          }
+
+          // PR5ข (เจ้าของเคาะ 01/10/2569): ถังรวมลดเท่าบรรทัด Dr 21-1103 ของถังรวมที่เพิ่งลง — tx เดียวกับ JE (แบบเดียวกับ
+          // ถังพักข้างบน) · ส่วนที่ยอดปิดหักไม่หมด (ถังรวมใหญ่กว่ายอดค้าง) คงค้างในคอลัมน์ = ยอดในบัญชี
+          if (epJe.advanceRelief.gt(0)) {
+            await tx.contract.update({
+              where: { id },
+              data: { advanceBalance: { decrement: epJe.advanceRelief } },
             });
           }
 

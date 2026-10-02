@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { isAccessoryCompatible } from '@installment/shared';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
@@ -86,6 +87,9 @@ export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(filters: StockListFilters) {
+    if (filters.compatibleWithProductId && (filters.groupAccessories || filters.accessoryGroupId || filters.sortBy)) {
+      throw new BadRequestException('ตัวกรองของแถมใช้กับรายการสินค้าแต่ละชิ้นเท่านั้น');
+    }
     if (filters.groupAccessories && !filters.accessoryGroupId) {
       return findStockGroups(this.prisma, filters, productInclude);
     }
@@ -134,16 +138,49 @@ export class ProductsService {
 
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(100, Math.max(1, filters.limit || 50));
+    let compatibleTotal: number | undefined;
+
+    if (filters.compatibleWithProductId) {
+      const device = await this.prisma.product.findFirst({
+        where: { id: filters.compatibleWithProductId, deletedAt: null, ...(filters.branchId ? { branchId: filters.branchId } : {}) },
+        select: { brand: true, model: true, category: true, branchId: true },
+      });
+      if (!device) throw new NotFoundException('ไม่พบสินค้าหลักในสาขานี้');
+      // Filter compatibility BEFORE pagination; ten unrelated units must not hide a matching film.
+      Object.assign(where, { category: 'ACCESSORY', status: 'IN_STOCK', branchId: device.branchId });
+      // Scan bounded batches and retain only this page's IDs, even for large inventories.
+      const pageIds: string[] = [];
+      const offset = (page - 1) * limit;
+      compatibleTotal = 0;
+      let cursor: string | undefined;
+      for (;;) {
+        const candidates = await this.prisma.product.findMany({
+          where,
+          select: { id: true, brand: true, model: true, category: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 500,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        });
+        for (const candidate of candidates) {
+          if (!isAccessoryCompatible(candidate, device)) continue;
+          if (compatibleTotal >= offset && pageIds.length < limit) pageIds.push(candidate.id);
+          compatibleTotal++;
+        }
+        if (candidates.length < 500) break;
+        cursor = candidates[candidates.length - 1].id;
+      }
+      where.id = { in: pageIds };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: compatibleTotal === undefined ? (page - 1) * limit : 0,
         take: limit,
         include: productInclude,
       }),
-      this.prisma.product.count({ where }),
+      compatibleTotal === undefined ? this.prisma.product.count({ where }) : Promise.resolve(compatibleTotal),
     ]);
 
     const defaults = await readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, '');

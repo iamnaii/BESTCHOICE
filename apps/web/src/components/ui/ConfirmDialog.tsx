@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -23,6 +24,7 @@ interface ConfirmDialogProps {
   closeOnConfirm?: boolean;
   onConfirm: () => void;
   children?: ReactNode;
+  contentClassName?: string;
 }
 
 export function ConfirmDialog({
@@ -38,10 +40,11 @@ export function ConfirmDialog({
   closeOnConfirm = true,
   onConfirm,
   children,
+  contentClassName,
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className={cn('sm:max-w-md', contentClassName)}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

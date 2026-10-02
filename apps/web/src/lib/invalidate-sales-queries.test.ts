@@ -4,7 +4,7 @@ import { invalidateSalesQueries, type SalesMutationEvent } from './invalidate-sa
 
 describe('Sales mutations invalidate warm related caches', () => {
   it.each<[SalesMutationEvent, string[]]>([
-    ['sale-created', ['sales-history', 'top-products', 'pos-products', 'pos-bundle-products', 'product', 'products-available', 'trade-in-credits']],
+    ['sale-created', ['bundle-products', 'bundle-quick-picks', 'sales-history', 'top-products', 'pos-products', 'pos-bundle-products', 'product', 'products-available', 'trade-in-credits']],
     ['sale-voided', ['sales-history', 'top-products', 'pos-products', 'pos-bundle-products', 'product', 'products', 'trade-in-credits']],
     ['booking-updated', ['bookings', 'booking']],
     ['booking-converted', ['bookings', 'booking', 'sales-history', 'pos-products', 'top-products']],

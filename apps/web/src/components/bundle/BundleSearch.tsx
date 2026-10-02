@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import api from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
+import QuickBundlePicks from './QuickBundlePicks';
+import { isAccessoryCompatible, type AccessoryDevice } from '@installment/shared';
 
 /** ข้อมูลขั้นต่ำของของแถมหนึ่งชิ้น — หน้า POS / หน้าสัญญาใช้ชนิดสินค้าของตัวเองที่กว้างกว่านี้ได้ */
 export interface BundleProduct {
@@ -32,6 +34,9 @@ interface BundleSearchProps<T extends BundleProduct> {
   /** ห่อด้วยการ์ดของตัวเอง (ค่าเริ่มต้น) — false = ใช้ในกล่องโต้ตอบ */
   framed?: boolean;
   disabled?: boolean;
+  /** POS: show one-tap shortcuts for commonly given accessories. */
+  quickPicks?: boolean;
+  device?: AccessoryDevice & { id: string };
 }
 
 /**
@@ -50,34 +55,67 @@ export default function BundleSearch<T extends BundleProduct>({
   searchLabel,
   framed = true,
   disabled = false,
+  quickPicks = false,
+  device,
 }: BundleSearchProps<T>) {
   const debouncedBundleSearch = useDebounce(bundleSearch);
 
-  const { data: bundleSearchResults, isFetching: bundleSearchFetching } = useQuery<T[]>({
-    queryKey: ['bundle-products', debouncedBundleSearch, branchId ?? null, excludeIds],
+  const {
+    data: bundleSearchResults,
+    isFetching: bundleSearchFetching,
+    isError: bundleSearchError,
+  } = useQuery<T[]>({
+    queryKey: [
+      'bundle-products',
+      debouncedBundleSearch,
+      branchId ?? null,
+      device?.id,
+      device?.model,
+      device?.brand,
+      excludeIds,
+    ],
     queryFn: async () => {
       if (!debouncedBundleSearch || debouncedBundleSearch.length < 2) return [];
       const { data } = await api.get('/products', {
         params: {
-          search: debouncedBundleSearch, status: 'IN_STOCK', category: 'ACCESSORY', limit: '10',
+          search: debouncedBundleSearch,
+          status: 'IN_STOCK',
+          category: 'ACCESSORY',
+          limit: '10',
           ...(branchId ? { branchId } : {}),
+          ...(device ? { compatibleWithProductId: device.id } : {}),
         },
       });
       const all: T[] = data.data ?? [];
-      return all.filter((p) => !excludeIds.includes(p.id));
+      return all.filter(
+        (p) => !excludeIds.includes(p.id) && (!device || isAccessoryCompatible(p, device)),
+      );
     },
-    enabled: !!debouncedBundleSearch && debouncedBundleSearch.length >= 2,
+    enabled: !disabled && !!debouncedBundleSearch && debouncedBundleSearch.length >= 2,
   });
 
   const body = (
     <div className="flex flex-col gap-3">
+      {quickPicks && (
+        <QuickBundlePicks<T>
+          key={device?.id ?? branchId ?? 'no-branch'}
+          branchId={branchId}
+          device={device}
+          excludeIds={excludeIds}
+          disabled={disabled}
+          onAdd={onAddBundle}
+          onSearch={setBundleSearch}
+        />
+      )}
       {bundleProducts.map((p) => (
         <div
           key={p.id}
           className="flex items-center justify-between gap-3 bg-success/5 dark:bg-success/10 rounded-xl px-3 py-2.5 border border-success/20"
         >
           <div className="min-w-0">
-            <div className="text-sm font-medium text-success leading-snug">{p.name}</div>
+            <div className="text-sm font-medium text-success leading-snug break-words">
+              {p.name} <span className="whitespace-nowrap">· 0 บาท</span>
+            </div>
             <div className="text-xs text-muted-foreground leading-snug">
               อุปกรณ์เสริม · {p.brand} {p.model}
               {p.imeiSerial && <span className="ml-1 font-mono">· {p.imeiSerial}</span>}
@@ -96,12 +134,16 @@ export default function BundleSearch<T extends BundleProduct>({
 
       <div className="relative">
         {searchLabel && (
-          <label htmlFor="bundle-search" className="block text-xs text-muted-foreground mb-1.5 leading-snug">
+          <label
+            htmlFor="bundle-search"
+            className="block text-xs text-muted-foreground mb-1.5 leading-snug"
+          >
             {searchLabel}
           </label>
         )}
         <input
           id="bundle-search"
+          aria-label={searchLabel ?? 'ค้นหาของแถม'}
           type="text"
           value={bundleSearch}
           disabled={disabled}
@@ -109,17 +151,24 @@ export default function BundleSearch<T extends BundleProduct>({
           placeholder="ค้นหาของแถม เช่น ฟิล์ม, เคส, ชุดชาร์จ..."
           className={inputClass}
         />
-        {bundleSearch.length >= 2 && (
+        {!disabled && bundleSearch.length >= 2 && (
           <div className="absolute z-40 w-full mt-1 bg-popover border border-border rounded-xl shadow-xl max-h-56 overflow-y-auto">
-            {bundleSearchFetching ? (
-              <div className="px-3 py-3 text-center text-sm text-muted-foreground">กำลังค้นหา...</div>
+            {bundleSearchError ? (
+              <div role="alert" className="px-3 py-3 text-sm text-destructive">
+                ค้นหาของแถมไม่สำเร็จ กรุณาลองใหม่
+              </div>
+            ) : bundleSearchFetching || bundleSearch !== debouncedBundleSearch ? (
+              <div className="px-3 py-3 text-center text-sm text-muted-foreground">
+                กำลังค้นหา...
+              </div>
             ) : bundleSearchResults && bundleSearchResults.length > 0 ? (
               bundleSearchResults.map((p) => (
                 <button
                   type="button"
                   key={p.id}
+                  disabled={disabled}
                   onClick={() => onAddBundle(p)}
-                  className="w-full min-h-12 text-left px-3 py-2 hover:bg-success/5 dark:hover:bg-success/10 border-b border-border last:border-b-0 flex items-center justify-between gap-3"
+                  className="w-full min-h-12 text-left px-3 py-2 hover:bg-success/5 dark:hover:bg-success/10 border-b border-border last:border-b-0 flex flex-wrap items-center justify-between gap-2 disabled:opacity-50"
                 >
                   <span className="text-sm text-foreground leading-snug">{p.name}</span>
                   <span className="shrink-0 text-xs text-muted-foreground leading-snug">
@@ -130,12 +179,15 @@ export default function BundleSearch<T extends BundleProduct>({
             ) : (
               <div className="px-3 py-3 text-center text-sm text-muted-foreground">
                 ไม่พบอุปกรณ์เสริม &quot;{bundleSearch}&quot;
+                {device ? ` ที่ระบุว่ารองรับ ${device.model} และพร้อมขายในสาขานี้` : ''}
               </div>
             )}
           </div>
         )}
       </div>
-      <div className="text-xs text-muted-foreground leading-snug">มือถือและแท็บเล็ตจะไม่ขึ้นในช่องนี้</div>
+      <div className="text-xs text-muted-foreground leading-snug">
+        มือถือและแท็บเล็ตจะไม่ขึ้นในช่องนี้
+      </div>
     </div>
   );
 

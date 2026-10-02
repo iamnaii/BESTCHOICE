@@ -281,4 +281,130 @@ describe('computePayoffQuote', () => {
       expect(q.rescheduleAdvanceApplied).toBe(0);
     });
   });
+
+  /**
+   * PR5ข — เงินรับล่วงหน้าถังรวม (`Contract.advanceBalance` · 21-1103 — ลูกค้าจ่ายเกินงวดก่อน รอหักงวดถัดไป).
+   * เจ้าของเคาะ 01/10/2569 "หักแบบเดียวกับเงินพักค่าปรับดิว": หักจากยอดค้างก่อนคิดส่วนลด + ลดต้นทุนตามสัดส่วนงวดที่เงินครอบ
+   * (กติกาเจ้าของ 23/09). เดิมสูตรไม่หัก — ลูกค้าจ่ายเต็มและเงินค้างเป็นของลูกค้าหลังปิดสัญญา (ไม่มีทางคืนเงิน).
+   */
+  describe('advanceBalanceApplied — เงินรับล่วงหน้าถังรวม หักแบบเดียวกับเงินพักค่าปรับดิว (PR5ข · เจ้าของเคาะ 01/10/2569)', () => {
+    /** สัญญาตัวอย่างของฝ่ายบัญชี 17,000/12 งวดละ 1,515.83 (ขายสด 12,000 ดาวน์ 2,000 ค่าคอม 1,000) ยังไม่จ่ายเลย */
+    const accountantCase = () => ({
+      monthlyPayment: decimal('1515.83'),
+      remainingMonths: 12,
+      totalMonths: 12,
+      creditBalance: decimal(300),
+      vatPct: decimal(0.07),
+      sellingPrice: decimal(12000),
+      downPayment: decimal(2000),
+      storeCommission: decimal(1000),
+      discountPctInput: 50,
+      payments: Array.from({ length: 12 }, () => ({
+        status: 'PENDING',
+        amountPaid: decimal(0),
+        lateFee: decimal(0),
+        lateFeeWaived: false,
+      })),
+    });
+
+    it('ตัวอย่างที่เจ้าของเคาะ (เครดิต 300 + ถังรวม 500 · ลด 50%) → ยอดปิด 14,612.63 (เดิม 15,030.17 · น้อยลง 417.54)', () => {
+      const before = computePayoffQuote(accountantCase());
+      const q = computePayoffQuote({ ...accountantCase(), advanceBalance: decimal(500) });
+
+      expect(before.totalPayoff).toBe(15030.17);
+      expect(before.advanceBalanceApplied).toBe(0);
+
+      expect(q.totalRemaining).toBe(18189.96);
+      expect(q.advancePayment).toBe(300); // เครดิตเดิม — ไม่รวมถังรวม
+      expect(q.rescheduleAdvanceApplied).toBe(0);
+      expect(q.advanceBalanceApplied).toBe(500); // หักเต็มจำนวน
+      expect(q.remainingBalance).toBe(17389.96); // 18,189.96 − 300 − 500 — หักก่อนคิดส่วนลด
+      expect(q.remainingExVat).toBe(16252.3);
+      expect(q.remainingCost).toBe(10697.64); // 11,000 × (12 − 500 ÷ 1,515.83) ÷ 12 — ลดต้นทุนตามสัดส่วน
+      expect(q.grossProfit).toBe(5554.66);
+      expect(q.discountAmount).toBe(2777.33);
+      expect(q.totalPayoff).toBe(14612.63);
+      expect(Math.round((before.totalPayoff - q.totalPayoff) * 100) / 100).toBe(417.54);
+    });
+
+    it('หักแบบเดียวกับเงินพักค่าปรับดิว: ถังรวม 500 ได้ยอดปิด / ต้นทุน / ส่วนลดเท่ากับเงินพัก 500 ทุกบรรทัด', () => {
+      const advance = computePayoffQuote({ ...accountantCase(), advanceBalance: decimal(500) });
+      const park = computePayoffQuote({
+        ...accountantCase(),
+        rescheduleAdvanceBalance: decimal(500),
+      });
+
+      const { rescheduleAdvanceApplied, advanceBalanceApplied, ...money } = advance;
+      const {
+        rescheduleAdvanceApplied: parkApplied,
+        advanceBalanceApplied: parkAdvance,
+        ...parkMoney
+      } = park;
+      expect(money).toEqual(parkMoney);
+      expect([rescheduleAdvanceApplied, advanceBalanceApplied]).toEqual([0, 500]);
+      expect([parkApplied, parkAdvance]).toEqual([500, 0]);
+    });
+
+    it('มีทั้งเงินพัก 354 และถังรวม 500 → หักเงินพักก่อน (354 เท่าเดิม) แล้วถังรวม 500 · ยอดปิดเท่ากับเงินพัก 854 ก้อนเดียว', () => {
+      const parkOnly = computePayoffQuote({
+        ...prodCaseInput(),
+        rescheduleAdvanceBalance: decimal(354),
+      });
+      const both = computePayoffQuote({
+        ...prodCaseInput(),
+        rescheduleAdvanceBalance: decimal(354),
+        advanceBalance: decimal(500),
+      });
+      const park854 = computePayoffQuote({
+        ...prodCaseInput(),
+        rescheduleAdvanceBalance: decimal(854),
+      });
+
+      expect(both.rescheduleAdvanceApplied).toBe(parkOnly.rescheduleAdvanceApplied);
+      expect(both.rescheduleAdvanceApplied).toBe(354);
+      expect(both.advanceBalanceApplied).toBe(500);
+      expect(both.remainingBalance).toBe(43198); // 44,052 − 354 − 500
+      expect(both.remainingCost).toBe(19308.29);
+      expect(both.discountAmount).toBe(10531.83);
+      expect(both.totalPayoff).toBe(32766.17); // ค่าปรับค้าง 100 บวกท้ายตามเดิม
+      expect(both.totalPayoff).toBe(park854.totalPayoff);
+      expect(both.discountAmount).toBe(park854.discountAmount);
+    });
+
+    it('ถังรวมใหญ่กว่ายอดค้าง → หักเท่ายอดค้างที่เหลือหลังเงินพัก (ส่วนเกินค้างในถัง) · ยอดปิดไม่ติดลบ', () => {
+      const q = computePayoffQuote({
+        ...prodCaseInput(),
+        discountPctInput: 0,
+        advanceBalance: decimal(100000),
+      });
+      expect(q.advanceBalanceApplied).toBe(44052);
+      expect(q.payoffBeforeLateFees).toBe(0);
+      expect(q.totalPayoff).toBe(100); // เหลือแค่ค่าปรับค้าง (ไม่ร่วมส่วนลด/การหัก)
+
+      const withPark = computePayoffQuote({
+        ...prodCaseInput(),
+        discountPctInput: 0,
+        rescheduleAdvanceBalance: decimal(354),
+        advanceBalance: decimal(100000),
+      });
+      expect(withPark.rescheduleAdvanceApplied).toBe(354);
+      expect(withPark.advanceBalanceApplied).toBe(43698); // 44,052 − 354
+    });
+
+    it('เครดิต/งวดจ่ายบางส่วนดันยอดค้างชน 0 อยู่แล้ว → ถังรวมไม่ถูกหัก (0)', () => {
+      const input = prodCaseInput();
+      input.payments[0].status = 'PARTIALLY_PAID';
+      input.payments[0].amountPaid = decimal(44052);
+      const q = computePayoffQuote({ ...input, discountPctInput: 0, advanceBalance: decimal(500) });
+      expect(q.advanceBalanceApplied).toBe(0);
+    });
+
+    it('ไม่มีถังรวม (ไม่ส่ง / 0) → ทุกตัวเลขเท่าเดิม · advanceBalanceApplied = 0', () => {
+      const omitted = computePayoffQuote(prodCaseInput());
+      const zero = computePayoffQuote({ ...prodCaseInput(), advanceBalance: decimal(0) });
+      expect(zero).toEqual(omitted);
+      expect(omitted.advanceBalanceApplied).toBe(0);
+      expect(omitted.totalPayoff).toBe(33411.96); // golden เดิม 2026-07-20
+    });
+  });
 });

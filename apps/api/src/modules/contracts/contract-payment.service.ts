@@ -254,6 +254,8 @@ export class ContractPaymentService {
       totalMonths: contract.totalMonths,
       creditBalance: contract.creditBalance,
       rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
+      // PR5ข (เจ้าของเคาะ 01/10/2569): เงินรับล่วงหน้าถังรวม หักแบบเดียวกับเงินพักค่าปรับดิว
+      advanceBalance: contract.advanceBalance,
       vatPct: contract.vatPct,
       sellingPrice: contract.sellingPrice,
       downPayment: contract.downPayment,

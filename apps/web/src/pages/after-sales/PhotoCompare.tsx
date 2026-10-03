@@ -88,9 +88,7 @@ function UploadSlot({ caseId }: { caseId: string }) {
       const form = new FormData();
       form.append('file', file);
       return (
-        await api.post(`/after-sales/${caseId}/photos`, form, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
+        await api.post(`/after-sales/${caseId}/photos`, form)
       ).data;
     },
     onSuccess: () => {

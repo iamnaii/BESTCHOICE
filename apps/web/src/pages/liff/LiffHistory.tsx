@@ -1,3 +1,4 @@
+import { LiffShell as Shell, LiffTopBar as TopBar } from './components/LiffLayout';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi, withLiffToken } from '@/lib/api';
 import { formatDateShortThai, formatMonthName, formatNumber } from '@/utils/formatters';
@@ -94,7 +95,7 @@ export default function LiffHistory() {
   // ─── Loading ──────────────────────────────────────────
   if (loading || dataLoading) {
     return (
-      <Shell>
+      <Shell theme="history">
         <div className="px-5 pt-6 space-y-4">
           <Skeleton className="h-24 w-full rounded-[22px]" />
           <Skeleton className="h-28 w-full rounded-[22px]" />
@@ -108,8 +109,8 @@ export default function LiffHistory() {
   // ─── Error ────────────────────────────────────────────
   if (error || dataError) {
     return (
-      <Shell>
-        <TopBar title="ประวัติชำระเงิน" initial="?" />
+      <Shell theme="history">
+        <TopBar theme="history" title="ประวัติชำระเงิน" initial="?" />
         <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
           <div className="grid h-20 w-20 place-items-center rounded-full bg-destructive/10 border border-destructive/30 mb-5">
             <span className="text-destructive text-4xl font-light leading-none">!</span>
@@ -128,8 +129,8 @@ export default function LiffHistory() {
   // ─── Empty ────────────────────────────────────────────
   if (!data || data.payments.length === 0) {
     return (
-      <Shell>
-        <TopBar title="ประวัติชำระเงิน" initial={customerInitial} />
+      <Shell theme="history">
+        <TopBar theme="history" title="ประวัติชำระเงิน" initial={customerInitial} />
         <section className="relative z-[1] px-5 pt-16 pb-10 flex flex-col items-center text-center">
           <div className="grid h-20 w-20 place-items-center rounded-full bg-muted border border-border mb-5">
             <Receipt className="size-9 text-muted-foreground" strokeWidth={1.5} />
@@ -159,8 +160,8 @@ export default function LiffHistory() {
   const onTimePct = Math.round((onTimeCount / data.payments.length) * 100);
 
   return (
-    <Shell>
-      <TopBar title="ประวัติชำระเงิน" initial={customerInitial} />
+    <Shell theme="history">
+      <TopBar theme="history" title="ประวัติชำระเงิน" initial={customerInitial} />
 
       {/* Greeting */}
       <section className="relative z-[1] px-5 pt-6">
@@ -284,52 +285,6 @@ export default function LiffHistory() {
 
 // ─── UI primitives ─────────────────────────────────────
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="relative min-h-screen overflow-x-hidden" style={{ backgroundColor: '#fafaf7' }}>
-      <div
-        className="fixed inset-0 pointer-events-none z-0"
-        style={{
-          background:
-            'radial-gradient(600px 400px at 10% -5%, rgb(16 185 129 / 0.09), transparent 60%),' +
-            'radial-gradient(500px 380px at 100% 20%, rgb(59 130 246 / 0.08), transparent 65%),' +
-            'radial-gradient(400px 320px at 50% 100%, rgb(99 102 241 / 0.05), transparent 60%)',
-        }}
-      />
-      <div className="relative mx-auto max-w-[430px] pb-16">{children}</div>
-    </div>
-  );
-}
-
-function TopBar({ title, initial }: { title: string; initial: string }) {
-  return (
-    <header
-      className="sticky top-0 z-20 flex items-center justify-between px-5 py-3.5 backdrop-blur-xl border-b border-border/50"
-      style={{ backgroundColor: 'rgb(250 250 247 / 0.85)' }}
-    >
-      <button
-        type="button"
-        aria-label="ย้อนกลับ"
-        className="grid h-9 w-9 place-items-center rounded-full text-foreground hover:bg-accent -ml-1.5"
-        onClick={() => window.history.back()}
-      >
-        <ChevronLeft className="size-5" strokeWidth={1.75} />
-      </button>
-      <div className="text-[13px] font-medium text-foreground tracking-tight leading-snug">{title}</div>
-      <div className="relative -mr-1.5">
-        <div
-          className="grid h-9 w-9 place-items-center rounded-full text-[12px] font-semibold text-white shadow-lg shadow-emerald-500/30"
-          style={{
-            background:
-              'linear-gradient(135deg, rgb(16 185 129) 0%, rgb(5 150 105) 60%, rgb(13 148 136) 100%)',
-          }}
-        >
-          {initial}
-        </div>
-      </div>
-    </header>
-  );
-}
 
 function StatChip({
   label,

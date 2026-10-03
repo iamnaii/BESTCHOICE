@@ -42,6 +42,6 @@ export class BroadcastController {
     )
     file: Express.Multer.File,
   ) {
-    return this.broadcastService.uploadImage(file.buffer, file.originalname);
+    return this.broadcastService.uploadImage(file.buffer);
   }
 }

@@ -1,3 +1,4 @@
+import { serializeOcrAddress } from '@/lib/ocr-address';
 import { isRoomCreditDocument, openCreditDocument } from '@/lib/credit-document';
 import { useEffect, useState, useRef } from 'react';
 import QueryBoundary from '@/components/QueryBoundary';
@@ -186,43 +187,6 @@ export default function DocumentUpload({ contractId, customerId, contractStatus 
     }
   };
 
-  const buildOcrAddressJson = (data: OcrResult): string | undefined => {
-    if (data.addressStructured) {
-      const a = data.addressStructured;
-      const hasData = Object.values(a).some((v) => v !== '');
-      if (hasData) return JSON.stringify(a);
-    }
-    if (data.address) {
-      const raw = data.address;
-      const addr: Record<string, string> = {
-        houseNo: '', moo: '', village: '', soi: '', road: '',
-        province: '', district: '', subdistrict: '', postalCode: '',
-      };
-      const zipMatch = raw.match(/(\d{5})\s*$/);
-      if (zipMatch) addr.postalCode = zipMatch[1];
-      const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
-      if (houseMatch) addr.houseNo = houseMatch[1];
-      const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
-      if (mooMatch) addr.moo = mooMatch[1];
-      const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
-      if (soiMatch) addr.soi = soiMatch[1];
-      const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
-      if (roadMatch) addr.road = roadMatch[1];
-      const villageMatch = raw.match(/(?:หมู่บ้าน|ม\.บ\.|คอนโด)\s*([^\s,]+)/);
-      if (villageMatch) addr.village = villageMatch[1];
-      const subdistrictMatch = raw.match(/(?:ตำบล|ต\.|แขวง)\s*([^\s,]+)/);
-      if (subdistrictMatch) addr.subdistrict = subdistrictMatch[1];
-      const districtMatch = raw.match(/(?:อำเภอ|อ\.|เขต)\s*([^\s,]+)/);
-      if (districtMatch) addr.district = districtMatch[1];
-      const provinceMatch = raw.match(/(?:จังหวัด|จ\.)\s*([^\s,\d]+)/);
-      if (provinceMatch) addr.province = provinceMatch[1];
-      const hasStructured = Object.values(addr).some((v) => v !== '');
-      if (hasStructured) return JSON.stringify(addr);
-      return JSON.stringify({ ...addr, raw });
-    }
-    return undefined;
-  };
-
   const updateCustomerFromOcr = async () => {
     if (!ocrResult || !customerId) return;
     try {
@@ -231,7 +195,7 @@ export default function DocumentUpload({ contractId, customerId, contractStatus 
       const name = [ocrResult.firstName, ocrResult.lastName].filter(Boolean).join(' ') || ocrResult.fullName;
       if (name) updateData.name = name.trim();
       if (ocrResult.birthDate) updateData.birthDate = ocrResult.birthDate;
-      const addrJson = buildOcrAddressJson(ocrResult);
+      const addrJson = serializeOcrAddress(ocrResult, { keepAreaPrefixes: false, unparsed: 'json' });
       if (addrJson) updateData.addressIdCard = addrJson;
       await api.patch(`/customers/${customerId}`, updateData);
       toast.success('อัปเดตข้อมูลลูกค้าสำเร็จ');

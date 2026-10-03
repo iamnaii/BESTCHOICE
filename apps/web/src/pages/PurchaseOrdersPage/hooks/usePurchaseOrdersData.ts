@@ -4,19 +4,17 @@ import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload } from '../types';
 import { defaultChecklist } from '../constants';
+import { buildReceivingItemData } from '../receiving-item';
 import { receivingBlockers } from '../receiving-flow.util';
 import { PurchasingSummary } from '../summaryStrip';
 import { buildReceiveResultMessage } from '../receiveResultMessage';
 import { defaultSupplierDoc, supplierDocPayload, type SupplierDocForm, type SupplierDocType } from '../supplier-doc.util';
-import { emptyAnglePhotos, shotAnglePhotos } from '@/constants/photo-angles';
+import { emptyAnglePhotos } from '@/constants/photo-angles';
 
 export function buildDirectReceiveItem(i: ReceivingUnitForm) {
-  const isUsed = i.category === 'PHONE_USED';
   return {
+    ...buildReceivingItemData(i),
     category: i.category || undefined,
-    deviceOrigin: i.deviceOrigin || null,
-    shopWarrantyDays: i.shopWarrantyDays ? Number(i.shopWarrantyDays) : null,
-    warrantyTerms: i.warrantyTerms?.trim() || null,
     brand: i.brand || undefined,
     model: i.model || undefined,
     color: i.color || undefined,
@@ -25,30 +23,6 @@ export function buildDirectReceiveItem(i: ReceivingUnitForm) {
     accessoryBrand: i.accessoryBrand || undefined,
     quantity: 1,
     unitPrice: Number(i.costPrice),
-    imeiSerial: i.imeiSerial || undefined,
-    serialNumber: i.serialNumber || undefined,
-    status: i.status,
-    rejectReason: i.status === 'REJECT' ? i.rejectReason || undefined : undefined,
-    defectReason: i.status === 'REJECT' ? i.defectReason || undefined : undefined,
-    photos: i.photos.length ? i.photos : undefined,
-    ...(isUsed && i.status === 'PASS'
-      ? {
-          anglePhotos: shotAnglePhotos(i.anglePhotos),
-          batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
-          warrantyExpired: i.warrantyExpired,
-          warrantyExpireDate:
-            !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
-          hasBox: i.hasBox,
-          checklistResults: i.checklist.map(({ item, category, passed, note }) => ({
-            item,
-            category,
-            passed,
-            ...(note ? { note } : {}),
-          })),
-        }
-      : {}),
-    ...(i.status === 'PASS' && i.sellingPrice ? { sellingPrice: Number(i.sellingPrice) } : {}),
-    ...(i.status === 'PASS' && i.installmentPrice ? { installmentPrice: Number(i.installmentPrice) } : {}),
   };
 }
 
@@ -264,43 +238,10 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       supplierDoc: SupplierDocForm;
     }) =>
       api.post(`/purchase-orders/${poId}/goods-receiving`, {
-        items: items.map((i) => {
-          const isUsed = i.category === 'PHONE_USED';
-          return {
-            poItemId: i.poItemId,
-            deviceOrigin: i.deviceOrigin || null,
-            shopWarrantyDays: i.shopWarrantyDays ? Number(i.shopWarrantyDays) : null,
-            warrantyTerms: i.warrantyTerms?.trim() || null,
-            imeiSerial: i.imeiSerial || undefined,
-            serialNumber: i.serialNumber || undefined,
-            status: i.status,
-            rejectReason: i.status === 'REJECT' ? i.rejectReason || undefined : undefined,
-            defectReason: i.status === 'REJECT' ? i.defectReason || undefined : undefined,
-            photos: i.photos.length ? i.photos : undefined,
-            ...(isUsed && i.status === 'PASS'
-              ? {
-                  anglePhotos: shotAnglePhotos(i.anglePhotos),
-                  batteryHealth: i.batteryHealth ? Number(i.batteryHealth) : undefined,
-                  warrantyExpired: i.warrantyExpired,
-                  warrantyExpireDate:
-                    !i.warrantyExpired && i.warrantyExpireDate ? i.warrantyExpireDate : undefined,
-                  hasBox: i.hasBox,
-                  checklistResults: i.checklist.map(({ item, category, passed, note }) => ({
-                    item,
-                    category,
-                    passed,
-                    ...(note ? { note } : {}),
-                  })),
-                }
-              : {}),
-            ...(i.status === 'PASS' && i.sellingPrice
-              ? { sellingPrice: Number(i.sellingPrice) }
-              : {}),
-            ...(i.status === 'PASS' && i.installmentPrice
-              ? { installmentPrice: Number(i.installmentPrice) }
-              : {}),
-          };
-        }),
+        items: items.map((i) => ({
+          poItemId: i.poItemId,
+          ...buildReceivingItemData(i),
+        })),
         notes: notes || undefined,
         ...supplierDocPayload(supplierDoc),
       }),

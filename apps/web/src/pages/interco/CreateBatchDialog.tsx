@@ -154,9 +154,7 @@ export function CreateBatchDialog({
       if (file) {
         const fd = new FormData();
         fd.append('file', file);
-        await api.post(`/interco-settlement/batches/${batch.id}/slip`, fd, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        await api.post(`/interco-settlement/batches/${batch.id}/slip`, fd);
       }
 
       return batch;

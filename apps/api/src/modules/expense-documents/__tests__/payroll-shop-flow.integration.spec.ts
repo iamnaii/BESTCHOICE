@@ -473,7 +473,10 @@ describe('Payroll SHOP scope — สถานการณ์สมมุติ�
         entityScope: 'SHOP',
         depositAccountCode: 'S11-1202',
         lines: [
-          { employeeName: 'คนแรก หลังแก้', baseSalary: 9500, ssoEmployee: 475 },
+          { employeeName: 'คนแรก หลังแก้', baseSalary: 9500, ssoEmployee: 475,
+            customIncome: [{ accountCode: 'S52-1202', name: 'OT สตางค์', amount: 100.25, isTaxable: false }],
+            customDeduction: [{ accountCode: 'S21-1103', name: 'หักคืนสตางค์', amount: 50.15 }],
+          },
           { employeeName: 'คนที่สอง เพิ่มใหม่', baseSalary: 11000, ssoEmployee: 550 },
         ],
       } as never,
@@ -481,8 +484,17 @@ describe('Payroll SHOP scope — สถานการณ์สมมุติ�
     );
 
     expect(updated.subtotal.toString()).toBe('20500');
-    expect(updated.netPayment?.toString()).toBe('19475'); // 9,025 + 10,450
+    expect(updated.netPayment?.toString()).toBe('19525.1'); // 9,025 + 100.25 − 50.15 + 10,450
     expect(updated.payroll?.lines).toHaveLength(2);
+    const first = updated.payroll!.lines.find((l) => l.employeeName === 'คนแรก หลังแก้')!;
+    expect(first.customIncome).toHaveLength(1);
+    expect(first.customIncome[0]).toMatchObject({ accountCode: 'S52-1202', name: 'OT สตางค์', isTaxable: false });
+    expect(first.customIncome[0].amount.toString()).toBe('100.25');
+    expect(first.customDeduction).toHaveLength(1);
+    expect(first.customDeduction[0].amount.toString()).toBe('50.15');
+    const second = updated.payroll!.lines.find((l) => l.employeeName === 'คนที่สอง เพิ่มใหม่')!;
+    expect(second.customIncome).toEqual([]);
+    expect(second.customDeduction).toEqual([]);
     expect(
       updated.payroll?.lines.find((l) => l.employeeName === 'คนแรก ก่อนแก้'),
     ).toBeUndefined();

@@ -464,9 +464,7 @@ export default function RichMenuPage() {
             channel,
           }),
         );
-        const res = await api.post('/line-oa/rich-menu/create-with-image', fd, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        const res = await api.post('/line-oa/rich-menu/create-with-image', fd);
         return res.data as { richMenuId: string };
       }
 
@@ -532,9 +530,7 @@ export default function RichMenuPage() {
     mutationFn: async ({ menuId, file }: { menuId: string; file: File }) => {
       const formData = new FormData();
       formData.append('image', file);
-      await api.post(`/line-oa/rich-menu/${menuId}/upload-image?channel=${channel}`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      await api.post(`/line-oa/rich-menu/${menuId}/upload-image?channel=${channel}`, formData);
     },
     onSuccess: () => {
       toast.success('อัปโหลดรูป Rich Menu สำเร็จ');

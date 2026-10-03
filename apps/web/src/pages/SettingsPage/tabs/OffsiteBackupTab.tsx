@@ -1,3 +1,4 @@
+import { formatDuration } from '@/lib/format-duration';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -44,14 +45,6 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function formatDuration(startedAt: string, finishedAt: string | null): string {
-  if (!finishedAt) return '-';
-  const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
-  if (ms < 1000) return `${ms} ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} วิ`;
-  return `${(ms / 60_000).toFixed(1)} นาที`;
 }
 
 function formatThaiDateTime(iso: string): string {

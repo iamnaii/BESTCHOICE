@@ -1,3 +1,4 @@
+import { parseRecommendationBudget as optBudget, estimateReplyConfidence as confidenceOf } from '../modules/sales-bot/bot-input.util';
 /**
  * bot-eval — ชุดเทสบทสนทนาจำลองของบอทขาย (regression harness)
  *
@@ -56,7 +57,6 @@ import {
   groundingGuardNote,
   redactMediaUrls,
   staffFallbackReply,
-  isBarePromise,
 } from '../modules/sales-bot/sales-bot.service';
 import {
   NO_STOCK_PROMPT,
@@ -274,18 +274,6 @@ const COMPARE_11_TO_15 = {
   tradeIn: TRADE_IN_11,
 };
 const CANDIDATE_15_HIGHLIGHTS = ['กล้องหลัก 48MP', 'Dynamic Island', 'USB-C'];
-
-/** เลขงบจากโมเดล ("3,000 บาท" / "3 พัน" / "5k") — เหมือน SalesBotService.runTool */
-function optBudget(v: unknown): number | undefined {
-  if (v == null || v === '') return undefined;
-  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
-  const raw = String(v).replace(/,/g, '').trim().toLowerCase();
-  const m = /(\d+(?:\.\d+)?)\s*(หมื่น|พัน|k)?/.exec(raw);
-  if (!m) return undefined;
-  const mult = m[2] === 'หมื่น' ? 10_000 : m[2] === 'พัน' || m[2] === 'k' ? 1_000 : 1;
-  const n = Number(m[1]) * mult;
-  return Number.isFinite(n) && n > 0 ? n : undefined;
-}
 
 function runRecommend(input: Record<string, unknown>, mode: StockMode): unknown {
   const cur = String(input.currentModel ?? '').trim();
@@ -1500,15 +1488,6 @@ interface BotTurnResult {
   /** reply | sideEffectOnly | pending(<เหตุ>) | staffFallback */
   path: string;
   guardBlocks: string[];
-}
-
-/** = SalesBotService.estimateConfidence (private) */
-function confidenceOf(reply: string, toolsUsed: string[]): number {
-  if (toolsUsed.includes('handoff_to_human')) return 0.3;
-  if (!reply.trim()) return 0;
-  if (toolsUsed.length === 0 && isBarePromise(reply)) return 0.6;
-  if (toolsUsed.length > 0) return 0.95;
-  return 0.9;
 }
 
 /**

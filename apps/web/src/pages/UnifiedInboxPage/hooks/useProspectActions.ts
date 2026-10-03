@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
-import { ROOM_LINK_INVALIDATE_KEYS } from './useLinkRoomCustomer';
+import { invalidateRoomCustomerQueries } from './customer-credit-queries';
 
 /**
  * การกระทำบนการ์ด "ผู้สนใจจากแชท" ในแผงขวา (สเปค 3.3 ข / 3.6)
@@ -32,9 +32,7 @@ export function useAbsorbCustomer(roomId: string, opts: { onSuccess?: (args: Abs
     mutationFn: (args: AbsorbArgs) =>
       api.post(`/customers/${args.placeholderId}/absorb-into/${args.targetId}`).then((res) => toAbsorbResult(res?.data?.data ?? res?.data, args)),
     onSuccess: (result, args) => {
-      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      for (const key of ROOM_LINK_INVALIDATE_KEYS) queryClient.invalidateQueries({ queryKey: [key] });
+      invalidateRoomCustomerQueries(queryClient, roomId);
       opts.onSuccess?.(args, result);
     },
     onError: (err, args) => opts.onError?.(err, args),

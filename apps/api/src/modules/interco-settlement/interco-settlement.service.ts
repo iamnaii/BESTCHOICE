@@ -1,3 +1,5 @@
+import { buildFinanceLines, buildShopLines, DEDUCTION_ONLY_TYPES, isPayableRow, type BatchWithItems } from './interco-journal-lines';
+import { matchesMimeMagicBytes } from '../../utils/attachment-mime.util';
 import {
   BadRequestException,
   ConflictException,
@@ -106,27 +108,6 @@ const OPEN_BATCH_STATUSES = ['PENDING_APPROVAL', 'POSTED'] as const;
 /** Drift-guard tolerance on the 4 GL lens amounts (spec §5.1). */
 const DRIFT_TOLERANCE = new Prisma.Decimal('0.01');
 
-/**
- * บทบาทของแต่ละ itemType ในรอบจ่าย — `satisfies Record<InterCoItemType, …>` บังคับให้ค่า enum
- * ใหม่ต้องถูกตัดสินที่นี่ก่อน compile ผ่าน (pattern DUE_STATUS_MAP / FOUND_POLICY):
- *   PAYABLE        = แถวจ่ายเจ้าหนี้ (Dr 21-1101/21-1102 + Cr S11-3001/S11-3002; clash กับ item ทุกประเภท)
- *   DEDUCTION_ONLY = แถวหักอย่างเดียว (Cr 11-2107 / Dr S21-1104; clash เฉพาะ item ประเภทเดียวกัน —
- *                    สัญญาของแถวพวกนี้มี SETTLEMENT item ถาวรในรอบ POSTED เก่าโดยนิยาม)
- */
-const ITEM_ROLE = {
-  SETTLEMENT: 'PAYABLE',
-  RECALL: 'DEDUCTION_ONLY',
-  DEVICE_RETURN: 'DEDUCTION_ONLY',
-} as const satisfies Record<InterCoItemType, 'PAYABLE' | 'DEDUCTION_ONLY'>;
-
-const DEDUCTION_ONLY_TYPES = (Object.keys(ITEM_ROLE) as InterCoItemType[]).filter(
-  (t) => ITEM_ROLE[t] === 'DEDUCTION_ONLY',
-);
-
-function isPayableRow(itemType: InterCoItemType): boolean {
-  return ITEM_ROLE[itemType] === 'PAYABLE';
-}
-
 /** คอลัมน์ deduction ของ item หนึ่งแถว (ทุกแถวมีครบสามคอลัมน์ — ที่ไม่เกี่ยวเป็น 0) */
 interface DeductionColumns {
   swapCreditAmount: Prisma.Decimal;
@@ -164,15 +145,6 @@ function buildClashConditions(
   }
   return conditions;
 }
-
-/** Batch + items + per-item contractNumber — shape approve/reverse work with. */
-type BatchWithItems = Prisma.InterCoSettlementBatchGetPayload<{
-  include: {
-    items: {
-      include: { contract: { select: { contractNumber: true } } };
-    };
-  };
-}>;
 
 interface BuiltSnapshotItem {
   contractId: string;
@@ -790,7 +762,7 @@ export class IntercoSettlementService {
       throw new BadRequestException('แนบสลิปได้เฉพาะรอบสถานะร่างหรือรอการอนุมัติเท่านั้น');
     }
 
-    if (!this.matchesMimeMagicBytes(file)) {
+    if (!matchesMimeMagicBytes(file)) {
       throw new BadRequestException(
         'ประเภทไฟล์ไม่ตรงกับเนื้อหา (รองรับเฉพาะ PDF, JPEG, PNG, WEBP)',
       );
@@ -812,56 +784,6 @@ export class IntercoSettlementService {
       await this.storage.delete(key).catch(() => undefined);
       throw err;
     }
-  }
-
-  /**
-   * Confirms the uploaded file's first bytes match the declared mimetype —
-   * defence-in-depth on top of the controller's Content-Type-based
-   * `FileTypeValidator` (client-controlled header). Mirrors
-   * `OtherIncomeService.matchesMimeMagicBytes` (PDF/JPEG/PNG/WEBP only).
-   */
-  private matchesMimeMagicBytes(file: Express.Multer.File): boolean {
-    const buf = file.buffer;
-    if (!buf || buf.length < 12) return false;
-    const mime = file.mimetype;
-
-    if (mime === 'application/pdf') {
-      // %PDF-
-      return (
-        buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46 && buf[4] === 0x2d
-      );
-    }
-    if (mime === 'image/jpeg') {
-      // FF D8 FF
-      return buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
-    }
-    if (mime === 'image/png') {
-      // 89 50 4E 47 0D 0A 1A 0A
-      return (
-        buf[0] === 0x89 &&
-        buf[1] === 0x50 &&
-        buf[2] === 0x4e &&
-        buf[3] === 0x47 &&
-        buf[4] === 0x0d &&
-        buf[5] === 0x0a &&
-        buf[6] === 0x1a &&
-        buf[7] === 0x0a
-      );
-    }
-    if (mime === 'image/webp') {
-      // 'RIFF'....'WEBP'
-      return (
-        buf[0] === 0x52 &&
-        buf[1] === 0x49 &&
-        buf[2] === 0x46 &&
-        buf[3] === 0x46 &&
-        buf[8] === 0x57 &&
-        buf[9] === 0x45 &&
-        buf[10] === 0x42 &&
-        buf[11] === 0x50
-      );
-    }
-    return false;
   }
 
   async listBatches(query: { status?: string; page?: number; limit?: number }) {
@@ -1178,8 +1100,8 @@ export class IntercoSettlementService {
       }));
       const netTransferMetadata = (batch.netTransferAmount ?? batch.totalAmount).toFixed(2);
       const financeDescription = `จ่ายให้หน้าร้าน รอบ ${batch.batchNumber} (โอนจริง ${this.formatBkkDate(batch.transferDate)})`;
-      const shopLines = this.buildShopLines(batch);
-      const financeLines = this.buildFinanceLines(batch, financeDescription);
+      const shopLines = buildShopLines(batch);
+      const financeLines = buildFinanceLines(batch, financeDescription);
 
       let financeJournalEntryId: string;
       let shopJournalEntryId: string | null = null;
@@ -1861,153 +1783,6 @@ export class IntercoSettlementService {
     return d
       ? { contractNumber: d.contractNumber, net: d.deviceReturnGl, shopNet: d.shopDeviceReturnGl }
       : undefined;
-  }
-
-  /**
-   * ยอดหัก + คำอธิบายบรรทัดหัก (FINANCE `Cr 11-2107` / SHOP `Dr S21-1104`) ของ item หนึ่งแถว
-   * ตามประเภท — แหล่งเดียวของ mapping itemType → คอลัมน์ snapshot/ข้อความ (ห้าม inline ternary
-   * ซ้ำ): SETTLEMENT = เครดิตเปลี่ยนเครื่อง (swap), RECALL = เรียกคืนยกเลิก (C-2),
-   * DEVICE_RETURN = ค่าเครื่องคืน (ใบรับเครื่องคืน 2026-09-20 §6.3).
-   */
-  private deductionOf(item: BatchWithItems['items'][number]): {
-    amount: Prisma.Decimal;
-    financeDescription: string;
-    shopDescription: string;
-  } {
-    const no = item.contract.contractNumber;
-    switch (item.itemType) {
-      case 'RECALL':
-        return {
-          amount: item.recallAmount,
-          financeDescription: `หักเรียกคืนจากยกเลิก ${no}`,
-          shopDescription: `ล้างเจ้าหนี้ FINANCE-เรียกคืนยกเลิก ${no}`,
-        };
-      case 'DEVICE_RETURN':
-        return {
-          amount: item.deviceReturnAmount,
-          financeDescription: `หักค่าเครื่องคืน ${no}`,
-          shopDescription: `ล้างเจ้าหนี้ FINANCE-ค่าเครื่องคืน ${no}`,
-        };
-      default:
-        return {
-          amount: item.swapCreditAmount,
-          financeDescription: `หักเครดิตเปลี่ยนเครื่อง ${no}`,
-          shopDescription: `ล้างเจ้าหนี้ FINANCE-ค่าเครื่องรับคืน ${no}`,
-        };
-    }
-  }
-
-  /**
-   * Dr 21-1101 per SETTLEMENT contract (always) + Dr 21-1102 per contract
-   * (skip zero) + Cr 11-2107 per deduction (swap credit / recall / device
-   * return — Phase 2 หักกลบ workbook จุดที่ 3 + ใบรับเครื่องคืน 2026-09-20 §6.3)
-   * + Cr bank = netTransferAmount (skip when 0 — รอบที่หักจนเงินโอนจริงเป็นศูนย์
-   * ต้องไม่มีบรรทัดธนาคาร). Deduction-only rows (RECALL / DEVICE_RETURN) carry
-   * no payable snapshot of their own — they contribute ONLY the Cr 11-2107 leg
-   * (never a zero-amount Dr 21-1101 line).
-   */
-  private buildFinanceLines(batch: BatchWithItems, description: string): JeLineInput[] {
-    const zero = new Prisma.Decimal(0);
-    const lines: JeLineInput[] = [];
-    for (const item of batch.items) {
-      if (!isPayableRow(item.itemType)) continue;
-      lines.push({
-        accountCode: '21-1101',
-        dr: item.financedGl,
-        cr: zero,
-        description: `ล้างเจ้าหนี้ยอดจัด ${item.contract.contractNumber}`,
-      });
-    }
-    for (const item of batch.items) {
-      if (item.commissionGl.gt(0)) {
-        lines.push({
-          accountCode: '21-1102',
-          dr: item.commissionGl,
-          cr: zero,
-          description: `ล้างเจ้าหนี้ค่าคอม ${item.contract.contractNumber}`,
-        });
-      }
-    }
-    for (const item of batch.items) {
-      const deduction = this.deductionOf(item);
-      if (deduction.amount.gt(0)) {
-        lines.push({
-          accountCode: '11-2107',
-          dr: zero,
-          cr: deduction.amount,
-          description: deduction.financeDescription,
-        });
-      }
-    }
-    // Pre-Phase 2 batches have no netTransferAmount snapshot — fall back to
-    // the gross total (identical: their totalDeduction is definitionally 0).
-    const netCash = batch.netTransferAmount ?? batch.totalAmount;
-    if (netCash.gt(0)) {
-      lines.push({
-        accountCode: batch.financeBankCode,
-        dr: zero,
-        cr: netCash,
-        description,
-      });
-    }
-    return lines;
-  }
-
-  /**
-   * Dr shopBankCode = shopNetAmount (skip when 0) + Dr S21-1104 per deduction
-   * row (ล้างเจ้าหนี้ FINANCE ฝั่ง SHOP — Phase 2 หักกลบ: SWAP_CREDIT ของ
-   * settlement items, RECALL rows และ DEVICE_RETURN rows) + Cr S11-3001
-   * per-contract (always) + Cr S11-3002 per-contract (skip zero) — settlement
-   * legs ONLY over SETTLEMENT items with `legacyNoShop=false`. Empty array = no
-   * SHOP half at all (caller skips `postPaired` and posts FINANCE alone via
-   * `JournalAutoService`).
-   */
-  private buildShopLines(batch: BatchWithItems): JeLineInput[] {
-    const zero = new Prisma.Decimal(0);
-    const shopItems = batch.items.filter((i) => i.itemType === 'SETTLEMENT' && !i.legacyNoShop);
-    const deductionItems = batch.items.filter((i) => this.deductionOf(i).amount.gt(0));
-    if (shopItems.length === 0 && deductionItems.length === 0) return [];
-
-    const lines: JeLineInput[] = [];
-    // Pre-Phase 2 batches have no shopNetAmount snapshot — fall back to the
-    // gross posted amount (identical: their totalDeduction is definitionally 0).
-    const shopNet = batch.shopNetAmount ?? batch.shopPostedAmount;
-    if (shopNet.gt(0)) {
-      lines.push({
-        accountCode: batch.shopBankCode,
-        dr: shopNet,
-        cr: zero,
-        description: `รับโอนจาก FINANCE รอบ ${batch.batchNumber}`,
-      });
-    }
-    for (const item of deductionItems) {
-      const deduction = this.deductionOf(item);
-      lines.push({
-        accountCode: 'S21-1104',
-        dr: deduction.amount,
-        cr: zero,
-        description: deduction.shopDescription,
-      });
-    }
-    for (const item of shopItems) {
-      lines.push({
-        accountCode: 'S11-3001',
-        dr: zero,
-        cr: item.shopFinancedGl,
-        description: `ล้างลูกหนี้ FINANCE-ยอดจัด ${item.contract.contractNumber}`,
-      });
-    }
-    for (const item of shopItems) {
-      if (item.shopCommissionGl.gt(0)) {
-        lines.push({
-          accountCode: 'S11-3002',
-          dr: zero,
-          cr: item.shopCommissionGl,
-          description: `ล้างลูกหนี้ FINANCE-ค่าคอม ${item.contract.contractNumber}`,
-        });
-      }
-    }
-    return lines;
   }
 
   /**

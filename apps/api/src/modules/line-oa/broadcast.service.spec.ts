@@ -1,59 +1,34 @@
-import { ConfigService } from '@nestjs/config';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { BroadcastService } from './broadcast.service';
 import { StorageService } from '../storage/storage.service';
 
-/**
- * ระบบ Broadcast ถูกถอด 2026-09-28 เหลือเฉพาะตัวอัปโหลดรูปที่ตัวแก้ข้อความสำเร็จรูปใช้
- * เทสต์นี้ปักพฤติกรรมเดิมของ uploadImage ไว้: key ที่เก็บ และ URL สาธารณะทั้ง 3 แบบ
- */
-describe('BroadcastService.uploadImage', () => {
-  const NOW = 1_790_000_000_000;
-  let upload: jest.Mock;
-
-  function make(env: Record<string, string | undefined>) {
-    upload = jest.fn().mockResolvedValue(undefined);
-    const config = { get: (key: string) => env[key] } as unknown as ConfigService;
-    const storage = { upload } as unknown as StorageService;
-    return new BroadcastService(config, storage);
+describe('canned-response image upload', () => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  function make(backend = 's3', configured = true) {
+    const storage = {
+      configured,
+      describe: () => ({ backend }),
+      upload: jest.fn().mockResolvedValue(undefined),
+      getPublicUrl: jest.fn((key: string) => `https://cdn.example.test/${key}`),
+    };
+    return { storage, service: new BroadcastService(storage as unknown as StorageService) };
   }
-
-  beforeEach(() => {
-    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+  it('stores byte-derived PNG metadata and returns the configured public URL', async () => {
+    const { storage, service } = make();
+    const result = await service.uploadImage(png);
+    const key = storage.upload.mock.calls[0][0];
+    expect(key).toMatch(/^broadcast\/images\/[a-f0-9-]+\.png$/);
+    expect(storage.upload).toHaveBeenCalledWith(key, png, 'image/png');
+    expect(result).toEqual({ url: `https://cdn.example.test/${key}` });
   });
-  afterEach(() => {
-    jest.restoreAllMocks();
+  it('rejects unsupported bytes before storage', async () => {
+    const { storage, service } = make();
+    await expect(service.uploadImage(Buffer.from('invalid'))).rejects.toThrow(BadRequestException);
+    expect(storage.upload).not.toHaveBeenCalled();
   });
-
-  it('เก็บไฟล์ใต้ broadcast/images/<เวลา>-<ชื่อไฟล์>', async () => {
-    const service = make({ GCS_BUCKET: 'bucket-a' });
-    const file = Buffer.from('x');
-
-    await service.uploadImage(file, 'promo.png');
-
-    expect(upload).toHaveBeenCalledWith(`broadcast/images/${NOW}-promo.png`, file, 'image/jpeg');
-  });
-
-  it('มี S3_ENDPOINT → URL ชี้ S3 (bucket เริ่มต้น bestchoice-documents)', async () => {
-    const service = make({ S3_ENDPOINT: 'https://s3.example.test', GCS_BUCKET: 'bucket-a' });
-
-    await expect(service.uploadImage(Buffer.from('x'), 'a.jpg')).resolves.toEqual({
-      url: `https://s3.example.test/bestchoice-documents/broadcast/images/${NOW}-a.jpg`,
-    });
-  });
-
-  it('ไม่มี S3 แต่มี GCS_BUCKET → URL ชี้ Google Cloud Storage', async () => {
-    const service = make({ GCS_BUCKET: 'bucket-a' });
-
-    await expect(service.uploadImage(Buffer.from('x'), 'a.jpg')).resolves.toEqual({
-      url: `https://storage.googleapis.com/bucket-a/broadcast/images/${NOW}-a.jpg`,
-    });
-  });
-
-  it('ไม่มีทั้งคู่ → เสิร์ฟผ่าน API โดย encode key', async () => {
-    const service = make({ APP_URL: 'https://app.example.test' });
-
-    await expect(service.uploadImage(Buffer.from('x'), 'a.jpg')).resolves.toEqual({
-      url: `https://app.example.test/api/files/${encodeURIComponent(`broadcast/images/${NOW}-a.jpg`)}`,
-    });
+  it.each([['local', true], ['s3', false]])('rejects unavailable public storage %s/%s', async (backend, configured) => {
+    const { storage, service } = make(backend as string, configured as boolean);
+    await expect(service.uploadImage(png)).rejects.toThrow(ServiceUnavailableException);
+    expect(storage.upload).not.toHaveBeenCalled();
   });
 });

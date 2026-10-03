@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { randomUUID } from 'crypto';
+import { Injectable, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { StorageService } from '../storage/storage.service';
 
 /**
@@ -14,31 +14,29 @@ import { StorageService } from '../storage/storage.service';
  */
 @Injectable()
 export class BroadcastService {
-  constructor(
-    private configService: ConfigService,
-    private storageService: StorageService,
-  ) {}
+  constructor(private storageService: StorageService) {}
 
-  async uploadImage(file: Buffer, filename: string): Promise<{ url: string }> {
-    const key = `broadcast/images/${Date.now()}-${filename}`;
-    await this.storageService.upload(key, file, 'image/jpeg');
+  async uploadImage(file: Buffer): Promise<{ url: string }> {
+    // FileTypeValidator checks bytes but leaves the client MIME header untouched.
+    const signature = file.subarray(0, 12);
+    const contentType = signature.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) ? 'image/png'
+      : signature.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex')) ? 'image/jpeg'
+      : ['GIF87a', 'GIF89a'].includes(signature.subarray(0, 6).toString()) ? 'image/gif'
+      : signature.subarray(0, 4).toString() === 'RIFF' && signature.subarray(8, 12).toString() === 'WEBP' ? 'image/webp' : '';
+    const extensions: Record<string, string> = {
+      'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
+    };
+    const extension = extensions[contentType];
+    if (!extension) throw new BadRequestException('รูปแบบรูปภาพไม่รองรับ');
+    return this.uploadMedia(file, `images/${randomUUID()}.${extension}`, contentType);
+  }
 
-    // Build public URL
-    const s3Endpoint = this.configService.get<string>('S3_ENDPOINT');
-    const s3Bucket = this.configService.get<string>('S3_BUCKET') || 'bestchoice-documents';
-    const gcsBucket = this.configService.get<string>('GCS_BUCKET');
-    const appUrl = this.configService.get<string>('APP_URL') || 'https://app.bestchoice.co.th';
-
-    let url: string;
-    if (s3Endpoint) {
-      url = `${s3Endpoint}/${s3Bucket}/${key}`;
-    } else if (gcsBucket) {
-      url = `https://storage.googleapis.com/${gcsBucket}/${key}`;
-    } else {
-      // Fallback — serve via API
-      url = `${appUrl}/api/files/${encodeURIComponent(key)}`;
+  private async uploadMedia(file: Buffer, name: string, contentType: string) {
+    if (!this.storageService.configured || this.storageService.describe().backend === 'local') {
+      throw new ServiceUnavailableException('กรุณาตั้งค่าที่เก็บไฟล์สาธารณะสำหรับ Broadcast');
     }
-
-    return { url };
+    const key = `broadcast/${name}`;
+    await this.storageService.upload(key, file, contentType);
+    return { url: this.storageService.getPublicUrl(key) };
   }
 }

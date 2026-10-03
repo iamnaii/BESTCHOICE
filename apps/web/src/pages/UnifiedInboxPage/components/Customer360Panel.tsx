@@ -171,7 +171,7 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   const { data: riskData } = useQuery({
     queryKey: ['customer-risk', customerId],
     queryFn: () => api.get(`/customers/${customerId}/risk-flag`).then((r) => r.data?.data ?? r.data),
-    enabled: !!customerId,
+    enabled: !!customerId && !bare,
   });
 
   // ─── Chat summary (payments, contracts, call logs, sessions) ──
@@ -186,14 +186,14 @@ export default function Customer360Panel({ customerId, activeRoomId, onSelectRoo
   const { data: notesData } = useQuery({
     queryKey: ['customer-notes', activeRoomId],
     queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/notes`).then((r) => r.data?.data ?? r.data),
-    enabled: !!activeRoomId,
+    enabled: !!activeRoomId && show('notes'),
   });
 
   // ─── Cross-channel rooms ─────────────────────────────
   const { data: crossRooms } = useQuery({
     queryKey: ['cross-channel-rooms', activeRoomId],
     queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/cross-channel`).then((r) => r.data?.data ?? r.data),
-    enabled: !!activeRoomId,
+    enabled: !!activeRoomId && show('channels'),
   });
 
   const activeContracts = (summary?.activeContracts ?? []) as ContractSummaryItem[];

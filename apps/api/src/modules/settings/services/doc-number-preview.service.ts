@@ -1,20 +1,10 @@
+import { documentNumberLayout } from '../../../utils/document-number-format.util';
 import { Injectable } from '@nestjs/common';
 import { DocumentType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
 import { SettingsFlagsService } from './settings-flags.service';
-import {
-  DOC_PREFIX_REGEX,
-  VALID_DOC_NUMBER_FORMATS,
-  DocNumberFormatValue,
-  DEFAULT_DOC_NUMBER_FORMAT_VALUE,
-  VALID_DOC_NUMBER_RESET_CYCLES,
-  DocNumberResetCycleValue,
-  DEFAULT_DOC_NUMBER_RESET_CYCLE,
-  EXTRA_DOC_TYPE_KEYS,
-  ExtraDocTypeKey,
-  DEFAULT_EXTRA_DOC_PREFIX_MAP,
-} from '../settings.constants';
+import { DOC_PREFIX_REGEX, VALID_DOC_NUMBER_FORMATS, DocNumberFormatValue, DEFAULT_DOC_NUMBER_FORMAT_VALUE, VALID_DOC_NUMBER_RESET_CYCLES, DocNumberResetCycleValue, DEFAULT_DOC_NUMBER_RESET_CYCLE, EXTRA_DOC_TYPE_KEYS, ExtraDocTypeKey, DEFAULT_EXTRA_DOC_PREFIX_MAP } from '../settings.constants';
 
 /**
  * Document-number preview + sequence-reset slice of the decomposed
@@ -183,7 +173,7 @@ export class DocNumberPreviewService {
       }
     }
 
-    const { datePortion, seqWidth } = this.layoutFor(sampleDate, resolvedFormat);
+    const { datePortion, seqWidth } = documentNumberLayout(sampleDate, resolvedFormat);
     const seq = String(1).padStart(seqWidth, '0');
     return {
       sample: `${resolvedPrefix}-${datePortion}-${seq}`,
@@ -191,59 +181,5 @@ export class DocNumberPreviewService {
       resetCycle: resolvedCycle,
       prefix: resolvedPrefix,
     };
-  }
-
-  /**
-   * P2-SP2 — pure layout helper for `previewNumber`. Mirrors the logic in
-   * `DocNumberService.layout` but lives here as well so SettingsService stays
-   * dependency-free. Keep the two in sync.
-   */
-  private layoutFor(
-    issueDate: Date,
-    format: DocNumberFormatValue,
-  ): { datePortion: string; seqWidth: number } {
-    switch (format) {
-      case 'PREFIX-YYYYMM-NNNNN':
-        return { datePortion: this.bkkYyyymm(issueDate), seqWidth: 5 };
-      case 'PREFIX-YYYY-NNNNNN':
-        return { datePortion: this.bkkYyyy(issueDate), seqWidth: 6 };
-      case 'PREFIX-YYYYMMDD-NNNN':
-        return { datePortion: this.bkkYyyymmdd(issueDate), seqWidth: 4 };
-      case 'PREFIX-YYMM-NNN':
-      default:
-        return { datePortion: this.bkkYymm(issueDate), seqWidth: 3 };
-    }
-  }
-
-  private bkkYyyymmdd(date: Date): string {
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
-    return `${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
-  }
-
-  private bkkYyyymm(date: Date): string {
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-    });
-    return parts.split('-').slice(0, 2).join('');
-  }
-
-  private bkkYyyy(date: Date): string {
-    return date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-    });
-  }
-
-  private bkkYymm(date: Date): string {
-    const yyyymm = this.bkkYyyymm(date);
-    return yyyymm.slice(2);
   }
 }

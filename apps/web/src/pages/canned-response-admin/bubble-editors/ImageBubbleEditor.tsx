@@ -26,9 +26,7 @@ export default function ImageBubbleEditor({ bubble, onChange }: Props) {
     try {
       const form = new FormData();
       form.append('file', file);
-      const res: any = await api.post('/line-oa/broadcast/upload-image', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res: any = await api.post('/line-oa/broadcast/upload-image', form);
       const url = res?.data?.url ?? res?.url;
       if (url) {
         onChange({ mediaUrl: url });

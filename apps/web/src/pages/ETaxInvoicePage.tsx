@@ -1,3 +1,4 @@
+import { formatTaxAmount as fmtNumber } from '@/utils/financial-display';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router';
@@ -77,12 +78,6 @@ const STATUS_VARIANT: Record<
 
 const inputClass =
   'w-full px-3 py-2 border border-input rounded-lg focus-visible:ring-2 focus-visible:ring-ring/30 focus-visible:ring-offset-[3px] focus-visible:ring-offset-background outline-hidden bg-background text-foreground';
-
-function fmtNumber(n: number | string | null | undefined): string {
-  const v = typeof n === 'string' ? Number(n) : n;
-  if (v == null || Number.isNaN(v)) return '0.00';
-  return v.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 export function ETaxInvoicePage() {
   const now = new Date();

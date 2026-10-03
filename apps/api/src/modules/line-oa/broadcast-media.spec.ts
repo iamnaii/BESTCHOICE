@@ -7,6 +7,7 @@ import request from 'supertest';
 import { BroadcastController } from './broadcast.controller';
 import { BroadcastService } from './broadcast.service';
 import { StorageService } from '../storage/storage.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 // Real Nest multipart parsing, service and S3 SDK; only the remote object store is local.
@@ -54,6 +55,8 @@ describe('Broadcast media HTTP and storage contract', () => {
       providers: [
         BroadcastService,
         StorageService,
+        // RolesGuard requires Prisma even though OWNER checks do not query it.
+        { provide: PrismaService, useValue: {} },
         { provide: ConfigService, useValue: { get: (key: string) => values[key] } },
       ],
     })

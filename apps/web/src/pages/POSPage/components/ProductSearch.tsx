@@ -103,7 +103,7 @@ export default function ProductSearch({
               </button>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="flex flex-col gap-3">
               <div className="relative">
                 <Search
                   aria-hidden
@@ -122,7 +122,7 @@ export default function ProductSearch({
               <DeviceOriginFilter
                 value={deviceOrigin}
                 onChange={setDeviceOrigin}
-                className="min-h-11 mb-0 w-full sm:w-auto"
+                className="min-h-11 mb-0 w-full sm:w-auto sm:self-start"
               />
               {(productSearch.length === 0 || productSearch.length >= 2) && (
                 <div className="rounded-lg border border-border divide-y divide-border max-h-64 overflow-y-auto">

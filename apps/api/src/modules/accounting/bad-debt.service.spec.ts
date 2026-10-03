@@ -1059,6 +1059,94 @@ describe('BadDebtService', () => {
       expect(creditNoteService.issueForContract).toHaveBeenCalled();
     });
 
+    // PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6 (29/09/2569): รายการตัดหนี้สูญหักเงินของลูกค้าที่ค้างทุกประเภท (template) →
+    // คอลัมน์เงินของลูกค้าบนสัญญาเป็นศูนย์ในธุรกรรมเดียวกัน · สัญญาณเตือนของ template ส่งหลัง commit เท่านั้น
+    describe('PR6 — ล้างคอลัมน์เงินของลูกค้า + สัญญาณเตือนหลัง commit', () => {
+      const warning = {
+        message: '[contract-close] advance/credit columns differ from the ledger cleared at close',
+        tags: { module: 'journal', action: 'close-advance-ledger-mismatch', flow: 'write-off' },
+        extra: { contractId: 'c1', ledger21_5101: '0.00', creditBalance: '2000.00' },
+      };
+      const writeOffTemplate = () => service['badDebtWriteOffTemplate'].execute as jest.Mock;
+
+      beforeEach(() => {
+        prisma.contract.findFirst.mockResolvedValue({ id: 'c1', status: 'TERMINATED' });
+        prisma.badDebtProvision.updateMany.mockResolvedValue({ count: 1 });
+        (Sentry.captureMessage as jest.Mock).mockClear();
+      });
+
+      it('ตั้ง advanceBalance / rescheduleAdvanceBalance / creditBalance เป็น 0 ภายในธุรกรรมเดียวกับรายการ หลัง template ลงรายการ', async () => {
+        let inTx = false;
+        let clearedInTx: boolean | null = null;
+        prisma.$transaction.mockImplementationOnce(
+          async (fn: (tx: unknown) => Promise<unknown>) => {
+            inTx = true;
+            const r = await fn(prisma);
+            inTx = false;
+            return r;
+          },
+        );
+        prisma.contract.update.mockImplementation(
+          async (args: { data: Record<string, unknown> }) => {
+            if ('creditBalance' in args.data) clearedInTx = inTx;
+            return {};
+          },
+        );
+
+        await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
+
+        expect(prisma.contract.update).toHaveBeenCalledWith({
+          where: { id: 'c1' },
+          data: { advanceBalance: 0, rescheduleAdvanceBalance: 0, creditBalance: 0 },
+        });
+        expect(clearedInTx).toBe(true);
+        const clearIdx = prisma.contract.update.mock.calls.findIndex(
+          ([a]: [{ data: Record<string, unknown> }]) => 'creditBalance' in a.data,
+        );
+        expect(prisma.contract.update.mock.invocationCallOrder[clearIdx]).toBeGreaterThan(
+          writeOffTemplate().mock.invocationCallOrder[0],
+        );
+      });
+
+      it('สัญญาณเตือนจาก template (คอลัมน์ไม่ตรงบัญชี) ส่งหลังธุรกรรม commit ระดับ warning และไม่อยู่ในผลลัพธ์', async () => {
+        writeOffTemplate().mockResolvedValueOnce({ entryNo: 'JE-MOCK', warnings: [warning] });
+        let committed = false;
+        let sentAfterCommit: boolean | null = null;
+        prisma.$transaction.mockImplementationOnce(
+          async (fn: (tx: unknown) => Promise<unknown>) => {
+            const r = await fn(prisma);
+            committed = true;
+            return r;
+          },
+        );
+        (Sentry.captureMessage as jest.Mock).mockImplementationOnce(() => {
+          sentAfterCommit = committed;
+        });
+
+        const result = await service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order');
+
+        expect(sentAfterCommit).toBe(true);
+        expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+        expect(Sentry.captureMessage).toHaveBeenCalledWith(warning.message, {
+          level: 'warning',
+          tags: warning.tags,
+          extra: warning.extra,
+        });
+        expect(result).not.toHaveProperty('warnings');
+        expect(result.status).toBe('CLOSED_BAD_DEBT');
+      });
+
+      it('ธุรกรรมล้ม (ออกใบลดหนี้ไม่สำเร็จ) → ไม่ส่งสัญญาณเตือนของงานที่ไม่ได้เกิดขึ้น', async () => {
+        writeOffTemplate().mockResolvedValueOnce({ entryNo: 'JE-MOCK', warnings: [warning] });
+        creditNoteService.issueForContract.mockRejectedValueOnce(new Error('CN fail'));
+
+        await expect(service.writeOffBadDebt('c1', 'bm-1', 'fm-1', 'court order')).rejects.toThrow(
+          'CN fail',
+        );
+        expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      });
+    });
+
     // Phase 3 Task 5 — post-commit LINE delivery hook.
     describe('CreditNoteDeliveryService post-commit hook', () => {
       it('fires deliver(receiptId) AFTER the $transaction resolves, with the ISSUED receiptId', async () => {
@@ -1788,6 +1876,186 @@ describe('BadDebtService', () => {
         expect.objectContaining({
           where: expect.objectContaining({ status: expectedStatusFilter }),
         }),
+      );
+    });
+  });
+
+  describe('คำตัดสินฝ่ายบัญชี 2026-09-28 — เริ่มตั้งค่าเผื่อเมื่อพ้นวันครบกำหนดแล้ว', () => {
+    const DUE_27_AUG = new Date('2026-08-26T17:00:00.000Z'); // 27 ส.ค. 2569 00:00 เวลาไทย
+    const RUN_ON_DUE_DAY = new Date('2026-08-26T17:30:00.000Z'); // 27 ส.ค. 00:30
+    const RUN_NEXT_DAY = new Date('2026-08-27T17:30:00.000Z'); // 28 ส.ค. 00:30
+    const AFTERNOON_ON_DUE_DAY = new Date('2026-08-27T07:00:00.000Z'); // 27 ส.ค. 14:00
+
+    const dueToday = (status = 'ACTIVE') => ({
+      id: 'pay-ct-1-1',
+      contractId: 'ct-1',
+      installmentNo: 1,
+      amountDue: new Prisma.Decimal('1515.83'),
+      amountPaid: new Prisma.Decimal(0),
+      lateFee: new Prisma.Decimal(0),
+      lateFeeWaived: false,
+      status: 'PENDING',
+      dueDate: DUE_27_AUG,
+      contract: { id: 'ct-1', status, ...STD_CONTRACT_FIELDS },
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('(ก) รอบ 00:30 ของวันครบกำหนดเอง — คิวรีใช้ต้นวันไทยเป็นเส้นตัด และไม่ตั้งค่าเผื่อ', async () => {
+      jest.useFakeTimers().setSystemTime(RUN_ON_DUE_DAY);
+      // ฐานข้อมูลจริงจะไม่คืนงวดนี้ (dueDate ไม่น้อยกว่าเส้นตัด) — จำลองกรณีแย่สุดที่ยังคืนมา
+      // เพื่อพิสูจน์ว่าเครื่องยนต์กรองซ้ำในหน่วยความจำ
+      prisma.payment.findMany.mockResolvedValue([dueToday()]);
+
+      const result = await service.calculateProvisions('user-1');
+
+      expect(prisma.payment.findMany.mock.calls[0][0].where.dueDate).toEqual({ lt: DUE_27_AUG });
+      expect(result.created).toBe(0);
+      expect(result.byBucket['1-30']).toBeUndefined();
+    });
+
+    it('(ข) รอบ 00:30 ของวันถัดไป — เกินกำหนด 1 วัน เข้าช่วง 1-30 ตั้ง 30.32', async () => {
+      jest.useFakeTimers().setSystemTime(RUN_NEXT_DAY);
+      prisma.payment.findMany.mockResolvedValue([dueToday()]);
+
+      const result = await service.calculateProvisions('user-1');
+
+      expect(result.created).toBe(1);
+      expect(result.byBucket['1-30'].amount).toBeCloseTo(30.32, 2);
+      const row = prisma.badDebtProvision.createMany.mock.calls[0][0].data[0];
+      expect(row.daysOverdue).toBe(1);
+      expect(row.agingBucket).toBe('1-30');
+    });
+
+    it('(ค) ขอบช่วง 30/31 วัน นับจากเที่ยงคืนไทย', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-09-25T17:30:00.000Z')); // 26 ก.ย. 00:30 = เกิน 30 วัน
+      prisma.payment.findMany.mockResolvedValue([dueToday()]);
+      const at30 = await service.calculateProvisions('user-1');
+      expect(at30.byBucket['1-30'].amount).toBeCloseTo(30.32, 2);
+
+      jest.setSystemTime(new Date('2026-09-26T17:30:00.000Z')); // 27 ก.ย. 00:30 = เกิน 31 วัน
+      prisma.payment.findMany.mockResolvedValue([dueToday()]);
+      const at31 = await service.calculateProvisions('user-1');
+      expect(at31.byBucket['31-60'].amount).toBeCloseTo(227.37, 2);
+    });
+
+    it('(ง) รับชำระกลางวันของวันครบกำหนด เหลือแต่งวดที่ครบกำหนดวันนี้ — คืนค่าเผื่อทั้งก้อน', async () => {
+      jest.useFakeTimers().setSystemTime(AFTERNOON_ON_DUE_DAY);
+      prisma.contract.findUnique.mockResolvedValue({
+        id: 'ct-1',
+        status: 'ACTIVE',
+        ...STD_CONTRACT_FIELDS,
+      });
+      prisma.badDebtProvision.findFirst.mockResolvedValue({
+        id: 'prov-1',
+        contractId: 'ct-1',
+        agingBucket: '31-60',
+        daysOverdue: 31,
+        outstandingAmount: new Prisma.Decimal('1515.83'),
+        provisionRate: new Prisma.Decimal('0.15'),
+        provisionAmount: new Prisma.Decimal('227.37'),
+        status: 'ACTIVE',
+      });
+      // งวดเก่าถูกจ่ายแล้ว (ไม่อยู่ในผลคิวรี) — เหลืองวดที่ครบกำหนดวันนี้งวดเดียว
+      prisma.payment.findMany.mockResolvedValue([dueToday()]);
+      prisma.journalLine.findMany.mockResolvedValue([
+        { debit: new Prisma.Decimal('0'), credit: new Prisma.Decimal('227.37') },
+      ]);
+
+      const result = await service.reverseStageOnPayment('ct-1');
+
+      expect(result).not.toBeNull();
+      expect(result!.toBucket).toBe('CURRENT');
+      expect(result!.reverseAmount).toBe('227.37');
+    });
+
+    it('(จ) สัญญา TERMINATED — งวดที่ตั้งหนี้แล้วแต่ครบกำหนดวันนี้ ยังไม่เข้าฐาน', async () => {
+      jest.useFakeTimers().setSystemTime(AFTERNOON_ON_DUE_DAY);
+      const overdue40 = {
+        ...dueToday('TERMINATED'),
+        id: 'pay-ct-1-0',
+        installmentNo: 1,
+        dueDate: new Date('2026-07-17T17:00:00.000Z'), // ครบกำหนด 18 ก.ค. = เกิน 40 วัน
+      };
+      const today = { ...dueToday('TERMINATED'), id: 'pay-ct-1-2', installmentNo: 2 };
+      prisma.payment.findMany.mockResolvedValue([overdue40, today]);
+      prisma.installmentSchedule.findMany.mockResolvedValue([
+        { installmentNo: 1, accrualJournalEntryId: 'JE-1', dueDate: overdue40.dueDate },
+        { installmentNo: 2, accrualJournalEntryId: 'JE-2', dueDate: DUE_27_AUG },
+      ]);
+
+      const result = await service.calculateProvisions('owner-1');
+
+      // เฉพาะงวดเกิน 40 วัน: 1,515.83 × 15% = 227.37 — งวดที่ครบกำหนดวันนี้ (2%) ไม่ถูกนับ
+      expect(result.totalProvision).toBeCloseTo(227.37, 2);
+      expect(result.byBucket['1-30']).toBeUndefined();
+    });
+
+    it('(ฉ) streak floor ใช้เส้นตัดเดียวกัน', async () => {
+      jest.useFakeTimers().setSystemTime(RUN_NEXT_DAY);
+      prisma.systemConfig.findUnique.mockImplementation(({ where: { key } }: any) =>
+        Promise.resolve(
+          key === 'consecutive_missed_bucket_map' ? { key, value: '{"2":"31-60"}' } : null,
+        ),
+      );
+      prisma.payment.findMany.mockResolvedValue([dueToday()]);
+
+      await service.calculateProvisions('user-1');
+
+      expect(consecutiveMissedMock.getStreaks).toHaveBeenCalledWith(
+        { contractIds: ['ct-1'] },
+        new Date('2026-08-27T17:00:00.000Z'), // ต้นวันไทยของ 28 ส.ค.
+      );
+    });
+
+    it('(ช) reverseStageOnPayment ก็ใช้เส้นตัดต้นวันไทยเดียวกันตอนเรียก streak floor (ไม่ใช่ now ดิบ)', async () => {
+      jest.useFakeTimers().setSystemTime(AFTERNOON_ON_DUE_DAY); // 27 ส.ค. 14:00 เวลาไทย
+      prisma.systemConfig.findUnique.mockImplementation(({ where: { key } }: any) =>
+        Promise.resolve(
+          key === 'consecutive_missed_bucket_map' ? { key, value: '{"2":"31-60"}' } : null,
+        ),
+      );
+      prisma.contract.findUnique.mockResolvedValue({
+        id: 'ct-1',
+        status: 'ACTIVE',
+        ...STD_CONTRACT_FIELDS,
+      });
+      prisma.badDebtProvision.findFirst.mockResolvedValue({
+        id: 'prov-1',
+        contractId: 'ct-1',
+        agingBucket: '31-60',
+        daysOverdue: 31,
+        outstandingAmount: new Prisma.Decimal('1515.83'),
+        provisionRate: new Prisma.Decimal('0.15'),
+        provisionAmount: new Prisma.Decimal('227.37'),
+        status: 'ACTIVE',
+      });
+      // งวดค้างจริงหนึ่งงวด ครบกำหนดเมื่อวาน (ต่างจาก dueToday() ที่ครบกำหนด "วันนี้" ซึ่งจะทำให้
+      // eclRows ว่างเปล่าและตัดออกทาง fullReverseProvision — เส้นทางนั้นไม่เรียก getStreaks เลย)
+      prisma.payment.findMany.mockResolvedValue([
+        {
+          id: 'pay-ct-1-1',
+          contractId: 'ct-1',
+          installmentNo: 1,
+          amountDue: new Prisma.Decimal('1515.83'),
+          amountPaid: new Prisma.Decimal(0),
+          lateFee: new Prisma.Decimal(0),
+          lateFeeWaived: false,
+          status: 'PENDING',
+          dueDate: new Date('2026-08-25T17:00:00.000Z'), // ครบกำหนด 26 ส.ค. — เกินกำหนดแล้ว 1 วัน
+        },
+      ]);
+      // GL 11-2102 ว่าง — ไม่มีอะไรให้ปลด (reverseAmount = 0) จึงไม่ต้องโพสต์ JE ปลดจริง
+      prisma.journalLine.findMany.mockResolvedValue([]);
+
+      await service.reverseStageOnPayment('ct-1');
+
+      expect(consecutiveMissedMock.getStreaks).toHaveBeenCalledWith(
+        { contractIds: ['ct-1'] },
+        new Date('2026-08-26T17:00:00.000Z'), // ต้นวันไทยของ 27 ส.ค. — ไม่ใช่ now ดิบ (14:00)
+        expect.anything(),
       );
     });
   });

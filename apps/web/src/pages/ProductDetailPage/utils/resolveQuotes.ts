@@ -1,4 +1,4 @@
-import type { BcConfigJson } from '@installment/shared';
+import type { BcConfigJson, GfinDeviceOrigin } from '@installment/shared';
 import { getPositiveDisplayPrices, type ProductForDisplay } from '@/utils/getDisplayPrices';
 import type { CalcState } from '../hooks/useInstallmentCalcState';
 import { bcMinDownAmount, buildBcQuote, type BcQuote } from './bcQuote';
@@ -10,6 +10,8 @@ export interface ProductForQuotes extends ProductForDisplay {
   brand: string;
   model: string;
   storage: string | null;
+  /** ที่มาเครื่อง — มีผลกับ OVER ของ GFIN (ไทยเต็ม · นอก/ยังไม่ระบุครึ่งเดียว) */
+  deviceOrigin?: GfinDeviceOrigin | null;
 }
 
 export interface ResolvedBc {
@@ -86,6 +88,7 @@ export function resolveQuotes({
       model: product.model,
       storage: product.storage,
       category: product.category,
+      deviceOrigin: product.deviceOrigin,
     };
     let months: number | null = preferred;
     let quote = buildGfinQuote(gfinTables, {

@@ -7,8 +7,6 @@ import request from 'supertest';
 import { BroadcastController } from './broadcast.controller';
 import { BroadcastService } from './broadcast.service';
 import { StorageService } from '../storage/storage.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 // Real Nest multipart parsing, service and S3 SDK; only the remote object store is local.
@@ -57,8 +55,6 @@ describe('Broadcast media HTTP and storage contract', () => {
         BroadcastService,
         StorageService,
         { provide: ConfigService, useValue: { get: (key: string) => values[key] } },
-        { provide: PrismaService, useValue: {} },
-        { provide: IntegrationConfigService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -81,22 +77,11 @@ describe('Broadcast media HTTP and storage contract', () => {
   });
   beforeEach(() => objects.clear());
 
-  it('uploads MP4 via multipart and returns retrievable bytes with video/mp4 metadata', async () => {
-    const result = await request(app.getHttpServer())
-      .post('/line-oa/broadcast/upload-video')
-      .attach('file', mp4, { filename: 'test.mp4', contentType: 'video/mp4' })
-      .expect(201);
-    const url = new URL(result.body.url);
-    expect(url.origin).toBe(origin);
-    const downloaded = await fetch(url);
-    expect(downloaded.headers.get('content-type')).toBe('video/mp4');
-    expect(Buffer.from(await downloaded.arrayBuffer())).toEqual(mp4);
-  });
   const png = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aKXcAAAAASUVORK5CYII=',
     'base64',
   );
-  it.each(['upload-image', 'upload-video-thumbnail'])(
+  it.each(['upload-image'])(
     'keeps PNG bytes and content type through %s',
     async (route) => {
       const result = await request(app.getHttpServer())
@@ -109,32 +94,24 @@ describe('Broadcast media HTTP and storage contract', () => {
     },
   );
   it.each([
-    ['upload-video', 'fake.mp4', 'video/mp4', Buffer.from('not a video')],
-    ['upload-video', 'image.png', 'image/png', png],
-    ['upload-video-thumbnail', 'video.mp4', 'video/mp4', mp4],
-    ['upload-image', 'video.mp4', 'video/mp4', mp4],
-  ])('rejects invalid media on %s before storage', async (route, filename, contentType, bytes) => {
+    ['fake.png', 'image/png', Buffer.from('not an image')],
+    ['video.mp4', 'video/mp4', mp4],
+  ])('rejects invalid image %s before storage', async (filename, contentType, bytes) => {
     await request(app.getHttpServer())
-      .post(`/line-oa/broadcast/${route}`)
+      .post('/line-oa/broadcast/upload-image')
       .attach('file', bytes, { filename, contentType })
       .expect(400);
     expect(objects.size).toBe(0);
   });
-  it('rejects a thumbnail larger than 1MB before storage', async () => {
-    await request(app.getHttpServer())
-      .post('/line-oa/broadcast/upload-video-thumbnail')
-      .attach('file', Buffer.concat([png, Buffer.alloc(1024 * 1024)]), {
-        filename: 'large.png',
-        contentType: 'image/png',
-      })
-      .expect(413);
+  it.each(['upload-video', 'upload-video-thumbnail', 'schedule'])('keeps retired %s route absent', async (route) => {
+    await request(app.getHttpServer()).post(`/line-oa/broadcast/${route}`).expect(404);
     expect(objects.size).toBe(0);
   });
   it('keeps upload restricted to OWNER', async () => {
     await request(app.getHttpServer())
-      .post('/line-oa/broadcast/upload-video')
+      .post('/line-oa/broadcast/upload-image')
       .set('x-test-role', 'SALES')
-      .attach('file', mp4, { filename: 'test.mp4', contentType: 'video/mp4' })
+      .attach('file', png, { filename: 'test.png', contentType: 'image/png' })
       .expect(403);
     expect(objects.size).toBe(0);
   });

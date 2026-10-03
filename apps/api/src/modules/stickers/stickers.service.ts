@@ -18,6 +18,8 @@ export interface StickerProductData {
   status: string;
   color: string | null;
   storage: string | null;
+  /** ที่มาเครื่อง — ค่างวด GFIN บนดวงคิด OVER ตามนี้ (ไทยเต็ม · นอก/ยังไม่ระบุครึ่งเดียว) */
+  deviceOrigin: 'THAI' | 'IMPORTED' | null;
   batteryHealth: number | null;
   hasBox: boolean | null;
   /** ISO date YYYY-MM-DD เฉพาะประกันศูนย์ที่ยังไม่หมด — หมดแล้ว/ไม่ระบุ = null */
@@ -129,6 +131,7 @@ export class StickersService {
       status: product.status,
       color: product.color,
       storage: product.storage,
+      deviceOrigin: product.deviceOrigin,
       batteryHealth: product.batteryHealth,
       hasBox: product.hasBox,
       warrantyExpireDate: this.activeWarrantyDate(product.warrantyExpireDate, product.warrantyExpired),

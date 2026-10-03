@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 /**
  * Rule: expectedDate (วันที่คาดรับสินค้า) must not be before orderDate
@@ -40,7 +41,7 @@ describe('PurchaseOrdersService — expectedDate must not be before orderDate', 
       items: [], supplier: { id: 's1', name: 'S' }, ...po,
     });
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     return module.get<PurchaseOrdersService>(PurchaseOrdersService);
   }

@@ -1,131 +1,34 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { BroadcastService } from './broadcast.service';
-import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { IntegrationConfigService } from '../integrations/integration-config.service';
 
-describe('BroadcastService approval workflow (P2Q15=A)', () => {
-  let service: BroadcastService;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let prisma: any;
-
-  const pendingRecord = (overrides: Record<string, unknown> = {}) => ({
-    id: 'br-1',
-    messages: [{ type: 'text', content: 'hi' }],
-    audience: 'ALL',
-    audienceCount: 100,
-    status: 'PENDING_APPROVAL',
-    scheduledAt: null,
-    createdById: 'u-creator',
-    approvedById: null,
-    approvedAt: null,
-    ...overrides,
-  });
-
-  beforeEach(async () => {
-    prisma = {
-      broadcastMessage: {
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-        findUnique: jest.fn().mockResolvedValue(pendingRecord()),
-        update: jest.fn((args) => Promise.resolve({ ...pendingRecord(), ...args.data })),
-        create: jest.fn((args) => Promise.resolve({ id: 'br-1', ...args.data })),
-      },
-      customer: { count: jest.fn().mockResolvedValue(0) },
-      customerLineLink: { count: jest.fn().mockResolvedValue(0) },
+describe('canned-response image upload', () => {
+  const png = Buffer.from('89504e470d0a1a0a', 'hex');
+  function make(backend = 's3', configured = true) {
+    const storage = {
+      configured,
+      describe: () => ({ backend }),
+      upload: jest.fn().mockResolvedValue(undefined),
+      getPublicUrl: jest.fn((key: string) => `https://cdn.example.test/${key}`),
     };
-
-    const mod: TestingModule = await Test.createTestingModule({
-      providers: [
-        BroadcastService,
-        { provide: PrismaService, useValue: prisma },
-        { provide: ConfigService, useValue: { get: jest.fn() } },
-        { provide: StorageService, useValue: { upload: jest.fn() } },
-        { provide: IntegrationConfigService, useValue: { getValue: jest.fn() } },
-      ],
-    }).compile();
-    service = mod.get(BroadcastService);
-
-    // Stub the send dispatcher so we don't hit LINE
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (service as any).dispatchLineMessages = jest.fn().mockResolvedValue({
-      success: true,
-      message: 'sent',
-    });
+    return { storage, service: new BroadcastService(storage as unknown as StorageService) };
+  }
+  it('stores byte-derived PNG metadata and returns the configured public URL', async () => {
+    const { storage, service } = make();
+    const result = await service.uploadImage(png);
+    const key = storage.upload.mock.calls[0][0];
+    expect(key).toMatch(/^broadcast\/images\/[a-f0-9-]+\.png$/);
+    expect(storage.upload).toHaveBeenCalledWith(key, png, 'image/png');
+    expect(result).toEqual({ url: `https://cdn.example.test/${key}` });
   });
-
-  it('sendBroadcast saves as PENDING_APPROVAL (no immediate dispatch)', async () => {
-    const result = await service.sendBroadcast({
-      messages: [{ type: 'text', content: 'hi' }],
-      audience: 'ALL',
-      createdById: 'u-creator',
-    });
-    expect(result.success).toBe(true);
-    expect(result.message).toMatch(/รอผู้อนุมัติ/);
-    const createArgs = prisma.broadcastMessage.create.mock.calls[0][0];
-    expect(createArgs.data.status).toBe('PENDING_APPROVAL');
+  it('rejects unsupported bytes before storage', async () => {
+    const { storage, service } = make();
+    await expect(service.uploadImage(Buffer.from('invalid'))).rejects.toThrow(BadRequestException);
+    expect(storage.upload).not.toHaveBeenCalled();
   });
-
-  it('approveBroadcast rejects self-approval by creator', async () => {
-    await expect(
-      service.approveBroadcast('br-1', 'u-creator'),
-    ).rejects.toThrow(ForbiddenException);
-  });
-
-  it('approveBroadcast rejects records already in SENT state', async () => {
-    prisma.broadcastMessage.findUnique.mockResolvedValue(pendingRecord({ status: 'SENT' }));
-    await expect(
-      service.approveBroadcast('br-1', 'u-approver'),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  it('approveBroadcast throws NotFound for missing id', async () => {
-    prisma.broadcastMessage.findUnique.mockResolvedValue(null);
-    await expect(
-      service.approveBroadcast('missing', 'u-approver'),
-    ).rejects.toThrow(NotFoundException);
-  });
-
-  it('approveBroadcast marks SCHEDULED when scheduledAt in future', async () => {
-    const future = new Date(Date.now() + 60 * 60 * 1000);
-    prisma.broadcastMessage.findUnique.mockResolvedValue(
-      pendingRecord({ scheduledAt: future }),
-    );
-
-    await service.approveBroadcast('br-1', 'u-approver');
-
-    const updateArgs = prisma.broadcastMessage.updateMany.mock.calls[0][0];
-    expect(updateArgs.data.status).toBe('SCHEDULED');
-    expect(updateArgs.data.approvedById).toBe('u-approver');
-    expect(updateArgs.data.approvedAt).toBeInstanceOf(Date);
-  });
-
-  it('approveBroadcast dispatches immediately when not scheduled', async () => {
-    await service.approveBroadcast('br-1', 'u-approver');
-    const updateArgs = prisma.broadcastMessage.update.mock.calls[0][0];
-    expect(updateArgs.data.status).toBe('SENT');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((service as any).dispatchLineMessages).toHaveBeenCalled();
-  });
-
-  it('rejectBroadcast requires reason ≥ 5 chars', async () => {
-    await expect(
-      service.rejectBroadcast('br-1', 'u-approver', 'bad'),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  it('rejectBroadcast blocks self-rejection by creator', async () => {
-    await expect(
-      service.rejectBroadcast('br-1', 'u-creator', 'looks fishy'),
-    ).rejects.toThrow(ForbiddenException);
-  });
-
-  it('rejectBroadcast updates status REJECTED with reason', async () => {
-    await service.rejectBroadcast('br-1', 'u-approver', 'message copy looks phishy');
-    const updateArgs = prisma.broadcastMessage.updateMany.mock.calls[0][0];
-    expect(updateArgs.data.status).toBe('REJECTED');
-    expect(updateArgs.data.rejectedReason).toBe('message copy looks phishy');
-    expect(updateArgs.data.rejectedById).toBe('u-approver');
+  it.each([['local', true], ['s3', false]])('rejects unavailable public storage %s/%s', async (backend, configured) => {
+    const { storage, service } = make(backend as string, configured as boolean);
+    await expect(service.uploadImage(png)).rejects.toThrow(ServiceUnavailableException);
+    expect(storage.upload).not.toHaveBeenCalled();
   });
 });

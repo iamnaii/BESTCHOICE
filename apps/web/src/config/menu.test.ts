@@ -28,7 +28,9 @@ describe('getSidebarForRole — empty ZONE_CONFIG fallback', () => {
 describe('getSidebarForRole — populated ZONE_CONFIG', () => {
   it('OWNER + shop returns sections all tagged shop', () => {
     const sections = getSidebarForRole('OWNER', 'shop');
-    expect(sections.length).toBeGreaterThan(3);
+    // รายชื่อกลุ่มที่แน่นอนปักไว้ที่เทสต์ "exact expected keys" ด้านล่าง — ตรงนี้เช็คแค่ว่าไม่ว่าง
+    // (เดิมเป็น > 3 ซึ่งผูกกับจำนวนกลุ่มสมัยยังมี "ร้านค้าออนไลน์" + "การตลาด" ที่ถอดออก 2026-09-28)
+    expect(sections.length).toBeGreaterThan(0);
     expect(sections.every((s) => s.zone === 'shop')).toBe(true);
   });
 
@@ -79,11 +81,21 @@ describe('getSidebarForRole — populated ZONE_CONFIG', () => {
     expect(keys).toEqual([
       'owner-inventory',
       'owner-sales',
-      'owner-aftersales',
-      'owner-online-shop',
       'owner-shop-accounting',
-      'owner-marketing',
     ]);
+  });
+
+  it('OWNER "หลังการขาย" อยู่ในกลุ่ม "ขาย" ไม่แยกกลุ่ม (คำสั่งเจ้าของ 2026-09-28)', () => {
+    const sales = getSidebarForRole('OWNER', 'shop').find((s) => s.key === 'owner-sales');
+    expect(sales?.items.map((i) => i.path)).toContain('/after-sales');
+  });
+
+  it('OWNER "สรุปเงินรายวัน" อยู่ในกลุ่ม "บัญชีหน้าร้าน (SHOP)" ไม่อยู่ในกลุ่ม "ขาย" (คำสั่งเจ้าของ 2026-09-28)', () => {
+    const sections = getSidebarForRole('OWNER', 'shop');
+    const accounting = sections.find((s) => s.key === 'owner-shop-accounting');
+    const sales = sections.find((s) => s.key === 'owner-sales');
+    expect(accounting?.items.map((i) => i.path)).toEqual(['/shop/accounting', '/shop/daily-cash']);
+    expect(sales?.items.map((i) => i.path)).not.toContain('/shop/daily-cash');
   });
 
   it('OWNER fin sections include all FIN-zone keys (regression guard)', () => {

@@ -11,10 +11,16 @@ import { StructuredLoggerService } from '../../../common/logger';
 import { Prisma, PaymentMethod } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReceiptsService } from '../../receipts/receipts.service';
+import { reportReceiptIssueFailure } from '../../receipts/services/receipt-issue-alert';
 import { JE_ADVANCE_SPLIT_META } from '../../receipts/services/receipt-void.service';
 import { AuditService } from '../../audit/audit.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
+import {
+  emitDeferredWarnings,
+  warningsOf,
+  type DeferredWarning,
+} from '../../journal/deferred-warning';
 import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
 import { ProductsService } from '../../products/products.service';
 import { BadDebtService } from '../../accounting/bad-debt.service';
@@ -64,11 +70,24 @@ export interface OrchestratorPostCommitHost {
 }
 
 /**
+ * รายการรับชำระของงวดที่ลงในธุรกรรมเงินแล้ว — ใบเสร็จของรายการนี้ออกหลังธุรกรรม commit (PR3 · X5)
+ */
+interface PostedInstallmentReceipt {
+  paymentId: string;
+  installmentNo: number;
+  /** เงินที่ใบนี้รับ (= delta ของรายการรับชำระ) */
+  amount: Prisma.Decimal;
+  /** เลขที่รายการรับชำระจาก PaymentReceiptTemplate — undefined = ไม่มีแถวตารางงวด จึงไม่ได้ลงรายการ */
+  entryNo?: string;
+}
+
+/**
  * REGULATED CORE — the 3 Serializable money $transactions (recordPayment,
  * autoAllocatePayment, applyCreditBalance). Each posts the receipt JE via the
  * PaymentReceiptTemplate primitive + VAT-60-day reversal + ECL stage-reverse
  * (recordPayment) inside ONE atom; autoAllocate also does the overpayment
- * Dr cash / Cr 21-5101 createAndPost + receipt generation INSIDE its tx.
+ * Dr cash / Cr 21-5101 createAndPost inside its tx. Receipts (e-Receipt rows) of
+ * all three are issued AFTER the tx commits, linked to their receipt JE (PR3).
  *
  * Bodies moved VERBATIM from the legacy PaymentsService — only `this.<dep>`
  * resolution, helper calls (now stateless, tx-aware) and post-commit dispatch
@@ -182,6 +201,8 @@ export class PaymentReceiptOrchestrator {
     let capturedDueDate: Date | null = null;
     let capturedCustomerId: string | null = null;
     let postedReceiptEntryNo: string | undefined;
+    /** สัญญาณเตือนของใบรับชำระ (ตั้งลูกหนี้งวด ณ วันรับเงิน) — ส่งหลังธุรกรรม commit เท่านั้น */
+    let receiptWarnings: readonly DeferredWarning[] = [];
 
     // Use serializable transaction to prevent concurrent duplicate payments
     const updated = await this.prisma.$transaction(
@@ -613,6 +634,8 @@ export class PaymentReceiptOrchestrator {
                 lateFee: lateFee.gt(0) ? lateFee : undefined,
                 lateFeeWaived: waiverAmount.gt(0) ? waiverAmount : undefined,
                 postedAt: effectivePaidDate,
+                // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะที่อ่านไว้ก่อน checkContractCompletion
+                contractStatusBeforeReceipt: contract.status,
                 // PR-843/I2 Phase 5b — auto-approve a ≤1฿ underpay-close ONLY when the
                 // payer covered the full billed obligation (cash + consumed advance ≥
                 // remaining = amountDue+lateFee−prevPaid). In that case any ≤1฿ residual
@@ -629,6 +652,7 @@ export class PaymentReceiptOrchestrator {
             );
 
             postedReceiptEntryNo = receiptPosted.entryNo;
+            receiptWarnings = warningsOf(receiptPosted);
 
             // I-2 (review 2026-08-16): the receipt JE folds the generic advance
             // bucket and the last-installment park bucket into ONE `Dr 21-1103`
@@ -718,6 +742,8 @@ export class PaymentReceiptOrchestrator {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+
+    emitDeferredWarnings(receiptWarnings);
 
     // Structured log for financial audit / observability
     this.structuredLogger.log('payment.recorded', {
@@ -886,6 +912,11 @@ export class PaymentReceiptOrchestrator {
       recordedById,
     );
 
+    /** สัญญาณเตือนของใบรับชำระทุกงวด — ส่งหลังธุรกรรม commit เท่านั้น */
+    const receiptWarnings: DeferredWarning[] = [];
+    /** ใบเสร็จของทุกงวดที่รับเงิน — ออกหลังธุรกรรม commit (PR3 · X5) */
+    const postedReceipts: PostedInstallmentReceipt[] = [];
+
     // Wrap entire allocation in a serializable transaction to prevent double-payment
     const allocationResult = await this.prisma.$transaction(
       async (tx) => {
@@ -1005,8 +1036,9 @@ export class PaymentReceiptOrchestrator {
               },
               select: { id: true, vat60dayJournalEntryId: true },
             });
+            let entryNo: string | undefined;
             if (instSched) {
-              await this.paymentReceiptTemplate.execute(
+              const posted = await this.paymentReceiptTemplate.execute(
                 {
                   installmentScheduleId: instSched.id,
                   delta: new Prisma.Decimal(payAmount.toString()),
@@ -1018,6 +1050,8 @@ export class PaymentReceiptOrchestrator {
                   lateFee: lateFeeOwed.gt(0) ? lateFeeOwed : undefined,
                   isFinalReceipt: isPaidInFull,
                   paymentId: updated.id,
+                  // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะที่อ่านไว้ก่อน checkContractCompletion
+                  contractStatusBeforeReceipt: contract.status,
                   // PR-843/I2 Phase 5b — autoAllocate always clears the FULL owed
                   // amountDue per installment (payAmount = min(remaining, amountDue),
                   // never a deliberate customer underpayment), so any ≤1฿ residual on
@@ -1028,6 +1062,8 @@ export class PaymentReceiptOrchestrator {
                 },
                 tx,
               );
+              receiptWarnings.push(...warningsOf(posted));
+              entryNo = posted?.entryNo;
 
               // VAT-60-day reversal (MANDATORY parity with the old 2B). The legacy
               // 2B template triggered Vat60dayReversalTemplate internally when the
@@ -1057,31 +1093,14 @@ export class PaymentReceiptOrchestrator {
                 `PaymentReceipt2B UNPOSTABLE (bulk) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
               );
             }
-          }
-        }
-
-        // Auto-generate e-Receipts for every payment event (TFRS practice:
-        // issue a receipt each time money is received, including partial payments).
-        // Receipt amount = the delta applied to this installment in this transaction,
-        // not the cumulative amountPaid.
-        for (const { updated: paid, payAmount } of results) {
-          if (payAmount.lte(0)) continue;
-          try {
-            await this.receiptsService.generateReceipt(
-              contractId,
-              paid.id,
-              'INSTALLMENT',
-              dRound(payAmount).toNumber(),
-              paid.installmentNo,
-              paymentMethod,
-              null,
-              recordedById,
-            );
-          } catch (error) {
-            this.logger.error(
-              `Failed to generate receipt for payment ${paid.id} (contract: ${contractId}, installment: ${paid.installmentNo})`,
-              error instanceof Error ? error.stack : String(error),
-            );
+            // ใบเสร็จของงวดนี้ออกหลังธุรกรรม commit (PR3 · X5) — เดิมออกในธุรกรรมนี้ผ่าน client หลัก จึงเห็น
+            // สถานะงวดก่อนแก้ ไม่ผูกรายการรับชำระ และค้างเป็นใบกำพร้าเมื่อธุรกรรมนี้ล้ม
+            postedReceipts.push({
+              paymentId: updated.id,
+              installmentNo: updated.installmentNo,
+              amount: payAmount,
+              entryNo,
+            });
           }
         }
 
@@ -1163,6 +1182,18 @@ export class PaymentReceiptOrchestrator {
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
 
+    emitDeferredWarnings(receiptWarnings);
+    // Auto-generate e-Receipts for every payment event (TFRS practice: issue a receipt each time
+    // money is received, including partial payments) — amount = the delta applied to that
+    // installment, linked to its own receipt JE.
+    await this.issueReceiptsAfterCommit(
+      contractId,
+      postedReceipts,
+      paymentMethod,
+      recordedById,
+      'auto-allocate',
+    );
+
     // Promise-to-pay kept-detection — runs AFTER the payment tx commits.
     this.host.checkPromiseAfterPayment(contractId).catch((err) => {
       this.logger.error('Promise-kept hook failed (non-blocking)', err);
@@ -1172,14 +1203,69 @@ export class PaymentReceiptOrchestrator {
     return allocationResult;
   }
 
+  /**
+   * ใบเสร็จของรายการรับชำระที่ commit แล้ว (PR3): generateReceipt เปิดธุรกรรมของตัวเอง จึงต้องเรียกหลังธุรกรรมเงินจบ
+   * (เห็นแถว Payment ที่ commit แล้ว) และส่งเลขที่รายการรับชำระของงวดนั้นเพื่อผูก + เก็บค่าใบกำกับภาษี.
+   * ใบใดออกไม่สำเร็จ → แจ้ง Sentry (พร้อมเลขที่รายการสำหรับออกใบซ้ำ) แล้วไปใบถัดไป ห้ามทำให้การรับเงินที่ commit แล้วล้ม.
+   * เรียก generateReceipt แบบเดียวกับหน้ารับชำระ — ข้อความใบเสร็จทาง LINE ตามกติกาเดิม (คำตอบเจ้าของ ถ4 2026-09-30)
+   */
+  private async issueReceiptsAfterCommit(
+    contractId: string,
+    items: readonly PostedInstallmentReceipt[],
+    paymentMethod: string,
+    recordedById: string,
+    path: 'auto-allocate' | 'apply-credit',
+  ): Promise<void> {
+    // ทางนี้ไม่ส่งวันที่ให้ generateReceipt — ใบลงวันที่ตอนออก (หลังธุรกรรมเงิน commit ทันที) · แจ้งเตือนของใบที่ออกไม่สำเร็จ
+    // ใช้เวลาเดียวกันนั้นเป็นวันที่รับเงินสำหรับออกใบซ้ำ
+    const paidDate = new Date();
+    for (const item of items) {
+      try {
+        await this.receiptsService.generateReceipt(
+          contractId,
+          item.paymentId,
+          'INSTALLMENT',
+          dRound(item.amount).toNumber(),
+          item.installmentNo,
+          paymentMethod,
+          null,
+          recordedById,
+          undefined,
+          item.entryNo,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to generate receipt for payment ${item.paymentId} (contract: ${contractId}, installment: ${item.installmentNo})`,
+          error instanceof Error ? error.stack : String(error),
+        );
+        reportReceiptIssueFailure(error, {
+          path,
+          contractId,
+          paymentId: item.paymentId,
+          installmentNo: item.installmentNo,
+          journalEntryNumber: item.entryNo ?? null,
+          paymentMethod,
+          amount: dRound(item.amount).toFixed(2),
+          transactionRef: null,
+          issuedById: recordedById,
+          paidDate: paidDate.toISOString(),
+        });
+      }
+    }
+  }
+
   // ─── Apply credit balance to next pending installment ─
   async applyCreditBalance(contractId: string, recordedById: string) {
     // F-3-027 part 2/3 + Phase A.1b: resolve FINANCE + SHOP companyIds once
     // before the tx so the per-installment JE calls below use them.
     const financeCompanyId = await resolveFinanceCompanyId(this.prisma);
     const shopCompanyId = await resolveShopCompanyId(this.prisma);
+    /** สัญญาณเตือนของใบรับชำระทุกงวด — ส่งหลังธุรกรรม commit เท่านั้น */
+    const receiptWarnings: DeferredWarning[] = [];
+    /** ใบเสร็จของทุกงวดที่ใช้เครดิตชำระ — ออกหลังธุรกรรม commit (PR3 — เดิมไม่มีใบเสร็จเลย) */
+    const postedReceipts: PostedInstallmentReceipt[] = [];
 
-    return this.prisma.$transaction(
+    const applied = await this.prisma.$transaction(
       async (tx) => {
         const contract = await tx.contract.findUnique({
           where: { id: contractId },
@@ -1297,8 +1383,9 @@ export class PaymentReceiptOrchestrator {
               },
               select: { id: true, vat60dayJournalEntryId: true },
             });
+            let entryNo: string | undefined;
             if (instSched) {
-              await this.paymentReceiptTemplate.execute(
+              const posted = await this.paymentReceiptTemplate.execute(
                 {
                   installmentScheduleId: instSched.id,
                   delta: new Prisma.Decimal(payAmount.toString()),
@@ -1306,6 +1393,8 @@ export class PaymentReceiptOrchestrator {
                   lateFee: lateFeeOwed.gt(0) ? lateFeeOwed : undefined,
                   isFinalReceipt: isPaidInFull,
                   paymentId: updated.id,
+                  // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะที่อ่านไว้ก่อน checkContractCompletion
+                  contractStatusBeforeReceipt: contract.status,
                   // PR-843/I2 Phase 5b — applyCreditBalance always clears the FULL owed
                   // amountDue per installment (payAmount = min(remaining, amountDue)), so
                   // any ≤1฿ residual on the last installment is a system rounding artifact
@@ -1314,6 +1403,8 @@ export class PaymentReceiptOrchestrator {
                 },
                 tx,
               );
+              receiptWarnings.push(...warningsOf(posted));
+              entryNo = posted?.entryNo;
 
               // VAT-60-day reversal (MANDATORY parity with the old 2B/receipt path).
               // When the installment carries a 60-day mandatory VAT JE, the primitive
@@ -1342,6 +1433,12 @@ export class PaymentReceiptOrchestrator {
                 `PaymentReceipt2B UNPOSTABLE (credit) — no InstallmentSchedule for contractId=${contract.id} installmentNo=${updated.installmentNo} (Sentry-alarmed; manual reconcile needed)`,
               );
             }
+            postedReceipts.push({
+              paymentId: updated.id,
+              installmentNo: updated.installmentNo,
+              amount: payAmount,
+              entryNo,
+            });
           }
         }
 
@@ -1360,5 +1457,16 @@ export class PaymentReceiptOrchestrator {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+    emitDeferredWarnings(receiptWarnings);
+    // ใบเสร็จของเงินเครดิตที่นำมาชำระ (PR3 — คำสั่งเจ้าของ 2026-09-30): ช่องทาง "ใช้ยอดเครดิตในสัญญา" ·
+    // ข้อความใบเสร็จทาง LINE ตามกติกาเดิม เหมือนหน้ารับชำระ (คำตอบเจ้าของ ถ4 2026-09-30)
+    await this.issueReceiptsAfterCommit(
+      contractId,
+      postedReceipts,
+      'CREDIT_BALANCE',
+      recordedById,
+      'apply-credit',
+    );
+    return applied;
   }
 }

@@ -470,7 +470,7 @@ export function RepossessionOverlay({
           </div>
         )}
 
-        {/* Section 3: คำนวณกำไร/ขาดทุน — ส่วนลดยอดปิด (ตัวเลขบนจอ ไม่ลง JE) */}
+        {/* Section 3: คำนวณกำไร/ขาดทุน — ส่วนลดยอดปิด (ลง JE เป็น Dr 52-1106 ตั้งแต่ PR6 — แบบ (ก) ของฝ่ายบัญชี) */}
         <Section
           icon={<Calculator className="size-4" />}
           title="คำนวณกำไร/ขาดทุน (FINANCE)"

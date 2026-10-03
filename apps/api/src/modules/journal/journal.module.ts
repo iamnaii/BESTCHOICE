@@ -52,6 +52,7 @@ import { ShopExternalFinanceSaleTemplate } from './cpa-templates/shop-external-f
 import { ShopExternalFinanceReceiptTemplate } from './cpa-templates/shop-external-finance-receipt.template';
 import { ShopDownPaymentReversalTemplate } from './cpa-templates/shop-down-payment-reversal.template';
 import { ShopTradeInTemplate } from './cpa-templates/shop-trade-in.template';
+import { ShopGoodsReceivingTemplate } from './cpa-templates/shop-goods-receiving.template';
 import { ShopExpenseTemplate } from './cpa-templates/shop-expense.template';
 import { ShopInventoryTransferTemplate } from './cpa-templates/shop-inventory-transfer.template';
 // SP7.2 — Outbox + saga infrastructure for cross-entity JE
@@ -126,6 +127,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopExternalFinanceReceiptTemplate,
     ShopDownPaymentReversalTemplate,
     ShopTradeInTemplate,
+    ShopGoodsReceivingTemplate,
     ShopExpenseTemplate,
     ShopInventoryTransferTemplate,
     // SP7.2 — Outbox + saga infrastructure
@@ -192,6 +194,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopExternalFinanceReceiptTemplate,
     ShopDownPaymentReversalTemplate,
     ShopTradeInTemplate,
+    ShopGoodsReceivingTemplate,
     ShopExpenseTemplate,
     ShopInventoryTransferTemplate,
     // SP7.2 — Outbox + saga infrastructure

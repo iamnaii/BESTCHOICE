@@ -19,10 +19,13 @@ import {
 import { BadDebtProvisionTemplate } from '../journal/cpa-templates/bad-debt-provision.template';
 import { BadDebtWriteOffTemplate } from '../journal/cpa-templates/bad-debt-writeoff.template';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
+import { CONTRACT_ADVANCE_COLUMNS_CLEARED } from '../journal/contract-close-advances';
+import { emitDeferredWarnings, warningsOf } from '../journal/deferred-warning';
 import { glContractBalance } from '../journal/gl-contract-balance';
 import { ConsecutiveMissedService } from '../overdue/consecutive-missed.service';
 import { CreditNoteDocumentService } from '../receipts/services/credit-note-document.service';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
+import { bangkokStartOfDay } from '../../utils/date.util';
 
 // CPA ECL v3.0 — NPAEs Ch.13 Aging-based (6 buckets B0-B5)
 // Refs: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
@@ -30,6 +33,7 @@ import { CreditNoteDeliveryService } from '../receipts/services/credit-note-deli
 //
 // Note: 0-day bucket (B0) handled implicitly = no provision created
 //       (only installments WITH overdue days get a provision row).
+//       (ฝ่ายบัญชี 2026-09-28: โค้ดทำตามนี้จริงแล้ว — งวดที่ครบกำหนดวันนี้ไม่เข้าฐาน)
 const DEFAULT_PROVISION_RATES: Record<string, number> = {
   '1-30': 0.02,    // B1 ACTIVE
   '31-60': 0.15,   // B2 ACTIVE (alert 60d trigger)
@@ -199,6 +203,38 @@ export class BadDebtService {
   }
 
   /**
+   * แถวฐานค่าเผื่อฯ ของสัญญาหนึ่งใบ ณ เวลา `now` — แหล่งเดียวของทั้งรอบกลางคืน
+   * (`calculateProvisions`) และตอนรับชำระ (`reverseStageOnPayment`).
+   *
+   * คำตัดสินฝ่ายบัญชี 2026-09-28: งวดนับเป็นเกินกำหนดเมื่อพ้นวันครบกำหนดแล้วเท่านั้น
+   * (วันปฏิทินไทย). selection DUE กรองในเครื่องยนต์แล้ว; selection ACCRUED (สัญญา
+   * TERMINATED) ไม่มีตัวกรองวันที่ในเครื่องยนต์เพราะใบลดหนี้ใช้ร่วม จึงกรองที่นี่.
+   */
+  private async eclRows(
+    db: Prisma.TransactionClient | PrismaService,
+    contract: CnBreakdownContractInput & { status: string },
+    now: Date,
+    preloadedDuePayments?: CnPaymentInput[],
+  ): Promise<InstallmentOutstandingRow[]> {
+    if (contract.status === 'TERMINATED') {
+      const pastDueCutoff = bangkokStartOfDay(now);
+      const { rows } = await computeInstallmentOutstanding(db, contract, {
+        selection: 'ACCRUED',
+        asOf: now,
+      });
+      return rows.filter(
+        (r) => r.dueDate === null || r.dueDate.getTime() < pastDueCutoff.getTime(),
+      );
+    }
+    const { rows } = await computeInstallmentOutstanding(db, contract, {
+      selection: 'DUE',
+      asOf: now,
+      ...(preloadedDuePayments ? { preloaded: { payments: preloadedDuePayments } } : {}),
+    });
+    return rows;
+  }
+
+  /**
    * GL balance ราย contract — thin delegate to the shared
    * `journal/gl-contract-balance.ts` helper (2026-07-26, ECL-per-installment
    * Task 5 — extracted from this exact method + the identical copies in
@@ -336,10 +372,12 @@ export class BadDebtService {
   }> {
     const rates = await this.getProvisionRates();
     const now = new Date();
+    // เส้นตัด "เกินกำหนด" = ต้นวันไทย (ฝ่ายบัญชี 2026-09-28) — งวดที่ครบกำหนดวันนี้ยังไม่เข้าฐาน
+    const pastDueCutoff = bangkokStartOfDay(now);
     const branchFilter = branchId ? { branchId } : {};
 
     // Find all overdue payments from in-scope contracts — same scope as
-    // before (PENDING/PARTIALLY_PAID/OVERDUE, dueDate < now, contract in
+    // before (PENDING/PARTIALLY_PAID/OVERDUE, dueDate < ต้นวันไทยของ now, contract in
     // ACTIVE/OVERDUE/DEFAULT/TERMINATED) — PLUS the contract money fields the
     // per-installment engine needs (financedAmount/storeCommission/
     // interestTotal/vatAmount/totalMonths), fetched once here so the
@@ -351,7 +389,7 @@ export class BadDebtService {
         // payments PENDING → OVERDUE on prod — excluding it made ECL blind to every
         // aged installment (ConsecutiveMissedService already counts OVERDUE; now consistent)
         status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] },
-        dueDate: { lt: now },
+        dueDate: { lt: pastDueCutoff },
         // I1 (final-review 2026-07-26): a soft-deleted Payment row must never
         // count toward the ECL candidate/grouping query.
         deletedAt: null,
@@ -384,10 +422,10 @@ export class BadDebtService {
     });
 
     // Group payments per contract — every row already matches
-    // computeInstallmentOutstanding's DUE filter (status/dueDate), so this
-    // preload lets the engine skip its own payment query entirely per contract
-    // for NON-TERMINATED contracts (TERMINATED contracts bypass this preload
-    // entirely — see the per-contract loop below, C1 final-review fix).
+    // computeInstallmentOutstanding's DUE filter (status/dueDate < ต้นวันไทยของ asOf —
+    // ฝ่ายบัญชี 2026-09-28), so this preload lets eclRows skip its own payment query
+    // entirely per contract for NON-TERMINATED contracts (TERMINATED contracts bypass
+    // this preload entirely — see the per-contract loop below, C1 final-review fix).
     type ContractGroup = {
       contract: CnBreakdownContractInput & { status: string };
       payments: CnPaymentInput[];
@@ -421,7 +459,7 @@ export class BadDebtService {
     // query entirely in that case (nothing would read it anyway).
     const streakMap = await this.getStreakBucketMap();
     const streaks = streakMap
-      ? await this.consecutiveMissed.getStreaks({ contractIds: contractIdsInScope }, now)
+      ? await this.consecutiveMissed.getStreaks({ contractIds: contractIdsInScope }, pastDueCutoff)
       : new Map<string, number>();
 
     // Pre-compute provision rows (Decimal — no Number cast in persisted values)
@@ -457,17 +495,7 @@ export class BadDebtService {
       // installmentSchedule + payment itself. TERMINATED contracts are a
       // small subset of contractGroups, so the extra query per contract is
       // acceptable.
-      const isTerminated = group.contract.status === 'TERMINATED';
-      const { rows } = isTerminated
-        ? await computeInstallmentOutstanding(this.prisma, group.contract, {
-            selection: 'ACCRUED',
-            asOf: now,
-          })
-        : await computeInstallmentOutstanding(this.prisma, group.contract, {
-            selection: 'DUE',
-            asOf: now,
-            preloaded: { payments: group.payments },
-          });
+      const rows = await this.eclRows(this.prisma, group.contract, now, group.payments);
       // All installments fully covered net of fees (incl. overpaid edge
       // case) — nothing to provision. The contract stays in
       // `contractIdsInScope` so a stale ACTIVE provision still gets
@@ -825,7 +853,7 @@ export class BadDebtService {
       );
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const { warnings, ...result } = await this.prisma.$transaction(async (tx) => {
       // Calculate outstanding amount from unpaid/partial payments (Decimal arithmetic)
       const unpaidPayments = await tx.payment.findMany({
         where: {
@@ -885,6 +913,14 @@ export class BadDebtService {
         tx,
       );
 
+      // PR6 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 6 (29/09/2569): รายการตัดหนี้สูญหักเงินของลูกค้าที่ค้างทุกประเภทแล้ว (ตามยอด
+      // ในบัญชี) → คอลัมน์เงินของลูกค้าบนสัญญาเป็นศูนย์ในธุรกรรมเดียวกัน. คอลัมน์ที่ไม่ตรงบัญชีเป็นสัญญาณเตือนใน
+      // woResult.warnings — ส่งหลัง commit ข้างล่าง
+      await tx.contract.update({
+        where: { id: contractId },
+        data: CONTRACT_ADVANCE_COLUMNS_CLEARED,
+      });
+
       // Phase 3 Task 3: auto-issue ใบลดหนี้ (CN) for accrued-unpaid
       // installments swept by the write-off JE — MUST stay inside this same
       // tx (atomic with the JE: throw here rolls back the whole write-off).
@@ -923,8 +959,17 @@ export class BadDebtService {
         },
       });
 
-      return { contractId, status: 'CLOSED_BAD_DEBT', writtenOffAt: new Date(), creditNote };
+      return {
+        contractId,
+        status: 'CLOSED_BAD_DEBT',
+        writtenOffAt: new Date(),
+        creditNote,
+        warnings: warningsOf(woResult),
+      };
     });
+
+    // PR6 — สัญญาณเตือนของรายการตัดหนี้สูญส่งหลังธุรกรรม commit เท่านั้น (ธุรกรรมที่ล้มต้องไม่ทิ้งสัญญาณ)
+    emitDeferredWarnings(warnings);
 
     // Phase 3 Task 5: LINE delivery of the auto-issued CN fires ONLY after the
     // $transaction above has committed — firing it from inside the tx would
@@ -1058,10 +1103,7 @@ export class BadDebtService {
     // C1 (final-review 2026-07-26) — see calculateProvisions's identical
     // branch for the full rationale: TERMINATED must not provision un-accrued
     // installments once the 2A cron stops firing post-termination.
-    const { rows } = await computeInstallmentOutstanding(db, contract, {
-      selection: contract.status === 'TERMINATED' ? 'ACCRUED' : 'DUE',
-      asOf: now,
-    });
+    const rows = await this.eclRows(db, contract, now);
 
     if (rows.length === 0) {
       // No outstanding installments left (fully current / fully paid off) —
@@ -1074,7 +1116,7 @@ export class BadDebtService {
     // skip the streak query entirely when no map is configured.
     const streakMap = await this.getStreakBucketMap();
     const streaks = streakMap
-      ? await this.consecutiveMissed.getStreaks({ contractIds: [contractId] }, now, db)
+      ? await this.consecutiveMissed.getStreaks({ contractIds: [contractId] }, bangkokStartOfDay(now), db)
       : new Map<string, number>();
     const floorBucket = streakMap ? this.streakToBucket(streaks.get(contractId) ?? 0, streakMap) : null;
 

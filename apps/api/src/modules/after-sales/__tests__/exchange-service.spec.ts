@@ -38,6 +38,7 @@ describe('AfterSalesExchangeService', () => {
   let contractExchange: any;
   let exchangeCancel: any;
   let lookup: any;
+  let line: any;
   let svc: AfterSalesExchangeService;
 
   beforeEach(() => {
@@ -59,6 +60,8 @@ describe('AfterSalesExchangeService', () => {
     contractExchange = { approve: jest.fn(), reject: jest.fn(), buildPreview: jest.fn() };
     exchangeCancel = { cancel: jest.fn() };
     lookup = { lookup: jest.fn() };
+    // Task 3 — พารามิเตอร์ท้ายสุดใหม่ของ constructor
+    line = { notifyMoment: jest.fn().mockResolvedValue({ status: 'SENT' }) };
 
     svc = new AfterSalesExchangeService(
       prisma as never,
@@ -69,6 +72,7 @@ describe('AfterSalesExchangeService', () => {
       contractExchange as never,
       exchangeCancel as never,
       lookup as never,
+      line as never,
     );
   });
 
@@ -137,6 +141,11 @@ describe('AfterSalesExchangeService', () => {
         replacementContractId: 'ct-new',
         contractNumber: 'CT-NEW-0001',
       });
+      // Task 3 (d) — confirmSameModel → notifyMoment(caseId,'READY',actorId) หลัง commit + audit
+      expect(line.notifyMoment).toHaveBeenCalledWith('as-1', 'READY', MGR.id);
+      expect(audit.log.mock.invocationCallOrder[0]).toBeLessThan(
+        line.notifyMoment.mock.invocationCallOrder[0],
+      );
     });
 
     // (b)
@@ -374,6 +383,27 @@ describe('AfterSalesExchangeService', () => {
       );
       expect(query.getCase).not.toHaveBeenCalled();
     });
+
+    // Task 3 (e) — fire-and-forget: notifyMoment reject ต้องไม่ทำให้ confirmSameModel reject ตาม
+    it('Task 3 (e): notifyMoment reject → confirmSameModel ยัง resolve ตามปกติ (fire-and-forget)', async () => {
+      query.getCase.mockResolvedValue(buildCase());
+      defect.checkEligibility.mockResolvedValue({
+        eligible: true,
+        reasons: [],
+        newProduct: { id: 'prod-new', brand: 'Apple', model: 'iPhone 13', storage: '128GB' },
+      });
+      defect.execute.mockResolvedValue({
+        newContract: { id: 'ct-new', contractNumber: 'CT-NEW-0001' },
+      });
+      line.notifyMoment.mockRejectedValue(new Error('LINE ล่ม'));
+
+      await expect(svc.confirmSameModel('as-1', { note: 'ok' } as never, MGR)).resolves.toEqual({
+        id: 'as-1',
+        stage: 'READY_FOR_PICKUP',
+        replacementContractId: 'ct-new',
+        contractNumber: 'CT-NEW-0001',
+      });
+    });
   });
 
   describe('deliver', () => {
@@ -432,6 +462,11 @@ describe('AfterSalesExchangeService', () => {
       );
       expect(prisma.afterSalesCase.update.mock.invocationCallOrder[0]).toBeLessThan(
         audit.log.mock.invocationCallOrder[0],
+      );
+      // Task 3 (d) — deliver → notifyMoment(caseId,'CLOSED',actorId) หลัง commit + audit
+      expect(line.notifyMoment).toHaveBeenCalledWith('as-1', 'CLOSED', STAFF.id);
+      expect(audit.log.mock.invocationCallOrder[0]).toBeLessThan(
+        line.notifyMoment.mock.invocationCallOrder[0],
       );
     });
 
@@ -711,6 +746,7 @@ describe('AfterSalesExchangeService — priced exchange proxy (Task 6)', () => {
   let contractExchange: any;
   let exchangeCancel: any;
   let lookup: any;
+  let line: any;
   let svc: AfterSalesExchangeService;
 
   beforeEach(() => {
@@ -731,6 +767,8 @@ describe('AfterSalesExchangeService — priced exchange proxy (Task 6)', () => {
     contractExchange = { approve: jest.fn(), reject: jest.fn(), buildPreview: jest.fn() };
     exchangeCancel = { cancel: jest.fn() };
     lookup = { lookup: jest.fn() };
+    // Task 3 — พารามิเตอร์ท้ายสุดใหม่ของ constructor
+    line = { notifyMoment: jest.fn().mockResolvedValue({ status: 'SENT' }) };
 
     svc = new AfterSalesExchangeService(
       prisma as never,
@@ -741,6 +779,7 @@ describe('AfterSalesExchangeService — priced exchange proxy (Task 6)', () => {
       contractExchange as never,
       exchangeCancel as never,
       lookup as never,
+      line as never,
     );
   });
 
@@ -809,6 +848,11 @@ describe('AfterSalesExchangeService — priced exchange proxy (Task 6)', () => {
         audit.log.mock.invocationCallOrder[0],
       );
       expect(result).toEqual({ id: 'as-1', stage: 'CLOSED' });
+      // Task 3 (d) — approvePriced MEMO → notifyMoment(caseId,'CLOSED',actorId) หลัง commit + audit
+      expect(line.notifyMoment).toHaveBeenCalledWith('as-1', 'CLOSED', MGR.id);
+      expect(audit.log.mock.invocationCallOrder[0]).toBeLessThan(
+        line.notifyMoment.mock.invocationCallOrder[0],
+      );
     });
 
     it('PRICED mode → note มีเลขสัญญาใหม่จาก prisma.contract.findUnique, reconcile → READY_FOR_PICKUP', async () => {
@@ -857,6 +901,11 @@ describe('AfterSalesExchangeService — priced exchange proxy (Task 6)', () => {
           },
         }),
       });
+      // Task 3 (d) — approvePriced PRICED → notifyMoment(caseId,'READY',actorId) หลัง commit + audit
+      expect(line.notifyMoment).toHaveBeenCalledWith('as-1', 'READY', MGR.id);
+      expect(audit.log.mock.invocationCallOrder[0]).toBeLessThan(
+        line.notifyMoment.mock.invocationCallOrder[0],
+      );
     });
 
     it('PRICED mode + contract.findUnique คืน null → fallback ใช้ newContractId แทนเลขสัญญาในข้อความ', async () => {

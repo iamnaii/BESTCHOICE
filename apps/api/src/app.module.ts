@@ -102,9 +102,6 @@ import { SalesBotModule } from './modules/sales-bot/sales-bot.module';
 import { ChatAiDraftModule } from './modules/chat-ai-draft/chat-ai-draft.module';
 import { AiSettingsModule } from './modules/ai-settings/ai-settings.module';
 import { CsatModule } from './modules/csat/csat.module';
-import { AdsTrackingModule } from './modules/ads-tracking/ads-tracking.module';
-import { CrmModule } from './modules/crm/crm.module';
-import { BroadcastModule } from './modules/broadcast/broadcast.module';
 import { HealthModule } from './modules/health/health.module';
 import { PeakModule } from './modules/peak/peak.module';
 import { MdmModule } from './modules/mdm/mdm.module';
@@ -115,20 +112,13 @@ import { SearchModule } from './modules/search/search.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { ShopTrackingModule } from './modules/shop-tracking/shop-tracking.module';
 import { ShopBotDefenseModule } from './modules/shop-bot-defense/shop-bot-defense.module';
-import { ShopReservationModule } from './modules/shop-reservation/shop-reservation.module';
 import { ShopCatalogModule } from './modules/shop-catalog/shop-catalog.module';
 import { ShopAuthSocialModule } from './modules/shop-auth-social/shop-auth-social.module';
 import { ShopLineChatModule } from './modules/shop-line-chat/shop-line-chat.module';
-import { ShopShippingModule } from './modules/shop-shipping/shop-shipping.module';
-import { ShopCartModule } from './modules/shop-cart/shop-cart.module';
-import { ShopCheckoutModule } from './modules/shop-checkout/shop-checkout.module';
 import { ShopOrdersModule } from './modules/shop-orders/shop-orders.module';
 import { ShopMeModule } from './modules/shop-me/shop-me.module';
 import { ShopCsModule } from './modules/shop-cs/shop-cs.module';
-import { ShopReviewsModule } from './modules/shop-reviews/shop-reviews.module';
 import { ShopBuybackModule } from './modules/shop-buyback/shop-buyback.module';
-import { ShopInstallmentApplyModule } from './modules/shop-installment-apply/shop-installment-apply.module';
-import { ShopSavingPlanModule } from './modules/shop-saving-plan/shop-saving-plan.module';
 import { ShopPublicConfigModule } from './modules/shop-public-config/shop-public-config.module';
 import { DataAuditModule } from './modules/data-audit/data-audit.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
@@ -333,11 +323,8 @@ import { AppCacheModule } from './cache/cache.module';
     // CSAT — customer satisfaction survey after chat resolution
     CsatModule,
     // Ads Attribution — campaign tracking + ROI
-    AdsTrackingModule,
     // CRM Pipeline — lead tracking + customer scoring
-    CrmModule,
     // Broadcast — mass messaging to customers across chat channels
-    BroadcastModule,
     // Health check — liveness probe for Cloud Run / load balancers
     HealthModule,
     // External integrations (scaffold — activate when credentials are available)
@@ -354,7 +341,6 @@ import { AppCacheModule } from './cache/cache.module';
     // Online Shop — bot defense + rate limiting
     ShopBotDefenseModule,
     // Online Shop — 15-min product reservation for online buyers
-    ShopReservationModule,
     // Online Shop — read-only product catalog (grouped listing + detail)
     ShopCatalogModule,
     // Online Shop — LINE + Facebook OAuth login + phone binding
@@ -362,11 +348,8 @@ import { AppCacheModule } from './cache/cache.module';
     // Online Shop — contact form → LINE OA staff notification
     ShopLineChatModule,
     // Online Shop — static shipping rate table (Phase 2)
-    ShopShippingModule,
     // Online Shop — session-based cart from active reservations (Phase 2)
-    ShopCartModule,
     // Online Shop — checkout (validate promo/loyalty, place order) (Phase 2)
-    ShopCheckoutModule,
     // Online Shop — OnlineOrder CRUD + OnlineOrderSaleAdapter (Phase 2)
     ShopOrdersModule,
     // Online Shop — customer address book (/api/shop/me/addresses) (Phase 2)
@@ -374,13 +357,10 @@ import { AppCacheModule } from './cache/cache.module';
     // Online Shop — customer service (cancel + refund request) (Phase 3)
     ShopCsModule,
     // Online Shop — product reviews (verified purchase + moderation) (Phase 3)
-    ShopReviewsModule,
     // Online Shop — customer online buyback (pure cash-out flow) (Phase 3)
     ShopBuybackModule,
     // Online Shop — installment application (customer submit + admin review) (Phase 3)
-    ShopInstallmentApplyModule,
     // Online Shop — ออมดาวน์ (saving plan) + reminder cron (Phase 3)
-    ShopSavingPlanModule,
     // Online Shop — public runtime config (GA4 / FB Pixel IDs) (Phase 3 follow-up)
     ShopPublicConfigModule,
     // MASTER: Management

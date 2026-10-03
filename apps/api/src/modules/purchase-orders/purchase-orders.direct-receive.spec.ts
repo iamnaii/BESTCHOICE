@@ -2,12 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 /**
  * B3 supplier-direct receive = auto-PO. ONE $transaction:
  *  create PO (isDirectReceive, unitPrice=costPrice) -> set APPROVED/ORDERED
  *  (approval-bypass + AuditLog) -> run goodsReceiving() to make GR + products.
- * No JE; poId never null.
+ * poId never null. รายการบัญชีรับสินค้าเข้าโพสต์โดย pipeline รับของตัวเดียวกัน (2026-09-29).
  */
 describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,7 +38,7 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
       supplier: { findUnique: jest.fn().mockResolvedValue({ id: 'sup-1', deletedAt: null }) },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'wh', name: 'คลังกลาง' }) },
       goodsReceiving: { create: jest.fn().mockResolvedValue({ id: 'gr1' }), count: jest.fn().mockResolvedValue(0) },
-      goodsReceivingItem: { create: jest.fn().mockImplementation(({ data }) => { created.gri.push(data); return Promise.resolve({ id: 'gri1', ...data }); }) },
+      goodsReceivingItem: { create: jest.fn().mockImplementation(({ data }) => { created.gri.push(data); return Promise.resolve({ id: 'gri1', ...data }); }), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       pOItem: {
         findMany: jest.fn().mockImplementation(({ where: { id: { in: ids } } }) =>
           Promise.resolve(poItems.filter((i) => ids.includes(i.id)).map((i) => ({ ...i })))),
@@ -65,7 +66,7 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
 
   const build = async (prisma: any) => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     return module.get<PurchaseOrdersService>(PurchaseOrdersService);
   };
@@ -93,8 +94,10 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
     expect(created.poUpdate.some((u: any) => u.status === 'ORDERED' && u.orderedAt instanceof Date)).toBe(true);
     // approval-bypass audit row
     expect(created.audit[0]).toEqual(expect.objectContaining({ userId: 'user-1', action: 'PO_DIRECT_RECEIVE_APPROVAL_BYPASS', entity: 'purchase_order', entityId: 'po-new' }));
-    // product created with costPrice from unitPrice
-    expect(created.product[0]).toEqual(expect.objectContaining({ costPrice: 30000, imeiSerial: 'IMEI-1' }));
+    // product created with costPrice from unitPrice (ผู้จัดจำหน่ายไม่จด VAT ไม่มีส่วนลด → ต้นทุน = ราคาต่อหน่วย;
+    // เคสรวม VAT/ส่วนลดอยู่ที่ purchase-orders.receiving-journal.spec.ts)
+    expect(created.product[0]).toEqual(expect.objectContaining({ imeiSerial: 'IMEI-1' }));
+    expect((created.product[0] as { costPrice: { toFixed(dp: number): string } }).costPrice.toFixed(2)).toBe('30000.00');
     // B0 §2.1: sellingPrice writes cashPrice via the column write-through path —
     // label is 'ราคาเงินสด' (CASH_LABEL), not the old hardcoded 'ราคาขาย'
     expect(created.price[0]).toEqual(expect.objectContaining({ label: 'ราคาเงินสด' }));
@@ -196,6 +199,22 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
     const dto = baseDto();
     dto.items[0].unitPrice = 0;
     await expect(service.directReceive(dto as never, 'user-1')).rejects.toThrow(BadRequestException);
+  });
+
+  // ผลตรวจทาน 2026-09-29: รับเข้าตรงสร้างใบสั่งซื้อใน transaction เดียวกับการรับของ — ถ้าปล่อยให้ด่านตอนรับของ
+  // เป็นคนปฏิเสธ ข้อความจะอ้างเลขใบสั่งซื้อที่ถูก roll back ไปแล้วและชี้ปุ่ม "ยกเลิก PO" ที่ไม่มีให้กด
+  it('ปฏิเสธส่วนลดที่มากกว่ามูลค่าสินค้าก่อนสร้างใบสั่งซื้อ พร้อมบอกให้แก้ส่วนลด', async () => {
+    const { tx, created } = makeTx();
+    const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
+    const service = await build(prisma);
+    const dto = { ...baseDto(), discount: 40000 };
+
+    const attempt = service.directReceive(dto as never, 'user-1');
+
+    await expect(attempt).rejects.toThrow(BadRequestException);
+    await expect(attempt).rejects.toThrow(/ส่วนลด.*มากกว่ามูลค่าสินค้า.*กรุณาแก้ส่วนลด/);
+    expect(created.po).toHaveLength(0);
+    expect(created.product).toHaveLength(0);
   });
 
   it('rejects when the supplier does not exist', async () => {

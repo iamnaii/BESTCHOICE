@@ -22,6 +22,7 @@ import { useReceivingDuplicates } from './useReceivingDuplicates';
 import { UnitInspectScreen } from './UnitInspectScreen';
 import { AccessoryGroupScreen } from './AccessoryGroupScreen';
 import { ReceivingSummary } from './ReceivingSummary';
+import type { SupplierDocForm } from '../supplier-doc.util';
 
 const MAX_PHOTOS_PER_UNIT = 6;
 
@@ -43,6 +44,11 @@ export interface ReceivingFlowProps {
   onCancel?: () => void;
   /** the summary table is wider than a device screen — the host can widen its frame */
   onViewChange?: (view: 'screens' | 'summary') => void;
+  /** ข3 — เอกสารจากผู้จัดจำหน่ายในหน้าสรุป (รับตามใบสั่งซื้อ) */
+  supplierDoc?: SupplierDocForm;
+  setSupplierDoc?: (doc: SupplierDocForm) => void;
+  supplierHasVat?: boolean;
+  supplierId?: string;
 }
 
 const firstOpenScreen = (units: ReceivingUnitForm[], screens: ReceivingScreen[]) => {
@@ -56,7 +62,22 @@ const firstOpenScreen = (units: ReceivingUnitForm[], screens: ReceivingScreen[])
  * summary table comes last. Used by GoodsReceivingModal (PO receive) and by the ซื้อสินค้า
  * wizard's ตรวจรับ step (direct receive).
  */
-export function ReceivingFlow({ units, setUnits, mode, notes, setNotes, onConfirm, confirming, confirmLabel, onCancel, onViewChange }: ReceivingFlowProps) {
+export function ReceivingFlow({
+  units,
+  setUnits,
+  mode,
+  notes,
+  setNotes,
+  onConfirm,
+  confirming,
+  confirmLabel,
+  onCancel,
+  onViewChange,
+  supplierDoc,
+  setSupplierDoc,
+  supplierHasVat,
+  supplierId,
+}: ReceivingFlowProps) {
   const screens = useMemo(() => buildScreens(units), [units]);
   const [screenIdx, setScreenIdx] = useState(() => firstOpenScreen(units, screens));
   const [view, setViewState] = useState<'screens' | 'summary'>('screens');
@@ -150,6 +171,10 @@ export function ReceivingFlow({ units, setUnits, mode, notes, setNotes, onConfir
         onConfirm={onConfirm}
         confirming={confirming}
         confirmLabel={confirmLabel}
+        supplierDoc={supplierDoc}
+        setSupplierDoc={setSupplierDoc}
+        supplierHasVat={supplierHasVat}
+        supplierId={supplierId}
       />
     );
   }

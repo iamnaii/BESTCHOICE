@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import AfterSalesNewPage from './AfterSalesNewPage';
@@ -24,6 +24,8 @@ const IMEI = '356812345674412';
 const foundResult: LookupResult = {
   found: true,
   source: 'INSTALLMENT_CONTRACT',
+  // Task 8 — ลูกค้าคนนี้ผูก LINE ไว้แล้ว (เคสทั่วไปในเทสต์ชุดนี้)
+  lineLinked: true,
   product: {
     id: 'p1',
     brand: 'Apple',
@@ -154,6 +156,8 @@ const previewReview = {
 const notFoundResult: LookupResult = {
   found: false,
   source: 'WALK_IN',
+  // Task 8 — walk-in ไม่มีลูกค้าให้ผูก LINE เลย
+  lineLinked: false,
   product: null,
   customer: null,
   contract: null,
@@ -190,6 +194,16 @@ function mockGet(lookup: LookupResult, extra?: MockExtras) {
   });
 }
 
+function CaseProbe() {
+  const location = useLocation();
+  return (
+    <>
+      <div>CASE PAGE</div>
+      <div data-testid="case-search">{location.search}</div>
+    </>
+  );
+}
+
 function renderPage(initialPath: string) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -199,7 +213,7 @@ function renderPage(initialPath: string) {
       <MemoryRouter initialEntries={[initialPath]}>
         <Routes>
           <Route path="/after-sales/new" element={<AfterSalesNewPage />} />
-          <Route path="/after-sales/:id" element={<div>CASE PAGE</div>} />
+          <Route path="/after-sales/:id" element={<CaseProbe />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -227,6 +241,24 @@ describe('AfterSalesNewPage — แจ้งปัญหาเครื่อง
 
     expect(screen.getByText('สรุปก่อนบันทึก')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' })).toBeInTheDocument();
+  });
+
+  it('Task 8: พบเครื่อง + ลูกค้าผูก LINE (lineLinked=true) → สรุปก่อนบันทึกมี "จะส่ง LINE แจ้งลูกค้าเมื่อบันทึก"', async () => {
+    mockGet(foundResult);
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+
+    expect(screen.getByText(/จะส่ง LINE แจ้งลูกค้าเมื่อบันทึก/)).toBeInTheDocument();
+    expect(screen.queryByText(/ลูกค้าไม่ผูก LINE/)).not.toBeInTheDocument();
+  });
+
+  it('Task 8: walk-in ไม่มีลูกค้า (lineLinked=false) → สรุปก่อนบันทึกมี "ลูกค้าไม่ผูก LINE — โทรแจ้งเอง"', async () => {
+    mockGet(notFoundResult);
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('สรุปก่อนบันทึก');
+
+    expect(screen.getByText(/ลูกค้าไม่ผูก LINE — โทรแจ้งเอง/)).toBeInTheDocument();
+    expect(screen.queryByText(/จะส่ง LINE แจ้งลูกค้าเมื่อบันทึก/)).not.toBeInTheDocument();
   });
 
   it('กดบันทึกโดยไม่มีรูป → toast error "ต้องมีรูปตอนรับฝากอย่างน้อย 1 รูป" และไม่เรียก API', async () => {
@@ -269,6 +301,57 @@ describe('AfterSalesNewPage — แจ้งปัญหาเครื่อง
 
     expect(toast.success).toHaveBeenCalled();
     expect(await screen.findByText('CASE PAGE')).toBeInTheDocument();
+    expect(screen.getByTestId('case-search')).toBeEmptyDOMElement();
+  });
+
+  it('ปุ่มรอง "บันทึก + พิมพ์ใบรับฝาก" → POST เดียวกัน แล้วไปหน้าเคสพร้อม ?print=receipt · ปุ่มหลักไปแบบไม่มีพารามิเตอร์', async () => {
+    mockGet(foundResult);
+    mocks.post.mockResolvedValue({
+      data: { id: 'case-9', caseNumber: 'AS-20260924-0001', repairTicketId: 'rt-1' },
+    });
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+    await userEvent.type(screen.getByLabelText(/อาการที่ลูกค้าแจ้ง/), 'จอแตกมุมขวาบน');
+    await userEvent.upload(
+      screen.getByLabelText(/ถ่ายเพิ่ม/),
+      new File(['x'], 'a.jpg', { type: 'image/jpeg' }),
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: /ปิด Find My/ }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึก + พิมพ์ใบรับฝาก' }));
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    expect(mocks.post.mock.calls[0][0]).toBe('/after-sales');
+    expect(await screen.findByTestId('case-search')).toHaveTextContent('?print=receipt');
+  });
+
+  it('ระหว่างบันทึกจากปุ่มรอง: ปุ่มที่กดขึ้น "กำลังบันทึก…" ปุ่มหลักคงชื่อเดิมแต่ปิด · ยกเลิกปิดระหว่างบันทึก', async () => {
+    mockGet(foundResult);
+    mocks.post.mockReturnValue(new Promise(() => {})); // ค้างไว้ให้เห็นสถานะระหว่างบันทึก
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    await screen.findByText('คุณสมชาย ทดสอบ');
+    await userEvent.type(screen.getByLabelText(/อาการที่ลูกค้าแจ้ง/), 'จอแตกมุมขวาบน');
+    await userEvent.upload(
+      screen.getByLabelText(/ถ่ายเพิ่ม/),
+      new File(['x'], 'a.jpg', { type: 'image/jpeg' }),
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: /ปิด Find My/ }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'บันทึก + พิมพ์ใบรับฝาก' }));
+
+    expect(await screen.findByRole('button', { name: 'กำลังบันทึก…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'ยกเลิก' })).toBeDisabled();
+  });
+
+  it('ช่อง IMEI (หน้าค้นหา) และเลขเครื่อง (walk-in) รับได้ไม่เกิน 32 ตัว — ตรงกับเพดานฝั่ง API', async () => {
+    const search = renderPage('/after-sales/new');
+    expect(screen.getByLabelText('เลข IMEI หรือเลขเครื่อง')).toHaveAttribute('maxLength', '32');
+    search.unmount();
+
+    mockGet(notFoundResult);
+    renderPage(`/after-sales/new?imei=${IMEI}`);
+    expect(await screen.findByLabelText('เลขเครื่อง')).toHaveAttribute('maxLength', '32');
   });
 
   it('lookup ไม่พบเครื่อง (walk-in): เห็น ContactCombobox + ช่องยี่ห้อ/รุ่น + ปุ่มทางออกมีแค่ "ซ่อม" (ลูกค้าจ่าย)', async () => {

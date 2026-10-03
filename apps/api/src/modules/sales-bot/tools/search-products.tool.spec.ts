@@ -47,6 +47,16 @@ describe('SearchProductsTool.run', () => {
     expect(result.groups).toHaveLength(2); // mocked DB returns both; grouping must still keep them separate
     expect(result.groups.find(g => g.deviceOrigin === 'IMPORTED')?.units[0]).toMatchObject({ shopWarrantyDays: 0, warrantyTerms: 'No warranty' });
   });
+  it('ส่งประวัติอะไหล่เป็นข้อความพร้อมบอกลูกค้า (ไม่ระบุ = null ห้ามเดาว่าของเดิม)', async () => {
+    const prisma = makePrisma([
+      row({ partsHistory: 'BATTERY_NON_GENUINE', partsHistoryNote: ' แบต 100% ' }),
+      row({ id: 'unknown', cashPrice: D('31000'), partsHistory: null }),
+    ]);
+    const result = await new SearchProductsTool(prisma).run({ query: 'iPhone 15 Pro Max' });
+    const units = result.groups.flatMap((g) => g.units);
+    expect(units.find((u) => u.id === 'prd-1')?.partsHistory).toBe('เปลี่ยนแบตใหม่ (ไม่ใช่แบตแท้ Apple) · แบต 100%');
+    expect(units.find((u) => u.id === 'unknown')?.partsHistory).toBeNull();
+  });
   const prevBase = process.env.SHOP_BASE_URL;
   beforeEach(() => {
     process.env.SHOP_BASE_URL = 'https://shop.example.com';
@@ -124,7 +134,7 @@ describe('SearchProductsTool.run', () => {
     const tool = new SearchProductsTool(makePrisma([row()]));
     const r = await tool.run({ query: 'iPhone 15 Pro Max' });
     expect(r.groups[0].units[0]).toEqual({
-      deviceOrigin: null, warrantyTerms: null,
+      deviceOrigin: null, warrantyTerms: null, partsHistory: null,
       id: 'prd-1',
       priceThb: 32900,
       installmentPriceThb: 35900,

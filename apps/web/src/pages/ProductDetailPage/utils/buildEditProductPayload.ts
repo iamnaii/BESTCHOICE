@@ -19,6 +19,11 @@ export interface EditForm {
   shopWarrantyDays: string;
   accessoriesIncluded: string;
   cosmeticNotes: string;
+  /** '' = ยังไม่ระบุ (ส่ง null) */
+  deviceOrigin: string;
+  /** '' = ยังไม่ระบุ (ส่ง null) — แจ้งลูกค้าเท่านั้น ไม่มีผลกับค่างวด */
+  partsHistory: string;
+  partsHistoryNote: string;
 }
 
 /**
@@ -76,5 +81,12 @@ export function buildEditProductPayload(editForm: EditForm): Record<string, unkn
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
   payload.cosmeticNotes = editForm.cosmeticNotes || undefined;
+  // ที่มาเครื่อง + ประวัติอะไหล่: ฟอร์มเติมค่าจริงไว้ตั้งแต่เปิด ⇒ ส่งเสมอ · ค่าว่าง = ล้างเป็นยังไม่ระบุ
+  // (ต่างจากช่องอื่นที่ว่าง = ไม่แตะ — ที่มาเครื่องต้องแก้กลับเป็น "ยังไม่ระบุ" ได้เมื่อกรอกผิด)
+  if (editForm.category !== 'ACCESSORY') {
+    payload.deviceOrigin = editForm.deviceOrigin || null;
+    payload.partsHistory = editForm.partsHistory || null;
+    payload.partsHistoryNote = editForm.partsHistory ? editForm.partsHistoryNote.trim() || null : null;
+  }
   return payload;
 }

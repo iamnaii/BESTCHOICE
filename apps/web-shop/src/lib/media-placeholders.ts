@@ -14,7 +14,6 @@ export const mediaPlaceholders = {
   'hero.apply': '/media/hero-apply.jpg',
   'hero.trade-in': '/media/hero-trade-in.jpg',
   'hero.buyback': '/media/hero-buyback.jpg',
-  'hero.saving': '/media/hero-saving.jpg',
   'og.default': '/media/og-default.jpg',
 
   // Staff + shop

@@ -75,6 +75,8 @@ describe('PaySolutionsService.handlePaymentCallback — payment JE (F-1-003)', (
         count: jest.fn().mockResolvedValue(0),
       },
       contract: {
+        // webhook อ่านสถานะสัญญาในธุรกรรม ก่อนแก้แถวงวด (ตั้งลูกหนี้งวด ณ วันรับเงิน)
+        findUnique: jest.fn().mockResolvedValue({ status: 'ACTIVE' }),
         update: jest.fn().mockResolvedValue({ productId: null }),
         // Used by ensureInstallmentSchedules only when the schedule is missing.
         findUniqueOrThrow: jest.fn().mockResolvedValue({

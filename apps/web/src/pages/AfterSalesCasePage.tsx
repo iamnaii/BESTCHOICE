@@ -2,9 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Clock } from 'lucide-react';
+import { Clock, Printer } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
+import { formatDateTime } from '@/utils/formatters';
 import QueryBoundary from '@/components/QueryBoundary';
+import PdfPreview from '@/components/PdfPreview';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,6 +32,8 @@ import {
 import {
   afterSalesKeys,
   baht,
+  CASE_DOC_LABEL,
+  canPrintHandover,
   dayOf,
   dayTimeOf,
   OUTCOME_LABEL,
@@ -44,11 +48,13 @@ import {
   STALE_ICON,
   staleLabel,
   STEP_TITLES_BY_OUTCOME,
+  stripLineTag,
   WARRANTY_LABEL,
   WARRANTY_TILE,
   type AfterSalesStage,
   type CaseDetail,
   type CaseDialogId,
+  type CaseDocKind,
 } from './after-sales/after-sales';
 
 /** ทำได้ (ส่งซ่อม/บันทึกซ่อมเสร็จ/ส่งซ่อมต่อ/ส่งมอบคืน) — FM/ACCOUNTANT อ่านอย่างเดียว
@@ -140,6 +146,7 @@ export default function AfterSalesCasePage() {
   const queryClient = useQueryClient();
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [docPreview, setDocPreview] = useState<CaseDocKind | null>(null);
 
   const query = useQuery<CaseDetail>({
     queryKey: afterSalesKeys.case(id),
@@ -207,6 +214,23 @@ export default function AfterSalesCasePage() {
       { replace: true },
     );
   }, [data, user, searchParams, setSearchParams]);
+
+  // PR 4 — มาจากหน้าแจ้งปัญหาเครื่องปุ่ม "บันทึก + พิมพ์ใบรับฝาก" → เปิดตัวอย่างใบรับฝากทันที
+  // แล้วลบพารามิเตอร์ทิ้ง (กันเปิดซ้ำตอน refetch) — แบบเดียวกับ ?action=
+  useEffect(() => {
+    if (!data) return;
+    const wanted = searchParams.get('print');
+    if (!wanted) return;
+    if (wanted === 'receipt') setDocPreview('receipt');
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('print');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [data, searchParams, setSearchParams]);
 
   return (
     <div className="space-y-4">
@@ -294,9 +318,24 @@ export default function AfterSalesCasePage() {
                             </Button>
                           ),
                         )}
-                        <Button variant="outline" size="md" disabled title="เร็ว ๆ นี้">
-                          ใบรับฝากเครื่อง
+                        <Button
+                          variant="outline"
+                          size="md"
+                          onClick={() => setDocPreview('receipt')}
+                        >
+                          <Printer aria-hidden className="h-4 w-4" />
+                          พิมพ์ใบรับฝากเครื่อง
                         </Button>
+                        {canPrintHandover(data) && (
+                          <Button
+                            variant="outline"
+                            size="md"
+                            onClick={() => setDocPreview('handover')}
+                          >
+                            <Printer aria-hidden className="h-4 w-4" />
+                            พิมพ์ใบส่งมอบ
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -485,14 +524,25 @@ export default function AfterSalesCasePage() {
                 </Card>
 
                 <Card title="LINE ลูกค้า">
-                  {data.lineLinked ? (
-                    <p className="text-sm leading-snug text-foreground">
-                      พร้อมส่ง (เปิดใช้รอบถัดไป)
-                    </p>
-                  ) : (
+                  {!data.lineLinked ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-2.5 py-1 text-xs font-semibold leading-snug text-warning-strong">
                       ยังไม่ผูก LINE — โทรแจ้ง
                     </span>
+                  ) : data.lineEvents.length === 0 ? (
+                    <p className="text-sm leading-snug text-foreground">
+                      ผูก LINE แล้ว — ยังไม่มีข้อความส่ง
+                    </p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {data.lineEvents.slice(0, 3).map((e, i) => (
+                        <li
+                          key={`${e.kind}-${e.at}-${i}`}
+                          className="text-sm leading-snug text-foreground"
+                        >
+                          {stripLineTag(e.note)} · {formatDateTime(e.at)}
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </Card>
               </div>
@@ -578,6 +628,19 @@ export default function AfterSalesCasePage() {
               open={dialog === 'cancel-swap'}
               onOpenChange={(next) => setDialog(next ? 'cancel-swap' : null)}
             />
+
+            {docPreview && (
+              <PdfPreview
+                key={docPreview}
+                title={CASE_DOC_LABEL[docPreview]}
+                path={`/after-sales/${data.id}/${docPreview}.pdf`}
+                filename={`${data.caseNumber}-${CASE_DOC_LABEL[docPreview]}.pdf`}
+                onClose={() => {
+                  setDocPreview(null);
+                  void queryClient.invalidateQueries({ queryKey: afterSalesKeys.case(data.id) });
+                }}
+              />
+            )}
           </>
         )}
       </QueryBoundary>

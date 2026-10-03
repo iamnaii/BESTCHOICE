@@ -20,8 +20,13 @@ import { ContractExchangeService } from '../../contract-exchange/contract-exchan
 import { ExchangeCancelService } from '../../contract-exchange/contract-exchange-cancel.service';
 import { AfterSalesQueryService } from './after-sales-query.service';
 import { AfterSalesLookupService } from './after-sales-lookup.service';
+import { AfterSalesLineService } from './after-sales-line.service';
 import { reconcileStage, ReconcilableCase, RECONCILE_SELECT } from './after-sales-stage-reconcile';
-import { payerDefaultFor, WINDOW_REASON_RE } from '../utils/after-sales-outcomes.util';
+import {
+  payerDefaultFor,
+  SWITCHED_TO_REPAIR_NOTE,
+  WINDOW_REASON_RE,
+} from '../utils/after-sales-outcomes.util';
 import { ExchangeConfirmDto } from '../dto/exchange-confirm.dto';
 import { ExchangeRejectDto } from '../dto/exchange-reject.dto';
 import { SwitchToRepairDto } from '../dto/switch-to-repair.dto';
@@ -79,6 +84,7 @@ export class AfterSalesExchangeService {
     private readonly contractExchange: ContractExchangeService,
     private readonly exchangeCancel: ExchangeCancelService,
     private readonly lookup: AfterSalesLookupService,
+    private readonly line: AfterSalesLineService,
   ) {}
 
   private assertMgr(user: ReqUser) {
@@ -256,6 +262,9 @@ export class AfterSalesExchangeService {
       newValue: { newContractId: newContract.id, bypass: outOfWindow, fromRepair },
     });
 
+    // Task 3 — จังหวะ 2 (READY): หลัง commit + audit เสมอ — fire-and-forget
+    void this.line.notifyMoment(caseId, 'READY', user.id).catch(() => undefined);
+
     return {
       id: caseId,
       stage: 'READY_FOR_PICKUP' as const,
@@ -314,6 +323,9 @@ export class AfterSalesExchangeService {
       entityId: caseId,
       newValue: { replacementContractId: c.replacementContractId },
     });
+
+    // Task 3 — จังหวะ 3 (CLOSED): หลัง commit + audit เสมอ — fire-and-forget
+    void this.line.notifyMoment(caseId, 'CLOSED', user.id).catch(() => undefined);
 
     return updated;
   }
@@ -406,7 +418,7 @@ export class AfterSalesExchangeService {
             create: {
               kind: 'OUTCOME_SET',
               actorId: user.id,
-              note: `เปลี่ยนเป็น "ซ่อม" แทน · ผู้จ่าย ${payer}`,
+              note: `${SWITCHED_TO_REPAIR_NOTE} · ผู้จ่าย ${payer}`,
             },
           },
         },
@@ -471,6 +483,12 @@ export class AfterSalesExchangeService {
       entityId: caseId,
       newValue: { exchangeRequestId: requestId, mode: res.mode, newContractId: res.newContractId },
     });
+
+    // Task 3 — MEMO ลงผลแล้ว = เคสจบ (CLOSED); PRICED ยังต้องเปิดใช้สัญญาใหม่ที่หน้าสัญญาก่อน
+    // เคสจึงยัง READY_FOR_PICKUP รอส่งมอบ (READY) — หลัง commit + audit เสมอ, fire-and-forget
+    void this.line
+      .notifyMoment(caseId, res.mode === 'MEMO' ? 'CLOSED' : 'READY', user.id)
+      .catch(() => undefined);
 
     return updated;
   }

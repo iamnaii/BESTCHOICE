@@ -254,7 +254,7 @@ scripts/                     # Deploy & backup scripts
 `/stock(/transfers/alerts/count/adjustments)`, `/suppliers(/:id)`, `/purchase-orders`, `/stickers`
 
 ### Collections & Risk
-`/overdue`, `/letters` (queue + bulk print + dispatch tracking), `/insurance/exchange-requests` (Device Swap), `/repossessions` (ใบรับเครื่องคืน + รอยึดเครื่อง + ยึดคืน & ขายต่อ — เมนู "รับเครื่องคืน / ยึดคืน"), `/credit-checks`, `/slip-review`, `/insurance(/:id|/new)` (SP5 Phase 2)
+`/overdue`, `/letters` (queue + bulk print + dispatch tracking), `/repossessions` (ใบรับเครื่องคืน + รอยึดเครื่อง + ยึดคืน & ขายต่อ — เมนู "รับเครื่องคืน / ยึดคืน"), `/credit-checks`, `/slip-review`, `/after-sales(/:id|/new)` (หลังการขาย — ใบรับฝาก/ใบส่งมอบ PDF; `/insurance*` เหลือ redirect)
 
 ### Revenue & Tax
 `/commissions`, `/tax-reports`, `/trade-in`, `/promotions`

@@ -10,6 +10,11 @@ describe('AfterSalesLookupService.lookup', () => {
       findFirst: jest.fn().mockResolvedValue(null),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
+    // Task 3 (PF-4) — lineLinked อ่านผ่าน customer.findFirst แยกต่างหาก (lookupByImei ไม่คืน
+    // lineIdShop เลย)
+    customer: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
   };
 
   const svc = new AfterSalesLookupService(
@@ -25,9 +30,10 @@ describe('AfterSalesLookupService.lookup', () => {
     photos.getPhotos.mockResolvedValue({ applicable: false });
     prisma.afterSalesCase.findFirst.mockResolvedValue(null);
     prisma.afterSalesCase.updateMany.mockResolvedValue({ count: 1 });
+    prisma.customer.findFirst.mockResolvedValue(null);
   });
 
-  it('ไม่พบ IMEI → source WALK_IN ทางออกเดียว (REPAIR) ไม่เรียก checkEligibility/getPhotos', async () => {
+  it('ไม่พบ IMEI → source WALK_IN ทางออกเดียว (REPAIR) ไม่เรียก checkEligibility/getPhotos, lineLinked=false', async () => {
     repair.lookupByImei.mockResolvedValue({ found: false });
 
     const result = await svc.lookup({ imei: '000000000000000' }, user);
@@ -39,9 +45,12 @@ describe('AfterSalesLookupService.lookup', () => {
     expect(result.outcomes[0].outcome).toBe('REPAIR');
     expect(defect.checkEligibility).not.toHaveBeenCalled();
     expect(photos.getPhotos).not.toHaveBeenCalled();
+    // Task 3 Step 2 — ไม่พบเครื่อง → lineLinked ต้องเป็น false เสมอ ไม่แตะ prisma.customer เลย
+    expect(result.lineLinked).toBe(false);
+    expect(prisma.customer.findFirst).not.toHaveBeenCalled();
   });
 
-  it('พบ+มีสัญญา → เรียก checkEligibility และ getPhotos แล้วได้ 3 ทางออก', async () => {
+  it('พบ+มีสัญญา+ลูกค้ามี lineIdShop → เรียก checkEligibility และ getPhotos แล้วได้ 3 ทางออก, lineLinked=true, customer ไม่มี lineIdShop ติดมา', async () => {
     repair.lookupByImei.mockResolvedValue({
       found: true,
       product: {
@@ -62,6 +71,7 @@ describe('AfterSalesLookupService.lookup', () => {
       manufacturerWarrantyEndDate: null,
     });
     defect.checkEligibility.mockResolvedValue({ eligible: true, reasons: [] });
+    prisma.customer.findFirst.mockResolvedValue({ lineIdShop: 'Utest1234567890' });
 
     const result = await svc.lookup({ imei: '359123456789012' }, user);
 
@@ -75,6 +85,43 @@ describe('AfterSalesLookupService.lookup', () => {
     ]);
     expect(defect.checkEligibility).toHaveBeenCalledWith('contract-1');
     expect(photos.getPhotos).toHaveBeenCalledWith('product-1');
+    // Task 3 Step 2 — ลูกค้ามี lineIdShop → lineLinked=true, อ่านผ่าน select แยก ไม่ใช่ widen
+    // select ของ lookupByImei; และ `lineIdShop` ห้ามหลุดเข้า LookupResult/customer ที่คืนไป
+    expect(result.lineLinked).toBe(true);
+    expect(prisma.customer.findFirst).toHaveBeenCalledWith({
+      where: { id: 'customer-1', deletedAt: null },
+      select: { lineIdShop: true },
+    });
+    expect(result.customer).toEqual({ id: 'customer-1', name: 'คุณทดสอบ', phone: '0812345678' });
+    expect(result).not.toHaveProperty('customer.lineIdShop');
+  });
+
+  it('พบ+มีสัญญา+ลูกค้าไม่มี lineIdShop → lineLinked=false', async () => {
+    repair.lookupByImei.mockResolvedValue({
+      found: true,
+      product: {
+        id: 'product-1b',
+        brand: 'Apple',
+        model: 'iPhone 13',
+        storage: '128GB',
+        imeiSerial: '359123456789013',
+        category: 'PHONE_USED',
+      },
+      sale: null,
+      customer: { id: 'customer-1b', name: 'คุณทดสอบ 2', phone: '0812345679' },
+      contract: { id: 'contract-1b', contractNumber: 'CT-0001B', status: 'ACTIVE' },
+      warrantyStatus: 'IN_7DAY_DEFECT',
+      daysRemainingIn7Day: 2,
+      purchasedAt: new Date('2026-09-20T00:00:00.000Z'),
+      shopWarrantyEndDate: null,
+      manufacturerWarrantyEndDate: null,
+    });
+    defect.checkEligibility.mockResolvedValue({ eligible: true, reasons: [] });
+    prisma.customer.findFirst.mockResolvedValue({ lineIdShop: null });
+
+    const result = await svc.lookup({ imei: '359123456789013' }, user);
+
+    expect(result.lineLinked).toBe(false);
   });
 
   it('พบเครื่องแต่ไม่มี sale/contract → source WALK_IN และ warranty.status=WALK_IN แม้ lookupByImei คืนสถานะอื่น', async () => {
@@ -108,6 +155,9 @@ describe('AfterSalesLookupService.lookup', () => {
     expect(result.outcomes[0].outcome).toBe('REPAIR');
     expect(defect.checkEligibility).not.toHaveBeenCalled();
     expect(photos.getPhotos).toHaveBeenCalledWith('product-2');
+    // Task 3 Step 2 — พบเครื่องแต่ไม่มีลูกค้า → lineLinked=false ไม่แตะ prisma.customer
+    expect(result.lineLinked).toBe(false);
+    expect(prisma.customer.findFirst).not.toHaveBeenCalled();
   });
 
   it('พบ+มีใบขายสด ไม่มีสัญญา → source CASH_SALE ไม่เรียก checkEligibility แต่เรียก getPhotos', async () => {
@@ -205,7 +255,10 @@ describe('AfterSalesLookupService.lookup', () => {
     const result = await svc.lookup({ imei: '359123456789100' }, user);
 
     const sameModel = result.outcomes.find((o) => o.outcome === 'SAME_MODEL_EXCHANGE')!;
-    expect(sameModel).toMatchObject({ enabled: false, reason: 'ตรวจสิทธิ์เปลี่ยนเครื่องไม่สำเร็จ' });
+    expect(sameModel).toMatchObject({
+      enabled: false,
+      reason: 'ตรวจสิทธิ์เปลี่ยนเครื่องไม่สำเร็จ',
+    });
     expect(sameModel.reason).not.toContain('relation');
   });
 

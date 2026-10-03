@@ -13,7 +13,6 @@ import {
   HandCoins,
   Warehouse,
   Coins,
-  Kanban,
   Home,
   TrendingUp,
   Truck,
@@ -31,21 +30,14 @@ import {
   Landmark,
   CalendarDays,
   Plug,
-  Target,
   Settings,
   BadgePercent,
-  Shield,
   ScrollText,
   Bell,
   MessageSquareMore,
   MoreHorizontal,
-  Send,
   LayoutGrid,
   CheckSquare,
-  ShoppingBag,
-  ClipboardCheck,
-  PiggyBank,
-  Star,
   Tag,
   TrendingDown,
   BookOpen,
@@ -67,8 +59,7 @@ import {
 export type MenuBadgeKey =
   | 'chat-unread'
   | 'asset-draft-count'
-  | 'qc-pending-count'
-  | 'online-orders-pending';
+  | 'qc-pending-count';
 
 /** Logical zone — sidebar splits navigation into these contexts */
 export type Zone = 'shop' | 'fin' | 'settings';
@@ -190,7 +181,6 @@ const SALES_CONFIG: RoleMenuConfig = {
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
-        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
       ],
     },
@@ -272,21 +262,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         // คำสั่งเจ้าของ 2026-08-08: หน้าร้าน (BM) ต้องเห็นเมนูยึดคืน — API/route/branch
         // scoping รองรับ BM อยู่แล้ว (#1397: เห็นเฉพาะสาขาตัวเอง) ขาดแค่รายการเมนู
         { label: 'รับเครื่องคืน / ยึดคืน', path: '/repossessions', icon: Lock },
-        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
         { label: 'รายงาน', path: '/reports', icon: BarChart3 },
-      ],
-    },
-    {
-      key: 'bm-online-shop',
-      label: 'ร้านค้าออนไลน์',
-      icon: ShoppingBag,
-      zone: 'shop',
-      items: [
-        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
-        { label: 'การจองจากเว็บ', path: '/product-holds', icon: Lock },
-        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
-        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
-        { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
       ],
     },
     // P3-SP5 W5 — BM does NOT have access to /shop/accounting (the API
@@ -372,8 +348,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'ติดตามหนี้', path: '/overdue', icon: AlertTriangle },
         { label: 'จัดการจดหมาย', path: '/letters', icon: Mail },
         { label: 'รับเครื่องคืน / ยึดคืน', path: '/repossessions', icon: Lock },
-        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
       ],
     },
     /* ── โซนบัญชีของ ผจก.การเงิน — ยกผังเดียวกับ OWNER (fin zone) มาใช้ ────────
@@ -475,18 +449,6 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
       ],
     },
     assetMenuSection,
-    {
-      key: 'fm-online-shop',
-      label: 'ร้านค้าออนไลน์',
-      icon: ShoppingBag,
-      zone: 'shop',
-      items: [
-        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
-        { label: 'การจองจากเว็บ', path: '/product-holds', icon: Lock },
-        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
-        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
-      ],
-    },
   ],
   bottomNav: [
     { label: NAV_LABELS.home, path: '/finance-portfolio', icon: CircleDollarSign },
@@ -678,15 +640,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: 'รายการขาย', path: '/sales', icon: TrendingUp },
-        { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
-      ],
-    },
-    {
-      key: 'owner-aftersales',
-      label: 'หลังการขาย',
-      icon: Shield,
-      zone: 'shop',
-      items: [
+        // 'สรุปเงินรายวัน' ย้ายไปกลุ่ม 'owner-shop-accounting' (คำสั่งเจ้าของ 2026-09-28)
+        // คำสั่งเจ้าของ 2026-09-28: รวมเข้ากลุ่ม "ขาย" (เดิมเป็นกลุ่ม 'owner-aftersales' ที่มีรายการเดียว)
+        // — ตำแหน่งเดียวกับเมนูผู้จัดการสาขา (bm-sales)
         { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
         // คำสั่งเจ้าของ 2026-08-29: ยึดคืนอยู่ zone ไฟแนนซ์ที่เดียว (owner-fin-revenue)
         // — กลับคำสั่งเดิม 2026-08-08 ที่ให้ duplicate ไว้ทั้งสอง zone.
@@ -802,22 +758,9 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'บัญชีเงินสด/ธนาคาร', path: '/finance/bank-accounts', icon: Landmark },
       ],
     },
-    {
       // ตั้งค่าเอกสาร section ลบออก (2026-06-24) — เป็น config ย้ายไปอยู่ที่เดียวใน
       // settings › บัญชี & ภาษี › เลขที่/รูปแบบเอกสาร (/settings/document-config,
       // หน้ามีแท็บราย doc type ในตัว). ไม่ซ้ำใน fin zone อีก.
-      key: 'owner-online-shop',
-      label: 'ร้านค้าออนไลน์',
-      icon: ShoppingBag,
-      zone: 'shop',
-      items: [
-        { label: 'คำสั่งซื้อออนไลน์', path: '/online-orders', icon: ShoppingBag, badgeKey: 'online-orders-pending' },
-        { label: 'การจองจากเว็บ', path: '/product-holds', icon: Lock },
-        { label: 'คำขอผ่อนชำระ', path: '/installment-applications', icon: ClipboardCheck },
-        { label: 'แผนออม', path: '/saving-plans', icon: PiggyBank },
-        { label: 'รีวิวลูกค้า', path: '/reviews', icon: Star },
-      ],
-    },
     // P3-SP5 W6 — SHOP-side accounting reports
     // Standardized label + Store icon across 4 role configs (OWNER/FM/ACC).
     // BM excluded per W5.
@@ -828,18 +771,8 @@ const OWNER_CONFIG: RoleMenuConfig = {
       zone: 'shop',
       items: [
         { label: 'งบทดลอง + P&L', path: '/shop/accounting', icon: PieChart },
-      ],
-    },
-    {
-      key: 'owner-marketing',
-      label: 'การตลาด',
-      icon: Target,
-      zone: 'shop',
-      items: [
-        { label: 'Ads & ROI', path: '/ads', icon: Target },
-        { label: 'Broadcast', path: '/broadcast', icon: Send },
-        // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
-        { label: NAV_LABELS.crm, path: '/crm', icon: Kanban },
+        // คำสั่งเจ้าของ 2026-09-28: ย้ายมาจากกลุ่ม "ขาย" — ตำแหน่งเดียวกับเมนูฝ่ายบัญชี (acc-shop-accounting)
+        { label: 'สรุปเงินรายวัน', path: '/shop/daily-cash', icon: Banknote },
       ],
     },
     {

@@ -62,7 +62,7 @@ const gfinTables: GfinTables = {
   },
 };
 
-const iphone15: ProductForQuotes & { id: string } = {
+const iphone15: ProductForQuotes & { id: string; batteryHealth?: number | null } = {
   id: 'p1',
   category: 'PHONE_NEW',
   brand: 'Apple',
@@ -180,6 +180,42 @@ describe('InstallmentCalculatorCard — การ์ดเดียว สลั
     expect(screen.getByText(/ยังไม่ได้กำหนดราคาเงินผ่อน/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'ไปแก้ราคา' }));
     expect(onEditPrice).toHaveBeenCalled();
+  });
+
+  it('การ์ดราคาส่ง GFIN: เครื่องไทย = ราคาตาราง + OVER เต็ม', () => {
+    renderCard({ product: { ...iphone15, deviceOrigin: 'THAI' }, state: { ...INITIAL_CALC_STATE, fin: 'gfin' } });
+    expect(screen.getByText('OVER เต็ม')).toBeInTheDocument();
+    expect(screen.getByText('ราคามือ 1 ตามตาราง GFIN')).toBeInTheDocument();
+    expect(screen.getByText('OVER 1,000 · เครื่องไทย')).toBeInTheDocument();
+    expect(screen.getByText('+1,000')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'ผ่อนชำระ' })).toHaveTextContent('3,327');
+  });
+
+  it('การ์ดราคาส่ง GFIN: เครื่องนอก = OVER ครึ่งเดียว → ราคาส่ง 23,500 · ค่างวด 3,260', () => {
+    renderCard({ product: { ...iphone15, deviceOrigin: 'IMPORTED' }, state: { ...INITIAL_CALC_STATE, fin: 'gfin' } });
+    expect(screen.getByText('OVER ครึ่งเดียว')).toBeInTheDocument();
+    expect(screen.getByText('OVER 1,000 × 50% · เครื่องนอก')).toBeInTheDocument();
+    expect(screen.getByText('+500')).toBeInTheDocument();
+    expect(screen.getAllByText('23,500 ฿').length).toBeGreaterThan(0);
+    // ceil((23,500 − 5,875) × 0.179238) + 100
+    expect(screen.getByRole('combobox', { name: 'ผ่อนชำระ' })).toHaveTextContent('12 งวด · ผ่อนเดือนละ 3,260');
+    expect(screen.queryByText(/ยังไม่ระบุเครื่องไทย\/เครื่องนอก/)).toBeNull();
+  });
+
+  it('ยังไม่ระบุไทย/นอก → คิดครึ่งเดียวไว้ก่อน พร้อมบอกให้ไปแก้ข้อมูลเครื่อง', () => {
+    renderCard({ product: { ...iphone15, deviceOrigin: null }, state: { ...INITIAL_CALC_STATE, fin: 'gfin' } });
+    expect(screen.getByText('OVER ครึ่งเดียว')).toBeInTheDocument();
+    expect(screen.getByText(/ยังไม่ระบุเครื่องไทย\/เครื่องนอก — คิด OVER ครึ่งเดียวไว้ก่อน/)).toBeInTheDocument();
+  });
+
+  it('แบตต่ำกว่า 80% → แถบเตือนเปลี่ยนแบตก่อนขาย (ไม่บล็อกการคำนวณ) · 80% ขึ้นไปไม่เตือน', () => {
+    renderCard({ product: { ...iphone15, category: 'PHONE_USED', batteryHealth: 78 } });
+    expect(screen.getByText('แบต 78% · เปลี่ยนแบตก่อนขาย')).toBeInTheDocument();
+    expect(screen.getAllByText(/2,413\.20/).length).toBeGreaterThan(0);
+    cleanup();
+
+    renderCard({ product: { ...iphone15, category: 'PHONE_USED', batteryHealth: 80 } });
+    expect(screen.queryByText(/เปลี่ยนแบตก่อนขาย/)).toBeNull();
   });
 
   it('พิมพ์เงินดาวน์ใหม่ → onChange อัปเดต bc.downAmount', async () => {

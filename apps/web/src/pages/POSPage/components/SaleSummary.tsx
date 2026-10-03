@@ -55,7 +55,7 @@ export default function SaleSummary({
   const { copy } = useCopyToClipboard();
 
   return (
-    <Card className="sticky top-20 border-border/60 shadow-md overflow-hidden">
+    <Card className="border-border/60 shadow-md overflow-hidden">
       {/* Card accent header */}
       <div className="h-1.5 w-full bg-linear-to-r from-primary to-primary/60" />
       <CardHeader>
@@ -130,7 +130,10 @@ export default function SaleSummary({
             <div className="flex items-center gap-1 mt-0.5">
               {/* ผู้สนใจจากแชทที่ยังไม่มีเบอร์ → ป้ายแทนช่องว่าง · ไม่ส่ง className เข้าไป (tailwind-merge จะทับสีชิป) */}
               <span className="text-xs text-muted-foreground">
-                <ProspectPhoneLine phone={selectedCustomer.phone} chatPlaceholder={selectedCustomer.chatPlaceholder} />
+                <ProspectPhoneLine
+                  phone={selectedCustomer.phone}
+                  chatPlaceholder={selectedCustomer.chatPlaceholder}
+                />
               </span>
               {selectedCustomer.phone && (
                 <button
@@ -155,19 +158,19 @@ export default function SaleSummary({
 
         {/* Price breakdown */}
         <div className="space-y-2 pt-3 border-t border-border/50">
-          <div className="flex justify-between items-center text-sm">
+          <div className="flex justify-between items-center gap-2 text-sm">
             <span className="text-muted-foreground">ราคาขาย</span>
             <span className="font-medium tabular-nums">
               {(parseFloat(sellingPrice) || 0).toLocaleString()} ฿
             </span>
           </div>
           {parseFloat(discount) > 0 && (
-            <div className="flex justify-between items-center text-sm text-destructive">
+            <div className="flex justify-between items-center gap-2 text-sm text-destructive">
               <span>ส่วนลด</span>
               <span className="tabular-nums">-{parseFloat(discount).toLocaleString()} ฿</span>
             </div>
           )}
-          <div className="flex justify-between items-center pt-2 border-t border-border/50">
+          <div className="flex justify-between items-center gap-2 pt-2 border-t border-border/50">
             <span className="text-sm font-semibold text-foreground">ยอดสุทธิ</span>
             <span className="text-lg font-bold text-primary tabular-nums">
               {netAmount.toLocaleString()} ฿
@@ -176,21 +179,25 @@ export default function SaleSummary({
         </div>
 
         {/* Cash change */}
-        {tradeInCredit && <div className="space-y-2 rounded-lg bg-primary/5 p-3 text-sm">
-          <p>โบนัสเทิร์น (รวมในส่วนลดแล้ว): {Number(tradeInCredit.bonusAmount).toLocaleString()} ฿</p>
-          <p>ชำระด้วยมูลค่าเครื่องเทิร์น: {Number(tradeInCredit.baseAmount).toLocaleString()} ฿</p>
-          <p className="font-semibold">ยอดชำระเพิ่ม: {cashDue?.toLocaleString()} ฿</p>
-        </div>}
+        {tradeInCredit && (
+          <div className="space-y-2 rounded-lg bg-primary/5 p-3 text-sm">
+            <p>
+              โบนัสเทิร์น (รวมในส่วนลดแล้ว): {Number(tradeInCredit.bonusAmount).toLocaleString()} ฿
+            </p>
+            <p>
+              ชำระด้วยมูลค่าเครื่องเทิร์น: {Number(tradeInCredit.baseAmount).toLocaleString()} ฿
+            </p>
+            <p className="font-semibold">ยอดชำระเพิ่ม: {cashDue?.toLocaleString()} ฿</p>
+          </div>
+        )}
         {saleType === 'CASH' && parseFloat(amountReceived) > 0 && (
           <div className="space-y-2 mt-3 pt-3 border-t border-border/50">
-            <div className="flex justify-between items-center text-sm">
+            <div className="flex justify-between items-center gap-2 text-sm">
               <span className="text-muted-foreground">เงินรับ</span>
-              <span className="tabular-nums">
-                {parseFloat(amountReceived).toLocaleString()} ฿
-              </span>
+              <span className="tabular-nums">{parseFloat(amountReceived).toLocaleString()} ฿</span>
             </div>
             <div
-              className={`flex justify-between items-center text-sm font-bold ${changeAmount >= 0 ? 'text-success' : 'text-destructive'}`}
+              className={`flex justify-between items-center gap-2 text-sm font-bold ${changeAmount >= 0 ? 'text-success' : 'text-destructive'}`}
             >
               <span>เงินทอน</span>
               <span className="text-base tabular-nums">{changeAmount.toLocaleString()} ฿</span>
@@ -205,26 +212,24 @@ export default function SaleSummary({
               สรุปไฟแนนซ์
             </div>
             {financeCompany && (
-              <div className="flex justify-between items-center text-xs">
+              <div className="flex justify-between items-center gap-2 text-xs">
                 <span className="text-muted-foreground">บริษัท</span>
                 <span className="font-semibold text-foreground">{financeCompany}</span>
               </div>
             )}
             {contractNumber && (
-              <div className="flex justify-between items-center text-xs">
+              <div className="flex justify-between items-center gap-2 text-xs">
                 <span className="text-muted-foreground">เลขที่สัญญา</span>
                 <span className="font-mono font-medium text-foreground">{contractNumber}</span>
               </div>
             )}
             {parseFloat(downPayment) > 0 && (
-              <div className="flex justify-between items-center text-sm">
+              <div className="flex justify-between items-center gap-2 text-sm">
                 <span className="text-muted-foreground">เงินดาวน์</span>
-                <span className="tabular-nums">
-                  {parseFloat(downPayment).toLocaleString()} ฿
-                </span>
+                <span className="tabular-nums">{parseFloat(downPayment).toLocaleString()} ฿</span>
               </div>
             )}
-            <div className="flex justify-between items-center pt-2 border-t border-border/50">
+            <div className="flex justify-between items-center gap-2 pt-2 border-t border-border/50">
               <span className="text-sm font-semibold text-foreground">ยอดที่ไฟแนนซ์ต้องโอน</span>
               <span className="text-base font-bold text-primary tabular-nums">
                 {transferAmount.toLocaleString()} ฿

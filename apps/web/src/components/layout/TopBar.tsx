@@ -149,7 +149,7 @@ export default function TopBar() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const { setMobileSidebarOpen } = useLayout();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const { open: openCommandPalette } = useCommandPalette();
   const { pathname } = useLocation();
   const unreadNotifications = useUnreadNotifications();
@@ -255,7 +255,7 @@ export default function TopBar() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
           className="size-9 rounded-xl relative text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors duration-150"
           aria-label="สลับธีม"
         >

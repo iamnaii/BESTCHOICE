@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AfterSalesController } from '../after-sales.controller';
 import { AfterSalesService } from '../after-sales.service';
+import { AfterSalesDocumentService } from '../services/after-sales-document.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
@@ -26,6 +27,7 @@ describe('POST /after-sales — จำนวน/ขนาดรูปตอน�
         RolesGuard,
         BranchGuard,
         { provide: AfterSalesService, useValue: { createCase } },
+        { provide: AfterSalesDocumentService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)

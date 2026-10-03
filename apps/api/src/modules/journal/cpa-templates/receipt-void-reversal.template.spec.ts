@@ -7,6 +7,7 @@ import { ContractActivation1ATemplate } from './contract-activation-1a.template'
 import { InstallmentAccrual2ATemplate } from './installment-accrual-2a.template';
 import { ReceiptVoidReversalTemplate } from './receipt-void-reversal.template';
 import { JournalAutoService } from '../journal-auto.service';
+import { glContractBalance } from '../gl-contract-balance';
 
 const prisma = new PrismaClient();
 
@@ -50,10 +51,12 @@ async function setup() {
 describe('ReceiptVoidReversalTemplate', () => {
   let journal: JournalAutoService;
   let paymentJeId: string;
+  let contractId: string;
 
   beforeAll(async () => {
     journal = await setup();
     const c = await seedStandard17k12m(prisma);
+    contractId = c.id;
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
 
     // Pay installment 1 to create a payment-receipt JE. PR-843/I2 Phase 5d:
@@ -136,6 +139,24 @@ describe('ReceiptVoidReversalTemplate', () => {
     expect(originalJe).toBeDefined();
     const meta = originalJe!.metadata as Record<string, unknown>;
     expect(meta['reversed']).toBe(true);
+  });
+
+  it('ยอด 11-2103 รายสัญญากลับมาค้างเต็มงวดหลังยกเลิกใบเสร็จ (รายการกลับรายการผูก contractId)', async () => {
+    const reversalJe = await prisma.journalEntry.findFirst({
+      where: {
+        AND: [
+          { metadata: { path: ['flow'], equals: 'receipt-void' } } as any,
+          { metadata: { path: ['originalEntryId'], equals: paymentJeId } } as any,
+        ],
+      },
+    });
+    expect((reversalJe!.metadata as Record<string, unknown>)['contractId']).toBe(contractId);
+
+    // 2A Dr 1,515.83 − ใบรับชำระ Cr 1,515.83 + กลับรายการ Dr 1,515.83 = ค้าง 1,515.83
+    const bal = await glContractBalance(prisma, contractId, '11-2103', 'dr');
+    expect(bal.toFixed(2)).toBe('1515.83');
+    const cash = await glContractBalance(prisma, contractId, '11-1101', 'dr');
+    expect(cash.toFixed(2)).toBe('0.00');
   });
 
   it('is idempotent — second call returns same reversal entry', async () => {

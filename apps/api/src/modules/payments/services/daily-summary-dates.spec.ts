@@ -15,9 +15,10 @@ import { PaymentQueryService } from './payment-query.service';
 
 const D = (n: number) => new Prisma.Decimal(n);
 
-const rcpt = (paidDate: string, amount: number) => ({
+const rcpt = (paidDate: string, amount: number, paymentMethod: string | null = 'CASH') => ({
   paidDate: new Date(paidDate),
   amount: D(amount),
+  paymentMethod,
 });
 
 function setup(rows: ReturnType<typeof rcpt>[]) {
@@ -40,6 +41,18 @@ describe('getDailySummaryDates — วันที่มีรายการใ
       { date: '2026-08-16', count: 2, total: 7571 },
       { date: '2026-08-18', count: 1, total: 2000 },
     ]);
+  });
+
+  it('PR3: ใบใช้เครดิตชำระ (CREDIT_BALANCE) นับเป็นจำนวนใบ แต่ไม่นับในยอดเงินของวัน · ใบเก่าที่ช่องทางว่างยังนับ', async () => {
+    const { service } = setup([
+      rcpt('2026-10-02T03:00:00', 1515.83, 'ONLINE_GATEWAY'),
+      rcpt('2026-10-02T04:00:00', 2000, 'CREDIT_BALANCE'),
+      rcpt('2026-10-02T05:00:00', 100, null),
+    ]);
+
+    const res = await service.getDailySummaryDates('2026-10');
+
+    expect(res.days).toEqual([{ date: '2026-10-02', count: 3, total: 1615.83 }]);
   });
 
   it('uses the same receipt universe as getDailySummary (no voided, no CN)', async () => {

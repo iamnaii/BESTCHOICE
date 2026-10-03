@@ -4,15 +4,20 @@ import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPOD
 import { PoQueryService } from './services/po-query.service';
 import { PoLifecycleService } from './services/po-lifecycle.service';
 import { PoReceivingService } from './services/po-receiving.service';
+import { ShopGoodsReceivingTemplate } from '../journal/cpa-templates/shop-goods-receiving.template';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { CompanyResolverService } from '../journal/company-resolver.service';
 
 /**
  * Facade for purchase-order operations. Keeps the original 16-method public
- * surface + 1-arg constructor so callers (controller), the module, and the
- * specs (which inject only PrismaService) stay untouched. Internally constructs
- * three plain sub-services and delegates:
+ * surface so the controller stays untouched. Internally constructs three plain
+ * sub-services and delegates. The journal dependencies (2026-09-29 — รับสินค้าเข้า
+ * ลงบัญชี) are REQUIRED, not @Optional(): a missing provider must fail at boot,
+ * never silently receive stock without posting. Specs get mocks from
+ * `po-journal.test-helpers.ts`.
  *  - PoQueryService     — reads, AP grouping, QC-pending, GR history/summary
  *  - PoLifecycleService — create (PO-number $tx), update/approve/reject/cancel/updatePayment
- *  - PoReceivingService — goodsReceiving (Serializable $tx), rejectQC
+ *  - PoReceivingService — goodsReceiving (Serializable $tx + SHOP journal entry), rejectQC
  */
 @Injectable()
 export class PurchaseOrdersService {
@@ -20,10 +25,19 @@ export class PurchaseOrdersService {
   private readonly lifecycle: PoLifecycleService;
   private readonly receiving: PoReceivingService;
 
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private prisma: PrismaService,
+    goodsReceivingTemplate: ShopGoodsReceivingTemplate,
+    shopAccountResolver: ShopAccountResolver,
+    companyResolver: CompanyResolverService,
+  ) {
     this.query = new PoQueryService(prisma);
     this.lifecycle = new PoLifecycleService(prisma, this.query);
-    this.receiving = new PoReceivingService(prisma);
+    this.receiving = new PoReceivingService(prisma, {
+      goodsReceivingTemplate,
+      shopAccountResolver,
+      companyResolver,
+    });
   }
 
   findAll(filters: { status?: string; supplierId?: string; page?: number; limit?: number }) {
@@ -93,6 +107,10 @@ export class PurchaseOrdersService {
 
   directReceive(dto: DirectReceiveDto, userId: string) {
     return this.receiving.directReceive(dto, userId);
+  }
+
+  checkReceivingDoc(input: { supplierId: string; docNumber?: string; docDate?: string }) {
+    return this.receiving.checkReceivingDoc(input);
   }
 
   rejectQC(productIds: string[], reason: string) {

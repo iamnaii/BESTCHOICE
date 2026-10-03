@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { RepairCenterCombobox } from '@/pages/insurance/components/RepairCenterCombobox';
+import { RepairCenterCombobox } from '@/pages/after-sales/RepairCenterCombobox';
 import ReplacementProductPicker from './ReplacementProductPicker';
 import { afterSalesKeys, PAYER_LABEL, type CaseDetail, type Payer } from './after-sales';
 

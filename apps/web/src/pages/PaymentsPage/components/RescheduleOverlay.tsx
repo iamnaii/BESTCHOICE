@@ -47,6 +47,8 @@ interface JePreviewLine {
   debit: string;
   credit: string;
   description: string;
+  /** false = รายการยังไม่ลง จะลงตอนยืนยัน */
+  posted?: boolean;
 }
 
 type CollectMethod = 'CASH' | 'TRANSFER' | 'QR';
@@ -132,7 +134,14 @@ export function RescheduleOverlay({
   const hasCollect = collect.gt(0);
 
   // JE preview — the exact lines the confirm will post (collect-first semantics).
-  const { data: jePreview } = useQuery<{ lines: JePreviewLine[]; isBalanced: boolean }>({
+  const { data: jePreview } = useQuery<{
+    lines: JePreviewLine[];
+    isBalanced: boolean;
+    /** รายการตั้งลูกหนี้งวด (2A) ของงวดนี้ — server ส่งมาเมื่อชำระทั้งก้อน (6b) */
+    accrual2A?: { lines: JePreviewLine[] };
+    /** วันที่ที่รายการ 2A จะถูกลง (ISO) — มีเฉพาะเมื่องวดยังไม่ตั้งลูกหนี้งวด */
+    accrualPostedAt?: string;
+  }>({
     queryKey: [
       'reschedule-je-preview',
       contractId,
@@ -178,6 +187,13 @@ export function RescheduleOverlay({
   });
 
   const newDueDate = quote?.newDueDate ?? null;
+
+  // รายการตั้งลูกหนี้งวด (2A) ที่จะลงพร้อมการยืนยัน — มีเมื่อชำระทั้งก้อน (6b) ของงวดที่ยังไม่ตั้ง
+  // ลูกหนี้งวด. 2A ที่ลงไปแล้ว (posted: true) ไม่ใช่รายการที่ "ลงตอนยืนยัน" จึงไม่แสดงในกล่องนี้
+  const pendingAccrualLines =
+    jePreview?.accrual2A && jePreview.accrual2A.lines.every((l) => l.posted === false)
+      ? jePreview.accrual2A.lines
+      : [];
 
   // ── Confirm (เงินสด/โอน — synchronous atomic collect + reschedule) ──────────
   const confirmMutation = useMutation({
@@ -494,6 +510,29 @@ export function RescheduleOverlay({
                       <div className="text-xs font-semibold text-muted-foreground mb-1.5 leading-snug">
                         รายการบัญชี (ลงทันทีตอนยืนยัน)
                       </div>
+                      {pendingAccrualLines.length > 0 && (
+                        <>
+                          <div className="text-[11px] font-medium text-muted-foreground mb-1 leading-snug">
+                            {`ตั้งลูกหนี้งวด (2A) — ลงวันที่ ${formatThaiDate(jePreview.accrualPostedAt, 'Asia/Bangkok')}`}
+                          </div>
+                          <div className="space-y-1 mb-2">
+                            {pendingAccrualLines.map((l, i) => (
+                              <div
+                                key={`accrual-${i}`}
+                                className="flex justify-between text-xs font-mono leading-snug"
+                              >
+                                <span className="text-muted-foreground">
+                                  {l.accountCode} {l.accountName}
+                                </span>
+                                <span>{Number(l.debit) > 0 ? `Dr ${l.debit}` : `Cr ${l.credit}`}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="text-[11px] font-medium text-muted-foreground mb-1 leading-snug">
+                            รับชำระ (2B)
+                          </div>
+                        </>
+                      )}
                       <div className="space-y-1">
                         {jePreview.lines.map((l, i) => (
                           <div

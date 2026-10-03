@@ -11,6 +11,7 @@ import {
   IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
@@ -28,9 +29,14 @@ const parseJson = ({ value }: { value: unknown }) => {
   }
 };
 
+/** เพดานความยาว IMEI / เลขเครื่อง — ใช้ร่วมกับ LookupDto และช่องกรอกหน้าเว็บ (maxLength) */
+export const IMEI_MAX = 32;
+
 export class CreateCaseDto {
   @IsString()
   @MinLength(4)
+  // พิมพ์ลงใบรับฝากในคอลัมน์ห้ามตัดบรรทัด — 32 พอสำหรับ IMEI สองซิม (15+1+15)
+  @MaxLength(IMEI_MAX, { message: `IMEI ยาวเกิน ${IMEI_MAX} ตัวอักษร` })
   imei!: string; // ตัวที่สแกน (ค้นซ้ำฝั่ง server เพื่อไม่เชื่อ client)
 
   @IsOptional()
@@ -47,6 +53,7 @@ export class CreateCaseDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(IMEI_MAX, { message: `เลขเครื่องยาวเกิน ${IMEI_MAX} ตัวอักษร` })
   deviceSerial?: string;
 
   @IsString()

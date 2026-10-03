@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 /**
  * Owner decision 2026-09-06 ("ลดขั้นตอนอนุมัติ/สั่ง"):
@@ -15,7 +16,7 @@ describe('PurchaseOrdersService — approval rules', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const build = async (prisma: any) => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     return module.get<PurchaseOrdersService>(PurchaseOrdersService);
   };

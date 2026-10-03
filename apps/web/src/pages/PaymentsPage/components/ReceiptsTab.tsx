@@ -21,6 +21,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { Download, MoreHorizontal, Send, XCircle } from 'lucide-react';
 import type { VoidedReceiptInfo } from '../types';
+import { RECEIPT_METHOD_LABELS, RECEIPT_TYPE_LABELS } from '@/lib/receipt-labels';
 
 
 interface Receipt {
@@ -57,19 +58,8 @@ interface ReceiptsResponse {
   summary: { totalAmount: number; totalCount: number };
 }
 
-const receiptTypeLabels: Record<string, string> = {
-  PAYMENT: 'งวดผ่อนชำระ',
-  DOWN_PAYMENT: 'เงินดาวน์',
-  EARLY_PAYOFF: 'ปิดก่อนกำหนด',
-  CREDIT_NOTE: 'ใบลดหนี้',
-  RESCHEDULE_FEE: 'ปรับดิว',
-};
-
-const methodLabels: Record<string, string> = {
-  CASH: 'เงินสด',
-  BANK_TRANSFER: 'โอนเงิน',
-  QR_EWALLET: 'QR/E-Wallet',
-};
+const receiptTypeLabels = RECEIPT_TYPE_LABELS;
+const methodLabels = RECEIPT_METHOD_LABELS;
 
 // Phase 3 Task 6 — CN แหล่งที่มา (JP5 repossession vs bad-debt write-off)
 const cnSourceLabels: Record<string, string> = {

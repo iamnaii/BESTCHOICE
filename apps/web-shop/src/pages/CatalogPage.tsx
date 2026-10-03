@@ -73,7 +73,7 @@ function Pill({ active, onClick, children }: PillProps) {
       className={cn(
         // Guide chip: white, #DCE7E3 border, green-ink text, Prompt medium;
         // active flips to the solid deep green.
-        'px-4 py-1.5 font-head text-[13px] font-medium rounded-full transition-colors leading-snug whitespace-nowrap',
+        'px-4 py-1.5 font-head text-sm font-medium rounded-full transition-colors leading-snug whitespace-nowrap',
         active
           ? 'bg-ink text-ink-foreground font-semibold'
           : 'bg-card text-accent-foreground ring-1 ring-inset ring-border hover:bg-muted',
@@ -132,7 +132,10 @@ export default function CatalogPage() {
     const model = searchParams.get('model') ?? undefined;
     const deviceOrigin = parseDeviceOrigin(searchParams.get('deviceOrigin'));
     setFilters((f) =>
-      f.condition === condition && f.search === search && f.model === model && f.deviceOrigin === deviceOrigin
+      f.condition === condition &&
+      f.search === search &&
+      f.model === model &&
+      f.deviceOrigin === deviceOrigin
         ? f
         : { ...f, condition, search, model, deviceOrigin },
     );
@@ -277,12 +280,12 @@ export default function CatalogPage() {
               </svg>
             </div>
             <div>
-              <h1 className="font-display text-[26px] sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground leading-snug">
+              <h1 className="font-display text-2xl sm:text-3xl md:text-4xl font-bold text-foreground leading-snug">
                 รวม iPhone มือ 1 และมือสอง
                 <br />
                 <span className="text-primary">คัดแล้ว ผ่อนได้บัตรเดียว</span>
               </h1>
-              <p className="mt-3 text-[13.5px] md:text-[15px] text-muted-foreground leading-snug">
+              <p className="mt-3 text-sm md:text-base text-muted-foreground leading-snug">
                 ตรวจ 30 จุด · รับประกันร้าน 60 วัน · ไม่ติด iCloud ทุกเครื่อง
               </p>
             </div>
@@ -307,7 +310,7 @@ export default function CatalogPage() {
                 type="button"
                 onClick={() => updateFilters({ ...filters, deviceOrigin: undefined })}
                 aria-label={`ล้างตัวกรอง${deviceOriginLabel(filters.deviceOrigin)}`}
-                className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800"
+                className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 font-head text-sm text-emerald-800"
               >
                 {deviceOriginLabel(filters.deviceOrigin)}
                 <X className="size-3.5" aria-hidden />
@@ -333,7 +336,7 @@ export default function CatalogPage() {
                       aria-pressed={active}
                       onClick={() => setPriceMode(m.v)}
                       className={cn(
-                        'inline-flex items-center gap-1.5 px-3.5 py-1 font-head text-[13px] rounded-full leading-snug whitespace-nowrap transition-all',
+                        'inline-flex items-center gap-1.5 px-3.5 py-1 font-head text-sm rounded-full leading-snug whitespace-nowrap transition-all',
                         active
                           ? 'bg-white text-primary font-semibold shadow-sm'
                           : 'font-medium text-zinc-600 hover:text-primary',
@@ -369,7 +372,7 @@ export default function CatalogPage() {
                 <DialogTrigger asChild>
                   <button
                     type="button"
-                    className="lg:hidden inline-flex items-center gap-1.5 px-4 py-1.5 text-[13px] rounded-full bg-card text-foreground ring-1 ring-inset ring-border leading-snug"
+                    className="lg:hidden inline-flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border leading-snug"
                   >
                     <SlidersHorizontal className="size-3.5" aria-hidden />
                     ตัวกรอง
@@ -393,7 +396,7 @@ export default function CatalogPage() {
                 <button
                   type="button"
                   onClick={clearSearch}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[13px] rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 font-head text-sm rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors leading-snug"
                 >
                   ค้นหา: “{filters.search}”
                   <X className="size-3.5" aria-label="ล้างคำค้นหา" />
@@ -411,7 +414,7 @@ export default function CatalogPage() {
                   aria-haspopup="listbox"
                   aria-expanded={sortOpen}
                   onClick={() => setSortOpen((o) => !o)}
-                  className="flex items-center gap-1.5 px-4 py-1.5 text-[13px] rounded-full bg-card text-foreground ring-1 ring-inset ring-border hover:ring-foreground/25 transition-shadow leading-snug"
+                  className="flex items-center gap-1.5 px-4 py-1.5 font-head text-sm rounded-full bg-card text-foreground ring-1 ring-inset ring-border hover:ring-foreground/25 transition-shadow leading-snug"
                 >
                   <span className="text-muted-foreground">เรียง:</span>
                   <span>{activeSortLabel}</span>
@@ -445,7 +448,7 @@ export default function CatalogPage() {
                                 sortBtnRef.current?.focus();
                               }}
                               className={cn(
-                                'block w-full text-left px-3.5 py-2 text-[13px] leading-snug',
+                                'block w-full text-left px-3.5 py-2 font-head text-sm leading-snug',
                                 selected
                                   ? 'text-emerald-700 font-medium bg-emerald-50'
                                   : 'text-foreground hover:bg-muted',

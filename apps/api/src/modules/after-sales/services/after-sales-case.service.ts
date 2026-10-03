@@ -19,8 +19,10 @@ import { ContractExchangeService } from '../../contract-exchange/contract-exchan
 import { DefectExchangeService } from '../../defect-exchange/defect-exchange.service';
 import { AfterSalesDocNumberService } from './after-sales-doc-number.service';
 import { AfterSalesLookupService, LookupResult } from './after-sales-lookup.service';
+import { AfterSalesLineService } from './after-sales-line.service';
 import { reconcileStage, RECONCILE_SELECT } from './after-sales-stage-reconcile';
 import { WINDOW_REASON_RE } from '../utils/after-sales-outcomes.util';
+import type { AfterSalesLineMoment } from '../utils/after-sales-line-copy.util';
 import { CreateCaseDto } from '../dto/create-case.dto';
 import { assertEvidenceImage, evidenceImageExtension } from '../../../utils/upload-image.util';
 import { hashLockKey } from '../../../utils/advisory-lock.util';
@@ -51,6 +53,7 @@ export class AfterSalesCaseService {
     private readonly lookupSvc: AfterSalesLookupService,
     private readonly contractExchange: ContractExchangeService,
     private readonly defect: DefectExchangeService,
+    private readonly line: AfterSalesLineService,
   ) {}
 
   // R29 (fix round 1) — ฟิลด์ที่ REPAIR กับกิ่งเปลี่ยนเครื่องเหมือนกันทุกประการ (~15 ฟิลด์)
@@ -454,6 +457,22 @@ export class AfterSalesCaseService {
         exchangeRequestId: result.exchangeRequestId,
       },
     });
+
+    // Task 3 — จังหวะ 1 (RECEIVED): หลัง commit + audit เสมอ — ทุก outcome รวม PRICED_EXCHANGE
+    // (ถึงจุดนี้ได้ก็ต่อเมื่อ submit()/compensation สำเร็จแล้วเท่านั้น — เคสที่ถูก CANCELLED เพราะ
+    // submit ล้มจะ throw ก่อนถึงบรรทัดนี้เสมอ จึงไม่ส่ง). fire-and-forget: LINE ล้มต้องไม่ทำให้
+    // การบันทึกล้ม (Global Constraints) — `.catch` เป็นเข็มขัดคู่กับ notifyMoment เองที่ไม่ throw.
+    // final fix I-3 — tier AUTO: submit() อนุมัติในตัว ⇒ result.stage (ที่ reconcile แล้วด้านบน — ทางออก
+    // อื่นเขียน stage ตรงตอนสร้าง: REPAIR = RECEIVED, SAME_MODEL = AWAITING_APPROVAL) อาจเป็น
+    // READY_FOR_PICKUP (PRICED) หรือ CLOSED (MEMO) แล้ว — จังหวะนั้นไม่มีผู้ส่งอื่นอีก (approvePriced
+    // รันซ้ำบนคำขอที่อนุมัติแล้วไม่ได้) จึงส่งต่อท้าย RECEIVED แบบเรียงลำดับ (.then) ให้ข้อความถึงตามลำดับ
+    const follow: AfterSalesLineMoment | null =
+      result.stage === 'READY_FOR_PICKUP' ? 'READY' : result.stage === 'CLOSED' ? 'CLOSED' : null;
+    void this.line
+      .notifyMoment(result.id, 'RECEIVED', user.id)
+      .then(() => (follow ? this.line.notifyMoment(result.id, follow, user.id) : undefined))
+      .catch(() => undefined);
+
     return result;
   }
 }

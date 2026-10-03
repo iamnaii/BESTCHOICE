@@ -63,9 +63,10 @@ export class ProductsController {
     @Query('model') model?: string,
     @Query('storage') storage?: string,
     @Query('deviceOrigin') deviceOrigin?: string,
+    @Query('compatibleWithProductId') compatibleWithProductId?: string,
   ) {
     const stockView = pagination.groupAccessories === 'true' || !!pagination.accessoryGroupId || !!pagination.sortBy;
-    if (stockView && !hasCrossBranchAccess(user)) {
+    if ((stockView || compatibleWithProductId) && !hasCrossBranchAccess(user)) {
       if (!user.branchId) throw new ForbiddenException('บัญชีนี้ยังไม่มีสาขาที่รับผิดชอบ');
       branchId = user.branchId;
     }
@@ -79,6 +80,7 @@ export class ProductsController {
       accessoryGroupId: pagination.accessoryGroupId,
       search, branchId, status, category, brand, supplierId, model, storage,
       deviceOrigin,
+      compatibleWithProductId,
       page: pagination.page,
       limit: pagination.limit,
     });

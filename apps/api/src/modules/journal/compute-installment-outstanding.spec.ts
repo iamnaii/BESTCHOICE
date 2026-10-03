@@ -84,35 +84,139 @@ describe('computeInstallmentOutstanding (DUE vs ACCRUED engine)', () => {
     expect(result.rows[0].daysOverdue).toBe(10);
   });
 
-  it('DUE asOf boundary: dueDate >= asOf is excluded, dueDate < asOf is included', async () => {
+  it('DUE: งวดที่ครบกำหนด "วันนี้" ตามปฏิทินไทยยังไม่นับ — นับเมื่อพ้นวันครบกำหนดแล้ว (ฝ่ายบัญชี 2026-09-28)', async () => {
     const client = mockClient();
+    const asOf = new Date('2026-08-26T17:30:00.000Z'); // 27 ส.ค. 2569 00:30 เวลาไทย = รอบ cron
     const result = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
       selection: 'DUE',
-      asOf: ASOF,
+      asOf,
       preloaded: {
         payments: [
           {
-            // Exactly on asOf — NOT overdue yet, must be excluded.
+            // ครบกำหนด 26 ส.ค. (เมื่อวาน) — พ้นวันแล้ว ต้องนับ เกินกำหนด 1 วัน
             installmentNo: 1,
             status: 'PENDING',
             amountDue: '1515.83',
             amountPaid: '0',
-            dueDate: ASOF,
+            dueDate: new Date('2026-08-25T17:00:00.000Z'),
           },
           {
-            // 1ms before asOf — overdue, must be included.
+            // ครบกำหนด 27 ส.ค. (วันนี้) — ลูกค้ายังจ่ายได้ทั้งวัน ต้องไม่นับ
             installmentNo: 2,
             status: 'PENDING',
             amountDue: '1515.83',
             amountPaid: '0',
-            dueDate: new Date(ASOF.getTime() - 1),
+            dueDate: new Date('2026-08-26T17:00:00.000Z'),
+          },
+        ],
+      },
+    });
+
+    expect(result.rows.map((r) => r.installmentNo)).toEqual([1]);
+    expect(result.rows[0].daysOverdue).toBe(1);
+  });
+
+  it('DUE: งวดเดียวกันเข้าฐานในรอบ 00:30 ของวันถัดไป และนับเป็นเกินกำหนด 1 วัน', async () => {
+    const client = mockClient();
+    const result = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'DUE',
+      asOf: new Date('2026-08-27T17:30:00.000Z'), // 28 ส.ค. 00:30 เวลาไทย
+      preloaded: {
+        payments: [
+          {
+            installmentNo: 2,
+            status: 'PENDING',
+            amountDue: '1515.83',
+            amountPaid: '0',
+            dueDate: new Date('2026-08-26T17:00:00.000Z'), // ครบกำหนด 27 ส.ค.
           },
         ],
       },
     });
 
     expect(result.rows).toHaveLength(1);
-    expect(result.rows[0].installmentNo).toBe(2);
+    expect(result.rows[0].daysOverdue).toBe(1);
+  });
+
+  it('DUE (ทางคิวรี): ส่งต้นวันไทยของ asOf เป็นเส้นตัดให้ฐานข้อมูล', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const client = mockClient({ payment: findMany });
+    await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'DUE',
+      asOf: new Date('2026-08-26T17:30:00.000Z'),
+    });
+
+    expect(findMany.mock.calls[0][0].where.dueDate).toEqual({
+      lt: new Date('2026-08-26T17:00:00.000Z'),
+    });
+  });
+
+  it('DUE: นับเป็นวันปฏิทินไทย แม้ dueDate ไม่ใช่เที่ยงคืนไทยพอดี — daysOverdue = 1 (ตัด 24 ชม.ตรง ๆ จะได้ 0)', async () => {
+    const client = mockClient();
+    const result = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'DUE',
+      asOf: new Date('2026-08-26T17:30:00.000Z'), // 27 ส.ค. 2569 00:30 เวลาไทย
+      preloaded: {
+        payments: [
+          {
+            installmentNo: 1,
+            status: 'PENDING',
+            amountDue: '1515.83',
+            amountPaid: '0',
+            dueDate: new Date('2026-08-26T10:00:00.000Z'), // 26 ส.ค. 17:00 เวลาไทย — ไม่ใช่เที่ยงคืนไทย
+          },
+        ],
+      },
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].daysOverdue).toBe(1);
+  });
+
+  it('ACCRUED: นับเป็นวันปฏิทินไทย แม้ dueDate ไม่ใช่เที่ยงคืนไทยพอดี — daysOverdue = 1 (ตัด 24 ชม.ตรง ๆ จะได้ 0)', async () => {
+    const client = mockClient();
+    const result = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'ACCRUED',
+      asOf: new Date('2026-08-26T17:30:00.000Z'), // 27 ส.ค. 2569 00:30 เวลาไทย
+      preloaded: {
+        installments: [{ installmentNo: 1, accrualJournalEntryId: 'je-1' }],
+        payments: [
+          {
+            installmentNo: 1,
+            status: 'PENDING',
+            amountDue: '1515.83',
+            amountPaid: '0',
+            dueDate: new Date('2026-08-26T10:00:00.000Z'), // 26 ส.ค. 17:00 เวลาไทย — ไม่ใช่เที่ยงคืนไทย
+          },
+        ],
+      },
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].daysOverdue).toBe(1);
+  });
+
+  it('ACCRUED: งวดที่ตั้งหนี้แล้วและครบกำหนดวันนี้ยังถูกคืน (ใบลดหนี้ต้องเห็นครบ) — daysOverdue = 0', async () => {
+    const client = mockClient();
+    const result = await computeInstallmentOutstanding(client, FIXTURE_17K_12M, {
+      selection: 'ACCRUED',
+      asOf: new Date('2026-08-27T07:00:00.000Z'), // 27 ส.ค. 14:00 เวลาไทย
+      preloaded: {
+        installments: [{ installmentNo: 1, accrualJournalEntryId: 'JE-1' }],
+        payments: [
+          {
+            installmentNo: 1,
+            status: 'PENDING',
+            amountDue: '1515.83',
+            amountPaid: '0',
+            dueDate: new Date('2026-08-26T17:00:00.000Z'), // ครบกำหนด 27 ส.ค. = วันนี้
+          },
+        ],
+      },
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].daysOverdue).toBe(0);
   });
 
   it('PAID installments are excluded from DUE even when present in a preloaded (unfiltered) array', async () => {
@@ -303,9 +407,8 @@ describe('computeInstallmentOutstanding (DUE vs ACCRUED engine)', () => {
 
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].dueDate).toEqual(instDueDate);
-    expect(result.rows[0].daysOverdue).toBe(
-      Math.floor((ASOF.getTime() - instDueDate.getTime()) / (24 * 60 * 60 * 1000)),
-    );
+    // Bangkok calendar days from 1 Jun to 1 Aug 2026 = 30 (June) + 31 (July) = 61.
+    expect(result.rows[0].daysOverdue).toBe(61);
   });
 
   it('rows expose installmentTotal + vatPerInst for both selections', async () => {

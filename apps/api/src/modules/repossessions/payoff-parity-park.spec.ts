@@ -13,6 +13,15 @@ import { RepossessionsService } from './repossessions.service';
  * spec เดิม `payoff-parity.spec.ts` ยังยืนอยู่โดยไม่ถูกแก้ — ไฟล์นี้เพิ่มมิติถังพัก
  * ล้วน ๆ ไม่ทับเคสเดิม
  */
+// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
+// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
+const notAccrued = {
+  accrualJournalEntryId: null,
+  accruedAmount: '0',
+  accruedVat: '0',
+  accruedInterest: '0',
+};
+
 describe('Payoff parity (ถังพักงวดสุดท้าย): JP4 quote === JP5 preview + ยอดปลดหนี้ 21-1103 ก้อนเดียวกัน', () => {
   const dec = (v: string | number) => new Prisma.Decimal(v);
 
@@ -80,7 +89,9 @@ describe('Payoff parity (ถังพักงวดสุดท้าย): JP4 
       installmentSchedule: {
         findMany: jest
           .fn()
-          .mockResolvedValue(Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1 }))),
+          .mockResolvedValue(
+            Array.from({ length: 12 }, (_, i) => ({ installmentNo: i + 1, ...notAccrued })),
+          ),
       },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
     };
@@ -138,6 +149,24 @@ describe('Payoff parity (ถังพักงวดสุดท้าย): JP4 
       // และต้องตรงกับขา Dr 21-1103 ที่ JP4 preview แสดง
       const jp4ParkLine = epQuote.journalPreview.lines.find((l) => l.accountCode === '21-1103');
       expect(jp4ParkLine?.debit).toBe(epQuote.rescheduleAdvanceApplied.toFixed(2));
+    },
+  );
+
+  // PR6 — คำตอบฝ่ายบัญชี ฉบับรวม ข้อ 5 (30/09/2569) "แบบ (ก)": JP5 ลงส่วนลดยอดปิดที่ 52-1106 ด้วยยอดเดียวกับบนจอ —
+  // ต้องเท่า discountAmount ของใบเสนอปิดยอดก่อนกำหนดเสมอ (computePayoffQuote ตัวเดียว · ถังพักหักก่อนคิดส่วนลด)
+  it.each([50, 30])(
+    'PR6: ส่วนลด %i%% + ถังพัก 354 — ส่วนลดที่ JP5 ลง 52-1106 = discountAmount ของใบเสนอปิดยอดก่อนกำหนด',
+    async (discountPct) => {
+      const contract = makeContract('354');
+      const { ep, repo, previewJe } = makeServices(contract);
+
+      const epQuote = await ep.getEarlyPayoffQuote(contract.id, discountPct);
+      const repoPreview = await repo.previewCalculation(contract.id, { discountPct });
+
+      const jp5Input = previewJe.mock.calls[0][0] as { discount?: Prisma.Decimal };
+      expect(epQuote.discountAmount).toBeGreaterThan(0);
+      expect(jp5Input.discount!.toFixed(2)).toBe(epQuote.discountAmount.toFixed(2));
+      expect(repoPreview.calculation.discountAmount).toBe(epQuote.discountAmount);
     },
   );
 

@@ -3,8 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 import api from '@/lib/api';
 import LineGreetingPage from './LineGreetingPage';
-import { buildFlexJson, type FlexContent } from './broadcast/message';
-import { FlexPreviewCard } from './broadcast/MessagePreviewBubble';
+import { buildFlexJson, type FlexContent } from '@/lib/line-flex';
+import { FlexPreviewCard } from '@/components/line-message/FlexPreviewCard';
 
 vi.mock('@/lib/api', () => ({
   default: { get: vi.fn(), put: vi.fn() },

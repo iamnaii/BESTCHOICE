@@ -14,4 +14,23 @@ describe('product disclosure snapshot', () => {
     expect(readProductDisclosure(null)).toBeNull();
     expect(readProductDisclosure({ version: 99 })).toBeNull();
   });
+  it('freezes parts history for the customer and ignores later edits', () => {
+    const product = {
+      category: 'PHONE_USED', deviceOrigin: 'THAI' as const, shopWarrantyDays: 60, warrantyTerms: null,
+      partsHistory: 'BATTERY_NON_GENUINE' as const, partsHistoryNote: ' เปลี่ยนแบต 26 ก.ย. 2569 ',
+    };
+    const snapshot = captureProductDisclosure(product, '60');
+    product.partsHistory = 'ORIGINAL' as never;
+    expect(readProductDisclosure(snapshot)).toMatchObject({ partsHistory: 'BATTERY_NON_GENUINE', partsHistoryNote: 'เปลี่ยนแบต 26 ก.ย. 2569' });
+    expect(disclosureText(snapshot)).toBe(
+      'เครื่องไทย · ประกันร้าน 60 วัน · ประวัติอะไหล่: เปลี่ยนแบตใหม่ (ไม่ใช่แบตแท้ Apple) · เปลี่ยนแบต 26 ก.ย. 2569',
+    );
+  });
+  it('omits parts history when not specified and drops a malformed value without losing the snapshot', () => {
+    const snapshot = captureProductDisclosure({ category: 'PHONE_USED', partsHistory: null, partsHistoryNote: 'ignored' }, '60');
+    expect(snapshot).not.toHaveProperty('partsHistory');
+    expect(disclosureText(snapshot)).not.toContain('ประวัติอะไหล่');
+    const tampered = readProductDisclosure({ version: 1, deviceOrigin: null, shopWarrantyDays: 0, warrantyTerms: null, partsHistory: 'MADE_UP' });
+    expect(tampered).toEqual({ version: 1, deviceOrigin: null, shopWarrantyDays: 0, warrantyTerms: null });
+  });
 });

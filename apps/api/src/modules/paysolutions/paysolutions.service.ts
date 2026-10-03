@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Optional,
   forwardRef,
 } from '@nestjs/common';
 import { OnlineOrderSaleAdapter } from '../shop-orders/online-order-sale.adapter';
@@ -15,6 +16,7 @@ import { PaymentReceiptTemplate } from '../journal/cpa-templates/payment-receipt
 import { Vat60dayReversalTemplate } from '../journal/cpa-templates/vat-60day-reversal.template';
 import { PaymentsService } from '../payments/payments.service';
 import { BadDebtService } from '../accounting/bad-debt.service';
+import { ReceiptsService } from '../receipts/receipts.service';
 import type { PartialPaymentLink } from '@prisma/client';
 import { PaySolutionsGatewayClient } from './services/paysolutions-gateway.client';
 import {
@@ -78,6 +80,10 @@ export class PaySolutionsService {
     @Inject(forwardRef(() => PaymentsService))
     private paymentsService: PaymentsService,
     private badDebtService: BadDebtService,
+    // PR3: ใบเสร็จของเงินที่เข้าทางลิงก์ชำระ (webhook). @Optional — spec/e2e เดิมที่ไม่ส่ง = ไม่ออกใบ
+    @Optional()
+    @Inject(forwardRef(() => ReceiptsService))
+    private receiptsService?: ReceiptsService,
   ) {}
 
   /**
@@ -123,6 +129,7 @@ export class PaySolutionsService {
           sendEarlyPayoffSuccessNotification: (contractId, paidAmount) =>
             this.sendEarlyPayoffSuccessNotification(contractId, paidAmount),
         },
+        this.receiptsService,
       );
       this._services = { gateway, intent, confirmation, webhook };
     }

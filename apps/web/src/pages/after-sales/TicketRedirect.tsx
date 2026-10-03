@@ -1,6 +1,5 @@
-import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Navigate, useParams } from 'react-router';
+import { Link, Navigate, useParams } from 'react-router';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import { afterSalesKeys } from './after-sales';
@@ -12,15 +11,11 @@ function is404(error: unknown): boolean {
   return status === 404;
 }
 
-// เส้นทางเก่า /insurance/:id (ใบซ่อม) → หาเคสหลังการขายที่ผูกใบซ่อมนี้แล้วเด้งไปหน้าใหม่
-// /after-sales/:id — ถ้าไม่พบ (404, ใบซ่อมเก่าที่ยังไม่มีเคสหลังการขาย) แสดงหน้าใบซ่อมเดิม
-// ต่อไปตามปกติ ให้ปุ่มภายในที่ยังไม่ย้าย (PR 2) ยังใช้งานได้.
-//
-// A3 (final-fix brief, 2026-09-24) — fallback ไปหน้าเดิมเฉพาะตอน 404 เท่านั้น (ใบซ่อมเก่าที่ยัง
-// ไม่มีเคสหลังการขายจริง ๆ) — error อื่น (5xx/timeout/เครือข่ายล่ม) ต้อง **ไม่** ปล่อยผู้ใช้ไปเจอ
-// หน้าใบซ่อมเดิม เพราะปุ่ม bypass ของมันถูกถอดออกจากเส้นทางใหม่แล้ว (R21) — ถ้าเด้งไปหน้าเดิมทุก
-// error ผู้ใช้จะเจอหน้าที่ดูใช้งานได้ปกติแต่ที่จริงระบบกำลังพัง ให้แสดง error UI + ปุ่มลองใหม่แทน
-export default function TicketRedirect({ fallback }: { fallback: ReactNode }) {
+// เส้นทางเก่า /insurance/:id (ใบซ่อม) → หาเคสหลังการขายที่ผูกใบซ่อมนี้แล้วเด้งไป /after-sales/:id
+// PR 4 (2026-09-26) — หน้าใบซ่อมเดิม (fallback) ถูกถอดแล้ว: ใบซ่อมทุกใบบน prod มีเคสผูกครบ และพ้น
+// กำหนด "≥2 รุ่น deploy" ของสเปกข้อ 11 ⇒ 404 แสดงข้อความ + ลิงก์ไปหน้าหลังการขายแทน
+// error อื่น (5xx/เครือข่าย) ยังแสดง error UI + ปุ่มลองใหม่ (A3 final-fix เดิม)
+export default function TicketRedirect() {
   const { id } = useParams<{ id: string }>();
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -33,10 +28,8 @@ export default function TicketRedirect({ fallback }: { fallback: ReactNode }) {
     retry: false,
   });
 
-  if (!id) return <>{fallback}</>;
   if (isLoading) return null;
-  if (isError) {
-    if (is404(error)) return <>{fallback}</>;
+  if (isError && !is404(error)) {
     return (
       <QueryBoundary isLoading={false} isError error={error} onRetry={refetch}>
         <></>
@@ -44,5 +37,21 @@ export default function TicketRedirect({ fallback }: { fallback: ReactNode }) {
     );
   }
   if (data?.id) return <Navigate to={`/after-sales/${data.id}`} replace />;
-  return <>{fallback}</>;
+  return (
+    <div className="mx-auto mt-10 max-w-md space-y-3 rounded-xl border border-border bg-card p-6 text-center">
+      <p className="text-base font-semibold leading-snug text-foreground">
+        ไม่พบเคสหลังการขายของใบซ่อมนี้
+      </p>
+      <p className="text-sm leading-snug text-muted-foreground">
+        งานซ่อมทั้งหมดย้ายมาอยู่ที่หน้า "หลังการขาย" แล้ว — ค้นจาก IMEI
+        หรือชื่อ/เบอร์ลูกค้าได้ที่นั่น
+      </p>
+      <Link
+        to="/after-sales"
+        className="inline-flex h-10 items-center rounded-lg border border-border bg-card px-3.5 text-sm font-semibold leading-snug text-primary hover:underline"
+      >
+        ไปหน้าหลังการขาย
+      </Link>
+    </div>
+  );
 }

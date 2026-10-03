@@ -75,7 +75,7 @@ function DownPaymentInput({
     (amtRaw.trim() !== '' && Number.isFinite(amtTyped) && amtTyped < minAmount);
 
   const box =
-    'min-h-11 border border-border rounded-md px-2 py-1 text-sm bg-background text-foreground ' +
+    'min-h-11 border border-border rounded-md px-2 py-1 text-base md:text-sm bg-background text-foreground ' +
     'focus:outline-none focus:ring-2 focus:ring-primary num text-right';
 
   function commitPct() {
@@ -351,7 +351,7 @@ function InstallmentCalculator({
               id="months-select"
               value={months}
               onChange={(event) => setMonths(Number(event.target.value))}
-              className="min-h-11 rounded-md border border-border bg-background px-3 py-1 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="min-h-11 rounded-md border border-border bg-background px-3 py-1 text-base md:text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
               {MONTHS_OPTIONS.map((value) => (
                 <option key={value} value={value}>

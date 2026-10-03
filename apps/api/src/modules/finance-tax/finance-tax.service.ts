@@ -1,8 +1,18 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  computePp30OutputVat,
+  isVatSettlementEntry,
+  PP30_VAT_SETTLEMENT_ACCOUNT,
+  pp30MonthRange,
+  resolvePp30CompanyId,
+  toPp30OutputVatJson,
+} from '../tax/pp30-output-vat';
 
 // VAT accounts used across tasks
-const VAT_OUTPUT_ACCOUNTS = ['21-2101'];
+// 21-2101 + 21-2103 = แถวภาษีขายของตาราง `lines` (แสดงผลเท่านั้น) — ยอดมาจาก computePp30OutputVat (21-2103 ยังไม่รวม)
+const VAT_OUTPUT_ACCOUNTS = ['21-2101', '21-2103'];
 const VAT_DEFERRED_ACCOUNTS = ['21-2102'];
 const VAT_INPUT_ACCOUNTS = ['11-4101'];
 const VAT_INPUT_BEHALF_ACCOUNTS = ['11-2104'];
@@ -58,19 +68,39 @@ export class FinanceTaxService {
   constructor(private prisma: PrismaService) {}
 
   /**
-   * Task 2 — VAT monthly aggregation
-   * Queries JournalLines for VAT accounts within the given month.
+   * Task 2 — VAT monthly aggregation (หน้า /finance/vat เมนู "VAT (ภ.พ.30)")
+   *
+   * ภาษีขาย (`vatOutput` + `outputVat`) มาจากตัวคำนวณเดียวของ ภ.พ.30 `computePp30OutputVat` (21-2101 สุทธิ · ภาษีขาย
+   * 60 วัน 21-2103 อยู่ใน `outputVat.mandatory60Day*` เป็นข้อมูลประกอบ ยังไม่รวม — `PP30_INCLUDES_MANDATORY_60DAY`)
+   * — ตัวเดียวกับ `TaxPreviewService.previewPP30`. หน้าเมนูไม่ส่ง `companyId` ⇒ ภาษีขายเป็นของบริษัท FINANCE.
+   * ภาษีซื้อ / ภาษีขายรอเรียกเก็บ / ตารางรายการ: บัญชี สถานะ และเครื่องหมายเดิม ไม่กรองบริษัทเมื่อไม่ส่ง `companyId` (กติกาเดิม)
+   * — เปลี่ยนเฉพาะการบวกเป็น Decimal และขอบเดือนเป็นปฏิทินไทย (เท่าเดิมบน prod ที่รัน TZ=Asia/Bangkok).
+   *
+   * รายการปิด/ชำระภาษีขาย (มีบรรทัดที่ยังไม่ถูกลบบนบัญชี 21-3201 — ตรวจด้วย `isVatSettlementEntry` ตัวเดียวกับ
+   * ตัวคำนวณ) อยู่นอกยอด ภ.พ.30 ของเดือนทั้งใบ ไม่ใช่แค่ 21-2101: ภาษีซื้อ (`vatInput`) ต้องข้ามบรรทัด 11-4101
+   * ของรายการปิดด้วย (ไม่งั้นเครดิตภาษีซื้อที่ถูก "ใช้" ตอนปิดยอดจะไปหักล้างภาษีซื้อใหม่ของเดือนเดียวกัน) และ
+   * ตารางรายการ (`lines`/`lineCount`) ไม่แสดงบรรทัดใดของรายการปิดเลย (Task 3 fix round 1, controller F1,
+   * 2026-09-30 — narrow relaxation ของ V4 ที่กระทบเฉพาะรายการที่แตะ 21-3201 เท่านั้น; `getInputVatLineItems`
+   * ของ `TaxPreviewService` ไม่ถูกแตะ).
    * Maps entryNumber → documentNumber per SP1 convention.
    */
   async getVatMonthly(year: number, month: number, companyId?: string) {
-    const period = buildPeriod(year, month);
+    // ตรวจปี/เดือนก่อน query ใด ๆ (ค่าผิดรูป = 400 "ปี/เดือนไม่ถูกต้อง")
+    const range = pp30MonthRange(year, month);
+    const period: PeriodBounds = { year, month, start: range.gte, end: range.lt };
+
+    const output = await computePp30OutputVat(this.prisma, {
+      companyId: await resolvePp30CompanyId(this.prisma, companyId),
+      year,
+      month,
+    });
 
     const entryWhere: Record<string, unknown> = {
       deletedAt: null,
       status: 'POSTED',
       entryDate: {
-        gte: period.start,
-        lt: period.end,
+        gte: range.gte,
+        lt: range.lt,
       },
     };
 
@@ -85,7 +115,7 @@ export class FinanceTaxService {
       ...VAT_INPUT_BEHALF_ACCOUNTS,
     ];
 
-    const lines = await this.prisma.journalLine.findMany({
+    const rawLines = await this.prisma.journalLine.findMany({
       where: {
         deletedAt: null,
         accountCode: { in: allVatAccountCodes },
@@ -97,6 +127,12 @@ export class FinanceTaxService {
             entryNumber: true,
             postedAt: true,
             description: true,
+            // Task 3 fix round 1 (F1): ตรวจว่ารายการนี้เป็นรายการปิด/ชำระภาษีขายหรือไม่ — take 1 พอ (เหมือนตัวคำนวณ)
+            lines: {
+              where: { accountCode: PP30_VAT_SETTLEMENT_ACCOUNT, deletedAt: null },
+              select: { id: true },
+              take: 1,
+            },
           },
         },
       },
@@ -106,22 +142,24 @@ export class FinanceTaxService {
       ],
     });
 
-    // Aggregate per-account totals
-    let vatOutput = 0; // 21-2101: credit - debit (liability account)
-    let vatDeferred = 0; // 21-2102: credit - debit (liability account)
-    let vatInput = 0; // 11-4101: debit - credit (asset account)
+    // รายการปิด/ชำระภาษีขายอยู่นอกยอด ภ.พ.30 ของเดือนทั้งใบ — ทั้งภาษีซื้อและตารางรายการ (fix round 1, F1)
+    const lines = rawLines.filter((l) => !isVatSettlementEntry(l.journalEntry));
+
+    // ภาษีขายรอเรียกเก็บ (21-2102) และภาษีซื้อ (11-4101) — Decimal (เดิม Number + Math.round)
+    let vatDeferred = new Prisma.Decimal(0); // 21-2102: credit - debit (liability account)
+    let vatInput = new Prisma.Decimal(0); // 11-4101: debit - credit (asset account)
 
     const responseLines: VatLine[] = lines.map((l) => {
-      const debit = Number(l.debit ?? 0);
-      const credit = Number(l.credit ?? 0);
+      const debit = new Prisma.Decimal(l.debit ?? 0);
+      const credit = new Prisma.Decimal(l.credit ?? 0);
 
-      if (VAT_OUTPUT_ACCOUNTS.includes(l.accountCode)) {
-        vatOutput += credit - debit;
-      } else if (VAT_DEFERRED_ACCOUNTS.includes(l.accountCode)) {
-        vatDeferred += credit - debit;
+      if (VAT_DEFERRED_ACCOUNTS.includes(l.accountCode)) {
+        vatDeferred = vatDeferred.plus(credit).minus(debit);
       } else if (VAT_INPUT_ACCOUNTS.includes(l.accountCode)) {
-        vatInput += debit - credit; // asset increases on debit
+        vatInput = vatInput.plus(debit).minus(credit); // asset increases on debit
       }
+      // 21-2101 / 21-2103 แสดงในตารางเท่านั้น — ยอดภาษีขายมาจาก `output` (ตัวคำนวณเดียว)
+      // ตารางแสดงวันที่ post (`postedAt`) ขณะที่เดือนนับจาก `entryDate` (ของเดิม · เท่ากันสำหรับรายการที่ระบบลง)
       // VAT_INPUT_BEHALF_ACCOUNTS (11-2104) tracked in lines but not in netVat
       // per CLAUDE.md: 11-2104 is ม.83/6 cases, not claimable on ภ.พ.30
 
@@ -130,20 +168,21 @@ export class FinanceTaxService {
         documentNumber: l.journalEntry.entryNumber, // entryNumber → documentNumber
         postedAt: l.journalEntry.postedAt,
         description: l.description ?? l.journalEntry.description,
-        debit,
-        credit,
+        debit: debit.toNumber(), // ค่าแสดงผลรายบรรทัด — ไม่ใช้บวกยอด
+        credit: credit.toNumber(),
       };
     });
 
     // netVat = vatOutput - vatInput (standard ภ.พ.30 calculation)
-    const netVat = vatOutput - vatInput;
+    const netVat = output.totalOutputVat.minus(vatInput);
 
     return {
       period,
-      vatOutput: Math.round(vatOutput * 100) / 100,
-      vatDeferred: Math.round(vatDeferred * 100) / 100,
-      vatInput: Math.round(vatInput * 100) / 100,
-      netVat: Math.round(netVat * 100) / 100,
+      vatOutput: output.totalOutputVat.toFixed(2),
+      vatDeferred: vatDeferred.toFixed(2),
+      vatInput: vatInput.toFixed(2),
+      netVat: netVat.toFixed(2),
+      outputVat: toPp30OutputVatJson(output),
       lineCount: lines.length,
       lines: responseLines,
     };

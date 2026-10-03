@@ -75,7 +75,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
       repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       product: {
         findUnique: jest.fn().mockResolvedValue({
-          branchId: 'br-1', id: 'p1', name: 'Phone', imeiSerial: '123456789012345', po: null,
+          brand: 'Apple', model: 'iPhone 15', branchId: 'br-1', id: 'p1', name: 'Phone', imeiSerial: '123456789012345', po: null,
           status: 'IN_STOCK',
           deletedAt: null,
           wasPreviouslyDamaged: false,
@@ -216,12 +216,22 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
   // (b) 2-product bundle → 2 JEs, per-product keys, revenues sum to net
   // ─────────────────────────────────────────────────────────────────────────────
 
+  it.each(['iPhone 15 Pro', 'iPhone 15 Pro Max', 'iPhone 16', ''])('rejects incompatible gift %s before any stock write', async model => {
+    tx.product.findMany.mockResolvedValueOnce([{ id: 'p2', name: 'Wrong case', brand: 'Apple', model,
+      category: 'ACCESSORY', branchId: 'br-1', status: 'IN_STOCK', deletedAt: null, wasPreviouslyDamaged: false }]);
+    await expect(service.createCashSale({ productId: 'p1', branchId: 'br-1', customerId: 'c1', sellingPrice: 10000,
+      bundleProductIds: ['p2'], paymentMethod: 'CASH' } as any, 'sp-1', 10000, 0, { role: 'SALES', branchId: 'br-1' }))
+      .rejects.toThrow(/ยังไม่ได้ระบุว่ารองรับ/);
+    expect(tx.product.updateMany).not.toHaveBeenCalled();
+    expect(tx.sale.create).not.toHaveBeenCalled();
+  });
+
   it('(b) 2-product bundle (PHONE_NEW + ACCESSORY) → 2 JEs, per-product keys, revenues sum to net', async () => {
     // markBundleProductsSold calls findMany({where:{id:{in:['p2']},deletedAt:null},...}) — return 1 item
     // JE allocation block calls findMany({where:{id:{in:['p1','p2']}},...}) — return both with full data
     tx.product.findMany
       .mockResolvedValueOnce([
-        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY', brand: 'Apple', model: 'iPhone 15' },
       ])
       .mockResolvedValueOnce([
         { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(6000), status: 'IN_STOCK', name: 'Phone' },
@@ -350,7 +360,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
     // JE allocation block calls findMany({where:{id:{in:['p1','p2']}},...}) — return both with full data
     tx.product.findMany
       .mockResolvedValueOnce([
-        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY' },
+        { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY', brand: 'Apple', model: 'iPhone 15' },
       ])
       .mockResolvedValueOnce([
         { branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000), status: 'IN_STOCK', name: 'Phone' },
@@ -405,7 +415,7 @@ describe('SaleWriterService — createCashSale JE wiring', () => {
 
   it('(e) createCashSale: ตัด hold ของเครื่องหลัก + ของแถม ภายใน tx เดียวกัน', async () => {
     tx.product.findMany
-      .mockResolvedValueOnce([{ branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY' }])
+      .mockResolvedValueOnce([{ branchId: 'br-1', deletedAt: null, wasPreviouslyDamaged: false, id: 'p2', status: 'IN_STOCK', name: 'Case', category: 'ACCESSORY', brand: 'Apple', model: 'iPhone 15' }])
       .mockResolvedValueOnce([
         { id: 'p1', category: 'PHONE_NEW', costPrice: new Decimal(7000) },
         { id: 'p2', category: 'ACCESSORY', costPrice: new Decimal(500) },

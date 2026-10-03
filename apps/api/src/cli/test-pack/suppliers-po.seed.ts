@@ -22,7 +22,8 @@ const SUPPLIERS: Array<{ name: string; phone: string; isRepairCenter: boolean }>
  * ค่า POStatus จริง: DRAFT APPROVED ORDERED PENDING PARTIALLY_RECEIVED FULLY_RECEIVED CANCELLED
  * (**ไม่มี `PARTIAL`** — ชื่อเต็มคือ PARTIALLY_RECEIVED)
  *
- * ไม่โพสต์ JE — โมดูล purchase-orders ทั้งสายไม่แตะสมุดบัญชี
+ * seed สร้างแถวตรง ๆ จึงไม่โพสต์ JE — แต่ผู้ทดสอบที่ "รับของ" จากใบเหล่านี้บนหน้าจอจะได้รายการบัญชี
+ * รับสินค้าเข้า (flow `shop-goods-receiving`, 2026-09-29) ซึ่ง cleanup ด้านล่างกวาดให้
  */
 const POS: Array<{
   key: string;
@@ -114,6 +115,9 @@ export const suppliersPoSeeder: DomainSeeder = {
           orderDate: ctx.today,
           // ห้ามคูณเงินเป็น float — Global Constraint: เงินต้องเป็น Prisma.Decimal
           totalAmount: new Prisma.Decimal(p.unitPrice).mul(p.qty),
+          // ซัพพลายเออร์ทดสอบไม่จด VAT ไม่มีส่วนลด ⇒ ยอดสุทธิ = ยอดรวม (คอลัมน์นี้ default 0 —
+          // ถ้าไม่ตั้ง หน้าเจ้าหนี้จะเห็นใบนี้เป็นยอด 0)
+          netAmount: new Prisma.Decimal(p.unitPrice).mul(p.qty),
           status: p.status,
           notes,
           createdById: ctx.refs.reviewerId,
@@ -155,7 +159,26 @@ export const suppliersPoSeeder: DomainSeeder = {
       where: { name: { startsWith: TEST_NAME_PREFIX }, deletedAt: null },
       select: { id: true, name: true },
     });
+    // รายการบัญชีรับสินค้าเข้าของใบทดสอบ — ไม่มี FK บนใบรับของ ตามได้ทาง metadata เท่านั้น
+    // (`ShopGoodsReceivingTemplate` stamp `flow` + `poId`) ถ้าไม่กวาด สินค้าคงคลัง/เจ้าหนี้ในสมุดจะค้างยอดทดสอบ
+    const receivingJes = pos.length
+      ? await ctx.prisma.journalEntry.findMany({
+          where: {
+            AND: [
+              { metadata: { path: ['flow'], equals: 'shop-goods-receiving' } as never },
+              { OR: pos.map((p) => ({ metadata: { path: ['poId'], equals: p.id } as never })) },
+            ],
+          },
+          select: { id: true, entryNumber: true },
+          orderBy: { entryNumber: 'asc' },
+        })
+      : [];
     for (const p of pos) console.log(`     ${p.poNumber}`);
+    if (receivingJes.length) {
+      // เลข JE คือหลักฐานบัญชี — พิมพ์ให้คนกดเห็นก่อนลบถาวรเสมอ ทั้ง dry-run และ live
+      console.log(`     กวาดรายการบัญชีรับสินค้าเข้าของใบทดสอบ ${receivingJes.length} ใบ:`);
+      for (const j of receivingJes) console.log(`       ${j.entryNumber}`);
+    }
     // เครื่องพวกนี้ไม่มี marker — บรรทัดนี้คือโอกาสเดียวที่ผู้สั่งล้าง (ทั้ง dry-run และของจริง)
     // จะเห็นว่ากำลังจะลบเครื่องไหนบ้าง
     for (const p of products)
@@ -171,6 +194,12 @@ export const suppliersPoSeeder: DomainSeeder = {
     if (!dryRun && (pos.length || suppliers.length)) {
       const now = new Date();
       await ctx.prisma.$transaction(async (tx) => {
+        if (receivingJes.length) {
+          const jeIds = receivingJes.map((j) => j.id);
+          await tx.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
+          await tx.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
+        }
         if (pos.length) {
           const poIds = pos.map((p) => p.id);
           // ทุกตารางในสายนี้มี deletedAt ⇒ soft delete ทั้งหมด (กฎ .claude/rules/database.md)
@@ -226,6 +255,7 @@ export const suppliersPoSeeder: DomainSeeder = {
       removed: {
         ใบสั่งซื้อ: pos.length,
         เครื่องรับเข้าจากใบสั่งซื้อ: products.length,
+        รายการบัญชีรับสินค้าเข้า: receivingJes.length,
         ซัพพลายเออร์ทดสอบ: suppliers.length,
       },
       warnings,

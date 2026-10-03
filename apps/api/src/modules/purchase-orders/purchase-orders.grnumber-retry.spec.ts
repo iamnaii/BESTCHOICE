@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { poJournalTestProviders } from './po-journal.test-helpers';
 
 describe('goodsReceiving — retries on grNumber unique collision (P2002)', () => {
   it('retries the transaction once on P2002 then succeeds', async () => {
@@ -17,7 +18,7 @@ describe('goodsReceiving — retries on grNumber unique collision (P2002)', () =
       }),
     };
     const module: TestingModule = await Test.createTestingModule({
-      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }],
+      providers: [PurchaseOrdersService, { provide: PrismaService, useValue: prisma }, ...poJournalTestProviders().providers],
     }).compile();
     const service = module.get<PurchaseOrdersService>(PurchaseOrdersService);
 

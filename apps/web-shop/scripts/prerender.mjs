@@ -13,7 +13,7 @@
  *   route ถัดไปเรนเดอร์จาก snapshot ที่เปื้อนแล้ว (meta/analytics ของหน้าแรกติดไปด้วย)
  * - shell สะอาด (index.html ที่ vite build ออกมา) ถูกเก็บเป็น dist/spa-shell.html
  *   และ firebase.json ชี้ rewrite ** ไปที่นั่น — route ที่ไม่ได้ prerender
- *   (/products/:id, /cart, ...) จึงได้ shell เปล่าแบบเดิมเป๊ะ ไม่ใช่หน้าแรกเต็ม ๆ
+ *   (/products/:id, /account, ...) จึงได้ shell เปล่าแบบเดิมเป๊ะ ไม่ใช่หน้าแรกเต็ม ๆ
  *   ที่ canonical ชี้ผิดหน้า
  * - คำขอออกนอกเครื่องทุกตัวถูกคุม: /api/* GET forward ไป PRERENDER_API_BASE
  *   (default = prod, ล้ม = 503 ให้หน้าโชว์ empty state), endpoint ตั้งค่า analytics
@@ -32,7 +32,7 @@ const PORT = 4180;
 const BASE = `http://localhost:${PORT}`;
 const API_BASE = process.env.PRERENDER_API_BASE ?? 'https://www.bestchoicephone.com';
 
-// 11 หน้าใน sitemap.xml — เพิ่ม/ลด route ที่นี่ต้องอัป sitemap คู่กันเสมอ
+// 13 หน้าใน sitemap.xml — เพิ่ม/ลด route ที่นี่ต้องอัป sitemap คู่กันเสมอ
 // apiDependent = เนื้อหาหลักมาจาก API: ถ้า API ล่มระหว่าง deploy ให้ผ่านพร้อมคำเตือน
 // (หน้า static ล้วนห้ามมี error state เด็ดขาด — เจอ = build แดง)
 const ROUTES = [
@@ -42,7 +42,6 @@ const ROUTES = [
   { path: '/how-it-works', apiDependent: false },
   { path: '/installment-terms', apiDependent: false },
   { path: '/sell', apiDependent: false },
-  { path: '/saving-plan', apiDependent: false },
   { path: '/about', apiDependent: false },
   { path: '/contact', apiDependent: false },
   { path: '/shipping', apiDependent: false },

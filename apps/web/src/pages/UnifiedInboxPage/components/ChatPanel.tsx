@@ -522,7 +522,7 @@ export default function ChatPanel({
 
   return (
     <div
-      className="@container relative flex-1 flex flex-col h-full"
+      className="@container relative flex-1 flex min-h-0 min-w-0 flex-col h-full"
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
@@ -539,7 +539,7 @@ export default function ChatPanel({
         </div>
       )}
       {/* Header — ชื่อ · รอตอบนานแค่ไหน · ใครดูแล · ปุ่มที่รู้ว่าทำอะไร (แบบที่เจ้าของโอเค 2026-09-06) */}
-      <div className="flex items-center gap-2 @lg:gap-3 px-2.5 @lg:px-3.5 py-2 border-b border-border/60 bg-card">
+      <div className="flex shrink-0 flex-wrap @md:flex-nowrap items-center gap-2 @lg:gap-3 px-2.5 @lg:px-3.5 py-2 border-b border-border/60 bg-card">
           <button onClick={onBack} aria-label="กลับ" className="lg:hidden p-1 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -554,7 +554,7 @@ export default function ChatPanel({
           {/* จุดสีช่องทางที่มุมรูป (ฟ้า = Facebook · เขียว = LINE) แทนเม็ดยาเต็มใบ */}
           <span aria-hidden className={cn('absolute -bottom-0.5 -right-0.5 size-3 rounded-full ring-2 ring-card', channelDotClass)} />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-32 @md:basis-0">
           <h3 className="truncate text-[15px] font-semibold leading-tight text-foreground" title={displayName}>{displayName}</h3>
           <div className="mt-0.5 flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-[12px] text-muted-foreground [&>*]:shrink-0">
             <span>{channelLabel}</span>
@@ -618,7 +618,7 @@ export default function ChatPanel({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-1 @lg:gap-1.5 shrink-0">
+        <div className="ml-auto flex items-center gap-1 @lg:gap-1.5 shrink-0">
           {onShowCustomerInfo && (
             <button
               onClick={onShowCustomerInfo}
@@ -895,7 +895,7 @@ export default function ChatPanel({
 
       {/* Input */}
       {!isResolved && (
-        <div className="border-t border-border/60 px-3 pt-2 pb-3 bg-card">
+        <div className="group/composer shrink-0 border-t border-border/60 px-3 pt-2 pb-3 bg-card">
           {/* แท็บโหมดเกาะขอบบนของการ์ด (แบบที่เจ้าของโอเค 2026-09-06): ตอบลูกค้า | โน้ตภายใน */}
           {onAddNote && (
             <div className="ml-3 flex items-end gap-0.5" role="radiogroup" aria-label="โหมดช่องพิมพ์">
@@ -906,7 +906,7 @@ export default function ChatPanel({
                 onClick={() => { setComposerMode('chat'); inputRef.current?.focus(); }}
                 className={cn(
                   'relative z-10 -mb-px inline-flex h-7 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-[12px] font-semibold transition-colors',
-                  !isNoteMode ? 'border-border bg-card text-primary' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
+                  !isNoteMode ? 'border-border bg-card text-primary group-focus-within/composer:border-primary/60' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
                 )}
               >
                 <MessageSquare className="size-3.5" /> ตอบลูกค้า
@@ -927,13 +927,15 @@ export default function ChatPanel({
           )}
           <div
             className={cn(
-              'flex flex-col rounded-xl border transition-[box-shadow,border-color]',
+              'flex flex-col rounded-xl border focus-within:outline-hidden transition-[box-shadow,border-color]',
               isNoteMode
-                ? 'border-warning/50 bg-warning/10 focus-within:ring-2 focus-within:ring-warning/25 dark:border-amber-400/40 dark:bg-amber-400/10'
-                : 'border-border bg-card focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/20',
+                ? 'border-warning/50 bg-warning/10 focus-within:ring-2 focus-within:ring-warning-strong dark:border-amber-400/40 dark:bg-amber-400/10'
+                : 'border-border bg-card focus-within:border-primary focus-within:ring-2 focus-within:ring-primary',
             )}
           >
+            {/* The card owns focus; suppress both the base ring and admin theme outline. */}
             <textarea
+              data-chat-composer-input
               ref={inputRef}
               value={inputText}
               onChange={(e) => {
@@ -951,15 +953,15 @@ export default function ChatPanel({
               placeholder={isNoteMode ? 'พิมพ์โน้ตภายใน…' : `พิมพ์ข้อความถึง ${displayName}…`}
               aria-label={isNoteMode ? 'พิมพ์โน้ตภายใน' : 'พิมพ์ข้อความ'}
               rows={2}
-              className="block w-full resize-none overflow-y-auto bg-transparent px-3.5 pt-2.5 pb-1 text-sm leading-relaxed border-0 focus:outline-none focus:ring-0 max-h-32 placeholder:text-muted-foreground/60"
+              className="block w-full resize-none overflow-y-auto bg-transparent px-3.5 pt-2.5 pb-1 text-sm leading-relaxed border-0 focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 max-h-32 placeholder:text-muted-foreground/60"
             />
-            <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5 pt-0.5">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1.5 pb-1.5 pt-0.5">
               {isNoteMode ? (
-                <span className="inline-flex items-center gap-1.5 pl-2 text-[12px] text-amber-800 dark:text-amber-200">
-                  <Lock className="size-3.5" /> เห็นเฉพาะทีมงาน · ไม่ส่งถึงลูกค้า
+                <span className="inline-flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[12px] leading-snug text-amber-800 dark:text-amber-200">
+                  <Lock className="size-3.5 shrink-0" /> <span>เห็นเฉพาะทีมงาน · ไม่ส่งถึงลูกค้า</span>
                 </span>
               ) : (
-                <div className="flex items-center gap-0.5">
+                <div className="flex shrink-0 items-center gap-0.5">
             {/* File upload */}
             <input
               ref={fileInputRef}
@@ -1017,8 +1019,8 @@ export default function ChatPanel({
             </button>
                 </div>
               )}
-              <div className="flex items-center gap-3">
-                <span className="hidden lg:inline text-[11px] leading-none text-muted-foreground/80 whitespace-nowrap">
+              <div className="ml-auto flex shrink-0 items-center gap-3">
+                <span className="hidden @[36rem]:inline text-[11px] leading-snug text-muted-foreground/80 whitespace-nowrap">
                   {isNoteMode ? 'Enter บันทึก · Esc กลับไปตอบ' : 'Enter ส่ง · Shift+Enter ขึ้นบรรทัด'}
                 </span>
                 <button
@@ -1026,7 +1028,7 @@ export default function ChatPanel({
                   disabled={!inputText.trim() || isSending}
                   aria-label={isNoteMode ? 'บันทึกโน้ต' : 'ส่งข้อความ'}
                   className={cn(
-                    'inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-semibold transition-all duration-200',
+                    'inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-[13px] font-semibold leading-snug transition-all duration-200',
                     inputText.trim() && !isSending
                       ? isNoteMode
                         ? 'bg-warning text-amber-950 shadow-sm hover:bg-warning/90 dark:bg-amber-400 dark:hover:bg-amber-300'

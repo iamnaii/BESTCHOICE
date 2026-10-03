@@ -1,5 +1,4 @@
 import { paperSpacingScript, PAPER_SPACING_CSS } from '@installment/shared';
-import { BadRequestException } from '@nestjs/common';
 import { formatDateShort } from '../../../utils/thai-date.util';
 import { disclosureText } from '../../../utils/product-disclosure.util';
 import { Prisma } from '@prisma/client';
@@ -7,8 +6,8 @@ import * as puppeteer from 'puppeteer';
 import * as QRCode from 'qrcode';
 import { embeddedDocumentFonts } from '../../../assets/fonts/document-fonts';
 import { DOCUMENT_A4_CSS, documentTypographyCss, TRANSACTION_PAGE_CSS } from '@installment/shared';
-import { computeInstallmentBreakdown } from '../../journal/compute-installment-breakdown';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
+import { DocumentAdvanceRow, receiptDocumentMoney } from './receipt-document-money';
 import { ReceiptQueryService } from './receipt-query.service';
 
 // Embedded BESTCHOICE logo. Single source of truth for the receipt header.
@@ -174,7 +173,6 @@ export class ReceiptPdfService {
     // additions.
     const toDec = (v: unknown): Prisma.Decimal =>
       new Prisma.Decimal((v ?? 0).toString());
-    const ZERO = new Prisma.Decimal(0);
     const total = toDec(receipt.amount);
     const isInstallmentReceipt = (INSTALLMENT_MONEY_RECEIPT_TYPES as readonly string[]).includes(
       receipt.receiptType ?? 'PAYMENT',
@@ -200,131 +198,54 @@ export class ReceiptPdfService {
     const thaiAmount = this.numberToThaiText(total.toNumber());
     const paidDateStr = formatDateShort(receipt.paidDate);
 
-    // ── CPA money breakdown (คู่มือบันทึกรับชำระ Policy A) ─────────────────
-    // ค่างวดมี VAT 7% ฝังใน (Gross/งวด + VAT/งวด เช่น 1,416.66 + 99.17 =
-    // 1,515.83) ส่วนค่าปรับล่าช้าไม่มี VAT (นโยบาย owner + ฐานภาษีตามกฎหมาย)
-    // — ใบเสร็จจึงต้องแยกสองส่วนนี้คนละบรรทัด ห้ามรวมฐาน.
     const receiptType = receipt.receiptType ?? 'PAYMENT';
     const isCreditNote = receiptType === 'CREDIT_NOTE';
-    // VAT-bearing documents: installment receipts + early payoff (JP4 settles
-    // VAT) + credit notes (mirror of an installment receipt). Down payments
-    // (SHOP — ไม่จด VAT) and reschedule fees (เงินรับล่วงหน้า + ค่าปรับ) carry no VAT.
-    const vatBearing = !['DOWN_PAYMENT', 'RESCHEDULE_FEE'].includes(receiptType);
-
-    // The exact receipt JE freezes its fee/waiver when later manual charges
-    // change Payment.lateFee. Keep the old convention only for an entirely
-    // unresolved legacy history; never assign its cumulative fee to a sibling
-    // when another receipt already has an authoritative breakdown.
-    const exactFee = (isInstallmentReceipt || receiptType === 'RESCHEDULE_FEE') && receipt.lateFeeCollected != null &&
-      receipt.lateFeeWaivedThisReceipt != null;
-    const legacyFirst = isInstallmentReceipt && !receipt.hasReceiptFeeHistory &&
-      (receipt.priorReceiptCount ?? 0) === 0;
-    const rawFee = exactFee
-      ? toDec(receipt.lateFeeCollected).plus(toDec(receipt.lateFeeWaivedThisReceipt))
-      : receipt.payment && legacyFirst ? toDec(receipt.payment.lateFee) : ZERO;
-    const feeWaived = exactFee
-      ? toDec(receipt.lateFeeWaivedThisReceipt)
-      : receipt.payment && legacyFirst
-        ? receipt.payment.waivedAmount != null
-          ? toDec(receipt.payment.waivedAmount)
-          : receipt.payment.lateFeeWaived ? rawFee : ZERO
-        : ZERO;
-    const feeCharged = Prisma.Decimal.max(rawFee, ZERO);
-    const feeNet = Prisma.Decimal.max(feeCharged.minus(feeWaived), ZERO);
-    if (isInstallmentReceipt && !exactFee && receipt.hasReceiptFeeHistory) {
-      throw new BadRequestException('ไม่สามารถระบุค่าปรับของใบเสร็จนี้จากรายการบัญชีได้ กรุณาตรวจสอบประวัติรับชำระก่อนพิมพ์');
-    }
-    // Cash attributed to the fee cannot exceed what was actually received.
-    const feePortion = Prisma.Decimal.min(feeNet, total);
-
-    const allocations = receipt.installmentAllocations;
-    const knownAdvance = receipt.receiptAdvanceAmount != null ? toDec(receipt.receiptAdvanceAmount) : null;
-    if (documentBalanceApplies && allocations === null && knownAdvance == null) {
-      throw new BadRequestException('ไม่สามารถแยกค่างวดและเงินรับล่วงหน้าของใบเสร็จนี้จากประวัติได้ กรุณาตรวจสอบก่อนพิมพ์');
-    }
-    const advanceAllocations = allocations?.filter((allocation) => allocation.kind === 'RESCHEDULE_ADVANCE') ?? [];
-    const advancePortion = allocations
-      ? advanceAllocations.reduce((sum, allocation) => sum.plus(allocation.amount), ZERO)
-      : knownAdvance ?? ZERO;
-    const genericAdvance = !allocations && advancePortion.gt(0);
-    if (advancePortion.lt(0) || advancePortion.plus(feePortion).gt(total)) {
-      throw new BadRequestException('ยอดจัดสรรในใบเสร็จไม่ตรงกับเงินรับชำระ กรุณาตรวจสอบก่อนพิมพ์');
-    }
-    if (allocations && !allocations.reduce((sum, allocation) => sum.plus(allocation.amount), ZERO).plus(feePortion).eq(total)) {
-      throw new BadRequestException('ยอดจัดสรรในใบเสร็จไม่ตรงกับเงินรับชำระ กรุณาตรวจสอบก่อนพิมพ์');
-    }
-    // Split the description without changing this document type's existing VAT
-    // treatment. Changing advance tax timing requires its own end-to-end policy.
-    const installmentPortion = total.minus(feePortion).minus(advancePortion);
-    const documentVatPortion = total.minus(feePortion);
-    const breakdown =
-      receipt.contract?.financedAmount != null && receipt.contract?.totalMonths
-        ? computeInstallmentBreakdown({
-            financedAmount: receipt.contract.financedAmount.toString(),
-            storeCommission:
-              receipt.contract.storeCommission != null
-                ? receipt.contract.storeCommission.toString()
-                : null,
-            interestTotal: (receipt.contract.interestTotal ?? 0).toString(),
-            vatAmount:
-              receipt.contract.vatAmount != null ? receipt.contract.vatAmount.toString() : null,
-            totalMonths: receipt.contract.totalMonths,
-            installmentNo: receipt.installmentNo ?? undefined,
-          })
-        : null;
-    // Phase 3 standalone CN (CreditNoteDocumentService): amountBeforeVat/vatAmount
-    // are stamped directly on the Receipt row from computeCnBreakdown's
-    // pro-rated, per-installment-rounded totals (CPA ruling 2026-07-26,
-    // docs/superpowers/plans/2026-07-26-cn-prorate-cpa.md) — i.e. the EXACT
-    // figures the source JE booked (cross-checked against the JE's
-    // metadata.creditNoteVatAmount at issuance time). This is NOT a simple
-    // count × per-installment figure — a partially-paid accrued installment
-    // prices at less than the full vatPerInst/installmentExclVat, per
-    // installment, rounded before summing. No other receipt type sets both
-    // fields today, so trusting them here is scoped to this one case.
-    // Re-deriving via the pro-rata 100/107 split below would drift by a
-    // satang vs the ledger even in the all-full-installment case (e.g. the
-    // golden fixture 4,249.98/297.51 → a pro-rata split of the 4,547.49 total
-    // yields 4,249.99/297.50 — off by 0.01 either side); a mixed pro-rated
-    // case would drift further since the split ignores per-installment
-    // rounding entirely.
-    const hasExplicitVatSplit = receipt.amountBeforeVat != null && receipt.vatAmount != null;
-
-    let exclVat = ZERO;
-    let vatPart = ZERO;
-    if (vatBearing && documentVatPortion.gt(0)) {
-      if (hasExplicitVatSplit) {
-        exclVat = toDec(receipt.amountBeforeVat);
-        vatPart = toDec(receipt.vatAmount);
-      } else if (breakdown && documentVatPortion.equals(breakdown.installmentTotal)) {
-        // Full standard installment → exact ledger figures (per CPA manual).
-        exclVat = breakdown.installmentExclVat;
-        vatPart = breakdown.vatPerInst;
-      } else {
-        // Partial / payoff / residual final installment → pro-rata 7% split.
-        exclVat = documentVatPortion.times(100).div(107).toDecimalPlaces(2);
-        vatPart = documentVatPortion.minus(exclVat);
-      }
-    } else if (documentVatPortion.gt(0)) {
-      exclVat = documentVatPortion; // non-VAT document — full value, no VAT column
-    }
-
-    // Allocate the existing document VAT between the displayed rows. Assign
-    // rounding residue to the final advance row so the table matches the totals.
-    const installmentVat = advancePortion.isZero() ? vatPart : vatBearing
-      ? installmentPortion.minus(installmentPortion.times(100).div(107).toDecimalPlaces(2))
-      : ZERO;
-    const installmentExclVat = advancePortion.isZero() ? exclVat : installmentPortion.minus(installmentVat);
-    const advanceVat = vatPart.minus(installmentVat);
-    let allocatedAdvanceVat = ZERO;
-    const advanceRows = advanceAllocations.map((allocation, index) => {
-      const amount = toDec(allocation.amount);
-      const rowVat = index === advanceAllocations.length - 1
-        ? advanceVat.minus(allocatedAdvanceVat)
-        : advanceVat.times(amount).div(advancePortion).toDecimalPlaces(2);
-      allocatedAdvanceVat = allocatedAdvanceVat.plus(rowVat);
-      return { ...allocation, amount, vat: rowVat, beforeVat: amount.minus(rowVat) };
-    });
+    // ตัวเลขทุกแถวของเอกสาร — receipt-document-money.ts: ใบที่เก็บค่า ณ ตอนออกใบ (PR3) พิมพ์ค่าที่เก็บ ·
+    // ใบเก่าใช้ตรรกะเดิม
+    const {
+      vatBearing,
+      installmentPortion,
+      installmentExclVat,
+      installmentVat,
+      advanceRows,
+      advancePortion,
+      feeCharged,
+      feeWaived,
+      feePortion,
+      rounding,
+      exclVat,
+      vatPart,
+      advanceOnly,
+      displayedInstallmentNo,
+    } = receiptDocumentMoney(receipt);
+    /** ยอดติดลบพิมพ์ด้วยเครื่องหมายลบแบบเดียวกับแถวอนุโลมค่าปรับ */
+    const signed = (v: Prisma.Decimal) => (v.isNegative() ? `−${fmt(v.abs())}` : fmt(v));
+    const advanceRowHtml = (row: DocumentAdvanceRow) =>
+      row.kind === 'RESCHEDULE'
+        ? `
+      <tr class="alt">
+        <td><div class="item-name">เงินรับล่วงหน้างวดที่ ${row.installmentNo}/${receipt.contract?.totalMonths} — ปรับดิว</div>
+          <div class="item-meta">พักไว้หักค่างวดสุดท้าย</div></td>
+        <td class="right">${fmt(row.beforeVat)}</td>
+        <td class="right">${row.vat.gt(0) ? fmt(row.vat) : '<span class="vat-exempt">–</span>'}</td>
+        <td class="right"><strong>${fmt(row.amount)}</strong></td>
+      </tr>`
+        : row.kind === 'GENERIC'
+          ? `
+      <tr class="alt">
+        <td><div class="item-name">เงินรับล่วงหน้าในสัญญา</div></td>
+        <td class="right">${fmt(row.beforeVat)}</td>
+        <td class="right">${row.vat.gt(0) ? fmt(row.vat) : '<span class="vat-exempt">–</span>'}</td>
+        <td class="right"><strong>${fmt(row.amount)}</strong></td>
+      </tr>`
+          : `
+      <tr class="alt">
+        <td><div class="item-name">หักเงินรับล่วงหน้า</div>
+          <div class="item-meta">เงินที่ชำระไว้ก่อนแล้ว</div></td>
+        <td class="right">${signed(row.beforeVat)}</td>
+        <td class="right">${row.vat.isZero() ? '<span class="vat-exempt">–</span>' : signed(row.vat)}</td>
+        <td class="right"><strong>${signed(row.amount)}</strong></td>
+      </tr>`;
 
     const docTitle = isCreditNote
       ? 'ใบลดหนี้'
@@ -342,8 +263,6 @@ export class ReceiptPdfService {
       ? `ค่างวดเช่าซื้อ งวดที่ ${receipt.installmentNo}${receipt.contract?.totalMonths ? `/${receipt.contract.totalMonths}` : ''}`
       : 'การรับชำระเงิน';
     const itemLabel = itemLabels[receiptType] ?? installmentLabel;
-    const advanceOnly = advancePortion.gt(0) && installmentPortion.isZero();
-    const displayedInstallmentNo = advanceOnly ? advanceAllocations[0]?.installmentNo : receipt.installmentNo;
 
     const verifyUrl = `https://bestchoicephone.app/r/${receipt.receiptNumber}`;
     const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
@@ -481,6 +400,17 @@ export class ReceiptPdfService {
     .totals .row { padding: 2px; }
     .pay-grid { margin-top: 4px; padding: 4px 0; }
 ${PAPER_SPACING_CSS}
+    /* ใช้เฉพาะใบที่ระยะปกติล้นไปหน้า 2 (paperSpacingScript ใส่ให้เมื่อทำให้กลับมาหน้าเดียวได้) —
+       ใบงวดสุดท้ายที่มีแถวปัดเศษสองที่ + ชื่อยาว เกินพื้นที่พิมพ์ ~14 มม. แล้วกล่องปิดท้ายทั้งก้อนกระโดดไปหน้า 2
+       ลดเฉพาะช่องว่าง ไม่แตะขนาดตัวอักษรหรือเนื้อหา */
+    body.bc-paper-compact .header { padding-bottom: 4px; }
+    body.bc-paper-compact .parties { padding: 4px 0; margin-bottom: 4px; }
+    body.bc-paper-compact table.items :is(th,td) { padding: 1mm 2mm; }
+    body.bc-paper-compact .totals .row { padding: 0 2px; }
+    body.bc-paper-compact .pay-grid { margin-top: 2px; padding: 2px 0; }
+    body.bc-paper-compact .footer { margin-top: 4px; }
+    body.bc-paper-compact .qr-pane img { width: 72px; height: 72px; }
+    body.bc-paper-compact .doc-note { margin-top: 2px; padding-top: 2px; }
 </style>
 </head>
 <body data-bc-paper>
@@ -547,7 +477,7 @@ ${PAPER_SPACING_CSS}
       </tr>
     </thead>
     <tbody>
-      ${installmentPortion.gt(0) || (feePortion.lte(0) && advancePortion.lte(0)) ? `
+      ${installmentPortion.gt(0) || (feePortion.lte(0) && advancePortion.lte(0) && rounding.isZero()) ? `
       <tr>
         <td>
           <div class="item-name">${itemLabel}</div>
@@ -557,21 +487,7 @@ ${PAPER_SPACING_CSS}
         <td class="right">${vatBearing && installmentVat.gt(0) ? fmt(installmentVat) : '<span class="vat-exempt">ยกเว้น</span>'}</td>
         <td class="right"><strong>${fmt(installmentPortion)}</strong></td>
       </tr>` : ''}
-      ${advanceRows.map((allocation) => `
-      <tr class="alt">
-        <td><div class="item-name">เงินรับล่วงหน้างวดที่ ${allocation.installmentNo}/${receipt.contract?.totalMonths} — ปรับดิว</div>
-          <div class="item-meta">พักไว้หักค่างวดสุดท้าย</div></td>
-        <td class="right">${fmt(allocation.beforeVat)}</td>
-        <td class="right">${allocation.vat.gt(0) ? fmt(allocation.vat) : '<span class="vat-exempt">–</span>'}</td>
-        <td class="right"><strong>${fmt(allocation.amount)}</strong></td>
-      </tr>`).join('')}
-      ${genericAdvance ? `
-      <tr class="alt">
-        <td><div class="item-name">เงินรับล่วงหน้าในสัญญา</div></td>
-        <td class="right">${fmt(advancePortion.minus(advanceVat))}</td>
-        <td class="right">${advanceVat.gt(0) ? fmt(advanceVat) : '<span class="vat-exempt">–</span>'}</td>
-        <td class="right"><strong>${fmt(advancePortion)}</strong></td>
-      </tr>` : ''}
+      ${advanceRows.map(advanceRowHtml).join('')}
       ${feeCharged.gt(0) ? `
       <tr class="alt">
         <td>
@@ -592,6 +508,16 @@ ${PAPER_SPACING_CSS}
         <td class="right"><span class="vat-exempt">–</span></td>
         <td class="right discount"><strong>−${fmt(feeWaived)}</strong></td>
       </tr>` : ''}
+      ${!rounding.isZero() ? `
+      <tr class="alt">
+        <td>
+          <div class="item-name">ปัดเศษ (ไม่อยู่ในฐานภาษี)</div>
+          <div class="item-meta">${rounding.gt(0) ? 'รับเกินค่างวดไม่ถึง 1 บาท' : 'ส่วนลดเศษสตางค์ของค่างวด (ไม่เกิน 1 บาท)'}</div>
+        </td>
+        <td class="right">${signed(rounding)}</td>
+        <td class="right"><span class="vat-exempt">–</span></td>
+        <td class="right"><strong>${signed(rounding)}</strong></td>
+      </tr>` : ''}
     </tbody>
   </table>
 
@@ -610,7 +536,9 @@ ${PAPER_SPACING_CSS}
       ${vatBearing && vatPart.gt(0) ? `
         <div class="row"><span class="k">มูลค่าสินค้า/บริการก่อนภาษี</span><span class="v">${fmt(exclVat)}</span></div>
         <div class="row"><span class="k">ภาษีมูลค่าเพิ่ม 7%</span><span class="v">${fmt(vatPart)}</span></div>
-        ${feePortion.gt(0) ? `<div class="row sub"><span class="k">ค่าปรับ (ยกเว้นภาษี)</span><span class="v">${fmt(feePortion)}</span></div>` : `<div class="row sub" style="padding:0"></div>`}
+        ${feePortion.gt(0) ? `<div class="row${rounding.isZero() ? ' sub' : ''}"><span class="k">ค่าปรับ (ยกเว้นภาษี)</span><span class="v">${fmt(feePortion)}</span></div>` : ''}
+        ${!rounding.isZero() ? `<div class="row sub"><span class="k">ปัดเศษ (ไม่อยู่ในฐานภาษี)</span><span class="v">${signed(rounding)}</span></div>` : ''}
+        ${feePortion.lte(0) && rounding.isZero() ? `<div class="row sub" style="padding:0"></div>` : ''}
       ` : ''}
       <div class="grand">
         <span class="k">${isCreditNote ? 'ยอดลดหนี้ทั้งสิ้น' : 'จำนวนเงินรับชำระทั้งสิ้น'}</span>

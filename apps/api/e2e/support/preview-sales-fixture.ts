@@ -10,6 +10,21 @@ import { ShopCashSaleTemplate } from '../../src/modules/journal/cpa-templates/sh
 import { ShopBookingRefundTemplate } from '../../src/modules/journal/cpa-templates/shop-booking-refund.template';
 import { seedShopCoa } from '../../prisma/seed-coa-shop';
 import { TEST_CUSTOMER_ADDRESS, TEST_DOC_PREFIX, TEST_NAME_PREFIX, TEST_NOTE_MARKER } from '../../src/utils/test-data-markers';
+import { SaleCreationService } from '../../src/modules/sales/services/sale-creation.service';
+import { SaleWriterService } from '../../src/modules/sales/services/sale-writer.service';
+import { SaleWarrantyNotifierService } from '../../src/modules/sales/services/sale-warranty-notifier.service';
+import { InterCompanyService } from '../../src/modules/inter-company/inter-company.service';
+import { ShopExternalFinanceSaleTemplate } from '../../src/modules/journal/cpa-templates/shop-external-finance-sale.template';
+
+/** Real local POS writes; only outbound warranty notifications are disabled. */
+export function previewPos(db: PrismaService) {
+  if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('POS preview requires disposable PostgreSQL');
+  const journal = new JournalAutoService(db), companies = new CompanyResolverService(db);
+  const writer = new SaleWriterService(db, new ShopCashSaleTemplate(journal, db, companies), new ShopAccountResolver(db),
+    new ShopExternalFinanceSaleTemplate(journal, db, companies));
+  return new SaleCreationService(db, writer, new InterCompanyService(db),
+    { notify: async () => undefined } as unknown as SaleWarrantyNotifierService);
+}
 
 export function previewBookings(db: PrismaService) {
   const journal = new JournalAutoService(db), companies = new CompanyResolverService(db);
@@ -52,9 +67,18 @@ export async function seedPreviewSales(db: PrismaService, actor: { id: string; r
  */
 export async function seedPreviewExternalFinanceSale(db: PrismaService, salespersonId: string) {
   if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Sales fixtures require disposable PostgreSQL');
-  const saleNumber = `${TEST_DOC_PREFIX}LOCAL-EXTFIN-0001`;
-  const existing = await db.sale.findUnique({ where: { saleNumber } });
-  if (existing) return { saleId: existing.id };
+  const notes = `${TEST_NOTE_MARKER} LOCAL-EXTERNAL-FINANCE`;
+  const existing = await db.sale.findFirst({ where: { notes } });
+  if (existing && /^SL\d+$/.test(existing.saleNumber)) return { saleId: existing.id };
+  // Keep fixture numbers in the same sequence as real POS writes. A TEST-prefixed
+  // number sorts after every SL number and would make the next sale reuse SL000002.
+  const last = await db.sale.findFirst({ where: { saleNumber: { startsWith: 'SL' } },
+    orderBy: { saleNumber: 'desc' }, select: { saleNumber: true } });
+  const saleNumber = `SL${String((Number(last?.saleNumber.slice(2)) || 0) + 1).padStart(6, '0')}`;
+  if (existing) {
+    await db.sale.update({ where: { id: existing.id }, data: { saleNumber } });
+    return { saleId: existing.id };
+  }
   const branch = await db.branch.findFirstOrThrow({ where: { name: 'LOCAL PREVIEW BRANCH', deletedAt: null } });
   const customer = await db.customer.upsert({ where: { id: '53000000-0000-4000-8000-000000000011' }, update: {}, create: {
     id: '53000000-0000-4000-8000-000000000011', name: `${TEST_NAME_PREFIX} — ลูกค้าไฟแนนซ์นอก`,
@@ -68,7 +92,7 @@ export async function seedPreviewExternalFinanceSale(db: PrismaService, salesper
     saleNumber, saleType: 'EXTERNAL_FINANCE', customerId: customer.id, productId: product.id,
     branchId: branch.id, salespersonId, sellingPrice: 18000, netAmount: 18000,
     financeCompany: 'LOCAL FINANCE CO', financeRefNumber: `${TEST_DOC_PREFIX}REF-0001`, financeAmount: 15000,
-    downPaymentAmount: 3000, notes: `${TEST_NOTE_MARKER} LOCAL-EXTERNAL-FINANCE`,
+    downPaymentAmount: 3000, notes,
     shopWarrantyStartDate: new Date(), shopWarrantyEndDate: new Date(Date.now() + 30 * 86400000) } });
   return { saleId: sale.id };
 }

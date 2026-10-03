@@ -14,6 +14,7 @@ export {
   findGfinMapping,
   findGfinOverpriceRule,
   findGfinRateFactor,
+  gfinAllowanceFactor,
 } from './installment-calc';
 export type * from './installment-calc.types';
 export * from './gfin-customer-summary';
@@ -35,3 +36,5 @@ export * from './finance-precheck-message';
 export * from './finance-doc-slots';
 export * from './thai-national-id';
 export * from './template-variables';
+export * from './parts-history';
+export * from './accessory-compatibility';

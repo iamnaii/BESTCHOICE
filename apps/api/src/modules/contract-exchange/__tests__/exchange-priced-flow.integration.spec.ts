@@ -12,6 +12,7 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { glContractBalance } from '../../journal/gl-contract-balance';
 import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
 import { InstallmentAccrual2ATemplate } from '../../journal/cpa-templates/installment-accrual-2a.template';
+import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
 import { ExchangeNewContract1ATemplate } from '../../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../../journal/cpa-templates/exchange-close-old-21-1106.template';
 import { ExchangeBuybackReceivable11_2107Template } from '../../journal/cpa-templates/exchange-buyback-receivable-11-2107.template';
@@ -83,6 +84,7 @@ const companyResolver = new CompanyResolverService(prisma as never);
 const audit = new AuditService(prisma as never);
 const act1a = new ContractActivation1ATemplate(journal, prisma as never);
 const accrual2a = new InstallmentAccrual2ATemplate(journal, prisma as never);
+const receiptTemplate = new PaymentReceiptTemplate(journal, prisma as never);
 const svc = new ContractExchangeService(
   prisma as never,
   audit,
@@ -1767,6 +1769,75 @@ describe('Device Swap priced flow (workbook E2E — real DB)', () => {
       });
       expect(secondContract.status).toBe('ACTIVE');
       expect(secondContract.exchangedFromContractId).toBe(fix.oldContractId);
+    },
+    120_000,
+  );
+
+  // -------------------------------------------------------------------------
+  it(
+    'PR2ข (ก1): รับบางส่วน 1,000 ก่อนวันครบกำหนดแล้วเปลี่ยนเครื่อง → ด่าน 11-2103 ไม่บล็อก และ A.2 ล้างสัญญาเดิมตามยอดในบัญชีหลังรายการตั้งลูกหนี้งวดบางส่วน',
+    async () => {
+      const fix = await seedSwapFixture('100011', { schedule: 'FUTURE12' });
+      await act1a.execute(fix.oldContractId);
+      const inst1 = await prisma.installmentSchedule.findFirstOrThrow({
+        where: { contractId: fix.oldContractId, installmentNo: 1 },
+      });
+
+      // ใบรับชำระบางส่วนก่อนวันครบกำหนด — template ลง 2A เท่ายอดที่รับ (1,000 / VAT 65.42 / ดอกเบี้ย 329.85) ก่อนใบรับชำระ
+      const posted = await receiptTemplate.execute({
+        installmentScheduleId: inst1.id,
+        delta: new Decimal('1000'),
+        debitAccountCode: '11-1101',
+        isFinalReceipt: false,
+        postedAt: new Date(),
+      });
+      expect(posted.accrual?.kind).toBe('PARTIAL');
+      // ด่าน "มีงวดค้างชำระ" ของการเปลี่ยนเครื่องอ่าน |11-2103| — หลังรายการตั้งบางส่วน = 0
+      // (ก่อน PR2ข ใบบางส่วนไม่มี 2A → 11-2103 = −1,000 → ถูกบล็อกทั้งตอน preview และ finalize)
+      expect(
+        (await glContractBalance(prisma, fix.oldContractId, '11-2103', 'dr')).toFixed(2),
+      ).toBe('0.00');
+
+      const { newContract, request } = await seedNewContractAndRequest(fix, '100011', '8000');
+      await activateAndFinalize(newContract.id, fix.newProductId);
+
+      const req = await prisma.contractExchangeRequest.findUniqueOrThrow({
+        where: { id: request.id },
+      });
+      const je2Lines = await getJeLines(req.je2Id!);
+      // A.2 ล้างตามยอดคงเหลือในบัญชี: 17,000 − 934.58 · 1,190 − 65.42 · 6,000 − 329.85
+      expect(sumSide(je2Lines, '11-2101', 'cr').toFixed(2)).toBe('16065.42');
+      expect(sumSide(je2Lines, '11-2105', 'cr').toFixed(2)).toBe('1124.58');
+      expect(sumSide(je2Lines, '21-2101', 'cr').toFixed(2)).toBe('1124.58');
+      expect(sumSide(je2Lines, '11-2106', 'dr').toFixed(2)).toBe('5670.15');
+      expect(sumSide(je2Lines, '21-2102', 'dr').toFixed(2)).toBe('1124.58');
+      // ขาดทุน (วิธีสุทธิ) = (16,065.42 + 1,124.58 × 2) − (8,000 + 5,670.15 + 1,124.58)
+      expect(sumSide(je2Lines, '51-1102', 'dr').toFixed(2)).toBe('3519.85');
+
+      for (const [code, side] of [
+        ['11-2101', 'dr'],
+        ['11-2105', 'dr'],
+        ['11-2103', 'dr'],
+        ['11-2106', 'cr'],
+        ['21-2102', 'cr'],
+      ] as const) {
+        expect(
+          (await glContractBalance(prisma, fix.oldContractId, code, side)).toFixed(2),
+          `old-contract GL ${code} must net 0 after finalize`,
+        ).toBe('0.00');
+      }
+      // ภาษีขายของสัญญาเดิม: ส่วนที่ตั้งบางส่วน 65.42 + ที่ A.2 รับรู้ 1,124.58 = ของทั้งสัญญา (ไม่ซ้ำ)
+      expect(
+        (await glContractBalance(prisma, fix.oldContractId, '21-2101', 'cr')).toFixed(2),
+      ).toBe('1190.00');
+      // ดอกเบี้ย: เฉพาะส่วนที่ตั้งบางส่วน (A.2 วิธีสุทธิไม่รับรู้ 41-1101)
+      expect(
+        (await glContractBalance(prisma, fix.oldContractId, '41-1101', 'cr')).toFixed(2),
+      ).toBe('329.85');
+      const oldAfter = await prisma.contract.findUniqueOrThrow({
+        where: { id: fix.oldContractId },
+      });
+      expect(oldAfter.status).toBe('EXCHANGED');
     },
     120_000,
   );

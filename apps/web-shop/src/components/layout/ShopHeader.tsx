@@ -59,11 +59,11 @@ export default function ShopHeader() {
   }
 
   const iconBtn =
-    'p-2 rounded-full text-foreground/70 hover:bg-muted hover:text-primary transition-colors';
+    'size-11 inline-flex items-center justify-center shrink-0 rounded-full text-foreground/70 hover:bg-muted hover:text-primary transition-colors';
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-border">
-      <div className="container mx-auto max-w-7xl px-4 md:px-6 py-2.5 flex items-center gap-3 md:gap-5">
+      <div className="container mx-auto max-w-7xl px-4 md:px-6 py-2.5 flex items-center gap-2 md:gap-4">
         <button
           type="button"
           aria-label={menuOpen ? 'ปิดเมนู' : 'เปิดเมนู'}
@@ -90,9 +90,10 @@ export default function ShopHeader() {
 
         {/* Mint underline grows on hover; active link sits in the deep green
             with a full mint underline (guide nav treatment). */}
-        <nav className="hidden lg:flex items-center gap-5 font-head text-[14px] font-medium">
+        <nav className="hidden lg:flex items-center gap-3 xl:gap-5 font-head text-sm font-medium">
           {NAV_LINKS.map((l) => {
-            const active = l.to === '/' ? location.pathname === '/' : location.pathname.startsWith(l.to);
+            const active =
+              l.to === '/' ? location.pathname === '/' : location.pathname.startsWith(l.to);
             return (
               <Link
                 key={l.to}
@@ -126,16 +127,15 @@ export default function ShopHeader() {
         >
           <Search className="w-5 h-5" />
         </button>
-        {/* ไอคอนตะกร้าถูกถอด 2026-08-31: ร้านปิดจ๊อบผ่านแชท/โทร ไม่มีปุ่มไหนใส่ของ
-            ลงตะกร้าได้อีก (ผู้เรียก cartStore.setItem เหลือศูนย์) — ลิงก์นี้จึงพาไป
-            หน้าตะกร้าว่างเสมอ route /cart ยังอยู่สำหรับลิงก์เก่าที่ค้างในมือลูกค้า */}
+        {/* ไอคอนตะกร้าถูกถอด 2026-08-31: ร้านปิดจ๊อบผ่านแชท/โทร · หน้าตะกร้า/ชำระเงินถูกถอด
+            2026-09-28 ลิงก์เก่า /cart เด้งไป /products (ดู App.tsx) */}
         <Link to="/account" aria-label="บัญชี" className={cn(iconBtn, 'hidden sm:inline-flex')}>
           <User className="w-5 h-5" />
         </Link>
 
         <Link
           to="/how-it-works"
-          className="hidden md:inline-flex h-10 items-center rounded-full bg-ink px-5 font-head text-[13.5px] font-semibold text-ink-foreground hover:bg-emerald-800 transition-colors whitespace-nowrap leading-snug"
+          className="hidden md:inline-flex h-10 items-center rounded-full bg-ink px-5 font-head text-sm font-semibold text-ink-foreground hover:bg-emerald-800 transition-colors whitespace-nowrap leading-snug"
         >
           เช็คยอดผ่อนทันที
         </Link>
@@ -158,11 +158,11 @@ export default function ShopHeader() {
               maxLength={60}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="ค้นหารุ่น เช่น iPhone 15"
-              className="flex-1 h-10 px-4 rounded-full bg-white border border-border text-sm leading-snug text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              className="min-w-0 flex-1 h-11 px-4 rounded-full bg-white border border-border text-base leading-snug text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             />
             <button
               type="submit"
-              className="h-10 px-5 rounded-full bg-ink text-ink-foreground font-head text-sm font-semibold hover:bg-emerald-800 transition-colors leading-snug"
+              className="h-11 px-4 rounded-full bg-ink text-ink-foreground font-head text-sm font-semibold hover:bg-emerald-800 transition-colors leading-snug"
             >
               ค้นหา
             </button>
@@ -177,7 +177,7 @@ export default function ShopHeader() {
               <li key={l.to}>
                 <Link
                   to={l.to}
-                  className="block py-3 font-head text-[15px] leading-snug text-foreground/80 hover:text-primary border-b border-border last:border-0"
+                  className="block py-3 font-head text-base leading-snug text-foreground/80 hover:text-primary border-b border-border last:border-0"
                   onClick={() => setMenuOpen(false)}
                 >
                   {l.label}
@@ -188,7 +188,7 @@ export default function ShopHeader() {
               <Link
                 to="/how-it-works"
                 onClick={() => setMenuOpen(false)}
-                className="my-3 flex h-12 items-center justify-center rounded-full bg-ink text-ink-foreground font-head text-[15px] font-semibold leading-snug"
+                className="my-3 flex h-12 items-center justify-center rounded-full bg-ink text-ink-foreground font-head text-base font-semibold leading-snug"
               >
                 เช็คยอดผ่อนทันที
               </Link>

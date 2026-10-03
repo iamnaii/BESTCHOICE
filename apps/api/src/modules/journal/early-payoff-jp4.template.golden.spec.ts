@@ -13,6 +13,15 @@ import { EarlyPayoffJP4Template } from './cpa-templates/early-payoff-jp4.templat
  * `npm run test --workspace=apps/api` run too — important now that the template
  * delegates its math to the shared computeEarlyPayoffJE.
  */
+// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
+// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
+const notAccrued = {
+  accrualJournalEntryId: null,
+  accruedAmount: '0',
+  accruedVat: '0',
+  accruedInterest: '0',
+};
+
 describe('EarlyPayoffJP4Template.execute (case-4 golden · mock-based)', () => {
   const dec = (v: string | number) => new Decimal(v);
 
@@ -35,6 +44,7 @@ describe('EarlyPayoffJP4Template.execute (case-4 golden · mock-based)', () => {
     dueDate: new Date('2026-01-01'),
     amountDue: dec('1515.83'),
     vat60dayJournalEntryId: null as string | null,
+    ...notAccrued,
   }));
   const paidPayments = Array.from({ length: 6 }, (_, i) => ({ installmentNo: i + 1 }));
 

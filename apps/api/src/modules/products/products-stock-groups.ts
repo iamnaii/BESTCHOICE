@@ -25,6 +25,7 @@ export interface StockListFilters {
   sortDirection?: StockSortDirection;
   groupAccessories?: boolean;
   accessoryGroupId?: string;
+  compatibleWithProductId?: string;
 }
 
 // Accessory model often means the compatible phone. Name/type distinguish e.g. a case

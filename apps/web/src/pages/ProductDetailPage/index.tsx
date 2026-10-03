@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import type { PartsHistoryValue } from '@installment/shared';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useParams, Link } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -85,6 +86,8 @@ interface Product {
   onlineDescription: string | null;
   deviceOrigin?: 'THAI' | 'IMPORTED' | null;
   warrantyTerms?: string | null;
+  partsHistory?: PartsHistoryValue | null;
+  partsHistoryNote?: string | null;
   conditionGrade: string | null;
   cashPrice: string | null;
   installmentPrice: string | null;
@@ -132,6 +135,7 @@ export default function ProductDetailPage() {
     status: '', batteryHealth: '', warrantyExpired: false,
     warrantyExpireDate: '', hasBox: false, accessoryType: '', accessoryBrand: '',
     conditionGrade: '', shopWarrantyDays: '', accessoriesIncluded: '', cosmeticNotes: '',
+    deviceOrigin: '', partsHistory: '', partsHistoryNote: '',
   });
 
   // Transfer modal state
@@ -156,19 +160,6 @@ export default function ProductDetailPage() {
       const { data } = await api.get('/branches');
       return data;
     },
-  });
-
-  // B5: เครื่องนี้ติดจองจากเว็บอยู่หรือเปล่า — กันพนักงานขายซ้ำโดยไม่รู้ตัว
-  const { data: holds = [] } = useQuery<Array<{ id: string; secondsRemaining: number; source: string; orderNumber: string | null }>>({
-    queryKey: ['product-holds', id],
-    queryFn: async () => {
-      const { data } = await api.get('/admin/product-holds', {
-        params: { productId: id, status: 'ACTIVE' },
-      });
-      return data;
-    },
-    enabled: !!id,
-    refetchInterval: 30_000,
   });
 
   // Compute profit (must be before early returns to satisfy Rules of Hooks)
@@ -321,6 +312,9 @@ export default function ProductDetailPage() {
       shopWarrantyDays: product.shopWarrantyDays != null ? String(product.shopWarrantyDays) : '',
       accessoriesIncluded: (product.accessoriesIncluded ?? []).join(', '),
       cosmeticNotes: product.cosmeticNotes || '',
+      deviceOrigin: product.deviceOrigin ?? '',
+      partsHistory: product.partsHistory ?? '',
+      partsHistoryNote: product.partsHistoryNote ?? '',
     });
     setIsEditModalOpen(true);
   };
@@ -453,20 +447,6 @@ export default function ProductDetailPage() {
           />
         }
       />
-
-      {holds.length > 0 && (
-        <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 px-4 py-3 text-sm leading-snug">
-          <span className="font-medium">ติดจองจากเว็บ</span> — เครื่องนี้ถูกลูกค้าออนไลน์ถือสิทธิ์อยู่
-          {holds[0].orderNumber ? ` (คำสั่งซื้อ ${holds[0].orderNumber})` : ''}
-          {holds[0].secondsRemaining > 0
-            ? ` เหลืออีก ${Math.max(1, Math.floor(holds[0].secondsRemaining / 60))} นาที`
-            : ' และกำลังจะหมดเวลา'}
-          {' — '}
-          <Link to="/product-holds" className="text-primary hover:underline">
-            ดูรายการจอง
-          </Link>
-        </div>
-      )}
 
       {/* Tabs — always shown; 'photos' only for PHONE_USED, 'online' for every category */}
       <div className="flex gap-0.5 mb-5 border-b border-border/60">

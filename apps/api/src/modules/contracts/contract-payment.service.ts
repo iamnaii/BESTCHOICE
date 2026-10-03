@@ -22,7 +22,7 @@ import { ShopCollectShopLegs } from '../journal/cpa-templates/shop-collect-shop-
 import { shopCollectShopBalance } from '../interco-settlement/interco-typed-balance';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 import { glContractBalance } from '../journal/gl-contract-balance';
-import { computeEarlyPayoffJE } from '../journal/compute-early-payoff-je';
+import { computeEarlyPayoffJE, sumAccruedUnpaid } from '../journal/compute-early-payoff-je';
 import { computeInstallmentBreakdown } from '../journal/compute-installment-breakdown';
 import { reconstructPriorCleared } from '../journal/reconstruct-prior';
 import { computePayoffQuote } from './compute-payoff-quote';
@@ -220,12 +220,19 @@ export class ContractPaymentService {
     // multiple Payment rows per installment from PARTIAL flows).
     const allInstNos = await client.installmentSchedule.findMany({
       where: { contractId: contract.id, deletedAt: null },
-      select: { installmentNo: true },
+      select: {
+        installmentNo: true,
+        accrualJournalEntryId: true,
+        accruedAmount: true,
+        accruedVat: true,
+        accruedInterest: true,
+      },
     });
     const paidInstNos = new Set(
       contract.payments.filter((p) => p.status === 'PAID').map((p) => p.installmentNo),
     );
-    const remainingMonths = allInstNos.filter((i) => !paidInstNos.has(i.installmentNo)).length;
+    const unpaidInsts = allInstNos.filter((i) => !paidInstNos.has(i.installmentNo));
+    const remainingMonths = unpaidInsts.length;
     if (remainingMonths <= 0) {
       throw new BadRequestException('ไม่มีงวดค้างชำระ ไม่จำเป็นต้องปิดก่อนกำหนด');
     }
@@ -254,6 +261,14 @@ export class ContractPaymentService {
     // Cash dimension: caller-provided > fallback 11-1201 (KBank — owner rule
     // 2026-07-08: direct FINANCE receipt is KBank-only)
     const epDepositCode = depositAccountCode ?? '11-1201';
+    const accruedUnpaidDec = sumAccruedUnpaid(unpaidInsts);
+    // สตริง 2 ตำแหน่ง — อยู่ใน quote (จึงอยู่ใน canonical(quote) ที่ earlyPayoff() เทียบกับ reviewSummary ของคำขอ)
+    // และ earlyPayoff() ส่งต่อให้รายการที่ลง ⇒ preview ของรายการบัญชี === ที่ลง
+    const accruedUnpaid = {
+      amount: accruedUnpaidDec.amount.toFixed(2),
+      vat: accruedUnpaidDec.vat.toFixed(2),
+      interest: accruedUnpaidDec.interest.toFixed(2),
+    };
     const je = computeEarlyPayoffJE({
       depositAccountCode: epDepositCode,
       financedAmount: contract.financedAmount.toString(),
@@ -273,6 +288,8 @@ export class ContractPaymentService {
       // ต้องอยู่ทั้ง preview และตอน post ไม่งั้น preview ≠ posted (คำสั่งเจ้าของ
       // 2026-08-16 §จุดหัก 3)
       parkRelief: quote.rescheduleAdvanceApplied,
+      // งวดที่ยังไม่ชำระซึ่งใบรับชำระบางส่วนตั้งลูกหนี้งวดไปแล้วบางส่วน (ก1) — JP4 ล้างเฉพาะส่วนที่เหลือ
+      accruedUnpaid,
     });
 
     // Resolve all account names from CoA so preview shows real labels.
@@ -338,6 +355,8 @@ export class ContractPaymentService {
       totalPayoff: quote.totalPayoff,
       // ยอดถังพักที่ยอดปิดดูดซับจริง — earlyPayoff() ใช้ต่อเป็นขา Dr 21-1103
       rescheduleAdvanceApplied: quote.rescheduleAdvanceApplied,
+      // ยอดที่ตั้งลูกหนี้งวดไปแล้วของงวดที่ยังไม่ชำระและยังตั้งไม่ครบ (ก1) — earlyPayoff() ส่งต่อให้ JE
+      accruedUnpaid,
       journalPreview: {
         lines: jeLines,
         totalDebit: jeTotalDr.toFixed(2),
@@ -561,6 +580,8 @@ export class ContractPaymentService {
             interestDiscountPercent: quote.discountPct,
             unpaidLateFees: epLateFees.toString(),
             parkRelief: epParkRelief,
+            // ค่าเดียวกับที่ preview ใช้ (quote ถูกอ่านซ้ำในธุรกรรมนี้) — preview === posted
+            accruedUnpaid: quote.accruedUnpaid,
           });
 
           // Ledger-side line descriptions (the preview words them differently —

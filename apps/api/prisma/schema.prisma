@@ -274,6 +274,14 @@ enum ReceivingItemStatus {
   REJECT
 }
 
+/// ประเภทเอกสารที่ผู้จัดจำหน่ายส่งมากับของ (ข3 — แบบหน้าจอที่เจ้าของเคาะ 2026-10-01)
+enum SupplierDocType {
+  TAX_INVOICE // ใบกำกับภาษี
+  DELIVERY_NOTE // ใบส่งของ / ใบแจ้งหนี้
+  CASH_BILL // บิลเงินสด
+  NONE // ไม่มีเอกสาร — ลงบัญชีวันที่รับของ และต้องเขียนเหตุผลในหมายเหตุใบรับ
+}
+
 enum TransferStatus {
   PENDING
   IN_TRANSIT // กำลังจัดส่ง
@@ -1629,6 +1637,13 @@ model InstallmentSchedule {
   rescheduledFromDate    DateTime? @map("rescheduled_from_date")
   rescheduleCount        Int       @default(0) @map("reschedule_count")
   accrualJournalEntryId  String?   @map("accrual_journal_entry_id")
+  /// ยอดที่ตั้งลูกหนี้งวด (2A) ไปแล้วของงวด — Σ Dr 11-2103 / ภาษีขาย / ดอกเบี้ย ของรายการ 2A ที่ยังมีผล
+  /// (คำตอบฝ่ายบัญชี ก1 — ตั้งเท่ายอดที่รับก่อนวันครบกำหนด). เขียนในธุรกรรมเดียวกับทุกรายการ 2A และคืนเป็น 0
+  /// เมื่อกลับรายการตอนยกเลิกใบเสร็จ. มีความหมายเฉพาะเมื่อ accrualJournalEntryId ว่าง — แถวที่ตั้งครบก่อน
+  /// มีคอลัมน์นี้เก็บ 0 (อ่านลิงก์ก่อนเสมอ)
+  accruedAmount          Decimal   @default(0) @map("accrued_amount") @db.Decimal(12, 2)
+  accruedVat             Decimal   @default(0) @map("accrued_vat") @db.Decimal(12, 2)
+  accruedInterest        Decimal   @default(0) @map("accrued_interest") @db.Decimal(12, 2)
   vat60dayJournalEntryId String?   @map("vat_60day_journal_entry_id")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
@@ -1863,6 +1878,18 @@ enum DeviceOrigin {
   IMPORTED
 }
 
+/// ประวัติอะไหล่/การซ่อมของเครื่อง — แจ้งลูกค้าในข้อมูลเครื่อง ใบขาย และสัญญา
+enum PartsHistory {
+  /// ของเดิมทั้งหมด ไม่เคยซ่อม
+  ORIGINAL
+  /// เคยเปลี่ยนอะไหล่แท้ หรือจอแท้ศูนย์
+  GENUINE_REPLACED
+  /// เปลี่ยนแบตใหม่ (ไม่ใช่แบตแท้ Apple)
+  BATTERY_NON_GENUINE
+  /// หน้าจอ กล้อง หรืออะไหล่อื่นไม่แท้
+  NON_GENUINE_PARTS
+}
+
 enum PricingDeviceOrigin {
   UNSPECIFIED
   THAI
@@ -1952,6 +1979,11 @@ model Product {
   deviceOrigin      DeviceOrigin?        @map("device_origin")
   /// Customer-facing warranty provider, coverage and exclusions for this unit.
   warrantyTerms     String?              @map("warranty_terms") @db.Text
+  /// ประวัติอะไหล่/การซ่อมที่แจ้งลูกค้า (ดูจาก "ประวัติชิ้นส่วนและบริการ" บนตัวเครื่อง) · null = ยังไม่ระบุ
+  /// บันทึกและแจ้งลูกค้าเท่านั้น ไม่มีผลกับการคำนวณค่างวด (เจ้าของสั่ง 2026-09-26)
+  partsHistory      PartsHistory?        @map("parts_history")
+  /// รายละเอียดเพิ่มที่แจ้งลูกค้า เช่น "เปลี่ยนแบต 26 ก.ย. 2569"
+  partsHistoryNote  String?              @map("parts_history_note")
   conditionGrade    String?              @map("condition_grade") // A, B, C for used phones
   gallery           String[]             @default([]) // catalog photo URLs
   gallery360        String[]             @default([]) // 360° frame URLs (24-36 frames)
@@ -2112,6 +2144,11 @@ model GoodsReceiving {
   poId         String    @map("po_id")
   receivedById String    @map("received_by_id")
   notes        String?
+  /// เอกสารจากผู้จัดจำหน่าย (ข3) — null = ใบรับของก่อนมีช่องนี้ หรือสร้างจากเส้นทางภายในที่ไม่ส่งประเภท
+  supplierDocType   SupplierDocType? @map("supplier_doc_type")
+  supplierDocNumber String?          @map("supplier_doc_number")
+  /// วันที่ในเอกสาร เก็บเป็นเที่ยงคืนเวลาไทย — วันที่ลงบัญชีรับสินค้า (ข้ามไปวันที่รับของเมื่องวดของวันนี้ปิดแล้ว)
+  supplierDocDate   DateTime?        @map("supplier_doc_date")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
@@ -2121,6 +2158,7 @@ model GoodsReceiving {
   items      GoodsReceivingItem[]
 
   @@index([poId])
+  @@index([supplierDocNumber])
   @@map("goods_receivings")
 }
 
@@ -2140,6 +2178,12 @@ model GoodsReceivingItem {
   hasBox             Boolean?            @map("has_box")
   checklistResults   Json?               @map("checklist_results")
   productId          String?             @unique @map("product_id")
+  /// ต้นทุนของหน่วยนี้ที่ปันได้ตอนรับของ (ราคารวม VAT หลังส่วนลดท้ายบิล) = ยอดที่ลงบัญชีรับเข้าคลัง ·
+  /// null = รับก่อนระบบลงบัญชีรับของ (ไม่ลงย้อนหลัง)
+  receivedCost       Decimal?            @map("received_cost") @db.Decimal(12, 2)
+  /// รายการบัญชีรับเข้าคลังของหน่วยนี้ · null = ยังไม่ลง — เครื่องที่รอถ่ายรูปลงตอนผ่านเข้าคลัง
+  /// (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8: ลงเฉพาะสินค้าที่รับเข้าคลังจริง)
+  journalEntryId     String?             @map("journal_entry_id")
   createdAt          DateTime            @default(now()) @map("created_at")
   updatedAt          DateTime            @updatedAt @map("updated_at")
   deletedAt          DateTime?           @map("deleted_at")
@@ -3564,6 +3608,11 @@ model KycVerification {
 // E-RECEIPT (ใบเสร็จรับเงินอิเล็กทรอนิกส์)
 // ============================================================
 
+/// PR3: มี SQL-only partial unique index `receipts_source_journal_entry_key` บน (source_journal_entry_id)
+/// WHERE source_journal_entry_id IS NOT NULL AND deleted_at IS NULL — สร้างด้วยมือใน migration
+/// 20261015000000 (Prisma schema ไม่มีทาง declare partial unique ได้) ถ้ารัน `prisma migrate dev` ต่อจากนี้
+/// อย่ายอมรับ diff ที่เสนอ DROP INDEX receipts_source_journal_entry_key — index นี้กันการออกใบเสร็จซ้ำ
+/// สองใบให้รายการบัญชีรับชำระรายการเดียว (webhook ส่งซ้ำ / ผู้เรียกเรียกซ้ำ)
 model Receipt {
   id                    String    @id @default(uuid())
   receiptNumber         String    @unique @map("receipt_number") // RT-YYYYMM-NNNNN
@@ -3577,6 +3626,19 @@ model Receipt {
   amount                Decimal   @db.Decimal(12, 2)
   amountBeforeVat       Decimal?  @map("amount_before_vat") @db.Decimal(12, 2) // ราคาก่อน VAT
   vatAmount             Decimal?  @map("vat_amount") @db.Decimal(12, 2) // จำนวน VAT
+  /// ใบกำกับภาษีตามบัญชี (PR3 — คำตัดสินฝ่ายบัญชี D3–D5): ค่าที่พิมพ์บนเอกสาร เก็บ ณ ตอนออกใบ.
+  /// amountBeforeVat + vatAmount + roundingAmount + lateFeeAmount = amount เสมอ (รวมแถวเงินรับล่วงหน้าแล้ว).
+  /// ใบที่ออกก่อน PR3 และใบปรับดิว (RESCHEDULE_FEE) = null ทุกช่อง → PDF ใช้ตรรกะเดิม.
+  /// ปัดเศษนอกฐานภาษี: + เก็บเกิน (53-1503) / − ส่วนลดเศษสตางค์ (52-1104)
+  roundingAmount        Decimal?  @map("rounding_amount") @db.Decimal(12, 2)
+  /// ค่าปรับชำระล่าช้าสุทธิที่รับในใบนี้ (Cr 42-1103 − Dr 52-1105) — นอกฐานภาษี
+  lateFeeAmount         Decimal?  @map("late_fee_amount") @db.Decimal(12, 2)
+  /// ค่าปรับส่วนที่อนุโลมในใบนี้ (Dr 52-1105) — แถว "ส่วนลด/อนุโลมค่าปรับ"
+  lateFeeWaivedAmount   Decimal?  @map("late_fee_waived_amount") @db.Decimal(12, 2)
+  /// เงินรับล่วงหน้าในใบนี้: + พักเป็นเงินรับล่วงหน้า (Cr 21-1103) / − หักเงินรับล่วงหน้าเข้างวด (Dr 21-1103)
+  advanceAmount         Decimal?  @map("advance_amount") @db.Decimal(12, 2)
+  /// ภาษีของแถวเงินรับล่วงหน้า (เครื่องหมายเดียวกับ advanceAmount) — รวมอยู่ใน vatAmount แล้ว
+  advanceVatAmount      Decimal?  @map("advance_vat_amount") @db.Decimal(12, 2)
   installmentNo         Int?      @map("installment_no") // งวดที่
   remainingBalance      Decimal?  @map("remaining_balance") @db.Decimal(12, 2) // contract balance after this payment
   remainingMonths       Int?      @map("remaining_months")

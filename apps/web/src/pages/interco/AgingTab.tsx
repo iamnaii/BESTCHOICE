@@ -1,7 +1,8 @@
-import { CalendarClock } from 'lucide-react';
+import { CalendarClock, Info } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { formatThaiDateShort } from '@/lib/date';
 import {
   fmtMoney,
@@ -80,7 +81,7 @@ export function AgingTab({
       >
         <div className="space-y-4">
           {totals && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="finance-card-grid grid grid-cols-2 lg:grid-cols-4 gap-3">
               <SummaryTile
                 label="ลูกหนี้ระหว่างกิจการสุทธิ (11-2107)"
                 value={`฿${fmtMoney(totals.intercoNet)}`}
@@ -97,7 +98,8 @@ export function AgingTab({
               <SummaryTile
                 label="ค้าง swap ยุคเก่า (สมุดเดียว)"
                 value={`฿${fmtMoney(totals.legacyOneBookNet)}`}
-                hint="ไม่รวมในยอดรวมหลัก — ล้างผ่านช่องทางรับโอนจากหน้าร้าน"
+                hint="ไม่รวมยอดหลัก"
+                hintDetails="ไม่รวมในยอดรวมหลัก — ล้างผ่านช่องทางรับโอนจากหน้าร้าน"
               />
             </div>
           )}
@@ -270,11 +272,13 @@ function SummaryTile({
   label,
   value,
   hint,
+  hintDetails,
   tone = 'default',
 }: {
   label: string;
   value: string;
   hint?: string;
+  hintDetails?: string;
   tone?: 'default' | 'warning';
 }) {
   return (
@@ -288,7 +292,19 @@ function SummaryTile({
         >
           {value}
         </p>
-        {hint && <p className="text-[11px] text-muted-foreground leading-snug mt-1">{hint}</p>}
+        {hint && (hintDetails ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type="button" aria-label={`${hint} — รายละเอียด: ${label}`} className="mt-1 inline-flex min-h-8 items-center gap-1.5 rounded-sm text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {hint} <Info className="size-3.5 shrink-0" aria-hidden="true" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="max-w-[calc(100vw-2rem)] text-sm" aria-label={`รายละเอียด: ${label}`}>
+              <p className="font-medium">{label}</p>
+              <p className="mt-2 text-muted-foreground">{hintDetails}</p>
+            </PopoverContent>
+          </Popover>
+        ) : <p className="text-[11px] text-muted-foreground leading-snug mt-1">{hint}</p>)}
       </CardContent>
     </Card>
   );

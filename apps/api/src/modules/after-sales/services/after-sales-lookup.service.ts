@@ -40,6 +40,13 @@ export interface LookupResult {
   } | null; // data URL จาก ProductPhoto (null = ไม่มีรูปตอนซื้อ)
   openCase: { id: string; caseNumber: string; stage: string } | null; // เคสที่ยังไม่ปิดของ IMEI นี้ (กันเปิดซ้ำ)
   outcomes: OutcomeOption[];
+  /**
+   * PR 3 Task 3 (PF-4) — ลูกค้าผูก LINE ไว้แล้วหรือยัง (customer.lineIdShop มีค่าจริง). อ่าน
+   * `lineIdShop` แยกด้วย select ของตัวเองในเมธอดนี้เท่านั้น แล้วแปลงเป็น boolean — ห้ามใส่
+   * `lineIdShop` ดิบลงใน `LookupResult` หรือ `customer` (PII, `repair-warranty.service.ts` เอง
+   * ก็จงใจไม่คืนค่านี้ — ห้ามไป widen select ของมัน).
+   */
+  lineLinked: boolean;
 }
 
 /** แปลง Date | null → ISO string | null — lookupByImei คืน Date จริง แต่ LookupResult ประกาศเป็น string เพื่อให้ serialize ข้าม HTTP ได้ตรงกันเสมอ */
@@ -60,7 +67,8 @@ export class AfterSalesLookupService {
     // C7 (final-fix brief) — ข้อความเดิม "เลือกเครื่องก่อน (productId)" ชี้ไปหน้าจอค้นด้วยลูกค้า
     // ที่ PR 1 ไม่มี UI รองรับจริง (มีแค่ query param `productId` ใน DTO เผื่ออนาคต) — เปลี่ยนเป็น
     // ข้อความที่ตรงกับสิ่งที่ผู้ใช้ทำได้จริงวันนี้ (ค้นด้วย IMEI เท่านั้น)
-    if (!dto.imei) throw new NotFoundException('ไม่พบเครื่องจากเลข IMEI นี้ — ตรวจเลข IMEI แล้วลองใหม่');
+    if (!dto.imei)
+      throw new NotFoundException('ไม่พบเครื่องจากเลข IMEI นี้ — ตรวจเลข IMEI แล้วลองใหม่');
     const r = await this.repair.lookupByImei(dto.imei, user);
     const checkedAt = new Date().toISOString();
     if (!r.found) {
@@ -73,6 +81,7 @@ export class AfterSalesLookupService {
         sale: null,
         purchasePhotos: null,
         openCase: null,
+        lineLinked: false, // ไม่พบเครื่อง — ไม่มีลูกค้าให้ผูก LINE
         warranty: {
           status: 'WALK_IN',
           daysRemainingIn7Day: 0,
@@ -145,9 +154,7 @@ export class AfterSalesLookupService {
       },
       orderBy: { receivedAt: 'desc' },
     });
-    const openCaseReconciled = openCaseRaw
-      ? await reconcileStage(this.prisma, openCaseRaw)
-      : null;
+    const openCaseReconciled = openCaseRaw ? await reconcileStage(this.prisma, openCaseRaw) : null;
     const openCase =
       openCaseReconciled && !['CLOSED', 'CANCELLED'].includes(openCaseReconciled.stage)
         ? {
@@ -157,6 +164,16 @@ export class AfterSalesLookupService {
           }
         : null;
     const warrantyStatus = source === 'WALK_IN' ? 'WALK_IN' : r.warrantyStatus;
+    // PF-4 — อ่าน lineIdShop แยกที่นี่เท่านั้น (`lookupByImei`/`r.customer` ไม่มีคอลัมน์นี้เลย —
+    // select ของมันคือ {id,name,phone} ตายตัว ห้าม widen) แล้วแปลงเป็น boolean ก่อนคืนค่า
+    const lineLinked = r.customer?.id
+      ? !!(
+          await this.prisma.customer.findFirst({
+            where: { id: r.customer.id, deletedAt: null },
+            select: { lineIdShop: true },
+          })
+        )?.lineIdShop
+      : false;
     return {
       found: true,
       source,
@@ -165,6 +182,7 @@ export class AfterSalesLookupService {
       contract: r.contract,
       sale: r.sale,
       openCase,
+      lineLinked,
       warranty: {
         status: warrantyStatus,
         daysRemainingIn7Day: r.daysRemainingIn7Day ?? 0,

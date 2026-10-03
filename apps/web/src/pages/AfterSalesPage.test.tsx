@@ -24,7 +24,7 @@ vi.mock('@/lib/api', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: auth.user }) }));
 // Task 12 (o) — ปุ่ม "ยืนยันเปลี่ยนเครื่อง"/"เปิดเคส" ในแท็บรออนุมัติ navigate ออกจากหน้านี้
-// (ไม่เปิด dialog ในตัว) — mock useNavigate ตาม pattern ของ CrmPipelinePage.test.tsx
+// (ไม่เปิด dialog ในตัว) — mock useNavigate ด้วย vi.mock('react-router')
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
   return { ...actual, useNavigate: () => mocks.navigate };
@@ -134,6 +134,7 @@ function renderPage(initialEntries: string[] = ['/after-sales']) {
 const foundResult = (over: Partial<LookupResult> = {}): LookupResult => ({
   found: true,
   source: 'INSTALLMENT_CONTRACT',
+  lineLinked: false,
   product: {
     id: 'p1',
     brand: 'Apple',

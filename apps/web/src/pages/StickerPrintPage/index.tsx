@@ -75,6 +75,8 @@ function toQuotable(product: StockProduct | StickerProductData): QuotableProduct
     model: product.model,
     storage: product.storage,
     category: product.category,
+    // ค่างวด GFIN บนดวงคิด OVER ตามที่มาเครื่อง (API ส่ง null เมื่อยังไม่ระบุ) — ส่งต่อแบบเดียวกับหน้ารายละเอียดสินค้า
+    deviceOrigin: product.deviceOrigin,
     cashPrice: product.cashPrice,
     installmentPrice: product.installmentPrice,
     prices: product.prices,

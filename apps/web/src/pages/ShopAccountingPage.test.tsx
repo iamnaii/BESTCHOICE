@@ -54,6 +54,47 @@ describe('ShopAccountingPage', () => {
     expect(screen.getByRole('button', { name: /งบกำไรขาดทุน \(SHOP\)/ })).toBeInTheDocument();
   });
 
+  it('ป้ายเตือนบอกช่องว่างที่เหลือจริง — ไม่บอกว่าการขายยังไม่ลงบัญชี', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        asOfDate: new Date().toISOString(),
+        sections: [],
+        grandDrTotal: 0,
+        grandCrTotal: 0,
+        isBalanced: true,
+      },
+    });
+    renderPage();
+    expect(
+      await screen.findByText('ยอดสินค้าคงเหลือและเจ้าหนี้ผู้จัดจำหน่ายในงบนี้ยังไม่ครบ'),
+    ).toBeInTheDocument();
+    // การขาย/สัญญาผ่อน/เทิร์น/จอง ลงบัญชีอัตโนมัติแล้ว — ข้อความเดิมที่บอกว่ายังไม่เชื่อมต้องไม่เหลือ
+    expect(screen.queryByText(/ยังไม่เชื่อมกับการขายจริง/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ยังไม่ถูกบันทึกอัตโนมัติจากการขาย/)).not.toBeInTheDocument();
+  });
+
+  it('ป้ายเตือนบอกว่าการรับสินค้าเข้าลงบัญชีแล้ว เหลือการจ่ายเงินผู้จัดจำหน่ายกับการปรับสต๊อก', async () => {
+    apiGet.mockResolvedValue({
+      data: {
+        asOfDate: new Date().toISOString(),
+        sections: [],
+        grandDrTotal: 0,
+        grandCrTotal: 0,
+        isBalanced: true,
+      },
+    });
+    renderPage();
+    expect(
+      await screen.findByText(/การจ่ายเงินผู้จัดจำหน่ายและการปรับสต๊อกยังไม่ถูกบันทึกบัญชี/),
+    ).toBeInTheDocument();
+    // เงินที่จ่ายผู้จัดจำหน่ายยังไม่ถูกตัดออกจากสมุด ⇒ ทั้งเจ้าหนี้และเงินสด/ธนาคารสูงกว่าจริง
+    expect(screen.getByText(/ยอดเจ้าหนี้ผู้จัดจำหน่ายและยอดเงินในงบทดลองจึงสูงกว่าจริง/)).toBeInTheDocument();
+    // สินค้าที่รับก่อนเริ่มบันทึกยังไม่มีในสมุด — ขายแล้วยอดสินค้าคงเหลือยังติดลบได้
+    expect(screen.getByText(/ยอดสินค้าคงเหลือจึงยังต่ำกว่าจริงหรือติดลบได้/)).toBeInTheDocument();
+    // รับสินค้าเข้าลงบัญชีแล้วตั้งแต่ 2026-09-29 — ข้อความเดิมต้องไม่เหลือ
+    expect(screen.queryByText(/การรับสินค้าเข้าจากใบสั่งซื้อและการปรับสต๊อกยังไม่ถูกบันทึกบัญชี/)).not.toBeInTheDocument();
+  });
+
   it('shows isBalanced badge + grand totals when trial balance loads', async () => {
     apiGet.mockResolvedValue({
       data: {

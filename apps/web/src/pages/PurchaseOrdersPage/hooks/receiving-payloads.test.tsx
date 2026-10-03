@@ -61,10 +61,14 @@ async function sendBoth(item: ReceivingUnitForm) {
       poId: 'po-1',
       items: [item],
       notes: '',
+      supplierDoc: { type: 'DELIVERY_NOTE', number: 'DN-TEST', date: '2026-10-03' },
     });
     await result.current.directReceiveMutation.mutateAsync({
       supplierId: 'supplier',
       orderDate: '2026-10-03',
+      supplierDocType: 'DELIVERY_NOTE',
+      supplierDocNumber: 'DN-TEST',
+      supplierDocDate: '2026-10-03',
       items: [item],
       paidAmount: 10000.15,
       discount: 0.01,
@@ -79,6 +83,9 @@ async function sendBoth(item: ReceivingUnitForm) {
     paidAmount: number;
     discount: number;
   };
+  for (const body of [po, direct]) expect(body).toMatchObject({
+    supplierDocType: 'DELIVERY_NOTE', supplierDocNumber: 'DN-TEST', supplierDocDate: '2026-10-03',
+  });
   expect(po.notes).toBeUndefined();
   expect(direct.paidAmount).toBe(10000.15);
   expect(direct.discount).toBe(0.01);

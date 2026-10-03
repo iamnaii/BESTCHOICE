@@ -18,8 +18,6 @@ test.beforeEach(async ({ page }) => {
       data = { data: rows, total: rows.length, page: 1, limit: 24, minDownPct: null, monthsOptions: [] };
     }
     if (url.pathname.endsWith('/related')) data = [];
-    if (/^\/api\/shop\/reviews\/[^/]+$/.test(url.pathname)) data = [];
-    if (/^\/api\/shop\/reviews\/[^/]+\/summary$/.test(url.pathname)) data = { total: 0, average: 0 };
     if (url.pathname === '/api/shop/products/phone-1') {
       data = {
         ...stock[1], category: 'PHONE_USED', gallery: [], gallery360: [], cashPrice: 15000,

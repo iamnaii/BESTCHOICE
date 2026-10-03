@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { LIFF_ERRORS } from '@/constants/liff-errors';
+import MyAfterSalesCases from './components/MyAfterSalesCases';
 
 interface WarrantyDevice {
   title: string;
@@ -141,6 +142,8 @@ export default function LiffWarranty() {
 
   return (
     <div className="min-h-screen bg-background p-4 space-y-4">
+      {data?.linked && <MyAfterSalesCases lineId={lineId} />}
+
       <div className="px-1">
         <h1 className="text-xl font-bold text-foreground leading-snug">ประกันของฉัน</h1>
         {data.customerName && (

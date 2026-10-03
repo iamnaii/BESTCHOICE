@@ -1,20 +1,19 @@
 import { expect, it } from 'vitest';
-import { formatOnlineMoney, formatTaxAmount, formatIncomeAmount } from './financial-display';
+import { formatTaxAmount, formatIncomeAmount } from './financial-display';
 import { formatDuration } from '@/lib/format-duration';
 import { buildExpenseLinePayload } from '@/components/expense-form-v4/expense-line-payload';
 
 it.each([
-  [null, '-', '0.00', '—'],
-  [undefined, '-', '0.00', '—'],
-  ['invalid', '-', '0.00', '—'],
-  ['', '0.00', '0.00', '—'],
-  ['123.45suffix', '-', '0.00', '123.45'],
-  ['1234.56', '1,234.56', '1,234.56', '1,234.56'],
-  [-0.01, '-0.01', '-0.01', '-0.01'],
+  [null, '0.00', '—'],
+  [undefined, '0.00', '—'],
+  ['invalid', '0.00', '—'],
+  ['', '0.00', '—'],
+  ['123.45suffix', '0.00', '123.45'],
+  ['1234.56', '1,234.56', '1,234.56'],
+  [-0.01, '-0.01', '-0.01'],
 ] as const)(
-  'preserves the three existing display policies for %s',
-  (value, online, tax, income) => {
-    expect(formatOnlineMoney(value)).toBe(online);
+  'preserves the two existing display policies for %s',
+  (value, tax, income) => {
     expect(formatTaxAmount(value)).toBe(tax);
     expect(formatIncomeAmount(value)).toBe(income);
   },

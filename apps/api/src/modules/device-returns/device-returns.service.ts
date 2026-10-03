@@ -20,6 +20,7 @@ import { getBranchScope } from '../auth/branch-access.util';
 import { JourneyEntryWriter } from '../customer-journey/journey-entry-writer.service';
 import { journeyDedupeKey } from '../customer-journey/journey-data-schemas';
 import { CustomerTagsService } from '../customer-tags/customer-tags.service';
+import { emitDeferredWarnings, warningsOf } from '../journal/deferred-warning';
 import { CreditNoteDeliveryService } from '../receipts/services/credit-note-delivery.service';
 import {
   REPOSSESSION_RETURN_REASONS,
@@ -635,6 +636,8 @@ export class DeviceReturnsService {
       });
 
     // หลัง commit — best-effort ทั้งหมด (doctrine R-1)
+    // สัญญาณเตือนของ JP5 (คอลัมน์เงินของลูกค้าไม่ตรงบัญชี — PR6) ส่งหลัง commit เท่านั้น
+    emitDeferredWarnings(warningsOf(result));
     await this.audit.log({
       userId: user.id,
       action: 'DEVICE_RETURN_CONFIRMED',

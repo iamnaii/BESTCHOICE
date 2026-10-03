@@ -8,6 +8,7 @@ import { buildReceivingItemData } from '../receiving-item';
 import { receivingBlockers } from '../receiving-flow.util';
 import { PurchasingSummary } from '../summaryStrip';
 import { buildReceiveResultMessage } from '../receiveResultMessage';
+import { defaultSupplierDoc, supplierDocPayload, type SupplierDocForm, type SupplierDocType } from '../supplier-doc.util';
 import { emptyAnglePhotos } from '@/constants/photo-angles';
 
 export function buildDirectReceiveItem(i: ReceivingUnitForm) {
@@ -38,6 +39,10 @@ export interface DirectReceiveInput {
   paidAmount?: number;
   paymentNotes?: string;
   attachments?: string[];
+  /** ข3 — เอกสารจากผู้จัดจำหน่าย (`supplierDocPayload`) */
+  supplierDocType: SupplierDocType;
+  supplierDocNumber?: string;
+  supplierDocDate?: string;
 }
 
 export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }) {
@@ -58,6 +63,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const [poDetail, setPODetail] = useState<PODetail | null>(null);
   const [receivingUnits, setReceivingUnits] = useState<ReceivingUnitForm[]>([]);
   const [receivingNotes, setReceivingNotes] = useState('');
+  const [receivingSupplierDoc, setReceivingSupplierDoc] = useState<SupplierDocForm>(() => defaultSupplierDoc(false));
   const [paymentForm, setPaymentForm] = useState({
     paymentStatus: '',
     paymentMethod: '',
@@ -224,10 +230,12 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       poId,
       items,
       notes,
+      supplierDoc,
     }: {
       poId: string;
       items: ReceivingUnitForm[];
       notes: string;
+      supplierDoc: SupplierDocForm;
     }) =>
       api.post(`/purchase-orders/${poId}/goods-receiving`, {
         items: items.map((i) => ({
@@ -235,6 +243,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
           ...buildReceivingItemData(i),
         })),
         notes: notes || undefined,
+        ...supplierDocPayload(supplierDoc),
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
@@ -267,6 +276,9 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
         paidAmount: money.paidAmount,
         paymentNotes: money.paymentNotes,
         attachments: money.attachments,
+        supplierDocType: money.supplierDocType,
+        supplierDocNumber: money.supplierDocNumber,
+        supplierDocDate: money.supplierDocDate,
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
@@ -326,6 +338,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   const openReceiveModal = async (po: PurchaseOrder) => {
     setSelectedPO(po);
     setReceivingNotes('');
+    // ข3 ข้อ 4: จด VAT = ใบกำกับภาษี · ไม่จด = ใบส่งของ / ใบแจ้งหนี้ (เปลี่ยนได้)
+    setReceivingSupplierDoc(defaultSupplierDoc(po.supplier.hasVat));
 
     // Fetch all pricing templates and match on client side — both selling prices (2026-09-07)
     const pricingCache = new Map<string, { cash: string; installment: string }>();
@@ -458,6 +472,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       poId: selectedPO.id,
       items: receivingUnits,
       notes: receivingNotes,
+      supplierDoc: receivingSupplierDoc,
     });
   };
 
@@ -520,6 +535,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setReceivingUnits,
     receivingNotes,
     setReceivingNotes,
+    receivingSupplierDoc,
+    setReceivingSupplierDoc,
     paymentForm,
     setPaymentForm,
     paymentAttachments,

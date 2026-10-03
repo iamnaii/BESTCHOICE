@@ -15,6 +15,7 @@ import { ArrowLeft, Printer } from 'lucide-react';
 import api from '@/lib/api';
 import QueryBoundary from '@/components/QueryBoundary';
 import { formatDateTime } from '@/utils/formatters';
+import { supplierDocSummary, type SupplierDocType } from './supplier-doc.util';
 import {
   useCompanyDisplayName,
   useCompanyAddress,
@@ -45,6 +46,9 @@ interface GRDoc {
   grNumber: string;
   createdAt: string;
   notes: string | null;
+  supplierDocType?: SupplierDocType | null;
+  supplierDocNumber?: string | null;
+  supplierDocDate?: string | null;
   po: { id: string; poNumber: string; supplier: { id: string; name: string } };
   receivedBy: { id: string; name: string };
   items: GRItem[];
@@ -173,6 +177,8 @@ function GoodsReceiptSheet({ doc }: { doc: GRDoc }) {
           <Meta label="อ้างอิงใบสั่งซื้อ" value={doc.po.poNumber} mono />
           <Meta label="ผู้จัดจำหน่าย" value={doc.po.supplier.name} />
           <Meta label="ผู้รับของ" value={doc.receivedBy.name} />
+          {/* ข3 — ช่องที่สี่ของตาราง 2 คอลัมน์ (ว่างอยู่) ไม่เพิ่มความสูงของหัวเอกสาร: ใบรับของสั้นยังพิมพ์หน้าเดียว */}
+          {supplierDocSummary(doc) && <Meta label="อ้างอิงเอกสารผู้จัดจำหน่าย" value={supplierDocSummary(doc)!} />}
         </section>
 
         <table className="w-full table-fixed mt-6 text-xs border border-border">

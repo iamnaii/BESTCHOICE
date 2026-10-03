@@ -286,6 +286,8 @@ jobs:
           # After-sales hub PR1 (2026-09-24) — same jest-invisible *.integration.spec.ts naming;
           # new directory ⇒ new glob (บทเรียน jp5-vat-split: glob ไม่ recurse เอง)
           AFTERSALES_FILES=$(ls src/modules/after-sales/__tests__/*.integration.spec.ts)
+          # รับสินค้าเข้าลงบัญชี (2026-09-29) — โฟลเดอร์ใหม่ ⇒ glob ใหม่ (glob ไม่ recurse เอง)
+          PO_FILES=$(ls src/modules/purchase-orders/__tests__/*.integration.spec.ts)
           npx vitest run --no-file-parallelism $FILES \
             src/modules/installments/reschedule.service.spec.ts \
             $ACCT_FILES \
@@ -302,7 +304,8 @@ jobs:
             $SALES_FILES \
             $STOCK_GO_LIVE_FILES \
             $DEVRET_FILES \
-            $AFTERSALES_FILES
+            $AFTERSALES_FILES \
+            $PO_FILES
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db?schema=public
           DATABASE_URL_FINANCE: postgresql://test:test@localhost:5433/test_finance_db?schema=public

@@ -11,6 +11,33 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { addDays, isPast, differenceInDays } from 'date-fns';
 import { resolveShopWarrantyDays, SHOP_WARRANTY_DAYS_CONFIG_KEY } from './shop-warranty-policy';
 
+/**
+ * แถวหนึ่งของ "ประกันใกล้หมด 7 วัน" — คนเดียวที่บริโภคคือ `WarrantyCron` →
+ * `WarrantyLineNotifierService.notifyExpiring` (PR 3 Task 5). ครอบทั้งลูกค้าผ่อน (`Contract`)
+ * และลูกค้าขายสด/ไฟแนนซ์นอก (`Sale` ที่ `contractId: null`) — spec bug 12.7.
+ *
+ * `lineIdShop` เป็น PII: อยู่ในฟิลด์นี้เพื่อให้ notifier ใช้ส่งเท่านั้น ห้าม log และห้ามใส่ใน
+ * `data` ที่ส่งเข้าแม่แบบ (ตัวแปรของแม่แบบมีแค่ warrantyType/deviceName/daysRemaining/
+ * expireDate/liffLine — ไม่มี lineIdShop).
+ */
+export interface ExpiringWarrantyItem {
+  type: 'manufacturer' | 'shop';
+  source: 'CONTRACT' | 'SALE';
+  /** contractId (source CONTRACT) หรือ saleId (source SALE) — คู่กับ type คือ relatedId dedup key */
+  sourceId: string;
+  /** คงไว้เพื่อ back-compat — มีค่าเฉพาะ source CONTRACT (เท่ากับ sourceId) */
+  contractId?: string;
+  productName: string | undefined;
+  /** ยี่ห้อ+รุ่น+ความจุ เหมือนหน้า LIFF "ประกันของฉัน" (LiffWarrantyService) */
+  deviceName: string;
+  customerName: string | undefined;
+  customerId: string;
+  expireDate: Date;
+  daysRemaining: number;
+  /** PII — ผู้รับ LINE ของ notifier เท่านั้น ห้าม log */
+  lineIdShop: string | null;
+}
+
 interface WarrantyStatus {
   manufacturer: {
     expireDate: Date | null;
@@ -73,7 +100,8 @@ export class WarrantyService {
         include: { product: true },
       });
 
-      if (!contract?.product || contract.shopWarrantyStartDate || contract.shopWarrantyEndDate) return;
+      if (!contract?.product || contract.shopWarrantyStartDate || contract.shopWarrantyEndDate)
+        return;
 
       const product = contract.product;
 
@@ -81,7 +109,12 @@ export class WarrantyService {
       // ใช้สูตรเดียวกันนี้ ห้ามคำนวณแยก ไม่งั้นลูกค้าคนเดียวกันได้ประกันไม่เท่ากัน
       // แล้วแต่ว่าซื้อแบบผ่อนหรือสด
       const disclosure = readProductDisclosure(contract.productDisclosure);
-      const warrantyDays = disclosure ? (disclosure.shopWarrantyDays || null) : resolveShopWarrantyDays(product, await readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, ''));
+      const warrantyDays = disclosure
+        ? disclosure.shopWarrantyDays || null
+        : resolveShopWarrantyDays(
+            product,
+            await readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, ''),
+          );
       if (warrantyDays === null) return;
 
       const startDate = contract.createdAt;
@@ -160,22 +193,14 @@ export class WarrantyService {
 
     const oldEnd = contract.shopWarrantyEndDate;
     const isBackward = oldEnd !== null && newEndDate.getTime() < oldEnd.getTime();
-    const direction = oldEnd === null
-      ? 'INITIAL'
-      : isBackward
-        ? 'BACKWARD'
-        : 'FORWARD';
+    const direction = oldEnd === null ? 'INITIAL' : isBackward ? 'BACKWARD' : 'FORWARD';
 
     if (isBackward && userRole !== 'OWNER') {
-      throw new ForbiddenException(
-        'การย่นวันสิ้นสุดประกันต้องได้รับอนุมัติจาก OWNER เท่านั้น',
-      );
+      throw new ForbiddenException('การย่นวันสิ้นสุดประกันต้องได้รับอนุมัติจาก OWNER เท่านั้น');
     }
     const allowedForward = ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER'];
     if (!isBackward && !allowedForward.includes(userRole)) {
-      throw new ForbiddenException(
-        `ผู้ปรับประกันต้องเป็น ${allowedForward.join(' / ')}`,
-      );
+      throw new ForbiddenException(`ผู้ปรับประกันต้องเป็น ${allowedForward.join(' / ')}`);
     }
 
     // T5-C13: BACKWARD > 7 days needs a second approver (different user).
@@ -192,9 +217,7 @@ export class WarrantyService {
           );
         }
         if (approver === userId) {
-          throw new BadRequestException(
-            'ผู้อนุมัติร่วมต้องไม่ใช่ผู้ทำรายการคนเดียวกัน',
-          );
+          throw new BadRequestException('ผู้อนุมัติร่วมต้องไม่ใช่ผู้ทำรายการคนเดียวกัน');
         }
         secondApproverId = approver;
       }
@@ -242,57 +265,148 @@ export class WarrantyService {
     );
   }
 
-  async getExpiringWarranties(daysAhead: number = 7): Promise<any[]> {
+  /**
+   * รวมประกันที่ใกล้หมดใน `daysAhead` วัน — ทั้งลูกค้าผ่อน (`Contract`) และลูกค้าขายสด/
+   * ไฟแนนซ์นอก (`Sale` ที่ `contractId: null` — spec bug 12.7 เดิมมองไม่เห็นกลุ่มนี้เลย).
+   * ผู้เรียกเดียว: `WarrantyCron.checkExpiringWarranties`.
+   */
+  async getExpiringWarranties(daysAhead: number = 7): Promise<ExpiringWarrantyItem[]> {
     const now = new Date();
     const targetDate = addDays(now, daysAhead);
 
-    // Find manufacturer warranties expiring
-    const manufacturerExpiring = await this.prisma.contract.findMany({
-      where: {
-        status: 'ACTIVE',
-        deletedAt: null,
-        product: {
-          warrantyExpireDate: { gte: now, lte: targetDate },
-        },
-      },
-      include: {
-        product: { select: { name: true, warrantyExpireDate: true } },
-        customer: { select: { id: true, name: true, phone: true } },
-      },
-    });
+    const PRODUCT_SELECT = {
+      name: true,
+      brand: true,
+      model: true,
+      storage: true,
+      warrantyExpireDate: true,
+    } as const;
+    const CUSTOMER_SELECT = { id: true, name: true, lineIdShop: true } as const;
 
-    // Find shop warranties expiring
-    const shopExpiring = await this.prisma.contract.findMany({
-      where: {
-        status: 'ACTIVE',
-        deletedAt: null,
-        shopWarrantyEndDate: { gte: now, lte: targetDate },
-      },
-      include: {
-        product: { select: { name: true } },
-        customer: { select: { id: true, name: true, phone: true } },
-      },
-    });
+    const [manufacturerExpiring, shopExpiring, salesManufacturerExpiring, salesShopExpiring] =
+      await Promise.all([
+        // ประกันศูนย์ — ลูกค้าผ่อน
+        this.prisma.contract.findMany({
+          where: {
+            status: 'ACTIVE',
+            deletedAt: null,
+            product: { warrantyExpireDate: { gte: now, lte: targetDate } },
+          },
+          select: {
+            id: true,
+            product: { select: PRODUCT_SELECT },
+            customer: { select: CUSTOMER_SELECT },
+          },
+        }),
+        // ประกันร้าน — ลูกค้าผ่อน
+        this.prisma.contract.findMany({
+          where: {
+            status: 'ACTIVE',
+            deletedAt: null,
+            shopWarrantyEndDate: { gte: now, lte: targetDate },
+          },
+          select: {
+            id: true,
+            shopWarrantyEndDate: true,
+            product: { select: PRODUCT_SELECT },
+            customer: { select: CUSTOMER_SELECT },
+          },
+        }),
+        // ประกันศูนย์ — ลูกค้าขายสด/ไฟแนนซ์นอก (ไม่มีสัญญา)
+        this.prisma.sale.findMany({
+          where: {
+            deletedAt: null,
+            contractId: null,
+            product: { warrantyExpireDate: { gte: now, lte: targetDate } },
+          },
+          select: {
+            id: true,
+            product: { select: PRODUCT_SELECT },
+            customer: { select: CUSTOMER_SELECT },
+          },
+        }),
+        // ประกันร้าน — ลูกค้าขายสด/ไฟแนนซ์นอก (ไม่มีสัญญา)
+        this.prisma.sale.findMany({
+          where: {
+            deletedAt: null,
+            contractId: null,
+            shopWarrantyEndDate: { gte: now, lte: targetDate },
+          },
+          select: {
+            id: true,
+            shopWarrantyEndDate: true,
+            product: { select: PRODUCT_SELECT },
+            customer: { select: CUSTOMER_SELECT },
+          },
+        }),
+      ]);
+
+    const deviceName = (
+      product:
+        | { brand?: string | null; model?: string | null; storage?: string | null }
+        | null
+        | undefined,
+    ): string => [product?.brand, product?.model, product?.storage].filter(Boolean).join(' ');
 
     return [
-      ...manufacturerExpiring.map((c) => ({
-        type: 'manufacturer' as const,
-        contractId: c.id,
-        productName: c.product?.name,
-        customerName: c.customer?.name,
-        customerId: c.customer?.id,
-        expireDate: c.product?.warrantyExpireDate,
-        daysRemaining: differenceInDays(c.product!.warrantyExpireDate!, now),
-      })),
-      ...shopExpiring.map((c) => ({
-        type: 'shop' as const,
-        contractId: c.id,
-        productName: c.product?.name,
-        customerName: c.customer?.name,
-        customerId: c.customer?.id,
-        expireDate: c.shopWarrantyEndDate,
-        daysRemaining: differenceInDays(c.shopWarrantyEndDate!, now),
-      })),
+      ...manufacturerExpiring.map(
+        (c): ExpiringWarrantyItem => ({
+          type: 'manufacturer',
+          source: 'CONTRACT',
+          sourceId: c.id,
+          contractId: c.id,
+          productName: c.product?.name,
+          deviceName: deviceName(c.product),
+          customerName: c.customer?.name,
+          customerId: c.customer!.id,
+          expireDate: c.product!.warrantyExpireDate!,
+          daysRemaining: differenceInDays(c.product!.warrantyExpireDate!, now),
+          lineIdShop: c.customer?.lineIdShop ?? null,
+        }),
+      ),
+      ...shopExpiring.map(
+        (c): ExpiringWarrantyItem => ({
+          type: 'shop',
+          source: 'CONTRACT',
+          sourceId: c.id,
+          contractId: c.id,
+          productName: c.product?.name,
+          deviceName: deviceName(c.product),
+          customerName: c.customer?.name,
+          customerId: c.customer!.id,
+          expireDate: c.shopWarrantyEndDate!,
+          daysRemaining: differenceInDays(c.shopWarrantyEndDate!, now),
+          lineIdShop: c.customer?.lineIdShop ?? null,
+        }),
+      ),
+      ...salesManufacturerExpiring.map(
+        (s): ExpiringWarrantyItem => ({
+          type: 'manufacturer',
+          source: 'SALE',
+          sourceId: s.id,
+          productName: s.product?.name,
+          deviceName: deviceName(s.product),
+          customerName: s.customer?.name,
+          customerId: s.customer!.id,
+          expireDate: s.product!.warrantyExpireDate!,
+          daysRemaining: differenceInDays(s.product!.warrantyExpireDate!, now),
+          lineIdShop: s.customer?.lineIdShop ?? null,
+        }),
+      ),
+      ...salesShopExpiring.map(
+        (s): ExpiringWarrantyItem => ({
+          type: 'shop',
+          source: 'SALE',
+          sourceId: s.id,
+          productName: s.product?.name,
+          deviceName: deviceName(s.product),
+          customerName: s.customer?.name,
+          customerId: s.customer!.id,
+          expireDate: s.shopWarrantyEndDate!,
+          daysRemaining: differenceInDays(s.shopWarrantyEndDate!, now),
+          lineIdShop: s.customer?.lineIdShop ?? null,
+        }),
+      ),
     ];
   }
 }

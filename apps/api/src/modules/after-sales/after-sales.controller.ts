@@ -21,6 +21,7 @@ import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AfterSalesService } from './after-sales.service';
+import { AfterSalesDocumentService } from './services/after-sales-document.service';
 import { IntakePhotosInterceptor } from './intake-photos.interceptor';
 import { LookupDto } from './dto/lookup.dto';
 import { CreateCaseDto } from './dto/create-case.dto';
@@ -54,10 +55,23 @@ const sendImage = (res: Response, key: string, stream: NodeJS.ReadableStream) =>
   stream.pipe(res);
 };
 
+const sendPdf = (res: Response, pdf: Buffer, filename: string) => {
+  res.set({
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `inline; filename="${filename}"`,
+    'Content-Length': pdf.length.toString(),
+    'Cache-Control': 'private, no-store',
+  });
+  res.send(pdf);
+};
+
 @Controller('after-sales')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class AfterSalesController {
-  constructor(private readonly svc: AfterSalesService) {}
+  constructor(
+    private readonly svc: AfterSalesService,
+    private readonly docs: AfterSalesDocumentService,
+  ) {}
 
   @Get('lookup')
   @Roles(...ALL)
@@ -201,6 +215,29 @@ export class AfterSalesController {
   ) {
     const { key, stream } = await this.svc.getPurchasePhoto(id, angle, user);
     sendImage(res, key, stream);
+  }
+
+  // PR 4 — ใบรับฝากเครื่อง / ใบส่งมอบ (สเปก 6: ทั้ง 5 role) · ขอบเขตสาขาอยู่ใน service
+  @Get(':id/receipt.pdf')
+  @Roles(...ALL)
+  async receiptPdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+    @Res() res: Response,
+  ) {
+    const { pdf, caseNumber } = await this.docs.render(id, 'RECEIPT', user);
+    sendPdf(res, pdf, `after-sales-receipt-${caseNumber}.pdf`);
+  }
+
+  @Get(':id/handover.pdf')
+  @Roles(...ALL)
+  async handoverPdf(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+    @Res() res: Response,
+  ) {
+    const { pdf, caseNumber } = await this.docs.render(id, 'HANDOVER', user);
+    sendPdf(res, pdf, `after-sales-handover-${caseNumber}.pdf`);
   }
 
   @Post(':id/photos')

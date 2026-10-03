@@ -40,6 +40,9 @@ export interface OutcomeOption {
 export interface LookupResult {
   found: boolean;
   source: AfterSalesSource;
+  /** Task 8 — ลูกค้าที่พบ (found=true) ผูก LINE ไว้กับร้านหรือไม่ (จาก LookupResult.lineLinked ฝั่ง
+   * API, Task 3) ใช้ต่อบรรทัด "จะส่ง LINE" ในสรุปก่อนบันทึกของ AfterSalesNewPage */
+  lineLinked: boolean;
   product: {
     id: string;
     brand: string;
@@ -161,6 +164,9 @@ export interface CaseDetail extends CaseRow {
   photoCount: number;
   purchasePhotoAngles: string[];
   lineLinked: boolean;
+  /** Task 8 — ประวัติเหตุการณ์ LINE ของเคสนี้ (getCase().lineEvents ฝั่ง API) เรียงใหม่สุดก่อน
+   * สูงสุด 5 แถว ใช้เติมการ์ด "LINE ลูกค้า" บน AfterSalesCasePage */
+  lineEvents: { at: string; kind: 'LINE_SENT' | 'LINE_SKIPPED_NO_LINK' | 'NOTE'; note: string }[];
   timeline: TimelineItem[];
   cancelReason: string | null;
   closedAt: string | null;
@@ -315,6 +321,17 @@ export function staleLabel(stage: AfterSalesStage, days: number): string | null 
   // R25 (e) — เลิกคำว่า "เกิน" ที่ขอบ (อ่านเหมือนเลยเส้นตายไปแล้วเสมอ แม้ค่าเพิ่งแตะเกณฑ์พอดี)
   return s && days >= s[0] ? `${s[1]} ${days} วัน (เกณฑ์ ${s[0]} วัน)` : null;
 }
+
+/**
+ * Task 8 — ตัด tag `[XXX]` นำหน้า note ของ AfterSalesEvent LINE ออกก่อนแสดงผล (การ์ด "LINE
+ * ลูกค้า" + แถวไทม์ไลน์) — ฝั่ง API (`lineEventNote()` ใน after-sales-line-copy.util.ts) เขียน
+ * note เป็น `[<eventType>] <ป้ายจังหวะ> · <สถานะ>` เสมอ; ตัด tag ออกแล้วเหลือ
+ * "<ป้ายจังหวะ> · <สถานะ>" ที่พนักงานอ่านแล้วเข้าใจได้เลย ไม่ต้องรู้จักชื่อ event type ภายใน
+ */
+export function stripLineTag(note: string): string {
+  return note.replace(/^\[[^\]]*\]\s*/, '');
+}
+
 /** Task 11 — dialog vocabulary ที่ page/ExchangeActionDialogs ใช้ร่วมกัน (แหล่งเดียว ห้ามมีสำเนา) */
 export type CaseDialogId =
   | 'send'
@@ -565,6 +582,25 @@ export function secondaryActions(data: CaseDetail, role: string): SecondaryActio
   }
 
   return out;
+}
+
+/** PR 4 — เอกสารพิมพ์ของเคส (ตรงกับ API `GET /after-sales/:id/receipt.pdf` | `/handover.pdf`) */
+export type CaseDocKind = 'receipt' | 'handover';
+
+export const CASE_DOC_LABEL: Record<CaseDocKind, string> = {
+  receipt: 'ใบรับฝากเครื่อง',
+  handover: 'ใบส่งมอบ',
+};
+
+/** mirror ของ `handoverBlockReason` ฝั่ง API (after-sales-doc-compose.ts) — ปุ่มโชว์เฉพาะตอนพิมพ์ได้จริง */
+export function canPrintHandover(
+  data: Pick<CaseDetail, 'outcome' | 'stage' | 'repairTicket'>,
+): boolean {
+  if (!data.outcome) return false;
+  // ขายสด (PR 5) — API ยังไม่มีถ้อยคำใบส่งมอบของขายสด (HANDOVER_CASH_UNSUPPORTED_MSG)
+  if (data.outcome === 'CASH_SAME_MODEL_EXCHANGE') return false;
+  if (data.stage !== 'READY_FOR_PICKUP' && data.stage !== 'CLOSED') return false;
+  return data.outcome !== 'REPAIR' || !!data.repairTicket;
 }
 
 export const afterSalesKeys = {

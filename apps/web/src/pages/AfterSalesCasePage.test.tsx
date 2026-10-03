@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import AfterSalesCasePage from './AfterSalesCasePage';
 import type { CaseDetail } from './after-sales/after-sales';
+import { formatDateTime } from '@/utils/formatters';
 
 const auth = vi.hoisted(() => ({
   user: { id: 'u1', role: 'OWNER', branchId: null as string | null },
@@ -21,11 +22,33 @@ vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: auth.user }) 
 // mock ทั้ง component (ไม่ใช่แค่ ContactCombobox ข้างใน) — พฤติกรรมค้นหา/debounce ของ
 // combobox จริงไม่ใช่สิ่งที่ Task 11 ทดสอบ; แค่ต้องเรียก onSelect ด้วย payload ที่ถูกต้อง
 // (ตรวจจาก RepairCenterCombobox.tsx: onSelect({ id: childId, name }) — R22 fix round 1)
-vi.mock('@/pages/insurance/components/RepairCenterCombobox', () => ({
+vi.mock('@/pages/after-sales/RepairCenterCombobox', () => ({
   RepairCenterCombobox: ({ onSelect }: { onSelect: (s: { id: string; name: string }) => void }) => (
     <button type="button" onClick={() => onSelect({ id: 'sup-1', name: 'iCare' })}>
       เลือกศูนย์ซ่อม (ทดสอบ)
     </button>
+  ),
+}));
+
+vi.mock('@/components/PdfPreview', () => ({
+  default: ({
+    title,
+    path,
+    filename,
+    onClose,
+  }: {
+    title: string;
+    path: string;
+    filename: string;
+    onClose: () => void;
+  }) => (
+    <div role="dialog" aria-label={title}>
+      <span data-testid="pdf-path">{path}</span>
+      <span data-testid="pdf-filename">{filename}</span>
+      <button type="button" onClick={onClose}>
+        ปิดตัวอย่าง
+      </button>
+    </div>
   ),
 }));
 
@@ -72,6 +95,7 @@ function caseDetail(over: Partial<CaseDetail> = {}): CaseDetail {
     photoCount: 3,
     purchasePhotoAngles: ['front', 'back'],
     lineLinked: false,
+    lineEvents: [],
     timeline: [
       { at: '2026-09-01T02:00:00.000Z', kind: 'RECEIVED', note: null },
       { at: '2026-09-01T02:05:00.000Z', kind: 'OUTCOME_SET', note: 'เลือกทางออก: ซ่อม' },
@@ -927,5 +951,145 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     renderPage(detail.id, '?action=approve');
     await screen.findByRole('heading', { name: detail.caseNumber });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('Task 8 — การ์ด "LINE ลูกค้า" ของจริง (3 สถานะ)', () => {
+  it('lineLinked=false → ชิปเดิม "ยังไม่ผูก LINE — โทรแจ้ง" (ไม่ขึ้นกับ lineEvents)', async () => {
+    const detail = caseDetail({ lineLinked: false, lineEvents: [] });
+    mockGet(detail);
+    renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(screen.getByText('ยังไม่ผูก LINE — โทรแจ้ง')).toBeInTheDocument();
+  });
+
+  it('lineLinked=true และ lineEvents ว่าง → "ผูก LINE แล้ว — ยังไม่มีข้อความส่ง"', async () => {
+    const detail = caseDetail({ lineLinked: true, lineEvents: [] });
+    mockGet(detail);
+    renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(screen.getByText('ผูก LINE แล้ว — ยังไม่มีข้อความส่ง')).toBeInTheDocument();
+    expect(screen.queryByText('ยังไม่ผูก LINE — โทรแจ้ง')).not.toBeInTheDocument();
+  });
+
+  it('lineLinked=true และมี lineEvents → แสดง ≤3 บรรทัด "<ป้ายจังหวะ> · <สถานะ> · <เวลาไทย>" (ตัด tag ออก)', async () => {
+    const detail = caseDetail({
+      lineLinked: true,
+      lineEvents: [
+        {
+          at: '2026-09-10T03:00:00.000Z',
+          kind: 'NOTE',
+          note: '[AFTER_SALES_CLOSED] ปิดเคส · ส่งไม่สำเร็จ (429)',
+        },
+        {
+          at: '2026-09-08T03:00:01.000Z',
+          kind: 'LINE_SENT',
+          note: '[AFTER_SALES_READY] มารับได้แล้ว · ส่งแล้ว',
+        },
+        {
+          at: '2026-09-01T02:05:00.000Z',
+          kind: 'LINE_SENT',
+          note: '[AFTER_SALES_RECEIVED] รับเรื่องแล้ว · ส่งแล้ว',
+        },
+        {
+          at: '2026-09-01T02:00:00.000Z',
+          kind: 'LINE_SKIPPED_NO_LINK',
+          note: '[AFTER_SALES_RECEIVED] รับเรื่องแล้ว · ไม่ได้ส่ง — ลูกค้ายังไม่ผูก LINE',
+        },
+      ],
+    });
+    mockGet(detail);
+    renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+
+    // ≤3 บรรทัด — แถวที่ 4 (เก่าสุด) ต้องไม่โผล่บนการ์ด
+    expect(
+      screen.getByText(
+        `ปิดเคส · ส่งไม่สำเร็จ (429) · ${formatDateTime('2026-09-10T03:00:00.000Z')}`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`มารับได้แล้ว · ส่งแล้ว · ${formatDateTime('2026-09-08T03:00:01.000Z')}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`รับเรื่องแล้ว · ส่งแล้ว · ${formatDateTime('2026-09-01T02:05:00.000Z')}`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ไม่ได้ส่ง — ลูกค้ายังไม่ผูก LINE/)).not.toBeInTheDocument();
+    // tag ดิบต้องไม่หลุดออกมาที่หน้าจอ
+    expect(screen.queryByText(/\[AFTER_SALES_/)).not.toBeInTheDocument();
+    expect(screen.queryByText('ผูก LINE แล้ว — ยังไม่มีข้อความส่ง')).not.toBeInTheDocument();
+  });
+
+  // final fix I-6 — เหตุการณ์เตือนให้มารับขึ้นการ์ด LINE บนหน้าพนักงาน: ห้ามคำว่า "รับเครื่อง"
+  // (ยกเว้น "รับเครื่องไป") ทั้งหน้า
+  it('PICKUP_REMINDER บนการ์ด LINE → "เตือนให้มารับ · ส่งแล้ว" และทั้งหน้าไม่มีคำว่า "รับเครื่อง"', async () => {
+    const detail = caseDetail({
+      lineLinked: true,
+      stage: 'READY_FOR_PICKUP',
+      lineEvents: [
+        {
+          at: '2026-09-15T03:00:00.000Z',
+          kind: 'LINE_SENT',
+          note: '[AFTER_SALES_PICKUP_REMINDER] เตือนให้มารับ · ส่งแล้ว',
+        },
+      ],
+    });
+    mockGet(detail);
+    const { container } = renderPage(detail.id);
+
+    await screen.findByRole('heading', { name: detail.caseNumber });
+    expect(
+      screen.getByText(`เตือนให้มารับ · ส่งแล้ว · ${formatDateTime('2026-09-15T03:00:00.000Z')}`),
+    ).toBeInTheDocument();
+    expect(container.textContent ?? '').not.toMatch(/รับเครื่อง(?!ไป)/);
+  });
+});
+
+describe('AfterSalesCasePage — พิมพ์ใบรับฝากเครื่อง / ใบส่งมอบ (PR 4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auth.user = { id: 'u1', role: 'SALES', branchId: 'branch-1' };
+  });
+
+  it('เคสกำลังซ่อม: มีปุ่มพิมพ์ใบรับฝาก ไม่มีปุ่มใบส่งมอบ · กดแล้วเปิดตัวอย่าง path ถูก', async () => {
+    mockGet(caseDetail());
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'พิมพ์ใบรับฝากเครื่อง' }));
+    expect(screen.queryByRole('button', { name: 'พิมพ์ใบส่งมอบ' })).not.toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'ใบรับฝากเครื่อง' });
+    expect(within(dialog).getByTestId('pdf-path')).toHaveTextContent(
+      '/after-sales/case-1/receipt.pdf',
+    );
+    expect(within(dialog).getByTestId('pdf-filename')).toHaveTextContent(
+      'AS-20260908-0001-ใบรับฝากเครื่อง.pdf',
+    );
+  });
+
+  it('เคสรอลูกค้ารับ: ปุ่มพิมพ์ใบส่งมอบเปิด handover.pdf', async () => {
+    mockGet(caseDetail({ stage: 'READY_FOR_PICKUP' }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'พิมพ์ใบส่งมอบ' }));
+    expect(screen.getByTestId('pdf-path')).toHaveTextContent('/after-sales/case-1/handover.pdf');
+  });
+
+  it('?print=receipt เปิดตัวอย่างใบรับฝากเองตอนโหลด', async () => {
+    mockGet(caseDetail());
+    renderPage('case-1', '?print=receipt');
+    expect(await screen.findByRole('dialog', { name: 'ใบรับฝากเครื่อง' })).toBeInTheDocument();
+  });
+
+  it('ปิดตัวอย่าง → โหลดเคสใหม่ (ไทม์ไลน์เห็น "พิมพ์เอกสาร")', async () => {
+    mockGet(caseDetail());
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'พิมพ์ใบรับฝากเครื่อง' }));
+    const detailCalls = () =>
+      mocks.get.mock.calls.filter(([url]) => url === '/after-sales/case-1').length;
+    const before = detailCalls();
+    await userEvent.click(screen.getByRole('button', { name: 'ปิดตัวอย่าง' }));
+    await waitFor(() => expect(detailCalls()).toBeGreaterThan(before));
+    expect(screen.queryByRole('dialog', { name: 'ใบรับฝากเครื่อง' })).not.toBeInTheDocument();
   });
 });

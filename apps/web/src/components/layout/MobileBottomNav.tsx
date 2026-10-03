@@ -49,7 +49,7 @@ function MobileBottomNav() {
                 data-testid="exit-settings-bottomnav"
                 className={cn(
                   'flex flex-col items-center justify-center gap-0.5 flex-1 px-1 py-1.5',
-                  'text-muted-foreground/60 hover:text-muted-foreground',
+                  'text-muted-foreground hover:text-foreground',
                   'active:scale-90 transition-all duration-150 focus-visible:outline-hidden',
                 )}
                 aria-label="ออกจากตั้งค่า"
@@ -67,7 +67,7 @@ function MobileBottomNav() {
                 onClick={() => setMobileSidebarOpen(true)}
                 className={cn(
                   'flex flex-col items-center justify-center gap-0.5 flex-1 px-1 py-1.5',
-                  'text-muted-foreground/60 hover:text-muted-foreground',
+                  'text-muted-foreground hover:text-foreground',
                   'active:scale-90 transition-all duration-150 focus-visible:outline-hidden',
                 )}
                 aria-label="เปิดเมนูเพิ่มเติม"
@@ -85,7 +85,7 @@ function MobileBottomNav() {
               className={cn(
                 'relative flex flex-col items-center justify-center gap-0.5 flex-1 px-1 py-1.5',
                 'transition-all duration-150 active:scale-90 focus-visible:outline-hidden',
-                active ? 'text-primary' : 'text-muted-foreground/60 hover:text-muted-foreground',
+                active ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
               )}
               aria-current={active ? 'page' : undefined}
             >

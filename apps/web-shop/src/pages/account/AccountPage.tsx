@@ -1,5 +1,5 @@
 import { Link, Navigate } from 'react-router';
-import { BadgeCheck, LogOut, MapPin, Package, PiggyBank } from 'lucide-react';
+import { BadgeCheck, LogOut, MapPin, Package } from 'lucide-react';
 import ShopLayout from '@/components/layout/ShopLayout';
 import { useAuth } from '@/hooks/useAuth';
 import { CategoryHero, Card, CardBody, Container, LoadingState, Stack } from '@/components';
@@ -33,11 +33,6 @@ export default function AccountPage() {
   const hubs: HubItem[] = [
     { to: '/orders', label: 'ออเดอร์', icon: <Package className="size-6" /> },
     { to: '/account/addresses', label: 'ที่อยู่', icon: <MapPin className="size-6" /> },
-    {
-      to: '/account/saving-plans',
-      label: 'แผนออมดาวน์',
-      icon: <PiggyBank className="size-6" />,
-    },
     // "ใบสมัครผ่อน" → /apply ถูกลบ 2026-08-31: ไม่มี route นั้นจริง (มีแต่
     // /apply/:productId, /apply/status) กดแล้ว 404 — และร้านปิดจ๊อบผ่านแชทแล้ว
     { label: 'ออกจากระบบ', icon: <LogOut className="size-6" />, onClick: logout },

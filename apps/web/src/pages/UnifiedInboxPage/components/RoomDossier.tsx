@@ -606,8 +606,8 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
     return (
       <aside className="flex h-full w-80 shrink-0 flex-col items-center justify-center border-l border-border p-6 text-center" aria-label="ข้อมูลลูกค้า">
         <MessagesSquare className="mb-3 size-7 text-muted-foreground/30" />
-        <p className="text-xs font-semibold text-foreground/50">ข้อมูลลูกค้า</p>
-        <p className="mt-1 max-w-[180px] text-[11px] leading-relaxed text-muted-foreground/50">เลือกแชทเพื่อดูข้อมูลลูกค้า สัญญา และประกัน</p>
+        <p className="text-xs font-semibold text-muted-foreground">ข้อมูลลูกค้า</p>
+        <p className="mt-1 max-w-[180px] text-[11px] leading-relaxed text-muted-foreground">เลือกแชทเพื่อดูข้อมูลลูกค้า สัญญา และประกัน</p>
       </aside>
     );
   }

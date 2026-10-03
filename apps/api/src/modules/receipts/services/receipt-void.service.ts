@@ -2,15 +2,39 @@ import {
   consumePaymentApproval,
   type PaymentApprovalContext,
 } from '../../payments/services/payment-approval-request.util';
-import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Prisma, type Receipt } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
-import { ReceiptVoidReversalTemplate } from '../../journal/cpa-templates/receipt-void-reversal.template';
+import {
+  ReceiptVoidReversalTemplate,
+  type AccrualVoidResult,
+} from '../../journal/cpa-templates/receipt-void-reversal.template';
+import { emitDeferredWarnings, type DeferredWarning } from '../../journal/deferred-warning';
 import { reconstructPriorCleared } from '../../journal/reconstruct-prior';
 import { ReceiptNumberService } from './receipt-number.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
+import type { ReceiptQueryService } from './receipt-query.service';
+import {
+  documentMoneyColumns,
+  hasStoredReceiptTax,
+  legacyReceiptDocumentMoney,
+} from './receipt-document-money';
+
+/** ตัวเลขที่ใบลดหนี้เก็บ — ทุกบรรทัดของเอกสารใบที่ถูกยกเลิก (PR3 · Q5) */
+type CreditNoteMoney = ReturnType<typeof documentMoneyColumns>;
+
+/** ค่าที่ใบที่ออกตั้งแต่ PR3 เก็บไว้ ณ ตอนออกใบ — ใบลดหนี้คัดลอกตรงตัว */
+const storedTaxColumnsOf = (row: Receipt): Partial<CreditNoteMoney> => ({
+  amountBeforeVat: row.amountBeforeVat ?? undefined,
+  vatAmount: row.vatAmount ?? undefined,
+  roundingAmount: row.roundingAmount ?? undefined,
+  lateFeeAmount: row.lateFeeAmount ?? undefined,
+  lateFeeWaivedAmount: row.lateFeeWaivedAmount ?? undefined,
+  advanceAmount: row.advanceAmount ?? undefined,
+  advanceVatAmount: row.advanceVatAmount ?? undefined,
+});
 
 /**
  * Metadata keys `PaymentReceiptOrchestrator` stamps on a receipt JE whose
@@ -71,11 +95,95 @@ const UNPAY_BLOCKED_CONTRACT_STATUSES = [
  * design note that kept voided payments PAID.
  */
 export class ReceiptVoidService {
+  private readonly logger = new Logger(ReceiptVoidService.name);
+
   constructor(
     private prisma: PrismaService,
     private receiptVoidReversalTemplate: ReceiptVoidReversalTemplate,
     private numbers: ReceiptNumberService,
+    /**
+     * PR3: อ่านใบเก่า (ไม่มีค่าที่เก็บ) ในรูปเดียวกับที่ PDF ใช้ เพื่อให้ใบลดหนี้เก็บตัวเลขที่ใบเดิมพิมพ์.
+     * ไม่ส่ง (spec เดิม) = ใบลดหนี้ของใบเก่าคงรูปเดิม (ยอดอย่างเดียว)
+     */
+    private query?: Pick<ReceiptQueryService, 'getReceipt'>,
   ) {}
+
+  /**
+   * ใบลดหนี้คัดลอกทุกบรรทัดของใบที่ยกเลิก (ม.86/10 · คำถาม Q5 — PR3). ใบที่ออกก่อน PR3 ไม่มีค่าที่เก็บ →
+   * คำนวณตัวเลขที่ใบเดิมพิมพ์ด้วยตรรกะเดิมของ PDF ตัวเดียวกัน ก่อนเปิดธุรกรรมของการยกเลิก (อ่านผ่าน client หลัก —
+   * ห้ามอ่านใน tx). ใบที่ตรรกะเดิมพิมพ์ไม่ได้ (ประวัติไม่พอ) หรืออ่านไม่ได้ → ใบลดหนี้ของใบนั้นคงรูปเดิม
+   * (ยอดอย่างเดียว) — การยกเลิกห้ามล้มเพราะเอกสาร
+   */
+  private async legacyCreditNoteMoney(id: string): Promise<Map<string, CreditNoteMoney>> {
+    const out = new Map<string, CreditNoteMoney>();
+    if (!this.query) return out;
+    try {
+      const target = await this.prisma.receipt.findUnique({ where: { id } });
+      if (!target) return out;
+      const rows = target.paymentId
+        ? await this.prisma.receipt.findMany({
+            where: {
+              paymentId: target.paymentId,
+              isVoided: false,
+              deletedAt: null,
+              receiptType: { in: [...INSTALLMENT_MONEY_RECEIPT_TYPES] },
+            },
+          })
+        : [target];
+      for (const row of rows) {
+        if (hasStoredReceiptTax(row)) continue;
+        try {
+          const view = await this.query.getReceipt(row.id);
+          out.set(row.id, documentMoneyColumns(legacyReceiptDocumentMoney(view)));
+        } catch (err) {
+          // ตรรกะเดิมพิมพ์ใบนี้ไม่ได้ / อ่านใบนี้ไม่ได้ — ใบลดหนี้ของใบนี้คงรูปเดิม
+          this.reportCreditNoteFallback(err, row.receiptNumber);
+        }
+      }
+    } catch (err) {
+      // อ่านไม่ได้ — ใบลดหนี้ทุกใบคงรูปเดิม
+      this.reportCreditNotePreReadFailure(err, id);
+    }
+    return out;
+  }
+
+  /**
+   * ใบลดหนี้ของใบเก่าใบหนึ่งถอยไปเป็นยอดอย่างเดียว — ห้ามเงียบ (final review I2): log เตือนพร้อมเลขที่ใบเสมอ ·
+   * ข้อความ "ตรรกะเดิมพิมพ์ใบนี้ไม่ได้" ของ legacyReceiptDocumentMoney เป็น BadRequestException = คาดไว้ (log อย่างเดียว) ·
+   * อย่างอื่น (อ่านใบไม่ได้ / ฐานข้อมูล) ส่ง Sentry ด้วย. ใช้ captureException เท่านั้น (เทสของ PR2ข นับ captureMessage
+   * ของการยกเลิก) · ไม่ throw ไม่ว่ากรณีใด — การยกเลิกห้ามล้มเพราะเอกสาร
+   */
+  private reportCreditNoteFallback(err: unknown, receiptNumber: string): void {
+    try {
+      this.logger.warn(
+        `[ReceiptVoid] ${receiptNumber}: credit note falls back to amount only — legacy document money unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      if (!(err instanceof BadRequestException)) {
+        Sentry.captureException(err, {
+          level: 'warning',
+          tags: { subsystem: 'receipt-void-credit-note' },
+          extra: { receiptNumber },
+        });
+      }
+    } catch {
+      // การแจ้งเตือนห้ามทำให้การยกเลิกล้ม
+    }
+  }
+
+  /** อ่านใบเป้าหมาย/ใบพี่น้องก่อนยกเลิกไม่ได้ทั้งชุด — ใบลดหนี้ของใบเก่าทุกใบเป็นยอดอย่างเดียว (final review I2) */
+  private reportCreditNotePreReadFailure(err: unknown, receiptId: string): void {
+    try {
+      this.logger.error(
+        `[ReceiptVoid] receipt ${receiptId}: legacy credit-note pre-read failed — every unstored credit note of this void falls back to amount only: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      Sentry.captureException(err, {
+        level: 'error',
+        tags: { subsystem: 'receipt-void-credit-note' },
+      });
+    } catch {
+      // การแจ้งเตือนห้ามทำให้การยกเลิกล้ม
+    }
+  }
 
   /**
    * Resolve the FINANCE companyId for the period-lock guard. Receipts are a
@@ -120,7 +228,13 @@ export class ReceiptVoidService {
 
     // CR-7: Validate void date is not in a closed (FINANCE) accounting period.
     await validatePeriodOpen(this.prisma, new Date(), await this.resolveFinanceCompanyId());
-    return this.prisma.$transaction(
+    /** สัญญาณเตือนของการกลับรายการตั้งลูกหนี้งวด — ส่งหลังธุรกรรม commit เท่านั้น */
+    let accrualWarnings: readonly DeferredWarning[] = [];
+    const legacyMoney = await this.legacyCreditNoteMoney(id);
+    /** ตัวเลขของใบลดหนี้ = ทุกบรรทัดของใบที่ถูกยกเลิก (ใบใหม่: ค่าที่เก็บ · ใบเก่า: ที่ใบเดิมพิมพ์) */
+    const creditNoteMoney = (row: Receipt): Partial<CreditNoteMoney> =>
+      hasStoredReceiptTax(row) ? storedTaxColumnsOf(row) : (legacyMoney.get(row.id) ?? {});
+    const voided = await this.prisma.$transaction(
       async (tx) => {
         const receipt = await tx.receipt.findUnique({ where: { id } });
         if (!receipt || receipt.deletedAt) throw new NotFoundException('ไม่พบใบเสร็จ');
@@ -193,6 +307,7 @@ export class ReceiptVoidService {
             payerName: receipt.payerName,
             receiverName: receipt.receiverName,
             amount: receipt.amount,
+            ...creditNoteMoney(receipt),
             installmentNo: receipt.installmentNo,
             paymentMethod: receipt.paymentMethod,
             paidDate: new Date(),
@@ -245,6 +360,11 @@ export class ReceiptVoidService {
          */
         let parkAdj = new Prisma.Decimal(0);
         let creditAdj = new Prisma.Decimal(0);
+        /**
+         * ตั้งลูกหนี้งวด ณ วันรับเงิน: ผลของการกลับรายการตั้งลูกหนี้งวด — null เมื่อการยกเลิกครั้งนี้
+         * ไม่ได้ทำให้งวดหมดการรับชำระที่มีผล หรือสัญญาไม่มีแถวตารางงวด.
+         */
+        let accrualReversal: AccrualVoidResult | null = null;
 
         if (receipt.paymentId) {
           // FINAL-REVIEW BLOCKER 2 — restrict the reversal to TRUE receivable-clearing
@@ -506,6 +626,18 @@ export class ReceiptVoidService {
                 paidDate: null,
               },
             });
+            // ตั้งลูกหนี้งวด ณ วันรับเงิน (คำตอบฝ่ายบัญชี 29/09/2569): งวดไม่เหลือการรับชำระที่มีผลแล้ว —
+            // ถ้ารายการตั้งลูกหนี้งวดถูกลง ณ วันรับเงิน (ทุกใบ: บางส่วน + ใบที่ทำให้ครบ — ก1) และยังไม่ถึง
+            // วันครบกำหนด ให้กลับรายการเหล่านั้นด้วย (เงื่อนไขข้อ 2–3 อยู่ใน template). ไม่จับ error:
+            // ล้มแล้วการยกเลิกล้มทั้งรายการ. สัญญาณเตือนของ template ส่งหลัง commit
+            if (fullyReverted && schedule) {
+              const accrualVoid = await this.receiptVoidReversalTemplate.voidAccrualPostedAtReceipt(
+                schedule.id,
+                tx,
+              );
+              accrualReversal = accrualVoid.result;
+              accrualWarnings = accrualVoid.warnings;
+            }
             const siblingWhere = {
               paymentId: payment.id,
               id: { not: receipt.id },
@@ -555,6 +687,7 @@ export class ReceiptVoidService {
                   payerName: sibling.payerName,
                   receiverName: sibling.receiverName,
                   amount: sibling.amount,
+                  ...creditNoteMoney(sibling),
                   installmentNo: sibling.installmentNo,
                   paymentMethod: sibling.paymentMethod,
                   paidDate: new Date(),
@@ -616,6 +749,8 @@ export class ReceiptVoidService {
               // money, which went back to `rescheduleAdvanceBalance`, NOT to the
               // FIFO `advanceBalance`.
               rescheduleAdvanceRestored: parkAdj.isZero() ? null : parkAdj.toString(),
+              // ตั้งลูกหนี้งวด ณ วันรับเงิน: กลับรายการตั้งลูกหนี้งวดหรือไม่ เลขที่รายการ หรือเหตุที่ไม่กลับ
+              accrualReversal,
             },
           },
         });
@@ -624,5 +759,7 @@ export class ReceiptVoidService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+    emitDeferredWarnings(accrualWarnings);
+    return voided;
   }
 }

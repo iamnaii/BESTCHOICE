@@ -378,4 +378,63 @@ describe('RescheduleOverlay', () => {
     expect(screen.getByRole('button', { name: 'ยืนยันปรับดิว' })).toBeDisabled();
     expect(postCallsTo('/payments/record')).toHaveLength(0);
   });
+
+  // คำตัดสิน R4 (2026-09-29): ชำระทั้งก้อน (6b) ของงวดที่ยังไม่ตั้งลูกหนี้งวด — การยืนยันลง
+  // รายการตั้งลูกหนี้งวด (2A) ด้วย กล่องรายการบัญชีต้องแสดงรายการนั้น แยกจากรายการรับชำระ
+  it('6b ของงวดที่ยังไม่ตั้งลูกหนี้งวด: กล่องรายการบัญชีแสดงรายการตั้งลูกหนี้งวด (2A) พร้อมวันที่ แยกจากรายการรับชำระ (2B)', async () => {
+    // ลูกค้าขอปรับดิวก่อนถึงกำหนด: ค่างวด 1,515.83 + ยอดปรับดิว 354.00 = 1,869.83 (ไม่มีค่าปรับ)
+    mockHappyApi({
+      singleQuote: { ...QUOTE_SINGLE_BUNDLED, lateFee: '0.00', collectAmount: '1869.83' },
+    });
+    const happyPost = apiPostMock.getMockImplementation()!;
+    apiPostMock.mockImplementation((url: string, ...rest: unknown[]) => {
+      if (url === '/payments/preview-journal') {
+        const line = (
+          accountCode: string,
+          accountName: string,
+          debit: string,
+          credit: string,
+          block: '2A' | '2B',
+        ) => ({ accountCode, accountName, debit, credit, description: '', block, posted: false });
+        return Promise.resolve({
+          data: {
+            lines: [
+              line('11-1101', 'เงินสด', '1869.83', '0.00', '2B'),
+              line('11-2103', 'ลูกหนี้ค้างชำระ', '0.00', '1515.83', '2B'),
+              line('21-1103', 'เงินรับล่วงหน้า', '0.00', '354.00', '2B'),
+            ],
+            accrual2A: {
+              lines: [
+                line('11-2103', 'ลูกหนี้ค้างชำระ', '1515.83', '0.00', '2A'),
+                line('21-2102', 'ภาษีขายรอเรียกเก็บ', '99.17', '0.00', '2A'),
+                line('11-2106', 'รายได้รอตัดบัญชี-ดอกเบี้ย', '500.00', '0.00', '2A'),
+                line('11-2101', 'ลูกหนี้ผ่อนชำระ', '0.00', '1416.66', '2A'),
+                line('11-2105', 'ลูกหนี้ภาษีขายรอเรียกเก็บ', '0.00', '99.17', '2A'),
+                line('41-1101', 'รายได้ดอกเบี้ย', '0.00', '500.00', '2A'),
+                line('21-2101', 'ภาษีขาย ภ.พ.30', '0.00', '99.17', '2A'),
+              ],
+              subtotal: { debit: '2115.00', credit: '2115.00', balanced: true },
+            },
+            isBalanced: true,
+            accrualMode: 'CONSOLIDATED_PAYING_AHEAD',
+            accrualPostedAt: '2026-09-29T03:00:00.000Z', // 29 ก.ย. 2569 10:00 เวลาไทย
+          },
+        });
+      }
+      return happyPost(url, ...rest);
+    });
+    renderOverlay();
+
+    expect(
+      await screen.findByText('ตั้งลูกหนี้งวด (2A) — ลงวันที่ 29/09/2569'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('รับชำระ (2B)')).toBeInTheDocument();
+    expect(screen.getByText('รายการบัญชี (ลงทันทีตอนยืนยัน)')).toBeInTheDocument();
+    // 2A: เดบิตลูกหนี้ค้างชำระเต็มงวด / เครดิตลูกหนี้ตามสัญญา · 2B: รับเงินทั้งก้อน เครดิตลูกหนี้ค้างชำระ
+    expect(screen.getByText('Dr 1515.83')).toBeInTheDocument();
+    expect(screen.getByText('Cr 1416.66')).toBeInTheDocument();
+    expect(screen.getByText('Dr 1869.83')).toBeInTheDocument();
+    expect(screen.getByText('Cr 1515.83')).toBeInTheDocument();
+    expect(screen.getByText('Cr 354.00')).toBeInTheDocument();
+  });
 });

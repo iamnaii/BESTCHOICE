@@ -30,16 +30,26 @@ describe('lineToUnits — one table row → quantity units for ตรวจร�
 describe('buildDirectReceivePayload — step 3 money + payment travel with the units', () => {
   const unit = { ...lineToUnits(phone)[0], imeiSerial: '356000000090601', sellingPrice: '45900' } as ReceivingUnitForm;
 
+  const doc = { type: 'TAX_INVOICE' as const, number: ' IV-0877 ', date: '2026-09-05' };
+
   it('sends discount + payment fields when something was paid', () => {
-    expect(buildDirectReceivePayload({ form, units: [unit], attachments: ['data:image/png;base64,slip'], today: '2026-09-06' })).toEqual({
+    expect(buildDirectReceivePayload({ form, units: [unit], attachments: ['data:image/png;base64,slip'], today: '2026-09-06', supplierDoc: doc })).toEqual({
       supplierId: 's1', orderDate: '2026-09-06', notes: 'ซื้อสด', items: [unit],
+      supplierDocType: 'TAX_INVOICE', supplierDocNumber: 'IV-0877', supplierDocDate: '2026-09-05',
       discount: 35, discountAfterVat: undefined,
       paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 42900, paymentNotes: 'จ่ายหน้าร้าน', attachments: ['data:image/png;base64,slip'],
     });
   });
 
   it('leaves the payment out on credit (UNPAID)', () => {
-    const out = buildDirectReceivePayload({ form: { ...form, paymentStatus: 'UNPAID', paidAmount: '', discount: '' }, units: [unit], attachments: [], today: '2026-09-06' });
-    expect(out).toEqual({ supplierId: 's1', orderDate: '2026-09-06', notes: 'ซื้อสด', items: [unit], discount: undefined, discountAfterVat: undefined });
+    const out = buildDirectReceivePayload({
+      form: { ...form, paymentStatus: 'UNPAID', paidAmount: '', discount: '' },
+      units: [unit],
+      attachments: [],
+      today: '2026-09-06',
+      supplierDoc: { type: 'NONE', number: 'ignored', date: '2026-09-05' },
+    });
+    // ไม่มีเอกสาร = ส่งแค่ประเภท (เหตุผลอยู่ในหมายเหตุ)
+    expect(out).toEqual({ supplierId: 's1', orderDate: '2026-09-06', notes: 'ซื้อสด', items: [unit], supplierDocType: 'NONE', discount: undefined, discountAfterVat: undefined });
   });
 });

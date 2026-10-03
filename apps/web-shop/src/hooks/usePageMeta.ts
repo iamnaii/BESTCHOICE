@@ -16,7 +16,7 @@ function setContent(el: HTMLMetaElement | null, value: string): void {
  *   canonical ผิดหน้าใน raw HTML) hook จึงสร้าง <link> เองเมื่อยังไม่มี
  * - cleanup คืนค่าเป็น "ค่า default ของเว็บ" เสมอ ไม่ใช่ค่าที่จำไว้ตอน mount —
  *   บนหน้า prerender ค่าตอน mount คือ meta ของหน้านั้นเอง จำแล้วคืน = meta ค้าง
- *   หน้าเก่าเมื่อผู้ใช้เดินต่อไปหน้าที่ไม่เรียก hook (เช่น /cart)
+ *   หน้าเก่าเมื่อผู้ใช้เดินต่อไปหน้าที่ไม่เรียก hook (เช่น /account)
  */
 export function usePageMeta(title?: string, description?: string) {
   useEffect(() => {

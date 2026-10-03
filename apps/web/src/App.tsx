@@ -79,7 +79,6 @@ const DocumentConfigPage = lazy(() => import('@/pages/DocumentConfigPage'));
 // SP5 — SHOP-side additions
 // P2-SP4 — การจอง / มัดจำ (SHOP-side reservation)
 const BookingsPage = lazy(() => import('@/pages/BookingsPage'));
-const RepairTicketDetailPage = lazy(() => import('@/pages/insurance/RepairTicketDetailPage'));
 const AuditLogsPage = lazy(() => import('@/pages/AuditLogsPage'));
 const FinancialAuditPage = lazy(() => import('@/pages/FinancialAuditPage'));
 const PaymentCsvImportPage = lazy(() => import('@/pages/PaymentCsvImportPage'));
@@ -167,8 +166,6 @@ const BankAccountsPage = lazy(() => import('@/pages/BankAccountsPage'));
 // D1.1.1.4 — AccountRolesPage moved to settings-registry (kind:'route') — lazy import removed
 const TodosPage = lazy(() => import('@/pages/TodosPage'));
 const UnifiedInboxPage = lazy(() => import('@/pages/UnifiedInboxPage'));
-const CrmPipelinePage = lazy(() => import('@/pages/CrmPipelinePage'));
-const AdsTrackingPage = lazy(() => import('@/pages/AdsTrackingPage'));
 // ChannelSettingsPage moved to settings-registry (P2b comms migration)
 const ChatbotFinanceAnalyticsPage = lazy(() => import('@/pages/ChatbotFinanceAnalyticsPage'));
 const ChatbotFinanceSessionsPage = lazy(() => import('@/pages/ChatbotFinanceSessionsPage'));
@@ -217,14 +214,8 @@ const EReceiptAutoPage = lazy(() => import('@/pages/finance/EReceiptAutoPage'));
 const PeakExportPage = lazy(() => import('@/pages/PeakExportPage'));
 // IntegrationHubPage + MdmTestPage moved to settings-registry (kind:'route') — lazy imports removed
 const MdmDashboardPage = lazy(() => import('@/pages/MdmDashboardPage'));
-const BroadcastPage = lazy(() => import('@/pages/BroadcastPage'));
 const RichMenuPage = lazy(() => import('@/pages/RichMenuPage'));
 // LineGreetingPage moved to settings-registry (P2b comms migration)
-const OnlineOrdersPage = lazy(() => import('@/pages/OnlineOrdersPage'));
-const ProductHoldsPage = lazy(() => import('@/pages/ProductHoldsPage'));
-const InstallmentApplicationsPage = lazy(() => import('@/pages/InstallmentApplicationsPage'));
-const SavingPlansAdminPage = lazy(() => import('@/pages/SavingPlansAdminPage'));
-const ReviewsModerationPage = lazy(() => import('@/pages/ReviewsModerationPage'));
 const UserProfilePage = lazy(() => import('@/pages/UserProfilePage'));
 const OtherIncomeListPage = lazy(() => import('@/pages/other-income/OtherIncomeListPage'));
 const OtherIncomeEntryPage = lazy(() => import('@/pages/other-income/OtherIncomeEntryPage'));
@@ -505,8 +496,6 @@ function App() {
           {/* เส้นทางเดียว (roomId เป็น optional segment) — สองเส้นทางแยกทำให้หน้าถูก mount ใหม่ทุกครั้งที่เปิดห้อง:
               ตัวกรอง/มุมมอง/ฟองส่งไม่สำเร็จหาย และ socket ต่อใหม่ทุกคลิก */}
           <Route path="/inbox/:roomId?" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><UnifiedInboxPage /></ProtectedRoute>} />
-          <Route path="/crm" element={<ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}><CrmPipelinePage /></ProtectedRoute>} />
-          <Route path="/ads" element={<ProtectedRoute roles={['OWNER']}><AdsTrackingPage /></ProtectedRoute>} />
           {/* P2b — channels moved to /settings/comms/channels */}
           <Route path="/settings/channels" element={<Navigate to="/settings/comms/channels" replace />} />
           <Route path="/settings/payment-methods" element={<Navigate to="/settings/finance/payment-methods" replace />} />
@@ -733,16 +722,15 @@ function App() {
             element={<Navigate to="/after-sales?tab=AWAITING_APPROVAL" replace />}
           />
           <Route path="/defect-exchange" element={<Navigate to="/after-sales" replace />} />
-          {/* /insurance/:id (ใบซ่อมเดิม) ยังเป็นหน้าจริง — TicketRedirect เด้งไป /after-sales/:id
-              เมื่อมีเคสหลังการขายผูกใบซ่อมนี้แล้ว ไม่งั้น fallback ไปหน้าใบซ่อมเดิม (คงไว้ ≥2 deploy
-              ตามสเปคข้อ 11) */}
+          {/* /insurance/:id (ลิงก์ใบซ่อมเก่า) → เคสหลังการขายที่ผูกใบซ่อมนั้น — หน้าใบซ่อมเดิมถูกถอดใน
+              PR 4 (ใบซ่อมทุกใบมีเคสผูกแล้ว + พ้นกำหนด ≥2 รุ่น deploy ของสเปกข้อ 11) */}
           <Route
             path="/insurance/:id"
             element={
               <ProtectedRoute
                 roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES', 'ACCOUNTANT']}
               >
-                <TicketRedirect fallback={<RepairTicketDetailPage />} />
+                <TicketRedirect />
               </ProtectedRoute>
             }
           />
@@ -1036,46 +1024,6 @@ function App() {
             }
           />
           <Route
-            path="/online-orders"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
-                <OnlineOrdersPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/product-holds"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
-                <ProductHoldsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/installment-applications"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
-                <InstallmentApplicationsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/saving-plans"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER']}>
-                <SavingPlansAdminPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/reviews"
-            element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
-                <ReviewsModerationPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/promotions"
             element={
               <ProtectedRoute roles={['OWNER']}>
@@ -1268,14 +1216,6 @@ function App() {
             }
           />
           <Route
-            path="/broadcast"
-            element={
-              <ProtectedRoute roles={['OWNER']}>
-                <BroadcastPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/settings/rich-menu"
             element={
               <ProtectedRoute roles={['OWNER']}>
@@ -1377,8 +1317,8 @@ function App() {
               users cannot direct-URL-jump into pages they aren't supposed to see. */}
           {/* /insurance, /insurance/new, /insurance/warranty-check, /insurance/exchange-request/new,
               /insurance/exchange-requests, /defect-exchange → redirect to /after-sales* (after-sales
-              hub PR 2, Task 13); /insurance/:id is still a real page (TicketRedirect fallback) —
-              see SP5 routes above */}
+              hub PR 2, Task 13); /insurance/:id redirects to the linked after-sales case (old
+              repair-ticket page removed in PR 4) — see SP5 routes above */}
           {/* /finance/vat, /finance/wht, /finance/e-tax — handled by P4-SP2 routes above */}
           {/* /finance/cash-flow — handled by SP2 CashFlowPage route above (line ~763) */}
           {/* /finance/equity-statement — handled by SP2 EquityStatementPage route above (line ~773) */}

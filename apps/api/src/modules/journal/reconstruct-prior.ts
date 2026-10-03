@@ -75,11 +75,22 @@ export const ALWAYS_INCLUDED_2B_FLOWS: readonly string[] = [
   RESCHEDULE_PARK_CONSUME_FLOW,
 ];
 
+export interface PriorCleared {
+  priorPrincipalCleared: Decimal;
+  priorLateFeeBooked: Decimal;
+  /**
+   * Cr 11-2103 ของแต่ละรายการที่ถูกนับข้างบน (ข้ามรายการที่ยอดเป็นศูนย์) เรียงตามลำดับที่ลง
+   * (createdAt แล้ว entryNumber) — ใบกำกับภาษีตามบัญชี (PR3) ใช้เล่นซ้ำภาษีที่เอกสารก่อนหน้าของงวดแสดงแล้ว
+   * (receipt-tax-breakdown.ts `documentedSoFar`). ผลรวม = priorPrincipalCleared เสมอ.
+   */
+  priorClearings: Decimal[];
+}
+
 export async function reconstructPriorCleared(
   readClient: Prisma.TransactionClient | PrismaService,
   installmentScheduleId: string,
   installmentTotal: Decimal,
-): Promise<{ priorPrincipalCleared: Decimal; priorLateFeeBooked: Decimal }> {
+): Promise<PriorCleared> {
   const entries = await readClient.journalEntry.findMany({
     where: {
       AND: [
@@ -98,7 +109,17 @@ export async function reconstructPriorCleared(
   });
   let priorPrincipalCleared = new Decimal(0);
   let priorLateFeeBooked = new Decimal(0);
-  for (const e of entries) {
+  const priorClearings: Decimal[] = [];
+  // ลำดับที่ลง — ฟิลด์ที่ไม่มีมา (mock ของเทสเดิม) ถือว่าเท่ากัน (Array.prototype.sort คงลำดับเดิม)
+  const ordered = [...entries].sort((a, b) => {
+    const at = (a as { createdAt?: Date }).createdAt?.getTime() ?? 0;
+    const bt = (b as { createdAt?: Date }).createdAt?.getTime() ?? 0;
+    if (at !== bt) return at - bt;
+    const an = (a as { entryNumber?: string }).entryNumber ?? '';
+    const bn = (b as { entryNumber?: string }).entryNumber ?? '';
+    return an < bn ? -1 : an > bn ? 1 : 0;
+  });
+  for (const e of ordered) {
     const meta = e.metadata as any;
     // Un-pay fix (2026-07-08): ReceiptVoidReversalTemplate stamps
     // `metadata.reversed=true` on every original it mirrors (receipt void +
@@ -125,11 +146,14 @@ export async function reconstructPriorCleared(
       // Cr 11-2103). Excluding a full consume == installmentTotal here would let a
       // subsequent receipt double-credit 11-2103 (FINAL-REVIEW BLOCKER 1).
     }
+    let entryCleared = new Decimal(0);
     for (const l of e.lines) {
       const cr = new Decimal(l.credit.toString());
-      if (l.accountCode === '11-2103') priorPrincipalCleared = priorPrincipalCleared.plus(cr);
+      if (l.accountCode === '11-2103') entryCleared = entryCleared.plus(cr);
       else if (l.accountCode === '42-1103') priorLateFeeBooked = priorLateFeeBooked.plus(cr);
     }
+    priorPrincipalCleared = priorPrincipalCleared.plus(entryCleared);
+    if (!entryCleared.isZero()) priorClearings.push(entryCleared);
   }
-  return { priorPrincipalCleared, priorLateFeeBooked };
+  return { priorPrincipalCleared, priorLateFeeBooked, priorClearings };
 }

@@ -20,6 +20,7 @@ describe('AfterSalesRepairService', () => {
   let repair: any;
   let query: any;
   let audit: any;
+  let line: any;
   let svc: AfterSalesRepairService;
 
   beforeEach(() => {
@@ -47,6 +48,7 @@ describe('AfterSalesRepairService', () => {
     };
     query = { getCase: jest.fn() };
     audit = { log: jest.fn().mockResolvedValue(undefined) };
+    line = { notifyMoment: jest.fn().mockResolvedValue({ status: 'SENT' }) };
     // residual sweep — bare exchange cancel ใช้ $transaction (tx = prisma ตัวเดียวกันใน unit test)
     prisma.$transaction = jest.fn().mockImplementation((cb: any) => cb(prisma));
 
@@ -56,6 +58,7 @@ describe('AfterSalesRepairService', () => {
       repair as never,
       query as never,
       audit as never,
+      line as never,
     );
   });
 
@@ -116,6 +119,11 @@ describe('AfterSalesRepairService', () => {
       }),
     );
     expect(result).toEqual({ id: 'case-1', stage: 'READY_FOR_PICKUP' });
+    // Task 3 (c) — markRepaired → notifyMoment(caseId,'READY',actorId) หลัง sync (commit)
+    expect(line.notifyMoment).toHaveBeenCalledWith('case-1', 'READY', USER.id);
+    expect(prisma.afterSalesCase.update.mock.invocationCallOrder[0]).toBeLessThan(
+      line.notifyMoment.mock.invocationCallOrder[0],
+    );
   });
 
   // Regression guard — เคสที่มีศูนย์ซ่อมยังใช้คำ "ซ่อมเสร็จ" เหมือนเดิม ไม่ถูกกิ่งใหม่แตะ
@@ -176,6 +184,46 @@ describe('AfterSalesRepairService', () => {
     expect(closedCall.data.closedAt).toBeInstanceOf(Date);
 
     expect(result).toEqual({ id: 'case-1', stage: 'CLOSED' });
+    // Task 3 (c) — returnToCustomer → notifyMoment(caseId,'CLOSED',actorId) หลัง sync (commit)
+    expect(line.notifyMoment).toHaveBeenCalledWith('case-1', 'CLOSED', USER.id);
+    expect(prisma.afterSalesCase.update.mock.invocationCallOrder[1]).toBeLessThan(
+      line.notifyMoment.mock.invocationCallOrder[0],
+    );
+  });
+
+  // Task 3 (e) — fire-and-forget: notifyMoment reject ต้องไม่ทำให้ markRepaired/returnToCustomer reject ตาม
+  it('(e) notifyMoment reject → markRepaired ยัง resolve ตามปกติ (fire-and-forget)', async () => {
+    query.getCase.mockResolvedValue({
+      id: 'case-1',
+      stage: 'RECEIVED',
+      repairTicket: { id: 'rt-1', status: 'OPEN', repairSupplier: null },
+    });
+    prisma.repairTicket.findFirst.mockResolvedValue({
+      status: 'READY_FOR_PICKUP',
+      deletedAt: null,
+    });
+    prisma.afterSalesCase.update.mockResolvedValue({ id: 'case-1', stage: 'READY_FOR_PICKUP' });
+    line.notifyMoment.mockRejectedValue(new Error('LINE ล่ม'));
+
+    await expect(
+      svc.markRepaired('case-1', { actualCost: 500, payer: 'SHOP' } as never, USER),
+    ).resolves.toEqual({ id: 'case-1', stage: 'READY_FOR_PICKUP' });
+  });
+
+  it('(e) notifyMoment reject → returnToCustomer ยัง resolve ตามปกติ (fire-and-forget)', async () => {
+    query.getCase.mockResolvedValue({
+      id: 'case-1',
+      stage: 'READY_FOR_PICKUP',
+      repairTicket: { id: 'rt-1', status: 'READY_FOR_PICKUP' },
+    });
+    prisma.repairTicket.findFirst.mockResolvedValue({ status: 'CLOSED', deletedAt: null });
+    prisma.afterSalesCase.update.mockResolvedValue({ id: 'case-1', stage: 'CLOSED' });
+    line.notifyMoment.mockRejectedValue(new Error('LINE ล่ม'));
+
+    await expect(svc.returnToCustomer('case-1', {} as never, USER)).resolves.toEqual({
+      id: 'case-1',
+      stage: 'CLOSED',
+    });
   });
 
   // (c) cancelCase — ใบซ่อม OPEN → repair.cancel({note: reason}); ใบซ่อม IN_PROGRESS → BadRequestException

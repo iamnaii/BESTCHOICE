@@ -94,7 +94,6 @@ export const copy = {
       'ร้านมือถือลพบุรี ของแท้ 100% ผ่อนได้ทุกอาชีพ รับเครื่องวันนี้ รับประกันร้าน 60 วัน',
     featuredTitle: 'รุ่นยอดนิยม',
     whyUsTitle: 'ทำไมเลือก BESTCHOICE',
-    testimonialsTitle: 'ลูกค้าพูดถึงเรา',
     servicesTitle: 'บริการของเรา',
     servicesDescription: 'ครบทุกเรื่องมือถือ ซื้อ ผ่อน แลก หรือขายคืน จบที่ร้านเดียว',
     serviceBuyTitle: 'ซื้อ/ผ่อน iPhone',
@@ -148,44 +147,6 @@ export const copy = {
     qcFailed: 'ไม่ผ่าน',
   },
 
-  cart: {
-    pageTitle: 'ตะกร้าของคุณ',
-    emptyTitle: 'ตะกร้าว่าง',
-    emptyDescription: 'ลองเลือกสินค้าจากหน้ารุ่นยอดนิยม',
-    emptyCta: 'ดูสินค้าทั้งหมด',
-    proceedCta: 'ไปชำระเงิน',
-    reservationExpireSoon: 'การจองจะหมดอายุในไม่ช้า',
-    reservationExpired: 'การจองหมดอายุแล้ว — กรุณาจองใหม่',
-  },
-
-  checkout: {
-    pageTitle: 'สั่งซื้อ',
-    stepAddress: 'ที่อยู่',
-    stepShipping: 'จัดส่ง',
-    stepPayment: 'ชำระเงิน',
-    placeOrderCta: 'ยืนยันสั่งซื้อ',
-    summaryTitle: 'สรุปคำสั่งซื้อ',
-    toggleSummary: 'ดูรายละเอียดยอดรวม',
-    nextCta: 'ดำเนินการต่อ',
-    backCta: 'ย้อนกลับ',
-  },
-
-  orderSuccess: {
-    pageTitle: 'สั่งซื้อสำเร็จ',
-    thankYou: 'ขอบคุณสำหรับการสั่งซื้อ',
-    orderNumberLabel: 'เลขที่คำสั่งซื้อ',
-    totalLabel: 'ยอดรวมทั้งสิ้น',
-    paymentChannelLabel: 'ช่องทางชำระ',
-    nextStepsTitle: 'ขั้นตอนถัดไป',
-    nextStep1: 'ทางร้านตรวจสอบคำสั่งซื้อของคุณ',
-    nextStep2: 'แพ็คสินค้าและจัดส่งภายใน 1 วันทำการ',
-    nextStep3: 'รับสินค้าและรีวิวประสบการณ์ของคุณ',
-    pendingPaymentNote: 'รอชำระเงิน...',
-    paidNote: 'ทางร้านจะจัดส่งภายใน 1 วันทำการ',
-    viewOrderCta: 'ดูคำสั่งซื้อ',
-    continueShoppingCta: 'กลับไปซื้อเพิ่ม',
-  },
-
   orders: {
     pageTitle: 'คำสั่งซื้อของฉัน',
     emptyTitle: 'ยังไม่มีคำสั่งซื้อ',
@@ -204,20 +165,6 @@ export const copy = {
     refundCta: 'ขอคืนเงิน',
     confirmCancel: 'ยืนยันการยกเลิกคำสั่งซื้อ?',
     confirmRefund: 'ยืนยันขอคืนเงินสำหรับคำสั่งซื้อนี้?',
-  },
-
-  apply: {
-    pageTitle: 'สมัครผ่อน',
-    fullName: 'ชื่อ-นามสกุล',
-    phone: 'เบอร์โทร',
-    nationalId: 'เลขบัตรประชาชน',
-    downPayment: 'จำนวนเงินดาวน์',
-    totalMonths: 'จำนวนงวด (เดือน)',
-    notes: 'หมายเหตุ (ถ้ามี)',
-    submitCta: 'ส่งใบสมัคร',
-    pdpaNotice: 'ข้อมูลของคุณถูกเก็บภายใต้นโยบาย PDPA — ใช้เพื่อประเมินสินเชื่อเท่านั้น',
-    successTitle: 'ส่งใบสมัครแล้ว',
-    successDescription: 'ทีมงานจะติดต่อกลับภายใน 2 ชั่วโมง (เวลาทำการ 10:00–19:00)',
   },
 
   sell: {
@@ -243,19 +190,6 @@ export const copy = {
     cashOption: 'ขายรับเงินสด',
     exchangeOption: 'เทิร์นแลกเครื่องใหม่',
     exchangeCreditNote: 'เครดิตเทิร์นใช้เป็นส่วนลดซื้อเครื่องในร้าน ไม่จ่ายเป็นเงินสด',
-  },
-
-  savingPlan: {
-    pageTitle: 'ออมดาวน์',
-    description: 'เก็บเงินดาวน์ทีละน้อย เริ่ม ฿500/เดือน',
-    createCta: 'สร้างแผน',
-  },
-
-  review: {
-    verifiedBadge: 'ซื้อจริง',
-    writeCta: 'เขียนรีวิว',
-    emptyTitle: 'ยังไม่มีรีวิว',
-    emptyDescription: 'เป็นคนแรกที่รีวิวสินค้านี้',
   },
 
   howItWorks: {
@@ -386,7 +320,7 @@ export const copy = {
 
   login: {
     pageTitle: 'เข้าสู่ระบบ',
-    intro: 'ใช้บัญชี LINE ที่ผูกกับร้านเพื่อดูออเดอร์ แผนออมดาวน์ และทำรายการต่อ',
+    intro: 'ใช้บัญชี LINE ที่ผูกกับร้านเพื่อดูออเดอร์และทำรายการต่อ',
     lineCta: 'เข้าสู่ระบบด้วย LINE',
     disabledTitle: 'การเข้าสู่ระบบยังไม่เปิดใช้งาน',
     disabledDescription:

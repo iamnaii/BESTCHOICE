@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PurchaseOrdersService } from './purchase-orders.service';
-import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto, ReceivingDocCheckQueryDto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -72,6 +72,13 @@ export class PurchaseOrdersController {
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
     });
+  }
+
+  /** ข3 — ตัวตรวจก่อนกดยืนยันรับของ: เลขที่เอกสารซ้ำของผู้จัดจำหน่ายรายนี้ + งวดของวันที่ในเอกสารปิดแล้วหรือยัง (เตือน ไม่บล็อก) */
+  @Get('receiving-doc-check')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  checkReceivingDoc(@Query() query: ReceivingDocCheckQueryDto) {
+    return this.purchaseOrdersService.checkReceivingDoc(query);
   }
 
   @Post('qc-reject')

@@ -106,6 +106,7 @@ describe('InstallmentPreviewService', () => {
       brand: 'Apple',
       model: 'iPhone 14 Pro',
       storage: '128GB',
+      deviceOrigin: 'THAI',
       deletedAt: null,
     });
     prisma.gfinModelMapping.findMany.mockResolvedValue([
@@ -153,6 +154,62 @@ describe('InstallmentPreviewService', () => {
         where: expect.objectContaining({ months: 12, shopCommissionPct: 15 }),
       }),
     );
+  });
+
+  it.each([
+    ['IMPORTED' as const, 'เครื่องนอก'],
+    [null, 'ยังไม่ระบุที่มา (คิดแบบเครื่องนอกไว้ก่อน)'],
+  ])('GFIN: %s → OVER ครึ่งเดียว (%s)', async (deviceOrigin, _label) => {
+    prisma.product.findFirst.mockResolvedValue({
+      id: 'p1',
+      installmentPrice: new Prisma.Decimal('19900'),
+      prices: [],
+      category: 'PHONE_USED',
+      brand: 'Apple',
+      model: 'iPhone 14 Pro',
+      storage: '128GB',
+      deviceOrigin,
+      deletedAt: null,
+    });
+    prisma.gfinModelMapping.findMany.mockResolvedValue([
+      {
+        id: 'm1',
+        gfinSeries: 'iPhone 14',
+        gfinVariant: 'Pro',
+        storage: '128GB',
+        condition: 'HAND_2',
+        maxPrice: new Prisma.Decimal('21500'),
+        modelMatchPattern: 'iPhone 14 Pro',
+        isActive: true,
+      },
+    ]);
+    prisma.gfinOverpriceRule.findMany.mockResolvedValue([
+      {
+        id: 'r1',
+        label: 'iPhone 14 มือ 2',
+        seriesPattern: 'iPhone 14|iPhone 15',
+        condition: 'HAND_2',
+        allowance: new Prisma.Decimal('1000'),
+        isActive: true,
+      },
+    ]);
+    prisma.gfinRateFactor.findFirst.mockResolvedValue({
+      months: 12,
+      shopCommissionPct: 15,
+      factor: new Prisma.Decimal('0.179238'),
+      feePerInstallment: new Prisma.Decimal('100'),
+      isActive: true,
+    });
+    prisma.systemConfig.findFirst.mockImplementation(({ where }: { where: { key: string } }) =>
+      Promise.resolve(where.key === 'gfin.minDownPct' ? { value: '30' } : null),
+    );
+
+    const result = await service.preview({ productId: 'p1', provider: 'GFIN', months: 12 });
+    // ราคาส่ง 21,500 + OVER 500 = 22,000 → ดาวน์ตามสูตร 6,600 → ยอดจัด 15,400
+    expect(result.gfinSubmitPrice).toBe(22000);
+    expect(result.financedAmount).toBe(15400);
+    expect(result.monthlyPayment).toBe(2861); // ceil(15,400 × 0.179238) + 100
+    expect(result.downAmount).toBe(4500); // 6,600 − (22,000 − 19,900)
   });
 
   it('GFIN: iPad (TABLET) ใช้เรทของคอม 5% และแมปเป็นมือ 1', async () => {

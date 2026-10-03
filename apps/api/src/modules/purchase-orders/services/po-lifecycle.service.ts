@@ -5,7 +5,7 @@ import { CreatePODto, UpdatePODto, UpdatePaymentDto, OrderPODto, ApprovePODto } 
 import { generatePONumber } from '../../../utils/sequence.util';
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { PoQueryService } from './po-query.service';
-import { SUPPLIER_TERMS_SELECT, computePoAmounts, resolvePaymentTerms } from './po-amounts.util';
+import { SUPPLIER_TERMS_SELECT, computePoAmounts, resolvePaymentTerms, assertPoNetNotNegative } from './po-amounts.util';
 
 /**
  * วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่งซื้อ — compared at day granularity (UTC).
@@ -57,12 +57,14 @@ export class PoLifecycleService {
     // books exactly what a normal PO does. VAT rate: D1.1.3.1 canonical-key-first loader
     // (VAT_RATE → legacy vat_pct/vat_rate → 0.07).
     const vatRate = await loadVatRateDecimal(this.prisma);
-    const { totalAmount, discount, discountAfterVat, vatAmount, netAmount } = computePoAmounts(dto.items, {
+    const amounts = computePoAmounts(dto.items, {
       supplierHasVat: supplier.hasVat,
       vatRate,
       discount: dto.discount,
       discountAfterVat: dto.discountAfterVat,
     });
+    assertPoNetNotNegative(amounts);
+    const { totalAmount, discount, discountAfterVat, vatAmount, netAmount } = amounts;
     const orderDateObj = new Date(dto.orderDate);
     const { dueDate, bankAccountSnapshot, bankNameSnapshot } = resolvePaymentTerms(supplier, dto.paymentMethod, orderDateObj);
 

@@ -7,9 +7,6 @@ import {
   Wallet,
   Briefcase,
   MessageCircle,
-  PiggyBank,
-  Target,
-  ShoppingBag,
   Smartphone,
   Repeat,
   MapPin,
@@ -27,18 +24,15 @@ import {
   HomeHero,
   StatefulList,
   ProductCard,
-  ReviewCard,
   Card,
   CardBody,
   Button,
-  Reveal,
   StaggerChildren,
   type ProductGroup,
 } from '@/components';
 import { api } from '@/lib/api';
 import { copy, shopInfo, lineOaMessageUrl } from '@/lib/copy';
 import { usePageMeta } from '@/hooks/usePageMeta';
-import type { Review } from '@/types/review';
 
 interface CatalogResponse {
   data: ProductGroup[];
@@ -94,15 +88,6 @@ export default function HomePage() {
   const { data, isLoading, isError, refetch } = useQuery<CatalogResponse>({
     queryKey: ['shop', 'home', 'featured'],
     queryFn: () => api.get('/api/shop/products?limit=8&sort=popular').then((r) => r.data),
-  });
-
-  // Real verified-purchase reviews — section hides entirely when none exist.
-  // (Replaced the old hardcoded fake testimonials: fake "ซื้อจริง" badges are
-  // a trust + misleading-advertising liability.)
-  const { data: reviews } = useQuery<Review[]>({
-    queryKey: ['shop', 'recent-reviews'],
-    queryFn: () => api.get('/api/shop/reviews/recent?limit=6').then((r) => r.data),
-    staleTime: 5 * 60 * 1000,
   });
 
   return (
@@ -184,50 +169,6 @@ export default function HomePage() {
               </Card>
             ))}
           </StaggerChildren>
-        </Container>
-      </Section>
-
-      {/* ออมดาวน์ — catches the "ดาวน์ยังไม่พอ" lead that would otherwise bounce */}
-      <Section padding="md">
-        <Container>
-          <Reveal>
-            <Card variant="outlined" className="overflow-hidden">
-              <CardBody className="md:flex md:items-center md:gap-8 space-y-5 md:space-y-0 leading-snug">
-                <div className="flex-1 space-y-2">
-                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-full px-2.5 py-1">
-                    <PiggyBank className="size-3.5" aria-hidden="true" />
-                    ออมดาวน์
-                  </span>
-                  <h2 className="text-xl md:text-2xl font-bold leading-snug">
-                    ดาวน์ยังไม่พอ? ออมกับเราก่อนได้ เริ่ม ฿500/เดือน
-                  </h2>
-                  <p className="text-sm text-muted-foreground leading-snug">
-                    เลือกรุ่นที่อยากได้ ออมทีละน้อยทุกเดือน
-                    พอครบเป้าก็ใช้เงินออมเป็นเงินดาวน์รับเครื่องได้เลย
-                  </p>
-                  <div className="flex flex-wrap gap-x-5 gap-y-1.5 pt-1 text-sm">
-                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                      <Target className="size-4 text-emerald-500" aria-hidden="true" />
-                      ตั้งเป้ารุ่นที่อยากได้
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                      <PiggyBank className="size-4 text-emerald-500" aria-hidden="true" />
-                      ออมรายเดือนตามไหว
-                    </span>
-                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                      <ShoppingBag className="size-4 text-emerald-500" aria-hidden="true" />
-                      ครบเป้า = รับเครื่อง
-                    </span>
-                  </div>
-                </div>
-                <div className="shrink-0">
-                  <Button asChild variant="primary" size="lg">
-                    <Link to="/saving-plan">เริ่มออมดาวน์</Link>
-                  </Button>
-                </div>
-              </CardBody>
-            </Card>
-          </Reveal>
         </Container>
       </Section>
 
@@ -348,22 +289,6 @@ export default function HomePage() {
           </Card>
         </Container>
       </Section>
-
-      {reviews && reviews.length > 0 && (
-        <Section padding="md">
-          <Container>
-            <SectionHeader
-              title={copy.home.testimonialsTitle}
-              description="เสียงจริงจากลูกค้าที่ซื้อเครื่องและผ่อนกับเรา"
-            />
-            <StaggerChildren className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {reviews.slice(0, 6).map((r) => (
-                <ReviewCard key={r.id} review={r} />
-              ))}
-            </StaggerChildren>
-          </Container>
-        </Section>
-      )}
     </ShopLayout>
   );
 }

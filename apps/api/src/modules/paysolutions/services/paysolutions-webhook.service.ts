@@ -10,8 +10,15 @@ import { buildEarlyPayoffSuccessFlex } from '../../line-oa/flex-messages/early-p
 import { ProductsService } from '../../products/products.service';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { PaymentReceiptTemplate } from '../../journal/cpa-templates/payment-receipt.template';
+import {
+  emitDeferredWarnings,
+  warningsOf,
+  type DeferredWarning,
+} from '../../journal/deferred-warning';
 import { Vat60dayReversalTemplate } from '../../journal/cpa-templates/vat-60day-reversal.template';
 import { BadDebtService } from '../../accounting/bad-debt.service';
+import type { ReceiptsService } from '../../receipts/receipts.service';
+import { reportReceiptIssueFailure } from '../../receipts/services/receipt-issue-alert';
 import { formatDateLong } from '../../../utils/thai-date.util';
 import { ensureInstallmentSchedules } from '../../../utils/installment-schedule.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
@@ -76,6 +83,10 @@ export class PaySolutionsWebhookService {
     private vat60Reversal: Vat60dayReversalTemplate,
     private badDebtService: BadDebtService,
     private host: PaySolutionsWebhookHost,
+    /**
+     * ใบเสร็จของงวดที่เงินลิงก์ชำระจ่าย (PR3 — คำสั่งเจ้าของ 2026-09-30). ไม่ส่ง = ไม่ออกใบ (ค่าเริ่มต้นของ spec เดิม)
+     */
+    private receipts?: Pick<ReceiptsService, 'generateReceipt'>,
   ) {}
 
   /**
@@ -301,6 +312,8 @@ export class PaySolutionsWebhookService {
       // ledger entries. Idempotency is preserved by the paymentLink.updateMany
       // gate above (only one tx wins) and by the existing UNIQUE constraint
       // on transactionRef.
+      /** สัญญาณเตือนของใบรับชำระ (ตั้งลูกหนี้งวด ณ วันรับเงิน) — ส่งหลังธุรกรรม commit เท่านั้น */
+      const receiptWarnings: DeferredWarning[] = [];
       const result = await this.prisma.$transaction(
         async (tx) => {
           const claim = await tx.paymentLink.updateMany({
@@ -310,6 +323,14 @@ export class PaySolutionsWebhookService {
           if (claim.count === 0) {
             return { alreadyClaimed: true as const };
           }
+
+          // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะของสัญญา "ก่อนรับเงิน" — อ่านในธุรกรรมนี้ หลังได้สิทธิ์ลิงก์
+          // และก่อนแก้อะไร. การอ่านนอกธุรกรรม (contractForJe) ไม่เห็นการบอกเลิก/รับเครื่องคืนที่ commit
+          // แทรกเข้ามาระหว่างนั้น
+          const contractBeforeReceipt = await tx.contract.findUnique({
+            where: { id: paymentLink.contractId! },
+            select: { status: true },
+          });
 
           const unpaidPayments = await tx.payment.findMany({
             where: {
@@ -336,6 +357,8 @@ export class PaySolutionsWebhookService {
             payThis: Prisma.Decimal;
             isFinalReceipt: boolean;
             lateFee: Prisma.Decimal;
+            /** เลขที่รายการรับชำระของงวดนี้ — ใบเสร็จผูกรายการนี้หลัง commit (PR3) */
+            entryNo?: string;
           }> = [];
           for (const payment of unpaidPayments) {
             if (remaining.lte(0)) break;
@@ -457,7 +480,7 @@ export class PaySolutionsWebhookService {
                 select: { id: true, vat60dayJournalEntryId: true },
               });
               if (instSchedPs) {
-                await this.paymentReceiptTemplate.execute(
+                const posted = await this.paymentReceiptTemplate.execute(
                   {
                     installmentScheduleId: instSchedPs.id,
                     delta: new Decimal(snapshot.payThis.toString()),
@@ -467,6 +490,9 @@ export class PaySolutionsWebhookService {
                       : undefined,
                     isFinalReceipt: snapshot.isFinalReceipt,
                     paymentId: snapshot.id,
+                    // ตั้งลูกหนี้งวด ณ วันรับเงิน: สถานะที่อ่านไว้ก่อนธุรกรรมนี้เปลี่ยนเป็น
+                    // EARLY_PAYOFF / COMPLETED
+                    contractStatusBeforeReceipt: contractBeforeReceipt?.status,
                     // PR-843/I2 Phase 5b — the QR webhook always clears the FULL owed
                     // amount per installment (payThis = min(remaining, owed), never a
                     // deliberate customer underpayment), so any ≤1฿ residual on the
@@ -477,6 +503,8 @@ export class PaySolutionsWebhookService {
                   },
                   tx,
                 );
+                receiptWarnings.push(...warningsOf(posted));
+                snapshot.entryNo = posted?.entryNo;
                 if (instSchedPs.vat60dayJournalEntryId) {
                   await this.vat60Reversal.execute(instSchedPs.id, tx);
                 }
@@ -609,10 +637,12 @@ export class PaySolutionsWebhookService {
             fullyPaidCount,
             totalUnpaidAtStart: unpaidPayments.length,
             touchedSnapshots,
+            paidAt: now,
           };
         },
         { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
       );
+      emitDeferredWarnings(receiptWarnings);
 
       if (result.alreadyClaimed) {
         this.logger.log(
@@ -624,6 +654,48 @@ export class PaySolutionsWebhookService {
       this.logger.log(
         `Payment SUCCESS: refno=${refno}, contractId=${paymentLink.contractId}, contractStatus=${result.contractStatus ?? 'ACTIVE'}, fullyPaid=${result.fullyPaidCount}/${result.totalUnpaidAtStart}`,
       );
+
+      // ใบเสร็จของทุกงวดที่เงินนี้จ่าย (PR3 — คำสั่งเจ้าของ 2026-09-30: เดิมทางนี้ลงบัญชีแต่ไม่มีใบเสร็จ) — ออกหลัง
+      // ธุรกรรม commit ผูกรายการรับชำระของงวดนั้น (VAT ของใบ = ภาษีขายของ 2A ที่ลงพร้อมกัน). webhook ที่ส่งซ้ำจบที่ด่าน
+      // ลิงก์ USED / alreadyClaimed ข้างบนก่อนถึงตรงนี้ และ generateReceipt คืนใบเดิมถ้ารายการนี้มีใบแล้ว.
+      // ใบใดออกไม่สำเร็จห้ามทำให้ webhook ล้ม (เงินเข้าและลงบัญชีแล้ว) — แจ้ง Sentry พร้อมเลขที่รายการสำหรับออกใบซ้ำ
+      // (ผู้ให้บริการส่งซ้ำก็ไม่ถึงตรงนี้อีก). เรียกแบบเดียวกับหน้ารับชำระ → ข้อความใบเสร็จทาง LINE ตามกติกาเดิมต่องวด
+      // (OA ของ SHOP) นอกเหนือจากข้อความ "ชำระสำเร็จ" ข้างล่าง (OA ของ FINANCE) — คำตอบเจ้าของ ถ4 2026-09-30
+      if (this.receipts && contractForJe && systemUserId) {
+        for (const snapshot of result.touchedSnapshots) {
+          if (!snapshot.payThis.gt(0)) continue;
+          try {
+            await this.receipts.generateReceipt(
+              paymentLink.contractId,
+              snapshot.id,
+              'INSTALLMENT',
+              snapshot.payThis.toNumber(),
+              snapshot.installmentNo,
+              PaymentMethod.ONLINE_GATEWAY,
+              transaction_id || refno,
+              systemUserId,
+              result.paidAt,
+              snapshot.entryNo,
+            );
+          } catch (err) {
+            this.logger.error(
+              `Failed to generate receipt for payment ${snapshot.id} (refno=${refno}): ${err instanceof Error ? err.message : err}`,
+            );
+            reportReceiptIssueFailure(err, {
+              path: 'paysolutions-webhook',
+              contractId: paymentLink.contractId,
+              paymentId: snapshot.id,
+              installmentNo: snapshot.installmentNo,
+              journalEntryNumber: snapshot.entryNo ?? null,
+              paymentMethod: PaymentMethod.ONLINE_GATEWAY,
+              amount: snapshot.payThis.toFixed(2),
+              transactionRef: transaction_id || refno,
+              issuedById: systemUserId,
+              paidDate: result.paidAt.toISOString(),
+            });
+          }
+        }
+      }
 
       // C2 fix: the JE post that used to be HERE (outside the $transaction)
       // was moved inside the tx above so a JE failure rolls back the

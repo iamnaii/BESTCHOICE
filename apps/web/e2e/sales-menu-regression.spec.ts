@@ -261,13 +261,13 @@ for (const width of [1440, 390]) {
     test('POS: cash/external price, selected IDs and disclosure survive handoff', async ({ page }) => {
       await fixture(page, 'SALES');
       await page.goto('/pos');
-      await page.getByPlaceholder('พิมพ์อย่างน้อย 2 ตัวอักษร เช่น IMEI, ชื่อ, รุ่น...').fill('TEST');
+      await page.getByRole('textbox', { name: 'ค้นหาสินค้า รุ่น หรือ IMEI' }).fill('TEST');
       await page.getByRole('button').filter({ hasText: 'TEST PHONE' }).first().click();
       await expect(page.getByLabel(/ราคาขาย/)).toHaveValue('9000');
       await page.getByRole('button', { name: /^ไฟแนนซ์นอก/ }).click();
       await expect(page.getByLabel(/ราคาขาย/)).toHaveValue('10000');
-      await page.getByPlaceholder('พิมพ์อย่างน้อย 2 ตัวอักษร เช่น ชื่อ, เบอร์โทร, เลขบัตร...').fill('ลูกค้าตัวอย่าง 000');
-      await page.getByRole('button', { name: 'ลูกค้าตัวอย่าง 000 0800000000', exact: true }).click();
+      await page.getByRole('textbox', { name: 'ค้นหาลูกค้า', exact: true }).fill('ลูกค้าตัวอย่าง 000');
+      await page.getByRole('button', { name: /ลูกค้าตัวอย่าง 000 0800000000/ }).click();
       await page.getByRole('button', { name: /ไปสร้างสัญญาผ่อนชำระ/ }).click();
       await expect(page.getByRole('dialog')).toContainText('ลูกค้า: ลูกค้าตัวอย่าง 000');
       await expect(page.getByRole('dialog')).toContainText('เครื่อง: เครื่องตัวอย่าง');

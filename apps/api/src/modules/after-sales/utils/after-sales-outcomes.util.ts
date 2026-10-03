@@ -164,3 +164,26 @@ export function computeOutcomes(i: OutcomeInput): OutcomeOption[] {
   }
   return [repair, sameModel, priced];
 }
+
+/** ข้อความขึ้นต้นของ event OUTCOME_SET ตอน "เปลี่ยนใจเป็นซ่อม" (`AfterSalesExchangeService.switchToRepair`)
+ * — ผู้เขียนและผู้อ่าน (`dropOffOutcome`) ต้องใช้ค่าคงที่ตัวนี้ตัวเดียว */
+export const SWITCHED_TO_REPAIR_NOTE = 'เปลี่ยนเป็น "ซ่อม" แทน';
+
+/**
+ * ทางออกที่ตกลงกันตอนรับฝาก — ใบรับฝากที่พิมพ์ซ้ำต้องตรงกับใบที่ลูกค้าเซ็นไว้ ไม่ใช่ทางออกปัจจุบัน.
+ * หลังรับฝาก ทางออกเปลี่ยนได้สองทางเท่านั้น:
+ *  - `switchToRepair`: เปลี่ยนรุ่นเดิม (รออนุมัติ) → ซ่อม — ทำได้เฉพาะเคสที่ตั้งเปลี่ยนรุ่นเดิมตอนรับฝาก
+ *    ⇒ มี event ขึ้นต้น `SWITCHED_TO_REPAIR_NOTE` = รับฝากเป็นเปลี่ยนรุ่นเดิม (ชนะข้อถัดไป)
+ *  - `confirmSameModel` จากใบซ่อมที่ซ่อมไม่ได้: ซ่อม → เปลี่ยนรุ่นเดิม — ใบซ่อมของเคสเป็น REPLACED
+ */
+export function dropOffOutcome(c: {
+  outcome: AfterSalesOutcome | null;
+  repairTicketStatus: string | null;
+  outcomeNotes: (string | null)[];
+}): AfterSalesOutcome | null {
+  if (c.outcomeNotes.some((n) => n?.startsWith(SWITCHED_TO_REPAIR_NOTE))) {
+    return 'SAME_MODEL_EXCHANGE';
+  }
+  if (c.outcome === 'SAME_MODEL_EXCHANGE' && c.repairTicketStatus === 'REPLACED') return 'REPAIR';
+  return c.outcome;
+}

@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { isAccessoryCompatible } from '@installment/shared';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
@@ -20,6 +21,7 @@ import {
   unconfirmedLeftoverPrices,
   unconfirmedPriceMessage,
 } from './product-enter-stock.util';
+import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receiving-acceptance-journal';
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
 import { isAccessoryProductCode } from '../../utils/accessory-type.util';
@@ -85,6 +87,9 @@ export class ProductsService {
   constructor(private prisma: PrismaService) {}
 
   async findAll(filters: StockListFilters) {
+    if (filters.compatibleWithProductId && (filters.groupAccessories || filters.accessoryGroupId || filters.sortBy)) {
+      throw new BadRequestException('ตัวกรองของแถมใช้กับรายการสินค้าแต่ละชิ้นเท่านั้น');
+    }
     if (filters.groupAccessories && !filters.accessoryGroupId) {
       return findStockGroups(this.prisma, filters, productInclude);
     }
@@ -133,16 +138,49 @@ export class ProductsService {
 
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(100, Math.max(1, filters.limit || 50));
+    let compatibleTotal: number | undefined;
+
+    if (filters.compatibleWithProductId) {
+      const device = await this.prisma.product.findFirst({
+        where: { id: filters.compatibleWithProductId, deletedAt: null, ...(filters.branchId ? { branchId: filters.branchId } : {}) },
+        select: { brand: true, model: true, category: true, branchId: true },
+      });
+      if (!device) throw new NotFoundException('ไม่พบสินค้าหลักในสาขานี้');
+      // Filter compatibility BEFORE pagination; ten unrelated units must not hide a matching film.
+      Object.assign(where, { category: 'ACCESSORY', status: 'IN_STOCK', branchId: device.branchId });
+      // Scan bounded batches and retain only this page's IDs, even for large inventories.
+      const pageIds: string[] = [];
+      const offset = (page - 1) * limit;
+      compatibleTotal = 0;
+      let cursor: string | undefined;
+      for (;;) {
+        const candidates = await this.prisma.product.findMany({
+          where,
+          select: { id: true, brand: true, model: true, category: true },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: 500,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        });
+        for (const candidate of candidates) {
+          if (!isAccessoryCompatible(candidate, device)) continue;
+          if (compatibleTotal >= offset && pageIds.length < limit) pageIds.push(candidate.id);
+          compatibleTotal++;
+        }
+        if (candidates.length < 500) break;
+        cursor = candidates[candidates.length - 1].id;
+      }
+      where.id = { in: pageIds };
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * limit,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: compatibleTotal === undefined ? (page - 1) * limit : 0,
         take: limit,
         include: productInclude,
       }),
-      this.prisma.product.count({ where }),
+      compatibleTotal === undefined ? this.prisma.product.count({ where }) : Promise.resolve(compatibleTotal),
     ]);
 
     const defaults = await readStringFlag(this.prisma, SHOP_WARRANTY_DAYS_CONFIG_KEY, '');
@@ -385,6 +423,11 @@ export class ProductsService {
         });
       }
 
+      // เครื่องจากใบสั่งซื้อที่ยังไม่ลงบัญชีรับของ (รอถ่ายรูป) → ลงตอนเข้าคลัง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
+      if (entersStock) {
+        await new ReceivingAcceptanceJournal(this.prisma).bookIfPending(tx, id);
+      }
+
       // audit ชุดเดียวกับปุ่ม (action เดียวกัน) — `actorUserId` มาจาก controller เสมอ;
       // ผู้เรียกภายในที่ไม่มีตัวตนผู้ใช้จะข้ามการเขียน audit แต่ยังได้ stockInDate
       if (entersStock && actorUserId) {
@@ -504,6 +547,7 @@ export class ProductsService {
         cashPrice: cashDecimal,
         installmentPrice: installmentDecimal,
       });
+      await new ReceivingAcceptanceJournal(this.prisma).bookIfPending(tx, id);
 
       await tx.auditLog.create({
         data: enterStockAuditData({
@@ -758,13 +802,20 @@ export class ProductsService {
    * searchable by name or by the old Tooltify code the importer left in `accessoryType`.
    * Returns the raw fields a PO line copies (accessoryType / accessoryBrand / model) so the
    * received units get the same name (see buildProductName), plus stock + last cost.
+   *
+   * `lastCost` เติมลงช่องราคาต่อหน่วยของใบสั่งซื้อใบถัดไป ซึ่งเป็นราคา **ก่อน VAT ก่อนส่วนลด**
+   * (computePoAmounts บวก VAT ให้ทีหลัง) — จึงอ่านจากราคาในใบสั่งซื้อของชิ้นล่าสุด ไม่ใช่ `cost_price`
+   * ที่ตั้งแต่ 2026-09-29 เป็นต้นทุนรวม VAT หลังส่วนลด (ไม่งั้น VAT ทบเข้าไปทุกรอบที่สั่งซ้ำ).
+   * ชิ้นที่ไม่ได้มาจากใบรับของ (นำเข้า/เพิ่มด้วยมือ) ใช้ `cost_price` ตามเดิม
    */
   async findAccessorySkus(search: string, limit = 20): Promise<AccessorySku[]> {
     const term = `%${(search ?? '').trim()}%`;
     const rows = await this.prisma.$queryRaw<AccessorySkuRow[]>(Prisma.sql`
       SELECT p.name, p.accessory_type, p.accessory_brand, p.model,
              COUNT(*) FILTER (WHERE p.status = 'IN_STOCK') AS in_stock,
-             (SELECT p2.cost_price FROM products p2
+             (SELECT COALESCE(pi.unit_price, p2.cost_price) FROM products p2
+                LEFT JOIN goods_receiving_items gri ON gri.product_id = p2.id AND gri.deleted_at IS NULL
+                LEFT JOIN po_items pi ON pi.id = gri.po_item_id
                 WHERE p2.name = p.name AND p2.category = 'ACCESSORY' AND p2.deleted_at IS NULL
                 ORDER BY p2.created_at DESC LIMIT 1) AS last_cost
       FROM products p

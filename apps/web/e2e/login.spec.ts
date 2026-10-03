@@ -54,8 +54,8 @@ test.describe('Login Page', () => {
 
     // Admin (OWNER role) should see key section labels in expanded sidebar
     // These are accordion section headers (always visible when sidebar is expanded).
-    // OWNER defaults to the 'shop' zone → sections are 'คลัง & จัดซื้อ' / 'ขาย' /
-    // 'หลังการขาย' (config/menu.ts). The old 'สัญญา'/'คลัง' labels belong to the
+    // OWNER defaults to the 'shop' zone → sections are 'คลัง & จัดซื้อ' / 'ขาย'
+    // (config/menu.ts — 'หลังการขาย' อยู่ในกลุ่ม 'ขาย' ตั้งแต่ 2026-09-28). The old 'สัญญา'/'คลัง' labels belong to the
     // pre-menu.ts hardcoded sidebar and no longer exist as section headers.
     await expect(sidebar.getByText('ขาย', { exact: true }).first()).toBeVisible({ timeout: 5000 });
     await expect(sidebar.getByText('คลัง & จัดซื้อ', { exact: true }).first()).toBeVisible();

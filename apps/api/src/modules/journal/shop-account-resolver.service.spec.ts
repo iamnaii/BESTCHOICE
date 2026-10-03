@@ -26,6 +26,21 @@ describe('ShopAccountResolver', () => {
     expect(resolver.resolveProductAccounts('ACCESSORY')).toEqual({ inventoryAccountCode: 'S11-2003', cogsAccountCode: 'S50-1103', revenueAccountCode: 'S41-1103' });
   });
 
+  // คำตอบฝ่ายบัญชี 2026-09-29 ข้อ ข1 — เจ้าหนี้ผู้จัดจำหน่ายแยกตามประเภทสินค้าที่ซื้อ
+  it('resolveSupplierPayableAccount: มือถือทุกแบบและแท็บเล็ต → S21-1101', () => {
+    expect(resolver.resolveSupplierPayableAccount('PHONE_NEW')).toBe('S21-1101');
+    expect(resolver.resolveSupplierPayableAccount('PHONE_USED')).toBe('S21-1101');
+    expect(resolver.resolveSupplierPayableAccount('TABLET')).toBe('S21-1101');
+  });
+
+  it('resolveSupplierPayableAccount: อุปกรณ์เสริม → S21-1102', () => {
+    expect(resolver.resolveSupplierPayableAccount('ACCESSORY')).toBe('S21-1102');
+  });
+
+  it('resolveSupplierPayableAccount: หมวดที่ไม่รู้จัก → throw (ห้ามเดาบัญชี)', () => {
+    expect(() => resolver.resolveSupplierPayableAccount('WATCH' as never)).toThrow(BadRequestException);
+  });
+
   it('resolves a configured branch cash account', async () => {
     prisma.branch.findUnique.mockResolvedValue({ shopCashAccountCode: 'S11-1102' });
     await expect(resolver.resolveBranchCashAccount('br-1')).resolves.toBe('S11-1102');

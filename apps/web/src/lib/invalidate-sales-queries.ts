@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 
 export type SalesMutationEvent = 'sale-created' | 'sale-voided' | 'booking-updated' | 'booking-converted' | 'contract-created';
-const stock = ['pos-products', 'pos-bundle-products', 'product', 'products', 'products-available', 'booking-products', 'stock'];
+const stock = ['pos-products', 'pos-bundle-products', 'bundle-products', 'bundle-quick-picks', 'product', 'products', 'products-available', 'booking-products', 'stock'];
 const sales = ['sale', 'sales-history', 'top-products', 'trade-in-credits'];
 const keys: Record<SalesMutationEvent, readonly string[]> = {
   'sale-created': [...sales, ...stock],

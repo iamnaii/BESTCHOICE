@@ -15,6 +15,7 @@ import { ReturnToCustomerDto } from '../../repair-tickets/dto/return-to-customer
 import { assertEvidenceImage, evidenceImageExtension } from '../../../utils/upload-image.util';
 import { AuditService } from '../../audit/audit.service';
 import { AfterSalesQueryService } from './after-sales-query.service';
+import { AfterSalesLineService } from './after-sales-line.service';
 import { deriveStage } from '../utils/after-sales-stage.util';
 import { MAX_INTAKE_PHOTOS } from './after-sales-case.service';
 import { CancelCaseDto } from '../dto/cancel-case.dto';
@@ -42,6 +43,7 @@ export class AfterSalesRepairService {
     private readonly repair: RepairTicketsService,
     private readonly query: AfterSalesQueryService,
     private readonly audit: AuditService,
+    private readonly line: AfterSalesLineService,
   ) {}
 
   /** โหลดเคส (เช็คสิทธิ์สาขาผ่าน query.getCase) แล้วคืน ticketId */
@@ -105,12 +107,16 @@ export class AfterSalesRepairService {
     await this.repair.markRepaired(ticketId, dto, user);
     // R21 — ไม่มีศูนย์ซ่อม (ซ่อมที่ร้าน) ใช้คำในไทม์ไลน์ต่างจากส่งซ่อมศูนย์ภายนอก
     const label = c.repairTicket!.repairSupplier ? 'ซ่อมเสร็จ' : 'ซ่อมที่ร้านเสร็จ';
-    return this.sync(
+    const result = await this.sync(
       caseId,
       user,
       'REPAIR_DONE',
       `${label} · ค่าซ่อมจริง ${dto.actualCost} · ผู้จ่าย ${dto.payer}`,
     );
+    // Task 3 — จังหวะ 2 (READY): หลัง sync (commit) เสมอ — fire-and-forget, LINE ล้มต้องไม่ทำให้
+    // การซ่อมล้ม (Global Constraints). notifyMoment เองก็ไม่ throw อยู่แล้ว — `.catch` เป็นเข็มขัดคู่
+    void this.line.notifyMoment(caseId, 'READY', user.id).catch(() => undefined);
+    return result;
   }
 
   async sendBack(caseId: string, dto: SendBackDto, user: ReqUser) {
@@ -123,7 +129,10 @@ export class AfterSalesRepairService {
     const { ticketId } = await this.ticketOf(caseId, user);
     await this.repair.returnToCustomer(ticketId, dto, user);
     await this.sync(caseId, user, 'DELIVERED', 'ส่งมอบคืนลูกค้าแล้ว');
-    return this.sync(caseId, user, 'CLOSED', 'ปิดเคส');
+    const result = await this.sync(caseId, user, 'CLOSED', 'ปิดเคส');
+    // Task 3 — จังหวะ 3 (CLOSED): หลัง sync (commit) เสมอ — fire-and-forget เช่นเดียวกับข้างบน
+    void this.line.notifyMoment(caseId, 'CLOSED', user.id).catch(() => undefined);
+    return result;
   }
 
   async cancelCase(caseId: string, dto: CancelCaseDto, user: ReqUser) {

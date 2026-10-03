@@ -14,7 +14,7 @@
     "start:prod": "prisma migrate deploy && node dist/src/main",
     "lint": "eslint \"{src,test}/**/*.ts\" --fix",
     "pretest": "npm run build --workspace=@installment/shared",
-    "test": "jest --runInBand --forceExit",
+    "test": "node --experimental-vm-modules ../../node_modules/jest/bin/jest.js --runInBand --forceExit",
     "pretest:e2e": "npm run build --workspace=@installment/shared",
     "test:e2e": "jest --config e2e/jest-e2e.json --runInBand --forceExit",
     "pretest:watch": "npm run build --workspace=@installment/shared",

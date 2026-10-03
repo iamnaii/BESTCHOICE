@@ -1,3 +1,4 @@
+import { LiffShell as Shell, LiffTopBar as TopBar } from './components/LiffLayout';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
@@ -107,7 +108,7 @@ export default function LiffEarlyPayoff() {
   // ─── Loading ──────────────────────────────────────────
   if (loading || listLoading || (contractId && quoteLoading)) {
     return (
-      <Shell>
+      <Shell theme="early-payoff">
         <div className="px-5 pt-6 space-y-4">
           <Skeleton className="h-24 w-full rounded-[22px]" />
           <Skeleton className="h-64 w-full rounded-[22px]" />
@@ -120,8 +121,8 @@ export default function LiffEarlyPayoff() {
   // ─── Picker: no contractId + multiple eligible ────────
   if (!contractId && eligibleContracts.length > 1) {
     return (
-      <Shell>
-        <TopBar title="เลือกสัญญาปิดยอด" initial={customerInitial} />
+      <Shell theme="early-payoff">
+        <TopBar theme="early-payoff" title="เลือกสัญญาปิดยอด" initial={customerInitial} />
 
         <section className="relative z-[1] px-5 pt-6">
           <div className="text-xs text-muted-foreground leading-snug">สวัสดี</div>
@@ -197,8 +198,8 @@ export default function LiffEarlyPayoff() {
   // ─── No eligible contracts ───────────────────────────
   if (!contractId && eligibleContracts.length === 0) {
     return (
-      <Shell>
-        <TopBar title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
+      <Shell theme="early-payoff">
+        <TopBar theme="early-payoff" title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
 
         <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
           <div className="grid h-20 w-20 place-items-center rounded-full bg-emerald-50 border border-emerald-200 mb-5">
@@ -224,8 +225,8 @@ export default function LiffEarlyPayoff() {
   const errorMsg = error || (quoteError as Error)?.message;
   if (errorMsg) {
     return (
-      <Shell>
-        <TopBar title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
+      <Shell theme="early-payoff">
+        <TopBar theme="early-payoff" title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
         <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
           <div className="grid h-20 w-20 place-items-center rounded-full bg-destructive/10 border border-destructive/30 mb-5">
             <span className="text-destructive text-4xl font-light leading-none">!</span>
@@ -247,7 +248,7 @@ export default function LiffEarlyPayoff() {
   // ─── Creating payment link ────────────────────────────
   if (payoffMutation.isPending) {
     return (
-      <Shell>
+      <Shell theme="early-payoff">
         <section className="relative z-[1] min-h-[80vh] flex flex-col items-center justify-center px-5">
           <div className="relative h-16 w-16">
             <div
@@ -282,8 +283,8 @@ export default function LiffEarlyPayoff() {
   const savings = quote.discount + quote.partiallyPaidCredit;
 
   return (
-    <Shell>
-      <TopBar title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
+    <Shell theme="early-payoff">
+      <TopBar theme="early-payoff" title="ปิดยอดก่อนกำหนด" initial={customerInitial} />
 
       <section className="relative z-[1] px-5 pt-6">
         <div className="text-xs text-muted-foreground leading-snug">สวัสดี</div>
@@ -486,54 +487,6 @@ export default function LiffEarlyPayoff() {
 
 // ─── UI primitives ─────────────────────────────────────
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="relative min-h-screen overflow-x-hidden" style={{ backgroundColor: '#fafaf7' }}>
-      <div
-        className="fixed inset-0 pointer-events-none z-0"
-        style={{
-          background:
-            'radial-gradient(600px 400px at 10% -5%, rgb(251 191 36 / 0.10), transparent 60%),' +
-            'radial-gradient(500px 380px at 100% 20%, rgb(16 185 129 / 0.07), transparent 65%),' +
-            'radial-gradient(400px 320px at 50% 100%, rgb(99 102 241 / 0.05), transparent 60%)',
-        }}
-      />
-      <div className="relative mx-auto max-w-[430px] pb-16">{children}</div>
-    </div>
-  );
-}
-
-function TopBar({ title, initial }: { title: string; initial: string }) {
-  return (
-    <header
-      className="sticky top-0 z-20 flex items-center justify-between px-5 py-3.5 backdrop-blur-xl border-b border-border/50"
-      style={{ backgroundColor: 'rgb(250 250 247 / 0.85)' }}
-    >
-      <button
-        type="button"
-        aria-label="ย้อนกลับ"
-        className="grid h-9 w-9 place-items-center rounded-full text-foreground hover:bg-accent -ml-1.5"
-        onClick={() => window.history.back()}
-      >
-        <ChevronLeft className="size-5" strokeWidth={1.75} />
-      </button>
-      <div className="text-[13px] font-medium text-foreground tracking-tight leading-snug">
-        {title}
-      </div>
-      <div className="relative -mr-1.5">
-        <div
-          className="grid h-9 w-9 place-items-center rounded-full text-[12px] font-semibold text-white shadow-lg shadow-amber-500/30"
-          style={{
-            background:
-              'linear-gradient(135deg, rgb(251 191 36) 0%, rgb(245 158 11) 60%, rgb(217 119 6) 100%)',
-          }}
-        >
-          {initial}
-        </div>
-      </div>
-    </header>
-  );
-}
 
 function Row({
   label,

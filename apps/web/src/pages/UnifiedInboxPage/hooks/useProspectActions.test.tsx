@@ -30,8 +30,15 @@ describe('useProspectActions', () => {
     result.current.mutate({ placeholderId: 'p1', targetId: 'c1' });
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
     expect(apiPost).toHaveBeenCalledWith('/customers/p1/absorb-into/c1');
-    const keys = spy.mock.calls.map(([arg]) => JSON.stringify((arg as { queryKey: unknown }).queryKey));
-    expect(keys).toEqual(expect.arrayContaining([JSON.stringify(['chat-room', 'r-1']), JSON.stringify(['chat-rooms']), JSON.stringify(['customers'])]));
+    expect(spy.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      ['chat-room', 'r-1'],
+      ['chat-rooms'],
+      ['customers'],
+      ['credit-checks'],
+      ['customer-credit-checks'],
+      ['customer-latest-credit'],
+      ['customer-credit-check-latest-statement'],
+    ]);
   });
 
   it('useAbsorbCustomer: onSuccess ได้ผลลัพธ์ของการรวม (จำนวนผลวิเคราะห์ที่ย้าย) · ผู้เรียก mutate ได้ผลเดียวกัน', async () => {

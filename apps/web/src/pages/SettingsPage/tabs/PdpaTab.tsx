@@ -1,3 +1,4 @@
+import { formatDuration } from '@/lib/format-duration';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -66,14 +67,6 @@ const STATUS_LABELS: Record<PdpaBackfillRun['status'], { label: string; variant:
   COMPLETED: { label: 'สำเร็จ', variant: 'success' },
   FAILED: { label: 'ล้มเหลว', variant: 'destructive' },
 };
-
-function formatDuration(startedAt: string, finishedAt: string | null): string {
-  if (!finishedAt) return '-';
-  const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
-  if (ms < 1000) return `${ms} ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} วิ`;
-  return `${(ms / 60_000).toFixed(1)} นาที`;
-}
 
 function formatTrigger(run: PdpaBackfillRun): string {
   if (run.triggeredBy === 'cli') return 'cli';

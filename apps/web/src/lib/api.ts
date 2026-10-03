@@ -30,7 +30,7 @@ const sharedConfig = {
   baseURL: API_URL,
   timeout: 15000,
   headers: {
-    'Content-Type': 'application/json',
+    // Axios infers JSON for objects; the browser supplies FormData's multipart boundary.
     'X-Requested-With': 'XMLHttpRequest',
   },
 };

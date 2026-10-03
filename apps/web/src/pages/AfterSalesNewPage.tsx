@@ -135,7 +135,7 @@ export default function AfterSalesNewPage() {
 
   const create = useMutation({
     mutationFn: async (form: FormData) =>
-      (await api.post('/after-sales', form, { headers: { 'Content-Type': 'multipart/form-data' } }))
+      (await api.post('/after-sales', form))
         .data as { id: string; caseNumber: string; repairTicketId: string },
     onSuccess: (data) => {
       toast.success(`เปิดเคส ${data.caseNumber}`);

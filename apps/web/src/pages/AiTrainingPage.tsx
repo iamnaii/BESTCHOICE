@@ -60,9 +60,7 @@ export default function AiTrainingPage() {
     mutationFn: (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
-      return api.post('/staff-chat/ai/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      return api.post('/staff-chat/ai/import', formData);
     },
     onSuccess: (res: any) => {
       const count = res.data?.imported ?? res.data?.count ?? '?';

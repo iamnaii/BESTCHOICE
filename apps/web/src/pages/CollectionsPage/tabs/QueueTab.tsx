@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import CardSkeleton from '../components/ContractCardSkeleton';
+import { useContactedTodayRows } from '../hooks/useContactedTodayRows';
+import { useEffect, useState } from 'react';
 import { CheckCircle2, PartyPopper, Phone } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
-import { isToday } from '../utils/today';
 import { useCollectionsKeyboard } from '@/hooks/useCollectionsKeyboard';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
@@ -16,20 +17,6 @@ import { useUnsnoozeContract } from '../hooks/useSnooze';
 import type { ContractRow } from '../types';
 
 const LIMIT = 50;
-
-function CardSkeleton() {
-  return (
-    <div className="flex rounded-xl border border-border/50 bg-card overflow-hidden h-[148px] animate-pulse">
-      <div className="w-1 shrink-0 bg-muted" />
-      <div className="flex-1 p-4 space-y-2">
-        <div className="h-3 w-24 rounded bg-muted" />
-        <div className="h-4 w-40 rounded bg-muted" />
-        <div className="h-3 w-20 rounded bg-muted" />
-        <div className="mt-3 h-3 w-32 rounded bg-muted" />
-      </div>
-    </div>
-  );
-}
 
 interface Props {
   search: string;
@@ -75,18 +62,7 @@ export default function QueueTab({
   const total = q.data?.total ?? 0;
   // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
   const rawRows = q.data?.data ?? [];
-  // Apply client-side "hide contacted today" filter on top of the server result.
-  // NOTE: counts below operate on the current page only — backend pagination is
-  // unchanged, so for page 2+ the strip reflects "in this view" not the entire queue.
-  const rows = useMemo(
-    () => (hideContactedToday ? rawRows.filter((r) => !isToday(r.lastCallAt)) : rawRows),
-    [rawRows, hideContactedToday],
-  );
-  const contactedTodayCount = useMemo(
-    () => rawRows.filter((r) => isToday(r.lastCallAt)).length,
-    [rawRows],
-  );
-  const remainingCount = rawRows.length - contactedTodayCount;
+  const { rows, contactedTodayCount, remainingCount } = useContactedTodayRows(rawRows, hideContactedToday);
   const truncated = q.data?.truncated ?? false;
 
   // Keep focus index within bounds when rows change.

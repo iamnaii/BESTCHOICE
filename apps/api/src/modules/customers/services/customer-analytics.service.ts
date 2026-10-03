@@ -1,3 +1,4 @@
+import { calculatePaymentWatchRisk } from '../../../utils/payment-watch-risk.util';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -222,16 +223,7 @@ export class CustomerAnalyticsService {
     `);
 
     const candidates = rows.map((r) => {
-      const late = Number(r.latePaymentCount);
-      const partial = Number(r.partialPaymentCount);
-      const dunningReset = Boolean(r.hadDunningReset);
-      const score = Math.min(late, 5) + partial * 2 + (dunningReset ? 3 : 0);
-      const riskLevel: 'HIGH' | 'MEDIUM' | 'LOW' = score >= 5 ? 'HIGH' : score >= 3 ? 'MEDIUM' : 'LOW';
-
-      const reasons: string[] = [];
-      if (late >= 2) reasons.push(`ชำระล่าช้า ${late} ครั้ง`);
-      if (partial >= 1) reasons.push(`จ่ายไม่ครบ ${partial} ครั้ง`);
-      if (dunningReset) reasons.push('เคยถูกติดตามหนี้แล้ว reset');
+      const { late, partial, dunningReset, score, riskLevel, reasons } = calculatePaymentWatchRisk(r);
 
       return {
         customerId: r.customerId,

@@ -38,15 +38,21 @@ it('uploads real multipart files without auto-analysis and invalidates the origi
   act(() => result.current.upload([new File(['jpeg'], 'statement.jpg', { type: 'image/jpeg' })]));
   await waitFor(() => expect(post).toHaveBeenCalled());
   expect(post.mock.calls[0][2]).toMatchObject({
-    headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000,
   });
   expect(post.mock.calls[0][1]).toBeInstanceOf(FormData);
   rerender({ roomId: 'B' });
   await act(async () => resolve({ data: {} }));
   await waitFor(() => expect(attached).toHaveBeenCalledWith('A'));
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['room-credit', 'A'] });
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['customers'] });
+  expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+    ['room-credit', 'A'],
+    ['room-credit', 'A'],
+    ['customers'],
+    ['credit-checks'],
+    ['customer-credit-checks'],
+    ['customer-latest-credit'],
+    ['customer-credit-check-latest-statement'],
+  ]);
   expect(result.current.roomId).toBe('B');
   expect(post).toHaveBeenCalledTimes(1);
 });

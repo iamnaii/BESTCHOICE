@@ -1,4 +1,5 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { Injectable, Logger, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -24,6 +25,7 @@ const SHOP_LINKED = {
 
 type LineMessage =
   | { type: 'text'; text: string }
+  | { type: 'video'; originalContentUrl: string; previewImageUrl: string }
   | { type: 'image'; originalContentUrl: string; previewImageUrl: string }
   | { type: 'flex'; altText: string; contents: any };
 
@@ -150,7 +152,11 @@ export class BroadcastService {
     message: string;
     id?: string;
   }> {
-    const { messages, audience, scheduledAt, createdById } = params;
+    const { messages, scheduledAt, createdById } = params;
+    const audience = this.normalizeAudience(params.audience);
+    if (!Array.isArray(messages) || messages.length < 1 || messages.length > 5) {
+      throw new BadRequestException('กรุณาระบุข้อความ 1–5 ข้อความ');
+    }
 
     const lineMessages = messages
       .map((m) => this.buildLineMessage(m.type, m.content))
@@ -211,31 +217,22 @@ export class BroadcastService {
     }
 
     const now = new Date();
-
-    // If scheduled in the future → just mark SCHEDULED, cron dispatches.
-    if (record.scheduledAt && record.scheduledAt > now) {
-      await this.prisma.broadcastMessage.update({
-        where: { id },
-        data: {
-          status: 'SCHEDULED',
-          approvedById: approverId,
-          approvedAt: now,
-        },
-      });
-      return {
-        success: true,
-        message: `อนุมัติแล้ว — จะถูกส่งตามเวลา ${record.scheduledAt.toLocaleString('th-TH')}`,
-        id,
-      };
+    const scheduled = !!record.scheduledAt && record.scheduledAt > now;
+    const audience = this.normalizeAudience(record.audience);
+    const msgItems = (record.messages as unknown as BroadcastMessageItem[]) ?? [];
+    if (msgItems.length < 1 || msgItems.length > 5) throw new BadRequestException('กรุณาระบุข้อความ 1–5 ข้อความ');
+    const lineMessages = msgItems.map((m) => this.buildLineMessage(m.type, m.content));
+    // Only one reviewer may claim a pending broadcast; rejection uses the same condition.
+    const claim = await this.prisma.broadcastMessage.updateMany({
+      where: { id, status: 'PENDING_APPROVAL' },
+      data: { status: scheduled ? 'SCHEDULED' : 'SENDING', approvedById: approverId, approvedAt: now },
+    });
+    if (claim.count !== 1) throw new BadRequestException('รายการนี้ถูกดำเนินการโดยผู้ใช้อื่นแล้ว');
+    if (scheduled) {
+      return { success: true, message: `อนุมัติแล้ว — จะถูกส่งตามเวลา ${record.scheduledAt!.toLocaleString('th-TH')}`, id };
     }
 
-    // Otherwise dispatch now.
-    const msgItems = (record.messages as unknown as BroadcastMessageItem[]) ?? [];
-    const lineMessages = msgItems
-      .map((m) => this.buildLineMessage(m.type, m.content))
-      .filter((m): m is LineMessage => m !== null);
-
-    const result = await this.dispatchLineMessages(record.audience, lineMessages);
+    const result = await this.dispatchLineMessages(audience, lineMessages);
 
     await this.prisma.broadcastMessage.update({
       where: { id },
@@ -272,8 +269,8 @@ export class BroadcastService {
       );
     }
 
-    await this.prisma.broadcastMessage.update({
-      where: { id },
+    const claim = await this.prisma.broadcastMessage.updateMany({
+      where: { id, status: 'PENDING_APPROVAL' },
       data: {
         status: 'REJECTED',
         rejectedById: rejecterId,
@@ -282,6 +279,7 @@ export class BroadcastService {
       },
     });
 
+    if (claim.count !== 1) throw new BadRequestException('รายการนี้ถูกดำเนินการโดยผู้ใช้อื่นแล้ว');
     return { success: true, message: 'ปฏิเสธ broadcast แล้ว', id };
   }
 
@@ -388,36 +386,42 @@ export class BroadcastService {
     if (msg.status !== 'SCHEDULED') {
       return { success: false, message: 'สามารถยกเลิกได้เฉพาะข้อความที่อยู่ในสถานะ SCHEDULED' };
     }
-    await this.prisma.broadcastMessage.update({
-      where: { id },
+    const claim = await this.prisma.broadcastMessage.updateMany({
+      where: { id, status: 'SCHEDULED' },
       data: { status: 'CANCELLED' },
     });
+    if (claim.count !== 1) return { success: false, message: 'รายการนี้เริ่มส่งหรือถูกดำเนินการแล้ว' };
     return { success: true, message: 'ยกเลิกการส่งสำเร็จ' };
   }
 
   // ─── Image Upload ─────────────────────────────────────────────────────────────
 
-  async uploadImage(file: Buffer, filename: string): Promise<{ url: string }> {
-    const key = `broadcast/images/${Date.now()}-${filename}`;
-    await this.storageService.upload(key, file, 'image/jpeg');
+  async uploadImage(file: Buffer): Promise<{ url: string }> {
+    // FileTypeValidator checks bytes but leaves the client MIME header untouched.
+    const signature = file.subarray(0, 12);
+    const contentType = signature.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) ? 'image/png'
+      : signature.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex')) ? 'image/jpeg'
+      : ['GIF87a', 'GIF89a'].includes(signature.subarray(0, 6).toString()) ? 'image/gif'
+      : signature.subarray(0, 4).toString() === 'RIFF' && signature.subarray(8, 12).toString() === 'WEBP' ? 'image/webp' : '';
+    const extensions: Record<string, string> = {
+      'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
+    };
+    const extension = extensions[contentType];
+    if (!extension) throw new BadRequestException('รูปแบบรูปภาพไม่รองรับ');
+    return this.uploadMedia(file, `images/${randomUUID()}.${extension}`, contentType);
+  }
 
-    // Build public URL
-    const s3Endpoint = this.configService.get<string>('S3_ENDPOINT');
-    const s3Bucket = this.configService.get<string>('S3_BUCKET') || 'bestchoice-documents';
-    const gcsBucket = this.configService.get<string>('GCS_BUCKET');
-    const appUrl = this.configService.get<string>('APP_URL') || 'https://app.bestchoice.co.th';
+  async uploadVideo(file: Buffer): Promise<{ url: string }> {
+    return this.uploadMedia(file, `videos/${randomUUID()}.mp4`, 'video/mp4');
+  }
 
-    let url: string;
-    if (s3Endpoint) {
-      url = `${s3Endpoint}/${s3Bucket}/${key}`;
-    } else if (gcsBucket) {
-      url = `https://storage.googleapis.com/${gcsBucket}/${key}`;
-    } else {
-      // Fallback — serve via API
-      url = `${appUrl}/api/files/${encodeURIComponent(key)}`;
+  private async uploadMedia(file: Buffer, name: string, contentType: string) {
+    if (!this.storageService.configured || this.storageService.describe().backend === 'local') {
+      throw new ServiceUnavailableException('กรุณาตั้งค่าที่เก็บไฟล์สาธารณะสำหรับ Broadcast');
     }
-
-    return { url };
+    const key = `broadcast/${name}`;
+    await this.storageService.upload(key, file, contentType);
+    return { url: this.storageService.getPublicUrl(key) };
   }
 
   // ─── Legacy: kept for backward-compat with existing controller ────────────────
@@ -457,25 +461,58 @@ export class BroadcastService {
 
   // ─── Private helpers ──────────────────────────────────────────────────────────
 
-  private buildLineMessage(type: string, content: any): LineMessage | null {
+  private normalizeAudience(audience: string): string {
+    const key = String(audience).toUpperCase();
+    if (key === 'ACTIVE') return 'EXISTING'; // Older composer drafts used this name.
+    if (['ALL', 'EXISTING', 'OVERDUE', 'NEW'].includes(key)) return key;
+    throw new BadRequestException('กลุ่มผู้รับไม่ถูกต้อง');
+  }
+
+  private mediaUrl(value: unknown): string {
+    if (typeof value === 'string' && value.length <= 2000) {
+      try {
+        const url = new URL(value);
+        if (url.protocol === 'https:' && !url.username && !url.password) return value;
+      } catch { /* Report the same actionable validation error below. */ }
+    }
+    throw new BadRequestException('ลิงก์สื่อและรูปปกต้องเป็น HTTPS ที่เข้าถึงได้');
+  }
+
+  private buildLineMessage(type: string, content: any): LineMessage {
     if (type === 'text') {
-      return { type: 'text', text: content.text ?? content ?? '' };
+      const text = typeof content === 'string' ? content : content?.text;
+      if (typeof text !== 'string' || !text.trim() || text.length > 5000) {
+        throw new BadRequestException('ข้อความต้องมีความยาว 1–5,000 ตัวอักษร');
+      }
+      return { type: 'text', text };
     }
     if (type === 'image') {
+      const url = this.mediaUrl(content?.imageUrl ?? content?.originalContentUrl);
+      return { type: 'image', originalContentUrl: url, previewImageUrl: this.mediaUrl(content?.previewImageUrl ?? url) };
+    }
+    if (type === 'video') {
       return {
-        type: 'image',
-        originalContentUrl: content.originalContentUrl,
-        previewImageUrl: content.previewImageUrl ?? content.originalContentUrl,
+        type: 'video',
+        originalContentUrl: this.mediaUrl(content?.videoUrl ?? content?.originalContentUrl),
+        previewImageUrl: this.mediaUrl(content?.thumbnailUrl ?? content?.previewImageUrl),
       };
     }
     if (type === 'flex') {
-      return {
-        type: 'flex',
-        altText: content.altText ?? 'ข้อความจาก BESTCHOICE',
-        contents: content.contents ?? content,
-      };
+      const contents = content?.flexContents ?? content?.contents ?? content;
+      if (!contents || !['bubble', 'carousel'].includes(contents.type)) {
+        throw new BadRequestException('รูปแบบข้อความ Flex ไม่ถูกต้อง');
+      }
+      return { type: 'flex', altText: content.altText ?? 'ข้อความจาก BESTCHOICE', contents };
     }
-    return null;
+    if (type === 'rich') {
+      const url = this.mediaUrl(content?.imageUrl);
+      return { type: 'flex', altText: 'ข้อความจาก BESTCHOICE', contents: {
+        type: 'bubble', hero: { type: 'image', url, size: 'full', aspectMode: 'fit',
+          ...(content.linkUrl ? { action: { type: 'uri', uri: this.mediaUrl(content.linkUrl) } } : {}),
+        },
+      } };
+    }
+    throw new BadRequestException('รูปแบบข้อความไม่รองรับ');
   }
 
   /** Dispatch a single LINE message (legacy wrapper for broadcast() method) */
@@ -491,10 +528,11 @@ export class BroadcastService {
     audience: string,
     messages: LineMessage[],
   ): Promise<{ success: boolean; message: string }> {
-    const token = await this.integrationConfig.getValue('line-shop', 'channelToken');
-    if (!token) return { success: false, message: 'LINE token not configured' };
-
+    audience = this.normalizeAudience(audience);
     try {
+      const token = await this.integrationConfig.getValue('line-shop', 'channelToken');
+      if (!token) return { success: false, message: 'LINE token not configured' };
+
       if (audience === 'ALL') {
         // Broadcast to all followers
         const res = await fetch('https://api.line.me/v2/bot/message/broadcast', {

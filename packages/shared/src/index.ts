@@ -33,3 +33,5 @@ export * from './document-spacing';
 
 export * from './finance-precheck-message';
 export * from './finance-doc-slots';
+export * from './thai-national-id';
+export * from './template-variables';

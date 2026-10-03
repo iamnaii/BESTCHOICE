@@ -1,3 +1,4 @@
+export { isValidThaiNationalId as validateNationalId } from '@installment/shared';
 import { BadRequestException, Logger } from '@nestjs/common';
 import { OcrAddressStructured } from '../dto/ocr.dto';
 
@@ -19,17 +20,6 @@ export const THAI_PROVINCES: readonly string[] = [
   'หนองบัวลำภู', 'อ่างทอง', 'อำนาจเจริญ', 'อุดรธานี', 'อุตรดิตถ์',
   'อุทัยธานี', 'อุบลราชธานี',
 ];
-
-export function validateNationalId(id: string): boolean {
-  if (!/^\d{13}$/.test(id)) return false;
-  const digits = id.split('').map(Number);
-  let sum = 0;
-  for (let i = 0; i < 12; i++) {
-    sum += digits[i] * (13 - i);
-  }
-  const checkDigit = (11 - (sum % 11)) % 10;
-  return checkDigit === digits[12];
-}
 
 export function isValidDate(dateStr: string): boolean {
   const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);

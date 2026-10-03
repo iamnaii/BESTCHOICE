@@ -1,3 +1,4 @@
+import { JournalPreviewTable } from '@/components/JournalPreviewTable';
 import { useMemo, useRef, useState } from 'react';
 import { WizardStackedOverlay } from '@/components/WizardStackedOverlay';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -689,46 +690,7 @@ export function RepossessionOverlay({
                 : 'รายการที่จะลงบัญชีเมื่อยืนยันรับเครื่องคืน'
             }
           >
-            <div className="space-y-1">
-              <div className="grid grid-cols-[80px_1fr_90px_90px] gap-1 text-xs text-muted-foreground font-medium pb-1 border-b border-border">
-                <span>รหัส</span>
-                <span>บัญชี</span>
-                <span className="text-right">Dr</span>
-                <span className="text-right">Cr</span>
-              </div>
-              {preview.journalPreview.lines.map((line, idx) => (
-                <div
-                  key={idx}
-                  className="grid grid-cols-[80px_1fr_90px_90px] gap-1 text-xs leading-snug"
-                >
-                  <span className="font-mono text-muted-foreground">{line.accountCode}</span>
-                  <div className="min-w-0">
-                    <span className="text-foreground truncate block">{line.accountName}</span>
-                    <span className="text-muted-foreground/70 text-[10px]">{line.description}</span>
-                  </div>
-                  <span className="text-right font-mono text-foreground">
-                    {parseFloat(line.debit) > 0 ? formatNumberDecimal(line.debit) : ''}
-                  </span>
-                  <span className="text-right font-mono text-foreground">
-                    {parseFloat(line.credit) > 0 ? formatNumberDecimal(line.credit) : ''}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div
-              className={`flex items-center justify-between mt-3 pt-2 border-t text-xs font-medium ${
-                preview.journalPreview.isBalanced
-                  ? 'border-success/30 text-success'
-                  : 'border-destructive/30 text-destructive'
-              }`}
-            >
-              <span>Dr รวม = Cr รวม</span>
-              <span className="font-mono">
-                {formatNumberDecimal(preview.journalPreview.totalDebit)} ={' '}
-                {formatNumberDecimal(preview.journalPreview.totalCredit)}{' '}
-                {preview.journalPreview.isBalanced ? 'BALANCED' : 'UNBALANCED'}
-              </span>
-            </div>
+            <JournalPreviewTable preview={preview.journalPreview} />
           </Section>
         )}
         {canPreview &&

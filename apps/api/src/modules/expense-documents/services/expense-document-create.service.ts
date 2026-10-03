@@ -1,3 +1,4 @@
+import { expenseLineCreateData, payrollLineCreateData } from './expense-line-data';
 import {
   Injectable,
   BadRequestException,
@@ -37,12 +38,12 @@ import { CreatePettyCashDto } from '../dto/create-petty-cash.dto';
  * unchanged.
  *
  * Owns: create, createDraftForRepair, createCreditNote, createPayroll,
- * createSettlement, createPettyCash, update — plus a verbatim copy of the
+ * createSettlement, createPettyCash, update — plus the
  * private `readBoolFlag` config-flag wrapper (createSettlement + createPettyCash
  * use `this.readBoolFlag`).
  *
- * Behavior-preserving — method bodies are byte-identical to the pre-extraction
- * facade; only import paths were adjusted for the deeper directory.
+ * Shared persistence mappings live in expense-line-data; calculations, validation
+ * and transaction boundaries remain here.
  */
 @Injectable()
 export class ExpenseDocumentCreateService {
@@ -136,21 +137,7 @@ export class ExpenseDocumentCreateService {
             create: {
               priceType,
               lines: {
-                create: linesPrepared.map((l) => ({
-                  lineNo: l.lineNo,
-                  category: l.category,
-                  description: l.description ?? null,
-                  quantity: new Prisma.Decimal(l.quantity),
-                  unitPrice: new Prisma.Decimal(l.unitPrice),
-                  discount: new Prisma.Decimal(l.discount ?? 0),
-                  vatPercent: new Prisma.Decimal(l.vatPercent ?? 0),
-                  whtPercent: new Prisma.Decimal(l.whtPercent ?? 0),
-                  whtFormType: l.whtFormType ?? null,
-                  amountBeforeVat: l.amountBeforeVat,
-                  vatAmount: l.vatAmount,
-                  whtAmount: l.whtAmount,
-                  taxDisallowed: l.taxDisallowed ?? false,
-                })),
+                create: linesPrepared.map(expenseLineCreateData),
               },
             },
           },
@@ -496,19 +483,7 @@ export class ExpenseDocumentCreateService {
               payrollPeriod: dto.payrollPeriod,
               entityScope,
               lines: {
-                create: linesPrepared.map((l) => ({
-                  userId: l.userId,
-                  employeeName: l.employeeName,
-                  employeeTaxId: l.employeeTaxId,
-                  baseSalary: l.baseSalary,
-                  ssoEmployee: l.ssoEmployee,
-                  whtAmount: l.whtAmount,
-                  netPaid: l.netPaid,
-                  customIncome:
-                    l.customIncome.length > 0 ? { create: l.customIncome } : undefined,
-                  customDeduction:
-                    l.customDeduction.length > 0 ? { create: l.customDeduction } : undefined,
-                })),
+                create: linesPrepared.map(payrollLineCreateData),
               },
             },
           },
@@ -621,19 +596,7 @@ export class ExpenseDocumentCreateService {
               payrollPeriod: dto.payrollPeriod,
               entityScope,
               lines: {
-                create: linesPrepared.map((l) => ({
-                  userId: l.userId,
-                  employeeName: l.employeeName,
-                  employeeTaxId: l.employeeTaxId,
-                  baseSalary: l.baseSalary,
-                  ssoEmployee: l.ssoEmployee,
-                  whtAmount: l.whtAmount,
-                  netPaid: l.netPaid,
-                  customIncome:
-                    l.customIncome.length > 0 ? { create: l.customIncome } : undefined,
-                  customDeduction:
-                    l.customDeduction.length > 0 ? { create: l.customDeduction } : undefined,
-                })),
+                create: linesPrepared.map(payrollLineCreateData),
               },
             },
           },
@@ -1240,21 +1203,7 @@ export class ExpenseDocumentCreateService {
           data: {
             priceType: priceType as string,
             lines: {
-              create: linesPrepared.map((l) => ({
-                lineNo: l.lineNo,
-                category: l.category,
-                description: l.description ?? null,
-                quantity: new Prisma.Decimal(l.quantity),
-                unitPrice: new Prisma.Decimal(l.unitPrice),
-                discount: new Prisma.Decimal(l.discount ?? 0),
-                vatPercent: new Prisma.Decimal(l.vatPercent ?? 0),
-                whtPercent: new Prisma.Decimal(l.whtPercent ?? 0),
-                whtFormType: l.whtFormType ?? null,
-                amountBeforeVat: l.amountBeforeVat,
-                vatAmount: l.vatAmount,
-                whtAmount: l.whtAmount,
-                taxDisallowed: l.taxDisallowed ?? false,
-              })),
+              create: linesPrepared.map(expenseLineCreateData),
             },
           },
         });

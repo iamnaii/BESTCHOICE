@@ -1,3 +1,4 @@
+import { buildExpenseLinePayload } from './expense-line-payload';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { getApprovalReason } from '@/hooks/useApprovalActions';
 import { useState, useEffect } from 'react';
@@ -484,15 +485,7 @@ export function ExpenseFormV4({ branchId, onClose, onSaved, initialDocType, edit
           // for POSTED-original refund flow).
           depositAccountCode: isStandalone ? undefined : state.depositAccountCode || undefined,
           note: state.note || undefined,
-          lines: validLines.map((l) => ({
-            category: l.category,
-            description: l.description || undefined,
-            quantity: parseFloat(l.quantity) || 1,
-            unitPrice: parseFloat(l.unitPrice) || 0,
-            discount: parseFloat(l.discount) || 0,
-            vatPercent: parseFloat(l.vatPercent) || 0,
-            whtPercent: parseFloat(l.whtPercent) || 0,
-          })),
+          lines: validLines.map(buildExpenseLinePayload),
         });
         createdId = data.id;
       }

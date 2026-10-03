@@ -1,3 +1,4 @@
+import SavingPlanStatusBadge from '@/components/saving-plan/SavingPlanStatusBadge';
 import { useParams } from 'react-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -8,7 +9,6 @@ import ShopLayout from '@/components/layout/ShopLayout';
 import PlanProgressBar from '@/components/saving-plan/PlanProgressBar';
 import PaymentHistoryTable from '@/components/saving-plan/PaymentHistoryTable';
 import {
-  Badge,
   Button,
   Card,
   CardBody,
@@ -17,21 +17,8 @@ import {
   Section,
   StatefulList,
 } from '@/components';
-import type { SavingPlan, SavingPlanStatus } from '@/types/saving-plan';
+import type { SavingPlan } from '@/types/saving-plan';
 
-const STATUS_LABEL: Record<SavingPlanStatus, string> = {
-  ACTIVE: 'กำลังออม',
-  COMPLETED: 'ออมครบแล้ว',
-  APPLIED: 'นำไปใช้ดาวน์แล้ว',
-  CANCELLED: 'ยกเลิก',
-};
-
-const STATUS_VARIANT: Record<SavingPlanStatus, 'primary' | 'success' | 'outline' | 'default'> = {
-  ACTIVE: 'primary',
-  COMPLETED: 'success',
-  APPLIED: 'default',
-  CANCELLED: 'outline',
-};
 
 export default function SavingPlanDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -93,9 +80,7 @@ export default function SavingPlanDetailPage() {
                           {plan.planNumber}
                         </div>
                       </div>
-                      <Badge variant={STATUS_VARIANT[plan.status]} size="md">
-                        {STATUS_LABEL[plan.status]}
-                      </Badge>
+                      <SavingPlanStatusBadge status={plan.status} size="md" />
                     </div>
 
                     <PlanProgressBar

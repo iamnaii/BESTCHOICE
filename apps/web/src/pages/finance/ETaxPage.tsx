@@ -12,13 +12,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import PageHeader from '@/components/ui/PageHeader';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
+import { MonthlyPeriodSelect } from './components/MonthlyPeriodSelect';
 import {
   Table,
   TableHeader,
@@ -136,30 +130,7 @@ export default function ETaxPage() {
       <Card>
         <CardHeader className="flex flex-row gap-3 items-center flex-wrap pb-4">
           <CompanyFilter value={companyId} onChange={setCompanyId} />
-          <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v, 10))}>
-            <SelectTrigger className="w-[110px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[year - 2, year - 1, year, year + 1].map((y) => (
-                <SelectItem key={y} value={String(y)}>
-                  {y + 543}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={String(month)} onValueChange={(v) => setMonth(parseInt(v, 10))}>
-            <SelectTrigger className="w-[130px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Array.from({ length: 12 }, (_, i) => (
-                <SelectItem key={i} value={String(i + 1)}>
-                  เดือน {i + 1}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <MonthlyPeriodSelect year={year} month={month} onYearChange={setYear} onMonthChange={setMonth} />
         </CardHeader>
         <CardContent>
           {!companyId ? (

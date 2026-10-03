@@ -1,6 +1,9 @@
+import { useRoomNotes } from './hooks/useRoomNotes';
+import { useRoomActions } from './hooks/useRoomActions';
+import { useRoomMessages } from './hooks/useRoomMessages';
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { NOTIFICATION_SOUND_URL } from './components/notification-sound';
 import { showChatNotification, requestNotificationPermissionIfNeeded } from './components/chat-notification';
@@ -10,7 +13,7 @@ import { toast } from 'sonner';
 import { Lock } from 'lucide-react';
 import QueryBoundary from '@/components/QueryBoundary';
 import ConversationList, { type InboxFilters } from './components/ConversationList';
-import { describeSendError, SEND_ERROR_WINDOW, SEND_ERROR_TOKEN } from './components/send-error';
+import { describeSendError } from './components/send-error';
 import { buildRoomListParams } from './components/room-query';
 import type { StaffOption } from './components/ChannelFilter';
 import ChatPanel from './components/ChatPanel';
@@ -20,7 +23,6 @@ import { useNotificationPrefs } from './hooks/useNotificationPrefs';
 import { useAuth } from '@/contexts/AuthContext';
 import type { InboxTab } from './components/ChannelFilter';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
-import { resolveUploadFeedback } from './components/upload-feedback';
 import { useRoomCredit } from './hooks/useRoomCredit';
 import { useFinanceApplication } from './hooks/useFinanceApplication';
 import GfinSlotPicker from './components/gfin/GfinSlotPicker';
@@ -115,33 +117,6 @@ export default function UnifiedInboxPage() {
     // If blocked, the desktop notification stays off but in-app sound still works.
     if (wasMuted) requestNotificationPermissionIfNeeded();
   }, [muteAll, toggleMuteAll]);
-
-  // Send-status state: in-flight ghosts (keyed by token) + unified failed list (both roomId-scoped)
-  const [pendingSends, setPendingSends] = useState<
-    { clientMessageId: string; roomId: string; text: string }[]
-  >([]);
-  const [failedSends, setFailedSends] = useState<
-    { id: string; roomId: string; text: string; source: 'http' | 'ws'; clientMessageId: string; reason?: string }[]
-  >([]);
-
-  // reason = เหตุจริงที่แปลเป็นไทยแล้ว (สเปก §8.1: ส่งไม่ถึงต้องบอกว่าทำไม ไม่เงียบ)
-  const pushFailedSend = useCallback(
-    (roomId: string, text: string, source: 'http' | 'ws', clientMessageId: string, reason?: string) => {
-      setFailedSends((prev) => {
-        // avoid a double entry if HTTP-catch and WS send-failed both fire for the same text
-        const dup = prev.find((f) => f.roomId === roomId && f.text === text);
-        if (dup) {
-          // ไม่เพิ่มฟองซ้ำ แต่เหตุที่ "ดีกว่า" ทับได้: เหตุจาก WS (adapter รู้จริง) หรือเหตุที่แปลได้ (พ้น 24 ชม./token)
-          // ชนะข้อความ HTTP ทั่วไปที่มาก่อน
-          const better =
-            !!reason && (!dup.reason || source === 'ws' || reason === SEND_ERROR_WINDOW || reason === SEND_ERROR_TOKEN);
-          return better ? prev.map((f) => (f === dup ? { ...f, reason } : f)) : prev;
-        }
-        return [...prev, { id: crypto.randomUUID(), roomId, text, source, clientMessageId, reason }];
-      });
-    },
-    [],
-  );
 
   // Clear viewer banner when switching rooms so a stale banner doesn't flash.
   useEffect(() => {
@@ -306,159 +281,16 @@ export default function UnifiedInboxPage() {
     (sessionQuery.error as any)?.response?.data?.message ??
     'ห้องนี้มีพนักงานคนอื่นดูแลอยู่ ขอให้เขาโอนให้ก่อนจึงจะเปิดได้';
 
-  // Fetch messages for active room
-  // โน้ตภายในของห้อง — รวมเข้าไทม์ไลน์กับข้อความ (สเปกแผงกลาง 2026-09-06)
-  const notesQuery = useQuery({
-    queryKey: ['chat-notes', activeRoomId],
-    queryFn: () => api.get(`/staff-chat/rooms/${activeRoomId}/notes`).then((r) => r.data?.data ?? r.data ?? []),
-    enabled: !!activeRoomId,
-  });
-  const invalidateNotes = (roomId: string) => {
-    queryClient.invalidateQueries({ queryKey: ['chat-notes', roomId] });
-    queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
-  };
-  const addNoteMutation = useMutation({
-    mutationFn: ({ roomId, content }: { roomId: string; content: string }) =>
-      api.post(`/staff-chat/rooms/${roomId}/notes`, { content }).then((r) => r.data),
-    onSuccess: (_d, v) => invalidateNotes(v.roomId),
-    onError: () => toast.error('บันทึกโน้ตไม่สำเร็จ'),
-  });
-  const pinNoteMutation = useMutation({
-    mutationFn: ({ roomId, noteId }: { roomId: string; noteId: string }) =>
-      api.patch(`/staff-chat/rooms/${roomId}/notes/${noteId}/pin`).then((r) => r.data),
-    onSuccess: (_d, v) => invalidateNotes(v.roomId),
-    onError: () => toast.error('ปักหมุดไม่สำเร็จ'),
-  });
-  const unpinNoteMutation = useMutation({
-    mutationFn: ({ roomId, noteId }: { roomId: string; noteId: string }) =>
-      api.delete(`/staff-chat/rooms/${roomId}/notes/${noteId}/pin`).then((r) => r.data),
-    onSuccess: (_d, v) => invalidateNotes(v.roomId),
-    onError: () => toast.error('ปลดหมุดไม่สำเร็จ'),
-  });
-  const deleteNoteMutation = useMutation({
-    mutationFn: ({ roomId, noteId }: { roomId: string; noteId: string }) =>
-      api.delete(`/staff-chat/rooms/${roomId}/notes/${noteId}`).then((r) => r.data),
-    onSuccess: (_d, v) => invalidateNotes(v.roomId),
-    onError: (err: any) => toast.error(err?.response?.data?.message ?? 'ลบโน้ตไม่สำเร็จ'),
-  });
-
-  const messagesQuery = useQuery({
-    queryKey: ['chat-messages', activeRoomId],
-    queryFn: () =>
-      api
-        .get(`/staff-chat/rooms/${activeRoomId}/messages`, {
-          params: { limit: 100 },
-        })
-        .then((r) => r.data),
-    enabled: !!activeRoomId,
-    refetchInterval: connectionStatus === 'connected' ? 30000 : 5000, // Poll every 5s as fallback for WS
-  });
-
-  // Drop optimistic ghosts whose saved row (matched by clientMessageId) has
-  // arrived in the message list. Belt to ChatPanel's display-time filter.
-  useEffect(() => {
-    const msgs = messagesQuery.data;
-    if (!Array.isArray(msgs) || !activeRoomId) return;
-    const landed = new Set(
-      msgs.map((m: any) => m.clientMessageId).filter((id: unknown): id is string => !!id),
-    );
-    if (landed.size === 0) return;
-    setPendingSends((prev) =>
-      prev.filter((p) => !(p.roomId === activeRoomId && landed.has(p.clientMessageId))),
-    );
-  }, [messagesQuery.data, activeRoomId]);
-
-  // Mutations
-  const assignMutation = useMutation({
-    mutationFn: ({ roomId, staffId }: { roomId: string; staffId: string }) =>
-      api.patch(`/staff-chat/rooms/${roomId}/assign`, { staffId }),
-    onSuccess: () => {
-      toast.success('มอบหมายแล้ว');
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
-    },
-  });
-
-  const reopenMutation = useMutation({
-    mutationFn: (roomId: string) => api.patch(`/staff-chat/rooms/${roomId}/reopen`),
-    onSuccess: (_data, roomId) => {
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
-    },
-    onError: () => toast.error('เลิกทำไม่สำเร็จ'),
-  });
-
-  const takeOverMutation = useMutation({
-    mutationFn: (roomId: string) => api.post(`/chat-ai/take-over/${roomId}`),
-    onSuccess: (_data, roomId) => {
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
-    },
-    onError: () => toast.error('สลับสถานะ AI ไม่สำเร็จ'),
-  });
-
-  const resolveMutation = useMutation({
-    mutationFn: (roomId: string) => api.patch(`/staff-chat/rooms/${roomId}/resolve`),
-    onSuccess: (_data, roomId) => {
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
-      // ปิดงานแล้วเด้งไปห้องถัดไปในรายการ ให้ไล่คิวได้ต่อเนื่อง (เจ้าของเคาะ 2026-09-06) · เลิกทำ = กลับมาห้องเดิม
-      if (roomId === activeRoomId) {
-        const idx = sessions.findIndex((s) => s.id === roomId);
-        const next = idx >= 0 ? (sessions[idx + 1] ?? sessions[idx - 1]) : undefined;
-        navigate(next ? `/inbox/${next.id}` : '/inbox');
-      }
-      toast.success('ปิดแชทแล้ว', {
-        action: {
-          label: 'เลิกทำ',
-          onClick: () => {
-            reopenMutation.mutate(roomId);
-            navigate(`/inbox/${roomId}`);
-          },
-        },
-      });
-    },
-    onError: () => toast.error('ปิดแชทไม่สำเร็จ'),
-  });
-
-  const returnToAIMutation = useMutation({
-    mutationFn: (roomId: string) => api.patch(`/staff-chat/rooms/${roomId}/return-to-ai`),
-    onSuccess: (_data, roomId) => {
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
-      toast.success('ส่งกลับ Bot แล้ว', {
-        action: { label: 'เลิกทำ', onClick: () => takeOverMutation.mutate(roomId) },
-      });
-    },
-    onError: () => toast.error('ส่งกลับ Bot ไม่สำเร็จ'),
-  });
-
-  const releaseToAiMutation = useMutation({
-    mutationFn: (roomId: string) => api.post(`/chat-ai/release-to-ai/${roomId}`),
-    onSuccess: (_data, roomId) => {
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
-    },
-    onError: () => toast.error('สลับสถานะ AI ไม่สำเร็จ'),
-  });
-
-  const aiTogglePending = takeOverMutation.isPending || releaseToAiMutation.isPending;
-  const handleToggleAi = () => {
-    if (!activeRoomId) return;
-    if (sessionQuery.data?.aiPaused) releaseToAiMutation.mutate(activeRoomId);
-    else takeOverMutation.mutate(activeRoomId);
-  };
-
-  const transferMutation = useMutation({
-    mutationFn: ({ roomId, staffId }: { roomId: string; staffId: string }) =>
-      api.patch(`/staff-chat/rooms/${roomId}/transfer`, { staffId }),
-    onSuccess: () => {
-      toast.success('โอนห้องสำเร็จ');
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      queryClient.invalidateQueries({ queryKey: ['chat-room', activeRoomId] });
-      queryClient.invalidateQueries({ queryKey: ['staff-online'] });
-    },
-  });
+  const { notesQuery, addNoteMutation, pinNoteMutation, unpinNoteMutation, deleteNoteMutation } =
+    useRoomNotes(activeRoomId);
+  const {
+    assignMutation, transferMutation, resolveMutation, reopenMutation,
+    returnToAIMutation, aiTogglePending, handleToggleAi,
+  } = useRoomActions(activeRoomId, sessions, sessionQuery.data?.aiPaused ?? false);
+  const {
+    messagesQuery, pendingSends, failedSends, pushFailedSend, handleSendMessage,
+    handleSendSticker, handleSendFile, retrySend, isUploadingFile,
+  } = useRoomMessages(activeRoomId, connectionStatus);
 
   // Handlers
   // URL คือแหล่งความจริงของห้องที่เปิด (สเปก §7 ลิงก์ห้องใน URL) — เลือกห้อง = เปลี่ยน URL
@@ -490,121 +322,6 @@ export default function UnifiedInboxPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ทำงานเฉพาะเมื่อ URL เปลี่ยน
   }, [roomIdParam]);
-
-  // Send via HTTP — WS is unreliable behind some proxies, so HTTP is the
-  // source of truth for sending. WS is still used to receive real-time updates.
-  // Returns true only when the message was accepted. Failure drives a FAILED ghost
-  // (via pushFailedSend) — no toast; the FAILED ghost is the affordance.
-  const sendRoomMessage = async (text: string, reuseClientMessageId?: string): Promise<boolean> => {
-    const roomId = activeRoomId;
-    if (!roomId) return false;
-    const clientMessageId = reuseClientMessageId || crypto.randomUUID();
-    // Optimistic "กำลังส่ง" ghost — removed when the saved row (same token) lands
-    // in the list, or on failure (replaced by a FAILED ghost).
-    setPendingSends((prev) => [...prev, { clientMessageId, roomId, text }]);
-    const removePending = () =>
-      setPendingSends((prev) => prev.filter((p) => p.clientMessageId !== clientMessageId));
-    try {
-      const res = await api.post(`/staff-chat/rooms/${roomId}/messages`, { text, clientMessageId });
-      const data = res.data;
-      if (data && data.success === false) {
-        removePending();
-        pushFailedSend(roomId, text, 'http', clientMessageId, describeSendError(data.error ?? data.message) ?? undefined);
-        return false;
-      }
-      // Success — keep the ghost until the refetched row carries the token, then
-      // the reconciliation effect prunes it. Trigger the refetch now.
-      queryClient.invalidateQueries({ queryKey: ['chat-messages', roomId] });
-      // Refresh the conversation list too so the room bubbles to the top with the
-      // just-sent message as its preview (otherwise the left list stays stale
-      // until the next inbound message / poll).
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      return true;
-    } catch (err: any) {
-      removePending();
-      const raw = err?.response?.data?.message ?? err?.response?.data?.error ?? err?.message;
-      pushFailedSend(roomId, text, 'http', clientMessageId, describeSendError(raw) ?? undefined);
-      return false;
-    }
-  };
-
-  const sendRoomMessageRef = useRef(sendRoomMessage);
-  sendRoomMessageRef.current = sendRoomMessage;
-
-  const handleSendMessage = useCallback(
-    (text: string) => sendRoomMessage(text),
-    [activeRoomId, queryClient],
-  );
-
-  const handleSendSticker = useCallback(
-    ({ packageId, stickerId }: { packageId: number; stickerId: number }) => {
-      void sendRoomMessage(`[sticker:${packageId}:${stickerId}]`);
-    },
-    [activeRoomId, queryClient],
-  );
-
-  // clientMessageId ต่อไฟล์ — คงค่าเดิมไว้ถ้า mutate() ถูกเรียกซ้ำด้วย File object
-  // เดิม (เช่น retry ผ่าน react-query หรือ future retry-button ที่ถือ ref ของไฟล์
-  // เดิมไว้) กันส่งรูปซ้ำให้ลูกค้า (idempotency contract จาก backend: unique
-  // [roomId, clientMessageId] — ดู clientMessageIdRef ใน ProductPickerDialog.tsx
-  // สำหรับ pattern เดียวกัน). ไฟล์ใหม่ (เลือก/ลากไฟล์ใหม่) เป็น File object คนละตัว
-  // เสมอ จึงได้ id ใหม่โดยอัตโนมัติ — ไม่ต้อง reset ref เอง
-  const uploadClientIdsRef = useRef(new WeakMap<File, string>());
-
-  const uploadFileMutation = useMutation({
-    mutationFn: async (file: File) => {
-      if (!activeRoomId) throw new Error('ไม่มี room');
-      let clientMessageId = uploadClientIdsRef.current.get(file);
-      if (!clientMessageId) {
-        clientMessageId = crypto.randomUUID();
-        uploadClientIdsRef.current.set(file, clientMessageId);
-      }
-      const formData = new FormData();
-      formData.append('file', file);
-      // token กัน double-send เวลา retry (unique [roomId, clientMessageId] ฝั่ง DB)
-      formData.append('clientMessageId', clientMessageId);
-      const { data } = await api.post(`/staff-chat/rooms/${activeRoomId}/upload`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      return data as { delivered?: boolean; error?: string };
-    },
-    onSuccess: (data) => {
-      const feedback = resolveUploadFeedback(data);
-      if (feedback.kind === 'success') {
-        toast.success(feedback.message);
-      } else if (feedback.kind === 'retryable') {
-        toast.error(feedback.message);
-      } else {
-        toast.warning(feedback.message);
-      }
-      if (activeRoomId) {
-        queryClient.invalidateQueries({ queryKey: ['chat-messages', activeRoomId] });
-      }
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-    },
-    onError: (err: unknown) => {
-      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message
-        || (err instanceof Error ? err.message : 'อัพโหลดไม่สำเร็จ');
-      toast.error(msg);
-    },
-  });
-
-  const handleSendFile = useCallback(
-    (file: File) => uploadFileMutation.mutate(file),
-    [uploadFileMutation],
-  );
-
-  const retrySend = useCallback(
-    (failedId: string, text: string) => {
-      setFailedSends((prev) => {
-        const entry = prev.find((f) => f.id === failedId);
-        const reuse = entry?.clientMessageId || undefined;
-        void sendRoomMessageRef.current(text, reuse);
-        return prev.filter((f) => f.id !== failedId);
-      });
-    },
-    [],
-  );
 
   const customerId = sessionQuery.data?.customerId ?? null;
 
@@ -700,7 +417,7 @@ export default function UnifiedInboxPage() {
           onGfinMessage={pickSlotForMessage}
           gfinMessageIds={pickableAttachedIds(openGfin?.files ?? [])}
           gfinBusy={gfin.busy}
-          isUploadingFile={uploadFileMutation.isPending}
+          isUploadingFile={isUploadingFile}
           otherViewers={otherViewers}
           roomMuted={isMuted(activeRoomId ?? undefined)}
           onToggleRoomMute={activeRoomId ? () => toggleRoomMute(activeRoomId) : undefined}

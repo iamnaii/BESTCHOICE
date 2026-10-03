@@ -1,3 +1,5 @@
+import { isValidThaiNationalId } from '@installment/shared';
+export { isValidThaiNationalId } from '@installment/shared';
 import { z } from 'zod/v4';
 
 /**
@@ -8,17 +10,6 @@ import { z } from 'zod/v4';
  *   import { customerSchema } from '@/lib/schemas';
  *   const form = useForm({ resolver: standardSchemaResolver(customerSchema) });
  */
-
-/* ─── Thai National ID validation (13 digits + checksum) ─── */
-export function isValidThaiNationalId(id: string): boolean {
-  if (!/^\d{13}$/.test(id)) return false;
-  let sum = 0;
-  for (let i = 0; i < 12; i++) {
-    sum += parseInt(id[i]) * (13 - i);
-  }
-  const check = (11 - (sum % 11)) % 10;
-  return check === parseInt(id[12]);
-}
 
 /* ─── Phone validation (Thai) ─── */
 const thaiPhoneRegex = /^0[689]\d{8}$/;

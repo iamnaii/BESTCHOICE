@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { invalidateRoomCustomerQueries } from './customer-credit-queries';
 
 /**
  * ผูกลูกค้าเข้ากับห้องแชท — `PATCH /staff-chat/rooms/:id/customer`
@@ -7,8 +8,6 @@ import api from '@/lib/api';
  * รวมรายการ invalidate ไว้ที่เดียว: ห้องนี้ · รายการห้อง · รายชื่อลูกค้า · เครดิตที่อาจย้ายมาตามลูกค้า
  * ข้อความ toast เป็นของผู้เรียก (แต่ละทางเข้าพูดไม่เหมือนกัน)
  */
-export const ROOM_LINK_INVALIDATE_KEYS = ['customers', 'credit-checks', 'customer-credit-checks', 'customer-latest-credit', 'customer-credit-check-latest-statement'] as const;
-
 /** M-A4: ผลการรวมผู้สนใจอัตโนมัติที่การผูกห้องทำให้ (ห้องถือผู้สนใจอยู่ → ย้ายเข้าคนที่เลือก) */
 export interface LinkedRoomAbsorb { targetId: string; movedCreditChecks: number }
 /** `roomId` = ห้องที่ยิง PATCH จริง (จับตอน mutate — สลับห้องระหว่างรอแล้วยังชี้ห้องเดิม) · `absorbed` null = ไม่ได้รวม / API เก่า */
@@ -34,11 +33,7 @@ export function useLinkRoomCustomer(roomId: string, opts: { onSuccess?: (custome
         .patch(`/staff-chat/rooms/${roomId}/customer`, { customerId })
         .then((res) => ({ roomId, absorbed: toLinkedAbsorb(res?.data?.data ?? res?.data) })),
     onSuccess: (result, customerId) => {
-      queryClient.invalidateQueries({ queryKey: ['chat-room', roomId] });
-      queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
-      for (const key of ROOM_LINK_INVALIDATE_KEYS) {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      }
+      invalidateRoomCustomerQueries(queryClient, roomId);
       opts.onSuccess?.(customerId, result);
     },
     onError: (err, customerId) => opts.onError?.(err, customerId),

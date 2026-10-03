@@ -1,3 +1,4 @@
+import { isValidThaiNationalId } from '@installment/shared';
 import { Injectable, ConflictException, BadRequestException, NotFoundException, Optional } from '@nestjs/common';
 import { ContractStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -337,7 +338,7 @@ export class CustomerWriteService {
       reviveGhostId = existing?.deletedAt ? existing.id : null;
 
       // Validate Thai national ID checksum (skip for foreigners)
-      if (!dto.isForeigner && !this.validateNationalId(normalizedNid)) {
+      if (!dto.isForeigner && !isValidThaiNationalId(normalizedNid)) {
         throw new ConflictException('เลขบัตรประชาชนไม่ถูกต้อง');
       }
     }
@@ -544,16 +545,6 @@ export class CustomerWriteService {
       where: { id },
       data: { documents: updatedDocs },
     });
-  }
-
-  private validateNationalId(id: string): boolean {
-    if (!/^\d{13}$/.test(id)) return false;
-    let sum = 0;
-    for (let i = 0; i < 12; i++) {
-      sum += parseInt(id[i]) * (13 - i);
-    }
-    const check = (11 - (sum % 11)) % 10;
-    return check === parseInt(id[12]);
   }
 
   /**

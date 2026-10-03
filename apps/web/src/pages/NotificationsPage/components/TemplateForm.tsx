@@ -1,3 +1,4 @@
+import { extractTemplateVariables as extractVariables } from '@installment/shared';
 import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -34,21 +35,6 @@ export interface TemplateFormState {
   description: string;
   isActive: boolean;
   sampleData: string;
-}
-
-function extractVariables(template: string): string[] {
-  const regex = /\$\{([^}]+)\}/g;
-  const seen = new Set<string>();
-  const order: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(template)) !== null) {
-    const varName = match[1].trim();
-    if (!seen.has(varName)) {
-      seen.add(varName);
-      order.push(varName);
-    }
-  }
-  return order;
 }
 
 function tryParseJson(s: string): unknown {

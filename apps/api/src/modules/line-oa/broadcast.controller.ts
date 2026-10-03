@@ -109,7 +109,47 @@ export class BroadcastController {
     )
     file: Express.Multer.File,
   ) {
-    return this.broadcastService.uploadImage(file.buffer, file.originalname);
+    return this.broadcastService.uploadImage(file.buffer);
+  }
+
+  /** MP4 uses a separate route so the image route keeps rejecting video files. */
+  @Post('upload-video')
+  @Roles('OWNER')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
+  async uploadVideo(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({
+            maxSize: 10 * 1024 * 1024,
+            message: 'วิดีโอต้องมีขนาดไม่เกิน 10MB',
+          }),
+          new FileTypeValidator({ fileType: /^video\/mp4$/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.broadcastService.uploadVideo(file.buffer);
+  }
+
+  @Post('upload-video-thumbnail')
+  @Roles('OWNER')
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 1024 * 1024 } }))
+  async uploadVideoThumbnail(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 1024 * 1024, message: 'รูปปกต้องมีขนาดไม่เกิน 1MB' }),
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png)$/ }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.broadcastService.uploadImage(file.buffer);
   }
 
   /** Cancel a scheduled broadcast */
@@ -125,10 +165,7 @@ export class BroadcastController {
    */
   @Post(':id/approve')
   @Roles('OWNER', 'FINANCE_MANAGER')
-  async approveBroadcast(
-    @Param('id') id: string,
-    @CurrentUser('id') userId: string,
-  ) {
+  async approveBroadcast(@Param('id') id: string, @CurrentUser('id') userId: string) {
     return this.broadcastService.approveBroadcast(id, userId);
   }
 

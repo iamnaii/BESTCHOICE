@@ -256,9 +256,8 @@ describe('AfterSalesNewPage — แจ้งปัญหาเครื่อง
     await userEvent.click(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' }));
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
-    const [url, form, config] = mocks.post.mock.calls[0];
+    const [url, form] = mocks.post.mock.calls[0];
     expect(url).toBe('/after-sales');
-    expect(config).toEqual({ headers: { 'Content-Type': 'multipart/form-data' } });
     const data = form as FormData;
     expect(data.get('outcome')).toBe('REPAIR');
     expect(data.get('imei')).toBe(IMEI);

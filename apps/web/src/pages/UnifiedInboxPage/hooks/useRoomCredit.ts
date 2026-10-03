@@ -3,6 +3,7 @@ import { useQuery, useMutation, useMutationState, useQueryClient } from '@tansta
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
 import { validateCreditFile, type StatementResult } from '../components/credit-statement';
+import { customerCreditQueryKeys } from './customer-credit-queries';
 
 export interface RoomCreditFile {
   id: string;
@@ -43,14 +44,6 @@ type CreditAction = { roomId: string } & (
   | { kind: 'remove'; fileId: string }
   | { kind: 'analyze'; fileIds: string[] }
 );
-
-export const creditHistoryKeys = [
-  'customers',
-  'credit-checks',
-  'customer-credit-checks',
-  'customer-latest-credit',
-  'customer-credit-check-latest-statement',
-];
 
 export function useRoomCredit(
   roomId: string | null,
@@ -97,7 +90,6 @@ export function useRoomCredit(
           form.append('file', file);
           await api.post(`${base}/files`, form, {
             timeout: 120000,
-            headers: { 'Content-Type': 'multipart/form-data' },
           });
           await qc.invalidateQueries({ queryKey: ['room-credit', input.roomId] });
         } catch (error) {
@@ -125,7 +117,7 @@ export function useRoomCredit(
     },
     onSettled: async (_data, _error, input) => {
       await qc.invalidateQueries({ queryKey: ['room-credit', input.roomId] });
-      await Promise.all(creditHistoryKeys.map((key) => qc.invalidateQueries({ queryKey: [key] })));
+      await Promise.all(customerCreditQueryKeys.map((key) => qc.invalidateQueries({ queryKey: [key] })));
       activeActions.current.delete(input.roomId);
     },
   });

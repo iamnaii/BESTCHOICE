@@ -1,3 +1,5 @@
+import { bkkYyyymmdd, bkkYyyymm } from '../../../utils/document-number-format.util';
+import { hashLockKey } from '../../../utils/advisory-lock.util';
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -10,8 +12,8 @@ export class DocNumberService {
     tx: Prisma.TransactionClient | PrismaService,
     issueDate: Date,
   ): Promise<string> {
-    const { yyyymmdd } = this.getBkkDayBounds(issueDate);
-    const lockKey = this.hashLockKey(`oi:${yyyymmdd}`);
+    const yyyymmdd = bkkYyyymmdd(issueDate);
+    const lockKey = hashLockKey(`oi:${yyyymmdd}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
     // Use max(seq) instead of count() — soft-deleted docs still occupy their
@@ -35,8 +37,8 @@ export class DocNumberService {
     tx: Prisma.TransactionClient | PrismaService,
     issueDate: Date,
   ): Promise<string> {
-    const yyyymm = this.getBkkYyyymm(issueDate);
-    const lockKey = this.hashLockKey(`rt:${yyyymm}`);
+    const yyyymm = bkkYyyymm(issueDate);
+    const lockKey = hashLockKey(`rt:${yyyymm}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
     const lastDoc = await tx.otherIncome.findFirst({
@@ -52,49 +54,4 @@ export class DocNumberService {
     return `RT-${yyyymm}-${seq}`;
   }
 
-  private getBkkYyyymm(date: Date): string {
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-    });
-    // Defensive: en-CA with year+month returns "YYYY-MM" today, but slice the
-    // first two segments to stay robust against ICU output shape drift across
-    // Node versions. Mirrors getBkkDayBounds() style.
-    return parts.split('-').slice(0, 2).join('');
-  }
-
-  /**
-   * Returns Asia/Bangkok day boundaries and YYYYMMDD string for the given date.
-   * BKK is UTC+7 with no DST — uses Intl-based approach consistent with the
-   * rest of the codebase (e.g. business-hours.util.ts).
-   */
-  private getBkkDayBounds(date: Date): { start: Date; end: Date; yyyymmdd: string } {
-    // Extract BKK local date parts via Intl
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    // en-CA format gives "YYYY-MM-DD"
-    const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
-    const yyyymmdd = `${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
-
-    // BKK midnight = UTC midnight minus 7 hours = UTC (prev day) 17:00:00Z
-    // Construct start as UTC equivalent of BKK 00:00:00
-    const bkkOffsetMs = 7 * 60 * 60 * 1000;
-    const start = new Date(Date.UTC(y, m - 1, d) - bkkOffsetMs);
-    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-
-    return { start, end, yyyymmdd };
-  }
-
-  private hashLockKey(key: string): number {
-    let h = 0;
-    for (let i = 0; i < key.length; i++) {
-      h = (h * 31 + key.charCodeAt(i)) | 0;
-    }
-    return h;
-  }
 }

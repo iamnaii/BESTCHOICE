@@ -1,3 +1,4 @@
+import { extractTemplateVariables } from '@installment/shared';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationCategory, NotificationTemplate, Prisma } from '@prisma/client';
@@ -118,18 +119,7 @@ export class NotificationTemplateService {
 
   /** Extracts ${var} placeholders, deduplicated and ordered. */
   extractVariables(template: string): string[] {
-    const regex = /\$\{([^}]+)\}/g;
-    const seen = new Set<string>();
-    const order: string[] = [];
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(template)) !== null) {
-      const varName = match[1].trim();
-      if (!seen.has(varName)) {
-        seen.add(varName);
-        order.push(varName);
-      }
-    }
-    return order;
+    return extractTemplateVariables(template);
   }
 
   private replacePlaceholders(tmpl: string, data: Record<string, string>): string {

@@ -1,14 +1,11 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import Decimal from 'decimal.js';
 import {
-  CheckCircle2,
   AlertCircle,
   Loader2,
-  Upload,
-  X,
   Banknote,
   QrCode,
   CreditCard,
@@ -36,7 +33,8 @@ import { ContractInfoPanel, CaseBadge, type DetectedCase } from './PaymentContra
 import { JePreviewPanel, type JePreview } from './PaymentJournalPreview';
 import { CASH_ACCOUNT_CODES } from '@/components/CashAccountSelect';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useSlipUpload, SLIP_MIME_TYPES } from '@/hooks/useSlipUpload';
+import { useSlipAttachment } from '@/hooks/useSlipAttachment';
+import { SlipAttachmentField } from '@/components/SlipAttachmentField';
 import { toast } from 'sonner';
 import type { PendingPayment } from '../types';
 import { computeNetReceiptDue, computeRemainingObligation } from '../computeNetReceiptDue';
@@ -287,42 +285,14 @@ export function RecordPaymentWizard({
   // Method + evidence fields
   const [method, setMethod] = useState<WizardMethod>('CASH');
   const [referenceNumber, setReferenceNumber] = useState('');
-  const [slipUrl, setSlipUrl] = useState('');
-  const [slipFileName, setSlipFileName] = useState('');
+  const slipAttachment = useSlipAttachment();
+  const { slipUrl, setSlipUrl, setSlipFileName } = slipAttachment;
   const [memo, setMemo] = useState('');
   // วันที่รับเงิน (D4 backdating) — default = BKK today (YYYY-MM-DD). max = today.
   const bkkToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
   const [paidDate, setPaidDate] = useState(() => bkkToday());
 
-  // Slip upload
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const amountInputRef = useRef<HTMLInputElement>(null);
-  const uploadMutation = useSlipUpload();
-
-  const handleFileChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      setSlipFileName(file.name);
-      try {
-        const url = await uploadMutation.mutateAsync(file);
-        setSlipUrl(url);
-        toast.success('อัปโหลดสลิปสำเร็จ');
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'อัปโหลดสลิปไม่สำเร็จ';
-        toast.error(msg);
-        setSlipFileName('');
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    },
-    [uploadMutation],
-  );
-
-  const handleClearSlip = () => {
-    setSlipUrl('');
-    setSlipFileName('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
 
   // Net Exposure
   const netExposure = useMemo(
@@ -1248,53 +1218,7 @@ export function RecordPaymentWizard({
                         </span>
                       )}
                     </Label>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept={SLIP_MIME_TYPES.join(',')}
-                      className="hidden"
-                      aria-label="อัปโหลดสลิป"
-                      onChange={handleFileChange}
-                    />
-                    {slipUrl ? (
-                      <div className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-3 py-2.5">
-                        <CheckCircle2 className="size-4 text-success shrink-0" />
-                        <span className="text-sm text-foreground leading-snug truncate flex-1">
-                          {slipFileName || 'สลิปอัปโหลดแล้ว'}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={handleClearSlip}
-                          className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                          aria-label="ลบสลิป"
-                        >
-                          <X className="size-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadMutation.isPending}
-                        className={cn(
-                          'flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-3 text-sm transition-colors',
-                          'border-border text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-accent',
-                          uploadMutation.isPending && 'opacity-60 pointer-events-none',
-                        )}
-                      >
-                        {uploadMutation.isPending ? (
-                          <>
-                            <Loader2 className="size-4 animate-spin" />
-                            <span className="leading-snug">กำลังอัปโหลด...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="size-4" />
-                            <span className="leading-snug">คลิกเพื่ออัปโหลดสลิป (JPG/PNG/PDF)</span>
-                          </>
-                        )}
-                      </button>
-                    )}
+                    <SlipAttachmentField attachment={slipAttachment} />
                   </div>
                 )}
 

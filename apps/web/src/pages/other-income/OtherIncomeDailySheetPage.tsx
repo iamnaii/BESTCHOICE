@@ -1,3 +1,5 @@
+import { formatIncomeAmount as fmt } from '@/utils/financial-display';
+import { DailySheetSummaryTable } from './components/DailySheetSummaryTable';
 import { printDocument } from '@/lib/print-document';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -8,13 +10,6 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { DateRangeChips } from './components/DateRangeChips';
 import { useUiFlags } from '@/hooks/useUiFlags';
 import { computeDefaultTimeRange, formatThaiDateLong } from '@/lib/date';
-
-function fmt(v: string | number | undefined | null) {
-  if (v === undefined || v === null) return '—';
-  const n = typeof v === 'string' ? parseFloat(v) : v;
-  if (isNaN(n)) return '—';
-  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 // ─── Summary box sub-component ───────────────────────────────────────────────
 
@@ -293,86 +288,10 @@ export default function OtherIncomeDailySheetPage() {
             {/* Tables 2 & 3: by account / by payment */}
             <div className="grid md:grid-cols-2 gap-4">
               {/* Table 2: by account */}
-              <div className="rounded-xl border bg-card overflow-hidden">
-                <h3 className="p-3 font-bold border-b text-sm">แยกตามบัญชีรายได้</h3>
-                {sheet.data.byAccount.length === 0 ? (
-                  <p className="py-6 text-center text-muted-foreground text-xs">ไม่มีข้อมูล</p>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                          รหัสบัญชี
-                        </th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                          ชื่อบัญชี
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
-                          รายการ
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
-                          ยอดรวม
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sheet.data.byAccount.map((r) => (
-                        <tr key={r.code} className="border-t">
-                          <td className="px-3 py-2 font-mono text-xs font-semibold">{r.code}</td>
-                          <td className="px-3 py-2 text-xs leading-snug">{r.name}</td>
-                          <td className="px-3 py-2 text-right text-xs text-muted-foreground">
-                            {r.count}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono font-bold">
-                            {Number(r.total).toFixed(2)} ฿
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+              <DailySheetSummaryTable title="แยกตามบัญชีรายได้" rows={sheet.data.byAccount} />
 
               {/* Table 3: by payment channel */}
-              <div className="rounded-xl border bg-card overflow-hidden">
-                <h3 className="p-3 font-bold border-b text-sm">แยกตามช่องทางชำระ</h3>
-                {sheet.data.byPayment.length === 0 ? (
-                  <p className="py-6 text-center text-muted-foreground text-xs">ไม่มีข้อมูล</p>
-                ) : (
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                          รหัสบัญชี
-                        </th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                          ชื่อบัญชี
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
-                          รายการ
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
-                          ยอดรวม
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sheet.data.byPayment.map((r) => (
-                        <tr key={r.code} className="border-t">
-                          <td className="px-3 py-2 font-mono text-xs font-semibold">{r.code}</td>
-                          <td className="px-3 py-2 text-xs leading-snug">{r.name}</td>
-                          <td className="px-3 py-2 text-right text-xs text-muted-foreground">
-                            {r.count}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono font-bold">
-                            {Number(r.total).toFixed(2)} ฿
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+              <DailySheetSummaryTable title="แยกตามช่องทางชำระ" rows={sheet.data.byPayment} />
             </div>
           </>
         )}

@@ -1,3 +1,4 @@
+import SavingPlanStatusBadge from '@/components/saving-plan/SavingPlanStatusBadge';
 import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { PiggyBank } from 'lucide-react';
@@ -5,28 +6,14 @@ import { api } from '@/lib/api';
 import ShopLayout from '@/components/layout/ShopLayout';
 import PlanProgressBar from '@/components/saving-plan/PlanProgressBar';
 import {
-  Badge,
   Card,
   CardBody,
   CategoryHero,
   Container,
   StatefulList,
 } from '@/components';
-import type { SavingPlan, SavingPlanStatus } from '@/types/saving-plan';
+import type { SavingPlan } from '@/types/saving-plan';
 
-const STATUS_LABEL: Record<SavingPlanStatus, string> = {
-  ACTIVE: 'กำลังออม',
-  COMPLETED: 'ออมครบแล้ว',
-  APPLIED: 'นำไปใช้ดาวน์แล้ว',
-  CANCELLED: 'ยกเลิก',
-};
-
-const STATUS_VARIANT: Record<SavingPlanStatus, 'primary' | 'success' | 'outline' | 'default'> = {
-  ACTIVE: 'primary',
-  COMPLETED: 'success',
-  APPLIED: 'default',
-  CANCELLED: 'outline',
-};
 
 function formatDate(v: string | null | undefined) {
   if (!v) return null;
@@ -81,9 +68,7 @@ export default function SavingPlansPage() {
                             {p.targetProductModel ?? 'ไม่ระบุรุ่น'}
                           </div>
                         </div>
-                        <Badge variant={STATUS_VARIANT[p.status]} size="sm">
-                          {STATUS_LABEL[p.status]}
-                        </Badge>
+                        <SavingPlanStatusBadge status={p.status} size="sm" />
                       </div>
 
                       <PlanProgressBar

@@ -1,89 +1,24 @@
-import { useState, useRef, useCallback } from 'react';
+import { API_AUDIENCE, historyItem, type AudienceKey, type BroadcastStatus, type BroadcastHistoryRecord } from './broadcast/api-contract';
+import { BroadcastReviewActions } from './broadcast/BroadcastReviewActions';
+import { MessageCard } from './broadcast/MessageCard';
+import { MessagePreviewBubble } from './broadcast/MessagePreviewBubble';
+import { FLEX_TEMPLATES, makeMessage, buildFlexJson, type MessageType, type TextContent, type ImageContent, type VideoContent, type FlexContent, type RichContent, type MessageItem } from './broadcast/message';
+import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import {
-  Send,
-  MessageSquare,
-  Image as ImageIcon,
-  Video,
-  LayoutTemplate,
-  Clock,
-  History,
-  Upload,
-  X,
-  Ban,
-  Plus,
-  Trash2,
-  GripVertical,
-  Calendar,
-  Users,
-  UserCheck,
-  AlertCircle,
-  UserPlus,
-  CheckCircle2,
-} from 'lucide-react';
+import { Send, Clock, History, Ban, Plus, Calendar, Users, UserCheck, AlertCircle, UserPlus, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-
-// ─── Types ─────────────────────────────────────────────────────────────────────
-
-type MessageType = 'text' | 'image' | 'video' | 'flex' | 'rich';
-type AudienceKey = 'all' | 'active' | 'overdue' | 'new';
 type ScheduleType = 'now' | 'scheduled';
-type BroadcastStatus = 'sent' | 'scheduled' | 'failed';
-type FlexMode = 'template' | 'json';
-type FlexTemplateKey = 'product' | 'promotion' | 'custom';
-
-interface TextContent {
-  text: string;
-}
-
-interface ImageContent {
-  imageUrl: string | null;
-  imagePreview: string | null;
-  imageFile: File | null;
-  caption: string;
-}
-
-interface VideoContent {
-  videoUrl: string | null;
-  videoFile: File | null;
-  thumbnailUrl: string | null;
-  thumbnailFile: File | null;
-  thumbnailPreview: string | null;
-}
-
-interface FlexContent {
-  flexMode: FlexMode;
-  templateKey: FlexTemplateKey;
-  fields: Record<string, string>;
-  jsonText: string;
-  jsonValid: boolean;
-}
-
-interface RichContent {
-  imageUrl: string | null;
-  imagePreview: string | null;
-  imageFile: File | null;
-  linkUrl: string;
-}
-
-type MessageContent = TextContent | ImageContent | VideoContent | FlexContent | RichContent;
-
-interface MessageItem {
-  id: string;
-  type: MessageType;
-  content: MessageContent;
-}
 
 interface AudienceCount {
   all: number;
@@ -92,20 +27,8 @@ interface AudienceCount {
   new: number;
 }
 
-interface BroadcastHistoryItem {
-  id: string;
-  messagePreview: string;
-  messageType: MessageType;
-  audienceKey: AudienceKey;
-  audienceCount: number;
-  scheduledAt: string | null;
-  sentAt: string | null;
-  status: BroadcastStatus;
-  messageCount?: number;
-}
-
 interface BroadcastHistoryResponse {
-  data: BroadcastHistoryItem[];
+  data: ReturnType<typeof historyItem>[];
   total: number;
   page: number;
   limit: number;
@@ -150,28 +73,14 @@ const AUDIENCE_OPTIONS: {
   },
 ];
 
-const FLEX_TEMPLATES: Record<
-  FlexTemplateKey,
-  { name: string; fields: string[] }
-> = {
-  product: {
-    name: '📱 สินค้า',
-    fields: ['ชื่อสินค้า', 'ราคา', 'รายละเอียด', 'รูปภาพ URL', 'ลิงก์'],
-  },
-  promotion: {
-    name: '🎁 โปรโมชัน',
-    fields: ['ชื่อโปร', 'รายละเอียด', 'ส่วนลด', 'วันหมดอายุ', 'ลิงก์'],
-  },
-  custom: {
-    name: '✏️ กำหนดเอง',
-    fields: ['หัวข้อ', 'เนื้อหา', 'ปุ่มกด', 'ลิงก์'],
-  },
-};
-
 const STATUS_MAP: Record<
   BroadcastStatus,
   { label: string; variant: 'success' | 'secondary' | 'destructive' | 'outline' }
 > = {
+  pending_approval: { label: 'รออนุมัติ', variant: 'secondary' },
+  rejected: { label: 'ปฏิเสธ', variant: 'destructive' },
+  cancelled: { label: 'ยกเลิกแล้ว', variant: 'outline' },
+  sending: { label: 'กำลังส่ง', variant: 'secondary' },
   sent: { label: 'ส่งแล้ว', variant: 'success' },
   scheduled: { label: 'ตั้งเวลา', variant: 'secondary' },
   failed: { label: 'ล้มเหลว', variant: 'destructive' },
@@ -192,52 +101,6 @@ const TYPE_LABEL: Record<MessageType, string> = {
   rich: 'Rich Msg',
 };
 
-const MSG_TYPE_BUTTONS: { type: MessageType; icon: React.ReactNode; label: string }[] = [
-  { type: 'text', icon: <MessageSquare className="size-3.5" />, label: 'ข้อความ' },
-  { type: 'image', icon: <ImageIcon className="size-3.5" />, label: 'รูปภาพ' },
-  { type: 'video', icon: <Video className="size-3.5" />, label: 'วิดีโอ' },
-  { type: 'flex', icon: <LayoutTemplate className="size-3.5" />, label: 'Flex Card' },
-  { type: 'rich', icon: <ImageIcon className="size-3.5" />, label: 'Rich Msg' },
-];
-
-// ─── Factories ─────────────────────────────────────────────────────────────────
-
-function makeDefaultContent(type: MessageType): MessageContent {
-  switch (type) {
-    case 'text':
-      return { text: '' } as TextContent;
-    case 'image':
-      return { imageUrl: null, imagePreview: null, imageFile: null, caption: '' } as ImageContent;
-    case 'video':
-      return {
-        videoUrl: null,
-        videoFile: null,
-        thumbnailUrl: null,
-        thumbnailFile: null,
-        thumbnailPreview: null,
-      } as VideoContent;
-    case 'flex':
-      return {
-        flexMode: 'template',
-        templateKey: 'product',
-        fields: {},
-        jsonText: '{\n  "type": "bubble",\n  "body": {\n    "type": "box",\n    "layout": "vertical",\n    "contents": []\n  }\n}',
-        jsonValid: true,
-      } as FlexContent;
-    case 'rich':
-      return {
-        imageUrl: null,
-        imagePreview: null,
-        imageFile: null,
-        linkUrl: '',
-      } as RichContent;
-  }
-}
-
-function makeMessage(type: MessageType = 'text'): MessageItem {
-  return { id: crypto.randomUUID(), type, content: makeDefaultContent(type) };
-}
-
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDateTime(dateStr: string | null): string {
@@ -249,759 +112,6 @@ function formatDateTime(dateStr: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-}
-
-function buildFlexJson(content: FlexContent): object {
-  const { templateKey, fields } = content;
-  const tpl = FLEX_TEMPLATES[templateKey];
-  const title = fields[tpl.fields[0]] || tpl.name;
-  const body = fields[tpl.fields[1]] || '';
-  return {
-    type: 'bubble',
-    hero:
-      templateKey === 'product' && fields['รูปภาพ URL']
-        ? {
-            type: 'image',
-            url: fields['รูปภาพ URL'],
-            size: 'full',
-            aspectRatio: '20:13',
-            aspectMode: 'cover',
-          }
-        : undefined,
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'sm',
-      contents: [
-        { type: 'text', text: title, weight: 'bold', size: 'lg', wrap: true },
-        ...(body ? [{ type: 'text', text: body, size: 'sm', color: '#555555', wrap: true }] : []),
-        ...(templateKey === 'promotion' && fields['ส่วนลด']
-          ? [
-              {
-                type: 'text',
-                text: `ลด ${fields['ส่วนลด']}`,
-                size: 'xl',
-                weight: 'bold',
-                color: '#e74c3c',
-              },
-            ]
-          : []),
-      ].filter(Boolean),
-    },
-    footer: fields[tpl.fields[tpl.fields.length - 1]]
-      ? {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            {
-              type: 'button',
-              style: 'primary',
-              action: {
-                type: 'uri',
-                label: templateKey === 'custom' ? fields['ปุ่มกด'] || 'ดูเพิ่มเติม' : 'ดูเพิ่มเติม',
-                uri: fields[tpl.fields[tpl.fields.length - 1]],
-              },
-            },
-          ],
-        }
-      : undefined,
-  };
-}
-
-// ─── Sub-components ─────────────────────────────────────────────────────────────
-
-interface FileUploadZoneProps {
-  preview: string | null;
-  onFile: (file: File) => void;
-  onRemove: () => void;
-  accept?: string;
-  label?: string;
-  isUploading?: boolean;
-}
-
-function FileUploadZone({
-  preview,
-  onFile,
-  onRemove,
-  accept = 'image/*',
-  label = 'คลิกหรือลากไฟล์มาวาง',
-  isUploading = false,
-}: FileUploadZoneProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  function handleDrop(e: React.DragEvent) {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) onFile(file);
-  }
-
-  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) onFile(file);
-  }
-
-  if (preview) {
-    return (
-      <div className="relative inline-block">
-        <img src={preview} alt="preview" className="max-h-40 rounded-xl object-cover shadow-sm" />
-        <button
-          type="button"
-          onClick={onRemove}
-          className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm transition-colors"
-        >
-          <X className="size-3" />
-        </button>
-        {isUploading && (
-          <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40">
-            <span className="text-xs text-white">กำลังอัปโหลด...</span>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-border p-6 text-center hover:border-primary hover:bg-primary/5 transition-all duration-200"
-      onClick={() => inputRef.current?.click()}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={handleDrop}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
-    >
-      <div className="flex size-10 items-center justify-center rounded-full bg-muted">
-        <Upload className="size-5 text-muted-foreground" />
-      </div>
-      <div>
-        <p className="text-sm font-medium text-foreground/80">{label}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">PNG, JPG — ไม่เกิน 5MB</p>
-      </div>
-      <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={handleChange} />
-    </div>
-  );
-}
-
-interface FlexPreviewCardProps {
-  content: FlexContent;
-}
-
-function FlexPreviewCard({ content }: FlexPreviewCardProps) {
-  let jsonObj: Record<string, unknown> | null = null;
-  try {
-    if (content.flexMode === 'json') {
-      jsonObj = JSON.parse(content.jsonText);
-    } else {
-      jsonObj = buildFlexJson(content) as Record<string, unknown>;
-    }
-  } catch {
-    // invalid JSON
-  }
-
-  if (!jsonObj) {
-    return (
-      <div className="flex h-24 items-center justify-center rounded-xl bg-muted text-xs text-muted-foreground">
-        JSON ไม่ถูกต้อง
-      </div>
-    );
-  }
-
-  const body = jsonObj.body as Record<string, unknown> | undefined;
-  const contents = body?.contents as Array<Record<string, unknown>> | undefined;
-  const titleItem = contents?.find((c) => c.weight === 'bold');
-  const bodyItems = contents?.filter((c) => c.weight !== 'bold') ?? [];
-  const hero = jsonObj.hero as Record<string, unknown> | undefined;
-  const footer = jsonObj.footer as Record<string, unknown> | undefined;
-  const footerContents = footer?.contents as Array<Record<string, unknown>> | undefined;
-  const footerBtn = footerContents?.[0];
-  const action = footerBtn?.action as Record<string, unknown> | undefined;
-
-  const heroUrl = typeof hero?.url === 'string' ? hero.url : null;
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-md text-xs max-w-[200px]">
-      {heroUrl && (
-        <img
-          src={heroUrl}
-          alt="flex hero"
-          className="h-24 w-full object-cover"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      )}
-      <div className="p-3 space-y-1">
-        {titleItem && (
-          <p className="font-bold text-sm text-foreground line-clamp-2">
-            {titleItem.text as string}
-          </p>
-        )}
-        {bodyItems.map((item, i) => (
-          <p key={i} className="text-muted-foreground line-clamp-2">
-            {item.text as string}
-          </p>
-        ))}
-      </div>
-      {action && (
-        <div className="px-3 pb-3">
-          <div className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 py-1.5 text-center text-xs font-medium shadow-sm">
-            {action.label as string || 'ดูเพิ่มเติม'}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface MessagePreviewBubbleProps {
-  message: MessageItem;
-}
-
-function MessagePreviewBubble({ message }: MessagePreviewBubbleProps) {
-  if (message.type === 'text') {
-    const c = message.content as TextContent;
-    return (
-      <div className="bg-card rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm max-w-[85%] shadow-sm">
-        <p className="whitespace-pre-wrap text-foreground/90 text-xs leading-relaxed">
-          {c.text || <span className="text-muted-foreground">ข้อความจะแสดงที่นี่...</span>}
-        </p>
-      </div>
-    );
-  }
-
-  if (message.type === 'image') {
-    const c = message.content as ImageContent;
-    return (
-      <div className="bg-card rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
-        {c.imagePreview ? (
-          <img src={c.imagePreview} alt="preview" className="max-w-full rounded-t-2xl" />
-        ) : (
-          <div className="flex h-20 items-center justify-center bg-muted text-xs text-muted-foreground">
-            รูปภาพจะแสดงที่นี่
-          </div>
-        )}
-        {c.caption && <p className="px-3 py-1.5 text-xs text-foreground/70">{c.caption}</p>}
-      </div>
-    );
-  }
-
-  if (message.type === 'video') {
-    const c = message.content as VideoContent;
-    return (
-      <div className="bg-card rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
-        {c.thumbnailPreview ? (
-          <div className="relative">
-            <img src={c.thumbnailPreview} alt="thumbnail" className="max-w-full" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex size-10 items-center justify-center rounded-full bg-black/50 backdrop-blur-sm">
-                <Video className="size-5 text-white" />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-20 items-center justify-center bg-muted text-xs text-muted-foreground gap-2">
-            <Video className="size-4" />
-            วิดีโอจะแสดงที่นี่
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (message.type === 'flex') {
-    const c = message.content as FlexContent;
-    return <FlexPreviewCard content={c} />;
-  }
-
-  if (message.type === 'rich') {
-    const c = message.content as RichContent;
-    return (
-      <div className="bg-card rounded-2xl rounded-tl-sm overflow-hidden max-w-[85%] shadow-sm">
-        {c.imagePreview ? (
-          <img src={c.imagePreview} alt="rich" className="max-w-full" />
-        ) : (
-          <div className="flex h-20 items-center justify-center bg-muted text-xs text-muted-foreground">
-            Rich Message
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return null;
-}
-
-// ─── Per-Message Content Editors ─────────────────────────────────────────────
-
-interface MessageEditorProps {
-  message: MessageItem;
-  onChange: (updated: MessageItem) => void;
-  uploadingIds: Set<string>;
-  setUploadingIds: React.Dispatch<React.SetStateAction<Set<string>>>;
-}
-
-function TextEditor({ message, onChange }: MessageEditorProps) {
-  const c = message.content as TextContent;
-  return (
-    <div>
-      <Textarea
-        className="min-h-[120px] resize-none"
-        placeholder="พิมพ์ข้อความที่ต้องการ broadcast..."
-        value={c.text}
-        onChange={(e) =>
-          onChange({ ...message, content: { ...c, text: e.target.value } })
-        }
-        maxLength={5000}
-      />
-      <p className="mt-1.5 text-right text-xs text-muted-foreground">
-        {c.text.length} / 5,000 ตัวอักษร
-      </p>
-    </div>
-  );
-}
-
-function ImageEditor({ message, onChange, uploadingIds, setUploadingIds }: MessageEditorProps) {
-  const c = message.content as ImageContent;
-
-  function handleFile(file: File) {
-    if (!file.type.startsWith('image/')) {
-      toast.error('กรุณาเลือกไฟล์รูปภาพเท่านั้น');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const preview = ev.target?.result as string;
-      onChange({ ...message, content: { ...c, imageFile: file, imagePreview: preview } });
-    };
-    reader.readAsDataURL(file);
-
-    // Upload
-    setUploadingIds((prev) => new Set(prev).add(message.id));
-    const fd = new FormData();
-    fd.append('file', file);
-    api
-      .post<{ url: string }>('/line-oa/broadcast/upload-image', fd)
-      .then((res) => {
-        onChange({ ...message, content: { ...c, imageFile: file, imageUrl: res.data.url } });
-      })
-      .catch((err) => toast.error(getErrorMessage(err)))
-      .finally(() =>
-        setUploadingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(message.id);
-          return next;
-        }),
-      );
-  }
-
-  function handleRemove() {
-    onChange({ ...message, content: makeDefaultContent('image') });
-  }
-
-  return (
-    <div className="space-y-3">
-      <FileUploadZone
-        preview={c.imagePreview}
-        onFile={handleFile}
-        onRemove={handleRemove}
-        isUploading={uploadingIds.has(message.id)}
-      />
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground/80">
-          Caption <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
-        </label>
-        <Input
-          placeholder="คำบรรยายใต้รูป..."
-          value={c.caption}
-          onChange={(e) =>
-            onChange({ ...message, content: { ...c, caption: e.target.value } })
-          }
-          maxLength={300}
-        />
-      </div>
-    </div>
-  );
-}
-
-function VideoEditor({ message, onChange, uploadingIds, setUploadingIds }: MessageEditorProps) {
-  const c = message.content as VideoContent;
-
-  function handleVideoFile(file: File) {
-    if (!file.type.startsWith('video/')) {
-      toast.error('กรุณาเลือกไฟล์วิดีโอเท่านั้น');
-      return;
-    }
-    setUploadingIds((prev) => new Set(prev).add(message.id + '-video'));
-    const fd = new FormData();
-    fd.append('file', file);
-    api
-      .post<{ url: string }>('/line-oa/broadcast/upload-image', fd)
-      .then((res) => {
-        onChange({ ...message, content: { ...c, videoFile: file, videoUrl: res.data.url } });
-      })
-      .catch((err) => toast.error(getErrorMessage(err)))
-      .finally(() =>
-        setUploadingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(message.id + '-video');
-          return next;
-        }),
-      );
-  }
-
-  function handleThumbFile(file: File) {
-    if (!file.type.startsWith('image/')) {
-      toast.error('กรุณาเลือกไฟล์รูปภาพสำหรับ thumbnail');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const preview = ev.target?.result as string;
-      onChange({
-        ...message,
-        content: { ...c, thumbnailFile: file, thumbnailPreview: preview },
-      });
-    };
-    reader.readAsDataURL(file);
-    setUploadingIds((prev) => new Set(prev).add(message.id + '-thumb'));
-    const fd = new FormData();
-    fd.append('file', file);
-    api
-      .post<{ url: string }>('/line-oa/broadcast/upload-image', fd)
-      .then((res) => {
-        onChange({ ...message, content: { ...c, thumbnailFile: file, thumbnailUrl: res.data.url } });
-      })
-      .catch((err) => toast.error(getErrorMessage(err)))
-      .finally(() =>
-        setUploadingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(message.id + '-thumb');
-          return next;
-        }),
-      );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground/80">ไฟล์วิดีโอ</label>
-        <FileUploadZone
-          preview={null}
-          onFile={handleVideoFile}
-          onRemove={() => onChange({ ...message, content: { ...c, videoFile: null, videoUrl: null } })}
-          accept="video/*"
-          label={c.videoUrl ? `อัปโหลดแล้ว` : 'คลิกหรือลากไฟล์วิดีโอมาวาง'}
-          isUploading={uploadingIds.has(message.id + '-video')}
-        />
-        {c.videoUrl && (
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-success">
-            <CheckCircle2 className="size-3.5" />
-            <span className="truncate">{c.videoUrl}</span>
-          </p>
-        )}
-      </div>
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground/80">Thumbnail (รูปปก)</label>
-        <FileUploadZone
-          preview={c.thumbnailPreview}
-          onFile={handleThumbFile}
-          onRemove={() =>
-            onChange({
-              ...message,
-              content: { ...c, thumbnailFile: null, thumbnailUrl: null, thumbnailPreview: null },
-            })
-          }
-          isUploading={uploadingIds.has(message.id + '-thumb')}
-        />
-      </div>
-    </div>
-  );
-}
-
-function FlexEditor({ message, onChange }: MessageEditorProps) {
-  const c = message.content as FlexContent;
-  const tpl = FLEX_TEMPLATES[c.templateKey];
-
-  return (
-    <div className="space-y-4">
-      {/* Mode toggle */}
-      <div className="flex gap-1 rounded-full bg-muted p-1 w-fit">
-        {(['template', 'json'] as FlexMode[]).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => onChange({ ...message, content: { ...c, flexMode: mode } })}
-            className={cn(
-              'rounded-full px-5 py-1.5 text-sm font-medium transition-all duration-200',
-              c.flexMode === mode
-                ? 'bg-card text-primary shadow-sm'
-                : 'text-muted-foreground hover:text-foreground/80',
-            )}
-          >
-            {mode === 'template' ? 'Template' : 'JSON'}
-          </button>
-        ))}
-      </div>
-
-      {c.flexMode === 'template' ? (
-        <div className="space-y-4">
-          {/* Template selector */}
-          <div className="flex flex-wrap gap-2">
-            {(Object.entries(FLEX_TEMPLATES) as [FlexTemplateKey, { name: string; fields: string[] }][]).map(
-              ([key, t]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() =>
-                    onChange({
-                      ...message,
-                      content: { ...c, templateKey: key, fields: {} },
-                    })
-                  }
-                  className={cn(
-                    'rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all duration-200',
-                    c.templateKey === key
-                      ? 'border-primary bg-primary/5 text-primary shadow-sm'
-                      : 'border-border text-foreground/70 hover:border-primary/60 hover:text-primary',
-                  )}
-                >
-                  {t.name}
-                </button>
-              ),
-            )}
-          </div>
-          {/* Dynamic fields */}
-          <div className="space-y-3">
-            {tpl.fields.map((fieldName) => (
-              <div key={fieldName}>
-                <label className="mb-1.5 block text-sm font-medium text-foreground/80">
-                  {fieldName}
-                  {fieldName === tpl.fields[0] && <span className="text-destructive ml-0.5">*</span>}
-                </label>
-                <Input
-                  placeholder={fieldName}
-                  value={c.fields[fieldName] || ''}
-                  onChange={(e) =>
-                    onChange({
-                      ...message,
-                      content: { ...c, fields: { ...c.fields, [fieldName]: e.target.value } },
-                    })
-                  }
-                />
-              </div>
-            ))}
-          </div>
-          {/* Mini preview */}
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Preview</p>
-            <FlexPreviewCard content={c} />
-          </div>
-        </div>
-      ) : (
-        /* JSON mode */
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">JSON Editor</p>
-            <div className="rounded-xl overflow-hidden border border-border shadow-sm">
-              <div className="bg-muted px-3 py-2 flex items-center gap-2 border-b border-border">
-                <div className="flex gap-1.5">
-                  <div className="size-2.5 rounded-full bg-destructive" />
-                  <div className="size-2.5 rounded-full bg-warning" />
-                  <div className="size-2.5 rounded-full bg-success" />
-                </div>
-                <span className="text-xs text-muted-foreground ml-1">flex.json</span>
-              </div>
-              <Textarea
-                className="font-mono text-xs bg-card text-foreground min-h-[200px] resize-y border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                value={c.jsonText}
-                onChange={(e) => {
-                  const text = e.target.value;
-                  let valid = false;
-                  try {
-                    JSON.parse(text);
-                    valid = true;
-                  } catch {
-                    valid = false;
-                  }
-                  onChange({ ...message, content: { ...c, jsonText: text, jsonValid: valid } });
-                }}
-              />
-            </div>
-            {c.jsonValid ? (
-              <span className="flex items-center gap-1.5 text-xs text-success">
-                <CheckCircle2 className="size-3.5" />
-                JSON ถูกต้อง
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 text-xs text-destructive">
-                <X className="size-3.5" />
-                JSON ไม่ถูกต้อง
-              </span>
-            )}
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Live Preview</p>
-            <FlexPreviewCard content={c} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RichEditor({ message, onChange, uploadingIds, setUploadingIds }: MessageEditorProps) {
-  const c = message.content as RichContent;
-
-  function handleFile(file: File) {
-    if (!file.type.startsWith('image/')) {
-      toast.error('กรุณาเลือกไฟล์รูปภาพเท่านั้น');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const preview = ev.target?.result as string;
-      onChange({ ...message, content: { ...c, imageFile: file, imagePreview: preview } });
-    };
-    reader.readAsDataURL(file);
-
-    setUploadingIds((prev) => new Set(prev).add(message.id));
-    const fd = new FormData();
-    fd.append('file', file);
-    api
-      .post<{ url: string }>('/line-oa/broadcast/upload-image', fd)
-      .then((res) => {
-        onChange({ ...message, content: { ...c, imageFile: file, imageUrl: res.data.url } });
-      })
-      .catch((err) => toast.error(getErrorMessage(err)))
-      .finally(() =>
-        setUploadingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(message.id);
-          return next;
-        }),
-      );
-  }
-
-  return (
-    <div className="space-y-4">
-      <FileUploadZone
-        preview={c.imagePreview}
-        onFile={handleFile}
-        onRemove={() => onChange({ ...message, content: makeDefaultContent('rich') })}
-        isUploading={uploadingIds.has(message.id)}
-      />
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-foreground/80">
-          ลิงก์เมื่อกด <span className="text-muted-foreground font-normal">(ไม่บังคับ)</span>
-        </label>
-        <Input
-          placeholder="https://..."
-          value={c.linkUrl}
-          onChange={(e) =>
-            onChange({ ...message, content: { ...c, linkUrl: e.target.value } })
-          }
-        />
-      </div>
-    </div>
-  );
-}
-
-function MessageEditor(props: MessageEditorProps) {
-  switch (props.message.type) {
-    case 'text':
-      return <TextEditor {...props} />;
-    case 'image':
-      return <ImageEditor {...props} />;
-    case 'video':
-      return <VideoEditor {...props} />;
-    case 'flex':
-      return <FlexEditor {...props} />;
-    case 'rich':
-      return <RichEditor {...props} />;
-  }
-}
-
-// ─── Message Card ─────────────────────────────────────────────────────────────
-
-interface MessageCardProps {
-  message: MessageItem;
-  index: number;
-  total: number;
-  onChange: (updated: MessageItem) => void;
-  onDelete: () => void;
-  uploadingIds: Set<string>;
-  setUploadingIds: React.Dispatch<React.SetStateAction<Set<string>>>;
-}
-
-function MessageCard({
-  message,
-  index,
-  total,
-  onChange,
-  onDelete,
-  uploadingIds,
-  setUploadingIds,
-}: MessageCardProps) {
-  function changeType(type: MessageType) {
-    if (type === message.type) return;
-    onChange({ ...message, type, content: makeDefaultContent(type) });
-  }
-
-  return (
-    <Card className="relative shadow-sm hover:shadow-md transition-shadow duration-200 ring-1 ring-primary/10">
-      <CardHeader className="pb-3 bg-muted/50 rounded-t-xl border-b border-border">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <GripVertical className="size-4 text-muted-foreground" />
-            <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-sm">
-              {index + 1}
-            </div>
-            <CardTitle className="text-sm font-semibold text-foreground/80">ข้อความที่ {index + 1}</CardTitle>
-          </div>
-          {total > 1 && (
-            <button
-              type="button"
-              onClick={onDelete}
-              className="flex items-center gap-1 rounded-full px-3 py-1 text-xs text-destructive hover:bg-destructive/10 transition-all duration-200"
-            >
-              <Trash2 className="size-3.5" />
-              ลบ
-            </button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4 pt-4">
-        {/* Type selector */}
-        <div className="flex flex-wrap gap-1.5">
-          {MSG_TYPE_BUTTONS.map((btn) => (
-            <button
-              key={btn.type}
-              type="button"
-              onClick={() => changeType(btn.type)}
-              className={cn(
-                'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-200',
-                message.type === btn.type
-                  ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                  : 'border-border text-muted-foreground hover:border-primary/60 hover:text-primary bg-card',
-              )}
-            >
-              {btn.icon}
-              {btn.label}
-            </button>
-          ))}
-        </div>
-        {/* Content editor */}
-        <div className="transition-all duration-300">
-          <MessageEditor
-            message={message}
-            onChange={onChange}
-            uploadingIds={uploadingIds}
-            setUploadingIds={setUploadingIds}
-          />
-        </div>
-      </CardContent>
-    </Card>
-  );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -1036,18 +146,18 @@ export default function BroadcastPage() {
   const audienceQuery = useQuery({
     queryKey: ['broadcast-audience'],
     queryFn: async () => {
-      const res = await api.get<AudienceCount>('/line-oa/broadcast/audience-count');
-      return res.data;
+      const res = await api.get<Omit<AudienceCount, 'active'> & { existing: number }>('/line-oa/broadcast/audience-count');
+      return { ...res.data, active: res.data.existing };
     },
   });
 
   const historyQuery = useQuery({
     queryKey: ['broadcast-history', historyPage],
     queryFn: async () => {
-      const res = await api.get<BroadcastHistoryResponse>(
+      const res = await api.get<Omit<BroadcastHistoryResponse, 'data'> & { data: BroadcastHistoryRecord[] }>(
         `/line-oa/broadcast/history?page=${historyPage}&limit=20`,
       );
-      return res.data;
+      return { ...res.data, data: res.data.data.map(historyItem) };
     },
     enabled: tab === 'history',
   });
@@ -1100,10 +210,12 @@ export default function BroadcastPage() {
 
   const cancelMutation = useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/line-oa/broadcast/${id}`);
+      const { data } = await api.delete<{ success: boolean; message: string }>(`/line-oa/broadcast/${id}`);
+      return data;
     },
-    onSuccess: () => {
-      toast.success('ยกเลิก Broadcast เรียบร้อย');
+    onSuccess: (data) => {
+      if (data.success) toast.success(data.message || 'ยกเลิก Broadcast เรียบร้อย');
+      else toast.error(data.message || 'ยกเลิก Broadcast ไม่สำเร็จ');
       queryClient.invalidateQueries({ queryKey: ['broadcast-history'] });
     },
     onError: (error) => {
@@ -1121,8 +233,8 @@ export default function BroadcastPage() {
     setUploadingIds(new Set());
   }
 
-  const updateMessage = useCallback((updated: MessageItem) => {
-    setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+  const updateMessage = useCallback((id: string, update: React.SetStateAction<MessageItem>) => {
+    setMessages((prev) => prev.map((m) => m.id === id ? (typeof update === 'function' ? update(m) : update) : m));
   }, []);
 
   function addMessage() {
@@ -1186,6 +298,7 @@ export default function BroadcastPage() {
       } else if (m.type === 'video') {
         const c = m.content as VideoContent;
         if (!c.videoUrl) return `ข้อความที่ ${num}: กรุณาเลือกไฟล์วิดีโอ`;
+        if (!c.thumbnailUrl) return `ข้อความที่ ${num}: กรุณาเลือกรูปปกวิดีโอ`;
       } else if (m.type === 'flex') {
         const c = m.content as FlexContent;
         if (c.flexMode === 'template') {
@@ -1217,7 +330,7 @@ export default function BroadcastPage() {
 
   function handleConfirm() {
     const apiMessages = buildApiMessages();
-    const payload = { messages: apiMessages, audience };
+    const payload = { messages: apiMessages, audience: API_AUDIENCE[audience] };
     if (scheduleType === 'scheduled') {
       scheduleMutation.mutate({
         ...payload,
@@ -1230,10 +343,11 @@ export default function BroadcastPage() {
 
   const isPending = sendMutation.isPending || scheduleMutation.isPending;
   const selectedCount = audienceQuery.data?.[audience] ?? null;
+  const recipientLabel = audience === 'all' ? 'ผู้ติดตาม LINE OA ทั้งหมด' : `${selectedCount?.toLocaleString() ?? '...'} คน`;
 
   // ─── Compose Tab ──────────────────────────────────────────────────────────────
 
-  const ComposeTab = () => (
+  const renderComposeTab = () => (
     <div className="space-y-8">
       {/* Messages section */}
       <div className="space-y-1">
@@ -1248,7 +362,7 @@ export default function BroadcastPage() {
               message={msg}
               index={index}
               total={messages.length}
-              onChange={updateMessage}
+              onChange={(update) => updateMessage(msg.id, update)}
               onDelete={() => deleteMessage(msg.id)}
               uploadingIds={uploadingIds}
               setUploadingIds={setUploadingIds}
@@ -1310,11 +424,11 @@ export default function BroadcastPage() {
                   </div>
                   <div className="text-xs text-muted-foreground mb-1.5">{a.description}</div>
                   <div className={cn('text-2xl font-bold tabular-nums', isSelected ? 'text-primary' : 'text-foreground/80')}>
-                    {count !== undefined ? count.toLocaleString() : (
+                    {a.key === 'all' ? 'ผู้ติดตามทุกคน' : count !== undefined ? count.toLocaleString() : (
                       <span className="text-base font-normal text-muted-foreground">กำลังโหลด...</span>
                     )}
                   </div>
-                  {count !== undefined && (
+                  {a.key !== 'all' && count !== undefined && (
                     <div className="text-xs text-muted-foreground">คน</div>
                   )}
                 </div>
@@ -1335,7 +449,7 @@ export default function BroadcastPage() {
           <div className="flex gap-3">
             {(
               [
-                { value: 'now', icon: <Send className="size-4" />, label: 'ส่งทันที', desc: 'ส่งออกทันทีเมื่อกดยืนยัน' },
+                { value: 'now', icon: <Send className="size-4" />, label: 'ส่งทันที', desc: 'ส่งเมื่อผู้อนุมัติคนที่สองยืนยัน' },
                 { value: 'scheduled', icon: <Clock className="size-4" />, label: 'ตั้งเวลา', desc: 'กำหนดวันและเวลาส่ง' },
               ] as const
             ).map((s) => (
@@ -1445,7 +559,7 @@ export default function BroadcastPage() {
                 <span>
                   ส่งถึง{' '}
                   <span className="font-semibold text-success">
-                    {selectedCount !== null ? selectedCount.toLocaleString() : '...'} คน
+                    {recipientLabel}
                   </span>{' '}
                   ({AUDIENCE_LABEL[audience]})
                 </span>
@@ -1454,7 +568,7 @@ export default function BroadcastPage() {
                 <CheckCircle2 className="size-4 text-success shrink-0" />
                 <span>
                   {scheduleType === 'now'
-                    ? 'ส่งทันที'
+                    ? 'ส่งหลังอนุมัติ'
                     : scheduleDate && scheduleTime
                       ? `ตั้งเวลา ${new Date(`${scheduleDate}T${scheduleTime}`).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}`
                       : 'ยังไม่ได้ตั้งเวลา'}
@@ -1484,7 +598,7 @@ export default function BroadcastPage() {
 
   // ─── History Tab ──────────────────────────────────────────────────────────────
 
-  const HistoryTab = () => {
+  const renderHistoryTab = () => {
     const items = historyQuery.data?.data ?? [];
     const total = historyQuery.data?.total ?? 0;
     const totalPages = Math.ceil(total / 20);
@@ -1551,7 +665,7 @@ export default function BroadcastPage() {
                       <Badge variant="outline" className="text-xs">
                         {AUDIENCE_LABEL[item.audienceKey] ?? item.audienceKey}
                         {' · '}
-                        {item.audienceCount.toLocaleString()} คน
+                        {item.audienceKey === 'all' ? 'ผู้ติดตาม LINE OA ทั้งหมด' : `${item.audienceCount.toLocaleString()} คน`}
                       </Badge>
                       <Badge variant={status.variant} className="text-xs">
                         {status.label}
@@ -1560,9 +674,10 @@ export default function BroadcastPage() {
                     <p className="text-xs text-muted-foreground">
                       {item.status === 'scheduled'
                         ? `ตั้งเวลา: ${formatDateTime(item.scheduledAt)}`
-                        : `ส่งเมื่อ: ${formatDateTime(item.sentAt)}`}
+                        : item.status === 'pending_approval' ? 'รอผู้อนุมัติคนที่สอง' : `ส่งเมื่อ: ${formatDateTime(item.sentAt)}`}
                     </p>
                   </div>
+                  {item.status === 'pending_approval' && <BroadcastReviewActions id={item.id} createdById={item.createdById} messages={item.messages} scheduledAt={item.scheduledAt} />}
                   {item.status === 'scheduled' && (
                     <Button
                       variant="outline"
@@ -1627,11 +742,11 @@ export default function BroadcastPage() {
         </TabsList>
 
         <TabsContent value="compose" className="mt-6">
-          <ComposeTab />
+          {renderComposeTab()}
         </TabsContent>
 
         <TabsContent value="history" className="mt-6">
-          <HistoryTab />
+          {renderHistoryTab()}
         </TabsContent>
       </Tabs>
 
@@ -1639,13 +754,13 @@ export default function BroadcastPage() {
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        title={scheduleType === 'scheduled' ? 'ยืนยันการตั้งเวลาส่ง' : 'ยืนยันการส่ง Broadcast'}
+        title="ส่ง Broadcast เพื่อรออนุมัติ"
         description={
           scheduleType === 'scheduled'
-            ? `ต้องการตั้งเวลาส่ง ${messages.length} ข้อความ ไปยัง ${selectedCount?.toLocaleString() ?? '...'} คน ใช่หรือไม่?`
-            : `ต้องการส่ง ${messages.length} ข้อความ ไปยัง ${selectedCount?.toLocaleString() ?? '...'} คน ทันทีใช่หรือไม่?`
+            ? `ต้องการตั้งเวลาส่ง ${messages.length} ข้อความ ไปยัง ${recipientLabel} โดยรอผู้อนุมัติคนที่สอง ใช่หรือไม่?`
+            : `ต้องการส่ง ${messages.length} ข้อความ ไปยัง ${recipientLabel} โดยรอผู้อนุมัติคนที่สอง ใช่หรือไม่?`
         }
-        confirmLabel={scheduleType === 'scheduled' ? 'ตั้งเวลา' : 'ส่งเลย'}
+        confirmLabel="บันทึกรออนุมัติ"
         onConfirm={handleConfirm}
         loading={isPending}
       />

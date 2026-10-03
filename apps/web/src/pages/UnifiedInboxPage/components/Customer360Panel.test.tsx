@@ -131,7 +131,7 @@ function mount(props: Partial<Parameters<typeof Customer360Panel>[0]> = {}) {
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
-  render(
+  const view = (next: Partial<Parameters<typeof Customer360Panel>[0]>) => (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <Customer360Panel
@@ -139,12 +139,13 @@ function mount(props: Partial<Parameters<typeof Customer360Panel>[0]> = {}) {
           customerId="customer1"
           activeRoomId="room1"
           sections={['actions']}
-          {...props}
+          {...next}
         />
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
-  return { invalidate };
+  const rendered = render(view(props));
+  return { invalidate, queryClient, rerender: (next: Partial<Parameters<typeof Customer360Panel>[0]>) => rendered.rerender(view(next)) };
 }
 
 async function openAction(name: string) {
@@ -241,4 +242,56 @@ describe('Customer360Panel extracted actions used by RoomDossier', () => {
     expect(screen.getByText('โอน')).toBeInTheDocument();
     expect(screen.getByText('เงินสด')).toBeInTheDocument();
   });
+});
+
+it('does not fetch hidden notes, cross-channel rooms or profile risk for the actions section', async () => {
+  mount();
+  await screen.findByRole('button', { name: 'ดำเนินการ' });
+  const urls = mocks.get.mock.calls.map(([url]) => url);
+  expect(urls).toContain('/customers/customer1/chat-summary');
+  expect(urls).not.toContain('/customers/customer1/risk-flag');
+  expect(urls).not.toContain('/staff-chat/rooms/room1/notes');
+  expect(urls).not.toContain('/staff-chat/rooms/room1/cross-channel');
+});
+
+it('still fetches notes and cross-channel rooms when those sections are shown', async () => {
+  mount({ sections: ['notes', 'channels'] });
+  await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/staff-chat/rooms/room1/notes'));
+  expect(mocks.get).toHaveBeenCalledWith('/staff-chat/rooms/room1/cross-channel');
+});
+
+
+it('enables newly visible queries and stops refetching hidden sections without remounting', async () => {
+  const { rerender, queryClient } = mount();
+  await screen.findByRole('button', { name: 'ดำเนินการ' });
+  rerender({ bare: false, sections: ['notes', 'channels'] });
+  await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/customers/customer1/risk-flag'));
+  expect(mocks.get).toHaveBeenCalledWith('/staff-chat/rooms/room1/notes');
+  expect(mocks.get).toHaveBeenCalledWith('/staff-chat/rooms/room1/cross-channel');
+  rerender({ bare: true, sections: ['actions'] });
+  mocks.get.mockClear();
+  await queryClient.invalidateQueries();
+  expect(mocks.get).not.toHaveBeenCalledWith('/customers/customer1/risk-flag');
+  expect(mocks.get).not.toHaveBeenCalledWith('/staff-chat/rooms/room1/notes');
+  expect(mocks.get).not.toHaveBeenCalledWith('/staff-chat/rooms/room1/cross-channel');
+});
+
+it.each(['missing', 'error'] as const)('keeps MDM dialog closed for a %s contract row and allows retry', async (failure) => {
+  const base = mocks.get.getMockImplementation()!;
+  let fail = true;
+  mocks.get.mockImplementation(async (url: string) => {
+    if (url.endsWith('/queue-row') && fail) {
+      if (failure === 'error') throw new Error('offline');
+      return { data: null };
+    }
+    return base(url);
+  });
+  mount();
+  await openAction('ส่งคำสั่งล็อกเครื่อง (MDM)');
+  await waitFor(() => expect(mocks.error).toHaveBeenCalledWith(failure === 'missing' ? 'ไม่พบข้อมูลสัญญา' : 'ไม่สามารถโหลดข้อมูลสัญญาได้'));
+  expect(screen.queryByRole('dialog', { name: 'ยืนยันล็อกเครื่อง' })).not.toBeInTheDocument();
+  expect(mocks.post).not.toHaveBeenCalled();
+  fail = false;
+  fireEvent.click(await screen.findByRole('button', { name: 'ส่งคำสั่งล็อกเครื่อง (MDM)' }));
+  expect(await screen.findByRole('dialog', { name: 'ยืนยันล็อกเครื่อง' })).toHaveTextContent('c1|ลูกค้าสังเคราะห์|7');
 });

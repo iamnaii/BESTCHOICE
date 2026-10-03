@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import CardSkeleton from '../components/ContractCardSkeleton';
+import { useContactedTodayRows } from '../hooks/useContactedTodayRows';
+import { useState } from 'react';
 import { AlertTriangle, Calendar, CheckCircle2, Phone, Timer } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { formatThaiDateShort } from '@/lib/date';
-import { isToday } from '../utils/today';
 import QueryBoundary from '@/components/QueryBoundary';
 import ContractCard from '../components/ContractCard';
 import TruncatedBanner from '../components/TruncatedBanner';
@@ -14,20 +15,6 @@ import { useQueueFilter } from '../hooks/useQueueFilter';
 import type { ContractRow } from '../types';
 
 const LIMIT = 50;
-
-function CardSkeleton() {
-  return (
-    <div className="flex rounded-xl border border-border/50 bg-card overflow-hidden h-[148px] animate-pulse">
-      <div className="w-1 shrink-0 bg-muted" />
-      <div className="flex-1 p-4 space-y-2">
-        <div className="h-3 w-24 rounded bg-muted" />
-        <div className="h-4 w-40 rounded bg-muted" />
-        <div className="h-3 w-20 rounded bg-muted" />
-        <div className="mt-3 h-3 w-32 rounded bg-muted" />
-      </div>
-    </div>
-  );
-}
 
 function todayDateString(): string {
   return new Date().toISOString().split('T')[0];
@@ -190,18 +177,7 @@ export default function PromiseTab({
   const total = q.data?.total ?? 0;
   // C1 fix: search is now server-side via useCollectionsQueue → /overdue/queue
   const rawRows = q.data?.data ?? [];
-  // Apply client-side "hide contacted today" filter on top of the server result.
-  // NOTE: counts below operate on the current page only — backend pagination is
-  // unchanged, so for page 2+ the strip reflects "in this view" not the entire queue.
-  const rows = useMemo(
-    () => (hideContactedToday ? rawRows.filter((r) => !isToday(r.lastCallAt)) : rawRows),
-    [rawRows, hideContactedToday],
-  );
-  const contactedTodayCount = useMemo(
-    () => rawRows.filter((r) => isToday(r.lastCallAt)).length,
-    [rawRows],
-  );
-  const remainingCount = rawRows.length - contactedTodayCount;
+  const { rows, contactedTodayCount, remainingCount } = useContactedTodayRows(rawRows, hideContactedToday);
   const truncated = q.data?.truncated ?? false;
 
   const openFilter = () => setFilterOpen(true);

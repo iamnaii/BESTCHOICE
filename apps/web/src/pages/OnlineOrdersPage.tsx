@@ -1,3 +1,5 @@
+import { formatOnlineMoney as formatMoney } from '@/utils/financial-display';
+import { StatusFilterTabs } from '@/components/StatusFilterTabs';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -64,13 +66,6 @@ const STATUS_BADGE: Record<OnlineOrderStatus, { label: string; variant: 'primary
   REFUNDED: { label: 'คืนเงิน', variant: 'secondary' },
   PAYMENT_RECEIVED_UNFULFILLABLE: { label: 'ต้องคืนเงิน', variant: 'destructive' },
 };
-
-function formatMoney(v: string | number | undefined | null): string {
-  if (v === null || v === undefined) return '-';
-  const n = typeof v === 'string' ? Number(v) : v;
-  if (Number.isNaN(n)) return '-';
-  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 export default function OnlineOrdersPage() {
   // FF-3 (B5 final review): endpoint refund = OWNER/FM/ACCOUNTANT — BM เข้าหน้านี้ได้
@@ -177,21 +172,7 @@ export default function OnlineOrdersPage() {
         icon={<ShoppingBag className="size-5" />}
       />
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setStatusFilter(tab.key)}
-            className={`px-3 py-1.5 rounded-md text-sm leading-snug transition-colors ${
-              statusFilter === tab.key
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:bg-accent'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <StatusFilterTabs tabs={STATUS_TABS} value={statusFilter} onChange={setStatusFilter} />
 
       <QueryBoundary isLoading={isLoading} isError={isError} error={error} onRetry={refetch}>
         <div className="rounded-lg border border-border bg-card overflow-hidden">

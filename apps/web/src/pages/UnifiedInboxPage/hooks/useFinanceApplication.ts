@@ -99,7 +99,7 @@ export function useFinanceApplication(roomId: string | null): FinanceApplication
       for (const [i, file] of files.entries()) {
         try {
           const form = new FormData(); form.append('file', file); form.append('slot', slot);
-          await api.post(`${base()}/files`, form, { timeout: 120000, headers: { 'Content-Type': 'multipart/form-data' } });
+          await api.post(`${base()}/files`, form, { timeout: 120000 });
         } catch (error) { failures.push(`ไฟล์ที่ ${i + 1}: ${getErrorMessage(error)}`); }
       }
       if (failures.length) toast.error(failures.join('\n')); else toast.success(`อัปโหลด ${files.length} ไฟล์แล้ว`);

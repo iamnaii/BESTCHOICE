@@ -1,3 +1,4 @@
+import { buildExpenseLinePayload } from './expense-line-payload';
 import { useEffect, useMemo, useState } from 'react';
 import api from '@/lib/api';
 import { ExpenseFormState, JePreviewResponse } from './types';
@@ -32,15 +33,7 @@ function buildPayload(state: ExpenseFormState): CreateExpensePayload | null {
     paymentMethod: state.paymentMethod || undefined,
     depositAccountCode: state.depositAccountCode || undefined,
     whtFormType: (state.whtFormType || undefined) as 'PND3' | 'PND53' | undefined,
-    lines: validLines.map((l) => ({
-      category: l.category,
-      description: l.description || undefined,
-      quantity: parseFloat(l.quantity) || 1,
-      unitPrice: parseFloat(l.unitPrice) || 0,
-      discount: parseFloat(l.discount) || 0,
-      vatPercent: parseFloat(l.vatPercent) || 0,
-      whtPercent: parseFloat(l.whtPercent) || 0,
-    })),
+    lines: validLines.map(buildExpenseLinePayload),
   };
 }
 

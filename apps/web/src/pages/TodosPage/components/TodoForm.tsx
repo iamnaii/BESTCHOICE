@@ -156,9 +156,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const { data } = await api.post('/todos/upload-attachment', fd, {
-        headers: { 'Content-Type': undefined },
-      });
+      const { data } = await api.post('/todos/upload-attachment', fd);
       setForm((prev) => ({
         ...prev,
         attachments: [...(prev.attachments || []), data as Attachment],

@@ -28,7 +28,7 @@ export default function CashDepositDialog({ holding, onClose }: { holding: CashH
       form.append('amount', (toSatang(amount!) / 100).toFixed(2));
       form.append('reference', reference.trim());
       form.append('file', slip!);
-      return (await api.post('/shop-tenders/cash-deposits', form, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
+      return (await api.post('/shop-tenders/cash-deposits', form)).data;
     },
     onSuccess: () => { toast.success(`บันทึกนำฝาก ${baht(amount!)} ฿ แล้ว`); invalidate(); onClose(); },
     onError: (err) => toast.error(getErrorMessage(err)),

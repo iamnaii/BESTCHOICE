@@ -1,23 +1,11 @@
+export { formatBahtPlain as formatBaht } from '@installment/shared';
 import { SHOP_BASE_URL } from '@/lib/env';
 import { IPHONE_COLORS } from '@/components/product/VariantSelector';
-import { formatRateLine } from '@installment/shared';
+import { formatRateLine, formatBahtPlain as formatBaht } from '@installment/shared';
 
 export { computeDefaultBcInstallment } from '@installment/shared';
 export type { BcConfigJson, DefaultInstallment } from '@installment/shared';
 import type { DefaultInstallment } from '@installment/shared';
-
-/**
- * ฟอร์แมตเงินแบบ deterministic (ไม่พึ่ง Intl/locale ของเครื่อง) เพราะข้อความนี้
- * ถูกคัดลอกไปส่งลูกค้าและถูก assert แบบตรงตัวในเทสต์
- */
-export function formatBaht(value: number): string {
-  if (!Number.isFinite(value)) return '-';
-  const fixed = Math.abs(value).toFixed(2);
-  const [intPart, decPart] = fixed.split('.');
-  const withSep = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const sign = value < 0 ? '-' : '';
-  return decPart === '00' ? `${sign}${withSep}` : `${sign}${withSep}.${decPart}`;
-}
 
 export interface CustomerSummaryInput {
   deviceOrigin?: 'THAI' | 'IMPORTED' | null;

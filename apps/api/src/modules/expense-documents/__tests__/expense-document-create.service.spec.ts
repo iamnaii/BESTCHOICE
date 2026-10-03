@@ -57,6 +57,29 @@ describe('ExpenseDocumentCreateService (via facade) — characterization', () =>
     }).service;
   });
 
+  it.each(['create', 'update'] as const)('%s persists line precision, explicit tax flags and optional defaults', async (operation) => {
+    prisma.expenseDocument.findUniqueOrThrow.mockResolvedValue({
+      id: 'doc-1', status: 'DRAFT', deletedAt: null, depositAccountCode: null,
+      expenseDetail: { priceType: 'EXCLUSIVE', lines: [] },
+    });
+    const dto = {
+      documentType: 'EXPENSE' as const, branchId: 'b1', documentDate: '2026-06-10',
+      lines: [
+        { category: '53-1101', description: 'precision', quantity: 2, unitPrice: 10.05, discount: 0.1, vatPercent: 7, whtPercent: 3, whtFormType: 'PND53' as const, taxDisallowed: true },
+        { category: '53-1101', quantity: 1, unitPrice: 0.25 },
+      ],
+    };
+    if (operation === 'create') await service.create(dto, 'user-1');
+    else await service.update('doc-1', dto, 'user-1');
+    const rows = operation === 'create'
+      ? prisma.expenseDocument.create.mock.calls[0][0].data.expenseDetail.create.lines.create
+      : prisma.expenseDetail.update.mock.calls[0][0].data.lines.create;
+    expect(JSON.parse(JSON.stringify(rows))).toEqual([
+      { lineNo: 1, category: '53-1101', description: 'precision', quantity: '2', unitPrice: '10.05', discount: '0.1', vatPercent: '7', whtPercent: '3', whtFormType: 'PND53', amountBeforeVat: '20', vatAmount: '1.4', whtAmount: '0.6', taxDisallowed: true },
+      { lineNo: 2, category: '53-1101', description: null, quantity: '1', unitPrice: '0.25', discount: '0', vatPercent: '0', whtPercent: '0', whtFormType: null, amountBeforeVat: '0.25', vatAmount: '0', whtAmount: '0', taxDisallowed: false },
+    ]);
+  });
+
   // ─── 1. createPettyCash happy-path ─────────────────────────────────────
   describe('createPettyCash — happy path', () => {
     it('creates PETTY_CASH_REIMBURSEMENT DRAFT with computed totals + lines, and calls pettyCash.validate', async () => {

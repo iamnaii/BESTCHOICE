@@ -27,6 +27,7 @@ describe('BroadcastService approval workflow (P2Q15=A)', () => {
   beforeEach(async () => {
     prisma = {
       broadcastMessage: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUnique: jest.fn().mockResolvedValue(pendingRecord()),
         update: jest.fn((args) => Promise.resolve({ ...pendingRecord(), ...args.data })),
         create: jest.fn((args) => Promise.resolve({ id: 'br-1', ...args.data })),
@@ -94,7 +95,7 @@ describe('BroadcastService approval workflow (P2Q15=A)', () => {
 
     await service.approveBroadcast('br-1', 'u-approver');
 
-    const updateArgs = prisma.broadcastMessage.update.mock.calls[0][0];
+    const updateArgs = prisma.broadcastMessage.updateMany.mock.calls[0][0];
     expect(updateArgs.data.status).toBe('SCHEDULED');
     expect(updateArgs.data.approvedById).toBe('u-approver');
     expect(updateArgs.data.approvedAt).toBeInstanceOf(Date);
@@ -122,7 +123,7 @@ describe('BroadcastService approval workflow (P2Q15=A)', () => {
 
   it('rejectBroadcast updates status REJECTED with reason', async () => {
     await service.rejectBroadcast('br-1', 'u-approver', 'message copy looks phishy');
-    const updateArgs = prisma.broadcastMessage.update.mock.calls[0][0];
+    const updateArgs = prisma.broadcastMessage.updateMany.mock.calls[0][0];
     expect(updateArgs.data.status).toBe('REJECTED');
     expect(updateArgs.data.rejectedReason).toBe('message copy looks phishy');
     expect(updateArgs.data.rejectedById).toBe('u-approver');

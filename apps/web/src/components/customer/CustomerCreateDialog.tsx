@@ -1,3 +1,4 @@
+import { parseOcrAddress } from '@/lib/ocr-address';
 import { useRef, useState, type ReactNode } from 'react';
 import { useForm } from 'react-hook-form';
 import { standardSchemaResolver } from '@hookform/resolvers/standard-schema';
@@ -311,27 +312,7 @@ function CustomerCreateForm({ mode = 'create', fillCustomerId, initialValues, in
           postalCode: a.postalCode || '',
         });
       } else if (data.address) {
-        const addr = { ...emptyAddress };
-        const raw = data.address;
-        const zipMatch = raw.match(/(\d{5})\s*$/);
-        if (zipMatch) addr.postalCode = zipMatch[1];
-        const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
-        if (houseMatch) addr.houseNo = houseMatch[1];
-        const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
-        if (mooMatch) addr.moo = mooMatch[1];
-        const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
-        if (soiMatch) addr.soi = soiMatch[1];
-        const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
-        if (roadMatch) addr.road = roadMatch[1];
-        const villageMatch = raw.match(/(?:หมู่บ้าน|ม\.บ\.|คอนโด)\s*([^\s,]+)/);
-        if (villageMatch) addr.village = villageMatch[1];
-        const subdistrictMatch = raw.match(/((?:ตำบล|ต\.|แขวง)\s*[^\s,]+)/);
-        if (subdistrictMatch) addr.subdistrict = subdistrictMatch[1];
-        const districtMatch = raw.match(/((?:อำเภอ|อ\.|เขต)\s*[^\s,]+)/);
-        if (districtMatch) addr.district = districtMatch[1];
-        const provinceMatch = raw.match(/(?:จังหวัด|จ\.)\s*([^\s,\d]+)/);
-        if (provinceMatch) addr.province = provinceMatch[1];
-        setAddressIdCard(addr);
+        setAddressIdCard(parseOcrAddress(data.address, true));
       }
 
       const pct = (data.confidence * 100).toFixed(0);

@@ -86,7 +86,7 @@ describe('DOC-10 browser evidence — /collections analytics export: period, dow
   const gotoAnalytics = async (page: Page, expectExportButton = true) => {
     await closeStrayDialog(page);
     await web.navigate(page, '/collections');
-    await waitForText(page, 'ติดตามหนี้', 'collections-page');
+    await page.getByRole('heading', { name: 'ติดตามหนี้', exact: true }).waitFor({ timeout: 45_000 });
     const tab = page.getByRole('button', { name: /^วิเคราะห์/ });
     if (!(await tab.count())) {
       const library = page.getByRole('button', { name: 'Library', exact: true });

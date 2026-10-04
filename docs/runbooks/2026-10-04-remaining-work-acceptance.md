@@ -1,6 +1,6 @@
 # BESTCHOICE — remaining acceptance and decisions
 
-Prepared 4 October 2026. This is a review packet, not an instruction to execute production changes automatically.
+Prepared 4 October 2026. The owner authorized the remaining non-accounting work and normal release after verification. Formal repository review gates and unresolved accounting decisions still apply.
 
 ## CPA decision packet (Task 5/6)
 
@@ -71,7 +71,7 @@ Inputs still needed: an existing staging location or a decision on this proposed
 
 Prepared pack: `.tmp/remaining-work/BESTCHOICE-EPSON-print-pack-2026-10-04.zip` (69 PDF samples). Extract and open `epson-print-pack/index.html`; each row links the sample and records the physical result. It includes complete source-run/retest evidence and checksums. Select short/long and original/copy samples in each group, and record the pages actually printed. This is synthetic acceptance material, not CPA approval of pending early-payoff receipt policy.
 
-User identified the printer brand as **EPSON**. Local printer inventory has no configured destination or default printer. Exact model, OS/browser/driver, paper and operator remain unconfirmed. Record scale and margins used at the shop; no model-specific setting is assumed. Fill the following per document group:
+User identified **EPSON**, then chose printer-independent A4 PDF output. The final portable pack is `output/pdf/BESTCHOICE-A4-print-samples.pdf` (69 documents, 232 A4 pages) and `output/pdf/BESTCHOICE-A4-print-pack.zip` (separate PDFs, Thai index and verification). All source text is preserved, general pages have 10 mm safe layout margins (some content scales down to 90.38%); 50×30 mm stickers sit at actual size on one A4 sheet. The dividend-register source was corrected so all reference numbers print. Local printer inventory has no configured destination or default printer. Physical output is not certified. Record scale and margins used at the shop; no model-specific setting is assumed. Fill the following per document group:
 
 | Group | Short | Long/multipage | Original/copy | Thai glyphs/bounds | Total/signature kept together | Result/operator |
 |---|---|---|---|---|---|---|
@@ -84,18 +84,18 @@ User identified the printer brand as **EPSON**. Local printer inventory has no c
 | Collections letters / reports | | | | | | |
 | 50×30 mm sticker, complete model name | | | | | n/a | |
 
-Also check native PDF print/download and return focus. A failed row gets a synthetic sample and exact print settings. No physical operator means waiting for acceptance, not passed. Keep agreed fonts and physical sizes; do not shrink text to conceal pagination defects.
+Also check native PDF print/download and return focus. A failed row gets a synthetic sample and exact print settings. No physical operator means waiting for acceptance, not passed. Use A4, actual size 100%, automatic orientation; do not apply additional scaling to sticker sheets. The portable pack preserves existing page breaks and embedded fonts; it does not constitute accounting approval.
 
 ## OTP and credit acceptance (#1602)
 
-The owner designated a test recipient and confirmed receipt of one real SMS probe on 4 October at 11:58 Bangkok (Ref 114C). Contract/KYC acceptance still needs a synthetic customer/contract flow. A working credential alone does not prove delivery.
+The owner designated a test recipient and confirmed receipt of one real SMS probe on 4 October at 11:58 Bangkok (Ref 114C). The full AppModule KYC/credit flow now passes on disposable SHOP/FINANCE PostgreSQL with real login and guards, private local file storage and a recorded synthetic SMS transport. This is separate from the confirmed real SMS delivery probe; a production contract was not created. A working credential alone does not prove delivery.
 
 - [x] Authorized recipient receives a real OTP test SMS via the application transport. This was a delivery probe, without a production KYC/contract record.
-- [ ] Wrong and expired OTP rejected; real success reaches the next step.
-- [ ] Contract without approved credit cannot be submitted; approved-credit case proceeds.
-- [ ] Non-owner cannot enable bypass.
-- [ ] Read back bypass=false and verify banner state.
-- [ ] Record acceptance separately from unit/integration tests.
+- [x] Wrong and expired OTP rejected; correct synthetic SMS code reaches upload; exact image bytes persist before VERIFIED. Storage failure and concurrent resend cannot falsely verify the record.
+- [x] Real authenticated POST /contracts rejects unapproved credit; verified affordability + approval permits creation, consumes approval and creates 12 installments.
+- [x] SALES cannot enable bypass (403).
+- [x] API readback confirms bypass=false before and after acceptance. Production readback remains false; this test does not certify a live browser banner.
+- [x] Evidence separates the real SMS probe from synthetic AppModule acceptance: `.tmp/docs-integration/kyc-credit-accepted-20261004` (5/5); decoder/unit regressions (39/39).
 
 If live flow fails, stop new onboarding and fix its cause; do not enable bypass as automatic rollback for real customers.
 
@@ -106,8 +106,8 @@ Completed in the authorized follow-up. The obsolete `credit_precheck_ai_enabled=
 ## Release packet
 
 - New integration branch preserves original #1665/#1667 heads. Local merge conflicts were version-only; release version candidate is 26.10.6, recheck before merge.
-- Owner chooses whether to update original PRs or use the integration candidate; never merge both equivalent change sets independently.
+- PR #1672 is the prepared integration candidate; never merge both equivalent change sets independently. Main requires one code-owner approval, currently REVIEW_REQUIRED. No review gate has been bypassed.
 - Require checks on the exact release head, preview evidence, migration summary and queued-approval impact. Quote changes may require existing approval requests to be resubmitted under the existing 409 guard.
-- Production merge/deploy and changes to existing issues/PRs are separate external steps. Supply this packet and final test results first.
+- Normal release is owner-authorized. Wait for exact-head CI and the required GitHub review before merge/deploy; no deployment has occurred.
 - Rollback can revert code/config when appropriate; it cannot reverse posted accounting entries by rewriting history.
 - X6 e-Tax and X7 receipt QR remain deferred under the previous owner decision.

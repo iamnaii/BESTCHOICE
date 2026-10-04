@@ -372,7 +372,8 @@ describe('DOC-08 dividend withholding certificates and register — real equity 
       const registerPrint = await printToPdf(page, 'dividend-register-print');
       expect(registerPrint.pdf.pages.every(isA4Landscape)).toBe(true);
       expectFonts(registerPrint.pdf);
-      for (const token of [s1.name, '47,000.00', docs.pay1.docNumber]) expect(streamText(registerPrint.pdf)).toContain(foldThai(token));
+      for (const token of [s1.name, '47,000.00', docs.pay1.docNumber, docs.pay2.docNumber, docs.pay4.docNumber]) expect(streamText(registerPrint.pdf)).toContain(foldThai(token));
+      expectInsidePageBox(registerPrint.pdf);
 
       const rowOf = (name: string) => table.locator('tr').filter({ hasText: name }).first();
       const dialog = page.getByRole('dialog');

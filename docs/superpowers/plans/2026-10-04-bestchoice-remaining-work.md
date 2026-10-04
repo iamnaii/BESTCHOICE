@@ -202,7 +202,7 @@ expect(resolvePageTitle('/some/unknown-page')).toBe('unknown page');
 **Interfaces:** QR ปิดยอดต้องอ้าง quote/payment intent ที่ server รับรองและใช้บัญชีปิดยอดชุดเดียวกับ admin; การชำระงวดปกติรักษาพฤติกรรมเดิม
 
 - [ ] ทำ failing integration จาก LIFF quote → สร้างลิงก์ → webhook ปัจจุบัน เพื่อพิสูจน์ว่าปิดยอดถูกกระจายเป็นงวดและส่วนลด/เงินพักไม่ตรงอย่างไร
-- [ ] Trace บริการสร้าง payment link จริงจาก DI; บันทึก type/schema ของ intent ที่มีอยู่ก่อนเพิ่ม field ไม่เดาชื่อ service หรือแยกประเภทจากยอดเงินอย่างเดียว
+- [x] Trace บริการสร้าง payment link จริงจาก DI; บันทึก type/schema ของ intent ที่มีอยู่ก่อนเพิ่ม field ไม่เดาชื่อ service หรือแยกประเภทจากยอดเงินอย่างเดียว
 - [ ] เขียนแผนย่อย `docs/superpowers/plans/2026-10-04-liff-early-payoff-qr.md` หลัง PR4: การแยก intent, quote expiry/version, สิทธิ์ลูกค้า, approval policy และรายการเงินที่เข้ามาหลัง quote หมดอายุ/เปลี่ยนยอด
 - [ ] จุดที่ต้องมีคำตัดสินก่อนเขียน posting: QR ปิดยอดต้องรออนุมัติเหมือนช่องทางใด และเงินที่ provider รับแล้วแต่ปิดไม่ได้จะพัก/คืนผ่านขั้นตอนไหน; ห้ามตอบ failure แล้วปล่อยเงินหายจากทะเบียน
 - [ ] ใช้ transaction-safe core ของการปิดยอดเดิม; ตรวจลายเซ็น webhook ยอดเงิน สกุลเงิน contract และ payment intent จาก server; claim/idempotency กับ JE/receipt ต้อง atomic ตามโครงสร้างที่ทบทวนแล้ว
@@ -260,7 +260,7 @@ expect(resolvePageTitle('/some/unknown-page')).toBe('unknown page');
 **Files:** อ่านตัวเรียกใน repo และ runbook config; ถ้าจำเป็นสร้าง `docs/runbooks/2026-10-04-credit-precheck-config-cleanup.md`
 
 - [x] ค้น `credit_precheck_ai_enabled` ทั้ง source/scripts/docs และอ่านแถวปัจจุบันแบบ read-only
-- [ ] ถ้าไม่มีผู้ใช้และเจ้าของยังยืนยันถอด automatic pre-check ให้เตรียม soft-delete แบบ conditional ตามค่าที่ตรวจ พร้อม snapshot และขั้น restore เฉพาะแถวนั้น
+- [x] ถ้าไม่มีผู้ใช้และเจ้าของยังยืนยันถอด automatic pre-check ให้เตรียม soft-delete แบบ conditional ตามค่าที่ตรวจ พร้อม snapshot และขั้น restore เฉพาะแถวนั้น
 - [ ] ถ้าถูกลบแล้ว บันทึกหลักฐานและปิดรายการโดยไม่เขียนซ้ำ; ถ้าต้องการ automatic pre-check กลับมา ให้เป็น requirement ใหม่ ไม่คืน feature จากคีย์เก่าเพียงตัวเดียว
 - [ ] ถ้าไม่แตะ prod เพราะเป็นคีย์ไร้ผล ให้เสนอปิดเป็น wontfix ตาม issue พร้อมเหตุผล ไม่ใช้คำว่าแก้แล้ว
 
@@ -343,3 +343,11 @@ git diff --check
 - [ ] ทะเบียนงาน/PR/ผล release ตรงกับหลักฐาน และผู้ใช้ได้รับ preview กับข้อจำกัดที่ตรวจจริง
 
 **สถานะเมื่อเขียนแผน:** ตรวจแหล่งอ้างอิงและโค้ดแบบ read-only; ยังไม่ได้แก้ product code, รันทดสอบรอบใหม่, merge, deploy หรือส่งข้อความภายนอก
+
+
+### Follow-up execution, 4 October
+
+- Task 6: actual DI/schema trace and design preparation are in `2026-10-04-liff-early-payoff-qr.md`; PR4/approval/received-money policy gates remain. Separately corrected the create-intent verified-LINE-identity boundary; payoff posting is not enabled by that fix.
+- Task 10: owner authorized remaining work; conditional one-row production soft-delete completed and read back, with private before snapshot and guarded restore. Twelve disposable PostgreSQL cases passed. Native timestamp audit avoided using a timezone-converted connector display as a SQL predicate.
+- Task 11: designated recipient confirmed the real SMS probe (Ref 114C). Full KYC/credit acceptance remains separate. Bypass remains false.
+- CI follow-up: old empty-search expectation failed on desktop/mobile; corrected and entire 30-test Sales browser file passed locally. Final source check and new-head CI recorded in the evidence report.

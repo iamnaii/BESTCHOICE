@@ -7,6 +7,8 @@ import {
   HttpCode,
   Logger,
   BadRequestException,
+  ForbiddenException,
+  UnauthorizedException,
   ParseUUIDPipe,
   Req,
   Headers,
@@ -20,7 +22,7 @@ import * as Sentry from '@sentry/nestjs';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
 import { PaySolutionsService } from './paysolutions.service';
 import { CreatePaymentIntentDto } from './dto';
-import { LiffTokenGuard } from '../line-oa/guards/liff-token.guard';
+import { LiffTokenGuard, LiffRequest } from '../line-oa/guards/liff-token.guard';
 import { WebhookAnomalyService } from '../webhook-security/webhook-anomaly.service';
 import { RawBodyRequest } from '../../common/types/raw-body-request';
 
@@ -50,19 +52,26 @@ export class PaySolutionsController {
   @SkipCsrf()
   @UseGuards(LiffTokenGuard)
   @Throttle({ short: { ttl: 10000, limit: 5 } })
-  async createPaymentIntent(@Body() dto: CreatePaymentIntentDto) {
+  async createPaymentIntent(@Body() dto: CreatePaymentIntentDto, @Req() req: Request & LiffRequest) {
+    const lineUserId = req.liffUserId;
+    if (!lineUserId) {
+      throw new UnauthorizedException('กรุณาเปิดผ่าน LINE');
+    }
     if (!dto.contractId || !dto.amount) {
       throw new BadRequestException('กรุณาระบุรหัสสัญญาและจำนวนเงิน');
     }
     if (!dto.lineId) {
       throw new BadRequestException('กรุณาระบุ LINE ID เพื่อยืนยันตัวตน');
     }
+    if (dto.lineId !== lineUserId) {
+      throw new ForbiddenException('บัญชี LINE ไม่ตรงกับผู้ยืนยันตัวตน');
+    }
 
     const result = await this.paySolutionsService.createPaymentIntent(
       dto.contractId,
       dto.amount,
       dto.description,
-      dto.lineId,
+      lineUserId,
       dto.installmentNo,
     );
 

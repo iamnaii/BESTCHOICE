@@ -40,7 +40,7 @@ After policy decisions, specify an explicit payoff intent referencing a server-s
 
 ## Staging/storage (#1572)
 
-User is unsure whether staging exists. Read-only discovery on 4 October in `bestchoice-prod` found one Cloud Run service (`bestchoice-api`), one Cloud SQL instance (`bestchoice-db`) and buckets `bestchoice-documents` / `bestchoice-prod_cloudbuild`. `.firebaserc` points at production admin/shop hosting. No separate staging was identified within that project; other projects/accounts were not enumerated.
+User is unsure whether staging exists. Read-only discovery on 4 October in `bestchoice-prod` found one Cloud Run service (`bestchoice-api`), one Cloud SQL instance (`bestchoice-db`) and buckets `bestchoice-documents` / `bestchoice-prod_cloudbuild`. `.firebaserc` points at production admin/shop hosting. No separate staging was identified within that project; A follow-up project inventory found `bestchoice-hermes` (one `hermes-vm`, no buckets; Cloud Run/Cloud SQL Admin APIs not enabled) and unrelated `naitha-prod`. No application staging was identified in the inspected BESTCHOICE projects.
 
 Proposed isolated acceptance environment, if no existing environment is identified:
 
@@ -71,7 +71,7 @@ Inputs still needed: an existing staging location or a decision on this proposed
 
 Prepared pack: `.tmp/remaining-work/BESTCHOICE-EPSON-print-pack-2026-10-04.zip` (69 PDF samples). Extract and open `epson-print-pack/index.html`; each row links the sample and records the physical result. It includes complete source-run/retest evidence and checksums. Select short/long and original/copy samples in each group, and record the pages actually printed. This is synthetic acceptance material, not CPA approval of pending early-payoff receipt policy.
 
-User identified the printer brand as **EPSON**. Exact model, OS/browser/driver, paper and operator remain unconfirmed. Record scale and margins used at the shop; no model-specific setting is assumed. Fill the following per document group:
+User identified the printer brand as **EPSON**. Local printer inventory has no configured destination or default printer. Exact model, OS/browser/driver, paper and operator remain unconfirmed. Record scale and margins used at the shop; no model-specific setting is assumed. Fill the following per document group:
 
 | Group | Short | Long/multipage | Original/copy | Thai glyphs/bounds | Total/signature kept together | Result/operator |
 |---|---|---|---|---|---|---|
@@ -88,9 +88,9 @@ Also check native PDF print/download and return focus. A failed row gets a synth
 
 ## OTP and credit acceptance (#1602)
 
-Inputs: authorized test recipient and operator, agreed time window, synthetic customer/contract flow. A working credential alone does not prove delivery.
+The owner designated a test recipient and confirmed receipt of one real SMS probe on 4 October at 11:58 Bangkok (Ref 114C). Contract/KYC acceptance still needs a synthetic customer/contract flow. A working credential alone does not prove delivery.
 
-- [ ] Authorized recipient receives the real OTP; do not send to a number merely found in production.
+- [x] Authorized recipient receives a real OTP test SMS via the application transport. This was a delivery probe, without a production KYC/contract record.
 - [ ] Wrong and expired OTP rejected; real success reaches the next step.
 - [ ] Contract without approved credit cannot be submitted; approved-credit case proceeds.
 - [ ] Non-owner cannot enable bypass.
@@ -101,9 +101,7 @@ If live flow fails, stop new onboarding and fix its cause; do not enable bypass 
 
 ## Orphan configuration (#1606)
 
-Read-only confirmed the row exists (`false`, updated 28 August). It has no application effect.
-
-Recommended disposition: record as obsolete and decide whether cleanup is worthwhile. If owner chooses cleanup, prepare a backup of that row and a conditional soft-delete matched by key/value/update timestamp; update only one row, read it back and retain a conditional restore. If value/timestamp changed, stop and compare. Do not restore automatic pre-check as a side effect. No SQL mutation was executed in this run.
+Completed in the authorized follow-up. The obsolete `credit_precheck_ai_enabled=false` row was soft-deleted once; native database deletion/update time `2026-10-04 05:04:19.150`. Readback verified it and confirmed `TEST_MODE_BYPASS=false`. Snapshot, guarded SQL and conditional restore are described in the [cleanup runbook](2026-10-04-credit-precheck-config-cleanup.md). Twelve disposable PostgreSQL checks passed before the operation. The feature remains retired.
 
 ## Release packet
 

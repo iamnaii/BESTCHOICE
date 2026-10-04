@@ -5,7 +5,7 @@ Branch: `fix/remaining-work-2026-10-04`.
 Main baseline: `b57646376744f9b979ea678a4b52e497c39aaeb3`.
 Plan: [remaining work](../superpowers/plans/2026-10-04-bestchoice-remaining-work.md).
 
-This report distinguishes code, local verification, deployed configuration and external acceptance. No production mutations or customer messages were performed by this execution.
+This report distinguishes code, local verification, deployed configuration and external acceptance. The initial implementation was read-only in production. After the owner authorized the follow-up, one SMS delivery probe was sent to the designated test recipient and one obsolete configuration row was conditionally soft-deleted. No customer contract/accounting record, bypass setting, application deployment or release was changed.
 
 ## Status
 
@@ -21,8 +21,8 @@ This report distinguishes code, local verification, deployed configuration and e
 | 7 bot #1645 | config already applied | Production hashes and KB match 27 Sep patch. Dry evaluation passes. Real-model E27 blocked by insufficient Anthropic credit |
 | 8 staging/storage | waiting for environment | User is unsure; read-only GCP inventory found no separate staging in bestchoice-prod. Other projects remain unverified; proposed resources are in the acceptance packet |
 | 9 physical print | waiting for physical acceptance | EPSON brand confirmed; exact model/operator unknown. 69 PDF samples packaged with Thai print checklist and SHA-256 hashes; no physical print claim |
-| 10 orphan config #1606 | read-only audit complete | Active `credit_precheck_ai_enabled=false` row remains, updated 28 Aug. No application caller; cleanup/disposition not executed |
-| 11 test mode #1602 | already disabled; acceptance pending | Production `TEST_MODE_BYPASS=false`, updated 2026-10-02T00:15:53.621Z (07:15 Bangkok). OTP delivery/credit gate still need live acceptance |
+| 10 orphan config #1606 | completed | Conditional one-row soft-delete committed and independently read back; private snapshot and guarded restore prepared |
+| 11 test mode #1602 | already disabled; acceptance pending | Production `TEST_MODE_BYPASS=false`, updated 2026-10-02T00:15:53.621Z (07:15 Bangkok). Real SMS delivery confirmed by owner; live KYC completion/credit gate still need acceptance |
 | 12 release/close | not released | No merge/deploy, no existing PR/issue state changed |
 
 ## Verified production configuration (read-only connector)
@@ -90,10 +90,23 @@ After the heading-selector correction in `68cb3ecc1`, complete letters/collectio
 - `verification.json` records the original FAIL and replacement runs; `sha256.json` records every packaged PDF. ZIP integrity and index links checked.
 - Visual samples checked: long expense voucher first/last pages, final-installment zero-balance receipt, withholding certificate and all three 50x30 sticker pages. This is sample visual review plus automated artifact checks; physical EPSON, native print dialog and GCS/staging acceptance remain unverified.
 
-No schema or migration changes. Production read-only checks do not authorize release, and local document tests do not resolve the pending CPA receipt policy.
+No schema or automatic migration changes. The follow-up adds two manual one-row cleanup/restore SQL scripts; they are outside Prisma deployment migrations. Local document tests do not resolve the pending CPA receipt policy.
 
 ## Handoff verification
 
 Final frozen `npm run local:check` passed all 22 checks at **2026-10-04T04:40:08.415Z** (11:40 Bangkok). The recorded source fingerprint equals the current checkout after `68cb3ecc1` and the documentation commit; subsequent edits are documentation only. Log: `local-check-final-frozen.log`. Preview remains running at http://localhost:5211/inbox with synthetic data/AI.
 
 Earlier local-check attempts interrupted by necessary test edits correctly failed their fingerprint guard and do not certify handoff. API/money tests were run before the final test-selector-only changes; the affected document browser suites were rerun completely. No remaining local test failure is concealed by the combined document report.
+
+
+## Authorized follow-up
+
+- **SMS delivery passed:** one real OTP test message went through the actual `NotificationTransportService` using current production SMS settings, read through a read-only connection. Provider accepted at 2026-10-04T04:58:09.534Z; the owner confirmed receipt. Ref `114C`; recipient masked as `***6556`. No OTP, full phone or credentials are committed. This validates delivery only, not the complete contract/KYC flow. Private evidence: `.tmp/remaining-work/otp-delivery.json`.
+- **Obsolete key cleaned:** `credit_precheck_ai_enabled=false` was conditionally soft-deleted once, native database deletion/update timestamp `2026-10-04 05:04:19.150`. Independent MCP readback confirmed this and `TEST_MODE_BYPASS=false`. Full row snapshot, dry-run output, commit result and readback are under private `.tmp/remaining-work/config-cleanup-production-verified/`; the [runbook](../runbooks/2026-10-04-credit-precheck-config-cleanup.md) provides conditional restore. No customer, financial, or other configuration row was changed.
+- **Timestamp guard caught a display mismatch before writing:** PostgreSQL stores the audited update as timezone-free `2026-08-29 04:09:21.429`; the MCP's JavaScript driver displays it as `2026-08-28T21:09:21.429Z`. The first preflight stopped with zero writes. Native `updated_at::text` and `pg_typeof` were read before correcting the SQL literal. All 12 disposable PostgreSQL checks then passed (dry run, apply, repeated apply refusal, restore, drift and snapshot-write failure).
+- **CI credit-search expectation corrected:** run `37177697618`, shard 4 had two failures (1440/390px), both expecting the old generic empty message while the query `ตัวอย่าง` remained present. The test now checks the specific no-match message and retained input. Entire local synthetic browser file passed **30/30**. Original CI failure is preserved; the next head requires fresh CI.
+- **QR identity boundary fixed:** source tracing found that create-intent verified a token but forwarded the body LINE ID. Two HTTP regressions first reproduced acceptance of a mismatched/missing verified identity, then passed after requiring `request.liffUserId` and rejecting a mismatched body. Matching users continue through the existing contract-ownership-checked service. This is independent of payoff accounting; [QR design preparation](../superpowers/plans/2026-10-04-liff-early-payoff-qr.md) records the remaining schema, approval and received-money decisions.
+- **Infrastructure/printer discovery:** GCP also lists `bestchoice-hermes`, with one `hermes-vm` and no buckets; Cloud Run and Cloud SQL Admin APIs are not enabled there. No application staging was found in the inspected BESTCHOICE projects. No billable environment was provisioned. This computer has no configured printer or default destination; physical EPSON acceptance still requires the shop's model/driver/operator.
+- **Review:** independent follow-up review found no Critical/Important issues in conditional cleanup/restore or the E2E expectation correction. SQL verification used disposable PG16; it did not stand in for the separately recorded production readback.
+
+- QR identity fix: all **10 suites / 142 tests passed** under the existing disposable SHOP/FINANCE PostgreSQL harness, including PaySolutions intent, callback, receipt, reschedule and LIFF guard coverage. Independent source review found no Critical/Important issue in the identity-binding change. No live QR/payment was created.

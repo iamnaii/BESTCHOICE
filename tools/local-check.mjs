@@ -21,7 +21,7 @@ save();
 
 try {
   const steps = [
-    ['Local tooling', process.execPath, ['--test', 'tools/local-preview.test.mjs', 'tools/preview-chat-credit.test.mjs', 'tools/import-yellobe-reference.test.mjs']],
+    ['Local tooling', process.execPath, ['--test', 'tools/local-preview.test.mjs', 'tools/preview-chat-credit.test.mjs', 'tools/import-yellobe-reference.test.mjs', 'tools/hosting-microphone.test.mjs']],
     ['Prisma SHOP', join(repo, 'node_modules/.bin/prisma'), ['generate', '--schema', 'apps/api/prisma/schema.prisma']],
     ['Prisma FINANCE', join(repo, 'node_modules/.bin/prisma'), ['generate', '--schema', 'apps/api/prisma-finance/schema.prisma']],
     ['API + Web types', 'bash', ['tools/check-types.sh', 'all']],

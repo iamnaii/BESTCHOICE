@@ -346,10 +346,12 @@ jobs:
           # to the CalVer (e.g. "v26.5.1·a1b2c3d"). vite.config.ts trims to 7 chars.
           GIT_COMMIT: ${{ github.sha }}
 
-      # prerender ต้องใช้ headless Chromium — เฉพาะ main (PR build เปล่าเร็วเหมือนเดิม)
-      - name: Install Playwright Chromium (shop prerender)
-        if: env.IS_MAIN == 'true'
+      # Hosting policy must permit voice typing before release; browser tests also run on PRs.
+      - name: Install Playwright Chromium (hosting policy + shop prerender)
         run: npx playwright install --with-deps chromium
+
+      - name: Verify Hosting microphone policy
+        run: node --test tools/hosting-microphone.test.mjs
 
       # build:prerender = build ปกติ + snapshot 11 หน้า marketing เป็น HTML จริงต่อ route
       # เพื่อให้ AI crawlers (ไม่รัน JS) กับ Bing เห็นเนื้อหา — ดู apps/web-shop/scripts/prerender.mjs

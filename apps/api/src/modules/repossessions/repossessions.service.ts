@@ -414,6 +414,8 @@ export class RepossessionsService {
       totalMonths: contract.totalMonths,
       creditBalance: contract.creditBalance,
       rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
+      // PR5ข (เจ้าของเคาะ 01/10/2569): ถังรวมหักแบบเงินพักค่าปรับดิว — สูตรเดียวกับหน้าปิดยอด (ยอดปิดเท่ากันเสมอ)
+      advanceBalance: contract.advanceBalance,
       vatPct: contract.vatPct,
       sellingPrice: contract.sellingPrice,
       downPayment: contract.downPayment,
@@ -499,9 +501,9 @@ export class RepossessionsService {
       calculation: {
         remainingMonths,
         totalPaid: TWO_DP(totalPaid).toNumber(),
-        // ยอดค้างก่อนหัก (ค่างวด × งวดคงเหลือ) + สองบรรทัดที่หักออก — จอต้องไล่
-        // "รวมค้าง → หักล่วงหน้า → หักค่าปรับดิวพัก → ยอดค้าง" เหมือนหน้าปิดก่อนกำหนด
-        // เพราะ outstandingBalance หักถังพักไปแล้ว (เจ้าของ 2026-09-23)
+        // ยอดค้างก่อนหัก (ค่างวด × งวดคงเหลือ) + บรรทัดที่หักออก — จอต้องไล่
+        // "รวมค้าง → หักล่วงหน้า → หักค่าปรับดิวพัก → หักถังรวม → ยอดค้าง" เหมือนหน้าปิดก่อนกำหนด
+        // เพราะ outstandingBalance หักถังพัก (เจ้าของ 2026-09-23) และถังรวม (PR5ข) ไปแล้ว
         totalRemaining: quote.totalRemaining,
         advancePayment: quote.advancePayment,
         outstandingBalance: quote.remainingBalance,
@@ -513,6 +515,8 @@ export class RepossessionsService {
         discountAmount: quote.discountAmount,
         unpaidLateFees: quote.unpaidLateFees,
         rescheduleAdvanceApplied: quote.rescheduleAdvanceApplied,
+        // PR5ข: เงินรับล่วงหน้าถังรวมที่ยอดปิดหัก (JP5 ล้าง 21-1103 ทั้งยอดในบัญชีอยู่แล้ว — บรรทัดเงินพักไม่รวมยอดนี้)
+        advanceBalanceApplied: quote.advanceBalanceApplied,
         closingAmount: closingAmount.toNumber(),
         marketValue: TWO_DP(marketValue).toNumber(),
         marketValueSource,
@@ -699,6 +703,8 @@ export class RepossessionsService {
       totalMonths: contract.totalMonths,
       creditBalance: contract.creditBalance,
       rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
+      // PR5ข (เจ้าของเคาะ 01/10/2569): ถังรวมหักแบบเงินพักค่าปรับดิว — สูตรเดียวกับหน้าปิดยอด (ยอดปิดเท่ากันเสมอ)
+      advanceBalance: contract.advanceBalance,
       vatPct: contract.vatPct,
       sellingPrice: contract.sellingPrice,
       downPayment: contract.downPayment,

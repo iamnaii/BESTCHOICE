@@ -172,6 +172,8 @@ describe('JE template atomicity (Wave 1 / P0)', () => {
             {
               contractId: c.id,
               depositAccountCode: '11-1101',
+              // PR5: เงินที่รับ = ลูกหนี้ตามบัญชีหลังรายการเปิดสัญญา (17,000 + 1,190)
+              cashReceived: new Decimal('18190.00'),
               interestDiscountPercent: new Decimal('0'),
             },
             tx,
@@ -219,6 +221,8 @@ describe('JE template atomicity (Wave 1 / P0)', () => {
           {
             contractId: c.id,
             depositAccountCode: '11-1101',
+            // PR5: เงินที่รับ = ลูกหนี้ตามบัญชีหลังรายการเปิดสัญญา (17,000 + 1,190)
+            cashReceived: new Decimal('18190.00'),
             interestDiscountPercent: new Decimal('0'),
           },
           tx,

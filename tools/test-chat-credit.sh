@@ -63,6 +63,9 @@ const db = new PrismaClient();
 (async () => {
   try {
     await db.user.create({ data: { email: 'admin@bestchoice.com', name: 'ISOLATED TEST SYSTEM', password: 'unused', role: 'OWNER' } });
+    // Legacy DB specs require a seeded branch as well as an OWNER. Without it,
+    // a clean run depends on whether an earlier suite happened to leave one.
+    await db.branch.create({ data: { name: 'ISOLATED TEST BRANCH' } });
   } finally { await db.$disconnect(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
 JS

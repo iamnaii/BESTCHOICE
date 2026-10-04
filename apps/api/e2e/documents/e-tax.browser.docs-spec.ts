@@ -181,7 +181,7 @@ describe('DOC-07 browser evidence — /finance/e-tax document center', () => {
 
       it('company filter + per-row status: ACCEPTED shows the PDF button, PENDING shows none, REJECTED offers regeneration, SHOP branch rows appear only under SHOP', async () => {
         await web.navigate(page, '/finance/e-tax');
-        await waitForText(page, 'e-Tax Invoice', `page-${w}`);
+        await page.getByRole('heading', { name: /^e-Tax Invoice/ }).waitFor({ timeout: 45_000 });
         await page.getByText('กรุณาเลือกบริษัทเพื่อดูรายการ e-Tax Invoice').waitFor({ timeout: 30_000 });
         await selectCompany(page, financeLabel);
         await waitForText(page, contractA.contractNumber, `rows-${w}`);
@@ -247,7 +247,7 @@ describe('DOC-07 browser evidence — /finance/e-tax document center', () => {
         expect(aborted).toBe(true);
         const toasts = await page.locator('[data-sonner-toast]').allInnerTexts();
         await web.navigate(page, '/finance/e-tax');
-        await waitForText(page, 'e-Tax Invoice', `back-${w}`);
+        await page.getByRole('heading', { name: /^e-Tax Invoice/ }).waitFor({ timeout: 45_000 });
         recordScenario(DOMAIN, scenario({ id: `${DOMAIN}/error-retry-company-change-${w}`, title: `${w}px 503 from the PDF route → toast with the server message, next click downloads; switching the work company mid-download aborts the request (no file, toasts: ${toasts.length})`, routes: ['GET /api/e-tax/invoices/:paymentId/pdf'], artifacts: [shotError], notes: `${consoleNote(errors)}; toasts after the company change: ${JSON.stringify(toasts).slice(0, 200)}. The page unmounts on a zone change (LayoutProvider re-scopes), so DocumentDownloadButton aborts its in-flight request; the scope-revision check in downloadProtectedDocument is the second guard` }));
       });
     });

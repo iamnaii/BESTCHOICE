@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { getMenuConfig, getSidebarForRole, type MenuItem } from '@/config/menu';
 import { NAV_LABELS } from '@/config/work-navigation';
 import { resolvePageTitle } from '../resolvePageTitle';
 
@@ -30,4 +31,35 @@ describe('resolvePageTitle — ชื่อหน้าใน breadcrumb แถ�
   it('path ที่ไม่รู้จัก → ใช้ segment สุดท้าย (ขีดกลางเป็นเว้นวรรค)', () => {
     expect(resolvePageTitle('/some/unknown-page')).toBe('unknown page');
   });
+});
+
+
+it('uses the longest matching menu path and normalizes query strings', () => {
+  expect(resolvePageTitle('/purchase-orders/qc')).toBe('รอถ่ายรูป');
+  expect(resolvePageTitle('/purchase-orders/qc/?view=pending')).toBe('รอถ่ายรูป');
+  expect(resolvePageTitle('/purchase-orders/qc/example')).toBe('รอถ่ายรูป');
+  expect(resolvePageTitle('/salesman')).toBe('salesman');
+});
+
+it('uses current menu labels across every role, with OWNER first for duplicate paths', () => {
+  const expected = new Map<string, string>();
+  const visit = (item: MenuItem) => {
+    if (item.children?.length) { item.children.forEach(visit); return; }
+    const path = item.path.split('?')[0].replace(/\/$/, '') || '/';
+    if (path.startsWith('/') && !expected.has(path)) expected.set(path, item.label);
+  };
+  for (const role of ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES', 'VIEWER']) {
+    getMenuConfig(role).sidebar.forEach(section => section.items.forEach(visit));
+    getSidebarForRole(role, 'settings').forEach(section => section.items.forEach(visit));
+  }
+  for (const [path, label] of expected) expect(resolvePageTitle(path), path).toBe(label);
+});
+
+
+it('includes settings navigation and preserves Thai labels for legacy routes', () => {
+  expect(resolvePageTitle('/contacts')).toBe('รายชื่อผู้ติดต่อ');
+  expect(resolvePageTitle('/settings/accounting')).toBe('บัญชี & ภาษี');
+  expect(resolvePageTitle('/users')).toBe('ผู้ใช้');
+  expect(resolvePageTitle('/branches')).toBe('สาขา');
+  expect(resolvePageTitle('/notifications')).toBe('แจ้งเตือน');
 });

@@ -18,7 +18,7 @@ import { LiffApiService } from './liff-api.service';
 import { RichMenuService } from './rich-menu/rich-menu.service';
 import { PaymentLinkService } from './payment-links/payment-link.service';
 import { ContractPaymentService } from '../contracts/contract-payment.service';
-import { toNum } from '../../utils/decimal.util';
+import { dAdd, dRound, toNum } from '../../utils/decimal.util';
 import { DocumentsService } from '../contracts/documents.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SkipCsrf } from '../../guards/skip-csrf.decorator';
@@ -232,7 +232,11 @@ export class LiffApiController {
       remainingPrincipal: quote.remainingCost,
       remainingInterest: Math.max(0, quote.grossProfit),
       discount: quote.discountAmount,
-      partiallyPaidCredit: quote.advancePayment,
+      // PR5ข: เงินรับล่วงหน้าถังรวมที่ยอดปิดหัก รวมในแถว "หักยอดชำระบางส่วน" (ข้อความเดิม) ⇒ "ยอดเต็มก่อนหักส่วนลด"
+      // บนไลน์ (= ยอดที่ต้องชำระ + ส่วนลด − ค่าปรับ + ยอดนี้) ยังเท่ายอดค้างเต็ม
+      partiallyPaidCredit: dRound(
+        dAdd(quote.advancePayment, quote.advanceBalanceApplied),
+      ).toNumber(),
       unpaidLateFees: quote.unpaidLateFees,
       totalPayoff: quote.totalPayoff,
       contractNumber: contract.contractNumber,

@@ -5,6 +5,12 @@ import { currentLocation, shouldSkipLoginRedirect } from '@/lib/public-routes';
 
 // In-memory token storage — not accessible via XSS unlike localStorage
 let accessToken: string | null = null;
+let sessionGeneration = 0;
+
+/** Prevent an in-flight refresh from resurrecting a logged-out/replaced session. */
+export function cancelPendingRefresh() {
+  sessionGeneration++;
+}
 
 // E2E test support: read token from localStorage (injected by Playwright addInitScript),
 // then immediately remove it so tokens are memory-only at runtime.
@@ -19,6 +25,7 @@ try {
 }
 
 export function setAccessToken(token: string | null) {
+  sessionGeneration++;
   accessToken = token;
 }
 
@@ -73,28 +80,43 @@ refreshApi.interceptors.response.use((response) => {
 
 // Promise-based singleton for token refresh to avoid race conditions
 let refreshPromise: Promise<string> | null = null;
+let refreshGeneration = -1;
 
 function refreshAccessToken(): Promise<string> {
-  if (refreshPromise) {
-    return refreshPromise;
-  }
-
-  refreshPromise = refreshApi
-    .post('/auth/refresh', {})
-    .then(({ data }) => {
-      const newToken = data.accessToken;
-      setAccessToken(newToken);
-      return newToken;
-    })
-    .catch((err) => {
-      setAccessToken(null);
-      throw err;
-    })
-    .finally(() => {
-      refreshPromise = null;
-    });
-
-  return refreshPromise;
+  if (refreshPromise && refreshGeneration === sessionGeneration) return refreshPromise;
+  const generation = sessionGeneration;
+  refreshGeneration = generation;
+  const assertCurrentSession = () => {
+    if (generation !== sessionGeneration) throw new axios.CanceledError('Session changed');
+  };
+  const renew = async (): Promise<string> => {
+    for (let attempt = 0; ; attempt++) {
+      assertCurrentSession();
+      try {
+        const { data } = await refreshApi.post('/auth/refresh', {});
+        assertCurrentSession();
+        setAccessToken(data.accessToken);
+        return data.accessToken;
+      } catch (error) {
+        assertCurrentSession();
+        if (!axios.isAxiosError(error) || error.response?.status !== 429 || attempt >= 2) throw error;
+        // Nest's named throttler may suffix its Retry-After header.
+        const raw = error.response.headers['retry-after'] ?? error.response.headers['retry-after-short'];
+        const seconds = raw === undefined ? NaN : Number(raw);
+        const parsed = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(String(raw)) - Date.now();
+        const delay = Number.isFinite(parsed) ? Math.max(0, parsed) : (attempt + 1) * 1000;
+        // Do not retry before a long server deadline. Keep the page and let the
+        // user retry later instead of holding all requests indefinitely.
+        if (delay > 60_000) throw error;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  };
+  const pending = renew().finally(() => {
+    if (refreshPromise === pending) refreshPromise = null;
+  });
+  refreshPromise = pending;
+  return pending;
 }
 
 // Response interceptor: unwrap API envelope { success, data, timestamp }
@@ -138,9 +160,9 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return api(originalRequest);
       } catch (refreshError) {
-        setAccessToken(null);
-        if (!isPublicOrLiffPage()) {
-          window.location.href = '/login';
+        if (axios.isAxiosError(refreshError) && refreshError.response?.status === 401) {
+          setAccessToken(null);
+          if (!isPublicOrLiffPage()) window.location.href = '/login';
         }
         return Promise.reject(refreshError);
       }

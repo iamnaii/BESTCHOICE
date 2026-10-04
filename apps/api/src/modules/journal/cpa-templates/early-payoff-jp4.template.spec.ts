@@ -151,39 +151,38 @@ describe('EarlyPayoffJP4Template', () => {
     await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
+      cashReceived: new Decimal('7594.98'),
       interestDiscountPercent: new Decimal('50'),
     });
 
-    // Math (17K/12M, 6 unpaid · Policy A — VAT ไม่ลด):
-    //   remainingDeferredInterest = 500 × 6      = 3,000.00
-    //   discount                   = 50% × 3,000  = 1,500.00
-    //   remainingDeferredVat       = 99.17 × 6   =   595.02 (full · ไม่ลด)
-    //   remainingGross             = 1,416.66 × 6 = 8,499.96
-    //   settlement                 = 8,499.96 - 1,500 + 595.02 = 7,594.98
+    // PR5 — ยอดในบัญชีหลัง 6 งวด (17K/12M · Policy A — VAT ไม่ลด):
+    //   11-2101 = 17,000 − 6 × 1,416.66 = 8,500.04 · 11-2105 / 21-2102 = 1,190 − 6 × 99.17 = 594.98
+    //   11-2106 = 6,000 − 6 × 500 = 3,000.00 · ลูกค้าจ่าย 7,594.98 (case-4)
+    //   52-1106 = 8,500.04 + 594.98 − 7,594.98 = 1,500.04 (ส่วนลดที่ให้จริง — คำตอบข้อ 5.3)
     const je = await getEarlyPayoffJe(c.id);
 
     const cr21_2101 = je.lines.find((l) => l.accountCode === '21-2101');
     expect(cr21_2101).toBeDefined();
-    // Policy A: Cr 21-2101 = remainingDeferredVat เต็มยอด (NOT reduced by discount)
-    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(595.02, 2);
+    // Policy A: Cr 21-2101 = ภาษีขายรอเรียกเก็บในบัญชีเต็มยอด (NOT reduced by discount)
+    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(594.98, 2);
 
     // Dr 21-2102 cleared in full (deferred VAT account closed)
     const dr21_2102 = je.lines.find((l) => l.accountCode === '21-2102');
-    expect(new Decimal(dr21_2102!.debit.toString()).toNumber()).toBeCloseTo(595.02, 2);
+    expect(new Decimal(dr21_2102!.debit.toString()).toNumber()).toBeCloseTo(594.98, 2);
 
-    // Customer cash payment = remainingGross - discount + full VAT
+    // Customer cash payment = เงินที่รับจริง
     const drCash = je.lines.find((l) => l.accountCode === '11-1101');
     expect(drCash).toBeDefined();
     expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(7594.98, 2);
 
-    // Discount line still present (interest only — VAT untouched per Policy A)
+    // Discount line = ส่วนลดที่ให้จริง (VAT untouched per Policy A)
     const dr52_1106 = je.lines.find((l) => l.accountCode === '52-1106');
-    expect(new Decimal(dr52_1106!.debit.toString()).toNumber()).toBeCloseTo(1500, 2);
+    expect(new Decimal(dr52_1106!.debit.toString()).toNumber()).toBeCloseTo(1500.04, 2);
 
     // Metadata: Policy A flag (no vatCreditBackOnDiscount)
     const meta = je.metadata as Record<string, string>;
     expect(meta.policy).toBe('A');
-    expect(meta.settleVat).toBe('595.02');
+    expect(meta.settleVat).toBe('594.98');
     expect(meta.vatCreditBackOnDiscount).toBeUndefined();
 
     // JE balanced
@@ -199,7 +198,7 @@ describe('EarlyPayoffJP4Template', () => {
     expect(totalDr.toNumber()).toBeCloseTo(12690, 2);
   });
 
-  it('Policy A — zero discount: Cr 21-2101 = full deferred VAT (no change)', async () => {
+  it('Policy A — zero discount (ลูกค้าจ่ายเท่าลูกหนี้ตามบัญชี 9,095.02): Cr 21-2101 = full deferred VAT', async () => {
     const journal = await setup();
     const c = await seedStandard17k12m(prisma);
     await new ContractActivation1ATemplate(journal, prisma as any).execute(c.id);
@@ -213,6 +212,7 @@ describe('EarlyPayoffJP4Template', () => {
     await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
+      cashReceived: new Decimal('9095.02'),
       interestDiscountPercent: new Decimal('0'),
     });
 
@@ -222,18 +222,18 @@ describe('EarlyPayoffJP4Template', () => {
     const dr52_1106 = je.lines.find((l) => l.accountCode === '52-1106');
     expect(dr52_1106, 'no 52-1106 when discount = 0').toBeUndefined();
 
-    // Cr 21-2101 = full remainingDeferredVat (595.02)
+    // Cr 21-2101 = ภาษีขายรอเรียกเก็บในบัญชีเต็มยอด (594.98)
     const cr21_2101 = je.lines.find((l) => l.accountCode === '21-2101');
     expect(cr21_2101).toBeDefined();
-    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(595.02, 2);
+    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(594.98, 2);
 
-    // settlement = remainingGross + remainingDeferredVat = 8499.96 + 595.02 = 9094.98
+    // เงินที่รับ = ลูกหนี้ตามบัญชี 8,500.04 + 594.98 = 9,095.02
     const drCash = je.lines.find((l) => l.accountCode === '11-1101');
-    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(9094.98, 2);
+    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(9095.02, 2);
 
     const meta = je.metadata as Record<string, string>;
     expect(meta.policy).toBe('A');
-    expect(meta.settleVat).toBe('595.02');
+    expect(meta.settleVat).toBe('594.98');
   });
 
   it('Policy A — 100% discount: VAT still full (CPA decision · บริษัทรับภาระ)', async () => {
@@ -250,18 +250,20 @@ describe('EarlyPayoffJP4Template', () => {
     await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
+      cashReceived: new Decimal('6095.02'),
       interestDiscountPercent: new Decimal('100'),
     });
 
-    // Policy A: discount = 3000, Cr 21-2101 = 595.02 (full · NOT reduced)
+    // Policy A: discount = 9,095.02 − 6,095.02 = 3,000.00, Cr 21-2101 = 594.98 (full · NOT reduced)
     const je = await getEarlyPayoffJe(c.id);
 
     const cr21_2101 = je.lines.find((l) => l.accountCode === '21-2101');
-    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(595.02, 2);
+    expect(new Decimal(cr21_2101!.credit.toString()).toNumber()).toBeCloseTo(594.98, 2);
+    const dr52_1106 = je.lines.find((l) => l.accountCode === '52-1106');
+    expect(new Decimal(dr52_1106!.debit.toString()).toNumber()).toBeCloseTo(3000, 2);
 
-    // settlement = 8499.96 - 3000 + 595.02 = 6094.98
     const drCash = je.lines.find((l) => l.accountCode === '11-1101');
-    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(6094.98, 2);
+    expect(new Decimal(drCash!.debit.toString()).toNumber()).toBeCloseTo(6095.02, 2);
 
     const meta = je.metadata as Record<string, string>;
     expect(meta.policy).toBe('A');
@@ -291,6 +293,7 @@ describe('EarlyPayoffJP4Template', () => {
     await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
+      cashReceived: new Decimal('7594.98'),
       interestDiscountPercent: new Decimal('50'),
     });
 
@@ -342,6 +345,7 @@ describe('EarlyPayoffJP4Template', () => {
     const result = await tmpl.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
+      cashReceived: new Decimal('0'),
       interestDiscountPercent: new Decimal('100'),
     });
 
@@ -393,9 +397,12 @@ describe('EarlyPayoffJP4Template', () => {
     // Run early payoff WITH reversal injected
     const reversal = new Vat60dayReversalTemplate(journal, prisma as any);
     const jp4 = new EarlyPayoffJP4Template(journal, prisma as any, reversal);
+    // PR5: ลูกค้าจ่ายเท่าลูกหนี้ตามบัญชี (ไม่มีส่วนลด) = 11-2101 5,666.72 + 11-2103 3,031.66 (งวด 7–8 ที่ตั้งแล้ว)
+    // + 11-2105 396.64 = 9,095.02
     await jp4.execute({
       contractId: c.id,
       depositAccountCode: '11-1101',
+      cashReceived: new Decimal('9095.02'),
       interestDiscountPercent: new Decimal('0'),
     });
 
@@ -444,6 +451,7 @@ describe('EarlyPayoffJP4Template', () => {
       tmpl.execute({
         contractId: c.id,
         depositAccountCode: '11-1101',
+        cashReceived: new Decimal('0'),
         interestDiscountPercent: new Decimal('50'),
       }),
     ).rejects.toThrow(/already paid/i);

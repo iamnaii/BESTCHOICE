@@ -5,10 +5,11 @@ import {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   ReactNode,
 } from 'react';
 import * as Sentry from '@sentry/react';
-import api, { setAccessToken } from '@/lib/api';
+import api, { setAccessToken, cancelPendingRefresh } from '@/lib/api';
 import { setRequestCompany } from '@/lib/company-scope';
 import { currentLocation, isPublicPage } from '@/lib/public-routes';
 
@@ -55,6 +56,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  sessionError?: string | null;
   /** Submit email+password — sets token + user on AUTHENTICATED. */
   login: (email: string, password: string) => Promise<{ state: string; role?: string }>;
   logout: () => void;
@@ -67,8 +69,13 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const authGeneration = useRef(0);
 
   const logout = useCallback(async () => {
+    authGeneration.current++;
+    cancelPendingRefresh();
+    setSessionError(null);
     try {
       await api.post('/auth/logout', {});
     } catch {
@@ -77,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(null);
     setRequestCompany(undefined);
     setUser(null);
+    setIsLoading(false);
     setSentryUser(null);
     try {
       // โซนที่ค้างไว้เป็นของ session ก่อน — ถ้าไม่ล้าง คนถัดไปที่ล็อกอินบนเครื่องนี้
@@ -89,12 +97,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchMe = useCallback(async (): Promise<User | null> => {
+    const generation = authGeneration.current;
     try {
       // Always try /auth/me — even without an in-memory token.
       // On page refresh the token is lost (in-memory), but the refresh
       // token cookie is still there. The 401 interceptor in api.ts will
       // auto-call /auth/refresh to get a new access token.
       const { data } = await api.get('/auth/me', { timeout: 10000 });
+      if (generation !== authGeneration.current) return null;
+      setSessionError(null);
       const nextUser: User = {
         id: data.id,
         email: data.email,
@@ -111,15 +122,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSentryUser(nextUser);
       return nextUser;
     } catch (error: unknown) {
+      if (generation !== authGeneration.current) return null;
       const axiosError = error as { response?: { status?: number }; code?: string };
       // Only logout on explicit 401 (unauthorized) - token refresh is handled by api.ts interceptor
       // Do NOT logout on network errors or timeouts as the token may still be valid
       if (axiosError.response?.status === 401) {
-        logout();
+        void logout();
+      } else {
+        setSessionError(axiosError.response?.status === 429
+          ? 'คำขอถี่เกินไป กรุณารอสักครู่แล้วลองเชื่อมต่อใหม่'
+          : 'ยังเชื่อมต่อระบบไม่ได้ กรุณาลองเชื่อมต่อใหม่');
       }
       return null;
     } finally {
-      setIsLoading(false);
+      if (generation === authGeneration.current) setIsLoading(false);
     }
   }, [logout]);
 
@@ -145,6 +161,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const login = useCallback(
     async (email: string, password: string): Promise<{ state: string; role?: string }> => {
+      authGeneration.current++;
+      cancelPendingRefresh();
+      setSessionError(null);
       const doLogin = () => api.post('/auth/login', { email, password }, { timeout: 30000 });
       let res;
       try {
@@ -192,11 +211,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       isLoading,
       isAuthenticated: !!user,
+      sessionError,
       login,
       logout,
       refresh: fetchMe,
     }),
-    [user, isLoading, login, logout, fetchMe],
+    [user, isLoading, sessionError, login, logout, fetchMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

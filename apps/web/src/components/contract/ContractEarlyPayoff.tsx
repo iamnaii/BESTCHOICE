@@ -40,6 +40,11 @@ export interface EarlyPayoffQuote {
   advancePayment: number;
   /** ค่าปรับดิวที่ลูกค้าจ่ายล่วงหน้าไว้ (21-1103) — หักเต็มจำนวนจากยอดปิด */
   rescheduleAdvanceApplied: number;
+  /**
+   * เงินที่ลูกค้าชำระเกินจากงวดก่อน (ถังรวม 21-1103) ที่ยอดปิดหัก — แบบเดียวกับค่าปรับดิวที่พักไว้
+   * (PR5ข · เจ้าของเคาะ 01/10/2569) · API ก่อน PR5ข ไม่ส่ง
+   */
+  advanceBalanceApplied?: number;
   remainingBalance: number;
   remainingExVat: number;
   remainingCost: number;
@@ -436,6 +441,15 @@ export function EarlyPayoffOverlay({
                 <Row
                   label="หักค่าปรับดิวที่จ่ายล่วงหน้าไว้"
                   value={`-${formatNumber(quote.rescheduleAdvanceApplied)} บาท`}
+                  success
+                />
+              )}
+              {/* เงินที่ชำระเกินจากงวดก่อน (ถังรวม) หักแบบเดียวกับค่าปรับดิวที่พักไว้ — ก่อนคิดฐานส่วนลด
+                  (เจ้าของเคาะ 01/10/2569 · PR5ข) */}
+              {(quote.advanceBalanceApplied ?? 0) > 0 && (
+                <Row
+                  label="หักเงินที่ชำระเกินจากงวดก่อน"
+                  value={`-${formatNumber(quote.advanceBalanceApplied ?? 0)} บาท`}
                   success
                 />
               )}

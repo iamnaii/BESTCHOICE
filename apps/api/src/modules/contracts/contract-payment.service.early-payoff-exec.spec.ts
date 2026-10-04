@@ -3,6 +3,7 @@ jest.mock('../payments/services/payment-approval-request.util', () => ({ ...jest
 import { Prisma } from '@prisma/client';
 import { ContractPaymentService } from './contract-payment.service';
 import { EarlyPayoffDto } from './dto/contract.dto';
+import { ledgerLines } from '../journal/__tests__/ledger-lines-mock';
 
 /**
  * Characterization (golden) test for the EXECUTION (money-POSTING) path of
@@ -38,13 +39,11 @@ import { EarlyPayoffDto } from './dto/contract.dto';
  *   6 installments PAID → 6 unpaid (installmentNo 7..12)
  *   discountPct      = default (50 → fraction 0.5)
  *
- * EXPECTED JE values (computed from the actual code, lines 332-368):
- *   epRemainingGross            = (21600/12 ROUND_DOWN = 1800.00) × 6 = 10800.00
- *   epRemainingDeferredInterest = (1800/12 ROUND_HALF_UP = 150.00) × 6 = 900.00
- *   epRemainingDeferredVat      = (1512/12 ROUND_HALF_UP = 126.00) × 6 = 756.00
- *   quote.discountPct           = 50 (percentage form)
- *   epDiscount                  = 900 × 50 / 100 = 450.00   (.div(100) path)
- *   epSettlement (cash debit)   = 10800 − 450 + 756 = 11106.00
+ * EXPECTED JE values (PR5 — ล้างตามยอดในบัญชี · คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4):
+ *   ยอดในบัญชีหลัง 6 งวดที่ตั้งลูกหนี้งวด + รับครบ (21,600 / 1,512 / 1,800 − 6 งวด):
+ *     11-2101 10800.00 · 11-2105 756.00 · 11-2106 900.00 · 21-2102 756.00
+ *   cash debit  = quote.totalPayoff (เงินที่รับจริง) = 11556 − 450 = 11106.00
+ *   52-1106     = ลูกหนี้ตามบัญชี (10800 + 756) − เงินที่รับ 11106 = 450.00 (= ส่วนลดของสูตรยอดปิด)
  *
  * EXPECTED FIFO distribution of quote.totalPayoff = 11106.00 across 6 unpaid
  *   rows each owing amountDue 1926, lateFee 0, amountPaid 0:
@@ -52,13 +51,11 @@ import { EarlyPayoffDto } from './dto/contract.dto';
  *     inst 12    → 11106 − 9630 = 1476.00
  *   all 6 rows end status PAID.
  */
-// คอลัมน์ที่ getEarlyPayoffQuote / JP4 เลือกมาจากแถวงวด — ไม่มีงวดที่ตั้งลูกหนี้งวดไปบางส่วน
-// (sumAccruedUnpaid ปฏิเสธแถวที่ไม่ได้เลือกคอลัมน์เหล่านี้มา ไม่อ่านเป็น 0)
-const notAccrued = {
-  accrualJournalEntryId: null,
-  accruedAmount: '0',
-  accruedVat: '0',
-  accruedInterest: '0',
+const LEDGER_AFTER_SIX_PAID = {
+  '11-2101': '10800.00',
+  '11-2105': '756.00',
+  '11-2106': '900.00',
+  '21-2102': '756.00',
 };
 
 describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)', () => {
@@ -102,7 +99,6 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
   const installmentSchedules = Array.from({ length: 12 }, (_, i) => ({
     installmentNo: i + 1,
-    ...notAccrued,
   }));
 
   // ── Fresh contract row inside the tx (the SELECT-narrowed version) ──────────
@@ -167,9 +163,10 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
   // C1 (2026-07-30): options to shape the releaseEclOnPayoff (ECL release on
   // JP4) fixture — default is "no prior 11-2102 balance, no ACTIVE row".
+  // `provision` = ยอด 11-2102 (ด้าน Cr) ของสัญญา
   const buildService = (
     contractOverride?: Partial<typeof quoteContract>,
-    eclOpts?: { journalLines?: Array<{ debit: string; credit: string }>; activeRow?: { agingBucket: string } | null },
+    eclOpts?: { provision?: string; activeRow?: { agingBucket: string } | null },
   ) => {
     const contract = { ...quoteContract, ...contractOverride };
 
@@ -181,13 +178,14 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     generateReceipt = jest.fn().mockResolvedValue(undefined);
     eclExecute = jest.fn().mockResolvedValue({ entryNo: 'JE-ECL-1' });
 
-    // releaseEclOnPayoff (C1) reads journalLine (via glContractBalance) +
-    // badDebtProvision. Default fixture: no prior 11-2102 balance, no ACTIVE row.
-    const jlRows = (eclOpts?.journalLines ?? []).map((l) => ({
-      debit: new Prisma.Decimal(l.debit),
-      credit: new Prisma.Decimal(l.credit),
-    }));
-    journalLineFindMany = jest.fn().mockResolvedValue(jlRows);
+    // JP4 (PR5 — ยอดลูกหนี้ของสัญญา) + releaseEclOnPayoff (C1 — 11-2102) read journalLine
+    // (via glContractBalance) + badDebtProvision. Default fixture: no prior 11-2102 balance, no ACTIVE row.
+    journalLineFindMany = jest.fn(
+      ledgerLines({
+        ...LEDGER_AFTER_SIX_PAID,
+        ...(eclOpts?.provision ? { '11-2102': eclOpts.provision } : {}),
+      }),
+    );
     badDebtProvisionFindFirst = jest
       .fn()
       .mockResolvedValue(eclOpts?.activeRow === undefined ? null : eclOpts.activeRow);
@@ -210,7 +208,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
           return Promise.resolve({ id: args.where.id, ...args.data });
         }),
       },
-      // releaseEclOnPayoff (C1) — glContractBalance reads journalLine.
+      // JP4 (PR5) + releaseEclOnPayoff (C1) — glContractBalance reads journalLine.
       journalLine: { findMany: journalLineFindMany },
       badDebtProvision: {
         findFirst: badDebtProvisionFindFirst,
@@ -223,6 +221,8 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       contract: { findUnique: jest.fn().mockResolvedValue(contract) },
       installmentSchedule: { findMany: jest.fn().mockResolvedValue(installmentSchedules) },
       chartOfAccount: { findMany: jest.fn().mockResolvedValue([]) },
+      // getEarlyPayoffQuote (preview) อ่านยอดในบัญชีชุดเดียวกับที่ลงจริง
+      journalLine: { findMany: journalLineFindMany },
       // resolveFinanceCompanyId + resolveShopCompanyId
       companyInfo: {
         findFirst: jest.fn().mockImplementation((args: { where: { companyCode: string } }) => {
@@ -308,11 +308,11 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
 
     // Pin the exact computed per-line amounts (golden).
-    expect(lineFor(je, '11-1201')!.dr.toFixed(2)).toBe('11106.00'); // epSettlement
-    expect(lineFor(je, '11-2106')!.dr.toFixed(2)).toBe('900.00'); // remaining deferred interest
-    expect(lineFor(je, '21-2102')!.dr.toFixed(2)).toBe('756.00'); // remaining deferred VAT
-    expect(lineFor(je, '52-1106')!.dr.toFixed(2)).toBe('450.00'); // discount
-    expect(lineFor(je, '11-2101')!.cr.toFixed(2)).toBe('10800.00'); // remaining gross
+    expect(lineFor(je, '11-1201')!.dr.toFixed(2)).toBe('11106.00'); // เงินที่รับ = quote.totalPayoff
+    expect(lineFor(je, '11-2106')!.dr.toFixed(2)).toBe('900.00'); // 11-2106 ในบัญชี
+    expect(lineFor(je, '21-2102')!.dr.toFixed(2)).toBe('756.00'); // 21-2102 ในบัญชี
+    expect(lineFor(je, '52-1106')!.dr.toFixed(2)).toBe('450.00'); // ลูกหนี้ตามบัญชี − เงินที่รับ
+    expect(lineFor(je, '11-2101')!.cr.toFixed(2)).toBe('10800.00'); // 11-2101 ในบัญชี
     expect(lineFor(je, '11-2105')!.cr.toFixed(2)).toBe('756.00');
     expect(lineFor(je, '41-1101')!.cr.toFixed(2)).toBe('900.00');
     expect(lineFor(je, '21-2101')!.cr.toFixed(2)).toBe('756.00');
@@ -326,6 +326,20 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(je.metadata.discount).toBe('450.00');
     expect(je.metadata.interestDiscountPercent).toBe(50);
     expect(je.reference).toBe(`${quoteContract.id}:early-payoff`);
+    // PR5: ฐานของรายการ (เงินที่รับ · ลูกหนี้ตามบัญชีที่ล้าง · ส่วนลดของสูตรยอดปิด) — ไม่มีเงินพัก / เครดิต / เศษ
+    expect(je.metadata).toMatchObject({
+      cashReceived: '11106.00',
+      receivableCleared: '11556.00',
+      quoteDiscountAmount: '450.00',
+    });
+    for (const key of [
+      'parkRelief',
+      'creditRelief',
+      'roundingGain',
+      'discountBeyondDeferredBase',
+    ]) {
+      expect(je.metadata[key]).toBeUndefined();
+    }
   });
 
   // (b2) backdate fix 2026-07-09: JE entryDate follows dto.paymentDate ────────
@@ -362,24 +376,22 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(createAndPost).not.toHaveBeenCalled();
   });
 
-  // (c) discount uses .div(100) and matches the quote preview's 52-1106 line ──
-  it('(c) discount = .div(100) path and equals the quote preview 52-1106 for the same discountPct', async () => {
+  // (c) the posted 52-1106 matches the quote preview's 52-1106 line ──────────
+  it('(c) 52-1106 ของรายการที่ลง = ของ preview สำหรับ discountPct เดียวกัน (percentage form 50)', async () => {
     // Quote preview (read path) — feed the SAME chartOfAccount mock so names resolve.
     const quote = await service.getEarlyPayoffQuote(quoteContract.id);
     const previewDiscount = quote.journalPreview.lines.find((l) => l.accountCode === '52-1106')!.debit;
     expect(previewDiscount).toBe('450.00');
     expect(quote.discountPct).toBe(50); // percentage form returned to callers
 
-    // Exec path JE discount (uses quote.discountPct=50 then .div(100)).
+    // Exec path JE discount (same buildEarlyPayoffJournal as the preview).
     await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
     const je = getCapturedJe();
     const execDiscount = lineFor(je, '52-1106')!.dr.toFixed(2);
 
-    // The two paths agree to the satang — LOCKED so they cannot drift by 100×.
+    // The two paths agree to the satang.
     expect(execDiscount).toBe('450.00');
     expect(execDiscount).toBe(previewDiscount);
-    // If the .div(100) were ever dropped, this would become 22500.00 (50× the
-    // fraction-based preview) — that regression would fail this assertion.
   });
 
   // (d) contract -> EARLY_PAYOFF + creditBalance 0 + transferOwnership(null) ──
@@ -413,7 +425,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     it('(g1) 11-2102 balance 30.32 → EclStageReverse called with reverseAmount 30.32, fromBucket from the ACTIVE row, toBucket CURRENT; rows flip REVERSED', async () => {
       buildService(undefined, {
         // Dr 0 / Cr 30.32 on 11-2102 → glContractBalance(side='cr') = 30.32.
-        journalLines: [{ debit: '0', credit: '30.32' }],
+        provision: '30.32',
         activeRow: { agingBucket: '1-30' },
       });
 
@@ -436,7 +448,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
     it('(g2) zero 11-2102 balance → EclStageReverse NOT called, but ACTIVE rows still flip REVERSED', async () => {
       buildService(undefined, {
-        journalLines: [], // no prior 11-2102 lines → bal 0
+        // no prior 11-2102 lines → bal 0
         activeRow: null,
       });
 
@@ -451,7 +463,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
     it('(g3) no ACTIVE row on file → falls back to fromBucket "CURRENT"', async () => {
       buildService(undefined, {
-        journalLines: [{ debit: '0', credit: '15.00' }],
+        provision: '15.00',
         activeRow: null, // no ACTIVE row (e.g. row already reversed by a prior cron run)
       });
 
@@ -465,53 +477,41 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
   });
 
   // (e) discount = 0 path — PREVIEW and EXEC both omit 52-1106 (CONVERGED) ────
-  //
-  // Post-unification (computeEarlyPayoffJE): both the preview READ path and the
-  // EXEC posting path guard the 52-1106 line, so a zero discount drops the line
-  // from BOTH. Previously the EXEC JE pushed all 8 lines unconditionally and
-  // carried a no-op `52-1106` dr 0.00 line — that benign divergence is now
-  // fixed. 'preview === posted' holds with no exceptions.
+  // ส่วนลด 0% → ลูกค้าจ่ายเท่าลูกหนี้ตามบัญชี (11,556.00) → ส่วนที่เหลือให้สมดุล = 0 → ไม่มีบรรทัด 52-1106 ทั้งสองทาง
+  // · 'preview === posted' holds with no exceptions.
   it('(e) discount 0 — PREVIEW and EXEC both omit 52-1106 (7 lines · converged)', async () => {
-    // Zero-interest contract: interestTotal 0 → remainingDeferredInterest 0
-    // → discount 0. (gross = financed + commission + 0 = 19800; vat 1512.)
-    const zeroInterestContract = {
-      ...quoteContract,
-      interestTotal: dec('0'),
-    };
-    buildService(zeroInterestContract);
-    // epContract row must reflect interestTotal 0 for the JE math.
-    tx.contract.findUniqueOrThrow.mockResolvedValue({ ...epContractRow, interestTotal: dec('0') });
+    const dto0: EarlyPayoffDto = { paymentMethod: 'CASH', discountPct: 0 };
 
     // READ path: the preview DROPS the discount line (7 lines).
-    const quote = await service.getEarlyPayoffQuote(quoteContract.id);
+    const quote = await service.getEarlyPayoffQuote(quoteContract.id, 0);
+    expect(quote.totalPayoff).toBe(11556);
     expect(quote.journalPreview.lines.find((l) => l.accountCode === '52-1106')).toBeUndefined();
     expect(quote.journalPreview.lines).toHaveLength(7);
 
-    // WRITE path: the posted JE now ALSO drops the discount line (7 lines).
-    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
+    // WRITE path: the posted JE ALSO drops the discount line (7 lines).
+    await approvedEarlyPayoff(service, quoteContract.id, 'user-1', dto0);
     const je = getCapturedJe();
     expect(je.lines.find((l) => l.accountCode === '52-1106')).toBeUndefined();
     expect(je.lines).toHaveLength(7);
 
-    // Preview and posting now carry the SAME codes in the SAME order.
-    expect(je.lines.map((l) => l.accountCode)).toEqual(
-      quote.journalPreview.lines.map((l) => l.accountCode),
+    // Preview and posting carry the SAME lines in the SAME order.
+    expect(je.lines.map((l) => `${l.accountCode}:${l.dr.toFixed(2)}:${l.cr.toFixed(2)}`)).toEqual(
+      quote.journalPreview.lines.map((l) => `${l.accountCode}:${l.debit}:${l.credit}`),
     );
 
-    // Still balanced.
+    // Still balanced · ดอกเบี้ยที่ยังไม่รับรู้ล้างตามบัญชีทั้งก้อน
     const totalDr = je.lines.reduce((s, l) => s.plus(l.dr), new Prisma.Decimal(0));
     const totalCr = je.lines.reduce((s, l) => s.plus(l.cr), new Prisma.Decimal(0));
     expect(totalDr.toFixed(2)).toBe(totalCr.toFixed(2));
-    // No interest deferred → 11-2106 / 41-1101 are 0.00.
-    expect(lineFor(je, '11-2106')!.dr.toFixed(2)).toBe('0.00');
-    expect(lineFor(je, '41-1101')!.cr.toFixed(2)).toBe('0.00');
+    expect(lineFor(je, '11-2106')!.dr.toFixed(2)).toBe('900.00');
+    expect(lineFor(je, '41-1101')!.cr.toFixed(2)).toBe('900.00');
     expect(je.metadata.discount).toBe('0.00');
   });
 
   // (f) the 50% clamp ────────────────────────────────────────────────────────
   it('(f) clamps discountPct to a max of 50% even when the caller asks for more', async () => {
     // dto.discountPct = 80 → getEarlyPayoffQuote clamps to min(50, 80) = 50,
-    // returns discountPct 50 → exec JE discount = 900 × 50/100 = 450.00.
+    // returns discountPct 50 → ลูกค้าจ่าย 11,106 → 52-1106 = 11,556 − 11,106 = 450.00.
     await approvedEarlyPayoff(service, quoteContract.id, 'user-1', { paymentMethod: 'CASH', discountPct: 80 });
     const je = getCapturedJe();
     expect(je.metadata.interestDiscountPercent).toBe(50);
@@ -520,9 +520,8 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
   });
 
   it('(f2) clamps a negative discountPct up to 0% — EXEC JE omits 52-1106 (7 lines)', async () => {
-    // Math.max(0, Math.min(50, -10)) = 0 → quote discountPct 0 → discount
-    // = 900 × 0/100 = 0. The EXEC JE now guards the 52-1106 line (converged
-    // with the preview — see (e)).
+    // Math.max(0, Math.min(50, -10)) = 0 → quote discountPct 0 → ลูกค้าจ่าย 11,556 =
+    // ลูกหนี้ตามบัญชี → ไม่มีบรรทัด 52-1106 (converged with the preview — see (e)).
     await approvedEarlyPayoff(service, quoteContract.id, 'user-1', { paymentMethod: 'CASH', discountPct: -10 });
     const je = getCapturedJe();
     expect(je.metadata.interestDiscountPercent).toBe(0);
@@ -530,14 +529,10 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     expect(je.lines).toHaveLength(7);
   });
 
-  // ── CHARACTERIZATION of the documented quote-vs-JE cash divergence ─────────
-  // ACCOUNTANT NOTE (contract-payment.service.ts ~lines 361-367): the JE cash
-  // debit (epSettlement) is built from the per-installment deferred-interest
-  // breakdown, while the cash the customer is QUOTED (quote.totalPayoff) nets
-  // out creditBalance/advance and discounts GROSS PROFIT. The two bases can
-  // diverge. In THIS clean fixture they happen to coincide; we pin both so any
-  // future divergence surfaces here.
-  it('characterizes the quote-cash vs JE-cash bases (coincide in this clean fixture)', async () => {
+  // ── PR5 (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.3): เงินสดในรายการ = เงินที่รับจริง ─────────────────────
+  // ก่อน PR5 ขาเงินสดคิดจากงวด × ยอดต่องวด (ACCOUNTANT NOTE Wave-1 #11) และต่างจากยอดที่ลูกค้าจ่ายได้ —
+  // ตั้งแต่ PR5 ขาเงินสด = quote.totalPayoff = ยอดที่กระจายเข้าแถว Payment เสมอ
+  it('PR5: เงินสดในรายการ = quote.totalPayoff = ยอดที่กระจายเข้าแถว Payment (11,106.00)', async () => {
     const quote = await service.getEarlyPayoffQuote(quoteContract.id);
     const result = await approvedEarlyPayoff(service, quoteContract.id, 'user-1', baseDto);
     const je = getCapturedJe();
@@ -550,10 +545,8 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       .reduce((s, u) => s.plus(u.data.amountPaid as Prisma.Decimal), new Prisma.Decimal(0))
       .toFixed(2);
     expect(fifoTotal).toBe('11106.00');
-    // JE cash debit (deferred-interest basis).
+    // JE cash debit = เงินที่รับจริง
     expect(jeCash).toBe('11106.00');
-    // In this fixture: quote cash === FIFO cash === JE cash. (See bugFound for
-    // the documented basis-divergence risk that does NOT manifest here.)
     expect(result.totalPayoff).toBe(11106);
   });
 
@@ -606,6 +599,9 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       rows[0] = { ...rows[0], status: 'OVERDUE', lateFee: dec('300') };
       return rows;
     };
+    // ยอดปิดของลูกค้า (quote) บวกค่าปรับดิบของแถวเดียวกัน — ให้แถวของ quote ตรงกับแถวใน tx
+    const quotePaymentsWith = (row7: Record<string, unknown>) =>
+      quoteContract.payments.map((p) => (p.installmentNo === 7 ? { ...p, ...row7 } : p));
     const mockSchedules = () => {
       tx.installmentSchedule = {
         findMany: jest.fn().mockResolvedValue(
@@ -615,6 +611,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     };
 
     it('books Cr 42-1103 = full fee + grosses the cash Dr when nothing was booked before', async () => {
+      buildService({ payments: quotePaymentsWith({ status: 'OVERDUE', lateFee: dec('300') }) });
       tx.payment.findMany.mockResolvedValue(withFeeRows());
       mockSchedules();
       tx.journalEntry = { findMany: jest.fn().mockResolvedValue([]) };
@@ -623,13 +620,19 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
 
       const je = getCapturedJe();
       expect(lineFor(je, '42-1103')?.cr.toFixed(2)).toBe('300.00');
-      // settlement 11106.00 (18K golden @50%) + fee 300 = Dr cash 11406.00
+      // ลูกค้าจ่าย 11,106.00 + ค่าปรับ 300 = Dr cash 11,406.00 · ค่าปรับไม่ร่วมส่วนลด (52-1106 ยัง 450.00)
       expect(lineFor(je, '11-1201')?.dr.toFixed(2)).toBe('11406.00');
+      expect(lineFor(je, '52-1106')?.dr.toFixed(2)).toBe('450.00');
       expect(je.metadata.lateFees).toBe('300.00');
     });
 
     it('NETS against Cr 42-1103 already booked by a prior FEE-FIRST partial receipt (no double-book)', async () => {
-      tx.payment.findMany.mockResolvedValue(withFeeRows());
+      // ใบรับชำระบางส่วน 120 ของงวด 7 ไปหักค่าปรับก่อน (FEE-FIRST) — แถวงวดเป็น PARTIALLY_PAID 120
+      const partialFee = { status: 'PARTIALLY_PAID', amountPaid: dec('120'), lateFee: dec('300') };
+      buildService({ payments: quotePaymentsWith(partialFee) });
+      tx.payment.findMany.mockResolvedValue(
+        withFeeRows().map((r) => (r.installmentNo === 7 ? { ...r, ...partialFee } : r)),
+      );
       mockSchedules();
       // ใบเสร็จ partial เดิมบน inst 7 เคยลงรายได้ค่าปรับไปแล้ว 120 จาก 300
       tx.journalEntry = {
@@ -646,7 +649,10 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
       const je = getCapturedJe();
       // เหลือลงได้แค่ 300 − 120 = 180 — ห้าม Cr 42-1103 ซ้ำยอดที่ลงแล้ว
       expect(lineFor(je, '42-1103')?.cr.toFixed(2)).toBe('180.00');
-      expect(lineFor(je, '11-1201')?.dr.toFixed(2)).toBe('11286.00'); // 11106 + 180
+      // เงินที่รับ = ยอดปิด (11,556 − 120) − ส่วนลด 393.92 + ค่าปรับดิบ 300 = 11,342.08
+      expect(lineFor(je, '11-1201')?.dr.toFixed(2)).toBe('11342.08');
+      // 52-1106 = 11,556 + 180 − 11,342.08 = 393.92 = ส่วนลดของสูตรยอดปิดพอดี
+      expect(lineFor(je, '52-1106')?.dr.toFixed(2)).toBe('393.92');
       expect(je.metadata.lateFees).toBe('180.00');
       // JE ยัง balanced
       const dr = je.lines.reduce((s, l) => s.plus(l.dr), new Prisma.Decimal(0));
@@ -655,6 +661,7 @@ describe('ContractPaymentService.earlyPayoff (EXECUTION / money-posting golden)'
     });
 
     it('waived fee is excluded entirely (no 42-1103 line)', async () => {
+      buildService({ payments: quotePaymentsWith({ lateFee: dec('300'), lateFeeWaived: true }) });
       const rows = withFeeRows();
       rows[0] = { ...rows[0], lateFeeWaived: true };
       tx.payment.findMany.mockResolvedValue(rows);

@@ -91,3 +91,9 @@ After the heading-selector correction in `68cb3ecc1`, complete letters/collectio
 - Visual samples checked: long expense voucher first/last pages, final-installment zero-balance receipt, withholding certificate and all three 50x30 sticker pages. This is sample visual review plus automated artifact checks; physical EPSON, native print dialog and GCS/staging acceptance remain unverified.
 
 No schema or migration changes. Production read-only checks do not authorize release, and local document tests do not resolve the pending CPA receipt policy.
+
+## Handoff verification
+
+Final frozen `npm run local:check` passed all 22 checks at **2026-10-04T04:40:08.415Z** (11:40 Bangkok). The recorded source fingerprint equals the current checkout after `68cb3ecc1` and the documentation commit; subsequent edits are documentation only. Log: `local-check-final-frozen.log`. Preview remains running at http://localhost:5211/inbox with synthetic data/AI.
+
+Earlier local-check attempts interrupted by necessary test edits correctly failed their fingerprint guard and do not certify handoff. API/money tests were run before the final test-selector-only changes; the affected document browser suites were rerun completely. No remaining local test failure is concealed by the combined document report.

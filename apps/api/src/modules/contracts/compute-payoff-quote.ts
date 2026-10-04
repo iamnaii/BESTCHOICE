@@ -24,6 +24,12 @@ export interface PayoffQuoteInput {
    * Optional — omit หรือ undefined = 0 (ค่าเดิม ไม่กระทบ caller ที่ยังไม่ส่งมา).
    */
   rescheduleAdvanceBalance?: DecimalInput;
+  /**
+   * เงินรับล่วงหน้าถังรวม (Contract.advanceBalance — 21-1103) — เงินที่ลูกค้าจ่ายเกินงวดก่อน รอหักงวดถัดไป.
+   * เจ้าของเคาะ 01/10/2569 (PR5ข): ปิดสัญญาก่อนกำหนด/ยึดคืน หักแบบเดียวกับเงินพักค่าปรับดิว — หักจากยอดค้าง
+   * ก่อนคิดส่วนลด และลดต้นทุนตามสัดส่วนงวดที่เงินครอบ. Optional — omit = 0 (ค่าเดิม).
+   */
+  advanceBalance?: DecimalInput;
   /** สัดส่วน VAT เช่น 0.07 (0 หรือ null = ไม่มี VAT) */
   vatPct: DecimalInput;
   sellingPrice: DecimalInput;
@@ -62,6 +68,13 @@ export interface PayoffQuoteResult {
    * ลดลงเท่ากัน ยอด Dr รวมเท่าเดิม ทุกขา Cr ไม่ขยับ.
    */
   rescheduleAdvanceApplied: number;
+  /**
+   * ส่วนของเงินรับล่วงหน้าถังรวม (`advanceBalance`) ที่ถูกหักออกจากยอดค้างในการปิดสัญญานี้ (PR5ข — เจ้าของเคาะ
+   * 01/10/2569 "หักแบบเดียวกับเงินพักค่าปรับดิว") = ยอดถังรวมเต็มจำนวน clamp ไม่ให้เกินยอดค้างที่เหลือหลังหักยอดชำระ
+   * ล่วงหน้าและเงินพัก (เงินพักหักก่อน ⇒ `rescheduleAdvanceApplied` เท่าเดิมทุกกรณี). ส่วนที่ยอดค้างรับไม่หมดคงค้าง
+   * ในถังรวม. JP4 ใช้ค่านี้เป็นบรรทัด Dr 21-1103 ของถังรวม (แยกจากบรรทัดเงินพัก) · JP5 ล้าง 21-1103 ทั้งยอดในบัญชีอยู่แล้ว.
+   */
+  advanceBalanceApplied: number;
 }
 
 /**
@@ -74,19 +87,20 @@ export interface PayoffQuoteResult {
  * Owner rule 2026-07-20: ยอดปิดสัญญาตอนยึดคืนต้องเท่ากับยอดปิดสัญญาก่อนกำหนด
  * ของสัญญาเดียวกัน/ส่วนลดเดียวกันเสมอ — ห้าม copy สูตรนี้ไปแก้เฉพาะที่
  *
- * Logic (คำสั่งเจ้าของ 2026-09-23 — ค่าปรับดิวที่พักไว้ "ต้องนำไปหักก่อน"):
+ * Logic (คำสั่งเจ้าของ 2026-09-23 — ค่าปรับดิวที่พักไว้ "ต้องนำไปหักก่อน" · 01/10/2569 — ถังรวมหักแบบเดียวกัน):
  *   (1) รวมค้างชำระ      = ค่างวด × งวดคงเหลือ (รวม VAT)
  *   (2) ยอดชำระล่วงหน้า  = creditBalance + Σ amountPaid ของงวด PARTIALLY_PAID
  *   (2b) ค่าปรับดิวพัก   = min(rescheduleAdvanceBalance, (1) − (2)) — หักเต็มจำนวน
- *   (3) คงเหลือยอดค้าง   = (1) - (2) - (2b)
+ *   (2c) ถังรวม          = min(advanceBalance, (1) − (2) − (2b)) — หักเต็มจำนวน (PR5ข · เงินพักหักก่อน)
+ *   (3) คงเหลือยอดค้าง   = (1) - (2) - (2b) - (2c)
  *   (4) ค่างวดไม่รวม VAT = (3) ÷ (1 + vatPct)
  *   (5) ต้นทุนยอดค้าง    = ((sellingPrice - downPayment) + storeCommission) ÷ totalMonths × งวดคงเหลือสุทธิ
- *                          งวดคงเหลือสุทธิ = งวดคงเหลือ − (2b) ÷ ค่างวด
+ *                          งวดคงเหลือสุทธิ = งวดคงเหลือ − ((2b) + (2c)) ÷ ค่างวด
  *                          (ยอดจัดจริง + ค่าคอมที่ FINANCE จ่ายให้ SHOP, เฉลี่ยต่องวด —
  *                          ห้ามใช้ contract.financedAmount: field นั้นเก็บยอดรวมที่ลูกค้าต้องจ่าย
  *                          · ค่าปรับดิวพัก = เงินจ่ายงวดล่วงหน้า (CPA CSV 6a/6b) จึงลดต้นทุน
  *                          ตามสัดส่วนงวดเหมือนงวดที่จ่ายแล้ว — ตารางเจ้าของ "ต้นทุน 45%"
- *                          = ต้นทุนต่อบาทของยอดค้างเท่าเดิมทั้งก่อน/หลังหัก)
+ *                          = ต้นทุนต่อบาทของยอดค้างเท่าเดิมทั้งก่อน/หลังหัก · ถังรวมแบบเดียวกัน)
  *   (6) กำไรขั้นต้น      = (4) - (5)
  *   (7) ส่วนลด           = (6) × discountPct, ปัดลง (ROUND_DOWN — เข้าข้าง FINANCE, owner 2026-07-02)
  *   (8) ยอดชำระปิดยอด    = max(0, (3) - (7)) + ค่าปรับค้างชำระ
@@ -96,6 +110,8 @@ export interface PayoffQuoteResult {
  * เป็นบรรทัดท้ายสุด ไม่ลดฐานส่วนลด) — เจ้าของสั่งเปลี่ยน 2026-09-23 ให้หักก่อน
  * ตามตารางที่ส่งมา (สัญญาจริง 3,671 × 7 งวด พัก 1,714 → 18,135.85 ไม่ใช่ 17,717.97).
  * ถังพักยังถูกใช้เต็มจำนวนเหมือนเดิม (ไม่มีเศษค้าง) — ต่างกันเฉพาะฐานส่วนลด.
+ * 01/10/2569 (PR5ข): เงินรับล่วงหน้าถังรวมเดิมไม่ถูกหัก (ลูกค้าจ่ายเต็ม · เงินค้างเป็นของลูกค้าหลังปิดสัญญา) — เจ้าของเคาะ
+ * "หักแบบเดียวกับเงินพักค่าปรับดิว" (17,000/12 · เครดิต 300 + ถังรวม 500 · ลด 50%: 15,030.17 → 14,612.63).
  */
 export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
   const round2 = (v: Prisma.Decimal) => dRound(v).toNumber();
@@ -107,8 +123,7 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
   // (2) ยอดชำระล่วงหน้า / partial credit
   // + พักงวดสุดท้าย (rescheduleAdvanceBalance) — ลูกค้าไม่มีงวดสุดท้ายให้หักแล้ว
   // (ปิดก่อนกำหนด/ยึดคืน) จึงคืนเป็นเครดิตหักยอดปิดสัญญาเหมือน creditBalance
-  // (คำสั่งเจ้าของ 2026-08-16). ไม่แตะ Contract.advanceBalance ทั่วไป — จุดนั้นเป็น
-  // gap เดิมที่แยกออกจากงานนี้ (ดูรายงาน readers table).
+  // (คำสั่งเจ้าของ 2026-08-16). Contract.advanceBalance (ถังรวม) หักใน (2c) — PR5ข.
   const partialPaid = dSum(
     input.payments.filter((p) => p.status === 'PARTIALLY_PAID').map((p) => d(p.amountPaid)),
   );
@@ -126,21 +141,29 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
     Prisma.Decimal.min(dRound(d(input.rescheduleAdvanceBalance ?? 0)), balanceBeforePark),
   ).toNumber();
 
-  // (3) คงเหลือยอดค้าง — คำสั่งเจ้าของ 2026-09-23: ค่าปรับดิว "ต้องนำไปหักก่อน"
+  // (2c) เงินรับล่วงหน้าถังรวม — เจ้าของเคาะ 01/10/2569 (PR5ข) "หักแบบเดียวกับเงินพักค่าปรับดิว": หักเต็มจำนวน
+  // clamp ไม่เกินยอดค้างที่เหลือหลังหักเงินพัก (เงินพักหักก่อน ⇒ rescheduleAdvanceApplied เท่าเดิมทุกกรณี · ส่วนเกิน
+  // คงค้างในถังรวม / 21-1103 · JP4 หักเท่าที่ยอดนี้ดูดซับ clamp ด้วยคอลัมน์และยอดในบัญชีอีกชั้น)
+  const balanceAfterPark = dSub(balanceBeforePark, rescheduleAdvanceApplied);
+  const advanceBalanceApplied = Prisma.Decimal.max(
+    0,
+    Prisma.Decimal.min(dRound(d(input.advanceBalance ?? 0)), balanceAfterPark),
+  ).toNumber();
+
+  // (3) คงเหลือยอดค้าง — คำสั่งเจ้าของ 2026-09-23: ค่าปรับดิว "ต้องนำไปหักก่อน" (ถังรวมเช่นเดียวกัน — PR5ข)
   // ทุกบรรทัดถัดจากนี้ (ex-VAT / ต้นทุน / กำไร / ส่วนลด) คิดจากยอดหลังหักแล้ว
-  const remainingBalance = round2(dSub(balanceBeforePark, rescheduleAdvanceApplied));
+  const remainingBalance = round2(dSub(balanceAfterPark, advanceBalanceApplied));
 
   // (5) ต้นทุนยอดค้าง = ยอดจัดจริง + commission เฉลี่ยต่องวด × งวดคงเหลือสุทธิ
   // ค่าปรับดิวพัก = เงินจ่ายงวดล่วงหน้า (CPA CSV 6a/6b) ⇒ นับเป็นเศษงวดที่จ่ายแล้ว
   // (1,714 ÷ 3,671 = 0.467 งวด) ลดต้นทุนตามสัดส่วนเหมือนงวด PAID — ตรงตาราง
-  // เจ้าของที่ "ต้นทุน 45%" ของยอดค้างคงที่ทั้งก่อน/หลังหัก. เครดิตทั่วไป
+  // เจ้าของที่ "ต้นทุน 45%" ของยอดค้างคงที่ทั้งก่อน/หลังหัก · ถังรวมลดต้นทุนแบบเดียวกัน (PR5ข). เครดิตทั่วไป
   // (advancePayment) ยังไม่ลดต้นทุนเหมือนเดิม — ไม่อยู่ในคำสั่งนี้
   const truePrincipal = dSub(input.sellingPrice, input.downPayment);
   const financeCost = dAdd(truePrincipal, d(input.storeCommission));
+  const prepaidApplied = dAdd(rescheduleAdvanceApplied, advanceBalanceApplied);
   const parkMonths =
-    rescheduleAdvanceApplied > 0 && monthlyPayment.gt(0)
-      ? dDiv(rescheduleAdvanceApplied, monthlyPayment)
-      : d(0);
+    prepaidApplied.gt(0) && monthlyPayment.gt(0) ? dDiv(prepaidApplied, monthlyPayment) : d(0);
   const netRemainingMonths = Prisma.Decimal.max(0, dSub(input.remainingMonths, parkMonths));
   const remainingCost = round2(dMul(dDiv(financeCost, input.totalMonths), netRemainingMonths));
 
@@ -184,5 +207,6 @@ export function computePayoffQuote(input: PayoffQuoteInput): PayoffQuoteResult {
     payoffBeforeLateFees,
     totalPayoff,
     rescheduleAdvanceApplied,
+    advanceBalanceApplied,
   };
 }

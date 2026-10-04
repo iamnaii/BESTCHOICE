@@ -67,6 +67,10 @@ export async function checkInboxLayout(browser, origin, output) {
           await input.fill('');
           if (mode === 'chat') {
             await input.press('Tab');
+            const microphone = page.getByRole('button', { name: 'พูดเป็นข้อความ', exact: true });
+            await expect(microphone).toBeFocused();
+            await expect(microphone).toHaveCSS('outline-style', 'solid');
+            await page.keyboard.press('Tab');
             const attachment = page.getByRole('button', { name: 'แนบไฟล์', exact: true });
             await expect(attachment).toBeFocused();
             await expect(attachment).toHaveCSS('outline-style', 'solid');

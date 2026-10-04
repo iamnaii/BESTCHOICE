@@ -1,40 +1,36 @@
+import { getMenuConfig, type MenuItem } from '@/config/menu';
 import { NAV_LABELS } from '@/config/work-navigation';
 
-/**
- * ชื่อหน้าใน breadcrumb ของแถบบน (TopBar) — exact match ก่อน แล้วค่อย prefix
- * หน้ารายละเอียดสินค้าอยู่ที่ `/products/:id` (route เดิม) แต่เมนูคือ "สต็อก" — ไม่ใส่ไว้ก็จะโชว์ UUID
- */
+/** Exceptions for routes without a navigable menu item. */
 export const PAGE_TITLE_MAP: Record<string, string> = {
   '/': NAV_LABELS.home,
-  '/pos': NAV_LABELS.sales,
-  '/customers': 'ลูกค้า',
-  '/contracts': NAV_LABELS.contracts,
-  '/payments': NAV_LABELS.payments,
-  '/stock': NAV_LABELS.stock,
   '/products': NAV_LABELS.stock,
-  '/inbox': NAV_LABELS.chat,
-  '/credit-checks': 'ตรวจเครดิต',
-  '/shop/daily-cash': 'สรุปเงินรายวัน',
-  '/overdue': 'ค้างชำระ',
   '/settings': 'ตั้งค่า',
-  '/users': 'ผู้ใช้',
-  '/branches': 'สาขา',
-  '/suppliers': 'ผู้จำหน่าย',
-  '/commissions': 'คอมมิชชัน',
-  '/receipts': 'ใบเสร็จ',
-  '/audit-logs': 'Audit Logs',
-  '/notifications': 'แจ้งเตือน',
-  // M7 — หลังการขาย: prefix ครอบหน้าเคส (/after-sales/:id — ไม่งั้นโชว์ UUID) · หน้าแจ้งใหม่ exact match
-  '/after-sales': 'หลังการขาย',
   '/after-sales/new': 'แจ้งปัญหาเครื่อง',
 };
 
+const normalizePath = (path: string) => path.split(/[?#]/)[0].replace(/\/+$/, '') || '/';
+const menuTitles: Record<string, string> = {};
+function addMenuItem(item: MenuItem) {
+  if (item.children?.length) {
+    item.children.forEach(addMenuItem);
+    return;
+  }
+  const path = normalizePath(item.path);
+  if (path.startsWith('/') && !menuTitles[path]) menuTitles[path] = item.label;
+}
+// The function's public interface has no role. Use stable OWNER-first labels
+// for duplicate paths while including routes available only to another role.
+for (const role of ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES', 'VIEWER']) {
+  getMenuConfig(role).sidebar.forEach(section => section.items.forEach(addMenuItem));
+}
+const titles = { ...menuTitles, ...PAGE_TITLE_MAP };
+const prefixes = Object.keys(titles).filter(path => path !== '/').sort((a, b) => b.length - a.length);
+
 export function resolvePageTitle(pathname: string): string {
-  const exactMatch = PAGE_TITLE_MAP[pathname];
-  if (exactMatch) return exactMatch;
-  const prefix = Object.keys(PAGE_TITLE_MAP).find(
-    (k) => k !== '/' && (pathname === k || pathname.startsWith(`${k}/`)),
-  );
-  if (prefix) return PAGE_TITLE_MAP[prefix];
-  return pathname.split('/').filter(Boolean).pop()?.replace(/-/g, ' ') || 'Dashboard';
+  const path = normalizePath(pathname);
+  if (titles[path]) return titles[path];
+  const prefix = prefixes.find(candidate => path.startsWith(`${candidate}/`));
+  if (prefix) return titles[prefix];
+  return path.split('/').filter(Boolean).pop()?.replace(/-/g, ' ') || 'Dashboard';
 }

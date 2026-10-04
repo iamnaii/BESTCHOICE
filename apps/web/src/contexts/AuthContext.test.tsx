@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Routes, Route } from 'react-router';
+import ProtectedRoute from '@/components/ProtectedRoute';
 import { AuthProvider, useAuth } from './AuthContext';
 
 // ── Sentry mock ──────────────────────────────────────────────
@@ -22,6 +24,7 @@ vi.mock('@/lib/api', () => ({
   },
   setAccessToken: (...args: unknown[]) => setAccessTokenMock(...args),
   getAccessToken: (...args: unknown[]) => getAccessTokenMock(...args),
+  cancelPendingRefresh: vi.fn(),
 }));
 
 // ── Harness component that exposes the context to tests ────
@@ -344,4 +347,20 @@ describe('<AuthProvider />', () => {
       spy.mockRestore();
     });
   });
+});
+
+
+it('shows a recoverable connection error at bootstrap instead of redirecting or exposing protected content', async () => {
+  apiGetMock.mockRejectedValueOnce({ response: { status: 429 } });
+  const user = userEvent.setup();
+  render(<MemoryRouter initialEntries={['/private']}><AuthProvider><Routes>
+    <Route path="/private" element={<ProtectedRoute><div>ข้อมูลที่ต้องตรวจสิทธิ์</div></ProtectedRoute>} />
+    <Route path="/login" element={<div>หน้าเข้าสู่ระบบ</div>} />
+  </Routes></AuthProvider></MemoryRouter>);
+  const retry = await screen.findByRole('button', { name: 'ลองเชื่อมต่อใหม่' });
+  expect(screen.queryByText('หน้าเข้าสู่ระบบ')).not.toBeInTheDocument();
+  expect(screen.queryByText('ข้อมูลที่ต้องตรวจสิทธิ์')).not.toBeInTheDocument();
+  apiGetMock.mockResolvedValueOnce({ data: { id: 'retry-user', name: 'ทดสอบ', role: 'OWNER' } });
+  await user.click(retry);
+  expect(await screen.findByText('ข้อมูลที่ต้องตรวจสิทธิ์')).toBeInTheDocument();
 });

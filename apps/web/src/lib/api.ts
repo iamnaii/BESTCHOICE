@@ -145,7 +145,7 @@ api.interceptors.response.use(
     // If 401 and we haven't already tried refreshing for this request
     if (error.response?.status === 401 && !originalRequest._retry) {
       // Don't try to refresh if the failing request IS the refresh or login
-      if (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/login') || originalRequest.url?.includes('/auth/logout')) {
+      if (originalRequest.url?.includes('/auth/refresh') || originalRequest.url?.includes('/auth/login')) {
         setAccessToken(null);
         if (!isPublicOrLiffPage()) {
           window.location.href = '/login';

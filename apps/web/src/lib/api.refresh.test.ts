@@ -99,3 +99,15 @@ it('clears an explicitly unauthorized refresh session', async () => {
   expect(getAccessToken()).toBeNull();
   expect(refreshCalls).toBe(1);
 });
+
+
+it('renews expired access for logout so the guarded endpoint can revoke the refresh cookie', async () => {
+  window.history.replaceState({}, '', '/liff/contract');
+  refreshStatuses = [200];
+  const { default: api, setAccessToken, cancelPendingRefresh } = await import('./api');
+  setAccessToken('expired');
+  cancelPendingRefresh();
+  const response = await api.post('/auth/logout', {}).catch(error => error);
+  expect(response.status).toBe(200);
+  expect(refreshCalls).toBe(1);
+});

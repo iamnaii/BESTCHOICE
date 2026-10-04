@@ -1,4 +1,4 @@
-import { getMenuConfig, type MenuItem } from '@/config/menu';
+import { getMenuConfig, getSidebarForRole, type MenuItem } from '@/config/menu';
 import { NAV_LABELS } from '@/config/work-navigation';
 
 /** Exceptions for routes without a navigable menu item. */
@@ -6,6 +6,9 @@ export const PAGE_TITLE_MAP: Record<string, string> = {
   '/': NAV_LABELS.home,
   '/products': NAV_LABELS.stock,
   '/settings': 'ตั้งค่า',
+  '/users': 'ผู้ใช้',
+  '/branches': 'สาขา',
+  '/notifications': 'แจ้งเตือน',
   '/after-sales/new': 'แจ้งปัญหาเครื่อง',
 };
 
@@ -23,6 +26,7 @@ function addMenuItem(item: MenuItem) {
 // for duplicate paths while including routes available only to another role.
 for (const role of ['OWNER', 'FINANCE_MANAGER', 'BRANCH_MANAGER', 'ACCOUNTANT', 'SALES', 'VIEWER']) {
   getMenuConfig(role).sidebar.forEach(section => section.items.forEach(addMenuItem));
+  getSidebarForRole(role, 'settings').forEach(section => section.items.forEach(addMenuItem));
 }
 const titles = { ...menuTitles, ...PAGE_TITLE_MAP };
 const prefixes = Object.keys(titles).filter(path => path !== '/').sort((a, b) => b.length - a.length);

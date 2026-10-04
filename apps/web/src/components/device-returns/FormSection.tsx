@@ -1,4 +1,4 @@
-import { AlertTriangle, Check } from 'lucide-react';
+export { ActionEffect as Effect } from '@/components/ActionEffect';
 
 /* ─── Shared form helpers (token-only styling, mirrors EarlyPayoffOverlay) ───────────
  * ใช้ร่วมกันโดย RepossessionOverlay (โหมดยืนยัน) และ DeviceReturnIntakeDialog */
@@ -59,20 +59,5 @@ export function Row({
       <span className="text-muted-foreground leading-snug">{label}</span>
       <span className={`leading-snug ${valueClass}`}>{value}</span>
     </div>
-  );
-}
-
-export function Effect({ text, warning }: { text: string; warning?: boolean }) {
-  return (
-    <li className="flex items-start gap-2">
-      <span className={warning ? 'text-warning-strong' : 'text-success'}>
-        {warning ? (
-          <AlertTriangle className="size-4 inline" />
-        ) : (
-          <Check className="size-4 inline" />
-        )}
-      </span>
-      <span className={warning ? 'text-warning-strong' : 'text-foreground'}>{text}</span>
-    </li>
   );
 }

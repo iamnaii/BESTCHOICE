@@ -1,11 +1,5 @@
-import {
-  Injectable,
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
+import { bkkYyyymmdd } from '../../utils/document-number-format.util';
+import { Injectable, BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { Prisma, ProductCategory } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -1353,7 +1347,7 @@ export class ContractExchangeService {
     tx: Prisma.TransactionClient,
     now: Date = new Date(),
   ): Promise<string> {
-    const yyyymmdd = this.bkkYyyymmdd(now);
+    const yyyymmdd = bkkYyyymmdd(now);
     const lockKey = this.hashLockKey(`exch:${yyyymmdd}`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${lockKey})`);
 
@@ -1365,17 +1359,6 @@ export class ContractExchangeService {
     const lastSeq = last ? parseInt(last.contractNumber.split('-')[2], 10) || 0 : 0;
     const seq = String(lastSeq + 1).padStart(4, '0');
     return `EXCH-${yyyymmdd}-${seq}`;
-  }
-
-  private bkkYyyymmdd(date: Date): string {
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
-    return `${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
   }
 
   private hashLockKey(key: string): number {

@@ -1,13 +1,5 @@
 // Shared types for POSPage sub-components
 
-export interface TopProduct {
-  id: string;
-  name: string;
-  brand: string;
-  model: string;
-  count: number;
-}
-
 export interface Product {
   deviceOrigin?: 'THAI' | 'IMPORTED' | null;
   shopWarrantyDays?: number | null;

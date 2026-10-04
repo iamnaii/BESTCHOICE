@@ -39,31 +39,8 @@ export function useCustomerContractActions(
     },
   });
 
-  const fetchAndOpenContactLog = useMutation({
-    mutationFn: (contractId: string) =>
-      api.get(`/overdue/contracts/${contractId}/queue-row`).then((r) => r.data?.data ?? r.data),
-    onSuccess: (row: ContractRow | null) => {
-      if (!row) {
-        toast.error('ไม่พบข้อมูลสัญญา');
-        return;
-      }
-      setContactLogContract(row);
-    },
-    onError: () => toast.error('ไม่สามารถโหลดข้อมูลสัญญาได้'),
-  });
-
-  const fetchAndOpenMdmLock = useMutation({
-    mutationFn: (contractId: string) =>
-      api.get(`/overdue/contracts/${contractId}/queue-row`).then((r) => r.data?.data ?? r.data),
-    onSuccess: (row: ContractRow | null) => {
-      if (!row) {
-        toast.error('ไม่พบข้อมูลสัญญา');
-        return;
-      }
-      setMdmLockContract(row);
-    },
-    onError: () => toast.error('ไม่สามารถโหลดข้อมูลสัญญาได้'),
-  });
+  const fetchAndOpenContactLog = useContractRowDialog(setContactLogContract);
+  const fetchAndOpenMdmLock = useContractRowDialog(setMdmLockContract);
 
   const openContractPdf = useMutation({
     mutationFn: async (contract: ContractSummaryItem) => {
@@ -138,4 +115,20 @@ export function useCustomerContractActions(
     triggerContractAction,
     handleContactLogSaved,
   };
+}
+
+function useContractRowDialog(onLoaded: (row: ContractRow) => void) {
+  return useMutation({
+    mutationFn: (contractId: string) =>
+      api.get(`/overdue/contracts/${contractId}/queue-row`).then((r) => r.data?.data ?? r.data),
+    onSuccess: (row: ContractRow | null) => {
+      if (!row) {
+        toast.error('ไม่พบข้อมูลสัญญา');
+        return;
+      }
+      onLoaded(row);
+    },
+    onError: () => toast.error('ไม่สามารถโหลดข้อมูลสัญญาได้'),
+  });
+
 }

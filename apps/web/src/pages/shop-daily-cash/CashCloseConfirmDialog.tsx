@@ -52,7 +52,7 @@ export default function CashCloseConfirmDialog({ close, viewerRole, onClose }: {
       if (needsSlip && slip) {
         const form = new FormData();
         form.append('file', slip);
-        await api.post(`/shop-tenders/cash-close/${close.id}/deposit-slip`, form, { headers: { 'Content-Type': 'multipart/form-data' } });
+        await api.post(`/shop-tenders/cash-close/${close.id}/deposit-slip`, form);
       }
       return (await api.post(`/shop-tenders/cash-close/${close.id}/confirm`, {
         receivedAmount: received, destination, note: note.trim() || undefined,

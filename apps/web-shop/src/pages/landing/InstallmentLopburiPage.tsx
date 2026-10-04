@@ -1,3 +1,4 @@
+import { LandingFaq } from '@/components/LandingFaq';
 import { Link } from 'react-router';
 import { UserCheck, Clock3, Store, ShieldCheck } from 'lucide-react';
 import {
@@ -140,19 +141,7 @@ export default function InstallmentLopburiPage() {
             </p>
           </section>
 
-          <section>
-            <SectionHeader title="คำถามที่คนลพบุรีถามบ่อย" />
-            <Stack gap={3}>
-              {FAQS.map((f) => (
-                <Card key={f.question} variant="outlined">
-                  <CardBody>
-                    <h3 className="font-semibold leading-snug">{f.question}</h3>
-                    <p className="mt-1.5 text-sm text-muted-foreground leading-snug">{f.answer}</p>
-                  </CardBody>
-                </Card>
-              ))}
-            </Stack>
-          </section>
+          <LandingFaq title="คำถามที่คนลพบุรีถามบ่อย" items={FAQS} />
 
           <section className="rounded-2xl bg-emerald-50 p-6 md:p-8">
             <Stack gap={3} className="items-start leading-snug">

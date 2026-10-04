@@ -1,35 +1,8 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotImplementedException,
-} from '@nestjs/common';
+import { documentNumberLayout, bkkYyyymmdd, bkkYyyymm, bkkYyyy, type DocumentNumberFormat } from '../../../utils/document-number-format.util';
+export type DocNumberFormat = DocumentNumberFormat;
+import { BadRequestException, Injectable, NotImplementedException } from '@nestjs/common';
 import { DocumentType, Prisma } from '@prisma/client';
-import {
-  DEFAULT_DOC_PREFIX_MAP,
-  SettingsService,
-} from '../../settings/settings.service';
-
-/**
- * D1.1.2.2 — whitelisted document-number layout strings.
- *
- * The Settings_Audit_Core_v2.0 spec (row 1.2.2) calls for `YYMMNNN`. We
- * concretise that as `PREFIX-YYMM-NNN` (4-digit period + 3-digit seq) and
- * make it the project default. Three legacy / extended variants stay in the
- * whitelist so OWNERs can opt-in to higher daily / yearly volume:
- *
- *   - `PREFIX-YYMM-NNN`     (spec default — short, monthly window, 3 digits)
- *   - `PREFIX-YYYYMMDD-NNNN` (legacy v1, daily window, 4 digits)
- *   - `PREFIX-YYYYMM-NNNNN`  (monthly window, 5 digits — high-volume)
- *   - `PREFIX-YYYY-NNNNNN`   (yearly window, 6 digits — very-high-volume)
- *
- * Unknown values silently fall back to the spec default at read time so doc
- * creation never blocks on a bad SystemConfig row.
- */
-export type DocNumberFormat =
-  | 'PREFIX-YYMM-NNN'
-  | 'PREFIX-YYYYMMDD-NNNN'
-  | 'PREFIX-YYYYMM-NNNNN'
-  | 'PREFIX-YYYY-NNNNNN';
+import { DEFAULT_DOC_PREFIX_MAP, SettingsService } from '../../settings/settings.service';
 
 /**
  * Spec default per `docs/superpowers/tracking/_owner-package/Settings_Audit_Core_v2.0.md`
@@ -117,7 +90,7 @@ export class DocNumberService {
 
     const format = await this.resolveFormat();
     const cycle = await this.resolveResetCycle();
-    const { datePortion, seqWidth } = this.layout(issueDate, format);
+    const { datePortion, seqWidth } = documentNumberLayout(issueDate, format);
     const prefixMap = await this.resolvePrefixMap();
     const prefixLetters = prefixMap[type];
     const prefix = `${prefixLetters}-${datePortion}-`;
@@ -195,39 +168,18 @@ export class DocNumberService {
   }
 
   /**
-   * D1.1.2.2 — map a `DocNumberFormat` to its date portion + seq width.
-   * Pure function; no DB / IO.
-   */
-  private layout(
-    issueDate: Date,
-    format: DocNumberFormat,
-  ): { datePortion: string; seqWidth: number } {
-    switch (format) {
-      case 'PREFIX-YYYYMM-NNNNN':
-        return { datePortion: this.bkkYyyymm(issueDate), seqWidth: 5 };
-      case 'PREFIX-YYYY-NNNNNN':
-        return { datePortion: this.bkkYyyy(issueDate), seqWidth: 6 };
-      case 'PREFIX-YYYYMMDD-NNNN':
-        return { datePortion: this.bkkYyyymmdd(issueDate), seqWidth: 4 };
-      case 'PREFIX-YYMM-NNN':
-      default:
-        return { datePortion: this.bkkYymm(issueDate), seqWidth: 3 };
-    }
-  }
-
-  /**
    * D1.1.2.3 (sibling) — BKK period identifier string for advisory-lock
    * scope. Daily=YYYYMMDD, monthly=YYYYMM, yearly=YYYY.
    */
   private periodStartString(issueDate: Date, cycle: ResetCycle): string {
     switch (cycle) {
       case 'monthly':
-        return this.bkkYyyymm(issueDate);
+        return bkkYyyymm(issueDate);
       case 'yearly':
-        return this.bkkYyyy(issueDate);
+        return bkkYyyy(issueDate);
       case 'daily':
       default:
-        return this.bkkYyyymmdd(issueDate);
+        return bkkYyyymmdd(issueDate);
     }
   }
 
@@ -246,55 +198,6 @@ export class DocNumberService {
     } catch {
       return false;
     }
-  }
-
-  /** Asia/Bangkok local YYYYMMDD via Intl (BKK is UTC+7, no DST). */
-  private bkkYyyymmdd(date: Date): string {
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const [y, m, d] = parts.split('-').map((s) => parseInt(s, 10));
-    return `${y}${String(m).padStart(2, '0')}${String(d).padStart(2, '0')}`;
-  }
-
-  /** Asia/Bangkok local YYYYMM via Intl. */
-  private bkkYyyymm(date: Date): string {
-    const parts = date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-      month: '2-digit',
-    });
-    // Defensive: en-CA with year+month returns "YYYY-MM" today, but slice the
-    // first two segments to stay robust against ICU output shape drift across
-    // Node versions.
-    return parts.split('-').slice(0, 2).join('');
-  }
-
-  /** Asia/Bangkok local YYYY via Intl. */
-  private bkkYyyy(date: Date): string {
-    return date.toLocaleString('en-CA', {
-      timeZone: 'Asia/Bangkok',
-      year: 'numeric',
-    });
-  }
-
-  /**
-   * D1.1.2.2 — Asia/Bangkok local YYMM (2-digit year + 2-digit month).
-   * Used by the spec-default `PREFIX-YYMM-NNN` format.
-   *
-   * Spec uses Gregorian (ค.ศ.) 2-digit year for grep-ability with PEAK and
-   * other Thai accounting tools that historically use YY-prefix doc numbers.
-   * For 2026 → `YY = 26`; for 2100 → `YY = 00` (wraps). This is acceptable
-   * because doc-numbers reset annually under the spec default cycle (yearly)
-   * so cross-century collisions are extremely unlikely AND would be on
-   * different years anyway (different reset window).
-   */
-  private bkkYymm(date: Date): string {
-    const yyyymm = this.bkkYyyymm(date); // "YYYYMM"
-    return yyyymm.slice(2); // "YYMM"
   }
 
   /** Deterministic 32-bit hash for advisory lock keys. */

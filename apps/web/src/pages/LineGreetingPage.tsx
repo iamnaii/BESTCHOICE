@@ -1,19 +1,10 @@
+import { FlexContentEditor } from '@/components/line-message/FlexContentEditor';
+import type { FlexContent as BaseFlexContent } from '@/lib/line-flex';
+import { FlexPreviewCard } from '@/components/line-message/FlexPreviewCard';
 import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import {
-  MessageSquareMore,
-  Save,
-  RotateCcw,
-  MessageSquare,
-  Image as ImageIcon,
-  LayoutTemplate,
-  Plus,
-  Trash2,
-  GripVertical,
-  CheckCircle2,
-  X,
-} from 'lucide-react';
+import { MessageSquareMore, Save, RotateCcw, MessageSquare, Image as ImageIcon, LayoutTemplate, Plus, Trash2, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import api, { getErrorMessage } from '@/lib/api';
 import PageHeader from '@/components/ui/PageHeader';
@@ -26,8 +17,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 type MessageType = 'text' | 'image' | 'flex';
-type FlexMode = 'template' | 'json';
-type FlexTemplateKey = 'product' | 'promotion' | 'custom';
 
 interface TextContent {
   text: string;
@@ -38,12 +27,7 @@ interface ImageContent {
   caption: string;
 }
 
-interface FlexContent {
-  flexMode: FlexMode;
-  templateKey: FlexTemplateKey;
-  fields: Record<string, string>;
-  jsonText: string;
-  jsonValid: boolean;
+interface FlexContent extends BaseFlexContent {
   altText: string;
 }
 
@@ -61,21 +45,6 @@ interface GreetingResponse {
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
-
-const FLEX_TEMPLATES: Record<FlexTemplateKey, { name: string; fields: string[] }> = {
-  product: {
-    name: '📱 สินค้า',
-    fields: ['ชื่อสินค้า', 'ราคา', 'รายละเอียด', 'รูปภาพ URL', 'ลิงก์'],
-  },
-  promotion: {
-    name: '🎁 โปรโมชัน',
-    fields: ['ชื่อโปร', 'รายละเอียด', 'ส่วนลด', 'วันหมดอายุ', 'ลิงก์'],
-  },
-  custom: {
-    name: '✏️ กำหนดเอง',
-    fields: ['หัวข้อ', 'เนื้อหา', 'ปุ่มกด', 'ลิงก์'],
-  },
-};
 
 const MSG_TYPE_BUTTONS: { type: MessageType; icon: React.ReactNode; label: string }[] = [
   { type: 'text', icon: <MessageSquare className="size-3.5" />, label: 'ข้อความ' },
@@ -116,124 +85,6 @@ function makeDefaultContent(type: MessageType): MessageContent {
 
 function makeMessage(type: MessageType = 'text'): MessageItem {
   return { id: crypto.randomUUID(), type, content: makeDefaultContent(type) };
-}
-
-// ─── Flex helpers ──────────────────────────────────────────────────────────────
-
-function buildFlexJson(content: FlexContent): object {
-  const { templateKey, fields } = content;
-  const tpl = FLEX_TEMPLATES[templateKey];
-  const title = fields[tpl.fields[0]] || tpl.name;
-  const body = fields[tpl.fields[1]] || '';
-  return {
-    type: 'bubble',
-    hero:
-      templateKey === 'product' && fields['รูปภาพ URL']
-        ? {
-            type: 'image',
-            url: fields['รูปภาพ URL'],
-            size: 'full',
-            aspectRatio: '20:13',
-            aspectMode: 'cover',
-          }
-        : undefined,
-    body: {
-      type: 'box',
-      layout: 'vertical',
-      spacing: 'sm',
-      contents: [
-        { type: 'text', text: title, weight: 'bold', size: 'lg', wrap: true },
-        ...(body ? [{ type: 'text', text: body, size: 'sm', color: '#555555', wrap: true }] : []),
-        ...(templateKey === 'promotion' && fields['ส่วนลด']
-          ? [{ type: 'text', text: `ลด ${fields['ส่วนลด']}`, size: 'xl', weight: 'bold', color: '#e74c3c' }]
-          : []),
-      ].filter(Boolean),
-    },
-    footer: fields[tpl.fields[tpl.fields.length - 1]]
-      ? {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            {
-              type: 'button',
-              style: 'primary',
-              action: {
-                type: 'uri',
-                label:
-                  templateKey === 'custom' ? fields['ปุ่มกด'] || 'ดูเพิ่มเติม' : 'ดูเพิ่มเติม',
-                uri: fields[tpl.fields[tpl.fields.length - 1]],
-              },
-            },
-          ],
-        }
-      : undefined,
-  };
-}
-
-// ─── Flex Preview Card ─────────────────────────────────────────────────────────
-
-function FlexPreviewCard({ content }: { content: FlexContent }) {
-  let jsonObj: Record<string, unknown> | null = null;
-  try {
-    if (content.flexMode === 'json') {
-      jsonObj = JSON.parse(content.jsonText);
-    } else {
-      jsonObj = buildFlexJson(content) as Record<string, unknown>;
-    }
-  } catch {
-    /* invalid */
-  }
-
-  if (!jsonObj) {
-    return (
-      <div className="flex h-24 items-center justify-center rounded-xl bg-muted text-xs text-muted-foreground">
-        JSON ไม่ถูกต้อง
-      </div>
-    );
-  }
-
-  const bodyBlock = jsonObj.body as Record<string, unknown> | undefined;
-  const contents = bodyBlock?.contents as Array<Record<string, unknown>> | undefined;
-  const titleItem = contents?.find((c) => c.weight === 'bold');
-  const bodyItems = contents?.filter((c) => c.weight !== 'bold') ?? [];
-  const hero = jsonObj.hero as Record<string, unknown> | undefined;
-  const footer = jsonObj.footer as Record<string, unknown> | undefined;
-  const footerContents = footer?.contents as Array<Record<string, unknown>> | undefined;
-  const footerBtn = footerContents?.[0];
-  const action = footerBtn?.action as Record<string, unknown> | undefined;
-  const heroUrl = typeof hero?.url === 'string' ? hero.url : null;
-
-  return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-md text-xs max-w-[200px]">
-      {heroUrl && (
-        <img
-          src={heroUrl}
-          alt="flex hero"
-          className="h-24 w-full object-cover"
-          onError={(e) => {
-            (e.target as HTMLImageElement).style.display = 'none';
-          }}
-        />
-      )}
-      <div className="p-3 space-y-1">
-        {titleItem && (
-          <p className="font-bold text-sm text-foreground line-clamp-2">{titleItem.text as string}</p>
-        )}
-        {bodyItems.map((item, i) => (
-          <p key={i} className="text-muted-foreground line-clamp-2">
-            {item.text as string}
-          </p>
-        ))}
-      </div>
-      {action && (
-        <div className="px-3 pb-3">
-          <div className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 py-1.5 text-center text-xs font-medium shadow-sm">
-            {(action.label as string) || 'ดูเพิ่มเติม'}
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ─── Message Preview Bubble ────────────────────────────────────────────────────
@@ -335,10 +186,8 @@ function ImageEditor({ message, onChange }: EditorProps) {
 
 function FlexEditor({ message, onChange }: EditorProps) {
   const c = message.content as FlexContent;
-  const tpl = FLEX_TEMPLATES[c.templateKey];
-
   return (
-    <div className="space-y-4">
+    <FlexContentEditor content={c} onChange={(content) => onChange({ ...message, content })} templateHoverClass="hover:border-primary/50">
       {/* Alt text */}
       <div>
         <label className="mb-1.5 block text-sm font-medium text-foreground/80">Alt Text</label>
@@ -350,125 +199,7 @@ function FlexEditor({ message, onChange }: EditorProps) {
         />
       </div>
 
-      {/* Mode toggle */}
-      <div className="flex gap-1 rounded-full bg-muted p-1 w-fit">
-        {(['template', 'json'] as FlexMode[]).map((mode) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => onChange({ ...message, content: { ...c, flexMode: mode } })}
-            className={cn(
-              'rounded-full px-5 py-1.5 text-sm font-medium transition-all duration-200',
-              c.flexMode === mode
-                ? 'bg-card text-primary shadow-sm'
-                : 'text-muted-foreground hover:text-foreground/80',
-            )}
-          >
-            {mode === 'template' ? 'Template' : 'JSON'}
-          </button>
-        ))}
-      </div>
-
-      {c.flexMode === 'template' ? (
-        <div className="space-y-4">
-          {/* Template selector */}
-          <div className="flex flex-wrap gap-2">
-            {(
-              Object.entries(FLEX_TEMPLATES) as [FlexTemplateKey, { name: string; fields: string[] }][]
-            ).map(([key, t]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() =>
-                  onChange({ ...message, content: { ...c, templateKey: key, fields: {} } })
-                }
-                className={cn(
-                  'rounded-full border-2 px-4 py-1.5 text-sm font-medium transition-all duration-200',
-                  c.templateKey === key
-                    ? 'border-primary bg-primary/5 text-primary shadow-sm'
-                    : 'border-border text-foreground/70 hover:border-primary/50 hover:text-primary',
-                )}
-              >
-                {t.name}
-              </button>
-            ))}
-          </div>
-          {/* Dynamic fields */}
-          <div className="space-y-3">
-            {tpl.fields.map((fieldName) => (
-              <div key={fieldName}>
-                <label className="mb-1.5 block text-sm font-medium text-foreground/80">
-                  {fieldName}
-                  {fieldName === tpl.fields[0] && <span className="text-destructive ml-0.5">*</span>}
-                </label>
-                <Input
-                  placeholder={fieldName}
-                  value={c.fields[fieldName] || ''}
-                  onChange={(e) =>
-                    onChange({
-                      ...message,
-                      content: { ...c, fields: { ...c.fields, [fieldName]: e.target.value } },
-                    })
-                  }
-                />
-              </div>
-            ))}
-          </div>
-          {/* Mini preview */}
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Preview</p>
-            <FlexPreviewCard content={c} />
-          </div>
-        </div>
-      ) : (
-        /* JSON mode */
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">JSON Editor</p>
-            <div className="rounded-xl overflow-hidden border border-border shadow-sm">
-              <div className="bg-muted px-3 py-2 flex items-center gap-2 border-b border-border">
-                <div className="flex gap-1.5">
-                  <div className="size-2.5 rounded-full bg-destructive" />
-                  <div className="size-2.5 rounded-full bg-warning" />
-                  <div className="size-2.5 rounded-full bg-success" />
-                </div>
-                <span className="text-xs text-muted-foreground ml-1">flex.json</span>
-              </div>
-              <Textarea
-                className="font-mono text-xs bg-card text-foreground min-h-[200px] resize-y border-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                value={c.jsonText}
-                onChange={(e) => {
-                  const text = e.target.value;
-                  let valid = false;
-                  try {
-                    JSON.parse(text);
-                    valid = true;
-                  } catch {
-                    valid = false;
-                  }
-                  onChange({ ...message, content: { ...c, jsonText: text, jsonValid: valid } });
-                }}
-              />
-            </div>
-            {c.jsonValid ? (
-              <span className="flex items-center gap-1.5 text-xs text-success">
-                <CheckCircle2 className="size-3.5" />
-                JSON ถูกต้อง
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 text-xs text-destructive">
-                <X className="size-3.5" />
-                JSON ไม่ถูกต้อง
-              </span>
-            )}
-          </div>
-          <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Live Preview</p>
-            <FlexPreviewCard content={c} />
-          </div>
-        </div>
-      )}
-    </div>
+    </FlexContentEditor>
   );
 }
 

@@ -1,3 +1,4 @@
+import { receiptDecimal as decimal } from './receipt-metadata';
 import { Prisma, Receipt } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
@@ -46,15 +47,7 @@ const object = (value: Prisma.JsonValue | null): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 const day = (date: Date) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(date);
-function decimal(value: unknown): Prisma.Decimal | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  try {
-    const result = new Prisma.Decimal(value);
-    return result.isFinite() ? result : null;
-  } catch {
-    return null;
-  }
-}
+
 const positiveInteger = (value: unknown): number | null =>
   typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null;
 

@@ -1,10 +1,10 @@
+import { UserPermissionTable } from './UserPermissionTable';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ROLE_LABELS } from '@/constants/user-roles';
 import { useAuth } from '@/contexts/AuthContext';
 import api, { getErrorMessage } from '@/lib/api';
 import {
@@ -79,42 +79,7 @@ export function PaymentApprovalPermissionsCard() {
           </div>
         )}
         {settings.data && (
-          <div className="overflow-x-auto rounded-md border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th scope="col" className="min-w-44 p-3 text-left font-medium">ผู้ใช้</th>
-                  {PAYMENT_APPROVAL_PERMISSIONS.map((permission) => (
-                    <th key={permission} scope="col" className="min-w-28 p-3 text-center font-medium">
-                      {PAYMENT_APPROVAL_PERMISSION_LABELS[permission]}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((row) => (
-                  <tr key={row.id} className="border-t">
-                    <th scope="row" className="p-3 text-left font-normal">
-                      <p className="font-medium">{row.name}</p>
-                      <p className="text-xs text-muted-foreground">{ROLE_LABELS[row.role] ?? row.role}</p>
-                    </th>
-                    {PAYMENT_APPROVAL_PERMISSIONS.map((permission) => (
-                      <td key={permission} className="p-3 text-center">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 accent-primary disabled:cursor-not-allowed"
-                          aria-label={`${row.name}: ${PAYMENT_APPROVAL_PERMISSION_LABELS[permission]}`}
-                          checked={row.role === 'OWNER' || row.permissions.includes(permission)}
-                          disabled={row.role === 'OWNER' || save.isPending}
-                          onChange={(event) => togglePermission(row.id, permission, event.target.checked)}
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <UserPermissionTable users={users} permissions={PAYMENT_APPROVAL_PERMISSIONS} labels={PAYMENT_APPROVAL_PERMISSION_LABELS} saving={save.isPending} onToggle={togglePermission} />
         )}
         <p className="text-xs text-muted-foreground">OWNER มีสิทธิ์ทุกประเภทเสมอ สิทธิ์ที่บันทึกมีผลในการอนุมัติครั้งถัดไป</p>
         <div className="flex justify-end gap-2">

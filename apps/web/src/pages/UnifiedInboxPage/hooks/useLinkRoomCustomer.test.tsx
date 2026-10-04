@@ -31,8 +31,15 @@ describe('useLinkRoomCustomer', () => {
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
     expect(apiPatch).toHaveBeenCalledWith('/staff-chat/rooms/r-1/customer', { customerId: 'c-old' });
     expect(onSuccess).toHaveBeenCalledWith('c-old', { roomId: 'r-1', absorbed: { targetId: 'c-old', movedCreditChecks: 2 } });
-    expect(spy).toHaveBeenCalledWith({ queryKey: ['chat-room', 'r-1'] });
-    expect(spy).toHaveBeenCalledWith({ queryKey: ['customers'] });
+    expect(spy.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      ['chat-room', 'r-1'],
+      ['chat-rooms'],
+      ['customers'],
+      ['credit-checks'],
+      ['customer-credit-checks'],
+      ['customer-latest-credit'],
+      ['customer-credit-check-latest-statement'],
+    ]);
   });
 
   it.each([

@@ -1,3 +1,4 @@
+import { serializeOcrAddress } from '@/lib/ocr-address';
 import React, { useState, useRef } from 'react';
 import api, { getErrorMessage } from '@/lib/api';
 import { compressImageForOcr } from '@/lib/compressImage';
@@ -30,43 +31,8 @@ export function useOcrFlow({
   const [newCustomerPhone, setNewCustomerPhone] = useState('');
   const [creatingCustomer, setCreatingCustomer] = useState(false);
 
-  // Helper: build structured address JSON from OCR result
-  const buildOcrAddressJson = (ocrData: OcrResult): string | undefined => {
-    if (ocrData.addressStructured) {
-      const a = ocrData.addressStructured;
-      const hasData = Object.values(a).some((v) => v !== '');
-      if (hasData) return JSON.stringify(a);
-    }
-    if (ocrData.address) {
-      const raw = ocrData.address;
-      const addr: Record<string, string> = {
-        houseNo: '', moo: '', village: '', soi: '', road: '',
-        province: '', district: '', subdistrict: '', postalCode: '',
-      };
-      const zipMatch = raw.match(/(\d{5})\s*$/);
-      if (zipMatch) addr.postalCode = zipMatch[1];
-      const houseMatch = raw.match(/^(\d+(?:\/\d+)?)\s/);
-      if (houseMatch) addr.houseNo = houseMatch[1];
-      const mooMatch = raw.match(/(?:หมู่(?:ที่)?|ม\.)\s*(\d+)/);
-      if (mooMatch) addr.moo = mooMatch[1];
-      const soiMatch = raw.match(/(?:ซอย|ซ\.)\s*([^\s,]+)/);
-      if (soiMatch) addr.soi = soiMatch[1];
-      const roadMatch = raw.match(/(?:ถนน|ถ\.)\s*([^\s,]+)/);
-      if (roadMatch) addr.road = roadMatch[1];
-      const villageMatch = raw.match(/(?:หมู่บ้าน|ม\.บ\.|คอนโด)\s*([^\s,]+)/);
-      if (villageMatch) addr.village = villageMatch[1];
-      const subdistrictMatch = raw.match(/((?:ตำบล|ต\.|แขวง)\s*[^\s,]+)/);
-      if (subdistrictMatch) addr.subdistrict = subdistrictMatch[1];
-      const districtMatch = raw.match(/((?:อำเภอ|อ\.|เขต)\s*[^\s,]+)/);
-      if (districtMatch) addr.district = districtMatch[1];
-      const provinceMatch = raw.match(/(?:จังหวัด|จ\.)\s*([^\s,\d]+)/);
-      if (provinceMatch) addr.province = provinceMatch[1];
-      const hasStructured = Object.values(addr).some((v) => v !== '');
-      if (hasStructured) return JSON.stringify(addr);
-      return raw;
-    }
-    return undefined;
-  };
+  const buildOcrAddressJson = (data: OcrResult): string | undefined =>
+    serializeOcrAddress(data, { keepAreaPrefixes: true, unparsed: 'raw' });
 
   // Smart Card: read ID card (Step 2)
   const handleSmartCardRead = async () => {

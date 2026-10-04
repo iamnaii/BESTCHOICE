@@ -1,28 +1,16 @@
+import { ActionEffect as Effect } from '@/components/ActionEffect';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Decimal from 'decimal.js';
-import {
-  CalendarClock,
-  CalendarDays,
-  Layers,
-  Check,
-  CheckCircle2,
-  AlertTriangle,
-  Wallet,
-  Banknote,
-  Landmark,
-  Loader2,
-  QrCode,
-  Upload,
-  X,
-} from 'lucide-react';
+import { CalendarClock, CalendarDays, Layers, Check, Wallet, Banknote, Landmark, Loader2, QrCode } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { formatThaiDate } from '@/lib/date';
 import { CashAccountSelect } from '@/components/CashAccountSelect';
 import { WizardStackedOverlay } from '@/components/WizardStackedOverlay';
 import { useDebounce } from '@/hooks/useDebounce';
-import { useSlipUpload, SLIP_MIME_TYPES } from '@/hooks/useSlipUpload';
+import { useSlipAttachment } from '@/hooks/useSlipAttachment';
+import { SlipAttachmentField } from '@/components/SlipAttachmentField';
 
 interface Props {
   contractId: string;
@@ -96,31 +84,8 @@ export function RescheduleOverlay({
   const [referenceNumber, setReferenceNumber] = useState('');
 
   // Slip upload (โอนธนาคาร) — mirrors RecordPaymentWizard: TRANSFER ต้องมี ref + slip
-  const [slipUrl, setSlipUrl] = useState('');
-  const [slipFileName, setSlipFileName] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const uploadMutation = useSlipUpload();
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSlipFileName(file.name);
-    try {
-      const url = await uploadMutation.mutateAsync(file);
-      setSlipUrl(url);
-      toast.success('อัปโหลดสลิปสำเร็จ');
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'อัปโหลดสลิปไม่สำเร็จ');
-      setSlipFileName('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const handleClearSlip = () => {
-    setSlipUrl('');
-    setSlipFileName('');
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+  const slipAttachment = useSlipAttachment();
+  const { slipUrl, setSlipUrl, setSlipFileName, fileInputRef } = slipAttachment;
 
   const days = Math.max(0, Math.floor(daysToShift) || 0);
   const debouncedDays = useDebounce(days, 300);
@@ -524,51 +489,7 @@ export function RescheduleOverlay({
                             <label className="block text-xs font-medium text-foreground mb-1 leading-snug">
                               แนบสลิปโอนเงิน <span className="text-destructive">*</span>
                             </label>
-                            <input
-                              ref={fileInputRef}
-                              type="file"
-                              accept={SLIP_MIME_TYPES.join(',')}
-                              className="hidden"
-                              aria-label="อัปโหลดสลิป"
-                              onChange={handleFileChange}
-                            />
-                            {slipUrl ? (
-                              <div className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-3 py-2.5">
-                                <CheckCircle2 className="size-4 text-success shrink-0" />
-                                <span className="text-sm text-foreground leading-snug truncate flex-1">
-                                  {slipFileName || 'สลิปอัปโหลดแล้ว'}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={handleClearSlip}
-                                  className="shrink-0 rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                  aria-label="ลบสลิป"
-                                >
-                                  <X className="size-3.5" />
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={uploadMutation.isPending}
-                                className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground hover:bg-accent transition-colors disabled:opacity-60 disabled:pointer-events-none"
-                              >
-                                {uploadMutation.isPending ? (
-                                  <>
-                                    <Loader2 className="size-4 animate-spin" />
-                                    <span className="leading-snug">กำลังอัปโหลด...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Upload className="size-4" />
-                                    <span className="leading-snug">
-                                      คลิกเพื่ออัปโหลดสลิป (JPG/PNG/PDF)
-                                    </span>
-                                  </>
-                                )}
-                              </button>
-                            )}
+                            <SlipAttachmentField attachment={slipAttachment} />
                           </div>
                         </>
                       )}
@@ -807,20 +728,5 @@ function MethodButton({
       {icon}
       {label}
     </button>
-  );
-}
-
-function Effect({ text, warning }: { text: string; warning?: boolean }) {
-  return (
-    <li className="flex items-start gap-2">
-      <span className={warning ? 'text-warning-strong' : 'text-success'}>
-        {warning ? (
-          <AlertTriangle className="size-4 inline" />
-        ) : (
-          <Check className="size-4 inline" />
-        )}
-      </span>
-      <span className={warning ? 'text-warning-strong' : 'text-foreground'}>{text}</span>
-    </li>
   );
 }

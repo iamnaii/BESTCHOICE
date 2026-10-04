@@ -1,3 +1,4 @@
+import { receiptDecimal as decimal } from './receipt-metadata';
 import { Prisma, Receipt } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { INSTALLMENT_MONEY_RECEIPT_TYPES } from '../receipt-types.constants';
@@ -19,15 +20,6 @@ const businessDate = (date: Date) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(date);
 const metadataObject = (value: Prisma.JsonValue | null): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-const decimal = (value: unknown): Prisma.Decimal | null => {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  try {
-    const result = new Prisma.Decimal(value);
-    return result.isFinite() ? result : null;
-  } catch {
-    return null;
-  }
-};
 
 /**
  * Read the immutable receipt JE, never the mutable cumulative Payment.lateFee.

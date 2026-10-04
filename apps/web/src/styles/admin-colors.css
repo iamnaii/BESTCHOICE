@@ -140,7 +140,8 @@
     }
 
     /* Visible keyboard focus on light/dark surfaces and solid buttons. */
-    & :is(button, a, input, textarea, select, [tabindex]):focus-visible {
+    /* The chat textarea uses its surrounding card's focus-within indicator. */
+    & :is(button, a, input, textarea, select, [tabindex]):not([data-chat-composer-input]):focus-visible {
       outline: 2px solid hsl(var(--ring));
       outline-offset: 3px;
     }

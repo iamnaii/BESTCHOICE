@@ -1,3 +1,5 @@
+import { formatIncomeAmount as fmt } from '@/utils/financial-display';
+import { AuditJournalTable, type AuditJournalLine } from './components/AuditJournalTable';
 import PdfPreview from '@/components/PdfPreview';
 import { useAccountingPermissions } from '@/hooks/useAccountingPermissions';
 import { useState } from 'react';
@@ -56,13 +58,6 @@ function StatusBadge({ status }: { status: OtherIncomeStatus }) {
       {STATUS_LABELS[status]}
     </span>
   );
-}
-
-function fmt(v: string | number | undefined | null) {
-  if (v === undefined || v === null) return '—';
-  const n = typeof v === 'string' ? parseFloat(v) : v;
-  if (isNaN(n)) return '—';
-  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function fmtDate(d: string | null | undefined) {
@@ -198,7 +193,6 @@ function mapAuditEvents(
   });
 }
 
-
 // ------------------------------------------------------------------
 // Main component
 // ------------------------------------------------------------------
@@ -307,8 +301,6 @@ export default function OtherIncomeViewPage() {
     },
     onError: (err: any) => toast.error(err?.response?.data?.message ?? 'บันทึก template ไม่สำเร็จ'),
   });
-
-
 
   // Mode-aware (Audit Finding A): mirrors the backend ReversePermissionGuard so
   // the "↺ ยกเลิก/กลับรายการ" button only shows when the server will allow it —
@@ -792,53 +784,13 @@ export default function OtherIncomeViewPage() {
                                 <p className="font-semibold text-xs mb-2 text-muted-foreground">
                                   Original (Auto)
                                 </p>
-                                <table className="w-full font-mono text-[11px]">
-                                  <tbody>
-                                    {(log.oldValue as any)?.jvLines?.map((l: any, i: number) => (
-                                      <tr key={i} className="border-b border-border/30">
-                                        <td className="py-1 pr-2">{l.accountCode}</td>
-                                        <td className="text-right pr-2">
-                                          {Number(l.debit).toLocaleString('th-TH', {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                          })}
-                                        </td>
-                                        <td className="text-right">
-                                          {Number(l.credit).toLocaleString('th-TH', {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                          })}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                <AuditJournalTable lines={(log.oldValue as { jvLines?: AuditJournalLine[] } | null)?.jvLines} />
                               </div>
                               <div>
                                 <p className="font-semibold text-xs mb-2 text-muted-foreground">
                                   Modified
                                 </p>
-                                <table className="w-full font-mono text-[11px]">
-                                  <tbody>
-                                    {(log.newValue as any)?.jvLines?.map((l: any, i: number) => (
-                                      <tr key={i} className="border-b border-border/30">
-                                        <td className="py-1 pr-2">{l.accountCode}</td>
-                                        <td className="text-right pr-2">
-                                          {Number(l.debit).toLocaleString('th-TH', {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                          })}
-                                        </td>
-                                        <td className="text-right">
-                                          {Number(l.credit).toLocaleString('th-TH', {
-                                            minimumFractionDigits: 2,
-                                            maximumFractionDigits: 2,
-                                          })}
-                                        </td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
+                                <AuditJournalTable lines={(log.newValue as { jvLines?: AuditJournalLine[] } | null)?.jvLines} />
                               </div>
                             </div>
                           </details>

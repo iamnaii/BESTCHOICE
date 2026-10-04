@@ -1,10 +1,10 @@
+import { LiffShell as Shell, LiffTopBar as TopBar } from './components/LiffLayout';
 import { useState } from 'react';
 import { useLiffInit } from '@/hooks/useLiffInit';
 import { liffApi } from '@/lib/api';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  ChevronLeft,
   ChevronRight,
   Sparkles,
   FileText,
@@ -72,7 +72,7 @@ export default function LiffProfile() {
   // ─── Loading ──────────────────────────────────────────
   if (loading || dataLoading) {
     return (
-      <Shell>
+      <Shell theme="profile">
         <div className="px-5 pt-6 space-y-4">
           <Skeleton className="h-24 w-full rounded-[22px]" />
           <Skeleton className="h-40 w-full rounded-[22px]" />
@@ -85,8 +85,8 @@ export default function LiffProfile() {
   // ─── Error ────────────────────────────────────────────
   if (error || dataError) {
     return (
-      <Shell>
-        <TopBar title="โปรไฟล์ของฉัน" initial="?" />
+      <Shell theme="profile">
+        <TopBar theme="profile" title="โปรไฟล์ของฉัน" initial="?" />
         <section className="relative z-[1] px-5 pt-10 pb-8 flex flex-col items-center text-center">
           <div className="grid h-20 w-20 place-items-center rounded-full bg-destructive/10 border border-destructive/30 mb-5">
             <span className="text-destructive text-4xl font-light leading-none">!</span>
@@ -105,7 +105,7 @@ export default function LiffProfile() {
   // ─── Unlinked state ───────────────────────────────────
   if (unlinked) {
     return (
-      <Shell>
+      <Shell theme="profile">
         <section className="relative z-[1] min-h-[80vh] flex flex-col items-center justify-center px-5 text-center">
           <div className="grid h-20 w-20 place-items-center rounded-full bg-muted border border-border mb-6">
             <Unlink2 className="size-9 text-muted-foreground" strokeWidth={1.5} />
@@ -133,8 +133,8 @@ export default function LiffProfile() {
 
   // ─── Main ─────────────────────────────────────────────
   return (
-    <Shell>
-      <TopBar title="โปรไฟล์ของฉัน" initial={customerInitial} />
+    <Shell theme="profile">
+      <TopBar theme="profile" title="โปรไฟล์ของฉัน" initial={customerInitial} />
 
       {/* Identity hero */}
       <section className="relative z-[1] px-5 pt-7">
@@ -338,56 +338,6 @@ export default function LiffProfile() {
 
 // ─── UI primitives ─────────────────────────────────────
 
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="relative min-h-screen overflow-x-hidden" style={{ backgroundColor: '#fafaf7' }}>
-      <div
-        className="fixed inset-0 pointer-events-none z-0"
-        style={{
-          background:
-            'radial-gradient(600px 400px at 10% -5%, rgb(16 185 129 / 0.09), transparent 60%),' +
-            'radial-gradient(500px 380px at 100% 20%, rgb(251 191 36 / 0.08), transparent 65%),' +
-            'radial-gradient(400px 320px at 50% 100%, rgb(99 102 241 / 0.05), transparent 60%)',
-        }}
-      />
-      <div className="relative mx-auto max-w-[430px] pb-16">{children}</div>
-    </div>
-  );
-}
-
-function TopBar({ title, initial }: { title: string; initial: string }) {
-  return (
-    <header
-      className="sticky top-0 z-20 flex items-center justify-between px-5 py-3.5 backdrop-blur-xl border-b border-border/50"
-      style={{ backgroundColor: 'rgb(250 250 247 / 0.85)' }}
-    >
-      <button
-        type="button"
-        aria-label="ย้อนกลับ"
-        className="grid h-9 w-9 place-items-center rounded-full text-foreground hover:bg-accent -ml-1.5"
-        onClick={() => window.history.back()}
-      >
-        <ChevronLeft className="size-5" strokeWidth={1.75} />
-      </button>
-      <div className="text-[13px] font-medium text-foreground tracking-tight leading-snug">{title}</div>
-      <div className="relative -mr-1.5">
-        <div
-          className="grid h-9 w-9 place-items-center rounded-full text-[12px] font-semibold text-white shadow-lg shadow-emerald-500/30"
-          style={{
-            background:
-              'linear-gradient(135deg, rgb(16 185 129) 0%, rgb(5 150 105) 60%, rgb(13 148 136) 100%)',
-          }}
-        >
-          {initial}
-        </div>
-        <span
-          className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-2"
-          style={{ boxShadow: '0 0 0 2px #fafaf7' }}
-        />
-      </div>
-    </header>
-  );
-}
 
 function InfoRow({
   icon,

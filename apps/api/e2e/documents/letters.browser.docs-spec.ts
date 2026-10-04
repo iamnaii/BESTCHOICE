@@ -81,7 +81,7 @@ describe('DOC-09 browser evidence — /letters bulk print, confirmation, stored 
     // A dialog left open by an earlier step would block the tab bar.
     if (await page.getByRole('dialog').count()) { await page.keyboard.press('Escape'); await page.getByRole('dialog').waitFor({ state: 'detached', timeout: 10_000 }).catch(() => undefined); }
     await web.navigate(page, '/letters');
-    await waitForText(page, 'จัดการจดหมาย', 'letters-page');
+    await page.getByRole('heading', { name: 'จัดการจดหมาย', exact: true }).waitFor({ timeout: 45_000 });
     if (tab) await page.getByRole('button', { name: new RegExp(`^${tab}`) }).first().click();
   };
   const tabLabels = { pending: 'รอพิมพ์', printed: 'พิมพ์แล้ว', dispatched: 'ส่งแล้ว' };

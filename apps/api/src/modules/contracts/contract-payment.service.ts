@@ -22,7 +22,11 @@ import { ShopCollectShopLegs } from '../journal/cpa-templates/shop-collect-shop-
 import { shopCollectShopBalance } from '../interco-settlement/interco-typed-balance';
 import { EclStageReverseTemplate } from '../journal/cpa-templates/ecl-stage-reverse.template';
 import { glContractBalance } from '../journal/gl-contract-balance';
-import { computeEarlyPayoffJE, sumAccruedUnpaid } from '../journal/compute-early-payoff-je';
+import {
+  EARLY_PAYOFF_ROUNDING_TOLERANCE,
+  buildEarlyPayoffJournal,
+} from '../journal/compute-early-payoff-je';
+import { emitDeferredWarnings, type DeferredWarning } from '../journal/deferred-warning';
 import { computeInstallmentBreakdown } from '../journal/compute-installment-breakdown';
 import { reconstructPriorCleared } from '../journal/reconstruct-prior';
 import { computePayoffQuote } from './compute-payoff-quote';
@@ -55,6 +59,17 @@ export interface SlipMatchAuthorization {
   bankName: string | null;
   date: string | null;
   confidence: number;
+}
+
+/**
+ * คำขออนุมัติปิดยอดอนุมัติ "ตัวเงิน" ของ quote (PR5): ทุกฟิลด์ยกเว้น `journalPreview` — ยอดที่ลูกค้าจ่าย ส่วนลด %
+ * งวดคงเหลือ ฯลฯ มาจากตารางงวดและคอลัมน์สัญญา ส่วนรายการบัญชีใน preview อ่านยอดในบัญชี จึงเปลี่ยนได้เมื่อรอบตั้งลูกหนี้งวด
+ * (2A) ลงระหว่างส่งคำขอกับกดอนุมัติ ทั้งที่ยอดเงินเท่าเดิม · รายการที่ลงสร้างจากยอดในบัญชีในธุรกรรมตอนทำรายการ
+ * (`buildEarlyPayoffJournal`) — snapshot ของคำขอยังเก็บทั้งก้อนเหมือนเดิม.
+ */
+function earlyPayoffApprovalMoney(summary: unknown): unknown {
+  if (!summary || typeof summary !== 'object' || Array.isArray(summary)) return summary;
+  return Object.fromEntries(Object.entries(summary).filter(([key]) => key !== 'journalPreview'));
 }
 
 @Injectable()
@@ -220,13 +235,7 @@ export class ContractPaymentService {
     // multiple Payment rows per installment from PARTIAL flows).
     const allInstNos = await client.installmentSchedule.findMany({
       where: { contractId: contract.id, deletedAt: null },
-      select: {
-        installmentNo: true,
-        accrualJournalEntryId: true,
-        accruedAmount: true,
-        accruedVat: true,
-        accruedInterest: true,
-      },
+      select: { installmentNo: true },
     });
     const paidInstNos = new Set(
       contract.payments.filter((p) => p.status === 'PAID').map((p) => p.installmentNo),
@@ -245,6 +254,8 @@ export class ContractPaymentService {
       totalMonths: contract.totalMonths,
       creditBalance: contract.creditBalance,
       rescheduleAdvanceBalance: contract.rescheduleAdvanceBalance,
+      // PR5ข (เจ้าของเคาะ 01/10/2569): เงินรับล่วงหน้าถังรวม หักแบบเดียวกับเงินพักค่าปรับดิว
+      advanceBalance: contract.advanceBalance,
       vatPct: contract.vatPct,
       sellingPrice: contract.sellingPrice,
       downPayment: contract.downPayment,
@@ -254,42 +265,26 @@ export class ContractPaymentService {
     });
     const discountPercent = quote.discountPercent;
 
-    // ── JE preview (single source of truth — computeEarlyPayoffJE) ───────────
-    // Computed from contract fields via the SAME pure function the ledger
-    // posting (earlyPayoff()) and the JP4 template use, so the preview shown to
-    // the UI/LIFF is byte-for-byte the JE that gets posted on confirm.
-    // Cash dimension: caller-provided > fallback 11-1201 (KBank — owner rule
-    // 2026-07-08: direct FINANCE receipt is KBank-only)
+    // ── JE preview (PR5 — ตามยอดในบัญชี · buildEarlyPayoffJournal) ─────────────
+    // ฟังก์ชันเดียวกับที่ earlyPayoff() ใช้ลงรายการ ⇒ preview ที่ UI/LIFF เห็น === รายการที่ลงจริง
+    // (คำขออนุมัติเก็บ quote นี้ทั้งก้อน — earlyPayoff() คำนวณซ้ำในธุรกรรมแล้วเทียบเฉพาะตัวเงิน ไม่เทียบ journalPreview).
+    // เงินสด = เงินที่ลูกค้าจ่าย (totalPayoff) · 52-1106 = ลูกหนี้ตามบัญชี − เงินที่รับ − เงินของลูกค้าที่หัก
+    // (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4). Cash dimension: caller-provided > fallback 11-1201
+    // (KBank — owner rule 2026-07-08: direct FINANCE receipt is KBank-only)
     const epDepositCode = depositAccountCode ?? '11-1201';
-    const accruedUnpaidDec = sumAccruedUnpaid(unpaidInsts);
-    // สตริง 2 ตำแหน่ง — อยู่ใน quote (จึงอยู่ใน canonical(quote) ที่ earlyPayoff() เทียบกับ reviewSummary ของคำขอ)
-    // และ earlyPayoff() ส่งต่อให้รายการที่ลง ⇒ preview ของรายการบัญชี === ที่ลง
-    const accruedUnpaid = {
-      amount: accruedUnpaidDec.amount.toFixed(2),
-      vat: accruedUnpaidDec.vat.toFixed(2),
-      interest: accruedUnpaidDec.interest.toFixed(2),
-    };
-    const je = computeEarlyPayoffJE({
+    const je = await buildEarlyPayoffJournal(client, {
+      contract,
       depositAccountCode: epDepositCode,
-      financedAmount: contract.financedAmount.toString(),
-      storeCommission:
-        contract.storeCommission != null ? contract.storeCommission.toString() : null,
-      interestTotal: contract.interestTotal.toString(),
-      vatAmount: contract.vatAmount != null ? contract.vatAmount.toString() : null,
-      totalMonths: contract.totalMonths,
-      unpaidCount: remainingMonths,
-      interestDiscountPercent: discountPercent,
+      cashReceived: quote.totalPayoff,
       // ขา JE ใช้ค่าปรับ NETTED (หัก Cr 42-1103 ที่เคยลงผ่าน partial แล้ว) —
       // กัน double-book; quote.unpaidLateFees (ยอดเก็บ/แถว UI) เป็นค่าดิบโดยตั้งใจ
-      unpaidLateFees: (
-        await this.computeUnbookedLateFees(client, contract, contract.payments)
-      ).toString(),
-      // ถังพักงวดสุดท้ายที่ยอดปิดดูดซับจริง → ขา Dr 21-1103 (ขาเงินสดลดเท่ากัน)
-      // ต้องอยู่ทั้ง preview และตอน post ไม่งั้น preview ≠ posted (คำสั่งเจ้าของ
-      // 2026-08-16 §จุดหัก 3)
-      parkRelief: quote.rescheduleAdvanceApplied,
-      // งวดที่ยังไม่ชำระซึ่งใบรับชำระบางส่วนตั้งลูกหนี้งวดไปแล้วบางส่วน (ก1) — JP4 ล้างเฉพาะส่วนที่เหลือ
-      accruedUnpaid,
+      unpaidLateFees: await this.computeUnbookedLateFees(client, contract, contract.payments),
+      // ถังพักงวดสุดท้ายที่ยอดปิดหักให้ → ขา Dr 21-1103 แทนเงินสด (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3)
+      parkReliefApplied: quote.rescheduleAdvanceApplied,
+      // เงินรับล่วงหน้าถังรวมที่ยอดปิดหักให้ → ขา Dr 21-1103 บรรทัดของตัวเอง (PR5ข — เจ้าของเคาะ 01/10/2569)
+      advanceReliefApplied: quote.advanceBalanceApplied,
+      quoteDiscountAmount: quote.discountAmount,
+      discountPercent,
     });
 
     // Resolve all account names from CoA so preview shows real labels.
@@ -302,18 +297,20 @@ export class ContractPaymentService {
     const nameOf = (code: string) => epNameMap.get(code) ?? code;
 
     // Per-line UI descriptions (human-facing). Only the money — accountCode +
-    // debit + credit, shared via computeEarlyPayoffJE — must match the posting;
+    // debit + credit, shared via buildEarlyPayoffJournal — must match the posting;
     // the ledger words its descriptions differently and that's intentional.
+    // บรรทัดที่ PR5 เพิ่ม (11-2103 · 21-5101 · 53-1503) และบรรทัด 21-1103 ของถังรวม (PR5ข) ไม่มีคำอธิบาย — การ์ดแสดง
+    // ชื่อบัญชีจากผังบัญชี
     const epDescriptions: Record<string, string> = {
       [epDepositCode]: `รับ ${je.cashReceived.toFixed(2)} ฿ ปิดยอด`,
       '21-1103': `หักเงินพักปรับดิว ${je.parkRelief.toFixed(2)}`,
-      '11-2106': `ยกเลิกค่าอนาคต ${je.remainingDeferredInterest.toFixed(2)}`,
-      '21-2102': `ล้าง 21-2102 ${je.remainingDeferredVat.toFixed(2)}`,
+      '11-2106': `ยกเลิกค่าอนาคต ${je.deferredInterest.toFixed(2)}`,
+      '21-2102': `ล้าง 21-2102 ${je.deferredVat.toFixed(2)}`,
       '52-1106': `ส่วนลดดอกเบี้ย ${discountPercent}%`,
-      '11-2101': `ล้าง Gross ${je.remainingGross.toFixed(2)}`,
-      '11-2105': `ล้าง 11-2105 ${je.remainingDeferredVat.toFixed(2)}`,
+      '11-2101': `ล้าง Gross ${je.ledger.gross.toFixed(2)}`,
+      '11-2105': `ล้าง 11-2105 ${je.ledger.vatReceivable.toFixed(2)}`,
       '41-1101': 'รับรู้รายได้',
-      '21-2101': `VAT ถึงกำหนด ${je.settleVat.toFixed(2)}`,
+      '21-2101': `VAT ถึงกำหนด ${je.deferredVat.toFixed(2)}`,
       '42-1103': `ค่าปรับค้างชำระ ${je.lateFees.toFixed(2)} (ไม่คิด VAT)`,
     };
 
@@ -329,7 +326,7 @@ export class ContractPaymentService {
       accountName: nameOf(l.accountCode),
       debit: l.dr.toFixed(2),
       credit: l.cr.toFixed(2),
-      description: epDescriptions[l.accountCode] ?? '',
+      description: l.generalAdvance ? '' : (epDescriptions[l.accountCode] ?? ''),
     }));
 
     let jeTotalDr = new Decimal(0);
@@ -355,8 +352,8 @@ export class ContractPaymentService {
       totalPayoff: quote.totalPayoff,
       // ยอดถังพักที่ยอดปิดดูดซับจริง — earlyPayoff() ใช้ต่อเป็นขา Dr 21-1103
       rescheduleAdvanceApplied: quote.rescheduleAdvanceApplied,
-      // ยอดที่ตั้งลูกหนี้งวดไปแล้วของงวดที่ยังไม่ชำระและยังตั้งไม่ครบ (ก1) — earlyPayoff() ส่งต่อให้ JE
-      accruedUnpaid,
+      // เงินรับล่วงหน้าถังรวมที่ยอดปิดหัก (PR5ข) — บรรทัดของตัวเองบนหน้าปิดยอด · ขา Dr 21-1103 บรรทัดที่สอง
+      advanceBalanceApplied: quote.advanceBalanceApplied,
       journalPreview: {
         lines: jeLines,
         totalDebit: jeTotalDr.toFixed(2),
@@ -408,6 +405,8 @@ export class ContractPaymentService {
     // into a closed (FINANCE) accounting period.
     await validatePeriodOpen(this.prisma, paidDate, financeCompanyId);
 
+    // สัญญาณเตือน (คอลัมน์เงินของลูกค้าไม่ตรงยอดในบัญชี) — ส่งหลังธุรกรรม commit เท่านั้น
+    let epWarnings: readonly DeferredWarning[] = [];
     await this.prisma.$transaction(
       async (tx) => {
         if (approvalContext) {
@@ -415,7 +414,10 @@ export class ContractPaymentService {
           if (approval.requestedById !== userId)
             throw new ForbiddenException('ผู้ขออนุมัติไม่ตรงกับผู้ทำรายการ');
           quote = await this.getEarlyPayoffQuote(id, dto.discountPct, effectiveDepositCode, tx);
-          if (canonical(quote) !== canonical(approval.reviewSummary)) {
+          if (
+            canonical(earlyPayoffApprovalMoney(quote)) !==
+            canonical(earlyPayoffApprovalMoney(approval.reviewSummary))
+          ) {
             throw new ConflictException('ยอดปิดสัญญาเปลี่ยนแล้ว กรุณาส่งขออนุมัติใหม่');
           }
         } else {
@@ -523,20 +525,13 @@ export class ContractPaymentService {
           });
         }
 
-        // Phase A.4b → Wave-4: post the early-payoff JE via the SINGLE source of
-        // truth computeEarlyPayoffJE — the SAME function getEarlyPayoffQuote()
-        // uses for the preview — so what is posted here is byte-for-byte the JE
-        // the customer was quoted (preview === posted, guaranteed).
+        // PR5 (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4 · 29/09/2569): รายการ JP4 ล้างตามยอดในบัญชีของสัญญา —
+        // buildEarlyPayoffJournal ตัวเดียวกับที่ getEarlyPayoffQuote() ใช้ทำ preview ⇒ ที่ลงที่นี่ = รายการที่เห็นก่อนกด
+        // (preview === posted). เงินสด = quote.totalPayoff (เงินที่รับจริง — ก้อนเดียวกับที่กระจายเข้าแถว Payment
+        // ข้างบนและพิมพ์ในใบเสร็จ) · 52-1106 = ลูกหนี้ตามบัญชี − เงินที่รับ − เงินของลูกค้าที่หัก (ส่วนที่เหลือให้สมดุล
+        // — แทน ACCOUNTANT NOTE Wave-1 #11 เดิมที่เงินสดในรายการคิดจากงวด × ยอดต่องวด ไม่เท่าเงินที่รับ).
         // The JP4 template can't be called directly here: it also creates Payment
         // rows, which were already updated above (duplicate conflict).
-        //
-        // ACCOUNTANT NOTE (Wave-1 #11): the JE cash debit (computeEarlyPayoffJE
-        // settlement = remainingGross − discount + deferred VAT) is the
-        // per-installment breakdown, while the cash the customer is QUOTED
-        // (quote.totalPayoff) is monthlyPayment-based, nets out creditBalance/
-        // advance, and discounts GROSS PROFIT. The two bases can diverge — the
-        // FIFO loop above distributes quote.totalPayoff; reconciling the payoff
-        // cash basis is an accounting-policy decision left unchanged pending sign-off.
         {
           const epContract = await tx.contract.findUniqueOrThrow({ where: { id } });
           const epUnpaid = installmentSnapshots.length;
@@ -545,47 +540,33 @@ export class ContractPaymentService {
           // 2026-07-20). ใช้ unpaidPayments (สถานะก่อน flip PAID ข้างบน) + JE
           // history ใน tx — JE ปิดยอดของรอบนี้ยังไม่ post จึงไม่ปนเข้ามา
           const epLateFees = await this.computeUnbookedLateFees(tx, epContract, unpaidPayments);
-          // ถังพักงวดสุดท้าย (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3): quote หักเงินก้อนนี้
-          // ออกจากยอดที่ลูกค้าต้องจ่ายแล้ว → ต้องปลดหนี้ 21-1103 จริงในบัญชีด้วย
-          // ไม่งั้น Dr เงินสด > เงินรับจริง + เครดิตผีค้างบนสัญญาที่ปิดไปแล้ว (บั๊ก C-3).
-          // clamp ด้วยยอดในถัง ณ ตอนอยู่ใน tx (quote อ่านนอก tx — อาจขยับระหว่างนั้น);
-          // computeEarlyPayoffJE clamp ต่อด้วย totalCash กันขาเงินสดติดลบ.
-          //
-          // R-3 (re-review 2026-08-18): clamp ด้วย **ยอด GL 21-1103 จริงของสัญญา** ด้วย
-          // — แบบเดียวกับที่ JP5 ทำ (`repossession-jp5.template.ts` → glBal('21-1103','cr')).
-          // คอลัมน์กับ GL หลุดจากกันได้ (เช่นเคส void ที่คืนเงินผิดถัง) ถ้า clamp ด้วย
-          // คอลัมน์อย่างเดียว JP4 จะ post `Dr 21-1103` ทับยอดที่ไม่มีอยู่จริง แล้วดันบัญชี
-          // ติดลบ. สองเส้นทางปิดสัญญาที่ payoff-parity-park.spec.ts บังคับให้เท่ากัน
-          // ต้องใช้กติกา clamp ชุดเดียวกัน.
-          const epParkGl = await glContractBalance(tx, epContract.id, '21-1103', 'cr');
-          const epParkRelief = Prisma.Decimal.max(
-            0,
-            Prisma.Decimal.min(
-              d(quote.rescheduleAdvanceApplied),
-              d(epContract.rescheduleAdvanceBalance ?? 0),
-              epParkGl,
-            ),
-          );
-          const epJe = computeEarlyPayoffJE({
+          // ถังพักงวดสุดท้าย (คำสั่งเจ้าของ 2026-08-16 §จุดหัก 3): quote หักเงินก้อนนี้ออกจากยอดที่ลูกค้าจ่าย →
+          // Dr 21-1103 แทนเงินสด · clamp ด้วยคอลัมน์ถังพักและยอด 21-1103 ในบัญชี ณ ตอนอยู่ใน tx (R-3 — กติกาเดียวกับ
+          // JP5) · เงินเกินของลูกค้า 21-5101 = min(คอลัมน์ที่ยอดปิดหักให้, ยอดในบัญชี) (X2) · ทั้งหมดใน buildEarlyPayoffJournal
+          const epJe = await buildEarlyPayoffJournal(tx, {
+            contract: epContract,
             depositAccountCode: effectiveDepositCode,
-            financedAmount: epContract.financedAmount.toString(),
-            storeCommission:
-              epContract.storeCommission != null ? epContract.storeCommission.toString() : null,
-            interestTotal: epContract.interestTotal.toString(),
-            vatAmount: epContract.vatAmount != null ? epContract.vatAmount.toString() : null,
-            totalMonths: epContract.totalMonths,
-            unpaidCount: epUnpaid,
-            // quote.discountPct is a PERCENTAGE 0..100 (getEarlyPayoffQuote returns
-            // `discountPct * 100`); computeEarlyPayoffJE divides by 100 internally.
-            interestDiscountPercent: quote.discountPct,
-            unpaidLateFees: epLateFees.toString(),
-            parkRelief: epParkRelief,
-            // ค่าเดียวกับที่ preview ใช้ (quote ถูกอ่านซ้ำในธุรกรรมนี้) — preview === posted
-            accruedUnpaid: quote.accruedUnpaid,
+            cashReceived: quote.totalPayoff,
+            unpaidLateFees: epLateFees,
+            parkReliefApplied: quote.rescheduleAdvanceApplied,
+            // PR5ข: เงินรับล่วงหน้าถังรวมที่ยอดปิดหักให้ — clamp ด้วยคอลัมน์ถังรวมและยอด 21-1103 ในบัญชีที่เหลือหลังเงินพัก
+            advanceReliefApplied: quote.advanceBalanceApplied,
+            quoteDiscountAmount: quote.discountAmount,
+            discountPercent: quote.discountPct,
           });
+          // เงินที่รับ + เงินของลูกค้าที่หัก เกินลูกหนี้ตามบัญชีเกิน 1.00 → ไม่มีบัญชีรับยอดนั้น (ไม่ใช่เศษสตางค์ และไม่ใช่
+          // ส่วนลด) — ปฏิเสธทั้งธุรกรรม (ฝ่ายบัญชียังไม่ระบุวิธีลง · accounting.md "ปิดยอดก่อนกำหนด (JP4)")
+          if (epJe.excessReceived.gt(0)) {
+            throw new Error(
+              `early payoff ${id}: money received + customer money exceed the contract ledger receivable by ` +
+                `${epJe.excessReceived.toFixed(2)} (> 1.00) — not posted`,
+            );
+          }
+          // คอลัมน์ไม่ตรงบัญชี / 52-1106 ต่างจากส่วนลดบนหน้าจอเกิน 1.00 — ส่งหลัง commit
+          epWarnings = epJe.warnings;
 
           // Ledger-side line descriptions (the preview words them differently —
-          // only the money, shared via computeEarlyPayoffJE, must match).
+          // only the money, shared via buildEarlyPayoffJournal, must match).
           const epDescriptions: Record<string, string> = {
             [effectiveDepositCode]: dto.collectedByShop
               ? `หน้าร้านรับ ${epJe.cashReceived.toFixed(2)} ฿ ปิดยอด (ลูกหนี้-หน้าร้าน)`
@@ -610,7 +591,18 @@ export class ContractPaymentService {
             discount: epJe.discount.toFixed(2),
             interestDiscountPercent: quote.discountPct,
             lateFees: epJe.lateFees.toFixed(2),
+            // PR5: ฐานของรายการ — เงินที่รับ · ลูกหนี้ตามบัญชีที่ล้าง · ส่วนลดตามสูตรยอดปิด (ต่างจาก 52-1106 ได้เศษสตางค์)
+            cashReceived: epJe.cashReceived.toFixed(2),
+            receivableCleared: epJe.receivableCleared.toFixed(2),
+            quoteDiscountAmount: d(quote.discountAmount).toFixed(2),
             ...(epJe.parkRelief.gt(0) ? { parkRelief: epJe.parkRelief.toFixed(2) } : {}),
+            ...(epJe.advanceRelief.gt(0) ? { advanceRelief: epJe.advanceRelief.toFixed(2) } : {}),
+            ...(epJe.creditRelief.gt(0) ? { creditRelief: epJe.creditRelief.toFixed(2) } : {}),
+            ...(epJe.roundingGain.gt(0) ? { roundingGain: epJe.roundingGain.toFixed(2) } : {}),
+            // ส่วนของ 52-1106 ที่เกินฐานข้อ 5.2 (% ส่วนลด × ดอกเบี้ยรอตัดบัญชี) — เกิน 1.00 เท่านั้น (ไม่นับเศษสตางค์)
+            ...(epJe.discountBeyondDeferredBase.gt(EARLY_PAYOFF_ROUNDING_TOLERANCE)
+              ? { discountBeyondDeferredBase: epJe.discountBeyondDeferredBase.toFixed(2) }
+              : {}),
             ...(dto.collectedByShop
               ? {
                   collectedByShop: true,
@@ -634,7 +626,7 @@ export class ContractPaymentService {
                 accountCode: l.accountCode,
                 dr: l.dr,
                 cr: l.cr,
-                description: epDescriptions[l.accountCode] ?? '',
+                description: l.generalAdvance ? '' : (epDescriptions[l.accountCode] ?? ''),
               })),
             },
             tx,
@@ -667,6 +659,15 @@ export class ContractPaymentService {
             });
           }
 
+          // PR5ข (เจ้าของเคาะ 01/10/2569): ถังรวมลดเท่าบรรทัด Dr 21-1103 ของถังรวมที่เพิ่งลง — tx เดียวกับ JE (แบบเดียวกับ
+          // ถังพักข้างบน) · ส่วนที่ยอดปิดหักไม่หมด (ถังรวมใหญ่กว่ายอดค้าง) คงค้างในคอลัมน์ = ยอดในบัญชี
+          if (epJe.advanceRelief.gt(0)) {
+            await tx.contract.update({
+              where: { id },
+              data: { advanceBalance: { decrement: epJe.advanceRelief } },
+            });
+          }
+
           // AuditLog for shop-collect payoff path
           if (dto.collectedByShop) {
             await tx.auditLog.create({
@@ -678,9 +679,9 @@ export class ContractPaymentService {
                 newValue: {
                   shopReceivable: '11-2107',
                   shopReceivableType: 'SHOP_COLLECT',
-                  settlement: epJe.settlement.toFixed(2),
+                  // PR5: ยอดที่หน้าร้านรับแทน = Dr 11-2107 = เงินที่ลูกค้าจ่าย (รวมค่าปรับ)
+                  cashReceived: epJe.cashReceived.toFixed(2),
                   lateFees: epJe.lateFees.toFixed(2),
-                  totalCash: epJe.totalCash.toFixed(2),
                   unpaidInstallments: epUnpaid,
                 },
               },
@@ -688,7 +689,8 @@ export class ContractPaymentService {
           }
         }
 
-        // Reset credit balance (used up by the early payoff)
+        // Reset credit balance (used up by the early payoff) — PR5: รายการ JP4 ล้าง 21-5101 เท่าที่ยอดปิดหักให้และมีในบัญชี
+        // (X2) · ยอดในบัญชีที่เกินคอลัมน์ยังเป็นเงินของลูกค้า ค้างใน 21-5101 (สัญญาณเตือนหลัง commit)
         const updated = await tx.contract.update({
           where: { id },
           data: {
@@ -720,6 +722,7 @@ export class ContractPaymentService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+    emitDeferredWarnings(epWarnings);
 
     // Issue the EARLY_PAYOFF receipt (post-commit; generateReceipt has its own tx +
     // sequence lock). Mirrors the normal recordPayment path — a receipt failure must

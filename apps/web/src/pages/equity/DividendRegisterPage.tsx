@@ -105,14 +105,14 @@ export default function DividendRegisterPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground uppercase">
-                  <th className="py-2">ผู้ถือหุ้น</th>
-                  <th>เลขผู้เสียภาษี</th>
-                  <th className="text-center">ครั้ง</th>
-                  <th className="text-right">ปันผลก่อนหัก</th>
-                  <th className="text-right">WHT 10%</th>
-                  <th className="text-right">จ่ายสุทธิ</th>
-                  <th>เอกสารอ้างอิง</th>
-                  <th className="text-right"></th>
+                  <th className="py-2 print:w-[25%]">ผู้ถือหุ้น</th>
+                  <th className="print:w-[15%]">เลขผู้เสียภาษี</th>
+                  <th className="text-center print:w-[5%]">ครั้ง</th>
+                  <th className="text-right print:w-[12%]">ปันผลก่อนหัก</th>
+                  <th className="text-right print:w-[10%]">WHT 10%</th>
+                  <th className="text-right print:w-[12%]">จ่ายสุทธิ</th>
+                  <th className="print:w-[21%]">เอกสารอ้างอิง</th>
+                  <th className="text-right print:hidden"></th>
                 </tr>
               </thead>
               <tbody>
@@ -130,10 +130,10 @@ export default function DividendRegisterPage() {
                     <td className="text-right font-mono text-success">
                       {formatNumberDecimal(parseFloat(r.net), 2)}
                     </td>
-                    <td className="font-mono text-[11px] text-muted-foreground leading-snug">
+                    <td className="text-[11px] text-muted-foreground leading-snug break-words">
                       {r.docNumbers.join(', ')}
                     </td>
-                    <td className="text-right">
+                    <td className="text-right print:hidden">
                       <Button variant="ghost" size="sm" onClick={() => setCertFor(r)}>
                         <Printer className="h-4 w-4 mr-1" /> หนังสือรับรอง
                       </Button>
@@ -167,7 +167,7 @@ export default function DividendRegisterPage() {
                       {formatNumberDecimal(parseFloat(q.data.totals.net), 2)}
                     </td>
                     <td />
-                    <td />
+                    <td className="print:hidden" />
                   </tr>
                 </tfoot>
               )}

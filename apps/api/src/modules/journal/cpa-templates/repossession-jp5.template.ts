@@ -185,7 +185,7 @@ export class RepossessionJP5Template {
    * Shared money-math — builds the JP5 lines WITHOUT posting. Used by BOTH
    * execute() (ledger posting) and previewJe() (UI dry-run) so the preview
    * shown before ยืนยันยึดคืน is byte-for-byte the JE that gets posted
-   * (same pattern as computeEarlyPayoffJE for JP4).
+   * (same pattern as buildEarlyPayoffJournal for JP4).
    */
   private async buildJe(
     input: Omit<RepossessionInput, 'postedAt'>,

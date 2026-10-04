@@ -1,11 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import * as crypto from 'crypto';
+import sharp from 'sharp';
 import { KycService } from './kyc.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TestModeService } from '../test-mode/test-mode.service';
 import { AuditService } from '../audit/audit.service';
+import { StorageService } from '../storage/storage.service';
 
 describe('KycService', () => {
   let service: KycService;
@@ -74,7 +76,14 @@ describe('KycService', () => {
     log: jest.fn().mockResolvedValue(undefined),
   };
 
+  const mockStorage = {
+    describe: jest.fn().mockReturnValue({ backend: 'local' }),
+    upload: jest.fn().mockImplementation(async (key: string) => key),
+  };
+
   beforeEach(async () => {
+    mockStorage.describe.mockReset().mockReturnValue({ backend: 'local' });
+    mockStorage.upload.mockReset().mockImplementation(async (key: string) => key);
     // Reset mocks
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Object.values(mockPrisma.contract).forEach((fn: any) => fn.mockClear());
@@ -101,6 +110,7 @@ describe('KycService', () => {
         { provide: NotificationsService, useValue: mockNotifications },
         { provide: TestModeService, useValue: mockTestMode },
         { provide: AuditService, useValue: mockAudit },
+        { provide: StorageService, useValue: mockStorage },
       ],
     }).compile();
 
@@ -390,7 +400,7 @@ describe('KycService', () => {
   // ─── uploadIdCard ────────────────────────────────────
   describe('uploadIdCard', () => {
     const req = { ip: '127.0.0.1', userAgent: 'test-agent' };
-    const validBase64 = 'data:image/jpeg;base64,/9j/small-image';
+    const validBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWP4//8/AAX+Av5Y8msOAAAAAElFTkSuQmCC';
 
     it('should upload ID card and mark KYC as VERIFIED', async () => {
       prisma.kycVerification.findFirst.mockResolvedValueOnce({
@@ -403,6 +413,10 @@ describe('KycService', () => {
 
       expect(result.verified).toBe(true);
       expect(result.status).toBe('VERIFIED');
+      const storedKey = prisma.kycVerification.update.mock.calls[0][0].data.idCardImageUrl;
+      expect(storedKey).toMatch(/^kyc\/contract-1\/id-card-[a-f0-9-]+\.png$/);
+      expect(mockStorage.upload).toHaveBeenCalledWith(storedKey, Buffer.from(validBase64.split(',')[1], 'base64'), 'image/png');
+      expect(mockStorage.upload.mock.invocationCallOrder[0]).toBeLessThan(prisma.kycVerification.update.mock.invocationCallOrder[0]);
       expect(prisma.kycVerification.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -411,6 +425,45 @@ describe('KycService', () => {
           }),
         }),
       );
+    });
+
+    it.each(['jpeg', 'webp'] as const)('persists a decodable %s with its correct extension', async (format) => {
+      const bytes = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#fff' } }).toFormat(format).toBuffer();
+      await service.uploadIdCard('contract-1', `data:image/${format};base64,${bytes.toString('base64')}`, req);
+      expect(mockStorage.upload).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`\\.${format === 'jpeg' ? 'jpg' : 'webp'}$`)), bytes, `image/${format}`);
+    });
+
+    it('rejects a compressed image exceeding the decoded pixel limit', async () => {
+      const bytes = await sharp({ create: { width: 6000, height: 5000, channels: 3, background: '#fff' } }).png().toBuffer();
+      await expect(service.uploadIdCard('contract-1', `data:image/png;base64,${bytes.toString('base64')}`, req)).rejects.toThrow(BadRequestException);
+      expect(mockStorage.upload).not.toHaveBeenCalled();
+      expect(prisma.kycVerification.update).not.toHaveBeenCalled();
+    });
+
+    it('does not verify KYC when storage is unavailable', async () => {
+      mockStorage.describe.mockReturnValue({ backend: 'none' });
+      await expect(service.uploadIdCard('contract-1', validBase64, req)).rejects.toThrow();
+      expect(mockStorage.upload).not.toHaveBeenCalled();
+      expect(prisma.kycVerification.update).not.toHaveBeenCalled();
+    });
+
+    it('does not verify KYC when upload fails', async () => {
+      mockStorage.upload.mockRejectedValueOnce(new Error('storage unavailable'));
+      await expect(service.uploadIdCard('contract-1', validBase64, req)).rejects.toThrow();
+      expect(prisma.kycVerification.update).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+      'data:image/png;base64,bm90LWFuLWltYWdl',
+      validBase64.replace('image/png', 'image/jpeg'),
+      validBase64 + '!',
+      'data:image/png;base64,iVBORw0KGgoAAAAA',
+      'data:image/webp;base64,UklGRjAwMDBXRUJQ',
+    ])('rejects unsupported, forged or malformed images: %s', async (input) => {
+      await expect(service.uploadIdCard('contract-1', input, req)).rejects.toThrow(BadRequestException);
+      expect(mockStorage.upload).not.toHaveBeenCalled();
+      expect(prisma.kycVerification.update).not.toHaveBeenCalled();
     });
 
     it('should reject when OTP not yet verified', async () => {

@@ -255,7 +255,8 @@ for (const width of [1440, 390]) {
       await snapshot(page, 'credit-error-filters-retained', width);
       state.failPath = ''; state.emptyPath = '/credit-checks';
       await page.getByRole('button', { name: 'ลองใหม่', exact: true }).click();
-      await expect(page.getByText('ไม่พบรายการตรวจเครดิต', { exact: true })).toBeVisible();
+      await expect(page.getByText('ไม่พบรายการที่ตรงกับ “ตัวอย่าง”', { exact: true })).toBeVisible();
+      await expect(page.getByRole('textbox', { name: 'ค้นหารายการตรวจเครดิต' })).toHaveValue('ตัวอย่าง');
     });
 
     test('POS: cash/external price, selected IDs and disclosure survive handoff', async ({ page }) => {

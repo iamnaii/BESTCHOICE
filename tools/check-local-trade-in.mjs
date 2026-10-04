@@ -181,7 +181,17 @@ export async function checkTradeIn(page, origin, output, width) {
   // A successful purchase is not enough: staff must still reach the list controls,
   // inspect its receipt and distinguish current stock/prices from the intake record.
   await page.goto(new URL('/trade-in?zone=shop', origin).href);
+  // On a fresh preview the unfiltered list may already contain exactly one row.
+  // Wait for the debounced search itself, otherwise it can replace the row
+  // while its action menu is open.
+  const filteredList = page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname.endsWith('/trade-ins') && url.searchParams.get('search') === imei;
+  });
   await page.getByRole('textbox', { name: 'ค้นหารายการรับซื้อ' }).fill(imei);
+  const filteredResponse = await filteredList;
+  assert.equal(filteredResponse.status(), 200, await filteredResponse.text());
+  await filteredResponse.finished();
   await expect(page.getByTestId('data-table').locator('tbody tr')).toHaveCount(1);
   await expect(page.getByRole('table').getByText(imei, { exact: true })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);

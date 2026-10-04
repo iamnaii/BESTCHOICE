@@ -25,7 +25,9 @@ describe('refresh throttle over HTTP with real guard', () => {
     }).compile();
     app = module.createNestApplication();
     app.use(cookieParser());
-    await app.init();
+    // Keep one owned listener for the request burst instead of opening and
+    // closing an ephemeral port for every Supertest request.
+    await app.listen(0, '127.0.0.1');
   });
   afterEach(async () => { await app.close(); });
   it('accepts 30 refreshes from three sessions sharing one IP', async () => {
@@ -36,7 +38,8 @@ describe('refresh throttle over HTTP with real guard', () => {
   });
   it('still rate limits one session and supplies Retry-After', async () => {
     for (let i = 0; i < 600; i++) {
-      expect((await request(app.getHttpServer()).post('/auth/refresh').set('Cookie', 'refresh_token=one')).status).toBe(201);
+      const res = await request(app.getHttpServer()).post('/auth/refresh').set('Cookie', 'refresh_token=one');
+      expect({ attempt: i, status: res.status, error: res.status === 201 ? undefined : res.text }).toEqual({ attempt: i, status: 201, error: undefined });
     }
     const res = await request(app.getHttpServer()).post('/auth/refresh').set('Cookie', 'refresh_token=one');
     expect(res.status).toBe(429);

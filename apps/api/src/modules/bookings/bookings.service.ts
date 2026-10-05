@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { BookingStatus, Prisma } from '@prisma/client';
-import { bangkokDateRange, bangkokStartOfDay } from '../../utils/date.util';
+import { bangkokCalendarParts, bangkokDateRange, bangkokMidnight, bangkokStartOfDay } from '../../utils/date.util';
 import { normalizeThaiPhone } from '../../utils/thai-phone.util';
 import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -112,6 +112,24 @@ const BOOKING_DEFAULT_INCLUDE = {
 
 const ZERO = new Prisma.Decimal(0);
 
+export interface BookingSummary {
+  total: number;
+  open: number;
+  pendingDeposit: number;
+  paid: number;
+  /** Σ มัดจำของใบ PAID — เงินที่ร้านถืออยู่ (string 2 ตำแหน่ง) */
+  paidDepositHeld: string;
+  expiringWithin3Days: number;
+  closed: { converted: number; canceled: number; expired: number; total: number };
+  /** Σ มัดจำที่ริบจากใบที่หมดอายุในเดือนไทยปัจจุบัน (ไม่สนช่วงวันที่ที่กรอง) */
+  forfeitedThisMonth: string;
+}
+
+const EMPTY_SUMMARY: BookingSummary = {
+  total: 0, open: 0, pendingDeposit: 0, paid: 0, paidDepositHeld: '0.00', expiringWithin3Days: 0,
+  closed: { converted: 0, canceled: 0, expired: 0, total: 0 }, forfeitedThisMonth: '0.00',
+};
+
 const DEFAULT_EXPIRE_DAYS = 7;
 const BOOKING_EXPIRE_DAYS_KEY = 'booking_expire_days';
 
@@ -210,6 +228,49 @@ export class BookingsService {
     ]);
 
     return { data, total, page, limit };
+  }
+
+  /**
+   * ตัวเลขการ์ด KPI ของหน้ารายการ — ทุกตัวสร้างจาก `where` ตัวเดียวกับ findAll (สาขา + ช่วงวันที่สร้าง)
+   * ยกเว้น "ริบมัดจำเดือนนี้" ที่ยึดเดือนไทยปัจจุบันเสมอ (การ์ดบอกเล่าภาพรวม ไม่ใช่ตัวกรอง)
+   */
+  async summary(opts: { branchId?: string; from?: string; to?: string }, user: RequestUser): Promise<BookingSummary> {
+    const now = new Date();
+    const base: Prisma.BookingWhereInput = { deletedAt: null };
+    const range = bangkokDateRange(opts.from, opts.to);
+    if (range.gte || range.lt) base.createdAt = range;
+    const scoped = this.applyBranchScope(base, user, opts.branchId);
+    if (scoped.empty) return EMPTY_SUMMARY;
+    const where = scoped.where;
+    const monthScope = this.applyBranchScope({ deletedAt: null }, user, opts.branchId).where;
+    const { year, month } = bangkokCalendarParts(now);
+    const monthStart = bangkokMidnight(year, month, 1);
+    const monthEnd = bangkokMidnight(year, month + 1, 1);
+
+    const count = (extra: Prisma.BookingWhereInput) => this.prisma.booking.count({ where: { ...where, ...extra } });
+    const [total, open, pendingDeposit, paid, expiring, converted, canceled, expired, held, forfeited] = await Promise.all([
+      count({}),
+      count({ status: { in: [...OPEN_BOOKING_STATUSES] } }),
+      count({ status: 'PENDING_DEPOSIT' }),
+      count({ status: 'PAID' }),
+      count({ status: { in: [...OPEN_BOOKING_STATUSES] }, expireDate: { lte: expiringBefore(now, 3) } }),
+      count({ status: 'CONVERTED' }),
+      count({ status: 'CANCELED' }),
+      count({ status: 'EXPIRED' }),
+      this.prisma.booking.aggregate({ where: { ...where, status: 'PAID' }, _sum: { depositAmount: true } }),
+      this.prisma.booking.aggregate({
+        where: { ...monthScope, status: 'EXPIRED', depositPaidAt: { not: null }, expireDate: { gte: monthStart, lt: monthEnd } },
+        _sum: { depositAmount: true },
+      }),
+    ]);
+
+    return {
+      total, open, pendingDeposit, paid,
+      paidDepositHeld: (held._sum.depositAmount ?? ZERO).toFixed(2),
+      expiringWithin3Days: expiring,
+      closed: { converted, canceled, expired, total: converted + canceled + expired },
+      forfeitedThisMonth: (forfeited._sum.depositAmount ?? ZERO).toFixed(2),
+    };
   }
 
   async findOne(id: string, user: RequestUser) {

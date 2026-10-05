@@ -73,6 +73,23 @@ export class BookingsController {
     );
   }
 
+  @Get('summary')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
+  @ApiOperation({ summary: 'ตัวเลขการ์ด KPI ของหน้าการจอง (สาขา/ช่วงวันที่เดียวกับรายการ)' })
+  summary(
+    @Req() req: AuthRequest,
+    @Query('branchId') branchId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const user = req.user;
+    if (!user) throw new Error('JWT user ไม่ถูกต้อง');
+    return this.bookingsService.summary(
+      { branchId: branchId || undefined, from: from || undefined, to: to || undefined },
+      user,
+    );
+  }
+
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT', 'SALES')
   findOne(@Param('id') id: string, @Req() req: AuthRequest) {

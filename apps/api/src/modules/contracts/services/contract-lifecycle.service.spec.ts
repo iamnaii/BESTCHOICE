@@ -475,19 +475,19 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
 
   describe('#1679 — จองเครื่องหลักแบบ CAS', () => {
     it('create() จองด้วย updateMany where IN_STOCK + deletedAt null (ไม่ใช่ update ตรง ๆ)', async () => {
-      await service.create({ ...baseDto } as any, 'sp-1');
+      await service.create({ ...baseDto } as never, 'sp-1');
       expect(tx.product.updateMany).toHaveBeenCalledWith({
         where: { id: 'prod-1', status: 'IN_STOCK', deletedAt: null },
         data: { status: 'RESERVED' },
       });
       // ห้ามเหลือเส้นทางเขียน RESERVED แบบไม่มีเงื่อนไข
-      const unconditional = tx.product.update.mock.calls.filter((c: any[]) => c[0]?.data?.status === 'RESERVED');
+      const unconditional = tx.product.update.mock.calls.filter((c: Array<{ data?: { status?: string } }>) => c[0]?.data?.status === 'RESERVED');
       expect(unconditional).toHaveLength(0);
     });
 
     it('create() CAS count 0 (ใบจอง/สัญญาอื่นหยิบไปก่อน) → 409 ภาษาไทย ไม่ตัด hold เว็บ ไม่ retry', async () => {
       tx.product.updateMany.mockResolvedValue({ count: 0 });
-      const err = await service.create({ ...baseDto } as any, 'sp-1').catch((e: unknown) => e);
+      const err = await service.create({ ...baseDto } as never, 'sp-1').catch((e: unknown) => e);
       expect(err).toMatchObject({ status: 409 });
       expect((err as Error).message).toMatch(/เลือกเครื่องอื่น/);
       expect(tx.productReservation.updateMany).not.toHaveBeenCalled();
@@ -499,12 +499,14 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
   describe('#1679 — ลบร่างไม่ปลดเครื่องที่ใบจอง PAID ล็อกไว้', () => {
     const draft = () => ({ ...mockCreatedContract, downPayment: new Decimal(0), signatures: [], payments: [] });
     const releaseCalls = () => tx.product.updateMany.mock.calls.filter(
-      (c: any[]) => c[0]?.where?.id === 'prod-1' && c[0]?.data?.status === 'IN_STOCK',
+      (c: Array<{ where?: { id?: string }; data?: { status?: string } }>) => c[0]?.where?.id === 'prod-1' && c[0]?.data?.status === 'IN_STOCK',
     );
 
     it('ไม่มีใบจองล็อก → ปลดเครื่อง RESERVED → IN_STOCK เหมือนเดิม', async () => {
       queryMock.findOne.mockResolvedValue(draft());
+      const warn = jest.spyOn(service['logger'], 'warn');
       await service.softDelete('c-1', 'user-1');
+      expect(warn).not.toHaveBeenCalled();
       expect(tx.booking.findFirst).toHaveBeenCalledWith(expect.objectContaining({
         where: { lockedProductId: 'prod-1', status: 'PAID', deletedAt: null },
       }));
@@ -514,9 +516,20 @@ describe('ContractLifecycleService — ShopDownPayment wiring', () => {
     it('ใบจอง PAID ล็อกเครื่องอยู่ → ไม่ปลด (RESERVED ยังเป็นของใบจอง) แต่ยังลบร่างตามปกติ', async () => {
       queryMock.findOne.mockResolvedValue(draft());
       tx.booking.findFirst.mockResolvedValue({ id: 'bk-1', bookingNumber: 'BK-20261005-0001' });
+      // รอบแก้ 1: warn ต้องเกิดครั้งเดียว "หลัง" tx commit (tx ที่ rollback ห้ามทิ้งข้อความหลอก)
+      let inTx = false;
+      prisma.$transaction.mockImplementation(async (cb: (t: unknown) => Promise<unknown>) => {
+        inTx = true;
+        try { return await cb(tx); } finally { inTx = false; }
+      });
+      const warnInsideTx: boolean[] = [];
+      const warn = jest.spyOn(service['logger'], 'warn').mockImplementation(() => { warnInsideTx.push(inTx); });
       await service.softDelete('c-1', 'user-1');
       expect(releaseCalls()).toHaveLength(0);
       expect(tx.contract.update).toHaveBeenCalledWith({ where: { id: 'c-1' }, data: { deletedAt: expect.any(Date) } });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain('BK-20261005-0001');
+      expect(warnInsideTx).toEqual([false]);
     });
   });
 

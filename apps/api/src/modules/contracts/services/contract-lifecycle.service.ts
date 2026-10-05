@@ -28,6 +28,7 @@ import { assertSameTestSide, TEST_SIDE_CUSTOMER_SELECT } from '../../../utils/te
 import { claimCreditApproval, assertContractCreditApproval } from '../../credit-check/services/credit-approval';
 import { lockCreditCustomer } from '../../credit-check/services/room-credit-history';
 import { MAX_CONTRACT_BUNDLES, normalizeBundleIds, releaseContractBundles, reserveContractBundles } from './contract-bundle.util';
+import { findPaidBookingLock } from '../../bookings/booking-lock.util';
 
 /**
  * ContractLifecycleService — write-side lifecycle of a contract: create
@@ -544,10 +545,7 @@ export class ContractLifecycleService {
       // Release reserved product back to IN_STOCK — #1679: RESERVED ไม่มีเจ้าของในสคีมา ถ้าใบจอง PAID
       // ล็อกเครื่องนี้อยู่ RESERVED นั้นเป็นของใบจอง ไม่ใช่ของร่างนี้ → ห้ามปลด (ปลดได้ทางเดียวคือ
       // ยกเลิก/หมดอายุ/แปลงขายของใบจอง) แต่ยังลบร่างต่อตามปกติ
-      const bookingLock = await tx.booking.findFirst({
-        where: { lockedProductId: contract.productId, status: 'PAID', deletedAt: null },
-        select: { bookingNumber: true },
-      });
+      const bookingLock = await findPaidBookingLock(tx, contract.productId);
       if (bookingLock) {
         releaseSkippedFor = bookingLock.bookingNumber;
       } else {

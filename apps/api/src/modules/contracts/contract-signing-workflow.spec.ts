@@ -171,6 +171,8 @@ describe('Contract Signing & Workflow', () => {
         // Phase 5 Task 2: activate() ใช้ findFirst (+ deletedAt: null) แทน findUnique
         findFirst: jest.fn().mockResolvedValue(mockContract.product),
         update: jest.fn().mockResolvedValue(mockContract.product),
+        // #1679 รอบแก้ 1: activate ตัดเครื่องเป็น SOLD_INSTALLMENT แบบ CAS — ค่าเริ่มต้น = สำเร็จ
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       // ก้อน 5 — claimInputVatOnActivation อ่านใบรับของของเครื่องหลัก (null = ไม่มีใบรับของ → NOT_ELIGIBLE ไม่โพสต์ JE)
       goodsReceivingItem: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -560,6 +562,9 @@ describe('Contract Signing & Workflow', () => {
 
       await workflowService.activate('contract-1');
       expect(prisma.$transaction).toHaveBeenCalled();
+      expect(txMock.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'product-1', status: 'RESERVED', deletedAt: null }, data: { status: 'SOLD_INSTALLMENT' },
+      });
     });
 
     it('ACT-2: ไม่มี PDPA consent → BadRequestException', async () => {

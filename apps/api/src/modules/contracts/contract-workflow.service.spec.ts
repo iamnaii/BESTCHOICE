@@ -166,6 +166,8 @@ describe('ContractWorkflowService', () => {
         // Phase 5 Task 2: activate() ใช้ findFirst (+ deletedAt: null) แทน findUnique
         findFirst: jest.fn().mockResolvedValue(mockProduct),
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'SOLD_INSTALLMENT' }),
+        // #1679 รอบแก้ 1: flip เป็น SOLD_INSTALLMENT แบบ CAS จากสถานะที่อ่านใน tx — ค่าเริ่มต้น = สำเร็จ
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         // ดึงของแถมมาตัดสต็อกตอน activate — ค่าเริ่มต้น = ไม่มีของแถม
         findMany: jest.fn().mockResolvedValue([]),
       },
@@ -408,10 +410,10 @@ describe('ContractWorkflowService', () => {
             data: expect.objectContaining({ status: 'ACTIVE' }),
           }),
         );
-        expect(prisma.product.update).toHaveBeenCalledWith(
+        expect(prisma.product.updateMany).toHaveBeenCalledWith(
           expect.objectContaining({
-            where: { id: 'product-1' },
-            data: expect.objectContaining({ status: 'SOLD_INSTALLMENT' }),
+            where: expect.objectContaining({ id: 'product-1' }),
+            data: { status: 'SOLD_INSTALLMENT' },
           }),
         );
         expect(productsMock.transferOwnership).toHaveBeenCalledWith(
@@ -451,6 +453,7 @@ describe('ContractWorkflowService', () => {
         }));
         expect(prisma.contract.update).not.toHaveBeenCalled();
         expect(prisma.product.update).not.toHaveBeenCalled();
+        expect(prisma.product.updateMany).not.toHaveBeenCalled();
       });
 
       it('ด่านใน tx: นอก tx เห็น IN_STOCK แต่ใน tx ใบจองเพิ่งล็อก (RESERVED) → 409 ก่อนเงิน/กรรมสิทธิ์ขยับ', async () => {
@@ -462,6 +465,7 @@ describe('ContractWorkflowService', () => {
         expect(prisma.$transaction).toHaveBeenCalledTimes(1);
         expect(prisma.contract.update).not.toHaveBeenCalled();
         expect(prisma.product.update).not.toHaveBeenCalled();
+        expect(prisma.product.updateMany).not.toHaveBeenCalled();
         expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
       });
 
@@ -475,6 +479,7 @@ describe('ContractWorkflowService', () => {
         }));
         expect(prisma.contract.update).not.toHaveBeenCalled();
         expect(prisma.product.update).not.toHaveBeenCalled();
+        expect(prisma.product.updateMany).not.toHaveBeenCalled();
       });
 
       it('RESERVED ที่ไม่มีใครอื่นถือ (ร่างนี้จองเอง) → เปิดสัญญาได้ตามปกติ', async () => {
@@ -483,7 +488,11 @@ describe('ContractWorkflowService', () => {
         expect(prisma.contract.update).toHaveBeenCalledWith(expect.objectContaining({
           where: { id: 'contract-1' }, data: expect.objectContaining({ status: 'ACTIVE' }),
         }));
-        expect(prisma.product.update).toHaveBeenCalledWith({ where: { id: 'product-1' }, data: { status: 'SOLD_INSTALLMENT' } });
+        // รอบแก้ 1: flip แบบ CAS จากสถานะที่อ่านใน tx (RESERVED) — ไม่ใช่ update ตรง ๆ
+        expect(prisma.product.updateMany).toHaveBeenCalledWith({
+          where: { id: 'product-1', status: 'RESERVED', deletedAt: null }, data: { status: 'SOLD_INSTALLMENT' },
+        });
+        expect(prisma.product.update).not.toHaveBeenCalled();
       });
 
       it('สัญญาจากเปลี่ยนเครื่อง: approve จองเครื่องใหม่ให้ร่าง EXCH- เอง → ด่านร่างอื่นไม่นับตัวเอง เปิดได้', async () => {
@@ -502,6 +511,22 @@ describe('ContractWorkflowService', () => {
         expect(prisma.contract.update).toHaveBeenCalledWith(expect.objectContaining({
           data: expect.objectContaining({ status: 'ACTIVE' }),
         }));
+        expect(prisma.product.updateMany).toHaveBeenCalledWith({
+          where: { id: 'product-1', status: 'IN_STOCK', deletedAt: null }, data: { status: 'SOLD_INSTALLMENT' },
+        });
+      });
+
+      // รอบแก้ 1 (ผู้ตรวจอิสระ): activate ใช้ READ COMMITTED — เครื่อง IN_STOCK ถูกใบจองล็อก (CAS ของ payDeposit)
+      // คั่นระหว่างอ่านใน tx กับจังหวะ flip ได้ ⇒ flip ต้องเป็น CAS บนสถานะที่อ่านมา ไม่งั้นทับ RESERVED ของใบจอง
+      it('flip SOLD_INSTALLMENT CAS count 0 (สถานะเปลี่ยนคั่นกลาง) → 409 ไม่เปิดสัญญา ไม่ย้ายกรรมสิทธิ์ ไม่ลง JE', async () => {
+        prisma.product.updateMany.mockResolvedValue({ count: 0 });
+        const err = await service.activate('contract-1').catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect((err as Error).message).toMatch(/สินค้าเปลี่ยนสถานะระหว่างเปิดสัญญา/);
+        expect(prisma.contract.update).not.toHaveBeenCalled();
+        expect(productsMock.transferOwnership).not.toHaveBeenCalled();
+        expect(prisma.sale.create).not.toHaveBeenCalled();
+        expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
       });
     });
   });

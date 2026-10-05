@@ -19,6 +19,7 @@ import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { resolveStoreCommission } from '../../utils/store-commission.util';
 import { normalizeBundleIds, sellContractBundles } from './services/contract-bundle.util';
+import { findPaidBookingLock } from '../bookings/booking-lock.util';
 import { ensureContractCommission } from './services/contract-commission.util';
 import { loadInstallmentConfig } from '../../utils/config.util';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
@@ -486,6 +487,16 @@ export class ContractWorkflowService {
       }
       // #1679: ตาข่ายสุดท้าย — สถานะที่อ่านใน tx อาจต่างจากนอก tx (ใบจองเพิ่งล็อกเครื่องคั่นกลาง)
       await this.assertReservedHeldByThisDraft(tx, contract, prod.status);
+      // #1679 รอบแก้ 1: ตัดเครื่องเป็น SOLD_INSTALLMENT แบบ CAS บนสถานะที่เพิ่งอ่าน — tx นี้เป็น READ COMMITTED
+      // ⇒ ใบจองรับมัดจำ (CAS IN_STOCK→RESERVED) commit คั่นระหว่างอ่านกับเขียนได้ update ตรง ๆ จะทับล็อกของใบจอง
+      // ทำก่อนพลิกสัญญาเป็น ACTIVE: count 0 = ยังไม่มีอะไรถูกเขียน แล้วทั้ง tx rollback
+      const sold = await tx.product.updateMany({
+        where: { id: contract.productId, status: prod.status, deletedAt: null },
+        data: { status: 'SOLD_INSTALLMENT' },
+      });
+      if (sold.count !== 1) {
+        throw new ConflictException('สินค้าเปลี่ยนสถานะระหว่างเปิดสัญญา กรุณาโหลดข้อมูลใหม่แล้วลองอีกครั้ง');
+      }
       // Step 8: สถานะเปลี่ยนเป็น ACTIVE → เริ่มนับงวด.
       // Phase A.4: unearnedInterest / unearnedCommission fields removed (A.2 deferred).
       await tx.contract.update({
@@ -494,7 +505,6 @@ export class ContractWorkflowService {
           status: 'ACTIVE',
         },
       });
-      await tx.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } });
       // ของแถมของสัญญา (จองไว้ตั้งแต่ตอนสร้าง) → ตัดสต๊อกพร้อมเครื่องหลัก. อ่านจากแถวใน tx (`current`)
       // ไม่ใช่ snapshot นอก tx — การแก้ของแถมที่ commit คั่นกลางต้องถูกเห็น. สัญญาจากเปลี่ยนเครื่อง = [] เสมอ
       const contractBundleIds = normalizeBundleIds(current.bundleProductIds);
@@ -766,10 +776,7 @@ export class ContractWorkflowService {
     productStatus: string,
   ): Promise<void> {
     if (productStatus !== 'RESERVED') return;
-    const bookingLock = await db.booking.findFirst({
-      where: { lockedProductId: contract.productId, status: 'PAID', deletedAt: null },
-      select: { bookingNumber: true },
-    });
+    const bookingLock = await findPaidBookingLock(db, contract.productId);
     if (bookingLock) {
       throw new ConflictException(
         `เครื่องนี้ถูกใบจอง ${bookingLock.bookingNumber} ล็อกไว้ — เปิดสัญญาไม่ได้ กรุณาเลือกเครื่องอื่นหรือยกเลิกใบจองก่อน`,

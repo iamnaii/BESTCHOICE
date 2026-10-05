@@ -134,3 +134,16 @@ export function describeExpiry(
   if (days === 1) return { label: 'พรุ่งนี้', sub, tone: 'soon' };
   return { label: `อีก ${days} วัน`, sub, tone: days <= 3 ? 'soon' : 'normal' };
 }
+
+/** "5 ต.ค. 69 10:42" สำหรับคอลัมน์เลขที่ — เวลาไทยเสมอ ไม่ขึ้นกับ TZ ของเครื่อง */
+export function formatCreated(iso: string): string {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '-';
+  const time = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Bangkok',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(d);
+  return `${fmtBangkokDateShort(d)} ${time}`;
+}

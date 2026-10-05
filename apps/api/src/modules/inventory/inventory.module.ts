@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { JournalModule } from '../journal/journal.module';
+import { StorageModule } from '../storage/storage.module';
 
 import { StockAdjustmentsController } from './stock-adjustments.controller';
 import { StockAdjustmentsService } from './stock-adjustments.service';
+import { StockAdjustmentNumberService } from './stock-adjustment-number.service';
 
 import { StockCountController } from './stock-count.controller';
 import { StockCountService } from './stock-count.service';
@@ -17,7 +20,7 @@ import { InventoryForecastController } from './inventory-forecast.controller';
 import { InventoryForecastService } from './inventory-forecast.service';
 
 @Module({
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, JournalModule, StorageModule],
   controllers: [
     StockAdjustmentsController,
     StockCountController,
@@ -27,6 +30,7 @@ import { InventoryForecastService } from './inventory-forecast.service';
   ],
   providers: [
     StockAdjustmentsService,
+    StockAdjustmentNumberService,
     StockCountService,
     ReorderPointsService,
     BranchReceivingService,

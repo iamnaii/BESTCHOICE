@@ -55,6 +55,7 @@ import { ShopTradeInTemplate } from './cpa-templates/shop-trade-in.template';
 import { ShopGoodsReceivingTemplate } from './cpa-templates/shop-goods-receiving.template';
 // ก้อน 2 (2026-10-05) — จ่ายเงินผู้จัดจำหน่าย / มัดจำ
 import { ShopSupplierPaymentTemplate } from './cpa-templates/shop-supplier-payment.template';
+import { ShopStockWriteOffTemplate } from './cpa-templates/shop-stock-writeoff.template';
 import { ShopExpenseTemplate } from './cpa-templates/shop-expense.template';
 import { ShopInventoryTransferTemplate } from './cpa-templates/shop-inventory-transfer.template';
 // SP7.2 — Outbox + saga infrastructure for cross-entity JE
@@ -131,6 +132,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopTradeInTemplate,
     ShopGoodsReceivingTemplate,
     ShopSupplierPaymentTemplate,
+    ShopStockWriteOffTemplate,
     ShopExpenseTemplate,
     ShopInventoryTransferTemplate,
     // SP7.2 — Outbox + saga infrastructure
@@ -199,6 +201,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopTradeInTemplate,
     ShopGoodsReceivingTemplate,
     ShopSupplierPaymentTemplate,
+    ShopStockWriteOffTemplate,
     ShopExpenseTemplate,
     ShopInventoryTransferTemplate,
     // SP7.2 — Outbox + saga infrastructure

@@ -433,4 +433,45 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     const list = await service.listSupplierPayments(po.id);
     expect(list.summary).toMatchObject({ payableOutstanding: '0.00', depositOutstanding: '0.00', status: 'FULLY_PAID' });
   });
+
+  // ───────────── Task 6: เจ้าหนี้รายผู้จัดจำหน่ายจากสมุดบัญชี (บัญชีย่อยตามผู้ติดต่อ) ─────────────
+
+  it('ledger รายผู้จัดจำหน่าย: ยกมา/รับของ/จ่าย/คงเหลือ/มัดจำค้าง ตรงกับสมุดบัญชี · รายการเคลื่อนไหวไล่ยอดคงเหลือจนศูนย์', async () => {
+    const paidUp = await seedSupplier('LEDGER-X', true);
+    const owed = await seedSupplier('LEDGER-Y', false);
+    const month = today().slice(0, 7);
+
+    const poX = await createDocExamplePo(paidUp.id);
+    await service.recordSupplierPayment(poX.id, { paidAt: today(), amount: 5000, slipUrl: SLIP }, adminId);
+    await receive(poX.id, [poItemOf(poX, `${PREFIX}A`).id, poItemOf(poX, `${PREFIX}B`).id]);
+    await service.recordSupplierPayment(poX.id, { paidAt: today(), amount: 10729, slipUrl: SLIP }, adminId);
+
+    const poY = await createOrderedPo(owed.id, [{ category: 'ACCESSORY', model: `${PREFIX}Case`, quantity: 2, unitPrice: 450 }]);
+    await receive(poY.id, [poItemOf(poY, `${PREFIX}Case`).id, poItemOf(poY, `${PREFIX}Case`).id]);
+    const poY2 = await createOrderedPo(owed.id, [{ category: 'PHONE_USED', model: `${PREFIX}Y2`, quantity: 1, unitPrice: 6000 }]);
+    await service.recordSupplierPayment(poY2.id, { paidAt: today(), amount: 1000, slipUrl: SLIP }, adminId); // มัดจำค้าง ยังไม่รับของ
+
+    const ledger = await service.getSupplierLedger(month);
+    expect(ledger.month).toBe(month);
+    const rowX = ledger.suppliers.find((r) => r.supplier.id === paidUp.id)!;
+    expect(rowX).toMatchObject({ opening: '0.00', receipts: '15729.00', payments: '15729.00', closing: '0.00', depositsOutstanding: '0.00', openPoCount: 0, nextDue: null });
+    const rowY = ledger.suppliers.find((r) => r.supplier.id === owed.id)!;
+    expect(rowY).toMatchObject({ opening: '0.00', receipts: '900.00', payments: '0.00', closing: '900.00', depositsOutstanding: '1000.00', openPoCount: 2 });
+    expect(rowY.supplier).toMatchObject({ name: owed.name, hasVat: false });
+    expect(rowY.payableByAccount).toEqual({ 'S21-1102': '900.00' });
+    expect(Number(ledger.totals.closing)).toBeGreaterThanOrEqual(900);
+    expect(Number(ledger.totals.depositsOutstanding)).toBeGreaterThanOrEqual(1000);
+
+    const moves = await service.getSupplierLedgerMovements(paidUp.id, month);
+    expect(moves.supplier.id).toBe(paidUp.id);
+    expect(moves.opening).toBe('0.00');
+    expect(moves.rows.map((r) => [r.kind, r.payableIncrease, r.payableDecrease, r.depositChange, r.running])).toEqual([
+      ['DEPOSIT', '0.00', '0.00', '5000.00', '0.00'],
+      ['RECEIVING', '15729.00', '0.00', '0.00', '15729.00'],
+      ['DEPOSIT_APPLIED', '0.00', '5000.00', '-5000.00', '10729.00'],
+      ['SETTLEMENT', '0.00', '10729.00', '0.00', '0.00'],
+    ]);
+    expect(moves.rows[1]).toMatchObject({ poNumber: poX.poNumber, entryNumber: expect.any(String) });
+    expect(moves.closing).toBe('0.00');
+  });
 });

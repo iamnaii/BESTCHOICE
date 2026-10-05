@@ -9,6 +9,7 @@ import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { ShopSupplierPaymentTemplate } from '../journal/cpa-templates/shop-supplier-payment.template';
 import { DepositOutcomeInput, RecordSupplierPaymentInput, SupplierPaymentService } from './services/supplier-payment.service';
+import { SupplierLedgerService } from './services/supplier-ledger.service';
 
 /**
  * Facade for purchase-order operations. Keeps the original 16-method public
@@ -28,6 +29,7 @@ export class PurchaseOrdersService {
   private readonly lifecycle: PoLifecycleService;
   private readonly receiving: PoReceivingService;
   private readonly supplierPayments: SupplierPaymentService;
+  private readonly supplierLedger: SupplierLedgerService;
 
   constructor(
     private prisma: PrismaService,
@@ -43,6 +45,7 @@ export class PurchaseOrdersService {
       accounts: shopAccountResolver,
       companies: companyResolver,
     });
+    this.supplierLedger = new SupplierLedgerService(prisma, companyResolver);
     this.lifecycle = new PoLifecycleService(prisma, this.query, this.supplierPayments);
     this.receiving = new PoReceivingService(prisma, {
       goodsReceivingTemplate,
@@ -99,6 +102,14 @@ export class PurchaseOrdersService {
 
   listSupplierPayments(poId: string) {
     return this.supplierPayments.listPayments(poId);
+  }
+
+  getSupplierLedger(month?: string) {
+    return this.supplierLedger.ledger(month);
+  }
+
+  getSupplierLedgerMovements(supplierId: string, month?: string) {
+    return this.supplierLedger.movements(supplierId, month);
   }
 
   getAccountsPayable(page = 1, limit = 50) {

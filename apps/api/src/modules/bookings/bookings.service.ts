@@ -6,7 +6,9 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BookingStatus, Prisma } from '@prisma/client';
+import { bangkokCalendarParts, bangkokDateRange, bangkokMidnight, bangkokStartOfDay } from '../../utils/date.util';
+import { normalizeThaiPhone } from '../../utils/thai-phone.util';
 import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateBookingNumber, generateSaleNumber } from '../../utils/sequence.util';
@@ -40,8 +42,77 @@ import {
 
 type RequestUser = { id: string; role: string; branchId?: string | null };
 
+export const OPEN_BOOKING_STATUSES = ['PENDING_DEPOSIT', 'PAID'] as const;
+export const CLOSED_BOOKING_STATUSES = ['CONVERTED', 'CANCELED', 'EXPIRED'] as const;
+const ALL_BOOKING_STATUSES: readonly string[] = [...OPEN_BOOKING_STATUSES, ...CLOSED_BOOKING_STATUSES];
+export type BookingListSort = 'expireDate' | 'createdAt';
+
+export interface BookingListOptions {
+  page?: number;
+  limit?: number;
+  /** สถานะเดี่ยว หรือ `CLOSED` = CONVERTED+CANCELED+EXPIRED */
+  status?: string;
+  /** PENDING_DEPOSIT + PAID (ค่าเริ่มต้นของหน้ารายการใหม่) */
+  open?: boolean;
+  /** ใบเปิดที่หมดอายุภายใน n วัน (รวมใบที่เลยกำหนดแล้วแต่ cron ยังไม่ปิด) */
+  expiringDays?: number;
+  branchId?: string;
+  customerId?: string;
+  search?: string;
+  /** วันไทย YYYY-MM-DD (รวมปลาย) */
+  from?: string;
+  to?: string;
+  sort?: BookingListSort;
+  order?: 'asc' | 'desc';
+}
+
+export const BOOKING_EVENT_ACTIONS = [
+  'BOOKING_CREATED',
+  'BOOKING_UPDATED',
+  'BOOKING_DEPOSIT_PAID',
+  'BOOKING_CANCELED',
+  'BOOKING_CONVERTED',
+  'BOOKING_AUTO_EXPIRED',
+  'BOOKING_DELETED',
+] as const;
+export type BookingEventKind = (typeof BOOKING_EVENT_ACTIONS)[number];
+export interface BookingEvent {
+  id: string;
+  kind: BookingEventKind;
+  at: string;
+  actor: { id: string; name: string } | null;
+  data: Prisma.JsonValue | null;
+}
+
+/**
+ * เที่ยงคืนไทยของ (วันนี้ + days + 1) — ใบจองเก็บ `expireDate` เป็นเที่ยงคืนไทยของวันถัดจากวันสุดท้ายที่ใช้ได้
+ * (`toBangkokExpiryInstant` ฝั่งเว็บ) จึงต้องเทียบด้วย `lte` ให้ "ภายใน n วัน" ครอบใบที่ใช้ได้ถึงสิ้นวันที่ n พอดี
+ */
+export function expiringBefore(now: Date, days: number): Date {
+  return new Date(bangkokStartOfDay(now).getTime() + (days + 1) * 86_400_000);
+}
+
+/** เงื่อนไขค้นหา: เลขที่ · ชื่อลูกค้า · IMEI/Serial ของเครื่องที่ผูก · เบอร์โทร (เฉพาะเมื่อพิมพ์เป็นตัวเลข ≥ 3 หลัก หลัง normalize) */
+export function buildBookingSearchWhere(term: string): Prisma.BookingWhereInput[] {
+  const or: Prisma.BookingWhereInput[] = [
+    { bookingNumber: { contains: term, mode: 'insensitive' } },
+    { customer: { name: { contains: term, mode: 'insensitive' } } },
+    { items: { some: { product: { imeiSerial: { contains: term, mode: 'insensitive' } } } } },
+  ];
+  const digits = normalizeThaiPhone(term) ?? '';
+  if (/^\d{3,}$/.test(digits)) or.push({ customer: { phone: { contains: digits } } });
+  return or;
+}
+
 const BOOKING_DEFAULT_INCLUDE = {
-  items: { orderBy: { createdAt: 'asc' as const } },
+  items: {
+    orderBy: { createdAt: 'asc' as const },
+    include: {
+      product: {
+        select: { id: true, name: true, status: true, branchId: true, imeiSerial: true, wasPreviouslyDamaged: true },
+      },
+    },
+  },
   customer: {
     select: {
       id: true,
@@ -58,6 +129,24 @@ const BOOKING_DEFAULT_INCLUDE = {
 } as const;
 
 const ZERO = new Prisma.Decimal(0);
+
+export interface BookingSummary {
+  total: number;
+  open: number;
+  pendingDeposit: number;
+  paid: number;
+  /** Σ มัดจำของใบ PAID — เงินที่ร้านถืออยู่ (string 2 ตำแหน่ง) */
+  paidDepositHeld: string;
+  expiringWithin3Days: number;
+  closed: { converted: number; canceled: number; expired: number; total: number };
+  /** Σ มัดจำที่ริบจากใบที่หมดอายุในเดือนไทยปัจจุบัน (ไม่สนช่วงวันที่ที่กรอง) */
+  forfeitedThisMonth: string;
+}
+
+const EMPTY_SUMMARY: BookingSummary = {
+  total: 0, open: 0, pendingDeposit: 0, paid: 0, paidDepositHeld: '0.00', expiringWithin3Days: 0,
+  closed: { converted: 0, canceled: 0, expired: 0, total: 0 }, forfeitedThisMonth: '0.00',
+};
 
 const DEFAULT_EXPIRE_DAYS = 7;
 const BOOKING_EXPIRE_DAYS_KEY = 'booking_expire_days';
@@ -113,47 +202,37 @@ export class BookingsService {
   // Read
   // ───────────────────────────────────────────────────────────────────────
 
-  async findAll(
-    opts: {
-      page?: number;
-      limit?: number;
-      status?: string;
-      branchId?: string;
-      search?: string;
-      customerId?: string;
-      from?: string;
-      to?: string;
-    },
-    user: RequestUser,
-  ) {
+  async findAll(opts: BookingListOptions, user: RequestUser) {
     const page = Math.max(1, opts.page ?? 1);
     const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
     const skip = (page - 1) * limit;
+    const now = new Date();
 
     const baseWhere: Prisma.BookingWhereInput = { deletedAt: null };
-    if (opts.status) baseWhere.status = opts.status as Prisma.BookingWhereInput['status'];
+    if (opts.status === 'CLOSED') {
+      baseWhere.status = { in: [...CLOSED_BOOKING_STATUSES] };
+    } else if (opts.status && ALL_BOOKING_STATUSES.includes(opts.status)) {
+      baseWhere.status = opts.status as BookingStatus;
+    } else if (opts.status) {
+      throw new BadRequestException('สถานะใบจองไม่ถูกต้อง');
+    } else if (opts.open || opts.expiringDays) {
+      baseWhere.status = { in: [...OPEN_BOOKING_STATUSES] };
+    }
+    // ไม่ใส่ `gt: now` — ใบที่เลยกำหนดแต่รอบ 00:30 ยังไม่ปิด ต้องยังโผล่ให้พนักงานเห็น (ป้าย "รอระบบปิด")
+    if (opts.expiringDays) baseWhere.expireDate = { lte: expiringBefore(now, opts.expiringDays) };
     if (opts.customerId) baseWhere.customerId = opts.customerId;
-    if (opts.search) {
-      baseWhere.OR = [
-        { bookingNumber: { contains: opts.search, mode: 'insensitive' } },
-        { customer: { name: { contains: opts.search, mode: 'insensitive' } } },
-      ];
-    }
-    if (opts.from || opts.to) {
-      const createdAt: Prisma.DateTimeFilter = {};
-      if (opts.from) {
-        const f = new Date(opts.from);
-        if (!Number.isNaN(f.getTime())) createdAt.gte = f;
-      }
-      if (opts.to) {
-        const t = new Date(opts.to);
-        if (!Number.isNaN(t.getTime())) createdAt.lte = t;
-      }
-      if (createdAt.gte || createdAt.lte) baseWhere.createdAt = createdAt;
-    }
+    const term = opts.search?.trim();
+    if (term) baseWhere.OR = buildBookingSearchWhere(term);
+    const range = bangkokDateRange(opts.from, opts.to);
+    if (range.gte || range.lt) baseWhere.createdAt = range;
 
     const { where, empty } = this.applyBranchScope(baseWhere, user, opts.branchId);
     if (empty) return { data: [], total: 0, page, limit };
+
+    // ค่าเริ่มต้น: มุมมอง "ที่ยังเปิดอยู่/ใกล้หมดอายุ" เรียงใกล้หมดอายุก่อน · ที่เหลือใบใหม่สุดก่อน
+    const sortField: BookingListSort =
+      opts.sort ?? ((opts.open || opts.expiringDays) && !opts.status ? 'expireDate' : 'createdAt');
+    const direction: 'asc' | 'desc' = opts.order ?? (sortField === 'expireDate' ? 'asc' : 'desc');
 
     const [data, total] = await Promise.all([
       this.prisma.booking.findMany({
@@ -161,12 +240,55 @@ export class BookingsService {
         include: BOOKING_DEFAULT_INCLUDE,
         skip,
         take: limit,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        orderBy: [{ [sortField]: direction }, { id: 'desc' }],
       }),
       this.prisma.booking.count({ where }),
     ]);
 
     return { data, total, page, limit };
+  }
+
+  /**
+   * ตัวเลขการ์ด KPI ของหน้ารายการ — ทุกตัวสร้างจาก `where` ตัวเดียวกับ findAll (สาขา + ช่วงวันที่สร้าง)
+   * ยกเว้น "ริบมัดจำเดือนนี้" ที่ยึดเดือนไทยปัจจุบันเสมอ (การ์ดบอกเล่าภาพรวม ไม่ใช่ตัวกรอง)
+   */
+  async summary(opts: { branchId?: string; from?: string; to?: string }, user: RequestUser): Promise<BookingSummary> {
+    const now = new Date();
+    const base: Prisma.BookingWhereInput = { deletedAt: null };
+    const range = bangkokDateRange(opts.from, opts.to);
+    if (range.gte || range.lt) base.createdAt = range;
+    const scoped = this.applyBranchScope(base, user, opts.branchId);
+    if (scoped.empty) return EMPTY_SUMMARY;
+    const where = scoped.where;
+    const monthScope = this.applyBranchScope({ deletedAt: null }, user, opts.branchId).where;
+    const { year, month } = bangkokCalendarParts(now);
+    const monthStart = bangkokMidnight(year, month, 1);
+    const monthEnd = bangkokMidnight(year, month + 1, 1);
+
+    const count = (extra: Prisma.BookingWhereInput) => this.prisma.booking.count({ where: { ...where, ...extra } });
+    const [total, open, pendingDeposit, paid, expiring, converted, canceled, expired, held, forfeited] = await Promise.all([
+      count({}),
+      count({ status: { in: [...OPEN_BOOKING_STATUSES] } }),
+      count({ status: 'PENDING_DEPOSIT' }),
+      count({ status: 'PAID' }),
+      count({ status: { in: [...OPEN_BOOKING_STATUSES] }, expireDate: { lte: expiringBefore(now, 3) } }),
+      count({ status: 'CONVERTED' }),
+      count({ status: 'CANCELED' }),
+      count({ status: 'EXPIRED' }),
+      this.prisma.booking.aggregate({ where: { ...where, status: 'PAID' }, _sum: { depositAmount: true } }),
+      this.prisma.booking.aggregate({
+        where: { ...monthScope, status: 'EXPIRED', depositPaidAt: { not: null }, expireDate: { gte: monthStart, lt: monthEnd } },
+        _sum: { depositAmount: true },
+      }),
+    ]);
+
+    return {
+      total, open, pendingDeposit, paid,
+      paidDepositHeld: (held._sum.depositAmount ?? ZERO).toFixed(2),
+      expiringWithin3Days: expiring,
+      closed: { converted, canceled, expired, total: converted + canceled + expired },
+      forfeitedThisMonth: (forfeited._sum.depositAmount ?? ZERO).toFixed(2),
+    };
   }
 
   async findOne(id: string, user: RequestUser) {
@@ -178,7 +300,19 @@ export class BookingsService {
       include: BOOKING_DEFAULT_INCLUDE,
     });
     if (!booking) throw new NotFoundException('ไม่พบใบจอง');
-    return booking;
+    const logs = await this.prisma.auditLog.findMany({
+      where: { entity: 'booking', entityId: id, action: { in: [...BOOKING_EVENT_ACTIONS] } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, action: true, createdAt: true, newValue: true, user: { select: { id: true, name: true } } },
+    });
+    const events: BookingEvent[] = logs.map((log) => ({
+      id: log.id,
+      kind: log.action as BookingEventKind,
+      at: log.createdAt.toISOString(),
+      actor: log.user ? { id: log.user.id, name: log.user.name } : null,
+      data: log.newValue,
+    }));
+    return { ...booking, events };
   }
 
   private async loadBookingScoped(
@@ -237,6 +371,33 @@ export class BookingsService {
     }
   }
 
+  /** คำตัดสินเจ้าของ 2026-10-05 ข้อ 2: ใบจอง = เครื่องในสต็อก 1 เครื่อง จำนวน 1 ชิ้น (ตรงกับกติกาตอนแปลงขาย) */
+  private assertSingleDeviceItem(items: { productId?: string; quantity: number }[]): string {
+    const [item] = items;
+    if (items.length !== 1 || !item?.productId || item.quantity !== 1) {
+      throw new BadRequestException('ใบจองต้องผูกเครื่องในสต็อก 1 เครื่อง จำนวน 1 ชิ้น');
+    }
+    return item.productId;
+  }
+
+  /** เครื่องต้องมีจริง อยู่สาขาเดียวกับใบ และพร้อมขาย — ด่านนี้ให้ข้อความดี ๆ ตอนสร้าง (ด่านจริงตอนรับมัดจำอยู่ PR ล็อกเครื่อง) */
+  private async loadBookableProduct(
+    productId: string,
+    branchId: string,
+    customer: Parameters<typeof assertSameTestSide>[0],
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const product = await client.product.findFirst({
+      where: { id: productId, deletedAt: null },
+      select: { status: true, branchId: true, ...TEST_SIDE_PRODUCT_SELECT },
+    });
+    if (!product) throw new NotFoundException('ไม่พบเครื่องที่เลือก');
+    if (product.branchId !== branchId) throw new BadRequestException('เครื่องที่เลือกอยู่คนละสาขากับใบจอง');
+    if (product.status !== 'IN_STOCK') throw new BadRequestException('เครื่องนี้ไม่พร้อมขาย กรุณาเลือกเครื่องอื่น');
+    assertSameTestSide(customer, product);
+    return product;
+  }
+
   private async resolveExpireDate(dto: { expireDate?: string }): Promise<Date> {
     if (dto.expireDate) {
       const d = new Date(dto.expireDate);
@@ -277,18 +438,8 @@ export class BookingsService {
     if (!branch) throw new NotFoundException('ไม่พบสาขา');
     assertCustomerHasPhone(customer, 'จองสินค้า');
 
-    // test-data fence (spec 2026-09-05 §5.1): รายการที่ผูกเครื่องจริงต้องอยู่ฝั่งเดียวกับลูกค้า
-    // (รายการที่มีแต่ description ไม่มีเครื่อง — ไม่มีอะไรให้ตรวจ)
-    const fencedProductIds = dto.items
-      .map((item) => item.productId)
-      .filter((id): id is string => !!id);
-    if (fencedProductIds.length > 0) {
-      const fencedProducts = await this.prisma.product.findMany({
-        where: { id: { in: fencedProductIds }, deletedAt: null },
-        select: TEST_SIDE_PRODUCT_SELECT,
-      });
-      for (const product of fencedProducts) assertSameTestSide(customer, product);
-    }
+    const productId = this.assertSingleDeviceItem(dto.items);
+    await this.loadBookableProduct(productId, dto.branchId, customer);
 
     const total = this.computeTotal(dto.items);
     const deposit = new Prisma.Decimal(dto.depositAmount);
@@ -346,6 +497,67 @@ export class BookingsService {
     });
   }
 
+  /** เทียบค่าที่ส่งมาแก้กับค่าเดิม — คืนเฉพาะช่องที่ต่างจริง พร้อมค่าเดิม→ใหม่ของช่องนั้น */
+  private diffBookingUpdate(
+    dto: UpdateBookingDto,
+    existing: {
+      customerId: string;
+      branchId: string;
+      notes: string | null;
+      expireDate: Date;
+      depositAmount: Prisma.Decimal | number | string;
+      items?: { productId: string | null; description: string | null; quantity: number; unitPrice: Prisma.Decimal | number | string }[];
+    },
+    nextDeposit: Prisma.Decimal,
+  ) {
+    const changed: string[] = [];
+    const before: Record<string, unknown> = {};
+    const after: Record<string, unknown> = {};
+    const mark = (key: string, oldV: unknown, newV: unknown) => {
+      changed.push(key);
+      before[key] = oldV;
+      after[key] = newV;
+    };
+    if (dto.customerId !== undefined && dto.customerId !== existing.customerId) {
+      mark('customerId', existing.customerId, dto.customerId);
+    }
+    if (dto.branchId !== undefined && dto.branchId !== existing.branchId) {
+      mark('branchId', existing.branchId, dto.branchId);
+    }
+    if (dto.notes !== undefined && (dto.notes ?? '') !== (existing.notes ?? '')) {
+      mark('notes', existing.notes ?? null, dto.notes);
+    }
+    if (dto.expireDate !== undefined) {
+      const next = new Date(dto.expireDate);
+      if (next.getTime() !== existing.expireDate.getTime()) {
+        mark('expireDate', existing.expireDate.toISOString(), next.toISOString());
+      }
+    }
+    if (dto.depositAmount !== undefined && !nextDeposit.equals(new Prisma.Decimal(existing.depositAmount))) {
+      mark('depositAmount', new Prisma.Decimal(existing.depositAmount).toFixed(2), nextDeposit.toFixed(2));
+    }
+    if (dto.items !== undefined) {
+      const [oldItem] = existing.items ?? [];
+      const [newItem] = dto.items;
+      const same =
+        (existing.items?.length ?? 0) === dto.items.length &&
+        oldItem?.productId === newItem?.productId &&
+        oldItem !== undefined &&
+        newItem !== undefined &&
+        new Prisma.Decimal(oldItem.unitPrice).equals(new Prisma.Decimal(newItem.unitPrice)) &&
+        oldItem.quantity === newItem.quantity &&
+        (oldItem.description ?? '') === (newItem.description ?? '');
+      if (!same) {
+        mark(
+          'items',
+          oldItem ? { productId: oldItem.productId, unitPrice: new Prisma.Decimal(oldItem.unitPrice).toFixed(2) } : null,
+          newItem ? { productId: newItem.productId, unitPrice: new Prisma.Decimal(newItem.unitPrice).toFixed(2) } : null,
+        );
+      }
+    }
+    return { changed, before, after };
+  }
+
   async update(id: string, dto: UpdateBookingDto, user: RequestUser) {
     return this.prisma.$transaction(async (tx) => {
       await this.lockBooking(tx, id);
@@ -353,6 +565,9 @@ export class BookingsService {
         id: true,
         status: true,
         branchId: true,
+        customerId: true,
+        notes: true,
+        items: { select: { productId: true, description: true, quantity: true, unitPrice: true } },
         totalAmount: true,
         depositAmount: true,
         expireDate: true,
@@ -370,6 +585,20 @@ export class BookingsService {
         throw new BadRequestException('รับมัดจำแล้ว ไม่สามารถแก้ลูกค้า สาขา สินค้า หรือยอดเงินในใบจองนี้');
       }
       if (dto.branchId) this.assertCanWriteBranch(user, dto.branchId);
+      // เครื่องที่ต้องตรวจซ้ำ: รายการใหม่ (ถ้าส่งมา) ไม่งั้นเครื่องเดิมของใบ เมื่อแก้สาขา/ลูกค้า
+      const productIdToCheck = dto.items
+        ? this.assertSingleDeviceItem(dto.items)
+        : dto.branchId || dto.customerId
+          ? existing.items?.find((i) => i.productId)?.productId
+          : undefined;
+      if (productIdToCheck) {
+        const owner = await tx.customer.findFirst({
+          where: { id: dto.customerId ?? existing.customerId, deletedAt: null },
+          select: TEST_SIDE_CUSTOMER_SELECT,
+        });
+        if (!owner) throw new NotFoundException('ไม่พบลูกค้า');
+        await this.loadBookableProduct(productIdToCheck, dto.branchId ?? existing.branchId, owner, tx);
+      }
       if (dto.customerId) {
         // เปลี่ยนเจ้าของใบจอง = จองให้คนใหม่ ⇒ ด่านเบอร์เดียวกับตอนสร้าง (spec 2026-09-13-chat-prospects)
         const nextCustomer = await tx.customer.findFirst({
@@ -414,11 +643,32 @@ export class BookingsService {
         updates.depositAmount = nextDeposit;
       }
 
-      return tx.booking.update({
+      const updated = await tx.booking.update({
         where: { id },
         data: updates,
         include: BOOKING_DEFAULT_INCLUDE,
       });
+      // audit เฉพาะช่องที่เปลี่ยนจริง (เทียบค่าใหม่กับค่าเดิม) — ฟอร์มส่งทุกช่องมาทุกครั้ง การนับตาม key ที่ส่งจะโกหกไทม์ไลน์
+      const { changed, before, after } = this.diffBookingUpdate(dto, existing, nextDeposit);
+      if (changed.length > 0) {
+        await tx.auditLog.create({
+          data: {
+            action: 'BOOKING_UPDATED',
+            entity: 'booking',
+            entityId: id,
+            userId: user.id,
+            oldValue: { status: existing.status, ...before },
+            newValue: {
+              changed,
+              ...after,
+              expireDate: updated.expireDate.toISOString(),
+              depositAmount: updated.depositAmount.toFixed(2),
+              totalAmount: updated.totalAmount.toFixed(2),
+            },
+          },
+        });
+      }
+      return updated;
     });
   }
 
@@ -456,6 +706,9 @@ export class BookingsService {
         // A5 — ต้องใช้ลงบัญชีเงินมัดจำตอนรับเงิน
         depositAmount: true,
         bookingNumber: true,
+        // ด่านเครื่อง ณ ตอนรับเงิน — เครื่องอาจถูกขาย/ย้ายสาขา/จองไปหลังออกใบจอง
+        customerId: true,
+        items: { select: { productId: true } },
       }, tx);
       if (!booking) throw new NotFoundException('ไม่พบใบจอง');
       if (booking.status !== 'PENDING_DEPOSIT') {
@@ -465,6 +718,16 @@ export class BookingsService {
       }
       const now = new Date();
       this.assertNotExpired(booking.expireDate, now);
+      // ใบเก่าที่ไม่มีแถวรายการ = ข้ามด่านนี้ (ล็อกเครื่องจริง + CAS อยู่ PR ถัดไป — ที่นี่อ่านอย่างเดียว)
+      const bookedProductId = booking.items?.find((i) => i.productId)?.productId;
+      if (bookedProductId) {
+        const owner = await tx.customer.findFirst({
+          where: { id: booking.customerId, deletedAt: null },
+          select: TEST_SIDE_CUSTOMER_SELECT,
+        });
+        if (!owner) throw new NotFoundException('ไม่พบลูกค้า');
+        await this.loadBookableProduct(bookedProductId, booking.branchId, owner, tx);
+      }
       // ช่องรับเงินมัดจำ: จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง — tender แรก = primary ที่ JE มัดจำลงเต็มยอด
       const depositTenders = normalizeTenders(dto.tenders, (booking.depositAmount ?? 0).toString(), { method: dto.depositMethod });
       const depositMethod = (depositTenders[0]?.method ?? dto.depositMethod) as DepositMethod;
@@ -527,7 +790,9 @@ export class BookingsService {
           oldValue: { status: 'PENDING_DEPOSIT' },
           newValue: {
             status: 'PAID',
-            depositMethod: dto.depositMethod,
+            // วิธีที่ resolve แล้ว (tender แรกเมื่อจ่ายผสม) ไม่ใช่ค่าที่ client ส่งมาดิบ ๆ
+            depositMethod,
+            depositAmount: deposit.toFixed(2),
             depositAccountCode: cashAccountCode,
             notes: dto.notes ?? null,
           },

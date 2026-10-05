@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsDateString,
@@ -24,13 +25,14 @@ export class UpdateBookingDto {
   @IsOptional()
   @IsArray({ message: 'items ต้องเป็น array' })
   @ArrayMinSize(1, { message: 'ต้องมีอย่างน้อย 1 รายการ' })
+  @ArrayMaxSize(1, { message: 'ใบจองต้องผูกเครื่องในสต็อก 1 เครื่อง' })
   @ValidateNested({ each: true })
   @Type(() => CreateBookingItemDto)
   items?: CreateBookingItemDto[];
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'depositAmount ต้องเป็นตัวเลข' })
-  @Min(0, { message: 'depositAmount ต้องไม่ติดลบ' })
+  @Min(0.01, { message: 'มัดจำต้องมากกว่า 0 บาท' })
   depositAmount?: number;
 
   @IsOptional()

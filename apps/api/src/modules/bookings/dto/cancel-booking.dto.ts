@@ -1,8 +1,8 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsString, MaxLength, MinLength } from 'class-validator';
 
 export class CancelBookingDto {
-  @IsOptional()
-  @IsString({ message: 'cancelReason ต้องเป็น string' })
+  @IsString({ message: 'กรุณาระบุเหตุผลการยกเลิก' })
+  @MinLength(3, { message: 'กรุณาระบุเหตุผลการยกเลิก (อย่างน้อย 3 ตัวอักษร)' })
   @MaxLength(500, { message: 'cancelReason ยาวไม่เกิน 500 ตัวอักษร' })
-  cancelReason?: string;
+  cancelReason!: string;
 }

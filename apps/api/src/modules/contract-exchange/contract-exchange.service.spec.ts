@@ -488,6 +488,8 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
           return null;
         }),
         update: jest.fn().mockResolvedValue({}),
+        // #1679: tier AUTO อนุมัติทันที → จองเครื่องใหม่แบบ CAS (เครื่องยัง IN_STOCK = count 1)
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       contractExchangeRequest: {
         // Echo data so tests can assert mode/tier/snapshots off the return value
@@ -752,6 +754,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       payment: { count: jest.fn(), createMany: jest.fn() },
       product: {
         update: jest.fn().mockResolvedValue({}),
+        // #1679: จองเครื่องใหม่แบบ CAS — ค่าเริ่มต้น = เครื่องยัง IN_STOCK (count 1)
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUniqueOrThrow: jest.fn(),
       },
       journalLine: { findMany: jest.fn().mockResolvedValue([]) },
@@ -819,6 +823,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     jest.spyOn(creditApproval, 'bindExchangeCreditCheck').mockRejectedValue(new BadRequestException('ต้องตรวจเครดิตรอบใหม่'));
     await expect(service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(/รอบใหม่/);
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
   });
 
   it('creates DRAFT new contract + reserves new product + APPROVED workflow + audit (no JE, no old-side flips)', async () => {
@@ -847,13 +852,12 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     expect(createData.workflowStatus).toBe('APPROVED');
     expect(createData.exchangedFromContractId).toBe('old-c');
 
-    // New product reserved
-    expect(prisma.product.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'new-p' },
-        data: expect.objectContaining({ status: 'RESERVED' }),
-      }),
-    );
+    // New product reserved — #1679: CAS จาก IN_STOCK เท่านั้น (ไม่ทับเครื่องที่ใบจอง/ร่างอื่นถืออยู่)
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: 'new-p', status: 'IN_STOCK', deletedAt: null },
+      data: { status: 'RESERVED' },
+    });
+    expect(prisma.product.update).not.toHaveBeenCalled();
 
     // Request linked to new contract
     expect(prisma.contractExchangeRequest.update).toHaveBeenCalledWith(
@@ -1047,6 +1051,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     await expect(service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(/ส่งคำขอ.*ใหม่/);
     expect(prisma.contract.create).not.toHaveBeenCalled();
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
   });
 
   // Issue #1086 item 4 — EXCH-YYYYMMDD-NNNN doc number (no EX-${Date.now()} collision)
@@ -1235,6 +1240,8 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       payment: { count: jest.fn().mockResolvedValue(4), createMany: jest.fn() },
       product: {
         update: jest.fn().mockResolvedValue({}),
+        // #1679: เครื่องใหม่ถูกหยิบแบบ CAS — ค่าเริ่มต้น = เครื่องยัง IN_STOCK (count 1)
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUniqueOrThrow: jest.fn().mockResolvedValue({
           status: 'SOLD_INSTALLMENT',
           ownedByCompanyId: 'finance-co-id',
@@ -1371,14 +1378,13 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       }),
     );
     // New product inherits old device's status/ownership; old device back to SHOP
-    expect(prisma.product.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'newP1' },
-        data: expect.objectContaining({
-          status: 'SOLD_INSTALLMENT',
-          ownedByCompanyId: 'finance-co-id',
-        }),
-      }),
+    // #1679: เครื่องใหม่ต้องยัง IN_STOCK ตอนหยิบ (CAS) — ไม่ทับเครื่องที่ใบจองล็อกไว้ระหว่างรออนุมัติ
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: 'newP1', status: 'IN_STOCK', deletedAt: null },
+      data: { status: 'SOLD_INSTALLMENT', ownedByCompanyId: 'finance-co-id' },
+    });
+    expect(prisma.product.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'newP1' } }),
     );
     expect(prisma.product.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1583,6 +1589,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     ).rejects.toThrow('เครื่องใหม่ถูกลบออกจากระบบแล้ว');
     expect(prisma.contract.create).not.toHaveBeenCalled();
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
   });
 
   it('MEMO: เครื่องใหม่ถูกลบไปแล้ว → BadRequest, ไม่สลับเครื่องบนสัญญาเดิม', async () => {
@@ -1596,6 +1603,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     ).rejects.toThrow('เครื่องใหม่ถูกลบออกจากระบบแล้ว');
     expect(prisma.contract.update).not.toHaveBeenCalled();
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
   });
 
   // Task 8 review fix 3 — old-contract status re-check at approve time
@@ -1616,6 +1624,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       ),
     ).rejects.toThrow('เปลี่ยนเครื่องไม่ได้');
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
     expect(prisma.contract.update).not.toHaveBeenCalled();
   });
 
@@ -1628,6 +1637,42 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {}),
     ).rejects.toThrow('เปลี่ยนเครื่องไม่ได้');
     expect(prisma.contract.create).not.toHaveBeenCalled();
+  });
+
+  // #1679 ระยะสั้น — RESERVED ไม่มีเจ้าของ: เครื่องใหม่ผ่านด่าน IN_STOCK ตอน submit แต่ระหว่างรออนุมัติ
+  // ใบจอง PAID ล็อก (หรือขาย/ร่างสัญญาอื่นจอง) ได้ ⇒ approve ต้องหยิบด้วย CAS where IN_STOCK เท่านั้น
+  describe('#1679 — หยิบเครื่องใหม่แบบ CAS ตอนอนุมัติ', () => {
+    const OWNER = { id: 'u1', role: 'OWNER', branchId: null };
+    const memoDto = { memoAddendumSigned: true, memoMdmSwapped: true };
+
+    it('PRICED: เครื่องใหม่ไม่ IN_STOCK แล้ว (CAS count 0) → 409 ภาษาไทย ไม่ผูกคำขอ ไม่ตัด hold ไม่มี audit', async () => {
+      prisma.product.updateMany.mockResolvedValue({ count: 0 });
+      const err = await service.approve('pricedReq', OWNER, {}).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as Error).message).toMatch(/เครื่องใหม่.*ปฏิเสธคำขอนี้/);
+      expect(prisma.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'new-p', status: 'IN_STOCK', deletedAt: null },
+        data: { status: 'RESERVED' },
+      });
+      expect(prisma.contractExchangeRequest.update).not.toHaveBeenCalled();
+      expect(prisma.productReservation.updateMany).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('MEMO: เครื่องใหม่ไม่ IN_STOCK แล้ว (CAS count 0) → 409 ภาษาไทย ไม่คืนเครื่องเก่า ไม่สลับสัญญา', async () => {
+      prisma.product.updateMany.mockResolvedValue({ count: 0 });
+      const err = await service.approve('memoReq', OWNER, memoDto).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as Error).message).toMatch(/เครื่องใหม่.*ปฏิเสธคำขอนี้/);
+      expect(prisma.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'newP1', status: 'IN_STOCK', deletedAt: null },
+        data: { status: 'SOLD_INSTALLMENT', ownedByCompanyId: 'finance-co-id' },
+      });
+      expect(prisma.product.update).not.toHaveBeenCalled(); // เครื่องเก่ายังไม่ถูกคืน SHOP
+      expect(prisma.contract.update).not.toHaveBeenCalled();
+      expect(prisma.productReservation.updateMany).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
   });
 
   // spec 2026-09-05 §5.4 (แก้หลัง final review Critical) — ตาข่ายสุดท้ายใน tx ของ approve:
@@ -1668,6 +1713,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       await expect(service.approve('memoReq', OWNER, memoDto)).rejects.toThrow(/เครื่องทดสอบระบบ/);
       expect(prisma.contract.update).not.toHaveBeenCalled();
       expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.product.updateMany).not.toHaveBeenCalled();
       expect(prisma.productReservation.updateMany).not.toHaveBeenCalled();
       expect(audit.log).not.toHaveBeenCalled();
     });
@@ -1677,13 +1723,14 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       await expect(service.approve('memoReq', OWNER, memoDto)).rejects.toThrow(/ลูกค้าทดสอบระบบ/);
       expect(prisma.contract.update).not.toHaveBeenCalled();
       expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.product.updateMany).not.toHaveBeenCalled();
     });
 
     it('PRICED จริง ↔ จริง ผ่าน (สร้างสัญญาใหม่ + จองเครื่อง)', async () => {
       await service.approve('pricedReq', OWNER, {});
       expect(prisma.contract.create).toHaveBeenCalledTimes(1);
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'RESERVED' }) }),
+      expect(prisma.product.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'RESERVED' } }),
       );
     });
 
@@ -1702,6 +1749,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       await expect(service.approve('pricedReq', OWNER, {})).rejects.toThrow(/เครื่องทดสอบระบบ/);
       expect(prisma.contract.create).not.toHaveBeenCalled();
       expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.product.updateMany).not.toHaveBeenCalled();
       expect(prisma.pDPAConsent.create).not.toHaveBeenCalled();
       expect(prisma.contractExchangeRequest.update).not.toHaveBeenCalled();
       expect(audit.log).not.toHaveBeenCalled();
@@ -1715,6 +1763,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       await expect(service.approve('pricedReq', OWNER, {})).rejects.toThrow(/ลูกค้าทดสอบระบบ/);
       expect(prisma.contract.create).not.toHaveBeenCalled();
       expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.product.updateMany).not.toHaveBeenCalled();
     });
   });
 });

@@ -6,8 +6,9 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DefectExchangeService } from './defect-exchange.service';
+import { ExecuteDefectExchangeDto } from './dto/defect-exchange.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
@@ -126,6 +127,8 @@ describe('DefectExchangeService', () => {
       product: {
         findUnique: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
+        // #1679 รอบแก้ 1: จองเครื่องใหม่แบบ CAS — ค่าเริ่มต้น = เครื่องยัง IN_STOCK (count 1)
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       payment: {
         count: jest.fn(),
@@ -183,6 +186,57 @@ describe('DefectExchangeService', () => {
     jest.spyOn(creditApproval, 'bindExchangeCreditCheck').mockRejectedValue(new BadRequestException('ต้องตรวจเครดิตรอบใหม่'));
     await expect(service.execute({ oldContractId, newProductId, defectReason: 'screen broken' } as any, userId)).rejects.toThrow(/รอบใหม่/);
     expect(prisma.__tx.product.update).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: newProductId } }));
+    expect(prisma.__tx.product.updateMany).not.toHaveBeenCalled();
+  });
+
+  // #1679 รอบแก้ 1 — RESERVED ไม่มีเจ้าของในสคีมา: ด่านตรวจเครื่องใหม่ของทางปกติ (checkEligibility) อ่านนอก tx
+  // และทาง bypassWindowCheck ไม่ตรวจสถานะเลย ⇒ จองเครื่องใหม่ต้องเป็น CAS where IN_STOCK (แบบ payDeposit)
+  describe('execute — #1679 จองเครื่องใหม่แบบ CAS', () => {
+    const dto: ExecuteDefectExchangeDto = { oldContractId, newProductId, defectReason: 'screen broken' };
+    const arm = () => {
+      prisma.contract.findUnique.mockResolvedValue(baseContract());
+      prisma.product.findUnique.mockResolvedValue(newProductRec);
+      const tx = prisma.__tx;
+      tx.payment.count.mockResolvedValue(0);
+      tx.contract.findUnique.mockResolvedValue(baseContract());
+      tx.product.findUnique.mockResolvedValue(newProductRec);
+      return tx;
+    };
+
+    it('จองด้วย updateMany where IN_STOCK + deletedAt null (ไม่ใช่ update ตรง ๆ)', async () => {
+      const tx = arm();
+      await service.execute(dto, userId);
+      expect(tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: newProductId, status: 'IN_STOCK', deletedAt: null },
+        data: { status: 'RESERVED' },
+      });
+      expect(tx.product.update).not.toHaveBeenCalledWith(expect.objectContaining({ where: { id: newProductId } }));
+    });
+
+    it('CAS count 0 (เครื่องใหม่ถูกขาย/จอง/ใบจองล็อกไปแล้ว) → 409 ภาษาไทย ไม่ตัด hold ไม่เขียน audit', async () => {
+      const tx = arm();
+      tx.product.updateMany.mockResolvedValue({ count: 0 });
+      const err = await service.execute(dto, userId).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as Error).message).toMatch(/เครื่องใหม่.*เลือกเครื่องอื่น/);
+      expect(tx.productReservation.updateMany).not.toHaveBeenCalled();
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
+
+    it('ทาง bypassWindowCheck (replace จากใบซ่อม) ก็ต้องผ่าน CAS — count 0 → 409 ไม่ markReplaced', async () => {
+      const tx = arm();
+      tx.repairTicket.findUnique.mockResolvedValue({ id: 'rt-1', customerId: 'cust-1', status: 'IN_PROGRESS', deletedAt: null });
+      tx.product.updateMany.mockResolvedValue({ count: 0 });
+      await expect(
+        service.execute({ ...dto, bypassWindowCheck: true, originRepairTicketId: 'rt-1' }, OWNER),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: newProductId, status: 'IN_STOCK', deletedAt: null },
+        data: { status: 'RESERVED' },
+      });
+      expect(repairTickets.markReplaced).not.toHaveBeenCalled();
+      expect(tx.auditLog.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('execute — Wave 3 T2 payment guard (ปพพ.386 C-6)', () => {
@@ -541,6 +595,7 @@ describe('DefectExchangeService', () => {
       expect(tx.contract.update).not.toHaveBeenCalled();
       expect(tx.contract.create).not.toHaveBeenCalled();
       expect(tx.product.update).not.toHaveBeenCalled();
+      expect(tx.product.updateMany).not.toHaveBeenCalled();
       expect(tx.payment.createMany).not.toHaveBeenCalled();
       expect(tx.productReservation.updateMany).not.toHaveBeenCalled();
       expect(tx.auditLog.create).not.toHaveBeenCalled();

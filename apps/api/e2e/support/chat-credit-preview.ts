@@ -521,6 +521,8 @@ async function main() {
         '/api/staff-chat/appointments/due': [],
         '/api/staff-chat/staff/online': [],
         '/api/staff-chat/unread-count': { unread: 0 },
+        // ป้าย "ตัดสินค้า" บนเมนูข้าง (ก้อน 3 #1677) — preview ไม่มีคำขอตัดสินค้า จึงตอบ 0 แทน 501 ที่ทำให้ด่าน browser errors ล้ม
+        '/api/stock-adjustments/pending-count': { total: 0 },
         '/api/notifications/logs/stats': { total: 0, sent: 0, failed: 0, pending: 0 },
       };
       if (Object.prototype.hasOwnProperty.call(shellData, path)) return res.json(shellData[path]);

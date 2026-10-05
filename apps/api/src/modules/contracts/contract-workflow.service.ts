@@ -1,6 +1,6 @@
 import { contractSignatureRequirements } from '../../utils/validation.util';
 import { cashDownPayment } from '../trade-in/services/trade-in-credit.service';
-import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger, Optional, NotFoundException, BadRequestException, ConflictException, ForbiddenException, InternalServerErrorException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { formatDateShort } from '../../utils/thai-date.util';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -19,6 +19,7 @@ import { ContractActivation1ATemplate } from '../journal/cpa-templates/contract-
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { resolveStoreCommission } from '../../utils/store-commission.util';
 import { normalizeBundleIds, sellContractBundles } from './services/contract-bundle.util';
+import { findPaidBookingLock } from '../bookings/booking-lock.util';
 import { ensureContractCommission } from './services/contract-commission.util';
 import { loadInstallmentConfig } from '../../utils/config.util';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
@@ -429,6 +430,8 @@ export class ContractWorkflowService {
     if (!product || (product.status !== 'RESERVED' && product.status !== 'IN_STOCK')) {
       throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
     }
+    // #1679: ตัดจบเร็วก่อน resolve บริษัท/เปิด tx — ด่านจริงคือตัวใน tx ด้านล่าง
+    await this.assertReservedHeldByThisDraft(this.prisma, contract, product.status);
 
     // F-3-027 part 2/3: HP receivable + interest income are FINANCE-side accounts.
     // Resolve FINANCE companyId BEFORE the transaction so it can be passed
@@ -482,6 +485,18 @@ export class ContractWorkflowService {
       if (!prod || (prod.status !== 'RESERVED' && prod.status !== 'IN_STOCK')) {
         throw new BadRequestException('สินค้าไม่พร้อมสำหรับเปิดสัญญา (อาจถูกขายหรือลบไปแล้ว)');
       }
+      // #1679: ตาข่ายสุดท้าย — สถานะที่อ่านใน tx อาจต่างจากนอก tx (ใบจองเพิ่งล็อกเครื่องคั่นกลาง)
+      await this.assertReservedHeldByThisDraft(tx, contract, prod.status);
+      // #1679 รอบแก้ 1: ตัดเครื่องเป็น SOLD_INSTALLMENT แบบ CAS บนสถานะที่เพิ่งอ่าน — tx นี้เป็น READ COMMITTED
+      // ⇒ ใบจองรับมัดจำ (CAS IN_STOCK→RESERVED) commit คั่นระหว่างอ่านกับเขียนได้ update ตรง ๆ จะทับล็อกของใบจอง
+      // ทำก่อนพลิกสัญญาเป็น ACTIVE: count 0 = ยังไม่มีอะไรถูกเขียน แล้วทั้ง tx rollback
+      const sold = await tx.product.updateMany({
+        where: { id: contract.productId, status: prod.status, deletedAt: null },
+        data: { status: 'SOLD_INSTALLMENT' },
+      });
+      if (sold.count !== 1) {
+        throw new ConflictException('สินค้าเปลี่ยนสถานะระหว่างเปิดสัญญา กรุณาโหลดข้อมูลใหม่แล้วลองอีกครั้ง');
+      }
       // Step 8: สถานะเปลี่ยนเป็น ACTIVE → เริ่มนับงวด.
       // Phase A.4: unearnedInterest / unearnedCommission fields removed (A.2 deferred).
       await tx.contract.update({
@@ -490,7 +505,6 @@ export class ContractWorkflowService {
           status: 'ACTIVE',
         },
       });
-      await tx.product.update({ where: { id: contract.productId }, data: { status: 'SOLD_INSTALLMENT' } });
       // ของแถมของสัญญา (จองไว้ตั้งแต่ตอนสร้าง) → ตัดสต๊อกพร้อมเครื่องหลัก. อ่านจากแถวใน tx (`current`)
       // ไม่ใช่ snapshot นอก tx — การแก้ของแถมที่ commit คั่นกลางต้องถูกเห็น. สัญญาจากเปลี่ยนเครื่อง = [] เสมอ
       const contractBundleIds = normalizeBundleIds(current.bundleProductIds);
@@ -745,6 +759,38 @@ export class ContractWorkflowService {
     );
 
     return this.findOne(id);
+  }
+
+  /**
+   * #1679 ระยะสั้น (ไม่แก้สคีมา) — `RESERVED` ไม่มีเจ้าของในระดับสคีมา ระบบรู้แค่ว่าเครื่องถูกจอง ไม่รู้ว่าใครถือ
+   * ⇒ ก่อนเปิดสัญญาบนเครื่อง RESERVED ต้องพิสูจน์ว่าไม่มีคนอื่นถืออยู่ ซึ่งในวันนี้มีได้สองแบบ:
+   *   (ก) ใบจอง PAID ที่ล็อกเครื่องนี้ (`Booking.lockedProductId` — PR #1680)
+   *   (ข) ร่างสัญญาอื่นที่ยังไม่ลบบนเครื่องเดียวกัน (ร่างสัญญา/คำขอเปลี่ยนเครื่องจองแบบ CAS แล้ว แต่ข้อมูลเก่าก่อน
+   *       แก้อาจมีสองร่างบนเครื่องเดียว — ไม่รู้ว่าร่างไหนถือจริง จึงให้เคลียร์ร่างที่เกินก่อน)
+   * ไม่มีทั้งสองแบบ = RESERVED นั้นเป็นของร่างนี้เอง (สร้างร่าง หรือ approve เปลี่ยนเครื่องที่สร้างร่าง EXCH- นี้)
+   * `IN_STOCK` ผ่านตามเดิม (ไม่มีใครถือ). ระยะยาว: คอลัมน์เจ้าของการจองบน products (ดู issue #1679)
+   */
+  private async assertReservedHeldByThisDraft(
+    db: Prisma.TransactionClient,
+    contract: { id: string; productId: string },
+    productStatus: string,
+  ): Promise<void> {
+    if (productStatus !== 'RESERVED') return;
+    const bookingLock = await findPaidBookingLock(db, contract.productId);
+    if (bookingLock) {
+      throw new ConflictException(
+        `เครื่องนี้ถูกใบจอง ${bookingLock.bookingNumber} ล็อกไว้ — เปิดสัญญาไม่ได้ กรุณาเลือกเครื่องอื่นหรือยกเลิกใบจองก่อน`,
+      );
+    }
+    const otherDraft = await db.contract.findFirst({
+      where: { productId: contract.productId, id: { not: contract.id }, status: 'DRAFT', deletedAt: null },
+      select: { contractNumber: true },
+    });
+    if (otherDraft) {
+      throw new ConflictException(
+        `เครื่องนี้ถูกร่างสัญญา ${otherDraft.contractNumber} จองไว้ — เปิดสัญญาไม่ได้ กรุณาปฏิเสธ/ลบร่างสัญญานั้นก่อน หรือเลือกเครื่องอื่น`,
+      );
+    }
   }
 
   /**

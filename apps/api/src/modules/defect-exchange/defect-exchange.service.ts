@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
@@ -349,10 +350,18 @@ export class DefectExchangeService {
         }
 
         // Reserve new product (will flip to SOLD_INSTALLMENT on activation)
-        await tx.product.update({
-          where: { id: dto.newProductId },
+        // #1679 รอบแก้ 1: CAS where IN_STOCK — RESERVED ไม่มีเจ้าของในสคีมา; ด่าน checkEligibility อ่านนอก tx และทาง
+        // bypassWindowCheck ไม่ตรวจสถานะเครื่องใหม่เลย ⇒ update ตรง ๆ ทับเครื่องที่ใบจอง PAID/ร่างสัญญาอื่นถืออยู่ได้
+        // count 0 → ทั้ง tx rollback (สัญญาเดิมไม่ถูกปิด · JE ไม่ถูกกลับ · ไม่มีสัญญาใหม่)
+        const reserved = await tx.product.updateMany({
+          where: { id: dto.newProductId, status: 'IN_STOCK', deletedAt: null },
           data: { status: 'RESERVED' },
         });
+        if (reserved.count !== 1) {
+          throw new ConflictException(
+            'เครื่องใหม่ไม่อยู่ในสต็อกพร้อมขายแล้ว (ถูกขาย ถูกจอง หรือถูกใบจองล็อกไว้) — เปลี่ยนเครื่องไม่ได้ กรุณาเลือกเครื่องอื่นที่พร้อมขายแล้วทำรายการใหม่',
+          );
+        }
         // B5: เครื่องใหม่ถูกจองไว้แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (เคลมเปลี่ยนเครื่อง)
         await preemptReservationsInTx(tx, [dto.newProductId]);
 

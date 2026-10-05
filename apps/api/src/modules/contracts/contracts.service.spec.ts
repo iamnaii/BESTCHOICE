@@ -229,6 +229,8 @@ describe('ContractsService', () => {
       },
       // approveCancellation → reopenRepossessionOnUnsale (2026-09-05): เครื่องปกติ = 0 แถว
       repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // #1679: ลบร่างเช็คใบจอง PAID ที่ล็อกเครื่องก่อนปลดจอง — ค่าเริ่มต้น = ไม่มีใบจองล็อก
+      booking: { findFirst: jest.fn().mockResolvedValue(null) },
       productReservation: {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
@@ -625,9 +627,10 @@ describe('ContractsService', () => {
               findUnique: jest.fn().mockResolvedValue(mockProduct),
               // Phase 5 fix round 1 [Important 3]: re-check ใน tx ใช้ findFirst (+ deletedAt: null)
               findFirst: jest.fn().mockResolvedValue(mockProduct),
-              update: jest.fn().mockImplementation((args: { data: { status: string } }) => {
-                if (args.data.status === 'RESERVED') productUpdateCalled = true;
-                return Promise.resolve({ ...mockProduct, status: 'RESERVED' });
+              // #1679: จองแบบ CAS — updateMany where IN_STOCK + deletedAt null (ไม่ใช่ update ตรง ๆ)
+              updateMany: jest.fn().mockImplementation((args: { where: { status?: string; deletedAt?: null }; data: { status: string } }) => {
+                if (args.data.status === 'RESERVED' && args.where.status === 'IN_STOCK' && args.where.deletedAt === null) productUpdateCalled = true;
+                return Promise.resolve({ count: 1 });
               }),
             },
             creditCheck: {
@@ -997,6 +1000,9 @@ describe('ContractsService', () => {
       const result = await service.softDelete('contract-1', 'user-1');
 
       expect(result).toEqual({ message: expect.stringContaining('soft delete') });
+      expect(prisma.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'product-1', status: 'RESERVED' }, data: { status: 'IN_STOCK' },
+      });
     });
   });
 

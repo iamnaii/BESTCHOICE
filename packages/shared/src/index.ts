@@ -40,3 +40,4 @@ export * from './parts-history';
 export * from './accessory-compatibility';
 
 export * from './chat-work';
+export * from './chat-analytics';

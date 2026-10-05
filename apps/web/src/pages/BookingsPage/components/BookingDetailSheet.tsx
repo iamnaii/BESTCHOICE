@@ -404,7 +404,7 @@ export default function BookingDetailSheet({
                     </div>
                   </div>
                   <Button
-                    variant="link"
+                    variant="ghost"
                     size="sm"
                     onClick={() => navigate(`/customers/${booking.customer.id}`)}
                   >

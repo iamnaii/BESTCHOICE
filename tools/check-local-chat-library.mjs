@@ -6,7 +6,9 @@ export async function checkChatLibrary(page,origin,output,width){
  page.setDefaultTimeout(15000);const api=path=>`${origin}/api/admin/${path}`;
  const info=await (await page.request.get(api('preview/info'))).json();assert.equal(info.isolated,true);
  await page.request.post(api('preview/actor/owner'));
- const room=info.chatWorkRooms.SHOP;
+ // Each run owns a fresh synthetic room; retained preview files must not exhaust the real 10-file limit.
+ const created=await page.request.post(api('preview/fixture'));assert.equal(created.status(),201);
+ const {roomId:room}=await created.json();
  const name=`โปรโมชั่นมือถือ-${width}-${Date.now()}.png`;
  await page.goto(`${origin}/inbox/${room}?zone=shop`);
  await page.getByRole('button',{name:'เลือกไฟล์จากคลัง',exact:true}).click();

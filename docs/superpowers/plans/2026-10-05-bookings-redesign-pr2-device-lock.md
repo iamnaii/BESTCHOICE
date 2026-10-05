@@ -21,7 +21,7 @@
 - **หนึ่งล็อกต่อหนึ่งเครื่อง:** partial unique index `bookings_locked_product_active_unique ON bookings(locked_product_id) WHERE locked_product_id IS NOT NULL AND deleted_at IS NULL` (raw SQL ใน migration + คอมเมนต์ `///` ใน schema แบบ `ProductReservation`) · CAS บน `status: 'IN_STOCK'` เป็นด่านแรก index เป็นตาข่าย (P2002 → 409 ข้อความเดียวกัน)
 - **`lockedProductId` ล้างทุกทางออก** (ยกเลิก / หมดอายุ / ขาย) · `lockedAt` คงไว้เป็นหลักฐาน · `unlockedAt` ตั้งทุกทางออก — ไม่งั้นใบ CONVERTED ถือ index ของเครื่องตลอดไป และใบจองใบใหม่ของเครื่องเดิม (หลัง void ใบขาย) จะชน unique
 - **ไม่มี JE ใหม่ · ไม่แตะ template บัญชี** (spec §7) · เงิน `Prisma.Decimal` · `deletedAt: null` ทุก query · ข้อความไทยชี้ทางที่มีจริง (ปุ่ม "แก้ไขใบจอง" / "ยกเลิกใบจอง" มีจริงใน PR 1)
-- **Migration ชื่อ `20261019000000_booking_lock_and_source`** (spec §5.5 ให้ `20261018000000` แต่ #1675 ใช้ prefix นั้นแล้ว — `20261018000000_purchase_order_payments`) · additive ทั้งหมด · ไม่มี backfill (prod 0 ใบ) · เพิ่มคอลัมน์ §5.1 ครบชุดในรอบเดียว (`locked_product_id`, `locked_at`, `unlocked_at`, `source_room_id`, `expiry_reminder_sent_at`, `expiry_reminder_skip_reason`) — สองคอลัมน์หลังเป็นของ PR 4/6 แต่ additive และ spec ตั้งชื่อ migration ครอบไว้
+- **Migration ชื่อ `20261020000000_booking_lock_and_source`** (spec §5.5 ให้ `20261018000000` แต่ #1675 ใช้ prefix นั้นแล้ว — `20261018000000_purchase_order_payments`) · additive ทั้งหมด · ไม่มี backfill (prod 0 ใบ) · เพิ่มคอลัมน์ §5.1 ครบชุดในรอบเดียว (`locked_product_id`, `locked_at`, `unlocked_at`, `source_room_id`, `expiry_reminder_sent_at`, `expiry_reminder_skip_reason`) — สองคอลัมน์หลังเป็นของ PR 4/6 แต่ additive และ spec ตั้งชื่อ migration ครอบไว้
 - **Prisma เขียน partial unique ไม่ได้** — `prisma migrate dev` จะเสนอ DROP INDEX ห้ามยอมรับ (คอมเมนต์ในสเกมา)
 - **เว็บ:** design tokens เท่านั้น · ไทย `leading-snug` · สถานะห้ามบอกด้วยสีอย่างเดียว · ปฏิทินไทย (`fmtBangkokDateShort`/`fmtBangkokTime` จาก `utils.ts`)
 - **เทส:** API `npm --prefix apps/api test -- --runInBand src/modules/bookings` · integration (DB จริง) `cd apps/api && npx vitest run --no-file-parallelism src/modules/bookings/__tests__/booking-lock.integration.spec.ts` (ต้องมี `DATABASE_URL` — CI มี; ในเครื่องถ้าไม่มี DB ให้รายงาน) · web `npm --prefix apps/web test -- --run src/pages/BookingsPage` · typecheck `./tools/check-types.sh all` · **ห้าม `npm --prefix apps/api run lint`** (มี `--fix`) · ห้าม lint ใดที่มี `--fix`
@@ -38,11 +38,11 @@
 
 ---
 
-### Task 1: Prisma schema + migration `20261019000000_booking_lock_and_source`
+### Task 1: Prisma schema + migration `20261020000000_booking_lock_and_source`
 
 **Files:**
 - Modify: `apps/api/prisma/schema.prisma` (model `Booking` ~L8002-8044 · model `Product` relation list ~L2046-2071)
-- Create: `apps/api/prisma/migrations/20261019000000_booking_lock_and_source/migration.sql`
+- Create: `apps/api/prisma/migrations/20261020000000_booking_lock_and_source/migration.sql`
 
 **Interfaces:**
 - Produces: `Booking.lockedProductId: string | null`, `Booking.lockedAt`, `Booking.unlockedAt`, `Booking.sourceRoomId`, `Booking.expiryReminderSentAt`, `Booking.expiryReminderSkipReason` · relation `Booking.lockedProduct Product?` ("BookingLockedProduct") และ `Product.lockedByBookings Booking[]` · DB index `bookings_locked_product_active_unique`
@@ -55,7 +55,7 @@
   /// PR 2 ล็อกเครื่อง (spec §4/§5.1): ตั้งตอนรับมัดจำ (IN_STOCK→RESERVED ใน tx เดียวกับ JE/สมุดเงิน)
   /// ล้างทุกทางออก (ยกเลิก/หมดอายุ/ขาย) · partial unique SQL-only
   /// `bookings_locked_product_active_unique` ON (locked_product_id) WHERE locked_product_id IS NOT NULL
-  /// AND deleted_at IS NULL — สร้างด้วยมือใน migration 20261019000000 (Prisma declare partial unique ไม่ได้)
+  /// AND deleted_at IS NULL — สร้างด้วยมือใน migration 20261020000000 (Prisma declare partial unique ไม่ได้)
   /// ถ้ารัน `prisma migrate dev` อย่ายอมรับ diff ที่เสนอ DROP INDEX นี้ — มันคือตาข่าย "1 เครื่อง = ล็อกได้ใบเดียว"
   lockedProductId          String?   @map("locked_product_id")
   lockedAt                 DateTime? @map("locked_at")
@@ -118,7 +118,7 @@ Expected: `Web/API: OK` · ถ้ามี DB ในเครื่อง: `cd a
 - [ ] **Step 4: Commit**
 
 ```bash
-git add apps/api/prisma/schema.prisma apps/api/prisma/migrations/20261019000000_booking_lock_and_source/migration.sql
+git add apps/api/prisma/schema.prisma apps/api/prisma/migrations/20261020000000_booking_lock_and_source/migration.sql
 git commit -m "feat(bookings): schema ล็อกเครื่อง — lockedProductId/lockedAt/unlockedAt + partial unique · คอลัมน์ล่วงหน้า sourceRoomId/expiryReminder*"
 ```
 

@@ -8051,7 +8051,7 @@ model Booking {
   /// PR 2 ล็อกเครื่อง (spec §4/§5.1): ตั้งตอนรับมัดจำ (IN_STOCK→RESERVED ใน tx เดียวกับ JE/สมุดเงิน)
   /// ล้างทุกทางออก (ยกเลิก/หมดอายุ/ขาย) · partial unique SQL-only
   /// `bookings_locked_product_active_unique` ON (locked_product_id) WHERE locked_product_id IS NOT NULL
-  /// AND deleted_at IS NULL — สร้างด้วยมือใน migration 20261019000000 (Prisma declare partial unique ไม่ได้)
+  /// AND deleted_at IS NULL — สร้างด้วยมือใน migration 20261020000000 (Prisma declare partial unique ไม่ได้)
   /// ถ้ารัน `prisma migrate dev` อย่ายอมรับ diff ที่เสนอ DROP INDEX นี้ — มันคือตาข่าย "1 เครื่อง = ล็อกได้ใบเดียว"
   lockedProductId          String?   @map("locked_product_id")
   lockedAt                 DateTime? @map("locked_at")

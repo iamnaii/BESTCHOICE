@@ -1021,7 +1021,7 @@ export class StockAdjustmentsService {
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(100, Math.max(1, filters.limit || 50));
 
-    const [data, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.stockAdjustment.findMany({
         where,
         include: ADJ_INCLUDE,
@@ -1031,17 +1031,31 @@ export class StockAdjustmentsService {
       }),
       this.prisma.stockAdjustment.count({ where }),
     ]);
+    const data = await this.withJournalEntryNo(rows);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  /** StockAdjustment.journalEntryId ไม่มี relation (JE ตัด/กลับรายการ) — เติมเลขที่รายการให้หน้าจอด้วย query เดียว */
+  private async withJournalEntryNo<T extends { journalEntryId: string | null }>(
+    rows: T[],
+  ): Promise<(T & { journalEntryNo: string | null })[]> {
+    const ids = [...new Set(rows.map((r) => r.journalEntryId).filter((id): id is string => !!id))];
+    const entries = ids.length
+      ? await this.prisma.journalEntry.findMany({ where: { id: { in: ids } }, select: { id: true, entryNumber: true } })
+      : [];
+    const numbers = new Map(entries.map((e) => [e.id, e.entryNumber]));
+    return rows.map((r) => ({ ...r, journalEntryNo: r.journalEntryId ? (numbers.get(r.journalEntryId) ?? null) : null }));
   }
 
   async findOne(
     id: string,
     actor: AdjustmentActor,
-  ): Promise<StockAdjustmentView & { photoUrls: string[]; booked: BookedInventory | null }> {
-    const adjustment = await this.prisma.stockAdjustment.findUnique({ where: { id }, include: ADJ_INCLUDE });
-    if (!adjustment || adjustment.deletedAt) throw new NotFoundException('ไม่พบคำขอตัดสินค้า');
-    this.assertReaderScope(actor, adjustment.branchId);
+  ): Promise<StockAdjustmentView & { journalEntryNo: string | null; photoUrls: string[]; booked: BookedInventory | null }> {
+    const found = await this.prisma.stockAdjustment.findUnique({ where: { id }, include: ADJ_INCLUDE });
+    if (!found || found.deletedAt) throw new NotFoundException('ไม่พบคำขอตัดสินค้า');
+    this.assertReaderScope(actor, found.branchId);
+    const [adjustment] = await this.withJournalEntryNo([found]);
 
     const photoUrls: string[] = [];
     for (const key of adjustment.photos) {

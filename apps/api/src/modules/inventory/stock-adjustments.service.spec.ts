@@ -80,7 +80,7 @@ function build(product: Record<string, unknown> | null = baseProduct()) {
     productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
     onlineOrder: { findFirst: jest.fn().mockResolvedValue(null) },
     goodsReceivingItem: { findFirst: jest.fn().mockResolvedValue(null) },
-    journalEntry: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
+    journalEntry: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
     chartOfAccount: {
       findMany: jest.fn().mockResolvedValue([
         { code: 'S53-1102', name: 'ขาดทุนจากสินค้าสูญหาย/เสียหาย' },
@@ -662,5 +662,35 @@ describe('StockAdjustmentsService.reject', () => {
     const { service, prisma } = build();
     prisma.stockAdjustment.findUnique.mockResolvedValue({ id: 'adj-1', requestNumber: 'SA-1', reason: 'LOST', status: 'PENDING_APPROVAL', previousStatus: 'IN_STOCK', productId: 'p1', adjustedById: 'sales-1', deletedAt: null });
     await expect(service.reject('adj-1', { reason: 'ไม่อนุมัติเพราะยังไม่ชัด' }, SALES_B1)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('StockAdjustmentsService.findAll/findOne — เติมเลขที่รายการบัญชี', () => {
+  it('แถวที่มี journalEntryId ได้ journalEntryNo จาก query เดียว · แถวที่ไม่มี = null', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.findMany.mockResolvedValue([
+      { id: 'a', journalEntryId: 'je-1', branchId: 'branch-1' },
+      { id: 'b', journalEntryId: null, branchId: 'branch-1' },
+    ]);
+    prisma.stockAdjustment.count.mockResolvedValue(2);
+    prisma.journalEntry.findMany.mockResolvedValue([{ id: 'je-1', entryNumber: 'JE-202610-00020' }]);
+    const res = await service.findAll({}, OWNER);
+    expect(res.data.map((r: { journalEntryNo: string | null }) => r.journalEntryNo)).toEqual(['JE-202610-00020', null]);
+    expect(prisma.journalEntry.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.journalEntry.findMany.mock.calls[0][0].where).toEqual({ id: { in: ['je-1'] } });
+  });
+
+  it('findOne คืน journalEntryNo + photoUrls (ข้าม data: URI ยุคเก่า) + booked เฉพาะใบ PENDING ที่ลงบัญชีได้', async () => {
+    const { service, prisma, storage } = build();
+    prisma.stockAdjustment.findUnique.mockResolvedValue({
+      id: 'a', journalEntryId: 'je-1', branchId: 'branch-1', status: 'APPROVED', reason: 'LOST', productId: 'p1',
+      photos: ['stock-adjustments/x.jpg', 'data:image/png;base64,xx'], deletedAt: null,
+    });
+    prisma.journalEntry.findMany.mockResolvedValue([{ id: 'je-1', entryNumber: 'JE-202610-00020' }]);
+    const res = await service.findOne('a', OWNER);
+    expect(res.journalEntryNo).toBe('JE-202610-00020');
+    expect(res.photoUrls).toEqual(['https://signed/stock-adjustments/x.jpg']);
+    expect(storage.getSignedDownloadUrl).toHaveBeenCalledTimes(1);
+    expect(res.booked).toBeNull();
   });
 });

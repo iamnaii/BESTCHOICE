@@ -505,6 +505,7 @@ export class BookingsService {
         status: true,
         branchId: true,
         customerId: true,
+        items: { select: { productId: true } },
         totalAmount: true,
         depositAmount: true,
         expireDate: true,
@@ -522,14 +523,19 @@ export class BookingsService {
         throw new BadRequestException('รับมัดจำแล้ว ไม่สามารถแก้ลูกค้า สาขา สินค้า หรือยอดเงินในใบจองนี้');
       }
       if (dto.branchId) this.assertCanWriteBranch(user, dto.branchId);
-      if (dto.items) {
-        const productId = this.assertSingleDeviceItem(dto.items);
+      // เครื่องที่ต้องตรวจซ้ำ: รายการใหม่ (ถ้าส่งมา) ไม่งั้นเครื่องเดิมของใบ เมื่อแก้สาขา/ลูกค้า
+      const productIdToCheck = dto.items
+        ? this.assertSingleDeviceItem(dto.items)
+        : dto.branchId || dto.customerId
+          ? existing.items?.find((i) => i.productId)?.productId
+          : undefined;
+      if (productIdToCheck) {
         const owner = await tx.customer.findFirst({
           where: { id: dto.customerId ?? existing.customerId, deletedAt: null },
           select: TEST_SIDE_CUSTOMER_SELECT,
         });
         if (!owner) throw new NotFoundException('ไม่พบลูกค้า');
-        await this.loadBookableProduct(productId, dto.branchId ?? existing.branchId, owner, tx);
+        await this.loadBookableProduct(productIdToCheck, dto.branchId ?? existing.branchId, owner, tx);
       }
       if (dto.customerId) {
         // เปลี่ยนเจ้าของใบจอง = จองให้คนใหม่ ⇒ ด่านเบอร์เดียวกับตอนสร้าง (spec 2026-09-13-chat-prospects)

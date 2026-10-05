@@ -905,6 +905,28 @@ describe('BookingsService', () => {
     );
   });
 
+  it('update — แก้สาขาโดยไม่ส่งรายการ แต่เครื่องเดิมอยู่คนละสาขา → BadRequest ไม่แก้ใบจอง', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1', customerId: 'cust-1',
+      items: [{ productId: 'prod-1' }],
+      depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000),
+      expireDate: new Date(Date.now() + 86400000) });
+    prisma._tx.product.findFirst.mockResolvedValueOnce({ id: 'prod-1', status: 'IN_STOCK', branchId: 'br-1' });
+    await expect(service.update('bk-1', { branchId: 'br-2' }, OWNER)).rejects.toThrow(/คนละสาขา/);
+    expect(prisma._tx.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('update — แก้สาขาโดยไม่ส่งรายการ และเครื่องเดิมอยู่สาขาใหม่ → แก้ได้', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1', customerId: 'cust-1',
+      items: [{ productId: 'prod-1' }],
+      depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000),
+      expireDate: new Date(Date.now() + 86400000) });
+    prisma._tx.product.findFirst.mockResolvedValueOnce({ id: 'prod-1', status: 'IN_STOCK', branchId: 'br-2', name: 'iPhone 15', imeiSerial: '356789012345678' });
+    prisma._tx.booking.update.mockResolvedValueOnce({ id: 'bk-1', expireDate: new Date(Date.now() + 86400000),
+      depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000) });
+    await service.update('bk-1', { branchId: 'br-2' }, OWNER);
+    expect(prisma._tx.booking.update).toHaveBeenCalled();
+  });
+
   it('convertToSale — ลูกค้าในใบจองไม่มีเบอร์ → BadRequest ไม่สร้าง Sale ไม่ตัดสต็อก', async () => {
     prisma.booking.findFirst.mockResolvedValueOnce({ ...paidBooking(), customer: chatProspect });
     await expect(

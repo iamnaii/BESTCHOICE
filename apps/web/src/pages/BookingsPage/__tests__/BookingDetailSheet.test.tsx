@@ -268,6 +268,31 @@ describe('BookingDetailSheet', () => {
       expect(screen.getByRole('button', { name: /บันทึกรับมัดจำ/ })).toBeEnabled();
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
+    it('ใบ PAID ที่ล็อกเครื่องของตัวเอง (RESERVED + lockedProductId ตรง) → ป้าย "ล็อกไว้ให้ลูกค้ารายนี้แล้ว" และปุ่มแปลงขายเปิด', async () => {
+      // มัดจำเต็มยอด → ปุ่ม "ออกใบขายโดยใช้มัดจำ" ไม่ต้องรับส่วนต่าง จึงสะท้อนเฉพาะสถานะเครื่อง
+      Object.assign(mocks.booking, { depositAmount: '10000', lockedProductId: 'p1' });
+      withProduct({ status: 'RESERVED' });
+      renderSheet();
+      await dialog();
+      expect(screen.getByText('ล็อกไว้ให้ลูกค้ารายนี้แล้ว')).toBeInTheDocument();
+      expect(convertBtn()).toBeEnabled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+    it('ใบ PAID ที่เครื่องเป็น RESERVED ของคนอื่น (lockedProductId ว่าง) → ยังเป็น "มีคนอื่นถือเครื่องอยู่" และปุ่มเงินปิด', async () => {
+      mocks.booking.lockedProductId = null;
+      withProduct({ status: 'RESERVED' });
+      renderSheet();
+      await dialog();
+      expect(screen.getAllByText(/มีคนอื่นถือเครื่องอยู่/).length).toBeGreaterThan(0);
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(convertBtn()).toBeDisabled();
+    });
+    it('ใบ PENDING + เครื่อง IN_STOCK → "พร้อมขาย · จะล็อกเมื่อรับมัดจำ"', async () => {
+      pending();
+      renderSheet();
+      await dialog();
+      expect(screen.getByText('พร้อมขาย · จะล็อกเมื่อรับมัดจำ')).toBeInTheDocument();
+    });
     it('RESERVED (คนอื่นถืออยู่) + รอมัดจำ: ปุ่มรับมัดจำปิด · alert ชี้ "แก้ไขใบจอง → เปลี่ยนเครื่อง"', async () => {
       pending();
       withProduct({ status: 'RESERVED' });

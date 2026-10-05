@@ -308,8 +308,8 @@ export default function CreateBookingDialog({
             n={2}
             title="เครื่องที่จอง"
             right={
-              <span className="text-xs text-muted-foreground">
-                เลือกได้เฉพาะเครื่องที่อยู่ในสต็อกและพร้อมขาย
+              <span className="text-xs text-muted-foreground leading-snug">
+                เครื่องจะถูกล็อกไว้ให้ลูกค้าทันทีที่รับมัดจำ · ก่อนรับมัดจำยังขายได้ตามปกติ
               </span>
             }
           >

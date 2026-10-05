@@ -38,8 +38,16 @@ export function describeEvent(e: BookingEvent): {
     }
     case 'BOOKING_DEPOSIT_PAID': {
       const method = METHOD_LABEL[str(d.depositMethod)] ?? str(d.depositMethod);
-      return { title: method ? `รับมัดจำ · ${method}` : 'รับมัดจำ', tone: 'success' };
+      const parts = ['รับมัดจำ'];
+      if (method) parts.push(method);
+      if (str(d.lockedProductId)) parts.push('ล็อกเครื่องให้ลูกค้าแล้ว');
+      return { title: parts.join(' · '), tone: 'success' };
     }
+    case 'BOOKING_UNLOCK_SKIPPED':
+      return {
+        title: 'ปลดล็อกเครื่องไม่ได้ — สถานะเครื่องถูกเปลี่ยนไปแล้ว ตรวจสต็อก',
+        tone: 'destructive',
+      };
     case 'BOOKING_CANCELED': {
       const parts = ['ยกเลิกใบจอง'];
       if (money(d.refundAmount) > 0) parts.push(`คืนมัดจำ ${fmtMoneyShort(money(d.refundAmount))}`);

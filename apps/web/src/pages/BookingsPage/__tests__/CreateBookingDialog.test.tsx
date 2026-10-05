@@ -121,6 +121,12 @@ beforeEach(() => {
 });
 
 describe('CreateBookingDialog', () => {
+  it('ไม่สัญญาว่าเครื่องจะถูกล็อกตอนรับมัดจำ (ตัวล็อกยังไม่มีใน PR นี้) แต่ข้อความกำกับขั้นเครื่องยังอยู่', () => {
+    renderDialog({ initialCustomer: customer });
+    expect(screen.queryByText(/ล็อก/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/POS ขายไม่ได้/)).not.toBeInTheDocument();
+    expect(screen.getByText(/เลือกได้เฉพาะเครื่องที่อยู่ในสต็อกและพร้อมขาย/)).toBeInTheDocument();
+  });
   it('ต้องมีลูกค้า + เครื่อง ก่อนปุ่มบันทึกจะเปิด · ส่ง 1 เครื่อง quantity 1 · วันหมดอายุ = สิ้นวันไทยของชิป 7 วัน', async () => {
     const { onSaved } = renderDialog({ initialCustomer: customer });
     const save = screen.getByRole('button', { name: 'บันทึกใบจอง' });

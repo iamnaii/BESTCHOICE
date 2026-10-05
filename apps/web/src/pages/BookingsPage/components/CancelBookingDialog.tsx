@@ -64,6 +64,7 @@ export default function CancelBookingDialog({
             <button
               key={r}
               type="button"
+              aria-pressed={reason === r}
               onClick={() => setReason(r)}
               className={cn(
                 'inline-flex h-8 items-center rounded-full border px-3 text-[13px] leading-snug',

@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { Booking } from '../types';
 import {
+  bookingActions,
   describeExpiry,
   fmtMoneyShort,
   formatCreated,
@@ -59,7 +60,9 @@ export function ExpiryCell({ booking, nowMs }: { booking: Booking; nowMs: number
         {info.label}
       </span>
       {info.sub && (
-        <span className="block truncate text-[11px] text-muted-foreground">{info.sub}</span>
+        <span className="block truncate text-[11px] text-muted-foreground" title={info.sub}>
+          {info.sub}
+        </span>
       )}
     </span>
   );
@@ -178,40 +181,47 @@ export function bookingColumns(nowMs: number, actions: BookingRowActions): Colum
       label: '',
       align: 'center',
       width: px(BOOKING_COLUMN_WIDTHS.menu),
-      render: (b) => (
-        <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                aria-label={`การกระทำ ${b.bookingNumber}`}
-              >
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => actions.onOpen(b)}>
-                <ExternalLink className="size-4" /> เปิด
-              </DropdownMenuItem>
-              {actions.canMutate && b.status === 'PENDING_DEPOSIT' && (
-                <DropdownMenuItem onSelect={() => actions.onCollectDeposit(b)}>
-                  <HandCoins className="size-4" /> รับมัดจำ
-                </DropdownMenuItem>
-              )}
-              {actions.canMutate && isOpenStatus(b.status) && (
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onSelect={() => actions.onCancel(b)}
+      render: (b) => {
+        // เมนูแถวไม่มีลบ/แก้ไข (ทำในแผง) — ส่ง canDelete=false ให้เมทริกซ์ตัดสินที่เดียวกับแผง
+        const allowed = bookingActions(b, nowMs, {
+          canMutate: actions.canMutate,
+          canDelete: false,
+        });
+        return (
+          <div onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  aria-label={`การกระทำ ${b.bookingNumber}`}
                 >
-                  <Ban className="size-4" /> ยกเลิกใบจอง
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => actions.onOpen(b)}>
+                  <ExternalLink className="size-4" /> เปิด
                 </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      ),
+                {allowed.collectDeposit && (
+                  <DropdownMenuItem onSelect={() => actions.onCollectDeposit(b)}>
+                    <HandCoins className="size-4" /> รับมัดจำ
+                  </DropdownMenuItem>
+                )}
+                {allowed.cancel && (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onSelect={() => actions.onCancel(b)}
+                  >
+                    <Ban className="size-4" /> ยกเลิกใบจอง
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      },
     },
   ];
 }

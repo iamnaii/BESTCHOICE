@@ -41,14 +41,14 @@ import { TenderInput, useTenders } from '@/components/tender/TenderInput';
 import type { TenderRow } from '@/components/tender/tender-utils';
 import { useBookingClock } from '../hooks/useBookingClock';
 import type { Booking, BookingItem } from '../types';
-import { formatThaiDateShort } from '@/lib/date';
 import {
   awaitingExpiry,
+  bookingActions,
   describeExpiry,
+  fmtBangkokDateShort,
   fmtDate,
   fmtMoney,
   fmtMoneyShort,
-  isOpenStatus,
   lastValidMs,
   STATUS_LABEL,
   STATUS_VARIANT,
@@ -92,10 +92,15 @@ function productState(
 ): { label: string; tone: 'ok' | 'muted' | 'bad' } {
   if (booking.status === 'CONVERTED') return { label: 'ส่งมอบแล้ว', tone: 'muted' };
   if (!item?.productId) return { label: 'ไม่ได้ผูกเครื่อง — แปลงขายไม่ได้', tone: 'bad' };
-  const s = item.product?.status;
+  const product = item.product;
+  const s = product?.status;
   if (!s) return { label: 'ไม่พบข้อมูลเครื่อง', tone: 'muted' };
+  if (product.branchId !== booking.branch.id) {
+    return { label: 'เครื่องย้ายสาขาไปแล้ว', tone: 'bad' };
+  }
   if (s === 'IN_STOCK') return { label: 'พร้อมขาย · ยังอยู่ในสต็อก', tone: 'ok' };
-  if (s === 'RESERVED') return { label: 'จองไว้แล้ว', tone: 'ok' };
+  // ยังไม่มีตัวล็อกเครื่องตอนรับมัดจำ — เครื่องที่ถูกจอง/ผูกสัญญาร่างแปลว่ามีคนอื่นถืออยู่
+  if (s === 'RESERVED') return { label: 'มีคนอื่นถือเครื่องอยู่ (จอง/สัญญาร่าง)', tone: 'bad' };
   if (s.startsWith('SOLD'))
     return { label: 'ถูกขายไปแล้ว — ต้องยกเลิกใบนี้แล้วออกใบใหม่', tone: 'bad' };
   return { label: `สถานะเครื่อง ${s}`, tone: 'muted' };
@@ -134,8 +139,8 @@ export default function BookingDetailSheet({
 
   const expired = !!booking && awaitingExpiry(booking, now);
   const item = booking?.items[0];
-  const conversionBlocked =
-    !!booking && (booking.items.length !== 1 || !item?.productId || item.quantity !== 1);
+  // โครงสร้างใบเก่า (หลายรายการ/จำนวน ≠ 1) — แปลงขายไม่ได้เลย ส่วนเครื่องไม่พร้อม/ไม่ผูกเครื่อง ดู deviceBlocked
+  const conversionBlocked = !!booking && (booking.items.length !== 1 || item?.quantity !== 1);
   const total = Number(booking?.totalAmount ?? 0);
   const deposit = Number(booking?.depositAmount ?? 0);
   const balance = total - deposit;
@@ -226,9 +231,14 @@ export default function BookingDetailSheet({
   }
 
   const expiry = booking ? describeExpiry(booking, now) : null;
-  const canActOnOpen = canMutate && !!booking && isOpenStatus(booking.status) && !expired;
-  const showMenu = canActOnOpen || (canDelete && booking?.status === 'PENDING_DEPOSIT' && !expired);
+  // เมทริกซ์ปุ่มชุดเดียวกับเมนู ⋯ ท้ายแถว (utils.bookingActions)
+  const actions = booking ? bookingActions(booking, now, { canMutate, canDelete }) : null;
+  const canEdit = !!actions?.edit && !conversionBlocked;
+  const showMenu = canEdit || !!actions?.cancel || !!actions?.delete;
   const state = booking ? productState(booking, item) : null;
+  // เครื่องไม่พร้อม (ขายไปแล้ว/ถูกถือ/ย้ายสาขา/ไม่ผูกเครื่อง) — ปิดปุ่มรับมัดจำและแปลงขาย + บอกทางที่ทำได้จริง
+  const deviceBlocked = state?.tone === 'bad' && booking?.status !== 'CONVERTED';
+  const deviceBlockedMoneyAction = deviceBlocked && !!(actions?.collectDeposit || actions?.convert);
 
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
@@ -261,13 +271,13 @@ export default function BookingDetailSheet({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64">
-                  {canActOnOpen && !conversionBlocked && (
+                  {canEdit && (
                     <DropdownMenuItem onSelect={() => setEditOpen(true)}>
                       <Pencil className="size-4" />{' '}
                       {booking!.status === 'PAID' ? 'แก้หมายเหตุ / วันหมดอายุ' : 'แก้ไขใบจอง'}
                     </DropdownMenuItem>
                   )}
-                  {canActOnOpen && (
+                  {actions?.cancel && (
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
                       onSelect={() => setCancelOpen(true)}
@@ -276,7 +286,7 @@ export default function BookingDetailSheet({
                       {booking!.status === 'PAID' ? ` · คืนมัดจำ ${fmtMoneyShort(deposit)}` : ''}
                     </DropdownMenuItem>
                   )}
-                  {canDelete && booking?.status === 'PENDING_DEPOSIT' && !expired && (
+                  {actions?.delete && (
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
                       onSelect={() => setDeleteOpen(true)}
@@ -347,7 +357,7 @@ export default function BookingDetailSheet({
               </div>
             ) : booking.status === 'EXPIRED' ? (
               <div className="border-b border-border bg-muted px-5 py-2.5 text-[13px] leading-snug">
-                หมดอายุสิ้นวัน {formatThaiDateShort(new Date(lastValidMs(booking.expireDate)))}
+                หมดอายุสิ้นวัน {fmtBangkokDateShort(lastValidMs(booking.expireDate))}
                 {booking.depositPaidAt
                   ? ` · ริบมัดจำ ${fmtMoneyShort(deposit)} เข้ารายได้`
                   : ' · ยังไม่ได้รับมัดจำ'}
@@ -374,6 +384,23 @@ export default function BookingDetailSheet({
                 >
                   ใบจองนี้ยังแปลงขายไม่ได้ ต้องมีเครื่องที่ผูกสต็อก 1 รายการ จำนวน 1 ชิ้น
                   กรุณายกเลิกและคืนเงินก่อนออกใบจองใหม่
+                </p>
+              )}
+              {deviceBlockedMoneyAction && !(booking.status === 'PAID' && conversionBlocked) && (
+                <p
+                  role="alert"
+                  className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 leading-snug"
+                >
+                  <AlertTriangle
+                    aria-hidden="true"
+                    className="mt-0.5 size-4 shrink-0 text-destructive"
+                  />
+                  <span>
+                    {state?.label} —{' '}
+                    {booking.status === 'PENDING_DEPOSIT'
+                      ? 'รับมัดจำไม่ได้ ที่เมนู ⋯ เลือก แก้ไขใบจอง → เปลี่ยนเครื่อง'
+                      : 'แปลงขายไม่ได้ ที่เมนู ⋯ เลือก ยกเลิกใบจองเพื่อคืนมัดจำ แล้วออกใบจองใหม่'}
+                  </span>
                 </p>
               )}
 
@@ -498,7 +525,7 @@ export default function BookingDetailSheet({
                 </div>
               </section>
 
-              {canMutate && booking.status === 'PENDING_DEPOSIT' && !expired && (
+              {actions?.collectDeposit && (
                 <section
                   className={cn(
                     'space-y-3 rounded-xl border border-primary p-4',
@@ -531,6 +558,7 @@ export default function BookingDetailSheet({
                     onClick={() => payMut.mutate()}
                     disabled={
                       pending ||
+                      deviceBlocked ||
                       !depositTenders.status.ready ||
                       (usesCash(depositTenders.rows) && !booking.branch.shopCashAccountCode)
                     }
@@ -540,82 +568,79 @@ export default function BookingDetailSheet({
                 </section>
               )}
 
-              {canMutate &&
-                booking.status === 'PAID' &&
-                !expired &&
-                !conversionBlocked &&
-                !booking.convertedToSale && (
-                  <section className="space-y-3 rounded-xl border border-primary p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="flex items-center gap-2 font-semibold">
-                        <ShoppingCart className="size-4 text-primary" />
-                        {isPartial ? 'รับส่วนต่างและออกใบขาย' : 'ออกใบขายโดยใช้มัดจำ'}
-                      </span>
-                      {isPartial && (
-                        <span className="text-[13px] text-muted-foreground">
-                          ต้องรับ{' '}
-                          <strong className="font-semibold text-foreground tabular-nums">
-                            {fmtMoneyShort(balance)}
-                          </strong>
-                        </span>
-                      )}
-                    </div>
+              {actions?.convert && !conversionBlocked && !booking.convertedToSale && (
+                <section className="space-y-3 rounded-xl border border-primary p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2 font-semibold">
+                      <ShoppingCart className="size-4 text-primary" />
+                      {isPartial ? 'รับส่วนต่างและออกใบขาย' : 'ออกใบขายโดยใช้มัดจำ'}
+                    </span>
                     {isPartial && (
-                      <>
-                        <TenderInput
-                          due={balance}
-                          value={balanceTenders.rows}
-                          onChange={balanceTenders.setRows}
-                          dueLabel="ส่วนต่างที่ต้องรับ"
-                          disabled={pending}
-                        />
-                        <ReceiptAccounts branch={booking.branch} rows={balanceTenders.rows} />
-                        <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-2.5 leading-snug">
-                          <Checkbox
-                            checked={collectBalance}
-                            onCheckedChange={(v) => setCollectBalance(v === true)}
-                            className="mt-0.5"
-                            aria-label="ยืนยันว่าได้รับยอดส่วนต่างครบแล้ว และส่งมอบเครื่องให้ลูกค้า"
-                          />
-                          <span>ยืนยันว่าได้รับยอดส่วนต่างครบแล้ว และส่งมอบเครื่องให้ลูกค้า</span>
-                        </label>
-                      </>
+                      <span className="text-[13px] text-muted-foreground">
+                        ต้องรับ{' '}
+                        <strong className="font-semibold text-foreground tabular-nums">
+                          {fmtMoneyShort(balance)}
+                        </strong>
+                      </span>
                     )}
-                    {canAcknowledgeDamage && item?.product?.wasPreviouslyDamaged && (
+                  </div>
+                  {isPartial && (
+                    <>
+                      <TenderInput
+                        due={balance}
+                        value={balanceTenders.rows}
+                        onChange={balanceTenders.setRows}
+                        dueLabel="ส่วนต่างที่ต้องรับ"
+                        disabled={pending}
+                      />
+                      <ReceiptAccounts branch={booking.branch} rows={balanceTenders.rows} />
                       <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-2.5 leading-snug">
                         <Checkbox
-                          checked={damageAck}
-                          onCheckedChange={(v) => setDamageAck(v === true)}
+                          checked={collectBalance}
+                          onCheckedChange={(v) => setCollectBalance(v === true)}
                           className="mt-0.5"
+                          aria-label="ยืนยันว่าได้รับยอดส่วนต่างครบแล้ว และส่งมอบเครื่องให้ลูกค้า"
                         />
-                        <span>
-                          เครื่องมีประวัติเสียหาย — ยืนยันว่าได้แจ้งลูกค้าและอนุมัติให้ขายแล้ว
-                        </span>
+                        <span>ยืนยันว่าได้รับยอดส่วนต่างครบแล้ว และส่งมอบเครื่องให้ลูกค้า</span>
                       </label>
-                    )}
-                    <Button
-                      size="lg"
-                      className="w-full"
-                      onClick={() => convertMut.mutate()}
-                      disabled={
-                        pending ||
-                        (isPartial &&
-                          (!collectBalance ||
-                            !balanceTenders.status.ready ||
-                            (usesCash(balanceTenders.rows) && !booking.branch.shopCashAccountCode)))
-                      }
-                    >
-                      <ShoppingCart className="size-4" />{' '}
-                      {isPartial
-                        ? `รับส่วนต่าง ${fmtMoneyShort(balance)} และออกใบขาย`
-                        : 'ออกใบขายโดยใช้มัดจำ'}
-                    </Button>
-                    <p className="text-center text-xs leading-snug text-muted-foreground">
-                      ออกใบขายเงินสด · นำมัดจำ {fmtMoneyShort(deposit)} มาหักยอด ·
-                      เปิดใบขายให้ต่อทันที
-                    </p>
-                  </section>
-                )}
+                    </>
+                  )}
+                  {canAcknowledgeDamage && item?.product?.wasPreviouslyDamaged && (
+                    <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border p-2.5 leading-snug">
+                      <Checkbox
+                        checked={damageAck}
+                        onCheckedChange={(v) => setDamageAck(v === true)}
+                        className="mt-0.5"
+                      />
+                      <span>
+                        เครื่องมีประวัติเสียหาย — ยืนยันว่าได้แจ้งลูกค้าและอนุมัติให้ขายแล้ว
+                      </span>
+                    </label>
+                  )}
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    onClick={() => convertMut.mutate()}
+                    disabled={
+                      pending ||
+                      deviceBlocked ||
+                      (isPartial &&
+                        (!collectBalance ||
+                          !balanceTenders.status.ready ||
+                          (usesCash(balanceTenders.rows) && !booking.branch.shopCashAccountCode)))
+                    }
+                  >
+                    <ShoppingCart className="size-4" />{' '}
+                    {isPartial
+                      ? `รับส่วนต่าง ${fmtMoneyShort(balance)} และออกใบขาย`
+                      : 'ออกใบขายโดยใช้มัดจำ'}
+                  </Button>
+                  <p className="text-center text-xs leading-snug text-muted-foreground">
+                    ออกใบขายเงินสด · นำมัดจำ {fmtMoneyShort(deposit)} มาหักยอด ·
+                    เปิดใบขายให้ต่อทันที
+                  </p>
+                </section>
+              )}
 
               {booking.notes && (
                 <section>

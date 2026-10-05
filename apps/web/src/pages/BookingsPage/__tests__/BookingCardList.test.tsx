@@ -95,6 +95,11 @@ describe('เมนู ⋯ ตามสถานะ', () => {
     expect(await screen.findByRole('menuitem', { name: 'เปิด' })).toBeInTheDocument();
     expect(screen.getAllByRole('menuitem')).toHaveLength(1);
   });
+  it('เลยกำหนดแต่ cron ยังไม่ปิด: เมนูเหลือ "เปิด" อย่างเดียว (ใช้เมทริกซ์เดียวกับแผง)', async () => {
+    await menuOf(row({ status: 'PENDING_DEPOSIT', expireDate: '2000-01-01T17:00:00.000Z' }));
+    expect(await screen.findByRole('menuitem', { name: 'เปิด' })).toBeInTheDocument();
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+  });
   it('canMutate=false ซ่อนรายการแก้ไข', async () => {
     await menuOf(row({ status: 'PENDING_DEPOSIT' }), false);
     expect(await screen.findByRole('menuitem', { name: 'เปิด' })).toBeInTheDocument();

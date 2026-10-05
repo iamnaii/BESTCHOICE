@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Banknote, CalendarDays, ShieldCheck, Smartphone } from 'lucide-react';
+import { Banknote, CalendarDays, Smartphone } from 'lucide-react';
 import api, { getErrorMessage } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { invalidateSalesQueries } from '@/lib/invalidate-sales-queries';
@@ -366,11 +366,6 @@ export default function CreateBookingDialog({
                 </div>
               </div>
             )}
-            <p className="flex items-start gap-1.5 text-xs leading-snug text-muted-foreground">
-              <ShieldCheck aria-hidden="true" className="mt-0.5 size-3.5 shrink-0 text-primary" />
-              เครื่องจะถูกล็อกไว้ให้ลูกค้าทันทีที่รับมัดจำ (POS ขายไม่ได้จนกว่าจะยกเลิกหรือหมดอายุ)
-              · ก่อนรับมัดจำยังขายได้ตามปกติ
-            </p>
           </Step>
 
           <Step n={3} title="มัดจำและวันหมดอายุ">

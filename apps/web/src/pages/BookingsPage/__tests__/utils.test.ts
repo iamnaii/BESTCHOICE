@@ -7,6 +7,8 @@ import {
   bangkokDayDiff,
   fmtMoneyShort,
   awaitingExpiry,
+  bookingActions,
+  fmtBangkokTime,
 } from '../utils';
 
 // 5 ต.ค. 2569 10:00 เวลาไทย
@@ -117,7 +119,7 @@ describe('describeExpiry — วันคงเหลือตามปฏิท
       ),
     ).toEqual({ label: 'ยกเลิก', sub: '27 ก.ย. 69', tone: 'closed' });
     expect(describeExpiry({ ...open(validThrough('2026-09-27')), status: 'EXPIRED' }, NOW)).toEqual(
-      { label: 'หมดอายุ', sub: 'ริบมัดจำ 5,000', tone: 'closed' },
+      { label: 'หมดอายุ', sub: 'ริบมัดจำ 27 ก.ย. 69', tone: 'closed' },
     );
   });
   it('bangkokDayDiff นับวันปฏิทินไทย ไม่ใช่ 24 ชม.', () => {
@@ -168,4 +170,71 @@ describe('describeExpiry — ตรึงปฏิทินไทยไม่ข
     });
     expect(awaitingExpiry(pending(validThrough('2026-10-04')), NOW)).toBe(true);
   });
+});
+
+describe('fmtBangkokTime', () => {
+  it('HH:mm เวลาไทย 24 ชม. ไม่ขึ้นกับ TZ เครื่อง (00:30 ไทย = 17:30Z วันก่อน)', () => {
+    expect(fmtBangkokTime('2026-10-05T17:30:00.000Z')).toBe('00:30');
+    expect(fmtBangkokTime(new Date('2026-10-05T03:42:00Z').getTime())).toBe('10:42');
+    expect(fmtBangkokTime('not-a-date')).toBe('-');
+  });
+});
+
+describe('bookingActions — เมทริกซ์ปุ่มตามสถานะ (ที่เดียว ใช้ทั้งเมนูแถวและแผง)', () => {
+  const mutate = { canMutate: true, canDelete: true };
+  const base = (
+    status: 'PENDING_DEPOSIT' | 'PAID' | 'CANCELED' | 'EXPIRED' | 'CONVERTED',
+    expireDate = '2099-01-01T17:00:00.000Z',
+  ) => ({
+    status,
+    expireDate,
+  });
+  const NONE = {
+    open: true,
+    collectDeposit: false,
+    convert: false,
+    edit: false,
+    cancel: false,
+    delete: false,
+  };
+
+  it('PENDING_DEPOSIT: รับมัดจำ/แก้/ยกเลิก + ลบเมื่อมีสิทธิ์ลบ · ไม่มีแปลงขาย', () => {
+    expect(bookingActions(base('PENDING_DEPOSIT') as never, NOW, mutate)).toEqual({
+      ...NONE,
+      collectDeposit: true,
+      edit: true,
+      cancel: true,
+      delete: true,
+    });
+    expect(
+      bookingActions(base('PENDING_DEPOSIT') as never, NOW, { canMutate: true, canDelete: false }),
+    ).toMatchObject({ collectDeposit: true, delete: false });
+  });
+  it('PAID: แปลงขาย/แก้/ยกเลิก · ไม่มีรับมัดจำ ไม่มีลบ', () => {
+    expect(bookingActions(base('PAID') as never, NOW, mutate)).toEqual({
+      ...NONE,
+      convert: true,
+      edit: true,
+      cancel: true,
+    });
+  });
+  it.each(['CONVERTED', 'CANCELED', 'EXPIRED'] as const)('%s: เปิดอย่างเดียว', (status) => {
+    expect(bookingActions(base(status) as never, NOW, mutate)).toEqual(NONE);
+  });
+  it.each(['PENDING_DEPOSIT', 'PAID'] as const)(
+    '%s เลยกำหนดแต่ cron ยังไม่ปิด: เปิดอย่างเดียว + เหตุผล "รอระบบปิดใบจอง"',
+    (status) => {
+      expect(
+        bookingActions(base(status, '2000-01-01T17:00:00.000Z') as never, NOW, mutate),
+      ).toEqual({ ...NONE, reason: 'รอระบบปิดใบจอง' });
+    },
+  );
+  it.each(['PENDING_DEPOSIT', 'PAID', 'CONVERTED', 'CANCELED', 'EXPIRED'] as const)(
+    '%s ไม่มีสิทธิ์แก้ไข (canMutate=false): ทุกปุ่มที่เปลี่ยนข้อมูลปิด',
+    (status) => {
+      expect(
+        bookingActions(base(status) as never, NOW, { canMutate: false, canDelete: true }),
+      ).toEqual(NONE);
+    },
+  );
 });

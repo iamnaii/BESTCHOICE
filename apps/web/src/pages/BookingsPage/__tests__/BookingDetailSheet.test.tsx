@@ -212,7 +212,14 @@ describe('BookingDetailSheet', () => {
     expect(confirm).toHaveTextContent('คืนมัดจำ 1,000');
     const yes = within(confirm).getByRole('button', { name: /ยืนยันยกเลิกและคืนมัดจำ 1,000/ });
     expect(yes).toBeDisabled();
-    await userEvent.click(within(confirm).getByRole('button', { name: 'ลูกค้าเปลี่ยนใจ' }));
+    const chip = within(confirm).getByRole('button', { name: 'ลูกค้าเปลี่ยนใจ' });
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(chip);
+    expect(chip).toHaveAttribute('aria-pressed', 'true');
+    expect(within(confirm).getByRole('button', { name: 'ไม่ผ่านเครดิต' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
     expect(yes).toBeEnabled();
     await userEvent.click(yes);
     await waitFor(() =>
@@ -240,6 +247,106 @@ describe('BookingDetailSheet', () => {
     expect(
       screen.queryByRole('button', { name: /รับส่วนต่าง .* และออกใบขาย|ออกใบขายโดยใช้มัดจำ/ }),
     ).not.toBeInTheDocument();
+  });
+
+  describe('เครื่องไม่พร้อม (B2) — ปุ่มเงินปิด + ข้อความชี้ทางที่ทำได้จริง', () => {
+    const withProduct = (patch: Record<string, unknown>) => {
+      const items = mocks.booking.items as Array<{ product: Record<string, unknown> }>;
+      items[0].product = { ...items[0].product, ...patch };
+    };
+    const pending = () =>
+      Object.assign(mocks.booking, {
+        status: 'PENDING_DEPOSIT',
+        depositPaidAt: null,
+        depositMethod: null,
+      });
+
+    it('ควบคุม: เครื่องพร้อมขาย → ปุ่มรับมัดจำกดได้ ไม่มี alert', async () => {
+      pending();
+      renderSheet();
+      await dialog();
+      expect(screen.getByRole('button', { name: /บันทึกรับมัดจำ/ })).toBeEnabled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+    it('RESERVED (คนอื่นถืออยู่) + รอมัดจำ: ปุ่มรับมัดจำปิด · alert ชี้ "แก้ไขใบจอง → เปลี่ยนเครื่อง"', async () => {
+      pending();
+      withProduct({ status: 'RESERVED' });
+      renderSheet();
+      await dialog();
+      expect(screen.getByRole('button', { name: /บันทึกรับมัดจำ/ })).toBeDisabled();
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('มีคนอื่นถือเครื่องอยู่ (จอง/สัญญาร่าง)');
+      expect(alert).toHaveTextContent('แก้ไขใบจอง → เปลี่ยนเครื่อง');
+    });
+    it('เครื่องย้ายสาขา + มัดจำแล้ว: ปุ่มแปลงขายปิด · alert ชี้ "ยกเลิกใบจองเพื่อคืนมัดจำ"', async () => {
+      withProduct({ branchId: 'br-2' });
+      renderSheet();
+      await dialog();
+      expect(convertBtn()).toBeDisabled();
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('เครื่องย้ายสาขาไปแล้ว');
+      expect(alert).toHaveTextContent('ยกเลิกใบจองเพื่อคืนมัดจำ');
+    });
+    it('ไม่ผูกเครื่อง + มัดจำแล้ว: ปุ่มแปลงขายปิด + alert · ไม่ผูกเครื่อง + รอมัดจำ: ปุ่มรับมัดจำปิด', async () => {
+      mocks.booking.items = [
+        {
+          id: 'i1',
+          description: 'รายการเดิม',
+          quantity: 1,
+          productId: null,
+          unitPrice: 10000,
+          amount: 10000,
+        },
+      ];
+      renderSheet();
+      await dialog();
+      expect(convertBtn()).toBeDisabled();
+      expect(screen.getByRole('alert')).toHaveTextContent('ยกเลิกใบจองเพื่อคืนมัดจำ');
+    });
+    it('ไม่ผูกเครื่อง + รอมัดจำ → ปุ่มรับมัดจำปิด + alert ชี้เมนูแก้ไข', async () => {
+      pending();
+      mocks.booking.items = [
+        {
+          id: 'i1',
+          description: 'รายการเดิม',
+          quantity: 1,
+          productId: null,
+          unitPrice: 10000,
+          amount: 10000,
+        },
+      ];
+      renderSheet();
+      await dialog();
+      expect(screen.getByRole('button', { name: /บันทึกรับมัดจำ/ })).toBeDisabled();
+      expect(screen.getByRole('alert')).toHaveTextContent('แก้ไขใบจอง → เปลี่ยนเครื่อง');
+    });
+    it('ใบที่ปิดแล้ว (เครื่องถูกขาย) ไม่ขึ้น alert ปุ่มเงิน — แค่ป้ายสถานะเครื่อง', async () => {
+      Object.assign(mocks.booking, { status: 'CANCELED', canceledAt: '2026-10-05T05:00:00Z' });
+      withProduct({ status: 'SOLD_CASH' });
+      renderSheet();
+      await dialog();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
+
+  it('ไทม์ไลน์/แผงใช้ปฏิทินไทย: เหตุการณ์ 00:30 ไทย (17:30Z) = 6 ต.ค. 69 00:30 ไม่ว่า TZ เครื่อง', async () => {
+    (mocks.booking.events as Array<Record<string, unknown>>).push({
+      id: 'e9',
+      kind: 'BOOKING_UPDATED',
+      at: '2026-10-05T17:30:00Z',
+      actor: { id: 'u1', name: 'พนักงานตัวอย่าง' },
+      data: { changed: ['notes'] },
+    });
+    renderSheet();
+    await dialog();
+    expect(screen.getByText(/6 ต\.ค\. 69 00:30 · พนักงานตัวอย่าง/)).toBeInTheDocument();
+  });
+
+  it('หมดอายุแล้ว (ริบมัดจำ): แถบบอกวันสุดท้ายตามปฏิทินไทย + ยอดริบ', async () => {
+    Object.assign(mocks.booking, { status: 'EXPIRED', expireDate: '2026-10-05T17:00:00.000Z' });
+    renderSheet();
+    await dialog();
+    expect(screen.getByText(/หมดอายุสิ้นวัน 5 ต\.ค\. 69 · ริบมัดจำ 1,000/)).toBeInTheDocument();
   });
 
   it('เลยกำหนดแต่ cron ยังไม่ปิด: ป้าย "รอระบบปิด" ปุ่มเงินหาย มีปุ่มโหลดสถานะล่าสุด', async () => {

@@ -1,7 +1,6 @@
-import { formatThaiDateShort, formatThaiTime } from '@/lib/date';
 import { cn } from '@/lib/utils';
 import type { BookingEvent } from '../types';
-import { fmtMoneyShort } from '../utils';
+import { fmtBangkokDateShort, fmtBangkokTime, fmtMoneyShort } from '../utils';
 
 export const METHOD_LABEL: Record<string, string> = {
   CASH: 'เงินสด',
@@ -88,7 +87,7 @@ export default function BookingTimeline({ events }: { events: BookingEvent[] }) 
             <span className="text-[13px] leading-snug">
               <span className="font-medium">{title}</span>
               <span className="block text-xs text-muted-foreground">
-                {formatThaiDateShort(e.at)} {formatThaiTime(e.at)} · {actor}
+                {fmtBangkokDateShort(e.at)} {fmtBangkokTime(e.at)} · {actor}
               </span>
             </span>
           </li>

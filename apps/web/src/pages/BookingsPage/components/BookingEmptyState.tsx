@@ -34,7 +34,7 @@ export default function BookingEmptyState({
           <CalendarDays className="size-7" />
         </span>
         <h2 className="mt-2 text-lg font-semibold">ยังไม่มีใบจอง</h2>
-        <p className="text-sm leading-relaxed text-muted-foreground">
+        <p className="text-sm leading-snug text-muted-foreground">
           ใบจองใช้รับมัดจำเครื่องไว้ให้ลูกค้า เมื่อลูกค้ามารับและจ่ายส่วนที่เหลือ
           ระบบปิดเป็นใบขายให้โดยนำมัดจำมาหักยอดอัตโนมัติ
         </p>

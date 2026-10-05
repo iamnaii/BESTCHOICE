@@ -70,6 +70,18 @@ export function fmtBangkokDateShort(input: number | string | Date): string {
   return `${get('day')} ${THAI_MONTHS_SHORT[get('month') - 1]} ${yy}`;
 }
 
+/** HH:mm (24 ชม.) เวลาไทย — คู่กับ `fmtBangkokDateShort` ไม่ขึ้นกับ TZ ของเครื่อง */
+export function fmtBangkokTime(input: number | string | Date): string {
+  const d = input instanceof Date ? input : new Date(input);
+  if (isNaN(d.getTime())) return '-';
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Bangkok',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(d);
+}
+
 const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
 const bangkokDayIndex = (ms: number): number => Math.floor((ms + BANGKOK_OFFSET_MS) / 86_400_000);
 
@@ -119,8 +131,9 @@ export function describeExpiry(
   if (b.status === 'EXPIRED') {
     return {
       label: 'หมดอายุ',
+      // วันที่เหตุการณ์เสมอ (ยอดที่ริบอยู่ในคอลัมน์มัดจำ/ไทม์ไลน์) — เหมือนใบยกเลิก "คืนมัดจำ <วัน>"
       sub: b.depositPaidAt
-        ? `ริบมัดจำ ${fmtMoneyShort(b.depositAmount)}`
+        ? `ริบมัดจำ ${fmtBangkokDateShort(lastValid)}`
         : fmtBangkokDateShort(lastValid),
       tone: 'closed',
     };
@@ -139,11 +152,47 @@ export function describeExpiry(
 export function formatCreated(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '-';
-  const time = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Bangkok',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(d);
-  return `${fmtBangkokDateShort(d)} ${time}`;
+  return `${fmtBangkokDateShort(d)} ${fmtBangkokTime(d)}`;
+}
+
+export interface BookingActionPerms {
+  canMutate: boolean;
+  canDelete: boolean;
+}
+export interface BookingActions {
+  /** เปิดดูได้เสมอ */
+  open: true;
+  collectDeposit: boolean;
+  convert: boolean;
+  edit: boolean;
+  cancel: boolean;
+  delete: boolean;
+  /** เหตุผลที่ปุ่มเปลี่ยนข้อมูลถูกปิดทั้งชุด (ใช้เฉพาะ "รอระบบปิด") */
+  reason?: string;
+}
+
+/**
+ * เมทริกซ์ปุ่มตามสถานะ — แหล่งเดียวของเมนู ⋯ ท้ายแถวและแผงรายละเอียด
+ * (สถานะเครื่อง/ผูกเครื่องไม่อยู่ในนี้ — แผงเช็คสดแล้วปิดปุ่มเงินเอง)
+ */
+export function bookingActions(
+  b: Pick<Booking, 'status' | 'expireDate'>,
+  nowMs: number,
+  perms: BookingActionPerms,
+): BookingActions {
+  const none: BookingActions = {
+    open: true,
+    collectDeposit: false,
+    convert: false,
+    edit: false,
+    cancel: false,
+    delete: false,
+  };
+  if (!isOpenStatus(b.status)) return none;
+  if (awaitingExpiry(b, nowMs)) return { ...none, reason: 'รอระบบปิดใบจอง' };
+  if (!perms.canMutate) return none;
+  if (b.status === 'PENDING_DEPOSIT') {
+    return { ...none, collectDeposit: true, edit: true, cancel: true, delete: perms.canDelete };
+  }
+  return { ...none, convert: true, edit: true, cancel: true };
 }

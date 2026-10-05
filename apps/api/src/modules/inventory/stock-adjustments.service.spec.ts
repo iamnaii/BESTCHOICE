@@ -110,7 +110,7 @@ function build(product: Record<string, unknown> | null = baseProduct()) {
     numbers as never,
     audit as never,
   );
-  return { prisma, template, storage, numbers, audit, service };
+  return { prisma, template, companies, storage, numbers, audit, service };
 }
 
 const jpeg = (name = 'a.jpg') =>
@@ -398,5 +398,269 @@ describe('StockAdjustmentsService.pendingCount / findAll scope', () => {
     await service.findAll({ status: 'PENDING_APPROVAL', mine: true }, SALES_B1);
     const where = prisma.stockAdjustment.findMany.mock.calls[0][0].where;
     expect(where).toEqual(expect.objectContaining({ branchId: 'branch-1', adjustedById: 'sales-1', status: 'PENDING_APPROVAL' }));
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Task 6 — เจ้าของอนุมัติ / ไม่อนุมัติ
+// ────────────────────────────────────────────────────────────────────────────────
+describe('StockAdjustmentsService.approve', () => {
+  const pendingRow = (overrides: Record<string, unknown> = {}) => ({
+    id: 'adj-1',
+    requestNumber: 'SA-20261005-0001',
+    reason: 'LOST',
+    status: 'PENDING_APPROVAL',
+    previousStatus: 'IN_STOCK',
+    productId: 'p1',
+    branchId: 'branch-1',
+    adjustedById: 'sales-1',
+    photos: [],
+    deletedAt: null,
+    ...overrides,
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const booked = (prisma: any) => {
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue({
+      receivedCost: new Prisma.Decimal('12000.00'),
+      journalEntryId: 'je-gr',
+      receiving: { grNumber: 'GR-20261001-001' },
+    });
+    prisma.journalEntry.findUnique.mockResolvedValue({ entryNumber: 'JE-202610-00012' });
+  };
+
+  it('(h) actor ไม่ใช่ OWNER → 403 ไม่แตะอะไร', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    await expect(service.approve('adj-1', { id: 'bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.stockAdjustment.update).not.toHaveBeenCalled();
+  });
+
+  it('(a) LOST + เครื่องลงบัญชีแล้ว → JE Dr S53-1102/Cr S11-2001 ที่ต้นทุน · เครื่อง LOST+ลบ · ใบ APPROVED ผูก JE', async () => {
+    const { service, prisma, template, companies, audit } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    booked(prisma);
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    template.execute.mockResolvedValue({ journalEntryId: 'je-wo', entryNo: 'JE-202610-00020' });
+
+    const result = await service.approve('adj-1', OWNER);
+
+    expect(companies.getShopCompanyId).toHaveBeenCalled();
+    expect(template.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: 'shop-stock-writeoff:adj-1',
+        adjustmentId: 'adj-1',
+        requestNumber: 'SA-20261005-0001',
+        productId: 'p1',
+        reason: 'LOST',
+        inventoryAccountCode: 'S11-2001',
+        branchId: 'branch-1',
+      }),
+      prisma,
+    );
+    expect(template.execute.mock.calls[0][0].amount.toFixed(2)).toBe('12000.00');
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'p1' },
+        data: expect.objectContaining({ status: 'LOST', wasPreviouslyDamaged: true, deletedAt: expect.any(Date) }),
+      }),
+    );
+    const upd = prisma.stockAdjustment.update.mock.calls[0][0];
+    expect(upd.data).toEqual(
+      expect.objectContaining({
+        status: 'APPROVED',
+        approvedById: 'owner-1',
+        journalEntryId: 'je-wo',
+        inventoryBooked: true,
+        bookedSource: 'GOODS_RECEIVING',
+        inventoryAccountCode: 'S11-2001',
+      }),
+    );
+    expect(upd.data.costAmount.toFixed(2)).toBe('12000.00');
+    expect(prisma.todo.updateMany).toHaveBeenCalled(); // ปิด Todo เจ้าของ
+    expect(prisma.todo.create).not.toHaveBeenCalled(); // ไม่ต้องแจ้งบัญชี
+    expect(result.journalEntryNo).toBe('JE-202610-00020');
+    expect(result.inventoryBooked).toBe(true);
+    expect(result.productStatus).toBe('LOST');
+    expect(result.accountingNotified).toBe(false);
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'STOCK_ADJUSTMENT_APPROVED', userId: 'owner-1' }));
+  });
+
+  it('(b) LOST แต่เครื่องไม่เคยลงบัญชี → ไม่ลง JE · Todo แจ้งฝ่ายบัญชี tag stock-adjustment-unbooked · accountingNotified', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    const result = await service.approve('adj-1', OWNER);
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.todo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          priority: 'MEDIUM',
+          tags: ['stock-adjustment-unbooked', 'sa:SA-20261005-0001'],
+          createdById: 'owner-1',
+        }),
+      }),
+    );
+    const upd = prisma.stockAdjustment.update.mock.calls[0][0];
+    expect(upd.data).toEqual(expect.objectContaining({ status: 'APPROVED', inventoryBooked: false, journalEntryId: null }));
+    expect(result.accountingNotified).toBe(true);
+    expect(result.journalEntryNo).toBeNull();
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'LOST', deletedAt: expect.any(Date) }) }),
+    );
+  });
+
+  it('(c) DAMAGED → ไม่ลง JE · เครื่อง DAMAGED คงในสต๊อก (ไม่ลบ) · ไม่มี Todo บัญชี', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    booked(prisma);
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'DAMAGED', photos: ['stock-adjustments/x.jpg'] }));
+    const result = await service.approve('adj-1', OWNER);
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.product.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { status: 'DAMAGED', wasPreviouslyDamaged: true },
+    });
+    expect(prisma.todo.create).not.toHaveBeenCalled();
+    const upd = prisma.stockAdjustment.update.mock.calls[0][0];
+    expect(upd.data).toEqual(expect.objectContaining({ status: 'APPROVED', inventoryBooked: null, costAmount: null }));
+    expect(result.productStatus).toBe('DAMAGED');
+  });
+
+  it('(d) เครื่องไม่ได้อยู่ ADJUSTMENT_PENDING ตอนอนุมัติ → 409 ไม่ลง JE', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'IN_STOCK' }));
+    booked(prisma);
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    await expect(service.approve('adj-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.stockAdjustment.update).not.toHaveBeenCalled();
+  });
+
+  it('(e) FOUND บนเครื่อง LOST ที่มีใบตัดเดิมมี JE → กลับรายการ · เครื่อง IN_STOCK · bookIfPending · ชี้ reversesAdjustmentId', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'LOST', deletedAt: new Date('2026-10-01') }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'FOUND', previousStatus: 'LOST' }));
+    // findFirst #1 = ใบตัดเดิม · findFirst #2 = ยังไม่มีใบ FOUND ที่กลับมัน
+    prisma.stockAdjustment.findFirst
+      .mockResolvedValueOnce({ id: 'adj-0', requestNumber: 'SA-20261001-0003', journalEntryId: 'je-wo', reason: 'LOST' })
+      .mockResolvedValueOnce(null);
+    template.reverse.mockResolvedValue({ journalEntryId: 'je-rev', entryNo: 'JE-202610-00021' });
+
+    const result = await service.approve('adj-1', OWNER);
+
+    expect(template.reverse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        journalEntryId: 'je-wo',
+        idempotencyKey: 'shop-stock-writeoff-reversal:adj-1',
+        foundAdjustmentId: 'adj-1',
+      }),
+      prisma,
+    );
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'IN_STOCK', deletedAt: null, stockInDate: expect.any(Date) }),
+      }),
+    );
+    expect(bookIfPending).toHaveBeenCalledWith(prisma, 'p1');
+    const upd = prisma.stockAdjustment.update.mock.calls[0][0];
+    expect(upd.data).toEqual(
+      expect.objectContaining({ status: 'APPROVED', journalEntryId: 'je-rev', reversesAdjustmentId: 'adj-0' }),
+    );
+    expect(result.journalEntryNo).toBe('JE-202610-00021');
+    expect(result.productStatus).toBe('IN_STOCK');
+  });
+
+  it('(f) FOUND แต่ใบตัดเดิมถูกกลับไปแล้ว → ไม่ reverse · เครื่องกลับสถานะอย่างเดียว', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'WRITTEN_OFF', deletedAt: new Date('2026-10-01') }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'FOUND', previousStatus: 'WRITTEN_OFF' }));
+    prisma.stockAdjustment.findFirst
+      .mockResolvedValueOnce({ id: 'adj-0', requestNumber: 'SA-20261001-0003', journalEntryId: 'je-wo', reason: 'WRITE_OFF' })
+      .mockResolvedValueOnce({ id: 'adj-found-old' });
+    await service.approve('adj-1', OWNER);
+    expect(template.reverse).not.toHaveBeenCalled();
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'IN_STOCK', deletedAt: null, restoredFromTerminalAt: expect.any(Date) }),
+      }),
+    );
+    const upd = prisma.stockAdjustment.update.mock.calls[0][0];
+    expect(upd.data.journalEntryId).toBeNull();
+  });
+
+  it('(f2) FOUND กู้แถว REFURBISHED ที่ถูกลบ → คงสถานะเดิม ไม่ stockInDate ไม่ bookIfPending', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'REFURBISHED', deletedAt: new Date('2026-10-01') }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'FOUND', previousStatus: 'REFURBISHED' }));
+    const result = await service.approve('adj-1', OWNER);
+    const data = prisma.product.update.mock.calls[0][0].data;
+    expect(data.deletedAt).toBeNull();
+    expect(data.status).toBeUndefined();
+    expect(data.stockInDate).toBeUndefined();
+    expect(bookIfPending).not.toHaveBeenCalled();
+    expect(result.productStatus).toBe('REFURBISHED');
+  });
+
+  it('(f3) FOUND กู้แถวแล้ว IMEI ชนเครื่องใหม่ (P2002) → 409 ภาษาไทย', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'LOST', deletedAt: new Date('2026-10-01') }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'FOUND', previousStatus: 'LOST' }));
+    prisma.product.update.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }));
+    await expect(service.approve('adj-1', OWNER)).rejects.toThrow(/IMEI/);
+  });
+
+  it('(i) LOST booked แต่ costPrice 0 → ไม่ลง JE · APPROVED · ไม่มี Todo บัญชี', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'ADJUSTMENT_PENDING', costPrice: new Prisma.Decimal(0) }));
+    booked(prisma);
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    const result = await service.approve('adj-1', OWNER);
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.todo.create).not.toHaveBeenCalled();
+    expect(result.accountingNotified).toBe(false);
+    expect(prisma.stockAdjustment.update.mock.calls[0][0].data.status).toBe('APPROVED');
+  });
+
+  it('(j) ใบที่ไม่ใช่ PENDING → 409', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'IN_STOCK' }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ status: 'REJECTED' }));
+    await expect(service.approve('adj-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('(k) CORRECTION → APPROVED ไม่แตะเครื่อง ไม่ลง JE', async () => {
+    const { service, prisma, template } = build();
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'CORRECTION' }));
+    const result = await service.approve('adj-1', OWNER);
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(result.productStatus).toBe('IN_STOCK');
+  });
+});
+
+describe('StockAdjustmentsService.reject', () => {
+  it('(g) reject → เครื่องกลับ previousStatus PHOTO_PENDING (ไม่ใช่ IN_STOCK) · REJECTED + เหตุผล · Todo DONE', async () => {
+    const { service, prisma, audit } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue({
+      id: 'adj-1',
+      requestNumber: 'SA-20261005-0001',
+      reason: 'WRITE_OFF',
+      status: 'PENDING_APPROVAL',
+      previousStatus: 'PHOTO_PENDING',
+      productId: 'p1',
+      adjustedById: 'sales-1',
+      deletedAt: null,
+    });
+    await service.reject('adj-1', { reason: 'เครื่องยังอยู่ ให้ถ่ายรูปต่อ' }, OWNER);
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'ADJUSTMENT_PENDING' },
+      data: { status: 'PHOTO_PENDING' },
+    });
+    expect(prisma.stockAdjustment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'REJECTED', rejectedById: 'owner-1', rejectedReason: 'เครื่องยังอยู่ ให้ถ่ายรูปต่อ' }),
+      }),
+    );
+    expect(prisma.todo.updateMany).toHaveBeenCalled();
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'STOCK_ADJUSTMENT_REJECTED' }));
+  });
+
+  it('(g2) actor ไม่ใช่ OWNER → 403', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.findUnique.mockResolvedValue({ id: 'adj-1', requestNumber: 'SA-1', reason: 'LOST', status: 'PENDING_APPROVAL', previousStatus: 'IN_STOCK', productId: 'p1', adjustedById: 'sales-1', deletedAt: null });
+    await expect(service.reject('adj-1', { reason: 'ไม่อนุมัติเพราะยังไม่ชัด' }, SALES_B1)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

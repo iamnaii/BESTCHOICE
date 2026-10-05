@@ -48,7 +48,21 @@ export default function BookingTable({
   onClearFilters: () => void;
 }) {
   const isMobile = useIsMobile();
-  if (isMobile) return <BookingCardList rows={rows} nowMs={nowMs} onOpen={actions.onOpen} />;
+  if (isMobile) {
+    return (
+      <BookingCardList
+        rows={rows}
+        nowMs={nowMs}
+        onOpen={actions.onOpen}
+        isLoading={isLoading}
+        total={total}
+        page={page}
+        onPageChange={onPageChange}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={onClearFilters}
+      />
+    );
+  }
   return (
     <DataTable<Booking>
       columns={bookingColumns(nowMs, actions)}

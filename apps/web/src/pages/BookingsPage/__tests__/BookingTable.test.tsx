@@ -175,7 +175,19 @@ describe('การแปลงคีย์เรียง (DataTable ส่ง 
 describe('BookingCardList (จอโทรศัพท์)', () => {
   it('การ์ดต่อใบ แสดงเลขที่ ชื่อ มัดจำ คงเหลือ และกดเปิดได้', async () => {
     const onOpen = vi.fn();
-    render(<BookingCardList rows={[row({})]} nowMs={NOW} onOpen={onOpen} />);
+    render(
+      <BookingCardList
+        rows={[row({})]}
+        nowMs={NOW}
+        onOpen={onOpen}
+        isLoading={false}
+        total={1}
+        page={1}
+        onPageChange={vi.fn()}
+        hasActiveFilters={false}
+        onClearFilters={vi.fn()}
+      />,
+    );
     await userEvent.click(screen.getByRole('button', { name: /BK-20261005-0002/ }));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'bk-1' }));
     expect(screen.getByText(/คงเหลือ/)).toBeInTheDocument();

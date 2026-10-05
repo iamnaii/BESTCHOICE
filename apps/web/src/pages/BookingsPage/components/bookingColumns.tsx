@@ -41,7 +41,7 @@ export const BOOKING_COLUMN_WIDTHS = {
 const px = (n: number) => `${n}px`;
 
 const TONE_CLASS = {
-  normal: 'text-muted-foreground',
+  normal: 'text-foreground',
   soon: 'text-warning-strong font-medium',
   today: 'text-warning-strong font-semibold',
   overdue: 'text-destructive font-semibold',
@@ -51,7 +51,7 @@ const TONE_CLASS = {
 export function ExpiryCell({ booking, nowMs }: { booking: Booking; nowMs: number }) {
   const info = describeExpiry(booking, nowMs);
   return (
-    <div className="min-w-0 leading-snug">
+    <span className="block min-w-0 leading-snug">
       <span className={cn('inline-flex items-center gap-1', TONE_CLASS[info.tone])}>
         {(info.tone === 'soon' || info.tone === 'today' || info.tone === 'overdue') && (
           <Clock aria-hidden="true" className="size-3.5" />
@@ -61,7 +61,7 @@ export function ExpiryCell({ booking, nowMs }: { booking: Booking; nowMs: number
       {info.sub && (
         <span className="block truncate text-[11px] text-muted-foreground">{info.sub}</span>
       )}
-    </div>
+    </span>
   );
 }
 

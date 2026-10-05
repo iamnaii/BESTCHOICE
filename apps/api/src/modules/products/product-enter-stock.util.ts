@@ -30,6 +30,8 @@ import { CASH_LABEL, INSTALLMENT_LABEL } from '../../utils/product-price-sync.ut
  *   — งาน migration ที่อ่านราคามาจากชีตในแถวเดียวกัน ไม่ใช่ประตูที่คนกดในระบบ
  * - **ยกเลิกใบขาย** (`sale-void.service.ts`) · **ปลดของแถม** (`contract-bundle.util.ts`) — คืนสภาพ
  *   เครื่องที่เคยเป็น `IN_STOCK` ก่อนขาย/จัดชุด (เหตุผลเดียวกับปลดจอง)
+ * - **ปลดล็อกใบจอง** `RESERVED → IN_STOCK` (`bookings.service.ts` `unlockBookedDevice` — ยกเลิก/หมดอายุ;
+ *   เครื่องมีราคาอยู่ก่อนถูกล็อก เหตุผลเดียวกับปลดจอง)
  * - **CLI สร้างข้อมูลทดสอบ** (`cli/seed-test-contracts.cli.ts`, `cli/test-pack/_drive.ts`,
  *   `cli/test-pack/device-swap.seed.ts`) — สร้างเครื่องทดสอบตรง ไม่มีใบรับของ
  *

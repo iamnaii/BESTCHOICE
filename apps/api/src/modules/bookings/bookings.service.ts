@@ -85,6 +85,7 @@ export const BOOKING_EVENT_ACTIONS = [
   'BOOKING_CONVERTED',
   'BOOKING_AUTO_EXPIRED',
   'BOOKING_DELETED',
+  'BOOKING_UNLOCK_SKIPPED',
 ] as const;
 export type BookingEventKind = (typeof BOOKING_EVENT_ACTIONS)[number];
 export interface BookingEvent {
@@ -349,6 +350,49 @@ export class BookingsService {
 
   private async lockBooking(tx: Prisma.TransactionClient, id: string): Promise<void> {
     await tx.$queryRaw`SELECT id FROM bookings WHERE id = ${id} FOR UPDATE`;
+  }
+
+  /**
+   * ปลดล็อกเครื่องของใบ (spec §4): RESERVED→IN_STOCK แบบ CAS — count 0 ไม่ throw (เครื่องถูกเปลี่ยนสถานะ
+   * ด้วยมือระหว่างล็อก เช่น ปรับสต็อก) แค่ทิ้งหลักฐานไว้: audit ใน tx + Sentry หลัง commit (ผู้เรียกส่งเอง)
+   * จงใจไม่ผ่าน product-enter-stock.util — เครื่องเป็น IN_STOCK มีราคาอยู่ก่อนถูกล็อก (คลาสเดียวกับปลดจองของแถม)
+   */
+  private async unlockBookedDevice(
+    tx: Prisma.TransactionClient,
+    booking: { id: string; lockedProductId: string | null; bookingNumber: string | null },
+    userId: string,
+    now: Date,
+  ): Promise<'UNLOCKED' | 'SKIPPED' | 'NONE'> {
+    if (!booking.lockedProductId) return 'NONE';
+    const released = await tx.product.updateMany({
+      where: { id: booking.lockedProductId, status: 'RESERVED' },
+      data: { status: 'IN_STOCK' },
+    });
+    if (released.count === 1) return 'UNLOCKED';
+    await tx.auditLog.create({
+      data: {
+        action: 'BOOKING_UNLOCK_SKIPPED',
+        entity: 'booking',
+        entityId: booking.id,
+        userId,
+        newValue: {
+          lockedProductId: booking.lockedProductId,
+          bookingNumber: booking.bookingNumber,
+          reason: 'PRODUCT_NOT_RESERVED',
+          at: now.toISOString(),
+        },
+      },
+    });
+    return 'SKIPPED';
+  }
+
+  /** ยิง Sentry หลัง tx commit เท่านั้น (doctrine R-1 — ห้ามเรียกใน tx) */
+  private warnUnlockSkipped(bookingId: string, productId: string | null, flow: 'cancel' | 'auto-expire') {
+    Sentry.captureMessage(`[booking-lock] unlock skipped — product not RESERVED (${flow})`, {
+      level: 'warning',
+      tags: { module: 'booking-lock', flow },
+      extra: { bookingId, productId },
+    });
   }
 
   // ───────────────────────────────────────────────────────────────────────
@@ -853,7 +897,7 @@ export class BookingsService {
    *   - cancel AFTER expire  → blocked here (use autoExpire instead)
    */
   async cancel(id: string, dto: CancelBookingDto, user: RequestUser) {
-    return this.prisma.$transaction(async (tx) => {
+    const { updated, unlock, lockedProductIdBefore } = await this.prisma.$transaction(async (tx) => {
       await this.lockBooking(tx, id);
       const booking = await this.loadBookingScoped(id, user, {
         id: true,
@@ -865,6 +909,7 @@ export class BookingsService {
         // A5 — ต้องใช้ลงบัญชีคืนเงินมัดจำ
         depositMethod: true,
         bookingNumber: true,
+        lockedProductId: true,
       }, tx);
       if (!booking) throw new NotFoundException('ไม่พบใบจอง');
       if (booking.status !== 'PENDING_DEPOSIT' && booking.status !== 'PAID') {
@@ -887,11 +932,19 @@ export class BookingsService {
           canceledAt: new Date(),
           canceledById: user.id,
           cancelReason: dto.cancelReason,
+          lockedProductId: null,
+          unlockedAt: new Date(),
         },
       });
       if (claim.count !== 1) {
         throw new ConflictException('ใบจองนี้ถูกเปลี่ยนสถานะไปแล้ว');
       }
+
+      // ปลดล็อกเครื่อง (PR 2) — อ่านค่าก่อนล้างจาก booking ที่โหลดไว้ก่อน claim
+      const lockedProductIdBefore = booking.lockedProductId ?? null;
+      const unlock = await this.unlockBookedDevice(tx, {
+        id, lockedProductId: lockedProductIdBefore, bookingNumber: booking.bookingNumber ?? null,
+      }, user.id, new Date());
 
       // ── คืนเงินมัดจำ (A5 ผู้สอบ 2026-08-25) ─────────────────────────────────
       // โพสต์เฉพาะใบที่ "รับมัดจำแล้วจริง" — PENDING_DEPOSIT ยังไม่มีเงินเข้า
@@ -943,8 +996,10 @@ export class BookingsService {
         },
       });
 
-      return updated;
+      return { updated, unlock, lockedProductIdBefore };
     });
+    if (unlock === 'SKIPPED') this.warnUnlockSkipped(id, lockedProductIdBefore, 'cancel');
+    return updated;
   }
 
   /**
@@ -1295,7 +1350,7 @@ export class BookingsService {
         // Per-row composite-where update so one stale candidate doesn't roll
         // back the whole batch. Each succeeds-or-skips atomically.
         try {
-          const didExpire = await this.prisma.$transaction(async (tx) => {
+          const result = await this.prisma.$transaction(async (tx) => {
             await this.lockBooking(tx, candidate.id);
             const booking = await tx.booking.findFirst({
               where: { id: candidate.id, deletedAt: null },
@@ -1308,9 +1363,15 @@ export class BookingsService {
                 deletedAt: null,
                 expireDate: { lte: now },
               },
-              data: { status: 'EXPIRED' },
+              data: { status: 'EXPIRED', lockedProductId: null, unlockedAt: now },
             });
             if (claim.count !== 1) return false;
+
+            // ปลดล็อกเครื่อง (PR 2) — ใน tx เดียวกับ EXPIRED + ริบมัดจำ
+            const unlock = await this.unlockBookedDevice(tx, {
+              id: candidate.id, lockedProductId: booking.lockedProductId ?? null,
+              bookingNumber: booking.bookingNumber ?? null,
+            }, systemUserId, now);
 
             // ── ริบมัดจำเข้ารายได้ (ผู้สอบอนุมัติ S41-1203 ไม่มี VAT, 2026-08-25) ──
             // Dr S21-2002 / Cr S41-1203 — ไม่แตะเงินสด เพราะเงินเข้าลิ้นชักไปแล้ว
@@ -1340,12 +1401,18 @@ export class BookingsService {
                   status: 'EXPIRED',
                   forfeitAmount: booking.status === 'PAID' ? forfeitAmount.toFixed(2) : '0.00',
                   bookingNumber: booking.bookingNumber,
+                  unlockedProductId: booking.lockedProductId ?? null,
                 },
               },
             });
-            return true;
+            return { didExpire: true as const, unlock, lockedProductId: booking.lockedProductId ?? null };
           });
-          if (didExpire) flipped += 1;
+          if (result) {
+            flipped += 1;
+            if (result.unlock === 'SKIPPED') {
+              this.warnUnlockSkipped(candidate.id, result.lockedProductId, 'auto-expire');
+            }
+          }
         } catch (err) {
           this.logger.error(
             `autoExpire failed for booking ${candidate.id}: ${

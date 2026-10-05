@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import * as Sentry from '@sentry/node';
 import { BookingsService, LOCK_FAILED_MSG } from '../bookings.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ShopBookingDepositTemplate } from '../../journal/cpa-templates/shop-booking-deposit.template';
@@ -15,6 +16,13 @@ import { ShopBookingDepositAppliedTemplate } from '../../journal/cpa-templates/s
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ShopBookingRefundTemplate } from '../../journal/cpa-templates/shop-booking-refund.template';
 import { TEST_CUSTOMER_ADDRESS } from '../../../utils/test-data-markers';
+
+// @sentry/nestjs (ผ่าน journal-auto.service) re-export @sentry/node — mock ต้องคงของจริงไว้ ไม่งั้น import ล้ม
+jest.mock('@sentry/node', () => ({
+  ...jest.requireActual('@sentry/node'),
+  captureMessage: jest.fn(),
+  captureException: jest.fn(),
+}));
 
 // Mock sequence util so tests don't need a real `booking` delegate
 jest.mock('../../../utils/sequence.util', () => ({
@@ -1031,5 +1039,58 @@ describe('BookingsService', () => {
     expect(prisma.booking.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ include: expect.objectContaining({ customer: { select: expect.objectContaining({ addressCurrent: true, acquisitionSource: true, nationalId: true }) } }) }),
     );
+  });
+  describe('cancel/autoExpire — ปลดล็อกเครื่อง (PR 2)', () => {
+    const paidLocked = () => ({
+      id: 'bk-1', status: 'PAID', branchId: 'br-1', depositAmount: new Prisma.Decimal(1000),
+      depositPaidAt: new Date(), depositMethod: 'CASH', bookingNumber: 'BK-20260517-0001',
+      expireDate: new Date(Date.now() + 86_400_000), lockedProductId: 'prod-1',
+    });
+
+    it('ยกเลิกใบ PAID → RESERVED→IN_STOCK + ล้าง lockedProductId + unlockedAt', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce(paidLocked());
+      await service.cancel('bk-1', { cancelReason: 'ลูกค้าเปลี่ยนใจ' }, OWNER);
+      expect(prisma._tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prod-1', status: 'RESERVED' },
+        data: { status: 'IN_STOCK' },
+      });
+      const claim = prisma._tx.booking.updateMany.mock.calls[0][0];
+      expect(claim.data).toMatchObject({ status: 'CANCELED', lockedProductId: null });
+      expect(claim.data.unlockedAt).toBeInstanceOf(Date);
+      expect(prisma._tx.auditLog.create.mock.calls.some((c: any[]) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED')).toBe(false);
+    });
+
+    it('ยกเลิก — เครื่องถูกเปลี่ยนสถานะด้วยมือระหว่างล็อก (count 0) → ไม่ throw · audit BOOKING_UNLOCK_SKIPPED · Sentry warning หลัง tx', async () => {
+      prisma.booking.findFirst
+        .mockResolvedValueOnce(paidLocked())
+        .mockResolvedValueOnce({ id: 'bk-1', status: 'CANCELED' });
+      prisma._tx.product.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.cancel('bk-1', { cancelReason: 'ลูกค้าเปลี่ยนใจ' }, OWNER)).resolves.toBeDefined();
+      const skipped = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED');
+      expect(skipped).toBeDefined();
+      expect(skipped![0].data.newValue).toMatchObject({ lockedProductId: 'prod-1', reason: 'PRODUCT_NOT_RESERVED' });
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        expect.stringContaining('unlock skipped'),
+        expect.objectContaining({ level: 'warning', tags: expect.objectContaining({ module: 'booking-lock' }) }),
+      );
+    });
+
+    it('autoExpire ใบ PAID ที่ล็อก → ปลดล็อกใน tx เดียวกับ EXPIRED + ริบมัดจำ', async () => {
+      prisma.booking.findMany
+        .mockResolvedValueOnce([{ id: 'bk-1' }])
+        .mockResolvedValueOnce([]);
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        ...paidLocked(), expireDate: new Date(Date.now() - 1000),
+      });
+      const n = await service.autoExpire(new Date());
+      expect(n).toBe(1);
+      expect(prisma._tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prod-1', status: 'RESERVED' },
+        data: { status: 'IN_STOCK' },
+      });
+      expect(shopBookingForfeitTemplate.execute).toHaveBeenCalled();
+      const claim = prisma._tx.booking.updateMany.mock.calls[0][0];
+      expect(claim.data).toMatchObject({ status: 'EXPIRED', lockedProductId: null });
+    });
   });
 });

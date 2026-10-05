@@ -41,24 +41,33 @@ export class BookingsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('status') status?: string,
+    @Query('open') open?: string,
+    @Query('expiring') expiring?: string,
     @Query('branchId') branchId?: string,
     @Query('customerId') customerId?: string,
     @Query('search') search?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('sort') sort?: string,
+    @Query('order') order?: string,
   ) {
     const user = req.user;
     if (!user) throw new Error('JWT user ไม่ถูกต้อง');
+    const expiringDays = expiring ? Math.min(30, Math.max(0, parseInt(expiring, 10) || 0)) : 0;
     return this.bookingsService.findAll(
       {
         page: page ? Math.max(1, parseInt(page, 10) || 1) : undefined,
         limit: limit ? Math.min(200, parseInt(limit, 10) || 50) : undefined,
-        status,
-        branchId,
-        customerId,
-        search,
-        from,
-        to,
+        status: status || undefined,
+        open: open === '1' || open === 'true',
+        expiringDays: expiringDays > 0 ? expiringDays : undefined,
+        branchId: branchId || undefined,
+        customerId: customerId || undefined,
+        search: search || undefined,
+        from: from || undefined,
+        to: to || undefined,
+        sort: sort === 'expireDate' || sort === 'createdAt' ? sort : undefined,
+        order: order === 'asc' || order === 'desc' ? order : undefined,
       },
       user,
     );

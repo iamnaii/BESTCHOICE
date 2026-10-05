@@ -6,7 +6,9 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { BookingStatus, Prisma } from '@prisma/client';
+import { bangkokDateRange, bangkokStartOfDay } from '../../utils/date.util';
+import { normalizeThaiPhone } from '../../utils/thai-phone.util';
 import * as Sentry from '@sentry/node';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateBookingNumber, generateSaleNumber } from '../../utils/sequence.util';
@@ -40,8 +42,59 @@ import {
 
 type RequestUser = { id: string; role: string; branchId?: string | null };
 
+export const OPEN_BOOKING_STATUSES = ['PENDING_DEPOSIT', 'PAID'] as const;
+export const CLOSED_BOOKING_STATUSES = ['CONVERTED', 'CANCELED', 'EXPIRED'] as const;
+const ALL_BOOKING_STATUSES: readonly string[] = [...OPEN_BOOKING_STATUSES, ...CLOSED_BOOKING_STATUSES];
+export type BookingListSort = 'expireDate' | 'createdAt';
+
+export interface BookingListOptions {
+  page?: number;
+  limit?: number;
+  /** สถานะเดี่ยว หรือ `CLOSED` = CONVERTED+CANCELED+EXPIRED */
+  status?: string;
+  /** PENDING_DEPOSIT + PAID (ค่าเริ่มต้นของหน้ารายการใหม่) */
+  open?: boolean;
+  /** ใบเปิดที่หมดอายุภายใน n วัน (รวมใบที่เลยกำหนดแล้วแต่ cron ยังไม่ปิด) */
+  expiringDays?: number;
+  branchId?: string;
+  customerId?: string;
+  search?: string;
+  /** วันไทย YYYY-MM-DD (รวมปลาย) */
+  from?: string;
+  to?: string;
+  sort?: BookingListSort;
+  order?: 'asc' | 'desc';
+}
+
+/**
+ * เที่ยงคืนไทยของ (วันนี้ + days + 1) — ใบจองเก็บ `expireDate` เป็นเที่ยงคืนไทยของวันถัดจากวันสุดท้ายที่ใช้ได้
+ * (`toBangkokExpiryInstant` ฝั่งเว็บ) จึงต้องเทียบด้วย `lte` ให้ "ภายใน n วัน" ครอบใบที่ใช้ได้ถึงสิ้นวันที่ n พอดี
+ */
+export function expiringBefore(now: Date, days: number): Date {
+  return new Date(bangkokStartOfDay(now).getTime() + (days + 1) * 86_400_000);
+}
+
+/** เงื่อนไขค้นหา: เลขที่ · ชื่อลูกค้า · IMEI/Serial ของเครื่องที่ผูก · เบอร์โทร (เฉพาะเมื่อพิมพ์เป็นตัวเลข ≥ 3 หลัก หลัง normalize) */
+export function buildBookingSearchWhere(term: string): Prisma.BookingWhereInput[] {
+  const or: Prisma.BookingWhereInput[] = [
+    { bookingNumber: { contains: term, mode: 'insensitive' } },
+    { customer: { name: { contains: term, mode: 'insensitive' } } },
+    { items: { some: { product: { imeiSerial: { contains: term, mode: 'insensitive' } } } } },
+  ];
+  const digits = normalizeThaiPhone(term) ?? '';
+  if (/^\d{3,}$/.test(digits)) or.push({ customer: { phone: { contains: digits } } });
+  return or;
+}
+
 const BOOKING_DEFAULT_INCLUDE = {
-  items: { orderBy: { createdAt: 'asc' as const } },
+  items: {
+    orderBy: { createdAt: 'asc' as const },
+    include: {
+      product: {
+        select: { id: true, name: true, status: true, branchId: true, imeiSerial: true, wasPreviouslyDamaged: true },
+      },
+    },
+  },
   customer: {
     select: {
       id: true,
@@ -113,47 +166,37 @@ export class BookingsService {
   // Read
   // ───────────────────────────────────────────────────────────────────────
 
-  async findAll(
-    opts: {
-      page?: number;
-      limit?: number;
-      status?: string;
-      branchId?: string;
-      search?: string;
-      customerId?: string;
-      from?: string;
-      to?: string;
-    },
-    user: RequestUser,
-  ) {
+  async findAll(opts: BookingListOptions, user: RequestUser) {
     const page = Math.max(1, opts.page ?? 1);
     const limit = Math.min(200, Math.max(1, opts.limit ?? 50));
     const skip = (page - 1) * limit;
+    const now = new Date();
 
     const baseWhere: Prisma.BookingWhereInput = { deletedAt: null };
-    if (opts.status) baseWhere.status = opts.status as Prisma.BookingWhereInput['status'];
+    if (opts.status === 'CLOSED') {
+      baseWhere.status = { in: [...CLOSED_BOOKING_STATUSES] };
+    } else if (opts.status && ALL_BOOKING_STATUSES.includes(opts.status)) {
+      baseWhere.status = opts.status as BookingStatus;
+    } else if (opts.status) {
+      throw new BadRequestException('สถานะใบจองไม่ถูกต้อง');
+    } else if (opts.open || opts.expiringDays) {
+      baseWhere.status = { in: [...OPEN_BOOKING_STATUSES] };
+    }
+    // ไม่ใส่ `gt: now` — ใบที่เลยกำหนดแต่รอบ 00:30 ยังไม่ปิด ต้องยังโผล่ให้พนักงานเห็น (ป้าย "รอระบบปิด")
+    if (opts.expiringDays) baseWhere.expireDate = { lte: expiringBefore(now, opts.expiringDays) };
     if (opts.customerId) baseWhere.customerId = opts.customerId;
-    if (opts.search) {
-      baseWhere.OR = [
-        { bookingNumber: { contains: opts.search, mode: 'insensitive' } },
-        { customer: { name: { contains: opts.search, mode: 'insensitive' } } },
-      ];
-    }
-    if (opts.from || opts.to) {
-      const createdAt: Prisma.DateTimeFilter = {};
-      if (opts.from) {
-        const f = new Date(opts.from);
-        if (!Number.isNaN(f.getTime())) createdAt.gte = f;
-      }
-      if (opts.to) {
-        const t = new Date(opts.to);
-        if (!Number.isNaN(t.getTime())) createdAt.lte = t;
-      }
-      if (createdAt.gte || createdAt.lte) baseWhere.createdAt = createdAt;
-    }
+    const term = opts.search?.trim();
+    if (term) baseWhere.OR = buildBookingSearchWhere(term);
+    const range = bangkokDateRange(opts.from, opts.to);
+    if (range.gte || range.lt) baseWhere.createdAt = range;
 
     const { where, empty } = this.applyBranchScope(baseWhere, user, opts.branchId);
     if (empty) return { data: [], total: 0, page, limit };
+
+    // ค่าเริ่มต้น: มุมมอง "ที่ยังเปิดอยู่/ใกล้หมดอายุ" เรียงใกล้หมดอายุก่อน · ที่เหลือใบใหม่สุดก่อน
+    const sortField: BookingListSort =
+      opts.sort ?? ((opts.open || opts.expiringDays) && !opts.status ? 'expireDate' : 'createdAt');
+    const direction: 'asc' | 'desc' = opts.order ?? (sortField === 'expireDate' ? 'asc' : 'desc');
 
     const [data, total] = await Promise.all([
       this.prisma.booking.findMany({
@@ -161,7 +204,7 @@ export class BookingsService {
         include: BOOKING_DEFAULT_INCLUDE,
         skip,
         take: limit,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        orderBy: [{ [sortField]: direction }, { id: 'desc' }],
       }),
       this.prisma.booking.count({ where }),
     ]);

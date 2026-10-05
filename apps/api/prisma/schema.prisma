@@ -2080,6 +2080,7 @@ model Product {
 
   // P2-SP4 — การจอง / มัดจำ
   bookingItems BookingItem[] @relation("ProductBookingItems")
+  lockedByBookings Booking[] @relation("BookingLockedProduct")
 
   // ยื่น GFIN — แพ็กเช็คเครดิตจากห้องแชท (spec 2026-09-24 §4)
   financeApplications ExternalFinanceApplication[] @relation("ProductFinanceApplications")
@@ -8047,6 +8048,19 @@ model Booking {
   cancelReason        String?        @map("cancel_reason")
   convertedToSaleId   String?        @unique @map("converted_to_sale_id")
   convertedAt         DateTime?      @map("converted_at")
+  /// PR 2 ล็อกเครื่อง (spec §4/§5.1): ตั้งตอนรับมัดจำ (IN_STOCK→RESERVED ใน tx เดียวกับ JE/สมุดเงิน)
+  /// ล้างทุกทางออก (ยกเลิก/หมดอายุ/ขาย) · partial unique SQL-only
+  /// `bookings_locked_product_active_unique` ON (locked_product_id) WHERE locked_product_id IS NOT NULL
+  /// AND deleted_at IS NULL — สร้างด้วยมือใน migration 20261019000000 (Prisma declare partial unique ไม่ได้)
+  /// ถ้ารัน `prisma migrate dev` อย่ายอมรับ diff ที่เสนอ DROP INDEX นี้ — มันคือตาข่าย "1 เครื่อง = ล็อกได้ใบเดียว"
+  lockedProductId          String?   @map("locked_product_id")
+  lockedAt                 DateTime? @map("locked_at")
+  unlockedAt               DateTime? @map("unlocked_at")
+  /// PR 4 (แชท): ห้องที่สร้างใบจองนี้ — เพิ่มล่วงหน้าใน migration เดียวตาม spec §5.5 (additive)
+  sourceRoomId             String?   @map("source_room_id")
+  /// PR 6 (LINE เตือนก่อนหมดอายุ) — เพิ่มล่วงหน้าเช่นกัน
+  expiryReminderSentAt     DateTime? @map("expiry_reminder_sent_at")
+  expiryReminderSkipReason String?   @map("expiry_reminder_skip_reason")
   createdById         String         @map("created_by_id")
   createdAt           DateTime       @default(now()) @map("created_at")
   updatedAt           DateTime       @updatedAt @map("updated_at")
@@ -8057,6 +8071,7 @@ model Booking {
   createdBy       User          @relation("BookingCreatedBy", fields: [createdById], references: [id])
   canceledBy      User?         @relation("BookingCanceledBy", fields: [canceledById], references: [id])
   convertedToSale Sale?         @relation("SaleBooking", fields: [convertedToSaleId], references: [id])
+  lockedProduct   Product?      @relation("BookingLockedProduct", fields: [lockedProductId], references: [id])
   items           BookingItem[]
 
   // สมุดเงินเข้า/ออกหน้าร้าน — มัดจำที่รับ/คืน
@@ -8066,6 +8081,7 @@ model Booking {
   @@index([branchId, status, deletedAt])
   @@index([status, expireDate])
   @@index([createdAt])
+  @@index([lockedProductId])
   @@map("bookings")
 }
 

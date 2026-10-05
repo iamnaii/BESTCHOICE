@@ -30,12 +30,15 @@ export class BookingPage {
     return this.page.getByRole('combobox', { name: 'สถานะใบจอง' });
   }
 
-  /** ฐานทดสอบไม่มีใบจองเลย → หน้าว่าง 3 ขั้น (ไม่มีการ์ด KPI / ตัวกรอง) */
-  async isFirstUse(): Promise<boolean> {
-    return this.page
-      .getByRole('heading', { name: 'ยังไม่มีใบจอง' })
-      .isVisible()
-      .catch(() => false);
+  /**
+   * รอจนหน้าตัดสินสถานะ: หน้าว่างครั้งแรก ('empty') หรือรายการ + การ์ด KPI ('list')
+   * — หัวหน้าแสดงก่อน summary โหลดเสร็จ จึงห้ามแยกทางด้วย isVisible() ที่ไม่รอ
+   */
+  async waitForState(): Promise<'empty' | 'list'> {
+    const empty = this.page.getByRole('heading', { name: 'ยังไม่มีใบจอง' });
+    const list = this.page.getByRole('group', { name: 'สรุปใบจอง' });
+    await expect(empty.or(list)).toBeVisible({ timeout: 15000 });
+    return (await empty.isVisible()) ? 'empty' : 'list';
   }
 
   /** Generic "select option by text" — works for any combobox after click() */

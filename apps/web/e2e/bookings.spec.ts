@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { loginViaAPI, loginAsRole } from './helpers/auth';
 import { gotoWithRetry, hasErrorBoundary } from './helpers/navigation';
+import { BookingPage } from './pom/BookingPage';
 
 /* ================================================================
    P2-SP4 — Booking module (การจอง / มัดจำ) — smoke tests
@@ -19,13 +20,10 @@ test.describe('/bookings — booking lifecycle smoke', () => {
       timeout: 15000,
     });
 
-    // ฐานทดสอบยังไม่มีใบจองเลย → หน้าว่าง 3 ขั้น (ปุ่มหัวหน้าถูกซ่อน ใช้ปุ่ม "สร้างใบจองแรก" แทน)
-    const firstUse = await page
-      .getByRole('heading', { name: 'ยังไม่มีใบจอง' })
-      .isVisible()
-      .catch(() => false);
+    // รอให้หน้าตัดสินใจก่อน: หน้าว่างครั้งแรก (ปุ่มหัวหน้าถูกซ่อน ใช้ "สร้างใบจองแรก") หรือรายการ + KPI
+    const state = await new BookingPage(page).waitForState();
 
-    if (!firstUse) {
+    if (state === 'list') {
       // การ์ด KPI กดกรองได้ และเขียน URL
       await page.getByRole('button', { name: /มัดจำแล้ว · รอรับเครื่อง/ }).click();
       await expect(page).toHaveURL(/status=PAID/);
@@ -33,7 +31,7 @@ test.describe('/bookings — booking lifecycle smoke', () => {
       await expect(page).not.toHaveURL(/status=/);
       // ดรอปดาวน์สถานะยังมีป้ายไทย
       await page.getByRole('combobox', { name: 'สถานะใบจอง' }).click();
-      await expect(page.getByRole('option', { name: 'รอชำระมัดจำ' })).toBeVisible({
+      await expect(page.getByRole('option', { name: 'รอชำระมัดจำ', exact: true })).toBeVisible({
         timeout: 5000,
       });
       await expect(page.getByRole('option', { name: /ใกล้หมดอายุ/ })).toBeVisible();
@@ -41,9 +39,10 @@ test.describe('/bookings — booking lifecycle smoke', () => {
     }
 
     // Create button visible for SALES (canCreate=true)
-    const createBtn = firstUse
-      ? page.getByRole('button', { name: 'สร้างใบจองแรก' })
-      : page.getByRole('button', { name: /สร้างใบจอง/ });
+    const createBtn =
+      state === 'empty'
+        ? page.getByRole('button', { name: 'สร้างใบจองแรก' })
+        : page.getByRole('button', { name: /สร้างใบจอง/ });
     await expect(createBtn).toBeVisible();
     await createBtn.click();
 
@@ -70,21 +69,26 @@ test.describe('/bookings — booking lifecycle smoke', () => {
       timeout: 15000,
     });
 
-    // ฐานทดสอบยังไม่มีใบจอง → หน้าว่าง ไม่มีการ์ด KPI ให้ตรวจ
-    if (
-      await page
-        .getByRole('heading', { name: 'ยังไม่มีใบจอง' })
-        .isVisible()
-        .catch(() => false)
-    ) {
-      return;
-    }
+    const state = await new BookingPage(page).waitForState();
 
-    // OWNER เห็นปุ่มสร้างใบจอง และกดการ์ด "ปิดแล้ว" เพื่อกรองได้
-    await expect(page.getByRole('button', { name: /สร้างใบจอง/ })).toBeVisible();
-    await page.getByRole('button', { name: /ปิดแล้ว/ }).click();
-    await expect(page).toHaveURL(/status=CLOSED/);
-    await expect(page.getByRole('heading', { name: /การจอง.*มัดจำ/ }).first()).toBeVisible();
+    if (state === 'empty') {
+      // หน้าว่างครั้งแรก: OWNER เห็น CTA จริง กดแล้วเปิดฟอร์มสร้างใบจอง · ปุ่มหัวหน้าถูกซ่อน
+      await expect(page.getByRole('button', { name: 'สร้างใบจอง', exact: true })).toHaveCount(0);
+      await page.getByRole('button', { name: 'สร้างใบจองแรก' }).click();
+      await expect(
+        page.getByRole('dialog').getByRole('heading', { name: 'สร้างใบจอง' }),
+      ).toBeVisible({
+        timeout: 5000,
+      });
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+    } else {
+      // OWNER เห็นปุ่มสร้างใบจอง และกดการ์ด "ปิดแล้ว" เพื่อกรองได้
+      await expect(page.getByRole('button', { name: /สร้างใบจอง/ })).toBeVisible();
+      await page.getByRole('button', { name: /ปิดแล้ว/ }).click();
+      await expect(page).toHaveURL(/status=CLOSED/);
+      await expect(page.getByRole('heading', { name: /การจอง.*มัดจำ/ }).first()).toBeVisible();
+    }
 
     // No error boundary after filter mutation
     await expect(page.locator('body')).not.toContainText(/เกิดข้อผิดพลาด/);

@@ -20,7 +20,7 @@ import { hasErrorBoundary } from '../helpers/navigation';
 test.describe.configure({ timeout: 60_000 });
 
 test.describe('Bookings — page-load + status filter', () => {
-  test('SALES: /bookings loads, create dialog opens with deposit + expiry fields', async ({
+  test('SALES: /bookings loads, create dialog opens with customer, device, deposit + expiry fields', async ({
     page,
   }) => {
     await loginAsRole(page, 'SALES');
@@ -36,15 +36,18 @@ test.describe('Bookings — page-load + status filter', () => {
     await expect(b.heading()).toBeVisible({ timeout: 15000 });
 
     // Create dialog — ฐานว่างจะเป็นหน้าว่างที่มีปุ่ม "สร้างใบจองแรก" แทนปุ่มหัวหน้า
-    const createBtn = b.createBtn().or(page.getByRole('button', { name: 'สร้างใบจองแรก' }));
-    await expect(createBtn.first()).toBeVisible({ timeout: 10000 });
-    await createBtn.first().click();
+    const state = await b.waitForState();
+    const createBtn =
+      state === 'empty' ? page.getByRole('button', { name: 'สร้างใบจองแรก' }) : b.createBtn();
+    await expect(createBtn).toBeVisible({ timeout: 10000 });
+    await createBtn.click();
     await expect(b.dialogTitle()).toBeVisible({ timeout: 5000 });
 
     // ฟอร์ม 4 ขั้น: ลูกค้า (combobox) · เครื่องในสต็อก · ชิปวันหมดอายุ
     await expect(page.getByRole('combobox', { name: 'ลูกค้า' })).toBeVisible({ timeout: 5000 });
     await expect(page.getByLabel('ค้นหาเครื่องในสาขา')).toBeVisible();
     await expect(page.getByRole('button', { name: '7 วัน' })).toBeVisible();
+    await expect(page.getByLabel('เงินมัดจำที่จะรับ (บาท)')).toBeVisible();
 
     await b.assertNoAppError();
   });
@@ -59,16 +62,22 @@ test.describe('Bookings — page-load + status filter', () => {
 
     await expect(b.heading()).toBeVisible({ timeout: 15000 });
 
-    if (await b.isFirstUse()) return;
+    // หน้าว่างครั้งแรกไม่มีตัวกรองให้ตรวจ — ครอบคลุมแล้วในเทสต์ bookings.spec.ts (CTA "สร้างใบจองแรก")
+    if ((await b.waitForState()) === 'empty') {
+      await expect(page.getByRole('button', { name: 'สร้างใบจองแรก' })).toBeVisible();
+      return;
+    }
 
     // Open status select (aria-label "สถานะใบจอง")
     await b.statusFilterTrigger().click();
 
     // Radix SelectItem renders role="option"
-    await expect(page.getByRole('option', { name: 'ทั้งหมด' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('option', { name: 'ทั้งหมด', exact: true })).toBeVisible({
+      timeout: 5000,
+    });
     await expect(page.getByRole('option', { name: /ใกล้หมดอายุ/ })).toBeVisible();
-    await expect(page.getByRole('option', { name: 'รอชำระมัดจำ' })).toBeVisible();
-    await expect(page.getByRole('option', { name: 'มัดจำแล้ว' })).toBeVisible();
+    await expect(page.getByRole('option', { name: 'รอชำระมัดจำ', exact: true })).toBeVisible();
+    await expect(page.getByRole('option', { name: 'มัดจำแล้ว', exact: true })).toBeVisible();
     await expect(page.getByRole('option', { name: /ปิดแล้ว/ })).toBeVisible();
 
     // Close dropdown
@@ -88,7 +97,11 @@ test.describe('Bookings — page-load + status filter', () => {
 
     await expect(b.heading()).toBeVisible({ timeout: 15000 });
 
-    if (await b.isFirstUse()) return;
+    if ((await b.waitForState()) === 'empty') {
+      // SALES สร้างได้ → เห็น CTA หน้าว่าง ไม่มีการ์ดให้กด
+      await expect(page.getByRole('button', { name: 'สร้างใบจองแรก' })).toBeVisible();
+      return;
+    }
 
     await page.getByRole('button', { name: /ปิดแล้ว/ }).click();
     await expect(page).toHaveURL(/status=CLOSED/);

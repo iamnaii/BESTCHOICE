@@ -1,3 +1,4 @@
+import { FacebookCommentsModule } from './facebook-comments.module';
 import { Module, OnModuleInit, forwardRef } from '@nestjs/common';
 import { LineFinanceAdapter } from './line-finance.adapter';
 import { LineShopAdapter } from './line-shop.adapter';
@@ -28,6 +29,7 @@ import { CustomerJourneyModule } from '../customer-journey/customer-journey.modu
  */
 @Module({
   imports: [
+    FacebookCommentsModule,
     ChatbotFinanceModule,
     LineOaModule,
     ChatEngineModule,

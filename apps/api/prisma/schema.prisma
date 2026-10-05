@@ -744,6 +744,9 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  facebookCommentPages FacebookCommentPage[]
+  facebookCommentThreads FacebookCommentThread[]
+
   id        String   @id @default(uuid())
   name      String
   location  String?
@@ -807,6 +810,8 @@ model Branch {
 }
 
 model User {
+  assignedFacebookComments FacebookCommentThread[]
+
   todoWorkEvents TodoWorkEvent[]
   staffInboxItems StaffInboxItem[]
   id                String    @id @default(uuid())
@@ -1100,6 +1105,8 @@ model Contact {
 }
 
 model Customer {
+  facebookCommentThreads FacebookCommentThread[]
+
   id                 String    @id @default(uuid())
   nationalId         String?   @unique @map("national_id") // encrypted AES-256 — nullable for walk-in quick-create
   prefix             String? // คำนำหน้า (นาย, นาง, นางสาว)
@@ -5746,6 +5753,8 @@ model CustomerLineLink {
 
 /// Chat room — ลูกค้า 1 คน 1 room ต่อ channel
 model ChatRoom {
+  facebookCommentThreads FacebookCommentThread[]
+
   responseCycles ChatResponseCycle[]
   inboundSequence Int @default(0) @map("inbound_sequence")
   staffInboxItems StaffInboxItem[]
@@ -8977,4 +8986,93 @@ model ChatNoteMention {
   @@unique([noteId, userId])
   @@index([userId, createdAt])
   @@map("chat_note_mentions")
+}
+
+enum FacebookCommentStatus {
+  OPEN
+  RESPONDED
+  RESOLVED
+}
+
+model FacebookCommentPage {
+  pageId    String                  @id @map("page_id") @db.VarChar(128)
+  company   String                  @default("SHOP") @db.VarChar(16)
+  branchId  String                  @map("branch_id")
+  enabled   Boolean                 @default(false)
+  branch    Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  threads   FacebookCommentThread[]
+  createdAt DateTime                @default(now()) @map("created_at")
+
+  @@map("facebook_comment_pages")
+}
+
+model FacebookCommentThread {
+  id                  String                  @id @default(uuid())
+  pageId              String                  @map("page_id") @db.VarChar(128)
+  postId              String                  @map("post_id") @db.VarChar(256)
+  rootCommentId       String                  @map("root_comment_id") @db.VarChar(256)
+  company             String                  @db.VarChar(16)
+  branchId            String                  @map("branch_id")
+  assigneeId          String?                 @map("assignee_id")
+  customerId          String?                 @map("customer_id")
+  roomId              String?                 @map("room_id")
+  status              FacebookCommentStatus   @default(OPEN)
+  revision            Int                     @default(0)
+  inboundSequence     Int                     @default(0) @map("inbound_sequence")
+  waitingSince        DateTime?               @map("waiting_since")
+  lastCustomerAt      DateTime?               @map("last_customer_at")
+  rootDeleted         Boolean                 @default(false) @map("root_deleted")
+  needsReconciliation Boolean                 @default(false) @map("needs_reconciliation")
+  page                FacebookCommentPage     @relation(fields: [pageId], references: [pageId], onDelete: Restrict)
+  branch              Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  assignee            User?                   @relation(fields: [assigneeId], references: [id], onDelete: Restrict)
+  customer            Customer?               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  room                ChatRoom?               @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  records             FacebookCommentRecord[]
+  events              FacebookCommentEvent[]
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+
+  @@unique([pageId, rootCommentId])
+  @@index([company, branchId, status, waitingSince])
+  @@index([assigneeId, status])
+  @@map("facebook_comment_threads")
+}
+
+model FacebookCommentRecord {
+  id                  String                @id @default(uuid())
+  threadId            String                @map("thread_id")
+  pageId              String                @map("page_id") @db.VarChar(128)
+  commentId           String                @map("comment_id") @db.VarChar(256)
+  parentId            String?               @map("parent_id") @db.VarChar(256)
+  authorId            String?               @map("author_id") @db.VarChar(128)
+  authorName          String?               @map("author_name") @db.VarChar(255)
+  text                String?
+  providerRevision    String?               @map("provider_revision") @db.VarChar(128)
+  needsReconciliation Boolean               @default(false) @map("needs_reconciliation")
+  deletedAt           DateTime?             @map("deleted_at")
+  thread              FacebookCommentThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+
+  @@unique([pageId, commentId])
+  @@index([threadId, createdAt])
+  @@map("facebook_comment_records")
+}
+
+model FacebookCommentEvent {
+  id               String                @id @default(uuid())
+  threadId         String                @map("thread_id")
+  pageId           String                @map("page_id") @db.VarChar(128)
+  commentId        String                @map("comment_id") @db.VarChar(256)
+  eventKey         String                @unique @map("event_key") @db.VarChar(64)
+  verb             String                @db.VarChar(16)
+  providerRevision String?               @map("provider_revision") @db.VarChar(128)
+  providerAt       DateTime?             @map("provider_at")
+  payload          Json
+  thread           FacebookCommentThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  @@index([threadId, createdAt])
+  @@map("facebook_comment_events")
 }

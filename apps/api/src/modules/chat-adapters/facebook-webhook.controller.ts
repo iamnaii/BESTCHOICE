@@ -1,3 +1,4 @@
+import { FacebookCommentIngestService } from './facebook-comment-ingest.service';
 import {
   Controller,
   Get,
@@ -83,6 +84,7 @@ export class FacebookWebhookController {
     private integrationConfig: IntegrationConfigService,
     // การเดินทางของลูกค้า — PRODUCT_LINK_CLICK (เดิมมีแค่ข้อความระบบในห้อง แกะย้อนหลังไม่ได้)
     @Optional() private journey?: JourneyEntryWriter,
+    @Optional() private comments?: FacebookCommentIngestService,
   ) {}
 
   /**
@@ -176,6 +178,9 @@ export class FacebookWebhookController {
 
     // 3. Parse messaging entries
     const entries: any[] = body.entry ?? [];
+    // Commit every comment entry before dispatching any Messenger events. A comment DB failure
+    // returns non-2xx without replaying an earlier postback side effect on the next batch attempt.
+    for (const entry of entries) await this.comments?.ingest(entry);
     for (const entry of entries) {
       const messagingEvents: any[] = entry.messaging ?? [];
 

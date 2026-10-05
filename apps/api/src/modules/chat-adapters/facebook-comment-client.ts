@@ -17,6 +17,7 @@ export interface FacebookCommentSnapshot {
 /** A verified live HTTP mapping is deliberately absent until the capability checklist passes.
  * The isolated preview binds a synthetic port; no frontend/config boolean can enable a live port. */
 export interface FacebookCommentTransport {
+  readRevision?(value: Record<string, unknown>): string | null;
   evidence(pageId: string): Promise<FacebookCommentEvidence>;
   replyPublic(
     input: PublicCommentInput,
@@ -66,10 +67,33 @@ export class FacebookCommentClient {
       return { status: 'UNKNOWN', errorCode: 'TRANSPORT_UNCERTAIN' };
     }
   }
+  revisionOf(value: Record<string, unknown>): string | null {
+    try {
+      const revision = this.transport?.readRevision?.(value);
+      return typeof revision === 'string' && /^\d{1,38}$/.test(revision)
+        ? BigInt(revision).toString()
+        : null;
+    } catch {
+      return null;
+    }
+  }
   async readComment(pageId: string, commentId: string): Promise<FacebookCommentSnapshot | null> {
     if (!(await this.getCapabilities(pageId)).receive || !this.transport) return null;
     try {
-      return await this.transport.readComment(pageId, commentId);
+      const snapshot = await this.transport.readComment(pageId, commentId);
+      if (
+        !snapshot ||
+        snapshot.commentId !== commentId ||
+        typeof snapshot.exists !== 'boolean' ||
+        (snapshot.text !== null && typeof snapshot.text !== 'string') ||
+        (snapshot.revision !== null && !/^\d{1,38}$/.test(snapshot.revision))
+      )
+        return null;
+      return {
+        ...snapshot,
+        text: snapshot.text?.slice(0, 20000) ?? null,
+        revision: snapshot.revision === null ? null : BigInt(snapshot.revision).toString(),
+      };
     } catch {
       return null;
     }

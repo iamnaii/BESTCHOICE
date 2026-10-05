@@ -413,3 +413,14 @@ export class ReceivingDocCheckQueryDto {
   @IsOptional() @IsString() @MaxLength(SUPPLIER_DOC_NUMBER_MAX) docNumber?: string;
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'วันที่ในเอกสารไม่ถูกต้อง' }) docDate?: string;
 }
+
+/** ก้อน 5 — `POST /purchase-orders/:id/goods-receivings/:receivingId/tax-invoice` (multipart: number · date · photo?) */
+export class RecordTaxInvoiceDto {
+  @IsString()
+  @IsNotEmpty({ message: 'กรุณากรอกเลขที่ใบกำกับภาษี' })
+  @MaxLength(SUPPLIER_DOC_NUMBER_MAX, { message: `เลขที่เอกสารยาวเกิน ${SUPPLIER_DOC_NUMBER_MAX} ตัวอักษร` })
+  number: string;
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'วันที่ในใบกำกับภาษีไม่ถูกต้อง' })
+  date: string;
+}

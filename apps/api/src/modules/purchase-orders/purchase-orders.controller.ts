@@ -1,20 +1,25 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PurchaseOrdersService } from './purchase-orders.service';
-import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto, ReceivingDocCheckQueryDto, CancelPODto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto, ReceivingDocCheckQueryDto, CancelPODto, RecordTaxInvoiceDto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RecordSupplierPaymentDto, SupplierLedgerQueryDto, VoidSupplierPaymentDto } from './dto/supplier-payment.dto';
+import { TaxInvoicePhotoInterceptor } from './tax-invoice-photo.interceptor';
+import { GoodsReceivingTaxInvoiceService } from './services/goods-receiving-tax-invoice.service';
 
 @ApiTags('Purchase Orders')
 @ApiBearerAuth('JWT')
 @Controller('purchase-orders')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class PurchaseOrdersController {
-  constructor(private purchaseOrdersService: PurchaseOrdersService) {}
+  constructor(
+    private purchaseOrdersService: PurchaseOrdersService,
+    private taxInvoices: GoodsReceivingTaxInvoiceService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
@@ -154,6 +159,20 @@ export class PurchaseOrdersController {
     @Param('receivingId') receivingId: string,
   ) {
     return this.purchaseOrdersService.getGoodsReceivingById(id, receivingId);
+  }
+
+  /** ก้อน 5 (Q1) — ใบกำกับภาษีที่มาหลังรับของ → เคลมภาษีซื้อย้อนให้สัญญาที่รอ */
+  @Post(':id/goods-receivings/:receivingId/tax-invoice')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @UseInterceptors(TaxInvoicePhotoInterceptor)
+  recordTaxInvoice(
+    @Param('id') id: string,
+    @Param('receivingId') receivingId: string,
+    @Body() dto: RecordTaxInvoiceDto,
+    @UploadedFile() photo: Express.Multer.File | undefined,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.taxInvoices.record(id, receivingId, dto, photo, { id: user.id, role: user.role });
   }
 
   @Post()

@@ -47,6 +47,13 @@ export const OPEN_BOOKING_STATUSES = ['PENDING_DEPOSIT', 'PAID'] as const;
 /** spec §4 — ล็อกเครื่องตอนรับมัดจำไม่สำเร็จ (ถูกขาย/ย้ายสาขา/ถูกใบอื่นล็อก) */
 export const LOCK_FAILED_MSG =
   'เครื่องนี้ถูกขายหรือย้ายสาขาไปแล้ว กรุณาแก้ใบจองเลือกเครื่องอื่นก่อนรับมัดจำ';
+
+/** P2002 ของ unique index ล็อกเครื่อง (target เป็นชื่อคอลัมน์หรือชื่อ index ตาม adapter) — ตัวอื่นไม่ใช่ */
+export function isLockedProductUniqueViolation(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false;
+  const t = err.meta?.target;
+  return (Array.isArray(t) ? t.join(',') : String(t ?? '')).includes('locked_product');
+}
 export const CLOSED_BOOKING_STATUSES = ['CONVERTED', 'CANCELED', 'EXPIRED'] as const;
 const ALL_BOOKING_STATUSES: readonly string[] = [...OPEN_BOOKING_STATUSES, ...CLOSED_BOOKING_STATUSES];
 export type BookingListSort = 'expireDate' | 'createdAt';
@@ -705,7 +712,7 @@ export class BookingsService {
     } catch (err) {
       // ตาข่าย: unique index bookings_locked_product_active_unique (ใบอื่นที่ยังเปิดอยู่ล็อกเครื่องเดียวกัน
       // ด้วยช่องทางที่ไม่ผ่าน CAS เช่นข้อมูลแก้มือ) → ข้อความเดียวกับ CAS แพ้
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      if (isLockedProductUniqueViolation(err)) {
         throw new ConflictException(LOCK_FAILED_MSG);
       }
       throw err;

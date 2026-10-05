@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { BookingsService } from '../bookings.service';
+import { BookingsService, LOCK_FAILED_MSG } from '../bookings.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ShopBookingDepositTemplate } from '../../journal/cpa-templates/shop-booking-deposit.template';
 import { ShopBookingForfeitTemplate } from '../../journal/cpa-templates/shop-booking-forfeit.template';
@@ -143,6 +143,7 @@ describe('BookingsService', () => {
       const bookingClaim = prisma._tx.booking.updateMany.mock.calls[0][0];
       expect(bookingClaim.data.lockedProductId).toBe('prod-1');
       expect(bookingClaim.data.lockedAt).toBeInstanceOf(Date);
+      expect(bookingClaim.data.lockedAt).toBe(bookingClaim.data.depositPaidAt);
       const audit = prisma._tx.auditLog.create.mock.calls.at(-1)![0];
       expect(audit.data.newValue.lockedProductId).toBe('prod-1');
     });
@@ -171,6 +172,29 @@ describe('BookingsService', () => {
       expect(prisma._tx.product.updateMany).not.toHaveBeenCalled();
       const bookingClaim = prisma._tx.booking.updateMany.mock.calls[0][0];
       expect(bookingClaim.data.lockedProductId).toBeUndefined();
+    });
+
+    describe('P2002 wrapper', () => {
+      const p2002 = (target: unknown) =>
+        new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'test', meta: { target } });
+      const pay = () => service.payDeposit('bk-1', { depositMethod: 'CASH' } as any, OWNER);
+
+      it('P2002 ของ index ล็อกเครื่อง → 409 LOCK_FAILED_MSG', async () => {
+        prisma.$transaction.mockRejectedValueOnce(p2002(['locked_product_id']));
+        const err = await pay().catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect((err as ConflictException).message).toBe(LOCK_FAILED_MSG);
+      });
+      it('P2002 ของ index อื่น → โยน error เดิม ไม่แปลง', async () => {
+        const e = p2002(['journal_entries_ref_unique']);
+        prisma.$transaction.mockRejectedValueOnce(e);
+        await expect(pay()).rejects.toBe(e);
+      });
+      it('error อื่น → โยนเดิม', async () => {
+        const e = new Error('boom');
+        prisma.$transaction.mockRejectedValueOnce(e);
+        await expect(pay()).rejects.toBe(e);
+      });
     });
   });
   it('rejects a misleading FINANCE receipt account before recording payment', async () => {

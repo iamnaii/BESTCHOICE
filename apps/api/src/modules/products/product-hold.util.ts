@@ -88,7 +88,9 @@ export type ProductHoldAction =
   | 'DELETE'
   | 'CHANGE_IDENTITY'
   | 'RESTORE_TO_CONTRACT'
-  | 'RESTORE_TO_STOCK';
+  | 'RESTORE_TO_STOCK'
+  /** คำขอตัดสินค้า (ก้อน 3) — ตัดเครื่องที่ยังมีสัญญา/จอง/ออเดอร์ถืออยู่ไม่ได้ */
+  | 'STOCK_ADJUST';
 
 const ACTION_TEXT: Readonly<Record<ProductHoldAction, { verb: string; risk: string }>> = {
   DELETE: {
@@ -106,6 +108,10 @@ const ACTION_TEXT: Readonly<Record<ProductHoldAction, { verb: string; risk: stri
     risk:
       'ยกเลิกแล้วสัญญาเดิมจะกลับมาเดินบนเครื่องเก่าตัวนี้ ทั้งที่มีรายการอื่นถือเครื่องตัวเดียวกันอยู่ ' +
       'เท่ากับเครื่องเดียวมีทั้งใบขาย/ใบจองของอีกคน และสัญญาผ่อนที่ยังเดินอยู่',
+  },
+  STOCK_ADJUST: {
+    verb: 'ขอตัดสินค้าไม่ได้',
+    risk: 'ตัดแล้วเครื่องจะหายจากสต็อกทั้งที่ยังมีรายการอื่นถือเครื่องตัวเดียวกันอยู่',
   },
   RESTORE_TO_STOCK: {
     verb: 'ยกเลิกใบขายไม่ได้',

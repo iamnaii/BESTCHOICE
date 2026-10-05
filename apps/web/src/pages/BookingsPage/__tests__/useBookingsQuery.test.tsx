@@ -1,0 +1,100 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { MemoryRouter, useLocation } from 'react-router';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useBookingsQuery } from '../hooks/useBookingsQuery';
+
+const mocks = vi.hoisted(() => ({ get: vi.fn(), role: 'OWNER' as string }));
+vi.mock('@/lib/api', () => ({ default: { get: mocks.get }, getErrorMessage: () => 'โหลดไม่สำเร็จ' }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u1', role: mocks.role, branchId: 'br-1' } }) }));
+
+function setup(url: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}><MemoryRouter initialEntries={[url]}>{children}</MemoryRouter></QueryClientProvider>
+  );
+  return renderHook(() => ({ q: useBookingsQuery(), location: useLocation() }), { wrapper });
+}
+const paramsOf = (search: string) => Object.fromEntries(new URLSearchParams(search));
+
+describe('useBookingsQuery — URL คือแหล่งความจริงของตัวกรอง', () => {
+  beforeEach(() => {
+    mocks.role = 'OWNER';
+    mocks.get.mockReset();
+    mocks.get.mockImplementation(async (path: string) => {
+      if (path.startsWith('/bookings/summary')) return { data: { total: 8, open: 5, pendingDeposit: 1, paid: 4, paidDepositHeld: '33900.00', expiringWithin3Days: 3, closed: { converted: 1, canceled: 1, expired: 1, total: 3 }, forfeitedThisMonth: '3000.00' } };
+      if (path === '/branches') return { data: [{ id: 'br-1', name: 'ลาดพร้าว' }, { id: 'br-2', name: 'รามอินทรา' }] };
+      return { data: { data: [], total: 0, page: 1, limit: 50 } };
+    });
+  });
+
+  it('ไม่มีคีย์ในกริ้ง → มุมมอง "ที่ยังเปิดอยู่" ส่ง open=1 เรียง expireDate asc', () => {
+    const { result } = setup('/bookings?zone=shop');
+    expect(result.current.q.view).toBe('open');
+    expect(result.current.q.activeKpiKey).toBe('open');
+    expect(result.current.q.buildParams()).toMatchObject({ open: '1', sort: 'expireDate', order: 'asc', page: '1', limit: '50' });
+    expect(result.current.q.buildParams().status).toBeUndefined();
+  });
+
+  it('การ์ด "มัดจำแล้ว" → status=PAID ลบ open/expiring/all/page และคง ?zone=', () => {
+    const { result } = setup('/bookings?zone=shop&page=3&expiring=3');
+    act(() => result.current.q.setFilters({ status: 'PAID', expiring: '', all: '' }));
+    expect(paramsOf(result.current.location.search)).toEqual({ zone: 'shop', status: 'PAID' });
+    expect(result.current.q.view).toBe('status');
+    expect(result.current.q.activeKpiKey).toBe('paid');
+    expect(result.current.q.buildParams()).toMatchObject({ status: 'PAID', sort: 'createdAt', order: 'desc' });
+  });
+
+  it('กดการ์ดสองใบติดกันก่อน render → ใบหลังชนะ ตัวกรองไม่ทับกัน', () => {
+    const { result } = setup('/bookings?zone=shop');
+    act(() => {
+      result.current.q.setFilters({ status: 'PAID', expiring: '', all: '' });
+      result.current.q.setFilters({ expiring: '3', status: '', all: '' });
+    });
+    expect(paramsOf(result.current.location.search)).toEqual({ zone: 'shop', expiring: '3' });
+    expect(result.current.q.activeKpiKey).toBe('expiring');
+  });
+
+  it('สถานะ "ทั้งหมด" ในดรอปดาวน์ = all=1 (ไม่ส่ง open)', () => {
+    const { result } = setup('/bookings');
+    act(() => result.current.q.setFilters({ all: '1', status: '', expiring: '' }));
+    expect(result.current.q.view).toBe('all');
+    expect(result.current.q.activeKpiKey).toBe('');
+    const params = result.current.q.buildParams();
+    expect(params.open).toBeUndefined();
+    expect(params.status).toBeUndefined();
+  });
+
+  it('เรียงจากหัวตาราง เขียน sortBy/sortDirection และส่งเป็น sort/order', () => {
+    const { result } = setup('/bookings');
+    act(() => result.current.q.setSort({ key: 'createdAt', direction: 'asc' }));
+    expect(paramsOf(result.current.location.search)).toEqual({ sortBy: 'createdAt', sortDirection: 'asc' });
+    expect(result.current.q.buildParams()).toMatchObject({ sort: 'createdAt', order: 'asc' });
+  });
+
+  it('ค้นหา debounce แล้วส่งเป็น search และ reset หน้า', async () => {
+    const { result } = setup('/bookings?page=2');
+    act(() => result.current.q.setSearch('081-234'));
+    await waitFor(() => expect(result.current.q.debouncedSearch).toBe('081-234'));
+    expect(result.current.q.buildParams()).toMatchObject({ search: '081-234', page: '1' });
+  });
+
+  it('SALES ไม่เห็นตัวกรองสาขา และ branchId ในลิงก์ถูกเพิกเฉย', () => {
+    mocks.role = 'SALES';
+    const { result } = setup('/bookings?branchId=br-2');
+    expect(result.current.q.canFilterBranch).toBe(false);
+    expect(result.current.q.branchId).toBe('');
+    expect(result.current.q.buildParams().branchId).toBeUndefined();
+  });
+
+  it('โหลดสรุปด้วยสาขา/ช่วงวันที่เดียวกับรายการ', async () => {
+    const { result } = setup('/bookings?branchId=br-2&from=2026-10-01&to=2026-10-05');
+    await waitFor(() => expect(result.current.q.summary?.total).toBe(8));
+    const summaryCall = mocks.get.mock.calls.find(([path]) => String(path).startsWith('/bookings/summary'))?.[0] as string;
+    expect(paramsOf(summaryCall.split('?')[1])).toEqual({ branchId: 'br-2', from: '2026-10-01', to: '2026-10-05' });
+    expect(result.current.q.hasActiveFilters).toBe(true);
+    act(() => result.current.q.clearFilters());
+    expect(result.current.location.search).toBe('');
+  });
+});

@@ -245,3 +245,61 @@ export interface CancelPOPayload {
   slipUrl?: string;
   reason?: string;
 }
+
+// ───────────── เจ้าหนี้รายผู้จัดจำหน่ายจากสมุดบัญชี — `GET /purchase-orders/payables/ledger` ─────────────
+
+export interface SupplierLedgerOpenPo {
+  id: string;
+  poNumber: string;
+  netAmount: string;
+  paidAmount: string;
+  remaining: string;
+  dueDate: string | null;
+  status: string;
+  paymentStatus: string;
+}
+
+export interface SupplierLedgerRow {
+  supplier: { id: string; name: string; hasVat: boolean };
+  opening: string;
+  receipts: string;
+  payments: string;
+  closing: string;
+  payableByAccount: Record<string, string>;
+  depositsOutstanding: string;
+  openPoCount: number;
+  nextDue: string | null;
+  dueState: 'OVERDUE' | 'DUE_SOON' | 'OK' | 'NONE';
+  openPos: SupplierLedgerOpenPo[];
+}
+
+export interface SupplierLedgerResponse {
+  month: string;
+  periodStart: string;
+  periodEnd: string;
+  totals: { closing: string; depositsOutstanding: string; dueWithin7Days: string; overdue: string; supplierCount: number; openPoCount: number };
+  suppliers: SupplierLedgerRow[];
+}
+
+export interface SupplierLedgerMovementRow {
+  journalEntryId: string;
+  entryNumber: string;
+  entryDate: string;
+  description: string;
+  kind: string;
+  poNumber: string | null;
+  grNumber: string | null;
+  paymentId: string | null;
+  payableIncrease: string;
+  payableDecrease: string;
+  depositChange: string;
+  running: string;
+}
+
+export interface SupplierLedgerMovements {
+  supplier: { id: string; name: string; hasVat: boolean };
+  month: string;
+  opening: string;
+  closing: string;
+  rows: SupplierLedgerMovementRow[];
+}

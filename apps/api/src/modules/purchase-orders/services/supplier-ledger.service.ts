@@ -49,6 +49,19 @@ export interface SupplierLedgerRow {
   /** วันครบกำหนดที่ใกล้ที่สุดของใบที่ยังจ่ายไม่ครบ (ISO) · null = ไม่มี */
   nextDue: string | null;
   dueState: 'OVERDUE' | 'DUE_SOON' | 'OK' | 'NONE';
+  /** ใบที่ยังจ่ายไม่ครบ (เรียงวันครบกำหนด) — หน้าจอเปิดใบเพื่อบันทึกการจ่าย */
+  openPos: SupplierLedgerOpenPo[];
+}
+
+export interface SupplierLedgerOpenPo {
+  id: string;
+  poNumber: string;
+  netAmount: string;
+  paidAmount: string;
+  remaining: string;
+  dueDate: string | null;
+  status: string;
+  paymentStatus: string;
 }
 
 export class SupplierLedgerService {
@@ -86,18 +99,32 @@ export class SupplierLedgerService {
     const suppliers: { id: string; name: string; hasVat: boolean }[] = supplierIds.length
       ? await this.prisma.supplier.findMany({ where: { id: { in: supplierIds } }, select: { id: true, name: true, hasVat: true } })
       : [];
-    const openPos: { supplierId: string; dueDate: Date | null }[] = supplierIds.length
+    type OpenPoRow = { id: string; poNumber: string; supplierId: string; dueDate: Date | null; netAmount: Decimal; paidAmount: Decimal; status: string; paymentStatus: string };
+    const openPos: OpenPoRow[] = supplierIds.length
       ? await this.prisma.purchaseOrder.findMany({
           where: { deletedAt: null, supplierId: { in: supplierIds }, status: { in: OPEN_PO_STATUSES as never }, paymentStatus: { not: 'FULLY_PAID' } },
-          select: { supplierId: true, dueDate: true },
+          select: { id: true, poNumber: true, supplierId: true, dueDate: true, netAmount: true, paidAmount: true, status: true, paymentStatus: true },
+          orderBy: [{ dueDate: 'asc' }, { orderDate: 'asc' }],
         })
       : [];
     const nameOf = new Map(suppliers.map((s) => [s.id, s]));
-    const openBySupplier = new Map<string, { count: number; nextDue: Date | null }>();
+    const openBySupplier = new Map<string, { count: number; nextDue: Date | null; pos: SupplierLedgerOpenPo[] }>();
     for (const po of openPos) {
-      const cur = openBySupplier.get(po.supplierId) ?? { count: 0, nextDue: null };
+      const cur = openBySupplier.get(po.supplierId) ?? { count: 0, nextDue: null, pos: [] };
       cur.count += 1;
       if (po.dueDate && (!cur.nextDue || po.dueDate < cur.nextDue)) cur.nextDue = po.dueDate;
+      const net = new Decimal(po.netAmount.toString());
+      const paid = new Decimal(po.paidAmount.toString());
+      cur.pos.push({
+        id: po.id,
+        poNumber: po.poNumber,
+        netAmount: money(net),
+        paidAmount: money(paid),
+        remaining: money(Decimal.max(net.sub(paid), ZERO)),
+        dueDate: po.dueDate ? po.dueDate.toISOString() : null,
+        status: po.status,
+        paymentStatus: po.paymentStatus,
+      });
       openBySupplier.set(po.supplierId, cur);
     }
 
@@ -107,7 +134,7 @@ export class SupplierLedgerService {
     const rows: SupplierLedgerRow[] = [];
     for (const [supplierId, agg] of aggs) {
       const closing = agg.opening.add(agg.receipts).sub(agg.payments);
-      const open = openBySupplier.get(supplierId) ?? { count: 0, nextDue: null };
+      const open = openBySupplier.get(supplierId) ?? { count: 0, nextDue: null, pos: [] };
       const hasActivity = !closing.isZero() || !agg.receipts.isZero() || !agg.payments.isZero() || !agg.deposits.isZero();
       if (!hasActivity && open.count === 0) continue;
       const dueState: SupplierLedgerRow['dueState'] = !open.nextDue
@@ -140,6 +167,7 @@ export class SupplierLedgerService {
         openPoCount: open.count,
         nextDue: open.nextDue ? open.nextDue.toISOString() : null,
         dueState,
+        openPos: open.pos,
       });
     }
     rows.sort((a, b) => Number(b.closing) - Number(a.closing) || a.supplier.name.localeCompare(b.supplier.name, 'th'));

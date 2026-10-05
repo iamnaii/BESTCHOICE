@@ -459,6 +459,13 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     expect(rowY).toMatchObject({ opening: '0.00', receipts: '900.00', payments: '0.00', closing: '900.00', depositsOutstanding: '1000.00', openPoCount: 2 });
     expect(rowY.supplier).toMatchObject({ name: owed.name, hasVat: false });
     expect(rowY.payableByAccount).toEqual({ 'S21-1102': '900.00' });
+    expect(rowY.openPos.map((o) => [o.poNumber, o.remaining, o.paymentStatus])).toEqual(
+      expect.arrayContaining([
+        [poY.poNumber, '900.00', 'UNPAID'],
+        [poY2.poNumber, '5000.00', 'DEPOSIT_PAID'],
+      ]),
+    );
+    expect(rowX.openPos).toEqual([]);
     expect(Number(ledger.totals.closing)).toBeGreaterThanOrEqual(900);
     expect(Number(ledger.totals.depositsOutstanding)).toBeGreaterThanOrEqual(1000);
 

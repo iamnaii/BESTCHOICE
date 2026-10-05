@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload, PoPaymentsResponse, RecordSupplierPaymentPayload, SupplierPayment, CancelPOPayload } from '../types';
+import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload, PoPaymentsResponse, RecordSupplierPaymentPayload, SupplierPayment, CancelPOPayload, SupplierLedgerMovements, SupplierLedgerResponse } from '../types';
 import { defaultChecklist } from '../constants';
 import { buildReceivingItemData } from '../receiving-item';
 import { receivingBlockers } from '../receiving-flow.util';
@@ -108,49 +108,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
       ? summaryRes
       : (summaryRes as { data?: PurchasingSummary }).data
     : undefined;
-
-  type PayableData = {
-    grandTotal: number;
-    suppliers: {
-      supplier: { id: string; name: string; contactName: string | null; phone: string };
-      totalNet: number;
-      totalPaid: number;
-      totalRemaining: number;
-      poCount: number;
-      pos: {
-        id: string;
-        poNumber: string;
-        orderDate: string;
-        dueDate: string | null;
-        netAmount: number;
-        paidAmount: number;
-        remaining: number;
-        paymentStatus: string;
-        status: string;
-        itemsSummary: string;
-      }[];
-    }[];
-  };
-  const { data: payableData } = useQuery<PayableData>({
-    queryKey: ['accounts-payable'],
-    queryFn: async (): Promise<PayableData> => {
-      const res = await api.get('/purchase-orders/accounts-payable');
-      // Backend returns { grandTotal, data: suppliers[], total, page, limit }
-      // Normalize to legacy shape { grandTotal, suppliers: [...] }
-      const raw = res.data as {
-        grandTotal?: number;
-        data?: PayableData['suppliers'];
-        suppliers?: PayableData['suppliers'];
-      };
-      const suppliers = Array.isArray(raw?.suppliers)
-        ? raw.suppliers
-        : Array.isArray(raw?.data)
-          ? raw.data
-          : [];
-      return { grandTotal: Number(raw?.grandTotal) || 0, suppliers };
-    },
-    enabled: activeTab === 'payable',
-  });
 
   const { data: pos = [], isLoading } = useQuery<PurchaseOrder[]>({
     queryKey: ['purchase-orders', statusFilter],
@@ -508,7 +465,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     suppliers,
     suppliersLoading,
     suppliersError,
-    payableData,
     pos,
     isLoading,
     summary,
@@ -575,5 +531,31 @@ export function usePoPayments(poId: string | null, enabled = true) {
     },
     enabled: !!poId && enabled,
     staleTime: 5_000,
+  });
+}
+
+/** เจ้าหนี้รายผู้จัดจำหน่ายจากสมุดบัญชี (`GET /purchase-orders/payables/ledger?month=YYYY-MM`) — แท็บยอดค้างชำระ */
+export function useSupplierLedger(month: string, enabled = true) {
+  return useQuery<SupplierLedgerResponse>({
+    queryKey: ['supplier-ledger', month],
+    queryFn: async () => {
+      const res = await api.get(`/purchase-orders/payables/ledger`, { params: { month } });
+      return (res.data?.suppliers ? res.data : res.data?.data) as SupplierLedgerResponse;
+    },
+    enabled,
+    staleTime: 10_000,
+  });
+}
+
+/** รายการเคลื่อนไหวของผู้จัดจำหน่ายรายเดียวในเดือน */
+export function useSupplierLedgerMovements(supplierId: string | null, month: string) {
+  return useQuery<SupplierLedgerMovements>({
+    queryKey: ['supplier-ledger', month, supplierId],
+    queryFn: async () => {
+      const res = await api.get(`/purchase-orders/payables/ledger/${supplierId}`, { params: { month } });
+      return (res.data?.rows ? res.data : res.data?.data) as SupplierLedgerMovements;
+    },
+    enabled: !!supplierId,
+    staleTime: 10_000,
   });
 }

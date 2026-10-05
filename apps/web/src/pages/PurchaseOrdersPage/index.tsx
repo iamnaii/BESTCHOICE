@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
@@ -6,9 +6,10 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download, Camera } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { formatDateShort } from '@/utils/formatters';
-import { usePurchaseOrdersData, usePoPayments } from './hooks/usePurchaseOrdersData';
+import { usePurchaseOrdersData, usePoPayments, useSupplierLedger, useSupplierLedgerMovements } from './hooks/usePurchaseOrdersData';
+import { todayIso } from './supplier-payment.util';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePOForm } from './hooks/usePOForm';
 import { useCreatePoWizard } from './hooks/useCreatePoWizard';
@@ -42,6 +43,21 @@ export default function PurchaseOrdersPage() {
   const canRecordPayments = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
   const canVoidPayments = user?.role === 'OWNER';
   const poPayments = usePoPayments(data.selectedPO?.id ?? null, data.isDetailModalOpen || data.isPaymentDialogOpen || !!data.cancelTarget);
+  // แท็บเจ้าหนี้รายผู้จัดจำหน่าย (กระดาน 5) — ยอดจากสมุดบัญชี เลือกเดือน/ผู้จัดจำหน่ายได้
+  const [ledgerMonth, setLedgerMonth] = useState(() => todayIso().slice(0, 7));
+  const [ledgerSupplierId, setLedgerSupplierId] = useState<string | null>(null);
+  const ledger = useSupplierLedger(ledgerMonth, data.activeTab === 'payable');
+  const ledgerMovements = useSupplierLedgerMovements(data.activeTab === 'payable' ? ledgerSupplierId : null, ledgerMonth);
+  const openPoFromLedger = async (poId: string) => {
+    try {
+      const { data: po } = await api.get(`/purchase-orders/${poId}`);
+      data.setSelectedPO(po);
+      data.setPODetail(po);
+      data.setIsDetailModalOpen(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
 
   const poForm = usePOForm({
     createMutation: data.createMutation,
@@ -194,9 +210,9 @@ export default function PurchaseOrdersPage() {
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'payable' ? 'border-destructive text-destructive' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ยอดค้างชำระ ( ผู้จัดจำหน่าย )
-          {data.payableData && data.payableData.grandTotal > 0 && (
+          {ledger.data && Number(ledger.data.totals.closing) > 0 && (
             <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive dark:bg-destructive/15">
-              {(Number(data.payableData.grandTotal) || 0).toLocaleString()}
+              {(Number(ledger.data.totals.closing) || 0).toLocaleString()}
             </span>
           )}
         </button>
@@ -223,12 +239,18 @@ export default function PurchaseOrdersPage() {
         />
       ) : (
         <AccountsPayableTab
-          payableData={data.payableData}
-          onOpenDetail={(po, detail) => {
-            data.setSelectedPO(po);
-            data.setPODetail(detail);
-            data.setIsDetailModalOpen(true);
+          ledger={ledger.data}
+          isLoading={ledger.isLoading}
+          month={ledgerMonth}
+          setMonth={(m) => {
+            setLedgerMonth(m);
+            setLedgerSupplierId(null);
           }}
+          selectedSupplierId={ledgerSupplierId}
+          onSelectSupplier={setLedgerSupplierId}
+          movements={ledgerMovements.data}
+          movementsLoading={ledgerMovements.isLoading}
+          onOpenPo={openPoFromLedger}
         />
       )}
 

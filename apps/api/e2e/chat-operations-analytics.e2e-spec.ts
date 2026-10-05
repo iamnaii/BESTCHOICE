@@ -400,4 +400,31 @@ describe('Scoped human/bot analytics and event cohorts', () => {
     await expect(svc.overview(actor, query(), observed)).rejects.toThrow();
     await db.user.update({ where: { id: actor.id }, data: { accessibleCompanies: ['SHOP'] } });
   });
+  it('drills current backlog and measured samples with exactly the same counts, including past-end pages', async () => {
+    const overview = await svc.overview(actor, query(), observed);
+    const all = await svc.openWork(actor, { ...query(), metric: 'ALL', limit: 1 }, observed);
+    expect(all.total).toBe(overview.openWorkNow.totalItems);
+    const past = await svc.openWork(
+      actor,
+      { ...query(), metric: 'ALL', page: 999, limit: 1 },
+      observed,
+    );
+    expect(past.total).toBe(all.total);
+    expect(past.data).toHaveLength(0);
+    expect((await svc.openWork(actor, { ...query(), metric: 'TASK' }, observed)).total).toBe(
+      overview.openWorkNow.activeTasks,
+    );
+    expect((await svc.cycles(actor, { ...query(), metric: 'HUMAN_SAMPLES' }, observed)).total).toBe(
+      overview.responses.humanSamples,
+    );
+    expect((await svc.cycles(actor, { ...query(), metric: 'ROOMS' }, observed)).total).toBe(
+      overview.responses.rooms,
+    );
+  });
+  it('scopes report filter choices to current branch grants', async () => {
+    const options = await svc.filterOptions(responder, query());
+    expect(options.branches.map((b) => b.id)).toEqual([branchId]);
+    expect(options.staff.some((s) => s.id === foreign.id)).toBe(false);
+    expect(options.staff.some((s) => s.id === responder.id)).toBe(true);
+  });
 });

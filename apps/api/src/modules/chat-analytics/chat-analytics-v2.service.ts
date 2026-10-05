@@ -1,9 +1,13 @@
+import { getBranchScope } from '../auth/branch-access.util';
+import { hasCompanyAccess } from '@installment/shared';
+import { openWorkEvidence } from './chat-open-work.sql';
 import { workEvidence } from './chat-work-metrics.sql';
 import { syncClosedServiceWork } from '../staff-chat/services/chat-service-case-state';
 import {
   CHAT_WORK_METRICS,
   type ChatAnalyticsWork,
   type ChatWorkMetricDetail,
+  type ChatOpenWorkDetail,
 } from '@installment/shared';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -20,11 +24,11 @@ import {
   ChatWorkAccessService,
   WORK_CHANNELS,
 } from '../staff-chat/services/chat-work-access.service';
-import { commentWorkWhere } from '../staff-chat/services/facebook-comment-scope';
 import {
   ChatAnalyticsQueryDto,
   ChatCycleDetailsDto,
   ChatWorkDetailsDto,
+  ChatOpenWorkDto,
 } from './dto/chat-analytics-query.dto';
 import {
   analyticsRoomSql,
@@ -123,50 +127,19 @@ export class ChatAnalyticsV2Service {
     await this.syncWork(authenticated, input);
     return this.prisma.$transaction(
       async (tx) => {
-        const { actor, q, room } = await this.context(tx, authenticated, input),
+        const { actor, q } = await this.context(tx, authenticated, input),
           evidence = await cycleEvidence(tx, actor, q, observed);
         const [responses] = await tx.$queryRaw<
           ChatResponseMetrics[]
         >`${evidence} SELECT ${responseAggregate} FROM live`;
-        const [roomWaits, activeTasks, comments] = await Promise.all([
-          tx.chatRoom.count({
-            where: {
-              AND: [
-                room,
-                { waitingSince: { not: null } },
-                ...(q.staffId ? [{ assignedToId: q.staffId }] : []),
-              ],
-            },
-          }),
-          tx.todo.count({
-            where: {
-              room,
-              deletedAt: null,
-              status: { in: ['TODO', 'DOING', 'REVIEW'] },
-              ...(q.staffId ? { assigneeId: q.staffId } : {}),
-            },
-          }),
-          !q.channel || q.channel === 'FACEBOOK'
-            ? tx.facebookCommentThread.count({
-                where: {
-                  AND: [
-                    commentWorkWhere(actor, q),
-                    { status: 'OPEN', rootDeleted: false, waitingSince: { not: null } },
-                    ...(q.staffId ? [{ assigneeId: q.staffId }] : []),
-                  ],
-                },
-              })
-            : 0,
-        ]);
+        const [openWorkNow] = await tx.$queryRaw<
+          ChatAnalyticsOverview['openWorkNow'][]
+        >`${openWorkEvidence(actor, q)} SELECT COUNT(*) FILTER(WHERE kind='ROOM')::integer AS "roomWaits",COUNT(*) FILTER(WHERE kind='TASK')::integer AS "activeTasks",COUNT(*) FILTER(WHERE kind='COMMENT')::integer AS comments,COUNT(*)::integer AS "totalItems" FROM open_work`;
+
         return {
           ...(await this.metadata(tx, actor, q, observed, evidence)),
           responses,
-          openWorkNow: {
-            roomWaits,
-            activeTasks,
-            comments,
-            totalItems: roomWaits + activeTasks + comments,
-          },
+          openWorkNow,
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
@@ -203,6 +176,7 @@ export class ChatAnalyticsV2Service {
           evidence = await cycleEvidence(tx, actor, q, observed);
         const predicate = cycleMetricSql(input.metric);
         if (!predicate) throw new BadRequestException('ไม่รู้จักตัวชี้วัด');
+        const selection = Prisma.sql`${evidence}, selected AS (${input.metric === 'ROOMS' ? Prisma.sql`SELECT DISTINCT ON(room_id) * FROM live ORDER BY room_id,started_at,id` : Prisma.sql`SELECT * FROM live WHERE ${predicate}`})`;
         const rows = await tx.$queryRaw<
           Array<
             Omit<ChatCycleDetail, 'startedAt' | 'firstHumanSentAt' | 'firstBotSentAt'> & {
@@ -211,10 +185,10 @@ export class ChatAnalyticsV2Service {
               firstBotSentAt: Date | null;
             }
           >
-        >`${evidence} SELECT id,room_id AS "roomId",COALESCE(display_name,'ห้องแชท') AS title,started_at AS "startedAt",human_at AS "firstHumanSentAt",bot_at AS "firstBotSentAt",first_human_staff_id AS "staffId",assigned_at_open_id AS "assignedAtOpenId",human_minutes AS "humanMinutes",bot_minutes AS "botMinutes" FROM live WHERE ${predicate} ORDER BY started_at,id LIMIT ${q.limit} OFFSET ${(q.page - 1) * q.limit}`;
+        >`${selection} SELECT id,room_id AS "roomId",COALESCE(display_name,'ห้องแชท') AS title,started_at AS "startedAt",human_at AS "firstHumanSentAt",bot_at AS "firstBotSentAt",first_human_staff_id AS "staffId",(SELECT name FROM users u WHERE u.id=selected.first_human_staff_id) AS "staffName",(SELECT name FROM users u WHERE u.id=selected.assigned_at_open_id) AS "assignedAtOpenName",assigned_at_open_id AS "assignedAtOpenId",human_minutes AS "humanMinutes",bot_minutes AS "botMinutes" FROM selected ORDER BY started_at,id LIMIT ${q.limit} OFFSET ${(q.page - 1) * q.limit}`;
         const [count] = await tx.$queryRaw<
           { total: number }[]
-        >`${evidence} SELECT COUNT(*)::integer AS total FROM live WHERE ${predicate}`;
+        >`${selection} SELECT COUNT(*)::integer AS total FROM selected`;
         return {
           ...(await this.metadata(tx, actor, q, observed, evidence)),
           data: rows.map((r) => ({
@@ -331,5 +305,60 @@ export class ChatAnalyticsV2Service {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
+  }
+  async openWork(authenticated: ChatWorkActor, input: ChatOpenWorkDto, observed = new Date()) {
+    if (!['ALL', 'ROOM', 'TASK', 'COMMENT'].includes(input.metric))
+      throw new BadRequestException('ไม่รู้จักตัวชี้วัด');
+    await this.syncWork(authenticated, input);
+    return this.prisma.$transaction(
+      async (tx) => {
+        const { actor, q } = await this.context(tx, authenticated, input),
+          cycles = await cycleEvidence(tx, actor, q, observed),
+          evidence = openWorkEvidence(actor, q);
+        const predicate =
+          input.metric === 'ALL' ? Prisma.sql`TRUE` : Prisma.sql`kind=${input.metric}`;
+        const [count] = await tx.$queryRaw<
+          { total: number }[]
+        >`${evidence} SELECT COUNT(*)::integer AS total FROM open_work WHERE ${predicate}`;
+        const rows = await tx.$queryRaw<
+          Array<Omit<ChatOpenWorkDetail, 'occurredAt'> & { occurredAt: Date | null }>
+        >`${evidence} SELECT kind,id,room_id AS "roomId",title,occurred_at AS "occurredAt",target_type AS "targetType",target_id AS "targetId" FROM open_work WHERE ${predicate} ORDER BY occurred_at NULLS LAST,kind,id LIMIT ${q.limit} OFFSET ${(q.page - 1) * q.limit}`;
+        return {
+          ...(await this.metadata(tx, actor, q, observed, cycles)),
+          data: rows.map((r) => ({ ...r, occurredAt: r.occurredAt?.toISOString() ?? null })),
+          total: count.total,
+          page: q.page,
+          limit: q.limit,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
+  }
+  async filterOptions(authenticated: ChatWorkActor, input: ChatAnalyticsQueryDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const { actor, q } = await this.context(tx, authenticated, input);
+      const b = getBranchScope(actor);
+      const branchId = b.all ? q.branchId : b.branchId;
+      const branches = await tx.branch.findMany({
+        where: { deletedAt: null, ...(!b.all ? { id: b.branchId! } : {}) },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+      const users = await tx.user.findMany({
+        where: {
+          isSystemUser: false,
+          ...(branchId ? { branchId } : {}),
+          role: { in: ['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES'] },
+        },
+        select: { id: true, name: true, role: true, accessibleCompanies: true },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      });
+      return {
+        branches,
+        staff: users
+          .filter((u) => hasCompanyAccess(u.role, u.accessibleCompanies, q.company))
+          .map(({ id, name }) => ({ id, name })),
+      };
+    });
   }
 }

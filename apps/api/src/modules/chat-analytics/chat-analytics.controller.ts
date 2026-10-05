@@ -4,6 +4,7 @@ import { ChatAnalyticsV2Service } from './chat-analytics-v2.service';
 import {
   ChatAnalyticsQueryDto,
   ChatFunnelDetailsDto,
+  ChatOpenWorkDto,
   ChatCycleDetailsDto,
   ChatWorkDetailsDto,
 } from './dto/chat-analytics-query.dto';
@@ -19,6 +20,11 @@ export class ChatAnalyticsController {
     private v2: ChatAnalyticsV2Service,
     private sales: ChatSalesAttributionService,
   ) {}
+  @Get('v2/filter-options')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  filterOptionsV2(@Req() req: { user: ChatWorkActor }, @Query() q: ChatAnalyticsQueryDto) {
+    return this.v2.filterOptions(req.user, q);
+  }
   @Get('v2/overview')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   overviewV2(@Req() req: { user: ChatWorkActor }, @Query() q: ChatAnalyticsQueryDto) {
@@ -35,6 +41,11 @@ export class ChatAnalyticsController {
     return this.v2.cycles(req.user, q);
   }
 
+  @Get('v2/open-work')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  openWorkV2(@Req() req: { user: ChatWorkActor }, @Query() q: ChatOpenWorkDto) {
+    return this.v2.openWork(req.user, q);
+  }
   @Get('v2/work')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   workV2(@Req() req: { user: ChatWorkActor }, @Query() q: ChatAnalyticsQueryDto) {

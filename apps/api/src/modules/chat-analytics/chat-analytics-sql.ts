@@ -67,6 +67,10 @@ export const responseAggregate = Prisma.sql`
 export function cycleMetricSql(metric: ChatCycleMetric) {
   return {
     ALL: Prisma.sql`TRUE`,
+    ROOMS: Prisma.sql`TRUE`,
+    HUMAN_SAMPLES: Prisma.sql`human_minutes IS NOT NULL`,
+    BOT_SAMPLES: Prisma.sql`bot_minutes IS NOT NULL`,
+    SLA_SAMPLES: Prisma.sql`wait_minutes IS NOT NULL`,
     RESPONDED: Prisma.sql`human_at IS NOT NULL`,
     AWAITING: Prisma.sql`human_at IS NULL AND end_at IS NULL`,
     RESOLVED: Prisma.sql`human_at IS NULL AND end_at IS NOT NULL AND end_reason='RESOLVED'`,

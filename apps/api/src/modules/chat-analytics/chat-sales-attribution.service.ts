@@ -26,8 +26,8 @@ export function businessSaleKey(company: Company, id: string, contractId: string
 }
 export function salesBasis(company: Company) {
   return company === 'SHOP'
-    ? 'ยอดเอกสาร Sale.netAmount ตามรายงานขายเดิม หักส่วนลดและไม่รวมใบ void; ไม่หักการคืนเงินในบัญชีแยก ไม่ใช่เงินรับจริง'
-    : 'เงินต้นเดิม Contract.financedAmount ของสัญญาที่เข้าเกณฑ์ ตามวันที่สร้างสัญญา ไม่ใช่ยอดขายปลีกหรือยอดรับชำระ';
+    ? 'ยอดสุทธิหลังส่วนลดตามใบขายเดิม ไม่รวมใบยกเลิก; ไม่หักรายการคืนเงินที่บันทึกแยก และไม่ใช่เงินรับจริง'
+    : 'เงินต้นเดิมของสัญญาที่เข้าเกณฑ์ ตามวันที่สร้างสัญญา ไม่ใช่ยอดขายปลีกหรือยอดรับชำระ';
 }
 @Injectable()
 export class ChatSalesAttributionService {

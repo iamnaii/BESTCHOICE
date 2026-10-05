@@ -2,6 +2,7 @@ import { IsEmpty, IsIn, IsISO8601, IsOptional, IsUUID, Matches } from 'class-val
 import {
   JOURNEY_STAGES,
   type JourneyStage,
+  type ChatOpenWorkMetric,
   CHAT_CYCLE_METRICS,
   CHAT_WORK_METRICS,
   type ChatCycleMetric,
@@ -31,4 +32,8 @@ export class ChatFunnelDetailsDto extends ChatAnalyticsQueryDto {
   @IsIn(JOURNEY_STAGES) stage: JourneyStage = 'CONTACTED';
   @IsIn(['reached', 'skipped', 'lost', 'all']) state: 'reached' | 'skipped' | 'lost' | 'all' =
     'reached';
+}
+
+export class ChatOpenWorkDto extends ChatAnalyticsQueryDto {
+  @IsIn(['ALL', 'ROOM', 'TASK', 'COMMENT']) metric: ChatOpenWorkMetric = 'ALL';
 }

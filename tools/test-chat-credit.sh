@@ -67,7 +67,9 @@ const { PrismaClient } = require('@prisma/client');
 const db = new PrismaClient();
 (async () => {
   try {
-    await db.user.create({ data: { email: 'admin@bestchoice.com', name: 'ISOLATED TEST SYSTEM', password: 'unused', role: 'OWNER' } });
+    // Legacy GFIN DB specs require a baseline branch; never depend on Jest suite order.
+    await db.branch.create({ data: { name: 'ISOLATED TEST BRANCH' } });
+    await db.user.create({ data: { email: 'admin@bestchoice.com', name: 'ISOLATED TEST SYSTEM', password: 'unused', role: 'OWNER', isSystemUser: true } });
   } finally { await db.$disconnect(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
 JS

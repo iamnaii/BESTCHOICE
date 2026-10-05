@@ -5,9 +5,9 @@ import ChatFollowUpDialog, { type FollowUpDraft } from './ChatFollowUpDialog';
 import ChatHandoffCard from './ChatHandoffCard';
 import { useRef, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import type { ChatWorkTarget, WorkQueueView } from '@installment/shared';
-import { Bell, ListTodo } from 'lucide-react';
+import { BarChart3, Bell, ListTodo } from 'lucide-react';
 import { toast } from 'sonner';
 import { getCompanyScopeRevision } from '@/lib/company-scope';
 import { Button } from '@/components/ui/button';
@@ -73,12 +73,18 @@ export default function InboxWorkTools({
       setOpening(false);
     }
   };
-  const linkedId = params.get('serviceRequestId') ?? params.get('commentId') ?? params.get('noteId') ?? params.get('todoId');
-  const linkedType = params.get('serviceRequestId') ? 'SERVICE_REQUEST' : params.get('commentId')
-    ? 'FACEBOOK_COMMENT'
-    : params.get('noteId')
-      ? 'NOTE'
-      : 'TODO';
+  const linkedId =
+    params.get('serviceRequestId') ??
+    params.get('commentId') ??
+    params.get('noteId') ??
+    params.get('todoId');
+  const linkedType = params.get('serviceRequestId')
+    ? 'SERVICE_REQUEST'
+    : params.get('commentId')
+      ? 'FACEBOOK_COMMENT'
+      : params.get('noteId')
+        ? 'NOTE'
+        : 'TODO';
   const openedLink = useRef('');
   useEffect(() => {
     const link = `${work.identity}:${linkedType}:${linkedId}`;
@@ -102,10 +108,28 @@ export default function InboxWorkTools({
         </Button>
       </div>
     );
-  if (!work.enabled) return null;
+  if (!work.enabled)
+    return (
+      <div className="border-b bg-card px-3 py-1">
+        <Button asChild variant="ghost" className="min-h-11">
+          <Link to={`/chat-analytics?zone=${work.company === 'SHOP' ? 'shop' : 'fin'}`}>
+            <BarChart3 className="size-4" />
+            ภาพรวมงานแชท
+          </Link>
+        </Button>
+      </div>
+    );
   return (
     <>
-      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b bg-card px-3">
+      <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-1 border-b bg-card px-3 py-1">
+        <Button asChild variant="ghost" size="icon" className="size-11">
+          <Link
+            to={`/chat-analytics?zone=${work.company === 'SHOP' ? 'shop' : 'fin'}`}
+            aria-label="ภาพรวมงานแชท"
+          >
+            <BarChart3 className="size-4" />
+          </Link>
+        </Button>
         <Button variant="ghost" size="sm" onClick={() => setPanel('queue')}>
           <ListTodo className="size-4" />
           คิวงาน
@@ -198,7 +222,12 @@ export default function InboxWorkTools({
               key={`${work.identity}:${target.targetId}`}
               threadId={target.targetId}
             />
-          ) : target.targetType === 'SERVICE_REQUEST' ? (<ChatServiceRequestCard key={`${work.identity}:${target.targetId}`} requestId={target.targetId} />) : target.workKind === 'CHAT_HANDOFF' ? (
+          ) : target.targetType === 'SERVICE_REQUEST' ? (
+            <ChatServiceRequestCard
+              key={`${work.identity}:${target.targetId}`}
+              requestId={target.targetId}
+            />
+          ) : target.workKind === 'CHAT_HANDOFF' ? (
             <ChatHandoffCard key={`${work.identity}:${target.targetId}`} taskId={target.targetId} />
           ) : (
             <>

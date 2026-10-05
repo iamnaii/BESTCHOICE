@@ -42,6 +42,10 @@ export interface ChatStaffMetrics extends ChatResponseMetrics {
 }
 export const CHAT_CYCLE_METRICS = [
   'ALL',
+  'ROOMS',
+  'HUMAN_SAMPLES',
+  'BOT_SAMPLES',
+  'SLA_SAMPLES',
   'RESPONDED',
   'AWAITING',
   'RESOLVED',
@@ -59,6 +63,8 @@ export interface ChatCycleDetail {
   firstBotSentAt: string | null;
   staffId: string | null;
   assignedAtOpenId: string | null;
+  staffName?: string | null;
+  assignedAtOpenName?: string | null;
   humanMinutes: number | null;
   botMinutes: number | null;
 }
@@ -137,4 +143,16 @@ export interface ChatFunnelCustomer {
   firstInboundAt: string;
   stage: import('./customer-journey').JourneyStage;
   lostReason: string | null;
+}
+
+export interface ChatAnalyticsPage<T> extends ChatAnalyticsMeta {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+export type ChatOpenWorkMetric = 'ALL' | 'ROOM' | 'TASK' | 'COMMENT';
+export interface ChatOpenWorkDetail extends Omit<ChatWorkMetricDetail, 'targetType'> {
+  kind: Exclude<ChatOpenWorkMetric, 'ALL'>;
+  targetType: ChatWorkMetricDetail['targetType'] | 'ROOM';
 }

@@ -23,6 +23,8 @@ import { ensureContractCommission } from './services/contract-commission.util';
 import { loadInstallmentConfig } from '../../utils/config.util';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
+import { claimInputVatOnActivation } from '../journal/input-vat/installment-input-vat.claim';
 import { ProductsService } from '../products/products.service';
 import { closeRepossessionOnSale } from '../repossessions/repossession-resale.util';
 import { ContractExchangeService } from '../contract-exchange/contract-exchange.service';
@@ -48,6 +50,7 @@ export class ContractWorkflowService {
     private shopInventoryTransferTemplate: ShopInventoryTransferTemplate,
     private shopDownPaymentTemplate: ShopDownPaymentTemplate,
     private shopAccountResolver: ShopAccountResolver,
+    private installmentInputVatTemplate: InstallmentInputVatTemplate,
     @Optional() private testMode?: TestModeService,
     // การเดินทางของลูกค้า (CONTRACT_REVIEWED) — @Optional: เทสเดิมประกอบ service ด้วย 9-10 อาร์กิวเมนต์
     // ContractsModule import CustomerJourneyModule อยู่แล้ว (ContractsController ฉีดแบบบังคับ ถ้าลืม import แอปจะบูตไม่ขึ้น)
@@ -623,6 +626,15 @@ export class ContractWorkflowService {
         }
 
         await this.contractActivation1ATemplate.execute(contract.id, tx);
+
+        // ก้อน 5 — ภาษีซื้อของเครื่องหลัก (FINANCE: Dr 11-4101 / Cr 42-1108) ใน tx เดียวกับ 1A ลงวันเดียวกัน.
+        // ไม่เคลมของแถม (Q4) · ไม่มีใบรับของ/ไม่จด VAT = NOT_ELIGIBLE ไม่มี JE (Q6) · ใบกำกับยังไม่มา = PENDING_INVOICE
+        await claimInputVatOnActivation(tx, this.installmentInputVatTemplate, {
+          contractId: contract.id,
+          contractNumber: contract.contractNumber,
+          productId: contract.productId,
+          postedAt: new Date(),
+        });
 
         // SHOP-side: post inventory transfer (COGS + revenue + receivables + down clearance),
         // atomic with the FINANCE 1A entry. salePrice is reconstructed as down+financed (D-8)

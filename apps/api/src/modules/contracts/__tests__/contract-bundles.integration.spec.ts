@@ -27,6 +27,7 @@ import { reserveContractBundles } from '../services/contract-bundle.util';
 import { ProductsService } from '../../products/products.service';
 import { SalesService } from '../../sales/sales.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { InstallmentInputVatTemplate } from '../../journal/cpa-templates/installment-input-vat.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
 import { ContractCancellationTemplate } from '../../journal/cpa-templates/contract-cancellation.template';
@@ -58,6 +59,7 @@ const workflow = new ContractWorkflowService(
   new ShopInventoryTransferTemplate(journal, prisma as never, companyResolver),
   shopDownPayment,
   shopAccountResolver,
+  new InstallmentInputVatTemplate(journal, prisma as never, companyResolver),
 );
 
 const lifecycle = new ContractLifecycleService(

@@ -20,7 +20,7 @@ import { bangkokCalendarParts } from '../../utils/date.util';
 
 const stub = {} as never;
 // Task 5: constructor now has 9 params (3 SHOP deps added); pass stubs for all.
-const service = new ContractWorkflowService(stub, stub, stub, stub, stub, stub, stub, stub, stub);
+const service = new ContractWorkflowService(stub, stub, stub, stub, stub, stub, stub, stub, stub, stub);
 
 type Rows = Prisma.InstallmentScheduleCreateManyInput[];
 

@@ -408,7 +408,7 @@ function App() {
           <Route
             path="/stock/adjustments"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <StockAdjustmentsPage />
               </ProtectedRoute>
             }

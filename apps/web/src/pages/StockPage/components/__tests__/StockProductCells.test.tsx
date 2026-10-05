@@ -26,6 +26,11 @@ describe('StockProductStatus — เครื่องที่ใบจอง�
     );
     const link = screen.getByRole('link', { name: /จองไว้ · BK-20260517-0001 \(สมหญิง\)/ });
     expect(link).toHaveAttribute('href', '/bookings?bookingId=bk-1');
+    // ข้อความที่เห็นต้องพอดีคอลัมน์ 84px — ชื่อลูกค้าอยู่ใน title/aria-label เท่านั้น
+    expect(link.textContent).not.toContain('สมหญิง');
+    expect(link.textContent).toContain('จองไว้');
+    expect(link.textContent).toContain('BK-20260517-0001');
+    expect(link).toHaveAttribute('title', 'จองไว้ · BK-20260517-0001 (สมหญิง)');
   });
 
   it('RESERVED โดยไม่มีใบจอง (สัญญาร่าง/ปลดจองทั่วไป) → ป้ายเดิม ไม่มีลิงก์', () => {

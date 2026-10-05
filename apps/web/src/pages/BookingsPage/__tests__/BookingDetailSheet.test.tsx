@@ -279,7 +279,8 @@ describe('BookingDetailSheet', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
     it('ใบ PAID ที่เครื่องเป็น RESERVED ของคนอื่น (lockedProductId ว่าง) → ยังเป็น "มีคนอื่นถือเครื่องอยู่" และปุ่มเงินปิด', async () => {
-      mocks.booking.lockedProductId = null;
+      // มัดจำเต็มยอด (เหมือนเคสล็อกของตัวเอง) — ปุ่มแปลงขายปิดเพราะสถานะเครื่องเท่านั้น
+      Object.assign(mocks.booking, { depositAmount: '10000', lockedProductId: null });
       withProduct({ status: 'RESERVED' });
       renderSheet();
       await dialog();

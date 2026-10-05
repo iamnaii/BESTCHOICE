@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { describeEvent } from '../components/BookingTimeline';
+import { render, screen } from '@testing-library/react';
+import BookingTimeline, { describeEvent, eventActorLabel } from '../components/BookingTimeline';
 
 describe('describeEvent — ล็อกเครื่อง (PR 2)', () => {
   const base = { id: 'e1', at: '2026-10-05T03:00:00.000Z', actor: { id: 'u1', name: 'สมชาย' } };
@@ -29,5 +30,23 @@ describe('describeEvent — ล็อกเครื่อง (PR 2)', () => {
     });
     expect(r.title).toBe('ปลดล็อกเครื่องไม่ได้ — สถานะเครื่องถูกเปลี่ยนไปแล้ว ตรวจสต็อก');
     expect(r.tone).toBe('destructive');
+  });
+  it('BOOKING_UNLOCK_SKIPPED จาก cron หมดอายุ → ผู้กระทำเป็น "ระบบ" · จากการยกเลิกโดยคน → ชื่อผู้ใช้', () => {
+    const cron = {
+      ...base,
+      actor: { id: 'sys', name: 'System' },
+      kind: 'BOOKING_UNLOCK_SKIPPED',
+      data: { reason: 'PRODUCT_NOT_RESERVED', flow: 'auto-expire' },
+    };
+    const manual = {
+      ...base,
+      kind: 'BOOKING_UNLOCK_SKIPPED',
+      data: { reason: 'PRODUCT_NOT_RESERVED', flow: 'cancel' },
+    };
+    expect(eventActorLabel(cron)).toBe('ระบบ');
+    expect(eventActorLabel(manual)).toBe('สมชาย');
+    render(<BookingTimeline events={[cron]} />);
+    expect(screen.getByText(/· ระบบ$/)).toBeInTheDocument();
+    expect(screen.queryByText(/System/)).not.toBeInTheDocument();
   });
 });

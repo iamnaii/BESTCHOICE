@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { bangkokInput, bangkokInstant } from '@/pages/UnifiedInboxPage/components/chat-work-time';
+import { getRequestCompany } from '@/lib/company-scope';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
 import {
@@ -69,6 +71,12 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
 
+  const requestId = useRef('');
+  const [revision, setRevision] = useState(0);
+  const [conflict, setConflict] = useState(false);
+  const [latest, setLatest] = useState<Todo | null>(null);
+  const roomId = editing?.roomId || defaults?.roomId;
+  const eligible = useQuery<AssigneeRef[]>({ queryKey: ['todo-eligible', roomId, getRequestCompany()], queryFn: () => api.get(`/staff-chat/rooms/${roomId}/eligible-staff`).then(r => r.data), enabled: open && !!roomId });
   // Fetch comments when editing an existing todo
   const { data: comments = [] } = useQuery<TodoComment[]>({
     queryKey: ['todo-comments', editing?.id],
@@ -96,13 +104,14 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
   // Sync form when editing changes or dialog opens
   useEffect(() => {
     if (!open) return;
+    requestId.current = crypto.randomUUID(); setRevision(editing?.revision ?? 0); setConflict(false); setLatest(null);
     if (editing) {
       setForm({
         title: editing.title,
         description: editing.description || '',
         priority: editing.priority,
         status: editing.status,
-        dueDate: editing.dueDate ? editing.dueDate.slice(0, 10) : '',
+        dueDate: editing.roomId ? bangkokInput(editing.dueDate) : editing.dueDate?.slice(0, 10) ?? '',
         assigneeId: editing.assigneeId || '',
         tags: editing.tags || [],
         checklist: Array.isArray(editing.checklist) ? editing.checklist : [],
@@ -125,11 +134,12 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
         .map((c) => ({ ...c, text: (c.text || '').trim() }))
         .filter((c) => c.text.length > 0);
       const payload = {
+        ...(editing ? { expectedRevision: revision } : { clientRequestId: requestId.current }),
         title: form.title?.trim(),
         description: form.description || undefined,
         priority: form.priority,
         status: form.status,
-        dueDate: form.dueDate || undefined,
+        dueDate: form.dueDate ? (roomId ? bangkokInstant(form.dueDate) : form.dueDate) : undefined,
         assigneeId: form.assigneeId || undefined,
         tags: form.tags || [],
         checklist,
@@ -147,9 +157,10 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
     onSuccess: () => {
       toast.success(editing ? 'อัปเดตรายการแล้ว' : 'สร้างรายการแล้ว');
       queryClient.invalidateQueries({ queryKey: ['todos'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-work'] });
       onOpenChange(false);
     },
-    onError: (e) => toast.error(getErrorMessage(e)),
+    onError: (e) => { if ((e as { response?: { status?: number } }).response?.status === 409) setConflict(true); else toast.error(getErrorMessage(e)); },
   });
 
   const uploadAttachment = async (file: File) => {
@@ -356,13 +367,13 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
             </div>
 
             {/* Priority + Status as button groups */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
                   <Flag className="size-3.5" />
                   ความสำคัญ
                 </label>
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {(['LOW', 'MEDIUM', 'HIGH'] as TodoPriority[]).map((p) => {
                     const cfg = priorityConfig[p];
                     const active = form.priority === p;
@@ -390,12 +401,13 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                   <CheckCircle2 className="size-3.5" />
                   สถานะ
                 </label>
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {([
                     { v: 'TODO', label: 'รอทำ', color: 'bg-muted-foreground' },
                     { v: 'DOING', label: 'กำลังทำ', color: 'bg-warning' },
                     { v: 'REVIEW', label: 'รอแก้ไข', color: 'bg-warning' },
                     { v: 'DONE', label: 'เสร็จ', color: 'bg-success' },
+                    { v: 'CANCELLED', label: 'ยกเลิก', color: 'bg-muted-foreground' },
                   ] as const).map((s) => {
                     const active = form.status === s.v;
                     return (
@@ -419,14 +431,14 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
             </div>
 
             {/* Date + Assignee */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                   <Calendar className="size-3.5" />
-                  ครบกำหนด
+                  {roomId ? 'ครบกำหนด (เวลาไทย)' : 'ครบกำหนด'}
                 </label>
                 <input
-                  type="date"
+                  type={roomId ? "datetime-local" : "date"}
                   value={form.dueDate || ''}
                   onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
                   className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
@@ -443,7 +455,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
                   className="w-full px-4 py-2.5 border border-input rounded-xl text-sm bg-card focus-visible:ring-2 focus-visible:ring-primary/20 focus:border-primary/50 outline-hidden transition-colors"
                 >
                   <option value="">ไม่ระบุ</option>
-                  {staffUsers.map((u) => (
+                  {(roomId ? eligible.data ?? [] : staffUsers).map((u) => (
                     <option key={u.id} value={u.id}>
                       {u.nickname || u.name}
                     </option>
@@ -729,6 +741,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
             )}
           </div>
 
+          {conflict && <div role="alert" className="mx-6 mb-4 space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"><p>มีคนแก้ไขงานนี้แล้ว ฉบับร่างยังอยู่ กรุณาเทียบข้อมูลล่าสุดก่อนบันทึก</p><button type="button" className="min-h-10 text-primary" onClick={async () => { try { setLatest((await api.get<Todo>(`/todos/${editing!.id}`)).data); } catch (e) { toast.error(getErrorMessage(e)); } }}>โหลดข้อมูลล่าสุดเพื่อเทียบ</button>{latest && <><p>{latest.title} · {latest.dueDate ? new Date(latest.dueDate).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) : 'ไม่มีกำหนดเวลา'} · {latest.status}</p><button type="button" className="min-h-10 text-primary" onClick={() => { setRevision(latest.revision ?? 0); setConflict(false); }}>ใช้ฉบับร่างนี้กับข้อมูลล่าสุด</button></>}</div>}
           <DialogFooter className="px-6 py-4 border-t border-border bg-muted/20">
             <button
               type="button"
@@ -740,7 +753,7 @@ export function TodoForm({ open, onOpenChange, editing, staffUsers, defaults }: 
             <button
               type="button"
               onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
+              disabled={saveMutation.isPending || conflict || (!!roomId && (eligible.isLoading || eligible.isError))}
               className="px-5 py-2.5 text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl disabled:opacity-50 shadow-sm transition-all"
             >
               {saveMutation.isPending ? 'กำลังบันทึก...' : editing ? 'บันทึกการแก้ไข' : 'สร้างงาน'}

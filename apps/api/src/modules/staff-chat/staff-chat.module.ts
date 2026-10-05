@@ -1,3 +1,5 @@
+import { ChatFollowUpService } from './services/chat-follow-up.service';
+import { ChatFollowUpController } from './chat-follow-up.controller';
 import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
 import { ChatSalesContextService } from './services/chat-sales-context.service';
 import { ChatSalesContextController } from './chat-sales-context.controller';
@@ -89,8 +91,8 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
       inject: [ConfigService],
     }),
   ],
-  controllers: [ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, RoomAssistanceController, StaffChatController, RoomCreditController, WebWidgetController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
-  providers: [ChatSalesContextService, ChatWorkQueryService, ChatWorkSettingsService, ChatWorkAccessService, StaffInboxService, RoomAiAccessService, PrepareOfferService, StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ProductQuoteService, ChatToContractService, CannedResponseVariableService, CannedResponseBubbleService, CannedResponseQuickReplyService, BubbleTranslatorService, CannedResponseSenderService, QuickReplyPostbackRouterService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService, AiSuggestService, AiAutoReplyService, ProductDetectService, LeadScoringService, AiTrainingService, AiImportService, AiMetricsService, EmbeddingService, PersonaService, SalesStateService, TrainingExtractCron, EmbeddingBackfillCron, { provide: CHAT_GATEWAY_TOKEN, useExisting: StaffChatGateway }],
+  controllers: [ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, RoomAssistanceController, StaffChatController, RoomCreditController, WebWidgetController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
+  providers: [ChatFollowUpService, ChatSalesContextService, ChatWorkQueryService, ChatWorkSettingsService, ChatWorkAccessService, StaffInboxService, RoomAiAccessService, PrepareOfferService, StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ProductQuoteService, ChatToContractService, CannedResponseVariableService, CannedResponseBubbleService, CannedResponseQuickReplyService, BubbleTranslatorService, CannedResponseSenderService, QuickReplyPostbackRouterService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService, AiSuggestService, AiAutoReplyService, ProductDetectService, LeadScoringService, AiTrainingService, AiImportService, AiMetricsService, EmbeddingService, PersonaService, SalesStateService, TrainingExtractCron, EmbeddingBackfillCron, { provide: CHAT_GATEWAY_TOKEN, useExisting: StaffChatGateway }],
   exports: [ChatWorkAccessService, StaffInboxService, StaffChatGateway, WebWidgetGateway, PresenceService, CollisionDetectionService, AiAutoReplyService, PersonaService, QuickReplyPostbackRouterService, CHAT_GATEWAY_TOKEN],
 })
 export class StaffChatModule {}

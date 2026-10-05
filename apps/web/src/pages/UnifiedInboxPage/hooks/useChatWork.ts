@@ -10,7 +10,7 @@ export interface WorkNotification {
 }
 export interface WorkTarget {
   targetType: string; targetId: string; roomId: string; title: string; content?: string;
-  status?: string; dueAt?: string; assigneeId?: string;
+  status?: string; workKind?: string; revision?: number; dueAt?: string; assigneeId?: string;
 }
 export function useChatWorkSettings() {
   const { user } = useAuth();

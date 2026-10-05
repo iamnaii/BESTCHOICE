@@ -22,7 +22,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { Response } from 'express';
 import { TodosService } from './todos.service';
 import { StorageService } from '../storage/storage.service';
-import { CreateTodoDto, UpdateTodoDto, TodosQueryDto, CreateTodoCommentDto } from './dto/todo.dto';
+import { CreateTodoDto, UpdateTodoDto, TodosQueryDto, CreateTodoCommentDto, TodoScopeDto } from './dto/todo.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -47,6 +47,7 @@ export class TodosController {
   @Get()
   findAll(@CurrentUser() user: AuthUser, @Query() query: TodosQueryDto) {
     return this.todosService.findAll({
+      company: query.company,
       view: query.view,
       search: query.search,
       status: query.status,
@@ -126,41 +127,42 @@ export class TodosController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.todosService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: AuthUser, @Query() query: TodoScopeDto) {
+    return this.todosService.findOne(id, user.id, query.company);
   }
 
   @Post()
-  create(@Body() dto: CreateTodoDto, @CurrentUser() user: AuthUser) {
-    return this.todosService.create(dto, user.id);
+  create(@Body() dto: CreateTodoDto, @CurrentUser() user: AuthUser, @Query() query: TodoScopeDto) {
+    return this.todosService.create(dto, user.id, query.company);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateTodoDto) {
-    return this.todosService.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateTodoDto, @CurrentUser() user: AuthUser, @Query() query: TodoScopeDto) {
+    return this.todosService.update(id, dto, user.id, query.company);
   }
 
   @Patch(':id/toggle')
-  toggleDone(@Param('id') id: string) {
-    return this.todosService.toggleDone(id);
+  toggleDone(@Param('id') id: string, @CurrentUser() user: AuthUser, @Query() query: TodoScopeDto) {
+    return this.todosService.toggleDone(id, user.id, query.company, query.expectedRevision);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.todosService.remove(id, user.id, user.role);
+  remove(@Param('id') id: string, @CurrentUser() user: AuthUser, @Query() query: TodoScopeDto) {
+    return this.todosService.remove(id, user.id, user.role, query.company, query.expectedRevision);
   }
 
   @Get(':id/comments')
-  getComments(@Param('id') id: string) {
-    return this.todosService.getComments(id);
+  getComments(@Param('id') id: string, @CurrentUser() user: AuthUser, @Query() query: TodoScopeDto) {
+    return this.todosService.getComments(id, user.id, query.company);
   }
 
   @Post(':id/comments')
   addComment(
     @Param('id') id: string,
     @Body() dto: CreateTodoCommentDto,
+    @Query() query: TodoScopeDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.todosService.addComment(id, user.id, dto.content);
+    return this.todosService.addComment(id, user.id, dto.content, query.company);
   }
 }

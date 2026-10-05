@@ -453,9 +453,10 @@ export default function UnifiedInboxPage() {
 
       {/* Right panel as Drawer on < xl */}
       <Sheet open={customerPanelOpen} onOpenChange={setCustomerPanelOpen}>
-        <SheetContent side="right" className="w-80 p-0 xl:hidden">
+        <SheetContent side="right" close={false} className="w-80 p-0 xl:hidden">
           <SheetTitle className="sr-only">ข้อมูลลูกค้า</SheetTitle>
           <RoomDossier
+            onClose={() => setCustomerPanelOpen(false)}
             credit={credit}
             creditFocus={creditFocus}
             gfin={gfin}

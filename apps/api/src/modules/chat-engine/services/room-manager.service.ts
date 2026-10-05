@@ -37,7 +37,7 @@ import * as Sentry from '@sentry/nestjs';
  *  เพี้ยนจากกันได้อีก */
 /** นัดถัดไปของห้อง (ยังไม่เสร็จ มีวันเวลา) — ป้ายในแถวรายชื่อ + ชิปหัวห้อง (เจ้าของเคาะ 2026-09-06 ชั้น 1) */
 const ROOM_NEXT_APPOINTMENT = {
-  where: { deletedAt: null, status: { not: TodoStatus.DONE }, dueDate: { not: null } },
+  where: { deletedAt: null, status: { in: [TodoStatus.TODO, TodoStatus.DOING, TodoStatus.REVIEW] }, dueDate: { not: null } },
   orderBy: { dueDate: 'asc' as const },
   take: 1,
   select: { id: true, title: true, dueDate: true, status: true },
@@ -432,7 +432,7 @@ export class RoomManagerService {
       where: {
         deletedAt: null,
         roomId: { not: null },
-        status: { not: TodoStatus.DONE },
+        status: { in: [TodoStatus.TODO, TodoStatus.DOING, TodoStatus.REVIEW] },
         dueDate: { gte: new Date(now.getTime() - 24 * 3600_000), lte: new Date(now.getTime() + 15 * 60_000) },
       },
       orderBy: { dueDate: 'asc' },

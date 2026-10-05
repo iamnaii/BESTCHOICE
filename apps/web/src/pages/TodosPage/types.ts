@@ -1,6 +1,6 @@
-export type TodoStatus = 'TODO' | 'DOING' | 'REVIEW' | 'DONE';
+export type TodoStatus = 'TODO' | 'DOING' | 'REVIEW' | 'DONE' | 'CANCELLED';
 export type TodoPriority = 'LOW' | 'MEDIUM' | 'HIGH';
-export type TodoView = 'all' | 'today' | 'upcoming' | 'priority' | 'completed';
+export type TodoView = 'all' | 'today' | 'upcoming' | 'priority' | 'completed' | 'cancelled';
 
 export interface ChecklistItem {
   id: string;
@@ -28,6 +28,8 @@ export interface Todo {
   title: string;
   description?: string | null;
   status: TodoStatus;
+  revision?: number;
+  workKind?: 'GENERAL' | 'CHAT_FOLLOW_UP' | 'CHAT_HANDOFF' | 'CHAT_SERVICE';
   priority: TodoPriority;
   dueDate?: string | null;
   completedAt?: string | null;
@@ -61,6 +63,7 @@ export interface TodosResponse {
     upcoming: number;
     priority: number;
     completed: number;
+    cancelled?: number;
   };
 }
 

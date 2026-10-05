@@ -35,7 +35,7 @@ export class ChatWorkAccessService {
   constructor(private readonly prisma: PrismaService) {}
 
   async currentActor(
-    actor: ChatWorkActor,
+    actor: Pick<ChatWorkActor, 'id'>,
     db: Prisma.TransactionClient = this.prisma,
   ): Promise<ChatWorkActor> {
     const current = await db.user.findFirst({

@@ -1,3 +1,4 @@
+import { ChatFollowUpService } from '../src/modules/staff-chat/services/chat-follow-up.service';
 import { ChatWorkSettingsService } from '../src/modules/staff-chat/services/chat-work-settings.service';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -149,18 +150,19 @@ describe('SLA and follow-up alerts', () => {
     });
     await notifier.scan(now);
     expect(await items()).toHaveLength(1);
-    await db.todo.update({
-      where: { id: todo.id },
-      data: { dueDate: new Date('2026-10-06T04:55:00Z') },
-    });
+    const followUps = new ChatFollowUpService(db, access, inbox);
+    const actor = await db.user.findUniqueOrThrow({ where: { id: staffId } });
+    const scope = { company: 'SHOP' as const };
+    await followUps.updateLegacy(todo, { expectedRevision: 0, dueDate: '2026-10-06T04:55:00Z' }, actor.id, scope.company);
     await notifier.scan(now);
-    expect(await items()).toHaveLength(2);
-    await db.todo.update({
-      where: { id: todo.id },
-      data: { status: 'DONE', dueDate: new Date('2026-10-06T04:56:00Z') },
-    });
+    const reminders = () => db.staffInboxItem.count({ where: { todoId: todo.id, dedupeKey: { startsWith: 'todo:' } } });
+    expect(await reminders()).toBe(2);
+    await followUps.updateLegacy(todo, { expectedRevision: 1, dueDate: '2026-10-06T04:50:00Z' }, actor.id, scope.company);
     await notifier.scan(now);
-    expect(await items()).toHaveLength(2);
+    expect(await reminders()).toBe(3); // Returning to the original date is a new reminder generation.
+    await followUps.updateLegacy(todo, { expectedRevision: 2, status: 'CANCELLED' }, actor.id, scope.company);
+    await notifier.scan(now);
+    expect(await reminders()).toBe(3);
   });
   it('only a current owner can change policy, and changing it leaves older cycle policy intact', async () => {
     const settings = new ChatWorkSettingsService(db, access);

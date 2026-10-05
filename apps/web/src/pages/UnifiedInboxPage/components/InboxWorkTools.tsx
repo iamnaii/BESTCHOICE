@@ -1,3 +1,4 @@
+import ChatFollowUpDialog, { type FollowUpDraft } from './ChatFollowUpDialog';
 import { useRef, useState, useEffect } from 'react';
 import type { ChatWorkTarget, WorkQueueView } from '@installment/shared';
 import { Bell, ListTodo } from 'lucide-react';
@@ -14,9 +15,10 @@ export default function InboxWorkTools({ onSelectRoom }: { onSelectRoom: (roomId
   const [page, setPage] = useState(1);
   const [panel, setPanel] = useState<'queue' | 'inbox' | null>(null);
   const [target, setTarget] = useState<WorkTarget | null>(null);
+  const [editingTask, setEditingTask] = useState<{ roomId: string; task: FollowUpDraft } | null>(null);
   const [opening, setOpening] = useState(false);
   const work = useChatWork(view, page);
-  useEffect(() => { setPanel(null); setTarget(null); setPage(1); }, [work.company]);
+  useEffect(() => { setPanel(null); setTarget(null); setEditingTask(null); setPage(1); }, [work.company]);
   const scopeRef = useRef(work.company); scopeRef.current = work.company;
   const open = async (type: ChatWorkTarget, id: string, notificationId?: string) => {
     if (opening) return;
@@ -47,6 +49,7 @@ export default function InboxWorkTools({ onSelectRoom }: { onSelectRoom: (roomId
           : <StaffWorkInbox items={work.inbox.data?.data} total={work.inbox.data?.total} loading={work.inbox.isLoading} error={work.inbox.isError} onRetry={() => work.inbox.refetch()} onOpen={item => void open(item.targetType, item.targetId, item.id)} />}
       </SheetContent>
     </Sheet>
-    <Dialog open={!!target} onOpenChange={o => !o && setTarget(null)}><DialogContent><DialogTitle>{target?.title}</DialogTitle><DialogDescription>{target?.targetType === 'NOTE' ? 'โน้ตภายในห้องแชทนี้' : 'รายละเอียดงานในห้องแชทนี้'}</DialogDescription><p className="whitespace-pre-wrap break-words text-sm leading-snug">{target?.content || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>{target?.dueAt && <p className="text-sm">กำหนด {workDate(target.dueAt)}</p>}{target?.status && <p className="text-sm">สถานะ {({ TODO: 'รอดำเนินการ', DOING: 'กำลังทำ', REVIEW: 'รอตรวจ', DONE: 'เสร็จแล้ว' } as Record<string, string>)[target.status] ?? target.status}</p>}</DialogContent></Dialog>
+    <Dialog open={!!target} onOpenChange={o => !o && setTarget(null)}><DialogContent><DialogTitle>{target?.title}</DialogTitle><DialogDescription>{target?.targetType === 'NOTE' ? 'โน้ตภายในห้องแชทนี้' : 'รายละเอียดงานในห้องแชทนี้'}</DialogDescription><p className="whitespace-pre-wrap break-words text-sm leading-snug">{target?.content || 'ไม่มีรายละเอียดเพิ่มเติม'}</p>{target?.dueAt && <p className="text-sm">กำหนด {workDate(target.dueAt)}</p>}{target?.status && <p className="text-sm">สถานะ {({ TODO: 'รอดำเนินการ', DOING: 'กำลังทำ', REVIEW: 'รอตรวจ', DONE: 'เสร็จแล้ว', CANCELLED: 'ยกเลิก' } as Record<string, string>)[target.status] ?? target.status}</p>}{target?.workKind === 'CHAT_FOLLOW_UP' && <Button onClick={() => { setEditingTask({ roomId: target.roomId, task: { id: target.targetId, title: target.title, dueDate: target.dueAt, assigneeId: target.assigneeId, status: target.status as FollowUpDraft['status'], revision: target.revision! } }); setTarget(null); }}>แก้ไขนัดติดตาม</Button>}</DialogContent></Dialog>
+    {editingTask && <ChatFollowUpDialog roomId={editingTask.roomId} editing={editingTask.task} open onOpenChange={o => !o && setEditingTask(null)} />}
   </>;
 }

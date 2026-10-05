@@ -71,11 +71,11 @@ export default function TodosPage() {
   });
 
   const todos = data?.data || [];
-  const summary = data?.summary || { all: 0, today: 0, upcoming: 0, priority: 0, completed: 0 };
+  const summary = data?.summary || { all: 0, today: 0, upcoming: 0, priority: 0, completed: 0, cancelled: 0 };
 
   const moveStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: TodoStatus }) => {
-      const { data } = await api.patch(`/todos/${id}`, { status });
+      const { data } = await api.patch(`/todos/${id}`, { status, expectedRevision: todos.find(t => t.id === id)?.revision });
       return data;
     },
     // Optimistic update: patch cache immediately so the card appears in
@@ -111,7 +111,7 @@ export default function TodosPage() {
 
   const toggleMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { data } = await api.patch(`/todos/${id}/toggle`);
+      const { data } = await api.patch(`/todos/${id}/toggle`, {}, { params: { expectedRevision: todos.find(t => t.id === id)?.revision } });
       return data;
     },
     onMutate: async (id) => {
@@ -144,7 +144,7 @@ export default function TodosPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/todos/${id}`);
+      await api.delete(`/todos/${id}`, { params: { expectedRevision: todos.find(t => t.id === id)?.revision } });
     },
     onSuccess: () => {
       toast.success('ลบรายการแล้ว');
@@ -174,6 +174,7 @@ export default function TodosPage() {
     upcoming: summary.upcoming,
     priority: summary.priority,
     completed: summary.completed,
+    cancelled: summary.cancelled ?? 0,
   };
 
   return (

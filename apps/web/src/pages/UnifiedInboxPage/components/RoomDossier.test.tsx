@@ -1,3 +1,4 @@
+vi.mock('../hooks/useChatWork', () => ({ useChatWorkSettings: () => ({ key: ['chat-work', 'SHOP'], company: 'SHOP', settings: { data: { flags: { chat_follow_up_enabled: false } } } }) }));
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

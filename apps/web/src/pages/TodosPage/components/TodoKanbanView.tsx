@@ -49,7 +49,7 @@ export function TodoKanbanView({
   const { user } = useAuth();
 
   const columns = useMemo<KanbanColumn<Todo>[]>(() => {
-    const byStatus: Record<TodoStatus, Todo[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [] };
+    const byStatus: Record<TodoStatus, Todo[]> = { TODO: [], DOING: [], REVIEW: [], DONE: [], CANCELLED: [] };
     todos.forEach((t) => {
       byStatus[t.status].push(t);
     });
@@ -58,6 +58,7 @@ export function TodoKanbanView({
       { id: 'DOING', title: 'กำลังทำ', color: 'bg-warning', items: byStatus.DOING },
       { id: 'REVIEW', title: 'รอแก้ไข', color: 'bg-warning', items: byStatus.REVIEW },
       { id: 'DONE', title: 'เสร็จแล้ว', color: 'bg-success', items: byStatus.DONE },
+      { id: 'CANCELLED', title: 'ยกเลิก', color: 'bg-muted-foreground', items: byStatus.CANCELLED },
     ];
   }, [todos]);
 
@@ -76,7 +77,7 @@ export function TodoKanbanView({
         emptyMessage="ไม่มีงานในคอลัมน์นี้"
         renderCard={(t) => {
           const pri = priorityConfig[t.priority];
-          const overdue = isOverdue(t.dueDate) && t.status !== 'DONE';
+          const overdue = isOverdue(t.dueDate) && !['DONE', 'CANCELLED'].includes(t.status);
           const checkDone = Array.isArray(t.checklist)
             ? t.checklist.filter((c) => c.done).length
             : 0;

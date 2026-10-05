@@ -1,10 +1,13 @@
+import { ChatFollowUpService } from '../staff-chat/services/chat-follow-up.service';
+import { ChatWorkAccessService, WORK_ROLES } from '../staff-chat/services/chat-work-access.service';
+import type { WorkScope } from '@installment/shared';
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { Prisma, TodoStatus, TodoPriority } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { paginatedResponse } from '../../common/helpers/pagination.helper';
 import { CreateTodoDto, UpdateTodoDto } from './dto/todo.dto';
 
-export type TodoView = 'all' | 'today' | 'upcoming' | 'priority' | 'completed';
+export type TodoView = 'all' | 'today' | 'upcoming' | 'priority' | 'completed' | 'cancelled';
 
 interface FindAllParams {
   view?: TodoView;
@@ -18,6 +21,7 @@ interface FindAllParams {
   page?: number;
   limit?: number;
   currentUserId: string;
+  company?: WorkScope['company'];
 }
 
 const assigneeSelect = {
@@ -29,7 +33,20 @@ const assigneeSelect = {
 
 @Injectable()
 export class TodosService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private followUps: ChatFollowUpService, private access: ChatWorkAccessService) {}
+  private async roomVisibility(actorId: string, company: WorkScope['company'] | undefined, roomId?: string): Promise<Prisma.TodoWhereInput> {
+    if (roomId) {
+      const context = await this.followUps.context(roomId, actorId, company);
+      return { room: await this.access.roomWhere(context.actor, context.scope) };
+    }
+    const actor = await this.access.currentActor({ id: actorId });
+    let room: Prisma.ChatRoomWhereInput = { id: { in: [] } };
+    if (WORK_ROLES.some(role => role === actor.role)) {
+      try { room = await this.access.roomWhere(actor, { company: company ?? 'SHOP' }); }
+      catch (error) { if (!(error instanceof ForbiddenException)) throw error; }
+    }
+    return { AND: [{ OR: [{ roomId: null }, { room }] }] };
+  }
 
   async findAll(params: FindAllParams) {
     const {
@@ -45,7 +62,8 @@ export class TodosService {
       currentUserId,
     } = params;
 
-    const where: Prisma.TodoWhereInput = { deletedAt: null };
+    const visibility = await this.roomVisibility(currentUserId, params.company, roomId);
+    const where: Prisma.TodoWhereInput = { deletedAt: null, ...visibility };
 
     if (search) {
       where.OR = [
@@ -63,28 +81,32 @@ export class TodosService {
 
     // View-specific filters
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfToday = new Date(startOfToday);
-    endOfToday.setDate(endOfToday.getDate() + 1);
+    const date = new Date(now.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+    const startOfToday = new Date(`${date}T00:00:00+07:00`);
+    const endOfToday = new Date(startOfToday.getTime() + 86400_000);
 
     switch (view) {
       case 'today':
-        where.status = { not: 'DONE' };
+        where.status = { in: ['TODO', 'DOING', 'REVIEW'] };
         where.dueDate = { gte: startOfToday, lt: endOfToday };
         break;
       case 'upcoming':
-        where.status = { not: 'DONE' };
+        where.status = { in: ['TODO', 'DOING', 'REVIEW'] };
         where.dueDate = { gte: endOfToday };
         break;
       case 'priority':
-        where.status = { not: 'DONE' };
+        where.status = { in: ['TODO', 'DOING', 'REVIEW'] };
         where.priority = 'HIGH';
         break;
       case 'completed':
         where.status = 'DONE';
         break;
+      case 'cancelled':
+        where.status = 'CANCELLED';
+        break;
       case 'all':
       default:
+        if (!status) where.status = { in: ['TODO', 'DOING', 'REVIEW'] };
         break;
     }
 
@@ -103,28 +125,29 @@ export class TodosService {
     ]);
 
     // Tab counts share the list scope; only the selected view is ignored.
-    const baseWhere: Prisma.TodoWhereInput = { deletedAt: null };
+    const baseWhere: Prisma.TodoWhereInput = { deletedAt: null, ...visibility };
     if (branchId) baseWhere.branchId = branchId;
     if (where.assigneeId) baseWhere.assigneeId = where.assigneeId;
     if (roomId) baseWhere.roomId = roomId;
     if (where.OR) baseWhere.OR = where.OR;
 
-    const [allCount, todayCount, upcomingCount, priorityCount, completedCount] = await Promise.all([
-      this.prisma.todo.count({ where: { ...baseWhere, status: { not: 'DONE' } } }),
+    const [allCount, todayCount, upcomingCount, priorityCount, completedCount, cancelledCount] = await Promise.all([
+      this.prisma.todo.count({ where: { ...baseWhere, status: { in: ['TODO', 'DOING', 'REVIEW'] } } }),
       this.prisma.todo.count({
         where: {
           ...baseWhere,
-          status: { not: 'DONE' },
+          status: { in: ['TODO', 'DOING', 'REVIEW'] },
           dueDate: { gte: startOfToday, lt: endOfToday },
         },
       }),
       this.prisma.todo.count({
-        where: { ...baseWhere, status: { not: 'DONE' }, dueDate: { gte: endOfToday } },
+        where: { ...baseWhere, status: { in: ['TODO', 'DOING', 'REVIEW'] }, dueDate: { gte: endOfToday } },
       }),
       this.prisma.todo.count({
-        where: { ...baseWhere, status: { not: 'DONE' }, priority: 'HIGH' },
+        where: { ...baseWhere, status: { in: ['TODO', 'DOING', 'REVIEW'] }, priority: 'HIGH' },
       }),
       this.prisma.todo.count({ where: { ...baseWhere, status: 'DONE' } }),
+      this.prisma.todo.count({ where: { ...baseWhere, status: 'CANCELLED' } }),
     ]);
 
     return {
@@ -135,11 +158,12 @@ export class TodosService {
         upcoming: upcomingCount,
         priority: priorityCount,
         completed: completedCount,
+        cancelled: cancelledCount,
       },
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, actorId?: string, company?: WorkScope['company']) {
     const todo = await this.prisma.todo.findUnique({
       where: { id },
       include: {
@@ -148,10 +172,15 @@ export class TodosService {
       },
     });
     if (!todo || todo.deletedAt) throw new NotFoundException('ไม่พบรายการงาน');
+    if (todo.roomId) {
+      if (!actorId) throw new ForbiddenException('กรุณาระบุผู้ใช้งาน');
+      await this.followUps.context(todo.roomId, actorId, company);
+    }
     return todo;
   }
 
-  async create(dto: CreateTodoDto, currentUserId: string) {
+  async create(dto: CreateTodoDto, currentUserId: string, company?: WorkScope['company']) {
+    if (dto.roomId) return this.followUps.createLegacy(dto, currentUserId, company);
     return this.prisma.todo.create({
       data: {
         title: dto.title,
@@ -174,8 +203,10 @@ export class TodosService {
     });
   }
 
-  async update(id: string, dto: UpdateTodoDto) {
-    await this.findOne(id);
+  async update(id: string, dto: UpdateTodoDto, actorId?: string, company?: WorkScope['company']) {
+    const todo = await this.findOne(id, actorId, company);
+    if (todo.roomId) return this.followUps.updateLegacy(todo, dto, actorId!, company);
+    if (dto.roomId) throw new ForbiddenException('กรุณาสร้างงานที่ผูกห้องจากหน้าแชท');
 
     const data: Prisma.TodoUpdateInput = {};
     if (dto.title !== undefined) data.title = dto.title;
@@ -214,8 +245,9 @@ export class TodosService {
     });
   }
 
-  async toggleDone(id: string) {
-    const todo = await this.findOne(id);
+  async toggleDone(id: string, actorId?: string, company?: WorkScope['company'], expectedRevision?: number) {
+    const todo = await this.findOne(id, actorId, company);
+    if (todo.roomId) return this.followUps.updateLegacy(todo, { expectedRevision, status: todo.status === 'DONE' ? 'TODO' : 'DONE' }, actorId!, company);
     const next = todo.status === 'DONE' ? 'TODO' : 'DONE';
     return this.prisma.todo.update({
       where: { id },
@@ -230,8 +262,8 @@ export class TodosService {
     });
   }
 
-  async getComments(todoId: string) {
-    await this.findOne(todoId); // verify todo exists
+  async getComments(todoId: string, actorId?: string, company?: WorkScope['company']) {
+    await this.findOne(todoId, actorId, company); // verify todo exists
     return this.prisma.todoComment.findMany({
       where: { todoId },
       include: {
@@ -241,8 +273,8 @@ export class TodosService {
     });
   }
 
-  async addComment(todoId: string, userId: string, content: string) {
-    await this.findOne(todoId); // verify todo exists
+  async addComment(todoId: string, userId: string, content: string, company?: WorkScope['company']) {
+    await this.findOne(todoId, userId, company); // verify todo exists
     return this.prisma.todoComment.create({
       data: { todoId, userId, content },
       include: {
@@ -251,14 +283,15 @@ export class TodosService {
     });
   }
 
-  async remove(id: string, currentUserId: string, role: string) {
-    const todo = await this.findOne(id);
+  async remove(id: string, currentUserId: string, role: string, company?: WorkScope['company'], expectedRevision?: number) {
+    const todo = await this.findOne(id, currentUserId, company);
     // Owner/Manager can delete any; others only own
     const canDelete =
       role === 'OWNER' ||
       role === 'BRANCH_MANAGER' ||
       todo.createdById === currentUserId;
     if (!canDelete) throw new ForbiddenException('ไม่มีสิทธิ์ลบรายการนี้');
+    if (todo.roomId) return this.followUps.updateLegacy(todo, { expectedRevision, status: 'CANCELLED' }, currentUserId, company);
     return this.prisma.todo.update({
       where: { id },
       data: { deletedAt: new Date() },

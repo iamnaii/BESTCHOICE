@@ -1,3 +1,7 @@
+import { TodosController } from '../../src/modules/todos/todos.controller';
+import { TodosService } from '../../src/modules/todos/todos.service';
+import { ChatFollowUpController } from '../../src/modules/staff-chat/chat-follow-up.controller';
+import { ChatFollowUpService } from '../../src/modules/staff-chat/services/chat-follow-up.service';
 import { ChatSalesContextController } from '../../src/modules/staff-chat/chat-sales-context.controller';
 import { ChatSalesContextService } from '../../src/modules/staff-chat/services/chat-sales-context.service';
 import { ChatWorkController } from '../../src/modules/staff-chat/chat-work.controller';
@@ -481,7 +485,7 @@ async function main() {
   const chatWorkRooms = await seedChatWork(db, manager, actor.id);
   const module = await Test.createTestingModule({
     controllers: [
-      ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
+      TodosController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
       TradeInController, ContactsController, ProductPhotosController,
       ContractDocumentsController, DocumentsController,
       RoomCreditController,
@@ -492,7 +496,7 @@ async function main() {
       PreviewController,
     ],
     providers: [
-      ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
+      TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
       { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },
@@ -577,18 +581,17 @@ async function main() {
         referrals: [],
       });
     if (
-      path === '/api/todos' ||
       path === '/api/audit/logs' ||
       /^\/api\/loyalty\/[^/]+\/history$/.test(path)
     )
       return res.json({ data: [], total: 0 });
     if (
-      /^\/api\/(trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
+      /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
-      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes|products|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
+      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes|products|eligible-staff|follow-ups|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
-      /^\/api\/staff-chat\/(work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||
+      /^\/api\/staff-chat\/(follow-ups\/[^/]+|work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||
       path === '/api/staff-chat/ai/settings' || path === '/api/reports/finance-portfolio' ||
       path === '/api/external-finance/companies' || path === '/api/settings/ui-flags' || path === '/api/branches' || path === '/api/companies' || path === '/api/overdue/pipeline' || path === '/api/purchase-orders/qc-pending' ||
       /^\/api\/dashboard\/(kpis|monthly-trend|status-distribution|branch-comparison|monthly-revenue|top-overdue|aging-summary|watch-list|alerts|staff-performance)$/.test(path) ||

@@ -225,7 +225,7 @@ export class ChatSlaNotifierService {
                 kind: 'FOLLOW_UP',
                 roomId: todo.room.id,
                 todoId: todo.id,
-                dedupeKey: `todo:${todo.id}:${todo.dueDate.toISOString()}:${target.id}`,
+                dedupeKey: `todo:${todo.id}:${todo.dueRevision}:${target.id}`,
                 title: 'มีงานติดตามถึงกำหนด',
                 targetType: 'TODO',
                 targetId: todo.id,

@@ -47,7 +47,7 @@ export class ChatWorkQueryService {
       }
       if (type === 'TODO') {
         const todo = await this.access.assertTodo(id, actor, scope, tx);
-        return { targetType: type, targetId: id, roomId: todo.roomId, title: todo.title, content: todo.description, status: todo.status, dueAt: todo.dueDate, assigneeId: todo.assigneeId };
+        return { targetType: type, targetId: id, roomId: todo.roomId, title: todo.title, content: todo.description, status: todo.status, workKind: todo.workKind, revision: todo.revision, dueAt: todo.dueDate, assigneeId: todo.assigneeId };
       }
       if (type === 'NOTE') {
         const room = await this.access.roomWhere(actor, scope, tx);

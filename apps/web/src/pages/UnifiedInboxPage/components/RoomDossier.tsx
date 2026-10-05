@@ -1,3 +1,7 @@
+import { workDate } from './WorkQueue';
+import { X } from 'lucide-react';
+import ChatFollowUpDialog from './ChatFollowUpDialog';
+import { useChatWorkSettings } from '../hooks/useChatWork';
 import ChatSalesContext from './ChatSalesContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import RoomCreditCard, { CreditFilePicker } from './RoomCreditCard';
@@ -362,19 +366,10 @@ function ChannelsGroup({
 /** ─── นัดหมายของห้อง (Todo.roomId) — ตั้งได้แม้ยังไม่ผูกลูกค้า (ท่า OBI "นัดเป็นของห้อง") */
 function dueLabel(iso?: string | null): string {
   if (!iso) return 'ไม่ระบุวัน';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const day = new Date(d); day.setHours(0, 0, 0, 0);
-  const diff = Math.round((day.getTime() - today.getTime()) / 86_400_000);
-  const time = iso.length > 10 ? ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
-  if (diff === 0) return 'วันนี้' + time;
-  if (diff === 1) return 'พรุ่งนี้' + time;
-  if (diff === -1) return 'เมื่อวาน' + time;
-  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) + time;
+  return workDate(iso);
 }
-function AppointmentsGroup({ todos, onNew }: { todos: Todo[]; onNew: () => void }) {
-  const open = todos.filter((t) => t.status !== 'DONE');
+function AppointmentsGroup({ todos, onNew, onEdit }: { todos: Todo[]; onNew: () => void; onEdit?: (todo: Todo) => void }) {
+  const open = todos.filter((t) => !['DONE', 'CANCELLED'].includes(t.status));
   const rows = [...open].sort((a, b) => (a.dueDate ?? '9').localeCompare(b.dueDate ?? '9')).slice(0, 4);
   return (
     <Group label="นัดหมาย" count={open.length} right={<button type="button" className="text-primary" onClick={onNew}>＋ ตั้งนัด</button>}>
@@ -387,6 +382,7 @@ function AppointmentsGroup({ todos, onNew }: { todos: Todo[]; onNew: () => void 
           <div key={t.id} className="mt-1.5 flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs first:mt-0">
             <div className="min-w-0 flex-1">
               <p className="m-0 font-semibold"><span className="tabular-nums">{dueLabel(t.dueDate)}</span> · {t.title}</p>
+              {onEdit && <button type="button" className="min-h-9 text-primary" onClick={() => onEdit(t)}>ดู / แก้ไขนัด</button>}
               <p className="m-0 text-muted-foreground">{t.assignee?.name ?? 'ยังไม่มอบหมาย'}{t.createdAt ? ` · ตั้งเมื่อ ${new Date(t.createdAt).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit' })}` : ''}</p>
             </div>
             <span className={cn('shrink-0 self-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold', overdue ? 'bg-destructive/10 text-destructive' : st?.tone === 'warn' ? 'bg-warning/15 text-amber-800 dark:text-amber-200' : t.status === 'DOING' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground')}>
@@ -488,6 +484,7 @@ interface LookupDevice {
 }
 
 interface RoomDossierProps {
+  onClose?: () => void;
   credit?: RoomCreditModel;
   creditFocus?: { roomId: string; tick: number } | null;
   gfin?: FinanceApplicationModel;
@@ -499,7 +496,7 @@ interface RoomDossierProps {
   onSelectRoom?: (roomId: string) => void;
 }
 
-export default function RoomDossier({ room, customerId, activeRoomId, onSelectRoom, credit, creditFocus, gfin, gfinFocus, onPickSlot }: RoomDossierProps) {
+export default function RoomDossier({ onClose, room, customerId, activeRoomId, onSelectRoom, credit, creditFocus, gfin, gfinFocus, onPickSlot }: RoomDossierProps) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('customer');
   const creditRef = useRef<HTMLDivElement>(null);
@@ -578,17 +575,21 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
     onError: (err) => toast.error(getErrorMessage(err)),
   });
   const queryClient = useQueryClient();
+  const work = useChatWorkSettings();
+  const followUpEnabled = !!work.settings.data?.flags.chat_follow_up_enabled;
+  const [editingAppt, setEditingAppt] = useState<Todo | null>(null);
+  const newAppointment = () => { setEditingAppt(null); setApptOpen(true); };
   // นัดของห้อง — คีย์ขึ้นต้น 'todos' เพื่อให้ TodoForm invalidate แล้วรายการนี้รีเฟรชด้วย
   const todosQuery = useQuery({
-    queryKey: ['todos', 'room', room?.id],
+    queryKey: ['todos', ...work.key, 'room', room?.id],
     queryFn: () => api.get('/todos', { params: { roomId: room!.id, limit: 20 } }).then((r) => r.data?.data ?? r.data ?? []),
     enabled: !!room?.id,
   });
   const roomTodos: Todo[] = Array.isArray(todosQuery.data) ? todosQuery.data : [];
   const staffQuery = useQuery<AssigneeRef[]>({
-    queryKey: ['staff-users-todo'],
-    queryFn: () => api.get('/users').then((r) => r.data?.data || r.data || []),
-    enabled: apptOpen,
+    queryKey: [...work.key, 'eligible', room?.id],
+    queryFn: () => api.get(`/staff-chat/rooms/${room!.id}/eligible-staff`).then((r) => r.data),
+    enabled: apptOpen && !followUpEnabled,
   });
   // endpoint + คีย์เดียวกับแผงเดิม (customer-chat-summary) — แคชร่วมกัน ไดอะล็อกของแผงเดิม invalidate แล้วเราเห็นด้วย
   const summaryQuery = useQuery({
@@ -706,9 +707,10 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
           >
             <ExternalLink className="size-3.5" />
           </button>
+          {onClose && <Button variant="ghost" size="icon" className="size-9 shrink-0" aria-label="ปิดข้อมูลลูกค้า" onClick={onClose}><X className="size-4" /></Button>}
         </div>
         {/* ปุ่มด่วนอันเดียว — "ส่งสินค้า" มีที่แถบพิมพ์แล้ว ไม่ทำซ้ำ · นัดเป็นของห้อง ตั้งได้จากทุกแท็บ */}
-        <Button variant="outline" size="sm" className="w-full" onClick={() => setApptOpen(true)}>
+        <Button variant="outline" size="sm" className="w-full" onClick={newAppointment}>
           <CalendarPlus className="mr-1.5 size-3.5" /> ตั้งนัด
         </Button>
       </div>
@@ -742,7 +744,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
       <div className="flex-1 overflow-y-auto bg-muted/30">
         {tab === 'customer' && (
           <div className="flex flex-col gap-2.5 p-2.5">
-            <ChatSalesContext roomId={room.id} onLink={() => setLinkOpen(true)} onNew={() => setApptOpen(true)} />
+            <ChatSalesContext roomId={room.id} onLink={() => setLinkOpen(true)} onNew={newAppointment} />
             <Group label="ข้อมูลลูกค้า">
               {linked ? (
                 <>
@@ -810,7 +812,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
             <AdGroup room={room} />
 
             <div id="room-appointments" className="scroll-mt-2">
-              <AppointmentsGroup todos={roomTodos} onNew={() => setApptOpen(true)} />
+              <AppointmentsGroup todos={roomTodos} onNew={newAppointment} onEdit={todo => { setEditingAppt(todo); setApptOpen(true); }} />
             </div>
 
             <Group label="สินค้าที่กำลังคุย">
@@ -939,13 +941,13 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
         />
       )}
       {/* ตั้งนัด = ฟอร์ม Todo ตัวเดิม ผูกห้อง + ชื่อล่วงหน้า · บันทึกแล้ว invalidate ['todos'] → รายการนัดข้างบนรีเฟรช */}
-      <TodoForm
+      {followUpEnabled && (!editingAppt || editingAppt.workKind === 'CHAT_FOLLOW_UP') ? <ChatFollowUpDialog key={`${work.company}:${room.id}`} roomId={room.id} open={apptOpen} onOpenChange={setApptOpen} editing={editingAppt ? { ...editingAppt, revision: editingAppt.revision ?? 0 } : undefined} /> : <TodoForm
         open={apptOpen}
         onOpenChange={setApptOpen}
-        editing={null}
+        editing={editingAppt}
         staffUsers={Array.isArray(staffQuery.data) ? staffQuery.data : []}
         defaults={{ title: `นัด ${name}`, roomId: room.id, priority: 'MEDIUM', status: 'TODO' }}
-      />
+      />}
     </aside>
   );
 }

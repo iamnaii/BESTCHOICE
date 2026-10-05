@@ -16,6 +16,21 @@ export interface TaxInvoiceActor { id: string; role: string }
 const EDIT_ROLES = ['OWNER', 'ACCOUNTANT'];
 
 /**
+ * ผู้แพ้ของการกดพร้อมกันใต้ Serializable: P2034 (SSI abort จาก Prisma query) · P2002 (unique index ของ JE) ·
+ * **P2010** = `$queryRaw` (`SELECT … FOR UPDATE`) ล้มด้วย Postgres `40001` (could not serialize access due to concurrent update)
+ * หรือ `40P01` (deadlock) — Prisma ห่อ error ของ raw query เป็น P2010 ไม่ใช่ P2034 (พิสูจน์ด้วย integration เคส 7)
+ */
+export function isConcurrentWriteConflict(err: unknown): boolean {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (err.code === 'P2034' || err.code === 'P2002') return true;
+  if (err.code === 'P2010') {
+    const pg = (err.meta as { code?: unknown } | undefined)?.code;
+    return pg === '40001' || pg === '40P01';
+  }
+  return false;
+}
+
+/**
  * ก้อน 5 (Q1/Q2) — ใบกำกับภาษีที่มาหลังรับของ (ใบรับของเป็นใบส่งของ/บิลเงินสด/ไม่มีเอกสาร).
  * บันทึกเลข/วันที่/รูป แล้วเคลมย้อนสัญญาที่ `PENDING_INVOICE` ของทุกเครื่องในใบ **ใน tx เดียวกัน** (ล็อกแถวใบรับของกันกดซ้ำ).
  * ตรวจเลขซ้ำของผู้จัดจำหน่ายเดิมเป็นเรื่องของหน้าจอ (`GET /purchase-orders/receiving-doc-check`) — ไม่บล็อกที่นี่ (กติกาเดียวกับตอนรับของ)
@@ -83,7 +98,7 @@ export class GoodsReceivingTaxInvoiceService {
       );
     } catch (err) {
       if (photoKey) await this.storage.delete(photoKey).catch((e) => this.logger.warn(`ลบรูปที่อัปโหลดค้างไม่สำเร็จ ${photoKey}: ${(e as Error).message}`));
-      if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === 'P2034' || err.code === 'P2002')) {
+      if (isConcurrentWriteConflict(err)) {
         throw new ConflictException('มีการบันทึกใบกำกับของใบรับของนี้พร้อมกัน — กรุณาโหลดหน้าใหม่แล้วตรวจผล');
       }
       throw err;

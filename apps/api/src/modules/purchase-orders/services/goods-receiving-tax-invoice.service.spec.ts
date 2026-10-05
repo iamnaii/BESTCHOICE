@@ -87,6 +87,21 @@ describe('GoodsReceivingTaxInvoiceService.record', () => {
     expect(ownerCase.audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'GOODS_RECEIVING_TAX_INVOICE_UPDATED', oldValue: expect.objectContaining({ taxInvoiceNumber: 'IV-OLD' }) }));
   });
 
+  it('กดพร้อมกัน: SELECT … FOR UPDATE ใต้ Serializable โยน P2010 (40001) หรือ P2034 → 409 Conflict ไม่ใช่ error ดิบ (Review Focus 1)', async () => {
+    const { Prisma } = await import('@prisma/client');
+    const { ConflictException } = await import('@nestjs/common');
+    const raw = new Prisma.PrismaClientKnownRequestError('Raw query failed. Code: `40001`', { code: 'P2010', clientVersion: 'test', meta: { code: '40001', message: 'could not serialize access due to concurrent update' } });
+    const a = build(); a.tx.$queryRaw.mockRejectedValue(raw);
+    await expect(a.service.record('po-1', 'gr-1', dto, undefined, owner)).rejects.toBeInstanceOf(ConflictException);
+    const ssi = new Prisma.PrismaClientKnownRequestError('write conflict', { code: 'P2034', clientVersion: 'test' });
+    const b = build(); b.tx.$queryRaw.mockRejectedValue(ssi);
+    await expect(b.service.record('po-1', 'gr-1', dto, undefined, owner)).rejects.toBeInstanceOf(ConflictException);
+    // error อื่น (เช่น P2010 รหัสอื่น) ผ่านออกไปตามเดิม
+    const other = new Prisma.PrismaClientKnownRequestError('Raw query failed. Code: `42P01`', { code: 'P2010', clientVersion: 'test', meta: { code: '42P01' } });
+    const c = build(); c.tx.$queryRaw.mockRejectedValue(other);
+    await expect(c.service.record('po-1', 'gr-1', dto, undefined, owner)).rejects.toBe(other);
+  });
+
   it('เลขที่ว่าง / วันที่อนาคต → 400 จาก normalizeSupplierDoc · ใบรับของไม่พบ → 404', async () => {
     const { service } = build();
     await expect(service.record('po-1', 'gr-1', { number: '  ', date: '2026-10-04' }, undefined, owner)).rejects.toThrow('กรุณากรอกเลขที่เอกสาร');

@@ -65,6 +65,9 @@ export interface PurchaseOrder {
   paymentNotes: string | null;
   attachments: string[];
   notes: string | null;
+  /** บัญชีผู้รับเงินของผู้จัดจำหน่ายที่บันทึกไว้ตอนออกใบ (T5-C18) — หน้าจ่ายเงินแสดงให้เห็นว่าโอนเข้าไหน */
+  bankNameSnapshot?: string | null;
+  bankAccountSnapshot?: string | null;
   supplier: { id: string; name: string; contactName: string | null; phone: string; hasVat: boolean };
   createdBy: { id: string; name: string };
   approvedBy: { id: string; name: string } | null;
@@ -183,4 +186,66 @@ export interface SupplierOption {
   contactName: string | null;
   hasVat: boolean;
   paymentMethods: SupplierPaymentMethodOption[];
+}
+
+// ───────────── ก้อน 2 (2026-10-05) — จ่ายเงินผู้จัดจำหน่าย: รูปเดียวกับ API `GET /purchase-orders/:id/payments` ─────────────
+
+export type SupplierPaymentKind = 'DEPOSIT' | 'SETTLEMENT' | 'DEPOSIT_APPLIED' | 'DEPOSIT_REFUND' | 'DEPOSIT_FORFEIT';
+
+export interface SupplierPaymentSummary {
+  netAmount: string;
+  /** มัดจำ + ชำระ − มัดจำที่ได้คืน (ไม่นับรายการที่ยกเลิก) */
+  paidTotal: string;
+  /** เพดานที่ยังจ่ายได้ = ยอดสุทธิ − paidTotal */
+  remainingOnPo: string;
+  payableOutstanding: string;
+  payableByAccount: Record<string, string>;
+  depositOutstanding: string;
+  hasBookedPayable: boolean;
+  status: string;
+}
+
+export interface SupplierPayment {
+  id: string;
+  kind: SupplierPaymentKind;
+  amount: string;
+  paidAt: string;
+  postedAt: string;
+  bankAccountCode: string | null;
+  reference: string | null;
+  slipUrl: string | null;
+  note: string | null;
+  receivingId: string | null;
+  journalEntryId: string | null;
+  journalEntryNo: string | null;
+  createdBy: { id: string; name: string } | null;
+  createdAt: string;
+  voidedAt: string | null;
+  voidedBy: { id: string; name: string } | null;
+  voidReason: string | null;
+  reversalJournalEntryId: string | null;
+  reversalJournalEntryNo: string | null;
+}
+
+export interface PoPaymentsResponse {
+  summary: SupplierPaymentSummary;
+  payments: SupplierPayment[];
+  /** ยอดจ่ายที่กรอกไว้ก่อนมีเมนูนี้ (ไม่ได้ลงบัญชี) — แสดงเป็นป้ายเท่านั้น */
+  legacyPaidAmount: string;
+}
+
+export interface RecordSupplierPaymentPayload {
+  paidAt: string;
+  amount: number;
+  slipUrl: string;
+  reference?: string;
+  note?: string;
+}
+
+export interface CancelPOPayload {
+  depositOutcome?: 'REFUNDED' | 'FORFEITED';
+  refundedAt?: string;
+  refundAmount?: number;
+  slipUrl?: string;
+  reason?: string;
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload } from '../types';
+import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload, PoPaymentsResponse, RecordSupplierPaymentPayload, SupplierPayment } from '../types';
 import { defaultChecklist } from '../constants';
 import { buildReceivingItemData } from '../receiving-item';
 import { receivingBlockers } from '../receiving-flow.util';
@@ -58,20 +58,14 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     message: string;
     action: () => void;
   }>({ open: false, message: '', action: () => {} });
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  // ก้อน 2 (2026-10-05): หน้าต่างบันทึกการจ่ายใหม่ + รายการที่กำลังจะยกเลิก
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [voidTarget, setVoidTarget] = useState<SupplierPayment | null>(null);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [poDetail, setPODetail] = useState<PODetail | null>(null);
   const [receivingUnits, setReceivingUnits] = useState<ReceivingUnitForm[]>([]);
   const [receivingNotes, setReceivingNotes] = useState('');
   const [receivingSupplierDoc, setReceivingSupplierDoc] = useState<SupplierDocForm>(() => defaultSupplierDoc(false));
-  const [paymentForm, setPaymentForm] = useState({
-    paymentStatus: '',
-    paymentMethod: '',
-    paidAmount: '',
-    paymentNotes: '',
-  });
-  const [paymentAttachments, setPaymentAttachments] = useState<string[]>([]);
-  const [paymentAttachmentUrl, setPaymentAttachmentUrl] = useState('');
 
   const {
     data: suppliersRes,
@@ -292,27 +286,51 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
-  const paymentMutation = useMutation({
-    mutationFn: async ({ poId, data }: { poId: string; data: Record<string, unknown> }) =>
-      api.patch(`/purchase-orders/${poId}/payment`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-      queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
-      queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
-      toast.success('อัปเดตสถานะการจ่ายเงินสำเร็จ');
-      setIsPaymentModalOpen(false);
-      // Refresh detail if open
-      if (selectedPO) {
-        api
-          .get(`/purchase-orders/${selectedPO.id}`)
-          .then(({ data }) => {
-            setPODetail(data);
-            setSelectedPO(data);
-          })
-          .catch(() => {
-            /* detail will refresh on next open */
-          });
-      }
+  // ก้อน 2: ทุกการจ่ายผ่าน POST :id/payments (ลงบัญชีทันที) — เส้นทาง PATCH :id/payment เดิมถูกปิด (410)
+  const refreshSelectedDetail = (poId: string) => {
+    api
+      .get(`/purchase-orders/${poId}`)
+      .then(({ data }) => {
+        setPODetail(data);
+        setSelectedPO(data);
+      })
+      .catch(() => {
+        /* detail will refresh on next open */
+      });
+  };
+  const invalidateAfterPayment = (poId: string) => {
+    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
+    queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
+    queryClient.invalidateQueries({ queryKey: ['supplier-ledger'] });
+    queryClient.invalidateQueries({ queryKey: ['po-payments', poId] });
+  };
+
+  const recordPaymentMutation = useMutation({
+    mutationFn: async ({ poId, payload }: { poId: string; payload: RecordSupplierPaymentPayload }) =>
+      api.post(`/purchase-orders/${poId}/payments`, payload),
+    onSuccess: (res, vars) => {
+      invalidateAfterPayment(vars.poId);
+      const body = (res?.data?.data ?? res?.data ?? {}) as { payments?: { kind: string; amount: string }[]; periodClosed?: boolean };
+      const kinds = (body.payments ?? []).map((p) => (p.kind === 'DEPOSIT' ? 'มัดจำ' : 'ชำระค่าสินค้า') + ` ${Number(p.amount).toLocaleString('th-TH', { minimumFractionDigits: 2 })}`).join(' + ');
+      toast.success(
+        `บันทึกการจ่ายและลงบัญชีแล้ว${kinds ? ` · ${kinds}` : ''}` +
+          (body.periodClosed ? ' · งวดของวันโอนปิดแล้ว ลงวันที่วันนี้แทนและแจ้งฝ่ายบัญชี' : ''),
+      );
+      setIsPaymentDialogOpen(false);
+      refreshSelectedDetail(vars.poId);
+    },
+    onError: (err: unknown) => toast.error(getErrorMessage(err)),
+  });
+
+  const voidPaymentMutation = useMutation({
+    mutationFn: async ({ poId, paymentId, reason }: { poId: string; paymentId: string; reason: string }) =>
+      api.post(`/purchase-orders/${poId}/payments/${paymentId}/void`, { reason }),
+    onSuccess: (_res, vars) => {
+      invalidateAfterPayment(vars.poId);
+      toast.success('ยกเลิกรายการจ่ายและกลับรายการบัญชีแล้ว');
+      setVoidTarget(null);
+      refreshSelectedDetail(vars.poId);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -419,15 +437,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
 
   const openPaymentModal = (po: PurchaseOrder) => {
     setSelectedPO(po);
-    setPaymentForm({
-      paymentStatus: po.paymentStatus || 'UNPAID',
-      paymentMethod: po.paymentMethod || '',
-      paidAmount: po.paidAmount ? String(Number(po.paidAmount)) : '0',
-      paymentNotes: po.paymentNotes || '',
-    });
-    setPaymentAttachments(po.attachments || []);
-    setPaymentAttachmentUrl('');
-    setIsPaymentModalOpen(true);
+    setIsPaymentDialogOpen(true);
   };
 
   const updateReceivingUnit = (idx: number, field: string, value: string) => {
@@ -476,21 +486,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     });
   };
 
-  const handlePaymentUpdate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPO) return;
-    paymentMutation.mutate({
-      poId: selectedPO.id,
-      data: {
-        paymentStatus: paymentForm.paymentStatus,
-        paymentMethod: paymentForm.paymentMethod || undefined,
-        paidAmount: Number(paymentForm.paidAmount),
-        paymentNotes: paymentForm.paymentNotes || undefined,
-        attachments: paymentAttachments,
-      },
-    });
-  };
-
   return {
     // Queries
     suppliers,
@@ -508,7 +503,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     cancelMutation,
     goodsReceivingMutation,
     directReceiveMutation,
-    paymentMutation,
+    recordPaymentMutation,
+    voidPaymentMutation,
     // State
     statusFilter,
     setStatusFilter,
@@ -523,8 +519,10 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setIsDetailModalOpen,
     isReceiveModalOpen,
     setIsReceiveModalOpen,
-    isPaymentModalOpen,
-    setIsPaymentModalOpen,
+    isPaymentDialogOpen,
+    setIsPaymentDialogOpen,
+    voidTarget,
+    setVoidTarget,
     confirmDialog,
     setConfirmDialog,
     selectedPO,
@@ -537,12 +535,6 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setReceivingNotes,
     receivingSupplierDoc,
     setReceivingSupplierDoc,
-    paymentForm,
-    setPaymentForm,
-    paymentAttachments,
-    setPaymentAttachments,
-    paymentAttachmentUrl,
-    setPaymentAttachmentUrl,
     // Actions
     openDetailModal,
     openReceiveModal,
@@ -550,6 +542,18 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     updateReceivingUnit,
     updateChecklist,
     handleGoodsReceiving,
-    handlePaymentUpdate,
   };
+}
+
+/** รายการจ่ายเงิน + ฐานะจากสมุดบัญชีของใบสั่งซื้อ (`GET /purchase-orders/:id/payments`) — หน้ารายละเอียดและหน้าต่างจ่ายเงินใช้ร่วมกัน */
+export function usePoPayments(poId: string | null, enabled = true) {
+  return useQuery<PoPaymentsResponse>({
+    queryKey: ['po-payments', poId],
+    queryFn: async () => {
+      const res = await api.get(`/purchase-orders/${poId}/payments`);
+      return (res.data?.summary ? res.data : res.data?.data) as PoPaymentsResponse;
+    },
+    enabled: !!poId && enabled,
+    staleTime: 5_000,
+  });
 }

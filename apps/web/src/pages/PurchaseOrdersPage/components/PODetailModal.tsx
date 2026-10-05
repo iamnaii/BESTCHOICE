@@ -5,7 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
 import { formatDateShort, formatDateMedium, formatDateTime, formatNumber, formatNumberDecimal } from '@/utils/formatters';
-import type { PurchaseOrder, PODetail, POItem } from '../types';
+import type { PurchaseOrder, PODetail, POItem, PoPaymentsResponse, SupplierPayment } from '../types';
+import { PAYMENT_KIND_LABEL } from '../supplier-payment.util';
 import { paymentMethodLabels } from '../constants';
 import { canCancel } from '../po-list.util';
 import { supplierDocSummary } from '../supplier-doc.util';
@@ -31,6 +32,12 @@ export interface PODetailModalProps {
   openPaymentModal: (po: PurchaseOrder) => void;
   /** Footer "ยกเลิก PO" — shown only when given and the PO is still cancellable. */
   onCancel?: (po: PurchaseOrder) => void;
+  /** ก้อน 2: รายการจ่าย + ฐานะจากสมุดบัญชี (`GET :id/payments`) — ไม่มี = ใช้คอลัมน์สรุปบนใบแทน */
+  paymentsData?: PoPaymentsResponse | null;
+  /** ยกเลิกรายการที่บันทึกผิด (เจ้าของเท่านั้น) */
+  onVoidPayment?: (po: PurchaseOrder, payment: SupplierPayment) => void;
+  canRecordPayments?: boolean;
+  canVoidPayments?: boolean;
 }
 
 /** Whole baht stay whole ("10,700"); satang show two places ("47,165.60"). */
@@ -71,7 +78,19 @@ function ProgressBar({ pct, tone }: { pct: number; tone: 'success' | 'warning' }
   );
 }
 
-export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openReceiveModal, openPaymentModal, onCancel }: PODetailModalProps) {
+export function PODetailModal({
+  isOpen,
+  onClose,
+  selectedPO,
+  poDetail,
+  openReceiveModal,
+  openPaymentModal,
+  onCancel,
+  paymentsData,
+  onVoidPayment,
+  canRecordPayments = true,
+  canVoidPayments = false,
+}: PODetailModalProps) {
   const navigate = useNavigate();
   const overlayRef = useRef<HTMLDivElement>(null);
 
@@ -108,7 +127,17 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
   }
 
   const goods = po ? receivingProgress(po) : null;
-  const pay = po ? paymentProgress(po) : null;
+  // ก้อน 2: ยอดจ่ายจากตารางการจ่าย (สมุดบัญชี) เมื่อโหลดมาแล้ว — ก่อนโหลดใช้คอลัมน์สรุปบนใบ (ค่าเดียวกัน service เขียนทับให้)
+  const paySummary = paymentsData?.summary ?? null;
+  const pay = po
+    ? paySummary
+      ? (() => {
+          const net = Number(paySummary.netAmount) || 0;
+          const paid = Number(paySummary.paidTotal) || 0;
+          return { paid, net, remaining: Math.max(net - paid, 0), pct: net > 0 ? Math.min(Math.round((paid / net) * 100), 100) : 0 };
+        })()
+      : paymentProgress(po)
+    : null;
   const due = po ? dueStatus(po.dueDate, po.paymentStatus || 'UNPAID') : null;
   const cancelled = po?.status === 'CANCELLED';
   const receivable = !!po && canReceive(po);
@@ -261,18 +290,39 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
                       </div>
                       <span className="text-sm font-semibold text-foreground">การจ่ายเงิน</span>
                     </div>
-                    {!cancelled && (
+                    {!cancelled && canRecordPayments && (
                       <button type="button" onClick={() => openPaymentModal(po)} className="rounded-lg border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent">
                         บันทึกการจ่าย
                       </button>
                     )}
                   </div>
-                  <div>
-                    <div className={cn(labelCls, 'mb-0.5')}>จ่ายแล้ว</div>
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="font-mono text-2xl font-semibold tabular-nums text-foreground" data-testid="paid-progress">{money(pay.paid)}</span>
-                      <span className="text-sm text-muted-foreground">/ {money(pay.net)} บาท</span>
+                  <div className={cn('grid gap-3', paySummary ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1')}>
+                    <div>
+                      <div className={cn(labelCls, 'mb-0.5')}>จ่ายแล้ว</div>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-mono text-2xl font-semibold tabular-nums text-foreground" data-testid="paid-progress">{money(pay.paid)}</span>
+                        <span className="text-sm text-muted-foreground">/ {money(pay.net)} บาท</span>
+                      </div>
                     </div>
+                    {paySummary && (
+                      <>
+                        <div>
+                          <div className={cn(labelCls, 'mb-0.5')}>เจ้าหนี้คงเหลือ</div>
+                          <div className={cn('font-mono text-lg font-semibold tabular-nums', Number(paySummary.payableOutstanding) > 0 ? 'text-destructive' : 'text-foreground')} data-testid="payable-outstanding">{money(paySummary.payableOutstanding)}</div>
+                          <div className="text-xs leading-snug text-muted-foreground">จากรายการรับของในสมุดบัญชี</div>
+                        </div>
+                        <div>
+                          <div className={cn(labelCls, 'mb-0.5')}>มัดจำค้าง</div>
+                          <div className={cn('font-mono text-lg font-semibold tabular-nums', Number(paySummary.depositOutstanding) > 0 ? 'text-warning-strong' : 'text-foreground')} data-testid="deposit-outstanding">{money(paySummary.depositOutstanding)}</div>
+                          <div className="text-xs leading-snug text-muted-foreground">หักเข้าเจ้าหนี้อัตโนมัติตอนรับของ</div>
+                        </div>
+                        <div>
+                          <div className={cn(labelCls, 'mb-0.5')}>จ่ายได้อีกไม่เกิน</div>
+                          <div className="font-mono text-lg font-semibold tabular-nums text-foreground">{money(paySummary.remainingOnPo)}</div>
+                          <div className="text-xs leading-snug text-muted-foreground">ยอดสุทธิ − จ่ายแล้ว</div>
+                        </div>
+                      </>
+                    )}
                   </div>
                   <ProgressBar pct={pay.pct} tone="success" />
                   <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs leading-snug text-muted-foreground">
@@ -286,7 +336,65 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
                     )}
                     {po.paymentMethod && <span>· {paymentMethodLabels[po.paymentMethod] ?? po.paymentMethod}</span>}
                   </p>
-                  {po.paymentNotes && <p className="text-xs leading-snug text-muted-foreground">บันทึกการจ่าย: {po.paymentNotes}</p>}
+                  {paymentsData && paymentsData.payments.length > 0 && (
+                    <div className="overflow-x-auto rounded-lg border border-border">
+                      <table className="w-full min-w-160 border-collapse text-sm" aria-label="รายการจ่ายเงิน">
+                        <thead className="bg-muted/50">
+                          <tr>
+                            <th className={thCls}>วันที่</th>
+                            <th className={thCls}>รายการ</th>
+                            <th className={cn(thCls, 'text-right')}>จำนวน</th>
+                            <th className={thCls}>สลิป</th>
+                            <th className={thCls}>ผู้บันทึก</th>
+                            <th className={thCls}>รายการบัญชี</th>
+                            <th className={thCls}></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/50">
+                          {paymentsData.payments.map((payment) => {
+                            const voided = !!payment.voidedAt;
+                            const voidable = !voided && (payment.kind === 'DEPOSIT' || payment.kind === 'SETTLEMENT');
+                            return (
+                              <tr key={payment.id} className={cn(voided && 'text-muted-foreground', payment.kind === 'DEPOSIT_APPLIED' && 'bg-muted/30')} aria-label={`รายการจ่าย ${PAYMENT_KIND_LABEL[payment.kind]} ${money(payment.amount)}`}>
+                                <td className={cn(tdCls, 'font-mono text-xs tabular-nums')}>{formatDateShort(payment.paidAt)}</td>
+                                <td className={tdCls}>
+                                  <div className={cn('font-semibold leading-snug', voided && 'line-through')}>{PAYMENT_KIND_LABEL[payment.kind]}</div>
+                                  {(payment.note || payment.reference) && (
+                                    <div className="text-xs leading-snug text-muted-foreground">{[payment.reference, payment.note].filter(Boolean).join(' · ')}</div>
+                                  )}
+                                  {voided && <div className="text-xs leading-snug text-destructive">ยกเลิก: {payment.voidReason}{payment.reversalJournalEntryNo ? ` · กลับรายการ ${payment.reversalJournalEntryNo}` : ''}</div>}
+                                </td>
+                                <td className={cn(tdCls, 'text-right font-mono tabular-nums', voided && 'line-through')}>{money(payment.amount)}</td>
+                                <td className={tdCls}>{payment.slipUrl ? <a href={payment.slipUrl} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">ดูสลิป</a> : <span className="text-muted-foreground">—</span>}</td>
+                                <td className={cn(tdCls, 'text-xs')}>{payment.createdBy?.name ?? (payment.kind === 'DEPOSIT_APPLIED' ? 'ระบบ' : '—')}</td>
+                                <td className={cn(tdCls, 'font-mono text-xs')}>{payment.journalEntryNo ?? '—'}</td>
+                                <td className={cn(tdCls, 'text-right')}>
+                                  {voidable && canVoidPayments && onVoidPayment ? (
+                                    <button type="button" onClick={() => onVoidPayment(po, payment)} className="rounded-lg border border-border bg-card px-2.5 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/5">
+                                      ยกเลิกรายการ
+                                    </button>
+                                  ) : voidable ? null : (
+                                    <span className="text-xs text-muted-foreground">{voided ? '' : 'ยกเลิกไม่ได้'}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {paymentsData && paymentsData.payments.length === 0 && Number(paymentsData.legacyPaidAmount) > 0 && (
+                    <p className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs leading-snug text-warning-strong">
+                      ยอดจ่าย {money(paymentsData.legacyPaidAmount)} บาทที่กรอกไว้ก่อนมีเมนูจ่ายเงิน (ก่อน 10/2569) ไม่ได้ลงบัญชี — บันทึกใหม่ผ่านปุ่ม "บันทึกการจ่าย" ถ้าต้องการให้เข้าสมุดบัญชี
+                    </p>
+                  )}
+                  {paymentsData && (
+                    <p className="text-xs leading-snug text-muted-foreground">
+                      ช่อง "จ่ายแล้ว" = ผลรวมของรายการจ่ายที่ลงบัญชีแล้ว แก้มือไม่ได้ · รายการที่บันทึกผิดให้ยกเลิกรายการ (เจ้าของ) แล้วบันทึกใหม่
+                    </p>
+                  )}
+                  {po.paymentNotes && !paymentsData && <p className="text-xs leading-snug text-muted-foreground">บันทึกการจ่าย: {po.paymentNotes}</p>}
                 </section>
               </div>
 
@@ -472,7 +580,7 @@ export function PODetailModal({ isOpen, onClose, selectedPO, poDetail, openRecei
                   )}
                 </div>
                 <div className="flex items-center gap-3">
-                  {!cancelled && (
+                  {!cancelled && canRecordPayments && (
                     <button type="button" onClick={() => openPaymentModal(po)} className="rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent">
                       บันทึกการจ่าย
                     </button>

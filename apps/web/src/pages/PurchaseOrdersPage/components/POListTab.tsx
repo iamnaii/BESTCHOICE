@@ -290,7 +290,7 @@ export function POListTab({
               openPaymentModal(po);
             }}
             className="cursor-pointer hover:opacity-80"
-            title="แก้ไขสถานะการจ่ายเงิน"
+            title="บันทึกการจ่าย"
           >
             <Badge variant={cfg.variant} appearance={cfg.appearance} className="whitespace-nowrap">
               {cfg.label}
@@ -516,7 +516,6 @@ export function POListTab({
                 po={po}
                 openDetailModal={openDetailModal}
                 openReceiveModal={openReceiveModal}
-                openPaymentModal={openPaymentModal}
                 onApprove={onApprove}
                 onOrder={onOrder}
                 onReject={onReject}

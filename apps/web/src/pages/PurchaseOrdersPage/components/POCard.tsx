@@ -21,7 +21,6 @@ export interface POCardProps {
   po: PurchaseOrder;
   openDetailModal: (po: PurchaseOrder) => void;
   openReceiveModal: (po: PurchaseOrder) => void;
-  openPaymentModal: (po: PurchaseOrder) => void;
   onApprove: (po: PurchaseOrder) => void;
   onOrder: (po: PurchaseOrder) => void;
   onReject: (po: PurchaseOrder) => void;
@@ -35,7 +34,6 @@ function POCardImpl({
   po,
   openDetailModal,
   openReceiveModal,
-  openPaymentModal,
   onApprove,
   onOrder,
   onReject,
@@ -105,16 +103,10 @@ function POCardImpl({
             เลยกำหนด
           </Badge>
         )}
-        <button
-          onClick={stop(() => openPaymentModal(po))}
-          title="แก้ไขสถานะการจ่ายเงิน"
-          aria-label={`แก้ไขสถานะการจ่ายเงิน ${po.poNumber}`}
-          className="hover:opacity-80"
-        >
-          <Badge variant={payCfg.variant} appearance={payCfg.appearance}>
-            {payCfg.label}
-          </Badge>
-        </button>
+        {/* ก้อน 2: สถานะจ่ายอ่านอย่างเดียว — บันทึกการจ่ายทำในหน้ารายละเอียด (ลงบัญชีทุกครั้ง) */}
+        <Badge variant={payCfg.variant} appearance={payCfg.appearance}>
+          {payCfg.label}
+        </Badge>
       </div>
 
       {/* Receive progress — label always shown (mirrors desktop column); bar gated on ordered>0 */}

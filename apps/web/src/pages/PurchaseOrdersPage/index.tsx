@@ -8,7 +8,8 @@ import { Download, Camera } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
 import api from '@/lib/api';
 import { formatDateShort } from '@/utils/formatters';
-import { usePurchaseOrdersData } from './hooks/usePurchaseOrdersData';
+import { usePurchaseOrdersData, usePoPayments } from './hooks/usePurchaseOrdersData';
+import { useAuth } from '@/contexts/AuthContext';
 import { usePOForm } from './hooks/usePOForm';
 import { useCreatePoWizard } from './hooks/useCreatePoWizard';
 import { computePoTotals } from './poTotals';
@@ -18,7 +19,7 @@ import { POListTab } from './components/POListTab';
 import { AccountsPayableTab } from './components/AccountsPayableTab';
 import { PurchaseModal } from './components/PurchaseModal';
 import { PODetailModal } from './components/PODetailModal';
-import { PaymentModal } from './components/PaymentModal';
+import { SupplierPaymentDialog, VoidSupplierPaymentDialog } from './components/SupplierPaymentDialog';
 import { GoodsReceivingModal } from './components/GoodsReceivingModal';
 import { PurchasingSummaryStrip } from './components/PurchasingSummaryStrip';
 import type { SummaryFilterAction } from './summaryStrip';
@@ -35,6 +36,11 @@ export default function PurchaseOrdersPage() {
   }, []);
 
   const data = usePurchaseOrdersData({ onCreateSuccess });
+  // ก้อน 2: สิทธิ์ตามคำตัดสินเจ้าของ 2026-10-05 — บันทึกจ่าย = เจ้าของ + ผู้จัดการสาขา · ยกเลิกรายการ = เจ้าของ
+  const { user } = useAuth();
+  const canRecordPayments = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+  const canVoidPayments = user?.role === 'OWNER';
+  const poPayments = usePoPayments(data.selectedPO?.id ?? null, data.isDetailModalOpen || data.isPaymentDialogOpen);
 
   const poForm = usePOForm({
     createMutation: data.createMutation,
@@ -266,6 +272,13 @@ export default function PurchaseOrdersPage() {
         poDetail={data.poDetail}
         openReceiveModal={data.openReceiveModal}
         openPaymentModal={data.openPaymentModal}
+        paymentsData={poPayments.data ?? null}
+        canRecordPayments={canRecordPayments}
+        canVoidPayments={canVoidPayments}
+        onVoidPayment={(po, payment) => {
+          data.setSelectedPO(po);
+          data.setVoidTarget(payment);
+        }}
         onCancel={(po) =>
           data.setConfirmDialog({
             open: true,
@@ -284,19 +297,24 @@ export default function PurchaseOrdersPage() {
         }
       />
 
-      <PaymentModal
-        isOpen={data.isPaymentModalOpen}
-        onClose={() => data.setIsPaymentModalOpen(false)}
-        selectedPO={data.selectedPO}
-        suppliers={data.suppliers}
-        paymentForm={data.paymentForm}
-        setPaymentForm={data.setPaymentForm}
-        paymentAttachments={data.paymentAttachments}
-        setPaymentAttachments={data.setPaymentAttachments}
-        paymentAttachmentUrl={data.paymentAttachmentUrl}
-        setPaymentAttachmentUrl={data.setPaymentAttachmentUrl}
-        paymentMutation={data.paymentMutation}
-        handlePaymentUpdate={data.handlePaymentUpdate}
+      <SupplierPaymentDialog
+        open={data.isPaymentDialogOpen}
+        po={data.selectedPO}
+        summary={poPayments.data?.summary ?? null}
+        summaryLoading={poPayments.isLoading}
+        pending={data.recordPaymentMutation.isPending}
+        onClose={() => data.setIsPaymentDialogOpen(false)}
+        onSubmit={(payload) => data.selectedPO && data.recordPaymentMutation.mutate({ poId: data.selectedPO.id, payload })}
+      />
+
+      <VoidSupplierPaymentDialog
+        open={!!data.voidTarget}
+        payment={data.voidTarget}
+        pending={data.voidPaymentMutation.isPending}
+        onClose={() => data.setVoidTarget(null)}
+        onConfirm={(reason) =>
+          data.selectedPO && data.voidTarget && data.voidPaymentMutation.mutate({ poId: data.selectedPO.id, paymentId: data.voidTarget.id, reason })
+        }
       />
 
       <GoodsReceivingModal

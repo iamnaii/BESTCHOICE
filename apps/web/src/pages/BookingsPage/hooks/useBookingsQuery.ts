@@ -74,6 +74,8 @@ export interface UseBookingsQueryResult {
   listResult?: BookingListResponse;
   summary?: BookingSummary;
   summaryLoading: boolean;
+  /** true = summary เป็นค่าค้างของคีย์ก่อนหน้า (keepPreviousData) ยังไม่ใช่ของตัวกรองปัจจุบัน */
+  summaryPlaceholder: boolean;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
@@ -254,6 +256,7 @@ export function useBookingsQuery(): UseBookingsQueryResult {
     listResult: listQuery.data,
     summary: summaryQuery.data,
     summaryLoading: summaryQuery.isLoading,
+    summaryPlaceholder: summaryQuery.isPlaceholderData,
     isLoading: listQuery.isLoading,
     isError: listQuery.isError,
     error: listQuery.error,

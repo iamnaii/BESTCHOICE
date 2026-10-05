@@ -182,6 +182,26 @@ describe('BookingsPage', () => {
     expect(await screen.findByRole('heading', { name: 'สร้างใบจอง' })).toBeInTheDocument();
   });
 
+  it('ล้างตัวกรองแล้วสรุปใหม่ยังไม่มา → ไม่กระพริบหน้าว่าง "ยังไม่มีใบจอง" จากสรุปค้างของตัวกรองเดิม (total 0)', async () => {
+    const base = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation((path: string) => {
+      if (path.startsWith('/bookings/summary')) {
+        // มีช่วงวันที่ → สรุปว่าง (total 0) · ไม่มี → ยังไม่ตอบ (ค้างโหลด)
+        return path.includes('from=')
+          ? Promise.resolve({ data: { ...summary(), total: 0 } })
+          : new Promise(() => {});
+      }
+      if (path.startsWith('/bookings?')) {
+        return Promise.resolve({ data: { data: [], total: 0, page: 1, limit: 50 } });
+      }
+      return base(path);
+    });
+    renderPage('/bookings?zone=shop&from=2026-10-01');
+    await userEvent.click(await screen.findByRole('button', { name: 'ล้างตัวกรอง' }));
+    await waitFor(() => expect(screen.getByTestId('loc')).not.toHaveTextContent('from='));
+    expect(screen.queryByRole('heading', { name: 'ยังไม่มีใบจอง' })).toBeNull();
+  });
+
   it('ยกเลิกจากเมนูแถว → กล่องยืนยัน → POST cancel พร้อมเหตุผล', async () => {
     renderPage();
     await screen.findByText('BK-20261005-0002');

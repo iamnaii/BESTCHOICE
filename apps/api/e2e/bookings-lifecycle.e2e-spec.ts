@@ -120,7 +120,7 @@ describe('Booking mutations and real SHOP ledger on isolated PostgreSQL', () => 
     expect(await cashNet(booking.id)).toBe(1000);
   });
 
-  it('rolls back item replacement if the same edit fails its customer foreign key', async () => {
+  it('rejects an unknown customer before touching items', async () => {
     const { booking } = await createBooking();
     // productId ต้องเป็นเครื่องจริงของใบนี้ — ไม่งั้นด่านรายการ (1 เครื่อง 1 ชิ้น) ตีตกก่อนถึงตัวเขียน
     const productId = booking.items[0].productId!;

@@ -70,7 +70,9 @@ export default function BookingsPage() {
   const rows = q.listResult?.data ?? [];
   // สรุปยังไม่มา (หน้าแรกไม่มีตัวกรอง/ลิงก์ลึก) → ยังไม่รู้ว่าเป็นหน้าว่างหรือรายการ: แสดงโครงรอแทน ไม่กระพริบ
   const settling = q.summaryLoading && !q.hasActiveFilters && !detailId;
-  const isFirstUse = !!q.summary && q.summary.total === 0 && !q.hasActiveFilters;
+  // summary ค้างจากคีย์เดิม (placeholder) ห้ามนับ — total 0 ของตัวกรองก่อนหน้าจะทำให้หน้าว่างกระพริบ
+  const isFirstUse =
+    !!q.summary && !q.summaryPlaceholder && q.summary.total === 0 && !q.hasActiveFilters;
 
   // MainLayout ใส่ padding ให้แล้ว — โครงเดียวกับหน้าลูกค้า (ไม่ซ้อน p-4 md:p-6)
   return (

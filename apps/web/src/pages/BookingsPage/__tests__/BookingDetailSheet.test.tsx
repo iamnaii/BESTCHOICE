@@ -320,6 +320,26 @@ describe('BookingDetailSheet', () => {
       expect(screen.getByRole('button', { name: /บันทึกรับมัดจำ/ })).toBeDisabled();
       expect(screen.getByRole('alert')).toHaveTextContent('แก้ไขใบจอง → เปลี่ยนเครื่อง');
     });
+    it('รอมัดจำ + หลายรายการ (แก้ไขไม่ได้) → alert ไม่ชี้เมนูแก้ไข แต่ชี้ "ยกเลิกใบจองแล้วสร้างใหม่"', async () => {
+      pending();
+      withProduct({ status: 'RESERVED' });
+      mocks.booking.items = [
+        ...(mocks.booking.items as unknown[]),
+        {
+          id: 'i2',
+          description: 'รายการที่สอง',
+          quantity: 1,
+          productId: 'p2',
+          unitPrice: 1000,
+          amount: 1000,
+        },
+      ];
+      renderSheet();
+      await dialog();
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('ยกเลิกใบจองแล้วสร้างใหม่');
+      expect(alert).not.toHaveTextContent('แก้ไขใบจอง');
+    });
     it('ใบที่ปิดแล้ว (เครื่องถูกขาย) ไม่ขึ้น alert ปุ่มเงิน — แค่ป้ายสถานะเครื่อง', async () => {
       Object.assign(mocks.booking, { status: 'CANCELED', canceledAt: '2026-10-05T05:00:00Z' });
       withProduct({ status: 'SOLD_CASH' });

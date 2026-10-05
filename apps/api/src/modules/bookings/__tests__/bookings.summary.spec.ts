@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { BookingsService } from '../bookings.service';
@@ -25,13 +26,22 @@ describe('BookingsService.summary', () => {
   beforeEach(async () => {
     prisma = {
       booking: {
-        // ลำดับเดียวกับ Promise.all ใน summary(): total, open, pending, paid, expiring, converted, canceled, expired
-        count: jest.fn()
-          .mockResolvedValueOnce(8).mockResolvedValueOnce(5).mockResolvedValueOnce(1).mockResolvedValueOnce(4)
-          .mockResolvedValueOnce(3).mockResolvedValueOnce(1).mockResolvedValueOnce(1).mockResolvedValueOnce(1),
-        aggregate: jest.fn()
-          .mockResolvedValueOnce({ _sum: { depositAmount: new Prisma.Decimal('33900') } })
-          .mockResolvedValueOnce({ _sum: { depositAmount: new Prisma.Decimal('3000') } }),
+        // ตอบตามเงื่อนไข where ไม่ใช่ลำดับการเรียก — สลับ PAID/PENDING_DEPOSIT แล้วเทสต้องล้ม
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        count: jest.fn(({ where }: any) => {
+          const st = where.status;
+          if (where.expireDate) return Promise.resolve(3); // ใกล้หมดอายุ
+          if (st === undefined) return Promise.resolve(8); // ทั้งหมด
+          if (typeof st === 'object') return Promise.resolve(5); // ที่ยังเปิด
+          const byStatus: Record<string, number> = { PENDING_DEPOSIT: 1, PAID: 4, CONVERTED: 1, CANCELED: 1, EXPIRED: 1 };
+          return Promise.resolve(byStatus[st]);
+        }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        aggregate: jest.fn(({ where }: any) =>
+          Promise.resolve({
+            _sum: { depositAmount: new Prisma.Decimal(where.status === 'PAID' ? '33900' : where.status === 'EXPIRED' ? '3000' : '1') },
+          }),
+        ),
       },
     };
     const stub = { execute: jest.fn() };
@@ -62,7 +72,7 @@ describe('BookingsService.summary', () => {
 
   it('การ์ดกับตารางอ่านเงื่อนไขเดียวกัน: "ใกล้หมดอายุ" = สถานะเปิด + expireDate lte เที่ยงคืนไทยอีก 4 วัน', async () => {
     await service.summary({}, OWNER);
-    const expiringCall = prisma.booking.count.mock.calls[4][0].where;
+    const expiringCall = prisma.booking.count.mock.calls.map((c: any[]) => c[0].where).find((w: any) => w.expireDate);
     expect(expiringCall.status).toEqual({ in: ['PENDING_DEPOSIT', 'PAID'] });
     expect(expiringCall.expireDate.lte).toBeInstanceOf(Date);
     expect(expiringCall.expireDate.gt).toBeUndefined();
@@ -70,13 +80,14 @@ describe('BookingsService.summary', () => {
 
   it('ริบมัดจำเดือนนี้: EXPIRED ที่เคยรับมัดจำ และ expireDate อยู่ในเดือนไทยนี้ — ไม่สนช่วงวันที่ที่กรอง', async () => {
     await service.summary({ from: '2026-01-01', to: '2026-01-31' }, OWNER);
-    const forfeit = prisma.booking.aggregate.mock.calls[1][0].where;
+    const forfeit = prisma.booking.aggregate.mock.calls.map((c: any[]) => c[0].where).find((w: any) => w.status === 'EXPIRED');
     expect(forfeit.status).toBe('EXPIRED');
     expect(forfeit.depositPaidAt).toEqual({ not: null });
     expect(forfeit.createdAt).toBeUndefined();
     expect(forfeit.expireDate.gte).toBeInstanceOf(Date);
     expect(forfeit.expireDate.lt).toBeInstanceOf(Date);
     // ส่วนการ์ดอื่นเคารพช่วงวันที่
+    expect(prisma.booking.count.mock.calls.every((c: any[]) => c[0].where.createdAt.gte instanceof Date)).toBe(true);
     expect(prisma.booking.count.mock.calls[0][0].where.createdAt.gte).toBeInstanceOf(Date);
   });
 

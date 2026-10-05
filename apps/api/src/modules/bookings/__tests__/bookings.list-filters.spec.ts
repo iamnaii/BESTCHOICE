@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { BookingsService, expiringBefore, buildBookingSearchWhere } from '../bookings.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ShopBookingDepositTemplate } from '../../journal/cpa-templates/shop-booking-deposit.template';
@@ -110,9 +110,14 @@ describe('BookingsService.findAll — ตัวกรองหน้าราย
     await expect(service.findAll({ from: '1/10/2026' }, OWNER)).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('SALES ถูกบังคับสาขาตัวเองเสมอ', async () => {
-    await service.findAll({ open: true, branchId: 'br-1' }, SALES_BR1);
+  it('SALES ไม่ส่งสาขา → ถูกบังคับสาขาตัวเอง', async () => {
+    await service.findAll({ open: true }, SALES_BR1);
     expect(whereOf().branchId).toBe('br-1');
+  });
+
+  it('SALES ขอสาขาอื่น (br-2) → Forbidden ไม่ยิง query และไม่แอบใช้สาขาตัวเอง (applyBranchScope โยน ไม่ใช่เขียนทับ)', async () => {
+    await expect(service.findAll({ open: true, branchId: 'br-2' }, SALES_BR1)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.booking.findMany).not.toHaveBeenCalled();
   });
 
   it('expiringBefore — เที่ยงคืนไทยของ (วันนี้ + days + 1)', () => {

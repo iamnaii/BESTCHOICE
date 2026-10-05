@@ -38,7 +38,7 @@ export const bookingsSeeder: DomainSeeder = {
   async plan(): Promise<PlanRow[]> {
     return ROWS.map((r) => ({
       label: `${TEST_DOC_PREFIX}BK ${r.key}`,
-      detail: `PENDING_DEPOSIT · มัดจำ ฿${r.deposit.toLocaleString('th-TH')} / รวม ฿${r.total.toLocaleString('th-TH')} · ${r.note}`,
+      detail: `PENDING_DEPOSIT · มัดจำ ฿${r.deposit.toLocaleString('th-TH')} / รวม ฿${r.total.toLocaleString('th-TH')} · ผูกมือถือทดสอบ IN_STOCK · ${r.note}`,
     }));
   },
 
@@ -53,8 +53,26 @@ export const bookingsSeeder: DomainSeeder = {
       return stat;
     }
 
+    // ใบจอง 1 ใบ = เครื่อง 1 เครื่อง (กติกา 2026-10-05) ⇒ ผูกกับเครื่องมือถือทดสอบ IN_STOCK ของโดเมน contracts
+    // (IMEI ขึ้นต้น TEST- · สาขาเดียวกับใบจอง) ไม่ผูกเครื่องจริง และไม่สร้างเครื่องเอง
+    const devices = await ctx.prisma.product.findMany({
+      where: {
+        imeiSerial: { startsWith: 'TEST-' },
+        status: 'IN_STOCK',
+        category: { in: ['PHONE_NEW', 'PHONE_USED'] },
+        branchId: ctx.refs.branchId,
+        deletedAt: null,
+      },
+      select: { id: true, name: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!devices.length) {
+      stat.notes.push('ข้ามทั้งโดเมน — ยังไม่มีมือถือทดสอบ IN_STOCK ในสาขานี้ (รันโดเมน contracts ก่อน)');
+      return stat;
+    }
+
     const prefix = `${BOOKING_NO_PREFIX}${ctx.dateStr}-`;
-    for (const r of ROWS) {
+    for (const [index, r] of ROWS.entries()) {
       // idempotency probe ที่ notes (marker) — ไม่ใช่ที่เลขเอกสาร: bookingNumber เป็น @unique
       // เต็มตาราง (ไม่ใช่ partial) แถวที่ cleanup soft delete ไปแล้วยังถือเลขอยู่
       // (doctrine เดียวกับ suppliers-po / stock-ops)
@@ -67,6 +85,7 @@ export const bookingsSeeder: DomainSeeder = {
         stat.skipped += 1;
         continue;
       }
+      const device = devices[index % devices.length];
       // จองเลขแบบ max+1 โดย "ไม่กรอง deletedAt" — seed → cleanup → seed จึงไม่ชน P2002
       const last = await ctx.prisma.booking.findFirst({
         where: { bookingNumber: { startsWith: prefix } },
@@ -84,11 +103,10 @@ export const bookingsSeeder: DomainSeeder = {
           expireDate: new Date(ctx.today.getTime() + r.expiresInDays * DAY),
           notes,
           createdById: ctx.refs.salespersonId,
-          // BookingItem.productId เป็น optional — จงใจไม่ผูกเครื่อง (การแปลงเป็นใบขาย
-          // ต้องผูกเครื่องก่อน ซึ่งเป็นขั้นตอนที่ผู้ทดสอบทำเองผ่าน UI)
+          // ผูกเครื่องทดสอบจริง — รับมัดจำ/แปลงเป็นใบขายผ่าน UI ได้ทันที (ด่านเครื่องตอนรับมัดจำต้องมีเครื่อง)
           items: {
             create: [
-              { description: 'ทดสอบระบบ สินค้าที่จอง', unitPrice: r.total, amount: r.total },
+              { productId: device.id, description: device.name, quantity: 1, unitPrice: r.total, amount: r.total },
             ],
           },
         },

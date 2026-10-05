@@ -23,6 +23,10 @@ describe('BookingsService — ไทม์ไลน์เหตุการณ�
 
   beforeEach(async () => {
     const txAuditLog = { create: jest.fn().mockResolvedValue({ id: 'al-new' }) };
+    const txBookingFindFirst = jest.fn().mockResolvedValue({ id: 'bk-1', status: 'PAID', branchId: 'br-1',
+      customerId: 'cust-1', notes: null, items: [{ productId: 'prod-1', description: 'iPhone', quantity: 1, unitPrice: new Prisma.Decimal(10000) }],
+      totalAmount: new Prisma.Decimal(10000), depositAmount: new Prisma.Decimal(1000),
+      expireDate: new Date(Date.now() + 86_400_000) });
     prisma = {
       booking: { findFirst: jest.fn().mockResolvedValue(booking) },
       auditLog: {
@@ -36,15 +40,14 @@ describe('BookingsService — ไทม์ไลน์เหตุการณ�
       $transaction: jest.fn(async (fn: (tx: unknown) => unknown) => fn({
         $queryRaw: jest.fn().mockResolvedValue([]),
         booking: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'bk-1', status: 'PAID', branchId: 'br-1',
-            totalAmount: new Prisma.Decimal(10000), depositAmount: new Prisma.Decimal(1000),
-            expireDate: new Date(Date.now() + 86_400_000) }),
+          findFirst: txBookingFindFirst,
           update: jest.fn().mockResolvedValue({ id: 'bk-1', expireDate: new Date('2026-10-12T17:00:00.000Z'),
             depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000), notes: 'แก้แล้ว' }),
         },
         auditLog: txAuditLog,
       })),
       _txAuditLog: txAuditLog,
+      _txBookingFindFirst: txBookingFindFirst,
     };
     const stub = { execute: jest.fn() };
     const mod = await Test.createTestingModule({
@@ -85,5 +88,23 @@ describe('BookingsService — ไทม์ไลน์เหตุการณ�
         newValue: expect.objectContaining({ changed: ['notes', 'expireDate'] }),
       }),
     });
+  });
+
+  it('update — ส่งค่าเดิมทุกช่อง (ไม่มีอะไรเปลี่ยนจริง) → ไม่เขียน BOOKING_UPDATED', async () => {
+    const existing = await prisma._txBookingFindFirst();
+    await service.update('bk-1', { notes: '', expireDate: existing.expireDate.toISOString() }, OWNER);
+    expect(prisma._txAuditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('update — แก้เฉพาะหมายเหตุ → changed เป็น [notes] และมี old/new ของช่องนั้นเท่านั้น', async () => {
+    prisma._txBookingFindFirst.mockResolvedValue({ id: 'bk-1', status: 'PAID', branchId: 'br-1', customerId: 'cust-1',
+      notes: 'เดิม', items: [], totalAmount: new Prisma.Decimal(10000), depositAmount: new Prisma.Decimal(1000),
+      expireDate: new Date(Date.now() + 86_400_000) });
+    await service.update('bk-1', { notes: 'ใหม่' }, OWNER);
+    const { data } = prisma._txAuditLog.create.mock.calls[0][0];
+    expect(data.newValue.changed).toEqual(['notes']);
+    expect(data.newValue.notes).toBe('ใหม่');
+    expect(data.oldValue).toEqual({ status: 'PAID', notes: 'เดิม' });
+    expect(data.oldValue.expireDate).toBeUndefined();
   });
 });

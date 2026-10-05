@@ -103,6 +103,30 @@ describe('BookingsService', () => {
       data: expect.objectContaining({ depositAccountCode: 'S11-1101' }),
     }));
   });
+  it('payDeposit — เครื่องในใบถูกขายไปแล้ว (SOLD_CASH) → ปฏิเสธด้วยข้อความของ loadBookableProduct ไม่มี update/JE/tender', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
+    prisma._tx.product.findFirst.mockResolvedValueOnce({ status: 'SOLD_CASH', branchId: 'br-1' });
+    await expect(service.payDeposit('bk-1', { depositMethod: 'CASH' } as Parameters<typeof service.payDeposit>[1], SALES_BR1))
+      .rejects.toThrow('เครื่องนี้ไม่พร้อมขาย กรุณาเลือกเครื่องอื่น');
+    expect(prisma._tx.booking.updateMany).not.toHaveBeenCalled();
+    expect(shopBookingDepositTemplate.execute).not.toHaveBeenCalled();
+    expect(prisma._tx.shopTender.createMany).not.toHaveBeenCalled();
+  });
+  it('payDeposit — ใบจองไม่มีแถวรายการ (ใบเก่า) → ข้ามด่านเครื่อง รับมัดจำได้ตามเดิม', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT', items: [] });
+    await service.payDeposit('bk-1', { depositMethod: 'CASH' } as Parameters<typeof service.payDeposit>[1], SALES_BR1);
+    expect(prisma._tx.product.findFirst).not.toHaveBeenCalled();
+    expect(prisma._tx.booking.updateMany).toHaveBeenCalled();
+  });
+  it('payDeposit — audit เก็บวิธีรับเงินที่ resolve แล้ว (tender แรก) และยอดมัดจำ 2 ตำแหน่ง', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
+    await service.payDeposit('bk-1', {
+      depositMethod: 'CASH',
+      tenders: [{ method: 'BANK_TRANSFER', amount: '1000.00', reference: 'REF123456' }],
+    } as unknown as Parameters<typeof service.payDeposit>[1], SALES_BR1);
+    const audit = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_DEPOSIT_PAID');
+    expect(audit[0].data.newValue).toEqual(expect.objectContaining({ depositMethod: 'BANK_TRANSFER', depositAmount: '1000.00' }));
+  });
   it('rejects a misleading FINANCE receipt account before recording payment', async () => {
     prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
     await expect(service.payDeposit('bk-1', { depositMethod: 'CASH', depositAccountCode: '11-1101' }, SALES_BR1)).rejects.toThrow(/บัญชี/);

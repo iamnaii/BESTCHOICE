@@ -497,6 +497,67 @@ export class BookingsService {
     });
   }
 
+  /** เทียบค่าที่ส่งมาแก้กับค่าเดิม — คืนเฉพาะช่องที่ต่างจริง พร้อมค่าเดิม→ใหม่ของช่องนั้น */
+  private diffBookingUpdate(
+    dto: UpdateBookingDto,
+    existing: {
+      customerId: string;
+      branchId: string;
+      notes: string | null;
+      expireDate: Date;
+      depositAmount: Prisma.Decimal | number | string;
+      items?: { productId: string | null; description: string | null; quantity: number; unitPrice: Prisma.Decimal | number | string }[];
+    },
+    nextDeposit: Prisma.Decimal,
+  ) {
+    const changed: string[] = [];
+    const before: Record<string, unknown> = {};
+    const after: Record<string, unknown> = {};
+    const mark = (key: string, oldV: unknown, newV: unknown) => {
+      changed.push(key);
+      before[key] = oldV;
+      after[key] = newV;
+    };
+    if (dto.customerId !== undefined && dto.customerId !== existing.customerId) {
+      mark('customerId', existing.customerId, dto.customerId);
+    }
+    if (dto.branchId !== undefined && dto.branchId !== existing.branchId) {
+      mark('branchId', existing.branchId, dto.branchId);
+    }
+    if (dto.notes !== undefined && (dto.notes ?? '') !== (existing.notes ?? '')) {
+      mark('notes', existing.notes ?? null, dto.notes);
+    }
+    if (dto.expireDate !== undefined) {
+      const next = new Date(dto.expireDate);
+      if (next.getTime() !== existing.expireDate.getTime()) {
+        mark('expireDate', existing.expireDate.toISOString(), next.toISOString());
+      }
+    }
+    if (dto.depositAmount !== undefined && !nextDeposit.equals(new Prisma.Decimal(existing.depositAmount))) {
+      mark('depositAmount', new Prisma.Decimal(existing.depositAmount).toFixed(2), nextDeposit.toFixed(2));
+    }
+    if (dto.items !== undefined) {
+      const [oldItem] = existing.items ?? [];
+      const [newItem] = dto.items;
+      const same =
+        (existing.items?.length ?? 0) === dto.items.length &&
+        oldItem?.productId === newItem?.productId &&
+        oldItem !== undefined &&
+        newItem !== undefined &&
+        new Prisma.Decimal(oldItem.unitPrice).equals(new Prisma.Decimal(newItem.unitPrice)) &&
+        oldItem.quantity === newItem.quantity &&
+        (oldItem.description ?? '') === (newItem.description ?? '');
+      if (!same) {
+        mark(
+          'items',
+          oldItem ? { productId: oldItem.productId, unitPrice: new Prisma.Decimal(oldItem.unitPrice).toFixed(2) } : null,
+          newItem ? { productId: newItem.productId, unitPrice: new Prisma.Decimal(newItem.unitPrice).toFixed(2) } : null,
+        );
+      }
+    }
+    return { changed, before, after };
+  }
+
   async update(id: string, dto: UpdateBookingDto, user: RequestUser) {
     return this.prisma.$transaction(async (tx) => {
       await this.lockBooking(tx, id);
@@ -505,7 +566,8 @@ export class BookingsService {
         status: true,
         branchId: true,
         customerId: true,
-        items: { select: { productId: true } },
+        notes: true,
+        items: { select: { productId: true, description: true, quantity: true, unitPrice: true } },
         totalAmount: true,
         depositAmount: true,
         expireDate: true,
@@ -586,22 +648,26 @@ export class BookingsService {
         data: updates,
         include: BOOKING_DEFAULT_INCLUDE,
       });
-      const changed = (Object.keys(dto) as (keyof UpdateBookingDto)[]).filter((key) => dto[key] !== undefined);
-      await tx.auditLog.create({
-        data: {
-          action: 'BOOKING_UPDATED',
-          entity: 'booking',
-          entityId: id,
-          userId: user.id,
-          oldValue: { status: existing.status },
-          newValue: {
-            changed,
-            expireDate: updated.expireDate.toISOString(),
-            depositAmount: updated.depositAmount.toFixed(2),
-            totalAmount: updated.totalAmount.toFixed(2),
+      // audit เฉพาะช่องที่เปลี่ยนจริง (เทียบค่าใหม่กับค่าเดิม) — ฟอร์มส่งทุกช่องมาทุกครั้ง การนับตาม key ที่ส่งจะโกหกไทม์ไลน์
+      const { changed, before, after } = this.diffBookingUpdate(dto, existing, nextDeposit);
+      if (changed.length > 0) {
+        await tx.auditLog.create({
+          data: {
+            action: 'BOOKING_UPDATED',
+            entity: 'booking',
+            entityId: id,
+            userId: user.id,
+            oldValue: { status: existing.status, ...before },
+            newValue: {
+              changed,
+              ...after,
+              expireDate: updated.expireDate.toISOString(),
+              depositAmount: updated.depositAmount.toFixed(2),
+              totalAmount: updated.totalAmount.toFixed(2),
+            },
           },
-        },
-      });
+        });
+      }
       return updated;
     });
   }
@@ -640,6 +706,9 @@ export class BookingsService {
         // A5 — ต้องใช้ลงบัญชีเงินมัดจำตอนรับเงิน
         depositAmount: true,
         bookingNumber: true,
+        // ด่านเครื่อง ณ ตอนรับเงิน — เครื่องอาจถูกขาย/ย้ายสาขา/จองไปหลังออกใบจอง
+        customerId: true,
+        items: { select: { productId: true } },
       }, tx);
       if (!booking) throw new NotFoundException('ไม่พบใบจอง');
       if (booking.status !== 'PENDING_DEPOSIT') {
@@ -649,6 +718,16 @@ export class BookingsService {
       }
       const now = new Date();
       this.assertNotExpired(booking.expireDate, now);
+      // ใบเก่าที่ไม่มีแถวรายการ = ข้ามด่านนี้ (ล็อกเครื่องจริง + CAS อยู่ PR ถัดไป — ที่นี่อ่านอย่างเดียว)
+      const bookedProductId = booking.items?.find((i) => i.productId)?.productId;
+      if (bookedProductId) {
+        const owner = await tx.customer.findFirst({
+          where: { id: booking.customerId, deletedAt: null },
+          select: TEST_SIDE_CUSTOMER_SELECT,
+        });
+        if (!owner) throw new NotFoundException('ไม่พบลูกค้า');
+        await this.loadBookableProduct(bookedProductId, booking.branchId, owner, tx);
+      }
       // ช่องรับเงินมัดจำ: จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง — tender แรก = primary ที่ JE มัดจำลงเต็มยอด
       const depositTenders = normalizeTenders(dto.tenders, (booking.depositAmount ?? 0).toString(), { method: dto.depositMethod });
       const depositMethod = (depositTenders[0]?.method ?? dto.depositMethod) as DepositMethod;
@@ -711,7 +790,9 @@ export class BookingsService {
           oldValue: { status: 'PENDING_DEPOSIT' },
           newValue: {
             status: 'PAID',
-            depositMethod: dto.depositMethod,
+            // วิธีที่ resolve แล้ว (tender แรกเมื่อจ่ายผสม) ไม่ใช่ค่าที่ client ส่งมาดิบ ๆ
+            depositMethod,
+            depositAmount: deposit.toFixed(2),
             depositAccountCode: cashAccountCode,
             notes: dto.notes ?? null,
           },

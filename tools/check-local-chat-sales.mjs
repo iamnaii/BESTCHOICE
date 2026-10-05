@@ -6,6 +6,7 @@ export async function checkChatSales(page, origin, output, width) {
   const info = await (await page.request.get(new URL('/api/admin/preview/info', origin).href)).json();
   assert.equal(info.isolated, true);
   const roomId = info.chatWorkRooms.SHOP;
+  const expectedConsoleErrors = [];
   await page.goto(new URL(`/inbox/${roomId}?zone=shop`, origin).href);
   if (width < 1280) await page.getByRole('button', { name: 'ข้อมูลลูกค้า', exact: true }).click();
   const card = page.getByRole('region', { name: 'สถานะขายและงานถัดไป' }).filter({ visible: true });
@@ -38,7 +39,9 @@ export async function checkChatSales(page, origin, output, width) {
   const other = await page.request.patch(`${origin}/api/staff-chat/follow-ups/${task.id}?company=SHOP`, { data: { expectedRevision: 0, title: `${title} อีกคนแก้` } });
   assert.equal(other.status(), 200);
   await dialog.getByLabel('วันเวลานัด (เวลาไทย)').fill('2026-10-07T00:01');
+  const conflictResponse = page.waitForResponse(r => r.status() === 409 && r.url().includes(`/follow-ups/${task.id}`));
   await dialog.getByRole('button', { name: 'บันทึกนัด', exact: true }).click();
+  expectedConsoleErrors.push((await conflictResponse).url());
   await expect(dialog.getByRole('alert')).toContainText('มีคนแก้ไขนัดนี้แล้ว');
   await dialog.getByRole('button', { name: 'โหลดข้อมูลล่าสุดเพื่อเทียบ' }).click();
   await expect(dialog.getByText(`${title} อีกคนแก้`, { exact: true })).toBeVisible();
@@ -64,6 +67,16 @@ export async function checkChatSales(page, origin, output, width) {
   await expect(page.getByRole('heading', { name: 'ผลตรวจเครดิตจากหลักฐาน' })).toBeVisible();
   await expect(page.getByRole('dialog', { name: 'ผลตรวจเครดิตจากหลักฐาน' }).getByText('20,000 บาท', { exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
+  await evidenceCard.getByRole('button', { name: 'ไม่ซื้อแล้ว', exact: true }).click();
+  const lostDialog = page.getByRole('dialog', { name: 'บันทึกไม่ซื้อแล้ว' });
+  await expect(lostDialog.getByRole('button', { name: 'บันทึกเหตุผล' })).toBeDisabled();
+  await lostDialog.getByLabel('เหตุผลที่ไม่ซื้อ').selectOption('NOT_INTERESTED');
+  await lostDialog.getByRole('button', { name: 'บันทึกเหตุผล' }).click();
+  await expect(evidenceCard.getByText('ไม่ซื้อแล้ว · ไม่สนใจ', { exact: true })).toBeVisible();
+  await evidenceCard.getByRole('button', { name: 'กลับมาติดตาม', exact: true }).click();
+  await page.getByRole('dialog', { name: 'กลับมาติดตามลูกค้า' }).getByRole('button', { name: 'บันทึกกลับมาติดตาม' }).click();
+  await expect(evidenceCard.getByRole('button', { name: 'ไม่ซื้อแล้ว', exact: true })).toBeVisible();
+  return expectedConsoleErrors;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const browser = await chromium.launch({ headless: true });

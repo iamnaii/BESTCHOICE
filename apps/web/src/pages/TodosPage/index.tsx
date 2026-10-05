@@ -84,7 +84,7 @@ export default function TodosPage() {
       await queryClient.cancelQueries({ queryKey: ['todos'] });
       const snapshots = queryClient.getQueriesData<TodosResponse>({ queryKey: ['todos'] });
       snapshots.forEach(([key, prev]) => {
-        if (!prev) return;
+        if (!prev || !Array.isArray(prev.data)) return;
         const next: TodosResponse = {
           ...prev,
           data: prev.data.map((t) =>
@@ -118,7 +118,7 @@ export default function TodosPage() {
       await queryClient.cancelQueries({ queryKey: ['todos'] });
       const snapshots = queryClient.getQueriesData<TodosResponse>({ queryKey: ['todos'] });
       snapshots.forEach(([key, prev]) => {
-        if (!prev) return;
+        if (!prev || !Array.isArray(prev.data)) return;
         const next: TodosResponse = {
           ...prev,
           data: prev.data.map((t) =>

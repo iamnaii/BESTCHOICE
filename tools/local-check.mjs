@@ -1,3 +1,4 @@
+import { checkChatSales } from './check-local-chat-sales.mjs';
 import { checkChatWork } from './check-local-chat-work.mjs';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -68,6 +69,13 @@ try {
       report.checks.push({ label: `Inbox ${viewport.width}px`, status: 'PASS' });
       await checkChatWork(page, info.url, output, viewport.width);
       report.checks.push({ label: `Scoped chat queue, read/fail/success and exact task target ${viewport.width}px`, status: 'PASS' });
+      const expectedConflicts = await checkChatSales(page, new URL(info.url).origin, output, viewport.width);
+      for (let i = errors.length - 1; i >= 0; i--) {
+        // This specific 409 is asserted by the two-editor conflict acceptance flow.
+        if (errors[i].includes('409') && expectedConflicts.some(url => errors[i].includes(url))) errors.splice(i, 1);
+      }
+      assert.deepEqual(errors, [], 'Browser errors');
+      report.checks.push({ label: `Sales evidence, follow-up conflict/cancellation and lost/reopen ${viewport.width}px`, status: 'PASS' });
       await checkLocalPages(page, info.url, output, viewport.width);
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `Customers + FINANCE portfolio (filters, pagination, empty report) ${viewport.width}px`, status: 'PASS' });

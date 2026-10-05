@@ -1,3 +1,4 @@
+import { JourneyManualEntryService } from '../../src/modules/customer-journey/journey-manual-entry.service';
 import { TodosController } from '../../src/modules/todos/todos.controller';
 import { TodosService } from '../../src/modules/todos/todos.service';
 import { ChatFollowUpController } from '../../src/modules/staff-chat/chat-follow-up.controller';
@@ -496,7 +497,7 @@ async function main() {
       PreviewController,
     ],
     providers: [
-      TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
+      JourneyManualEntryService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
       { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },
@@ -588,7 +589,7 @@ async function main() {
     if (
       /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
-      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes|products|eligible-staff|follow-ups|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
+      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes|products|cross-channel|sales-disposition|eligible-staff|follow-ups|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
       /^\/api\/staff-chat\/(follow-ups\/[^/]+|work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||

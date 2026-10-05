@@ -7268,6 +7268,7 @@ model CustomerJourneyEntry {
   lostReason       String?   @map("lost_reason") @db.VarChar(20) // NOT_INTERESTED | BOUGHT_ELSEWHERE | CREDIT_FAILED | UNREACHABLE | OTHER
   heardFrom        String?   @map("heard_from") @db.VarChar(16) // FB_AD | FB_PAGE | TIKTOK | LINE | GOOGLE | FRIEND | WALK_BY | OLD_CUSTOMER | OTHER
   note             String?   @db.VarChar(140) // DTO ปฏิเสธเลขยาว · ไม่ grant ให้ MCP · ไม่ส่งออก Excel
+  manualRequestKey String?   @unique @map("manual_request_key")
   dedupeKey        String?   @unique @map("dedupe_key") // SYSTEM: `${kind}:${sourceRowOrAuditId}` · MANUAL: null
   createdAt        DateTime  @default(now()) @map("created_at")
   deletedAt        DateTime? @map("deleted_at") // "เลิกทำ" ของ MANUAL เท่านั้น

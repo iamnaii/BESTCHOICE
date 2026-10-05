@@ -39,6 +39,7 @@ export function previewWorkController(db: PrismaService, manager: RoomManagerSer
   }) as FinanceApplicationService;
   @Controller()
   class PreviewWorkController {
+    @Get('staff-chat/rooms/:id/cross-channel') crossChannel(@Param('id') id: string) { return manager.getCrossChannelRooms(id); }
     @Get('staff-chat/rooms/:id/notes') notes(@Param('id') id: string) { return notes.getNotes(id); }
     @Get('staff-chat/rooms/:id/products') async products(@Param('id') id: string) {
       const rows = await db.chatMessage.findMany({ where: { roomId: id, deletedAt: null }, orderBy: { createdAt: 'desc' }, take: 20, select: { text: true } });

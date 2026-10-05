@@ -7,10 +7,10 @@ import TodosPage from './index';
 
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1', role: 'SALES' } }) }));
 vi.mock('@/lib/api', () => ({
-  default: { get: vi.fn() },
+  default: { get: vi.fn(), patch: vi.fn() },
   getErrorMessage: () => 'เกิดข้อผิดพลาด',
 }));
-vi.mock('./components/TodoKanbanView', () => ({ TodoKanbanView: () => <div>รายการงาน</div> }));
+vi.mock('./components/TodoKanbanView', () => ({ TodoKanbanView: ({ todos, onToggle }: { todos: { id: string }[]; onToggle: (id: string) => void }) => <div>รายการงาน{todos.map(t => <button key={t.id} onClick={() => onToggle(t.id)}>จบงาน {t.id}</button>)}</div> }));
 vi.mock('./components/TodoForm', () => ({ TodoForm: () => null }));
 
 beforeEach(() => {
@@ -27,8 +27,7 @@ beforeEach(() => {
   }));
 });
 
-function openTodos(path: string) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function openTodos(path: string, client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[path]}>
@@ -39,6 +38,16 @@ function openTodos(path: string) {
 }
 
 describe('staff home task link', () => {
+  it('updates a room task with its revision even when the dossier array cache is present', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    client.setQueryData(['todos', 'chat-work', 'SHOP', 'room', 'room'], [{ id: 'task', revision: 1 }]);
+    vi.mocked(api.get).mockResolvedValue({ data: { data: [{ id: 'task', roomId: 'room', revision: 1, status: 'TODO', title: 'นัด' }], total: 1, summary: { all: 1 } } });
+    vi.mocked(api.patch).mockResolvedValue({ data: { id: 'task', status: 'DONE', revision: 2 } });
+    openTodos('/todos', client);
+    fireEvent.click(await screen.findByRole('button', { name: 'จบงาน task' }));
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith('/todos/task/toggle', {}, { params: { expectedRevision: 1 } }));
+    expect(client.getQueryData(['todos', 'chat-work', 'SHOP', 'room', 'room'])).toEqual([{ id: 'task', revision: 1 }]);
+  });
   it('preserves the personal/today context and keeps the assignee when switching tabs', async () => {
     openTodos('/todos?view=today&assigneeId=me');
     await waitFor(() =>

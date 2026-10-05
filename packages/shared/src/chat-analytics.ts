@@ -95,3 +95,46 @@ export interface ChatAnalyticsWork extends ChatAnalyticsMeta {
   unknownCaseClosureTimes: number;
   filterNotes: string[];
 }
+export interface ChatLinkedSale {
+  id: string;
+  businessSaleKey: string;
+  number: string;
+  type: 'SALE' | 'CONTRACT';
+  customerId: string | null;
+  customerName: string | null;
+  salespersonId: string | null;
+  salespersonName: string | null;
+  amount: string;
+  createdAt: string;
+  firstInboundAt: string | null;
+}
+export interface ChatAnalyticsSales extends ChatAnalyticsMeta {
+  amount: string;
+  documentCount: number;
+  customerCount: number;
+  unmatchedCount: number;
+  unknownSalespersonCount: number;
+  basis: string;
+  data: ChatLinkedSale[];
+  total: number;
+  page: number;
+  limit: number;
+}
+export interface ChatAnalyticsFunnel extends ChatAnalyticsMeta {
+  stageBasis: 'CURRENT';
+  customerCount: number;
+  steps: Array<{
+    stage: import('./customer-journey').JourneyStage;
+    reached: number;
+    skipped: number;
+  }>;
+  lossReasons: Array<{ reason: string; count: number }>;
+  scopeNotes: string[];
+}
+export interface ChatFunnelCustomer {
+  customerId: string;
+  name: string;
+  firstInboundAt: string;
+  stage: import('./customer-journey').JourneyStage;
+  lostReason: string | null;
+}

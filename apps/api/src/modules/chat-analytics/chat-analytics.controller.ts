@@ -1,7 +1,9 @@
+import { ChatSalesAttributionService } from './chat-sales-attribution.service';
 import type { ChatWorkActor } from '@installment/shared';
 import { ChatAnalyticsV2Service } from './chat-analytics-v2.service';
 import {
   ChatAnalyticsQueryDto,
+  ChatFunnelDetailsDto,
   ChatCycleDetailsDto,
   ChatWorkDetailsDto,
 } from './dto/chat-analytics-query.dto';
@@ -13,7 +15,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 @Controller('chat-analytics')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ChatAnalyticsController {
-  constructor(private v2: ChatAnalyticsV2Service) {}
+  constructor(
+    private v2: ChatAnalyticsV2Service,
+    private sales: ChatSalesAttributionService,
+  ) {}
   @Get('v2/overview')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   overviewV2(@Req() req: { user: ChatWorkActor }, @Query() q: ChatAnalyticsQueryDto) {
@@ -39,6 +44,26 @@ export class ChatAnalyticsController {
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
   workDetailsV2(@Req() req: { user: ChatWorkActor }, @Query() q: ChatWorkDetailsDto) {
     return this.v2.workDetails(req.user, q);
+  }
+  @Get('v2/sales')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  salesV2(@Req() req: { user: ChatWorkActor }, @Query() q: ChatAnalyticsQueryDto) {
+    return this.sales.sales(q, req.user);
+  }
+  @Get('v2/sales/export')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  salesExportV2(@Req() req: { user: ChatWorkActor }, @Query() q: ChatAnalyticsQueryDto) {
+    return this.sales.exportSales(q, req.user);
+  }
+  @Get('v2/funnel')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  funnelV2(@Req() req: { user: ChatWorkActor }, @Query() q: ChatAnalyticsQueryDto) {
+    return this.sales.funnel(q, req.user);
+  }
+  @Get('v2/funnel-details')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
+  funnelDetailsV2(@Req() req: { user: ChatWorkActor }, @Query() q: ChatFunnelDetailsDto) {
+    return this.sales.funnelDetails(q, req.user);
   }
   // The retired endpoints had no company/branch scope and mixed bot/human evidence.
   @Get('overview')

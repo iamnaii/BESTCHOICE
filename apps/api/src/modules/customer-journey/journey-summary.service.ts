@@ -1,3 +1,4 @@
+export { scopedJourneyEvidence } from './scoped-journey-evidence.sql';
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContractStatus, Prisma } from '@prisma/client';
 import * as Sentry from '@sentry/nestjs';

@@ -1,5 +1,7 @@
 import { IsEmpty, IsIn, IsISO8601, IsOptional, IsUUID, Matches } from 'class-validator';
 import {
+  JOURNEY_STAGES,
+  type JourneyStage,
   CHAT_CYCLE_METRICS,
   CHAT_WORK_METRICS,
   type ChatCycleMetric,
@@ -23,4 +25,10 @@ export class ChatCycleDetailsDto extends ChatAnalyticsQueryDto {
 }
 export class ChatWorkDetailsDto extends ChatAnalyticsQueryDto {
   @IsIn(CHAT_WORK_METRICS) metric!: ChatWorkMetric;
+}
+
+export class ChatFunnelDetailsDto extends ChatAnalyticsQueryDto {
+  @IsIn(JOURNEY_STAGES) stage: JourneyStage = 'CONTACTED';
+  @IsIn(['reached', 'skipped', 'lost', 'all']) state: 'reached' | 'skipped' | 'lost' | 'all' =
+    'reached';
 }

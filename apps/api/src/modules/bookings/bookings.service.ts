@@ -43,6 +43,10 @@ import {
 type RequestUser = { id: string; role: string; branchId?: string | null };
 
 export const OPEN_BOOKING_STATUSES = ['PENDING_DEPOSIT', 'PAID'] as const;
+
+/** spec §4 — ล็อกเครื่องตอนรับมัดจำไม่สำเร็จ (ถูกขาย/ย้ายสาขา/ถูกใบอื่นล็อก) */
+export const LOCK_FAILED_MSG =
+  'เครื่องนี้ถูกขายหรือย้ายสาขาไปแล้ว กรุณาแก้ใบจองเลือกเครื่องอื่นก่อนรับมัดจำ';
 export const CLOSED_BOOKING_STATUSES = ['CONVERTED', 'CANCELED', 'EXPIRED'] as const;
 const ALL_BOOKING_STATUSES: readonly string[] = [...OPEN_BOOKING_STATUSES, ...CLOSED_BOOKING_STATUSES];
 export type BookingListSort = 'expireDate' | 'createdAt';
@@ -696,6 +700,19 @@ export class BookingsService {
   }
 
   async payDeposit(id: string, dto: PayDepositDto, user: RequestUser) {
+    try {
+      return await this.payDepositInTx(id, dto, user);
+    } catch (err) {
+      // ตาข่าย: unique index bookings_locked_product_active_unique (ใบอื่นที่ยังเปิดอยู่ล็อกเครื่องเดียวกัน
+      // ด้วยช่องทางที่ไม่ผ่าน CAS เช่นข้อมูลแก้มือ) → ข้อความเดียวกับ CAS แพ้
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException(LOCK_FAILED_MSG);
+      }
+      throw err;
+    }
+  }
+
+  private async payDepositInTx(id: string, dto: PayDepositDto, user: RequestUser) {
     return this.prisma.$transaction(async (tx) => {
       await this.lockBooking(tx, id);
       const booking = await this.loadBookingScoped(id, user, {
@@ -718,8 +735,9 @@ export class BookingsService {
       }
       const now = new Date();
       this.assertNotExpired(booking.expireDate, now);
-      // ใบเก่าที่ไม่มีแถวรายการ = ข้ามด่านนี้ (ล็อกเครื่องจริง + CAS อยู่ PR ถัดไป — ที่นี่อ่านอย่างเดียว)
-      const bookedProductId = booking.items?.find((i) => i.productId)?.productId;
+      // ด่านอ่าน + รั้ว TEST- (เหมือน PR 1) — ให้ข้อความละเอียดก่อน (คนละสาขา / ไม่พบ / ไม่พร้อมขาย)
+      // แล้วค่อย CAS ล็อกจริงด้านล่าง; ใบยุคก่อน PR 1 ที่ไม่มีแถวรายการ = รับมัดจำโดยไม่ล็อก
+      const bookedProductId = booking.items?.find((i) => i.productId)?.productId ?? null;
       if (bookedProductId) {
         const owner = await tx.customer.findFirst({
           where: { id: booking.customerId, deletedAt: null },
@@ -751,10 +769,23 @@ export class BookingsService {
           depositMethod,
           depositAccountCode: cashAccountCode,
           depositReceivedById: user.id,
+          // spec §4: ล็อกเครื่องให้ลูกค้าตอนรับมัดจำ — ใบไม่มีเครื่อง (ยุคก่อน) ไม่เขียนสองช่องนี้
+          ...(bookedProductId ? { lockedProductId: bookedProductId, lockedAt: now } : {}),
         },
       });
       if (claim.count !== 1) {
         throw new ConflictException('ใบจองนี้หมดอายุ ถูกบันทึกมัดจำ หรือเปลี่ยนสถานะไปแล้ว');
+      }
+      if (bookedProductId) {
+        // ล็อกเครื่อง = compare-and-set statement เดียว (แบบ contract-bundle.util.reserveContractBundles)
+        // count 0 = เพิ่งถูกขาย/ย้ายสาขา/ถูกใบอื่นหรือสัญญาล็อกไปก่อน → ทั้ง tx rollback (เงินไม่เข้า)
+        const lock = await tx.product.updateMany({
+          where: { id: bookedProductId, status: 'IN_STOCK', branchId: booking.branchId, deletedAt: null },
+          data: { status: 'RESERVED' },
+        });
+        if (lock.count !== 1) throw new ConflictException(LOCK_FAILED_MSG);
+        // hold จากเว็บ (ตารางว่างตั้งแต่ 2026-09-28 แต่คง pattern เดียวกับของแถมสัญญา)
+        await preemptReservationsInTx(tx, [bookedProductId]);
       }
 
       // Receipt metadata and journal use the same resolved SHOP account.
@@ -795,6 +826,7 @@ export class BookingsService {
             depositAmount: deposit.toFixed(2),
             depositAccountCode: cashAccountCode,
             notes: dto.notes ?? null,
+            lockedProductId: bookedProductId,
           },
         },
       });

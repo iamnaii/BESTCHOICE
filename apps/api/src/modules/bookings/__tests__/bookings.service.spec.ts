@@ -127,6 +127,52 @@ describe('BookingsService', () => {
     const audit = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_DEPOSIT_PAID');
     expect(audit[0].data.newValue).toEqual(expect.objectContaining({ depositMethod: 'BANK_TRANSFER', depositAmount: '1000.00' }));
   });
+  describe('payDeposit — ล็อกเครื่อง (PR 2)', () => {
+    it('ล็อกเครื่อง IN_STOCK → RESERVED ใน tx เดียวกัน และเขียน lockedProductId/lockedAt', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1', depositAmount: new Prisma.Decimal(1000),
+        expireDate: new Date(Date.now() + 86_400_000), bookingNumber: 'BK-20260517-0001',
+        customerId: 'cust-1', items: [{ productId: 'prod-1' }],
+      });
+      await service.payDeposit('bk-1', { depositMethod: 'CASH' } as any, OWNER);
+      expect(prisma._tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prod-1', status: 'IN_STOCK', branchId: 'br-1', deletedAt: null },
+        data: { status: 'RESERVED' },
+      });
+      expect(prisma._tx.productReservation.updateMany).toHaveBeenCalled();
+      const bookingClaim = prisma._tx.booking.updateMany.mock.calls[0][0];
+      expect(bookingClaim.data.lockedProductId).toBe('prod-1');
+      expect(bookingClaim.data.lockedAt).toBeInstanceOf(Date);
+      const audit = prisma._tx.auditLog.create.mock.calls.at(-1)![0];
+      expect(audit.data.newValue.lockedProductId).toBe('prod-1');
+    });
+
+    it('CAS ล็อกไม่สำเร็จ (count 0) → 409 ข้อความ spec และไม่โพสต์ JE/สมุดเงิน', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1', depositAmount: new Prisma.Decimal(1000),
+        expireDate: new Date(Date.now() + 86_400_000), bookingNumber: 'BK-20260517-0001',
+        customerId: 'cust-1', items: [{ productId: 'prod-1' }],
+      });
+      prisma._tx.product.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.payDeposit('bk-1', { depositMethod: 'CASH' } as any, OWNER)).rejects.toThrow(
+        'เครื่องนี้ถูกขายหรือย้ายสาขาไปแล้ว กรุณาแก้ใบจองเลือกเครื่องอื่นก่อนรับมัดจำ',
+      );
+      expect(shopBookingDepositTemplate.execute).not.toHaveBeenCalled();
+      expect(prisma._tx.shopTender.createMany).not.toHaveBeenCalled();
+    });
+
+    it('ใบยุคก่อน (ไม่มีแถวรายการ) รับมัดจำได้โดยไม่ล็อก — lockedProductId ว่าง', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        id: 'bk-legacy', status: 'PENDING_DEPOSIT', branchId: 'br-1', depositAmount: new Prisma.Decimal(500),
+        expireDate: new Date(Date.now() + 86_400_000), bookingNumber: 'BK-20260101-0001',
+        customerId: 'cust-1', items: [],
+      });
+      await service.payDeposit('bk-legacy', { depositMethod: 'CASH' } as any, OWNER);
+      expect(prisma._tx.product.updateMany).not.toHaveBeenCalled();
+      const bookingClaim = prisma._tx.booking.updateMany.mock.calls[0][0];
+      expect(bookingClaim.data.lockedProductId).toBeUndefined();
+    });
+  });
   it('rejects a misleading FINANCE receipt account before recording payment', async () => {
     prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
     await expect(service.payDeposit('bk-1', { depositMethod: 'CASH', depositAccountCode: '11-1101' }, SALES_BR1)).rejects.toThrow(/บัญชี/);

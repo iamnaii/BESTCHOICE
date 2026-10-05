@@ -24,6 +24,26 @@ import { bkkMonthKey, remainingInstallmentDue } from './_drive-helpers';
 import { TestPackModule } from './_module';
 import type { SeedContext } from './_types';
 
+/**
+ * product id ที่ผูกใบจอง TEST- ซึ่งยังเปิดอยู่ (PENDING_DEPOSIT/PAID) — ก้าวขายสด/ไฟแนนซ์ต้องเลี่ยง:
+ * ชุดทดสอบมี IN_STOCK แค่ 2 เครื่อง และ seeder bookings ผูก `normal` กับเครื่องหนึ่งในนั้น
+ * ถ้าขายเครื่องนั้นไปก่อน ก้าว payDeposit จะชนด่าน "เครื่องนี้ไม่พร้อมขาย"
+ */
+async function openBookingProductIds(prisma: SeedContext['prisma']): Promise<string[]> {
+  const items = await prisma.bookingItem.findMany({
+    where: {
+      productId: { not: null },
+      booking: {
+        bookingNumber: { startsWith: `${TEST_DOC_PREFIX}BK-` },
+        status: { in: ['PENDING_DEPOSIT', 'PAID'] },
+        deletedAt: null,
+      },
+    },
+    select: { productId: true },
+  });
+  return items.map((i) => i.productId).filter((id): id is string => !!id);
+}
+
 export interface DriveStep {
   name: string;
   ok: boolean;
@@ -350,17 +370,22 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         where: { id: ctx.refs.salespersonId }, select: { branchId: true },
       });
       if (!salesperson.branchId) return 'ข้าม — พนักงานขายทดสอบยังไม่ได้ผูกสาขา';
+      const bookedIds = await openBookingProductIds(ctx.prisma);
       const product = await ctx.prisma.product.findFirst({
         where: {
           imeiSerial: { startsWith: TEST_IMEI_PREFIX },
           status: 'IN_STOCK',
           branchId: salesperson.branchId,
           deletedAt: null,
+          // เครื่องที่ผูกใบจองเปิด (seeder bookings) ห้ามขายตรงนี้ — ก้าว 5 (payDeposit) ต้องใช้เครื่องนั้น
+          id: { notIn: bookedIds },
         },
         orderBy: { imeiSerial: 'asc' },
         select: { id: true, name: true, cashPrice: true, branchId: true },
       });
-      if (!product) return 'ข้าม — ไม่พบเครื่องทดสอบสถานะ IN_STOCK (รันโดเมน contracts ก่อน)';
+      if (!product) {
+        return 'ข้าม — ไม่พบเครื่องทดสอบ IN_STOCK ที่ว่าง (รันโดเมน contracts ก่อน · เครื่องที่ผูกใบจองเปิดถูกกันไว้ให้ก้าวรับมัดจำ)';
+      }
       const price = new Prisma.Decimal(product.cashPrice ?? 0);
       if (price.lte(0)) return `ข้าม — เครื่องทดสอบ "${product.name}" ไม่มีราคาเงินสด`;
       const sales = app.get(SalesService, { strict: false });
@@ -404,18 +429,21 @@ export async function runDrive(ctx: SeedContext, postDate: Date): Promise<DriveR
         where: { id: ctx.refs.salespersonId }, select: { branchId: true },
       });
       if (!salesperson.branchId) return 'ข้าม — พนักงานขายทดสอบยังไม่ได้ผูกสาขา';
+      const bookedIds = await openBookingProductIds(ctx.prisma);
       const product = await ctx.prisma.product.findFirst({
         where: {
           imeiSerial: { startsWith: TEST_IMEI_PREFIX },
           status: 'IN_STOCK',
           branchId: salesperson.branchId,
           deletedAt: null,
+          // เครื่องที่ผูกใบจองเปิด (seeder bookings) ห้ามขายตรงนี้ — ก้าว 5 (payDeposit) ต้องใช้เครื่องนั้น
+          id: { notIn: bookedIds },
         },
         orderBy: { imeiSerial: 'asc' },
         select: { id: true, name: true, cashPrice: true, branchId: true },
       });
       if (!product) {
-        return 'ข้าม — ไม่เหลือเครื่องทดสอบสถานะ IN_STOCK (ก้าวขายสดอาจใช้เครื่องสุดท้ายไปแล้ว)';
+        return 'ข้าม — ไม่เหลือเครื่องทดสอบ IN_STOCK ที่ว่าง (ก้าวขายสดอาจใช้ไปแล้ว หรือเครื่องผูกใบจองเปิดถูกกันไว้ให้ก้าวรับมัดจำ)';
       }
       const price = new Prisma.Decimal(product.cashPrice ?? 0);
       if (price.lte(0)) return `ข้าม — เครื่องทดสอบ "${product.name}" ไม่มีราคาเงินสด`;

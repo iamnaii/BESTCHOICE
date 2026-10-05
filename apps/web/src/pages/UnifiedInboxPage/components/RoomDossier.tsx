@@ -1,3 +1,4 @@
+import ChatServiceRequestSection from './ChatServiceRequestSection';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { workDate } from './WorkQueue';
 import { X } from 'lucide-react';
@@ -819,6 +820,7 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
             <AdGroup room={room} />
 
             <div id="room-appointments" className="scroll-mt-2">
+              <ChatServiceRequestSection key={`service:${workIdentity}`} roomId={room.id} />
               <AppointmentsGroup todos={roomTodos.filter(t => !['CHAT_HANDOFF', 'CHAT_SERVICE'].includes(t.workKind ?? ''))} onNew={newAppointment} onEdit={todo => { setEditingAppt(todo); setApptOpen(true); }} />
             </div>
 

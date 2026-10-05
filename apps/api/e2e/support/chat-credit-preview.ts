@@ -1,3 +1,8 @@
+import { ChatServiceRequestController } from '../../src/modules/staff-chat/chat-service-request.controller';
+import { ChatServiceRequestService } from '../../src/modules/staff-chat/services/chat-service-request.service';
+import { ChatServiceCaseLinkService } from '../../src/modules/after-sales/services/chat-service-case-link.service';
+import { AfterSalesController } from '../../src/modules/after-sales/after-sales.controller';
+import { previewAfterSales } from './preview-after-sales';
 import { previewFacebookComments } from './preview-facebook-comments';
 import { FacebookCommentsController } from '../../src/modules/staff-chat/facebook-comments.controller';
 import { FacebookCommentClient } from '../../src/modules/chat-adapters/facebook-comment-client';
@@ -504,8 +509,10 @@ async function main() {
   await seedPreviewExternalFinanceSale(db, actor.id);
   const chatWorkRooms = await seedChatWork(db, manager, actor.id);
   const facebookComments = await previewFacebookComments(db, actor.id);
+  const afterSales = previewAfterSales(db, storageForPreview as StorageService, () => actor);
   const module = await Test.createTestingModule({
     controllers: [
+      ChatServiceRequestController, AfterSalesController, afterSales.controller,
       FacebookCommentsController, facebookComments.controller,
       ChatHandoffController, RoomNotesController, TodosController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
       TradeInController, ContactsController, ProductPhotosController,
@@ -518,6 +525,7 @@ async function main() {
       PreviewController,
     ],
     providers: [
+      ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
       FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, JourneyManualEntryService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
@@ -609,9 +617,9 @@ async function main() {
     )
       return res.json({ data: [], total: 0 });
     if (
-      /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path.startsWith('/api/staff-chat/facebook-comments') || path === '/api/customers' || path === '/api/users' ||
+      /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path.startsWith('/api/staff-chat/facebook-comments') || path.startsWith('/api/staff-chat/service-requests/') || path.startsWith('/api/after-sales') || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
-      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|handoffs|follow-ups|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
+      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|handoffs|follow-ups|service-requests|service-intake-options|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
       /^\/api\/staff-chat\/(handoffs\/[^/]+|follow-ups\/[^/]+|work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||

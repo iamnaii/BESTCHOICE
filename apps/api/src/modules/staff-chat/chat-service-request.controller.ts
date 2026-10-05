@@ -19,6 +19,7 @@ import { WORK_ROLES } from './services/chat-work-access.service';
 import { StaffInboxQueryDto } from './dto/staff-inbox.dto';
 import {
   LinkChatServiceCaseDto,
+  ServiceIntakeOptionsDto,
   ServiceCaseOptionsDto,
   CreateChatServiceRequestDto,
   UpdateChatServiceRequestDto,
@@ -32,6 +33,13 @@ export class ChatServiceRequestController {
     private readonly service: ChatServiceRequestService,
     private readonly cases: ChatServiceCaseLinkService,
   ) {}
+  @Get('rooms/:id/service-intake-options') intakeOptions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: { user: ChatWorkActor },
+    @Query() scope: ServiceIntakeOptionsDto,
+  ) {
+    return this.service.intakeOptions(id, req.user, scope);
+  }
   @Get('service-requests/:id/case-prefill') prefill(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: { user: ChatWorkActor },

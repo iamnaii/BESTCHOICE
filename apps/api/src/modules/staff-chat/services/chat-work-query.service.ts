@@ -140,6 +140,7 @@ export class ChatWorkQueryService {
         );
         const selectedIds = (kind: string) =>
           selected.filter((row) => row.kind === kind).map((row) => row.id);
+        const serviceKeys = new Map<string, string>();
         let data: ChatWorkItem[];
         if (query.view === 'WAITING' || query.view === 'UNASSIGNED') {
           const rooms = await tx.chatRoom.findMany({
@@ -174,6 +175,7 @@ export class ChatWorkQueryService {
               assigneeId: true,
               dueDate: true,
               workKind: true,
+              serviceRequest: { select: { id: true, deletedAt: true } },
             },
           });
           const orphanIds = new Set(
@@ -184,9 +186,14 @@ export class ChatWorkQueryService {
               })
             ).map((t) => t.id),
           );
+          for (const t of rows)
+            if (t.serviceRequest && !t.serviceRequest.deletedAt)
+              serviceKeys.set(t.id, t.serviceRequest.id);
           data = rows.map((t) => ({
-            key: `TODO:${t.id}`,
-            kind: 'TODO',
+            key: serviceKeys.has(t.id)
+              ? `SERVICE_REQUEST:${serviceKeys.get(t.id)}`
+              : `TODO:${t.id}`,
+            kind: serviceKeys.has(t.id) ? 'SERVICE_REQUEST' : 'TODO',
             workKind: t.workKind,
             orphaned: orphanIds.has(t.id),
             roomId: t.roomId,
@@ -194,8 +201,8 @@ export class ChatWorkQueryService {
             assigneeId: t.assigneeId,
             dueAt: t.dueDate?.toISOString() ?? null,
             waitingSince: null,
-            targetType: 'TODO',
-            targetId: t.id,
+            targetType: serviceKeys.has(t.id) ? 'SERVICE_REQUEST' : 'TODO',
+            targetId: serviceKeys.get(t.id) ?? t.id,
           }));
         }
         const comments = await tx.facebookCommentThread.findMany({
@@ -237,7 +244,16 @@ export class ChatWorkQueryService {
           })),
         );
         const byKey = new Map(data.map((item) => [item.key, item]));
-        data = selected.map((row) => byKey.get(`${row.kind}:${row.id}`)!).filter(Boolean);
+        data = selected
+          .map(
+            (row) =>
+              byKey.get(
+                row.kind === 'TODO' && serviceKeys.has(row.id)
+                  ? `SERVICE_REQUEST:${serviceKeys.get(row.id)}`
+                  : `${row.kind}:${row.id}`,
+              )!,
+          )
+          .filter(Boolean);
         return {
           data,
           counts,
@@ -276,6 +292,20 @@ export class ChatWorkQueryService {
           status: thread.status,
         };
       }
+      if (type === 'SERVICE_REQUEST') {
+        const room = await this.access.roomWhere(actor, scope, tx);
+        const request = await tx.chatServiceRequest.findFirst({
+          where: { id, deletedAt: null, room, todo: { deletedAt: null, room } },
+        });
+        if (!request) throw new NotFoundException('ไม่พบใบรับเรื่องหรือไม่มีสิทธิ์');
+        return {
+          targetType: type,
+          targetId: id,
+          roomId: request.roomId,
+          title: 'ติดตามหลังการขาย',
+          workKind: 'CHAT_SERVICE',
+        };
+      }
       if (type === 'ROOM') {
         const room = await this.access.assertRoom(id, actor, scope, tx);
         return {
@@ -287,6 +317,20 @@ export class ChatWorkQueryService {
       }
       if (type === 'TODO') {
         const todo = await this.access.assertTodo(id, actor, scope, tx);
+        if (todo.workKind === 'CHAT_SERVICE') {
+          const request = await tx.chatServiceRequest.findFirst({
+            where: { todoId: todo.id, roomId: todo.roomId!, deletedAt: null },
+          });
+          if (!request) throw new NotFoundException('ไม่พบใบรับเรื่อง');
+          return {
+            targetType: 'SERVICE_REQUEST',
+            targetId: request.id,
+            roomId: todo.roomId,
+            title: 'ติดตามหลังการขาย',
+            workKind: todo.workKind,
+          };
+        }
+
         return {
           targetType: type,
           targetId: id,

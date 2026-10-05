@@ -1,3 +1,4 @@
+import ChatServiceRequestCard from './ChatServiceRequestCard';
 import FacebookCommentPanel from './FacebookCommentPanel';
 import FacebookCommentList from './FacebookCommentList';
 import ChatFollowUpDialog, { type FollowUpDraft } from './ChatFollowUpDialog';
@@ -72,8 +73,8 @@ export default function InboxWorkTools({
       setOpening(false);
     }
   };
-  const linkedId = params.get('commentId') ?? params.get('noteId') ?? params.get('todoId');
-  const linkedType = params.get('commentId')
+  const linkedId = params.get('serviceRequestId') ?? params.get('commentId') ?? params.get('noteId') ?? params.get('todoId');
+  const linkedType = params.get('serviceRequestId') ? 'SERVICE_REQUEST' : params.get('commentId')
     ? 'FACEBOOK_COMMENT'
     : params.get('noteId')
       ? 'NOTE'
@@ -197,7 +198,7 @@ export default function InboxWorkTools({
               key={`${work.identity}:${target.targetId}`}
               threadId={target.targetId}
             />
-          ) : target.workKind === 'CHAT_HANDOFF' ? (
+          ) : target.targetType === 'SERVICE_REQUEST' ? (<ChatServiceRequestCard key={`${work.identity}:${target.targetId}`} requestId={target.targetId} />) : target.workKind === 'CHAT_HANDOFF' ? (
             <ChatHandoffCard key={`${work.identity}:${target.targetId}`} taskId={target.targetId} />
           ) : (
             <>

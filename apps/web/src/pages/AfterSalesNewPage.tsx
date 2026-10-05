@@ -1,3 +1,5 @@
+import { useLayout } from '@/components/layout/LayoutContext';
+import { WORK_COMPANY } from '@/lib/company-scope';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -61,20 +63,78 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
+interface ChatServicePrefill {
+  serviceRequestId: string;
+  customer: { id: string; name: string };
+  symptom: string;
+  imei: string;
+  branchId: string | null;
+  linkedCaseId: string | null;
+}
 export default function AfterSalesNewPage() {
+  const [params] = useSearchParams();
+  const id = params.get('serviceRequestId');
+  return id ? <ChatServiceCaseEntry key={id} requestId={id} /> : <AfterSalesNewForm />;
+}
+function ChatServiceCaseEntry({ requestId }: { requestId: string }) {
+  const { user } = useAuth();
+  const { workZone } = useLayout();
+  const company = WORK_COMPANY[workZone];
+  const query = useQuery({
+    queryKey: ['chat-work', user?.id, company, user?.branchId, 'service-case-prefill', requestId],
+    queryFn: () =>
+      api
+        .get<ChatServicePrefill>(`/staff-chat/service-requests/${requestId}/case-prefill`, {
+          params: { company },
+        })
+        .then((r) => r.data),
+    retry: false,
+    refetchInterval: 15_000,
+  });
+  if (query.isError)
+    return (
+      <div role="alert" className="space-y-3">
+        <p>เปิดใบรับเรื่องไม่ได้ หรือคุณไม่มีสิทธิ์แล้ว</p>
+        <Button variant="outline" onClick={() => query.refetch()}>
+          ลองใหม่
+        </Button>
+      </div>
+    );
+  if (!query.data) return <p role="status">กำลังโหลดใบรับเรื่อง…</p>;
+  if (query.data.linkedCaseId)
+    return (
+      <div className="space-y-3">
+        <p>ใบรับเรื่องนี้เชื่อมเคสแล้ว</p>
+        <Button asChild>
+          <Link to={`/after-sales/${query.data.linkedCaseId}`}>เปิดเคสเดิม</Link>
+        </Button>
+      </div>
+    );
+  return (
+    <div className="space-y-4">
+      <p className="rounded-lg border bg-muted p-3 text-sm leading-snug">
+        รับเรื่องจากแชท · ตรวจข้อมูลและแนบรูปตอนรับฝากก่อนยืนยันรับเครื่อง
+      </p>
+      <AfterSalesNewForm key={`${user?.id}:${company}:${requestId}`} prefill={query.data} />
+    </div>
+  );
+}
+function AfterSalesNewForm({ prefill }: { prefill?: ChatServicePrefill }) {
   useDocumentTitle('แจ้งปัญหาเครื่อง');
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
-  const imei = searchParams.get('imei') ?? '';
+  const imei = searchParams.get('imei') ?? prefill?.imei ?? '';
 
   const [imeiInput, setImeiInput] = useState('');
-  const [customer, setCustomer] = useState<{ id: string; name: string } | null>(null);
+  const [customer, setCustomer] = useState<{ id: string; name: string } | null>(
+    prefill?.customer ?? null,
+  );
   const [deviceBrand, setDeviceBrand] = useState('');
   const [deviceModel, setDeviceModel] = useState('');
   const [deviceSerial, setDeviceSerial] = useState('');
-  const [symptom, setSymptom] = useState('');
+  const [symptom, setSymptom] = useState(prefill?.symptom ?? '');
   const [photos, setPhotos] = useState<File[]>([]);
   const [accessories, setAccessories] = useState<Accessories>({
     box: false,
@@ -138,11 +198,16 @@ export default function AfterSalesNewPage() {
 
   const create = useMutation({
     mutationFn: async ({ form }: { form: FormData; printAfter: boolean }) =>
-      (await api.post('/after-sales', form))
-        .data as { id: string; caseNumber: string; repairTicketId: string },
+      (await api.post('/after-sales', form)).data as {
+        id: string;
+        caseNumber: string;
+        repairTicketId: string;
+      },
     onSuccess: (data, vars) => {
       toast.success(`เปิดเคส ${data.caseNumber}`);
       queryClient.invalidateQueries({ queryKey: afterSalesKeys.all });
+      queryClient.invalidateQueries({ queryKey: ['chat-work'] });
+      queryClient.invalidateQueries({ queryKey: ['todos'] });
       navigate(
         vars.printAfter ? `/after-sales/${data.id}?print=receipt` : `/after-sales/${data.id}`,
       );
@@ -159,7 +224,12 @@ export default function AfterSalesNewPage() {
           onSubmit={(e) => {
             e.preventDefault();
             const trimmed = imeiInput.trim();
-            if (trimmed) setSearchParams({ imei: trimmed });
+            if (trimmed)
+              setSearchParams((previous) => {
+                const next = new URLSearchParams(previous);
+                next.set('imei', trimmed);
+                return next;
+              });
           }}
         >
           <input
@@ -269,6 +339,7 @@ export default function AfterSalesNewPage() {
     }
 
     const form = new FormData();
+    if (prefill) form.append('serviceRequestId', prefill.serviceRequestId);
     form.append('imei', imei);
     if (walkIn && customer) form.append('customerId', customer.id);
     if (deviceBrand.trim()) form.append('deviceBrand', deviceBrand.trim());

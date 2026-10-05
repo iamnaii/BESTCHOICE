@@ -17,6 +17,7 @@ vi.mock('@/lib/api', () => ({
   getErrorMessage: (error: Error) => error.message,
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/components/layout/LayoutContext', () => ({ useLayout: () => ({ workZone: 'shop' }) }));
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: auth.user }) }));
 
 const IMEI = '356812345674412';
@@ -573,5 +574,57 @@ describe('AfterSalesNewPage — แจ้งปัญหาเครื่อง
     const button = screen.getByRole('button', { name: /เปลี่ยนรุ่นเดิม/ });
     expect(button).toBeDisabled();
     expect(button).toHaveTextContent('เกินกรอบ 7 วันแล้ว');
+  });
+});
+
+describe('Chat service case prefill', () => {
+  it('loads authorized intake, retains its link while searching IMEI, and still requires receipt photos', async () => {
+    const user = userEvent.setup();
+    mocks.get.mockImplementation(async (url: string) => ({
+      data: url.endsWith('/case-prefill')
+        ? {
+            serviceRequestId: 'request-1',
+            customer: { id: 'c1', name: 'คุณสมชาย ทดสอบ' },
+            symptom: 'จอสัมผัสไม่ตอบสนองจากแชท',
+            imei: '',
+            branchId: 'br-1',
+            linkedCaseId: null,
+          }
+        : url === '/after-sales/lookup'
+          ? foundResult
+          : [],
+    }));
+    renderPage('/after-sales/new?serviceRequestId=request-1&company=SHOP');
+    await screen.findByText(/รับเรื่องจากแชท/);
+    await user.type(screen.getByLabelText('เลข IMEI หรือเลขเครื่อง'), IMEI);
+    await user.click(screen.getByRole('button', { name: 'ค้นหา' }));
+    await screen.findByDisplayValue('จอสัมผัสไม่ตอบสนองจากแชท');
+    expect(mocks.get).toHaveBeenCalledWith(
+      '/staff-chat/service-requests/request-1/case-prefill',
+      expect.objectContaining({ params: { company: 'SHOP' } }),
+    );
+    expect(mocks.post).not.toHaveBeenCalled();
+    expect(screen.getByText(/แนบรูปตอนรับฝากก่อนยืนยัน/)).toBeInTheDocument();
+    expect(document.querySelector('input[type="file"]')).toBeTruthy();
+    mocks.post.mockResolvedValue({
+      data: { id: 'linked-case', caseNumber: 'AS-TEST', repairTicketId: 'ticket' },
+    });
+    await user.upload(
+      screen.getByLabelText(/ถ่ายเพิ่ม/),
+      new File(['receipt'], 'receipt.jpg', { type: 'image/jpeg' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'บันทึกและเปิดเคส' }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    const form = mocks.post.mock.calls[0][1] as FormData;
+    expect(form.get('serviceRequestId')).toBe('request-1');
+    expect(form.get('repairSupplierId')).toBeNull();
+    expect(form.getAll('photos')).toHaveLength(1);
+  });
+  it('does not show the form or cached prefill when access is denied', async () => {
+    mocks.get.mockRejectedValue(new Error('ไม่มีสิทธิ์'));
+    renderPage(`/after-sales/new?serviceRequestId=request-1&company=SHOP&imei=${IMEI}`);
+    await screen.findByText('เปิดใบรับเรื่องไม่ได้ หรือคุณไม่มีสิทธิ์แล้ว');
+    expect(screen.queryByLabelText('อาการ')).not.toBeInTheDocument();
+    expect(mocks.post).not.toHaveBeenCalled();
   });
 });

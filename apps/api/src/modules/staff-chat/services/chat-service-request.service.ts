@@ -24,6 +24,7 @@ import {
 } from './chat-service-access';
 import {
   CreateChatServiceRequestDto,
+  ServiceIntakeOptionsDto,
   UpdateChatServiceRequestDto,
 } from '../dto/chat-service-request.dto';
 export const serviceRequestTransitions: Record<
@@ -146,6 +147,126 @@ export class ChatServiceRequestService {
       contractId: input.contractId ?? null,
       saleId: input.saleId ?? null,
     };
+  }
+  async intakeOptions(
+    roomId: string,
+    authenticated: ChatWorkActor,
+    query: ServiceIntakeOptionsDto,
+  ) {
+    return this.prisma.$transaction(
+      async (tx) => {
+        await this.gate(tx);
+        const actor = await this.access.currentActor(authenticated, tx);
+        const room = await this.access.assertRoom(roomId, actor, query, tx);
+        const search = query.search?.trim() ?? '';
+        const paging = { skip: (query.page - 1) * query.limit, take: query.limit };
+        if (query.kind === 'MESSAGE') {
+          const where: Prisma.ChatMessageWhereInput = {
+            roomId,
+            deletedAt: null,
+            ...(search ? { text: { contains: search, mode: 'insensitive' } } : {}),
+          };
+          const [rows, total] = await Promise.all([
+            tx.chatMessage.findMany({
+              where,
+              ...paging,
+              orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+              select: { id: true, text: true, createdAt: true, role: true },
+            }),
+            tx.chatMessage.count({ where }),
+          ]);
+          return {
+            data: rows.map((r) => ({
+              id: r.id,
+              label: r.text?.slice(0, 500) || 'ข้อความแนบสื่อ',
+              createdAt: r.createdAt,
+              kind: 'MESSAGE' as const,
+            })),
+            total,
+          };
+        }
+        if (!room.customerId) return { data: [], total: 0 };
+        const family = await serviceCustomerFamily(tx, room.customerId);
+        const common = {
+          deletedAt: null,
+          customerId: { in: family.ids },
+          branch: serviceBranchWhere(actor, query),
+          product: { deletedAt: null },
+        };
+        const product = {
+          select: { id: true, brand: true, model: true, imeiSerial: true },
+        } as const;
+        const productSearch: Prisma.ProductWhereInput = {
+          OR: [
+            { model: { contains: search, mode: 'insensitive' } },
+            { imeiSerial: { contains: search } },
+          ],
+        };
+        if (query.kind === 'CONTRACT') {
+          const where: Prisma.ContractWhereInput = {
+            ...common,
+            ...(search
+              ? {
+                  OR: [
+                    { contractNumber: { contains: search, mode: 'insensitive' } },
+                    { product: productSearch },
+                  ],
+                }
+              : {}),
+          };
+          const [rows, total] = await Promise.all([
+            tx.contract.findMany({
+              where,
+              ...paging,
+              orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+              select: { id: true, contractNumber: true, product },
+            }),
+            tx.contract.count({ where }),
+          ]);
+          return {
+            data: rows.map((r) => ({
+              id: r.id,
+              kind: 'CONTRACT' as const,
+              label: [r.contractNumber, r.product?.brand, r.product?.model, r.product?.imeiSerial]
+                .filter(Boolean)
+                .join(' · '),
+            })),
+            total,
+          };
+        }
+        const where: Prisma.SaleWhereInput = {
+          ...common,
+          ...(search
+            ? {
+                OR: [
+                  { saleNumber: { contains: search, mode: 'insensitive' } },
+                  { product: productSearch },
+                ],
+              }
+            : {}),
+        };
+        const [rows, total] = await Promise.all([
+          tx.sale.findMany({
+            where,
+            ...paging,
+            orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+            select: { id: true, saleNumber: true, product },
+          }),
+          tx.sale.count({ where }),
+        ]);
+        return {
+          data: rows.map((r) => ({
+            id: r.id,
+            kind: 'SALE' as const,
+            label: [r.saleNumber, r.product?.brand, r.product?.model, r.product?.imeiSerial]
+              .filter(Boolean)
+              .join(' · '),
+          })),
+          total,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
   async create(
     roomId: string,

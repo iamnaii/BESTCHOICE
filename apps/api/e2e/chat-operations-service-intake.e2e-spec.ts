@@ -1,3 +1,4 @@
+import { ChatWorkQueryService } from '../src/modules/staff-chat/services/chat-work-query.service';
 import { randomUUID } from 'node:crypto';
 import type { ChatWorkActor } from '@installment/shared';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -76,6 +77,32 @@ describe('Chat service intake without physical receipt', () => {
     await expect(
       service.create(roomId, { ...draft, symptom: 'เปลี่ยนเนื้อหาคำขอเดิม' }, actor, scope),
     ).rejects.toThrow();
+  });
+  it('projects each service task once and resolves queue and legacy notices to the exact intake', async () => {
+    const row = await service.create(roomId, input(), actor, scope);
+    const queue = new ChatWorkQueryService(db, access);
+    const result = await queue.list(actor, { ...scope, view: 'FOR_ME', page: 1, limit: 100 });
+    const items = result.data.filter((i) => i.targetId === row.id || i.targetId === row.todoId);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      kind: 'SERVICE_REQUEST',
+      targetType: 'SERVICE_REQUEST',
+      targetId: row.id,
+    });
+    expect(await queue.target(actor, scope, 'SERVICE_REQUEST', row.id)).toMatchObject({
+      targetId: row.id,
+      roomId,
+    });
+    expect(await queue.target(actor, scope, 'TODO', row.todoId)).toMatchObject({
+      targetType: 'SERVICE_REQUEST',
+      targetId: row.id,
+    });
+    const notices = await new StaffInboxService(db, access).list(actor, scope, 1, 100);
+    expect(notices.data.filter((i) => i.todoId === row.todoId)[0]).toMatchObject({
+      targetType: 'SERVICE_REQUEST',
+      targetId: row.id,
+    });
+    await expect(queue.target(foreign, scope, 'SERVICE_REQUEST', row.id)).rejects.toThrow();
   });
   it('rejects unauthorized rooms, cross-room/deleted evidence and unlinked device/customer references', async () => {
     await expect(service.create(roomId, input(), foreign, scope)).rejects.toThrow();
@@ -208,6 +235,17 @@ describe('Chat service intake without physical receipt', () => {
     const first = await sale(alias.id, a.id);
     await sale(customer.id, b.id);
     const wrong = await sale(outsider.id, c.id);
+    const choices = await service.intakeOptions(r.id, actor, {
+      ...scope,
+      kind: 'SALE',
+      search: first.saleNumber,
+      page: 1,
+      limit: 10,
+    });
+    expect(choices.data.map((x) => x.id)).toEqual([first.id]);
+    await expect(
+      service.intakeOptions(r.id, foreign, { ...scope, kind: 'SALE', page: 1, limit: 10 }),
+    ).rejects.toThrow();
     const noChoice = await service.create(r.id, input(), actor, scope);
     expect(noChoice.requestedProductId).toBeNull();
     expect(noChoice.saleId).toBeNull();

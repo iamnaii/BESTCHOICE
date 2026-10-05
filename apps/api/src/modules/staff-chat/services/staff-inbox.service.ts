@@ -127,6 +127,7 @@ export class StaffInboxService {
               title: true,
               roomId: true,
               todoId: true,
+              todo: { select: { serviceRequest: { select: { id: true, deletedAt: true } } } },
               facebookComment: { select: { rootDeleted: true } },
               targetType: true,
               targetId: true,
@@ -146,11 +147,20 @@ export class StaffInboxService {
         });
         const liveNotes = new Set(notes.map((note) => note.id));
         const data = items.map((item) =>
-          item.targetType === 'FACEBOOK_COMMENT' && item.facebookComment?.rootDeleted
-            ? { ...item, title: 'คอมเมนต์ถูกลบ', targetDeleted: true }
-            : item.targetType === 'NOTE' && !liveNotes.has(item.targetId)
-              ? { ...item, title: 'โน้ตถูกลบ', targetDeleted: true }
-              : { ...item, targetDeleted: false },
+          item.targetType === 'TODO' &&
+          item.todo?.serviceRequest &&
+          !item.todo.serviceRequest.deletedAt
+            ? {
+                ...item,
+                targetType: 'SERVICE_REQUEST',
+                targetId: item.todo.serviceRequest.id,
+                targetDeleted: false,
+              }
+            : item.targetType === 'FACEBOOK_COMMENT' && item.facebookComment?.rootDeleted
+              ? { ...item, title: 'คอมเมนต์ถูกลบ', targetDeleted: true }
+              : item.targetType === 'NOTE' && !liveNotes.has(item.targetId)
+                ? { ...item, title: 'โน้ตถูกลบ', targetDeleted: true }
+                : { ...item, targetDeleted: false },
         );
         return { data, total, page, limit, unreadCount };
       },

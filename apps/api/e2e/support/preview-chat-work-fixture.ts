@@ -13,6 +13,7 @@ export async function seedChatWork(db: PrismaService, manager: RoomManagerServic
   await db.systemConfig.upsert({ where: { key: 'chat_work_queue_enabled' }, create: { key: 'chat_work_queue_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
   await db.systemConfig.upsert({ where: { key: 'chat_follow_up_enabled' }, create: { key: 'chat_follow_up_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
   await db.systemConfig.upsert({ where: { key: 'chat_mentions_enabled' }, create: { key: 'chat_mentions_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
+  await db.systemConfig.upsert({where:{key:'chat_service_requests_enabled'},create:{key:'chat_service_requests_enabled',value:'true'},update:{value:'true',deletedAt:null}});
   const rooms: Record<string, string> = {};
   const inbox = new StaffInboxService(db, new ChatWorkAccessService(db));
   for (const company of ['SHOP', 'FINANCE'] as const) {

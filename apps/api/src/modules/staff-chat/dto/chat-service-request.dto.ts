@@ -67,3 +67,7 @@ export class LinkChatServiceCaseDto {
 export class ServiceCaseOptionsDto extends StaffInboxQueryDto {
   @ValidateIf((_o, v) => v !== undefined) @IsString() @MaxLength(100) search?: string;
 }
+
+export class ServiceIntakeOptionsDto extends ServiceCaseOptionsDto {
+  @IsIn(['SALE', 'CONTRACT', 'MESSAGE']) kind: 'SALE' | 'CONTRACT' | 'MESSAGE' = 'SALE';
+}

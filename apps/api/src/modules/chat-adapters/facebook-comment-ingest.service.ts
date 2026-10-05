@@ -1,3 +1,4 @@
+import { enqueueCommentNotice } from '../staff-chat/services/facebook-comment-inbox';
 import {
   BadRequestException,
   Injectable,
@@ -228,6 +229,20 @@ export class FacebookCommentIngestService {
                 : {}),
           },
         });
+        if (customerUpdate && updated.assigneeId && !rootDeleted)
+          await enqueueCommentNotice(
+            tx,
+            {
+              recipientId: updated.assigneeId,
+              kind: 'FACEBOOK_COMMENT',
+              facebookCommentId: thread.id,
+              targetType: 'FACEBOOK_COMMENT',
+              targetId: thread.id,
+              title: 'มีคำถามใหม่ในคอมเมนต์ที่คุณดูแล',
+              dedupeKey: `comment-inbound:${thread.id}:${updated.inboundSequence}:${updated.assigneeId}`,
+            },
+            true,
+          );
         return { threadId: thread.id, commentId, revision: updated.revision, reconcile };
       },
       { maxWait: 10_000, timeout: 10_000 },
@@ -311,6 +326,20 @@ export class FacebookCommentIngestService {
             : {}),
         },
       });
+      if (customerChanged && current.assigneeId)
+        await enqueueCommentNotice(
+          tx,
+          {
+            recipientId: current.assigneeId,
+            kind: 'FACEBOOK_COMMENT',
+            facebookCommentId: threadId,
+            targetType: 'FACEBOOK_COMMENT',
+            targetId: threadId,
+            title: 'มีคำถามใหม่ในคอมเมนต์ที่คุณดูแล',
+            dedupeKey: `comment-inbound:${threadId}:${current.inboundSequence + 1}:${current.assigneeId}`,
+          },
+          true,
+        );
       return true;
     });
   }

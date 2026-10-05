@@ -1,3 +1,5 @@
+import { enqueueCommentNotice } from './facebook-comment-inbox';
+import { commentWorkWhere } from './facebook-comment-scope';
 import { parseBooleanFlag } from '../../../utils/config.util';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -20,6 +22,7 @@ export class StaffInboxService {
       where: { key: 'in_app_notifications_enabled', deletedAt: null },
     });
     if (!parseBooleanFlag(toggle?.value, true)) return null;
+    if (input.targetType === 'FACEBOOK_COMMENT') return enqueueCommentNotice(tx, input);
     // Targets are references, never a client-supplied URL. Later features add their own validated targets.
     if (!input.roomId || !input.title.trim() || input.title.length > 255)
       throw new BadRequestException('ข้อมูลการแจ้งเตือนไม่ถูกต้อง');
@@ -77,17 +80,37 @@ export class StaffInboxService {
     scope: WorkScope,
     tx: Prisma.TransactionClient,
   ): Promise<Prisma.StaffInboxItemWhereInput> {
-    const room = await this.access.roomWhere(actor, scope, tx);
+    const current = await this.access.currentActor(actor, tx);
+    const room = await this.access.roomWhere(current, scope, tx);
+    const commentsEnabled = parseBooleanFlag(
+      (
+        await tx.systemConfig.findFirst({
+          where: { key: 'chat_facebook_comments_enabled', deletedAt: null },
+        })
+      )?.value,
+      false,
+    );
     return {
-      recipientId: actor.id,
+      recipientId: current.id,
       deletedAt: null,
-      room,
-      AND: [
-        { OR: [{ todoId: null }, { todo: { deletedAt: null, room } }] },
-        { targetType: { in: ['ROOM', 'TODO', 'NOTE'] } },
+      OR: [
+        {
+          room,
+          targetType: { in: ['ROOM', 'TODO', 'NOTE'] },
+          AND: [{ OR: [{ todoId: null }, { todo: { deletedAt: null, room } }] }],
+        },
+        ...(commentsEnabled
+          ? [
+              {
+                targetType: 'FACEBOOK_COMMENT' as const,
+                facebookComment: commentWorkWhere(current, scope),
+              },
+            ]
+          : []),
       ],
     };
   }
+
   async list(actor: ChatWorkActor, scope: WorkScope, page = 1, limit = 50) {
     return this.prisma.$transaction(
       async (tx) => {
@@ -104,6 +127,7 @@ export class StaffInboxService {
               title: true,
               roomId: true,
               todoId: true,
+              facebookComment: { select: { rootDeleted: true } },
               targetType: true,
               targetId: true,
               createdAt: true,
@@ -122,9 +146,11 @@ export class StaffInboxService {
         });
         const liveNotes = new Set(notes.map((note) => note.id));
         const data = items.map((item) =>
-          item.targetType === 'NOTE' && !liveNotes.has(item.targetId)
-            ? { ...item, title: 'โน้ตถูกลบ', targetDeleted: true }
-            : { ...item, targetDeleted: false },
+          item.targetType === 'FACEBOOK_COMMENT' && item.facebookComment?.rootDeleted
+            ? { ...item, title: 'คอมเมนต์ถูกลบ', targetDeleted: true }
+            : item.targetType === 'NOTE' && !liveNotes.has(item.targetId)
+              ? { ...item, title: 'โน้ตถูกลบ', targetDeleted: true }
+              : { ...item, targetDeleted: false },
         );
         return { data, total, page, limit, unreadCount };
       },

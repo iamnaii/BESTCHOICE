@@ -1,3 +1,5 @@
+import FacebookCommentPanel from './FacebookCommentPanel';
+import FacebookCommentList from './FacebookCommentList';
 import ChatFollowUpDialog, { type FollowUpDraft } from './ChatFollowUpDialog';
 import ChatHandoffCard from './ChatHandoffCard';
 import { useRef, useState, useEffect } from 'react';
@@ -20,7 +22,7 @@ export default function InboxWorkTools({
 }) {
   const [view, setView] = useState<WorkQueueView>('WAITING');
   const [page, setPage] = useState(1);
-  const [panel, setPanel] = useState<'queue' | 'inbox' | null>(null);
+  const [panel, setPanel] = useState<'queue' | 'inbox' | 'comments' | null>(null);
   const [selected, setSelected] = useState<{
     type: ChatWorkTarget;
     id: string;
@@ -61,7 +63,7 @@ export default function InboxWorkTools({
       if (scopeRef.current !== scope || getCompanyScopeRevision() !== revision) return;
       if (notificationId) await work.markRead(notificationId);
       if (scopeRef.current !== scope || getCompanyScopeRevision() !== revision) return;
-      onSelectRoom(result.roomId);
+      if (result.roomId) onSelectRoom(result.roomId);
       setPanel(null);
       if (type !== 'ROOM') setSelected({ type, id, scope });
     } catch {
@@ -70,8 +72,12 @@ export default function InboxWorkTools({
       setOpening(false);
     }
   };
-  const linkedId = params.get('noteId') ?? params.get('todoId');
-  const linkedType = params.get('noteId') ? 'NOTE' : 'TODO';
+  const linkedId = params.get('commentId') ?? params.get('noteId') ?? params.get('todoId');
+  const linkedType = params.get('commentId')
+    ? 'FACEBOOK_COMMENT'
+    : params.get('noteId')
+      ? 'NOTE'
+      : 'TODO';
   const openedLink = useRef('');
   useEffect(() => {
     const link = `${work.identity}:${linkedType}:${linkedId}`;
@@ -85,7 +91,6 @@ export default function InboxWorkTools({
     openedLink.current = link;
     void open(linkedType, linkedId);
     // Exact-resource access is checked before selecting the room.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linkedId, linkedType, work.enabled, work.identity]);
   if (work.settings.isError)
     return (
@@ -104,6 +109,11 @@ export default function InboxWorkTools({
           <ListTodo className="size-4" />
           คิวงาน
         </Button>
+        {work.company === 'SHOP' && work.settings.data?.flags.chat_facebook_comments_enabled && (
+          <Button variant="ghost" size="sm" onClick={() => setPanel('comments')}>
+            คอมเมนต์
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
@@ -126,12 +136,23 @@ export default function InboxWorkTools({
           aria-busy={opening}
         >
           <div className="border-b px-4 py-5 pr-12">
-            <SheetTitle>{panel === 'queue' ? 'คิวงานแชท' : 'การแจ้งเตือนของฉัน'}</SheetTitle>
+            <SheetTitle>
+              {panel === 'queue'
+                ? 'คิวงานแชท'
+                : panel === 'comments'
+                  ? 'คอมเมนต์ Facebook'
+                  : 'การแจ้งเตือนของฉัน'}
+            </SheetTitle>
             <SheetDescription>
               {work.company === 'SHOP' ? 'งานหน้าร้าน' : 'งานการเงิน'}
             </SheetDescription>
           </div>
-          {panel === 'queue' ? (
+          {panel === 'comments' ? (
+            <FacebookCommentList
+              key={work.identity}
+              onOpen={(id) => void open('FACEBOOK_COMMENT', id)}
+            />
+          ) : panel === 'queue' ? (
             <WorkQueue
               data={work.queue.data}
               loading={work.queue.isLoading}
@@ -158,15 +179,24 @@ export default function InboxWorkTools({
         </SheetContent>
       </Sheet>
       <Dialog open={!!active} onOpenChange={(o) => !o && setSelected(null)}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
           <DialogTitle>{target?.title ?? 'รายละเอียดรายการ'}</DialogTitle>
           <DialogDescription>
-            {active?.type === 'NOTE' ? 'โน้ตภายในห้องแชทนี้' : 'รายละเอียดงานในห้องแชทนี้'}
+            {active?.type === 'FACEBOOK_COMMENT'
+              ? 'จัดการคำถามใต้โพสต์ Facebook'
+              : active?.type === 'NOTE'
+                ? 'โน้ตภายในห้องแชทนี้'
+                : 'รายละเอียดงานในห้องแชทนี้'}
           </DialogDescription>
           {targetQuery.isError ? (
             <p role="alert">เปิดรายการไม่ได้ รายการอาจถูกลบหรือคุณไม่มีสิทธิ์แล้ว</p>
           ) : !target ? (
             <p role="status">กำลังโหลด…</p>
+          ) : active?.type === 'FACEBOOK_COMMENT' ? (
+            <FacebookCommentPanel
+              key={`${work.identity}:${target.targetId}`}
+              threadId={target.targetId}
+            />
           ) : target.workKind === 'CHAT_HANDOFF' ? (
             <ChatHandoffCard key={`${work.identity}:${target.targetId}`} taskId={target.targetId} />
           ) : (
@@ -189,12 +219,12 @@ export default function InboxWorkTools({
                   )[target.status] ?? target.status}
                 </p>
               )}
-              {target.workKind === 'CHAT_FOLLOW_UP' && (
+              {target.workKind === 'CHAT_FOLLOW_UP' && target.roomId && (
                 <Button
                   onClick={() => {
                     setEditingTask({
                       scope: work.identity,
-                      roomId: target.roomId,
+                      roomId: target.roomId!,
                       task: {
                         id: target.targetId,
                         title: target.title,

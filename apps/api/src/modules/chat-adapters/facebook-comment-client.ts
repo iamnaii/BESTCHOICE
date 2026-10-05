@@ -16,7 +16,16 @@ export interface FacebookCommentSnapshot {
 }
 /** A verified live HTTP mapping is deliberately absent until the capability checklist passes.
  * The isolated preview binds a synthetic port; no frontend/config boolean can enable a live port. */
+export interface FacebookCommentReplyProof {
+  pageId: string;
+  externalId: string;
+  parentCommentId: string;
+  authorId: string;
+  text: string;
+  createdAt: string;
+}
 export interface FacebookCommentTransport {
+  readReply?(pageId: string, externalId: string): Promise<FacebookCommentReplyProof | null>;
   readRevision?(value: Record<string, unknown>): string | null;
   evidence(pageId: string): Promise<FacebookCommentEvidence>;
   replyPublic(
@@ -35,6 +44,10 @@ export class FacebookCommentClient {
     @Inject(FACEBOOK_COMMENT_TRANSPORT)
     private readonly transport?: FacebookCommentTransport,
   ) {}
+  async configuredPageId() {
+    const config = await this.config.getConfig('facebook');
+    return typeof config.pageId === 'string' && config.pageId.length <= 128 ? config.pageId : null;
+  }
   async getCapabilities(pageId: string) {
     const closed = () => capabilityFromEvidence({ graphVersion: 'v25.0', verified: false });
     try {
@@ -54,7 +67,11 @@ export class FacebookCommentClient {
       return { status: 'FAILED', errorCode: 'INVALID_INPUT' };
     try {
       const result = await this.transport.replyPublic(input);
-      if (typeof result.externalId === 'string' && result.externalId.trim())
+      if (
+        typeof result.externalId === 'string' &&
+        result.externalId.trim() &&
+        result.externalId.length <= 256
+      )
         return { status: 'CONFIRMED', externalId: result.externalId };
       const code = ['TOKEN_EXPIRED', 'RATE_LIMIT', 'PERMISSION_DENIED', 'COMMENT_DELETED'].includes(
         result.errorCode ?? '',
@@ -77,6 +94,24 @@ export class FacebookCommentClient {
       return null;
     }
   }
+  async readReply(pageId: string, externalId: string): Promise<FacebookCommentReplyProof | null> {
+    if (!(await this.getCapabilities(pageId)).receive || !this.transport?.readReply) return null;
+    try {
+      const proof = await this.transport.readReply(pageId, externalId);
+      if (
+        !proof ||
+        proof.pageId !== pageId ||
+        proof.externalId !== externalId ||
+        proof.authorId !== pageId ||
+        typeof proof.text !== 'string' ||
+        !Number.isFinite(Date.parse(proof.createdAt))
+      )
+        return null;
+      return proof;
+    } catch {
+      return null;
+    }
+  }
   async readComment(pageId: string, commentId: string): Promise<FacebookCommentSnapshot | null> {
     if (!(await this.getCapabilities(pageId)).receive || !this.transport) return null;
     try {
@@ -86,7 +121,8 @@ export class FacebookCommentClient {
         snapshot.commentId !== commentId ||
         typeof snapshot.exists !== 'boolean' ||
         (snapshot.text !== null && typeof snapshot.text !== 'string') ||
-        (snapshot.revision !== null && !/^\d{1,38}$/.test(snapshot.revision))
+        (snapshot.revision !== null &&
+          (typeof snapshot.revision !== 'string' || !/^\d{1,38}$/.test(snapshot.revision)))
       )
         return null;
       return {

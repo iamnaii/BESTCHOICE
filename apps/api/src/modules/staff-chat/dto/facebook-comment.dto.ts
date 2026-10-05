@@ -37,3 +37,24 @@ export class ConfigureFacebookCommentPageDto {
   @IsUUID() branchId!: string;
   @IsBoolean() enabled!: boolean;
 }
+
+export class ReplyFacebookCommentDto {
+  @IsUUID() clientRequestId!: string;
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(5000)
+  text!: string;
+}
+export class ReconcileFacebookCommentReplyDto {
+  @IsString() @IsNotEmpty() @MaxLength(256) externalId!: string;
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(1000)
+  reason!: string;
+}
+
+export class FacebookCommentLinkOptionsDto extends StaffInboxQueryDto {
+  @IsString() @MaxLength(100) search!: string;
+}

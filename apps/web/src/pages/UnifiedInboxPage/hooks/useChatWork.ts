@@ -9,7 +9,7 @@ export interface WorkNotification {
   createdAt: string; readAt: string | null; targetDeleted: boolean;
 }
 export interface WorkTarget {
-  targetType: string; targetId: string; roomId: string; title: string; content?: string;
+  targetType: string; targetId: string; roomId: string | null; title: string; content?: string;
   status?: string; workKind?: string; revision?: number; dueAt?: string; assigneeId?: string;
 }
 export function useChatWorkSettings() {

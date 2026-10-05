@@ -1,3 +1,4 @@
+import { checkFacebookComments } from './check-local-facebook-comments.mjs';
 import { checkChatTeam } from './check-local-chat-team.mjs';
 import { checkChatNotes } from './check-local-chat-notes.mjs';
 import { checkChatHandoff } from './check-local-chat-handoff.mjs';
@@ -84,6 +85,9 @@ try {
       await checkChatTeam(page, new URL(info.url).origin, output, viewport.width);
       assert.deepEqual(errors, [], 'Team flow browser errors');
       report.checks.push({ label: `Note mentions and A/B handoff ${viewport.width}px`, status: 'PASS' });
+      await checkFacebookComments(page, new URL(info.url).origin, output, viewport.width);
+      assert.deepEqual(errors, [], 'Comment flow browser errors');
+      report.checks.push({ label: `Signed synthetic Facebook comments + uncertain send ${viewport.width}px; live Meta unverified`, status: 'PASS' });
       await checkLocalPages(page, info.url, output, viewport.width);
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `Customers + FINANCE portfolio (filters, pagination, empty report) ${viewport.width}px`, status: 'PASS' });

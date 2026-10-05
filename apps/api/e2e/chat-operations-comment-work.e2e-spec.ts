@@ -1,3 +1,5 @@
+import { ChatWorkQueryService } from '../src/modules/staff-chat/services/chat-work-query.service';
+import { StaffInboxService } from '../src/modules/staff-chat/services/staff-inbox.service';
 import { randomUUID } from 'node:crypto';
 import type { ChatWorkActor } from '@installment/shared';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -10,6 +12,7 @@ describe('Scoped comment work and explicit identity links', () => {
   const db = new PrismaService();
   const access = new ChatWorkAccessService(db);
   const client = {
+    configuredPageId: async () => pageId,
     getCapabilities: async () => ({
       receive: false,
       publicReply: false,
@@ -162,6 +165,24 @@ describe('Scoped comment work and explicit identity links', () => {
     );
     expect(reopened.waitingSince).not.toBeNull();
   });
+  it('projects comments into paginated work and scoped notifications without a fabricated DM room', async () => {
+    const task = await create(); const queue = new ChatWorkQueryService(db,access); const inbox = new StaffInboxService(db,access);
+    const all = await queue.list(owner,{ ...scope, page: 1, limit: 200, view: 'WAITING' });
+    expect(all.data.find(item => item.targetId === task.id)).toMatchObject({ kind: 'FACEBOOK_COMMENT', targetType: 'FACEBOOK_COMMENT', roomId: null });
+    const first = await queue.list(owner,{ ...scope, page: 1, limit: 1, view: 'WAITING' });
+    const second = await queue.list(owner,{ ...scope, page: 2, limit: 1, view: 'WAITING' });
+    expect(first.total).toBe(all.total); expect(first.data[0].key).not.toBe(second.data[0].key);
+    expect(await queue.target(owner,scope,'FACEBOOK_COMMENT',task.id)).toMatchObject({ targetId: task.id, roomId: null });
+    await expect(queue.target(other,scope,'FACEBOOK_COMMENT',task.id)).rejects.toThrow();
+    const notice = { recipientId: seller.id, kind: 'FACEBOOK_COMMENT' as const, facebookCommentId: task.id, targetType: 'FACEBOOK_COMMENT' as const, targetId: task.id, dedupeKey: `comment:${task.id}`, title: 'คอมเมนต์ที่มอบหมาย' };
+    const saved = await db.$transaction(tx => inbox.enqueue(tx,notice)); expect(saved).not.toBeNull();
+    expect((await inbox.list(seller,scope)).data.some(item => item.id === saved!.id)).toBe(true);
+    expect((await inbox.list(other,scope)).data.some(item => item.id === saved!.id)).toBe(false);
+    await inbox.markRead(saved!.id,seller,scope);
+    expect((await db.facebookCommentThread.findUniqueOrThrow({ where: { id: task.id } })).status).toBe('OPEN');
+    await db.facebookCommentThread.update({ where: { id: task.id }, data: { rootDeleted: true, waitingSince: null } });
+    expect((await queue.list(owner,{ ...scope, page: 1, limit: 200, view: 'WAITING' })).data.some(item => item.targetId === task.id)).toBe(false);
+  });
   it('refreshes actor grants and treats disabled staff as ineligible', async () => {
     const task = await create();
     await db.user.update({ where: { id: seller.id }, data: { accessibleCompanies: ['FINANCE'] } });
@@ -175,4 +196,31 @@ describe('Scoped comment work and explicit identity links', () => {
     await db.user.update({ where: { id: seller.id }, data: { isActive: true } });
 
   });
+  it('limits link choices to accessible rooms with an existing customer', async () => {
+    const thread = await create();
+    const customer = await db.customer.create({ data: { name: 'Comment choice', phone: '0800000011' } });
+    const room = await db.chatRoom.create({ data: { displayName: 'Comment choice', channel: 'FACEBOOK', customerId: customer.id, assignedToId: seller.id } });
+    expect((await service.linkOptions(thread.id, 'Comment choice', seller, scope)).some(r => r.id === room.id)).toBe(true);
+    await expect(service.linkOptions(thread.id, 'Comment choice', owner, { company: 'FINANCE' })).rejects.toThrow();
+  });
+  it('owner binds only a SHOP branch and cannot rewrite historical thread attribution', async () => {
+    await expect(service.configurePage({ branchId, enabled: true }, seller, scope)).rejects.toThrow();
+    await create();
+    await expect(service.configurePage({ branchId: foreignBranch, enabled: true }, owner, scope)).rejects.toThrow();
+    const result = await service.configurePage({ branchId, enabled: false }, owner, scope);
+    expect(result.enabled).toBe(false);
+    expect(await db.auditLog.count({ where: { action: 'FACEBOOK_COMMENT_PAGE_CONFIGURED', entityId: pageId } })).toBe(1);
+  });
+
+  it('keeps manager unassigned work counts and paginated IDs consistent across sources', async () => {
+    const thread = await create();
+    const room = await db.chatRoom.create({ data: { channel: 'FACEBOOK' } });
+    const todo = await db.todo.create({ data: { roomId: room.id, createdById: owner.id, title: 'Unassigned manager work' } });
+    const queue = new ChatWorkQueryService(db, access);
+    const result = await queue.list(owner, { ...scope, branchId, view: 'FOR_ME', page: 1, limit: 200 });
+    expect(result.data.some(row => row.targetId === thread.id)).toBe(true);
+    expect(result.data.some(row => row.targetId === todo.id)).toBe(true);
+    expect(result.total).toBe(result.data.length);
+  });
+
 });

@@ -34,6 +34,7 @@ enum ChatResponseEndReason {
 }
 
 enum StaffInboxKind {
+  FACEBOOK_COMMENT
   CHAT_SLA
   FOLLOW_UP
   MENTION
@@ -810,6 +811,7 @@ model Branch {
 }
 
 model User {
+  facebookCommentReplies FacebookCommentReply[]
   assignedFacebookComments FacebookCommentThread[]
 
   todoWorkEvents TodoWorkEvent[]
@@ -8925,6 +8927,8 @@ model ImportedSale {
 
 
 model StaffInboxItem {
+  facebookCommentId String? @map("facebook_comment_id")
+  facebookComment FacebookCommentThread? @relation(fields: [facebookCommentId], references: [id], onDelete: Restrict)
   id String @id @default(uuid())
   recipientId String @map("recipient_id")
   recipient User @relation(fields: [recipientId], references: [id], onDelete: Restrict)
@@ -9007,6 +9011,8 @@ model FacebookCommentPage {
 }
 
 model FacebookCommentThread {
+  replies FacebookCommentReply[]
+  inboxItems StaffInboxItem[]
   id                  String                  @id @default(uuid())
   pageId              String                  @map("page_id") @db.VarChar(128)
   postId              String                  @map("post_id") @db.VarChar(256)
@@ -9075,4 +9081,33 @@ model FacebookCommentEvent {
 
   @@index([threadId, createdAt])
   @@map("facebook_comment_events")
+}
+
+
+enum FacebookCommentReplyStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  UNKNOWN
+}
+
+model FacebookCommentReply {
+  id String @id @default(uuid())
+  threadId String @map("thread_id")
+  pageId String @map("page_id") @db.VarChar(128)
+  authorId String @map("author_id")
+  requestKey String @unique @map("request_key")
+  text String
+  status FacebookCommentReplyStatus @default(PENDING)
+  externalId String? @map("external_id") @db.VarChar(256)
+  errorCode String? @map("error_code") @db.VarChar(64)
+  inboundSequence Int @map("inbound_sequence")
+  attemptedAt DateTime @default(now()) @map("attempted_at")
+  confirmedAt DateTime? @map("confirmed_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  thread FacebookCommentThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  @@unique([pageId, externalId])
+  @@index([threadId, attemptedAt])
+  @@map("facebook_comment_replies")
 }

@@ -36,7 +36,8 @@ export interface ChatWorkPage {
 }
 export interface StaffInboxInput {
   recipientId: string;
-  kind: 'CHAT_SLA' | 'FOLLOW_UP' | 'MENTION' | 'HANDOFF' | 'SERVICE_REQUEST';
+  kind: 'CHAT_SLA' | 'FOLLOW_UP' | 'MENTION' | 'HANDOFF' | 'SERVICE_REQUEST' | 'FACEBOOK_COMMENT';
+  facebookCommentId?: string;
   roomId?: string;
   todoId?: string;
   dedupeKey: string;
@@ -61,5 +62,10 @@ export interface ChatSalesContext {
   customerId: string | null;
   journey: import('./customer-journey').JourneySummary | null;
   nextAction: { todoId: string; title: string; dueAt: string | null } | null;
-  evidenceLinks: Array<{ kind: 'CREDIT' | 'OFFER' | 'APPOINTMENT' | 'PURCHASE'; id: string; label: string; href?: string }>;
+  evidenceLinks: Array<{
+    kind: 'CREDIT' | 'OFFER' | 'APPOINTMENT' | 'PURCHASE';
+    id: string;
+    label: string;
+    href?: string;
+  }>;
 }

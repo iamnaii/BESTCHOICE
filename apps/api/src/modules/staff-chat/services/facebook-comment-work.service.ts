@@ -1,3 +1,4 @@
+import { enqueueCommentNotice } from './facebook-comment-inbox';
 import {
   BadRequestException,
   ConflictException,
@@ -15,6 +16,7 @@ import { ChatWorkAccessService, WORK_ROLES } from './chat-work-access.service';
 import { commentWorkWhere } from './facebook-comment-scope';
 import {
   AssignFacebookCommentDto,
+  ConfigureFacebookCommentPageDto,
   FacebookCommentQueryDto,
   LinkFacebookCommentDto,
   StatusFacebookCommentDto,
@@ -98,7 +100,7 @@ export class FacebookCommentWorkService {
   async get(id: string, actor: ChatWorkActor, scope: WorkScope, recordPage = 1) {
     const result = await this.prisma.$transaction(async (tx) => {
       const { thread } = await this.assertThread(id, actor, scope, tx);
-      const [records, total, assignee] = await Promise.all([
+      const [records, total, assignee, replies, repliesTotal] = await Promise.all([
         tx.facebookCommentRecord.findMany({
           where: { threadId: id },
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -112,8 +114,29 @@ export class FacebookCommentWorkService {
               select: { id: true, name: true, isActive: true },
             })
           : null,
+        tx.facebookCommentReply.findMany({
+          where: { threadId: id },
+          orderBy: [{ attemptedAt: 'desc' }, { id: 'asc' }],
+          take: 50,
+          skip: (recordPage - 1) * 50,
+          include: { author: { select: { id: true, name: true } } },
+        }),
+        tx.facebookCommentReply.count({ where: { threadId: id } }),
       ]);
-      return { ...thread, records, recordsTotal: total, recordPage, assignee };
+      const unresolvedReply = await tx.facebookCommentReply.findFirst({
+        where: { threadId: id, status: { in: ['PENDING', 'UNKNOWN'] } },
+        select: { id: true, status: true },
+      });
+      return {
+        ...thread,
+        records,
+        recordsTotal: total,
+        recordPage,
+        assignee,
+        replies,
+        repliesTotal,
+        unresolvedReply,
+      };
     });
     const capabilities = await this.client.getCapabilities(result.pageId);
     // A provider read may take time; do not return details after access is revoked in the meantime.
@@ -176,6 +199,20 @@ export class FacebookCommentWorkService {
         where: { id },
         data: { ...patch, revision: { increment: 1 } },
       });
+      if (
+        action === 'FACEBOOK_COMMENT_ASSIGN' &&
+        updated.assigneeId &&
+        updated.assigneeId !== thread.assigneeId
+      )
+        await enqueueCommentNotice(tx, {
+          recipientId: updated.assigneeId,
+          kind: 'FACEBOOK_COMMENT',
+          facebookCommentId: id,
+          targetType: 'FACEBOOK_COMMENT',
+          targetId: id,
+          title: 'มีคอมเมนต์มอบหมายถึงคุณ',
+          dedupeKey: `comment-assigned:${id}:${updated.revision}:${updated.assigneeId}`,
+        });
       const snapshot = (value: FacebookCommentThread) => ({
         revision: value.revision,
         status: value.status,
@@ -196,7 +233,120 @@ export class FacebookCommentWorkService {
       return updated;
     });
   }
-  async assign(id: string, input: AssignFacebookCommentDto, actor: ChatWorkActor, scope: WorkScope) {
+  async linkOptions(id: string, search: string, actor: ChatWorkActor, scope: WorkScope) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertThread(id, actor, scope, tx);
+      const room = await this.access.roomWhere(actor, scope, tx);
+      const text = search?.trim().slice(0, 100);
+      if (!text) return [];
+      return tx.chatRoom.findMany({
+        where: {
+          AND: [
+            room,
+            {
+              customer: { deletedAt: null },
+              OR: [
+                { displayName: { contains: text, mode: 'insensitive' } },
+                { customer: { name: { contains: text, mode: 'insensitive' } } },
+              ],
+            },
+          ],
+        },
+        select: {
+          id: true,
+          displayName: true,
+          customerId: true,
+          channel: true,
+          customer: { select: { name: true } },
+        },
+        take: 20,
+        orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
+      });
+    });
+  }
+  private async ownerPage(actor: ChatWorkActor, scope: WorkScope) {
+    const current = await this.access.currentActor(actor);
+    commentWorkWhere(current, scope);
+    if (current.role !== 'OWNER' || scope.company !== 'SHOP')
+      throw new ForbiddenException('เฉพาะเจ้าของบริษัทหน้าร้าน');
+    const pageId = await this.client.configuredPageId();
+    if (!pageId) throw new BadRequestException('ยังไม่ได้ตั้งค่า Facebook Page ในการเชื่อมต่อ');
+    return { current, pageId };
+  }
+  async pageConfig(actor: ChatWorkActor, scope: WorkScope) {
+    const { pageId } = await this.ownerPage(actor, scope);
+    const [binding, branches, capabilities] = await Promise.all([
+      this.prisma.facebookCommentPage.findUnique({ where: { pageId } }),
+      this.prisma.branch.findMany({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          OR: [{ companyId: null }, { company: { companyCode: 'SHOP' } }],
+        },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.client.getCapabilities(pageId),
+    ]);
+    return { pageId, binding, branches, capabilities };
+  }
+  async configurePage(
+    input: ConfigureFacebookCommentPageDto,
+    actor: ChatWorkActor,
+    scope: WorkScope,
+  ) {
+    const { current, pageId } = await this.ownerPage(actor, scope);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${pageId}, 0))::text`;
+      // The ingest writer locks this same row before recording a thread.
+      await tx.$queryRaw`SELECT page_id FROM facebook_comment_pages WHERE page_id = ${pageId} FOR UPDATE`;
+      const fresh = await this.access.currentActor(current, tx);
+      commentWorkWhere(fresh, scope);
+      if (fresh.role !== 'OWNER') throw new ForbiddenException('เฉพาะเจ้าของบริษัท');
+      if (
+        !(await tx.branch.count({
+          where: {
+            id: input.branchId,
+            isActive: true,
+            deletedAt: null,
+            OR: [{ companyId: null }, { company: { companyCode: 'SHOP' } }],
+          },
+        }))
+      )
+        throw new BadRequestException('เลือกสาขางานหน้าร้านที่เปิดใช้งาน');
+      const previous = await tx.facebookCommentPage.findUnique({ where: { pageId } });
+      if (
+        previous &&
+        previous.branchId !== input.branchId &&
+        (await tx.facebookCommentThread.count({ where: { pageId } }))
+      )
+        throw new ConflictException('Page นี้มีประวัติงานแล้ว เปลี่ยนสาขาย้อนหลังไม่ได้');
+      const binding = await tx.facebookCommentPage.upsert({
+        where: { pageId },
+        create: { pageId, company: 'SHOP', ...input },
+        update: input,
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: current.id,
+          action: 'FACEBOOK_COMMENT_PAGE_CONFIGURED',
+          entity: 'FacebookCommentPage',
+          entityId: pageId,
+          oldValue: previous
+            ? { branchId: previous.branchId, enabled: previous.enabled }
+            : Prisma.JsonNull,
+          newValue: { branchId: binding.branchId, enabled: binding.enabled },
+        },
+      });
+      return binding;
+    });
+  }
+  async assign(
+    id: string,
+    input: AssignFacebookCommentDto,
+    actor: ChatWorkActor,
+    scope: WorkScope,
+  ) {
     return this.mutate(
       id,
       input.expectedRevision,
@@ -217,7 +367,12 @@ export class FacebookCommentWorkService {
       },
     );
   }
-  async status(id: string, input: StatusFacebookCommentDto, actor: ChatWorkActor, scope: WorkScope) {
+  async status(
+    id: string,
+    input: StatusFacebookCommentDto,
+    actor: ChatWorkActor,
+    scope: WorkScope,
+  ) {
     if (!['OPEN', 'RESOLVED'].includes(input.status))
       throw new BadRequestException('สถานะตอบแล้วต้องมีหลักฐานการส่งสำเร็จ');
     return this.mutate(

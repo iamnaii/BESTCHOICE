@@ -362,8 +362,11 @@ export class BookingsService {
     booking: { id: string; lockedProductId: string | null; bookingNumber: string | null },
     userId: string,
     now: Date,
+    flow: 'cancel' | 'auto-expire',
   ): Promise<'UNLOCKED' | 'SKIPPED' | 'NONE'> {
     if (!booking.lockedProductId) return 'NONE';
+    // จงใจไม่มี deletedAt: null — เครื่องที่ถูก soft-delete ระหว่างล็อกแล้วถูกกู้คืนทีหลังต้องกลับมาเป็น IN_STOCK
+    // ไม่ใช่ RESERVED ค้างไม่มีเจ้าของ (spec §4 ตามตัวอักษร)
     const released = await tx.product.updateMany({
       where: { id: booking.lockedProductId, status: 'RESERVED' },
       data: { status: 'IN_STOCK' },
@@ -379,6 +382,7 @@ export class BookingsService {
           lockedProductId: booking.lockedProductId,
           bookingNumber: booking.bookingNumber,
           reason: 'PRODUCT_NOT_RESERVED',
+          flow,
           at: now.toISOString(),
         },
       },
@@ -435,7 +439,10 @@ export class BookingsService {
     return item.productId;
   }
 
-  /** เครื่องต้องมีจริง อยู่สาขาเดียวกับใบ และพร้อมขาย — ด่านนี้ให้ข้อความดี ๆ ตอนสร้าง (ด่านจริงตอนรับมัดจำอยู่ PR ล็อกเครื่อง) */
+  /**
+   * เครื่องต้องมีจริง อยู่สาขาเดียวกับใบ และพร้อมขาย — ใช้ตอนสร้าง/แก้ใบ (400 รายละเอียด);
+   * ตอนรับมัดจำใช้การอ่านใน payDepositInTx ที่ตอบ 409 รวม + CAS ล็อก
+   */
   private async loadBookableProduct(
     productId: string,
     branchId: string,
@@ -939,7 +946,7 @@ export class BookingsService {
         },
         data: {
           status: 'CANCELED',
-          canceledAt: new Date(),
+          canceledAt: now,
           canceledById: user.id,
           cancelReason: dto.cancelReason,
           lockedProductId: null,
@@ -954,7 +961,7 @@ export class BookingsService {
       const lockedProductIdBefore = booking.lockedProductId ?? null;
       const unlock = await this.unlockBookedDevice(tx, {
         id, lockedProductId: lockedProductIdBefore, bookingNumber: booking.bookingNumber ?? null,
-      }, user.id, now);
+      }, user.id, now, 'cancel');
 
       // ── คืนเงินมัดจำ (A5 ผู้สอบ 2026-08-25) ─────────────────────────────────
       // โพสต์เฉพาะใบที่ "รับมัดจำแล้วจริง" — PENDING_DEPOSIT ยังไม่มีเงินเข้า
@@ -1002,6 +1009,7 @@ export class BookingsService {
             refundAmount:
               fromStatus === 'PAID' ? booking.depositAmount.toFixed(2) : '0.00',
             cancelReason: dto.cancelReason ?? null,
+            unlockedProductId: unlock === 'UNLOCKED' ? lockedProductIdBefore : null,
           },
         },
       });
@@ -1390,7 +1398,7 @@ export class BookingsService {
             const unlock = await this.unlockBookedDevice(tx, {
               id: candidate.id, lockedProductId: booking.lockedProductId ?? null,
               bookingNumber: booking.bookingNumber ?? null,
-            }, systemUserId, now);
+            }, systemUserId, now, 'auto-expire');
 
             // ── ริบมัดจำเข้ารายได้ (ผู้สอบอนุมัติ S41-1203 ไม่มี VAT, 2026-08-25) ──
             // Dr S21-2002 / Cr S41-1203 — ไม่แตะเงินสด เพราะเงินเข้าลิ้นชักไปแล้ว

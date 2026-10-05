@@ -1103,6 +1103,10 @@ describe('BookingsService', () => {
       expect(claim.data.unlockedAt).toBeInstanceOf(Date);
       expect(prisma._tx.auditLog.create.mock.calls.some((c: any[]) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED')).toBe(false);
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      // canceledAt ใช้ `now` ตัวเดียวกับ unlockedAt · audit บันทึกเครื่องที่ปลดล็อกจริง
+      expect(claim.data.canceledAt).toBe(claim.data.unlockedAt);
+      const canceled = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_CANCELED');
+      expect(canceled![0].data.newValue.unlockedProductId).toBe('prod-1');
     });
 
     it('ยกเลิก — เครื่องถูกเปลี่ยนสถานะด้วยมือระหว่างล็อก (count 0) → ไม่ throw · audit BOOKING_UNLOCK_SKIPPED · Sentry warning หลัง tx', async () => {
@@ -1115,9 +1119,11 @@ describe('BookingsService', () => {
       expect(skipped).toBeDefined();
       expect(skipped![0].data).toMatchObject({
         action: 'BOOKING_UNLOCK_SKIPPED', entity: 'booking', entityId: 'bk-1', userId: OWNER.id,
-        newValue: { lockedProductId: 'prod-1', bookingNumber: 'BK-20260517-0001', reason: 'PRODUCT_NOT_RESERVED' },
+        newValue: { lockedProductId: 'prod-1', bookingNumber: 'BK-20260517-0001', reason: 'PRODUCT_NOT_RESERVED', flow: 'cancel' },
       });
       expect(typeof skipped![0].data.newValue.at).toBe('string');
+      const canceled = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_CANCELED');
+      expect(canceled![0].data.newValue.unlockedProductId).toBeNull();
       expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
       expect(Sentry.captureMessage).toHaveBeenCalledWith(
         expect.stringContaining('unlock skipped'),
@@ -1159,7 +1165,9 @@ describe('BookingsService', () => {
       prisma._tx.product.updateMany.mockResolvedValueOnce({ count: 0 });
       expect(await service.autoExpire(new Date())).toBe(1);
       const calls = prisma._tx.auditLog.create.mock.calls as any[][];
-      expect(calls.some((c) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED')).toBe(true);
+      const skippedExpire = calls.find((c) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED');
+      expect(skippedExpire).toBeDefined();
+      expect(skippedExpire![0].data.newValue.flow).toBe('auto-expire');
       const expired = calls.find((c) => c[0].data.action === 'BOOKING_AUTO_EXPIRED');
       expect(expired![0].data.newValue.unlockedProductId).toBeNull();
       expect(shopBookingForfeitTemplate.execute).toHaveBeenCalled();

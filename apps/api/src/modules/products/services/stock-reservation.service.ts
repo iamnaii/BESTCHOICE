@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -47,6 +52,16 @@ export class StockReservationService {
    * Unreserve a product (release back to IN_STOCK)
    */
   async unreserve(productId: string) {
+    // PR 2: เครื่องที่ใบจองล็อกไว้ปลดได้ทางเดียวคือยกเลิกใบ/หมดอายุ (bookings.service) — ปุ่มปลดจองทั่วไปห้ามแย่ง
+    const lockedBy = await this.prisma.booking.findFirst({
+      where: { lockedProductId: productId, status: 'PAID', deletedAt: null },
+      select: { id: true, bookingNumber: true },
+    });
+    if (lockedBy) {
+      throw new ConflictException(
+        `เครื่องนี้ถูกล็อกโดยใบจอง ${lockedBy.bookingNumber} — ยกเลิกใบจองก่อน (หรือรอให้หมดอายุ) แล้วเครื่องจะกลับมาพร้อมขายเอง`,
+      );
+    }
     const released = await this.prisma.product.updateMany({
       where: { id: productId, deletedAt: null, status: 'RESERVED' },
       data: { status: 'IN_STOCK' },

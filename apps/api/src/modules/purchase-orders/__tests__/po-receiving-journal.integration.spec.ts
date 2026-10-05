@@ -34,6 +34,7 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
+import { ShopSupplierPaymentTemplate } from '../../journal/cpa-templates/shop-supplier-payment.template';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ProductsService } from '../../products/products.service';
 import { ProductPhotosService } from '../../quality-control/product-photos.service';
@@ -48,8 +49,9 @@ const journal = new JournalAutoService(prisma as never);
 const companyResolver = new CompanyResolverService(prisma as never);
 const shopAccountResolver = new ShopAccountResolver(prisma as never);
 const goodsReceivingTemplate = new ShopGoodsReceivingTemplate(journal, prisma as never, companyResolver);
+const supplierPaymentTemplate = new ShopSupplierPaymentTemplate(journal, prisma as never, companyResolver);
 const cashSaleTemplate = new ShopCashSaleTemplate(journal, prisma as never, companyResolver);
-const service = new PurchaseOrdersService(prisma as never, goodsReceivingTemplate, shopAccountResolver, companyResolver);
+const service = new PurchaseOrdersService(prisma as never, goodsReceivingTemplate, shopAccountResolver, companyResolver, supplierPaymentTemplate);
 const productsService = new ProductsService(prisma as never);
 const productPhotosService = new ProductPhotosService(prisma as never);
 const stockAdjustmentsService = new StockAdjustmentsService(prisma as never);
@@ -485,6 +487,7 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
       failingTemplate as never,
       shopAccountResolver,
       companyResolver,
+      supplierPaymentTemplate,
     );
 
     await expect(

@@ -151,6 +151,33 @@ export class UpdatePODto {
   status?: string;
 }
 
+/**
+ * ก้อน 2 (คำตัดสินเจ้าของ 2026-10-05 ข้อ 6): ยกเลิกใบสั่งซื้อที่มีมัดจำค้าง ต้องบอกว่าได้คืนหรือไม่ได้คืน —
+ * ใบที่ไม่มีมัดจำส่ง body ว่างได้. ตรวจเงื่อนไขละเอียด (จำนวน/สลิป/เหตุผล) ที่ SupplierPaymentService
+ */
+export class CancelPODto {
+  @IsIn(['REFUNDED', 'FORFEITED'])
+  @IsOptional()
+  depositOutcome?: 'REFUNDED' | 'FORFEITED';
+
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'วันที่ได้รับเงินคืนไม่ถูกต้อง' })
+  refundedAt?: string;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  refundAmount?: number;
+
+  @IsString()
+  @IsOptional()
+  slipUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  reason?: string;
+}
+
 export class UpdatePaymentDto {
   @IsIn(['UNPAID', 'DEPOSIT_PAID', 'PARTIALLY_PAID', 'FULLY_PAID'])
   paymentStatus: string;

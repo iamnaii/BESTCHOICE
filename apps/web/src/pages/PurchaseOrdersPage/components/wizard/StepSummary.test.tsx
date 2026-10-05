@@ -65,24 +65,22 @@ describe('StepSummary — สรุป + จ่ายเงิน (last step of 
     expect(screen.getByText('ผู้จัดจำหน่ายไม่มี VAT')).toBeInTheDocument();
   });
 
-  it('payment: choosing จ่ายครบแล้ว fills the paid amount with the net', () => {
-    const p = renderStep();
+  // ก้อน 2 (2026-10-05): ใบสั่งซื้อปกติไม่มีช่องจ่ายเงินแล้ว (จ่ายหลังอนุมัติผ่านปุ่มบันทึกการจ่าย) —
+  // ส่วน "รับเข้าตรง" ยังจ่ายทันทีได้ แต่โอนธนาคารเท่านั้น + สลิปบังคับ
+  it('โหมดใบสั่งซื้อ: ไม่มีช่องจ่ายเงิน แต่บอกว่าไปบันทึกหลังอนุมัติ', () => {
+    renderStep();
+    expect(screen.queryByRole('combobox', { name: 'สถานะการจ่าย' })).toBeNull();
+    expect(screen.getByText(/บันทึกการจ่ายหลังอนุมัติ/)).toBeInTheDocument();
+  });
+
+  it('โหมดรับเข้าตรง: มีช่องจ่ายเงิน เลือกจ่ายครบแล้วเติมยอดสุทธิ วิธีจ่ายไม่มีเงินสด และบอกว่าต้องแนบสลิป', () => {
+    const p = renderStep({ receive: { passed: 2, rejected: 0 }, form: { ...baseForm, paymentStatus: 'FULLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: '85800' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'สถานะการจ่าย' }), { target: { value: 'FULLY_PAID' } });
     expect(p.setForm).toHaveBeenCalledWith(expect.objectContaining({ paymentStatus: 'FULLY_PAID', paidAmount: '85800' }));
-  });
-
-  it('payment: quick 30% / 50% / เต็มจำนวน chips when partially paid', () => {
-    const p = renderStep({ form: { ...baseForm, paymentStatus: 'PARTIALLY_PAID' } });
-    fireEvent.click(screen.getByRole('button', { name: '50%' }));
-    expect(p.setForm).toHaveBeenCalledWith(expect.objectContaining({ paidAmount: '42900' }));
-    fireEvent.click(screen.getByRole('button', { name: 'เต็มจำนวน' }));
-    expect(p.setForm).toHaveBeenCalledWith(expect.objectContaining({ paidAmount: '85800' }));
-  });
-
-  it('attachments and payment notes only when something was paid', () => {
-    renderStep();
-    expect(screen.queryByLabelText('บันทึกการจ่าย')).toBeNull();
-    expect(screen.queryByText('แนบสลิป/หลักฐาน')).toBeNull();
+    const method = screen.getByRole('combobox', { name: 'วิธีจ่ายเงิน' }) as HTMLSelectElement;
+    expect(Array.from(method.options).map((o) => o.textContent)).not.toContain('เงินสด');
+    expect(screen.getByText(/โอนธนาคารเท่านั้น/)).toBeInTheDocument();
+    expect(screen.getByText(/ต้องแนบสลิป/)).toBeInTheDocument();
   });
 
   it('notes textarea updates the form', () => {

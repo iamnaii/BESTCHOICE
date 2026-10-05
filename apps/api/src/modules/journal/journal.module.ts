@@ -53,6 +53,8 @@ import { ShopExternalFinanceReceiptTemplate } from './cpa-templates/shop-externa
 import { ShopDownPaymentReversalTemplate } from './cpa-templates/shop-down-payment-reversal.template';
 import { ShopTradeInTemplate } from './cpa-templates/shop-trade-in.template';
 import { ShopGoodsReceivingTemplate } from './cpa-templates/shop-goods-receiving.template';
+// ก้อน 2 (2026-10-05) — จ่ายเงินผู้จัดจำหน่าย / มัดจำ
+import { ShopSupplierPaymentTemplate } from './cpa-templates/shop-supplier-payment.template';
 import { ShopExpenseTemplate } from './cpa-templates/shop-expense.template';
 import { ShopInventoryTransferTemplate } from './cpa-templates/shop-inventory-transfer.template';
 // SP7.2 — Outbox + saga infrastructure for cross-entity JE
@@ -128,6 +130,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopDownPaymentReversalTemplate,
     ShopTradeInTemplate,
     ShopGoodsReceivingTemplate,
+    ShopSupplierPaymentTemplate,
     ShopExpenseTemplate,
     ShopInventoryTransferTemplate,
     // SP7.2 — Outbox + saga infrastructure
@@ -195,6 +198,7 @@ import { RefundWaiveTemplate } from './cpa-templates/refund-waive.template';
     ShopDownPaymentReversalTemplate,
     ShopTradeInTemplate,
     ShopGoodsReceivingTemplate,
+    ShopSupplierPaymentTemplate,
     ShopExpenseTemplate,
     ShopInventoryTransferTemplate,
     // SP7.2 — Outbox + saga infrastructure

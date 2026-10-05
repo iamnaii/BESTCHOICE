@@ -21,7 +21,7 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     id: 'gri-1',
     journalEntryId: null,
     receivedCost: D('4199.66'),
-    receiving: { id: 'gr-1', grNumber: 'GR-2026-09-001', createdAt: receivedAt, receivedById: 'user-1', po: { id: 'po-1', poNumber: 'PO-2026-09-001' } },
+    receiving: { id: 'gr-1', grNumber: 'GR-2026-09-001', createdAt: receivedAt, receivedById: 'user-1', po: { id: 'po-1', poNumber: 'PO-2026-09-001', supplierId: 'sup-1', supplier: { name: 'ผู้จัดจำหน่ายทดสอบ' } } },
     poItem: { category: 'PHONE_USED' },
     // ผู้เรียกเปลี่ยนเครื่องเป็น IN_STOCK ใน tx เดียวกันก่อนเรียก
     product: { category: 'PHONE_USED', status: 'IN_STOCK', deletedAt: null },
@@ -34,6 +34,13 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     const closed = new Set(opts.closed ?? []);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tx: any = {
+      // ก้อน 2: หักมัดจำตอนรับของถามก่อนว่าเคยมัดจำไหม — spec นี้ไม่มีมัดจำ
+      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      // ก้อน 2: หักมัดจำล็อกแถวใบก่อน (lockPo) — ใบทดสอบไม่มีมัดจำ จบที่ findMany ว่าง
+      purchaseOrder: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'po-1', poNumber: 'PO-2026-09-001', status: 'FULLY_RECEIVED', netAmount: D('4199.66'), supplierId: 'sup-1', paidAmount: D('0'), deletedAt: null, supplier: { name: 'ผู้จัดจำหน่ายทดสอบ' } }),
+        update: jest.fn().mockResolvedValue({}),
+      },
       goodsReceivingItem: {
         findFirst: jest.fn().mockResolvedValue(item),
         findUnique: jest.fn().mockResolvedValue(locked),
@@ -70,6 +77,8 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
         grNumber: 'GR-2026-09-001',
         poId: 'po-1',
         poNumber: 'PO-2026-09-001',
+        supplierId: 'sup-1',
+        supplierName: 'ผู้จัดจำหน่ายทดสอบ',
         units: [{ productId: 'prod-2', inventoryAccountCode: 'S11-2002', payableAccountCode: 'S21-1101', cost: D('4199.66') }],
         acceptedProductId: 'prod-2',
         postedAt: receivedAt,
@@ -81,7 +90,8 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
       tx,
     );
     // ล็อกแถวก่อนอ่านค่าที่ใช้ตัดสิน — อ่านก่อนล็อก = ผู้มาทีหลังเห็นค่าเก่าแล้วลงซ้ำ
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    // 2 ครั้ง: ล็อกแถวหน่วย (ก่อนอ่านซ้ำ) + ล็อกแถวใบสั่งซื้อตอนหักมัดจำ (ก้อน 2 — ล็อกก่อนอ่านมัดจำเสมอ)
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(tx.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
       tx.goodsReceivingItem.findUnique.mock.invocationCallOrder[0],
     );
@@ -107,7 +117,7 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
           supplierDocType: 'TAX_INVOICE',
           supplierDocNumber: 'IV-0123',
           supplierDocDate: docDate,
-          po: { id: 'po-1', poNumber: 'PO-2026-09-001' },
+          po: { id: 'po-1', poNumber: 'PO-2026-09-001', supplierId: 'sup-1', supplier: { name: 'ผู้จัดจำหน่ายทดสอบ' } },
         },
       });
 

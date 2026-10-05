@@ -7,9 +7,12 @@ describe('goodsReceiving — persists structured defectReason on REJECT', () => 
   it('writes defectReason onto the rejected GoodsReceivingItem', async () => {
     const created: any[] = [];
     const tx: any = {
+      // ก้อน 2: หักมัดจำตอนรับของถามก่อนว่าเคยมัดจำไหม — spec นี้ไม่มีมัดจำ
+      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       purchaseOrder: {
         findUnique: jest.fn().mockResolvedValue({
-          id: 'po-1', status: 'APPROVED', deletedAt: null, supplierId: 's1',
+          id: 'po-1', status: 'APPROVED', deletedAt: null, supplierId: 's1', supplier: { id: 's1', name: 'ผู้จัดจำหน่ายทดสอบ' },
           // quantity / unitPrice / receivedQty เป็นคอลัมน์ NOT NULL ของ POItem — การรับของใช้คิดต้นทุนต่อหน่วย
           items: [{ id: 'poi-1', category: 'PHONE_NEW', brand: 'A', model: 'B', quantity: 1, unitPrice: 1000, receivedQty: 0 }],
         }),

@@ -6,6 +6,8 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
+import { ShopSupplierPaymentTemplate } from '../../journal/cpa-templates/shop-supplier-payment.template';
+import { SupplierPaymentService } from './supplier-payment.service';
 import { isPeriodClosedForBackdating, supplierDocMetadata, supplierDocRef } from './supplier-doc.util';
 import { formatDateShort, formatMonthName } from '../../../utils/thai-date.util';
 import { bangkokCalendarParts } from '../../../utils/date.util';
@@ -32,6 +34,8 @@ export interface ReceivingAcceptanceDeps {
   template: ShopGoodsReceivingTemplate;
   accounts: ShopAccountResolver;
   companies: CompanyResolverService;
+  /** ก้อน 2 — หักมัดจำเข้าเจ้าหนี้ของหน่วยที่เพิ่งลง */
+  payments: SupplierPaymentService;
 }
 
 export interface AcceptedUnitJournal {
@@ -74,10 +78,15 @@ export class ReceivingAcceptanceJournal {
 
   constructor(prisma: PrismaService, deps: Partial<ReceivingAcceptanceDeps> = {}) {
     const companies = deps.companies ?? new CompanyResolverService(prisma);
+    const accounts = deps.accounts ?? new ShopAccountResolver(prisma);
+    const journal = new JournalAutoService(prisma);
     this.deps = {
       companies,
-      accounts: deps.accounts ?? new ShopAccountResolver(prisma),
-      template: deps.template ?? new ShopGoodsReceivingTemplate(new JournalAutoService(prisma), prisma, companies),
+      accounts,
+      template: deps.template ?? new ShopGoodsReceivingTemplate(journal, prisma, companies),
+      payments:
+        deps.payments ??
+        new SupplierPaymentService(prisma, { template: new ShopSupplierPaymentTemplate(journal, prisma, companies), accounts, companies }),
     };
   }
 
@@ -108,7 +117,7 @@ export class ReceivingAcceptanceJournal {
             supplierDocType: true,
             supplierDocNumber: true,
             supplierDocDate: true,
-            po: { select: { id: true, poNumber: true } },
+            po: { select: { id: true, poNumber: true, supplierId: true, supplier: { select: { name: true } } } },
           },
         },
         poItem: { select: { category: true } },
@@ -136,6 +145,7 @@ export class ReceivingAcceptanceJournal {
       date: locked.receiving.supplierDocDate,
     };
 
+    const payableAccountCode = this.deps.accounts.resolveSupplierPayableAccount(receivingCategory(locked.poItem.category));
     const posted = await this.deps.template.execute(
       {
         idempotencyKey: `shop-goods-receiving-unit:${productId}`,
@@ -143,15 +153,15 @@ export class ReceivingAcceptanceJournal {
         grNumber: locked.receiving.grNumber,
         poId: locked.receiving.po.id,
         poNumber: locked.receiving.po.poNumber,
+        supplierId: locked.receiving.po.supplierId,
+        supplierName: locked.receiving.po.supplier.name,
         units: [
           {
             productId,
             inventoryAccountCode: this.deps.accounts.resolveProductAccounts(
               locked.product.category as ProductCategory,
             ).inventoryAccountCode,
-            payableAccountCode: this.deps.accounts.resolveSupplierPayableAccount(
-              receivingCategory(locked.poItem.category),
-            ),
+            payableAccountCode,
             cost: locked.receivedCost,
           },
         ],
@@ -169,6 +179,13 @@ export class ReceivingAcceptanceJournal {
     await tx.goodsReceivingItem.update({
       where: { id: item.id },
       data: { journalEntryId: posted.journalEntryId },
+    });
+    // ก้อน 2 (ข้อสมมติ ค): มัดจำค้างของใบสั่งซื้อหักเข้าเจ้าหนี้ที่เพิ่งตั้งให้หน่วยนี้ วันเดียวกับรายการของหน่วย
+    await this.deps.payments.applyDepositInTx(tx, locked.receiving.po.id, {
+      receivingId: locked.receiving.id,
+      grNumber: locked.receiving.grNumber,
+      postedAt,
+      userId: locked.receiving.receivedById,
     });
     if (chosen > 0) {
       this.logger.warn(

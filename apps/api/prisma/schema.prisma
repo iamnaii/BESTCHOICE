@@ -269,6 +269,15 @@ enum POPaymentStatus {
   FULLY_PAID
 }
 
+/// ก้อน 2 จ่ายเงินผู้จัดจำหน่าย (คำตัดสินเจ้าของ 2026-10-05) — ชนิดของแถวใน purchase_order_payments
+enum POPaymentKind {
+  DEPOSIT
+  SETTLEMENT
+  DEPOSIT_APPLIED
+  DEPOSIT_REFUND
+  DEPOSIT_FORFEIT
+}
+
 enum ReceivingItemStatus {
   PASS
   REJECT
@@ -1759,6 +1768,7 @@ model Supplier {
 
   products       Product[]
   purchaseOrders PurchaseOrder[]
+  purchaseOrderPayments PurchaseOrderPayment[]
   paymentMethods SupplierPaymentMethod[]
   fixedAssets    FixedAsset[]            @relation("FixedAssetVendor")
   repairTickets  RepairTicket[]          @relation("RepairCenterTickets")
@@ -1840,12 +1850,56 @@ model PurchaseOrder {
   products        Product[]
   goodsReceivings GoodsReceiving[]
   stockAlerts     StockAlert[]
+  payments        PurchaseOrderPayment[]
 
   @@index([supplierId])
   @@index([status])
   @@index([createdAt])
   @@index([deletedAt])
   @@map("purchase_orders")
+}
+
+/// ก้อน 2 (2026-10-05) — การจ่ายเงินผู้จัดจำหน่ายทีละรายการ (โอนธนาคารเท่านั้น) พร้อมรายการบัญชีสมุดหน้าร้าน.
+/// `PurchaseOrder.paidAmount` / `paymentStatus` = ผลรวมที่ SupplierPaymentService เขียนทับหลังทุกรายการ — ห้ามเขียนตรง.
+/// kind: DEPOSIT (มัดจำก่อนรับของ Dr S11-4201 / Cr S11-1202) · SETTLEMENT (ชำระเจ้าหนี้ Dr S21-110x / Cr S11-1202) ·
+/// DEPOSIT_APPLIED (หักมัดจำเข้าเจ้าหนี้อัตโนมัติตอนรับของ Dr S21-110x / Cr S11-4201) · DEPOSIT_REFUND / DEPOSIT_FORFEIT
+/// (ปิดมัดจำตอนยกเลิกใบสั่งซื้อ — คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 9.1 / 9.2)
+model PurchaseOrderPayment {
+  id                     String        @id @default(uuid())
+  poId                   String        @map("po_id")
+  supplierId             String        @map("supplier_id")
+  kind                   POPaymentKind
+  amount                 Decimal       @db.Decimal(12, 2)
+  /// วันที่โอน / วันที่เหตุการณ์ (เที่ยงคืนเวลาไทย)
+  paidAt                 DateTime      @map("paid_at")
+  /// วันที่ลงบัญชีจริง — เท่ากับ paidAt เว้นแต่งวดของวันนั้นปิดแล้ว (ลงวันที่บันทึกแทน + แจ้งฝ่ายบัญชี)
+  postedAt               DateTime      @map("posted_at")
+  /// S11-1202 (จ่ายออก) · S11-1201 (เงินมัดจำคืนเข้า) · null = รายการที่ไม่ผ่านธนาคาร (หักมัดจำ / ริบมัดจำ)
+  bankAccountCode        String?       @map("bank_account_code")
+  reference              String?
+  slipUrl                String?       @map("slip_url")
+  note                   String?
+  /// ใบรับของที่ทำให้เกิดการหักมัดจำ (DEPOSIT_APPLIED)
+  receivingId            String?       @map("receiving_id")
+  journalEntryId         String?       @unique @map("journal_entry_id")
+  createdById            String?       @map("created_by_id")
+  /** รหัสคำขอจากหน้าจอ (uuid ต่อการเปิดหน้าต่าง) — กดซ้ำ/เน็ตส่งซ้ำได้รายการเดิม ไม่เกิดรายการผี */
+  requestId              String?       @map("request_id")
+  voidedAt               DateTime?     @map("voided_at")
+  voidedById             String?       @map("voided_by_id")
+  voidReason             String?       @map("void_reason")
+  reversalJournalEntryId String?       @map("reversal_journal_entry_id")
+  createdAt              DateTime      @default(now()) @map("created_at")
+  updatedAt              DateTime      @updatedAt @map("updated_at")
+  deletedAt              DateTime?     @map("deleted_at")
+
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id])
+  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+
+  @@index([poId, deletedAt])
+  @@index([supplierId, paidAt])
+  @@index([poId, requestId])
+  @@map("purchase_order_payments")
 }
 
 model POItem {

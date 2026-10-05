@@ -65,6 +65,9 @@ export interface PurchaseOrder {
   paymentNotes: string | null;
   attachments: string[];
   notes: string | null;
+  /** บัญชีผู้รับเงินของผู้จัดจำหน่ายที่บันทึกไว้ตอนออกใบ (T5-C18) — หน้าจ่ายเงินแสดงให้เห็นว่าโอนเข้าไหน */
+  bankNameSnapshot?: string | null;
+  bankAccountSnapshot?: string | null;
   supplier: { id: string; name: string; contactName: string | null; phone: string; hasVat: boolean };
   createdBy: { id: string; name: string };
   approvedBy: { id: string; name: string } | null;
@@ -140,14 +143,10 @@ export interface ReceivingUnitForm {
  * Body of POST /purchase-orders/:id/approve (ApprovePODto) — approve = order, and the owner
  * may record the payment made on the spot in the same request (2026-09-06).
  */
+/** ก้อน 2 (2026-10-05): อนุมัติไม่รับยอดจ่ายอีก — จ่ายผ่านปุ่มบันทึกการจ่ายหลังอนุมัติ */
 export interface ApprovePOPayload {
   id: string;
   expectedDate?: string;
-  paymentStatus?: string;
-  paymentMethod?: string;
-  paidAmount?: number;
-  paymentNotes?: string;
-  attachments?: string[];
 }
 
 /** ซื้อสินค้า — one wizard, two ways in: order first (PO) or goods already in hand (direct receive). */
@@ -183,4 +182,126 @@ export interface SupplierOption {
   contactName: string | null;
   hasVat: boolean;
   paymentMethods: SupplierPaymentMethodOption[];
+}
+
+// ───────────── ก้อน 2 (2026-10-05) — จ่ายเงินผู้จัดจำหน่าย: รูปเดียวกับ API `GET /purchase-orders/:id/payments` ─────────────
+
+export type SupplierPaymentKind = 'DEPOSIT' | 'SETTLEMENT' | 'DEPOSIT_APPLIED' | 'DEPOSIT_REFUND' | 'DEPOSIT_FORFEIT';
+
+export interface SupplierPaymentSummary {
+  netAmount: string;
+  /** มัดจำ + ชำระ − มัดจำที่ได้คืน (ไม่นับรายการที่ยกเลิก) */
+  paidTotal: string;
+  /** เพดานที่ยังจ่ายได้ = ยอดสุทธิ − paidTotal */
+  remainingOnPo: string;
+  payableOutstanding: string;
+  payableByAccount: Record<string, string>;
+  depositOutstanding: string;
+  hasBookedPayable: boolean;
+  status: string;
+}
+
+export interface SupplierPayment {
+  id: string;
+  kind: SupplierPaymentKind;
+  amount: string;
+  paidAt: string;
+  postedAt: string;
+  bankAccountCode: string | null;
+  reference: string | null;
+  slipUrl: string | null;
+  note: string | null;
+  receivingId: string | null;
+  journalEntryId: string | null;
+  journalEntryNo: string | null;
+  createdBy: { id: string; name: string } | null;
+  createdAt: string;
+  voidedAt: string | null;
+  voidedBy: { id: string; name: string } | null;
+  voidReason: string | null;
+  reversalJournalEntryId: string | null;
+  reversalJournalEntryNo: string | null;
+}
+
+export interface PoPaymentsResponse {
+  summary: SupplierPaymentSummary;
+  payments: SupplierPayment[];
+  /** ยอดจ่ายที่กรอกไว้ก่อนมีเมนูนี้ (ไม่ได้ลงบัญชี) — แสดงเป็นป้ายเท่านั้น */
+  legacyPaidAmount: string;
+}
+
+export interface RecordSupplierPaymentPayload {
+  paidAt: string;
+  amount: number;
+  slipUrl: string;
+  reference?: string;
+  note?: string;
+  /** uuid ต่อการเปิดหน้าต่าง — กดซ้ำ/เน็ตส่งซ้ำ API ตอบรายการเดิม */
+  requestId?: string;
+}
+
+export interface CancelPOPayload {
+  depositOutcome?: 'REFUNDED' | 'FORFEITED';
+  refundedAt?: string;
+  refundAmount?: number;
+  slipUrl?: string;
+  reason?: string;
+}
+
+// ───────────── เจ้าหนี้รายผู้จัดจำหน่ายจากสมุดบัญชี — `GET /purchase-orders/payables/ledger` ─────────────
+
+export interface SupplierLedgerOpenPo {
+  id: string;
+  poNumber: string;
+  netAmount: string;
+  paidAmount: string;
+  remaining: string;
+  dueDate: string | null;
+  status: string;
+  paymentStatus: string;
+}
+
+export interface SupplierLedgerRow {
+  supplier: { id: string; name: string; hasVat: boolean };
+  opening: string;
+  receipts: string;
+  payments: string;
+  closing: string;
+  payableByAccount: Record<string, string>;
+  depositsOutstanding: string;
+  openPoCount: number;
+  nextDue: string | null;
+  dueState: 'OVERDUE' | 'DUE_SOON' | 'OK' | 'NONE';
+  openPos: SupplierLedgerOpenPo[];
+}
+
+export interface SupplierLedgerResponse {
+  month: string;
+  periodStart: string;
+  periodEnd: string;
+  totals: { closing: string; depositsOutstanding: string; dueWithin7Days: string; overdue: string; supplierCount: number; openPoCount: number };
+  suppliers: SupplierLedgerRow[];
+}
+
+export interface SupplierLedgerMovementRow {
+  journalEntryId: string;
+  entryNumber: string;
+  entryDate: string;
+  description: string;
+  kind: string;
+  poNumber: string | null;
+  grNumber: string | null;
+  paymentId: string | null;
+  payableIncrease: string;
+  payableDecrease: string;
+  depositChange: string;
+  running: string;
+}
+
+export interface SupplierLedgerMovements {
+  supplier: { id: string; name: string; hasVat: boolean };
+  month: string;
+  opening: string;
+  closing: string;
+  rows: SupplierLedgerMovementRow[];
 }

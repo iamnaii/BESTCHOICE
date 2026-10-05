@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { PODetailModal } from './PODetailModal';
-import type { PODetail, PurchaseOrder } from '../types';
+import type { PODetail, PurchaseOrder, PoPaymentsResponse } from '../types';
 import { formatDateShort } from '@/utils/formatters';
 
 const owner = { id: 'u-owner', name: 'สุรชัย เจ้าของร้าน' };
@@ -195,5 +195,46 @@ describe('PODetailModal (redesign A)', () => {
     expect(screen.queryByRole('button', { name: 'บันทึกการจ่าย' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'ยกเลิก PO' })).not.toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: 'ประวัติ' })).getByText('ยกเลิกใบสั่งซื้อ')).toBeInTheDocument();
+  });
+});
+
+describe('PODetailModal — ส่วนการจ่ายเงิน (ก้อน 2)', () => {
+  const paymentsData: PoPaymentsResponse = {
+    summary: { netAmount: '10700.00', paidTotal: '5000.00', remainingOnPo: '5700.00', payableOutstanding: '5700.00', payableByAccount: { 'S21-1101': '5700.00' }, depositOutstanding: '0.00', hasBookedPayable: true, status: 'PARTIALLY_PAID' },
+    payments: [
+      { id: 'p1', kind: 'DEPOSIT', amount: '5000.00', paidAt: '2026-09-27T17:00:00.000Z', postedAt: '2026-09-27T17:00:00.000Z', bankAccountCode: 'S11-1202', reference: 'TXN-1', slipUrl: 'https://x/slip.jpg', note: null, receivingId: null, journalEntryId: 'je1', journalEntryNo: 'S-JV-2569-0101', createdBy: { id: 'u-bm', name: 'สมชาย ผจก.ลาดพร้าว' }, createdAt: '2026-09-28T03:00:00.000Z', voidedAt: null, voidedBy: null, voidReason: null, reversalJournalEntryId: null, reversalJournalEntryNo: null },
+      { id: 'p2', kind: 'DEPOSIT_APPLIED', amount: '5000.00', paidAt: '2026-09-30T17:00:00.000Z', postedAt: '2026-09-30T17:00:00.000Z', bankAccountCode: null, reference: null, slipUrl: null, note: 'หักมัดจำเข้าเจ้าหนี้ตอนรับของ GR-000012', receivingId: 'gr1', journalEntryId: 'je2', journalEntryNo: 'S-JV-2569-0118', createdBy: null, createdAt: '2026-10-01T03:00:00.000Z', voidedAt: null, voidedBy: null, voidReason: null, reversalJournalEntryId: null, reversalJournalEntryNo: null },
+    ],
+    legacyPaidAmount: '0.00',
+  };
+
+  it('แสดงตารางรายการจ่าย ยอดจากสมุดบัญชี และปุ่มยกเลิกเฉพาะรายการที่บันทึกเอง (เจ้าของ)', () => {
+    const onVoidPayment = vi.fn();
+    renderModal(basePO({ paymentStatus: 'PARTIALLY_PAID', paidAmount: '5000' }), { paymentsData, onVoidPayment, canVoidPayments: true });
+    expect(screen.getByTestId('paid-progress')).toHaveTextContent('5,000');
+    expect(screen.getByTestId('payable-outstanding')).toHaveTextContent('5,700');
+    const table = screen.getByRole('table', { name: 'รายการจ่ายเงิน' });
+    expect(within(table).getByText('มัดจำ')).toBeInTheDocument();
+    expect(within(table).getByText('หักมัดจำเข้าเจ้าหนี้')).toBeInTheDocument();
+    expect(within(table).getByText('S-JV-2569-0101')).toBeInTheDocument();
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    fireEvent.click(within(table).getByRole('button', { name: 'ดูสลิป' }));
+    expect(open).toHaveBeenCalledWith('https://x/slip.jpg', '_blank', 'noopener');
+    open.mockRestore();
+    const voidButtons = within(table).getAllByRole('button', { name: 'ยกเลิกรายการ' });
+    expect(voidButtons).toHaveLength(1);
+    fireEvent.click(voidButtons[0]);
+    expect(onVoidPayment).toHaveBeenCalledWith(expect.objectContaining({ id: 'po9' }), expect.objectContaining({ id: 'p1' }));
+  });
+
+  it('ไม่ใช่เจ้าของ → ไม่มีปุ่มยกเลิกรายการ · ไม่มีสิทธิ์บันทึกจ่าย → ไม่มีปุ่มบันทึกการจ่าย', () => {
+    renderModal(basePO(), { paymentsData, canVoidPayments: false, canRecordPayments: false });
+    expect(screen.queryByRole('button', { name: 'ยกเลิกรายการ' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'บันทึกการจ่าย' })).not.toBeInTheDocument();
+  });
+
+  it('ยอดจ่ายเก่าก่อนมีเมนู (ไม่มีรายการ) → ป้ายเตือนว่าไม่ได้ลงบัญชี', () => {
+    renderModal(basePO({ paidAmount: '3000', paymentStatus: 'DEPOSIT_PAID' }), { paymentsData: { ...paymentsData, payments: [], legacyPaidAmount: '3000.00' } });
+    expect(screen.getByText(/3,000 บาทที่กรอกไว้ก่อนมีเมนูจ่ายเงิน/)).toBeInTheDocument();
   });
 });

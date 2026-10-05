@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import PageHeader from '@/components/ui/PageHeader';
@@ -6,9 +6,11 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { exportToExcel } from '@/utils/excel.util';
 import { Download, Camera } from 'lucide-react';
 import { Link, useNavigate } from 'react-router';
-import api from '@/lib/api';
+import api, { getErrorMessage } from '@/lib/api';
 import { formatDateShort } from '@/utils/formatters';
-import { usePurchaseOrdersData } from './hooks/usePurchaseOrdersData';
+import { usePurchaseOrdersData, usePoPayments, useSupplierLedger, useSupplierLedgerMovements } from './hooks/usePurchaseOrdersData';
+import { todayIso } from './supplier-payment.util';
+import { useAuth } from '@/contexts/AuthContext';
 import { usePOForm } from './hooks/usePOForm';
 import { useCreatePoWizard } from './hooks/useCreatePoWizard';
 import { computePoTotals } from './poTotals';
@@ -18,7 +20,8 @@ import { POListTab } from './components/POListTab';
 import { AccountsPayableTab } from './components/AccountsPayableTab';
 import { PurchaseModal } from './components/PurchaseModal';
 import { PODetailModal } from './components/PODetailModal';
-import { PaymentModal } from './components/PaymentModal';
+import { SupplierPaymentDialog, VoidSupplierPaymentDialog } from './components/SupplierPaymentDialog';
+import { CancelPODialog } from './components/CancelPODialog';
 import { GoodsReceivingModal } from './components/GoodsReceivingModal';
 import { PurchasingSummaryStrip } from './components/PurchasingSummaryStrip';
 import type { SummaryFilterAction } from './summaryStrip';
@@ -35,6 +38,26 @@ export default function PurchaseOrdersPage() {
   }, []);
 
   const data = usePurchaseOrdersData({ onCreateSuccess });
+  // ก้อน 2: สิทธิ์ตามคำตัดสินเจ้าของ 2026-10-05 — บันทึกจ่าย = เจ้าของ + ผู้จัดการสาขา · ยกเลิกรายการ = เจ้าของ
+  const { user } = useAuth();
+  const canRecordPayments = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
+  const canVoidPayments = user?.role === 'OWNER';
+  const poPayments = usePoPayments(data.selectedPO?.id ?? null, data.isDetailModalOpen || data.isPaymentDialogOpen || !!data.cancelTarget);
+  // แท็บเจ้าหนี้รายผู้จัดจำหน่าย (กระดาน 5) — ยอดจากสมุดบัญชี เลือกเดือน/ผู้จัดจำหน่ายได้
+  const [ledgerMonth, setLedgerMonth] = useState(() => todayIso().slice(0, 7));
+  const [ledgerSupplierId, setLedgerSupplierId] = useState<string | null>(null);
+  const ledger = useSupplierLedger(ledgerMonth, data.activeTab === 'payable');
+  const ledgerMovements = useSupplierLedgerMovements(data.activeTab === 'payable' ? ledgerSupplierId : null, ledgerMonth);
+  const openPoFromLedger = async (poId: string) => {
+    try {
+      const { data: po } = await api.get(`/purchase-orders/${poId}`);
+      data.setSelectedPO(po);
+      data.setPODetail(po);
+      data.setIsDetailModalOpen(true);
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
 
   const poForm = usePOForm({
     createMutation: data.createMutation,
@@ -187,9 +210,9 @@ export default function PurchaseOrdersPage() {
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${data.activeTab === 'payable' ? 'border-destructive text-destructive' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
         >
           ยอดค้างชำระ ( ผู้จัดจำหน่าย )
-          {data.payableData && data.payableData.grandTotal > 0 && (
+          {ledger.data && Number(ledger.data.totals.closing) > 0 && (
             <span className="ml-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-destructive/10 text-destructive dark:bg-destructive/15">
-              {(Number(data.payableData.grandTotal) || 0).toLocaleString()}
+              {(Number(ledger.data.totals.closing) || 0).toLocaleString()}
             </span>
           )}
         </button>
@@ -208,6 +231,7 @@ export default function PurchaseOrdersPage() {
           orderMutation={data.orderMutation}
           rejectPOMutation={data.rejectPOMutation}
           cancelMutation={data.cancelMutation}
+          onCancelPO={data.openCancelDialog}
           setConfirmDialog={data.setConfirmDialog}
           suppliers={data.suppliers}
           overdueOnly={data.overdueOnly}
@@ -215,12 +239,18 @@ export default function PurchaseOrdersPage() {
         />
       ) : (
         <AccountsPayableTab
-          payableData={data.payableData}
-          onOpenDetail={(po, detail) => {
-            data.setSelectedPO(po);
-            data.setPODetail(detail);
-            data.setIsDetailModalOpen(true);
+          ledger={ledger.data}
+          isLoading={ledger.isLoading}
+          month={ledgerMonth}
+          setMonth={(m) => {
+            setLedgerMonth(m);
+            setLedgerSupplierId(null);
           }}
+          selectedSupplierId={ledgerSupplierId}
+          onSelectSupplier={setLedgerSupplierId}
+          movements={ledgerMovements.data}
+          movementsLoading={ledgerMovements.isLoading}
+          onOpenPo={openPoFromLedger}
         />
       )}
 
@@ -266,37 +296,55 @@ export default function PurchaseOrdersPage() {
         poDetail={data.poDetail}
         openReceiveModal={data.openReceiveModal}
         openPaymentModal={data.openPaymentModal}
-        onCancel={(po) =>
-          data.setConfirmDialog({
-            open: true,
-            message:
-              po.status === 'ORDERED'
-                ? `ต้องการยกเลิก PO ${po.poNumber}? สั่งซื้อแล้วแต่ยังไม่ได้รับของ — ยกเลิกแล้วต้องแจ้งผู้ขายเอง`
-                : `ต้องการยกเลิก PO ${po.poNumber}?`,
-            action: () =>
-              data.cancelMutation.mutate(po.id, {
-                onSuccess: () => {
-                  data.setIsDetailModalOpen(false);
-                  data.setPODetail(null);
-                },
-              }),
-          })
+        paymentsData={poPayments.data ?? null}
+        canRecordPayments={canRecordPayments}
+        canVoidPayments={canVoidPayments}
+        onVoidPayment={(po, payment) => {
+          data.setSelectedPO(po);
+          data.setVoidTarget(payment);
+        }}
+        onCancel={(po) => data.openCancelDialog(po)}
+      />
+
+      <SupplierPaymentDialog
+        open={data.isPaymentDialogOpen}
+        po={data.selectedPO}
+        summary={poPayments.data?.summary ?? null}
+        summaryLoading={poPayments.isLoading}
+        pending={data.recordPaymentMutation.isPending}
+        onClose={() => data.setIsPaymentDialogOpen(false)}
+        onSubmit={(payload) => data.selectedPO && data.recordPaymentMutation.mutate({ poId: data.selectedPO.id, payload })}
+      />
+
+      <CancelPODialog
+        open={!!data.cancelTarget}
+        po={data.cancelTarget}
+        summary={poPayments.data?.summary ?? null}
+        summaryLoading={poPayments.isLoading}
+        pending={data.cancelMutation.isPending}
+        onClose={() => data.setCancelTarget(null)}
+        onConfirm={(payload) =>
+          data.cancelTarget &&
+          data.cancelMutation.mutate(
+            { id: data.cancelTarget.id, payload },
+            {
+              onSuccess: () => {
+                data.setIsDetailModalOpen(false);
+                data.setPODetail(null);
+              },
+            },
+          )
         }
       />
 
-      <PaymentModal
-        isOpen={data.isPaymentModalOpen}
-        onClose={() => data.setIsPaymentModalOpen(false)}
-        selectedPO={data.selectedPO}
-        suppliers={data.suppliers}
-        paymentForm={data.paymentForm}
-        setPaymentForm={data.setPaymentForm}
-        paymentAttachments={data.paymentAttachments}
-        setPaymentAttachments={data.setPaymentAttachments}
-        paymentAttachmentUrl={data.paymentAttachmentUrl}
-        setPaymentAttachmentUrl={data.setPaymentAttachmentUrl}
-        paymentMutation={data.paymentMutation}
-        handlePaymentUpdate={data.handlePaymentUpdate}
+      <VoidSupplierPaymentDialog
+        open={!!data.voidTarget}
+        payment={data.voidTarget}
+        pending={data.voidPaymentMutation.isPending}
+        onClose={() => data.setVoidTarget(null)}
+        onConfirm={(reason) =>
+          data.selectedPO && data.voidTarget && data.voidPaymentMutation.mutate({ poId: data.selectedPO.id, paymentId: data.voidTarget.id, reason })
+        }
       />
 
       <GoodsReceivingModal

@@ -36,6 +36,8 @@ import {
 } from '../../journal/cpa-templates/shop-goods-receiving.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { SupplierPaymentService } from './supplier-payment.service';
+import { payableLinesFromUnits } from './supplier-payment.util';
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
 import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
@@ -50,6 +52,8 @@ export interface PoReceivingJournalDeps {
   goodsReceivingTemplate: ShopGoodsReceivingTemplate;
   shopAccountResolver: ShopAccountResolver;
   companyResolver: CompanyResolverService;
+  /** ก้อน 2 (2026-10-05) — หักมัดจำเข้าเจ้าหนี้อัตโนมัติตอนรับของ */
+  supplierPayments: SupplierPaymentService;
 }
 
 /**
@@ -445,6 +449,8 @@ export class PoReceivingService {
       grNumber,
       poId: id,
       poNumber: po.poNumber,
+      supplierId: po.supplierId,
+      supplierName: po.supplier.name,
       units: journalUnits,
       postedAt: journalPostedAt,
       shopCompanyId,
@@ -459,6 +465,16 @@ export class PoReceivingService {
         data: { journalEntryId: posted.journalEntryId },
       });
     }
+    // ก้อน 2 (ข้อสมมติ ค): มัดจำที่จ่ายไว้ก่อนรับของ หักเข้าเจ้าหนี้ที่เพิ่งตั้ง ใน tx เดียวกัน วันเดียวกับรายการรับของ —
+    // ไม่มีมัดจำ = null · หน่วยที่รอถ่ายรูปหักตอนผ่านเข้าคลัง (ReceivingAcceptanceJournal)
+    const depositApplied = posted
+      ? await this.journal.supplierPayments.applyDepositInTx(tx, id, payableLinesFromUnits(journalUnits), {
+          receivingId: receiving.id,
+          grNumber,
+          postedAt: journalPostedAt,
+          userId,
+        })
+      : null;
 
     return {
       receivingId: receiving.id,
@@ -470,6 +486,8 @@ export class PoReceivingService {
       products: passedProducts,
       mainWarehouse: mainWarehouse!.name,
       journalEntryNo: posted?.entryNo ?? null,
+      /** มัดจำที่ถูกหักเข้าเจ้าหนี้ในการรับครั้งนี้ (null = ใบนี้ไม่มีมัดจำค้าง) */
+      depositApplied: depositApplied ? { amount: depositApplied.amount, journalEntryNo: depositApplied.journalEntryNo } : null,
       /** หน่วยที่รอถ่ายรูป — ลงบัญชีรับเข้าคลังตอนผ่านเข้าคลัง ไม่ใช่ตอนนี้ */
       unitsAwaitingStockEntry,
       receivedAt: receiving.createdAt,
@@ -563,6 +581,8 @@ export class PoReceivingService {
       grNumber: string;
       poId: string;
       poNumber: string;
+      supplierId: string;
+      supplierName: string;
       units: ShopGoodsReceivingUnit[];
       postedAt: Date;
       shopCompanyId: string;
@@ -580,6 +600,8 @@ export class PoReceivingService {
         grNumber: input.grNumber,
         poId: input.poId,
         poNumber: input.poNumber,
+        supplierId: input.supplierId,
+        supplierName: input.supplierName,
         units: input.units,
         postedAt: input.postedAt,
         postedOnReceiveDate: input.postedOnReceiveDate,

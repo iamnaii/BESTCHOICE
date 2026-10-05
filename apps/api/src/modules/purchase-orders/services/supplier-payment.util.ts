@@ -155,3 +155,15 @@ export function parsePaidAt(value: string, now: Date = new Date()): Date {
   }
   return date;
 }
+
+/** รวมหน่วยที่เพิ่งตั้งเจ้าหนี้ (ตอนรับของ) เป็นบรรทัดต่อบัญชีเจ้าหนี้ เรียงรหัส — อินพุตของ `applyDepositInTx` */
+export function payableLinesFromUnits(units: { payableAccountCode: string; cost: DecimalLike }[]): PayableLine[] {
+  const totals: Record<string, Decimal> = {};
+  for (const unit of units) {
+    totals[unit.payableAccountCode] = (totals[unit.payableAccountCode] ?? ZERO).add(dec(unit.cost));
+  }
+  return Object.keys(totals)
+    .sort()
+    .filter((code) => totals[code].gt(ZERO))
+    .map((accountCode) => ({ accountCode, amount: totals[accountCode] }));
+}

@@ -242,6 +242,12 @@ export class SupplierPaymentService {
   ): Promise<{ paymentId: string; amount: string; journalEntryNo: string; lines: PayableLine[] } | null> {
     const fresh = newPayable.filter((line) => line.amount.gt(ZERO));
     if (fresh.length === 0) return null;
+    // ทางลัด: ใบที่ไม่เคยมัดจำเลย (กรณีส่วนใหญ่) ไม่ต้องล็อกแถว/อ่านสมุดบัญชี
+    const anyDeposit = await tx.purchaseOrderPayment.findFirst({
+      where: { poId, kind: 'DEPOSIT', voidedAt: null, deletedAt: null },
+      select: { id: true },
+    });
+    if (!anyDeposit) return null;
     const po = await this.lockPo(tx, poId);
     const position = await this.positionInTx(tx, po);
     if (!position.depositOutstanding.gt(ZERO)) return null;

@@ -21,7 +21,7 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     id: 'gri-1',
     journalEntryId: null,
     receivedCost: D('4199.66'),
-    receiving: { id: 'gr-1', grNumber: 'GR-2026-09-001', createdAt: receivedAt, receivedById: 'user-1', po: { id: 'po-1', poNumber: 'PO-2026-09-001' } },
+    receiving: { id: 'gr-1', grNumber: 'GR-2026-09-001', createdAt: receivedAt, receivedById: 'user-1', po: { id: 'po-1', poNumber: 'PO-2026-09-001', supplierId: 'sup-1', supplier: { name: 'ผู้จัดจำหน่ายทดสอบ' } } },
     poItem: { category: 'PHONE_USED' },
     // ผู้เรียกเปลี่ยนเครื่องเป็น IN_STOCK ใน tx เดียวกันก่อนเรียก
     product: { category: 'PHONE_USED', status: 'IN_STOCK', deletedAt: null },
@@ -34,6 +34,8 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
     const closed = new Set(opts.closed ?? []);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tx: any = {
+      // ก้อน 2: หักมัดจำตอนรับของถามก่อนว่าเคยมัดจำไหม — spec นี้ไม่มีมัดจำ
+      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null) },
       goodsReceivingItem: {
         findFirst: jest.fn().mockResolvedValue(item),
         findUnique: jest.fn().mockResolvedValue(locked),
@@ -70,6 +72,8 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
         grNumber: 'GR-2026-09-001',
         poId: 'po-1',
         poNumber: 'PO-2026-09-001',
+        supplierId: 'sup-1',
+        supplierName: 'ผู้จัดจำหน่ายทดสอบ',
         units: [{ productId: 'prod-2', inventoryAccountCode: 'S11-2002', payableAccountCode: 'S21-1101', cost: D('4199.66') }],
         acceptedProductId: 'prod-2',
         postedAt: receivedAt,
@@ -107,7 +111,7 @@ describe('ReceivingAcceptanceJournal.bookIfPending', () => {
           supplierDocType: 'TAX_INVOICE',
           supplierDocNumber: 'IV-0123',
           supplierDocDate: docDate,
-          po: { id: 'po-1', poNumber: 'PO-2026-09-001' },
+          po: { id: 'po-1', poNumber: 'PO-2026-09-001', supplierId: 'sup-1', supplier: { name: 'ผู้จัดจำหน่ายทดสอบ' } },
         },
       });
 

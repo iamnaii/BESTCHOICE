@@ -20,6 +20,8 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
       color: null, storage: '256GB', accessoryType: null, accessoryBrand: null,
       quantity: 1, receivedQty: 0, unitPrice: 30000 }];
     const tx: any = {
+      // ก้อน 2: หักมัดจำตอนรับของถามก่อนว่าเคยมัดจำไหม — spec นี้ไม่มีมัดจำ
+      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null) },
       purchaseOrder: {
         count: jest.fn().mockResolvedValue(2),
         create: jest.fn().mockImplementation(({ data }) => {

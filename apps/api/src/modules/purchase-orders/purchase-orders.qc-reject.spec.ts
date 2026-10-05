@@ -11,6 +11,8 @@ describe('PurchaseOrdersService.rejectQC', () => {
 
   const buildTx = (products: { id: string; status: string; name: string }[], bookedProductIds: string[] = []) => {
     const tx = {
+      // ก้อน 2: หักมัดจำตอนรับของถามก่อนว่าเคยมัดจำไหม — spec นี้ไม่มีมัดจำ
+      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null) },
       product: {
         findMany: jest.fn().mockResolvedValue(products),
         updateMany: jest.fn().mockResolvedValue({ count: products.length }),

@@ -48,6 +48,7 @@ export class PurchaseOrdersService {
       goodsReceivingTemplate,
       shopAccountResolver,
       companyResolver,
+      supplierPayments: this.supplierPayments,
     });
   }
 

@@ -29,6 +29,8 @@ import { ShopAccountResolver } from '../../journal/shop-account-resolver.service
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
 import { ShopSupplierPaymentTemplate } from '../../journal/cpa-templates/shop-supplier-payment.template';
 import { bangkokDateString } from '../../../utils/date.util';
+import { ProductsService } from '../../products/products.service';
+import { ProductPhotosService } from '../../quality-control/product-photos.service';
 
 const prisma = new PrismaClient();
 const journal = new JournalAutoService(prisma as never);
@@ -44,6 +46,9 @@ const service = new PurchaseOrdersService(
   supplierPaymentTemplate,
 );
 
+const productsService = new ProductsService(prisma as never);
+const productPhotosService = new ProductPhotosService(prisma as never);
+const FULL_ANGLES = { front: 'f.jpg', back: 'b.jpg', left: 'l.jpg', right: 'r.jpg', top: 't.jpg', bottom: 'u.jpg' };
 const PREFIX = 'SPAYTEST-';
 const RUN = Date.now().toString(36).toUpperCase();
 const SLIP = 'data:image/png;base64,c2xpcA==';
@@ -99,11 +104,11 @@ async function createOrderedPo(supplierId: string, items: ItemInput[], opts: { d
 const poItemOf = (po: { items: { id: string; model: string | null }[] }, model: string) => po.items.find((i) => i.model === model)!;
 
 /** รับของ (ผ่านทุกชิ้น) — ไม่มีเอกสาร ลงบัญชีวันที่รับของ */
-async function receive(poId: string, poItemIds: string[]) {
+async function receive(poId: string, poItemIds: string[], extra: Record<string, unknown> = {}) {
   return service.goodsReceiving(
     poId,
     {
-      items: poItemIds.map((poItemId) => ({ poItemId, imeiSerial: nextImei(), status: 'PASS' as const })),
+      items: poItemIds.map((poItemId) => ({ poItemId, imeiSerial: nextImei(), status: 'PASS' as const, ...extra })),
       supplierDocType: 'NONE',
       notes: 'ทดสอบ ไม่มีเอกสาร',
     } as never,
@@ -266,5 +271,86 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     const list = await service.listSupplierPayments(po.id);
     expect(list.payments).toEqual([]);
     expect(list.summary.status).toBe('UNPAID');
+  });
+
+  // ───────────── Task 4: หักมัดจำเข้าเจ้าหนี้อัตโนมัติตอนรับของ (ข้อสมมติ ค) ─────────────
+
+  it('มัดจำ 5,000 → รับของทั้งใบ → หักมัดจำเข้าเจ้าหนี้วันเดียวกับรายการรับของ · JE รับของติด supplierId · ชำระส่วนที่เหลือแล้วเจ้าหนี้ศูนย์', async () => {
+    const supplier = await seedSupplier('APPLY', true);
+    const po = await createDocExamplePo(supplier.id);
+    await service.recordSupplierPayment(po.id, { paidAt: today(), amount: 5000, slipUrl: SLIP }, adminId);
+
+    const received = await receive(po.id, [poItemOf(po, `${PREFIX}A`).id, poItemOf(po, `${PREFIX}B`).id]);
+    expect(received.depositApplied).toEqual({ amount: '5000.00', journalEntryNo: expect.any(String) });
+
+    const entries = await poEntries(po.id);
+    const receivingJe = entries.find((e) => (e.metadata as { tag?: string }).tag === 'SHOP_GOODS_RECEIVING')!;
+    expect(receivingJe.metadata).toMatchObject({ supplierId: supplier.id, supplierName: supplier.name });
+    const applied = entries.find((e) => (e.metadata as { kind?: string }).kind === 'DEPOSIT_APPLIED')!;
+    expect(netByAccount([applied])).toEqual({ 'S21-1101': '5000.00', 'S11-4201': '-5000.00' });
+    expect(applied.entryDate.toISOString()).toBe(receivingJe.entryDate.toISOString());
+    expect(applied.metadata).toMatchObject({ receivingId: received.receivingId, grNumber: received.grNumber, supplierId: supplier.id });
+
+    const rows = await prisma.purchaseOrderPayment.findMany({ where: { poId: po.id }, orderBy: { createdAt: 'asc' } });
+    expect(rows.map((r) => [r.kind, r.amount.toFixed(2), r.receivingId])).toEqual([
+      ['DEPOSIT', '5000.00', null],
+      ['DEPOSIT_APPLIED', '5000.00', received.receivingId],
+    ]);
+
+    const list = await service.listSupplierPayments(po.id);
+    expect(list.summary).toMatchObject({ depositOutstanding: '0.00', payableOutstanding: '10729.00', paidTotal: '5000.00', status: 'PARTIALLY_PAID' });
+    expect((await freshPo(po.id)).paidAmount.toFixed(2)).toBe('5000.00');
+
+    const settle = await service.recordSupplierPayment(po.id, { paidAt: today(), amount: 10729, slipUrl: SLIP }, adminId);
+    expect(settle.payments.map((p) => [p.kind, p.amount])).toEqual([['SETTLEMENT', '10729.00']]);
+    expect(settle.summary).toMatchObject({ payableOutstanding: '0.00', paidTotal: '15729.00', remainingOnPo: '0.00', status: 'FULLY_PAID' });
+    expect(netByAccount(await poEntries(po.id))).toEqual({ 'S11-2001': '15729.00', 'S11-1202': '-15729.00' });
+    expect((await freshPo(po.id)).paymentStatus).toBe('FULLY_PAID');
+  });
+
+  it('มัดจำมากกว่าเจ้าหนี้ที่เกิดในครั้งแรก → หักเท่าที่เกิด เหลือรอครั้งถัดไป', async () => {
+    const supplier = await seedSupplier('PARTIAL', true);
+    const po = await createDocExamplePo(supplier.id);
+    await service.recordSupplierPayment(po.id, { paidAt: today(), amount: 6000, slipUrl: SLIP }, adminId);
+
+    const first = await receive(po.id, [poItemOf(po, `${PREFIX}B`).id]); // เจ้าหนี้ 5,243
+    expect(first.depositApplied?.amount).toBe('5243.00');
+    let list = await service.listSupplierPayments(po.id);
+    expect(list.summary).toMatchObject({ depositOutstanding: '757.00', payableOutstanding: '0.00' });
+
+    const second = await receive(po.id, [poItemOf(po, `${PREFIX}A`).id]); // เจ้าหนี้ 10,486
+    expect(second.depositApplied?.amount).toBe('757.00');
+    list = await service.listSupplierPayments(po.id);
+    expect(list.summary).toMatchObject({ depositOutstanding: '0.00', payableOutstanding: '9729.00', paidTotal: '6000.00' });
+
+    const third = await receive(po.id, []).catch((e: Error) => e); // ไม่มีอะไรรับแล้ว — ต้องไม่สร้างรายการหักเพิ่ม
+    expect(third).toBeInstanceOf(Error);
+    expect(await prisma.purchaseOrderPayment.count({ where: { poId: po.id, kind: 'DEPOSIT_APPLIED' } })).toBe(2);
+  });
+
+  it('มือสองรอถ่ายรูป: มัดจำยังค้างจนเครื่องผ่านเข้าคลัง แล้วจึงหักเข้าเจ้าหนี้วันเดียวกับรายการของหน่วย', async () => {
+    const supplier = await seedSupplier('USED', false);
+    const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}Used`, quantity: 1, unitPrice: 8000 }]);
+    await service.recordSupplierPayment(po.id, { paidAt: today(), amount: 3000, slipUrl: SLIP }, adminId);
+
+    // รูปครบแต่ไม่มีราคา → รอถ่ายรูป (ไม่ลงบัญชี ไม่หักมัดจำ)
+    const received = await receive(po.id, [poItemOf(po, `${PREFIX}Used`).id], { anglePhotos: FULL_ANGLES });
+    expect(received.products[0].status).toBe('PHOTO_PENDING');
+    expect(received.journalEntryNo).toBeNull();
+    expect(received.depositApplied).toBeNull();
+    let list = await service.listSupplierPayments(po.id);
+    expect(list.summary).toMatchObject({ depositOutstanding: '3000.00', payableOutstanding: '0.00', status: 'DEPOSIT_PAID' });
+
+    await productsService.update(received.products[0].id, { cashPrice: 7900 } as never, adminId);
+    await productPhotosService.completePhotos(received.products[0].id, adminId);
+
+    const entries = await poEntries(po.id);
+    const unitJe = entries.find((e) => (e.metadata as { acceptedProductId?: string }).acceptedProductId === received.products[0].id)!;
+    const applied = entries.find((e) => (e.metadata as { kind?: string }).kind === 'DEPOSIT_APPLIED')!;
+    expect(unitJe.metadata).toMatchObject({ supplierId: supplier.id });
+    expect(netByAccount([applied])).toEqual({ 'S21-1101': '3000.00', 'S11-4201': '-3000.00' });
+    expect(applied.entryDate.toISOString()).toBe(unitJe.entryDate.toISOString());
+    list = await service.listSupplierPayments(po.id);
+    expect(list.summary).toMatchObject({ depositOutstanding: '0.00', payableOutstanding: '5000.00', paidTotal: '3000.00', status: 'PARTIALLY_PAID' });
   });
 });

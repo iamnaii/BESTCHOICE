@@ -74,7 +74,8 @@ export default function ApproveAdjustmentDialog({ adjustmentId, onClose, user }:
           <div className="rounded-lg border border-border p-3">
             <div className="font-medium text-sm leading-snug">{deviceLabel(row.product)}</div>
             <div className="text-xs text-muted-foreground leading-snug mt-0.5">
-              {row.product.name} · ต้นทุน {formatBaht(row.product.costPrice)} · สถานะก่อนขอ {productStatusLabel(row.previousStatus)}
+              {row.product.name}
+              {row.product.costPrice != null && ` · ต้นทุน ${formatBaht(row.product.costPrice)}`} · สถานะก่อนขอ {productStatusLabel(row.previousStatus)}
             </div>
             <div className="mt-1">
               {(() => {

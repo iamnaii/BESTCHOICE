@@ -62,6 +62,25 @@ describe('resolveBookedInventory', () => {
     expect(where).toContain('"t1"');
   });
 
+  it('รับเทิร์น (shop-trade-in-credit-issued metadata.tradeInId) → booked TRADE_IN ด้วยยอด Dr S11-2002 (final review C1)', async () => {
+    const tx = buildTx({
+      product: { checklistResults: { source: 'trade-in', tradeInId: 't2' } },
+      jeByFlow: {
+        'shop-trade-in-credit-issued': {
+          id: 'je-c', entryNumber: 'JE-202610-00031', metadata: { flow: 'shop-trade-in-credit-issued', tradeInId: 't2' },
+          lines: [
+            { accountCode: 'S11-2002', debit: new Decimal('8000.00'), credit: new Decimal(0) },
+            { accountCode: 'S21-2003', debit: new Decimal(0), credit: new Decimal('8000.00') },
+          ],
+        },
+      },
+    });
+    const r = await resolveBookedInventory(tx, 'p1');
+    expect(r).toEqual({ booked: true, source: 'TRADE_IN', bookedAmount: new Decimal('8000.00'), journalEntryNo: 'JE-202610-00031', grNumber: null });
+    const where = JSON.stringify(tx.journalEntry.findFirst.mock.calls[0][0].where);
+    expect(where).toContain('"t2"');
+  });
+
   it('รับคืนเครื่อง (shop-repossession-intake metadata.productId) → REPOSSESSION', async () => {
     const tx = buildTx({ jeByFlow: { 'shop-repossession-intake': { id: 'je-r', entryNumber: 'JE-R', metadata: { productId: 'p1' }, lines: [line('S11-2002', '5000')] } } });
     const out = await resolveBookedInventory(tx, 'p1');

@@ -65,7 +65,7 @@ export default function StockAdjustmentsPage() {
   const rejectedMonth = useAdjustmentList({ status: 'REJECTED', startDate: monthStart(), limit: 1 });
   const canceledMonth = useAdjustmentList({ status: 'CANCELED', startDate: monthStart(), limit: 1 });
   const damagedInStock = (damagedRows.data?.data ?? []).filter((r) => r.product.status === 'DAMAGED' && !r.product.deletedAt);
-  const damagedValue = damagedInStock.reduce((s, r) => s + Number(r.product.costPrice || 0), 0);
+  const damagedValue = damagedInStock.reduce((s, r) => s + Number(r.product.costPrice ?? 0), 0);
 
   const openRow = (row: StockAdjustmentRow) => setOpenId(row.id);
   const closeDetail = () => {
@@ -102,7 +102,7 @@ export default function StockAdjustmentsPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <SummaryCard label="รออนุมัติ" value={pendingCount.data?.total ?? 0} tone="warning" />
         <SummaryCard label="อนุมัติเดือนนี้" value={approvedMonth.data?.total ?? 0} tone="primary" />
-        <SummaryCard label="เสียหายคงในสต๊อก" value={damagedInStock.length} hint={formatBaht(damagedValue)} tone="destructive" />
+        <SummaryCard label="เสียหายคงในสต๊อก" value={damagedInStock.length} hint={user.role === 'SALES' ? undefined : formatBaht(damagedValue)} tone="destructive" />
         <SummaryCard label="ไม่อนุมัติ/ยกเลิก เดือนนี้" value={(rejectedMonth.data?.total ?? 0) + (canceledMonth.data?.total ?? 0)} tone="muted" />
       </div>
 

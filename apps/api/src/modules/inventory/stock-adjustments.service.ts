@@ -22,6 +22,7 @@ import {
 } from '../journal/cpa-templates/shop-stock-writeoff.template';
 import { DeferredWarning, emitDeferredWarnings } from '../journal/deferred-warning';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { canSeeCost, omitCostPrice } from '../products/cost-visibility.util';
 import { assertProductNotHeld } from '../products/product-hold.util';
 import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receiving-acceptance-journal';
 import { StorageService } from '../storage/storage.service';
@@ -202,7 +203,8 @@ export interface ProductLookupRow {
   status: ProductStatus;
   deletedAt: Date | null;
   branch: { id: string; name: string };
-  costPrice: string;
+  /** null = ผู้เรียกไม่มีสิทธิ์เห็นต้นทุน (SALES — คำตัดสินเจ้าของ 2026-08-04 §1.4) */
+  costPrice: string | null;
   category: string;
   /** เลขคำขอที่ยังรออนุมัติของเครื่องนี้ (ถ้ามี) */
   pendingRequestNumber: string | null;
@@ -248,6 +250,19 @@ const NOTE_ZERO_COST = 'ไม่ลงบัญชี — เครื่อง
 const money = (v: Prisma.Decimal | number | string) => new Prisma.Decimal(v).toFixed(2);
 const isP2002 = (err: unknown): boolean =>
   err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
+
+/**
+ * SALES ต้องไม่เห็นราคาทุน (คำตัดสินเจ้าของ 2026-08-04 §1.4 — `cost-visibility.util`): ตัด `product.costPrice` และ
+ * `costAmount` ออกจากทุก view ที่คืนให้ผู้เรียกที่ไม่มีสิทธิ์ (final review I2). ฝั่ง server เท่านั้นที่เชื่อถือได้.
+ */
+function redactCost<T extends { costAmount?: unknown; product?: { costPrice?: unknown } | null }>(
+  row: T,
+  actor: AdjustmentActor,
+): T {
+  if (canSeeCost(actor.role)) return row;
+  const product = row.product ? (omitCostPrice(row.product) as T['product']) : row.product;
+  return { ...row, costAmount: null, product };
+}
 
 @Injectable()
 export class StockAdjustmentsService {
@@ -389,6 +404,8 @@ export class StockAdjustmentsService {
     try {
       created = await this.prisma.$transaction(
         async (tx) => {
+          // I1 (final review): ล็อกแถวเครื่องก่อนอ่าน — ใบขาย/ใบจองที่ commit ระหว่างนี้ต้องไม่ถูกเขียนทับเป็น ADJUSTMENT_PENDING
+          await tx.$queryRaw`SELECT id FROM products WHERE id = ${dto.productId} FOR UPDATE`;
           const product = await tx.product.findUnique({
             where: { id: dto.productId },
             include: { branch: { select: { id: true, name: true } } },
@@ -408,6 +425,17 @@ export class StockAdjustmentsService {
           this.assertReasonAllowed(reason, product);
           if (holdsProduct) {
             await assertProductNotHeld(tx, product, 'STOCK_ADJUST');
+          }
+
+          if (holdsProduct) {
+            // compare-and-set: สถานะต้องยังเท่าที่อ่านใต้ล็อก (กันเส้นทางที่ไม่ล็อกแถวเครื่อง เช่น PATCH ที่อ่านไว้ก่อน)
+            const claimed = await tx.product.updateMany({
+              where: { id: product.id, status: product.status, deletedAt: null },
+              data: { status: 'ADJUSTMENT_PENDING' },
+            });
+            if (claimed.count !== 1) {
+              throw new ConflictException('สถานะเครื่องเปลี่ยนระหว่างส่งคำขอ (เช่น เพิ่งถูกขาย/จอง) — รีเฟรชแล้วตรวจใหม่');
+            }
           }
 
           const requestNumber = await this.numbers.next(tx, now);
@@ -434,21 +462,21 @@ export class StockAdjustmentsService {
             throw err;
           }
 
-          if (holdsProduct) {
-            await tx.product.update({ where: { id: product.id }, data: { status: 'ADJUSTMENT_PENDING' } });
-          }
-
-          const owner = await tx.user.findFirst({
-            where: { role: 'OWNER', isActive: true, deletedAt: null },
-            orderBy: { createdAt: 'asc' },
-            select: { id: true },
-          });
+          const [owner, requester] = await Promise.all([
+            tx.user.findFirst({
+              where: { role: 'OWNER', isActive: true, deletedAt: null },
+              orderBy: { createdAt: 'asc' },
+              select: { id: true },
+            }),
+            tx.user.findUnique({ where: { id: actor.id }, select: { name: true } }),
+          ]);
           const deviceLabel = `${product.brand} ${product.model}${product.imeiSerial ? ` · ${product.imeiSerial}` : ''}`;
+          // ไม่พิมพ์ต้นทุนใน Todo — /todos อ่านได้ทุก role รวม SALES (I2); เจ้าของเห็นต้นทุนในกล่องพิจารณาอยู่แล้ว
           await tx.todo.create({
             data: {
               title: `คำขอตัดสินค้า ${requestNumber} · ${REASON_LABEL[reason]} · ${deviceLabel} (${product.branch.name})`,
               description:
-                `ผู้ขอ ${actor.id} · ต้นทุน ${money(product.costPrice)} บาท · สถานะเดิม ${product.status}` +
+                `ผู้ขอ ${requester?.name ?? 'ไม่ทราบชื่อ'} · สถานะเดิม ${product.status}` +
                 (dto.notes ? `\nหมายเหตุ: ${dto.notes}` : '') +
                 (holdsProduct ? '\nเครื่องถูกพักขายจนกว่าจะพิจารณา' : '') +
                 '\nเปิดเมนู คลังสินค้า › ตัดสินค้า เพื่ออนุมัติหรือไม่อนุมัติ',
@@ -482,7 +510,7 @@ export class StockAdjustmentsService {
         photoCount: photoKeys.length,
       },
     });
-    return created;
+    return redactCost(created, actor);
   }
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -518,7 +546,7 @@ export class StockAdjustmentsService {
       entityId: id,
       newValue: { requestNumber: result.requestNumber, reason: result.reason, productId: result.productId },
     });
-    return result;
+    return redactCost(result, actor);
   }
 
   /** ล็อกแถวคำขอแล้วอ่าน — ต้องยัง PENDING_APPROVAL */
@@ -625,13 +653,25 @@ export class StockAdjustmentsService {
             }
           } else if (!booked.booked && cost.gt(0)) {
             // ข้อ 8 — ของยกมา / เพิ่มด้วยมือ / เครื่องจาก PO ที่ยังรอถ่ายรูป: ไม่มีสินค้าคงคลังในบัญชีให้เครดิต
+            // I3 (final review): เครื่องจาก PO ที่ยังไม่ผ่านเข้าคลัง = เจ้าหนี้ผู้จัดจำหน่ายของเครื่องนั้นก็ยังไม่ถูกตั้ง (ก้อน 2 คิดเจ้าหนี้จาก JE รับของ)
+            // ⇒ ถ้าจ่ายใบนั้นเต็ม ส่วนของเครื่องนี้จะค้างเป็นมัดจำ S11-4201 — ต้องบอกฝ่ายบัญชีให้ครบ (รอคำตอบว่าจะให้ลงรับเข้าก่อนตัดหรือไม่)
+            const gr = booked.grNumber
+              ? await tx.goodsReceivingItem.findFirst({
+                  where: { productId: product.id },
+                  select: { receiving: { select: { grNumber: true, po: { select: { poNumber: true } } } } },
+                })
+              : null;
+            const origin = booked.grNumber
+              ? ` (มาจากใบรับของ ${booked.grNumber} ใบสั่งซื้อ ${gr?.receiving?.po?.poNumber ?? '-'} ที่ยังไม่ผ่านเข้าคลัง — ` +
+                `เจ้าหนี้ผู้จัดจำหน่าย S21-110x ของเครื่องนี้ก็ยังไม่ถูกตั้ง: ถ้าจ่ายเงินใบสั่งซื้อนี้เต็มจำนวน ส่วนของเครื่องนี้จะค้างเป็นมัดจำ S11-4201 ที่ไม่มีเจ้าหนี้ให้หัก)`
+              : ' (ของยกมา / เพิ่มด้วยมือ)';
             await tx.todo.create({
               data: {
                 title: `ตัดสินค้า ${row.requestNumber} ไม่มีรายการบัญชีรับเข้า — ให้ฝ่ายบัญชีพิจารณา`,
                 description:
                   `${product.brand} ${product.model}${product.imeiSerial ? ` · ${product.imeiSerial}` : ''} ต้นทุน ${money(cost)} บาท ` +
                   `ถูก${REASON_LABEL[reason]}แล้ว (${row.requestNumber} · สาขา ${product.branch.name}) แต่เครื่องนี้ไม่เคยลงบัญชีสินค้าคงคลัง` +
-                  (booked.grNumber ? ` (มาจากใบรับของ ${booked.grNumber} ที่ยังไม่ผ่านเข้าคลัง)` : ' (ของยกมา / เพิ่มด้วยมือ)') +
+                  origin +
                   ` จึงไม่มีรายการ Dr ${STOCK_WRITEOFF_LOSS_ACCOUNT} / Cr ${inventoryAccountCode}\n` +
                   'พิจารณาปรับยอดยกมาหรือลงรายการปรับปรุง — ระบบไม่ลงรายการให้อัตโนมัติ',
                 priority: 'MEDIUM',
@@ -755,7 +795,7 @@ export class StockAdjustmentsService {
       },
     });
     const { bookedSource: _b, costAmount: _c, ...out } = result;
-    return out;
+    return { ...out, adjustment: redactCost(out.adjustment, actor) };
   }
 
   async reject(id: string, dto: RejectStockAdjustmentDto, actor: AdjustmentActor): Promise<StockAdjustmentView> {
@@ -791,7 +831,7 @@ export class StockAdjustmentsService {
         restoredStatus: EXIT_REASONS.has(result.reason) ? result.previousStatus : null,
       },
     });
-    return result;
+    return redactCost(result, actor);
   }
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -858,7 +898,7 @@ export class StockAdjustmentsService {
       status: p.status,
       deletedAt: p.deletedAt,
       branch: p.branch,
-      costPrice: money(p.costPrice),
+      costPrice: canSeeCost(actor.role) ? money(p.costPrice) : null,
       category: p.category,
       pendingRequestNumber: p.stockAdjustments?.[0]?.requestNumber ?? null,
     }));
@@ -872,7 +912,9 @@ export class StockAdjustmentsService {
     if (!product) throw new NotFoundException('ไม่พบสินค้า');
     this.assertReaderScope(actor, product.branchId);
 
-    const booked = await resolveBookedInventory(this.prisma, productId);
+    const bookedFull = await resolveBookedInventory(this.prisma, productId);
+    const seesCost = canSeeCost(actor.role);
+    const booked: BookedInventory = seesCost ? bookedFull : { ...bookedFull, bookedAmount: null };
     const cost = new Prisma.Decimal(product.costPrice);
     const inventoryAccountCode = this.accounts.resolveProductAccounts(product.category).inventoryAccountCode;
     const holdsProduct = EXIT_REASONS.has(reason);
@@ -890,11 +932,16 @@ export class StockAdjustmentsService {
       if (!booked.booked) journalNote = NOTE_UNBOOKED;
       else if (cost.lte(0)) journalNote = NOTE_ZERO_COST;
       else {
-        journalLines = await this.nameLines([
-          { accountCode: STOCK_WRITEOFF_LOSS_ACCOUNT, debit: money(cost), credit: '0.00' },
-          { accountCode: inventoryAccountCode, debit: '0.00', credit: money(cost) },
-        ]);
-        journalNote = `ลงบัญชีเมื่ออนุมัติ — ${REASON_LABEL[reason]} ที่ต้นทุน ${money(cost)} บาท (ที่มา: ${booked.source}${booked.journalEntryNo ? ` · ${booked.journalEntryNo}` : ''})`;
+        const origin = `(ที่มา: ${booked.source}${booked.journalEntryNo ? ` · ${booked.journalEntryNo}` : ''})`;
+        if (seesCost) {
+          journalLines = await this.nameLines([
+            { accountCode: STOCK_WRITEOFF_LOSS_ACCOUNT, debit: money(cost), credit: '0.00' },
+            { accountCode: inventoryAccountCode, debit: '0.00', credit: money(cost) },
+          ]);
+          journalNote = `ลงบัญชีเมื่ออนุมัติ — ${REASON_LABEL[reason]} ที่ต้นทุน ${money(cost)} บาท ${origin}`;
+        } else {
+          journalNote = `ลงบัญชีเมื่ออนุมัติ — ${REASON_LABEL[reason]} ที่ต้นทุนของเครื่อง ${origin}`;
+        }
       }
     } else if (reason === 'FOUND') {
       const original = await this.findReversibleWriteOff(this.prisma, productId);
@@ -904,9 +951,11 @@ export class StockAdjustmentsService {
           include: { lines: { where: { deletedAt: null } } },
         });
         if (je) {
-          journalLines = await this.nameLines(
-            je.lines.map((l) => ({ accountCode: l.accountCode, debit: money(l.credit), credit: money(l.debit) })),
-          );
+          if (seesCost) {
+            journalLines = await this.nameLines(
+              je.lines.map((l) => ({ accountCode: l.accountCode, debit: money(l.credit), credit: money(l.debit) })),
+            );
+          }
           journalNote = `กลับรายการ ${je.entryNumber} (ใบตัด ${original.requestNumber ?? original.id})`;
         }
       } else {
@@ -917,7 +966,7 @@ export class StockAdjustmentsService {
     return {
       productStatusAfter,
       holdsProduct,
-      costAmount: BOOKED_EXIT_REASONS.has(reason) ? money(cost) : null,
+      costAmount: BOOKED_EXIT_REASONS.has(reason) && seesCost ? money(cost) : null,
       inventoryAccountCode: BOOKED_EXIT_REASONS.has(reason) ? inventoryAccountCode : null,
       booked,
       journalLines,
@@ -1031,7 +1080,7 @@ export class StockAdjustmentsService {
       }),
       this.prisma.stockAdjustment.count({ where }),
     ]);
-    const data = await this.withJournalEntryNo(rows);
+    const data = (await this.withJournalEntryNo(rows)).map((r) => redactCost(r, actor));
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
@@ -1066,11 +1115,12 @@ export class StockAdjustmentsService {
         this.logger.warn(`สร้างลิงก์รูปหลักฐานไม่สำเร็จ ${key}: ${(err as Error).message}`);
       }
     }
-    const booked =
+    const bookedFull =
       adjustment.status === 'PENDING_APPROVAL' && BOOKED_EXIT_REASONS.has(adjustment.reason)
         ? await resolveBookedInventory(this.prisma, adjustment.productId)
         : null;
-    return { ...adjustment, photoUrls, booked };
+    const booked = bookedFull && !canSeeCost(actor.role) ? { ...bookedFull, bookedAmount: null } : bookedFull;
+    return { ...redactCost(adjustment, actor), photoUrls, booked };
   }
 
   async getSummary(filters: { branchId?: string; startDate?: string; endDate?: string }) {

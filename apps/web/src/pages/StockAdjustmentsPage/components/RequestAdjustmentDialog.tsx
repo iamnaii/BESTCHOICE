@@ -100,7 +100,8 @@ export default function RequestAdjustmentDialog({ open, onClose, onCreated, init
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm leading-snug">{deviceLabel(product)}</div>
                 <div className="text-xs text-muted-foreground leading-snug mt-0.5">
-                  {product.name} · {product.branch.name} · ต้นทุน {formatBaht(product.costPrice)}
+                  {product.name} · {product.branch.name}
+                  {product.costPrice !== null && ` · ต้นทุน ${formatBaht(product.costPrice)}`}
                 </div>
                 <div className="mt-1 flex items-center gap-2">
                   {(() => {

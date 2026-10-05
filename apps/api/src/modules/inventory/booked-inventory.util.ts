@@ -11,7 +11,9 @@ import { Decimal } from '@prisma/client/runtime/library';
  * ลำดับ (หยุดที่ข้อแรกที่เข้า):
  *  1. มีแถว `GoodsReceivingItem` ของเครื่อง → ตัดสินจาก `journalEntryId` ของแถวนั้นเท่านั้น (เครื่องจาก PO เป็นเครื่องจาก PO —
  *     ถ้ายังไม่ลง ห้ามไปค้นสายอื่นแล้วเจอ JE ของเครื่องคนละตัวโดยบังเอิญ)
- *  2. รับซื้อมือสอง: `Product.checklistResults.source === 'trade-in'` → JE flow `shop-trade-in` ที่ `metadata.tradeInId` ตรง
+ *  2. รับซื้อ/รับเทิร์นมือสอง: `Product.checklistResults.source === 'trade-in'` → JE flow `shop-trade-in` (BUYBACK —
+ *     `ShopTradeInTemplate`) หรือ `shop-trade-in-credit-issued` (EXCHANGE — `TradeInCreditService.issue`) ที่ `metadata.tradeInId` ตรง
+ *     (final review C1: เดิมค้นเฉพาะ BUYBACK ทำให้เครื่องรับเทิร์นถูกตัดสินว่า "ไม่เคยลงบัญชี")
  *  3. รับคืนเครื่อง: JE flow `shop-repossession-intake` ที่ `metadata.productId` ตรง
  *  4. เปลี่ยนเครื่อง A.4: JE flow `shop-exchange-return` ที่ `metadata.oldProductId` ตรง และยังไม่ถูกกลับรายการ
  * ยอดที่ลง = บรรทัด Dr บนบัญชี S11-200x ของรายการนั้น (ไม่มีบรรทัด = ไม่นับ)
@@ -61,22 +63,25 @@ export async function resolveBookedInventory(
   const product = await tx.product.findUnique({ where: { id: productId }, select: { checklistResults: true } });
   const checklist = (product?.checklistResults ?? null) as Record<string, unknown> | null;
   if (checklist && checklist.source === 'trade-in' && typeof checklist.tradeInId === 'string') {
-    const hit = await findInventoryJe(tx, 'shop-trade-in', 'tradeInId', checklist.tradeInId);
+    const hit = await findInventoryJe(tx, TRADE_IN_FLOWS, 'tradeInId', checklist.tradeInId);
     if (hit) return { ...hit, source: 'TRADE_IN' };
   }
 
-  const repo = await findInventoryJe(tx, 'shop-repossession-intake', 'productId', productId);
+  const repo = await findInventoryJe(tx, ['shop-repossession-intake'], 'productId', productId);
   if (repo) return { ...repo, source: 'REPOSSESSION' };
 
-  const exchange = await findInventoryJe(tx, 'shop-exchange-return', 'oldProductId', productId);
+  const exchange = await findInventoryJe(tx, ['shop-exchange-return'], 'oldProductId', productId);
   if (exchange) return { ...exchange, source: 'EXCHANGE_RETURN' };
 
   return NOT_BOOKED;
 }
 
+/** JE ที่เดบิตสินค้าคงคลังให้เครื่องรับซื้อ/รับเทิร์น — คนละ flow แต่ stamp `metadata.tradeInId` เหมือนกัน */
+const TRADE_IN_FLOWS = ['shop-trade-in', 'shop-trade-in-credit-issued'] as const;
+
 async function findInventoryJe(
   tx: Prisma.TransactionClient,
-  flow: string,
+  flows: readonly string[],
   key: string,
   value: string,
 ): Promise<Omit<BookedInventory, 'source'> | null> {
@@ -85,7 +90,7 @@ async function findInventoryJe(
       status: 'POSTED',
       deletedAt: null,
       AND: [
-        { metadata: { path: ['flow'], equals: flow } as any },
+        { OR: flows.map((flow) => ({ metadata: { path: ['flow'], equals: flow } as any })) },
         { metadata: { path: [key], equals: value } as any },
       ],
     },

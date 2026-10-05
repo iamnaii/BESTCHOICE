@@ -35,7 +35,8 @@ export interface StockAdjustmentRow {
     storage?: string | null;
     imeiSerial: string | null;
     serialNumber?: string | null;
-    costPrice: string;
+    /** ไม่มีสำหรับ SALES — API ตัดออกฝั่ง server */
+    costPrice?: string | null;
     category: string;
     status: string;
     deletedAt: string | null;
@@ -88,7 +89,8 @@ export interface ProductLookupRow {
   status: string;
   deletedAt: string | null;
   branch: { id: string; name: string };
-  costPrice: string;
+  /** null = ผู้ใช้ไม่มีสิทธิ์เห็นต้นทุน (SALES) — API ตัดออกฝั่ง server */
+  costPrice: string | null;
   category: string;
   pendingRequestNumber: string | null;
 }

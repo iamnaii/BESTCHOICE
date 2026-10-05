@@ -223,4 +223,12 @@ describe('Causal response cycles with real PostgreSQL', () => {
       (await db.chatRoom.findUniqueOrThrow({ where: { id: roomId } })).waitingSince,
     ).toBeNull();
   });
+  it('reports a cycle/wait mismatch without overwriting the stored room state', async () => {
+    const before = await cycles.auditOpenWaits();
+    await inbound();
+    await db.chatRoom.update({ where: { id: roomId }, data: { waitingSince: null } });
+    expect((await cycles.auditOpenWaits()).mismatched).toBe(before.mismatched + 1);
+    expect((await db.chatRoom.findUniqueOrThrow({ where: { id: roomId } })).waitingSince).toBeNull();
+  });
+
 });

@@ -58,6 +58,11 @@ export async function readBoolFlag(
   fallback: boolean,
 ): Promise<boolean> {
   const raw = await readRawValue(prisma, key);
+  return parseBooleanFlag(raw, fallback);
+}
+
+/** Same flag grammar for already-loaded rows, without swallowing database errors. */
+export function parseBooleanFlag(raw: string | null | undefined, fallback: boolean): boolean {
   if (raw == null) return fallback;
   const v = raw.trim().toLowerCase();
   if (v === 'true' || v === '1') return true;

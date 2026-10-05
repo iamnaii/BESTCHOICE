@@ -40,3 +40,15 @@ export interface StaffInboxInput {
   targetType: ChatWorkTarget;
   targetId: string;
 }
+
+export const CHAT_WORK_FLAGS = [
+  'chat_work_queue_enabled',
+  'chat_sla_alerts_enabled',
+  'chat_follow_up_enabled',
+  'chat_mentions_enabled',
+  'chat_facebook_comments_enabled',
+  'chat_service_requests_enabled',
+  'chat_analytics_v2_enabled',
+  'chat_cloud_library_enabled',
+] as const;
+export type ChatWorkFlag = (typeof CHAT_WORK_FLAGS)[number];

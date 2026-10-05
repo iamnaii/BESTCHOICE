@@ -151,11 +151,11 @@ describe('Scoped durable staff work inbox (real PostgreSQL)', () => {
     expect(items[0]!.id).toBe(items[1]!.id);
     expect(await db.staffInboxItem.count({ where: { dedupeKey: 'concurrent' } })).toBe(1);
   });
-  it('does not enqueue while the master toggle is off', async () => {
+  it.each(['false', '0', ' FALSE '])('does not enqueue while the master toggle is off (%s)', async disabled => {
     await db.systemConfig.upsert({
       where: { key: 'in_app_notifications_enabled' },
-      create: { key: 'in_app_notifications_enabled', value: 'false' },
-      update: { value: 'false' },
+      create: { key: 'in_app_notifications_enabled', value: disabled },
+      update: { value: disabled },
     });
     expect(
       await db.$transaction((tx) =>
@@ -163,14 +163,14 @@ describe('Scoped durable staff work inbox (real PostgreSQL)', () => {
           recipientId: alice.id,
           kind: 'FOLLOW_UP',
           roomId: roomA,
-          dedupeKey: 'off',
+          dedupeKey: `off:${disabled}`,
           title: 'งานติดตาม',
           targetType: 'ROOM',
           targetId: roomA,
         }),
       ),
     ).toBeNull();
-    expect(await db.staffInboxItem.count({ where: { dedupeKey: 'off' } })).toBe(0);
+    expect(await db.staffInboxItem.count({ where: { dedupeKey: `off:${disabled}` } })).toBe(0);
     await db.systemConfig.update({
       where: { key: 'in_app_notifications_enabled' },
       data: { value: 'true' },

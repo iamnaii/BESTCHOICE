@@ -1,3 +1,4 @@
+import { parseBooleanFlag } from '../../../utils/config.util';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ChatWorkActor, StaffInboxInput, WorkScope } from '@installment/shared';
@@ -18,7 +19,7 @@ export class StaffInboxService {
     const toggle = await tx.systemConfig.findFirst({
       where: { key: 'in_app_notifications_enabled', deletedAt: null },
     });
-    if (toggle?.value === 'false') return null;
+    if (!parseBooleanFlag(toggle?.value, true)) return null;
     // Targets are references, never a client-supplied URL. Later features add their own validated targets.
     if (!input.roomId || !input.title.trim() || input.title.length > 255)
       throw new BadRequestException('ข้อมูลการแจ้งเตือนไม่ถูกต้อง');

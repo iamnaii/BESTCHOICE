@@ -1,3 +1,4 @@
+import { policyVersion, readCurrentSlaPolicy, readAlertGate } from './chat-sla-policy';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -46,9 +47,7 @@ export class ResponseCycleService {
     });
     if (!existing) {
       const legacy = room.waitingSince && room.waitingSince < input.receivedAt;
-      const policy = await tx.systemConfig.findFirst({
-        where: { key: 'chat_sla_policy_version', deletedAt: null },
-      });
+      const policy = await readCurrentSlaPolicy(tx);
       await tx.chatResponseCycle.create({
         data: {
           roomId: room.id,
@@ -56,11 +55,11 @@ export class ResponseCycleService {
           firstCustomerMessageId: legacy ? null : message.id,
           assignedAtOpenId: room.assignedToId,
           origin: legacy ? 'LEGACY_OPEN' : 'LIVE',
-          policyVersion: policy?.value ?? 'initial-5-15',
+          policyVersion: policyVersion(policy),
           alertEligibleAt: input.receivedAt,
         },
       });
-    } else if (!existing.alertEligibleAt) {
+    } else if (!existing.alertEligibleAt || existing.alertEligibleAt < (await readAlertGate(tx)).cutover) {
       await tx.chatResponseCycle.update({
         where: { id: existing.id },
         data: { alertEligibleAt: input.receivedAt },
@@ -235,6 +234,17 @@ export class ResponseCycleService {
     });
     await tx.chatRoom.update({ where: { id: input.roomId }, data: { waitingSince: null } });
   }
+  async auditOpenWaits() {
+    const [result] = await this.prisma.$queryRaw<Array<{ mismatched: bigint; untracked: bigint }>>`
+      SELECT
+        (SELECT count(*) FROM chat_response_cycles c JOIN chat_rooms r ON r.id = c.room_id
+          WHERE c.ended_at IS NULL AND c.deleted_at IS NULL AND r.deleted_at IS NULL
+          AND c.started_at IS DISTINCT FROM r.waiting_since) AS mismatched,
+        (SELECT count(*) FROM chat_rooms r WHERE r.deleted_at IS NULL AND r.waiting_since IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM chat_response_cycles c WHERE c.room_id = r.id AND c.ended_at IS NULL)) AS untracked`;
+    return { mismatched: Number(result.mismatched), untracked: Number(result.untracked) };
+  }
+
   async seedLegacy(dryRun = true) {
     const where: Prisma.ChatRoomWhereInput = {
       deletedAt: null,

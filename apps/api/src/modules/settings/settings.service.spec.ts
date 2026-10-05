@@ -1711,5 +1711,10 @@ describe('SettingsService audit trail', () => {
       );
     });
   });
+  it.each(['chat_sla_policy', 'chat_sla_owner_minutes', 'chat_work_queue_enabled'])('does not bypass the scoped work-settings writer via generic key %s', async key => {
+    await expect(service.update(key, 'true')).rejects.toThrow();
+    expect(prisma.systemConfig.upsert).not.toHaveBeenCalled();
+  });
+
 });
 

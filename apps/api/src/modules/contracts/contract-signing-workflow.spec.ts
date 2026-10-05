@@ -158,9 +158,12 @@ describe('Contract Signing & Workflow', () => {
       $queryRaw: jest.fn().mockResolvedValue([]),
       // activate → closeRepossessionOnSale (2026-09-05): เครื่องปกติ = 0 แถว
       repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // #1679: เปิดสัญญาบนเครื่อง RESERVED ต้องไม่มีใบจอง PAID ล็อก/ร่างอื่นถือ — ค่าเริ่มต้น = ไม่มี
+      booking: { findFirst: jest.fn().mockResolvedValue(null) },
       contract: {
         findUnique: jest.fn().mockResolvedValue(mockContract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
+        findFirst: jest.fn().mockResolvedValue(null),
         update: jest.fn().mockResolvedValue(mockContract),
       },
       product: {
@@ -200,9 +203,12 @@ describe('Contract Signing & Workflow', () => {
     };
 
     const mockPrisma = {
+      // #1679: ด่านเจ้าของ RESERVED นอก tx (ตัดจบเร็ว) — ค่าเริ่มต้น = ไม่มีใบจองล็อก/ร่างอื่น
+      booking: { findFirst: jest.fn().mockResolvedValue(null) },
       contract: {
         findUnique: jest.fn().mockResolvedValue(mockContract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         update: jest.fn().mockResolvedValue(mockContract),

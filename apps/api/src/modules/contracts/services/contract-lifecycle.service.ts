@@ -181,11 +181,19 @@ export class ContractLifecycleService {
               actorId: actor.id, doc: { contractId: newContract.id }, docNumber: newContract.contractNumber, tenders: downTenders });
           }
 
-          // Reserve product
-          await tx.product.update({
-            where: { id: dto.productId },
+          // Reserve product — #1679: compare-and-set statement เดียว (แบบ payDeposit / reserveContractBundles)
+          // RESERVED ไม่มีเจ้าของในสคีมา และใบจอง PAID ถือเครื่องเป็น RESERVED ได้จริงตั้งแต่ PR #1680 ⇒
+          // update ตรง ๆ จะทับเครื่องที่ใบจอง/ร่างอื่นเพิ่งหยิบไประหว่างด่านอ่านข้างบนกับจังหวะนี้
+          // count 0 = มีคนถือเครื่องไปก่อน → ทั้ง tx rollback (เงินดาวน์/สมุดเงินไม่เข้า)
+          const reserved = await tx.product.updateMany({
+            where: { id: dto.productId, status: 'IN_STOCK', deletedAt: null },
             data: { status: 'RESERVED' },
           });
+          if (reserved.count !== 1) {
+            throw new ConflictException(
+              'เครื่องนี้เพิ่งถูกขาย ถูกจอง หรือถูกใบจองล็อกไประหว่างทำรายการ — กรุณาเลือกเครื่องอื่น หรือยกเลิกใบจอง/ร่างสัญญาที่ถือเครื่องนี้อยู่ก่อน',
+            );
+          }
           // B5: เครื่องหลุดจาก IN_STOCK แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (กันขายซ้ำ)
           await preemptReservationsInTx(tx, [dto.productId]);
           // ของแถมเดินตามเครื่องหลัก: จองใน tx เดียวกัน (ตรวจหมวด/สาขา/รั้วข้อมูลทดสอบข้างใน)
@@ -462,6 +470,8 @@ export class ContractLifecycleService {
 
     const now = new Date();
     const cascadedSignatures = hasSignatures ? contract.signatures.length : 0;
+    // เลขใบจองที่ล็อกเครื่องไว้ (ถ้ามี) — log หลัง commit เท่านั้น ไม่ให้ tx ที่ rollback ทิ้งข้อความหลอก
+    let releaseSkippedFor: string | null = null;
 
     await this.prisma.$transaction(async (tx) => {
       await lockCreditCustomer(tx, contract.customerId);
@@ -531,11 +541,21 @@ export class ContractLifecycleService {
         where: { contractId: id, deletedAt: null },
         data: { deletedAt: now },
       });
-      // Release reserved product back to IN_STOCK
-      await tx.product.updateMany({
-        where: { id: contract.productId, status: 'RESERVED' },
-        data: { status: 'IN_STOCK' },
+      // Release reserved product back to IN_STOCK — #1679: RESERVED ไม่มีเจ้าของในสคีมา ถ้าใบจอง PAID
+      // ล็อกเครื่องนี้อยู่ RESERVED นั้นเป็นของใบจอง ไม่ใช่ของร่างนี้ → ห้ามปลด (ปลดได้ทางเดียวคือ
+      // ยกเลิก/หมดอายุ/แปลงขายของใบจอง) แต่ยังลบร่างต่อตามปกติ
+      const bookingLock = await tx.booking.findFirst({
+        where: { lockedProductId: contract.productId, status: 'PAID', deletedAt: null },
+        select: { bookingNumber: true },
       });
+      if (bookingLock) {
+        releaseSkippedFor = bookingLock.bookingNumber;
+      } else {
+        await tx.product.updateMany({
+          where: { id: contract.productId, status: 'RESERVED' },
+          data: { status: 'IN_STOCK' },
+        });
+      }
       // ของแถมที่จองไว้กับร่างนี้กลับเป็นพร้อมขายพร้อมเครื่องหลัก
       await releaseContractBundles(tx, contract.bundleProductIds ?? []);
       await tx.auditLog.create({
@@ -555,6 +575,12 @@ export class ContractLifecycleService {
         },
       });
     });
+
+    if (releaseSkippedFor) {
+      this.logger.warn(
+        `[#1679] ลบร่างสัญญา ${contract.contractNumber} โดยไม่ปลดเครื่อง ${contract.productId} — ใบจอง ${releaseSkippedFor} ล็อกเครื่องอยู่`,
+      );
+    }
 
     return {
       message:

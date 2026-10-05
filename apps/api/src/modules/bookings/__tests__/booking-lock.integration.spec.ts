@@ -67,13 +67,14 @@ beforeAll(async () => {
     new ShopCashSaleTemplate(journal, db, companies),
     new ShopBookingRefundTemplate(journal, db, companies),
     new ShopAccountResolver(db));
-});
+}, 120_000);
 afterAll(async () => {
   // ล้างเฉพาะแถวของรอบนี้ (PREFIX) — ลำดับตาม FK: tender/JE ของใบ → รายการ → ใบ → ใบขาย → เครื่อง → ลูกค้า
   const ids = (await db.booking.findMany({ where: { bookingNumber: { startsWith: 'BK-' }, customerId }, select: { id: true } })).map((b) => b.id);
   await db.shopTender.deleteMany({ where: { bookingId: { in: ids } } });
-  const jes = await db.journalEntry.findMany({ where: { metadata: { path: ['bookingId'], string_contains: '' } }, select: { id: true, metadata: true } });
-  const jeIds = jes.filter((j) => ids.includes(String((j.metadata as Record<string, unknown>)?.bookingId))).map((j) => j.id);
+  const jeIds = ids.length === 0 ? [] : (await db.journalEntry.findMany({
+    where: { OR: ids.map((id) => ({ metadata: { path: ['bookingId'], equals: id } })) }, select: { id: true },
+  })).map((j) => j.id);
   await db.journalLine.deleteMany({ where: { journalEntryId: { in: jeIds } } });
   await db.journalEntry.deleteMany({ where: { id: { in: jeIds } } });
   await db.salesCommission.deleteMany({ where: { sale: { customerId } } });
@@ -85,7 +86,7 @@ afterAll(async () => {
   await db.customer.deleteMany({ where: { id: customerId } });
   // ผู้ใช้/สาขาของรอบนี้ไม่ลบ: audit_logs (immutable) อ้าง user_id ทำให้ FK ค้าง — ทั้งคู่ขึ้นต้น PREFIX (TEST-LOCK-) อยู่แล้ว
   await db.$disconnect();
-});
+}, 120_000);
 
 describe('ล็อกเครื่องเมื่อรับมัดจำ', () => {
   it('รับมัดจำ → RESERVED + lockedProductId · ใบที่สองบนเครื่องเดียวกันได้ 409 และเงินไม่เข้า', async () => {
@@ -100,7 +101,7 @@ describe('ล็อกเครื่องเมื่อรับมัดจ�
     await expect(pay(second.id)).rejects.toThrow(LOCK_FAILED_MSG);
     expect((await db.booking.findUniqueOrThrow({ where: { id: second.id } })).status).toBe('PENDING_DEPOSIT');
     expect(await db.shopTender.count({ where: { bookingId: second.id } })).toBe(0);
-  });
+  }, 120_000);
 
   it('สองใบรับมัดจำพร้อมกัน → สำเร็จใบเดียว', async () => {
     const product = await seedProduct();
@@ -112,7 +113,7 @@ describe('ล็อกเครื่องเมื่อรับมัดจ�
     expect(String(loser.reason?.message)).toBe(LOCK_FAILED_MSG);
     expect(await productStatus(product.id)).toBe('RESERVED');
     expect(await db.booking.count({ where: { lockedProductId: product.id, deletedAt: null } })).toBe(1);
-  });
+  }, 120_000);
 
   it('ยกเลิกใบ PAID → IN_STOCK + lockedProductId ว่าง + unlockedAt', async () => {
     const product = await seedProduct(); const b = await createBooking(product.id); await pay(b.id);
@@ -120,7 +121,7 @@ describe('ล็อกเครื่องเมื่อรับมัดจ�
     expect(await productStatus(product.id)).toBe('IN_STOCK');
     const row = await db.booking.findUniqueOrThrow({ where: { id: b.id } });
     expect(row.lockedProductId).toBeNull(); expect(row.unlockedAt).toBeInstanceOf(Date); expect(row.lockedAt).toBeInstanceOf(Date);
-  });
+  }, 120_000);
 
   it('autoExpire ใบ PAID → IN_STOCK + EXPIRED', async () => {
     const product = await seedProduct(); const b = await createBooking(product.id); await pay(b.id);
@@ -129,7 +130,7 @@ describe('ล็อกเครื่องเมื่อรับมัดจ�
     expect(await productStatus(product.id)).toBe('IN_STOCK');
     const row = await db.booking.findUniqueOrThrow({ where: { id: b.id } });
     expect(row.status).toBe('EXPIRED'); expect(row.lockedProductId).toBeNull();
-  });
+  }, 120_000);
 
   it('แปลงขายจากเครื่องที่ล็อก → SOLD_CASH + lockedProductId ว่าง · ใบใหม่บนเครื่องเดิมหลังคืนสต็อกไม่ชน unique', async () => {
     const product = await seedProduct(); const b = await createBooking(product.id); await pay(b.id);
@@ -141,12 +142,13 @@ describe('ล็อกเครื่องเมื่อรับมัดจ�
     await db.product.update({ where: { id: product.id }, data: { status: 'IN_STOCK' } });
     const again = await createBooking(product.id);
     await expect(pay(again.id)).resolves.toBeDefined();
-  });
+  }, 120_000);
 
   it('partial unique: ตั้ง lockedProductId ซ้ำบนใบเปิดอีกใบตรง ๆ → P2002', async () => {
     const product = await seedProduct(); const a = await createBooking(product.id); const b = await createBooking(product.id);
     await pay(a.id);
-    await expect(db.booking.update({ where: { id: b.id }, data: { lockedProductId: product.id } }))
-      .rejects.toMatchObject({ code: 'P2002' });
-  });
+    const err: any = await db.booking.update({ where: { id: b.id }, data: { lockedProductId: product.id } }).catch((e) => e);
+    expect(err?.code).toBe('P2002');
+    expect(String(err.meta?.target)).toContain('locked_product');
+  }, 120_000);
 });

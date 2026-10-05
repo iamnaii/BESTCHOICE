@@ -163,24 +163,18 @@ describe('Booking mutations and real SHOP ledger on isolated PostgreSQL', () => 
     expect(summary.closed.total).toBeGreaterThanOrEqual(1);
     expect(pending.booking.id).toBeTruthy();
   });
-  it('allows only one of two bookings to sell the same physical device', async () => {
+  it('locks the device on deposit: the second booking on the same device cannot take a deposit, and only the first converts', async () => {
     const { booking: first, product } = await createBooking();
     const second = await bookings.create({ customerId, branchId, depositAmount: 1000,
       items: [{ productId: product.id, description: prefix, quantity: 1, unitPrice: 10000 }],
     }, actor.id, actor);
-    await pay(first.id); await pay(second.id);
-    const results = await Promise.allSettled([first, second].map(booking => bookings.convertToSale(
-      booking.id, { collectBalance: true, paymentMethod: 'CASH' }, actor.id, actor)));
-    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
-    const stored = await db.booking.findMany({ where: { id: { in: [first.id, second.id] } } });
-    expect(stored.map(row => row.status).sort()).toEqual(['CONVERTED', 'PAID']);
-    expect(await db.sale.count({ where: { productId: product.id } })).toBe(1);
+    await pay(first.id);
+    expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('RESERVED');
+    await expect(pay(second.id)).rejects.toThrow('เครื่องนี้ไม่พร้อมขาย');
+    await bookings.convertToSale(first.id, { collectBalance: true, paymentMethod: 'CASH' }, actor.id, actor);
     expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('SOLD_CASH');
-    const loser = stored.find(row => row.status === 'PAID')!;
-    expect(await readEntries(loser.id)).toHaveLength(1);
-    const winner = stored.find(row => row.status === 'CONVERTED')!;
-    await expect(bookings.convertToSale(winner.id, { collectBalance: true, paymentMethod: 'CASH' }, actor.id, actor)).rejects.toThrow();
     expect(await db.sale.count({ where: { productId: product.id } })).toBe(1);
+    expect((await db.booking.findUniqueOrThrow({ where: { id: second.id } })).status).toBe('PENDING_DEPOSIT');
   });
 
   it.each(['foreign branch', 'damaged', 'quantity', 'multiple items'])('rolls back conversion for an ineligible booking: %s', async scenario => {
@@ -198,7 +192,7 @@ describe('Booking mutations and real SHOP ledger on isolated PostgreSQL', () => 
     }
     await expect(bookings.convertToSale(booking.id, { collectBalance: true, paymentMethod: 'CASH', previouslyDamagedAcknowledged: true }, actor.id, actor)).rejects.toThrow();
     expect((await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe('PAID');
-    expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('IN_STOCK');
+    expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('RESERVED');
     expect(await db.sale.count({ where: { productId: product.id } })).toBe(0);
     expect(await readEntries(booking.id)).toHaveLength(1);
   });

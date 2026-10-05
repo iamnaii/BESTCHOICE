@@ -22,6 +22,8 @@ import ContractDocuments from '@/components/contract/ContractDocuments';
 import { ContractEarlyPayoffQuote, EarlyPayoffOverlay } from '@/components/contract/ContractEarlyPayoff';
 import PaymentHistorySheet from '@/components/payment/PaymentHistorySheet';
 import ContractJournalDialog from '@/components/contract/ContractJournalDialog';
+import ContractInputVatCard from '@/components/contract/ContractInputVatCard';
+import type { ContractInputVat } from '@/lib/input-vat';
 import { ContractDeviceReturnActions } from '@/components/device-returns/ContractDeviceReturnActions';
 import { toast } from 'sonner';
 import { useState, useRef, useEffect } from 'react';
@@ -47,6 +49,8 @@ interface Payment {
 }
 
 interface ContractDetail {
+  /** ก้อน 5 — การ์ดภาษีซื้อของเครื่อง (API ตัด amount ตาม role) · ไม่มีใน API รุ่นก่อน */
+  inputVat?: ContractInputVat | null;
   id: string;
   contractNumber: string;
   status: string;
@@ -676,6 +680,9 @@ const deleteMutation = useMutation({
       {/* Signing guide removed — replaced by workflow stepper above */}
 
       {/* Pending review & Approved banners removed — replaced by workflow stepper above */}
+
+      {/* ก้อน 5 — ภาษีซื้อของเครื่อง (เห็นเฉพาะ OWNER/FM/ACCOUNTANT) */}
+      <ContractInputVatCard inputVat={contract.inputVat} role={user?.role} />
 
       {/* Contract Info */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-7.5 mb-6">

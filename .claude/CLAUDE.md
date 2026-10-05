@@ -18,6 +18,7 @@ BESTCHOICE is a full-stack installment payment management system for mobile/phon
 - กรรมสิทธิ์สินค้าย้ายจาก SHOP → FINANCE (จนลูกค้าผ่อนครบ)
 - ลูกค้าจ่ายค่างวดให้ FINANCE (โอน/PaySolutions QR ผ่าน LINE)
 - **VAT 7%** คิดจาก (เงินต้น+ดอกเบี้ย+ค่าคอม) → รวมในค่างวด → นำส่งรายเดือนตามจ่ายจริง
+- **ภาษีซื้อเครื่องขายผ่อน (ก้อน 5 · 2026-10-05)**: FINANCE เคลม `Dr 11-4101 / Cr 42-1108` วันเปิดสัญญา (ต้องมีใบกำกับภาษีจากผู้จัดจำหน่ายที่จด VAT) · ยอด VAT เห็นเฉพาะ OWNER/FM/ACCOUNTANT (ตัดฝั่ง server) · ใบกำกับที่มาทีหลังบันทึกที่ใบรับของ แล้วเคลมย้อนให้สัญญาที่รอ — `.claude/rules/accounting.md` หัวข้อ "ภาษีซื้อของเครื่องที่ขายผ่อน"
 
 ### ระบบภายนอก
 - PEAK (บัญชี), CHATCONE (แชท LINE/Facebook/TikTok), MDM PJ-Soft (ล็อคเครื่อง), PaySolutions (QR)

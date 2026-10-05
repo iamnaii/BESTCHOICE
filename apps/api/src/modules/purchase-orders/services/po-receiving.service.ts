@@ -11,6 +11,7 @@ import {
   resolvePaymentTerms,
 } from './po-amounts.util';
 import { poLineCosts, poUnitCostAt } from './po-unit-cost.util';
+import { poLineVats } from './po-unit-vat.util';
 import {
   RECEIVING_PERIOD_TODO_TAG,
   receivingCategory,
@@ -145,6 +146,8 @@ export class PoReceivingService {
     // — คำตอบฝ่ายบัญชี 2026-09-29 ข้อ ข2 + ข5
     const costLines = po.items.filter((i) => !i.deletedAt);
     const lineCosts = poLineCosts({ netAmount: this.resolveNetAmount(po, costLines), lines: costLines });
+    // ก้อน 5 — ภาษีซื้อต่อหน่วย: ปัน vatAmount ของใบสั่งซื้อตามสัดส่วนราคา (ฝ่ายบัญชี 2.2) · ไม่จด VAT = 0 ทุกหน่วย
+    const lineVats = poLineVats({ vatAmount: d(po.vatAmount), lines: costLines });
 
     // Find main warehouse branch
     let mainWarehouse = await tx.branch.findFirst({
@@ -241,6 +244,7 @@ export class PoReceivingService {
     const installmentSemantics = await resolveInstallmentSemantics(tx, this.logger);
 
     const unitCosts = this.resolveUnitCosts(lineCosts, po.items, dto.items, freshByPoItem);
+    const unitVats = this.resolveUnitCosts(lineVats, po.items, dto.items, freshByPoItem);
     // ลงบัญชีตอนรับของเฉพาะหน่วยที่เข้าคลังทันที — หน่วยที่รอถ่ายรูปลงตอนผ่านเข้าคลัง
     // (ReceivingAcceptanceJournal) ตามคำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8
     const journalUnits: ShopGoodsReceivingUnit[] = [];
@@ -374,6 +378,7 @@ export class PoReceivingService {
             status: 'PASS',
             productId: product.id,
             receivedCost: unitCosts.get(index)!,
+            receivedVat: unitVats.get(index)!,
             batteryHealth: item.batteryHealth ?? null,
             warrantyExpired: item.warrantyExpired ?? null,
             warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
@@ -545,7 +550,8 @@ export class PoReceivingService {
    *
    * หน่วยที่ตรวจผ่านเป็นลำดับที่ k ของรายการ (นับต่อจากที่รับไปแล้วในใบก่อนหน้า) ได้ต้นทุนของ
    * หน่วยที่ k จาก po-unit-cost.util — ไม่ขึ้นกับว่ารับกี่ครั้งหรือรับรายการไหนก่อน.
-   * หน่วยที่ตรวจไม่ผ่านไม่กินลำดับ (receivedQty นับเฉพาะหน่วยที่ผ่าน)
+   * หน่วยที่ตรวจไม่ผ่านไม่กินลำดับ (receivedQty นับเฉพาะหน่วยที่ผ่าน).
+   * ใช้กับภาษีซื้อต่อหน่วยด้วย (ก้อน 5) — ส่ง Map จาก poLineVats แทน poLineCosts.
    */
   private resolveUnitCosts(
     lineCosts: Map<string, Prisma.Decimal>,

@@ -4,6 +4,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { PurchaseOrdersController } from './purchase-orders.controller';
 import { PurchaseOrdersService } from './purchase-orders.service';
+import { GoodsReceivingTaxInvoiceService } from './services/goods-receiving-tax-invoice.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -18,6 +19,8 @@ describe('PurchaseOrdersController — จ่ายเงินผู้จั�
   let controller: PurchaseOrdersController;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let service: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let taxInvoices: any;
 
   beforeEach(async () => {
     service = {
@@ -27,10 +30,16 @@ describe('PurchaseOrdersController — จ่ายเงินผู้จั�
       getSupplierLedger: jest.fn().mockResolvedValue({ suppliers: [] }),
       getSupplierLedgerMovements: jest.fn().mockResolvedValue({ rows: [] }),
       cancel: jest.fn().mockResolvedValue({}),
+      findOne: jest.fn().mockResolvedValue({ id: 'po-1', goodsReceivings: [] }),
+      getGoodsReceivingById: jest.fn().mockResolvedValue({ id: 'gr-1' }),
     };
+    taxInvoices = { record: jest.fn().mockResolvedValue({ receiving: { id: 'gr-1' }, claimed: [], accountingNotified: false }) };
     const mod: TestingModule = await Test.createTestingModule({
       controllers: [PurchaseOrdersController],
-      providers: [{ provide: PurchaseOrdersService, useValue: service }],
+      providers: [
+        { provide: PurchaseOrdersService, useValue: service },
+        { provide: GoodsReceivingTaxInvoiceService, useValue: taxInvoices },
+      ],
     })
       .overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
@@ -40,6 +49,21 @@ describe('PurchaseOrdersController — จ่ายเงินผู้จั�
   });
 
   const roles = (method: string) => Reflect.getMetadata(ROLES_KEY, (PurchaseOrdersController.prototype as never)[method]);
+
+  it('ก้อน 5: POST :id/goods-receivings/:receivingId/tax-invoice → OWNER/BM/ACCOUNTANT · ส่ง dto+รูป+actor(id,role) ให้ GoodsReceivingTaxInvoiceService', async () => {
+    const dto = { number: 'IV-10', date: '2026-10-04' };
+    const photo = { originalname: 'iv.jpg' } as never;
+    await controller.recordTaxInvoice('po-1', 'gr-1', dto as never, photo, { id: 'bm-1', role: 'BRANCH_MANAGER' });
+    expect(taxInvoices.record).toHaveBeenCalledWith('po-1', 'gr-1', dto, photo, { id: 'bm-1', role: 'BRANCH_MANAGER' });
+    expect(roles('recordTaxInvoice')).toEqual(['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT']);
+  });
+
+  it('ก้อน 5 (Q5): GET :id และ GET :id/goods-receivings/:receivingId ส่ง role ของผู้เรียกให้ service ตัด receivedVat', async () => {
+    await controller.findOne('po-1', { role: 'BRANCH_MANAGER' });
+    expect(service.findOne).toHaveBeenCalledWith('po-1', 'BRANCH_MANAGER');
+    await controller.getGoodsReceivingById('po-1', 'gr-1', { role: 'ACCOUNTANT' });
+    expect(service.getGoodsReceivingById).toHaveBeenCalledWith('po-1', 'gr-1', 'ACCOUNTANT');
+  });
 
   it('POST :id/payments → บันทึกจ่าย (OWNER + BRANCH_MANAGER) ส่งผู้กดไปด้วย', async () => {
     const dto = { paidAt: '2026-10-05', amount: 10729, slipUrl: 'data:image/png;base64,x', reference: 'TXN', note: 'งวดสุดท้าย' };

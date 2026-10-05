@@ -8,6 +8,8 @@ import { getBranchScope, hasCrossBranchAccess } from '../../auth/branch-access.u
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { TestModeService } from '../../test-mode/test-mode.service';
 import { visibleContractCredit } from '../../credit-check/services/room-credit-access';
+import { buildContractInputVatView } from '../../journal/input-vat/contract-input-vat-view';
+import { redactContractInputVat } from '../../journal/input-vat/input-vat-visibility.util';
 import {
   validateIMEI,
   validateThaiPhone,
@@ -123,7 +125,8 @@ export class ContractQueryService {
     return {
       ...paginatedResponse(data.map(contract => {
         const { birthDate: _birthDate, ...customer } = contract.customer;
-        return { ...contract, customer, signatureRequirements: contractSignatureRequirements(contract) };
+        // ก้อน 5 (Q5) — คอลัมน์ VAT ดิบไม่หลุดไปถึง BM/SALES
+        return redactContractInputVat({ ...contract, customer, signatureRequirements: contractSignatureRequirements(contract) }, user?.role);
       }), total, page, limit),
       summary: {
         totalContracts: total,
@@ -197,7 +200,10 @@ export class ContractQueryService {
       .map((pid) => bundleRows.find((row) => row.id === pid))
       .filter((row): row is (typeof bundleRows)[number] => !!row);
 
-    return visibleContractCredit(this.prisma, { ...contract, bundleProducts, signatureRequirements: contractSignatureRequirements(contract) }, user);
+    // ก้อน 5 — การ์ดภาษีซื้อของเครื่อง (ยอดเฉพาะ OWNER/FM/ACCOUNTANT — Q5)
+    const inputVat = await buildContractInputVatView(this.prisma as never, contract, user?.role);
+
+    return visibleContractCredit(this.prisma, redactContractInputVat({ ...contract, bundleProducts, signatureRequirements: contractSignatureRequirements(contract), inputVat }, user?.role), user);
   }
 
   /**

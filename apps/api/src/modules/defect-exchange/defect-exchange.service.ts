@@ -10,6 +10,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
+import { markInputVatReversedIfSwept } from '../journal/input-vat/installment-input-vat.claim';
 import { RepairTicketsService } from '../repair-tickets/repair-tickets.service';
 import { ExecuteDefectExchangeDto } from './dto/defect-exchange.dto';
 import { generateContractNumber } from '../../utils/sequence.util';
@@ -279,6 +280,8 @@ export class DefectExchangeService {
         // reverse cleanly rolls back the contract status update — never
         // leaves a contract DEFECT_EXCHANGED with old JEs still active.
         await this.defectExchangeReversalTemplate.reverseContract(oldContract.id, tx);
+        // ก้อน 5 — JE ภาษีซื้อของสัญญาเดิมถูกกลับไปพร้อมกัน → สถานะบนสัญญาตามสมุด (PENDING_INVOICE = ถอนสิทธิ์เคลมย้อน)
+        await markInputVatReversedIfSwept(tx, oldContract.id);
 
         // Total paid by customer on old contract = down payment + sum of installment payments received
         const paidInstallments = oldContract.payments

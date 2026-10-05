@@ -25,6 +25,7 @@ import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-e
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
 import { TEST_CUSTOMER_ADDRESS } from '../../utils/test-data-markers';
 
 // Default user shape used by submit() tests after Fix 2 (issue #1086 item 2).
@@ -74,6 +75,7 @@ describe('ContractExchangeService.submit', () => {
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
@@ -542,6 +544,7 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
@@ -781,6 +784,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         {
           provide: ShopAccountResolver,
           useValue: {
@@ -1265,6 +1269,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         {
           provide: ShopAccountResolver,
           useValue: {
@@ -1763,7 +1768,11 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       product: {
         update: jest.fn(),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'old-p', costPrice: '15000' }),
+        // ก้อน 5 — claimInputVatOnActivation อ่าน checklistResults ของเครื่องใหม่
+        findUnique: jest.fn().mockResolvedValue({ checklistResults: null }),
       },
+      // ก้อน 5 — ค่าเริ่มต้น: เครื่องใหม่ไม่มีใบรับของ → NOT_ELIGIBLE
+      goodsReceivingItem: { findUnique: jest.fn().mockResolvedValue(null) },
       // Guards call glContractBalance twice (11-2103 dr, 21-1103 cr) BEFORE
       // computeOldOutstanding's own findMany call. Default [] on every call
       // keeps both guard balances at 0 and preserves the old 3rd-call shape
@@ -1792,6 +1801,7 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         {
           provide: ShopAccountResolver,
           useValue: {
@@ -1808,6 +1818,14 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       ],
     }).compile();
     service = mod.get(ContractExchangeService);
+  });
+
+  it('ก้อน 5: หลัง A.1 ตัดสินภาษีซื้อของเครื่องใหม่ (ไม่มีใบรับของ → contract.update inputVatStatus NOT_ELIGIBLE, template ไม่ถูกเรียก)', async () => {
+    await service.finalizeAfterActivation(newContract, tx);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const vatUpdate = tx.contract.update.mock.calls.find((c: any[]) => c[0]?.data?.inputVatStatus);
+    expect(vatUpdate?.[0]).toMatchObject({ where: { id: 'new-c' }, data: { inputVatStatus: 'NOT_ELIGIBLE' } });
+    expect(tx.goodsReceivingItem.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { productId: 'new-p' } }));
   });
 
   it('runs A.1 → A.2 → A.3 → A.4 in order + flips old contract + old product + returns ids', async () => {
@@ -2250,6 +2268,7 @@ describe('ContractExchangeService.reject', () => {
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
@@ -2318,6 +2337,7 @@ describe('ContractExchangeService.listRecent', () => {
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],

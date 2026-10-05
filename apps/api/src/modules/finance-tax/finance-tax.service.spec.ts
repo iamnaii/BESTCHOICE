@@ -38,6 +38,7 @@ describe('FinanceTaxService', () => {
     entryNumber = 'JE-202605-0001',
     postedAt: Date = new Date('2026-05-15T10:00:00Z'),
     hasSettlementLine = false,
+    extra: Partial<{ id: string; metadata: unknown }> = {},
   ) {
     return {
       accountCode,
@@ -49,6 +50,7 @@ describe('FinanceTaxService', () => {
         postedAt,
         description: 'test entry description',
         ...(hasSettlementLine ? { lines: [{ id: `settlement-${accountCode}` }] } : {}),
+        ...extra,
       },
     };
   }
@@ -304,6 +306,57 @@ describe('FinanceTaxService', () => {
   });
 
   // ─── Task 3: getWhtMonthly ─────────────────────────────────────────────────
+
+  describe('getVatMonthly — ภาษีซื้อเครื่องขายผ่อน (ก้อน 5)', () => {
+    const FLOW = 'finance-input-vat-installment';
+    const claimMeta = (contractId: string, extra: Record<string, unknown> = {}) => ({
+      tag: 'INSTALLMENT_INPUT_VAT', flow: FLOW, contractId, contractNumber: `CT-${contractId}`, productId: `p-${contractId}`, grNumber: 'GR-1',
+      taxInvoiceNumber: 'IV-9', taxInvoiceDate: '2026-03-31', invoiceAgeMonths: 7, ...extra,
+    });
+    beforeEach(() => {
+      prisma.journalEntry = { findMany: jest.fn().mockResolvedValue([]) };
+      prisma.contract = { findMany: jest.fn().mockResolvedValue([]) };
+    });
+
+    it('แยก 11-4101 เป็นค่าใช้จ่าย 100 · เครื่องขายผ่อน 686 − กระจก 686 + 343 = 343 · vatInput = รวม 443 · บรรทัดกระจกติดลบและใบต้นทางถูกทำเครื่องหมาย reversed', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([
+        makeLine('11-4101', '100.00', '0', 'JE-EXP', new Date('2026-10-02T03:00:00Z'), false, { id: 'je-exp', metadata: { flow: 'expense-same-day' } }),
+        makeLine('11-4101', '686.00', '0', 'JE-C1', new Date('2026-10-03T03:00:00Z'), false, { id: 'je-c1', metadata: claimMeta('c1', { reversed: true, reversedByEntryNumber: 'JE-REV' }) }),
+        makeLine('11-4101', '0', '686.00', 'JE-REV', new Date('2026-10-04T03:00:00Z'), false, { id: 'je-rev', metadata: { tag: 'REVERSAL', flow: 'contract-cancellation', reversesEntryId: 'je-c1', contractId: 'c1' } }),
+        makeLine('11-4101', '343.00', '0', 'JE-C2', new Date('2026-10-05T03:00:00Z'), false, { id: 'je-c2', metadata: claimMeta('c2') }),
+      ]);
+      prisma.journalEntry.findMany.mockResolvedValue([{ id: 'je-c1', entryNumber: 'JE-C1', metadata: claimMeta('c1', { reversed: true }) }]);
+      const out = await service.getVatMonthly(2026, 10);
+      expect(out.vatInputExpense).toBe('100.00');
+      expect(out.vatInputInstallment).toBe('343.00');
+      expect(out.vatInput).toBe('443.00');
+      expect(out.installmentInputVatLines).toHaveLength(3);
+      expect(out.installmentInputVatLines[0]).toMatchObject({ entryNumber: 'JE-C1', contractNumber: 'CT-c1', amount: '686.00', reversal: false, reversed: true, invoiceAgeMonths: 7, taxInvoiceNumber: 'IV-9' });
+      expect(out.installmentInputVatLines[1]).toMatchObject({ entryNumber: 'JE-REV', contractNumber: 'CT-c1', amount: '-686.00', reversal: true });
+      expect(out.installmentInputVatLines[2]).toMatchObject({ entryNumber: 'JE-C2', amount: '343.00', reversal: false, reversed: false });
+      // กระจกใบที่ไม่ใช่ flow เรา (เช่น expense void) ต้องไม่ถูกนับเป็น installment
+      expect(prisma.journalEntry.findMany.mock.calls[0][0].where.id.in).toEqual(['je-c1']);
+    });
+
+    it('กระจกจากเปลี่ยนเครื่องตำหนิ (flow defect-exchange stamp originalEntryId ไม่มี reversesEntryId) → จัดเข้าก้อน installment ติดลบ ไม่ปนก้อนค่าใช้จ่าย (final review C2)', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([
+        makeLine('11-4101', '686.00', '0', 'JE-C1', new Date('2026-10-03T03:00:00Z'), false, { id: 'je-c1', metadata: claimMeta('c1', { reversed: true, reversedByEntryNumber: 'JE-DEF' }) }),
+        makeLine('11-4101', '0', '686.00', 'JE-DEF', new Date('2026-10-06T03:00:00Z'), false, { id: 'je-def', metadata: { tag: 'REVERSAL', flow: 'defect-exchange', originalEntryId: 'je-c1', contractId: 'c1' } }),
+      ]);
+      prisma.journalEntry.findMany.mockResolvedValue([{ id: 'je-c1', entryNumber: 'JE-C1', metadata: claimMeta('c1', { reversed: true }) }]);
+      const out = await service.getVatMonthly(2026, 10);
+      expect(out.vatInputExpense).toBe('0.00');
+      expect(out.vatInputInstallment).toBe('0.00');
+      expect(out.installmentInputVatLines.map((l) => [l.entryNumber, l.amount, l.reversal])).toEqual([['JE-C1', '686.00', false], ['JE-DEF', '-686.00', true]]);
+      expect(prisma.journalEntry.findMany.mock.calls[0][0].where.id.in).toEqual(['je-c1']);
+    });
+
+    it('ไม่มีรายการ installment → vatInputInstallment 0.00 · installmentInputVatLines [] · vatInput = vatInputExpense', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([makeLine('11-4101', '50.00', '0', 'JE-EXP', new Date('2026-10-02T03:00:00Z'), false, { id: 'je-exp', metadata: { flow: 'expense-same-day' } })]);
+      const out = await service.getVatMonthly(2026, 10);
+      expect(out).toMatchObject({ vatInputExpense: '50.00', vatInputInstallment: '0.00', vatInput: '50.00', installmentInputVatLines: [] });
+    });
+  });
 
   describe('getWhtMonthly', () => {
     it('returns correct shape with zero totals when no lines exist', async () => {

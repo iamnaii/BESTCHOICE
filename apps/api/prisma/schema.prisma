@@ -61,6 +61,15 @@ enum ContractStatus {
   CANCELED // ยกเลิกสัญญา — ย้อนรายการบัญชีทั้งหมด (ContractCancellation)
 }
 
+/// ก้อน 5 — ภาษีซื้อของเครื่องที่ขายผ่อน (สมุด FINANCE เคลม Dr 11-4101 / Cr 42-1108 ตอนเปิดสัญญา)
+enum InputVatStatus {
+  NONE // สัญญาก่อนก้อน 5 / ยังไม่ตัดสิน
+  NOT_ELIGIBLE // ไม่เคลม — ดูเหตุผลที่ inputVatReason
+  PENDING_INVOICE // เครื่องมีภาษีซื้อแต่ใบรับของยังไม่มีใบกำกับภาษี — เคลมเมื่อบันทึกใบกำกับ
+  CLAIMED
+  REVERSED // ยกเลิกสัญญา — JE ถูกกระจกโดยตัวกวาด หรือสัญญาถูกยกเลิกก่อนได้ใบกำกับ
+}
+
 enum ContractCancellationStatus {
   PENDING
   APPROVED
@@ -843,6 +852,7 @@ model User {
   repossessionsAppraised      Repossession[]            @relation("AppraisedBy")
   deviceReturnsReceived       DeviceReturn[]            @relation("DeviceReturnReceivedBy")
   goodsReceivings             GoodsReceiving[]          @relation("GoodsReceivedBy")
+  taxInvoicesRecorded         GoodsReceiving[]          @relation("TaxInvoiceRecordedBy")
   transfersConfirmed          StockTransfer[]           @relation("TransferConfirmedBy")
   transfersDispatched         StockTransfer[]           @relation("TransferDispatchedBy")
   stockAdjustments            StockAdjustment[]         @relation("StockAdjustedBy")
@@ -1437,6 +1447,12 @@ model Contract {
   // P4-SP4: Contract cancellation requests
   cancellations      ContractCancellation[] @relation("ContractCancellations")
 
+  // ก้อน 5 — ภาษีซื้อของเครื่องหลักที่ FINANCE เคลมตอนเปิดสัญญา (Dr 11-4101 / Cr 42-1108)
+  inputVatStatus         InputVatStatus @default(NONE) @map("input_vat_status")
+  inputVatAmount         Decimal?       @map("input_vat_amount") @db.Decimal(12, 2)
+  inputVatJournalEntryId String?        @unique @map("input_vat_journal_entry_id")
+  inputVatReason         String?        @map("input_vat_reason")
+
   // SP2 — Same-price device exchange self-relation (new contract links back to old contract)
   exchangedFromContractId String?   @unique @map("exchanged_from_contract_id")
   exchangedFromContract   Contract? @relation("ContractSamePriceExchange", fields: [exchangedFromContractId], references: [id])
@@ -1458,6 +1474,7 @@ model Contract {
   @@index([branchId])
   @@index([assignedToId])
   @@index([status])
+  @@index([inputVatStatus])
   @@index([salespersonId])
   @@index([createdAt])
   @@index([deletedAt])
@@ -2214,12 +2231,19 @@ model GoodsReceiving {
   supplierDocNumber String?          @map("supplier_doc_number")
   /// วันที่ในเอกสาร เก็บเป็นเที่ยงคืนเวลาไทย — วันที่ลงบัญชีรับสินค้า (ข้ามไปวันที่รับของเมื่องวดของวันนี้ปิดแล้ว)
   supplierDocDate   DateTime?        @map("supplier_doc_date")
+  /// ก้อน 5 — ใบกำกับภาษีที่มาทีหลัง (เฉพาะใบที่ไม่ได้รับด้วย TAX_INVOICE) · วันที่ = เที่ยงคืนเวลาไทย
+  taxInvoiceNumber       String?   @map("tax_invoice_number")
+  taxInvoiceDate         DateTime? @map("tax_invoice_date")
+  taxInvoicePhotoKey     String?   @map("tax_invoice_photo_key")
+  taxInvoiceRecordedAt   DateTime? @map("tax_invoice_recorded_at")
+  taxInvoiceRecordedById String?   @map("tax_invoice_recorded_by_id")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
   deletedAt    DateTime? @map("deleted_at")
 
   po         PurchaseOrder        @relation(fields: [poId], references: [id], onDelete: Cascade)
   receivedBy User                 @relation("GoodsReceivedBy", fields: [receivedById], references: [id])
+  taxInvoiceRecordedBy User?      @relation("TaxInvoiceRecordedBy", fields: [taxInvoiceRecordedById], references: [id])
   items      GoodsReceivingItem[]
 
   @@index([poId])
@@ -2246,6 +2270,8 @@ model GoodsReceivingItem {
   /// ต้นทุนของหน่วยนี้ที่ปันได้ตอนรับของ (ราคารวม VAT หลังส่วนลดท้ายบิล) = ยอดที่ลงบัญชีรับเข้าคลัง ·
   /// null = รับก่อนระบบลงบัญชีรับของ (ไม่ลงย้อนหลัง)
   receivedCost       Decimal?            @map("received_cost") @db.Decimal(12, 2)
+  /// ภาษีซื้อของหน่วยนี้ที่ปันจาก PurchaseOrder.vatAmount ตามสัดส่วนราคา (ก้อน 5) · null = รับก่อนก้อน 5 (ไม่ย้อน) · 0 = ผู้จัดจำหน่ายไม่จด VAT
+  receivedVat        Decimal?            @map("received_vat") @db.Decimal(12, 2)
   /// รายการบัญชีรับเข้าคลังของหน่วยนี้ · null = ยังไม่ลง — เครื่องที่รอถ่ายรูปลงตอนผ่านเข้าคลัง
   /// (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8: ลงเฉพาะสินค้าที่รับเข้าคลังจริง)
   journalEntryId     String?             @map("journal_entry_id")

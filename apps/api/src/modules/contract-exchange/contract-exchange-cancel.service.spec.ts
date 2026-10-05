@@ -107,6 +107,8 @@ describe('ExchangeCancelService (spec §9)', () => {
       },
       contract: {
         update: jest.fn().mockResolvedValue({}),
+        // ก้อน 5 — markInputVatReversedIfSwept อ่านสถานะภาษีซื้อของสัญญาใหม่ (null = UNCHANGED)
+        findUnique: jest.fn().mockResolvedValue(null),
         // CAS soft-delete of the DRAFT contract (PRE_FINALIZE path)
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         // restore guard ชั้น 2 — สัญญาที่ยังไม่จบซึ่งอ้างเครื่องเก่าอยู่
@@ -123,7 +125,7 @@ describe('ExchangeCancelService (spec §9)', () => {
       },
       // Pre-sweep scan (final review Phase 3 — cash tripwire + C-2 defensive):
       // [] = ไม่มี candidate ผิดปกติ ⇒ ทุกเทสเดิมเดินเส้นเดิม
-      journalEntry: { findMany: jest.fn().mockResolvedValue([]) },
+      journalEntry: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn().mockResolvedValue(null) },
       product: {
         update: jest.fn().mockResolvedValue({}),
         findUniqueOrThrow: jest.fn().mockResolvedValue({
@@ -280,6 +282,22 @@ describe('ExchangeCancelService (spec §9)', () => {
         }),
       }),
     );
+  });
+
+  it('ก้อน 5: สัญญาใหม่ CLAIMED ภาษีซื้อ + JE ถูก sweep กระจก → ตั้ง inputVatStatus REVERSED ก่อนเปลี่ยนสัญญาเป็น CANCELED', async () => {
+    requests.req1 = makeFinalizedReq(5);
+    txMock.contract.findUnique.mockResolvedValue({ inputVatStatus: 'CLAIMED', inputVatJournalEntryId: 'je-vat' });
+    txMock.journalEntry.findUnique.mockResolvedValue({ metadata: { reversed: true } });
+
+    await svc.cancel('req1', 'เครื่องมีปัญหา ลูกค้าขอยกเลิก', user);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const calls = txMock.contract.update.mock.calls.map((c: any[]) => c[0]);
+    const reversedIdx = calls.findIndex((c) => c.where?.id === 'newC1' && c.data?.inputVatStatus === 'REVERSED');
+    const canceledIdx = calls.findIndex((c) => c.where?.id === 'newC1' && c.data?.status === 'CANCELED');
+    expect(reversedIdx).toBeGreaterThanOrEqual(0);
+    expect(canceledIdx).toBeGreaterThan(reversedIdx);
+    expect(txMock.journalEntry.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'je-vat' } }));
   });
 
   it('previousCostPrice null (finalize ก่อนฟีเจอร์ — forward-only) → ไม่แตะ costPrice', async () => {

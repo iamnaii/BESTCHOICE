@@ -40,6 +40,7 @@ const service = new ContractWorkflowService(
   null as never, // shopInventoryTransferTemplate
   null as never, // shopDownPaymentTemplate
   null as never, // shopAccountResolver
+  null as never, // installmentInputVatTemplate (ก้อน 5)
 );
 
 /**

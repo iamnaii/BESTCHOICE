@@ -44,8 +44,9 @@ export class BookingPage {
 
   /** Generic "select option by text" — works for any combobox after click() */
   optionByText(text: string | RegExp): Locator {
+    // ชื่อข้อความล้วนต้องตรงทั้งคำ ("ทั้งหมด" ห้ามไปจับ "ทั้งหมด…" อื่น) — RegExp ส่งมาแล้วใช้ตามนั้น
     return this.page
-      .getByRole('option', { name: text })
+      .getByRole('option', typeof text === 'string' ? { name: text, exact: true } : { name: text })
       .first()
       .or(this.page.getByText(text).first());
   }

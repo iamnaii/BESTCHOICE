@@ -371,6 +371,33 @@ export class BookingsService {
     }
   }
 
+  /** คำตัดสินเจ้าของ 2026-10-05 ข้อ 2: ใบจอง = เครื่องในสต็อก 1 เครื่อง จำนวน 1 ชิ้น (ตรงกับกติกาตอนแปลงขาย) */
+  private assertSingleDeviceItem(items: { productId?: string; quantity: number }[]): string {
+    const [item] = items;
+    if (items.length !== 1 || !item?.productId || item.quantity !== 1) {
+      throw new BadRequestException('ใบจองต้องผูกเครื่องในสต็อก 1 เครื่อง จำนวน 1 ชิ้น');
+    }
+    return item.productId;
+  }
+
+  /** เครื่องต้องมีจริง อยู่สาขาเดียวกับใบ และพร้อมขาย — ด่านนี้ให้ข้อความดี ๆ ตอนสร้าง (ด่านจริงตอนรับมัดจำอยู่ PR ล็อกเครื่อง) */
+  private async loadBookableProduct(
+    productId: string,
+    branchId: string,
+    customer: Parameters<typeof assertSameTestSide>[0],
+    client: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const product = await client.product.findFirst({
+      where: { id: productId, deletedAt: null },
+      select: { status: true, branchId: true, ...TEST_SIDE_PRODUCT_SELECT },
+    });
+    if (!product) throw new NotFoundException('ไม่พบเครื่องที่เลือก');
+    if (product.branchId !== branchId) throw new BadRequestException('เครื่องที่เลือกอยู่คนละสาขากับใบจอง');
+    if (product.status !== 'IN_STOCK') throw new BadRequestException('เครื่องนี้ไม่พร้อมขาย กรุณาเลือกเครื่องอื่น');
+    assertSameTestSide(customer, product);
+    return product;
+  }
+
   private async resolveExpireDate(dto: { expireDate?: string }): Promise<Date> {
     if (dto.expireDate) {
       const d = new Date(dto.expireDate);
@@ -411,18 +438,8 @@ export class BookingsService {
     if (!branch) throw new NotFoundException('ไม่พบสาขา');
     assertCustomerHasPhone(customer, 'จองสินค้า');
 
-    // test-data fence (spec 2026-09-05 §5.1): รายการที่ผูกเครื่องจริงต้องอยู่ฝั่งเดียวกับลูกค้า
-    // (รายการที่มีแต่ description ไม่มีเครื่อง — ไม่มีอะไรให้ตรวจ)
-    const fencedProductIds = dto.items
-      .map((item) => item.productId)
-      .filter((id): id is string => !!id);
-    if (fencedProductIds.length > 0) {
-      const fencedProducts = await this.prisma.product.findMany({
-        where: { id: { in: fencedProductIds }, deletedAt: null },
-        select: TEST_SIDE_PRODUCT_SELECT,
-      });
-      for (const product of fencedProducts) assertSameTestSide(customer, product);
-    }
+    const productId = this.assertSingleDeviceItem(dto.items);
+    await this.loadBookableProduct(productId, dto.branchId, customer);
 
     const total = this.computeTotal(dto.items);
     const deposit = new Prisma.Decimal(dto.depositAmount);
@@ -487,6 +504,7 @@ export class BookingsService {
         id: true,
         status: true,
         branchId: true,
+        customerId: true,
         totalAmount: true,
         depositAmount: true,
         expireDate: true,
@@ -504,6 +522,15 @@ export class BookingsService {
         throw new BadRequestException('รับมัดจำแล้ว ไม่สามารถแก้ลูกค้า สาขา สินค้า หรือยอดเงินในใบจองนี้');
       }
       if (dto.branchId) this.assertCanWriteBranch(user, dto.branchId);
+      if (dto.items) {
+        const productId = this.assertSingleDeviceItem(dto.items);
+        const owner = await tx.customer.findFirst({
+          where: { id: dto.customerId ?? existing.customerId, deletedAt: null },
+          select: TEST_SIDE_CUSTOMER_SELECT,
+        });
+        if (!owner) throw new NotFoundException('ไม่พบลูกค้า');
+        await this.loadBookableProduct(productId, dto.branchId ?? existing.branchId, owner, tx);
+      }
       if (dto.customerId) {
         // เปลี่ยนเจ้าของใบจอง = จองให้คนใหม่ ⇒ ด่านเบอร์เดียวกับตอนสร้าง (spec 2026-09-13-chat-prospects)
         const nextCustomer = await tx.customer.findFirst({

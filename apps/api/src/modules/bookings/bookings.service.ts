@@ -920,6 +920,7 @@ export class BookingsService {
       this.assertNotExpired(booking.expireDate);
 
       const fromStatus = booking.status;
+      const now = new Date();
 
       const claim = await tx.booking.updateMany({
         where: {
@@ -933,7 +934,7 @@ export class BookingsService {
           canceledById: user.id,
           cancelReason: dto.cancelReason,
           lockedProductId: null,
-          unlockedAt: new Date(),
+          unlockedAt: now,
         },
       });
       if (claim.count !== 1) {
@@ -944,7 +945,7 @@ export class BookingsService {
       const lockedProductIdBefore = booking.lockedProductId ?? null;
       const unlock = await this.unlockBookedDevice(tx, {
         id, lockedProductId: lockedProductIdBefore, bookingNumber: booking.bookingNumber ?? null,
-      }, user.id, new Date());
+      }, user.id, now);
 
       // ── คืนเงินมัดจำ (A5 ผู้สอบ 2026-08-25) ─────────────────────────────────
       // โพสต์เฉพาะใบที่ "รับมัดจำแล้วจริง" — PENDING_DEPOSIT ยังไม่มีเงินเข้า
@@ -1401,7 +1402,7 @@ export class BookingsService {
                   status: 'EXPIRED',
                   forfeitAmount: booking.status === 'PAID' ? forfeitAmount.toFixed(2) : '0.00',
                   bookingNumber: booking.bookingNumber,
-                  unlockedProductId: booking.lockedProductId ?? null,
+                  unlockedProductId: unlock === 'UNLOCKED' ? booking.lockedProductId : null,
                 },
               },
             });

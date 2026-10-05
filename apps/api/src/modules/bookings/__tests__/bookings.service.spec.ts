@@ -240,6 +240,8 @@ describe('BookingsService', () => {
   });
 
   beforeEach(async () => {
+    (Sentry.captureMessage as jest.Mock).mockClear();
+    (Sentry.captureException as jest.Mock).mockClear();
     const txAuditLog = { create: jest.fn().mockResolvedValue({ id: 'log-1' }) };
 
     const txBooking = {
@@ -1058,6 +1060,7 @@ describe('BookingsService', () => {
       expect(claim.data).toMatchObject({ status: 'CANCELED', lockedProductId: null });
       expect(claim.data.unlockedAt).toBeInstanceOf(Date);
       expect(prisma._tx.auditLog.create.mock.calls.some((c: any[]) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED')).toBe(false);
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
 
     it('ยกเลิก — เครื่องถูกเปลี่ยนสถานะด้วยมือระหว่างล็อก (count 0) → ไม่ throw · audit BOOKING_UNLOCK_SKIPPED · Sentry warning หลัง tx', async () => {
@@ -1068,10 +1071,18 @@ describe('BookingsService', () => {
       await expect(service.cancel('bk-1', { cancelReason: 'ลูกค้าเปลี่ยนใจ' }, OWNER)).resolves.toBeDefined();
       const skipped = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED');
       expect(skipped).toBeDefined();
-      expect(skipped![0].data.newValue).toMatchObject({ lockedProductId: 'prod-1', reason: 'PRODUCT_NOT_RESERVED' });
+      expect(skipped![0].data).toMatchObject({
+        action: 'BOOKING_UNLOCK_SKIPPED', entity: 'booking', entityId: 'bk-1', userId: OWNER.id,
+        newValue: { lockedProductId: 'prod-1', bookingNumber: 'BK-20260517-0001', reason: 'PRODUCT_NOT_RESERVED' },
+      });
+      expect(typeof skipped![0].data.newValue.at).toBe('string');
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
       expect(Sentry.captureMessage).toHaveBeenCalledWith(
         expect.stringContaining('unlock skipped'),
-        expect.objectContaining({ level: 'warning', tags: expect.objectContaining({ module: 'booking-lock' }) }),
+        expect.objectContaining({
+          level: 'warning', tags: { module: 'booking-lock', flow: 'cancel' },
+          extra: expect.objectContaining({ bookingId: 'bk-1', productId: 'prod-1' }),
+        }),
       );
     });
 
@@ -1091,6 +1102,32 @@ describe('BookingsService', () => {
       expect(shopBookingForfeitTemplate.execute).toHaveBeenCalled();
       const claim = prisma._tx.booking.updateMany.mock.calls[0][0];
       expect(claim.data).toMatchObject({ status: 'EXPIRED', lockedProductId: null });
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      const expired = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_AUTO_EXPIRED');
+      expect(expired![0].data.newValue.unlockedProductId).toBe('prod-1');
+    });
+
+    it('autoExpire — เครื่องถูกเปลี่ยนสถานะด้วยมือ (count 0) → ยังหมดอายุ+ริบ · audit ข้ามใน tx · Sentry หลัง tx', async () => {
+      prisma.booking.findMany
+        .mockResolvedValueOnce([{ id: 'bk-1' }])
+        .mockResolvedValueOnce([]);
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        ...paidLocked(), expireDate: new Date(Date.now() - 1000),
+      });
+      prisma._tx.product.updateMany.mockResolvedValueOnce({ count: 0 });
+      expect(await service.autoExpire(new Date())).toBe(1);
+      const calls = prisma._tx.auditLog.create.mock.calls as any[][];
+      expect(calls.some((c) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED')).toBe(true);
+      const expired = calls.find((c) => c[0].data.action === 'BOOKING_AUTO_EXPIRED');
+      expect(expired![0].data.newValue.unlockedProductId).toBeNull();
+      expect(shopBookingForfeitTemplate.execute).toHaveBeenCalled();
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        expect.stringContaining('unlock skipped'),
+        expect.objectContaining({ level: 'warning', tags: { module: 'booking-lock', flow: 'auto-expire' } }),
+      );
+      expect((Sentry.captureMessage as jest.Mock).mock.invocationCallOrder[0])
+        .toBeGreaterThan(prisma._tx.auditLog.create.mock.invocationCallOrder.at(-1)!);
     });
   });
 });

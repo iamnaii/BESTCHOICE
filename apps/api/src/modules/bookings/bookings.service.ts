@@ -66,6 +66,24 @@ export interface BookingListOptions {
   order?: 'asc' | 'desc';
 }
 
+export const BOOKING_EVENT_ACTIONS = [
+  'BOOKING_CREATED',
+  'BOOKING_UPDATED',
+  'BOOKING_DEPOSIT_PAID',
+  'BOOKING_CANCELED',
+  'BOOKING_CONVERTED',
+  'BOOKING_AUTO_EXPIRED',
+  'BOOKING_DELETED',
+] as const;
+export type BookingEventKind = (typeof BOOKING_EVENT_ACTIONS)[number];
+export interface BookingEvent {
+  id: string;
+  kind: BookingEventKind;
+  at: string;
+  actor: { id: string; name: string } | null;
+  data: Prisma.JsonValue | null;
+}
+
 /**
  * เที่ยงคืนไทยของ (วันนี้ + days + 1) — ใบจองเก็บ `expireDate` เป็นเที่ยงคืนไทยของวันถัดจากวันสุดท้ายที่ใช้ได้
  * (`toBangkokExpiryInstant` ฝั่งเว็บ) จึงต้องเทียบด้วย `lte` ให้ "ภายใน n วัน" ครอบใบที่ใช้ได้ถึงสิ้นวันที่ n พอดี
@@ -282,7 +300,19 @@ export class BookingsService {
       include: BOOKING_DEFAULT_INCLUDE,
     });
     if (!booking) throw new NotFoundException('ไม่พบใบจอง');
-    return booking;
+    const logs = await this.prisma.auditLog.findMany({
+      where: { entity: 'booking', entityId: id, action: { in: [...BOOKING_EVENT_ACTIONS] } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, action: true, createdAt: true, newValue: true, user: { select: { id: true, name: true } } },
+    });
+    const events: BookingEvent[] = logs.map((log) => ({
+      id: log.id,
+      kind: log.action as BookingEventKind,
+      at: log.createdAt.toISOString(),
+      actor: log.user ? { id: log.user.id, name: log.user.name } : null,
+      data: log.newValue,
+    }));
+    return { ...booking, events };
   }
 
   private async loadBookingScoped(
@@ -518,11 +548,28 @@ export class BookingsService {
         updates.depositAmount = nextDeposit;
       }
 
-      return tx.booking.update({
+      const updated = await tx.booking.update({
         where: { id },
         data: updates,
         include: BOOKING_DEFAULT_INCLUDE,
       });
+      const changed = (Object.keys(dto) as (keyof UpdateBookingDto)[]).filter((key) => dto[key] !== undefined);
+      await tx.auditLog.create({
+        data: {
+          action: 'BOOKING_UPDATED',
+          entity: 'booking',
+          entityId: id,
+          userId: user.id,
+          oldValue: { status: existing.status },
+          newValue: {
+            changed,
+            expireDate: updated.expireDate.toISOString(),
+            depositAmount: updated.depositAmount.toFixed(2),
+            totalAmount: updated.totalAmount.toFixed(2),
+          },
+        },
+      });
+      return updated;
     });
   }
 

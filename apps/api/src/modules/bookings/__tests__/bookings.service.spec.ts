@@ -222,6 +222,7 @@ describe('BookingsService', () => {
       product: { findMany: jest.fn().mockResolvedValue([]) },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'br-1' }) },
       user: { findFirst: jest.fn().mockResolvedValue({ id: 'u-admin' }) },
+      auditLog: { findMany: jest.fn().mockResolvedValue([]) },
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       $transaction: jest.fn(async (fn: any) =>
@@ -888,6 +889,8 @@ describe('BookingsService', () => {
     prisma.booking.findFirst.mockResolvedValue({ id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1',
       depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000),
       expireDate: new Date(Date.now() + 86400000) });
+    prisma._tx.booking.update.mockResolvedValueOnce({ id: 'bk-1', expireDate: new Date(Date.now() + 86400000),
+      depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000) });
     await service.update('bk-1', { customerId: 'cust-1' }, OWNER);
     expect(prisma._tx.booking.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ customer: { connect: { id: 'cust-1' } } }) }),

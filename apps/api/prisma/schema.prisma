@@ -811,6 +811,8 @@ model Branch {
 }
 
 model User {
+  chatServiceRequestsCreated ChatServiceRequest[] @relation("ServiceRequestCreator")
+  chatServiceRequestEvents ChatServiceRequestEvent[]
   facebookCommentReplies FacebookCommentReply[]
   assignedFacebookComments FacebookCommentThread[]
 
@@ -1107,6 +1109,7 @@ model Contact {
 }
 
 model Customer {
+  chatServiceRequests ChatServiceRequest[]
   facebookCommentThreads FacebookCommentThread[]
 
   id                 String    @id @default(uuid())
@@ -1280,6 +1283,7 @@ model Customer {
 }
 
 model Contract {
+  chatServiceRequests ChatServiceRequest[]
   tradeInCreditSnapshot Json? @map("trade_in_credit_snapshot")
   tradeInCreditRedemptions TradeInCreditRedemption[]
   productDisclosure Json? @map("product_disclosure")
@@ -1952,6 +1956,7 @@ enum PricingDeviceOrigin {
 }
 
 model Product {
+  chatServiceRequests ChatServiceRequest[]
   id                 String          @id @default(uuid())
   name               String
   brand              String
@@ -2925,6 +2930,7 @@ model SsoConfig {
 // ============================================================
 
 model Sale {
+  chatServiceRequests ChatServiceRequest[]
   tradeInCreditSnapshot Json? @map("trade_in_credit_snapshot")
   tradeInCreditRedemptions TradeInCreditRedemption[]
   productDisclosure Json? @map("product_disclosure")
@@ -5545,6 +5551,7 @@ model BadDebtProvision {
 // ============================================================
 
 model Todo {
+  serviceRequest ChatServiceRequest?
   workKind ChatWorkKind @default(GENERAL) @map("work_kind")
   revision Int @default(0)
   dueRevision Int @default(0) @map("due_revision")
@@ -5755,6 +5762,7 @@ model CustomerLineLink {
 
 /// Chat room — ลูกค้า 1 คน 1 room ต่อ channel
 model ChatRoom {
+  serviceRequests ChatServiceRequest[]
   facebookCommentThreads FacebookCommentThread[]
 
   responseCycles ChatResponseCycle[]
@@ -5899,6 +5907,7 @@ model RoomCreditAnalysis {
 
 /// Chat message — ทุกข้อความใน room
 model ChatMessage {
+  serviceRequestSources ChatServiceRequestSource[]
   cycleId String? @map("cycle_id")
   cycle ChatResponseCycle? @relation(fields: [cycleId], references: [id], onDelete: Restrict)
   /// Historical causal watermark; preserved even after message retention.
@@ -7960,6 +7969,7 @@ model RepairStatusLog {
 }
 
 model AfterSalesCase {
+  chatServiceRequest ChatServiceRequest?
   id            String            @id @default(uuid())
   caseNumber    String            @unique @map("case_number") // AS-YYYYMMDD-NNNN
   branchId      String            @map("branch_id")
@@ -9110,4 +9120,68 @@ model FacebookCommentReply {
   @@unique([pageId, externalId])
   @@index([threadId, attemptedAt])
   @@map("facebook_comment_replies")
+}
+
+
+enum ChatServiceRequestStatus {
+  OPEN
+  WAITING_CUSTOMER
+  LINKED
+  RESOLVED
+  CANCELLED
+}
+
+model ChatServiceRequest {
+  id String @id @default(uuid())
+  roomId String @map("room_id")
+  customerId String? @map("customer_id")
+  requestedProductId String? @map("requested_product_id")
+  contractId String? @map("contract_id")
+  saleId String? @map("sale_id")
+  todoId String @unique @map("todo_id")
+  afterSalesCaseId String? @unique @map("after_sales_case_id")
+  createdById String @map("created_by_id")
+  requestKey String @unique @map("request_key")
+  requestFingerprint String @map("request_fingerprint")
+  symptom String @db.Text
+  status ChatServiceRequestStatus @default(OPEN)
+  revision Int @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  requestedProduct Product? @relation(fields: [requestedProductId], references: [id], onDelete: Restrict)
+  contract Contract? @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  sale Sale? @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  todo Todo @relation(fields: [todoId], references: [id], onDelete: Restrict)
+  afterSalesCase AfterSalesCase? @relation(fields: [afterSalesCaseId], references: [id], onDelete: Restrict)
+  createdBy User @relation("ServiceRequestCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  sources ChatServiceRequestSource[]
+  events ChatServiceRequestEvent[]
+  @@index([roomId, deletedAt, createdAt])
+  @@index([status, createdAt])
+  @@map("chat_service_requests")
+}
+model ChatServiceRequestSource {
+  requestId String @map("request_id")
+  messageId String @map("message_id")
+  request ChatServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  @@id([requestId, messageId])
+  @@map("chat_service_request_sources")
+}
+model ChatServiceRequestEvent {
+  id String @id @default(uuid())
+  requestId String @map("request_id")
+  kind String @db.VarChar(40)
+  fromStatus ChatServiceRequestStatus? @map("from_status")
+  toStatus ChatServiceRequestStatus? @map("to_status")
+  actorId String @map("actor_id")
+  reason String? @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  request ChatServiceRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  @@index([requestId, createdAt])
+  @@map("chat_service_request_events")
 }

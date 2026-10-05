@@ -70,7 +70,23 @@ const THAI: Partial<Record<ProductStatus, string>> = {
   [ProductStatus.SOLD_INSTALLMENT]: 'ขายผ่อนแล้ว',
   [ProductStatus.SOLD_RESELL]: 'ขายต่อแล้ว',
   [ProductStatus.REPOSSESSED]: 'ยึดเครื่องแล้ว',
+  [ProductStatus.DAMAGED]: 'เสียหาย',
+  [ProductStatus.LOST]: 'สูญหาย',
+  [ProductStatus.WRITTEN_OFF]: 'ตัดจำหน่ายแล้ว',
+  [ProductStatus.ADJUSTMENT_PENDING]: 'รออนุมัติตัดสินค้า',
 };
+
+/**
+ * ก้อน 3 (2026-10-05) — เสียหาย/สูญหาย/ตัดจำหน่าย **ต้องผ่านคำขอให้เจ้าของอนุมัติ** (เมนู คลังสินค้า › ตัดสินค้า):
+ * ตั้งด้วยมือจาก PATCH /products/:id = เครื่องหายจากสต๊อกโดยไม่มีผู้อนุมัติ ไม่มีรูปหลักฐาน และไม่ลงบัญชี
+ * `Dr S53-1102 / Cr S11-200x` (คำตอบฝ่ายบัญชี ข6). `ADJUSTMENT_PENDING` เป็นสถานะที่ service คำขอตั้ง/ปลดเองเท่านั้น.
+ */
+export const ADJUSTMENT_TARGET_DENY: ReadonlySet<ProductStatus> = new Set([
+  ProductStatus.DAMAGED,
+  ProductStatus.LOST,
+  ProductStatus.WRITTEN_OFF,
+  ProductStatus.ADJUSTMENT_PENDING,
+]);
 
 /** `STATUS (ป้ายไทย)` สำหรับข้อความ error — ใช้ร่วมกับ guard ลบสินค้าใน ProductsService */
 export function productStatusLabel(s: ProductStatus): string {
@@ -85,6 +101,7 @@ export function productStatusLabel(s: ProductStatus): string {
  * - สถานะปัจจุบันเป็นแบบระบบจัดการ (ขาย/จอง/ยึด) — ต้องแก้ผ่าน flow ของมัน
  * - สถานะปลายทางเป็นแบบระบบจัดการ — ระบบจะตั้งให้เองเมื่อทำรายการจริง
  * - คู่ transition อยู่ใน `MANUAL_TRANSITION_DENY` (มีปุ่ม/flow เฉพาะของมันแล้ว)
+ * - ปลายทางเป็นสถานะตัดสินค้า (`ADJUSTMENT_TARGET_DENY`) หรือต้นทางรออนุมัติตัดสินค้า — ต้องผ่านคำขอ (ก้อน 3)
  * ส่งค่าเดิม (ไม่เปลี่ยน) ผ่านได้เสมอ
  */
 export function assertManualStatusChangeAllowed(current: ProductStatus, next: string): void {
@@ -96,6 +113,17 @@ export function assertManualStatusChangeAllowed(current: ProductStatus, next: st
 
   const retired = current !== target ? RETIRED_TARGET_STATUSES.get(target) : undefined;
   if (retired) throw new BadRequestException(retired);
+
+  if (current === ProductStatus.ADJUSTMENT_PENDING) {
+    throw new BadRequestException(
+      'เครื่องนี้มีคำขอตัดสินค้ารออนุมัติ — ให้เจ้าของพิจารณา หรือยกเลิกคำขอที่เมนู คลังสินค้า › ตัดสินค้า ก่อน',
+    );
+  }
+  if (ADJUSTMENT_TARGET_DENY.has(target)) {
+    throw new BadRequestException(
+      `เปลี่ยนสถานะเป็น ${productStatusLabel(target)} ตรง ๆ ไม่ได้ — ใช้เมนู คลังสินค้า › ตัดสินค้า (ส่งคำขอให้เจ้าของอนุมัติ) แทน`,
+    );
+  }
 
   const denied = MANUAL_TRANSITION_DENY.find((r) => r.from === current && r.to === target);
   if (denied) {

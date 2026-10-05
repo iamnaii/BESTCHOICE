@@ -37,7 +37,6 @@ import {
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { SupplierPaymentService } from './supplier-payment.service';
-import { payableLinesFromUnits } from './supplier-payment.util';
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
 import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
@@ -468,7 +467,7 @@ export class PoReceivingService {
     // ก้อน 2 (ข้อสมมติ ค): มัดจำที่จ่ายไว้ก่อนรับของ หักเข้าเจ้าหนี้ที่เพิ่งตั้ง ใน tx เดียวกัน วันเดียวกับรายการรับของ —
     // ไม่มีมัดจำ = null · หน่วยที่รอถ่ายรูปหักตอนผ่านเข้าคลัง (ReceivingAcceptanceJournal)
     const depositApplied = posted
-      ? await this.journal.supplierPayments.applyDepositInTx(tx, id, payableLinesFromUnits(journalUnits), {
+      ? await this.journal.supplierPayments.applyDepositInTx(tx, id, {
           receivingId: receiving.id,
           grNumber,
           postedAt: journalPostedAt,
@@ -847,7 +846,8 @@ export class PoReceivingService {
               ? await this.journal.supplierPayments.recordInTx(
                   tx,
                   po.id,
-                  { paidAt: bangkokDateString(orderDate), amount: dto.paidAmount!, slipUrl: dto.attachments![0], note: dto.paymentNotes },
+                  // วันโอน = วันนี้ (จ่ายทันที) — ไม่ใช่ orderDate ซึ่งอาจเป็นวันล่วงหน้า (ผู้ตรวจอิสระ M9)
+                  { paidAt: bangkokDateString(new Date()), amount: dto.paidAmount!, slipUrl: dto.attachments![0], note: dto.paymentNotes },
                   userId,
                 )
               : null;

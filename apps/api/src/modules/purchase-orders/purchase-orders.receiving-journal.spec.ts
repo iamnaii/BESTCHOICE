@@ -63,7 +63,8 @@ describe('PurchaseOrdersService — รับสินค้าเข้าล�
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tx: any = {
       // ก้อน 2: หักมัดจำตอนรับของถามก่อนว่าเคยมัดจำไหม — spec นี้ไม่มีมัดจำ
-      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       purchaseOrder: {
         findUnique: jest.fn().mockImplementation(() => Promise.resolve(poRow())),
         update: jest.fn().mockResolvedValue({}),

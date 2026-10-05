@@ -328,6 +328,7 @@ export const WIPE_TABLES: ReadonlySet<string> = new Set([
   'journal_entries',
   'journal_lines',
   'journal_post_audit_logs',
+  'purchase_order_payments',  // รายการจ่ายผู้จัดจำหน่าย (ก้อน 2) — คู่กับ journal_entries ที่ล้าง · ใบสั่งซื้อที่เก็บไว้ถูกรีเซ็ต paidAmount ให้ตรง
   'known_devices',
   'kyc_verifications',  // FK บังคับไป contracts — เก็บไม่ได้แม้อยากเก็บ
   'late_fee_waiver_requests',

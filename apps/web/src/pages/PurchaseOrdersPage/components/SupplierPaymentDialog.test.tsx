@@ -50,7 +50,7 @@ describe('SupplierPaymentDialog — บันทึกการจ่ายเ�
 
     fireEvent.change(screen.getByRole('textbox', { name: 'เลขอ้างอิงการโอน' }), { target: { value: 'TXN-1' } });
     fireEvent.click(submit);
-    expect(p.onSubmit).toHaveBeenCalledWith({ paidAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), amount: 10729, slipUrl: 'https://files.example/slip.jpg', reference: 'TXN-1', note: undefined });
+    expect(p.onSubmit).toHaveBeenCalledWith({ paidAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), amount: 10729, slipUrl: 'https://files.example/slip.jpg', reference: 'TXN-1', note: undefined, requestId: expect.any(String) });
   });
 
   it('จ่ายเกินเพดาน → ข้อความเตือน ปุ่มปิด', () => {

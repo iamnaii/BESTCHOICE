@@ -1883,6 +1883,8 @@ model PurchaseOrderPayment {
   receivingId            String?       @map("receiving_id")
   journalEntryId         String?       @unique @map("journal_entry_id")
   createdById            String?       @map("created_by_id")
+  /** รหัสคำขอจากหน้าจอ (uuid ต่อการเปิดหน้าต่าง) — กดซ้ำ/เน็ตส่งซ้ำได้รายการเดิม ไม่เกิดรายการผี */
+  requestId              String?       @map("request_id")
   voidedAt               DateTime?     @map("voided_at")
   voidedById             String?       @map("voided_by_id")
   voidReason             String?       @map("void_reason")
@@ -1896,6 +1898,7 @@ model PurchaseOrderPayment {
 
   @@index([poId, deletedAt])
   @@index([supplierId, paidAt])
+  @@index([poId, requestId])
   @@map("purchase_order_payments")
 }
 

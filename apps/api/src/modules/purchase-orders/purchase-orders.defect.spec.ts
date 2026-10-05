@@ -8,7 +8,8 @@ describe('goodsReceiving — persists structured defectReason on REJECT', () => 
     const created: any[] = [];
     const tx: any = {
       // ก้อน 2: หักมัดจำตอนรับของถามก่อนว่าเคยมัดจำไหม — spec นี้ไม่มีมัดจำ
-      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       purchaseOrder: {
         findUnique: jest.fn().mockResolvedValue({
           id: 'po-1', status: 'APPROVED', deletedAt: null, supplierId: 's1', supplier: { id: 's1', name: 'ผู้จัดจำหน่ายทดสอบ' },

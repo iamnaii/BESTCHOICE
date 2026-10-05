@@ -22,6 +22,12 @@ export class RecordSupplierPaymentDto {
   @IsOptional()
   @MaxLength(500)
   note?: string;
+
+  /** uuid ต่อการเปิดหน้าต่าง — ส่งซ้ำได้รายการเดิม */
+  @IsString()
+  @IsOptional()
+  @MaxLength(64)
+  requestId?: string;
 }
 
 export class VoidSupplierPaymentDto {

@@ -164,3 +164,30 @@ export function cancelPreviewLines(form: CancelOutcomeForm, depositOutstanding: 
   lines.push({ accountCode: SUPPLIER_DEPOSIT_ACCOUNT.code, label: SUPPLIER_DEPOSIT_ACCOUNT.label, debit: 0, credit: outstanding });
   return lines;
 }
+
+/**
+ * เปิดสลิปดู — สลิปที่แนบจากเครื่องถูกเก็บเป็น data URL ซึ่งเบราว์เซอร์ไม่ยอมเปิดในแท็บใหม่ตรง ๆ (ผู้ตรวจอิสระ M3)
+ * → แปลงเป็น Blob URL ก่อน · ลิงก์ปกติเปิดตรง
+ */
+export function openSlip(url: string): void {
+  const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(url);
+  if (!match) {
+    window.open(url, '_blank', 'noopener');
+    return;
+  }
+  const mime = match[1] || 'application/octet-stream';
+  const payload = match[3];
+  let part: BlobPart;
+  if (match[2]) {
+    const binary = atob(payload);
+    const buffer = new ArrayBuffer(binary.length);
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    part = buffer;
+  } else {
+    part = decodeURIComponent(payload);
+  }
+  const blobUrl = URL.createObjectURL(new Blob([part], { type: mime }));
+  window.open(blobUrl, '_blank', 'noopener');
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+}

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
+  openSlip,
   cancelOutcomeErrors,
   cancelPreviewLines,
   paymentChip,
@@ -101,5 +102,21 @@ describe('cancelOutcomeErrors / cancelPreviewLines — ปิดมัดจำ�
     expect(cancelPreviewLines(base, 3000).map((l) => [l.accountCode, l.debit, l.credit])).toEqual([['S11-1201', 3000, 0], ['S11-4201', 0, 3000]]);
     expect(cancelPreviewLines({ ...base, refundAmount: '2000' }, 3000).map((l) => [l.accountCode, l.debit, l.credit])).toEqual([['S11-1201', 2000, 0], ['S53-1105', 1000, 0], ['S11-4201', 0, 3000]]);
     expect(cancelPreviewLines({ ...base, depositOutcome: 'FORFEITED' }, 3000).map((l) => [l.accountCode, l.debit, l.credit])).toEqual([['S53-1105', 3000, 0], ['S11-4201', 0, 3000]]);
+  });
+});
+
+describe('openSlip — เปิดสลิปดู (data URL เปิดแท็บใหม่ตรง ๆ ไม่ได้ ต้องแปลงเป็น blob)', () => {
+  afterEach(() => vi.restoreAllMocks());
+  it('data URL → สร้าง blob URL แล้ว window.open · URL ปกติ → เปิดตรง', () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const create = vi.fn(() => 'blob:mock-1');
+    const revoke = vi.fn();
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke }));
+    openSlip('data:image/png;base64,iVBORw0KGgo=');
+    expect(create).toHaveBeenCalledTimes(1);
+    expect((create.mock.calls[0] as unknown[])[0]).toBeInstanceOf(Blob);
+    expect(open).toHaveBeenCalledWith('blob:mock-1', '_blank', 'noopener');
+    openSlip('https://files.example/slip.jpg');
+    expect(open).toHaveBeenLastCalledWith('https://files.example/slip.jpg', '_blank', 'noopener');
   });
 });

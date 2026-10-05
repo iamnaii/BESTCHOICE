@@ -10,10 +10,10 @@ import {
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { isPeriodClosedForBackdating } from './supplier-doc.util';
+import { validatePeriodOpen } from '../../../utils/period-lock.util';
 import {
   PayableLine,
   SupplierPaymentPosition,
-  allocatePayable,
   parsePaidAt,
   splitSettlement,
   supplierPaymentPosition,
@@ -51,6 +51,8 @@ export interface RecordSupplierPaymentInput {
   slipUrl: string;
   reference?: string;
   note?: string;
+  /** รหัสคำขอจากหน้าจอ — ส่งซ้ำ (กดซ้ำ/เน็ตส่งซ้ำ) ได้รายการเดิมกลับ ไม่เกิดรายการผี */
+  requestId?: string;
 }
 
 export interface DepositOutcomeInput {
@@ -164,6 +166,32 @@ export class SupplierPaymentService {
     const paidAt = parsePaidAt(input.paidAt, now);
 
     const po = await this.lockPo(tx, poId);
+    const requestId = input.requestId?.trim() || null;
+    if (requestId) {
+      // คำขอเดิมส่งซ้ำ (ผู้ตรวจอิสระ 05/10 ข้อ 4): ตอบรายการที่บันทึกไปแล้ว ไม่สร้างซ้ำ
+      const existing = await tx.purchaseOrderPayment.findMany({
+        where: { poId: po.id, requestId, deletedAt: null },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (existing.length > 0) {
+        const entries = await tx.journalEntry.findMany({
+          where: { id: { in: existing.map((r) => r.journalEntryId).filter((id): id is string => !!id) } },
+          select: { id: true, entryNumber: true },
+        });
+        const entryNo = new Map(entries.map((e) => [e.id, e.entryNumber]));
+        const position = await this.positionInTx(tx, po);
+        return {
+          poId: po.id,
+          poNumber: po.poNumber,
+          payments: existing.map((row) =>
+            this.toView(row, { journalEntryNo: row.journalEntryId ? (entryNo.get(row.journalEntryId) ?? null) : null, createdBy: null, voidedBy: null, reversalJournalEntryNo: null }),
+          ),
+          periodClosed: false,
+          postedAt: existing[0].postedAt,
+          summary: this.toSummary(po.netAmount, position),
+        };
+      }
+    }
     if (!PAYABLE_PO_STATUSES.includes(po.status)) {
       throw new BadRequestException('บันทึกการจ่ายได้เฉพาะใบสั่งซื้อที่อนุมัติแล้วและยังไม่ถูกยกเลิก');
     }
@@ -174,8 +202,7 @@ export class SupplierPaymentService {
       );
     }
     const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
-    const periodClosed = await isPeriodClosedForBackdating(tx, paidAt, shopCompanyId);
-    const postedAt = periodClosed ? now : paidAt;
+    const { postedAt, periodClosed } = await this.resolvePostingDate(tx, paidAt, now, shopCompanyId);
 
     const plan: { kind: SupplierPaymentJeKind; amount: Decimal; payableLines?: PayableLine[] }[] = [];
     if (before.payableOutstanding.gt(ZERO)) {
@@ -201,6 +228,7 @@ export class SupplierPaymentService {
           slipUrl: input.slipUrl.trim(),
           note: input.note?.trim() || null,
           createdById: userId,
+          requestId,
         },
       });
       const je = await this.deps.template.execute(
@@ -231,29 +259,32 @@ export class SupplierPaymentService {
   // ───────────────────────────── หักมัดจำตอนรับของ ─────────────────────────────
 
   /**
-   * เรียกหลังตั้งเจ้าหนี้จากการรับของใน tx เดียวกัน (ข้อสมมติ ค): มัดจำค้าง > 0 → หักเข้าเจ้าหนี้ที่เพิ่งเกิด
-   * ไม่เกินทั้งสองฝั่ง · ไม่มีมัดจำ = คืน null ไม่มีรายการ
+   * เรียกหลังตั้งเจ้าหนี้จากการรับของใน tx เดียวกัน (ข้อสมมติ ค): ล็อกแถวใบก่อนเสมอ (ผู้ตรวจอิสระ 05/10 ข้อ 1 — ทางลัดก่อนล็อก
+   * มองไม่เห็นมัดจำที่อีกคนกำลังบันทึก) แล้วหักมัดจำค้างเข้า**เจ้าหนี้ค้างทั้งใบ** (ไม่ใช่แค่ที่เพิ่งเกิด — ซ่อมสภาพค้างคู่ได้เอง)
+   * ไม่เกินทั้งสองฝั่ง · ไม่มีมัดจำ/ไม่มีเจ้าหนี้ = คืน null ไม่มีรายการ.
+   * วันที่ลง = วันที่ลงของรายการรับของ แต่ไม่ก่อนวันโอนมัดจำล่าสุด (ไม่งั้น S11-4201 ติดลบในงบเดือนก่อน — ผู้ตรวจอิสระ M5)
    */
   async applyDepositInTx(
     tx: Prisma.TransactionClient,
     poId: string,
-    newPayable: PayableLine[],
-    ctx: { receivingId: string; grNumber: string; postedAt: Date; userId: string },
-  ): Promise<{ paymentId: string; amount: string; journalEntryNo: string; lines: PayableLine[] } | null> {
-    const fresh = newPayable.filter((line) => line.amount.gt(ZERO));
-    if (fresh.length === 0) return null;
-    // ทางลัด: ใบที่ไม่เคยมัดจำเลย (กรณีส่วนใหญ่) ไม่ต้องล็อกแถว/อ่านสมุดบัญชี
-    const anyDeposit = await tx.purchaseOrderPayment.findFirst({
-      where: { poId, kind: 'DEPOSIT', voidedAt: null, deletedAt: null },
-      select: { id: true },
-    });
-    if (!anyDeposit) return null;
+    ctx: { receivingId: string; grNumber: string; postedAt: Date; userId: string; now?: Date },
+  ): Promise<{ paymentId: string; amount: string; journalEntryNo: string; lines: PayableLine[]; postedAt: Date } | null> {
     const po = await this.lockPo(tx, poId);
+    const deposits = await tx.purchaseOrderPayment.findMany({
+      where: { poId: po.id, kind: 'DEPOSIT', voidedAt: null, deletedAt: null },
+      select: { postedAt: true },
+    });
+    if (deposits.length === 0) return null;
     const position = await this.positionInTx(tx, po);
-    if (!position.depositOutstanding.gt(ZERO)) return null;
-    const lines = allocatePayable(position.depositOutstanding, fresh);
-    const amount = lines.reduce((sum, line) => sum.add(line.amount), ZERO);
+    if (!position.depositOutstanding.gt(ZERO) || !position.payableOutstanding.gt(ZERO)) return null;
+    const { lines, settled: amount } = splitSettlement(position.depositOutstanding, position.payableByAccount);
     if (!amount.gt(ZERO)) return null;
+
+    const now = ctx.now ?? new Date();
+    const latestDeposit = deposits.reduce((max, d) => (d.postedAt > max ? d.postedAt : max), deposits[0].postedAt);
+    const wanted = latestDeposit > ctx.postedAt ? latestDeposit : ctx.postedAt;
+    const shopCompanyId = await this.deps.companies.getShopCompanyId(tx);
+    const { postedAt } = await this.resolvePostingDate(tx, wanted, now, shopCompanyId);
 
     const row = await tx.purchaseOrderPayment.create({
       data: {
@@ -261,8 +292,8 @@ export class SupplierPaymentService {
         supplierId: po.supplierId,
         kind: 'DEPOSIT_APPLIED',
         amount,
-        paidAt: ctx.postedAt,
-        postedAt: ctx.postedAt,
+        paidAt: postedAt,
+        postedAt,
         receivingId: ctx.receivingId,
         note: `หักมัดจำเข้าเจ้าหนี้ตอนรับของ ${ctx.grNumber}`,
         createdById: ctx.userId,
@@ -281,13 +312,13 @@ export class SupplierPaymentService {
         payableLines: lines,
         receivingId: ctx.receivingId,
         grNumber: ctx.grNumber,
-        postedAt: ctx.postedAt,
+        postedAt,
       },
       tx,
     );
     await tx.purchaseOrderPayment.update({ where: { id: row.id }, data: { journalEntryId: je.journalEntryId } });
     await this.refreshPoSummaryInTx(tx, po.id, await this.positionInTx(tx, po));
-    return { paymentId: row.id, amount: amount.toFixed(2), journalEntryNo: je.entryNo, lines };
+    return { paymentId: row.id, amount: amount.toFixed(2), journalEntryNo: je.entryNo, lines, postedAt };
   }
 
   // ───────────────────────────── ยกเลิกรายการที่บันทึกผิด ─────────────────────────────
@@ -309,6 +340,8 @@ export class SupplierPaymentService {
         if (row.kind === 'DEPOSIT' && position.depositOutstanding.lt(row.amount)) {
           throw new BadRequestException('มัดจำรายการนี้ถูกหักเข้าเจ้าหนี้ตอนรับของแล้ว ยกเลิกรายการไม่ได้');
         }
+        // รายการกลับลงวันที่กด — งวดของวันนี้ต้องยังเปิด (ผู้ตรวจอิสระ 05/10 ข้อ 3)
+        await validatePeriodOpen(tx, now, await this.deps.companies.getShopCompanyId(tx));
         const reversal = await this.deps.template.reverse(
           { journalEntryId: row.journalEntryId, idempotencyKey: `po-payment-void:${row.id}`, reason: reason.trim(), postedAt: now },
           tx,
@@ -349,13 +382,13 @@ export class SupplierPaymentService {
     userId: string,
     now: Date = new Date(),
   ): Promise<{ poNumber: string; payments: SupplierPaymentView[]; depositOutstanding: string; periodClosed: boolean; postedAt: Date } | null> {
-    // ทางลัด: ใบที่ไม่เคยมัดจำเลยยกเลิกได้เหมือนเดิม ไม่ต้องล็อกแถว/อ่านสมุดบัญชี
+    // ล็อกแถวใบก่อนอ่านมัดจำเสมอ (ผู้ตรวจอิสระ 05/10 ข้อ 1 — ทางลัดก่อนล็อกมองไม่เห็นมัดจำที่อีกคนกำลังบันทึก)
+    const po = await this.lockPo(tx, poId);
     const anyDeposit = await tx.purchaseOrderPayment.findFirst({
-      where: { poId, kind: 'DEPOSIT', voidedAt: null, deletedAt: null },
+      where: { poId: po.id, kind: 'DEPOSIT', voidedAt: null, deletedAt: null },
       select: { id: true },
     });
     if (!anyDeposit) return null;
-    const po = await this.lockPo(tx, poId);
     const position = await this.positionInTx(tx, po);
     const outstanding = position.depositOutstanding;
     if (!outstanding.gt(ZERO)) return null;
@@ -388,9 +421,9 @@ export class SupplierPaymentService {
     let periodClosed = false;
     const payments: SupplierPaymentView[] = [];
     for (const step of steps) {
-      const closed = await isPeriodClosedForBackdating(tx, step.paidAt, shopCompanyId);
-      periodClosed = periodClosed || closed;
-      const postedAt = closed ? now : step.paidAt;
+      const resolved = await this.resolvePostingDate(tx, step.paidAt, now, shopCompanyId);
+      periodClosed = periodClosed || resolved.periodClosed;
+      const postedAt = resolved.postedAt;
       const row = await tx.purchaseOrderPayment.create({
         data: {
           poId: po.id,
@@ -489,15 +522,26 @@ export class SupplierPaymentService {
   async refreshPoSummaryInTx(tx: Prisma.TransactionClient, poId: string, position: SupplierPaymentPosition) {
     await tx.purchaseOrder.update({
       where: { id: poId },
+      // เขียนแค่สองช่องสรุป — `paymentMethod` คือเงื่อนไขของผู้จัดจำหน่าย (คิดวันครบกำหนด) ห้ามแตะ (ผู้ตรวจอิสระ M1)
       data: {
         paidAmount: position.paidTotal,
         paymentStatus: position.status,
-        ...(position.paidTotal.gt(ZERO) ? { paymentMethod: 'BANK_TRANSFER' } : {}),
       },
     });
   }
 
   // ───────────────────────────── ภายใน ─────────────────────────────
+
+  /**
+   * วันที่ลงบัญชี: วันที่ที่ขอ ถ้างวดของวันนั้นปิดแล้ว (ตามสถานะงวด ไม่มีช่วงผ่อนผัน) → วันนี้แทน (ข้อสมมติ ฉ) —
+   * และงวดของวันนี้ต้องยังเปิด (`validatePeriodOpen` รวมช่วงผ่อนผัน) ไม่งั้น 400 ก่อน commit (ผู้ตรวจอิสระ 05/10 ข้อ 3)
+   */
+  private async resolvePostingDate(tx: Prisma.TransactionClient, wanted: Date, now: Date, shopCompanyId: string) {
+    const periodClosed = await isPeriodClosedForBackdating(tx, wanted, shopCompanyId);
+    const postedAt = periodClosed ? now : wanted;
+    await validatePeriodOpen(tx, postedAt, shopCompanyId);
+    return { postedAt, periodClosed };
+  }
 
   private async lockPo(tx: Prisma.TransactionClient, poId: string): Promise<PoHead> {
     await tx.$queryRaw`SELECT id FROM purchase_orders WHERE id = ${poId} FOR UPDATE`;

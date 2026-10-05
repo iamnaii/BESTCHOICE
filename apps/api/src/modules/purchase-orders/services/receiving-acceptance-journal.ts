@@ -181,12 +181,12 @@ export class ReceivingAcceptanceJournal {
       data: { journalEntryId: posted.journalEntryId },
     });
     // ก้อน 2 (ข้อสมมติ ค): มัดจำค้างของใบสั่งซื้อหักเข้าเจ้าหนี้ที่เพิ่งตั้งให้หน่วยนี้ วันเดียวกับรายการของหน่วย
-    await this.deps.payments.applyDepositInTx(
-      tx,
-      locked.receiving.po.id,
-      [{ accountCode: payableAccountCode, amount: locked.receivedCost }],
-      { receivingId: locked.receiving.id, grNumber: locked.receiving.grNumber, postedAt, userId: locked.receiving.receivedById },
-    );
+    await this.deps.payments.applyDepositInTx(tx, locked.receiving.po.id, {
+      receivingId: locked.receiving.id,
+      grNumber: locked.receiving.grNumber,
+      postedAt,
+      userId: locked.receiving.receivedById,
+    });
     if (chosen > 0) {
       this.logger.warn(
         `[receiving-acceptance] ${locked.receiving.grNumber} product=${productId}: งวดบัญชีของวันที่ใบรับของปิดแล้ว ` +

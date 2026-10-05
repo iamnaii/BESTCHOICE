@@ -18,7 +18,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
 import { seedFinanceCoa } from '../../../../prisma/seed-coa-finance';
 import { seedShopCoa } from '../../../../prisma/seed-coa-shop';
@@ -31,6 +31,8 @@ import { ShopSupplierPaymentTemplate } from '../../journal/cpa-templates/shop-su
 import { bangkokDateString } from '../../../utils/date.util';
 import { ProductsService } from '../../products/products.service';
 import { ProductPhotosService } from '../../quality-control/product-photos.service';
+import { SupplierPaymentService, SUPPLIER_PAYMENT_PERIOD_TODO_TAG } from '../services/supplier-payment.service';
+import { bangkokCalendarParts } from '../../../utils/date.util';
 
 const prisma = new PrismaClient();
 const journal = new JournalAutoService(prisma as never);
@@ -47,6 +49,15 @@ const service = new PurchaseOrdersService(
 );
 
 const productsService = new ProductsService(prisma as never);
+// คอนเนกชันที่สอง — เทสต์แข่งกัน (PrismaClient เดียวซ้อน interactive tx สองตัวไม่ได้ · แบบเดียวกับ contract-cancellation spec)
+const prisma2 = new PrismaClient({ transactionOptions: { timeout: 20_000 } });
+const companyResolver2 = new CompanyResolverService(prisma2 as never);
+const service2 = new SupplierPaymentService(prisma2 as never, {
+  template: new ShopSupplierPaymentTemplate(new JournalAutoService(prisma2 as never), prisma2 as never, companyResolver2),
+  accounts: new ShopAccountResolver(prisma2 as never),
+  companies: companyResolver2,
+});
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const productPhotosService = new ProductPhotosService(prisma as never);
 const FULL_ANGLES = { front: 'f.jpg', back: 'b.jpg', left: 'l.jpg', right: 'r.jpg', top: 't.jpg', bottom: 'u.jpg' };
 const PREFIX = 'SPAYTEST-';
@@ -137,6 +148,37 @@ function netByAccount(entries: { lines: { accountCode: string; debit: Decimal | 
 
 const freshPo = (id: string) => prisma.purchaseOrder.findUniqueOrThrow({ where: { id } });
 
+/** ปิดงวดบัญชีของ SHOP เดือนหนึ่งชั่วคราว — คืนค่าเดิม (หรือลบแถวที่สร้าง) ด้วย `restore()` */
+async function closeShopPeriod(year: number, month: number) {
+  const where = { companyId_year_month: { companyId: shopCompanyId, year, month } };
+  const before = await prisma.accountingPeriod.findUnique({ where });
+  await prisma.accountingPeriod.upsert({ where, create: { companyId: shopCompanyId, year, month, status: 'CLOSED' }, update: { status: 'CLOSED' } });
+  return {
+    restore: async () => {
+      if (before) await prisma.accountingPeriod.update({ where, data: { status: before.status } });
+      else await prisma.accountingPeriod.delete({ where });
+    },
+  };
+}
+async function setGraceDays(days: number) {
+  const before = await prisma.systemConfig.findUnique({ where: { key: 'period_grace_days' } });
+  await prisma.systemConfig.upsert({ where: { key: 'period_grace_days' }, create: { key: 'period_grace_days', value: String(days), label: 'test grace' }, update: { value: String(days) } });
+  return {
+    restore: async () => {
+      if (before) await prisma.systemConfig.update({ where: { key: 'period_grace_days' }, data: { value: before.value } });
+      else await prisma.systemConfig.delete({ where: { key: 'period_grace_days' } });
+    },
+  };
+}
+/** วันที่ `day` ของเดือน `monthsBack` เดือนก่อน (ปฏิทินไทย) เป็น YYYY-MM-DD + ปี/เดือนของงวด */
+function pastDay(monthsBack: number, day: number) {
+  const today = bangkokCalendarParts(new Date());
+  const first = new Date(Date.UTC(today.year, today.month - monthsBack, 1));
+  const year = first.getUTCFullYear();
+  const month = first.getUTCMonth() + 1;
+  return { year, month, iso: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` };
+}
+
 describe('จ่ายเงินผู้จัดจำหน่าย — flow จริงบน DB จริง', () => {
   beforeAll(async () => {
     await seedFinanceCoa(prisma);
@@ -162,7 +204,8 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     const jeIds = new Set<string>();
     for (const poId of createdPoIds) (await poEntries(poId)).forEach((e) => jeIds.add(e.id));
     const jeIdList = [...jeIds];
-    await prisma.todo.deleteMany({ where: { tags: { has: 'supplier-payment-period' }, title: { contains: PREFIX } } });
+    const poNumbers = (await prisma.purchaseOrder.findMany({ where: { id: { in: createdPoIds } }, select: { poNumber: true } })).map((p) => p.poNumber);
+    for (const n of poNumbers) await prisma.todo.deleteMany({ where: { tags: { has: SUPPLIER_PAYMENT_PERIOD_TODO_TAG }, title: { contains: n } } });
     await prisma.journalPostAuditLog.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
     await prisma.journalLine.deleteMany({ where: { journalEntryId: { in: jeIdList } } });
     await prisma.purchaseOrderPayment.deleteMany({ where: { poId: { in: createdPoIds } } });
@@ -179,6 +222,7 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     await prisma.supplier.deleteMany({ where: { id: { in: createdSupplierIds } } });
     await prisma.branch.deleteMany({ where: { id: { in: createdBranchIds } } });
     expect(await prisma.purchaseOrder.count({ where: { id: { in: createdPoIds } } })).toBe(0);
+    await prisma2.$disconnect();
     await prisma.$disconnect();
   }, 180_000);
 
@@ -480,5 +524,145 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     ]);
     expect(moves.rows[1]).toMatchObject({ poNumber: poX.poNumber, entryNumber: expect.any(String) });
     expect(moves.closing).toBe('0.00');
+  });
+
+  // ───────────── รอบแก้หลังผู้ตรวจอิสระ (2026-10-05) ─────────────
+
+  it('[race] ยกเลิกใบขณะมัดจำกำลังถูกบันทึก (tx ค้าง) → การยกเลิกต้องรอล็อกใบ แล้วปฏิเสธเพราะมีมัดจำค้าง ไม่ใช่ยกเลิกทิ้งเงิน', async () => {
+    const supplier = await seedSupplier('RACE-C', false);
+    const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}RC`, quantity: 1, unitPrice: 8000 }]);
+    await prisma2.$queryRaw`SELECT 1`;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let gateHit = false;
+    const t1 = prisma2.$transaction(async (tx) => {
+      await service2.recordInTx(tx as never, po.id, { paidAt: today(), amount: 3000, slipUrl: SLIP }, adminId);
+      gateHit = true;
+      await gate; // ค้าง tx ไว้หลังบันทึกมัดจำ ยังไม่ commit
+    }, { timeout: 20_000 });
+    let deadline = Date.now() + 5_000;
+    while (!gateHit && Date.now() < deadline) await sleep(10);
+    expect(gateHit).toBe(true);
+
+    // T2 ยกเลิกโดยไม่บอกผลมัดจำ — ต้องไปติดล็อกของใบ (ไม่ใช่ผ่านทางลัดที่มองไม่เห็นมัดจำของ T1)
+    const t2 = service.cancel(po.id, adminId).then(() => ({ ok: true, err: null as unknown })).catch((err: unknown) => ({ ok: false, err }));
+    let waiters = 0;
+    deadline = Date.now() + 6_000;
+    while (Date.now() < deadline) {
+      const rows = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`SELECT COUNT(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`);
+      waiters = rows[0]?.n ?? 0;
+      if (waiters > 0) break;
+      await sleep(25);
+    }
+    release();
+    await t1;
+    const outcome = await t2;
+    expect(waiters, 'การยกเลิกต้องติดคิวบนล็อกของใบก่อน T1 commit').toBeGreaterThan(0);
+    expect(outcome.ok).toBe(false);
+    expect((outcome.err as Error).message).toMatch(/มัดจำค้าง/);
+    const fresh = await freshPo(po.id);
+    expect(fresh.status).toBe('ORDERED');
+    expect((await service.listSupplierPayments(po.id)).summary.depositOutstanding).toBe('3000.00');
+  });
+
+  it('งวดปิด: วันโอนอยู่ในเดือนที่ปิดแล้ว → ลงวันที่วันนี้ + งานแจ้งฝ่ายบัญชี · เดือนปัจจุบันปิดก่อนสิ้นเดือน → ยังลงได้ในช่วงผ่อนผัน + แจ้ง (กติกาเดียวกับรับของ)', async () => {
+    const supplier = await seedSupplier('PERIOD', false);
+    const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}P`, quantity: 1, unitPrice: 8000 }]);
+    const past = pastDay(2, 15);
+    const closedPast = await closeShopPeriod(past.year, past.month);
+    try {
+      const res = await service.recordSupplierPayment(po.id, { paidAt: past.iso, amount: 1000, slipUrl: SLIP }, adminId);
+      expect(res.periodClosed).toBe(true);
+      expect(res.accountingNotified).toBe(true);
+      expect(res.payments[0].paidAt.toISOString()).toBe(new Date(`${past.iso}T00:00:00+07:00`).toISOString());
+      expect(bangkokCalendarParts(res.payments[0].postedAt)).toEqual(bangkokCalendarParts(new Date()));
+      const je = await prisma.journalEntry.findUniqueOrThrow({ where: { id: res.payments[0].journalEntryId! } });
+      expect(bangkokCalendarParts(je.entryDate)).toEqual(bangkokCalendarParts(new Date()));
+      const todo = await prisma.todo.findFirst({ where: { tags: { has: SUPPLIER_PAYMENT_PERIOD_TODO_TAG }, title: { contains: po.poNumber } } });
+      expect(todo?.description).toContain('งวดบัญชีที่ปิดแล้ว');
+    } finally {
+      await closedPast.restore();
+    }
+
+    // ฝ่ายบัญชีปิดเดือนปัจจุบันก่อนสิ้นเดือน: กติกาทั้งระบบ (`validatePeriodOpen` ช่วงผ่อนผันนับจากสิ้นเดือน) ยังให้ลงในเดือนนั้นได้
+    // พร้อม stamp periodClosed + งานแจ้ง — เหมือนการรับของ · ด่าน 400 ของ `resolvePostingDate` เป็นตาข่ายกรณีวันนี้พ้นช่วงผ่อนผันแล้ว
+    const now = bangkokCalendarParts(new Date());
+    const closedNow = await closeShopPeriod(now.year, now.month + 1);
+    const grace = await setGraceDays(0);
+    try {
+      const res = await service.recordSupplierPayment(po.id, { paidAt: today(), amount: 500, slipUrl: SLIP }, adminId);
+      expect(res.periodClosed).toBe(true);
+      expect(res.accountingNotified).toBe(true);
+      expect(await prisma.purchaseOrderPayment.count({ where: { poId: po.id } })).toBe(2);
+    } finally {
+      await grace.restore();
+      await closedNow.restore();
+    }
+  });
+
+  it('requestId: ส่งคำขอเดิมซ้ำ (กดซ้ำ/เน็ตส่งซ้ำ) → ได้รายการเดิม ไม่เกิดรายการผี', async () => {
+    const supplier = await seedSupplier('IDEMP', true);
+    const po = await createDocExamplePo(supplier.id);
+    await receive(po.id, [poItemOf(po, `${PREFIX}A`).id]); // เจ้าหนี้ 10,486
+    const input = { paidAt: today(), amount: 10486, slipUrl: SLIP, requestId: `req-${RUN}-1` };
+    const first = await service.recordSupplierPayment(po.id, input, adminId);
+    const second = await service.recordSupplierPayment(po.id, input, adminId);
+    expect(second.payments.map((p) => p.id)).toEqual(first.payments.map((p) => p.id));
+    expect(await prisma.purchaseOrderPayment.count({ where: { poId: po.id, deletedAt: null } })).toBe(1);
+    expect((await freshPo(po.id)).paidAmount.toFixed(2)).toBe('10486.00');
+    expect(netByAccount(await poEntries(po.id))).toEqual({ 'S11-2001': '10486.00', 'S11-1202': '-10486.00' });
+  });
+
+  it('ด่าน void: มัดจำที่ถูกหักเข้าเจ้าหนี้แล้ว / รายการที่ระบบสร้าง → 400 ไม่มีการกลับรายการ · เงื่อนไขผู้จัดจำหน่าย (paymentMethod) ไม่ถูกเขียนทับ', async () => {
+    const supplier = await seedSupplier('VOIDG', true);
+    const po = await service.create(
+      { supplierId: supplier.id, orderDate: today(), paymentMethod: 'CREDIT', items: [{ brand: `${PREFIX}Brand`, storage: '128GB', category: 'PHONE_NEW', model: `${PREFIX}V`, quantity: 1, unitPrice: 10000 }] } as never,
+      adminId,
+      'OWNER',
+    );
+    createdPoIds.push(po.id);
+    const dep = await service.recordSupplierPayment(po.id, { paidAt: today(), amount: 4000, slipUrl: SLIP }, adminId);
+    expect((await freshPo(po.id)).paymentMethod).toBe('CREDIT');
+    await receive(po.id, [poItemOf(po, `${PREFIX}V`).id]); // หักมัดจำ 4,000 เข้าเจ้าหนี้ 10,700
+    const applied = await prisma.purchaseOrderPayment.findFirstOrThrow({ where: { poId: po.id, kind: 'DEPOSIT_APPLIED' } });
+    await expect(service.voidSupplierPayment(po.id, dep.payments[0].id, adminId, 'ลองยกเลิก')).rejects.toThrow(/หักเข้าเจ้าหนี้/);
+    await expect(service.voidSupplierPayment(po.id, applied.id, adminId, 'ลองยกเลิก')).rejects.toThrow(/ระบบสร้าง/);
+    expect(await prisma.purchaseOrderPayment.count({ where: { poId: po.id, voidedAt: { not: null } } })).toBe(0);
+    expect((await service.listSupplierPayments(po.id)).summary).toMatchObject({ depositOutstanding: '0.00', payableOutstanding: '6700.00' });
+    expect((await freshPo(po.id)).paymentMethod).toBe('CREDIT');
+  });
+
+  it('หักมัดจำเข้าเจ้าหนี้ลงวันไม่ก่อนวันโอนมัดจำ: เอกสารลงวันที่ย้อนหลัง มัดจำโอนวันนี้ → รายการหักลงวันนี้ (ไม่ทำให้ S11-4201 ติดลบในเดือนก่อน)', async () => {
+    const supplier = await seedSupplier('DATE', true);
+    const po = await createDocExamplePo(supplier.id);
+    await service.recordSupplierPayment(po.id, { paidAt: today(), amount: 5000, slipUrl: SLIP }, adminId);
+    const doc = pastDay(0, Math.max(1, bangkokCalendarParts(new Date()).day - 3)); // วันที่ในเอกสารก่อนหน้า 3 วัน (เดือนเดียวกัน งวดเปิด)
+    const received = await service.goodsReceiving(
+      po.id,
+      { items: [{ poItemId: poItemOf(po, `${PREFIX}A`).id, imeiSerial: nextImei(), status: 'PASS' }], supplierDocType: 'TAX_INVOICE', supplierDocNumber: `IV-${RUN}`, supplierDocDate: doc.iso } as never,
+      adminId,
+    );
+    const entries = await poEntries(po.id);
+    const receivingJe = entries.find((e) => (e.metadata as { tag?: string }).tag === 'SHOP_GOODS_RECEIVING')!;
+    const applied = entries.find((e) => (e.metadata as { kind?: string }).kind === 'DEPOSIT_APPLIED')!;
+    expect(bangkokCalendarParts(receivingJe.entryDate).day).toBe(Number(doc.iso.slice(8, 10)));
+    expect(bangkokCalendarParts(applied.entryDate)).toEqual(bangkokCalendarParts(new Date()));
+    expect(received.depositApplied?.amount).toBe('5000.00');
+  });
+
+  it('รับเข้าตรงจ่ายทันที: วันโอน = วันนี้ (ไม่ใช่ orderDate) — orderDate ล่วงหน้าไม่ทำให้รับของล้ม', async () => {
+    const supplier = await seedSupplier('DIRECT-DATE', false);
+    const tomorrow = bangkokDateString(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    const res = await service.directReceive(
+      {
+        supplierId: supplier.id, orderDate: tomorrow, supplierDocType: 'NONE', notes: 'ทดสอบ ไม่มีเอกสาร',
+        items: [{ category: 'PHONE_NEW', brand: `${PREFIX}Brand`, model: `${PREFIX}DD`, storage: '128GB', quantity: 1, unitPrice: 9000, imeiSerial: nextImei(), status: 'PASS' }],
+        paymentStatus: 'FULLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 9000, attachments: [SLIP],
+      } as never,
+      adminId,
+    );
+    createdPoIds.push(res.poId);
+    expect(res.payment?.payments[0].kind).toBe('SETTLEMENT');
+    expect(bangkokCalendarParts(res.payment!.payments[0].paidAt)).toEqual(bangkokCalendarParts(new Date()));
   });
 });

@@ -236,6 +236,8 @@ export interface RecordSupplierPaymentPayload {
   slipUrl: string;
   reference?: string;
   note?: string;
+  /** uuid ต่อการเปิดหน้าต่าง — กดซ้ำ/เน็ตส่งซ้ำ API ตอบรายการเดิม */
+  requestId?: string;
 }
 
 export interface CancelPOPayload {

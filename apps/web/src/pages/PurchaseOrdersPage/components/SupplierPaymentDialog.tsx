@@ -49,11 +49,14 @@ function Tile({ label, value, hint, tone }: { label: string; value: string; hint
 export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pending, onClose, onSubmit }: SupplierPaymentDialogProps) {
   const [form, setForm] = useState<SupplierPaymentForm>(emptyForm);
   const [slipName, setSlipName] = useState('');
+  // รหัสคำขอต่อการเปิดหน้าต่าง — กดซ้ำ/เน็ตส่งซ้ำ API ตอบรายการเดิม ไม่เกิดรายการผี
+  const [requestId, setRequestId] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setForm({ ...emptyForm(), amount: summary && Number(summary.payableOutstanding) > 0 ? String(Number(summary.payableOutstanding)) : '' });
     setSlipName('');
+    setRequestId(typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   }, [open, po?.id, summary?.payableOutstanding]);
 
   const errors = useMemo(() => (summary ? paymentFormErrors(form, summary) : {}), [form, summary]);
@@ -232,6 +235,7 @@ export function SupplierPaymentDialog({ open, po, summary, summaryLoading, pendi
                   slipUrl: form.slipUrl.trim(),
                   reference: form.reference.trim() || undefined,
                   note: form.note.trim() || undefined,
+                  requestId,
                 })
               }
             >

@@ -240,6 +240,17 @@ export class PoLifecycleService {
 
     const result = await this.prisma.$transaction(
       async (tx) => {
+        // ล็อกแถวใบแล้วอ่านสถานะ/ของที่รับใหม่ใน tx — การรับของที่ commit ระหว่างอ่านกับเขียนต้องไม่ถูกเขียนทับเป็น CANCELLED
+        // (ผู้ตรวจอิสระ 05/10 ข้อ 1ข: เดิมเช็คนอก tx)
+        await tx.$queryRaw`SELECT id FROM purchase_orders WHERE id = ${id} FOR UPDATE`;
+        const fresh = await tx.purchaseOrder.findUnique({ where: { id }, select: { status: true, items: { select: { receivedQty: true } } } });
+        const freshNothingReceived = (fresh?.items ?? []).every((i) => !i.receivedQty);
+        const stillCancellable =
+          !!fresh &&
+          (['DRAFT', 'APPROVED', 'PENDING'].includes(fresh.status) || (fresh.status === 'ORDERED' && freshNothingReceived));
+        if (!stillCancellable) {
+          throw new BadRequestException('ใบสั่งซื้อเปลี่ยนสถานะระหว่างทำรายการ (มีการรับสินค้าแล้ว) — รีเฟรชแล้วลองใหม่');
+        }
         const depositClosed = await this.supplierPayments.closeDepositsOnCancelInTx(tx, id, outcome, userId);
         const updated = await tx.purchaseOrder.update({
           where: { id },

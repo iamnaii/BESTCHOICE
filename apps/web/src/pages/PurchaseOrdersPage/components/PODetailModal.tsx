@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
 import { formatDateShort, formatDateMedium, formatDateTime, formatNumber, formatNumberDecimal } from '@/utils/formatters';
 import type { PurchaseOrder, PODetail, POItem, PoPaymentsResponse, SupplierPayment } from '../types';
-import { PAYMENT_KIND_LABEL } from '../supplier-payment.util';
+import { PAYMENT_KIND_LABEL, openSlip } from '../supplier-payment.util';
 import { paymentMethodLabels } from '../constants';
 import { canCancel } from '../po-list.util';
 import { supplierDocSummary } from '../supplier-doc.util';
@@ -365,7 +365,7 @@ export function PODetailModal({
                                   {voided && <div className="text-xs leading-snug text-destructive">ยกเลิก: {payment.voidReason}{payment.reversalJournalEntryNo ? ` · กลับรายการ ${payment.reversalJournalEntryNo}` : ''}</div>}
                                 </td>
                                 <td className={cn(tdCls, 'text-right font-mono tabular-nums', voided && 'line-through')}>{money(payment.amount)}</td>
-                                <td className={tdCls}>{payment.slipUrl ? <a href={payment.slipUrl} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline">ดูสลิป</a> : <span className="text-muted-foreground">—</span>}</td>
+                                <td className={tdCls}>{payment.slipUrl ? <button type="button" onClick={() => openSlip(payment.slipUrl!)} className="text-sm text-primary hover:underline">ดูสลิป</button> : <span className="text-muted-foreground">—</span>}</td>
                                 <td className={cn(tdCls, 'text-xs')}>{payment.createdBy?.name ?? (payment.kind === 'DEPOSIT_APPLIED' ? 'ระบบ' : '—')}</td>
                                 <td className={cn(tdCls, 'font-mono text-xs')}>{payment.journalEntryNo ?? '—'}</td>
                                 <td className={cn(tdCls, 'text-right')}>

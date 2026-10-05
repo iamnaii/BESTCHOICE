@@ -21,7 +21,8 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
       quantity: 1, receivedQty: 0, unitPrice: 30000 }];
     const tx: any = {
       // ก้อน 2: หักมัดจำตอนรับของถามก่อนว่าเคยมัดจำไหม — spec นี้ไม่มีมัดจำ
-      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       purchaseOrder: {
         count: jest.fn().mockResolvedValue(2),
         create: jest.fn().mockImplementation(({ data }) => {
@@ -269,7 +270,9 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
     expect(created.po[0]).toEqual(expect.objectContaining({ paymentStatus: 'UNPAID', paidAmount: 0, paymentMethod: 'BANK_TRANSFER' }));
     expect(recordInTx).toHaveBeenCalledTimes(1);
     expect(recordInTx.mock.calls[0][0]).toBe(tx);
-    expect(recordInTx.mock.calls[0].slice(1)).toEqual(['po-new', { paidAt: '2099-01-15', amount: 30000, slipUrl: 'data:image/png;base64,slip', note: 'โอน KBank' }, 'user-1']);
+    // วันโอน = วันนี้ (ไม่ใช่ orderDate 2099-01-15 ที่เป็นวันล่วงหน้า)
+    expect(recordInTx.mock.calls[0].slice(1)).toEqual(['po-new', { paidAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/), amount: 30000, slipUrl: 'data:image/png;base64,slip', note: 'โอน KBank' }, 'user-1']);
+    expect(recordInTx.mock.calls[0][2].paidAt).not.toBe('2099-01-15');
 
     await service.directReceive(baseDto() as never, 'user-1');
     expect(created.po[1]).toEqual(expect.objectContaining({ paymentStatus: 'UNPAID', paidAmount: 0 }));

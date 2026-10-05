@@ -165,7 +165,8 @@ export const suppliersPoSeeder: DomainSeeder = {
       ? await ctx.prisma.journalEntry.findMany({
           where: {
             AND: [
-              { metadata: { path: ['flow'], equals: 'shop-goods-receiving' } as never },
+              // ก้อน 2: รายการจ่ายเงิน/มัดจำ/กลับรายการของใบทดสอบใช้ flow `shop-supplier-payment` — กวาดด้วย ไม่งั้น S21-1101/S11-1202/S11-4201 ค้างยอดทดสอบ
+              { OR: [{ metadata: { path: ['flow'], equals: 'shop-goods-receiving' } as never }, { metadata: { path: ['flow'], equals: 'shop-supplier-payment' } as never }] },
               { OR: pos.map((p) => ({ metadata: { path: ['poId'], equals: p.id } as never })) },
             ],
           },
@@ -202,6 +203,8 @@ export const suppliersPoSeeder: DomainSeeder = {
         }
         if (pos.length) {
           const poIds = pos.map((p) => p.id);
+          // รายการจ่ายผู้จัดจำหน่ายของใบทดสอบ (ก้อน 2) — soft delete ตามกฎ
+          await tx.purchaseOrderPayment.updateMany({ where: { poId: { in: poIds }, deletedAt: null }, data: { deletedAt: now } });
           // ทุกตารางในสายนี้มี deletedAt ⇒ soft delete ทั้งหมด (กฎ .claude/rules/database.md)
           const grs = await tx.goodsReceiving.findMany({
             where: { poId: { in: poIds } },

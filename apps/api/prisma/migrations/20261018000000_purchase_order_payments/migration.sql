@@ -18,6 +18,7 @@ CREATE TABLE "purchase_order_payments" (
   "receiving_id" TEXT,
   "journal_entry_id" TEXT,
   "created_by_id" TEXT,
+  "request_id" TEXT,
   "voided_at" TIMESTAMP(3),
   "voided_by_id" TEXT,
   "void_reason" TEXT,
@@ -32,6 +33,7 @@ CREATE TABLE "purchase_order_payments" (
 CREATE UNIQUE INDEX "purchase_order_payments_journal_entry_id_key" ON "purchase_order_payments"("journal_entry_id");
 CREATE INDEX "purchase_order_payments_po_id_deleted_at_idx" ON "purchase_order_payments"("po_id", "deleted_at");
 CREATE INDEX "purchase_order_payments_supplier_id_paid_at_idx" ON "purchase_order_payments"("supplier_id", "paid_at");
+CREATE INDEX "purchase_order_payments_po_id_request_id_idx" ON "purchase_order_payments"("po_id", "request_id");
 
 ALTER TABLE "purchase_order_payments"
   ADD CONSTRAINT "purchase_order_payments_po_id_fkey"

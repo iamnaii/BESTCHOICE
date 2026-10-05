@@ -157,6 +157,7 @@ describe('PurchaseOrdersService — approval rules', () => {
           update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'po-1', ...data })),
         },
         purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+        $queryRaw: jest.fn().mockResolvedValue([]),
       };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       prisma.$transaction = jest.fn().mockImplementation((fn: any) => fn(prisma));
@@ -178,6 +179,18 @@ describe('PurchaseOrdersService — approval rules', () => {
     it('a PARTIALLY_RECEIVED PO cannot (unchanged)', async () => {
       const service = await build(makePrisma('PARTIALLY_RECEIVED', 1));
       await expect(service.cancel('po-1', 'owner-1')).rejects.toThrow(BadRequestException);
+    });
+
+    // ผู้ตรวจอิสระ 2026-10-05: เช็ค "ยกเลิกได้" เดิมอ่านนอก tx — ของที่รับเข้าระหว่างนั้นถูกเขียนทับเป็น CANCELLED
+    it('สถานะ/ของที่รับเปลี่ยนระหว่างอ่านกับเขียน (TOCTOU) → ปฏิเสธใน tx ไม่เขียน CANCELLED ทับ', async () => {
+      const prisma = makePrisma('ORDERED', 0);
+      prisma.purchaseOrder.findUnique
+        .mockResolvedValueOnce({ id: 'po-1', status: 'ORDERED', deletedAt: null, supplier: { id: 's1', name: 'S' }, items: [{ id: 'i1', quantity: 2, receivedQty: 0 }] })
+        .mockResolvedValueOnce({ id: 'po-1', status: 'PARTIALLY_RECEIVED', deletedAt: null, items: [{ id: 'i1', quantity: 2, receivedQty: 1 }] });
+      prisma.$queryRaw = jest.fn().mockResolvedValue([]);
+      const service = await build(prisma);
+      await expect(service.cancel('po-1', 'owner-1')).rejects.toThrow(/เปลี่ยนสถานะ|รับสินค้า/);
+      expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
     });
   });
 });

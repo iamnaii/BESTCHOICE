@@ -217,7 +217,10 @@ describe('PODetailModal — ส่วนการจ่ายเงิน (ก�
     expect(within(table).getByText('มัดจำ')).toBeInTheDocument();
     expect(within(table).getByText('หักมัดจำเข้าเจ้าหนี้')).toBeInTheDocument();
     expect(within(table).getByText('S-JV-2569-0101')).toBeInTheDocument();
-    expect(within(table).getByRole('link', { name: 'ดูสลิป' })).toHaveAttribute('href', 'https://x/slip.jpg');
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    fireEvent.click(within(table).getByRole('button', { name: 'ดูสลิป' }));
+    expect(open).toHaveBeenCalledWith('https://x/slip.jpg', '_blank', 'noopener');
+    open.mockRestore();
     const voidButtons = within(table).getAllByRole('button', { name: 'ยกเลิกรายการ' });
     expect(voidButtons).toHaveLength(1);
     fireEvent.click(voidButtons[0]);

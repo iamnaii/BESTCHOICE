@@ -108,6 +108,7 @@ export const productStatusMap: Record<string, StatusConfig> = {
   DAMAGED: { variant: 'destructive', appearance: 'light', label: 'เสียหาย' },
   LOST: { variant: 'destructive', label: 'สูญหาย' },
   WRITTEN_OFF: { variant: 'secondary', label: 'ตัดจำหน่าย' },
+  ADJUSTMENT_PENDING: { variant: 'warning', appearance: 'light', label: 'รออนุมัติตัดสินค้า' },
 };
 
 // ─── Credit check statuses ───────────────────────────────────────────────────
@@ -222,6 +223,14 @@ export const stockAdjustmentReasonMap: Record<string, StatusConfig> = {
   CORRECTION: { variant: 'primary', appearance: 'light', label: 'แก้ไขข้อมูล' },
   WRITE_OFF: { variant: 'secondary', label: 'ตัดจำหน่าย' },
   OTHER: { variant: 'secondary', label: 'อื่นๆ' },
+};
+
+/** สถานะคำขอตัดสินค้า (ก้อน 3) — เจ้าของอนุมัติทุกรายการ */
+export const stockAdjustmentStatusMap: Record<string, StatusConfig> = {
+  PENDING_APPROVAL: { variant: 'warning', appearance: 'light', label: 'รออนุมัติ' },
+  APPROVED: { variant: 'success', appearance: 'light', label: 'อนุมัติแล้ว' },
+  REJECTED: { variant: 'secondary', label: 'ไม่อนุมัติ' },
+  CANCELED: { variant: 'secondary', appearance: 'light', label: 'ยกเลิกคำขอ' },
 };
 
 // ─── Session / chat statuses ─────────────────────────────────────────────────

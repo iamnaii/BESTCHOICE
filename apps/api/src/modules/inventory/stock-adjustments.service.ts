@@ -74,6 +74,10 @@ const FOUND_POLICY = {
   INSPECTION: { toInStock: false, hint: 'เครื่องที่อยู่ระหว่างตรวจสภาพ — เข้าคลังเมื่อตรวจเสร็จตามขั้นตอน' },
   DEFECT_RETURN: { toInStock: false, hint: 'เครื่องเคลม/ส่งซ่อม — จัดการผ่านใบซ่อม/เปลี่ยนเครื่องชำรุด' },
   IN_STOCK: { toInStock: false, hint: 'เครื่องนี้อยู่ในคลังอยู่แล้ว' },
+  ADJUSTMENT_PENDING: {
+    toInStock: false,
+    hint: 'เครื่องนี้มีคำขอตัดสินค้ารออนุมัติอยู่ — ให้เจ้าของพิจารณา หรือยกเลิกคำขอก่อน',
+  },
 } satisfies Record<ProductStatus, { toInStock: boolean; hint: string }>;
 
 /** สถานะที่เหตุผล "พบของ" พาเข้า `IN_STOCK` ได้จริง */

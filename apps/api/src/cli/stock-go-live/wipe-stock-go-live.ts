@@ -44,6 +44,7 @@ export const STATUS_CLASS = {
   DEFECT_RETURN: 'SHELF',
   LOST: 'SHELF',
   WRITTEN_OFF: 'SHELF',
+  ADJUSTMENT_PENDING: 'SHELF', // รออนุมัติตัดสินค้า — เครื่องยังอยู่บนชั้น (ก้อน 3)
   RESERVED: 'BOUND',
   SOLD_INSTALLMENT: 'BOUND',
   SOLD_CASH: 'BOUND',

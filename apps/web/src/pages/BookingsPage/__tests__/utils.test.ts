@@ -131,3 +131,41 @@ describe('describeExpiry — วันคงเหลือตามปฏิท
     expect(fmtMoneyShort(1500.5)).toBe('1,500.50');
   });
 });
+
+describe('describeExpiry — ตรึงปฏิทินไทยไม่ขึ้นกับ TZ เครื่อง', () => {
+  it('เหตุการณ์ปิดที่คาบเส้น 17:00Z แสดงเป็นวันถัดไปตามเวลาไทย', () => {
+    expect(
+      describeExpiry(
+        {
+          ...open(validThrough('2026-10-11')),
+          status: 'CANCELED',
+          canceledAt: '2026-09-27T20:00:00.000Z',
+        },
+        NOW,
+      ),
+    ).toEqual({ label: 'ยกเลิก', sub: 'คืนมัดจำ 28 ก.ย. 69', tone: 'closed' });
+  });
+  it('ขอบวันหมดอายุ: expireDate − 1 ms = วันนี้ · expireDate = รอระบบปิด', () => {
+    const expireDate = validThrough('2026-10-05');
+    const end = new Date(expireDate).getTime();
+    expect(describeExpiry(open(expireDate), end - 1)).toMatchObject({
+      label: 'วันนี้',
+      tone: 'today',
+    });
+    expect(describeExpiry(open(expireDate), end)).toMatchObject({ tone: 'overdue' });
+    expect(awaitingExpiry(open(expireDate), end - 1)).toBe(false);
+    expect(awaitingExpiry(open(expireDate), end)).toBe(true);
+  });
+  it('รอชำระมัดจำนับเป็นใบเปิด: มีวันคงเหลือและรอระบบปิดเมื่อเลยกำหนด', () => {
+    const pending = (expireDate: string) => ({
+      ...open(expireDate),
+      status: 'PENDING_DEPOSIT' as const,
+      depositPaidAt: null,
+    });
+    expect(describeExpiry(pending(validThrough('2026-10-07')), NOW)).toMatchObject({
+      label: 'อีก 2 วัน',
+      tone: 'soon',
+    });
+    expect(awaitingExpiry(pending(validThrough('2026-10-04')), NOW)).toBe(true);
+  });
+});

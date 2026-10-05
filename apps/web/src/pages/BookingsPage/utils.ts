@@ -1,4 +1,4 @@
-import { formatThaiDateShort, formatThaiDateTime } from '@/lib/date';
+import { THAI_MONTHS_SHORT, formatThaiDateTime } from '@/lib/date';
 import type { Booking, BookingStatus } from './types';
 
 export const STATUS_LABEL: Record<BookingStatus, string> = {
@@ -55,6 +55,21 @@ export function fmtDate(iso: string): string {
   return formatThaiDateTime(iso, 'Asia/Bangkok');
 }
 
+/** D MMM YY (พ.ศ.) ตามปฏิทินไทย — เหมือน `formatThaiDateShort` แต่ไม่ขึ้นกับ TZ ของเครื่อง */
+export function fmtBangkokDateShort(input: number | string | Date): string {
+  const d = input instanceof Date ? input : new Date(input);
+  if (isNaN(d.getTime())) return '-';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)!.value);
+  const yy = String((get('year') + 543) % 100).padStart(2, '0');
+  return `${get('day')} ${THAI_MONTHS_SHORT[get('month') - 1]} ${yy}`;
+}
+
 const BANGKOK_OFFSET_MS = 7 * 60 * 60 * 1000;
 const bangkokDayIndex = (ms: number): number => Math.floor((ms + BANGKOK_OFFSET_MS) / 86_400_000);
 
@@ -89,12 +104,12 @@ export function describeExpiry(
   if (b.status === 'CONVERTED') {
     return {
       label: 'ขายแล้ว',
-      sub: b.convertedAt ? formatThaiDateShort(b.convertedAt) : '',
+      sub: b.convertedAt ? fmtBangkokDateShort(b.convertedAt) : '',
       tone: 'closed',
     };
   }
   if (b.status === 'CANCELED') {
-    const when = b.canceledAt ? formatThaiDateShort(b.canceledAt) : '';
+    const when = b.canceledAt ? fmtBangkokDateShort(b.canceledAt) : '';
     return {
       label: 'ยกเลิก',
       sub: b.depositPaidAt && when ? `คืนมัดจำ ${when}` : when,
@@ -106,7 +121,7 @@ export function describeExpiry(
       label: 'หมดอายุ',
       sub: b.depositPaidAt
         ? `ริบมัดจำ ${fmtMoneyShort(b.depositAmount)}`
-        : formatThaiDateShort(new Date(lastValid)),
+        : fmtBangkokDateShort(lastValid),
       tone: 'closed',
     };
   }
@@ -114,7 +129,7 @@ export function describeExpiry(
     return { label: 'หมดอายุแล้ว', sub: 'รอระบบปิด', tone: 'overdue' };
   }
   const days = bangkokDayDiff(new Date(lastValid).toISOString(), nowMs);
-  const sub = formatThaiDateShort(new Date(lastValid));
+  const sub = fmtBangkokDateShort(lastValid);
   if (days <= 0) return { label: 'วันนี้', sub, tone: 'today' };
   if (days === 1) return { label: 'พรุ่งนี้', sub, tone: 'soon' };
   return { label: `อีก ${days} วัน`, sub, tone: days <= 3 ? 'soon' : 'normal' };

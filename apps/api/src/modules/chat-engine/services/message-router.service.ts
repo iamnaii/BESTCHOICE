@@ -1085,6 +1085,8 @@ export class MessageRouterService {
      * (LINE/FB ต้องการ public HTTPS). ไม่ระบุ = ใช้ mediaUrl
      */
     deliveryMediaUrl?: string;
+    /** Server-resolved link text for a FILE; persisted bubble keeps its private storage key. */
+    deliveryText?: string;
   }): Promise<{
     success: boolean;
     error?: string;
@@ -1216,7 +1218,7 @@ export class MessageRouterService {
       externalUserId,
       channel: room.channel,
       type: outboundType,
-      text: isImageBubble ? undefined : params.text,
+      text: isImageBubble ? undefined : (params.deliveryText ?? params.text),
       // adapters read only `imageUrl` (grep: no adapter reads OutboundMessage.mediaUrl)
       ...(isImageBubble ? { imageUrl: deliveryUrl } : {}),
     });

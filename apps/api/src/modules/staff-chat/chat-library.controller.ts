@@ -1,3 +1,5 @@
+import { ChatLibraryDeliveryService } from './services/chat-library-delivery.service';
+import { LibraryItemDto, SendLibraryFilesDto } from './dto/chat-library.dto';
 import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -15,7 +17,9 @@ import { StaffInboxQueryDto } from './dto/staff-inbox.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...WORK_ROLES)
 export class ChatLibraryController {
-  constructor(private readonly library: ChatLibraryService) {}
+  constructor(private readonly library: ChatLibraryService, private readonly delivery: ChatLibraryDeliveryService) {}
+  @Post('rooms/:roomId/send') send(@Req() req: { user: ChatWorkActor }, @Query() query: StaffInboxQueryDto, @Param('roomId', ParseUUIDPipe) roomId: string, @Body() dto: SendLibraryFilesDto) { return this.delivery.send(req.user, query, roomId, dto); }
+  @Post('rooms/:roomId/credit') credit(@Req() req: { user: ChatWorkActor }, @Query() query: StaffInboxQueryDto, @Param('roomId', ParseUUIDPipe) roomId: string, @Body() dto: LibraryItemDto) { return this.delivery.credit(req.user, query, roomId, dto); }
   @Get('folders') folders(@Req() req: { user: ChatWorkActor }, @Query() query: LibraryQueryDto) { return this.library.folders(req.user, query); }
   @Post('folders') folder(@Req() req: { user: ChatWorkActor }, @Query() query: StaffInboxQueryDto, @Body() dto: CreateLibraryFolderDto) { return this.library.createFolder(req.user, query, dto); }
   @Get('files') files(@Req() req: { user: ChatWorkActor }, @Query() query: LibraryQueryDto) { return this.library.files(req.user, query); }

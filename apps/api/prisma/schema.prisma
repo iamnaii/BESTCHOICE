@@ -813,6 +813,7 @@ model Branch {
 }
 
 model User {
+  libraryOperations ChatLibraryOperation[]
   chatLibraryFolders ChatLibraryFolder[]
   chatLibraryFiles ChatLibraryFile[]
   chatServiceRequestsCreated ChatServiceRequest[] @relation("ServiceRequestCreator")
@@ -5766,6 +5767,7 @@ model CustomerLineLink {
 
 /// Chat room — ลูกค้า 1 คน 1 room ต่อ channel
 model ChatRoom {
+  libraryOperations ChatLibraryOperation[]
   serviceRequests ChatServiceRequest[]
   facebookCommentThreads FacebookCommentThread[]
 
@@ -5875,6 +5877,8 @@ model ChatRoom {
 }
 
 model RoomCreditFile {
+  libraryRequestKey String? @unique @map("library_request_key")
+  sourceLibraryFileId String? @map("source_library_file_id")
   id String @id @default(uuid())
   roomId String @map("room_id")
   room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
@@ -9208,6 +9212,7 @@ model ChatLibraryFolder {
   @@map("chat_library_folders")
 }
 model ChatLibraryFile {
+  libraryOperations ChatLibraryOperation[]
   id String @id @default(uuid())
   company String
   branchId String? @map("branch_id")
@@ -9229,4 +9234,22 @@ model ChatLibraryFile {
   @@index([folderId])
   @@index([creatorId])
   @@map("chat_library_files")
+}
+
+model ChatLibraryOperation {
+  id String @id @default(uuid())
+  requestKey String @unique @map("request_key")
+  company String
+  action String
+  actorId String @map("actor_id")
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  roomId String @map("room_id")
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  fileId String @map("file_id")
+  file ChatLibraryFile @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([roomId])
+  @@index([fileId])
+  @@index([actorId])
+  @@map("chat_library_operations")
 }

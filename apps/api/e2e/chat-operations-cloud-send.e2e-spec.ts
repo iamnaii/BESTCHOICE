@@ -1,0 +1,88 @@
+import { readLimited } from '../src/modules/credit-check/services/media-fetch.util';
+import { Test } from '@nestjs/testing';
+import { Logger } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { ConfigService } from '@nestjs/config';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { StorageService } from '../src/modules/storage/storage.service';
+import { RoomManagerService } from '../src/modules/chat-engine/services/room-manager.service';
+import { MessageRouterService } from '../src/modules/chat-engine/services/message-router.service';
+import { ResponseCycleService } from '../src/modules/chat-engine/services/response-cycle.service';
+import { ChatWorkAccessService } from '../src/modules/staff-chat/services/chat-work-access.service';
+import { ChatLibraryService } from '../src/modules/staff-chat/services/chat-library.service';
+import { ChatLibraryDeliveryService } from '../src/modules/staff-chat/services/chat-library-delivery.service';
+import { RoomCreditService } from '../src/modules/credit-check/services/room-credit.service';
+import { OcrService } from '../src/modules/ocr/ocr.service';
+import type { ChatWorkActor } from '@installment/shared';
+if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Use disposable harness');
+describe('Library send ACK and independent credit copies', () => {
+ const db = new PrismaService(); const access = new ChatWorkAccessService(db);
+ let svc: ChatLibraryDeliveryService, library: ChatLibraryService, storage: StorageService, root: string, actor: ChatWorkActor, roomId: string, a: string, b: string;
+ const send = jest.fn(); const scope = { company: 'SHOP' as const };
+ beforeAll(async () => {
+  root = await mkdtemp(join(tmpdir(), 'cloud-send-'));
+  storage = new StorageService(new ConfigService({ STORAGE_LOCAL_DIR: root, NODE_ENV: 'test' }));
+  jest.spyOn(storage, 'getSignedDownloadUrl').mockResolvedValue('https://synthetic.invalid/private-file');
+  const module = await Test.createTestingModule({ providers: [RoomManagerService, ResponseCycleService, RoomCreditService, {provide: PrismaService,useValue: db}, {provide: StorageService,useValue: storage}, {provide: OcrService,useValue: {}}] }).compile();
+  const manager = module.get(RoomManagerService);
+  const router = Object.assign(Object.create(MessageRouterService.prototype), {roomManager: manager, logger: new Logger('SyntheticLibraryRouter'), adapterMap: new Map([['FACEBOOK',{sendMessage: send}]])}) as MessageRouterService;
+  library = new ChatLibraryService(db, access, storage);
+  svc = new ChatLibraryDeliveryService(db, access, library, storage, router, module.get(RoomCreditService));
+  actor = await db.user.create({data:{name:'Cloud sender',email:`${randomUUID()}@cloud.invalid`,role:'OWNER',password:'unused',accessibleCompanies:['SHOP','FINANCE']}});
+  await db.systemConfig.upsert({where:{key:'chat_cloud_library_enabled'},create:{key:'chat_cloud_library_enabled',value:'true'},update:{value:'true',deletedAt:null}});
+  const file = (name: string) => ({originalname:name,mimetype:'image/jpeg',buffer:Buffer.from([255,216,255,1])} as Express.Multer.File);
+  a = (await library.upload(actor, scope, {requestKey:randomUUID()}, file('a.jpg'))).id;
+  b = (await library.upload(actor, scope, {requestKey:randomUUID()}, file('b.jpg'))).id;
+ });
+ beforeEach(async () => { send.mockReset().mockResolvedValue({success:true,externalMessageId:randomUUID()}); roomId=(await db.chatRoom.create({data:{channel:'FACEBOOK',assignedToId:actor.id}})).id; });
+ afterAll(async () => { await db.$disconnect(); await rm(root,{recursive:true,force:true}); });
+ const item = (fileId = a) => ({fileId,requestKey:randomUUID()});
+ it('partial failure and retry resend only the definitively failed file; token cannot move to another file or room', async () => {
+  const first=item(), second=item(b);
+  send.mockResolvedValueOnce({success:true}).mockResolvedValueOnce({success:false, definitelyNotSent:true,error:'rejected'});
+  const r=await svc.send(actor,scope,roomId,{mode:'chat',items:[first,second]});
+  expect(r.map(x=>x.status)).toEqual(['SENT','FAILED']);
+  const retry=await svc.send(actor,scope,roomId,{mode:'chat',items:[first,second]});
+  expect(retry.map(x=>x.status)).toEqual(['SENT','SENT']); expect(send).toHaveBeenCalledTimes(3);
+  expect((await svc.send(actor,scope,roomId,{mode:'chat',items:[{...first,fileId:b}]}))[0].status).toBe('FAILED');
+  const other=(await db.chatRoom.create({data:{channel:'FACEBOOK'}})).id;
+  expect((await svc.send(actor,scope,other,{mode:'chat',items:[first]}))[0].status).toBe('FAILED'); expect(send).toHaveBeenCalledTimes(3);
+ });
+ it('unknown acknowledgement and simultaneous double click never blindly resend', async () => {
+  const unknown=item(); send.mockResolvedValueOnce({success:false,error:'timeout'});
+  expect((await svc.send(actor,scope,roomId,{mode:'chat',items:[unknown]}))[0].status).toBe('UNKNOWN');
+  expect((await svc.send(actor,scope,roomId,{mode:'chat',items:[unknown]}))[0].status).toBe('UNKNOWN'); expect(send).toHaveBeenCalledTimes(1);
+  const concurrent=item(b);
+  await Promise.all([svc.send(actor,scope,roomId,{mode:'chat',items:[concurrent]}),svc.send(actor,scope,roomId,{mode:'chat',items:[concurrent]})]);
+  expect(send).toHaveBeenCalledTimes(2);
+ });
+ it('notes and mismatched company never send; archived refs/revoked grants cannot send', async () => {
+  await expect(svc.send(actor,scope,roomId,{mode:'note' as 'chat',items:[item()]})).rejects.toThrow();
+  await expect(svc.send(actor,{company:'FINANCE'},roomId,{mode:'chat',items:[item()]})).rejects.toThrow();
+  await db.user.update({where:{id:actor.id},data:{accessibleCompanies:['FINANCE']}});
+  await expect(svc.send(actor,scope,roomId,{mode:'chat',items:[item()]})).rejects.toThrow();
+  await db.user.update({where:{id:actor.id},data:{accessibleCompanies:['SHOP','FINANCE']}});
+  expect(send).not.toHaveBeenCalled();
+ });
+ it('PDF sends the server signed download link and persists a private FILE bubble', async () => {
+  const pdf = await library.upload(actor,scope,{requestKey:randomUUID()},{originalname:'คู่มือ.pdf',mimetype:'application/pdf',buffer:Buffer.from('%PDF-1.4\nsynthetic\n%%EOF')} as Express.Multer.File);
+  const r=await svc.send(actor,scope,roomId,{mode:'chat',items:[item(pdf.id)]});
+  expect(r[0].status).toBe('SENT'); expect(send.mock.calls[0][0].text).toContain('https://synthetic.invalid/private-file');
+  const saved=await db.chatMessage.findFirstOrThrow({where:{roomId,role:'STAFF'}});
+  expect(saved.type).toBe('FILE'); expect(saved.mediaUrl).toMatch(/^staff-chat\/library\//); expect(saved.text).toBe('คู่มือ.pdf');
+ });
+ it('credit import is idempotent under double click, copies bytes and survives library archival', async () => {
+  const i=item();
+  const [one,two]=await Promise.all([svc.credit(actor,scope,roomId,i),svc.credit(actor,scope,roomId,i)]);
+  expect(one.id).toBe(two.id); expect(send).not.toHaveBeenCalled();
+  const original=await db.chatLibraryFile.findUniqueOrThrow({where:{id:a}});
+  const copy=await db.roomCreditFile.findUniqueOrThrow({where:{id:one.id}});
+  expect(copy.key).not.toBe(original.key);
+  await db.chatLibraryFile.update({where:{id:a},data:{deletedAt:new Date()}});
+  expect(await readLimited(await storage.getStream(copy.key))).toEqual(Buffer.from([255,216,255,1]));
+  expect((await svc.send(actor,scope,roomId,{mode:'chat',items:[item()]}))[0].status).toBe('FAILED');
+ });
+});

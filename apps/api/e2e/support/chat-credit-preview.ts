@@ -1,3 +1,8 @@
+import { ChatLibraryController } from '../../src/modules/staff-chat/chat-library.controller';
+import { ChatLibraryService } from '../../src/modules/staff-chat/services/chat-library.service';
+import { ChatLibraryDeliveryService } from '../../src/modules/staff-chat/services/chat-library-delivery.service';
+import { MessageRouterService } from '../../src/modules/chat-engine/services/message-router.service';
+import { previewChatLibrary } from './preview-chat-library';
 import { previewChatAnalytics } from './preview-chat-analytics';
 import { ChatAnalyticsController } from '../../src/modules/chat-analytics/chat-analytics.controller';
 import { ChatAnalyticsV2Service } from '../../src/modules/chat-analytics/chat-analytics-v2.service';
@@ -218,6 +223,7 @@ const storage = realStorage
   ? new StorageService(config)
   : {
       configured: true,
+      async getSignedDownloadUrl() { return 'https://synthetic-library.invalid/private-file'; },
       async upload(key: string, bytes: Buffer) {
         const file = localFile(key);
         await mkdir(dirname(file), { recursive: true });
@@ -483,6 +489,7 @@ async function main() {
   const storageForPreview = realStorage
     ? {
         configured: true,
+        getSignedDownloadUrl: realStorage ? (storage as StorageService).getSignedDownloadUrl.bind(storage) : undefined,
         upload: storage.upload.bind(storage),
         delete: storage.delete.bind(storage),
         getStream: (key: string) =>
@@ -514,9 +521,11 @@ async function main() {
   await db.systemConfig.upsert({where:{key:'chat_analytics_v2_enabled'},create:{key:'chat_analytics_v2_enabled',value:'true'},update:{value:'true',deletedAt:null}});
   const chatWorkRooms = await seedChatWork(db, manager, actor.id);
   const facebookComments = await previewFacebookComments(db, actor.id);
+  await db.systemConfig.upsert({where:{key:'chat_cloud_library_enabled'},create:{key:'chat_cloud_library_enabled',value:'true'},update:{value:'true',deletedAt:null}});
+  const library = previewChatLibrary(db, manager);
   const afterSales = previewAfterSales(db, storageForPreview as StorageService, () => actor);
   const module = await Test.createTestingModule({
-    controllers: [previewChatAnalytics(db,manager,()=>actor.id,previewActors.receiver.id), ChatAnalyticsController,
+    controllers: [ChatLibraryController, library.controller, previewChatAnalytics(db,manager,()=>actor.id,previewActors.receiver.id), ChatAnalyticsController,
       ChatServiceRequestController, AfterSalesController, afterSales.controller,
       FacebookCommentsController, facebookComments.controller,
       ChatHandoffController, RoomNotesController, TodosController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
@@ -529,7 +538,7 @@ async function main() {
       GlobalCreditCheckController,
       PreviewController,
     ],
-    providers: [ChatAnalyticsV2Service, ChatSalesAttributionService,
+    providers: [ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
       FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, JourneyManualEntryService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
@@ -624,6 +633,7 @@ async function main() {
     if (
       /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path.startsWith('/api/chat-analytics/v2/') || path.startsWith('/api/staff-chat/facebook-comments') || path.startsWith('/api/staff-chat/service-requests/') || path.startsWith('/api/after-sales') || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
+      /^\/api\/staff-chat\/library\//.test(path) ||
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|handoffs|follow-ups|service-requests|service-intake-options|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||

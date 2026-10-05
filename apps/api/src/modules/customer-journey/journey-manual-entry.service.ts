@@ -8,12 +8,15 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   JOURNEY_LOST_REASON_LABELS,
+  CUSTOMER_BOUGHT_SALE_TYPES,
+  CUSTOMER_BOUGHT_CONTRACT_STATUSES,
   type ChatWorkActor,
   type WorkScope,
 } from '@installment/shared';
 import { ChatWorkAccessService } from '../staff-chat/services/chat-work-access.service';
 import { JourneyStateService } from './journey-state.service';
-import { BOUGHT_WHERE } from '../customers/services/customer-query.service';
+import { salesBranchWhere } from '../sales/services/sales-read-policy';
+import { chatCustomerFamily } from './chat-scoped-summary';
 import { parseBooleanFlag } from '../../utils/config.util';
 interface ManualDisposition {
   roomId: string;
@@ -83,11 +86,30 @@ export class JourneyManualEntryService {
           throw new ConflictException('รหัสคำขอนี้ถูกใช้กับรายการอื่นแล้ว');
         return previous;
       }
-      if (
-        input.action === 'MARK_LOST' &&
-        (await tx.customer.count({ where: { AND: [{ id: customerId }, BOUGHT_WHERE] } }))
-      )
-        throw new ConflictException('ลูกค้าซื้อแล้ว กรุณาติดตามจากรายการขายหรือบริการหลังการขาย');
+      if (input.action === 'MARK_LOST') {
+        const customerScope = { in: await chatCustomerFamily(tx, customerId) };
+        const branch = salesBranchWhere(actor, scope.branchId);
+        const purchased =
+          scope.company === 'SHOP'
+            ? await tx.sale.count({
+                where: {
+                  ...branch,
+                  customerId: customerScope,
+                  deletedAt: null,
+                  saleType: { in: [...CUSTOMER_BOUGHT_SALE_TYPES] },
+                },
+              })
+            : await tx.contract.count({
+                where: {
+                  ...branch,
+                  customerId: customerScope,
+                  deletedAt: null,
+                  status: { in: [...CUSTOMER_BOUGHT_CONTRACT_STATUSES] },
+                },
+              });
+        if (purchased)
+          throw new ConflictException('ลูกค้าซื้อแล้ว กรุณาติดตามจากรายการขายหรือบริการหลังการขาย');
+      }
       const latest = await tx.customerJourneyEntry.findFirst({
         where: { customerId, kind: { in: ['MARKED_LOST', 'REOPENED'] }, deletedAt: null },
         orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],

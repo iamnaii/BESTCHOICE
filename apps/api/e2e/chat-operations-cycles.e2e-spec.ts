@@ -70,6 +70,32 @@ describe('Causal response cycles with real PostgreSQL', () => {
     expect((await open())[0].firstBotSentAt).not.toBeNull();
     expect((await open())[0].firstHumanSentAt).toBeNull();
   });
+  it('the actual Finance room ACK path records a bot response without completing human work', async () => {
+    const finance = await db.chatRoom.create({ data: { channel: 'LINE_FINANCE' } });
+    await financeRooms.saveMessage({
+      roomId: finance.id,
+      role: 'CUSTOMER',
+      text: 'finance inbound',
+    });
+    const bot = await financeRooms.saveMessage({
+      roomId: finance.id,
+      role: 'BOT',
+      text: 'finance reply',
+    });
+    expect(
+      (await db.chatResponseCycle.findFirstOrThrow({ where: { roomId: finance.id } }))
+        .firstBotSentAt,
+    ).toBeNull();
+    await financeRooms.confirmBotSent(bot.id);
+    await financeRooms.confirmBotSent(bot.id);
+    const cycle = await db.chatResponseCycle.findFirstOrThrow({ where: { roomId: finance.id } });
+    expect(cycle.firstBotSentAt).not.toBeNull();
+    expect(cycle.endedAt).toBeNull();
+    expect(cycle.firstHumanSentAt).toBeNull();
+    expect(
+      (await db.chatRoom.findUniqueOrThrow({ where: { id: finance.id } })).waitingSince,
+    ).not.toBeNull();
+  });
   it('keeps an inbound received while the provider request was in flight in a new cycle', async () => {
     await inbound();
     const reply = await draft();
@@ -228,7 +254,8 @@ describe('Causal response cycles with real PostgreSQL', () => {
     await inbound();
     await db.chatRoom.update({ where: { id: roomId }, data: { waitingSince: null } });
     expect((await cycles.auditOpenWaits()).mismatched).toBe(before.mismatched + 1);
-    expect((await db.chatRoom.findUniqueOrThrow({ where: { id: roomId } })).waitingSince).toBeNull();
+    expect(
+      (await db.chatRoom.findUniqueOrThrow({ where: { id: roomId } })).waitingSince,
+    ).toBeNull();
   });
-
 });

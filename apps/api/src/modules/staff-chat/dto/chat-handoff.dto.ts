@@ -1,3 +1,4 @@
+import { OmitType } from '@nestjs/mapped-types';
 import { Transform } from 'class-transformer';
 import { IsIn, IsInt, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
 import { CreateChatFollowUpDto } from './chat-follow-up.dto';
@@ -16,4 +17,10 @@ export class UpdateChatHandoffDto {
   @IsString()
   @MaxLength(2000)
   completionNote?: string;
+}
+
+export class AmendChatHandoffDto extends OmitType(CreateChatHandoffDto, [
+  'clientRequestId',
+] as const) {
+  @IsInt() @Min(0) expectedRevision!: number;
 }

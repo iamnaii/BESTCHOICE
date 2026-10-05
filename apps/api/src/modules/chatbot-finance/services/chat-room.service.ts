@@ -7,7 +7,10 @@ import { StaffChatGateway } from '../../staff-chat/staff-chat.gateway';
 import { LineFinanceClientService } from './line-finance-client.service';
 import { ChatProspectService } from '../../chat-prospects/chat-prospect.service';
 import { CustomerMergeService, SYSTEM_ACTOR } from '../../chat-prospects/customer-merge.service';
-import { PLACEHOLDER_FIELDS_SELECT, isLivePlaceholder } from '../../chat-prospects/chat-placeholder';
+import {
+  PLACEHOLDER_FIELDS_SELECT,
+  isLivePlaceholder,
+} from '../../chat-prospects/chat-placeholder';
 
 /**
  * จัดการ ChatRoom + ChatMessage สำหรับ Finance Bot
@@ -20,7 +23,8 @@ export class ChatRoomService {
   constructor(
     private prisma: PrismaService,
     private lineClient: LineFinanceClientService,
-    @Optional() @Inject(forwardRef(() => StaffChatGateway))
+    @Optional()
+    @Inject(forwardRef(() => StaffChatGateway))
     private staffChatGateway?: StaffChatGateway,
     @Optional()
     private chatProspects?: ChatProspectService,
@@ -107,42 +111,46 @@ export class ChatRoomService {
     const save = async (db: Prisma.TransactionClient, tracking = false) => {
       if (tracking) await this.responseCycles!.lock(db, params.roomId);
       const msg = await db.chatMessage.create({
-      data: {
-        roomId: params.roomId,
-        externalMessageId: params.externalMessageId,
-        role: params.role,
-        type: params.type ?? MessageType.TEXT,
-        text: params.text,
-        mediaUrl: params.mediaUrl,
-        mediaType: params.mediaType,
-        intent: params.intent,
-        modelUsed: params.modelUsed,
-        inputTokens: params.inputTokens,
-        outputTokens: params.outputTokens,
-        toolsUsed: params.toolsUsed ?? [],
-        costUsd: params.costUsd,
-        visionExtracted: params.visionExtracted,
-      },
-    });
+        data: {
+          roomId: params.roomId,
+          externalMessageId: params.externalMessageId,
+          role: params.role,
+          type: params.type ?? MessageType.TEXT,
+          text: params.text,
+          mediaUrl: params.mediaUrl,
+          mediaType: params.mediaType,
+          intent: params.intent,
+          modelUsed: params.modelUsed,
+          inputTokens: params.inputTokens,
+          outputTokens: params.outputTokens,
+          toolsUsed: params.toolsUsed ?? [],
+          costUsd: params.costUsd,
+          visionExtracted: params.visionExtracted,
+        },
+      });
 
-    await db.chatRoom.update({
-      where: { id: params.roomId },
-      data: {
-        totalMessages: { increment: 1 },
-        lastMessageAt: new Date(),
-        ...(params.role === MessageRole.CUSTOMER
-          ? { unreadCount: { increment: 1 } }
-          : {}),
-      },
-    });
+      await db.chatRoom.update({
+        where: { id: params.roomId },
+        data: {
+          totalMessages: { increment: 1 },
+          lastMessageAt: new Date(),
+          ...(params.role === MessageRole.CUSTOMER ? { unreadCount: { increment: 1 } } : {}),
+        },
+      });
 
       if (tracking && params.role === MessageRole.CUSTOMER) {
-        await this.responseCycles!.openInTx(db, { roomId: params.roomId, messageId: msg.id, receivedAt: msg.createdAt });
+        await this.responseCycles!.openInTx(db, {
+          roomId: params.roomId,
+          messageId: msg.id,
+          receivedAt: msg.createdAt,
+        });
       }
       return msg;
     };
-    const tracking = this.responseCycles && await this.responseCycles.enabled();
-    const msg = tracking ? await this.prisma.$transaction(tx => save(tx, true)) : await save(this.prisma);
+    const tracking = this.responseCycles && (await this.responseCycles.enabled());
+    const msg = tracking
+      ? await this.prisma.$transaction((tx) => save(tx, true))
+      : await save(this.prisma);
 
     // Emit to Unified Inbox via WebSocket (best-effort)
     try {
@@ -158,6 +166,12 @@ export class ChatRoomService {
     }
 
     return msg;
+  }
+
+  /** Called only after the LINE transport acknowledges the whole reply batch. */
+  async confirmBotSent(messageId: string) {
+    if (this.responseCycles && (await this.responseCycles.enabled()))
+      await this.responseCycles.confirm(messageId);
   }
 
   /** ดึง history N ข้อความล่าสุด (สำหรับใส่ใน AI context) */

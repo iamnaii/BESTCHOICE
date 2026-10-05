@@ -18,6 +18,7 @@ type Evidence = SalesContext['evidenceLinks'][number];
 export function SalesContextView({ context, onLink, onNew, onEvidence, actions }: { context: SalesContext; actions?: ReactNode; onLink: () => void; onNew: () => void; onEvidence: (e: Evidence) => void }) {
   return <section className="rounded-lg border border-primary/20 bg-card p-3" aria-label="สถานะขายและงานถัดไป">
     <p className="text-xs text-muted-foreground">ขั้นการขาย</p>
+    <p className="mt-1 text-xs text-muted-foreground">ตามข้อมูลที่คุณเข้าถึงได้ในบริษัทนี้</p>
     <p className="mt-1 text-sm font-semibold leading-snug" aria-label="ขั้นการขาย">{context.journey?.stageLabel ?? 'ยังไม่ผูกข้อมูลลูกค้า'}</p>
     {context.journey ? <details className="mt-2 text-xs"><summary className="cursor-pointer text-primary">ดูเส้นทาง 5 ขั้น</summary><div className="mt-2"><JourneyStageStrip summary={context.journey} /></div></details> : <Button variant="outline" size="sm" className="mt-2 w-full" onClick={onLink}>ผูกข้อมูลลูกค้า</Button>}
     <div className="mt-3 border-t pt-3"><h3 className="text-xs font-semibold">งานถัดไป</h3><p className="mt-1 break-words text-sm leading-snug">{context.nextAction?.title ?? 'ยังไม่มีงานติดตาม'}</p>{context.nextAction?.dueAt && <p className="mt-1 text-xs text-muted-foreground">{workDate(context.nextAction.dueAt)}</p>}<Button variant="outline" size="sm" className="mt-2 w-full" onClick={onNew}><CalendarPlus className="size-4" />ตั้งนัดติดตาม</Button></div>

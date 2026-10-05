@@ -1,6 +1,6 @@
 import { parseBooleanFlag } from '../../../utils/config.util';
 import type { CreateTodoDto, UpdateTodoDto } from '../../todos/dto/todo.dto';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -163,6 +163,24 @@ export class ChatFollowUpService {
     const requestKey = input.clientRequestId
       ? `chat-todo:${actor.id}:${input.clientRequestId}`
       : null;
+    const requestFingerprint = createHash('sha256')
+      .update(
+        JSON.stringify({
+          roomId,
+          company: scope.company,
+          kind,
+          title,
+          dueAt: dueDate?.toISOString() ?? null,
+          assigneeId: input.assigneeId,
+          description: input.description?.trim() || null,
+          priority: input.priority ?? 'MEDIUM',
+          status: input.status ?? 'TODO',
+          tags: input.tags ?? [],
+          checklist: input.checklist ?? null,
+          attachments: input.attachments ?? null,
+        }),
+      )
+      .digest('hex');
     const id = randomUUID();
     const created = await tx.todo.createMany({
       data: [
@@ -172,6 +190,7 @@ export class ChatFollowUpService {
           roomId,
           workKind: kind,
           requestKey,
+          requestFingerprint,
           createdById: actor.id,
           assigneeId: input.assigneeId,
           branchId: assignee?.branchId ?? actor.branchId,
@@ -193,7 +212,16 @@ export class ChatFollowUpService {
     });
     if (!task || task.roomId !== roomId || task.workKind !== kind || task.deletedAt)
       throw new ConflictException('รหัสคำขอนี้ถูกใช้กับงานอื่นแล้ว');
-    if (created.count === 0) return task;
+    if (created.count === 0) {
+      if (task.requestFingerprint !== requestFingerprint)
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'CHAT_TASK_REQUEST_MISMATCH',
+          taskId: task.id,
+          message: 'รหัสคำขอนี้บันทึกงานไปแล้ว แต่รายละเอียดเปลี่ยนไป กรุณาโหลดงานเดิมเพื่อแก้ไข',
+        });
+      return task;
+    }
     await this.history(tx, actor.id, null, task);
     if (task.assigneeId && activeStatuses.includes(task.status))
       await this.notify(tx, task, 'created');
@@ -240,7 +268,10 @@ export class ChatFollowUpService {
       throw new BadRequestException('งานนี้ต้องมีผู้รับงานและกำหนดเวลา');
     const status = input.status ?? before.status;
     // A scoped creator/manager must be able to cancel an orphan without reassigning it.
-    const recipient = status === 'CANCELLED' && assigneeId === before.assigneeId ? null : await this.assignee(tx, assigneeId, before.roomId!, scope);
+    const recipient =
+      status === 'CANCELLED' && assigneeId === before.assigneeId
+        ? null
+        : await this.assignee(tx, assigneeId, before.roomId!, scope);
     if (!['TODO', 'DOING', 'REVIEW', 'DONE', 'CANCELLED'].includes(status))
       throw new BadRequestException('สถานะงานไม่ถูกต้อง');
     const changedDue = (before.dueDate?.getTime() ?? null) !== (dueDate?.getTime() ?? null);

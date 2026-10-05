@@ -85,11 +85,25 @@ export default function InboxWorkTools({
       : params.get('noteId')
         ? 'NOTE'
         : 'TODO';
+  const flags = work.settings.data?.flags;
+  const linkEnabled =
+    linkedType === 'FACEBOOK_COMMENT'
+      ? work.company === 'SHOP' && !!flags?.chat_facebook_comments_enabled
+      : linkedType === 'SERVICE_REQUEST'
+        ? !!flags?.chat_service_requests_enabled
+        : linkedType === 'NOTE'
+          ? !!flags?.chat_mentions_enabled
+          : !!(
+              flags?.chat_follow_up_enabled ||
+              flags?.chat_mentions_enabled ||
+              flags?.chat_service_requests_enabled ||
+              work.enabled
+            );
   const openedLink = useRef('');
   useEffect(() => {
     const link = `${work.identity}:${linkedType}:${linkedId}`;
     if (
-      !work.enabled ||
+      !linkEnabled ||
       !linkedId ||
       openedLink.current === link ||
       !/^[0-9a-f-]{36}$/i.test(linkedId)
@@ -98,24 +112,13 @@ export default function InboxWorkTools({
     openedLink.current = link;
     void open(linkedType, linkedId);
     // Exact-resource access is checked before selecting the room.
-  }, [linkedId, linkedType, work.enabled, work.identity]);
+  }, [linkedId, linkedType, linkEnabled, work.identity]);
   if (work.settings.isError)
     return (
       <div className="flex items-center gap-3 border-b px-4 py-2 text-xs" role="alert">
         โหลดเมนูคิวงานไม่ได้
         <Button variant="ghost" size="sm" onClick={() => work.settings.refetch()}>
           ลองใหม่
-        </Button>
-      </div>
-    );
-  if (!work.enabled)
-    return (
-      <div className="border-b bg-card px-3 py-1">
-        <Button asChild variant="ghost" className="min-h-11">
-          <Link to={`/chat-analytics?zone=${work.company === 'SHOP' ? 'shop' : 'fin'}`}>
-            <BarChart3 className="size-4" />
-            ภาพรวมงานแชท
-          </Link>
         </Button>
       </div>
     );
@@ -130,10 +133,12 @@ export default function InboxWorkTools({
             <BarChart3 className="size-4" />
           </Link>
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => setPanel('queue')}>
-          <ListTodo className="size-4" />
-          คิวงาน
-        </Button>
+        {work.enabled && (
+          <Button variant="ghost" size="sm" onClick={() => setPanel('queue')}>
+            <ListTodo className="size-4" />
+            คิวงาน
+          </Button>
+        )}
         {work.company === 'SHOP' && work.settings.data?.flags.chat_facebook_comments_enabled && (
           <Button variant="ghost" size="sm" onClick={() => setPanel('comments')}>
             คอมเมนต์

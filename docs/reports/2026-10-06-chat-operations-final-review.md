@@ -1,0 +1,14 @@
+# Whole-branch review and remediation
+
+Reviewer: fresh `gpt-6-astra` agent, read-only review of `cd09bc4e6..ab87094b8`. No files, processes or test databases were changed by the reviewer. The author retained all four findings as Important and fixed them in one pass. No Critical or Minor findings were confirmed; no second reviewer was dispatched.
+
+| Finding | Trigger and observed RED | Remediation and GREEN evidence |
+|---|---|---|
+| F2 cross-scope summary | An authorized SHOP room returned PURCHASED, overdue/repeat/repair badges derived from inaccessible customer history. | Scoped room evidence, company/branch document facts, scoped loss/reopen and original five-stage presentation; unscoped global badges excluded. Same-branch FINANCE contract and other-branch SHOP sale/repair regression passes. Matching MARK_LOST guard also corrected after its hidden-sale regression failed. |
+| Independent flags | Queue disabled caused comments/notifications and a note deep link to disappear. | Only queue controls/fetch use queue flag. Scoped notification fetch is independent; domain deep links use domain flags. Mixed-flag UI and real hook tests pass. |
+| Finance bot ACK evidence | Both verified text reply and unverified verify-flex reply acknowledged successfully but never confirmed bot evidence. Missing credentials silently skipped transport. | Actual reply paths confirm saved text/image/flex message IDs only after transport success; missing credentials reject. Successful/rejected transport tests and actual finance room PostgreSQL test pass; human wait stays open. |
+| Silent changed create retries | Reusing a follow-up/handoff token after response loss returned the original task despite changed title/date/recipient/note. | Normalized immutable payload fingerprint stored with Todo; mismatch returns recoverable 409/task ID. UI keeps the draft, loads current task and explicitly updates using revision CAS. Unaccepted handoff details are amendable only by creator/manager with current grants. Changed payload, duplicate prevention, accepted-state denial, and both UI recovery paths pass. |
+
+Focused evidence: 136 operations tests in 19 suites, 31 finance bot/transport tests, and 9 Web recovery/flag tests passed. Logs are under `.tmp/chat-operations/review-*`. The final report records the broader regression and final integrated gate.
+
+The reviewer declined to judge live Meta permissions/subscriptions/transport acceptance, production cloud credentials, production migration/deployment readiness, refund-adjusted accounting/full historical reconstruction, independent visual/accessibility acceptance, production scale, and parent-owned latest test completion. These are explicitly ruled on in [the decisions record](2026-10-06-chat-operations-decisions.md); none is represented as verified by the source review.

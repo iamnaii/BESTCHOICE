@@ -17,7 +17,11 @@ import {
 import { ChatWorkAccessService } from './chat-work-access.service';
 import { ChatFollowUpService } from './chat-follow-up.service';
 import { StaffInboxService } from './staff-inbox.service';
-import { CreateChatHandoffDto, UpdateChatHandoffDto } from '../dto/chat-handoff.dto';
+import {
+  AmendChatHandoffDto,
+  CreateChatHandoffDto,
+  UpdateChatHandoffDto,
+} from '../dto/chat-handoff.dto';
 export function handoffTransition(
   status: TodoStatus,
   action: UpdateChatHandoffDto['action'],
@@ -59,6 +63,44 @@ export class ChatHandoffService {
       ),
     );
     this.hint([actor.id, task.assigneeId!]);
+    return task;
+  }
+  async amend(
+    id: string,
+    input: AmendChatHandoffDto,
+    authenticated: ChatWorkActor,
+    scope: WorkScope,
+  ) {
+    const task = await this.prisma.$transaction(async (tx) => {
+      const initial = await this.access.assertTodo(id, authenticated, scope, tx);
+      await tx.$queryRaw`SELECT id FROM chat_rooms WHERE id = ${initial.roomId} FOR UPDATE`;
+      const actor = await this.access.currentActor(authenticated, tx);
+      const before = await this.access.assertTodo(id, actor, scope, tx);
+      if (before.roomId !== initial.roomId || before.workKind !== 'CHAT_HANDOFF')
+        throw new ConflictException('งานเปลี่ยนไป กรุณาโหลดใหม่');
+      if (before.status !== 'TODO')
+        throw new ConflictException('งานนี้รับงานแล้ว กรุณาตกลงกับผู้รับงานก่อนเปลี่ยนรายละเอียด');
+      if (
+        before.createdById !== actor.id &&
+        !['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER'].includes(actor.role)
+      )
+        throw new ForbiddenException('เฉพาะผู้ฝากหรือผู้จัดการที่แก้รายละเอียดงานได้');
+      return this.tasks.updateInTx(
+        tx,
+        id,
+        {
+          title: input.title,
+          assigneeId: input.assigneeId,
+          dueAt: input.dueAt,
+          description: input.note ?? '',
+          expectedRevision: input.expectedRevision,
+        },
+        actor,
+        scope,
+        ['CHAT_HANDOFF'],
+      );
+    });
+    this.hint([authenticated.id, task.assigneeId!]);
     return task;
   }
   async update(

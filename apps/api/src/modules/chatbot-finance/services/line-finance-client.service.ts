@@ -91,11 +91,7 @@ export class LineFinanceClientService {
     return this.replyMessage(replyToken, [{ type: 'text', text }]);
   }
 
-  async replyFlex(
-    replyToken: string,
-    altText: string,
-    contents: FlexContainer,
-  ): Promise<void> {
+  async replyFlex(replyToken: string, altText: string, contents: FlexContainer): Promise<void> {
     return this.replyMessage(replyToken, [{ type: 'flex', altText, contents }]);
   }
 
@@ -108,7 +104,9 @@ export class LineFinanceClientService {
   }
 
   async replyMessage(replyToken: string, messages: LineMessage[]): Promise<void> {
-    await this.callApi(`${this.apiBase}/message/reply`, { replyToken, messages });
+    const token = await this.getAccessToken();
+    if (!token) throw new LineFinanceNotConfiguredError();
+    await this.postJson(token, `${this.apiBase}/message/reply`, { replyToken, messages });
     this.logger.log(`[LINE Finance] reply sent`);
   }
 
@@ -144,7 +142,10 @@ export class LineFinanceClientService {
   }
 
   /** push แบบเข้มงวด (ยื่น GFIN PR 2): ไม่มี token = โยน · LINE error = โยน · คืน x-line-request-id ไว้เก็บเป็นหลักฐานการส่ง */
-  async pushMessageStrict(to: string, messages: LineMessage[]): Promise<{ requestId: string | null }> {
+  async pushMessageStrict(
+    to: string,
+    messages: LineMessage[],
+  ): Promise<{ requestId: string | null }> {
     const token = await this.getAccessToken();
     if (!token) throw new LineFinanceNotConfiguredError();
     const res = await this.postJson(token, `${this.apiBase}/message/push`, { to, messages });
@@ -153,12 +154,17 @@ export class LineFinanceClientService {
   }
 
   /** ชื่อ/รูปกลุ่ม — https://developers.line.biz/en/reference/messaging-api/#get-group-summary · ดึงไม่ได้ = null (ไม่บล็อก webhook) */
-  async getGroupSummary(groupId: string): Promise<{ groupId: string; groupName: string; pictureUrl?: string } | null> {
+  async getGroupSummary(
+    groupId: string,
+  ): Promise<{ groupId: string; groupName: string; pictureUrl?: string } | null> {
     return this.getJson(`${this.apiBase}/group/${groupId}/summary`, 'group summary');
   }
 
   async getGroupMemberCount(groupId: string): Promise<number | null> {
-    const r = await this.getJson<{ count: number }>(`${this.apiBase}/group/${groupId}/members/count`, 'group member count');
+    const r = await this.getJson<{ count: number }>(
+      `${this.apiBase}/group/${groupId}/members/count`,
+      'group member count',
+    );
     return typeof r?.count === 'number' ? r.count : null;
   }
 
@@ -166,11 +172,19 @@ export class LineFinanceClientService {
     const token = await this.getAccessToken();
     if (!token) return null;
     try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
-      if (!res.ok) { this.logger.warn(`[LINE Finance] ${what} API ${res.status}`); return null; }
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) {
+        this.logger.warn(`[LINE Finance] ${what} API ${res.status}`);
+        return null;
+      }
       return (await res.json()) as T;
     } catch (err) {
-      this.logger.warn(`[LINE Finance] ${what} fetch failed: ${err instanceof Error ? err.message : err}`);
+      this.logger.warn(
+        `[LINE Finance] ${what} fetch failed: ${err instanceof Error ? err.message : err}`,
+      );
       return null;
     }
   }

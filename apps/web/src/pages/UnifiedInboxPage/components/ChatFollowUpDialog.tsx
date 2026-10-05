@@ -51,6 +51,8 @@ export default function ChatFollowUpDialog({
   const [assignee, setAssignee] = useState('');
   const [status, setStatus] = useState<TodoStatus>('TODO');
   const [revision, setRevision] = useState(0);
+  const [recoveredId, setRecoveredId] = useState<string | null>(null);
+  const taskId = editing?.id ?? recoveredId;
   const [conflict, setConflict] = useState(false);
   const [latest, setLatest] = useState<FollowUpDraft | null>(null);
   const token = useRef('');
@@ -74,19 +76,19 @@ export default function ChatFollowUpDialog({
     setStatus(editing?.status ?? 'TODO');
     setRevision(editing?.revision ?? 0);
     setConflict(false);
+    setRecoveredId(null);
     setLatest(null);
     token.current = crypto.randomUUID();
     // A new form session resets the draft; background refetches must not erase typing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identity]);
   const save = useMutation({
     mutationFn: async () => {
       const scopeRevision = getCompanyScopeRevision();
       const body = { title: title.trim(), dueAt: bangkokInstant(due), assigneeId: assignee };
-      if (editing)
+      if (taskId)
         await api.patch(
-          `/staff-chat/follow-ups/${editing.id}`,
-          { ...body, status, expectedRevision: revision },
+          handoff ? `/staff-chat/handoffs/${taskId}/details` : `/staff-chat/follow-ups/${taskId}`,
+          { ...body, ...(handoff ? { note } : { status }), expectedRevision: revision },
           { params: work.scope },
         );
       else
@@ -109,6 +111,9 @@ export default function ChatFollowUpDialog({
     onError: (error) => {
       if (identity !== current.current) return;
       if ((error as { response?: { status?: number } }).response?.status === 409) {
+        const data = (error as { response?: { data?: { code?: string; taskId?: string } } })
+          .response?.data;
+        if (data?.code === 'CHAT_TASK_REQUEST_MISMATCH' && data.taskId) setRecoveredId(data.taskId);
         setConflict(true);
         setLatest(null);
       } else toast.error(getErrorMessage(error));
@@ -116,7 +121,7 @@ export default function ChatFollowUpDialog({
   });
   const refresh = useMutation({
     mutationFn: () =>
-      api.get<FollowUpDraft>(`/todos/${editing!.id}`, { params: work.scope }).then((r) => r.data),
+      api.get<FollowUpDraft>(`/todos/${taskId}`, { params: work.scope }).then((r) => r.data),
     onSuccess: (data) => {
       if (identity === current.current) setLatest(data);
     },
@@ -225,11 +230,15 @@ export default function ChatFollowUpDialog({
               role="alert"
               className="space-y-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm leading-snug"
             >
-              <p>มีคนแก้ไขนัดนี้แล้ว ฉบับร่างของคุณยังอยู่ กรุณาเทียบข้อมูลก่อนบันทึก</p>
+              <p>
+                {recoveredId
+                  ? 'งานนี้บันทึกไปแล้ว แต่ฉบับร่างเปลี่ยนไป กรุณาเทียบงานเดิมก่อนแก้ไข'
+                  : 'มีคนแก้ไขนัดนี้แล้ว ฉบับร่างของคุณยังอยู่ กรุณาเทียบข้อมูลก่อนบันทึก'}
+              </p>
               <Button
                 type="button"
                 variant="outline"
-                disabled={refresh.isPending}
+                disabled={refresh.isPending || !taskId}
                 onClick={() => refresh.mutate()}
               >
                 โหลดข้อมูลล่าสุดเพื่อเทียบ

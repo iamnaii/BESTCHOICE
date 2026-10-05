@@ -105,7 +105,12 @@ export class ChatbotFinanceService {
             spacing: 'sm',
             contents: [
               { type: 'text', text: '⏱️  ใช้เวลาประมาณ 1 นาที', size: 'xs', color: '#6B7280' },
-              { type: 'text', text: '📱  กรอกเบอร์ + รับ OTP ทาง SMS', size: 'xs', color: '#6B7280' },
+              {
+                type: 'text',
+                text: '📱  กรอกเบอร์ + รับ OTP ทาง SMS',
+                size: 'xs',
+                color: '#6B7280',
+              },
             ],
           },
         ],
@@ -133,7 +138,11 @@ export class ChatbotFinanceService {
 
   async handleEvent(event: LineFinanceWebhookEvent): Promise<void> {
     // ยื่น GFIN PR 2 (spec §10): เข้า/ออกกลุ่ม = งานบัญชีสมาชิกภาพ ไม่ใช่การตอบ → จดก่อน kill switch เสมอ · 'room' (แชทหลายคน) ไม่นับ
-    if ((event.type === 'join' || event.type === 'leave') && event.source.type === 'group' && event.source.groupId) {
+    if (
+      (event.type === 'join' || event.type === 'leave') &&
+      event.source.type === 'group' &&
+      event.source.groupId
+    ) {
       return event.type === 'join'
         ? this.groups.onJoin('FINANCE', event.source.groupId)
         : this.groups.onLeave('FINANCE', event.source.groupId);
@@ -203,11 +212,15 @@ export class ChatbotFinanceService {
   }
 
   /** รูป/ไฟล์จาก LINE เก็บ message id ไว้ให้ดึงไฟล์ทีหลัง (ยื่น GFIN) — ข้อความอื่นไม่เปลี่ยน */
-  private inboundMediaFields(
-    message: LineMessageContent,
-  ): { type?: MessageType; text: string; externalMessageId?: string } {
-    if (message.type === 'image') return { type: 'IMAGE', text: '[image]', externalMessageId: message.id };
-    if (message.type === 'file') return { type: 'FILE', text: '[file]', externalMessageId: message.id };
+  private inboundMediaFields(message: LineMessageContent): {
+    type?: MessageType;
+    text: string;
+    externalMessageId?: string;
+  } {
+    if (message.type === 'image')
+      return { type: 'IMAGE', text: '[image]', externalMessageId: message.id };
+    if (message.type === 'file')
+      return { type: 'FILE', text: '[file]', externalMessageId: message.id };
     return { text: this.inboundMessageToText(message) };
   }
 
@@ -337,14 +350,11 @@ export class ChatbotFinanceService {
       const intent = aiReply.handoffTriggered ? INTENTS.AI_HANDOFF : INTENTS.AI_REPLY;
       // Approximate cost: Sonnet 4.5 input $3/M, output $15/M (checked 2026-04-10)
       // With prompt caching enabled, actual input cost is lower (~$0.30/M for cache hits)
-      const costUsd =
-        (aiReply.inputTokens * 3 + aiReply.outputTokens * 15) / 1_000_000;
+      const costUsd = (aiReply.inputTokens * 3 + aiReply.outputTokens * 15) / 1_000_000;
 
       // Send feedback Quick Reply when AI used tools (data-backed answers)
       const feedbackQuickReply =
-        aiReply.toolsUsed.length > 0
-          ? this.buildFeedbackQuickReply(session.id)
-          : undefined;
+        aiReply.toolsUsed.length > 0 ? this.buildFeedbackQuickReply(session.id) : undefined;
 
       await this.replyAndSave(
         session.id,
@@ -556,9 +566,10 @@ export class ChatbotFinanceService {
     });
 
     // B3 §5 — รูปสินค้าตามหลังข้อความใน reply เดียวกัน (LINE รับได้ 5 ข้อความ/ครั้ง)
+    const savedIds = [savedMsg.id];
     const imageList = (images ?? []).filter((i) => !!i.url).slice(0, MAX_BOT_ATTACHMENTS);
     for (const img of imageList) {
-      await this.sessions.saveMessage({
+      const imageMessage = await this.sessions.saveMessage({
         roomId,
         role: MessageRole.BOT,
         type: MessageType.IMAGE,
@@ -566,6 +577,7 @@ export class ChatbotFinanceService {
         mediaUrl: img.url,
         intent,
       });
+      savedIds.push(imageMessage.id);
     }
 
     try {
@@ -599,10 +611,9 @@ export class ChatbotFinanceService {
       }
 
       await this.lineClient.replyMessage(replyToken, messages);
+      for (const id of savedIds) await this.sessions.confirmBotSent(id);
     } catch (err) {
-      this.logger.error(
-        `[Finance] reply failed: ${err instanceof Error ? err.message : err}`,
-      );
+      this.logger.error(`[Finance] reply failed: ${err instanceof Error ? err.message : err}`);
     }
 
     return savedMsg.id;
@@ -618,19 +629,22 @@ export class ChatbotFinanceService {
     greeting?: string,
     intent: string = INTENTS.VERIFY_REQUIRED,
   ): Promise<void> {
+    const savedIds: string[] = [];
     if (greeting) {
-      await this.sessions.saveMessage({
+      const greetingMessage = await this.sessions.saveMessage({
         roomId,
         role: MessageRole.BOT,
         text: greeting,
       });
+      savedIds.push(greetingMessage.id);
     }
-    await this.sessions.saveMessage({
+    const flexMessage = await this.sessions.saveMessage({
       roomId,
       role: MessageRole.BOT,
       text: '[flex:verify]',
       intent,
     });
+    savedIds.push(flexMessage.id);
 
     try {
       const messages = greeting
@@ -640,6 +654,7 @@ export class ChatbotFinanceService {
           ]
         : [{ type: 'flex' as const, altText: VERIFY_ALT_TEXT, contents: this.buildVerifyFlex() }];
       await this.lineClient.replyMessage(replyToken, messages);
+      for (const id of savedIds) await this.sessions.confirmBotSent(id);
     } catch (err) {
       this.logger.error(
         `[Finance] verify flex reply failed: ${err instanceof Error ? err.message : err}`,

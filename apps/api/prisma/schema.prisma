@@ -5561,6 +5561,7 @@ model Todo {
   revision Int @default(0)
   dueRevision Int @default(0) @map("due_revision")
   requestKey String? @unique @map("request_key")
+  requestFingerprint String? @map("request_fingerprint")
   workEvents TodoWorkEvent[]
   staffInboxItems StaffInboxItem[]
   id          String       @id @default(uuid())

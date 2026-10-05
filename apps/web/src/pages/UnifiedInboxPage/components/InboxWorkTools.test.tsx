@@ -1,17 +1,25 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import InboxWorkTools from './InboxWorkTools';
-const mocks = vi.hoisted(() => ({ getTarget: vi.fn(), markRead: vi.fn(), error: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  getTarget: vi.fn(),
+  markRead: vi.fn(),
+  error: vi.fn(),
+  enabled: true,
+}));
 vi.mock('sonner', () => ({ toast: { error: mocks.error } }));
 vi.mock('../hooks/useChatWork', () => ({
   useChatWork: () => ({
     company: 'SHOP',
     key: ['chat-work', 'user', 'SHOP'],
     identity: 'user:SHOP',
-    enabled: true,
-    settings: { isError: false },
+    enabled: mocks.enabled,
+    settings: {
+      isError: false,
+      data: { flags: { chat_mentions_enabled: true, chat_facebook_comments_enabled: true } },
+    },
     queue: { data: undefined },
     inbox: {
       data: {
@@ -34,10 +42,10 @@ vi.mock('../hooks/useChatWork', () => ({
     markRead: mocks.markRead,
   }),
 }));
-function view(select: (roomId: string) => void) {
+function view(select: (roomId: string) => void, url = '/') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[url]}>
       <QueryClientProvider client={client}>
         <InboxWorkTools onSelectRoom={select} />
       </QueryClientProvider>
@@ -46,6 +54,27 @@ function view(select: (roomId: string) => void) {
   return client;
 }
 describe('Work notification targets', () => {
+  beforeEach(() => {
+    mocks.enabled = true;
+    vi.clearAllMocks();
+  });
+  it('keeps comments, notifications and note deep links available when only queue is disabled', async () => {
+    mocks.enabled = false;
+    const id = '00000000-0000-4000-8000-000000000001';
+    mocks.getTarget.mockResolvedValue({
+      roomId: 'room',
+      targetId: id,
+      targetType: 'NOTE',
+      title: 'โน้ตภายใน',
+      content: 'linked note',
+    });
+    const select = vi.fn();
+    view(select, `/?noteId=${id}`);
+    expect(screen.getByRole('button', { name: 'คอมเมนต์' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'การแจ้งเตือนงาน 1' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'คิวงาน' })).not.toBeInTheDocument();
+    await waitFor(() => expect(select).toHaveBeenCalledWith('room'));
+  });
   it('refuses navigation and read mutation when target permission is gone', async () => {
     mocks.getTarget.mockRejectedValueOnce(new Error('not found'));
     const select = vi.fn();
@@ -75,7 +104,13 @@ describe('Work notification targets', () => {
     expect(await screen.findByText('ตรวจเอกสารก่อนโทร')).toBeInTheDocument();
   });
   it('removes an open note snapshot after a deletion or access change', async () => {
-    mocks.getTarget.mockResolvedValue({ roomId: 'room', targetId: 'note', targetType: 'NOTE', title: 'โน้ตภายใน', content: 'เนื้อหาที่ต้องหายหลังลบ' });
+    mocks.getTarget.mockResolvedValue({
+      roomId: 'room',
+      targetId: 'note',
+      targetType: 'NOTE',
+      title: 'โน้ตภายใน',
+      content: 'เนื้อหาที่ต้องหายหลังลบ',
+    });
     mocks.markRead.mockResolvedValue({});
     const client = view(vi.fn());
     fireEvent.click(screen.getByRole('button', { name: 'การแจ้งเตือนงาน 1' }));
@@ -86,5 +121,4 @@ describe('Work notification targets', () => {
     await screen.findByRole('alert');
     expect(screen.queryByText('เนื้อหาที่ต้องหายหลังลบ')).not.toBeInTheDocument();
   });
-
 });

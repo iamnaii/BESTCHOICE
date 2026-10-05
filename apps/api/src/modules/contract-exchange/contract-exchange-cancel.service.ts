@@ -12,6 +12,7 @@ import { AuditService, AuditEntry } from '../audit/audit.service';
 import { hasCrossBranchAccess } from '../auth/branch-access.util';
 import { CompanyResolverService } from '../journal/company-resolver.service';
 import { ExchangeCancelReversalTemplate } from '../journal/cpa-templates/exchange-cancel-reversal.template';
+import { markInputVatReversedIfSwept } from '../journal/input-vat/installment-input-vat.claim';
 import {
   C2_REDIRECTS,
   C2_REDIRECT_SOURCES,
@@ -396,6 +397,7 @@ export class ExchangeCancelService {
           ...(req.previousCostPrice != null ? { costPrice: req.previousCostPrice } : {}),
         } as any,
       });
+      await markInputVatReversedIfSwept(tx, req.newContractId); // ก้อน 5 — JE ภาษีซื้อของสัญญาใหม่ถูก sweep ข้างบนแล้ว
       await tx.contract.update({
         where: { id: req.newContractId },
         // C1a: null exchangedFromContractId (@unique) — the CANCELED EXCH-

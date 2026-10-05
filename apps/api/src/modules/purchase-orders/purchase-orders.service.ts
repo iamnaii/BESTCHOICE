@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { decorateReceivingForRole, redactPoInputVat } from '../journal/input-vat/input-vat-visibility.util';
 import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPODto, ApprovePODto, DirectReceiveDto } from './dto/create-po.dto';
 import { PoQueryService } from './services/po-query.service';
 import { PoLifecycleService } from './services/po-lifecycle.service';
@@ -59,8 +60,10 @@ export class PurchaseOrdersService {
     return this.query.findAll(filters);
   }
 
-  findOne(id: string) {
-    return this.query.findOne(id);
+  /** ก้อน 5 — ใบรับของแต่ละใบได้ `taxInvoice` และ `items[].receivedVat` ถูกตัดตาม role (Q5) */
+  async findOne(id: string, role?: string) {
+    const po = await this.query.findOne(id);
+    return redactPoInputVat(po, role);
   }
 
   create(dto: CreatePODto, userId: string, userRole?: string) {
@@ -116,18 +119,19 @@ export class PurchaseOrdersService {
     return this.query.getAccountsPayable(page, limit);
   }
 
-  getGoodsReceivings(poId: string, filters: {
+  async getGoodsReceivings(poId: string, filters: {
     status?: string;
     startDate?: string;
     endDate?: string;
     page?: number;
     limit?: number;
-  } = {}) {
-    return this.query.getGoodsReceivings(poId, filters);
+  } = {}, role?: string) {
+    const page = await this.query.getGoodsReceivings(poId, filters);
+    return { ...page, data: page.data.map((gr) => decorateReceivingForRole(gr, role)) };
   }
 
-  getGoodsReceivingById(poId: string, receivingId: string) {
-    return this.query.getGoodsReceivingById(poId, receivingId);
+  async getGoodsReceivingById(poId: string, receivingId: string, role?: string) {
+    return decorateReceivingForRole(await this.query.getGoodsReceivingById(poId, receivingId), role);
   }
 
   getReceivingSummary(poId: string, filters: {

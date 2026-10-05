@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { INSTALLMENT_INPUT_VAT_FLOW } from '../../journal/cpa-templates/installment-input-vat.template';
 import { EntityScope, ensureTaxTypeAllowedForEntity } from '../tax-entity.util';
 import {
   PP30_MANDATORY_60DAY_VAT_ACCOUNT,
@@ -100,7 +101,11 @@ export class TaxPreviewService {
     const totalSales = payments.reduce((sum, p) => sum.add(p.amountPaid), zero);
 
     // ── Input VAT side — UNCHANGED (already journal-based; verified correct) ─
-    const expenses = await this.getInputVatLineItems(branchIds, startDate, endDate);
+    const expenses = [
+      ...(await this.getInputVatLineItems(branchIds, startDate, endDate)),
+      // ก้อน 5 — ภาษีซื้อเครื่องขายผ่อน (สมุด FINANCE · ไม่ผูกสาขา)
+      ...(await this.getInstallmentInputVatLineItems(companyId, startDate, endDate)),
+    ];
 
     const totalPurchases = expenses.reduce((s, e) => s.add(e.totalAmount), zero);
     const totalVatInput = expenses.reduce((s, e) => s.add(e.vatAmount), zero);
@@ -259,6 +264,102 @@ export class TaxPreviewService {
    *   - expense_document.branchId IN branchIds (company scope)
    *   - all deletedAt IS NULL
    */
+  /**
+   * ก้อน 5 — ภาษีซื้อของเครื่องที่ขายผ่อน (flow finance-input-vat-installment) + ใบกระจกจากการยกเลิกสัญญา (ติดลบ) ภายในเดือน.
+   * ฐานภาษี = receivedCost − receivedVat ของเครื่อง (ต้นทุนรวม VAT − VAT) · ผู้ขาย = ผู้จัดจำหน่ายของใบรับของ.
+   * กรองด้วย `journalEntry.companyId` ของบริษัทที่ขอ preview (รายการนี้ลงสมุด FINANCE — ไม่ผูกสาขา จึงไม่ใช้ branchIds)
+   */
+  private async getInstallmentInputVatLineItems(
+    companyId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<
+    Array<{
+      expenseDate: Date;
+      description: string;
+      vendorName: string | null;
+      vendorTaxId: string | null;
+      taxInvoiceNo: string | null;
+      totalAmount: Prisma.Decimal;
+      vatAmount: Prisma.Decimal;
+    }>
+  > {
+    const zero = new Prisma.Decimal(0);
+    const lines = await this.prisma.journalLine.findMany({
+      where: {
+        accountCode: '11-4101',
+        deletedAt: null,
+        journalEntry: {
+          deletedAt: null,
+          status: 'POSTED',
+          companyId,
+          postedAt: { gte: startDate, lte: endDate },
+          OR: [
+            { metadata: { path: ['flow'], equals: INSTALLMENT_INPUT_VAT_FLOW } as Prisma.JsonFilter },
+            { metadata: { path: ['tag'], equals: 'REVERSAL' } as Prisma.JsonFilter },
+          ],
+        },
+      },
+      include: { journalEntry: { select: { id: true, entryNumber: true, postedAt: true, description: true, metadata: true } } },
+      orderBy: { journalEntry: { postedAt: 'asc' } },
+    });
+    if (lines.length === 0) return [];
+    const metaOf = (l: (typeof lines)[number]) => (l.journalEntry.metadata ?? {}) as Prisma.JsonObject;
+    // ใบกระจกชี้ต้นทางด้วย `reversesEntryId` (sweep ยกเลิกสัญญา) หรือ `originalEntryId` (เปลี่ยนเครื่องตำหนิ A.5a)
+    const mirrorOf = (m: Prisma.JsonObject): string | null => {
+      if (m.tag !== 'REVERSAL') return null;
+      const id = m.reversesEntryId ?? m.originalEntryId;
+      return typeof id === 'string' ? id : null;
+    };
+    const reversesIds = [...new Set(lines.map((l) => mirrorOf(metaOf(l))).filter((v): v is string => !!v))];
+    const originals = reversesIds.length
+      ? await this.prisma.journalEntry.findMany({ where: { id: { in: reversesIds } }, select: { id: true, metadata: true } })
+      : [];
+    const originalById = new Map(
+      originals
+        .filter((o) => ((o.metadata ?? {}) as Prisma.JsonObject).flow === INSTALLMENT_INPUT_VAT_FLOW)
+        .map((o) => [o.id, (o.metadata ?? {}) as Prisma.JsonObject] as const),
+    );
+    const picked = lines.flatMap((l) => {
+      const m = metaOf(l);
+      if (m.flow === INSTALLMENT_INPUT_VAT_FLOW) return [{ line: l, source: m, reversal: false }];
+      const srcId = mirrorOf(m);
+      const src = srcId ? originalById.get(srcId) : undefined;
+      return src ? [{ line: l, source: src, reversal: true }] : [];
+    });
+    if (picked.length === 0) return [];
+    const productIds = [...new Set(picked.map((p) => p.source.productId).filter((v): v is string => typeof v === 'string'))];
+    const items = productIds.length
+      ? await this.prisma.goodsReceivingItem.findMany({
+          where: { productId: { in: productIds } },
+          select: {
+            productId: true,
+            receivedCost: true,
+            receivedVat: true,
+            receiving: { select: { po: { select: { supplier: { select: { name: true, taxId: true } } } } } },
+          },
+        })
+      : [];
+    const itemByProduct = new Map(items.map((i) => [i.productId as string, i] as const));
+    return picked.map(({ line, source, reversal }) => {
+      const item = itemByProduct.get(source.productId as string);
+      const vat = new Prisma.Decimal(line.debit ?? 0).sub(new Prisma.Decimal(line.credit ?? 0));
+      const base =
+        item?.receivedCost != null && item.receivedVat != null
+          ? new Prisma.Decimal(item.receivedCost.toString()).sub(new Prisma.Decimal(item.receivedVat.toString()))
+          : zero;
+      return {
+        expenseDate: line.journalEntry.postedAt ?? startDate,
+        description: `${reversal ? 'กลับรายการ ' : ''}ภาษีซื้อเครื่องขายผ่อน สัญญา ${typeof source.contractNumber === 'string' ? source.contractNumber : '-'}`,
+        vendorName: item?.receiving.po.supplier.name ?? null,
+        vendorTaxId: item?.receiving.po.supplier.taxId ?? null,
+        taxInvoiceNo: typeof source.taxInvoiceNumber === 'string' ? source.taxInvoiceNumber : null,
+        totalAmount: reversal ? base.neg() : base,
+        vatAmount: vat,
+      };
+    });
+  }
+
   private async getInputVatLineItems(
     branchIds: string[],
     startDate: Date,

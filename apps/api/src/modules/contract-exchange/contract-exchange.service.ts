@@ -13,6 +13,8 @@ import { ExchangeBuybackReceivable11_2107Template } from '../journal/cpa-templat
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
+import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
+import { claimInputVatOnActivation } from '../journal/input-vat/installment-input-vat.claim';
 import { resolveStoreCommission } from '../../utils/store-commission.util';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
@@ -85,6 +87,7 @@ export class ContractExchangeService {
     private readonly companyResolver: CompanyResolverService,
     private readonly shopInventoryTransferTemplate: ShopInventoryTransferTemplate,
     private readonly shopAccountResolver: ShopAccountResolver,
+    private readonly installmentInputVatTemplate: InstallmentInputVatTemplate,
   ) {}
 
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
@@ -937,6 +940,14 @@ export class ContractExchangeService {
 
     // 4. JE A.1 — open new HP receivable
     const je1a = await this.t1a.execute(newContract.id, tx);
+
+    // ก้อน 5 (Q3) — เครื่องใหม่ของสัญญาเปลี่ยนเครื่องเคลมภาษีซื้อตามปกติ ลงวันเดียวกับ A.1; เครื่องเก่าที่คืน SHOP ไม่กลับรายการ (รอฝ่ายบัญชี)
+    await claimInputVatOnActivation(tx, this.installmentInputVatTemplate, {
+      contractId: newContract.id,
+      contractNumber: newContract.contractNumber,
+      productId: newContract.productId,
+      postedAt: new Date(),
+    });
 
     // 4b. SHOP-side inventory transfer (F2 — CPA ตอบข้อ 3, 2026-08-01):
     // an exchange's new contract must book the SAME SHOP mirror

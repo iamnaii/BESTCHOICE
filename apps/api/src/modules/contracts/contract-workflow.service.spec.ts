@@ -12,6 +12,7 @@ import { TestModeService } from '../test-mode/test-mode.service';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
 import { BadRequestException } from '@nestjs/common';
 
 /**
@@ -54,6 +55,8 @@ describe('ContractWorkflowService', () => {
   let shopInventoryTransferTemplate: { execute: jest.Mock };
   let shopDownPaymentTemplate: { execute: jest.Mock };
   let shopAccountResolver: { resolveProductAccounts: jest.Mock; resolveBranchCashAccount: jest.Mock; resolveInflowCashAccount: jest.Mock };
+  // ก้อน 5 — ภาษีซื้อเครื่องหลักหลัง 1A
+  let installmentInputVatTemplate: { execute: jest.Mock };
 
   const mockProduct = {
     id: 'product-1',
@@ -143,6 +146,8 @@ describe('ContractWorkflowService', () => {
         findUnique: jest.fn().mockResolvedValue(mockContract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
         update: jest.fn().mockResolvedValue({ ...mockContract, status: 'ACTIVE' }),
+        // ก้อน 5 (I1) — findConflictingClaim: ไม่มีสัญญาอื่นเคลมเครื่องนี้อยู่
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       installmentSchedule: {
         // generateInstallmentSchedules now runs inside the activation tx. These
@@ -225,6 +230,10 @@ describe('ContractWorkflowService', () => {
       resolveInflowCashAccount: jest.fn(async (_branch, method) => method === 'CASH' ? 'S11-1102' : 'S11-1201'),
     };
 
+    installmentInputVatTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-VAT', journalEntryId: 'je-vat' }) };
+    // ก้อน 5 — ค่าเริ่มต้น: เครื่องไม่มีใบรับของ → NOT_ELIGIBLE (ไม่โพสต์ JE)
+    prisma.goodsReceivingItem = { findUnique: jest.fn().mockResolvedValue(null) };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ContractWorkflowService,
@@ -238,6 +247,7 @@ describe('ContractWorkflowService', () => {
         { provide: ShopInventoryTransferTemplate, useValue: shopInventoryTransferTemplate },
         { provide: ShopDownPaymentTemplate, useValue: shopDownPaymentTemplate },
         { provide: ShopAccountResolver, useValue: shopAccountResolver },
+        { provide: InstallmentInputVatTemplate, useValue: installmentInputVatTemplate },
       ],
     }).compile();
 
@@ -246,6 +256,29 @@ describe('ContractWorkflowService', () => {
   });
 
   describe('activate', () => {
+    it('ก้อน 5: หลัง 1A ตัดสินภาษีซื้อของเครื่องหลักใน tx เดียวกัน — ไม่มีใบรับของ → สัญญา NOT_ELIGIBLE ไม่โพสต์ JE', async () => {
+      await service.activate('contract-1');
+      expect(installmentInputVatTemplate.execute).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vatUpdate = prisma.contract.update.mock.calls.find((c: any[]) => c[0]?.data?.inputVatStatus);
+      expect(vatUpdate?.[0].data).toMatchObject({ inputVatStatus: 'NOT_ELIGIBLE', inputVatReason: expect.stringContaining('ไม่มีใบรับของ') });
+    });
+
+    it('ก้อน 5: เครื่องจากใบรับของ TAX_INVOICE ที่มี receivedVat → โพสต์ Dr 11-4101 / Cr 42-1108 ผ่าน template ด้วย contractId/productId ของสัญญา หลัง 1A', async () => {
+      prisma.goodsReceivingItem.findUnique.mockResolvedValue({
+        receivedVat: new Prisma.Decimal('686'),
+        receiving: { id: 'gr-1', grNumber: 'GR-1', supplierDocType: 'TAX_INVOICE', supplierDocNumber: 'IV-9', supplierDocDate: new Date('2026-09-29T17:00:00Z'), taxInvoiceNumber: null, taxInvoiceDate: null },
+      });
+      await service.activate('contract-1');
+      expect(installmentInputVatTemplate.execute).toHaveBeenCalledTimes(1);
+      expect(installmentInputVatTemplate.execute.mock.calls[0][0]).toMatchObject({ contractId: 'contract-1', productId: mockProduct.id, taxInvoiceNumber: 'IV-9' });
+      expect(installmentInputVatTemplate.execute.mock.calls[0][1]).toBeDefined(); // tx เดียวกับ 1A
+      expect(contractActivationTemplateMock.execute.mock.invocationCallOrder[0]).toBeLessThan(installmentInputVatTemplate.execute.mock.invocationCallOrder[0]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vatUpdate = prisma.contract.update.mock.calls.find((c: any[]) => c[0]?.data?.inputVatStatus);
+      expect(vatUpdate?.[0].data).toMatchObject({ inputVatStatus: 'CLAIMED', inputVatJournalEntryId: 'je-vat' });
+    });
+
     it('checks the approved installment amount before activating or posting money', async () => {
       const guard = jest.spyOn(creditApproval, 'assertContractCreditApproval').mockRejectedValue(new Error('ยอดอนุมัติไม่พอ'));
       try {

@@ -28,6 +28,8 @@ export interface GoodsReceivingItem {
   status: 'PASS' | 'REJECT';
   rejectReason: string | null;
   product: { id: string; name: string; imeiSerial: string | null; status: string } | null;
+  /** ก้อน 5 — ภาษีซื้อของหน่วย (2dp) · null = ไม่มีสิทธิ์เห็น (Q5) / รับก่อนก้อน 5 */
+  receivedVat?: string | null;
 }
 
 export interface GoodsReceivingRecord {
@@ -41,6 +43,8 @@ export interface GoodsReceivingRecord {
   supplierDocDate?: string | null;
   receivedBy: { id: string; name: string };
   items: GoodsReceivingItem[];
+  /** ก้อน 5 — ใบกำกับภาษีของใบรับของ: RECEIVING = เอกสารเดิมเป็นใบกำกับ · LATER = บันทึกภายหลัง · null = ยังไม่มี */
+  taxInvoice?: { number: string; date: string; source: 'RECEIVING' | 'LATER' } | null;
 }
 
 export interface PurchaseOrder {

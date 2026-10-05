@@ -13,6 +13,7 @@ import { JournalAutoService } from '../journal/journal-auto.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
 import { RepairTicketsService } from '../repair-tickets/repair-tickets.service';
 import { TEST_CUSTOMER_ADDRESS } from '../../utils/test-data-markers';
+import * as inputVatClaim from '../journal/input-vat/installment-input-vat.claim';
 
 // generateContractNumber issues a $queryRaw lock + sequence read; stub it out
 // so unit tests don't need a Postgres advisory-lock implementation.
@@ -217,6 +218,25 @@ describe('DefectExchangeService', () => {
           userId,
         ),
       ).rejects.toThrow(/มีรายการชำระเงินแล้ว/);
+    });
+
+    it('ก้อน 5 (final review C2): หลัง reverseContract ต้องเรียก markInputVatReversedIfSwept ของสัญญาเดิมใน tx เดียวกัน', async () => {
+      const spy = jest.spyOn(inputVatClaim, 'markInputVatReversedIfSwept').mockResolvedValue('UNCHANGED');
+      try {
+        const contract = baseContract();
+        prisma.contract.findUnique.mockResolvedValue(contract);
+        prisma.product.findUnique.mockResolvedValue(newProductRec);
+        const tx = prisma.__tx;
+        tx.payment.count.mockResolvedValue(0);
+        tx.contract.findUnique.mockResolvedValue(contract);
+        tx.product.findUnique.mockResolvedValue(newProductRec);
+        await service.execute({ oldContractId, newProductId, defectReason: 'screen broken' } as any, userId);
+        expect(reversal.reverseContract).toHaveBeenCalledTimes(1);
+        expect(spy).toHaveBeenCalledWith(tx, oldContractId);
+        expect(reversal.reverseContract.mock.invocationCallOrder[0]).toBeLessThan(spy.mock.invocationCallOrder[0]);
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('proceeds when contract has zero payments', async () => {

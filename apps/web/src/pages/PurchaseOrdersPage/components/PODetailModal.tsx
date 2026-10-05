@@ -5,11 +5,13 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { getStatusBadgeProps, poStatusMap, poPaymentStatusMap } from '@/lib/status-badges';
 import { formatDateShort, formatDateMedium, formatDateTime, formatNumber, formatNumberDecimal } from '@/utils/formatters';
-import type { PurchaseOrder, PODetail, POItem, PoPaymentsResponse, SupplierPayment } from '../types';
+import type { PurchaseOrder, PODetail, POItem, PoPaymentsResponse, SupplierPayment, GoodsReceivingRecord } from '../types';
 import { PAYMENT_KIND_LABEL, openSlip } from '../supplier-payment.util';
 import { paymentMethodLabels } from '../constants';
 import { canCancel } from '../po-list.util';
-import { supplierDocSummary } from '../supplier-doc.util';
+import { supplierDocSummary, formatIsoDate } from '../supplier-doc.util';
+import { taxInvoiceAction, taxInvoiceBadge } from '../tax-invoice.util';
+import { canSeeInputVat } from '@/lib/input-vat';
 import {
   accessoryFor,
   accessoryTitle,
@@ -38,6 +40,10 @@ export interface PODetailModalProps {
   onVoidPayment?: (po: PurchaseOrder, payment: SupplierPayment) => void;
   canRecordPayments?: boolean;
   canVoidPayments?: boolean;
+  /** ก้อน 5 — role ของผู้ดู (ตัดสินคอลัมน์ภาษีซื้อ + ปุ่มใบกำกับ) */
+  role?: string | null;
+  /** ก้อน 5 (Q1) — เปิด dialog บันทึก/แก้ใบกำกับภาษีของใบรับของ */
+  onRecordTaxInvoice?: (po: PurchaseOrder, receiving: GoodsReceivingRecord) => void;
 }
 
 /** Whole baht stay whole ("10,700"); satang show two places ("47,165.60"). */
@@ -90,6 +96,8 @@ export function PODetailModal({
   onVoidPayment,
   canRecordPayments = true,
   canVoidPayments = false,
+  role,
+  onRecordTaxInvoice,
 }: PODetailModalProps) {
   const navigate = useNavigate();
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -511,11 +519,28 @@ export function PODetailModal({
                               {supplierDocSummary(ev.receiving) && (
                                 <div className="text-xs text-muted-foreground">เอกสารผู้จัดจำหน่าย: {supplierDocSummary(ev.receiving)}</div>
                               )}
+                              {(() => {
+                                // ก้อน 5 — สถานะใบกำกับภาษีของใบรับของ (ตัดสินด้วย util เดียวกับปุ่ม)
+                                const b = taxInvoiceBadge(ev.receiving!, po.supplier.hasVat);
+                                return (
+                                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    <Badge variant={b.variant} appearance="light">{b.text}</Badge>
+                                    {ev.receiving!.taxInvoice?.source === 'LATER' && (
+                                      <span className="text-muted-foreground">
+                                        ใบกำกับ {ev.receiving!.taxInvoice.number} · ลงวันที่ {formatIsoDate(ev.receiving!.taxInvoice.date)} (บันทึกภายหลัง)
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                               {ev.receiving.items.map((ri) => (
                                 <div key={ri.id} className="flex flex-wrap items-center gap-2 text-xs">
                                   <Badge variant={ri.status === 'PASS' ? 'success' : 'destructive'} appearance="light">{ri.status === 'PASS' ? 'PASS' : 'REJECT'}</Badge>
                                   {ri.imeiSerial && <span className="font-mono text-muted-foreground">IMEI: {ri.imeiSerial}</span>}
                                   {ri.serialNumber && <span className="font-mono text-muted-foreground">SN: {ri.serialNumber}</span>}
+                                  {canSeeInputVat(role) && ri.receivedVat != null && (
+                                    <span className="font-mono tabular-nums text-muted-foreground">ภาษีซื้อ {formatNumberDecimal(ri.receivedVat, 2)} ฿</span>
+                                  )}
                                   {ri.rejectReason && <span className="text-destructive">({ri.rejectReason})</span>}
                                 </div>
                               ))}
@@ -529,6 +554,18 @@ export function PODetailModal({
                                 <Printer className="size-3.5" aria-hidden />
                                 พิมพ์ใบรับของ
                               </button>
+                              {(() => {
+                                const action = taxInvoiceAction(ev.receiving!, po.supplier.hasVat, role);
+                                return action && onRecordTaxInvoice ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onRecordTaxInvoice(po, ev.receiving!)}
+                                    className="mt-1 ml-2 inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+                                  >
+                                    {action === 'EDIT' ? 'แก้ใบกำกับภาษี' : 'บันทึกใบกำกับภาษี'}
+                                  </button>
+                                ) : null;
+                              })()}
                             </div>
                           )}
                         </div>

@@ -7,6 +7,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ContractCancellationTemplate } from '../../journal/cpa-templates/contract-cancellation.template';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { markInputVatReversedIfSwept } from '../../journal/input-vat/installment-input-vat.claim';
 import { shopCollectTypedBalance } from '../../interco-settlement/interco-typed-balance';
 import { reopenRepossessionOnUnsale } from '../../repossessions/repossession-resale.util';
 import { restoreContractBundles } from './contract-bundle.util';
@@ -287,6 +288,9 @@ export class ContractCancellationService {
         },
         tx,
       );
+
+      // ก้อน 5 — JE ภาษีซื้อ (stamp contractId) ถูก sweep กระจกไปแล้ว → สถานะบนสัญญาตามสมุด (PENDING_INVOICE = ถอนสิทธิ์เคลมย้อน)
+      await markInputVatReversedIfSwept(tx, cancellation.contractId);
 
       // ค่าคอมเป็นหน้าที่ของ clawbackContractCommission ด้านล่าง (ไม่บล็อก — คำตัดสินเจ้าของ 2026-09-20)
       await cleanupCreditContractSale(tx, contract, approverId, 'ยกเลิกสัญญาใช้เครดิตเทิร์น', { commissionHandledByCaller: true });

@@ -22,6 +22,8 @@ import {
   TableCell,
 } from '@/components/ui/table';
 import { formatNumberDecimal, formatDateMedium } from '@/utils/formatters';
+import { Badge } from '@/components/ui/badge';
+import { INPUT_VAT_AGE_WARN_MONTHS } from '@/lib/input-vat';
 import { Calculator, Download } from 'lucide-react';
 
 const MONTHS = [
@@ -65,6 +67,28 @@ interface VatData {
   outputVat?: OutputVatBreakdown;
   lineCount: number;
   lines: VatLine[];
+  /** ก้อน 5 — ไม่มีเมื่อ API ยังเป็นรุ่นก่อนก้อน 5 ⇒ ไม่แสดงส่วน "ภาษีซื้อจากเครื่องขายผ่อน" */
+  vatInputExpense?: string;
+  vatInputInstallment?: string;
+  installmentInputVatLines?: InstallmentInputVatLine[];
+}
+
+/** ก้อน 5 — รายการภาษีซื้อของเครื่องขายผ่อน (flow finance-input-vat-installment + mirror ตอนยกเลิกสัญญา) */
+interface InstallmentInputVatLine {
+  postedAt: string;
+  entryNumber: string;
+  contractId: string | null;
+  contractNumber: string | null;
+  productId: string | null;
+  grNumber: string | null;
+  taxInvoiceNumber: string | null;
+  taxInvoiceDate: string | null;
+  invoiceAgeMonths: number | null;
+  /** debit − credit 2dp · กระจก (reversal) = ติดลบ */
+  amount: string;
+  reversal: boolean;
+  /** ใบต้นทางถูกกระจกแล้ว */
+  reversed: boolean;
 }
 
 function SummaryCard({
@@ -157,6 +181,78 @@ function OutputVatBreakdownCard({ data }: { data: OutputVatBreakdown }) {
   );
 }
 
+function InstallmentInputVatSection({ data }: { data: VatData }) {
+  const lines = data.installmentInputVatLines ?? [];
+  return (
+    <section aria-label="ภาษีซื้อจากเครื่องขายผ่อน" className="mb-6 rounded-lg border border-border bg-muted/30 p-4">
+      <h3 className="text-sm font-semibold text-foreground leading-snug mb-3">ภาษีซื้อจากเครื่องขายผ่อน (Dr 11-4101 / Cr 42-1108)</h3>
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-sm">
+        <div className="flex justify-between gap-3 border-b border-dashed border-border py-1">
+          <dt className="text-muted-foreground">ภาษีซื้อค่าใช้จ่าย</dt>
+          <dd className="font-mono tabular-nums">{formatNumberDecimal(data.vatInputExpense ?? '0', 2)} ฿</dd>
+        </div>
+        <div className="flex justify-between gap-3 border-b border-dashed border-border py-1">
+          <dt className="text-muted-foreground">ภาษีซื้อเครื่องขายผ่อน</dt>
+          <dd className="font-mono tabular-nums font-semibold">{formatNumberDecimal(data.vatInputInstallment ?? '0', 2)} ฿</dd>
+        </div>
+      </dl>
+      {lines.length === 0 ? (
+        <p className="text-sm text-muted-foreground leading-snug">ยังไม่มีสัญญาผ่อนที่เคลมภาษีซื้อในเดือนนี้</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>วันที่</TableHead>
+              <TableHead>รายการบัญชี</TableHead>
+              <TableHead>สัญญา</TableHead>
+              <TableHead>ใบรับของ</TableHead>
+              <TableHead>ใบกำกับภาษี</TableHead>
+              <TableHead>อายุใบกำกับ</TableHead>
+              <TableHead className="text-right">ยอด</TableHead>
+              <TableHead>สถานะ</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {lines.map((l) => (
+              <TableRow key={l.entryNumber}>
+                <TableCell>{formatDateMedium(l.postedAt)}</TableCell>
+                <TableCell className="font-mono text-xs">{l.entryNumber}</TableCell>
+                <TableCell className="font-mono text-xs">{l.contractNumber ?? '—'}</TableCell>
+                <TableCell className="font-mono text-xs">{l.grNumber ?? '—'}</TableCell>
+                <TableCell className="text-sm leading-snug">
+                  {l.taxInvoiceNumber ?? '—'}
+                  {l.taxInvoiceDate ? ` · ${formatDateMedium(l.taxInvoiceDate)}` : ''}
+                </TableCell>
+                <TableCell className="text-sm">
+                  {l.invoiceAgeMonths == null ? '—' : `${l.invoiceAgeMonths} เดือน`}
+                  {l.invoiceAgeMonths != null && l.invoiceAgeMonths >= INPUT_VAT_AGE_WARN_MONTHS && (
+                    <Badge variant="warning" appearance="light" className="ml-1.5">เกิน {INPUT_VAT_AGE_WARN_MONTHS} เดือน</Badge>
+                  )}
+                </TableCell>
+                <TableCell className={`text-right font-mono tabular-nums ${l.reversal ? 'text-destructive' : ''}`}>
+                  {formatNumberDecimal(l.amount, 2)}
+                </TableCell>
+                <TableCell>
+                  {l.reversal ? (
+                    <Badge variant="destructive" appearance="light">กลับรายการ</Badge>
+                  ) : l.reversed ? (
+                    <Badge variant="secondary" appearance="light">ถูกกลับรายการ</Badge>
+                  ) : (
+                    <Badge variant="success" appearance="light">เคลมแล้ว</Badge>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+      <p className="mt-3 text-xs text-muted-foreground leading-snug">
+        เคลมในเดือนที่ขายผ่อน (ลงวันเปิดสัญญา) · ยกเลิกสัญญา = กลับรายการในเดือนที่ยกเลิก · อายุใบกำกับเกิน {INPUT_VAT_AGE_WARN_MONTHS} เดือนแสดงเพื่อให้ตรวจ ไม่บล็อก
+      </p>
+    </section>
+  );
+}
+
 export default function VatPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -239,6 +335,7 @@ export default function VatPage() {
                 </div>
 
                 {query.data.outputVat && <OutputVatBreakdownCard data={query.data.outputVat} />}
+                {query.data.installmentInputVatLines !== undefined && <InstallmentInputVatSection data={query.data} />}
 
                 <div className="flex justify-end mb-4 gap-2">
                   <Button

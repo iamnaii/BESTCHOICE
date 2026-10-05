@@ -145,11 +145,17 @@ describe('TaxService.previewPP30 — B3 / K-04 input VAT from 11-4101', () => {
 
     // After Critical #2 fix: output VAT is journal-based and uses companyId
     // scoping, so 21-2101/21-2103 queries CAN run even with no branches.
-    // The 11-4101 input-VAT helper is the one that bails early on empty branches.
-    const inputCall = prisma.journalLine.findMany.mock.calls.find(
+    // The branch-scoped expense input-VAT helper (flow expense-*) is the one that bails early on empty branches.
+    // ก้อน 5: ภาษีซื้อเครื่องขายผ่อนเป็นรายการสมุด FINANCE ที่กรองด้วย companyId (ไม่ผูกสาขา) จึง query ได้แม้ไม่มีสาขา
+    const inputCalls = prisma.journalLine.findMany.mock.calls.filter(
       ([args]: [{ where: { accountCode: string } }]) => args.where.accountCode === '11-4101',
     );
-    expect(inputCall).toBeUndefined();
+    const expenseCall = inputCalls.find(
+      ([args]: [{ where: { journalEntry: { metadata?: { string_starts_with?: string } } } }]) =>
+        args.where.journalEntry.metadata?.string_starts_with === 'expense-',
+    );
+    expect(expenseCall).toBeUndefined();
+    for (const [args] of inputCalls) expect(args.where.journalEntry).toMatchObject({ companyId: 'co-empty' });
     expect(result.totalVatInput.toString()).toBe('0');
     expect(result.lineItems.purchases).toHaveLength(0);
   });

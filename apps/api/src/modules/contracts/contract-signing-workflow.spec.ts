@@ -14,6 +14,7 @@ import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-paym
 import { ShopDownPaymentReversalTemplate } from '../journal/cpa-templates/shop-down-payment-reversal.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
 import { TestModeService } from '../test-mode/test-mode.service';
 
 // Mock utility modules
@@ -168,6 +169,8 @@ describe('Contract Signing & Workflow', () => {
         findFirst: jest.fn().mockResolvedValue(mockContract.product),
         update: jest.fn().mockResolvedValue(mockContract.product),
       },
+      // ก้อน 5 — claimInputVatOnActivation อ่านใบรับของของเครื่องหลัก (null = ไม่มีใบรับของ → NOT_ELIGIBLE ไม่โพสต์ JE)
+      goodsReceivingItem: { findUnique: jest.fn().mockResolvedValue(null) },
       payment: {
         count: jest.fn().mockResolvedValue(0),
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -218,6 +221,8 @@ describe('Contract Signing & Workflow', () => {
         findFirst: jest.fn().mockResolvedValue(mockContract.product),
         update: jest.fn().mockResolvedValue(mockContract.product),
       },
+      // ก้อน 5 — claimInputVatOnActivation อ่านใบรับของของเครื่องหลัก (null = ไม่มีใบรับของ → NOT_ELIGIBLE ไม่โพสต์ JE)
+      goodsReceivingItem: { findUnique: jest.fn().mockResolvedValue(null) },
       user: {
         findUnique: jest.fn().mockResolvedValue({ role: 'SALES' }),
       },
@@ -253,6 +258,7 @@ describe('Contract Signing & Workflow', () => {
         { provide: ShopDownPaymentReversalTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-REV-001', journalEntryId: 'je-rev-1' }) } },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-002', journalEntryId: 'je-2' }) } },
         { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveInflowCashAccount: jest.fn().mockResolvedValue('S11-1101'), resolveProductAccounts: jest.fn().mockReturnValue({ inventoryAccountCode: 'S11-2001', cogsAccountCode: 'S50-1101', revenueAccountCode: 'S41-1101' }) } },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } }, // ก้อน 5
         { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },
       ],
     }).compile();

@@ -332,6 +332,8 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         // route อนุญาต role นี้อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ Dashboard
         // พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (E2E role-access จับไว้ ปักที่ route-reachability.test.ts)
         { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
+        // ก้อน 5 — ผจก.การเงินเห็นภาษีซื้อต่อเครื่องบนใบรับของ (อ่านอย่างเดียว · API เปิดให้อยู่แล้ว)
+        { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         // P3-SP5 W6 — SHOP-side accounting (visible to FM in SHOP zone for cross-side overview)
         // Standardized label + icon across all 4 role configs.
         { label: 'บัญชีหน้าร้าน (SHOP)', path: '/shop/accounting', icon: Store },
@@ -508,6 +510,8 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: 'ลูกค้า', path: '/customers', icon: Users },
         { label: NAV_LABELS.contracts, path: '/contracts', icon: FileCheck },
         { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
+        // ก้อน 5 (Q1) — ฝ่ายบัญชีบันทึก/แก้ใบกำกับภาษีที่มาทีหลังที่ใบรับของ
+        { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
         { label: 'ตัดสินค้า', path: '/stock/adjustments', icon: PackageMinus, badgeKey: 'stock-adjustment-pending' },

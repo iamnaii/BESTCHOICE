@@ -146,7 +146,10 @@ export const stockOpsSeeder: DomainSeeder = {
             previousStatus: products[0].status,
             notes: adjNote,
             adjustedById: ctx.refs.reviewerId,
+            // ก้อน 3 (2026-10-05): แถวที่สร้างตรง = รายการที่อนุมัติแล้ว (ไม่ผ่านคำขอ) — default ของคอลัมน์คือ PENDING_APPROVAL
+            status: 'APPROVED',
             approvedById: ctx.refs.ownerId,
+            approvedAt: new Date(),
           },
         });
         stat.created += 1;

@@ -1,3 +1,4 @@
+import ChatSalesContext from './ChatSalesContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import RoomCreditCard, { CreditFilePicker } from './RoomCreditCard';
 import { CREDIT_MESSAGE_MIME } from './credit-statement';
@@ -741,6 +742,7 @@ export default function RoomDossier({ room, customerId, activeRoomId, onSelectRo
       <div className="flex-1 overflow-y-auto bg-muted/30">
         {tab === 'customer' && (
           <div className="flex flex-col gap-2.5 p-2.5">
+            <ChatSalesContext roomId={room.id} onLink={() => setLinkOpen(true)} onNew={() => setApptOpen(true)} />
             <Group label="ข้อมูลลูกค้า">
               {linked ? (
                 <>

@@ -13,6 +13,6 @@ import { JourneySummaryService } from './journey-summary.service';
 @Module({
   controllers: [CustomerJourneyController],
   providers: [JourneyEntryWriter, JourneyStateService, JourneySummaryService, CustomerJourneyService, CustomerJourneyCron],
-  exports: [JourneyEntryWriter, JourneyStateService],
+  exports: [JourneyEntryWriter, JourneyStateService, JourneySummaryService],
 })
 export class CustomerJourneyModule {}

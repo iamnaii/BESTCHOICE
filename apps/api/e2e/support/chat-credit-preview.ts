@@ -1,3 +1,5 @@
+import { ChatSalesContextController } from '../../src/modules/staff-chat/chat-sales-context.controller';
+import { ChatSalesContextService } from '../../src/modules/staff-chat/services/chat-sales-context.service';
 import { ChatWorkController } from '../../src/modules/staff-chat/chat-work.controller';
 import { ChatWorkQueryService } from '../../src/modules/staff-chat/services/chat-work-query.service';
 import { ChatWorkSettingsController } from '../../src/modules/staff-chat/chat-work-settings.controller';
@@ -479,7 +481,7 @@ async function main() {
   const chatWorkRooms = await seedChatWork(db, manager, actor.id);
   const module = await Test.createTestingModule({
     controllers: [
-      ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
+      ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
       TradeInController, ContactsController, ProductPhotosController,
       ContractDocumentsController, DocumentsController,
       RoomCreditController,
@@ -490,7 +492,7 @@ async function main() {
       PreviewController,
     ],
     providers: [
-      ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
+      ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
       { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },
@@ -583,7 +585,7 @@ async function main() {
     if (
       /^\/api\/(trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
-      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes|products|finance-applications|customer|prepare-offer|credit-check.*))?))?$/.test(
+      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes|products|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
       /^\/api\/staff-chat\/(work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||

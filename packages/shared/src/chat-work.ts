@@ -52,3 +52,10 @@ export const CHAT_WORK_FLAGS = [
   'chat_cloud_library_enabled',
 ] as const;
 export type ChatWorkFlag = (typeof CHAT_WORK_FLAGS)[number];
+
+export interface ChatSalesContext {
+  customerId: string | null;
+  journey: import('./customer-journey').JourneySummary | null;
+  nextAction: { todoId: string; title: string; dueAt: string | null } | null;
+  evidenceLinks: Array<{ kind: 'CREDIT' | 'OFFER' | 'APPOINTMENT' | 'PURCHASE'; id: string; label: string; href?: string }>;
+}

@@ -12,14 +12,18 @@ export interface WorkTarget {
   targetType: string; targetId: string; roomId: string; title: string; content?: string;
   status?: string; dueAt?: string; assigneeId?: string;
 }
-export function useChatWork(view: WorkQueueView, page: number) {
+export function useChatWorkSettings() {
   const { user } = useAuth();
   const { workZone } = useLayout();
   const company = WORK_COMPANY[workZone];
-  const client = useQueryClient();
   const scope = { company };
   const key = ['chat-work', user?.id, company, user?.branchId];
   const settings = useQuery({ queryKey: [...key, 'settings'], queryFn: () => api.get<{ flags: Record<ChatWorkFlag, boolean> }>('/staff-chat/work-settings', { params: scope }).then(r => r.data), refetchInterval: 60_000 });
+  return { company, scope, key, settings };
+}
+export function useChatWork(view: WorkQueueView, page: number) {
+  const { company, scope, key, settings } = useChatWorkSettings();
+  const client = useQueryClient();
   const enabled = !!settings.data?.flags.chat_work_queue_enabled;
   const queue = useQuery({ queryKey: [...key, 'queue', view, page], queryFn: () => api.get<ChatWorkPage>('/staff-chat/work', { params: { ...scope, view, page, limit: 30 } }).then(r => r.data), enabled, refetchInterval: 30_000 });
   const inbox = useQuery({ queryKey: [...key, 'notifications'], queryFn: () => api.get<{ data: WorkNotification[]; unreadCount: number; total: number }>('/staff-chat/work-notifications', { params: { ...scope, limit: 100 } }).then(r => r.data), enabled, refetchInterval: 30_000 });

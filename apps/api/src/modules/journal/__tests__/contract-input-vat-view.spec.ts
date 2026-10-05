@@ -39,6 +39,12 @@ describe('buildContractInputVatView', () => {
     expect(out).toEqual({ status: 'NOT_ELIGIBLE', amount: null, journalEntryNo: null, taxInvoice: null, grNumber: null, receivingId: null, poId: null, poNumber: null, reason: 'ไม่มีใบรับของ (ยอดยกมา / เพิ่มด้วยมือ)' });
     expect(c.journalEntry.findUnique).not.toHaveBeenCalled();
   });
+  it('แถว/mock ที่ไม่มี inputVatStatus เลย (undefined) → ถือเป็น NONE ไม่ query อะไร (spec เดิมของ ContractsService ใช้ mock แบบนี้)', async () => {
+    const c = client(null);
+    const out = await buildContractInputVatView(c as never, { productId: 'p1' } as never, 'OWNER', now);
+    expect(out).toMatchObject({ status: 'NONE', amount: null });
+    expect(c.goodsReceivingItem.findUnique).not.toHaveBeenCalled();
+  });
   it('NONE (สัญญาก่อนก้อน 5) → status NONE ไม่ query อะไร', async () => {
     const c = client(null);
     const out = await buildContractInputVatView(c as never, { ...claimed, inputVatStatus: 'NONE', inputVatAmount: null, inputVatJournalEntryId: null }, 'OWNER', now);

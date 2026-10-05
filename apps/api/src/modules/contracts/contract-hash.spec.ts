@@ -10,6 +10,7 @@ import { ContractExchangeService } from '../contract-exchange/contract-exchange.
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
 import { TestModeService } from '../test-mode/test-mode.service';
 
 /**
@@ -36,6 +37,7 @@ describe('ContractWorkflowService — hash integrity (T5-C20)', () => {
         { provide: ShopDownPaymentTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-001', journalEntryId: 'je-1' }) } },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-002', journalEntryId: 'je-2' }) } },
         { provide: ShopAccountResolver, useValue: { resolveBranchCashAccount: jest.fn().mockResolvedValue('S11-1102'), resolveProductAccounts: jest.fn() } },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } }, // ก้อน 5
         { provide: TestModeService, useValue: { isEnabled: jest.fn().mockResolvedValue(false) } },
       ],
     }).compile();

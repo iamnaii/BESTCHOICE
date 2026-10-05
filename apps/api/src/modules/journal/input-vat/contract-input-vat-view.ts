@@ -25,7 +25,7 @@ interface ViewClient {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 interface ContractForView {
   productId: string;
-  inputVatStatus: InputVatStatus;
+  inputVatStatus: InputVatStatus | null | undefined;
   inputVatAmount: Decimal | null;
   inputVatJournalEntryId: string | null;
   inputVatReason: string | null;
@@ -38,11 +38,13 @@ export async function buildContractInputVatView(
   role: string | undefined,
   now: Date = new Date(),
 ): Promise<ContractInputVatView> {
+  // แถวที่ไม่มีคอลัมน์นี้ (mock เก่า / ผู้เรียกที่ select ไม่ครบ) = NONE — ไม่ query อะไรเพิ่ม
+  const status: InputVatStatus = contract.inputVatStatus ?? 'NONE';
   const empty: ContractInputVatView = {
-    status: contract.inputVatStatus, amount: null, journalEntryNo: null, taxInvoice: null,
+    status, amount: null, journalEntryNo: null, taxInvoice: null,
     grNumber: null, receivingId: null, poId: null, poNumber: null, reason: contract.inputVatReason ?? null,
   };
-  if (contract.inputVatStatus === 'NONE') return empty;
+  if (status === 'NONE') return empty;
   const amount = contract.inputVatAmount != null && canSeeInputVat(role) ? new Decimal(contract.inputVatAmount.toString()).toFixed(2) : null;
   const item = await client.goodsReceivingItem.findUnique({
     where: { productId: contract.productId },

@@ -4,6 +4,8 @@
 
 **Goal:** ส่งมอบคิวงาน, สถานะขาย/ติดตาม, คอมเมนต์ Facebook, Mention/ส่งงาน, หลังการขายจากแชท และรายงานแยกคนกับบอท
 
+**สถานะส่งมอบ (6 ต.ค. 2026):** ผู้ใช้อนุมัติให้ลงมือครบทั้ง 6 ข้อ พร้อม UX/UI และคลังไฟล์แล้ว ดำเนินการใน worktree แยกและผ่านชุดตรวจ local ทั้งหมด ดู [สรุปการส่งมอบและผลทดสอบ](../../reports/2026-10-06-chat-operations-final.md). ตัวทดลอง: http://localhost:5217/inbox — ยังไม่มีการ deploy, push, merge หรือส่งข้อความให้ลูกค้าจริง; live Meta/production cloud integration ยังต้องตรวจรับก่อนเปิดใช้งานจริง.
+
 **Architecture:** ต่อยอด UnifiedInbox, ChatRoom, Todo, Customer Journey และ AfterSales เดิม เพิ่ม staff inbox และ response cycles ที่ใช้ร่วมกัน แยกคอมเมนต์สาธารณะจาก DM และแยกใบรับเรื่องทางแชทจากการรับฝากเครื่องจริง
 
 **Tech Stack:** React 18, TypeScript, Vite, TanStack Query, NestJS, Prisma/PostgreSQL, Jest, Vitest, Playwright

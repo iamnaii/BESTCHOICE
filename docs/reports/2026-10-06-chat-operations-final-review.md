@@ -12,3 +12,5 @@ Reviewer: fresh `gpt-6-astra` agent, read-only review of `cd09bc4e6..ab87094b8`.
 Focused evidence: 136 operations tests in 19 suites, 31 finance bot/transport tests, and 9 Web recovery/flag tests passed. Logs are under `.tmp/chat-operations/review-*`. Broader regression passed: 849 API suites / 10,578 tests (14 skipped), then 19 operations suites / 136 tests. The final report records the integrated gate.
 
 The reviewer declined to judge live Meta permissions/subscriptions/transport acceptance, production cloud credentials, production migration/deployment readiness, refund-adjusted accounting/full historical reconstruction, independent visual/accessibility acceptance, production scale, and parent-owned latest test completion. These are explicitly ruled on in [the decisions record](2026-10-06-chat-operations-decisions.md); none is represented as verified by the source review.
+
+Final integrated gate: PASS on code revision `00e32c6f5` at 2026-10-05T23:25:21.002Z. All 36 gates pass. Browser fixture isolation was corrected after retained synthetic credit files hit the real limit; no product limit was relaxed.

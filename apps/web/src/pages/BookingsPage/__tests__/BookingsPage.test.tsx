@@ -109,6 +109,18 @@ beforeEach(() => {
 });
 
 describe('BookingsPage', () => {
+  it('สรุปยังไม่โหลดเสร็จ → แสดงโครงรอ ไม่มีการ์ด KPI และไม่มีหน้าว่าง', async () => {
+    const base = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation((path: string) =>
+      path.startsWith('/bookings/summary') ? new Promise(() => {}) : base(path),
+    );
+    renderPage();
+    expect(await screen.findByRole('status', { name: 'กำลังโหลดข้อมูลใบจอง' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /การจอง \/ มัดจำ/ })).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'สรุปใบจอง' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'ยังไม่มีใบจอง' })).toBeNull();
+  });
+
   it('หัว · การ์ด KPI · ตาราง และกดการ์ดเปลี่ยน URL', async () => {
     renderPage();
     expect(await screen.findByRole('heading', { name: /การจอง \/ มัดจำ/ })).toBeInTheDocument();

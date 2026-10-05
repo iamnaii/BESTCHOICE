@@ -35,6 +35,7 @@ export class BookingPage {
    * — หัวหน้าแสดงก่อน summary โหลดเสร็จ จึงห้ามแยกทางด้วย isVisible() ที่ไม่รอ
    */
   async waitForState(): Promise<'empty' | 'list'> {
+    // หน้าเว็บแสดงโครงรอจนสรุปโหลดเสร็จ → กลุ่ม KPI มีเฉพาะหลังรู้แล้วว่าไม่ใช่หน้าว่าง (.or() จึงแยกทางได้แน่นอน)
     const empty = this.page.getByRole('heading', { name: 'ยังไม่มีใบจอง' });
     const list = this.page.getByRole('group', { name: 'สรุปใบจอง' });
     await expect(empty.or(list)).toBeVisible({ timeout: 15000 });

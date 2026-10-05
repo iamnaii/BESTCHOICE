@@ -69,6 +69,7 @@ export interface UseBookingsQueryResult {
   canFilterBranch: boolean;
   listResult?: BookingListResponse;
   summary?: BookingSummary;
+  summaryLoading: boolean;
   isLoading: boolean;
   isError: boolean;
   error: unknown;
@@ -245,6 +246,7 @@ export function useBookingsQuery(): UseBookingsQueryResult {
     canFilterBranch,
     listResult: listQuery.data,
     summary: summaryQuery.data,
+    summaryLoading: summaryQuery.isLoading,
     isLoading: listQuery.isLoading,
     isError: listQuery.isError,
     error: listQuery.error,

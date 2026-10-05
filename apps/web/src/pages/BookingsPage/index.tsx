@@ -6,6 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { useLatestSearchParams } from '@/hooks/useLatestSearchParams';
@@ -67,6 +68,8 @@ export default function BookingsPage() {
   });
 
   const rows = q.listResult?.data ?? [];
+  // สรุปยังไม่มา (หน้าแรกไม่มีตัวกรอง/ลิงก์ลึก) → ยังไม่รู้ว่าเป็นหน้าว่างหรือรายการ: แสดงโครงรอแทน ไม่กระพริบ
+  const settling = q.summaryLoading && !q.hasActiveFilters && !detailId;
   const isFirstUse = !!q.summary && q.summary.total === 0 && !q.hasActiveFilters;
 
   return (
@@ -83,7 +86,13 @@ export default function BookingsPage() {
         }
       />
 
-      {isFirstUse ? (
+      {settling ? (
+        <div role="status" aria-busy="true" aria-label="กำลังโหลดข้อมูลใบจอง" className="space-y-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      ) : isFirstUse ? (
         <BookingEmptyState canCreate={canCreate} onCreate={() => setCreateOpen(true)} />
       ) : (
         <>

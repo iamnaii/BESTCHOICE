@@ -1103,17 +1103,25 @@ export class BookingsService {
         throw new ConflictException('ใบจองนี้ถูกแปลงเป็นการขายแล้ว');
       }
 
-      // 2. Verify the product is still IN_STOCK (race vs another POS sale).
+      // 2. เครื่องต้องพร้อมขาย — ใบที่ล็อกไว้ (PR 2) เครื่องเป็น RESERVED "ของใบนี้" ⇒ ถือเท่ากับ IN_STOCK
+      //    ใบ PAID ยุคก่อนล็อก (lockedProductId ว่าง) ยังต้องเป็น IN_STOCK · RESERVED ของคนอื่น = ไม่พร้อม
       const product = await tx.product.findUnique({
         where: { id: firstItem.productId! },
         include: { po: { select: { poNumber: true } } },
       });
-      if (!product || product.deletedAt || product.status !== 'IN_STOCK') {
+      const lockedByThisBooking =
+        !!product && booking.lockedProductId === product.id && product.status === 'RESERVED';
+      const expectedStatus: 'IN_STOCK' | 'RESERVED' = lockedByThisBooking ? 'RESERVED' : 'IN_STOCK';
+      if (!product || product.deletedAt || product.status !== expectedStatus) {
         throw new BadRequestException(
           'สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว — กรุณาตรวจสอบสต็อก',
         );
       }
-      assertSaleProductEligible(product, booking.branchId, user, dto.previouslyDamagedAcknowledged);
+      // ด่านรวมของการขาย (สาขา/สิทธิ์/ประวัติเสียหาย) มองเห็นเครื่องที่ล็อกให้ใบนี้เป็น IN_STOCK
+      assertSaleProductEligible(
+        lockedByThisBooking ? { ...product, status: 'IN_STOCK' } : product,
+        booking.branchId, user, dto.previouslyDamagedAcknowledged,
+      );
       // แปลงเป็นใบขาย — ด่านเบอร์เดียวกับ POS (spec 2026-09-13-chat-prospects); throw ใน tx นี้
       // ย้อน claim PAID → CONVERTED ด้านบนให้เอง และยังไม่ถึงการตัดสต็อก
       assertCustomerHasPhone(booking.customer, 'เปิดใบขาย');
@@ -1121,7 +1129,7 @@ export class BookingsService {
       assertSameTestSide(booking.customer, product);
 
       const stockClaim = await tx.product.updateMany({
-        where: { id: product.id, status: 'IN_STOCK', branchId: booking.branchId, deletedAt: null },
+        where: { id: product.id, status: expectedStatus, branchId: booking.branchId, deletedAt: null },
         data: { status: 'SOLD_CASH' },
       });
       if (stockClaim.count !== 1) throw new ConflictException('สินค้าเพิ่งถูกขายหรือย้ายสาขา กรุณาตรวจสอบสต็อกอีกครั้ง');
@@ -1237,7 +1245,7 @@ export class BookingsService {
       // 6. Link booking → sale (FK on Booking side).
       await tx.booking.update({
         where: { id },
-        data: { convertedToSaleId: sale.id },
+        data: { convertedToSaleId: sale.id, lockedProductId: null, unlockedAt: new Date() },
       });
 
       await tx.auditLog.create({
@@ -1254,6 +1262,7 @@ export class BookingsService {
             depositTransferred: depositAmount.toFixed(2),
             amountReceived: amountReceived.toFixed(2),
             balanceCollectedAtConvert: !isFullPrepay && !!dto.collectBalance,
+            lockedProductId: booking.lockedProductId ?? null,
           },
         },
       });

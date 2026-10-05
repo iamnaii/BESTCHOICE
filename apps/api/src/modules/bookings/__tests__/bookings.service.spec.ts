@@ -798,6 +798,40 @@ describe('BookingsService', () => {
     expect(prisma._tx.sale.create).not.toHaveBeenCalled();
   });
 
+  describe('convertToSale — เครื่องที่ใบนี้ล็อกไว้ (PR 2)', () => {
+    it('ใบ PAID ที่ล็อก: เครื่อง RESERVED ผ่านด่าน และ claim where status RESERVED → SOLD_CASH + ล้าง lockedProductId', async () => {
+      const b = paidBooking();
+      prisma.booking.findFirst.mockResolvedValueOnce({ ...b, lockedProductId: 'prod-1' });
+      prisma._tx.product.findUnique.mockResolvedValueOnce({
+        id: 'prod-1', status: 'RESERVED', branchId: 'br-1', deletedAt: null, costPrice: new Prisma.Decimal(6000),
+        name: 'iPhone 15', imeiSerial: '356789012345678', category: 'PHONE_NEW', wasPreviouslyDamaged: false, po: null,
+      });
+      await service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' } as any, 'u-sales', OWNER);
+      expect(prisma._tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prod-1', status: 'RESERVED', branchId: 'br-1', deletedAt: null },
+        data: { status: 'SOLD_CASH' },
+      });
+      const link = prisma._tx.booking.update.mock.calls.find((c: any) => c[0].data.convertedToSaleId);
+      expect(link![0].data).toMatchObject({ convertedToSaleId: 'sale-new', lockedProductId: null });
+      expect(link![0].data.unlockedAt).toBeInstanceOf(Date);
+    });
+
+    it('ใบ PAID ยุคก่อนล็อก (lockedProductId ว่าง): เครื่องต้อง IN_STOCK และ claim where IN_STOCK เหมือนเดิม', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce({ ...paidBooking(), lockedProductId: null });
+      await service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' } as any, 'u-sales', OWNER);
+      expect(prisma._tx.product.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: 'IN_STOCK' }) }),
+      );
+    });
+
+    it('ใบ PAID ที่ล็อก แต่เครื่องกลายเป็น RESERVED ของคนอื่น (lockedProductId ≠ product.id) → ปฏิเสธด่านพร้อมขาย', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce({ ...paidBooking(), lockedProductId: 'prod-other' });
+      prisma._tx.product.findUnique.mockResolvedValueOnce({ id: 'prod-1', status: 'RESERVED', branchId: 'br-1', deletedAt: null, po: null });
+      await expect(service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' } as any, 'u-sales', OWNER))
+        .rejects.toThrow('สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว');
+    });
+  });
+
   // 5. autoExpire — cron path
   it('autoExpire — flips PAID + past-expireDate rows to EXPIRED and writes audit', async () => {
     prisma.booking.findMany.mockResolvedValueOnce([

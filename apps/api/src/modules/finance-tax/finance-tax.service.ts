@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { INSTALLMENT_INPUT_VAT_FLOW } from '../journal/cpa-templates/installment-input-vat.template';
 import {
   computePp30OutputVat,
   isVatSettlementEntry,
@@ -124,6 +125,8 @@ export class FinanceTaxService {
       include: {
         journalEntry: {
           select: {
+            id: true,
+            metadata: true,
             entryNumber: true,
             postedAt: true,
             description: true,
@@ -145,9 +148,36 @@ export class FinanceTaxService {
     // รายการปิด/ชำระภาษีขายอยู่นอกยอด ภ.พ.30 ของเดือนทั้งใบ — ทั้งภาษีซื้อและตารางรายการ (fix round 1, F1)
     const lines = rawLines.filter((l) => !isVatSettlementEntry(l.journalEntry));
 
+    // ก้อน 5 — แยกภาษีซื้อสองก้อน: เครื่องขายผ่อน (flow finance-input-vat-installment) vs ที่เหลือ (ค่าใช้จ่าย/สินทรัพย์).
+    // ใบกระจกจากการยกเลิกสัญญามี tag REVERSAL + reversesEntryId → จัดเข้าก้อนเดียวกับใบต้นทาง (อ่าน metadata ของต้นทาง)
+    type RawLine = (typeof lines)[number];
+    const meta = (l: RawLine) => ((l.journalEntry.metadata ?? {}) as Record<string, unknown>);
+    const isInputLine = (l: RawLine) => VAT_INPUT_ACCOUNTS.includes(l.accountCode);
+    const reversesIds = [
+      ...new Set(
+        lines
+          .filter((l) => isInputLine(l) && meta(l).tag === 'REVERSAL' && typeof meta(l).reversesEntryId === 'string')
+          .map((l) => meta(l).reversesEntryId as string),
+      ),
+    ];
+    const originals = reversesIds.length
+      ? await this.prisma.journalEntry.findMany({ where: { id: { in: reversesIds } }, select: { id: true, entryNumber: true, metadata: true } })
+      : [];
+    const installmentOriginals = new Map(
+      originals
+        .filter((o) => ((o.metadata ?? {}) as Record<string, unknown>).flow === INSTALLMENT_INPUT_VAT_FLOW)
+        .map((o) => [o.id, (o.metadata ?? {}) as Record<string, unknown>] as const),
+    );
+    const isInstallmentLine = (l: RawLine) =>
+      isInputLine(l) &&
+      (meta(l).flow === INSTALLMENT_INPUT_VAT_FLOW ||
+        (meta(l).tag === 'REVERSAL' && installmentOriginals.has(meta(l).reversesEntryId as string)));
+
     // ภาษีขายรอเรียกเก็บ (21-2102) และภาษีซื้อ (11-4101) — Decimal (เดิม Number + Math.round)
     let vatDeferred = new Prisma.Decimal(0); // 21-2102: credit - debit (liability account)
     let vatInput = new Prisma.Decimal(0); // 11-4101: debit - credit (asset account)
+    let vatInputExpense = new Prisma.Decimal(0); // ก้อน 5 — 11-4101 ที่ไม่ใช่เครื่องขายผ่อน
+    let vatInputInstallment = new Prisma.Decimal(0); // ก้อน 5 — flow finance-input-vat-installment + กระจก
 
     const responseLines: VatLine[] = lines.map((l) => {
       const debit = new Prisma.Decimal(l.debit ?? 0);
@@ -156,7 +186,10 @@ export class FinanceTaxService {
       if (VAT_DEFERRED_ACCOUNTS.includes(l.accountCode)) {
         vatDeferred = vatDeferred.plus(credit).minus(debit);
       } else if (VAT_INPUT_ACCOUNTS.includes(l.accountCode)) {
-        vatInput = vatInput.plus(debit).minus(credit); // asset increases on debit
+        const net = debit.minus(credit); // asset increases on debit
+        vatInput = vatInput.plus(net);
+        if (isInstallmentLine(l)) vatInputInstallment = vatInputInstallment.plus(net);
+        else vatInputExpense = vatInputExpense.plus(net);
       }
       // 21-2101 / 21-2103 แสดงในตารางเท่านั้น — ยอดภาษีขายมาจาก `output` (ตัวคำนวณเดียว)
       // ตารางแสดงวันที่ post (`postedAt`) ขณะที่เดือนนับจาก `entryDate` (ของเดิม · เท่ากันสำหรับรายการที่ระบบลง)
@@ -173,6 +206,47 @@ export class FinanceTaxService {
       };
     });
 
+    // ก้อน 5 — ตารางรายสัญญา (ใบเคลม + กระจก) · metadata ที่แสดง = ของใบต้นทางเสมอ
+    const installmentLines = lines.filter(isInstallmentLine);
+    const sourceMeta = (l: RawLine): Record<string, unknown> =>
+      meta(l).tag === 'REVERSAL' ? (installmentOriginals.get(meta(l).reversesEntryId as string) ?? {}) : meta(l);
+    const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
+    const missingNumberIds = [
+      ...new Set(
+        installmentLines
+          .filter((l) => !str(sourceMeta(l).contractNumber) && str(sourceMeta(l).contractId))
+          .map((l) => sourceMeta(l).contractId as string),
+      ),
+    ];
+    const contractNumbers = new Map(
+      (missingNumberIds.length
+        ? await this.prisma.contract.findMany({ where: { id: { in: missingNumberIds } }, select: { id: true, contractNumber: true } })
+        : []
+      ).map((c) => [c.id, c.contractNumber] as const),
+    );
+    const installmentInputVatLines = installmentLines
+      .map((l) => {
+        const src = sourceMeta(l);
+        const own = meta(l);
+        const reversal = own.tag === 'REVERSAL';
+        const contractId = str(src.contractId);
+        return {
+          postedAt: l.journalEntry.postedAt,
+          entryNumber: l.journalEntry.entryNumber,
+          contractId,
+          contractNumber: str(src.contractNumber) ?? (contractId ? contractNumbers.get(contractId) ?? null : null),
+          productId: str(src.productId),
+          grNumber: str(src.grNumber),
+          taxInvoiceNumber: str(src.taxInvoiceNumber),
+          taxInvoiceDate: str(src.taxInvoiceDate),
+          invoiceAgeMonths: typeof src.invoiceAgeMonths === 'number' ? src.invoiceAgeMonths : null,
+          amount: new Prisma.Decimal(l.debit ?? 0).minus(new Prisma.Decimal(l.credit ?? 0)).toFixed(2),
+          reversal,
+          reversed: !reversal && own.reversed === true,
+        };
+      })
+      .sort((a, b) => (a.postedAt?.getTime() ?? 0) - (b.postedAt?.getTime() ?? 0));
+
     // netVat = vatOutput - vatInput (standard ภ.พ.30 calculation)
     const netVat = output.totalOutputVat.minus(vatInput);
 
@@ -181,6 +255,10 @@ export class FinanceTaxService {
       vatOutput: output.totalOutputVat.toFixed(2),
       vatDeferred: vatDeferred.toFixed(2),
       vatInput: vatInput.toFixed(2),
+      // ก้อน 5 — vatInput = vatInputExpense + vatInputInstallment
+      vatInputExpense: vatInputExpense.toFixed(2),
+      vatInputInstallment: vatInputInstallment.toFixed(2),
+      installmentInputVatLines,
       netVat: netVat.toFixed(2),
       outputVat: toPp30OutputVatJson(output),
       lineCount: lines.length,

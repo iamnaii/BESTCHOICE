@@ -404,11 +404,9 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     expect(await inputVatEntries(contract.id)).toHaveLength(0);
   }, 180_000);
 
-  it.skip('6. getVatMonthly: vatInputInstallment รวมยอดเคลมของเดือนนี้ (สุทธิหลังกระจก) และบรรทัดอยู่ใน installmentInputVatLines', async () => {
+  it('6. getVatMonthly: vatInputInstallment รวมยอดเคลมของเดือนนี้ (สุทธิหลังกระจก) และบรรทัดอยู่ใน installmentInputVatLines', async () => {
     const { year, month } = bangkokCalendarParts(new Date());
-    // ชนิดของฟิลด์ก้อน 5 มาพร้อม Task 10 (`FinanceTaxService.getVatMonthly`) — ระหว่างนี้ประกาศรูปที่คาดไว้ที่นี่
-    type InstallmentVatReport = { vatInput: string; vatInputExpense: string; vatInputInstallment: string; installmentInputVatLines: Array<{ contractNumber: string | null; amount: string; reversal: boolean }> };
-    const report = (await financeTax.getVatMonthly(year, month + 1, financeCompanyId)) as unknown as InstallmentVatReport;
+    const report = await financeTax.getVatMonthly(year, month + 1, financeCompanyId);
     const mine = report.installmentInputVatLines.filter((l) => l.contractNumber?.startsWith(PREFIX));
     // เคส 1 (+686) · เคส 2 (+686 กระจก −686 +686) · เคส 3 (+686) = 686 × 3 สุทธิ จากสัญญาของไฟล์นี้
     const sum = mine.reduce((s, l) => s.plus(l.amount), dec(0));

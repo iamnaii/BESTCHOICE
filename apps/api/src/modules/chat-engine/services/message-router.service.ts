@@ -503,6 +503,7 @@ export class MessageRouterService {
               await this.roomManager.saveMessage({
                 roomId: room.id,
                 role: MessageRole.BOT,
+                confirmedSentAt: sendResult?.success && !sendResult.droppedReason ? new Date() : undefined,
                 text: parts[i],
                 intent: 'AUTO:sales', // Phase A: SHOP channels always sales (intent router skipped)
                 // token/tool stats เก็บที่บับเบิลแรกใบเดียว — กันนับซ้ำในรายงาน
@@ -580,7 +581,7 @@ export class MessageRouterService {
           );
           const lowConfAdapter = this.adapterMap.get(message.channel);
           if (lowConfAdapter) {
-            await lowConfAdapter.sendMessage({
+            const lowConfResult = await lowConfAdapter.sendMessage({
               externalUserId: message.externalUserId,
               channel: message.channel,
               type: 'TEXT' as any,
@@ -590,6 +591,7 @@ export class MessageRouterService {
             await this.roomManager.saveMessage({
               roomId: room.id,
               role: MessageRole.BOT,
+              confirmedSentAt: lowConfResult?.success && !lowConfResult.droppedReason ? new Date() : undefined,
               text: lowConfMsg,
             });
           }
@@ -625,7 +627,7 @@ export class MessageRouterService {
             const apology = MessageRouterService.staffFollowUpText(
               MessageRouterService.AI_ERROR_APOLOGY_MSG,
             );
-            await errAdapter.sendMessage({
+            const apologyResult = await errAdapter.sendMessage({
               externalUserId: message.externalUserId,
               channel: message.channel,
               type: 'TEXT' as any,
@@ -635,6 +637,7 @@ export class MessageRouterService {
             await this.roomManager.saveMessage({
               roomId: room.id,
               role: MessageRole.BOT,
+              confirmedSentAt: apologyResult?.success && !apologyResult.droppedReason ? new Date() : undefined,
               text: apology,
             });
           }
@@ -659,7 +662,7 @@ export class MessageRouterService {
         const reply = await this.afterHoursService.getAutoReply(message.text ?? '');
         const adapter = this.adapterMap.get(message.channel);
         if (adapter) {
-          await adapter.sendMessage({
+          const afterHoursResult = await adapter.sendMessage({
             externalUserId: message.externalUserId,
             channel: message.channel,
             type: 'TEXT' as any,
@@ -669,6 +672,7 @@ export class MessageRouterService {
           await this.roomManager.saveMessage({
             roomId: room.id,
             role: MessageRole.BOT,
+            confirmedSentAt: afterHoursResult?.success && !afterHoursResult.droppedReason ? new Date() : undefined,
             text: reply,
           });
         }
@@ -723,6 +727,7 @@ export class MessageRouterService {
             roomId: room.id,
             externalMessageId: sendResult.externalMessageId,
             role: MessageRole.BOT,
+            confirmedSentAt: sendResult.success && !sendResult.droppedReason ? new Date() : undefined,
             type: reply.type,
             text: reply.text,
           });
@@ -866,7 +871,8 @@ export class MessageRouterService {
     // มาภายใน 60 วิ) ก็ถูก stamp เป็น STAFF เหมือนกัน — ห้ามล้าง ไม่งั้นลูกค้าใหม่
     // หลุดคิวโดยไม่มีใครตอบ (ดู RoomManagerService.shouldSkipFirstOutboundClear)
     // `?.` เพราะ spec หลายตัว mock roomManager บางส่วน
-    if (params.role === MessageRole.STAFF) {
+    const trackedEcho = saved?.id ? await this.roomManager.confirmExternalEcho?.(saved.id) : false;
+    if (params.role === MessageRole.STAFF && !trackedEcho) {
       const skip = saved?.id
         ? await this.roomManager.shouldSkipFirstOutboundClear?.(room.id, saved.id)
         : false;
@@ -999,6 +1005,7 @@ export class MessageRouterService {
           roomId,
           externalMessageId: sendResult.externalMessageId,
           role: MessageRole.BOT,
+          confirmedSentAt: sendResult?.success && !sendResult.droppedReason ? new Date() : undefined,
           type: MessageType.IMAGE,
           // `text` ต้องมีค่า — room-list preview อ่านจากคอลัมน์นี้ และเป็น "ความจำรูป"
           // ของบอท (ประวัติเก็บเฉพาะ text — จดชื่อรุ่นไว้ให้บอทรู้ว่าลูกค้ากำลังดูรูปอะไร)
@@ -1176,7 +1183,8 @@ export class MessageRouterService {
           );
           if (saved) {
             return {
-              success: true,
+              success: !!saved.outboundSentAt,
+              ...(!saved.outboundSentAt ? { error: 'กำลังตรวจสอบผลการส่งข้อความนี้' } : {}),
               message: {
                 id: saved.id,
                 clientMessageId: saved.clientMessageId,
@@ -1195,6 +1203,9 @@ export class MessageRouterService {
       return { success: false, error: 'save failed' };
     }
 
+    if (await this.roomManager.prepareOutboundAttempt?.(saved.id) === false) {
+      return { success: false, error: 'ยังยืนยันผลส่งก่อนหน้าไม่ได้ กรุณาตรวจข้อความในช่องทางก่อนส่งใหม่' };
+    }
     const outboundType = params.type ?? MessageType.TEXT;
     const deliveryUrl = params.deliveryMediaUrl ?? params.mediaUrl;
     const isImageBubble = outboundType === MessageType.IMAGE && !!deliveryUrl;
@@ -1210,7 +1221,8 @@ export class MessageRouterService {
       ...(isImageBubble ? { imageUrl: deliveryUrl } : {}),
     });
 
-    if (!result.success) {
+    if (!result.success || result.droppedReason) {
+      await this.roomManager.failOutboundAttempt?.(saved.id, result.definitelyNotSent === true || !!result.droppedReason);
       this.logger.error(`Failed to send staff message on ${room.channel}: ${result.error}`);
       return { success: false, error: result.error ?? 'send failed' };
     }
@@ -1352,6 +1364,9 @@ export class MessageRouterService {
       staffId,
     });
 
+    if (await this.roomManager.prepareOutboundAttempt?.(saved.id) === false) {
+      return { success: false, error: 'ยังยืนยันผลส่งก่อนหน้าไม่ได้ กรุณาตรวจข้อความในช่องทางก่อนส่งใหม่' };
+    }
     const result = await adapter.sendMessage({
       ...(message as any),
       externalUserId,
@@ -1359,7 +1374,8 @@ export class MessageRouterService {
       type,
     });
 
-    if (!result.success) {
+    if (!result.success || result.droppedReason) {
+      await this.roomManager.failOutboundAttempt?.(saved.id, result.definitelyNotSent === true || !!result.droppedReason);
       this.logger.error(`Failed to send staff outbound on ${room.channel}: ${result.error}`);
       return result;
     }

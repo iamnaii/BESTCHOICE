@@ -1,3 +1,4 @@
+import { ResponseCycleService } from './services/response-cycle.service';
 import { Module, forwardRef } from '@nestjs/common';
 import { StaffChatModule } from '../staff-chat/staff-chat.module';
 import { ChatProspectsModule } from '../chat-prospects/chat-prospects.module';
@@ -24,6 +25,7 @@ import { AfterHoursService } from './services/after-hours.service';
 @Module({
   imports: [forwardRef(() => StaffChatModule), ChatProspectsModule, CustomerJourneyModule],
   providers: [
+    ResponseCycleService,
     RoomManagerService,
     MessageRouterService,
     HandoffManagerService,
@@ -33,6 +35,7 @@ import { AfterHoursService } from './services/after-hours.service';
     AfterHoursService,
   ],
   exports: [
+    ResponseCycleService,
     RoomManagerService,
     MessageRouterService,
     HandoffManagerService,

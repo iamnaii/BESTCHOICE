@@ -1,3 +1,4 @@
+import { ResponseCycleService } from './response-cycle.service';
 import type { InboundAttribution } from '../interfaces/channel-adapter.interface';
 import {
   Injectable,
@@ -141,6 +142,7 @@ export class RoomManagerService {
     private chatProspects?: ChatProspectService,
     @Optional()
     private merge?: CustomerMergeService,
+    @Optional() private responseCycles?: ResponseCycleService,
   ) {}
 
   /**
@@ -732,8 +734,11 @@ export class RoomManagerService {
     /** ข้อความระบบที่ไม่ใช่การสนทนา (มอบหมาย/ปิดงาน/โฆษณา) — ไม่แตะ lastMessageAt/totalMessages/unread
      *  ไม่งั้นห้องที่ปิดงานเด้งขึ้นบนสุดและพรีวิวรายการซ้ายกลายเป็นบรรทัดระบบ */
     silent?: boolean;
+    confirmedSentAt?: Date;
   }) {
-    const msg = await this.prisma.chatMessage.create({
+    const save = async (db: Prisma.TransactionClient, tracking = false) => {
+    if (tracking) await this.responseCycles!.lock(db, params.roomId);
+    const msg = await db.chatMessage.create({
       data: {
         roomId: params.roomId,
         externalMessageId: params.externalMessageId,
@@ -751,6 +756,7 @@ export class RoomManagerService {
         costUsd: params.costUsd,
         visionExtracted: params.visionExtracted,
         clientMessageId: params.clientMessageId,
+        outboundSentAt: params.confirmedSentAt,
       },
     });
 
@@ -767,7 +773,7 @@ export class RoomManagerService {
       updateData.unreadCount = { increment: 1 };
     } else if (params.role === MessageRole.STAFF || params.role === MessageRole.BOT) {
       // Set firstResponseAt if not already set (SLA metric)
-      const room = await this.prisma.chatRoom.findUnique({
+      const room = await db.chatRoom.findUnique({
         where: { id: params.roomId },
         select: { firstResponseAt: true },
       });
@@ -776,7 +782,7 @@ export class RoomManagerService {
       }
     }
 
-    await this.prisma.chatRoom.update({
+    await db.chatRoom.update({
       where: { id: params.roomId },
       data: updateData,
     });
@@ -785,13 +791,14 @@ export class RoomManagerService {
       // "รอตอบตั้งแต่" (สเปก §4.2) — set-if-null แบบ atomic: เก็บเวลาข้อความ *แรก* ที่ยังไม่ได้ตอบ
       // ไม่ใช่ใบล่าสุด และไม่ต้องอ่านก่อนเขียน (สองข้อความมาพร้อมกันได้ค่าเดียวกัน)
       // ⚠️ ห้ามล้างที่นี่สำหรับ STAFF/BOT — การส่งที่ล้มก็ผ่าน saveMessage (save-before-send)
-      await this.prisma.chatRoom.updateMany({
+      if (tracking) await this.responseCycles!.openInTx(db, { roomId: params.roomId, messageId: msg.id, receivedAt: msg.createdAt });
+      else await db.chatRoom.updateMany({
         where: { id: params.roomId, waitingSince: null },
         data: { waitingSince: msg.createdAt },
       });
       // เวลาข้อความ *ล่าสุด* ของลูกค้า (หน้าต่าง 24 ชม. ของ FB นับจากตัวนี้) — เดินหน้าอย่างเดียว
       // ข้อความเก่าที่มาถึงช้า (retry/echo) ต้องไม่ดึงค่าถอยหลัง
-      await this.prisma.chatRoom.updateMany({
+      await db.chatRoom.updateMany({
         where: {
           id: params.roomId,
           OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: msg.createdAt } }],
@@ -800,7 +807,13 @@ export class RoomManagerService {
       });
     }
 
+    if (tracking && params.role === MessageRole.BOT && params.confirmedSentAt) {
+      await this.responseCycles!.recordBotSentInTx(db, { roomId: params.roomId, sentAt: params.confirmedSentAt });
+    }
     return msg;
+    };
+    if (this.responseCycles && await this.responseCycles.enabled()) return this.prisma.$transaction(tx => save(tx, true));
+    return save(this.prisma);
   }
 
   /** Look up an existing message by its client-generated idempotency token. */
@@ -877,7 +890,25 @@ export class RoomManagerService {
    * (facebook-webhook.controller.ts:298-303) ถ้าไม่ stamp ไว้ echo ของข้อความที่
    * เราส่งเองจะกลายเป็น bubble STAFF ซ้ำเมื่อ env FACEBOOK_APP_ID ไม่ได้ตั้ง
    */
+  async prepareOutboundAttempt(messageId: string): Promise<boolean> {
+    return this.responseCycles ? this.responseCycles.prepareAttempt(messageId) : true;
+  }
+
+  async failOutboundAttempt(messageId: string, definitelyNotSent: boolean): Promise<void> {
+    await this.responseCycles?.failAttempt(messageId, definitelyNotSent);
+  }
+
+  async confirmExternalEcho(messageId: string): Promise<boolean> {
+    if (!this.responseCycles || !await this.responseCycles.enabled()) return false;
+    await this.responseCycles.confirmUnknownEcho(messageId);
+    return true;
+  }
+
   async markOutboundSent(messageId: string, externalMessageId?: string): Promise<void> {
+    if (this.responseCycles && await this.responseCycles.enabled()) {
+      await this.responseCycles.confirm(messageId, externalMessageId);
+      return;
+    }
     let roomId: string | undefined;
     try {
       const row = await this.prisma.chatMessage.update({

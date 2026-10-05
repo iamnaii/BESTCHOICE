@@ -15,6 +15,24 @@ datasource db {
 // ENUMS
 // ============================================================
 
+enum ChatOutboundAttemptState {
+  SENDING
+  FAILED
+  UNKNOWN
+  CONFIRMED
+}
+
+enum ChatResponseOrigin {
+  LIVE
+  LEGACY_OPEN
+}
+
+enum ChatResponseEndReason {
+  HUMAN_REPLY
+  RESOLVED
+  MERGED
+}
+
 enum StaffInboxKind {
   CHAT_SLA
   FOLLOW_UP
@@ -5694,6 +5712,8 @@ model CustomerLineLink {
 
 /// Chat room — ลูกค้า 1 คน 1 room ต่อ channel
 model ChatRoom {
+  responseCycles ChatResponseCycle[]
+  inboundSequence Int @default(0) @map("inbound_sequence")
   staffInboxItems StaffInboxItem[]
   id             String    @id @default(uuid())
   lineUserId     String?   @map("line_user_id")
@@ -5834,6 +5854,14 @@ model RoomCreditAnalysis {
 
 /// Chat message — ทุกข้อความใน room
 model ChatMessage {
+  cycleId String? @map("cycle_id")
+  cycle ChatResponseCycle? @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  /// Historical causal watermark; preserved even after message retention.
+  answeredThroughMessageId String? @map("answered_through_message_id")
+  answeredThroughSequence Int? @map("answered_through_sequence")
+  inboundSequence Int? @map("inbound_sequence")
+  outboundAttemptAt DateTime? @map("outbound_attempt_at")
+  outboundAttemptState ChatOutboundAttemptState? @map("outbound_attempt_state")
   id                String   @id @default(uuid())
   externalMessageId String?  @unique @map("external_message_id") // LINE/FB/TikTok message ID
   /// Frontend-generated correlation token for optimistic send — lets the client
@@ -8872,4 +8900,32 @@ model StaffInboxItem {
   @@index([roomId])
   @@index([todoId])
   @@map("staff_inbox_items")
+}
+
+
+model ChatResponseCycle {
+  id String @id @default(uuid())
+  roomId String @map("room_id")
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  startedAt DateTime @map("started_at")
+  /// Historical message/staff IDs intentionally survive retention; timestamps are the metric evidence.
+  firstCustomerMessageId String? @map("first_customer_message_id")
+  firstBotSentAt DateTime? @map("first_bot_sent_at")
+  firstHumanSentAt DateTime? @map("first_human_sent_at")
+  firstHumanStaffId String? @map("first_human_staff_id")
+  assignedAtOpenId String? @map("assigned_at_open_id")
+  endedAt DateTime? @map("ended_at")
+  endReason ChatResponseEndReason? @map("end_reason")
+  origin ChatResponseOrigin @default(LIVE)
+  policyVersion String @map("policy_version")
+  alertEligibleAt DateTime? @map("alert_eligible_at")
+  mergedIntoId String? @map("merged_into_id")
+  messages ChatMessage[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([startedAt, roomId], map: "chat_response_cycles_started_room")
+  @@index([roomId, endedAt])
+  @@map("chat_response_cycles")
 }

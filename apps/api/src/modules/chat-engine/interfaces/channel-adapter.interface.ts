@@ -99,6 +99,8 @@ export interface OutboundMessage {
 
 /** Result of sending a message through an adapter */
 export interface SendResult {
+  /** True only for a definitive rejection before delivery; absent means outcome may be unknown. */
+  definitelyNotSent?: boolean;
   success: boolean;
   /** Platform's message ID for the sent message */
   externalMessageId?: string;

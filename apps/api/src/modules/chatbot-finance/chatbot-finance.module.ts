@@ -1,3 +1,4 @@
+import { ResponseCycleService } from '../chat-engine/services/response-cycle.service';
 import { Module, forwardRef } from '@nestjs/common';
 import { ChatbotFinanceController } from './chatbot-finance.controller';
 import { ChatbotFinanceLiffController } from './chatbot-finance-liff.controller';
@@ -59,6 +60,7 @@ import { ListPromotionsTool } from '../sales-bot/tools/list-promotions.tool';
     ChatbotFinanceAdminController,
   ],
   providers: [
+    ResponseCycleService,
     ChatbotFinanceService,
     LineFinanceClientService,
     ChatRoomService,

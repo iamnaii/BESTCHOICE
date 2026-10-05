@@ -1,3 +1,4 @@
+import { ResponseCycleService } from '../../chat-engine/services/response-cycle.service';
 import { Injectable, Logger, Optional, Inject, forwardRef } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -25,6 +26,7 @@ export class ChatRoomService {
     private chatProspects?: ChatProspectService,
     @Optional()
     private merge?: CustomerMergeService,
+    @Optional() private responseCycles?: ResponseCycleService,
   ) {}
 
   /** หา room เดิม หรือสร้างใหม่ */
@@ -102,7 +104,9 @@ export class ChatRoomService {
     costUsd?: number;
     visionExtracted?: Prisma.InputJsonValue;
   }) {
-    const msg = await this.prisma.chatMessage.create({
+    const save = async (db: Prisma.TransactionClient, tracking = false) => {
+      if (tracking) await this.responseCycles!.lock(db, params.roomId);
+      const msg = await db.chatMessage.create({
       data: {
         roomId: params.roomId,
         externalMessageId: params.externalMessageId,
@@ -121,7 +125,7 @@ export class ChatRoomService {
       },
     });
 
-    await this.prisma.chatRoom.update({
+    await db.chatRoom.update({
       where: { id: params.roomId },
       data: {
         totalMessages: { increment: 1 },
@@ -131,6 +135,14 @@ export class ChatRoomService {
           : {}),
       },
     });
+
+      if (tracking && params.role === MessageRole.CUSTOMER) {
+        await this.responseCycles!.openInTx(db, { roomId: params.roomId, messageId: msg.id, receivedAt: msg.createdAt });
+      }
+      return msg;
+    };
+    const tracking = this.responseCycles && await this.responseCycles.enabled();
+    const msg = tracking ? await this.prisma.$transaction(tx => save(tx, true)) : await save(this.prisma);
 
     // Emit to Unified Inbox via WebSocket (best-effort)
     try {

@@ -1,3 +1,4 @@
+import { ResponseCycleService } from './response-cycle.service';
 import {
   Injectable,
   Logger,
@@ -27,6 +28,7 @@ export class AssignmentService {
   constructor(
     private prisma: PrismaService,
     @Optional() @Inject(CHAT_GATEWAY_TOKEN) private gateway?: IChatGateway,
+    @Optional() private responseCycles?: ResponseCycleService,
   ) {}
 
   /**
@@ -208,6 +210,13 @@ export class AssignmentService {
     });
     if (!room) throw new NotFoundException('ไม่พบ room');
 
+    if (this.responseCycles && await this.responseCycles.enabled()) {
+      await this.prisma.$transaction(async tx => {
+        const resolvedAt = new Date();
+        await this.responseCycles!.resolveInTx(tx, { roomId, resolvedAt });
+        await tx.chatRoom.update({ where: { id: roomId }, data: { status: ChatRoomStatus.IDLE, handoffMode: false, resolvedAt } });
+      });
+    } else {
     await this.prisma.chatRoom.update({
       where: { id: roomId },
       data: {
@@ -218,6 +227,7 @@ export class AssignmentService {
         waitingSince: null,
       },
     });
+    }
 
     await this.prisma.staffChatActivity.create({
       data: {

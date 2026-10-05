@@ -96,7 +96,7 @@ export class FacebookAdapter implements IChannelAdapter {
   async sendMessage(message: OutboundMessage): Promise<SendResult> {
     const { pageAccessToken, pageId } = await this.getCreds();
     if (!pageAccessToken || !pageId) {
-      return { success: false, error: 'Facebook page access token or page ID not configured' };
+      return { success: false, definitelyNotSent: true, error: 'Facebook page access token or page ID not configured' };
     }
 
     try {
@@ -144,7 +144,7 @@ export class FacebookAdapter implements IChannelAdapter {
         );
         return { success: true, droppedReason: reason };
       } else {
-        return { success: false, error: 'no message content' };
+        return { success: false, definitelyNotSent: true, error: 'no message content' };
       }
 
       // Phase 4 — attach quick replies (overrides any legacy quick_replies on
@@ -195,6 +195,7 @@ export class FacebookAdapter implements IChannelAdapter {
         this.logger.error(`[FB] API error ${attempt.status}: ${attempt.errBody}`);
         return {
           success: false,
+          definitelyNotSent: attempt.status >= 400 && attempt.status < 500,
           // รูป `fb:<code>[:<subcode>]` — ฝั่งเว็บ (`send-error.ts`) รอรูปนี้อยู่แล้วเพื่อแปลเป็นไทย
           // แนบตัวเต็มต่อท้ายไว้ไม่ให้ข้อมูลหาย · ถ้าลองแท็กแล้วยังไม่ผ่าน บอกให้ชัดว่าลองแล้ว
           // ไม่งั้นจะขึ้นว่า "พ้น 24 ชม." เฉย ๆ ทั้งที่ระบบพยายามทางที่สองไปแล้ว

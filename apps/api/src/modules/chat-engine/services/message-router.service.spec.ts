@@ -425,7 +425,7 @@ describe('MessageRouterService.sendStaffMessage — IMAGE bubble', () => {
     expect(adapter.sendMessage).toHaveBeenCalledTimes(1); // ลูกค้าได้รูปครั้งเดียว
   });
 
-  it('P2002 race (คู่แข่งชนะ) → คืน success โดยไม่เรียก adapter', async () => {
+  it('P2002 race (คู่แข่งชนะ) → ยังไม่ยืนยัน success และไม่เรียก adapter ซ้ำ', async () => {
     const { router, adapter, roomManager } = makeStaffSender();
     const winner = {
       id: 'm-winner',
@@ -449,7 +449,7 @@ describe('MessageRouterService.sendStaffMessage — IMAGE bubble', () => {
       mediaUrl: 'https://cdn.example/g0.jpg',
       clientMessageId: 'tok-race',
     });
-    expect(res.success).toBe(true);
+    expect(res.success).toBe(false);
     expect(res.message?.id).toBe('m-winner');
     expect(adapter.sendMessage).not.toHaveBeenCalled();
   });

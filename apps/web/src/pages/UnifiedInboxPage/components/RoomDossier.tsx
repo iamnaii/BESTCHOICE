@@ -1,6 +1,9 @@
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { workDate } from './WorkQueue';
 import { X } from 'lucide-react';
 import ChatFollowUpDialog from './ChatFollowUpDialog';
+import ChatHandoffDialog from './ChatHandoffDialog';
+import ChatHandoffCard from './ChatHandoffCard';
 import { useChatWorkSettings } from '../hooks/useChatWork';
 import ChatSalesContext from './ChatSalesContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -577,6 +580,10 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
   const queryClient = useQueryClient();
   const work = useChatWorkSettings();
   const followUpEnabled = !!work.settings.data?.flags.chat_follow_up_enabled;
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [handoffTask, setHandoffTask] = useState<string | null>(null);
+  const workIdentity = `${work.key.join(':')}:${room?.id}`;
+  useEffect(() => { setHandoffTask(null); setHandoffOpen(false); }, [workIdentity]);
   const [editingAppt, setEditingAppt] = useState<Todo | null>(null);
   const newAppointment = () => { setEditingAppt(null); setApptOpen(true); };
   // นัดของห้อง — คีย์ขึ้นต้น 'todos' เพื่อให้ TodoForm invalidate แล้วรายการนี้รีเฟรชด้วย
@@ -812,8 +819,13 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
             <AdGroup room={room} />
 
             <div id="room-appointments" className="scroll-mt-2">
-              <AppointmentsGroup todos={roomTodos} onNew={newAppointment} onEdit={todo => { setEditingAppt(todo); setApptOpen(true); }} />
+              <AppointmentsGroup todos={roomTodos.filter(t => !['CHAT_HANDOFF', 'CHAT_SERVICE'].includes(t.workKind ?? ''))} onNew={newAppointment} onEdit={todo => { setEditingAppt(todo); setApptOpen(true); }} />
             </div>
+
+            {!!work.settings.data?.flags.chat_mentions_enabled && <Group label="งานที่ฝากทีม">
+              <Button variant="outline" size="sm" onClick={() => setHandoffOpen(true)}>ส่งงานให้ทีม</Button>
+              {roomTodos.filter(t => t.workKind === 'CHAT_HANDOFF').map(t => <button key={t.id} className="mt-2 block w-full rounded-md border p-3 text-left text-sm leading-snug hover:bg-accent" onClick={() => setHandoffTask(t.id)}>{t.title}<span className="mt-1 block text-xs text-muted-foreground">ผู้รับงาน: {t.assignee?.nickname || t.assignee?.name || 'ไม่ระบุ'}</span></button>)}
+            </Group>}
 
             <Group label="สินค้าที่กำลังคุย">
               <ProductContextCard roomId={room.id} empty={<Hint>ยังไม่พบรุ่นในแชทนี้ — เลือกส่งได้จากปุ่มสินค้าที่แถบพิมพ์</Hint>} />
@@ -941,6 +953,8 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
         />
       )}
       {/* ตั้งนัด = ฟอร์ม Todo ตัวเดิม ผูกห้อง + ชื่อล่วงหน้า · บันทึกแล้ว invalidate ['todos'] → รายการนัดข้างบนรีเฟรช */}
+      <ChatHandoffDialog key={`handoff:${work.key.join(':')}:${room.id}`} roomId={room.id} open={handoffOpen} onOpenChange={setHandoffOpen} />
+      <Dialog open={!!handoffTask} onOpenChange={o => !o && setHandoffTask(null)}><DialogContent className="max-h-[90dvh] overflow-y-auto"><DialogTitle>งานที่ฝากทีม</DialogTitle><DialogDescription>ผู้รับงานและผลการดำเนินงานในห้องนี้</DialogDescription>{handoffTask && <ChatHandoffCard key={`${work.key.join(':')}:${handoffTask}`} taskId={handoffTask} />}</DialogContent></Dialog>
       {followUpEnabled && (!editingAppt || editingAppt.workKind === 'CHAT_FOLLOW_UP') ? <ChatFollowUpDialog key={`${work.company}:${room.id}`} roomId={room.id} open={apptOpen} onOpenChange={setApptOpen} editing={editingAppt ? { ...editingAppt, revision: editingAppt.revision ?? 0 } : undefined} /> : <TodoForm
         open={apptOpen}
         onOpenChange={setApptOpen}

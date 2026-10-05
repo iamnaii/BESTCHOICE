@@ -1,5 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { useSearchParams } from 'react-router';
+import { useSearchParams, useNavigate } from 'react-router';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -21,10 +21,11 @@ import {
 
 export default function TodosPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawView = searchParams.get('view');
-  const view: TodoView = ['all', 'today', 'upcoming', 'priority', 'completed'].includes(rawView ?? '')
+  const view: TodoView = ['all', 'today', 'upcoming', 'priority', 'completed', 'cancelled'].includes(rawView ?? '')
     ? rawView as TodoView : 'all';
   const setView = (next: TodoView) => setSearchParams((previous) => {
     const params = new URLSearchParams(previous);
@@ -159,6 +160,7 @@ export default function TodosPage() {
   };
 
   const openEdit = (t: Todo) => {
+    if (t.roomId && ['CHAT_HANDOFF', 'CHAT_SERVICE'].includes(t.workKind ?? '')) { navigate(`/inbox/${t.roomId}?todoId=${t.id}`); return; }
     setEditing(t);
     setDialogOpen(true);
   };

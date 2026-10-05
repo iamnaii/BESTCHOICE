@@ -221,6 +221,7 @@ const storage = realStorage
     };
 let actor: { id: string; role: string; accessibleCompanies: string[] };
 let info: Record<string, unknown>;
+const previewActors: Record<string, typeof actor> = {};
 let pdf: Buffer;
 
 async function fixture(name: string) {
@@ -350,12 +351,17 @@ class PreviewController {
   @Post('preview/fixture') fixture() {
     return fixture(`ทดสอบเบราว์เซอร์ ${Date.now()}`);
   }
+  @Post('preview/actor/:key') switchActor(@Param('key') key: string) {
+    if (!previewActors[key]) throw new BadRequestException('Unknown synthetic actor');
+    actor = previewActors[key];
+    return { id: actor.id, synthetic: true };
+  }
   @Get('auth/me') me() {
     return {
       ...actor,
       name: realOcr ? 'LOCAL · AI จริง' : 'LOCAL PREVIEW · AI จำลอง',
       email: 'preview@test.invalid',
-      accessibleCompanies: ['SHOP', 'FINANCE'],
+      accessibleCompanies: actor.accessibleCompanies,
       primaryCompany: 'SHOP',
     };
   }
@@ -436,6 +442,9 @@ async function main() {
     },
   });
   actor = { id: user.id, role: 'OWNER', accessibleCompanies: ['SHOP', 'FINANCE'] };
+  previewActors.owner = actor;
+  const receiver = await db.user.upsert({ where: { email: 'preview-handoff@test.invalid' }, update: { isActive: true, deletedAt: null, role: 'FINANCE_MANAGER', accessibleCompanies: ['SHOP'] }, create: { email: 'preview-handoff@test.invalid', password: 'unused', name: 'ผู้รับงานจำลอง', role: 'FINANCE_MANAGER', accessibleCompanies: ['SHOP'] } });
+  previewActors.receiver = { id: receiver.id, role: 'FINANCE_MANAGER', accessibleCompanies: ['SHOP'] };
   if (!(await db.interestConfig.count({ where: { productCategories: { has: 'PHONE_NEW' }, isActive: true } }))) {
     await db.interestConfig.create({ data: { name: 'LOCAL PREVIEW PLAN', productCategories: ['PHONE_NEW'],
       interestRate: 0.10, minDownPaymentPct: 0.20, storeCommissionPct: 0, vatPct: 0,
@@ -649,6 +658,7 @@ async function main() {
   });
   info = {
     chatWorkRooms,
+    previewActors,
     isolated: true,
     repoRoot: process.env.CREDIT_REPO_ROOT,
     runId: process.env.CREDIT_LOCAL_RUN_ID ?? null,

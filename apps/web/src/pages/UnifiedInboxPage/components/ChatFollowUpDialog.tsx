@@ -35,15 +35,18 @@ export default function ChatFollowUpDialog({
   open,
   onOpenChange,
   editing,
+  handoff = false,
 }: {
   roomId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editing?: FollowUpDraft;
+  handoff?: boolean;
 }) {
   const work = useChatWorkSettings();
   const client = useQueryClient();
   const [title, setTitle] = useState('');
+  const [note, setNote] = useState('');
   const [due, setDue] = useState('');
   const [assignee, setAssignee] = useState('');
   const [status, setStatus] = useState<TodoStatus>('TODO');
@@ -65,6 +68,7 @@ export default function ChatFollowUpDialog({
   useEffect(() => {
     if (!open) return;
     setTitle(editing?.title ?? '');
+    setNote('');
     setDue(bangkokInput(editing?.dueDate));
     setAssignee(editing?.assigneeId ?? '');
     setStatus(editing?.status ?? 'TODO');
@@ -87,8 +91,8 @@ export default function ChatFollowUpDialog({
         );
       else
         await api.post(
-          `/staff-chat/rooms/${roomId}/follow-ups`,
-          { ...body, clientRequestId: token.current },
+          `/staff-chat/rooms/${roomId}/${handoff ? 'handoffs' : 'follow-ups'}`,
+          { ...body, clientRequestId: token.current, ...(handoff ? { note } : {}) },
           { params: work.scope },
         );
       return { identity, scopeRevision };
@@ -99,7 +103,7 @@ export default function ChatFollowUpDialog({
       void client.invalidateQueries({ queryKey: ['chat-rooms'] });
       if (saved.identity !== current.current || saved.scopeRevision !== getCompanyScopeRevision())
         return;
-      toast.success('บันทึกนัดติดตามแล้ว');
+      toast.success(handoff ? 'ส่งงานแล้ว' : 'บันทึกนัดติดตามแล้ว');
       onOpenChange(false);
     },
     onError: (error) => {
@@ -123,9 +127,13 @@ export default function ChatFollowUpDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-        <DialogTitle>{editing ? 'แก้ไขนัดติดตาม' : 'ตั้งนัดติดตาม'}</DialogTitle>
+        <DialogTitle>
+          {handoff ? 'ส่งงานให้ทีม' : editing ? 'แก้ไขนัดติดตาม' : 'ตั้งนัดติดตาม'}
+        </DialogTitle>
         <DialogDescription>
-          กำหนดงานและผู้รับผิดชอบในห้องนี้ เวลาทั้งหมดเป็นเวลาไทย
+          {handoff
+            ? 'ฝากงานในห้องนี้ ผู้รับงานต้องกดรับเอง ผู้ดูแลแชทและเจ้าของยอดขายคงเดิม'
+            : 'กำหนดงานและผู้รับผิดชอบในห้องนี้ เวลาทั้งหมดเป็นเวลาไทย'}
         </DialogDescription>
         <form
           className="space-y-4"
@@ -135,7 +143,7 @@ export default function ChatFollowUpDialog({
           }}
         >
           <label className="block text-sm font-medium">
-            เรื่องที่ติดตาม
+            {handoff ? 'เรื่องที่ฝาก' : 'เรื่องที่ติดตาม'}
             <input
               className={field}
               required
@@ -144,6 +152,18 @@ export default function ChatFollowUpDialog({
               onChange={(e) => setTitle(e.target.value)}
             />
           </label>
+          {handoff && (
+            <label className="block text-sm font-medium">
+              รายละเอียดงาน
+              <textarea
+                className={field}
+                rows={3}
+                maxLength={5000}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </label>
+          )}
           <label className="block text-sm font-medium">
             วันเวลานัด (เวลาไทย)
             <input
@@ -171,6 +191,7 @@ export default function ChatFollowUpDialog({
               {staff.data?.map((person) => (
                 <option key={person.id} value={person.id}>
                   {person.nickname || person.name}
+                  {'detail' in person ? ` · ${String(person.detail)}` : ''}
                 </option>
               ))}
             </select>
@@ -250,7 +271,7 @@ export default function ChatFollowUpDialog({
                 !assignee
               }
             >
-              บันทึกนัด
+              {handoff ? 'ส่งงาน' : 'บันทึกนัด'}
             </Button>
           </DialogFooter>
         </form>

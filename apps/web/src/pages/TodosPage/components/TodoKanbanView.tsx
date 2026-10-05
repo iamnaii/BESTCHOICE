@@ -72,10 +72,12 @@ export function TodoKanbanView({
     >
       <KanbanBoard
         columns={columns}
+        canDragCard={t => !['CHAT_HANDOFF', 'CHAT_SERVICE'].includes(t.workKind ?? '')}
         onCardClick={onCardClick}
         onCardMove={(id, from, to) => onCardMove(id, from, to)}
         emptyMessage="ไม่มีงานในคอลัมน์นี้"
         renderCard={(t) => {
+          const domainTask = ['CHAT_HANDOFF', 'CHAT_SERVICE'].includes(t.workKind ?? '');
           const pri = priorityConfig[t.priority];
           const overdue = isOverdue(t.dueDate) && !['DONE', 'CANCELLED'].includes(t.status);
           const checkDone = Array.isArray(t.checklist)
@@ -96,12 +98,12 @@ export function TodoKanbanView({
               />
 
               {/* Drag indicator (visible on hover) */}
-              <GripVertical className="absolute right-1.5 top-1.5 size-3.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+              {!domainTask && <GripVertical className="absolute right-1.5 top-1.5 size-3.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />}
 
               <div className="pl-2 flex flex-col gap-2.5">
                 {/* Title row */}
                 <div className="flex items-start gap-2 pr-5">
-                  <button
+                  {!domainTask && <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onToggle(t.id);
@@ -114,7 +116,7 @@ export function TodoKanbanView({
                     aria-label="toggle"
                   >
                     {t.status === 'DONE' && <CheckCircle2 className="size-3" />}
-                  </button>
+                  </button>}
                   <span
                     className={`text-sm font-semibold leading-snug flex-1 ${
                       t.status === 'DONE'
@@ -199,7 +201,7 @@ export function TodoKanbanView({
                         {assigneeName.charAt(0).toUpperCase()}
                       </div>
                     )}
-                    {canDelete && (
+                    {canDelete && !domainTask && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

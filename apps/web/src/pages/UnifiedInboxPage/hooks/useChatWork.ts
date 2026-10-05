@@ -27,7 +27,7 @@ export function useChatWork(view: WorkQueueView, page: number) {
   const enabled = !!settings.data?.flags.chat_work_queue_enabled;
   const queue = useQuery({ queryKey: [...key, 'queue', view, page], queryFn: () => api.get<ChatWorkPage>('/staff-chat/work', { params: { ...scope, view, page, limit: 30 } }).then(r => r.data), enabled, refetchInterval: 30_000 });
   const inbox = useQuery({ queryKey: [...key, 'notifications'], queryFn: () => api.get<{ data: WorkNotification[]; unreadCount: number; total: number }>('/staff-chat/work-notifications', { params: { ...scope, limit: 100 } }).then(r => r.data), enabled, refetchInterval: 30_000 });
-  return { company, settings, enabled, queue, inbox,
+  return { company, key, identity: key.join(':'), settings, enabled, queue, inbox,
     getTarget: (type: ChatWorkTarget, id: string) => api.get<WorkTarget>(`/staff-chat/work-targets/${type}/${id}`, { params: scope }).then(r => r.data),
     markRead: async (id: string) => { await api.patch(`/staff-chat/work-notifications/${id}/read`, {}, { params: scope }); await client.invalidateQueries({ queryKey: [...key, 'notifications'] }); },
   };

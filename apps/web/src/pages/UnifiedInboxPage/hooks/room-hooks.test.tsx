@@ -22,6 +22,7 @@ vi.mock('@/lib/api', () => ({
 vi.mock('sonner', () => ({
   toast: { success: mocks.success, error: mocks.error, warning: mocks.warning },
 }));
+vi.mock('./useChatWork', () => ({ useChatWorkSettings: () => ({ scope: { company: 'SHOP' }, key: ['chat-work', 'user', 'SHOP'] }) }));
 vi.mock('react-router', () => ({ useNavigate: () => mocks.navigate }));
 
 beforeEach(() => {
@@ -166,11 +167,11 @@ it('invalidates the note room after switching to a different conversation', asyn
     initialProps: { room: 'A' },
     wrapper,
   });
-  act(() => result.current.addNoteMutation.mutate({ roomId: 'A', content: 'internal note' }));
+  act(() => result.current.addNoteMutation.mutate({ roomId: 'A', content: 'internal note', mentionedUserIds: [], clientRequestId: 'token' }));
   await waitFor(() =>
     expect(mocks.post).toHaveBeenCalledWith('/staff-chat/rooms/A/notes', {
-      content: 'internal note',
-    }),
+      content: 'internal note', mentionedUserIds: [], clientRequestId: 'token',
+    }, { params: { company: 'SHOP' } }),
   );
   rerender({ room: 'B' });
   await act(async () => pending.resolve({ data: {} }));

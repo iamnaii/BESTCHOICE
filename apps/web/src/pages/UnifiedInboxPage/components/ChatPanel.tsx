@@ -1,3 +1,4 @@
+import NoteMentionInput, { type NoteDraft } from './NoteMentionInput';
 import { ChatMediaPicker } from './ChatMediaPicker';
 import { useChatMediaPicker } from '../hooks/useChatMediaPicker';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
@@ -72,7 +73,7 @@ interface ChatPanelProps {
   /** โน้ตปักหมุด (ห้องละ 1) — แถบใต้หัวห้อง */
   pinnedNote?: RoomNote | null;
   currentUserRole?: string;
-  onAddNote?: (content: string) => void | Promise<boolean | void>;
+  onAddNote?: (draft: NoteDraft) => void | Promise<boolean | void>;
   onPinNote?: (noteId: string) => void;
   onUnpinNote?: (noteId: string) => void;
   onDeleteNote?: (noteId: string) => void;
@@ -141,6 +142,7 @@ export default function ChatPanel({
   const [showProductPicker, setShowProductPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const noteContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftsRef = useRef<Map<string, string>>(new Map());
   const prevRoomRef = useRef<string | undefined>(undefined);
@@ -384,7 +386,7 @@ export default function ChatPanel({
 
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text || isSending) return;
+    if (!text || isSending || isNoteMode) return;
     // Clear the composer immediately — the in-flight ghost shows the text while
     // sending, and a FAILED ghost (with retry) owns it if the send fails. The
     // Batch-1 keep-text-in-composer path is replaced by that ghost.
@@ -396,7 +398,7 @@ export default function ChatPanel({
     setIsSending(true);
     let result: boolean | void;
     try {
-      result = isNoteMode ? await onAddNote?.(text) : await onSendMessage(text);
+      result = await onSendMessage(text);
     } finally {
       setIsSending(false);
     }
@@ -915,7 +917,7 @@ export default function ChatPanel({
                 type="button"
                 role="radio"
                 aria-checked={isNoteMode}
-                onClick={() => { setComposerMode('note'); inputRef.current?.focus(); }}
+                onClick={() => { setComposerMode('note'); requestAnimationFrame(() => noteContainerRef.current?.querySelector('textarea')?.focus()); }}
                 className={cn(
                   'relative z-10 -mb-px inline-flex h-7 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-[12px] font-semibold transition-colors',
                   isNoteMode ? 'border-warning/50 bg-warning/10 text-foreground dark:border-amber-400/40 dark:bg-amber-400/10' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
@@ -926,6 +928,7 @@ export default function ChatPanel({
             </div>
           )}
           <div
+            data-chat-composer-card
             className={cn(
               'flex flex-col rounded-xl border focus-within:outline-hidden transition-[box-shadow,border-color]',
               isNoteMode
@@ -933,6 +936,8 @@ export default function ChatPanel({
                 : 'border-border bg-card focus-within:border-primary focus-within:ring-2 focus-within:ring-primary',
             )}
           >
+            {onAddNote && <div ref={noteContainerRef} hidden={!isNoteMode} onKeyDown={e => { if (e.key === 'Escape') { setComposerMode('chat'); requestAnimationFrame(() => inputRef.current?.focus()); } }}><NoteMentionInput roomId={session.id} onSave={onAddNote} /></div>}
+            <div hidden={isNoteMode}>
             {/* The card owns focus; suppress both the base ring and admin theme outline. */}
             <textarea
               data-chat-composer-input
@@ -1040,6 +1045,7 @@ export default function ChatPanel({
                   {isSending ? <Loader2 className="size-4 animate-spin" /> : isNoteMode ? <StickyNote className="size-4" /> : <Send className="size-4" />}
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </div>

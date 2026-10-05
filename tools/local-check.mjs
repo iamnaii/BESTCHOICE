@@ -1,3 +1,6 @@
+import { checkChatTeam } from './check-local-chat-team.mjs';
+import { checkChatNotes } from './check-local-chat-notes.mjs';
+import { checkChatHandoff } from './check-local-chat-handoff.mjs';
 import { checkChatSales } from './check-local-chat-sales.mjs';
 import { checkChatWork } from './check-local-chat-work.mjs';
 import assert from 'node:assert/strict';
@@ -76,6 +79,11 @@ try {
       }
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `Sales evidence, follow-up conflict/cancellation and lost/reopen ${viewport.width}px`, status: 'PASS' });
+      await checkChatNotes(page.request, new URL(info.url).origin);
+      await checkChatHandoff(page.request, new URL(info.url).origin);
+      await checkChatTeam(page, new URL(info.url).origin, output, viewport.width);
+      assert.deepEqual(errors, [], 'Team flow browser errors');
+      report.checks.push({ label: `Note mentions and A/B handoff ${viewport.width}px`, status: 'PASS' });
       await checkLocalPages(page, info.url, output, viewport.width);
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `Customers + FINANCE portfolio (filters, pagination, empty report) ${viewport.width}px`, status: 'PASS' });

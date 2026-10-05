@@ -180,6 +180,7 @@ export default function UnifiedInboxPage() {
     // replaces the one-shot toast.
     onNoteChanged: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-notes', data.roomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-work'] });
       queryClient.invalidateQueries({ queryKey: ['chat-room', data.roomId] });
     },
     onSendFailed: (data) => {
@@ -193,6 +194,8 @@ export default function UnifiedInboxPage() {
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
       queryClient.invalidateQueries({ queryKey: ['chat-room-counts'] });
       queryClient.invalidateQueries({ queryKey: ['chat-work'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-notes'] });
+      queryClient.invalidateQueries({ queryKey: ['todos'] });
     },
   }, activeRoomId);
 
@@ -387,9 +390,9 @@ export default function UnifiedInboxPage() {
           notes={Array.isArray(notesQuery.data) ? notesQuery.data : []}
           pinnedNote={sessionQuery.data?.notes?.[0] ?? null}
           currentUserRole={user?.role}
-          onAddNote={async (content) => {
+          onAddNote={async (draft) => {
             if (!activeRoomId) return false;
-            await addNoteMutation.mutateAsync({ roomId: activeRoomId, content });
+            await addNoteMutation.mutateAsync({ roomId: activeRoomId, ...draft });
             return true;
           }}
           onPinNote={(noteId) => activeRoomId && pinNoteMutation.mutate({ roomId: activeRoomId, noteId })}

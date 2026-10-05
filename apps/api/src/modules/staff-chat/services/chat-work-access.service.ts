@@ -46,11 +46,21 @@ export class ChatWorkAccessService {
     return current;
   }
   /** Legacy room routes can infer company only when no selector was supplied; always check current grants. */
-  async roomContext(roomId: string, authenticated: Pick<ChatWorkActor, 'id'>, selected: Partial<WorkScope> = {}) {
+  async roomContext(
+    roomId: string,
+    authenticated: Pick<ChatWorkActor, 'id'>,
+    selected: Partial<WorkScope> = {},
+  ) {
     const actor = await this.currentActor(authenticated);
-    const target = await this.prisma.chatRoom.findFirst({ where: { id: roomId, deletedAt: null }, select: { channel: true } });
+    const target = await this.prisma.chatRoom.findFirst({
+      where: { id: roomId, deletedAt: null },
+      select: { channel: true },
+    });
     if (!target) throw new NotFoundException('ไม่พบห้องแชท');
-    const scope: WorkScope = { company: selected.company ?? (target.channel === 'LINE_FINANCE' ? 'FINANCE' : 'SHOP'), branchId: selected.branchId };
+    const scope: WorkScope = {
+      company: selected.company ?? (target.channel === 'LINE_FINANCE' ? 'FINANCE' : 'SHOP'),
+      branchId: selected.branchId,
+    };
     const room = await this.assertRoom(roomId, actor, scope);
     return { actor, scope, room };
   }
@@ -97,7 +107,15 @@ export class ChatWorkAccessService {
         isSystemUser: false,
         role: { in: [...WORK_ROLES] },
       },
-      select: { id: true, name: true, role: true, branchId: true, accessibleCompanies: true },
+      select: {
+        id: true,
+        name: true,
+        nickname: true,
+        role: true,
+        branchId: true,
+        branch: { select: { name: true } },
+        accessibleCompanies: true,
+      },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
     });
     const eligible: typeof staff = [];
@@ -111,6 +129,12 @@ export class ChatWorkAccessService {
         if (!(error instanceof ForbiddenException)) throw error;
       }
     }
-    return eligible.map(({ id, name, role }) => ({ id, name, role }));
+    return eligible.map(({ id, name, nickname, role, branch }) => ({
+      id,
+      name,
+      nickname,
+      role,
+      detail: [branch?.name, role, id.slice(-6)].filter(Boolean).join(' · '),
+    }));
   }
 }

@@ -161,6 +161,11 @@ describe('PurchaseModal — one entry "ซื้อสินค้า" for both 
     expect(screen.getByRole('heading', { name: 'ซื้อสินค้า — สรุป + จ่ายเงิน' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'สรุปใบสั่งซื้อ' })).toHaveTextContent('รับเข้าวันนี้');
     fireEvent.change(screen.getByRole('combobox', { name: 'สถานะการจ่าย' }), { target: { value: 'FULLY_PAID' } });
+    // ก้อน 2 (2026-10-05): จ่ายทันที = โอนธนาคารเท่านั้น (เงินสดของผู้ขายถูกตัดจากตัวเลือก) + สลิปบังคับ
+    expect(Array.from((screen.getByRole('combobox', { name: 'วิธีจ่ายเงิน' }) as HTMLSelectElement).options).map((o) => o.textContent)).not.toContain('เงินสด');
+    fireEvent.change(screen.getByRole('combobox', { name: 'วิธีจ่ายเงิน' }), { target: { value: 'BANK_TRANSFER' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'ลิงก์เอกสาร' }), { target: { value: 'https://x/slip.jpg' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ เพิ่ม' }));
     // ข3: ผู้ขายไม่จด VAT → ใบส่งของ / ใบแจ้งหนี้ ไว้ให้ก่อน · ยังไม่กรอกเลขที่/วันที่ = ยืนยันไม่ได้
     expect(screen.getByRole('radio', { name: 'ใบส่งของ / ใบแจ้งหนี้' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเข้าตรง 2 ชิ้น' }));
@@ -171,7 +176,7 @@ describe('PurchaseModal — one entry "ซื้อสินค้า" for both 
     fireEvent.click(screen.getByRole('button', { name: 'ยืนยันรับเข้าตรง 2 ชิ้น' }));
     expect(directReceiveMutation.mutate).toHaveBeenCalledWith(expect.objectContaining({
       supplierDocType: 'DELIVERY_NOTE', supplierDocNumber: 'DN-0906', supplierDocDate: '2026-09-05',
-      supplierId: 's1', paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 42935,
+      supplierId: 's1', paymentStatus: 'FULLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 42935, attachments: ['https://x/slip.jpg'],
       items: expect.arrayContaining([
         expect.objectContaining({ imeiSerial: '356000000090601', serialNumber: 'QASN0906A', status: 'PASS', sellingPrice: '45900', installmentPrice: '49900' }),
         expect.objectContaining({ category: 'ACCESSORY', status: 'PASS', sellingPrice: '150' }),

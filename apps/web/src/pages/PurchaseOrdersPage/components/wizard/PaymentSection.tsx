@@ -20,6 +20,9 @@ export interface SupplierPaymentMethod {
 }
 
 export const isPaidStatus = (status: string) => !!status && status !== 'UNPAID';
+/** ก้อน 2 (2026-10-05): จ่ายผู้จัดจำหน่ายได้เฉพาะโอนธนาคาร — เงินสด/เช็คไม่มีในตัวเลือก (API ปฏิเสธด้วย) */
+export const NON_TRANSFER_METHODS = ['CASH', 'CHECK', 'CHEQUE'];
+export const isTransferMethod = (method: string) => !NON_TRANSFER_METHODS.includes(method.toUpperCase());
 export const round2 = (n: number) => String(Math.round(n * 100) / 100);
 
 /** Over-net check shared by every place a payment is keyed in (mirrors updatePayment()/approve() on the API). */
@@ -114,8 +117,8 @@ export function PaymentSection({
               disabled={!paid}
             >
               <option value="">-- เลือก --</option>
-              {paymentMethods?.length ? (
-                paymentMethods.map((pm, idx) => {
+              {paymentMethods?.filter((pm) => isTransferMethod(pm.paymentMethod)).length ? (
+                paymentMethods.filter((pm) => isTransferMethod(pm.paymentMethod)).map((pm, idx) => {
                   const detail = pm.bankName ? ` - ${pm.bankName}${pm.bankAccountNumber ? ` (${pm.bankAccountNumber})` : ''}` : '';
                   const credit = pm.creditTermDays ? ` ${pm.creditTermDays} วัน` : '';
                   return (
@@ -125,13 +128,16 @@ export function PaymentSection({
                   );
                 })
               ) : (
-                Object.entries(paymentMethodLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))
+                Object.entries(paymentMethodLabels)
+                  .filter(([value]) => isTransferMethod(value))
+                  .map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))
               )}
             </select>
+            <p className="mt-1 text-xs leading-snug text-muted-foreground">โอนธนาคารเท่านั้น — ลงบัญชีจากธนาคารหน้าร้าน S11-1202 (ไม่มีจ่ายเงินสด)</p>
           </div>
           <div>
             <label htmlFor={`${idPrefix}-paid-amount`} className={labelCls}>จำนวนที่จ่าย (บาท)</label>
@@ -194,9 +200,9 @@ export function PaymentSection({
       {paid && (
         <Wrap className={wrapCls}>
           {variant === 'card' ? (
-            <CardHeader icon={<Paperclip className="size-4.5" />} tone="bg-info/10 text-info" title="แนบสลิป/หลักฐาน" hint="รูปสลิปโอน หรือวางลิงก์เอกสาร" />
+            <CardHeader icon={<Paperclip className="size-4.5" />} tone="bg-info/10 text-info" title="แนบสลิป/หลักฐาน" hint="ต้องแนบสลิปโอน — ไม่มีสลิปบันทึกการจ่ายไม่ได้" />
           ) : (
-            <p className={cn(labelCls, 'mt-3')}>แนบสลิป/หลักฐาน</p>
+            <p className={cn(labelCls, 'mt-3')}>แนบสลิป/หลักฐาน — ต้องแนบสลิปโอน</p>
           )}
           <div className="flex gap-2">
             <label className="inline-flex h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg border border-primary/30 bg-primary/10 px-3 text-sm text-primary hover:bg-primary/15 dark:bg-primary/15 dark:hover:bg-primary/20">

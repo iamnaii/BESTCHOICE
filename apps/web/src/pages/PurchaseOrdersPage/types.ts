@@ -143,14 +143,10 @@ export interface ReceivingUnitForm {
  * Body of POST /purchase-orders/:id/approve (ApprovePODto) — approve = order, and the owner
  * may record the payment made on the spot in the same request (2026-09-06).
  */
+/** ก้อน 2 (2026-10-05): อนุมัติไม่รับยอดจ่ายอีก — จ่ายผ่านปุ่มบันทึกการจ่ายหลังอนุมัติ */
 export interface ApprovePOPayload {
   id: string;
   expectedDate?: string;
-  paymentStatus?: string;
-  paymentMethod?: string;
-  paidAmount?: number;
-  paymentNotes?: string;
-  attachments?: string[];
 }
 
 /** ซื้อสินค้า — one wizard, two ways in: order first (PO) or goods already in hand (direct receive). */

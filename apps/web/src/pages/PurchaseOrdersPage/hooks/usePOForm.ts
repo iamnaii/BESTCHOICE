@@ -75,10 +75,8 @@ export function usePOForm({ createMutation, suppliers }: UsePOFormOptions) {
       notes: form.notes || undefined,
       discount: form.discount ? Number(form.discount) : undefined,
       discountAfterVat: form.discountAfterVat ? Number(form.discountAfterVat) : undefined,
-      paymentStatus: form.paymentStatus !== 'UNPAID' ? form.paymentStatus : undefined,
+      // ก้อน 2 (2026-10-05): ไม่ส่งยอดจ่ายตอนสร้างใบ (API ปฏิเสธ) — paymentMethod = เงื่อนไขผู้จัดจำหน่ายใช้คิดวันครบกำหนด
       paymentMethod: form.paymentMethod || undefined,
-      paidAmount: form.paidAmount ? Number(form.paidAmount) : undefined,
-      paymentNotes: form.paymentNotes || undefined,
       attachments: formAttachments.length > 0 ? formAttachments : undefined,
       items: items.map((i) => ({
         brand: i.brand || undefined,

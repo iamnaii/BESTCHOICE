@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  cancelOutcomeErrors,
+  cancelPreviewLines,
   paymentChip,
   paymentFormErrors,
   planPayment,
@@ -79,5 +81,25 @@ describe('previewLines — รายการบัญชีที่จะล�
     ]);
     expect(previewLines(summary({ payableOutstanding: '0.00', payableByAccount: {} }), 5000).map((l) => l.accountCode)).toEqual(['S11-4201', 'S11-1202']);
     expect(previewLines(summary(), 0)).toEqual([]);
+  });
+});
+
+describe('cancelOutcomeErrors / cancelPreviewLines — ปิดมัดจำตอนยกเลิกใบสั่งซื้อ', () => {
+  const base = { depositOutcome: 'REFUNDED' as const, refundedAt: '2026-10-05', refundAmount: '3000', slipUrl: 'https://x/r.jpg', reason: '' };
+  it('ได้คืน: วันที่ · จำนวน (0 < x ≤ มัดจำค้าง) · หลักฐาน บังคับ', () => {
+    expect(cancelOutcomeErrors(base, 3000, '2026-10-05')).toEqual({});
+    expect(cancelOutcomeErrors({ ...base, refundedAt: '2026-10-06' }, 3000, '2026-10-05').refundedAt).toMatch(/ไม่เกินวันนี้/);
+    expect(cancelOutcomeErrors({ ...base, refundAmount: '0' }, 3000, '2026-10-05').refundAmount).toMatch(/ไม่ได้คืน/);
+    expect(cancelOutcomeErrors({ ...base, refundAmount: '5000' }, 3000, '2026-10-05').refundAmount).toMatch(/ไม่เกินมัดจำค้าง 3,000\.00/);
+    expect(cancelOutcomeErrors({ ...base, slipUrl: '' }, 3000, '2026-10-05').slipUrl).toMatch(/หลักฐาน/);
+  });
+  it('ไม่ได้คืน: เหตุผลบังคับ', () => {
+    expect(cancelOutcomeErrors({ ...base, depositOutcome: 'FORFEITED', reason: '' }, 3000, '2026-10-05').reason).toMatch(/เหตุผล/);
+    expect(cancelOutcomeErrors({ ...base, depositOutcome: 'FORFEITED', reason: 'ริบ' }, 3000, '2026-10-05')).toEqual({});
+  });
+  it('พรีวิว: ได้คืนครบ / ได้คืนไม่ครบ / ไม่ได้คืน', () => {
+    expect(cancelPreviewLines(base, 3000).map((l) => [l.accountCode, l.debit, l.credit])).toEqual([['S11-1201', 3000, 0], ['S11-4201', 0, 3000]]);
+    expect(cancelPreviewLines({ ...base, refundAmount: '2000' }, 3000).map((l) => [l.accountCode, l.debit, l.credit])).toEqual([['S11-1201', 2000, 0], ['S53-1105', 1000, 0], ['S11-4201', 0, 3000]]);
+    expect(cancelPreviewLines({ ...base, depositOutcome: 'FORFEITED' }, 3000).map((l) => [l.accountCode, l.debit, l.credit])).toEqual([['S53-1105', 3000, 0], ['S11-4201', 0, 3000]]);
   });
 });

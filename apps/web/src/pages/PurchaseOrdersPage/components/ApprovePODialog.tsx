@@ -11,18 +11,11 @@ import {
 import { Button } from '@/components/ui/button';
 import ThaiDateInput from '@/components/ui/ThaiDateInput';
 import { cn } from '@/lib/utils';
-import { formatDateShort, formatNumber, formatNumberDecimal } from '@/utils/formatters';
+import { formatDateShort, formatNumberDecimal } from '@/utils/formatters';
 import type { ApprovePOPayload, POItem, PurchaseOrder } from '../types';
-import { paymentStatusLabels } from '../constants';
 import { getExpectedDateError } from '../po-dates.util';
 import { fieldCls } from './wizard/chrome';
-import {
-  PaymentSection,
-  isPaidStatus,
-  paidAmountError,
-  type PaymentFields,
-  type SupplierPaymentMethod,
-} from './wizard/PaymentSection';
+import type { SupplierPaymentMethod } from './wizard/PaymentSection';
 
 export interface ApprovePODialogProps {
   open: boolean;
@@ -57,73 +50,41 @@ function SectionTitle({ icon, tone, title, hint }: { icon: React.ReactNode; tone
   );
 }
 
-const emptyPayment = (method: string): PaymentFields => ({
-  paymentStatus: 'UNPAID',
-  paymentMethod: method,
-  paidAmount: '',
-  paymentNotes: '',
-});
-
 /**
- * Approve = order + pay in one box (owner 2026-09-06). Replaces the bare "อนุมัติ PO …?" confirm:
- * ① สั่งซื้อ — confirm the expected date the branch manager typed; ② จ่ายเงิน — the same payment
- * block as the wizard's last step. The primary button says what will happen; leaving
- * "ยังไม่จ่าย" approves on credit and the due date from the supplier's terms is shown instead.
+ * Approve = order (owner 2026-09-06): confirm the expected date the branch manager typed, then the PO is
+ * ORDERED at once. ก้อน 2 (คำตัดสินเจ้าของ 2026-10-05): การจ่ายเงินถูกถอดออกจากกล่องนี้ — ทุกการจ่ายผ่านปุ่ม
+ * "บันทึกการจ่าย" ในใบหลังอนุมัติ เพื่อให้ลงบัญชีทุกครั้ง (API ปฏิเสธยอดจ่ายตอนอนุมัติ).
  * Plain buttons only — no submit type (see CreatePOModal for the mid-click type-flip bug).
  */
 export function ApprovePODialog({ open, po, supplier, pending, onClose, onReject, onConfirm }: ApprovePODialogProps) {
   const defaultPm = supplier?.paymentMethods?.find((pm) => pm.isDefault) ?? supplier?.paymentMethods?.[0];
   const [expectedDate, setExpectedDate] = useState('');
-  const [payment, setPayment] = useState<PaymentFields>(emptyPayment(''));
-  const [attachments, setAttachments] = useState<string[]>([]);
-  const [attachmentUrl, setAttachmentUrl] = useState('');
 
   // Fresh form every time the dialog opens for a PO
   useEffect(() => {
     if (!open || !po) return;
     setExpectedDate(po.expectedDate ? po.expectedDate.slice(0, 10) : '');
-    setPayment(emptyPayment(defaultPm?.paymentMethod ?? ''));
-    setAttachments([]);
-    setAttachmentUrl('');
-    // defaultPm is derived from `supplier`, which can arrive a tick after `po` — key on its method only
-  }, [open, po, defaultPm?.paymentMethod]);
+  }, [open, po]);
 
   const netAmount = Number(po?.netAmount) || 0;
   const orderDate = po?.orderDate ? po.orderDate.slice(0, 10) : '';
   const expectedDateError = getExpectedDateError(orderDate, expectedDate);
-  const paid = isPaidStatus(payment.paymentStatus);
-  const amountError = paidAmountError(payment, netAmount);
   const pieces = useMemo(() => (po?.items ?? []).reduce((n, i) => n + i.quantity, 0), [po]);
   const creditPm = supplier?.paymentMethods?.find((pm) => pm.paymentMethod === (po?.paymentMethod || defaultPm?.paymentMethod));
   const creditDays = creditPm?.creditTermDays;
 
   if (!po) return null;
 
-  const primaryLabel = paid
-    ? `อนุมัติ · ${paymentStatusLabels[payment.paymentStatus] ?? payment.paymentStatus} ${formatNumber(Number(payment.paidAmount) || 0)} · สั่งซื้อ`
-    : 'อนุมัติและสั่งซื้อ';
-  const disabled = pending || !!expectedDateError || (paid && !!amountError);
+  const disabled = pending || !!expectedDateError;
 
   const confirm = () => {
     if (disabled) return;
-    onConfirm({
-      id: po.id,
-      expectedDate: expectedDate || undefined,
-      ...(paid
-        ? {
-            paymentStatus: payment.paymentStatus,
-            paymentMethod: payment.paymentMethod || undefined,
-            paidAmount: Number(payment.paidAmount),
-            paymentNotes: payment.paymentNotes || undefined,
-            attachments: attachments.length > 0 ? attachments : undefined,
-          }
-        : {}),
-    });
+    onConfirm({ id: po.id, expectedDate: expectedDate || undefined });
   };
 
-  const unpaidNote = po.dueDate
-    ? `ครบกำหนดชำระ ${formatDateShort(po.dueDate)}${creditDays ? ` (เครดิต ${creditDays} วัน)` : ''} — บันทึกการจ่ายทีหลังได้จากปุ่ม "จ่ายเงิน" ของใบนี้ หรือแท็บยอดค้างชำระ`
-    : 'ผู้ขายไม่มีเครดิต — บันทึกการจ่ายทีหลังได้จากปุ่ม "จ่ายเงิน" ของใบนี้';
+  const paymentNote = po.dueDate
+    ? `ครบกำหนดชำระ ${formatDateShort(po.dueDate)}${creditDays ? ` (เครดิต ${creditDays} วัน)` : ''} — บันทึกการจ่ายได้จากปุ่ม "บันทึกการจ่าย" ในใบนี้หลังอนุมัติ (ลงบัญชีทุกครั้ง · โอนธนาคารเท่านั้น)`
+    : 'ผู้ขายไม่มีเครดิต — บันทึกการจ่ายได้จากปุ่ม "บันทึกการจ่าย" ในใบนี้หลังอนุมัติ (ลงบัญชีทุกครั้ง · โอนธนาคารเท่านั้น)';
 
   return (
     <Dialog
@@ -183,21 +144,9 @@ export function ApprovePODialog({ open, po, supplier, pending, onClose, onReject
               icon={<CreditCard className="size-4" />}
               tone="bg-warning/10 text-warning-strong"
               title="จ่ายเงิน"
-              hint='จ่ายตอนอนุมัติเลยก็บันทึกที่นี่ — ถ้าเป็นเครดิตปล่อย "ยังไม่จ่าย" แล้วค่อยบันทึกทีหลัง'
+              hint="จ่ายแยกหลังอนุมัติ — ทุกการจ่ายลงบัญชีผ่านปุ่มบันทึกการจ่ายในใบ"
             />
-            <PaymentSection
-              variant="plain"
-              idPrefix="approve"
-              payment={payment}
-              onChange={(patch) => setPayment((p) => ({ ...p, ...patch }))}
-              netAmount={netAmount}
-              paymentMethods={supplier?.paymentMethods}
-              attachmentUrl={attachmentUrl}
-              setAttachmentUrl={setAttachmentUrl}
-              attachments={attachments}
-              setAttachments={setAttachments}
-              unpaidNote={unpaidNote}
-            />
+            <p className="text-xs leading-snug text-muted-foreground">{paymentNote}</p>
           </section>
         </div>
 
@@ -215,7 +164,7 @@ export function ApprovePODialog({ open, po, supplier, pending, onClose, onReject
               ยกเลิก
             </Button>
             <Button type="button" onClick={confirm} disabled={disabled}>
-              {pending ? 'กำลังอนุมัติ…' : primaryLabel}
+              {pending ? 'กำลังอนุมัติ…' : 'อนุมัติและสั่งซื้อ'}
             </Button>
           </div>
         </DialogFooter>

@@ -4,7 +4,7 @@ import DataTable, { Column } from '@/components/ui/DataTable';
 import { formatDateShort } from '@/utils/formatters';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useIsMobile } from '@/hooks/useIsMobile';
-import { PurchaseOrder, ApprovePOPayload } from '../types';
+import { CancelPOPayload, PurchaseOrder, ApprovePOPayload } from '../types';
 import { ApprovePODialog } from './ApprovePODialog';
 import type { SupplierPaymentMethod } from './wizard/PaymentSection';
 import { cn } from '@/lib/utils';
@@ -37,7 +37,9 @@ export interface POListTabProps {
   approveMutation: UseMutationResult<unknown, unknown, ApprovePOPayload, unknown>;
   orderMutation: UseMutationResult<unknown, unknown, string, unknown>;
   rejectPOMutation: UseMutationResult<unknown, unknown, { id: string; reason: string }, unknown>;
-  cancelMutation: UseMutationResult<unknown, unknown, string, unknown>;
+  cancelMutation: UseMutationResult<unknown, unknown, { id: string; payload?: CancelPOPayload }, unknown>;
+  /** ก้อน 2: เปิดกล่องยกเลิกที่ถามผลมัดจำ (ถ้ามี) แทน confirm ธรรมดา */
+  onCancelPO?: (po: PurchaseOrder) => void;
   setConfirmDialog: (value: { open: boolean; message: string; action: () => void }) => void;
   suppliers: { id: string; name: string; hasVat?: boolean; paymentMethods?: SupplierPaymentMethod[] }[];
   overdueOnly: boolean;
@@ -85,6 +87,7 @@ export function POListTab({
   orderMutation,
   rejectPOMutation,
   cancelMutation,
+  onCancelPO,
   setConfirmDialog,
   suppliers,
   overdueOnly,
@@ -148,14 +151,16 @@ export function POListTab({
     });
   const onReject = (po: PurchaseOrder) => setRejectDialog({ open: true, po, reason: '' });
   const onCancel = (po: PurchaseOrder) =>
-    setConfirmDialog({
-      open: true,
-      message:
-        po.status === 'ORDERED'
-          ? `ต้องการยกเลิก PO ${po.poNumber}? สั่งซื้อแล้วแต่ยังไม่ได้รับของ — ยกเลิกแล้วต้องแจ้งผู้ขายเอง`
-          : `ต้องการยกเลิก PO ${po.poNumber}?`,
-      action: () => cancelMutation.mutate(po.id),
-    });
+    onCancelPO
+      ? onCancelPO(po)
+      : setConfirmDialog({
+          open: true,
+          message:
+            po.status === 'ORDERED'
+              ? `ต้องการยกเลิก PO ${po.poNumber}? สั่งซื้อแล้วแต่ยังไม่ได้รับของ — ยกเลิกแล้วต้องแจ้งผู้ขายเอง`
+              : `ต้องการยกเลิก PO ${po.poNumber}?`,
+          action: () => cancelMutation.mutate({ id: po.id }),
+        });
 
   // Every column but the supplier has a fixed width (DataTable switches to table-fixed), badges
   // never wrap and long names truncate — the owner's list showed a supplier on three lines and

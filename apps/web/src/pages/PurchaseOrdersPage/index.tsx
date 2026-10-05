@@ -20,6 +20,7 @@ import { AccountsPayableTab } from './components/AccountsPayableTab';
 import { PurchaseModal } from './components/PurchaseModal';
 import { PODetailModal } from './components/PODetailModal';
 import { SupplierPaymentDialog, VoidSupplierPaymentDialog } from './components/SupplierPaymentDialog';
+import { CancelPODialog } from './components/CancelPODialog';
 import { GoodsReceivingModal } from './components/GoodsReceivingModal';
 import { PurchasingSummaryStrip } from './components/PurchasingSummaryStrip';
 import type { SummaryFilterAction } from './summaryStrip';
@@ -40,7 +41,7 @@ export default function PurchaseOrdersPage() {
   const { user } = useAuth();
   const canRecordPayments = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
   const canVoidPayments = user?.role === 'OWNER';
-  const poPayments = usePoPayments(data.selectedPO?.id ?? null, data.isDetailModalOpen || data.isPaymentDialogOpen);
+  const poPayments = usePoPayments(data.selectedPO?.id ?? null, data.isDetailModalOpen || data.isPaymentDialogOpen || !!data.cancelTarget);
 
   const poForm = usePOForm({
     createMutation: data.createMutation,
@@ -214,6 +215,7 @@ export default function PurchaseOrdersPage() {
           orderMutation={data.orderMutation}
           rejectPOMutation={data.rejectPOMutation}
           cancelMutation={data.cancelMutation}
+          onCancelPO={data.openCancelDialog}
           setConfirmDialog={data.setConfirmDialog}
           suppliers={data.suppliers}
           overdueOnly={data.overdueOnly}
@@ -279,22 +281,7 @@ export default function PurchaseOrdersPage() {
           data.setSelectedPO(po);
           data.setVoidTarget(payment);
         }}
-        onCancel={(po) =>
-          data.setConfirmDialog({
-            open: true,
-            message:
-              po.status === 'ORDERED'
-                ? `ต้องการยกเลิก PO ${po.poNumber}? สั่งซื้อแล้วแต่ยังไม่ได้รับของ — ยกเลิกแล้วต้องแจ้งผู้ขายเอง`
-                : `ต้องการยกเลิก PO ${po.poNumber}?`,
-            action: () =>
-              data.cancelMutation.mutate(po.id, {
-                onSuccess: () => {
-                  data.setIsDetailModalOpen(false);
-                  data.setPODetail(null);
-                },
-              }),
-          })
-        }
+        onCancel={(po) => data.openCancelDialog(po)}
       />
 
       <SupplierPaymentDialog
@@ -305,6 +292,27 @@ export default function PurchaseOrdersPage() {
         pending={data.recordPaymentMutation.isPending}
         onClose={() => data.setIsPaymentDialogOpen(false)}
         onSubmit={(payload) => data.selectedPO && data.recordPaymentMutation.mutate({ poId: data.selectedPO.id, payload })}
+      />
+
+      <CancelPODialog
+        open={!!data.cancelTarget}
+        po={data.cancelTarget}
+        summary={poPayments.data?.summary ?? null}
+        summaryLoading={poPayments.isLoading}
+        pending={data.cancelMutation.isPending}
+        onClose={() => data.setCancelTarget(null)}
+        onConfirm={(payload) =>
+          data.cancelTarget &&
+          data.cancelMutation.mutate(
+            { id: data.cancelTarget.id, payload },
+            {
+              onSuccess: () => {
+                data.setIsDetailModalOpen(false);
+                data.setPODetail(null);
+              },
+            },
+          )
+        }
       />
 
       <VoidSupplierPaymentDialog

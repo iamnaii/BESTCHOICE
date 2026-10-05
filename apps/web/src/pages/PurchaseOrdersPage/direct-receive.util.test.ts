@@ -1,3 +1,4 @@
+import { directReceivePaymentErrors } from './direct-receive.util';
 import { describe, it, expect } from 'vitest';
 import { lineToUnits, buildDirectReceivePayload } from './direct-receive.util';
 import type { ItemForm, PoFormState, ReceivingUnitForm } from './types';
@@ -51,5 +52,19 @@ describe('buildDirectReceivePayload — step 3 money + payment travel with the u
     });
     // ไม่มีเอกสาร = ส่งแค่ประเภท (เหตุผลอยู่ในหมายเหตุ)
     expect(out).toEqual({ supplierId: 's1', orderDate: '2026-09-06', notes: 'ซื้อสด', items: [unit], supplierDocType: 'NONE', discount: undefined, discountAfterVat: undefined });
+  });
+});
+
+describe('directReceivePaymentErrors — จ่ายทันทีตอนรับเข้าตรง (ก้อน 2: โอนเท่านั้น + สลิปบังคับ)', () => {
+  const paid = { paymentStatus: 'FULLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: '9000', paymentNotes: '' };
+  it('ยังไม่จ่าย → ไม่มี error · โอน+สลิป → ไม่มี error', () => {
+    expect(directReceivePaymentErrors({ ...paid, paymentStatus: 'UNPAID' }, [], 9000)).toBeNull();
+    expect(directReceivePaymentErrors(paid, ['data:image/png;base64,x'], 9000)).toBeNull();
+  });
+  it('เงินสด/เช็ค → ปฏิเสธ · ไม่มีสลิป → ปฏิเสธ · เกินยอด → ปฏิเสธ', () => {
+    expect(directReceivePaymentErrors({ ...paid, paymentMethod: 'CASH' }, ['slip'], 9000)).toMatch(/โอนธนาคาร/);
+    expect(directReceivePaymentErrors({ ...paid, paymentMethod: 'CHECK' }, ['slip'], 9000)).toMatch(/โอนธนาคาร/);
+    expect(directReceivePaymentErrors(paid, [], 9000)).toMatch(/สลิป/);
+    expect(directReceivePaymentErrors({ ...paid, paidAmount: '9001' }, ['slip'], 9000)).toMatch(/เกินยอดสุทธิ/);
   });
 });

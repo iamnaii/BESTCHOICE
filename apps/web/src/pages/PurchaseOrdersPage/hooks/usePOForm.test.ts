@@ -151,3 +151,20 @@ describe('usePOForm — stale draft supplier', () => {
     expect(createMutation.mutate).not.toHaveBeenCalled();
   });
 });
+
+describe('usePOForm.handleCreate — ก้อน 2 (2026-10-05): ไม่ส่งยอดจ่ายตอนสร้างใบ', () => {
+  it('payload ไม่มี paymentStatus/paidAmount/paymentNotes แม้ฟอร์มจะมีค่าค้างอยู่ · paymentMethod (เงื่อนไขผู้ขาย) ยังส่ง', () => {
+    const { result, createMutation } = setup();
+    act(() => {
+      result.current.setForm((f) => ({ ...f, supplierId: 's1', orderDate: '2026-10-05', paymentStatus: 'DEPOSIT_PAID', paidAmount: '500', paymentNotes: 'x', paymentMethod: 'CREDIT' }));
+      result.current.setItems([item]);
+    });
+    act(() => result.current.handleCreate(submitEvent));
+    expect(createMutation.mutate).toHaveBeenCalledTimes(1);
+    const payload = vi.mocked(createMutation.mutate).mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('paymentStatus');
+    expect(payload).not.toHaveProperty('paidAmount');
+    expect(payload).not.toHaveProperty('paymentNotes');
+    expect(payload.paymentMethod).toBe('CREDIT');
+  });
+});

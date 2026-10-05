@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import api, { getErrorMessage } from '@/lib/api';
-import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload, PoPaymentsResponse, RecordSupplierPaymentPayload, SupplierPayment } from '../types';
+import { PurchaseOrder, PODetail, ReceivingUnitForm, ApprovePOPayload, PoPaymentsResponse, RecordSupplierPaymentPayload, SupplierPayment, CancelPOPayload } from '../types';
 import { defaultChecklist } from '../constants';
 import { buildReceivingItemData } from '../receiving-item';
 import { receivingBlockers } from '../receiving-flow.util';
@@ -61,6 +61,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   // ก้อน 2 (2026-10-05): หน้าต่างบันทึกการจ่ายใหม่ + รายการที่กำลังจะยกเลิก
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [voidTarget, setVoidTarget] = useState<SupplierPayment | null>(null);
+  /** ใบที่กำลังจะยกเลิก — กล่องถามผลมัดจำ (กระดาน 4) */
+  const [cancelTarget, setCancelTarget] = useState<PurchaseOrder | null>(null);
   const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [poDetail, setPODetail] = useState<PODetail | null>(null);
   const [receivingUnits, setReceivingUnits] = useState<ReceivingUnitForm[]>([]);
@@ -179,11 +181,11 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
   // Approve = order (+ the payment made on the spot) — one request, one toast.
   const approveMutation = useMutation({
     mutationFn: async ({ id, ...body }: ApprovePOPayload) => api.post(`/purchase-orders/${id}/approve`, body),
-    onSuccess: (_res, vars) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
       queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
-      toast.success(vars.paymentStatus ? 'อนุมัติและสั่งซื้อ PO สำเร็จ · บันทึกการจ่ายเงินแล้ว' : 'อนุมัติและสั่งซื้อ PO สำเร็จ');
+      toast.success('อนุมัติและสั่งซื้อ PO สำเร็จ');
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -209,12 +211,23 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
 
+  // ก้อน 2: ใบที่มีมัดจำค้างต้องส่งผล (ได้คืน/ไม่ได้คืน) — API ลงบัญชีปิดมัดจำใน tx เดียวกับยกเลิก
   const cancelMutation = useMutation({
-    mutationFn: async (id: string) => api.post(`/purchase-orders/${id}/cancel`),
-    onSuccess: () => {
+    mutationFn: async ({ id, payload }: { id: string; payload?: CancelPOPayload }) =>
+      api.post(`/purchase-orders/${id}/cancel`, payload ?? {}),
+    onSuccess: (res, vars) => {
       queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
       queryClient.invalidateQueries({ queryKey: ['purchase-orders-summary'] });
-      toast.success('ยกเลิก PO สำเร็จ');
+      queryClient.invalidateQueries({ queryKey: ['accounts-payable'] });
+      queryClient.invalidateQueries({ queryKey: ['supplier-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['po-payments', vars.id] });
+      const body = (res?.data?.data ?? res?.data ?? {}) as { depositClosed?: { depositOutstanding?: string } | null };
+      toast.success(
+        body.depositClosed
+          ? `ยกเลิก PO สำเร็จ · ปิดมัดจำ ${Number(body.depositClosed.depositOutstanding ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาทลงบัญชีแล้ว`
+          : 'ยกเลิก PO สำเร็จ',
+      );
+      setCancelTarget(null);
     },
     onError: (err: unknown) => toast.error(getErrorMessage(err)),
   });
@@ -439,6 +452,10 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setSelectedPO(po);
     setIsPaymentDialogOpen(true);
   };
+  const openCancelDialog = (po: PurchaseOrder) => {
+    setSelectedPO(po);
+    setCancelTarget(po);
+  };
 
   const updateReceivingUnit = (idx: number, field: string, value: string) => {
     const newUnits = [...receivingUnits];
@@ -523,6 +540,8 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     setIsPaymentDialogOpen,
     voidTarget,
     setVoidTarget,
+    cancelTarget,
+    setCancelTarget,
     confirmDialog,
     setConfirmDialog,
     selectedPO,
@@ -539,6 +558,7 @@ export function usePurchaseOrdersData(options?: { onCreateSuccess?: () => void }
     openDetailModal,
     openReceiveModal,
     openPaymentModal,
+    openCancelDialog,
     updateReceivingUnit,
     updateChecklist,
     handleGoodsReceiving,

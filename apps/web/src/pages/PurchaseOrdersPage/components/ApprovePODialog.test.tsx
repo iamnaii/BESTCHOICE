@@ -38,7 +38,7 @@ function renderDialog(over: Partial<Props> = {}) {
   return props;
 }
 
-describe('ApprovePODialog — อนุมัติ = สั่งซื้อ + จ่ายเงิน ในกล่องเดียว', () => {
+describe('ApprovePODialog — อนุมัติ = สั่งซื้อ (จ่ายเงินแยกผ่านปุ่มบันทึกการจ่าย)', () => {
   it('recaps who asked, the supplier, the item count and the net, and defaults to "อนุมัติและสั่งซื้อ" on credit', () => {
     const p = renderDialog();
     expect(screen.getByRole('heading', { name: 'อนุมัติ PO-2569-09-003' })).toBeInTheDocument();
@@ -53,26 +53,12 @@ describe('ApprovePODialog — อนุมัติ = สั่งซื้อ +
     expect(p.onConfirm).toHaveBeenCalledWith({ id: 'po-1', expectedDate: '2026-09-20' });
   });
 
-  it('recording a deposit changes the button to say what will happen and sends the payment with the approval', () => {
-    const p = renderDialog();
-    fireEvent.change(screen.getByRole('combobox', { name: 'สถานะการจ่าย' }), { target: { value: 'DEPOSIT_PAID' } });
-    fireEvent.click(screen.getByRole('button', { name: '30%' }));
-    fireEvent.change(screen.getByRole('textbox', { name: 'บันทึกการจ่าย' }), { target: { value: 'โอน KBank' } });
-    fireEvent.click(screen.getByRole('button', { name: 'อนุมัติ · จ่ายมัดจำ 13,470 · สั่งซื้อ' }));
-    expect(p.onConfirm).toHaveBeenCalledWith({
-      id: 'po-1', expectedDate: '2026-09-20',
-      paymentStatus: 'DEPOSIT_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 13470, paymentNotes: 'โอน KBank',
-    });
-  });
-
-  it('blocks a paid amount above the net (same ceiling as the API)', () => {
+  // ก้อน 2 (2026-10-05): อนุมัติไม่รับยอดจ่ายอีก — จ่ายผ่านปุ่ม "บันทึกการจ่าย" หลังอนุมัติ (ลงบัญชีทุกครั้ง)
+  it('ไม่มีช่องจ่ายเงินในกล่องอนุมัติ และบอกว่าไปบันทึกการจ่ายหลังอนุมัติ', () => {
     renderDialog();
-    fireEvent.change(screen.getByRole('combobox', { name: 'สถานะการจ่าย' }), { target: { value: 'PARTIALLY_PAID' } });
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'จำนวนที่จ่าย' }), { target: { value: '50000' } });
-    expect(screen.getByRole('button', { name: /^อนุมัติ · จ่ายบางส่วน/ })).toBeDisabled();
-    expect(screen.getByRole('alert')).toHaveTextContent('ยอดจ่ายเกินยอดสุทธิ (44,900.00 บาท)');
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'จำนวนที่จ่าย' }), { target: { value: '1000' } });
-    expect(screen.getByRole('button', { name: 'อนุมัติ · จ่ายบางส่วน 1,000 · สั่งซื้อ' })).toBeEnabled();
+    expect(screen.queryByRole('combobox', { name: 'สถานะการจ่าย' })).toBeNull();
+    expect(screen.queryByRole('spinbutton', { name: 'จำนวนที่จ่าย' })).toBeNull();
+    expect(screen.getByText(/บันทึกการจ่ายได้จากปุ่ม "บันทึกการจ่าย"/)).toBeInTheDocument();
   });
 
   it('blocks an expected date before the order date (the branch manager typed one, the owner cannot approve it as is)', () => {

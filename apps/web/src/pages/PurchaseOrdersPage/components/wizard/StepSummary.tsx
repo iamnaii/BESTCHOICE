@@ -189,19 +189,31 @@ export function StepSummary({
         </div>
       </section>
 
-      {/* Payment + slips — shared block (also used by the approve dialog) */}
-      <PaymentSection
-        payment={form}
-        onChange={(patch) => setForm({ ...form, ...patch })}
-        netAmount={netAmount}
-        paymentMethods={selectedSupplier?.paymentMethods}
-        attachmentUrl={attachmentUrl}
-        setAttachmentUrl={setAttachmentUrl}
-        attachments={formAttachments}
-        setAttachments={setFormAttachments}
-        idPrefix="po"
-        unpaidNote={dueDatePreview ? `ซื้อเครดิต — ครบกำหนดชำระ ${formatDateShort(dueDatePreview)} บันทึกการจ่ายทีหลังได้จากปุ่ม "จ่ายเงิน" ของใบนี้` : undefined}
-      />
+      {/* ก้อน 2 (2026-10-05): ใบสั่งซื้อปกติจ่ายหลังอนุมัติผ่านปุ่ม "บันทึกการจ่าย" (ลงบัญชีทุกครั้ง) —
+          รับเข้าตรงยังจ่ายทันทีได้ (โอนธนาคาร + สลิป) แล้ว API ลงรายการใน tx เดียวกับรับของ */}
+      {receive ? (
+        <PaymentSection
+          payment={form}
+          onChange={(patch) => setForm({ ...form, ...patch })}
+          netAmount={netAmount}
+          paymentMethods={selectedSupplier?.paymentMethods}
+          attachmentUrl={attachmentUrl}
+          setAttachmentUrl={setAttachmentUrl}
+          attachments={formAttachments}
+          setAttachments={setFormAttachments}
+          idPrefix="po"
+          hint='จ่ายทันทีก็บันทึกที่นี่ (โอนธนาคาร + สลิป) — ซื้อเครดิตปล่อย "ยังไม่จ่าย"'
+          unpaidNote={dueDatePreview ? `ซื้อเครดิต — ครบกำหนดชำระ ${formatDateShort(dueDatePreview)} บันทึกการจ่ายทีหลังได้จากปุ่ม "บันทึกการจ่าย" ของใบนี้` : undefined}
+        />
+      ) : (
+        <section className={card} aria-label="การจ่ายเงิน">
+          <CardHeader icon={<Calculator className="size-4.5" />} tone="bg-warning/10 text-warning-strong" title="การจ่ายเงิน" hint="จ่ายแยกหลังอนุมัติ" />
+          <p className="text-sm leading-snug text-muted-foreground">
+            ซื้อเครดิต — บันทึกการจ่ายหลังอนุมัติ ผ่านปุ่ม "บันทึกการจ่าย" ในใบสั่งซื้อ (ลงบัญชีทุกครั้ง · โอนธนาคารเท่านั้น)
+            {dueDatePreview ? ` · ครบกำหนดชำระ ${formatDateShort(dueDatePreview)}` : ''}
+          </p>
+        </section>
+      )}
 
       {supplierDoc && (
         <SupplierDocSection

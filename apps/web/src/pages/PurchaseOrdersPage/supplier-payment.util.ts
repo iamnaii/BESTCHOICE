@@ -114,3 +114,53 @@ export function previewLines(summary: SupplierPaymentSummary, amount: number): P
   lines.push({ accountCode: SHOP_PAYING_BANK.code, label: SHOP_PAYING_BANK.label, debit: 0, credit: round2(amount) });
   return lines;
 }
+
+// ───────────── ยกเลิกใบสั่งซื้อที่มีมัดจำค้าง (คำตัดสินเจ้าของ 05/10 ข้อ 6 · คำตอบฝ่ายบัญชีข้อ 9.1/9.2) ─────────────
+
+export interface CancelOutcomeForm {
+  depositOutcome: 'REFUNDED' | 'FORFEITED';
+  /** YYYY-MM-DD */
+  refundedAt: string;
+  refundAmount: string;
+  slipUrl: string;
+  reason: string;
+}
+
+export function cancelOutcomeErrors(
+  form: CancelOutcomeForm,
+  depositOutstanding: number,
+  today: string = todayIso(),
+): Partial<Record<keyof CancelOutcomeForm, string>> {
+  const errors: Partial<Record<keyof CancelOutcomeForm, string>> = {};
+  if (form.depositOutcome === 'REFUNDED') {
+    if (!form.refundedAt) errors.refundedAt = 'กรุณาเลือกวันที่ได้รับเงินคืน';
+    else if (form.refundedAt > today) errors.refundedAt = 'วันที่ได้รับเงินคืนต้องไม่เกินวันนี้';
+    const amount = Number(form.refundAmount);
+    if (form.refundAmount.trim() === '' || !Number.isFinite(amount) || amount <= 0) {
+      errors.refundAmount = 'ถ้าไม่ได้เงินคืนเลย ให้เลือก "ไม่ได้คืน"';
+    } else if (amount > depositOutstanding + 0.004) {
+      errors.refundAmount = `จำนวนที่ได้คืนต้องไม่เกินมัดจำค้าง ${formatNumberDecimal(depositOutstanding, 2)} บาท`;
+    }
+    if (!form.slipUrl.trim()) errors.slipUrl = 'กรุณาแนบหลักฐานการโอนคืน';
+  } else if (!form.reason.trim()) {
+    errors.reason = 'กรุณาระบุเหตุผลที่ไม่ได้เงินมัดจำคืน';
+  }
+  return errors;
+}
+
+/** รายการบัญชีที่ API จะลงตอนยกเลิก: ได้คืน Dr S11-1201 (+ Dr S53-1105 ส่วนขาด) / Cr S11-4201 · ไม่ได้คืน Dr S53-1105 / Cr S11-4201 */
+export function cancelPreviewLines(form: CancelOutcomeForm, depositOutstanding: number): PreviewLine[] {
+  const outstanding = round2(depositOutstanding);
+  if (!(outstanding > 0)) return [];
+  const lines: PreviewLine[] = [];
+  if (form.depositOutcome === 'REFUNDED') {
+    const refunded = round2(Math.min(Math.max(Number(form.refundAmount) || 0, 0), outstanding));
+    const shortfall = round2(outstanding - refunded);
+    if (refunded > 0) lines.push({ accountCode: SHOP_RECEIVING_BANK.code, label: SHOP_RECEIVING_BANK.label, debit: refunded, credit: 0 });
+    if (shortfall > 0) lines.push({ accountCode: SUPPLIER_DEPOSIT_FORFEIT_ACCOUNT.code, label: SUPPLIER_DEPOSIT_FORFEIT_ACCOUNT.label, debit: shortfall, credit: 0 });
+  } else {
+    lines.push({ accountCode: SUPPLIER_DEPOSIT_FORFEIT_ACCOUNT.code, label: SUPPLIER_DEPOSIT_FORFEIT_ACCOUNT.label, debit: outstanding, credit: 0 });
+  }
+  lines.push({ accountCode: SUPPLIER_DEPOSIT_ACCOUNT.code, label: SUPPLIER_DEPOSIT_ACCOUNT.label, debit: 0, credit: outstanding });
+  return lines;
+}

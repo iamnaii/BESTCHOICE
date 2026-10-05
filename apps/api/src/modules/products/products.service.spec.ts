@@ -179,6 +179,9 @@ describe('ProductsService.remove — guard กันลบเครื่อง�
       onlineOrder: {
         findFirst: jest.fn().mockResolvedValue(null),
       },
+      // ก้อน 3 — resolveBookedInventory (เครื่องที่ลงบัญชีรับเข้าแล้วลบไม่ได้)
+      goodsReceivingItem: { findFirst: jest.fn().mockResolvedValue(null) },
+      journalEntry: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
@@ -290,6 +293,8 @@ describe('ProductsService.remove — จอง/ออเดอร์ออนไ
       contract: { findFirst: jest.fn().mockResolvedValue(null) },
       productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
       onlineOrder: { findFirst: jest.fn().mockResolvedValue(null) },
+      goodsReceivingItem: { findFirst: jest.fn().mockResolvedValue(null) },
+      journalEntry: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
@@ -466,11 +471,19 @@ describe('ProductsService.update — กันแก้ IMEI/Serial บนเค
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('PATCH REFURBISHED → DAMAGED ยังทำได้ (ไม่ล็อกทั้งสถานะ)', async () => {
+  it('PATCH REFURBISHED → INSPECTION ยังทำได้ (ไม่ล็อกทั้งสถานะ)', async () => {
     setProduct('REFURBISHED');
 
-    await expect(service.update('p-1', { status: 'DAMAGED' })).resolves.toBeDefined();
+    await expect(service.update('p-1', { status: 'INSPECTION' })).resolves.toBeDefined();
     expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  // ก้อน 3 (2026-10-05) — เสียหาย/สูญหาย/ตัดจำหน่าย ต้องผ่านคำขอให้เจ้าของอนุมัติ ไม่ใช่ PATCH
+  it('PATCH → DAMAGED ตรง ๆ ไม่ได้อีกต่อไป — บอกให้ใช้เมนูตัดสินค้า', async () => {
+    setProduct('REFURBISHED');
+
+    await expect(service.update('p-1', { status: 'DAMAGED' })).rejects.toThrow(/ตัดสินค้า/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
 
@@ -1045,5 +1058,68 @@ describe('ProductsService.findOne — activeContract (สรุปสัญญ�
     const product = await service.findOneDetail('p-1');
 
     expect(product.activeContract).toBeNull();
+  });
+});
+
+/**
+ * ก้อน 3 (2026-10-05) — เครื่องที่ลงบัญชีสินค้าคงคลังแล้ว (ใบรับของมี JE / รับซื้อ / รับคืน / เปลี่ยนเครื่อง) ลบตรงไม่ได้:
+ * ลบ = สินค้าหายจากสต๊อกโดยบัญชี S11-200x ยังค้าง — ต้องไปเมนู ตัดสินค้า › ตัดจำหน่าย ให้เจ้าของอนุมัติและลงบัญชี
+ */
+describe('ProductsService.remove — เครื่องที่ลงบัญชีรับเข้าแล้วต้องผ่านคำขอตัดสินค้า (ก้อน 3)', () => {
+  let service: ProductsService;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let prisma: any;
+
+  beforeEach(async () => {
+    prisma = {
+      product: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'p-1',
+          name: 'iPhone 15',
+          imeiSerial: '350000000000009',
+          status: 'IN_STOCK',
+          deletedAt: null,
+          checklistResults: null,
+        }),
+        update: jest.fn().mockResolvedValue({ id: 'p-1' }),
+      },
+      contract: { findFirst: jest.fn().mockResolvedValue(null) },
+      productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
+      onlineOrder: { findFirst: jest.fn().mockResolvedValue(null) },
+      goodsReceivingItem: { findFirst: jest.fn().mockResolvedValue(null) },
+      journalEntry: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [ProductsService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = module.get<ProductsService>(ProductsService);
+  });
+
+  it('ใบรับของมี JE → 400 ชี้เมนูตัดสินค้า และระบุเลขรายการ', async () => {
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue({
+      receivedCost: new Prisma.Decimal('10486.00'),
+      journalEntryId: 'je-gr',
+      receiving: { grNumber: 'GR-20261001-001' },
+    });
+    prisma.journalEntry.findUnique.mockResolvedValue({ entryNumber: 'JE-202610-00012' });
+    await expect(service.remove('p-1')).rejects.toThrow(BadRequestException);
+    await expect(service.remove('p-1')).rejects.toThrow(/ตัดสินค้า/);
+    await expect(service.remove('p-1')).rejects.toThrow(/JE-202610-00012/);
+    expect(prisma.product.update).not.toHaveBeenCalled();
+  });
+
+  it('ใบรับของยังไม่มี JE (รอถ่ายรูป) → ลบได้ตามเดิม', async () => {
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue({
+      receivedCost: new Prisma.Decimal('3000.00'),
+      journalEntryId: null,
+      receiving: { grNumber: 'GR-20261001-002' },
+    });
+    await service.remove('p-1');
+    expect(prisma.product.update).toHaveBeenCalledWith({ where: { id: 'p-1' }, data: { deletedAt: expect.any(Date) } });
+  });
+
+  it('ไม่มีหลักฐานลงบัญชีเลย (ของยกมา/เพิ่มด้วยมือ) → ลบได้', async () => {
+    await service.remove('p-1');
+    expect(prisma.product.update).toHaveBeenCalled();
   });
 });

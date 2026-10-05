@@ -216,6 +216,7 @@ enum ProductStatus {
   DEFECT_RETURN
   LOST
   WRITTEN_OFF
+  ADJUSTMENT_PENDING // รออนุมัติตัดสินค้า (ก้อน 3 · 2026-10-05) — พักขายทุกทาง คืนสถานะเดิมเมื่อไม่อนุมัติ/ยกเลิก
 }
 
 enum ProductCategory {
@@ -456,6 +457,14 @@ enum StockAdjustmentReason {
   CORRECTION
   WRITE_OFF
   OTHER
+}
+
+// ก้อน 3 (2026-10-05): คำขอตัดสินค้า — เจ้าของอนุมัติทุกรายการ
+enum StockAdjustmentStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELED
 }
 
 enum SaleType {
@@ -838,6 +847,8 @@ model User {
   transfersDispatched         StockTransfer[]           @relation("TransferDispatchedBy")
   stockAdjustments            StockAdjustment[]         @relation("StockAdjustedBy")
   stockAdjustmentsApproved    StockAdjustment[]         @relation("StockAdjustmentApprovedBy")
+  stockAdjustmentsRejected    StockAdjustment[]         @relation("StockAdjustmentRejectedBy")
+  stockAdjustmentsCanceled    StockAdjustment[]         @relation("StockAdjustmentCanceledBy")
   documentsUploaded           ContractDocument[]        @relation("DocumentUploadedBy")
   creditChecks                CreditCheck[]             @relation("CreditCheckedBy")
   creditOverrides             CreditCheck[]             @relation("CreditOverriddenBy")
@@ -2260,13 +2271,24 @@ model StockAdjustment {
   notes          String?
   photos         String[]              @default([])
   adjustedById   String                @map("adjusted_by_id")
-  // T5-C3 — every stock adjustment is 4-eyes: the adjuster records the
-  // change, a different manager-tier user signs off as approver. These
-  // fields are required in the service layer (DTO-validated). Existing
-  // rows created before T5-C3 have NULL here — back-filled by migration
-  // with adjustedById to preserve referential integrity.
-  approvedById   String                @map("approved_by_id")
-  approvedAt     DateTime              @default(now()) @map("approved_at")
+  // ก้อน 3 (2026-10-05): คำขอ → เจ้าของอนุมัติทุกรายการ. แถวก่อน migration = APPROVED (ยุค 4-eyes ที่ผู้ขอเลือกผู้อนุมัติเอง)
+  requestNumber  String?               @unique @map("request_number") // SA-YYYYMMDD-NNNN (แถวเก่า null)
+  status         StockAdjustmentStatus @default(PENDING_APPROVAL)
+  approvedById   String?               @map("approved_by_id")
+  approvedAt     DateTime?             @map("approved_at")
+  rejectedById   String?               @map("rejected_by_id")
+  rejectedAt     DateTime?             @map("rejected_at")
+  rejectedReason String?               @map("rejected_reason") @db.Text
+  canceledById   String?               @map("canceled_by_id")
+  canceledAt     DateTime?             @map("canceled_at")
+  /// ต้นทุนที่ใช้ลงบัญชี (snapshot `product.costPrice` ตอนอนุมัติ) — เฉพาะ LOST/WRITE_OFF
+  costAmount           Decimal? @map("cost_amount") @db.Decimal(12, 2)
+  inventoryAccountCode String?  @map("inventory_account_code") // S11-2001 / 2002 / 2003
+  /// มีหลักฐานว่าเครื่องลงบัญชีรับเข้าแล้ว ณ ตอนอนุมัติ (null = ไม่เกี่ยว/ยังไม่ตัดสิน)
+  inventoryBooked Boolean? @map("inventory_booked")
+  bookedSource    String?  @map("booked_source") // GOODS_RECEIVING | TRADE_IN | REPOSSESSION | EXCHANGE_RETURN
+  journalEntryId  String?  @unique @map("journal_entry_id") // JE ตัดจำหน่าย หรือ JE กลับรายการ (FOUND)
+  reversesAdjustmentId String? @map("reverses_adjustment_id") // FOUND → ใบตัดที่ถูกกลับรายการ
   createdAt      DateTime              @default(now()) @map("created_at")
   updatedAt      DateTime              @updatedAt @map("updated_at")
   deletedAt      DateTime?             @map("deleted_at")
@@ -2274,12 +2296,16 @@ model StockAdjustment {
   product    Product @relation(fields: [productId], references: [id])
   branch     Branch  @relation(fields: [branchId], references: [id])
   adjustedBy User    @relation("StockAdjustedBy", fields: [adjustedById], references: [id])
-  approvedBy User    @relation("StockAdjustmentApprovedBy", fields: [approvedById], references: [id])
+  approvedBy User?   @relation("StockAdjustmentApprovedBy", fields: [approvedById], references: [id])
+  rejectedBy User?   @relation("StockAdjustmentRejectedBy", fields: [rejectedById], references: [id])
+  canceledBy User?   @relation("StockAdjustmentCanceledBy", fields: [canceledById], references: [id])
 
   @@index([productId])
   @@index([branchId])
   @@index([reason])
   @@index([createdAt])
+  @@index([status, branchId])
+  @@index([productId, status])
   @@map("stock_adjustments")
 }
 

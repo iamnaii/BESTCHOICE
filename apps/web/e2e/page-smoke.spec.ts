@@ -69,7 +69,7 @@ const OWNER_PAGES: SmokeRoute[] = [
   { url: '/stock', name: 'คลังสินค้า' },
   { url: '/stock/transfers', name: 'โอนสินค้า' },
   { url: '/stock/alerts', name: 'แจ้งเตือนสต็อก' },
-  { url: '/stock/adjustments', name: 'ปรับสต็อก' },
+  { url: '/stock/adjustments', name: 'ตัดสินค้า' },
   { url: '/stock/count', name: 'นับสต็อก' },
   { url: '/stock/workflow', name: 'Inventory Workflow' },
   { url: '/stickers', name: 'พิมพ์สติกเกอร์' },

@@ -234,7 +234,7 @@ helper เดียวกัน (`apps/api/src/modules/products/product-enter-st
 | `ProductsService.update` — PATCH เปลี่ยนสถานะด้วยมือ | บังคับ **มีราคา** (`assertSellableOnEnterStock`) | `PATCH` |
 | `ProductPhotosService.completePhotos` — ยืนยันรูป 6 มุม | **soft gate** (ดูล่าง) | `PHOTO_COMPLETE` |
 
-**สามประตูนี้ + stock adjustment `FOUND` เรียก `ReceivingAcceptanceJournal.bookIfPending` ใน tx เดียวกับการเปลี่ยนสถานะ**
+**สามประตูนี้ + stock adjustment `FOUND` (ตอนเจ้าของอนุมัติ — `StockAdjustmentsService.approve`) เรียก `ReceivingAcceptanceJournal.bookIfPending` ใน tx เดียวกับการเปลี่ยนสถานะ**
 — เครื่องจากใบสั่งซื้อที่ยังรอถ่ายรูปลงบัญชีรับสินค้าตอนนี้ (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8). ที่อื่นที่เขียน `IN_STOCK`
 (ยกเลิกสัญญา/ใบขาย/เปลี่ยนเครื่อง · ปลดจอง · ปลดของแถม) เป็นการคืนสภาพเครื่องที่เคยเข้าคลังมาแล้ว จึงไม่ต้องเรียก.
 ประตูใหม่ที่พาเครื่องจากสถานะก่อนเข้าคลังมา `IN_STOCK` ต้องเรียกด้วย — กติกาเต็ม + กติกากดพร้อมกันใน
@@ -249,7 +249,7 @@ helper เดียวกัน (`apps/api/src/modules/products/product-enter-st
 ตอนรับ + มีราคาในใบเดียวกัน** ก็เข้า `IN_STOCK` ตรงทางนี้ โดยแถว `ProductPhoto` ถูกสร้างใน tx เดียวกัน
 `isCompleted = true`; ถ่ายไม่ครบ/ไม่มีราคา → `PHOTO_PENDING` เข้าคิว "รอถ่ายรูป" เก็บมุมที่ถ่ายแล้วไว้) ·
 `stock-adjustments` reason `FOUND`
-(มี allow-list ของตัวเอง + 4-eyes + แถว `StockAdjustment` เป็นหลักฐาน) · เส้นทาง **ยกเลิก**
+(มี allow-list ของตัวเอง + **เจ้าของอนุมัติทุกใบ** ตั้งแต่ 2026-10-05 ก้อน 3 + แถว `StockAdjustment` เป็นหลักฐาน) · เส้นทาง **ยกเลิก**
 สัญญา/เปลี่ยนเครื่อง/**ใบขาย** (`SaleVoidService` — เพิ่ม 2026-08-23, คลาสเดียวกัน: ตอนขาย
 `verifyProductInStock`/`markBundleProductsSold` บังคับว่าต้องเป็น `IN_STOCK` มาก่อน และไม่มี flow
 ไหนแตะราคาระหว่างขาย ⇒ เครื่องกลับมาพร้อมราคาของตัวเอง + audit `SALE_VOIDED` ของ flow นั้นเอง;
@@ -272,7 +272,37 @@ helper เดียวกัน (`apps/api/src/modules/products/product-enter-st
 
 สถานะที่ `toInStock: false` **ยังกู้แถวที่ถูก soft-delete คืนได้** (`deletedAt: null`) แต่
 กลับไปสถานะเดิมของมัน ไม่ใช่ `IN_STOCK` — **นี่คือทางกู้เครื่องที่ถูกลบทางเดียวที่ระบบมี**
-จึงห้ามปิด แต่ต้องไม่กลายเป็นประตูลัดเข้าคลัง.
+จึงห้ามปิด แต่ต้องไม่กลายเป็นประตูลัดเข้าคลัง. `ADJUSTMENT_PENDING` อยู่ฝั่ง `toInStock: false`
+(hint: ให้เจ้าของพิจารณา/ยกเลิกคำขอก่อน). ตั้งแต่ก้อน 3 (2026-10-05) `FOUND` เป็น **คำขอ** —
+ผลข้างบนเกิดตอน**เจ้าของอนุมัติ** (`StockAdjustmentsService.approve`) ไม่ใช่ตอนส่งคำขอ; ช่องค้นเครื่องของ
+ฟอร์ม (`GET /stock-adjustments/lookup?reason=FOUND`) **รวมแถวที่ถูก soft-delete** แล้ว.
+
+#### ตัดสต๊อกต้องผ่านคำขอ — `ADJUSTMENT_PENDING` + ช่องทาง PATCH/DELETE ปิดแล้ว (ก้อน 3 · 2026-10-05)
+
+เหตุผล **สูญหาย / เสียหาย / ตัดจำหน่าย** ไม่ใช่การแก้สถานะด้วยมืออีกต่อไป (คำตัดสินเจ้าของ: เจ้าของอนุมัติทุกใบ ·
+กติกาบัญชีใน `accounting.md` หัวข้อ "ตัดสินค้า"):
+
+```
+IN_STOCK / PHOTO_PENDING / QC_PENDING / INSPECTION / REFURBISHED / PO_RECEIVED  (+ DAMAGED เฉพาะ WRITE_OFF)
+   ──คำขอ LOST/DAMAGED/WRITE_OFF──▶ ADJUSTMENT_PENDING ──อนุมัติ──▶ LOST (ลบ) · WRITTEN_OFF (ลบ) · DAMAGED (คงในสต๊อก)
+                                        └─ไม่อนุมัติ / ผู้ขอยกเลิก──▶ previousStatus (คืนสถานะเดิม ไม่ใช่ IN_STOCK เสมอ)
+LOST / DAMAGED / WRITTEN_OFF (รวมแถวที่ถูกลบ) ──คำขอ FOUND + อนุมัติ──▶ IN_STOCK (+ bookIfPending) · แถวที่ถูกลบสถานะอื่น → กู้แถว คงสถานะเดิม
+```
+
+- `ADJUSTMENT_PENDING` เป็นสถานะที่ **service คำขอตั้ง/ปลดเองเท่านั้น** — `assertManualStatusChangeAllowed` ปฏิเสธทั้งปลายทาง
+  (`ADJUSTMENT_TARGET_DENY` = `DAMAGED`/`LOST`/`WRITTEN_OFF`/`ADJUSTMENT_PENDING` → ข้อความชี้เมนู คลังสินค้า › ตัดสินค้า) และต้นทาง
+  (`ADJUSTMENT_PENDING → *` → ให้เจ้าของพิจารณา/ยกเลิกคำขอก่อน). `DAMAGED → REFURBISHED` (ซ่อมเสร็จ) ยังแก้มือได้ตามเดิม.
+- POS / จอง / โอน / ด่านขาย (`sale-product-policy` · `stock-reservation` · `shop-catalog` · `/products?status=IN_STOCK`) กรอง `IN_STOCK`
+  อยู่แล้ว ⇒ เครื่องที่รออนุมัติหายจากผลค้นหาโดยโครงสร้าง ไม่ต้องมีด่านชุดที่สอง. `wipe-stock-go-live` STATUS_CLASS จัด
+  `ADJUSTMENT_PENDING` เป็น `SHELF`. ทุก `satisfies Record<ProductStatus, …>` ต้องมีคีย์นี้ (compile บังคับ).
+- **หนึ่งคำขอ PENDING ต่อเครื่อง** — partial unique `stock_adjustments_one_pending_per_product ON (product_id) WHERE status = 'PENDING_APPROVAL'
+  AND deleted_at IS NULL` (SQL-only ใน migration `20261019000000_stock_adjustment_requests`; P2002 → 409 ไทย) · คำขอมี `requestNumber`
+  `SA-YYYYMMDD-NNNN` (advisory lock ต่อวันไทย — `StockAdjustmentNumberService`) · แถวก่อน migration = `APPROVED` ไม่มีเลข.
+- **`ProductsService.remove()`** เพิ่มชั้นที่ 5 ต่อจาก `assertProductNotHeld`: `resolveBookedInventory(prisma, id).booked` → 400 "ลงบัญชี
+  สินค้าคงคลังแล้ว … ใช้เมนู ตัดสินค้า › ตัดจำหน่าย" — ลบตรงได้เฉพาะเครื่องที่ไม่เคยลงบัญชีรับเข้า (ของยกมา / เพิ่มด้วยมือ / PO ที่ยังรอถ่ายรูป).
+- `assertProductNotHeld` ได้ action ที่ 5 `STOCK_ADJUST` (verb "ขอตัดสินค้าไม่ได้") — ตารางเดียว ห้ามเขียนด่านชุดที่สอง.
+- รูปหลักฐานของคำขอ = key ใน storage (`stock-adjustments/<yyyymmdd>/<uuid>.<ext>`) **ไม่ใช่ data URI** (บทเรียนก้อน 2) — แถวยุคเก่าที่เป็น
+  `data:` ถูกข้ามตอนสร้างลิงก์ดู.
 
 #### คำตัดสินเจ้าของ 2026-08-21 + ทำไมต้องบังคับยืนยันราคา
 
@@ -378,11 +408,10 @@ Spec: `docs/superpowers/specs/2026-09-20-installment-contract-freebies-design.md
 - ~~**`StockAdjustmentsPage.tsx` ไม่ส่ง `approverId`** ⇒ ฟอร์มปรับสต็อกตาย 400 ทุกใบ~~ —
   **ปิดแล้ว (final review, 2026-08-22)**: มีช่องเลือกผู้อนุมัติจาก `GET /users/approvers`
   (กรองตัวเองออก + เหลือ OWNER/FM/BM ให้ตรงกับที่ service รับ) ⇒ `FOUND_POLICY` ใช้งานได้
-  จากหน้าจอจริงแล้ว. **ที่ยังเหลือ**: (ก) เหตุผล `DAMAGED` **ถูกปิดไว้ในฟอร์ม** เพราะ
-  service บังคับแนบรูปหลักฐาน (T5-C14) แต่หน้านี้ยังไม่มีช่องแนบรูป — carry = เพิ่มช่อง
-  แนบรูปแล้วค่อยเปิด (อย่าเปิดก่อนมีช่อง = ตาย 400 แน่นอน) (ข) ดูข้อ "ไม่มีหน้าจอกู้เครื่อง
-  ที่ถูก soft-delete" ด้านล่าง — ฟอร์มใช้งานได้แล้วก็จริง แต่ช่องค้นหายิง `/products/stock`
-  ซึ่งกรอง `deletedAt: null` ⇒ **เลือกเครื่องที่ถูกลบยังไม่ได้อยู่ดี**.
+  จากหน้าจอจริงแล้ว. ~~**ที่ยังเหลือ**: (ก) เหตุผล `DAMAGED` ถูกปิดไว้ในฟอร์ม (ข) เลือกเครื่องที่ถูกลบไม่ได้~~ —
+  **ปิดทั้งคู่ 2026-10-05 (ก้อน 3)**: ฟอร์มคำขอใหม่ (`pages/StockAdjustmentsPage/`) มีช่องแนบรูป multipart
+  (เสียหายบังคับ ≥ 1) และช่องค้นเครื่องยิง `GET /stock-adjustments/lookup` ซึ่งเหตุผล `FOUND` รวมแถวที่ถูก soft-delete;
+  ช่องผู้อนุมัติถูกถอด (เจ้าของอนุมัติทุกใบ).
 - **`audit.log` ภายใน `$transaction` เป็นทั้งคลาส ไม่ใช่จุดเดียว** — Phase 5 Task 5 แก้ไป
   5 จุด (contract-exchange) แต่ sweep ยังพบผู้ต้องสงสัย: `contract-lifecycle.service.ts:313`,
   `closing.service.ts:150/320`, `monthly-close.service.ts:250/437`,
@@ -410,8 +439,9 @@ Spec: `docs/superpowers/specs/2026-09-20-installment-contract-freebies-design.md
      แล้วเจอเสียเพิ่ม ดู `MANUAL_TRANSITION_DENY`) → ปรับสต็อกเหตุผล `DAMAGED` → เหตุผล
      `FOUND` → `IN_STOCK` (`DAMAGED` อยู่ใน `FOUND_TO_IN_STOCK`) ⇒ **ไม่ผ่านด่านราคา และ
      ไม่มี AuditLog `PRODUCT_RETURNED_TO_STOCK`** — เครื่องมือสองกลับเข้าคลังพร้อมราคาเครื่อง
-     ใหม่. ยอมรับได้วันนี้เพราะเส้นนี้ **ไม่เงียบ**: ต้องมี OWNER อนุมัติ (T5-C8 DAMAGED→FOUND
-     = OWNER เท่านั้น) + เหลือแถว `StockAdjustment` สองใบเป็นหลักฐาน. ทางแก้ที่ถูกคือ
+     ใหม่. ยอมรับได้วันนี้เพราะเส้นนี้ **ไม่เงียบ**: ตั้งแต่ก้อน 3 (2026-10-05) `REFURBISHED → DAMAGED`
+     ด้วยมือถูกปิด ต้องเป็น**คำขอ** `DAMAGED` แล้ว `FOUND` ซึ่ง**เจ้าของอนุมัติทั้งสองใบ** + เหลือแถว
+     `StockAdjustment` สองใบเป็นหลักฐาน. ทางแก้ที่ถูกคือ
      provenance flag (มาจากสายมือสอง = ต้องยืนยันราคาไม่ว่าเข้าทางไหน) ไม่ใช่ไล่ปิดทีละคู่
      สถานะ ซึ่งจะกลายเป็นกติกาชุดที่สอง
 - **`po-receiving`** ยังไม่ผ่าน helper (ยอมรับได้วันนี้เพราะตั้งราคาในใบเดียวกัน — ถ้าวันใด
@@ -420,9 +450,8 @@ Spec: `docs/superpowers/specs/2026-09-20-installment-contract-freebies-design.md
   ตัวเองอย่าง `ProductPhotosService.completePhotos` ไม่ใช่ `productInclude` ซึ่งกรองแล้ว) ·
   `StockReservationService.PRODUCT_INCLUDE` เป็น clone ที่ **ไม่กรอง `deletedAt`** ·
   `FOUND_POLICY.RESERVED` hint ชี้ "ยกเลิกจอง" ที่ยังไม่มี UI
-- **ไม่มีหน้าจอกู้เครื่องที่ถูก soft-delete** — ทางเดียวคือ stock adjustment reason `FOUND`
-  ซึ่ง**ฟอร์มใช้งานได้แล้ว** (ผู้อนุมัติถูกส่งจริง) แต่ช่องค้นหาสินค้ายิง `/products/stock`
-  ที่กรอง `deletedAt: null` (`stock-overview.service.ts`) ⇒ **ยังเลือกเครื่องที่ถูกลบไม่ได้**.
+- ~~**ไม่มีหน้าจอกู้เครื่องที่ถูก soft-delete**~~ — **ปิดแล้ว 2026-10-05 (ก้อน 3)**: คำขอเหตุผล `FOUND` ค้นผ่าน
+  `GET /stock-adjustments/lookup?reason=FOUND` ซึ่งรวมแถวที่ถูก soft-delete (กู้แถวเมื่อเจ้าของอนุมัติ).
   ต้องมีโหมดค้นหา "รวมเครื่องที่ถูกลบ" (หรือค้นด้วย IMEI ตรง ๆ) ก่อนจึงจะกู้ผ่าน UI ได้จริง —
   ข้อความบนหน้าจอถูกปรับให้ไม่โฆษณาความสามารถนี้ไปแล้ว (Task 6 Minor 4)
 - `consume-order-hold.util.ts:60` ล็อกแถวโดยไม่เช็ค `deletedAt` (ออเดอร์ที่จ่ายช้าเดินต่อบน

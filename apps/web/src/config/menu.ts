@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { settingsNavEntries } from './settings-access';
 import type { SettingsRole } from './settings-registry';
 import {
+  PackageMinus,
   ShoppingCart,
   Users,
   Smartphone,
@@ -59,7 +60,8 @@ import {
 export type MenuBadgeKey =
   | 'chat-unread'
   | 'asset-draft-count'
-  | 'qc-pending-count';
+  | 'qc-pending-count'
+  | 'stock-adjustment-pending';
 
 /** Logical zone — sidebar splits navigation into these contexts */
 export type Zone = 'shop' | 'fin' | 'settings';
@@ -179,6 +181,7 @@ const SALES_CONFIG: RoleMenuConfig = {
       items: [
         { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
+        { label: 'ตัดสินค้า', path: '/stock/adjustments', icon: PackageMinus, badgeKey: 'stock-adjustment-pending' },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         { label: 'ค่าคอมมิชชัน', path: '/commissions', icon: Coins },
         { label: 'งานของทีม', path: '/todos', icon: CheckSquare },
@@ -243,6 +246,7 @@ const BRANCH_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'สั่งซื้อ (PO)', path: '/purchase-orders', icon: ClipboardList },
         { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: Camera, badgeKey: 'qc-pending-count' },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
+        { label: 'ตัดสินค้า', path: '/stock/adjustments', icon: PackageMinus, badgeKey: 'stock-adjustment-pending' },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
         // route อนุญาต BRANCH_MANAGER อยู่แล้ว แต่เดิมไม่มีในเมนู ⇒ MainLayout เด้งกลับ
         // Dashboard พร้อม toast "ไม่มีสิทธิ์" ทั้งที่มีสิทธิ์ (ปักที่ route-reachability.test.ts)
@@ -337,6 +341,7 @@ const FINANCE_MANAGER_CONFIG: RoleMenuConfig = {
         { label: 'การจอง / มัดจำ', path: '/bookings', icon: CalendarDays },
         { label: 'หลังการขาย', path: '/after-sales', icon: ShieldCheck },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
+        { label: 'ตัดสินค้า', path: '/stock/adjustments', icon: PackageMinus, badgeKey: 'stock-adjustment-pending' },
       ],
     },
     {
@@ -505,6 +510,7 @@ const ACCOUNTANT_CONFIG: RoleMenuConfig = {
         { label: NAV_LABELS.stock, path: '/stock', icon: Warehouse },
         // route อนุญาต role นี้อยู่แล้ว แต่เมนูไม่มี ⇒ MainLayout เด้ง (route-reachability.test.ts)
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
+        { label: 'ตัดสินค้า', path: '/stock/adjustments', icon: PackageMinus, badgeKey: 'stock-adjustment-pending' },
       ],
     },
     {
@@ -623,6 +629,7 @@ const OWNER_CONFIG: RoleMenuConfig = {
         { label: 'รับซื้อมือสอง', path: '/trade-in', icon: Smartphone },
         { label: 'รอถ่ายรูป', path: '/purchase-orders/qc', icon: Camera, badgeKey: 'qc-pending-count' },
         { label: 'รายการสินค้า', path: '/stock/products', icon: ClipboardList },
+        { label: 'ตัดสินค้า', path: '/stock/adjustments', icon: PackageMinus, badgeKey: 'stock-adjustment-pending' },
         { label: 'พิมพ์สติกเกอร์', path: '/stickers', icon: Tag },
       ],
     },

@@ -38,6 +38,7 @@ import type { MenuSection, MenuBadgeKey, Zone } from '@/config/menu';
 import { useCollectionsFlag } from '@/pages/CollectionsPage/hooks/useCollectionsFlag';
 import { useDraftAssetCount } from '@/hooks/useDraftAssetCount';
 import { useQcPendingCount } from '@/hooks/useQcPendingCount';
+import { useStockAdjustmentPendingCount } from '@/hooks/useStockAdjustmentPendingCount';
 import { VersionBadge } from './VersionBadge';
 import { PillSwitcher } from './PillSwitcher';
 import { GearButton } from './GearButton';
@@ -64,11 +65,13 @@ function NavBullet({ size = 15 }: { size?: number }) {
 function NavBadge({ badgeKey }: { badgeKey: MenuBadgeKey }) {
   const draftCount = useDraftAssetCount(badgeKey === 'asset-draft-count');
   const qcCount = useQcPendingCount(badgeKey === 'qc-pending-count');
+  const saCount = useStockAdjustmentPendingCount(badgeKey === 'stock-adjustment-pending');
   const count = badgeKey === 'asset-draft-count' ? draftCount
     : badgeKey === 'qc-pending-count' ? qcCount
+    : badgeKey === 'stock-adjustment-pending' ? saCount
     : undefined;
   if (!count || count === 0) return null;
-  const cls = badgeKey === 'qc-pending-count'
+  const cls = badgeKey === 'qc-pending-count' || badgeKey === 'stock-adjustment-pending'
     ? 'bg-warning/10 text-warning-strong dark:bg-warning/15'
     : 'bg-primary/15 text-primary';
   return (

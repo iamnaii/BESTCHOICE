@@ -180,9 +180,9 @@ test.describe('โอนสินค้าระหว่างสาขา', ()
 });
 
 /* ================================================================
-   ปรับสต็อก (/stock/adjustments)
+   ตัดสินค้า (/stock/adjustments) — ก้อน 3 (2026-10-05) หน้าเดิม 'ปรับสต็อก' ถูกแทนด้วยคำขอให้เจ้าของอนุมัติ
    ================================================================ */
-test.describe('ปรับสต็อก', () => {
+test.describe('ตัดสินค้า', () => {
   test.beforeEach(async ({ page }) => {
     await loginViaAPI(page);
     await gotoWithRetry(page, '/stock/adjustments');
@@ -190,7 +190,7 @@ test.describe('ปรับสต็อก', () => {
 
   test('should load adjustments page', async ({ page }) => {
     if (await hasErrorBoundary(page)) return;
-    await expect(page.getByText('ปรับสต็อก').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('ตัดสินค้า').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('should show adjustment list or empty state', async ({ page }) => {

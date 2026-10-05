@@ -1,3 +1,5 @@
+import { ChatWorkController } from '../src/modules/staff-chat/chat-work.controller';
+import { ChatWorkQueryService } from '../src/modules/staff-chat/services/chat-work-query.service';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomUUID } from 'node:crypto';
@@ -60,9 +62,9 @@ describe('Scoped durable staff work inbox (real PostgreSQL)', () => {
       .id;
     roomB = (await db.chatRoom.create({ data: { channel: 'LINE_SHOP', assignedToId: bob.id } })).id;
     const module = await Test.createTestingModule({
-      controllers: [StaffInboxController],
+      controllers: [StaffInboxController, ChatWorkController],
       providers: [
-        ChatWorkAccessService,
+        ChatWorkAccessService, ChatWorkQueryService,
         StaffInboxService,
         { provide: PrismaService, useValue: db },
       ],
@@ -121,6 +123,16 @@ describe('Scoped durable staff work inbox (real PostgreSQL)', () => {
       .patch(`/staff-chat/work-notifications/${itemA}/read?company=SHOP`)
       .expect(200);
     expect((await list()).body.unreadCount).toBe(0);
+  });
+  it('accepts lowercase company scope sent by the shared browser client', async () => {
+    await request(app.getHttpServer()).get('/staff-chat/work-notifications?company=shop').expect(200);
+  });
+  it('validates queue filters and rechecks exact deep-link access', async () => {
+    await request(app.getHttpServer()).get('/staff-chat/work?company=shop&view=WAITING&limit=2').expect(200);
+    await request(app.getHttpServer()).get('/staff-chat/work?company=shop&view=INVALID').expect(400);
+    await request(app.getHttpServer()).get('/staff-chat/work?company=shop&limit=201').expect(400);
+    await request(app.getHttpServer()).get(`/staff-chat/work-targets/ROOM/${roomB}?company=shop`).expect(404);
+    await request(app.getHttpServer()).get(`/staff-chat/work-targets/ROOM/${roomA}?company=shop`).expect(200);
   });
   it('rechecks current grants despite a stale authenticated actor', async () => {
     await db.user.update({ where: { id: alice.id }, data: { accessibleCompanies: ['FINANCE'] } });

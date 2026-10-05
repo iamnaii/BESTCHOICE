@@ -1,3 +1,12 @@
+import { ChatWorkController } from '../../src/modules/staff-chat/chat-work.controller';
+import { ChatWorkQueryService } from '../../src/modules/staff-chat/services/chat-work-query.service';
+import { ChatWorkSettingsController } from '../../src/modules/staff-chat/chat-work-settings.controller';
+import { ChatWorkSettingsService } from '../../src/modules/staff-chat/services/chat-work-settings.service';
+import { StaffInboxController } from '../../src/modules/staff-chat/staff-inbox.controller';
+import { StaffInboxService } from '../../src/modules/staff-chat/services/staff-inbox.service';
+import { ChatWorkAccessService } from '../../src/modules/staff-chat/services/chat-work-access.service';
+import { ResponseCycleService } from '../../src/modules/chat-engine/services/response-cycle.service';
+import { seedChatWork, previewWorkController } from './preview-chat-work-fixture';
 import { chromium } from 'playwright';
 import { SettingsService } from '../../src/modules/settings/settings.service';
 import { NotificationsService } from '../../src/modules/notifications/notifications.service';
@@ -146,6 +155,7 @@ const lifecycle = new ContractLifecycleService(db, contractQuery,
   { resolveBranchCashAccount: async () => 'S11-1101', resolveInflowCashAccount: async () => 'S11-1101' } as never);
 const manager = Object.assign(Object.create(RoomManagerService.prototype), {
   prisma: db,
+  responseCycles: new ResponseCycleService(db),
 }) as RoomManagerService;
 const sampleResult = {
   accountName: 'บัญชีตัวอย่าง — ผล AI จำลอง',
@@ -337,9 +347,9 @@ class PreviewController {
       primaryCompany: 'SHOP',
     };
   }
-  @Get('staff-chat/rooms') async rooms() {
+  @Get('staff-chat/rooms') async rooms(@Query('company') company = 'SHOP') {
     const data = await db.chatRoom.findMany({
-      where: { deletedAt: null },
+      where: { deletedAt: null, channel: company.toUpperCase() === 'FINANCE' ? 'LINE_FINANCE' : { not: 'LINE_FINANCE' } },
       include: { customer: true, assignedTo: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'asc' },
     });
@@ -466,8 +476,10 @@ async function main() {
   await seedPreviewPortfolio(db, actor.id);
   const salesFixture = await seedPreviewSales(db, actor);
   await seedPreviewExternalFinanceSale(db, actor.id);
+  const chatWorkRooms = await seedChatWork(db, manager, actor.id);
   const module = await Test.createTestingModule({
     controllers: [
+      ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
       TradeInController, ContactsController, ProductPhotosController,
       ContractDocumentsController, DocumentsController,
       RoomCreditController,
@@ -478,6 +490,7 @@ async function main() {
       PreviewController,
     ],
     providers: [
+      ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
       { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },
@@ -570,9 +583,10 @@ async function main() {
     if (
       /^\/api\/(trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
-      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|customer|prepare-offer|credit-check.*))?))?$/.test(
+      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes|products|finance-applications|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
+      /^\/api\/staff-chat\/(work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||
       path === '/api/staff-chat/ai/settings' || path === '/api/reports/finance-portfolio' ||
       path === '/api/external-finance/companies' || path === '/api/settings/ui-flags' || path === '/api/branches' || path === '/api/companies' || path === '/api/overdue/pipeline' || path === '/api/purchase-orders/qc-pending' ||
       /^\/api\/dashboard\/(kpis|monthly-trend|status-distribution|branch-comparison|monthly-revenue|top-overdue|aging-summary|watch-list|alerts|staff-performance)$/.test(path) ||
@@ -623,6 +637,7 @@ async function main() {
     vite.once('message', () => { clearTimeout(timeout); ready(); });
   });
   info = {
+    chatWorkRooms,
     isolated: true,
     repoRoot: process.env.CREDIT_REPO_ROOT,
     runId: process.env.CREDIT_LOCAL_RUN_ID ?? null,

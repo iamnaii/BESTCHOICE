@@ -1,3 +1,4 @@
+import { checkChatWork } from './check-local-chat-work.mjs';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -65,6 +66,8 @@ try {
       assert.deepEqual(errors, [], 'Browser errors');
       await page.screenshot({ path: join(output, `inbox-${viewport.width}.png`), fullPage: true });
       report.checks.push({ label: `Inbox ${viewport.width}px`, status: 'PASS' });
+      await checkChatWork(page, info.url, output, viewport.width);
+      report.checks.push({ label: `Scoped chat queue, read/fail/success and exact task target ${viewport.width}px`, status: 'PASS' });
       await checkLocalPages(page, info.url, output, viewport.width);
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `Customers + FINANCE portfolio (filters, pagination, empty report) ${viewport.width}px`, status: 'PASS' });

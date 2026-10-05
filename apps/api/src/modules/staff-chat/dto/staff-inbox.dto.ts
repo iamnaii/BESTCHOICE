@@ -1,6 +1,7 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 export class StaffInboxQueryDto {
+  @Transform(({ value }) => typeof value === 'string' ? value.toUpperCase() : value)
   @IsIn(['SHOP', 'FINANCE'], { message: 'กรุณาเลือกบริษัท' })
   company!: 'SHOP' | 'FINANCE';
   @IsOptional() @IsUUID() branchId?: string;

@@ -60,6 +60,7 @@ export interface ChatSendFailedEvent {
 }
 
 interface ChatSocketEvents {
+  onWorkUpdate?: () => void;
   onNewMessage?: (data: ChatMessageEvent) => void;
   onRoomUpdate?: (data: ChatRoomUpdateEvent) => void;
   /** โน้ตภายในของห้องเปลี่ยน (เพิ่ม/ลบ/ปัก/ปลด) — รีเฟรชโน้ต + โน้ตปักหมุดในห้องนั้น */
@@ -151,6 +152,7 @@ export function useChatSocket(events: ChatSocketEvents, activeRoomId?: string | 
       hasConnectedRef.current = true;
     });
 
+    socket.on('chat:work:update', () => eventsRef.current.onWorkUpdate?.());
     socket.on('chat:message:new', (data) => eventsRef.current.onNewMessage?.(data));
     socket.on('chat:room:update', (data) => eventsRef.current.onRoomUpdate?.(data));
     socket.on('chat:note:changed', (data) => eventsRef.current.onNoteChanged?.(data));

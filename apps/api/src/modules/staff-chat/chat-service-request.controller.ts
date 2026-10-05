@@ -1,3 +1,4 @@
+import { ChatServiceCaseLinkService } from '../after-sales/services/chat-service-case-link.service';
 import {
   Body,
   Controller,
@@ -17,6 +18,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { WORK_ROLES } from './services/chat-work-access.service';
 import { StaffInboxQueryDto } from './dto/staff-inbox.dto';
 import {
+  LinkChatServiceCaseDto,
+  ServiceCaseOptionsDto,
   CreateChatServiceRequestDto,
   UpdateChatServiceRequestDto,
 } from './dto/chat-service-request.dto';
@@ -25,7 +28,32 @@ import { ChatServiceRequestService } from './services/chat-service-request.servi
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...WORK_ROLES)
 export class ChatServiceRequestController {
-  constructor(private readonly service: ChatServiceRequestService) {}
+  constructor(
+    private readonly service: ChatServiceRequestService,
+    private readonly cases: ChatServiceCaseLinkService,
+  ) {}
+  @Get('service-requests/:id/case-prefill') prefill(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: { user: ChatWorkActor },
+    @Query() scope: StaffInboxQueryDto,
+  ) {
+    return this.cases.prefill(id, req.user, scope);
+  }
+  @Get('service-requests/:id/case-options') options(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: { user: ChatWorkActor },
+    @Query() scope: ServiceCaseOptionsDto,
+  ) {
+    return this.cases.options(id, req.user, scope, scope.search, scope.page, scope.limit);
+  }
+  @Post('service-requests/:id/link-case') link(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() input: LinkChatServiceCaseDto,
+    @Req() req: { user: ChatWorkActor },
+    @Query() scope: StaffInboxQueryDto,
+  ) {
+    return this.cases.link(id, input, req.user, scope);
+  }
   @Post('rooms/:id/service-requests') create(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() input: CreateChatServiceRequestDto,

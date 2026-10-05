@@ -57,7 +57,7 @@ fi
 printf 'All migrations applied on isolated PostgreSQL: %s\n' "$CREDIT_PG_ROOT"
 # Some legacy Jest specs use real Prisma clients. Keep both databases isolated
 # when requesting the broader API regression run; never inherit .env targets.
-if [ "${CREDIT_RUN_API_REGRESSION:-0}" = 1 ]; then
+if [ "${CREDIT_RUN_API_REGRESSION:-0}" = 1 ] || [ "${CREDIT_RUN_SERVICE_REGRESSION:-0}" = 1 ]; then
   export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=6144}"
   "$CREDIT_PG_BIN/createdb" -h "$CREDIT_PG_ROOT/socket" -p 55476 -U credit_test bc_credit_finance_test
   export DATABASE_URL_FINANCE="postgresql://credit_test@localhost:55476/bc_credit_finance_test?host=$CREDIT_PG_ROOT/socket&schema=public"
@@ -71,7 +71,9 @@ const db = new PrismaClient();
   } finally { await db.$disconnect(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
 JS
-  npm run test --workspace=apps/api -- --runInBand
+  if [ "${CREDIT_RUN_API_REGRESSION:-0}" = 1 ]; then
+    npm run test --workspace=apps/api -- --runInBand
+  fi
 fi
 if [ "${CREDIT_SUITE:-chat-credit}" = chat-credit ]; then
 export CREDIT_WEB_URL=http://127.0.0.1:5189
@@ -89,3 +91,8 @@ JS
 fi
 cd apps/api
 ../../node_modules/.bin/jest --config "$CREDIT_JEST_CONFIG" --runInBand
+
+if [ "${CREDIT_RUN_SERVICE_REGRESSION:-0}" = 1 ]; then
+  ../../node_modules/.bin/jest --runInBand --runTestsByPath src/modules/after-sales/__tests__/case-create.spec.ts src/modules/after-sales/__tests__/create-case-dto.spec.ts src/modules/after-sales/__tests__/case-create-real-validator.spec.ts src/modules/after-sales/__tests__/repair-proxy.spec.ts src/modules/after-sales/__tests__/exchange-service.spec.ts src/modules/after-sales/__tests__/stage-reconcile.spec.ts
+  ../../node_modules/.bin/vitest run --no-file-parallelism src/modules/after-sales/__tests__/after-sales-flow.integration.spec.ts src/modules/after-sales/__tests__/after-sales-exchange.integration.spec.ts
+fi

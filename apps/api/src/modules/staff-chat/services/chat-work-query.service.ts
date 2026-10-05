@@ -1,3 +1,4 @@
+import { syncClosedServiceWork } from './chat-service-case-state';
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { ChatWorkActor, ChatWorkItem, ChatWorkPage, WorkScope } from '@installment/shared';
@@ -19,6 +20,7 @@ export class ChatWorkQueryService {
     query: ChatWorkQueryDto,
     now = new Date(),
   ): Promise<ChatWorkPage> {
+    await syncClosedServiceWork(this.prisma, await this.access.roomWhere(authenticated, query));
     return this.prisma.$transaction(
       async (tx) => {
         const actor = await this.access.currentActor(authenticated, tx);

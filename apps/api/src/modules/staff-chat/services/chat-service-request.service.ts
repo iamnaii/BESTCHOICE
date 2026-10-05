@@ -1,4 +1,9 @@
 import {
+  syncClosedServiceWork,
+  serviceCaseSelect,
+  serviceCaseStage,
+} from './chat-service-case-state';
+import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -238,6 +243,10 @@ export class ChatServiceRequestService {
     });
   }
   async list(roomId: string, actor: ChatWorkActor, scope: WorkScope, page = 1, limit = 30) {
+    await this.access.assertRoom(roomId, actor, scope);
+    await syncClosedServiceWork(this.prisma, {
+      AND: [await this.access.roomWhere(actor, scope), { id: roomId }],
+    });
     return this.prisma.$transaction(
       async (tx) => {
         await this.gate(tx);
@@ -259,8 +268,10 @@ export class ChatServiceRequestService {
     );
   }
   async get(id: string, actor: ChatWorkActor, scope: WorkScope) {
+    await this.assertRequest(id, actor, scope);
+    await syncClosedServiceWork(this.prisma, await this.access.roomWhere(actor, scope), id);
     return this.prisma.$transaction(async (tx) => {
-      const { request } = await this.assertRequest(id, actor, scope, tx);
+      const { request, actor: currentActor } = await this.assertRequest(id, actor, scope, tx);
       const sources = await tx.chatServiceRequestSource.findMany({
         where: { requestId: id, message: { roomId: request.roomId, deletedAt: null } },
         select: { message: { select: { id: true, text: true, createdAt: true, role: true } } },
@@ -272,12 +283,38 @@ export class ChatServiceRequestService {
       const customerId = room.customerId
         ? await canonicalServiceCustomer(tx, room.customerId)
         : null;
+      const linked = request.afterSalesCaseId
+        ? await tx.afterSalesCase.findFirst({
+            where: {
+              id: request.afterSalesCaseId,
+              deletedAt: null,
+              branch: serviceBranchWhere(currentActor, scope),
+            },
+            select: serviceCaseSelect,
+          })
+        : null;
+      const eligible =
+        ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(currentActor.role) &&
+        (currentActor.role !== 'SALES' ||
+          request.createdById === currentActor.id ||
+          request.todo.assigneeId === currentActor.id);
+      const active = ['OPEN', 'WAITING_CUSTOMER'].includes(request.status);
       return {
         ...request,
+        linkedCase: linked
+          ? {
+              id: linked.id,
+              caseNumber: linked.caseNumber,
+              stage: serviceCaseStage(linked),
+              outcome: linked.outcome,
+              deviceImei: linked.deviceImei,
+            }
+          : null,
+        linkedCaseUnavailable: !!request.afterSalesCaseId && !linked,
         currentCustomerId: customerId,
         sourceMessages: sources.map((s) => s.message),
-        canOpenCase: false,
-        canLinkCase: false,
+        canOpenCase: eligible && active && !!customerId,
+        canLinkCase: eligible && active && !!customerId,
       };
     });
   }
@@ -296,12 +333,22 @@ export class ChatServiceRequestService {
       if (input.expectedRevision !== request.revision)
         throw new ConflictException('ใบรับเรื่องมีการแก้ไขแล้ว กรุณาโหลดล่าสุด');
       const status = input.status ?? request.status;
-      if (request.status === 'LINKED')
-        throw new ConflictException('กรุณาดำเนินการผ่านเคสหลังการขายที่เชื่อมแล้ว');
+      if (request.status === 'LINKED') {
+        if (input.status !== undefined || input.symptom !== undefined)
+          throw new ConflictException('รายละเอียดและสถานะซ่อมต้องดำเนินการผ่านเคสหลังการขาย');
+        const c = request.afterSalesCaseId
+          ? await tx.afterSalesCase.findFirst({
+              where: { id: request.afterSalesCaseId, deletedAt: null },
+              select: serviceCaseSelect,
+            })
+          : null;
+        if (!c || ['CLOSED', 'CANCELLED'].includes(serviceCaseStage(c)))
+          throw new ConflictException('เคสสิ้นสุดแล้ว ไม่สามารถเลื่อนงานติดตาม');
+      }
       if (['RESOLVED', 'CANCELLED'].includes(request.status))
         throw new ConflictException('ใบรับเรื่องปิดแล้ว');
       if (
-        status === 'LINKED' ||
+        (status === 'LINKED' && request.status !== 'LINKED') ||
         (status !== request.status && !serviceRequestTransitions[request.status].includes(status))
       )
         throw new BadRequestException('เปลี่ยนสถานะนี้ไม่ได้');

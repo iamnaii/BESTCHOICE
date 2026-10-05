@@ -1,3 +1,4 @@
+import { StaffInboxQueryDto } from './staff-inbox.dto';
 import { Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -56,4 +57,13 @@ export class UpdateChatServiceRequestDto {
   @IsISO8601({ strict: true, strictSeparator: true })
   @Matches(/T.*(?:Z|[+-]\d{2}:\d{2})$/)
   dueAt?: string;
+}
+
+export class LinkChatServiceCaseDto {
+  @IsUUID() caseId!: string;
+  @IsInt() @Min(0) expectedRevision!: number;
+}
+
+export class ServiceCaseOptionsDto extends StaffInboxQueryDto {
+  @ValidateIf((_o, v) => v !== undefined) @IsString() @MaxLength(100) search?: string;
 }

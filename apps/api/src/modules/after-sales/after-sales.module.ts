@@ -1,3 +1,5 @@
+import { ChatServiceCaseLinkService } from './services/chat-service-case-link.service';
+import { ChatWorkAccessService } from '../staff-chat/services/chat-work-access.service';
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { RepairTicketsModule } from '../repair-tickets/repair-tickets.module';
@@ -31,6 +33,7 @@ import { AfterSalesPdfRenderer } from './documents/after-sales-pdf.renderer';
   ],
   controllers: [AfterSalesController],
   providers: [
+    ChatServiceCaseLinkService, ChatWorkAccessService,
     AfterSalesService,
     AfterSalesDocNumberService,
     AfterSalesLookupService,

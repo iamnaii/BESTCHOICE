@@ -1,9 +1,11 @@
+import { ChatServiceCaseLinkService } from './chat-service-case-link.service';
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
   HttpException,
   Injectable,
+  Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { AfterSalesOutcome, AfterSalesStage } from '@prisma/client';
@@ -54,6 +56,7 @@ export class AfterSalesCaseService {
     private readonly contractExchange: ContractExchangeService,
     private readonly defect: DefectExchangeService,
     private readonly line: AfterSalesLineService,
+    @Optional() private readonly chatLinks?: ChatServiceCaseLinkService,
   ) {}
 
   // R29 (fix round 1) — ฟิลด์ที่ REPAIR กับกิ่งเปลี่ยนเครื่องเหมือนกันทุกประการ (~15 ฟิลด์)
@@ -101,6 +104,11 @@ export class AfterSalesCaseService {
   }
 
   async createCase(dto: CreateCaseDto, files: Express.Multer.File[], user: ReqUser) {
+    if (dto.serviceRequestId) {
+      if (!this.chatLinks) throw new BadRequestException('ระบบเชื่อมใบรับเรื่องยังไม่พร้อม');
+      const existing = await this.chatLinks.existingForCreation(dto.serviceRequestId, user);
+      if (existing) return existing;
+    }
     // R16 (fix round 1, Critical) — BranchGuard อ่าน request.body?.branchId แต่ guards รันก่อน
     // FilesInterceptor แกะ multipart/form-data เสร็จ ⇒ ตอนถึง guard body ยังว่าง (ไม่มี branchId
     // ให้เห็น) จึงปล่อยผ่านเสมอบน POST /after-sales — ต้องบังคับ scope สาขาที่ service เอง ก่อนแตะ
@@ -124,6 +132,10 @@ export class AfterSalesCaseService {
     const look = await this.lookupSvc.lookup({ imei: dto.imei }, user);
     // R12 fast path — เช็คซ้ำอีกครั้งใน tx ด้วย advisory lock ก่อนสร้างจริง (กัน TOCTOU)
     if (look.openCase) {
+      if (dto.serviceRequestId) {
+        const existing = await this.chatLinks!.existingForCreation(dto.serviceRequestId, user);
+        if (existing) return existing;
+      }
       throw new ConflictException(
         `เครื่องนี้มีเคสที่ยังไม่ปิดอยู่แล้ว: ${look.openCase.caseNumber}`,
       );
@@ -169,6 +181,19 @@ export class AfterSalesCaseService {
     }
 
     const imei = look.product?.imeiSerial ?? dto.imei;
+    if (dto.serviceRequestId)
+      await this.chatLinks!.candidateForCreation(
+        dto.serviceRequestId,
+        {
+          branchId: dto.branchId,
+          customerId,
+          productId: look.product?.id ?? null,
+          contractId: look.contract?.id ?? null,
+          saleId: look.sale?.id ?? null,
+          deviceImei: imei,
+        },
+        user,
+      );
     const id = randomUUID();
     const uploaded: string[] = [];
     const put = async (key: string, buf: Buffer, mime: string) => {
@@ -178,6 +203,7 @@ export class AfterSalesCaseService {
     };
 
     let result: CreateCaseResult;
+    let reusedChatCase = false;
     try {
       // R14: sequential — ทุก key ที่อัปโหลดสำเร็จต้องถูกจดไว้ใน `uploaded` ก่อนไฟล์ถัดไป
       // (Promise.all ปล่อยให้ upload ที่ยังไม่ resolve ตอนตัวอื่นพัง หลุดจากการ cleanup)
@@ -209,6 +235,13 @@ export class AfterSalesCaseService {
       }
 
       result = await this.prisma.$transaction(async (tx) => {
+        if (dto.serviceRequestId) {
+          const existing = await this.chatLinks!.creationInTx(tx, dto.serviceRequestId, user);
+          if (existing) {
+            reusedChatCase = true;
+            return existing;
+          }
+        }
         // R12 — re-check ภายใน tx ด้วย advisory lock ก่อน nextCaseNumber (กัน 2 คำขอพร้อมกันสำหรับ IMEI เดียวกัน
         // ทั้งคู่ผ่าน pre-tx fast-path แล้วคอมมิตสำเร็จทั้งคู่ — Review Focus 2)
         await tx.$executeRawUnsafe(
@@ -297,6 +330,12 @@ export class AfterSalesCaseService {
             exchangeRequestId: null,
             stage: 'RECEIVED',
           };
+          if (dto.serviceRequestId)
+            await this.chatLinks!.linkInTx(tx, {
+              requestId: dto.serviceRequestId,
+              caseId: c.id,
+              actor: user,
+            });
           return repairResult;
         }
 
@@ -346,11 +385,24 @@ export class AfterSalesCaseService {
           exchangeRequestId: null,
           stage: 'AWAITING_APPROVAL',
         };
+        if (dto.serviceRequestId)
+          await this.chatLinks!.linkInTx(tx, {
+            requestId: dto.serviceRequestId,
+            caseId: c.id,
+            actor: user,
+          });
         return exchangeResult;
       });
     } catch (err) {
       await Promise.all(uploaded.map((k) => this.storage.delete(k).catch(() => undefined)));
       throw err;
+    }
+
+    // A competing request may have uploaded temporary images before winning the room lock.
+    // Discard only this attempt's uploads and skip all document/LINE/exchange side effects.
+    if (reusedChatCase) {
+      await Promise.all(uploaded.map((k) => this.storage.delete(k).catch(() => undefined)));
+      return result;
     }
 
     // Task 4 — PRICED_EXCHANGE: ยื่นคำขอเปลี่ยนเครื่องแบบมีราคาหลัง tx commit (นอก try/catch ของรูป

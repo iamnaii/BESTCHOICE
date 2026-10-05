@@ -33,6 +33,10 @@ const parseJson = ({ value }: { value: unknown }) => {
 export const IMEI_MAX = 32;
 
 export class CreateCaseDto {
+  @IsOptional()
+  @IsUUID()
+  serviceRequestId?: string;
+
   @IsString()
   @MinLength(4)
   // พิมพ์ลงใบรับฝากในคอลัมน์ห้ามตัดบรรทัด — 32 พอสำหรับ IMEI สองซิม (15+1+15)

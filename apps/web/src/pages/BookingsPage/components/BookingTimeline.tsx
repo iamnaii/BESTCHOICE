@@ -38,8 +38,16 @@ export function describeEvent(e: BookingEvent): {
     }
     case 'BOOKING_DEPOSIT_PAID': {
       const method = METHOD_LABEL[str(d.depositMethod)] ?? str(d.depositMethod);
-      return { title: method ? `รับมัดจำ · ${method}` : 'รับมัดจำ', tone: 'success' };
+      const parts = ['รับมัดจำ'];
+      if (method) parts.push(method);
+      if (str(d.lockedProductId)) parts.push('ล็อกเครื่องให้ลูกค้าแล้ว');
+      return { title: parts.join(' · '), tone: 'success' };
     }
+    case 'BOOKING_UNLOCK_SKIPPED':
+      return {
+        title: 'ปลดล็อกเครื่องไม่ได้ — สถานะเครื่องถูกเปลี่ยนไปแล้ว ตรวจสต็อก',
+        tone: 'destructive',
+      };
     case 'BOOKING_CANCELED': {
       const parts = ['ยกเลิกใบจอง'];
       if (money(d.refundAmount) > 0) parts.push(`คืนมัดจำ ${fmtMoneyShort(money(d.refundAmount))}`);
@@ -63,6 +71,14 @@ export function describeEvent(e: BookingEvent): {
   }
 }
 
+/** ผู้กระทำ — งานของระบบ (cron หมดอายุ / ปลดล็อกจาก cron) แสดง "ระบบ" ไม่ใช่ชื่อผู้ใช้ */
+export function eventActorLabel(e: BookingEvent): string {
+  const bySystem =
+    e.kind === 'BOOKING_AUTO_EXPIRED' ||
+    (e.kind === 'BOOKING_UNLOCK_SKIPPED' && e.data?.flow === 'auto-expire');
+  return bySystem ? 'ระบบ' : (e.actor?.name ?? '—');
+}
+
 const DOT: Record<string, string> = {
   muted: 'bg-muted-foreground',
   success: 'bg-success',
@@ -77,7 +93,7 @@ export default function BookingTimeline({ events }: { events: BookingEvent[] }) 
     <ol className="flex flex-col">
       {events.map((e, i) => {
         const { title, tone } = describeEvent(e);
-        const actor = e.kind === 'BOOKING_AUTO_EXPIRED' ? 'ระบบ' : (e.actor?.name ?? '—');
+        const actor = eventActorLabel(e);
         return (
           <li key={e.id} className={cn('flex gap-3', i < events.length - 1 && 'pb-3.5')}>
             <span className="flex w-3.5 flex-col items-center">

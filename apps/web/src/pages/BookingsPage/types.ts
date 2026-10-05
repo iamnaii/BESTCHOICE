@@ -42,6 +42,10 @@ export interface Booking {
   canceledAt?: string | null;
   cancelReason?: string | null;
   convertedAt?: string | null;
+  /** PR 2 — เครื่องที่ใบนี้ล็อกไว้ตอนรับมัดจำ (ล้างเมื่อยกเลิก/หมดอายุ/ขาย) */
+  lockedProductId?: string | null;
+  lockedAt?: string | null;
+  unlockedAt?: string | null;
   customer: { id: string; name: string; phone?: string | null };
   branch: { id: string; name: string; shopCashAccountCode?: string | null };
   createdBy: { id: string; name: string };

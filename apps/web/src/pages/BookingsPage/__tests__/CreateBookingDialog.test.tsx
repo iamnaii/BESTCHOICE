@@ -121,11 +121,14 @@ beforeEach(() => {
 });
 
 describe('CreateBookingDialog', () => {
-  it('ไม่สัญญาว่าเครื่องจะถูกล็อกตอนรับมัดจำ (ตัวล็อกยังไม่มีใน PR นี้) แต่ข้อความกำกับขั้นเครื่องยังอยู่', () => {
+  it('บอกว่าเครื่องจะถูกล็อกทันทีที่รับมัดจำ และก่อนรับมัดจำยังขายได้ตามปกติ', () => {
     renderDialog({ initialCustomer: customer });
-    expect(screen.queryByText(/ล็อก/)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'เครื่องจะถูกล็อกไว้ให้ลูกค้าทันทีที่รับมัดจำ · ก่อนรับมัดจำยังขายได้ตามปกติ',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/POS ขายไม่ได้/)).not.toBeInTheDocument();
-    expect(screen.getByText(/เลือกได้เฉพาะเครื่องที่อยู่ในสต็อกและพร้อมขาย/)).toBeInTheDocument();
   });
   it('ต้องมีลูกค้า + เครื่อง ก่อนปุ่มบันทึกจะเปิด · ส่ง 1 เครื่อง quantity 1 · วันหมดอายุ = สิ้นวันไทยของชิป 7 วัน', async () => {
     const { onSaved } = renderDialog({ initialCustomer: customer });

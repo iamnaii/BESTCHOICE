@@ -76,6 +76,12 @@ const productInclude = {
   po: { select: { id: true, poNumber: true } },
   inspection: { select: { id: true, overallGrade: true, isCompleted: true } },
   productPhotos: { select: { id: true, isCompleted: true } },
+  // PR 2 ล็อกเครื่องใบจอง — ใบ PAID ที่ล็อกเครื่องนี้ (0–1 แถวตาม partial unique) ให้หน้าสต็อก/รายละเอียดชี้ไปใบจอง
+  lockedByBookings: {
+    where: { status: 'PAID' as const, deletedAt: null },
+    select: { id: true, bookingNumber: true, customer: { select: { name: true } } },
+    take: 1,
+  },
 };
 
 // Re-export for use by other services if needed

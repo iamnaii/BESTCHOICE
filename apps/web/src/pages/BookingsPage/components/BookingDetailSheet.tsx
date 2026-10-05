@@ -98,8 +98,16 @@ function productState(
   if (product.branchId !== booking.branch.id) {
     return { label: 'เครื่องย้ายสาขาไปแล้ว', tone: 'bad' };
   }
-  if (s === 'IN_STOCK') return { label: 'พร้อมขาย · ยังอยู่ในสต็อก', tone: 'ok' };
-  // ยังไม่มีตัวล็อกเครื่องตอนรับมัดจำ — เครื่องที่ถูกจอง/ผูกสัญญาร่างแปลว่ามีคนอื่นถืออยู่
+  // PR 2: ใบ PAID ล็อกเครื่องของตัวเองเป็น RESERVED — "ของเรา" = พร้อมส่งมอบ ไม่ใช่คนอื่นถือ
+  if (s === 'RESERVED' && booking.lockedProductId === item.productId) {
+    return { label: 'ล็อกไว้ให้ลูกค้ารายนี้แล้ว', tone: 'ok' };
+  }
+  if (s === 'IN_STOCK') {
+    return booking.status === 'PENDING_DEPOSIT'
+      ? { label: 'พร้อมขาย · จะล็อกเมื่อรับมัดจำ', tone: 'ok' }
+      : { label: 'พร้อมขาย · ยังอยู่ในสต็อก', tone: 'ok' };
+  }
+  // เครื่องที่ถูกจอง/ผูกสัญญาร่างโดยคนอื่น (ไม่ใช่ล็อกของใบนี้)
   if (s === 'RESERVED') return { label: 'มีคนอื่นถือเครื่องอยู่ (จอง/สัญญาร่าง)', tone: 'bad' };
   if (s.startsWith('SOLD'))
     return { label: 'ถูกขายไปแล้ว — ต้องยกเลิกใบนี้แล้วออกใบใหม่', tone: 'bad' };

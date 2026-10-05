@@ -119,8 +119,8 @@ export class PurchaseOrdersController {
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  findOne(@Param('id') id: string) {
-    return this.purchaseOrdersService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: { role: string }) {
+    return this.purchaseOrdersService.findOne(id, user.role);
   }
 
   @Get(':id/goods-receivings')
@@ -132,6 +132,7 @@ export class PurchaseOrdersController {
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @CurrentUser() user?: { role: string },
   ) {
     return this.purchaseOrdersService.getGoodsReceivings(id, {
       status,
@@ -139,7 +140,7 @@ export class PurchaseOrdersController {
       endDate,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
-    });
+    }, user?.role);
   }
 
   @Get(':id/goods-receivings/summary')
@@ -157,8 +158,9 @@ export class PurchaseOrdersController {
   getGoodsReceivingById(
     @Param('id') id: string,
     @Param('receivingId') receivingId: string,
+    @CurrentUser() user: { role: string },
   ) {
-    return this.purchaseOrdersService.getGoodsReceivingById(id, receivingId);
+    return this.purchaseOrdersService.getGoodsReceivingById(id, receivingId, user.role);
   }
 
   /** ก้อน 5 (Q1) — ใบกำกับภาษีที่มาหลังรับของ → เคลมภาษีซื้อย้อนให้สัญญาที่รอ */

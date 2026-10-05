@@ -8,6 +8,7 @@ import { getBranchScope, hasCrossBranchAccess } from '../../auth/branch-access.u
 import { paginatedResponse } from '../../../common/helpers/pagination.helper';
 import { TestModeService } from '../../test-mode/test-mode.service';
 import { visibleContractCredit } from '../../credit-check/services/room-credit-access';
+import { buildContractInputVatView } from '../../journal/input-vat/contract-input-vat-view';
 import {
   validateIMEI,
   validateThaiPhone,
@@ -197,7 +198,10 @@ export class ContractQueryService {
       .map((pid) => bundleRows.find((row) => row.id === pid))
       .filter((row): row is (typeof bundleRows)[number] => !!row);
 
-    return visibleContractCredit(this.prisma, { ...contract, bundleProducts, signatureRequirements: contractSignatureRequirements(contract) }, user);
+    // ก้อน 5 — การ์ดภาษีซื้อของเครื่อง (ยอดเฉพาะ OWNER/FM/ACCOUNTANT — Q5)
+    const inputVat = await buildContractInputVatView(this.prisma as never, contract, user?.role);
+
+    return visibleContractCredit(this.prisma, { ...contract, bundleProducts, signatureRequirements: contractSignatureRequirements(contract), inputVat }, user);
   }
 
   /**

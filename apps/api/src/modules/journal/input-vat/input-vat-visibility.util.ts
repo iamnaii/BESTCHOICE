@@ -1,3 +1,6 @@
+import { bangkokDateString } from '../../../utils/date.util';
+import { ReceivingForInputVat, receivingTaxInvoice } from './input-vat-eligibility';
+
 /**
  * ใครเห็น "ตัวเลขภาษีซื้อ" ของเครื่อง/สัญญา — คำตัดสินเจ้าของ 2026-10-05 (Q5): OWNER / FINANCE_MANAGER / ACCOUNTANT
  * บังคับฝั่ง server เหมือน `canSeeCost` (products/cost-visibility.util.ts) — BM/SALES เห็นแค่สถานะใบกำกับ (มี/รอ/ไม่มี) ไม่เห็นยอด.
@@ -16,4 +19,20 @@ export function redactReceivingInputVat<T extends { items: Array<{ receivedVat?:
 ): T {
   if (canSeeInputVat(role)) return receiving;
   return { ...receiving, items: receiving.items.map((it) => ({ ...it, receivedVat: null })) };
+}
+
+export interface ReceivingTaxInvoiceView { number: string; date: string; source: 'RECEIVING' | 'LATER' }
+
+/** ใบกำกับของใบรับของในรูปที่หน้าจอใช้ (วันที่ YYYY-MM-DD ไทย) */
+export function receivingTaxInvoiceView(gr: ReceivingForInputVat): ReceivingTaxInvoiceView | null {
+  const inv = receivingTaxInvoice(gr);
+  return inv ? { number: inv.number, date: bangkokDateString(inv.date), source: inv.source } : null;
+}
+
+/** เติม `taxInvoice` + ตัด `receivedVat` ตาม role — ใช้กับทุก response ที่คืนใบรับของ (findOne PO · รายการใบรับของ · ใบรับของเดี่ยว) */
+export function decorateReceivingForRole<T extends ReceivingForInputVat & { items: Array<{ receivedVat?: unknown }> }>(
+  gr: T,
+  role: string | null | undefined,
+): T & { taxInvoice: ReceivingTaxInvoiceView | null } {
+  return { ...redactReceivingInputVat(gr, role), taxInvoice: receivingTaxInvoiceView(gr) };
 }

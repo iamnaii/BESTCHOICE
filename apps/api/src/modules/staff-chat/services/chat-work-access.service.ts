@@ -45,6 +45,15 @@ export class ChatWorkAccessService {
     if (!current) throw new ForbiddenException('บัญชีนี้ไม่มีสิทธิ์ใช้งาน');
     return current;
   }
+  /** Legacy room routes can infer company only when no selector was supplied; always check current grants. */
+  async roomContext(roomId: string, authenticated: Pick<ChatWorkActor, 'id'>, selected: Partial<WorkScope> = {}) {
+    const actor = await this.currentActor(authenticated);
+    const target = await this.prisma.chatRoom.findFirst({ where: { id: roomId, deletedAt: null }, select: { channel: true } });
+    if (!target) throw new NotFoundException('ไม่พบห้องแชท');
+    const scope: WorkScope = { company: selected.company ?? (target.channel === 'LINE_FINANCE' ? 'FINANCE' : 'SHOP'), branchId: selected.branchId };
+    const room = await this.assertRoom(roomId, actor, scope);
+    return { actor, scope, room };
+  }
   async roomWhere(
     actor: ChatWorkActor,
     scope: WorkScope,

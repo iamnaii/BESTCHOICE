@@ -915,6 +915,7 @@ model User {
   assignedRooms               ChatRoom[]                @relation("ChatAssignedStaff")
   chatMessages                ChatMessage[]             @relation("ChatMessageStaff")
   staffChatActivities         StaffChatActivity[]       @relation("StaffChatActivityUser")
+  chatNoteMentions            ChatNoteMention[]
   chatNotes                   ChatNote[]                @relation("ChatNoteStaff")
   kbSuggestionsReviewed       ChatKbSuggestion[]        @relation("KbSuggestionReviewer")
   webhookSubscriptions        WebhookSubscription[]
@@ -6256,6 +6257,8 @@ model ChatNote {
   staffId String   @map("staff_id")
   staff   User     @relation("ChatNoteStaff", fields: [staffId], references: [id])
   content String   @db.Text
+  requestKey String? @unique @map("request_key")
+  mentions ChatNoteMention[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -8962,4 +8965,16 @@ model ChatResponseCycle {
   @@index([startedAt, roomId], map: "chat_response_cycles_started_room")
   @@index([roomId, endedAt])
   @@map("chat_response_cycles")
+}
+
+model ChatNoteMention {
+  id String @id @default(uuid())
+  noteId String @map("note_id")
+  note ChatNote @relation(fields: [noteId], references: [id], onDelete: Restrict)
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @map("created_at")
+  @@unique([noteId, userId])
+  @@index([userId, createdAt])
+  @@map("chat_note_mentions")
 }

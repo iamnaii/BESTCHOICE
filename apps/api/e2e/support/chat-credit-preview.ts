@@ -1,3 +1,6 @@
+import { RoomNotesController } from '../../src/modules/staff-chat/room-notes.controller';
+import { NoteMentionService } from '../../src/modules/staff-chat/services/note-mention.service';
+import { StaffMessageService } from '../../src/modules/staff-chat/services/staff-message.service';
 import { JourneyManualEntryService } from '../../src/modules/customer-journey/journey-manual-entry.service';
 import { TodosController } from '../../src/modules/todos/todos.controller';
 import { TodosService } from '../../src/modules/todos/todos.service';
@@ -486,7 +489,7 @@ async function main() {
   const chatWorkRooms = await seedChatWork(db, manager, actor.id);
   const module = await Test.createTestingModule({
     controllers: [
-      TodosController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
+      RoomNotesController, TodosController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
       TradeInController, ContactsController, ProductPhotosController,
       ContractDocumentsController, DocumentsController,
       RoomCreditController,
@@ -497,7 +500,7 @@ async function main() {
       PreviewController,
     ],
     providers: [
-      JourneyManualEntryService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
+      NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, JourneyManualEntryService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
       { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },
@@ -589,7 +592,7 @@ async function main() {
     if (
       /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
-      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes|products|cross-channel|sales-disposition|eligible-staff|follow-ups|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
+      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|follow-ups|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
       /^\/api\/staff-chat\/(follow-ups\/[^/]+|work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||

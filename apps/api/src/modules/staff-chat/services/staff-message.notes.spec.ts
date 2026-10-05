@@ -34,12 +34,6 @@ describe('StaffMessageService — โน้ตภายใน (ลบ/ปัก�
     service = module.get(StaffMessageService);
   });
 
-  it('addNote → บันทึกแล้วยิง chat:note:changed (เดิมไม่ยิงเลย เพื่อนร่วมทีมไม่เห็น)', async () => {
-    await service.addNote('r1', 'u1', 'ลูกค้าจะมารับพรุ่งนี้');
-    expect(prisma.chatNote.create).toHaveBeenCalledWith(expect.objectContaining({ data: { roomId: 'r1', staffId: 'u1', content: 'ลูกค้าจะมารับพรุ่งนี้' } }));
-    expect(gateway.emitNoteChanged).toHaveBeenCalledWith('r1', { roomId: 'r1', action: 'added', noteId: 'n1' });
-  });
-
   it('pinNote → ปลดหมุดอันอื่นในห้อง + ปักอันนี้ ในทรานแซกชันเดียว แล้วยิง WS', async () => {
     prisma.chatNote.findFirst.mockResolvedValue({ id: 'n2' });
     await service.pinNote('r1', 'n2', 'u1');

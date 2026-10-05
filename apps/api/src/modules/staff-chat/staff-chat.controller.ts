@@ -362,46 +362,6 @@ export class StaffChatController {
     return this.tags.getAllUniqueTags();
   }
 
-  // ─── Notes ─────────────────────────────────────────────
-
-  @Post('rooms/:id/notes')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async addNote(
-    @Param('id') id: string,
-    @Body('content') content: string,
-    @Req() req: any,
-  ) {
-    return this.staffMessage.addNote(id, req.user.id, content);
-  }
-
-  @Get('rooms/:id/notes')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getNotes(@Param('id') id: string) {
-    return this.staffMessage.getNotes(id);
-  }
-
-  /** ลบโน้ตภายใน — คนเขียนเอง หรือ OWNER/BRANCH_MANAGER */
-  @Delete('rooms/:id/notes/:noteId')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async deleteNote(@Param('id') id: string, @Param('noteId') noteId: string, @Req() req: any) {
-    await this.staffMessage.deleteNote(id, noteId, { id: req.user.id, role: req.user.role });
-    return { success: true };
-  }
-
-  /** ปักโน้ตเป็นโน้ตของห้อง (ห้องละ 1 — ปลดอันเก่าให้เอง) */
-  @Patch('rooms/:id/notes/:noteId/pin')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async pinNote(@Param('id') id: string, @Param('noteId') noteId: string, @Req() req: any) {
-    return this.staffMessage.pinNote(id, noteId, req.user.id);
-  }
-
-  @Delete('rooms/:id/notes/:noteId/pin')
-  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async unpinNote(@Param('id') id: string, @Param('noteId') noteId: string) {
-    await this.staffMessage.unpinNote(id, noteId);
-    return { success: true };
-  }
-
   // ─── Canned Responses ─────────────────────────────────
 
   @Get('canned-responses')

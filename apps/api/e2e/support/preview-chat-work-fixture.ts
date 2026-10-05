@@ -1,5 +1,4 @@
 import { FinanceApplicationService } from '../../src/modules/external-finance-application/services/finance-application.service';
-import { StaffMessageService } from '../../src/modules/staff-chat/services/staff-message.service';
 import { ProductDetectService } from '../../src/modules/staff-chat/services/product-detect.service';
 import { ProductQuoteService } from '../../src/modules/staff-chat/services/product-quote.service';
 /** Only loaded by the disposable managed preview. No external adapters are invoked. */
@@ -13,6 +12,7 @@ import { StaffInboxService } from '../../src/modules/staff-chat/services/staff-i
 export async function seedChatWork(db: PrismaService, manager: RoomManagerService, actorId: string) {
   await db.systemConfig.upsert({ where: { key: 'chat_work_queue_enabled' }, create: { key: 'chat_work_queue_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
   await db.systemConfig.upsert({ where: { key: 'chat_follow_up_enabled' }, create: { key: 'chat_follow_up_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
+  await db.systemConfig.upsert({ where: { key: 'chat_mentions_enabled' }, create: { key: 'chat_mentions_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
   const rooms: Record<string, string> = {};
   const inbox = new StaffInboxService(db, new ChatWorkAccessService(db));
   for (const company of ['SHOP', 'FINANCE'] as const) {
@@ -31,7 +31,6 @@ export async function seedChatWork(db: PrismaService, manager: RoomManagerServic
 export function previewWorkController(db: PrismaService, manager: RoomManagerService, actorId: () => string) {
   const cycles = new ResponseCycleService(db);
   const failNext = new Set<string>();
-  const notes = Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) as StaffMessageService;
   const products = new ProductDetectService(db, new ProductQuoteService(db));
   // Real local query; LINE membership is explicitly disconnected in this synthetic preview.
   const finance = Object.assign(Object.create(FinanceApplicationService.prototype), {
@@ -40,7 +39,6 @@ export function previewWorkController(db: PrismaService, manager: RoomManagerSer
   @Controller()
   class PreviewWorkController {
     @Get('staff-chat/rooms/:id/cross-channel') crossChannel(@Param('id') id: string) { return manager.getCrossChannelRooms(id); }
-    @Get('staff-chat/rooms/:id/notes') notes(@Param('id') id: string) { return notes.getNotes(id); }
     @Get('staff-chat/rooms/:id/products') async products(@Param('id') id: string) {
       const rows = await db.chatMessage.findMany({ where: { roomId: id, deletedAt: null }, orderBy: { createdAt: 'desc' }, take: 20, select: { text: true } });
       return products.detectProducts(rows.map(row => row.text || ''));

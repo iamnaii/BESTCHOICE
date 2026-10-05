@@ -5,7 +5,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { AuditService } from '../../audit/audit.service';
 import { InstallmentInputVatTemplate } from '../../journal/cpa-templates/installment-input-vat.template';
-import { claimPendingInputVatForReceiving, ClaimedForReceiving } from '../../journal/input-vat/installment-input-vat.claim';
+import { claimPendingInputVatForReceiving, ClaimedForReceiving, syncClaimedInvoiceMetadata } from '../../journal/input-vat/installment-input-vat.claim';
+import { canSeeInputVat } from '../../journal/input-vat/input-vat-visibility.util';
 import { normalizeSupplierDoc } from './supplier-doc.util';
 import { evidenceImageExtension, isEvidenceImage } from '../../../utils/upload-image.util';
 import { bkkYyyymmdd } from '../../../utils/document-number-format.util';
@@ -90,6 +91,8 @@ export class GoodsReceivingTaxInvoiceService {
               taxInvoiceRecordedById: actor.id,
             },
           });
+          // I2 — ใบที่เคลมไว้แล้วบนใบรับของนี้ต้องได้เลข/วันที่ใบกำกับใหม่ใน metadata (รายงาน ภ.พ.30 อ่านจาก metadata)
+          await syncClaimedInvoiceMetadata(tx, receivingId, { number: doc.number!, date: doc.date! });
           const result = await claimPendingInputVatForReceiving(tx, this.inputVatTemplate, { receivingId, now, actorId: actor.id });
           claimed = result.claimed;
           accountingNotified = result.accountingNotified;
@@ -113,9 +116,11 @@ export class GoodsReceivingTaxInvoiceService {
       newValue: { grNumber: before.grNumber, poNumber: before.po.poNumber, taxInvoiceNumber: doc.number, taxInvoiceDate: bangkokDateString(doc.date!), photoKey, claimed: claimed.map((c) => c.contractNumber), accountingNotified },
     });
 
+    // Q5 — BM บันทึกได้แต่ไม่เห็นยอด: ตัด amount ออกจากผลลัพธ์สำหรับ role ที่ไม่มีสิทธิ์
+    const visibleClaimed = canSeeInputVat(actor.role) ? claimed : claimed.map((c) => ({ ...c, amount: null }));
     return {
       receiving: { id: before.id, grNumber: before.grNumber, taxInvoice: { number: doc.number!, date: bangkokDateString(doc.date!), source: 'LATER' as const } },
-      claimed,
+      claimed: visibleClaimed as Array<Omit<ClaimedForReceiving, 'amount'> & { amount: string | null }>,
       accountingNotified,
     };
   }

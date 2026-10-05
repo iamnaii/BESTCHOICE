@@ -350,7 +350,7 @@ function App() {
           <Route
             path="/purchase-orders"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <PurchaseOrdersPage />
               </ProtectedRoute>
             }
@@ -366,7 +366,7 @@ function App() {
           <Route
             path="/purchase-orders/:id/goods-receivings/:receivingId/print"
             element={
-              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT']}>
                 <GoodsReceiptPrintPage />
               </ProtectedRoute>
             }

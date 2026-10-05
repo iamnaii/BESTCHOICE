@@ -338,6 +338,19 @@ describe('FinanceTaxService', () => {
       expect(prisma.journalEntry.findMany.mock.calls[0][0].where.id.in).toEqual(['je-c1']);
     });
 
+    it('กระจกจากเปลี่ยนเครื่องตำหนิ (flow defect-exchange stamp originalEntryId ไม่มี reversesEntryId) → จัดเข้าก้อน installment ติดลบ ไม่ปนก้อนค่าใช้จ่าย (final review C2)', async () => {
+      prisma.journalLine.findMany.mockResolvedValue([
+        makeLine('11-4101', '686.00', '0', 'JE-C1', new Date('2026-10-03T03:00:00Z'), false, { id: 'je-c1', metadata: claimMeta('c1', { reversed: true, reversedByEntryNumber: 'JE-DEF' }) }),
+        makeLine('11-4101', '0', '686.00', 'JE-DEF', new Date('2026-10-06T03:00:00Z'), false, { id: 'je-def', metadata: { tag: 'REVERSAL', flow: 'defect-exchange', originalEntryId: 'je-c1', contractId: 'c1' } }),
+      ]);
+      prisma.journalEntry.findMany.mockResolvedValue([{ id: 'je-c1', entryNumber: 'JE-C1', metadata: claimMeta('c1', { reversed: true }) }]);
+      const out = await service.getVatMonthly(2026, 10);
+      expect(out.vatInputExpense).toBe('0.00');
+      expect(out.vatInputInstallment).toBe('0.00');
+      expect(out.installmentInputVatLines.map((l) => [l.entryNumber, l.amount, l.reversal])).toEqual([['JE-C1', '686.00', false], ['JE-DEF', '-686.00', true]]);
+      expect(prisma.journalEntry.findMany.mock.calls[0][0].where.id.in).toEqual(['je-c1']);
+    });
+
     it('ไม่มีรายการ installment → vatInputInstallment 0.00 · installmentInputVatLines [] · vatInput = vatInputExpense', async () => {
       prisma.journalLine.findMany.mockResolvedValue([makeLine('11-4101', '50.00', '0', 'JE-EXP', new Date('2026-10-02T03:00:00Z'), false, { id: 'je-exp', metadata: { flow: 'expense-same-day' } })]);
       const out = await service.getVatMonthly(2026, 10);

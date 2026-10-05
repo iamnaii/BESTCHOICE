@@ -153,13 +153,14 @@ export class FinanceTaxService {
     type RawLine = (typeof lines)[number];
     const meta = (l: RawLine) => ((l.journalEntry.metadata ?? {}) as Record<string, unknown>);
     const isInputLine = (l: RawLine) => VAT_INPUT_ACCOUNTS.includes(l.accountCode);
-    const reversesIds = [
-      ...new Set(
-        lines
-          .filter((l) => isInputLine(l) && meta(l).tag === 'REVERSAL' && typeof meta(l).reversesEntryId === 'string')
-          .map((l) => meta(l).reversesEntryId as string),
-      ),
-    ];
+    // ใบกระจกชี้ต้นทางด้วย `reversesEntryId` (sweep ยกเลิกสัญญา / ยกเลิกเปลี่ยนเครื่อง) หรือ `originalEntryId` (เปลี่ยนเครื่องตำหนิ A.5a)
+    const mirrorOf = (l: RawLine): string | null => {
+      const m = meta(l);
+      if (m.tag !== 'REVERSAL') return null;
+      const id = m.reversesEntryId ?? m.originalEntryId;
+      return typeof id === 'string' ? id : null;
+    };
+    const reversesIds = [...new Set(lines.filter(isInputLine).map(mirrorOf).filter((v): v is string => !!v))];
     const originals = reversesIds.length
       ? await this.prisma.journalEntry.findMany({ where: { id: { in: reversesIds } }, select: { id: true, entryNumber: true, metadata: true } })
       : [];
@@ -168,10 +169,12 @@ export class FinanceTaxService {
         .filter((o) => ((o.metadata ?? {}) as Record<string, unknown>).flow === INSTALLMENT_INPUT_VAT_FLOW)
         .map((o) => [o.id, (o.metadata ?? {}) as Record<string, unknown>] as const),
     );
-    const isInstallmentLine = (l: RawLine) =>
-      isInputLine(l) &&
-      (meta(l).flow === INSTALLMENT_INPUT_VAT_FLOW ||
-        (meta(l).tag === 'REVERSAL' && installmentOriginals.has(meta(l).reversesEntryId as string)));
+    const isInstallmentLine = (l: RawLine) => {
+      if (!isInputLine(l)) return false;
+      if (meta(l).flow === INSTALLMENT_INPUT_VAT_FLOW) return true;
+      const src = mirrorOf(l);
+      return !!src && installmentOriginals.has(src);
+    };
 
     // ภาษีขายรอเรียกเก็บ (21-2102) และภาษีซื้อ (11-4101) — Decimal (เดิม Number + Math.round)
     let vatDeferred = new Prisma.Decimal(0); // 21-2102: credit - debit (liability account)
@@ -208,8 +211,10 @@ export class FinanceTaxService {
 
     // ก้อน 5 — ตารางรายสัญญา (ใบเคลม + กระจก) · metadata ที่แสดง = ของใบต้นทางเสมอ
     const installmentLines = lines.filter(isInstallmentLine);
-    const sourceMeta = (l: RawLine): Record<string, unknown> =>
-      meta(l).tag === 'REVERSAL' ? (installmentOriginals.get(meta(l).reversesEntryId as string) ?? {}) : meta(l);
+    const sourceMeta = (l: RawLine): Record<string, unknown> => {
+      const src = mirrorOf(l);
+      return src ? (installmentOriginals.get(src) ?? {}) : meta(l);
+    };
     const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
     const missingNumberIds = [
       ...new Set(

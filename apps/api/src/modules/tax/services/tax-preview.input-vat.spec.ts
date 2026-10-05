@@ -44,6 +44,18 @@ describe('TaxPreviewService.getInstallmentInputVatLineItems', () => {
     expect(out[0].description).toContain('กลับรายการ');
   });
 
+  it('ใบกระจกจากเปลี่ยนเครื่องตำหนิ (originalEntryId อย่างเดียว ไม่มี reversesEntryId) → รายการติดลบเช่นกัน (final review C2)', async () => {
+    const { service, prisma } = build(
+      [claimLine('0', '686', { id: 'je-def', tag: 'REVERSAL', flow: 'defect-exchange', originalEntryId: 'je-1', contractId: 'c1' }, 'JE-DEF')],
+      [{ productId: 'p1', receivedCost: d('10486'), receivedVat: d('686'), receiving: { po: { supplier: { name: 'ร้าน A', taxId: null } } } }],
+    );
+    prisma.journalEntry.findMany.mockResolvedValue([{ id: 'je-1', metadata: { flow: 'finance-input-vat-installment', contractNumber: 'CT-1', productId: 'p1', receivingId: 'gr-1', taxInvoiceNumber: 'IV-9' } }]);
+    const out = await (service as any).getInstallmentInputVatLineItems('fin-co', start, end);
+    expect(out).toHaveLength(1);
+    expect(out[0].vatAmount.toFixed(2)).toBe('-686.00');
+    expect(prisma.journalEntry.findMany.mock.calls[0][0].where.id.in).toEqual(['je-1']);
+  });
+
   it('ไม่มีรายการ → [] · query กรองด้วย companyId ของบริษัทที่ขอ preview (สมุด FINANCE เท่านั้นที่มีรายการนี้)', async () => {
     const { service, prisma } = build([]);
     await expect((service as any).getInstallmentInputVatLineItems('fin-co', start, end)).resolves.toEqual([]);

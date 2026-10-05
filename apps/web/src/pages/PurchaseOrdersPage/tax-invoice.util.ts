@@ -31,7 +31,8 @@ export function buildTaxInvoiceFormData(form: { number: string; date: string }, 
 
 export interface TaxInvoiceRecordResult {
   receiving: { id: string; grNumber: string; taxInvoice: { number: string; date: string; source: 'RECEIVING' | 'LATER' } };
-  claimed: { contractId: string; contractNumber: string; journalEntryNo: string; amount: string; postedOnInvoiceDate: boolean }[];
+  /** amount = null เมื่อผู้บันทึกไม่มีสิทธิ์เห็นยอด (Q5 — BM บันทึกได้แต่ไม่เห็นยอด) */
+  claimed: { contractId: string; contractNumber: string; journalEntryNo: string; amount: string | null; postedOnInvoiceDate: boolean }[];
   accountingNotified: boolean;
 }
 

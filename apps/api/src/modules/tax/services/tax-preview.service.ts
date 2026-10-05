@@ -305,14 +305,13 @@ export class TaxPreviewService {
     });
     if (lines.length === 0) return [];
     const metaOf = (l: (typeof lines)[number]) => (l.journalEntry.metadata ?? {}) as Prisma.JsonObject;
-    const reversesIds = [
-      ...new Set(
-        lines
-          .filter((l) => metaOf(l).tag === 'REVERSAL')
-          .map((l) => metaOf(l).reversesEntryId)
-          .filter((v): v is string => typeof v === 'string'),
-      ),
-    ];
+    // ใบกระจกชี้ต้นทางด้วย `reversesEntryId` (sweep ยกเลิกสัญญา) หรือ `originalEntryId` (เปลี่ยนเครื่องตำหนิ A.5a)
+    const mirrorOf = (m: Prisma.JsonObject): string | null => {
+      if (m.tag !== 'REVERSAL') return null;
+      const id = m.reversesEntryId ?? m.originalEntryId;
+      return typeof id === 'string' ? id : null;
+    };
+    const reversesIds = [...new Set(lines.map((l) => mirrorOf(metaOf(l))).filter((v): v is string => !!v))];
     const originals = reversesIds.length
       ? await this.prisma.journalEntry.findMany({ where: { id: { in: reversesIds } }, select: { id: true, metadata: true } })
       : [];
@@ -324,7 +323,8 @@ export class TaxPreviewService {
     const picked = lines.flatMap((l) => {
       const m = metaOf(l);
       if (m.flow === INSTALLMENT_INPUT_VAT_FLOW) return [{ line: l, source: m, reversal: false }];
-      const src = typeof m.reversesEntryId === 'string' ? originalById.get(m.reversesEntryId) : undefined;
+      const srcId = mirrorOf(m);
+      const src = srcId ? originalById.get(srcId) : undefined;
       return src ? [{ line: l, source: src, reversal: true }] : [];
     });
     if (picked.length === 0) return [];

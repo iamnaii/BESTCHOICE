@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { decorateReceivingForRole } from '../journal/input-vat/input-vat-visibility.util';
+import { decorateReceivingForRole, redactPoInputVat } from '../journal/input-vat/input-vat-visibility.util';
 import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, OrderPODto, ApprovePODto, DirectReceiveDto } from './dto/create-po.dto';
 import { PoQueryService } from './services/po-query.service';
 import { PoLifecycleService } from './services/po-lifecycle.service';
@@ -63,7 +63,7 @@ export class PurchaseOrdersService {
   /** ก้อน 5 — ใบรับของแต่ละใบได้ `taxInvoice` และ `items[].receivedVat` ถูกตัดตาม role (Q5) */
   async findOne(id: string, role?: string) {
     const po = await this.query.findOne(id);
-    return { ...po, goodsReceivings: po.goodsReceivings.map((gr) => decorateReceivingForRole(gr, role)) };
+    return redactPoInputVat(po, role);
   }
 
   create(dto: CreatePODto, userId: string, userRole?: string) {

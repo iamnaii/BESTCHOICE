@@ -36,3 +36,34 @@ export function decorateReceivingForRole<T extends ReceivingForInputVat & { item
 ): T & { taxInvoice: ReceivingTaxInvoiceView | null } {
   return { ...redactReceivingInputVat(gr, role), taxInvoice: receivingTaxInvoiceView(gr) };
 }
+
+/** C1 (Q5) — คอลัมน์ดิบบนแถวสัญญา (`inputVatAmount` · `inputVatJournalEntryId`) ต้องไม่หลุดไปถึง role ที่ไม่มีสิทธิ์ · สถานะ/เหตุผลคงอยู่ */
+export function redactContractInputVat<T extends { inputVatAmount?: unknown; inputVatJournalEntryId?: unknown }>(
+  contract: T,
+  role: string | null | undefined,
+): T {
+  if (canSeeInputVat(role)) return contract;
+  return { ...contract, inputVatAmount: null, inputVatJournalEntryId: null };
+}
+
+type ReceivingLike = ReceivingForInputVat & { items: Array<{ receivedVat?: unknown }> };
+type PoLike = {
+  items?: Array<{ receivingItems?: Array<{ receivedVat?: unknown }> }>;
+  goodsReceivings: ReceivingLike[];
+};
+
+/** C1 (Q5) — `GET /purchase-orders/:id`: ตัด `receivedVat` ทั้งใน `goodsReceivings[].items[]` และ `items[].receivingItems[]` + เติม `taxInvoice` */
+export function redactPoInputVat<T extends PoLike>(
+  po: T,
+  role: string | null | undefined,
+): Omit<T, 'goodsReceivings'> & { goodsReceivings: Array<T['goodsReceivings'][number] & { taxInvoice: ReceivingTaxInvoiceView | null }> } {
+  const canSee = canSeeInputVat(role);
+  return {
+    ...po,
+    items: po.items?.map((it) => ({
+      ...it,
+      receivingItems: it.receivingItems?.map((ri) => (canSee ? ri : { ...ri, receivedVat: null })),
+    })),
+    goodsReceivings: po.goodsReceivings.map((gr) => decorateReceivingForRole(gr, role)),
+  };
+}

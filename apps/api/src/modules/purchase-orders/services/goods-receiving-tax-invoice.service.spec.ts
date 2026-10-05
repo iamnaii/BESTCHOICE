@@ -14,11 +14,16 @@ function build(row = receiving()) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tx: any = {
     $queryRaw: jest.fn().mockResolvedValue([{ id: 'gr-1' }]),
-    goodsReceiving: { findFirst: jest.fn().mockResolvedValue(row), update: jest.fn().mockResolvedValue({ ...row, taxInvoiceNumber: 'IV-10' }) },
+    goodsReceiving: {
+      findFirst: jest.fn().mockResolvedValue(row),
+      update: jest.fn().mockResolvedValue({ ...row, taxInvoiceNumber: 'IV-10' }),
+      // syncClaimedInvoiceMetadata (I2) อ่านเครื่องในใบ — ค่าเริ่มต้นไม่มีเครื่อง
+      findUnique: jest.fn().mockResolvedValue({ items: [] }),
+    },
   };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const prisma: any = { goodsReceiving: { findFirst: jest.fn().mockResolvedValue(row) }, $transaction: jest.fn((cb: (t: unknown) => Promise<unknown>) => cb(tx)) };
-  const storage = { upload: jest.fn().mockResolvedValue('ok'), delete: jest.fn() };
+  const storage = { upload: jest.fn().mockResolvedValue('ok'), delete: jest.fn().mockResolvedValue(undefined) };
   const audit = { log: jest.fn().mockResolvedValue(undefined) };
   const template = { execute: jest.fn() };
   const service = new GoodsReceivingTaxInvoiceService(prisma, template as never, storage as never, audit as never);
@@ -49,6 +54,24 @@ describe('GoodsReceivingTaxInvoiceService.record', () => {
     expect(out).toMatchObject({ receiving: { id: 'gr-1', grNumber: 'GR-20261005-001', taxInvoice: { number: 'IV-10', date: '2026-10-04', source: 'LATER' } }, claimed: [{ contractNumber: 'CT-1' }], accountingNotified: false });
     expect(storage.upload).not.toHaveBeenCalled();
     expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'GOODS_RECEIVING_TAX_INVOICE_RECORDED', entity: 'goods_receiving', entityId: 'gr-1', userId: 'u-bm' }));
+  });
+
+  it('C1 (Q5): BRANCH_MANAGER ได้ claimed[].amount = null (บันทึกได้แต่ไม่เห็นยอด) · OWNER/ACCOUNTANT เห็นยอด', async () => {
+    const bmCase = build();
+    const bmOut = await bmCase.service.record('po-1', 'gr-1', dto, undefined, bm);
+    expect(bmOut.claimed[0]).toMatchObject({ contractNumber: 'CT-1', amount: null });
+    expect(JSON.stringify(bmOut)).not.toContain('686');
+    const ownerCase = build();
+    const ownerOut = await ownerCase.service.record('po-1', 'gr-1', dto, undefined, owner);
+    expect(ownerOut.claimed[0]).toMatchObject({ amount: '686.00' });
+  });
+
+  it('I2: แก้ใบกำกับที่บันทึกแล้ว → sync metadata ของ JE ที่เคลมไว้ใน tx เดียวกัน (syncClaimedInvoiceMetadata)', async () => {
+    const syncSpy = jest.spyOn(claim, 'syncClaimedInvoiceMetadata').mockResolvedValue(1);
+    const recorded = receiving({ taxInvoiceNumber: 'IV-OLD', taxInvoiceDate: new Date('2026-10-01T17:00:00Z') });
+    const { service, tx } = build(recorded);
+    await service.record('po-1', 'gr-1', dto, undefined, owner);
+    expect(syncSpy).toHaveBeenCalledWith(tx, 'gr-1', { number: 'IV-10', date: new Date('2026-10-03T17:00:00Z') });
   });
 
   it('แนบรูป JPEG → อัปโหลด key goods-receivings/tax-invoices/<yyyymmdd>/<uuid>.jpg แล้วเก็บ key', async () => {

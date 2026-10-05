@@ -146,6 +146,8 @@ describe('ContractWorkflowService', () => {
         findUnique: jest.fn().mockResolvedValue(mockContract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
         update: jest.fn().mockResolvedValue({ ...mockContract, status: 'ACTIVE' }),
+        // ก้อน 5 (I1) — findConflictingClaim: ไม่มีสัญญาอื่นเคลมเครื่องนี้อยู่
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       installmentSchedule: {
         // generateInstallmentSchedules now runs inside the activation tx. These

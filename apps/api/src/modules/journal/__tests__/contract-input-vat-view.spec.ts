@@ -1,6 +1,6 @@
 import { Decimal } from '@prisma/client/runtime/library';
 import { buildContractInputVatView } from '../input-vat/contract-input-vat-view';
-import { decorateReceivingForRole } from '../input-vat/input-vat-visibility.util';
+import { decorateReceivingForRole, redactContractInputVat, redactPoInputVat } from '../input-vat/input-vat-visibility.util';
 
 /** ก้อน 5 — response หน้าสัญญา/ใบรับของ: ยอดเห็นเฉพาะ OWNER/FM/ACCOUNTANT (Q5) · สถานะ+เหตุผลเห็นทุก role */
 const receiving = {
@@ -69,5 +69,34 @@ describe('decorateReceivingForRole', () => {
     expect(decorateReceivingForRole({ ...gr, supplierDocType: 'DELIVERY_NOTE', taxInvoiceNumber: 'IV-10', taxInvoiceDate: new Date('2026-10-03T17:00:00Z') }, 'OWNER').taxInvoice)
       .toEqual({ number: 'IV-10', date: '2026-10-04', source: 'LATER' });
     expect(decorateReceivingForRole({ ...gr, supplierDocType: 'DELIVERY_NOTE' }, 'OWNER').taxInvoice).toBeNull();
+  });
+});
+
+/** final review C1 — คอลัมน์ดิบของสัญญา/ใบสั่งซื้อต้องไม่หลุดไปถึง role ที่ไม่มีสิทธิ์ (Q5) */
+describe('redactContractInputVat / redactPoInputVat', () => {
+  const contract = { id: 'c1', inputVatStatus: 'CLAIMED', inputVatAmount: new Decimal('686'), inputVatJournalEntryId: 'je-1', inputVatReason: null, other: 1 };
+  it('BRANCH_MANAGER/SALES → inputVatAmount + inputVatJournalEntryId เป็น null · สถานะ/เหตุผล/ฟิลด์อื่นคงอยู่', () => {
+    for (const role of ['BRANCH_MANAGER', 'SALES', undefined]) {
+      const out = redactContractInputVat(contract, role);
+      expect(out).toMatchObject({ id: 'c1', inputVatStatus: 'CLAIMED', inputVatAmount: null, inputVatJournalEntryId: null, other: 1 });
+      expect(JSON.stringify(out)).not.toContain('686');
+    }
+  });
+  it('OWNER/FINANCE_MANAGER/ACCOUNTANT → คืนออบเจ็กต์เดิม', () => {
+    for (const role of ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT']) expect(redactContractInputVat(contract, role)).toBe(contract);
+  });
+  it('ใบสั่งซื้อ: items[].receivingItems[].receivedVat และ goodsReceivings[].items[].receivedVat ถูกตัดสำหรับ BM · taxInvoice ยังเติมให้', () => {
+    const po = {
+      id: 'po-1',
+      items: [{ id: 'it1', receivingItems: [{ id: 'ri1', receivedVat: new Decimal('686') }] }, { id: 'it2', receivingItems: [] }],
+      goodsReceivings: [{ ...receiving, items: [{ id: 'i1', receivedVat: new Decimal('686') }] }],
+    };
+    const bm = redactPoInputVat(po, 'BRANCH_MANAGER');
+    expect(JSON.stringify(bm)).not.toContain('686');
+    expect(bm.items[0].receivingItems[0].receivedVat).toBeNull();
+    expect(bm.goodsReceivings[0].taxInvoice).toEqual({ number: 'IV-9', date: '2026-04-01', source: 'RECEIVING' });
+    const owner = redactPoInputVat(po, 'OWNER');
+    expect(owner.items[0].receivingItems[0].receivedVat).toEqual(new Decimal('686'));
+    expect(owner.goodsReceivings[0].items[0].receivedVat).toEqual(new Decimal('686'));
   });
 });

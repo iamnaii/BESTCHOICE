@@ -107,7 +107,7 @@ export default function TaxInvoiceDialog({ open, onClose, po, receiving, onRecor
               <ul className="mt-2 text-xs text-muted-foreground space-y-0.5">
                 {result.claimed.map((c) => (
                   <li key={c.contractId}>
-                    {c.contractNumber} · {c.journalEntryNo} · {c.amount} ฿{c.postedOnInvoiceDate ? ' · ลงวันนี้ (งวดเดือนเปิดสัญญาปิดแล้ว)' : ''}
+                    {c.contractNumber} · {c.journalEntryNo}{c.amount != null ? ` · ${c.amount} ฿` : ''}{c.postedOnInvoiceDate ? ' · ลงวันนี้ (งวดเดือนเปิดสัญญาปิดแล้ว)' : ''}
                   </li>
                 ))}
               </ul>

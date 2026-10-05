@@ -45,6 +45,7 @@ import { ProductsService } from '../../products/products.service';
 import { FinanceTaxService } from '../../finance-tax/finance-tax.service';
 import { INPUT_VAT_PERIOD_TODO_TAG } from '../../journal/input-vat/installment-input-vat.claim';
 import { seedVerifiedContractApproval } from '../../contracts/__tests__/credit-approval.fixture';
+import { ContractQueryService } from '../../contracts/services/contract-query.service';
 import { bangkokCalendarParts } from '../../../utils/date.util';
 
 const prisma = new PrismaClient();
@@ -80,6 +81,7 @@ const cancellations = new ContractCancellationService(
   () => companyResolver,
 );
 const financeTax = new FinanceTaxService(prisma as never);
+const contractQuery = new ContractQueryService(prisma as never);
 // คอนเนกชันที่สอง — เทสแข่งกัน (ข้อ 7)
 const prisma2 = new PrismaClient({ transactionOptions: { timeout: 20_000 } });
 const taxInvoiceService2 = new GoodsReceivingTaxInvoiceService(
@@ -313,6 +315,22 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     expect(dec((await contractRow(contract.id)).inputVatAmount!.toString()).toFixed(2)).toBe('686.00');
     // B ยังไม่ขาย — ไม่มี JE ของ B
     expect(await prisma.journalEntry.count({ where: { metadata: { path: ['productId'], equals: b.id } as never, deletedAt: null } })).toBe(0);
+
+    // Q5 (final review C1 / Review Focus 5): response ทั้งก้อนของ BM/SALES ต้องไม่มียอด VAT เลย — OWNER เห็น
+    const bmUser = { id: adminId, role: 'BRANCH_MANAGER', branchId: a.branchId } as never;
+    const bmContract = JSON.stringify(await contractQuery.findOne(contract.id, bmUser));
+    expect(bmContract).not.toContain('686');
+    expect(bmContract).toContain('"inputVatStatus":"CLAIMED"');
+    const bmList = JSON.stringify(await contractQuery.findAll({ search: contract.contractNumber }, bmUser));
+    expect(bmList).not.toContain('686');
+    const bmPo = JSON.stringify(await poService.findOne(po.id, 'BRANCH_MANAGER'));
+    expect(bmPo).not.toContain('686.00');
+    expect(bmPo).not.toContain('343.00');
+    expect(bmPo).toContain('"taxInvoice":{');
+    const ownerPo = JSON.stringify(await poService.findOne(po.id, 'OWNER'));
+    expect(ownerPo).toContain('686');
+    const ownerContract = JSON.stringify(await contractQuery.findOne(contract.id, { id: adminId, role: 'OWNER' } as never));
+    expect(ownerContract).toContain('"amount":"686.00"');
   }, 180_000);
 
   it('2. ยกเลิกสัญญา (C-1) → ตัวกวาดกระจก JE ภาษีซื้อ · สัญญา REVERSED · เปิดสัญญาใหม่บนเครื่องเดิม → เคลมใหม่', async () => {
@@ -359,7 +377,8 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
 
     const out = await taxInvoiceService.record(po.id, receivingId, { number: `IV-${RUN}-3`, date: today() }, undefined, { id: adminId, role: 'BRANCH_MANAGER' });
     expect(out.claimed).toHaveLength(1);
-    expect(out.claimed[0]).toMatchObject({ contractId: contract.id, amount: '686.00', postedOnInvoiceDate: false });
+    expect(out.claimed[0]).toMatchObject({ contractId: contract.id, amount: null, postedOnInvoiceDate: false }); // BM ไม่เห็นยอด (Q5)
+    expect(dec((await contractRow(contract.id)).inputVatAmount!.toString()).toFixed(2)).toBe('686.00');
     expect(out.accountingNotified).toBe(false);
     const [je] = await inputVatEntries(contract.id);
     const oneA = await prisma.journalEntry.findFirstOrThrow({ where: { AND: [{ metadata: { path: ['tag'], equals: '1A' } as never }, { metadata: { path: ['contractId'], equals: contract.id } as never }] } });
@@ -372,7 +391,13 @@ describe('ก้อน 5 — ภาษีซื้อเครื่องขา
     await expect(taxInvoiceService.record(po.id, receivingId, { number: `IV-${RUN}-3X`, date: today() }, undefined, { id: adminId, role: 'BRANCH_MANAGER' })).rejects.toThrow('เฉพาะเจ้าของหรือฝ่ายบัญชี');
     const again = await taxInvoiceService.record(po.id, receivingId, { number: `IV-${RUN}-3X`, date: today() }, undefined, { id: adminId, role: 'OWNER' });
     expect(again.claimed).toHaveLength(0);
-    expect(await inputVatEntries(contract.id)).toHaveLength(1);
+    const after = await inputVatEntries(contract.id);
+    expect(after).toHaveLength(1);
+    // I2 — metadata ของ JE ที่เคลมไว้ตามใบกำกับใหม่ (รายงาน ภ.พ.30 อ่านจาก metadata)
+    expect(after[0].metadata).toMatchObject({ taxInvoiceNumber: `IV-${RUN}-3X` });
+    // Q5 — ผู้บันทึกครั้งแรกเป็น BRANCH_MANAGER: บันทึกได้แต่ไม่เห็นยอด ⇒ claimed[].amount = null (ยอดจริงอยู่ใน JE/คอลัมน์สัญญา)
+    expect(out.claimed[0].amount).toBeNull();
+    expect(JSON.stringify(out)).not.toContain('686');
   }, 180_000);
 
   it('4. ผู้จัดจำหน่ายไม่จด VAT → receivedVat 0 · เปิดสัญญา = NOT_ELIGIBLE เหตุผล · ไม่มี JE · ไม่มี Todo · บันทึกใบกำกับถูกปฏิเสธ', async () => {

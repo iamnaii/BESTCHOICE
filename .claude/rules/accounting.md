@@ -1521,9 +1521,9 @@ Currently only inventory transfer uses paired wrapping; the existing FINANCE tem
 > **Stale note #4 (2026-09-29):** ฝ่ายบัญชีเคาะแล้ว และ **การรับสินค้าเข้าลงบัญชีแล้ว**
 > (`ShopGoodsReceivingTemplate` — ดูหัวข้อ "รับสินค้าเข้าจากใบสั่งซื้อ — ลงบัญชีตอนรับของ" ด้านล่าง).
 > ที่ยังไม่ลงบัญชีเหลือ ~~**การจ่ายเงินผู้จัดจำหน่าย (รวมมัดจำ)**~~ (**ทำแล้ว 2026-10-05 — ก้อน 2** `SupplierPaymentService` +
-> `ShopSupplierPaymentTemplate` · ดู `docs/accounting/supplier-payments-2026-10.md`) และ **การปรับสต๊อก** เป็นก้อนหลัก —
-> รายการเต็ม (รวมตีกลับจากคิวรอถ่ายรูป / แก้ต้นทุนด้วยมือ / เพิ่ม-ลบสินค้าด้วยมือ / ยอดยกมา) อยู่ในตาราง
-> "ที่ยังเปิดอยู่" ของหัวข้อนั้น.
+> `ShopSupplierPaymentTemplate` · ดู `docs/accounting/supplier-payments-2026-10.md`) และ ~~**การปรับสต๊อก**~~ (**ทำแล้ว 2026-10-05 — ก้อน 3**
+> `StockAdjustmentsService` + `ShopStockWriteOffTemplate` · ดูหัวข้อ "ตัดสินค้า — สูญหาย/เสียหาย/ตัดจำหน่าย/พบของคืน") —
+> รายการที่เหลือ (แก้ต้นทุนด้วยมือ / เพิ่มสินค้าด้วยมือ / ยอดยกมา) อยู่ในตาราง "ที่ยังเปิดอยู่" ของหัวข้อรับสินค้าเข้า.
 
 All live at `apps/api/src/modules/journal/cpa-templates/`. Each is idempotent via `metadata.flow + metadata.idempotencyKey` (DB-level partial unique index since P3-SP5 DEEP fix W8 — `journal_entries_idempotency_idx`).
 
@@ -1703,14 +1703,45 @@ Forward-only — ใบรับของก่อนวันที่ deploy �
 | เรื่อง | สถานะ |
 |---|---|
 | ~~จ่ายเงินผู้จัดจำหน่าย + มัดจำ~~ | **ทำแล้ว 2026-10-05 (ก้อน 2)** — ตาราง `purchase_order_payments` · `SupplierPaymentService` (มัดจำ `Dr S11-4201 / Cr S11-1202` · ชำระ `Dr S21-110x / Cr S11-1202` · หักมัดจำเข้าเจ้าหนี้อัตโนมัติตอนรับของ · ยกเลิกใบที่มัดจำ: ได้คืน `S11-1201` / ไม่ได้คืน `S53-1105`) · `S11-4201` + `S53-1105` เปิดในผังแล้ว (migration 20261018 + shop-coa.csv) · `paidAmount`/`paymentStatus` ของใบ = ผลรวมจากตาราง ห้ามเขียนตรง · `PATCH :id/payment` = 410 · รายละเอียด `docs/accounting/supplier-payments-2026-10.md` |
-| ปรับสต๊อก หาย/เสียหาย/ตัดจำหน่าย (`Dr S53-1102` — รับรองแล้ว ข้อ ข6 ข7) | ยังไม่ทำ — วันนี้ไม่มีขั้นตอนอนุมัติจริง (ผู้ขอเลือกชื่อผู้อนุมัติเอง) เจ้าของสั่งให้เจ้าของอนุมัติทุกรายการ ต้องออกแบบขั้นตอนก่อน |
+| ~~ปรับสต๊อก หาย/เสียหาย/ตัดจำหน่าย (`Dr S53-1102` — รับรองแล้ว ข้อ ข6 ข7)~~ | **ทำแล้ว 2026-10-05 (ก้อน 3)** — คำขอตัดสินค้า `SA-YYYYMMDD-NNNN` → เจ้าของอนุมัติทุกใบ → `Dr S53-1102 / Cr S11-200x` เฉพาะเครื่องที่เคยลงบัญชีรับเข้า · เสียหายคงในสต๊อก ไม่ลง (ข7) · ดูหัวข้อ "ตัดสินค้า — สูญหาย/เสียหาย/ตัดจำหน่าย/พบของคืน" |
 | ~~ตีกลับเครื่องจากคิวรอถ่ายรูป (`rejectQC`) หลังรับเข้าแล้ว~~ | **ปิดแล้ว (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)** — เครื่องในคิวยังไม่ลงบัญชี จึงตีกลับได้โดยไม่มีอะไรต้องกลับรายการ · เครื่องที่ลงไปแล้ว (เคยเข้าคลังแล้วถูกเปลี่ยนกลับมารอถ่ายรูป) `rejectQC` ปฏิเสธพร้อมให้แจ้งฝ่ายบัญชี |
-| ปรับสต๊อก/ตัดจำหน่ายเครื่องจากใบสั่งซื้อที่ยังรอถ่ายรูป (งานก้อน 3) | เครื่องนี้ยังไม่มีสินค้าคงคลังในบัญชี (`journalEntryId` ว่าง) — รายการตัดจำหน่ายต้องตรวจ `journalEntryId` ก่อน ไม่งั้นจะเครดิตสินค้าที่ไม่เคยเดบิต |
-| แก้ `costPrice`/หมวดสินค้าด้วยมือ (`PATCH /products/:id`) · เพิ่มสินค้าด้วยมือ (`POST /products`) · ลบสินค้า | ไม่ลงบัญชี (มีอยู่เดิม) |
+| ~~ปรับสต๊อก/ตัดจำหน่ายเครื่องจากใบสั่งซื้อที่ยังรอถ่ายรูป (งานก้อน 3)~~ | **ปิดแล้ว 2026-10-05** — `resolveBookedInventory` (`inventory/booked-inventory.util.ts`) ตรวจหลักฐานรับเข้าก่อน (ใบรับของที่มี JE · รับซื้อ · รับคืน · เปลี่ยนเครื่อง); ไม่มี = ตัดโดยไม่มี JE + Todo แจ้งฝ่ายบัญชี (แท็ก `stock-adjustment-unbooked`) |
+| แก้ `costPrice`/หมวดสินค้าด้วยมือ (`PATCH /products/:id`) · เพิ่มสินค้าด้วยมือ (`POST /products`) | ไม่ลงบัญชี (มีอยู่เดิม) · **ลบสินค้า** ที่ลงบัญชีรับเข้าแล้ว **ปิดแล้ว 2026-10-05** (`ProductsService.remove` → 400 ชี้เมนูตัดสินค้า) — ลบได้เฉพาะเครื่องที่ไม่เคยลงบัญชี |
 | กดรับของซ้ำหลังหน้าจอค้าง | การรับของไม่มี idempotency ระดับคำขอ (มีอยู่เดิม) — อุปกรณ์เสริมที่ไม่มี IMEI รับซ้ำได้ และตอนนี้ลงบัญชีซ้ำด้วย |
 | ป้ายช่องราคาในหน้ารับเข้าตรง ("ราคาทุน/ชิ้น") | เป็นราคาก่อน VAT แต่ต้นทุนที่เก็บเป็นราคารวม VAT — ยังไม่เปลี่ยนข้อความ (งานหน้าจอ รอเจ้าของ) |
 | รายงานที่รวมต้นทุน (`transactional-report` ต้นทุนขาย/มูลค่าสต๊อก · `stock-overview` · `operational-report`) | ช่วงเปลี่ยนผ่านจะปนต้นทุนก่อน VAT (เครื่องเก่า) กับรวม VAT (เครื่องใหม่) · เพดานส่วนลดของพนักงานที่ POS (`discount-policy.util`) ขยับตามต้นทุนใหม่ |
 | ยอดยกมาของสินค้าที่มีอยู่ก่อนเริ่มใช้ | รอคำตอบฝ่ายบัญชี |
+
+---
+
+## ตัดสินค้า — สูญหาย/เสียหาย/ตัดจำหน่าย/พบของคืน (ก้อน 3 · 2026-10-05)
+
+Spec: `~/Desktop/App/output/plans/2026-10-05-k3-stock-writeoff.md` (นอก repo — repo เป็น public) · โค้ด: `inventory/stock-adjustments.service.ts`
+(`createRequest` / `cancel` / `approve` / `reject` / `preview` / `lookupProduct`) · `inventory/booked-inventory.util.ts` (`resolveBookedInventory`) ·
+`inventory/stock-adjustment-number.service.ts` (`SA-YYYYMMDD-NNNN`) · `journal/cpa-templates/shop-stock-writeoff.template.ts` ·
+`products/product-status.util.ts` (`ADJUSTMENT_TARGET_DENY`) · Integration: `inventory/__tests__/stock-adjustment.integration.spec.ts` (CI glob `INVENTORY_FILES`) ·
+เอกสารถึงฝ่ายบัญชี: `docs/accounting/stock-writeoff-2026-10.md` · หน้าจอ `/stock/adjustments` (เมนู คลังสินค้า › ตัดสินค้า).
+
+**คำตัดสินเจ้าของ 2026-10-05 (ปิดประเด็น):** เจ้าของอนุมัติทุกใบ (BM/FM อนุมัติไม่ได้อีก · ไม่มี 4-eyes ที่ผู้ขอเลือกผู้อนุมัติเอง) · ผู้ขอ =
+SALES/BM (สาขาตัวเอง) + OWNER · ระหว่างรอ เครื่องขาย/จอง/โอนไม่ได้ (สถานะ `ADJUSTMENT_PENDING`) · เหตุผล "เสียหาย" ต้องมีรูป ≥ 1 ·
+ลำดับงาน ก้อน 2 → 3 → 5. **คำตอบฝ่ายบัญชี 29–30/09/2569:** ข6 สูญหาย/ตัดจำหน่าย `Dr S53-1102 / Cr S11-2001|2002|2003` ที่ต้นทุน ณ วันอนุมัติ ·
+พบของคืน = กลับรายการใบเดิม · แก้ไขข้อมูล/อื่น ๆ ไม่ลง · ข6.2 หลักฐานในโปรแกรมพอ (ไม่ต้องใบแจ้งความ) · **ข7 เครื่องเสียหายที่ยังอยู่ = คงในสต๊อก ไม่ลง ไม่ลบ** ·
+ข้อ 8 เครื่องที่ยังไม่ลงบัญชีรับเข้าตัดได้โดยไม่มี JE แล้วแจ้งฝ่ายบัญชี.
+
+| เหตุผล | ส่งคำขอแล้ว | เมื่อเจ้าของอนุมัติ | JE |
+|---|---|---|---|
+| `LOST` สูญหาย | เครื่อง → `ADJUSTMENT_PENDING` | `LOST` + soft delete + `wasPreviouslyDamaged` | `Dr S53-1102 / Cr S11-200x` ที่ `costPrice` **เฉพาะเมื่อ** `resolveBookedInventory().booked` และต้นทุน > 0 |
+| `WRITE_OFF` ตัดจำหน่าย | → `ADJUSTMENT_PENDING` (ขอจาก `DAMAGED` ได้) | `WRITTEN_OFF` + soft delete | เหมือน LOST |
+| `DAMAGED` เสียหาย (รูป ≥ 1) | → `ADJUSTMENT_PENDING` | `DAMAGED` **ไม่ลบ** คงในสต๊อก (ข7) · ขายต่อ = คำขอ `FOUND` → `IN_STOCK` + ยืนยันราคา · ทิ้ง = คำขอ `WRITE_OFF` | ไม่มี |
+| `FOUND` พบของคืน | ไม่พักขาย (เครื่องถูกลบ/หาย/เสียอยู่แล้ว) | `LOST`/`DAMAGED`/`WRITTEN_OFF` → `IN_STOCK` + `stockInDate` + `bookIfPending` · สถานะอื่นที่ถูกลบ = กู้แถว คงสถานะเดิม | **กระจก** JE ตัดเดิมที่ยังไม่ถูกกลับ (`reversesAdjustmentId` ชี้ใบเดิม · ใบเดิม stamp `reversed/reversedByEntryNumber`) · ไม่มีใบเดิม = ไม่มี JE |
+| `CORRECTION` / `OTHER` | ไม่พักขาย | ไม่แตะเครื่อง | ไม่มี |
+
+- **`resolveBookedInventory(tx, productId)`** — หยุดที่ข้อแรกที่เข้า: (1) มีแถว `GoodsReceivingItem` → ตัดสินจาก `journalEntryId` ของแถวนั้นเท่านั้น (เครื่องจาก PO ที่ยังรอถ่ายรูป = ไม่ booked ห้ามไปค้นสายอื่น) (2) `Product.checklistResults.source === 'trade-in'` → JE flow `shop-trade-in` ที่ `metadata.tradeInId` (3) JE flow `shop-repossession-intake` ที่ `metadata.productId` (4) JE flow `shop-exchange-return` ที่ `metadata.oldProductId` และไม่ `reversed` · ยอด = บรรทัด Dr บน `S11-200[1-4]` · **ไม่ booked แต่ต้นทุน > 0** → Todo MEDIUM แท็ก `stock-adjustment-unbooked` + `sa:<เลขคำขอ>` ถึงฝ่ายบัญชี (ปรับยอดยกมา/รายการปรับปรุงเอง — ระบบไม่ลง) · ยอดรับเข้า ≠ `costPrice` → Sentry warning `booked-amount-mismatch` หลัง commit (ลงที่ `costPrice`)
+- **JE** (`ShopStockWriteOffTemplate`): companyId SHOP · `reference sa:<adjustmentId>` · metadata `tag SHOP_STOCK_WRITEOFF` · `flow shop-stock-writeoff` · `idempotencyKey shop-stock-writeoff:<adjustmentId>` · `adjustmentId` · `requestNumber` · `productId` · `reason` · `branchId` · `inventoryAccountCode` · **ไม่ stamp `contractId`/`saleId`** · กลับรายการ: `reference sa:<foundAdjustmentId>:found` · `idempotencyKey shop-stock-writeoff-reversal:<foundAdjustmentId>` · tag `SHOP_STOCK_WRITEOFF_REVERSAL` · ปฏิเสธใบที่ไม่ใช่ tag นี้หรือถูกกลับแล้ว · `validatePeriodOpen` SHOP ที่วันอนุมัติ (งวดปิด = อนุมัติไม่ได้)
+- **แถว `StockAdjustment`** เก็บ `status` (`PENDING_APPROVAL`/`APPROVED`/`REJECTED`/`CANCELED`) · `costAmount` · `inventoryAccountCode` · `inventoryBooked` · `bookedSource` · `journalEntryId` (@unique — JE ตัด หรือ JE กลับรายการ) · `reversesAdjustmentId` · partial unique **หนึ่งคำขอ PENDING ต่อเครื่อง** (`stock_adjustments_one_pending_per_product`) · แถวก่อน migration 20261019 = `APPROVED` ไม่มีเลขคำขอ
+- **ด่าน:** สาขา (OWNER ทุกสาขา · อื่น ๆ สาขาตัวเอง fail-closed) · `assertProductNotHeld(..., 'STOCK_ADJUST')` · สถานะที่ขอได้ `IN_STOCK`/`PHOTO_PENDING`/`QC_PENDING`/`INSPECTION`/`REFURBISHED`/`PO_RECEIVED` (+`DAMAGED` เฉพาะ WRITE_OFF) · อนุมัติ: ล็อกใบ+เครื่อง `FOR UPDATE` เครื่องต้องยัง `ADJUSTMENT_PENDING` (409) · ไม่อนุมัติ/ยกเลิก = `updateMany where status ADJUSTMENT_PENDING` คืน `previousStatus` (ไม่ใช่ IN_STOCK เสมอ) · Todo เจ้าของ HIGH แท็ก `stock-adjustment` + `sa:<เลข>` ปิดอัตโนมัติเมื่อพิจารณา/ยกเลิก · AuditLog `STOCK_ADJUSTMENT_REQUESTED/APPROVED/REJECTED/CANCELED` หลัง commit · รูป = key `stock-adjustments/<yyyymmdd>/<uuid>.<ext>` ใน storage (ไม่ใช่ data URI) ลบทิ้ง best-effort เมื่อ tx ล้ม
+- **ช่องทางอื่นที่ปิด (Task 8):** `PATCH /products/:id` ตั้ง `DAMAGED`/`LOST`/`WRITTEN_OFF`/`ADJUSTMENT_PENDING` ไม่ได้ และแก้สถานะเครื่องที่ `ADJUSTMENT_PENDING` ไม่ได้ (`ADJUSTMENT_TARGET_DENY`) · `DELETE /products/:id` ปฏิเสธเครื่องที่ลงบัญชีรับเข้าแล้ว · POS / จอง / ด่านขาย กรอง `IN_STOCK` อยู่แล้วจึงมองไม่เห็นเครื่องที่รออนุมัติ (ไม่โชว์แถว "กดไม่ได้" ตาม mockup กระดาน 5 — ตั้งใจ)
+- **สิ่งที่ยังไม่ลง / ยังเปิดอยู่:** ยอดยกมา Tooltify และเครื่องที่เพิ่มด้วยมือ (ตัดได้ ไม่มี JE แจ้งบัญชี) · เครดิตโน้ตจากผู้จัดจำหน่ายกรณีเคลมเครื่องเสีย (ไม่มีในกติกา — WRITE_OFF ลงขาดทุนเต็ม) · เครื่องเสียหายขายต่อ: ต้อง `FOUND` ก่อน (เข้า IN_STOCK โดยไม่ผ่านปุ่มยืนยันราคา — carry เดิมของ Phase 5 two-hop ข้อ 2 ยังอยู่ แต่ตอนนี้ต้องเจ้าของอนุมัติ) · `getSummary` นับเฉพาะใบ `APPROVED`
 
 ---
 

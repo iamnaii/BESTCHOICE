@@ -1,11 +1,14 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { toBangkokDateString, toBangkokExpiryInstant } from '@/lib/date';
 import CreateBookingDialog from '../components/CreateBookingDialog';
 import type { Booking } from '../types';
+
+const toastMocks = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
+vi.mock('sonner', () => ({ toast: toastMocks }));
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -244,5 +247,104 @@ describe('CreateBookingDialog', () => {
         }),
       ),
     );
+  });
+
+  describe('fix round 1', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function renderControlled(initial: Partial<React.ComponentProps<typeof CreateBookingDialog>>) {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      });
+      const onSaved = vi.fn();
+      const ui = (props: Partial<React.ComponentProps<typeof CreateBookingDialog>>) => (
+        <MemoryRouter>
+          <QueryClientProvider client={client}>
+            <CreateBookingDialog open onClose={vi.fn()} onSaved={onSaved} {...props} />
+          </QueryClientProvider>
+        </MemoryRouter>
+      );
+      const view = render(ui(initial));
+      return {
+        onSaved,
+        rerender: (p: Partial<React.ComponentProps<typeof CreateBookingDialog>>) =>
+          view.rerender(ui(p)),
+      };
+    }
+
+    it('เปิดใหม่หลังปิด → ฟอร์มว่างเหมือนเดิม', async () => {
+      const { rerender } = renderControlled({});
+      await userEvent.click(screen.getByRole('combobox', { name: 'ลูกค้า' }));
+      await userEvent.type(screen.getByPlaceholderText('พิมพ์ชื่อหรือเบอร์โทร'), 'สม');
+      await userEvent.click(await screen.findByText('สมชาย ใจดี'));
+      await userEvent.type(screen.getByLabelText('ค้นหาเครื่องในสาขา'), 'iphone');
+      await userEvent.click(await screen.findByRole('button', { name: /iPhone 16 Pro 256GB/ }));
+      expect(screen.getByRole('button', { name: 'เปลี่ยนเครื่อง' })).toBeInTheDocument();
+      rerender({ open: false });
+      rerender({ open: true });
+      expect(screen.getByRole('combobox', { name: 'ลูกค้า' })).toHaveTextContent(
+        'ค้นหาชื่อหรือเบอร์โทรลูกค้า',
+      );
+      expect(screen.queryByRole('button', { name: 'เปลี่ยนเครื่อง' })).not.toBeInTheDocument();
+    });
+
+    it('เปลี่ยนใบที่แก้ A → B ฟอร์มแสดงของ B', () => {
+      const { rerender } = renderControlled({ initialBooking: paidBooking });
+      expect(screen.getByLabelText('หมายเหตุ')).toHaveValue('เดิม');
+      rerender({ initialBooking: { ...paidBooking, id: 'bk-2', notes: 'ใบอื่น' } });
+      expect(screen.getByLabelText('หมายเหตุ')).toHaveValue('ใบอื่น');
+    });
+
+    it('วันหมดอายุย้อนหลัง → ขึ้นข้อความผิดและปุ่มบันทึกปิด', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-10T05:00:00Z'));
+      renderDialog({ initialCustomer: customer });
+      await userEvent.type(screen.getByLabelText('ค้นหาเครื่องในสาขา'), 'iphone');
+      await userEvent.click(await screen.findByRole('button', { name: /iPhone 16 Pro 256GB/ }));
+      await userEvent.click(screen.getByRole('button', { name: /20%/ }));
+      expect(screen.getByRole('button', { name: 'บันทึกใบจอง' })).toBeEnabled();
+      await userEvent.click(screen.getByRole('button', { name: 'เลือกวันที่…' }));
+      const date = screen.getByLabelText('วันหมดอายุ');
+      expect(date).toHaveAttribute('min', '2026-10-10');
+      fireEvent.change(date, { target: { value: '2026-10-09' } });
+      expect(screen.getByText('วันหมดอายุต้องไม่ย้อนหลัง')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'บันทึกใบจอง' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'บันทึกและรับมัดจำเลย' })).toBeDisabled();
+    });
+
+    it('เซิร์ฟเวอร์ปฏิเสธ → toast.error ข้อความไทยของเซิร์ฟเวอร์ และไม่เรียก onSaved', async () => {
+      const msg = 'สินค้านี้ไม่พร้อมจอง — เลือกเครื่องอื่น';
+      mocks.post.mockRejectedValueOnce(new Error(msg));
+      const { onSaved } = renderDialog({ initialCustomer: customer });
+      await userEvent.type(screen.getByLabelText('ค้นหาเครื่องในสาขา'), 'iphone');
+      await userEvent.click(await screen.findByRole('button', { name: /iPhone 16 Pro 256GB/ }));
+      await userEvent.click(screen.getByRole('button', { name: /20%/ }));
+      await userEvent.click(screen.getByRole('button', { name: 'บันทึกใบจอง' }));
+      await waitFor(() => expect(toastMocks.error).toHaveBeenCalledWith(msg));
+      expect(onSaved).not.toHaveBeenCalled();
+    });
+
+    it('ชิปที่เลือกอยู่มี aria-pressed=true และทศนิยมเกิน 2 ตำแหน่งบล็อกการบันทึก', async () => {
+      renderDialog({ initialCustomer: customer });
+      await userEvent.type(screen.getByLabelText('ค้นหาเครื่องในสาขา'), 'iphone');
+      await userEvent.click(await screen.findByRole('button', { name: /iPhone 16 Pro 256GB/ }));
+      const full = screen.getByRole('button', { name: 'เต็มจำนวน' });
+      expect(full).toHaveAttribute('aria-pressed', 'false');
+      await userEvent.click(full);
+      expect(full).toHaveAttribute('aria-pressed', 'true');
+      await userEvent.click(screen.getByRole('button', { name: '3 วัน' }));
+      expect(screen.getByRole('button', { name: '3 วัน' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('button', { name: '7 วัน' })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+      fireEvent.change(screen.getByLabelText('เงินมัดจำที่จะรับ (บาท)'), {
+        target: { value: '100.123' },
+      });
+      expect(screen.getByText('ทศนิยมไม่เกิน 2 ตำแหน่ง')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'บันทึกใบจอง' })).toBeDisabled();
+    });
   });
 });

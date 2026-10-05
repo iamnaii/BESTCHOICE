@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Banknote, CalendarDays, ShieldCheck, Smartphone } from 'lucide-react';
@@ -60,6 +60,44 @@ const chipClass = (active: boolean) =>
       : 'border-border bg-card hover:bg-muted',
   );
 
+interface FormState {
+  customer: CustomerOption | null;
+  branchId: string;
+  product: SelectedProduct | null;
+  agreedPrice: number;
+  deposit: number;
+  expireDate: string;
+  customDate: boolean;
+  notes: string;
+}
+
+function buildInitialState(
+  initialBooking: Booking | undefined,
+  initialCustomer: CustomerOption | null | undefined,
+  userBranchId: string | null | undefined,
+): FormState {
+  const item = initialBooking?.items[0];
+  return {
+    customer: initialBooking?.customer ?? initialCustomer ?? null,
+    branchId: initialBooking?.branch.id ?? userBranchId ?? '',
+    product: item?.productId
+      ? {
+          productId: item.productId,
+          description: item.description,
+          unitPrice: Number(item.unitPrice),
+        }
+      : null,
+    agreedPrice: item ? Number(item.unitPrice) : 0,
+    deposit: Number(initialBooking?.depositAmount ?? 0),
+    expireDate: initialBooking ? originalExpiryDateOnly(initialBooking) : plusDays(7),
+    customDate: false,
+    notes: initialBooking?.notes ?? '',
+  };
+}
+
+const hasMoreThan2Decimals = (n: number) =>
+  Number.isFinite(n) && Math.abs(n * 100 - Math.round(n * 100)) > 1e-6;
+
 function Step({
   n,
   title,
@@ -98,28 +136,31 @@ export default function CreateBookingDialog({
   const queryClient = useQueryClient();
   const paidEdit = initialBooking?.status === 'PAID';
   const canCreateCustomer = ['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user?.role ?? '');
-  const initialItem = initialBooking?.items[0];
+  const init = buildInitialState(initialBooking, initialCustomer, user?.branchId);
 
-  const [customer, setCustomer] = useState<CustomerOption | null>(
-    initialBooking?.customer ?? initialCustomer ?? null,
-  );
-  const [branchId, setBranchId] = useState(initialBooking?.branch.id ?? user?.branchId ?? '');
-  const [product, setProduct] = useState<SelectedProduct | null>(
-    initialItem?.productId
-      ? {
-          productId: initialItem.productId,
-          description: initialItem.description,
-          unitPrice: Number(initialItem.unitPrice),
-        }
-      : null,
-  );
-  const [agreedPrice, setAgreedPrice] = useState(initialItem ? Number(initialItem.unitPrice) : 0);
-  const [deposit, setDeposit] = useState(Number(initialBooking?.depositAmount ?? 0));
-  const [expireDate, setExpireDate] = useState(() =>
-    initialBooking ? originalExpiryDateOnly(initialBooking) : plusDays(7),
-  );
-  const [customDate, setCustomDate] = useState(false);
-  const [notes, setNotes] = useState(initialBooking?.notes ?? '');
+  const [customer, setCustomer] = useState<CustomerOption | null>(init.customer);
+  const [branchId, setBranchId] = useState(init.branchId);
+  const [product, setProduct] = useState<SelectedProduct | null>(init.product);
+  const [agreedPrice, setAgreedPrice] = useState(init.agreedPrice);
+  const [deposit, setDeposit] = useState(init.deposit);
+  const [expireDate, setExpireDate] = useState(init.expireDate);
+  const [customDate, setCustomDate] = useState(init.customDate);
+  const [notes, setNotes] = useState(init.notes);
+
+  // เปิดใหม่/เปลี่ยนใบที่แก้/เปลี่ยนลูกค้าตั้งต้น → เริ่มฟอร์มใหม่ (ไม่พึ่ง key จากหน้าแม่)
+  useEffect(() => {
+    if (!open) return;
+    const next = buildInitialState(initialBooking, initialCustomer, user?.branchId);
+    setCustomer(next.customer);
+    setBranchId(next.branchId);
+    setProduct(next.product);
+    setAgreedPrice(next.agreedPrice);
+    setDeposit(next.deposit);
+    setExpireDate(next.expireDate);
+    setCustomDate(next.customDate);
+    setNotes(next.notes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialBooking?.id, initialCustomer?.id]);
 
   const { data: branches } = useQuery<BranchOption[]>({
     queryKey: ['booking-branches'],
@@ -133,12 +174,25 @@ export default function CreateBookingDialog({
   const total = product ? agreedPrice : 0;
   const balance = Math.max(0, total - deposit);
   const depositValid = isDepositInRange(deposit, total);
+  const today = plusDays(0);
+  const expiryUnchanged = !!initialBooking && expireDate === originalExpiryDateOnly(initialBooking);
+  const expiryInPast = !!expireDate && !expiryUnchanged && expireDate < today;
+  const expiryValid = !!expireDate && !expiryInPast;
+  const depositDecimals = hasMoreThan2Decimals(deposit);
+  const priceDecimals = hasMoreThan2Decimals(agreedPrice);
   const isValid = paidEdit
-    ? !!expireDate
-    : !!customer && !!branchId && !!product && agreedPrice >= 0 && depositValid && !!expireDate;
+    ? expiryValid
+    : !!customer &&
+      !!branchId &&
+      !!product &&
+      agreedPrice >= 0 &&
+      !priceDecimals &&
+      !depositDecimals &&
+      depositValid &&
+      expiryValid;
 
   const save = useMutation({
-    mutationFn: async (): Promise<Booking> => {
+    mutationFn: async (_vars: { collectDeposit: boolean }): Promise<Booking> => {
       const keepOriginal =
         !!initialBooking && expireDate === originalExpiryDateOnly(initialBooking);
       const expire = keepOriginal ? initialBooking!.expireDate : toBangkokExpiryInstant(expireDate);
@@ -176,17 +230,15 @@ export default function CreateBookingDialog({
         })
       ).data as Booking;
     },
+    onSuccess: (booking, vars) => {
+      toast.success(initialBooking ? 'แก้ไขใบจองแล้ว' : 'สร้างใบจองแล้ว');
+      void invalidateSalesQueries(queryClient, 'booking-updated');
+      void queryClient.invalidateQueries({ queryKey: ['bookings-summary'] });
+      onSaved(booking, { collectDeposit: vars.collectDeposit });
+    },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
-  const submit = (collectDeposit: boolean) =>
-    save.mutate(undefined, {
-      onSuccess: (booking) => {
-        toast.success(initialBooking ? 'แก้ไขใบจองแล้ว' : 'สร้างใบจองแล้ว');
-        void invalidateSalesQueries(queryClient, 'booking-updated');
-        void queryClient.invalidateQueries({ queryKey: ['bookings-summary'] });
-        onSaved(booking, { collectDeposit });
-      },
-    });
+  const submit = (collectDeposit: boolean) => save.mutate({ collectDeposit });
 
   const pickProduct = (sel: { productId: string; description: string; unitPrice: number }) => {
     setProduct(sel);
@@ -306,8 +358,12 @@ export default function CreateBookingDialog({
                     step="0.01"
                     value={agreedPrice}
                     onChange={(e) => setAgreedPrice(Number(e.target.value) || 0)}
+                    aria-invalid={priceDecimals}
                     className="text-right tabular-nums"
                   />
+                  {priceDecimals && (
+                    <p className="text-xs leading-snug text-destructive">ทศนิยมไม่เกิน 2 ตำแหน่ง</p>
+                  )}
                 </div>
               </div>
             )}
@@ -332,7 +388,7 @@ export default function CreateBookingDialog({
                   value={deposit}
                   readOnly={paidEdit}
                   onChange={(e) => setDeposit(Number(e.target.value) || 0)}
-                  aria-invalid={!paidEdit && total > 0 && !depositValid}
+                  aria-invalid={!paidEdit && ((total > 0 && !depositValid) || depositDecimals)}
                   className="h-10 text-right text-base font-medium tabular-nums"
                 />
                 {!paidEdit && (
@@ -344,6 +400,7 @@ export default function CreateBookingDialog({
                           key={pct}
                           type="button"
                           disabled={!total}
+                          aria-pressed={!!total && deposit === amount}
                           className={chipClass(!!total && deposit === amount)}
                           onClick={() => setDeposit(amount)}
                         >
@@ -354,12 +411,16 @@ export default function CreateBookingDialog({
                     <button
                       type="button"
                       disabled={!total}
+                      aria-pressed={!!total && deposit === total}
                       className={chipClass(!!total && deposit === total)}
                       onClick={() => setDeposit(total)}
                     >
                       เต็มจำนวน
                     </button>
                   </div>
+                )}
+                {!paidEdit && depositDecimals && (
+                  <p className="text-xs leading-snug text-destructive">ทศนิยมไม่เกิน 2 ตำแหน่ง</p>
                 )}
                 {!paidEdit && total > 0 && !depositValid && (
                   <p className="text-xs leading-snug text-destructive">
@@ -374,6 +435,7 @@ export default function CreateBookingDialog({
                     <button
                       key={days}
                       type="button"
+                      aria-pressed={!customDate && expireDate === plusDays(days)}
                       className={chipClass(!customDate && expireDate === plusDays(days))}
                       onClick={() => {
                         setCustomDate(false);
@@ -385,6 +447,7 @@ export default function CreateBookingDialog({
                   ))}
                   <button
                     type="button"
+                    aria-pressed={customDate}
                     className={chipClass(customDate)}
                     onClick={() => setCustomDate(true)}
                   >
@@ -395,9 +458,14 @@ export default function CreateBookingDialog({
                   <Input
                     type="date"
                     aria-label="วันหมดอายุ"
+                    min={today}
+                    aria-invalid={expiryInPast}
                     value={expireDate}
                     onChange={(e) => setExpireDate(e.target.value)}
                   />
+                )}
+                {expiryInPast && (
+                  <p className="text-xs leading-snug text-destructive">วันหมดอายุต้องไม่ย้อนหลัง</p>
                 )}
                 <p className="flex items-center gap-1.5 text-sm leading-snug">
                   <CalendarDays aria-hidden="true" className="size-4 text-muted-foreground" />

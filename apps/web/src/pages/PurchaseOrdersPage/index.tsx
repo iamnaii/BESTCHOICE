@@ -21,6 +21,8 @@ import { AccountsPayableTab } from './components/AccountsPayableTab';
 import { PurchaseModal } from './components/PurchaseModal';
 import { PODetailModal } from './components/PODetailModal';
 import { SupplierPaymentDialog, VoidSupplierPaymentDialog } from './components/SupplierPaymentDialog';
+import TaxInvoiceDialog from './components/TaxInvoiceDialog';
+import type { GoodsReceivingRecord } from './types';
 import { CancelPODialog } from './components/CancelPODialog';
 import { GoodsReceivingModal } from './components/GoodsReceivingModal';
 import { PurchasingSummaryStrip } from './components/PurchasingSummaryStrip';
@@ -40,6 +42,8 @@ export default function PurchaseOrdersPage() {
   const data = usePurchaseOrdersData({ onCreateSuccess });
   // ก้อน 2: สิทธิ์ตามคำตัดสินเจ้าของ 2026-10-05 — บันทึกจ่าย = เจ้าของ + ผู้จัดการสาขา · ยกเลิกรายการ = เจ้าของ
   const { user } = useAuth();
+  // ก้อน 5 — ใบรับของที่กำลังบันทึก/แก้ใบกำกับภาษี (dialog เปิดเมื่อไม่ null)
+  const [taxInvoiceTarget, setTaxInvoiceTarget] = useState<GoodsReceivingRecord | null>(null);
   const canRecordPayments = user?.role === 'OWNER' || user?.role === 'BRANCH_MANAGER';
   const canVoidPayments = user?.role === 'OWNER';
   const poPayments = usePoPayments(data.selectedPO?.id ?? null, data.isDetailModalOpen || data.isPaymentDialogOpen || !!data.cancelTarget);
@@ -304,6 +308,27 @@ export default function PurchaseOrdersPage() {
           data.setVoidTarget(payment);
         }}
         onCancel={(po) => data.openCancelDialog(po)}
+        role={user?.role}
+        onRecordTaxInvoice={(po, receiving) => {
+          data.setSelectedPO(po);
+          setTaxInvoiceTarget(receiving);
+        }}
+      />
+
+      <TaxInvoiceDialog
+        open={!!taxInvoiceTarget}
+        onClose={() => setTaxInvoiceTarget(null)}
+        po={data.selectedPO}
+        receiving={taxInvoiceTarget}
+        onRecorded={async () => {
+          // รีเฟรชใบที่เปิดอยู่ให้เห็นป้าย/ใบกำกับใหม่ แล้วให้ตารางโหลดใหม่
+          if (data.selectedPO) {
+            const { data: fresh } = await api.get(`/purchase-orders/${data.selectedPO.id}`);
+            data.setSelectedPO(fresh);
+            data.setPODetail(fresh);
+          }
+          queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+        }}
       />
 
       <SupplierPaymentDialog

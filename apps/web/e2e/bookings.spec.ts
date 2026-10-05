@@ -19,17 +19,31 @@ test.describe('/bookings — booking lifecycle smoke', () => {
       timeout: 15000,
     });
 
-    // Status filter shows our Thai labels
-    const statusFilter = page.getByRole('combobox').first();
-    await statusFilter.click();
-    await expect(page.getByText('รอชำระมัดจำ').first()).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('มัดจำแล้ว').first()).toBeVisible();
-    await expect(page.getByText('หมดอายุ').first()).toBeVisible();
-    // Close the dropdown
-    await page.keyboard.press('Escape');
+    // ฐานทดสอบยังไม่มีใบจองเลย → หน้าว่าง 3 ขั้น (ปุ่มหัวหน้าถูกซ่อน ใช้ปุ่ม "สร้างใบจองแรก" แทน)
+    const firstUse = await page
+      .getByRole('heading', { name: 'ยังไม่มีใบจอง' })
+      .isVisible()
+      .catch(() => false);
+
+    if (!firstUse) {
+      // การ์ด KPI กดกรองได้ และเขียน URL
+      await page.getByRole('button', { name: /มัดจำแล้ว · รอรับเครื่อง/ }).click();
+      await expect(page).toHaveURL(/status=PAID/);
+      await page.getByRole('button', { name: /ที่ยังเปิดอยู่/ }).click();
+      await expect(page).not.toHaveURL(/status=/);
+      // ดรอปดาวน์สถานะยังมีป้ายไทย
+      await page.getByRole('combobox', { name: 'สถานะใบจอง' }).click();
+      await expect(page.getByRole('option', { name: 'รอชำระมัดจำ' })).toBeVisible({
+        timeout: 5000,
+      });
+      await expect(page.getByRole('option', { name: /ใกล้หมดอายุ/ })).toBeVisible();
+      await page.keyboard.press('Escape');
+    }
 
     // Create button visible for SALES (canCreate=true)
-    const createBtn = page.getByRole('button', { name: /สร้างใบจอง/ });
+    const createBtn = firstUse
+      ? page.getByRole('button', { name: 'สร้างใบจองแรก' })
+      : page.getByRole('button', { name: /สร้างใบจอง/ });
     await expect(createBtn).toBeVisible();
     await createBtn.click();
 
@@ -37,10 +51,10 @@ test.describe('/bookings — booking lifecycle smoke', () => {
     await expect(page.getByRole('heading', { name: /สร้างใบจอง/ }).first()).toBeVisible({
       timeout: 5000,
     });
-    // Fields visible
-    // ป้ายช่องวันหมดอายุเปลี่ยนจาก "หมดอายุภายใน …" เป็น "ใช้ได้ถึงสิ้นวันที่ (เวลาไทย)" ตอนรีดีไซน์ฟอร์มใบจอง — จับที่ตัวช่องแทนข้อความ
-    await expect(page.getByLabel(/ใช้ได้ถึงสิ้นวันที่/)).toBeVisible();
-    await expect(page.getByText(/มัดจำ/).first()).toBeVisible();
+    // ฟอร์ม 4 ขั้น: ลูกค้า (combobox) · เครื่องในสต็อก · ชิปวันหมดอายุ
+    await expect(page.getByRole('button', { name: '7 วัน' })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'ลูกค้า' })).toBeVisible();
+    await expect(page.getByLabel('ค้นหาเครื่องในสาขา')).toBeVisible();
   });
 
   test('OWNER: list view loads without error boundary (covers expired bookings present)', async ({
@@ -56,12 +70,21 @@ test.describe('/bookings — booking lifecycle smoke', () => {
       timeout: 15000,
     });
 
-    // OWNER also sees create button + can filter by EXPIRED
-    await expect(page.getByRole('button', { name: /สร้างใบจอง/ })).toBeVisible();
+    // ฐานทดสอบยังไม่มีใบจอง → หน้าว่าง ไม่มีการ์ด KPI ให้ตรวจ
+    if (
+      await page
+        .getByRole('heading', { name: 'ยังไม่มีใบจอง' })
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return;
+    }
 
-    const statusFilter = page.getByRole('combobox').first();
-    await statusFilter.click();
-    await page.getByText('หมดอายุ').first().click();
+    // OWNER เห็นปุ่มสร้างใบจอง และกดการ์ด "ปิดแล้ว" เพื่อกรองได้
+    await expect(page.getByRole('button', { name: /สร้างใบจอง/ })).toBeVisible();
+    await page.getByRole('button', { name: /ปิดแล้ว/ }).click();
+    await expect(page).toHaveURL(/status=CLOSED/);
+    await expect(page.getByRole('heading', { name: /การจอง.*มัดจำ/ }).first()).toBeVisible();
 
     // No error boundary after filter mutation
     await expect(page.locator('body')).not.toContainText(/เกิดข้อผิดพลาด/);

@@ -27,7 +27,15 @@ export class BookingPage {
   }
 
   statusFilterTrigger(): Locator {
-    return this.page.getByRole('combobox').first();
+    return this.page.getByRole('combobox', { name: 'สถานะใบจอง' });
+  }
+
+  /** ฐานทดสอบไม่มีใบจองเลย → หน้าว่าง 3 ขั้น (ไม่มีการ์ด KPI / ตัวกรอง) */
+  async isFirstUse(): Promise<boolean> {
+    return this.page
+      .getByRole('heading', { name: 'ยังไม่มีใบจอง' })
+      .isVisible()
+      .catch(() => false);
   }
 
   /** Generic "select option by text" — works for any combobox after click() */

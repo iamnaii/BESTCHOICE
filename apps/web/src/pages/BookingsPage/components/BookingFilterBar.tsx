@@ -1,7 +1,7 @@
 import { Search } from 'lucide-react';
 import { DateRangeChips } from '@/components/ui/DateRangeChips';
 import ResponsiveFilterPanel from '@/components/ui/ResponsiveFilterPanel';
-import FilterSelect, { ALL } from '@/pages/CustomersPage/components/FilterSelect';
+import FilterSelect from '@/pages/CustomersPage/components/FilterSelect';
 import type { BookingView } from '../hooks/useBookingsQuery';
 import type { BranchOption } from '../types';
 import { STATUS_LABEL } from '../utils';

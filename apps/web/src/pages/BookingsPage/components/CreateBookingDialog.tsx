@@ -159,7 +159,6 @@ export default function CreateBookingDialog({
     setExpireDate(next.expireDate);
     setCustomDate(next.customDate);
     setNotes(next.notes);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialBooking?.id, initialCustomer?.id]);
 
   const { data: branches } = useQuery<BranchOption[]>({

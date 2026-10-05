@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import BookingDetailSheet from '../components/BookingDetailSheet';
 import { describeEvent } from '../components/BookingTimeline';
-import type { Booking } from '../types';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),

@@ -1,3 +1,4 @@
+import { ChatWorkAccessService } from './chat-work-access.service';
 import { ResponseCycleService } from '../../chat-engine/services/response-cycle.service';
 import {
   Injectable,
@@ -27,6 +28,7 @@ export class SessionOpsService {
    * Builds title from customer name and description from last 5 messages.
    */
   async createTicketFromRoom(roomId: string, staffId: string) {
+    await new ChatWorkAccessService(this.prisma).roomContext(roomId, { id: staffId });
     const session = await this.prisma.chatRoom.findFirst({
       where: { id: roomId, deletedAt: null },
       include: {

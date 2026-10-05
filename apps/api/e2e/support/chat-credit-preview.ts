@@ -409,8 +409,9 @@ class PreviewController {
       notes: [],
     };
   }
-  @Get('staff-chat/rooms/:id/messages') messages(@Param('id') roomId: string) {
-    return db.chatMessage.findMany({ where: { roomId }, orderBy: { createdAt: 'asc' } });
+  @Get('staff-chat/rooms/:id/messages') async messages(@Param('id') roomId: string) {
+    const messages = await db.chatMessage.findMany({ where: { roomId }, orderBy: { createdAt: 'asc' } });
+    return messages.map(message => ({...message, mediaUrl: message.mediaUrl?.startsWith('staff-chat/library/') ? `/api/admin/preview/library/media/${message.id}` : message.mediaUrl}));
   }
   @Patch('staff-chat/rooms/:id/customer') link(
     @Param('id') id: string,
@@ -522,7 +523,8 @@ async function main() {
   const chatWorkRooms = await seedChatWork(db, manager, actor.id);
   const facebookComments = await previewFacebookComments(db, actor.id);
   await db.systemConfig.upsert({where:{key:'chat_cloud_library_enabled'},create:{key:'chat_cloud_library_enabled',value:'true'},update:{value:'true',deletedAt:null}});
-  const library = previewChatLibrary(db, manager);
+  await db.cannedResponse.upsert({where:{shortcut:'/preview-thanks'},create:{shortcut:'/preview-thanks',title:'ขอบคุณ (ตัวอย่าง)',content:'ขอบคุณที่สนใจ BESTCHOICE ครับ'},update:{}});
+  const library = previewChatLibrary(db, manager, storageForPreview as StorageService, () => actor.id);
   const afterSales = previewAfterSales(db, storageForPreview as StorageService, () => actor);
   const module = await Test.createTestingModule({
     controllers: [ChatLibraryController, library.controller, previewChatAnalytics(db,manager,()=>actor.id,previewActors.receiver.id), ChatAnalyticsController,
@@ -633,6 +635,7 @@ async function main() {
     if (
       /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path.startsWith('/api/chat-analytics/v2/') || path.startsWith('/api/staff-chat/facebook-comments') || path.startsWith('/api/staff-chat/service-requests/') || path.startsWith('/api/after-sales') || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
+      (path === '/api/staff-chat/canned-responses' || /^\/api\/staff-chat\/rooms\/[^/]+\/canned-responses\/[^/]+\/preview$/.test(path)) ||
       /^\/api\/staff-chat\/library\//.test(path) ||
       /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|handoffs|follow-ups|service-requests|service-intake-options|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,

@@ -37,7 +37,7 @@ describe('Library send ACK and independent credit copies', () => {
   a = (await library.upload(actor, scope, {requestKey:randomUUID()}, file('a.jpg'))).id;
   b = (await library.upload(actor, scope, {requestKey:randomUUID()}, file('b.jpg'))).id;
  });
- beforeEach(async () => { send.mockReset().mockResolvedValue({success:true,externalMessageId:randomUUID()}); roomId=(await db.chatRoom.create({data:{channel:'FACEBOOK',assignedToId:actor.id}})).id; });
+ beforeEach(async () => { await db.systemConfig.upsert({where:{key:'chat_work_queue_enabled'},create:{key:'chat_work_queue_enabled',value:'false'},update:{value:'false',deletedAt:null}}); send.mockReset().mockResolvedValue({success:true,externalMessageId:randomUUID()}); roomId=(await db.chatRoom.create({data:{channel:'FACEBOOK',assignedToId:actor.id}})).id; });
  afterAll(async () => { await db.$disconnect(); await rm(root,{recursive:true,force:true}); });
  const item = (fileId = a) => ({fileId,requestKey:randomUUID()});
  it('partial failure and retry resend only the definitively failed file; token cannot move to another file or room', async () => {

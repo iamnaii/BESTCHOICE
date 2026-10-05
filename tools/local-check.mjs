@@ -1,3 +1,4 @@
+import { checkChatLibrary } from './check-local-chat-library.mjs';
 import { checkChatAnalytics } from './check-local-chat-analytics.mjs';
 import { checkServiceCases } from './check-local-service-cases.mjs';
 import { checkFacebookComments } from './check-local-facebook-comments.mjs';
@@ -96,6 +97,9 @@ try {
       await checkChatAnalytics(page, new URL(info.url).origin, output, viewport.width);
       assert.deepEqual(errors, [], 'Analytics browser errors');
       report.checks.push({ label: `Human/bot, responder/sales owner, deduplicated sales and analytics drilldowns ${viewport.width}px`, status: 'PASS' });
+      await checkChatLibrary(page, new URL(info.url).origin, output, viewport.width);
+      assert.deepEqual(errors, [], 'Library browser errors');
+      report.checks.push({ label: `Private library folders/upload/search/staging, ACK retry, credit copy and composer parity ${viewport.width}px`, status: 'PASS' });
       await checkLocalPages(page, info.url, output, viewport.width);
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `Customers + FINANCE portfolio (filters, pagination, empty report) ${viewport.width}px`, status: 'PASS' });

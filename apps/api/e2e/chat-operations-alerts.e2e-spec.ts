@@ -1,3 +1,4 @@
+import { hasCompanyAccess } from '@installment/shared';
 import { ChatFollowUpService } from '../src/modules/staff-chat/services/chat-follow-up.service';
 import { ChatWorkSettingsService } from '../src/modules/staff-chat/services/chat-work-settings.service';
 import { randomUUID } from 'node:crypto';
@@ -85,12 +86,14 @@ describe('SLA and follow-up alerts', () => {
   });
   const items = () => db.staffInboxItem.findMany({ where: { roomId } });
   it('concurrent scans notify the owner and branch manager once each', async () => {
+    // Cross-branch finance managers with SHOP grants are legitimate escalation recipients,
+    // including actors left by other suites in the broad regression database.
+    const financeManagers = await db.user.findMany({ where: { role: 'FINANCE_MANAGER', isActive: true, isSystemUser: false, deletedAt: null } });
+    const expected = [staffId, managerId, ...financeManagers.filter(user => hasCompanyAccess(user.role, user.accessibleCompanies, 'SHOP')).map(user => user.id)].sort();
     await Promise.all([notifier.scan(now), notifier.scan(now)]);
-    expect((await items()).map((item) => item.recipientId).sort()).toEqual(
-      [staffId, managerId].sort(),
-    );
+    expect((await items()).map((item) => item.recipientId).sort()).toEqual(expected);
     await notifier.scan(now);
-    expect(await items()).toHaveLength(2);
+    expect((await items()).map((item) => item.recipientId).sort()).toEqual(expected);
   });
   it('does not notify resolved rooms or legacy backlog', async () => {
     await db.$transaction((tx) => cycles.resolveInTx(tx, { roomId, resolvedAt: now }));

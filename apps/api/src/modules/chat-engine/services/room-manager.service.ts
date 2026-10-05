@@ -1,3 +1,5 @@
+import { ChatWorkAccessService } from '../../staff-chat/services/chat-work-access.service';
+import type { WorkScope } from '@installment/shared';
 import { ResponseCycleService } from './response-cycle.service';
 import type { InboundAttribution } from '../interfaces/channel-adapter.interface';
 import {
@@ -890,12 +892,12 @@ export class RoomManagerService {
    * (facebook-webhook.controller.ts:298-303) ถ้าไม่ stamp ไว้ echo ของข้อความที่
    * เราส่งเองจะกลายเป็น bubble STAFF ซ้ำเมื่อ env FACEBOOK_APP_ID ไม่ได้ตั้ง
    */
-  async prepareOutboundAttempt(messageId: string): Promise<boolean> {
-    return this.responseCycles ? this.responseCycles.prepareAttempt(messageId) : true;
+  async prepareOutboundAttempt(messageId: string, forceDeliveryTracking = false): Promise<boolean> {
+    return this.responseCycles ? this.responseCycles.prepareAttempt(messageId, forceDeliveryTracking) : true;
   }
 
-  async failOutboundAttempt(messageId: string, definitelyNotSent: boolean): Promise<void> {
-    await this.responseCycles?.failAttempt(messageId, definitelyNotSent);
+  async failOutboundAttempt(messageId: string, definitelyNotSent: boolean, forceDeliveryTracking = false): Promise<void> {
+    await this.responseCycles?.failAttempt(messageId, definitelyNotSent, forceDeliveryTracking);
   }
 
   async confirmExternalEcho(messageId: string): Promise<boolean> {
@@ -1697,14 +1699,13 @@ export class RoomManagerService {
   }
 
   /** All of a room's customer's rooms across channels, with the latest message each */
-  async getCrossChannelRooms(roomId: string) {
-    const room = await this.prisma.chatRoom.findUnique({
-      where: { id: roomId },
-      select: { customerId: true },
-    });
+  async getCrossChannelRooms(roomId: string, authenticated: { id: string }, selected: Partial<WorkScope> = {}) {
+    const access = new ChatWorkAccessService(this.prisma);
+    const { room, actor, scope } = await access.roomContext(roomId, authenticated, selected);
+    const allowed = await access.roomWhere(actor, scope);
     if (!room?.customerId) return [];
     return this.prisma.chatRoom.findMany({
-      where: { customerId: room.customerId, deletedAt: null },
+      where: { AND: [allowed, { customerId: room.customerId }] },
       select: {
         id: true,
         channel: true,

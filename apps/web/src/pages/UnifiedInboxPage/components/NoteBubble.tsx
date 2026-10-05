@@ -21,7 +21,7 @@ export default function NoteBubble({
   onUnpin?: (id: string) => void;
   onDelete?: (id: string) => void;
 }) {
-  const time = new Date(note.createdAt).toLocaleString('th-TH', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const time = new Date(note.createdAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   return (
     <div className="px-4 py-1" data-testid="note-bubble">
       <div className={cn('rounded-xl border bg-warning/10 px-3 py-2 text-sm dark:bg-amber-400/10', isPinned ? 'border-warning dark:border-amber-400/70' : 'border-warning/40 dark:border-amber-400/30')}>
@@ -42,6 +42,7 @@ export default function NoteBubble({
           </span>
         </div>
         <p className="m-0 whitespace-pre-wrap break-words leading-relaxed text-foreground">{note.content}</p>
+        {!!note.mentions?.length && <p className="mt-1 flex flex-wrap gap-1 text-xs" aria-label="ผู้ที่ถูกกล่าวถึง">{note.mentions.map(mention=><span key={mention.userId} className="rounded bg-warning/20 px-1.5 py-1">@{mention.user.nickname || mention.user.name}</span>)}</p>}
         <p className="m-0 mt-1 text-[10px] text-muted-foreground">เห็นเฉพาะทีมงาน ไม่ส่งถึงลูกค้า</p>
       </div>
     </div>

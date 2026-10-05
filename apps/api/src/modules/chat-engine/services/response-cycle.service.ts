@@ -83,8 +83,9 @@ export class ResponseCycleService {
     });
   }
   /** Claim delivery before calling the provider. Never hold a database transaction over network I/O. */
-  async prepareAttempt(messageId: string): Promise<boolean> {
-    if (!(await this.enabled())) return true;
+  async prepareAttempt(messageId: string, forceDeliveryTracking = false): Promise<boolean> {
+    const trackCycles = await this.enabled();
+    if (!trackCycles && !forceDeliveryTracking) return true;
     return this.prisma.$transaction(async (tx) => {
       const before = await tx.chatMessage.findUniqueOrThrow({ where: { id: messageId } });
       await this.lock(tx, before.roomId);
@@ -94,6 +95,10 @@ export class ResponseCycleService {
         (message.outboundAttemptState && message.outboundAttemptState !== 'FAILED')
       )
         return false;
+      if (!trackCycles) {
+        await tx.chatMessage.update({ where: { id: message.id }, data: { outboundAttemptAt: new Date(), outboundAttemptState: 'SENDING' } });
+        return true;
+      }
       await this.seedLegacyInTx(tx, message.roomId);
       const room = await tx.chatRoom.findUniqueOrThrow({ where: { id: message.roomId } });
       const cycle = await tx.chatResponseCycle.findFirst({
@@ -116,8 +121,8 @@ export class ResponseCycleService {
       return true;
     });
   }
-  async failAttempt(messageId: string, definitelyNotSent: boolean) {
-    if (!(await this.enabled())) return;
+  async failAttempt(messageId: string, definitelyNotSent: boolean, forceDeliveryTracking = false) {
+    if (!forceDeliveryTracking && !(await this.enabled())) return;
     await this.prisma.chatMessage.updateMany({
       where: { id: messageId, outboundSentAt: null },
       data: { outboundAttemptState: definitelyNotSent ? 'FAILED' : 'UNKNOWN' },

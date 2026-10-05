@@ -1087,6 +1087,8 @@ export class MessageRouterService {
     deliveryMediaUrl?: string;
     /** Server-resolved link text for a FILE; persisted bubble keeps its private storage key. */
     deliveryText?: string;
+    /** Library delivery must remain idempotent even with work-queue analytics disabled. */
+    trackDelivery?: boolean;
   }): Promise<{
     success: boolean;
     error?: string;
@@ -1205,7 +1207,7 @@ export class MessageRouterService {
       return { success: false, error: 'save failed' };
     }
 
-    if (await this.roomManager.prepareOutboundAttempt?.(saved.id) === false) {
+    if (await (params.trackDelivery ? this.roomManager.prepareOutboundAttempt?.(saved.id, true) : this.roomManager.prepareOutboundAttempt?.(saved.id)) === false) {
       return { success: false, error: 'ยังยืนยันผลส่งก่อนหน้าไม่ได้ กรุณาตรวจข้อความในช่องทางก่อนส่งใหม่' };
     }
     const outboundType = params.type ?? MessageType.TEXT;
@@ -1224,7 +1226,8 @@ export class MessageRouterService {
     });
 
     if (!result.success || result.droppedReason) {
-      await this.roomManager.failOutboundAttempt?.(saved.id, result.definitelyNotSent === true || !!result.droppedReason);
+      if (params.trackDelivery) await this.roomManager.failOutboundAttempt?.(saved.id, result.definitelyNotSent === true || !!result.droppedReason, true);
+      else await this.roomManager.failOutboundAttempt?.(saved.id, result.definitelyNotSent === true || !!result.droppedReason);
       this.logger.error(`Failed to send staff message on ${room.channel}: ${result.error}`);
       return { success: false, error: result.error ?? 'send failed' };
     }

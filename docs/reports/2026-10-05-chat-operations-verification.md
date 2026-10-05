@@ -24,7 +24,7 @@ Cloud library and final full UX parity/review are still in progress. This file i
 - Broad isolated API attempt 1: 847 suites/10,570 tests passed; one DTO-only test failed to initialize `reflect-metadata`. Added test bootstrap and verified its 2 tests pass.
 - Broad isolated API attempt 2: an untouched trade-in routing test intermittently returned 404 rather than expected 403. Its isolated rerun passed all 10 cases. No production trade-in code was changed. Further verification is pending; do not read this as a completely green broad run.
 - F6 `local:check` PASS on 2026-10-05 22:26 UTC (1440/390 browser flows plus 320–1920 layout); private preview remains at port 5217.
-- Broad API attempt 3 exposed a legacy GFIN test-order dependency: no baseline branch. The disposable harness now seeds a branch explicitly. Attempt 4: all 848 API suites / 10,572 tests pass (14 intentionally skipped). Its subsequent F1–F6 run had 119/120: the seeded system owner was incorrectly eligible for alerts. Marked that fixture `isSystemUser: true`; full combined verification is repeated after cloud work. No production alert recipients were weakened.
+- Broad API attempt 3 exposed a legacy GFIN test-order dependency: no baseline branch. The disposable harness now seeds a branch explicitly. Attempt 4: all 848 API suites / 10,572 tests pass (14 intentionally skipped). Its subsequent F1–F6 run had 119/120: an additional eligible manager from another suite was omitted by the test expectation. The seed account was marked `isSystemUser: true` as fixture hygiene, but later investigation showed the actual extra recipient was a cross-branch FINANCE_MANAGER with SHOP grants. The test now asserts the exact authorized audience, including those managers, and no duplicates after concurrent/repeated scans. No production alert recipients were weakened.
 
 ## Interpretation and limits
 
@@ -35,3 +35,7 @@ Response time uses each cycle's immutable Bangkok work-hour policy. Unknown poli
 SHOP amount follows net-after-discount source sales and excludes soft-voids; separate refund accounting is not subtracted from this document-value report. FINANCE uses original qualified contract principal, not retail revenue or receipts. Attribution means a prior evidenced chat for the canonical customer, not a causal sales claim. Funnel first contact means earliest surviving evidence in authorized rooms/company/channel, and current stage omits unscoped manual/cross-company evidence. These restrictions can make its stage differ from an unrestricted customer profile.
 
 For known policy decisions and implementation deviations, see the task ledgers while work is active; the final report will preserve them before ledger cleanup.
+
+## Completed six-feature integrated verification
+
+Final combined isolated run (`all-final-broad-v2.log`): 848 API suites / 10,572 tests passed (14 skipped), followed by 19 scoped operations suites / 130 tests passed. `local:check` passed at 2026-10-05 22:57:33 UTC, including the actual canned-response insertion and library flows at 1440/390 plus 320–1920 light/dark composer layout. A later isolated upload probe found a Thai multipart filename encoding issue; its cloud-only fix is separately verified and included in the final branch review.

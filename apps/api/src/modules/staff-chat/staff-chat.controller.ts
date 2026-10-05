@@ -1,3 +1,4 @@
+import type { WorkScope } from '@installment/shared';
 import {
   Controller,
   Get,
@@ -715,8 +716,8 @@ export class StaffChatController {
 
   @Get('rooms/:id/cross-channel')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES')
-  async getCrossChannelRooms(@Param('id') id: string) {
-    return this.roomManager.getCrossChannelRooms(id);
+  async getCrossChannelRooms(@Param('id') id: string, @Req() req: { user: { id: string } }, @Query() scope: Partial<WorkScope> = {}) {
+    return this.roomManager.getCrossChannelRooms(id, req.user, scope);
   }
 
   // ─── AI Training & Settings ───────────────────────────

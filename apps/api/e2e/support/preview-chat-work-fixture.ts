@@ -1,3 +1,5 @@
+import { StaffMessageService } from '../../src/modules/staff-chat/services/staff-message.service';
+import { CannedResponseVariableService } from '../../src/modules/staff-chat/services/canned-response-variable.service';
 import { FinanceApplicationService } from '../../src/modules/external-finance-application/services/finance-application.service';
 import { ProductDetectService } from '../../src/modules/staff-chat/services/product-detect.service';
 import { ProductQuoteService } from '../../src/modules/staff-chat/services/product-quote.service';
@@ -32,6 +34,7 @@ export async function seedChatWork(db: PrismaService, manager: RoomManagerServic
 export function previewWorkController(db: PrismaService, manager: RoomManagerService, actorId: () => string) {
   const cycles = new ResponseCycleService(db);
   const failNext = new Set<string>();
+  const canned = new StaffMessageService(db, new CannedResponseVariableService(db));
   const products = new ProductDetectService(db, new ProductQuoteService(db));
   // Real local query; LINE membership is explicitly disconnected in this synthetic preview.
   const finance = Object.assign(Object.create(FinanceApplicationService.prototype), {
@@ -39,7 +42,12 @@ export function previewWorkController(db: PrismaService, manager: RoomManagerSer
   }) as FinanceApplicationService;
   @Controller()
   class PreviewWorkController {
-    @Get('staff-chat/rooms/:id/cross-channel') crossChannel(@Param('id') id: string) { return manager.getCrossChannelRooms(id); }
+    @Get('staff-chat/canned-responses') canned() { return canned.getCannedResponses(); }
+    @Get('staff-chat/rooms/:roomId/canned-responses/:id/preview') async cannedPreview(@Param('roomId') roomId: string, @Param('id') id: string) {
+      await new ChatWorkAccessService(db).roomContext(roomId,{id:actorId()});
+      return canned.getCannedResponseExpanded(id,roomId);
+    }
+    @Get('staff-chat/rooms/:id/cross-channel') crossChannel(@Param('id') id: string) { return manager.getCrossChannelRooms(id, { id: actorId() }); }
     @Get('staff-chat/rooms/:id/products') async products(@Param('id') id: string) {
       const rows = await db.chatMessage.findMany({ where: { roomId: id, deletedAt: null }, orderBy: { createdAt: 'desc' }, take: 20, select: { text: true } });
       return products.detectProducts(rows.map(row => row.text || ''));

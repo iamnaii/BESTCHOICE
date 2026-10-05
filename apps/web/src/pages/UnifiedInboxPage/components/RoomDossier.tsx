@@ -1,3 +1,4 @@
+import CloudCreditPicker from './CloudCreditPicker';
 import ChatServiceRequestSection from './ChatServiceRequestSection';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { workDate } from './WorkQueue';
@@ -806,13 +807,14 @@ export default function RoomDossier({ onClose, room, customerId, activeRoomId, o
             </Group>
 
             <div ref={creditRef} className="scroll-mt-2">
-              <Group label="ตรวจเครดิต" count={credit?.files.length || null} right={<CreditFilePicker credit={credit} />} className={creditFlash ? "ring-2 ring-primary/40" : undefined}>
+              <Group label="ตรวจเครดิต" count={credit?.files.length || null} className={creditFlash ? "ring-2 ring-primary/40" : undefined}>
                 {placeholder && <Hint>ผลจะติดอยู่กับผู้สนใจคนนี้ และตามไปเมื่อรวมกับลูกค้าเดิม</Hint>}
                 {mergeNotice && mergeNotice.roomId === room.id && (
                   <p className="m-0 mb-2 text-xs leading-snug text-muted-foreground">
                     ผลวิเคราะห์ {mergeNotice.count} รายการ {mergeNotice.fromThisRoom ? 'ย้ายมาจากห้องนี้ตอนรวม' : 'ย้ายมาจากผู้สนใจที่รวมเข้ามา'} — ดูได้ใน<Link to={`/customers/${mergeNotice.targetId}?tab=credit`} className="font-semibold text-primary hover:underline">โปรไฟล์ลูกค้า › เครดิต</Link>
                   </p>
                 )}
+                <CloudCreditPicker localPicker={<CreditFilePicker credit={credit} />} roomId={room.id} disabled={credit?.busy || credit?.loading} />
                 <RoomCreditCard key={room.id} credit={credit} customerId={customerId} />
               </Group>
             </div>

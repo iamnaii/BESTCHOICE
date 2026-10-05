@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+case "${CREDIT_SUITE:-chat-credit}" in
+  chat-credit) CREDIT_JEST_CONFIG=e2e/jest-chat-credit.json ;;
+  chat-operations) CREDIT_JEST_CONFIG=e2e/jest-chat-operations.json ;;
+  *) echo 'Unsupported CREDIT_SUITE' >&2; exit 1 ;;
+esac
 cd "$(dirname "$0")/.."
 # Cached node_modules does not include workspace build outputs. Jest below is
 # invoked directly, so npm's API pretest hook does not prepare this dependency.
@@ -68,6 +73,7 @@ const db = new PrismaClient();
 JS
   npm run test --workspace=apps/api -- --runInBand
 fi
+if [ "${CREDIT_SUITE:-chat-credit}" = chat-credit ]; then
 export CREDIT_WEB_URL=http://127.0.0.1:5189
 (cd apps/web && exec node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5189 --strictPort) >"$CREDIT_PG_ROOT/vite.log" 2>&1 &
 CREDIT_VITE_PID=$!
@@ -80,5 +86,6 @@ while (true) {
   await new Promise(resolve => setTimeout(resolve, 200));
 }
 JS
+fi
 cd apps/api
-../../node_modules/.bin/jest --config e2e/jest-chat-credit.json --runInBand
+../../node_modules/.bin/jest --config "$CREDIT_JEST_CONFIG" --runInBand

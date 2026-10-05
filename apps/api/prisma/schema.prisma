@@ -15,6 +15,23 @@ datasource db {
 // ENUMS
 // ============================================================
 
+enum StaffInboxKind {
+  CHAT_SLA
+  FOLLOW_UP
+  MENTION
+  HANDOFF
+  SERVICE_REQUEST
+}
+
+enum ChatWorkTarget {
+  ROOM
+  TODO
+  NOTE
+  FACEBOOK_COMMENT
+  SERVICE_REQUEST
+}
+
+
 enum UserRole {
   SALES
   BRANCH_MANAGER
@@ -764,6 +781,7 @@ model Branch {
 }
 
 model User {
+  staffInboxItems StaffInboxItem[]
   id                String    @id @default(uuid())
   email             String    @unique
   password          String
@@ -5490,6 +5508,7 @@ model BadDebtProvision {
 // ============================================================
 
 model Todo {
+  staffInboxItems StaffInboxItem[]
   id          String       @id @default(uuid())
   title       String
   description String?      @db.Text
@@ -5675,6 +5694,7 @@ model CustomerLineLink {
 
 /// Chat room — ลูกค้า 1 คน 1 room ต่อ channel
 model ChatRoom {
+  staffInboxItems StaffInboxItem[]
   id             String    @id @default(uuid())
   lineUserId     String?   @map("line_user_id")
   externalUserId String?   @map("external_user_id") // FB PSID, TikTok user, web visitor ID
@@ -8827,4 +8847,29 @@ model ImportedSale {
   @@index([category])
   @@index([orderNumber])
   @@map("imported_sales")
+}
+
+
+model StaffInboxItem {
+  id String @id @default(uuid())
+  recipientId String @map("recipient_id")
+  recipient User @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  kind StaffInboxKind
+  roomId String? @map("room_id")
+  room ChatRoom? @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  todoId String? @map("todo_id")
+  todo Todo? @relation(fields: [todoId], references: [id], onDelete: Restrict)
+  dedupeKey String @unique @map("dedupe_key")
+  title String @db.VarChar(255)
+  targetType ChatWorkTarget @map("target_type")
+  targetId String @map("target_id")
+  readAt DateTime? @map("read_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([recipientId, deletedAt, createdAt])
+  @@index([roomId])
+  @@index([todoId])
+  @@map("staff_inbox_items")
 }

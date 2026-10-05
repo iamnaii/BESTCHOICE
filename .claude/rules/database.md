@@ -51,6 +51,15 @@ deletedAt DateTime?
 
 ---
 
+## ภาษีซื้อเครื่องขายผ่อน (ก้อน 5 · 2026-10-05 · migration `20261020000000_installment_input_vat`)
+
+`GoodsReceivingItem.receivedVat` (Decimal(12,2) nullable — VAT ต่อหน่วยที่ปันตอนรับของ · null = รับก่อนก้อน 5) ·
+`GoodsReceiving.taxInvoiceNumber/taxInvoiceDate/taxInvoicePhotoKey/taxInvoiceRecordedAt/taxInvoiceRecordedById` (ใบกำกับที่มาทีหลัง — FK `users` ON DELETE SET NULL) ·
+`Contract.inputVatStatus` enum `InputVatStatus { NONE NOT_ELIGIBLE PENDING_INVOICE CLAIMED REVERSED }` + `inputVatAmount` + `inputVatJournalEntryId @unique` + `inputVatReason` · index `(input_vat_status)` ·
+บัญชี `42-1108` INSERT ใน migration เดียวกัน (ON CONFLICT DO NOTHING — prod ได้พร้อม deploy).
+**ผู้อ่าน `receivedVat` / `inputVatAmount` ต้องผ่าน `canSeeInputVat` (Q5 — OWNER/FM/ACCOUNTANT) ก่อนส่งออก API** (`decorateReceivingForRole` · `buildContractInputVatView`).
+รายละเอียดบัญชี: `.claude/rules/accounting.md` หัวข้อ "ภาษีซื้อของเครื่องที่ขายผ่อน".
+
 ## AuditLog — เขียนหลัง commit หรือใน tx (กติกาสำหรับ writer ใหม่)
 
 Phase 5 มี audit สองหลักคนละทิศในสาขาเดียวกันโดยตั้งใจ — **กติกาตัดสินคือ "แถวนี้ยอมหาย

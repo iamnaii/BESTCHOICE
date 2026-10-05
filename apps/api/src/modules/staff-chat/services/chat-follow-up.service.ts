@@ -238,8 +238,9 @@ export class ChatFollowUpService {
     const dueDate = input.dueAt === undefined ? before.dueDate : this.date(input.dueAt);
     if (before.workKind !== 'GENERAL' && (!dueDate || !assigneeId))
       throw new BadRequestException('งานนี้ต้องมีผู้รับงานและกำหนดเวลา');
-    const recipient = await this.assignee(tx, assigneeId, before.roomId!, scope);
     const status = input.status ?? before.status;
+    // A scoped creator/manager must be able to cancel an orphan without reassigning it.
+    const recipient = status === 'CANCELLED' && assigneeId === before.assigneeId ? null : await this.assignee(tx, assigneeId, before.roomId!, scope);
     if (!['TODO', 'DOING', 'REVIEW', 'DONE', 'CANCELLED'].includes(status))
       throw new BadRequestException('สถานะงานไม่ถูกต้อง');
     const changedDue = (before.dueDate?.getTime() ?? null) !== (dueDate?.getTime() ?? null);

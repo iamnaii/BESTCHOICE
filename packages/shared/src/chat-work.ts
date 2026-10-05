@@ -11,7 +11,11 @@ export interface WorkScope {
 export type ChatWorkKind = 'ROOM_WAIT' | 'TODO' | 'FACEBOOK_COMMENT' | 'SERVICE_REQUEST';
 export type WorkQueueView = 'WAITING' | 'UNASSIGNED' | 'TODAY' | 'OVERDUE' | 'FOR_ME';
 export type ChatWorkTarget = 'ROOM' | 'TODO' | 'NOTE' | 'FACEBOOK_COMMENT' | 'SERVICE_REQUEST';
+export type ChatTaskKind = 'GENERAL' | 'CHAT_FOLLOW_UP' | 'CHAT_HANDOFF' | 'CHAT_SERVICE';
+export type ChatHandoffAction = 'ACCEPT' | 'COMPLETE' | 'CANCEL';
 export interface ChatWorkItem {
+  workKind?: ChatTaskKind;
+  orphaned?: boolean;
   key: string;
   kind: ChatWorkKind;
   roomId: string | null;

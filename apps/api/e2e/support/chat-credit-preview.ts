@@ -1,3 +1,5 @@
+import { ChatHandoffController } from '../../src/modules/staff-chat/chat-handoff.controller';
+import { ChatHandoffService } from '../../src/modules/staff-chat/services/chat-handoff.service';
 import { RoomNotesController } from '../../src/modules/staff-chat/room-notes.controller';
 import { NoteMentionService } from '../../src/modules/staff-chat/services/note-mention.service';
 import { StaffMessageService } from '../../src/modules/staff-chat/services/staff-message.service';
@@ -489,7 +491,7 @@ async function main() {
   const chatWorkRooms = await seedChatWork(db, manager, actor.id);
   const module = await Test.createTestingModule({
     controllers: [
-      RoomNotesController, TodosController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
+      ChatHandoffController, RoomNotesController, TodosController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, previewWorkController(db, manager, () => actor.id),
       TradeInController, ContactsController, ProductPhotosController,
       ContractDocumentsController, DocumentsController,
       RoomCreditController,
@@ -500,7 +502,7 @@ async function main() {
       PreviewController,
     ],
     providers: [
-      NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, JourneyManualEntryService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
+      ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, JourneyManualEntryService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,
       { provide: SettingsService, useValue: { findAll: () => db.systemConfig.findMany() } },
@@ -592,10 +594,10 @@ async function main() {
     if (
       /^\/api\/(todos|trade-ins|contacts|promotions|gfin-config|documents|preview|auth\/me|credit-checks|ocr\/bank-statement|products|contracts|interest-configs|sales|bookings)/.test(path) || path === '/api/customers' || path === '/api/users' ||
       /^\/api\/customers\/(search|[^/]+(?:\/credit-check.*|\/detail|\/journey(?:\/summary)?)?)$/.test(path) ||
-      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|follow-ups|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
+      /^\/api\/staff-chat\/rooms(?:\/(counts|[^/]+(?:\/(messages|read|notes(?:\/[^/]+(?:\/pin)?)?|products|cross-channel|sales-disposition|eligible-staff|handoffs|follow-ups|finance-applications|sales-context(?:\/credit\/[^/]+)?|customer|prepare-offer|credit-check.*))?))?$/.test(
         path,
       ) ||
-      /^\/api\/staff-chat\/(follow-ups\/[^/]+|work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||
+      /^\/api\/staff-chat\/(handoffs\/[^/]+|follow-ups\/[^/]+|work|work-settings|work-notifications(?:\/[^/]+\/read)?|work-targets\/[^/]+\/[^/]+)$/.test(path) ||
       path === '/api/staff-chat/ai/settings' || path === '/api/reports/finance-portfolio' ||
       path === '/api/external-finance/companies' || path === '/api/settings/ui-flags' || path === '/api/branches' || path === '/api/companies' || path === '/api/overdue/pipeline' || path === '/api/purchase-orders/qc-pending' ||
       /^\/api\/dashboard\/(kpis|monthly-trend|status-distribution|branch-comparison|monthly-revenue|top-overdue|aging-summary|watch-list|alerts|staff-performance)$/.test(path) ||

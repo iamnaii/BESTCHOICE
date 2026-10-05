@@ -745,6 +745,8 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  chatLibraryFolders ChatLibraryFolder[]
+  chatLibraryFiles ChatLibraryFile[]
   facebookCommentPages FacebookCommentPage[]
   facebookCommentThreads FacebookCommentThread[]
 
@@ -811,6 +813,8 @@ model Branch {
 }
 
 model User {
+  chatLibraryFolders ChatLibraryFolder[]
+  chatLibraryFiles ChatLibraryFile[]
   chatServiceRequestsCreated ChatServiceRequest[] @relation("ServiceRequestCreator")
   chatServiceRequestEvents ChatServiceRequestEvent[]
   facebookCommentReplies FacebookCommentReply[]
@@ -9184,4 +9188,45 @@ model ChatServiceRequestEvent {
   actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
   @@index([requestId, createdAt])
   @@map("chat_service_request_events")
+}
+
+
+/// Explicit shared uploads only; customer documents are never automatically published.
+model ChatLibraryFolder {
+  id String @id @default(uuid())
+  company String
+  branchId String? @map("branch_id")
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  creatorId String @map("creator_id")
+  creator User @relation(fields: [creatorId], references: [id], onDelete: Restrict)
+  name String
+  files ChatLibraryFile[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  @@index([company, branchId, deletedAt])
+  @@map("chat_library_folders")
+}
+model ChatLibraryFile {
+  id String @id @default(uuid())
+  company String
+  branchId String? @map("branch_id")
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  creatorId String @map("creator_id")
+  creator User @relation(fields: [creatorId], references: [id], onDelete: Restrict)
+  folderId String? @map("folder_id")
+  folder ChatLibraryFolder? @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  key String @unique
+  name String
+  mimeType String @map("mime_type")
+  size Int
+  requestKey String @unique @map("request_key")
+  fingerprint String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  @@index([company, branchId, deletedAt, createdAt])
+  @@index([folderId])
+  @@index([creatorId])
+  @@map("chat_library_files")
 }

@@ -41,3 +41,5 @@ export * from './accessory-compatibility';
 
 export * from './chat-work';
 export * from './chat-analytics';
+
+export * from './chat-library';

@@ -1,30 +1,31 @@
-import { IsString, IsOptional, IsArray, IsIn, IsNotEmpty, ArrayMinSize } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
+export const STOCK_ADJUSTMENT_REASONS = [
+  'DAMAGED',
+  'LOST',
+  'FOUND',
+  'CORRECTION',
+  'WRITE_OFF',
+  'OTHER',
+] as const;
+export type StockAdjustmentReason = (typeof STOCK_ADJUSTMENT_REASONS)[number];
+
+/**
+ * คำขอตัดสินค้า (ก้อน 3, 2026-10-05) — ผู้ขอไม่เลือกผู้อนุมัติอีกต่อไป (เจ้าของอนุมัติทุกใบ) และรูปหลักฐาน
+ * มาเป็นไฟล์ multipart (`photos`) ผ่าน `AdjustmentPhotosInterceptor` ไม่ใช่ data URI ใน body.
+ */
 export class CreateStockAdjustmentDto {
   @IsString()
   @IsNotEmpty({ message: 'กรุณาระบุรหัสสินค้า' })
   productId: string;
 
-  @IsIn(['DAMAGED', 'LOST', 'FOUND', 'CORRECTION', 'WRITE_OFF', 'OTHER'], { message: 'เหตุผลต้องเป็น DAMAGED, LOST, FOUND, CORRECTION, WRITE_OFF หรือ OTHER' })
-  reason: string;
+  @IsIn(STOCK_ADJUSTMENT_REASONS, {
+    message: 'เหตุผลต้องเป็น DAMAGED, LOST, FOUND, CORRECTION, WRITE_OFF หรือ OTHER',
+  })
+  reason: StockAdjustmentReason;
 
   @IsString()
   @IsOptional()
+  @MaxLength(1000, { message: 'หมายเหตุยาวได้ไม่เกิน 1,000 ตัวอักษร' })
   notes?: string;
-
-  // T5-C14 — DAMAGED requires at least one photo as evidence. Enforced in the
-  // service layer (after reason is known); DTO-level validator keeps the type
-  // `string[]` when present so empty arrays are still shaped correctly.
-  @IsArray()
-  @IsString({ each: true })
-  @IsOptional()
-  @ArrayMinSize(0)
-  photos?: string[];
-
-  // T5-C3 — every stock adjustment requires a second-person approver.
-  // The service rejects any submission where approverId equals the caller
-  // (the adjuster), or where the approver is not manager-tier.
-  @IsString()
-  @IsNotEmpty({ message: 'กรุณาระบุผู้อนุมัติ (approverId)' })
-  approverId: string;
 }

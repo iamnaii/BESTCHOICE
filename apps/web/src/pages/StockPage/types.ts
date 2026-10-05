@@ -38,6 +38,8 @@ export interface StockProduct {
   branch: { id: string; name: string };
   supplier: { id: string; name: string } | null;
   prices: { id: string; label: string; amount: string; isDefault: boolean }[];
+  /** ใบจอง PAID ที่ล็อกเครื่องนี้ (0–1 แถว) — PR 2 */
+  lockedByBookings?: { id: string; bookingNumber: string; customer: { name: string } }[];
 }
 
 export interface BranchSummary {

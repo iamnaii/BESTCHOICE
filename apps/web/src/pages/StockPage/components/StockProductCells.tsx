@@ -1,4 +1,5 @@
 import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
+import { Link } from 'react-router';
 import { Check, Copy, MapPin } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
 import { categoryLabels, statusLabels } from '@/lib/constants';
@@ -244,10 +245,25 @@ export function StockReceivedDate({ product }: { product: StockProduct }) {
 }
 
 export function StockProductStatus({ product }: { product: StockProduct }) {
+  const lock = product.status === 'RESERVED' ? product.lockedByBookings?.[0] : undefined;
   return (
     <div className="flex flex-wrap gap-1">
       {(product.stockGroup?.statuses ?? [product.status]).map((value) => {
         const status = statusLabels[value];
+        if (value === 'RESERVED' && lock) {
+          return (
+            <Link
+              key={value}
+              to={`/bookings?bookingId=${lock.id}`}
+              className={cn(
+                'inline-flex items-center whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium leading-snug underline-offset-2 hover:underline',
+                status?.className || 'bg-muted text-foreground',
+              )}
+            >
+              จองไว้ · {lock.bookingNumber} ({lock.customer.name})
+            </Link>
+          );
+        }
         return (
           <span
             key={value}

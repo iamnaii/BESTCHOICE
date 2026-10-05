@@ -94,4 +94,26 @@ describe('ProductHeaderActions — ปุ่มหัวหน้าตามส
     const buttons = screen.getAllByRole('button');
     expect(buttons[0]).toHaveTextContent('นำเข้าคลังพร้อมขาย');
   });
+
+  it('RESERVED + ใบจองที่ล็อก → ลิงก์ "เปิดใบจอง" ไปใบจอง (PR 2)', () => {
+    renderActions({
+      product: {
+        id: 'p1',
+        status: 'RESERVED',
+        activeContract: null,
+        lockedByBookings: [
+          { id: 'bk-1', bookingNumber: 'BK-20260517-0001', customer: { name: 'สมหญิง' } },
+        ],
+      },
+    });
+    expect(screen.getByRole('link', { name: /เปิดใบจอง BK-20260517-0001/ })).toHaveAttribute(
+      'href',
+      '/bookings?bookingId=bk-1',
+    );
+  });
+
+  it('RESERVED โดยไม่มีใบจอง → ไม่มีลิงก์ใบจอง', () => {
+    renderActions({ product: { id: 'p1', status: 'RESERVED', activeContract: null } });
+    expect(screen.queryByRole('link', { name: /เปิดใบจอง/ })).toBeNull();
+  });
 });

@@ -170,7 +170,7 @@ describe('Booking mutations and real SHOP ledger on isolated PostgreSQL', () => 
     }, actor.id, actor);
     await pay(first.id);
     expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('RESERVED');
-    await expect(pay(second.id)).rejects.toThrow('เครื่องนี้ไม่พร้อมขาย');
+    await expect(pay(second.id)).rejects.toThrow('เครื่องนี้ถูกขายหรือย้ายสาขาไปแล้ว');
     await bookings.convertToSale(first.id, { collectBalance: true, paymentMethod: 'CASH' }, actor.id, actor);
     expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('SOLD_CASH');
     expect(await db.sale.count({ where: { productId: product.id } })).toBe(1);

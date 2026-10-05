@@ -795,7 +795,16 @@ export class BookingsService {
           select: TEST_SIDE_CUSTOMER_SELECT,
         });
         if (!owner) throw new NotFoundException('ไม่พบลูกค้า');
-        await this.loadBookableProduct(bookedProductId, booking.branchId, owner, tx);
+        // ตอนรับมัดจำ ทุกเหตุที่ล็อกไม่ได้ (ขายแล้ว/จองแล้ว/ย้ายสาขา) ตอบ 409 ข้อความเดียว (spec §4) — ข้อความ 400 ของ loadBookableProduct เป็นของตอนสร้าง/แก้ใบ
+        const product = await tx.product.findFirst({
+          where: { id: bookedProductId, deletedAt: null },
+          select: { status: true, branchId: true, ...TEST_SIDE_PRODUCT_SELECT },
+        });
+        if (!product) throw new NotFoundException('ไม่พบเครื่องที่เลือก');
+        if (product.branchId !== booking.branchId || product.status !== 'IN_STOCK') {
+          throw new ConflictException(LOCK_FAILED_MSG);
+        }
+        assertSameTestSide(owner, product);
       }
       // ช่องรับเงินมัดจำ: จ่ายผสมได้ โอน/QR บังคับเลขอ้างอิง — tender แรก = primary ที่ JE มัดจำลงเต็มยอด
       const depositTenders = normalizeTenders(dto.tenders, (booking.depositAmount ?? 0).toString(), { method: dto.depositMethod });

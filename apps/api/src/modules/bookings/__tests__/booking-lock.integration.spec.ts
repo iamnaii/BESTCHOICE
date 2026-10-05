@@ -97,8 +97,7 @@ describe('ล็อกเครื่องเมื่อรับมัดจ�
     const locked = await db.booking.findUniqueOrThrow({ where: { id: first.id } });
     expect(locked.lockedProductId).toBe(product.id);
     expect(locked.lockedAt).toBeInstanceOf(Date);
-    // ลำดับเวลา: ด่านอ่านของ payDeposit เห็นเครื่อง RESERVED แล้ว → 400 ข้อความ "ไม่พร้อมขาย" (LOCK_FAILED_MSG 409 เกิดเฉพาะตอนแข่งกัน — ดูเทสถัดไป)
-    await expect(pay(second.id)).rejects.toThrow('เครื่องนี้ไม่พร้อมขาย');
+    await expect(pay(second.id)).rejects.toThrow(LOCK_FAILED_MSG);
     expect((await db.booking.findUniqueOrThrow({ where: { id: second.id } })).status).toBe('PENDING_DEPOSIT');
     expect(await db.shopTender.count({ where: { bookingId: second.id } })).toBe(0);
   });
@@ -108,9 +107,9 @@ describe('ล็อกเครื่องเมื่อรับมัดจ�
     const a = await createBooking(product.id); const b = await createBooking(product.id);
     const results = await Promise.allSettled([pay(a.id), pay(b.id)]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    // ผู้แพ้: ได้ LOCK_FAILED_MSG (แพ้ CAS/unique) หรือ "ไม่พร้อมขาย" (ด่านอ่านเห็นผู้ชนะ commit แล้ว) — ต้องเป็นหนึ่งในสองเสมอ
+    // ผู้แพ้ได้ 409 LOCK_FAILED_MSG เสมอ (ด่านอ่านหรือ CAS/unique)
     const loser = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')!;
-    expect(String(loser.reason?.message)).toMatch(new RegExp(`${LOCK_FAILED_MSG}|เครื่องนี้ไม่พร้อมขาย`));
+    expect(String(loser.reason?.message)).toBe(LOCK_FAILED_MSG);
     expect(await productStatus(product.id)).toBe('RESERVED');
     expect(await db.booking.count({ where: { lockedProductId: product.id, deletedAt: null } })).toBe(1);
   });

@@ -111,14 +111,22 @@ describe('BookingsService', () => {
       data: expect.objectContaining({ depositAccountCode: 'S11-1101' }),
     }));
   });
-  it('payDeposit — เครื่องในใบถูกขายไปแล้ว (SOLD_CASH) → ปฏิเสธด้วยข้อความของ loadBookableProduct ไม่มี update/JE/tender', async () => {
+  it('payDeposit — เครื่องในใบถูกขายไปแล้ว (SOLD_CASH) → 409 LOCK_FAILED_MSG ไม่มี update/JE/tender', async () => {
     prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
     prisma._tx.product.findFirst.mockResolvedValueOnce({ status: 'SOLD_CASH', branchId: 'br-1' });
     await expect(service.payDeposit('bk-1', { depositMethod: 'CASH' } as Parameters<typeof service.payDeposit>[1], SALES_BR1))
-      .rejects.toThrow('เครื่องนี้ไม่พร้อมขาย กรุณาเลือกเครื่องอื่น');
+      .rejects.toThrow(LOCK_FAILED_MSG);
     expect(prisma._tx.booking.updateMany).not.toHaveBeenCalled();
     expect(shopBookingDepositTemplate.execute).not.toHaveBeenCalled();
     expect(prisma._tx.shopTender.createMany).not.toHaveBeenCalled();
+  });
+  it('payDeposit — เครื่องอยู่คนละสาขา → 409 LOCK_FAILED_MSG ไม่มี update', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
+    prisma._tx.product.findFirst.mockResolvedValueOnce({ status: 'IN_STOCK', branchId: 'br-2' });
+    const err = await service.payDeposit('bk-1', { depositMethod: 'CASH' } as Parameters<typeof service.payDeposit>[1], SALES_BR1).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toBe(LOCK_FAILED_MSG);
+    expect(prisma._tx.booking.updateMany).not.toHaveBeenCalled();
   });
   it('payDeposit — ใบจองไม่มีแถวรายการ (ใบเก่า) → ข้ามด่านเครื่อง รับมัดจำได้ตามเดิม', async () => {
     prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT', items: [] });

@@ -1,6 +1,6 @@
 import { NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
-import { Prisma, POPaymentStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GoodsReceivingDto, DirectReceiveDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
@@ -26,7 +26,7 @@ import {
   supplierDocMetadata,
   supplierDocRef,
 } from './supplier-doc.util';
-import { bangkokCalendarParts } from '../../../utils/date.util';
+import { bangkokCalendarParts, bangkokDateString } from '../../../utils/date.util';
 import { formatDateShort, formatMonthName } from '../../../utils/thai-date.util';
 import { d } from '../../../utils/decimal.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
@@ -715,6 +715,16 @@ export class PoReceivingService {
     if (badCost) {
       throw new BadRequestException('กรุณาระบุราคาทุน (costPrice) มากกว่า 0 ให้ครบทุกรายการ');
     }
+    // ก้อน 2 (2026-10-05): จ่ายทันทีตอนรับเข้าตรง = โอนธนาคารเท่านั้น + สลิปบังคับ แล้วลงรายการผ่าน SupplierPaymentService
+    // ใน tx เดียวกับรับของ — ใบสั่งซื้อเริ่มที่ UNPAID 0 เสมอ (ยอดสรุปมาจากตารางการจ่าย)
+    const paying = (dto.paidAmount ?? 0) > 0 || (!!dto.paymentStatus && dto.paymentStatus !== 'UNPAID');
+    if (paying) {
+      if (!((dto.paidAmount ?? 0) > 0)) throw new BadRequestException('กรุณาระบุจำนวนเงินที่จ่าย');
+      if (dto.paymentMethod && ['CASH', 'CHECK', 'CHEQUE'].includes(dto.paymentMethod.toUpperCase())) {
+        throw new BadRequestException('จ่ายเงินผู้จัดจำหน่ายได้เฉพาะโอนธนาคาร (ไม่มีจ่ายเงินสด/เช็ค)');
+      }
+      if (!dto.attachments?.length || !dto.attachments[0]?.trim()) throw new BadRequestException('กรุณาแนบสลิปโอนเงิน');
+    }
 
     const MAX_ATTEMPTS = 3;
     for (let attempt = 1; ; attempt++) {
@@ -762,9 +772,9 @@ export class PoReceivingService {
                 approvedById: userId,
                 status: 'APPROVED',
                 isDirectReceive: true,
-                paymentStatus: (dto.paymentStatus as POPaymentStatus) || 'UNPAID',
+                paymentStatus: 'UNPAID',
                 paymentMethod: dto.paymentMethod || null,
-                paidAmount: dto.paidAmount || 0,
+                paidAmount: 0,
                 paymentNotes: dto.paymentNotes || null,
                 attachments: dto.attachments || [],
                 items: {
@@ -832,12 +842,26 @@ export class PoReceivingService {
 
             const gr = await this.runReceiveInTx(tx, po.id, { items: grItems, notes: dto.notes }, userId, doc);
 
-            return { poNumber: po.poNumber, ...gr };
+            // จ่ายทันที: ชำระเจ้าหนี้ที่เพิ่งตั้ง (หน่วยรอถ่ายรูปยังไม่มีเจ้าหนี้ → ส่วนนั้นเป็นมัดจำ รอหักตอนเข้าคลัง)
+            const payment = paying
+              ? await this.journal.supplierPayments.recordInTx(
+                  tx,
+                  po.id,
+                  { paidAt: bangkokDateString(orderDate), amount: dto.paidAmount!, slipUrl: dto.attachments![0], note: dto.paymentNotes },
+                  userId,
+                )
+              : null;
+
+            return { poNumber: po.poNumber, ...gr, payment };
           },
           PoReceivingService.RECEIVE_TX_OPTIONS,
         );
         // ห้าม throw (จับเองทั้งหมด) — การรับของ commit แล้ว ห้ามตกไปที่ retry ด้านล่างแล้วรับซ้ำ
-        return { ...result, accountingNotified: await this.alertIfDocPeriodClosed(result, userId) };
+        const accountingNotified = await this.alertIfDocPeriodClosed(result, userId);
+        const paymentNotified = result.payment?.periodClosed
+          ? await this.journal.supplierPayments.notifyPeriodClosed(result.payment, userId)
+          : false;
+        return { ...result, accountingNotified: accountingNotified || paymentNotified };
       } catch (e) {
         const code = (e as { code?: string })?.code;
         if ((code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;

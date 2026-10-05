@@ -255,18 +255,31 @@ describe('PurchaseOrdersService.directReceive — auto-PO supplier receive', () 
     expect(po.bankNameSnapshot).toBe('KBank');
   });
 
-  it('records a payment made on the spot on the auto-PO (defaults to UNPAID when absent)', async () => {
+  // ก้อน 2 (2026-10-05): จ่ายทันทีตอนรับเข้าตรง = โอนธนาคาร + สลิป แล้วลงรายการผ่าน SupplierPaymentService.recordInTx
+  // ใน tx เดียวกับรับของ — ใบสั่งซื้อเริ่มที่ UNPAID 0 เสมอ (ยอดสรุปมาจากตารางการจ่าย) · เงินสดถูกปฏิเสธ
+  it('จ่ายทันที: โอน + สลิป → recordInTx ใน tx เดียวกัน · ไม่จ่าย → UNPAID 0 · เงินสด → 400', async () => {
     const { tx, created } = makeTx();
     tx.systemConfig.findMany = jest.fn().mockResolvedValue([]);
     const prisma: any = { $transaction: jest.fn().mockImplementation((fn: any) => fn(tx)) };
     const service = await build(prisma);
+    const recordInTx = jest.fn().mockResolvedValue({ poId: 'po-new', poNumber: 'PO-2099-01-003', payments: [], periodClosed: false, postedAt: new Date(), summary: {} });
+    (service as any).supplierPayments.recordInTx = recordInTx;
 
-    await service.directReceive({ ...baseDto(), paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 30000, paymentNotes: 'จ่ายสดหน้าร้าน' } as never, 'user-1');
-    expect(created.po[0]).toEqual(expect.objectContaining({ paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 30000, paymentNotes: 'จ่ายสดหน้าร้าน' }));
+    await service.directReceive({ ...baseDto(), paymentStatus: 'FULLY_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 30000, paymentNotes: 'โอน KBank', attachments: ['data:image/png;base64,slip'] } as never, 'user-1');
+    expect(created.po[0]).toEqual(expect.objectContaining({ paymentStatus: 'UNPAID', paidAmount: 0, paymentMethod: 'BANK_TRANSFER' }));
+    expect(recordInTx).toHaveBeenCalledTimes(1);
+    expect(recordInTx.mock.calls[0][0]).toBe(tx);
+    expect(recordInTx.mock.calls[0].slice(1)).toEqual(['po-new', { paidAt: '2099-01-15', amount: 30000, slipUrl: 'data:image/png;base64,slip', note: 'โอน KBank' }, 'user-1']);
 
     await service.directReceive(baseDto() as never, 'user-1');
     expect(created.po[1]).toEqual(expect.objectContaining({ paymentStatus: 'UNPAID', paidAmount: 0 }));
     expect(Number((created.po[1] as any).netAmount)).toBe(30000); // supplier without VAT: net = total
+    expect(recordInTx).toHaveBeenCalledTimes(1);
+
+    await expect(
+      service.directReceive({ ...baseDto(), paymentStatus: 'FULLY_PAID', paymentMethod: 'CASH', paidAmount: 30000, attachments: ['slip'] } as never, 'user-1'),
+    ).rejects.toThrow(BadRequestException);
+    expect(created.po).toHaveLength(2);
   });
 
   it('persists structured defectReason on a REJECT unit', async () => {

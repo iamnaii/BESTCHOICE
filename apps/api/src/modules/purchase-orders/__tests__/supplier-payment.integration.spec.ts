@@ -156,6 +156,9 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
   }, 180_000);
 
   afterAll(async () => {
+    // ใบที่หลุดจากการติดตาม (เทสต์ล้มก่อน push id) ก็ต้องถูกลบ — ไม่งั้นเลขที่ใบสั่งซื้อ/ใบรับของแบบนับต่อเดือนชนในรอบถัดไป
+    const leaked = await prisma.purchaseOrder.findMany({ where: { supplierId: { in: createdSupplierIds } }, select: { id: true } });
+    for (const po of leaked) if (!createdPoIds.includes(po.id)) createdPoIds.push(po.id);
     const jeIds = new Set<string>();
     for (const poId of createdPoIds) (await poEntries(poId)).forEach((e) => jeIds.add(e.id));
     const jeIdList = [...jeIds];
@@ -260,7 +263,7 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     for (const input of attempts) {
       await expect(service.recordSupplierPayment(po.id, input, adminId)).rejects.toBeInstanceOf(BadRequestException);
     }
-    await service.cancel(po.id);
+    await service.cancel(po.id, adminId);
     await expect(service.recordSupplierPayment(po.id, { paidAt: today(), amount: 1000, slipUrl: SLIP }, adminId)).rejects.toBeInstanceOf(BadRequestException);
 
     expect(await prisma.purchaseOrderPayment.count({ where: { poId: po.id } })).toBe(0);
@@ -352,5 +355,82 @@ describe('จ่ายเงินผู้จัดจำหน่าย — fl
     expect(applied.entryDate.toISOString()).toBe(unitJe.entryDate.toISOString());
     list = await service.listSupplierPayments(po.id);
     expect(list.summary).toMatchObject({ depositOutstanding: '0.00', payableOutstanding: '5000.00', paidTotal: '3000.00', status: 'PARTIALLY_PAID' });
+  });
+
+  // ───────────── Task 5: ยกเลิกใบสั่งซื้อที่มีมัดจำ (คำตัดสินเจ้าของ ข้อ 6) · รับเข้าตรงจ่ายทันที ─────────────
+
+  it('ยกเลิกใบที่มีมัดจำโดยไม่บอกผล → 400 ใบยังอยู่ · ได้คืนครบ → Dr S11-1201 / Cr S11-4201 + CANCELLED + จ่ายแล้ว 0', async () => {
+    const supplier = await seedSupplier('CANCEL-R', false);
+    const po = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}C1`, quantity: 1, unitPrice: 8000 }]);
+    await service.recordSupplierPayment(po.id, { paidAt: today(), amount: 3000, slipUrl: SLIP }, adminId);
+
+    await expect(service.cancel(po.id, adminId)).rejects.toThrow(/มัดจำค้าง/);
+    expect((await freshPo(po.id)).status).toBe('ORDERED');
+
+    const res = await service.cancel(po.id, adminId, { depositOutcome: 'REFUNDED', refundedAt: today(), slipUrl: SLIP });
+    expect(res.status).toBe('CANCELLED');
+    expect(res.depositClosed?.payments.map((p) => [p.kind, p.amount, p.bankAccountCode])).toEqual([['DEPOSIT_REFUND', '3000.00', 'S11-1201']]);
+    const je = await prisma.journalEntry.findUniqueOrThrow({ where: { id: res.depositClosed!.payments[0].journalEntryId! }, include: { lines: true } });
+    expect(netByAccount([je])).toEqual({ 'S11-1201': '3000.00', 'S11-4201': '-3000.00' });
+    const fresh = await freshPo(po.id);
+    expect(fresh.status).toBe('CANCELLED');
+    expect(fresh.paidAmount.toFixed(2)).toBe('0.00');
+    expect(fresh.paymentStatus).toBe('UNPAID');
+    expect(netByAccount(await poEntries(po.id))).toEqual({ 'S11-1202': '-3000.00', 'S11-1201': '3000.00' });
+    expect((await service.listSupplierPayments(po.id)).summary.depositOutstanding).toBe('0.00');
+  });
+
+  it('ได้คืนไม่ครบ → คืน 2,000 เข้า S11-1201 + ส่วนขาด 1,000 ลง S53-1105 · ไม่ได้คืน → S53-1105 ทั้งก้อน (ต้องมีเหตุผล)', async () => {
+    const supplier = await seedSupplier('CANCEL-P', false);
+    const partial = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}C2`, quantity: 1, unitPrice: 8000 }]);
+    await service.recordSupplierPayment(partial.id, { paidAt: today(), amount: 3000, slipUrl: SLIP }, adminId);
+    const r1 = await service.cancel(partial.id, adminId, { depositOutcome: 'REFUNDED', refundAmount: 2000, slipUrl: SLIP, reason: 'หักค่าดำเนินการ' });
+    expect(r1.depositClosed?.payments.map((p) => [p.kind, p.amount])).toEqual([
+      ['DEPOSIT_REFUND', '2000.00'],
+      ['DEPOSIT_FORFEIT', '1000.00'],
+    ]);
+    expect(netByAccount(await poEntries(partial.id))).toEqual({ 'S11-1202': '-3000.00', 'S11-1201': '2000.00', 'S53-1105': '1000.00' });
+    expect((await freshPo(partial.id)).paidAmount.toFixed(2)).toBe('1000.00'); // เงินที่เสียไปจริง
+
+    const forfeit = await createOrderedPo(supplier.id, [{ category: 'PHONE_USED', model: `${PREFIX}C3`, quantity: 1, unitPrice: 8000 }]);
+    await service.recordSupplierPayment(forfeit.id, { paidAt: today(), amount: 3000, slipUrl: SLIP }, adminId);
+    await expect(service.cancel(forfeit.id, adminId, { depositOutcome: 'FORFEITED' })).rejects.toThrow(/เหตุผล/);
+    await expect(service.cancel(forfeit.id, adminId, { depositOutcome: 'REFUNDED', refundAmount: 5000, slipUrl: SLIP })).rejects.toThrow(/ไม่เกินมัดจำค้าง/);
+    expect((await freshPo(forfeit.id)).status).toBe('ORDERED');
+    const r2 = await service.cancel(forfeit.id, adminId, { depositOutcome: 'FORFEITED', reason: 'ผู้จัดจำหน่ายริบมัดจำ' });
+    expect(r2.depositClosed?.payments.map((p) => [p.kind, p.amount])).toEqual([['DEPOSIT_FORFEIT', '3000.00']]);
+    expect(netByAccount(await poEntries(forfeit.id))).toEqual({ 'S11-1202': '-3000.00', 'S53-1105': '3000.00' });
+    expect((await freshPo(forfeit.id)).status).toBe('CANCELLED');
+  });
+
+  it('รับเข้าตรงจ่ายทันที: โอน + สลิป → ชำระค่าสินค้าใน tx เดียวกับรับของ · เงินสด → 400 ไม่มีใบสั่งซื้อเกิด', async () => {
+    const supplier = await seedSupplier('DIRECT', false);
+    const dto = () => ({
+      supplierId: supplier.id,
+      orderDate: today(),
+      supplierDocType: 'NONE',
+      notes: 'ทดสอบ ไม่มีเอกสาร',
+      items: [{ category: 'PHONE_NEW', brand: `${PREFIX}Brand`, model: `${PREFIX}D`, storage: '128GB', quantity: 1, unitPrice: 9000, imeiSerial: nextImei(), status: 'PASS' }],
+      paymentStatus: 'FULLY_PAID',
+      paymentMethod: 'BANK_TRANSFER',
+      paidAmount: 9000,
+      paymentNotes: 'โอนทันที',
+      attachments: [SLIP],
+    });
+    const before = await prisma.purchaseOrder.count({ where: { supplierId: supplier.id } });
+    await expect(service.directReceive({ ...dto(), paymentMethod: 'CASH' } as never, adminId)).rejects.toThrow(/โอนธนาคาร/);
+    await expect(service.directReceive({ ...dto(), attachments: [] } as never, adminId)).rejects.toThrow(/สลิป/);
+    expect(await prisma.purchaseOrder.count({ where: { supplierId: supplier.id } })).toBe(before);
+
+    const res = await service.directReceive(dto() as never, adminId);
+    createdPoIds.push(res.poId);
+    expect(res.payment?.payments.map((p) => [p.kind, p.amount])).toEqual([['SETTLEMENT', '9000.00']]);
+    const po = await freshPo(res.poId);
+    expect(po.paymentStatus).toBe('FULLY_PAID');
+    expect(po.paidAmount.toFixed(2)).toBe('9000.00');
+    expect(po.paymentMethod).toBe('BANK_TRANSFER');
+    expect(netByAccount(await poEntries(po.id))).toEqual({ 'S11-2001': '9000.00', 'S11-1202': '-9000.00' });
+    const list = await service.listSupplierPayments(po.id);
+    expect(list.summary).toMatchObject({ payableOutstanding: '0.00', depositOutstanding: '0.00', status: 'FULLY_PAID' });
   });
 });

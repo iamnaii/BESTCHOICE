@@ -111,10 +111,9 @@ describe('PurchaseOrdersService — approval rules', () => {
     });
   });
 
-  // Owner 2026-09-06: approving is the moment the owner decides to pay, so the approval
-  // body can carry the payment (status / method / amount / notes / slips) — one update,
-  // no separate "จ่ายเงิน" click afterwards. Same ceiling as updatePayment().
-  describe('approve() with a payment made on the spot', () => {
+  // ก้อน 2 (คำตัดสินเจ้าของ 2026-10-05): ทุกการจ่ายผ่านปุ่ม "บันทึกการจ่าย" หลังอนุมัติ — อนุมัติไม่รับยอดจ่ายอีก
+  // (เดิม 2026-09-06 อนุมัติพร้อมจ่ายได้ — ถอดออกเพราะต้องลงบัญชีทุกการจ่ายผ่านทางเดียว)
+  describe('approve() ไม่รับยอดจ่าย', () => {
     const makePrisma = () => ({
       purchaseOrder: {
         findUnique: jest.fn().mockResolvedValue({
@@ -125,61 +124,60 @@ describe('PurchaseOrdersService — approval rules', () => {
       },
     });
 
-    it('records the payment fields in the same update as the approval', async () => {
+    it('ส่งยอดจ่ายมาพร้อมอนุมัติ → 400 ชี้ไปปุ่มบันทึกการจ่าย และไม่อนุมัติ', async () => {
       const prisma = makePrisma();
       const service = await build(prisma);
-      await service.approve('po-1', 'owner-1', {
-        expectedDate: '2026-09-20', paymentStatus: 'DEPOSIT_PAID', paymentMethod: 'BANK_TRANSFER',
-        paidAmount: 13470, paymentNotes: 'โอน KBank', attachments: ['data:image/png;base64,slip'],
-      });
-      expect(prisma.purchaseOrder.update.mock.calls[0][0].data).toEqual(expect.objectContaining({
-        status: 'ORDERED', approvedById: 'owner-1', paymentStatus: 'DEPOSIT_PAID', paymentMethod: 'BANK_TRANSFER',
-        paidAmount: 13470, paymentNotes: 'โอน KBank', attachments: ['data:image/png;base64,slip'],
-      }));
+      await expect(
+        service.approve('po-1', 'owner-1', { expectedDate: '2026-09-20', paymentStatus: 'DEPOSIT_PAID', paymentMethod: 'BANK_TRANSFER', paidAmount: 13470 }),
+      ).rejects.toThrow(/บันทึกการจ่าย/);
+      expect(prisma.purchaseOrder.update).not.toHaveBeenCalled();
     });
 
-    it('leaves the payment untouched when no payment field is sent', async () => {
+    it('อนุมัติเปล่า (หรือ UNPAID) → ORDERED โดยไม่แตะช่องจ่ายเงิน', async () => {
       const prisma = makePrisma();
       const service = await build(prisma);
-      await service.approve('po-1', 'owner-1', { expectedDate: '2026-09-20' });
+      await service.approve('po-1', 'owner-1', { expectedDate: '2026-09-20', paymentStatus: 'UNPAID' });
       const data = prisma.purchaseOrder.update.mock.calls[0][0].data;
+      expect(data).toEqual(expect.objectContaining({ status: 'ORDERED', approvedById: 'owner-1' }));
       expect(data).not.toHaveProperty('paymentStatus');
       expect(data).not.toHaveProperty('paidAmount');
-    });
-
-    it('rejects a paid amount above the net amount', async () => {
-      const service = await build(makePrisma());
-      await expect(
-        service.approve('po-1', 'owner-1', { paymentStatus: 'FULLY_PAID', paidAmount: 50000 }),
-      ).rejects.toThrow('ยอดจ่ายเกินกว่ายอดสุทธิ');
     });
   });
 
   describe('cancel()', () => {
-    const makePrisma = (status: string, receivedQty: number) => ({
-      purchaseOrder: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'po-1', status, deletedAt: null, supplier: { id: 's1', name: 'S' },
-          items: [{ id: 'i1', quantity: 2, receivedQty }],
-        }),
-        update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'po-1', ...data })),
-      },
-    });
+    // ก้อน 2: ยกเลิกอยู่ใน $transaction (ปิดมัดจำค้างในใบเดียวกัน) — ใบที่ไม่เคยมัดจำผ่านทางลัด findFirst = null
+    const makePrisma = (status: string, receivedQty: number) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const prisma: any = {
+        purchaseOrder: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'po-1', status, deletedAt: null, supplier: { id: 's1', name: 'S' },
+            items: [{ id: 'i1', quantity: 2, receivedQty }],
+          }),
+          update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'po-1', ...data })),
+        },
+        purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null) },
+      };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      prisma.$transaction = jest.fn().mockImplementation((fn: any) => fn(prisma));
+      return prisma;
+    };
 
     it('an ORDERED PO with nothing received can be cancelled', async () => {
       const service = await build(makePrisma('ORDERED', 0));
-      const result = await service.cancel('po-1');
+      const result = await service.cancel('po-1', 'owner-1');
       expect(result.status).toBe('CANCELLED');
+      expect(result.depositClosed).toBeNull();
     });
 
     it('an ORDERED PO that already received something cannot', async () => {
       const service = await build(makePrisma('ORDERED', 1));
-      await expect(service.cancel('po-1')).rejects.toThrow(BadRequestException);
+      await expect(service.cancel('po-1', 'owner-1')).rejects.toThrow(BadRequestException);
     });
 
     it('a PARTIALLY_RECEIVED PO cannot (unchanged)', async () => {
       const service = await build(makePrisma('PARTIALLY_RECEIVED', 1));
-      await expect(service.cancel('po-1')).rejects.toThrow(BadRequestException);
+      await expect(service.cancel('po-1', 'owner-1')).rejects.toThrow(BadRequestException);
     });
   });
 });

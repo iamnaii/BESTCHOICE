@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PurchaseOrdersService } from './purchase-orders.service';
-import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto, ReceivingDocCheckQueryDto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto, ReceivingDocCheckQueryDto, CancelPODto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -190,8 +190,8 @@ export class PurchaseOrdersController {
 
   @Post(':id/cancel')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  cancel(@Param('id') id: string) {
-    return this.purchaseOrdersService.cancel(id);
+  cancel(@Param('id') id: string, @Body() dto: CancelPODto, @CurrentUser() user: { id: string }) {
+    return this.purchaseOrdersService.cancel(id, user.id, dto?.depositOutcome ? { ...dto, depositOutcome: dto.depositOutcome } : undefined);
   }
 
   @Patch(':id/payment')

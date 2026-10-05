@@ -43,7 +43,7 @@ export class PurchaseOrdersService {
       accounts: shopAccountResolver,
       companies: companyResolver,
     });
-    this.lifecycle = new PoLifecycleService(prisma, this.query);
+    this.lifecycle = new PoLifecycleService(prisma, this.query, this.supplierPayments);
     this.receiving = new PoReceivingService(prisma, {
       goodsReceivingTemplate,
       shopAccountResolver,
@@ -80,8 +80,8 @@ export class PurchaseOrdersService {
     return this.lifecycle.reject(id, userId, reason);
   }
 
-  cancel(id: string) {
-    return this.lifecycle.cancel(id);
+  cancel(id: string, userId: string, outcome?: DepositOutcomeInput) {
+    return this.lifecycle.cancel(id, userId, outcome);
   }
 
   updatePayment(id: string, dto: UpdatePaymentDto) {

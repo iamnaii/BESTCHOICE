@@ -145,7 +145,7 @@ export class SupplierPaymentService {
 
   async recordPayment(poId: string, input: RecordSupplierPaymentInput, userId: string) {
     const result = await this.prisma.$transaction((tx) => this.recordInTx(tx, poId, input, userId), { timeout: 30_000 });
-    return { ...result, accountingNotified: await this.notifyIfPeriodClosed(result, userId) };
+    return { ...result, accountingNotified: await this.notifyPeriodClosed(result, userId) };
   }
 
   /**
@@ -348,7 +348,13 @@ export class SupplierPaymentService {
     outcome: DepositOutcomeInput | undefined,
     userId: string,
     now: Date = new Date(),
-  ): Promise<{ payments: SupplierPaymentView[]; depositOutstanding: string; periodClosed: boolean } | null> {
+  ): Promise<{ poNumber: string; payments: SupplierPaymentView[]; depositOutstanding: string; periodClosed: boolean; postedAt: Date } | null> {
+    // ทางลัด: ใบที่ไม่เคยมัดจำเลยยกเลิกได้เหมือนเดิม ไม่ต้องล็อกแถว/อ่านสมุดบัญชี
+    const anyDeposit = await tx.purchaseOrderPayment.findFirst({
+      where: { poId, kind: 'DEPOSIT', voidedAt: null, deletedAt: null },
+      select: { id: true },
+    });
+    if (!anyDeposit) return null;
     const po = await this.lockPo(tx, poId);
     const position = await this.positionInTx(tx, po);
     const outstanding = position.depositOutstanding;
@@ -419,7 +425,7 @@ export class SupplierPaymentService {
     }
     const after = await this.positionInTx(tx, po);
     await this.refreshPoSummaryInTx(tx, po.id, after);
-    return { payments, depositOutstanding: outstanding.toFixed(2), periodClosed };
+    return { poNumber: po.poNumber, payments, depositOutstanding: outstanding.toFixed(2), periodClosed, postedAt: now };
   }
 
   // ───────────────────────────── อ่าน ─────────────────────────────
@@ -560,8 +566,11 @@ export class SupplierPaymentService {
     };
   }
 
-  /** หลัง commit: งวดของวันโอนปิดแล้ว → งานแจ้งฝ่ายบัญชี (ห้าม throw — เงินจ่ายและลงบัญชีไปแล้ว) */
-  private async notifyIfPeriodClosed(result: RecordSupplierPaymentResult, userId: string): Promise<boolean> {
+  /** หลัง commit: งวดของวันโอนปิดแล้ว → งานแจ้งฝ่ายบัญชี (ห้าม throw — เงินจ่ายและลงบัญชีไปแล้ว) · ผู้เรียกภายนอก (ยกเลิกใบ / รับเข้าตรง) เรียกเองหลัง commit */
+  async notifyPeriodClosed(
+    result: { poNumber: string; payments: SupplierPaymentView[]; periodClosed: boolean; postedAt: Date },
+    userId: string,
+  ): Promise<boolean> {
     if (!result.periodClosed || result.payments.length === 0) return false;
     try {
       const paidAt = result.payments[0].paidAt;

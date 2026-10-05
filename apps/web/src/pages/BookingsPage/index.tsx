@@ -72,13 +72,14 @@ export default function BookingsPage() {
   const settling = q.summaryLoading && !q.hasActiveFilters && !detailId;
   const isFirstUse = !!q.summary && q.summary.total === 0 && !q.hasActiveFilters;
 
+  // MainLayout ใส่ padding ให้แล้ว — โครงเดียวกับหน้าลูกค้า (ไม่ซ้อน p-4 md:p-6)
   return (
-    <div className="space-y-4 p-4 md:p-6">
+    <div className="space-y-4">
       <PageHeader
         title="การจอง / มัดจำ"
         subtitle="รับมัดจำเครื่องไว้ให้ลูกค้า แล้วปิดเป็นใบขายเมื่อลูกค้ามารับ"
         action={
-          canCreate && !isFirstUse ? (
+          canCreate && !isFirstUse && !settling ? (
             <Button onClick={() => setCreateOpen(true)}>
               <Plus className="size-4" /> สร้างใบจอง
             </Button>

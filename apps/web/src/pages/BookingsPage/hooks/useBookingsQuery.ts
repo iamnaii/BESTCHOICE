@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import type { TableSort } from '@/components/ui/DataTable';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -41,6 +41,10 @@ const FILTER_KEYS = [
 ] as const;
 /** บทบาทที่ GET /branches ยอมให้เห็นข้ามสาขา (CROSS_BRANCH_ROLES ฝั่ง API) */
 const BRANCH_FILTER_ROLES = ['OWNER', 'FINANCE_MANAGER', 'ACCOUNTANT'];
+
+/** วันไทย YYYY-MM-DD — ค่าอื่นจากลิงก์ที่พิมพ์เอง (API ตอบ 400 รูปแบบวันที่) ถือว่าไม่มี */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const dateParam = (value: string | null): string => (value && DATE_ONLY.test(value) ? value : '');
 
 function pick<T extends string>(value: string | null, allowed: readonly T[]): T | '' {
   return value && (allowed as readonly string[]).includes(value) ? (value as T) : '';
@@ -88,8 +92,8 @@ export function useBookingsQuery(): UseBookingsQueryResult {
   const all = searchParams.get('all') === '1';
   const view: BookingView = status ? 'status' : expiring ? 'expiring' : all ? 'all' : 'open';
   const branchId = canFilterBranch ? (searchParams.get('branchId') ?? '') : '';
-  const from = searchParams.get('from') ?? '';
-  const to = searchParams.get('to') ?? '';
+  const from = dateParam(searchParams.get('from'));
+  const to = dateParam(searchParams.get('to'));
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
 
   const sortBy = pick(searchParams.get('sortBy'), SORT_KEYS);
@@ -197,6 +201,8 @@ export function useBookingsQuery(): UseBookingsQueryResult {
   const listQuery = useQuery<BookingListResponse>({
     queryKey: ['bookings', listParams],
     queryFn: async () => (await api.get(`/bookings?${new URLSearchParams(listParams)}`)).data,
+    // เปลี่ยนตัวกรอง/หน้า: คงแถวเดิมไว้จนชุดใหม่มา — ไม่กระพริบเป็นโครงรอ
+    placeholderData: keepPreviousData,
   });
 
   const summaryParams = useMemo(() => {
@@ -210,6 +216,7 @@ export function useBookingsQuery(): UseBookingsQueryResult {
     queryKey: ['bookings-summary', summaryParams],
     queryFn: async () =>
       (await api.get(`/bookings/summary?${new URLSearchParams(summaryParams)}`)).data,
+    placeholderData: keepPreviousData,
   });
 
   const branchesQuery = useQuery<BranchOption[]>({

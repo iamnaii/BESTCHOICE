@@ -65,7 +65,7 @@ function renderPage(url = '/bookings?zone=shop') {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
+  return render(
     <MemoryRouter initialEntries={[url]}>
       <QueryClientProvider client={client}>
         <Routes>
@@ -119,6 +119,16 @@ describe('BookingsPage', () => {
     expect(screen.getByRole('heading', { name: /การจอง \/ มัดจำ/ })).toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'สรุปใบจอง' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'ยังไม่มีใบจอง' })).toBeNull();
+    // ยังไม่รู้ว่าเป็นหน้าว่างหรือรายการ → ยังไม่โชว์ปุ่มสร้าง (ไม่ให้ปุ่มโผล่แล้วหายตอนสรุปมาถึง)
+    expect(screen.queryByRole('button', { name: /สร้างใบจอง/ })).toBeNull();
+  });
+
+  it('รากหน้าไม่ใส่ padding เอง (MainLayout ใส่ให้แล้ว) — โครง space-y-4 เหมือนหน้าลูกค้า', async () => {
+    const { container } = renderPage();
+    await screen.findByText('BK-20261005-0002');
+    const root = container.querySelector('output + div');
+    expect(root).not.toBeNull();
+    expect(root!.className).toBe('space-y-4');
   });
 
   it('หัว · การ์ด KPI · ตาราง และกดการ์ดเปลี่ยน URL', async () => {

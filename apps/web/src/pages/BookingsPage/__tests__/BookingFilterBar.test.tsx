@@ -110,6 +110,13 @@ describe('BookingFilterBar', () => {
     expect(statusSelectValue('status', 'CLOSED')).toBe('CLOSED');
   });
 
+  it.each(['CONVERTED', 'CANCELED', 'EXPIRED'])(
+    'ลิงก์ ?status=%s (สถานะปิดเดี่ยว) → ดรอปดาวน์โชว์ "ปิดแล้ว" ไม่ใช่ช่องว่าง',
+    (status) => {
+      expect(statusSelectValue('status', status)).toBe('CLOSED');
+    },
+  );
+
   it('ทุกการเลือกเขียนทับ status/all/expiring ครบ', () => {
     expect(statusPatch('')).toEqual({ all: '', status: '', expiring: '' });
     expect(statusPatch('ALL_STATUSES')).toEqual({ all: '1', status: '', expiring: '' });

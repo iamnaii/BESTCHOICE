@@ -172,4 +172,71 @@ describe('useBookingsQuery — URL คือแหล่งความจริ
     act(() => result.current.q.clearFilters());
     expect(result.current.location.search).toBe('');
   });
+
+  it.each([
+    ['from=2026-1-1', 'from'],
+    ['to=05-10-2026', 'to'],
+    ['from=abc&to=2026-10-0', 'from'],
+    ['from=2026-10-01x', 'from'],
+  ])('?%s → วันที่ผิดรูปแบบถือว่าไม่มี: ไม่ส่งไป API และไม่นับเป็นตัวกรอง', async (query) => {
+    const { result } = setup(`/bookings?${query}`);
+    await waitFor(() => expect(result.current.q.summary?.total).toBe(8));
+    expect(result.current.q.from).toBe('');
+    expect(result.current.q.to).toBe('');
+    expect(result.current.q.buildParams().from).toBeUndefined();
+    expect(result.current.q.buildParams().to).toBeUndefined();
+    expect(result.current.q.hasActiveFilters).toBe(false);
+    const summaryCall = mocks.get.mock.calls.find(([path]) =>
+      String(path).startsWith('/bookings/summary'),
+    )?.[0] as string;
+    expect(summaryCall.split('?')[1]).toBe('');
+  });
+
+  it('วันที่ถูกรูปแบบผ่านตามเดิม', () => {
+    const { result } = setup('/bookings?from=2026-10-01&to=2026-10-05');
+    expect(result.current.q.from).toBe('2026-10-01');
+    expect(result.current.q.to).toBe('2026-10-05');
+  });
+
+  it.each(['CONVERTED', 'CANCELED', 'EXPIRED'])(
+    '?status=%s → มุมมอง status ส่งสถานะนั้นตรง ๆ ไป API (ไม่ถูกแปลงเป็น CLOSED)',
+    (status) => {
+      const { result } = setup(`/bookings?status=${status}`);
+      expect(result.current.q.view).toBe('status');
+      expect(result.current.q.buildParams().status).toBe(status);
+    },
+  );
+
+  it('เปลี่ยนตัวกรอง: ตารางและการ์ดยังเห็นข้อมูลเดิมระหว่างโหลดชุดใหม่ (keepPreviousData) ไม่กลับเป็นโครงรอ', async () => {
+    let releaseList: (v: unknown) => void = () => {};
+    let releaseSummary: (v: unknown) => void = () => {};
+    const row = { id: 'bk-1' };
+    const listFor = (params: URLSearchParams) =>
+      params.get('status') === 'PAID'
+        ? new Promise((resolve) => (releaseList = resolve))
+        : Promise.resolve({ data: { data: [row], total: 1, page: 1, limit: 50 } });
+    const base = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation((path: string) => {
+      if (path.startsWith('/bookings?')) return listFor(new URLSearchParams(path.split('?')[1]));
+      if (path.startsWith('/bookings/summary') && path.includes('from=2026-10-01'))
+        return new Promise((resolve) => (releaseSummary = resolve));
+      return base(path);
+    });
+    const { result } = setup('/bookings');
+    await waitFor(() => expect(result.current.q.listResult?.total).toBe(1));
+    await waitFor(() => expect(result.current.q.summary?.total).toBe(8));
+
+    act(() => result.current.q.setFilters({ status: 'PAID', expiring: '', all: '' }));
+    // คำขอใหม่ยังไม่กลับ — ข้อมูลเดิมต้องอยู่ และไม่ขึ้นสถานะ "กำลังโหลด" แบบหน้าว่าง
+    expect(result.current.q.listResult?.total).toBe(1);
+    expect(result.current.q.isLoading).toBe(false);
+    releaseList({ data: { data: [], total: 0, page: 1, limit: 50 } });
+    await waitFor(() => expect(result.current.q.listResult?.total).toBe(0));
+
+    act(() => result.current.q.setFilters({ from: '2026-10-01' }));
+    expect(result.current.q.summary?.total).toBe(8);
+    expect(result.current.q.summaryLoading).toBe(false);
+    releaseSummary({ data: { ...(await base('/bookings/summary')).data, total: 2 } });
+    await waitFor(() => expect(result.current.q.summary?.total).toBe(2));
+  });
 });

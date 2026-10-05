@@ -10,12 +10,14 @@ export const BOOKING_SEARCH_PLACEHOLDER = 'ค้นหา เลขที่ใ
 const ALL_STATUSES = 'ALL_STATUSES';
 const EXPIRING = 'EXPIRING';
 const CLOSED = 'CLOSED';
+const CLOSED_STATUSES = ['CONVERTED', 'CANCELED', 'EXPIRED'];
 /** ใกล้หมดอายุ = 3 วัน เท่ากับการ์ด KPI */
 const EXPIRING_DAYS = '3';
 
 /** ค่าในดรอปดาวน์ ↔ ตัวกรองใน URL (ดรอปดาวน์กับการ์ด KPI เขียนคีย์ชุดเดียวกัน) · '' = มุมมองเริ่มต้น (ที่ยังเปิดอยู่) */
 export function statusSelectValue(view: BookingView, status: string): string {
-  if (view === 'status') return status;
+  // สถานะปิดเดี่ยวจากลิงก์ (CONVERTED/CANCELED/EXPIRED) อยู่ใต้ตัวเลือก "ปิดแล้ว" — API ยังรับสถานะนั้นตรง ๆ
+  if (view === 'status') return CLOSED_STATUSES.includes(status) ? CLOSED : status;
   if (view === 'all') return ALL_STATUSES;
   if (view === 'expiring') return EXPIRING;
   return '';

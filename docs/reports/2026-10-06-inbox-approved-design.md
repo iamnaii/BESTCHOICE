@@ -20,7 +20,7 @@ This correction applies the approved design in `docs/prototypes/chat-operations`
 - Focused Web regression: **60 suites / 377 tests passed**.
 - Desktop/mobile library browser check passed: folder/upload/search, keyboard selection, staged send/retry, note separation, emoji/LINE stickers, searchable products/templates, and credit copy. New regression stages a cloud file, uploads a local credit file, then verifies the staged cloud action survives.
 - New browser design contract covers expanded/collapsed navigation and **feature flags off**, matching the production screenshot. It checks sidebar/header boundaries, column widths, composer mode separation, overflow and reachable Send. Light/dark, 320–1512px, 375px phone, 844×390 landscape with reduced motion, and 125% root text size passed.
-- Final managed `local:check` result is appended after completion. It runs types, lint, all Web/shared/storefront tests, builds, and the existing actual-app browser flows for all six features.
+- **Final managed `local:check`: PASS, 38 gates**, completed `2026-10-06T03:55:18.668Z`. Source fingerprint `c1805491e17f0189e50ce3a9660236ddbc154edd1686718fb292d46de1e9af67` (started before the implementation commit; content unchanged through completion). Includes API/Web types/lint, 434 Web suites / 3,235 tests, shared 149 tests, storefront 46 tests, builds, all six actual-app browser flows at 1440/390px, original composer checks at 320–1920px, plus the new design contract above. Preview: http://localhost:5218/inbox. Report `.tmp/local-preview/check.json`, log `/tmp/inbox-design-local-check.log`.
 
 ## Evidence and limits
 

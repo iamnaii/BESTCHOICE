@@ -26,9 +26,8 @@
 .inbox-queue-filters [role=combobox] { position:relative; margin-top:17px; background:hsl(var(--card)); box-shadow:none; }
 .inbox-filter-label { position:absolute; top:-21px; left:0; color:hsl(var(--muted-foreground)); font-size:10px; }
 .inbox-room-item { min-height:120px; }
-.inbox-room-preview,.inbox-room-meta { margin-left:-52px; }
+.inbox-room-details { margin-left:-52px; }
 .inbox-room-preview { padding-top:5px; }
-.inbox-room-item > button { top:auto; bottom:7px; }
 .inbox-chat-header > div:nth-of-type(2) { flex-basis:calc(100% - 90px); }
 .inbox-room-toolbar { width:calc(100% + 32px); margin:8px -16px 0; padding:6px 12px; border-top:1px solid hsl(var(--border)); }
 .inbox-room-toggles { margin-right:auto; }

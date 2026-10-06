@@ -105,6 +105,14 @@ async function fixture(page: Page, role = 'OWNER') {
       return route.fulfill({ json: { ...exportOrPage(rows, query), summary: { totalCount: rows.length, pendingCount: rows.length, approvedCount: 0, rejectedCount: 0, avgScore: null } } });
     }
     if (routePath === '/bookings') return route.fulfill({ json: paged(state.emptyPath === routePath ? [] : state.bookings, query) });
+    if (routePath === '/bookings/summary') {
+      // ตัวเลขการ์ด KPI คิดจากรายการจำลองชุดเดียวกัน (รูปทรงตาม GET /bookings/summary — BookingSummary)
+      const rows = state.emptyPath === '/bookings' ? [] : state.bookings, count = (status: string) => rows.filter(row => row.status === status).length;
+      const open = count('PENDING_DEPOSIT') + count('PAID'), closed = count('CONVERTED') + count('CANCELED') + count('EXPIRED');
+      const held = rows.filter(row => row.status === 'PAID').reduce((sum, row) => sum + Number(row.depositAmount), 0).toFixed(2);
+      return route.fulfill({ json: { total: rows.length, open, pendingDeposit: count('PENDING_DEPOSIT'), paid: count('PAID'), paidDepositHeld: held,
+        expiringWithin3Days: 0, closed: { converted: count('CONVERTED'), canceled: count('CANCELED'), expired: count('EXPIRED'), total: closed }, forfeitedThisMonth: '0.00' } });
+    }
     if (/^\/bookings\/bk\d+$/.test(routePath)) return route.fulfill({ json: state.bookings.find(row => row.id === routePath.split('/')[2]) });
     if (routePath === '/contracts') {
       let rows = state.emptyPath === routePath ? [] : state.contracts;
@@ -255,7 +263,8 @@ for (const width of [1440, 390]) {
       await snapshot(page, 'credit-error-filters-retained', width);
       state.failPath = ''; state.emptyPath = '/credit-checks';
       await page.getByRole('button', { name: 'ลองใหม่', exact: true }).click();
-      await expect(page.getByText('ไม่พบรายการตรวจเครดิต', { exact: true })).toBeVisible();
+      await expect(page.getByText('ไม่พบรายการที่ตรงกับ “ตัวอย่าง”', { exact: true })).toBeVisible();
+      await expect(page.getByRole('textbox', { name: 'ค้นหารายการตรวจเครดิต' })).toHaveValue('ตัวอย่าง');
     });
 
     test('POS: cash/external price, selected IDs and disclosure survive handoff', async ({ page }) => {
@@ -278,18 +287,38 @@ for (const width of [1440, 390]) {
       await expect(page.getByText('ลูกค้าตัวอย่าง 000', { exact: true }).first()).toBeVisible();
     });
 
-    test('bookings: bookmark size200 reaches all151, page controls and detail states', async ({ page }) => {
+    test('bookings: ?page=2 · เปิดแถว · ปุ่มเงินปิดจนครบเงื่อนไข · เมนู ⋯ · ไม่มีแถบเลื่อนแนวนอน', async ({ page }) => {
       const state = await fixture(page);
-      await page.goto('/bookings?size=200');
-      await expect(page.getByText('BK-UX-150', { exact: true })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Next', exact: true })).toBeDisabled();
-      expect(state.requests.some(row => row.path === '/bookings' && row.query.limit === '200')).toBe(true);
-      await page.getByRole('combobox', { name: 'แสดงต่อหน้า' }).selectOption('50');
-      await page.getByRole('button', { name: 'Next', exact: true }).click();
+      const noHorizontalScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+      await page.goto('/bookings?page=2');
       await expect(page.getByText('BK-UX-050', { exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'เปิด', exact: true }).first().click();
-      await expect(page.getByRole('button', { name: 'รับส่วนต่างและขาย', exact: true })).toBeDisabled();
-      await expect(page.getByRole('button', { name: 'แก้หมายเหตุ / วันหมดอายุ', exact: true })).toBeVisible();
+      await expect(page.getByText('BK-UX-000', { exact: true })).toHaveCount(0);
+      expect(state.requests.some(row => row.path === '/bookings' && row.query.page === '2' && row.query.limit === '50' && row.query.open === '1')).toBe(true);
+      await expect(page.getByRole('group', { name: 'สรุปใบจอง' })).toBeVisible();
+      expect(state.requests.some(row => row.path === '/bookings/summary')).toBe(true);
+      expect(await noHorizontalScroll()).toBe(true);
+      if (width === 1440) {
+        // ตารางพอดีกรอบ: ไม่มีแถบเลื่อนใน DataTable (งบ 1,120 px ของโซน shop)
+        const table = page.getByTestId('data-table');
+        await expect(table).toBeVisible();
+        expect(await table.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      } else {
+        // จอโทรศัพท์ = การ์ดแทนตาราง
+        await expect(page.getByTestId('data-table')).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'เปิดใบจอง BK-UX-050', exact: true })).toBeVisible();
+      }
+      await (width === 390 ? page.getByRole('button', { name: 'เปิดใบจอง BK-UX-050', exact: true }) : page.getByText('BK-UX-050', { exact: true })).click();
+      const sheet = page.getByRole('dialog');
+      await expect(sheet.getByText(/BK-UX-050/).first()).toBeVisible();
+      // มัดจำบางส่วน: ปุ่มหลักปิดจนกว่าจะติ๊กยืนยันรับส่วนต่างและช่องรับเงินครบ
+      const convert = sheet.getByRole('button', { name: /รับส่วนต่าง .* และออกใบขาย/ });
+      await expect(convert).toBeDisabled();
+      await sheet.getByRole('checkbox', { name: /ยืนยันว่าได้รับยอดส่วนต่างครบแล้ว/ }).click();
+      await expect(convert).toBeEnabled();
+      await sheet.getByRole('button', { name: 'การกระทำเพิ่มเติม', exact: true }).click();
+      await expect(page.getByRole('menuitem', { name: 'แก้หมายเหตุ / วันหมดอายุ', exact: true })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: /^ยกเลิกใบจอง/ })).toBeVisible();
+      await page.keyboard.press('Escape');
       await snapshot(page, 'bookings-page2-paid', width);
     });
 
@@ -380,7 +409,8 @@ for (const width of [1440, 390]) {
       await snapshot(page, `sales-booking-${kind}`, width);
       await receipt.getByRole('link', { name: 'เปิดใบจอง BK-UX-000' }).click();
       await expect(page).toHaveURL(/bookings\?bookingId=bk0/);
-      await expect(page.getByRole('dialog').getByText('BK-UX-000', { exact: true }).first()).toBeVisible();
+      // หัวแผงมีป้ายสถานะอยู่ในอิลิเมนต์เดียวกับเลขที่ — ต้องไม่ใช้ exact
+      await expect(page.getByRole('dialog').getByText(/BK-UX-000/).first()).toBeVisible();
     });
 
     test('export: switching work company while the snapshot waits prevents any download', async ({ page }) => {

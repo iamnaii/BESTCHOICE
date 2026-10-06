@@ -331,7 +331,9 @@ export default function CreditChecksPage() {
           columns={columns}
           data={query.data?.data ?? []}
           emptyIcon={ShieldCheck}
-          emptyMessage={status === 'MANUAL_REVIEW' ? emptyQueueMessage : 'ไม่พบรายการตรวจเครดิต'}
+          emptyMessage={debouncedSearch
+            ? `ไม่พบรายการที่ตรงกับ “${debouncedSearch}”`
+            : status === 'MANUAL_REVIEW' ? emptyQueueMessage : 'ไม่พบรายการตรวจเครดิต'}
           onRowClick={(c: CreditCheckRow) =>
             c.customer && navigate(creditUrl(c.customer.id))
           }

@@ -20,6 +20,9 @@
  *
  * Deps ของ `ContractWorkflowService` ส่วนใหญ่ผ่านเป็น null โดยตั้งใจ — guard ที่ทดสอบอยู่
  * ก่อนจุดที่ dependency ตัวใดถูกแตะ (ยกเว้นเทสควบคุมที่จงใจให้พังหลังผ่าน guard)
+ *
+ * #1679 (ระยะสั้น) ใช้ฐานเดียวกัน: RESERVED ไม่มีเจ้าของในสคีมา — เครื่องที่ใบจอง PAID ล็อกไว้
+ * (Booking.lockedProductId) ต้องเปิดสัญญาไม่ได้ แม้ร่างสัญญาจะชี้เครื่องนั้นและสถานะเป็น RESERVED
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
@@ -40,6 +43,7 @@ const service = new ContractWorkflowService(
   null as never, // shopInventoryTransferTemplate
   null as never, // shopDownPaymentTemplate
   null as never, // shopAccountResolver
+  null as never, // installmentInputVatTemplate (ก้อน 5)
 );
 
 /**
@@ -63,6 +67,7 @@ const RUN = Date.now().toString(36);
 const RUN_NUM = String(Date.now() % 1_000_000).padStart(6, '0');
 
 const createdContractIds: string[] = [];
+const createdBookingIds: string[] = [];
 const createdProductIds: string[] = [];
 const createdCustomerIds: string[] = [];
 let createdBranchId: string | null = null;
@@ -208,6 +213,8 @@ describe('activate() — guard สินค้าที่ถูกลบ (Phase
   }, 120_000);
 
   afterAll(async () => {
+    // ใบจองอ้างเครื่อง (locked_product_id FK) — ลบก่อนเครื่อง
+    await prisma.booking.deleteMany({ where: { id: { in: createdBookingIds } } });
     await prisma.signature.deleteMany({ where: { contractId: { in: createdContractIds } } });
     await prisma.payment.deleteMany({ where: { contractId: { in: createdContractIds } } });
     await prisma.creditApproval.deleteMany({ where: { customerId: { in: createdCustomerIds } } });
@@ -344,5 +351,31 @@ describe('activate() — guard สินค้าที่ถูกลบ (Phase
     // transaction ต้อง rollback ครบ — สัญญายัง DRAFT
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
     expect(after.status).toBe('DRAFT');
+  }, 60_000);
+
+  it('#1679: เครื่อง RESERVED ที่ใบจอง PAID ล็อกไว้ → เปิดสัญญาไม่ได้ (409 บอกเลขใบจอง) เครื่อง/ใบจองไม่ถูกแตะ', async () => {
+    const { contractId, productId } = await seedSignedDraftContract(7, { productDeleted: false });
+    const { customerId } = await prisma.contract.findUniqueOrThrow({ where: { id: contractId }, select: { customerId: true } });
+    const bookingNumber = `BK-PRODGUARD-${RUN}-7`;
+    const booking = await prisma.booking.create({
+      data: {
+        bookingNumber, customerId, branchId, status: 'PAID',
+        depositAmount: dec('1000.00'), totalAmount: dec('12000.00'),
+        expireDate: new Date(Date.now() + 7 * 86_400_000), depositPaidAt: new Date(),
+        lockedProductId: productId, lockedAt: new Date(), createdById: adminId,
+      },
+    });
+    createdBookingIds.push(booking.id);
+
+    const err = await service.activate(contractId).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 409 });
+    expect((err as Error).message).toContain(bookingNumber);
+
+    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(after.status).toBe('DRAFT');
+    const product = await prisma.product.findUniqueOrThrow({ where: { id: productId } });
+    expect(product.status).toBe('RESERVED');
+    const lock = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
+    expect(lock).toMatchObject({ status: 'PAID', lockedProductId: productId });
   }, 60_000);
 });

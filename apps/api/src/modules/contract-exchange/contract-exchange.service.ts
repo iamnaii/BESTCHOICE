@@ -13,6 +13,8 @@ import { ExchangeBuybackReceivable11_2107Template } from '../journal/cpa-templat
 import { ShopExchangeReturnTemplate } from '../journal/cpa-templates/shop-exchange-return.template';
 import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-ecl-reversal.template';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
+import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
+import { claimInputVatOnActivation } from '../journal/input-vat/installment-input-vat.claim';
 import { resolveStoreCommission } from '../../utils/store-commission.util';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
@@ -25,6 +27,14 @@ import { lockCreditCustomer } from '../credit-check/services/room-credit-history
 import { glContractBalance } from '../journal/gl-contract-balance';
 import { preemptReservationsInTx } from '../../utils/reservation-preempt.util';
 import { assertSameTestSide, TEST_SIDE_CUSTOMER_SELECT } from '../../utils/test-data-markers';
+
+/**
+ * #1679 ระยะสั้น: เครื่องใหม่ผ่านด่าน IN_STOCK ตอน submit แต่ระหว่างรออนุมัติ (อาจหลายวัน) ใบจอง PAID ล็อก
+ * ร่างสัญญาอื่นจอง หรือขายไปได้ — RESERVED ไม่มีเจ้าของในสคีมา จึงต้องหยิบด้วย CAS where IN_STOCK แล้วตอบ
+ * 409 ชี้ทางออกเมื่อ count ไม่ใช่ 1 (คำขอยัง PENDING เพราะทั้ง tx rollback → ปฏิเสธได้ตามปกติ)
+ */
+export const EXCHANGE_NEW_PRODUCT_TAKEN_MSG =
+  'เครื่องใหม่ไม่อยู่ในสต็อกพร้อมขายแล้ว (ถูกขาย ถูกจอง หรือถูกใบจองล็อกไว้ระหว่างรออนุมัติ) — อนุมัติไม่ได้ กรุณาปฏิเสธคำขอนี้แล้วส่งคำขอใหม่โดยเลือกเครื่องอื่น';
 
 /**
  * Subset of the request user that submit() needs to perform branch scoping.
@@ -85,6 +95,7 @@ export class ContractExchangeService {
     private readonly companyResolver: CompanyResolverService,
     private readonly shopInventoryTransferTemplate: ShopInventoryTransferTemplate,
     private readonly shopAccountResolver: ShopAccountResolver,
+    private readonly installmentInputVatTemplate: InstallmentInputVatTemplate,
   ) {}
 
   async submit(dto: SubmitExchangeRequestDto, user: RequestUser) {
@@ -491,13 +502,15 @@ export class ContractExchangeService {
       });
 
       // เครื่องใหม่รับสถานะ/ownership ของเครื่องเดิม (FINANCE ถือกรรมสิทธิ์ระหว่างผ่อน)
-      await tx.product.update({
-        where: { id: req.newProductId },
+      // #1679: CAS — หยิบได้เฉพาะเครื่องที่ยัง IN_STOCK (ไม่ทับเครื่องที่ใบจอง/ร่างสัญญาอื่นถืออยู่)
+      const taken = await tx.product.updateMany({
+        where: { id: req.newProductId, status: 'IN_STOCK', deletedAt: null },
         data: {
           status: (oldProduct as any).status,
           ownedByCompanyId: (oldProduct as any).ownedByCompanyId,
         } as any,
       });
+      if (taken.count !== 1) throw new ConflictException(EXCHANGE_NEW_PRODUCT_TAKEN_MSG);
       // B5: เครื่องใหม่หลุดจาก IN_STOCK แล้ว (รับสถานะเครื่องเดิม) — ตัด hold ของเว็บใน tx เดียวกัน
       await preemptReservationsInTx(tx, [req.newProductId]);
       await tx.product.update({
@@ -768,10 +781,13 @@ export class ContractExchangeService {
       // between approval and activation. The new-contract activation flow
       // (ContractWorkflowService.activate) accepts both RESERVED and IN_STOCK,
       // and flips to SOLD_INSTALLMENT once the customer signs.
-      await tx.product.update({
-        where: { id: req.newProductId },
-        data: { status: 'RESERVED' } as any,
+      // #1679: CAS where IN_STOCK — activate ยอมรับ RESERVED เฉพาะเมื่อไม่มีใบจอง/ร่างอื่นถือเครื่อง
+      // ⇒ จองตรงนี้ต้องไม่ทับเครื่องที่ใบจอง PAID ล็อกไว้ระหว่างรออนุมัติ (count 0 → rollback ทั้งก้อน)
+      const reserved = await tx.product.updateMany({
+        where: { id: req.newProductId, status: 'IN_STOCK', deletedAt: null },
+        data: { status: 'RESERVED' },
       });
+      if (reserved.count !== 1) throw new ConflictException(EXCHANGE_NEW_PRODUCT_TAKEN_MSG);
       // B5: เครื่องใหม่ถูกจองไว้รอ activate — ตัด hold ของเว็บใน tx เดียวกัน (เปลี่ยนเครื่องระหว่างสัญญา)
       await preemptReservationsInTx(tx, [req.newProductId]);
 
@@ -937,6 +953,14 @@ export class ContractExchangeService {
 
     // 4. JE A.1 — open new HP receivable
     const je1a = await this.t1a.execute(newContract.id, tx);
+
+    // ก้อน 5 (Q3) — เครื่องใหม่ของสัญญาเปลี่ยนเครื่องเคลมภาษีซื้อตามปกติ ลงวันเดียวกับ A.1; เครื่องเก่าที่คืน SHOP ไม่กลับรายการ (รอฝ่ายบัญชี)
+    await claimInputVatOnActivation(tx, this.installmentInputVatTemplate, {
+      contractId: newContract.id,
+      contractNumber: newContract.contractNumber,
+      productId: newContract.productId,
+      postedAt: new Date(),
+    });
 
     // 4b. SHOP-side inventory transfer (F2 — CPA ตอบข้อ 3, 2026-08-01):
     // an exchange's new contract must book the SAME SHOP mirror

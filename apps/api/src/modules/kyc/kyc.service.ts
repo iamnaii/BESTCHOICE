@@ -4,7 +4,10 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationCategory } from '../notifications/notification-category.enum';
 import { TestModeService } from '../test-mode/test-mode.service';
 import { AuditService } from '../audit/audit.service';
+import { StorageService } from '../storage/storage.service';
+import { EVIDENCE_IMAGE_MAX_BYTES, evidenceImageExtension, isEvidenceImage } from '../../utils/upload-image.util';
 import * as crypto from 'crypto';
+import sharp from 'sharp';
 
 const OTP_EXPIRY_MINUTES = 10;
 const MAX_OTP_ATTEMPTS = 5;
@@ -26,6 +29,7 @@ export class KycService {
     private notificationsService: NotificationsService,
     private testMode: TestModeService,
     private audit: AuditService,
+    private storage: StorageService,
   ) {}
 
   /**
@@ -250,24 +254,43 @@ export class KycService {
     });
     if (!kyc) throw new BadRequestException('กรุณายืนยัน OTP ก่อนถ่ายรูปบัตรประชาชน');
 
-    // Validate base64 image
-    if (!imageBase64.startsWith('data:image/')) {
-      throw new BadRequestException('รูปภาพไม่ถูกต้อง');
-    }
-
-    // Check size (rough estimate: base64 is ~33% larger than binary)
-    const sizeBytes = (imageBase64.length * 3) / 4;
-    if (sizeBytes > 5 * 1024 * 1024) {
+    // Bound the input before decoding; only accept supported raster image data URLs.
+    if (imageBase64.length > 4 * Math.ceil(EVIDENCE_IMAGE_MAX_BYTES / 3) + 32) {
       throw new BadRequestException('รูปภาพใหญ่เกิน 5MB');
     }
+    const separator = imageBase64.indexOf(',');
+    const header = imageBase64.slice(0, separator);
+    const contentType = /^data:(image\/(?:jpeg|png|webp));base64$/.exec(header)?.[1];
+    const encoded = imageBase64.slice(separator + 1);
+    if (!contentType || !encoded || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) {
+      throw new BadRequestException('รูปภาพไม่ถูกต้อง');
+    }
+    const bytes = Buffer.from(encoded, 'base64');
+    if (bytes.length > EVIDENCE_IMAGE_MAX_BYTES) {
+      throw new BadRequestException('รูปภาพใหญ่เกิน 5MB');
+    }
+    if (bytes.toString('base64') !== encoded || !isEvidenceImage({ buffer: bytes, mimetype: contentType })) {
+      throw new BadRequestException('รูปภาพไม่ถูกต้อง');
+    }
+    try {
+      // Metadata/magic bytes alone accept truncated files. Decode the pixels with
+      // a bounded input size; retain the original evidence bytes for storage.
+      await sharp(bytes, { failOn: 'warning', limitInputPixels: 25_000_000 }).stats();
+    } catch {
+      throw new BadRequestException('เปิดรูปภาพไม่ได้ หรือรูปมีความละเอียดเกิน 25 ล้านพิกเซล');
+    }
 
-    // For now, store as data URL reference. When StorageService (S3) is added in Part 3,
-    // this will be replaced with actual S3 upload.
-    const idCardImageUrl = `kyc/${contractId}/id-card-${Date.now()}.jpg`;
+    // StorageService intentionally permits no-op uploads for other optional features.
+    // An ID card is required evidence: never verify KYC without durable storage.
+    if (this.storage.describe().backend === 'none') {
+      throw new InternalServerErrorException('ระบบจัดเก็บรูปภาพยังไม่พร้อม กรุณาลองใหม่ภายหลัง');
+    }
+    const idCardImageUrl = `kyc/${contractId}/id-card-${crypto.randomUUID()}.${evidenceImageExtension(contentType)}`;
+    await this.storage.upload(idCardImageUrl, bytes, contentType);
 
-    // Mark KYC as fully verified
+    // A concurrent OTP resend must not revive the expired verification.
     await this.prisma.kycVerification.update({
-      where: { id: kyc.id },
+      where: { id: kyc.id, status: 'OTP_VERIFIED' },
       data: {
         idCardImageUrl,
         idCardVerified: true,

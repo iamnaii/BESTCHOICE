@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { DeviceDisclosureSummary } from '@/components/product/DeviceDisclosureSummary';
 import { Check, Copy, MapPin } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard';
@@ -244,10 +245,30 @@ export function StockReceivedDate({ product }: { product: StockProduct }) {
 }
 
 export function StockProductStatus({ product }: { product: StockProduct }) {
+  const lock = product.status === 'RESERVED' ? product.lockedByBookings?.[0] : undefined;
   return (
     <div className="flex flex-wrap gap-1">
       {(product.stockGroup?.statuses ?? [product.status]).map((value) => {
         const status = statusLabels[value];
+        if (value === 'RESERVED' && lock) {
+          // คอลัมน์สถานะกว้าง 84px — สองบรรทัด (ป้าย + เลขใบจอง truncate) ชื่อลูกค้าอยู่ใน title/aria-label
+          const fullText = `จองไว้ · ${lock.bookingNumber} (${lock.customer.name})`;
+          return (
+            <Link
+              key={value}
+              to={`/bookings?bookingId=${lock.id}`}
+              title={fullText}
+              aria-label={fullText}
+              className={cn(
+                'inline-flex max-w-full flex-col overflow-hidden rounded-md px-2 py-1 leading-snug underline underline-offset-2 decoration-dotted hover:decoration-solid focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                status?.className || 'bg-muted text-foreground',
+              )}
+            >
+              <span className="text-xs font-medium">จองไว้</span>
+              <span className="truncate font-mono text-[11px]">{lock.bookingNumber}</span>
+            </Link>
+          );
+        }
         return (
           <span
             key={value}

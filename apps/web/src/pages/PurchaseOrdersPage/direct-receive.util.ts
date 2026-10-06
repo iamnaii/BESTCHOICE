@@ -2,7 +2,7 @@ import type { ItemForm, PoFormState, ReceivingUnitForm } from './types';
 import { defaultChecklist } from './constants';
 import { itemLabel } from './po-catalog.util';
 import type { DirectReceiveInput } from './hooks/usePurchaseOrdersData';
-import { isPaidStatus } from './components/wizard/PaymentSection';
+import { paidAmountError, isPaidStatus, type PaymentFields } from './components/wizard/PaymentSection';
 import { emptyAnglePhotos } from '@/constants/photo-angles';
 import { supplierDocPayload, type SupplierDocForm } from './supplier-doc.util';
 
@@ -76,4 +76,19 @@ export function buildDirectReceivePayload({
         }
       : {}),
   };
+}
+
+/**
+ * ก้อน 2 (2026-10-05): จ่ายทันทีตอนรับเข้าตรง = โอนธนาคารเท่านั้น + สลิปบังคับ (กติกาเดียวกับ API `directReceive`) —
+ * คืนข้อความแรกที่ผิด หรือ null เมื่อผ่าน / ยังไม่จ่าย
+ */
+export function directReceivePaymentErrors(form: PaymentFields, attachments: string[], netAmount: number): string | null {
+  if (!isPaidStatus(form.paymentStatus)) return null;
+  const amountError = paidAmountError(form, netAmount);
+  if (amountError) return amountError;
+  if (form.paymentMethod && ['CASH', 'CHECK', 'CHEQUE'].includes(form.paymentMethod.toUpperCase())) {
+    return 'จ่ายเงินผู้จัดจำหน่ายได้เฉพาะโอนธนาคาร (ไม่มีจ่ายเงินสด/เช็ค)';
+  }
+  if (!attachments.some((a) => a.trim())) return 'กรุณาแนบสลิปโอนเงิน';
+  return null;
 }

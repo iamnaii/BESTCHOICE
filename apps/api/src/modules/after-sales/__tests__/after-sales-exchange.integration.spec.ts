@@ -5,6 +5,7 @@ import { Readable } from 'stream';
 
 import { AuditService } from '../../audit/audit.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { InstallmentInputVatTemplate } from '../../journal/cpa-templates/installment-input-vat.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { ExchangeNewContract1ATemplate } from '../../journal/cpa-templates/exchange-new-contract-1a.template';
 import { ExchangeCloseOld21_1106Template } from '../../journal/cpa-templates/exchange-close-old-21-1106.template';
@@ -81,6 +82,7 @@ const contractExchange = new ContractExchangeService(
   companyResolver,
   new ShopInventoryTransferTemplate(journal, prisma as never, companyResolver),
   new ShopAccountResolver(prisma as never),
+  new InstallmentInputVatTemplate(journal, prisma as never, companyResolver),
 );
 const exchangeCancel = new ExchangeCancelService(
   prisma as never,

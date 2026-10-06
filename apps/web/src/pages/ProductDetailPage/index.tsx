@@ -34,6 +34,7 @@ import CostProfitStrip from './components/CostProfitStrip';
 import QcSummaryCard from './components/QcSummaryCard';
 import ContractSummaryCard, { type ActiveContractSummary } from './components/ContractSummaryCard';
 import ProductHeaderActions from './components/ProductHeaderActions';
+import AdjustmentPendingBanner from './components/AdjustmentPendingBanner';
 import ReturnToStockAction, { type ReturnToStockPayload } from './components/ReturnToStockAction';
 import { NoticeBox } from './components/calc/CalcRows';
 import { PRODUCT_READINESS_QUERY_KEY, useProductReadiness } from './hooks/useProductReadiness';
@@ -97,6 +98,8 @@ interface Product {
   cosmeticNotes: string | null;
   /** สรุปสัญญาที่ผูกกับเครื่อง — เฉพาะเครื่องขายผ่อนแล้ว (GET /products/:id → findOneDetail) */
   activeContract: ActiveContractSummary | null;
+  /** ใบจอง PAID ที่ล็อกเครื่องนี้ (0–1 แถว) — PR 2 */
+  lockedByBookings?: { id: string; bookingNumber: string; customer: { name: string } }[];
 }
 
 type Tab = 'info' | 'photos' | 'online';
@@ -393,6 +396,10 @@ export default function ProductDetailPage() {
       : categoryLabels[product.category] || product.category,
     `สาขา${product.branch.name}`,
   ];
+  const bookingLock = product.status === 'RESERVED' ? product.lockedByBookings?.[0] : undefined;
+  if (bookingLock) {
+    subtitleParts.push(`จองไว้ · ${bookingLock.bookingNumber} (${bookingLock.customer.name})`);
+  }
 
   return (
     <div>
@@ -447,6 +454,8 @@ export default function ProductDetailPage() {
           />
         }
       />
+
+      <AdjustmentPendingBanner productId={product.id} status={product.status} />
 
       {/* Tabs — always shown; 'photos' only for PHONE_USED, 'online' for every category */}
       <div className="flex gap-0.5 mb-5 border-b border-border/60">

@@ -8,6 +8,7 @@
 import { ShopGoodsReceivingTemplate } from '../journal/cpa-templates/shop-goods-receiving.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import { ShopSupplierPaymentTemplate } from '../journal/cpa-templates/shop-supplier-payment.template';
 
 export const TEST_SHOP_COMPANY_ID = 'shop-co-id';
 export const TEST_JOURNAL_ENTRY_NO = 'JE-TEST-0001';
@@ -16,16 +17,22 @@ export function poJournalTestProviders() {
   const goodsReceivingTemplate = {
     execute: jest.fn().mockResolvedValue({ entryNo: TEST_JOURNAL_ENTRY_NO, journalEntryId: 'je-test-1' }),
   };
+  const supplierPaymentTemplate = {
+    execute: jest.fn().mockResolvedValue({ entryNo: 'JE-TEST-PAY', journalEntryId: 'je-test-pay-1' }),
+    reverse: jest.fn().mockResolvedValue({ entryNo: 'JE-TEST-PAY-REV', journalEntryId: 'je-test-pay-rev-1' }),
+  };
   const companyResolver = {
     getShopCompanyId: jest.fn().mockResolvedValue(TEST_SHOP_COMPANY_ID),
   };
   return {
     goodsReceivingTemplate,
+    supplierPaymentTemplate,
     companyResolver,
     providers: [
       { provide: ShopGoodsReceivingTemplate, useValue: goodsReceivingTemplate },
       { provide: ShopAccountResolver, useValue: new ShopAccountResolver(null as never) },
       { provide: CompanyResolverService, useValue: companyResolver },
+      { provide: ShopSupplierPaymentTemplate, useValue: supplierPaymentTemplate },
     ],
   };
 }

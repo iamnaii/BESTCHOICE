@@ -12,7 +12,8 @@ import { TestModeService } from '../test-mode/test-mode.service';
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopDownPaymentTemplate } from '../journal/cpa-templates/shop-down-payment.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
-import { BadRequestException } from '@nestjs/common';
+import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 
 /**
  * ContractWorkflowService unit tests.
@@ -54,6 +55,8 @@ describe('ContractWorkflowService', () => {
   let shopInventoryTransferTemplate: { execute: jest.Mock };
   let shopDownPaymentTemplate: { execute: jest.Mock };
   let shopAccountResolver: { resolveProductAccounts: jest.Mock; resolveBranchCashAccount: jest.Mock; resolveInflowCashAccount: jest.Mock };
+  // ก้อน 5 — ภาษีซื้อเครื่องหลักหลัง 1A
+  let installmentInputVatTemplate: { execute: jest.Mock };
 
   const mockProduct = {
     id: 'product-1',
@@ -143,6 +146,8 @@ describe('ContractWorkflowService', () => {
         findUnique: jest.fn().mockResolvedValue(mockContract),
         findUniqueOrThrow: jest.fn().mockResolvedValue(mockContract),
         update: jest.fn().mockResolvedValue({ ...mockContract, status: 'ACTIVE' }),
+        // ก้อน 5 (I1) — findConflictingClaim: ไม่มีสัญญาอื่นเคลมเครื่องนี้อยู่
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       installmentSchedule: {
         // generateInstallmentSchedules now runs inside the activation tx. These
@@ -154,11 +159,15 @@ describe('ContractWorkflowService', () => {
       },
       // closeRepossessionOnSale (2026-09-05) — เครื่องยึดที่ขายผ่อนใหม่ปิดรายการยึดใน tx เดียวกัน
       repossession: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      // #1679: เครื่อง RESERVED ต้องไม่ถูกใบจอง PAID ล็อกอยู่ — ค่าเริ่มต้น = ไม่มีใบจองล็อก
+      booking: { findFirst: jest.fn().mockResolvedValue(null) },
       product: {
         findUnique: jest.fn().mockResolvedValue(mockProduct),
         // Phase 5 Task 2: activate() ใช้ findFirst (+ deletedAt: null) แทน findUnique
         findFirst: jest.fn().mockResolvedValue(mockProduct),
         update: jest.fn().mockResolvedValue({ ...mockProduct, status: 'SOLD_INSTALLMENT' }),
+        // #1679 รอบแก้ 1: flip เป็น SOLD_INSTALLMENT แบบ CAS จากสถานะที่อ่านใน tx — ค่าเริ่มต้น = สำเร็จ
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         // ดึงของแถมมาตัดสต็อกตอน activate — ค่าเริ่มต้น = ไม่มีของแถม
         findMany: jest.fn().mockResolvedValue([]),
       },
@@ -225,6 +234,10 @@ describe('ContractWorkflowService', () => {
       resolveInflowCashAccount: jest.fn(async (_branch, method) => method === 'CASH' ? 'S11-1102' : 'S11-1201'),
     };
 
+    installmentInputVatTemplate = { execute: jest.fn().mockResolvedValue({ entryNo: 'JE-VAT', journalEntryId: 'je-vat' }) };
+    // ก้อน 5 — ค่าเริ่มต้น: เครื่องไม่มีใบรับของ → NOT_ELIGIBLE (ไม่โพสต์ JE)
+    prisma.goodsReceivingItem = { findUnique: jest.fn().mockResolvedValue(null) };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ContractWorkflowService,
@@ -238,6 +251,7 @@ describe('ContractWorkflowService', () => {
         { provide: ShopInventoryTransferTemplate, useValue: shopInventoryTransferTemplate },
         { provide: ShopDownPaymentTemplate, useValue: shopDownPaymentTemplate },
         { provide: ShopAccountResolver, useValue: shopAccountResolver },
+        { provide: InstallmentInputVatTemplate, useValue: installmentInputVatTemplate },
       ],
     }).compile();
 
@@ -246,6 +260,29 @@ describe('ContractWorkflowService', () => {
   });
 
   describe('activate', () => {
+    it('ก้อน 5: หลัง 1A ตัดสินภาษีซื้อของเครื่องหลักใน tx เดียวกัน — ไม่มีใบรับของ → สัญญา NOT_ELIGIBLE ไม่โพสต์ JE', async () => {
+      await service.activate('contract-1');
+      expect(installmentInputVatTemplate.execute).not.toHaveBeenCalled();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vatUpdate = prisma.contract.update.mock.calls.find((c: any[]) => c[0]?.data?.inputVatStatus);
+      expect(vatUpdate?.[0].data).toMatchObject({ inputVatStatus: 'NOT_ELIGIBLE', inputVatReason: expect.stringContaining('ไม่มีใบรับของ') });
+    });
+
+    it('ก้อน 5: เครื่องจากใบรับของ TAX_INVOICE ที่มี receivedVat → โพสต์ Dr 11-4101 / Cr 42-1108 ผ่าน template ด้วย contractId/productId ของสัญญา หลัง 1A', async () => {
+      prisma.goodsReceivingItem.findUnique.mockResolvedValue({
+        receivedVat: new Prisma.Decimal('686'),
+        receiving: { id: 'gr-1', grNumber: 'GR-1', supplierDocType: 'TAX_INVOICE', supplierDocNumber: 'IV-9', supplierDocDate: new Date('2026-09-29T17:00:00Z'), taxInvoiceNumber: null, taxInvoiceDate: null },
+      });
+      await service.activate('contract-1');
+      expect(installmentInputVatTemplate.execute).toHaveBeenCalledTimes(1);
+      expect(installmentInputVatTemplate.execute.mock.calls[0][0]).toMatchObject({ contractId: 'contract-1', productId: mockProduct.id, taxInvoiceNumber: 'IV-9' });
+      expect(installmentInputVatTemplate.execute.mock.calls[0][1]).toBeDefined(); // tx เดียวกับ 1A
+      expect(contractActivationTemplateMock.execute.mock.invocationCallOrder[0]).toBeLessThan(installmentInputVatTemplate.execute.mock.invocationCallOrder[0]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vatUpdate = prisma.contract.update.mock.calls.find((c: any[]) => c[0]?.data?.inputVatStatus);
+      expect(vatUpdate?.[0].data).toMatchObject({ inputVatStatus: 'CLAIMED', inputVatJournalEntryId: 'je-vat' });
+    });
+
     it('checks the approved installment amount before activating or posting money', async () => {
       const guard = jest.spyOn(creditApproval, 'assertContractCreditApproval').mockRejectedValue(new Error('ยอดอนุมัติไม่พอ'));
       try {
@@ -373,10 +410,10 @@ describe('ContractWorkflowService', () => {
             data: expect.objectContaining({ status: 'ACTIVE' }),
           }),
         );
-        expect(prisma.product.update).toHaveBeenCalledWith(
+        expect(prisma.product.updateMany).toHaveBeenCalledWith(
           expect.objectContaining({
-            where: { id: 'product-1' },
-            data: expect.objectContaining({ status: 'SOLD_INSTALLMENT' }),
+            where: expect.objectContaining({ id: 'product-1' }),
+            data: { status: 'SOLD_INSTALLMENT' },
           }),
         );
         expect(productsMock.transferOwnership).toHaveBeenCalledWith(
@@ -392,6 +429,103 @@ describe('ContractWorkflowService', () => {
         );
         await expect(service.activate('contract-exch')).rejects.toThrow('finalize fail');
         // standard 1A path was not used here
+        expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
+      });
+    });
+
+    // #1679 ระยะสั้น — RESERVED ไม่มีเจ้าของในสคีมา: เปิดสัญญาบนเครื่อง RESERVED ได้เฉพาะเมื่อพิสูจน์ได้ว่า
+    // ไม่มีคนอื่นถือ (ใบจอง PAID ที่ล็อกเครื่อง / ร่างสัญญาอื่นที่ยังไม่ลบบนเครื่องเดียวกัน) · IN_STOCK ผ่านตามเดิม
+    describe('#1679 — RESERVED ต้องเป็นของร่างนี้เอง', () => {
+      const otherDraftOnSameProduct = () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        prisma.contract.findFirst.mockImplementation(async (args: any) =>
+          args?.where?.status === 'DRAFT' ? { id: 'contract-other', contractNumber: 'BC-2026-999' } : null);
+
+      it('RESERVED + ใบจอง PAID ล็อกเครื่องอยู่ → 409 บอกเลขใบจอง ไม่เปิดสัญญา ไม่ตัดสต็อก', async () => {
+        prisma.booking.findFirst.mockResolvedValue({ bookingNumber: 'BK-20261005-0001' });
+        const err = await service.activate('contract-1').catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect((err as Error).message).toBe(
+          'เครื่องนี้ถูกใบจอง BK-20261005-0001 ล็อกไว้ — เปิดสัญญาไม่ได้ กรุณาเลือกเครื่องอื่นหรือยกเลิกใบจองก่อน',
+        );
+        expect(prisma.booking.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+          where: { lockedProductId: 'product-1', status: 'PAID', deletedAt: null },
+        }));
+        expect(prisma.contract.update).not.toHaveBeenCalled();
+        expect(prisma.product.update).not.toHaveBeenCalled();
+        expect(prisma.product.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('ด่านใน tx: นอก tx เห็น IN_STOCK แต่ใน tx ใบจองเพิ่งล็อก (RESERVED) → 409 ก่อนเงิน/กรรมสิทธิ์ขยับ', async () => {
+        prisma.product.findFirst
+          .mockResolvedValueOnce({ ...mockProduct, status: 'IN_STOCK' }) // ด่านนอก tx
+          .mockResolvedValueOnce(mockProduct); // ด่านใน tx — RESERVED
+        prisma.booking.findFirst.mockResolvedValue({ bookingNumber: 'BK-20261005-0002' });
+        await expect(service.activate('contract-1')).rejects.toThrow(/BK-20261005-0002/);
+        expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+        expect(prisma.contract.update).not.toHaveBeenCalled();
+        expect(prisma.product.update).not.toHaveBeenCalled();
+        expect(prisma.product.updateMany).not.toHaveBeenCalled();
+        expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
+      });
+
+      it('RESERVED + ร่างสัญญาอื่น (ยังไม่ลบ) บนเครื่องเดียวกัน → 409 บอกเลขร่างนั้น', async () => {
+        otherDraftOnSameProduct();
+        const err = await service.activate('contract-1').catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect((err as Error).message).toMatch(/BC-2026-999/);
+        expect(prisma.contract.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+          where: { productId: 'product-1', id: { not: 'contract-1' }, status: 'DRAFT', deletedAt: null },
+        }));
+        expect(prisma.contract.update).not.toHaveBeenCalled();
+        expect(prisma.product.update).not.toHaveBeenCalled();
+        expect(prisma.product.updateMany).not.toHaveBeenCalled();
+      });
+
+      it('RESERVED ที่ไม่มีใครอื่นถือ (ร่างนี้จองเอง) → เปิดสัญญาได้ตามปกติ', async () => {
+        await service.activate('contract-1');
+        expect(prisma.booking.findFirst).toHaveBeenCalled();
+        expect(prisma.contract.update).toHaveBeenCalledWith(expect.objectContaining({
+          where: { id: 'contract-1' }, data: expect.objectContaining({ status: 'ACTIVE' }),
+        }));
+        // รอบแก้ 1: flip แบบ CAS จากสถานะที่อ่านใน tx (RESERVED) — ไม่ใช่ update ตรง ๆ
+        expect(prisma.product.updateMany).toHaveBeenCalledWith({
+          where: { id: 'product-1', status: 'RESERVED', deletedAt: null }, data: { status: 'SOLD_INSTALLMENT' },
+        });
+        expect(prisma.product.update).not.toHaveBeenCalled();
+      });
+
+      it('สัญญาจากเปลี่ยนเครื่อง: approve จองเครื่องใหม่ให้ร่าง EXCH- เอง → ด่านร่างอื่นไม่นับตัวเอง เปิดได้', async () => {
+        prisma.contract.findUnique.mockResolvedValue({ ...mockContract, id: 'contract-exch', exchangedFromContractId: 'contract-original' });
+        await service.activate('contract-exch');
+        expect(prisma.contract.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+          where: expect.objectContaining({ id: { not: 'contract-exch' }, status: 'DRAFT' }),
+        }));
+        expect(exchangeServiceMock.finalizeAfterActivation).toHaveBeenCalledTimes(1);
+      });
+
+      it('IN_STOCK → เปิดได้ตามเดิม ไม่ต้องถามเจ้าของ RESERVED', async () => {
+        prisma.product.findFirst.mockResolvedValue({ ...mockProduct, status: 'IN_STOCK' });
+        await service.activate('contract-1');
+        expect(prisma.booking.findFirst).not.toHaveBeenCalled();
+        expect(prisma.contract.update).toHaveBeenCalledWith(expect.objectContaining({
+          data: expect.objectContaining({ status: 'ACTIVE' }),
+        }));
+        expect(prisma.product.updateMany).toHaveBeenCalledWith({
+          where: { id: 'product-1', status: 'IN_STOCK', deletedAt: null }, data: { status: 'SOLD_INSTALLMENT' },
+        });
+      });
+
+      // รอบแก้ 1 (ผู้ตรวจอิสระ): activate ใช้ READ COMMITTED — เครื่อง IN_STOCK ถูกใบจองล็อก (CAS ของ payDeposit)
+      // คั่นระหว่างอ่านใน tx กับจังหวะ flip ได้ ⇒ flip ต้องเป็น CAS บนสถานะที่อ่านมา ไม่งั้นทับ RESERVED ของใบจอง
+      it('flip SOLD_INSTALLMENT CAS count 0 (สถานะเปลี่ยนคั่นกลาง) → 409 ไม่เปิดสัญญา ไม่ย้ายกรรมสิทธิ์ ไม่ลง JE', async () => {
+        prisma.product.updateMany.mockResolvedValue({ count: 0 });
+        const err = await service.activate('contract-1').catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect((err as Error).message).toMatch(/สินค้าเปลี่ยนสถานะระหว่างเปิดสัญญา/);
+        expect(prisma.contract.update).not.toHaveBeenCalled();
+        expect(productsMock.transferOwnership).not.toHaveBeenCalled();
+        expect(prisma.sale.create).not.toHaveBeenCalled();
         expect(contractActivationTemplateMock.execute).not.toHaveBeenCalled();
       });
     });

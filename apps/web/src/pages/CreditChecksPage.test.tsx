@@ -127,3 +127,16 @@ it('keeps the submitted decision fixed and the dialog open while saving', async 
   await act(async () => resolvePost({ data: {} }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
 });
+
+
+it('distinguishes a debounced empty search from an empty review queue and restores the queue copy when cleared', async () => {
+  rows = [];
+  showQueue();
+  expect(await screen.findByText(/อีก 1 รายการยังรอผลวิเคราะห์/)).toBeInTheDocument();
+  const search = screen.getByRole('textbox', { name: 'ค้นหารายการตรวจเครดิต' });
+  fireEvent.change(search, { target: { value: 'ไม่มีลูกค้าชื่อนี้' } });
+  expect(await screen.findByText('ไม่พบรายการที่ตรงกับ “ไม่มีลูกค้าชื่อนี้”')).toBeInTheDocument();
+  expect(screen.queryByText(/เคลียร์หมดแล้ว|อีก 1 รายการยังรอผลวิเคราะห์/)).not.toBeInTheDocument();
+  fireEvent.change(search, { target: { value: '' } });
+  expect(await screen.findByText(/อีก 1 รายการยังรอผลวิเคราะห์/)).toBeInTheDocument();
+});

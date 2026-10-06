@@ -34,7 +34,8 @@ describe('Device Swap CoA (spec §10) — 42-1106 / 42-1107 removed (CPA 2026-08
     const otherIncome = accounts
       .map((a: { code: string }) => a.code)
       .filter((c: string) => c.startsWith('42-11'));
-    expect(otherIncome).toEqual(['42-1102', '42-1103', '42-1104', '42-1105']);
+    // ก้อน 5 (2026-10-05): เจ้าของเปิด 42-1108 รายได้อื่น-ภาษีซื้อของสินค้าที่ขายผ่อน — บัญชีใหม่ ไม่ใช่การฟื้น 42-1106/42-1107
+    expect(otherIncome).toEqual(['42-1102', '42-1103', '42-1104', '42-1105', '42-1108']);
   });
 });
 

@@ -120,33 +120,61 @@ describe('Booking mutations and real SHOP ledger on isolated PostgreSQL', () => 
     expect(await cashNet(booking.id)).toBe(1000);
   });
 
-  it('rolls back item replacement if the same edit fails its customer foreign key', async () => {
+  it('rejects an unknown customer before touching items', async () => {
     const { booking } = await createBooking();
+    // productId ต้องเป็นเครื่องจริงของใบนี้ — ไม่งั้นด่านรายการ (1 เครื่อง 1 ชิ้น) ตีตกก่อนถึงตัวเขียน
+    const productId = booking.items[0].productId!;
     await expect(bookings.update(booking.id, { customerId: randomUUID(),
-      items: [{ description: 'Synthetic replacement', quantity: 1, unitPrice: 5000 }] }, actor)).rejects.toThrow();
+      items: [{ productId, description: 'Synthetic replacement', quantity: 1, unitPrice: 5000 }] }, actor)).rejects.toThrow();
     const stored = await bookings.findOne(booking.id, actor);
     expect(stored.items).toHaveLength(1);
     expect(stored.items[0].id).toBe(booking.items[0].id);
     expect(stored.totalAmount.toNumber()).toBe(10000);
   });
-  it('allows only one of two bookings to sell the same physical device', async () => {
+  it('rolls back item replacement when the write itself fails after the old items were deleted', async () => {
+    const { booking } = await createBooking();
+    const productId = booking.items[0].productId!;
+    // เกินขนาด Decimal(12,2) ⇒ ฐานข้อมูลปฏิเสธตอนเขียน ซึ่งเกิดหลัง deleteMany ในธุรกรรมเดียวกัน
+    await expect(bookings.update(booking.id, {
+      items: [{ productId, description: 'Synthetic overflow', quantity: 1, unitPrice: 100_000_000_000 }] }, actor)).rejects.toThrow();
+    const stored = await bookings.findOne(booking.id, actor);
+    expect(stored.items).toHaveLength(1);
+    expect(stored.items[0].id).toBe(booking.items[0].id);
+    expect(stored.totalAmount.toNumber()).toBe(10000);
+  });
+  it('KPI cards and the table agree: summary number === findAll(params).total for every card', async () => {
+    const pending = await createBooking();
+    const paid = await createBooking(); await pay(paid.booking.id);
+    const canceled = await createBooking();
+    await bookings.cancel(canceled.booking.id, { cancelReason: 'Synthetic KPI parity cancellation' }, actor);
+    const summary = await bookings.summary({}, actor);
+    const cards: [string, number, Parameters<typeof bookings.findAll>[0]][] = [
+      ['open', summary.open, { open: true }],
+      ['pendingDeposit', summary.pendingDeposit, { status: 'PENDING_DEPOSIT' }],
+      ['paid', summary.paid, { status: 'PAID' }],
+      ['expiringWithin3Days', summary.expiringWithin3Days, { expiringDays: 3 }],
+      ['closed', summary.closed.total, { status: 'CLOSED' }],
+    ];
+    for (const [name, card, params] of cards) {
+      expect({ name, total: (await bookings.findAll(params, actor)).total }).toEqual({ name, total: card });
+    }
+    expect(summary.pendingDeposit).toBeGreaterThanOrEqual(1);
+    expect(summary.paid).toBeGreaterThanOrEqual(1);
+    expect(summary.closed.total).toBeGreaterThanOrEqual(1);
+    expect(pending.booking.id).toBeTruthy();
+  });
+  it('locks the device on deposit: the second booking on the same device cannot take a deposit, and only the first converts', async () => {
     const { booking: first, product } = await createBooking();
     const second = await bookings.create({ customerId, branchId, depositAmount: 1000,
       items: [{ productId: product.id, description: prefix, quantity: 1, unitPrice: 10000 }],
     }, actor.id, actor);
-    await pay(first.id); await pay(second.id);
-    const results = await Promise.allSettled([first, second].map(booking => bookings.convertToSale(
-      booking.id, { collectBalance: true, paymentMethod: 'CASH' }, actor.id, actor)));
-    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
-    const stored = await db.booking.findMany({ where: { id: { in: [first.id, second.id] } } });
-    expect(stored.map(row => row.status).sort()).toEqual(['CONVERTED', 'PAID']);
-    expect(await db.sale.count({ where: { productId: product.id } })).toBe(1);
+    await pay(first.id);
+    expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('RESERVED');
+    await expect(pay(second.id)).rejects.toThrow('เครื่องนี้ถูกขายหรือย้ายสาขาไปแล้ว');
+    await bookings.convertToSale(first.id, { collectBalance: true, paymentMethod: 'CASH' }, actor.id, actor);
     expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('SOLD_CASH');
-    const loser = stored.find(row => row.status === 'PAID')!;
-    expect(await readEntries(loser.id)).toHaveLength(1);
-    const winner = stored.find(row => row.status === 'CONVERTED')!;
-    await expect(bookings.convertToSale(winner.id, { collectBalance: true, paymentMethod: 'CASH' }, actor.id, actor)).rejects.toThrow();
     expect(await db.sale.count({ where: { productId: product.id } })).toBe(1);
+    expect((await db.booking.findUniqueOrThrow({ where: { id: second.id } })).status).toBe('PENDING_DEPOSIT');
   });
 
   it.each(['foreign branch', 'damaged', 'quantity', 'multiple items'])('rolls back conversion for an ineligible booking: %s', async scenario => {
@@ -164,7 +192,7 @@ describe('Booking mutations and real SHOP ledger on isolated PostgreSQL', () => 
     }
     await expect(bookings.convertToSale(booking.id, { collectBalance: true, paymentMethod: 'CASH', previouslyDamagedAcknowledged: true }, actor.id, actor)).rejects.toThrow();
     expect((await db.booking.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe('PAID');
-    expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('IN_STOCK');
+    expect((await db.product.findUniqueOrThrow({ where: { id: product.id } })).status).toBe('RESERVED');
     expect(await db.sale.count({ where: { productId: product.id } })).toBe(0);
     expect(await readEntries(booking.id)).toHaveLength(1);
   });

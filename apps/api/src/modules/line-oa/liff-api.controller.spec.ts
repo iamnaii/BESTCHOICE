@@ -258,6 +258,40 @@ describe('LiffApiController', () => {
       expect(result.unpaidLateFees).toBe(100);
     });
 
+    it('PR5ข: เงินรับล่วงหน้าถังรวมที่ยอดปิดหัก รวมในแถว "หักยอดชำระบางส่วน" (ยอดชำระล่วงหน้า 300 + ถังรวม 500 = 800) ⇒ ยอดเต็มก่อนหักส่วนลดบนไลน์ = ยอดค้างเต็ม 18,189.96', async () => {
+      liffService.findCustomerByLineId.mockResolvedValue({ id: 'cust1', name: 'สมชาย' });
+      liffService.findContractForCustomer.mockResolvedValue({
+        id: 'con1',
+        contractNumber: 'BC-001',
+        status: 'ACTIVE',
+      });
+      // ตัวอย่างที่เจ้าของเคาะ (17,000/12 · เครดิต 300 + ถังรวม 500 · ลด 50%)
+      contractPaymentService.getEarlyPayoffQuote.mockResolvedValue({
+        totalPayoff: 14612.63,
+        remainingMonths: 12,
+        remainingCost: 10697.64,
+        grossProfit: 5554.66,
+        discountAmount: 2777.33,
+        advancePayment: 300,
+        advanceBalanceApplied: 500,
+        unpaidLateFees: 0,
+      });
+
+      const result = await controller.getLiffEarlyPayoffQuote(mockReq('U_line'), 'con1');
+      expect(result.partiallyPaidCredit).toBe(800);
+      expect(result.totalPayoff).toBe(14612.63);
+      // หน้าไลน์คิด "ยอดเต็มก่อนหักส่วนลด" = ยอดที่ต้องชำระ + ส่วนลด − ค่าปรับ + partiallyPaidCredit (LiffEarlyPayoff.tsx)
+      expect(
+        Math.round(
+          (result.totalPayoff +
+            result.discount -
+            result.unpaidLateFees +
+            result.partiallyPaidCredit) *
+            100,
+        ) / 100,
+      ).toBe(18189.96);
+    });
+
     it('clamps negative grossProfit to 0 for remainingInterest (loss case)', async () => {
       liffService.findCustomerByLineId.mockResolvedValue({ id: 'cust1', name: 'สมชาย' });
       liffService.findContractForCustomer.mockResolvedValue({

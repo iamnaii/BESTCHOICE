@@ -8,6 +8,7 @@ import { ContractExchangeService } from '../contract-exchange.service';
 import { ExchangeCancelService } from '../contract-exchange-cancel.service';
 import { AuditService } from '../../audit/audit.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { InstallmentInputVatTemplate } from '../../journal/cpa-templates/installment-input-vat.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { glContractBalance } from '../../journal/gl-contract-balance';
 import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
@@ -96,6 +97,7 @@ const svc = new ContractExchangeService(
   companyResolver,
   new ShopInventoryTransferTemplate(journal, prisma as never, companyResolver),
   new ShopAccountResolver(prisma as never),
+  new InstallmentInputVatTemplate(journal, prisma as never, companyResolver),
 );
 const cancelSvc = new ExchangeCancelService(
   prisma as never,

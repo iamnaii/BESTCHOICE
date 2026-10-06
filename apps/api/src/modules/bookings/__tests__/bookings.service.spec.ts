@@ -6,7 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { BookingsService } from '../bookings.service';
+import * as Sentry from '@sentry/node';
+import { BookingsService, LOCK_FAILED_MSG } from '../bookings.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ShopBookingDepositTemplate } from '../../journal/cpa-templates/shop-booking-deposit.template';
 import { ShopBookingForfeitTemplate } from '../../journal/cpa-templates/shop-booking-forfeit.template';
@@ -15,6 +16,13 @@ import { ShopBookingDepositAppliedTemplate } from '../../journal/cpa-templates/s
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ShopBookingRefundTemplate } from '../../journal/cpa-templates/shop-booking-refund.template';
 import { TEST_CUSTOMER_ADDRESS } from '../../../utils/test-data-markers';
+
+// @sentry/nestjs (ผ่าน journal-auto.service) re-export @sentry/node — mock ต้องคงของจริงไว้ ไม่งั้น import ล้ม
+jest.mock('@sentry/node', () => ({
+  ...jest.requireActual('@sentry/node'),
+  captureMessage: jest.fn(),
+  captureException: jest.fn(),
+}));
 
 // Mock sequence util so tests don't need a real `booking` delegate
 jest.mock('../../../utils/sequence.util', () => ({
@@ -64,7 +72,7 @@ describe('BookingsService', () => {
 
   it.each([
     { depositAmount: 2000 }, { customerId: 'cust-2' }, { branchId: 'br-2' },
-    { items: [{ description: 'changed device', quantity: 1, unitPrice: 9000 }] },
+    { items: [{ productId: 'prod-1', description: 'changed device', quantity: 1, unitPrice: 9000 }] },
   ])('does not silently edit received money or its owner/product: %j', async patch => {
     prisma.booking.findFirst.mockResolvedValue({ id: 'bk-1', status: 'PAID', branchId: 'br-1',
       depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000),
@@ -78,7 +86,7 @@ describe('BookingsService', () => {
     prisma.booking.findFirst.mockResolvedValue({ id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1',
       depositAmount: new Prisma.Decimal(5000), totalAmount: new Prisma.Decimal(10000),
       expireDate: new Date(Date.now() + 86400000) });
-    await expect(service.update('bk-1', { items: [{ description: 'cheaper', quantity: 1, unitPrice: 1000 }] }, SALES_BR1))
+    await expect(service.update('bk-1', { items: [{ productId: 'prod-1', description: 'cheaper', quantity: 1, unitPrice: 1000 }] }, SALES_BR1))
       .rejects.toThrow(/มัดจำ/);
     expect(prisma._tx.bookingItem.deleteMany).not.toHaveBeenCalled();
   });
@@ -103,6 +111,108 @@ describe('BookingsService', () => {
       data: expect.objectContaining({ depositAccountCode: 'S11-1101' }),
     }));
   });
+  it('payDeposit — เครื่องในใบถูกขายไปแล้ว (SOLD_CASH) → 409 LOCK_FAILED_MSG ไม่มี update/JE/tender', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
+    prisma._tx.product.findFirst.mockResolvedValueOnce({ status: 'SOLD_CASH', branchId: 'br-1' });
+    await expect(service.payDeposit('bk-1', { depositMethod: 'CASH' } as Parameters<typeof service.payDeposit>[1], SALES_BR1))
+      .rejects.toThrow(LOCK_FAILED_MSG);
+    expect(prisma._tx.booking.updateMany).not.toHaveBeenCalled();
+    expect(shopBookingDepositTemplate.execute).not.toHaveBeenCalled();
+    expect(prisma._tx.shopTender.createMany).not.toHaveBeenCalled();
+  });
+  it('payDeposit — เครื่องอยู่คนละสาขา → 409 LOCK_FAILED_MSG ไม่มี update', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
+    prisma._tx.product.findFirst.mockResolvedValueOnce({ status: 'IN_STOCK', branchId: 'br-2' });
+    const err = await service.payDeposit('bk-1', { depositMethod: 'CASH' } as Parameters<typeof service.payDeposit>[1], SALES_BR1).catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(err.message).toBe(LOCK_FAILED_MSG);
+    expect(prisma._tx.booking.updateMany).not.toHaveBeenCalled();
+  });
+  it('payDeposit — ใบจองไม่มีแถวรายการ (ใบเก่า) → ข้ามด่านเครื่อง รับมัดจำได้ตามเดิม', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT', items: [] });
+    await service.payDeposit('bk-1', { depositMethod: 'CASH' } as Parameters<typeof service.payDeposit>[1], SALES_BR1);
+    expect(prisma._tx.product.findFirst).not.toHaveBeenCalled();
+    expect(prisma._tx.booking.updateMany).toHaveBeenCalled();
+  });
+  it('payDeposit — audit เก็บวิธีรับเงินที่ resolve แล้ว (tender แรก) และยอดมัดจำ 2 ตำแหน่ง', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
+    await service.payDeposit('bk-1', {
+      depositMethod: 'CASH',
+      tenders: [{ method: 'BANK_TRANSFER', amount: '1000.00', reference: 'REF123456' }],
+    } as unknown as Parameters<typeof service.payDeposit>[1], SALES_BR1);
+    const audit = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_DEPOSIT_PAID');
+    expect(audit[0].data.newValue).toEqual(expect.objectContaining({ depositMethod: 'BANK_TRANSFER', depositAmount: '1000.00' }));
+  });
+  describe('payDeposit — ล็อกเครื่อง (PR 2)', () => {
+    it('ล็อกเครื่อง IN_STOCK → RESERVED ใน tx เดียวกัน และเขียน lockedProductId/lockedAt', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1', depositAmount: new Prisma.Decimal(1000),
+        expireDate: new Date(Date.now() + 86_400_000), bookingNumber: 'BK-20260517-0001',
+        customerId: 'cust-1', items: [{ productId: 'prod-1' }],
+      });
+      await service.payDeposit('bk-1', { depositMethod: 'CASH' } as any, OWNER);
+      expect(prisma._tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prod-1', status: 'IN_STOCK', branchId: 'br-1', deletedAt: null },
+        data: { status: 'RESERVED' },
+      });
+      expect(prisma._tx.productReservation.updateMany).toHaveBeenCalled();
+      const bookingClaim = prisma._tx.booking.updateMany.mock.calls[0][0];
+      expect(bookingClaim.data.lockedProductId).toBe('prod-1');
+      expect(bookingClaim.data.lockedAt).toBeInstanceOf(Date);
+      expect(bookingClaim.data.lockedAt).toBe(bookingClaim.data.depositPaidAt);
+      const audit = prisma._tx.auditLog.create.mock.calls.at(-1)![0];
+      expect(audit.data.newValue.lockedProductId).toBe('prod-1');
+    });
+
+    it('CAS ล็อกไม่สำเร็จ (count 0) → 409 ข้อความ spec และไม่โพสต์ JE/สมุดเงิน', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1', depositAmount: new Prisma.Decimal(1000),
+        expireDate: new Date(Date.now() + 86_400_000), bookingNumber: 'BK-20260517-0001',
+        customerId: 'cust-1', items: [{ productId: 'prod-1' }],
+      });
+      prisma._tx.product.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.payDeposit('bk-1', { depositMethod: 'CASH' } as any, OWNER)).rejects.toThrow(
+        'เครื่องนี้ถูกขายหรือย้ายสาขาไปแล้ว กรุณาแก้ใบจองเลือกเครื่องอื่นก่อนรับมัดจำ',
+      );
+      expect(shopBookingDepositTemplate.execute).not.toHaveBeenCalled();
+      expect(prisma._tx.shopTender.createMany).not.toHaveBeenCalled();
+    });
+
+    it('ใบยุคก่อน (ไม่มีแถวรายการ) รับมัดจำได้โดยไม่ล็อก — lockedProductId ว่าง', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        id: 'bk-legacy', status: 'PENDING_DEPOSIT', branchId: 'br-1', depositAmount: new Prisma.Decimal(500),
+        expireDate: new Date(Date.now() + 86_400_000), bookingNumber: 'BK-20260101-0001',
+        customerId: 'cust-1', items: [],
+      });
+      await service.payDeposit('bk-legacy', { depositMethod: 'CASH' } as any, OWNER);
+      expect(prisma._tx.product.updateMany).not.toHaveBeenCalled();
+      const bookingClaim = prisma._tx.booking.updateMany.mock.calls[0][0];
+      expect(bookingClaim.data.lockedProductId).toBeUndefined();
+    });
+
+    describe('P2002 wrapper', () => {
+      const p2002 = (target: unknown) =>
+        new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'test', meta: { target } });
+      const pay = () => service.payDeposit('bk-1', { depositMethod: 'CASH' } as any, OWNER);
+
+      it('P2002 ของ index ล็อกเครื่อง → 409 LOCK_FAILED_MSG', async () => {
+        prisma.$transaction.mockRejectedValueOnce(p2002(['locked_product_id']));
+        const err = await pay().catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect((err as ConflictException).message).toBe(LOCK_FAILED_MSG);
+      });
+      it('P2002 ของ index อื่น → โยน error เดิม ไม่แปลง', async () => {
+        const e = p2002(['journal_entries_ref_unique']);
+        prisma.$transaction.mockRejectedValueOnce(e);
+        await expect(pay()).rejects.toBe(e);
+      });
+      it('error อื่น → โยนเดิม', async () => {
+        const e = new Error('boom');
+        prisma.$transaction.mockRejectedValueOnce(e);
+        await expect(pay()).rejects.toBe(e);
+      });
+    });
+  });
   it('rejects a misleading FINANCE receipt account before recording payment', async () => {
     prisma.booking.findFirst.mockResolvedValue({ ...paidBooking(), status: 'PENDING_DEPOSIT' });
     await expect(service.payDeposit('bk-1', { depositMethod: 'CASH', depositAccountCode: '11-1101' }, SALES_BR1)).rejects.toThrow(/บัญชี/);
@@ -121,7 +231,7 @@ describe('BookingsService', () => {
     const mutation = action === 'pay' ? service.payDeposit('bk-1', { depositMethod: 'CASH', depositAccountCode: 'S11-1101' }, SALES_BR1)
       : action === 'convert' ? service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' }, SALES_BR1.id, SALES_BR1)
       : action === 'extend' ? service.update('bk-1', { expireDate: '2026-09-15T17:00:00.000Z' }, SALES_BR1)
-      : service.cancel('bk-1', {}, SALES_BR1);
+      : service.cancel('bk-1', { cancelReason: 'ลูกค้าเปลี่ยนใจ' }, SALES_BR1);
     await expect(mutation).rejects.toThrow(/หมดอายุ/);
     expect(prisma._tx.sale.create).not.toHaveBeenCalled();
     expect(prisma._tx.booking.updateMany).not.toHaveBeenCalled();
@@ -138,6 +248,8 @@ describe('BookingsService', () => {
   });
 
   beforeEach(async () => {
+    (Sentry.captureMessage as jest.Mock).mockClear();
+    (Sentry.captureException as jest.Mock).mockClear();
     const txAuditLog = { create: jest.fn().mockResolvedValue({ id: 'log-1' }) };
 
     const txBooking = {
@@ -172,6 +284,7 @@ describe('BookingsService', () => {
 
     const txProduct = {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findFirst: jest.fn().mockResolvedValue({ id: 'prod-1', status: 'IN_STOCK', branchId: 'br-1', name: 'iPhone 15', imeiSerial: '356789012345678' }),
       findUnique: jest.fn().mockResolvedValue({
         branchId: 'br-1', wasPreviouslyDamaged: false, id: 'prod-1',
         status: 'IN_STOCK',
@@ -219,9 +332,13 @@ describe('BookingsService', () => {
           addressCurrent: 'กรุงเทพ',
         }),
       },
-      product: { findMany: jest.fn().mockResolvedValue([]) },
+      product: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue({ id: 'prod-1', status: 'IN_STOCK', branchId: 'br-1', name: 'iPhone 15', imeiSerial: '356789012345678' }),
+      },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'br-1' }) },
       user: { findFirst: jest.fn().mockResolvedValue({ id: 'u-admin' }) },
+      auditLog: { findMany: jest.fn().mockResolvedValue([]) },
       systemConfig: { findFirst: jest.fn().mockResolvedValue(null) },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       $transaction: jest.fn(async (fn: any) =>
@@ -294,10 +411,7 @@ describe('BookingsService', () => {
       {
         customerId: 'cust-1',
         branchId: 'br-1',
-        items: [
-          { description: 'iPhone 15', quantity: 1, unitPrice: 35000 },
-          { description: 'AirPods', quantity: 1, unitPrice: 5990 },
-        ],
+        items: [{ productId: 'prod-1', description: 'iPhone 15', quantity: 1, unitPrice: 35000 }],
         depositAmount: 5000,
       },
       'user-1',
@@ -306,7 +420,7 @@ describe('BookingsService', () => {
 
     expect(prisma.$transaction).toHaveBeenCalled();
     const createArgs = prisma._tx.booking.create.mock.calls[0][0];
-    expect(Number(createArgs.data.totalAmount)).toBe(40990);
+    expect(Number(createArgs.data.totalAmount)).toBe(35000);
     expect(Number(createArgs.data.depositAmount)).toBe(5000);
     expect(createArgs.data.status).toBe('PENDING_DEPOSIT');
     expect(createArgs.data.bookingNumber).toBe('BK-20260517-0001');
@@ -331,7 +445,7 @@ describe('BookingsService', () => {
       {
         customerId: 'cust-1',
         branchId: 'br-1',
-        items: [{ description: 'penny test', quantity: 3, unitPrice: 0.1 }],
+        items: [{ productId: 'prod-1', description: 'penny test', quantity: 1, unitPrice: 0.3 }],
         depositAmount: 0.1,
       },
       'user-1',
@@ -349,7 +463,7 @@ describe('BookingsService', () => {
         {
           customerId: 'cust-1',
           branchId: 'br-1',
-          items: [{ description: 'X', quantity: 1, unitPrice: 1000 }],
+          items: [{ productId: 'prod-1', description: 'X', quantity: 1, unitPrice: 1000 }],
           depositAmount: 5000, // > totalAmount 1000
         },
         'user-1',
@@ -364,7 +478,7 @@ describe('BookingsService', () => {
         {
           customerId: 'cust-1',
           branchId: 'br-1',
-          items: [{ description: 'X', quantity: 1, unitPrice: 1000 }],
+          items: [{ productId: 'prod-1', description: 'X', quantity: 1, unitPrice: 1000 }],
           depositAmount: 500,
         },
         'user-1',
@@ -487,7 +601,7 @@ describe('BookingsService', () => {
       expireDate: new Date(Date.now() - 86400000),
       depositAmount: new Prisma.Decimal(1000),
     });
-    await expect(service.cancel('bk-1', {}, OWNER)).rejects.toThrow(/หมดอายุ/);
+    await expect(service.cancel('bk-1', { cancelReason: 'ลูกค้าเปลี่ยนใจ' }, OWNER)).rejects.toThrow(/หมดอายุ/);
   });
 
   // 4. convertToSale — happy path + idempotency
@@ -692,6 +806,40 @@ describe('BookingsService', () => {
     expect(prisma._tx.sale.create).not.toHaveBeenCalled();
   });
 
+  describe('convertToSale — เครื่องที่ใบนี้ล็อกไว้ (PR 2)', () => {
+    it('ใบ PAID ที่ล็อก: เครื่อง RESERVED ผ่านด่าน และ claim where status RESERVED → SOLD_CASH + ล้าง lockedProductId', async () => {
+      const b = paidBooking();
+      prisma.booking.findFirst.mockResolvedValueOnce({ ...b, lockedProductId: 'prod-1' });
+      prisma._tx.product.findUnique.mockResolvedValueOnce({
+        id: 'prod-1', status: 'RESERVED', branchId: 'br-1', deletedAt: null, costPrice: new Prisma.Decimal(6000),
+        name: 'iPhone 15', imeiSerial: '356789012345678', category: 'PHONE_NEW', wasPreviouslyDamaged: false, po: null,
+      });
+      await service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' } as any, 'u-sales', OWNER);
+      expect(prisma._tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prod-1', status: 'RESERVED', branchId: 'br-1', deletedAt: null },
+        data: { status: 'SOLD_CASH' },
+      });
+      const link = prisma._tx.booking.update.mock.calls.find((c: any) => c[0].data.convertedToSaleId);
+      expect(link![0].data).toMatchObject({ convertedToSaleId: 'sale-new', lockedProductId: null });
+      expect(link![0].data.unlockedAt).toBeInstanceOf(Date);
+    });
+
+    it('ใบ PAID ยุคก่อนล็อก (lockedProductId ว่าง): เครื่องต้อง IN_STOCK และ claim where IN_STOCK เหมือนเดิม', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce({ ...paidBooking(), lockedProductId: null });
+      await service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' } as any, 'u-sales', OWNER);
+      expect(prisma._tx.product.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ status: 'IN_STOCK' }) }),
+      );
+    });
+
+    it('ใบ PAID ที่ล็อก แต่เครื่องกลายเป็น RESERVED ของคนอื่น (lockedProductId ≠ product.id) → ปฏิเสธด่านพร้อมขาย', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce({ ...paidBooking(), lockedProductId: 'prod-other' });
+      prisma._tx.product.findUnique.mockResolvedValueOnce({ id: 'prod-1', status: 'RESERVED', branchId: 'br-1', deletedAt: null, po: null });
+      await expect(service.convertToSale('bk-1', { collectBalance: true, paymentMethod: 'CASH' } as any, 'u-sales', OWNER))
+        .rejects.toThrow('สินค้าไม่พร้อมขาย หรือถูกขายไปแล้ว');
+    });
+  });
+
   // 5. autoExpire — cron path
   it('autoExpire — flips PAID + past-expireDate rows to EXPIRED and writes audit', async () => {
     prisma.booking.findMany.mockResolvedValueOnce([
@@ -781,9 +929,9 @@ describe('BookingsService', () => {
   // ─── test-data fence (spec 2026-09-05 §5.1) ────────────────────────────────
 
   it('create — รายการที่ผูกเครื่อง TEST- กับลูกค้าจริง → BadRequest ก่อนเปิด tx', async () => {
-    prisma.product.findMany.mockResolvedValueOnce([
-      { id: 'prod-t', imeiSerial: 'TEST-0001', name: 'ทดสอบระบบ มือถือ', po: null },
-    ]);
+    prisma.product.findFirst.mockResolvedValueOnce(
+      { id: 'prod-t', status: 'IN_STOCK', branchId: 'br-1', imeiSerial: 'TEST-0001', name: 'ทดสอบระบบ มือถือ', po: null },
+    );
     await expect(
       service.create(
         {
@@ -797,23 +945,30 @@ describe('BookingsService', () => {
       ),
     ).rejects.toThrow(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(prisma.product.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: { in: ['prod-t'] }, deletedAt: null } }),
+    expect(prisma.product.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'prod-t', deletedAt: null } }),
     );
   });
 
-  it('create — รายการไม่ผูกเครื่อง (description อย่างเดียว) ไม่ query สินค้า', async () => {
-    await service.create(
-      {
-        customerId: 'cust-1',
-        branchId: 'br-1',
-        items: [{ description: 'จองรุ่นที่ยังไม่มีของ', quantity: 1, unitPrice: 1000 }],
-        depositAmount: 100,
-      },
-      'user-1',
-      OWNER,
-    );
-    expect(prisma.product.findMany).not.toHaveBeenCalled();
+  it('create — รายการที่ไม่ผูกเครื่อง → BadRequest ก่อนเปิด tx (คำตัดสินเจ้าของ 2026-10-05 ข้อ 2)', async () => {
+    await expect(service.create({ customerId: 'cust-1', branchId: 'br-1', depositAmount: 500,
+      items: [{ description: 'iPhone รุ่นใหม่ที่ยังไม่เข้า', quantity: 1, unitPrice: 42900 } as never] }, SALES_BR1.id, SALES_BR1))
+      .rejects.toThrow(/1 เครื่อง/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('create — เครื่องไม่ได้อยู่ในสาขาของใบจอง → BadRequest', async () => {
+    prisma.product.findFirst.mockResolvedValue({ id: 'prod-1', status: 'IN_STOCK', branchId: 'br-2' });
+    await expect(service.create({ customerId: 'cust-1', branchId: 'br-1', depositAmount: 500,
+      items: [{ productId: 'prod-1', description: 'iPhone 15', quantity: 1, unitPrice: 42900 }] }, SALES_BR1.id, SALES_BR1))
+      .rejects.toThrow(/คนละสาขา/);
+  });
+
+  it('create — เครื่องไม่พร้อมขาย (RESERVED/SOLD) → BadRequest', async () => {
+    prisma.product.findFirst.mockResolvedValue({ id: 'prod-1', status: 'RESERVED', branchId: 'br-1' });
+    await expect(service.create({ customerId: 'cust-1', branchId: 'br-1', depositAmount: 500,
+      items: [{ productId: 'prod-1', description: 'iPhone 15', quantity: 1, unitPrice: 42900 }] }, SALES_BR1.id, SALES_BR1))
+      .rejects.toThrow(/ไม่พร้อมขาย/);
   });
 
   it('convertToSale — ลูกค้าทดสอบ + เครื่องจริง → BadRequest, ไม่สร้าง Sale', async () => {
@@ -859,7 +1014,7 @@ describe('BookingsService', () => {
         {
           customerId: 'cust-chat',
           branchId: 'br-1',
-          items: [{ description: 'iPhone 15', quantity: 1, unitPrice: 35000 }],
+          items: [{ productId: 'prod-1', description: 'iPhone 15', quantity: 1, unitPrice: 35000 }],
           depositAmount: 1000,
         },
         'user-1',
@@ -888,10 +1043,34 @@ describe('BookingsService', () => {
     prisma.booking.findFirst.mockResolvedValue({ id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1',
       depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000),
       expireDate: new Date(Date.now() + 86400000) });
+    prisma._tx.booking.update.mockResolvedValueOnce({ id: 'bk-1', expireDate: new Date(Date.now() + 86400000),
+      depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000) });
     await service.update('bk-1', { customerId: 'cust-1' }, OWNER);
     expect(prisma._tx.booking.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ customer: { connect: { id: 'cust-1' } } }) }),
     );
+  });
+
+  it('update — แก้สาขาโดยไม่ส่งรายการ แต่เครื่องเดิมอยู่คนละสาขา → BadRequest ไม่แก้ใบจอง', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1', customerId: 'cust-1',
+      items: [{ productId: 'prod-1' }],
+      depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000),
+      expireDate: new Date(Date.now() + 86400000) });
+    prisma._tx.product.findFirst.mockResolvedValueOnce({ id: 'prod-1', status: 'IN_STOCK', branchId: 'br-1' });
+    await expect(service.update('bk-1', { branchId: 'br-2' }, OWNER)).rejects.toThrow(/คนละสาขา/);
+    expect(prisma._tx.booking.update).not.toHaveBeenCalled();
+  });
+
+  it('update — แก้สาขาโดยไม่ส่งรายการ และเครื่องเดิมอยู่สาขาใหม่ → แก้ได้', async () => {
+    prisma.booking.findFirst.mockResolvedValue({ id: 'bk-1', status: 'PENDING_DEPOSIT', branchId: 'br-1', customerId: 'cust-1',
+      items: [{ productId: 'prod-1' }],
+      depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000),
+      expireDate: new Date(Date.now() + 86400000) });
+    prisma._tx.product.findFirst.mockResolvedValueOnce({ id: 'prod-1', status: 'IN_STOCK', branchId: 'br-2', name: 'iPhone 15', imeiSerial: '356789012345678' });
+    prisma._tx.booking.update.mockResolvedValueOnce({ id: 'bk-1', expireDate: new Date(Date.now() + 86400000),
+      depositAmount: new Prisma.Decimal(1000), totalAmount: new Prisma.Decimal(10000) });
+    await service.update('bk-1', { branchId: 'br-2' }, OWNER);
+    expect(prisma._tx.booking.update).toHaveBeenCalled();
   });
 
   it('convertToSale — ลูกค้าในใบจองไม่มีเบอร์ → BadRequest ไม่สร้าง Sale ไม่ตัดสต็อก', async () => {
@@ -904,5 +1083,101 @@ describe('BookingsService', () => {
     expect(prisma.booking.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ include: expect.objectContaining({ customer: { select: expect.objectContaining({ addressCurrent: true, acquisitionSource: true, nationalId: true }) } }) }),
     );
+  });
+  describe('cancel/autoExpire — ปลดล็อกเครื่อง (PR 2)', () => {
+    const paidLocked = () => ({
+      id: 'bk-1', status: 'PAID', branchId: 'br-1', depositAmount: new Prisma.Decimal(1000),
+      depositPaidAt: new Date(), depositMethod: 'CASH', bookingNumber: 'BK-20260517-0001',
+      expireDate: new Date(Date.now() + 86_400_000), lockedProductId: 'prod-1',
+    });
+
+    it('ยกเลิกใบ PAID → RESERVED→IN_STOCK + ล้าง lockedProductId + unlockedAt', async () => {
+      prisma.booking.findFirst.mockResolvedValueOnce(paidLocked());
+      await service.cancel('bk-1', { cancelReason: 'ลูกค้าเปลี่ยนใจ' }, OWNER);
+      expect(prisma._tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prod-1', status: 'RESERVED' },
+        data: { status: 'IN_STOCK' },
+      });
+      const claim = prisma._tx.booking.updateMany.mock.calls[0][0];
+      expect(claim.data).toMatchObject({ status: 'CANCELED', lockedProductId: null });
+      expect(claim.data.unlockedAt).toBeInstanceOf(Date);
+      expect(prisma._tx.auditLog.create.mock.calls.some((c: any[]) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED')).toBe(false);
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      // canceledAt ใช้ `now` ตัวเดียวกับ unlockedAt · audit บันทึกเครื่องที่ปลดล็อกจริง
+      expect(claim.data.canceledAt).toBe(claim.data.unlockedAt);
+      const canceled = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_CANCELED');
+      expect(canceled![0].data.newValue.unlockedProductId).toBe('prod-1');
+    });
+
+    it('ยกเลิก — เครื่องถูกเปลี่ยนสถานะด้วยมือระหว่างล็อก (count 0) → ไม่ throw · audit BOOKING_UNLOCK_SKIPPED · Sentry warning หลัง tx', async () => {
+      prisma.booking.findFirst
+        .mockResolvedValueOnce(paidLocked())
+        .mockResolvedValueOnce({ id: 'bk-1', status: 'CANCELED' });
+      prisma._tx.product.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.cancel('bk-1', { cancelReason: 'ลูกค้าเปลี่ยนใจ' }, OWNER)).resolves.toBeDefined();
+      const skipped = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED');
+      expect(skipped).toBeDefined();
+      expect(skipped![0].data).toMatchObject({
+        action: 'BOOKING_UNLOCK_SKIPPED', entity: 'booking', entityId: 'bk-1', userId: OWNER.id,
+        newValue: { lockedProductId: 'prod-1', bookingNumber: 'BK-20260517-0001', reason: 'PRODUCT_NOT_RESERVED', flow: 'cancel' },
+      });
+      expect(typeof skipped![0].data.newValue.at).toBe('string');
+      const canceled = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_CANCELED');
+      expect(canceled![0].data.newValue.unlockedProductId).toBeNull();
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        expect.stringContaining('unlock skipped'),
+        expect.objectContaining({
+          level: 'warning', tags: { module: 'booking-lock', flow: 'cancel' },
+          extra: expect.objectContaining({ bookingId: 'bk-1', productId: 'prod-1' }),
+        }),
+      );
+    });
+
+    it('autoExpire ใบ PAID ที่ล็อก → ปลดล็อกใน tx เดียวกับ EXPIRED + ริบมัดจำ', async () => {
+      prisma.booking.findMany
+        .mockResolvedValueOnce([{ id: 'bk-1' }])
+        .mockResolvedValueOnce([]);
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        ...paidLocked(), expireDate: new Date(Date.now() - 1000),
+      });
+      const n = await service.autoExpire(new Date());
+      expect(n).toBe(1);
+      expect(prisma._tx.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'prod-1', status: 'RESERVED' },
+        data: { status: 'IN_STOCK' },
+      });
+      expect(shopBookingForfeitTemplate.execute).toHaveBeenCalled();
+      const claim = prisma._tx.booking.updateMany.mock.calls[0][0];
+      expect(claim.data).toMatchObject({ status: 'EXPIRED', lockedProductId: null });
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      const expired = prisma._tx.auditLog.create.mock.calls.find((c: any[]) => c[0].data.action === 'BOOKING_AUTO_EXPIRED');
+      expect(expired![0].data.newValue.unlockedProductId).toBe('prod-1');
+    });
+
+    it('autoExpire — เครื่องถูกเปลี่ยนสถานะด้วยมือ (count 0) → ยังหมดอายุ+ริบ · audit ข้ามใน tx · Sentry หลัง tx', async () => {
+      prisma.booking.findMany
+        .mockResolvedValueOnce([{ id: 'bk-1' }])
+        .mockResolvedValueOnce([]);
+      prisma.booking.findFirst.mockResolvedValueOnce({
+        ...paidLocked(), expireDate: new Date(Date.now() - 1000),
+      });
+      prisma._tx.product.updateMany.mockResolvedValueOnce({ count: 0 });
+      expect(await service.autoExpire(new Date())).toBe(1);
+      const calls = prisma._tx.auditLog.create.mock.calls as any[][];
+      const skippedExpire = calls.find((c) => c[0].data.action === 'BOOKING_UNLOCK_SKIPPED');
+      expect(skippedExpire).toBeDefined();
+      expect(skippedExpire![0].data.newValue.flow).toBe('auto-expire');
+      const expired = calls.find((c) => c[0].data.action === 'BOOKING_AUTO_EXPIRED');
+      expect(expired![0].data.newValue.unlockedProductId).toBeNull();
+      expect(shopBookingForfeitTemplate.execute).toHaveBeenCalled();
+      expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        expect.stringContaining('unlock skipped'),
+        expect.objectContaining({ level: 'warning', tags: { module: 'booking-lock', flow: 'auto-expire' } }),
+      );
+      expect((Sentry.captureMessage as jest.Mock).mock.invocationCallOrder[0])
+        .toBeGreaterThan(prisma._tx.auditLog.create.mock.invocationCallOrder.at(-1)!);
+    });
   });
 });

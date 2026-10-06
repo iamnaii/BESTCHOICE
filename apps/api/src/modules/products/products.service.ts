@@ -23,6 +23,7 @@ import {
 } from './product-enter-stock.util';
 import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receiving-acceptance-journal';
 import { assertProductNotHeld, changedIdentityFields } from './product-hold.util';
+import { resolveBookedInventory } from '../inventory/booked-inventory.util';
 import { autofillProductPriceFromTemplate } from '../../utils/product-price-autofill.util';
 import { isAccessoryProductCode } from '../../utils/accessory-type.util';
 import { findAccessoryGroupWhere, findStockGroups, StockListFilters } from './products-stock-groups';
@@ -75,6 +76,12 @@ const productInclude = {
   po: { select: { id: true, poNumber: true } },
   inspection: { select: { id: true, overallGrade: true, isCompleted: true } },
   productPhotos: { select: { id: true, isCompleted: true } },
+  // PR 2 ล็อกเครื่องใบจอง — ใบ PAID ที่ล็อกเครื่องนี้ (0–1 แถวตาม partial unique) ให้หน้าสต็อก/รายละเอียดชี้ไปใบจอง
+  lockedByBookings: {
+    where: { status: 'PAID' as const, deletedAt: null },
+    select: { id: true, bookingNumber: true, customer: { select: { name: true } } },
+    take: 1,
+  },
 };
 
 // Re-export for use by other services if needed
@@ -571,6 +578,16 @@ export class ProductsService {
     // ด่านเดียวกับตอนแก้ IMEI (product-hold.util.ts) — ลบ = ปลด IMEI ออกจาก
     // partial unique index ⇒ รับเครื่องเดิมเข้าสต็อกแล้วขายซ้ำได้
     await assertProductNotHeld(this.prisma, product, 'DELETE');
+
+    // ก้อน 3 (2026-10-05) — เครื่องที่ลงบัญชีสินค้าคงคลังแล้ว ลบตรงไม่ได้: บัญชี S11-200x จะค้างโดยไม่มีเครื่อง
+    // ต้องผ่านคำขอตัดจำหน่ายให้เจ้าของอนุมัติและลง Dr S53-1102 (คำตอบฝ่ายบัญชี ข6)
+    const booked = await resolveBookedInventory(this.prisma, id);
+    if (booked.booked) {
+      throw new BadRequestException(
+        `เครื่องนี้ลงบัญชีสินค้าคงคลังแล้ว (${booked.journalEntryNo ?? booked.source}) ลบไม่ได้ — ` +
+          'ใช้เมนู คลังสินค้า › ตัดสินค้า › ตัดจำหน่าย เพื่อให้เจ้าของอนุมัติและลงบัญชี',
+      );
+    }
 
     return this.prisma.product.update({
       where: { id },

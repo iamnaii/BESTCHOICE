@@ -4,12 +4,14 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JournalAutoService } from '../journal/journal-auto.service';
 import { DefectExchangeReversalTemplate } from '../journal/cpa-templates/defect-exchange-reversal.template';
+import { markInputVatReversedIfSwept } from '../journal/input-vat/installment-input-vat.claim';
 import { RepairTicketsService } from '../repair-tickets/repair-tickets.service';
 import { ExecuteDefectExchangeDto } from './dto/defect-exchange.dto';
 import { generateContractNumber } from '../../utils/sequence.util';
@@ -279,6 +281,8 @@ export class DefectExchangeService {
         // reverse cleanly rolls back the contract status update — never
         // leaves a contract DEFECT_EXCHANGED with old JEs still active.
         await this.defectExchangeReversalTemplate.reverseContract(oldContract.id, tx);
+        // ก้อน 5 — JE ภาษีซื้อของสัญญาเดิมถูกกลับไปพร้อมกัน → สถานะบนสัญญาตามสมุด (PENDING_INVOICE = ถอนสิทธิ์เคลมย้อน)
+        await markInputVatReversedIfSwept(tx, oldContract.id);
 
         // Total paid by customer on old contract = down payment + sum of installment payments received
         const paidInstallments = oldContract.payments
@@ -346,10 +350,18 @@ export class DefectExchangeService {
         }
 
         // Reserve new product (will flip to SOLD_INSTALLMENT on activation)
-        await tx.product.update({
-          where: { id: dto.newProductId },
+        // #1679 รอบแก้ 1: CAS where IN_STOCK — RESERVED ไม่มีเจ้าของในสคีมา; ด่าน checkEligibility อ่านนอก tx และทาง
+        // bypassWindowCheck ไม่ตรวจสถานะเครื่องใหม่เลย ⇒ update ตรง ๆ ทับเครื่องที่ใบจอง PAID/ร่างสัญญาอื่นถืออยู่ได้
+        // count 0 → ทั้ง tx rollback (สัญญาเดิมไม่ถูกปิด · JE ไม่ถูกกลับ · ไม่มีสัญญาใหม่)
+        const reserved = await tx.product.updateMany({
+          where: { id: dto.newProductId, status: 'IN_STOCK', deletedAt: null },
           data: { status: 'RESERVED' },
         });
+        if (reserved.count !== 1) {
+          throw new ConflictException(
+            'เครื่องใหม่ไม่อยู่ในสต็อกพร้อมขายแล้ว (ถูกขาย ถูกจอง หรือถูกใบจองล็อกไว้) — เปลี่ยนเครื่องไม่ได้ กรุณาเลือกเครื่องอื่นที่พร้อมขายแล้วทำรายการใหม่',
+          );
+        }
         // B5: เครื่องใหม่ถูกจองไว้แล้ว — ตัด hold ของเว็บใน tx เดียวกัน (เคลมเปลี่ยนเครื่อง)
         await preemptReservationsInTx(tx, [dto.newProductId]);
 

@@ -25,6 +25,7 @@ import { ExchangeEclReversalTemplate } from '../journal/cpa-templates/exchange-e
 import { ShopInventoryTransferTemplate } from '../journal/cpa-templates/shop-inventory-transfer.template';
 import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../journal/company-resolver.service';
+import { InstallmentInputVatTemplate } from '../journal/cpa-templates/installment-input-vat.template';
 import { TEST_CUSTOMER_ADDRESS } from '../../utils/test-data-markers';
 
 // Default user shape used by submit() tests after Fix 2 (issue #1086 item 2).
@@ -74,6 +75,7 @@ describe('ContractExchangeService.submit', () => {
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
@@ -486,6 +488,8 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
           return null;
         }),
         update: jest.fn().mockResolvedValue({}),
+        // #1679: tier AUTO อนุมัติทันที → จองเครื่องใหม่แบบ CAS (เครื่องยัง IN_STOCK = count 1)
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       contractExchangeRequest: {
         // Echo data so tests can assert mode/tier/snapshots off the return value
@@ -542,6 +546,7 @@ describe('submit() mode routing (Device Swap 2026-07)', () => {
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
@@ -749,6 +754,8 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
       payment: { count: jest.fn(), createMany: jest.fn() },
       product: {
         update: jest.fn().mockResolvedValue({}),
+        // #1679: จองเครื่องใหม่แบบ CAS — ค่าเริ่มต้น = เครื่องยัง IN_STOCK (count 1)
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUniqueOrThrow: jest.fn(),
       },
       journalLine: { findMany: jest.fn().mockResolvedValue([]) },
@@ -781,6 +788,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         {
           provide: ShopAccountResolver,
           useValue: {
@@ -815,6 +823,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     jest.spyOn(creditApproval, 'bindExchangeCreditCheck').mockRejectedValue(new BadRequestException('ต้องตรวจเครดิตรอบใหม่'));
     await expect(service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(/รอบใหม่/);
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
   });
 
   it('creates DRAFT new contract + reserves new product + APPROVED workflow + audit (no JE, no old-side flips)', async () => {
@@ -843,13 +852,12 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     expect(createData.workflowStatus).toBe('APPROVED');
     expect(createData.exchangedFromContractId).toBe('old-c');
 
-    // New product reserved
-    expect(prisma.product.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'new-p' },
-        data: expect.objectContaining({ status: 'RESERVED' }),
-      }),
-    );
+    // New product reserved — #1679: CAS จาก IN_STOCK เท่านั้น (ไม่ทับเครื่องที่ใบจอง/ร่างอื่นถืออยู่)
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: 'new-p', status: 'IN_STOCK', deletedAt: null },
+      data: { status: 'RESERVED' },
+    });
+    expect(prisma.product.update).not.toHaveBeenCalled();
 
     // Request linked to new contract
     expect(prisma.contractExchangeRequest.update).toHaveBeenCalledWith(
@@ -1043,6 +1051,7 @@ describe('ContractExchangeService.approve (sign-then-activate)', () => {
     await expect(service.approve('r1', { id: 'u1', role: 'OWNER', branchId: null }, {})).rejects.toThrow(/ส่งคำขอ.*ใหม่/);
     expect(prisma.contract.create).not.toHaveBeenCalled();
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
   });
 
   // Issue #1086 item 4 — EXCH-YYYYMMDD-NNNN doc number (no EX-${Date.now()} collision)
@@ -1231,6 +1240,8 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       payment: { count: jest.fn().mockResolvedValue(4), createMany: jest.fn() },
       product: {
         update: jest.fn().mockResolvedValue({}),
+        // #1679: เครื่องใหม่ถูกหยิบแบบ CAS — ค่าเริ่มต้น = เครื่องยัง IN_STOCK (count 1)
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         findUniqueOrThrow: jest.fn().mockResolvedValue({
           status: 'SOLD_INSTALLMENT',
           ownedByCompanyId: 'finance-co-id',
@@ -1265,6 +1276,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         {
           provide: ShopAccountResolver,
           useValue: {
@@ -1366,14 +1378,13 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       }),
     );
     // New product inherits old device's status/ownership; old device back to SHOP
-    expect(prisma.product.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'newP1' },
-        data: expect.objectContaining({
-          status: 'SOLD_INSTALLMENT',
-          ownedByCompanyId: 'finance-co-id',
-        }),
-      }),
+    // #1679: เครื่องใหม่ต้องยัง IN_STOCK ตอนหยิบ (CAS) — ไม่ทับเครื่องที่ใบจองล็อกไว้ระหว่างรออนุมัติ
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: 'newP1', status: 'IN_STOCK', deletedAt: null },
+      data: { status: 'SOLD_INSTALLMENT', ownedByCompanyId: 'finance-co-id' },
+    });
+    expect(prisma.product.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'newP1' } }),
     );
     expect(prisma.product.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1578,6 +1589,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     ).rejects.toThrow('เครื่องใหม่ถูกลบออกจากระบบแล้ว');
     expect(prisma.contract.create).not.toHaveBeenCalled();
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
   });
 
   it('MEMO: เครื่องใหม่ถูกลบไปแล้ว → BadRequest, ไม่สลับเครื่องบนสัญญาเดิม', async () => {
@@ -1591,6 +1603,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
     ).rejects.toThrow('เครื่องใหม่ถูกลบออกจากระบบแล้ว');
     expect(prisma.contract.update).not.toHaveBeenCalled();
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
   });
 
   // Task 8 review fix 3 — old-contract status re-check at approve time
@@ -1611,6 +1624,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       ),
     ).rejects.toThrow('เปลี่ยนเครื่องไม่ได้');
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
     expect(prisma.contract.update).not.toHaveBeenCalled();
   });
 
@@ -1623,6 +1637,42 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       service.approve('pricedReq', { id: 'u1', role: 'OWNER', branchId: null }, {}),
     ).rejects.toThrow('เปลี่ยนเครื่องไม่ได้');
     expect(prisma.contract.create).not.toHaveBeenCalled();
+  });
+
+  // #1679 ระยะสั้น — RESERVED ไม่มีเจ้าของ: เครื่องใหม่ผ่านด่าน IN_STOCK ตอน submit แต่ระหว่างรออนุมัติ
+  // ใบจอง PAID ล็อก (หรือขาย/ร่างสัญญาอื่นจอง) ได้ ⇒ approve ต้องหยิบด้วย CAS where IN_STOCK เท่านั้น
+  describe('#1679 — หยิบเครื่องใหม่แบบ CAS ตอนอนุมัติ', () => {
+    const OWNER = { id: 'u1', role: 'OWNER', branchId: null };
+    const memoDto = { memoAddendumSigned: true, memoMdmSwapped: true };
+
+    it('PRICED: เครื่องใหม่ไม่ IN_STOCK แล้ว (CAS count 0) → 409 ภาษาไทย ไม่ผูกคำขอ ไม่ตัด hold ไม่มี audit', async () => {
+      prisma.product.updateMany.mockResolvedValue({ count: 0 });
+      const err = await service.approve('pricedReq', OWNER, {}).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as Error).message).toMatch(/เครื่องใหม่.*ปฏิเสธคำขอนี้/);
+      expect(prisma.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'new-p', status: 'IN_STOCK', deletedAt: null },
+        data: { status: 'RESERVED' },
+      });
+      expect(prisma.contractExchangeRequest.update).not.toHaveBeenCalled();
+      expect(prisma.productReservation.updateMany).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
+
+    it('MEMO: เครื่องใหม่ไม่ IN_STOCK แล้ว (CAS count 0) → 409 ภาษาไทย ไม่คืนเครื่องเก่า ไม่สลับสัญญา', async () => {
+      prisma.product.updateMany.mockResolvedValue({ count: 0 });
+      const err = await service.approve('memoReq', OWNER, memoDto).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as Error).message).toMatch(/เครื่องใหม่.*ปฏิเสธคำขอนี้/);
+      expect(prisma.product.updateMany).toHaveBeenCalledWith({
+        where: { id: 'newP1', status: 'IN_STOCK', deletedAt: null },
+        data: { status: 'SOLD_INSTALLMENT', ownedByCompanyId: 'finance-co-id' },
+      });
+      expect(prisma.product.update).not.toHaveBeenCalled(); // เครื่องเก่ายังไม่ถูกคืน SHOP
+      expect(prisma.contract.update).not.toHaveBeenCalled();
+      expect(prisma.productReservation.updateMany).not.toHaveBeenCalled();
+      expect(audit.log).not.toHaveBeenCalled();
+    });
   });
 
   // spec 2026-09-05 §5.4 (แก้หลัง final review Critical) — ตาข่ายสุดท้ายใน tx ของ approve:
@@ -1663,6 +1713,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       await expect(service.approve('memoReq', OWNER, memoDto)).rejects.toThrow(/เครื่องทดสอบระบบ/);
       expect(prisma.contract.update).not.toHaveBeenCalled();
       expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.product.updateMany).not.toHaveBeenCalled();
       expect(prisma.productReservation.updateMany).not.toHaveBeenCalled();
       expect(audit.log).not.toHaveBeenCalled();
     });
@@ -1672,13 +1723,14 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       await expect(service.approve('memoReq', OWNER, memoDto)).rejects.toThrow(/ลูกค้าทดสอบระบบ/);
       expect(prisma.contract.update).not.toHaveBeenCalled();
       expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.product.updateMany).not.toHaveBeenCalled();
     });
 
     it('PRICED จริง ↔ จริง ผ่าน (สร้างสัญญาใหม่ + จองเครื่อง)', async () => {
       await service.approve('pricedReq', OWNER, {});
       expect(prisma.contract.create).toHaveBeenCalledTimes(1);
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'RESERVED' }) }),
+      expect(prisma.product.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: 'RESERVED' } }),
       );
     });
 
@@ -1697,6 +1749,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       await expect(service.approve('pricedReq', OWNER, {})).rejects.toThrow(/เครื่องทดสอบระบบ/);
       expect(prisma.contract.create).not.toHaveBeenCalled();
       expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.product.updateMany).not.toHaveBeenCalled();
       expect(prisma.pDPAConsent.create).not.toHaveBeenCalled();
       expect(prisma.contractExchangeRequest.update).not.toHaveBeenCalled();
       expect(audit.log).not.toHaveBeenCalled();
@@ -1710,6 +1763,7 @@ describe('approve() tier authorization + MEMO apply (Device Swap 2026-07)', () =
       await expect(service.approve('pricedReq', OWNER, {})).rejects.toThrow(/ลูกค้าทดสอบระบบ/);
       expect(prisma.contract.create).not.toHaveBeenCalled();
       expect(prisma.product.update).not.toHaveBeenCalled();
+      expect(prisma.product.updateMany).not.toHaveBeenCalled();
     });
   });
 });
@@ -1763,7 +1817,11 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       product: {
         update: jest.fn(),
         findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'old-p', costPrice: '15000' }),
+        // ก้อน 5 — claimInputVatOnActivation อ่าน checklistResults ของเครื่องใหม่
+        findUnique: jest.fn().mockResolvedValue({ checklistResults: null }),
       },
+      // ก้อน 5 — ค่าเริ่มต้น: เครื่องใหม่ไม่มีใบรับของ → NOT_ELIGIBLE
+      goodsReceivingItem: { findUnique: jest.fn().mockResolvedValue(null) },
       // Guards call glContractBalance twice (11-2103 dr, 21-1103 cr) BEFORE
       // computeOldOutstanding's own findMany call. Default [] on every call
       // keeps both guard balances at 0 and preserves the old 3rd-call shape
@@ -1792,6 +1850,7 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
         { provide: ShopExchangeReturnTemplate, useValue: templates.t4 },
         { provide: ExchangeEclReversalTemplate, useValue: templates.t5 },
         { provide: ShopInventoryTransferTemplate, useValue: templates.shopInv },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         {
           provide: ShopAccountResolver,
           useValue: {
@@ -1808,6 +1867,14 @@ describe('ContractExchangeService.finalizeAfterActivation', () => {
       ],
     }).compile();
     service = mod.get(ContractExchangeService);
+  });
+
+  it('ก้อน 5: หลัง A.1 ตัดสินภาษีซื้อของเครื่องใหม่ (ไม่มีใบรับของ → contract.update inputVatStatus NOT_ELIGIBLE, template ไม่ถูกเรียก)', async () => {
+    await service.finalizeAfterActivation(newContract, tx);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const vatUpdate = tx.contract.update.mock.calls.find((c: any[]) => c[0]?.data?.inputVatStatus);
+    expect(vatUpdate?.[0]).toMatchObject({ where: { id: 'new-c' }, data: { inputVatStatus: 'NOT_ELIGIBLE' } });
+    expect(tx.goodsReceivingItem.findUnique).toHaveBeenCalledWith(expect.objectContaining({ where: { productId: 'new-p' } }));
   });
 
   it('runs A.1 → A.2 → A.3 → A.4 in order + flips old contract + old product + returns ids', async () => {
@@ -2250,6 +2317,7 @@ describe('ContractExchangeService.reject', () => {
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],
@@ -2318,6 +2386,7 @@ describe('ContractExchangeService.listRecent', () => {
         { provide: ShopExchangeReturnTemplate, useValue: {} },
         { provide: ExchangeEclReversalTemplate, useValue: {} },
         { provide: ShopInventoryTransferTemplate, useValue: { execute: jest.fn() } },
+        { provide: InstallmentInputVatTemplate, useValue: { execute: jest.fn() } },
         { provide: ShopAccountResolver, useValue: { resolveProductAccounts: jest.fn() } },
         { provide: CompanyResolverService, useValue: { getShopCompanyId: jest.fn() } },
       ],

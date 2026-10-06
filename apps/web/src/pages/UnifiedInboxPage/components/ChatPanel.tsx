@@ -7,13 +7,14 @@ import { ChatMediaPicker } from './ChatMediaPicker';
 import { useChatMediaPicker } from '../hooks/useChatMediaPicker';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 
-import { Cloud, Send, MoreVertical, ArrowLeft, Paperclip, Pin, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock, Check, CalendarClock } from 'lucide-react';
+import { Cloud, Mic, Square, Send, MoreVertical, ArrowLeft, Paperclip, Pin, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock, Check, CalendarClock } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator, formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import MessageBubble from './MessageBubble';
+import { useVoiceTyping, VOICE_FALLBACK } from '../hooks/useVoiceTyping';
 import { swapRoomDraft } from './composer-draft';
 import PrepareOfferDialog from './PrepareOfferDialog';
 import SessionActions from './SessionActions';
@@ -391,9 +392,19 @@ export default function ChatPanel({
     return customerMsgs[customerMsgs.length - 1]?.text ?? customerMsgs[customerMsgs.length - 1]?.content ?? '';
   };
 
+  const voice = useVoiceTyping({
+    roomId,
+    enabled: !!session && !session.resolvedAt && session.status !== 'IDLE' && !isNoteMode && !isSending,
+    onText: (text) => {
+      // Append to the current draft so edits made while listening are preserved.
+      setInputText(previous => previous + (previous && !/\s$/.test(previous) ? ' ' : '') + text);
+      setSelectedSuggestion(null);
+    },
+  });
+
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text || isSending || isNoteMode) return;
+    if (!text || isSending || isNoteMode || voice.active) return;
     // Clear the composer immediately — the in-flight ghost shows the text while
     // sending, and a FAILED ghost (with retry) owns it if the send fails. The
     // Batch-1 keep-text-in-composer path is replaced by that ghost.
@@ -945,6 +956,18 @@ export default function ChatPanel({
           >
             {onAddNote && <div ref={noteContainerRef} hidden={!isNoteMode} onKeyDown={e => { if (e.key === 'Escape') { setComposerMode('chat'); requestAnimationFrame(() => inputRef.current?.focus()); } }}><NoteMentionInput roomId={session.id} onSave={onAddNote} /></div>}
             <div hidden={isNoteMode}>
+            {!isNoteMode && (
+              <div className="px-3.5 pt-2 text-xs leading-snug text-muted-foreground">
+                <p>กดไมค์แล้วพูดภาษาไทย · เบราว์เซอร์อาจส่งเสียงไปบริการแปลงเสียง</p>
+                {!voice.supported && <p>{VOICE_FALLBACK}</p>}
+                <p role="status" aria-live="polite" className="break-words">
+                  {voice.error || (voice.phase === 'starting' ? 'กำลังเปิดไมค์…'
+                    : voice.phase === 'stopping' ? 'กำลังแปลงเสียงช่วงสุดท้าย…'
+                    : voice.active ? 'กำลังฟัง · กดหยุดแล้วตรวจข้อความก่อนส่ง' : '')}
+                  {voice.interim && <span className="block">{voice.interim}</span>}
+                </p>
+              </div>
+            )}
             {/* The card owns focus; suppress both the base ring and admin theme outline. */}
             {libraryEnabled && <LibraryAttachmentTray draft={libraryDraft} />}
             <textarea
@@ -975,6 +998,18 @@ export default function ChatPanel({
                 </span>
               ) : (
                 <div className="flex min-w-0 flex-wrap items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => voice.active ? voice.stop() : voice.start()}
+              disabled={isSending || voice.phase === 'stopping'}
+              aria-label={voice.active ? 'หยุดรับเสียง' : 'พูดเป็นข้อความ'}
+              aria-pressed={voice.active}
+              title="พูดภาษาไทยเป็นข้อความ"
+              className={cn('size-11 inline-flex items-center justify-center rounded-lg transition-colors disabled:opacity-40',
+                voice.active ? 'bg-destructive/10 text-destructive' : 'text-muted-foreground hover:text-foreground hover:bg-muted')}
+            >
+              {voice.active ? <Square className="size-4" /> : <Mic className="size-4" />}
+            </button>
             {/* File upload */}
             <input
               ref={fileInputRef}
@@ -1039,11 +1074,11 @@ export default function ChatPanel({
                 </span>
                 <button
                   onClick={() => void handleSend()}
-                  disabled={!inputText.trim() || isSending}
+                  disabled={!inputText.trim() || isSending || voice.active}
                   aria-label={isNoteMode ? 'บันทึกโน้ต' : 'ส่งข้อความ'}
                   className={cn(
                     'inline-flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-[13px] font-semibold leading-snug transition-all duration-200',
-                    inputText.trim() && !isSending
+                    inputText.trim() && !isSending && !voice.active
                       ? isNoteMode
                         ? 'bg-warning text-amber-950 shadow-sm hover:bg-warning/90 dark:bg-amber-400 dark:hover:bg-amber-300'
                         : 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md'

@@ -12,13 +12,12 @@ import { allItemsComplete } from '../po-catalog.util';
 import type { PoTotals } from '../poTotals';
 import type { CreatePoWizardApi } from '../hooks/useCreatePoWizard';
 import type { DirectReceiveInput } from '../hooks/usePurchaseOrdersData';
-import { buildDirectReceivePayload, lineToUnits } from '../direct-receive.util';
+import { buildDirectReceivePayload, directReceivePaymentErrors, lineToUnits } from '../direct-receive.util';
 import { receivingBlockers } from '../receiving-flow.util';
 import { StepSupplier } from './wizard/StepSupplier';
 import { StepItems } from './wizard/StepItems';
 import { StepSummary } from './wizard/StepSummary';
 import { WizardStepper, type WizardStep } from './wizard/WizardStepper';
-import { paidAmountError, isPaidStatus } from './wizard/PaymentSection';
 import { ReceivingFlow } from './ReceivingFlow';
 import { useSupplierDocCheck } from './SupplierDocSection';
 import {
@@ -198,12 +197,11 @@ export function PurchaseModal(props: PurchaseModalProps) {
       toast.error(docErrors.notes ?? 'กรุณากรอกเอกสารจากผู้จัดจำหน่ายให้ครบ');
       return;
     }
-    if (isPaidStatus(form.paymentStatus)) {
-      const err = paidAmountError(form, totals.netAmount);
-      if (err) {
-        toast.error(err);
-        return;
-      }
+    // ก้อน 2: จ่ายทันที = โอนธนาคาร + สลิป (กติกาเดียวกับ API)
+    const payErr = directReceivePaymentErrors(form, formAttachments, totals.netAmount);
+    if (payErr) {
+      toast.error(payErr);
+      return;
     }
     directReceiveMutation.mutate(
       buildDirectReceivePayload({ form, units, attachments: formAttachments, today: todayIso(), supplierDoc }),

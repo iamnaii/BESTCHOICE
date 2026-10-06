@@ -41,6 +41,7 @@ import { CompanyResolverService } from '../src/modules/journal/company-resolver.
 import { ShopAccountResolver } from '../src/modules/journal/shop-account-resolver.service';
 import { ContractActivation1ATemplate } from '../src/modules/journal/cpa-templates/contract-activation-1a.template';
 import { ShopInventoryTransferTemplate } from '../src/modules/journal/cpa-templates/shop-inventory-transfer.template';
+import { InstallmentInputVatTemplate } from '../src/modules/journal/cpa-templates/installment-input-vat.template';
 import { ShopDownPaymentTemplate } from '../src/modules/journal/cpa-templates/shop-down-payment.template';
 import { ShopDownPaymentReversalTemplate } from '../src/modules/journal/cpa-templates/shop-down-payment-reversal.template';
 import { InstallmentAccrual2ATemplate } from '../src/modules/journal/cpa-templates/installment-accrual-2a.template';
@@ -120,7 +121,8 @@ describe('approved credit → real create/sign/activate → partial/complete pay
       },
     }) as never);
     workflow = new ContractWorkflowService(db, null as never, journal, new ContractActivation1ATemplate(journal, db),
-      products, null as never, new ShopInventoryTransferTemplate(journal, db, resolver), down, shopAccounts);
+      products, null as never, new ShopInventoryTransferTemplate(journal, db, resolver), down, shopAccounts,
+      new InstallmentInputVatTemplate(journal, db, resolver)); // ก้อน 5 — ภาษีซื้อเครื่องหลักหลัง 1A
     const receipts = new ReceiptsService(db, journal, new ReceiptVoidReversalTemplate(journal, db), undefined);
     const badDebt = new BadDebtService(db, journal, new BadDebtProvisionTemplate(journal, db),
       new BadDebtWriteOffTemplate(journal, db), new EclStageReverseTemplate(journal, db),

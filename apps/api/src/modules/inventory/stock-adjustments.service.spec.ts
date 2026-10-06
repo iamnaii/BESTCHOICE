@@ -1,529 +1,803 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { StockAdjustmentsService } from './stock-adjustments.service';
-import { PrismaService } from '../../prisma/prisma.service';
 import { ReceivingAcceptanceJournal } from '../purchase-orders/services/receiving-acceptance-journal';
+import { ShopAccountResolver } from '../journal/shop-account-resolver.service';
+import {
+  STOCK_ADJUSTMENT_TODO_TAG,
+  StockAdjustmentsService,
+  adjustmentTodoKey,
+} from './stock-adjustments.service';
 
-// ขั้นลงบัญชีรับสินค้าตอนเครื่องเข้าคลัง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8) ทดสอบกับฐานจริงที่
-// po-receiving-journal.integration.spec.ts — ที่นี่ตรวจแค่ว่าทางเข้าคลังเรียกมัน
+/**
+ * ก้อน 3 (2026-10-05) — คำขอตัดสินค้า: ผู้ขอ (SALES/BM/OWNER สาขาตัวเอง) ส่งคำขอ → เครื่องถูกพักขายด้วย
+ * สถานะ ADJUSTMENT_PENDING → Todo ถึงเจ้าของ → เจ้าของอนุมัติ/ไม่อนุมัติ (Task 6). ที่นี่ทดสอบขั้นคำขอ/ยกเลิก/
+ * preview ด้วย mock — การลงบัญชีจริงทดสอบกับฐานจริงที่ `__tests__/stock-adjustment.integration.spec.ts`.
+ */
 let bookIfPending: jest.SpyInstance;
 beforeEach(() => {
   bookIfPending = jest.spyOn(ReceivingAcceptanceJournal.prototype, 'bookIfPending').mockResolvedValue(null);
 });
 afterEach(() => bookIfPending.mockRestore());
 
-/**
- * T5-C3 — 4-eyes on every stock adjustment. The adjuster (userId) and the
- * approver (dto.approverId) must be different people, and the approver must
- * be manager-tier (OWNER / FINANCE_MANAGER / BRANCH_MANAGER). Historical
- * rule that BRANCH_MANAGER could self-approve is removed.
- */
-describe('StockAdjustmentsService.create — T5-C3 4-eyes', () => {
-  let service: StockAdjustmentsService;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let prisma: any;
+const OWNER = { id: 'owner-1', role: 'OWNER', branchId: null };
+const SALES_B1 = { id: 'sales-1', role: 'SALES', branchId: 'branch-1' };
+const SALES_B2 = { id: 'sales-2', role: 'SALES', branchId: 'branch-2' };
 
-  const baseDto = {
-    productId: 'p1',
-    reason: 'CORRECTION' as const,
-    approverId: 'approver-bm',
-    notes: 'audit correction',
+function baseProduct(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'p1',
+    name: 'iPhone 15',
+    brand: 'Apple',
+    model: 'iPhone 15',
+    imeiSerial: '350000000000001',
+    serialNumber: null,
+    category: 'PHONE_NEW',
+    costPrice: new Prisma.Decimal('12000.00'),
+    status: 'IN_STOCK',
+    branchId: 'branch-1',
+    deletedAt: null,
+    checklistResults: null,
+    branch: { id: 'branch-1', name: 'ลาดพร้าว' },
+    ...overrides,
   };
+}
 
-  beforeEach(async () => {
-    prisma = {
-      product: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'p1',
-          status: 'IN_STOCK',
-          branchId: 'branch-1',
-          deletedAt: null,
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function build(product: Record<string, unknown> | null = baseProduct()) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const prisma: any = {
+    product: {
+      findUnique: jest.fn().mockResolvedValue(product),
+      findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ ...product, ...data })),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    stockAdjustment: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn(),
+      create: jest.fn().mockImplementation(({ data }) =>
+        Promise.resolve({
+          id: 'adj-1',
+          ...data,
+          product: { id: 'p1', name: 'iPhone 15', brand: 'Apple', model: 'iPhone 15', imeiSerial: '350000000000001', costPrice: new Prisma.Decimal('12000.00'), category: 'PHONE_NEW' },
+          branch: { id: 'branch-1', name: 'ลาดพร้าว' },
+          adjustedBy: { id: data.adjustedById, name: 'ผู้ขอ' },
+          approvedBy: null,
+          rejectedBy: null,
+          canceledBy: null,
         }),
-        update: jest.fn(),
-      },
-      stockAdjustment: {
-        create: jest.fn().mockResolvedValue({ id: 'adj-1' }),
-        findMany: jest.fn().mockResolvedValue([]),
-        count: jest.fn().mockResolvedValue(0),
-        groupBy: jest.fn().mockResolvedValue([]),
-      },
-      user: {
-        findUnique: jest.fn().mockImplementation(({ where: { id } }) =>
-          Promise.resolve({
-            id,
-            role: id.startsWith('approver-bm') ? 'BRANCH_MANAGER'
-              : id.startsWith('approver-fm') ? 'FINANCE_MANAGER'
-              : id.startsWith('approver-owner') ? 'OWNER'
-              : id.startsWith('approver-sales') ? 'SALES'
-              : 'SALES',
-            isActive: true,
-            deletedAt: null,
-          }),
-        ),
-      },
-      $transaction: jest.fn((cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
-    };
+      ),
+      update: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: 'adj-1', ...data })),
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    },
+    todo: {
+      create: jest.fn().mockResolvedValue({ id: 'todo-1' }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    user: { findFirst: jest.fn().mockResolvedValue({ id: 'owner-1' }), findUnique: jest.fn().mockResolvedValue({ id: 'sales-1', name: 'ผู้ขอ' }) },
+    contract: { findFirst: jest.fn().mockResolvedValue(null) },
+    productReservation: { findFirst: jest.fn().mockResolvedValue(null) },
+    onlineOrder: { findFirst: jest.fn().mockResolvedValue(null) },
+    goodsReceivingItem: { findFirst: jest.fn().mockResolvedValue(null) },
+    journalEntry: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+    chartOfAccount: {
+      findMany: jest.fn().mockResolvedValue([
+        { code: 'S53-1102', name: 'ขาดทุนจากสินค้าสูญหาย/เสียหาย' },
+        { code: 'S11-2001', name: 'สินค้าคงคลัง-มือถือใหม่' },
+      ]),
+    },
+    $queryRaw: jest.fn().mockResolvedValue([]),
+    $executeRawUnsafe: jest.fn().mockResolvedValue(1),
+  };
+  prisma.$transaction = jest.fn((cb: (tx: unknown) => Promise<unknown>) => cb(prisma));
 
-    const mod: TestingModule = await Test.createTestingModule({
-      providers: [StockAdjustmentsService, { provide: PrismaService, useValue: prisma }],
-    }).compile();
-    service = mod.get(StockAdjustmentsService);
-  });
+  const template = { execute: jest.fn(), reverse: jest.fn() };
+  const companies = { getShopCompanyId: jest.fn().mockResolvedValue('shop-co') };
+  const storage = {
+    upload: jest.fn().mockImplementation((key: string) => Promise.resolve(key)),
+    delete: jest.fn().mockResolvedValue(undefined),
+    getSignedDownloadUrl: jest.fn().mockImplementation((key: string) => Promise.resolve(`https://signed/${key}`)),
+  };
+  const numbers = { next: jest.fn().mockResolvedValue('SA-20261005-0001') };
+  const audit = { log: jest.fn().mockResolvedValue(undefined) };
+  const service = new StockAdjustmentsService(
+    prisma,
+    template as never,
+    new ShopAccountResolver(prisma),
+    companies as never,
+    storage as never,
+    numbers as never,
+    audit as never,
+  );
+  return { prisma, template, companies, storage, numbers, audit, service };
+}
 
-  it('rejects when approverId is missing', async () => {
-    const dto = { ...baseDto, approverId: '' };
-    await expect(service.create(dto, 'user-1')).rejects.toThrow(BadRequestException);
-  });
+const jpeg = (name = 'a.jpg') =>
+  ({
+    originalname: name,
+    mimetype: 'image/jpeg',
+    size: 4,
+    buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00]),
+  }) as unknown as Express.Multer.File;
 
-  it('rejects self-approval (adjuster === approver)', async () => {
+describe('StockAdjustmentsService.createRequest', () => {
+  it('(a) SALES คนละสาขากับเครื่อง → 403 ไม่สร้างใบ', async () => {
+    const { service, prisma } = build();
     await expect(
-      service.create({ ...baseDto, approverId: 'user-1' }, 'user-1'),
-    ).rejects.toThrow(ForbiddenException);
+      service.createRequest({ productId: 'p1', reason: 'LOST' }, [], SALES_B2),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.stockAdjustment.create).not.toHaveBeenCalled();
   });
 
-  it('rejects when approver does not exist', async () => {
-    prisma.user.findUnique.mockResolvedValueOnce(null);
+  it('(a2) BM/SALES ที่ไม่มี branchId ติดตัว → 403 (fail-closed)', async () => {
+    const { service } = build();
     await expect(
-      service.create({ ...baseDto, approverId: 'ghost' }, 'user-1'),
-    ).rejects.toThrow(NotFoundException);
+      service.createRequest({ productId: 'p1', reason: 'LOST' }, [], { id: 's', role: 'SALES', branchId: null }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('rejects when approver is deactivated', async () => {
-    prisma.user.findUnique.mockResolvedValueOnce({
-      id: 'approver-bm',
-      role: 'BRANCH_MANAGER',
-      isActive: false,
-      deletedAt: null,
-    });
-    await expect(service.create(baseDto, 'user-1')).rejects.toThrow(NotFoundException);
-  });
+  it('(b) LOST บนเครื่อง IN_STOCK → ใบ PENDING_APPROVAL + พักขายเครื่อง + Todo ถึงเจ้าของ + ไม่ลงบัญชี', async () => {
+    const { service, prisma, template, audit } = build();
+    const view = await service.createRequest({ productId: 'p1', reason: 'LOST', notes: 'หาไม่พบตอนนับสต๊อก' }, [], SALES_B1);
 
-  it('rejects when approver is not manager-tier (e.g. SALES)', async () => {
-    await expect(
-      service.create({ ...baseDto, approverId: 'approver-sales' }, 'user-1'),
-    ).rejects.toThrow(ForbiddenException);
-  });
-
-  it('accepts BRANCH_MANAGER approver for a non-self adjustment', async () => {
-    await expect(service.create(baseDto, 'user-1')).resolves.toBeDefined();
     expect(prisma.stockAdjustment.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          adjustedById: 'user-1',
-          approvedById: 'approver-bm',
-          approvedAt: expect.any(Date),
+          productId: 'p1',
+          reason: 'LOST',
+          previousStatus: 'IN_STOCK',
+          status: 'PENDING_APPROVAL',
+          requestNumber: 'SA-20261005-0001',
+          adjustedById: 'sales-1',
+          branchId: 'branch-1',
+          photos: [],
         }),
       }),
     );
-  });
-
-  it('accepts OWNER approver', async () => {
-    await expect(
-      service.create({ ...baseDto, approverId: 'approver-owner' }, 'user-1'),
-    ).resolves.toBeDefined();
-  });
-
-  describe('T5-C8: FOUND restoration gates', () => {
-    const foundDto = { ...baseDto, reason: 'FOUND' as const };
-
-    it('rejects BRANCH_MANAGER approving FOUND on a DAMAGED product', async () => {
-      prisma.product.findUnique.mockResolvedValue({
-        id: 'p1',
-        status: 'DAMAGED',
-        branchId: 'branch-1',
-        deletedAt: new Date(),
-      });
-      await expect(
-        service.create({ ...foundDto, approverId: 'approver-bm' }, 'user-1'),
-      ).rejects.toThrow(ForbiddenException);
+    // I1 (final review): ล็อกแถวเครื่องก่อนอ่านใน tx และพักขายแบบ compare-and-set — เครื่องที่เพิ่งถูกขายระหว่างนั้นต้องไม่ถูกเขียนทับ
+    expect(prisma.$queryRaw).toHaveBeenCalled();
+    expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(prisma.product.findUnique.mock.invocationCallOrder[1]);
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'IN_STOCK', deletedAt: null },
+      data: { status: 'ADJUSTMENT_PENDING' },
     });
-
-    it('rejects FINANCE_MANAGER approving FOUND on WRITTEN_OFF product', async () => {
-      prisma.product.findUnique.mockResolvedValue({
-        id: 'p1',
-        status: 'WRITTEN_OFF',
-        branchId: 'branch-1',
-        deletedAt: new Date(),
-      });
-      await expect(
-        service.create({ ...foundDto, approverId: 'approver-fm' }, 'user-1'),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('allows OWNER to approve FOUND on DAMAGED', async () => {
-      prisma.product.findUnique.mockResolvedValue({
-        id: 'p1',
-        status: 'DAMAGED',
-        branchId: 'branch-1',
-        deletedAt: new Date(),
-      });
-      await expect(
-        service.create({ ...foundDto, approverId: 'approver-owner' }, 'user-1'),
-      ).resolves.toBeDefined();
-      // Restoration stamp applied
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: 'IN_STOCK',
-            restoredFromTerminalAt: expect.any(Date),
-          }),
-        }),
-      );
-    });
-
-    it('allows BRANCH_MANAGER to approve FOUND on LOST (not damage fraud pattern)', async () => {
-      prisma.product.findUnique.mockResolvedValue({
-        id: 'p1',
-        status: 'LOST',
-        branchId: 'branch-1',
-        deletedAt: new Date(),
-      });
-      await expect(
-        service.create({ ...foundDto, approverId: 'approver-bm' }, 'user-1'),
-      ).resolves.toBeDefined();
-    });
-
-    it('DAMAGED adjustment flips wasPreviouslyDamaged=true', async () => {
-      prisma.product.findUnique.mockResolvedValue({
-        id: 'p1',
-        status: 'IN_STOCK',
-        branchId: 'branch-1',
-        deletedAt: null,
-      });
-      await service.create(
-        {
-          ...baseDto,
-          reason: 'DAMAGED',
-          approverId: 'approver-bm',
-          photos: ['s3://photos/evidence.jpg'],
-        },
-        'user-1',
-      );
-      expect(prisma.product.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            status: 'DAMAGED',
-            wasPreviouslyDamaged: true,
-          }),
-        }),
-      );
-    });
-  });
-
-  // T2-C11 — > 500K THB requires OWNER approver
-  describe('T2-C11: high-value adjustments require OWNER', () => {
-    it('allows BRANCH_MANAGER approver for adjustment ≤ 500K THB', async () => {
-      prisma.product.findUnique.mockResolvedValue({
-        id: 'p1',
-        status: 'IN_STOCK',
-        branchId: 'branch-1',
-        deletedAt: null,
-        costPrice: '450000.00',
-      });
-      await expect(
-        service.create({ ...baseDto, approverId: 'approver-bm' }, 'user-1'),
-      ).resolves.toBeDefined();
-      expect(prisma.stockAdjustment.create).toHaveBeenCalled();
-    });
-
-    it('rejects BRANCH_MANAGER approver when value > 500K THB', async () => {
-      prisma.product.findUnique.mockResolvedValue({
-        id: 'p1',
-        status: 'IN_STOCK',
-        branchId: 'branch-1',
-        deletedAt: null,
-        costPrice: '650000.00',
-      });
-      await expect(
-        service.create({ ...baseDto, approverId: 'approver-bm' }, 'user-1'),
-      ).rejects.toThrow(ForbiddenException);
-      expect(prisma.stockAdjustment.create).not.toHaveBeenCalled();
-    });
-
-    it('allows OWNER approver when value > 500K THB', async () => {
-      prisma.product.findUnique.mockResolvedValue({
-        id: 'p1',
-        status: 'IN_STOCK',
-        branchId: 'branch-1',
-        deletedAt: null,
-        costPrice: '650000.00',
-      });
-      await expect(
-        service.create({ ...baseDto, approverId: 'approver-owner' }, 'user-1'),
-      ).resolves.toBeDefined();
-      expect(prisma.stockAdjustment.create).toHaveBeenCalled();
-    });
-  });
-
-  // T5-C14 — DAMAGED requires photos
-  describe('T5-C14: DAMAGED photo gate', () => {
-    const damagedBase = {
-      productId: 'p1',
-      reason: 'DAMAGED' as const,
-      approverId: 'approver-bm',
-      notes: 'screen cracked',
-    };
-
-    it('rejects DAMAGED without photos', async () => {
-      prisma.product.findUnique.mockResolvedValue({
-        id: 'p1',
-        status: 'IN_STOCK',
-        branchId: 'branch-1',
-        deletedAt: null,
-        costPrice: '10000.00',
-      });
-      await expect(service.create(damagedBase, 'user-1')).rejects.toThrow(BadRequestException);
-      expect(prisma.stockAdjustment.create).not.toHaveBeenCalled();
-    });
-
-    it('accepts DAMAGED with non-empty photos array', async () => {
-      prisma.product.findUnique.mockResolvedValue({
-        id: 'p1',
-        status: 'IN_STOCK',
-        branchId: 'branch-1',
-        deletedAt: null,
-        costPrice: '10000.00',
-      });
-      await expect(
-        service.create(
-          { ...damagedBase, photos: ['s3://photos/damage-1.jpg'] },
-          'user-1',
-        ),
-      ).resolves.toBeDefined();
-      expect(prisma.stockAdjustment.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            reason: 'DAMAGED',
-            photos: ['s3://photos/damage-1.jpg'],
-          }),
-        }),
-      );
-    });
-  });
-});
-
-/**
- * Phase 5 fix round 2 [Important 1] — `FOUND` เป็นอีกประตูที่ตั้ง `IN_STOCK` ตรง ๆ
- * ("พบของหาย") — เครื่องมือสองที่รับคืน (REFURBISHED) ต้องไม่ลัดเข้าคลังทางนี้
- * เพราะข้ามด่านยืนยันราคาของปุ่ม "นำเข้าคลังพร้อมขาย"
- */
-describe('StockAdjustmentsService.create — FOUND ต้องไม่ปลุกเครื่อง REFURBISHED (Phase 5 fix round 2)', () => {
-  let service: StockAdjustmentsService;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let prisma: any;
-
-  const foundDto = {
-    productId: 'p1',
-    reason: 'FOUND' as const,
-    approverId: 'approver-bm',
-    notes: 'พบเครื่องในตู้เซฟ',
-  };
-
-  const setStatus = (status: string) =>
-    prisma.product.findUnique.mockResolvedValue({
-      id: 'p1',
-      status,
-      branchId: 'branch-1',
-      costPrice: '10000',
-      deletedAt: status === 'REFURBISHED' ? null : new Date(),
-    });
-
-  beforeEach(async () => {
-    prisma = {
-      product: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
-      stockAdjustment: {
-        create: jest.fn().mockResolvedValue({ id: 'adj-1' }),
-      },
-      user: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'approver-bm',
-          role: 'BRANCH_MANAGER',
-          isActive: true,
-          deletedAt: null,
-        }),
-      },
-      $transaction: jest.fn((cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
-    };
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [StockAdjustmentsService, { provide: PrismaService, useValue: prisma }],
-    }).compile();
-    service = module.get<StockAdjustmentsService>(StockAdjustmentsService);
-  });
-
-  it('FOUND บนเครื่อง REFURBISHED → reject + ชี้ไปที่ปุ่มนำเข้าคลังพร้อมขาย', async () => {
-    setStatus('REFURBISHED');
-
-    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(BadRequestException);
-    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(/นำเข้าคลังพร้อมขาย/);
     expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(prisma.todo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          priority: 'HIGH',
+          assigneeId: 'owner-1',
+          createdById: 'sales-1',
+          tags: [STOCK_ADJUSTMENT_TODO_TAG, adjustmentTodoKey('SA-20261005-0001')],
+          title: expect.stringContaining('SA-20261005-0001'),
+        }),
+      }),
+    );
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(audit.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'STOCK_ADJUSTMENT_REQUESTED', userId: 'sales-1', entity: 'stock_adjustment' }),
+    );
+    expect(view.requestNumber).toBe('SA-20261005-0001');
   });
 
-  it('FOUND บนเครื่องที่หายไปจริง (LOST) → ยังทำได้ตามเดิม', async () => {
-    setStatus('LOST');
-    // tx แยกตัวจาก prisma — พิสูจน์ว่าการลงบัญชีวิ่งใน tx เดียวกับการเปลี่ยนสถานะ ไม่ใช่บน client หลัก
-    const tx = { ...prisma };
-    prisma.$transaction.mockImplementation((cb: (t: unknown) => Promise<unknown>) => cb(tx));
+  it('(c) DAMAGED ไม่มีรูป → 400 ไม่สร้างใบ ไม่อัปโหลด', async () => {
+    const { service, prisma, storage } = build();
+    await expect(
+      service.createRequest({ productId: 'p1', reason: 'DAMAGED' }, [], SALES_B1),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storage.upload).not.toHaveBeenCalled();
+    expect(prisma.stockAdjustment.create).not.toHaveBeenCalled();
+  });
 
-    await expect(service.create(foundDto, 'adjuster-1')).resolves.toBeDefined();
-    expect(prisma.product.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: 'IN_STOCK' }) }),
+  it('(d) DAMAGED มีรูป → อัปโหลดเป็น key ใต้ stock-adjustments/ แล้วเก็บ key ไว้ในใบ', async () => {
+    const { service, prisma, storage } = build();
+    await service.createRequest({ productId: 'p1', reason: 'DAMAGED' }, [jpeg(), jpeg('b.jpg')], SALES_B1);
+    expect(storage.upload).toHaveBeenCalledTimes(2);
+    const [key, buf, mime] = storage.upload.mock.calls[0];
+    expect(key).toMatch(/^stock-adjustments\/\d{8}\/[0-9a-f-]{36}\.jpg$/);
+    expect(Buffer.isBuffer(buf)).toBe(true);
+    expect(mime).toBe('image/jpeg');
+    const photos = prisma.stockAdjustment.create.mock.calls[0][0].data.photos;
+    expect(photos).toHaveLength(2);
+    expect(photos[0]).toMatch(/^stock-adjustments\//);
+    expect(photos[0]).not.toMatch(/^data:/);
+  });
+
+  it('(d2) ไฟล์ที่ไม่ใช่รูป JPEG/PNG/WebP → 400 ไม่อัปโหลด', async () => {
+    const { service, storage } = build();
+    const fake = { ...jpeg(), mimetype: 'application/pdf', buffer: Buffer.from('%PDF-1.4 fake payload') } as unknown as Express.Multer.File;
+    await expect(service.createRequest({ productId: 'p1', reason: 'DAMAGED' }, [fake], SALES_B1)).rejects.toBeInstanceOf(
+      BadRequestException,
     );
-    // เข้าคลังทางนี้ก็ต้องลงบัญชีรับสินค้าของเครื่องจากใบสั่งซื้อที่ยังไม่เคยลง (คำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8)
-    expect(bookIfPending).toHaveBeenCalledTimes(1);
-    // toHaveBeenCalledWith เทียบแบบลึก (tx ที่ copy มาเท่ากับ prisma) — ต้องเทียบตัวตน
-    expect(bookIfPending.mock.calls[0][0]).toBe(tx);
-    expect(bookIfPending.mock.calls[0][1]).toBe(foundDto.productId);
+    expect(storage.upload).not.toHaveBeenCalled();
+  });
+
+  it('(d3) tx ล้มหลังอัปโหลดรูป → ลบ key ทิ้ง (best-effort)', async () => {
+    const { service, prisma, storage } = build();
+    prisma.stockAdjustment.create.mockRejectedValue(new Error('db down'));
+    await expect(service.createRequest({ productId: 'p1', reason: 'DAMAGED' }, [jpeg()], SALES_B1)).rejects.toThrow('db down');
+    expect(storage.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it('(b2) เครื่องถูกขายไปก่อน claim (updateMany count 0) → 409 ไม่สร้างใบ', async () => {
+    const { service, prisma } = build();
+    prisma.product.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.createRequest({ productId: 'p1', reason: 'LOST' }, [], SALES_B1)).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.stockAdjustment.create).not.toHaveBeenCalled();
+  });
+
+  it('(e) CORRECTION → ใบ PENDING แต่ไม่พักขายเครื่อง', async () => {
+    const { service, prisma } = build();
+    await service.createRequest({ productId: 'p1', reason: 'CORRECTION', notes: 'แก้สี' }, [], SALES_B1);
+    expect(prisma.stockAdjustment.create).toHaveBeenCalled();
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
+    expect(prisma.todo.create).toHaveBeenCalled();
+  });
+
+  it('(f) FOUND บน SOLD_INSTALLMENT (ไม่ถูกลบ) → 400 จาก allow-list เดิม', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'SOLD_INSTALLMENT' }));
+    await expect(service.createRequest({ productId: 'p1', reason: 'FOUND' }, [], OWNER)).rejects.toThrow(/พบของ/);
+    expect(prisma.stockAdjustment.create).not.toHaveBeenCalled();
+  });
+
+  it('(f2) FOUND บนเครื่อง LOST ที่ถูกลบแล้ว → สร้างคำขอได้ (ไม่กรอง deletedAt) และไม่พักขาย', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'LOST', deletedAt: new Date('2026-10-01') }));
+    await service.createRequest({ productId: 'p1', reason: 'FOUND' }, [], OWNER);
+    expect(prisma.stockAdjustment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ reason: 'FOUND', previousStatus: 'LOST' }) }),
+    );
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('(g) เครื่องมีคำขอ PENDING อยู่แล้ว → 409 ระบุเลขคำขอเดิม', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.findFirst.mockResolvedValue({ id: 'adj-0', requestNumber: 'SA-20261004-0007', status: 'PENDING_APPROVAL' });
+    await expect(service.createRequest({ productId: 'p1', reason: 'LOST' }, [], SALES_B1)).rejects.toThrow(/SA-20261004-0007/);
+    expect(prisma.stockAdjustment.create).not.toHaveBeenCalled();
+  });
+
+  it('(g2) ชน partial unique (P2002) ตอน create → 409 ไม่ใช่ 500', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }),
+    );
+    await expect(service.createRequest({ productId: 'p1', reason: 'LOST' }, [], SALES_B1)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('(g3) LOST บนเครื่อง SOLD_CASH → 400 บอกสถานะ', async () => {
+    const { service } = build(baseProduct({ status: 'SOLD_CASH' }));
+    await expect(service.createRequest({ productId: 'p1', reason: 'LOST' }, [], OWNER)).rejects.toThrow(/SOLD_CASH/);
+  });
+
+  it('(g4) WRITE_OFF บนเครื่อง DAMAGED (คงในสต๊อก) → ทำได้', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'DAMAGED' }));
+    await service.createRequest({ productId: 'p1', reason: 'WRITE_OFF' }, [], OWNER);
+    expect(prisma.stockAdjustment.create).toHaveBeenCalled();
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'DAMAGED', deletedAt: null },
+      data: { status: 'ADJUSTMENT_PENDING' },
+    });
+  });
+
+  it('(g5) LOST บนเครื่อง DAMAGED → 400 (เสียหายแล้วตัดจำหน่ายได้ทางเดียว)', async () => {
+    const { service } = build(baseProduct({ status: 'DAMAGED' }));
+    await expect(service.createRequest({ productId: 'p1', reason: 'LOST' }, [], OWNER)).rejects.toBeInstanceOf(BadRequestException);
   });
 });
 
-/**
- * Phase 5 fix round 3 [Important 1] — `FOUND` เป็น **allow-list** ไม่ใช่ deny ทีละสถานะ
- *
- * รอบ 2 ปฏิเสธเฉพาะ `REFURBISHED` แต่ `repossessions.service.ts` ตั้ง `REPOSSESSED`
- * ตอนยึด (REFURBISHED มาทีหลังตอน markReadyForSale) ⇒ เครื่องยึดที่ยังถือราคาขายเดิม
- * flip เข้า IN_STOCK ได้ด้วย "พบของ" โดยไม่เช็คราคา ไม่มี audit — ทั้งที่ปุ่มนำเข้าคลัง
- * ปฏิเสธมัน. ผลพลอยได้: ปิด `SOLD_INSTALLMENT → IN_STOCK` ที่เปิดอยู่แต่เดิมด้วย
- *
- * `FOUND` = "พบของที่หายไป" ⇒ พา IN_STOCK ได้เฉพาะกลุ่มของหาย/ของเสีย
- * (LOST / DAMAGED / WRITTEN_OFF) — สถานะอื่นที่ถูก soft-delete ยัง "กู้แถวคืน" ได้
- * แต่กลับไปสถานะเดิมของมัน ไม่ใช่ IN_STOCK
- */
-describe('StockAdjustmentsService.create — FOUND allow-list (Phase 5 fix round 3)', () => {
-  let service: StockAdjustmentsService;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let prisma: any;
-
-  const foundDto = {
+describe('StockAdjustmentsService.cancel', () => {
+  const pendingRow = (overrides: Record<string, unknown> = {}) => ({
+    id: 'adj-1',
+    requestNumber: 'SA-20261005-0001',
+    reason: 'LOST',
+    status: 'PENDING_APPROVAL',
+    previousStatus: 'PHOTO_PENDING',
     productId: 'p1',
-    reason: 'FOUND' as const,
-    approverId: 'approver-owner',
-    notes: 'พบเครื่องในตู้เซฟ',
-  };
-
-  const setProduct = (status: string, deleted: boolean) =>
-    prisma.product.findUnique.mockResolvedValue({
-      id: 'p1',
-      status,
-      branchId: 'branch-1',
-      costPrice: '10000',
-      deletedAt: deleted ? new Date() : null,
-    });
-
-  beforeEach(async () => {
-    prisma = {
-      product: { findUnique: jest.fn(), update: jest.fn().mockResolvedValue({}) },
-      stockAdjustment: { create: jest.fn().mockResolvedValue({ id: 'adj-1' }) },
-      user: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: 'approver-owner',
-          role: 'OWNER',
-          isActive: true,
-          deletedAt: null,
-        }),
-      },
-      $transaction: jest.fn((cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
-    };
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [StockAdjustmentsService, { provide: PrismaService, useValue: prisma }],
-    }).compile();
-    service = module.get<StockAdjustmentsService>(StockAdjustmentsService);
+    adjustedById: 'sales-1',
+    ...overrides,
   });
 
-  it.each([
-    ['LOST', true],
-    ['DAMAGED', true],
-    ['WRITTEN_OFF', true],
-  ])('%s → พาเข้า IN_STOCK ได้ตามเดิม (กลุ่มของหาย/ของเสีย)', async (status, deleted) => {
-    setProduct(status, deleted as boolean);
+  it('(h) คนอื่นที่ไม่ใช่ผู้ขอ/OWNER → 403', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    await expect(service.cancel('adj-1', SALES_B2)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.stockAdjustment.update).not.toHaveBeenCalled();
+  });
 
-    await expect(service.create(foundDto, 'adjuster-1')).resolves.toBeDefined();
+  it('(h2) ผู้ขอยกเลิกเอง → เครื่องกลับ previousStatus (PHOTO_PENDING) · ใบ CANCELED · Todo ปิด', async () => {
+    const { service, prisma, audit } = build();
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    await service.cancel('adj-1', SALES_B1);
+    expect(prisma.$queryRaw).toHaveBeenCalled(); // FOR UPDATE
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'ADJUSTMENT_PENDING' },
+      data: { status: 'PHOTO_PENDING' },
+    });
+    expect(prisma.stockAdjustment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'adj-1' },
+        data: expect.objectContaining({ status: 'CANCELED', canceledById: 'sales-1' }),
+      }),
+    );
+    expect(prisma.todo.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tags: { hasEvery: [STOCK_ADJUSTMENT_TODO_TAG, 'sa:SA-20261005-0001'] } }),
+        data: expect.objectContaining({ status: 'DONE' }),
+      }),
+    );
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'STOCK_ADJUSTMENT_CANCELED' }));
+  });
+
+  it('(h3) ใบที่ไม่ใช่ PENDING → 409', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ status: 'APPROVED' }));
+    await expect(service.cancel('adj-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('(h4) CORRECTION ยกเลิก → ไม่แตะสถานะเครื่อง', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'CORRECTION', previousStatus: 'IN_STOCK' }));
+    await service.cancel('adj-1', OWNER);
+    expect(prisma.product.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('StockAdjustmentsService.preview', () => {
+  it('(i) LOST + เครื่องลงบัญชีรับเข้าแล้ว → 2 บรรทัด Dr S53-1102 / Cr S11-2001 ที่ต้นทุน (ผู้จัดการสาขาเห็นต้นทุน)', async () => {
+    const { service, prisma } = build();
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue({
+      receivedCost: new Prisma.Decimal('12000.00'),
+      journalEntryId: 'je-1',
+      receiving: { grNumber: 'GR-20261001-001' },
+    });
+    prisma.journalEntry.findUnique.mockResolvedValue({ entryNumber: 'JE-202610-00012' });
+    const p = await service.preview('p1', 'LOST', { id: 'bm-1', role: 'BRANCH_MANAGER', branchId: 'branch-1' });
+    expect(p.holdsProduct).toBe(true);
+    expect(p.productStatusAfter).toBe('LOST');
+    expect(p.requiresPhoto).toBe(false);
+    expect(p.booked.booked).toBe(true);
+    expect(p.inventoryAccountCode).toBe('S11-2001');
+    expect(p.costAmount).toBe('12000.00');
+    expect(p.journalLines).toEqual([
+      { accountCode: 'S53-1102', name: 'ขาดทุนจากสินค้าสูญหาย/เสียหาย', debit: '12000.00', credit: '0.00' },
+      { accountCode: 'S11-2001', name: 'สินค้าคงคลัง-มือถือใหม่', debit: '0.00', credit: '12000.00' },
+    ]);
+  });
+
+  it('(i2) DAMAGED → ไม่มีบรรทัด + note ข7 + requiresPhoto', async () => {
+    const { service } = build();
+    const p = await service.preview('p1', 'DAMAGED', SALES_B1);
+    expect(p.journalLines).toEqual([]);
+    expect(p.journalNote).toMatch(/ข7|เสียหายคงในสต๊อก/);
+    expect(p.requiresPhoto).toBe(true);
+    expect(p.productStatusAfter).toBe('DAMAGED');
+  });
+
+  it('(i3) LOST แต่เครื่องไม่เคยลงบัญชีรับเข้า → ไม่มีบรรทัด + note แจ้งฝ่ายบัญชี', async () => {
+    const { service } = build();
+    const p = await service.preview('p1', 'LOST', SALES_B1);
+    expect(p.booked.booked).toBe(false);
+    expect(p.journalLines).toEqual([]);
+    expect(p.journalNote).toMatch(/ฝ่ายบัญชี/);
+  });
+
+  it('(i4) CORRECTION → ไม่พักขาย ไม่เปลี่ยนสถานะ ไม่มีบรรทัด', async () => {
+    const { service } = build();
+    const p = await service.preview('p1', 'CORRECTION', SALES_B1);
+    expect(p.holdsProduct).toBe(false);
+    expect(p.productStatusAfter).toBeNull();
+    expect(p.journalLines).toEqual([]);
+  });
+
+  it('(i5) SALES คนละสาขา → 403', async () => {
+    const { service } = build();
+    await expect(service.preview('p1', 'LOST', SALES_B2)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('StockAdjustmentsService.pendingCount / findAll scope', () => {
+  it('OWNER นับทุกสาขา · BM นับเฉพาะสาขาตัวเอง', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.count.mockResolvedValue(3);
+    await service.pendingCount(OWNER);
+    expect(prisma.stockAdjustment.count.mock.calls[0][0].where).toEqual({ status: 'PENDING_APPROVAL', deletedAt: null });
+    await service.pendingCount({ id: 'bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' });
+    expect(prisma.stockAdjustment.count.mock.calls[1][0].where).toEqual({
+      status: 'PENDING_APPROVAL',
+      deletedAt: null,
+      branchId: 'branch-1',
+    });
+  });
+
+  it('SALES findAll ถูกบีบเป็นสาขาตัวเอง · mine → เฉพาะใบตัวเอง', async () => {
+    const { service, prisma } = build();
+    await service.findAll({ status: 'PENDING_APPROVAL', mine: true }, SALES_B1);
+    const where = prisma.stockAdjustment.findMany.mock.calls[0][0].where;
+    expect(where).toEqual(expect.objectContaining({ branchId: 'branch-1', adjustedById: 'sales-1', status: 'PENDING_APPROVAL' }));
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Task 6 — เจ้าของอนุมัติ / ไม่อนุมัติ
+// ────────────────────────────────────────────────────────────────────────────────
+describe('StockAdjustmentsService.approve', () => {
+  const pendingRow = (overrides: Record<string, unknown> = {}) => ({
+    id: 'adj-1',
+    requestNumber: 'SA-20261005-0001',
+    reason: 'LOST',
+    status: 'PENDING_APPROVAL',
+    previousStatus: 'IN_STOCK',
+    productId: 'p1',
+    branchId: 'branch-1',
+    adjustedById: 'sales-1',
+    photos: [],
+    deletedAt: null,
+    ...overrides,
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const booked = (prisma: any) => {
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue({
+      receivedCost: new Prisma.Decimal('12000.00'),
+      journalEntryId: 'je-gr',
+      receiving: { grNumber: 'GR-20261001-001' },
+    });
+    prisma.journalEntry.findUnique.mockResolvedValue({ entryNumber: 'JE-202610-00012' });
+  };
+
+  it('(h) actor ไม่ใช่ OWNER → 403 ไม่แตะอะไร', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    await expect(service.approve('adj-1', { id: 'bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' })).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.stockAdjustment.update).not.toHaveBeenCalled();
+  });
+
+  it('(a) LOST + เครื่องลงบัญชีแล้ว → JE Dr S53-1102/Cr S11-2001 ที่ต้นทุน · เครื่อง LOST+ลบ · ใบ APPROVED ผูก JE', async () => {
+    const { service, prisma, template, companies, audit } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    booked(prisma);
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    template.execute.mockResolvedValue({ journalEntryId: 'je-wo', entryNo: 'JE-202610-00020' });
+
+    const result = await service.approve('adj-1', OWNER);
+
+    expect(companies.getShopCompanyId).toHaveBeenCalled();
+    expect(template.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idempotencyKey: 'shop-stock-writeoff:adj-1',
+        adjustmentId: 'adj-1',
+        requestNumber: 'SA-20261005-0001',
+        productId: 'p1',
+        reason: 'LOST',
+        inventoryAccountCode: 'S11-2001',
+        branchId: 'branch-1',
+      }),
+      prisma,
+    );
+    expect(template.execute.mock.calls[0][0].amount.toFixed(2)).toBe('12000.00');
     expect(prisma.product.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ status: 'IN_STOCK', deletedAt: null }),
+        where: { id: 'p1' },
+        data: expect.objectContaining({ status: 'LOST', wasPreviouslyDamaged: true, deletedAt: expect.any(Date) }),
       }),
+    );
+    const upd = prisma.stockAdjustment.update.mock.calls[0][0];
+    expect(upd.data).toEqual(
+      expect.objectContaining({
+        status: 'APPROVED',
+        approvedById: 'owner-1',
+        journalEntryId: 'je-wo',
+        inventoryBooked: true,
+        bookedSource: 'GOODS_RECEIVING',
+        inventoryAccountCode: 'S11-2001',
+      }),
+    );
+    expect(upd.data.costAmount.toFixed(2)).toBe('12000.00');
+    expect(prisma.todo.updateMany).toHaveBeenCalled(); // ปิด Todo เจ้าของ
+    expect(prisma.todo.create).not.toHaveBeenCalled(); // ไม่ต้องแจ้งบัญชี
+    expect(result.journalEntryNo).toBe('JE-202610-00020');
+    expect(result.inventoryBooked).toBe(true);
+    expect(result.productStatus).toBe('LOST');
+    expect(result.accountingNotified).toBe(false);
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'STOCK_ADJUSTMENT_APPROVED', userId: 'owner-1' }));
+  });
+
+  it('(b) LOST แต่เครื่องไม่เคยลงบัญชี → ไม่ลง JE · Todo แจ้งฝ่ายบัญชี tag stock-adjustment-unbooked · accountingNotified', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    const result = await service.approve('adj-1', OWNER);
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.todo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          priority: 'MEDIUM',
+          tags: ['stock-adjustment-unbooked', 'sa:SA-20261005-0001'],
+          createdById: 'owner-1',
+        }),
+      }),
+    );
+    const upd = prisma.stockAdjustment.update.mock.calls[0][0];
+    expect(upd.data).toEqual(expect.objectContaining({ status: 'APPROVED', inventoryBooked: false, journalEntryId: null }));
+    expect(result.accountingNotified).toBe(true);
+    expect(result.journalEntryNo).toBeNull();
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'LOST', deletedAt: expect.any(Date) }) }),
     );
   });
 
-  it('REPOSSESSED (ยึดมา ยังถือราคาขายเดิม) → reject ชี้ flow ยึดเครื่อง ไม่ flip เข้า IN_STOCK', async () => {
-    setProduct('REPOSSESSED', false);
-
-    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(BadRequestException);
-    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(/ยึดเครื่อง/);
-    expect(prisma.product.update).not.toHaveBeenCalled();
+  it('(c) DAMAGED → ไม่ลง JE · เครื่อง DAMAGED คงในสต๊อก (ไม่ลบ) · ไม่มี Todo บัญชี', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    booked(prisma);
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'DAMAGED', photos: ['stock-adjustments/x.jpg'] }));
+    const result = await service.approve('adj-1', OWNER);
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.product.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { status: 'DAMAGED', wasPreviouslyDamaged: true },
+    });
+    expect(prisma.todo.create).not.toHaveBeenCalled();
+    const upd = prisma.stockAdjustment.update.mock.calls[0][0];
+    expect(upd.data).toEqual(expect.objectContaining({ status: 'APPROVED', inventoryBooked: null, costAmount: null }));
+    expect(result.productStatus).toBe('DAMAGED');
   });
 
-  it('SOLD_INSTALLMENT → reject (เครื่องที่สัญญายังถืออยู่ ห้ามคืนเข้าสต็อกด้วย "พบของ")', async () => {
-    setProduct('SOLD_INSTALLMENT', false);
-
-    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(BadRequestException);
-    expect(prisma.product.update).not.toHaveBeenCalled();
+  it('(d) เครื่องไม่ได้อยู่ ADJUSTMENT_PENDING ตอนอนุมัติ → 409 ไม่ลง JE', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'IN_STOCK' }));
+    booked(prisma);
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    await expect(service.approve('adj-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.stockAdjustment.update).not.toHaveBeenCalled();
   });
 
-  it.each(['PO_RECEIVED', 'QC_PENDING', 'PHOTO_PENDING', 'INSPECTION', 'RESERVED', 'SOLD_CASH', 'SOLD_RESELL', 'DEFECT_RETURN'])(
-    '%s → reject (ไม่ใช่ของหาย/ของเสีย — มี flow ของตัวเอง)',
-    async (status) => {
-      setProduct(status, false);
-      await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(BadRequestException);
-      expect(prisma.product.update).not.toHaveBeenCalled();
-    },
-  );
+  it('(e) FOUND บนเครื่อง LOST ที่มีใบตัดเดิมมี JE → กลับรายการ · เครื่อง IN_STOCK · bookIfPending · ชี้ reversesAdjustmentId', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'LOST', deletedAt: new Date('2026-10-01') }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'FOUND', previousStatus: 'LOST' }));
+    // findFirst #1 = ใบตัดเดิม · findFirst #2 = ยังไม่มีใบ FOUND ที่กลับมัน
+    prisma.stockAdjustment.findFirst
+      .mockResolvedValueOnce({ id: 'adj-0', requestNumber: 'SA-20261001-0003', journalEntryId: 'je-wo', reason: 'LOST' })
+      .mockResolvedValueOnce(null);
+    template.reverse.mockResolvedValue({ journalEntryId: 'je-rev', entryNo: 'JE-202610-00021' });
 
-  it('REFURBISHED (ยังไม่ถูกลบ) → reject ชี้ไปที่ปุ่มนำเข้าคลังพร้อมขาย (พฤติกรรมรอบ 2)', async () => {
-    setProduct('REFURBISHED', false);
+    const result = await service.approve('adj-1', OWNER);
 
-    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(/นำเข้าคลังพร้อมขาย/);
-    expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(template.reverse).toHaveBeenCalledWith(
+      expect.objectContaining({
+        journalEntryId: 'je-wo',
+        idempotencyKey: 'shop-stock-writeoff-reversal:adj-1',
+        foundAdjustmentId: 'adj-1',
+      }),
+      prisma,
+    );
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'IN_STOCK', deletedAt: null, stockInDate: expect.any(Date) }),
+      }),
+    );
+    expect(bookIfPending).toHaveBeenCalledWith(prisma, 'p1');
+    const upd = prisma.stockAdjustment.update.mock.calls[0][0];
+    expect(upd.data).toEqual(
+      expect.objectContaining({ status: 'APPROVED', journalEntryId: 'je-rev', reversesAdjustmentId: 'adj-0' }),
+    );
+    expect(result.journalEntryNo).toBe('JE-202610-00021');
+    expect(result.productStatus).toBe('IN_STOCK');
   });
 
-  /**
-   * nit รอบ 3 — allow-list จะปิดทางกู้เครื่อง REFURBISHED ที่ถูก soft-delete
-   * (ทางเดียวที่มีในระบบ) ⇒ กู้แถวคืนได้ แต่กลับไปสถานะเดิมของมัน ไม่ใช่ IN_STOCK
-   * (ยังต้องผ่านปุ่มนำเข้าคลังพร้อมขาย = ยืนยันราคา อยู่ดี)
-   */
-  it('REFURBISHED ที่ถูก soft-delete → กู้แถวคืนโดยไม่แตะสถานะ (ไม่ใช่ IN_STOCK, ไม่ตั้ง stockInDate)', async () => {
-    setProduct('REFURBISHED', true);
+  it('(f) FOUND แต่ใบตัดเดิมถูกกลับไปแล้ว → ไม่ reverse · เครื่องกลับสถานะอย่างเดียว', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'WRITTEN_OFF', deletedAt: new Date('2026-10-01') }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'FOUND', previousStatus: 'WRITTEN_OFF' }));
+    prisma.stockAdjustment.findFirst
+      .mockResolvedValueOnce({ id: 'adj-0', requestNumber: 'SA-20261001-0003', journalEntryId: 'je-wo', reason: 'WRITE_OFF' })
+      .mockResolvedValueOnce({ id: 'adj-found-old' });
+    await service.approve('adj-1', OWNER);
+    expect(template.reverse).not.toHaveBeenCalled();
+    expect(prisma.product.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'IN_STOCK', deletedAt: null, restoredFromTerminalAt: expect.any(Date) }),
+      }),
+    );
+    const upd = prisma.stockAdjustment.update.mock.calls[0][0];
+    expect(upd.data.journalEntryId).toBeNull();
+  });
 
-    await expect(service.create(foundDto, 'adjuster-1')).resolves.toBeDefined();
+  it('(f2) FOUND กู้แถว REFURBISHED ที่ถูกลบ → คงสถานะเดิม ไม่ stockInDate ไม่ bookIfPending', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'REFURBISHED', deletedAt: new Date('2026-10-01') }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'FOUND', previousStatus: 'REFURBISHED' }));
+    const result = await service.approve('adj-1', OWNER);
     const data = prisma.product.update.mock.calls[0][0].data;
     expect(data.deletedAt).toBeNull();
-    expect(data.status).toBeUndefined(); // ไม่แตะสถานะ = คงเป็น REFURBISHED ตามเดิม
+    expect(data.status).toBeUndefined();
     expect(data.stockInDate).toBeUndefined();
-    expect(bookIfPending).not.toHaveBeenCalled(); // กู้แถวคืนเฉย ๆ ไม่ได้เข้าคลัง
+    expect(bookIfPending).not.toHaveBeenCalled();
+    expect(result.productStatus).toBe('REFURBISHED');
   });
 
-  it('SOLD_INSTALLMENT ที่ถูก soft-delete → กู้แถวคืนโดยไม่แตะสถานะ (ไม่ปลุกเข้าคลัง)', async () => {
-    setProduct('SOLD_INSTALLMENT', true);
-
-    await expect(service.create(foundDto, 'adjuster-1')).resolves.toBeDefined();
-    const data = prisma.product.update.mock.calls[0][0].data;
-    expect(data.deletedAt).toBeNull();
-    expect(data.status).toBeUndefined(); // ไม่แตะสถานะ = คงเป็น SOLD_INSTALLMENT ตามเดิม
+  it('(f3) FOUND กู้แถวแล้ว IMEI ชนเครื่องใหม่ (P2002) → 409 ภาษาไทย', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'LOST', deletedAt: new Date('2026-10-01') }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'FOUND', previousStatus: 'LOST' }));
+    prisma.product.update.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('dup', { code: 'P2002', clientVersion: 'x' }));
+    await expect(service.approve('adj-1', OWNER)).rejects.toThrow(/IMEI/);
   });
 
-  /**
-   * Final review M-4 — กู้แถว (`deletedAt: null`) พาเครื่องกลับเข้า partial unique index
-   * `products_imei_serial_active_unique` ⇒ ถ้ามีเครื่องอื่นรับ IMEI เดิมเข้าสต็อกไปแล้ว
-   * (พฤติกรรมที่ index นี้ **ตั้งใจ** อนุญาต — เครื่องเทิร์นกลับมาขายซ้ำได้) จะชน P2002
-   * ดิบ = 500 ที่หน้าจอ ทั้งที่สาเหตุอธิบายเป็นภาษาคนได้ตรง ๆ
-   */
-  it('M-4: กู้แถวแล้ว IMEI ชนกับเครื่องที่รับเข้ามาใหม่ → 409 ภาษาไทย ไม่ใช่ P2002 ดิบ', async () => {
-    setProduct('LOST', true);
-    prisma.product.update.mockRejectedValue(
-      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-        code: 'P2002',
-        clientVersion: 'test',
-        meta: { target: ['imei_serial'] },
+  it('(i) LOST booked แต่ costPrice 0 → ไม่ลง JE · APPROVED · ไม่มี Todo บัญชี', async () => {
+    const { service, prisma, template } = build(baseProduct({ status: 'ADJUSTMENT_PENDING', costPrice: new Prisma.Decimal(0) }));
+    booked(prisma);
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow());
+    const result = await service.approve('adj-1', OWNER);
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.todo.create).not.toHaveBeenCalled();
+    expect(result.accountingNotified).toBe(false);
+    expect(prisma.stockAdjustment.update.mock.calls[0][0].data.status).toBe('APPROVED');
+  });
+
+  it('(j) ใบที่ไม่ใช่ PENDING → 409', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'IN_STOCK' }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ status: 'REJECTED' }));
+    await expect(service.approve('adj-1', OWNER)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('(k) CORRECTION → APPROVED ไม่แตะเครื่อง ไม่ลง JE', async () => {
+    const { service, prisma, template } = build();
+    prisma.stockAdjustment.findUnique.mockResolvedValue(pendingRow({ reason: 'CORRECTION' }));
+    const result = await service.approve('adj-1', OWNER);
+    expect(template.execute).not.toHaveBeenCalled();
+    expect(prisma.product.update).not.toHaveBeenCalled();
+    expect(result.productStatus).toBe('IN_STOCK');
+  });
+});
+
+describe('StockAdjustmentsService.reject', () => {
+  it('(g) reject → เครื่องกลับ previousStatus PHOTO_PENDING (ไม่ใช่ IN_STOCK) · REJECTED + เหตุผล · Todo DONE', async () => {
+    const { service, prisma, audit } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    prisma.stockAdjustment.findUnique.mockResolvedValue({
+      id: 'adj-1',
+      requestNumber: 'SA-20261005-0001',
+      reason: 'WRITE_OFF',
+      status: 'PENDING_APPROVAL',
+      previousStatus: 'PHOTO_PENDING',
+      productId: 'p1',
+      adjustedById: 'sales-1',
+      deletedAt: null,
+    });
+    await service.reject('adj-1', { reason: 'เครื่องยังอยู่ ให้ถ่ายรูปต่อ' }, OWNER);
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'ADJUSTMENT_PENDING' },
+      data: { status: 'PHOTO_PENDING' },
+    });
+    expect(prisma.stockAdjustment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'REJECTED', rejectedById: 'owner-1', rejectedReason: 'เครื่องยังอยู่ ให้ถ่ายรูปต่อ' }),
       }),
     );
+    expect(prisma.todo.updateMany).toHaveBeenCalled();
+    expect(audit.log).toHaveBeenCalledWith(expect.objectContaining({ action: 'STOCK_ADJUSTMENT_REJECTED' }));
+  });
 
-    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(ConflictException);
-    await expect(service.create(foundDto, 'adjuster-1')).rejects.toThrow(/IMEI/);
+  it('(g2) actor ไม่ใช่ OWNER → 403', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.findUnique.mockResolvedValue({ id: 'adj-1', requestNumber: 'SA-1', reason: 'LOST', status: 'PENDING_APPROVAL', previousStatus: 'IN_STOCK', productId: 'p1', adjustedById: 'sales-1', deletedAt: null });
+    await expect(service.reject('adj-1', { reason: 'ไม่อนุมัติเพราะยังไม่ชัด' }, SALES_B1)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('StockAdjustmentsService.findAll/findOne — เติมเลขที่รายการบัญชี', () => {
+  it('แถวที่มี journalEntryId ได้ journalEntryNo จาก query เดียว · แถวที่ไม่มี = null', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.findMany.mockResolvedValue([
+      { id: 'a', journalEntryId: 'je-1', branchId: 'branch-1' },
+      { id: 'b', journalEntryId: null, branchId: 'branch-1' },
+    ]);
+    prisma.stockAdjustment.count.mockResolvedValue(2);
+    prisma.journalEntry.findMany.mockResolvedValue([{ id: 'je-1', entryNumber: 'JE-202610-00020' }]);
+    const res = await service.findAll({}, OWNER);
+    expect(res.data.map((r: { journalEntryNo: string | null }) => r.journalEntryNo)).toEqual(['JE-202610-00020', null]);
+    expect(prisma.journalEntry.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.journalEntry.findMany.mock.calls[0][0].where).toEqual({ id: { in: ['je-1'] } });
+  });
+
+  it('findOne คืน journalEntryNo + photoUrls (ข้าม data: URI ยุคเก่า) + booked เฉพาะใบ PENDING ที่ลงบัญชีได้', async () => {
+    const { service, prisma, storage } = build();
+    prisma.stockAdjustment.findUnique.mockResolvedValue({
+      id: 'a', journalEntryId: 'je-1', branchId: 'branch-1', status: 'APPROVED', reason: 'LOST', productId: 'p1',
+      photos: ['stock-adjustments/x.jpg', 'data:image/png;base64,xx'], deletedAt: null,
+    });
+    prisma.journalEntry.findMany.mockResolvedValue([{ id: 'je-1', entryNumber: 'JE-202610-00020' }]);
+    const res = await service.findOne('a', OWNER);
+    expect(res.journalEntryNo).toBe('JE-202610-00020');
+    expect(res.photoUrls).toEqual(['https://signed/stock-adjustments/x.jpg']);
+    expect(storage.getSignedDownloadUrl).toHaveBeenCalledTimes(1);
+    expect(res.booked).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Final review I2 — SALES ต้องไม่เห็นราคาทุน (คำตัดสินเจ้าของ 2026-08-04 §1.4 · cost-visibility.util)
+// ────────────────────────────────────────────────────────────────────────────────
+describe('StockAdjustmentsService — ซ่อนต้นทุนจาก SALES', () => {
+  const grBooked = (prisma: any) => {
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue({
+      receivedCost: new Prisma.Decimal('12000.00'),
+      journalEntryId: 'je-1',
+      receiving: { grNumber: 'GR-20261001-001', po: { poNumber: 'PO-20261001-0001' } },
+    });
+    prisma.journalEntry.findUnique.mockResolvedValue({ entryNumber: 'JE-202610-00012' });
+  };
+
+  it('preview สำหรับ SALES → ไม่มีตัวเลขเงิน (costAmount/journalLines/bookedAmount) แต่ยังบอกสถานะ/พักขาย/ลงบัญชีหรือไม่', async () => {
+    const { service, prisma } = build();
+    grBooked(prisma);
+    const p = await service.preview('p1', 'LOST', SALES_B1);
+    expect(p.costAmount).toBeNull();
+    expect(p.journalLines).toEqual([]);
+    expect(p.booked.bookedAmount).toBeNull();
+    expect(p.booked.booked).toBe(true);
+    expect(p.holdsProduct).toBe(true);
+    expect(p.productStatusAfter).toBe('LOST');
+    expect(p.journalNote).not.toMatch(/12,?000/);
+    // OWNER ยังเห็นครบ
+    const o = await service.preview('p1', 'LOST', OWNER);
+    expect(o.costAmount).toBe('12000.00');
+    expect(o.journalLines).toHaveLength(2);
+  });
+
+  it('lookup สำหรับ SALES → ไม่มี costPrice · OWNER มี', async () => {
+    const { service, prisma } = build();
+    prisma.product.findMany.mockResolvedValue([
+      { ...baseProduct(), stockAdjustments: [] },
+    ]);
+    const rows = await service.lookupProduct({ imei: '350000000000001', reason: 'LOST' }, SALES_B1);
+    expect(rows[0].costPrice).toBeNull();
+    const own = await service.lookupProduct({ imei: '350000000000001', reason: 'LOST' }, OWNER);
+    expect(own[0].costPrice).toBe('12000.00');
+  });
+
+  it('findAll / createRequest สำหรับ SALES → product.costPrice และ costAmount ถูกตัดออก', async () => {
+    const { service, prisma } = build();
+    prisma.stockAdjustment.findMany.mockResolvedValue([
+      { id: 'a', journalEntryId: null, branchId: 'branch-1', costAmount: new Prisma.Decimal('12000.00'), product: { id: 'p1', costPrice: new Prisma.Decimal('12000.00'), brand: 'Apple' } },
+    ]);
+    prisma.stockAdjustment.count.mockResolvedValue(1);
+    const res = await service.findAll({}, SALES_B1);
+    expect(res.data[0].costAmount).toBeNull();
+    expect((res.data[0].product as { costPrice?: unknown }).costPrice).toBeUndefined();
+    const created = await service.createRequest({ productId: 'p1', reason: 'LOST' }, [], SALES_B1);
+    expect((created.product as { costPrice?: unknown }).costPrice).toBeUndefined();
+  });
+
+  it('Todo ถึงเจ้าของไม่พิมพ์ต้นทุน (SALES อ่าน /todos ได้ทุกใบ) และระบุชื่อผู้ขอ ไม่ใช่ UUID', async () => {
+    const { service, prisma } = build();
+    prisma.user.findUnique = jest.fn().mockResolvedValue({ id: 'sales-1', name: 'สมชาย ใจดี' });
+    await service.createRequest({ productId: 'p1', reason: 'LOST' }, [], SALES_B1);
+    const data = prisma.todo.create.mock.calls[0][0].data;
+    expect(data.description).not.toMatch(/ต้นทุน/);
+    expect(data.description).toMatch(/สมชาย ใจดี/);
+    expect(data.description).not.toMatch(/sales-1/);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Final review I3 — เครื่องจาก PO ที่ยังไม่ผ่านเข้าคลังถูกตัด: เจ้าหนี้ของเครื่องนั้นก็ยังไม่ถูกตั้ง ต้องบอกฝ่ายบัญชีให้ครบ
+// ────────────────────────────────────────────────────────────────────────────────
+describe('StockAdjustmentsService.approve — Todo แจ้งบัญชีกรณีเครื่องจาก PO ที่ยังไม่ลงบัญชี', () => {
+  it('ระบุเลขใบรับของ + เลขใบสั่งซื้อ + เตือนว่าเจ้าหนี้ยังไม่ถูกตั้งและเงินที่จ่ายจะค้างเป็นมัดจำ', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'ADJUSTMENT_PENDING' }));
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue({
+      receivedCost: new Prisma.Decimal('3210.00'),
+      journalEntryId: null,
+      receiving: { grNumber: 'GR-20261001-002', po: { poNumber: 'PO-20261001-0007' } },
+    });
+    prisma.stockAdjustment.findUnique.mockResolvedValue({
+      id: 'adj-1', requestNumber: 'SA-20261005-0001', reason: 'WRITE_OFF', status: 'PENDING_APPROVAL', previousStatus: 'PHOTO_PENDING',
+      productId: 'p1', branchId: 'branch-1', adjustedById: 'sales-1', photos: [], deletedAt: null,
+    });
+    const result = await service.approve('adj-1', OWNER);
+    expect(result.accountingNotified).toBe(true);
+    const data = prisma.todo.create.mock.calls[0][0].data;
+    expect(data.description).toMatch(/GR-20261001-002/);
+    expect(data.description).toMatch(/PO-20261001-0007/);
+    expect(data.description).toMatch(/เจ้าหนี้/);
+    expect(data.description).toMatch(/มัดจำ/);
   });
 });

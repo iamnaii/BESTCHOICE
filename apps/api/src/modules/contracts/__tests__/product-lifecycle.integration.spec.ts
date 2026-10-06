@@ -61,6 +61,7 @@ import { ContractExchangeService } from '../../contract-exchange/contract-exchan
 import { ExchangeCancelService } from '../../contract-exchange/contract-exchange-cancel.service';
 import { AuditService } from '../../audit/audit.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { InstallmentInputVatTemplate } from '../../journal/cpa-templates/installment-input-vat.template';
 import { JournalAutoService } from '../../journal/journal-auto.service';
 import { ContractActivation1ATemplate } from '../../journal/cpa-templates/contract-activation-1a.template';
 import { ShopInventoryTransferTemplate } from '../../journal/cpa-templates/shop-inventory-transfer.template';
@@ -93,6 +94,7 @@ const workflow = new ContractWorkflowService(
   new ShopInventoryTransferTemplate(journal, prisma as never, companyResolver),
   new ShopDownPaymentTemplate(journal, prisma as never, companyResolver),
   shopAccountResolver,
+  new InstallmentInputVatTemplate(journal, prisma as never, companyResolver),
 );
 
 // POS — `SalesService` ประกอบ SaleWriter/SaleCreation ให้เองในคอนสตรักเตอร์
@@ -122,6 +124,7 @@ const exchangeService = new ContractExchangeService(
   companyResolver,
   null as never, // shopInventoryTransferTemplate — PRICED only
   null as never, // shopAccountResolver — PRICED only
+  null as never, // installmentInputVatTemplate — PRICED only
 );
 
 // ยกเลิกเปลี่ยนเครื่อง — เคส MEMO ไม่มี JE เลย จึงไม่ต้องมี reversal template

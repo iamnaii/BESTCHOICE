@@ -34,11 +34,14 @@ import { JournalAutoService } from '../../journal/journal-auto.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { ShopGoodsReceivingTemplate } from '../../journal/cpa-templates/shop-goods-receiving.template';
+import { ShopSupplierPaymentTemplate } from '../../journal/cpa-templates/shop-supplier-payment.template';
 import { ShopCashSaleTemplate } from '../../journal/cpa-templates/shop-cash-sale.template';
 import { ProductsService } from '../../products/products.service';
 import { ProductPhotosService } from '../../quality-control/product-photos.service';
 import { ReceivingAcceptanceJournal } from '../services/receiving-acceptance-journal';
 import { StockAdjustmentsService } from '../../inventory/stock-adjustments.service';
+import { StockAdjustmentNumberService } from '../../inventory/stock-adjustment-number.service';
+import { ShopStockWriteOffTemplate } from '../../journal/cpa-templates/shop-stock-writeoff.template';
 import { bangkokCalendarParts, bangkokDateString } from '../../../utils/date.util';
 import { formatMonthName } from '../../../utils/thai-date.util';
 
@@ -48,11 +51,21 @@ const journal = new JournalAutoService(prisma as never);
 const companyResolver = new CompanyResolverService(prisma as never);
 const shopAccountResolver = new ShopAccountResolver(prisma as never);
 const goodsReceivingTemplate = new ShopGoodsReceivingTemplate(journal, prisma as never, companyResolver);
+const supplierPaymentTemplate = new ShopSupplierPaymentTemplate(journal, prisma as never, companyResolver);
 const cashSaleTemplate = new ShopCashSaleTemplate(journal, prisma as never, companyResolver);
-const service = new PurchaseOrdersService(prisma as never, goodsReceivingTemplate, shopAccountResolver, companyResolver);
+const service = new PurchaseOrdersService(prisma as never, goodsReceivingTemplate, shopAccountResolver, companyResolver, supplierPaymentTemplate);
 const productsService = new ProductsService(prisma as never);
 const productPhotosService = new ProductPhotosService(prisma as never);
-const stockAdjustmentsService = new StockAdjustmentsService(prisma as never);
+// ก้อน 3: คำขอตัดสินค้า → เจ้าของอนุมัติ (storage/audit เป็น stub — ไฟล์นี้ไม่ทดสอบรูป/บันทึกตรวจสอบ)
+const stockAdjustmentsService = new StockAdjustmentsService(
+  prisma as never,
+  new ShopStockWriteOffTemplate(journal, prisma as never, companyResolver),
+  shopAccountResolver,
+  companyResolver,
+  { upload: async (k: string) => k, delete: async () => undefined, getSignedDownloadUrl: async (k: string) => k } as never,
+  new StockAdjustmentNumberService(prisma as never),
+  { log: async () => undefined } as never,
+);
 const FULL_ANGLES = { front: 'f.jpg', back: 'b.jpg', left: 'l.jpg', right: 'r.jpg', top: 't.jpg', bottom: 'u.jpg' };
 
 const PREFIX = 'POJETEST-';
@@ -64,6 +77,7 @@ const createdSupplierIds: string[] = [];
 const createdBranchIds: string[] = [];
 const syntheticSaleIds: string[] = [];
 const k3GrNumbers: string[] = [];
+const k3AdjustmentRequestNumbers: string[] = []; // คำขอตัดสินค้า (ก้อน 3) — ลบ Todo ที่ service สร้างให้เจ้าของ/ฝ่ายบัญชี
 const createdUserIds: string[] = [];
 
 let adminId: string;
@@ -224,6 +238,9 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
 
     const products = await prisma.product.findMany({ where: { poId: { in: createdPoIds } }, select: { id: true } });
     const productIds = products.map((p) => p.id);
+    if (k3AdjustmentRequestNumbers.length) {
+      await prisma.todo.deleteMany({ where: { tags: { hasSome: k3AdjustmentRequestNumbers.map((n) => `sa:${n}`) } } });
+    }
     await prisma.stockAdjustment.deleteMany({ where: { productId: { in: productIds } } });
     await prisma.goodsReceivingItem.deleteMany({ where: { receiving: { poId: { in: createdPoIds } } } });
     await prisma.goodsReceiving.deleteMany({ where: { poId: { in: createdPoIds } } });
@@ -485,6 +502,7 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
       failingTemplate as never,
       shopAccountResolver,
       companyResolver,
+      supplierPaymentTemplate,
     );
 
     await expect(
@@ -652,18 +670,18 @@ describe('รับสินค้าเข้าลงบัญชี — flow 
     await productsService.update(viaReturn.id, { status: 'REFURBISHED' } as never, adminId);
     await productsService.returnToStock(viaReturn.id, adminId, { cashPrice: 5900, installmentPrice: 6900 });
 
-    // (ข) รอถ่ายรูป → รอตรวจ (INSPECTION) → แจ้งหาย → พบของ (ต้องมีผู้อนุมัติคนละคน)
-    let approver = await prisma.user.findFirst({ where: { email: `${PREFIX.toLowerCase()}bm@bestchoice.test` } });
-    if (!approver) {
-      approver = await prisma.user.create({
-        data: { email: `${PREFIX.toLowerCase()}bm@bestchoice.test`, password: 'x', name: 'ผจก.ทดสอบ', role: 'BRANCH_MANAGER' },
-      });
-      createdUserIds.push(approver.id);
-    }
+    // (ข) รอถ่ายรูป → รอตรวจ (INSPECTION) → แจ้งหาย → พบของ (ก้อน 3: ส่งคำขอ → เจ้าของอนุมัติ)
+    const owner = { id: adminId, role: 'OWNER', branchId: null };
     await productsService.update(viaFound.id, { status: 'INSPECTION' } as never, adminId);
-    await stockAdjustmentsService.create({ productId: viaFound.id, reason: 'LOST', approverId: approver.id } as never, adminId);
+    const lostReq = await stockAdjustmentsService.createRequest({ productId: viaFound.id, reason: 'LOST' }, [], owner);
+    k3AdjustmentRequestNumbers.push(lostReq.requestNumber!);
+    const lost = await stockAdjustmentsService.approve(lostReq.id, owner);
+    // เครื่องยังไม่เคยลงบัญชีรับเข้า (รอถ่ายรูป) → ไม่มี JE ตัดจำหน่าย แต่แจ้งฝ่ายบัญชี (ข้อ 8)
+    expect([lost.journalEntryNo, lost.inventoryBooked, lost.accountingNotified]).toEqual([null, false, true]);
     expect(await receivingEntries(po.id)).toHaveLength(1); // หายไม่ลงอะไร
-    await stockAdjustmentsService.create({ productId: viaFound.id, reason: 'FOUND', approverId: approver.id } as never, adminId);
+    const foundReq = await stockAdjustmentsService.createRequest({ productId: viaFound.id, reason: 'FOUND' }, [], owner);
+    k3AdjustmentRequestNumbers.push(foundReq.requestNumber!);
+    await stockAdjustmentsService.approve(foundReq.id, owner);
     const found = (await prisma.product.findUnique({ where: { id: viaFound.id } }))!;
     expect([found.status, found.deletedAt]).toEqual(['IN_STOCK', null]);
 

@@ -77,7 +77,7 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @Throttle({ short: { ttl: 60000, limit: 10 } }) // 10 refresh attempts per minute
+  @Throttle({ short: { ttl: 60000, limit: 600 } }) // Shared shop IP: 20 staff × tabs/reloads; login limits stay unchanged.
   @ApiOperation({ summary: 'Refresh access token (cookie-only)' })
   async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     // T7-C5: Cookie-only — body `refreshToken` no longer accepted.

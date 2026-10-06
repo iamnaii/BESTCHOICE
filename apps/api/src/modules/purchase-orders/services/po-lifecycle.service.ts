@@ -1,17 +1,30 @@
-import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { Prisma, POPaymentStatus } from '@prisma/client';
+import { NotFoundException, BadRequestException, GoneException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreatePODto, UpdatePODto, UpdatePaymentDto, OrderPODto, ApprovePODto } from '../dto/create-po.dto';
 import { generatePONumber } from '../../../utils/sequence.util';
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { PoQueryService } from './po-query.service';
 import { SUPPLIER_TERMS_SELECT, computePoAmounts, resolvePaymentTerms, assertPoNetNotNegative } from './po-amounts.util';
+import { DepositOutcomeInput, SupplierPaymentService } from './supplier-payment.service';
 
 /**
  * วันที่คาดรับสินค้าต้องไม่ก่อนวันที่สั่งซื้อ — compared at day granularity (UTC).
  * `orderDate` is the DTO's ISO string on create, or the Date already stored on
  * the PO for update / order. A missing expectedDate is fine (nullable column).
  */
+/**
+ * ก้อน 2 (คำตัดสินเจ้าของ 2026-10-05): ทุกการจ่ายเงินผู้จัดจำหน่ายผ่านปุ่ม "บันทึกการจ่าย" (SupplierPaymentService) เท่านั้น —
+ * สร้าง/อนุมัติใบสั่งซื้อไม่รับยอดจ่ายอีก (เดิม 2026-09-06 อนุมัติพร้อมจ่ายได้ แต่ยอดนั้นไม่เคยลงบัญชี)
+ */
+export function assertNoInlinePayment(dto: { paymentStatus?: string; paidAmount?: number } | undefined) {
+  if (!dto) return;
+  if ((dto.paymentStatus && dto.paymentStatus !== 'UNPAID') || (dto.paidAmount ?? 0) > 0) {
+    throw new BadRequestException(
+      'บันทึกการจ่ายเงินผู้จัดจำหน่ายผ่านปุ่ม "บันทึกการจ่าย" ในใบสั่งซื้อหลังอนุมัติ — ไม่รับยอดจ่ายตอนสร้างหรืออนุมัติใบ',
+    );
+  }
+}
+
 function assertExpectedNotBeforeOrder(expectedDate: string | undefined, orderDate: string | Date) {
   if (!expectedDate) return;
   const expected = new Date(expectedDate);
@@ -37,10 +50,12 @@ export class PoLifecycleService {
   constructor(
     private prisma: PrismaService,
     private query: PoQueryService,
+    private supplierPayments: SupplierPaymentService,
   ) {}
 
   async create(dto: CreatePODto, userId: string, userRole?: string) {
     assertExpectedNotBeforeOrder(dto.expectedDate, dto.orderDate);
+    assertNoInlinePayment(dto);
     // Owner decision 2026-09-06: the OWNER does not approve their own PO — it is ordered at
     // once. A BRANCH_MANAGER's PO still starts DRAFT and waits for the owner (branch spend gate).
     const ownerCreated = userRole === 'OWNER';
@@ -92,9 +107,10 @@ export class PoLifecycleService {
           bankNameSnapshot,
           createdById: userId,
           status: ownerCreated ? 'ORDERED' : 'DRAFT',
-          paymentStatus: (dto.paymentStatus as POPaymentStatus) || 'UNPAID',
+          // ก้อน 2: ยอดจ่ายมาจากตารางการจ่ายเท่านั้น — ใบใหม่เริ่มที่ยังไม่จ่ายเสมอ (paymentMethod = เงื่อนไขของผู้จัดจำหน่าย ใช้คิดวันครบกำหนด)
+          paymentStatus: 'UNPAID',
           paymentMethod: dto.paymentMethod || null,
-          paidAmount: dto.paidAmount || 0,
+          paidAmount: 0,
           paymentNotes: dto.paymentNotes || null,
           attachments: dto.attachments || [],
           items: {
@@ -149,21 +165,8 @@ export class PoLifecycleService {
       throw new BadRequestException('อนุมัติได้เฉพาะ PO สถานะ DRAFT เท่านั้น (ต้องรอ Owner อนุมัติ)');
     }
     assertExpectedNotBeforeOrder(dto?.expectedDate, po.orderDate);
-
-    // Payment made on the spot (owner 2026-09-06): same fields + same ceiling as updatePayment().
-    // Only written when the body carries a payment status — a bare approval leaves the
-    // PO's payment untouched (credit purchase, pay later via "จ่ายเงิน").
-    const payment: Prisma.PurchaseOrderUncheckedUpdateInput = {};
-    if (dto?.paymentStatus) {
-      if (dto.paidAmount !== undefined && dto.paidAmount > Number(po.netAmount)) {
-        throw new BadRequestException(`ยอดจ่ายเกินกว่ายอดสุทธิ (${Number(po.netAmount).toLocaleString()} บาท)`);
-      }
-      payment.paymentStatus = dto.paymentStatus as POPaymentStatus;
-      if (dto.paymentMethod !== undefined) payment.paymentMethod = dto.paymentMethod || null;
-      if (dto.paidAmount !== undefined) payment.paidAmount = dto.paidAmount;
-      if (dto.paymentNotes !== undefined) payment.paymentNotes = dto.paymentNotes || null;
-      if (dto.attachments !== undefined) payment.attachments = dto.attachments;
-    }
+    // ก้อน 2: อนุมัติไม่รับยอดจ่ายอีก — จ่ายผ่านปุ่ม "บันทึกการจ่าย" หลังอนุมัติ (ลงบัญชีทุกครั้ง)
+    assertNoInlinePayment(dto);
 
     return this.prisma.purchaseOrder.update({
       where: { id },
@@ -172,7 +175,6 @@ export class PoLifecycleService {
         approvedById: userId,
         orderedAt: new Date(),
         ...(dto?.expectedDate ? { expectedDate: new Date(dto.expectedDate) } : {}),
-        ...payment,
       },
       include: {
         supplier: { select: { id: true, name: true } },
@@ -221,7 +223,11 @@ export class PoLifecycleService {
     });
   }
 
-  async cancel(id: string) {
+  /**
+   * ยกเลิกใบสั่งซื้อ — ก้อน 2 (คำตัดสินเจ้าของ 2026-10-05 ข้อ 6): ใบที่มีมัดจำค้างต้องบอกว่าได้คืนหรือไม่ได้คืน
+   * (`outcome`) แล้วลงบัญชีปิดมัดจำใน tx เดียวกับเปลี่ยนสถานะ — ใบที่ไม่เคยมัดจำยกเลิกได้เหมือนเดิม
+   */
+  async cancel(id: string, userId: string, outcome?: DepositOutcomeInput) {
     const po = await this.query.findOne(id);
     // An ORDERED PO is still cancellable while nothing has been received — approve now
     // lands on ORDERED directly, so the old "cancellable APPROVED" window must not vanish.
@@ -232,34 +238,41 @@ export class PoLifecycleService {
       throw new BadRequestException('ยกเลิกได้เฉพาะ PO ที่ยังไม่ได้รับสินค้าเท่านั้น');
     }
 
-    return this.prisma.purchaseOrder.update({
-      where: { id },
-      data: { status: 'CANCELLED' },
-    });
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        // ล็อกแถวใบแล้วอ่านสถานะ/ของที่รับใหม่ใน tx — การรับของที่ commit ระหว่างอ่านกับเขียนต้องไม่ถูกเขียนทับเป็น CANCELLED
+        // (ผู้ตรวจอิสระ 05/10 ข้อ 1ข: เดิมเช็คนอก tx)
+        await tx.$queryRaw`SELECT id FROM purchase_orders WHERE id = ${id} FOR UPDATE`;
+        const fresh = await tx.purchaseOrder.findUnique({ where: { id }, select: { status: true, items: { select: { receivedQty: true } } } });
+        const freshNothingReceived = (fresh?.items ?? []).every((i) => !i.receivedQty);
+        const stillCancellable =
+          !!fresh &&
+          (['DRAFT', 'APPROVED', 'PENDING'].includes(fresh.status) || (fresh.status === 'ORDERED' && freshNothingReceived));
+        if (!stillCancellable) {
+          throw new BadRequestException('ใบสั่งซื้อเปลี่ยนสถานะระหว่างทำรายการ (มีการรับสินค้าแล้ว) — รีเฟรชแล้วลองใหม่');
+        }
+        const depositClosed = await this.supplierPayments.closeDepositsOnCancelInTx(tx, id, outcome, userId);
+        const updated = await tx.purchaseOrder.update({
+          where: { id },
+          data: { status: 'CANCELLED' },
+        });
+        return { updated, depositClosed };
+      },
+      { timeout: 30_000 },
+    );
+    const accountingNotified = result.depositClosed?.periodClosed
+      ? await this.supplierPayments.notifyPeriodClosed(result.depositClosed, userId)
+      : false;
+    return { ...result.updated, depositClosed: result.depositClosed, accountingNotified };
   }
 
-  async updatePayment(id: string, dto: UpdatePaymentDto) {
-    const po = await this.query.findOne(id);
-    if (po.status === 'CANCELLED') {
-      throw new BadRequestException('ไม่สามารถอัปเดตการจ่ายเงินของ PO ที่ยกเลิกแล้วได้');
-    }
-    if (dto.paidAmount !== undefined && dto.paidAmount > Number(po.netAmount)) {
-      throw new BadRequestException(`ยอดจ่ายเกินกว่ายอดสุทธิ (${Number(po.netAmount).toLocaleString()} บาท)`);
-    }
-
-    return this.prisma.purchaseOrder.update({
-      where: { id },
-      data: {
-        paymentStatus: dto.paymentStatus as POPaymentStatus,
-        ...(dto.paymentMethod !== undefined ? { paymentMethod: dto.paymentMethod || null } : {}),
-        paidAmount: dto.paidAmount,
-        ...(dto.paymentNotes !== undefined ? { paymentNotes: dto.paymentNotes || null } : {}),
-        ...(dto.attachments !== undefined ? { attachments: dto.attachments } : {}),
-      },
-      include: {
-        supplier: { select: { id: true, name: true } },
-        items: true,
-      },
-    });
+  /**
+   * ก้อน 2: เส้นทางเขียน paidAmount/paymentStatus ตรงถูกปิด (410) — ยอดจ่ายมาจากตารางการจ่ายผ่าน
+   * `POST /purchase-orders/:id/payments` เท่านั้น. เก็บเมธอดไว้ให้ไคลเอนต์เก่าได้ข้อความชี้ทาง ไม่ใช่ 404 เงียบ ๆ
+   */
+  async updatePayment(_id: string, _dto: UpdatePaymentDto): Promise<never> {
+    throw new GoneException(
+      'เส้นทางนี้ถูกยกเลิกแล้ว — บันทึกการจ่ายเงินผู้จัดจำหน่ายผ่านปุ่ม "บันทึกการจ่าย" ในใบสั่งซื้อ (POST /purchase-orders/:id/payments)',
+    );
   }
 }

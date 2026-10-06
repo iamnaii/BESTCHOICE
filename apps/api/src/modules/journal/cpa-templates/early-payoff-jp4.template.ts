@@ -2,14 +2,28 @@ import { Injectable } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
 import { Prisma } from '@prisma/client';
 import { JournalAutoService, JeLineInput } from '../journal-auto.service';
-import { computeEarlyPayoffJE, sumAccruedUnpaid } from '../compute-early-payoff-je';
+import {
+  EARLY_PAYOFF_ROUNDING_TOLERANCE,
+  buildEarlyPayoffJE,
+  readEarlyPayoffLedger,
+} from '../compute-early-payoff-je';
+import { glContractBalance } from '../gl-contract-balance';
+import { computeInstallmentBreakdown } from '../compute-installment-breakdown';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { Vat60dayReversalTemplate } from './vat-60day-reversal.template';
 
 export interface EarlyPayoffInput {
   contractId: string;
   depositAccountCode: string;
-  /** 0..100 — percentage of remaining deferred interest to waive */
+  /**
+   * เงินที่รับจริง (PR5 — คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.3) — ขา Dr บัญชีรับเงิน และยอดที่กระจายลงแถว Payment.
+   * ส่วนลด 52-1106 = ลูกหนี้ตามบัญชี + ค่าปรับ − เงินที่รับ − เงินพัก (template ไม่คิดยอดที่ลูกค้าต้องจ่ายเอง)
+   */
+  cashReceived: Decimal;
+  /**
+   * 0..100 — ส่วนลดที่ตกลงกับลูกค้า (ใช้ในคำอธิบาย metadata และวัดส่วนของ 52-1106 ที่เกินฐานข้อ 5.2 เท่านั้น — ยอด 52-1106
+   * มาจาก `cashReceived`)
+   */
   interestDiscountPercent: Decimal;
   /**
    * ค่าปรับค้างชำระ — ต้องเป็นยอด NETTED (หัก waived + หัก Cr 42-1103 ที่ลง
@@ -31,60 +45,22 @@ export interface EarlyPayoffInput {
 /**
  * Template JP4 — Early Payoff (Case 4).
  *
- * Spec §6.4 — close out remaining installments with optional interest discount.
- * Policy A (CPA decision · 2026-05-09):
- *   VAT ไม่ลดตามส่วนลดดอกเบี้ย — Cr 21-2101 = remainingDeferredVat เต็มยอด
- *   ไม่ออกใบลดหนี้ (Credit Note) per ม.82/5 — บริษัทเลือก Policy A vs ม.79+86/10
+ * Spec §6.4 — close out remaining installments. **ไม่มีผู้เรียกใน production** — เส้นทางจริงคือ
+ * `ContractPaymentService.earlyPayoff()` (ใช้ `buildEarlyPayoffJournal` ตัวเดียวกับ preview).
+ *
+ * PR5 (คำตอบฝ่ายบัญชี เล่ม 1 ข้อ 5.1–5.4 · 29/09/2569): ล้างตามยอดในบัญชีของสัญญา (`readEarlyPayoffLedger`) และ
+ * ใช้ฟังก์ชันบริสุทธิ์ `buildEarlyPayoffJE` ตัวเดียวกับเส้นทางจริง:
+ *   Dr depositAccountCode   cashReceived (เงินที่รับจริง)
+ *   Dr 11-2106 / Cr 41-1101 ดอกเบี้ยรอตัดบัญชีคงเหลือ (ส่วนที่ยังไม่ถึงกำหนด)
+ *   Dr 21-2102 / Cr 21-2101 ภาษีขายรอเรียกเก็บคงเหลือ (Policy A — เต็มจำนวน ไม่ลดตามส่วนลด)
+ *   Dr 52-1106              ส่วนลดที่ให้จริง = ลูกหนี้ตามบัญชี + ค่าปรับ − เงินที่รับ − เงินพัก
+ *   Dr 21-1103              เงินพักค่าปรับดิว (clamp ด้วยคอลัมน์ถังพักและยอด 21-1103 ในบัญชี)
+ *     Cr 11-2103 / 11-2101 / 11-2105  ลูกหนี้ตามยอดในบัญชี
+ *     Cr 42-1103            ค่าปรับ · Cr 53-1503 เงินที่รับเกินลูกหนี้ตามบัญชี ≤ 1.00
+ * Policy A (CPA decision · 2026-05-09): ไม่ออกใบลดหนี้ (Credit Note) per ม.82/5 — บริษัทรับภาระ VAT ส่วนเกินเอง.
  * Refs: docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
- *
- * Wave 2 Task 3 (ป.รัษฎากร ม.79 + ม.86/10):
- *   ฐาน VAT = "ราคาที่ได้รับจริง" → ถ้ามีส่วนลดดอกเบี้ย ฐาน VAT ลดตามส่วน
- *   vatOnDiscount = discount × 7%. นำส่งจริงเหลือ settleVat = remainingDeferredVat
- *   - vatOnDiscount.
- *
- *   - Cash settlement ลดลงด้วย vatOnDiscount (ลูกค้าจ่ายน้อยลง)
- *   - Cr 21-2101 (VAT ภ.พ.30) = settleVat (ลด)
- *   - Dr 21-2102 ยังคงเต็ม (ปิดบัญชี deferred VAT — ไม่มี balance ค้าง)
- *   - การ "credit back" 105 ที่ไม่ต้องนำส่ง สะท้อนทาง balance asymmetry
- *     ระหว่าง Dr 21-2102 (เต็ม 595.02) กับ Cr 21-2101 (490.02) ผ่านยอดรับ
- *     เงินสดที่ลดลง — economically correct, ledger balanced
- *   - vatCreditBackOnDiscount เก็บใน metadata เพื่อ traceability
- *
- *   Dr depositAccountCode          settlementAmount  (= remainingGross - discount + settleVat)
- *   Dr 11-2106 รายได้รอตัดบัญชี-ดอกเบี้ย  remainingDeferredInterest
- *   Dr 21-2102 ล้างภาษีขายรอเรียกเก็บ      remainingDeferredVat
- *   Dr 52-1106 ส่วนลดดอกเบี้ย-ปิดยอด       discount  (only if discount > 0)
- *     Cr 11-2101 ลูกหนี้ Gross              remainingGross
- *     Cr 11-2105 ลูกหนี้ภาษีขายรอฯ          remainingDeferredVat
- *     Cr 41-1101 รายได้ดอกเบี้ย             remainingDeferredInterest
- *     Cr 21-2101 ภาษีขาย ภ.พ.30            settleVat  (= remainingDeferredVat - vatOnDiscount)
- *
- * VAT discount policy (Wave 4 / Task 2 — Info comments):
- *   - ป.รัษฎากร ม.79: ฐาน VAT = "ราคาที่ได้รับจริง" (ไม่รวมส่วนลดที่ผู้ขายให้
- *     แก่ผู้ซื้อขณะส่งมอบ/รับชำระ) → ส่วนลดดอกเบี้ย ทำให้ฐาน VAT ลดลง
- *     ตามส่วน vatOnDiscount = discount × 7%.
- *   - ป.รัษฎากร ม.86/10: ผู้ขาย VAT ต้องออกใบลดหนี้ (credit note) สำหรับ
- *     ส่วน VAT ที่ลด — ทำให้ Cr 21-2101 (VAT ภ.พ.30) ลดเหลือ settleVat แทน
- *     remainingDeferredVat เต็มจำนวน.
- *   - Dr 21-2102 ยังคงเต็ม (ปิดบัญชี deferred VAT ไม่ให้มี balance ค้าง);
- *     ส่วนต่าง vatOnDiscount สะท้อนผ่าน Cash leg ที่ลดลง — JE ยัง balanced.
- *
- * Derivations (per-installment using same rounding as 2A/2B):
- *   installmentExclVat = grossExclVat / totalMonths  (ROUND_DOWN)
- *   interestPerInst    = interestTotal / totalMonths  (ROUND_HALF_UP)
- *   vatPerInst         = vatTotal / totalMonths       (ROUND_HALF_UP)
- *   remainingGross     = installmentExclVat × unpaid  — MINUS `accruedUnpaid` (ex-VAT) since PR2ข:
- *                        unpaid installments that were partially accrued at receipt (ก1) already
- *                        cleared that much of 11-2101/11-2105/11-2106/21-2102, so JP4 must not
- *                        re-clear it. See `computeEarlyPayoffJE` (compute-early-payoff-je.ts) —
- *                        the actual single source of truth this template calls into; the lines
- *                        below are its simple-case shape (accruedUnpaid = 0, the pre-PR2ข formula).
- *   remainingDeferredInterest = interestPerInst × unpaid  — minus `accruedUnpaid.interest`
- *   remainingDeferredVat      = vatPerInst × unpaid       — minus `accruedUnpaid.vat`
- *   discount           = remainingDeferredInterest × interestDiscountPercent / 100
- *   vatOnDiscount      = discount × 0.07  (ROUND_HALF_UP)
- *   settleVat          = remainingDeferredVat - vatOnDiscount
- *   settlementAmount   = remainingGross - discount + settleVat
+ * template ไม่แตะเงินเกินของลูกค้า 21-5101 และเงินรับล่วงหน้าถังรวม (เส้นทางจริงล้าง 21-5101 เอง) · อ่านยอดในบัญชีใน
+ * ธุรกรรมเดียวกับการลงรายการ (`exec`) — ไม่ว่าผู้เรียกจะส่ง `outerTx` มาหรือไม่.
  *
  * After posting: marks all unpaid installments as PAID and creates 1 Payment row
  * tagged EARLY_PAYOFF.
@@ -128,51 +104,48 @@ export class EarlyPayoffJP4Template {
 
     const unpaidD = new Decimal(unpaid);
 
-    // Single source of truth — the SAME pure function the JE preview and the
-    // ledger posting (ContractPaymentService) use, so this template can never
-    // drift from what the customer is quoted (preview === posted).
-    // Policy A (CPA decision · 2026-05-09): VAT ไม่ลดตามส่วนลดดอกเบี้ย — Cr 21-2101
-    // = remainingDeferredVat เต็ม; ไม่ออกใบลดหนี้ (Credit Note); บริษัทรับภาระ VAT
-    // ส่วนเกินจาก discount เอง. Ref:
-    //   docs/superpowers/specs/2026-05-09-cpa-policy-a-100-compliance-design.md
-    //   + Handover_BestChoiceFinance v3.0.pdf §9 Policy Decisions
-    const {
-      installmentExclVat,
-      vatPerInst,
-      remainingGross,
-      remainingDeferredInterest,
-      remainingDeferredVat,
-      discount,
-      settleVat,
-      settlement,
-      parkRelief,
-      lines: jeLines,
-    } = computeEarlyPayoffJE({
-      depositAccountCode: input.depositAccountCode,
+    // ยอดต่องวดสำรองของแถว Payment ที่ตารางงวดไม่มี amountDue (ข้อมูลเก่า) — สูตรเดียวกับ 2A/2B
+    const { installmentTotal } = computeInstallmentBreakdown({
       financedAmount: c.financedAmount.toString(),
       storeCommission: c.storeCommission != null ? c.storeCommission.toString() : null,
       interestTotal: c.interestTotal.toString(),
       vatAmount: c.vatAmount != null ? c.vatAmount.toString() : null,
       totalMonths: c.totalMonths,
-      unpaidCount: unpaid,
-      interestDiscountPercent: input.interestDiscountPercent,
-      unpaidLateFees: input.unpaidLateFees ?? null,
-      // clamp ด้วยยอดในถังจริงบนสัญญา — ห้ามปลดหนี้เกินกว่าที่มีอยู่จริง
-      parkRelief: Decimal.min(
-        new Decimal(input.parkRelief ?? 0),
-        new Decimal(c.rescheduleAdvanceBalance ?? 0),
-      ),
-      // งวดที่ยังไม่ชำระซึ่งใบรับชำระบางส่วนตั้งลูกหนี้งวดไปแล้วบางส่วน (ก1) — ล้างเฉพาะส่วนที่เหลือ
-      accruedUnpaid: sumAccruedUnpaid(unpaidInsts),
     });
 
     // Wrap JE post + Payment.create loop in a single atomic transaction.
     // If JE post fails (unbalanced, missing account), Payment rows are rolled back — no orphans.
     const exec = async (tx: Prisma.TransactionClient) => {
-      // Ledger-side line descriptions; the money (accountCode/dr/cr, incl. the
-      // 52-1106 zero-discount guard) comes from the shared computeEarlyPayoffJE.
+      // PR5 — ฟังก์ชันบริสุทธิ์ตัวเดียวกับที่ preview และเส้นทางจริง (ContractPaymentService) ใช้ · ยอดล้างอ่านจากบัญชี
+      // ในธุรกรรมเดียวกับการลงรายการ
+      const je = buildEarlyPayoffJE({
+        depositAccountCode: input.depositAccountCode,
+        cashReceived: input.cashReceived,
+        ledger: await readEarlyPayoffLedger(tx, c.id),
+        unpaidLateFees: input.unpaidLateFees ?? null,
+        // clamp ด้วยยอดในถังบนสัญญาและยอด 21-1103 ในบัญชี — ห้ามปลดหนี้เกินกว่าที่มีอยู่จริง (กติกาเดียวกับเส้นทางจริง)
+        parkRelief: Decimal.max(
+          0,
+          Decimal.min(
+            new Decimal(input.parkRelief ?? 0),
+            new Decimal(c.rescheduleAdvanceBalance ?? 0),
+            await glContractBalance(tx, c.id, '21-1103', 'cr'),
+          ),
+        ),
+        discountPercent: input.interestDiscountPercent,
+      });
+      if (je.excessReceived.gt(0)) {
+        throw new Error(
+          `JP4 template: cashReceived + park relief exceed the contract ledger receivable by ` +
+            `${je.excessReceived.toFixed(2)} (> 1.00) — not posted`,
+        );
+      }
+      const { discount, parkRelief, cashReceived } = je;
+
+      // Ledger-side line descriptions; the money (accountCode/dr/cr — no zero lines)
+      // comes from the shared buildEarlyPayoffJE. บรรทัดที่ไม่มีในตาราง (11-2103 / 53-1503) ไม่มีคำอธิบาย.
       const descriptions: Record<string, string> = {
-        [input.depositAccountCode]: `รับ ${settlement.toFixed(2)} ฿ ปิดยอด`,
+        [input.depositAccountCode]: `รับ ${cashReceived.toFixed(2)} ฿ ปิดยอด`,
         '21-1103': 'หักเงินพักปรับดิว (ปิดสัญญาก่อนกำหนด)',
         '11-2106': 'ยกเลิกรายได้รอตัดบัญชี-ดอกเบี้ย',
         '21-2102': 'ล้างภาษีขายรอเรียกเก็บ',
@@ -182,7 +155,7 @@ export class EarlyPayoffJP4Template {
         '41-1101': 'รับรู้รายได้ดอกเบี้ย (เต็มจำนวน; ส่วนลดอยู่ฝั่ง Dr 52-1106)',
         '21-2101': 'ภาษีขาย ภ.พ.30 ถึงกำหนด (Policy A: VAT ไม่ลดตามส่วนลด)',
       };
-      const lines: JeLineInput[] = jeLines.map((l) => ({
+      const lines: JeLineInput[] = je.lines.map((l) => ({
         accountCode: l.accountCode,
         dr: l.dr,
         cr: l.cr,
@@ -202,8 +175,13 @@ export class EarlyPayoffJP4Template {
             interestDiscountPercent: input.interestDiscountPercent.toFixed(2),
             // Policy A — VAT ไม่ลดตามส่วนลด (CPA decision · vs ม.79+86/10)
             policy: 'A',
-            settleVat: settleVat.toFixed(2),
+            settleVat: je.deferredVat.toFixed(2),
+            cashReceived: cashReceived.toFixed(2),
             ...(parkRelief.gt(0) ? { parkRelief: parkRelief.toFixed(2) } : {}),
+            ...(je.roundingGain.gt(0) ? { roundingGain: je.roundingGain.toFixed(2) } : {}),
+            ...(je.discountBeyondDeferredBase.gt(EARLY_PAYOFF_ROUNDING_TOLERANCE)
+              ? { discountBeyondDeferredBase: je.discountBeyondDeferredBase.toFixed(2) }
+              : {}),
           },
           lines,
         },
@@ -220,22 +198,22 @@ export class EarlyPayoffJP4Template {
       }
 
       // Create Payment rows for all unpaid installments (marks them as settled via EARLY_PAYOFF).
-      // Each installment gets its own Payment row; total across all = settlementAmount.
+      // Each installment gets its own Payment row; total across all = cashReceived (เงินที่รับจริง).
       // We tag via notes to distinguish from normal payments.
-      const perInstSettlement = settlement.div(unpaidD).toDecimalPlaces(2, Decimal.ROUND_DOWN);
+      const perInstSettlement = cashReceived.div(unpaidD).toDecimalPlaces(2, Decimal.ROUND_DOWN);
       let distributed = new Decimal(0);
       for (let idx = 0; idx < unpaidInsts.length; idx++) {
         const inst = unpaidInsts[idx];
         const isLast = idx === unpaidInsts.length - 1;
         // Absorb rounding remainder in last installment
-        const thisAmount = isLast ? settlement.minus(distributed) : perInstSettlement;
+        const thisAmount = isLast ? cashReceived.minus(distributed) : perInstSettlement;
         distributed = distributed.plus(thisAmount);
         await tx.payment.create({
           data: {
             contractId: c.id,
             installmentNo: inst.installmentNo,
             dueDate: inst.dueDate,
-            amountDue: inst.amountDue ?? installmentExclVat.plus(vatPerInst),
+            amountDue: inst.amountDue ?? installmentTotal,
             amountPaid: thisAmount,
             paidDate: new Date(),
             paidAt: new Date(),

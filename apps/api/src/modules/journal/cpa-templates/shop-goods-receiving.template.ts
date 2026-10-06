@@ -55,6 +55,9 @@ export interface ShopGoodsReceivingInput {
   supplierDocRef?: string | null;
   /** `supplierDocType` / `supplierDocNumber` / `supplierDocDate` (YYYY-MM-DD) · ว่าง = ใบรับของที่ไม่มีข้อมูลเอกสาร */
   supplierDocMetadata?: Record<string, string | null>;
+  /** ผู้จัดจำหน่ายของใบสั่งซื้อ — บัญชีย่อยเจ้าหนี้ตามผู้ติดต่อ (คำตอบฝ่ายบัญชี 2026-10-05 ข้อ 1) อ่านจาก metadata นี้ */
+  supplierId?: string;
+  supplierName?: string;
   postedAt?: Date;
 }
 
@@ -179,6 +182,7 @@ export class ShopGoodsReceivingTemplate {
             grNumber: input.grNumber,
             poId: input.poId,
             poNumber: input.poNumber,
+            ...(input.supplierId ? { supplierId: input.supplierId, supplierName: input.supplierName ?? null } : {}),
             companyCode: 'SHOP',
             unitCount: input.units.length,
             totalCost: total.toFixed(2),

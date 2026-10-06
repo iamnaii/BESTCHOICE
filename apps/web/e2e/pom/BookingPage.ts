@@ -27,13 +27,26 @@ export class BookingPage {
   }
 
   statusFilterTrigger(): Locator {
-    return this.page.getByRole('combobox').first();
+    return this.page.getByRole('combobox', { name: 'สถานะใบจอง' });
+  }
+
+  /**
+   * รอจนหน้าตัดสินสถานะ: หน้าว่างครั้งแรก ('empty') หรือรายการ + การ์ด KPI ('list')
+   * — หัวหน้าแสดงก่อน summary โหลดเสร็จ จึงห้ามแยกทางด้วย isVisible() ที่ไม่รอ
+   */
+  async waitForState(): Promise<'empty' | 'list'> {
+    // หน้าเว็บแสดงโครงรอจนสรุปโหลดเสร็จ → กลุ่ม KPI มีเฉพาะหลังรู้แล้วว่าไม่ใช่หน้าว่าง (.or() จึงแยกทางได้แน่นอน)
+    const empty = this.page.getByRole('heading', { name: 'ยังไม่มีใบจอง' });
+    const list = this.page.getByRole('group', { name: 'สรุปใบจอง' });
+    await expect(empty.or(list)).toBeVisible({ timeout: 15000 });
+    return (await empty.isVisible()) ? 'empty' : 'list';
   }
 
   /** Generic "select option by text" — works for any combobox after click() */
   optionByText(text: string | RegExp): Locator {
+    // ชื่อข้อความล้วนต้องตรงทั้งคำ ("ทั้งหมด" ห้ามไปจับ "ทั้งหมด…" อื่น) — RegExp ส่งมาแล้วใช้ตามนั้น
     return this.page
-      .getByRole('option', { name: text })
+      .getByRole('option', typeof text === 'string' ? { name: text, exact: true } : { name: text })
       .first()
       .or(this.page.getByText(text).first());
   }

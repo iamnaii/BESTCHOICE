@@ -1,19 +1,25 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PurchaseOrdersService } from './purchase-orders.service';
-import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto, ReceivingDocCheckQueryDto } from './dto/create-po.dto';
+import { CreatePODto, UpdatePODto, GoodsReceivingDto, UpdatePaymentDto, RejectPODto, OrderPODto, ApprovePODto, DirectReceiveDto, RejectQCDto, ReceivingDocCheckQueryDto, CancelPODto, RecordTaxInvoiceDto } from './dto/create-po.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RecordSupplierPaymentDto, SupplierLedgerQueryDto, VoidSupplierPaymentDto } from './dto/supplier-payment.dto';
+import { TaxInvoicePhotoInterceptor } from './tax-invoice-photo.interceptor';
+import { GoodsReceivingTaxInvoiceService } from './services/goods-receiving-tax-invoice.service';
 
 @ApiTags('Purchase Orders')
 @ApiBearerAuth('JWT')
 @Controller('purchase-orders')
 @UseGuards(JwtAuthGuard, RolesGuard, BranchGuard)
 export class PurchaseOrdersController {
-  constructor(private purchaseOrdersService: PurchaseOrdersService) {}
+  constructor(
+    private purchaseOrdersService: PurchaseOrdersService,
+    private taxInvoices: GoodsReceivingTaxInvoiceService,
+  ) {}
 
   @Get()
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
@@ -96,12 +102,25 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.directReceive(dto, user.id);
   }
 
+  // ก้อน 2 (2026-10-05) — เจ้าหนี้รายผู้จัดจำหน่ายจากสมุดบัญชี (บัญชีย่อยตามผู้ติดต่อ) · ต้องอยู่ก่อนเส้นทาง :id
+  @Get('payables/ledger')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getSupplierLedger(@Query() query: SupplierLedgerQueryDto) {
+    return this.purchaseOrdersService.getSupplierLedger(query?.month);
+  }
+
+  @Get('payables/ledger/:supplierId')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  getSupplierLedgerMovements(@Param('supplierId') supplierId: string, @Query() query: SupplierLedgerQueryDto) {
+    return this.purchaseOrdersService.getSupplierLedgerMovements(supplierId, query?.month);
+  }
+
   // === Parametric :id routes ===
 
   @Get(':id')
   @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
-  findOne(@Param('id') id: string) {
-    return this.purchaseOrdersService.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: { role: string }) {
+    return this.purchaseOrdersService.findOne(id, user.role);
   }
 
   @Get(':id/goods-receivings')
@@ -113,6 +132,7 @@ export class PurchaseOrdersController {
     @Query('endDate') endDate?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @CurrentUser() user?: { role: string },
   ) {
     return this.purchaseOrdersService.getGoodsReceivings(id, {
       status,
@@ -120,7 +140,7 @@ export class PurchaseOrdersController {
       endDate,
       page: page ? parseInt(page) : undefined,
       limit: limit ? parseInt(limit) : undefined,
-    });
+    }, user?.role);
   }
 
   @Get(':id/goods-receivings/summary')
@@ -138,8 +158,23 @@ export class PurchaseOrdersController {
   getGoodsReceivingById(
     @Param('id') id: string,
     @Param('receivingId') receivingId: string,
+    @CurrentUser() user: { role: string },
   ) {
-    return this.purchaseOrdersService.getGoodsReceivingById(id, receivingId);
+    return this.purchaseOrdersService.getGoodsReceivingById(id, receivingId, user.role);
+  }
+
+  /** ก้อน 5 (Q1) — ใบกำกับภาษีที่มาหลังรับของ → เคลมภาษีซื้อย้อนให้สัญญาที่รอ */
+  @Post(':id/goods-receivings/:receivingId/tax-invoice')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT')
+  @UseInterceptors(TaxInvoicePhotoInterceptor)
+  recordTaxInvoice(
+    @Param('id') id: string,
+    @Param('receivingId') receivingId: string,
+    @Body() dto: RecordTaxInvoiceDto,
+    @UploadedFile() photo: Express.Multer.File | undefined,
+    @CurrentUser() user: { id: string; role: string },
+  ) {
+    return this.taxInvoices.record(id, receivingId, dto, photo, { id: user.id, role: user.role });
   }
 
   @Post()
@@ -190,14 +225,39 @@ export class PurchaseOrdersController {
 
   @Post(':id/cancel')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  cancel(@Param('id') id: string) {
-    return this.purchaseOrdersService.cancel(id);
+  cancel(@Param('id') id: string, @Body() dto: CancelPODto, @CurrentUser() user: { id: string }) {
+    return this.purchaseOrdersService.cancel(id, user.id, dto?.depositOutcome ? { ...dto, depositOutcome: dto.depositOutcome } : undefined);
   }
 
+  /** ก้อน 2: เส้นทางเขียนยอดจ่ายตรงถูกปิด — service ตอบ 410 ชี้ไป POST :id/payments */
   @Patch(':id/payment')
   @Roles('OWNER', 'BRANCH_MANAGER')
   updatePayment(@Param('id') id: string, @Body() dto: UpdatePaymentDto) {
     return this.purchaseOrdersService.updatePayment(id, dto);
+  }
+
+  // ก้อน 2 (คำตัดสินเจ้าของ 2026-10-05) — จ่ายเงินผู้จัดจำหน่าย: บันทึก = OWNER + BM · ยกเลิกรายการ = OWNER · อ่านได้ถึงบัญชี
+  @Get(':id/payments')
+  @Roles('OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'ACCOUNTANT')
+  listSupplierPayments(@Param('id') id: string) {
+    return this.purchaseOrdersService.listSupplierPayments(id);
+  }
+
+  @Post(':id/payments')
+  @Roles('OWNER', 'BRANCH_MANAGER')
+  recordSupplierPayment(@Param('id') id: string, @Body() dto: RecordSupplierPaymentDto, @CurrentUser() user: { id: string }) {
+    return this.purchaseOrdersService.recordSupplierPayment(id, dto, user.id);
+  }
+
+  @Post(':id/payments/:paymentId/void')
+  @Roles('OWNER')
+  voidSupplierPayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Body() dto: VoidSupplierPaymentDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.purchaseOrdersService.voidSupplierPayment(id, paymentId, user.id, dto.reason);
   }
 
   @Post(':id/goods-receiving')

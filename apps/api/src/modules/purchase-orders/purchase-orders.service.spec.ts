@@ -20,6 +20,9 @@ describe('PurchaseOrdersService — T5-C16 goodsReceiving race condition', () =>
       items: [{ id: 'poi-1', brand: 'Apple', model: 'iPhone 16', quantity: 5, receivedQty: 0, category: 'PHONE_NEW', accessoryType: null, accessoryBrand: null, color: null, storage: null, unitPrice: 30000 }],
     };
     const tx = {
+      // ก้อน 2: หักมัดจำตอนรับของถามก่อนว่าเคยมัดจำไหม — spec นี้ไม่มีมัดจำ
+      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       purchaseOrder: {
         findUnique: jest.fn().mockImplementation(() => Promise.resolve({ id: 'po-1', status: 'APPROVED', deletedAt: null, supplierId: 'sup-1', supplier: { id: 'sup-1', name: 'Sup' }, items: dbState.items.map((i) => ({ ...i })) })),
         update: jest.fn().mockResolvedValue({}),
@@ -76,6 +79,9 @@ describe('PurchaseOrdersService — T5-C16 goodsReceiving race condition', () =>
 describe('goodsReceiving — IMEI duplicate guard', () => {
   it('rejects an IMEI already present in the system', async () => {
     const tx: any = {
+      // ก้อน 2: หักมัดจำตอนรับของถามก่อนว่าเคยมัดจำไหม — spec นี้ไม่มีมัดจำ
+      purchaseOrderPayment: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       purchaseOrder: { findUnique: jest.fn().mockResolvedValue({ id: 'po-1', status: 'APPROVED', deletedAt: null, supplierId: 's1', items: [{ id: 'poi-1', category: 'PHONE_NEW', quantity: 5, receivedQty: 0, brand: 'A', model: 'B' }] }), update: jest.fn() },
       branch: { findFirst: jest.fn().mockResolvedValue({ id: 'wh', name: 'คลังกลาง' }) },
       goodsReceiving: { create: jest.fn().mockResolvedValue({ id: 'gr1' }), count: jest.fn().mockResolvedValue(0) },

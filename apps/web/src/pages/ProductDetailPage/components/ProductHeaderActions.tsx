@@ -11,7 +11,12 @@ import CustomerSummaryActions from './CustomerSummaryActions';
 import type { ActiveContractSummary } from './ContractSummaryCard';
 
 interface Props {
-  product: { id: string; status: string; activeContract?: ActiveContractSummary | null };
+  product: {
+    id: string;
+    status: string;
+    activeContract?: ActiveContractSummary | null;
+    lockedByBookings?: { id: string; bookingNumber: string; customer: { name: string } }[];
+  };
   /** OWNER / BRANCH_MANAGER */
   isManager: boolean;
   /** เครื่องขึ้นเว็บแล้ว → ปุ่มคัดลอกลิงก์ใช้ได้ */
@@ -44,6 +49,7 @@ export default function ProductHeaderActions({
   returnToStock,
 }: Props) {
   const soldWithContract = product.status === 'SOLD_INSTALLMENT' && !!product.activeContract;
+  const bookingLock = product.status === 'RESERVED' ? product.lockedByBookings?.[0] : undefined;
   const menuItems: Array<{ key: string; label: string; icon: ReactNode; onClick: () => void }> = [];
   if (canTransfer) {
     menuItems.push({
@@ -67,6 +73,12 @@ export default function ProductHeaderActions({
         </Link>
       ) : (
         <CustomerSummaryActions summaryText={summaryText} shareUrl={shareUrl} isReady={isReady} />
+      )}
+      {bookingLock && (
+        <Link to={`/bookings?bookingId=${bookingLock.id}`} className={OUTLINE}>
+          <FileText className="size-4" aria-hidden />
+          เปิดใบจอง {bookingLock.bookingNumber}
+        </Link>
       )}
       {isManager && (
         <button type="button" onClick={onEdit} className={OUTLINE}>

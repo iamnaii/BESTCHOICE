@@ -155,3 +155,52 @@ describe('VatPage — ภาษีขายเดือนนี้ (ภ.พ.30)
     expect(screen.queryByRole('region', { name: 'ที่มาของภาษีขายเดือนนี้' })).toBeNull();
   });
 });
+
+/** ก้อน 5 — ภาษีซื้อของเครื่องขายผ่อน (Dr 11-4101 / Cr 42-1108) แยกจากภาษีซื้อค่าใช้จ่าย · ตารางรายสัญญา · ป้ายอายุใบกำกับ */
+describe('ภาษีซื้อจากเครื่องขายผ่อน (ก้อน 5)', () => {
+  const WITH_INSTALLMENT = {
+    ...OCTOBER,
+    vatInput: '786.00',
+    vatInputExpense: '100.00',
+    vatInputInstallment: '686.00',
+    installmentInputVatLines: [
+      { postedAt: '2026-10-05T03:00:00.000Z', entryNumber: 'JE-202610-00009', contractId: 'c1', contractNumber: 'CT-20261005-0001', productId: 'p1', grNumber: 'GR-20261005-001', taxInvoiceNumber: 'IV-9', taxInvoiceDate: '2026-10-01', invoiceAgeMonths: 0, amount: '686.00', reversal: false, reversed: false },
+      { postedAt: '2026-10-06T03:00:00.000Z', entryNumber: 'JE-202610-00012', contractId: 'c2', contractNumber: 'CT-20261006-0002', productId: 'p2', grNumber: 'GR-20260301-004', taxInvoiceNumber: 'IV-2', taxInvoiceDate: '2026-03-15', invoiceAgeMonths: 6, amount: '343.00', reversal: false, reversed: true },
+      { postedAt: '2026-10-07T03:00:00.000Z', entryNumber: 'JE-202610-00015', contractId: 'c2', contractNumber: 'CT-20261006-0002', productId: 'p2', grNumber: 'GR-20260301-004', taxInvoiceNumber: 'IV-2', taxInvoiceDate: '2026-03-15', invoiceAgeMonths: 6, amount: '-343.00', reversal: true, reversed: false },
+    ],
+  };
+
+  it('แสดงสองยอดแยก + ตารางรายสัญญา · แถวกลับรายการติดป้าย · ใบกำกับ ≥ 6 เดือนติดป้ายเตือน', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: WITH_INSTALLMENT });
+    renderPage();
+    const section = await screen.findByRole('region', { name: 'ภาษีซื้อจากเครื่องขายผ่อน' });
+    expect(section).toHaveTextContent('ภาษีซื้อค่าใช้จ่าย');
+    expect(section).toHaveTextContent('100.00 ฿');
+    expect(section).toHaveTextContent('ภาษีซื้อเครื่องขายผ่อน');
+    expect(section).toHaveTextContent('686.00 ฿');
+    const rows = section.querySelectorAll('tbody tr');
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent('CT-20261005-0001');
+    expect(rows[0]).toHaveTextContent('GR-20261005-001');
+    expect(rows[0]).toHaveTextContent('IV-9');
+    expect(rows[0]).not.toHaveTextContent('เกิน 6 เดือน');
+    expect(rows[1]).toHaveTextContent('เกิน 6 เดือน');
+    expect(rows[1]).toHaveTextContent('ถูกกลับรายการ');
+    expect(rows[2]).toHaveTextContent('กลับรายการ');
+    expect(rows[2]).toHaveTextContent('-343.00');
+  });
+
+  it('API รุ่นเก่า (ไม่มีฟิลด์) → ไม่แสดงส่วนนี้ · การ์ดภาษีซื้อรวมยังแสดงเหมือนเดิม', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: OCTOBER });
+    renderPage();
+    await screen.findByRole('region', { name: 'ที่มาของภาษีขายเดือนนี้' });
+    expect(screen.queryByRole('region', { name: 'ภาษีซื้อจากเครื่องขายผ่อน' })).toBeNull();
+  });
+
+  it('มีฟิลด์แต่ไม่มีรายการในเดือน → แสดงยอด 0.00 และข้อความว่าง', async () => {
+    vi.mocked(api.get).mockResolvedValue({ data: { ...WITH_INSTALLMENT, vatInputInstallment: '0.00', installmentInputVatLines: [] } });
+    renderPage();
+    const section = await screen.findByRole('region', { name: 'ภาษีซื้อจากเครื่องขายผ่อน' });
+    expect(section).toHaveTextContent('ยังไม่มีสัญญาผ่อนที่เคลมภาษีซื้อในเดือนนี้');
+  });
+});

@@ -1,6 +1,6 @@
 import { NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/node';
-import { Prisma, POPaymentStatus } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { GoodsReceivingDto, DirectReceiveDto } from '../dto/create-po.dto';
 import { buildProductName } from './po-product-naming.util';
@@ -11,6 +11,7 @@ import {
   resolvePaymentTerms,
 } from './po-amounts.util';
 import { poLineCosts, poUnitCostAt } from './po-unit-cost.util';
+import { poLineVats } from './po-unit-vat.util';
 import {
   RECEIVING_PERIOD_TODO_TAG,
   receivingCategory,
@@ -26,7 +27,7 @@ import {
   supplierDocMetadata,
   supplierDocRef,
 } from './supplier-doc.util';
-import { bangkokCalendarParts } from '../../../utils/date.util';
+import { bangkokCalendarParts, bangkokDateString } from '../../../utils/date.util';
 import { formatDateShort, formatMonthName } from '../../../utils/thai-date.util';
 import { d } from '../../../utils/decimal.util';
 import { validatePeriodOpen } from '../../../utils/period-lock.util';
@@ -36,6 +37,7 @@ import {
 } from '../../journal/cpa-templates/shop-goods-receiving.template';
 import { ShopAccountResolver } from '../../journal/shop-account-resolver.service';
 import { CompanyResolverService } from '../../journal/company-resolver.service';
+import { SupplierPaymentService } from './supplier-payment.service';
 import { loadVatRateDecimal } from '../../../utils/vat-rate.util';
 import { generateGRNumber, generatePONumber } from '../../../utils/sequence.util';
 import { syncPriceRowsFromColumns } from '../../../utils/product-price-sync.util';
@@ -50,6 +52,8 @@ export interface PoReceivingJournalDeps {
   goodsReceivingTemplate: ShopGoodsReceivingTemplate;
   shopAccountResolver: ShopAccountResolver;
   companyResolver: CompanyResolverService;
+  /** ก้อน 2 (2026-10-05) — หักมัดจำเข้าเจ้าหนี้อัตโนมัติตอนรับของ */
+  supplierPayments: SupplierPaymentService;
 }
 
 /**
@@ -142,6 +146,8 @@ export class PoReceivingService {
     // — คำตอบฝ่ายบัญชี 2026-09-29 ข้อ ข2 + ข5
     const costLines = po.items.filter((i) => !i.deletedAt);
     const lineCosts = poLineCosts({ netAmount: this.resolveNetAmount(po, costLines), lines: costLines });
+    // ก้อน 5 — ภาษีซื้อต่อหน่วย: ปัน vatAmount ของใบสั่งซื้อตามสัดส่วนราคา (ฝ่ายบัญชี 2.2) · ไม่จด VAT = 0 ทุกหน่วย
+    const lineVats = poLineVats({ vatAmount: d(po.vatAmount), lines: costLines });
 
     // Find main warehouse branch
     let mainWarehouse = await tx.branch.findFirst({
@@ -238,6 +244,7 @@ export class PoReceivingService {
     const installmentSemantics = await resolveInstallmentSemantics(tx, this.logger);
 
     const unitCosts = this.resolveUnitCosts(lineCosts, po.items, dto.items, freshByPoItem);
+    const unitVats = this.resolveUnitCosts(lineVats, po.items, dto.items, freshByPoItem);
     // ลงบัญชีตอนรับของเฉพาะหน่วยที่เข้าคลังทันที — หน่วยที่รอถ่ายรูปลงตอนผ่านเข้าคลัง
     // (ReceivingAcceptanceJournal) ตามคำตอบฝ่ายบัญชี 2026-09-30 ข้อ 8
     const journalUnits: ShopGoodsReceivingUnit[] = [];
@@ -371,6 +378,7 @@ export class PoReceivingService {
             status: 'PASS',
             productId: product.id,
             receivedCost: unitCosts.get(index)!,
+            receivedVat: unitVats.get(index)!,
             batteryHealth: item.batteryHealth ?? null,
             warrantyExpired: item.warrantyExpired ?? null,
             warrantyExpireDate: item.warrantyExpireDate ? new Date(item.warrantyExpireDate) : null,
@@ -445,6 +453,8 @@ export class PoReceivingService {
       grNumber,
       poId: id,
       poNumber: po.poNumber,
+      supplierId: po.supplierId,
+      supplierName: po.supplier.name,
       units: journalUnits,
       postedAt: journalPostedAt,
       shopCompanyId,
@@ -459,6 +469,16 @@ export class PoReceivingService {
         data: { journalEntryId: posted.journalEntryId },
       });
     }
+    // ก้อน 2 (ข้อสมมติ ค): มัดจำที่จ่ายไว้ก่อนรับของ หักเข้าเจ้าหนี้ที่เพิ่งตั้ง ใน tx เดียวกัน วันเดียวกับรายการรับของ —
+    // ไม่มีมัดจำ = null · หน่วยที่รอถ่ายรูปหักตอนผ่านเข้าคลัง (ReceivingAcceptanceJournal)
+    const depositApplied = posted
+      ? await this.journal.supplierPayments.applyDepositInTx(tx, id, {
+          receivingId: receiving.id,
+          grNumber,
+          postedAt: journalPostedAt,
+          userId,
+        })
+      : null;
 
     return {
       receivingId: receiving.id,
@@ -470,6 +490,8 @@ export class PoReceivingService {
       products: passedProducts,
       mainWarehouse: mainWarehouse!.name,
       journalEntryNo: posted?.entryNo ?? null,
+      /** มัดจำที่ถูกหักเข้าเจ้าหนี้ในการรับครั้งนี้ (null = ใบนี้ไม่มีมัดจำค้าง) */
+      depositApplied: depositApplied ? { amount: depositApplied.amount, journalEntryNo: depositApplied.journalEntryNo } : null,
       /** หน่วยที่รอถ่ายรูป — ลงบัญชีรับเข้าคลังตอนผ่านเข้าคลัง ไม่ใช่ตอนนี้ */
       unitsAwaitingStockEntry,
       receivedAt: receiving.createdAt,
@@ -528,7 +550,8 @@ export class PoReceivingService {
    *
    * หน่วยที่ตรวจผ่านเป็นลำดับที่ k ของรายการ (นับต่อจากที่รับไปแล้วในใบก่อนหน้า) ได้ต้นทุนของ
    * หน่วยที่ k จาก po-unit-cost.util — ไม่ขึ้นกับว่ารับกี่ครั้งหรือรับรายการไหนก่อน.
-   * หน่วยที่ตรวจไม่ผ่านไม่กินลำดับ (receivedQty นับเฉพาะหน่วยที่ผ่าน)
+   * หน่วยที่ตรวจไม่ผ่านไม่กินลำดับ (receivedQty นับเฉพาะหน่วยที่ผ่าน).
+   * ใช้กับภาษีซื้อต่อหน่วยด้วย (ก้อน 5) — ส่ง Map จาก poLineVats แทน poLineCosts.
    */
   private resolveUnitCosts(
     lineCosts: Map<string, Prisma.Decimal>,
@@ -563,6 +586,8 @@ export class PoReceivingService {
       grNumber: string;
       poId: string;
       poNumber: string;
+      supplierId: string;
+      supplierName: string;
       units: ShopGoodsReceivingUnit[];
       postedAt: Date;
       shopCompanyId: string;
@@ -580,6 +605,8 @@ export class PoReceivingService {
         grNumber: input.grNumber,
         poId: input.poId,
         poNumber: input.poNumber,
+        supplierId: input.supplierId,
+        supplierName: input.supplierName,
         units: input.units,
         postedAt: input.postedAt,
         postedOnReceiveDate: input.postedOnReceiveDate,
@@ -693,6 +720,16 @@ export class PoReceivingService {
     if (badCost) {
       throw new BadRequestException('กรุณาระบุราคาทุน (costPrice) มากกว่า 0 ให้ครบทุกรายการ');
     }
+    // ก้อน 2 (2026-10-05): จ่ายทันทีตอนรับเข้าตรง = โอนธนาคารเท่านั้น + สลิปบังคับ แล้วลงรายการผ่าน SupplierPaymentService
+    // ใน tx เดียวกับรับของ — ใบสั่งซื้อเริ่มที่ UNPAID 0 เสมอ (ยอดสรุปมาจากตารางการจ่าย)
+    const paying = (dto.paidAmount ?? 0) > 0 || (!!dto.paymentStatus && dto.paymentStatus !== 'UNPAID');
+    if (paying) {
+      if (!((dto.paidAmount ?? 0) > 0)) throw new BadRequestException('กรุณาระบุจำนวนเงินที่จ่าย');
+      if (dto.paymentMethod && ['CASH', 'CHECK', 'CHEQUE'].includes(dto.paymentMethod.toUpperCase())) {
+        throw new BadRequestException('จ่ายเงินผู้จัดจำหน่ายได้เฉพาะโอนธนาคาร (ไม่มีจ่ายเงินสด/เช็ค)');
+      }
+      if (!dto.attachments?.length || !dto.attachments[0]?.trim()) throw new BadRequestException('กรุณาแนบสลิปโอนเงิน');
+    }
 
     const MAX_ATTEMPTS = 3;
     for (let attempt = 1; ; attempt++) {
@@ -740,9 +777,9 @@ export class PoReceivingService {
                 approvedById: userId,
                 status: 'APPROVED',
                 isDirectReceive: true,
-                paymentStatus: (dto.paymentStatus as POPaymentStatus) || 'UNPAID',
+                paymentStatus: 'UNPAID',
                 paymentMethod: dto.paymentMethod || null,
-                paidAmount: dto.paidAmount || 0,
+                paidAmount: 0,
                 paymentNotes: dto.paymentNotes || null,
                 attachments: dto.attachments || [],
                 items: {
@@ -810,12 +847,27 @@ export class PoReceivingService {
 
             const gr = await this.runReceiveInTx(tx, po.id, { items: grItems, notes: dto.notes }, userId, doc);
 
-            return { poNumber: po.poNumber, ...gr };
+            // จ่ายทันที: ชำระเจ้าหนี้ที่เพิ่งตั้ง (หน่วยรอถ่ายรูปยังไม่มีเจ้าหนี้ → ส่วนนั้นเป็นมัดจำ รอหักตอนเข้าคลัง)
+            const payment = paying
+              ? await this.journal.supplierPayments.recordInTx(
+                  tx,
+                  po.id,
+                  // วันโอน = วันนี้ (จ่ายทันที) — ไม่ใช่ orderDate ซึ่งอาจเป็นวันล่วงหน้า (ผู้ตรวจอิสระ M9)
+                  { paidAt: bangkokDateString(new Date()), amount: dto.paidAmount!, slipUrl: dto.attachments![0], note: dto.paymentNotes },
+                  userId,
+                )
+              : null;
+
+            return { poNumber: po.poNumber, ...gr, payment };
           },
           PoReceivingService.RECEIVE_TX_OPTIONS,
         );
         // ห้าม throw (จับเองทั้งหมด) — การรับของ commit แล้ว ห้ามตกไปที่ retry ด้านล่างแล้วรับซ้ำ
-        return { ...result, accountingNotified: await this.alertIfDocPeriodClosed(result, userId) };
+        const accountingNotified = await this.alertIfDocPeriodClosed(result, userId);
+        const paymentNotified = result.payment?.periodClosed
+          ? await this.journal.supplierPayments.notifyPeriodClosed(result.payment, userId)
+          : false;
+        return { ...result, accountingNotified: accountingNotified || paymentNotified };
       } catch (e) {
         const code = (e as { code?: string })?.code;
         if ((code === 'P2002' || code === 'P2034') && attempt < MAX_ATTEMPTS) continue;

@@ -128,4 +128,26 @@ describe('kpiTiles', () => {
     expect(tiles[2].value).toBe('ยังไม่มีผู้ดูแล');
     expect(tiles[3]).toMatchObject({ value: 'ยังไม่เคยตรวจ', tone: 'default' });
   });
+
+  it('ผู้สนใจที่ส่งไฟล์ในแชทแต่ยังไม่มีผลตรวจ (summary.creditFilePending) → ช่องเครดิต "ส่งไฟล์แล้ว รอตรวจ"', () => {
+    const tiles = kpiTiles(detail({ creditCheckStatus: 'NONE' }), null, { creditFilePending: true });
+    expect(tiles[3]).toMatchObject({ key: 'credit', label: 'เครดิต', value: 'ส่งไฟล์แล้ว รอตรวจ', sub: '', tone: 'default' });
+  });
+
+  it('ไม่มีธง creditFilePending หรือ summary ยังไม่มา → ช่องเครดิตคงเดิม "ยังไม่เคยตรวจ"', () => {
+    expect(kpiTiles(detail(), null, { creditFilePending: false })[3]).toMatchObject({ value: 'ยังไม่เคยตรวจ' });
+    expect(kpiTiles(detail(), null, null)[3]).toMatchObject({ value: 'ยังไม่เคยตรวจ' });
+    expect(kpiTiles(detail(), null)[3]).toMatchObject({ value: 'ยังไม่เคยตรวจ' });
+  });
+
+  it('ข้อมูลลูกค้ามีผลตรวจแล้วแต่ summary ยังค้างธงเก่า → ผลตรวจจริงชนะ', () => {
+    const tiles = kpiTiles(detail({ creditCheckStatus: 'REJECTED' }), null, { creditFilePending: true });
+    expect(tiles[3]).toMatchObject({ value: 'ไม่ผ่าน', tone: 'destructive' });
+  });
+
+  it('ลูกค้าที่ซื้อแล้วไม่มีช่องเครดิต — ธง creditFilePending ไม่เปลี่ยนชุดช่อง', () => {
+    const tiles = kpiTiles(detail({ purchase: { ...emptyPurchase, cashCount: 1 }, latestPurchase }), null, { creditFilePending: true });
+    expect(tiles.map((t) => t.key)).toEqual(['purchase', 'salesTotal', 'latest', 'warranty', 'loyalty']);
+    expect(tiles.some((t) => t.value === 'ส่งไฟล์แล้ว รอตรวจ')).toBe(false);
+  });
 });

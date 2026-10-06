@@ -1,5 +1,5 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { useSearchParams } from 'react-router';
+import { useSearchParams, useNavigate } from 'react-router';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
@@ -21,10 +21,11 @@ import {
 
 export default function TodosPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawView = searchParams.get('view');
-  const view: TodoView = ['all', 'today', 'upcoming', 'priority', 'completed'].includes(rawView ?? '')
+  const view: TodoView = ['all', 'today', 'upcoming', 'priority', 'completed', 'cancelled'].includes(rawView ?? '')
     ? rawView as TodoView : 'all';
   const setView = (next: TodoView) => setSearchParams((previous) => {
     const params = new URLSearchParams(previous);
@@ -71,11 +72,11 @@ export default function TodosPage() {
   });
 
   const todos = data?.data || [];
-  const summary = data?.summary || { all: 0, today: 0, upcoming: 0, priority: 0, completed: 0 };
+  const summary = data?.summary || { all: 0, today: 0, upcoming: 0, priority: 0, completed: 0, cancelled: 0 };
 
   const moveStatusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: TodoStatus }) => {
-      const { data } = await api.patch(`/todos/${id}`, { status });
+      const { data } = await api.patch(`/todos/${id}`, { status, expectedRevision: todos.find(t => t.id === id)?.revision });
       return data;
     },
     // Optimistic update: patch cache immediately so the card appears in
@@ -84,7 +85,7 @@ export default function TodosPage() {
       await queryClient.cancelQueries({ queryKey: ['todos'] });
       const snapshots = queryClient.getQueriesData<TodosResponse>({ queryKey: ['todos'] });
       snapshots.forEach(([key, prev]) => {
-        if (!prev) return;
+        if (!prev || !Array.isArray(prev.data)) return;
         const next: TodosResponse = {
           ...prev,
           data: prev.data.map((t) =>
@@ -111,14 +112,14 @@ export default function TodosPage() {
 
   const toggleMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { data } = await api.patch(`/todos/${id}/toggle`);
+      const { data } = await api.patch(`/todos/${id}/toggle`, {}, { params: { expectedRevision: todos.find(t => t.id === id)?.revision } });
       return data;
     },
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['todos'] });
       const snapshots = queryClient.getQueriesData<TodosResponse>({ queryKey: ['todos'] });
       snapshots.forEach(([key, prev]) => {
-        if (!prev) return;
+        if (!prev || !Array.isArray(prev.data)) return;
         const next: TodosResponse = {
           ...prev,
           data: prev.data.map((t) =>
@@ -144,7 +145,7 @@ export default function TodosPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await api.delete(`/todos/${id}`);
+      await api.delete(`/todos/${id}`, { params: { expectedRevision: todos.find(t => t.id === id)?.revision } });
     },
     onSuccess: () => {
       toast.success('ลบรายการแล้ว');
@@ -159,6 +160,7 @@ export default function TodosPage() {
   };
 
   const openEdit = (t: Todo) => {
+    if (t.roomId && ['CHAT_HANDOFF', 'CHAT_SERVICE'].includes(t.workKind ?? '')) { navigate(`/inbox/${t.roomId}?todoId=${t.id}`); return; }
     setEditing(t);
     setDialogOpen(true);
   };
@@ -174,6 +176,7 @@ export default function TodosPage() {
     upcoming: summary.upcoming,
     priority: summary.priority,
     completed: summary.completed,
+    cancelled: summary.cancelled ?? 0,
   };
 
   return (

@@ -180,7 +180,7 @@ export class AfterSalesLineService {
         // final fix I-2 — dispatcher RESOLVE (ไม่ throw) ด้วย FAILED หลังส่ง 3 ครั้งไม่ผ่าน และตั้ง
         // log เป็น RETRY_PENDING ไว้ในคิว retry แล้ว (notification-dispatch.service.ts send() →
         // markForRetry) — เป็นความล้มเหลว ไม่ใช่การบล็อก: บอกพนักงานตามจริงว่าระบบจะลองส่งซ้ำเอง
-        // + แจ้ง Sentry (ไม่มี PII — ห้าม lineIdShop/ชื่อลูกค้า) แบบเดียวกับ warranty-line-notifier
+        // + แจ้ง Sentry (ไม่มี PII — ห้าม lineIdShop/ชื่อลูกค้า)
         Sentry.captureMessage('after-sales line: dispatcher returned FAILED', {
           level: 'warning',
           tags: { subsystem: 'after-sales-line', moment },

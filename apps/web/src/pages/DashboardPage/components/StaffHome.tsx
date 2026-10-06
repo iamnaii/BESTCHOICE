@@ -18,6 +18,7 @@ const TASK_STATUS: Record<TodoStatus, string> = {
   TODO: 'ยังไม่ได้เริ่ม',
   DOING: 'กำลังทำ',
   REVIEW: 'รอตรวจทาน',
+  CANCELLED: 'ยกเลิก',
   DONE: 'เสร็จแล้ว',
 };
 const TODAY_TASKS_PATH = '/todos?view=today&assigneeId=me';

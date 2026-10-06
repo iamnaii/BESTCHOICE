@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ResponseCycleService } from './response-cycle.service';
+import { ChatSlaNotifierService } from './chat-sla-notifier.service';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ChatRoomStatus } from '@prisma/client';
@@ -8,7 +10,19 @@ import * as Sentry from '@sentry/nestjs';
 export class ChatCronService {
   private readonly logger = new Logger(ChatCronService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, @Optional() private workAlerts?: ChatSlaNotifierService, @Optional() private cycles?: ResponseCycleService) {}
+
+  @Cron('* * * * *', { timeZone: 'Asia/Bangkok' })
+  async notifyWorkAlerts(): Promise<void> {
+    try {
+      await this.workAlerts?.scan(new Date());
+      if (this.cycles && await this.cycles.enabled()) {
+        const coverage = await this.cycles.auditOpenWaits();
+        if (coverage.mismatched) this.logger.warn(`Chat work consistency: ${coverage.mismatched} open cycle/wait mismatches; no rows changed`);
+      }
+    }
+    catch (error) { this.logger.error('Chat work alert scan failed', error); Sentry.captureException(error, { tags: { cron: 'chat-work-alerts' } }); }
+  }
 
   /**
    * SLA breach check — every 5 minutes

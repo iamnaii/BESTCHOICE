@@ -619,9 +619,9 @@ describe('FacebookWebhookController — standalone referral จากลิง�
   // ── 2026-09-12: สามจุดที่ทำให้ที่มาของลูกค้าหล่น ────────────────────────────
   // เจอตอนสืบว่าทำไม ads_attributions = 0 แถว (ไม่ใช่เหตุของ 0 แถว แต่กินข้อมูลจริง)
 
-  it('ลิงก์สินค้า m.me ของลูกค้าเก่า (มี ref ไม่มี ad_id) → บันทึกที่มาด้วย ไม่ใช่แค่โน้ต', async () => {
-    // เดิม gate `if (adAttribution?.adId)` ⇒ SHORTLINK ไม่เคยถูกบันทึกเลยสักครั้ง
-    // ทั้งที่เส้นลูกค้าใหม่ (message.referral) ไม่มี gate นี้ = ผลต่างกันบนลิงก์เดียวกัน
+  it('ลิงก์สินค้า m.me ของลูกค้าเก่า (มี ref ไม่มี ad_id) → ส่ง referral ต่อให้ router + โพสต์โน้ตสินค้า (router ไม่นับเป็นโฆษณา)', async () => {
+    // controller ส่งทุก referral ให้ recordAdReferral — ด่าน ADS อยู่ใน router/room manager (isAdAttribution)
+    // SHORTLINK จึงไม่สร้างแถวที่มา (เจ้าของเคาะ 2026-09-15 ข้อ 7) แต่โน้ต "ลูกค้ากดมาจากสินค้า …" ยังขึ้นจาก controller
     const { req, signature } = signedRequest(FB_APP_SECRET, referralEvent(`p:${PRODUCT_ID}`));
     await controller.handleWebhook(req, referralEvent(`p:${PRODUCT_ID}`), signature);
 
@@ -641,7 +641,7 @@ describe('FacebookWebhookController — standalone referral จากลิง�
     );
   });
 
-  it('postback ที่ quick-reply router รับไปแล้ว ยังต้องบันทึกที่มาที่พ่วงมาด้วย', async () => {
+  it('postback ที่ quick-reply router รับไปแล้ว ยังต้องส่งที่มาที่พ่วงมาต่อให้ router ด้วย', async () => {
     // เดิม `if (routeResult.handled) return` ตัดก่อนถึง buildFbAttribution ⇒ referral หายทั้งก้อน
     postbackRouter.route.mockResolvedValue({ handled: true, action: 'template_sent' });
     const body = {

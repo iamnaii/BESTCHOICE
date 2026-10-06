@@ -125,6 +125,7 @@ export function useRoomMessages(activeRoomId: string | null, connectionStatus: s
         // just-sent message as its preview (otherwise the left list stays stale
         // until the next inbound message / poll).
         queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+        queryClient.invalidateQueries({ queryKey: ['chat-work'] });
         return true;
       } catch (err: any) {
         removePending();
@@ -181,6 +182,7 @@ export function useRoomMessages(activeRoomId: string | null, connectionStatus: s
         queryClient.invalidateQueries({ queryKey: ['chat-messages', roomId] });
       }
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-work'] });
     },
     onError: (err: unknown) => {
       const msg =

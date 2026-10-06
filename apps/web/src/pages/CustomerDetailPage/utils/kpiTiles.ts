@@ -1,3 +1,4 @@
+import type { JourneySummary } from '@installment/shared';
 import { customerCreditStatusMap } from '@/lib/status-badges';
 import { SOURCE_LABELS } from '@/pages/CustomersPage/components/sourceLabels';
 import { formatDateShort } from '@/utils/formatters';
@@ -46,7 +47,15 @@ function loyaltyTile(balance: number | null): KpiTile {
   return { key: 'loyalty', label: 'แต้มสะสม', value: value.toLocaleString('th-TH'), sub: '', tone: value > 0 ? 'primary' : 'default' };
 }
 
-export function kpiTiles(c: CustomerDetail, loyaltyBalance: number | null): KpiTile[] {
+/**
+ * journey = summary ของแถบขั้น (null / ไม่ส่ง = ยังโหลด หรือบทบาทที่ไม่เห็นการเดินทาง)
+ * ใช้เฉพาะ creditFilePending ที่ API ตัดสินแล้ว — เว็บไม่ derive จากไฟล์ในแชทเอง
+ */
+export function kpiTiles(
+  c: CustomerDetail,
+  loyaltyBalance: number | null,
+  journey?: Pick<JourneySummary, 'creditFilePending'> | null,
+): KpiTile[] {
   const kind = customerKind(c);
 
   if (kind === 'INSTALLMENT') {
@@ -95,6 +104,9 @@ export function kpiTiles(c: CustomerDetail, loyaltyBalance: number | null): KpiT
   }
 
   const credit = customerCreditStatusMap[c.creditCheckStatus] ?? customerCreditStatusMap.NONE;
+  // คำตัดสินเจ้าของ 2026-09-15 ข้อ 13(3): ส่งไฟล์ในแชทแล้วแต่ยังไม่มีผลตรวจ → "ส่งไฟล์แล้ว รอตรวจ"
+  // ผลตรวจจริงบนข้อมูลลูกค้า (ไม่ใช่ NONE) ชนะเสมอ — กันธงจาก summary ที่ยังค้างแคชทับผลที่เพิ่งตรวจ
+  const filePending = !!journey?.creditFilePending && c.creditCheckStatus === 'NONE';
   return [
     { key: 'source', label: 'ที่มา', value: SOURCE_LABELS[c.source] ?? c.source, sub: c.chatPlaceholder ? 'ยังไม่มีเบอร์' : '', tone: 'default' },
     { key: 'lastContact', label: 'ติดต่อล่าสุด', value: dateOrDash(c.lastContactAt), sub: '', tone: 'default' },
@@ -102,7 +114,7 @@ export function kpiTiles(c: CustomerDetail, loyaltyBalance: number | null): KpiT
     {
       key: 'credit',
       label: 'เครดิต',
-      value: credit.label,
+      value: filePending ? 'ส่งไฟล์แล้ว รอตรวจ' : credit.label,
       sub: '',
       tone: c.creditCheckStatus === 'FULL_CHECK_PASSED' ? 'success' : c.creditCheckStatus === 'REJECTED' ? 'destructive' : 'default',
     },

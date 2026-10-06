@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
+case "${CREDIT_SUITE:-chat-credit}" in
+  chat-credit) CREDIT_JEST_CONFIG=e2e/jest-chat-credit.json ;;
+  chat-operations) CREDIT_JEST_CONFIG=e2e/jest-chat-operations.json ;;
+  *) echo 'Unsupported CREDIT_SUITE' >&2; exit 1 ;;
+esac
 cd "$(dirname "$0")/.."
 # Cached node_modules does not include workspace build outputs. Jest below is
 # invoked directly, so npm's API pretest hook does not prepare this dependency.
@@ -52,7 +57,7 @@ fi
 printf 'All migrations applied on isolated PostgreSQL: %s\n' "$CREDIT_PG_ROOT"
 # Some legacy Jest specs use real Prisma clients. Keep both databases isolated
 # when requesting the broader API regression run; never inherit .env targets.
-if [ "${CREDIT_RUN_API_REGRESSION:-0}" = 1 ]; then
+if [ "${CREDIT_RUN_API_REGRESSION:-0}" = 1 ] || [ "${CREDIT_RUN_SERVICE_REGRESSION:-0}" = 1 ]; then
   export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=6144}"
   "$CREDIT_PG_BIN/createdb" -h "$CREDIT_PG_ROOT/socket" -p 55476 -U credit_test bc_credit_finance_test
   export DATABASE_URL_FINANCE="postgresql://credit_test@localhost:55476/bc_credit_finance_test?host=$CREDIT_PG_ROOT/socket&schema=public"
@@ -62,15 +67,17 @@ const { PrismaClient } = require('@prisma/client');
 const db = new PrismaClient();
 (async () => {
   try {
-    await db.user.create({ data: { email: 'admin@bestchoice.com', name: 'ISOLATED TEST SYSTEM', password: 'unused', role: 'OWNER' } });
-    // Legacy DB specs require a seeded branch as well as an OWNER. Without it,
-    // a clean run depends on whether an earlier suite happened to leave one.
+    // Legacy GFIN DB specs require a baseline branch; never depend on Jest suite order.
     await db.branch.create({ data: { name: 'ISOLATED TEST BRANCH' } });
+    await db.user.create({ data: { email: 'admin@bestchoice.com', name: 'ISOLATED TEST SYSTEM', password: 'unused', role: 'OWNER', isSystemUser: true } });
   } finally { await db.$disconnect(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });
 JS
-  npm run test --workspace=apps/api -- --runInBand
+  if [ "${CREDIT_RUN_API_REGRESSION:-0}" = 1 ]; then
+    npm run test --workspace=apps/api -- --runInBand
+  fi
 fi
+if [ "${CREDIT_SUITE:-chat-credit}" = chat-credit ]; then
 export CREDIT_WEB_URL=http://127.0.0.1:5189
 (cd apps/web && exec node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5189 --strictPort) >"$CREDIT_PG_ROOT/vite.log" 2>&1 &
 CREDIT_VITE_PID=$!
@@ -83,5 +90,11 @@ while (true) {
   await new Promise(resolve => setTimeout(resolve, 200));
 }
 JS
+fi
 cd apps/api
-../../node_modules/.bin/jest --config e2e/jest-chat-credit.json --runInBand
+../../node_modules/.bin/jest --config "$CREDIT_JEST_CONFIG" --runInBand
+
+if [ "${CREDIT_RUN_SERVICE_REGRESSION:-0}" = 1 ]; then
+  ../../node_modules/.bin/jest --runInBand --runTestsByPath src/modules/after-sales/__tests__/case-create.spec.ts src/modules/after-sales/__tests__/create-case-dto.spec.ts src/modules/after-sales/__tests__/case-create-real-validator.spec.ts src/modules/after-sales/__tests__/repair-proxy.spec.ts src/modules/after-sales/__tests__/exchange-service.spec.ts src/modules/after-sales/__tests__/stage-reconcile.spec.ts
+  ../../node_modules/.bin/vitest run --no-file-parallelism src/modules/after-sales/__tests__/after-sales-flow.integration.spec.ts src/modules/after-sales/__tests__/after-sales-exchange.integration.spec.ts
+fi

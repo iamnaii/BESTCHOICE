@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { CustomerJourneyController } from './customer-journey.controller';
 import { CustomerJourneyService } from './customer-journey.service';
+import { JourneyManualEntryService } from './journey-manual-entry.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { BranchGuard } from '../auth/guards/branch.guard';
@@ -14,7 +15,10 @@ describe('CustomerJourneyController GET :id/journey/summary', () => {
     service.summary.mockReset();
     const moduleRef = await Test.createTestingModule({
       controllers: [CustomerJourneyController],
-      providers: [{ provide: CustomerJourneyService, useValue: service }],
+      providers: [
+        { provide: CustomerJourneyService, useValue: service },
+        { provide: JourneyManualEntryService, useValue: { create: jest.fn() } },
+      ],
     })
       .overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard).useValue({ canActivate: () => true })

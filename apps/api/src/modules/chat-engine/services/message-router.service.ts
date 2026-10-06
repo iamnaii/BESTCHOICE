@@ -22,6 +22,7 @@ import { IChatGateway, CHAT_GATEWAY_TOKEN } from '../interfaces/chat-gateway.int
 import { AiAutoReplyService } from '../../staff-chat/services/ai-auto-reply.service';
 import { MAX_BOT_ATTACHMENTS } from '../../../utils/bot-attachments.util';
 import { isShopOpen, SHOP_OPEN_HOUR } from '../../../utils/shop-hours.util';
+import { isAdAttribution } from '../utils/ad-attribution.util';
 
 /**
  * MessageRouter — the central nerve of the chat engine.
@@ -279,7 +280,8 @@ export class MessageRouterService {
       ensureProspect: true,
     });
     // ทักจากโฆษณา → โน้ตระบบในห้อง ตรงเวลาที่เกิด (ท่า OBI logNotify) — ไม่ต้องเปิดแผงขวาก็เห็น
-    if (message.attribution?.adId) {
+    // ด่านเดียวกับ linkAttribution / recordAdReferral: referral.source = 'ADS' เท่านั้น (ไม่ใช่แค่มี adId)
+    if (message.attribution && isAdAttribution(message.attribution)) {
       await this.postAdReferralNote(room.id, message.attribution);
     }
 
@@ -503,6 +505,7 @@ export class MessageRouterService {
               await this.roomManager.saveMessage({
                 roomId: room.id,
                 role: MessageRole.BOT,
+                confirmedSentAt: sendResult?.success && !sendResult.droppedReason ? new Date() : undefined,
                 text: parts[i],
                 intent: 'AUTO:sales', // Phase A: SHOP channels always sales (intent router skipped)
                 // token/tool stats เก็บที่บับเบิลแรกใบเดียว — กันนับซ้ำในรายงาน
@@ -580,7 +583,7 @@ export class MessageRouterService {
           );
           const lowConfAdapter = this.adapterMap.get(message.channel);
           if (lowConfAdapter) {
-            await lowConfAdapter.sendMessage({
+            const lowConfResult = await lowConfAdapter.sendMessage({
               externalUserId: message.externalUserId,
               channel: message.channel,
               type: 'TEXT' as any,
@@ -590,6 +593,7 @@ export class MessageRouterService {
             await this.roomManager.saveMessage({
               roomId: room.id,
               role: MessageRole.BOT,
+              confirmedSentAt: lowConfResult?.success && !lowConfResult.droppedReason ? new Date() : undefined,
               text: lowConfMsg,
             });
           }
@@ -625,7 +629,7 @@ export class MessageRouterService {
             const apology = MessageRouterService.staffFollowUpText(
               MessageRouterService.AI_ERROR_APOLOGY_MSG,
             );
-            await errAdapter.sendMessage({
+            const apologyResult = await errAdapter.sendMessage({
               externalUserId: message.externalUserId,
               channel: message.channel,
               type: 'TEXT' as any,
@@ -635,6 +639,7 @@ export class MessageRouterService {
             await this.roomManager.saveMessage({
               roomId: room.id,
               role: MessageRole.BOT,
+              confirmedSentAt: apologyResult?.success && !apologyResult.droppedReason ? new Date() : undefined,
               text: apology,
             });
           }
@@ -659,7 +664,7 @@ export class MessageRouterService {
         const reply = await this.afterHoursService.getAutoReply(message.text ?? '');
         const adapter = this.adapterMap.get(message.channel);
         if (adapter) {
-          await adapter.sendMessage({
+          const afterHoursResult = await adapter.sendMessage({
             externalUserId: message.externalUserId,
             channel: message.channel,
             type: 'TEXT' as any,
@@ -669,6 +674,7 @@ export class MessageRouterService {
           await this.roomManager.saveMessage({
             roomId: room.id,
             role: MessageRole.BOT,
+            confirmedSentAt: afterHoursResult?.success && !afterHoursResult.droppedReason ? new Date() : undefined,
             text: reply,
           });
         }
@@ -723,6 +729,7 @@ export class MessageRouterService {
             roomId: room.id,
             externalMessageId: sendResult.externalMessageId,
             role: MessageRole.BOT,
+            confirmedSentAt: sendResult.success && !sendResult.droppedReason ? new Date() : undefined,
             type: reply.type,
             text: reply.text,
           });
@@ -866,7 +873,8 @@ export class MessageRouterService {
     // มาภายใน 60 วิ) ก็ถูก stamp เป็น STAFF เหมือนกัน — ห้ามล้าง ไม่งั้นลูกค้าใหม่
     // หลุดคิวโดยไม่มีใครตอบ (ดู RoomManagerService.shouldSkipFirstOutboundClear)
     // `?.` เพราะ spec หลายตัว mock roomManager บางส่วน
-    if (params.role === MessageRole.STAFF) {
+    const trackedEcho = saved?.id ? await this.roomManager.confirmExternalEcho?.(saved.id) : false;
+    if (params.role === MessageRole.STAFF && !trackedEcho) {
       const skip = saved?.id
         ? await this.roomManager.shouldSkipFirstOutboundClear?.(room.id, saved.id)
         : false;
@@ -999,6 +1007,7 @@ export class MessageRouterService {
           roomId,
           externalMessageId: sendResult.externalMessageId,
           role: MessageRole.BOT,
+          confirmedSentAt: sendResult?.success && !sendResult.droppedReason ? new Date() : undefined,
           type: MessageType.IMAGE,
           // `text` ต้องมีค่า — room-list preview อ่านจากคอลัมน์นี้ และเป็น "ความจำรูป"
           // ของบอท (ประวัติเก็บเฉพาะ text — จดชื่อรุ่นไว้ให้บอทรู้ว่าลูกค้ากำลังดูรูปอะไร)
@@ -1078,6 +1087,10 @@ export class MessageRouterService {
      * (LINE/FB ต้องการ public HTTPS). ไม่ระบุ = ใช้ mediaUrl
      */
     deliveryMediaUrl?: string;
+    /** Server-resolved link text for a FILE; persisted bubble keeps its private storage key. */
+    deliveryText?: string;
+    /** Library delivery must remain idempotent even with work-queue analytics disabled. */
+    trackDelivery?: boolean;
   }): Promise<{
     success: boolean;
     error?: string;
@@ -1176,7 +1189,8 @@ export class MessageRouterService {
           );
           if (saved) {
             return {
-              success: true,
+              success: !!saved.outboundSentAt,
+              ...(!saved.outboundSentAt ? { error: 'กำลังตรวจสอบผลการส่งข้อความนี้' } : {}),
               message: {
                 id: saved.id,
                 clientMessageId: saved.clientMessageId,
@@ -1195,6 +1209,9 @@ export class MessageRouterService {
       return { success: false, error: 'save failed' };
     }
 
+    if (await (params.trackDelivery ? this.roomManager.prepareOutboundAttempt?.(saved.id, true) : this.roomManager.prepareOutboundAttempt?.(saved.id)) === false) {
+      return { success: false, error: 'ยังยืนยันผลส่งก่อนหน้าไม่ได้ กรุณาตรวจข้อความในช่องทางก่อนส่งใหม่' };
+    }
     const outboundType = params.type ?? MessageType.TEXT;
     const deliveryUrl = params.deliveryMediaUrl ?? params.mediaUrl;
     const isImageBubble = outboundType === MessageType.IMAGE && !!deliveryUrl;
@@ -1205,12 +1222,14 @@ export class MessageRouterService {
       externalUserId,
       channel: room.channel,
       type: outboundType,
-      text: isImageBubble ? undefined : params.text,
+      text: isImageBubble ? undefined : (params.deliveryText ?? params.text),
       // adapters read only `imageUrl` (grep: no adapter reads OutboundMessage.mediaUrl)
       ...(isImageBubble ? { imageUrl: deliveryUrl } : {}),
     });
 
-    if (!result.success) {
+    if (!result.success || result.droppedReason) {
+      if (params.trackDelivery) await this.roomManager.failOutboundAttempt?.(saved.id, result.definitelyNotSent === true || !!result.droppedReason, true);
+      else await this.roomManager.failOutboundAttempt?.(saved.id, result.definitelyNotSent === true || !!result.droppedReason);
       this.logger.error(`Failed to send staff message on ${room.channel}: ${result.error}`);
       return { success: false, error: result.error ?? 'send failed' };
     }
@@ -1258,12 +1277,15 @@ export class MessageRouterService {
   /**
    * ลูกค้าเก่ากลับมาจากโฆษณา (event messaging_referrals ไม่มี message) — ผูกที่มาให้ห้องเดิม + โน้ตระบบ
    * ไม่มีห้อง = ไม่ทำอะไร (ห้องจะถูกสร้างพร้อม attribution เมื่อข้อความแรกมาถึง)
+   * ไม่ใช่โฆษณา (referral.source ≠ 'ADS' เช่นลิงก์สินค้า m.me) = ไม่ทำอะไรเลย ก่อนแตะ DB
+   * — โน้ต "ลูกค้ากดมาจากสินค้า …" มาจาก handleProductReferral ใน controller อยู่แล้ว (เจ้าของเคาะ 2026-09-15 ข้อ 7)
    */
   async recordAdReferral(
     externalUserId: string,
     channel: ChatChannel,
     attribution: InboundAttribution,
   ): Promise<void> {
+    if (!isAdAttribution(attribution)) return;
     const room = await this.roomManager.findByExternalUser(externalUserId, channel);
     if (!room) return;
     await this.roomManager.linkAttribution(room.id, attribution, room.attributionId);
@@ -1352,6 +1374,9 @@ export class MessageRouterService {
       staffId,
     });
 
+    if (await this.roomManager.prepareOutboundAttempt?.(saved.id) === false) {
+      return { success: false, error: 'ยังยืนยันผลส่งก่อนหน้าไม่ได้ กรุณาตรวจข้อความในช่องทางก่อนส่งใหม่' };
+    }
     const result = await adapter.sendMessage({
       ...(message as any),
       externalUserId,
@@ -1359,7 +1384,8 @@ export class MessageRouterService {
       type,
     });
 
-    if (!result.success) {
+    if (!result.success || result.droppedReason) {
+      await this.roomManager.failOutboundAttempt?.(saved.id, result.definitelyNotSent === true || !!result.droppedReason);
       this.logger.error(`Failed to send staff outbound on ${room.channel}: ${result.error}`);
       return result;
     }

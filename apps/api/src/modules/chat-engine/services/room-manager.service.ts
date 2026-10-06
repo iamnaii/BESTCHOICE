@@ -1,4 +1,8 @@
+import { ChatWorkAccessService } from '../../staff-chat/services/chat-work-access.service';
+import type { WorkScope } from '@installment/shared';
+import { ResponseCycleService } from './response-cycle.service';
 import type { InboundAttribution } from '../interfaces/channel-adapter.interface';
+import { isAdAttribution } from '../utils/ad-attribution.util';
 import {
   Injectable,
   Logger,
@@ -36,7 +40,7 @@ import * as Sentry from '@sentry/nestjs';
  *  เพี้ยนจากกันได้อีก */
 /** นัดถัดไปของห้อง (ยังไม่เสร็จ มีวันเวลา) — ป้ายในแถวรายชื่อ + ชิปหัวห้อง (เจ้าของเคาะ 2026-09-06 ชั้น 1) */
 const ROOM_NEXT_APPOINTMENT = {
-  where: { deletedAt: null, status: { not: TodoStatus.DONE }, dueDate: { not: null } },
+  where: { deletedAt: null, status: { in: [TodoStatus.TODO, TodoStatus.DOING, TodoStatus.REVIEW] }, dueDate: { not: null } },
   orderBy: { dueDate: 'asc' as const },
   take: 1,
   select: { id: true, title: true, dueDate: true, status: true },
@@ -141,6 +145,7 @@ export class RoomManagerService {
     private chatProspects?: ChatProspectService,
     @Optional()
     private merge?: CustomerMergeService,
+    @Optional() private responseCycles?: ResponseCycleService,
   ) {}
 
   /**
@@ -231,7 +236,8 @@ export class RoomManagerService {
           this.logger.warn(`[prospect] sync name ${roomId}: ${err instanceof Error ? err.message : err}`),
         );
       }
-      // ลูกค้าเก่ากดโฆษณา/ลิงก์ซ้ำ — บันทึกที่มาครั้งล่าสุดให้ห้องเดิมด้วย (เดิมบันทึกเฉพาะห้องใหม่)
+      // ลูกค้าเก่ากดโฆษณาซ้ำ — บันทึกที่มาครั้งล่าสุดให้ห้องเดิมด้วย (เดิมบันทึกเฉพาะห้องใหม่)
+      // ลิงก์สินค้า/ref อื่นที่ไม่ใช่ ADS ถูก linkAttribution ทิ้งเอง ⇒ ห้องที่ชี้โฆษณาอยู่ไม่ถูกชี้ไปที่มาอื่น
       if (params.attribution?.utmSource) {
         await this.linkAttribution(room.id, params.attribution, room.attributionId);
       }
@@ -330,7 +336,11 @@ export class RoomManagerService {
   }
 
   /**
-   * ผูก "ที่มา" (โฆษณา/UTM) ให้ห้อง — ท่าเดียวกับ OBI `Util\Facebook::ads` + `chat_room.facebook_ad_id`:
+   * ผูก "ที่มาโฆษณา" ให้ห้อง — ท่าเดียวกับ OBI `Util\Facebook::ads` + `chat_room.facebook_ad_id`:
+   * นับเป็นโฆษณาเฉพาะ referral.source = 'ADS' (`isAdAttribution` — journey-state.sql ใช้ literal เดียวกัน)
+   * ⇒ ลิงก์สินค้า m.me (SHORTLINK) / referral ที่ไม่มี source คืน null ทันที: ไม่สร้างแคมเปญ ไม่สร้าง attribution
+   *   ไม่ชี้ห้องใหม่ — ห้องที่ชี้โฆษณาอยู่จึงไม่มีทางถูกชี้ไปที่มาที่ไม่ใช่โฆษณา (เจ้าของเคาะ 2026-09-15 ข้อ 7 ·
+   *   กลับทิศของ 5f0dc62c4 ที่เคยบันทึกลิงก์สินค้าเป็นที่มา — โน้ตสินค้ายังมาจาก handleProductReferral)
    * แคมเปญคีย์ด้วย ad_id · ชื่อ/รูปโฆษณาเติมจาก ads_context_data เมื่อมี (ครั้งแรกอาจว่าง ครั้งหลังเติมได้) ·
    * ห้องที่มีที่มาอยู่แล้วและมาจากโฆษณา "ตัวเดิม" → อัปเดต lastTouch · โฆษณา "ตัวใหม่" → attribution ใหม่
    * แล้วชี้ห้องไปที่ล่าสุด (พนักงานต้องรู้ว่าลูกค้าเพิ่งเห็นชิ้นไหน ไม่ใช่ชิ้นแรกเมื่อ 3 เดือนก่อน)
@@ -342,6 +352,8 @@ export class RoomManagerService {
     currentAttributionId: string | null,
   ): Promise<{ campaignName: string; adTitle: string | null; changed: boolean } | null> {
     try {
+      // ไม่ใช่โฆษณา: ไม่สร้างแคมเปญ ไม่สร้าง attribution ไม่ชี้ห้องใหม่ (ห้องที่ชี้โฆษณาอยู่คงเดิม)
+      if (!isAdAttribution(attribution)) return null;
       const platformMap: Record<string, AdsPlatform> = {
         facebook: AdsPlatform.FACEBOOK_ADS,
         tiktok: AdsPlatform.TIKTOK_ADS,
@@ -430,7 +442,7 @@ export class RoomManagerService {
       where: {
         deletedAt: null,
         roomId: { not: null },
-        status: { not: TodoStatus.DONE },
+        status: { in: [TodoStatus.TODO, TodoStatus.DOING, TodoStatus.REVIEW] },
         dueDate: { gte: new Date(now.getTime() - 24 * 3600_000), lte: new Date(now.getTime() + 15 * 60_000) },
       },
       orderBy: { dueDate: 'asc' },
@@ -732,8 +744,11 @@ export class RoomManagerService {
     /** ข้อความระบบที่ไม่ใช่การสนทนา (มอบหมาย/ปิดงาน/โฆษณา) — ไม่แตะ lastMessageAt/totalMessages/unread
      *  ไม่งั้นห้องที่ปิดงานเด้งขึ้นบนสุดและพรีวิวรายการซ้ายกลายเป็นบรรทัดระบบ */
     silent?: boolean;
+    confirmedSentAt?: Date;
   }) {
-    const msg = await this.prisma.chatMessage.create({
+    const save = async (db: Prisma.TransactionClient, tracking = false) => {
+    if (tracking) await this.responseCycles!.lock(db, params.roomId);
+    const msg = await db.chatMessage.create({
       data: {
         roomId: params.roomId,
         externalMessageId: params.externalMessageId,
@@ -751,6 +766,7 @@ export class RoomManagerService {
         costUsd: params.costUsd,
         visionExtracted: params.visionExtracted,
         clientMessageId: params.clientMessageId,
+        outboundSentAt: params.confirmedSentAt,
       },
     });
 
@@ -767,7 +783,7 @@ export class RoomManagerService {
       updateData.unreadCount = { increment: 1 };
     } else if (params.role === MessageRole.STAFF || params.role === MessageRole.BOT) {
       // Set firstResponseAt if not already set (SLA metric)
-      const room = await this.prisma.chatRoom.findUnique({
+      const room = await db.chatRoom.findUnique({
         where: { id: params.roomId },
         select: { firstResponseAt: true },
       });
@@ -776,7 +792,7 @@ export class RoomManagerService {
       }
     }
 
-    await this.prisma.chatRoom.update({
+    await db.chatRoom.update({
       where: { id: params.roomId },
       data: updateData,
     });
@@ -785,13 +801,14 @@ export class RoomManagerService {
       // "รอตอบตั้งแต่" (สเปก §4.2) — set-if-null แบบ atomic: เก็บเวลาข้อความ *แรก* ที่ยังไม่ได้ตอบ
       // ไม่ใช่ใบล่าสุด และไม่ต้องอ่านก่อนเขียน (สองข้อความมาพร้อมกันได้ค่าเดียวกัน)
       // ⚠️ ห้ามล้างที่นี่สำหรับ STAFF/BOT — การส่งที่ล้มก็ผ่าน saveMessage (save-before-send)
-      await this.prisma.chatRoom.updateMany({
+      if (tracking) await this.responseCycles!.openInTx(db, { roomId: params.roomId, messageId: msg.id, receivedAt: msg.createdAt });
+      else await db.chatRoom.updateMany({
         where: { id: params.roomId, waitingSince: null },
         data: { waitingSince: msg.createdAt },
       });
       // เวลาข้อความ *ล่าสุด* ของลูกค้า (หน้าต่าง 24 ชม. ของ FB นับจากตัวนี้) — เดินหน้าอย่างเดียว
       // ข้อความเก่าที่มาถึงช้า (retry/echo) ต้องไม่ดึงค่าถอยหลัง
-      await this.prisma.chatRoom.updateMany({
+      await db.chatRoom.updateMany({
         where: {
           id: params.roomId,
           OR: [{ lastCustomerAt: null }, { lastCustomerAt: { lt: msg.createdAt } }],
@@ -800,7 +817,13 @@ export class RoomManagerService {
       });
     }
 
+    if (tracking && params.role === MessageRole.BOT && params.confirmedSentAt) {
+      await this.responseCycles!.recordBotSentInTx(db, { roomId: params.roomId, sentAt: params.confirmedSentAt });
+    }
     return msg;
+    };
+    if (this.responseCycles && await this.responseCycles.enabled()) return this.prisma.$transaction(tx => save(tx, true));
+    return save(this.prisma);
   }
 
   /** Look up an existing message by its client-generated idempotency token. */
@@ -877,7 +900,25 @@ export class RoomManagerService {
    * (facebook-webhook.controller.ts:298-303) ถ้าไม่ stamp ไว้ echo ของข้อความที่
    * เราส่งเองจะกลายเป็น bubble STAFF ซ้ำเมื่อ env FACEBOOK_APP_ID ไม่ได้ตั้ง
    */
+  async prepareOutboundAttempt(messageId: string, forceDeliveryTracking = false): Promise<boolean> {
+    return this.responseCycles ? this.responseCycles.prepareAttempt(messageId, forceDeliveryTracking) : true;
+  }
+
+  async failOutboundAttempt(messageId: string, definitelyNotSent: boolean, forceDeliveryTracking = false): Promise<void> {
+    await this.responseCycles?.failAttempt(messageId, definitelyNotSent, forceDeliveryTracking);
+  }
+
+  async confirmExternalEcho(messageId: string): Promise<boolean> {
+    if (!this.responseCycles || !await this.responseCycles.enabled()) return false;
+    await this.responseCycles.confirmUnknownEcho(messageId);
+    return true;
+  }
+
   async markOutboundSent(messageId: string, externalMessageId?: string): Promise<void> {
+    if (this.responseCycles && await this.responseCycles.enabled()) {
+      await this.responseCycles.confirm(messageId, externalMessageId);
+      return;
+    }
     let roomId: string | undefined;
     try {
       const row = await this.prisma.chatMessage.update({
@@ -1666,14 +1707,13 @@ export class RoomManagerService {
   }
 
   /** All of a room's customer's rooms across channels, with the latest message each */
-  async getCrossChannelRooms(roomId: string) {
-    const room = await this.prisma.chatRoom.findUnique({
-      where: { id: roomId },
-      select: { customerId: true },
-    });
+  async getCrossChannelRooms(roomId: string, authenticated: { id: string }, selected: Partial<WorkScope> = {}) {
+    const access = new ChatWorkAccessService(this.prisma);
+    const { room, actor, scope } = await access.roomContext(roomId, authenticated, selected);
+    const allowed = await access.roomWhere(actor, scope);
     if (!room?.customerId) return [];
     return this.prisma.chatRoom.findMany({
-      where: { customerId: room.customerId, deletedAt: null },
+      where: { AND: [allowed, { customerId: room.customerId }] },
       select: {
         id: true,
         channel: true,

@@ -1,4 +1,4 @@
-import { ChatChannel, DunningActionStatus, DunningChannel, MessageRole, Prisma, PrismaClient } from '@prisma/client';
+import { ChatChannel, DunningActionStatus, DunningChannel, MessageRole, MessageType, Prisma, PrismaClient } from '@prisma/client';
 import { NotFoundException } from '@nestjs/common';
 import { JOURNEY_EVENT_GROUPS, type JourneyListResponse } from '@installment/shared';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -7,8 +7,10 @@ import { JourneyStateService } from './journey-state.service';
 import { JourneySummaryService } from './journey-summary.service';
 import { journeyDedupeKey } from './journey-data-schemas';
 
-const FORBIDDEN_KEYS = ['phone', 'phoneSecondary', 'nationalId', 'address', 'addressCurrent', 'addressIdCard', 'addressWork', 'text', 'content', 'messageContent', 'notes', 'note', 'voiceMemoUrl', 'overrideReason', 'customerName', 'reviewNotes', 'voidReason', 'defectDescription', 'reason'];
-const EVENT_KEYS = ['id', 'type', 'group', 'stage', 'timestamp', 'title', 'subtitle', 'actor', 'reliability', 'origin', 'href', 'metadata'];
+const FORBIDDEN_KEYS = ['phone', 'phoneSecondary', 'nationalId', 'address', 'addressCurrent', 'addressIdCard', 'addressWork', 'text', 'mediaUrl', 'mediaType', 'content', 'messageContent', 'notes', 'note', 'voiceMemoUrl', 'overrideReason', 'customerName', 'reviewNotes', 'voidReason', 'defectDescription', 'reason'];
+// entryId / undoableUntil / canDelete = แถว MANUAL เท่านั้น (เลิกทำ — เฟส 3)
+const EVENT_KEYS = ['id', 'type', 'group', 'stage', 'timestamp', 'title', 'subtitle', 'actor', 'reliability', 'origin', 'href', 'metadata', 'entryId', 'undoableUntil', 'canDelete'];
+const UNDO_KEYS = ['entryId', 'undoableUntil', 'canDelete'];
 function allKeys(value: unknown, keys = new Set<string>()): Set<string> {
   if (Array.isArray(value)) value.forEach((v) => allKeys(v, keys));
   else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) { keys.add(k); allKeys(v, keys); }
@@ -51,6 +53,8 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     await prisma.chatMessage.createMany({ data: [
       { roomId: ids.open, role: MessageRole.CUSTOMER, text: `ผมสมหมาย เบอร์ ${phone}` },
       { roomId: ids.open, role: MessageRole.STAFF, text: `ส่งที่ ${address}` },
+      // เฟส 3: ไฟล์เอกสารของลูกค้า (ลิงก์ลงท้าย .pdf — R-P1) ขึ้นแถวไทม์ไลน์ได้ แต่ชื่อไฟล์/ลิงก์/ชนิดไฟล์ต้องไม่หลุด · media_url อยู่ใน FILTER เท่านั้น
+      { roomId: ids.open, role: MessageRole.CUSTOMER, type: MessageType.FILE, text: `สำเนาบัตร-${nationalId}.pdf`, mediaUrl: `https://files.example.test/${phone}.pdf`, mediaType: 'application/pdf' },
       { roomId: ids.assigned, role: MessageRole.CUSTOMER, text: 'ห้องที่คนอื่นดูแล' },
     ] });
     await prisma.todo.create({ data: { title: `โทรหา ${phone}`, description: address, createdById: ids.staff, roomId: ids.open, dueDate: new Date(Date.now() + 86_400_000) } });
@@ -60,6 +64,8 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     const entry = { customerId: ids.target, occurredAt: new Date(), actorType: 'STAFF', actorUserId: ids.staff };
     await prisma.customerJourneyEntry.create({ data: { ...entry, originCustomerId: ids.placeholder, origin: 'SYSTEM', kind: 'PLACEHOLDER_MERGED', dedupeKey: journeyDedupeKey('PLACEHOLDER_MERGED', ids.placeholder), data: { roomCount: 1 } } });
     await prisma.customerJourneyEntry.create({ data: { ...entry, originCustomerId: ids.target, origin: 'MANUAL', kind: 'TOUCHPOINT', roomId: ids.assigned, channel: 'PHONE', outcome: 'APPOINTED', note: `โทร ${phone}` } });
+
+    await prisma.customerJourneyEntry.create({ data: { ...entry, originCustomerId: ids.target, origin: 'MANUAL', kind: 'TOUCHPOINT', roomId: null, channel: 'WALK_IN', outcome: 'THINKING' } });
 
     // OD-10: ลูกค้าที่มีสัญญา — ชำระแล้ว 1 งวด · โทรติดตามพร้อมโน้ต · ทวงทาง LINE พร้อมข้อความ
     ids.buyer = (await prisma.customer.create({ data: { name: `journey pdpa buyer ${stamp}` } })).id;
@@ -107,7 +113,14 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     const result = await page(ids.target, OWNER);
     expect(result.mergedCustomerIds).toEqual([ids.placeholder]);
     const types = result.events.map((e) => e.type);
-    for (const type of ['CHAT_ROOM_OPENED', 'CHAT_DAY', 'APPOINTMENT', 'AI_LEAD_CAPTURED', 'CUSTOMER_CREATED_BY_STAFF', 'CREDIT_CHECK_OPENED', 'TAG_ADDED', 'PLACEHOLDER_MERGED', 'TOUCHPOINT']) expect(types).toContain(type);
+    for (const type of ['CHAT_ROOM_OPENED', 'CHAT_DAY', 'CHAT_CUSTOMER_FILE', 'APPOINTMENT', 'AI_LEAD_CAPTURED', 'CUSTOMER_CREATED_BY_STAFF', 'CREDIT_CHECK_OPENED', 'TAG_ADDED', 'PLACEHOLDER_MERGED', 'TOUCHPOINT']) expect(types).toContain(type);
+  });
+
+  it('global profile excludes room-bound manual facts even for a branch manager', async () => {
+    const result = await page(ids.target, { id: ids.other, role: 'BRANCH_MANAGER' });
+    const manual = result.events.filter(e => e.type === 'TOUCHPOINT');
+    expect(manual).toHaveLength(1);
+    expect(manual[0].title).toContain('หน้าร้าน');
   });
 
   it('PDPA snapshot: ไม่มีคีย์ต้องห้าม ไม่มีข้อความแชท/เบอร์/บัตร/ที่อยู่ · รูปรายการอยู่ในชุดคีย์ที่อนุญาต', async () => {
@@ -122,9 +135,26 @@ describe('CustomerJourneyService.list (real DB) — PDPA · สิทธิ์ �
     }
   });
 
+  it('เลิกทำ: เฉพาะแถว MANUAL มี entryId/undoableUntil/canDelete · OWNER ลบแถวคนอื่นได้ (undoableUntil null) · ผู้จัดการการเงินไม่ได้', async () => {
+    const owner = await page(ids.target, OWNER);
+    const manual = owner.events.filter((e) => e.origin === 'MANUAL');
+    expect(manual.length).toBeGreaterThan(0);
+    for (const event of manual) {
+      expect(event.id).toBe(`entry-${event.entryId}`);
+      expect(event).toMatchObject({ canDelete: true, undoableUntil: null });
+    }
+    for (const event of owner.events.filter((e) => e.origin !== 'MANUAL')) {
+      for (const key of UNDO_KEYS) expect(event).not.toHaveProperty(key);
+    }
+    const finance = await page(ids.target, { id: 'fm-spec', role: 'FINANCE_MANAGER' });
+    const financeManual = finance.events.filter((e) => e.origin === 'MANUAL');
+    expect(financeManual.length).toBeGreaterThan(0);
+    for (const event of financeManual) expect(event).toMatchObject({ canDelete: false, undoableUntil: null });
+  });
+
   it('SALES ไม่เห็นห้อง/บันทึกของห้องที่คนอื่นดูแล · ACCOUNTANT ไม่ได้ chat แม้ขอมา', async () => {
     const sales = await page(ids.target, { id: ids.staff, role: 'SALES' });
-    expect(sales.events.some((e) => e.href === `/inbox/${ids.assigned}` || e.type === 'TOUCHPOINT')).toBe(false);
+    expect(sales.events.some((e) => e.href === `/inbox/${ids.assigned}`)).toBe(false);
     expect(sales.events.some((e) => e.href === `/inbox/${ids.open}`)).toBe(true);
     const accountant = await page(ids.target, { id: 'acc-spec', role: 'ACCOUNTANT' });
     expect(accountant.events.filter((e) => e.group === 'chat')).toEqual([]);

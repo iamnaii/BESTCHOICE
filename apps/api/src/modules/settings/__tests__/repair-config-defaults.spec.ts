@@ -16,7 +16,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SettingsService } from '../settings.service';
 import { SettingsFlagsService } from '../services/settings-flags.service';
 import { SettingsWriteService } from '../services/settings-write.service';
-import { PettyCashCustodianService } from '../services/petty-cash-custodian.service';
 import { DocNumberPreviewService } from '../services/doc-number-preview.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
@@ -67,7 +66,6 @@ describe('Repair ticket SystemConfig defaults', () => {
           SettingsService,
           SettingsFlagsService,
           SettingsWriteService,
-          PettyCashCustodianService,
           DocNumberPreviewService,
           { provide: PrismaService, useValue: prisma },
           { provide: AuditService, useValue: audit },

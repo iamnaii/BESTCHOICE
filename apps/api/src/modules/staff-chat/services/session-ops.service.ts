@@ -1,3 +1,5 @@
+import { ChatWorkAccessService } from './chat-work-access.service';
+import { ResponseCycleService } from '../../chat-engine/services/response-cycle.service';
 import {
   Injectable,
   Logger,
@@ -19,13 +21,14 @@ import { PLACEHOLDER_FIELDS_SELECT, isLivePlaceholder } from '../../chat-prospec
 export class SessionOpsService {
   private readonly logger = new Logger(SessionOpsService.name);
 
-  constructor(private prisma: PrismaService, @Optional() private merge?: CustomerMergeService) {}
+  constructor(private prisma: PrismaService, @Optional() private merge?: CustomerMergeService, @Optional() private responseCycles?: ResponseCycleService) {}
 
   /**
    * Create a Todo/ticket from a chat room.
    * Builds title from customer name and description from last 5 messages.
    */
   async createTicketFromRoom(roomId: string, staffId: string) {
+    await new ChatWorkAccessService(this.prisma).roomContext(roomId, { id: staffId });
     const session = await this.prisma.chatRoom.findFirst({
       where: { id: roomId, deletedAt: null },
       include: {
@@ -120,6 +123,7 @@ export class SessionOpsService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      if (this.responseCycles && await this.responseCycles.enabled(tx)) await this.responseCycles.mergeInTx(tx, primaryId, secondaryId);
       // a. Move ChatMessages from secondary → primary
       await tx.chatMessage.updateMany({
         where: { roomId: secondaryId },

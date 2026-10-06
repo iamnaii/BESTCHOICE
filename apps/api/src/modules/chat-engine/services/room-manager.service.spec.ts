@@ -764,7 +764,7 @@ describe('RoomManagerService.listDueAppointments — นัดที่ถึง
     const now = new Date('2026-09-06T07:00:00.000Z');
     await svc.listDueAppointments(now);
     const args = prisma.todo.findMany.mock.calls[0][0];
-    expect(args.where).toMatchObject({ deletedAt: null, roomId: { not: null }, status: { not: 'DONE' } });
+    expect(args.where).toMatchObject({ deletedAt: null, roomId: { not: null }, status: { in: ['TODO', 'DOING', 'REVIEW'] } });
     expect(args.where.dueDate).toEqual({ gte: new Date('2026-09-05T07:00:00.000Z'), lte: new Date('2026-09-06T07:15:00.000Z') });
     expect(args.orderBy).toEqual({ dueDate: 'asc' });
     expect(args.take).toBe(20);

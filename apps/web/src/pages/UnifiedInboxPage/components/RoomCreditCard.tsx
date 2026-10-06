@@ -26,8 +26,9 @@ export function CreditFilePicker({ credit }: { credit?: RoomCreditModel }) {
       />
       <Button
         type="button"
-        variant="ghost"
+        variant="outline"
         size="sm"
+        className="min-h-11 w-full shrink-0"
         disabled={!credit || credit.busy || credit.loading}
         onClick={() => input.current?.click()}
       >

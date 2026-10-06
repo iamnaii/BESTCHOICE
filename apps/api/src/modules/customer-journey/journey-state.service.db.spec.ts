@@ -611,17 +611,18 @@ describe('JourneyStateService (real DB)', () => {
     expect(back.lastTouchAt?.toISOString()).toBe('2026-09-04T00:00:00.000Z');
   });
 
-  it('นัด (todo ในห้อง) → INTERESTED · ใบตรวจเครดิต → CREDIT/INSTALLMENT · ใบขายสด → PURCHASED/CASH ตรงกับ BOUGHT_WHERE · ยกเลิกใบขาย → ถอยกลับ', async () => {
+  it('นัด (todo ในห้อง) + ใบตรวจเครดิต → INTERESTED/INSTALLMENT (③ ตรวจเครดิต มาก่อน ④ นัด / จอง) · ใบขายสด → PURCHASED/CASH ตรงกับ BOUGHT_WHERE · ยกเลิกใบขาย → ถอยกลับ INTERESTED', async () => {
     const c = await customer({ name: 'journey buyer', phone: `082${tail}`, createdAt: at('2026-09-01T00:00:00.000Z') });
     const r = await room(c.id, 'buyer', '2026-09-01T01:00:00.000Z');
     const todo = await prisma.todo.create({ data: { title: 'นัดดูเครื่อง', createdById: userId, roomId: r.id, dueDate: at('2026-09-06T03:00:00.000Z'), createdAt: at('2026-09-02T00:00:00.000Z') } });
     todoIds.push(todo.id);
     await prisma.creditCheck.create({ data: { customerId: c.id, createdAt: at('2026-09-03T00:00:00.000Z') } });
     await service.recompute([c.id]);
-    const credit = await stateOf(c.id);
-    expect(credit).toMatchObject({ stage: 'CREDIT', path: 'INSTALLMENT' });
-    expect(credit.interestedAt?.toISOString()).toBe('2026-09-02T00:00:00.000Z');
-    expect(credit.stageEnteredAt.toISOString()).toBe('2026-09-03T00:00:00.000Z');
+    const interested = await stateOf(c.id);
+    expect(interested).toMatchObject({ stage: 'INTERESTED', path: 'INSTALLMENT' });
+    expect(interested.interestedAt?.toISOString()).toBe('2026-09-02T00:00:00.000Z');
+    expect(interested.creditAt?.toISOString()).toBe('2026-09-03T00:00:00.000Z');
+    expect(interested.stageEnteredAt.toISOString()).toBe('2026-09-02T00:00:00.000Z');
 
     const parityBefore = await service.purchasedParity();
     const cash = await sale(c.id, 'CASH', '2026-09-04T00:00:00.000Z');
@@ -634,7 +635,7 @@ describe('JourneyStateService (real DB)', () => {
 
     await prisma.sale.update({ where: { id: cash.id }, data: { deletedAt: at('2026-09-05T00:00:00.000Z') } });
     await service.recompute([c.id]);
-    expect(await stateOf(c.id)).toMatchObject({ stage: 'CREDIT', firstPurchaseAt: null, firstPurchaseKind: null, path: 'INSTALLMENT' });
+    expect(await stateOf(c.id)).toMatchObject({ stage: 'INTERESTED', firstPurchaseAt: null, firstPurchaseKind: null, path: 'INSTALLMENT' });
     expect(await boughtLive(c.id)).toBe(false);
   });
 

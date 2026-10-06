@@ -32,3 +32,8 @@ describe('NoteBubble / PinnedNoteBar', () => {
     expect(onUnpin).toHaveBeenCalledWith('n1');
   });
 });
+
+it('shows persisted mention recipients, including people whose names are not typed into the note', () => {
+  render(<NoteBubble note={{...NOTE, mentions:[{userId:'u2',user:{id:'u2',name:'สมชาย',nickname:'ชาย'}}]}} isPinned={false} canDelete={false}/>);
+  expect(screen.getByText('@ชาย')).toBeInTheDocument();
+});

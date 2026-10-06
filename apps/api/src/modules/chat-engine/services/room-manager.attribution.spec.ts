@@ -100,4 +100,71 @@ describe('RoomManagerService.linkAttribution', () => {
     prisma.adsCampaign.findFirst.mockRejectedValue(new Error('boom'));
     await expect(service.linkAttribution('room-1', AD, null)).resolves.toBeNull();
   });
+
+  // ── เจ้าของเคาะ 2026-09-15 ข้อ 7: นับเป็นโฆษณาเฉพาะ referral.source = 'ADS' ─────────────
+  /** ลิงก์ m.me ของหน้าสินค้าบนเว็บร้าน — buildFbAttribution จาก { ref: 'p:abc', source: 'SHORTLINK' } */
+  const PRODUCT_LINK = {
+    utmSource: 'facebook',
+    utmCampaign: 'p:abc',
+    utmContent: 'p:abc',
+    referrerUrl: 'SHORTLINK',
+  };
+  /** จำลองว่าถ้าเขียนได้จะเขียนสำเร็จ — เทสต้องล้มเพราะ "ถูกเรียก" ไม่ใช่เพราะ mock คืน undefined */
+  function mockWritesSucceed() {
+    prisma.adsCampaign.findFirst.mockResolvedValue(null);
+    prisma.adsCampaign.create.mockResolvedValue({ id: 'c-link', campaignName: 'p:abc', adName: null, adPhotoUrl: null });
+    prisma.adsAttribution.create.mockResolvedValue({ id: 'a-link' });
+  }
+  function expectNoAttributionWrites() {
+    expect(prisma.adsCampaign.findFirst).not.toHaveBeenCalled();
+    expect(prisma.adsCampaign.create).not.toHaveBeenCalled();
+    expect(prisma.adsCampaign.update).not.toHaveBeenCalled();
+    expect(prisma.adsAttribution.findUnique).not.toHaveBeenCalled();
+    expect(prisma.adsAttribution.create).not.toHaveBeenCalled();
+    expect(prisma.adsAttribution.update).not.toHaveBeenCalled();
+    expect(prisma.chatRoom.update).not.toHaveBeenCalled();
+  }
+
+  it('ลิงก์สินค้า (SHORTLINK) บนห้องที่ยังไม่มีที่มา → คืน null ไม่สร้างแคมเปญ/attribution ไม่แตะห้อง', async () => {
+    mockWritesSucceed();
+
+    const res = await service.linkAttribution('room-1', PRODUCT_LINK, null);
+
+    expect(res).toBeNull();
+    expectNoAttributionWrites();
+  });
+
+  it('referral ที่ไม่มี source (Meta ส่ง {} → มีแต่ utmSource) → คืน null ไม่เขียนอะไร', async () => {
+    mockWritesSucceed();
+
+    const res = await service.linkAttribution('room-1', { utmSource: 'facebook' }, null);
+
+    expect(res).toBeNull();
+    expectNoAttributionWrites();
+  });
+
+  it('ห้องที่ชี้โฆษณา ADS อยู่ + ลิงก์สินค้า → ไม่อ่าน/ไม่สร้าง/ไม่ชี้ห้องใหม่ ห้องยังอยู่กับที่มาโฆษณาเดิม', async () => {
+    mockWritesSucceed();
+    prisma.adsAttribution.findUnique.mockResolvedValue({ id: 'a-ads', campaignId: 'c-ads' });
+
+    const res = await service.linkAttribution('room-1', PRODUCT_LINK, 'a-ads');
+
+    expect(res).toBeNull();
+    expectNoAttributionWrites();
+  });
+
+  it('ห้องที่ชี้ที่มาเก่าที่ไม่ใช่โฆษณา + โฆษณา ADS → attribution ใหม่ และห้องชี้ไปที่โฆษณา (อนุญาต)', async () => {
+    prisma.adsCampaign.findFirst.mockResolvedValue(null);
+    prisma.adsCampaign.create.mockResolvedValue({ id: 'c1', campaignName: AD.adTitle, adName: AD.adTitle, adPhotoUrl: AD.adPhotoUrl });
+    prisma.adsAttribution.findUnique.mockResolvedValue({ id: 'a-legacy-link', campaignId: 'c-legacy-link' });
+    prisma.adsAttribution.create.mockResolvedValue({ id: 'a-ads-new' });
+
+    const res = await service.linkAttribution('room-1', AD, 'a-legacy-link');
+
+    expect(prisma.adsAttribution.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ campaignId: 'c1', referrerUrl: 'ADS' }) }),
+    );
+    expect(prisma.chatRoom.update).toHaveBeenCalledWith({ where: { id: 'room-1' }, data: { attributionId: 'a-ads-new' } });
+    expect(res?.changed).toBe(true);
+  });
 });

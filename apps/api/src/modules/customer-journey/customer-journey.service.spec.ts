@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { JourneyEvent, JourneyEventGroup, JourneyListResponse, JourneySummary } from '@installment/shared';
 import type { PrismaService } from '../../prisma/prisma.service';
-import { CustomerJourneyService, JOURNEY_COUNT_CAP, countJourneyGroups, resolveJourneyGroups } from './customer-journey.service';
+import { CustomerJourneyService, JOURNEY_COUNT_CAP, JOURNEY_NOT_RECORDED, countJourneyGroups, resolveJourneyGroups } from './customer-journey.service';
 import type { JourneySummaryService } from './journey-summary.service';
 import { chatSource } from './sources/chat.source';
 import { collectionsSource } from './sources/collections.source';
@@ -208,5 +208,10 @@ describe('CustomerJourneyService.list + summary (Task 9)', () => {
     const { summaries, service } = setup(LIVE);
     await expect(service.summary('c1', OWNER)).resolves.toBe(SUMMARY);
     expect(summaries.summary).toHaveBeenCalledWith('c1', OWNER);
+  });
+
+  it('ระบบยังไม่เก็บ: จองเว็บ / สมัครผ่อนออนไลน์ / รับซื้อ-เทิร์น ขึ้นเป็นแถวในแท็บแล้ว ⇒ ไม่อยู่ในรายการ · ไม่มีชื่อขั้นเก่า "สนใจจริง"', () => {
+    expect(JOURNEY_NOT_RECORDED.filter((line) => /การจองสินค้าผ่านเว็บ|ใบสมัครผ่อนออนไลน์|รับซื้อ\/เทิร์นเครื่อง|ยังไม่แสดงเป็นเหตุการณ์/.test(line))).toEqual([]);
+    expect(JOURNEY_NOT_RECORDED.some((line) => line.includes('สนใจจริง'))).toBe(false);
   });
 });

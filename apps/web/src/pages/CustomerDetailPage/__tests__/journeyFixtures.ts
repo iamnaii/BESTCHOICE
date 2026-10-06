@@ -12,14 +12,16 @@ export function stageSteps(
   states: Record<JourneyStage, JourneyStep['state']>,
   at: Partial<Record<JourneyStage, string>> = {},
   manual: readonly JourneyStage[] = [],
+  chatFile: readonly JourneyStage[] = [],
 ): JourneyStep[] {
   return JOURNEY_STAGES.map(
     (stage): JourneyStep => ({
       stage,
       label: STAGE_LABELS[stage],
-      at: states[stage] === 'todo' || states[stage] === 'skipped' ? null : at[stage] ?? null,
+      // ตรงกับ journey-summary.builder: ขั้นที่ยังไม่ถึง / ข้าม / ไม่ต้องตรวจ ไม่มีวันที่
+      at: states[stage] === 'todo' || states[stage] === 'skipped' || states[stage] === 'not_needed' ? null : at[stage] ?? null,
       state: states[stage],
-      evidence: manual.includes(stage) ? 'MANUAL' : 'SYSTEM',
+      evidence: manual.includes(stage) ? 'MANUAL' : chatFile.includes(stage) ? 'CHAT_FILE' : 'SYSTEM',
     }),
   );
 }
@@ -49,6 +51,8 @@ export function journeySummary(over: Partial<JourneySummary> = {}): JourneySumma
     lost: null,
     postSaleBadges: [],
     creditRejected: false,
+    askHeardFrom: false,
+    creditFilePending: false,
     ...over,
   };
 }
@@ -70,4 +74,15 @@ export function journeyEvent(over: Partial<JourneyEvent> = {}): JourneyEvent {
 
 export function journeyPage(over: Partial<JourneyListResponse> = {}): JourneyListResponse {
   return { customerId: 'c1', mergedCustomerIds: [], events: [], nextCursor: null, notRecorded: [], ...over };
+}
+
+/** ตั้งหลักฐานของบางขั้นทับผลของ stageSteps (เช่น CREDIT = 'CHAT_FILE') — ไม่แตะ state / at */
+export function withEvidence(
+  steps: JourneyStep[],
+  evidence: Partial<Record<JourneyStage, JourneyStep['evidence']>>,
+): JourneyStep[] {
+  return steps.map((step) => {
+    const next = evidence[step.stage];
+    return next ? { ...step, evidence: next } : step;
+  });
 }

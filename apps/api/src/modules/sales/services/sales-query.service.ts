@@ -1,3 +1,4 @@
+import { completedSaleWhere } from './completed-sale-policy';
 import { assertExportRowCount, EXPORT_ROW_LIMIT, readExportSnapshot } from '../../../common/helpers/export-snapshot';
 import { bookingReceipt, bookingReceiptSelect } from './booking-receipt';
 import { bangkokDateRange } from '../../../utils/date.util';
@@ -12,9 +13,7 @@ const CONTRACT_SALE_SELECT = {
   id: true, contractNumber: true, status: true, monthlyPayment: true, totalMonths: true,
 } satisfies Prisma.ContractSelect;
 
-const completedSaleWhere: Prisma.SaleWhereInput = {
-  OR: [{ contractId: null }, { contract: { is: { status: { not: 'DRAFT' }, deletedAt: null } } }],
-};
+
 
 /**
  * Read-side of SalesService — pure queries with role-dependent response shaping

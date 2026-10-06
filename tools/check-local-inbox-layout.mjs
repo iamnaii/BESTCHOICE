@@ -28,10 +28,10 @@ export async function checkInboxLayout(browser, origin, output) {
           const input = page.getByRole('textbox', { name: mode === 'chat' ? 'พิมพ์ข้อความ' : 'พิมพ์โน้ตภายใน', exact: true });
           await expect(input).toBeFocused();
           // Wait for the card's focus transition before measuring its replacement indicator.
-          await expect(input.locator('..')).toHaveCSS('--tw-ring-offset-width', '0px');
+          await expect(input.locator('xpath=ancestor::*[@data-chat-composer-card]')).toHaveCSS('--tw-ring-offset-width', '0px');
           const metrics = await input.evaluate(el => {
             const style = getComputedStyle(el);
-            const card = el.parentElement;
+            const card = el.closest('[data-chat-composer-card]');
             const rect = card.getBoundingClientRect();
             return {
               outline: style.outlineStyle,

@@ -20,7 +20,8 @@
     "sales-export-snapshot\\.e2e-spec\\.ts$",
     "sales-documents\\.e2e-spec\\.ts$",
     "letter-documents\\.e2e-spec\\.ts$",
-    "bookings-lifecycle\\.e2e-spec\\.ts$"
+    "bookings-lifecycle\\.e2e-spec\\.ts$",
+    "/e2e/chat-operations-[^/]*\\.e2e-spec\\.ts$"
   ],
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"

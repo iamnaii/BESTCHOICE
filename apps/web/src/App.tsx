@@ -1184,7 +1184,7 @@ function App() {
           <Route
             path="/chat-analytics"
             element={
-              <ProtectedRoute roles={['OWNER', 'FINANCE_MANAGER']}>
+              <ProtectedRoute roles={['OWNER', 'BRANCH_MANAGER', 'FINANCE_MANAGER', 'SALES']}>
                 <ChatAnalyticsPage />
               </ProtectedRoute>
             }

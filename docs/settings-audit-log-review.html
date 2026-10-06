@@ -237,7 +237,7 @@
   <header class="doc">
     <span class="eyebrow">เอกสารสำหรับฝ่ายบัญชีตรวจสอบ · Compliance / Audit Trail</span>
     <h1>ระบบ Audit Log ของหน้าตั้งค่า (Settings)</h1>
-    <p class="sub">สรุปว่าเมื่อมีการ<strong>เปลี่ยนค่าตั้งค่าระบบ</strong> (SystemConfig, ผู้ดูแลเงินสดย่อย, การจับคู่บัญชี ฯลฯ) ระบบบันทึกหลักฐานอะไรบ้าง ใครแก้ แก้จากอะไรเป็นอะไร และตรวจย้อนหลังได้อย่างไร</p>
+    <p class="sub">สรุปว่าเมื่อมีการ<strong>เปลี่ยนค่าตั้งค่าระบบ</strong> (SystemConfig, การจับคู่บัญชี ฯลฯ) ระบบบันทึกหลักฐานอะไรบ้าง ใครแก้ แก้จากอะไรเป็นอะไร และตรวจย้อนหลังได้อย่างไร</p>
     <div class="meta-grid">
       <div class="cell"><div class="k">ระบบ</div><div class="v">BESTCHOICE FINANCE</div></div>
       <div class="cell"><div class="k">ขอบเขต</div><div class="v">โมดูล Settings</div></div>
@@ -248,7 +248,7 @@
 
   <div class="note info">
     <div class="title">📌 อ่านก่อนตรวจ — audit log คืออะไรในบริบทนี้</div>
-    <p style="margin:0">ทุกครั้งที่มีคน <strong>แก้ไขค่าตั้งค่าของระบบ</strong> (เช่น อัตราค่าปรับ, อัตรา VAT, prefix เลขที่เอกสาร, ผู้ดูแลเงินสดย่อย, การจับคู่บัญชีกับ role) ระบบจะเขียน "บันทึกร่องรอย" 1 แถวลงตาราง <code>audit_logs</code> โดยอัตโนมัติ — ระบุ <strong>ใคร / ทำอะไร / เมื่อไหร่ / ค่าเดิม→ค่าใหม่</strong> บันทึกนี้<strong>แก้ย้อนหลังไม่ได้</strong> (immutable) และมีการเซ็นด้วยลายเซ็นดิจิทัลแบบลูกโซ่ (hash chain) เพื่อกันการแก้ไขหลักฐาน</p>
+    <p style="margin:0">ทุกครั้งที่มีคน <strong>แก้ไขค่าตั้งค่าของระบบ</strong> (เช่น อัตราค่าปรับ, อัตรา VAT, prefix เลขที่เอกสาร, การจับคู่บัญชีกับ role) ระบบจะเขียน "บันทึกร่องรอย" 1 แถวลงตาราง <code>audit_logs</code> โดยอัตโนมัติ — ระบุ <strong>ใคร / ทำอะไร / เมื่อไหร่ / ค่าเดิม→ค่าใหม่</strong> บันทึกนี้<strong>แก้ย้อนหลังไม่ได้</strong> (immutable) และมีการเซ็นด้วยลายเซ็นดิจิทัลแบบลูกโซ่ (hash chain) เพื่อกันการแก้ไขหลักฐาน</p>
   </div>
 
   <!-- ===================== 1 ===================== -->
@@ -277,12 +277,6 @@
           <td>เพิ่ม/แก้/ปิด การจับคู่ระหว่าง role กับผังบัญชี (account role map)</td>
           <td>role, รหัสบัญชี + สรุปความเปลี่ยนแปลงภาษาไทย (<code>diffSummary</code>)</td>
           <td><strong>สูง</strong> — กำหนดว่าธุรกรรมลงบัญชีตัวไหน</td>
-        </tr>
-        <tr>
-          <td class="action-cell"><code>PETTY_CASH_CUSTODIAN_ASSIGNED</code></td>
-          <td>เปลี่ยนตัวผู้ดูแลเงินสดย่อยของบริษัท</td>
-          <td>รหัสบริษัท + ผู้ดูแลคนเดิม → คนใหม่</td>
-          <td><strong>กลาง</strong> — segregation of duties เงินสดย่อย</td>
         </tr>
         <tr>
           <td class="action-cell"><code>DOC_SEQUENCE_RESET</code></td>
@@ -376,10 +370,6 @@
       <span class="a">ตรวจว่าผู้ทำรายการ (userId) เป็น OWNER / FINANCE_MANAGER / ACCOUNTANT ตามนโยบาย ไม่ใช่ role ที่ไม่ควรแตะการตั้งค่าการเงิน</span>
     </li>
     <li>
-      <span class="q">การเปลี่ยนผู้ดูแลเงินสดย่อย สมเหตุสมผล</span>
-      <span class="a">กรอง <code>PETTY_CASH_CUSTODIAN_ASSIGNED</code> — ยืนยันว่าการโยกผู้ดูแลตรงกับการเปลี่ยนตัวจริงในองค์กร (segregation of duties)</span>
-    </li>
-    <li>
       <span class="q">ลำดับเลขที่เอกสารไม่ถูกรีเซ็ตโดยพลการ</span>
       <span class="a">กรอง <code>DOC_SEQUENCE_RESET</code> — การรีเซ็ตเลขเอกสารภาษีควรมีน้อยและมีเหตุผล เพราะกระทบความต่อเนื่องเลขที่</span>
     </li>
@@ -406,7 +396,7 @@
 
   <footer class="doc">
     <p>เอกสารสรุปเชิงอธิบาย — จัดทำจากการตรวจซอร์สโค้ดจริงในโมดูล <code>apps/api/src/modules/settings</code> และ <code>apps/api/src/modules/audit</code> · ใช้เพื่อการตรวจสอบภายใน · ไม่ใช่ค่าตั้งค่าที่ live</p>
-    <p style="margin-top:6px">อ้างอิงไฟล์: settings-write.service.ts · doc-number-preview.service.ts · petty-cash-custodian.service.ts · export-enabled.guard.ts · audit.service.ts · settings.constants.ts</p>
+    <p style="margin-top:6px">อ้างอิงไฟล์: settings-write.service.ts · doc-number-preview.service.ts · export-enabled.guard.ts · audit.service.ts · settings.constants.ts</p>
   </footer>
 
 </div>

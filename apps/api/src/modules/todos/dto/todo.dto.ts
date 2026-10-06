@@ -1,5 +1,6 @@
 import {
   IsString,
+  IsIn,
   IsOptional,
   IsEnum,
   IsArray,
@@ -13,13 +14,19 @@ import {
   MaxLength,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { TodoStatus, TodoPriority } from '@prisma/client';
 
-export class TodosQueryDto {
+export class TodoScopeDto {
+  @IsOptional() @Transform(({ value }) => typeof value === 'string' ? value.toUpperCase() : value)
+  @IsIn(['SHOP', 'FINANCE']) company?: 'SHOP' | 'FINANCE';
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) expectedRevision?: number;
+}
+export class TodosQueryDto extends TodoScopeDto {
   @IsOptional()
   @IsString()
-  view?: 'all' | 'today' | 'upcoming' | 'priority' | 'completed';
+  @IsIn(['all', 'today', 'upcoming', 'priority', 'completed', 'cancelled'])
+  view?: 'all' | 'today' | 'upcoming' | 'priority' | 'completed' | 'cancelled';
 
   @IsOptional()
   @IsString()
@@ -96,6 +103,7 @@ export class AttachmentDto {
 }
 
 export class CreateTodoDto {
+  @IsOptional() @IsUUID() clientRequestId?: string;
   @IsString({ message: 'กรุณาระบุชื่องาน' })
   @MaxLength(255)
   title!: string;
@@ -154,6 +162,7 @@ export class CreateTodoCommentDto {
 }
 
 export class UpdateTodoDto {
+  @IsOptional() @IsInt() @Min(0) expectedRevision?: number;
   @IsOptional()
   @IsString()
   @MaxLength(255)

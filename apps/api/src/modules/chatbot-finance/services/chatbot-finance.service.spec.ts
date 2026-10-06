@@ -49,6 +49,7 @@ describe('ChatbotFinanceService', () => {
     };
     sessions = {
       getOrCreate: jest.fn().mockResolvedValue(session),
+      confirmBotSent: jest.fn().mockResolvedValue(undefined),
       saveMessage: jest.fn().mockResolvedValue({ id: 'msg-1' }),
       getRecentMessages: jest.fn().mockResolvedValue([]),
       linkRoomToCustomer: jest.fn().mockResolvedValue(undefined),
@@ -70,7 +71,9 @@ describe('ChatbotFinanceService', () => {
       isBotSilenced: jest.fn().mockResolvedValue(false),
     };
     slipProcessing = {
-      processSlip: jest.fn().mockResolvedValue({ ok: true, reply: 'รับสลิปแล้วค่ะ', matched: true }),
+      processSlip: jest
+        .fn()
+        .mockResolvedValue({ ok: true, reply: 'รับสลิปแล้วค่ะ', matched: true }),
     };
     groups = {
       onJoin: jest.fn().mockResolvedValue(undefined),
@@ -88,7 +91,10 @@ describe('ChatbotFinanceService', () => {
         { provide: FinanceAiService, useValue: ai },
         { provide: HandoffService, useValue: handoff },
         { provide: SlipProcessingService, useValue: slipProcessing },
-        { provide: FeedbackService, useValue: { saveFeedback: jest.fn().mockResolvedValue({ ok: true }) } },
+        {
+          provide: FeedbackService,
+          useValue: { saveFeedback: jest.fn().mockResolvedValue({ ok: true }) },
+        },
         // ChatbotFinanceService recently added ConfigService as a constructor dep
         // (used for FB_BOT_DISABLED / LINE token reads). Tests don't exercise
         // those paths — a no-op stub keeps DI happy without affecting assertions.
@@ -118,6 +124,29 @@ describe('ChatbotFinanceService', () => {
     message: { id: 'msg-1', type: 'text' as const, text },
   });
 
+  it.each([true, false])(
+    'records bot evidence only after an acknowledged reply (verified=%s)',
+    async (verified) => {
+      verification.isLinked.mockResolvedValue(verified ? linkedStatus : { linked: false });
+      let acknowledge!: () => void;
+      lineClient.replyMessage.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            acknowledge = resolve;
+          }),
+      );
+      const pending = service.handleEvent(makeTextEvent('hello'));
+      for (let i = 0; i < 20 && !acknowledge; i++) await Promise.resolve();
+      expect(sessions.confirmBotSent).not.toHaveBeenCalled();
+      acknowledge();
+      await pending;
+      expect(sessions.confirmBotSent).toHaveBeenCalledWith('msg-1');
+      sessions.confirmBotSent.mockClear();
+      lineClient.replyMessage.mockRejectedValueOnce(new Error('rejected'));
+      await service.handleEvent(makeTextEvent('retry'));
+      expect(sessions.confirmBotSent).not.toHaveBeenCalled();
+    },
+  );
   it('sends AI reply for verified text message', async () => {
     await service.handleEvent(makeTextEvent('ยอดเท่าไหร่'));
 
@@ -125,7 +154,9 @@ describe('ChatbotFinanceService', () => {
     expect(ai.generateReply).toHaveBeenCalledWith(
       expect.objectContaining({ userMessage: 'ยอดเท่าไหร่', customerId: 'c1' }),
     );
-    expect(lineClient.replyMessage).toHaveBeenCalledWith('rt-1', [{ type: 'text', text: 'สวัสดีค่ะ' }]);
+    expect(lineClient.replyMessage).toHaveBeenCalledWith('rt-1', [
+      { type: 'text', text: 'สวัสดีค่ะ' },
+    ]);
   });
 
   it('sends verify Flex prompt when not linked', async () => {
@@ -215,9 +246,7 @@ describe('ChatbotFinanceService', () => {
     await service.handleEvent(makeTextEvent(longText));
 
     // Full text saved to DB
-    expect(sessions.saveMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ text: longText }),
-    );
+    expect(sessions.saveMessage).toHaveBeenCalledWith(expect.objectContaining({ text: longText }));
     // Truncated text sent to AI (2000 chars + ellipsis)
     const aiCall = ai.generateReply.mock.calls[0][0];
     expect(aiCall.userMessage.length).toBeLessThanOrEqual(2001);
@@ -349,12 +378,20 @@ describe('ChatbotFinanceService', () => {
     });
   });
 
-  const makeGroupEvent = (type: 'join' | 'leave', sourceType: 'group' | 'room' = 'group') => ({
-    type, mode: 'active', timestamp: Date.now(), webhookEventId: `evt-${type}`, deliveryContext: { isRedelivery: false },
-    source: sourceType === 'group' ? { type: 'group' as const, groupId: 'Cgroup1', userId: 'U1' } : { type: 'room' as const, roomId: 'R1' },
-    ...(type === 'join' ? { replyToken: 'rt-join' } : {}),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  }) as any;
+  const makeGroupEvent = (type: 'join' | 'leave', sourceType: 'group' | 'room' = 'group') =>
+    ({
+      type,
+      mode: 'active',
+      timestamp: Date.now(),
+      webhookEventId: `evt-${type}`,
+      deliveryContext: { isRedelivery: false },
+      source:
+        sourceType === 'group'
+          ? { type: 'group' as const, groupId: 'Cgroup1', userId: 'U1' }
+          : { type: 'room' as const, roomId: 'R1' },
+      ...(type === 'join' ? { replyToken: 'rt-join' } : {}),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
 
   describe('เข้า/ออกกลุ่ม (ยื่น GFIN PR 2)', () => {
     it('join จากกลุ่ม → LineGroupMembershipService.onJoin(FINANCE, groupId) และไม่ตอบข้อความ', async () => {
@@ -373,7 +410,9 @@ describe('ChatbotFinanceService', () => {
     });
     it('LINE_FINANCE_BOT_DISABLED=true → ยังจด join (kill switch หยุดเฉพาะการตอบ)', async () => {
       const config = (service as any).configService as { get: jest.Mock };
-      config.get.mockImplementation((k: string) => (k === 'LINE_FINANCE_BOT_DISABLED' ? 'true' : undefined));
+      config.get.mockImplementation((k: string) =>
+        k === 'LINE_FINANCE_BOT_DISABLED' ? 'true' : undefined,
+      );
       await service.handleEvent(makeGroupEvent('join'));
       expect(groups.onJoin).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
       await service.handleEvent(makeTextEvent('สวัสดี'));
@@ -382,7 +421,10 @@ describe('ChatbotFinanceService', () => {
     // F3 (final-fix wave) — กลุ่มที่เชิญ OA เข้าไว้ก่อน PR 2 ขึ้น ไม่เคยได้ event join ซ้ำ (LINE ไม่ resend join
     // เมื่อบอทเป็นสมาชิกอยู่แล้ว) → ต้องจดสมาชิกภาพจากข้อความกลุ่มอื่นแทน ก่อน kill switch เหมือน join/leave
     it('ข้อความจากกลุ่ม (ไม่ใช่ join/leave) → ensureKnown(FINANCE, groupId) แล้วยังไม่ตอบ (handleMessage ทิ้งข้อความกลุ่มตามเดิม)', async () => {
-      const groupTextEvent = { ...makeTextEvent('สวัสดี'), source: { type: 'group' as const, groupId: 'Cgroup1', userId: 'U1' } };
+      const groupTextEvent = {
+        ...makeTextEvent('สวัสดี'),
+        source: { type: 'group' as const, groupId: 'Cgroup1', userId: 'U1' },
+      };
       await service.handleEvent(groupTextEvent as any);
       expect(groups.ensureKnown).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
       expect(sessions.saveMessage).not.toHaveBeenCalled();
@@ -394,8 +436,13 @@ describe('ChatbotFinanceService', () => {
     });
     it('LINE_FINANCE_BOT_DISABLED=true → ยังเรียก ensureKnown สำหรับข้อความกลุ่ม (kill switch หยุดเฉพาะการตอบ)', async () => {
       const config = (service as any).configService as { get: jest.Mock };
-      config.get.mockImplementation((k: string) => (k === 'LINE_FINANCE_BOT_DISABLED' ? 'true' : undefined));
-      const groupTextEvent = { ...makeTextEvent('สวัสดี'), source: { type: 'group' as const, groupId: 'Cgroup1', userId: 'U1' } };
+      config.get.mockImplementation((k: string) =>
+        k === 'LINE_FINANCE_BOT_DISABLED' ? 'true' : undefined,
+      );
+      const groupTextEvent = {
+        ...makeTextEvent('สวัสดี'),
+        source: { type: 'group' as const, groupId: 'Cgroup1', userId: 'U1' },
+      };
       await service.handleEvent(groupTextEvent as any);
       expect(groups.ensureKnown).toHaveBeenCalledWith('FINANCE', 'Cgroup1');
     });

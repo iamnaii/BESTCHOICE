@@ -1,8 +1,13 @@
+import ChatLibraryPicker from './ChatLibraryPicker';
+import LibraryAttachmentTray from './LibraryAttachmentTray';
+import { useChatWorkSettings } from '../hooks/useChatWork';
+import { useLibraryDraft } from '../hooks/useLibraryDraft';
+import NoteMentionInput, { type NoteDraft } from './NoteMentionInput';
 import { ChatMediaPicker } from './ChatMediaPicker';
 import { useChatMediaPicker } from '../hooks/useChatMediaPicker';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 
-import { Mic, Square, Send, MoreVertical, ArrowLeft, Paperclip, Pin, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock, Check, CalendarClock } from 'lucide-react';
+import { Cloud, Mic, Square, Send, MoreVertical, ArrowLeft, Paperclip, Pin, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock, Check, CalendarClock } from 'lucide-react';
 import { isSameDay } from 'date-fns';
 import { formatDateSeparator, formatChatTimestamp, formatWaitDuration } from '@/lib/chat-time';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -73,7 +78,7 @@ interface ChatPanelProps {
   /** โน้ตปักหมุด (ห้องละ 1) — แถบใต้หัวห้อง */
   pinnedNote?: RoomNote | null;
   currentUserRole?: string;
-  onAddNote?: (content: string) => void | Promise<boolean | void>;
+  onAddNote?: (draft: NoteDraft) => void | Promise<boolean | void>;
   onPinNote?: (noteId: string) => void;
   onUnpinNote?: (noteId: string) => void;
   onDeleteNote?: (noteId: string) => void;
@@ -127,6 +132,9 @@ export default function ChatPanel({
   // โหมดช่องพิมพ์ (ท่า OBI): คุยกับลูกค้า | โน้ตภายใน — เปลี่ยนห้องแล้วกลับโหมดคุยเสมอ กันเผลอ
   const [composerMode, setComposerMode] = useState<'chat' | 'note'>('chat');
   const isNoteMode = composerMode === 'note';
+  const librarySettings = useChatWorkSettings();
+  const libraryEnabled = !librarySettings.settings.isError && !!librarySettings.settings.data?.flags.chat_cloud_library_enabled;
+  const libraryDraft = useLibraryDraft(session?.id ?? null, librarySettings.company, !isNoteMode && libraryEnabled, 'chat');
   useEffect(() => {
     setComposerMode('chat');
   }, [session?.id]);
@@ -142,6 +150,7 @@ export default function ChatPanel({
   const [showProductPicker, setShowProductPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const noteContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftsRef = useRef<Map<string, string>>(new Map());
   const prevRoomRef = useRef<string | undefined>(undefined);
@@ -395,7 +404,7 @@ export default function ChatPanel({
 
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text || isSending || voice.active) return;
+    if (!text || isSending || isNoteMode || voice.active) return;
     // Clear the composer immediately — the in-flight ghost shows the text while
     // sending, and a FAILED ghost (with retry) owns it if the send fails. The
     // Batch-1 keep-text-in-composer path is replaced by that ghost.
@@ -407,7 +416,7 @@ export default function ChatPanel({
     setIsSending(true);
     let result: boolean | void;
     try {
-      result = isNoteMode ? await onAddNote?.(text) : await onSendMessage(text);
+      result = await onSendMessage(text);
     } finally {
       setIsSending(false);
     }
@@ -926,7 +935,7 @@ export default function ChatPanel({
                 type="button"
                 role="radio"
                 aria-checked={isNoteMode}
-                onClick={() => { setComposerMode('note'); inputRef.current?.focus(); }}
+                onClick={() => { setComposerMode('note'); requestAnimationFrame(() => noteContainerRef.current?.querySelector('textarea')?.focus()); }}
                 className={cn(
                   'relative z-10 -mb-px inline-flex h-7 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-[12px] font-semibold transition-colors',
                   isNoteMode ? 'border-warning/50 bg-warning/10 text-foreground dark:border-amber-400/40 dark:bg-amber-400/10' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
@@ -937,6 +946,7 @@ export default function ChatPanel({
             </div>
           )}
           <div
+            data-chat-composer-card
             className={cn(
               'flex flex-col rounded-xl border focus-within:outline-hidden transition-[box-shadow,border-color]',
               isNoteMode
@@ -944,6 +954,8 @@ export default function ChatPanel({
                 : 'border-border bg-card focus-within:border-primary focus-within:ring-2 focus-within:ring-primary',
             )}
           >
+            {onAddNote && <div ref={noteContainerRef} hidden={!isNoteMode} onKeyDown={e => { if (e.key === 'Escape') { setComposerMode('chat'); requestAnimationFrame(() => inputRef.current?.focus()); } }}><NoteMentionInput roomId={session.id} onSave={onAddNote} /></div>}
+            <div hidden={isNoteMode}>
             {!isNoteMode && (
               <div className="px-3.5 pt-2 text-xs leading-snug text-muted-foreground">
                 <p>กดไมค์แล้วพูดภาษาไทย · เบราว์เซอร์อาจส่งเสียงไปบริการแปลงเสียง</p>
@@ -957,6 +969,7 @@ export default function ChatPanel({
               </div>
             )}
             {/* The card owns focus; suppress both the base ring and admin theme outline. */}
+            {libraryEnabled && <LibraryAttachmentTray draft={libraryDraft} />}
             <textarea
               data-chat-composer-input
               ref={inputRef}
@@ -984,7 +997,7 @@ export default function ChatPanel({
                   <Lock className="size-3.5 shrink-0" /> <span>เห็นเฉพาะทีมงาน · ไม่ส่งถึงลูกค้า</span>
                 </span>
               ) : (
-                <div className="flex shrink-0 items-center gap-0.5">
+                <div className="flex min-w-0 flex-wrap items-center gap-0.5">
             <button
               type="button"
               onClick={() => voice.active ? voice.stop() : voice.start()}
@@ -1009,7 +1022,7 @@ export default function ChatPanel({
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploadingFile}
               aria-label="แนบไฟล์"
-              className="size-9 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="size-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="แนบไฟล์/รูปภาพ"
             >
               {isUploadingFile ? (
@@ -1018,6 +1031,7 @@ export default function ChatPanel({
                 <Paperclip className="w-4 h-4" />
               )}
             </button>
+            {libraryEnabled && <button type="button" aria-label="เลือกไฟล์จากคลัง" title="เลือกไฟล์จากคลังในระบบ" className="inline-flex size-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground" onClick={()=>libraryDraft.setOpen(true)}><Cloud className="size-4"/></button>}
             {/* Emoji / Sticker picker */}
             <ChatMediaPicker
               model={mediaPicker}
@@ -1037,7 +1051,7 @@ export default function ChatPanel({
               onClick={() => setShowProductPicker(true)}
               disabled={!session?.id}
               aria-label="ส่งข้อมูลสินค้า"
-              className="size-9 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="size-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ส่งข้อมูล/รูปสินค้า"
             >
               <Smartphone className="w-4 h-4" />
@@ -1047,7 +1061,7 @@ export default function ChatPanel({
               onClick={() => setShowTemplatePicker(true)}
               disabled={!session?.id}
               aria-label="ข้อความสำเร็จรูป"
-              className="size-9 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              className="size-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ข้อความสำเร็จรูป (Ctrl+K)"
             >
               <MessageSquareQuote className="w-4 h-4" />
@@ -1063,7 +1077,7 @@ export default function ChatPanel({
                   disabled={!inputText.trim() || isSending || voice.active}
                   aria-label={isNoteMode ? 'บันทึกโน้ต' : 'ส่งข้อความ'}
                   className={cn(
-                    'inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-[13px] font-semibold leading-snug transition-all duration-200',
+                    'inline-flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-[13px] font-semibold leading-snug transition-all duration-200',
                     inputText.trim() && !isSending && !voice.active
                       ? isNoteMode
                         ? 'bg-warning text-amber-950 shadow-sm hover:bg-warning/90 dark:bg-amber-400 dark:hover:bg-amber-300'
@@ -1075,6 +1089,7 @@ export default function ChatPanel({
                   {isSending ? <Loader2 className="size-4 animate-spin" /> : isNoteMode ? <StickyNote className="size-4" /> : <Send className="size-4" />}
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -1095,6 +1110,7 @@ export default function ChatPanel({
         roomId={session?.id ?? null}
       />
 
+      <ChatLibraryPicker key={`${librarySettings.company}:${session?.id}`} open={libraryDraft.open} onOpenChange={libraryDraft.setOpen} onAdd={libraryDraft.add} />
       <ProductPickerDialog
         isOpen={showProductPicker}
         onClose={() => setShowProductPicker(false)}

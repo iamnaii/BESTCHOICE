@@ -6,6 +6,7 @@ const tabs: { value: TodoView; label: string; icon: typeof ListTodo }[] = [
   { value: 'today', label: 'วันนี้', icon: Clock },
   { value: 'upcoming', label: 'กำลังจะถึง', icon: CalendarDays },
   { value: 'priority', label: 'สำคัญ', icon: AlertCircle },
+  { value: 'cancelled', label: 'ยกเลิก', icon: ListTodo },
   { value: 'completed', label: 'เสร็จแล้ว', icon: CheckCircle2 },
 ];
 

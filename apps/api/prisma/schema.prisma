@@ -15,6 +15,42 @@ datasource db {
 // ENUMS
 // ============================================================
 
+enum ChatOutboundAttemptState {
+  SENDING
+  FAILED
+  UNKNOWN
+  CONFIRMED
+}
+
+enum ChatResponseOrigin {
+  LIVE
+  LEGACY_OPEN
+}
+
+enum ChatResponseEndReason {
+  HUMAN_REPLY
+  RESOLVED
+  MERGED
+}
+
+enum StaffInboxKind {
+  FACEBOOK_COMMENT
+  CHAT_SLA
+  FOLLOW_UP
+  MENTION
+  HANDOFF
+  SERVICE_REQUEST
+}
+
+enum ChatWorkTarget {
+  ROOM
+  TODO
+  NOTE
+  FACEBOOK_COMMENT
+  SERVICE_REQUEST
+}
+
+
 enum UserRole {
   SALES
   BRANCH_MANAGER
@@ -171,6 +207,14 @@ enum TodoStatus {
   DOING
   REVIEW
   DONE
+  CANCELLED
+}
+
+enum ChatWorkKind {
+  GENERAL
+  CHAT_FOLLOW_UP
+  CHAT_HANDOFF
+  CHAT_SERVICE
 }
 
 enum TodoPriority {
@@ -728,6 +772,11 @@ enum BuybackSelectType {
 // ============================================================
 
 model Branch {
+  chatLibraryFolders ChatLibraryFolder[]
+  chatLibraryFiles ChatLibraryFile[]
+  facebookCommentPages FacebookCommentPage[]
+  facebookCommentThreads FacebookCommentThread[]
+
   id        String   @id @default(uuid())
   name      String
   location  String?
@@ -791,6 +840,16 @@ model Branch {
 }
 
 model User {
+  libraryOperations ChatLibraryOperation[]
+  chatLibraryFolders ChatLibraryFolder[]
+  chatLibraryFiles ChatLibraryFile[]
+  chatServiceRequestsCreated ChatServiceRequest[] @relation("ServiceRequestCreator")
+  chatServiceRequestEvents ChatServiceRequestEvent[]
+  facebookCommentReplies FacebookCommentReply[]
+  assignedFacebookComments FacebookCommentThread[]
+
+  todoWorkEvents TodoWorkEvent[]
+  staffInboxItems StaffInboxItem[]
   id                String    @id @default(uuid())
   email             String    @unique
   password          String
@@ -900,6 +959,7 @@ model User {
   assignedRooms               ChatRoom[]                @relation("ChatAssignedStaff")
   chatMessages                ChatMessage[]             @relation("ChatMessageStaff")
   staffChatActivities         StaffChatActivity[]       @relation("StaffChatActivityUser")
+  chatNoteMentions            ChatNoteMention[]
   chatNotes                   ChatNote[]                @relation("ChatNoteStaff")
   kbSuggestionsReviewed       ChatKbSuggestion[]        @relation("KbSuggestionReviewer")
   webhookSubscriptions        WebhookSubscription[]
@@ -966,10 +1026,8 @@ model User {
   otherIncomeAttachments OtherIncomeAttachment[] @relation("OtherIncomeAttachmentUploader")
   otherIncomeTemplates   OtherIncomeTemplate[]   @relation("OtherIncomeTemplateCreator")
 
-  // D1.1.5.5 — Petty Cash custodian assignment (the user responsible for
-  // the petty-cash drawer). One user can be custodian for at most one
-  // CompanyInfo (SHOP or FINANCE), but the schema doesn't enforce that —
-  // it's an organizational policy that lives in service-layer validation.
+  // D1.1.5.5 — Petty Cash custodian (RETIRED 2026-09-13 — ดูคอมเมนต์ที่
+  // CompanyInfo.pettyCashCustodianId). Back-relation คงไว้คู่กับคอลัมน์.
   custodianForCompanies CompanyInfo[] @relation("CompanyPettyCashCustodian")
 
   // SP5 Phase 2 — Repair ticket audit trail
@@ -1084,6 +1142,9 @@ model Contact {
 }
 
 model Customer {
+  chatServiceRequests ChatServiceRequest[]
+  facebookCommentThreads FacebookCommentThread[]
+
   id                 String    @id @default(uuid())
   nationalId         String?   @unique @map("national_id") // encrypted AES-256 — nullable for walk-in quick-create
   prefix             String? // คำนำหน้า (นาย, นาง, นางสาว)
@@ -1255,6 +1316,7 @@ model Customer {
 }
 
 model Contract {
+  chatServiceRequests ChatServiceRequest[]
   tradeInCreditSnapshot Json? @map("trade_in_credit_snapshot")
   tradeInCreditRedemptions TradeInCreditRedemption[]
   productDisclosure Json? @map("product_disclosure")
@@ -1979,6 +2041,7 @@ enum PricingDeviceOrigin {
 }
 
 model Product {
+  chatServiceRequests ChatServiceRequest[]
   id                 String          @id @default(uuid())
   name               String
   brand              String
@@ -2977,6 +3040,7 @@ model SsoConfig {
 // ============================================================
 
 model Sale {
+  chatServiceRequests ChatServiceRequest[]
   tradeInCreditSnapshot Json? @map("trade_in_credit_snapshot")
   tradeInCreditRedemptions TradeInCreditRedemption[]
   productDisclosure Json? @map("product_disclosure")
@@ -3871,13 +3935,14 @@ model CompanyInfo {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  // D1.1.5.5 — Petty Cash custodian. The user responsible for the cash
-  // drawer at this CompanyInfo (SHOP or FINANCE). Nullable so the row can
-  // exist before assignment; ON DELETE SET NULL keeps the company row even
-  // if the user is later soft-deleted. Role-eligibility (which UserRoles
-  // may hold this seat) is enforced at the service layer via SystemConfig
-  // key `petty_cash_custodian_role` — not by a DB constraint — to keep
-  // role policy editable without a schema migration.
+  // D1.1.5.5 — Petty Cash custodian. RETIRED 2026-09-13 (เจ้าของสั่งถอด —
+  // ไม่ได้ใช้): การ์ดตั้งค่า + endpoint `settings/petty-cash/*` ถูกลบแล้ว
+  // และไม่มีโค้ดอ่าน/เขียนคอลัมน์นี้อีก (prod ไม่เคยตั้งค่าเลย). คอลัมน์คงไว้
+  // เพราะ drop ในรอบเดียวกับที่ถอดโค้ดจะทำให้ API revision เก่าที่ยังรับ
+  // traffic ช่วง migrate → deploy พังทุก query ของ company_info — drop ได้
+  // ในรอบถัดไป (พร้อมถอดคอลัมน์นี้ออกจาก .claude/mcp/sql/grants.sql ด้วย
+  // ไม่งั้น setup.sh ของ MCP ล้มที่ ON_ERROR_STOP). ชื่อผู้ดูแลบนใบเบิกเงินสดย่อยเป็น free text ต่อใบ
+  // (`custodianName`) ไม่เกี่ยวกับคอลัมน์นี้.
   pettyCashCustodianId String? @map("petty_cash_custodian_id")
   pettyCashCustodian   User?   @relation("CompanyPettyCashCustodian", fields: [pettyCashCustodianId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
@@ -5597,6 +5662,14 @@ model BadDebtProvision {
 // ============================================================
 
 model Todo {
+  serviceRequest ChatServiceRequest?
+  workKind ChatWorkKind @default(GENERAL) @map("work_kind")
+  revision Int @default(0)
+  dueRevision Int @default(0) @map("due_revision")
+  requestKey String? @unique @map("request_key")
+  requestFingerprint String? @map("request_fingerprint")
+  workEvents TodoWorkEvent[]
+  staffInboxItems StaffInboxItem[]
   id          String       @id @default(uuid())
   title       String
   description String?      @db.Text
@@ -5637,6 +5710,25 @@ model Todo {
   @@index([dueDate])
   @@index([branchId])
   @@map("todos")
+}
+
+/// Immutable task history; legacy tasks have no invented prior events.
+model TodoWorkEvent {
+  id String @id @default(uuid())
+  todoId String @map("todo_id")
+  todo Todo @relation(fields: [todoId], references: [id], onDelete: Restrict)
+  actorId String? @map("actor_id")
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  kind String @db.VarChar(24)
+  fromDueAt DateTime? @map("from_due_at")
+  toDueAt DateTime? @map("to_due_at")
+  fromAssigneeId String? @map("from_assignee_id")
+  toAssigneeId String? @map("to_assignee_id")
+  fromStatus TodoStatus? @map("from_status")
+  toStatus TodoStatus @map("to_status")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([todoId, createdAt])
+  @@map("todo_work_events")
 }
 
 model TodoComment {
@@ -5782,6 +5874,13 @@ model CustomerLineLink {
 
 /// Chat room — ลูกค้า 1 คน 1 room ต่อ channel
 model ChatRoom {
+  libraryOperations ChatLibraryOperation[]
+  serviceRequests ChatServiceRequest[]
+  facebookCommentThreads FacebookCommentThread[]
+
+  responseCycles ChatResponseCycle[]
+  inboundSequence Int @default(0) @map("inbound_sequence")
+  staffInboxItems StaffInboxItem[]
   id             String    @id @default(uuid())
   lineUserId     String?   @map("line_user_id")
   externalUserId String?   @map("external_user_id") // FB PSID, TikTok user, web visitor ID
@@ -5885,6 +5984,8 @@ model ChatRoom {
 }
 
 model RoomCreditFile {
+  libraryRequestKey String? @unique @map("library_request_key")
+  sourceLibraryFileId String? @map("source_library_file_id")
   id String @id @default(uuid())
   roomId String @map("room_id")
   room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
@@ -5921,6 +6022,15 @@ model RoomCreditAnalysis {
 
 /// Chat message — ทุกข้อความใน room
 model ChatMessage {
+  serviceRequestSources ChatServiceRequestSource[]
+  cycleId String? @map("cycle_id")
+  cycle ChatResponseCycle? @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  /// Historical causal watermark; preserved even after message retention.
+  answeredThroughMessageId String? @map("answered_through_message_id")
+  answeredThroughSequence Int? @map("answered_through_sequence")
+  inboundSequence Int? @map("inbound_sequence")
+  outboundAttemptAt DateTime? @map("outbound_attempt_at")
+  outboundAttemptState ChatOutboundAttemptState? @map("outbound_attempt_state")
   id                String   @id @default(uuid())
   externalMessageId String?  @unique @map("external_message_id") // LINE/FB/TikTok message ID
   /// Frontend-generated correlation token for optimistic send — lets the client
@@ -6282,6 +6392,8 @@ model ChatNote {
   staffId String   @map("staff_id")
   staff   User     @relation("ChatNoteStaff", fields: [staffId], references: [id])
   content String   @db.Text
+  requestKey String? @unique @map("request_key")
+  mentions ChatNoteMention[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -7294,6 +7406,7 @@ model CustomerJourneyEntry {
   lostReason       String?   @map("lost_reason") @db.VarChar(20) // NOT_INTERESTED | BOUGHT_ELSEWHERE | CREDIT_FAILED | UNREACHABLE | OTHER
   heardFrom        String?   @map("heard_from") @db.VarChar(16) // FB_AD | FB_PAGE | TIKTOK | LINE | GOOGLE | FRIEND | WALK_BY | OLD_CUSTOMER | OTHER
   note             String?   @db.VarChar(140) // DTO ปฏิเสธเลขยาว · ไม่ grant ให้ MCP · ไม่ส่งออก Excel
+  manualRequestKey String?   @unique @map("manual_request_key")
   dedupeKey        String?   @unique @map("dedupe_key") // SYSTEM: `${kind}:${sourceRowOrAuditId}` · MANUAL: null
   createdAt        DateTime  @default(now()) @map("created_at")
   deletedAt        DateTime? @map("deleted_at") // "เลิกทำ" ของ MANUAL เท่านั้น
@@ -7971,6 +8084,7 @@ model RepairStatusLog {
 }
 
 model AfterSalesCase {
+  chatServiceRequest ChatServiceRequest?
   id            String            @id @default(uuid())
   caseNumber    String            @unique @map("case_number") // AS-YYYYMMDD-NNNN
   branchId      String            @map("branch_id")
@@ -8949,4 +9063,315 @@ model ImportedSale {
   @@index([category])
   @@index([orderNumber])
   @@map("imported_sales")
+}
+
+
+model StaffInboxItem {
+  facebookCommentId String? @map("facebook_comment_id")
+  facebookComment FacebookCommentThread? @relation(fields: [facebookCommentId], references: [id], onDelete: Restrict)
+  id String @id @default(uuid())
+  recipientId String @map("recipient_id")
+  recipient User @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  kind StaffInboxKind
+  roomId String? @map("room_id")
+  room ChatRoom? @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  todoId String? @map("todo_id")
+  todo Todo? @relation(fields: [todoId], references: [id], onDelete: Restrict)
+  dedupeKey String @unique @map("dedupe_key")
+  title String @db.VarChar(255)
+  targetType ChatWorkTarget @map("target_type")
+  targetId String @map("target_id")
+  readAt DateTime? @map("read_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([recipientId, deletedAt, createdAt])
+  @@index([roomId])
+  @@index([todoId])
+  @@map("staff_inbox_items")
+}
+
+
+model ChatResponseCycle {
+  id String @id @default(uuid())
+  roomId String @map("room_id")
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  startedAt DateTime @map("started_at")
+  /// Historical message/staff IDs intentionally survive retention; timestamps are the metric evidence.
+  firstCustomerMessageId String? @map("first_customer_message_id")
+  firstBotSentAt DateTime? @map("first_bot_sent_at")
+  firstHumanSentAt DateTime? @map("first_human_sent_at")
+  firstHumanStaffId String? @map("first_human_staff_id")
+  assignedAtOpenId String? @map("assigned_at_open_id")
+  endedAt DateTime? @map("ended_at")
+  endReason ChatResponseEndReason? @map("end_reason")
+  origin ChatResponseOrigin @default(LIVE)
+  policyVersion String @map("policy_version")
+  alertEligibleAt DateTime? @map("alert_eligible_at")
+  mergedIntoId String? @map("merged_into_id")
+  messages ChatMessage[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([startedAt, roomId], map: "chat_response_cycles_started_room")
+  @@index([roomId, endedAt])
+  @@map("chat_response_cycles")
+}
+
+model ChatNoteMention {
+  id String @id @default(uuid())
+  noteId String @map("note_id")
+  note ChatNote @relation(fields: [noteId], references: [id], onDelete: Restrict)
+  userId String @map("user_id")
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @map("created_at")
+  @@unique([noteId, userId])
+  @@index([userId, createdAt])
+  @@map("chat_note_mentions")
+}
+
+enum FacebookCommentStatus {
+  OPEN
+  RESPONDED
+  RESOLVED
+}
+
+model FacebookCommentPage {
+  pageId    String                  @id @map("page_id") @db.VarChar(128)
+  company   String                  @default("SHOP") @db.VarChar(16)
+  branchId  String                  @map("branch_id")
+  enabled   Boolean                 @default(false)
+  branch    Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  threads   FacebookCommentThread[]
+  createdAt DateTime                @default(now()) @map("created_at")
+
+  @@map("facebook_comment_pages")
+}
+
+model FacebookCommentThread {
+  replies FacebookCommentReply[]
+  inboxItems StaffInboxItem[]
+  id                  String                  @id @default(uuid())
+  pageId              String                  @map("page_id") @db.VarChar(128)
+  postId              String                  @map("post_id") @db.VarChar(256)
+  rootCommentId       String                  @map("root_comment_id") @db.VarChar(256)
+  company             String                  @db.VarChar(16)
+  branchId            String                  @map("branch_id")
+  assigneeId          String?                 @map("assignee_id")
+  customerId          String?                 @map("customer_id")
+  roomId              String?                 @map("room_id")
+  status              FacebookCommentStatus   @default(OPEN)
+  revision            Int                     @default(0)
+  inboundSequence     Int                     @default(0) @map("inbound_sequence")
+  waitingSince        DateTime?               @map("waiting_since")
+  lastCustomerAt      DateTime?               @map("last_customer_at")
+  rootDeleted         Boolean                 @default(false) @map("root_deleted")
+  needsReconciliation Boolean                 @default(false) @map("needs_reconciliation")
+  page                FacebookCommentPage     @relation(fields: [pageId], references: [pageId], onDelete: Restrict)
+  branch              Branch                  @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  assignee            User?                   @relation(fields: [assigneeId], references: [id], onDelete: Restrict)
+  customer            Customer?               @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  room                ChatRoom?               @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  records             FacebookCommentRecord[]
+  events              FacebookCommentEvent[]
+  createdAt           DateTime                @default(now()) @map("created_at")
+  updatedAt           DateTime                @updatedAt @map("updated_at")
+
+  @@unique([pageId, rootCommentId])
+  @@index([company, branchId, status, waitingSince])
+  @@index([assigneeId, status])
+  @@map("facebook_comment_threads")
+}
+
+model FacebookCommentRecord {
+  id                  String                @id @default(uuid())
+  threadId            String                @map("thread_id")
+  pageId              String                @map("page_id") @db.VarChar(128)
+  commentId           String                @map("comment_id") @db.VarChar(256)
+  parentId            String?               @map("parent_id") @db.VarChar(256)
+  authorId            String?               @map("author_id") @db.VarChar(128)
+  authorName          String?               @map("author_name") @db.VarChar(255)
+  text                String?
+  providerRevision    String?               @map("provider_revision") @db.VarChar(128)
+  needsReconciliation Boolean               @default(false) @map("needs_reconciliation")
+  deletedAt           DateTime?             @map("deleted_at")
+  thread              FacebookCommentThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+
+  @@unique([pageId, commentId])
+  @@index([threadId, createdAt])
+  @@map("facebook_comment_records")
+}
+
+model FacebookCommentEvent {
+  id               String                @id @default(uuid())
+  threadId         String                @map("thread_id")
+  pageId           String                @map("page_id") @db.VarChar(128)
+  commentId        String                @map("comment_id") @db.VarChar(256)
+  eventKey         String                @unique @map("event_key") @db.VarChar(64)
+  verb             String                @db.VarChar(16)
+  providerRevision String?               @map("provider_revision") @db.VarChar(128)
+  providerAt       DateTime?             @map("provider_at")
+  payload          Json
+  thread           FacebookCommentThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  @@index([threadId, createdAt])
+  @@map("facebook_comment_events")
+}
+
+
+enum FacebookCommentReplyStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  UNKNOWN
+}
+
+model FacebookCommentReply {
+  id String @id @default(uuid())
+  threadId String @map("thread_id")
+  pageId String @map("page_id") @db.VarChar(128)
+  authorId String @map("author_id")
+  requestKey String @unique @map("request_key")
+  text String
+  status FacebookCommentReplyStatus @default(PENDING)
+  externalId String? @map("external_id") @db.VarChar(256)
+  errorCode String? @map("error_code") @db.VarChar(64)
+  inboundSequence Int @map("inbound_sequence")
+  attemptedAt DateTime @default(now()) @map("attempted_at")
+  confirmedAt DateTime? @map("confirmed_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  thread FacebookCommentThread @relation(fields: [threadId], references: [id], onDelete: Restrict)
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  @@unique([pageId, externalId])
+  @@index([threadId, attemptedAt])
+  @@map("facebook_comment_replies")
+}
+
+
+enum ChatServiceRequestStatus {
+  OPEN
+  WAITING_CUSTOMER
+  LINKED
+  RESOLVED
+  CANCELLED
+}
+
+model ChatServiceRequest {
+  id String @id @default(uuid())
+  roomId String @map("room_id")
+  customerId String? @map("customer_id")
+  requestedProductId String? @map("requested_product_id")
+  contractId String? @map("contract_id")
+  saleId String? @map("sale_id")
+  todoId String @unique @map("todo_id")
+  afterSalesCaseId String? @unique @map("after_sales_case_id")
+  createdById String @map("created_by_id")
+  requestKey String @unique @map("request_key")
+  requestFingerprint String @map("request_fingerprint")
+  symptom String @db.Text
+  status ChatServiceRequestStatus @default(OPEN)
+  revision Int @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  requestedProduct Product? @relation(fields: [requestedProductId], references: [id], onDelete: Restrict)
+  contract Contract? @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  sale Sale? @relation(fields: [saleId], references: [id], onDelete: Restrict)
+  todo Todo @relation(fields: [todoId], references: [id], onDelete: Restrict)
+  afterSalesCase AfterSalesCase? @relation(fields: [afterSalesCaseId], references: [id], onDelete: Restrict)
+  createdBy User @relation("ServiceRequestCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  sources ChatServiceRequestSource[]
+  events ChatServiceRequestEvent[]
+  @@index([roomId, deletedAt, createdAt])
+  @@index([status, createdAt])
+  @@map("chat_service_requests")
+}
+model ChatServiceRequestSource {
+  requestId String @map("request_id")
+  messageId String @map("message_id")
+  request ChatServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  @@id([requestId, messageId])
+  @@map("chat_service_request_sources")
+}
+model ChatServiceRequestEvent {
+  id String @id @default(uuid())
+  requestId String @map("request_id")
+  kind String @db.VarChar(40)
+  fromStatus ChatServiceRequestStatus? @map("from_status")
+  toStatus ChatServiceRequestStatus? @map("to_status")
+  actorId String? @map("actor_id")
+  reason String? @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  request ChatServiceRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  actor User? @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  @@index([requestId, createdAt])
+  @@map("chat_service_request_events")
+}
+
+
+/// Explicit shared uploads only; customer documents are never automatically published.
+model ChatLibraryFolder {
+  id String @id @default(uuid())
+  company String
+  branchId String? @map("branch_id")
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  creatorId String @map("creator_id")
+  creator User @relation(fields: [creatorId], references: [id], onDelete: Restrict)
+  name String
+  files ChatLibraryFile[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  @@index([company, branchId, deletedAt])
+  @@map("chat_library_folders")
+}
+model ChatLibraryFile {
+  libraryOperations ChatLibraryOperation[]
+  id String @id @default(uuid())
+  company String
+  branchId String? @map("branch_id")
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  creatorId String @map("creator_id")
+  creator User @relation(fields: [creatorId], references: [id], onDelete: Restrict)
+  folderId String? @map("folder_id")
+  folder ChatLibraryFolder? @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  key String @unique
+  name String
+  mimeType String @map("mime_type")
+  size Int
+  requestKey String @unique @map("request_key")
+  fingerprint String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  @@index([company, branchId, deletedAt, createdAt])
+  @@index([folderId])
+  @@index([creatorId])
+  @@map("chat_library_files")
+}
+
+model ChatLibraryOperation {
+  id String @id @default(uuid())
+  requestKey String @unique @map("request_key")
+  company String
+  action String
+  actorId String @map("actor_id")
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  roomId String @map("room_id")
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)
+  fileId String @map("file_id")
+  file ChatLibraryFile @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([roomId])
+  @@index([fileId])
+  @@index([actorId])
+  @@map("chat_library_operations")
 }

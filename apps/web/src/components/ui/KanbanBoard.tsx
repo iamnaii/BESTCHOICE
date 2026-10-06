@@ -42,6 +42,7 @@ export interface KanbanBoardProps<T> {
    */
   onCardMove?: (itemId: string, fromColumnId: string, toColumnId: string) => void;
   emptyMessage?: string;
+  canDragCard?: (item: T) => boolean;
 }
 
 /* ─── Draggable card wrapper ─── */
@@ -51,12 +52,14 @@ interface DraggableCardProps {
   columnId: string;
   onClick?: () => void;
   children: ReactNode;
+  disabled?: boolean;
 }
 
-function DraggableCard({ id, columnId, onClick, children }: DraggableCardProps) {
+function DraggableCard({ id, columnId, onClick, children, disabled }: DraggableCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id,
     data: { columnId },
+    disabled,
   });
 
   // Hide the original card while dragging — DragOverlay shows a clone
@@ -75,7 +78,8 @@ function DraggableCard({ id, columnId, onClick, children }: DraggableCardProps) 
       {...listeners}
       onClick={onClick}
       className={cn(
-        'bg-card rounded-xl border border-border p-3 shadow-xs cursor-grab active:cursor-grabbing touch-none',
+        'bg-card rounded-xl border border-border p-3 shadow-xs',
+        disabled ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing touch-none',
         'transition-[box-shadow,border-color,opacity] duration-150',
         onClick && 'hover:shadow-card hover:border-border/80',
         isDragging && 'opacity-0 pointer-events-none',
@@ -117,6 +121,7 @@ export function KanbanBoard<T extends { id: string }>({
   onCardClick,
   onCardMove,
   emptyMessage = 'ไม่มีรายการ',
+  canDragCard,
 }: KanbanBoardProps<T>) {
   const [activeItem, setActiveItem] = useState<T | null>(null);
 
@@ -178,6 +183,7 @@ export function KanbanBoard<T extends { id: string }>({
                     key={item.id}
                     id={item.id}
                     columnId={col.id}
+                    disabled={canDragCard ? !canDragCard(item) : false}
                     onClick={onCardClick ? () => onCardClick(item) : undefined}
                   >
                     {renderCard(item)}

@@ -63,9 +63,6 @@ const ReversePermissionCard = lazy(() =>
 const ReverseReasonsManagementCard = lazy(() =>
   import('@/pages/SettingsPage/components/ReverseReasonsManagementCard').then((m) => ({ default: m.ReverseReasonsManagementCard })),
 );
-const PettyCashCustodianCard = lazy(() =>
-  import('@/pages/SettingsPage/components/PettyCashCustodianCard').then((m) => ({ default: m.PettyCashCustodianCard })),
-);
 const TestModeToggle = lazy(() =>
   import('@/pages/SettingsPage/components/TestModeToggle').then((m) => ({ default: m.TestModeToggle })),
 );
@@ -119,7 +116,6 @@ export const settingsRegistry: SettingsCategory[] = [
       { id: 'payment-approval-permissions', label: 'สิทธิ์อนุมัติรับชำระ', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: PaymentApprovalPermissionsCard, keywords: ['รับชำระ', 'ค่าปรับ', 'อนุโลม', 'คืนเงิน', 'อนุมัติ'] },
       { id: 'reverse-permission', label: 'สิทธิ์กลับรายการสินทรัพย์', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: ReversePermissionCard, keywords: ['reverse', 'กลับรายการ', 'void'] },
       { id: 'reverse-reasons', label: 'เหตุผลกลับรายการ', group: 'การอนุมัติ & สิทธิ์', roles: ['OWNER'], kind: 'inline', component: ReverseReasonsManagementCard },
-      { id: 'petty-cash', label: 'ผู้ดูแลเงินสดย่อย', group: 'เงินสด', roles: ['OWNER'], kind: 'inline', component: PettyCashCustodianCard, keywords: ['petty cash', 'เงินสดย่อย'] },
       { id: 'attachment', label: 'นโยบายเอกสารแนบ', group: 'เอกสาร', roles: ['OWNER'], kind: 'inline', component: AttachmentTab, keywords: ['แนบไฟล์', 'attachment'] },
     ],
   },

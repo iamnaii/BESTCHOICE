@@ -96,7 +96,7 @@ describe('buildSharePage — redirect', () => {
   });
   it('stamps the CSP nonce on every script tag', () => {
     const html = buildSharePage(base);
-    const scripts = html.match(/<script[^>]*>/g) ?? [];
+    const scripts: string[] = html.match(/<script[^>]*>/g) ?? [];
     expect(scripts.length).toBe(2);
     expect(scripts.every((s) => s.includes('nonce="NONCE123"'))).toBe(true);
   });

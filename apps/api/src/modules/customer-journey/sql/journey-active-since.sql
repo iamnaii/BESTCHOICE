@@ -15,6 +15,8 @@ WITH hits AS (
   UNION SELECT a.customer_id FROM online_installment_applications a WHERE a.updated_at >= $1::timestamp
   UNION SELECT pr.customer_id FROM product_reservations pr WHERE pr.updated_at >= $1::timestamp
   UNION SELECT ti.customer_id FROM trade_ins ti WHERE ti.updated_at >= $1::timestamp
+  UNION SELECT sp.customer_id FROM saving_plans sp WHERE sp.updated_at >= $1::timestamp
+  UNION SELECT oo.customer_id FROM online_orders oo WHERE oo.updated_at >= $1::timestamp
   UNION SELECT al.entity_id FROM audit_logs al WHERE al.action = 'AI_LEAD_CAPTURED' AND al.entity = 'customer' AND al.created_at >= $1::timestamp
 )
 SELECT DISTINCT COALESCE(c.merged_into_id, c.id) AS customer_id

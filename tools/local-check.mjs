@@ -1,3 +1,12 @@
+import { checkChatLibrary } from './check-local-chat-library.mjs';
+import { checkChatAnalytics } from './check-local-chat-analytics.mjs';
+import { checkServiceCases } from './check-local-service-cases.mjs';
+import { checkFacebookComments } from './check-local-facebook-comments.mjs';
+import { checkChatTeam } from './check-local-chat-team.mjs';
+import { checkChatNotes } from './check-local-chat-notes.mjs';
+import { checkChatHandoff } from './check-local-chat-handoff.mjs';
+import { checkChatSales } from './check-local-chat-sales.mjs';
+import { checkChatWork } from './check-local-chat-work.mjs';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -68,6 +77,32 @@ try {
       assert.deepEqual(errors, [], 'Browser errors');
       await page.screenshot({ path: join(output, `inbox-${viewport.width}.png`), fullPage: true });
       report.checks.push({ label: `Inbox ${viewport.width}px`, status: 'PASS' });
+      await checkChatWork(page, info.url, output, viewport.width);
+      report.checks.push({ label: `Scoped chat queue, read/fail/success and exact task target ${viewport.width}px`, status: 'PASS' });
+      const expectedConflicts = await checkChatSales(page, new URL(info.url).origin, output, viewport.width);
+      for (let i = errors.length - 1; i >= 0; i--) {
+        // This specific 409 is asserted by the two-editor conflict acceptance flow.
+        if (errors[i].includes('409') && expectedConflicts.some(url => errors[i].includes(url))) errors.splice(i, 1);
+      }
+      assert.deepEqual(errors, [], 'Browser errors');
+      report.checks.push({ label: `Sales evidence, follow-up conflict/cancellation and lost/reopen ${viewport.width}px`, status: 'PASS' });
+      await checkChatNotes(page.request, new URL(info.url).origin);
+      await checkChatHandoff(page.request, new URL(info.url).origin);
+      await checkChatTeam(page, new URL(info.url).origin, output, viewport.width);
+      assert.deepEqual(errors, [], 'Team flow browser errors');
+      report.checks.push({ label: `Note mentions and A/B handoff ${viewport.width}px`, status: 'PASS' });
+      await checkFacebookComments(page, new URL(info.url).origin, output, viewport.width);
+      assert.deepEqual(errors, [], 'Comment flow browser errors');
+      report.checks.push({ label: `Signed synthetic Facebook comments + uncertain send ${viewport.width}px; live Meta unverified`, status: 'PASS' });
+      await checkServiceCases(page, new URL(info.url).origin, output, viewport.width);
+      assert.deepEqual(errors, [], 'Service case browser errors');
+      report.checks.push({ label: `Chat intake, physical-receipt validation, canonical repair and closure ${viewport.width}px`, status: 'PASS' });
+      await checkChatAnalytics(page, new URL(info.url).origin, output, viewport.width);
+      assert.deepEqual(errors, [], 'Analytics browser errors');
+      report.checks.push({ label: `Human/bot, responder/sales owner, deduplicated sales and analytics drilldowns ${viewport.width}px`, status: 'PASS' });
+      await checkChatLibrary(page, new URL(info.url).origin, output, viewport.width);
+      assert.deepEqual(errors, [], 'Library browser errors');
+      report.checks.push({ label: `Private library folders/upload/search/staging, ACK retry, credit copy and composer parity ${viewport.width}px`, status: 'PASS' });
       await checkLocalPages(page, info.url, output, viewport.width);
       assert.deepEqual(errors, [], 'Browser errors');
       report.checks.push({ label: `Customers + FINANCE portfolio (filters, pagination, empty report) ${viewport.width}px`, status: 'PASS' });

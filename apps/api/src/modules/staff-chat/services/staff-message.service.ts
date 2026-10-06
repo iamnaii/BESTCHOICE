@@ -16,18 +16,6 @@ export class StaffMessageService {
     @Optional() @Inject(CHAT_GATEWAY_TOKEN) private readonly gateway?: IChatGateway,
   ) {}
 
-  /** Add an internal note to a room */
-  async addNote(roomId: string, staffId: string, content: string) {
-    const note = await this.prisma.chatNote.create({
-      data: { roomId, staffId, content },
-      include: {
-        staff: { select: { id: true, name: true, avatarUrl: true } },
-      },
-    });
-    this.gateway?.emitNoteChanged?.(roomId, { roomId, action: 'added', noteId: note.id });
-    return note;
-  }
-
   /** ลบโน้ต (soft) — คนเขียนเอง หรือ OWNER/BRANCH_MANAGER เท่านั้น · ถ้าเป็นโน้ตปักหมุด แถบใต้หัวหายไปด้วย */
   async deleteNote(roomId: string, noteId: string, actor: { id: string; role: string }) {
     const note = await this.prisma.chatNote.findFirst({
@@ -84,6 +72,7 @@ export class StaffMessageService {
       orderBy: { createdAt: 'asc' },
       include: {
         staff: { select: { id: true, name: true, avatarUrl: true } },
+        mentions: { select: { userId: true, user: { select: { id: true, name: true, nickname: true } } } },
       },
     });
   }

@@ -1,3 +1,4 @@
+import InboxWorkTools from './components/InboxWorkTools';
 import { useRoomNotes } from './hooks/useRoomNotes';
 import { useRoomActions } from './hooks/useRoomActions';
 import { useRoomMessages } from './hooks/useRoomMessages';
@@ -139,6 +140,7 @@ export default function UnifiedInboxPage() {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
       queryClient.invalidateQueries({ queryKey: ['chat-room-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-work'] });
     }, 600);
   }, [queryClient]);
   // Clear any in-flight debounce timer on unmount to prevent a state update
@@ -149,6 +151,7 @@ export default function UnifiedInboxPage() {
 
   // WebSocket for real-time updates
   const { joinRoom, leaveRoom, viewRoom, startTyping, stopTyping, isCustomerTyping, staffTyping, status: connectionStatus } = useChatSocket({
+    onWorkUpdate: () => { queryClient.invalidateQueries({ queryKey: ['chat-work'] }); },
     onNewMessage: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-messages', data.roomId] });
       invalidateRoomsListSoon();
@@ -177,6 +180,7 @@ export default function UnifiedInboxPage() {
     // replaces the one-shot toast.
     onNoteChanged: (data) => {
       queryClient.invalidateQueries({ queryKey: ['chat-notes', data.roomId] });
+      queryClient.invalidateQueries({ queryKey: ['chat-work'] });
       queryClient.invalidateQueries({ queryKey: ['chat-room', data.roomId] });
     },
     onSendFailed: (data) => {
@@ -189,6 +193,9 @@ export default function UnifiedInboxPage() {
       queryClient.invalidateQueries({ queryKey: ['chat-rooms'] });
       queryClient.invalidateQueries({ queryKey: ['chat-unread-count'] });
       queryClient.invalidateQueries({ queryKey: ['chat-room-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-work'] });
+      queryClient.invalidateQueries({ queryKey: ['chat-notes'] });
+      queryClient.invalidateQueries({ queryKey: ['todos'] });
     },
   }, activeRoomId);
 
@@ -331,6 +338,7 @@ export default function UnifiedInboxPage() {
   return (
     <div className="h-dvh flex flex-col bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
       {/* แถบเตือนนัดเหนือทุกแผง (ชั้น 2 ท่า OBI apptAlert) — โผล่เฉพาะเมื่อมีนัดถึงเวลา/ใกล้ถึง */}
+      <InboxWorkTools onSelectRoom={handleSelectRoom} />
       <AppointmentAlertBar onGoToRoom={handleSelectRoom} />
       <div className="flex flex-1 min-h-0">
       {/* Left panel: Conversation list */}
@@ -382,9 +390,9 @@ export default function UnifiedInboxPage() {
           notes={Array.isArray(notesQuery.data) ? notesQuery.data : []}
           pinnedNote={sessionQuery.data?.notes?.[0] ?? null}
           currentUserRole={user?.role}
-          onAddNote={async (content) => {
+          onAddNote={async (draft) => {
             if (!activeRoomId) return false;
-            await addNoteMutation.mutateAsync({ roomId: activeRoomId, content });
+            await addNoteMutation.mutateAsync({ roomId: activeRoomId, ...draft });
             return true;
           }}
           onPinNote={(noteId) => activeRoomId && pinNoteMutation.mutate({ roomId: activeRoomId, noteId })}
@@ -448,9 +456,10 @@ export default function UnifiedInboxPage() {
 
       {/* Right panel as Drawer on < xl */}
       <Sheet open={customerPanelOpen} onOpenChange={setCustomerPanelOpen}>
-        <SheetContent side="right" className="w-80 p-0 xl:hidden">
+        <SheetContent side="right" close={false} className="w-80 p-0 xl:hidden">
           <SheetTitle className="sr-only">ข้อมูลลูกค้า</SheetTitle>
           <RoomDossier
+            onClose={() => setCustomerPanelOpen(false)}
             credit={credit}
             creditFocus={creditFocus}
             gfin={gfin}

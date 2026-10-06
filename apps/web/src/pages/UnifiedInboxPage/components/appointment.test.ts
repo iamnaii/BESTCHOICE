@@ -1,24 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { apptState, formatDurationTh, nextAppointment } from './appointment';
 
-// สร้างเวลาทั้งหมดจาก "ตอนนี้" ในโซนของเครื่องที่รัน (CI = UTC · เครื่องเรา = ไทย · ที่ไหนก็ได้)
-// จะได้ไม่มีเคสที่ข้ามวันเพราะโซน — ป้ายพิมพ์เวลา local ด้วยตัวจัดรูปเดียวกับโค้ด
-const NOW = new Date(2026, 8, 6, 10, 0, 0); // 6 ก.ย. 2026 10:00 local
+// Thai business appointments remain in Bangkok regardless of the browser's timezone.
+const NOW = new Date('2026-09-06T10:00:00+07:00');
 const shiftMin = (m: number) => new Date(NOW.getTime() + m * 60_000).toISOString();
-const atLocal = (dayOffset: number, h: number, mi: number) => {
-  const d = new Date(NOW);
-  d.setDate(NOW.getDate() + dayOffset);
-  d.setHours(h, mi, 0, 0);
-  return d.toISOString();
-};
+const atLocal = (dayOffset: number, h: number, mi: number) => new Date(new Date('2026-09-06T00:00:00+07:00').getTime() + (dayOffset * 24 * 60 + h * 60 + mi) * 60_000).toISOString();
 const hhmm = (iso: string) => {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const d = new Date(new Date(iso).getTime() + 7 * 3600_000);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 };
 const TH = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const dmy = (iso: string) => {
-  const d = new Date(iso);
-  return `${d.getDate()} ${TH[d.getMonth()]}`;
+  const d = new Date(new Date(iso).getTime() + 7 * 3600_000);
+  return `${d.getUTCDate()} ${TH[d.getUTCMonth()]}`;
 };
 
 describe('apptState — ป้ายนัดตามความใกล้', () => {

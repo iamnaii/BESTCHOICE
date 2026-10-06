@@ -1,0 +1,8 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "e2e/chat-operations-.*\\.e2e-spec\\.ts$",
+  "testPathIgnorePatterns": [],
+  "transform": { "^.+\\.ts$": "ts-jest" }
+}

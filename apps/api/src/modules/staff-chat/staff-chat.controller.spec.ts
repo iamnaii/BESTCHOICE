@@ -560,9 +560,9 @@ describe('StaffChatController', () => {
       const rooms = [{ id: 'r-1', channel: 'LINE_FINANCE', lastMessageAt: null, messages: [] }];
       jest.spyOn(roomManager, 'getCrossChannelRooms').mockResolvedValue(rooms as any);
 
-      const result = await controller.getCrossChannelRooms('room-1');
+      const result = await controller.getCrossChannelRooms('room-1', { user: { id: 'staff-1' } }, { company: 'SHOP' });
 
-      expect(roomManager.getCrossChannelRooms).toHaveBeenCalledWith('room-1');
+      expect(roomManager.getCrossChannelRooms).toHaveBeenCalledWith('room-1', { id: 'staff-1' }, { company: 'SHOP' });
       expect(result).toEqual(rooms);
     });
   });

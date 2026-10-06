@@ -1,3 +1,4 @@
+import { CHAT_WORK_FLAGS } from '@installment/shared';
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditService } from '../../audit/audit.service';
@@ -52,6 +53,9 @@ export class SettingsWriteService {
    *    DocumentType additions).
    */
   private validateKeyValue(key: string, value: string): void {
+    if (key.startsWith('chat_sla_') || CHAT_WORK_FLAGS.some(flag => flag === key)) {
+      throw new BadRequestException('ไม่อนุญาตให้แก้ไขการตั้งค่างานแชทผ่านช่องทางนี้');
+    }
     // Approval grants require owner identity, target-user validation and dedicated auditing.
     if (key === 'accounting_permissions') {
       throw new BadRequestException('กรุณาจัดการสิทธิ์รายการบัญชีผ่านหน้าตั้งค่าสิทธิ์รายการบัญชี');

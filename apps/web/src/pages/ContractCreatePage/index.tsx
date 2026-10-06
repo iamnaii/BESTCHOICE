@@ -22,6 +22,9 @@ import { CustomerCreateModal } from './components/CustomerCreateModal';
 import { EditProductModal } from './components/EditProductModal';
 import { EditCustomerModal } from './components/EditCustomerModal';
 import { contractCreditIssue } from './credit-approval';
+import { firstChatContactTitle } from '@installment/shared';
+import HeardFromAsk from '@/components/customer/journey/HeardFromAsk';
+import { isJourneyRedirect, useJourneySummary } from '@/hooks/customer-journey/useCustomerJourney';
 
 export default function ContractCreatePage() {
   useDocumentTitle('สร้างสัญญา');
@@ -68,6 +71,26 @@ export default function ContractCreatePage() {
     setCustForm: data.setCustForm,
     setCustAddrIdCard: data.setCustAddrIdCard,
   });
+
+  // ขั้นเลือกลูกค้า (เฟส 3): summary ของลูกค้าที่เลือก — ยิงเฉพาะตอนอยู่ขั้นนี้
+  // · ลูกค้าจากแชท → บรรทัดอ่านอย่างเดียว "ทักแชทครั้งแรกทาง …" (ถ้อยคำเดียวกับแถวไทม์ไลน์)
+  // · ลูกค้าหน้าร้านที่ API ตั้งธง askHeardFrom → การ์ดถาม (HeardFromAsk อ่านธงเอง) · "ข้าม" = ซ่อนของคนนั้นรอบนี้
+  // · ระหว่างโหลด / redirect / error ไม่แสดงอะไร · ไม่แตะ canNext
+  const selectedCustomerId = data.selectedCustomer?.id ?? '';
+  const journeySummaryQuery = useJourneySummary(selectedCustomerId, data.step === 1 && !!data.selectedCustomer);
+  const selectedJourney =
+    journeySummaryQuery.data && !isJourneyRedirect(journeySummaryQuery.data) ? journeySummaryQuery.data : null;
+  const firstContactLine = selectedJourney ? firstChatContactTitle(selectedJourney.firstChannel) : null;
+  const [heardFromSkippedIds, setHeardFromSkippedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const heardFromSlot =
+    selectedCustomerId && !heardFromSkippedIds.has(selectedCustomerId) ? (
+      <HeardFromAsk
+        key={selectedCustomerId}
+        customerId={selectedCustomerId}
+        variant="card"
+        onSkip={() => setHeardFromSkippedIds((ids) => new Set(ids).add(selectedCustomerId))}
+      />
+    ) : null;
 
   const goToStep = (nextStep: number) => {
     ocrFlow.setShowOcrPanel(false);
@@ -145,6 +168,8 @@ export default function ContractCreatePage() {
           onOpenCustomerModal={() => { data.resetCustForm(); data.setShowCustomerModal(true); }}
           overrideActiveContractCheck={data.overrideActiveContractCheck}
           setOverrideActiveContractCheck={data.setOverrideActiveContractCheck}
+          heardFromSlot={heardFromSlot}
+          firstContactLine={firstContactLine}
         />
       )}
 

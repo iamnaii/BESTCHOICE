@@ -258,7 +258,7 @@ export function ChatMediaPicker({
         <button
           aria-label="อิโมจิ / สติกเกอร์"
           className={cn(
-            'size-9 inline-flex items-center justify-center rounded-lg transition-colors',
+            'size-11 inline-flex items-center justify-center rounded-lg transition-colors',
             open
               ? 'text-primary bg-primary/10'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted',

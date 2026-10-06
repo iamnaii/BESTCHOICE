@@ -1,3 +1,29 @@
+import { ChatLibraryDeliveryService } from './services/chat-library-delivery.service';
+import { ChatLibraryController } from './chat-library.controller';
+import { ChatLibraryService } from './services/chat-library.service';
+import { ChatServiceCaseLinkService } from '../after-sales/services/chat-service-case-link.service';
+import { ChatServiceRequestController } from './chat-service-request.controller';
+import { ChatServiceRequestService } from './services/chat-service-request.service';
+import { FacebookCommentReplyService } from '../chat-adapters/facebook-comment-reply.service';
+import { FacebookCommentsModule } from '../chat-adapters/facebook-comments.module';
+import { FacebookCommentsController } from './facebook-comments.controller';
+import { FacebookCommentWorkService } from './services/facebook-comment-work.service';
+import { ChatHandoffController } from './chat-handoff.controller';
+import { ChatHandoffService } from './services/chat-handoff.service';
+import { RoomNotesController } from './room-notes.controller';
+import { NoteMentionService } from './services/note-mention.service';
+import { ChatFollowUpService } from './services/chat-follow-up.service';
+import { ChatFollowUpController } from './chat-follow-up.controller';
+import { CustomerJourneyModule } from '../customer-journey/customer-journey.module';
+import { ChatSalesContextService } from './services/chat-sales-context.service';
+import { ChatSalesContextController } from './chat-sales-context.controller';
+import { ChatWorkController } from './chat-work.controller';
+import { ChatWorkQueryService } from './services/chat-work-query.service';
+import { ChatWorkSettingsService } from './services/chat-work-settings.service';
+import { ChatWorkSettingsController } from './chat-work-settings.controller';
+import { ChatWorkAccessService } from './services/chat-work-access.service';
+import { StaffInboxService } from './services/staff-inbox.service';
+import { StaffInboxController } from './staff-inbox.controller';
 import { Module, forwardRef } from '@nestjs/common';
 import { RoomAssistanceController } from './room-assistance.controller';
 import { PrepareOfferService } from './services/prepare-offer.service';
@@ -63,6 +89,8 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
  */
 @Module({
   imports: [
+    FacebookCommentsModule,
+    CustomerJourneyModule,
     OcrModule,
     ChatEngineModule,
     ChatProspectsModule,
@@ -78,8 +106,8 @@ import { CHAT_GATEWAY_TOKEN } from '../chat-engine/interfaces/chat-gateway.inter
       inject: [ConfigService],
     }),
   ],
-  controllers: [RoomAssistanceController, StaffChatController, RoomCreditController, WebWidgetController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
-  providers: [RoomAiAccessService, PrepareOfferService, StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ProductQuoteService, ChatToContractService, CannedResponseVariableService, CannedResponseBubbleService, CannedResponseQuickReplyService, BubbleTranslatorService, CannedResponseSenderService, QuickReplyPostbackRouterService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService, AiSuggestService, AiAutoReplyService, ProductDetectService, LeadScoringService, AiTrainingService, AiImportService, AiMetricsService, EmbeddingService, PersonaService, SalesStateService, TrainingExtractCron, EmbeddingBackfillCron, { provide: CHAT_GATEWAY_TOKEN, useExisting: StaffChatGateway }],
-  exports: [StaffChatGateway, WebWidgetGateway, PresenceService, CollisionDetectionService, AiAutoReplyService, PersonaService, QuickReplyPostbackRouterService, CHAT_GATEWAY_TOKEN],
+  controllers: [ChatLibraryController, ChatServiceRequestController, FacebookCommentsController, ChatHandoffController, RoomNotesController, ChatFollowUpController, ChatSalesContextController, ChatWorkController, ChatWorkSettingsController, StaffInboxController, RoomAssistanceController, StaffChatController, RoomCreditController, WebWidgetController, ChatCommerceController, ChannelSettingsController, SnoozeController, SessionOpsController, SideConversationController],
+  providers: [ChatLibraryDeliveryService, ChatLibraryService, ChatServiceCaseLinkService, ChatServiceRequestService, FacebookCommentReplyService, FacebookCommentWorkService, ChatHandoffService, NoteMentionService, ChatFollowUpService, ChatSalesContextService, ChatWorkQueryService, ChatWorkSettingsService, ChatWorkAccessService, StaffInboxService, RoomAiAccessService, PrepareOfferService, StaffChatGateway, WebWidgetGateway, StaffMessageService, ChatCommerceService, ProductQuoteService, ChatToContractService, CannedResponseVariableService, CannedResponseBubbleService, CannedResponseQuickReplyService, BubbleTranslatorService, CannedResponseSenderService, QuickReplyPostbackRouterService, PresenceService, CollisionDetectionService, AiAssistantService, MediaContentService, SideConversationService, SnoozeService, SnoozeCronService, SessionOpsService, AiSuggestService, AiAutoReplyService, ProductDetectService, LeadScoringService, AiTrainingService, AiImportService, AiMetricsService, EmbeddingService, PersonaService, SalesStateService, TrainingExtractCron, EmbeddingBackfillCron, { provide: CHAT_GATEWAY_TOKEN, useExisting: StaffChatGateway }],
+  exports: [ChatWorkAccessService, StaffInboxService, StaffChatGateway, WebWidgetGateway, PresenceService, CollisionDetectionService, AiAutoReplyService, PersonaService, QuickReplyPostbackRouterService, CHAT_GATEWAY_TOKEN],
 })
 export class StaffChatModule {}

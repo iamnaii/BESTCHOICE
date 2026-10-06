@@ -25,11 +25,14 @@ export interface RoomAppointment {
 const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
 const MIN = 60_000;
 
+function bangkok(d: Date): Date { return new Date(d.getTime() + 7 * 60 * MIN); }
 function hhmm(d: Date): string {
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  d = bangkok(d);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
 }
 function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  a = bangkok(a); b = bangkok(b);
+  return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
 }
 
 /** "12 นาที" · "2 ชม. 5 นาที" · "3 วัน" */
@@ -51,16 +54,15 @@ export function apptState(due: string | Date | null | undefined, now: Date = new
   if (diff <= MIN) return { kind: 'due', label: 'ถึงเวลานัดแล้ว', tone: 'danger', urgent: true };
   if (diff <= APPT_LEAD_MIN * MIN) return { kind: 'soon', label: `นัดอีก ${Math.ceil(diff / MIN)} นาที`, tone: 'danger', urgent: true };
   if (sameDay(d, now)) return { kind: 'today', label: `นัดวันนี้ ${hhmm(d)}`, tone: 'warn', urgent: false };
-  const tomorrow = new Date(now);
-  tomorrow.setDate(now.getDate() + 1);
+  const tomorrow = new Date(now.getTime() + 24 * 60 * MIN);
   if (sameDay(d, tomorrow)) return { kind: 'tomorrow', label: `นัดพรุ่งนี้ ${hhmm(d)}`, tone: 'muted', urgent: false };
-  return { kind: 'later', label: `นัด ${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${hhmm(d)}`, tone: 'muted', urgent: false };
+  return { kind: 'later', label: `นัด ${bangkok(d).getUTCDate()} ${TH_MONTHS[bangkok(d).getUTCMonth()]} ${hhmm(d)}`, tone: 'muted', urgent: false };
 }
 
 /** นัดถัดไปของห้องจาก include `todos` (API ส่งมาแค่ใบใกล้สุดที่ยังไม่เสร็จ) */
 export function nextAppointment(todos?: RoomAppointment[] | null): RoomAppointment | null {
   if (!todos?.length) return null;
-  const open = todos.filter((t) => t.dueDate && t.status !== 'DONE');
+  const open = todos.filter((t) => t.dueDate && !['DONE', 'CANCELLED'].includes(t.status));
   if (!open.length) return null;
   return [...open].sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))[0];
 }

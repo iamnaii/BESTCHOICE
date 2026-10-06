@@ -96,12 +96,19 @@ export class RoomCreditService {
     return this.attach(roomId, file.buffer, actor, null, file.mimetype);
   }
 
+  async importLibrary(roomId: string, bytes: Buffer, actor: CreditRoomActor,
+    source: { fileId: string; requestKey: string; name: string },
+    authorize: (tx: Prisma.TransactionClient) => Promise<unknown>) {
+    return this.attach(roomId, bytes, actor, null, '', { ...source, authorize });
+  }
+
   private async attach(
     roomId: string,
     bytes: Buffer,
     actor: CreditRoomActor,
     sourceMessageId: string | null,
     contentType: string,
+    library?: { fileId: string; requestKey: string; name: string; authorize: (tx: Prisma.TransactionClient) => Promise<unknown> },
   ) {
     const type = detectFile(bytes, contentType);
     if (!this.storage.configured)
@@ -113,6 +120,15 @@ export class RoomCreditService {
       const saved = await this.prisma.$transaction(async (tx) => {
         await lockCreditRoom(tx, roomId);
         await this.access(tx, roomId, actor);
+        if (library) {
+          await library.authorize(tx);
+          const previous = await tx.roomCreditFile.findUnique({ where: { libraryRequestKey: library.requestKey } });
+          if (previous) {
+            if (previous.roomId !== roomId || previous.sourceLibraryFileId !== library.fileId || previous.deletedAt)
+              throw new ConflictException('คำขอนำเข้าไฟล์นี้ถูกใช้แล้ว กรุณาเลือกไฟล์ใหม่');
+            return { file: previous, created: false };
+          }
+        }
         await this.ensureIdle(tx, roomId);
         const files = await tx.roomCreditFile.findMany({ where: { roomId, deletedAt: null } });
         const duplicate =
@@ -124,7 +140,9 @@ export class RoomCreditService {
           data: {
             roomId,
             key,
-            name: `Statement.${type.ext}`,
+            name: library?.name ?? `Statement.${type.ext}`,
+            libraryRequestKey: library?.requestKey,
+            sourceLibraryFileId: library?.fileId,
             mimeType: type.mimeType,
             size: bytes.length,
             sourceMessageId,

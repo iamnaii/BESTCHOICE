@@ -1,0 +1,72 @@
+import assert from 'node:assert/strict';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium, expect } from '@playwright/test';
+export async function checkFacebookComments(page, origin, output, width) {
+  const info = await (await page.request.get(`${origin}/api/preview/info`)).json();
+  assert.equal(info.isolated, true);
+  const post = async (path, data = {}) => page.request.post(`${origin}/api/${path}`, { data });
+  await post('preview/actor/owner');
+  const invalid = await post('preview/facebook-comments/fixture', { invalidSignature: true });
+  assert.equal(invalid.status(), 400, 'Real HMAC verifier rejects invalid signature');
+  await post('preview/facebook-comments/mode', { mode: 'confirmed' });
+  const created = await post('preview/facebook-comments/fixture', { text: `สอบถามสินค้าจากคอมเมนต์ ${width}` });
+  assert.equal(created.status(), 201); const thread = await created.json();
+  const target = `${origin}/inbox?zone=shop&commentId=${thread.id}`;
+  const read = async () => (await (await page.request.get(`${origin}/api/staff-chat/facebook-comments/${thread.id}?company=SHOP`)).json());
+  await page.goto(target);
+  const dialog = page.getByRole('dialog', { name: 'คอมเมนต์สาธารณะ', exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel('ผู้รับผิดชอบคอมเมนต์').selectOption(info.previewActors.owner.id);
+  await expect.poll(async () => (await read()).assigneeId).toBe(info.previewActors.owner.id);
+  const notifications = await (await page.request.get(`${origin}/api/staff-chat/work-notifications?company=SHOP`)).json();
+  assert.ok(notifications.data.some(n => n.targetId === thread.id));
+  const reply = `มีสินค้าพร้อมค่ะ ${width}`;
+  await dialog.getByLabel('คำตอบสาธารณะ', { exact: true }).fill(reply);
+  await dialog.getByRole('button', { name: 'ตอบสาธารณะ', exact: true }).click();
+  await expect(dialog.getByLabel('คำตอบสาธารณะ', { exact: true })).toHaveValue('');
+  await expect.poll(async () => (await read()).status).toBe('RESPONDED');
+  const proof = await (await post('preview/facebook-comments/proof', { threadId: thread.id })).json();
+  await post('preview/facebook-comments/echo', { externalId: proof.proof.externalId });
+  await page.reload();
+  await expect(dialog.getByText(reply, { exact: true })).toHaveCount(1);
+  assert.equal((await read()).replies.length, 1, 'Provider echo cannot duplicate a durable reply');
+  await page.screenshot({ path: join(output, `facebook-comments-confirmed-${width}.png`), animations: 'disabled' });
+  // New customer edit reopens the same thread, without guessing a Messenger identity.
+  await post('preview/facebook-comments/fixture', { commentId: thread.commentId, revision: '2', text: 'ขอสอบถามเพิ่มค่ะ' });
+  assert.equal((await read()).customerId, null);
+  assert.equal((await read()).status, 'OPEN');
+  await post('preview/facebook-comments/mode', { mode: 'timeout' });
+  await page.reload();
+  await dialog.getByLabel('คำตอบสาธารณะ', { exact: true }).fill('คำตอบที่ต้องตรวจผลการส่ง');
+  await dialog.getByRole('button', { name: 'ตอบสาธารณะ', exact: true }).click();
+  await expect(dialog.getByRole('button', { name: 'ตอบสาธารณะ', exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('status').filter({ hasText: 'ยังไม่ทราบผลการส่ง' })).toBeVisible();
+  const uncertain = await read(); assert.equal(uncertain.status, 'OPEN');
+  const unresolved = uncertain.replies.find(r => r.status === 'UNKNOWN'); assert.ok(unresolved);
+  const beforeRetry = await (await post('preview/facebook-comments/proof', { threadId: thread.id })).json();
+  const retry = await post(`staff-chat/facebook-comments/${thread.id}/replies?company=SHOP`, { clientRequestId: crypto.randomUUID(), text: 'ห้ามส่งซ้ำ' }); assert.equal(retry.status(), 409);
+  const afterRetry = await (await post('preview/facebook-comments/proof', { threadId: thread.id })).json(); assert.equal(afterRetry.dispatchCount, beforeRetry.dispatchCount);
+  await dialog.getByLabel('รหัสคำตอบบน Meta').fill(afterRetry.proof.externalId);
+  await dialog.getByLabel('รายละเอียดที่ตรวจพบ').fill('ตรวจคำตอบจำลองตรงกับข้อความที่ส่ง');
+  await dialog.getByRole('button', { name: 'ตรวจหลักฐานการส่ง' }).click();
+  await expect.poll(async () => (await read()).status).toBe('RESPONDED');
+  await expect(dialog.getByRole('button', { name: 'ตรวจหลักฐานการส่ง' })).toHaveCount(0);
+  await post('preview/facebook-comments/mode', { mode: 'disabled' });
+  await page.reload();
+  await dialog.getByLabel('คำตอบสาธารณะ', { exact: true }).fill('ทดสอบสิทธิ์');
+  await expect(dialog.getByRole('button', { name: 'ตอบสาธารณะ', exact: true })).toBeDisabled();
+  const overflow = await dialog.evaluate(el => el.scrollWidth > el.clientWidth + 1); assert.equal(overflow, false);
+  await page.screenshot({ path: join(output, `facebook-comments-capability-${width}.png`), animations: 'disabled' });
+  await post('preview/facebook-comments/mode', { mode: 'confirmed' });
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'คอมเมนต์', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'คอมเมนต์ Facebook' })).toBeVisible();
+  await page.keyboard.press('Escape');
+}
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const browser = await chromium.launch();
+  try { for (const width of [1440, 390]) { const page = await browser.newPage({ viewport: { width, height: 1000 } }); await checkFacebookComments(page, process.env.LOCAL_CHAT_ORIGIN || 'http://localhost:5217', '.tmp/local-preview', width); await page.close(); } }
+  finally { await browser.close(); }
+  console.log('PASS: signed synthetic Facebook comments desktop/mobile; live Meta remains unverified');
+}

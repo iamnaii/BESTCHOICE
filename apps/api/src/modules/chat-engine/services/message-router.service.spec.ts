@@ -425,7 +425,7 @@ describe('MessageRouterService.sendStaffMessage — IMAGE bubble', () => {
     expect(adapter.sendMessage).toHaveBeenCalledTimes(1); // ลูกค้าได้รูปครั้งเดียว
   });
 
-  it('P2002 race (คู่แข่งชนะ) → คืน success โดยไม่เรียก adapter', async () => {
+  it('P2002 race (คู่แข่งชนะ) → ยังไม่ยืนยัน success และไม่เรียก adapter ซ้ำ', async () => {
     const { router, adapter, roomManager } = makeStaffSender();
     const winner = {
       id: 'm-winner',
@@ -449,7 +449,7 @@ describe('MessageRouterService.sendStaffMessage — IMAGE bubble', () => {
       mediaUrl: 'https://cdn.example/g0.jpg',
       clientMessageId: 'tok-race',
     });
-    expect(res.success).toBe(true);
+    expect(res.success).toBe(false);
     expect(res.message?.id).toBe('m-winner');
     expect(adapter.sendMessage).not.toHaveBeenCalled();
   });
@@ -1042,6 +1042,35 @@ describe('MessageRouterService — ที่มาจากโฆษณา (PR-A
       expect.objectContaining({ role: MessageRole.SYSTEM, text: 'ลูกค้าทักจากโฆษณา · โฆษณา 120246504706250534' }),
     );
   });
+
+  // เจ้าของเคาะ 2026-09-15 ข้อ 7: นับเป็นโฆษณาเฉพาะ referral.source = 'ADS' (isAdAttribution)
+  it.each([
+    ['ลิงก์สินค้า m.me (SHORTLINK)', { utmSource: 'facebook', utmCampaign: 'p:abc', utmContent: 'p:abc', referrerUrl: 'SHORTLINK' }],
+    ['referral ที่ไม่มี source', { utmSource: 'facebook' }],
+  ])('recordAdReferral: %s → ไม่หาห้อง ไม่ผูกที่มา ไม่มีโน้ตโฆษณา', async (_label, attribution) => {
+    const { router, roomManager } = makeRouter({});
+    (roomManager as any).findByExternalUser = jest.fn().mockResolvedValue({ id: 'r-old', attributionId: 'a-ads' });
+    (roomManager as any).linkAttribution = jest.fn().mockResolvedValue(null);
+
+    await router.recordAdReferral('PSID-1', ChatChannel.FACEBOOK, attribution);
+
+    expect((roomManager as any).findByExternalUser).not.toHaveBeenCalled();
+    expect((roomManager as any).linkAttribution).not.toHaveBeenCalled();
+    expect(roomManager.saveMessage).not.toHaveBeenCalled();
+  });
+
+  it('ข้อความที่มี adId แต่ไม่มี source ADS → ไม่มีโน้ต "ลูกค้าทักจากโฆษณา" (ด่านเดียวกับ recordAdReferral ไม่ใช่ adId)', async () => {
+    const { router, roomManager } = makeRouter({});
+    await router.routeInbound({
+      ...baseMsg,
+      channel: ChatChannel.FACEBOOK,
+      attribution: { utmSource: 'facebook', utmCampaign: '1', adId: '1', referrerUrl: undefined },
+    } as any);
+    const adNotes = roomManager.saveMessage.mock.calls.filter(
+      (c) => c[0].role === MessageRole.SYSTEM && String(c[0].text).startsWith('ลูกค้าทักจากโฆษณา'),
+    );
+    expect(adNotes).toHaveLength(0);
+  }, 10000);
 });
 
 describe('MessageRouterService — ผู้สนใจอัตโนมัติ (Ruling R3)', () => {

@@ -12,6 +12,7 @@ export interface RoomNote {
   pinnedAt?: string | null;
   staff?: { id: string; name: string; avatarUrl?: string | null } | null;
   staffId?: string;
+  mentions?: { userId: string; user: { id: string; name: string; nickname?: string | null } }[];
 }
 
 export type TimelineItem<M extends { id: string; createdAt: string }> =

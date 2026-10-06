@@ -3,7 +3,7 @@ import { DocumentType } from '@prisma/client';
 /**
  * Module-level constants, default tables, and pure key-classification helpers
  * shared across the decomposed Settings sub-services (Flags / Write /
- * PettyCash / DocNumberPreview). Extracted VERBATIM from the original
+ * DocNumberPreview). Extracted VERBATIM from the original
  * monolithic `settings.service.ts` during the Wave-4 decomposition — no
  * value/shape/regex was changed.
  */
@@ -14,16 +14,6 @@ import { DocumentType } from '@prisma/client';
  * the machinery stays in place so a future read-only key can be added here.
  */
 export const READ_ONLY_KEYS = new Set<string>([]);
-
-/**
- * D1.1.5.5 — Whitelist of UserRoles that may hold the Petty Cash custodian
- * seat. The active role is read from SystemConfig key
- * `petty_cash_custodian_role` (default 'ACCOUNTANT'); only roles in this
- * tuple are accepted as the configured value. Picking a non-whitelisted role
- * silently falls back to ACCOUNTANT.
- */
-export const PETTY_CASH_CUSTODIAN_ROLES = ['OWNER', 'BRANCH_MANAGER', 'ACCOUNTANT'] as const;
-export type PettyCashCustodianRole = (typeof PETTY_CASH_CUSTODIAN_ROLES)[number];
 
 /**
  * D1.1.2.1 — default mapping from DocumentType → 2-4 letter prefix. Mirrors the

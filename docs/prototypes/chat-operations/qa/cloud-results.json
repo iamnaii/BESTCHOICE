@@ -1,0 +1,13 @@
+{
+  "status": "PASS",
+  "checks": [
+    "Attachment source chooser preserves local file picking and opens cloud library with search focused",
+    "Filename search, folder/type filters, empty states, sorting and grid/list views",
+    "Cross-folder selection, metadata, cancel/clear, attach without sending, duplicate prevention and review",
+    "File-only cloud/local send failure keeps attachments; retry adds the three files exactly once",
+    "Stale room confirmation is blocked; FINANCE library only shows FINANCE fixtures",
+    "Removing or adding cloud/local files invalidates the old retry; no phantom file message or changed payload is sent",
+    "36 responsive cloud layouts: nine viewports × two themes × grid/list, every control reachable"
+  ],
+  "errors": []
+}

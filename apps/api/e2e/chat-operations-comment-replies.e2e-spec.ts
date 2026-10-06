@@ -1,0 +1,70 @@
+import { randomUUID } from 'node:crypto';
+import type { ChatWorkActor } from '@installment/shared';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { ChatWorkAccessService } from '../src/modules/staff-chat/services/chat-work-access.service';
+import { FacebookCommentWorkService } from '../src/modules/staff-chat/services/facebook-comment-work.service';
+import { FacebookCommentClient } from '../src/modules/chat-adapters/facebook-comment-client';
+import { FacebookCommentReplyService } from '../src/modules/chat-adapters/facebook-comment-reply.service';
+import { IntegrationConfigService } from '../src/modules/integrations/integration-config.service';
+if (!process.env.DATABASE_URL?.includes('/bc_chat_credit_test?host=/tmp/bc-chat-credit.')) throw new Error('Use isolated chat operations harness');
+describe('Public comment acknowledgements and uncertain sends', () => {
+  const db = new PrismaService(); const access = new ChatWorkAccessService(db);
+  let actor: ChatWorkActor; let pageId: string; let branchId: string;
+  const scope = { company: 'SHOP' as const };
+  const config = { getConfig: async () => ({ pageId, pageAccessToken: 'synthetic' }) } as unknown as IntegrationConfigService;
+  const port = { evidence: jest.fn(), replyPublic: jest.fn(), readComment: jest.fn().mockResolvedValue(null), readReply: jest.fn().mockResolvedValue(null) };
+  const client = new FacebookCommentClient(config,port); const work = new FacebookCommentWorkService(db,access,client);
+  const service = new FacebookCommentReplyService(db,work,client);
+  beforeAll(async () => { await db.$connect(); branchId = (await db.branch.create({ data: { name: 'Reply branch' } })).id; pageId = randomUUID();
+    actor = await db.user.create({ data: { name: 'Public responder', email: `${randomUUID()}@test.invalid`, password: 'unused', role: 'OWNER', accessibleCompanies: ['SHOP'] } });
+    await db.facebookCommentPage.create({ data: { pageId, branchId, company: 'SHOP', enabled: true } });
+    await db.systemConfig.upsert({ where: { key: 'chat_facebook_comments_enabled' }, create: { key: 'chat_facebook_comments_enabled', value: 'true' }, update: { value: 'true', deletedAt: null } });
+  });
+  beforeEach(() => { port.evidence.mockReset().mockResolvedValue({ graphVersion: 'fixture', verified: true, receive: true, publicReply: true }); port.replyPublic.mockReset().mockImplementation(async () => ({ externalId: randomUUID() })); port.readReply.mockReset().mockResolvedValue(null); });
+  afterAll(() => db.$disconnect());
+  const thread = () => db.facebookCommentThread.create({ data: { pageId, branchId, company: 'SHOP', rootCommentId: randomUUID(), postId: 'post', inboundSequence: 1, waitingSince: new Date() } });
+  const input = () => ({ clientRequestId: randomUUID(), text: 'มีสินค้าพร้อมให้ดูที่หน้าร้านค่ะ' });
+  it('commits one attempt before transport and confirms once on acknowledgement, including a repeated request', async () => {
+    const t = await thread(); const request = input();
+    port.replyPublic.mockImplementation(async () => { expect(await db.facebookCommentReply.count({ where: { threadId: t.id, status: 'PENDING' } })).toBe(1); return { externalId: 'confirmed-1' }; });
+    const [a,b] = await Promise.all([service.reply(t.id,request,actor,scope),service.reply(t.id,request,actor,scope)]);
+    expect(a.id).toBe(b.id); expect(port.replyPublic).toHaveBeenCalledTimes(1);
+    const saved = await service.reply(t.id,request,actor,scope); expect(saved.status).toBe('CONFIRMED');
+    expect((await db.facebookCommentThread.findUniqueOrThrow({ where: { id: t.id } })).status).toBe('RESPONDED');
+    await expect(service.reply(t.id,{ ...request, text: 'different intent' },actor,scope)).rejects.toThrow();
+  });
+  it('keeps uncertain replies pending work and blocks blind retries with both same and new request keys', async () => {
+    const t = await thread(); const request = input(); port.replyPublic.mockRejectedValue(new Error('timeout'));
+    const saved = await service.reply(t.id,request,actor,scope); expect(saved.status).toBe('UNKNOWN');
+    expect((await service.reply(t.id,request,actor,scope)).status).toBe('UNKNOWN');
+    await expect(service.reply(t.id,input(),actor,scope)).rejects.toThrow();
+    expect(port.replyPublic).toHaveBeenCalledTimes(1); expect((await db.facebookCommentThread.findUniqueOrThrow({ where: { id: t.id } })).status).toBe('OPEN');
+  });
+  it('does not clear a newer customer edit arriving during the outbound request', async () => {
+    const t = await thread(); port.replyPublic.mockImplementation(async () => { await db.facebookCommentThread.update({ where: { id: t.id }, data: { inboundSequence: { increment: 1 }, revision: { increment: 1 } } }); return { externalId: 'confirmed-after-edit' }; });
+    expect((await service.reply(t.id,input(),actor,scope)).status).toBe('CONFIRMED');
+    expect((await db.facebookCommentThread.findUniqueOrThrow({ where: { id: t.id } })).status).toBe('OPEN');
+  });
+  it('rejects disabled capability/deleted comment/foreign scope before dispatch and keeps hard failure retry explicit', async () => {
+    const t = await thread(); port.evidence.mockResolvedValue({ graphVersion: 'fixture', verified: false });
+    await expect(service.reply(t.id,input(),actor,scope)).rejects.toThrow(); expect(port.replyPublic).not.toHaveBeenCalled();
+    port.evidence.mockResolvedValue({ graphVersion: 'fixture', verified: true, receive: true, publicReply: true });
+    await expect(service.reply(t.id,input(),actor,{ company: 'FINANCE' })).rejects.toThrow();
+    await db.facebookCommentThread.update({ where: { id: t.id }, data: { rootDeleted: true } });
+    await expect(service.reply(t.id,input(),actor,scope)).rejects.toThrow(); expect(port.replyPublic).not.toHaveBeenCalled();
+    await db.facebookCommentThread.update({ where: { id: t.id }, data: { rootDeleted: false } });
+    const request = input(); port.replyPublic.mockResolvedValue({ definitelyNotSent: true, errorCode: 'TOKEN_EXPIRED' });
+    expect((await service.reply(t.id,request,actor,scope)).status).toBe('FAILED');
+    expect((await service.reply(t.id,request,actor,scope)).status).toBe('FAILED'); expect(port.replyPublic).toHaveBeenCalledTimes(1);
+    port.replyPublic.mockResolvedValue({ externalId: 'explicit-new-attempt' }); expect((await service.reply(t.id,input(),actor,scope)).status).toBe('CONFIRMED');
+  });
+  it('requires verified matching page/parent/text proof for manual reconciliation and records who checked', async () => {
+    const t = await thread(); const request = input(); port.replyPublic.mockRejectedValue(new Error('timeout'));
+    const saved = await service.reply(t.id,request,actor,scope);
+    await expect(service.reconcile(saved.id,{ externalId: 'candidate', reason: 'ตรวจจาก Meta' },actor,scope)).rejects.toThrow();
+    port.readReply.mockResolvedValue({ pageId, externalId: 'candidate', parentCommentId: t.rootCommentId, authorId: pageId, text: request.text, createdAt: new Date().toISOString() });
+    expect((await service.reconcile(saved.id,{ externalId: 'candidate', reason: 'ตรวจคำตอบที่หน้าโพสต์แล้ว' },actor,scope)).status).toBe('CONFIRMED');
+    expect(await db.auditLog.count({ where: { entityId: saved.id, action: 'FACEBOOK_COMMENT_REPLY_RECONCILED' } })).toBe(1);
+    expect(port.replyPublic).toHaveBeenCalledTimes(1);
+  });
+});

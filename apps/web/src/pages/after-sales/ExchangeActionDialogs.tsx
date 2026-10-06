@@ -17,7 +17,8 @@ import ReplacementProductPicker from './ReplacementProductPicker';
 import { afterSalesKeys, PAYER_LABEL, type CaseDetail, type Payer } from './after-sales';
 
 /**
- * ห้า dialog + 1 ConfirmDialog wrapper ของ Step 5 (เปลี่ยนเครื่อง — Task 11). ทุก mutation:
+ * สี่ dialog + 1 ConfirmDialog wrapper ของ Step 5 (เปลี่ยนเครื่อง — Task 11; `ApprovePricedDialog` ถูกถอด
+ * 2026-10-06 พร้อมปิดเมนูเปลี่ยนแบบมีราคา — API ตอบ 410 ที่ /approve). ทุก mutation:
  * onSuccess → toast.success + invalidateQueries(afterSalesKeys.all) + ปิด dialog,
  * onError → toast.error(getErrorMessage). mirror ของ `RepairActionDialogs.tsx` (PR 1).
  */
@@ -339,92 +340,6 @@ export function SwitchToRepairDialog({
             onClick={() => mutate.mutate()}
           >
             {mutate.isPending ? 'กำลังบันทึก…' : 'ยืนยัน'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-/** อนุมัติคำขอเปลี่ยนเครื่องแบบมีราคา — MEMO บังคับ 2 checkbox, PRICED ยืนยันเฉยๆ (engine เปิดใช้
- * สัญญาใหม่ที่หน้าสัญญาต่างหาก — approve แค่สร้างสัญญาใหม่ DRAFT ให้) */
-export function ApprovePricedDialog({
-  caseId,
-  open,
-  onOpenChange,
-  mode,
-}: DialogBaseProps & { mode: 'MEMO' | 'PRICED' }) {
-  const queryClient = useQueryClient();
-  const [addendumSigned, setAddendumSigned] = useState(false);
-  const [mdmSwapped, setMdmSwapped] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setAddendumSigned(false);
-      setMdmSwapped(false);
-    }
-  }, [open]);
-
-  const valid = mode === 'PRICED' || (addendumSigned && mdmSwapped);
-
-  const mutate = useMutation({
-    mutationFn: async () => {
-      const body = mode === 'MEMO' ? { memoAddendumSigned: true, memoMdmSwapped: true } : {};
-      return (await api.post(`/after-sales/${caseId}/approve`, body)).data;
-    },
-    onSuccess: () => {
-      toast.success('อนุมัติแล้ว');
-      queryClient.invalidateQueries({ queryKey: afterSalesKeys.all });
-      onOpenChange(false);
-    },
-    onError: (err) => toast.error(getErrorMessage(err)),
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>อนุมัติเปลี่ยนเครื่อง</DialogTitle>
-          <DialogDescription>
-            {mode === 'MEMO'
-              ? 'รุ่น/ความจุ/ราคาเท่าเดิม — สลับเครื่องบนสัญญาเดิม ไม่มีสัญญาใหม่'
-              : 'ระบบจะสร้างสัญญาใหม่ (DRAFT) ให้ — ต้องเปิดใช้ที่หน้าสัญญาก่อนส่งมอบ'}
-          </DialogDescription>
-        </DialogHeader>
-
-        {mode === 'MEMO' && (
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
-              <input
-                type="checkbox"
-                checked={addendumSigned}
-                onChange={(e) => setAddendumSigned(e.target.checked)}
-                className="h-4.5 w-4.5"
-              />
-              เซ็น ADDENDUM แล้ว
-            </label>
-            <label className="flex items-center gap-2 text-sm leading-snug text-foreground">
-              <input
-                type="checkbox"
-                checked={mdmSwapped}
-                onChange={(e) => setMdmSwapped(e.target.checked)}
-                className="h-4.5 w-4.5"
-              />
-              สลับ MDM แล้ว
-            </label>
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={mutate.isPending}>
-            ยกเลิก
-          </Button>
-          <Button
-            variant="primary"
-            disabled={!valid || mutate.isPending}
-            onClick={() => mutate.mutate()}
-          >
-            {mutate.isPending ? 'กำลังบันทึก…' : 'อนุมัติ'}
           </Button>
         </DialogFooter>
       </DialogContent>

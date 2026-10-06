@@ -17,6 +17,7 @@ import {
   afterSalesKeys,
   primaryAction,
   secondaryActions,
+  DEVICE_SWAP_CLOSED_TEXT,
   stripLineTag,
   canPrintHandover,
   type AfterSalesOutcome,
@@ -362,55 +363,43 @@ describe('Task 11: primaryAction — ปุ่มหลักตาม outcome �
     }
   });
 
-  it('PRICED_EXCHANGE AWAITING_APPROVAL tier REVIEW (approverRole=BRANCH_MANAGER) → OWNER และ BM ได้ "อนุมัติ" ทั้งคู่; SALES/FM/ACCOUNTANT ได้ข้อความรอ', () => {
-    const d = detail({
+  it('คำตัดสินเจ้าของ 2026-10-06: PRICED_EXCHANGE AWAITING_APPROVAL → ไม่มีปุ่ม "อนุมัติ" ทุก role ทุก tier/mode · ทุก role เห็นข้อความปิดใช้ที่ชี้ทาง "ปฏิเสธ" · คำขอที่ผูกไม่สำเร็จยัง null', () => {
+    const exchangeBase = {
+      kind: 'PRICED' as const,
+      mode: 'PRICED' as const,
+      approvalTier: 'REVIEW' as const,
+      requestStatus: 'PENDING' as const,
+      buybackPrice: '8500.00',
+      ncvSnapshot: '10000.00',
+      approverRole: 'BRANCH_MANAGER' as const,
+      oldProduct: null,
+      newProduct: null,
+      replacementContract: null,
+      requestedBy: null,
+    };
+    const variants = [
+      { approvalTier: 'REVIEW' as const, approverRole: 'BRANCH_MANAGER' as const },
+      { approvalTier: 'ESCALATE' as const, approverRole: 'OWNER' as const },
+      { approvalTier: 'AUTO' as const, approverRole: 'BRANCH_MANAGER' as const, mode: 'MEMO' as const },
+    ];
+    for (const v of variants) {
+      const d = detail({
+        outcome: 'PRICED_EXCHANGE',
+        stage: 'AWAITING_APPROVAL',
+        exchange: { ...exchangeBase, ...v },
+      });
+      for (const role of ALL_ROLES) {
+        expect(primaryAction(d, role)).toEqual({ waitingText: DEVICE_SWAP_CLOSED_TEXT });
+      }
+    }
+    expect(DEVICE_SWAP_CLOSED_TEXT).toMatch(/ปฏิเสธ/);
+    // residual sweep — เคสที่ผูกคำขอไม่สำเร็จไม่มีปุ่ม/ข้อความ (ทางออกเดียวคือ "ยกเลิกเคส" ปุ่มรอง)
+    const stuck = detail({
       outcome: 'PRICED_EXCHANGE',
       stage: 'AWAITING_APPROVAL',
-      exchange: {
-        kind: 'PRICED',
-        mode: 'PRICED',
-        approvalTier: 'REVIEW',
-        requestStatus: 'PENDING',
-        buybackPrice: '8500.00',
-        ncvSnapshot: '10000.00',
-        approverRole: 'BRANCH_MANAGER',
-        oldProduct: null,
-        newProduct: null,
-        replacementContract: null,
-        requestedBy: null,
-      },
+      exchange: { ...exchangeBase, requestStatus: null, approvalTier: null },
     });
-    expect(primaryAction(d, 'OWNER')).toEqual({ label: 'อนุมัติ', dialog: 'approve' });
-    expect(primaryAction(d, 'BRANCH_MANAGER')).toEqual({ label: 'อนุมัติ', dialog: 'approve' });
-    // P-M.2 (fix round 1): SALES/FM/ACCOUNTANT ล้วนเห็นข้อความรอ ไม่ใช่แค่ SALES
-    for (const role of ['SALES', 'FINANCE_MANAGER', 'ACCOUNTANT']) {
-      expect(primaryAction(d, role)).toEqual({ waitingText: 'รอ ผจก.สาขา อนุมัติ' });
-    }
-  });
-
-  it('PRICED_EXCHANGE AWAITING_APPROVAL tier ESCALATE (approverRole=OWNER) → BM ไม่มีปุ่ม มี "รอ เจ้าของเท่านั้น อนุมัติ"; OWNER ได้ "อนุมัติ"', () => {
-    const d = detail({
-      outcome: 'PRICED_EXCHANGE',
-      stage: 'AWAITING_APPROVAL',
-      exchange: {
-        kind: 'PRICED',
-        mode: 'PRICED',
-        approvalTier: 'ESCALATE',
-        requestStatus: 'PENDING',
-        buybackPrice: '4000.00',
-        ncvSnapshot: '10000.00',
-        approverRole: 'OWNER',
-        oldProduct: null,
-        newProduct: null,
-        replacementContract: null,
-        requestedBy: null,
-      },
-    });
-    // P-M.2 (fix round 1): BM/SALES/FM/ACCOUNTANT ทั้งหมดไม่ใช่ OWNER → เห็นข้อความรอเดียวกัน
-    for (const role of ['BRANCH_MANAGER', 'SALES', 'FINANCE_MANAGER', 'ACCOUNTANT']) {
-      expect(primaryAction(d, role)).toEqual({ waitingText: 'รอ เจ้าของเท่านั้น อนุมัติ' });
-    }
-    expect(primaryAction(d, 'OWNER')).toEqual({ label: 'อนุมัติ', dialog: 'approve' });
+    for (const role of ALL_ROLES) expect(primaryAction(stuck, role)).toBeNull();
   });
 
   it('I4: PRICED_EXCHANGE READY_FOR_PICKUP สัญญาใหม่ DRAFT → ทางเดียวกับ SAME_MODEL: OWNER/BM/FM ได้ลิงก์ปุ่มหลัก · SALES/ACCOUNTANT ได้ข้อความรอ', () => {

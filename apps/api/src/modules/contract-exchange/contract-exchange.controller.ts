@@ -1,14 +1,18 @@
-import { Body, Controller, Get, Post, Param, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Param, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ContractExchangeService } from './contract-exchange.service';
 import { ExchangeCancelService } from './contract-exchange-cancel.service';
-import { SubmitExchangeRequestDto } from './dto/submit-exchange-request.dto';
 import { RejectExchangeRequestDto } from './dto/reject-exchange-request.dto';
-import { ApproveExchangeRequestDto } from './dto/approve-exchange-request.dto';
 import { CancelExchangeRequestDto } from './dto/cancel-exchange-request.dto';
+import { deviceSwapClosed } from './device-swap-closed.policy';
 
+/**
+ * เส้นทางเดิมของคำขอเปลี่ยนเครื่อง (ก่อนรวมเข้า /after-sales). **ยื่น / preview / อนุมัติ ปิดใช้ 2026-10-06**
+ * (คำตัดสินเจ้าของ — ดู device-swap-closed.policy.ts) → 410 พร้อมข้อความชี้ทาง; เหลือเฉพาะเส้นทางที่ใช้
+ * ปิดคำขอที่ค้างอยู่ก่อนปิดเมนู: รายการ pending/recent · ยกเลิก (swap ที่ลงผลแล้ว) · ปฏิเสธ.
+ */
 @Controller('insurance/exchange-requests')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ContractExchangeController {
@@ -19,36 +23,14 @@ export class ContractExchangeController {
 
   @Post()
   @Roles('SALES', 'BRANCH_MANAGER', 'OWNER')
-  submit(@Body() dto: SubmitExchangeRequestDto, @Req() req: any) {
-    // Pass the full user object — the service does an in-service branch check
-    // (issue #1086 item 2) and needs role + branchId, not just the id.
-    return this.svc.submit(dto, req.user);
+  submit(): never {
+    throw deviceSwapClosed();
   }
 
   @Get('preview')
   @Roles('SALES', 'BRANCH_MANAGER', 'OWNER')
-  preview(
-    @Req() req: any,
-    @Query('oldContractId') oldContractId: string,
-    @Query('newProductId') newProductId?: string,
-    @Query('buybackPrice') buybackPrice?: string,
-    @Query('deviceCondition') deviceCondition?: string,
-    @Query('newTotalMonths') newTotalMonths?: string,
-    @Query('newInterestRate') newInterestRate?: string,
-  ) {
-    // Pass the user — buildPreview branch-scopes in-service (Task 8 carry-over
-    // from Task 7 review: SALES must not read other branches' NCV/GL by UUID).
-    return this.svc.buildPreview(
-      {
-        oldContractId,
-        newProductId,
-        buybackPrice,
-        deviceCondition,
-        newTotalMonths: newTotalMonths ? parseInt(newTotalMonths, 10) : undefined,
-        newInterestRate,
-      },
-      req.user,
-    );
+  preview(): never {
+    throw deviceSwapClosed();
   }
 
   @Get('pending')
@@ -67,15 +49,8 @@ export class ContractExchangeController {
 
   @Post(':id/approve')
   @Roles('OWNER', 'BRANCH_MANAGER')
-  approve(
-    @Param('id') id: string,
-    @Body() dto: ApproveExchangeRequestDto,
-    @Req() req: any,
-  ) {
-    // Tier enforcement (ESCALATE → OWNER only) + branch scoping (I7) live in
-    // the service, which re-reads mode/approvalTier from the DB — never trusts
-    // the client.
-    return this.svc.approve(id, req.user, dto ?? {});
+  approve(): never {
+    throw deviceSwapClosed();
   }
 
   @Post(':id/cancel')

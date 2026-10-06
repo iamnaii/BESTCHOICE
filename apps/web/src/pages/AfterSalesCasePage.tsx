@@ -25,7 +25,6 @@ import {
   ConfirmExchangeDialog,
   RejectExchangeDialog,
   SwitchToRepairDialog,
-  ApprovePricedDialog,
   CancelSwapDialog,
   DeliverExchangeConfirm,
 } from './after-sales/ExchangeActionDialogs';
@@ -193,7 +192,8 @@ export default function AfterSalesCasePage() {
       </Button>
     );
 
-  // Ruling P-B — เปิด dialog ที่ ?action=confirm|approve ชี้มาตอนโหลดครั้งแรก (เฉพาะเมื่อเคส
+  // Ruling P-B — เปิด dialog ที่ ?action=confirm ชี้มาตอนโหลดครั้งแรก (?action=approve ไม่เปิดอะไรแล้ว
+  // ตั้งแต่ปิดเมนูเปลี่ยนแบบมีราคา 2026-10-06 — พารามิเตอร์ยังถูกลบทิ้งเหมือนเดิม) (เฉพาะเมื่อเคส
   // อยู่ใน stage ที่ตรงกันและ role ทำได้จริง — ใช้ primaryAction ตัวเดียวกับปุ่มหลัก) แล้วลบพารามิเตอร์
   // ทิ้งทันทีกัน dialog เปิดซ้ำตอน refetch/re-render ครั้งถัดไป
   useEffect(() => {
@@ -203,7 +203,6 @@ export default function AfterSalesCasePage() {
     const act = primaryAction(data, user.role);
     if (act && 'dialog' in act) {
       if (wanted === 'confirm' && act.dialog === 'exchange-confirm') setDialog('exchange-confirm');
-      if (wanted === 'approve' && act.dialog === 'approve') setDialog('approve');
     }
     setSearchParams(
       (prev) => {
@@ -610,12 +609,6 @@ export default function AfterSalesCasePage() {
               open={dialog === 'switch-to-repair'}
               onOpenChange={(next) => setDialog(next ? 'switch-to-repair' : null)}
               defaultPayer={data.repairTicket?.payer ?? 'SHOP'}
-            />
-            <ApprovePricedDialog
-              caseId={data.id}
-              open={dialog === 'approve'}
-              onOpenChange={(next) => setDialog(next ? 'approve' : null)}
-              mode={data.exchange?.mode === 'MEMO' ? 'MEMO' : 'PRICED'}
             />
             <RejectExchangeDialog
               caseId={data.id}

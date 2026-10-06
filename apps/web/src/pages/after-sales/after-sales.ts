@@ -343,9 +343,16 @@ export type CaseDialogId =
   | 'exchange-deliver'
   | 'exchange-reject'
   | 'switch-to-repair'
-  | 'approve'
   | 'reject-priced'
   | 'cancel-swap';
+
+/** คำตัดสินเจ้าของ 2026-10-06 — เมนูเปลี่ยนเครื่องแบบมีราคา (device swap ทั้ง PRICED/MEMO) ปิดทั้งหมด
+ * (API ตอบ 410 ที่ยื่น/preview/อนุมัติ). ข้อความบนจอต้องชี้ทางที่กดได้จริง: คำขอที่ค้างอยู่ปิดได้ทางเดียว
+ * คือเจ้าของ "ปฏิเสธ" (ปุ่มรอง / ปุ่มในตารางรออนุมัติ) */
+export const DEVICE_SWAP_CLOSED_TEXT =
+  'เมนูเปลี่ยนเครื่องแบบมีราคาปิดใช้แล้ว (06/10/2569) — เจ้าของกด "ปฏิเสธ" เพื่อปิดเคส';
+/** ฉบับสั้นสำหรับตารางรออนุมัติ */
+export const DEVICE_SWAP_CLOSED_SHORT = 'ปิดใช้แล้ว — ปฏิเสธเพื่อปิดเคส';
 
 /** I4 (final fix wave) — ปุ่มหลักมีสามรูปแบบ: เปิด dialog · ลิงก์ไปหน้าอื่น (ขั้นถัดไปอยู่นอกหน้านี้ เช่น
  * เปิดใช้สัญญาใหม่ที่หน้าสัญญา) · ข้อความรอ (role ทำขั้นนี้ไม่ได้) */
@@ -457,16 +464,11 @@ export function primaryAction(data: CaseDetail, role: string): PrimaryAction | n
   }
 
   if (outcome === 'PRICED_EXCHANGE' && stage === 'AWAITING_APPROVAL') {
-    // P-M.2 (fix round 1): เหมือนกัน — role ใดก็ตามที่ไม่ใช่ผู้อนุมัติของ tier นี้เห็นข้อความรอ
-    // residual sweep — เคสที่ผูกคำขอไม่สำเร็จ (ไม่มีคำขอให้อนุมัติ) ไม่มีปุ่ม/ข้อความรอ — ทางออกเดียวคือ
+    // residual sweep — เคสที่ผูกคำขอไม่สำเร็จ (ไม่มีคำขอให้ปฏิเสธ) ไม่มีปุ่ม/ข้อความ — ทางออกเดียวคือ
     // "ยกเลิกเคส" (ปุ่มรอง, MGR)
     if (!data.exchange?.requestStatus) return null;
-    const approverRole = data.exchange?.approverRole ?? 'OWNER';
-    if (role === 'OWNER') return { label: 'อนุมัติ', dialog: 'approve' };
-    if (role === 'BRANCH_MANAGER' && approverRole === 'BRANCH_MANAGER') {
-      return { label: 'อนุมัติ', dialog: 'approve' };
-    }
-    return { waitingText: `รอ ${APPROVER_LABEL[approverRole]} อนุมัติ` };
+    // 2026-10-06 — ไม่มีปุ่ม "อนุมัติ" อีกต่อไปทุก role ทุก tier (API ตอบ 410): ข้อความชี้ทาง "ปฏิเสธ" แทน
+    return { waitingText: DEVICE_SWAP_CLOSED_TEXT };
   }
 
   // CASH_SAME_MODEL_EXCHANGE (ยังไม่เปิดใช้ — engine ปฏิเสธเมื่อไม่มี contractId) ตกมาที่นี่

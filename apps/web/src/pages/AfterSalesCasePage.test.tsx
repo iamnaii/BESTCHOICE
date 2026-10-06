@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import AfterSalesCasePage from './AfterSalesCasePage';
-import type { CaseDetail } from './after-sales/after-sales';
+import { DEVICE_SWAP_CLOSED_TEXT, type CaseDetail } from './after-sales/after-sales';
 import { formatDateTime } from '@/utils/formatters';
 
 const auth = vi.hoisted(() => ({
@@ -624,11 +624,12 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     expect(within(bar).getAllByRole('button', { name: 'ส่งมอบคืนลูกค้า' })).toHaveLength(1);
   });
 
-  it('(m) PRICED_EXCHANGE AWAITING_APPROVAL tier ESCALATE → BM ไม่มีปุ่ม มี "รอ เจ้าของเท่านั้น อนุมัติ"; OWNER มีปุ่ม "อนุมัติ"', async () => {
+  it('(m) 2026-10-06 ปิดเมนูเปลี่ยนแบบมีราคา: PRICED_EXCHANGE AWAITING_APPROVAL tier ESCALATE → ทั้ง BM และ OWNER ไม่มีปุ่ม "อนุมัติ" · เห็นข้อความปิดใช้ชี้ทาง "ปฏิเสธ" · ไม่มีปุ่มหลักสีเขียว', async () => {
     const detail = caseDetail({
       outcome: 'PRICED_EXCHANGE',
       stage: 'AWAITING_APPROVAL',
       repairTicket: null,
+      exchangeRequestId: 'req-1',
       exchange: pricedExchange({
         approvalTier: 'ESCALATE',
         approverRole: 'OWNER',
@@ -641,19 +642,22 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     const bmRender = renderPage(detail.id);
     await screen.findByRole('heading', { name: detail.caseNumber });
     expect(screen.queryByRole('button', { name: 'อนุมัติ' })).not.toBeInTheDocument();
-    expect(screen.getByText('รอ เจ้าของเท่านั้น อนุมัติ')).toBeInTheDocument();
+    expect(screen.getAllByText(DEVICE_SWAP_CLOSED_TEXT).length).toBeGreaterThan(0);
+    expect(screen.queryByText('รอ เจ้าของเท่านั้น อนุมัติ')).not.toBeInTheDocument();
     expect(countGreenPrimaryButtons(bmRender.container)).toBe(0);
     bmRender.unmount();
 
     auth.user = { id: 'u-owner', role: 'OWNER', branchId: null };
     const { container } = renderPage(detail.id);
     await screen.findByRole('heading', { name: detail.caseNumber });
-    const primaryButtons = primaryButtonsOutsideMobileBar('อนุมัติ');
-    expect(primaryButtons).toHaveLength(1);
-    expect(countGreenPrimaryButtons(container)).toBe(1);
+    expect(screen.queryAllByRole('button', { name: 'อนุมัติ' })).toHaveLength(0);
+    expect(screen.getAllByText(DEVICE_SWAP_CLOSED_TEXT).length).toBeGreaterThan(0);
+    expect(countGreenPrimaryButtons(container)).toBe(0);
+    // ทางออกเดียวของคำขอค้าง = ปุ่มรอง "ปฏิเสธ" (OWNER)
+    expect(screen.getAllByRole('button', { name: 'ปฏิเสธ' }).length).toBeGreaterThan(0);
   });
 
-  it('(n) PRICED_EXCHANGE MEMO AWAITING_APPROVAL + OWNER → dialog 2 checkbox ปิดปุ่มจนติ๊กครบ → POST approve {memoAddendumSigned:true, memoMdmSwapped:true}', async () => {
+  it('(n) 2026-10-06: PRICED_EXCHANGE MEMO AWAITING_APPROVAL + OWNER → ไม่มีปุ่ม "อนุมัติ" ไม่มี dialog checkbox · ไม่มี POST /approve', async () => {
     const detail = caseDetail({
       outcome: 'PRICED_EXCHANGE',
       stage: 'AWAITING_APPROVAL',
@@ -665,27 +669,11 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     const { container } = renderPage(detail.id);
 
     await screen.findByRole('heading', { name: detail.caseNumber });
-    const primaryButtons = primaryButtonsOutsideMobileBar('อนุมัติ');
-    expect(primaryButtons).toHaveLength(1);
-    expect(countGreenPrimaryButtons(container)).toBe(1);
-    await userEvent.click(primaryButtons[0]);
-
-    const dialog = await screen.findByRole('dialog');
-    const confirmButton = within(dialog).getByRole('button', { name: 'อนุมัติ' });
-    expect(confirmButton).toBeDisabled();
-
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'เซ็น ADDENDUM แล้ว' }));
-    expect(confirmButton).toBeDisabled();
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'สลับ MDM แล้ว' }));
-    expect(confirmButton).not.toBeDisabled();
-
-    await userEvent.click(confirmButton);
-    await waitFor(() =>
-      expect(mocks.post).toHaveBeenCalledWith(`/after-sales/${detail.id}/approve`, {
-        memoAddendumSigned: true,
-        memoMdmSwapped: true,
-      }),
-    );
+    expect(screen.queryAllByRole('button', { name: 'อนุมัติ' })).toHaveLength(0);
+    expect(countGreenPrimaryButtons(container)).toBe(0);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'เซ็น ADDENDUM แล้ว' })).not.toBeInTheDocument();
+    expect(mocks.post).not.toHaveBeenCalledWith(`/after-sales/${detail.id}/approve`, expect.anything());
   });
 
   it('(o) REPAIR RECEIVED ไม่มีศูนย์ → ปุ่มหลัก "บันทึกซ่อมเสร็จ (ซ่อมที่ร้าน)" + ปุ่มรอง "ส่งซ่อม"', async () => {
@@ -862,7 +850,8 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     const { container } = renderPage(detail.id);
 
     await screen.findByRole('heading', { name: detail.caseNumber });
-    expect(countGreenPrimaryButtons(container)).toBe(1);
+    // 2026-10-06 — ไม่มีปุ่มหลัก "อนุมัติ" สีเขียวอีกแล้ว (ปิดเมนู) เหลือปุ่มรอง "ปฏิเสธ" ทางเดียว
+    expect(countGreenPrimaryButtons(container)).toBe(0);
     await userEvent.click(screen.getByRole('button', { name: 'ปฏิเสธ' }));
 
     const dialog = await screen.findByRole('dialog');
@@ -934,7 +923,7 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
     ).toBeInTheDocument();
   });
 
-  it('P-B: URL ?action=approve เปิด ApprovePricedDialog อัตโนมัติเมื่อ role อนุมัติได้; role ไม่พอ (SALES) → ไม่เปิด', async () => {
+  it('P-B (ปรับ 2026-10-06): URL ?action=approve ไม่เปิด dialog อีกต่อไป ทุก role (เมนูอนุมัติเปลี่ยนแบบมีราคาปิดแล้ว) และพารามิเตอร์ถูกลบทิ้ง', async () => {
     const detail = caseDetail({
       outcome: 'PRICED_EXCHANGE',
       stage: 'AWAITING_APPROVAL',
@@ -942,15 +931,17 @@ describe('AfterSalesCasePage — หน้าเคส /after-sales/:id', () => 
       exchange: pricedExchange(),
     });
     mockGet(detail);
-    auth.user = { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' };
-    const bmRender = renderPage(detail.id, '?action=approve');
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    bmRender.unmount();
-
-    auth.user = { id: 'u-sales', role: 'SALES', branchId: 'branch-1' };
-    renderPage(detail.id, '?action=approve');
-    await screen.findByRole('heading', { name: detail.caseNumber });
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    for (const user of [
+      { id: 'u-owner', role: 'OWNER', branchId: null },
+      { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'branch-1' },
+      { id: 'u-sales', role: 'SALES', branchId: 'branch-1' },
+    ]) {
+      auth.user = user;
+      const r = renderPage(detail.id, '?action=approve');
+      await screen.findByRole('heading', { name: detail.caseNumber });
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      r.unmount();
+    }
   });
 });
 

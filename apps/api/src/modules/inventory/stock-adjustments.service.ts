@@ -41,7 +41,7 @@ import { StockAdjustmentNumberService } from './stock-adjustment-number.service'
  *
  * คำตอบฝ่ายบัญชี 29–30/09/2569: ข6 สูญหาย/ตัดจำหน่าย `Dr S53-1102 / Cr S11-200x` ที่ต้นทุน ณ วันอนุมัติ · FOUND = กลับรายการ
  * ใบเดิม · CORRECTION/OTHER ไม่ลงบัญชี · **ข7 เครื่องเสียหายที่ยังอยู่ = คงในสต๊อก ไม่ลงบัญชี ไม่ลบ** · ข้อ 8 เครื่องที่ยังไม่ลง
- * บัญชีรับเข้าตัดได้โดยไม่มี JE แล้วแจ้งฝ่ายบัญชี — **เฉพาะเครื่องที่ไม่มีใบรับของ**: เครื่องจากใบสั่งซื้อที่ยังไม่เข้าคลังขอตัดไม่ได้
+ * บัญชีรับเข้าตัดได้โดยไม่มี JE แล้วแจ้งฝ่ายบัญชี — **ยกเว้นเครื่องจากใบสั่งซื้อที่ยังอยู่ในคิวรอถ่ายรูป (PHOTO_PENDING)** ขอตัดไม่ได้
  * ตั้งแต่ 2026-10-06 (`PO_UNBOOKED_BLOCK_HINT` / `poUnbookedBlock` — คำตัดสินเจ้าของ: ตีกลับผู้จัดจำหน่ายเท่านั้น).
  */
 export interface AdjustmentActor {
@@ -82,19 +82,20 @@ export const REASON_LABEL: Record<StockAdjustmentReason, string> = {
 /**
  * คำตัดสินเจ้าของ 2026-10-06 ("เครื่องไม่ผ่าน คืน supplier เลย"): เครื่องจากใบสั่งซื้อที่ยังไม่เข้าคลัง (ใบรับของยังไม่ลงบัญชีรับเข้า —
  * มือสองที่รอถ่ายรูป) **ขอตัดสินค้าไม่ได้** ทุกเหตุผลตัดออก (สูญหาย/เสียหาย/ตัดจำหน่าย) — ทางเดียวคือตีกลับผู้จัดจำหน่าย
- * (`PoReceivingService.rejectQC` ผ่านเมนู รอถ่ายรูป › ไม่รับเข้าคลัง — OWNER/BM เท่านั้น ปุ่มรับเฉพาะ PHOTO_PENDING) ·
+ * (`PoReceivingService.rejectQC` ผ่านเมนู รอถ่ายรูป › ไม่รับเข้าคลัง — OWNER/BM เท่านั้น ปุ่มรับเฉพาะ PHOTO_PENDING).
+ * **บล็อกเฉพาะเครื่องที่ยังอยู่ในคิว (`PHOTO_PENDING`)** — ปุ่มตีกลับมีจริงเฉพาะสถานะนั้น และไม่มีหน้าจอตั้งสถานะกลับเป็น
+ * PHOTO_PENDING (ผลตรวจทานอิสระ 2026-10-06): เครื่องจาก PO ที่ถูกเปลี่ยนสถานะมือเป็น INSPECTION/REFURBISHED/DAMAGED ฯลฯ
+ * โดยใบรับของยังไม่ลง JE จึง**ยังตัดได้ตามทางเดิม** (ไม่มี JE + Todo แจ้งฝ่ายบัญชีระบุใบรับของ/ใบสั่งซื้อ — branch ใน approve)
+ * ไม่งั้นจะติดค้างไม่มีทางออก (ตัดไม่ได้ · ตีกลับไม่ได้ · FOUND → IN_STOCK จะลงรับเข้าสวนคำตัดสิน) ·
  * เครื่องที่ไม่มีใบรับของ (ยอดยกมา / เพิ่มด้วยมือ / รับซื้อ-รับเทิร์น) และเครื่อง IN_STOCK (เข้าคลังแล้ว แม้ใบต้นทุน 0 ไม่มี JE) ไม่เข้าข่าย
  */
 export const PO_UNBOOKED_BLOCK_HINT =
   'ให้ตีกลับผู้จัดจำหน่ายแทน ที่เมนู รอถ่ายรูป › ไม่รับเข้าคลัง (ผู้จัดการสาขาหรือเจ้าของกิจการเป็นผู้กด)';
 
-export function poUnbookedBlockMessage(reason: StockAdjustmentReason, status: ProductStatus, grNumber: string): string {
-  const backToQueue =
-    status === 'PHOTO_PENDING' ? '' : ` · เครื่องอยู่สถานะ ${status} ต้องเปลี่ยนสถานะกลับเป็น PHOTO_PENDING ก่อนจึงจะตีกลับได้`;
+export function poUnbookedBlockMessage(reason: StockAdjustmentReason, grNumber: string): string {
   return (
     `ขอ${REASON_LABEL[reason]}ไม่ได้ — เครื่องนี้มาจากใบรับของ ${grNumber} และยังไม่เข้าคลัง (ยังไม่ลงบัญชีรับเข้า) ` +
-    PO_UNBOOKED_BLOCK_HINT +
-    backToQueue
+    PO_UNBOOKED_BLOCK_HINT
   );
 }
 
@@ -385,9 +386,9 @@ export class StockAdjustmentsService {
     reason: StockAdjustmentReason,
     product: LoadedProduct,
   ): Promise<string | null> {
-    if (!EXIT_REASONS.has(reason) || product.deletedAt || product.status === 'IN_STOCK') return null;
+    if (!EXIT_REASONS.has(reason) || product.deletedAt || product.status !== 'PHOTO_PENDING') return null;
     const gr = await this.unbookedReceivingOf(client, product.id);
-    return gr ? poUnbookedBlockMessage(reason, product.status, gr.grNumber) : null;
+    return gr ? poUnbookedBlockMessage(reason, gr.grNumber) : null;
   }
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -709,7 +710,9 @@ export class StockAdjustmentsService {
             }
           } else if (!booked.booked && cost.gt(0)) {
             // ข้อ 8 — ของยกมา / เพิ่มด้วยมือ: ไม่มีสินค้าคงคลังในบัญชีให้เครดิต
-            // เครื่องจาก PO ที่ยังรอถ่ายรูปถูกกันตั้งแต่ createRequest แล้ว (2026-10-06) — branch ข้างล่างเหลือสำหรับใบ PENDING ที่สร้างก่อน deploy
+            // เครื่องจาก PO ที่ยัง PHOTO_PENDING ถูกกันตั้งแต่ createRequest แล้ว (2026-10-06) — branch ใบรับของข้างล่างยังถึงได้จาก
+            // (ก) ใบ PENDING ที่สร้างก่อน deploy (ข) เครื่องจาก PO ที่ถูกเปลี่ยนสถานะมือออกจากคิว (INSPECTION/DAMAGED ฯลฯ — ไม่มีปุ่มตีกลับ จึงไม่บล็อก)
+            // (ค) เครื่อง IN_STOCK ที่ใบรับของไม่มี JE (ใบต้นทุน 0 / receivedCost null) — ข้อความ Todo ด้านล่างเขียนจากมุม "ยังไม่ผ่านเข้าคลัง" ซึ่งไม่ตรงกับ (ค)
             // I3 (final review): เครื่องจาก PO ที่ยังไม่ผ่านเข้าคลัง = เจ้าหนี้ผู้จัดจำหน่ายของเครื่องนั้นก็ยังไม่ถูกตั้ง (ก้อน 2 คิดเจ้าหนี้จาก JE รับของ)
             // ⇒ ถ้าจ่ายใบนั้นเต็ม ส่วนของเครื่องนี้จะค้างเป็นมัดจำ S11-4201 — ต้องบอกฝ่ายบัญชีให้ครบ (รอคำตอบว่าจะให้ลงรับเข้าก่อนตัดหรือไม่)
             const gr = booked.grNumber
@@ -966,7 +969,8 @@ export class StockAdjustmentsService {
       costPrice: canSeeCost(actor.role) ? money(p.costPrice) : null,
       category: p.category,
       pendingRequestNumber: p.stockAdjustments?.[0]?.requestNumber ?? null,
-      poUnbooked: unbookedPo.has(p.id) && !p.deletedAt && p.status !== 'IN_STOCK',
+      // ป้ายขึ้นเฉพาะกรณีที่ด่าน poUnbookedBlock จะบล็อกจริง: เหตุผลตัดออก + ยังอยู่ในคิวรอถ่ายรูป (ปุ่มตีกลับมีจริง)
+      poUnbooked: EXIT_REASONS.has(q.reason) && unbookedPo.has(p.id) && !p.deletedAt && p.status === 'PHOTO_PENDING',
     }));
   }
 

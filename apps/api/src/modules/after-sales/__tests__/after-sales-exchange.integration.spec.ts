@@ -172,7 +172,6 @@ const caseSvc = new AfterSalesCaseService(
   repairTickets,
   afterSalesDocNumber,
   lookupSvc,
-  contractExchange,
   defect,
   line,
 );
@@ -734,7 +733,7 @@ describe('after-sales exchange — DB จริง (Task 8, PR2)', () => {
     await exchangeSvc.rejectPriced(created.id, { reason } as never, OWNER());
 
     const rejected = await prisma.contractExchangeRequest.findUniqueOrThrow({ where: { id: req.id } });
-    expect(rejected.status).not.toBe('PENDING');
+    expect(rejected.status).toBe('REJECTED');
     const afterCase = await svc.getCase(created.id, OWNER());
     expect((afterCase as { stage: string }).stage).toBe('CANCELLED');
     expect((afterCase as { cancelReason: string | null }).cancelReason).toBe(reason);

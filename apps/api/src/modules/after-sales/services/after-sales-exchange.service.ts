@@ -102,11 +102,6 @@ export class AfterSalesExchangeService {
   }
 
   /** Task 6 — preview เปิดให้ STAFF (OWNER/BM/SALES) เท่านั้น ตาม Interfaces ของบรีฟ */
-  private assertStaff(user: ReqUser) {
-    if (!['OWNER', 'BRANCH_MANAGER', 'SALES'].includes(user.role)) {
-      throw new ForbiddenException('เฉพาะเจ้าของ ผจก.สาขา หรือพนักงานขาย');
-    }
-  }
 
   /**
    * Task 6 — ด่านร่วมของ approvePriced/rejectPriced/cancelSwap: เคสต้องเป็นทางออกมีราคา,

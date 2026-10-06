@@ -6,6 +6,7 @@ import {
   STOCK_ADJUSTMENT_TODO_TAG,
   StockAdjustmentsService,
   adjustmentTodoKey,
+  poUnbookedBlockMessage,
 } from './stock-adjustments.service';
 
 /**
@@ -824,10 +825,23 @@ describe('StockAdjustmentsService — เครื่องจากใบสั
     expect(storage.upload).not.toHaveBeenCalled();
   });
 
-  it('(po3) เครื่อง PO ที่ถูกเปลี่ยนสถานะมือเป็น INSPECTION → 400 และบอกให้เปลี่ยนกลับเป็น PHOTO_PENDING ก่อนตีกลับ', async () => {
+  it('(po3 — ผลตรวจทานอิสระ) เครื่อง PO ที่ถูกเปลี่ยนสถานะมือเป็น INSPECTION (ไม่มีปุ่มตีกลับ — rejectQC รับเฉพาะ PHOTO_PENDING และไม่มีหน้าจอตั้ง PHOTO_PENDING กลับ) → ไม่บล็อก: สร้างใบได้ตามทางเดิม (ไม่มี JE + Todo แจ้งบัญชี)', async () => {
     const { service, prisma } = build(baseProduct({ status: 'INSPECTION', category: 'PHONE_USED' }));
     prisma.goodsReceivingItem.findFirst.mockResolvedValue(unbookedGr);
-    await expect(service.createRequest({ productId: 'p1', reason: 'WRITE_OFF' }, [], OWNER)).rejects.toThrow(/PHOTO_PENDING ก่อน/);
+    const view = await service.createRequest({ productId: 'p1', reason: 'WRITE_OFF' }, [], OWNER);
+    expect(view.requestNumber).toBe('SA-20261005-0001');
+    expect(prisma.stockAdjustment.create).toHaveBeenCalled();
+    const pv = await service.preview('p1', 'WRITE_OFF', OWNER);
+    expect(pv.blockedReason).toBeNull();
+  });
+
+  it('(po3b) เครื่อง PO ที่เป็น DAMAGED (ใบเสียหายอนุมัติไว้ก่อน deploy) → WRITE_OFF ได้ ไม่ติดค้าง — ข้อความด่านไม่มีคำสั่งเปลี่ยนสถานะที่ทำไม่ได้', async () => {
+    const { service, prisma } = build(baseProduct({ status: 'DAMAGED', category: 'PHONE_USED' }));
+    prisma.goodsReceivingItem.findFirst.mockResolvedValue(unbookedGr);
+    await service.createRequest({ productId: 'p1', reason: 'WRITE_OFF' }, [], OWNER);
+    expect(prisma.stockAdjustment.create).toHaveBeenCalled();
+    expect(poUnbookedBlockMessage('WRITE_OFF', 'GR-20261006-001')).not.toMatch(/เปลี่ยนสถานะ/);
+    expect(poUnbookedBlockMessage('WRITE_OFF', 'GR-20261006-001')).toMatch(/ไม่รับเข้าคลัง/);
   });
 
   it('(po4) LOST บนเครื่อง PHOTO_PENDING ที่ไม่มีใบรับของ (รับซื้อ/ยกมา) → สร้างใบได้ตามเดิม', async () => {
@@ -869,12 +883,22 @@ describe('StockAdjustmentsService — เครื่องจากใบสั
       id, name: 'x', brand: 'Apple', model: 'iPhone', imeiSerial: `35000000000000${id}`, serialNumber: null, status, deletedAt: null,
       costPrice: new Prisma.Decimal('1000.00'), category: 'PHONE_USED', branch: { id: 'branch-1', name: 'ลาดพร้าว' }, stockAdjustments: [],
     });
-    prisma.product.findMany.mockResolvedValue([row('p-po', 'PHOTO_PENDING'), row('p-booked', 'IN_STOCK'), row('p-tradein', 'PHOTO_PENDING')]);
+    prisma.product.findMany.mockResolvedValue([
+      row('p-po', 'PHOTO_PENDING'),
+      row('p-booked', 'IN_STOCK'),
+      row('p-tradein', 'PHOTO_PENDING'),
+      row('p-insp', 'INSPECTION'),
+    ]);
     prisma.goodsReceivingItem.findMany = jest.fn().mockResolvedValue([
       { productId: 'p-po', journalEntryId: null },
       { productId: 'p-booked', journalEntryId: 'je-1' },
+      { productId: 'p-insp', journalEntryId: null },
     ]);
     const rows = await service.lookupProduct({ search: 'iPhone', reason: 'LOST' }, OWNER);
-    expect(rows.map((r) => [r.id, r.poUnbooked])).toEqual([['p-po', true], ['p-booked', false], ['p-tradein', false]]);
+    // ติดป้ายเฉพาะแถวที่ปุ่มตีกลับมีจริง (PHOTO_PENDING) — INSPECTION ที่ใบรับของยังไม่ลงใช้ทางเดิม จึงไม่ติด
+    expect(rows.map((r) => [r.id, r.poUnbooked])).toEqual([['p-po', true], ['p-booked', false], ['p-tradein', false], ['p-insp', false]]);
+    // ผลตรวจทานอิสระ M4 — เหตุผลที่ไม่ใช่การตัดออก (CORRECTION/OTHER/FOUND) ไม่ติดป้าย เพราะยังขอได้
+    const noteRows = await service.lookupProduct({ search: 'iPhone', reason: 'CORRECTION' }, OWNER);
+    expect(noteRows.every((r) => r.poUnbooked === false)).toBe(true);
   });
 });

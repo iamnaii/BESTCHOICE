@@ -363,7 +363,10 @@ describe('คำขอตัดสินค้า — flow จริงบน DB
     // ทางที่ถูก: ตีกลับผู้จัดจำหน่าย (soft delete · ไม่มีรายการบัญชี ตามคำตอบฝ่ายบัญชีข้อ 8)
     await poService.rejectQC([product.id], 'ตีกลับผู้จัดจำหน่าย — ทดสอบ');
     expect((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).deletedAt).not.toBeNull();
-    expect(await writeoffEntriesOf(product.id)).toHaveLength(0);
+    // แถวใบรับของของเครื่องนี้ยังไม่มีรายการบัญชี (ตีกลับไม่ลงอะไร) และไม่มีใบตัดสินค้าเกิดขึ้นเลย
+    const grItem = await prisma.goodsReceivingItem.findFirst({ where: { productId: product.id } });
+    expect(grItem?.journalEntryId ?? null).toBeNull();
+    expect(await prisma.stockAdjustment.count({ where: { productId: product.id } })).toBe(0);
   }, 120_000);
 
   it('5. reject คืน IN_STOCK · cancel โดยผู้ขอคืน PHOTO_PENDING (สถานะเดิม ไม่ใช่ IN_STOCK)', async () => {

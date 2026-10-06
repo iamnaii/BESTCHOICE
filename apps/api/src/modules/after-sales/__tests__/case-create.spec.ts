@@ -107,7 +107,6 @@ describe('AfterSalesCaseService.createCase', () => {
   let repair: any;
   let docNumber: any;
   let lookupSvc: any;
-  let contractExchange: any;
   let defect: any;
   let line: any;
   let svc: AfterSalesCaseService;
@@ -160,7 +159,6 @@ describe('AfterSalesCaseService.createCase', () => {
     };
     docNumber = { nextCaseNumber: jest.fn().mockResolvedValue('AS-20260924-0001') };
     lookupSvc = { lookup: jest.fn().mockResolvedValue(buildLookupResult()) };
-    contractExchange = { submit: jest.fn() };
     defect = { checkEligibility: jest.fn() };
     line = { notifyMoment: jest.fn().mockResolvedValue({ status: 'SENT' }) };
 
@@ -171,7 +169,6 @@ describe('AfterSalesCaseService.createCase', () => {
       repair as never,
       docNumber as never,
       lookupSvc as never,
-      contractExchange as never,
       defect as never,
       line as never,
     );
@@ -564,7 +561,7 @@ describe('AfterSalesCaseService.createCase', () => {
         ['SALES', { id: 'u-sales', role: 'SALES', branchId: 'b-1' }],
         ['BRANCH_MANAGER', { id: 'u-bm', role: 'BRANCH_MANAGER', branchId: 'b-1' }],
         ['OWNER', { id: 'u-owner', role: 'OWNER', branchId: null }],
-      ])('%s → GoneException ก่อนแตะ branch/lookup/upload/tx/submit/audit/LINE', async (_label, user) => {
+      ])('%s → GoneException ก่อนแตะ branch/lookup/upload/tx/audit/LINE', async (_label, user) => {
         lookupSvc.lookup.mockResolvedValue(buildExchangeLookup('PRICED_EXCHANGE'));
         await expect(svc.createCase(pricedDto as never, [mockFile()], user as never)).rejects.toThrow(
           GoneException,
@@ -575,7 +572,6 @@ describe('AfterSalesCaseService.createCase', () => {
         expect(storage.upload).not.toHaveBeenCalled();
         expect(prisma.$transaction).not.toHaveBeenCalled();
         expect(tx.afterSalesCase.create).not.toHaveBeenCalled();
-        expect(contractExchange.submit).not.toHaveBeenCalled();
         expect(audit.log).not.toHaveBeenCalled();
         expect(line.notifyMoment).not.toHaveBeenCalled();
       });

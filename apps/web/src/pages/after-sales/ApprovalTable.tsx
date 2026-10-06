@@ -60,17 +60,22 @@ function TypePriceCell({ ex }: { ex: CaseExchangeInfo | null }) {
   );
 }
 
-/** T12-1 — แถว PRICED ต่อท้ายด้วย tier ของคำขอ เช่น "ผจก.สาขา (REVIEW)" / "เจ้าของเท่านั้น (ESCALATE)"
- * ส่วนแถว SAME_MODEL (ไม่มี tier) คงป้ายเปล่า */
+/** ป้าย "ใครอนุมัติได้" — แถว SAME_MODEL ตามผู้อนุมัติของคำขอ · แถว PRICED = "ปิดใช้แล้ว" (2026-10-06; เดิม T12-1 ต่อท้าย tier) */
 function ApproverChip({ ex }: { ex: CaseExchangeInfo | null }) {
+  // 2026-10-06 — แถว PRICED ไม่มีใครอนุมัติได้อีก (เมนูปิด) — ป้ายกลาง ๆ แทน tier/ผู้อนุมัติ ที่จะขัดกับข้อความปิดใช้ในช่องการกระทำ
+  if (ex?.kind === 'PRICED') {
+    return (
+      <span className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-semibold leading-snug text-muted-foreground">
+        ปิดใช้แล้ว
+      </span>
+    );
+  }
   const approverRole: ExchangeApproverRole = ex?.approverRole ?? 'OWNER';
-  const tier = ex?.kind === 'PRICED' && ex.approvalTier ? ` (${TIER_LABEL[ex.approvalTier]})` : '';
   if (approverRole === 'OWNER') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-destructive">
         <ShieldAlert aria-hidden className="h-3.5 w-3.5 shrink-0" />
         {APPROVER_LABEL.OWNER}
-        {tier}
       </span>
     );
   }
@@ -78,7 +83,6 @@ function ApproverChip({ ex }: { ex: CaseExchangeInfo | null }) {
     <span className="inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-semibold leading-snug text-warning-strong">
       <UserCheck aria-hidden className="h-3.5 w-3.5 shrink-0" />
       {APPROVER_LABEL.BRANCH_MANAGER}
-      {tier}
     </span>
   );
 }

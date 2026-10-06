@@ -215,13 +215,15 @@ describe('ApprovalTable — คอลัมน์ (mockup C)', () => {
     expect(row1.getByText('ธนา')).toBeInTheDocument();
     // 8000/10000 = 80%
     expect(row1.getByText('รับซื้อ 8,000.00 · 80% ของยอดคงเหลือ')).toBeInTheDocument();
-    // T12-1 — แถว PRICED ต่อท้าย tier · แถว SAME_MODEL ป้ายเปล่า
-    expect(row1.getByText('ผจก.สาขา (REVIEW)')).toBeInTheDocument();
+    // 2026-10-06 (ผลตรวจทาน M6) — แถว PRICED ไม่โชว์ "ใครอนุมัติได้" อีก (ขัดกับข้อความปิดใช้) → ป้าย "ปิดใช้แล้ว"
+    expect(row1.queryByText('ผจก.สาขา (REVIEW)')).not.toBeInTheDocument();
+    expect(row1.getByText('ปิดใช้แล้ว')).toBeInTheDocument();
     expect(rowByCase('AS-20260924-0002').getByText('ผจก.สาขา')).toBeInTheDocument();
 
     const row3 = rowByCase('AS-20260924-0003');
     expect(row3.getByText('สัญญาใหม่ CT-20260924-0009')).toBeInTheDocument();
-    expect(row3.getByText('เจ้าของเท่านั้น (ESCALATE)')).toBeInTheDocument();
+    expect(row3.queryByText('เจ้าของเท่านั้น (ESCALATE)')).not.toBeInTheDocument();
+    expect(row3.getByText('ปิดใช้แล้ว')).toBeInTheDocument();
     expect(row3.getByText(/ยังไม่เลือก/)).toBeInTheDocument();
   });
 

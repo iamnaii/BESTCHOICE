@@ -185,6 +185,13 @@ export const INTEGRATIONS: IntegrationDef[] = [
     icon: 'facebook',
     fields: [
       {
+        key: 'appId',
+        label: 'App ID (สำหรับตรวจสิทธิ์คอมเมนต์)',
+        sensitive: false,
+        required: false,
+        envVar: 'FB_APP_ID',
+      },
+      {
         key: 'pageAccessToken',
         label: 'Page Access Token',
         sensitive: true,

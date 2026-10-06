@@ -7,6 +7,7 @@ import QueryBoundary from '@/components/QueryBoundary';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useChatWorkSettings } from '../UnifiedInboxPage/hooks/useChatWork';
+import FacebookCommentPageSettings from '../UnifiedInboxPage/components/FacebookCommentPageSettings';
 const labels: Record<ChatWorkFlag, string> = {
   chat_work_queue_enabled: 'คิวงานแชท',
   chat_sla_alerts_enabled: 'แจ้งเตือนเวลารอ',
@@ -43,6 +44,7 @@ export default function ChatWorkSettingsDialog({ onClose }: { onClose: () => voi
         >
           {query.data && <SettingsForm initial={query.data} onClose={onClose} />}
         </QueryBoundary>
+        {work.company === 'SHOP' && <FacebookCommentPageSettings />}
       </DialogContent>
     </Dialog>
   );
@@ -120,6 +122,14 @@ function SettingsForm({ initial, onClose }: { initial: Settings; onClose: () => 
           </label>
         ))}
       </div>
+      <p className="text-muted-foreground">
+        คิวงานรวมแชทรอตอบและงานติดตามที่คุณมีสิทธิ์เห็น การอ่านแชทไม่ถือว่าตอบแล้ว
+        ระบบจะนำแชทออกจากรอตอบเมื่อส่งคำตอบสำเร็จ
+      </p>
+      <p className="text-muted-foreground">
+        การเปิดคอมเมนต์ต้องตั้งค่า Page และสาขา พร้อมตรวจสิทธิ์ Facebook ด้านล่างด้วย
+        ระบบเริ่มรับเหตุการณ์ใหม่หลังเปิดใช้งาน ไม่ดึงคอมเมนต์เก่าย้อนหลัง
+      </p>
       {error && (
         <p role="alert" className="text-destructive">
           {error}

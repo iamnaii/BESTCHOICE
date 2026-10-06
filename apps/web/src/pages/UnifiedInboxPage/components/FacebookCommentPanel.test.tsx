@@ -116,3 +116,36 @@ it('clears only the matching uncertain draft after proof confirms the same reply
   fireEvent.click(screen.getByRole('button', { name: 'ตรวจหลักฐานการส่ง' }));
   await waitFor(() => expect(screen.getByLabelText('คำตอบสาธารณะ')).toHaveValue(''));
 });
+
+it('retries an unresolved record read without sending a public reply', async () => {
+  const unresolved = { ...fixture, needsReconciliation: true, records: fixture.records.map(row => ({ ...row, needsReconciliation: true })) };
+  mocks.api.get.mockImplementation((url: string) => Promise.resolve({ data: url.includes('eligible-staff') ? [] : unresolved }));
+  mocks.api.post.mockResolvedValue({ data: { refreshed: false } });
+  view();
+  fireEvent.click(await screen.findByRole('button', { name: 'ตรวจข้อมูลจาก Meta อีกครั้ง' }));
+  await waitFor(() => expect(mocks.api.post).toHaveBeenCalledWith('/staff-chat/facebook-comments/thread/records/record/refresh', {}, { params: { company: 'SHOP' } }));
+  expect(mocks.api.post.mock.calls.some(([url]) => String(url).endsWith('/replies'))).toBe(false);
+  await screen.findByText('ยังตรวจยืนยันจาก Meta ไม่ได้ หรือมีข้อมูลใหม่เข้ามาระหว่างตรวจ กรุณาลองอีกครั้ง');
+  expect(screen.getByRole('button', { name: 'ตอบสาธารณะ' })).toBeDisabled();
+});
+
+it('keeps recovery reachable for an unresolved Page echo without duplicating the reply text', async () => {
+  const row = { ...fixture, needsReconciliation: true,
+    records: [{ ...fixture.records[0], commentId: 'ack', text: 'คำตอบที่ยืนยันแล้ว', needsReconciliation: true }],
+    replies: [{ id: 'reply', externalId: 'ack', text: 'คำตอบที่ยืนยันแล้ว', status: 'CONFIRMED' }],
+  };
+  mocks.api.get.mockImplementation((url: string) => Promise.resolve({ data: url.includes('eligible-staff') ? [] : row }));
+  view();
+  expect(await screen.findByRole('button', { name: 'ตรวจข้อมูลจาก Meta อีกครั้ง' })).toBeVisible();
+  expect(screen.getAllByText('คำตอบที่ยืนยันแล้ว', { exact: true })).toHaveLength(1);
+});
+
+it('can request the authoritative root when only a child was received', async () => {
+  const row = { ...fixture, needsReconciliation: true, rootRecordMissing: true };
+  mocks.api.get.mockImplementation((url: string) => Promise.resolve({ data: url.includes('eligible-staff') ? [] : row }));
+  mocks.api.post.mockResolvedValue({ data: { refreshed: false } });
+  view();
+  fireEvent.click(await screen.findByRole('button', { name: 'ตรวจคอมเมนต์ต้นทางจาก Meta' }));
+  await waitFor(() => expect(mocks.api.post).toHaveBeenCalledWith('/staff-chat/facebook-comments/thread/refresh-root', {}, { params: { company: 'SHOP' } }));
+  await screen.findByText('ยังตรวจยืนยันคอมเมนต์ต้นทางไม่ได้ กรุณาลองอีกครั้ง');
+});

@@ -1,8 +1,8 @@
+import { FacebookCommentGraphTransport } from '../chat-adapters/facebook-comment-graph.transport';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 import {
   FACEBOOK_PAGE_SUBSCRIBED_FIELDS_CSV,
-  withRequiredFacebookPageFields,
 } from '@installment/shared';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import {
@@ -37,8 +37,7 @@ const TIMEOUT_MS = 15_000;
  *   ⇒ เก็บเป็นข้อความ STAFF ผ่าน `mirrorOutbound` — ร่องรอยอัตโนมัติทางเดียวของการตอบนอกระบบ:
  *   ล้าง "รอตอบ" · หยุด AI ห้องนั้น · นับ "ร้านตอบ" ในไทม์ไลน์ลูกค้า (prod ราว 4,600 แถว/7 วัน)
  *   ขาดแล้ว = ห้องค้าง "รอตอบ" ทั้งที่ตอบแล้ว + บอทตอบแทรกพนักงาน
- * - **ไม่มี `feed` โดยตั้งใจ** — ตัวรับ webhook อ่านเฉพาะ `entry.messaging`
- *   (`facebook-webhook.controller.ts` handleWebhook) ไม่เคยอ่าน `entry.changes`
+ * - ไม่เพิ่ม `feed` อัตโนมัติ แต่เก็บไว้หาก Page สมัครรับคอมเมนต์อยู่แล้ว
  *
  * `subscribePageWebhooks` เติมชุดนี้ให้ครบเสมอแม้ผู้เรียกส่งรายการสั้นมา
  * (`withRequiredFacebookPageFields`) — ช่องกรอกแก้เองได้ และแท็บที่ถือ bundle เก่าก็ยังยิงได้
@@ -79,7 +78,10 @@ export type FbJson = Record<string, unknown> & FbError;
 export class FacebookAppReviewService {
   private readonly logger = new Logger(FacebookAppReviewService.name);
 
-  constructor(private readonly integrationConfig: IntegrationConfigService) {}
+  constructor(
+    private readonly integrationConfig: IntegrationConfigService,
+    private readonly subscriptions: FacebookCommentGraphTransport = new FacebookCommentGraphTransport(integrationConfig),
+  ) {}
 
   private async getCreds(): Promise<{
     pageToken?: string;
@@ -302,21 +304,10 @@ export class FacebookAppReviewService {
       throw new BadRequestException('ยังไม่ได้ตั้งค่า FB page token/id');
     }
 
-    const fields = withRequiredFacebookPageFields(dto.fields);
-    if (dto.fields !== undefined) {
-      const sent = new Set(dto.fields.split(',').map((f) => f.trim()));
-      const restored = DEFAULT_SUBSCRIBED_FIELDS.split(',').filter((f) => !sent.has(f));
-      if (restored.length > 0) {
-        // ไม่ใช่ error — แค่บอกว่ารายการที่ส่งมาจะถอดฟิลด์บังคับออก จึงเติมกลับให้
-        this.logger.warn(
-          `[FB App Review] subscribe_page_webhooks: re-added required fields missing from request: ${restored.join(',')}`,
-        );
-      }
-    }
-
-    const url = `${GRAPH_BASE}/${c.pageId}/subscribed_apps`;
-    const body = { subscribed_fields: fields };
-    return this.call('POST', url, body, 'subscribe_page_webhooks', c.pageToken);
+    // Reuse the verified Page/app identity and read-merge-write implementation. A default
+    // form submitted here must not remove feed/leadgen or other existing subscriptions.
+    await this.subscriptions.subscribeFields(c.pageId, dto.fields ?? '');
+    return { success: true };
   }
 
   // ─── pages_read_engagement ───────────────────────────────────────────────

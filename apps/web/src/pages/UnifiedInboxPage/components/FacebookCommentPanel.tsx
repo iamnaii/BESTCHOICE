@@ -162,18 +162,67 @@ export default function FacebookCommentPanel({ threadId }: { threadId: string })
       )}
       {row.needsReconciliation && (
         <p role="status" className="rounded-lg bg-muted p-3">
-          กำลังรอตรวจข้อมูลกับต้นทาง จึงยังตอบจากหน้านี้ไม่ได้
+          ข้อมูลบางรายการยังตรวจไม่สำเร็จ จึงยังตอบไม่ได้
+          ใช้ปุ่มตรวจข้อมูลใต้คอมเมนต์เพื่อลองอีกครั้ง
         </p>
+      )}
+      {row.rootRecordMissing && (
+        <Button
+          variant="outline"
+          disabled={busy}
+          className="whitespace-normal"
+          onClick={() =>
+            act(async () => {
+              const result = await api.post<{ refreshed: boolean }>(
+                `/staff-chat/facebook-comments/${threadId}/refresh-root`,
+                {},
+                { params: scope },
+              );
+              if (!result.data.refreshed)
+                setError('ยังตรวจยืนยันคอมเมนต์ต้นทางไม่ได้ กรุณาลองอีกครั้ง');
+            })
+          }
+        >
+          ตรวจคอมเมนต์ต้นทางจาก Meta
+        </Button>
       )}
       <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
         {row.records
-          .filter((r) => !echoIds.has(r.commentId))
+          .filter((r) => !echoIds.has(r.commentId) || r.needsReconciliation)
           .map((r) => (
             <article key={r.id} className="min-w-0 rounded-lg border bg-card p-3">
-              <p className="mb-1 font-medium">{r.authorName || 'ผู้ใช้ Facebook'}</p>
-              <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {r.deletedAt ? 'คอมเมนต์ถูกลบ' : r.text || 'คอมเมนต์ไม่มีข้อความ'}
-              </p>
+              {echoIds.has(r.commentId) ? (
+                <p className="font-medium">ตรวจสถานะคำตอบของเพจ</p>
+              ) : (
+                <>
+                  <p className="mb-1 font-medium">{r.authorName || 'ผู้ใช้ Facebook'}</p>
+                  <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                    {r.deletedAt ? 'คอมเมนต์ถูกลบ' : r.text || 'คอมเมนต์ไม่มีข้อความ'}
+                  </p>
+                </>
+              )}
+              {r.needsReconciliation && (
+                <Button
+                  variant="outline"
+                  className="mt-2 whitespace-normal"
+                  disabled={busy}
+                  onClick={() =>
+                    act(async () => {
+                      const result = await api.post<{ refreshed: boolean }>(
+                        `/staff-chat/facebook-comments/${threadId}/records/${r.id}/refresh`,
+                        {},
+                        { params: scope },
+                      );
+                      if (!result.data.refreshed)
+                        setError(
+                          'ยังตรวจยืนยันจาก Meta ไม่ได้ หรือมีข้อมูลใหม่เข้ามาระหว่างตรวจ กรุณาลองอีกครั้ง',
+                        );
+                    })
+                  }
+                >
+                  ตรวจข้อมูลจาก Meta อีกครั้ง
+                </Button>
+              )}
             </article>
           ))}
         {row.replies.map((r) => (

@@ -63,6 +63,20 @@ export async function checkFacebookComments(page, origin, output, width) {
   await page.getByRole('button', { name: 'คอมเมนต์', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'คอมเมนต์ Facebook' })).toBeVisible();
   await page.keyboard.press('Escape');
+  const stuck = await (await post('preview/facebook-comments/fixture', { text: 'รอตรวจต้นทาง', unversioned: true, readUnavailable: true })).json();
+  await page.goto(`${origin}/inbox?zone=shop&commentId=${stuck.id}`);
+  await expect(dialog.getByText('ข้อมูลบางรายการยังตรวจไม่สำเร็จ', { exact: false })).toBeVisible();
+  await dialog.getByLabel('คำตอบสาธารณะ', { exact: true }).fill('ร่างคำตอบหลังตรวจ');
+  await expect(dialog.getByRole('button', { name: 'ตอบสาธารณะ', exact: true })).toBeDisabled();
+  const beforeRefresh = await (await post('preview/facebook-comments/proof', { threadId: stuck.id })).json();
+  await post('preview/facebook-comments/read-ready', { commentId: stuck.commentId, text: 'ข้อมูลล่าสุดที่ยืนยันจากต้นทาง' });
+  await dialog.getByRole('button', { name: 'ตรวจข้อมูลจาก Meta อีกครั้ง', exact: true }).click();
+  await expect(dialog.getByText('ข้อมูลล่าสุดที่ยืนยันจากต้นทาง', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'ตอบสาธารณะ', exact: true })).toBeEnabled();
+  const afterRefresh = await (await post('preview/facebook-comments/proof', { threadId: stuck.id })).json();
+  assert.equal(afterRefresh.dispatchCount, beforeRefresh.dispatchCount, 'A manual GET recovery must never send a public reply');
+  await page.screenshot({ path: join(output, `facebook-comments-recovery-${width}.png`), animations: 'disabled' });
+  await page.keyboard.press('Escape');
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const browser = await chromium.launch();

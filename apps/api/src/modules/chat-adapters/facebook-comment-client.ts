@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
 import { IntegrationConfigService } from '../integrations/integration-config.service';
 import { capabilityFromEvidence, FacebookCommentEvidence } from './facebook-comment-capability';
 export const FACEBOOK_COMMENT_TRANSPORT = Symbol('FACEBOOK_COMMENT_TRANSPORT');
@@ -13,9 +13,13 @@ export interface FacebookCommentSnapshot {
   text: string | null;
   /** Only a provider-proven monotonic revision, never arrival time. */
   revision: string | null;
+  /** Optional authoritative topology, required to recover an unseen root. */
+  postId?: string;
+  parentCommentId?: string | null;
+  authorId?: string;
+  authorName?: string | null;
 }
-/** A verified live HTTP mapping is deliberately absent until the capability checklist passes.
- * The isolated preview binds a synthetic port; no frontend/config boolean can enable a live port. */
+/** Provider proof used to reconcile an uncertain send without resending it. */
 export interface FacebookCommentReplyProof {
   pageId: string;
   externalId: string;
@@ -27,7 +31,8 @@ export interface FacebookCommentReplyProof {
 export interface FacebookCommentTransport {
   readReply?(pageId: string, externalId: string): Promise<FacebookCommentReplyProof | null>;
   readRevision?(value: Record<string, unknown>): string | null;
-  evidence(pageId: string): Promise<FacebookCommentEvidence>;
+  evidence(pageId: string, refresh?: boolean): Promise<FacebookCommentEvidence>;
+  subscribeFeed?(pageId: string): Promise<void>;
   replyPublic(
     input: PublicCommentInput,
   ): Promise<{ externalId?: string; definitelyNotSent?: boolean; errorCode?: string }>;
@@ -48,16 +53,22 @@ export class FacebookCommentClient {
     const config = await this.config.getConfig('facebook');
     return typeof config.pageId === 'string' && config.pageId.length <= 128 ? config.pageId : null;
   }
-  async getCapabilities(pageId: string) {
+  async getCapabilities(pageId: string, refresh = false) {
     const closed = () => capabilityFromEvidence({ graphVersion: 'v25.0', verified: false });
     try {
       const config = await this.config.getConfig('facebook');
       if (!pageId || config.pageId !== pageId || !config.pageAccessToken || !this.transport)
         return closed();
-      return capabilityFromEvidence(await this.transport.evidence(pageId));
+      return capabilityFromEvidence(await this.transport.evidence(pageId, refresh));
     } catch {
       return closed();
     }
+  }
+  async subscribeFeed(pageId: string) {
+    if ((await this.configuredPageId()) !== pageId || !this.transport?.subscribeFeed)
+      throw new BadRequestException('ยังไม่พร้อมเชื่อมต่อคอมเมนต์ Facebook');
+    await this.transport.subscribeFeed(pageId);
+    return this.getCapabilities(pageId, true);
   }
   async replyPublic(input: PublicCommentInput): Promise<FacebookCommentSendResult> {
     const capabilities = await this.getCapabilities(input.pageId);
@@ -120,6 +131,17 @@ export class FacebookCommentClient {
         !snapshot ||
         snapshot.commentId !== commentId ||
         typeof snapshot.exists !== 'boolean' ||
+        (snapshot.postId !== undefined &&
+          (typeof snapshot.postId !== 'string' || snapshot.postId.length > 256)) ||
+        (snapshot.parentCommentId !== undefined &&
+          snapshot.parentCommentId !== null &&
+          (typeof snapshot.parentCommentId !== 'string' ||
+            snapshot.parentCommentId.length > 256)) ||
+        (snapshot.authorId !== undefined &&
+          (typeof snapshot.authorId !== 'string' || snapshot.authorId.length > 128)) ||
+        (snapshot.authorName !== undefined &&
+          snapshot.authorName !== null &&
+          (typeof snapshot.authorName !== 'string' || snapshot.authorName.length > 255)) ||
         (snapshot.text !== null && typeof snapshot.text !== 'string') ||
         (snapshot.revision !== null &&
           (typeof snapshot.revision !== 'string' || !/^\d{1,38}$/.test(snapshot.revision)))

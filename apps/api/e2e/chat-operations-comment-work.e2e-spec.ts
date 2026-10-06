@@ -13,6 +13,7 @@ describe('Scoped comment work and explicit identity links', () => {
   const access = new ChatWorkAccessService(db);
   const client = {
     configuredPageId: async () => pageId,
+    subscribeFeed: jest.fn().mockResolvedValue({ receive: true, publicReply: true }),
     getCapabilities: async () => ({
       receive: false,
       publicReply: false,
@@ -202,6 +203,25 @@ describe('Scoped comment work and explicit identity links', () => {
     const room = await db.chatRoom.create({ data: { displayName: 'Comment choice', channel: 'FACEBOOK', customerId: customer.id, assignedToId: seller.id } });
     expect((await service.linkOptions(thread.id, 'Comment choice', seller, scope)).some(r => r.id === room.id)).toBe(true);
     await expect(service.linkOptions(thread.id, 'Comment choice', owner, { company: 'FINANCE' })).rejects.toThrow();
+  });
+  it('allows setup before rollout, requires a current SHOP owner, and audits the explicit subscription action', async () => {
+    await db.systemConfig.update({ where: { key: 'chat_facebook_comments_enabled' }, data: { value: 'false' } });
+    try {
+      expect((await service.pageConfig(owner, scope)).pageId).toBe(pageId);
+      expect(client.subscribeFeed).not.toHaveBeenCalled();
+      await expect(service.subscribePage(seller, scope)).rejects.toThrow();
+      await expect(service.subscribePage(owner, { company: 'FINANCE' })).rejects.toThrow();
+      expect(client.subscribeFeed).not.toHaveBeenCalled();
+      expect(await service.subscribePage(owner, scope)).toMatchObject({ capabilities: { receive: true } });
+      expect(client.subscribeFeed).toHaveBeenCalledTimes(1);
+      expect(await db.auditLog.count({ where: { entityId: pageId, action: { in: ['FACEBOOK_COMMENT_FEED_SUBSCRIBE_ATTEMPT', 'FACEBOOK_COMMENT_FEED_SUBSCRIBE_CHECKED'] } } })).toBe(2);
+      await db.user.update({ where: { id: owner.id }, data: { isActive: false } });
+      await expect(service.subscribePage(owner, scope)).rejects.toThrow();
+      expect(client.subscribeFeed).toHaveBeenCalledTimes(1);
+    } finally {
+      await db.user.update({ where: { id: owner.id }, data: { isActive: true } });
+      await db.systemConfig.update({ where: { key: 'chat_facebook_comments_enabled' }, data: { value: 'true' } });
+    }
   });
   it('owner binds only a SHOP branch and cannot rewrite historical thread attribution', async () => {
     await expect(service.configurePage({ branchId, enabled: true }, seller, scope)).rejects.toThrow();

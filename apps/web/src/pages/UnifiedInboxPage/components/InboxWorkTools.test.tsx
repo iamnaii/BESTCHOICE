@@ -9,8 +9,11 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   enabled: true,
   queueError: false,
+  role: 'SALES',
 }));
 vi.mock('sonner', () => ({ toast: { error: mocks.error } }));
+vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: mocks.role } }) }));
+vi.mock('../../chat-analytics/ChatWorkSettingsDialog', () => ({ default: () => <div role="dialog">ตั้งค่าทดสอบ</div> }));
 vi.mock('../hooks/useChatWork', () => ({
   useChatWork: () => ({
     company: 'SHOP',
@@ -57,8 +60,15 @@ function view(select: (roomId: string) => void, url = '/') {
 describe('Work notification targets', () => {
   beforeEach(() => {
     mocks.enabled = true;
+    mocks.role = 'SALES';
     mocks.queueError = false;
     vi.clearAllMocks();
+  });
+  it('lets the owner open setup from Inbox while queue is disabled', () => {
+    mocks.role = 'OWNER'; mocks.enabled = false;
+    view(vi.fn());
+    fireEvent.click(screen.getByRole('button', { name: 'ตั้งค่างานแชท' }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('ตั้งค่าทดสอบ');
   });
   it('keeps comments, notifications and note deep links available when only queue is disabled', async () => {
     mocks.enabled = false;

@@ -17,6 +17,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { WORK_ROLES } from './services/chat-work-access.service';
 import { FacebookCommentWorkService } from './services/facebook-comment-work.service';
+import { FacebookCommentRefreshService } from './services/facebook-comment-refresh.service';
 import {
   AssignFacebookCommentDto,
   ConfigureFacebookCommentPageDto,
@@ -35,17 +36,24 @@ export class FacebookCommentsController {
   constructor(
     private readonly work: FacebookCommentWorkService,
     private readonly replies: FacebookCommentReplyService,
+    private readonly refreshService: FacebookCommentRefreshService,
   ) {}
   @Get() list(@Req() req: { user: ChatWorkActor }, @Query() query: FacebookCommentQueryDto) {
     return this.work.list(req.user, query);
   }
-  @Get('page-config') pageConfig(
-    @Req() req: { user: ChatWorkActor },
-    @Query() query: StaffInboxQueryDto,
-  ) {
+  @Get('page-config')
+  @Roles('OWNER')
+  pageConfig(@Req() req: { user: ChatWorkActor }, @Query() query: StaffInboxQueryDto) {
     return this.work.pageConfig(req.user, query);
   }
-  @Patch('page-config') configurePage(
+  @Post('page-config/subscribe-feed')
+  @Roles('OWNER')
+  subscribeFeed(@Req() req: { user: ChatWorkActor }, @Query() query: StaffInboxQueryDto) {
+    return this.work.subscribePage(req.user, query);
+  }
+  @Patch('page-config')
+  @Roles('OWNER')
+  configurePage(
     @Body() input: ConfigureFacebookCommentPageDto,
     @Req() req: { user: ChatWorkActor },
     @Query() query: StaffInboxQueryDto,
@@ -66,6 +74,23 @@ export class FacebookCommentsController {
     @Query() query: StaffInboxQueryDto,
   ) {
     return this.replies.reply(id, input, req.user, query);
+  }
+  @Post(':id/records/:recordId/refresh')
+  refreshRecord(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('recordId', ParseUUIDPipe) recordId: string,
+    @Req() req: { user: ChatWorkActor },
+    @Query() query: StaffInboxQueryDto,
+  ) {
+    return this.refreshService.refresh(id, recordId, req.user, query);
+  }
+  @Post(':id/refresh-root')
+  refreshRoot(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: { user: ChatWorkActor },
+    @Query() query: StaffInboxQueryDto,
+  ) {
+    return this.refreshService.refreshRoot(id, req.user, query);
   }
   @Post('replies/:replyId/reconcile') reconcile(
     @Param('replyId', ParseUUIDPipe) id: string,

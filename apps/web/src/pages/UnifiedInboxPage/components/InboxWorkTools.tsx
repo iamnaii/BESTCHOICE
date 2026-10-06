@@ -19,6 +19,9 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import WorkQueue, { workDate } from './WorkQueue';
 import StaffWorkInbox from './StaffWorkInbox';
+import ChatWorkSettingsDialog from '../../chat-analytics/ChatWorkSettingsDialog';
+import { useAuth } from '@/contexts/AuthContext';
+import { Settings2 } from 'lucide-react';
 import { useChatWork } from '../hooks/useChatWork';
 export default function InboxWorkTools({
   onSelectRoom,
@@ -28,6 +31,8 @@ export default function InboxWorkTools({
   branchName?: string;
 }) {
   const navigation = useContext(InboxNavigationContext);
+  const { user } = useAuth();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
   const [view, setView] = useState<WorkQueueView>('WAITING');
   const [page, setPage] = useState(1);
@@ -56,6 +61,7 @@ export default function InboxWorkTools({
   const target = targetQuery.isError ? null : targetQuery.data;
   useEffect(() => {
     setPanel(null);
+    setSettingsOpen(false);
     setSelected(null);
     setEditingTask(null);
     setPage(1);
@@ -177,6 +183,9 @@ export default function InboxWorkTools({
         </div>
         {inlineNavigation && <div className="inbox-header-navigation">{workNavigation}</div>}
         <div className="inbox-workspace-utilities">
+          {user?.role === 'OWNER' && <Button variant="ghost" size="icon" aria-label="ตั้งค่างานแชท" title="ตั้งค่างานแชทและตรวจการเชื่อมต่อ" onClick={() => setSettingsOpen(true)}>
+            <Settings2 className="size-4" />
+          </Button>}
           <Button variant="ghost" size="icon" aria-label="สลับธีม" onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
             {resolvedTheme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </Button>
@@ -187,6 +196,7 @@ export default function InboxWorkTools({
         </div>
       </header>
       {navigation?.host && createPortal(workNavigation, navigation.host)}
+      {settingsOpen && user?.role === 'OWNER' && <ChatWorkSettingsDialog key={work.identity} onClose={() => setSettingsOpen(false)} />}
       <Sheet open={!!panel} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent
           side="left"

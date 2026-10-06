@@ -45,7 +45,7 @@
  * re-requires both `@sentry/nestjs` (to read the mock instance matching the
  * fresh registry) and `./sentry` (to re-run `Sentry.init()` against it).
  */
-jest.mock('@sentry/nestjs', () => ({ init: jest.fn() }));
+jest.mock('@sentry/nestjs', () => ({ init: jest.fn(), nativeNodeFetchIntegration: jest.fn((options) => ({ name: 'NodeFetch', options })) }));
 
 describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share token', () => {
   const TOKEN = 'A'.repeat(43);
@@ -70,6 +70,17 @@ describe('sentry.ts — beforeSend/beforeSendTransaction scrub the GFIN share to
     expect(Sentry.init).toHaveBeenCalledTimes(1);
     return Sentry.init.mock.calls[0][0];
   }
+
+  it('excludes Graph credentials from both native-fetch spans and breadcrumbs at instrumentation time', () => {
+    const config = loadSentryInitConfig();
+    const integration = config.integrations.find((item: { name: string }) => item.name === 'NodeFetch');
+    const token = 'EAA_SYNTHETIC_' + 'secret'.repeat(40); // Facebook tokens are not 43-char GFIN tokens.
+    expect(integration.options.ignoreOutgoingRequests(`https://graph.facebook.com/v25.0/debug_token?input_token=${token}`)).toBe(true);
+    expect(integration.options.ignoreOutgoingRequests('https://graph.facebook.com/v25.0/me?appsecret_proof=secret-proof')).toBe(true);
+    expect(integration.options.ignoreOutgoingRequests('https://other.example/safe')).toBe(false);
+    expect(integration.options.ignoreOutgoingRequests('invalid URL')).toBe(true);
+    expect(JSON.stringify(config.integrations)).not.toContain(token);
+  });
 
   it('does not call Sentry.init at all when SENTRY_DSN is unset (unrelated to the scrub, sanity check on the harness)', () => {
     delete process.env.SENTRY_DSN;

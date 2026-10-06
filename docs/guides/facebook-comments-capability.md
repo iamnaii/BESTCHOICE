@@ -1,36 +1,39 @@
-# Facebook comment capability evidence
+# Facebook comments: implementation and live acceptance
 
-Checked 2026-10-06, Asia/Bangkok. **Live receive/public reply/private reply are UNVERIFIED and disabled.** Local fixtures are not proof of Meta approval. No live subscription, comment, permission or app setting was changed. No production credential was printed or used for a probe.
+Updated 2026-10-06 (Asia/Bangkok). Production now has a Graph transport implementation in this branch. **Live Meta acceptance is still unverified.** Local HTTP mocks and signed preview fixtures do not prove App Review approval, callback delivery or successful public replies on the real Page. This implementation task has not changed any live subscription, feature switch or Meta setting, and has not sent a real comment.
 
-## Evidence available in this checkout
+## What is implemented
 
-- `facebook.adapter.ts` sends Messenger through Graph `v25.0`. `IntegrationConfigService` resolves the single configured `pageId` and `pageAccessToken` from the integration store, with the existing environment fallback. A comment client checks the requested page against this configuration before delegating.
-- `FacebookAppReviewService` already contains a public-comment helper at `POST /{commentId}/comments`, and a comment listing helper. These source-code mappings are **not current provider documentation or proof of permission**. This feature does not invoke the App Review helper or change its behavior.
-- The existing mandatory subscription list deliberately omits `feed`. It remains unchanged. Current token ownership, expiry, subscribed fields and permission inventory for a verified test app were not available in the isolated environment.
-- Existing Facebook webhook HMAC verification covers the raw request bytes. Comment persistence is added behind that same verification, separately from Messenger processing. Comment author identity never becomes a Messenger PSID.
+- Public text replies on the configured Page's own posts, signed `feed` comment ingestion, scoped work queue, assignment, explicit customer links and uncertain-send reconciliation.
+- Graph API stays pinned to `v25.0`, matching the existing Messenger adapter. The transport reads encrypted integration configuration via `IntegrationConfigService`; no frontend credential is accepted.
+- Read-only readiness checks verify the token's app/Page identity, validity/expiry, permissions (including Page granular grants) and this app's `feed` subscription. Cache lifetime is 30 seconds, credential changes invalidate it, and OWNER refresh bypasses it.
+- Receive requires `pages_read_engagement`, `pages_read_user_content`, `pages_manage_metadata` and `feed`. Public reply also requires `pages_manage_engagement`. Each send verifies the comment's post belongs to the configured Page and `can_comment` is true. Private replies remain unsupported.
+- An explicit OWNER action adds `feed`, preserving every existing field and the shared mandatory Messenger fields. The older Integration Hub subscription action uses this same read/merge/write transport, so submitting an older/default form cannot silently remove `feed`. Failure to read existing subscriptions prevents the write. Neither reading readiness nor saving the Page/branch binding subscribes automatically.
+- The signed webhook route remains separate from Messenger event processing. Comment authors are never inferred to be Messenger PSIDs.
+- `CONFIRMED` requires a valid provider ID. Certain authorization/rate rejections are `FAILED`; timeouts, 5xx, malformed/missing acknowledgements and ambiguous provider errors are `UNKNOWN`. There is no hidden POST retry. The durable attempt and manual proof reconciliation prevent blind resend.
+- Unresolved records have a scoped **ตรวจข้อมูลจาก Meta อีกครั้ง** action; duplicate webhook deliveries also retry only the authoritative read. Both use the captured thread revision to reject stale snapshots. Missing older roots can be recovered only with matching Page/post/parent/author evidence, then their children can be checked again. Deleted children retain tombstones and record ambiguity without blocking a verified root; missing/deleted roots and unresolved live records still block replies. Recovery controls remain reachable for provider echoes without repeating a confirmed reply bubble.
+- Provider `created_time` is never an edit revision. Reads verify post ownership. An inaccessible/missing Graph object does not prove deletion; ambiguous reads remain unresolved, signed REMOVE events retain their tombstones.
+- Native-fetch spans and breadcrumbs for `graph.facebook.com` are excluded from Sentry instrumentation. This is necessary because `debug_token` requires an `input_token` query parameter. Credentials, proof values and provider error bodies must never be logged or returned to users.
 
-## Official documentation attempts
+## Owner setup
 
-| Item requiring verification | Official source attempted | Result |
-| --- | --- | --- |
-| Page feed payload, add/edit/remove fields, delivery IDs and ordering guarantees | [Page webhook reference](https://developers.facebook.com/docs/graph-api/webhooks/reference/page/) | HTTP429 on repeated attempts |
-| Public-comment endpoint, permissions, page ownership, acknowledgement/error semantics | [Pages comments](https://developers.facebook.com/docs/pages-api/comments/) | Inaccessible via browser tool |
-| Private reply endpoint, eligibility and time window | [Messenger private replies](https://developers.facebook.com/documentation/business-messaging/messenger-platform/discovery/private-replies) | HTTP429 on repeated attempts |
+1. Inbox → **ตั้งค่างานแชท** (settings icon), accessible even while queue/comments are disabled.
+2. Enable the work queue and desired work features. Reading a chat does not clear waiting; a confirmed staff reply does. Queue scope follows the current SHOP/FINANCE choice and staff grants. Existing waiting rooms can be listed; enabling alerts does not retrospectively send alerts for every old room.
+3. In **ตั้งค่า Page และสาขา**, open **ตั้งค่าการเชื่อมต่อ Facebook** and configure Page ID, App ID, Page Access Token, App Secret and Webhook Verify Token. `FB_APP_ID` is the environment fallback for the new App ID field. It is required by comment readiness and by the verified subscription writer, but not by ordinary Messenger sends.
+4. Choose the SHOP branch and save the Page binding. Once comment history exists, its branch attribution cannot be rewritten.
+5. Refresh readiness. Obtain the required Meta permissions/review for the actual app mode and Page. Select Page/feed at the Meta app webhook configuration and point its callback at this installation's existing signed Facebook webhook route. The app-level callback cannot be verified merely from a Page subscription.
+6. Click **สมัครรับคอมเมนต์จาก Facebook** only when intending to change the Page subscription. This is a real external configuration write. Then enable the comments feature in work settings. Feature flag, Page binding and provider readiness are independent gates.
+7. Use an explicitly designated test Page/post for live acceptance: customer comment → signed callback → correct SHOP branch queue → explicit public reply → provider acknowledgement/visible reply. Verify edit/delete/replay, expired permissions and uncertain-send handling. Record evidence without tokens or customer data. Do not label the feature production-verified before this test.
 
-Exact permissions, allowed live endpoints, revision fields, private reply windows and expiry/error behavior remain **UNVERIFIED**. No third-party article is used to fill these gaps. Fixtures represent local contracts only; they must not be described as verified Meta payloads.
+New comment events are received after activation; there is no historical comment backfill in this release. Readiness means configuration and runtime permissions passed, **not** that a real callback/reply was observed. UI states this distinction.
 
-## Enforcement
+## Primary-source mapping and limits
 
-`FacebookCommentClient` has no default live transport. Missing transport, wrong configured page, missing token, unavailable evidence or `verified:false` returns all three capabilities false. UI flags cannot turn this into a live provider connection. The isolated preview may inject a synthetic transport using a dummy page/token and explicit fixture evidence; this provider is not registered in the production module.
+Reviewed 2026-10-06:
 
-The client only reports `CONFIRMED` with a nonempty external acknowledgement ID. A transport-certified rejection is `FAILED`; timeout or missing acknowledgement is `UNKNOWN`. It never retries a send internally. The task service must persist the attempt before dispatch, retain request identity, and block blind resend of uncertain attempts. Provider exceptions are converted to fixed codes rather than leaking raw responses/tokens.
+- Meta's [official Comment SDK source](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/comment.py) defines GET comment fields (`id`, `message`, `from`, `object`, `parent`, `created_time`, `can_comment`) and public `POST /{comment-id}/comments` with `message`.
+- Meta's [official Page SDK source](https://github.com/facebook/facebook-python-business-sdk/blob/main/facebook_business/adobjects/page.py) defines the subscribed-apps edge and `subscribed_fields`.
+- Meta's [official Facebook API collection](https://www.postman.com/meta/facebook/overview) covers Page access-token acquisition and Page tasks.
+- Direct developer references for [comments](https://developers.facebook.com/docs/graph-api/reference/comment/), [Page subscriptions](https://developers.facebook.com/docs/graph-api/reference/page/subscribed_apps/) and [token inspection](https://developers.facebook.com/docs/graph-api/reference/debug_token/) returned HTTP429 in this research environment. The official SDK mapping supports implementation, but does not prove v25 runtime permission approval or actual webhook payloads for this installation. No third-party article substitutes for live acceptance.
 
-Event timestamps are not monotonic revisions. Without a proven revision or authoritative provider read, an ambiguous edit/remove must remain marked for reconciliation; arrival order cannot resurrect a deleted comment. Unknown Page IDs are excluded. Company/branch binding is resolved on the server, not accepted from incoming comment data.
-
-## Gate before any live enablement
-
-1. Read the current official Graph-version documents and record exact payload/revision, endpoint, permission and private-reply rules with dates and URLs.
-2. Using a designated test app/page, inspect its token ownership, expiry, granted permissions, subscribed fields and review state read-only. Never print tokens. Enabling/changing subscriptions is a separate authorized action.
-3. Implement one reviewed live transport mapping after that evidence exists. Prove receive/public/private capabilities independently; private reply may remain false.
-4. Run signed delivery/replay/deletion fixtures plus the designated test-app acknowledgement/rejection/timeout scenarios. Preserve all existing Messenger subscribed fields.
-5. Record results and explicitly distinguish local implementation acceptance from live-provider acceptance. Deployment is separate from this evidence gate.
+Local regression covers HTTP request/response contracts, wrong Page/app/granular grants, expiry, subscription preservation and paging, uncertain sends, scoped DB authorization/audits, signed synthetic deliveries and browser setup at desktop/mobile sizes. Run `npm run local:check` plus `CREDIT_SUITE=chat-operations bash tools/test-chat-credit.sh` before handoff; neither contacts Meta.

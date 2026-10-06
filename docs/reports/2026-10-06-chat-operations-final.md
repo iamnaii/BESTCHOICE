@@ -1,5 +1,7 @@
 # BESTCHOICE chat operations — actual application verification
 
+> Historical pre-integration verification. The subsequent authorized commit/push/admin merge, current-main integration and newer checks are recorded in [the pending-work integration report](2026-10-06-pending-work-integration.md).
+
 User scope: all six features, UX/UI restoration and the internal cloud file library. Actual implementation is in the isolated worktree `/Users/iamnaii/Desktop/App/BESTCHOICE/.worktrees/chat-operations-20261006`, branch `feat/chat-operations-20261006`.
 
 Local preview: **http://localhost:5217/inbox**. Port 5286 remains the older design prototype; this report concerns the actual React/Nest application.

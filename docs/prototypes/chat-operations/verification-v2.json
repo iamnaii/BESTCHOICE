@@ -1,0 +1,28 @@
+{
+  "status": "PASS",
+  "checks": [
+    "restored toolbars and dossier tabs",
+    "channel and owner filters",
+    "draft survives room change and templates need explicit send",
+    "attachment failure and retry keeps file exactly once",
+    "credit from chat + simulated analysis",
+    "GFIN draft retained; required slots; full slot list",
+    "offer draft and contract handoff boundary",
+    "handoff recipient accepts; sales owner preserved",
+    "schedule survives close and done work remains discoverable",
+    "link unknown customer; manual assign; pin / AI / mute",
+    "warranty, service link, contract payment draft",
+    "public comment drafts and response",
+    "FINANCE context and analytics respect company",
+    "responsive 320: 7 screens × light/dark",
+    "responsive 390: 7 screens × light/dark",
+    "responsive 768: 7 screens × light/dark",
+    "responsive 1024: 7 screens × light/dark",
+    "responsive 1280: 7 screens × light/dark",
+    "responsive 1440: 7 screens × light/dark",
+    "responsive 1920: 7 screens × light/dark",
+    "keyboard modal Escape and runtime errors"
+  ],
+  "responsiveScreens": 98,
+  "errors": []
+}

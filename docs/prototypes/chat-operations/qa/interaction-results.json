@@ -1,0 +1,15 @@
+{
+  "status": "PASS",
+  "checks": [
+    "small phone: queue, open chat, >=120px thread, visible send",
+    "eight long filenames stay bounded; review and remove work",
+    "mobile failure simulation remains reachable via menu; retry retains files",
+    "mobile back restores keyboard focus to a remaining room",
+    "menu pin / mute and profile survive compact header",
+    "mobile full GFIN workflow with document slots and retained message",
+    "landscape modal: footer stays visible, scroll fields, submit",
+    "long comment post can be expanded and public response can be sent",
+    "native modal prevents background focus and Escape closes"
+  ],
+  "errors": []
+}

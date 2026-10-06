@@ -1,0 +1,10 @@
+{
+  "status": "PASS",
+  "checks": [
+    "Reply/note controls separated from the full input border; consistent note focus in both themes",
+    "Textarea grows to 128px, then scrolls; deleting content restores compact height",
+    "Search by model/color/capacity/price, case/whitespace, no results/clear, correct filtered selection, caret insert without sending, reopen/Escape",
+    "Composer modes and searchable selection across five desktop/mobile/landscape viewports"
+  ],
+  "errors": []
+}

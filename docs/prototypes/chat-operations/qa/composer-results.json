@@ -1,0 +1,13 @@
+{
+  "status": "PASS",
+  "checks": [
+    "original toolbar order, equal targets, visible inset focus, empty send disabled",
+    "all emoji categories, channel tabs, selection replacement, no send, Escape focus, trigger toggle",
+    "LINE: three original sticker packs, 34 images, direct send/retry keeps draft and files",
+    "canned categories/search/title/content/shortcut, preview, caret insert, double-click, reset",
+    "new room variables, direct canned send/retry, owner/wait transitions, draft/files retained",
+    "Ctrl+K insertion preserves internal-note mode and the separate customer draft",
+    "60 popup/modal layouts across 10 viewports and both themes; all controls reachable"
+  ],
+  "pageErrors": []
+}

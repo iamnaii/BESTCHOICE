@@ -1,4 +1,4 @@
-import { useContext, useMemo, useCallback, memo, useState, useEffect } from 'react';
+import { useMemo, useCallback, memo, useState, useEffect } from 'react';
 import { useUnreadChat } from '@/hooks/useUnreadChat';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
@@ -40,7 +40,6 @@ import { useDraftAssetCount } from '@/hooks/useDraftAssetCount';
 import { useQcPendingCount } from '@/hooks/useQcPendingCount';
 import { useStockAdjustmentPendingCount } from '@/hooks/useStockAdjustmentPendingCount';
 import { VersionBadge } from './VersionBadge';
-import { InboxNavigationContext } from './InboxNavigationContext';
 import { PillSwitcher } from './PillSwitcher';
 import { GearButton } from './GearButton';
 import { ExitSettingsBar, SettingsNavList, SettingsZoneHeader, useSettingsZone } from './SettingsNav';
@@ -467,7 +466,6 @@ function CollapsedSidebar({ onToggle }: { onToggle: () => void }) {
 
 /* ─── Expanded Full Sidebar (264px wide) ─────────── */
 function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
-  const inboxNavigation = useContext(InboxNavigationContext);
   const { user, logout } = useAuth();
   const { pathname, hash } = useLocation();
   const { role, zoneConfig, currentZone } = useZoneValidator();
@@ -482,11 +480,9 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
   );
   const matchPath = useCallback((path: string): boolean => path === activePath, [activePath]);
   const roleInfo = roleBadgeMap[role];
-  const inbox = pathname === '/inbox' || pathname.startsWith('/inbox/');
 
   return (
     <div
-      data-inbox-sidebar={inbox || undefined}
       className="sidebar fixed top-0 bottom-0 left-0 z-20 w-[264px] flex flex-col bg-sidebar-bg border-r border-sidebar-border shadow-sm dark:shadow-[4px_0_24px_-8px_rgba(0,0,0,0.5)] transition-all duration-300"
       aria-label="เมนูหลัก"
     >
@@ -499,7 +495,7 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
               BEST<span className="text-primary">CHOICE</span>
             </span>
             <span className="text-[10px] text-muted-foreground font-medium tracking-widest uppercase">
-              {inbox ? 'TEAM WORKSPACE' : 'Finance Management'}
+              Finance Management
             </span>
           </div>
         </Link>
@@ -546,8 +542,6 @@ function ExpandedSidebar({ onToggle }: { onToggle: () => void }) {
         />
       )}
 
-      {inbox && <div ref={inboxNavigation?.setHost} className="inbox-navigation-slot" />}
-      {inbox && <p className="mx-3 mt-5 border-t border-border pt-5 text-xs text-muted-foreground">ไปยังงานเดิม</p>}
       {/* ── Navigation ──────────────────────────────── */}
       <ScrollArea className="flex-1 pb-4 px-3">
         <AccordionMenu

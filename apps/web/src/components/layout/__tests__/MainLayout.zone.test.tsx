@@ -46,6 +46,7 @@ function renderAt(entry: string) {
         <Route element={<MainLayout />}>
           <Route path="/" element={<Probe />} />
           <Route path="/overdue" element={<Probe />} />
+          <Route path="/inbox" element={<Probe />} />
           <Route path="/settings/:categoryId" element={<Probe />} />
         </Route>
       </Routes>
@@ -115,5 +116,24 @@ describe('ค้างอยู่โหมดตั้งค่าแล้ว�
     expect(probe()).toContain('fin:/');
     fireEvent.click(screen.getByTestId('exit-settings'));
     expect(probe()).toContain('/?zone=fin|fin|');
+  });
+});
+
+/* เจ้าของเคาะ 2026-10-07: เข้าแชทบนจอใหญ่แล้ว "ยุบเมนูอื่นออกเลย ค่อยกดกลับหน้าหลัก"
+   — /inbox ไม่วาดเมนูระบบและไม่เว้นที่ด้านซ้าย (แถบข้างของ inbox เองอยู่ใน InboxWorkTools) */
+describe('หน้าแชทบนจอใหญ่ไม่มีเมนูระบบ', () => {
+  it('/inbox ไม่วาด Sidebar/TopBar และ padding ซ้ายเป็น 0', () => {
+    renderAt('/inbox?zone=shop');
+    expect(probe()).toContain('/inbox?zone=shop|shop|');
+    expect(screen.queryByTestId('sidebar')).toBeNull();
+    expect(screen.queryByTestId('topbar')).toBeNull();
+    expect(document.querySelector('.wrapper')).toHaveStyle({ paddingLeft: '0px' });
+  });
+
+  it('หน้าอื่นยังมีเมนูระบบและเว้นที่ด้านซ้ายตามเดิม', () => {
+    renderAt('/overdue?zone=shop');
+    expect(screen.getByTestId('sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('topbar')).toBeInTheDocument();
+    expect(document.querySelector('.wrapper')).not.toHaveStyle({ paddingLeft: '0px' });
   });
 });

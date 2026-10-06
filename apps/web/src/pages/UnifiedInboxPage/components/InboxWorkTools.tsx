@@ -3,17 +3,30 @@ import FacebookCommentPanel from './FacebookCommentPanel';
 import FacebookCommentList from './FacebookCommentList';
 import ChatFollowUpDialog, { type FollowUpDraft } from './ChatFollowUpDialog';
 import ChatHandoffCard from './ChatHandoffCard';
-import { createPortal } from 'react-dom';
-import { useContext } from 'react';
 import { useTheme } from 'next-themes';
-import { InboxNavigationContext } from '@/components/layout/InboxNavigationContext';
 import { useRef, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import type { ChatWorkTarget, WorkQueueView } from '@installment/shared';
-import { BarChart3, Bell, ListTodo, Inbox, Globe, Moon, Sun, LockKeyhole } from 'lucide-react';
+import {
+  ArrowLeft,
+  BarChart3,
+  Bell,
+  CircleDollarSign,
+  Globe,
+  Inbox,
+  ListTodo,
+  LockKeyhole,
+  LogOut,
+  Moon,
+  Settings2,
+  ShoppingCart,
+  Sun,
+} from 'lucide-react';
 import { toast } from 'sonner';
-import { getCompanyScopeRevision } from '@/lib/company-scope';
+import { getCompanyScopeRevision, WORK_COMPANY } from '@/lib/company-scope';
+import { getWorkZoneHref, getZoneConfigForRole } from '@/config/menu';
+import { useIsMobile } from '@/hooks/useIsMobile';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -21,8 +34,14 @@ import WorkQueue, { workDate } from './WorkQueue';
 import StaffWorkInbox from './StaffWorkInbox';
 import ChatWorkSettingsDialog from '../../chat-analytics/ChatWorkSettingsDialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { Settings2 } from 'lucide-react';
 import { useChatWork } from '../hooks/useChatWork';
+
+/** หมวดงานที่สลับได้จากแถบข้างของ inbox — ค่าและป้ายเดียวกับ PillSwitcher/แถบย่อของเมนูระบบ */
+const WORK_ZONES = [
+  { zone: 'shop', label: 'งานหน้าร้าน (SHOP)', short: 'หน้าร้าน', Icon: ShoppingCart },
+  { zone: 'fin', label: 'งานการเงิน (FINANCE)', short: 'การเงิน', Icon: CircleDollarSign },
+] as const;
+
 export default function InboxWorkTools({
   onSelectRoom,
   branchName,
@@ -30,8 +49,10 @@ export default function InboxWorkTools({
   onSelectRoom: (roomId: string) => void;
   branchName?: string;
 }) {
-  const navigation = useContext(InboxNavigationContext);
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  // จอใหญ่ = แถบข้าง 72px (เมนูระบบไม่ถูกวาดบน /inbox — ดู MainLayout) · จอเล็ก = แถบหัวแบบย่อเหมือนเดิม
+  const isMobile = useIsMobile();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { resolvedTheme, setTheme } = useTheme();
   const [view, setView] = useState<WorkQueueView>('WAITING');
@@ -127,12 +148,22 @@ export default function InboxWorkTools({
     void open(linkedType, linkedId);
     // Exact-resource access is checked before selecting the room.
   }, [linkedId, linkedType, linkEnabled, work.identity]);
-  const inlineNavigation = !navigation?.host;
   const waitingCount = work.queue.isError ? undefined : work.queue.data?.counts.WAITING;
   const chatActive = !panel || panel === 'inbox';
+  // สลับหมวดงานจากในแชทได้ เพราะเมนูระบบ (ที่เคยมีสวิตช์นี้) ไม่ถูกวาดบน /inbox จอใหญ่
+  const zoneConfig = getZoneConfigForRole(user?.role ?? '', user?.accessibleCompanies);
+  const workZones = WORK_ZONES.filter((z) => zoneConfig?.zones.includes(z.zone));
+  const currentZone = work.company === WORK_COMPANY.fin ? 'fin' : 'shop';
+  const zoneShort = WORK_ZONES.find((z) => z.zone === currentZone)?.short ?? 'หน้าร้าน';
+  const identityLabel = `งาน${zoneShort}${branchName ? ` / ${branchName}` : ''}`;
+  const homeLink = (
+    <Link to="/" className="inbox-rail-home" aria-label="กลับหน้าหลัก" title="กลับหน้าหลัก">
+      <img src="/logo-icon.svg" alt="" />
+      <span><ArrowLeft aria-hidden="true" />หน้าหลัก</span>
+    </Link>
+  );
   const workNavigation = (
     <nav aria-label="การสื่อสารและงานทีม" className="inbox-work-navigation">
-      <p className="inbox-navigation-label">การสื่อสารและงานทีม</p>
       <Button variant="ghost" aria-current={chatActive ? 'page' : undefined}
         className={chatActive ? 'inbox-navigation-active' : ''} onClick={() => setPanel(null)}>
         <Inbox className="size-4" aria-hidden="true" /><span>แชทลูกค้า</span>
@@ -165,37 +196,80 @@ export default function InboxWorkTools({
       </Button>
     </nav>
   );
+  const utilities = (
+    <div className="inbox-workspace-utilities">
+      {user?.role === 'OWNER' && <Button variant="ghost" size="icon" aria-label="ตั้งค่างานแชท" title="ตั้งค่างานแชทและตรวจการเชื่อมต่อ" onClick={() => setSettingsOpen(true)}>
+        <Settings2 className="size-4" />
+      </Button>}
+      <Button variant="ghost" size="icon" aria-label="สลับธีม" title="สลับธีม" onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
+        {resolvedTheme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
+      </Button>
+      <Button variant="ghost" size="icon" aria-label={`การแจ้งเตือนงาน ${work.inbox.data?.unreadCount ?? 'กำลังโหลด'}`} title="การแจ้งเตือนงาน" onClick={() => setPanel('inbox')} className="relative">
+        <Bell className="size-4" />
+        {!!work.inbox.data?.unreadCount && <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 text-[10px] tabular-nums text-primary-foreground">{work.inbox.data.unreadCount > 99 ? '99+' : work.inbox.data.unreadCount}</span>}
+      </Button>
+    </div>
+  );
   if (work.settings.isError)
-    return (
+    return isMobile ? (
       <div className="flex items-center gap-3 border-b px-4 py-2 text-xs" role="alert">
         โหลดเมนูคิวงานไม่ได้
         <Button variant="ghost" size="sm" onClick={() => work.settings.refetch()}>
           ลองใหม่
         </Button>
       </div>
+    ) : (
+      <aside className="inbox-rail" aria-label="ศูนย์การสื่อสาร">
+        {homeLink}
+        <p className="inbox-rail-alert" role="alert">โหลดเมนูคิวงานไม่ได้</p>
+        <Button variant="ghost" size="sm" onClick={() => work.settings.refetch()}>
+          ลองใหม่
+        </Button>
+      </aside>
     );
+  /* เจ้าของเคาะ 2026-10-07 (mockup Kv9EZdAFQeoYYGUpkenkda แบบ ค): เข้าแชทบนจอใหญ่แล้ว "ยุบเมนูอื่นออกเลย
+     ค่อยกดกลับหน้าหลัก" — แถบข้างนี้คือเมนูเดียวของหน้า: กลับหน้าหลัก · หมวดงาน · เมนูแชท · เครื่องมือ · ออกจากระบบ
+     จอเล็กไม่มีที่วางแถบข้าง จึงคงแถบหัวแบบย่อไว้ */
+  const rail = (
+    <aside className="inbox-rail" aria-label="ศูนย์การสื่อสาร">
+      {homeLink}
+      <div className="inbox-rail-divider" aria-hidden="true" />
+      {workZones.length >= 2 && (
+        <div role="tablist" aria-label="หมวดงาน" className="inbox-rail-zones">
+          {workZones.map(({ zone, label, Icon }) => (
+            <button key={zone} type="button" role="tab" aria-selected={zone === currentZone} aria-label={label} title={label}
+              onClick={() => { if (zone !== currentZone) navigate(getWorkZoneHref('/inbox', zone)); }}>
+              <Icon aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="inbox-rail-zone" title={identityLabel}>{zoneShort}</p>
+      <h1 className="sr-only">ศูนย์การสื่อสาร</h1>
+      {workNavigation}
+      <span className="inbox-rail-spacer" aria-hidden="true" />
+      {utilities}
+      <div className="inbox-rail-user">
+        {user && <div className="inbox-rail-avatar" title={user.name} aria-hidden="true">{user.name?.charAt(0)}</div>}
+        <Button variant="ghost" size="icon" aria-label="ออกจากระบบ" title="ออกจากระบบ" onClick={logout}>
+          <LogOut className="size-4" />
+        </Button>
+      </div>
+    </aside>
+  );
+  const header = (
+    <header className="inbox-workspace-header">
+      <div className="inbox-workspace-identity">
+        <p className="text-xs leading-snug text-muted-foreground" title={branchName}>{identityLabel}</p>
+        <h1 className="font-semibold leading-snug">ศูนย์การสื่อสาร</h1>
+      </div>
+      <div className="inbox-header-navigation">{workNavigation}</div>
+      {utilities}
+    </header>
+  );
   return (
     <>
-      <header className="inbox-workspace-header" data-inline-navigation={inlineNavigation || undefined}>
-        <div className="inbox-workspace-identity">
-          <p className="text-xs leading-snug text-muted-foreground" title={branchName}>{work.company === 'SHOP' ? 'งานหน้าร้าน' : 'งานการเงิน'}{branchName ? ` / ${branchName}` : ''}</p>
-          <h1 className="font-semibold leading-snug">ศูนย์การสื่อสาร</h1>
-        </div>
-        {inlineNavigation && <div className="inbox-header-navigation">{workNavigation}</div>}
-        <div className="inbox-workspace-utilities">
-          {user?.role === 'OWNER' && <Button variant="ghost" size="icon" aria-label="ตั้งค่างานแชท" title="ตั้งค่างานแชทและตรวจการเชื่อมต่อ" onClick={() => setSettingsOpen(true)}>
-            <Settings2 className="size-4" />
-          </Button>}
-          <Button variant="ghost" size="icon" aria-label="สลับธีม" onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
-            {resolvedTheme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
-          </Button>
-          <Button variant="ghost" size="icon" aria-label={`การแจ้งเตือนงาน ${work.inbox.data?.unreadCount ?? 'กำลังโหลด'}`} onClick={() => setPanel('inbox')} className="relative">
-            <Bell className="size-4" />
-            {!!work.inbox.data?.unreadCount && <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 text-[10px] tabular-nums text-primary-foreground">{work.inbox.data.unreadCount > 99 ? '99+' : work.inbox.data.unreadCount}</span>}
-          </Button>
-        </div>
-      </header>
-      {navigation?.host && createPortal(workNavigation, navigation.host)}
+      {isMobile ? header : rail}
       {settingsOpen && user?.role === 'OWNER' && <ChatWorkSettingsDialog key={work.identity} onClose={() => setSettingsOpen(false)} />}
       <Sheet open={!!panel} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent

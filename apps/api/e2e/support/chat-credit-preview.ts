@@ -1,3 +1,5 @@
+import { FacebookCommentRefreshService } from '../../src/modules/staff-chat/services/facebook-comment-refresh.service';
+import { FacebookCommentIngestService } from '../../src/modules/chat-adapters/facebook-comment-ingest.service';
 import { ChatLibraryController } from '../../src/modules/staff-chat/chat-library.controller';
 import { ChatLibraryService } from '../../src/modules/staff-chat/services/chat-library.service';
 import { ChatLibraryDeliveryService } from '../../src/modules/staff-chat/services/chat-library-delivery.service';
@@ -542,7 +544,7 @@ async function main() {
     ],
     providers: [ChatLibraryService, ChatLibraryDeliveryService, { provide: MessageRouterService, useValue: library.router }, ChatAnalyticsV2Service, ChatSalesAttributionService,
       ChatServiceRequestService, ChatServiceCaseLinkService, ...afterSales.providers,
-      FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
+      FacebookCommentRefreshService, { provide: FacebookCommentIngestService, useValue: facebookComments.ingest }, FacebookCommentWorkService, FacebookCommentReplyService, { provide: FacebookCommentClient, useValue: facebookComments.client },
       ChatHandoffService, NoteMentionService, { provide: StaffMessageService, useValue: Object.assign(Object.create(StaffMessageService.prototype), { prisma: db }) }, ChatSalesDispositionService, TodosService, ChatFollowUpService, ChatSalesContextService, JourneySummaryService, JourneyStateService, ChatWorkQueryService, ChatWorkSettingsService, StaffInboxService, ChatWorkAccessService,
       ...tradeInProviders(db, storageForPreview as StorageService),
       ProductPhotosService, DocumentsService, ContractDocumentsService, ContractFileAccessGuard,

@@ -8,6 +8,7 @@ import {
   FacebookCommentClient,
   type FacebookCommentReplyProof,
   type FacebookCommentTransport,
+  type FacebookCommentSnapshot,
 } from '../../src/modules/chat-adapters/facebook-comment-client';
 import { FacebookCommentIngestService } from '../../src/modules/chat-adapters/facebook-comment-ingest.service';
 import { FacebookWebhookController } from '../../src/modules/chat-adapters/facebook-webhook.controller';
@@ -18,6 +19,7 @@ export async function previewFacebookComments(db: PrismaService, actorId: string
     getConfig: async () => ({ pageId, pageAccessToken: 'synthetic-token', appSecret: secret }),
   } as unknown as IntegrationConfigService;
   const proofs = new Map<string, FacebookCommentReplyProof>();
+  const snapshots = new Map<string, FacebookCommentSnapshot>();
   let mode: 'confirmed' | 'timeout' | 'disabled' | 'failed' = 'confirmed';
   let dispatchCount = 0;
   const transport: FacebookCommentTransport = {
@@ -30,7 +32,7 @@ export async function previewFacebookComments(db: PrismaService, actorId: string
       publicReply: true,
       privateReply: false,
     }),
-    readComment: async () => null,
+    readComment: async (_page, id) => snapshots.get(id) ?? null,
     readReply: async (_page, id) => proofs.get(id) ?? null,
     replyPublic: async (input) => {
       dispatchCount++;
@@ -75,6 +77,10 @@ export async function previewFacebookComments(db: PrismaService, actorId: string
   });
   @Controller('preview/facebook-comments')
   class PreviewFacebookCommentsController {
+    @Post('read-ready') readReady(@Body() input: { commentId: string; text: string }) {
+      snapshots.set(input.commentId, { commentId: input.commentId, exists: true, text: input.text, revision: null });
+      return { ok: true };
+    }
     @Post('mode') setMode(@Body() input: { mode: string }) {
       if (!['confirmed', 'timeout', 'disabled', 'failed'].includes(input.mode))
         throw new BadRequestException('Unknown synthetic mode');
@@ -89,10 +95,15 @@ export async function previewFacebookComments(db: PrismaService, actorId: string
         text?: string;
         revision?: string;
         remove?: boolean;
+        unversioned?: boolean;
+        readUnavailable?: boolean;
       },
     ) {
       if (mode === 'disabled') mode = 'confirmed';
       const commentId = input.commentId || `preview-comment-${randomUUID()}`;
+      if (!input.readUnavailable) snapshots.set(commentId, {
+        commentId, exists: !input.remove, text: input.remove ? null : input.text || 'สนใจสินค้าค่ะ มีสีอะไรบ้าง', revision: null,
+      });
       const body = {
         object: 'page',
         entry: [
@@ -110,7 +121,7 @@ export async function previewFacebookComments(db: PrismaService, actorId: string
                   parent_id: 'preview-post',
                   message: input.text || 'สนใจสินค้าค่ะ มีสีอะไรบ้าง',
                   from: { id: 'synthetic-comment-author', name: 'ลูกค้าคอมเมนต์จำลอง' },
-                  previewRevision: input.revision || '1',
+                  previewRevision: input.unversioned ? undefined : input.revision || '1',
                 },
               },
             ],
@@ -164,5 +175,5 @@ export async function previewFacebookComments(db: PrismaService, actorId: string
       return { ok: true };
     }
   }
-  return { client, controller: PreviewFacebookCommentsController };
+  return { client, ingest, controller: PreviewFacebookCommentsController };
 }

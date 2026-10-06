@@ -131,6 +131,9 @@ export class FacebookCommentWorkService {
         ...thread,
         records,
         recordsTotal: total,
+        rootRecordMissing: !(await tx.facebookCommentRecord.count({
+          where: { threadId: id, commentId: thread.rootCommentId },
+        })),
         recordPage,
         assignee,
         replies,
@@ -286,9 +289,32 @@ export class FacebookCommentWorkService {
         select: { id: true, name: true },
         orderBy: { name: 'asc' },
       }),
-      this.client.getCapabilities(pageId),
+      this.client.getCapabilities(pageId, true),
     ]);
     return { pageId, binding, branches, capabilities };
+  }
+  async subscribePage(actor: ChatWorkActor, scope: WorkScope) {
+    const { current, pageId } = await this.ownerPage(actor, scope);
+    // Durable record precedes the external mutation; never put credentials in the audit payload.
+    await this.prisma.auditLog.create({
+      data: {
+        userId: current.id,
+        action: 'FACEBOOK_COMMENT_FEED_SUBSCRIBE_ATTEMPT',
+        entity: 'FacebookCommentPage',
+        entityId: pageId,
+      },
+    });
+    const capabilities = await this.client.subscribeFeed(pageId);
+    await this.prisma.auditLog.create({
+      data: {
+        userId: current.id,
+        action: 'FACEBOOK_COMMENT_FEED_SUBSCRIBE_CHECKED',
+        entity: 'FacebookCommentPage',
+        entityId: pageId,
+        newValue: { receive: capabilities.receive, publicReply: capabilities.publicReply },
+      },
+    });
+    return { capabilities };
   }
   async configurePage(
     input: ConfigureFacebookCommentPageDto,

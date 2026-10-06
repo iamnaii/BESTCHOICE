@@ -1,3 +1,4 @@
+import { checkChatSetup } from './check-local-chat-setup.mjs';
 import { checkChatLibrary } from './check-local-chat-library.mjs';
 import { checkChatAnalytics } from './check-local-chat-analytics.mjs';
 import { checkServiceCases } from './check-local-service-cases.mjs';
@@ -61,6 +62,8 @@ try {
     report.checks.push({ label: 'Inbox voice: simulated Thai speech/delivery, desktop/mobile, manual send and room isolation', status: 'PASS' });
     await checkInboxDesign(browser, info.url, output);
     report.checks.push({ label: 'Approved Inbox V2.4 shell, expanded/collapsed sidebar, flags off, light/dark at 320–1512px', status: 'PASS' });
+    await checkChatSetup(browser, info.url, output);
+    report.checks.push({ label: 'Owner setup from disabled navigation, explicit simulated feed subscription, queue activation at 320/1440px', status: 'PASS' });
     await checkInboxLayout(browser, info.url, output);
     report.checks.push({ label: 'Inbox layout: light/dark, 320–1920px, chat/note focus and multiline drafts', status: 'PASS' });
     for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {

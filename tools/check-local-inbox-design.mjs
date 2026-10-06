@@ -27,7 +27,7 @@ export async function checkInboxDesign(browser, origin, output) {
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(new URL(`/inbox/${roomId}`, origin).href);
       if (largeText) await page.addStyleTag({ content: 'html { font-size:20px !important; }' });
-      await expect(page.getByRole('heading', { name: 'แชทลูกค้า', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'ศูนย์การสื่อสาร', exact: true })).toBeVisible();
       await expect(page.getByRole('textbox', { name: 'พิมพ์ข้อความ', exact: true })).toBeVisible();
       if (width >= 1024) {
         const expand = page.getByRole('button', { name: 'ขยายเมนู', exact: true });
@@ -68,6 +68,21 @@ export async function checkInboxDesign(browser, origin, output) {
         assert.equal(await page.locator('[data-inbox-sidebar]').count(), 0);
         await expect(page.getByRole('button', { name: 'คิวงาน', exact: true })).toBeVisible();
         await expect(page.getByRole('button', { name: 'คิวงาน', exact: true })).toBeDisabled();
+        const compactHeader = await page.locator('.inbox-workspace-header').boundingBox();
+        const navigation = await page.getByRole('navigation', { name: 'การสื่อสารและงานทีม' }).boundingBox();
+        assert.ok(compactHeader.height <= (largeText ? 80 : 64), 'Desktop header and navigation must fit one compact row');
+        assert.ok(navigation.y >= compactHeader.y && navigation.y + navigation.height <= compactHeader.y + compactHeader.height + 1);
+        await page.getByRole('button', { name: 'สลับธีม', exact: true }).click();
+        await page.locator('.inbox-workspace-header').screenshot({ path: join(output, `inbox-header-desktop-${width}${largeText ? '-large-text' : ''}.png`) });
+        await page.screenshot({ path: join(output, `inbox-header-workspace-${width}${largeText ? '-large-text' : ''}.png`) });
+      } else {
+        const navigation = page.getByRole('navigation', { name: 'การสื่อสารและงานทีม' });
+        await expect(navigation).toBeVisible();
+        const analytics = navigation.getByRole('link', { name: 'ภาพรวมงานแชท' });
+        await analytics.focus();
+        await expect(analytics).toBeInViewport();
+        const link = await analytics.boundingBox();
+        assert.ok(link.height >= 44, 'Navigation needs touch-sized targets');
       }
       assert.deepEqual(errors, []);
     } finally { await context.unrouteAll({ behavior: 'wait' }); await context.close(); }

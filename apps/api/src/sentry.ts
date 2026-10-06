@@ -136,6 +136,15 @@ if (dsn) {
     dsn,
     environment: process.env.NODE_ENV || 'development',
     tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.2 : 1.0,
+    // Graph debug_token requires input_token in its query, and other Graph reads carry
+    // appsecret_proof. Suppress BOTH fetch spans and breadcrumbs before instrumentation
+    // copies URL/query/header data. Application errors use fixed, credential-free codes.
+    integrations: [Sentry.nativeNodeFetchIntegration({
+      ignoreOutgoingRequests: (url) => {
+        try { return new URL(url).hostname === 'graph.facebook.com'; }
+        catch { return true; }
+      },
+    })],
     // Never let PII or the GFIN public share-link token (embedded in the URL path,
     // `/api/g/<token>/...`) reach Sentry in ANY field an integration might put it in.
     beforeSend,

@@ -18,15 +18,38 @@ describe('FacebookAppReviewService.subscribePageWebhooks — subscribed fields',
   let fetchMock: jest.Mock;
   let getConfig: jest.Mock;
   let service: FacebookAppReviewService;
+  let subscribedFields: string[];
 
   beforeEach(() => {
-    fetchMock = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve({ success: true }),
+    subscribedFields = [];
+    fetchMock = jest.fn().mockImplementation(async (input: string, init: RequestInit) => {
+      const url = new URL(input);
+      if (init.method === 'POST') return Response.json({ success: true });
+      if (url.pathname.endsWith('/debug_token'))
+        return Response.json({
+          data: {
+            is_valid: true,
+            app_id: '456',
+            profile_id: '123',
+            type: 'PAGE',
+            expires_at: 0,
+            data_access_expires_at: 0,
+            scopes: ['pages_manage_metadata'],
+          },
+        });
+      if (url.pathname.endsWith('/me')) return Response.json({ id: '123' });
+      return Response.json({ data: [{ id: '456', subscribed_fields: subscribedFields }] });
     });
     global.fetch = fetchMock as unknown as typeof fetch;
-    getConfig = jest.fn().mockResolvedValue({ pageAccessToken: 'page-token', pageId: 'PAGE1' });
+    getConfig = jest
+      .fn()
+      .mockResolvedValue({
+        pageAccessToken: 'page-token',
+        pageId: '123',
+        appId: '456',
+        appSecret: 'test-secret',
+        verifyToken: 'test-verify',
+      });
     service = new FacebookAppReviewService({ getConfig } as unknown as IntegrationConfigService);
   });
 
@@ -35,9 +58,9 @@ describe('FacebookAppReviewService.subscribePageWebhooks — subscribed fields',
   });
 
   function sentFields(): string {
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    return (JSON.parse(String(init.body)) as { subscribed_fields: string }).subscribed_fields;
+    const posts = fetchMock.mock.calls.filter(([, init]) => init.method === 'POST');
+    expect(posts).toHaveLength(1);
+    return new URLSearchParams(String(posts[0][1].body)).get('subscribed_fields')!;
   }
 
   it('ค่า default มี message_echoes + messaging_referrals และไม่มี feed', () => {
@@ -51,8 +74,11 @@ describe('FacebookAppReviewService.subscribePageWebhooks — subscribed fields',
   it('ไม่ส่ง fields (smoke script ส่ง {}) → ยิงชุด default ที่มี message_echoes', async () => {
     await service.subscribePageWebhooks({});
 
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://graph.facebook.com/v25.0/PAGE1/subscribed_apps');
+    const [url, init] = fetchMock.mock.calls.find(([, options]) => options.method === 'POST') as [
+      string,
+      RequestInit,
+    ];
+    expect(new URL(url).pathname).toBe('/v25.0/123/subscribed_apps');
     expect(init.method).toBe('POST');
     expect(sentFields()).toBe(DEFAULT_SUBSCRIBED_FIELDS);
     expect(sentFields().split(',')).toContain('message_echoes');
@@ -77,6 +103,18 @@ describe('FacebookAppReviewService.subscribePageWebhooks — subscribed fields',
     expect(sentFields()).toBe(`${DEFAULT_SUBSCRIBED_FIELDS},feed`);
   });
 
+  it('preserves feed and custom subscriptions even when the old form submits defaults', async () => {
+    subscribedFields = ['feed', 'leadgen'];
+    await service.subscribePageWebhooks({});
+    expect(sentFields().split(',')).toEqual(
+      expect.arrayContaining(['feed', 'leadgen', ...FACEBOOK_PAGE_SUBSCRIBED_FIELDS]),
+    );
+  });
+  it('refuses a write when current subscriptions cannot be read', async () => {
+    fetchMock.mockResolvedValue(Response.json({ error: { code: 190 } }, { status: 400 }));
+    await expect(service.subscribePageWebhooks({})).rejects.toBeInstanceOf(BadRequestException);
+    expect(fetchMock.mock.calls.filter(([, init]) => init.method === 'POST')).toHaveLength(0);
+  });
   it('ยังไม่ตั้งค่าเพจ → BadRequest และไม่ยิง Graph API', async () => {
     getConfig.mockResolvedValue({});
 

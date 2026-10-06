@@ -1,3 +1,4 @@
+import { FacebookCommentGraphTransport } from '../chat-adapters/facebook-comment-graph.transport';
 import { Module } from '@nestjs/common';
 import { FacebookAppReviewController } from './facebook-app-review.controller';
 import { FacebookAppReviewService } from './facebook-app-review.service';
@@ -13,7 +14,7 @@ import { IntegrationsModule } from '../integrations/integrations.module';
 @Module({
   imports: [IntegrationsModule],
   controllers: [FacebookAppReviewController],
-  providers: [FacebookAppReviewService],
+  providers: [FacebookAppReviewService, FacebookCommentGraphTransport],
   exports: [FacebookAppReviewService],
 })
 export class FacebookAppReviewModule {}

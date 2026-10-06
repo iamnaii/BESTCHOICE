@@ -20,8 +20,8 @@
  *   (prod ราว 4,600 แถว STAFF จาก echo ต่อ 7 วัน)
  * - `message_deliveries` / `message_reads` = คงไว้ตามที่ยื่น App Review
  *   (ตัวรับ webhook วันนี้ไม่ได้ใช้ — `processMessagingEvent` ข้ามสองชนิดนี้)
- * - **ไม่มี `feed` โดยตั้งใจ** — ตัวรับ webhook อ่านเฉพาะ `entry.messaging`
- *   ไม่เคยอ่าน `entry.changes` ⇒ subscribe `feed` ไปก็ไม่มีอะไรรับ ได้แค่ทราฟฟิกเปล่า
+ * - **ไม่มี `feed` ในชุด Messenger โดยตั้งใจ** — คอมเมนต์สมัครเพิ่มผ่านหน้า OWNER setup
+ *   หลังตรวจสิทธิ์ โดยรวมกับฟิลด์เดิมทั้งหมด ไม่เปิด feed อัตโนมัติให้เพจที่ยังไม่พร้อม
  */
 export const FACEBOOK_PAGE_SUBSCRIBED_FIELDS = [
   'messages',

@@ -13,6 +13,7 @@ export interface CommentThread {
   revision: number;
   status: 'OPEN' | 'RESPONDED' | 'RESOLVED';
   rootDeleted: boolean;
+  rootRecordMissing?: boolean;
   needsReconciliation: boolean;
   assigneeId: string | null;
   customerId: string | null;
@@ -26,6 +27,7 @@ export interface CommentThread {
     authorName: string | null;
     text: string | null;
     deletedAt: string | null;
+    needsReconciliation?: boolean;
   }[];
   replies: CommentReply[];
   recordsTotal: number;

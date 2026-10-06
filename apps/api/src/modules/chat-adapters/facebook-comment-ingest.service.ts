@@ -57,7 +57,7 @@ export class FacebookCommentIngestService {
       const value = object(change.value);
       const result = await this.persist(page, value, entry.time);
       if (!result) continue;
-      persisted++;
+      if (!result.replayed) persisted++;
       // Persistence has already committed. A failed provider read never loses the event/tombstone.
       if (result.reconcile)
         await this.reconcile(result.threadId, result.commentId, result.revision);
@@ -116,11 +116,22 @@ export class FacebookCommentIngestService {
         });
         if (!currentPage?.enabled)
           throw new ServiceUnavailableException('เพจถูกปิดรับคอมเมนต์แล้ว');
-        if (await tx.facebookCommentEvent.count({ where: { eventKey } })) return null;
         const existing = await tx.facebookCommentRecord.findUnique({
           where: { pageId_commentId: { pageId: page.pageId, commentId } },
           include: { thread: true },
         });
+        if (await tx.facebookCommentEvent.count({ where: { eventKey } })) {
+          // Retry only the authoritative GET, never the event projection or an outbound POST.
+          return existing?.needsReconciliation
+            ? {
+                threadId: existing.threadId,
+                commentId,
+                revision: existing.thread.revision,
+                reconcile: true,
+                replayed: true,
+              }
+            : null;
+        }
         const parent =
           parentId && parentId !== postId
             ? await tx.facebookCommentRecord.findUnique({
@@ -208,12 +219,20 @@ export class FacebookCommentIngestService {
         const customerUpdate =
           authorId !== page.pageId && verb !== 'REMOVE' && (!previous || apply);
         const rootDeleted = commentId === rootCommentId ? !!record.deletedAt : thread.rootDeleted;
+        const pendingLive = await tx.facebookCommentRecord.count({
+          where: { threadId: thread.id, needsReconciliation: true, deletedAt: null },
+        });
+        const rootExists = await tx.facebookCommentRecord.count({
+          where: { threadId: thread.id, commentId: rootCommentId },
+        });
         const updated = await tx.facebookCommentThread.update({
           where: { id: thread.id },
           data: {
             revision: { increment: 1 },
             rootDeleted,
-            needsReconciliation: thread.needsReconciliation || reconcile,
+            // A deleted child remains ambiguous on its record, but cannot block a verified root.
+            // Root deletion has its own send guard; a missing root or unresolved live child blocks.
+            needsReconciliation: !rootExists || pendingLive > 0,
             ...(rootDeleted
               ? { waitingSince: null }
               : customerUpdate
@@ -243,12 +262,23 @@ export class FacebookCommentIngestService {
             },
             true,
           );
-        return { threadId: thread.id, commentId, revision: updated.revision, reconcile };
+        return {
+          threadId: thread.id,
+          commentId,
+          revision: updated.revision,
+          reconcile,
+          replayed: false,
+        };
       },
       { maxWait: 10_000, timeout: 10_000 },
     );
   }
-  async reconcile(threadId: string, commentId: string, expectedRevision: number) {
+  async reconcile(
+    threadId: string,
+    commentId: string,
+    expectedRevision: number,
+    authorize?: (tx: Prisma.TransactionClient) => Promise<unknown>,
+  ) {
     const thread = await this.prisma.facebookCommentThread.findUnique({ where: { id: threadId } });
     if (!thread) return false;
     const snapshot = await this.client.readComment(thread.pageId, commentId);
@@ -256,10 +286,37 @@ export class FacebookCommentIngestService {
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM facebook_comment_threads WHERE id = ${threadId} FOR UPDATE`;
       const current = await tx.facebookCommentThread.findUniqueOrThrow({ where: { id: threadId } });
+      if (authorize) await authorize(tx);
       if (current.revision !== expectedRevision) return false;
-      const record = await tx.facebookCommentRecord.findUniqueOrThrow({
+      if (snapshot.postId !== undefined && snapshot.postId !== current.postId) return false;
+      let record = await tx.facebookCommentRecord.findUnique({
         where: { pageId_commentId: { pageId: thread.pageId, commentId } },
       });
+      if (!record) {
+        // A child can be the first event after activation. Materialize its older root only
+        // from positive Page-owned Graph evidence, never from the child's text/author.
+        if (
+          commentId !== current.rootCommentId ||
+          !snapshot.exists ||
+          snapshot.postId !== current.postId ||
+          !snapshot.authorId ||
+          (snapshot.parentCommentId !== null && snapshot.parentCommentId !== current.postId)
+        )
+          return false;
+        record = await tx.facebookCommentRecord.create({
+          data: {
+            threadId,
+            pageId: current.pageId,
+            commentId,
+            parentId: current.postId,
+            authorId: snapshot.authorId,
+            authorName: snapshot.authorName ?? null,
+            text: snapshot.text,
+            providerRevision: snapshot.revision,
+            needsReconciliation: false,
+          },
+        });
+      }
       if (
         snapshot.revision &&
         record.providerRevision &&
@@ -303,13 +360,16 @@ export class FacebookCommentIngestService {
         },
       });
       const remaining = await tx.facebookCommentRecord.count({
-        where: { threadId, needsReconciliation: true },
+        where: { threadId, needsReconciliation: true, deletedAt: null },
+      });
+      const rootExists = await tx.facebookCommentRecord.count({
+        where: { threadId, commentId: current.rootCommentId },
       });
       await tx.facebookCommentThread.update({
         where: { id: threadId },
         data: {
           revision: { increment: 1 },
-          needsReconciliation: remaining > 0,
+          needsReconciliation: !rootExists || remaining > 0,
           ...(customerChanged
             ? {
                 status: 'OPEN',

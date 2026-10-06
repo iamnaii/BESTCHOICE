@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { DocumentType } from '@prisma/client';
-import { PettyCashCustodianRole, DocNumberFormatValue, DocNumberResetCycleValue } from './settings.constants';
+import { DocNumberFormatValue, DocNumberResetCycleValue } from './settings.constants';
 import { SettingsFlagsService } from './services/settings-flags.service';
 import { SettingsWriteService } from './services/settings-write.service';
-import { PettyCashCustodianService } from './services/petty-cash-custodian.service';
 import { DocNumberPreviewService } from './services/doc-number-preview.service';
 
 // Re-export module-level constants/types from their shared home so existing
@@ -27,7 +26,7 @@ export type {
 
 /**
  * Facade over the decomposed Settings cluster (Wave-4). The public surface
- * (16 methods consumed by the controller + 5 external modules:
+ * (12 methods consumed by the controller + 5 external modules:
  * `contracts/documents.service` findAll; `expense-documents/services/doc-number.service`
  * getDocPrefixMap+getKey; `collections-session/auto-assign.service`+`pool.service`
  * getCollectionsConfig; etc.) is preserved byte-for-byte and each method is a
@@ -35,7 +34,6 @@ export type {
  *   - SettingsFlagsService        — read-mostly flag accessors (dependency root,
  *                                   owns the now-public `getKey`)
  *   - SettingsWriteService        — findAll/update/bulkUpdate (sole $transaction)
- *   - PettyCashCustodianService   — petty-cash custodian assignment
  *   - DocNumberPreviewService     — doc-number preview + sequence-reset
  */
 @Injectable()
@@ -43,7 +41,6 @@ export class SettingsService {
   constructor(
     private flags: SettingsFlagsService,
     private write: SettingsWriteService,
-    private pettyCash: PettyCashCustodianService,
     private docNumberPreview: DocNumberPreviewService,
   ) {}
 
@@ -105,40 +102,6 @@ export class SettingsService {
     selfClaimLockHours: number;
   }> {
     return this.flags.getCollectionsConfig();
-  }
-
-  // ─── Petty Cash custodian (PettyCashCustodianService) ────────────────
-
-  async getPettyCashCustodianRole(): Promise<PettyCashCustodianRole> {
-    return this.pettyCash.getPettyCashCustodianRole();
-  }
-
-  async getPettyCashCustodian(
-    companyId?: string,
-  ): Promise<{
-    companyId: string;
-    companyCode: string | null;
-    custodianRole: PettyCashCustodianRole;
-    custodian: { id: string; name: string; email: string; role: string } | null;
-  } | null> {
-    return this.pettyCash.getPettyCashCustodian(companyId);
-  }
-
-  async assignPettyCashCustodian(
-    actorUserId: string,
-    opts: { companyId?: string; userId: string | null | undefined },
-  ): Promise<{
-    companyId: string;
-    custodianRole: PettyCashCustodianRole;
-    custodian: { id: string; name: string; email: string; role: string } | null;
-  }> {
-    return this.pettyCash.assignPettyCashCustodian(actorUserId, opts);
-  }
-
-  async getEligibleCustodians(): Promise<
-    { id: string; name: string; email: string; role: string }[]
-  > {
-    return this.pettyCash.getEligibleCustodians();
   }
 
   // ─── Doc-number preview + reset (DocNumberPreviewService) ─────────────

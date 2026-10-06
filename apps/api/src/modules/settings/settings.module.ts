@@ -5,7 +5,6 @@ import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 import { SettingsFlagsService } from './services/settings-flags.service';
 import { SettingsWriteService } from './services/settings-write.service';
-import { PettyCashCustodianService } from './services/petty-cash-custodian.service';
 import { DocNumberPreviewService } from './services/doc-number-preview.service';
 import { RoleMapValidationService } from './role-map-validation.service';
 import { SettingsAccessGuard } from './settings-access.guard';
@@ -28,7 +27,6 @@ import { JournalModule } from '../journal/journal.module';
     // Wave-4 decomposition — internal sub-services the facade delegates to.
     SettingsFlagsService,
     SettingsWriteService,
-    PettyCashCustodianService,
     DocNumberPreviewService,
     RoleMapValidationService,
     SettingsAccessGuard,

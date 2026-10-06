@@ -42,9 +42,11 @@ export function CreditFilePicker({ credit }: { credit?: RoomCreditModel }) {
 export default function RoomCreditCard({
   credit,
   customerId,
+  hideEmptyState = false,
 }: {
   credit?: RoomCreditModel;
   customerId: string | null;
+  hideEmptyState?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const { copy } = useCopyToClipboard();
@@ -78,7 +80,7 @@ export default function RoomCreditCard({
           กำลังโหลดเอกสาร…
         </p>
       )}
-      {!files.length && !credit?.loading && (
+      {!files.length && !credit?.loading && !hideEmptyState && (
         <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-muted-foreground">
           <Upload className="mx-auto mb-2 size-5" />
           <p>

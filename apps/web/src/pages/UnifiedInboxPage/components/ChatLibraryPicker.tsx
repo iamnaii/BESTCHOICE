@@ -163,7 +163,7 @@ export default function ChatLibraryPicker({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex max-h-[90dvh] w-[calc(100%_-_1rem)] max-w-5xl flex-col gap-3 overflow-hidden p-4 sm:p-6"
+        className="inbox-library-dialog flex max-h-[90dvh] w-[calc(100%_-_1rem)] max-w-5xl flex-col gap-3 overflow-hidden p-4 sm:p-6"
         aria-describedby="library-description"
       >
         <DialogHeader>
@@ -175,7 +175,7 @@ export default function ChatLibraryPicker({
             พื้นที่ {company} · เลือกได้สูงสุด 10 ไฟล์ · เพิ่มไฟล์ไว้ก่อน ยังไม่ส่งถึงลูกค้า
           </DialogDescription>
         </DialogHeader>
-        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto md:grid-cols-[180px_minmax(0,1fr)]">
+        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto md:grid-cols-[180px_minmax(0,1fr)] xl:grid-cols-[180px_minmax(0,1fr)_200px]">
           <aside className="space-y-2 md:border-r md:pr-3">
             <h3 className="text-sm font-semibold">โฟลเดอร์</h3>
             {folders.isError ? (
@@ -391,19 +391,14 @@ export default function ChatLibraryPicker({
                 ถัดไป
               </Button>
             </div>
-            {detail && (
-              <div className="rounded-lg bg-muted/50 p-3 text-sm">
-                <p className="break-all font-medium">{detail.name}</p>
-                <p className="text-muted-foreground">
-                  {detail.mimeType} · {(detail.size / 1024).toFixed(1)} KB · เพิ่มเมื่อ{' '}
-                  {new Date(detail.createdAt).toLocaleDateString('th-TH', {
-                    timeZone: 'Asia/Bangkok',
-                  })}
-                </p>
-              </div>
-            )}
           </section>
+          <aside className="hidden min-w-0 border-l border-border pl-4 xl:block" aria-label="รายละเอียดไฟล์">
+            <div className="mb-5 flex aspect-square items-center justify-center overflow-hidden rounded-lg bg-muted/50">{detail ? <FilePreview file={detail} company={company} /> : <FileText className="size-12 text-muted-foreground/40" />}</div>
+            <h3 className="mb-4 text-sm font-semibold">รายละเอียดไฟล์</h3>
+            {detail ? <><p className="break-all text-sm font-medium">{detail.name}</p><dl className="mt-4 space-y-3 text-xs"><div><dt className="text-muted-foreground">ประเภท</dt><dd className="mt-1">{detail.mimeType}</dd></div><div><dt className="text-muted-foreground">ขนาด</dt><dd className="mt-1">{(detail.size / 1024).toFixed(1)} KB</dd></div><div><dt className="text-muted-foreground">วันที่เพิ่ม</dt><dd className="mt-1">{new Date(detail.createdAt).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' })}</dd></div></dl></> : <p className="text-xs leading-snug text-muted-foreground">เลือกไฟล์เพื่อดูรายละเอียด</p>}
+          </aside>
         </div>
+        {detail && <details className="rounded-md bg-muted/40 px-3 py-2 text-xs xl:hidden"><summary className="cursor-pointer truncate">รายละเอียด: {detail.name}</summary><p className="mt-2 break-all">{detail.mimeType} · {(detail.size / 1024).toFixed(1)} KB</p></details>}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
           <div className="flex items-center gap-2 text-sm">
             <span>เลือก {selected.length} / 10 ไฟล์</span>

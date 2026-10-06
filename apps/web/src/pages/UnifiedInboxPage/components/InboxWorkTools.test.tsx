@@ -72,7 +72,7 @@ describe('Work notification targets', () => {
     view(select, `/?noteId=${id}`);
     expect(screen.getByRole('button', { name: 'คอมเมนต์' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'การแจ้งเตือนงาน 1' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'คิวงาน' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'คิวงาน' })).toBeDisabled();
     await waitFor(() => expect(select).toHaveBeenCalledWith('room'));
   });
   it('refuses navigation and read mutation when target permission is gone', async () => {

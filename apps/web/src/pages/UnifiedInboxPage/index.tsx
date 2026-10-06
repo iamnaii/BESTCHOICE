@@ -1,3 +1,4 @@
+import './inbox-workspace.css';
 import InboxWorkTools from './components/InboxWorkTools';
 import { useRoomNotes } from './hooks/useRoomNotes';
 import { useRoomActions } from './hooks/useRoomActions';
@@ -336,13 +337,13 @@ export default function UnifiedInboxPage() {
   const otherViewers = roomViewers.filter((v) => v.userId !== user?.id);
 
   return (
-    <div className="h-dvh flex flex-col bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
+    <div className="inbox-workspace h-dvh flex flex-col bg-card overflow-hidden pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
       {/* แถบเตือนนัดเหนือทุกแผง (ชั้น 2 ท่า OBI apptAlert) — โผล่เฉพาะเมื่อมีนัดถึงเวลา/ใกล้ถึง */}
-      <InboxWorkTools onSelectRoom={handleSelectRoom} />
+      <InboxWorkTools onSelectRoom={handleSelectRoom} branchName={user?.branchName ?? undefined} />
       <AppointmentAlertBar onGoToRoom={handleSelectRoom} />
       <div className="flex flex-1 min-h-0">
       {/* Left panel: Conversation list */}
-      <div className={`w-80 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-80'}`}>
+      <div className={`inbox-conversations w-80 flex-shrink-0 min-h-0 ${activeRoomId ? 'hidden lg:flex lg:flex-col' : 'flex flex-col w-full lg:w-80'}`}>
         <QueryBoundary
           isLoading={sessionsQuery.isLoading}
           isError={sessionsQuery.isError}

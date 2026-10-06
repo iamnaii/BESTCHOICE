@@ -143,9 +143,10 @@ export default function ConversationList({
   }, [visibleRooms, activeRoomId, onSelectRoom]);
 
   return (
-    <div className="flex flex-col h-full border-r border-border/60">
+    <div className="inbox-queue flex flex-col h-full border-r border-border">
+      <div className="flex items-center justify-between px-4 pt-5 pb-2"><h2 className="text-base font-semibold leading-snug">กล่องข้อความ</h2><span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">{serverCounts?.all ?? sessions.length} ห้อง</span></div>
       {/* Search + Filters */}
-      <div className="px-4 pt-3 pb-0">
+      <div className="px-4 pt-0 pb-2">
         {/* Header row: connection pill (when not connected) + global bell toggle */}
         {(connectionStatus && connectionStatus !== 'connected') || onToggleMuteAll ? (
           <div className="mb-2 flex items-center justify-between gap-2">
@@ -216,7 +217,7 @@ export default function ConversationList({
             onChange={(e) => setSearchInput(e.target.value)}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
-            className="w-full pl-8 pr-7 py-1.5 text-[13px] rounded-md bg-muted/40 border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background transition-all placeholder:text-muted-foreground/70"
+            className="min-h-10 w-full pl-8 pr-7 py-1.5 text-[13px] rounded-md bg-muted/40 border-0 focus:outline-none focus:ring-1 focus:ring-primary/20 focus:bg-background transition-all placeholder:text-muted-foreground/70"
           />
           {searchInput.length > 0 && (
             <button

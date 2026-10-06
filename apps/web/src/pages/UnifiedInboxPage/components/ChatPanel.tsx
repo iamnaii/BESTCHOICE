@@ -5,6 +5,7 @@ import { useLibraryDraft } from '../hooks/useLibraryDraft';
 import NoteMentionInput, { type NoteDraft } from './NoteMentionInput';
 import { ChatMediaPicker } from './ChatMediaPicker';
 import { useChatMediaPicker } from '../hooks/useChatMediaPicker';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useRef, useEffect, useLayoutEffect, useState, useMemo } from 'react';
 
 import { Cloud, Mic, Square, Send, MoreVertical, ArrowLeft, Paperclip, Pin, MessageSquare, UserCircle2, MessageSquareQuote, Loader2, Upload, Eye, Bell, BellOff, Bot, BotOff, AlertCircle, RotateCw, Smartphone, Clock, StickyNote, Lock, Check, CalendarClock } from 'lucide-react';
@@ -542,7 +543,7 @@ export default function ChatPanel({
 
   return (
     <div
-      className="@container relative flex-1 flex min-h-0 min-w-0 flex-col h-full"
+      className="inbox-chat @container relative flex-1 flex min-h-0 min-w-0 flex-col h-full"
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
@@ -559,18 +560,12 @@ export default function ChatPanel({
         </div>
       )}
       {/* Header — ชื่อ · รอตอบนานแค่ไหน · ใครดูแล · ปุ่มที่รู้ว่าทำอะไร (แบบที่เจ้าของโอเค 2026-09-06) */}
-      <div className="flex shrink-0 flex-wrap @md:flex-nowrap items-center gap-2 @lg:gap-3 px-2.5 @lg:px-3.5 py-2 border-b border-border/60 bg-card">
+      <div className="inbox-chat-header flex shrink-0 flex-wrap items-center gap-3 border-b border-border bg-card px-4 pt-5">
           <button onClick={onBack} aria-label="กลับ" className="lg:hidden p-1 min-h-11 min-w-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md hover:bg-muted transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
         <div className="relative shrink-0">
-          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden ring-2 ring-background">
-            {avatarUrl ? (
-              <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-muted-foreground text-sm font-bold">{displayName[0]}</span>
-            )}
-          </div>
+          <Avatar className="size-10 bg-primary/5"><AvatarImage src={avatarUrl} alt={displayName} /><AvatarFallback className="bg-primary/5 font-semibold text-primary">{displayName[0]}</AvatarFallback></Avatar>
           {/* จุดสีช่องทางที่มุมรูป (ฟ้า = Facebook · เขียว = LINE) แทนเม็ดยาเต็มใบ */}
           <span aria-hidden className={cn('absolute -bottom-0.5 -right-0.5 size-3 rounded-full ring-2 ring-card', channelDotClass)} />
         </div>
@@ -638,7 +633,7 @@ export default function ChatPanel({
             )}
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-1 @lg:gap-1.5 shrink-0">
+        <div className="inbox-room-toolbar ml-auto flex shrink-0 items-center gap-2">
           {onShowCustomerInfo && (
             <button
               onClick={onShowCustomerInfo}
@@ -650,20 +645,20 @@ export default function ChatPanel({
             </button>
           )}
           {/* รางสถานะ 3 ปุ่ม: หมุด · บอท · แจ้งเตือน — อันที่ "เปิด" นูนขึ้นเป็นสีขาว */}
-          <div className="flex gap-px rounded-lg border border-border bg-muted p-0.5" role="group" aria-label="สถานะห้อง">
+          <div className="inbox-room-toggles flex items-center gap-1" role="group" aria-label="สถานะห้อง">
             <button
               type="button"
               onClick={() => pinMutation.mutate(!!session.pinnedAt)}
               disabled={pinMutation.isPending}
               className={cn(
-                'size-7 @lg:size-8 inline-flex items-center justify-center rounded-md transition-colors',
+                'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors',
                 session.pinnedAt ? 'bg-card text-warning-strong shadow-sm dark:bg-white/10 dark:text-amber-300' : 'text-muted-foreground hover:text-foreground',
               )}
               title={session.pinnedAt ? 'ปักหมุดอยู่ — กดเพื่อถอด' : 'ปักหมุดห้องนี้ไว้บนสุด'}
               aria-label={session.pinnedAt ? 'ถอดหมุดห้องแชท' : 'ปักหมุดห้องแชท'}
               aria-pressed={!!session.pinnedAt}
             >
-              {session.pinnedAt ? <Pin className="size-4" /> : <Pin className="size-4" />}
+              <Pin className="size-4" /><span className="hidden @[34rem]:inline">ปักหมุด</span>
             </button>
             {onToggleAi && (
               <button
@@ -674,11 +669,11 @@ export default function ChatPanel({
                 aria-label="สลับสถานะ AI"
                 aria-pressed={!aiPaused}
                 className={cn(
-                  'size-7 @lg:size-8 inline-flex items-center justify-center rounded-md transition-colors disabled:opacity-50',
+                  'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors disabled:opacity-50',
                   aiPaused ? 'text-muted-foreground hover:text-foreground' : 'bg-card text-primary shadow-sm dark:bg-white/10',
                 )}
               >
-                {aiPaused ? <BotOff className="size-4" /> : <Bot className="size-4" />}
+                {aiPaused ? <BotOff className="size-4" /> : <Bot className="size-4" />}<span className="hidden @[34rem]:inline">{aiPaused ? 'พนักงานตอบ' : 'บอทตอบ'}</span>
               </button>
             )}
             {onToggleRoomMute && (
@@ -689,11 +684,11 @@ export default function ChatPanel({
                 aria-label="สลับการแจ้งเตือนห้องนี้"
                 aria-pressed={!!roomMuted}
                 className={cn(
-                  'size-7 @lg:size-8 inline-flex items-center justify-center rounded-md transition-colors',
+                  'inline-flex min-h-10 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors',
                   roomMuted ? 'bg-card text-destructive shadow-sm dark:bg-white/10 dark:text-red-300' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {roomMuted ? <BellOff className="size-4" /> : <Bell className="size-4" />}
+                {roomMuted ? <BellOff className="size-4" /> : <Bell className="size-4" />}<span className="hidden @[34rem]:inline">แจ้งเตือน</span>
               </button>
             )}
           </div>
@@ -759,6 +754,8 @@ export default function ChatPanel({
         </div>
       )}
 
+      {session.waitingSince && !isResolved && <div className="inbox-wait-banner flex shrink-0 items-center gap-2 border-b border-warning/20 bg-warning/10 px-4 py-2.5 text-xs leading-snug text-warning-strong"><Clock className="size-4 shrink-0" /><span><strong>ลูกค้ารอ {formatWaitDuration(session.waitingSince)}</strong> · ยังไม่มีข้อความตอบกลับจากพนักงาน</span></div>}
+
       {/* Screen-reader live regions — siblings of the log, not nested inside it */}
       <div className="sr-only" aria-live="polite" aria-atomic="true">{liveMsg}</div>
       <div className="sr-only" aria-live="assertive" aria-atomic="true">
@@ -767,7 +764,7 @@ export default function ChatPanel({
 
       {/* Messages */}
       {pinnedNote && onUnpinNote && <PinnedNoteBar note={pinnedNote} onUnpin={onUnpinNote} />}
-      <div className="flex-1 overflow-y-auto px-4 py-3" role="log" aria-label="ประวัติข้อความ">
+      <div className="inbox-message-log flex-1 min-h-0 overflow-y-auto px-5 py-5" role="log" aria-label="ประวัติข้อความ">
         {isLoadingMessages ? (
           <div className="space-y-3 py-4">
             <span className="sr-only">กำลังโหลดข้อความ</span>
@@ -899,12 +896,6 @@ export default function ChatPanel({
         </div>
       )}
 
-      {/* AI Suggestions */}
-      {!isResolved && !isNoteMode && (
-        <div className="border-t border-border/60 px-2">
-          <PrepareOfferDialog key={session.id} roomId={session.id} onInsert={(text) => { setSelectedSuggestion(null); insertAtCaret(text); }} />
-        </div>
-      )}
       {!isResolved && (
         <AiSuggestPanel
           roomId={session.id}
@@ -915,18 +906,19 @@ export default function ChatPanel({
 
       {/* Input */}
       {!isResolved && (
-        <div className="group/composer shrink-0 border-t border-border/60 px-3 pt-2 pb-3 bg-card">
+        <div className="inbox-composer group/composer shrink-0 border-t border-border px-4 pt-3 pb-3 bg-card">
           {/* แท็บโหมดเกาะขอบบนของการ์ด (แบบที่เจ้าของโอเค 2026-09-06): ตอบลูกค้า | โน้ตภายใน */}
+          <div className="inbox-composer-heading flex flex-wrap items-center justify-between gap-2 pb-2">
           {onAddNote && (
-            <div className="ml-3 flex items-end gap-0.5" role="radiogroup" aria-label="โหมดช่องพิมพ์">
+            <div className="flex items-center gap-1" role="radiogroup" aria-label="โหมดช่องพิมพ์">
               <button
                 type="button"
                 role="radio"
                 aria-checked={!isNoteMode}
                 onClick={() => { setComposerMode('chat'); inputRef.current?.focus(); }}
                 className={cn(
-                  'relative z-10 -mb-px inline-flex h-7 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-[12px] font-semibold transition-colors',
-                  !isNoteMode ? 'border-border bg-card text-primary group-focus-within/composer:border-primary/60' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
+                  'inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 text-xs font-semibold transition-colors',
+                  !isNoteMode ? 'bg-primary/5 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )}
               >
                 <MessageSquare className="size-3.5" /> ตอบลูกค้า
@@ -937,14 +929,16 @@ export default function ChatPanel({
                 aria-checked={isNoteMode}
                 onClick={() => { setComposerMode('note'); requestAnimationFrame(() => noteContainerRef.current?.querySelector('textarea')?.focus()); }}
                 className={cn(
-                  'relative z-10 -mb-px inline-flex h-7 items-center gap-1.5 rounded-t-lg border border-b-0 px-3 text-[12px] font-semibold transition-colors',
-                  isNoteMode ? 'border-warning/50 bg-warning/10 text-foreground dark:border-amber-400/40 dark:bg-amber-400/10' : 'border-border bg-muted text-muted-foreground hover:text-foreground',
+                  'inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 text-xs font-semibold transition-colors',
+                  isNoteMode ? 'bg-warning/10 text-warning-strong' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                 )}
               >
                 <StickyNote className="size-3.5" /> โน้ตภายใน
               </button>
             </div>
           )}
+            {!isNoteMode && <PrepareOfferDialog key={session.id} roomId={session.id} onInsert={(text) => { setSelectedSuggestion(null); insertAtCaret(text); }} />}
+          </div>
           <div
             data-chat-composer-card
             className={cn(
@@ -958,7 +952,7 @@ export default function ChatPanel({
             <div hidden={isNoteMode}>
             {!isNoteMode && (
               <div className="px-3.5 pt-2 text-xs leading-snug text-muted-foreground">
-                <p>กดไมค์แล้วพูดภาษาไทย · เบราว์เซอร์อาจส่งเสียงไปบริการแปลงเสียง</p>
+                <details className="text-[11px]"><summary className="cursor-pointer">พิมพ์ด้วยเสียงภาษาไทย</summary><p className="py-1">กดไมค์แล้วพูดภาษาไทย · เบราว์เซอร์อาจส่งเสียงไปบริการแปลงเสียง</p></details>
                 {!voice.supported && <p>{VOICE_FALLBACK}</p>}
                 <p role="status" aria-live="polite" className="break-words">
                   {voice.error || (voice.phase === 'starting' ? 'กำลังเปิดไมค์…'
@@ -1054,7 +1048,7 @@ export default function ChatPanel({
               className="size-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ส่งข้อมูล/รูปสินค้า"
             >
-              <Smartphone className="w-4 h-4" />
+              <Smartphone className="w-4 h-4" /><span className="hidden @[40rem]:inline text-xs">สินค้า</span>
             </button>
             {/* Message template picker */}
             <button
@@ -1064,7 +1058,7 @@ export default function ChatPanel({
               className="size-11 inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               title="ข้อความสำเร็จรูป (Ctrl+K)"
             >
-              <MessageSquareQuote className="w-4 h-4" />
+              <MessageSquareQuote className="w-4 h-4" /><span className="hidden @[40rem]:inline text-xs">ข้อความสำเร็จรูป</span>
             </button>
                 </div>
               )}

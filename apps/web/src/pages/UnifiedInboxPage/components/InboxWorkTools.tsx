@@ -3,11 +3,15 @@ import FacebookCommentPanel from './FacebookCommentPanel';
 import FacebookCommentList from './FacebookCommentList';
 import ChatFollowUpDialog, { type FollowUpDraft } from './ChatFollowUpDialog';
 import ChatHandoffCard from './ChatHandoffCard';
+import { createPortal } from 'react-dom';
+import { useContext } from 'react';
+import { useTheme } from 'next-themes';
+import { InboxNavigationContext } from '@/components/layout/InboxNavigationContext';
 import { useRef, useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router';
 import type { ChatWorkTarget, WorkQueueView } from '@installment/shared';
-import { BarChart3, Bell, ListTodo } from 'lucide-react';
+import { BarChart3, Bell, ListTodo, Inbox, Globe, Moon, Sun } from 'lucide-react';
 import { toast } from 'sonner';
 import { getCompanyScopeRevision } from '@/lib/company-scope';
 import { Button } from '@/components/ui/button';
@@ -18,9 +22,13 @@ import StaffWorkInbox from './StaffWorkInbox';
 import { useChatWork } from '../hooks/useChatWork';
 export default function InboxWorkTools({
   onSelectRoom,
+  branchName,
 }: {
   onSelectRoom: (roomId: string) => void;
+  branchName?: string;
 }) {
+  const navigation = useContext(InboxNavigationContext);
+  const { resolvedTheme, setTheme } = useTheme();
   const [view, setView] = useState<WorkQueueView>('WAITING');
   const [page, setPage] = useState(1);
   const [panel, setPanel] = useState<'queue' | 'inbox' | 'comments' | null>(null);
@@ -113,6 +121,13 @@ export default function InboxWorkTools({
     void open(linkedType, linkedId);
     // Exact-resource access is checked before selecting the room.
   }, [linkedId, linkedType, linkEnabled, work.identity]);
+  const workNavigation = <nav aria-label="การสื่อสารและงานทีม" className="inbox-work-navigation">
+    <p className="inbox-navigation-label">การสื่อสารและงานทีม</p>
+    <Button variant="ghost" aria-current={!panel ? 'page' : undefined} className={!panel ? 'inbox-navigation-active' : ''} onClick={() => setPanel(null)}><Inbox className="size-4" /><span>แชทลูกค้า</span></Button>
+    <Button variant="ghost" disabled={!work.enabled} title={!work.enabled ? 'คิวงานยังไม่เปิดใช้งาน' : undefined} onClick={() => setPanel('queue')}><ListTodo className="size-4" /><span>คิวงาน</span></Button>
+    {work.company === 'SHOP' && <Button variant="ghost" disabled={!flags?.chat_facebook_comments_enabled} title={!flags?.chat_facebook_comments_enabled ? 'คอมเมนต์ยังไม่เปิดใช้งาน' : undefined} onClick={() => setPanel('comments')}><Globe className="size-4" /><span>คอมเมนต์</span></Button>}
+    <Button asChild variant="ghost"><Link to={`/chat-analytics?zone=${work.company === 'SHOP' ? 'shop' : 'fin'}`} aria-label="ภาพรวมงานแชท"><BarChart3 className="size-4" /><span>ภาพรวมทีม</span></Link></Button>
+  </nav>;
   if (work.settings.isError)
     return (
       <div className="flex items-center gap-3 border-b px-4 py-2 text-xs" role="alert">
@@ -124,41 +139,22 @@ export default function InboxWorkTools({
     );
   return (
     <>
-      <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-1 border-b bg-card px-3 py-1">
-        <Button asChild variant="ghost" size="icon" className="size-11">
-          <Link
-            to={`/chat-analytics?zone=${work.company === 'SHOP' ? 'shop' : 'fin'}`}
-            aria-label="ภาพรวมงานแชท"
-          >
-            <BarChart3 className="size-4" />
-          </Link>
-        </Button>
-        {work.enabled && (
-          <Button variant="ghost" size="sm" onClick={() => setPanel('queue')}>
-            <ListTodo className="size-4" />
-            คิวงาน
+      <header className="inbox-workspace-header">
+        <div className="min-w-0">
+          <p className="text-xs leading-snug text-muted-foreground">{work.company === 'SHOP' ? 'งานหน้าร้าน' : 'งานการเงิน'}{branchName ? ` / ${branchName}` : ''}</p>
+          <h1 className="mt-1 text-xl font-semibold leading-snug">แชทลูกค้า</h1>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="icon" aria-label="สลับธีม" onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
+            {resolvedTheme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </Button>
-        )}
-        {work.company === 'SHOP' && work.settings.data?.flags.chat_facebook_comments_enabled && (
-          <Button variant="ghost" size="sm" onClick={() => setPanel('comments')}>
-            คอมเมนต์
+          <Button variant="outline" size="icon" aria-label={`การแจ้งเตือนงาน ${work.inbox.data?.unreadCount ?? 'กำลังโหลด'}`} onClick={() => setPanel('inbox')} className="relative">
+            <Bell className="size-4" />
+            {!!work.inbox.data?.unreadCount && <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 text-[10px] tabular-nums text-primary-foreground">{work.inbox.data.unreadCount > 99 ? '99+' : work.inbox.data.unreadCount}</span>}
           </Button>
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          aria-label={`การแจ้งเตือนงาน ${work.inbox.data?.unreadCount ?? 'กำลังโหลด'}`}
-          onClick={() => setPanel('inbox')}
-        >
-          <Bell className="size-4" />
-          <span>แจ้งเตือน</span>
-          {!!work.inbox.data?.unreadCount && (
-            <span className="rounded-full bg-primary px-1.5 text-xs tabular-nums text-primary-foreground">
-              {work.inbox.data.unreadCount}
-            </span>
-          )}
-        </Button>
-      </div>
+        </div>
+      </header>
+      {navigation?.host ? createPortal(workNavigation, navigation.host) : <div className="inbox-mobile-work-navigation">{workNavigation}</div>}
       <Sheet open={!!panel} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent
           side="left"
